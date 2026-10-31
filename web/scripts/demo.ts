@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The preset demo (web/demo/README.md): every FM-1 factory patch's presets on the editor's Emulator view (EMU), in a
-// headed Chrome window sized for a screen recording, under two minutes by default.
+// headed Chrome window sized for a screen recording, at the song's tempo (the default song: 100 bpm, about 2:41).
 //   npm run demo [-- --song NAME] [--seconds S | --tempo BPM] [--init] [--only A,B] [--skip A,B] [--url URL]
-//                [--size WxH] [--wasm FILE] [--dry-run] [--headless] [--shots]
+//                [--size WxH] [--wasm FILE] [--no-normalize | --loudness DB] [--dry-run] [--headless] [--shots]
 // Everything runs on one beat grid. Patches played from the keys come first: each patch is opened (a beat), then the
 // PRESET encoder steps its engine's factory presets on bar lines, and each preset plays a bar of the song. With a chord
 // loop (songs/loop.json, the default) each preset plays a part that suits it: a pad holds the chord, a bass plays a root
@@ -10,7 +10,8 @@
 // notes (songs/moonlight.json) each preset plays the next notes. Patches that play from a pattern (pattern 1 of a Steps
 // track has notes: the drum machines and kits) come last: their tempo is set to the demo's (PLAY held + PRESET, not
 // stored), PLAY runs the pattern and PRESET steps the presets, a bar each. A caption over the panel names the patch and
-// the preset. The page's Web MIDI sees no ports, so no FM-1 is ever reached; nothing is stored.
+// the preset. The page's Web MIDI sees no ports, so no FM-1 is ever reached; nothing is stored. Each step's loudness is
+// measured first, offline with the browser's engine, and the page evens it out with a gain and a limiter after MASTER.
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -18,7 +19,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { allModules, parentOf } from '../src/assembly';
-import { presetsOf } from '../src/device-presets';
+import { applyPreset, presetsOf } from '../src/device-presets';
+import { Engine } from '../src/engine';
+import { rowOrder } from '../src/structure';
 import { instIsEngine } from '../src/engines';
 import '../src/factory-presets';
 import { binaryPage } from '../src/patchbin';
@@ -34,7 +37,8 @@ const num = (n: string, d: number): number => { const v = opt(n); if (v === unde
 const list = (n: string): string[] | undefined => opt(n)?.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 
 const SONG = opt('--song') ?? 'loop';
-const SECONDS = num('--seconds', 117);
+/** a time budget the tempo is raised to fit (only when given: by default the demo plays at the song's tempo) */
+const SECONDS = opt('--seconds') !== undefined ? num('--seconds', 0) : undefined;
 const TEMPO = opt('--tempo') ? Math.round(num('--tempo', 0)) : undefined;
 const INIT = flag('--init');
 const ONLY = list('--only');
@@ -158,7 +162,7 @@ function notesPart(start: number, rows: boolean): Part {
 }
 
 // ---- the plan: which patches, which presets, in what order (from the patches themselves, as the FM-1 has them)
-interface Item { name: string; engine: string | null; device: number; presets: (string | null)[]; rows: boolean; voices: number; tempo: number }
+interface Item { name: string; engine: string | null; aid: number | null; device: number; presets: (string | null)[]; rows: boolean; voices: number; tempo: number }
 const keyboard: Item[] = [];
 const drums: Item[] = [];
 const left: string[] = [];
@@ -180,7 +184,7 @@ for (const [name, make] of Object.entries(FM1_PRESETS)) {
   // its polyphony as the patch comes: the most voices of a Voicing in it (a chord on fewer voices keeps its lowest tones)
   const voices = Math.max(1, ...members.filter((m) => m.type === 'alloc').map((m) => Math.round(m.params.voices ?? 1)));
   const tempo = Math.round(p.modules.find((m) => m.type === 'fm1')?.params.tempo ?? 120);
-  const item: Item = { name, engine: eng?.a.label ?? null, device: eng ? binaryPage(p, `a${eng.a.id}`, 0)?.[0] ?? -1 : -1, presets, rows, voices, tempo };
+  const item: Item = { name, engine: eng?.a.label ?? null, aid: eng?.a.id ?? null, device: eng ? binaryPage(p, `a${eng.a.id}`, 0)?.[0] ?? -1 : -1, presets, rows, voices, tempo };
   if (pattern) drums.push({ ...item, presets: presets.length ? presets : [null] });
   else if (presets.length) keyboard.push(item);
   else left.push(name);
@@ -207,9 +211,10 @@ const kbBeats = parts.flat().reduce((s, x) => s + x.beats, 0);
 const drumSteps = drums.reduce((s, i) => s + i.presets.length, 0);
 const loadBeats = keyboard.length * LOAD_BEATS + drums.length * PATTERN_LOAD_BEATS;
 const beats = kbBeats + drumSteps * DRUM_BEATS + loadBeats;
-// the tempo: --tempo, else the song's own, raised to the lowest whole bpm that fits the budget
-const fitTempo = Math.ceil((beats * 60) / SECONDS);
-const tempo = TEMPO ?? Math.max(song.tempo ?? fitTempo, fitTempo);
+// the tempo: --tempo, else the song's own (120 for a song without one); with --seconds, raised to the lowest whole bpm
+// that fits that budget
+const fitTempo = SECONDS ? Math.ceil((beats * 60) / SECONDS) : 0;
+const tempo = TEMPO ?? Math.max(song.tempo ?? 120, fitTempo);
 const beatMs = 60000 / tempo;
 const totalS = (beats * beatMs) / 1000;
 const mmss = (s: number): string => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
@@ -228,8 +233,167 @@ if (folded) console.log(`  (${folded} notes moved an octave in to fit the keys)`
 console.log(`\nfrom a pattern (PLAY, tempo set to ${tempo} bpm, not stored): ${drums.length} patches, ${drumSteps} steps of ${DRUM_BEATS} beats`);
 for (const i of drums) console.log(`  ${i.name.padEnd(15)} ${i.presets.map((x) => x ?? '(as it comes: no presets)').join(', ')}${i.tempo !== tempo ? `  (its own tempo ${i.tempo})` : ''}`);
 if (left.length) console.log(`\nleft out (no factory presets, played from the keys): ${left.join(', ')}`);
-console.log(`\ntempo: ${tempo} bpm${TEMPO ? ' (--tempo)' : song.tempo && tempo > song.tempo ? ` (the song's ${song.tempo} raised to fit ${SECONDS} s; at ${song.tempo} the demo takes ${mmss((beats * 60) / song.tempo)})` : ''}, a beat ${beatMs.toFixed(0)} ms${LOOP ? `, a preset's bar ${((BAR * beatMs) / 1000).toFixed(2)} s` : ''}`);
-console.log(`time: ${beats} beats: keys ${kbBeats} + patterns ${drumSteps * DRUM_BEATS} + loads ${loadBeats} = ${totalS.toFixed(1)} s (${mmss(totalS)})${totalS > SECONDS + 0.5 ? `  OVER the ${SECONDS} s budget` : ''}`);
+console.log(`\ntempo: ${tempo} bpm${TEMPO ? ' (--tempo)' : SECONDS && tempo > (song.tempo ?? 120) ? ` (the song's ${song.tempo ?? 120} raised to fit ${SECONDS} s; at ${song.tempo ?? 120} the demo takes ${mmss((beats * 60) / (song.tempo ?? 120))})` : song.tempo ? " (the song's)" : ''}, a beat ${beatMs.toFixed(0)} ms${LOOP ? `, a preset's bar ${((BAR * beatMs) / 1000).toFixed(2)} s` : ''}`);
+console.log(`time: ${beats} beats: keys ${kbBeats} + patterns ${drumSteps * DRUM_BEATS} + loads ${loadBeats} = ${totalS.toFixed(1)} s (${mmss(totalS)})${SECONDS && totalS > SECONDS + 0.5 ? `  OVER the ${SECONDS} s budget` : ''}`);
+
+// ---- loudness: every patch rendered offline first, with the browser's engine (engine.ts) at 48 kHz, as the demo plays
+// it (its presets in turn on the same beat grid, the keys at the panel's octave, velocity 0.8 as the panel's keys send,
+// the same note lengths; a pattern patch's pattern at the demo's tempo). A step's loudness is BS.1770's: K-weighted, the
+// mean square of both channels over its bar, in LKFS (ungated: a bar is short). The page then lifts or lowers each step to
+// the target with a gain after MASTER, and a limiter stops a raised step from clipping. The factory levels are #448.
+const NORMALIZE = !flag('--no-normalize');
+const LOUDNESS = opt('--loudness') !== undefined ? Number(opt('--loudness')) : undefined;
+if (LOUDNESS !== undefined && !Number.isFinite(LOUDNESS)) throw new Error('--loudness takes a level in dB (LKFS), such as -20');
+/** the most a step is raised or lowered, dB */
+const GAIN_UP = 18, GAIN_DOWN = -12;
+const SR = 48000;
+/** BS.1770's K-weighting at `fs` as two biquads [b0, b1, b2, a1, a2] (a high shelf, then a high pass; libebur128's form) */
+function kWeighting(fs: number): number[][] {
+  let K = Math.tan((Math.PI * 1681.974450955533) / fs);
+  const Q1 = 0.7071752369554196, Vh = 10 ** (3.999843853973347 / 20), Vb = Vh ** 0.4996667741545416;
+  let a0 = 1 + K / Q1 + K * K;
+  const shelf = [(Vh + (Vb * K) / Q1 + K * K) / a0, (2 * (K * K - Vh)) / a0, (Vh - (Vb * K) / Q1 + K * K) / a0, (2 * (K * K - 1)) / a0, (1 - K / Q1 + K * K) / a0];
+  K = Math.tan((Math.PI * 38.13547087602444) / fs);
+  const Q2 = 0.5003270373238773;
+  a0 = 1 + K / Q2 + K * K;
+  return [shelf, [1, -2, 1, (2 * (K * K - 1)) / a0, (1 - K / Q2 + K * K) / a0]];
+}
+const KW = kWeighting(SR);
+/** both channels K-weighted (their filters run on across the whole render), squared and summed: the mean of a stretch
+ *  of it is BS.1770's mean square */
+function kPower(l: Float32Array, r: Float32Array): Float64Array {
+  const out = new Float64Array(l.length);
+  for (const x of [l, r]) {
+    let y: Float32Array | Float64Array = x;
+    for (const [b0, b1, b2, a1, a2] of KW) {
+      const z: Float64Array = new Float64Array(y.length);
+      let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+      for (let i = 0; i < y.length; i++) {
+        const v = b0 * y[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+        x2 = x1; x1 = y[i]; y2 = y1; y1 = v; z[i] = v;
+      }
+      y = z;
+    }
+    for (let i = 0; i < y.length; i++) out[i] += y[i] * y[i];
+  }
+  return out;
+}
+const lkfs = (ms: number): number => (ms > 0 ? -0.691 + 10 * Math.log10(ms) : -Infinity);
+/** a step of a patch, for its render: the preset (null: as the patch comes), the bar's keys and its length */
+interface Bar0 { preset: string | null; events: Ev[]; oct: number; beats: number }
+/**
+ * A patch's steps' loudness, rendered as the page plays them, in one go: the patch opened, its load beats, then each
+ * step's preset taken (Engine.load keeps running voices, delays and reverbs, as the editor's engine does when PRESET
+ * steps on the panel) and its bar played. A step's loudness is over what its gain covers in the page: from its preset's
+ * click (80 ms before the bar line from the keys, on it for a pattern) to the next step's, so a ringing tail counts.
+ */
+function loudnessOfPatch(it: Item, bars: Bar0[], pattern: boolean): number[] {
+  const make = (preset: string | null): ReturnType<(typeof FM1_PRESETS)[string]> => {
+    const p = FM1_PRESETS[it.name]();
+    if (preset) {
+      const a = (p.assemblies ?? []).find((x) => x?.id === it.aid);
+      const pr = a && presetsOf(p, a).find((x) => x.factory && x.name === preset);
+      if (!a || !pr || !applyPreset(p, a, pr)) throw new Error(`loudness: ${it.name} > ${preset} did not apply`);
+    }
+    const main = p.modules.find((m) => m.type === 'fm1');
+    if (main && pattern) main.params.tempo = tempo;   // (PLAY held + PRESET in the load beats)
+    return p;
+  };
+  const smp = (ms: number): number => Math.round((ms * SR) / 1000);
+  const lead = pattern ? 0 : LEAD_MS;
+  const acts: { t: number; f: () => void }[] = [];
+  const e = new Engine(SR);
+  e.load(make(null));
+  // a preset reaches the page's engine as the emulated FM-1 sends it: one parameter message for each card row whose
+  // value changed on the FM-1, in the rows' canonical order (structure.ts rowOrder). Not a load of the preset's patch:
+  // a Voicing's row (Engine.setParam) reloads the patch the engine was given, which drops the rows set before it in
+  // the same step, and the page plays that
+  let dev = make(null);
+  const take = (preset: string | null): void => {
+    const q = make(preset);
+    const a = (q.assemblies ?? []).find((x) => x?.id === it.aid);
+    const was = (id: number, k: string): number | undefined => dev.modules.find((m) => m.id === id)?.params[k];
+    const sent = new Set<string>();
+    for (const row of a ? rowOrder(q, a) : []) {
+      const v = q.modules.find((m) => m.id === row.module)?.params[row.param];
+      sent.add(`${row.module}.${row.param}`);
+      if (typeof v === 'number' && v !== was(row.module, row.param)) e.setParam(row.module, row.param, v);
+    }
+    // (then what the rows are tied to: the editor sets those after them)
+    for (const m of q.modules)
+      for (const [k, v] of Object.entries(m.params)) if (!sent.has(`${m.id}.${k}`) && typeof v === 'number' && v !== was(m.id, k)) e.setParam(m.id, k, v);
+    dev = q;
+  };
+  let beat = pattern ? PATTERN_LOAD_BEATS : LOAD_BEATS;
+  const edges: number[] = [];
+  for (const [j, b] of bars.entries()) {
+    const t0 = beat * beatMs;
+    const click = smp(t0 - lead);
+    edges.push(click);
+    acts.push({ t: click, f: () => take(b.preset) });
+    if (pattern && j === 0) acts.push({ t: smp(t0), f: () => e.transport(true) });
+    // the keys as the page presses them: down on the beat, up a little before the note's end (at most 100 ms)
+    for (const ev of b.events) {
+      const len = ev.len * beatMs;
+      const notes = ev.keys.map((k) => keyLo(b.oct) + k);
+      acts.push({ t: smp(t0 + ev.at * beatMs), f: () => { for (const n of notes) e.noteOn(n, 0.8); } });
+      acts.push({ t: smp(t0 + ev.at * beatMs + len - Math.min(100, len * 0.25)), f: () => { for (const n of notes) e.noteOff(n); } });
+    }
+    beat += b.beats;
+  }
+  const end = smp(beat * beatMs - lead);
+  edges.push(end);
+  acts.sort((a, b) => a.t - b.t);   // (stable: a bar's preset before its first note)
+  const l = new Float32Array(end), r = new Float32Array(end);
+  let pos = 0;
+  for (const a of [...acts, { t: end, f: () => {} }]) {
+    for (const t = Math.min(end, Math.max(pos, a.t)); pos < t; ) {
+      const n = Math.min(4096, t - pos);
+      e.render(l.subarray(pos, pos + n), r.subarray(pos, pos + n));
+      pos += n;
+    }
+    a.f();
+  }
+  const pw = kPower(l, r);
+  return bars.map((_, j) => {
+    let s = 0;
+    for (let i = edges[j]; i < edges[j + 1]; i++) s += pw[i];
+    return lkfs(s / Math.max(1, edges[j + 1] - edges[j]));
+  });
+}
+/** each step's loudness and gain (dB), in the order the demo plays them: the keyboard steps, then the pattern steps */
+interface Level { patch: string; preset: string; lkfs: number; gain: number; capped: boolean }
+const levels: Level[] = [];
+let target = 0;
+if (NORMALIZE) {
+  const t = Date.now();
+  for (const [n, it] of keyboard.entries()) {
+    const ls = loudnessOfPatch(it, it.presets.map((name, j) => ({ preset: name, ...parts[n][j] })), false);
+    it.presets.forEach((name, j) => levels.push({ patch: it.name, preset: name!, lkfs: ls[j], gain: 0, capped: false }));
+  }
+  for (const it of drums) {
+    const ls = loudnessOfPatch(it, it.presets.map((name) => ({ preset: name, events: [], oct: 0, beats: DRUM_BEATS })), true);
+    it.presets.forEach((name, j) => levels.push({ patch: it.name, preset: name ?? '(pattern)', lkfs: ls[j], gain: 0, capped: false }));
+  }
+  const heard = levels.filter((x) => Number.isFinite(x.lkfs)).map((x) => x.lkfs).sort((a, b) => a - b);
+  const median = heard.length ? (heard.length % 2 ? heard[(heard.length - 1) / 2] : (heard[heard.length / 2 - 1] + heard[heard.length / 2]) / 2) : -20;
+  target = LOUDNESS ?? median;
+  for (const x of levels) {
+    if (!Number.isFinite(x.lkfs)) continue;   // (silent offline: left as it is)
+    const g = target - x.lkfs;
+    x.gain = Math.min(GAIN_UP, Math.max(GAIN_DOWN, g));
+    x.capped = x.gain !== g;
+  }
+  const sorted = levels.filter((x) => Number.isFinite(x.lkfs)).sort((a, b) => a.lkfs - b.lkfs);
+  console.log(`\nloudness (BS.1770 K-weighted, ungated, over each bar; rendered offline at 48 kHz in ${((Date.now() - t) / 1000).toFixed(1)} s): target ${target.toFixed(1)} LKFS${LOUDNESS === undefined ? ' (the median step)' : ' (--loudness)'}, gain ${GAIN_DOWN}..+${GAIN_UP} dB at most`);
+  if (sorted.length) console.log(`  spread: ${sorted[0].lkfs.toFixed(1)} (${sorted[0].patch} > ${sorted[0].preset}) .. ${sorted[sorted.length - 1].lkfs.toFixed(1)} LKFS (${sorted[sorted.length - 1].patch} > ${sorted[sorted.length - 1].preset})`);
+  console.log(`  ${'patch'.padEnd(15)} ${'preset'.padEnd(17)} ${'LKFS'.padStart(6)} ${'gain'.padStart(6)}`);
+  let last = '';
+  for (const x of levels) {
+    console.log(`  ${(x.patch === last ? '' : x.patch).padEnd(15)} ${x.preset.padEnd(17)} ${(Number.isFinite(x.lkfs) ? x.lkfs.toFixed(1) : 'silent').padStart(6)} ${((x.gain >= 0 ? '+' : '') + x.gain.toFixed(1)).padStart(6)}${x.capped ? '  (capped)' : ''}`);
+    last = x.patch;
+  }
+} else console.log('\nloudness: as the patches come (--no-normalize)');
 if (flag('--dry-run')) process.exit(0);
 
 // ---- the browser
@@ -250,21 +414,66 @@ const NO_MIDI = (): void => {
   const none = { inputs: new Map(), outputs: new Map(), sysexEnabled: true, onstatechange: null, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false };
   Object.defineProperty(Navigator.prototype, 'requestMIDIAccess', { configurable: true, value: () => Promise.resolve(none) });
 };
-/** the output's peak: an analyser on whatever feeds the speakers (after MASTER), read and reset by __demoPeak() */
-const TAP = (): void => {
+/** The output, on whatever feeds the speakers (after MASTER): with `normalize`, it goes through the demo's gain (set by
+ *  __demoGain(dB), eased in over about 20 ms) and a limiter (-3 dBFS, 20:1, 1 ms / 100 ms; its automatic make-up gain
+ *  taken back off, so it is level below the threshold) before the speakers. An analyser on each channel of what reaches
+ *  the speakers gives the peak and the K-weighted mean square (BS.1770, as the offline measure), read and reset by
+ *  __demoLevel(). */
+const TAP = (normalize: boolean): void => {
   const connect = AudioNode.prototype.connect as (this: AudioNode, ...a: unknown[]) => unknown;
   (AudioNode.prototype as unknown as { connect: unknown }).connect = function (this: AudioNode & { tapped?: true }, ...a: unknown[]) {
-    const r = connect.apply(this, a);
-    if (a[0] instanceof AudioDestinationNode && !this.tapped) {
-      this.tapped = true;
-      const an = this.context.createAnalyser();
-      an.fftSize = 2048;
-      connect.call(this, an);
-      const buf = new Float32Array(2048);
-      let peak = 0;
-      setInterval(() => { an.getFloatTimeDomainData(buf); for (const v of buf) peak = Math.max(peak, Math.abs(v)); }, 20);
-      (window as unknown as { __demoPeak: () => number }).__demoPeak = () => { const p = peak; peak = 0; return p; };
+    if (!(a[0] instanceof AudioDestinationNode) || this.tapped) return connect.apply(this, a);
+    this.tapped = true;
+    const ctx = this.context;
+    let out: AudioNode = this;
+    if (normalize) {
+      const gain = ctx.createGain();
+      const lim = ctx.createDynamicsCompressor();
+      lim.threshold.value = -3; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.1;
+      // (the Web Audio compressor adds make-up gain: (1 / its gain at 0 dBFS) ^ 0.6, Blink's and the spec's rule)
+      const full = 10 ** ((-3 + 3 / 20) / 20);
+      const trim = ctx.createGain();
+      trim.gain.value = full ** 0.6;
+      connect.call(this, gain); connect.call(gain, lim); connect.call(lim, trim);
+      out = trim;
+      (window as unknown as { __demoGain: (db: number) => void }).__demoGain = (db) => gain.gain.setTargetAtTime(10 ** (db / 20), ctx.currentTime, 0.02);
     }
+    const r = connect.call(out, a[0]);
+    // the level meter: per channel, the samples since the last read (an analyser holds the last 2048)
+    const split = ctx.createChannelSplitter(2);
+    connect.call(out, split);
+    const sr = ctx.sampleRate;
+    const kw = (f0: number, q: number, shelf: boolean): IIRFilterNode => {
+      const K = Math.tan((Math.PI * f0) / sr), a0 = 1 + K / q + K * K;
+      const Vh = 10 ** (3.999843853973347 / 20), Vb = Vh ** 0.4996667741545416;
+      const b = shelf ? [Vh + (Vb * K) / q + K * K, 2 * (K * K - Vh), Vh - (Vb * K) / q + K * K] : [1, -2, 1].map((x) => x * a0);
+      return ctx.createIIRFilter(b.map((x) => x / a0), [1, (2 * (K * K - 1)) / a0, (1 - K / q + K * K) / a0]);
+    };
+    const meters = [0, 1].map((ch) => {
+      const raw = ctx.createAnalyser(), kd = ctx.createAnalyser();
+      raw.fftSize = kd.fftSize = 2048;
+      const k1 = kw(1681.974450955533, 0.7071752369554196, true), k2 = kw(38.13547087602444, 0.5003270373238773, false);
+      connect.call(split, raw, ch); connect.call(split, k1, ch); connect.call(k1, k2); connect.call(k2, kd);
+      return { raw, kd, rb: new Float32Array(2048), kb: new Float32Array(2048) };
+    });
+    let peak = 0, sum = 0, count = 0, then = ctx.currentTime;
+    setInterval(() => {
+      const now = ctx.currentTime;
+      const n = Math.min(2048, Math.round((now - then) * sr));
+      then = now;
+      if (n <= 0) return;
+      for (const m of meters) {
+        m.raw.getFloatTimeDomainData(m.rb); m.kd.getFloatTimeDomainData(m.kb);
+        for (const v of m.rb) peak = Math.max(peak, Math.abs(v));
+        for (let i = 2048 - n; i < 2048; i++) sum += m.kb[i] * m.kb[i];
+      }
+      count += n;
+    }, 20);
+    (window as unknown as { __demoLevel: () => { peak: number; ms: number } }).__demoLevel = () => {
+      const x = { peak, ms: count ? sum / count : 0 };
+      peak = 0; sum = 0; count = 0;
+      return x;
+    };
     return r;
   };
 };
@@ -308,7 +517,7 @@ async function main(): Promise<void> {
   const browser = await chromium.launch({ channel: 'chrome', headless, ignoreDefaultArgs: ['--enable-automation'], args: ['--autoplay-policy=no-user-gesture-required', `--window-size=${W},${H + 88}`] });
   const context = await browser.newContext({ viewport: { width: W, height: H } });
   await context.addInitScript(NO_MIDI);
-  await context.addInitScript(TAP);
+  await context.addInitScript(TAP, NORMALIZE);
   // (the browser is Playwright's own, with a new empty profile that is deleted when it closes: nothing it stores reaches
   // the owner's Chrome, whatever origin it opens)
   const page = await context.newPage();
@@ -344,9 +553,9 @@ async function main(): Promise<void> {
   // do). A preset's whole bar (OCT- / OCT+, the PRESET click, the check, its notes, the peak) is one call into the page,
   // timed there against the plan's clock (Date.now() is the same clock on both sides): a busy page costs no round trips.
   type Now = { name: string; off: number; rows: number } | null;
-  interface Bar { t: number; end: number; oct: number; clicks: number; engine: string | null; want: string | null; events: Ev[]; beatMs: number; pattern: boolean; start: boolean; stop: boolean; caption: [string, string] }
-  const step = (s: Bar): Promise<{ now: Now; peak: number; k: number; loaded: string; octave: number }> => page.evaluate(async (s) => {
-    const w = window as unknown as { __m1test: { presetNow(l: string): Now; emu(): { loaded: string; octave: number } }; __demoPeak?: () => number };
+  interface Bar { t: number; end: number; gain: number | null; oct: number; clicks: number; engine: string | null; want: string | null; events: Ev[]; beatMs: number; pattern: boolean; start: boolean; stop: boolean; caption: [string, string] }
+  const step = (s: Bar): Promise<{ now: Now; peak: number; ms: number; k: number; loaded: string; octave: number }> => page.evaluate(async (s) => {
+    const w = window as unknown as { __m1test: { presetNow(l: string): Now; emu(): { loaded: string; octave: number } }; __demoLevel?: () => { peak: number; ms: number }; __demoGain?: (db: number) => void };
     const until = (t: number): Promise<void> => new Promise((r) => setTimeout(r, Math.max(0, t - Date.now())));
     const wheel = (label: string, clicks: number): void => {
       const d = document.querySelector(`#fm1-view [aria-label="${label} encoder"]`);
@@ -367,6 +576,7 @@ async function main(): Promise<void> {
     for (let o = w.__m1test.emu().octave; o > s.oct; o--) button('Oct-');
     for (let o = w.__m1test.emu().octave; o < s.oct; o++) button('Oct+');
     wheel('Presets', s.clicks);
+    if (s.gain !== null) w.__demoGain?.(s.gain);   // (the step's level, from the offline measure)
     let now = s.engine ? w.__m1test.presetNow(s.engine) : null;
     // (a patch whose values matched no preset as it came: the first click lands on Init, one more goes on)
     if (s.want && s.want !== 'Init' && now?.name === 'Init' && !now.off) { wheel('Presets', 1); now = w.__m1test.presetNow(s.engine!); }
@@ -386,7 +596,8 @@ async function main(): Promise<void> {
     }
     await until(s.end - (s.pattern ? 0 : 80));
     if (s.stop) button('PLAY');
-    return { now, peak: w.__demoPeak?.() ?? -1, k, loaded, octave: w.__m1test.emu().octave };
+    const lv = w.__demoLevel?.() ?? { peak: -1, ms: 0 };
+    return { now, peak: lv.peak, ms: lv.ms, k, loaded, octave: w.__m1test.emu().octave };
   }, s);
   /** Main's tempo, as the FM-1 sets it: PLAY held + PRESET (1 bpm a click, 5 when turned fast), read back from the editor
    *  (the emulated FM-1 sends it on); demo only: the patch is never stored */
@@ -412,8 +623,8 @@ async function main(): Promise<void> {
 
   // the audio starts with the first press on the panel (as for a person): a click on the screen's bezel
   await page.locator('.fm1-bezel').click();
-  for (let t = Date.now(); !(await page.evaluate(() => typeof (window as unknown as { __demoPeak?: unknown }).__demoPeak === 'function')) && Date.now() - t < 5000; ) await sleep(100);
-  const peak = (): Promise<number> => page.evaluate(() => (window as unknown as { __demoPeak?: () => number }).__demoPeak?.() ?? -1);
+  for (let t = Date.now(); !(await page.evaluate(() => typeof (window as unknown as { __demoLevel?: unknown }).__demoLevel === 'function')) && Date.now() - t < 5000; ) await sleep(100);
+  const peak = (): Promise<unknown> => page.evaluate(() => (window as unknown as { __demoLevel?: () => unknown }).__demoLevel?.());
 
   const open = async (it: Item): Promise<void> => {
     await page.evaluate((n) => { const c = document.getElementById('demo-caption'); if (c) c.textContent = n; }, it.name);
@@ -442,7 +653,12 @@ async function main(): Promise<void> {
   const says = (want: string, now: Now): string => (now?.name === want && !now.off ? '' : now ? `  (the engine is nearest ${now.name}: ${now.off} of its ${now.rows} rows differ)` : '  (no preset matched)');
 
   const shots = flag('--shots');
-  const report: { patch: string; preset: string; ok: boolean; peak: number }[] = [];
+  const report: { patch: string; preset: string; ok: boolean; peak: number; live: number; capped: boolean }[] = [];
+  /** the steps' gains (dB), in play order (null: --no-normalize) */
+  let li = 0;
+  const nextLevel = (): Level | null => (NORMALIZE ? levels[li++] : null);
+  const db = (r: { ms: number }): string => (r.ms > 0 ? `${lkfs(r.ms).toFixed(1)} LKFS` : 'silent');
+  const gainSays = (lv: Level | null): string => (lv ? `  gain ${(lv.gain >= 0 ? '+' : '') + lv.gain.toFixed(1)}${lv.capped ? ' (capped)' : ''}` : '');
   const t0 = Date.now() + 1000;   // (a second to settle: the first beat is the first patch's load)
   let at = 0;   // the plan's clock, in beats from t0
   const ms = (b: number): number => t0 + b * beatMs;
@@ -464,11 +680,12 @@ async function main(): Promise<void> {
     for (const [j, name] of it.presets.entries()) {
       const p = parts[n][j];
       if (shots && j === 1) shot(`${it.name}-${name}`, ms(at + Math.min(1, p.beats / 2)));
-      const r = await step({ t: ms(at), end: ms(at + p.beats), oct: p.oct, clicks: 1, engine: it.engine, want: name, events: p.events, beatMs, pattern: false, start: false, stop: false, caption: [it.name, name!] });
+      const lv = nextLevel();
+      const r = await step({ t: ms(at), end: ms(at + p.beats), gain: lv?.gain ?? null, oct: p.oct, clicks: 1, engine: it.engine, want: name, events: p.events, beatMs, pattern: false, start: false, stop: false, caption: [it.name, name!] });
       stale(it, r.loaded);
       at += p.beats;
-      report.push({ patch: it.name, preset: name!, ok: r.now?.name === name && !r.now.off, peak: r.peak });
-      console.log(`  ${stamp()}  ${it.name} > ${name} [${p.role}]${says(name!, r.now)}  peak ${r.peak.toFixed(3)}${r.k < 0.9 ? `  (notes at ${(r.k * 100).toFixed(0)} %: late)` : ''}${r.octave !== p.oct ? `  (octave ${r.octave}, not ${p.oct})` : ''}`);
+      report.push({ patch: it.name, preset: name!, ok: r.now?.name === name && !r.now.off, peak: r.peak, live: lkfs(r.ms), capped: !!lv?.capped });
+      console.log(`  ${stamp()}  ${it.name} > ${name} [${p.role}]${says(name!, r.now)}  peak ${r.peak.toFixed(3)}, ${db(r)}${gainSays(lv)}${r.k < 0.9 ? `  (notes at ${(r.k * 100).toFixed(0)} %: late)` : ''}${r.octave !== p.oct ? `  (octave ${r.octave}, not ${p.oct})` : ''}`);
     }
   }
   for (const it of drums) {
@@ -480,12 +697,13 @@ async function main(): Promise<void> {
     for (const [j, name] of it.presets.entries()) {
       if (shots && j === 0) shot(`${it.name}-${name ?? 'pattern'}`, ms(at + DRUM_BEATS / 2));
       const last = j === it.presets.length - 1;
-      const r = await step({ t: ms(at), end: ms(at + DRUM_BEATS), oct: (await emuState()).octave, clicks: name ? 1 : 0, engine: name ? it.engine : null, want: name, events: [], beatMs,
+      const lv = nextLevel();
+      const r = await step({ t: ms(at), end: ms(at + DRUM_BEATS), gain: lv?.gain ?? null, oct: (await emuState()).octave, clicks: name ? 1 : 0, engine: name ? it.engine : null, want: name, events: [], beatMs,
         pattern: true, start: j === 0, stop: last, caption: [it.name, name ?? ''] });
       stale(it, r.loaded);
       at += DRUM_BEATS;
-      report.push({ patch: it.name, preset: name ?? '(pattern)', ok: !name || (r.now?.name === name && !r.now.off), peak: r.peak });
-      console.log(`  ${stamp()}  ${it.name} > ${name ?? '(its pattern)'}${name ? says(name, r.now) : ''}  peak ${r.peak.toFixed(3)}`);
+      report.push({ patch: it.name, preset: name ?? '(pattern)', ok: !name || (r.now?.name === name && !r.now.off), peak: r.peak, live: lkfs(r.ms), capped: !!lv?.capped });
+      console.log(`  ${stamp()}  ${it.name} > ${name ?? '(its pattern)'}${name ? says(name, r.now) : ''}  peak ${r.peak.toFixed(3)}, ${db(r)}${gainSays(lv)}`);
     }
   }
   const took = (Date.now() - t0) / 1000;
@@ -493,6 +711,12 @@ async function main(): Promise<void> {
   const wrong = report.filter((r) => !r.ok);
   console.log(`\ndone: ${took.toFixed(1)} s played, ${totalS.toFixed(1)} s planned (${(took - totalS >= 0 ? '+' : '') + (took - totalS).toFixed(1)} s); the slowest load ran ${loadLate > 0 ? `${loadLate.toFixed(0)} ms into its first bar` : 'on time'}`);
   console.log(`${report.length} steps; silent: ${silent.length ? silent.map((r) => `${r.patch} > ${r.preset}`).join(', ') : 'none'}; preset not confirmed in the editor: ${wrong.length ? wrong.map((r) => `${r.patch} > ${r.preset}`).join(', ') : 'none'}`);
+  const heard = report.filter((r) => Number.isFinite(r.live)).sort((a, b) => a.live - b.live);
+  if (heard.length) {
+    const lo = heard[0], hi = heard[heard.length - 1], mid = heard[Math.floor(heard.length / 2)];
+    const loudest = [...report].sort((a, b) => b.peak - a.peak)[0];
+    console.log(`at the speakers (${NORMALIZE ? `evened out to ${target.toFixed(1)} LKFS` : 'as the patches come'}): ${lo.live.toFixed(1)} (${lo.patch} > ${lo.preset}) .. ${hi.live.toFixed(1)} LKFS (${hi.patch} > ${hi.preset}) a bar, median ${mid.live.toFixed(1)}; the highest peak ${loudest.peak.toFixed(3)} (${loudest.patch} > ${loudest.preset})${NORMALIZE ? `; capped: ${report.filter((r) => r.capped).map((r) => `${r.patch} > ${r.preset}`).join(', ') || 'none'}` : ''}`);
+  }
   if (shots) console.log(`screenshots: ${OUT}`);
   await sleep(1200);
 }

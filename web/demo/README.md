@@ -1,14 +1,15 @@
 # The preset demo
 
-`npm run demo` (in `web/`) plays every FM-1 factory patch's presets on the editor's Emulator view (EMU) in under two
-minutes, in a Chrome window sized for a screen recording. The window shows the FM-1 panel alone, under a caption with
+`npm run demo` (in `web/`) plays every FM-1 factory patch's presets on the editor's Emulator view (EMU) in about two
+and a half minutes, in a Chrome window sized for a screen recording, each preset about as loud as the others. The window shows the FM-1 panel alone, under a caption with
 the patch's and the preset's names: the sidebar, the status line and the other editor controls are hidden.
 
 ## Run it
 
 ```sh
 cd web
-npm run demo -- --dry-run      # the plan only: every preset's role, octave and bars, the tempo, the total time
+npm run demo -- --dry-run      # the plan only: every preset's role, octave and bars, the tempo, the total time,
+                               # every step's loudness and gain
 npm run demo                   # the demo, in a Chrome window of 1600 x 900
 ```
 
@@ -47,20 +48,43 @@ it, which the demo does not use.
 
 ## Time
 
-The tempo is the song's own, raised to the lowest whole number of beats a minute that fits `--seconds` (117 by
-default). The plan prints both. With the default song every preset gets one bar of two beats: 269 beats in all, so
-138 bpm, 0.87 s a preset, 1:57. At the song's own 100 bpm the demo would take 2:41. `--tempo BPM` sets the tempo
-whatever the time.
+The tempo is the song's own: 100 bpm for the default song. Every preset gets one bar of two beats, 1.2 s: 269 beats
+in all, 2:41. `--seconds S` raises the tempo to the lowest whole number of beats a minute that fits S seconds (117 s
+gives 138 bpm, 0.87 s a preset, 1:57). `--tempo BPM` sets the tempo whatever the time. The plan prints the tempo and
+the total.
+
+## Loudness
+
+The factory patches and presets are not equally loud (issue #448 is about their levels; the demo does not change
+them). So the demo evens them out for itself, after MASTER:
+
+1. Before the browser starts, the script renders every patch offline with the browser's engine (`src/engine.ts`) at
+   48 kHz, as the demo plays it: its presets in turn on the same beat grid, the same keys, octaves, velocity (0.8, as
+   the panel's keys) and note lengths, a pattern patch's pattern at the demo's tempo. A preset reaches that engine the
+   way the emulated FM-1 sends it to the page, one parameter at a time, so the render plays what the page plays.
+2. A step's loudness is measured as in ITU-R BS.1770: K-weighted, the mean square of both channels, over the step's
+   bar (from its PRESET click to the next one, so a ringing tail counts), in LKFS. It is not gated: a bar is short.
+3. Each step's gain is the target minus its loudness, at most +18 dB and at least -12 dB. The target is the median
+   step's loudness, or `--loudness DB`.
+4. In the page, the output goes through the demo's gain, then a limiter (-3 dBFS, 20:1, 1 ms attack, 100 ms release),
+   then the speakers. Each step's gain is eased in over about 20 ms at its PRESET click. The limiter keeps a raised
+   step from clipping.
+
+`--dry-run` prints every step's loudness and gain, with the spread and the target. While it plays, the script prints
+each step's peak and loudness as they reach the speakers, measured the same way, and at the end the spread of them.
+`--no-normalize` plays the patches as they come, with no gain and no limiter.
 
 Options:
 
 | Option | Default | What it does |
 |---|---|---|
 | `--song NAME` | `loop` | the song: `web/demo/songs/NAME.json` |
-| `--seconds S` | 117 | the time budget; the tempo is raised to fit it |
+| `--seconds S` | | a time budget; the tempo is raised to fit it |
 | `--tempo BPM` | | this tempo, whatever the time |
 | `--drum-beats N` | a bar | how long each pattern step runs |
 | `--load-beats N` | 1 | beats to open a patch (a pattern patch gets one more) |
+| `--loudness DB` | the median step | the loudness every step is brought to, in LKFS (such as `-18`) |
+| `--no-normalize` | | no gain and no limiter: every preset as loud as it comes |
 | `--init` | off | include each engine's Init preset |
 | `--only "Io 4,Cassia 1"` | | only these patches |
 | `--skip "909 Kit"` | | leave these patches out |
@@ -71,16 +95,17 @@ Options:
 | `--shots` | | one screenshot per patch into `build/demo/` |
 | `--notes N`, `--chords`, `--rhythm` | 3, off, off | for a song that is a list of notes (below) |
 
-At the end the script prints the time played against the plan. It also lists any preset that made no sound, and any
-preset whose values the editor did not see arrive.
+At the end the script prints the time played against the plan. It also lists any preset that made no sound, any
+preset whose values the editor did not see arrive, and the spread of loudness at the speakers.
 
 ## Recording
 
 - The default page is 1600 x 900 CSS pixels (16:9), in a window about 90 pixels taller for Chrome's bar. It fits a
   1728 x 1117 MacBook screen. On a smaller screen use `--size 1440x810`; on a bigger one `--size 1920x1080` gives 1080p
   at a scale of 1.
-- The sound is the browser's audio engine, the same as when you press the EMU panel's keys. Record the system audio, for
-  example with QuickTime and a loopback device, or with OBS. MASTER is left where it was.
+- The sound is the browser's audio engine, the same as when you press the EMU panel's keys, through the demo's gain and
+  limiter (above). Record the system audio, for example with QuickTime and a loopback device, or with OBS. MASTER is
+  left where it was.
 
 ## Leaving your state alone
 
