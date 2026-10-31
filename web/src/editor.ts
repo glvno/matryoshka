@@ -78,6 +78,7 @@ import { GUTTER_ROOM, ribbons, type RibbonCable, type RibbonFrame } from './ribb
 import { pinchStart, pinchStep, type Pinch } from './touch';
 import type { ScreenSpec } from './scope-view';
 import type { EnvSpec } from './env-view';
+import { flipPlan } from './ab';
 import { EXCLUDED_TYPES,
   addChild,
   addMember,
@@ -2883,6 +2884,9 @@ export class Editor {
     const other = this.side === 'A' ? 'B' : 'A';
     const s = this.snapshots[other];
     if (s === null) return false;
+    // an open gesture or a REC pass is a step of the side we leave (#103: the flip is a step of its own)
+    this.endGesture();
+    this.endPass();
     this.snapshots[this.side] = JSON.stringify(this.patch); // the side we leave keeps what we did to it
     const from = this.side;
     this.side = other;
@@ -2890,34 +2894,33 @@ export class Editor {
     return true;
   }
 
-  /** switch to `target`: with the same structure only the values move (onParam / onAtt / onBypass / onRange, no reload, the voices keep sounding), else a full load */
+  /**
+   * Switch to `target`, keeping the canvas layout (ab.ts flipPlan, #103): when only values differ they go out as onParam /
+   * onAtt / onBypass / onRange / onTrack (no reload, the voices keep sounding), else a full load through onStructure. One
+   * undo step, which belongs to `side` (the side before the flip).
+   */
   applyLive(target: Patch, side = this.side): void {
     this.endGesture();
+    this.endPass();
     const before = this.mark();
-    if (!sameStructure(this.patch, target) || this.patch.modules.some((m, i) => m.id !== target.modules[i].id)) {
-      this.patch = target;
+    const plan = flipPlan(this.patch, target);
+    if (plan.reload) {
+      this.patch = plan.patch;
       this.commit(before, side);
       this.selected.clear();
+      this.selectedAsm.clear();
       this.rebuild();
       this.ev.onStructure(this.patch);
       return;
     }
-    target.modules.forEach((t, i) => {
-      const m = this.patch.modules[i];
-      for (const pd of DEFS[m.type].params) if ((m.params[pd.name] ?? pd.default) !== (t.params[pd.name] ?? pd.default)) this.ev.onParam(m.id, pd.name, t.params[pd.name] ?? pd.default);
-      if (m.att && t.att) for (const k of [0, 1] as const) if (m.att[k] !== t.att[k]) this.ev.onAtt(m.id, k, t.att[k]);
-      if (!!m.bypass !== !!t.bypass) this.ev.onBypass(m.id, !!t.bypass);
-      for (const s of ['p1', 'p2'] as const) {
-        const names = new Set([...Object.keys(m.range?.[s] ?? {}), ...Object.keys(t.range?.[s] ?? {})]);
-        for (const name of names) {
-          const r = t.range?.[s]?.[name] ?? null;
-          if (JSON.stringify(r) !== JSON.stringify(m.range?.[s]?.[name] ?? null)) this.ev.onRange(m.id, s === 'p1' ? 0 : 1, name, r);
-        }
-      }
-    });
-    const keepLayout = this.patch.modules.map((m) => [m.x, m.y]);
-    this.patch = target;
-    this.patch.modules.forEach((m, i) => ([m.x, m.y] = keepLayout[i]));
+    this.patch = plan.patch;
+    for (const m of plan.live) {
+      if (m.t === 'param') this.ev.onParam(m.id, m.name, m.value);
+      else if (m.t === 'att') this.ev.onAtt(m.id, m.index, m.value);
+      else if (m.t === 'bypass') this.ev.onBypass(m.id, m.on);
+      else if (m.t === 'range') this.ev.onRange(m.id, m.index, m.name, m.range);
+      else this.ev.onTrack?.(m.id, m.notes, 0);
+    }
     this.commit(before, side);
     this.rebuild();
     this.ev.onLayout(this.patch);
