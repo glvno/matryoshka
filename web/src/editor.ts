@@ -4,7 +4,7 @@ import { resizeHandle } from './resize-handle';
 import { parseValue } from './value-input';
 import { isTextEntry } from './input';
 import { lockOf } from './relevance';
-import { isPile, tidy, tidyAssembly } from './tidy';
+import { clearAround, isPile, tidy, tidyAssembly } from './tidy';
 import { buttonLabel, DEFS, drumRowName, FIXED_DOES, PANEL_BUTTONS, rowRange } from './modules';
 import { FIXED_BUTTONS } from './patch';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
@@ -2620,32 +2620,50 @@ export class Editor {
   private openLayout(a: AssemblyInst): void {
     if (overlapping(this.patch, a)) tileMembers(this.patch, a); // stacked cards (an old file, members added at one spot) spread out
     if (a.poly) makeRoom(this.patch, a);
-    // the frame's header goes above the members: move them down when it would stick out of the canvas's top
-    const ys = allModules(this.patch, a).map((id) => this.patch.modules.find((m) => m.id === id)?.y ?? Infinity);
-    const room = FRAME_PAD + FRAME_HEAD + 8;
-    if (Math.min(...ys) < room) moveAssembly(this.patch, a, 0, room - Math.min(...ys));
-    // and right of the canvas's left edge, with room for the cables running round it (ribbons.ts)
-    const xs = allModules(this.patch, a).map((id) => this.patch.modules.find((m) => m.id === id)?.x ?? Infinity);
-    const roomX = FRAME_PAD_X + GUTTER_ROOM;
-    if (Math.min(...xs) < roomX) moveAssembly(this.patch, a, roomX - Math.min(...xs), 0);
+    this.keepOnCanvas(a);
   }
 
-  /** tidy the insides of assemblies opened for the first time this session, innermost first, once their cards have a size
-   * (after rebuild's own frame: part of the expansion's undo step, not one of its own) */
-  private tidyFirstOpened(ids: number[]): void {
+  /**
+   * Keep the frames around `a` on the canvas: every expanded level adds a header and padding above the members and padding
+   * left of them, so the outermost assembly moves down and right until all of them fit (a frame clipped at the canvas edge
+   * is drawn lower than it is and covers what lies under it, #206), with room for the cables running round it (ribbons.ts)
+   */
+  private keepOnCanvas(a: AssemblyInst): void {
+    let top = a;
+    for (let x = parentOf(this.patch, a.id); x; x = parentOf(this.patch, x.id)) top = x;
+    const levels = (b: AssemblyInst): number => (b.open ? 1 + Math.max(0, ...childrenOf(this.patch, b).map(levels)) : 0);
+    const n = levels(top);
+    if (!n) return;
+    const ms = allModules(this.patch, top).map((id) => this.patch.modules.find((m) => m.id === id)).filter((m): m is ModuleInst => !!m);
+    if (!ms.length) return;
+    const room = n * (FRAME_PAD + FRAME_HEAD) + 8;
+    const ys = Math.min(...ms.map((m) => m.y));
+    if (ys < room) moveAssembly(this.patch, top, 0, room - ys);
+    const roomX = n * FRAME_PAD_X + GUTTER_ROOM;
+    const xs = Math.min(...ms.map((m) => m.x));
+    if (xs < roomX) moveAssembly(this.patch, top, roomX - xs, 0);
+  }
+
+  /** once the cards of the assemblies just expanded have a size (after rebuild's own frame: part of the expansion's undo
+   * step, not one of its own): tidy the insides of those opened for the first time this session (`first`), innermost first,
+   * then push aside what each frame now covers (#206) */
+  private settleOpened(ids: number[], first: number[]): void {
     if (!ids.length) return;
     requestAnimationFrame(() => requestAnimationFrame(() => {
       const before = JSON.stringify(this.patch);
-      const list = ids.map((id) => assembliesOf(this.patch).find((x) => x.id === id)).filter((x): x is AssemblyInst => !!x?.open);
-      list.sort((u, v) => depthOf(this.patch, v) - depthOf(this.patch, u));
-      for (const a of list) tidyAssembly(this.patch, a, this.tidySizes());
+      const open = (list: number[]): AssemblyInst[] => list.map((id) => assembliesOf(this.patch).find((x) => x.id === id)).filter((x): x is AssemblyInst => !!x?.open)
+        .sort((u, v) => depthOf(this.patch, v) - depthOf(this.patch, u));
+      for (const a of open(first)) tidyAssembly(this.patch, a, this.tidySizes());
+      const docked = this.docked();
+      clearAround(this.patch, open(ids).map((a) => a.id), this.tidySizes(), new Set(docked ? [docked.id] : []));
       if (JSON.stringify(this.patch) === before) return;
       this.rebuild();
       this.ev.onLayout(this.patch);
     }));
   }
 
-  /** expand or collapse an assembly; its first expansion in a session tidies the inside once the cards have a size */
+  /** expand or collapse an assembly; once the cards have a size, its first expansion in a session tidies the inside and every
+   *  expansion pushes aside what the frame covers */
   private toggleOpen(a: AssemblyInst): void {
     const first = !a.open && !this.expandedOnce.has(a.id);
     const opened = this.change(() => {
@@ -2654,23 +2672,21 @@ export class Editor {
     });
     if (!opened || !a.open) return;
     for (const x of [a, ...descendants(this.patch, a)]) this.expandedOnce.add(x.id);
-    if (first) this.tidyFirstOpened([a.id]);
+    this.settleOpened([a.id], first ? [a.id] : []);
   }
 
   /** expand or collapse every assembly, nested ones too, as one undo step (the sidebar's EXPAND / COLLAPSE) */
   setAllOpen(open: boolean): void {
     const list = [...assembliesOf(this.patch)].sort((u, v) => depthOf(this.patch, u) - depthOf(this.patch, v)); // outermost first
     const first = open ? list.filter((a) => !a.open && !this.expandedOnce.has(a.id)).map((a) => a.id) : [];
+    const opened = open ? list.filter((a) => !a.open).map((a) => a.id) : [];
     const changed = this.change(() => {
-      for (const a of list) {
-        if (a.open === open) continue;
-        a.open = open;
-        if (open) this.openLayout(a);
-      }
+      for (const a of list) a.open = open;
+      for (const id of opened) this.openLayout(assembliesOf(this.patch).find((x) => x.id === id)!);   // (with every level open)
     });
     if (!changed || !open) return;
     for (const a of list) this.expandedOnce.add(a.id);
-    this.tidyFirstOpened(first);
+    this.settleOpened(opened, first);
   }
 
 

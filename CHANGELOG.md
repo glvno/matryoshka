@@ -5,6 +5,8 @@
 ### Fixes
 
 - In the editor, a preset that changes the voice count (Basic Poly, Supersaw Stack, Drift Poly, Io 4, Oracle V and others) no longer keeps part of the previous preset's sound.
+- In the editor's Emulator view, black keys 1 to 8 on 8 Lire, Elvira 2 and other patches whose keys reach a Drum map now play its rows 1 to 8, as the FM-1 does and as the screen shows. Before, they played other rows. A MIDI keyboard still plays the row of its note number.
+- In the editor, expanding an assembly (or Expand all) moves the cards and frames around it out of the way, so its frame no longer lies on top of them. In the factory patches, 12 of 29 single expansions and 8 of 25 Expand alls left a frame over another card; now none do (headless browser check).
 - On the FM-1, a Cassia 1 preset loaded with PRESET now sets all 118 of its card rows. Before, only the first 88 were set, so line 2's envelopes, its coarse and fine tuning and two depth rows kept the previous preset's values (#464).
 
 ## 1.7.0 — 2026-10-30
