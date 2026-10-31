@@ -5,7 +5,8 @@
 ### Fixes
 
 - In the editor, a preset that changes the voice count (Basic Poly, Supersaw Stack, Drift Poly, Io 4, Oracle V and others) no longer keeps part of the previous preset's sound.
-- **The FM-1 drops a voice when it really runs out of time, not before.** A patch a little over the FM-1's budget used to play on and crackle without dropping a voice; it now drops one within a few milliseconds. A patch that is busy but plays in time (Io 4's Ensemble Pad with four notes, about 86 %) no longer loses a voice. The FM-1 now drops a voice when its average load stays over 90 %, or when two of the last eight audio blocks came out late, instead of after any two blocks in a row over 85 %.
+- **The FM-1 drops a voice when an overload is heard, not only after two busy blocks in a row.** A patch that came out late about once a second (Oracle V's Poly-Mod Bell on five voices with four notes, before 1.7 gave it three: about 80 % on average, every 32nd block up to 101 %) clicked on without dropping a voice; it now drops one within 2 s. The FM-1 now drops a voice when its average load stays over 90 %, or when an audio block comes out late a second time within 2 s, instead of after any two blocks in a row over 85 %. Measured on the test rig.
+- Installing: a firmware package whose first byte happens to be `<` (about one build in 256) is no longer mistaken for a web page and refused, in `tools/fm1_install.py` and when choosing M-VAVE Official Open in the Install panel.
 
 ## 1.7.0 — 2026-10-30
 

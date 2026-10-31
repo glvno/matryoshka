@@ -40,4 +40,6 @@ There are two audio engines: the TypeScript **reference engine** in the browser 
 
 - Proposed amendment to [D-365](engine.md#D-365): use the measured 85% shedding threshold for the CPU budget and refit the model against the current factory patches. [The Io 4 survey](../measurements/2026-10-26-io-4-player-budget.json) shows that a modeled fit can still shed a voice. Factory generation keeps Io 4's existing arpeggiator without adding PATTERN while that discrepancy remains.
 
+- Proposed amendment to [D-362](engine.md#D-362) (decider: michael glaviano; issues #458 and #461): the FM-1 drops a part when its mean audio interrupt time stays over 90 % of a half buffer, or when a half buffer comes out late a second time within 2 seconds. It no longer drops one after any two halves in a row over 85 %. On the test rig, the old rule never fired on Oracle V's Poly-Mod Bell on five voices with four notes, which ran about 80 % on average but came out late about once a second. [The rig measurements](../measurements/2026-10-31-rig-overload-guard.json) compare both rules.
+
 - Proposed clarification of [D-363](engine.md#D-363): isolated engine behavior uses fixture patches, while factory fidelity tests exercise the generated factory patches and their actual cards. The existing factory audio comparisons and the Monolith D waveform checks exercise the latter.
