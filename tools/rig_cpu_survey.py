@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Run with build/venv/bin/python; only with the registered rig the ONLY FM-1 connected (npm run rig -- check).
-# usage: rig_cpu_survey.py PRESETS_H OUT.json [name,name,...] [--hold SECONDS] [--run]
+# usage: rig_cpu_survey.py PRESETS_H|DIR OUT.json [name,name,...] [--hold SECONDS] [--run]   (DIR: NAME.bin patches)
 # For each factory patch in PRESETS_H: upload it (live), then the longest audio ISR (DIAG page 127) at rest and with
-# 1 / 4 / 8 notes held over USB MIDI, 2 s each, sampled every 0.5 s. Reload for EACH phase so a voice shed in an earlier
+# 1 / 4 / 8 notes held over USB MIDI, 2 s each, sampled every 0.5 s; on firmware with DIAG page 119 (#458) also the
+# overload guard's mean ISR time at each sample and the late halves of the phase. Reload for EACH phase so a voice shed in an earlier
 # phase cannot make the next one look cheaper. Peaks include the first block; a sample need not precede shedding.
 import sys, time, json, re, argparse
 import os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -12,14 +13,20 @@ import mido
 
 def presets(path):
     out = []
+    if os.path.isdir(path):                      # a directory of patch binaries (NAME.bin): a factory preset's patch, say
+        return [(f[:-4], open(os.path.join(path, f), 'rb').read()) for f in sorted(os.listdir(path)) if f.endswith('.bin')]
     for m in re.finditer(r"PRESET_\d+\[\d+\] = \{([\d,]*)\};\s*/\* (.*?) \*/", open(path).read()):
         out.append((m.group(2), bytes(int(x) for x in m.group(1).split(","))))
     return out
 
 
-def cpu(link):
-    p = link.ask(M.frame(0x2B, [127]), (0x4B, 127))
+def page(link, n):
+    p = link.ask(M.frame(0x2B, [n]), (0x4B, n))
     return [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range((len(p) - 1) // 4)]
+
+
+def cpu(link):
+    return page(link, 127)
 
 
 NOTES = [60, 64, 67, 71, 72, 76, 79, 83]
@@ -30,7 +37,9 @@ def phase(link, n, data, hold=2.0, run=False):
     c = M.crc16(data)
     link.ack(M.frame(0x11, [len(data) & 0xFF, len(data) >> 8, c & 0xFF, c >> 8]), 0x11, wait=3.0)
     samples = []
+    means = []
     muted = shed = 0
+    g0 = page(link, 119)                         # the guard's view (#458), firmware with DIAG page 119 only
     try:
         if run:
             link.out.send(mido.Message("start"))
@@ -43,12 +52,16 @@ def phase(link, n, data, hold=2.0, run=False):
             samples.append(w[1])
             muted = max(muted, w[3])
             shed = max(shed, w[7]) if len(w) > 7 else None
+            g = page(link, 119) if len(g0) == 8 else []
+            if g:
+                means.append(g[7])
     finally:
         if run:
             link.out.send(mido.Message("stop"))
         for k in NOTES[:n]:
             link.out.send(mido.Message("note_off", note=k))
-    return max(samples), samples, muted, shed
+    late = (g[2] - g0[2]) if means else None
+    return max(samples), samples, muted, shed, means, late
 
 
 parser = argparse.ArgumentParser(description="Measure the registered rig after its identity has been checked.")
@@ -72,9 +85,12 @@ for slot, (name, data) in enumerate(ps):
         continue
     r = {"slot": slot, "name": name, "transport": args.run, "hold_seconds": args.hold}
     for n in (0, 1, 4, 8):
-        pk, s, ovl, shed = phase(link, n, data, args.hold, args.run)
+        pk, s, ovl, shed, means, late = phase(link, n, data, args.hold, args.run)
         r[f"n{n}_us"] = pk
         r[f"n{n}_samples"] = s
+        if means:
+            r[f"n{n}_mean_us"] = means                 # the overload guard's mean ISR time at each sample
+            r[f"n{n}_late"] = late                     # halves the hardware played before their render ended
         r[f"n{n}_ovl"] = ovl
         r[f"n{n}_shed"] = shed
     r["budget_us"] = 2902

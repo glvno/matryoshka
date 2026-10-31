@@ -5,6 +5,7 @@
 ### Fixes
 
 - In the editor, a preset that changes the voice count (Basic Poly, Supersaw Stack, Drift Poly, Io 4, Oracle V and others) no longer keeps part of the previous preset's sound.
+- **The FM-1 drops a voice when it really runs out of time, not before.** A patch a little over the FM-1's budget used to play on and crackle without dropping a voice; it now drops one within a few milliseconds. A patch that is busy but plays in time (Io 4's Ensemble Pad with four notes, about 86 %) no longer loses a voice. The FM-1 now drops a voice when its average load stays over 90 %, or when two of the last eight audio blocks came out late, instead of after any two blocks in a row over 85 %.
 
 ## 1.7.0 — 2026-10-30
 

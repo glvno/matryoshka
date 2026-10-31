@@ -29,7 +29,7 @@ static void uac_tap(const int32_t *out, uint32_t n);
  * the half it fills is heard (the hardware plays the half before it is written, or the ISR misses a half), and far over
  * it the ISR comes back at once, the main loop starves (no watchdog feed, no USB host: no OTA) and the watchdog resets.
  * So a part of a poly group is dropped (eng_shed) when the mean ISR time (the render plus the key scan and USB nested in
- * it) stays over 90 % of a half, or when two of the last eight halves were late; one more while it lasts. When no group
+ * it) stays over 90 % of a half, or when a half comes out late a second time within 2 s; one more while it lasts. When no group
  * has more than one part the engine is muted (eng_overload, OVERLOAD on the LCD) until a patch is loaded again
  * (eng_resume). */
 #include "ovl_guard.h"
