@@ -1,17 +1,23 @@
 # Changelog
 
-## Unreleased
+## 1.7.1 — 2026-10-31
 
-### Fixes
+### FM-1
 
-- Opening `<7PH` in the editor no longer shows it over the FM-1's memory budget (3,894 of 3,840 bytes, measured in the editor before; 3,840 now, the same as on the FM-1), so it no longer opens as a sandbox patch or pauses Live sync. The drum kits' velocity inputs show as jacks on their cards again, instead of gain rows whose sliders did nothing (#465).
-- Connect FM-1 finds the FM-1 even when the computer shows it under another name. macOS keeps the first name it saw for a USB device, so after an install the FM-1 can appear as "Felucca" or some other name (#187). When the FM-1 is still not found, the message now lists the MIDI ports the browser sees. When the browser blocks SysEx, the message says where to allow it.
-- In the editor, a preset that changes the voice count (Basic Poly, Supersaw Stack, Drift Poly, Io 4, Oracle V and others) no longer keeps part of the previous preset's sound.
-- In the editor's Emulator view, black keys 1 to 8 on 8 Lire, Elvira 2 and other patches whose keys reach a Drum map now play its rows 1 to 8, as the FM-1 does and as the screen shows. Before, they played other rows. A MIDI keyboard still plays the row of its note number.
-- In the editor, expanding an assembly (or Expand all) moves the cards and frames around it out of the way, so its frame no longer lies on top of them. In the factory patches, 12 of 29 single expansions and 8 of 25 Expand alls left a frame over another card; now none do (headless browser check).
-- On the FM-1, a Cassia 1 preset loaded with PRESET now sets all 118 of its card rows. Before, only the first 88 were set, so line 2's envelopes, its coarse and fine tuning and two depth rows kept the previous preset's values (#464).
-- **The FM-1 drops a voice when an overload is heard, not only after two busy blocks in a row.** A patch that came out late about once a second (Oracle V's Poly-Mod Bell on five voices with four notes, before 1.7 gave it three: about 80 % on average, every 32nd block up to 101 %) clicked on without dropping a voice; it now drops one within 2 s. The FM-1 now drops a voice when its average load stays over 90 %, or when an audio block comes out late a second time within 2 s, instead of after any two blocks in a row over 85 %. Measured on the test rig.
-- Installing: a firmware package whose first byte happens to be `<` (about one build in 256) is no longer mistaken for a web page and refused, in `tools/fm1_install.py` and when choosing M-VAVE Official Open in the Install panel.
+- PRESET on Cassia 1 now sets all 118 card rows. Before, only 88 were set, so line 2's envelopes and tuning kept the previous preset's values (#464).
+- The FM-1 drops a voice when the audio actually glitches: an average load over 90 %, or a late audio block twice within 2 s. Before, it waited for two busy blocks in a row, so a patch could click about once a second without it stepping in (Oracle V's Poly-Mod Bell at five voices: about 80 % on average, every 32nd block up to 101 %; measured on the test rig) (#458).
+
+### Editor
+
+- Connect FM-1 works when macOS shows the FM-1 under another name, such as "Felucca". If it still can't find it, the message lists the MIDI ports it sees, and a SysEx block says where to allow it (#187).
+- `<7PH` no longer shows as over the FM-1's memory in the editor (3,894 of 3,840 bytes before, 3,840 now, as on the FM-1). The drum kits' velocity inputs show as jacks instead of sliders that did nothing (#465).
+- A preset that changes the voice count no longer keeps part of the previous preset's sound (#470).
+- Emulator view: black keys 1 to 8 play a Drum map's rows 1 to 8, as on the FM-1 (#467).
+- Expanding an assembly moves the cards around it out of the way instead of covering them (#206).
+
+### Installing
+
+- A firmware package whose first byte happens to be `<` (about 1 build in 256) is no longer refused as a web page.
 
 ## 1.7.0 — 2026-10-30
 
