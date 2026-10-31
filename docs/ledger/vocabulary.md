@@ -406,6 +406,10 @@ The About card's section of AI-usage figures: Blood (time), Sweat (human interve
 
 One of the bank's 64 patch places on the FM-1, shown numbered 01..64. Program change 0 selects slot 01.
 
+### Snapshot
+
+One of the two versions of the patch the A/B flip switches between, A or B. The editor keeps them while the page is open; they are not saved with the patch. Not the same as the [B side](#b-side) of patch morphing.
+
 ### Song
 
 A list of up to 64 entries, each a pattern number and a shift (a transpose of up to 12 semitones either way). While a song plays, each track plays one entry per pass of its own, in order, and starts again at the first entry after the last. A patch holds up to 8 songs.

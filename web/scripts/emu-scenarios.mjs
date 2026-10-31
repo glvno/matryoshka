@@ -973,6 +973,44 @@ async function main() {
       await check('device preset: the first PRESET turn left loads the last of its list, not INIT', shown && !(await emu.text('PRESET INIT')));
       await sleep(1200);
     },
+    // #103: the A/B flip with Live on. A = Init; B = Init with K1..K4 turned down on the FM-1. Values only: the flip sends
+    // PARAM frames and no upload, and each side sounds as it did when it was set
+    async abFlip() {
+      await check('a/b: Init opens, synced', await openSynced('Init'));
+      const palette = async (label) => {
+        await page.keyboard.press('/');
+        await page.waitForSelector('#palette[open]', { timeout: 2000 });
+        await page.fill('#palette-input', label);
+        await page.keyboard.press('Enter');
+        await sleep(300);
+      };
+      const values = async () => JSON.stringify(JSON.parse(await patchJson()).modules.map((m) => [m.id, m.params, m.att ?? null, !!m.bypass]));
+      await palette('Set snapshot A');
+      const a = await values();
+      const pA = await emu.notePeak();
+      for (const k of [ENC.k1, ENC.k1 + 1, ENC.k1 + 2, ENC.k4]) await emu.turn(k, -40);
+      await check('a/b: K1..K4 on the FM-1 change the editor\'s patch', !!(await until(async () => (await values()) !== a, 3000)));
+      await sleep(800);
+      const pB = await emu.notePeak();
+      await palette('Set snapshot B');
+      const b = await values();
+      const flip = async (to, want, peak) => {
+        await page.evaluate(() => window.__sent.splice(0));
+        await page.keyboard.press('Alt+KeyB');
+        const s = await until(async () => { const x = await T(); return x.chip === 'synced' ? x : null; }, 3000);
+        await sleep(400);
+        const sent = (await page.evaluate(() => window.__sent.splice(0))).map((x) => x[1]);
+        await check(`a/b: Alt+B to ${to}: the editor plays ${to}`, (await values()) === want);
+        await check(`a/b: Alt+B to ${to}: PARAM frames and no upload`, sent.includes(0x20) && !sent.includes(0x10) && !sent.includes(0x11), `sent ${sent.map((c) => c.toString(16)).join(' ')}`);
+        await check(`a/b: Alt+B to ${to}: still synced`, !!s, `chip ${(await T()).chip}`);
+        const p = await emu.notePeak();
+        await loudCheck(`a/b: Alt+B to ${to}: the FM-1 sounds as ${to} did`, p, Math.abs(p - peak) <= Math.max(QUIET, 0.15 * peak), `peak ${p}, ${to} was ${peak} (A ${pA}, B ${pB})`);
+      };
+      await flip('A', a, pA);
+      await flip('B', b, pB);
+      await emu.snap('ab-flip');
+      await shot('ab-flip');
+    },
   };
 
   try {
