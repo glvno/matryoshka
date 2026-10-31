@@ -4,6 +4,7 @@
 
 ### Fixes
 
+- Io 4's Ensemble Pad preset has no vibrato: with it, four voices ran 89..91 % of the FM-1's audio block on average and the FM-1 dropped a part ("ONE PART LESS") at a four-note chord. Without it the test rig measured 81..82 % and no part dropped at 1, 4 or 8 notes in three runs (2026-10-31, #461, with the overload guard of #458; under the older guard it could still drop one at a chord's start). Io 4's vibrato itself (`vco / mod`) is unchanged.
 - In the editor, a preset that changes the voice count (Basic Poly, Supersaw Stack, Drift Poly, Io 4, Oracle V and others) no longer keeps part of the previous preset's sound.
 - In the editor's Emulator view, black keys 1 to 8 on 8 Lire, Elvira 2 and other patches whose keys reach a Drum map now play its rows 1 to 8, as the FM-1 does and as the screen shows. Before, they played other rows. A MIDI keyboard still plays the row of its note number.
 - In the editor, expanding an assembly (or Expand all) moves the cards and frames around it out of the way, so its frame no longer lies on top of them. In the factory patches, 12 of 29 single expansions and 8 of 25 Expand alls left a frame over another card; now none do (headless browser check).
