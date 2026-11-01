@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Editor
+
+- Searching for a module finds it by what it does and by its old name: "filter" lists the Multimode (the state-variable filter with low, band and high pass, renamed from Filter on 2026-10-22) and the Ladder, "high pass" or "hp" finds the Multimode, and "scale" or "glide" find the Attenuverter and the Slew limiter (#513).
+
 ## 1.8.1 — 2026-11-01
 
 ### Editor

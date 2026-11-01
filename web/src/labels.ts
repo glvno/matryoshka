@@ -94,6 +94,24 @@ export const moduleTag = (type: string): { tag: string; family: TagFamily } => {
   return { tag, family };
 };
 
+/** what a module was called before the renames of 2026-10-22 (49e9d966), so a search for its old name still finds it (#513) */
+const FORMER: Record<string, string> = {
+  scale: 'scale', const: 'constant', filter: 'filter', comb: 'comb', modal: 'modal', shift: 'freq shift', glide: 'glide',
+  shape: 'shaper', clkdiv: 'clock div', xfade: 'crossfade', vowel: 'vowel', crush: 'digitizer', part: 'voice allocator',
+};
+
+/** other words a module is searched by (#513): what it does, in the words someone looking for it would type */
+const ALIASES: Record<string, string> = {
+  filter: 'filter vcf svf state variable low pass high pass band pass notch peak all pass lp hp bp',
+  ladder: 'filter vcf moog low pass lp',
+  vowel: 'filter', comb: 'filter',
+};
+
+/** the words a module is found by in the palette and + Add module besides its name: its label, its card tag, its former
+ *  name and its aliases */
+export const moduleKeywords = (type: string, label: string): string =>
+  [label, moduleTag(type).tag, FORMER[type], ALIASES[type]].filter(Boolean).join(' ');
+
 /** three significant figures, trailing zeros dropped */
 const sig = (v: number): string => String(Number(v.toPrecision(3)));
 

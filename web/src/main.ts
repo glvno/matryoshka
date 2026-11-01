@@ -39,7 +39,7 @@ import { switches } from './buttons';
 import { Fm1Mirror, identifyFm1, installOffer } from './mirror';
 import { BUTTONS, ENCODERS } from './fm1-ui';
 import type { Firmware, PanelInput } from './fm1-profiles';
-import { longName, moduleName } from './labels';
+import { longName, moduleKeywords, moduleName } from './labels';
 import { DeckControls } from './deck';
 import { releaseFocusAfterPointer } from './focus';
 import { DEFS } from './modules';
@@ -1183,7 +1183,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Store to an FM-1 slot\u2026', keywords: 'bank flash save device', run: () => void storeToSlot() },
     { kind: 'command', label: 'Reset canvas scale', keywords: 'zoom 100%', run: inPatch(() => editor.setZoom(1)) },
     // the same lists as + Add module, the assembly browser and the Open picker (catalog.ts)
-    ...addableModules(DEFS).map((m) => ({ kind: 'add module', tags: ['module'], label: m.name, keywords: m.def.label, run: () => editor.add(m.type) })),
+    ...addableModules(DEFS).map((m) => ({ kind: 'add module', tags: ['module'], label: m.name, keywords: moduleKeywords(m.type, m.def.label), run: () => editor.add(m.type) })),
     ...assemblyShelves().filter((a, i, all) => all.findIndex((b) => b.def === a.def) === i).map((a) => assembly(a.def, a.shelf)), // the drum kit once
     ...openableGroups().flatMap((g) => g.items.map((o) => ({ kind: 'load patch', label: o.author ? `${o.name} · ${o.author}` : o.name, detail: g.label, run: () => loadNamed(o.load(), { from: o.from }) }))),
   ];
