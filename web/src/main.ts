@@ -2549,5 +2549,16 @@ if (import.meta.env.DEV) {
         .sort((x, y) => x.off - y.off)[0];
       return best ?? null;
     },
+    // #485: a factory preset of an assembly sent to the FM-1's store under another name, read back: the values it holds
+    // (-1 none); with drop, deleted there instead
+    presetOnFm1: async (label: string, from: string, as: string, drop = false): Promise<number> => {
+      const a = (editor.patch.assemblies ?? []).find((x) => x?.label === label);
+      const pr = a && presetsOf(editor.patch, a).find((p) => p.name === from);
+      if (!pr) return -1;
+      if (drop) return device.deletePreset(pr.structure, as).then(() => 0);
+      await device.putPreset(pr.structure, as, pr.values);
+      const back = await device.getPreset(pr.structure, as);
+      return back && back.every((v, i) => Math.abs(v - pr.values[i]) < 1e-4) ? back.length : -1;
+    },
   };
 }

@@ -9,7 +9,7 @@ import { deviceView } from './poly';
 /** a module's index on the FM-1: its place in the patch's device form (poly.ts deviceView: editor-only modules such as
  * the Scope are not there, so the editor's order is not the device's); -1 when the device does not have it */
 export const deviceIndex = (patch: Patch, moduleId: number): number => deviceView(patch, true).patch.modules.findIndex((m) => m.id === moduleId);
-import { FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { FEATURE_LONG_PRESETS, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 
 /** what connecting the FM-1 does with Live sync (#171): `sync` turns it on without asking, `ask` offers Sync / Not now,
  *  `off` leaves it off (Not now was chosen in this visit) */
@@ -169,6 +169,9 @@ export type DeviceEvent =
   /** GLO > PANEL > TEMPO and the global tempo as the FM-1 has them (TEMPO_NOW, D-907): after HELLO, and when they change
    *  there; bpm 0: not known yet */
   | { kind: 'tempo'; global: boolean; bpm: number };
+
+/** what the editor says when older firmware cannot store a preset whole (more than 88 values, D-476) */
+export const PRESET_NEEDS_UPDATE = 'Update the FM-1 to store this preset on it';
 
 export class DeviceLink {
   private out: MIDIOutput | null = null;
@@ -436,6 +439,17 @@ export class DeviceLink {
     return !!(this.info && this.info.features & 128);
   }
 
+  /** the firmware stores a preset of up to 176 values (two store slots, INFO feature bit 17, #485); older keeps 88 */
+  get hasLongPresets(): boolean {
+    return !!(this.info && this.info.features & FEATURE_LONG_PRESETS);
+  }
+
+  /** whether a preset of n values can be stored on this FM-1 (false: older firmware and more than 88: it must be updated;
+   *  more than 176 never) */
+  presetFits(n: number): boolean {
+    return n <= PRESET_VALUES_OLD || (this.hasLongPresets && n <= PRESET_VALUES_MAX);
+  }
+
   /** the FM-1's user presets (name, structure, how many values) */
   listPresets(): Promise<DevicePresetEntry[]> {
     return this.serial(() => new Promise<DevicePresetEntry[]>((resolve, reject) => {
@@ -462,7 +476,9 @@ export class DeviceLink {
     });
   }
 
+  /** store a preset on the FM-1; one older firmware cannot hold whole is refused before anything is sent (D-476) */
   putPreset(structure: string, name: string, values: number[]): Promise<void> {
+    if (!this.presetFits(values.length)) return Promise.reject(new Error(PRESET_NEEDS_UPDATE));
     return this.serial(async () => { await this.ackFor(presetPutFrame(structure, name, values), CMD.presetPut, undefined, FLASH_TIMEOUT); });
   }
 
