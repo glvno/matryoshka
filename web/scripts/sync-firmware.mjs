@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { productOf } from '../src/flasher/fm1pkg.js';
+import { isMatryoshkaProduct, productOf } from '../src/flasher/fm1pkg.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const REPO = 'glvno/matryoshka';
@@ -56,7 +56,7 @@ try {
 } catch (e) {
   fail(`${src}: ${e.message}`);
 }
-if (!/^FM-1_7\d\d$/.test(product)) fail(`${src}: identity ${product} is not a Matryoshka package (FM-1_7XY)`);
+if (!isMatryoshkaProduct(product)) fail(`${src}: identity ${product} is not a Matryoshka package (FM-1_7MMmmpp, or FM-1_7XY before 1.8)`);
 
 const sidecar = src.replace(/\.fwsc$/i, '') + '.json';
 let version;

@@ -1,13 +1,13 @@
 name: release
-# Builds a release package by hand (Actions > release > Run workflow, or gh workflow run release.yml -f version=1.0):
-# tools/build.py --release <version> (identity FM-1_7XY, version string vX.Y.Z), the same checks and host tests as
+# Builds a release package by hand (Actions > release > Run workflow, or gh workflow run release.yml -f version=1.8.0):
+# tools/build.py --release <version> (identity FM-1_7MMmmpp, e.g. FM-1_7010800; version string vX.Y.Z), the same checks and host tests as
 # firmware.yml, and uploads release-<version>/ with the build log. It does not tag or publish: see "Releasing" in
 # docs/ARCHITECTURE.md.
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "X.Y, X.Y.Z or X.Y-suffix (e.g. 1.0, 1.0-rc1)"
+        description: "X.Y.Z or X.Y.Z-suffix, each 0..99 (e.g. 1.8.0, 1.8.0-rc1)"
         required: true
 
 jobs:

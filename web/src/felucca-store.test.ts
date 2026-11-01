@@ -12,6 +12,8 @@ describe('installing over Felucca (#73)', () => {
     expect(runsFelucca('FM-1_700')).toBe(false);
     expect(runsFelucca('FM-1_711')).toBe(false);
     expect(runsFelucca('FM-1_8000013')).toBe(false);
+    expect(runsFelucca('FM-1_7010800')).toBe(false);
+    expect(runsFelucca('FM-1_9010800')).toBe(false);
   });
 });
 
@@ -25,5 +27,8 @@ describe('the firmware an FM-1 runs (#161)', () => {
     expect(firmwareKind('FM-1_8123456')).toBe('other'); // M-VAVE Open
     expect(firmwareKind('FM1C_0123456789abcdef')).toBe('other');
     expect(firmwareKind('ota-FM-1_700')).toBe('other'); // a loader is not asked about
+    expect(firmwareKind('FM-1_7010800')).toBe('matryoshka'); // #216: 1.8.0
+    expect(firmwareKind('FM-1_7000000')).toBe('matryoshka'); // a dev or CI build
+    expect(firmwareKind('FM-1_70108')).toBe('other');
   });
 });
