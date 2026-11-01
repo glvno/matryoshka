@@ -61,6 +61,11 @@ static void m1_song_now(uint32_t s)
 }
 static void m1_mute_now(uint32_t mod, int on) { js_mute(mod, (uint32_t)on); }
 static void m1_arms_now(uint32_t lo, uint32_t hi) { js_arms(lo, hi); }
+/* GLO > PANEL > TEMPO or the global tempo changed here (the menu, PLAY held + PRESET, Main's tempo row while GLOBAL): the
+ * page's setting follows (D-903; as the device link's TEMPO_NOW). patch: 0 GLOBAL, 1 PATCH */
+WASM_IMPORT("tempo") void js_tempo(uint32_t patch, uint32_t bpm);
+static void m1_tempo_now(void);
+#define HOST_TEMPO_HOOK
 #define HOST_STEP_HOOKS
 #define HOST_LED_HOOKS
 
@@ -74,9 +79,10 @@ static void m1_param_now(uint32_t mod, uint32_t par, int32_t v) { js_param(mod, 
  * knob row also says m1_param_now */
 static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
 {
-    if ((int)mod == eng_find(T_FM1) && par == FM1_P_TEMPO)
+    if ((int)mod == eng_find(T_FM1) && par == FM1_P_TEMPO && !eng_tempo_row(mod, par))   /* (the global tempo: fm1w_tick) */
         js_param(mod, par, v);
 }
+static void m1_tempo_now(void) { js_tempo(gt_patch, gt_bpm); }
 static void m1_panel_on(uint32_t mask) { (void)mask; }
 static void m1_patch_bypass(uint32_t mod, int on) { (void)mod; (void)on; }   /* (the page hears of a Toggle through its button) */
 /* what the panel's keys play (#467): the note panel.c gives the engine (a key's own, a Drum map row's for black keys
@@ -241,6 +247,18 @@ WASM_EXPORT("fm1w_tick") void fm1w_tick(uint32_t ms)
     panel_status();
     panel_edges(0, 0);
     seq_poll();
+    if (gt_poll(ms, 0) & 1u)                    /* (the global tempo moved here: the page's follows; nothing is written) */
+        m1_tempo_now();
+    panel_draw();
+}
+
+/* the page's GLO > PANEL > TEMPO (patch: 0 GLOBAL, 1 PATCH) and global tempo (bpm 20..300; 0 keeps it): the engine and
+ * the menu follow (D-903) */
+WASM_EXPORT("fm1w_tempo") void fm1w_tempo(uint32_t patch, uint32_t bpm)
+{
+    gt_set(patch, bpm, fm1_ms);
+    (void)eng_tempo_moved();
+    ui_dirty = 2;
     panel_draw();
 }
 

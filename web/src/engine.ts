@@ -172,6 +172,8 @@ export class Engine {
   private tickAcc = 0;
   private extTicks = 0;
   private ext = false;
+  /** the global tempo (D-903, tempo.ts; engine.c tempo_glo): every patch plays at it while set, null: the Main module's */
+  tempoGlobal: number | null = null;
   /** MIDI clock: samples since its last tick, and per tick as last measured (0: not yet) */
   private extSince = 0;
   private extLen = 0;
@@ -578,6 +580,7 @@ export class Engine {
         pd.name, node.bypass ? node.params[pd.name] ?? pd.default : display[pd.name] ?? eff[pd.name] ?? node.params[pd.name] ?? pd.default,
       ]));
       if (node === this.main && this.hasB) params.morph = this.morphT;
+      if (node === this.main && this.tempoGlobal !== null) params.tempo = this.tempoGlobal;   // (what plays, D-903)
       return { id: node.id, params };
     });
   }
@@ -1136,8 +1139,9 @@ export class Engine {
     const all = [this.kb, ...this.groups];
     for (let off = 0; off < total; off += BLOCK) {
       const n = Math.min(BLOCK, total - off);
-      // the clock: MIDI ticks while external, else the tempo (bpm x 24 ticks a minute, in whole bpm as the firmware does)
-      const bpm = Math.min(TEMPO_MAX, Math.max(TEMPO_MIN, Math.round(this.main?.params.tempo ?? TEMPO_DEFAULT)));
+      // the clock: MIDI ticks while external, else the global tempo or the Main module's (bpm x 24 ticks a minute, in whole
+      // bpm as the firmware does)
+      const bpm = Math.min(TEMPO_MAX, Math.max(TEMPO_MIN, Math.round(this.tempoGlobal ?? this.main?.params.tempo ?? TEMPO_DEFAULT)));
       let seen = false;
       // where this block's ticks fall (Steps modules start their steps there): MIDI clock ticks on the first sample, the
       // tempo's on the sample that completes the tick; and the samples per tick (measured between MIDI clock ticks)

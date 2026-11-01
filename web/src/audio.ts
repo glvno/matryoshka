@@ -98,6 +98,7 @@ export class AudioHost {
       ctx.onstatechange = () => { this.watchValues(); this.onState(); };
       if (this.pending) this.send({ t: 'patch', patch: this.pending, revision: this.revision });
       this.send({ t: 'transport', on: this.transportOn });
+      this.send({ t: 'tempo', bpm: this.tempoOn });
       for (const msg of this.early) this.send(msg);
       this.early = [];
       for (const msg of this.watches.values()) node.port.postMessage(msg);
@@ -147,6 +148,13 @@ export class AudioHost {
     this.send({ t: 'transport', on });
   }
 
+  /** the global tempo (D-903, tempo.ts): every patch plays at it, null: each its own; kept for when the worklet starts */
+  private tempoOn: number | null = null;
+  tempo(bpm: number | null): void {
+    this.tempoOn = bpm;
+    this.send({ t: 'tempo', bpm });
+  }
+
   /** the standing watches (sidebar slider sources), sent again once the worklet exists: a watch asked for before audio started
    * would otherwise be lost */
   private watches = new Map<string, HostMsg>();
@@ -155,6 +163,6 @@ export class AudioHost {
     if (msg.t === 'watch' || msg.t === 'view' || msg.t === 'envwatch') this.watches.set(msg.key, msg);
     else if (msg.t === 'unwatch' || msg.t === 'unview' || msg.t === 'unenvwatch') this.watches.delete(msg.key);
     if (this.node) this.node.port.postMessage(msg);
-    else if (this.ctx && !['patch', 'transport'].includes(msg.t)) this.early.push(msg);
+    else if (this.ctx && !['patch', 'transport', 'tempo'].includes(msg.t)) this.early.push(msg);
   }
 }

@@ -61,6 +61,7 @@ import { synthLink } from './tutorial/link';
 import { factoryShape, PRESETS, shapeOf } from './presets';
 import { inlineWordmarks } from './brand';
 import { clipText, parseClip, type Clip } from './clipboard';
+import { isGlobalTempo, patchTempo, readTempo, tempo, TEMPO_KEY, tempoNow } from './tempo';
 import { addableModules, assemblyShelves, openableByValue, openableGroups } from './catalog';
 import { binaryPage, browserOnly, deviceBudget, editorPage, encodePatch, overText, POLY_ROW, POLY_ROW_PARAMS, toQ16 } from './patchbin';
 import { ALLOC, deviceView } from './poly';
@@ -251,6 +252,11 @@ let fromEmu = false;
 let deviceSlot: { slot: number; name: string } | null = null;
 device.onEvent = (e) => {
   if (e.kind === 'info') return syncChip();   // (MENU > MIDI OUT changed: the chip says so in sandbox mode)
+  if (e.kind === 'tempo') {   // the FM-1's TEMPO setting and global tempo (D-903): after HELLO and when changed there
+    fromDevice = true;
+    try { tempo.set(e.bpm ? { mode: e.global ? 'global' : 'patch', bpm: e.bpm } : { mode: e.global ? 'global' : 'patch' }, 'device'); } finally { fromDevice = false; }
+    return;
+  }
   if (e.kind === 'slot') {
     if (!device.hasLive) onEditorPatch = false;   // (an FM-1 that takes LIVE loads no slot under Live: this is SAVE or a boot)
     deviceSlot = { slot: e.slot, name: e.name };
@@ -557,6 +563,10 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
   pattern: (p, song) => fm1Event({ kind: 'pattern', pattern: p, song }, 'emu'),
   song: (k, entries) => fm1Event({ kind: 'song', song: k, entries }, 'emu'),
   mute: (m, on) => fm1Event({ kind: 'mute', module: m, on }, 'emu'),
+  tempo: (global, bpm) => {                  // the FM-1 tab's GLO > PANEL > TEMPO, PLAY held + PRESET (D-903)
+    fromEmu = true;
+    try { tempo.set(bpm ? { mode: global ? 'global' : 'patch', bpm } : { mode: global ? 'global' : 'patch' }, 'emu'); } finally { fromEmu = false; }
+  },
   // REC held + a black key on the emulated FM-1 (#139): the editor arms the same track, so the keys the page plays (the
   // emulator's MIDI out) go through it as they do on the device
   arms: (lo, hi) => {
@@ -586,7 +596,11 @@ let emuLoaded = '';
 let emuTimer = 0;
 /** the editor's notes as the emulated FM-1's keys while its view shows (emu-keys.ts) */
 const emuKeys = new EmuKeys(emu);
-const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
+const firstPatch = loadSaved() ?? starterPatch();
+// the global tempo setting (D-903, wired below) before the editor draws Main's tempo row; a first visit: Global, at this
+// patch's tempo
+tempo.set(readTempo((() => { try { return localStorage.getItem(TEMPO_KEY); } catch { return null; } })(), patchTempo(firstPatch)));
+const editor = new Editor($('canvas'), firstPatch, {
   onStructure(p) {
     stampOctave(p);
     $<HTMLInputElement>('patch-name').value = p.name;
@@ -605,6 +619,7 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     else if (live()) dirty = true;
   },
   onParam(id, name, value) {
+    if (isGlobalTempo(editor.patch.modules.find((m) => m.id === id)?.type, name)) return;   // (the global tempo: tempo.listen)
     host.send({ t: 'param', id, name, value });
     envs.changed();
     if (name === 'len') editor.refreshSteps(id);   // (a Steps module's grid follows its length)
@@ -1590,7 +1605,7 @@ function panic(): void {
   sink.send({ t: 'panic' });
 }
 /** MIDI clock out (FM-1 & MIDI, wired below): clock at Main's tempo to the ticked outputs, Start / Stop with Play */
-const clockOut = new ClockOut(() => editor.patch.modules.find((m) => m.type === 'fm1')?.params.tempo ?? 120);
+const clockOut = new ClockOut(() => tempoNow(tempo.setting, editor.patch));   // (the global tempo while it is on, D-903)
 // PLAY in the dock's button block and Space are one switch: the transport (Main's run output and clock)
 function syncPlayBtn(): void {
   arpBtn.setAttribute('aria-pressed', String(editor.playing));
@@ -1640,6 +1655,7 @@ function emuLoad(): void {
       chip: `Over budget · ${over} · won’t upload`, action: 'Use the FM-1 view anyway', more });
   }
   ui.transport(editor.playing);
+  ui.tempo(tempo.global, tempo.bpm);
   emuArm();                                  // (a load disarms the emulator's engine)
   const at = editor.focus && binaryPage(editor.patch, editor.focus.device, editor.focus.page);
   if (at) ui.focus(at[0], at[1]);
@@ -2159,6 +2175,37 @@ $('dev-release').onclick = () => {
   save(editor.patch); // the patch is remembered; reloading the page is what drops the MIDI access
   location.reload();
 };
+
+// The global tempo (D-903, tempo.ts): FM-1 & MIDI > Tempo, Global (as made) or Patch. This browser keeps it while no FM-1
+// is connected; a connected FM-1 that shares it (feature bit 16) says its own at HELLO (TEMPO_NOW) and gets every change.
+// The browser engine, the FM-1 tab and MIDI clock out play it; Main's tempo row and the knobs set it (editor.ts).
+const tempoBtn = $('tempo-btn');
+const showTempo = (): void => {
+  tempoBtn.setAttribute('aria-pressed', String(tempo.global));
+  tempoBtn.textContent = tempo.global ? `Tempo: global, ${tempo.bpm} bpm` : 'Tempo: each patch its own';
+};
+tempo.listen((s, from, was) => {
+  const src = fromDevice ? 'device' : fromEmu ? 'emu' : from;
+  try {
+    localStorage.setItem(TEMPO_KEY, JSON.stringify(s));
+  } catch {
+    /* storage blocked: the setting lasts until the page is reloaded */
+  }
+  host.tempo(s.mode === 'global' ? s.bpm : null);
+  if (src !== 'emu') emu.ui?.tempo(s.mode === 'global', s.bpm);
+  if (src !== 'device') {
+    if (device.hasTempo) device.tempo(s.mode === 'global', s.bpm);
+    else if (s.mode === 'global' && live() && !uploading) {   // (older firmware: its patch's tempo follows, as it did)
+      const main = editor.patch.modules.find((m) => m.type === 'fm1');
+      if (main) device.param(editor.patch, main.id, 'tempo', s.bpm);
+    }
+  }
+  editor.tempoChanged(s.mode !== was.mode);
+  showTempo();
+});
+host.tempo(tempo.global ? tempo.bpm : null);
+showTempo();
+tempoBtn.onclick = () => tempo.set({ mode: tempo.global ? 'patch' : 'global' });
 
 // MIDI clock out: on, the ticked MIDI outputs get clock at Main's tempo and Start / Stop with Play, so several FM-1s play in
 // time with this page and each other. An output nobody ticked or unticked is ticked when it looks like an FM-1. The switch

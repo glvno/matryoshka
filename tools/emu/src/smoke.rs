@@ -861,6 +861,63 @@ fn count_in(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     Ok(())
 }
 
+/// PLAY held + PRESET by `clicks`: the tempo (the global one while TEMPO is GLOBAL); the bar says it
+fn tempo_turn(m: &mut Machine, clicks: i32) -> Result<(), String> {
+    m.key(PLAY, true);
+    m.run_for(100)?;
+    m.turn(PRESET, clicks, 200)?;
+    m.key(PLAY, false);
+    m.run_for(200)
+}
+
+/// The global tempo (D-903): GLO > PANEL > TEMPO, GLOBAL as made. PLAY held + PRESET sets it, the next patch (HOME held +
+/// PRESET) plays at it, and it is in the settings record about 5 s later without SAVE (a boot on the same flash). PATCH
+/// is kept the same way.
+fn global_tempo(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
+    let mut m = Machine::boot(app, None);
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    m.run_for(2500)?;
+    m.tap(GLO, 120, 400)?;
+    m.turn(ALGO, 1, 400)?;
+    t.screen(&m, "tempo: the menu's PANEL tab has TEMPO", "TEMPO");
+    t.screen(&m, "tempo: GLOBAL as made", "GLOBAL");
+    m.tap(HOME, 120, 400)?;
+    tempo_turn(&mut m, 400)?;                // (fast turns: to the top, 300)
+    t.screen(&m, "tempo: PLAY held + PRESET sets the global tempo", "TEMPO 300");
+    m.key(HOME, true);
+    m.run_for(100)?;
+    m.turn(PRESET, 1, 300)?;                 // HOME held + PRESET: the next patch
+    m.key(HOME, false);
+    m.run_for(1500)?;
+    tempo_turn(&mut m, -1)?;
+    t.screen(&m, "tempo: the next patch plays at the global tempo (300, less a click)", "TEMPO 299");
+    m.run_for(6000)?;                        // (the settings record, 5 s after the change: no SAVE)
+    let flash = m.flash();
+    *emulated += m.ms();
+    let mut m = Machine::boot(app, Some(&flash));
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    m.run_for(2500)?;
+    tempo_turn(&mut m, 1)?;
+    t.screen(&m, "tempo: the global tempo survives a boot without SAVE (299, and a click)", "TEMPO 300");
+    m.tap(GLO, 120, 400)?;
+    m.turn(ALGO, 1, 400)?;
+    m.turn(K4, 1, 400)?;
+    t.screen(&m, "tempo: K4 turns it to PATCH", "PATCH");
+    m.tap(HOME, 120, 6000)?;                 // (out of the menu with HOME: no SAVE)
+    let flash = m.flash();
+    *emulated += m.ms();
+    let mut m = Machine::boot(app, Some(&flash));
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    m.run_for(2500)?;
+    m.tap(GLO, 120, 400)?;
+    m.turn(ALGO, 1, 400)?;
+    t.screen(&m, "tempo: PATCH survives a boot without SAVE", "PATCH");
+    m.turn(K4, -1, 400)?;
+    t.screen(&m, "tempo: K4 back: GLOBAL", "GLOBAL");
+    *emulated += m.ms();
+    Ok(())
+}
+
 fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bool)]) -> Result<(), String> {
     let presets = factory();
     // ---- 1. boot
@@ -1132,6 +1189,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     panel(app, t, emulated)?;
     seq(app, t, emulated, &presets)?;
     count_in(app, t, emulated)?;
+    global_tempo(app, t, emulated)?;
     long_delay(app, t, emulated)?;
 
     // ---- 9. unmodelled hardware

@@ -268,7 +268,8 @@ static uint32_t popcount64(uint64_t v)
 static int slot_used(uint32_t s) { return s < M1_SLOTS && (bank_mask >> s & 1u); }
 
 /* the settings record: version, slot, octave + 8, LED mode, knob accel (bit 0; bit 1: the quick start off, D-247: a record
- * from before reads as on, and an older firmware reads the accel as before), CPU in the bar, clock in, program change,
+ * from before reads as on, and an older firmware reads the accel as before), the global tempo's low byte (byte 5,
+ * D-903; was CPU in the bar), clock in, TEMPO and the tempo's bit 8 (byte 7, tempo_glo.h; was program change),
  * MIDI channel, MIDI out, the bank's format, the selected module, REC's count-in (byte 12, #414: a record without
  * it, SET_MIN bytes, reads as OFF), the factory set the bank's untouched factory slots hold (bytes 13..15, #441: a
  * record without them reads as unknown). The version stays 1, so an older firmware reads the longer record too; it
@@ -288,9 +289,8 @@ static void settings_pack(uint8_t *d)
     d[2] = (uint8_t)(octave + 8);
     d[3] = cfg.leds;
     d[4] = (uint8_t)(cfg.accel | (cfg.quick ? 0u : 2u));
-    d[5] = cfg.cpu_bar;
     d[6] = cfg.clock_in;
-    d[7] = cfg.prog_chg;
+    gt_pack(d);                                 /* bytes 5 and 7: the global tempo and TEMPO (D-903) */
     d[8] = cfg.ch;
     d[9] = cfg.midi_out;                        /* (was the mixer's level before #60: values over 1 read as on) */
     d[10] = bank_fmt;
@@ -309,7 +309,8 @@ static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint3
     cfg.leds = d[3] > 2u ? 2u : d[3];
     cfg.accel = d[4] & 1u;
     cfg.quick = !(d[4] & 2u);
-    cfg.clock_in = d[6] & 1u;                   /* (bytes 5 and 7, CPU in the bar and program change, are no longer settings) */
+    cfg.clock_in = d[6] & 1u;
+    gt_unpack(d, len);                          /* bytes 5 and 7 (CPU in the bar and program change before): the global tempo */
     cfg.ch = d[8] > 16u ? 0u : d[8];
     cfg.midi_out = d[9] == 0u ? 0u : 1u;
     bank_fmt = d[10];
@@ -331,12 +332,21 @@ static int store_write(uint32_t id, const char *name, const uint8_t *p, uint32_t
     return rc;
 }
 
-/* the settings record alone, now (panel.c: HOME + SAVE on the quick start turns it off for good, D-247) */
+/* the settings record alone, now (panel.c: HOME + SAVE on the quick start turns it off for good, D-247; the global
+ * tempo 5 s after its last change, D-903) */
 static void settings_store(void)
 {
     uint8_t set[SET_LEN];
     settings_pack(set);
     (void)store_write(SL_SETTINGS, 0, set, SET_LEN);
+}
+
+/* TEMPO from the editor (proto.c, D-903) */
+static void m1_tempo(uint32_t patch, uint32_t bpm)
+{
+    gt_set(patch, bpm, fm1_ms);
+    if (!ui_dirty)
+        ui_dirty = 1;
 }
 
 static char label_buf[M1_NAME + 1];              /* the running patch's name (its slot's) */
@@ -360,6 +370,7 @@ static int m1_store(const uint8_t *patch, uint32_t len)        /* SAVE, the edit
     settings_pack(set);
     if (store_write(SL_SETTINGS, 0, set, SET_LEN))
         return -2;
+    gt_due = 0;                                  /* (the global tempo is in it) */
     for (i = 0; i < M1_NAME; i++)
         label_buf[i] = name[i];
     label_buf[M1_NAME] = 0;
@@ -595,6 +606,7 @@ static void patch_boot(void)                    /* the slot the settings record 
 {
     static uint8_t set[SET_LEN + 4u];
     uint32_t len = 0, slot = 0, module = 0;
+    gt_apply();                                  /* (GLOBAL at the boot patch's tempo, until the settings record says otherwise) */
     if (boot_safe || !flash_ok) {
         fallback_boot();
         if (boot_safe) {
@@ -644,6 +656,9 @@ static void defaults_now(void)
     eng_transport(0);
     cfg_defaults();
     octave = 0;
+    gt_patch = 0;                                /* TEMPO: GLOBAL, at the tempo of the patch loaded next */
+    gt_bpm = 0;
+    gt_apply();
     if (flash_ok) {
         ui_msg("WRITING THE FACTORY BANK", 10000);
         eng_run = 0;
@@ -656,6 +671,17 @@ static void defaults_now(void)
     leds_octave();
     leds_play();
     ui_msg("FACTORY RESET", 1500);
+}
+
+/* each pass of the main loop: a global tempo moved here goes to the editor, and to the settings record once it has
+ * rested 5 s and the transport is stopped (a flash write stops the sound for a moment) */
+static void tempo_poll(void)
+{
+    uint32_t r = gt_poll(fm1_ms, !eng_transport_running());
+    if (r & 1u)
+        m1_tempo_now();
+    if ((r & 2u) && flash_ok && !boot_safe)
+        settings_store();
 }
 
 /* a poly group's setting from a device page (pages_ui.c poly rows): voices, assign, legato, priority, unison, into the
@@ -1142,6 +1168,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         panel_draw();
         cpu_poll();
         host_poll();
+        tempo_poll();
     }
 }
 

@@ -335,6 +335,17 @@ uint32_t eng_ticks(void);                 /* the clock's ticks so far (24 a quar
 int32_t eng_run_ticks(void);              /* ticks since the transport started (the Steps tracks' bars count from there:
                                            * 96 a bar of four beats), -1 until the engine has taken the start */
 int eng_clock_is_external(void);          /* MIDI clock drives the clock */
+/* The global tempo (GLO > PANEL > TEMPO, D-903; engine.ts tempoGlobal): with one set, every patch plays at it and a load
+ * leaves it (Main's tempo parameter shows it; the patch's own value comes back with eng_tempo_global(0)). Main's tempo
+ * set with eng_set_param moves it (a knob, PLAY held + PRESET, the editor's PARAM). MIDI clock overrides it as before.
+ * bpm: 0 = each patch its own tempo, ENG_TEMPO_ADOPT = global, starting at the tempo of the patch running (or the next
+ * one loaded), else 20..300 */
+#define ENG_TEMPO_ADOPT 1u
+void eng_tempo_global(uint32_t bpm);
+uint32_t eng_tempo_global_get(void);      /* the global tempo (bpm), 0 while each patch has its own */
+int eng_tempo_moved(void);                /* the global tempo moved by eng_set_param or by adopting a patch's since the last call */
+int eng_tempo_row(uint32_t module, uint32_t param);   /* (module, param) is Main's tempo and the tempo is global: the patch's
+                                                       * own value stays as it is (proto.c m1_patch_param) */
 uint32_t eng_buttons_get(void);
 /* the patch buttons' LEDs (the FM-1, the EMU view): eng_buttons_get, but ARP as a Toggle of Arpeggiators is lit while
  * they play, not while they are bypassed (D-231; the editor: buttons.ts arpLitInverted) */

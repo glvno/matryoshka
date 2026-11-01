@@ -177,6 +177,9 @@ static uint32_t m1_test_screen(uint32_t k, uint8_t *out)
     return 5u + i;
 }
 static uint32_t m1_test_peak(void) { return 1234u | 1u << 16 | 1u << 17; }
+#include "../src/tempo_glo.h"
+static int tempo_calls;
+static void m1_tempo(uint32_t patch, uint32_t bpm) { tempo_calls++; gt_set(patch, bpm, 1000u); }   /* (main.c's) */
 #include "../src/proto.c"
 
 static uint8_t *slurp(const char *path, long *n)
@@ -559,17 +562,54 @@ int main(int argc, char **argv)
         uint8_t q[4] = {0x7D, 0x4D, 0x31, C_HELLO}, p[16];
         uint32_t n;
         nreplies = 0;
-        CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 1 && replies[0][4] == R_INFO);
+        CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 2 && replies[0][4] == R_INFO && replies[1][4] == R_TEMPO_NOW);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
-        CHECK(n == 9u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION);
+        CHECK(n == 10u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[9] == M1_FEATURES3);
         CHECK(p[5] == M1_FEATURES && p[6] == M1_FEATURES2 && (p[3] & M1_INFO_MIDI_OUT));
         midi_out_on = 0;
         nreplies = 0;
-        CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 1);
+        CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 2);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
-        CHECK(n == 9u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION);
+        CHECK(n == 10u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION);
         CHECK(!(p[3] & M1_INFO_MIDI_OUT));
         midi_out_on = 1;
+    }
+    /* TEMPO (D-903, feature bit 16): GLOBAL at a tempo, PATCH; Main's tempo shows what plays, the patch keeps its own */
+    {
+        int m = eng_find(T_FM1);
+        uint8_t q[16] = {0x7D, 0x4D, 0x31, C_TEMPO}, pl[3], p[8];
+        uint32_t n, rec, own;
+        CHECK(m >= 0);
+        rec = m1_record((uint32_t)m) + 1u + 4u * FM1_P_TEMPO;
+        own = (uint32_t)m1_cur[rec] | (uint32_t)m1_cur[rec + 1] << 8 | (uint32_t)m1_cur[rec + 2] << 16 | (uint32_t)m1_cur[rec + 3] << 24;
+        pl[0] = 0; pl[1] = 133; pl[2] = 0;                     /* GLOBAL at 133 */
+        n = 4u + m1_pack7(pl, 3u, q + 4);
+        nreplies = 0;
+        CHECK(m1_handle(q, n) == 1 && tempo_calls == 1 && nreplies == 0);
+        CHECK(gt_patch == 0u && gt_bpm == 133u && eng_tempo_global_get() == 133u && eng_get_param((uint32_t)m, FM1_P_TEMPO) == 133 << 16);
+        CHECK(!eng_tempo_moved());                             /* (the editor's own: not told back) */
+        {                                                      /* an older editor's PARAM on Main's tempo: the global tempo, the patch keeps its own */
+            uint8_t pp[6] = {(uint8_t)m, FM1_P_TEMPO, 0, 0, 140, 0}, fq[16] = {0x7D, 0x4D, 0x31, C_PARAM};
+            uint32_t w = 4u + m1_pack7(pp, 6u, fq + 4);
+            CHECK(m1_handle(fq, w) == 1 && eng_tempo_global_get() == 140u);
+            CHECK(((uint32_t)m1_cur[rec] | (uint32_t)m1_cur[rec + 1] << 8 | (uint32_t)m1_cur[rec + 2] << 16 | (uint32_t)m1_cur[rec + 3] << 24) == own);
+            CHECK(gt_poll(2000u, 1) & 1u);                     /* (main.c then tells the editor: TEMPO_NOW) */
+            nreplies = 0;
+            m1_tempo_now();
+            CHECK(nreplies == 1 && replies[0][4] == R_TEMPO_NOW && m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p) == 3u
+                  && p[0] == 0u && p[1] == 140u && p[2] == 0u);
+        }
+        pl[0] = 1; pl[1] = 0; pl[2] = 0;                       /* PATCH (the global tempo stays) */
+        n = 4u + m1_pack7(pl, 3u, q + 4);
+        CHECK(m1_handle(q, n) == 1 && gt_patch == 1u && gt_bpm == 140u && eng_tempo_global_get() == 0u);
+        CHECK((uint32_t)eng_get_param((uint32_t)m, FM1_P_TEMPO) == own);
+        eng_set_param((uint32_t)m, FM1_P_TEMPO, 141 << 16);    /* PATCH: an edit is the patch's own again */
+        m1_patch_param((uint32_t)m, FM1_P_TEMPO, 141 << 16);
+        CHECK(((uint32_t)m1_cur[rec] | (uint32_t)m1_cur[rec + 1] << 8 | (uint32_t)m1_cur[rec + 2] << 16 | (uint32_t)m1_cur[rec + 3] << 24) == 141u << 16);
+        m1_patch_param((uint32_t)m, FM1_P_TEMPO, (int32_t)own);
+        eng_set_param((uint32_t)m, FM1_P_TEMPO, (int32_t)own);
+        CHECK(m1_handle(q, 5) == 1 && tempo_calls == 2);       /* (too short: not taken) */
+        printf("tempo ok\n");
     }
     /* SANDBOX: the frame web/src/protocol.ts made (golden.ts), parsed field by field; one byte short: not taken, no reply */
     if (argc > 11) {

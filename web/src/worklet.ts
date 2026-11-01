@@ -19,6 +19,8 @@ export type HostMsg =
   | { t: 'bypass'; id: number; on: boolean }
   | { t: 'range'; id: number; index: number; name: string; range: [number, number] | null }
   | { t: 'transport'; on: boolean }
+  /** the global tempo (D-903), null: each patch its own */
+  | { t: 'tempo'; bpm: number | null }
   | { t: 'button'; i: number; on: boolean }
   /** a Steps module's notes edited (#133), a Steps module muted */
   | { t: 'track'; id: number; notes: StepNote[] | undefined; pat?: number }
@@ -103,6 +105,7 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'envwatch') this.envs.set(m.key, m.id);
         else if (m.t === 'unenvwatch') this.envs.delete(m.key);
         else if (m.t === 'transport') this.engine.transport(m.on);
+        else if (m.t === 'tempo') this.engine.tempoGlobal = m.bpm;
         else if (m.t === 'button') this.engine.setButton(m.i, m.on);
         else if (m.t === 'track') this.engine.setTrack(m.id, m.notes, m.pat);
         else if (m.t === 'pattern') this.engine.setPattern(m.p);

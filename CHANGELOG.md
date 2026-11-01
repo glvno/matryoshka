@@ -6,9 +6,11 @@
 
 - Clearer control hints: the SEQ page names OCT for steps 17 and up (#490), shows a held step's knobs and fits SEQ+REC clear again; PRESET on a module says HOME+PRESET changes patches; the manual has more headings and fixes (#450).
 - The FM-1 teaches its controls (#450): after power-on a quick start card shows the knobs (HOME closes it, HOME + SAVE turns it off, GLO > SYSTEM > QUICK START turns it on again), and OCT- + OCT+ pressed together open a controls sheet for the page you are on, with a second tab of what every button does everywhere (ALGO switches tabs, SELECT scrolls, HOME closes; the keys and PLAY keep working). OCT- and OCT+ now act when let go, so pressing both changes nothing.
+- One tempo for every patch: GLO > PANEL > TEMPO is GLOBAL as made, so changing the patch (PRESET, program change, the editor) keeps the tempo you set with PLAY held + PRESET or on Main's page. The FM-1 remembers it without SAVE, about 5 seconds after the last change once the transport is stopped. Each patch still keeps its own tempo: TEMPO PATCH plays it, as before. Patches made around a tempo, such as `<7PH` at 124, play at the global tempo unless TEMPO is PATCH.
 
 ### Editor
 
+- FM-1 & MIDI > Tempo: Global (as made) or Patch, the same setting as the FM-1's and shared with it while connected. While Global, the browser, MIDI clock out and the FM-1 tab play one tempo whatever patch is open, and Main's tempo row is labelled `global tempo`. Older firmware gets the global tempo as the patch's while Live is on.
 - A/B is back in the editor: Set snapshot A, Set snapshot B and Switch A / B snapshots in Commands, or Alt+B (Option+B on a Mac). A flip keeps the canvas where it is (cards, frames, the view) and takes the other version's name. When only values differ (parameters, attenuverters, bypass, macro ranges, Steps notes) the browser and, with Live on, the FM-1 change them in place, so notes keep sounding; anything else loads the other version whole.
 
 ## 1.7.1 — 2026-10-31

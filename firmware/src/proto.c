@@ -26,6 +26,8 @@
  *   static uint32_t m1_test_screen(uint32_t k, uint8_t *out);   the screen as text: k 0xFF its head (count, page, flags, Main's
  *                                                               patch buttons u16: their jacks, #368), else
  *                                                               text k (x, y, w, h, n, n characters); the bytes written, 0 = none
+ *   static void m1_tempo(uint32_t patch, uint32_t bpm);         TEMPO: the editor set GLO > PANEL > TEMPO (0 GLOBAL, 1 PATCH) and the
+ *                                                               global tempo (D-903, tempo_glo.h gt_set)
  *   static uint32_t m1_test_peak(void);                         the output's peak (16 bit, before MASTER) since the last call, bit
  *                                                               16 the engine runs, 17 the sound is muted (sandbox mode), 18 MASTER
  *                                                               is all the way down
@@ -37,9 +39,10 @@
 #define M1_PATCH_MAX 3840u                                   /* a bank slot is one 4 KB sector: 256 B of header, the patch */
 #define M1_VERSION 1
 
-enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_PRESETS = 0x2D, C_PRESET_GET = 0x2E, C_PRESET_PUT = 0x2F, C_PRESET_DEL = 0x30, C_SANDBOX = 0x31, C_TEST_KEY = 0x32, C_TEST_TURN = 0x33, C_TEST_SCREEN = 0x34, C_TEST_PEAK = 0x35, C_PATTERN = 0x36, C_SONG = 0x37, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B, R_PRESET = 0x4C, R_PRESET_DATA = 0x4D, R_PRESET_STORED = 0x4E, R_SCREEN = 0x50, R_PEAK = 0x51, R_PATTERN_NOW = 0x52, R_SONG_NOW = 0x53, R_ARMS_NOW = 0x54 };
+enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_PRESETS = 0x2D, C_PRESET_GET = 0x2E, C_PRESET_PUT = 0x2F, C_PRESET_DEL = 0x30, C_SANDBOX = 0x31, C_TEST_KEY = 0x32, C_TEST_TURN = 0x33, C_TEST_SCREEN = 0x34, C_TEST_PEAK = 0x35, C_PATTERN = 0x36, C_SONG = 0x37, C_TEMPO = 0x38, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B, R_PRESET = 0x4C, R_PRESET_DATA = 0x4D, R_PRESET_STORED = 0x4E, R_SCREEN = 0x50, R_PEAK = 0x51, R_PATTERN_NOW = 0x52, R_SONG_NOW = 0x53, R_ARMS_NOW = 0x54, R_TEMPO_NOW = 0x55 };
 #define M1_FEATURES 246u                                     /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW, bit 6 = LIVE, bit 7 = the presets (#195) (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
 #define M1_FEATURES2 255u                                     /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down, bit 11 = reads format 35, bit 12 = reads format 36, bit 13 = reads format 37, bit 14 = reads format 38, bit 15 = reads format 39 (legacy editor compatibility; INFO bytes 7..8 report the readable range) */
+#define M1_FEATURES3 1u                                       /* INFO byte 9, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-903) */
 #define M1_INFO_MIDI_OUT 4u                                  /* INFO byte 3 (flags) bit 2: MENU > MIDI OUT is on (with feature bit 8) */
 #define M1_PNAME 16u                                         /* a preset's name (presetstore.c PS_NAME) */
 #define M1_PVALS 88u                                         /* a preset's values at most (presetstore.c PS_MAXV) */
@@ -123,7 +126,7 @@ static void m1_slot_now(uint32_t slot, const char *name)
 /* INFO: the answer to HELLO, and unasked when MENU > MIDI OUT changed under the editor's Live (live.c) */
 static void m1_info(void)
 {
-    uint8_t p[9];
+    uint8_t p[10];
     p[0] = M1_VERSION;
     p[1] = ENG_MAX_MODULES;
     p[2] = ENG_MAX_CABLES;
@@ -133,7 +136,19 @@ static void m1_info(void)
     p[6] = M1_FEATURES2;
     p[7] = ENG_PATCH_COMPAT_VERSION;
     p[8] = ENG_PATCH_VERSION;
-    m1_reply(R_INFO, p, 9);
+    p[9] = M1_FEATURES3;
+    m1_reply(R_INFO, p, 10);
+}
+
+/* TEMPO_NOW: GLO > PANEL > TEMPO (0 GLOBAL, 1 PATCH) and the global tempo (bpm, u16; 0 = not known yet), after INFO and
+ * unasked when either changed on the FM-1 (D-903) */
+static void m1_tempo_now(void)
+{
+    uint8_t p[3];
+    p[0] = gt_patch;
+    p[1] = (uint8_t)gt_bpm;
+    p[2] = (uint8_t)(gt_bpm >> 8);
+    m1_reply(R_TEMPO_NOW, p, 3);
 }
 
 static void m1_ack(uint32_t cmd, uint32_t seq, uint32_t status, uint32_t aux)
@@ -195,6 +210,8 @@ static void m1_put32(uint32_t at, int32_t v)
 static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
 {
     uint32_t at = m1_record(mod);
+    if (eng_tempo_row(mod, par))                             /* the global tempo moved, not the patch's own (D-903) */
+        return;
     if (!at || par >= eng_npar(&DEFS[M1_TYPE(m1_cur[at])], m1_cur[1]))   /* (an older format's record without it: m1_set_current
                                                                          * upgrades the binary, unless it would not fit) */
         return;
@@ -678,6 +695,13 @@ static int m1_handle(const uint8_t *f, uint32_t n)
     switch (f[3]) {
     case C_HELLO:
         m1_info();
+        m1_tempo_now();
+        break;
+    case C_TEMPO:                                            /* mode u8, bpm u16 (0: the global tempo stays) */
+        if (len >= 3u) {
+            m1_tempo(d[0], (uint32_t)d[1] | (uint32_t)d[2] << 8);
+            m1_ui_rows();
+        }
         break;
     case C_DIAG: {                                           /* bring-up diagnostics (main.c m1_diag): [page, bytes] */
         uint8_t p[33];
