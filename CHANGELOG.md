@@ -4,7 +4,7 @@
 
 ### FM-1
 
-- A vibrato costs the oscillators much less: they work out their pitch every 8 samples instead of every sample, with a straight line in between (#461). Io 4's Ensemble Pad at four notes: 79 % → 74 % of the audio block on average, peak 81 % → 74 % (CPU model, `tools/cpu`; the test rig measurement follows). A pitch that holds still sounds exactly as before.
+- A vibrato costs the oscillators much less: they work out their pitch every 8 samples instead of every sample, with a straight line in between (#461). Io 4's Ensemble Pad keeps its vibrato and plays four notes without dropping a part: before, it dropped one at four and at eight notes in 3 of 3 runs; now four notes average 79 % of the audio block (77 % without the vibrato, 82 % before), with no drop in 3 of 3 runs (test rig, docs/measurements/2026-11-01-rig-io4-vibrato.json). A pitch that holds still sounds exactly as before.
 
 ## 1.8.1 — 2026-11-01
 
