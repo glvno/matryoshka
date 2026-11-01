@@ -81,8 +81,8 @@ static int m1_test_key(uint32_t id, int down);                 /* main.c: the de
 static int m1_test_turn(uint32_t enc, int32_t clicks);
 static uint32_t m1_test_screen(uint32_t k, uint8_t *out);
 static uint32_t m1_test_peak(void);
-static void m1_tempo(uint32_t patch, uint32_t bpm);           /* main.c: the editor set the global tempo (D-903) */
-#include "tempo_glo.h"            /* the global tempo (D-903): proto.c, menu.c, main.c */
+static void m1_tempo(uint32_t patch, uint32_t bpm);           /* main.c: the editor set the global tempo (D-907) */
+#include "tempo_glo.h"            /* the global tempo (D-907): proto.c, menu.c, main.c */
 #include "proto.c"
 #include "slotstore.c"
 #include "presetstore.c"

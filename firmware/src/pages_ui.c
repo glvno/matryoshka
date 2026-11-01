@@ -2310,7 +2310,7 @@ static int dp_load(uint32_t d, uint32_t k)
             m1_param_now(mod, par, v);
         } else {
             if (eng_type(mod) < 0 || par >= DEFS[eng_type(mod)].npar || eng_tempo_row(mod, par))   /* (a preset leaves
-                                                     * the global tempo, D-903) */
+                                                     * the global tempo, D-907) */
                 continue;
             eng_set_param(mod, par, v);
             m1_patch_param(mod, par, v);

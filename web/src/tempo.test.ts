@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The global tempo (D-903): the setting, its storage, the wire format, the browser engine and MIDI clock out.
+// The global tempo (D-907): the setting, its storage, the wire format, the browser engine and MIDI clock out.
 import { describe, expect, it } from 'vitest';
 import { clockPeriod } from './clock-out';
 import { Engine } from './engine';

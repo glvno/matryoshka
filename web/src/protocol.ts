@@ -34,7 +34,7 @@
 //   37 SONG     song u8 (0-based), n u8, n (pattern u8, shift i8)   a song's entries, into the running patch; no reply.
 //                                                    Format 48
 //   38 TEMPO    mode u8 (0 global, 1 patch), bpm u16 (0: the global tempo stays)   GLO > PANEL > TEMPO and the global
-//                                                    tempo (D-903, tempo.ts); no reply. Feature bit 16
+//                                                    tempo (D-907, tempo.ts); no reply. Feature bit 16
 //   29 FOCUS    device u8, page u8                   show this device page (indices into the binary's device pages section,
 //                                                    pages.ts) and put it on K1..K4; no reply. Feature bit 4.
 //   2C LIVE     [paused u8]                          every LIVE_MS while the editor's Live is on: the FM-1 plays the
@@ -286,7 +286,7 @@ export interface Ack {
   aux: number;
 }
 export const FEATURE_SANDBOX = 256;
-/** INFO feature bit 16 (byte 9): TEMPO / TEMPO_NOW, the global tempo shared (D-903) */
+/** INFO feature bit 16 (byte 9): TEMPO / TEMPO_NOW, the global tempo shared (D-907) */
 export const FEATURE_TEMPO = 1 << 16;
 export function parseInfo(p: Parsed): Info | null {
   if (p.cmd !== CMD.info || p.payload.length < 5) return null;

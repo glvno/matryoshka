@@ -172,7 +172,7 @@ export class Engine {
   private tickAcc = 0;
   private extTicks = 0;
   private ext = false;
-  /** the global tempo (D-903, tempo.ts; engine.c tempo_glo): every patch plays at it while set, null: the Main module's */
+  /** the global tempo (D-907, tempo.ts; engine.c tempo_glo): every patch plays at it while set, null: the Main module's */
   tempoGlobal: number | null = null;
   /** MIDI clock: samples since its last tick, and per tick as last measured (0: not yet) */
   private extSince = 0;
@@ -580,7 +580,7 @@ export class Engine {
         pd.name, node.bypass ? node.params[pd.name] ?? pd.default : display[pd.name] ?? eff[pd.name] ?? node.params[pd.name] ?? pd.default,
       ]));
       if (node === this.main && this.hasB) params.morph = this.morphT;
-      if (node === this.main && this.tempoGlobal !== null) params.tempo = this.tempoGlobal;   // (what plays, D-903)
+      if (node === this.main && this.tempoGlobal !== null) params.tempo = this.tempoGlobal;   // (what plays, D-907)
       return { id: node.id, params };
     });
   }

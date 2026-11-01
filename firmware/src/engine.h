@@ -335,7 +335,7 @@ uint32_t eng_ticks(void);                 /* the clock's ticks so far (24 a quar
 int32_t eng_run_ticks(void);              /* ticks since the transport started (the Steps tracks' bars count from there:
                                            * 96 a bar of four beats), -1 until the engine has taken the start */
 int eng_clock_is_external(void);          /* MIDI clock drives the clock */
-/* The global tempo (GLO > PANEL > TEMPO, D-903; engine.ts tempoGlobal): with one set, every patch plays at it and a load
+/* The global tempo (GLO > PANEL > TEMPO, D-907; engine.ts tempoGlobal): with one set, every patch plays at it and a load
  * leaves it (Main's tempo parameter shows it; the patch's own value comes back with eng_tempo_global(0)). Main's tempo
  * set with eng_set_param moves it (a knob, PLAY held + PRESET, the editor's PARAM). MIDI clock overrides it as before.
  * bpm: 0 = each patch its own tempo, ENG_TEMPO_ADOPT = global, starting at the tempo of the patch running (or the next

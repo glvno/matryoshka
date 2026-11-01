@@ -62,7 +62,7 @@ static void m1_song_now(uint32_t s)
 static void m1_mute_now(uint32_t mod, int on) { js_mute(mod, (uint32_t)on); }
 static void m1_arms_now(uint32_t lo, uint32_t hi) { js_arms(lo, hi); }
 /* GLO > PANEL > TEMPO or the global tempo changed here (the menu, PLAY held + PRESET, Main's tempo row while GLOBAL): the
- * page's setting follows (D-903; as the device link's TEMPO_NOW). patch: 0 GLOBAL, 1 PATCH */
+ * page's setting follows (D-907; as the device link's TEMPO_NOW). patch: 0 GLOBAL, 1 PATCH */
 WASM_IMPORT("tempo") void js_tempo(uint32_t patch, uint32_t bpm);
 static void m1_tempo_now(void);
 #define HOST_TEMPO_HOOK
@@ -253,7 +253,7 @@ WASM_EXPORT("fm1w_tick") void fm1w_tick(uint32_t ms)
 }
 
 /* the page's GLO > PANEL > TEMPO (patch: 0 GLOBAL, 1 PATCH) and global tempo (bpm 20..300; 0 keeps it): the engine and
- * the menu follow (D-903) */
+ * the menu follow (D-907) */
 WASM_EXPORT("fm1w_tempo") void fm1w_tempo(uint32_t patch, uint32_t bpm)
 {
     gt_set(patch, bpm, fm1_ms);

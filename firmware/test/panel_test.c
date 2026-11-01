@@ -3764,7 +3764,7 @@ int main(void)
         }
     }
     help_suite();
-    {                                                       /* the global tempo (D-903, tempo_glo.h) */
+    {                                                       /* the global tempo (D-907, tempo_glo.h) */
         uint8_t rec[16], old[16];
         uint32_t k, other = N_PRESETS, r, told, t0;
         int main_m;

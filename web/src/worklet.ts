@@ -19,7 +19,7 @@ export type HostMsg =
   | { t: 'bypass'; id: number; on: boolean }
   | { t: 'range'; id: number; index: number; name: string; range: [number, number] | null }
   | { t: 'transport'; on: boolean }
-  /** the global tempo (D-903), null: each patch its own */
+  /** the global tempo (D-907), null: each patch its own */
   | { t: 'tempo'; bpm: number | null }
   | { t: 'button'; i: number; on: boolean }
   /** a Steps module's notes edited (#133), a Steps module muted */

@@ -5739,7 +5739,7 @@ export class Editor {
     this.markArm();
   }
 
-  /** Main's tempo row while the tempo is global (D-903, tempo.ts): it shows and sets the global tempo, which every patch
+  /** Main's tempo row while the tempo is global (D-907, tempo.ts): it shows and sets the global tempo, which every patch
    * plays at, and says so; the patch's own tempo stays as it is (the row's tooltip names it) */
   private globalTempoRow(m: ModuleInst, def: ModuleDef, pd: ParamDef, o: Parameters<Editor['paramRow']>[3] = {}): HTMLElement {
     const params = new Proxy(m.params, {
@@ -5752,7 +5752,7 @@ export class Editor {
     return row;
   }
 
-  /** a parameter's value as the rows and knobs show it: Main's tempo is the global tempo while that is on (D-903) */
+  /** a parameter's value as the rows and knobs show it: Main's tempo is the global tempo while that is on (D-907) */
   private shownParam(m: ModuleInst, name: string): number {
     return isGlobalTempo(m.type, name) ? tempo.bpm : m.params[name];
   }
@@ -5769,7 +5769,7 @@ export class Editor {
   /** set a parameter from outside the cards (the deck's knobs): as a slider would, the card follows on its next refresh */
   setParam(id: number, name: string, v: number): void {
     const m = this.patch.modules.find((x) => x.id === id);
-    if (m && isGlobalTempo(m.type, name)) return tempo.set({ bpm: v });   // (the global tempo, not the patch's: D-903)
+    if (m && isGlobalTempo(m.type, name)) return tempo.set({ bpm: v });   // (the global tempo, not the patch's: D-907)
     if (!m || m.params[name] === v) return;
     this.touch();
     m.params[name] = v;

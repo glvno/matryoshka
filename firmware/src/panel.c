@@ -388,7 +388,7 @@ static void panel_encoders(int32_t *st)
             return;
     }
     if (st[6] && (panel_held >> BTN_PLAY & 1u)) {   /* PLAY held + PRESET: the tempo (the Main module's; with TEMPO GLOBAL
-                                                     * the global tempo, which Main's shows, D-903), 1 bpm a click */
+                                                     * the global tempo, which Main's shows, D-907), 1 bpm a click */
         play_turned = 1;
         if (panel >= 0 && !eng_clock_is_external()) {
             char m[16], num[8];

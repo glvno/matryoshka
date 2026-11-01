@@ -148,7 +148,7 @@ export class AudioHost {
     this.send({ t: 'transport', on });
   }
 
-  /** the global tempo (D-903, tempo.ts): every patch plays at it, null: each its own; kept for when the worklet starts */
+  /** the global tempo (D-907, tempo.ts): every patch plays at it, null: each its own; kept for when the worklet starts */
   private tempoOn: number | null = null;
   tempo(bpm: number | null): void {
     this.tempoOn = bpm;

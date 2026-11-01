@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The global tempo (D-903): FM-1 & MIDI > Tempo is Global (as made: one tempo every patch plays at; opening or sending
+// The global tempo (D-907): FM-1 & MIDI > Tempo is Global (as made: one tempo every patch plays at; opening or sending
 // a patch and loading a device preset leave it) or Patch (each patch plays its own, Main's `tempo`). Each patch keeps its
 // own tempo either way; Global only sets it aside. The browser engine (engine.ts tempoGlobal), MIDI clock out and the
 // FM-1 tab play it; Main's tempo row shows and edits it. While an FM-1 is connected the setting is the FM-1's (protocol.ts

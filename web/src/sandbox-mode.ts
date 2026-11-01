@@ -14,7 +14,7 @@ function sandboxRow(patch: Patch, r: Device['pages'][number]['rows'][number] | u
   const m = r && patch.modules.find((x) => x.id === r.module);
   const pd = m && DEFS[m.type]?.params.find((q) => q.name === r!.param);
   if (!r || !m || !pd) return null;
-  const v = isGlobalTempo(m.type, r.param) ? tempo.bpm : m.params[r.param] ?? pd.default;   // (Main's tempo: the global one, D-903)
+  const v = isGlobalTempo(m.type, r.param) ? tempo.bpm : m.params[r.param] ?? pd.default;   // (Main's tempo: the global one, D-907)
   if (pd.choices) {
     const n = pd.choices.length;
     const i = Math.max(0, Math.min(n - 1, Math.round(v)));

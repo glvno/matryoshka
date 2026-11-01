@@ -870,7 +870,7 @@ fn tempo_turn(m: &mut Machine, clicks: i32) -> Result<(), String> {
     m.run_for(200)
 }
 
-/// The global tempo (D-903): GLO > PANEL > TEMPO, GLOBAL as made. PLAY held + PRESET sets it, the next patch (HOME held +
+/// The global tempo (D-907): GLO > PANEL > TEMPO, GLOBAL as made. PLAY held + PRESET sets it, the next patch (HOME held +
 /// PRESET) plays at it, and it is in the settings record about 5 s later without SAVE (a boot on the same flash). PATCH
 /// is kept the same way.
 fn global_tempo(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {

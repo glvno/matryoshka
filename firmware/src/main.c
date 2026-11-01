@@ -269,7 +269,7 @@ static int slot_used(uint32_t s) { return s < M1_SLOTS && (bank_mask >> s & 1u);
 
 /* the settings record: version, slot, octave + 8, LED mode, knob accel (bit 0; bit 1: the quick start off, D-247: a record
  * from before reads as on, and an older firmware reads the accel as before), the global tempo's low byte (byte 5,
- * D-903; was CPU in the bar), clock in, TEMPO and the tempo's bit 8 (byte 7, tempo_glo.h; was program change),
+ * D-907; was CPU in the bar), clock in, TEMPO and the tempo's bit 8 (byte 7, tempo_glo.h; was program change),
  * MIDI channel, MIDI out, the bank's format, the selected module, REC's count-in (byte 12, #414: a record without
  * it, SET_MIN bytes, reads as OFF), the factory set the bank's untouched factory slots hold (bytes 13..15, #441: a
  * record without them reads as unknown). The version stays 1, so an older firmware reads the longer record too; it
@@ -290,7 +290,7 @@ static void settings_pack(uint8_t *d)
     d[3] = cfg.leds;
     d[4] = (uint8_t)(cfg.accel | (cfg.quick ? 0u : 2u));
     d[6] = cfg.clock_in;
-    gt_pack(d);                                 /* bytes 5 and 7: the global tempo and TEMPO (D-903) */
+    gt_pack(d);                                 /* bytes 5 and 7: the global tempo and TEMPO (D-907) */
     d[8] = cfg.ch;
     d[9] = cfg.midi_out;                        /* (was the mixer's level before #60: values over 1 read as on) */
     d[10] = bank_fmt;
@@ -333,7 +333,7 @@ static int store_write(uint32_t id, const char *name, const uint8_t *p, uint32_t
 }
 
 /* the settings record alone, now (panel.c: HOME + SAVE on the quick start turns it off for good, D-247; the global
- * tempo 5 s after its last change, D-903) */
+ * tempo 5 s after its last change, D-907) */
 static void settings_store(void)
 {
     uint8_t set[SET_LEN];
@@ -341,7 +341,7 @@ static void settings_store(void)
     (void)store_write(SL_SETTINGS, 0, set, SET_LEN);
 }
 
-/* TEMPO from the editor (proto.c, D-903) */
+/* TEMPO from the editor (proto.c, D-907) */
 static void m1_tempo(uint32_t patch, uint32_t bpm)
 {
     gt_set(patch, bpm, fm1_ms);

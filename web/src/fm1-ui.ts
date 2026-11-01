@@ -32,7 +32,7 @@ export interface Fm1Events {
    * their index in the binary, as a mask in two halves */
   arms?(lo: number, hi: number): void;
   /** GLO > PANEL > TEMPO or the global tempo changed on the emulated FM-1 (its menu, PLAY held + PRESET, Main's tempo row
-   * while global; D-903): global, and the global tempo (0: not known yet) */
+   * while global; D-907): global, and the global tempo (0: not known yet) */
   tempo?(global: boolean, bpm: number): void;
 }
 
@@ -65,7 +65,7 @@ interface Exports {
   fm1w_transport(run: number): void;
   fm1w_mute(module: number, on: number): void;
   fm1w_arm_mask(lo: number, hi: number): void;
-  /** (absent from a wasm built before D-903) */
+  /** (absent from a wasm built before D-907) */
   fm1w_tempo?(patch: number, bpm: number): void;
   fm1w_focus_dev(): number; fm1w_focus_page(): number; fm1w_octave(): number;
 }
@@ -127,7 +127,7 @@ export class Fm1Ui {
   transport(run: boolean): void { this.x.fm1w_transport(run ? 1 : 0); }
   /** a track muted / unmuted on the FM-1 it follows (MUTE_NOW): its black key's light follows */
   mute(module: number, on: boolean): void { this.x.fm1w_mute(module, on ? 1 : 0); }
-  /** the page's TEMPO setting and global tempo (D-903): the emulated FM-1 plays and shows them */
+  /** the page's TEMPO setting and global tempo (D-907): the emulated FM-1 plays and shows them */
   tempo(global: boolean, bpm: number): void { this.x.fm1w_tempo?.(global ? 0 : 1, Math.round(bpm)); }
   /** the editor's armed devices (#191): their modules as a mask (arm.ts armMask) */
   armMask(lo: number, hi: number): void { this.x.fm1w_arm_mask(lo >>> 0, hi >>> 0); }

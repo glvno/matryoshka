@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 glvno */
-/* The global tempo (D-903): GLO > PANEL > TEMPO is GLOBAL (as made: one tempo every patch plays at; PRESET, program change,
+/* The global tempo (D-907): GLO > PANEL > TEMPO is GLOBAL (as made: one tempo every patch plays at; PRESET, program change,
  * the editor's patch and a device preset leave it) or PATCH (each patch plays its own, Main's tempo). The engine plays it
  * (eng_tempo_global); here are the setting, its place in the settings record and the write that keeps it without SAVE.
  * Main's tempo row, PLAY held + PRESET and the editor's PARAM move it through eng_set_param; SAVE keeps the patch's own.

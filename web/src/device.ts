@@ -166,7 +166,7 @@ export type DeviceEvent =
   | { kind: 'presetStored'; structure: string; name: string }
   /** an INFO nobody asked for: MENU > MIDI OUT changed under Live (feature bit 8; `info` has it) */
   | { kind: 'info' }
-  /** GLO > PANEL > TEMPO and the global tempo as the FM-1 has them (TEMPO_NOW, D-903): after HELLO, and when they change
+  /** GLO > PANEL > TEMPO and the global tempo as the FM-1 has them (TEMPO_NOW, D-907): after HELLO, and when they change
    *  there; bpm 0: not known yet */
   | { kind: 'tempo'; global: boolean; bpm: number };
 
@@ -329,7 +329,7 @@ export class DeviceLink {
     return !!(this.info && this.info.features & 2);
   }
 
-  /** the firmware shares the global tempo (TEMPO / TEMPO_NOW, INFO feature bit 16, D-903) */
+  /** the firmware shares the global tempo (TEMPO / TEMPO_NOW, INFO feature bit 16, D-907) */
   get hasTempo(): boolean {
     return !!(this.info && this.info.features & FEATURE_TEMPO);
   }

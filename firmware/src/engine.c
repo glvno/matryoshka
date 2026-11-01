@@ -1542,7 +1542,7 @@ int eng_load(const uint8_t *p, uint32_t len)
         if (E.node[i].type == T_STEPS)
             E.trk_drum[E.node[i].trk] = (uint8_t)(eng_steps_drummap(i) >= 0);
     tempo_own = E.main >= 0 ? E.node[E.main].par[FM1_P_TEMPO] : (int32_t)(TEMPO_DEFAULT << 16);
-    if (tempo_glo)                               /* the global tempo (D-903): the patch plays at it, its own value kept */
+    if (tempo_glo)                               /* the global tempo (D-907): the patch plays at it, its own value kept */
         tempo_apply();
     return 0;
 }
@@ -1698,7 +1698,7 @@ int32_t eng_att(uint32_t module, uint32_t input)
     return module < E.nmod && input < 2u ? E.node[module].att[input] : 0;
 }
 
-/* Main's tempo set while the tempo is global: the global tempo moves (D-903) */
+/* Main's tempo set while the tempo is global: the global tempo moves (D-907) */
 static void tempo_follow(uint32_t module, uint32_t param, int32_t q16)
 {
     if (eng_tempo_row(module, param)) {
@@ -6558,7 +6558,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
         if (ramp[0].left | ramp[1].left | ramp[2].left | ramp[3].left)
             ramp_tick();
         E.morph = E.has_b ? morph_position(n) : 0;
-        {   /* the clock: MIDI ticks while external, else the global tempo (D-903) or the Main module's (whole bpm x 24 ticks a
+        {   /* the clock: MIDI ticks while external, else the global tempo (D-907) or the Main module's (whole bpm x 24 ticks a
              * minute) */
             uint32_t bpm = tempo_glo > ENG_TEMPO_ADOPT ? tempo_glo
                          : E.main >= 0 ? (uint32_t)clampi((E.node[E.main].par[FM1_P_TEMPO] + 32768) >> 16, 20, 300) : TEMPO_DEFAULT, seen = 0, t;

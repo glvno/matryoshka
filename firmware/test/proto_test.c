@@ -574,7 +574,7 @@ int main(int argc, char **argv)
         CHECK(!(p[3] & M1_INFO_MIDI_OUT));
         midi_out_on = 1;
     }
-    /* TEMPO (D-903, feature bit 16): GLOBAL at a tempo, PATCH; Main's tempo shows what plays, the patch keeps its own */
+    /* TEMPO (D-907, feature bit 16): GLOBAL at a tempo, PATCH; Main's tempo shows what plays, the patch keeps its own */
     {
         int m = eng_find(T_FM1);
         uint8_t q[16] = {0x7D, 0x4D, 0x31, C_TEMPO}, pl[3], p[8];
