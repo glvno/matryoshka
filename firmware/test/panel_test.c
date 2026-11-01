@@ -465,6 +465,60 @@ int main(void)
     check("old-format edits cannot add new allocation settings", poly_row_set(mod, ENG_POLY_STEAL, 0) == -1 && poly_row_set(mod, ENG_POLY_ASSIGN, 3) == -1 && pv_bin[9] == 0 && pv_bin[11] == 0);
     fm1_ms = 10000;
     host_ps_init();
+    if (load("CASSIA 1") == 0) {                        /* #485: Cassia 1's 118 rows stored whole; one of 88 loads what it has */
+        uint32_t d, i, n, st, nv, rows;
+        int at, same = 1, kept = 1;
+        static int32_t full[PS_MAXV], init[PS_MAXV], one[PS_MAXV];
+        char nm[17];
+        pages_ensure();
+        for (d = 0; d < pg_ndev && pg_dev[d].nrows != 118u; d++)
+            ;
+        check("(Cassia 1's device: 118 rows)", d < pg_ndev);
+        if (d < pg_ndev) {
+            rows = pg_dev[d].nrows;
+            (void)dp_list(d);
+            n = (uint32_t)dp_entry(pr_list[1], nm);
+            for (i = 0; i < n; i++)
+                one[i] = pr_at[i];
+            (void)dp_load(d, 1);
+            dp_store(d);
+            nv = dp_values(d);
+            for (i = 0; i < nv; i++)
+                full[i] = pr_vals[i];
+            at = ps_find(pg_dev[d].structure, pg_pname[d]);
+            if (at < 0 || ps_read((uint32_t)at, &st, nm, &n) || n != rows)
+                same = 0;
+            for (i = 0; same && i < rows; i++)
+                same = ps_vbuf[i] == full[i];
+            check("ENV held + SAVE on Cassia 1: all 118 rows stored, in two slots", nv == rows && same && ps_count(PS_LIVE) == 2u);
+            (void)dp_load(d, 0);                        /* (Init's values, then a preset of 88 as 1.8.1 stored them) */
+            nv = dp_values(d);
+            for (i = 0; i < nv; i++)
+                init[i] = pr_vals[i];
+            check("(an 88-value preset as older firmware stored it)", ps_put(pg_dev[d].structure, "ZOLD", one, 88) == 0);
+            n = dp_list(d);
+            pg_cur_dev = d;
+            (void)dp_entry(pr_list[n - 2u], nm);
+            dp_name_set(d, nm);
+            pages_ensure();
+            msg_text[0] = 0;
+            check("PRESET onto it: loaded", dev_preset_step(1) == 1 && !ps_name_cmp(pg_pname[d], "ZOLD") && dp_short);
+            nv = dp_values(d);
+            for (i = 0; i < nv; i++) {
+                if (i < 88u && pr_vals[i] != full[i])     /* (as the whole preset loaded them: a row's value as it reads back) */
+                    same = 0, printf("      (row %u: %d, the preset's %d)\n", i, pr_vals[i], full[i]);
+                if (i >= 88u && pr_vals[i] != init[i])
+                    kept = 0, printf("      (row %u: %d, Init's %d)\n", i, pr_vals[i], init[i]);
+            }
+            check("  its 88 rows set in order, the other 30 keep their values", same && kept);
+            check("  the bar: STORED SHORT: SEE EDITOR (24 characters)", !strcmp(msg_text, "STORED SHORT: SEE EDITOR"));
+            later(1500);
+        }
+        host_ps_init();
+        host_preset_stored = 0;
+        m1_edited = 0;                                  /* (the preset names went into the running patch) */
+    } else
+        check("Cassia 1 loads for the preset store", 0);
     if (load("808 KIT")) {
         printf("FAIL  the 808 Kit loads\n");
         return 1;

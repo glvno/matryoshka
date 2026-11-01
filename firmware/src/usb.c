@@ -172,7 +172,7 @@ static struct {
 #if FELUCCA_OTA
 /* M-UPGRADE/editor SysEx: one received frame at a time (7-bit bytes between F0 and F7). EP1 and the emulator pause
  * until the main loop releases it, keeping later messages in order. A TX ring sends SysEx packets before MIDI. */
-static uint8_t sx_frame[640];
+static uint8_t sx_frame[1024];                         /* (the longest: an editor PRESET_PUT of 176 values, 836 bytes) */
 static uint32_t sx_pos;
 static volatile uint32_t sx_frame_len;
 static volatile uint8_t sx_ready, sx_collect, sx_busy;

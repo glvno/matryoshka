@@ -67,7 +67,8 @@ import { SongView } from './song';
 import type { PatternView } from './engine';
 import { fixNotes, fixPatterns, fixSeq, overdub, PATTERNS_MAX, patternOf, SONGS_MAX, type Pattern, type SeqState, type SongEntry, type StepNote } from './track';
 import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './engines';
-import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, sameName, renamePreset, stepPreset, storePreset } from './device-presets';
+import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, sameName, renamePreset, shortBy, shortPresetText, stepPreset, storePreset } from './device-presets';
+import { engineOf } from './library-presets';
 import { structureOf } from './structure';
 import { armable, armDrawing, armedWith, keepArmed, type DeviceKey } from './arm';
 import { PianoRoll } from './roll';
@@ -3713,7 +3714,9 @@ export class Editor {
   private loadPreset(a: AssemblyInst, name: string): void {
     const pr = presetsOf(this.patch, a).find((x) => sameName(x.name, name));
     if (!pr) return;
-    if (this.change(() => applyPreset(this.patch, a, pr))) this.ev.onError(`${a.label}: preset "${pr.name}"`);
+    const missing = shortBy(this.patch, a, pr);
+    if (this.change(() => applyPreset(this.patch, a, pr)))
+      this.ev.onError(missing ? shortPresetText(engineOf(pr.structure) || a.label, missing, pr.values.length + missing) : `${a.label}: preset "${pr.name}"`);
   }
 
   /** the presets menu of an assembly device: load one, store, rename, delete */
