@@ -10,11 +10,11 @@ const modules: Command[] = addableModules(DEFS).map((m) => ({ kind: 'add module'
 const found = (q: string): string[] => searchCommands(modules, q).map((c) => c.label);
 
 describe('module search (#513)', () => {
-  it('finds every filter by "filter", the Multimode and the Ladder too', () => {
-    expect(found('filter')).toEqual(expect.arrayContaining(['Multimode', 'Ladder', 'Comb filter', 'Formant filter']));
+  it('finds every filter by "filter", the Multimode filter and the Ladder too', () => {
+    expect(found('filter')).toEqual(expect.arrayContaining(['Multimode filter', 'Ladder', 'Comb filter', 'Formant filter']));
   });
-  it('finds the Multimode by its responses', () => {
-    for (const q of ['high pass', 'band pass', 'low pass', 'notch', 'hp', 'bp', 'vcf']) expect(found(q)).toContain('Multimode');
+  it('finds the Multimode filter by its responses', () => {
+    for (const q of ['high pass', 'band pass', 'low pass', 'notch', 'hp', 'bp', 'vcf', 'state variable', 'multimode']) expect(found(q)).toContain('Multimode filter');
   });
   it('finds a renamed module by its former name', () => {
     expect(found('scale')).toContain('Attenuverter');
