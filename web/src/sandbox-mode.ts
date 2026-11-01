@@ -6,6 +6,7 @@ import { choiceName, formatValue } from './labels';
 import { fm1PageTitle, PAGE_ROWS, type Device } from './pages';
 import { toUnit, type Patch } from './patch';
 import type { SandboxPage, SandboxRow } from './protocol';
+import { isGlobalTempo, tempo } from './tempo';
 
 /** a row of the page: its name, its value and unit as the dock's knob shows them, where it sits (0..1, choices evenly),
  *  and its choice count (a switch: 2; continuous: 0). null when the row is not there */
@@ -13,7 +14,7 @@ function sandboxRow(patch: Patch, r: Device['pages'][number]['rows'][number] | u
   const m = r && patch.modules.find((x) => x.id === r.module);
   const pd = m && DEFS[m.type]?.params.find((q) => q.name === r!.param);
   if (!r || !m || !pd) return null;
-  const v = m.params[r.param] ?? pd.default;
+  const v = isGlobalTempo(m.type, r.param) ? tempo.bpm : m.params[r.param] ?? pd.default;   // (Main's tempo: the global one, D-903)
   if (pd.choices) {
     const n = pd.choices.length;
     const i = Math.max(0, Math.min(n - 1, Math.round(v)));
