@@ -104,7 +104,7 @@ static uint32_t help_patch_rows(const char **out)
 
 #define E_TEMPO "k:PLAY|t:+|n:PRESET~tempo"
 #define E_PATCH "k:HOME|t:+|n:PRESET~patches"
-#define E_STORE "k:ENV|t:+|k:SAVE~store a preset"
+#define E_STORE "k:ENV|t:+|k:SAVE~save device preset"
 #define E_ARM "k:REC|t:+|b:~arm a track"
 #define E_MUTE "k:SEQ|t:+|b:~mute a track"
 
@@ -115,8 +115,23 @@ static uint32_t help_rows(uint32_t t, const char **r)
     int tracks = eng_steps_count() > 0, mod = seq_module(), store = help_dev_store();
     int longtrk = page == PAGE_SEQ && mod >= 0 && seq_len(mod) > 16;
 #define R(x) (r[n++] = (x))
-    if (t) {                                        /* EVERYWHERE: the combinations nobody would guess, but what the state's
-                                                     * tab lists or gives another job (D-246) */
+    if (t) {                                        /* EVERYWHERE: each button's job everywhere, then the combinations, but
+                                                     * what the state's tab lists or gives another job (D-246) */
+        int seq = s == HS_DRUM || s == HS_ROLL || s == HS_LIVE || s == HS_SONG;
+        R("k:PLAY~start / stop");
+        if (s != HS_SANDBOX)
+            R("k:REC~record");
+        if (s != HS_MENU && s != HS_SANDBOX)
+            R("k:SAVE~save patch");
+        R("k:HOME~back");
+        if (s != HS_MENU)
+            R("k:GLO~settings");
+        if (s != HS_ENV && s != HS_SANDBOX)
+            R("k:ENV~environment");
+        if (!seq && s != HS_SANDBOX)
+            R("k:SEQ~steps page");
+        if (s != HS_DRUM && s != HS_ROLL && s != HS_MENU)
+            R("k:OCT-|t:/|k:OCT+~octave");
         R(E_TEMPO);
         if (s == HS_SANDBOX)
             return n;
@@ -197,12 +212,14 @@ static uint32_t help_rows(uint32_t t, const char **r)
         R("n:PRESET~pattern");
         break;
     case HS_SONG:
-        R("n:SELECT~move cursor");
+        R("n:SELECT~pick entry");
         R("c:1~entry's pattern");
-        R("c:2~shift");
-        R("k:FX|t:+|c:1~insert");
-        R("n:ALGO~song");
-        R("n:PRESET~pattern");
+        R("c:1|t:on END~add entry");
+        R("k:FX|t:+|c:1~duplicate entry");
+        R("c:2~transpose entry");
+        R("c:4~song on / off");
+        R("n:ALGO~song 1-8");
+        R("n:PRESET~selected pattern");
         R("k:SEQ|t:+|k:REC~delete entry");
         R("k:SEL~back to steps");
         break;
@@ -367,13 +384,19 @@ static void help_sheet_draw(int full)
     int t = help_tab != 0;
     if (help_top + HC_VIS > n)
         help_top = (uint8_t)(n > HC_VIS ? n - HC_VIS : 0u);
-    if (full) {
-        static const char *const F[6] = {"ALGO", " tab   ", "SELECT", " scroll   ", "HOME", " close"};
-        static const uint16_t FC[6] = {P_INK, P_FAINT, P_INK, P_FAINT, P_INK, P_FAINT};
+    if (full)
         help_ground();
-        help_runs(HC_M + HC_W - 20u, F, FC, 6);
-    } else
-        lcd_fill(HC_IX, HC_TOP, HC_IW, win, P_PANEL);
+    else
+        lcd_fill(HC_IX, HC_TOP, HC_IW, HC_M + HC_W - 2u - HC_TOP, P_PANEL);
+    {                                               /* the bottom line: SELECT only when the rows scroll (D-246) */
+        static const char *const F[6] = {"ALGO", " tab   ", "SELECT", " scroll   ", "HOME", " close"};
+        static const char *const F2[4] = {"ALGO", " tab   ", "HOME", " close"};
+        static const uint16_t FC[6] = {P_INK, P_FAINT, P_INK, P_FAINT, P_INK, P_FAINT};
+        if (n > HC_VIS)
+            help_runs(HC_M + HC_W - 20u, F, FC, 6);
+        else
+            help_runs(HC_M + HC_W - 20u, F2, FC, 4);
+    }
     lcd_fill(HC_IX, HC_M + 2u, w1, 20, t ? P_TRACK : on);          /* the tabs: the one shown sky at 75 % */
     lcd_fill(HC_IX + w1, HC_M + 2u, w2, 20, t ? on : P_TRACK);
     text_bc(&FONT_S, HC_IX, HC_M + 5u, title, t ? P_DIM : P_NIGHT, t ? P_TRACK : on, w1, TA_CENTER);

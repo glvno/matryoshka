@@ -101,10 +101,21 @@ static void help_suite(void)
     /* the controls it takes */
     from = mlen;
     enc(1, 1);
-    check("ALGO right: EVERYWHERE", help_tab == 1u && on_screen("tempo") && on_screen("patches") && !on_screen("adjust values"));
+    check("ALGO right: EVERYWHERE, the single buttons first", help_tab == 1u && on_screen("start / stop") && on_screen("save patch")
+          && on_screen("settings") && !on_screen("adjust values"));
     check("  the tab drawn in part = drawn whole", help_whole_same());
+    {
+        const char *r[HC_ROWS];
+        uint32_t n = help_rows(1, r), i, combos = 0;
+        for (i = 0; i < n; i++)
+            combos += i >= 7u && (strstr(r[i], "~tempo") || strstr(r[i], "~patches"));
+        check("  then the combinations: tempo, patches", combos == 2u);
+        check("  more rows than fit: the bottom line names SELECT scroll", n > HC_VIS && on_screen("scroll"));
+    }
     enc(1, -1);
     check("ALGO left: the DEVICE tab again", help_tab == 0u && on_screen("adjust values"));
+    check("  its rows fit: the bottom line leaves SELECT out", help_rows(0, (const char *[HC_ROWS]){0}) <= HC_VIS && !on_screen("scroll")
+          && on_screen("close"));
     {
         const char *r[HC_ROWS];
         uint32_t n = help_rows(0, r);

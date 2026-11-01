@@ -885,7 +885,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     t.check("  the octave unchanged (OCT acts on its release, and not after the pair)", !font::on_screen(m.lcd(), "OCTAVE"), String::new());
     t.snap(&m, "controls-sheet");
     m.turn(ALGO, 1, 400)?;
-    t.screen(&m, "ALGO on the sheet: EVERYWHERE (HOME + PRESET patches)", "patches");
+    t.screen(&m, "ALGO on the sheet: EVERYWHERE (GLO settings)", "settings");
     m.tap(HOME, 120, 400)?;
     let up = wait_text(&mut m, DEVICE_PAGE, 2000)?;
     t.check("HOME closes the sheet: the main page", up && !font::on_screen(m.lcd(), "EVERYWHERE"), format!("at {} ms", m.ms()));
