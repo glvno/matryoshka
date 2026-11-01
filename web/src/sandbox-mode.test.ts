@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { addModule, emptyPatch } from './patch';
 import { devicesOf } from './pages';
-import { sandboxKey, sandboxPage, sandboxStep } from './sandbox-mode';
+import { SANDBOX_TEMPO, sandboxKey, sandboxPage, sandboxStep, sandboxTempo, sandboxTempoTurn } from './sandbox-mode';
 
 describe('sandboxPage (the page the FM-1 draws in sandbox mode)', () => {
   const patch = () => {
@@ -58,7 +58,54 @@ describe('sandboxPage (the page the FM-1 draws in sandbox mode)', () => {
     const r = dev.pages[0].rows[0];
     f.params[r.param] = DEFS.filter.params.find((q) => q.name === r.param)!.max;
     expect(sandboxKey(sandboxPage(p, devices, { device: dev.key, page: 0 }))).not.toBe(a);
-    expect(sandboxPage(p, [], null)).toEqual({ patch: 'Big One', device: '', page: '', index: 0, count: 0, rows: [null, null, null, null] });
+    expect(sandboxPage(p, [], null)).toEqual({ patch: 'Big One', device: '', page: '', index: 0, count: 0, rows: [null, null, null, null],
+      tempo: 0, unsaved: false, armed: 0 });
+  });
+
+  it('places the page for the FM-1\'s header: its device among the devices, its group, its page in the group (1.8)', () => {
+    const { p, f } = patch();
+    const devices = devicesOf(p, DEFS);
+    const di = devices.findIndex((d) => d.module === f.id);
+    const dev = devices[di];
+    const groups = dev.pages.filter((x, i) => i === 0 || x.part === 0).length;
+    const last = dev.pages.length - 1;
+    const pg = sandboxPage(p, devices, { device: dev.key, page: last });
+    expect(pg.place).toEqual({ devices: devices.length, device: di, groups, group: groups - 1, pages: dev.pages[last].parts, page: dev.pages[last].part });
+    expect(sandboxPage(p, devices, { device: dev.key, page: 0 }).place).toMatchObject({ group: 0, page: 0 });
+  });
+
+  it('carries unsaved edits and the armed devices (a bit per device, in the devices\' order)', () => {
+    const { p, f } = patch();
+    const devices = devicesOf(p, DEFS);
+    const di = devices.findIndex((d) => d.module === f.id);
+    const pg = sandboxPage(p, devices, { device: devices[di].key, page: 0 }, { unsaved: true, armed: [devices[di].key, 'm9999'] });
+    expect(pg.unsaved).toBe(true);
+    expect(pg.armed).toBe(1 << di);
+    expect(sandboxPage(p, devices, { device: devices[di].key, page: 0 }).armed).toBe(0);
+  });
+});
+
+describe('the tempo in sandbox mode (D-232: PLAY held + PRESET on the FM-1 sets the browser patch\'s)', () => {
+  const withMain = () => {
+    const p = emptyPatch();
+    const m = addModule(p, DEFS.fm1, 20, 20);
+    m.params.tempo = 120;
+    return { p, m };
+  };
+  it('is Main\'s tempo, 0 without Main', () => {
+    const { p } = withMain();
+    expect(sandboxTempo(p)).toBe(120);
+    expect(sandboxPage(p, [], null).tempo).toBe(120);
+    expect(sandboxTempo(emptyPatch())).toBe(0);
+  });
+  it('PRESET\'s clicks move it a bpm each, within 20..300; nothing to do: null', () => {
+    const { p, m } = withMain();
+    expect(sandboxTempoTurn(p, 3)).toEqual({ module: m.id, tempo: 123 });
+    expect(sandboxTempoTurn(p, -500)).toEqual({ module: m.id, tempo: SANDBOX_TEMPO.min });
+    m.params.tempo = SANDBOX_TEMPO.max;
+    expect(sandboxTempoTurn(p, 1)).toBeNull();
+    expect(sandboxTempoTurn(p, 0)).toBeNull();
+    expect(sandboxTempoTurn(emptyPatch(), 1)).toBeNull();
   });
 });
 

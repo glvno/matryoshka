@@ -13,7 +13,7 @@ import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
 import { chipState, DeviceLink, deviceIndex, liveSync, sandboxChip, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, type ChipState, type DeviceEvent } from './device';
 import { SITE_URL } from './site';
-import { sandboxKey, sandboxPage, sandboxStep } from './sandbox-mode';
+import { sandboxKey, sandboxPage, sandboxStep, sandboxTempoTurn } from './sandbox-mode';
 import { LIVE_MS, slotLabel } from './protocol';
 import { Fm1View } from './fm1-view';
 import { EmuKeys } from './emu-keys';
@@ -157,10 +157,23 @@ function sandboxCheck(): void {
   if (sandboxFollows && mirror.following) unfollowFm1('sandbox mode ended: not following the FM-1');
   sandboxFollows = false;
 }
+/** whether the patch has unsaved edits, for the FM-1's footer (" *"): read at most every UNSAVED_MS (it compares the
+ *  patch with the saved one of its name) */
+const UNSAVED_MS = 500;
+let unsavedAt = -Infinity;
+let unsavedNow = false;
+const sandboxUnsaved = (): boolean => {
+  const t = performance.now();
+  if (t - unsavedAt >= UNSAVED_MS) {
+    unsavedAt = t;
+    unsavedNow = unsavedChanges(editor.patch, savedPatches());
+  }
+  return unsavedNow;
+};
 /** the page in focus to the FM-1, when it differs from the last one sent (checked every SANDBOX_MS while in sandbox mode) */
 function sandboxSend(): void {
   if (!sandboxOn() || !device.hasSandbox) return;
-  const pg = sandboxPage(editor.patch, editor.devices, editor.focus);
+  const pg = sandboxPage(editor.patch, editor.devices, editor.focus, { unsaved: sandboxUnsaved(), armed: editor.armedSet });
   const key = sandboxKey(pg);
   if (key === sandboxSent) return;
   sandboxSent = key;
@@ -1861,6 +1874,8 @@ $('dev-btn').onclick = async () => {
 // through Matryoshka's panel logic (the FM-1 tab's WebAssembly copy, which tells the editor its focus and page) and the
 // editor (Main's knobs, the patch buttons), and its keys play the browser engine. Nothing goes back to the FM-1.
 const mirror = new Fm1Mirror();
+/** the followed FM-1's PLAY is held (PLAY held + PRESET: the tempo) */
+let fm1PlayHeld = false;
 const PANEL_OF_ID = new Map<number, number>(PANEL_BUTTONS.map((b, i) => [BUTTONS[b as keyof typeof BUTTONS], i]));
 mirror.onInput = (i) => void mirrorInput(i);
 async function mirrorInput(i: PanelInput): Promise<void> {
@@ -1874,6 +1889,13 @@ async function mirrorInput(i: PanelInput): Promise<void> {
       case 'master': emu.setMaster(i.v); host.setMaster(i.v); break;
       case 'transport': setPlaying(i.run); break;
       case 'enc':
+        if (i.n === ENCODERS.preset && sandboxOn() && fm1PlayHeld) {   // PLAY held + PRESET in sandbox mode: the browser's tempo
+          // (D-232), a bpm a click as the FM-1 shows it; the FM-1's PLAY release then neither starts nor stops (as on the FM-1)
+          const t = sandboxTempoTurn(editor.patch, i.clicks);
+          if (t) editor.setParam(t.module, 'tempo', t.tempo);
+          emu.ui?.playTurned();
+          break;
+        }
         if (i.n === ENCODERS.preset && (live() || sandboxOn())) break;   // (with Live the FM-1 plays the editor's patch: its slots are its own)
         if (sandboxOn() && (i.n === ENCODERS.select || i.n === ENCODERS.algo)) {   // sandbox mode: the editor's own focus moves
           const f = sandboxStep(editor.devices, editor.focus, i.n === ENCODERS.select, i.clicks);
@@ -1883,6 +1905,7 @@ async function mirrorInput(i: PanelInput): Promise<void> {
         emu.drive(i);
         break;
       case 'button': {
+        if (i.id === BUTTONS.play) fm1PlayHeld = i.down;
         const b = PANEL_OF_ID.get(i.id);
         followOctave(noteKeys, () => emu.octave, () => emu.drive(i));   // (OCT- / OCT+: the editor's keys follow the FM-1's)
         if (b !== undefined) editor.pressButton(b, i.down);

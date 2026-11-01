@@ -417,7 +417,21 @@ static void panel_encoders(int32_t *st)
     }
     if (st[6] && (panel_held >> BTN_PLAY & 1u)) {   /* PLAY held + PRESET: the tempo (the Main module's), 1 bpm a click */
         play_turned = 1;
-        if (panel >= 0 && !eng_clock_is_external()) {
+        if (sb_on) {                                /* sandbox mode (D-232): the editor's tempo, from PRESET's CC; never the
+                                                     * muted patch's own */
+            char m[16], num[8];
+            int32_t bpm = cfg.midi_out ? sandbox_tempo(st[6]) : 0;   /* (without MIDI OUT the editor hears nothing) */
+            if (!cfg.midi_out)
+                sb_mout_nudge();
+            else if (bpm) {
+                fmt_int(num, bpm);
+                put(put(m, "TEMPO "), num)[0] = 0;
+                ui_msg(m, 1000);
+                if (!ui_dirty)
+                    ui_dirty = 1;
+            } else
+                ui_msg("SANDBOX: TEMPO IN EDITOR", NUDGE_MS);
+        } else if (panel >= 0 && !eng_clock_is_external()) {
             char m[16], num[8];
             int32_t bpm = (eng_get_param((uint32_t)panel, FM1_P_TEMPO) + 32768) >> 16;
             bpm = clampi(bpm + st[6] * (knob_fast(0, st[6]) ? 5 : 1), 20, 300);
@@ -450,8 +464,10 @@ static void panel_encoders(int32_t *st)
             ui_dirty = ui_dirty ? ui_dirty : 1;   /* (the rows that changed: #229) */
         return;
     }
-    if (sb_on && page == 0u && sb_have) {           /* sandbox mode: SELECT / ALGO went out as MIDI (the editor's page follows),
-                                                     * K1..K4 turn the editor's rows from the positions it sent (sandbox_ui.c) */
+    if (sb_on && page == 0u) {                      /* sandbox mode: SELECT / ALGO went out as MIDI (the editor's page follows),
+                                                     * K1..K4 turn the editor's rows from the positions it sent (sandbox_ui.c);
+                                                     * before its first page nothing here moves (the muted patch is never
+                                                     * edited, D-232) */
         for (k = 0; k < 4u; k++) {
             int32_t v = sandbox_knob(k, st[2u + k], st[2u + k] ? knob_fast(2u + k, st[2u + k]) : 0);
             if (v >= 0) {

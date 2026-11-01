@@ -587,6 +587,21 @@ int main(int argc, char **argv)
         CHECK(!strcmp(sb_got.label[2], "Wave") && !strcmp(sb_got.value[2], "SAW") && !sb_got.unit[2][0] && sb_got.pos[2] == 0u
               && sb_got.steps[2] == 4u);
         CHECK(!sb_got.label[3][0] && !sb_got.value[3][0]);
+        CHECK(sb_got.ext && sb_got.ndev == 5u && sb_got.dev_at == 2u && sb_got.ngroup == 3u && sb_got.group_at == 1u
+              && sb_got.npage == 2u && sb_got.page_at == 0u && sb_got.tempo == 300u && sb_got.flags == SB_UNSAVED
+              && sb_got.armed == 0x80000005u);              /* (the fields after the rows, 1.8) */
+        {                                                   /* an older editor's: up to the rows, the rest from the title */
+            uint8_t d[SB_BYTES], fr[8u + (8u * SB_BYTES + 6u) / 7u];
+            uint32_t w;
+            memset(d, 0, sizeof d);
+            d[0] = 1;
+            memcpy(d + 3u + SB_PATCH + SB_DEV, "OSC 2/3", 7);
+            fr[0] = 0x7D; fr[1] = 0x4D; fr[2] = 0x31; fr[3] = C_SANDBOX;
+            w = 4u + m1_pack7(d, SB_BYTES, fr + 4);
+            CHECK(m1_handle(fr, w) == 1 && sb_calls == 2 && nreplies == 0);
+            CHECK(!sb_got.ext && sb_got.npage == 3u && sb_got.page_at == 1u && sb_got.ndev == 0u && sb_got.tempo == 0u && !sb_got.armed);
+            sb_calls = 1;
+        }
         {
             uint8_t d[SB_BYTES], fr[8u + (8u * SB_BYTES + 6u) / 7u];
             uint32_t w;
