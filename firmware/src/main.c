@@ -1064,18 +1064,13 @@ static void update_only(const char *why)
     }
 }
 
+#include "host_frame.h"
 /* USB host requests: the editor's SysEx (proto.c) before the update protocol's, the M-UPGRADE handshake and upgrade, the
  * chip boot SysEx. Run by the main loop, while the loading screen waits and for a second before the patches load, so a
  * host is answered from the start (and a patch that crashes the boot cannot keep a flasher out). */
 static void host_poll(void)
 {
-    {   /* the editor's SysEx (proto.c) before the update protocol's */
-        const uint8_t *fp;
-        uint32_t fn;
-        if (ota_frame_get(&fp, &fn) && m1_handle(fp, fn))
-            ota_frame_done();
-    }
-    ota_service();                                  /* M-UPGRADE handshake */
+    host_frame();                                   /* the editor's SysEx (proto.c), else the M-UPGRADE handshake (#486) */
     if (usb.ota_req) {                              /* M-UPGRADE upgrade command */
         usb.ota_req = 0;
         eng_run = 0;
