@@ -2199,7 +2199,8 @@ static void env_knob_msg(uint32_t k)
 #define PR_USER 0x8000u                                 /* a list entry: a store slot | PR_USER, else a FPRESET_LIST index */
 #define PR_MAX (N_FPRESETS + PS_SLOTS)
 static uint16_t pr_list[PR_MAX < 256u ? 256u : PR_MAX];
-static int32_t pr_vals[PS_MAXV];                        /* a user preset's values (the store holds PS_MAXV at most) */
+static int32_t pr_vals[PS_MAXV] ENG_POOL;                        /* a user preset's values (the store holds PS_MAXV at most: 176, #485) */
+static uint8_t dp_short;                                /* the entry dp_load loaded last had fewer values than the device's rows */
 static const int32_t *pr_at = pr_vals;                  /* the entry dp_entry read last: its values (a factory one's in ROM, any
                                                          * number of them: Cassia 1 has 118 rows, #464), else pr_vals */
 
@@ -2308,7 +2309,9 @@ static const uint8_t *dev_row_more(uint32_t d, uint32_t mod, uint32_t par)
     return 0;
 }
 
-/* load list entry k of device d: its rows take the values (the running binary and the editor too) */
+/* load list entry k of device d: its rows take the values (the running binary and the editor too); an entry of fewer
+ * values than the device has rows (a Cassia 1 preset stored before 1.8.2 kept 88 of its 118, #485, D-858) sets the rows it
+ * has, in order, and the rest keep their values (dp_short says so) */
 static int dp_load(uint32_t d, uint32_t k)
 {
     char nm[17];
@@ -2316,6 +2319,7 @@ static int dp_load(uint32_t d, uint32_t k)
     uint32_t i;
     if (d >= pg_ndev || k >= dp_list(d) || (n = dp_entry(pr_list[k], nm)) < 0)
         return -1;
+    dp_short = (uint32_t)n < pg_dev[d].nrows;
     for (i = 0; i < (uint32_t)n && i < pg_dev[d].nrows; i++) {
         uint32_t mod = pg_dev[d].rows[2u * i], par = pg_dev[d].rows[2u * i + 1u];
         int32_t v = pr_at[i];
@@ -2451,6 +2455,10 @@ static int dev_preset_step(int32_t st)
     c = c < 0 ? (st > 0 ? 0 : (int)n - 1) : (int)(((int32_t)c + st % (int32_t)n + (int32_t)n) % (int32_t)n);
     if (dp_load(pg_cur_dev, (uint32_t)c))
         return 0;
+    if (dp_short) {                                     /* (some rows kept their values: the editor's status line says what to do) */
+        ui_msg("STORED SHORT: SEE EDITOR", 1500);       /* (the bar's 26 characters) */
+        return 1;
+    }
     caps(t, pg_pname[pg_cur_dev], str_len(pg_pname[pg_cur_dev]), 16);
     put(put(m, "PRESET "), t)[0] = 0;
     ui_msg(m, 1000);

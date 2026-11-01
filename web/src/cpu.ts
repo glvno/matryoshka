@@ -30,6 +30,8 @@ export interface TypeCost {
   extra?: { dim: CostDim; add: number[] }[];
   /** cycles added when the pitch input moves every sample (not just from the keyboard), per unison copy */
   moving?: number;
+  /** a delay: cycles added while its time moves (a cable or the morph on `time`: the read position glides, #484) */
+  glide?: number;
   /** oscillator pitch-conversion work for each unison count (1..5), measured with that many copies */
   movingCopies?: number[];
   /** cycles saved when the first output is not patched (nor the outputs FIRST_ALSO lists): work only it needs; more with
@@ -249,6 +251,7 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU): CpuEstimate {
       const copies = m.type === 'osc' ? Math.max(Math.round(m.params.unison ?? 1), STACKS[Math.round(m.params.stack ?? 0)]?.length ?? 1) : 1;
       one += t.movingCopies?.[copies - 1] ?? t.moving * copies;
     }
+    if (t.glide && !m.bypass && moved.has('time')) one += t.glide;
     if (t.thru && m.type === 'steps' && inputs.has('keys')) one += t.thru * Math.min(TRACK_POLY, Math.max(1, ...groups.map((g) => g.cfg.parts)));
     if (m.type === 'output') total += table.output;
     const k = ninst(m.id);

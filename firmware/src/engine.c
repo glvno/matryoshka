@@ -160,6 +160,50 @@ HOT uint32_t exp2_scale_in(uint32_t base, int32_t x)
 
 static uint32_t exp2_scale(uint32_t base, int32_t x) { return exp2_scale_in(base, x); }
 
+/* An oscillator's phase increment along a block (#461): exact at every INC_SPAN-th sample, a straight line in between, so
+ * a moving pitch (vibrato) costs one exp2_scale per INC_SPAN samples instead of one per sample. A span's line runs from
+ * the increment at its first sample toward the one at the next span's first sample (the block's last sample for the last
+ * span). A pitch that does not move gives the exact increment at every sample. modules.ts incRamp does the same.
+ * inc_start at the block's start, then inc_span for each span in turn, e the sample its line runs toward: the span's first
+ * increment, r->d the step per sample. off: the octaves added to the pitch (Q16). INC_LOOP runs a loop over the block's
+ * samples i with the increment in dt_. */
+#define INC_SHIFT 3
+#define INC_SPAN (1u << INC_SHIFT)
+typedef struct {
+    uint32_t b;                                         /* the increment at the last span's end */
+    int32_t d, p;                                       /* the step per sample, the pitch at the last span's end */
+} inc_ramp_t;
+
+static inline uint32_t inc_at(int32_t x)
+{
+    uint32_t dt = exp2_scale(INC_C4, x);
+    return dt > DT_MAX ? DT_MAX : dt;
+}
+
+static inline void inc_start(inc_ramp_t *r, const esig_t *pitch, int32_t off)
+{
+    r->p = pitch[0];
+    r->b = inc_at(r->p + off);
+}
+
+static inline uint32_t inc_span(inc_ramp_t *r, const esig_t *pitch, int32_t off, uint32_t e)
+{
+    uint32_t a = r->b;
+    if (pitch[e] != r->p) {
+        r->p = pitch[e];
+        r->b = inc_at(r->p + off);
+        r->d = ((int32_t)r->b - (int32_t)a) >> INC_SHIFT;   /* (both at most DT_MAX < 2^31) */
+    } else
+        r->d = 0;
+    return a;
+}
+
+#define INC_END(i) ((i) + INC_SPAN < n ? (i) + INC_SPAN : n)         /* the span's end */
+#define INC_TO(e) ((e) < n ? (e) : n - 1u)                           /* the sample its line runs toward */
+#define INC_LOOP(r, off)                                                                \
+    for (i = 0, inc_start(&(r), pitch, (off)); i < n;)                                  \
+        for (uint32_t e_ = INC_END(i), dt_ = inc_span(&(r), pitch, (off), INC_TO(e_)); i < e_; i++, dt_ += (uint32_t)(r).d)
+
 /* sin(2 pi phase), phase u32 turns -> Q16 */
 static int32_t sin_turn(uint32_t ph)
 {
@@ -357,7 +401,7 @@ typedef struct {
                                                     * modes' radii and normalised gains for kdec kdamp / kbr, ok: which are worked out */
         struct { int32_t a[8], b[8], ia; uint32_t phase; } fs;   /* the Hilbert chains (w1 w2 per section), chain A's delayed sample, the quadrature oscillator */
         struct { struct grain_line *ln; uint32_t w, acc, seed; uint8_t prev; } gr;   /* acc: grains per sample, Q24 */
-        struct { int16_t *buf; uint32_t w, t, seen, beat; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev; } dly;   /* t, ring, seen, beat: the clock tempo */
+        struct { int16_t *buf; uint32_t w, t, seen, beat, cur; int32_t rate; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev; } dly;   /* t, ring, seen, beat: the clock tempo; cur, rate: the read position's distance behind w (samples Q16, 0 = not yet set) and its glide (dly_glide) */
         struct { int16_t *buf; uint16_t li[8], ai[2], pi; int32_t lp[8]; uint32_t ph[2]; } rev;   /* the FDN lines' write indices, the diffusers', the pre-delay's; damping states; modulation phases */
         struct { int32_t v; uint32_t t; int32_t rk[4], inc[4], k[4]; uint32_t len[4]; uint8_t stage, prev, ok; } env;  /* Q30, like the ADSR; t: samples
                                                     * in the segment; rk, inc, k, len, ok: segments 1 2 3 and release, as m_adsr */
@@ -3532,6 +3576,7 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
     int32_t idx = nd->conn & (1u << OSC_I_PM) ? EF(it, OSC_P_PM) : 0;
     int32_t y1, y2, pm1, xb, *ap = it->s.osc.ap, s1 = it->s.osc.s1;
     uint32_t dt_fm = 0;
+    inc_ramp_t rpf;
     if (idx <= 0 && fb <= 0) {                                             /* the plain oscillator: one wave per frame */
         int32_t ks = clampi(round_q16(EF(it, OSC_P_STACK)), 0, 4), nst = STACK_N[ks];
         int32_t nu = clampi(round_q16(EF(it, OSC_P_UNISON)), 1, 5), det = EF(it, OSC_P_DETUNE), doct[5], wq[5], j;
@@ -3554,27 +3599,20 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
                 wq[j] = (int32_t)(((int64_t)w[j] << 16) / sum);
         }
         uint32_t dts[5], (*rc)[2] = it->s.osc.rc;
-        int32_t lastp = 0;
         if (nu == 1) {                                                      /* one phase: the wave picked once a block */
-            uint32_t dt = 0, *r = rc[0];
+            uint32_t *r = rc[0];
             int32_t d0 = base + doct[0];
-#define OSC_PITCH                                                                       \
-                if (i == 0 || pitch[i] != lastp) {                                      \
-                    lastp = pitch[i];                                                   \
-                    dt = exp2_scale(INC_C4, lastp + d0);                             \
-                    if (dt > DT_MAX)                                                    \
-                        dt = DT_MAX;                                                    \
-                }
+            inc_ramp_t r1;
 #define OSC_PLAIN(Y)                                                                    \
-            for (i = 0; i < n; i++) {                                                   \
-                OSC_PITCH                                                               \
+            INC_LOOP(r1, d0) {                                                          \
+                uint32_t dt = dt_;                                                      \
                 phase += dt;                                                            \
                 out[i] = mul16((Y), lvl);                                               \
             }
 #define OSC_SYNC(Y)                                                                     \
-            for (i = 0; i < n; i++) {                                                   \
+            INC_LOOP(r1, d0) {                                                          \
+                uint32_t dt = dt_;                                                      \
                 int rst = sync[i] >= 32768 && s1 < 32768;                               \
-                OSC_PITCH                                                               \
                 s1 = sync[i];                                                           \
                 if (rst)                                                                \
                     phase = 0;                                                          \
@@ -3603,11 +3641,14 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
             }
 #undef OSC_PLAIN
 #undef OSC_SYNC
-#undef OSC_PITCH
             n = 0;                                                          /* skips the general loop below */
         }
         if (n) {                                                            /* unison / stack: the wave picked once a block, phases in locals */
             uint32_t lph[4];
+            inc_ramp_t rp[5];
+            int32_t lastp, mv;
+            for (j = 0; j < nu; j++)
+                inc_start(rp + j, pitch, base + doct[j]);
             for (j = 0; j < 4; j++)
                 lph[j] = ph[j];
 #define OSC_SIN(p, d, r) sin_turn(p)
@@ -3617,18 +3658,19 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
 #define OSC_SHARK(p, d, r) wave_shark(p, d, r)
 #define OSC_REVERSE(p, d, r) (-wave_saw(p, d, r))
 #define OSC_UNI(W)                                                                      \
-            for (i = 0; i < n; i++) {                                                   \
+            for (i = 0, lastp = pitch[0], mv = 1; i < n;) {                             \
+                uint32_t e_ = INC_END(i);                                               \
+                int32_t moved = pitch[INC_TO(e_)] != lastp;                             \
+                if (mv | moved) {       /* each copy's span (as INC_LOOP); a still pitch keeps them */ \
+                    for (j = 0; j < nu; j++)                                            \
+                        dts[j] = inc_span(rp + j, pitch, base + doct[j], INC_TO(e_));   \
+                    lastp = pitch[INC_TO(e_)];                                          \
+                }                                                                       \
+                mv = moved;                                                             \
+              for (; i < e_; i++) {                                                     \
                 int rst = sync[i] >= 32768 && s1 < 32768;   /* a rising edge on sync restarts the phases */ \
                 int32_t y;                                                              \
-                if (i == 0 || pitch[i] != lastp) {          /* the increments only when the pitch moves */ \
-                    lastp = pitch[i];                                                   \
-                    for (j = 0; j < nu; j++) {                                          \
-                        dts[j] = exp2_scale(INC_C4, lastp + base + doct[j]);         \
-                        if (dts[j] > DT_MAX)                                            \
-                            dts[j] = DT_MAX;                                            \
-                    }                                                                   \
-                }                                                                       \
-                s1 = sync[i];                                                           \
+                s1 = sync[i];                                                         \
                 if (rst) {                                                              \
                     phase = 0;                                                          \
                     for (j = 1; j < nu; j++)                                            \
@@ -3641,6 +3683,10 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
                     y += mul16(W(lph[j - 1], dts[j], rc[j]), wq[j]);                    \
                 }                                                                       \
                 out[i] = mul16(y, lvl);                                                 \
+                if (mv)                                     /* (a pitch that moves) */  \
+                    for (j = 0; j < nu; j++)                                            \
+                        dts[j] += (uint32_t)rp[j].d;                                    \
+              }                                                                         \
             }
             switch (kind) {
             case 0: OSC_UNI(OSC_SIN) break;
@@ -3674,14 +3720,9 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
     /* The common FM operator is a sine with no feedback or sync. Its two sub-samples need no waveform dispatch,
      * feedback multiplies or sub-sample loop. Keep the same phase, interpolation and decimator state as the general path. */
     if (kind == 0 && fb == 0 && !(nd->conn & (1u << OSC_I_SYNC))) {
-        for (i = 0; i < n; i++) {
+        INC_LOOP(rpf, base) {
             int32_t pm_now = pm[i], pm_mid = (pm1 + pm_now) >> 1, p0, p1;
-            if (i == 0 || pitch[i] != pitch[i - 1]) {
-                dt_fm = exp2_scale(INC_C4, pitch[i] + base);
-                if (dt_fm > DT_MAX)
-                    dt_fm = DT_MAX;
-                dt_fm >>= 1;
-            }
+            dt_fm = dt_ >> 1;
             pm1 = pm_now;
             phase += dt_fm;
             y2 = sin_turn(phase + (uint32_t)(((int64_t)mul16(idx, pm_mid) * TURN_PER_RAD) >> 16));
@@ -3696,16 +3737,9 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
         n = 0;
     }
     uint32_t *frc = it->s.osc.rc[0];                  /* blep_pos's cache, kept across blocks */
-    for (i = 0; i < n; i++) {
-        uint32_t dt, sub;
+    INC_LOOP(rpf, base) {
+        uint32_t dt = dt_ >> 1, sub;
         int32_t pm_now = idx > 0 ? pm[i] : 0, pm_mid = (pm1 + pm_now) >> 1, ya = 0;
-        if (i == 0 || pitch[i] != pitch[i - 1]) {                        /* the increment only when the pitch moves */
-            dt_fm = exp2_scale(INC_C4, pitch[i] + base);
-            if (dt_fm > DT_MAX)
-                dt_fm = DT_MAX;
-            dt_fm >>= 1;
-        }
-        dt = dt_fm;
         if (sync[i] >= 32768 && s1 < 32768)
             phase = 0;
         s1 = sync[i];
@@ -4757,6 +4791,64 @@ static inline int32_t dly_soft(int32_t x)
     return x - mul16(mul16(mul16(x, x), x), 9709);       /* 4/27 Q16 */
 }
 
+/* the delay's glide (modules.ts delayGlide, #484): while the read position's distance behind the write head (cur, samples
+ * Q16) is not the time's (tq), it moves at a rate (samples a sample, Q16) that heads for 1 / 2^DELAY_GLIDE_SHIFT of the
+ * distance, at most DELAY_GLIDE_MAX (half a sample: the echo plays between an octave down and a fifth up while it moves,
+ * never backwards); the rate itself changes by at most DELAY_GLIDE_ACC a sample (the pitch bends in, no kink in the wave).
+ * It lands once less than 1/64 sample away at a rate under DELAY_GLIDE_ACC. The line is read between its two samples
+ * (linear). The plain, swelling and ping-pong loops in one: it runs only while the time moves. */
+#define DELAY_GLIDE_SHIFT 10             /* 1024 samples: 23 ms */
+#define DELAY_GLIDE_MAX 32768            /* half a sample a sample, Q16 */
+#define DELAY_GLIDE_ACC 128              /* the rate's change a sample: 0 to DELAY_GLIDE_MAX in 256 samples (6 ms) */
+static void dly_glide(inst_t *it, const esig_t *in, esig_t *out, esig_t *outr, uint32_t n, uint32_t tq, int32_t fb, int32_t mix, int pp, int swell)
+{
+    int16_t *buf = it->s.dly.buf, *bb = buf + DELAY_HALF;
+    uint32_t len = pp ? DELAY_HALF : DELAY_LEN, w = it->s.dly.w, cur = it->s.dly.cur, i;
+    int32_t dry = ENG_ONE - mix, rate = it->s.dly.rate, hi = (int32_t)(len - 1u) << 16;
+    if (swell)
+        fb = (int32_t)((int64_t)fb * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
+    if (w >= len)
+        w = 0;
+    for (i = 0; i < n; i++) {
+        int32_t diff = (int32_t)(tq - cur), rpos, fr, ea, x, c;
+        uint32_t i0, i1;
+        rate += clampi(clampi(diff >> DELAY_GLIDE_SHIFT, -DELAY_GLIDE_MAX, DELAY_GLIDE_MAX) - rate, -DELAY_GLIDE_ACC, DELAY_GLIDE_ACC);
+        if (diff > -(1 << DELAY_GLIDE_SHIFT) && diff < 1 << DELAY_GLIDE_SHIFT && rate > -DELAY_GLIDE_ACC && rate < DELAY_GLIDE_ACC) {
+            cur = tq;
+            rate = 0;
+        } else {
+            c = (int32_t)cur + rate;   /* (past the target only when it turned while moving: kept within the line) */
+            cur = (uint32_t)clampi(c, 65536, hi);
+        }
+        rpos = (int32_t)(w << 16) - (int32_t)cur;
+        if (rpos < 0)
+            rpos += (int32_t)(len << 16);
+        i0 = (uint32_t)rpos >> 16;
+        i1 = i0 + 1u == len ? 0u : i0 + 1u;
+        fr = (rpos & 0xffff) >> 1;                    /* Q15: (b - a) x fr fits 32 bits */
+        ea = (int32_t)buf[i0] * 8 + ((((int32_t)buf[i1] - buf[i0]) * fr) >> 12);
+        if (pp) {
+            int32_t eb = (int32_t)bb[i0] * 8 + ((((int32_t)bb[i1] - bb[i0]) * fr) >> 12), dr = mul16(in[i], dry);
+            x = mul16(ea, fb);
+            bb[w] = dly_pack(swell ? dly_soft(x) : x);
+            x = in[i] + mul16(eb, fb);
+            buf[w] = dly_pack(swell ? dly_soft(x) : x);
+            out[i] = dr + mul16(ea, mix);
+            outr[i] = dr + mul16(eb, mix);
+        } else {
+            x = in[i] + mul16(ea, fb);
+            buf[w] = dly_pack(swell ? dly_soft(x) : x);
+            out[i] = mul16(in[i], dry) + mul16(ea, mix);
+            outr[i] = out[i];
+        }
+        if (++w == len)
+            w = 0;
+    }
+    it->s.dly.w = w;
+    it->s.dly.cur = cur;
+    it->s.dly.rate = rate;
+}
+
 /* free or synced time (see modules.ts); ping-pong splits the buffer in two halves, A (input, left) and B (right), see
  * modules.ts. note: a synced length of its own (DELAY_NOTE_NUM / DEN) in place of the time knob's; swell: the feedback
  * x 198 / 95 and the loop through dly_soft (the loops below, apart, so the plain one stays as it was) */
@@ -4796,6 +4888,12 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
     } else
         smp = ((int64_t)EF(it, DELAY_P_TIME) * ENG_SR + (int64_t)500 * 65536) / (1000 * 65536);   /* round(t_ms / 1000 * sr) */
     d = (uint32_t)(smp < 1 ? 1 : smp > top ? top : smp);
+    if (it->s.dly.cur == 0 || it->s.dly.cur > (uint32_t)top << 16)
+        it->s.dly.cur = it->s.dly.cur == 0 ? d << 16 : (uint32_t)top << 16;
+    if (it->s.dly.cur != d << 16 || it->s.dly.rate) {     /* the time moved: glide there (#484), the plain loops below once it has arrived */
+        dly_glide(it, in, out, outr, n, d << 16, fb, mix, pp, swell);
+        return;
+    }
     if (swell) {
         fb = (int32_t)((int64_t)fb * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
         if (w >= (pp ? DELAY_HALF : DELAY_LEN))
@@ -5338,11 +5436,10 @@ static void m_wavetable(const node_t *nd, inst_t *it, uint32_t n)
     uint32_t dt0 = exp2_scale(INC_C4, pitch[0] + base), phase = it->s.wt.phase, i;
     uint32_t mip = dt0 < 67108864u ? 0u : dt0 < 134217728u ? 1u : 2u;
     const int16_t *ta = WT_T[mip][bank * 8 + f0], *tb = WT_T[mip][bank * 8 + f1];
-    for (i = 0; i < n; i++) {
-        uint32_t dt = exp2_scale(INC_C4, pitch[i] + base), ph, xi, xf;
+    inc_ramp_t rp;
+    INC_LOOP(rp, base) {
+        uint32_t dt = dt_, ph, xi, xf;
         int32_t ya, yb;
-        if (dt > DT_MAX)
-            dt = DT_MAX;
         if (sync[i] >= 32768 && s1 < 32768)
             phase = 0;
         s1 = sync[i];
@@ -5399,10 +5496,11 @@ static void m_pd(const node_t *nd, inst_t *it, uint32_t n)
     int32_t base = EF(it, PD_P_COARSE) / 12 + EF(it, PD_P_FINE) / 1200, lvl = EF(it, PD_P_LEVEL);
     int32_t w1 = clampi(round_q16(EF(it, PD_P_WAVE)), 0, 7), w2 = clampi(round_q16(EF(it, PD_P_WAVE2)), 0, 8);
     int32_t alt = w2 > 0, d0 = EF(it, PD_P_DCW), range = clampi(EF(it, PD_P_RANGE), 0, 5 * ENG_ONE);
-    int32_t idx = nd->conn & (1u << PD_I_PM) ? EF(it, PD_P_PM) : 0, s1 = it->s.pd.s1, lastp = 0, room, oct, cap[2], k, m0, dm;
+    int32_t idx = nd->conn & (1u << PD_I_PM) ? EF(it, PD_P_PM) : 0, s1 = it->s.pd.s1, room, oct, cap[2], k, m0, dm;
     int32_t has_sync = (nd->conn >> PD_I_SYNC) & 1u, w = 0, c = 0;
     uint32_t phase = it->s.pd.phase, r = it->s.pd.r, odd = it->s.pd.odd, dt = 0, inc0, i;
     const int32_t *ts = PD_T[0], *ss = PD_S[0];
+    inc_ramp_t rp;
     w2 = alt ? w2 - 1 : w1;
     inc0 = exp2_scale(INC_C4, pitch[0] + base);
     if (inc0 > DT_MAX)
@@ -5418,22 +5516,14 @@ static void m_pd(const node_t *nd, inst_t *it, uint32_t n)
         m0 = (int32_t)exp2_q16((x0 < lim ? x0 : lim) + (16 << 16));
         dm = n ? ((int32_t)exp2_q16((x1 < lim ? x1 : lim) + (16 << 16)) - m0) / (int32_t)n : 0;
     }
-#define PD_PITCH                                                                        \
-        if (i == 0 || pitch[i] != lastp) {           /* the increment only when the pitch moves */ \
-            lastp = pitch[i];                                                           \
-            dt = exp2_scale(INC_C4, lastp + base);                                      \
-            if (dt > DT_MAX)                                                            \
-                dt = DT_MAX;                                                            \
-        }
     if (!alt && !has_sync && !idx && w1 < PD_RESO) {                       /* one bend wave, nothing at sync or pm */
         c = cap[0];
         ts = PD_T[w1];
         ss = PD_S[w1];
-        for (i = 0; i < n; i++) {
+        INC_LOOP(rp, base) {
             uint32_t old = phase;
             int32_t d = clampi(d0 + dcw[i], 0, c);
-            PD_PITCH
-            phase += dt;
+            phase += dt_;
             odd ^= phase < old;                                            /* (the cycles still counted: a wave2 set later) */
             out[i] = mul16(sin_turn(pd_bent(ts, ss, phase, d)), lvl);
         }
@@ -5452,10 +5542,10 @@ static void m_pd(const node_t *nd, inst_t *it, uint32_t n)
         }                                                                               \
     } while (0)
     PD_PICK();
-    for (i = 0; i < n; i++) {
+    INC_LOOP(rp, base) {
         uint32_t old, pmo = 0, fresh = 0;   /* fresh: a new cycle (or a sync): the resonance sine restarts */
         int32_t d, y;
-        PD_PITCH
+        dt = dt_;
         if (has_sync) {
             if (sync[i] >= 32768 && s1 < 32768) {
                 phase = odd = 0;
@@ -5489,7 +5579,6 @@ static void m_pd(const node_t *nd, inst_t *it, uint32_t n)
         out[i] = mul16(y, lvl);
     }
 #undef PD_PICK
-#undef PD_PITCH
     it->s.pd.phase = phase;
     it->s.pd.r = r;
     it->s.pd.odd = (uint8_t)odd;

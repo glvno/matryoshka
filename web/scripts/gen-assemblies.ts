@@ -2842,6 +2842,11 @@ asm('8 Lire', 'Voices', (b) => {
   const logic = b.add('logic', 0, 3, {});
   const hyper = b.add('xfade', 0, 4, { mix: 0 });
   const toDelay = b.add('scale', 0, 5, { gain: 0, offset: 0 });
+  // (the delay, then MOD, before the voices: the cable loops then take their block of delay on the modulation cables (the
+  // other quad and the delay's output into a bus), not on a voice's audio, which would start a block late with a step
+  // when a patch loads with HOLD up, #515)
+  const dly = b.add('delay', 10, 0, { time: 330, fb: 0.45, mix: 0.35, pingpong: 1 }, { p1: 'time' });
+  const mod = [0, 1, 2, 3].map((p) => b.add('scale', 2 + 2 * p, 3, { gain: 0, offset: 0 }));
   //               coarse  fine attack release
   const tunes: [number, number, number, number][] = [
     [-22, 0, 0.02, 1.2], [-22, 7, 0.02, 1.2], [-15, 0, 0.6, 2.5], [-15, -6, 0.6, 2.5],
@@ -2857,18 +2862,23 @@ asm('8 Lire', 'Voices', (b) => {
     return { osc, env, vca };
   });
   const sharp = [0, 1, 2, 3].map((p) => b.add('shape', 1 + 2 * p, 3, { drive: 2, mode: 0, level: 0.7 }));
-  const mod = [0, 1, 2, 3].map((p) => b.add('scale', 2 + 2 * p, 3, { gain: 0, offset: 0 }));
   const bus = [0, 1].map((q) => b.add('mixer', 1 + 4 * q, 4, { l1: 1, l2: 0, l3: 0, l4: 0 }));
   const hold = [0, 1].map((q) => b.add('macro', 2 + 4 * q, 4, { value: 0 })); // (a Macro: 0..1, so an FM-1 click is 0.01)
+  // HOLD reaches the VCAs through a Slew limiter (30 ms): a patch or preset loaded with HOLD up fades its drone in instead of
+  // starting it with a step, a click (#515)
+  const holdIn = hold.map((h, q) => {
+    const g = b.add('glide', 3 + 4 * q, 4, { time: 0.03, curve: 0 });
+    b.wire(h, 'out', g, 'in');
+    return g;
+  });
   const mix = b.add('mixer', 9, 0, { l1: 0.7, l2: 0.7, l3: 0.7, l4: 0.7 });
   const drive = b.add('shape', 9, 1, { drive: 1.5, mode: 0, level: 0.7 });
-  const dly = b.add('delay', 10, 0, { time: 330, fb: 0.45, mix: 0.35, pingpong: 1 }, { p1: 'time' });
   const scope = b.add('scope', 10, 1, { time: 16 });
   voices.forEach((v, i) => {
     const p = Math.floor(i / 2);
     b.wire(v.vca, 'out', sharp[p], 'in');
     b.wire(mod[p], 'out', v.osc, 'pitch');
-    b.wire(hold[Math.floor(i / 4)], 'out', v.vca, 'cv');
+    b.wire(holdIn[Math.floor(i / 4)], 'out', v.vca, 'cv');
   });
   sharp.forEach((s, p) => {
     b.wire(s, 'out', mix, `in${p + 1}`);

@@ -77,6 +77,8 @@ interface KitCfg {
   feed?: 'osc' | 'gate';
   /** an LFO adds to the pitch input: it moves every sample (the oscillator works out its increments only when the pitch moves) */
   moving?: boolean;
+  /** an LFO into p1, the pin set on this parameter (a delay's time that keeps moving: its read position glides) */
+  pinTo?: string;
 }
 
 /** Main + the module + Output, its first output into the Output, a pitch input always fed by the Main pitch (the played note
@@ -90,6 +92,11 @@ function kit(type: string, cfg: KitCfg = {}): { p: Patch; m: ModuleInst } {
   let src: ModuleInst | undefined;
   if (m !== main && def.inputs.some((i) => i.name === 'pitch')) connect(p, DEFS, { module: main.id, port: 'pitch' }, { module: m.id, port: 'pitch' });
   if (cfg.moving) connect(p, DEFS, { module: addModule(p, DEFS.lfo, 0, 600).id, port: 'out' }, { module: m.id, port: 'pitch' });
+  if (cfg.pinTo) {
+    connect(p, DEFS, { module: addModule(p, DEFS.lfo, 0, 900).id, port: 'out' }, { module: m.id, port: 'p1' });
+    m.map!.p1 = [cfg.pinTo];
+    m.map!.p2 = [];
+  }
   for (const name of cfg.inputs ?? []) {
     if (name === 'pitch') continue;
     if ((name === 'gate' || cfg.feed === 'gate') && m !== main) connect(p, DEFS, { module: main.id, port: 'gate' }, { module: m.id, port: name });
@@ -246,6 +253,15 @@ async function typeCost(type: string): Promise<TypeCost> {
   if (ADDITIVE_OUTPUTS.has(type)) for (let i = dims.length - 1; i >= 0; i--) if ('output' in dims[i].dim) extra.unshift(...dims.splice(i, 1));
   while (dims.reduce((n, d) => n * d.values.length, 1) > GRID_MAX) extra.unshift(dims.pop()!);
   const out: TypeCost = { run: Math.round(base.run), cv: Math.round(base.cv) };
+  // a delay whose time keeps moving: its read position glides (engine.c dly_glide) instead of the plain loops; the worse of
+  // free and ping-pong, less the pin's own cost (cv)
+  if (type === 'delay') {
+    const glide = await Promise.all([{}, { pingpong: 1 }].map(async (params) => {
+      const [moved, held] = await Promise.all([measure(type, { params, pinTo: 'time' }), measure(type, { params })]);
+      return moved.run - held.run;
+    }));
+    out.glide = Math.max(0, Math.round(Math.max(...glide)));
+  }
   // a pitch that moves every sample (an LFO, a glide, an envelope into it), per copy of a unison oscillator
   if (def.inputs.some((i) => i.name === 'pitch')) {
     const moving = Math.round((await measure(type, { moving: true })).run - base.run);

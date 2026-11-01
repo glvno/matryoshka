@@ -100,6 +100,30 @@ const WAVES = ['sine', 'triangle', 'saw', 'square'];
 const OSC_WAVES = [...WAVES, 'sharktooth', 'reverse saw'];
 const C4 = 261.6255653;
 
+/** the oscillators work out their phase increment exactly every INC_SPAN samples, a straight line in between (#461) */
+export const INC_SPAN = 8;
+const RAMPS: Float64Array[] = [];
+
+/**
+ * An oscillator's phase increment (cycles per sample, at most 0.45) at each sample of a block, in scratch buffer `k` (#461):
+ * exact at every INC_SPAN-th sample, a straight line in between, so a moving pitch (vibrato) costs one power of two per
+ * INC_SPAN samples. A span's line runs from the increment at its first sample toward the one at the next span's first
+ * sample (the block's last sample for the last span). A pitch that does not move gives the exact increment throughout.
+ * engine.c inc_ramp does the same. off: octaves added to the pitch.
+ */
+function incRamp(k: number, pitch: ArrayLike<number>, n: number, off: number, sr: number): Float64Array {
+  let out = RAMPS[k];
+  if (!out || out.length < n) out = RAMPS[k] = new Float64Array(Math.max(n, 128));
+  const at = (p: number): number => Math.min((C4 * Math.pow(2, p + off)) / sr, 0.45);
+  for (let i = 0; i < n; i += INC_SPAN) {
+    const e = Math.min(i + INC_SPAN, n - 1);
+    const a = at(pitch[i]);
+    const d = pitch[e] === pitch[i] ? 0 : (at(pitch[e]) - a) / INC_SPAN;
+    for (let j = 0, m = Math.min(INC_SPAN, n - i); j < m; j++) out[i + j] = a + d * j;
+  }
+  return out;
+}
+
 function polyBlep(t: number, dt: number): number {
   if (t < dt) {
     t /= dt;
@@ -331,25 +355,25 @@ const osc: ModuleImpl<OscState> = {
       const det = c.p.detune ?? 0;
       const off = Array.from({ length: nu }, (_, j) => unisonOct(j, nu, det) + stk[j % stk.length] / 12);
       const wt = blendWeights(nu, Math.min(1, Math.max(0, c.p.blend ?? 0.5)));
+      const dts = off.map((o, j) => incRamp(j, pitch, c.n, base + o, c.sr));
       for (let i = 0; i < c.n; i++) {
-        const f = C4 * Math.pow(2, pitch[i] + base);
         const rst = sync[i] >= 0.5 && s.s1 < 0.5;
         s.s1 = sync[i];
         if (nu === 1) {
-          const dt = Math.min((f * Math.pow(2, off[0])) / c.sr, 0.45);
+          const dt = dts[0][i];
           if (rst) s.phase = 0;
           s.phase += dt;
           if (s.phase >= 1) s.phase -= 1;
           out[i] = wave(kind, s.phase, dt, pw) * lvl;
           continue;
         }
-        const dt0 = Math.min(f * Math.pow(2, off[0]) / c.sr, 0.45);
+        const dt0 = dts[0][i];
         if (rst) s.phase = 0;
         s.phase += dt0;
         if (s.phase >= 1) s.phase -= 1;
         let y = wave(kind, s.phase, dt0, pw) * wt[0];
         for (let j = 1; j < nu; j++) {
-          const dtj = Math.min(f * Math.pow(2, off[j]) / c.sr, 0.45);
+          const dtj = dts[j][i];
           if (rst) s.ph[j - 1] = 0;
           s.ph[j - 1] += dtj;
           if (s.ph[j - 1] >= 1) s.ph[j - 1] -= 1;
@@ -364,9 +388,9 @@ const osc: ModuleImpl<OscState> = {
     // FM mode (phase modulation or feedback): two waves per frame, pm interpolated between frames, then the half-band
     // decimator, so sidebands up to the old sample rate are filtered out instead of folding back
     const K = 1 / (2 * Math.PI);
+    const dts = incRamp(0, pitch, c.n, base, c.sr);
     for (let i = 0; i < c.n; i++) {
-      const f = C4 * Math.pow(2, pitch[i] + base);
-      const dt = Math.min(f / c.sr, 0.45) / 2;
+      const dt = dts[i] / 2;
       if (sync[i] >= 0.5 && s.s1 < 0.5) s.phase = 0;
       s.s1 = sync[i];
       const pmNow = idx > 0 ? pm[i] : 0;
@@ -1287,12 +1311,62 @@ const mixer: ModuleImpl<null> = {
 interface DelayState {
   buf: Float32Array;
   w: number;
+  /** the read position's distance behind w: samples x 65536, an integer (0 = not yet set), and its glide (delayGlide) */
+  cur: number;
+  rate: number;
   /** clock tempo: sample counter, the last 24 pulse times, pulses seen, previous level, samples per quarter note */
   t: number;
   ring: Float64Array;
   seen: number;
   prev: boolean;
   beat: number;
+}
+
+/** the glide: the rate heads for 1 / 2^DELAY_GLIDE_SHIFT of the distance a sample (1024 samples, 23 ms), at most
+ * DELAY_GLIDE_MAX (half a sample a sample), and changes by at most DELAY_GLIDE_ACC a sample (256 samples to full rate) */
+const DELAY_GLIDE_SHIFT = 10;
+const DELAY_GLIDE_MAX = 32768;
+const DELAY_GLIDE_ACC = 128;
+
+/**
+ * The delay while its time moves (#484): the read position's distance behind the write head (s.cur, samples x 65536, in
+ * integers as the FM-1's Q16) moves toward the time's (tq) at a rate (s.rate, the same units a sample) that heads for
+ * 1 / 2^DELAY_GLIDE_SHIFT of the distance, at most half a sample a sample (the echo plays between an octave down and a
+ * fifth up while it moves, never backwards), the rate itself changing by at most DELAY_GLIDE_ACC a sample (the pitch bends
+ * in: no kink in the wave). It lands once less than 1/64 sample away at a rate under DELAY_GLIDE_ACC. The line is read
+ * between its two samples (linear). A jump in the time (a square LFO, a turned knob) so bends the echo's pitch instead of
+ * cutting it (a click). The plain, swelling and ping-pong loops in one.
+ */
+function delayGlide(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, pp: boolean, clip: (x: number) => number): void {
+  const buf = s.buf, half = Math.floor(buf.length / 2), len = pp ? half : buf.length, hi = (len - 1) * 65536;
+  const o = c.out.out, r = c.out.r;
+  const clampi = (v: number, lo: number, top: number): number => (v < lo ? lo : v > top ? top : v);
+  if (s.w >= len) s.w = 0;
+  for (let i = 0; i < c.n; i++) {
+    const diff = tq - s.cur;
+    s.rate += clampi(clampi(Math.floor(diff / (1 << DELAY_GLIDE_SHIFT)), -DELAY_GLIDE_MAX, DELAY_GLIDE_MAX) - s.rate, -DELAY_GLIDE_ACC, DELAY_GLIDE_ACC);
+    if (diff > -(1 << DELAY_GLIDE_SHIFT) && diff < 1 << DELAY_GLIDE_SHIFT && s.rate > -DELAY_GLIDE_ACC && s.rate < DELAY_GLIDE_ACC) {
+      s.cur = tq;
+      s.rate = 0;
+    } else s.cur = clampi(s.cur + s.rate, 65536, hi);   // (past the target only when it turned while moving: kept within the line)
+    let rpos = s.w * 65536 - s.cur;
+    if (rpos < 0) rpos += len * 65536;
+    const i0 = Math.floor(rpos / 65536), i1 = i0 + 1 === len ? 0 : i0 + 1, f = (rpos - i0 * 65536) / 65536;
+    const ea = buf[i0] + (buf[i1] - buf[i0]) * f;
+    const x = c.inp.in[i];
+    if (pp) {
+      const eb = buf[half + i0] + (buf[half + i1] - buf[half + i0]) * f;
+      buf[half + s.w] = clip(ea * fb);
+      buf[s.w] = clip(x + eb * fb);
+      o[i] = x * (1 - mix) + ea * mix;
+      r[i] = x * (1 - mix) + eb * mix;
+    } else {
+      buf[s.w] = clip(x + ea * fb);
+      o[i] = x * (1 - mix) + ea * mix;
+      r[i] = o[i];
+    }
+    s.w = (s.w + 1) % len;
+  }
 }
 
 /**
@@ -1305,6 +1379,7 @@ interface DelayState {
  * FM-1 (its line's length bounds a synced note length too); past it the patch is browser only (patchbin.ts browserOnly).
  * `note` (synced): one of DELAY_NOTES in place of the time knob's length. `swell`: the feedback x 198 / 95 (0.95 reads
  * 1.98) and the loop through a soft clip (delayClip), so a feedback past 1 swells to about full level and holds there.
+ * A new time (a turned knob, a cable into `time`) is not a jump: the read position glides there (delayGlide, #484).
  */
 const delay: ModuleImpl<DelayState> = {
   def: {
@@ -1322,7 +1397,7 @@ const delay: ModuleImpl<DelayState> = {
       param('swell', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 35 }),
     ],
   },
-  init: (sr) => ({ buf: new Float32Array(Math.round((sr * DELAY_LEN_BROWSER) / DEVICE_SR)), w: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2) }),
+  init: (sr) => ({ buf: new Float32Array(Math.round((sr * DELAY_LEN_BROWSER) / DEVICE_SR)), w: 0, cur: 0, rate: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2) }),
   process(c, s) {
     const len = s.buf.length;
     const half = Math.floor(len / 2);
@@ -1360,8 +1435,15 @@ const delay: ModuleImpl<DelayState> = {
     const mix = c.p.mix ?? 0;
     const o = c.out.out;
     const r = c.out.r;
+    // the read position glides to a new time (delayGlide), then the plain loops below read at whole samples
+    const d = pp ? Math.max(1, Math.min(Math.floor(lim / 2) - 1, samples)) : Math.max(1, Math.min(lim - 1, samples));
+    const top = (pp ? half : len) - 1;
+    if (s.cur === 0 || s.cur > top * 65536) s.cur = s.cur === 0 ? d * 65536 : top * 65536;
+    if (s.cur !== d * 65536 || s.rate) {
+      delayGlide(c, s, d * 65536, fb, mix, pp, clip);
+      return;
+    }
     if (!pp) {
-      const d = Math.max(1, Math.min(lim - 1, samples));
       for (let i = 0; i < c.n; i++) {
         const e = s.buf[(s.w - d + len) % len];
         s.buf[s.w] = clip(c.inp.in[i] + e * fb);
@@ -1371,7 +1453,6 @@ const delay: ModuleImpl<DelayState> = {
       }
       return;
     }
-    const d = Math.max(1, Math.min(Math.floor(lim / 2) - 1, samples));
     if (s.w >= half) s.w = 0;
     for (let i = 0; i < c.n; i++) {
       const rp = (s.w - d + half) % half;
@@ -1853,9 +1934,9 @@ const wavetable: ModuleImpl<WtState> = {
     const mip = dt0 < 1 / 64 ? 0 : dt0 < 1 / 32 ? 1 : 2;
     const ta = WT_T[mip][bank * 8 + f0];
     const tb = WT_T[mip][bank * 8 + f1];
+    const dts = incRamp(0, pitch, c.n, base, c.sr);
     for (let i = 0; i < c.n; i++) {
-      const f = C4 * Math.pow(2, pitch[i] + base);
-      const dt = Math.min(f / c.sr, 0.45);
+      const dt = dts[i];
       if (sync[i] >= 0.5 && s.s1 < 0.5) s.phase = 0;
       s.s1 = sync[i];
       s.phase += dt;
@@ -2961,8 +3042,9 @@ const pd: ModuleImpl<PdState> = {
     const lim = Math.max(0, Math.log2(room));
     const ratioAt = (i: number): number => Math.pow(2, Math.min(Math.min(1, Math.max(0, d0 + dcw[i])) * range, lim));
     const m0 = ratioAt(0), dm = c.n ? (ratioAt(c.n - 1) - m0) / c.n : 0;
+    const dts = incRamp(0, pitch, c.n, base, c.sr);
     for (let i = 0; i < c.n; i++) {
-      const dt = Math.min((C4 * Math.pow(2, pitch[i] + base)) / c.sr, 0.45);
+      const dt = dts[i];
       // a new cycle (or a sync) restarts the resonance sine at the phase the ramp has reached, times its ratio
       let fresh = false;
       if (sync[i] >= 0.5 && s.s1 < 0.5) {

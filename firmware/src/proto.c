@@ -42,10 +42,10 @@
 enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_PRESETS = 0x2D, C_PRESET_GET = 0x2E, C_PRESET_PUT = 0x2F, C_PRESET_DEL = 0x30, C_SANDBOX = 0x31, C_TEST_KEY = 0x32, C_TEST_TURN = 0x33, C_TEST_SCREEN = 0x34, C_TEST_PEAK = 0x35, C_PATTERN = 0x36, C_SONG = 0x37, C_TEMPO = 0x38, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B, R_PRESET = 0x4C, R_PRESET_DATA = 0x4D, R_PRESET_STORED = 0x4E, R_SCREEN = 0x50, R_PEAK = 0x51, R_PATTERN_NOW = 0x52, R_SONG_NOW = 0x53, R_ARMS_NOW = 0x54, R_TEMPO_NOW = 0x55 };
 #define M1_FEATURES 246u                                     /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW, bit 6 = LIVE, bit 7 = the presets (#195) (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
 #define M1_FEATURES2 255u                                     /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down, bit 11 = reads format 35, bit 12 = reads format 36, bit 13 = reads format 37, bit 14 = reads format 38, bit 15 = reads format 39 (legacy editor compatibility; INFO bytes 7..8 report the readable range) */
-#define M1_FEATURES3 1u                                       /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907) */
+#define M1_FEATURES3 3u                                       /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485) */
 #define M1_INFO_MIDI_OUT 4u                                  /* INFO byte 3 (flags) bit 2: MENU > MIDI OUT is on (with feature bit 8) */
 #define M1_PNAME 16u                                         /* a preset's name (presetstore.c PS_NAME) */
-#define M1_PVALS 88u                                         /* a preset's values at most (presetstore.c PS_MAXV) */
+#define M1_PVALS 176u                                        /* a preset's values at most (presetstore.c PS_MAXV; 88 before feature bit 17) */
 #define M1_SLOTS 64u                                         /* the bank (slotstore.c) */
 #define M1_NAME 20u
 enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE, S_FULL, S_MISSING };
@@ -499,7 +499,7 @@ static uint32_t m1_pkey_get(const uint8_t *d, char *name)
 /* a long frame to the host (a preset's values) */
 static void m1_reply_long(uint32_t cmd, const uint8_t *payload, uint32_t n)
 {
-    static uint8_t f[8u + (8u * (21u + 4u * M1_PVALS) + 6u) / 7u];
+    static uint8_t f[8u + (8u * (21u + 4u * M1_PVALS) + 6u) / 7u] ENG_POOL;
     uint32_t w = 0;
     f[w++] = 0xF0;
     f[w++] = 0x7D;
@@ -694,9 +694,12 @@ static void m1_patch_range(uint32_t mod, uint32_t pin, uint32_t par, int on, uin
 }
 
 /* f: the bytes between F0 and F7. Returns 1 if the frame was ours (and is consumed). */
+#define M1_RX_A (2u + 4u * TRACK_NOTES_MAX + 8u)                /* TRACK */
+#define M1_RX_B (5u + M1_PNAME + 4u * M1_PVALS)                 /* PRESET_PUT */
+#define M1_RX_MAX (M1_RX_A > M1_RX_B ? M1_RX_A : M1_RX_B)
 static int m1_handle(const uint8_t *f, uint32_t n)
 {
-    uint8_t d[2u + 4u * TRACK_NOTES_MAX + 8u];         /* (the largest frame: TRACK) */
+    static uint8_t d[M1_RX_MAX] ENG_POOL;              /* (the largest frame: TRACK or PRESET_PUT; static, in the pool) */
     uint32_t len;
     if (n < 4u || f[0] != 0x7D || f[1] != 0x4D || f[2] != 0x31)
         return 0;
@@ -923,8 +926,8 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         break;
     }
     case C_PRESET_GET: {                                     /* #195: structure, name -> PRESET_DATA (count 0xFF: none) */
-        static uint8_t p[4u + M1_PNAME + 1u + 4u * M1_PVALS];
-        static int32_t v[M1_PVALS];
+        static uint8_t p[4u + M1_PNAME + 1u + 4u * M1_PVALS] ENG_POOL;
+        static int32_t v[M1_PVALS] ENG_POOL;
         char name[M1_PNAME + 1u];
         uint32_t st, nv = 0, i;
         if (len < 4u + M1_PNAME)
@@ -948,7 +951,7 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         break;
     }
     case C_PRESET_PUT: {                                     /* #195: structure, name, n, n i32 values -> ACK */
-        static int32_t v[M1_PVALS];
+        static int32_t v[M1_PVALS] ENG_POOL;
         char name[M1_PNAME + 1u];
         uint32_t st, nv, i;
         int rc;
