@@ -144,6 +144,16 @@ class Target {
     } while (Date.now() - t < ms);
     return false;
   }
+  /** wait up to `ms` for the sandbox page with the editor's page on it (D-232): a device page (its octave in the footer)
+   *  with SANDBOX where the patch's name goes, and not the card that shows before the first page */
+  async waitSandboxPage(ms = 3000) {
+    const t = Date.now();
+    do {
+      if ((await this.text('SANDBOX')) && (await this.text('= OCT =')) && !(await this.text('KEYS AND KNOBS'))) return true;
+      await sleep(100);
+    } while (Date.now() - t < ms);
+    return false;
+  }
 }
 
 /** a real FM-1 (or the emulator) over the editor link's device test mode (#291): the rig's page (dev/rig-client.ts) */
@@ -601,13 +611,16 @@ async function main() {
       await open('Hera 6 XL');
       const s = await until(async () => { const x = await T(); return x.sandbox ? x : null; });
       await check('sandbox: over budget with Live on is sandbox mode', !!s?.sandbox, `chip ${(await T()).chip}`);
-      const shown = await emu.waitText('BROWSER PLAYS');
+      const shown = await emu.waitSandboxPage();
       const sent = await page.evaluate(() => window.__sent.slice());
       const pauseAt = sent.findIndex((x) => x[1] === 0x2c && x[3][0] === 1);
       const pageAt = sent.findIndex((x) => x[1] === 0x31);
       await check('sandbox: pause precedes the page', pauseAt >= 0 && pageAt > pauseAt, `sent ${sent.map((x) => x[1].toString(16)).join(' ')}`);
-      await check('sandbox: the FM-1 shows the sandbox page', shown);
-      await check('sandbox: its first page names the editor patch', await emu.waitText('HERA 6 XL'));
+      await check('sandbox: the FM-1 shows the sandbox page, a device page with SANDBOX in its footer', shown);
+      // (the fields after the rows, D-468: the header's dashes, the tempo, unsaved edits, the armed devices; 217 bytes on the wire)
+      await check('sandbox: the editor sends SANDBOX with its header and footer fields', sent.some((x) => x[1] === 0x31 && x[2] >= 217),
+        `SANDBOX frames of ${[...new Set(sent.filter((x) => x[1] === 0x31).map((x) => x[2]))].join(', ')} bytes`);
+      await check('sandbox: no BROWSER PLAYS line', !(await emu.text('BROWSER PLAYS')));
       await emu.snap('sandbox');
       const p = await emu.notePeak();
       await check('sandbox: the FM-1 is silent under a key', p < QUIET, `peak ${p}`);
@@ -654,6 +667,32 @@ async function main() {
       await sleep(300);
       await check('sandbox: PRESET leaves the editor\'s patch', (await T()).patch === name);
     },
+    async tempo() {
+      // PLAY held + PRESET in sandbox mode sets the browser patch's tempo, a bpm a click (D-232); PLAY's release then
+      // starts nothing, and the FM-1's footer shows the new tempo
+      const tempoOf = async () => JSON.parse(await patchJson()).modules.find((m) => m.type === 'fm1')?.params.tempo;
+      const t0 = await tempoOf();
+      if (t0 === undefined) return check('sandbox: PLAY held + PRESET (skipped: the patch has no Main)', true);
+      const want = Math.min(300, Math.round(t0) + 2);
+      const run0 = (await T()).playing;
+      const turn = async (clicks) => {
+        await emu.key(B.play, true);
+        await sleep(200);
+        await emu.turn(ENC.preset, clicks);
+        await sleep(200);
+        await emu.key(B.play, false);
+      };
+      await turn(2);
+      const moved = await until(async () => (await tempoOf()) === want, 3000);
+      await check('sandbox: PLAY held + PRESET sets the browser patch\'s tempo', !!moved, `${t0} -> ${await tempoOf()} (want ${want})`);
+      await sleep(500);
+      await check('sandbox: PLAY\'s release after it starts and stops nothing', (await T()).playing === run0, `playing ${(await T()).playing}, was ${run0}`);
+      await check('sandbox: the FM-1\'s footer shows the new tempo', await emu.waitText(String(want), 3000));
+      await emu.snap('sandbox-tempo');
+      await turn(-2);
+      await until(async () => (await tempoOf()) === Math.round(t0), 3000);
+      await sleep(1700);
+    },
     async nudge() {
       // SEQ in sandbox mode: the FM-1 opens no SEQ page, its header says where that is done (D-249); a second tap undoes
       // whatever the editor did with the first, so the steps after it start where they did
@@ -662,7 +701,7 @@ async function main() {
       await check('sandbox: SEQ says SANDBOX: SEQ IN EDITOR', await emu.waitText('SANDBOX: SEQ IN EDITOR', 1500));
       await emu.snap('sandbox-seq-nudge');
       await emu.tap(B.seq);
-      await check('sandbox: still sandbox mode after SEQ', (await T()).sandbox && (await emu.waitText('BROWSER PLAYS', 3000)));
+      await check('sandbox: still sandbox mode after SEQ', (await T()).sandbox && (await emu.waitSandboxPage(3000)));
     },
     async leave() {
       await open('Init');
@@ -689,7 +728,7 @@ async function main() {
       await check('reconnect: connecting offers Sync', !!asked);
       const s = await until(async () => { const x = await T(); return x.sandbox ? x : null; });
       await check('reconnect: Sync starts sandbox mode', !!s?.sandbox, `chip ${(await T()).chip}`);
-      await check('reconnect: the FM-1 shows the sandbox page', await emu.waitText('BROWSER PLAYS'));
+      await check('reconnect: the FM-1 shows the sandbox page', await emu.waitSandboxPage());
       await shot('reconnect');
     },
     async switchPlaying() {   // the owner's 1.3 session: Elvira 2 running, then Elvira 2 XL opened
@@ -717,7 +756,7 @@ async function main() {
       await open('Elvira 2 XL');
       const s = await until(async () => { const x = await T(); return x.sandbox ? x : null; }, 2000);
       await check('switch: Elvira 2 XL mid-sequence is sandbox mode', !!s?.sandbox);
-      const shown = await emu.waitText('BROWSER PLAYS', 6000);
+      const shown = await emu.waitSandboxPage(6000);
       const took = Date.now() - t0;
       const sent = await page.evaluate(() => window.__sent.splice(0));
       const cmds = [...new Set(sent.map((x) => x[1].toString(16)))].join(' ');
@@ -725,7 +764,7 @@ async function main() {
       if (!shown) {
         await emu.snap('switch-stuck');
         await emu.tap(B.home);
-        afterHome = (await emu.waitText('BROWSER PLAYS', 3000)) ? '; after HOME it shows' : '; not even after HOME';
+        afterHome = (await emu.waitSandboxPage(3000)) ? '; after HOME it shows' : '; not even after HOME';
       }
       await check('switch: the FM-1 shows the sandbox page without HOME', shown, `${shown ? `after ${took} ms` : 'not within 6 s'}; the editor sent commands ${cmds}${afterHome}`);
       await emu.snap('switch');

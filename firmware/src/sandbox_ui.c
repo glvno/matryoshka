@@ -3,27 +3,32 @@
 /* Sandbox mode (docs/ARCHITECTURE.md "Sandbox mode"): the editor's patch is over the FM-1's budget, so the browser plays it
  * and the FM-1 is its controller. While the editor's LIVE says paused (live.c) the FM-1's own sound is muted (audio.c
  * snd_muted: its patch runs on, unheard), its controls go out over MIDI as always (MENU > MIDI OUT, panel.c), and the
- * device page shows the editor's page (SANDBOX, proto.c, sandbox_msg.h) in the device page's look:
- *   y   0  the header: SANDBOX and the editor's patch, on gold
- *   y  39  the device's name, the page's title and "3/7" of its pages
- *   y  58  K1..K4: the page's four rows, as the device page's bars
- *   y 218  the page rail, the page in gold
- *   y 225  the footer: BROWSER PLAYS . FM-1 MUTED (or how to turn MIDI OUT on), the battery
- * Before the editor's first page, a card says what is going on. K1..K4 turn the editor's rows from the positions it sent
- * (panel.c: CC 16..19, which the editor takes as positions), and the bars follow at once; the editor's page then brings
- * the values. Only the FM-1's own controls act here (OCT, HOME, PLAY, GLO, the menu); the other buttons go to the editor.
- * Sandbox mode beginning brings the sandbox page up from any screen but the menu and GLO (the FM-1's own settings): the
- * SEQ page, say, would otherwise stay up, its steps running on unheard, and SEQ goes to the editor here.
+ * device page shows the editor's page (SANDBOX, proto.c, sandbox_msg.h) as a device page (D-232, D-234):
+ *   the header: the editor's device, its page group and the group's pages, with their dashes (pages_ui.c head_row, sb_head)
+ *   K1..K4: the page's four rows, as the device page's bars
+ *   the footer, on gold: SANDBOX where the patch's name goes (" *" with unsaved edits, KEYS WIRED with nothing armed), the
+ *   editor's tempo, the octave and the battery (pages_ui.c foot_row, sb_foot)
+ * An older editor sends no device, group or tempo fields (sandbox_msg.h sb_guess): no dashes for them, the group's pages
+ * from the title's "1/2", and "--" for the tempo. Before the editor's first page, a card says what is going on, and K1..K4
+ * change nothing (the FM-1's own patch is muted, not edited: panel.c). K1..K4 turn the editor's rows from the positions it
+ * sent (panel.c: CC 16..19, which the editor takes as positions), and the bars follow at once; the editor's page then
+ * brings the values. PLAY held + PRESET turns the editor's tempo (sandbox_tempo: PRESET's CC goes out, the editor adds the
+ * clicks), never the FM-1's own. Only the FM-1's own controls act here (OCT, HOME, PLAY, GLO, the menu); the other buttons
+ * go to the editor. Sandbox mode beginning brings the sandbox page up from any screen but the menu and GLO (the FM-1's own
+ * settings): the SEQ page, say, would otherwise stay up, its steps running on unheard, and SEQ goes to the editor here.
  * Sandbox mode ends with a LIVE not paused, or 5 s without LIVE (a closed tab, a pulled cable), and the FM-1 sounds again. */
 #define SB_HOLD_MS 5000u                                /* (live.c LIVE_HOLD_MS) */
 #define SB_ECHO_MS 400u                                 /* a knob turned here: the editor's position for it waits this long */
 #define SB_DIRTY_HEAD 16u
+#define SB_TEMPO_MIN 20
+#define SB_TEMPO_MAX 300                                /* (panel.c's PLAY held + PRESET range, the editor's sandbox-mode.ts) */
 static sb_page_t sb;                                    /* the editor's page */
 static uint8_t sb_have;                                 /* a page arrived since sandbox mode began */
-static uint8_t sb_dirty;                                /* bit k: row k needs a redraw; SB_DIRTY_HEAD: the bar, the header, the rail */
+static uint8_t sb_dirty;                                /* bit k: row k needs a redraw; SB_DIRTY_HEAD: the header */
 static uint32_t sb_until;                               /* sandbox mode lapses at this fm1_ms */
 static uint8_t sb_cc[SB_ROWS];                          /* K1..K4's positions as CC 16..19 carry them, 0..127 */
 static uint32_t sb_turned[SB_ROWS];                     /* fm1_ms | 1 of the last turn here, 0 none */
+static uint32_t sb_tempo_turned;                        /* fm1_ms | 1 of PLAY held + PRESET here, 0 none */
 static uint8_t sb_home_due;                             /* sandbox mode began: panel_status brings the sandbox page up */
 
 /* sandbox mode on or off: the sound, and the whole screen at the next panel_draw */
@@ -36,6 +41,7 @@ static void sandbox_set(int on)
     snd_muted = sb_on;
     sb_have = 0;
     sb_dirty = 0;
+    sb_tempo_turned = 0;
     pg_strip_dirty = 1;
     ui_full = 1;
 }
@@ -55,8 +61,10 @@ static void sandbox_poll(void)
         sandbox_set(0);
 }
 
+/* the turn here (fm1_ms | 1, 0 none) was within SB_ECHO_MS */
+static int sb_fresh(uint32_t t) { return t && fm1_ms - (t & ~1u) < SB_ECHO_MS; }
 /* K(k + 1) was turned here within SB_ECHO_MS */
-static int sb_recent(uint32_t k) { return sb_turned[k] && fm1_ms - (sb_turned[k] & ~1u) < SB_ECHO_MS; }
+static int sb_recent(uint32_t k) { return sb_fresh(sb_turned[k]); }
 
 static int sb_same(const char *a, const char *b)
 {
@@ -65,14 +73,15 @@ static int sb_same(const char *a, const char *b)
     return *a == *b;
 }
 
-/* the editor's page (proto.c SANDBOX): only what changed is drawn again */
+/* the editor's page (proto.c SANDBOX): only what changed is drawn again (the footer: foot_draw compares) */
 static void m1_sandbox(const sb_page_t *s)
 {
     uint32_t k;
+    uint16_t tempo = sb_fresh(sb_tempo_turned) ? sb.tempo : s->tempo;   /* (the tempo turned here wins for a moment) */
     if (!sb_on)
         return;                                         /* (a page after sandbox mode ended) */
-    if (!sb_have || s->index != sb.index || s->count != sb.count || !sb_same(s->patch, sb.patch) || !sb_same(s->dev, sb.dev)
-        || !sb_same(s->page, sb.page))
+    if (!sb_have || !sb_same(s->dev, sb.dev) || !sb_same(s->page, sb.page) || s->ndev != sb.ndev || s->dev_at != sb.dev_at
+        || s->ngroup != sb.ngroup || s->group_at != sb.group_at || s->npage != sb.npage || s->page_at != sb.page_at)
         sb_dirty |= SB_DIRTY_HEAD;
     for (k = 0; k < SB_ROWS; k++) {
         int recent = sb_recent(k);
@@ -85,11 +94,15 @@ static void m1_sandbox(const sb_page_t *s)
     }
     {
         uint8_t keep[SB_ROWS];
+        int foot = sb_have && (tempo != sb.tempo || s->flags != sb.flags || !s->armed != !sb.armed || s->ext != sb.ext);
         for (k = 0; k < SB_ROWS; k++)
             keep[k] = sb_recent(k) ? sb.pos[k] : s->pos[k];
         sb = *s;
+        sb.tempo = tempo;
         for (k = 0; k < SB_ROWS; k++)
             sb.pos[k] = keep[k];
+        if (foot && !ui_dirty)
+            ui_dirty = 1;                               /* (the footer: the tempo, unsaved edits, KEYS WIRED) */
     }
     if (!sb_have) {
         sb_have = 1;
@@ -99,8 +112,8 @@ static void m1_sandbox(const sb_page_t *s)
 }
 
 /* K(k + 1) turned `c` clicks (fast: quickly) on the sandbox page: the row's next position, as CC 16..19 carry it, or -1
- * when it does not move (no row, at its end). A row of n choices moves a choice a click; others 1/127 (5/127 fast). The bar
- * follows here at once; panel.c sends the CC */
+ * when it does not move (no page yet, no row, at its end). A row of n choices moves a choice a click; others 1/127 (5/127
+ * fast). The bar follows here at once; panel.c sends the CC */
 static int32_t sandbox_knob(uint32_t k, int32_t c, int fast)
 {
     int32_t v, n;
@@ -124,59 +137,59 @@ static int32_t sandbox_knob(uint32_t k, int32_t c, int fast)
     return v;
 }
 
-/* the editor's patch's name, for the header (pages_ui.c head_layout) */
-static const char *sb_patch_name(void) { return sb_have ? sb.patch : ""; }
+/* PLAY held + PRESET turned `c` clicks in sandbox mode: the editor's tempo as it will be (it adds PRESET's clicks from its
+ * CC, 1 bpm a click, within 20..300), shown here at once; 0 when the editor sent no tempo (an older editor, a patch with
+ * no Main, no page yet), and the editor does not take the turn */
+static int32_t sandbox_tempo(int32_t c)
+{
+    int32_t bpm;
+    if (!sb_have || !sb.tempo)
+        return 0;
+    bpm = (int32_t)sb.tempo + c;
+    bpm = bpm < SB_TEMPO_MIN ? SB_TEMPO_MIN : bpm > SB_TEMPO_MAX ? SB_TEMPO_MAX : bpm;
+    sb.tempo = (uint16_t)bpm;
+    sb_tempo_turned = fm1_ms | 1u;
+    return bpm;
+}
 
-/* the header: SANDBOX and the editor's patch, on gold (pages_ui.c head_row, HM_SANDBOX) */
+/* the header (pages_ui.c head_layout): the editor's device and the page's group, with a dash per device and per group,
+ * and a bar per page of the group. The group's name is the page's title without its "1/2". Before the first page: empty */
+static void sb_head(head_t *h)
+{
+    uint32_t n;
+    uint8_t at, cnt;
+    h->mode = HM_DEV;
+    if (!sb_have) {
+        h->ns = 1;
+        return;
+    }
+    caps(h->a, sb.dev, str_len(sb.dev), 16);
+    n = sb_part(sb.page, &at, &cnt);
+    caps(h->b, sb.page, n ? n : str_len(sb.page), 16);
+    h->nd = sb.ndev;
+    h->cd = sb.dev_at;
+    h->ng = sb.ngroup;
+    h->cg = sb.group_at;
+    h->ns = sb.npage ? sb.npage : 1u;
+    h->cs = sb.page_at;
+}
+
+/* the footer (pages_ui.c foot_layout): SANDBOX where the patch's name goes (" *" with unsaved edits) and the editor's
+ * tempo ("--" when it sent none); 1 when nothing is armed in the editor (KEYS WIRED: only from an editor that says) */
+static int sb_foot(char *name, char *tempo)
+{
+    put(name, sb_have && (sb.flags & SB_UNSAVED) ? "SANDBOX *" : "SANDBOX")[0] = 0;
+    if (sb_have && sb.tempo)
+        fmt_int(tempo, (int32_t)sb.tempo);
+    else
+        put(tempo, "--")[0] = 0;
+    return sb_have && sb.ext && !sb.armed;
+}
+
+/* the header, whole (ui.c header_draw: a message's end) */
 static void sandbox_bar(void)
 {
     head_draw(1);
-}
-
-#define SB_HEAD_Y (LK_HH + 3u)                          /* the line under the header */
-#define SB_RAIL_Y (FOOT_Y - 7u)                         /* the page rail, 3 px, 4 above the footer */
-static void sandbox_geo(void) { geo_set(LK_HH + 22u, SB_RAIL_Y - 4u); }
-
-/* the line under it: the device, the page's title in a chip, "3/7" of the device's pages */
-static void sandbox_head(void)
-{
-    char dev[SB_DEV + 1u], pg[SB_PAGE + 1u], kn[12], num[8], *q;
-    uint32_t wk, wp, xp;
-    lcd_fill(0, SB_HEAD_Y - 1u, 240, 16, P_NIGHT);
-    q = put(kn, "");
-    if (sb.count) {
-        fmt_int(num, (int32_t)sb.index + 1);
-        q = put(q, num);
-        *q++ = '/';
-        fmt_int(num, (int32_t)sb.count);
-        q = put(q, num);
-    }
-    *q = 0;
-    wk = kn[0] ? text_w(&FONT_S, kn, -1) : 0u;
-    caps(pg, sb.page, str_len(sb.page), SB_PAGE);
-    fit(pg, &FONT_S, 120u);
-    wp = pg[0] ? text_w(&FONT_S, pg, -1) + 8u : 0u;
-    xp = 234u - wk - (wk ? 6u : 0u) - wp;
-    caps(dev, sb.dev, str_len(sb.dev), SB_DEV);
-    fit(dev, &FONT_S, xp > 16u ? xp - 12u : 0u);
-    text_bc(&FONT_S, 6, SB_HEAD_Y, dev, P_INK, P_NIGHT, 0, TA_LEFT);
-    if (wp)
-        text_bc(&FONT_S, xp, SB_HEAD_Y, pg, P_NIGHT, P_SEA, wp, TA_CENTER);
-    if (wk)
-        text_bc(&FONT_S, 234u - wk, SB_HEAD_Y, kn, P_DIM, P_NIGHT, wk, TA_LEFT);
-}
-
-/* the page rail: a segment per page of the device, the one shown in gold */
-static void sandbox_rail(void)
-{
-    uint32_t i, n = sb.count;
-    lcd_fill(0, SB_RAIL_Y, 240, 3, P_NIGHT);
-    if (n > BAR_W / 3u)
-        n = BAR_W / 3u;
-    for (i = 0; i < n; i++) {
-        uint32_t a = BAR_X + i * BAR_W / n, b = BAR_X + (i + 1u) * BAR_W / n;
-        lcd_fill(a, SB_RAIL_Y, b - a > 2u ? b - a - 2u : 1u, 3, i == sb.index ? P_GOLD : P_TRACK);
-    }
 }
 
 /* before the editor's first page: what sandbox mode is */
@@ -192,32 +205,27 @@ static void sandbox_card(void)
     text_bc(&FONT_S, 0, 132, t, P_DIM, P_NIGHT, 240, TA_CENTER);
 }
 
-/* the sandbox page (page 0 in sandbox mode): full, or what changed. Its footer (pages_ui.c foot_draw): who plays, or how
- * to turn MIDI OUT on (without it the keys and knobs reach nothing), and the battery */
+/* the sandbox page (page 0 in sandbox mode): full, or what changed (the header's sections, the bars, the footer) */
 static void sandbox_draw(int full)
 {
     uint32_t k;
-    sandbox_geo();
+    geo_page(0);
     if (full) {
-        if (!msg_until)
-            sandbox_bar();
+        if (head_free())
+            head_draw(1);
         lcd_fill(0, LK_HH, 240, FOOT_Y - LK_HH, P_NIGHT);
         foot_draw(1);
         sb_dirty = 0xFFu;
     } else
-        foot_draw(0);                                   /* (MIDI OUT turned on or off) */
+        foot_draw(0);                                   /* (the tempo, the octave, unsaved edits, KEYS WIRED) */
     if (!sb_have) {
         if (full)
             sandbox_card();
         sb_dirty = 0;
         return;
     }
-    if (sb_dirty & SB_DIRTY_HEAD) {
-        if (!full && !msg_until)
-            head_draw(0);                               /* (another patch name) */
-        sandbox_head();
-        sandbox_rail();
-    }
+    if ((sb_dirty & SB_DIRTY_HEAD) && !full && head_free())
+        head_draw(0);                                   /* (only its sections that changed) */
     for (k = 0; k < SB_ROWS; k++)
         if (sb_dirty >> k & 1u) {
             bar_t b;

@@ -24,20 +24,54 @@ function sandboxRow(patch: Patch, r: Device['pages'][number]['rows'][number] | u
   return { label: r.label, value: f.num, unit: f.unit, pos: toUnit(pd, v), steps: 0 };
 }
 
+/** the tempo the browser plays the patch at: Main's (whole bpm), 0 with no Main */
+export function sandboxTempo(patch: Patch): number {
+  const m = patch.modules.find((x) => x.type === 'fm1');
+  const pd = DEFS.fm1?.params.find((q) => q.name === 'tempo');
+  return m && pd ? Math.round(m.params.tempo ?? pd.default) : 0;
+}
+
+/** PLAY held + PRESET turned `clicks` on the FM-1 in sandbox mode (D-232): Main's tempo that many bpm on, within
+ *  SANDBOX_TEMPO (the FM-1 shows the same, sandbox_ui.c sandbox_tempo) and Main's range; null with no Main or no change */
+export const SANDBOX_TEMPO = { min: 20, max: 300 } as const;
+export function sandboxTempoTurn(patch: Patch, clicks: number): { module: number; tempo: number } | null {
+  const m = patch.modules.find((x) => x.type === 'fm1');
+  const pd = DEFS.fm1?.params.find((q) => q.name === 'tempo');
+  if (!m || !pd || !clicks) return null;
+  const now = sandboxTempo(patch);
+  const lo = Math.max(SANDBOX_TEMPO.min, pd.min), hi = Math.min(SANDBOX_TEMPO.max, pd.max);
+  const tempo = Math.max(lo, Math.min(hi, now + clicks));
+  return tempo === now ? null : { module: m.id, tempo };
+}
+
 /** the page in focus (`focus`, Editor.focus) of the patch's devices (Editor.devices), with the patch's name; a patch with
- *  no device page gives the name alone */
-export function sandboxPage(patch: Patch, devices: Device[], focus: { device: string; page: number } | null): SandboxPage {
+ *  no device page gives the name alone. For the FM-1's device page header and footer (1.8, D-232): the page's place among
+ *  the devices, their page groups and the group's pages, the tempo, unsaved edits (`o.unsaved`) and the armed devices
+ *  (`o.armed`, device keys) */
+export function sandboxPage(patch: Patch, devices: Device[], focus: { device: string; page: number } | null,
+  o: { unsaved?: boolean; armed?: Iterable<string> } = {}): SandboxPage {
   const name = patch.name.trim() || 'Untitled';
+  const armedKeys = new Set(o.armed ?? []);
+  const armed = devices.reduce((m, d, i) => (i < 32 && armedKeys.has(d.key) ? (m | (1 << i)) >>> 0 : m), 0);
+  const more = { tempo: sandboxTempo(patch), unsaved: !!o.unsaved, armed };
   const dev = devices.find((d) => d.key === focus?.device);
   const pg = dev?.pages[focus?.page ?? 0];
-  if (!dev || !pg) return { patch: name, device: '', page: '', index: 0, count: 0, rows: [null, null, null, null] };
+  if (!dev || !pg) return { patch: name, device: '', page: '', index: 0, count: 0, rows: [null, null, null, null], ...more };
+  const index = dev.pages.indexOf(pg);
+  const firsts = dev.pages.filter((x, i) => i === 0 || x.part === 0);
   return {
     patch: name,
     device: dev.name,
     page: fm1PageTitle(dev.name, pg),
-    index: dev.pages.indexOf(pg),
+    index,
     count: dev.pages.length,
     rows: Array.from({ length: PAGE_ROWS }, (_, k) => sandboxRow(patch, pg.rows[k])),
+    place: {
+      devices: devices.length, device: devices.indexOf(dev),
+      groups: firsts.length, group: dev.pages.slice(0, index + 1).filter((x, i) => i === 0 || x.part === 0).length - 1,
+      pages: Math.max(1, pg.parts), page: pg.part,
+    },
+    ...more,
   };
 }
 

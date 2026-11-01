@@ -2784,11 +2784,12 @@ for (const [name, patch] of Object.entries(tests)) {
   writeFileSync(new URL('proto-slot.syx', OUT), Buffer.concat(slotFrames));
   writeFileSync(new URL('proto.args', OUT), `${mod} ${par} ${val} ${mod} 0 ${attVal}\n`);
 }
-// sandbox mode: a SANDBOX page as the editor sends it (proto_test checks every field the firmware parses; a minus sign
-// arrives as '-')
+// sandbox mode: a SANDBOX page as the editor sends it, with the fields after the rows (1.8, D-468; proto_test checks
+// every field the firmware parses; a minus sign arrives as '-')
 writeFileSync(new URL('proto-sandbox.syx', OUT), sandboxFrame({
   patch: 'SOL 29N XL', device: 'Sol filter', page: 'FILTER 1/2', index: 2, count: 5,
   rows: [{ label: 'Cutoff', value: '2.40', unit: 'kHz', pos: 150 / 255, steps: 0 }, { label: 'Res', value: '\u221212', unit: 'dB', pos: 1, steps: 0 },
     { label: 'Wave', value: 'SAW', unit: '', pos: 0, steps: 4 }, null],
+  place: { devices: 5, device: 2, groups: 3, group: 1, pages: 2, page: 0 }, tempo: 300, unsaved: true, armed: 0x80000005,
 }));
 console.log(`golden vectors for ${Object.keys(tests).length} patches in build/golden/`);

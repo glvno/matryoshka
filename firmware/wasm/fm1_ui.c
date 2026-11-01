@@ -301,6 +301,9 @@ WASM_EXPORT("fm1w_mute") void fm1w_mute(uint32_t mod, uint32_t on)
     ui_dirty = 2;
     panel_draw();
 }
+/* the FM-1 the page follows turned PRESET with PLAY held in sandbox mode (the browser's tempo, D-232): PLAY's release here
+ * then neither starts nor stops, as on the FM-1 */
+WASM_EXPORT("fm1w_play_turned") void fm1w_play_turned(void) { play_turned = 1; }
 /* the page's transport (its Play button, Space) */
 WASM_EXPORT("fm1w_transport") void fm1w_transport(uint32_t run)
 {

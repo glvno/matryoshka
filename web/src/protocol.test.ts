@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { parsePeak, parseScreen, testKeyFrame, testScreenFrame, testTurnFrame, fm1Ascii, parseInfo, parseSandbox, SANDBOX_BYTES, sandboxFrame, sandboxPayload, type SandboxPage, chunkFrames, CMD, commitFrame, crc16, devicePresetName, frame, LIVE_MS, liveFrame, pack7, paramFrame, parse, parsePresetData, parsePresetEntry, parsePresetStored, parseSlot, presetPutFrame, slotEraseFrame, slotFrame, slotInfoFrame, unpack7 } from './protocol';
+import { parsePeak, parseScreen, testKeyFrame, testScreenFrame, testTurnFrame, fm1Ascii, parseInfo, parseSandbox, SANDBOX_BYTES, SANDBOX_EXT_BYTES, sandboxFrame, sandboxPayload, type SandboxPage, chunkFrames, CMD, commitFrame, crc16, devicePresetName, frame, LIVE_MS, liveFrame, pack7, paramFrame, parse, parsePresetData, parsePresetEntry, parsePresetStored, parseSlot, presetPutFrame, slotEraseFrame, slotFrame, slotInfoFrame, unpack7 } from './protocol';
 
 describe('SysEx protocol', () => {
   it('packs and unpacks every length without loss and with 7-bit bytes only', () => {
@@ -99,18 +99,30 @@ describe('sandbox mode on the wire', () => {
       { label: 'Wave', value: 'SAW', unit: '', pos: 0, steps: 4 }, null],
   };
 
+  const more = { place: { devices: 5, device: 2, groups: 3, group: 1, pages: 2, page: 0 }, tempo: 300, unsaved: true, armed: 0x80000005 };
+
   it('SANDBOX carries the page in fixed fields and parses back', () => {
-    const f = sandboxFrame(page);
+    const f = sandboxFrame({ ...page, ...more });
     const p = parse(f)!;
     expect(p.cmd).toBe(CMD.sandbox);
     expect(p.cmd).toBe(0x31);
-    expect(p.payload.length).toBe(SANDBOX_BYTES);
+    expect(p.payload.length).toBe(SANDBOX_BYTES + SANDBOX_EXT_BYTES);
     expect(SANDBOX_BYTES).toBe(171);   // (firmware/src/sandbox_msg.h SB_BYTES)
-    expect(f.length).toBe(202);   // small (a CHUNK is up to 445 bytes): a page on every change is cheap
+    expect(SANDBOX_EXT_BYTES).toBe(13);   // (SB_EXT_BYTES)
+    expect(f.length).toBe(217);   // small (a CHUNK is up to 445 bytes): a page on every change is cheap
     const back = parseSandbox(p.payload)!;
-    expect(back).toEqual({ ...page, rows: [{ ...page.rows[0]!, pos: 150 / 255 }, { ...page.rows[1]!, value: '-12' }, page.rows[2], null] });
+    expect(back).toEqual({ ...page, ...more, rows: [{ ...page.rows[0]!, pos: 150 / 255 }, { ...page.rows[1]!, value: '-12' }, page.rows[2], null] });
     expect(sandboxPayload(page)[0]).toBe(0b0111);
-    expect(parseSandbox(p.payload.slice(0, -1))).toBeNull();
+    expect(parseSandbox(p.payload.slice(0, SANDBOX_BYTES - 1))).toBeNull();
+  });
+
+  it('the fields after the rows: as sandbox_msg.h reads them; a page without them (an older editor) parses as before', () => {
+    const e = sandboxPayload({ ...page, ...more }).slice(SANDBOX_BYTES);
+    expect(e).toEqual([5, 2, 3, 1, 2, 0, 300 & 0xff, 300 >> 8, 1, 5, 0, 0, 0x80]);
+    expect(sandboxPayload(page).slice(SANDBOX_BYTES)).toEqual(new Array(13).fill(0));   // (none given: zeros)
+    const old = parseSandbox(sandboxPayload(page).slice(0, SANDBOX_BYTES))!;
+    expect(old).toEqual({ ...page, rows: [{ ...page.rows[0]!, pos: 150 / 255 }, { ...page.rows[1]!, value: '-12' }, page.rows[2], null] });
+    expect(old.place).toBeUndefined();
   });
 
   it('cuts names to their fields and keeps to the FM-1\'s ASCII', () => {
