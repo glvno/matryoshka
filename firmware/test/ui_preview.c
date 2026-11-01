@@ -4,8 +4,10 @@
  *   ui_preview OUT.ppm PRESET_INDEX [SELECTED_MODULE or DEVICE:PAGE [OCTAVE [PAGE [STEP [MENU_TAB [MANUAL_LINE [POLY]]]]]]]
  * Environment: PATCHTOAST=1 PRESET's toast (the factory bank's slot; BANK=n: a bank of n filled slots instead, the patch
  * in slot SLOT, default the preset index), SANDBOX=1 sandbox mode before the editor's first page (the card), SANDBOX=2
- * with a page of the editor's (MIDIOUT=0: MENU > MIDI OUT off), BATT=0..3 or 4 (USB) the battery's level; on the SEQ page
- * STEPS_LEN=n the track's length, HELD=k step k held, ARM=1 the track armed (#450); PAGE 11 the SONG page; MSG=text a message in the bar
+ * with a page of the editor's (MIDIOUT=0: MENU > MIDI OUT off), BATT=0..3 or 4 (USB) the battery's level, HELP=quick the quick
+ * start or HELP=sheet the controls sheet over the page (HELP_TAB=1 its EVERYWHERE tab, HELP_TOP=n scrolled n rows); on the SEQ page
+ * STEPS_LEN=n the track's length, HELD=k step k held, ARM=1 the track armed (#450); PAGE 11 the SONG page; MSG=text a message in the bar;
+ * ENVPAGE=1 the environment page
  * tools/ui_preview.sh converts the image to PNG. With UI_PREVIEW_LIB defined it is only the host's stand-ins and the UI
  * (host_ui.h; panel_test.c includes it so). */
 #include <stdint.h>
@@ -132,7 +134,9 @@ int main(int argc, char **argv)
             m1_sandbox(&s);
         }
     }
-    if (page == 9u) {                                       /* the loading screen, the bar 60 % in */
+    if (getenv("ENVPAGE"))                                  /* ENVPAGE=1: the environment page (ENV) */
+        page = PAGE_ENV;
+    if (page == 9u && !getenv("ENVPAGE")) {                 /* the loading screen, the bar 60 % in */
         splash_draw();
         splash_line("LOADING PATCH");
         splash_bar(SPLASH_BAR_W * 3u / 5u);
@@ -140,6 +144,14 @@ int main(int argc, char **argv)
         screen_idle();
     if (getenv("MSG"))                                      /* a message in the bar, over the page (#450: its 26 characters) */
         ui_msg(getenv("MSG"), 1000);
+    if (getenv("HELP")) {                                   /* a card over the page (help_ui.c): the quick start, or the sheet on
+                                                             * HELP_TAB (1: EVERYWHERE) from row HELP_TOP */
+        help_open(!strcmp(getenv("HELP"), "quick") ? HELP_QUICK : HELP_SHEET);
+        help_tab = (uint8_t)(getenv("HELP_TAB") ? atoi(getenv("HELP_TAB")) : 0);
+        help_top = (uint8_t)(getenv("HELP_TOP") ? atoi(getenv("HELP_TOP")) : 0);
+        help_draw();
+        screen_idle();                                      /* (the page again: the dim frame around the card) */
+    }
     f = fopen(argv[1], "wb");
     fprintf(f, "P6\n240 240\n255\n");
     for (i = 0; i < 240u * 240u; i++) {

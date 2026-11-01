@@ -5,6 +5,7 @@
 ### FM-1
 
 - Clearer control hints: the SEQ page names OCT for steps 17 and up (#490), shows a held step's knobs and fits SEQ+REC clear again; PRESET on a module says HOME+PRESET changes patches; the manual has more headings and fixes (#450).
+- The FM-1 teaches its controls (#450): after power-on a quick start card shows the knobs (HOME closes it, HOME + SAVE turns it off, GLO > SYSTEM > QUICK START turns it on again), and OCT- + OCT+ pressed together open a controls sheet for the page you are on, with a second tab of the combinations that work everywhere (ALGO switches tabs, SELECT scrolls, HOME closes; the keys and PLAY keep working). OCT- and OCT+ now act when let go, so pressing both changes nothing.
 
 ### Editor
 

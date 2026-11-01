@@ -267,7 +267,8 @@ static uint32_t popcount64(uint64_t v)
 }
 static int slot_used(uint32_t s) { return s < M1_SLOTS && (bank_mask >> s & 1u); }
 
-/* the settings record: version, slot, octave + 8, LED mode, knob accel, CPU in the bar, clock in, program change,
+/* the settings record: version, slot, octave + 8, LED mode, knob accel (bit 0; bit 1: the quick start off, D-247: a record
+ * from before reads as on, and an older firmware reads the accel as before), CPU in the bar, clock in, program change,
  * MIDI channel, MIDI out, the bank's format, the selected module, REC's count-in (byte 12, #414: a record without
  * it, SET_MIN bytes, reads as OFF), the factory set the bank's untouched factory slots hold (bytes 13..15, #441: a
  * record without them reads as unknown). The version stays 1, so an older firmware reads the longer record too; it
@@ -286,7 +287,7 @@ static void settings_pack(uint8_t *d)
     d[1] = (uint8_t)cur_preset;
     d[2] = (uint8_t)(octave + 8);
     d[3] = cfg.leds;
-    d[4] = cfg.accel;
+    d[4] = (uint8_t)(cfg.accel | (cfg.quick ? 0u : 2u));
     d[5] = cfg.cpu_bar;
     d[6] = cfg.clock_in;
     d[7] = cfg.prog_chg;
@@ -307,6 +308,7 @@ static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint3
     octave = clampi((int32_t)d[2] - 8, -3, 3);
     cfg.leds = d[3] > 2u ? 2u : d[3];
     cfg.accel = d[4] & 1u;
+    cfg.quick = !(d[4] & 2u);
     cfg.clock_in = d[6] & 1u;                   /* (bytes 5 and 7, CPU in the bar and program change, are no longer settings) */
     cfg.ch = d[8] > 16u ? 0u : d[8];
     cfg.midi_out = d[9] == 0u ? 0u : 1u;
@@ -327,6 +329,14 @@ static int store_write(uint32_t id, const char *name, const uint8_t *p, uint32_t
     rc = sl_write(id, name, p, len);
     eng_resume();
     return rc;
+}
+
+/* the settings record alone, now (panel.c: HOME + SAVE on the quick start turns it off for good, D-247) */
+static void settings_store(void)
+{
+    uint8_t set[SET_LEN];
+    settings_pack(set);
+    (void)store_write(SL_SETTINGS, 0, set, SET_LEN);
 }
 
 static char label_buf[M1_NAME + 1];              /* the running patch's name (its slot's) */
@@ -1098,8 +1108,13 @@ static void fm1_main(int update)                    /* update: the boot guard sa
     booting = 0;
     lcd_fill(0, 0, 240, 240, C_BG);
     batt_drawn = BATT_NONE;                             /* (the footer's battery too) */
-    screen_idle();                                      /* the top bar and the page */
-    if (boot_msg)
+    if (cfg.quick && !boot_safe)                        /* the quick start over the first page (D-247; not in safe mode) */
+        help_open(HELP_QUICK);
+    screen_idle();                                      /* the top bar and the page (under the quick start: dim around it) */
+    if (boot_msg && help_on) {                          /* a boot message waits for the card to go */
+        help_msg = boot_msg;
+        help_msg_ms = boot_msg_ms;
+    } else if (boot_msg)
         ui_msg(boot_msg, boot_msg_ms);
     leds_play();
     leds_avail();

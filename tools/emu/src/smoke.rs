@@ -2,7 +2,8 @@
 //! MIDI input, judged by what the LCD shows (the firmware's own font, font.rs), the audio it
 //! makes and the flash it writes. No symbols needed: it runs on the release binary.
 //!
-//! 1. boot: the loading screen, then the main page of factory patch 0
+//! 1. boot: the loading screen, then the main page of factory patch 0 under the quick start (D-247); OCT- + OCT+ opens
+//!    the controls sheet in its place (D-245), ALGO its EVERYWHERE tab, HOME closes it; OCT acts on its release
 //! 2. sound: silent without keys, a note on a panel key, silent again after the release
 //! 3. pages: GLO (the menu, again: back), PLAY twice, HOME (on the patch's home page: nothing, the page stays), SELECT /
 //!    ALGO (the header shows where they went, no toast; back again: as it was), ALGO then HOME (the device's first page),
@@ -15,7 +16,8 @@
 //! 7. the preset bank: three slots (and one with a bad CRC) written straight into the flash,
 //!    PRESET and program change step through the three, wrapping
 //! 8. safety: a patch far over the CPU budget sheds parts, one with nothing to shed is muted (OVERLOAD) and the
-//!    next patch plays again; SAVE held at power-on = safe mode (the built-in fallback patch, not the bank); OCT- +
+//!    next patch plays again; SAVE held at power-on = safe mode (the built-in fallback patch, not the bank, no quick
+//!    start); HOME + SAVE turns the quick start off for good (the next power-on has none); OCT- +
 //!    OCT+ held at power-on and MENU > SYSTEM > UPDATE MODE (K1, then GLO held) = update mode (no engine)
 //!    then the bank's power-loss rules and the first boot's factory bank; an update that changed a factory patch but not
 //!    the format (#441): the untouched slot gets today's patch, an edited one and today's stay, once
@@ -145,6 +147,16 @@ fn wait_text(m: &mut Machine, s: &str, max: u64) -> Result<bool, String> {
         m.run_for(50)?;
     }
     Ok(font::on_screen(m.lcd(), s))
+}
+
+/// After power-on the quick start shows over the first page (D-247): wait up to `max` ms for it, then HOME closes it
+/// and the device page is drawn whole again. Whether it showed
+fn quick_start(m: &mut Machine, max: u64) -> Result<bool, String> {
+    let shown = wait_text(m, "QUICK START", max)?;
+    if shown {
+        m.tap(HOME, 120, 400)?;
+    }
+    Ok(shown)
 }
 
 /// Run up to `max` ms more until the device page's header is on the screen (a gold pixel, P_GOLD, the device's dash in
@@ -343,7 +355,8 @@ fn store(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8
     put(&mut flash, 0xB0000, record(7, 20, "EMU TORN", &presets[3].1, true));
     put(&mut flash, 0xC0000, record(0, 1, "EMU ZERO", &presets[0].1, false));
     let mut m = Machine::boot(app, Some(&flash));
-    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    quick_start(&mut m, 9000)?;
+    wait_text(&mut m, DEVICE_PAGE, 2000)?;
     m.run_for(300)?;
     t.screen(&m, "store: boot opens slot 0 (no settings record)", "EMU ZERO");
     m.midi(&[0xC0, 3], 500)?;
@@ -355,8 +368,10 @@ fn store(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8
     *emulated += m.ms();
 
     let mut m = Machine::boot(app, None);
-    let written = wait_text(&mut m, "FACTORY BANK WRITTEN", 9000)?;
-    t.check("store: the first boot writes the factory bank", written, String::new());
+    let quick = quick_start(&mut m, 9000)?;
+    t.check("store: the quick start over the first boot's page (D-247)", quick, String::new());
+    let written = wait_text(&mut m, "FACTORY BANK WRITTEN", 1000)?;
+    t.check("store: the first boot writes the factory bank (said once the quick start closes)", written, String::new());
     m.run_for(1000)?;                          // (it holds the bar for 2 s: the first full redraw must not wipe it)
     t.screen(&m, "store: the boot message stays up", "FACTORY BANK WRITTEN");
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
@@ -401,7 +416,8 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
     // MIDI out, the bank's format (today's), module 0
     put(&mut flash, 0xA3000, record(64, 4, "", &[1, 2, 8, 0, 1, 0, 0, 0, 0, 1, version, 0], false));
     let mut m = Machine::boot(app, Some(&flash));
-    let said = wait_text(&mut m, "FACTORY PATCHES UPDATED", 9000)?;
+    quick_start(&mut m, 9000)?;
+    let said = wait_text(&mut m, "FACTORY PATCHES UPDATED", 1000)?;
     t.check("upgrade: a same-format factory change says FACTORY PATCHES UPDATED", said, String::new());
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
@@ -418,7 +434,8 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
     let got = if set.len() >= 16 { set[13] as u32 | (set[14] as u32) << 8 | (set[15] as u32) << 16 } else { 0 };
     t.check("upgrade: the settings record keeps the factory set (16 bytes, 13..15)", set.len() == 16 && got == set_id && set[1] == 2, format!("{} bytes, set {got:06x}, FACTORY_SET_ID {set_id:06x}", set.len()));
     let mut m = Machine::boot(app, Some(&f));
-    let again = wait_text(&mut m, "FACTORY PATCHES UPDATED", 4000)?;
+    quick_start(&mut m, 9000)?;
+    let again = wait_text(&mut m, "FACTORY PATCHES UPDATED", 2500)?;
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     t.check("upgrade: the next boot rewrites nothing", !again && m.flash() == f, String::new());
     *emulated += m.ms();
@@ -431,6 +448,7 @@ fn panel(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
     flash[0xA0000..0xA1000].copy_from_slice(&slot_sector(0, "EMU PANEL", &patch, false));
     let mut m = Machine::boot(app, Some(&flash));
+    quick_start(&mut m, 9000)?;
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     t.screen(&m, "panel: the patch loads", "EMU PANEL");
@@ -468,6 +486,7 @@ fn long_delay(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String>
         let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
         flash[0xA0000..0xA1000].copy_from_slice(&slot_sector(0, name, &patch, false));
         let mut m = Machine::boot(app, Some(&flash));
+        quick_start(&mut m, 9000)?;
         wait_text(&mut m, DEVICE_PAGE, 9000)?;
         m.run_for(2500)?;
         patch_screen(t, &mut m, &format!("long delay: {name} loads"), name)?;   // (the footer cuts the name before KEYS WIRED)
@@ -504,6 +523,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
         return Ok(());
     };
     let mut m = Machine::boot(app, None);
+    quick_start(&mut m, 9000)?;
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     m.midi(&[0xC0, kit as u8], 500)?;
@@ -699,6 +719,7 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     let flash = heavy_bank(presets)?;
     // the overload guard: parts dropped while it plays, then a patch with nothing to drop muted, the main loop alive all along
     let mut m = Machine::boot(app, Some(&flash));
+    quick_start(&mut m, 12000)?;
     wait_text(&mut m, DEVICE_PAGE, 12000)?;
     patch_screen(t, &mut m, "overload: the heavy poly patch loads", "EMU HEAVY POLY")?;
     let mk = m.mark();
@@ -738,6 +759,7 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     let saved = wait_text(&mut m, "SAVED", 1000)?;
     t.check("safe mode: holding SAVE at power-on does not save", !saved, String::new());
+    t.check("safe mode: no quick start (D-247)", !font::on_screen(m.lcd(), "QUICK START"), String::new());
     m.run_for(1500)?;                         // (the SAFE MODE message holds the bar for 4 s: still there)
     t.screen(&m, "safe mode: the message stays up", "SAFE MODE: FALLBACK PATCH");
     wait_text(&mut m, "SAFE PATCH", 6000)?;   // (then the patch's name shows)
@@ -762,13 +784,29 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
 
     // update mode from the menu (#395): GLO, ALGO to INFO (the readings), back to SYSTEM, K1 right arms UPDATE MODE, GLO
     // held 2 s does it
+    // the quick start off for good (D-247): HOME + SAVE on it, stored at once; the next power-on shows none
     let mut m = Machine::boot(app, None);
-    // GLO the moment the first page's header appears after a first boot (#248): a press that starts once the page shows
-    // is taken (the presses made while the loading screen was up are dropped before the page is drawn, not after it)
+    let quick = wait_text(&mut m, "QUICK START", 9000)?;
+    m.key(HOME, true);
+    m.run_for(150)?;
+    m.tap(SAVE, 120, 0)?;
+    m.key(HOME, false);
+    m.run_for(400)?;
+    t.check("quick start: HOME + SAVE turns it off, the header says where it comes back", quick && wait_text(&mut m, "QUICK START OFF: GLO>SYSTEM", 600)?, String::new());
+    t.screen(&m, "quick start: HOME + SAVE closes it", DEVICE_PAGE);
+    let off = m.flash();
+    *emulated += m.ms();
+    let mut m = Machine::boot(app, Some(&off));
+    // GLO the moment the first page's header appears after a boot (#248): a press that starts once the page shows is
+    // taken (the presses made while the loading screen was up are dropped before the page is drawn, not after it)
     let up = wait_header(&mut m, 9000)?;
+    t.check("quick start: off stays off at the next power-on (the settings record)", up && !font::on_screen(m.lcd(), "QUICK START"), String::new());
     m.tap(GLO, 120, 400)?;
-    t.check("GLO the moment the first page appears (first boot, #248): the menu", up && font::on_screen(m.lcd(), "MENU"), format!("header at {} ms", m.ms() - 520));
-    m.turn(ALGO, 3, 400)?;
+    t.check("GLO the moment the first page appears (#248): the menu", up && font::on_screen(m.lcd(), "MENU"), format!("header at {} ms", m.ms() - 520));
+    m.turn(ALGO, 1, 400)?;
+    m.turn(ALGO, 1, 400)?;
+    t.screen(&m, "menu: SYSTEM > QUICK START, off (D-240)", "QUICK START");
+    m.turn(ALGO, 1, 400)?;
     t.screen(&m, "menu: the INFO tab", "VERSION");
     t.screen(&m, "menu: the bank's slots", &format!("{} OF 64", presets.len()));
     t.screen(&m, "menu: the battery's reading (fm1-emu's ch 3: 640, 3 bars)", "640  3/3");
@@ -786,6 +824,7 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
 /// (nothing armed here: it says so); REC again during the count cancels it.
 fn count_in(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     let mut m = Machine::boot(app, None);
+    quick_start(&mut m, 9000)?;
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     m.tap(GLO, 120, 400)?;
@@ -799,6 +838,7 @@ fn count_in(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     let flash = m.flash();
     *emulated += m.ms();
     let mut m = Machine::boot(app, Some(&flash));
+    quick_start(&mut m, 9000)?;
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     m.tap(GLO, 120, 400)?;
@@ -829,9 +869,35 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     // (the splash logo and wordmark are pictures; by 1.5 s the line reads READY: 1.25 s since patch format 34's device extras
     // and the ROM presets, #194; it was 1.2 s)
     t.screen(&m, "loading screen", "READY");
-    let up = wait_text(&mut m, DEVICE_PAGE, 8000)?;
-    t.check("the main page after the loading screen", up, format!("at {} ms", m.ms()));
-    m.run_for(2500)?;                         // (the first boot's FACTORY BANK WRITTEN leaves the bar after 2 s)
+    let quick = wait_text(&mut m, "QUICK START", 8000)?;
+    t.check("the quick start over the main page after the loading screen (D-247)", quick, format!("at {} ms", m.ms()));
+    t.screen(&m, "  its rows", "device presets");
+    t.snap(&m, "quick-start");
+    m.key(OCT_DOWN, true);                    // OCT- + OCT+: the controls sheet in its place (D-245)
+    m.run_for(100)?;
+    m.key(OCT_UP, true);
+    m.run_for(150)?;
+    m.key(OCT_DOWN, false);
+    m.key(OCT_UP, false);
+    m.run_for(400)?;
+    t.screen(&m, "OCT- + OCT+ on the quick start: the controls sheet, on its DEVICE tab", "adjust values");
+    t.screen(&m, "  its EVERYWHERE tab", "EVERYWHERE");
+    t.check("  the octave unchanged (OCT acts on its release, and not after the pair)", !font::on_screen(m.lcd(), "OCTAVE"), String::new());
+    t.snap(&m, "controls-sheet");
+    m.turn(ALGO, 1, 400)?;
+    t.screen(&m, "ALGO on the sheet: EVERYWHERE (HOME + PRESET patches)", "patches");
+    m.tap(HOME, 120, 400)?;
+    let up = wait_text(&mut m, DEVICE_PAGE, 2000)?;
+    t.check("HOME closes the sheet: the main page", up && !font::on_screen(m.lcd(), "EVERYWHERE"), format!("at {} ms", m.ms()));
+    m.key(OCT_UP, true);                      // OCT acts on its release (D-245)
+    m.run_for(300)?;
+    t.check("OCT+ held: the octave not yet", !font::on_screen(m.lcd(), "OCTAVE"), String::new());
+    m.key(OCT_UP, false);
+    m.run_for(300)?;
+    t.screen(&m, "  let go: OCTAVE +1", "OCTAVE +1");
+    m.tap(OCT_DOWN, 120, 300)?;
+    t.screen(&m, "OCT- tapped: OCTAVE 0", "OCTAVE 0");
+    m.run_for(2500)?;                         // (the first boot's FACTORY BANK WRITTEN, said once the card closed, leaves the bar after 2 s)
     t.screen(&m, "factory patch 0 loaded", &presets[0].0);
     let cell = m.lcd()[232 * 240 + 229]; // the footer's battery (pages_ui.c foot_row): its third bar, night on sand
     t.check("the battery in the footer: 3 bars (fm1-emu's ch 3 reads 640)", cell == 0x10E4, format!("{cell:#06x} at 229, 232"));
@@ -1024,6 +1090,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     t.check("SAVE wrote the flash", same > 0, format!("{same} bytes not erased"));
 
     let mut m = Machine::boot(app, Some(&flash));
+    quick_start(&mut m, 9000)?;
     wait_text(&mut m, "OCT +", 9000)?;                   // (the octave saved at +1)
     m.run_for(2500)?;
     t.screen(&m, "restart: the saved slot opens", &presets[target].0);
@@ -1040,6 +1107,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
         flash[at..at + 0x1000].copy_from_slice(&slot_sector(*slot, name, &presets[preset].1, bad));
     }
     let mut m = Machine::boot(app, Some(&flash));
+    quick_start(&mut m, 9000)?;
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(300)?;
     t.screen(&m, "bank: boot plays slot entry 0", "EMU BANK A");
