@@ -17,7 +17,7 @@ static int load_err;
 static const char *patch_label;
 #define PAGE_MENU 5u                            /* GLO: the settings menu (menu.c, #395). Its MIDI, PANEL and SYSTEM tabs are
                                                  * pages of settings drawn as a device page (pages_ui.c menu_tab_page); INFO
-                                                 * and MANUAL are texts */
+                                                 * and GUIDE are texts */
 #define PAGE_ENV 9u                             /* ENV: the environment (#197, pages_ui.c env_draw) */
 static uint8_t page;                            /* 0: the device page, 5 the menu (6, GLO's own page, went into it: #395), 8 the SEQ page, 9 the environment,
                                                  * 11 the SONG page (seq_ui.c); (7, the legend, is gone: #114; 10, the preset list, too: #395) */
@@ -32,8 +32,9 @@ static void sandbox_bar(void);
 
 /* the settings' rows (menu.c; the menu's MIDI, PANEL and SYSTEM tabs show them as pages: pages_ui.c menu_tab_page) */
 enum { MR_LEDS, MR_ACCEL, MR_CIN, MR_CH, MR_CLOCK, MR_MOUT, MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_TEMPO, MR_COUNT };
-/* the menu's tabs (menu.c, #395): MIDI, PANEL and SYSTEM are pages of settings on K1..K4, INFO a list of readings, MANUAL a text */
-enum { MT_MIDI, MT_PANEL, MT_SYSTEM, MT_INFO, MT_MANUAL, MT_COUNT };
+/* the menu's tabs (menu.c, #395): MIDI, PANEL and SYSTEM are pages of settings on K1..K4, INFO a list of readings, GUIDE a text
+ * (the ideas behind the controls, D-248) */
+enum { MT_MIDI, MT_PANEL, MT_SYSTEM, MT_INFO, MT_GUIDE, MT_COUNT };
 static uint8_t menu_tab;
 static int menu_page(void) { return page == PAGE_MENU && menu_tab <= MT_SYSTEM; }   /* the menu on a tab drawn as a device page */
 /* the settings of the menu (menu.c); saved with the state (SAVE) */
@@ -398,6 +399,22 @@ static uint32_t panel_used(void)
             used |= 1u << (fp - FM1_O_FX);
     }
     return used;
+}
+
+/* patch button b (FX, LFO, EDIT, ARP) has a job in the loaded patch: a Toggle, a Page button, or a Gate with a cable from
+ * its jack (help_ui.c lists these; a press of any other names it with a nudge, panel.c, D-249) */
+static int panel_btn_job(uint32_t b)
+{
+    uint32_t i, from, fp, to, tp, kind = eng_button_kind(b);
+    int main = eng_find(T_FM1);
+    if (kind == ENG_BTN_TOGGLE || kind == ENG_BTN_PAGE)
+        return 1;
+    for (i = 0; main >= 0 && i < (uint32_t)eng_ncables(); i++) {
+        eng_cable(i, &from, &fp, &to, &tp);
+        if (from == (uint32_t)main && fp == FM1_O_FX + b)
+            return 1;
+    }
+    return 0;
 }
 
 static void menu_draw(int full);

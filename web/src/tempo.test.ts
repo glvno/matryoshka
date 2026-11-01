@@ -75,11 +75,11 @@ describe('the wire (protocol.ts TEMPO / TEMPO_NOW, feature bit 16)', () => {
     expect(parseTempoNow([1, 44])).toBeNull();
   });
 
-  it('INFO byte 9 holds feature bits 16..23; an older firmware\'s INFO has none', () => {
-    const now = parseInfo(parse(frame(CMD.info, [1, 64, 255, 7, 8, 246, 255, 31, 48, 1]))!)!;
+  it('INFO byte 12 holds feature bits 16..23 (after the version); an older firmware\'s INFO has none', () => {
+    const now = parseInfo(parse(frame(CMD.info, [1, 64, 255, 7, 8, 246, 255, 31, 48, 1, 8, 0, 1]))!)!;
     expect(now.features & FEATURE_TEMPO).toBeTruthy();
     expect(now.patchFormats).toEqual({ min: 31, max: 48 });
-    const old = parseInfo(parse(frame(CMD.info, [1, 64, 255, 7, 8, 246, 255, 31, 48]))!)!;
+    const old = parseInfo(parse(frame(CMD.info, [1, 64, 255, 7, 8, 246, 255, 31, 48, 1, 8, 0]))!)!;
     expect(old.features & FEATURE_TEMPO).toBe(0);
   });
 });

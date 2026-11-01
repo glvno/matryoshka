@@ -71,7 +71,8 @@ import { demoPatch } from './demo';
 import { renamedKey } from './storage-key';
 import { ClockOut, isFm1Out, portLabels } from './clock-out';
 import { currentTheme, onThemeChange, setTheme, themeChoice, toggleTheme } from './theme';
-import { installLabel } from './version';
+import { INSTALL_VERSION, installLabel } from './version';
+import { runningVersion, updateOffer } from './fm1-version';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const STORE = renamedKey('matryoshka.patch', 'modular-1.patch');
@@ -1854,9 +1855,20 @@ async function connectFm1(): Promise<void> {
     if (!mirror.following) void followFm1('matryoshka');   // it runs Matryoshka (it answered HELLO): its panel drives the page
     offerSync();
     libraryDeviceChanged();
+    if (syncsWith(device.info)) void offerFirmwareUpdate();   // (else sayUpdate has offered the update already)
   } catch (e) {
     devStatus((e as Error).message);
   }
+}
+/** the FM-1 runs an older Matryoshka than this site comes with (#216): its version from INFO, or from its identity for
+ *  firmware before 1.8 (M-VAVE's identity handshake, as Connect FM-1 asks a firmware that is not Matryoshka) */
+async function offerFirmwareUpdate(): Promise<void> {
+  const info = device.info;
+  const id = info?.firmware ? null : (await identifyFm1())?.text;
+  const text = updateOffer(runningVersion(info, id), INSTALL_VERSION);
+  if (!text || !device.connected) return;
+  devStatus(text);
+  showAction(text, 'Update', openInstall, 12000);
 }
 $('dev-btn').onclick = async () => {
   await connectFm1();

@@ -130,6 +130,13 @@ describe('sandbox mode on the wire', () => {
     expect(info([1, 64, 255, 1, 8, 246, 255]).patchFormats).toBeUndefined();
     const extended = parseInfo(parse(frame(CMD.info, [1, 64, 255, 7, 8, 246, 255, 31, 200]))!)!;
     expect(extended).toMatchObject({ patchFormats: { min: 31, max: 200 }, features: 65526, midiOut: true });
+    expect(extended.firmware).toBeUndefined();   // firmware before 1.8: its identity says major and minor
+  });
+
+  it('INFO: the firmware version in bytes 9..11 (#216)', () => {
+    const info = parseInfo(parse(frame(CMD.info, [1, 64, 255, 7, 8, 246, 255, 31, 48, 1, 8, 0]))!)!;
+    expect(info).toMatchObject({ patchFormats: { min: 31, max: 48 }, firmware: { major: 1, minor: 8, patch: 0 } });
+    expect(parseInfo(parse(frame(CMD.info, [1, 64, 255, 7, 8, 246, 255, 31, 48, 0, 0, 0]))!)!.firmware).toEqual({ major: 0, minor: 0, patch: 0 });
   });
 });
 

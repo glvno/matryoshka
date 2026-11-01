@@ -4,10 +4,11 @@
  *
  * MENU (GLO; GLO again or HOME closes it; #395): the FM-1's settings in tabs. ALGO steps the tabs: MIDI, PANEL and SYSTEM
  * are pages of settings on K1..K4 (SYSTEM: UPDATE MODE, FACTORY RESET, QUICK START), drawn as a device page (pages_ui.c menu_tab_page; the knobs go through panel.c as on
- * a device page); INFO lists readings (drawn here) and MANUAL is a text SELECT scrolls. The values are applied at once
+ * a device page); INFO lists readings (drawn here) and GUIDE is a text SELECT scrolls (the ideas, D-248). The values are applied at once
  * and saved with the state (SAVE: main.c save bits; SAVE in the menu closes it). UPDATE MODE and FACTORY RESET (SYSTEM)
  * take a hold: a turn to the right arms the row for MENU_ARM_MS, GLO held 2 s then does it (menu_fire, from panel.c), so
- * a nudge never starts them. SELECT, OCT- and OCT+ do nothing in the menu; PRESET steps the patches as everywhere.
+ * a nudge never starts them. SELECT, OCT- and OCT+ do nothing in the menu; PRESET steps the patches as everywhere, ENV opens the environment
+ * (D-249).
  *
  * The state is plain bytes the main loop writes. */
 
@@ -130,7 +131,7 @@ static void menu_row_draw(uint32_t row)         /* an INFO row: the name and its
     menu_value_draw(row);
 }
 
-/* the MANUAL tab (manual.c): MAN_VIS lines from man_top, SELECT scrolls */
+/* the GUIDE tab (manual.c): MAN_VIS lines from man_top, SELECT scrolls */
 #include "manual.c"
 #define MAN_Y 70u
 #define MAN_VIS 10u
@@ -177,7 +178,7 @@ static void manual_scroll(int32_t s)
     }
 }
 
-/* the INFO and MANUAL tabs (view_draw; a settings tab is drawn as a device page, pages_ui.c pages_draw): the tab chips
+/* the INFO and GUIDE tabs (view_draw; a settings tab is drawn as a device page, pages_ui.c pages_draw): the tab chips
  * under the top bar, the open one in seafoam, the title, then the list or the text */
 static void menu_draw(int full)
 {
@@ -185,7 +186,7 @@ static void menu_draw(int full)
     uint32_t t, r, y = MENU_Y + INFO_N * MENU_PITCH, x = 6;   /* (y: below the last row) */
     if (full || shown != menu_tab) {                /* (a new tab: the page is cleared, the hint changes) */
         lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
-        text_bc(&FONT_S, 8, 222, menu_tab == MT_MANUAL ? "SELECT  scroll    ALGO  tab    GLO  back" : "ALGO  tab    GLO  back", C_HINT, C_BG, 226, TA_LEFT);
+        text_bc(&FONT_S, 8, 222, menu_tab == MT_GUIDE ? "SELECT  scroll    ALGO  tab    GLO  back" : "ALGO  tab    GLO  back", C_HINT, C_BG, 226, TA_LEFT);
         shown = menu_tab;
     }
     for (t = 0; t < MT_COUNT; t++) {     /* the tabs: chips, the open one in seafoam (as a device's pages) */
@@ -193,8 +194,8 @@ static void menu_draw(int full)
         text_bc(&FONT_S, x, 24, MENU_TAB_NAME[t], t == menu_tab ? C_BG : C_DIM, t == menu_tab ? 0x7E38u : C_TRACK, w, TA_CENTER);
         x += w + 3u;
     }
-    text_bc(&FONT_L, 8, 42, menu_tab == MT_MANUAL ? "Manual" : "Info", C_ACC, C_BG, 200, TA_LEFT);
-    if (menu_tab == MT_MANUAL) {
+    text_bc(&FONT_L, 8, 42, menu_tab == MT_GUIDE ? "Guide" : "Info", C_ACC, C_BG, 200, TA_LEFT);
+    if (menu_tab == MT_GUIDE) {
         manual_draw();
         return;
     }
@@ -204,7 +205,7 @@ static void menu_draw(int full)
         lcd_fill(0, y, 240, 218u - y, C_BG);
 }
 
-static void menu_open(void)             /* via page_show (panel.c): GLO opens the menu on MIDI, nothing armed (#395) */
+static void menu_open(void)             /* GLO (panel.c): the menu on MIDI, nothing armed (#395) */
 {
     menu_tab = MT_MIDI;
     menu_armed = MR_COUNT;
@@ -292,13 +293,13 @@ static void menu_tab_go(int32_t s)                      /* ALGO: the next / prev
         header_draw();
 }
 
-/* the encoders while the menu is open (panel.c panel_encoders): ALGO the tab, SELECT scrolls the manual; a settings
+/* the encoders while the menu is open (panel.c panel_encoders): ALGO the tab, SELECT scrolls the guide; a settings
  * tab's K1..K4 go on in panel.c as a device page's (pages_turn) */
 static void menu_knobs(const int32_t *st)
 {
     if (st[1])
         menu_tab_go(st[1]);
-    if (st[0] && menu_tab == MT_MANUAL)
+    if (st[0] && menu_tab == MT_GUIDE)
         manual_scroll(st[0]);
 }
 

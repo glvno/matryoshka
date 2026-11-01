@@ -564,13 +564,14 @@ int main(int argc, char **argv)
         nreplies = 0;
         CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 2 && replies[0][4] == R_INFO && replies[1][4] == R_TEMPO_NOW);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
-        CHECK(n == 10u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[9] == M1_FEATURES3);
+        CHECK(n == 13u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[12] == M1_FEATURES3);
+        CHECK(p[9] == M1_FW_MAJOR && p[10] == M1_FW_MINOR && p[11] == M1_FW_PATCH);   /* #216: the firmware's version */
         CHECK(p[5] == M1_FEATURES && p[6] == M1_FEATURES2 && (p[3] & M1_INFO_MIDI_OUT));
         midi_out_on = 0;
         nreplies = 0;
         CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 2);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
-        CHECK(n == 10u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION);
+        CHECK(n == 13u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION);
         CHECK(!(p[3] & M1_INFO_MIDI_OUT));
         midi_out_on = 1;
     }

@@ -96,8 +96,9 @@
 //               feature bit 8), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
 //               bit5 TRACK / TRACK_NOW, bit6 LIVE, bit7 presets], [features 8..15: bit8 sandbox mode, bit9 the device
 //               test mode, bit10 TEST_PEAK reads before MASTER, bits11..15 read patch formats35..39],
-//               [minimum readable patch format, maximum readable patch format], [features 16..23: bit16 TEMPO /
-//               TEMPO_NOW]. Also unasked
+//               [minimum readable patch format, maximum readable patch format], [firmware major, minor, patch:
+//               0.0.0 a dev or CI build; #216, absent from firmware before 1.8],
+//               [features 16..23: bit16 TEMPO / TEMPO_NOW]. Also unasked
 //               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8)
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
@@ -278,6 +279,9 @@ export interface Info {
   patchFormats?: { min: number; max: number };
   /** MENU > MIDI OUT is on (the FM-1's panel reaches the editor); null: the firmware does not say (no feature bit 8) */
   midiOut: boolean | null;
+  /** the firmware's version (INFO bytes 9..11, #216; 0.0.0 a dev or CI build); absent from firmware before 1.8, whose
+   *  identity (FM-1_7XY) gives major and minor */
+  firmware?: { major: number; minor: number; patch: number };
 }
 export interface Ack {
   cmd: number;
@@ -286,14 +290,15 @@ export interface Ack {
   aux: number;
 }
 export const FEATURE_SANDBOX = 256;
-/** INFO feature bit 16 (byte 9): TEMPO / TEMPO_NOW, the global tempo shared (D-907) */
+/** INFO feature bit 16 (byte 12, after the firmware version): TEMPO / TEMPO_NOW, the global tempo shared (D-907) */
 export const FEATURE_TEMPO = 1 << 16;
 export function parseInfo(p: Parsed): Info | null {
   if (p.cmd !== CMD.info || p.payload.length < 5) return null;
-  const features = (p.payload[5] ?? 0) | ((p.payload[6] ?? 0) << 8) | ((p.payload[9] ?? 0) << 16);
+  const features = (p.payload[5] ?? 0) | ((p.payload[6] ?? 0) << 8) | ((p.payload[12] ?? 0) << 16);
   return { version: p.payload[0], maxModules: p.payload[1], maxCables: p.payload[2], flashOk: !!(p.payload[3] & 1), patchLoaded: !!(p.payload[3] & 2), delays: p.payload[4], features,
     midiOut: features & FEATURE_SANDBOX ? !!(p.payload[3] & 4) : null,
-    ...(p.payload.length >= 9 ? { patchFormats: { min: p.payload[7], max: p.payload[8] } } : {}) };
+    ...(p.payload.length >= 9 ? { patchFormats: { min: p.payload[7], max: p.payload[8] } } : {}),
+    ...(p.payload.length >= 12 ? { firmware: { major: p.payload[9], minor: p.payload[10], patch: p.payload[11] } } : {}) };
 }
 export const parseAck = (p: Parsed): Ack | null => (p.cmd === CMD.ack && p.payload.length >= 4 ? { cmd: p.payload[0], seq: p.payload[1], status: p.payload[2], aux: p.payload[3] } : null);
 

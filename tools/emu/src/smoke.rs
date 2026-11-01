@@ -17,7 +17,8 @@
 //!    PRESET and program change step through the three, wrapping
 //! 8. safety: a patch far over the CPU budget sheds parts, one with nothing to shed is muted (OVERLOAD) and the
 //!    next patch plays again; SAVE held at power-on = safe mode (the built-in fallback patch, not the bank, no quick
-//!    start); HOME + SAVE turns the quick start off for good (the next power-on has none); OCT- +
+//!    start); HOME + SAVE turns the quick start off for good (the next power-on has none); the menu's GUIDE tab (D-248)
+//!    and ENV from it (the environment, HOME back to the tab, D-249); OCT- +
 //!    OCT+ held at power-on and MENU > SYSTEM > UPDATE MODE (K1, then GLO held) = update mode (no engine)
 //!    then the bank's power-loss rules and the first boot's factory bank; an update that changed a factory patch but not
 //!    the format (#441): the untouched slot gets today's patch, an edited one and today's stay, once
@@ -810,6 +811,13 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     t.screen(&m, "menu: the INFO tab", "VERSION");
     t.screen(&m, "menu: the bank's slots", &format!("{} OF 64", presets.len()));
     t.screen(&m, "menu: the battery's reading (fm1-emu's ch 3: 640, 3 bars)", "640  3/3");
+    m.turn(ALGO, 1, 400)?;
+    t.screen(&m, "menu: the GUIDE tab (D-248) points at the controls sheet", "PRESS OCT- + OCT+");
+    m.tap(ENV, 120, 600)?;
+    t.screen(&m, "menu: ENV opens the environment (D-249)", "ENVIRONMENT");
+    m.tap(HOME, 120, 600)?;
+    t.screen(&m, "  HOME: back to the menu's GUIDE tab", "PRESS OCT- + OCT+");
+    m.turn(ALGO, -1, 400)?;
     m.turn(ALGO, -1, 400)?;
     t.screen(&m, "menu: the SYSTEM tab", "SYSTEM");
     m.turn(K1, 1, 400)?;

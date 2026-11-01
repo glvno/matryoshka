@@ -488,7 +488,7 @@ static void pages_patch_ask(void)
 static void setting_step(uint32_t row, int32_t s);      /* menu.c */
 static void menu_value(uint32_t row, char *out);
 static uint8_t menu_armed = MR_COUNT;                   /* menu.c: the SYSTEM row a turn armed for GLO's hold (MR_COUNT: none) */
-static const char *const MENU_TAB_NAME[MT_COUNT] = {"MIDI", "PANEL", "SYSTEM", "INFO", "MANUAL"};
+static const char *const MENU_TAB_NAME[MT_COUNT] = {"MIDI", "PANEL", "SYSTEM", "INFO", "GUIDE"};
 static ppage_t pg_menu;
 static const ppage_t *menu_tab_page(void)
 {
@@ -1974,12 +1974,27 @@ static uint64_t env_listeners(uint32_t d)
 
 static int env_armed(uint32_t d) { return (eng_arm_mask_get() & env_listeners(d)) != 0; }
 
+/* device d has a keys input that the binary still shows when no cable reaches it: a Drum map, whose keys source is then
+ * none (#215; SEL says so, dev_arm, D-249). A Voicing no keys cable reaches is left out of the binary (poly.ts deviceView),
+ * so such an engine reads as a device with no keys input (D-905). An Arpeggiator alone is no keys input that arms (D-235) */
+static int dev_keys_input(uint32_t d)
+{
+    uint32_t k;
+    if (pg_dev[d].mem) {
+        for (k = 0; k < pg_dev[d].nmem; k++)
+            if (eng_type(pg_dev[d].mem[k]) == T_DRUMMAP)
+                return 1;
+        return 0;
+    }
+    return pg_dev[d].module >= 0 && eng_type((uint32_t)pg_dev[d].module) == T_DRUMMAP;
+}
+
 static void seq_arm_set(uint64_t mask);                 /* (seq_ui.c: the armed set changed; REC on: they record) */
 
 /* SEL arms the device in focus (#395), a toggle. Armed, it is taken out of the armed set, the others stay; the last one
  * out leaves the keys WIRED (Main's cables decide). Not armed: layer (the environment) adds it to the set (a layer, a
  * split), else (a device page) it is armed and every other device disarmed. A device that takes no keys leaves the armed
- * set as it is. State and a message only */
+ * set as it is, and the nudge says why: no keys input, or one no cable reaches (D-249). State and a message only */
 static void dev_arm(int layer)
 {
     uint64_t l, mask;
@@ -1988,7 +2003,7 @@ static void dev_arm(int layer)
     if (pg_cur_dev >= pg_ndev)
         return;
     if (!(l = env_listeners(pg_cur_dev))) {
-        ui_msg("NOTHING HERE TAKES KEYS", 1200);
+        ui_msg(dev_keys_input(pg_cur_dev) ? "NO KEYS REACH THIS DEVICE" : "NOTHING HERE TAKES KEYS", 1200);
         return;
     }
     mask = env_armed(pg_cur_dev) ? eng_arm_mask_get() & ~l : layer ? eng_arm_mask_get() | l : l;
