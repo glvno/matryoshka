@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### FM-1
+
+- The FM-1 no longer drops an occasional message from the editor (#486). About 1 message in 500 was lost while the transport ran: on the test rig, 8 of 4,000 TEST_PEAK requests went unanswered (1.8.1, transport running). Any message could be lost this way, such as a parameter change, a focus change, the tempo or a stored preset, and the editor and the FM-1 then disagreed without saying so. After the fix, on the same rig with the transport running: none of 8,000 requests went unanswered, and in a second run none of 20,000 messages was lost (16,000 of them parameter changes). DIAG pages 117 and 118 now count the link's messages in and out.
+
 ## 1.8.1 — 2026-11-01
 
 ### Editor
