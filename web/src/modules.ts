@@ -777,7 +777,7 @@ export const FILTER_OSC_SEED = 1 / 1024;
 const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }> = {
   def: {
     type: 'filter',
-    label: 'Multimode',
+    label: 'Multimode filter',
     inputs: [audio('in'), control('cv'), control('morph')],
     outputs: [audio('lp24'), audio('lp12'), audio('bp'), audio('hp'), audio('mix'), audio('notch'), audio('peak'), audio('ap')],
     params: [

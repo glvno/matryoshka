@@ -113,7 +113,7 @@ The editor estimates how much of the 2901 us audio interrupt a patch needs (`web
   | Resonator | `modal` | 39748 | 170 | 5.9 |
   | Formant filter | `vowel` | 35517 | 152 | 5.2 |
   | Granular | `grain` | 30941 | 133 | 4.6 |
-  | Multimode | `filter` | 29819 | 128 | 4.4 |
+  | Multimode filter | `filter` | 29819 | 128 | 4.4 |
   | Chorus | `chorus` | 25026 | 107 | 3.7 |
   | Quantizer | `quant` | 23642 | 101 | 3.5 |
   | Ladder | `ladder` | 23285 | 100 | 3.4 |

@@ -146,7 +146,7 @@ describe('course data', () => {
     const r = COURSE.roles;
     expect(partLabel({ kind: 'cable', from: { type: 'fm1' }, fromPort: 'gate', to: { type: 'vca' }, toPort: 'cv' }, r)).toBe('Cable Main gate → VCA cv');
     expect(partLabel({ kind: 'module', type: 'osc' }, r)).toBe('Add an Oscillator');
-    expect(partLabel({ kind: 'slider', ref: { type: 'filter' }, param: 'cutoff', op: 'le', value: 800 }, r)).toBe('Set Multimode’s cutoff to 800 Hz or below');
+    expect(partLabel({ kind: 'slider', ref: { type: 'filter' }, param: 'cutoff', op: 'le', value: 800 }, r)).toBe('Set Multimode filter’s cutoff to 800 Hz or below');
     expect(partLabel({ kind: 'slider', ref: { type: 'osc' }, param: 'wave', op: 'eq', value: 2 }, r)).toBe('Set Oscillator’s wave to saw');
     expect(partLabel({ kind: 'assembly', role: 'myVoice', fact: 'collapsed' }, r)).toBe('Collapse My voice');
   });

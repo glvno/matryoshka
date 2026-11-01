@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Editor
+
+- The Multimode is now called Multimode filter, on its card and on the FM-1 (#513). It is the state-variable filter with low, band and high pass outputs, called Filter until 2026-10-22.
+- Searching for a module finds it by what it does and by its old name: "filter" lists the Multimode filter and the Ladder, "high pass", "hp" or "state variable" find the Multimode filter, and "scale" or "glide" find the Attenuverter and the Slew limiter (#513).
+- Library > Presets sends a Cassia 1 preset to the FM-1 whole, all 118 rows (#485). An FM-1 with older firmware is not sent a preset of more than 88 rows: the editor says "Update the FM-1 to store this preset on it". A Cassia 1 preset the FM-1 stored before 1.8.2 loads the 88 rows it has, the rest keep their values, and the status line says how to fix it; Library > Presets marks such a preset "88 of 118 rows".
+
 ### FM-1
 
 - The Delay no longer clicks when its time changes, on the FM-1 and in the browser (#484). 8 Lire's `lfo → delay` was the loudest case: its Hyper LFO is a square wave, so every edge jumped the echo by up to 350 ms. Now the echo glides to the new time and its pitch bends while it moves (at most an octave down or a fifth up). Turning the Delay's time knob, Perun 4's LFO on the delay time, the morph and a synced Delay's new tempo glide too. Measured on both engines' renders of 8 Lire with both HOLDs up, the Hyper LFO at 5 and 7.3 Hz and `lfo → delay` at 1.5 (golden kit `lire-hyper-delay-1`): the largest jump at a time change fell from 0.78 to 0.03 of full scale, the size of the sound's own steps; sharp steps over 0.05 fell from 98 to 12 a second (26 with the LFO off). A time that holds still plays exactly as before. While the time moves, the FM-1's Delay takes about 1.6 % more of its CPU (counted on the CPU model, `npm run cpu-costs`).
@@ -9,10 +15,6 @@
 - A vibrato costs the oscillators much less: they work out their pitch every 8 samples instead of every sample, with a straight line in between (#461). Io 4's Ensemble Pad keeps its vibrato and plays four notes without dropping a part: before, it dropped one at four and at eight notes in 3 of 3 runs; now four notes average 79 % of the audio block (77 % without the vibrato, 82 % before), with no drop in 3 of 3 runs (test rig, docs/measurements/2026-11-01-rig-io4-vibrato.json). A pitch that holds still sounds exactly as before.
 - Storing a Cassia 1 preset on the FM-1 (ENV held + SAVE, or from the editor) now keeps all 118 of its rows (#485). Before, it kept 88 and loading it left the other 30 (line 2's envelopes, its tuning, two Scale `gain` rows) as they were. A preset of more than 88 values takes two of the store's slots, which now hold 58 (60 before), so that a power cut while the FM-1 tidies a full store cannot leave it refusing to store presets. Presets you already stored stay as they are. A Cassia 1 preset stored before this release still has 88 values: loading it sets those rows and shows `STORED SHORT: SEE EDITOR`; store it again to keep all its rows.
 - The FM-1 no longer drops an occasional message from the editor (#486). About 1 message in 500 was lost while the transport ran: on the test rig, 8 of 4,000 TEST_PEAK requests went unanswered (1.8.1, transport running). Any message could be lost this way, such as a parameter change, a focus change, the tempo or a stored preset, and the editor and the FM-1 then disagreed without saying so. After the fix, on the same rig with the transport running: none of 8,000 requests went unanswered, and in a second run none of 20,000 messages was lost (16,000 of them parameter changes). DIAG pages 117 and 118 now count the link's messages in and out.
-
-### Editor
-
-- Library > Presets sends a Cassia 1 preset to the FM-1 whole, all 118 rows (#485). An FM-1 with older firmware is not sent a preset of more than 88 rows: the editor says "Update the FM-1 to store this preset on it". A Cassia 1 preset the FM-1 stored before 1.8.2 loads the 88 rows it has, the rest keep their values, and the status line says how to fix it; Library > Presets marks such a preset "88 of 118 rows".
 
 ## 1.8.1 — 2026-11-01
 
