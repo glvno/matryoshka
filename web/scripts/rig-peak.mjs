@@ -9,6 +9,8 @@
 // --raw: the MIDI the page sent and received is kept and printed around each long window and outlier.
 // --link (#486): the FM-1's link counters (DIAG 117 / 118) before and after, beside the frames the page sent and got: where
 // an unanswered request was lost (never reached the FM-1, reached it and no answer was sent, or the answer was lost on the way).
+// --params N (#486): N PARAM frames before each read (to a module no patch has: they change nothing), unanswered as the
+// editor's are; with --link the FM-1's count of editor frames handled says whether any was lost.
 import { chromium } from 'playwright-core';
 import { pickRig, rigPage, startEditor } from './rig-link.mjs';
 
@@ -18,6 +20,7 @@ const flag = (n) => args.includes(n);
 const PATCH = opt('--patch');
 const READS = Number(opt('--reads', 2000));
 const MS = Number(opt('--ms', 25));
+const PARAMS = Number(opt('--params', 0));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const QUIET = 64;
 
@@ -58,16 +61,17 @@ try {
   const w = [];
   await page.evaluate(() => window.__rig.peak());
   for (let left = READS; left > 0; left -= 500) {
-    w.push(...await page.evaluate(async ([n, ms]) => {
+    w.push(...await page.evaluate(async ([n, ms, params]) => {
       const out = [];
       for (let i = 0; i < n; i++) {
         await new Promise((r) => setTimeout(r, ms));
+        for (let k = 0; k < params; k++) window.__rig.noopParam();
         const t = performance.now();
         const p = await window.__rig.peak();
         out.push([t, p.peak, p.running ? 1 : 0, performance.now() - t]);
       }
       return out;
-    }, [Math.min(500, left), MS]));
+    }, [Math.min(500, left), MS, PARAMS]));
   }
   const count1 = await page.evaluate(() => ({ ...window.__rigCount }));
   const link1 = link0 ? await link() : null;
@@ -102,8 +106,10 @@ try {
     const d = (a, b) => b.map((v, i) => (v - a[i]) >>> 0);
     const i = d(link0.in, link1.in), o = d(link0.out, link1.out);
     // (two DIAG reads land inside the deltas: 117 before and 118 after, each a frame in and an answer out)
-    console.log(`FM-1 in:  ${i[0]} packets, ${i[1]} events, ${i[2]} frames (the page sent ${sent} + 2 DIAG), ${i[3]} cut short, ${i[4]} orphan bytes, ${i[5]} not taken, ${i[6]} bus resets, ${i[7]} suspends`);
-    console.log(`FM-1 out: ${o[0]} messages sent (the page got ${got} + 2 DIAG), ${o[1]} refused (no host), ${o[2]} refused (no room), ${o[3]} packets, ${o[4]} frame stalls; now ${link1.out[5]} queued, longest gap ${link1.out[6]} polls, flags ${link1.out[7]}`);
+    console.log(`FM-1 in:  ${i[0]} packets, ${i[1]} events, ${i[2]} frames (the page sent ${sent} + 2 DIAG), ${i[3]} cut short, ${i[4]} orphan bytes, ${i[5]} not taken; the editor's handler took ${i[6]}, the update protocol ${i[7]}`);
+    console.log(`FM-1 out: ${o[0]} messages sent (the page got ${got} + 2 DIAG), ${o[1]} refused (no host), ${o[2]} refused (no room), ${o[3]} packets; bus: ${o[4]} resets, ${o[5]} suspends, ${o[6]} frame stalls; now ${link1.out[7] >> 8} packets queued, flags ${link1.out[7] & 255}`);
+    const lost = sent + 2 - i[6];
+    console.log(lost ? `LOST ${lost} of ${sent + 2} editor frames between the page and the FM-1's handler` : `every one of the ${sent + 2} editor frames reached the FM-1's handler`);
   }
   console.log(`rig link log (timeouts, frames no request took): ${JSON.stringify(await page.evaluate(() => window.__rigLog ?? []))}`);
 } catch (e) {

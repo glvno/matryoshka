@@ -202,17 +202,17 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
             v[3] = lk.sx_broken;
             v[4] = lk.sx_orphan;
             v[5] = lk.sx_lost;
-            v[6] = usb.resets;
-            v[7] = usb.suspends;
-        } else {                                /* out */
+            v[6] = lk.ed_frames;
+            v[7] = lk.up_frames;
+        } else {                                /* out, and the bus */
             v[0] = lk.tx_msgs;
             v[1] = lk.tx_nohost;
             v[2] = lk.tx_noroom;
             v[3] = usb.tx_pkts;
-            v[4] = usb.frame_stalls;
-            v[5] = so_w - so_r;
-            v[6] = usb.max_gap;
-            v[7] = (uint32_t)usb.suspended | (uint32_t)(usb.config != 0) << 1;
+            v[4] = usb.resets;
+            v[5] = usb.suspends;
+            v[6] = usb.frame_stalls;
+            v[7] = (uint32_t)usb.suspended | (uint32_t)(usb.config != 0) << 1 | (so_w - so_r) << 8;
         }
         for (i = 0; i < sizeof v; i++)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
@@ -1070,7 +1070,14 @@ static void update_only(const char *why)
  * host is answered from the start (and a patch that crashes the boot cannot keep a flasher out). */
 static void host_poll(void)
 {
-    host_frame();                                   /* the editor's SysEx (proto.c), else the M-UPGRADE handshake (#486) */
+    switch (host_frame()) {                         /* the editor's SysEx (proto.c), else the M-UPGRADE handshake (#486) */
+    case HF_EDITOR:
+        lk.ed_frames++;
+        break;
+    case HF_UPDATE:
+        lk.up_frames++;
+        break;
+    }
     if (usb.ota_req) {                              /* M-UPGRADE upgrade command */
         usb.ota_req = 0;
         eng_run = 0;

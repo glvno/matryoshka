@@ -12,18 +12,22 @@
 #define HF_STEP() ((void)0)                     /* the host test lands the ISR here */
 #endif
 
-static void host_frame(void)
+enum { HF_NONE, HF_EDITOR, HF_UPDATE };
+
+/* who took the frame: HF_NONE (none waited), HF_EDITOR, HF_UPDATE (the update protocol, which drops what is not its own) */
+static uint32_t host_frame(void)
 {
     const uint8_t *fp;
     uint32_t fn;
     if (!ota_frame_get(&fp, &fn))
-        return;                                 /* a frame finished after this waits for the next pass */
+        return HF_NONE;                         /* a frame finished after this waits for the next pass */
     HF_STEP();
     if (m1_handle(fp, fn)) {
         HF_STEP();
         ota_frame_done();
-    } else {
-        HF_STEP();
-        ota_service();                          /* not the editor's: the update protocol's (it takes the frame) */
+        return HF_EDITOR;
     }
+    HF_STEP();
+    ota_service();                              /* not the editor's: the update protocol's (it takes the frame) */
+    return HF_UPDATE;
 }

@@ -4,7 +4,7 @@
 // MIDI, tells the registered rig from any other FM-1, and talks to that one alone: the panel (TEST_KEY / TEST_TURN), the
 // screen as text (TEST_SCREEN), the output's peak (TEST_PEAK), the draw times (DIAG 120..123), the rig's mark (a preset of RIG_STRUCTURE). Until a rig is
 // picked it sends only HELLO and PRESET_GET, which change nothing, so an FM-1 that is not the rig is never driven.
-import { CMD, FEATURE_TEST, frame, RIG_PRESET, RIG_STRUCTURE, helloFrame, parse, parseAck, parseInfo, parsePeak, parsePresetData, parseScreen,
+import { CMD, FEATURE_TEST, frame, RIG_PRESET, RIG_STRUCTURE, helloFrame, paramFrame, parse, parseAck, parseInfo, parsePeak, parsePresetData, parseScreen,
   presetGetFrame, presetPutFrame, testKeyFrame, testPeakFrame, testScreenFrame, testTurnFrame, type Info, type Parsed, type ScreenHead,
   type ScreenText } from '../src/protocol';
 
@@ -146,6 +146,13 @@ const rig = {
   async diag(n: number): Promise<number[]> {
     const p = await retry(() => ask(frame(CMD.diag, [n]), (x) => x.cmd === CMD.diagReply && x.payload[0] === n, 2000));
     return [...p.payload.slice(1)];
+  },
+  /** #486: a PARAM to module 127 (no patch has that many: it changes nothing), unanswered as the editor's are; the FM-1's
+   *  DIAG page 118 counts it among the editor frames it handled */
+  noopParam(): void {
+    if (!pair) throw new Error('no rig picked');
+    pair.out.send(paramFrame(127, 0, 0));
+    rigCount.sent++;
   },
   /** the output's peak (16 bit) since the last call */
   async peak(): Promise<{ peak: number; running: boolean; muted: boolean; masterDown: boolean }> {

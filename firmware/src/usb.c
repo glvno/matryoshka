@@ -191,12 +191,14 @@ static uint8_t sx_cut;
 
 /* #486: the editor link's counters (DIAG page 118, main.c m1_diag): where a message to or from the host could be lost.
  * In: SysEx frames handed to the main loop, frames cut short (a status byte or another F0 before the F7), SysEx bytes with no
- * F0 before them (a packet lost mid-message), frames not taken (one arrived while the main loop held the last, or too long);
- * out: messages queued, sends refused with no host (not configured / suspended), sends refused for want of room. */
+ * F0 before them (a packet lost mid-message), frames not taken (one arrived while the main loop held the last, or too long),
+ * frames the editor's handler and the update protocol took; out: messages queued, sends refused with no host (not configured
+ * / suspended), sends refused for want of room. */
 static struct {
     uint32_t sx_frames, sx_broken, sx_orphan, sx_lost;
     uint32_t tx_msgs, tx_nohost, tx_noroom;
     uint32_t rx_events;
+    uint32_t ed_frames, up_frames;              /* main.c host_poll: frames the editor's handler took, the update protocol took */
 } lk;
 
 static volatile uint32_t fm1_ms;                   /* also declared by core.h; parser-only host tests */

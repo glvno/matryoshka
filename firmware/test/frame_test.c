@@ -3,7 +3,7 @@
 /* Host test of the main loop's turn at a received SysEx frame (firmware/src/host_frame.h, #486):
  *   - the USB poll (TIMER5 ISR) finishing a frame between any two of host_frame's steps, or between two passes: every
  *     editor frame reaches m1_handle exactly once and in order, every update protocol frame reaches ota_service, nothing
- *     is handled twice;
+ *     is handled twice, and host_frame says which took each (main.c counts them for DIAG page 118);
  *   - the same with the main loop as it was before #486 (m1_handle when a frame is there, then ota_service whatever is
  *     there): the harness finds the editor frame ota_service dropped, so it can tell.
  *   tools/frame_test.sh */
@@ -81,7 +81,7 @@ static void ota_service(void)   /* ota.c: takes whatever frame is there, drops w
 #include "../src/host_frame.h"
 
 /* the main loop's turn as it was before #486 */
-static void host_frame_old(void)
+static uint32_t host_frame_old(void)
 {
     const uint8_t *fp;
     uint32_t fn;
@@ -91,13 +91,14 @@ static void host_frame_old(void)
     }
     HF_STEP();
     ota_service();
+    return 0;
 }
 
 /* every frame through `pass` with the ISR landing between passes every `gap` passes, and after step `at` of each pass;
  * returns the editor frames ota_service dropped */
-static uint32_t run(void (*pass)(void), int at, uint32_t gap, uint32_t seed)
+static uint32_t run(uint32_t (*pass)(void), int at, uint32_t gap, uint32_t seed)
 {
-    uint32_t k, ed = 0, ot = 0, guard = 0;
+    uint32_t k, ed = 0, ot = 0, guard = 0, said[3] = {0, 0, 0};
     srand(seed);
     for (k = 0; k < NF; k++) {
         if (rand() % 16 == 0) {             /* now and then a frame of the update protocol */
@@ -121,10 +122,13 @@ static uint32_t run(void (*pass)(void), int at, uint32_t gap, uint32_t seed)
         if (guard % gap == 0u)
             isr_land();                     /* between two passes */
         step_now = 0;
-        pass();
+        said[pass() % 3u]++;
     }
     CHECK(next_in == NF && !ready, "all %u frames sent and taken (sent %u)", (unsigned)NF, (unsigned)next_in);
     CHECK(ota_seen == ot, "update protocol frames: %u of %u reached ota_service", (unsigned)ota_seen, (unsigned)ot);
+    if (pass == host_frame)
+        CHECK(said[HF_EDITOR] == ed_seen && said[HF_UPDATE] == ota_seen, "what host_frame says it did: %u editor, %u update",
+              (unsigned)said[HF_EDITOR], (unsigned)said[HF_UPDATE]);
     if (pass == host_frame)
         CHECK(ed_seen == ed && !ota_bad, "editor frames: %u of %u reached m1_handle, %u dropped", (unsigned)ed_seen,
               (unsigned)ed, (unsigned)ota_bad);
