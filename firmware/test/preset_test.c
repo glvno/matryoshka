@@ -336,13 +336,13 @@ static void pair_tests(void)
 
     /* a full store of pairs: 30 of them, then full; storing over goes on (compaction moves pairs whole) */
     mreset();
-    for (k = 0, ok = 1; k < 30u; k++)
+    for (k = 0, ok = 1; k < PS_MAX / 2u; k++)
         ok &= mput(k, 118, 100u + k) == 0;
-    CHECK(ok && ps_count(PS_LIVE) == PS_MAX && store_is(), "30 presets of 118 values: the store's 60 slots");
+    CHECK(ok && ps_count(PS_LIVE) == PS_MAX && store_is(), "29 presets of 118 values: the store's 58 slots");
     mvals(v, 118, 1);
     CHECK(ps_put(MST, "M40", v, 118) == -2 && ps_put(MST, "M41", v, 10) == -2, "full: another pair refused, and a single");
     for (i = 0, ok = 1; i < 600u && ok; i++)
-        ok = mput(i * 7u % 30u, 118, 1000u + i) == 0;
+        ok = mput(i * 7u % (PS_MAX / 2u), 118, 1000u + i) == 0;
     CHECK(ok && store_is() && erases > 0, "600 pairs stored over in a full store: each fits (compaction)");
     CHECK(mput(5, 20, 7) == 0 && mput(40, 20, 8) == 0 && ps_count(PS_LIVE) == PS_MAX, "a pair stored as one slot frees one: a new one-slot preset fits");
     CHECK(ps_put(MST, "M41", v, 118) == -2 && mput(6, 118, 9) == 0, "full: a new pair refused, a pair over a pair fits");
@@ -354,7 +354,7 @@ static void pair_tests(void)
     {
         uint32_t sweeps = 0, total = 0;
         for (i = 0; i < 400u && sweeps < 4u; i++) {
-            uint32_t sec, best = PS_NSEC, most = 0, kk, pair = 0, name = (i * 11u + 3u) % 30u;
+            uint32_t sec, best = PS_NSEC, most = 0, kk, pair = 0, name = (i * 11u + 3u) % (PS_MAX / 2u);
             if (name == 5u)
                 name = 7u;
             for (sec = 0; sec < PS_NSEC; sec++) {
@@ -378,10 +378,11 @@ static void pair_tests(void)
                 break;
         }
         CHECK(sweeps == 4u, "four compactions that move pairs, each cut at every byte: every preset whole after each cut");
+        CHECK(full_after_cut == 0u, "  and after none of the cuts is storing refused as full (the 12 slots kept, D-285)");
         printf("      (%u cuts in all; after %u of them storing it again was refused as full until up to %u presets were deleted)\n", total, full_after_cut, most_dels);
     }
 
-    /* a mixed workload against the model: refused as full exactly when the live slots would pass 60, never otherwise */
+    /* a mixed workload against the model: refused as full exactly when the live slots would pass 58, never otherwise */
     {
         static const uint32_t sizes[] = { 1, 30, 88, 89, 118, 176 };
         uint32_t seed = 12345, refused = 0;
@@ -412,7 +413,7 @@ static void pair_tests(void)
             if (!ok)
                 printf("      (step %u went wrong)\n", i);
         }
-        CHECK(ok && store_is(), "6000 mixed stores and deletes (1 to 176 values): full only past 60 slots, every preset whole");
+        CHECK(ok && store_is(), "6000 mixed stores and deletes (1 to 176 values): full only past 58 slots, every preset whole");
         printf("      (%u refused as full)\n", refused);
     }
 
@@ -494,7 +495,7 @@ int main(void)
         if (i > 500u)
             break;
     }
-    CHECK(ps_list(0, 0, 0) == PS_MAX, "full at PS_MAX live presets (about 60)");
+    CHECK(ps_list(0, 0, 0) == PS_MAX, "full at PS_MAX live presets (58)");
     for (i = 0; i < 2000u; i++) {                       /* overwrites go on forever: compaction keeps up */
         char nm[PS_NAME];
         snprintf(nm, sizeof nm, "P%u", i % 20u);

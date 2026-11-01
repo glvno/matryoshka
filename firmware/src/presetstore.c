@@ -30,8 +30,10 @@
 #define PS_SLOT 384u
 #define PS_PER_SEC 10u
 #define PS_SLOTS (PS_NSEC * PS_PER_SEC)
-#define PS_KEEP PS_PER_SEC              /* clean slots compaction needs: one sector's worth */
-#define PS_MAX (PS_SLOTS - PS_KEEP)     /* live slots at most (a two-slot preset counts two) */
+#define PS_KEEP 12u                     /* clean slots kept: one sector's worth for a compaction, and 2 more so a
+                                         * power cut during one (a slot lost) does not leave the store refusing
+                                         * stores (#485, D-285) */
+#define PS_MAX (PS_SLOTS - PS_KEEP)     /* live slots at most: 58 (a two-slot preset counts two) */
 #define PS_SLOTV 88u                    /* values one slot holds ((PS_SLOT - 32) / 4) */
 #define PS_MAXV (2u * PS_SLOTV)         /* values a preset holds at most: two slots (#485) */
 #define PS_NAME 16u

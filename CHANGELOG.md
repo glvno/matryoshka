@@ -4,7 +4,7 @@
 
 ### FM-1
 
-- Storing a Cassia 1 preset on the FM-1 (ENV held + SAVE, or from the editor) now keeps all 118 of its rows (#485). Before, it kept 88 and loading it left the other 30 (line 2's envelopes, its tuning, two Scale `gain` rows) as they were. A preset of more than 88 values takes two of the store's 60 slots. Presets you already stored stay as they are. A Cassia 1 preset stored before this release still has 88 values: loading it sets those rows and shows `STORED SHORT: SEE EDITOR`; store it again to keep all its rows.
+- Storing a Cassia 1 preset on the FM-1 (ENV held + SAVE, or from the editor) now keeps all 118 of its rows (#485). Before, it kept 88 and loading it left the other 30 (line 2's envelopes, its tuning, two Scale `gain` rows) as they were. A preset of more than 88 values takes two of the store's slots, which now hold 58 (60 before), so that a power cut while the FM-1 tidies a full store cannot leave it refusing to store presets. Presets you already stored stay as they are. A Cassia 1 preset stored before this release still has 88 values: loading it sets those rows and shows `STORED SHORT: SEE EDITOR`; store it again to keep all its rows.
 
 ### Editor
 
