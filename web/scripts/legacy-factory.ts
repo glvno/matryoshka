@@ -7,7 +7,7 @@
 // export-defs leaves out the ones that are byte for byte one of today's patches. Run after any change to a factory patch
 // (firmware/src/presets.h), before export-defs:  npx vite-node scripts/legacy-factory.ts
 import { execFileSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 const ROOT = new URL('../../', import.meta.url).pathname;
 const git = (...a: string[]): string => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 256 << 20 });
@@ -20,6 +20,10 @@ function fnv32(b: Uint8Array | number[]): number {
 }
 
 const seen = new Map<string, { name: string; len: number; fnv: string; version: number }>();
+// the list as it stands first: a commit whose branch was deleted since is gone from the history, not from the FM-1s it
+// reached (#515: a run here dropped two such fingerprints)
+const OUT = new URL('./legacy-factory.json', import.meta.url);
+if (existsSync(OUT)) for (const e of (JSON.parse(readFileSync(OUT, 'utf8')) as { patches: { name: string; len: number; fnv: string; version: number }[] }).patches) seen.set(`${e.fnv}/${e.len}`, e);
 const commits = git('log', '--all', '--format=%H', '--', 'firmware/src/presets.h').split('\n').filter(Boolean);
 for (const c of commits) {
   let src: string;
@@ -39,5 +43,5 @@ for (const c of commits) {
   }
 }
 const list = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name) || a.version - b.version || a.fnv.localeCompare(b.fnv));
-writeFileSync(new URL('./legacy-factory.json', import.meta.url), JSON.stringify({ note: 'web/scripts/legacy-factory.ts: the factory patches earlier firmwares wrote (name, length, FNV-1a of the bytes, format)', patches: list }, null, 1) + '\n');
+writeFileSync(OUT, JSON.stringify({ note: 'web/scripts/legacy-factory.ts: the factory patches earlier firmwares wrote (name, length, FNV-1a of the bytes, format)', patches: list }, null, 1) + '\n');
 console.log(`${list.length} earlier factory patches from ${commits.length} versions of presets.h`);
