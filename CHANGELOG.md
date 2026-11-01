@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- The Delay no longer clicks when its time changes, on the FM-1 and in the browser (#484). 8 Lire's `lfo → delay` was the loudest case: its Hyper LFO is a square wave, so every edge jumped the echo by up to 350 ms. Now the echo glides to the new time and its pitch bends while it moves (at most an octave down or a fifth up). Turning the Delay's time knob, Perun 4's LFO on the delay time, the morph and a synced Delay's new tempo glide too. Measured on both engines' renders of 8 Lire with both HOLDs up, the Hyper LFO at 5 and 7.3 Hz and `lfo → delay` at 1.5 (golden kit `lire-hyper-delay-1`): the largest jump at a time change fell from 0.78 to 0.03 of full scale, the size of the sound's own steps; sharp steps over 0.05 fell from 98 to 12 a second, which is the count with the LFO off. A time that holds still plays exactly as before. While the time moves, the FM-1's Delay takes about 1.6 % more of its CPU (counted on the CPU model, `npm run cpu-costs`).
+
 ## 1.8.1 — 2026-11-01
 
 ### Editor

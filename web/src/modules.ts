@@ -1287,12 +1287,62 @@ const mixer: ModuleImpl<null> = {
 interface DelayState {
   buf: Float32Array;
   w: number;
+  /** the read position's distance behind w: samples x 65536, an integer (0 = not yet set), and its glide (delayGlide) */
+  cur: number;
+  rate: number;
   /** clock tempo: sample counter, the last 24 pulse times, pulses seen, previous level, samples per quarter note */
   t: number;
   ring: Float64Array;
   seen: number;
   prev: boolean;
   beat: number;
+}
+
+/** the glide: the rate heads for 1 / 2^DELAY_GLIDE_SHIFT of the distance a sample (1024 samples, 23 ms), at most
+ * DELAY_GLIDE_MAX (half a sample a sample), and changes by at most DELAY_GLIDE_ACC a sample (256 samples to full rate) */
+const DELAY_GLIDE_SHIFT = 10;
+const DELAY_GLIDE_MAX = 32768;
+const DELAY_GLIDE_ACC = 128;
+
+/**
+ * The delay while its time moves (#484): the read position's distance behind the write head (s.cur, samples x 65536, in
+ * integers as the FM-1's Q16) moves toward the time's (tq) at a rate (s.rate, the same units a sample) that heads for
+ * 1 / 2^DELAY_GLIDE_SHIFT of the distance, at most half a sample a sample (the echo plays between an octave down and a
+ * fifth up while it moves, never backwards), the rate itself changing by at most DELAY_GLIDE_ACC a sample (the pitch bends
+ * in: no kink in the wave). It lands once less than 1/64 sample away at a rate under DELAY_GLIDE_ACC. The line is read
+ * between its two samples (linear). A jump in the time (a square LFO, a turned knob) so bends the echo's pitch instead of
+ * cutting it (a click). The plain, swelling and ping-pong loops in one.
+ */
+function delayGlide(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, pp: boolean, clip: (x: number) => number): void {
+  const buf = s.buf, half = Math.floor(buf.length / 2), len = pp ? half : buf.length, hi = (len - 1) * 65536;
+  const o = c.out.out, r = c.out.r;
+  const clampi = (v: number, lo: number, top: number): number => (v < lo ? lo : v > top ? top : v);
+  if (s.w >= len) s.w = 0;
+  for (let i = 0; i < c.n; i++) {
+    const diff = tq - s.cur;
+    s.rate += clampi(clampi(Math.floor(diff / (1 << DELAY_GLIDE_SHIFT)), -DELAY_GLIDE_MAX, DELAY_GLIDE_MAX) - s.rate, -DELAY_GLIDE_ACC, DELAY_GLIDE_ACC);
+    if (diff > -(1 << DELAY_GLIDE_SHIFT) && diff < 1 << DELAY_GLIDE_SHIFT && s.rate > -DELAY_GLIDE_ACC && s.rate < DELAY_GLIDE_ACC) {
+      s.cur = tq;
+      s.rate = 0;
+    } else s.cur = clampi(s.cur + s.rate, 65536, hi);   // (past the target only when it turned while moving: kept within the line)
+    let rpos = s.w * 65536 - s.cur;
+    if (rpos < 0) rpos += len * 65536;
+    const i0 = Math.floor(rpos / 65536), i1 = i0 + 1 === len ? 0 : i0 + 1, f = (rpos - i0 * 65536) / 65536;
+    const ea = buf[i0] + (buf[i1] - buf[i0]) * f;
+    const x = c.inp.in[i];
+    if (pp) {
+      const eb = buf[half + i0] + (buf[half + i1] - buf[half + i0]) * f;
+      buf[half + s.w] = clip(ea * fb);
+      buf[s.w] = clip(x + eb * fb);
+      o[i] = x * (1 - mix) + ea * mix;
+      r[i] = x * (1 - mix) + eb * mix;
+    } else {
+      buf[s.w] = clip(x + ea * fb);
+      o[i] = x * (1 - mix) + ea * mix;
+      r[i] = o[i];
+    }
+    s.w = (s.w + 1) % len;
+  }
 }
 
 /**
@@ -1305,6 +1355,7 @@ interface DelayState {
  * FM-1 (its line's length bounds a synced note length too); past it the patch is browser only (patchbin.ts browserOnly).
  * `note` (synced): one of DELAY_NOTES in place of the time knob's length. `swell`: the feedback x 198 / 95 (0.95 reads
  * 1.98) and the loop through a soft clip (delayClip), so a feedback past 1 swells to about full level and holds there.
+ * A new time (a turned knob, a cable into `time`) is not a jump: the read position glides there (delayGlide, #484).
  */
 const delay: ModuleImpl<DelayState> = {
   def: {
@@ -1322,7 +1373,7 @@ const delay: ModuleImpl<DelayState> = {
       param('swell', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 35 }),
     ],
   },
-  init: (sr) => ({ buf: new Float32Array(Math.round((sr * DELAY_LEN_BROWSER) / DEVICE_SR)), w: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2) }),
+  init: (sr) => ({ buf: new Float32Array(Math.round((sr * DELAY_LEN_BROWSER) / DEVICE_SR)), w: 0, cur: 0, rate: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2) }),
   process(c, s) {
     const len = s.buf.length;
     const half = Math.floor(len / 2);
@@ -1360,8 +1411,15 @@ const delay: ModuleImpl<DelayState> = {
     const mix = c.p.mix ?? 0;
     const o = c.out.out;
     const r = c.out.r;
+    // the read position glides to a new time (delayGlide), then the plain loops below read at whole samples
+    const d = pp ? Math.max(1, Math.min(Math.floor(lim / 2) - 1, samples)) : Math.max(1, Math.min(lim - 1, samples));
+    const top = (pp ? half : len) - 1;
+    if (s.cur === 0 || s.cur > top * 65536) s.cur = s.cur === 0 ? d * 65536 : top * 65536;
+    if (s.cur !== d * 65536 || s.rate) {
+      delayGlide(c, s, d * 65536, fb, mix, pp, clip);
+      return;
+    }
     if (!pp) {
-      const d = Math.max(1, Math.min(lim - 1, samples));
       for (let i = 0; i < c.n; i++) {
         const e = s.buf[(s.w - d + len) % len];
         s.buf[s.w] = clip(c.inp.in[i] + e * fb);
@@ -1371,7 +1429,6 @@ const delay: ModuleImpl<DelayState> = {
       }
       return;
     }
-    const d = Math.max(1, Math.min(Math.floor(lim / 2) - 1, samples));
     if (s.w >= half) s.w = 0;
     for (let i = 0; i < c.n; i++) {
       const rp = (s.w - d + half) % half;
