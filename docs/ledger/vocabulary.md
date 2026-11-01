@@ -164,7 +164,11 @@ The page at the old GitHub Pages address: it sends visitors to the Cloudflare si
 
 ### Global
 
-Belonging to the FM-1, not to any patch (the MENU, which GLO opens). Avoid: global for the patch's own tempo, morph and arpeggiators.
+Belonging to the FM-1, not to any patch (the MENU, which GLO opens). Avoid: global for the patch's own tempo, morph and arpeggiators. The one exception is the [global tempo](#global-tempo).
+
+### Global tempo
+
+The one tempo every patch plays at while GLO > PANEL > TEMPO is GLOBAL, as made. It belongs to the FM-1 and to the editor, not to a patch: changing the patch leaves it. Each patch still keeps its own tempo, which plays while TEMPO is PATCH. Avoid: the patch's tempo, for this one.
 
 ### Golden kit
 
@@ -288,7 +292,7 @@ The engine-only module that stands for one Voicing module inside a poly group in
 
 ### Patch
 
-The top of the nesting: the whole stored thing (modules, cables, assemblies and values, with its own tempo, morph and arpeggiators), one bank slot on the FM-1. Nothing contains a patch, and nothing inside one is a patch. Avoid: preset (that is one device's stored card values), program.
+The top of the nesting: the whole stored thing (modules, cables, assemblies and values, with its own tempo, morph and arpeggiators), one bank slot on the FM-1. Its own tempo plays only while TEMPO is PATCH; otherwise the [global tempo](#global-tempo) does. Nothing contains a patch, and nothing inside one is a patch. Avoid: preset (that is one device's stored card values), program.
 
 ### Patch card
 

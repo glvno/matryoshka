@@ -79,6 +79,7 @@ import { pinchStart, pinchStep, type Pinch } from './touch';
 import type { ScreenSpec } from './scope-view';
 import type { EnvSpec } from './env-view';
 import { flipPlan } from './ab';
+import { isGlobalTempo, patchTempo, tempo } from './tempo';
 import { EXCLUDED_TYPES,
   addChild,
   addMember,
@@ -1921,8 +1922,9 @@ export class Editor {
   /** redraws the value of a parameter row (the synced delay shows its time as a note length) */
   private refreshers = new WeakMap<HTMLElement, () => void>();
 
-  private paramRow(m: ModuleInst, def: ModuleDef, pd: ParamDef, o: { open?: AssemblyInst; label?: string; rename?: () => void; names?: string[]; ties?: number } = {}): HTMLElement {
+  private paramRow(m: ModuleInst, def: ModuleDef, pd: ParamDef, o: { open?: AssemblyInst; label?: string; rename?: () => void; names?: string[]; ties?: number; globalTempo?: boolean } = {}): HTMLElement {
     if (pd.screen) return this.screenRow(m, pd, o);
+    if (!o.globalTempo && isGlobalTempo(m.type, pd.name)) return this.globalTempoRow(m, def, pd, o);
     const row = document.createElement('div');
     row.className = 'param bar';
     // a row the knobs can turn: a press on it puts its device page on Main's knobs (markFocus colours the bound ones)
@@ -5198,12 +5200,12 @@ export class Editor {
       const f = formatValue(v, pd.unit, pd.min < 0);
       return f.unit ? `${f.num} ${f.unit}` : f.num;
     };
-    const c = dragControl(dial, `K${i + 1}: ${r.label}`, 0, 1, unitOf(m.params[r.param]), (u) => this.setParam(m.id, r.param, valueOf(u)), {
+    const c = dragControl(dial, `K${i + 1}: ${r.label}`, 0, 1, unitOf(this.shownParam(m, r.param)), (u) => this.setParam(m.id, r.param, valueOf(u)), {
       reset: unitOf(pd.default),
       text: (u) => text(valueOf(u)),
       draw: (u) => dial.style.setProperty('--v', String(u)),
     });
-    (dial as HTMLElement & { sync?: () => void }).sync = () => c.set(unitOf(m.params[r.param]));
+    (dial as HTMLElement & { sync?: () => void }).sync = () => c.set(unitOf(this.shownParam(m, r.param)));
     return box;
   }
 
@@ -5290,7 +5292,7 @@ export class Editor {
     const m = r && this.patch.modules.find((x) => x.id === r.module);
     const pd = m && DEFS[m.type].params.find((q) => q.name === r!.param);
     if (!r || !m || !pd) return false;
-    const v = m.params[r.param];
+    const v = this.shownParam(m, r.param);
     const rd = rowRange(m.type, m.params, pd);   // (a Selector's positions in use, #358)
     const w = fromUnit(rd, Math.min(1, Math.max(0, toUnit(rd, v) + notches / 100)));
     this.setParam(m.id, r.param, pd.toggle ? (notches > 0 ? 1 : 0)
@@ -5740,9 +5742,37 @@ export class Editor {
     this.markArm();
   }
 
+  /** Main's tempo row while the tempo is global (D-907, tempo.ts): it shows and sets the global tempo, which every patch
+   * plays at, and says so; the patch's own tempo stays as it is (the row's tooltip names it) */
+  private globalTempoRow(m: ModuleInst, def: ModuleDef, pd: ParamDef, o: Parameters<Editor['paramRow']>[3] = {}): HTMLElement {
+    const params = new Proxy(m.params, {
+      get: (t, k) => (k === pd.name ? tempo.bpm : Reflect.get(t, k)),
+      set: (t, k, v) => (k === pd.name ? (tempo.set({ bpm: Number(v) }), true) : Reflect.set(t, k, v)),
+    });
+    const row = this.paramRow({ ...m, params }, def, pd, { ...o, label: 'global tempo', globalTempo: true });
+    row.classList.add('global-tempo');
+    row.title = `The global tempo: every patch plays at it (FM-1 & MIDI > Tempo: Global). This patch's own tempo, ${patchTempo(this.patch)} bpm, is kept for Tempo: Patch.`;
+    return row;
+  }
+
+  /** a parameter's value as the rows and knobs show it: Main's tempo is the global tempo while that is on (D-907) */
+  private shownParam(m: ModuleInst, name: string): number {
+    return isGlobalTempo(m.type, name) ? tempo.bpm : m.params[name];
+  }
+
+  /** the global tempo moved (its row elsewhere, the FM-1, the knobs): Main's tempo row and the knobs follow; the setting
+   *  itself switched: the rows are made again (Main's tempo row says what it is) */
+  tempoChanged(modeChanged: boolean): void {
+    if (modeChanged) return this.rebuild();
+    const main = this.patch.modules.find((x) => x.type === 'fm1');
+    if (main) for (const d of this.parameterDisplays) if (d.id === main.id) d.update(null);
+    this.syncDials();
+  }
+
   /** set a parameter from outside the cards (the deck's knobs): as a slider would, the card follows on its next refresh */
   setParam(id: number, name: string, v: number): void {
     const m = this.patch.modules.find((x) => x.id === id);
+    if (m && isGlobalTempo(m.type, name)) return tempo.set({ bpm: v });   // (the global tempo, not the patch's: D-907)
     if (!m || m.params[name] === v) return;
     this.touch();
     m.params[name] = v;

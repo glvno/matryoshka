@@ -31,7 +31,7 @@ static void sandbox_draw(int full);
 static void sandbox_bar(void);
 
 /* the settings' rows (menu.c; the menu's MIDI, PANEL and SYSTEM tabs show them as pages: pages_ui.c menu_tab_page) */
-enum { MR_LEDS, MR_ACCEL, MR_CIN, MR_CH, MR_CLOCK, MR_MOUT, MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_COUNT };
+enum { MR_LEDS, MR_ACCEL, MR_CIN, MR_CH, MR_CLOCK, MR_MOUT, MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_TEMPO, MR_COUNT };
 /* the menu's tabs (menu.c, #395): MIDI, PANEL and SYSTEM are pages of settings on K1..K4, INFO a list of readings, GUIDE a text
  * (the ideas behind the controls, D-248) */
 enum { MT_MIDI, MT_PANEL, MT_SYSTEM, MT_INFO, MT_GUIDE, MT_COUNT };

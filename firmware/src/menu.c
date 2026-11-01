@@ -24,7 +24,7 @@ static void defaults_now(void);
 
 static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "KNOB ACCEL", "COUNT-IN", "MIDI CHANNEL", "CLOCK IN", "MIDI OUT",
                                               "VERSION", "CPU", "CPU PEAK", "BANK SLOTS", "BATTERY", "UPDATE MODE", "FACTORY RESET",
-                                              "QUICK START"};
+                                              "QUICK START", "TEMPO"};
 #define INFO_N 5u
 static const uint8_t INFO_ROWS[INFO_N] = {MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT};   /* the INFO tab's list, top down */
 #define MENU_ARM_MS 5000u                               /* an armed SYSTEM row waits this long for GLO's hold */
@@ -49,6 +49,7 @@ static void menu_value(uint32_t row, char *out)
     case MR_LEDS: p = put(p, cfg.leds == 0 ? "OFF" : cfg.leds == 1 ? "DIM LOW" : "DIM HIGH"); break;
     case MR_ACCEL: p = put(p, ONOFF[cfg.accel]); break;
     case MR_CIN: p = put(p, cfg.count_in == 0 ? "OFF" : cfg.count_in == 1 ? "1 BAR" : "2 BARS"); break;
+    case MR_TEMPO: p = put(p, gt_patch ? "PATCH" : "GLOBAL"); break;
     case MR_CPU:
         fmt_int(p, (int32_t)cpu_pct);
         p += str_len(p);
@@ -256,6 +257,12 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
     case MR_CLOCK: cfg.clock_in = (uint8_t)up; break;
     case MR_MOUT: cfg.midi_out = (uint8_t)up; break;
     case MR_QUICK: cfg.quick = (uint8_t)up; break;  /* the quick start after power-on (D-240, D-247) */
+    case MR_TEMPO:                                      /* GLOBAL, PATCH (D-907): kept 5 s later, without SAVE */
+        if ((uint32_t)up != gt_patch) {
+            gt_set((uint32_t)up, 0u, fm1_ms);
+            m1_tempo_now();
+        }
+        break;
     case MR_UPDATE:
     case MR_DEFAULTS:                               /* a turn right arms the row for GLO's hold (menu_fire), left disarms it */
         menu_armed = MR_COUNT;

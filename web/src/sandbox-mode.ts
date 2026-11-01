@@ -9,11 +9,11 @@ import type { SandboxPage, SandboxRow } from './protocol';
 
 /** a row of the page: its name, its value and unit as the dock's knob shows them, where it sits (0..1, choices evenly),
  *  and its choice count (a switch: 2; continuous: 0). null when the row is not there */
-function sandboxRow(patch: Patch, r: Device['pages'][number]['rows'][number] | undefined): SandboxRow | null {
+function sandboxRow(patch: Patch, r: Device['pages'][number]['rows'][number] | undefined, global: number | null = null): SandboxRow | null {
   const m = r && patch.modules.find((x) => x.id === r.module);
   const pd = m && DEFS[m.type]?.params.find((q) => q.name === r!.param);
   if (!r || !m || !pd) return null;
-  const v = m.params[r.param] ?? pd.default;
+  const v = global !== null && m.type === 'fm1' && r.param === 'tempo' ? global : m.params[r.param] ?? pd.default;   // (Main's tempo: the global one, D-907)
   if (pd.choices) {
     const n = pd.choices.length;
     const i = Math.max(0, Math.min(n - 1, Math.round(v)));
@@ -24,24 +24,27 @@ function sandboxRow(patch: Patch, r: Device['pages'][number]['rows'][number] | u
   return { label: r.label, value: f.num, unit: f.unit, pos: toUnit(pd, v), steps: 0 };
 }
 
-/** the tempo the browser plays the patch at: Main's (whole bpm), 0 with no Main */
-export function sandboxTempo(patch: Patch): number {
+/** the tempo the browser plays the patch at: the global tempo while Tempo is Global (`global`, D-907), else Main's (whole
+ *  bpm), 0 with no Main */
+export function sandboxTempo(patch: Patch, global: number | null = null): number {
+  if (global !== null) return Math.round(global);
   const m = patch.modules.find((x) => x.type === 'fm1');
   const pd = DEFS.fm1?.params.find((q) => q.name === 'tempo');
   return m && pd ? Math.round(m.params.tempo ?? pd.default) : 0;
 }
 
 /** PLAY held + PRESET turned `clicks` on the FM-1 in sandbox mode (D-232): Main's tempo that many bpm on, within
- *  SANDBOX_TEMPO (the FM-1 shows the same, sandbox_ui.c sandbox_tempo) and Main's range; null with no Main or no change */
+ *  SANDBOX_TEMPO (the FM-1 shows the same, sandbox_ui.c sandbox_tempo) and Main's range; null with no Main or no change.
+ *  `global`: the global tempo while Tempo is Global (D-907), which the clicks move instead (module -1 without a Main) */
 export const SANDBOX_TEMPO = { min: 20, max: 300 } as const;
-export function sandboxTempoTurn(patch: Patch, clicks: number): { module: number; tempo: number } | null {
+export function sandboxTempoTurn(patch: Patch, clicks: number, global: number | null = null): { module: number; tempo: number } | null {
   const m = patch.modules.find((x) => x.type === 'fm1');
   const pd = DEFS.fm1?.params.find((q) => q.name === 'tempo');
-  if (!m || !pd || !clicks) return null;
-  const now = sandboxTempo(patch);
+  if ((!m && global === null) || !pd || !clicks) return null;
+  const now = sandboxTempo(patch, global);
   const lo = Math.max(SANDBOX_TEMPO.min, pd.min), hi = Math.min(SANDBOX_TEMPO.max, pd.max);
   const tempo = Math.max(lo, Math.min(hi, now + clicks));
-  return tempo === now ? null : { module: m.id, tempo };
+  return tempo === now ? null : { module: m?.id ?? -1, tempo };
 }
 
 /** the page in focus (`focus`, Editor.focus) of the patch's devices (Editor.devices), with the patch's name; a patch with
@@ -49,11 +52,11 @@ export function sandboxTempoTurn(patch: Patch, clicks: number): { module: number
  *  the devices, their page groups and the group's pages, the tempo, unsaved edits (`o.unsaved`) and the armed devices
  *  (`o.armed`, device keys) */
 export function sandboxPage(patch: Patch, devices: Device[], focus: { device: string; page: number } | null,
-  o: { unsaved?: boolean; armed?: Iterable<string> } = {}): SandboxPage {
+  o: { unsaved?: boolean; armed?: Iterable<string>; globalTempo?: number | null } = {}): SandboxPage {
   const name = patch.name.trim() || 'Untitled';
   const armedKeys = new Set(o.armed ?? []);
   const armed = devices.reduce((m, d, i) => (i < 32 && armedKeys.has(d.key) ? (m | (1 << i)) >>> 0 : m), 0);
-  const more = { tempo: sandboxTempo(patch), unsaved: !!o.unsaved, armed };
+  const more = { tempo: sandboxTempo(patch, o.globalTempo ?? null), unsaved: !!o.unsaved, armed };
   const dev = devices.find((d) => d.key === focus?.device);
   const pg = dev?.pages[focus?.page ?? 0];
   if (!dev || !pg) return { patch: name, device: '', page: '', index: 0, count: 0, rows: [null, null, null, null], ...more };
@@ -65,7 +68,7 @@ export function sandboxPage(patch: Patch, devices: Device[], focus: { device: st
     page: fm1PageTitle(dev.name, pg),
     index,
     count: dev.pages.length,
-    rows: Array.from({ length: PAGE_ROWS }, (_, k) => sandboxRow(patch, pg.rows[k])),
+    rows: Array.from({ length: PAGE_ROWS }, (_, k) => sandboxRow(patch, pg.rows[k], o.globalTempo ?? null)),
     place: {
       devices: devices.length, device: devices.indexOf(dev),
       groups: firsts.length, group: dev.pages.slice(0, index + 1).filter((x, i) => i === 0 || x.part === 0).length - 1,

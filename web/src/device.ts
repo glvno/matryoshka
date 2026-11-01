@@ -9,7 +9,7 @@ import { deviceView } from './poly';
 /** a module's index on the FM-1: its place in the patch's device form (poly.ts deviceView: editor-only modules such as
  * the Scope are not there, so the editor's order is not the device's); -1 when the device does not have it */
 export const deviceIndex = (patch: Patch, moduleId: number): number => deviceView(patch, true).patch.modules.findIndex((m) => m.id === moduleId);
-import { RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 
 /** what connecting the FM-1 does with Live sync (#171): `sync` turns it on without asking, `ask` offers Sync / Not now,
  *  `off` leaves it off (Not now was chosen in this visit) */
@@ -165,7 +165,10 @@ export type DeviceEvent =
   /** a preset stored on the FM-1 (#195, ENV held + SAVE) */
   | { kind: 'presetStored'; structure: string; name: string }
   /** an INFO nobody asked for: MENU > MIDI OUT changed under Live (feature bit 8; `info` has it) */
-  | { kind: 'info' };
+  | { kind: 'info' }
+  /** GLO > PANEL > TEMPO and the global tempo as the FM-1 has them (TEMPO_NOW, D-907): after HELLO, and when they change
+   *  there; bpm 0: not known yet */
+  | { kind: 'tempo'; global: boolean; bpm: number };
 
 export class DeviceLink {
   private out: MIDIOutput | null = null;
@@ -243,6 +246,8 @@ export class DeviceLink {
       if (pn) return this.onEvent({ kind: 'pattern', ...pn });
       const sn = p?.cmd === CMD.songNow ? parseSongNow(p.payload) : null;
       if (sn) return this.onEvent({ kind: 'song', ...sn });
+      const tn = p?.cmd === CMD.tempoNow ? parseTempoNow(p.payload) : null;
+      if (tn) return this.onEvent({ kind: 'tempo', ...tn });
       if (p?.cmd === CMD.muteNow && p.payload.length >= 2) return this.onEvent({ kind: 'mute', module: p.payload[0], on: !!p.payload[1] });
       if (p?.cmd === CMD.armsNow && p.payload.length >= 8) {
         const v = new DataView(Uint8Array.from(p.payload.slice(0, 8)).buffer);
@@ -322,6 +327,16 @@ export class DeviceLink {
   /** the firmware takes the TRANSPORT command (INFO feature bit 1) */
   get hasTransport(): boolean {
     return !!(this.info && this.info.features & 2);
+  }
+
+  /** the firmware shares the global tempo (TEMPO / TEMPO_NOW, INFO feature bit 16, D-907) */
+  get hasTempo(): boolean {
+    return !!(this.info && this.info.features & FEATURE_TEMPO);
+  }
+
+  /** GLO > PANEL > TEMPO and the global tempo (bpm 0: leave it), to firmware that shares them */
+  tempo(global: boolean, bpm: number): void {
+    if (this.connected && this.hasTempo) this.out!.send(tempoFrame(global, bpm));
   }
 
   /** the transport (PLAY) */

@@ -662,7 +662,7 @@ int main(void)
         check("HOME held + PRESET in the menu: the next patch, HOME's release stays in the menu", presets_stepped == stepped + 2 && page == PAGE_MENU);
         presets_stepped = stepped;
         enc(1, 1);
-        check("ALGO: the PANEL tab (LEDs, knob accel, count-in)", menu_tab == MT_PANEL && pages_now()->nrows == 3u && pages_now()->par[0] == MR_LEDS && pages_now()->par[2] == MR_CIN);
+        check("ALGO: the PANEL tab (LEDs, knob accel, count-in, tempo)", menu_tab == MT_PANEL && pages_now()->nrows == 4u && pages_now()->par[0] == MR_LEDS && pages_now()->par[2] == MR_CIN && pages_now()->par[3] == MR_TEMPO);
         enc(4, 1);                                          /* K3: COUNT-IN (#414), OFF > 1 BAR > 2 BARS */
         check("K3 on PANEL: COUNT-IN OFF > 1 BAR (#414)", cfg.count_in == 1u && on_screen("1 BAR"));
         enc(4, 2);                                          /* (a setting steps once per turn, whatever the clicks) */
@@ -3956,6 +3956,102 @@ int main(void)
         }
     }
     help_suite();
+    {                                                       /* the global tempo (D-907, tempo_glo.h) */
+        uint8_t rec[16], old[16];
+        uint32_t k, other = N_PRESETS, r, told, t0;
+        int main_m;
+        const uint32_t seven = preset_at("<7PH");
+        page_show(0);
+        for (k = 0; k < 16u; k++)
+            old[k] = 0;
+        old[0] = 1;
+        old[5] = 1;                                         /* (an older firmware's record: CPU in the bar, program change on) */
+        old[7] = 1;
+        check("(the factory patch <7PH runs)", seven < N_PRESETS && load_at(seven) == 0);
+        gt_unpack(old, 16);
+        check("TEMPO: an older settings record reads as GLOBAL, the tempo not known yet", gt_patch == 0u && gt_bpm == 0u);
+        r = gt_poll(fm1_ms, 1);
+        check("  the boot's patch gives the global tempo (<7PH: 124), and the editor hears of it", eng_tempo_global_get() == 124u && gt_bpm == 124u && (r & 1u));
+        for (k = 0; k < N_PRESETS && other == N_PRESETS; k++) {
+            int m;
+            if (k == seven || load_at(k) || (m = eng_find(T_FM1)) < 0)
+                continue;
+            if (((tempo_own + 32768) >> 16) == 124)    /* (its own tempo: Main's shows the global one) */
+                continue;
+            other = k;
+        }
+        main_m = eng_find(T_FM1);
+        check("GLOBAL: another patch (PRESET) plays at the global tempo; Main's tempo shows it", other < N_PRESETS && main_m >= 0
+              && ((eng_get_param((uint32_t)main_m, FM1_P_TEMPO) + 32768) >> 16) == 124 && E.tick_len == (int32_t)(60u * ENG_SR / (124u * 24u)));
+        tap(BTN_PLAY);
+        panel_held |= 1u << BTN_PLAY;
+        panel_edges(1u << BTN_PLAY, 0);
+        enc(6, 2);                                          /* PLAY held + PRESET */
+        panel_held &= ~(1u << BTN_PLAY);
+        panel_edges(0, 1u << BTN_PLAY);
+        loop();
+        t0 = fm1_ms;
+        r = gt_poll(t0, 0);
+        check("PLAY held + PRESET in GLOBAL: the global tempo, told to the editor", eng_tempo_global_get() == 126u && gt_bpm == 126u && (r & 1u));
+        check("  the patch's own tempo is not touched (proto.c m1_patch_param keeps it)", eng_tempo_row((uint32_t)main_m, FM1_P_TEMPO));
+        blocks(1);
+        check("  the clock runs at it", E.tick_len == (int32_t)(60u * ENG_SR / (126u * 24u)));
+        r = gt_poll(t0 + GT_SAVE_MS, 0);
+        check("  not written while the transport runs", !(r & 2u) && gt_due);
+        tap(BTN_PLAY);
+        r = gt_poll(t0 + GT_SAVE_MS - 2u, 1);
+        check("  not written before 5 s have passed", !(r & 2u));
+        r = gt_poll(t0 + GT_SAVE_MS + 1u, 1);
+        check("  written 5 s after the change once stopped (no SAVE)", (r & 2u) && !gt_due);
+        (void)load_at(seven);
+        check("  <7PH again: at the global tempo, not its own 124", ((eng_get_param((uint32_t)eng_find(T_FM1), FM1_P_TEMPO) + 32768) >> 16) == 126);
+        eng_clock_external(1);
+        panel_held |= 1u << BTN_PLAY;
+        panel_edges(1u << BTN_PLAY, 0);
+        enc(6, 2);
+        panel_held &= ~(1u << BTN_PLAY);
+        panel_edges(0, 1u << BTN_PLAY);
+        loop();
+        check("MIDI clock in: PLAY held + PRESET leaves the global tempo (D-452)", eng_tempo_global_get() == 126u && !strcmp(msg_text, "TEMPO: MIDI CLOCK"));
+        for (k = 0; k < 4u; k++) {                         /* a MIDI clock tick a block: 128 samples a tick */
+            eng_clock_tick();
+            blocks(1);
+        }
+        check("  and MIDI clock drives the clock, not the global tempo", E.tick_len == 128);
+        eng_clock_external(0);
+        gt_pack(rec);
+        gt_patch = 1;
+        gt_bpm = 0;
+        gt_unpack(rec, 16);
+        check("the settings record round trip: GLOBAL at 126", gt_patch == 0u && gt_bpm == 126u && rec[7] == GT_MARK);
+        later(1600);
+        page = PAGE_MENU;
+        menu_tab = MT_PANEL;
+        ui_dirty = 2;
+        loop();
+        check("the menu's PANEL tab: TEMPO on K4, GLOBAL", pages_now()->nrows == 4u && pages_now()->par[3] == MR_TEMPO && on_screen("TEMPO") && on_screen("GLOBAL"));
+        told = host_tempo_told;
+        enc(5, 1);                                          /* K4: PATCH */
+        check("K4: PATCH, the editor told", gt_patch == 1u && on_screen("PATCH") && host_tempo_told == told + 1u && gt_due);
+        main_m = eng_find(T_FM1);
+        check("PATCH: the running patch plays its own tempo again (124)", ((eng_get_param((uint32_t)main_m, FM1_P_TEMPO) + 32768) >> 16) == 124 && !eng_tempo_row((uint32_t)main_m, FM1_P_TEMPO));
+        (void)load_at(other);
+        main_m = eng_find(T_FM1);
+        check("  another patch plays its own", ((eng_get_param((uint32_t)main_m, FM1_P_TEMPO) + 32768) >> 16) != 126 && eng_tempo_global_get() == 0u);
+        gt_pack(rec);
+        check("  the record keeps PATCH and the global tempo", rec[7] == (GT_MARK | 2u) && rec[5] == 126u);
+        gt_bpm = 300;
+        gt_pack(rec);
+        gt_bpm = 0;
+        gt_unpack(rec, 16);
+        check("  a tempo past 255 round trips (byte 7 bit 0)", gt_patch == 1u && gt_bpm == 300u);
+        enc(5, -1);                                         /* K4: GLOBAL again */
+        check("K4 back: GLOBAL at 300", gt_patch == 0u && eng_tempo_global_get() == 300u
+              && ((eng_get_param((uint32_t)main_m, FM1_P_TEMPO) + 32768) >> 16) == 300);
+        gt_patch = 1;                                       /* (as the tests before: each patch its own) */
+        gt_apply();
+        page_show(0);
+    }
     nudge_suite();
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
     return failed != 0;

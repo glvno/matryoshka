@@ -580,6 +580,10 @@ static void toggles_sync(void);
 static volatile uint32_t clk_ticks;   /* MIDI clock ticks (eng_clock_tick, the main loop) */
 static volatile uint8_t clk_ext;      /* MIDI clock drives the clock */
 static volatile uint8_t transport_on; /* the transport (eng_transport) */
+static volatile uint16_t tempo_glo;   /* the global tempo (eng_tempo_global): bpm, 0 none, ENG_TEMPO_ADOPT the next patch's */
+static uint8_t tempo_moved;           /* eng_set_param or a load moved it (eng_tempo_moved) */
+static int32_t tempo_own;             /* the running patch's own tempo (Q16) while the global one plays */
+static void tempo_apply(void);
 static volatile uint16_t panel_buttons; /* the patch buttons held / switched on (eng_buttons) */
 
 /* the memories: slot i of a pool is taken while own[i] is 1 */
@@ -1537,7 +1541,46 @@ int eng_load(const uint8_t *p, uint32_t len)
     for (i = 0; i < E.nmod; i++)                 /* a track that plays a Drum map is never shifted by a song (engine.ts) */
         if (E.node[i].type == T_STEPS)
             E.trk_drum[E.node[i].trk] = (uint8_t)(eng_steps_drummap(i) >= 0);
+    tempo_own = E.main >= 0 ? E.node[E.main].par[FM1_P_TEMPO] : (int32_t)(TEMPO_DEFAULT << 16);
+    if (tempo_glo)                               /* the global tempo (D-907): the patch plays at it, its own value kept */
+        tempo_apply();
     return 0;
+}
+
+/* the global tempo onto the running patch: Main's tempo shows it; ENG_TEMPO_ADOPT takes the patch's own first */
+static void tempo_apply(void)
+{
+    if (tempo_glo == ENG_TEMPO_ADOPT) {
+        tempo_glo = (uint16_t)clampi((tempo_own + 32768) >> 16, 20, 300);
+        tempo_moved = 1;
+    }
+    if (tempo_glo && E.main >= 0)
+        E.node[E.main].par[FM1_P_TEMPO] = (int32_t)((uint32_t)tempo_glo << 16);
+}
+
+void eng_tempo_global(uint32_t bpm)
+{
+    uint32_t was = tempo_glo;
+    tempo_glo = (uint16_t)(bpm == 0u || bpm == ENG_TEMPO_ADOPT ? bpm : (uint32_t)clampi((int32_t)bpm, 20, 300));
+    if (!E.loaded)
+        return;
+    if (!was && E.main >= 0)                     /* from each patch its own: Main's tempo as it stands is the patch's */
+        tempo_own = E.node[E.main].par[FM1_P_TEMPO];
+    if (tempo_glo)
+        tempo_apply();
+    else if (was && E.main >= 0)                 /* back to the patch's own */
+        E.node[E.main].par[FM1_P_TEMPO] = tempo_own;
+}
+uint32_t eng_tempo_global_get(void) { return tempo_glo == ENG_TEMPO_ADOPT ? 0u : tempo_glo; }
+int eng_tempo_moved(void)
+{
+    int m = tempo_moved;
+    tempo_moved = 0;
+    return m;
+}
+int eng_tempo_row(uint32_t module, uint32_t param)
+{
+    return tempo_glo && E.loaded && E.main >= 0 && module == (uint32_t)E.main && param == FM1_P_TEMPO;
 }
 
 int eng_parts(void) { return !E.loaded ? 0 : E.ngrp ? E.grp[1].parts : 1; }
@@ -1655,10 +1698,22 @@ int32_t eng_att(uint32_t module, uint32_t input)
     return module < E.nmod && input < 2u ? E.node[module].att[input] : 0;
 }
 
+/* Main's tempo set while the tempo is global: the global tempo moves (D-907) */
+static void tempo_follow(uint32_t module, uint32_t param, int32_t q16)
+{
+    if (eng_tempo_row(module, param)) {
+        uint16_t b = (uint16_t)clampi((q16 + 32768) >> 16, 20, 300);
+        tempo_moved |= b != tempo_glo;
+        tempo_glo = b;
+    }
+}
+
 void eng_set_param(uint32_t module, uint32_t param, int32_t q16)
 {
-    if (module < E.nmod && param < DEFS[E.node[module].type].npar)
+    if (module < E.nmod && param < DEFS[E.node[module].type].npar) {
         E.node[module].par[param] = q16;
+        tempo_follow(module, param, q16);
+    }
 }
 
 /* Knob ramps (#405). On the FM-1 a knob's click reaches the module over ENG_RAMP_BLOCKS blocks (23 ms) instead of at once,
@@ -1722,6 +1777,7 @@ void eng_knob_param(uint32_t knob, uint32_t module, uint32_t param, int32_t q16)
     d = &DEFS[E.node[module].type];
     was = E.node[module].par[param];
     E.node[module].par[param] = q16;                /* (as eng_set_param: the parameter at once) */
+    tempo_follow(module, param, q16);
     if (knob < ENG_KNOBS && was != q16 && !(d->pchoice && d->pchoice[param]))
         ramp_start(knob, (int32_t)module, (int32_t)param, was, q16);
 }
@@ -6502,8 +6558,10 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
         if (ramp[0].left | ramp[1].left | ramp[2].left | ramp[3].left)
             ramp_tick();
         E.morph = E.has_b ? morph_position(n) : 0;
-        {   /* the clock: MIDI ticks while external, else the Main module's tempo (whole bpm x 24 ticks a minute) */
-            uint32_t bpm = E.main >= 0 ? (uint32_t)clampi((E.node[E.main].par[FM1_P_TEMPO] + 32768) >> 16, 20, 300) : TEMPO_DEFAULT, seen = 0, t;
+        {   /* the clock: MIDI ticks while external, else the global tempo (D-907) or the Main module's (whole bpm x 24 ticks a
+             * minute) */
+            uint32_t bpm = tempo_glo > ENG_TEMPO_ADOPT ? tempo_glo
+                         : E.main >= 0 ? (uint32_t)clampi((E.node[E.main].par[FM1_P_TEMPO] + 32768) >> 16, 20, 300) : TEMPO_DEFAULT, seen = 0, t;
             uint8_t run = transport_on;
             if (run && !E.running) {
                 E.tick_acc = 0;                  /* the transport starts: the tempo's ticks from here */

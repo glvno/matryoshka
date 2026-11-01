@@ -133,6 +133,7 @@ static void lcd_line_out_raw(uint32_t x, uint32_t y, uint32_t w)   /* lcd.c's */
 
 #include "../src/engine.c"
 #include "../src/presets.h"
+#include "../src/tempo_glo.h"
 /* the preset store (presetstore.c, #194) over 7 sectors of RAM flash (all 0xFF until host_ps_init) */
 static uint8_t host_ps_flash[7u * 0x1000u];
 static void fm1_wdt_feed(void) {}
@@ -239,6 +240,10 @@ static void leds_octave(void);
 static int host_updates, host_defaults;    /* UPDATE MODE / FACTORY RESET reached (panel_test.c) */
 static void update_only(const char *why) { (void)why; host_updates++; }
 static void defaults_now(void) { host_defaults++; }
+#ifndef HOST_TEMPO_HOOK                     /* (the wasm build tells the page) */
+static uint32_t host_tempo_told;            /* proto.c's TEMPO_NOW sent (panel_test.c) */
+static void m1_tempo_now(void) { host_tempo_told++; }
+#endif
 #include "../src/menu.c"
 /* what seq_ui.c reaches in proto.c and the HAL, for the preview */
 static struct { uint32_t buttons; } fm1_in;

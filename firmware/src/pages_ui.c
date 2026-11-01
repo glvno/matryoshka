@@ -492,9 +492,9 @@ static const char *const MENU_TAB_NAME[MT_COUNT] = {"MIDI", "PANEL", "SYSTEM", "
 static ppage_t pg_menu;
 static const ppage_t *menu_tab_page(void)
 {
-    static const char *const LAB[3][PG_ROWS] = {{"MIDI CHANNEL", "CLOCK IN", "MIDI OUT", ""}, {"LEDS", "KNOB ACCEL", "COUNT-IN", ""}, {"UPDATE MODE", "FACTORY RESET", "QUICK START", ""}};
-    static const uint8_t ROW[3][PG_ROWS] = {{MR_CH, MR_CLOCK, MR_MOUT, 0}, {MR_LEDS, MR_ACCEL, MR_CIN, 0}, {MR_UPDATE, MR_DEFAULTS, MR_QUICK, 0}};
-    static const uint8_t N[3] = {3, 3, 3};
+    static const char *const LAB[3][PG_ROWS] = {{"MIDI CHANNEL", "CLOCK IN", "MIDI OUT", ""}, {"LEDS", "KNOB ACCEL", "COUNT-IN", "TEMPO"}, {"UPDATE MODE", "FACTORY RESET", "QUICK START", ""}};
+    static const uint8_t ROW[3][PG_ROWS] = {{MR_CH, MR_CLOCK, MR_MOUT, 0}, {MR_LEDS, MR_ACCEL, MR_CIN, MR_TEMPO}, {MR_UPDATE, MR_DEFAULTS, MR_QUICK, 0}};
+    static const uint8_t N[3] = {3, 4, 3};
     uint32_t t = menu_tab > MT_SYSTEM ? MT_MIDI : menu_tab, k;
     pg_menu.name = MENU_TAB_NAME[t];
     pg_menu.nlen = (uint8_t)str_len(MENU_TAB_NAME[t]);
@@ -516,7 +516,7 @@ static uint32_t setting_bar(uint32_t row, uint32_t width)
 {
     return row == MR_CH ? cfg.ch * width / 16u : row == MR_LEDS ? cfg.leds * width / 2u : row == MR_CIN ? cfg.count_in * width / 2u
          : row == MR_UPDATE || row == MR_DEFAULTS ? (menu_armed == row ? width : 0u)
-         : (row == MR_CLOCK ? cfg.clock_in : row == MR_MOUT ? cfg.midi_out : row == MR_QUICK ? cfg.quick : cfg.accel) ? width : 0u;
+         : (row == MR_CLOCK ? cfg.clock_in : row == MR_MOUT ? cfg.midi_out : row == MR_QUICK ? cfg.quick : row == MR_TEMPO ? gt_patch : cfg.accel) ? width : 0u;
 }
 
 static const ppage_t *pages_now(void)
@@ -2328,7 +2328,8 @@ static int dp_load(uint32_t d, uint32_t k)
                 return -1;
             m1_param_now(mod, par, v);
         } else {
-            if (eng_type(mod) < 0 || par >= DEFS[eng_type(mod)].npar)
+            if (eng_type(mod) < 0 || par >= DEFS[eng_type(mod)].npar || eng_tempo_row(mod, par))   /* (a preset leaves
+                                                     * the global tempo, D-907) */
                 continue;
             eng_set_param(mod, par, v);
             m1_patch_param(mod, par, v);
