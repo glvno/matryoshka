@@ -684,8 +684,12 @@ async function main() {
     },
     async tempo() {
       // PLAY held + PRESET in sandbox mode sets the browser patch's tempo, a bpm a click (D-232); PLAY's release then
-      // starts nothing, and the FM-1's footer shows the new tempo
-      const tempoOf = async () => JSON.parse(await patchJson()).modules.find((m) => m.type === 'fm1')?.params.tempo;
+      // starts nothing, and the FM-1's footer shows the new tempo. With Tempo: Global (as made, D-907) it is the global
+      // tempo (the setting in the page's storage), else Main's
+      const tempoOf = async () => {
+        const g = await page.evaluate(() => { try { return JSON.parse(localStorage.getItem('matryoshka.tempo') ?? 'null'); } catch { return null; } });
+        return g?.mode === 'global' ? g.bpm : JSON.parse(await patchJson()).modules.find((m) => m.type === 'fm1')?.params.tempo;
+      };
       const t0 = await tempoOf();
       if (t0 === undefined) return check('sandbox: PLAY held + PRESET (skipped: the patch has no Main)', true);
       const want = Math.min(300, Math.round(t0) + 2);
@@ -1053,6 +1057,13 @@ async function main() {
     // #103: the A/B flip with Live on. A = Init; B = Init with K1..K4 turned down on the FM-1. Values only: the flip sends
     // PARAM frames and no upload, and each side sounds as it did when it was set
     async abFlip() {
+      // (Tempo: Patch for this one, D-907: with the global tempo, Main's tempo row on the FM-1 moves no patch value, and the
+      // flip is about the patch's own values; Global again at the end)
+      const tempoPatch = (on) => page.evaluate((p) => {
+        const b = document.getElementById('tempo-btn');
+        if (b && (b.getAttribute('aria-pressed') === 'true') === p) b.click();
+      }, on);
+      await tempoPatch(true);
       await check('a/b: Init opens, synced', await openSynced('Init'));
       const palette = async (label) => {
         await page.keyboard.press('/');
@@ -1087,6 +1098,7 @@ async function main() {
       await flip('B', b, pB);
       await emu.snap('ab-flip');
       await shot('ab-flip');
+      await tempoPatch(false);
     },
   };
 

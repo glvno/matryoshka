@@ -2242,6 +2242,11 @@ tempo.listen((s, from, was) => {
   showTempo();
 });
 host.tempo(tempo.global ? tempo.bpm : null);
+try {
+  localStorage.setItem(TEMPO_KEY, JSON.stringify(tempo.setting));   // (a first visit's too: what plays is on record)
+} catch {
+  /* storage blocked */
+}
 showTempo();
 tempoBtn.onclick = () => tempo.set({ mode: tempo.global ? 'patch' : 'global' });
 
