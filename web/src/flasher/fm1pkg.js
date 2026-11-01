@@ -219,6 +219,22 @@ export function productOf(fwsc) {
   return s;
 }
 
+// Matryoshka's identity (#216): FM-1_7MMmmpp, 7 then major, minor and patch as two digits each (1.8.0 = FM-1_7010800);
+// FM-1_7XY before (1.0 .. 1.7 in the field: major and minor, one digit each). FM-1_7000000 and FM-1_700 are dev and CI
+// builds. tools/fm1_install.py matryoshka_version reads them the same way.
+export const MATRYOSHKA_PRODUCT_RE = /^FM-1_7(\d\d|\d{6})$/;
+export const isMatryoshkaProduct = (p) => MATRYOSHKA_PRODUCT_RE.test(p ?? "");
+/** -> { major, minor, patch } (patch null for the old three-digit form), "dev" for a dev or CI build, null for an
+ *  identity that is not Matryoshka's */
+export function matryoshkaVersion(p) {
+  const m = MATRYOSHKA_PRODUCT_RE.exec(p ?? "");
+  if (!m) return null;
+  const d = m[1];
+  const v = d.length === 2 ? { major: +d[0], minor: +d[1], patch: null }
+    : { major: +d.slice(0, 2), minor: +d.slice(2, 4), patch: +d.slice(4, 6) };
+  return !v.major && !v.minor && !v.patch ? "dev" : v;
+}
+
 // the image the device addresses during an update: the .fwsc without the 20 marker bytes
 export function logicalImage(fwsc) {
   const out = new Uint8Array(fwsc.length - BLOCKS);

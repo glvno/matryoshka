@@ -3,11 +3,13 @@
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
 """Build Matryoshka: the app, the update loader and an installable .fwsc package.
 
-  tools/build.py [--release X.Y[-suffix]]
+  tools/build.py [--release X.Y.Z[-suffix]]
 
 Outputs in build/: matryoshka.bin (app), loader/ota.bin (update loader),
 matryoshka.fwsc (package) and matryoshka.json (its version, identity, size and sha256). A release build
-(--release X.Y) writes matryoshka-X.Y.fwsc / .json and a folder release-X.Y/ with those, the app, SHA256SUMS, the sample attribution and the licence files.
+(--release X.Y.Z) writes matryoshka-X.Y.Z.fwsc / .json and a folder release-X.Y.Z/ with those, the app, SHA256SUMS, the sample attribution and the licence files.
+Identity: FM-1_7MMmmpp (7, then major, minor and patch as two digits each: 1.8.0 = FM-1_7010800); dev and CI builds
+FM-1_7000000 (#216).
 See BUILDING.md for the toolchain and the SDK.
 
 The JieLi toolchain is Linux x86-64 only. JIELI_TOOLCHAIN points at it; on
@@ -50,9 +52,35 @@ SDK_SHA256 = {
     "cfg/eq_cfg_hw.bin": "41167491bffed4651750719c973d2758adeb9021a5670d02d6a53c85ed80ea7d",
 }
 
-PRODUCT = "FM-1_700"                # package identity (#79: Matryoshka = FM-1_7XY; M-VAVE stock 0XX, M-VAVE Open 8 + 6 digits,
-                                     # Felucca 9XY); must match FELUCCA_ID in firmware/src/modular.c
+PRODUCT = "FM-1_7000000"            # package identity (#216: Matryoshka = FM-1_7MMmmpp, dev and CI builds 7000000; before 1.8
+                                     # FM-1_7XY; M-VAVE stock 0XX, M-VAVE Open 8 + 6 digits, Felucca 9XY); must match FELUCCA_ID
+                                     # in firmware/src/modular.c
 VERSION = None                      # FELUCCA_VERSION for release builds (default: firmware/src/modular.c)
+FW_VERSION = (0, 0, 0)              # major, minor, patch: INFO's last three bytes (proto.c), 0.0.0 = a dev or CI build
+MARKER_MAX = 20                     # the .fwsc marker: one character after each of the first 20 blocks (fm1pkg_make.ufw)
+HANDSHAKE_MAX = 27                  # the identity handshake's body (ota.c ota_reply_identity)
+
+
+def release_identity(release):
+    """--release X.Y.Z[-suffix] -> (identity, version string, (major, minor, patch)); SystemExit when it does not fit"""
+    m = re.fullmatch(r"(\d{1,2})\.(\d{1,2})\.(\d{1,2})(?:-([A-Za-z0-9]+))?", release)
+    if not m:
+        raise SystemExit(f"--release {release}: use X.Y.Z or X.Y.Z-suffix (patch required), each 0..99")
+    ver = tuple(int(x) for x in m.groups()[:3])
+    if ver == (0, 0, 0):
+        raise SystemExit("--release 0.0.0: that is the identity of dev and CI builds")
+    product = "FM-1_7" + "".join(f"{x:02d}" for x in ver)
+    version = "v" + ".".join(map(str, ver)) + ("-" + m[4].upper() if m[4] else "")   # v1.8.0, v1.8.0-RC1
+    check_identity(product)
+    return product, version, ver
+
+
+def check_identity(product):
+    """the identity fits the .fwsc marker and the handshake, and no marker byte encodes to 0x7D (fm1pkg_make.ufw)"""
+    if len(product) > MARKER_MAX or len(product) > HANDSHAKE_MAX:
+        raise SystemExit(f"identity {product!r}: at most {MARKER_MAX} characters")
+    if any((ord(c) + i + 1) & 0xFF == 0x7D for i, c in enumerate(product)):
+        raise SystemExit(f"identity {product!r}: a character encodes to the unused marker 0x7D")
 
 
 def toolchain():
@@ -200,6 +228,7 @@ def build_app():
     if v in ("0", "1", "2", "3"):
         flags.append(f"-DFELUCCA_USB_LAYOUT={v}")
     flags.append(f'-DFELUCCA_ID="{PRODUCT}"')
+    flags += [f"-DM1_FW_{k}={v}" for k, v in zip(("MAJOR", "MINOR", "PATCH"), FW_VERSION)]
     if VERSION:
         flags.append(f'-DFELUCCA_VERSION="{VERSION}"')
     # modular.c goes to LLVM IR without the optimizer, the main-loop functions (UI, stores, editor) are
@@ -339,20 +368,15 @@ def mmio_check():
 
 
 def main():
-    global PRODUCT, VERSION
+    global PRODUCT, VERSION, FW_VERSION
     ap = argparse.ArgumentParser()
-    ap.add_argument("--release", metavar="X.Y", help="release build: identity FM-1_7XY, version string vX.Y.Z")
+    ap.add_argument("--release", metavar="X.Y.Z", help="release build: identity FM-1_7MMmmpp, version string vX.Y.Z")
     ap.add_argument("--sdk", type=Path, help="JieLi AC79 SDK checkout (default: $AC79_SDK)")
     a = ap.parse_args()
     name = "matryoshka.fwsc"
-    if a.release:                   # one digit each: the identity has room for two (X.Y.Z and X.Y.Z.W keep X.Y's)
-        m = re.fullmatch(r"(\d)\.(\d)(?:\.\d){0,2}(-[A-Za-z0-9]+)?", a.release)
-        if not m:
-            raise SystemExit(f"--release {a.release}: use X.Y, X.Y.Z, X.Y.Z.W or X.Y-suffix, one digit each")
-        PRODUCT = "FM-1_7" + m[1] + m[2]
-        num, _, sfx = a.release.partition("-")
-        num = ".".join((num.split(".") + ["0", "0"])[:max(3, len(num.split(".")))])
-        VERSION = "v" + num + ("-" + sfx.upper() if sfx else "")   # e.g. v1.0.0, v1.1.0-RC1 (MENU > SYSTEM, the splash)
+    check_identity(PRODUCT)
+    if a.release:                   # two digits each for major, minor and patch (#216); VERSION: MENU > SYSTEM, the splash
+        PRODUCT, VERSION, FW_VERSION = release_identity(a.release)
         name = f"matryoshka-{a.release}.fwsc"
     fm1pkg_make.SDK = a.sdk
     for rel, sha in SDK_SHA256.items():          # fail early without the SDK

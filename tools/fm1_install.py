@@ -276,6 +276,30 @@ def model_of(text):
 
 
 STOCK_PRODUCT = "FM-1_015"
+# Matryoshka's identity (as web/src/flasher/fm1pkg.js matryoshkaVersion): FM-1_7MMmmpp since #216 (major, minor, patch as two
+# digits each, 7000000 = a dev or CI build), FM-1_7XY before (1.0 .. 1.7: major and minor, 700 = a dev or CI build)
+MATRYOSHKA_RE = re.compile(r"FM-1_7(\d\d|\d{6})")
+
+
+def matryoshka_version(identity):
+    """-> (major, minor, patch) of a Matryoshka identity, patch None for the old FM-1_7XY; "dev" for a dev or CI build;
+    None for anything that is not Matryoshka (stock, Felucca, M-VAVE Open, an update loader)"""
+    m = MATRYOSHKA_RE.fullmatch(identity)
+    if not m:
+        return None
+    d = m[1]
+    v = (int(d[0]), int(d[1]), None) if len(d) == 2 else (int(d[0:2]), int(d[2:4]), int(d[4:6]))
+    return "dev" if v[:2] == (0, 0) and not v[2] else v
+
+
+def describe(identity):
+    """what --info says after the identity: "Matryoshka 1.8.0", "Matryoshka 1.7", "Matryoshka, a dev or CI build", ""."""
+    v = matryoshka_version(identity)
+    if v is None:
+        return ""
+    if v == "dev":
+        return "Matryoshka, a dev or CI build"
+    return "Matryoshka " + ".".join(str(x) for x in v if x is not None)
 
 
 def is_mvave(product):
@@ -771,7 +795,8 @@ def run(a, backend, out, ask):
         if not dev:
             raise not_found(up)
         mode = "update loader (update not finished)" if dev.id.loader else "running"
-        print(f"{dev.id.text}  [{mode}]  port: {dev.name}", file=out)
+        what = "" if dev.id.loader else describe(dev.id.text)
+        print(f"{dev.id.text}  [{mode}]  port: {dev.name}" + (f"  ({what})" if what else ""), file=out)
         head = None if dev.id.loader else read_head(dev.link)
         dev.link.close()
         if head is None:

@@ -6,6 +6,7 @@ import { Updater, STOCK_PRODUCT } from './flasher/fm1ota.js';
 // @ts-ignore untyped JS modules
 import { OPEN_RELEASES, logicalImage, productOf, validateOpenPackage, validateStockPackage } from './flasher/fm1pkg.js';
 import { FELUCCA_WARNING, firmwareKind, runsFelucca } from './felucca-store';
+import { runningVersion, updateOffer } from './fm1-version';
 import { type MvaveTarget, TARGET_NAME, WHICH_TARGET, rememberTarget, targetGuard } from './mvave-target';
 
 /** why Official Open does not come with the app (fm1_open's THIRD_PARTY.md allows passing the engine on inside FM-1
@@ -272,6 +273,8 @@ export function buildFlashTab(root: HTMLElement): void {
       log(`${dev.id.text}  [${/^ota-/i.test(dev.id.model) ? 'update loader: an update was not finished' : 'running'}]  port: ${dev.name}`);
       dev.link.close();
       if (/^ota-/i.test(dev.id.model)) return;
+      const older = updateOffer(runningVersion(null, dev.id.text), bundle?.dev ? null : bundle?.version);   // (#216)
+      if (older) log(`${older} Install Matryoshka firmware updates it.`);
       noteForeign(dev.id.text);
       if (runsFelucca(dev.id.text)) (feluccaNote.hidden = false), log('this FM-1 runs Felucca: read the note about its projects and samples before installing');
     });
