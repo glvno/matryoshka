@@ -499,7 +499,7 @@ static uint32_t m1_pkey_get(const uint8_t *d, char *name)
 /* a long frame to the host (a preset's values) */
 static void m1_reply_long(uint32_t cmd, const uint8_t *payload, uint32_t n)
 {
-    static uint8_t f[8u + (8u * (21u + 4u * M1_PVALS) + 6u) / 7u];
+    static uint8_t f[8u + (8u * (21u + 4u * M1_PVALS) + 6u) / 7u] ENG_POOL;
     uint32_t w = 0;
     f[w++] = 0xF0;
     f[w++] = 0x7D;
@@ -699,7 +699,7 @@ static void m1_patch_range(uint32_t mod, uint32_t pin, uint32_t par, int on, uin
 #define M1_RX_MAX (M1_RX_A > M1_RX_B ? M1_RX_A : M1_RX_B)
 static int m1_handle(const uint8_t *f, uint32_t n)
 {
-    static uint8_t d[M1_RX_MAX];                       /* (the largest frame: TRACK or PRESET_PUT; static: off the stack) */
+    static uint8_t d[M1_RX_MAX] ENG_POOL;              /* (the largest frame: TRACK or PRESET_PUT; static, in the pool) */
     uint32_t len;
     if (n < 4u || f[0] != 0x7D || f[1] != 0x4D || f[2] != 0x31)
         return 0;
@@ -926,8 +926,8 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         break;
     }
     case C_PRESET_GET: {                                     /* #195: structure, name -> PRESET_DATA (count 0xFF: none) */
-        static uint8_t p[4u + M1_PNAME + 1u + 4u * M1_PVALS];
-        static int32_t v[M1_PVALS];
+        static uint8_t p[4u + M1_PNAME + 1u + 4u * M1_PVALS] ENG_POOL;
+        static int32_t v[M1_PVALS] ENG_POOL;
         char name[M1_PNAME + 1u];
         uint32_t st, nv = 0, i;
         if (len < 4u + M1_PNAME)
@@ -951,7 +951,7 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         break;
     }
     case C_PRESET_PUT: {                                     /* #195: structure, name, n, n i32 values -> ACK */
-        static int32_t v[M1_PVALS];
+        static int32_t v[M1_PVALS] ENG_POOL;
         char name[M1_PNAME + 1u];
         uint32_t st, nv, i;
         int rc;

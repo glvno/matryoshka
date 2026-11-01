@@ -2199,7 +2199,7 @@ static void env_knob_msg(uint32_t k)
 #define PR_USER 0x8000u                                 /* a list entry: a store slot | PR_USER, else a FPRESET_LIST index */
 #define PR_MAX (N_FPRESETS + PS_SLOTS)
 static uint16_t pr_list[PR_MAX < 256u ? 256u : PR_MAX];
-static int32_t pr_vals[PS_MAXV];                        /* a user preset's values (the store holds PS_MAXV at most: 176, #485) */
+static int32_t pr_vals[PS_MAXV] ENG_POOL;                        /* a user preset's values (the store holds PS_MAXV at most: 176, #485) */
 static uint8_t dp_short;                                /* the entry dp_load loaded last had fewer values than the device's rows */
 static const int32_t *pr_at = pr_vals;                  /* the entry dp_entry read last: its values (a factory one's in ROM, any
                                                          * number of them: Cassia 1 has 118 rows, #464), else pr_vals */

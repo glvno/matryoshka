@@ -22,6 +22,9 @@
  * treated as dead. Records of one slot are written as before the pairs (a store from older firmware reads as it is); older
  * firmware sees a two-slot record as dead. Needs st_read / st_erase / st_prog (storage_hw.c), m1_crc16 (proto.c),
  * fm1_wdt_feed. Host tests: tools/preset_test.sh. */
+#ifndef ENG_POOL
+#define ENG_POOL                        /* (modular.c: the pool section; the host tests: plain RAM) */
+#endif
 #define PS_BASE 0x99000u
 #define PS_NSEC 7u
 #define PS_SLOT 384u
@@ -49,7 +52,7 @@ enum { PS_CLEAN, PS_LIVE, PS_DEAD, PS_BLANK, PS_TAIL };  /* PS_BLANK: its header
 static uint8_t ps_state[PS_SLOTS];
 static uint8_t ps_link[PS_SLOTS];               /* a live record's second slot, PS_NONE none */
 static uint32_t ps_seq = 1;
-static int32_t ps_vbuf[PS_MAXV];
+static int32_t ps_vbuf[PS_MAXV] ENG_POOL;      /* (in the pool: RAM proper is short, #485) */
 static uint8_t ps_scanned;                      /* ps_scan ran (it runs on the first use) */
 static void ps_scan(void);
 
@@ -162,7 +165,7 @@ static int ps_find(uint32_t structure, const char *name)
  * each (structure, name) lives, older copies are killed */
 static void ps_scan(void)
 {
-    static uint32_t tseq[PS_SLOTS];                 /* a candidate second slot's sequence number */
+    static uint32_t tseq[PS_SLOTS] ENG_POOL;        /* a candidate second slot's sequence number */
     ps_hdr_t h, o;
     uint32_t i, j;
     ps_scanned = 1;
