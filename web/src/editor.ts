@@ -412,6 +412,9 @@ export class Editor {
     this.selected.clear();
     this.selectedAsm.clear();
     this.expandedOnce.clear();
+    // a patch opens on its home device (D-217), as the FM-1 opens it: a device key is a module or assembly id, so the last
+    // patch's focus could name a device of this one (Main is m1 in every patch) and sent the FM-1 there after the upload (#496)
+    this.focus = null;
     this.rebuild();
     this.untangle();
     this.restoreView();

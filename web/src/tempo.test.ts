@@ -113,3 +113,17 @@ describe('the browser engine (engine.c tempo_glo)', () => {
     expect(clockPeriod(tempoNow({ mode: 'patch', bpm: 100 }, p))).toBeCloseTo(60000 / (124 * 24));
   });
 });
+
+describe('sandbox mode (sandbox-mode.ts, D-911) under the global tempo', () => {
+  it('reports the global tempo to the FM-1 and moves it with PLAY held + PRESET; Patch keeps Main\'s', async () => {
+    const { sandboxTempo, sandboxTempoTurn } = await import('./sandbox-mode');
+    const p = withTempo(124);
+    const main = p.modules.find((m) => m.type === 'fm1')!;
+    expect(sandboxTempo(p, 100)).toBe(100);
+    expect(sandboxTempo(p, null)).toBe(124);
+    expect(sandboxTempoTurn(p, 3, 100)).toEqual({ module: main.id, tempo: 103 });
+    expect(sandboxTempoTurn(p, 3, null)).toEqual({ module: main.id, tempo: 127 });
+    expect(sandboxTempoTurn(emptyPatch('none'), -1, 100)).toEqual({ module: -1, tempo: 99 });
+    expect(sandboxTempoTurn(p, 5, 300)).toBeNull();
+  });
+});

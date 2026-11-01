@@ -2729,16 +2729,25 @@ int main(void)
     }
 
     {                                                       /* sandbox mode: the editor's Live paused (its patch is a sandbox
-                                                             * patch): the FM-1 muted, the editor's page drawn, PRESET held */
-        uint32_t slot = cur_preset, y, x, gold;
-        int stepped = presets_stepped, from, pn;
+                                                             * patch): the FM-1 muted, the editor's page drawn as a device page
+                                                             * (D-232, D-234), PRESET held */
+        uint32_t slot = cur_preset, y, x, gold, i, n;
+        int stepped = presets_stepped, from, pn, panel = eng_find(T_FM1), run;
+        int32_t bpm0 = panel >= 0 ? eng_get_param((uint32_t)panel, FM1_P_TEMPO) : 0;
+        uint32_t dev0, page0, edited0 = m1_edited;
         sb_page_t pg;
+        uint8_t d[SB_BYTES + SB_EXT_BYTES];
+        static uint16_t whole[240u * 240u];
+#define SB_FOOT_GOLD (px(2, FOOT_Y + 1u) == P_GOLD && px(120, FOOT_Y + 1u) == P_GOLD)
         page = 0;
         trail_n = 0;
         screen_idle();
         later(2000);
         preset_loads = 1;
         info_told = 0;
+        pages_ensure();
+        dev0 = pg_cur_dev;
+        page0 = pg_cur_page;
         m1_live(1);                                         /* LIVE paused: sandbox mode */
         check("LIVE paused: sandbox mode, the FM-1 muted", sb_on && snd_muted && !sb_have);
         check("  the MIDI OUT setting told once (INFO)", info_told == 1);
@@ -2746,13 +2755,33 @@ int main(void)
         for (gold = 0, y = 70; y < 100u; y++)
             for (x = 0; x < 240u; x++)
                 gold += px(x, y) == P_GOLD;
-        check("  the screen: the gold SANDBOX bar and the card (no bars yet)", px(4, 4) == P_GOLD && gold > 30u
-              && K1_TAB == P_NIGHT);
-        later(1000);
+        check("  the screen: the card (no bars yet), the device page's header (no gold band), the gold footer", gold > 30u
+              && K1_TAB == P_NIGHT && px(4, 4) != P_GOLD && SB_FOOT_GOLD && on_screen("SANDBOX") && on_screen("= OCT ="));
+        from = mlen;
+        pn = param_now;
+        enc(2, 3);                                          /* K1..K4 before the first page: nothing moves (D-232) */
+        enc(5, -2);
+        enc(0, 1);                                          /* SELECT, ALGO: out as MIDI only */
+        enc(1, 1);
+        check("  K1..K4 before the editor's first page: no CC 16..19, the FM-1's patch untouched (not edited), its focus kept",
+              !sent(from, 0xB0u, 16u, 0u) && mlen == from + 2 && param_now == pn && m1_edited == edited0 && pg_cur_dev == dev0
+              && pg_cur_page == page0 && K1_TAB == P_NIGHT);
+        msg_text[0] = 0;
+        panel_held |= 1u << BTN_PLAY;
+        panel_edges(1u << BTN_PLAY, 0);
+        enc(6, 2);                                          /* PLAY held + PRESET before a page: no tempo known here */
+        panel_held &= ~(1u << BTN_PLAY);
+        run = eng_transport_running();
+        panel_edges(0, 1u << BTN_PLAY);
+        loop();
+        check("  PLAY held + PRESET before the first page: SANDBOX: TEMPO IN EDITOR, the muted patch's tempo kept, no start",
+              !strcmp(msg_text, "SANDBOX: TEMPO IN EDITOR") && (panel < 0 || eng_get_param((uint32_t)panel, FM1_P_TEMPO) == bpm0)
+              && eng_transport_running() == run && m1_edited == edited0);
+        later(1600);
+        m1_live(1);                                         /* (Live goes on: every 2 s) */
         m1_live(1);                                         /* every 2 s again */
         check("  LIVE paused again: no INFO", info_told == 1);
-        {                                                   /* the editor's page (SANDBOX), through sb_parse */
-            uint8_t d[SB_BYTES];
+        {                                                   /* an older editor's page (SANDBOX up to its rows), through sb_parse */
             uint32_t k;
             static const char *const LAB[4] = {"Cutoff", "Res", "Wave", ""};
             memset(d, 0, sizeof d);
@@ -2771,17 +2800,115 @@ int main(void)
                 r[SB_LABEL + SB_VALUE + SB_UNIT] = k == 0u ? 128u : k == 1u ? 255u : 0u;
                 r[SB_LABEL + SB_VALUE + SB_UNIT + 1u] = k == 2u ? 3u : 0u;   /* Wave: three choices */
             }
-            check("SANDBOX parses (and a short one does not)", sb_parse(d, sizeof d, &pg) == 0 && sb_parse(d, sizeof d - 1u, &pg) < 0
+            check("SANDBOX parses (and a short one does not); an older editor's: no fields after the rows, the group's pages"
+                  " from its title", sb_parse(d, SB_BYTES, &pg) == 0 && sb_parse(d, SB_BYTES - 1u, &pg) < 0
                   && pg.rows == 7u && pg.index == 2u && pg.count == 5u && !strcmp(pg.patch, "SOL 29N XL") && !strcmp(pg.dev, "Sol filter")
-                  && !strcmp(pg.label[0], "Cutoff") && !strcmp(pg.unit[0], "kHz") && pg.pos[0] == 128u && pg.steps[2] == 3u);
+                  && !strcmp(pg.label[0], "Cutoff") && !strcmp(pg.unit[0], "kHz") && pg.pos[0] == 128u && pg.steps[2] == 3u
+                  && !pg.ext && pg.npage == 2u && pg.page_at == 0u && pg.ndev == 0u && pg.ngroup == 0u && pg.tempo == 0u);
+        }
+        m1_sandbox(&pg);
+        loop();
+        for (gold = 0, x = 0; x < 240u; x++)                /* the device's dash row: none from an older editor */
+            gold += px(x, LK_HH - 6u) == P_GOLD;
+        check("the page from an older editor: the device page's header (device, group without 1/2), its bars (K4 empty), the"
+              " gold footer with SANDBOX and no tempo", sb_have && K1_TAB != P_NIGHT && px(BAR_X + 2u, row_y(3) + 2u) == P_STRIP
+              && px(4, 4) != P_GOLD && on_screen("SOL FILTER") && on_screen("FILTER") && !on_screen("FILTER 1/2")
+              && !on_screen("3/5") && !on_screen("SOL 29N XL") && on_screen("SANDBOX") && on_screen("--") && !on_screen("KEYS WIRED")
+              && SB_FOOT_GOLD && gold == 0u);
+        check("  K1 half way: its fill to the middle", px(BAR_X + BAR_W / 2u - 8u, row_y(0) + 4u) != px(BAR_X + BAR_W / 2u + 8u, row_y(0) + 4u));
+        msg_text[0] = 0;
+        panel_held |= 1u << BTN_PLAY;
+        panel_edges(1u << BTN_PLAY, 0);
+        enc(6, 1);
+        panel_held &= ~(1u << BTN_PLAY);
+        panel_edges(0, 1u << BTN_PLAY);
+        loop();
+        check("  PLAY held + PRESET from an older editor (no tempo sent): SANDBOX: TEMPO IN EDITOR", !strcmp(msg_text, "SANDBOX: TEMPO IN EDITOR"));
+        later(1600);
+        m1_live(1);                                         /* (Live goes on: every 2 s) */
+        {                                                   /* the same page from a 1.8 editor: the fields after the rows */
+            uint8_t *e = d + SB_BYTES;
+            e[0] = 5;                                       /* the third of five devices */
+            e[1] = 2;
+            e[2] = 3;                                       /* its second group of three */
+            e[3] = 1;
+            e[4] = 2;                                       /* the group's first page of two */
+            e[5] = 0;
+            e[6] = 128;                                     /* 128 bpm */
+            e[7] = 0;
+            e[8] = SB_UNSAVED;
+            e[9] = e[10] = e[11] = e[12] = 0;               /* nothing armed: the keys wired */
+            check("SANDBOX with the fields after the rows parses them", sb_parse(d, sizeof d, &pg) == 0 && pg.ext && pg.ndev == 5u
+                  && pg.dev_at == 2u && pg.ngroup == 3u && pg.group_at == 1u && pg.npage == 2u && pg.page_at == 0u && pg.tempo == 128u
+                  && pg.flags == SB_UNSAVED && pg.armed == 0u);
         }
         m1_sandbox(&pg);
         loop();
         for (gold = 0, x = 0; x < 240u; x++)
-            gold += px(x, SB_RAIL_Y) == P_GOLD;
-        check("the page: its bars (K4 empty), the third page of five lit in gold", sb_have && K1_TAB != P_NIGHT
-              && px(BAR_X + 2u, row_y(3) + 2u) == P_STRIP && gold > 20u && px(4, 4) == P_GOLD);
-        check("  K1 half way: its fill to the middle", px(BAR_X + BAR_W / 2u - 8u, row_y(0) + 4u) != px(BAR_X + BAR_W / 2u + 8u, row_y(0) + 4u));
+            gold += px(x, LK_HH - 6u) == P_GOLD;
+        check("  drawn: the device's dashes (the current gold), the tempo, SANDBOX * (unsaved edits), KEYS WIRED", gold > 4u
+              && on_screen("128") && on_screen("SANDBOX *") && on_screen("KEYS WIRED") && SB_FOOT_GOLD);
+        memcpy(whole, fb, sizeof whole);
+        ui_dirty = 2;
+        loop();
+        for (i = 0, n = 0; i < 240u * 240u; i++)
+            n += whole[i] != fb[i];
+        check("  the page drawn in place is the page drawn whole, pixel for pixel", n == 0u);
+        {                                                   /* the editor moves on: another group, a row, the tempo, saved, armed */
+            d[SB_BYTES + 3] = 2;
+            d[SB_BYTES + 4] = 1;
+            d[SB_BYTES + 6] = 140;
+            d[SB_BYTES + 8] = 0;
+            d[SB_BYTES + 9] = 4;
+            memcpy(d + 3 + SB_PATCH + SB_DEV, "AMP\0\0\0\0\0\0\0", 10);
+            memcpy(d + SB_HEAD_BYTES + SB_LABEL, "9.99", 4);
+            d[SB_HEAD_BYTES + SB_LABEL + SB_VALUE + SB_UNIT] = 30u;
+            (void)sb_parse(d, sizeof d, &pg);
+        }
+        m1_sandbox(&pg);
+        loop();
+        check("  the next page: its group, the new tempo, SANDBOX alone (saved, a device armed)", on_screen("AMP") && on_screen("140")
+              && on_screen("SANDBOX") && !on_screen("SANDBOX *") && !on_screen("KEYS WIRED") && on_screen("9.99"));
+        memcpy(whole, fb, sizeof whole);
+        ui_dirty = 2;
+        loop();
+        for (i = 0, n = 0; i < 240u * 240u; i++)
+            n += whole[i] != fb[i];
+        check("  in place after it, again the page drawn whole", n == 0u);
+        memcpy(d + 3 + SB_PATCH + SB_DEV, "FILTER 1/2", 10);   /* (back to the filter page for what follows) */
+        memcpy(d + SB_HEAD_BYTES + SB_LABEL, "2.40", 4);
+        d[SB_HEAD_BYTES + SB_LABEL + SB_VALUE + SB_UNIT] = 128u;
+        d[SB_BYTES + 3] = 1;
+        d[SB_BYTES + 4] = 2;
+        d[SB_BYTES + 6] = 128;
+        d[SB_BYTES + 8] = SB_UNSAVED;
+        d[SB_BYTES + 9] = 0;
+        (void)sb_parse(d, sizeof d, &pg);
+        m1_sandbox(&pg);
+        loop();
+        from = mlen;
+        msg_text[0] = 0;
+        panel_held |= 1u << BTN_PLAY;
+        panel_edges(1u << BTN_PLAY, 0);
+        run = eng_transport_running();
+        enc(6, 3);                                          /* PLAY held + PRESET: the editor's tempo (D-232) */
+        panel_held &= ~(1u << BTN_PLAY);
+        panel_edges(0, 1u << BTN_PLAY);
+        loop();
+        check("PLAY held + PRESET in sandbox mode: PRESET's CC out, TEMPO 131 shown, the muted patch's tempo and binary"
+              " untouched, PLAY's release starts nothing", sent(from, 0xB0u, CC_PRESET, 3u) && !strcmp(msg_text, "TEMPO 131")
+              && (panel < 0 || eng_get_param((uint32_t)panel, FM1_P_TEMPO) == bpm0) && m1_edited == edited0
+              && eng_transport_running() == run);
+        m1_sandbox(&pg);                                    /* the editor's page, not yet with the new tempo: 131 stays a moment */
+        check("  an echo right after keeps 131", sb.tempo == 131u);
+        later(1100);
+        m1_live(1);
+        check("  the footer shows 131", on_screen("131"));
+        d[SB_BYTES + 6] = 131;
+        (void)sb_parse(d, sizeof d, &pg);
+        m1_sandbox(&pg);
+        loop();
+        check("  the editor's 131 then", sb.tempo == 131u && on_screen("131"));
         from = mlen;
         pn = param_now;
         enc(2, 1);                                          /* K1: one click from the editor's position (128 = CC 64) */
@@ -2794,6 +2921,12 @@ int main(void)
         enc(3, 1);                                          /* K2 at its end: nothing to send */
         enc(5, 1);                                          /* K4: no row */
         check("K2 at its end, K4 with no row: no CC", mlen == from);
+        memcpy(whole, fb, sizeof whole);
+        ui_dirty = 2;
+        loop();
+        for (i = 0, n = 0; i < 240u * 240u; i++)
+            n += whole[i] != fb[i];
+        check("  the bars turned in place are the page drawn whole", n == 0u);
         pg.pos[0] = 10u;                                    /* the editor's page brings K1's old position back at once: */
         m1_sandbox(&pg);                                    /* the turn here wins for a moment */
         check("  an echo right after a turn keeps the turned position", sb_cc[0] == 65u);
@@ -2803,13 +2936,19 @@ int main(void)
         from = mlen;
         tap(BTN_SEQ);                                       /* SEQ: out as MIDI only */
         check("SEQ in sandbox mode: its CC goes out, the page stays", sent(from, 0xB0u, 89u, 127u) && page == 0u && sb_on);
+        later(1600);
+        m1_live(1);                                         /* (Live goes on: every 2 s) */
         tap(BTN_GLO);                                       /* GLO: the menu (MIDI OUT is there) */
         check("GLO in sandbox mode: the menu", page == PAGE_MENU);
         tap(BTN_HOME);
-        check("  HOME: back to the sandbox page", page == 0u && px(4, 4) == P_GOLD && K1_TAB != P_NIGHT);
-        check("  the screen as text: the sandbox page, the device page's texts gone", on_screen("BROWSER PLAYS") && !on_screen("= OCT ="));
+        check("  HOME: back to the sandbox page", page == 0u && SB_FOOT_GOLD && K1_TAB != P_NIGHT);
+        check("  the screen as text: the sandbox page, as a device page", on_screen("SANDBOX") && on_screen("= OCT =")
+              && on_screen("SOL FILTER") && !on_screen("BROWSER PLAYS"));
         loop();
-        check("  the battery in the footer, night on sand", px(BATT_FX, BATT_FY) == P_NIGHT && px(BATT_FX - 2u, BATT_FY) == P_SAND);
+        check("  the battery in the footer, night on gold", px(BATT_FX, BATT_FY) == P_NIGHT && px(BATT_FX - 2u, BATT_FY) == P_GOLD);
+        tap(BTN_OCT_UP);
+        check("  OCT+: the footer's octave", on_screen("OCT +"));
+        tap(BTN_OCT_DOWN);
         from = mlen;
         panel_keys(1u);                                     /* a key: the note goes out (the FM-1 itself is muted) */
         panel_keys(0u);
@@ -2819,19 +2958,34 @@ int main(void)
         check("PRESET in sandbox mode: no slot change, SANDBOX: PATCH STAYS", cur_preset == slot
               && presets_stepped == stepped && !strcmp(msg_text, "SANDBOX: PATCH STAYS"));
         later(1600);
-        check("  the message ends: the gold bar again", px(4, 4) == P_GOLD);
+        m1_live(1);                                         /* (Live goes on: every 2 s) */
+        check("  the message ends: the device page's header again", px(4, 4) != P_GOLD && on_screen("SOL FILTER"));
         cfg.midi_out = 0;                                   /* MIDI OUT off on the GLO page: the editor hears of it */
         m1_live(1);
         ui_dirty = 2;
         loop();
-        check("MIDI OUT off: INFO again, the foot line says how to turn it on", info_told == 2 && fb_has_hue(FOOT_Y, P_WARN));
+        check("MIDI OUT off: INFO again; the footer stays SANDBOX on gold", info_told == 2 && SB_FOOT_GOLD && !fb_has_hue(FOOT_Y, P_WARN));
+        msg_text[0] = 0;
+        enc(2, 1);
+        check("  K1 with MIDI OUT off: the header says how to turn it on", !strcmp(msg_text, "TURN ON MIDI OUT: GLO, K3"));
+        later(1600);
+        msg_text[0] = 0;
+        panel_held |= 1u << BTN_PLAY;
+        panel_edges(1u << BTN_PLAY, 0);
+        enc(6, 1);
+        panel_held &= ~(1u << BTN_PLAY);
+        panel_edges(0, 1u << BTN_PLAY);
+        loop();
+        check("  PLAY held + PRESET with MIDI OUT off: the same nudge, the tempo kept", !strcmp(msg_text, "TURN ON MIDI OUT: GLO, K3")
+              && sb.tempo == 131u);
+        later(1600);
         cfg.midi_out = 1;
         m1_live(1);
         msg_text[0] = 0;
         m1_live(0);                                         /* the patch fits again: Live resumes */
         loop();
         check("LIVE not paused: sandbox mode ends, the sound and the device page back", !sb_on && !snd_muted
-              && px(4, 4) != P_GOLD && K1_TAB != P_NIGHT && msg_text[0] == 0);
+              && px(2, FOOT_Y + 1u) == P_SAND && K1_TAB != P_NIGHT && msg_text[0] == 0);
         m1_sandbox(&pg);
         check("  a page after it: not taken", !sb_have);
         patch_enc(-1);
@@ -2849,7 +3003,7 @@ int main(void)
         check("SEQ without sandbox mode: the SEQ page", page == PAGE_SEQ);
         m1_live(1);
         loop();
-        check("sandbox mode begun on the SEQ page: the sandbox page comes up at once", sb_on && page == 0u && px(4, 4) == P_GOLD);
+        check("sandbox mode begun on the SEQ page: the sandbox page comes up at once", sb_on && page == 0u && SB_FOOT_GOLD);
         m1_live(0);
         loop();
         tap(BTN_GLO);
@@ -2860,6 +3014,7 @@ int main(void)
         m1_live(0);
         loop();
         preset_loads = 0;
+#undef SB_FOOT_GOLD
     }
 
     {                                                       /* #240: the battery (ui.c ui_battery; main.c feeds SARADC ch 3 every 2 s) */

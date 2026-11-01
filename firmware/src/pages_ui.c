@@ -953,12 +953,11 @@ static void dashes_onto(uint16_t *row, int32_t x0, int32_t x1, uint32_t gap, uin
  * a dash per device (the current gold) and per page group (the current sky) under them; the third section a stack of
  * bars, one per page of the group (the current mist). Widths 2 : 3 : 1 of the screen; a section whose name needs more
  * grows, the others give the rest up evenly, never below their own need. Other headers on the same band: a Page button's
- * list (seafoam), the menu (coral, #395), sandbox mode (gold, sandbox_ui.c), no devices */
+ * list (seafoam), the menu (coral, #395), no devices. Sandbox mode has the device page's header (sandbox_ui.c sb_head) */
 #define HM_DEV 0u
 #define HM_LIST 1u
 #define HM_GLO 2u
 #define HM_NONE 3u
-#define HM_SANDBOX 4u
 typedef struct {
     uint8_t mode, nd, cd, ng, cg, ns, cs;               /* devices, the one in focus; its page groups, the current; the group's
                                                          * pages, the current */
@@ -970,19 +969,18 @@ static uint8_t hd_ok;
 static uint32_t page_bar_h(void) { return LK_HH; }
 
 static int pages_unheaded(const ppage_t *pg, const pdev_t *d);
-static const char *sb_patch_name(void);                 /* sandbox_ui.c: the editor's patch */
+static void sb_head(head_t *h);                         /* sandbox_ui.c: the editor's device page's header */
+static void head_widths(head_t *h);
 
 /* the header as it is now */
 static void head_layout(head_t *h)
 {
-    uint32_t i, n0, n1, n2, w[3], need[3], j;
+    uint32_t i;
     char num[8], *q;
     memset(h, 0, sizeof *h);
-    if (sb_on && page == 0u) {
-        h->mode = HM_SANDBOX;
-        put(h->a, "SANDBOX")[0] = 0;
-        caps(h->b, sb_patch_name(), str_len(sb_patch_name()), 22);
-        fit(h->b, &FONT_H, 232u - 8u - text_w(&FONT_H, h->a, -1) - 12u);
+    if (sb_on && page == 0u) {                          /* sandbox mode: the editor's device, group and page (D-232) */
+        sb_head(h);
+        head_widths(h);
         return;
     }
     if (menu_page()) {                                  /* the menu (#395): MENU and its tab, on coral */
@@ -1052,7 +1050,14 @@ static void head_layout(head_t *h)
         else
             caps(h->b, pg->name, pg->nlen, 16);
     }
-    n2 = (12u + LK_AD) * 16u;                           /* what each section needs (1/16 px); long names cut to fit together */
+    head_widths(h);
+}
+
+/* the device page's header: where its sections start, from their names (cut to fit together) */
+static void head_widths(head_t *h)
+{
+    uint32_t i, n0, n1, n2, w[3], need[3], j;
+    n2 = (12u + LK_AD) * 16u;                          /* what each section needs (1/16 px); long names cut to fit together */
     for (;;) {
         n0 = (text_w(&FONT_H, h->a, -1) + 14u) * 16u;
         n1 = (text_w(&FONT_H, h->b, -1) + 14u + LK_AD) * 16u;
@@ -1102,7 +1107,7 @@ static void head_row(const head_t *h, uint32_t y, uint16_t *row)
 {
     uint32_t x = 0, i;
     if (h->mode != HM_DEV) {
-        uint16_t bg = h->mode == HM_LIST ? P_SEA : h->mode == HM_GLO ? P_CORAL : h->mode == HM_SANDBOX ? P_GOLD : P_STRIP;
+        uint16_t bg = h->mode == HM_LIST ? P_SEA : h->mode == HM_GLO ? P_CORAL : P_STRIP;
         for (i = 0; i < 240u; i++)
             row[i] = bg;
         if (h->mode == HM_LIST)
@@ -1408,11 +1413,13 @@ static void toast_first(void)
 
 /* ---- the footer (LK_FH high, sand): the patch's name (ARM / REC and the track while one is armed; " *" when edited;
  * KEYS WIRED after it while nothing is armed, #395, the name cut first), the tempo and a quarter note ("MIDI" on MIDI
- * clock), the octave as = OCT = / OCT + / -- OCT and the battery, spread from margin to margin; in sandbox mode who plays
- * instead. The battery: 0..3 bars, a bolt on USB power, red when empty */
+ * clock), the octave as = OCT = / OCT + / -- OCT and the battery, spread from margin to margin. In sandbox mode (D-232)
+ * the same on gold, with SANDBOX in place of the name and the editor's tempo (sandbox_ui.c sb_foot). The battery: 0..3
+ * bars, a bolt on USB power, red when empty */
+static int sb_foot(char *name, char *tempo);            /* sandbox_ui.c */
 typedef struct {
-    uint8_t mode, rec;                                  /* 1: sandbox mode's line; REC (the name in red) */
-    char a[40], t[8], o[8], w[12];                      /* the name, the tempo, the octave (sandbox: a = its line), WIRED */
+    uint8_t mode, rec;                                  /* 1: sandbox mode (gold); REC (the name in red) */
+    char a[40], t[8], o[8], w[12];                      /* the name, the tempo, the octave, WIRED */
     uint32_t xa, xt, xo, xw;                            /* where each goes */
 } foot_t;
 static uint32_t ft_drawn;                               /* the hash of the footer as drawn (0: not on the screen) */
@@ -1429,15 +1436,14 @@ static const uint8_t NOTE_A[9][6] = {                   /* the quarter note as t
 static uint32_t foot_layout(foot_t *f)
 {
     uint32_t h = 2166136261u, wa, wt, wo, gap16, i;
-    int panel = eng_find(T_FM1), rec = 0;
+    int panel = eng_find(T_FM1), rec = 0, wired;
     const char *s;
     char *q;
     memset(f, 0, sizeof *f);
-    if (sb_on && page == 0u) {
+    if (sb_on && page == 0u) {                          /* sandbox mode (D-232): SANDBOX where the name goes, on gold, and the
+                                                         * editor's tempo; KEYS WIRED as the editor says */
         f->mode = 1;
-        put(f->a, cfg.midi_out ? "BROWSER PLAYS     FM-1 MUTED" : "TURN ON MIDI OUT: GLO, K3")[0] = 0;
-        f->rec = (uint8_t)!cfg.midi_out;
-        f->xa = (BATT_FX - text_w(&FONT_F, f->a, -1)) / 2u;
+        wired = sb_foot(f->a, f->t);
     } else {
         if (seq_arm_label(f->a, &rec)) {                /* a track armed (#139): ARM / REC and its name */
             f->rec = (uint8_t)rec;
@@ -1451,6 +1457,9 @@ static uint32_t foot_layout(foot_t *f)
             put(f->t, "MIDI")[0] = 0;
         else
             fmt_int(f->t, panel >= 0 ? (eng_get_param((uint32_t)panel, FM1_P_TEMPO) + 32768) >> 16 : 120);
+        wired = !eng_arm_mask_get();
+    }
+    {
         q = f->o;                                       /* = OCT =, OCT +, OCT ++, - OCT, -- OCT (the owner, 2026-10-24) */
         for (i = 0; i < (uint32_t)(octave < 0 ? -octave : 0); i++)
             *q++ = '-';
@@ -1461,7 +1470,7 @@ static uint32_t foot_layout(foot_t *f)
         wt = text_w(&FONT_F, f->t, -1) + 8u;
         wo = FOOT_OCT_W;
         {                                               /* nothing armed: KEYS WIRED after the name, in the tempo's ink */
-            uint32_t ww = eng_arm_mask_get() ? 0u : text_w(&FONT_F, " KEYS WIRED", -1);
+            uint32_t ww = wired ? text_w(&FONT_F, " KEYS WIRED", -1) : 0u;
             fit(f->a, &FONT_F, 240u - 12u - 13u - wt - wo - 3u * 6u - ww);
             wa = text_w(&FONT_F, f->a, -1);
             if (ww) {
@@ -1480,7 +1489,7 @@ static uint32_t foot_layout(foot_t *f)
     return h | 1u;
 }
 
-/* the battery's pixel x, y of the footer (0: sand) */
+/* the battery's pixel x, y of the footer (0: the footer's ground) */
 static uint16_t batt_px(uint32_t x, uint32_t y, uint8_t lvl)
 {
     static const char BOLT[4][10] = {"....##...", "..####...", "...####..", "...##...."};
@@ -1502,14 +1511,9 @@ static void foot_row(const foot_t *f, uint32_t y, uint16_t *row)
     uint32_t i;
     uint8_t lvl = batt_shown();
     for (i = 0; i < 240u; i++)
-        row[i] = P_SAND;
+        row[i] = f->mode ? P_GOLD : P_SAND;
     text_at(row, 240, &FONT_F, y, FOOT_BASE, f->a, f->xa, f->rec ? P_WARN : P_NIGHT);
-    if (f->mode) {
-        if (!f->rec && y >= FOOT_BASE - 5u && y < FOOT_BASE - 3u) {   /* (the font has no middle dot) */
-            uint32_t x = f->xa + text_w(&FONT_F, "BROWSER PLAYS  ", -1) + 1u;
-            row[x] = row[x + 1u] = P_NIGHT;
-        }
-    } else {
+    {
         uint32_t nx = f->xt + text_w(&FONT_F, f->t, -1) + 2u;
         text_at(row, 240, &FONT_F, y, FOOT_BASE, f->t, f->xt, P_INK2);
         text_at(row, 240, &FONT_F, y, FOOT_BASE, f->o, f->xo, P_INK2);

@@ -45,7 +45,10 @@
 //                                                    FM-1 mutes its own sound and shows the editor's page (SANDBOX); older
 //                                                    firmware says EDITOR PATCH TOO BIG
 //   31 SANDBOX  rows u8, index u8, count u8, patch 20, device 12, page 16, 4 x (label 12, value 10, unit 6, position u8,
-//               steps u8)                            the editor's device page in sandbox mode, sent when it changes; no reply.
+//               steps u8), then devices u8, device u8, groups u8, group u8, pages u8, page u8 (the header's dashes and
+//               bars: counts and places from 0), tempo u16 (bpm, 0 none), flags u8 (bit0 unsaved edits), armed u32 (bit d:
+//               device d)                            the editor's device page in sandbox mode, sent when it changes; no reply.
+//                                                    Firmware before 1.8 reads the fields up to the rows only (D-468)
 //                                                    rows: bit k row k is there; index / count: the page among its device's;
 //                                                    page: its title as the FM-1's chips show it; position 0..255 of the
 //                                                    row's range; steps 0 continuous, n: n choices. Names zero padded
@@ -344,12 +347,22 @@ export const parsePresetStored = (p: Parsed): { structure: string; name: string 
 /** a row of the page: its name, its value as text and its unit apart ("2.40", "kHz"), where it sits in its range (0..1),
  *  and its choices (0: continuous) */
 export interface SandboxRow { label: string; value: string; unit: string; pos: number; steps: number }
-/** the page: the patch, the device, the page's title, its place among the device's pages; four rows, null where none */
-export interface SandboxPage { patch: string; device: string; page: string; index: number; count: number; rows: (SandboxRow | null)[] }
+/** where the page sits, for the FM-1's device page header (D-468): the patch's devices and the one in focus, its page
+ *  groups and the current one, the group's pages and the current one (places from 0) */
+export interface SandboxPlace { devices: number; device: number; groups: number; group: number; pages: number; page: number }
+/** the page: the patch, the device, the page's title, its place among the device's pages; four rows, null where none;
+ *  then (1.8) its place for the header, the tempo the browser plays (bpm, 0 none), whether the patch has unsaved edits,
+ *  and the armed devices (bit d: device d of the patch's devices) */
+export interface SandboxPage {
+  patch: string; device: string; page: string; index: number; count: number; rows: (SandboxRow | null)[];
+  place?: SandboxPlace; tempo?: number; unsaved?: boolean; armed?: number;
+}
 /** the fields' widths in bytes */
 export const SANDBOX_FIELDS = { patch: 20, device: 12, page: 16, label: 12, value: 10, unit: 6 } as const;
 const SANDBOX_ROW_BYTES = SANDBOX_FIELDS.label + SANDBOX_FIELDS.value + SANDBOX_FIELDS.unit + 2;
+/** the fields up to the rows (all a 1.3..1.7 FM-1 reads), and the ones after them (firmware/src/sandbox_msg.h SB_EXT_BYTES) */
 export const SANDBOX_BYTES = 3 + SANDBOX_FIELDS.patch + SANDBOX_FIELDS.device + SANDBOX_FIELDS.page + 4 * SANDBOX_ROW_BYTES;
+export const SANDBOX_EXT_BYTES = 13;
 /** text as the FM-1's font has it: printable ASCII (a minus sign, a micro sign and a few others by their look-alikes) */
 export const fm1Ascii = (s: string): string =>
   s.replace(/[\u2212\u2013\u2014]/g, '-').replace(/\u00b5/g, 'u').replace(/\u00d7/g, 'x').replace(/\u00b7/g, '-').replace(/[\u2018\u2019]/g, "'")
@@ -367,10 +380,20 @@ export function sandboxPayload(pg: SandboxPage): number[] {
     ...rows.flatMap((r) => r
       ? [...field(r.label, F.label), ...field(r.value, F.value), ...field(r.unit, F.unit), Math.max(0, Math.min(255, Math.round(r.pos * 255))), Math.max(0, Math.min(255, r.steps | 0))]
       : new Array<number>(SANDBOX_ROW_BYTES).fill(0)),
+    ...sandboxExt(pg),
   ];
 }
+const u8 = (n: number | undefined): number => Math.max(0, Math.min(255, Math.round(n ?? 0)));
+function sandboxExt(pg: SandboxPage): number[] {
+  const p = pg.place;
+  const tempo = Math.max(0, Math.min(0xffff, Math.round(pg.tempo ?? 0)));
+  const armed = (pg.armed ?? 0) >>> 0;
+  return [u8(p?.devices), u8(p?.device), u8(p?.groups), u8(p?.group), u8(p?.pages), u8(p?.page), tempo & 0xff, tempo >> 8,
+    pg.unsaved ? 1 : 0, armed & 0xff, (armed >>> 8) & 0xff, (armed >>> 16) & 0xff, armed >>> 24];
+}
 export const sandboxFrame = (pg: SandboxPage): Uint8Array => frame(CMD.sandbox, sandboxPayload(pg));
-/** a SANDBOX payload back (positions to the nearest 1/255); null when it is short */
+/** a SANDBOX payload back (positions to the nearest 1/255); null when it is short; without the fields after the rows (an
+ *  older editor's) it has no place, tempo, unsaved or armed */
 export function parseSandbox(payload: number[]): SandboxPage | null {
   if (payload.length < SANDBOX_BYTES) return null;
   const F = SANDBOX_FIELDS;
@@ -388,7 +411,11 @@ export function parseSandbox(payload: number[]): SandboxPage | null {
     at += 2;
     return payload[0] & (1 << k) ? { label, value, unit, pos, steps } : null;
   });
-  return { patch, device, page, index: payload[1], count: payload[2], rows };
+  const base = { patch, device, page, index: payload[1], count: payload[2], rows };
+  if (payload.length < SANDBOX_BYTES + SANDBOX_EXT_BYTES) return base;   // (an editor before 1.8)
+  const e = payload.slice(SANDBOX_BYTES);
+  return { ...base, place: { devices: e[0], device: e[1], groups: e[2], group: e[3], pages: e[4], page: e[5] }, tempo: e[6] | (e[7] << 8),
+    unsaved: !!(e[8] & 1), armed: (e[9] | (e[10] << 8) | (e[11] << 16) | (e[12] << 24)) >>> 0 };
 }
 
 // ---- the device test mode (#291): a script drives the FM-1's panel and reads its screen and level (scripts/device-scenarios.mjs)

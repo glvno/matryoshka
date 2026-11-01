@@ -63,6 +63,7 @@ interface Exports {
   fm1w_focus(device: number, page: number): void;
   fm1w_param(module: number, param: number, value: number): void;
   fm1w_transport(run: number): void;
+  fm1w_play_turned(): void;
   fm1w_mute(module: number, on: number): void;
   fm1w_arm_mask(lo: number, hi: number): void;
   /** (absent from a wasm built before D-907) */
@@ -125,6 +126,9 @@ export class Fm1Ui {
   focus(device: number, page: number): void { this.x.fm1w_focus(device, page); }
   param(module: number, param: number, value: number): void { this.x.fm1w_param(module, param, value | 0); }
   transport(run: boolean): void { this.x.fm1w_transport(run ? 1 : 0); }
+  /** PRESET turned with PLAY held on the FM-1 it follows in sandbox mode (the browser's tempo): PLAY's release starts and
+   *  stops nothing */
+  playTurned(): void { this.x.fm1w_play_turned?.(); }
   /** a track muted / unmuted on the FM-1 it follows (MUTE_NOW): its black key's light follows */
   mute(module: number, on: boolean): void { this.x.fm1w_mute(module, on ? 1 : 0); }
   /** the page's TEMPO setting and global tempo (D-907): the emulated FM-1 plays and shows them */

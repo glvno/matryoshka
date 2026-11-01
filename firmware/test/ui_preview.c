@@ -4,7 +4,8 @@
  *   ui_preview OUT.ppm PRESET_INDEX [SELECTED_MODULE or DEVICE:PAGE [OCTAVE [PAGE [STEP [MENU_TAB [GUIDE_LINE [POLY]]]]]]]
  * Environment: PATCHTOAST=1 PRESET's toast (the factory bank's slot; BANK=n: a bank of n filled slots instead, the patch
  * in slot SLOT, default the preset index), SANDBOX=1 sandbox mode before the editor's first page (the card), SANDBOX=2
- * with a page of the editor's (MIDIOUT=0: MENU > MIDI OUT off), BATT=0..3 or 4 (USB) the battery's level, HELP=quick the quick
+ * with a page of the editor's (MIDIOUT=0: MENU > MIDI OUT off; SAVED=1 no unsaved edits, ARMED=1 a device armed), SANDBOX=3
+ * an older editor's page, BATT=0..3 or 4 (USB) the battery's level, HELP=quick the quick
  * start or HELP=sheet the controls sheet over the page (HELP_TAB=1 its EVERYWHERE tab, HELP_TOP=n scrolled n rows); on the SEQ page
  * STEPS_LEN=n the track's length, HELD=k step k held, ARM=1 the track armed (#450); PAGE 11 the SONG page; MSG=text a message in the bar;
  * ENVPAGE=1 the environment page
@@ -111,9 +112,10 @@ int main(int argc, char **argv)
     patch_label = PRESET_LIST[p].name;
     if (getenv("MIDIOUT"))
         cfg.midi_out = (uint8_t)atoi(getenv("MIDIOUT"));
-    if (getenv("SANDBOX")) {                                /* sandbox mode: the card, or (2) a page of the editor's */
+    if (getenv("SANDBOX")) {                                /* sandbox mode: the card, or (2) a page of the editor's, (3) an
+                                                             * older editor's (no device, group or tempo fields) */
         sandbox_live(1, 5000);
-        if (atoi(getenv("SANDBOX")) == 2) {
+        if (atoi(getenv("SANDBOX")) >= 2) {
             static sb_page_t s;
             static const char *const LAB[3] = {"Cutoff", "Resonance", "Wave"}, *const VAL[3] = {"2.40", "0.62", "SAW"};
             static const uint8_t POS[3] = {150, 158, 0};
@@ -131,6 +133,21 @@ int main(int argc, char **argv)
                 s.steps[k] = k == 2u ? 4u : 0u;
             }
             strcpy(s.unit[0], "kHz");
+            if (atoi(getenv("SANDBOX")) == 3)
+                sb_guess(&s);
+            else {                                          /* the third of five devices, its second group of three, the
+                                                             * group's first page of two; 128 bpm, edited, nothing armed */
+                s.ext = 1;
+                s.ndev = 5;
+                s.dev_at = 2;
+                s.ngroup = 3;
+                s.group_at = 1;
+                s.npage = 2;
+                s.page_at = 0;
+                s.tempo = 128;
+                s.flags = getenv("SAVED") ? 0u : SB_UNSAVED;
+                s.armed = getenv("ARMED") ? 1u : 0u;
+            }
             m1_sandbox(&s);
         }
     }
