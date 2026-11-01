@@ -56,7 +56,8 @@
 //   2D PRESETS  (none)                               the FM-1's user presets (#195): one PRESET (4C) per preset. Feature bit 7.
 //   2E PRESET_GET  structure u32, name 16 bytes      device answers PRESET_DATA (4D)
 //   2F PRESET_PUT  structure u32, name 16 bytes, n u8, n i32 values (Q16, canonical row order)   store it (over one of
-//                                                    that structure and name); ACK (7 = full)
+//                                                    that structure and name); ACK (7 = full). n at most 176 with
+//                                                    feature bit 17 (two store slots, #485), else 88
 //   30 PRESET_DEL  structure u32, name 16 bytes      delete it; ACK (8 = no such preset)
 //   32 TEST_KEY    id u8, down u8                    the device test mode (#291, feature bit 9; the editor never sends it):
 //                                                    a panel key held / let go as a hand would (0..13 the buttons, 14..40 the
@@ -88,7 +89,7 @@
 //   47 PARAM_NOW  module u8, param u8, value i32      unasked: a parameter turned on the FM-1 (K1..K4 on a device page)
 //   48 FOCUS_NOW  device u8, page u8                  unasked: the device page the FM-1 shows now (SELECT / ALGO / HOME)
 //   4C PRESET   index u8, count u8, structure u32, name 16 bytes, n u8   one of the FM-1's user presets (count 0: none)
-//   4D PRESET_DATA  structure u32, name 16 bytes, n u8 (0xFF: none), n i32 values
+//   4D PRESET_DATA  structure u32, name 16 bytes, n u8 (0xFF: none), n i32 values (n up to 176 with feature bit 17)
 //   4E PRESET_STORED  structure u32, name 16 bytes  unasked: a preset stored on the FM-1 (ENV held + SAVE)
 //   50 SCREEN   k u8 = 0xFF, count u8, page u8, flags u8 (bit0 sandbox mode, bit1 the boot screen), [buttons u16: Main's
 //               patch buttons as their jacks stand, bit 0 FX .. bit 6 ARP; #368, absent from older firmware]; then k = 0..count-1:
@@ -101,7 +102,7 @@
 //               test mode, bit10 TEST_PEAK reads before MASTER, bits11..15 read patch formats35..39],
 //               [minimum readable patch format, maximum readable patch format], [firmware major, minor, patch:
 //               0.0.0 a dev or CI build; #216, absent from firmware before 1.8],
-//               [features 16..23: bit16 TEMPO / TEMPO_NOW]. Also unasked
+//               [features 16..23: bit16 TEMPO / TEMPO_NOW, bit17 a preset carries up to 176 values]. Also unasked
 //               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8)
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
@@ -295,6 +296,12 @@ export interface Ack {
 export const FEATURE_SANDBOX = 256;
 /** INFO feature bit 16 (byte 12, after the firmware version): TEMPO / TEMPO_NOW, the global tempo shared (D-907) */
 export const FEATURE_TEMPO = 1 << 16;
+/** INFO feature bit 17: PRESET_PUT / PRESET_DATA carry up to 176 values (the FM-1 stores a longer preset in two slots, #485);
+ * older firmware takes 88 */
+export const FEATURE_LONG_PRESETS = 1 << 17;
+/** a preset's values at most over the link: with feature bit 17, and before it */
+export const PRESET_VALUES_MAX = 176;
+export const PRESET_VALUES_OLD = 88;
 export function parseInfo(p: Parsed): Info | null {
   if (p.cmd !== CMD.info || p.payload.length < 5) return null;
   const features = (p.payload[5] ?? 0) | ((p.payload[6] ?? 0) << 8) | ((p.payload[12] ?? 0) << 16);
@@ -322,9 +329,12 @@ const readKey = (p: number[], at: number): { structure: string; name: string } =
 const i32 = (v: number): number[] => { const x = v | 0; return [x & 0xff, (x >> 8) & 0xff, (x >> 16) & 0xff, (x >>> 24) & 0xff]; };
 export const presetsFrame = (): Uint8Array => frame(CMD.presets);
 export const presetGetFrame = (structure: string, name: string): Uint8Array => frame(CMD.presetGet, presetKey(structure, name));
-/** values as the editor keeps them (real numbers), sent as Q16 */
-export const presetPutFrame = (structure: string, name: string, values: number[]): Uint8Array =>
-  frame(CMD.presetPut, [...presetKey(structure, name), Math.min(values.length, 88), ...values.slice(0, 88).flatMap((v) => i32(Math.round(v * 65536)))]);
+/** values as the editor keeps them (real numbers), sent as Q16; more than PRESET_VALUES_MAX throws (DeviceLink.putPreset
+ * refuses more than PRESET_VALUES_OLD to older firmware before it gets here) */
+export function presetPutFrame(structure: string, name: string, values: number[]): Uint8Array {
+  if (values.length > PRESET_VALUES_MAX) throw new Error(`a preset holds ${PRESET_VALUES_MAX} values at most`);
+  return frame(CMD.presetPut, [...presetKey(structure, name), values.length, ...values.flatMap((v) => i32(Math.round(v * 65536)))]);
+}
 export const presetDelFrame = (structure: string, name: string): Uint8Array => frame(CMD.presetDel, presetKey(structure, name));
 export interface DevicePresetEntry { index: number; count: number; structure: string; name: string; n: number }
 export const parsePresetEntry = (p: Parsed): DevicePresetEntry | null =>

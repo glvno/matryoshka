@@ -3,9 +3,9 @@
 // ship with the app and are not listed), each with → (to the FM-1), Rename and Delete (at once, with Undo). "FM-1" lists the
 // FM-1's own presets (#195: its store, separate from the editor's), read on connect and on entering the section, each with
 // ← (into this browser) and Delete (on the FM-1, asks first). Moving is explicit: nothing syncs here (D-325).
-import type { DeviceLink } from './device';
+import { PRESET_NEEDS_UPDATE, type DeviceLink } from './device';
 import { FACTORY } from './assemblies';
-import { addUserPreset, deletePreset, importPresets, PRESETS_FORMAT, renamePreset, sameName, userPresets, type Preset } from './device-presets';
+import { addUserPreset, deletePreset, importPresets, presetsFor, PRESETS_FORMAT, renamePreset, sameName, shortPresetText, userPresets, type Preset } from './device-presets';
 import { devicePresetName, type DevicePresetEntry } from './protocol';
 import { defStructure } from './structure';
 import { showUndo } from './toast';
@@ -46,6 +46,11 @@ export function buildPresetsSection(root: HTMLElement, device: DeviceLink, ev: P
   const ready = (): boolean => device.connected && device.hasPresets && !busy && !!onFm1;
   const onDevice = (p: Preset): DevicePresetEntry | undefined => onFm1?.find((e) => e.structure === p.structure && sameName(e.name, devicePresetName(p.name)));
   const label = (structure: string): string => engineOf(structure) || 'your assembly';
+  /** a mark on one of the FM-1's presets with fewer values than its engine has rows (stored before 1.8.2, D-858) */
+  const short = (e: DevicePresetEntry): HTMLElement[] => {
+    const rows = presetsFor(e.structure).find((x) => x.factory)?.values.length ?? 0;
+    return e.n < rows ? [el('span', { class: 'muted', textContent: `${e.n} of ${rows} rows`, title: shortPresetText(engineOf(e.structure) || 'this engine', rows - e.n, rows) })] : [];
+  };
 
   const run = async (what: string, fn: () => Promise<void>): Promise<void> => {
     if (busy) return;
@@ -95,6 +100,10 @@ export function buildPresetsSection(root: HTMLElement, device: DeviceLink, ev: P
       el('button', { class: 'lib-move', textContent: '→', ariaLabel: `send "${p.name}" to the FM-1`, disabled: !ready(),
         title: !device.connected ? 'Connect an FM-1 first' : !device.hasPresets ? 'This firmware keeps no presets: update it' : onDevice(p) ? 'Send it to the FM-1, replacing the FM-1’s preset of that name (asks first)' : 'Send it to the FM-1',
         onclick: () => {
+          if (!device.presetFits(p.values.length)) {   // (older firmware keeps 88 values: D-476)
+            status.textContent = PRESET_NEEDS_UPDATE;
+            return;
+          }
           const had = onDevice(p);
           if (had && !window.confirm(`The FM-1 has a preset "${had.name}" for ${label(p.structure)}. Replace it with this browser's?`)) return;
           void run('Sending', async () => {
@@ -113,6 +122,7 @@ export function buildPresetsSection(root: HTMLElement, device: DeviceLink, ev: P
     const kept = (e: DevicePresetEntry): Preset | undefined => mine.find((x) => x.structure === e.structure && sameName(devicePresetName(x.name), e.name));
     fm1El.replaceChildren(...(device.connected && onFm1 && onFm1.length ? onFm1.map((e) => el('div', { class: 'bank-row' },
       el('span', { class: 'grow', textContent: e.name }),
+      ...short(e),
       el('span', { class: 'muted', textContent: label(e.structure) }),
       el('button', { class: 'delete', textContent: 'Delete', title: 'delete it on the FM-1 (asks first; a device set to it keeps its sound)', disabled: !ready(), onclick: () => {
         const copy = !!kept(e);
@@ -141,9 +151,11 @@ export function buildPresetsSection(root: HTMLElement, device: DeviceLink, ev: P
     const replaced = mine.filter((p) => onDevice(p));
     if (replaced.length && !window.confirm(`Sending replaces ${replaced.length} preset${replaced.length === 1 ? '' : 's'} on the FM-1 (${replaced.slice(0, 6).map((p) => p.name).join(', ')}${replaced.length > 6 ? ', …' : ''}). Send all?`)) return;
     void run('Send presets', async () => {
-      for (const x of mine) await device.putPreset(x.structure, x.name, x.values);
+      const fit = mine.filter((x) => device.presetFits(x.values.length));   // (older firmware keeps 88 values: D-476)
+      for (const x of fit) await device.putPreset(x.structure, x.name, x.values);
       onFm1 = await device.listPresets();
-      status.textContent = `${mine.length} preset${mine.length === 1 ? '' : 's'} sent; ${onFm1.length} on the FM-1`;
+      const left = mine.length - fit.length;
+      status.textContent = `${fit.length} preset${fit.length === 1 ? '' : 's'} sent; ${onFm1.length} on the FM-1${left ? `. ${left} not sent: ${PRESET_NEEDS_UPDATE}` : ''}`;
     });
   };
   readBtn.onclick = () => void readDevice();

@@ -4,7 +4,12 @@
 
 ### FM-1
 
+- Storing a Cassia 1 preset on the FM-1 (ENV held + SAVE, or from the editor) now keeps all 118 of its rows (#485). Before, it kept 88 and loading it left the other 30 (line 2's envelopes, its tuning, two Scale `gain` rows) as they were. A preset of more than 88 values takes two of the store's slots, which now hold 58 (60 before), so that a power cut while the FM-1 tidies a full store cannot leave it refusing to store presets. Presets you already stored stay as they are. A Cassia 1 preset stored before this release still has 88 values: loading it sets those rows and shows `STORED SHORT: SEE EDITOR`; store it again to keep all its rows.
 - The FM-1 no longer drops an occasional message from the editor (#486). About 1 message in 500 was lost while the transport ran: on the test rig, 8 of 4,000 TEST_PEAK requests went unanswered (1.8.1, transport running). Any message could be lost this way, such as a parameter change, a focus change, the tempo or a stored preset, and the editor and the FM-1 then disagreed without saying so. After the fix, on the same rig with the transport running: none of 8,000 requests went unanswered, and in a second run none of 20,000 messages was lost (16,000 of them parameter changes). DIAG pages 117 and 118 now count the link's messages in and out.
+
+### Editor
+
+- Library > Presets sends a Cassia 1 preset to the FM-1 whole, all 118 rows (#485). An FM-1 with older firmware is not sent a preset of more than 88 rows: the editor says "Update the FM-1 to store this preset on it". A Cassia 1 preset the FM-1 stored before 1.8.2 loads the 88 rows it has, the rest keep their values, and the status line says how to fix it; Library > Presets marks such a preset "88 of 118 rows".
 
 ## 1.8.1 — 2026-11-01
 

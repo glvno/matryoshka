@@ -90,12 +90,14 @@ export function currentValues(p: Patch, a: AssemblyInst): number[] {
 }
 
 /** load a preset into an assembly: its card rows take the preset's values (clamped to each parameter's range), every
- * parameter a row sets (#357) too; the assembly remembers its name. False when it does not fit (another structure). */
+ * parameter a row sets (#357) too; the assembly remembers its name. A preset of fewer values than the card has rows (a
+ * Cassia 1 preset the FM-1 stored before 1.8.2 kept 88 of 118, #485, D-858) sets the rows it has, in order; the rest keep
+ * their values (shortBy says how many). False when it does not fit (another structure, or more values than rows). */
 export function applyPreset(p: Patch, a: AssemblyInst, preset: Preset): boolean {
   if (preset.structure !== structureOf(p, a)) return false;
   const rows = rowOrder(p, a);
-  if (rows.length !== preset.values.length) return false;
-  rows.forEach((r, i) => {
+  if (preset.values.length > rows.length) return false;
+  rows.slice(0, preset.values.length).forEach((r, i) => {
     for (const t of tiedTo(p, r.module, r.param)) {
       const m = p.modules.find((x) => x.id === t.module);
       const pd = m && DEFS[m.type]?.params.find((d) => d.name === t.param);
@@ -106,13 +108,25 @@ export function applyPreset(p: Patch, a: AssemblyInst, preset: Preset): boolean 
   return true;
 }
 
+/** how many of the assembly's card rows a preset leaves as they are (it has fewer values than rows); 0 a whole one */
+export function shortBy(p: Patch, a: AssemblyInst, preset: Preset): number {
+  return Math.max(0, rowOrder(p, a).length - preset.values.length);
+}
+
+/** what the editor says about a preset that leaves `missing` of an engine's `rows` rows as they are (D-858) */
+export const shortPresetText = (engine: string, missing: number, rows: number): string =>
+  `Stored before 1.8.2: ${missing} of ${engine}'s ${rows} rows are missing and keep their current values. To keep it, adjust and store it again, which saves all ${rows} rows. To start over, load a factory ${engine} preset and store it under this name, which replaces this one.`;
+
+/** the assembly's values agree with a preset's (a shorter preset: its rows, the rest are not its; as the FM-1's dp_same,
+ * one of no values never) */
+const agrees = (now: number[], values: number[]): boolean => values.length > 0 && values.length <= now.length && values.every((v, i) => Math.abs(v - now[i]) < 1e-6);
+
 /** whether the assembly's values still match the preset it remembers (false: edited since, or the preset is gone) */
 export function matchesPreset(p: Patch, a: AssemblyInst): boolean {
   if (!a.preset) return false;
   const pr = presetsOf(p, a).find((x) => sameName(x.name, a.preset));
   if (!pr) return false;
-  const now = currentValues(p, a);
-  return now.length === pr.values.length && now.every((v, i) => Math.abs(v - pr.values[i]) < 1e-6);
+  return agrees(currentValues(p, a), pr.values);
 }
 
 /** store the assembly's values as a user preset under `name` (a user preset of that name for the structure is
@@ -198,6 +212,6 @@ export function stepPreset(p: Patch, a: AssemblyInst, dir: 1 | -1): Preset | nul
   const now = a.preset ? [] : currentValues(p, a);
   const i = a.preset
     ? list.findIndex((x) => sameName(x.name, a.preset))
-    : list.findIndex((x) => x.values.length === now.length && now.every((v, k) => Math.abs(v - x.values[k]) < 1e-6));
+    : list.findIndex((x) => agrees(now, x.values));
   return list[i < 0 ? (dir > 0 ? 0 : list.length - 1) : (i + dir + list.length) % list.length];
 }
