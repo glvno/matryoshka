@@ -654,6 +654,16 @@ async function main() {
       await sleep(300);
       await check('sandbox: PRESET leaves the editor\'s patch', (await T()).patch === name);
     },
+    async nudge() {
+      // SEQ in sandbox mode: the FM-1 opens no SEQ page, its header says where that is done (D-249); a second tap undoes
+      // whatever the editor did with the first, so the steps after it start where they did
+      await sleep(1700);
+      await emu.tap(B.seq);
+      await check('sandbox: SEQ says SANDBOX: SEQ IN EDITOR', await emu.waitText('SANDBOX: SEQ IN EDITOR', 1500));
+      await emu.snap('sandbox-seq-nudge');
+      await emu.tap(B.seq);
+      await check('sandbox: still sandbox mode after SEQ', (await T()).sandbox && (await emu.waitText('BROWSER PLAYS', 3000)));
+    },
     async leave() {
       await open('Init');
       const s = await until(async () => { const x = await T(); return !x.sandbox && x.live ? x : null; });

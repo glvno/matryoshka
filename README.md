@@ -59,7 +59,7 @@ Knobs and stuff. Every top-level module or assembly with card rows is a device, 
 * **KNOB1 - 4** turn the four rows of the page in focus
 * **HOME** goes back one step
 * **ENV** opens the environment page: one row per device, opening on the current one. SELECT moves the row, K1–K4 turn the row's first page, PRESET or ALGO step the row's presets, SEL arms the row's device or disarms it; ENV or HOME goes back.
-* **GLO** opens the settings menu on its MIDI tab; ALGO steps the tabs (MIDI, PANEL, SYSTEM, INFO, MANUAL), K1–K4 set a tab's rows, and GLO again or HOME goes back
+* **GLO** opens the settings menu on its MIDI tab; ALGO steps the tabs (MIDI, PANEL, SYSTEM, INFO, GUIDE: the ideas behind the FM-1), K1–K4 set a tab's rows, ENV opens the environment, and GLO again or HOME goes back
 * **SEL** on a device's page arms that device alone (armed: disarms it); **SEQ** on a Steps track's page opens the SEQ page on that track
 * **SEQ** opens and closes the SEQ page, where the white keys are the track's steps
 * **FX, LFO, EDIT, ARP** are patch buttons: the patch decides what each does (a gate, a Toggle that bypasses a module or assembly, or a list of device pages)
