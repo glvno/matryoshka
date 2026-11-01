@@ -100,6 +100,30 @@ const WAVES = ['sine', 'triangle', 'saw', 'square'];
 const OSC_WAVES = [...WAVES, 'sharktooth', 'reverse saw'];
 const C4 = 261.6255653;
 
+/** the oscillators work out their phase increment exactly every INC_SPAN samples, a straight line in between (#461) */
+export const INC_SPAN = 8;
+const RAMPS: Float64Array[] = [];
+
+/**
+ * An oscillator's phase increment (cycles per sample, at most 0.45) at each sample of a block, in scratch buffer `k` (#461):
+ * exact at every INC_SPAN-th sample, a straight line in between, so a moving pitch (vibrato) costs one power of two per
+ * INC_SPAN samples. A span's line runs from the increment at its first sample toward the one at the next span's first
+ * sample (the block's last sample for the last span). A pitch that does not move gives the exact increment throughout.
+ * engine.c inc_ramp does the same. off: octaves added to the pitch.
+ */
+function incRamp(k: number, pitch: ArrayLike<number>, n: number, off: number, sr: number): Float64Array {
+  let out = RAMPS[k];
+  if (!out || out.length < n) out = RAMPS[k] = new Float64Array(Math.max(n, 128));
+  const at = (p: number): number => Math.min((C4 * Math.pow(2, p + off)) / sr, 0.45);
+  for (let i = 0; i < n; i += INC_SPAN) {
+    const e = Math.min(i + INC_SPAN, n - 1);
+    const a = at(pitch[i]);
+    const d = pitch[e] === pitch[i] ? 0 : (at(pitch[e]) - a) / INC_SPAN;
+    for (let j = 0, m = Math.min(INC_SPAN, n - i); j < m; j++) out[i + j] = a + d * j;
+  }
+  return out;
+}
+
 function polyBlep(t: number, dt: number): number {
   if (t < dt) {
     t /= dt;
@@ -331,25 +355,25 @@ const osc: ModuleImpl<OscState> = {
       const det = c.p.detune ?? 0;
       const off = Array.from({ length: nu }, (_, j) => unisonOct(j, nu, det) + stk[j % stk.length] / 12);
       const wt = blendWeights(nu, Math.min(1, Math.max(0, c.p.blend ?? 0.5)));
+      const dts = off.map((o, j) => incRamp(j, pitch, c.n, base + o, c.sr));
       for (let i = 0; i < c.n; i++) {
-        const f = C4 * Math.pow(2, pitch[i] + base);
         const rst = sync[i] >= 0.5 && s.s1 < 0.5;
         s.s1 = sync[i];
         if (nu === 1) {
-          const dt = Math.min((f * Math.pow(2, off[0])) / c.sr, 0.45);
+          const dt = dts[0][i];
           if (rst) s.phase = 0;
           s.phase += dt;
           if (s.phase >= 1) s.phase -= 1;
           out[i] = wave(kind, s.phase, dt, pw) * lvl;
           continue;
         }
-        const dt0 = Math.min(f * Math.pow(2, off[0]) / c.sr, 0.45);
+        const dt0 = dts[0][i];
         if (rst) s.phase = 0;
         s.phase += dt0;
         if (s.phase >= 1) s.phase -= 1;
         let y = wave(kind, s.phase, dt0, pw) * wt[0];
         for (let j = 1; j < nu; j++) {
-          const dtj = Math.min(f * Math.pow(2, off[j]) / c.sr, 0.45);
+          const dtj = dts[j][i];
           if (rst) s.ph[j - 1] = 0;
           s.ph[j - 1] += dtj;
           if (s.ph[j - 1] >= 1) s.ph[j - 1] -= 1;
@@ -364,9 +388,9 @@ const osc: ModuleImpl<OscState> = {
     // FM mode (phase modulation or feedback): two waves per frame, pm interpolated between frames, then the half-band
     // decimator, so sidebands up to the old sample rate are filtered out instead of folding back
     const K = 1 / (2 * Math.PI);
+    const dts = incRamp(0, pitch, c.n, base, c.sr);
     for (let i = 0; i < c.n; i++) {
-      const f = C4 * Math.pow(2, pitch[i] + base);
-      const dt = Math.min(f / c.sr, 0.45) / 2;
+      const dt = dts[i] / 2;
       if (sync[i] >= 0.5 && s.s1 < 0.5) s.phase = 0;
       s.s1 = sync[i];
       const pmNow = idx > 0 ? pm[i] : 0;
@@ -1853,9 +1877,9 @@ const wavetable: ModuleImpl<WtState> = {
     const mip = dt0 < 1 / 64 ? 0 : dt0 < 1 / 32 ? 1 : 2;
     const ta = WT_T[mip][bank * 8 + f0];
     const tb = WT_T[mip][bank * 8 + f1];
+    const dts = incRamp(0, pitch, c.n, base, c.sr);
     for (let i = 0; i < c.n; i++) {
-      const f = C4 * Math.pow(2, pitch[i] + base);
-      const dt = Math.min(f / c.sr, 0.45);
+      const dt = dts[i];
       if (sync[i] >= 0.5 && s.s1 < 0.5) s.phase = 0;
       s.s1 = sync[i];
       s.phase += dt;
@@ -2961,8 +2985,9 @@ const pd: ModuleImpl<PdState> = {
     const lim = Math.max(0, Math.log2(room));
     const ratioAt = (i: number): number => Math.pow(2, Math.min(Math.min(1, Math.max(0, d0 + dcw[i])) * range, lim));
     const m0 = ratioAt(0), dm = c.n ? (ratioAt(c.n - 1) - m0) / c.n : 0;
+    const dts = incRamp(0, pitch, c.n, base, c.sr);
     for (let i = 0; i < c.n; i++) {
-      const dt = Math.min((C4 * Math.pow(2, pitch[i] + base)) / c.sr, 0.45);
+      const dt = dts[i];
       // a new cycle (or a sync) restarts the resonance sine at the phase the ramp has reached, times its ratio
       let fresh = false;
       if (sync[i] >= 0.5 && s.s1 < 0.5) {
