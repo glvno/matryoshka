@@ -7,6 +7,8 @@
 // --patch: the patch to open first (PRESET knob, by name on the screen). --play: the transport runs (the patch's own
 // tracks). --key: a chord is held (a steady level). Without either: nothing plays, so any window above 64 is an outlier.
 // --raw: the MIDI the page sent and received is kept and printed around each long window and outlier.
+// --link (#486): the FM-1's link counters (DIAG 117 / 118) before and after, beside the frames the page sent and got: where
+// an unanswered request was lost (never reached the FM-1, reached it and no answer was sent, or the answer was lost on the way).
 import { chromium } from 'playwright-core';
 import { pickRig, rigPage, startEditor } from './rig-link.mjs';
 
@@ -48,6 +50,10 @@ try {
   const chord = [14, 18, 21, 25];
   if (flag('--play')) { await ev('tap', [12]); await sleep(500); }
   if (flag('--key')) { for (const k of chord) await ev('key', [k, true]); await sleep(500); }
+  const u32s = (b) => Array.from({ length: b.length >> 2 }, (_, i) => (b[4 * i] | b[4 * i + 1] << 8 | b[4 * i + 2] << 16 | b[4 * i + 3] << 24) >>> 0);
+  const link = async () => ({ in: u32s(await ev('diag', [118])), out: u32s(await ev('diag', [117])) });
+  const link0 = flag('--link') ? await link() : null;
+  const count0 = await page.evaluate(() => ({ ...window.__rigCount }));
   // the windows, read in the page, 500 per call: [time read (ms), peak, running, reply (ms)]
   const w = [];
   await page.evaluate(() => window.__rig.peak());
@@ -63,6 +69,8 @@ try {
       return out;
     }, [Math.min(500, left), MS]));
   }
+  const count1 = await page.evaluate(() => ({ ...window.__rigCount }));
+  const link1 = link0 ? await link() : null;
   if (flag('--key')) for (const k of chord) await ev('key', [k, false]);
   if (flag('--play')) await ev('tap', [12]);
   const raw = flag('--raw') ? await page.evaluate(() => window.__raw) : [];
@@ -87,6 +95,15 @@ try {
   for (const k of new Set([...long, ...before])) {
     console.log(`  window ${k}${long.has(k) ? ` (long: ${(end(k) - end(k - 1)).toFixed(0)} ms)` : ''}: ${w.slice(Math.max(0, k - 3), k + 4).map((x) => x[1]).join(',')}`);
     if (raw.length) for (const [t, d] of raw) if (t >= w[k][0] - 5 && t <= end(k) + 1) console.log(`    ${(t - w[k][0]).toFixed(1)} ms: ${hex(d)}`);
+  }
+  const sent = count1.sent - count0.sent, got = count1.got - count0.got;
+  console.log(`page: ${sent} frames sent, ${got} answers got, ${count1.garbled - count0.garbled} garbled`);
+  if (link0) {
+    const d = (a, b) => b.map((v, i) => (v - a[i]) >>> 0);
+    const i = d(link0.in, link1.in), o = d(link0.out, link1.out);
+    // (two DIAG reads land inside the deltas: 117 before and 118 after, each a frame in and an answer out)
+    console.log(`FM-1 in:  ${i[0]} packets, ${i[1]} events, ${i[2]} frames (the page sent ${sent} + 2 DIAG), ${i[3]} cut short, ${i[4]} orphan bytes, ${i[5]} not taken, ${i[6]} bus resets, ${i[7]} suspends`);
+    console.log(`FM-1 out: ${o[0]} messages sent (the page got ${got} + 2 DIAG), ${o[1]} refused (no host), ${o[2]} refused (no room), ${o[3]} packets, ${o[4]} frame stalls; now ${link1.out[5]} queued, longest gap ${link1.out[6]} polls, flags ${link1.out[7]}`);
   }
   console.log(`rig link log (timeouts, frames no request took): ${JSON.stringify(await page.evaluate(() => window.__rigLog ?? []))}`);
 } catch (e) {

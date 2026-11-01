@@ -193,6 +193,31 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
         return sizeof v;
     }
 #endif
+    if (page == 117u || page == 118u) {         /* #486: the editor link's counters (usb.c lk), since boot */
+        uint32_t v[8];
+        if (page == 118u) {                     /* in */
+            v[0] = usb.rx_pkts;
+            v[1] = lk.rx_events;
+            v[2] = lk.sx_frames;
+            v[3] = lk.sx_broken;
+            v[4] = lk.sx_orphan;
+            v[5] = lk.sx_lost;
+            v[6] = usb.resets;
+            v[7] = usb.suspends;
+        } else {                                /* out */
+            v[0] = lk.tx_msgs;
+            v[1] = lk.tx_nohost;
+            v[2] = lk.tx_noroom;
+            v[3] = usb.tx_pkts;
+            v[4] = usb.frame_stalls;
+            v[5] = so_w - so_r;
+            v[6] = usb.max_gap;
+            v[7] = (uint32_t)usb.suspended | (uint32_t)(usb.config != 0) << 1;
+        }
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
     if (page == 124u) {                         /* #273: .lowram and the stacks */
         uint32_t v[8];
         v[0] = lowram_state;

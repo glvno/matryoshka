@@ -189,6 +189,16 @@ static uint32_t sx_deaf;
 static uint8_t sx_cut;
 #endif
 
+/* #486: the editor link's counters (DIAG page 118, main.c m1_diag): where a message to or from the host could be lost.
+ * In: SysEx frames handed to the main loop, frames cut short (a status byte or another F0 before the F7), SysEx bytes with no
+ * F0 before them (a packet lost mid-message), frames not taken (one arrived while the main loop held the last, or too long);
+ * out: messages queued, sends refused with no host (not configured / suspended), sends refused for want of room. */
+static struct {
+    uint32_t sx_frames, sx_broken, sx_orphan, sx_lost;
+    uint32_t tx_msgs, tx_nohost, tx_noroom;
+    uint32_t rx_events;
+} lk;
+
 static volatile uint32_t fm1_ms;                   /* also declared by core.h; parser-only host tests */
 #include "midi_queue.h"
 static uint32_t midi_out_q[MQ];
@@ -786,6 +796,7 @@ static void sysex_byte(uint8_t b)
     if (b >= 0xF8u)
         return;                                        /* realtime may occur anywhere in SysEx */
     if ((b & 0x80u) && b != 0xF0u && b != 0xF7u) {
+        lk.sx_broken += usb.sx_on;
         usb.sx_on = 0;
 #if FELUCCA_OTA
         sx_collect = 0;
@@ -793,6 +804,10 @@ static void sysex_byte(uint8_t b)
         return;                                        /* another status aborts the unfinished frame */
     }
     if (b == 0xF0) {
+        lk.sx_broken += usb.sx_on;
+#if FELUCCA_OTA
+        lk.sx_lost += sx_ready;
+#endif
         usb.sx_on = 1;
         usb.sx_len = 0;
 #if FELUCCA_OTA
@@ -800,14 +815,18 @@ static void sysex_byte(uint8_t b)
         sx_pos = 0;
 #endif
     }
-    if (!usb.sx_on)
+    if (!usb.sx_on) {
+        lk.sx_orphan++;
         return;
+    }
 #if FELUCCA_OTA
     if (sx_collect && b != 0xF0 && b != 0xF7) {
-        if (sx_pos < sizeof sx_frame)
+        if (sx_pos < sizeof sx_frame) {
             sx_frame[sx_pos++] = b;
-        else
+        } else {
             sx_collect = 0;                             /* too long: not ours */
+            lk.sx_lost++;
+        }
     }
 #endif
     if (usb.sx_len < sizeof usb.sysex)
@@ -826,6 +845,7 @@ static void sysex_byte(uint8_t b)
             sx_frame_len = sx_pos;
             RING_PUBLISH();
             sx_ready = 1;                               /* main loop: ota_take() / ed_service() */
+            lk.sx_frames++;
         }
         sx_collect = 0;
 #endif
@@ -836,6 +856,7 @@ static void sysex_byte(uint8_t b)
 static void midi_in_event(uint32_t pkt)                 /* one USB-MIDI event packet */
 {
     uint32_t cin = pkt & 15u, st = (pkt >> 8) & 0xFFu;
+    lk.rx_events++;
     if (cin >= 4u && cin <= 7u) {
         uint32_t k, nb = cin == 4u || cin == 7u ? 3u : cin == 6u ? 2u : 1u;
         for (k = 0; k < nb; k++)
@@ -943,12 +964,15 @@ static void sx_push(uint32_t pkt)
 static int ota_wire_send(const uint8_t *p, uint32_t n)
 {
     uint32_t i = 0, t0 = ota_now_ms(), npk = (n + 2u) / 3u;
-    if (!*(volatile uint8_t *)&usb.config || usb.suspended)
+    if (!*(volatile uint8_t *)&usb.config || usb.suspended) {
+        lk.tx_nohost++;
         return -1;
+    }
     sx_busy = 1;
     if (sx_cut) {
         if (sx_room(1u, t0)) {
             sx_busy = 0;
+            lk.tx_noroom++;
             return -1;
         }
         sx_push(0x05u | 0xF7u << 8);                        /* CIN 5: a SysEx ending in one byte */
@@ -956,6 +980,7 @@ static int ota_wire_send(const uint8_t *p, uint32_t n)
     }
     if (sx_room(npk <= SXQ ? npk : 1u, t0)) {
         sx_busy = 0;
+        lk.tx_noroom++;
         return -1;
     }
     while (i < n) {
@@ -966,12 +991,14 @@ static int ota_wire_send(const uint8_t *p, uint32_t n)
         if (npk > SXQ && sx_room(1u, t0)) {                 /* (a message that fits had its room checked whole) */
             sx_cut = i > 0u;                                /* packets of it went out: they end with the next send's F7 */
             sx_busy = 0;
+            lk.tx_noroom++;
             return -1;
         }
         sx_push(pkt);
         i += k;
     }
     sx_busy = 0;
+    lk.tx_msgs++;
     return 0;
 }
 static int ota_frame_get(const uint8_t **p, uint32_t *n)

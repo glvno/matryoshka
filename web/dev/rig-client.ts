@@ -19,6 +19,8 @@ let pair: { inp: MIDIInput; out: MIDIOutput } | null = null;
 const waiters: { match: Match; done: (p: Parsed, inId: string) => void }[] = [];
 /** what went unanswered (#385, scripts/rig-peak.mjs): [kind, time] per wait that timed out, per frame no wait took */
 const rigLog: unknown[] = [];
+/** #486: frames the page sent to the rig and the SysEx it got back (parsed or not), to set beside the FM-1's DIAG 117 / 118 */
+const rigCount = { sent: 0, got: 0, garbled: 0 };
 
 async function open(): Promise<MIDIAccess> {
   if (access) return access;
@@ -27,6 +29,10 @@ async function open(): Promise<MIDIAccess> {
     if (!FM1_NAME.test(inp.name ?? '')) continue;
     inp.onmidimessage = (ev) => {
       const p = ev.data ? parse(ev.data) : null;
+      if (pair && inp.id === pair.inp.id && ev.data?.[0] === 0xf0) {
+        if (p) rigCount.got++;
+        else rigCount.garbled++;
+      }
       const w = p ? waiters.findIndex((x) => x.match(inp.id, p)) : -1;
       if (p && w >= 0) waiters.splice(w, 1)[0].done(p, inp.id);
       else if (p) rigLog.push(['unasked', performance.now(), p.cmd]);
@@ -83,6 +89,7 @@ async function ask(frame: Uint8Array, match: (p: Parsed) => boolean, ms = 1500):
   if (!pr) throw new Error('no rig picked');
   const got = wait((inId, p) => inId === pr.inp.id && match(p), ms);
   pr.out.send(frame);
+  rigCount.sent++;
   const r = await got;
   if (!r) throw new Error('the rig did not answer');
   return r.p;
@@ -152,6 +159,7 @@ async function screenOnce(): Promise<ScreenHead & { texts: ScreenText[] }> {
   const isScreen = (head: boolean): Match => (inId, x) => inId === pr.inp.id && x.cmd === CMD.screen && (x.payload[0] === 0xff) === head;
   const first = wait(isScreen(true), 2500);
   pr.out.send(testScreenFrame());
+  rigCount.sent++;
   const h = await first;
   const hs = h ? parseScreen(h.p) : null;
   if (!hs || !('head' in hs)) throw new Error('the rig did not send its screen');
@@ -167,4 +175,5 @@ async function screenOnce(): Promise<ScreenHead & { texts: ScreenText[] }> {
 
 (window as unknown as { __rig: typeof rig }).__rig = rig;
 (window as unknown as { __rigLog: unknown[] }).__rigLog = rigLog;
+(window as unknown as { __rigCount: typeof rigCount }).__rigCount = rigCount;
 document.title = 'rig ready';
