@@ -4,7 +4,7 @@
  * protocol's handshake (ota.c ota_service). The frame is looked at once. Before #486 the main loop asked twice: m1_handle
  * when a frame was there, then ota_service, which takes whatever frame is there and drops what is not the update
  * protocol's. A frame that the USB poll (TIMER5 ISR) finished between the two asks went to ota_service and was dropped:
- * about 1 editor message in 500 with the transport running (the audio ISR, nested between the two, widens the gap).
+ * on the test rig about 1 editor message in 500 with the transport running, 1 in 6,000 with nothing playing.
  * The includer provides ota_frame_get / ota_frame_done (usb.c), m1_handle (proto.c), ota_service (ota.c).
  * firmware/test/frame_test.c checks it with a frame landing between any two of its steps. */
 #pragma once
