@@ -865,7 +865,7 @@ fn count_in(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
 fn tempo_turn(m: &mut Machine, clicks: i32) -> Result<(), String> {
     m.key(PLAY, true);
     m.run_for(100)?;
-    m.turn(PRESET, clicks, 200)?;
+    m.turn(PRESET, clicks, 300 + 20 * clicks.unsigned_abs() as u64)?;   // (every click in while PLAY is held)
     m.key(PLAY, false);
     m.run_for(200)
 }
@@ -875,6 +875,7 @@ fn tempo_turn(m: &mut Machine, clicks: i32) -> Result<(), String> {
 /// is kept the same way.
 fn global_tempo(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     let mut m = Machine::boot(app, None);
+    quick_start(&mut m, 9000)?;
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     m.tap(GLO, 120, 400)?;
@@ -882,7 +883,8 @@ fn global_tempo(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
     t.screen(&m, "tempo: the menu's PANEL tab has TEMPO", "TEMPO");
     t.screen(&m, "tempo: GLOBAL as made", "GLOBAL");
     m.tap(HOME, 120, 400)?;
-    tempo_turn(&mut m, 400)?;                // (fast turns: to the top, 300)
+    tempo_turn(&mut m, 80)?;                 // (fast turns, x5: to the top, 300)
+    tempo_turn(&mut m, 1)?;                  // (one more: the bar says it again, 300 at most)
     t.screen(&m, "tempo: PLAY held + PRESET sets the global tempo", "TEMPO 300");
     m.key(HOME, true);
     m.run_for(100)?;
@@ -895,6 +897,7 @@ fn global_tempo(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
     let flash = m.flash();
     *emulated += m.ms();
     let mut m = Machine::boot(app, Some(&flash));
+    quick_start(&mut m, 9000)?;
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     tempo_turn(&mut m, 1)?;
@@ -907,6 +910,7 @@ fn global_tempo(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
     let flash = m.flash();
     *emulated += m.ms();
     let mut m = Machine::boot(app, Some(&flash));
+    quick_start(&mut m, 9000)?;
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     m.tap(GLO, 120, 400)?;
