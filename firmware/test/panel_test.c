@@ -369,6 +369,7 @@ static int marks_ok(int mod)
 }
 
 #include "help_test.h"                              /* #450: OCT on release, the controls sheet, the quick start */
+#include "nudge_test.h"                             /* #450: the nudges (D-249), ENV in the menu */
 
 int main(void)
 {
@@ -677,11 +678,47 @@ int main(void)
         check("ALGO again: INFO, a list, not a page", menu_tab == MT_INFO && !menu_page() && on_screen("BANK SLOTS") && on_screen("VERSION"));
         check("  its top bar is the plain bar with the patch's name, not the coral header's top", on_screen(patch_label));
         enc(1, 1);
-        check("ALGO again: MANUAL", menu_tab == MT_MANUAL && !menu_page());
+        check("ALGO again: GUIDE (D-248), a text, not a page", menu_tab == MT_GUIDE && !menu_page());
+        check("  the tab chip and the title say GUIDE, its first lines point at the controls sheet", on_screen("GUIDE")
+              && on_screen("Guide") && on_screen("PRESS OCT- + OCT+") && on_screen("TO SEE CONTROLS FOR CURRENT")
+              && !on_screen("MANUAL"));
+        {                                                   /* the GUIDE's lines (D-200, D-248): at most 35 characters after
+                                                             * the style marker, capitals, no ';'; it explains ideas, so no
+                                                             * line names a control (a whole word) but its first two. PRESET
+                                                             * is an idea as well as a knob */
+            static const char *const CTRL[] = {"SELECT", "ALGO", "HOME", "GLO", "SAVE", "PLAY", "REC", "SEL", "ENV", "SEQ",
+                                               "OCT", "K1", "K2", "K3", "K4", "KNOB", "KNOBS", "BUTTON", "BUTTONS", "FX",
+                                               "LFO", "EDIT", "ARP"};
+            static const char *const IDEA[] = {"#PATCH", "#PRESET", "#DEVICE", "#ASSEMBLY", "#MODULE", "#ENGINE", "#PAGE",
+                                               "#TRACK", "#PATTERN", "#SONG", "#ARMING", "#THE ENVIRONMENT", "#SANDBOX MODE", "#LIVE"};
+            uint32_t i, k, bad = 0, ctrl = 0, vocab = 0;
+            for (i = 0; i < MAN_N; i++) {
+                const char *l = MANUAL[i];
+                bad += strlen(l) > MAN_COLS + 1u || strchr(l, ';') != 0 || (l[0] && l[0] != '#' && l[0] != ' ' && l[0] != '~');
+                for (k = 0; l[k]; k++)
+                    bad += l[k] >= 'a' && l[k] <= 'z';
+                for (k = 0; i >= 2u && l[0] != '~' && k < sizeof CTRL / sizeof CTRL[0]; k++) {
+                    const char *w = l;
+                    size_t n = strlen(CTRL[k]);
+                    while ((w = strstr(w, CTRL[k])) != 0) {
+                        int a = w > l && w[-1] >= 'A' && w[-1] <= 'Z', z = w[n] >= 'A' && w[n] <= 'Z';
+                        if (!a && !z)
+                            printf("      (the GUIDE names a control: \"%s\")\n", l), ctrl++;
+                        w += n;
+                    }
+                }
+                for (k = 0; k < sizeof IDEA / sizeof IDEA[0]; k++)
+                    vocab += !strcmp(l, IDEA[k]);
+            }
+            check("  GUIDE lines: at most 35 characters, capitals, no ';' (D-200)", bad == 0u);
+            check("  GUIDE: the first two lines, then no control named (D-248)", !strcmp(MANUAL[0] + 1, "PRESS OCT- + OCT+")
+                  && !strcmp(MANUAL[1] + 1, "TO SEE CONTROLS FOR CURRENT PAGE") && ctrl == 0u);
+            check("  GUIDE: a heading for each of the 14 ideas of D-248", vocab == 14u);
+        }
         enc(1, 1);
         check("ALGO wraps to MIDI, the coral header back", menu_tab == MT_MIDI && px(2, 2) == P_CORAL);
         enc(1, -1);
-        check("ALGO back: MANUAL", menu_tab == MT_MANUAL);
+        check("ALGO back: GUIDE", menu_tab == MT_GUIDE);
     }
     {                                                       /* #146: an idle INFO tab redraws only the CPU values */
         uint32_t i, n = 0, outside = 0, y0 = MENU_Y + info_pos(MR_CPU) * MENU_PITCH, y1 = MENU_Y + info_pos(MR_PEAK) * MENU_PITCH;
@@ -3764,6 +3801,7 @@ int main(void)
         }
     }
     help_suite();
+    nudge_suite();
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
     return failed != 0;
 }

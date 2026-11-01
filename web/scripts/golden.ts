@@ -2696,6 +2696,14 @@ if (process.argv.includes('--panel-fixtures')) {
   mkdirSync(out, { recursive: true });
   for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns'])
     writeFileSync(new URL(`${name}.m1p`, out), encodePatch(tests[name], true));
+  {
+    // SEL's nudges (D-249, #215): arm-set with no keys cable into the second Voicing or the Drum map. The Drum map keeps a
+    // keys input that no cable reaches (NO KEYS REACH THIS DEVICE), next to the Mixer, which has none
+    const p = structuredClone(tests['arm-set']);
+    const unreached = new Set(p.modules.filter((m) => m.type === 'drummap' || (m.type === 'alloc' && m.y > 0)).map((m) => m.id));
+    p.cables = p.cables.filter((c) => !(c.from.port === 'keys' && unreached.has(c.to.module)));
+    writeFileSync(new URL('arm-unreached.m1p', out), encodePatch(p, true));
+  }
   console.log('panel fixtures generated');
   process.exit(0);
 }
