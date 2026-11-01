@@ -2482,17 +2482,58 @@ describe('delay sync and ping-pong', () => {
     return { l, r, first };
   };
   it('a synced delay follows the clock: 1/4 is one beat', () => {
-    // 24 ticks per beat, a tick every 460 samples = 11040 samples per beat; the delayed constant 1 appears after that
+    // 24 ticks per beat, a tick every 460 samples = 11040 samples per beat. Until the 24 ticks are in, the beat is 120 bpm
+    // (22050 samples); then the read position glides from there to 11040 at half a sample a sample (#484), so the delayed
+    // constant 1 appears at t where t - (22050 - (t - 11040) / 2) = 0: t = 18380
     const { first } = run({ sync: 1, time: DELAY_TIME_MIN + (6 / 10) * (DELAY_SYNC_TOP - DELAY_TIME_MIN) }, 460);
     const at = first.findIndex((v) => v > 0.5);
-    expect(at * 128).toBeGreaterThan(11040 - 400);
-    expect(at * 128).toBeLessThan(11040 + 400);
+    expect(at * 128).toBeGreaterThan(18380 - 400);
+    expect(at * 128).toBeLessThan(18380 + 400);
   });
   it('ping-pong uses mix and fb on both sides', () => {
     const a = run({ pingpong: 1, time: 5, fb: 0.5, mix: 0.5 }, null);
     expect(a.l[127]).toBeGreaterThan(0.4);
     expect(a.r[127]).toBeGreaterThan(0.4);
   });
+});
+
+describe('delay time changes (#484)', () => {
+  // a sine through the delay (wet only); the time jumps from 100 to 237 ms (a knob, a square LFO into time), and back
+  const run = (pingpong: number) => {
+    const p = emptyPatch();
+    const osc = addModule(p, DEFS.osc, 0, 0);
+    osc.params.wave = 0;
+    const dly = addModule(p, DEFS.delay, 0, 0);
+    Object.assign(dly.params, { time: 100, fb: 0, mix: 1, pingpong });
+    const out = addModule(p, DEFS.output, 0, 0);
+    out.params.level = 0.7;
+    connect(p, DEFS, { module: osc.id, port: 'out' }, { module: dly.id, port: 'in' });
+    connect(p, DEFS, { module: dly.id, port: 'out' }, { module: out.id, port: 'l' });
+    const e = new Engine(SR);
+    e.load(p);
+    const steady = render(e, 2 * SR).l;   // (the line holds the sine's start, a corner, for 1.6 s: the glides below read 237 ms back at most)
+    e.setParam(dly.id, 'time', 237);   // (not a whole number of the sine's cycles: a jump would show)
+    const moving = render(e, SR).l;
+    e.setParam(dly.id, 'time', 100);
+    const back = render(e, SR).l;
+    const d2 = (a: Float32Array, from = 2): number => {
+      let m = 0;
+      for (let i = from; i < a.length; i++) m = Math.max(m, Math.abs(a[i] - 2 * a[i - 1] + a[i - 2]));
+      return m;
+    };
+    // (each from the two samples before it: the time changes between two renders)
+    const after = (a: Float32Array, b: Float32Array): Float32Array => Float32Array.of(...a.subarray(a.length - 2), ...b);
+    return { calm: d2(steady, SR), moving: d2(after(steady, moving)), back: d2(after(moving, back)), settled: moving.subarray(SR / 2) };
+  };
+  for (const pp of [0, 1])
+    it(`the read position glides there: no step in the echo${pp ? ' (ping-pong)' : ''}`, () => {
+      const { calm, moving, back, settled } = run(pp);
+      // a jump cut the echo (the curvature about 400 times the sine's own); the glide bends its pitch by at most half, and
+      // into it (an instant change of pitch was a kink, 13 times): the curvature at most (1.5)^2 of the calm one
+      expect(moving).toBeLessThan(calm * 3);
+      expect(back).toBeLessThan(calm * 3);
+      expect(rms(settled)).toBeGreaterThan(0.1);
+    });
 });
 
 describe('live parameter displays', () => {

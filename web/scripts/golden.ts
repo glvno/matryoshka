@@ -205,6 +205,21 @@ for (let k = 1; k <= 8; k++) {
   tests[name] = p;
   events[name] = [[0, 'on', 48 + k], [128 * 30, 'on', 60 + k], [128 * 90, 'off', 48 + k], [128 * 110, 'off', 60 + k]];
 }
+// 8 Lire's Hyper LFO into the delay time (#484): square steps move the time by hundreds of ms; the read position glides
+// there. Both quads held (drones with no key), free and ping-pong, OR and AND, and a key's release under the glide
+for (const [k, [pp, andOr, depth]] of [[0, 1, 1.5], [1, 0, 0.6]].entries()) {
+  const name = `lire-hyper-delay-${k + 1}`;
+  const p = FM1_PRESETS['8 Lire']();
+  const card = p.assemblies!.find((a) => a.params.some((r) => r.label === 'lfo → delay'))!;
+  const set = (label: string, v: number): void => {
+    for (const row of card.params.filter((r) => r.label === label)) p.modules.find((m) => m.id === row.module)!.params[row.param] = v;
+  };
+  for (const [label, v] of [['hold', 1], ['rate a', 5], ['rate b', 7.3], ['and / or', andOr], ['lfo → delay', depth], ['time', 250],
+    ['feedback', 0.7], ['mix', 0.5], ['ping-pong', pp]] as const) set(label, v);
+  tests[name] = p;
+  events[name] = [[128 * 40, 'on', 53], [128 * 200, 'off', 53]];
+  ends[name] = 128 * 500;
+}
 for (const [cc, port] of [[2, 'breath'], [64, 'sustain'], [65, 'foot']] as const) {
   const name = `main-${port}`;
   tests[name] = make(name, (add, wire) => {

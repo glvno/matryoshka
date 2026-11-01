@@ -401,7 +401,7 @@ typedef struct {
                                                     * modes' radii and normalised gains for kdec kdamp / kbr, ok: which are worked out */
         struct { int32_t a[8], b[8], ia; uint32_t phase; } fs;   /* the Hilbert chains (w1 w2 per section), chain A's delayed sample, the quadrature oscillator */
         struct { struct grain_line *ln; uint32_t w, acc, seed; uint8_t prev; } gr;   /* acc: grains per sample, Q24 */
-        struct { int16_t *buf; uint32_t w, t, seen, beat; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev; } dly;   /* t, ring, seen, beat: the clock tempo */
+        struct { int16_t *buf; uint32_t w, t, seen, beat, cur; int32_t rate; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev; } dly;   /* t, ring, seen, beat: the clock tempo; cur, rate: the read position's distance behind w (samples Q16, 0 = not yet set) and its glide (dly_glide) */
         struct { int16_t *buf; uint16_t li[8], ai[2], pi; int32_t lp[8]; uint32_t ph[2]; } rev;   /* the FDN lines' write indices, the diffusers', the pre-delay's; damping states; modulation phases */
         struct { int32_t v; uint32_t t; int32_t rk[4], inc[4], k[4]; uint32_t len[4]; uint8_t stage, prev, ok; } env;  /* Q30, like the ADSR; t: samples
                                                     * in the segment; rk, inc, k, len, ok: segments 1 2 3 and release, as m_adsr */
@@ -4791,6 +4791,64 @@ static inline int32_t dly_soft(int32_t x)
     return x - mul16(mul16(mul16(x, x), x), 9709);       /* 4/27 Q16 */
 }
 
+/* the delay's glide (modules.ts delayGlide, #484): while the read position's distance behind the write head (cur, samples
+ * Q16) is not the time's (tq), it moves at a rate (samples a sample, Q16) that heads for 1 / 2^DELAY_GLIDE_SHIFT of the
+ * distance, at most DELAY_GLIDE_MAX (half a sample: the echo plays between an octave down and a fifth up while it moves,
+ * never backwards); the rate itself changes by at most DELAY_GLIDE_ACC a sample (the pitch bends in, no kink in the wave).
+ * It lands once less than 1/64 sample away at a rate under DELAY_GLIDE_ACC. The line is read between its two samples
+ * (linear). The plain, swelling and ping-pong loops in one: it runs only while the time moves. */
+#define DELAY_GLIDE_SHIFT 10             /* 1024 samples: 23 ms */
+#define DELAY_GLIDE_MAX 32768            /* half a sample a sample, Q16 */
+#define DELAY_GLIDE_ACC 128              /* the rate's change a sample: 0 to DELAY_GLIDE_MAX in 256 samples (6 ms) */
+static void dly_glide(inst_t *it, const esig_t *in, esig_t *out, esig_t *outr, uint32_t n, uint32_t tq, int32_t fb, int32_t mix, int pp, int swell)
+{
+    int16_t *buf = it->s.dly.buf, *bb = buf + DELAY_HALF;
+    uint32_t len = pp ? DELAY_HALF : DELAY_LEN, w = it->s.dly.w, cur = it->s.dly.cur, i;
+    int32_t dry = ENG_ONE - mix, rate = it->s.dly.rate, hi = (int32_t)(len - 1u) << 16;
+    if (swell)
+        fb = (int32_t)((int64_t)fb * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
+    if (w >= len)
+        w = 0;
+    for (i = 0; i < n; i++) {
+        int32_t diff = (int32_t)(tq - cur), rpos, fr, ea, x, c;
+        uint32_t i0, i1;
+        rate += clampi(clampi(diff >> DELAY_GLIDE_SHIFT, -DELAY_GLIDE_MAX, DELAY_GLIDE_MAX) - rate, -DELAY_GLIDE_ACC, DELAY_GLIDE_ACC);
+        if (diff > -(1 << DELAY_GLIDE_SHIFT) && diff < 1 << DELAY_GLIDE_SHIFT && rate > -DELAY_GLIDE_ACC && rate < DELAY_GLIDE_ACC) {
+            cur = tq;
+            rate = 0;
+        } else {
+            c = (int32_t)cur + rate;   /* (past the target only when it turned while moving: kept within the line) */
+            cur = (uint32_t)clampi(c, 65536, hi);
+        }
+        rpos = (int32_t)(w << 16) - (int32_t)cur;
+        if (rpos < 0)
+            rpos += (int32_t)(len << 16);
+        i0 = (uint32_t)rpos >> 16;
+        i1 = i0 + 1u == len ? 0u : i0 + 1u;
+        fr = (rpos & 0xffff) >> 1;                    /* Q15: (b - a) x fr fits 32 bits */
+        ea = (int32_t)buf[i0] * 8 + ((((int32_t)buf[i1] - buf[i0]) * fr) >> 12);
+        if (pp) {
+            int32_t eb = (int32_t)bb[i0] * 8 + ((((int32_t)bb[i1] - bb[i0]) * fr) >> 12), dr = mul16(in[i], dry);
+            x = mul16(ea, fb);
+            bb[w] = dly_pack(swell ? dly_soft(x) : x);
+            x = in[i] + mul16(eb, fb);
+            buf[w] = dly_pack(swell ? dly_soft(x) : x);
+            out[i] = dr + mul16(ea, mix);
+            outr[i] = dr + mul16(eb, mix);
+        } else {
+            x = in[i] + mul16(ea, fb);
+            buf[w] = dly_pack(swell ? dly_soft(x) : x);
+            out[i] = mul16(in[i], dry) + mul16(ea, mix);
+            outr[i] = out[i];
+        }
+        if (++w == len)
+            w = 0;
+    }
+    it->s.dly.w = w;
+    it->s.dly.cur = cur;
+    it->s.dly.rate = rate;
+}
+
 /* free or synced time (see modules.ts); ping-pong splits the buffer in two halves, A (input, left) and B (right), see
  * modules.ts. note: a synced length of its own (DELAY_NOTE_NUM / DEN) in place of the time knob's; swell: the feedback
  * x 198 / 95 and the loop through dly_soft (the loops below, apart, so the plain one stays as it was) */
@@ -4830,6 +4888,12 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
     } else
         smp = ((int64_t)EF(it, DELAY_P_TIME) * ENG_SR + (int64_t)500 * 65536) / (1000 * 65536);   /* round(t_ms / 1000 * sr) */
     d = (uint32_t)(smp < 1 ? 1 : smp > top ? top : smp);
+    if (it->s.dly.cur == 0 || it->s.dly.cur > (uint32_t)top << 16)
+        it->s.dly.cur = it->s.dly.cur == 0 ? d << 16 : (uint32_t)top << 16;
+    if (it->s.dly.cur != d << 16 || it->s.dly.rate) {     /* the time moved: glide there (#484), the plain loops below once it has arrived */
+        dly_glide(it, in, out, outr, n, d << 16, fb, mix, pp, swell);
+        return;
+    }
     if (swell) {
         fb = (int32_t)((int64_t)fb * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
         if (w >= (pp ? DELAY_HALF : DELAY_LEN))
