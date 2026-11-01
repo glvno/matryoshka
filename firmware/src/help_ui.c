@@ -76,17 +76,11 @@ static uint32_t help_patch_rows(const char **out)
 {
     static const uint8_t B[4] = {0, 3, 4, 6};
     const uint8_t *pn = m1_panel();
-    uint32_t i, n = 0, cabled = 0, tog = pn ? ((uint32_t)pn[0] | (uint32_t)pn[1] << 8) : 0u, from, fp, to, tp;
-    int main = eng_find(T_FM1);
-    for (i = 0; main >= 0 && i < (uint32_t)eng_ncables(); i++) {   /* (a Gate's job is its jack's cable) */
-        eng_cable(i, &from, &fp, &to, &tp);
-        if (from == (uint32_t)main && fp >= FM1_O_FX && fp < FM1_O_FX + ENG_PANEL_BUTTONS)
-            cabled |= 1u << (fp - FM1_O_FX);
-    }
+    uint32_t i, n = 0, tog = pn ? ((uint32_t)pn[0] | (uint32_t)pn[1] << 8) : 0u;
     for (i = 0; i < 4u; i++) {
         uint32_t b = B[i], kind = eng_button_kind(b), k;
         char lab[16], *p = help_btn_row[n];
-        if (kind != ENG_BTN_TOGGLE && kind != ENG_BTN_PAGE && !(cabled >> b & 1u))
+        if (!panel_btn_job(b))                      /* (ui.c: a Gate's job is its jack's cable) */
             continue;
         if (!panel_label(b, lab))
             put(lab, PANEL_BTN_NAME[b])[0] = 0;
@@ -225,7 +219,7 @@ static uint32_t help_rows(uint32_t t, const char **r)
         break;
     case HS_MENU:
         R("n:ALGO~tab");
-        if (menu_tab == MT_MANUAL)
+        if (menu_tab == MT_GUIDE)
             R("n:SELECT~scroll");
         if (menu_page())
             R("c:1234~set");

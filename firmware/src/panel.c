@@ -42,13 +42,36 @@ static const uint8_t PANEL_BTN_ID[ENG_PANEL_BUTTONS] = {2, 3, 4, 5, 6, 7, 10};  
 #define BTN_GLO 7u
 /* the buttons that act on the FM-1 itself in sandbox mode (sandbox_ui.c); the others only go out as MIDI */
 #define SB_OWN_BTNS ((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP) | (1u << BTN_HOME) | (1u << BTN_PLAY) | (1u << BTN_GLO))
+/* the buttons whose work is done in the editor in sandbox mode: a nudge says so (D-232, D-249), they still go out as MIDI */
+#define SB_NUDGE_BTNS ((1u << BTN_SAVE) | (1u << BTN_REC) | (1u << BTN_SEQ) | (1u << BTN_ENV) | (1u << BTN_SEL))
+
+/* Nudges (D-249): a control that cannot act where it is pressed says why in the header, in at most 26 characters. Only
+ * from a button or a knob: a key edge never draws (D-228), so a key in sandbox mode asks for the MIDI OUT nudge with
+ * sb_mout_due and panel_status shows it */
+#define NUDGE_MS 1500u
+static uint8_t sb_mout_due;
+static void sb_mout_nudge(void) { ui_msg("TURN ON MIDI OUT: GLO, K3", NUDGE_MS); }   /* (25 characters) */
+static void sb_nudge(uint32_t p)                    /* SAVE, REC, SEQ, ENV or SEL pressed in sandbox mode: where that is done */
+{
+    if (!cfg.midi_out) {                            /* (nothing reaches the editor without it) */
+        sb_mout_nudge();
+        return;
+    }
+    ui_msg(p & (1u << BTN_SAVE) ? "SANDBOX: SAVE IN EDITOR" : p & (1u << BTN_REC) ? "SANDBOX: REC IN EDITOR"
+           : p & (1u << BTN_SEQ) ? "SANDBOX: SEQ IN EDITOR" : p & (1u << BTN_ENV) ? "SANDBOX: ENV IN EDITOR"
+           : "SANDBOX: ARM IN EDITOR", NUDGE_MS);
+}
 
 /* HOME held + PRESET (#395), and PRESET in the menu: the next / previous patch, its name over the bars (#170); HOME's
- * release then does not go back. In sandbox mode the editor's Live holds it (live.c) */
+ * release then does not go back. In sandbox mode the editor's Live holds it (live.c). An empty bank: a nudge (D-249) */
 static void patch_turn(int32_t d)
 {
     if (panel_held >> BTN_HOME & 1u)
         home_turned = 1;
+    if (!sb_on && !bank_mask) {
+        ui_msg("BANK EMPTY", NUDGE_MS);
+        return;
+    }
     if (!sb_on)
         pages_patch_ask();
     preset_step(d);
@@ -100,8 +123,11 @@ static void panel_button_set(uint32_t b, int down)
     }
     if (b == BTN_GLO_IDX) {                        /* GLO (#118, #395): the menu on its MIDI tab; in the menu a tap goes back (as HOME)
                                                      * and a 2 s hold does an armed SYSTEM row (glo_t0, panel_edges). Its jack as a Gate */
-        if (down && page != PAGE_MENU)
+        if (down && page != PAGE_MENU) {
+            menu_open();                            /* (on its MIDI tab; HOME back from the environment it opened keeps
+                                                     * the tab it was on, D-249) */
             page_set(PAGE_MENU);
+        }
         else if (down)
             glo_t0 = (fm1_ms & ~3u) | 1u;
         else if (glo_t0) {
@@ -131,7 +157,8 @@ static void panel_button_set(uint32_t b, int down)
     if (tog >> b & 1u)
         m1_panel_on(mask & tog);
     leds_panel();
-    if (down && !(FIXED_BTNS >> b & 1u)) {          /* (GLO, SEL, ENV say what they do themselves: no "SEL ON") */
+    if (down && !(FIXED_BTNS >> b & 1u) && panel_btn_job(b)) {   /* (GLO, SEL, ENV say what they do themselves: no "SEL ON";
+                                                     * a button with no job gives a nudge instead, panel_edges) */
         button_touched = (uint8_t)(b + 1u);
         if (!ui_dirty)
             ui_dirty = 1;
@@ -166,8 +193,6 @@ static void page_show(uint32_t p)
 {
     page = (uint8_t)p;
     pg_strip_dirty = 1;
-    if (page == PAGE_MENU)
-        menu_open();
     if (page != PAGE_SEQ) {                         /* (leaving the SEQ page: REC goes on, #395; seq_leave) */
         seq_leave();
         seq_leds_off();
@@ -375,10 +400,13 @@ static void panel_encoders(int32_t *st)
     for (k = 0; k < 7u; k++)                        /* MIDI out: the encoders as they turn, before anything uses them */
         if (ENC_CC[k] && st[k])
             midi_send(0xB0u, ENC_CC[k], rel_cc(st[k]));
+    if (sb_on && page == 0u && !cfg.midi_out && (st[0] | st[1] | st[2] | st[3] | st[4] | st[5]))
+        sb_mout_nudge();                            /* sandbox mode: SELECT, ALGO and K1..K4 drive the editor only over MIDI out
+                                                     * (D-232, D-249) */
     for (k = 0; k < 7u; k++)                        /* a turn while the track's clear asks: not cleared (#231) */
         if (st[k])
             seq_clear_cancel();
-    if (page == PAGE_MENU) {                        /* the menu (#395): ALGO the tab, SELECT the manual's scroll (menu.c); PRESET
+    if (page == PAGE_MENU) {                        /* the menu (#395): ALGO the tab, SELECT the guide's scroll (menu.c); PRESET
                                                      * steps the patches; a settings tab's K1..K4 go on below, as a device page's */
         menu_knobs(st);
         if (st[6])
@@ -551,6 +579,8 @@ static int panel_key(uint32_t n, int down, int quick)
     keys_now ^= bit;
     if (down)                                       /* a key while the track's clear asks: not cleared (#231) */
         seq_clear_cancel();
+    if (down && sb_on && !cfg.midi_out && !help_on)
+        sb_mout_due = 1;                            /* (sandbox mode: the note reaches nothing; panel_status nudges, D-228) */
     eng_midi_channel(cfg.ch);
     if (down && !sb_on && !help_on && (panel_held >> BTN_REC & 1u) && seq_black(n) >= 0) {   /* REC held + a black key: arm (#139) */
         seq_arm_key(n);
@@ -744,10 +774,15 @@ static void panel_edges(uint32_t p, uint32_t rel)
         help_edges(p, rel, pair);
         return;
     }
-    if (sb_on && page != PAGE_MENU) {               /* sandbox mode: the buttons went out as MIDI for the editor's patch; here only
-                                                     * the FM-1's own (OCT, HOME, PLAY, GLO) */
-        p &= SB_OWN_BTNS;
-        rel &= SB_OWN_BTNS;
+    if (sb_on) {                                    /* sandbox mode: the buttons went out as MIDI for the editor's patch; here only
+                                                     * the FM-1's own (OCT, HOME, PLAY, GLO) and the menu's. SAVE, REC, SEQ, ENV
+                                                     * and SEL: a nudge, from the menu too, where SAVE keeps its job (D-249);
+                                                     * the SEQ, environment and SONG pages do not open (D-232) */
+        uint32_t own = page == PAGE_MENU ? ~(SB_NUDGE_BTNS & ~(1u << BTN_SAVE)) : SB_OWN_BTNS;
+        if (p & SB_NUDGE_BTNS & ~own)
+            sb_nudge(p & SB_NUDGE_BTNS & ~own);
+        p &= own;
+        rel &= own;
     }
     if ((p & ~(1u << BTN_REC)) || (rel & (1u << BTN_SEQ)))   /* the track's clear asks: another button, or SEQ let go, */
         seq_clear_cancel();                                   /* and it is not cleared (#231) */
@@ -771,7 +806,9 @@ static void panel_edges(uint32_t p, uint32_t rel)
                                                      * a drum track's too) */
         int roll = seq_module() >= 0 && seq_map() < 0;
         if (!roll || !(panel_held >> BTN_ACC & 1u)) {
-            if (oct_rel & (1u << BTN_OCT_DOWN))
+            if (oct_rel && seq_module() >= 0 && seq_len(seq_module()) <= 16)
+                ui_msg("ALL 16 STEPS SHOWN", NUDGE_MS);   /* (one page of steps: nothing to page to, D-249) */
+            else if (oct_rel & (1u << BTN_OCT_DOWN))
                 seq_page_step(-1);
             if (oct_rel & (1u << BTN_OCT_UP))
                 seq_page_step(1);
@@ -800,7 +837,7 @@ static void panel_edges(uint32_t p, uint32_t rel)
         sel_open();
     if (p & (1u << BTN_ENV))                        /* ENV (#197, fixed): the environment, on its release (held + SAVE: a preset) */
         env_held_used = 0;
-    if ((rel & (1u << BTN_ENV)) && !env_held_used && page != PAGE_MENU) {
+    if ((rel & (1u << BTN_ENV)) && !env_held_used) {   /* (from the menu too: the environment, D-249) */
         if (page != PAGE_ENV)
             env_open();
         page_set(PAGE_ENV);                         /* (again: back) */
@@ -847,6 +884,13 @@ static void panel_edges(uint32_t p, uint32_t rel)
     {
         uint32_t b;
         for (b = 0; b < ENG_PANEL_BUTTONS; b++) {
+            if ((p >> PANEL_BTN_ID[b] & 1u) && !(FIXED_BTNS >> b & 1u) && !panel_btn_job(b)
+                && !((page == PAGE_SEQ || page == PAGE_SONG) && (PANEL_BTN_ID[b] == BTN_ACC || PANEL_BTN_ID[b] == BTN_LFO))) {
+                char m[28];                         /* a patch button with no job in the patch names itself (D-249); FX and LFO
+                                                     * have the SEQ and SONG pages' jobs there */
+                put(put(m, PANEL_BTN_NAME[b]), ": NOT USED IN PATCH")[0] = 0;
+                ui_msg(m, NUDGE_MS);
+            }
             if (p >> PANEL_BTN_ID[b] & 1u)
                 panel_button(b, 1);
             if (rel >> PANEL_BTN_ID[b] & 1u)
@@ -882,6 +926,12 @@ static void panel_status(void)
         sb_home_due = 0;
         if (sb_on && page != 0u && page != PAGE_MENU)
             page_show(0u);
+        sb_mout_due = sb_on && !cfg.midi_out;       /* (MIDI OUT off: the nudge at once) */
+    }
+    if (sb_mout_due) {                              /* a key in sandbox mode with MIDI OUT off (panel_key), or sandbox mode began */
+        sb_mout_due = 0;
+        if (sb_on && !cfg.midi_out && !help_on)
+            sb_mout_nudge();
     }
     if (knob_touched || button_touched) {           /* what was just moved, in the bar for a second */
         char m[40], name[16], num[12], *q = m;
