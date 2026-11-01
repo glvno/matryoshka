@@ -62,6 +62,10 @@ The searchable list of every editor action, module, assembly and patch, opened w
 
 Patches other people submitted, from the curated `community.json`, shown in Library > Community. A user adds the ones they want, and only those appear in Your patches and the palette.
 
+### Controls sheet
+
+The FM-1's list of the controls that work in its current state, drawn as a card over the dimmed screen. Pressing OCT- and OCT+ together opens it ([D-245](device-ui.md#D-245)).
+
 ### Course
 
 The whole tutorial as data: every chapter and step in `web/src/tutorial/course.json`.
@@ -174,6 +178,10 @@ Up to four card rows shown as one FM-1 page; groups fill in fours inside a secti
 
 The one order of devices shared by editor and firmware: Main, each Steps track followed by the devices it drives, the rest in reading order, the Output last.
 
+### Guide
+
+The GUIDE tab of the FM-1's settings menu: a text that explains Matryoshka's ideas, such as patch, preset and device. It lists no controls; the controls sheet does.
+
 ### Hard fork
 
 A copy of a repository that goes its own way for good: it takes no regular updates from the original and sends none back.
@@ -241,6 +249,10 @@ A per-firmware table that turns a connected FM-1's MIDI messages into panel inpu
 ### Not yet settled
 
 The list at the end of every subject file: questions we know we have not answered, each with the ticket where it is being worked. Not rows; no IDs.
+
+### Nudge
+
+A short message in the FM-1's header (at most 26 characters) that says why a control did nothing where it was pressed, and where to go instead.
 
 ### Offline copy
 
@@ -317,6 +329,10 @@ A stored set of card row values for one structure; any assembly device of that s
 ### Preset chip
 
 The ‹ name › control on an assembly device's card that picks one of its stored presets.
+
+### Quick start
+
+The card the FM-1 shows over its page after it starts. It lists how to move between devices, pages, presets and patches, and how to open the controls sheet.
 
 ### Rail
 
