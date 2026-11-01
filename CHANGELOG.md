@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### FM-1
+
+- Clearer control hints: the SEQ page names OCT for steps 17 and up (#490), shows a held step's knobs and fits SEQ+REC clear again; PRESET on a module says HOME+PRESET changes patches; the manual has more headings and fixes (#450).
+
 ### Editor
 
 - A/B is back in the editor: Set snapshot A, Set snapshot B and Switch A / B snapshots in Commands, or Alt+B (Option+B on a Mac). A flip keeps the canvas where it is (cards, frames, the view) and takes the other version's name. When only values differ (parameters, attenuverters, bypass, macro ranges, Steps notes) the browser and, with Live on, the FM-1 change them in place, so notes keep sounding; anything else loads the other version whole.

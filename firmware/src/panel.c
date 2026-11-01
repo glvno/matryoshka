@@ -558,8 +558,8 @@ static int panel_key(uint32_t n, int down, int quick)
     }
     if (down) {
         int32_t note = 53 + (int32_t)n + 12 * octave;
-        /* into an armed track at the default velocity (ENV held on its keyboard: full), so a take records what a step
-         * entered would be; else at full velocity as always */
+        /* into an armed track at the default velocity (FX held on its keyboard, a live take: the accent's), so a take
+         * records what a step entered would be; else at full velocity as always */
         uint32_t vel = eng_armed() < 0 ? 127u : seq_kbd() && (panel_held >> BTN_ACC & 1u) ? ACCENT_VEL : STEP_VEL;
         int map = seq_kbd() || sb_on ? -1 : eng_keys_drummap(), b = seq_black(n);   /* (sandbox mode: the plain notes) */
         key_note[n] = (uint8_t)(note < 0 ? 0 : note > 127 ? 127 : note);

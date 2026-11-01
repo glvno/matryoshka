@@ -2402,12 +2402,13 @@ static void dp_deleted(uint32_t structure, const char *name)
     ui_dirty = 2;                                       /* (ENV's rows lose the name) */
 }
 
-/* why a device has no presets to show, in the bar (26 characters): a plain module never has any; an assembly in a patch
+/* why a device has no presets to show, in the bar (26 characters): a plain module never has any (and HOME held + PRESET
+ * steps the patches, which a newcomer turning PRESET there is after: #450); an assembly in a patch
  * stored before format 34 has no structure to match them by (the bank's slots keep the format they were saved in: the
  * editor's Send or Live, then SAVE, rewrites it); else none stored yet */
 static void dp_none_msg(uint32_t d)
 {
-    ui_msg(d >= pg_ndev || pg_dev[d].module >= 0 ? "NO PRESETS ON A MODULE"
+    ui_msg(d >= pg_ndev || pg_dev[d].module >= 0 ? "NONE. HOME+PRESET: PATCHES"
            : !pg_dev[d].structure ? "OLD PATCH: SEND + SAVE IT" : "NONE YET: ENV+SAVE STORES", 1500);
 }
 

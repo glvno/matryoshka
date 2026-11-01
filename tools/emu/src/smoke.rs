@@ -523,7 +523,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     let p = m.peak_since(mk);
     t.check("seq: a white key plays nothing on a Drum map", p < QUIET, format!("peak {p}"));
     m.tap(SEQ, 120, 400)?;
-    t.screen(&m, "seq: SEQ opens the drum grid on its track", "ALGO: TRACK");
+    t.screen(&m, "seq: SEQ opens the drum grid on its track", "ALGO track");
     t.screen(&m, "arm: the SEQ page arms the track it shows (#395)", "DRUMS ARM");
     t.screen(&m, "seq: the row names come with the patch (format 33)", "COWBELL");
     let name = |m: &Machine, r: usize| m.lcd()[(44 + 19 * r + 1) * 240 + 49]; // a row name's field (x 4..49), coral when selected
@@ -554,7 +554,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.tap(14 + 1, 120, 100)?;
     m.key(SEQ, false);
     m.run_for(1200)?;
-    t.screen(&m, "seq: the page stays after the mute", "ALGO: TRACK");
+    t.screen(&m, "seq: the page stays after the mute", "ALGO track");
     m.tap(REC, 120, 300)?;
     m.run_for(1100)?;
     t.screen(&m, "seq: REC, running: the track shown records", "DRUMS REC");
@@ -597,8 +597,8 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     t.screen(&m, "rec: REC again: off", "REC OFF");
     m.tap(PLAY, 120, 300)?;
     m.tap(SEQ, 120, 1300)?;
-    t.screen(&m, "seq: SEQ opens the grid again", "ALGO: TRACK");
-    t.screen(&m, "arm: the track line says ARMED, the ALGO hint after it (the clear hint no longer fits, #395)", "TRACK 1/1  ARMED  ALGO: TRACK");
+    t.screen(&m, "seq: SEQ opens the grid again", "ALGO track");
+    t.screen(&m, "arm: the track line says ARMED, the ALGO and clear hints after it (#395, #450)", "TRACK 1/1  ARMED  ALGO track  SEQ+REC clear");
     m.key(SEQ, true);                        // SEQ held + REC: the track's clear asks; REC again within 3 s clears it (#231)
     m.run_for(200)?;
     m.tap(REC, 120, 300)?;
@@ -609,7 +609,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     t.check("clear: the grid's hits are gone (the kick's step 2 dark)", c != 0xffbd, format!("{c:#06x}"));
     m.key(SEQ, false);
     m.run_for(1500)?;
-    t.screen(&m, "clear: the page stays after it", "ALGO: TRACK");
+    t.screen(&m, "clear: the page stays after it", "ALGO track");
     m.tap(SEQ, 120, 400)?;
     if let Some(gb) = presets.iter().position(|(n, _)| n == "<7PH") {
         // the piano roll (#241): <7PH's PATTERN (melodic) on 8 pitch rows; a white key switches the selected pitch
@@ -645,7 +645,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
         t.screen(&m, "roll: ALGO arms the track it shows (#395)", "PATTERN ARM");
         m.tap(REC, 120, 1300)?;              // PATTERN armed (by the page), stopped: the transport starts, it records
         t.screen(&m, "roll: REC records the melodic track armed", "PATTERN REC");
-        t.screen(&m, "roll: while recording the keys are its keyboard", "KEYS record  SEL row  OCT octave");
+        t.screen(&m, "roll: while recording the keys are its keyboard", "KEYS record  SELECT row  OCT octave");
         m.tap(REC, 120, 300)?;
         m.tap(PLAY, 120, 300)?;
         m.tap(SEQ, 120, 400)?;

@@ -264,7 +264,7 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
         }
         menu_armed = (uint8_t)row;
         update_arm = fm1_ms | 1u;
-        ui_msg(row == MR_UPDATE ? "HOLD GLO 2 S: UPDATE MODE" : "HOLD GLO 2 S: FACTORY RESET", MENU_ARM_MS);
+        ui_msg(row == MR_UPDATE ? "HOLD GLO 2 S: UPDATE MODE" : "HOLD GLO 2 S: RESET BANK", MENU_ARM_MS);   /* (26 characters) */
         break;
     default: break;
     }
