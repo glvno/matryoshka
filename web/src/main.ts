@@ -263,6 +263,9 @@ let armsReported = false;
 let armsApplying = false;
 /** the change comes from the FM-1 tab's emulator (fm1-view.ts): not sent back to it, but on to a Live FM-1 */
 let fromEmu = false;
+/** the device page the FM-1 last reported (FOCUS_NOW) and when (#504): under Live it alone moves the editor's focus, and a
+ *  replayed turn just after it puts the FM-1 tab's copy of the panel back there */
+let focusNow: { device: number; page: number; at: number } | null = null;
 let deviceSlot: { slot: number; name: string } | null = null;
 device.onEvent = (e) => {
   if (e.kind === 'info') return syncChip();   // (MENU > MIDI OUT changed: the chip says so in sandbox mode)
@@ -282,7 +285,10 @@ device.onEvent = (e) => {
   if (e.kind === 'cc') return;
   if (e.kind === 'param' || e.kind === 'focus') {
     if (!exactKnobs()) return;
-    if (e.kind === 'focus') emu.ui?.focus(e.device, e.page);   // (the mirror's copy of the panel logic too)
+    if (e.kind === 'focus') {
+      emu.ui?.focus(e.device, e.page);   // (the mirror's copy of the panel logic too)
+      focusNow = { device: e.device, page: e.page, at: performance.now() };
+    }
     fromDevice = true;
     try { fm1Event(e, 'device'); } finally { fromDevice = false; }
     return;
@@ -342,6 +348,8 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
     return;
   }
   if (e.kind === 'focus') {   // the emulator (or the FM-1 it follows) shows another device page: the knobs follow
+    // (not the FM-1 tab's replay of the FM-1's own turn while FOCUS_NOW reports the page: that moved the editor twice, #504)
+    if (from === 'emu' && fromDevice && exactKnobs()) return;
     const f = editorPage(editor.patch, e.device, e.page);
     if (f) editor.focusFrom(f);
   }
@@ -1922,16 +1930,24 @@ async function mirrorInput(i: PanelInput): Promise<void> {
           break;
         }
         emu.drive(i);
+        refocusMirror(i.n === ENCODERS.select || i.n === ENCODERS.algo);
         break;
       case 'button': {
         if (i.id === BUTTONS.play) fm1PlayHeld = i.down;
         const b = PANEL_OF_ID.get(i.id);
         followOctave(noteKeys, () => emu.octave, () => emu.drive(i));   // (OCT- / OCT+: the editor's keys follow the FM-1's)
         if (b !== undefined) editor.pressButton(b, i.down);
+        refocusMirror(i.id === BUTTONS.home);
         break;
       }
     }
   } finally { fromDevice = false; }
+}
+/** after the FM-1 tab replayed a SELECT / ALGO turn or HOME under Live (#504): when the FM-1's FOCUS_NOW for it came first,
+ *  the replay moved its copy one page further; back to the page the FM-1 reported (a FOCUS_NOW that comes after does it) */
+function refocusMirror(moves: boolean): void {
+  if (!moves || !focusNow || !exactKnobs() || !emu.ui || emu.ui.page !== 0) return;
+  if (performance.now() - focusNow.at < 250) emu.ui.focus(focusNow.device, focusNow.page);
 }
 async function followFm1(fw?: Firmware): Promise<void> {
   try {
@@ -2503,6 +2519,7 @@ if (import.meta.env.DEV) {
     state: () => ({
       connected: device.connected, live: liveOn, fits: fitsDevice, sandbox: sandboxOn(), chip: fm1State(), following: mirror.following,
       playing: editor.playing, deviceRunning: device.running, octave: noteKeys.octave(), focus: editor.focus, patch: editor.patch.name,
+      focusName: editor.devices.find((d) => d.key === editor.focus?.device)?.name ?? '',
       syncAsk: syncAsk.open, status: $('dev-status').textContent, armed: [...editor.armedSet],
     }),
     patchJson: (): string => JSON.stringify(editor.patch),
