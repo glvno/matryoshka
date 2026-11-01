@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Editor
+
+- With Live on, turning SELECT or ALGO on the FM-1 no longer sometimes moves the editor one device or page further than the FM-1, which left K1..K4 in the editor on a different device from the FM-1's (#504). The FM-1 tab's copy of the panel stays on the FM-1's page too.
+
 ## 1.8.0 — 2026-11-01
 
 ### FM-1

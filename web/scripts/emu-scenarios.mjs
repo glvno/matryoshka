@@ -1027,6 +1027,24 @@ async function main() {
       await check('arming: SEL on the Arpeggiator alone: nothing here takes keys', await emu.waitText('NOTHING HERE TAKES KEYS', 1500));
       await emu.snap('arming-instrument');
     },
+    // #504: under Live a SELECT or ALGO turn on the FM-1 reaches the editor twice, as FOCUS_NOW and as the mirror's MIDI;
+    // the editor's focus must end on the FM-1's device and page, never one further
+    async focusTurns() {
+      await check('focus turns: the 808 Kit opens, synced', await openSynced('808 Kit'));
+      const same = async () => {
+        await sleep(700);
+        const x = await T();
+        const mirror = await page.evaluate(() => window.__m1test.emu());
+        return { ok: !!x.focusName && (await emu.text(x.focusName.toUpperCase().slice(0, 8))), at: `editor ${x.focusName} page ${x.focus?.page}, mirror ${mirror.device}/${mirror.page}` };
+      };
+      let k = 0;
+      for (const [enc, n] of [[ENC.select, 1], [ENC.select, 1], [ENC.algo, 1], [ENC.select, -1], [ENC.algo, -1], [ENC.select, 1]]) {
+        await emu.turn(enc, n);
+        const r = await same();
+        await emu.snap(`focus-turn-${k++}`);
+        await check(`focus turns: ${enc === ENC.select ? 'SELECT' : 'ALGO'} ${n > 0 ? '+1' : '-1'}: the editor shows the FM-1's device`, r.ok, r.at);
+      }
+    },
     // #432: a device set to no preset (a patch just opened) stands on the entry whose values it has: Silver Box's engine
     // opens on Init's, so the first PRESET turn right loads the preset after Init, not Init again. It must open on that
     // engine whatever the scenarios before left in focus (#496)
