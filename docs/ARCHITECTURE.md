@@ -886,7 +886,7 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
     hysteresis on the way up. USB configured by a host and not suspended (`usb.config && !usb.suspended`) shows a bolt
     instead: no pin tells a charger apart (Felucca's note), so a plain USB charger shows the battery. State only: the
     loop's drawing (`panel_draw` -> `batt_draw`, menu.c) draws the battery at the right end of the device page's footer
-    (the menu's settings tabs' and the sandbox page's too: `foot_batt_sync`, pages_ui.c; 11 x 6 and a 2 px nub, night on sand, 0..3 bars,
+    (the menu's settings tabs' and the sandbox page's too: `foot_batt_sync`, pages_ui.c; 11 x 6 and a 2 px nub, night on sand (on gold in sandbox mode), 0..3 bars,
     a bolt on USB power, the outline red when empty) only when the shown level changes, says LOW BATTERY once when the
     level falls to 0 (again only after a bar or USB came back), and redraws the BATTERY row's value on an idle SYSTEM
     tab. The other pages (menu, SEQ, ENV) show no battery ([D-229](ledger/device-ui.md#D-229)). Host builds
