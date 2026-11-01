@@ -120,10 +120,17 @@ static void m1_slot_now(uint32_t slot, const char *name)
     m1_reply(R_SLOT_NOW, p, sizeof p);
 }
 
-/* INFO: the answer to HELLO, and unasked when MENU > MIDI OUT changed under the editor's Live (live.c) */
+#ifndef M1_FW_MAJOR                                          /* the firmware's version (build.py --release); 0.0.0: a dev or CI build */
+#define M1_FW_MAJOR 0
+#define M1_FW_MINOR 0
+#define M1_FW_PATCH 0
+#endif
+
+/* INFO: the answer to HELLO, and unasked when MENU > MIDI OUT changed under the editor's Live (live.c). Bytes 9..11 (#216):
+ * the firmware's major, minor and patch, as in its identity FM-1_7MMmmpp; older firmware ends at byte 8 */
 static void m1_info(void)
 {
-    uint8_t p[9];
+    uint8_t p[12];
     p[0] = M1_VERSION;
     p[1] = ENG_MAX_MODULES;
     p[2] = ENG_MAX_CABLES;
@@ -133,7 +140,10 @@ static void m1_info(void)
     p[6] = M1_FEATURES2;
     p[7] = ENG_PATCH_COMPAT_VERSION;
     p[8] = ENG_PATCH_VERSION;
-    m1_reply(R_INFO, p, 9);
+    p[9] = M1_FW_MAJOR;
+    p[10] = M1_FW_MINOR;
+    p[11] = M1_FW_PATCH;
+    m1_reply(R_INFO, p, sizeof p);
 }
 
 static void m1_ack(uint32_t cmd, uint32_t seq, uint32_t status, uint32_t aux)

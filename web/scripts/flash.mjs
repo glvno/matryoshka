@@ -11,7 +11,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { productOf } from '../src/flasher/fm1pkg.js';
+import { isMatryoshkaProduct, productOf } from '../src/flasher/fm1pkg.js';
 import { REPO, ROOT, download, findBuild, smoke, smokeState } from './branch-firmware.mjs';
 
 const VENV = join(ROOT, 'build/venv');
@@ -77,7 +77,7 @@ try {
   fail(`${pkg}: ${e.message}`);
 }
 // only our own builds here (they keep Felucca's update path); the stock V15 and the rest go through fm1_install.py itself
-if (!/^FM-1_7\d\d$/.test(product)) fail(`${pkg}: identity ${product} is not a Matryoshka package (FM-1_7XY); use tools/fm1_install.py directly for others`);
+if (!isMatryoshkaProduct(product)) fail(`${pkg}: identity ${product} is not a Matryoshka package (FM-1_7MMmmpp, or FM-1_7XY before 1.8); use tools/fm1_install.py directly for others`);
 const py = python();
 
 if (!flag('--no-smoke') && given) {

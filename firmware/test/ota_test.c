@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define FELUCCA_ID "FM-1_712"
+#define FELUCCA_ID "FM-1_7010800"
 
 static uint8_t flash[0x100000];
 static uint8_t *img;                     /* the logical image the host serves */

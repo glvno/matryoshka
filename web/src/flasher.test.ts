@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 // @ts-ignore untyped JS module
-import { OPEN_HEAD_SHA256, MVAVE_LOADER_SHA256, OPEN_RELEASES, STOCK_V15_SHA256, V15_HEAD_SHA256, crc16, headIs, headWhich, logicalImage, openPackageProblem, productOf, validateOpenPackage, validateStockPackage, workbenchPackages } from './flasher/fm1pkg.js';
+import { isMatryoshkaProduct, OPEN_HEAD_SHA256, MVAVE_LOADER_SHA256, OPEN_RELEASES, STOCK_V15_SHA256, V15_HEAD_SHA256, crc16, headIs, headWhich, logicalImage, openPackageProblem, productOf, validateOpenPackage, validateStockPackage, workbenchPackages } from './flasher/fm1pkg.js';
 // @ts-ignore untyped JS module
 import { Updater, bootMismatch, headProblem, loaderFits, pack7, readHead, unpack7 } from './flasher/fm1ota.js';
 import { BOOT_CODE_HELP, BOOT_CODE_IS_OPEN, BOOT_CODE_IS_OTHER, BOOT_CODE_IS_V15, MVAVE_WORKBENCH, OPEN_WHY, guardUnload } from './flasher';
@@ -35,7 +35,7 @@ describe('bundled Matryoshka firmware (#161)', () => {
     const raw = new Uint8Array(readFileSync(new URL('../public/firmware/matryoshka.fwsc', import.meta.url)));
     const json = JSON.parse(readFileSync(new URL('../public/firmware/matryoshka.json', import.meta.url), 'utf8'));
     expect(productOf(raw)).toBe(json.product);
-    expect(json.product).toMatch(/^FM-1_7\d\d$/);
+    expect(isMatryoshkaProduct(json.product)).toBe(true);   // FM-1_7MMmmpp, or FM-1_7XY before 1.8 (#216)
     expect(json.size).toBe(raw.length);
     expect(json.sha256).toBe(createHash('sha256').update(raw).digest('hex'));
   });
@@ -55,6 +55,8 @@ describe('finishing an interrupted write (resume)', () => {
     expect(loaderFits('ota-FM1C_0123456789abcdef', 'FM-1_800')).toBe(false);
     expect(loaderFits('ota-FM-1_015', 'FM-1_8000014')).toBe(true); // Official Open carries M-VAVE's loader (#183)
     expect(loaderFits('ota-FM-1_700', 'FM-1_8000014')).toBe(false);
+    expect(loaderFits('ota-FM-1_700', 'FM-1_7010800')).toBe(true);   // #216: the seven-digit identity, the same loader
+    expect(loaderFits('ota-FM-1_015', 'FM-1_7010800')).toBe(false);
   });
 
   const parked = (text: string) => {

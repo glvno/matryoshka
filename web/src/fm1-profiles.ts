@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // A connected FM-1 drives the web app through plain MIDI, whatever firmware it runs (#120). The firmware is told by
 // M-VAVE's identity handshake (flasher/fm1ota.js: FM-1_015 stock, FM-1_8xx M-VAVE Open, FM-1_9XY Felucca or Sloop (the
-// same identity), FM-1_7XY ours) or picked by hand; a profile per firmware turns its messages into panel inputs, which the
+// same identity), FM-1_7MMmmpp ours, FM-1_7XY before 1.8) or picked by hand; a profile per firmware turns its messages into panel inputs, which the
 // page runs through Matryoshka's own panel logic (the firmware UI's WebAssembly copy, fm1-ui.ts) and the editor. What each
 // firmware sends: the 2026-10-19 survey in the old session log (`git show 057c70d:docs/NOTES.md`) and Matryoshka's map in docs/ARCHITECTURE.md "MIDI out map".
 
 import { BUTTONS, ENCODERS } from './fm1-ui';
+import { isMatryoshkaProduct } from './flasher/fm1pkg.js';
 
 export type Firmware = 'matryoshka' | 'mvave' | 'felucca' | 'baudgirl';
 
@@ -32,9 +33,10 @@ export interface Profile {
 
 /** the firmware an identity string names, null when it is none of these (Baud Girl has no known identity: by hand) */
 export function firmwareOf(identity: string | null | undefined): Firmware | null {
+  if (isMatryoshkaProduct(identity)) return 'matryoshka';   // FM-1_7MMmmpp, or FM-1_7XY before 1.8 (#216)
   const m = /^FM-1_(\d)(\d\d)$/.exec(identity ?? '');
   if (!m) return null;
-  return m[1] === '7' ? 'matryoshka' : m[1] === '9' ? 'felucca' : m[1] === '8' || m[1] === '0' ? 'mvave' : null;
+  return m[1] === '9' ? 'felucca' : m[1] === '8' || m[1] === '0' ? 'mvave' : null;
 }
 
 const notes = (d: ArrayLike<number>): PanelInput[] => {

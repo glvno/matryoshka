@@ -140,6 +140,7 @@ static int ota_send_msg(uint32_t cmd, const uint8_t *body, uint32_t n)   /* n <=
 static void ota_reply_identity(void)
 {
     static const char ID[] = FELUCCA_ID;         /* == the package marker string */
+    _Static_assert(sizeof FELUCCA_ID <= 28u, "the identity fits the handshake's 27 bytes (build.py check_identity)");
     uint8_t id[27];
     uint32_t i;
     for (i = 0; i < sizeof id; i++)

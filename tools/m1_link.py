@@ -129,7 +129,8 @@ def main():
     if a[0] == "info":
         p = link.ask(frame(0x01), (0x41,))
         print(f"protocol {p[0]}, max modules {p[1]}, max cables {p[2]}, flash {'ok' if p[3] & 1 else 'no'}, "
-              f"patch {'loaded' if p[3] & 2 else 'none'}, delays {p[4]}")
+              f"patch {'loaded' if p[3] & 2 else 'none'}, delays {p[4]}"
+              + (f", firmware {p[9]}.{p[10]}.{p[11]}{' (a dev or CI build)' if not any(p[9:12]) else ''}" if len(p) >= 12 else ""))
     elif a[0] == "upload":
         data = open(a[1], "rb").read()
         for seq, off in enumerate(range(0, len(data), 384)):
