@@ -3,7 +3,7 @@
 /* The settings menu, after ui.c, pages_ui.c and sandbox_ui.c, before main.c:
  *
  * MENU (GLO; GLO again or HOME closes it; #395): the FM-1's settings in tabs. ALGO steps the tabs: MIDI, PANEL and SYSTEM
- * are pages of settings on K1..K4, drawn as a device page (pages_ui.c menu_tab_page; the knobs go through panel.c as on
+ * are pages of settings on K1..K4 (SYSTEM: UPDATE MODE, FACTORY RESET, QUICK START), drawn as a device page (pages_ui.c menu_tab_page; the knobs go through panel.c as on
  * a device page); INFO lists readings (drawn here) and MANUAL is a text SELECT scrolls. The values are applied at once
  * and saved with the state (SAVE: main.c save bits; SAVE in the menu closes it). UPDATE MODE and FACTORY RESET (SYSTEM)
  * take a hold: a turn to the right arms the row for MENU_ARM_MS, GLO held 2 s then does it (menu_fire, from panel.c), so
@@ -22,7 +22,8 @@ static void defaults_now(void);
 /* ---- settings menu */
 
 static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "KNOB ACCEL", "COUNT-IN", "MIDI CHANNEL", "CLOCK IN", "MIDI OUT",
-                                              "VERSION", "CPU", "CPU PEAK", "BANK SLOTS", "BATTERY", "UPDATE MODE", "FACTORY RESET"};
+                                              "VERSION", "CPU", "CPU PEAK", "BANK SLOTS", "BATTERY", "UPDATE MODE", "FACTORY RESET",
+                                              "QUICK START"};
 #define INFO_N 5u
 static const uint8_t INFO_ROWS[INFO_N] = {MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT};   /* the INFO tab's list, top down */
 #define MENU_ARM_MS 5000u                               /* an armed SYSTEM row waits this long for GLO's hold */
@@ -74,6 +75,7 @@ static void menu_value(uint32_t row, char *out)
     }
     case MR_CLOCK: p = put(p, ONOFF[cfg.clock_in]); break;
     case MR_MOUT: p = put(p, ONOFF[cfg.midi_out]); break;
+    case MR_QUICK: p = put(p, ONOFF[cfg.quick]); break;
     case MR_VERSION: p = put(p, FELUCCA_VERSION); break;
     case MR_BATT: {                              /* the smoothed reading (0..1023) and the bars it gives (ui.c ui_battery) */
         uint8_t s = batt_shown();
@@ -252,6 +254,7 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
     }
     case MR_CLOCK: cfg.clock_in = (uint8_t)up; break;
     case MR_MOUT: cfg.midi_out = (uint8_t)up; break;
+    case MR_QUICK: cfg.quick = (uint8_t)up; break;  /* the quick start after power-on (D-240, D-247) */
     case MR_UPDATE:
     case MR_DEFAULTS:                               /* a turn right arms the row for GLO's hold (menu_fire), left disarms it */
         menu_armed = MR_COUNT;

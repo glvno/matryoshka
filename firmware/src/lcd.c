@@ -89,7 +89,7 @@ static void lcd_line_flip(void)        /* the buffer just handed to the DMA is t
     lcd_line = lcd_line == lcd_lines[0] ? lcd_lines[1] : lcd_lines[0];
 }
 
-static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
+static void lcd_fill_raw(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 {
     uint32_t i, n, k, sw = (uint16_t)((c >> 8) | (c << 8));
     if (!w || !h || x >= 240u || y >= 240u)
@@ -129,7 +129,7 @@ static void lcd_line_send(uint32_t x, uint32_t y, uint32_t w)
 
 /* lcd_line's first w pixels (RGB565, native order) out as one scanline at x, y: swapped to big endian in place, then
  * lcd_line_send */
-static void lcd_line_out(uint32_t x, uint32_t y, uint32_t w)
+static void lcd_line_out_raw(uint32_t x, uint32_t y, uint32_t w)
 {
     uint32_t i;
     for (i = 0; i < w; i++)
@@ -137,6 +137,9 @@ static void lcd_line_out(uint32_t x, uint32_t y, uint32_t w)
     scr_line(x, y, w);
     lcd_line_send(x, y, w);
 }
+
+/* lcd_fill and lcd_line_out: the above, under a card's overlay when one shows (help_ui.c) */
+#include "lcd_ovl.h"
 
 /* ST7789V init: reset, then 16-bit colour, scan direction and IPS inversion;
  * voltage and gamma stay at the defaults. Format: cmd, n, n data bytes;

@@ -69,10 +69,12 @@ int main(void)
         ui_dirty = 2;
         panel_draw();
         result(source == 1 ? "USB notes play and release DURING page redraw" : "TRS notes play and release DURING page redraw");
-        reset_probe();
+        panel_held |= 1u << BTN_OCT_UP;                  /* (OCT acts on its release: D-245) */
         panel_edges(1u << BTN_OCT_UP, 0);
-        result(source == 1 ? "USB notes play and release DURING octave message" : "TRS notes play and release DURING octave message");
+        panel_held &= ~(1u << BTN_OCT_UP);
+        reset_probe();
         panel_edges(0, 1u << BTN_OCT_UP);
+        result(source == 1 ? "USB notes play and release DURING octave message" : "TRS notes play and release DURING octave message");
     }
     eng_all_notes_off();
     lcd_service = service_probe;

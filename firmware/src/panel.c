@@ -16,6 +16,7 @@ static void midi_send(uint32_t status, uint32_t d1, uint32_t d2);
 static void midi_send_rt(uint32_t b);                   /* a one-byte real-time message (Start 0xFA, Stop 0xFC) */
 static void preset_step(int32_t d);                     /* PRESET: the next / previous patch */
 static void save_state(void);                           /* SAVE */
+static void settings_store(void);                       /* the settings record now, alone (HOME + SAVE on the quick start) */
 static int poly_row_set(uint32_t mod, uint32_t field, int32_t v);
 
 static uint8_t knob_touched, button_touched;  /* the knob (1..6) / patch button (1..7) last moved: the bar shows it */
@@ -276,6 +277,18 @@ static void list_focus(void)
     ui_dirty = 2;
 }
 
+/* a hold's peek at a list ends: back to what showed before it */
+static void page_peek_end(void)
+{
+    pg_list_peek = 0;
+    pg_list_btn = peek_btn;
+    pg_list_step = peek_step;
+    if (pages_focus(peek_dev, peek_pg))
+        m1_focus_now(pg_cur_dev, pg_cur_page);
+    pg_strip_dirty = 1;
+    ui_dirty = 2;
+}
+
 static void page_button(uint32_t b, int down)
 {
     const uint8_t *l;
@@ -290,13 +303,7 @@ static void page_button(uint32_t b, int down)
         return;
     page_held = -1;
     if (pg_list_peek) {                             /* the hold ends: back to what showed before it */
-        pg_list_peek = 0;
-        pg_list_btn = peek_btn;
-        pg_list_step = peek_step;
-        if (pages_focus(peek_dev, peek_pg))
-            m1_focus_now(pg_cur_dev, pg_cur_page);
-        pg_strip_dirty = 1;
-        ui_dirty = 2;
+        page_peek_end();
     } else if (n) {                                 /* a tap: the next page of the list, or into it */
         if (pg_list_btn == (int8_t)b && page == 0u) {
             pg_list_step = (uint8_t)((pg_list_step + 1u) % n);
@@ -359,6 +366,12 @@ static void panel_encoders(int32_t *st)
     uint32_t k;
     int panel = eng_find(T_FM1);
     int fine = panel_held >> BTN_HOME & 1u;         /* HOME held + K1..K4: fine turns (#340); HOME's release then goes nowhere */
+    if (help_on) {                                  /* a card shows (help_ui.c, D-245): SELECT scrolls the sheet, ALGO switches
+                                                     * its tabs, the rest does nothing; none of it goes out as MIDI (in sandbox
+                                                     * mode the editor would act on it) */
+        help_knobs_turn(st[0], st[1]);
+        return;
+    }
     for (k = 0; k < 7u; k++)                        /* MIDI out: the encoders as they turn, before anything uses them */
         if (ENC_CC[k] && st[k])
             midi_send(0xB0u, ENC_CC[k], rel_cc(st[k]));
@@ -533,23 +546,24 @@ static int panel_key(uint32_t n, int down, int quick)
     uint32_t bit = 1u << n;
     if (n >= 27u || !(keys_now & bit) == !down)
         return 1;
-    if (quick && down && !sb_on && seq_black(n) >= 0 && (panel_held & (1u << BTN_REC | 1u << BTN_SEQ)))
+    if (quick && down && !sb_on && !help_on && seq_black(n) >= 0 && (panel_held & (1u << BTN_REC | 1u << BTN_SEQ)))
         return 0;
     keys_now ^= bit;
     if (down)                                       /* a key while the track's clear asks: not cleared (#231) */
         seq_clear_cancel();
     eng_midi_channel(cfg.ch);
-    if (down && !sb_on && (panel_held >> BTN_REC & 1u) && seq_black(n) >= 0) {   /* REC held + a black key: arm (#139) */
+    if (down && !sb_on && !help_on && (panel_held >> BTN_REC & 1u) && seq_black(n) >= 0) {   /* REC held + a black key: arm (#139) */
         seq_arm_key(n);
         rec_held_used = 1;
         return 1;
     }
-    if (down && !sb_on && (panel_held >> BTN_SEQ & 1u) && seq_black(n) >= 0) {   /* SEQ held + a black key: a mute */
+    if (down && !sb_on && !help_on && (panel_held >> BTN_SEQ & 1u) && seq_black(n) >= 0) {   /* SEQ held + a black key: a mute */
         seq_mute_key(n);
         seq_held_used = 1;
         return 1;
     }
-    if (!(key_sounding & bit) && ((page == PAGE_SEQ && !seq_kbd()) || !down)) {   /* the SEQ page: steps and tracks */
+    if (!(key_sounding & bit) && ((page == PAGE_SEQ && !seq_kbd() && !help_on) || !down)) {   /* the SEQ page: steps and tracks
+                                                     * (under a card the keys play: D-245) */
         if (page == PAGE_SEQ && !seq_kbd())
             seq_key(n, down);
         else
@@ -637,18 +651,98 @@ static void preset_store_focused(void)
         ui_dirty = 2;
 }
 
+/* OCT- and OCT+ act when let go (D-245): a release changes the octave or the step page only if the other OCT was not
+ * pressed while it was held; both down opens the controls sheet. The bits (matrix ids 0, 1) of the OCTs whose release
+ * does nothing */
+#define OCT_BTNS ((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP))
+static uint8_t oct_used;
+/* the buttons whose press went out as MIDI: their release goes too (while a card shows most presses do not) */
+static uint32_t midi_btn_sent;
+
+/* a button let go while a card shows: nothing it does on a release, but what it holds ends (a Gate's jack, a Page
+ * button's hold, GLO's 2 s hold), and the flags its next press would clear are cleared */
+static void panel_release_quiet(uint32_t rel)
+{
+    uint32_t b;
+    for (b = 0; b < ENG_PANEL_BUTTONS; b++) {
+        if (!(rel >> PANEL_BTN_ID[b] & 1u))
+            continue;
+        if (eng_button_kind(b) == ENG_BTN_PAGE && !(FIXED_BTNS >> b & 1u)) {
+            if (page_held == (int8_t)b) {
+                page_held = -1;
+                if (pg_list_peek)
+                    page_peek_end();
+                page_mask();
+            }
+            continue;
+        }
+        if (b == BTN_GLO_IDX)
+            glo_t0 = 0;
+        panel_button_set(b, 0);                     /* (a held one's jack goes low; a switched one stays) */
+    }
+    if (rel & (1u << BTN_SEQ))
+        seq_held_used = 0;
+    if (rel & (1u << BTN_REC))
+        rec_held_used = 0;
+}
+
+/* the buttons while a card shows (help_ui.c; pair: OCT- + OCT+ just went down together). The sheet: HOME closes it. The
+ * quick start: HOME closes it, HOME + SAVE closes it and turns it off for good (stored at once, D-247), OCT- + OCT+ opens
+ * the sheet in its place. On both PLAY starts and stops; every other button does nothing */
+static void help_edges(uint32_t p, uint32_t rel, int pair)
+{
+    if (pair)
+        help_open(HELP_SHEET);
+    if (p & (1u << BTN_HOME))
+        home_turned = 0;
+    if (p & (1u << BTN_PLAY))
+        play_turned = 0;
+    if ((rel & (1u << BTN_PLAY)) && !play_turned)
+        play_toggle();
+    if (help_on == HELP_QUICK && (p & (1u << BTN_SAVE)) && (panel_held >> BTN_HOME & 1u)) {
+        cfg.quick = 0;
+        settings_store();
+        help_msg = "QUICK START OFF: GLO>SYSTEM";   /* (in the header as the card goes) */
+        help_msg_ms = 2500;
+        help_close();
+        home_turned = 1;                            /* (HOME's release then does nothing) */
+    } else if ((rel & (1u << BTN_HOME)) && !home_turned) {
+        help_close();
+        home_turned = 1;
+    }
+    panel_release_quiet(rel & ~(1u << BTN_HOME));
+}
+
 /* buttons pressed (p) and let go (rel) since the last call, matrix ids as bits; call it often, also with no edges: a
  * GLO held in the menu does its armed row after 2 s */
 static void panel_edges(uint32_t p, uint32_t rel)
 {
-    {                                               /* MIDI out: every button, raw, before anything uses it */
-        uint32_t id;
-        for (id = 0; (p | rel) >> id && id < 14u; id++) {
-            if (p >> id & 1u)
+    uint32_t oct_rel;
+    int pair = 0;
+    if (p & OCT_BTNS) {                             /* an OCT down while the other is (or both at once): the pair (D-245) */
+        if ((panel_held & OCT_BTNS) == OCT_BTNS) {
+            oct_used = (uint8_t)OCT_BTNS;
+            pair = 1;
+        } else
+            oct_used &= (uint8_t)~(p & OCT_BTNS);
+    }
+    oct_rel = rel & OCT_BTNS & ~(uint32_t)oct_used;
+    {                                               /* MIDI out: every button, raw, before anything uses it. While a card shows
+                                                     * only OCT, PLAY and the sheet's HOME (a mirror of the panel runs the same
+                                                     * rules), and a release only if its press went out */
+        uint32_t id, out = help_on || pair ? OCT_BTNS | 1u << BTN_PLAY | (help_on == HELP_QUICK ? 0u : 1u << BTN_HOME) : ~0u;
+        uint32_t po = p & out, ro = help_on || pair ? rel & midi_btn_sent : rel;
+        for (id = 0; (po | ro) >> id && id < 14u; id++) {
+            if (po >> id & 1u)
                 midi_send(0xB0u, BTN_CC[id], 127u);
-            if (rel >> id & 1u)
+            if (ro >> id & 1u)
                 midi_send(0xB0u, BTN_CC[id], 0u);
         }
+        midi_btn_sent = (midi_btn_sent | po) & ~rel;
+    }
+    if (help_on || pair) {                          /* a card shows, or the pair opens the sheet */
+        help_edges(p, rel, pair);
+        return;
     }
     if (sb_on && page != PAGE_MENU) {               /* sandbox mode: the buttons went out as MIDI for the editor's patch; here only
                                                      * the FM-1's own (OCT, HOME, PLAY, GLO) */
@@ -668,7 +762,7 @@ static void panel_edges(uint32_t p, uint32_t rel)
             seq_clear_press();
     }
     if (page == PAGE_MENU)                          /* the menu: OCT- / OCT+ do nothing there (#395) */
-        p &= ~((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP));
+        oct_rel = 0;
     if (page == PAGE_SEQ && seq_kbd()) {            /* the armed track's keyboard (a live take): OCT the octave, FX and LFO are the
                                                      * page's */
         p &= ~((1u << BTN_ACC) | (1u << BTN_LFO));
@@ -677,11 +771,11 @@ static void panel_edges(uint32_t p, uint32_t rel)
                                                      * a drum track's too) */
         int roll = seq_module() >= 0 && seq_map() < 0;
         if (!roll || !(panel_held >> BTN_ACC & 1u)) {
-            if (p & (1u << BTN_OCT_DOWN))
+            if (oct_rel & (1u << BTN_OCT_DOWN))
                 seq_page_step(-1);
-            if (p & (1u << BTN_OCT_UP))
+            if (oct_rel & (1u << BTN_OCT_UP))
                 seq_page_step(1);
-            p &= ~((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP));
+            oct_rel = 0;
         }
         p &= ~((1u << BTN_ACC) | (1u << BTN_LFO));
     }
@@ -722,11 +816,11 @@ static void panel_edges(uint32_t p, uint32_t rel)
     }
     if (rel & (1u << BTN_REC))
         rec_held_used = 0;
-    if (p & (1u << BTN_OCT_DOWN))
+    if (oct_rel & (1u << BTN_OCT_DOWN))             /* (on release: D-245) */
         octave = octave > -3 ? octave - 1 : octave;
-    if (p & (1u << BTN_OCT_UP))
+    if (oct_rel & (1u << BTN_OCT_UP))
         octave = octave < 3 ? octave + 1 : octave;
-    if (p & ((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP))) {
+    if (oct_rel) {
         leds_octave();
         ui_dirty = ui_dirty ? ui_dirty : 1;         /* (the footer's octave) */
         {
@@ -861,6 +955,9 @@ static void panel_draw(void)
 }
 static void panel_draw_now(void)
 {
+    help_follow();                                  /* a card first (help_ui.c), then the page: under it, a dim frame */
+    if (help_due)
+        help_draw();
     if (msg_until && fm1_ms >= msg_until)
         ui_msg_clear();
     if (ui_full) {                                  /* (a message still on show, such as the boot's, stays) */
