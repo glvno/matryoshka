@@ -619,7 +619,9 @@ const editor = new Editor($('canvas'), firstPatch, {
     else if (live()) dirty = true;
   },
   onParam(id, name, value) {
-    if (isGlobalTempo(editor.patch.modules.find((m) => m.id === id)?.type, name)) return;   // (the global tempo: tempo.listen)
+    // Main's tempo while the tempo is global: the patch's own (an undo, A/B) is only saved; the engines, the FM-1 and the
+    // FM-1 tab play the global tempo, which tempo.listen sends
+    if (isGlobalTempo(editor.patch.modules.find((m) => m.id === id)?.type, name)) return queueSave(editor.patch);
     host.send({ t: 'param', id, name, value });
     envs.changed();
     if (name === 'len') editor.refreshSteps(id);   // (a Steps module's grid follows its length)
