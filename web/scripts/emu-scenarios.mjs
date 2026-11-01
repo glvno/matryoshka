@@ -116,6 +116,8 @@ class Target {
     await sleep(150);
     return p;
   }
+  /** let `ms` pass on the FM-1 (a real one: the wall clock; the emulator overrides it with its own time) */
+  elapse(ms) { return sleep(ms); }
   /** wait up to `ms` for `s` on the LCD */
   /** the output's peak in `n` windows of about `ms` each: [ms since the first window began, peak] per window (#368: how long
    *  a note sounds; the rig's windows are a round trip longer, hence the times). A window that took far longer is left out
@@ -212,6 +214,9 @@ class Emu extends Target {
   async ms() { return Number((await this.cmd('ms')).split(' ')[1]); }
   /** let `ms` emulated ms pass */
   wait(ms) { return this.cmd(`wait ${ms}`); }
+  /** (Target's, in emulated ms: the interpreter falls behind the wall clock under load, #487, so a key held for a wall
+   *  clock time was held for less on the FM-1) */
+  elapse(ms) { return this.wait(ms); }
   /** (Target's, in emulated ms: exact windows) */
   async windows(n, ms) {
     const out = [];
@@ -762,9 +767,9 @@ async function main() {
       // REC (the SEQ page armed this drum track; stopped, REC starts the transport and records it, #395): black key 2
       // held about four steps
       await emu.tap(B.rec);
-      await sleep(400);
+      await emu.elapse(400);
       await emu.key(BLACK[1], true);
-      await sleep(450);
+      await emu.elapse(450);                        // (450 ms on the FM-1's clock, however far the emulator lags, #487)
       await emu.key(BLACK[1], false);
       ns = await notesUntil((x) => x.length >= 1);
       const rec = ns.find((x) => x.note === 55);
@@ -960,9 +965,17 @@ async function main() {
       await emu.snap('arming-instrument');
     },
     // #432: a device set to no preset (a patch just opened) stands on the entry whose values it has: Silver Box's engine
-    // opens on Init's, so the first PRESET turn right loads the preset after Init, not Init again
+    // opens on Init's, so the first PRESET turn right loads the preset after Init, not Init again. It must open on that
+    // engine whatever the scenarios before left in focus (#496)
     async devicePreset() {
+      // #496: the editor's focus on Main, as a SELECT on the FM-1 can leave it (Main is m1 in every patch). Opened, a patch
+      // still starts on its own device (D-217): before, the editor kept the last patch's focus and sent the FM-1 to Main
+      const onMain = await page.evaluate(() => window.__m1test.focus('Main'));
+      await check('device preset: the editor\'s focus on Main, the FM-1 follows it there', onMain && (await emu.waitText('TEMPO', 3000)));
       await check('device preset: Silver Box opens, synced', await openSynced('Silver Box'));
+      await sleep(300);
+      await check('device preset: it opens on its own device, not on Main where the last patch was (#496)',
+        (await emu.waitText('SILVER BOX', 2000)) && !(await emu.text('TEMPO')), `the editor's focus ${JSON.stringify((await T()).focus)}`);
       const before = await patchJson();
       await emu.turn(ENC.preset, 1);
       await check('device preset: the first PRESET turn right on a fresh engine loads ACID SQUELCH, not INIT (#432)', await emu.waitText('PRESET ACID SQUELCH', 2000));
