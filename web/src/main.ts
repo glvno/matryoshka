@@ -2428,6 +2428,12 @@ if (import.meta.env.DEV) {
       syncAsk: syncAsk.open, status: $('dev-status').textContent, armed: [...editor.armedSet],
     }),
     patchJson: (): string => JSON.stringify(editor.patch),
+    /** a device's first page into focus, by name (Main's knobs; with Live on, the FM-1 follows) */
+    focus: (name: string): boolean => {
+      const d = editor.devices.find((x) => x.name === name);
+      if (d) editor.setFocus({ device: d.key, page: 0 });
+      return !!d;
+    },
     // the preset demo (npm run demo, web/demo/README.md): a factory patch opened as the FM-1's PRESET opens it (the view
     // stays, no Undo toast), what the emulated FM-1 shows, and which factory preset an assembly's card values match now
     openFactory: (name: string): boolean => {

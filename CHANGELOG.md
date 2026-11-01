@@ -13,6 +13,7 @@
 ### Editor
 
 - A/B is back in the editor: Set snapshot A, Set snapshot B and Switch A / B snapshots in Commands, or Alt+B (Option+B on a Mac). A flip keeps the canvas where it is (cards, frames, the view) and takes the other version's name. When only values differ (parameters, attenuverters, bypass, macro ranges, Steps notes) the browser and, with Live on, the FM-1 change them in place, so notes keep sounding; anything else loads the other version whole.
+- A patch opened with Live on now opens on its first instrument on the FM-1 too. Before, the editor kept the last patch's device in focus when the new patch had one with the same internal number (Main always does), so the FM-1 could open the new patch on Main (#496).
 
 ## 1.7.1 — 2026-10-31
 
