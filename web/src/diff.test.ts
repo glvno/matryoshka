@@ -28,10 +28,10 @@ describe('patch diff', () => {
     expect(d.removed).toEqual([`Delay #${dly.id}`]);
     expect(d.cablesAdded).toHaveLength(1);
     expect(d.cablesRemoved.length).toBeGreaterThan(0); // the delay's cables went with it
-    expect(d.other).toContain(`Multimode #${flt.id}: bypassed`);
+    expect(d.other).toContain(`Multimode filter #${flt.id}: bypassed`);
     expect(d.other).toContain('wobble: poly on');
     const lines = diffLines(d);
-    expect(lines[0]).toBe(`Multimode #${flt.id} cutoff: ${Number(a.modules.find((m) => m.id === flt.id)!.params.cutoff.toFixed(4))} → 999`);
+    expect(lines[0]).toBe(`Multimode filter #${flt.id} cutoff: ${Number(a.modules.find((m) => m.id === flt.id)!.params.cutoff.toFixed(4))} → 999`);
     expect(lines).toHaveLength(diffCount(d));
   });
 });

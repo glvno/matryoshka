@@ -4,7 +4,8 @@
 
 ### Editor
 
-- Searching for a module finds it by what it does and by its old name: "filter" lists the Multimode (the state-variable filter with low, band and high pass, renamed from Filter on 2026-10-22) and the Ladder, "high pass" or "hp" finds the Multimode, and "scale" or "glide" find the Attenuverter and the Slew limiter (#513).
+- The Multimode is now called Multimode filter, on its card and on the FM-1 (#513). It is the state-variable filter with low, band and high pass outputs, called Filter until 2026-10-22.
+- Searching for a module finds it by what it does and by its old name: "filter" lists the Multimode filter and the Ladder, "high pass", "hp" or "state variable" find the Multimode filter, and "scale" or "glide" find the Attenuverter and the Slew limiter (#513).
 
 ## 1.8.1 — 2026-11-01
 

@@ -102,7 +102,7 @@ const FORMER: Record<string, string> = {
 
 /** other words a module is searched by (#513): what it does, in the words someone looking for it would type */
 const ALIASES: Record<string, string> = {
-  filter: 'filter vcf svf state variable low pass high pass band pass notch peak all pass lp hp bp',
+  filter: 'multimode vcf svf state variable low pass high pass band pass notch peak all pass lp hp bp',
   ladder: 'filter vcf moog low pass lp',
   vowel: 'filter', comb: 'filter',
 };
