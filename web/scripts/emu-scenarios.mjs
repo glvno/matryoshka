@@ -1072,6 +1072,26 @@ async function main() {
       await check('device preset: the first PRESET turn left loads the last of its list, not INIT', shown && !(await emu.text('PRESET INIT')));
       await sleep(1200);
     },
+    // #485: a Cassia 1 preset (118 rows) stored on the FM-1 holds all its rows: sent from the editor (two store slots on
+    // firmware with feature bit 17), read back whole, and loaded on the FM-1 with PRESET: every row reaches the editor.
+    // Glass Bell differs from Init in 11 of the 30 rows past 88, which an 88-value store left at Init's
+    async longPreset() {
+      const NAME = 'ZZ 485 TEST';   // (sorts after any user preset: PRESET left from Init loads it)
+      await check('long preset: Cassia 1 opens, synced', await openSynced('Cassia 1'));
+      await sleep(300);
+      const n = await page.evaluate((nm) => window.__m1test.presetOnFm1('Cassia 1', 'Glass Bell', nm), NAME);
+      await check('long preset: Glass Bell stored on the FM-1 and read back whole, 118 values', n === 118, `read back ${n}`);
+      await check('long preset: Cassia 1 opens again, on Init', await openSynced('Cassia 1'));
+      const init = await page.evaluate(() => window.__m1test.presetNow('Cassia 1'));
+      await emu.turn(ENC.preset, -1);
+      await check('long preset: PRESET left loads it on the FM-1', await emu.waitText(`PRESET ${NAME}`, 2000));
+      const now = await until(async () => { const x = await page.evaluate(() => window.__m1test.presetNow('Cassia 1')); return x && x.name === 'Glass Bell' && x.off === 0 ? x : null; }, 4000);
+      await check('long preset: all 118 rows reach the editor as Glass Bell\'s (none left at Init\'s)', !!now && init?.name === 'Init',
+        `before ${JSON.stringify(init)}, now ${JSON.stringify(await page.evaluate(() => window.__m1test.presetNow('Cassia 1')))}`);
+      await emu.snap('long-preset');
+      await sleep(1200);
+      await page.evaluate((nm) => window.__m1test.presetOnFm1('Cassia 1', 'Glass Bell', nm, true), NAME);
+    },
     // #103: the A/B flip with Live on. A = Init; B = Init with K1..K4 turned down on the FM-1. Values only: the flip sends
     // PARAM frames and no upload, and each side sounds as it did when it was set
     async abFlip() {

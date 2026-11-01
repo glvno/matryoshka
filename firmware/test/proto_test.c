@@ -14,7 +14,7 @@ static int slot_writes, slot_erases;
 static uint32_t last_slot, last_len;
 static char last_name[32];
 static uint8_t last_data[3072];
-static uint8_t replies[64][512];
+static uint8_t replies[64][1024];
 static uint32_t reply_len[64], nreplies;
 static int m1_apply(const uint8_t *p, uint32_t n)
 {
@@ -68,7 +68,7 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)   /* two pages of 32, 7 */
     return n;
 }
 /* the presets (#195): a RAM store of up to 4 */
-static struct { uint32_t st, n; char name[17]; int32_t v[88]; uint8_t used; } pst[4];
+static struct { uint32_t st, n; char name[17]; int32_t v[176]; uint8_t used; } pst[4];
 static uint32_t m1_presets(uint32_t k, uint32_t *structure, char *name, uint32_t *n)
 {
     uint32_t i, c = 0;
@@ -836,7 +836,7 @@ int main(int argc, char **argv)
     if (argc > 13 && patterns_test(argv[12], argv[13]))         /* format 48: the patterns and songs */
         return 1;
     {   /* the presets (#195): PUT, PRESETS, GET, DEL, the full store, PRESET_STORED */
-        uint8_t pl[4 + 16 + 1 + 4 * 88], fr[8 + (8 * sizeof pl + 6) / 7], got[sizeof pl];
+        uint8_t pl[4 + 16 + 1 + 4 * 177], fr[8 + (8 * sizeof pl + 6) / 7], got[sizeof pl];
         uint32_t w, k, n0;
         int32_t vals[3] = {65536, -2, 123456};
         memset(pl, 0, sizeof pl);
@@ -869,6 +869,30 @@ int main(int argc, char **argv)
         fr[3] = C_PRESET_GET;
         n0 = nreplies;
         CHECK(m1_handle(fr, w) == 1 && m1_unpack7(replies[n0] + 5, reply_len[n0] - 6, got, sizeof got) >= 21 && got[20] == 0xFF);
+        {   /* #485: 176 values (Cassia 1 has 118 rows) go both ways whole, 177 are refused; the frame fits the USB buffer */
+            nreplies = 0;
+            fr[3] = C_PRESET_PUT;
+            pl[20] = 176;
+            for (k = 0; k < 4u * 177u; k++)
+                pl[21 + k] = (uint8_t)(k * 7u + 1u);
+            w = 4 + m1_pack7(pl, 21 + 4 * 176, fr + 4);
+            n0 = nreplies;
+            CHECK(w <= 1024u && m1_handle(fr, w) == 1 && m1_unpack7(replies[n0] + 5, reply_len[n0] - 6, got, sizeof got) >= 3 && got[2] == S_OK);
+            fr[3] = C_PRESET_GET;
+            w = 4 + m1_pack7(pl, 20, fr + 4);
+            n0 = nreplies;
+            CHECK(m1_handle(fr, w) == 1 && replies[n0][4] == R_PRESET_DATA
+                  && m1_unpack7(replies[n0] + 5, reply_len[n0] - 6, got, sizeof got) == 21u + 4u * 176u && got[20] == 176 && !memcmp(got + 21, pl + 21, 4 * 176));
+            fr[3] = C_PRESET_PUT;
+            pl[20] = 177;                                        /* (a count past 176: refused, whatever follows) */
+            w = 4 + m1_pack7(pl, 21 + 4 * 176, fr + 4);
+            n0 = nreplies;
+            CHECK(m1_handle(fr, w) == 1 && m1_unpack7(replies[n0] + 5, reply_len[n0] - 6, got, sizeof got) >= 3 && got[2] == S_RANGE);
+            fr[3] = C_PRESET_DEL;
+            w = 4 + m1_pack7(pl, 20, fr + 4);
+            CHECK(m1_handle(fr, w) == 1);
+            CHECK(M1_FEATURES3 & 2u);                            /* (feature bit 17 says so) */
+        }
         n0 = nreplies;
         m1_preset_stored(0x12345678u, "DUSK");
         CHECK(nreplies == n0 + 1 && replies[n0][4] == R_PRESET_STORED);

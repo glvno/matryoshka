@@ -1569,6 +1569,29 @@ kit(
   2,
 );
 // the original four banks, the position swept by an LFO through p1, one of them phase modulated and synced
+// a fast deep vibrato (20 Hz, +-half an octave) on every oscillator path whose increment follows the pitch in spans of
+// INC_SPAN samples (#461): the plain saw, unison squares, a phase-modulated sine, a sine with feedback, a wavetable, a phase
+// distortion bend and resonance, and the pitch jumping (a square LFO) mid-block
+const vibKit = (name: string, oscs: [string, Record<string, number>][], wave = 0): void =>
+  kit(name, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const lfo = add('lfo', 0, 0, { wave, rate: 20, depth: 0.5 });
+    const mix = add('mixer', 0, 0, { l1: 0.25, l2: 0.25, l3: 0.25, l4: 0.25 });
+    const out = add('output', 0, 0);
+    const mod = add('osc', 0, 0, { wave: 0, coarse: 7, level: 1 });
+    wire(kb, 'pitch', mod, 'pitch');
+    oscs.forEach(([type, p], i) => {
+      const o = add(type, 0, 0, { level: 0.9, ...p });
+      wire(kb, 'pitch', o, 'pitch');
+      wire(lfo, 'out', o, 'pitch');
+      if ((p.pm ?? 0) > 0) wire(mod, 'out', o, 'pm');
+      wire(o, 'out', mix, `in${i + 1}`);
+    });
+    wire(mix, 'out', out, 'l');
+  });
+vibKit('vibrato-osc', [['osc', { wave: 2 }], ['osc', { wave: 3, unison: 3, detune: 20, coarse: -12 }], ['osc', { wave: 0, pm: 1.5 }], ['osc', { wave: 0, fb: 0.4, coarse: 12 }]]);
+vibKit('vibrato-wt-pd', [['wavetable', { bank: 1, pos: 0.3 }], ['pd', { wave: 1, dcw: 0.7 }], ['pd', { wave: 5, dcw: 0.3, range: 3, coarse: -12 }], ['osc', { wave: 0, coarse: 12 }]]);
+vibKit('vibrato-steps', [['osc', { wave: 2 }], ['osc', { wave: 3, unison: 2, detune: 10 }], ['osc', { wave: 0, pm: 1 }], ['pd', { wave: 0, dcw: 0.8 }]], 3);
 kit('wavetable', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const lfo = add('lfo', 0, 0, { wave: 1, rate: 0.7, depth: 1 });
