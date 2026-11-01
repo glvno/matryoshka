@@ -1,10 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.8.0 — 2026-11-01
 
 ### FM-1
 
-- Clearer control hints: the SEQ page names OCT for steps 17 and up (#490), shows a held step's knobs and fits SEQ+REC clear again; PRESET on a module says HOME+PRESET changes patches; the manual has more headings and fixes (#450).
+- Clearer control hints: the SEQ page names OCT for steps 17 and up (#490), shows a held step's knobs and fits SEQ+REC clear again; PRESET on a module says HOME+PRESET changes patches (#450).
 - The FM-1 teaches its controls (#450): after power-on a quick start card shows the knobs (HOME closes it, HOME + SAVE turns it off, GLO > SYSTEM > QUICK START turns it on again), and OCT- + OCT+ pressed together open a controls sheet for the page you are on, with a second tab of what every button does everywhere (ALGO switches tabs, SELECT scrolls, HOME closes; the keys and PLAY keep working). OCT- and OCT+ now act when let go, so pressing both changes nothing.
 - The settings menu's MANUAL tab is now GUIDE: it explains the ideas behind the FM-1 (patch, preset, device, engine, track, pattern, song, arming, the environment, Live, sandbox mode) and leaves the controls to the controls sheet (#450).
 - When a control can't act, the header says why (#450): a patch button with nothing to do in the patch ("EDIT: NOT USED IN PATCH"), PRESET with an empty bank ("BANK EMPTY"), OCT on a SEQ page of 16 steps or fewer ("ALL 16 STEPS SHOWN"), SEL on a Drum map that no keys cable reaches ("NO KEYS REACH THIS DEVICE", #215), and SAVE, REC, SEQ, ENV and SEL in sandbox mode ("SANDBOX: SEQ IN EDITOR"; they still go to the editor). In sandbox mode with MIDI OUT off, the header says "TURN ON MIDI OUT: GLO, K3". ENV in the settings menu now opens the environment, and HOME comes back to the tab you were on.
