@@ -31,7 +31,7 @@ static void sandbox_draw(int full);
 static void sandbox_bar(void);
 
 /* the settings' rows (menu.c; the menu's MIDI, PANEL and SYSTEM tabs show them as pages: pages_ui.c menu_tab_page) */
-enum { MR_LEDS, MR_ACCEL, MR_CIN, MR_CH, MR_CLOCK, MR_MOUT, MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_UPDATE, MR_DEFAULTS, MR_COUNT };
+enum { MR_LEDS, MR_ACCEL, MR_CIN, MR_CH, MR_CLOCK, MR_MOUT, MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_COUNT };
 /* the menu's tabs (menu.c, #395): MIDI, PANEL and SYSTEM are pages of settings on K1..K4, INFO a list of readings, MANUAL a text */
 enum { MT_MIDI, MT_PANEL, MT_SYSTEM, MT_INFO, MT_MANUAL, MT_COUNT };
 static uint8_t menu_tab;
@@ -46,13 +46,15 @@ static struct {
     uint8_t prog_chg;                   /* MIDI program change loads a preset */
     uint8_t midi_out;                   /* the keys, knobs and patch buttons go out over USB MIDI */
     uint8_t count_in;                   /* REC waits this many bars before it records (#414): 0 off, 1, 2 */
-} cfg = {2, 1, 1, 0, 1, 1, 1, 0};
+    uint8_t quick;                      /* the quick start shows after power-on (help_ui.c, D-247) */
+} cfg = {2, 1, 1, 0, 1, 1, 1, 0, 1};
 static void cfg_defaults(void)
 {
     cfg.cpu_bar = cfg.accel = cfg.clock_in = cfg.prog_chg = cfg.midi_out = 1;
     cfg.leds = 2;
     cfg.ch = 0;
     cfg.count_in = 0;
+    cfg.quick = 1;                      /* (FACTORY RESET turns the quick start on again, D-247) */
 }
 static uint32_t cpu_pct;                /* the audio ISR's peak time over the last half second, in % of the 2.9 ms half buffer */
 static volatile uint8_t ui_dirty;               /* 1: the knob rows need a redraw, 2: the module changed too (title, picture) */
@@ -290,9 +292,9 @@ static void batt_mark_sync(void)
 
 static void bar_text(const char *s, uint16_t bg)
 {
-    char b[28];
+    char b[30];
     uint32_t n = str_len(s), i;
-    n = n > 26u ? 26u : n;
+    n = n > 28u ? 28u : n;                      /* (a nudge has at most 26, D-249; QUICK START OFF: GLO>SYSTEM 27, D-247) */
     for (i = 0; i < n; i++)
         b[i] = s[i];
     b[n] = 0;

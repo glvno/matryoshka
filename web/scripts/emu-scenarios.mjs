@@ -401,6 +401,11 @@ async function main() {
   } else {
     await context.addInitScript(FILTER_MIDI, { name: PORT_NAME });
   }
+  // after power-on the quick start shows over the first page (D-247) and takes the panel until HOME closes it
+  if (await emu.waitText('QUICK START', DEVICE ? 1000 : 8000)) {
+    await emu.tap(B.home);
+    await sleep(300);
+  }
   let page = await context.newPage();
   page.on('pageerror', (e) => console.log(`  page error: ${e.message}`));
   const T = () => page.evaluate(() => window.__m1test.state());

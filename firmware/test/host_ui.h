@@ -62,7 +62,7 @@ static void (*lcd_service)(void);
 static void (*lcd_test_transfer)(void); /* test arrival of input while a draw is in progress */
 #endif
 static void (*lcd_yield)(void);            /* lcd.c's: called before each transfer here (on the device while one runs) */
-static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
+static void lcd_fill_raw(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 {
     uint32_t i, j;
 #ifdef FB_WATCH
@@ -121,7 +121,7 @@ static void lcd_line_send(uint32_t x, uint32_t y, uint32_t w)   /* lcd.c's */
     lcd_blit(x, y, w, 1, lcd_line);
     lcd_line_flip();
 }
-static void lcd_line_out(uint32_t x, uint32_t y, uint32_t w)   /* lcd.c's */
+static void lcd_line_out_raw(uint32_t x, uint32_t y, uint32_t w)   /* lcd.c's */
 {
     uint32_t i;
     for (i = 0; i < w; i++)
@@ -129,6 +129,7 @@ static void lcd_line_out(uint32_t x, uint32_t y, uint32_t w)   /* lcd.c's */
     scr_line(x, y, w);
     lcd_line_send(x, y, w);
 }
+#include "../src/lcd_ovl.h"          /* lcd_fill, lcd_line_out: lcd.c's, under a card (help_ui.c) */
 
 #include "../src/engine.c"
 #include "../src/presets.h"
@@ -267,4 +268,5 @@ static void m1_song_now(uint32_t s) { (void)s; host_song_told++; }
 #endif
 #include "../src/seq_ui.c"
 #include "../src/splash.c"
+#include "../src/help_ui.c"
 

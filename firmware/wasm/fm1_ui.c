@@ -149,6 +149,7 @@ static void midi_send_rt(uint32_t b)
 }
 static void preset_step(int32_t d) { js_preset(d); }
 static void save_state(void) { js_save(); }
+static void settings_store(void) {}             /* (the quick start is the FM-1's, after power-on: not here) */
 /* a poly group's setting from a device page: into the group record of the running patch, as main.c does on the device
  * (the page hears of it through m1_param_now and sends the edited patch again) */
 #include "../src/poly_edit.h"

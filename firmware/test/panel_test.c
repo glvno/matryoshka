@@ -65,6 +65,8 @@ static void preset_step(int32_t d)
     }
 }
 static void save_state(void) { saved++; }
+static int settings_stored;                         /* the settings record written alone (HOME + SAVE on the quick start) */
+static void settings_store(void) { settings_stored++; }
 #include "../src/poly_edit.h"
 static int poly_row_set(uint32_t mod, uint32_t field, int32_t v)
 {
@@ -365,6 +367,8 @@ static int marks_ok(int mod)
     }
     return ok;
 }
+
+#include "help_test.h"                              /* #450: OCT on release, the controls sheet, the quick start */
 
 int main(void)
 {
@@ -668,7 +672,7 @@ int main(void)
         enc(4, -1);
         check("  and back to OFF", cfg.count_in == 0u && on_screen("OFF"));
         enc(1, 1);
-        check("ALGO again: SYSTEM (update mode, factory reset)", menu_tab == MT_SYSTEM && pages_now()->nrows == 2u && pages_now()->par[1] == MR_DEFAULTS);
+        check("ALGO again: SYSTEM (update mode, factory reset, quick start)", menu_tab == MT_SYSTEM && pages_now()->nrows == 3u && pages_now()->par[1] == MR_DEFAULTS && pages_now()->par[2] == MR_QUICK);
         enc(1, 1);
         check("ALGO again: INFO, a list, not a page", menu_tab == MT_INFO && !menu_page() && on_screen("BANK SLOTS") && on_screen("VERSION"));
         check("  its top bar is the plain bar with the patch's name, not the coral header's top", on_screen(patch_label));
@@ -3759,6 +3763,7 @@ int main(void)
             blocks(ENG_RAMP_BLOCKS + 1u);
         }
     }
+    help_suite();
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
     return failed != 0;
 }

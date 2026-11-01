@@ -96,5 +96,6 @@ static uint32_t pages_gen(void) { return m1_gen; }
 #include "menu.c"
 #include "seq_ui.c"
 #include "splash.c"
+#include "help_ui.c"         /* the controls sheet and the quick start (#450) */
 #include "panel.c"
 #include "main.c"
