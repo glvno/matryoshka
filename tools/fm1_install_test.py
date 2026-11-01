@@ -273,5 +273,48 @@ class BootCode(unittest.TestCase):
         self.assertEqual(open(out, "rb").read(), head)
 
 
+class Identities(unittest.TestCase):
+    """#216: Matryoshka's identity has seven digits from 1.8 (FM-1_7MMmmpp), three before (FM-1_7XY); both are read"""
+    def test_both_forms(self):
+        self.assertEqual(fi.matryoshka_version("FM-1_7010800"), (1, 8, 0))
+        self.assertEqual(fi.matryoshka_version("FM-1_7011203"), (1, 12, 3))
+        self.assertEqual(fi.matryoshka_version("FM-1_7100000"), (10, 0, 0))
+        self.assertEqual(fi.matryoshka_version("FM-1_717"), (1, 7, None))
+        self.assertEqual(fi.matryoshka_version("FM-1_7000000"), "dev")
+        self.assertEqual(fi.matryoshka_version("FM-1_700"), "dev")
+        self.assertEqual(fi.describe("FM-1_7010800"), "Matryoshka 1.8.0")
+        self.assertEqual(fi.describe("FM-1_714"), "Matryoshka 1.4")
+        self.assertEqual(fi.describe("FM-1_7000000"), "Matryoshka, a dev or CI build")
+
+    def test_others_are_not_matryoshka(self):
+        for other in ("FM-1_015", "FM-1_912", "FM-1_900", "FM-1_8000014", "FM-1_800", "ota-FM-1_700", "FM-1_70108", "FM-1_7"):
+            self.assertIsNone(fi.matryoshka_version(other), other)
+            self.assertEqual(fi.describe(other), "")
+
+    def test_loaders_unchanged(self):
+        self.assertTrue(fi.loader_fits("ota-FM-1_700", "FM-1_7010800"))
+        self.assertTrue(fi.loader_fits("ota-FM-1_700", "FM-1_7000000"))
+        self.assertFalse(fi.loader_fits("ota-FM-1_015", "FM-1_7010800"))
+
+    def test_the_handshake_reads_seven_digits(self):
+        body = bytes([0x00, 0x59, 0x11, 27, 0, 0]) + b"FM-1_7010800".ljust(27, b"\0")
+        pkt = b"\xF0" + fi.pack7(body + bytes([~sum(body[6:]) & 0xFF])) + b"\xF7"
+        self.assertEqual(fi.parse_identity(pkt).text, "FM-1_7010800")
+
+
+class BuildIdentity(unittest.TestCase):
+    """tools/build.py --release X.Y.Z: the identity FM-1_7MMmmpp (#216), checked against the marker and the handshake"""
+    def test_release_identity(self):
+        import build
+        self.assertEqual(build.release_identity("1.8.0"), ("FM-1_7010800", "v1.8.0", (1, 8, 0)))
+        self.assertEqual(build.release_identity("10.12.99-rc1"), ("FM-1_7101299", "v10.12.99-RC1", (10, 12, 99)))
+        self.assertEqual(build.PRODUCT, "FM-1_7000000")
+        for bad in ("1.8", "1.8.0.1", "100.0.0", "0.0.0", "1.x.0"):
+            with self.assertRaises(SystemExit, msg=bad):
+                build.release_identity(bad)
+        with self.assertRaises(SystemExit):
+            build.check_identity("FM-1_7" + "0" * 20)
+
+
 if __name__ == "__main__":
     unittest.main()

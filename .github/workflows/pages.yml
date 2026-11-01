@@ -127,7 +127,7 @@ jobs:
       - name: the firmware package must be there
         run: |
           test -s dist/firmware/matryoshka.fwsc && test -s dist/firmware/matryoshka.json && test -s dist/firmware/FM-1_015.fwsc && test -s dist/firmware/NOTICE-FM-1_015.txt
-          grep -Eq '"product":"FM-1_7[0-9][0-9]"' dist/firmware/matryoshka.json
+          grep -Eq '"product":"FM-1_7([0-9]{2}|[0-9]{6})"' dist/firmware/matryoshka.json
       - name: deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:

@@ -5,6 +5,7 @@
 ### FM-1
 
 - Clearer control hints: the SEQ page names OCT for steps 17 and up (#490), shows a held step's knobs and fits SEQ+REC clear again; PRESET on a module says HOME+PRESET changes patches; the manual has more headings and fixes (#450).
+- The FM-1 tells the editor which version of Matryoshka it runs. When it is older than the version this site comes with, connecting says both versions and offers Update. From this release the FM-1 identifies itself as `FM-1_7` plus two digits each for major, minor and patch (1.8.0 is `FM-1_7010800`), so versions such as 1.10 fit (#216); the installers still recognise 1.0 to 1.7.
 
 ### Editor
 
