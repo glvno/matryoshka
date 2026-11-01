@@ -4,7 +4,8 @@
  *   ui_preview OUT.ppm PRESET_INDEX [SELECTED_MODULE or DEVICE:PAGE [OCTAVE [PAGE [STEP [MENU_TAB [MANUAL_LINE [POLY]]]]]]]
  * Environment: PATCHTOAST=1 PRESET's toast (the factory bank's slot; BANK=n: a bank of n filled slots instead, the patch
  * in slot SLOT, default the preset index), SANDBOX=1 sandbox mode before the editor's first page (the card), SANDBOX=2
- * with a page of the editor's (MIDIOUT=0: MENU > MIDI OUT off), BATT=0..3 or 4 (USB) the battery's level
+ * with a page of the editor's (MIDIOUT=0: MENU > MIDI OUT off), BATT=0..3 or 4 (USB) the battery's level; on the SEQ page
+ * STEPS_LEN=n the track's length, HELD=k step k held, ARM=1 the track armed (#450); PAGE 11 the SONG page; MSG=text a message in the bar
  * tools/ui_preview.sh converts the image to PNG. With UI_PREVIEW_LIB defined it is only the host's stand-ins and the UI
  * (host_ui.h; panel_test.c includes it so). */
 #include <stdint.h>
@@ -87,7 +88,15 @@ int main(int argc, char **argv)
         for (i = 0; i < 300u; i++)
             eng_render(l, r, 128);
         seq_rec = argc > 7 && atoi(argv[7]) != 0;
+        if (getenv("STEPS_LEN") && eng_steps_module(seq_trk) >= 0)
+            eng_set_param((uint32_t)eng_steps_module(seq_trk), STEPS_P_LEN, atoi(getenv("STEPS_LEN")) << 16);
+        if (getenv("ARM"))                                  /* ARM=1: the track armed, as opening the page arms it (#395) */
+            seq_arm_shown(0);
+        if (getenv("HELD"))
+            seq_held = (int8_t)atoi(getenv("HELD"));
     }
+    if (page == PAGE_SONG)                                  /* the SONG page (#375) */
+        song_prep();
     booting = 0;
     if (argc > 7) {                                         /* page 5: the menu's tab (4 = MANUAL) */
         int t = atoi(argv[7]);
@@ -129,6 +138,8 @@ int main(int argc, char **argv)
         splash_bar(SPLASH_BAR_W * 3u / 5u);
     } else
         screen_idle();
+    if (getenv("MSG"))                                      /* a message in the bar, over the page (#450: its 26 characters) */
+        ui_msg(getenv("MSG"), 1000);
     f = fopen(argv[1], "wb");
     fprintf(f, "P6\n240 240\n255\n");
     for (i = 0; i < 240u * 240u; i++) {

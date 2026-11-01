@@ -57,3 +57,5 @@ The FM-1 is a patch player: patches are built in the browser, and the device pla
 - Whether the stock battery thresholds (531 / 561 / 591) match this FM-1's readings on USB, unplugged full, later and near shutdown — issue #240
 - Whether GLO's page gets a level and a speaker mute (no such setting or hardware control is known) — issue #199
 - Whether device page bars for envelopes draw a faint envelope shape — issue #112
+- Proposed amendment to [D-229](device-ui.md#D-229): the smoothed battery reading is on the menu's INFO tab, as [D-240](device-ui.md#D-240) says, not on MENU > SYSTEM > BATTERY. The LCD manual says INFO now. — issue #450
+- Proposed amendment to [D-212](device-ui.md#D-212): when PRESET alone turns on a module's page, the bar says `NONE. HOME+PRESET: PATCHES` instead of `NO PRESETS ON A MODULE`, so it also says how to change patches. The firmware shows the new text from the pull request for issue #450. — issue #450

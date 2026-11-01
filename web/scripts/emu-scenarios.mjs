@@ -439,7 +439,7 @@ async function main() {
   /** the SEQ page, its selected track cleared (SEQ held + REC, REC again), so the steps measured are the only ones */
   async function seqCleared() {
     await emu.tap(B.seq, 120);
-    const shown = await emu.waitText('ALGO: TRACK', 3000);
+    const shown = await emu.waitText('ALGO track', 3000);
     await emu.key(B.seq, true);
     await sleep(150);
     await emu.tap(B.rec);
@@ -644,7 +644,7 @@ async function main() {
     async preset() {
       const name = (await T()).patch;
       await emu.turn(ENC.preset, 1);
-      await check('sandbox: PRESET says SANDBOX: NO PRESET', await emu.waitText('SANDBOX: NO PRESET', 1500));
+      await check('sandbox: PRESET says SANDBOX: PATCH STAYS', await emu.waitText('SANDBOX: PATCH STAYS', 1500));
       await emu.snap('preset');
       await sleep(300);
       await check('sandbox: PRESET leaves the editor\'s patch', (await T()).patch === name);
@@ -805,7 +805,7 @@ async function main() {
       await check('deaf: the editor sent it, synced', !!sent && (await emu.waitText('= OCT =', 6000)), `chip ${(await T()).chip}, ${(await T()).status}`);
       await emu.deaf(true);
       await emu.press(B.seq, 120);
-      await check('deaf: SEQ opens the drum grid', (await emu.until(3000, 'ALGO: TRACK')) !== null);
+      await check('deaf: SEQ opens the drum grid', (await emu.until(3000, 'ALGO track')) !== null);
       await emu.wait(300);
       const t0 = await emu.ms();
       for (let i = 0; i < 30; i++) {                // steps 1..16 switched, then 1..14 back: a TRACK_NOW each, nobody taking them
@@ -821,7 +821,7 @@ async function main() {
       await emu.deaf(false);
       await emu.wait(300);
       await emu.press(B.seq, 120);
-      await emu.until(3000, 'ALGO: TRACK');
+      await emu.until(3000, 'ALGO track');
       await emu.wait(300);
       const before = await patchJson();
       await emu.press(WHITE[0], 40);                // a step: its TRACK_NOW reaches the editor again
@@ -852,7 +852,7 @@ async function main() {
       const s = await until(async () => { const x = await T(); return x.live && x.chip === 'synced' && x.status === 'patch on the FM-1'; }, 10000);
       await check('roll black: synced, the device page', !!s && (await emu.waitText('= OCT =', 6000)), `chip ${(await T()).chip}, ${(await T()).status}`);
       await emu.tap(B.seq, 120);
-      await check('roll black: SEQ opens the drum grid', await emu.waitText('ALGO: TRACK', 3000));
+      await check('roll black: SEQ opens the drum grid', await emu.waitText('ALGO track', 3000));
       let tone = false;
       for (let i = 0; i < 3 && !tone; i++) {        // ALGO a track a click, to TONE (the 2nd of 3)
         await emu.turn(ENC.algo, 1);

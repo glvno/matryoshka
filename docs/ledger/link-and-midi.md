@@ -41,3 +41,4 @@ The editor and the FM-1 talk over a SysEx protocol on USB MIDI, and new capabili
 - Muting the FM-1's speaker while a computer records its USB audio — issue #169
 - Connect FM-1 fails on macOS Sequoia after flashing (only plain MIDI is seen) — issue #187
 - Whether Matryoshka uses the FM-1's Bluetooth (Bluetooth MIDI for a shared clock first), or recommends a Bluetooth MIDI adapter on the TRS input — issue #266
+- Proposed amendment to [D-461](link-and-midi.md#D-461) and [D-467](link-and-midi.md#D-467): while the editor holds the FM-1's patch, the bar says `EDITOR LIVE: PATCH STAYS` (in sandbox mode `SANDBOX: PATCH STAYS`) instead of `EDITOR LIVE: NO PRESET` / `SANDBOX: NO PRESET`. A stored sound is a patch, and a preset is a device's stored values. The firmware shows the new text from the pull request for issue #450. — issue #450

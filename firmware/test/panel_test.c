@@ -801,7 +801,7 @@ int main(void)
     }
     msg_text[0] = 0;
     enc(6, 1);
-    check("PRESET alone on a module's page (#395): no patch, NO PRESETS ON A MODULE", presets_stepped == 0 && !strcmp(msg_text, "NO PRESETS ON A MODULE"));
+    check("PRESET alone on a module's page (#395): no patch, the bar says HOME+PRESET steps them (#450)", presets_stepped == 0 && !strcmp(msg_text, "NONE. HOME+PRESET: PATCHES"));
     later(1600);
     patch_enc(1);
     check("HOME held + PRESET: the next patch", presets_stepped == 1 && page == 0);
@@ -1755,7 +1755,7 @@ int main(void)
         tap(BTN_SEQ);                                       /* SEQ while recording: the take's track, its keyboard */
         loop();
         check("SEQ while REC records: PATTERN's roll, all keys its keyboard (the hint says so)", page == PAGE_SEQ && seq_trk == 1u
-              && seq_kbd() && !strcmp(seq_grid_text[2], "KEYS record  SEL row  OCT octave"));
+              && seq_kbd() && !strcmp(seq_grid_text[2], "KEYS record  SELECT row  OCT octave  FX acc"));
         later(1100);
         check("  its bar: PATTERN REC on red", bar_shows("PATTERN REC P01", C_RED));
         snap_to(getenv("PANEL_SNAP_ROLL_REC"));
@@ -1862,7 +1862,7 @@ int main(void)
         page_set(PAGE_SEQ);
         later(1500);
         check("Scrounge's PATTERN: the drum grid of its map's rows, not the roll", page == PAGE_SEQ && seq_map() >= 0
-              && px(4u + GRID_NAME_W - 1u, GRID_Y + 1u) == C_ACC && !strcmp(seq_grid_text[2], "BLACK/SEL row  WHITE step  FX acc  K2 vel"));
+              && px(4u + GRID_NAME_W - 1u, GRID_Y + 1u) == C_ACC && !strcmp(seq_grid_text[2], "BLACK row  WHITE step  FX acc  SEL song"));
         snap_to(getenv("PANEL_SNAP_SCROUNGE"));
         while (page != 0u && trail_n)
             tap(BTN_HOME);
@@ -2437,6 +2437,18 @@ int main(void)
         eng_set_param((uint32_t)drums, STEPS_P_LEN, 32 << 16);
         ui_dirty = 2;
         loop();
+        check("a track of 32: the hint names OCT for steps 17 and up (#490)", !strcmp(seq_grid_text[2], "BLACK/SELECT row  WHITE step  FX acc  OCT 17+"));
+        {                                                   /* a step held: the hint line names its knobs, let go: back (#450) */
+            uint32_t wk;
+            for (wk = 0; seq_white(wk) != 0; wk++)
+                ;
+            panel_keys(1u << wk);
+            loop();
+            check("a step held: the hint says HELD STEP and its knobs", seq_held == 0 && !strcmp(seq_grid_text[2], "HELD STEP: K2 vel  SELECT chance"));
+            panel_keys(0);
+            loop();
+            check("  let go: the hint as before", seq_held < 0 && !strcmp(seq_grid_text[2], "BLACK/SELECT row  WHITE step  FX acc  OCT 17+"));
+        }
         tap(BTN_OCT_UP);
         ok = seq_pg == 1u && octave == 0;
         for (row = 0; row < ENG_DRUM_ROWS; row++)
@@ -2763,8 +2775,8 @@ int main(void)
         loop();
         check("a key in sandbox mode: its note out", sent(from, 0x90u, (uint32_t)(53 + 12 * octave), 100u));
         enc(6, 1);
-        check("PRESET in sandbox mode: no slot change, SANDBOX: NO PRESET", cur_preset == slot
-              && presets_stepped == stepped && !strcmp(msg_text, "SANDBOX: NO PRESET"));
+        check("PRESET in sandbox mode: no slot change, SANDBOX: PATCH STAYS", cur_preset == slot
+              && presets_stepped == stepped && !strcmp(msg_text, "SANDBOX: PATCH STAYS"));
         later(1600);
         check("  the message ends: the gold bar again", px(4, 4) == P_GOLD);
         cfg.midi_out = 0;                                   /* MIDI OUT off on the GLO page: the editor hears of it */
@@ -2782,8 +2794,8 @@ int main(void)
         m1_sandbox(&pg);
         check("  a page after it: not taken", !sb_have);
         patch_enc(-1);
-        check("PRESET under Live (resumed): still held, EDITOR LIVE: NO PRESET", cur_preset == slot
-              && presets_stepped == stepped && !strcmp(msg_text, "EDITOR LIVE: NO PRESET"));
+        check("PRESET under Live (resumed): still held, EDITOR LIVE: PATCH STAYS", cur_preset == slot
+              && presets_stepped == stepped && !strcmp(msg_text, "EDITOR LIVE: PATCH STAYS"));
         later(1600);
         m1_live(1);                                         /* over the budget once more */
         check("LIVE paused after a resume: sandbox mode again", sb_on && snd_muted);
@@ -3357,7 +3369,7 @@ int main(void)
         seq_trk = 0;
         tap(BTN_SEQ);
         check("SEQ: the page arms the track it shows", page == PAGE_SEQ && seq_trk == 0u && eng_arm_mask_get() == (uint64_t)1 << drums);
-        check("  its track line: ARMED, then the ALGO hint where it fits", strstr(seq_grid_text[1], "  ARMED  ALGO: TRACK") != 0);
+        check("  its track line: ARMED, then the ALGO and clear hints where they fit (#450)", strstr(seq_grid_text[1], "  ARMED  ALGO track  SEQ+REC clear") != 0);
         enc(1, 1);
         check("ALGO there: the track it shows now armed, the one before disarmed", seq_trk == 1u && eng_arm_mask_get() == (uint64_t)1 << pat);
         later(1500);

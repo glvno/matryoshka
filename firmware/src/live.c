@@ -34,6 +34,6 @@ static int live_holds_preset(void)
 {
     if (!editor_live())
         return 0;
-    ui_msg(live_paused ? "SANDBOX: NO PRESET" : "EDITOR LIVE: NO PRESET", 1500);
+    ui_msg(live_paused ? "SANDBOX: PATCH STAYS" : "EDITOR LIVE: PATCH STAYS", 1500);   /* (a stored sound is a patch: #450) */
     return 1;
 }

@@ -528,8 +528,10 @@ static void seq_key(uint32_t n, int down)
     int w = seq_white(n), b = seq_black(n), mod = seq_module(), map = seq_map();
     int fx = (int)(panel_held >> BTN_ACC & 1u);
     if (!down) {
-        if (w >= 0 && seq_held == seq_pg * 16 + w)
+        if (w >= 0 && seq_held == seq_pg * 16 + w) {
             seq_held = -1;
+            ui_dirty = ui_dirty ? ui_dirty : 1;  /* (the hint line: no step held, #450) */
+        }
         seq_thru_up(n);
         return;
     }
@@ -1139,7 +1141,7 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
     const uint32_t *ws;
     int nn = eng_steps_notes((uint32_t)mod, &ws), j, pos = eng_steps_pos((uint32_t)mod), tick;
     int32_t len = seq_len(mod), k0 = seq_pg * 16;
-    char line[48], num[8], *p;
+    char line[64], num[8], *p;
     const char *hint;
     int remark = !full && !seq_grid_ok;          /* the markers' columns unknown: each drawn or cleared */
     if (full || !seq_grid_ok) {
@@ -1215,20 +1217,26 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
     if (eng_steps_muted((uint32_t)mod))
         p = put(p, "  MUTED");
     {                                            /* the hints where they fit (#231; the track shown is armed: #395) */
-        char *q = put(p, "  ALGO: TRACK");
-        *put(q, "  SEQ+REC: CLEAR") = 0;
+        char *q = put(p, "  ALGO track");
+        *put(q, "  SEQ+REC clear") = 0;
         if (text_w(&FONT_S, line, -1) > 224u)
             *q = 0;
         if (text_w(&FONT_S, line, -1) > 224u)
             *p = 0;
     }
     seq_grid_line(1, 202, line, C_DIM, 224);
-    if (map >= 0)
-        hint = seq_rec && seq_mod_armed(mod) ? "BLACK rec  SEL row  WHITE step  FX acc" : "BLACK/SEL row  WHITE step  FX acc  K2 vel";
-    else if (seq_kbd())
-        hint = "KEYS record  SEL row  OCT octave";
+    /* the hint line (FONT_S, at most 228 px: a longer one is cut), in the controls' words (#450: SELECT the knob, SEL the
+     * button): a step held, its knobs; a track of more than 16 steps, OCT's pages (#490); else SEL's SONG page */
+    if (seq_kbd())
+        hint = "KEYS record  SELECT row  OCT octave  FX acc";
+    else if (seq_held >= 0)
+        hint = map >= 0 ? "HELD STEP: K2 vel  SELECT chance" : "HELD STEP: K1 note  K2 vel  K3 chance";
+    else if (map >= 0 && seq_rec && seq_mod_armed(mod))
+        hint = len > 16 ? "BLACK rec  SELECT row  WHITE step  OCT 17+" : "BLACK rec  SELECT row  WHITE step  FX acc";
+    else if (map >= 0)
+        hint = len > 16 ? "BLACK/SELECT row  WHITE step  FX acc  OCT 17+" : "BLACK row  WHITE step  FX acc  SEL song";
     else
-        hint = "BLACK row  SEL+KEY pen  WHITE step  LFO tie";
+        hint = len > 16 ? "BLACK row  SEL+KEY pen  WHITE step  OCT 17+" : "BLACK row  SEL+KEY pen  WHITE step  SEL song";
     seq_grid_line(2, 222, hint, C_HINT, 228);
     seq_grid_ok = 1;
 }
@@ -1298,7 +1306,7 @@ static void seq_draw(int full)
 #define SONG_RH 19u
 static uint8_t song_sel;                /* the song shown (0..ENG_SONGS - 1) */
 static uint8_t song_cur, song_top;      /* the cursor (an entry, or the song's length: END), the first row shown */
-static char song_text[SONG_ROWS + 3u][40];   /* the rows, the info, the footer and the hint as drawn (a row's first byte: 1 the cursor) */
+static char song_text[SONG_ROWS + 3u][48];   /* the rows, the info, the footer and the hint as drawn (a row's first byte: 1 the cursor) */
 static uint8_t song_ok;                 /* the page is on the LCD as song_text says */
 static int16_t song_shown_play = -2;    /* the entry playing as drawn */
                                         /* song_del_at: SEQ held + REC: fm1_ms | 1 of the press that asked, 0 none */
@@ -1500,8 +1508,9 @@ static void song_draw(int full)
         *p = 0;
         song_line(r, SONG_Y + SONG_RH * r, t, k > n ? C_BG : k == n ? C_DIM : C_FG, k == song_cur, 120);
     }
-    song_line(SONG_ROWS + 1u, 202, "K1 PAT  K2 SHIFT  FX+K1 INSERT", C_DIM, 0, 224);
-    song_line(SONG_ROWS + 2u, 222, "ALGO SONG  SEQ+REC DEL  SEL BACK", C_HINT, 0, 228);
+    /* (FONT_S, in the SEQ page's words: 205 and 225 px of 224 and 228, #450) */
+    song_line(SONG_ROWS + 1u, 202, "SELECT entry  K1 pat  K2 shift  FX+K1 insert", C_DIM, 0, 224);
+    song_line(SONG_ROWS + 2u, 222, "ALGO song  PRESET pat  SEQ+REC del  SEL back", C_HINT, 0, 228);
     song_shown_play = (int16_t)play;
     song_ok = 1;
 }
