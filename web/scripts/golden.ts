@@ -2733,6 +2733,87 @@ for (const dirs of [[0, 0], [1, 3]]) {
   ends[name] = 128 * 1000;
 }
 
+// P-locks (#524, format 49): a melody track into an oscillator and a filter, its steps locking the filter's cutoff and
+// resonance and the oscillator's wave (a choice) on some steps, every other step back at the normal values; pattern 2 with
+// locks of its own, pattern 3 the track has not got (it plays pattern 1's notes and locks), stop (the locks let go) and
+// run; a second track on a clock in clk locks the second voice's level and cutoff past its range (clamped)
+tests['steps-locks'] = make('steps-locks', (add, wire) => {
+  add('fm1', 0, 0, { tempo: 200 });
+  const out = add('output', 2000, 0, { level: 0.6 });
+  const voice = (x: number, wave: number, p: Record<string, number>, port: string): void => {
+    const st = add('steps', x, 0, p);
+    const o = add('osc', x + 100, 0, { wave });
+    const f = add('filter', x + 150, 0, { cutoff: 800, res: 0.3 });
+    const env = add('adsr', x + 100, 200, { a: 0.002, d: 0.06, s: 0.5, r: 0.03 });
+    const v1 = add('vca', x + 200, 0);
+    wire(st, 'pitch', o, 'pitch'); wire(st, 'trig', env, 'gate');
+    wire(o, 'out', f, 'in'); wire(f, 'lp24', v1, 'in'); wire(env, 'env', v1, 'cv');
+    wire(v1, 'out', out, port);
+  };
+  voice(200, 1, { len: 8, rate: 6, gate: 0.6 }, 'l');
+  voice(700, 2, { len: 6, gate: 0.5 }, 'r');
+  add('lfo', 600, 400, { wave: 3, rate: 6, depth: 1 });
+});
+{
+  const p = tests['steps-locks'];
+  const [a, b] = p.modules.filter((m) => m.type === 'steps');
+  const [oa, ob] = p.modules.filter((m) => m.type === 'osc');
+  const [fa, fb] = p.modules.filter((m) => m.type === 'filter');
+  const lfo = p.modules.find((m) => m.type === 'lfo')!;
+  p.cables.push({ from: { module: lfo.id, port: 'out' }, to: { module: b.id, port: 'clk' } });
+  a.notes = [n(0, 1, 48), n(1, 1, 55, 127), n(2, 2, 60), n(4, 1, 63, 90), n(5, 1, 67), n(6, 1, 70, 40), n(7, 1, 72)];
+  a.locks = [
+    { at: 0, module: fa.id, param: 'cutoff', value: 3000 }, { at: 0, module: fa.id, param: 'res', value: 0.8 },
+    { at: 2, module: fa.id, param: 'cutoff', value: 250 }, { at: 3, module: oa.id, param: 'wave', value: 2 },
+    { at: 5, module: fa.id, param: 'cutoff', value: 6000 }, { at: 7, module: fa.id, param: 'res', value: 0.05 },
+  ];
+  a.patterns = [{ notes: [n(0, 2, 62, 127), n(2, 1, 65), n(3, 1, 67), n(4, 3, 70, 77)], len: 5,
+    locks: [{ at: 1, module: fa.id, param: 'cutoff', value: 1800 }, { at: 3, module: oa.id, param: 'wave', value: 0 }] }];
+  b.notes = [n(0, 1, 36), n(2, 1, 43, 70), n(3, 1, 39), n(5, 1, 36, 127)];
+  b.locks = [{ at: 2, module: fb.id, param: 'cutoff', value: 99999 }, { at: 3, module: ob.id, param: 'level', value: 0.2 }, { at: 5, module: fb.id, param: 'res', value: 0.9 }];
+  events['steps-locks'] = [[128 * 5, 'run', 0], [128 * 120, 'pat', 1], [128 * 300, 'pat', 2], [128 * 450, 'stop', 0], [128 * 480, 'pat', 0], [128 * 500, 'run', 0]];
+  ends['steps-locks'] = 128 * 700;
+}
+
+// P-locks on a poly device (#524, #519 Q5): a track of chords into three voices (an oscillator, two filters in series, an
+// envelope, a VCA); the device's cutoff row sets both filters (a row's further parameter, PageRow.also), so a lock on it
+// moves both, in every voice; a lock on the envelope's decay (no page row: it still plays)
+tests['steps-locks-poly'] = make('steps-locks-poly', (add, wire) => {
+  add('fm1', 0, 0, { tempo: 150 });
+  const st = add('steps', 200, 0, { len: 8, rate: 4, gate: 0.7 });
+  const al = add('alloc', 400, 0, { voices: 3 });
+  const o = add('osc', 600, 0, { wave: 1, level: 0.5 });
+  const f1 = add('filter', 650, 0, { cutoff: 900, res: 0.4 });
+  const f2 = add('filter', 700, 0, { cutoff: 900, res: 0.1 });
+  const e = add('adsr', 600, 200, { a: 0.003, d: 0.1, s: 0.5, r: 0.04 });
+  const v = add('vca', 800, 0);
+  const out = add('output', 1000, 0, { level: 0.6 });
+  wire(st, 'keys', al, 'keys');
+  wire(al, 'pitch', o, 'pitch');
+  wire(al, 'gate', e, 'gate');
+  wire(o, 'out', f1, 'in'); wire(f1, 'lp24', f2, 'in'); wire(f2, 'lp12', v, 'in');
+  wire(e, 'env', v, 'cv');
+  wire(v, 'out', out, 'l');
+});
+{
+  const p = tests['steps-locks-poly'];
+  const ids = p.modules.filter((m) => ['alloc', 'osc', 'filter', 'adsr', 'vca'].includes(m.type)).map((m) => m.id);
+  const [f1, f2] = p.modules.filter((m) => m.type === 'filter');
+  const e = p.modules.find((m) => m.type === 'adsr')!;
+  const asm = makeAssembly(p, ids, 'locked voices');
+  asm.poly = {};
+  asm.params = [{ module: f1.id, param: 'cutoff', label: 'cutoff', also: [{ module: f2.id, param: 'cutoff' }] }, { module: f1.id, param: 'res', label: 'res' }];
+  const st = p.modules.find((m) => m.type === 'steps')!;
+  st.notes = [n(0, 2, 48), n(0, 2, 55), n(0, 2, 60), n(2, 1, 67), n(3, 1, 50), n(3, 1, 57), n(4, 2, 62), n(6, 1, 65), n(6, 1, 69), n(7, 1, 72)];
+  st.locks = [
+    { at: 0, module: f1.id, param: 'cutoff', value: 4000 }, { at: 2, module: f1.id, param: 'cutoff', value: 300 },
+    { at: 3, module: f1.id, param: 'res', value: 0.9 }, { at: 4, module: e.id, param: 'd', value: 0.4 },
+    { at: 6, module: f1.id, param: 'cutoff', value: 9000 },
+  ];
+}
+events['steps-locks-poly'] = [[128 * 5, 'run', 0], [128 * 500, 'stop', 0]];
+ends['steps-locks-poly'] = 128 * 560;
+
 // songs (format 48): a song's entries, a pass each (patterns with their shift, back to the first after the last), stop and
 // PLAY start it again; another song chosen while running, then none (the selected pattern again, unshifted); a track that
 // plays a Drum map is never shifted (its notes stay on their rows) and a pattern it has not got plays its first

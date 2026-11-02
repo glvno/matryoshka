@@ -221,6 +221,8 @@ export interface Pattern {
   notes?: StepNote[];
   len?: number;
   rate?: number;
+  /** its P-locks (#524; pattern 1's are ModuleInst.locks) */
+  locks?: StepLock[];
 }
 /** a song entry: the pattern it plays (0-based) and its shift in semitones (never applied to a track that plays a Drum map) */
 export interface SongEntry { pat: number; shift: number }
@@ -256,6 +258,8 @@ export function fixPatterns(raw: unknown): (Pattern | null)[] | undefined {
     if (len !== null) p.len = len;
     const rate = o.rate === undefined ? null : int(o.rate, 0, STEPS_RATES.length - 1);
     if (rate !== null) p.rate = rate;
+    const locks = fixLocks(o.locks);
+    if (locks) p.locks = locks;
     return p;
   });
   while (out.length && out[out.length - 1] === null) out.pop();
@@ -299,3 +303,59 @@ export function patternOf(m: { notes?: StepNote[]; patterns?: (Pattern | null)[]
 export const isShortNote = (n: StepNote): boolean => n.at < 16 && n.len <= 16 && (n.vel === STEP_VEL || n.vel === ACCENT_VEL) && (n.chance ?? 100) === 100;
 export const shortWord = (n: StepNote): number => n.at | ((n.len - 1) << 4) | (n.note << 8) | (n.vel === ACCENT_VEL ? 0x8000 : 0);
 export const wordShort = (w: number): StepNote => ({ at: w & 15, len: ((w >> 4) & 15) + 1, note: (w >> 8) & 127, vel: w & 0x8000 ? ACCENT_VEL : STEP_VEL });
+
+/**
+ * A P-lock (#524, #519 Q1..Q5): on step `at` of a pattern, a row of the device the track plays (pages.ts Device.track: a
+ * module's parameter, `module` its id, `param` its name) plays `value` (in the parameter's own units, as ModuleInst.params)
+ * instead of its normal value. A step without a lock on that row plays the normal value: the device page's, or what a knob
+ * set last. On a poly device a lock moves the whole device, every voice. Both engines apply a lock while the playhead is
+ * on its step (engine.ts applyLocks, engine.c locks_step); the binary carries them in the locks section (patchbin.ts
+ * lockRecord, format 49).
+ */
+export interface StepLock {
+  at: number;
+  module: number;
+  param: string;
+  value: number;
+}
+/** the most locks a pattern holds (#519 Q1: the FM-1's patch bytes); engine.c ENG_PAT_LOCKS */
+export const LOCKS_MAX = 64;
+/** the most rows one track locks, over all its patterns (engine.c ENG_LOCK_TARGETS counts them for the whole patch) */
+export const LOCK_ROWS_MAX = 32;
+
+const lockOrder = (a: StepLock, b: StepLock): number => a.at - b.at || a.module - b.module || (a.param < b.param ? -1 : a.param > b.param ? 1 : 0);
+
+/** a pattern's locks from anything: valid, sorted by step, then row, one per step and row (the last kept), at most
+ * LOCKS_MAX; undefined when there are none */
+export function fixLocks(raw: unknown): StepLock[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const by = new Map<string, StepLock>();
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') continue;
+    const o = r as Record<string, unknown>;
+    const at = Number(o.at), module = Number(o.module), value = Number(o.value);
+    if (!Number.isInteger(at) || at < 0 || at >= STEPS_MAX || !Number.isInteger(module) || module < 0 || typeof o.param !== 'string' || !o.param || !Number.isFinite(value)) continue;
+    by.set(`${at}/${module}/${o.param}`, { at, module, param: o.param, value });
+  }
+  const out = [...by.values()].sort(lockOrder).slice(0, LOCKS_MAX);
+  return out.length ? out : undefined;
+}
+
+/** the locks on step k */
+export const locksAt = (locks: readonly StepLock[] | undefined, k: number): StepLock[] => locks?.filter((l) => l.at === k) ?? [];
+
+/** step k's lock on a row set (value) or removed (null); undefined when none are left. A new lock past LOCKS_MAX is not
+ * added (the list comes back unchanged) */
+export function setLock(locks: readonly StepLock[] | undefined, k: number, module: number, param: string, value: number | null): StepLock[] | undefined {
+  const out = (locks ?? []).filter((l) => !(l.at === k && l.module === module && l.param === param));
+  if (value !== null) {
+    if (out.length >= LOCKS_MAX) return fixLocks([...(locks ?? [])]);
+    out.push({ at: k, module, param, value });
+  }
+  return fixLocks(out);
+}
+
+/** a track's locks of pattern p (0-based: pattern 1's are the module's own) */
+export function patternLocks(m: { locks?: StepLock[]; patterns?: (Pattern | null)[] }, p: number): StepLock[] | undefined {
+  return p > 0 ? m.patterns?.[p - 1]?.locks : m.locks;
+}
