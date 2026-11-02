@@ -163,7 +163,7 @@ static struct {
 #include "uac_fir.h"
 /* the resampler's input history: the last 32 frames, written twice so a window of UAC_FIR_N never wraps */
 #define RS_H 32u
-_Static_assert(RS_H >= UAC_FIR_N && (RS_H & (RS_H - 1u)) == 0, "the history holds a window");
+_Static_assert(RS_H >= UAC_FIR_N && (RS_H & (RS_H - 1u)) == 0 && UAC_FIR_N % 4u == 0, "the history holds a window; 4 taps a pass");
 static struct {
     int16_t l[2u * RS_H], r[2u * RS_H];   /* r right after l (the FIR loop reads both from one pointer) */
     uint32_t w;                  /* input frames written */
@@ -1423,10 +1423,10 @@ static inline int32_t uac_s16(int32_t v)
 /* 44.1 -> 48 kHz (x 160 / 147), one block: each input frame enters the history, then the 1 or 2 output
  * frames whose newest input it is: phase ph, the window of UAC_FIR_N frames ending at it, the taps of
  * phase ph (or of 159 - ph backwards: the prototype is symmetric), the taps in Q(UAC_FIR_Q) into
- * uac_acc_t sums. Matryoshka (#535): Q15 into 32-bit sums. Felucca's Q30 into 64-bit sums cost the FM-1 about 9 % of
- * a half more than 44.1 kHz streaming (Io 4, 8 notes: the guard's mean 2,295 -> 2,557 us, measured on the test rig).
- * A phase's taps add up to at most 2.15 in magnitude, so the history is held within +-UAC_X_MAX (-0.8 dBFS) and a
- * 32-bit sum never overflows (tools/gen_uac_fir.py checks the bound). */
+ * uac_acc_t sums: Q30 into 64-bit sums. On the test rig (#535) Q15 taps into 32-bit sums were no faster (Io 4, 8
+ * notes at 48 kHz: the guard's mean 2,573 us against 2,589) and 5 dB noisier, so the loop does four taps a pass
+ * instead. A table of Q15 or less would use 32-bit sums, the history held within +-UAC_X_MAX (a phase's taps add up
+ * to at most 2.15 in magnitude; tools/gen_uac_fir.py checks the bound). */
 #if UAC_FIR_Q > 15
 typedef int64_t uac_acc_t;
 #define UAC_X_MAX 32767
@@ -1457,21 +1457,26 @@ static __attribute__((noinline)) void uac_tap48(const int32_t *out, uint32_t n)
             const int16_t *x = &rs.l[s];                /* R: x[2 * RS_H] */
             uac_acc_t al = 0, ar = 0;
             int32_t yl, yr;
+            /* four taps a pass (UAC_FIR_N is a multiple of 4): the loop's own instructions were a third of it */
+#define UAC_MAC4(d)                                                                                              \
+    do {                                                                                                         \
+        int32_t t0 = c[0], t1 = c[d], t2 = c[2 * (d)], t3 = c[3 * (d)];                                          \
+        al += (uac_acc_t)t0 * x[0] + (uac_acc_t)t1 * x[1] + (uac_acc_t)t2 * x[2] + (uac_acc_t)t3 * x[3];         \
+        ar += (uac_acc_t)t0 * x[2u * RS_H] + (uac_acc_t)t1 * x[2u * RS_H + 1u] + (uac_acc_t)t2 * x[2u * RS_H + 2u] + \
+              (uac_acc_t)t3 * x[2u * RS_H + 3u];                                                                 \
+        c += 4 * (d);                                                                                            \
+        x += 4;                                                                                                  \
+    } while (0)
             if (ph < UAC_FIR_L / 2u) {
                 const UAC_FIR_T *c = UAC_FIR[ph];
-                for (j = UAC_FIR_N; j; j--, x++) {
-                    int32_t t = *c++;
-                    al += (uac_acc_t)t * x[0];
-                    ar += (uac_acc_t)t * x[2u * RS_H];
-                }
+                for (j = UAC_FIR_N / 4u; j; j--)
+                    UAC_MAC4(1);
             } else {
                 const UAC_FIR_T *c = &UAC_FIR[UAC_FIR_L - 1u - ph][UAC_FIR_N - 1u];
-                for (j = UAC_FIR_N; j; j--, x++) {
-                    int32_t t = *c--;
-                    al += (uac_acc_t)t * x[0];
-                    ar += (uac_acc_t)t * x[2u * RS_H];
-                }
+                for (j = UAC_FIR_N / 4u; j; j--)
+                    UAC_MAC4(-1);
             }
+#undef UAC_MAC4
             yl = uac_s16((int32_t)((al + (1 << (UAC_FIR_Q - 1))) >> UAC_FIR_Q));
             yr = uac_s16((int32_t)((ar + (1 << (UAC_FIR_Q - 1))) >> UAC_FIR_Q));
 #if FELUCCA_UAC_TONE

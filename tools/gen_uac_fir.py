@@ -37,7 +37,7 @@ from pathlib import Path
 
 L, M = 160, 147
 FS = 44100.0
-QB = 15                                 # 32-bit sums on the FM-1 (usb.c uac_acc_t); int16 taps
+QB = 30                                 # Q30 taps into 64-bit sums (usb.c uac_acc_t)
 CTYPE = "int16_t" if QB <= 14 else "int32_t"
 N, BETA, FC = 24, 9.5, 22300.0          # taps per phase, Kaiser beta, cut-off (Hz at 44.1 kHz)
 STOP = 28000.0                          # images above this fold below 20 kHz at 48 kHz

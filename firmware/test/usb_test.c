@@ -1245,13 +1245,13 @@ static void resample_sine(double f, double amp, double *gain_db, double *thdn_db
 static void test_resampler(void)
 {
     static const struct { double f, amp, gain_lo, gain_hi, thdn_max, img_max; } T[] = {
-        /* Q15 taps (32-bit sums): THD+N 4..5 dB above the 16-bit floor (-93 dB at -1 dBFS, -89 at -6) */
-        {1000.0, 29204.0, -0.05, 0.05, -86.0, -95.0},          /* -1 dBFS */
-        {5000.0, 16384.0, -0.05, 0.05, -83.0, -95.0},          /* -6 dBFS */
-        {10000.0, 16384.0, -0.05, 0.05, -83.0, -95.0},
-        {15000.0, 16384.0, -0.05, 0.05, -83.0, -92.0},         /* the image at 29.1 kHz folds to 18.9 kHz */
-        {18000.0, 16384.0, -0.1, 0.05, -83.0, -30.0},          /* image 26.1 kHz -> 21.9 kHz: above the audio band */
-        {20000.0, 16384.0, -1.5, 0.05, -80.0, -10.0},          /* the top of the passband; image at 23.9 kHz */
+        /* THD+N at the 16-bit floor (-93 dB at -1 dBFS, -89 at -6: input and output each rounded to 16 bit) */
+        {1000.0, 29204.0, -0.05, 0.05, -91.0, -95.0},          /* -1 dBFS */
+        {5000.0, 16384.0, -0.05, 0.05, -87.0, -95.0},          /* -6 dBFS */
+        {10000.0, 16384.0, -0.05, 0.05, -87.0, -95.0},
+        {15000.0, 16384.0, -0.05, 0.05, -87.0, -92.0},         /* the image at 29.1 kHz folds to 18.9 kHz */
+        {18000.0, 16384.0, -0.1, 0.05, -87.0, -30.0},          /* image 26.1 kHz -> 21.9 kHz: above the audio band */
+        {20000.0, 16384.0, -1.5, 0.05, -86.0, -10.0},          /* the top of the passband; image at 23.9 kHz */
     };
     uint32_t i;
     {   /* full-scale noise (every sample +-32767 or clipped beyond): the 32-bit sums never wrap; the output is the
