@@ -214,7 +214,18 @@ During browser playback, sliders and their readouts follow dedicated CV inputs (
 
 ## Scope
 
-Add a **Scope** module and cable up to two signals into its `a` and `b` inputs; its screen sits on the card (and on an assembly card that shows it). Hover the screen for its buttons: the time window (− / +), Wave or FFT, and Voices (one trace per voice, when the source runs once per voice). Audio waveforms auto-scale and trigger on a rising crossing; the spectrum is a 2048-point Hann-windowed FFT. The Scope runs only in the browser: it is left out of what goes to the FM-1.
+Add a **Scope** module and cable up to two signals into its `a` and `b` inputs; its screen sits on the card (and on an assembly card that shows it). Hover the screen for its buttons: the time window (− / +), Wave or FFT, the scale, and Voices (one trace per voice, when the source runs once per voice). Short windows trigger on a rising crossing; the spectrum is a 2048-point Hann-windowed FFT. The Scope runs only in the browser: it is left out of what goes to the FM-1.
+
+- **A scale you can read.** Both traces share one vertical scale, drawn as gridlines labelled with their values, and the bottom right says the time per division (ten divisions: a 16 ms window is 1.6 ms/div) or, in FFT, dB and the frequencies. The scale button steps **auto** (fits the traces: a signal on both sides of 0 evenly around 0, an envelope from 0, a pitch far from 0 on its own; it grows at once and shrinks after a second), **±1** and **±4**.
+- **A readout under the screen**: for each input its lowest and highest value in the window and their distance (peak to peak), where it comes from and that output's range.
+
+## Signal ranges
+
+Every module output says what range its signal has: hover an output jack or a cable. An LFO gives −1..1 (times its depth), an envelope 0..1, a pitch 1 per octave with 0 at middle C (C4), an oscillator ±1 times its level, a gate 0 or 1. Outputs that depend on their settings work it out from the values they have now: an Offset gives its value, an Attenuverter `in × gain + offset`, Math each output for inputs of −1..1. The Scope's readout shows the same range for what is cabled into it.
+
+## Comments
+
+Right-click the empty canvas and choose **Add comment** (or "Add comment" in the palette) for a box of free text, like a Max comment: no ports, muted, under the cards. Type, then Ctrl/Cmd+Enter or click elsewhere; Esc puts the text back, and a comment left empty goes away. Double-click a comment to edit it, drag it to move it, drag its corner to resize it, right-click it for Edit text, Duplicate and Delete. Comments are selected (a click, Shift-click, a box), copied, pasted, duplicated, deleted and undone like cards. They are saved in the patch, its link and its .json file (at most 100 per patch, 500 characters each; a link without the layout leaves them out, as their places would no longer fit the cards) and show in Show changes; the FM-1 never gets them.
 
 ## Arpeggiator in the editor
 

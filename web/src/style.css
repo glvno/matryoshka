@@ -1339,6 +1339,30 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .module .param.screen { position: relative; display: block; margin: 2px 0; }
 .scope-screen { height: 64px; border-radius: 5px; background: var(--bar); overflow: hidden; }
 .scope-screen > canvas { display: block; width: 100%; height: 100%; }
+/* a comment box on the canvas (#518, like a Max comment): muted free text, under the cards, no ports */
+.comment-box { position: absolute; z-index: 1; box-sizing: border-box; padding: 6px 8px; border: 1px dashed transparent; border-radius: 6px;
+  background: color-mix(in srgb, var(--panel) 55%, transparent); color: var(--muted); cursor: grab; touch-action: none; user-select: none; overflow: hidden; }
+.comment-box:hover { border-color: var(--line); }
+.comment-box.selected { border: 1px solid var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.comment-box .comment-text { height: 100%; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; font: 400 13px/1.35 'Barlow', system-ui, sans-serif; }
+.comment-box .comment-text:empty::before { content: 'comment'; opacity: .5; font-style: italic; }
+.comment-box.editing { cursor: auto; border-color: var(--accent); background: var(--panel); }
+.comment-box .comment-edit { display: block; box-sizing: border-box; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; outline: none; resize: none;
+  background: transparent; color: var(--ink); font: 400 13px/1.35 'Barlow', system-ui, sans-serif; }
+.comment-box > .resize-handle { position: absolute; right: 1px; bottom: 1px; opacity: 0; }
+.comment-box:hover > .resize-handle, .comment-box.selected > .resize-handle, .comment-box > .resize-handle:focus-visible { opacity: 1; }
+/* a Scope's screen is taller than an envelope's: its gridlines carry labels (#518) */
+.scope-screen:not(.env-screen) { height: 96px; }
+/* under a Scope's screen: each input's lowest..highest value, peak to peak, and where it comes from with its range */
+.scope-readout { display: flex; flex-direction: column; gap: 1px; margin-top: 3px; }
+.scope-readout:empty { display: none; }
+.scope-read { display: flex; align-items: baseline; gap: 5px; min-width: 0; font: 500 10px/1.25 'Barlow', system-ui, sans-serif; color: var(--muted); }
+.scope-read > b { font-weight: 700; text-transform: uppercase; }
+.scope-read.audio > b { color: var(--audio); }
+.scope-read.control > b { color: var(--control); }
+.scope-read.gate > b { color: var(--gate); }
+.scope-read .scope-value { color: var(--ink); white-space: pre; font-variant-numeric: tabular-nums; }
+.scope-read .scope-src { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .picking .param.screen { cursor: pointer; }
 .picking .param.screen .scope-screen { box-shadow: inset 0 0 0 1px var(--line); }
 .picking .param.screen.shown .scope-screen { box-shadow: inset 0 0 0 1.5px var(--accent); }

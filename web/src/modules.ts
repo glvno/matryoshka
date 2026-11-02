@@ -3171,6 +3171,8 @@ const select: ModuleImpl<SelectState> = {
 };
 
 export const SCOPE_MODES = ['time', 'spectrum'];
+/** a Scope's vertical scale (#518): `auto` fits the traces and labels the scale it chose, the others are fixed */
+export const SCOPE_SCALES = ['auto', '±1', '±4'];
 /** the shortest / longest window of a Scope (ms) */
 export const SCOPE_TIME_MIN = 1;
 export const SCOPE_TIME_MAX = 2000;
@@ -3192,6 +3194,8 @@ const scope: ModuleImpl<null> = {
       param('mode', 0, 1, 0, { step: 1, choices: SCOPE_MODES, onScreen: true }),
       // each voice of a per-voice source as its own trace (#54), set from the toolbar's Voices button
       param('voices', 0, 1, 0, { step: 1, choices: ['sum', 'each'], toggle: true, onScreen: true }),
+      // the vertical scale (#518), set from the toolbar's scale button; editor only like the rest (D-416)
+      param('scale', 0, SCOPE_SCALES.length - 1, 0, { step: 1, choices: SCOPE_SCALES, onScreen: true }),
     ],
   },
   init: () => null,

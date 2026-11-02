@@ -26,7 +26,8 @@ export interface FlipPlan {
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 
 /** the target with the canvas fields of `current`: module positions and assembly geometry by id (what exists on both
- * sides), the view, the octave and the sidebar toys' sources. The name, the notes and the sound are the target's */
+ * sides), the view, the octave and the sidebar toys' sources. The name, the notes, the comments (#518) and the sound are
+ * the target's */
 export function keepLayout(current: Patch, target: Patch): Patch {
   const p = clone(target);
   const mods = new Map(current.modules.map((m) => [m.id, m]));
@@ -55,7 +56,7 @@ export function keepLayout(current: Patch, target: Patch): Patch {
  * what live messages can bring across. A field not named here counts, so a new one falls to a full load */
 function rest(p: Patch): string {
   const q = clone(p) as unknown as Record<string, unknown> & Patch;
-  for (const k of ['view', 'octave', 'slackFrom', 'zoomFrom', 'name', 'morphName', 'notes'] as const) delete q[k];
+  for (const k of ['view', 'octave', 'slackFrom', 'zoomFrom', 'name', 'morphName', 'notes', 'comments'] as const) delete q[k];
   for (const m of q.modules as (ModuleInst & Record<string, unknown>)[]) {
     for (const k of ['x', 'y', 'params', 'att', 'bypass', 'range', 'notes'] as const) delete m[k];
   }
