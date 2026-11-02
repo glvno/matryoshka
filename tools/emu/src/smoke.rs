@@ -38,18 +38,18 @@ pub const AUDIO_RATE: u32 = 44118;
 const PRESETS_H: &str = include_str!("../../../firmware/src/presets.h");
 
 /// Panel ids (fm1-emu / Felucca's table, confirmed by M-VAVE's fm1_open)
-const OCT_DOWN: u8 = 0;
-const OCT_UP: u8 = 1;
+pub(crate) const OCT_DOWN: u8 = 0;
+pub(crate) const OCT_UP: u8 = 1;
 const FX: u8 = 2;
 const ARP: u8 = 10;
 const SEQ: u8 = 11;
 const REC: u8 = 13;
 const GLO: u8 = 7;
 const ENV: u8 = 4;
-const HOME: u8 = 8;
+pub(crate) const HOME: u8 = 8;
 const SAVE: u8 = 9;
 const PLAY: u8 = 12;
-const C4: u8 = 14 + 7; // note keys start at F3
+pub(crate) const C4: u8 = 14 + 7; // note keys start at F3
 const PRESET: u8 = 6; // encoder
 const ALGO: u8 = 1; // encoder
 const SELECT: u8 = 0; // encoder
@@ -62,14 +62,14 @@ const SEL: u8 = 3; // the SEL button (SCL in Felucca's table)
 const HEADER_ROWS: usize = 36;
 
 /// Below this the output counts as silent, above `LOUD` as sounding (16-bit samples).
-const QUIET: i32 = 64;
-const LOUD: i32 = 1000;
+pub(crate) const QUIET: i32 = 64;
+pub(crate) const LOUD: i32 = 1000;
 
 /// (name, binary) of every factory patch in presets.h
 /// on the device page (pages_ui.c): the footer's octave at 0 ("= OCT =")
-const DEVICE_PAGE: &str = "= OCT =";
+pub(crate) const DEVICE_PAGE: &str = "= OCT =";
 
-fn factory() -> Vec<(String, Vec<u8>)> {
+pub(crate) fn factory() -> Vec<(String, Vec<u8>)> {
     let list = &PRESETS_H[PRESETS_H.find("PRESET_LIST[").expect("PRESET_LIST")..];
     let mut out = Vec::new();
     for line in list.lines().skip(1) {
@@ -85,16 +85,16 @@ fn factory() -> Vec<(String, Vec<u8>)> {
     out
 }
 
-struct Run {
-    out: String,
-    fails: Vec<String>,
-    warns: Vec<String>,
-    checks: u32,
-    shot: u32,
+pub(crate) struct Run {
+    pub(crate) out: String,
+    pub(crate) fails: Vec<String>,
+    pub(crate) warns: Vec<String>,
+    pub(crate) checks: u32,
+    pub(crate) shot: u32,
 }
 
 impl Run {
-    fn check(&mut self, what: &str, ok: bool, detail: String) {
+    pub(crate) fn check(&mut self, what: &str, ok: bool, detail: String) {
         self.checks += 1;
         let line = if detail.is_empty() { what.to_string() } else { format!("{what} ({detail})") };
         println!("{} {line}", if ok { "ok  " } else { "FAIL" });
@@ -112,13 +112,13 @@ impl Run {
         }
     }
 
-    fn snap(&mut self, m: &Machine, name: &str) {
+    pub(crate) fn snap(&mut self, m: &Machine, name: &str) {
         self.shot += 1;
         m.snap(&format!("{}/{:02}-{name}.png", self.out, self.shot));
     }
 
     /// `s` on the screen now; snapshot either way.
-    fn screen(&mut self, m: &Machine, what: &str, s: &str) -> bool {
+    pub(crate) fn screen(&mut self, m: &Machine, what: &str, s: &str) -> bool {
         let ok = font::on_screen(m.lcd(), s);
         self.snap(m, &what.replace(' ', "-"));
         self.check(what, ok, if ok { String::new() } else { format!("{s:?} not on the LCD at {} ms", m.ms()) });
@@ -139,7 +139,7 @@ fn patch_screen(t: &mut Run, m: &mut Machine, what: &str, name: &str) -> Result<
 }
 
 /// Run up to `max` ms more until `s` shows (checked every 50 ms).
-fn wait_text(m: &mut Machine, s: &str, max: u64) -> Result<bool, String> {
+pub(crate) fn wait_text(m: &mut Machine, s: &str, max: u64) -> Result<bool, String> {
     let end = m.ms() + max;
     while m.ms() < end {
         if font::on_screen(m.lcd(), s) {
@@ -152,7 +152,7 @@ fn wait_text(m: &mut Machine, s: &str, max: u64) -> Result<bool, String> {
 
 /// After power-on the quick start shows over the first page (D-247): wait up to `max` ms for it, then HOME closes it
 /// and the device page is drawn whole again. Whether it showed
-fn quick_start(m: &mut Machine, max: u64) -> Result<bool, String> {
+pub(crate) fn quick_start(m: &mut Machine, max: u64) -> Result<bool, String> {
     let shown = wait_text(m, "QUICK START", max)?;
     if shown {
         m.tap(HOME, 120, 400)?;
@@ -177,7 +177,7 @@ fn cpu_figure(m: &Machine) -> Option<u32> {
 }
 
 /// Peak of a note held for `hold` ms (from now).
-fn note_peak(m: &mut Machine, key: u8, hold: u64) -> Result<i32, String> {
+pub(crate) fn note_peak(m: &mut Machine, key: u8, hold: u64) -> Result<i32, String> {
     let mk = m.mark();
     m.key(key, true);
     m.run_for(hold)?;

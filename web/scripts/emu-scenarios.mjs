@@ -2,6 +2,8 @@
 // The device checks that cross the editor link, scripted (#290): the real editor (this checkout's dev server, in Chrome)
 // against our firmware on the emulated FM-1, whose USB MIDI is a virtual MIDI port (`m1emu serve`, docs/EMULATOR.md).
 //   npm run emu:scenarios [-- FIRMWARE] [--only NAME,..] [--headed] [--keep]
+//   npm run emu:scenarios -- --list     the scenarios' names, for --only (`-- --only tieLire` reruns one; connect always
+//                                       runs first: it opens the editor and syncs, which the others need)
 // FIRMWARE: an M1_EMU_MIDI=1 build (matryoshka-emu.bin). Without one: the `matryoshka-emu-midi` artifact of the firmware
 // CI run of this checkout's commit, else its branch, else main (needs gh). --url: an editor already running (default: a
 // dev server of this checkout on a free port). --headed shows Chrome.
@@ -9,22 +11,24 @@
 // Results, LCD snapshots and page screenshots go to build/emu/scenarios/. Exit code 1 when a check fails.
 //
 // The same scenarios on the test rig, a real FM-1 (the device test mode, #291; npm run device:scenarios):
-//   npm run device:scenarios [-- --install RUN] [--only NAME,..] [--headed]
+//   npm run device:scenarios [-- --install RUN [--gate boot]] [--only NAME,..] [--headed]
 // drives the registered rig (scripts/rig.mjs) over the editor link: its panel (TEST_KEY / TEST_TURN), its screen as text
 // (TEST_SCREEN) and its output's peak (TEST_PEAK). The page sees only the rig's ports; another FM-1 connected is asked
 // HELLO and PRESET_GET (to tell it from the rig) and nothing else. --install RUN first installs that firmware CI run on
 // the rig, after the gate of D-120 (emu:smoke and these scenarios in the emulator, on that run's builds) passed, and only
-// when the rig is the one FM-1 connected (the installer takes the first FM-1 it finds). --via-emu: the device path against
+// when the rig is the one FM-1 connected (the installer takes the first FM-1 it finds). --gate boot: after the boot check
+// (emu:boot, about 30 s) instead, for the owner's iteration checks on the rig (D-123); merges and releases still take the
+// full gate. Which gate a build passed goes to build/device/scenarios/install.json. --via-emu: the device path against
 // the emulator (m1emu serve), to check the runner itself without a rig. --port NAME: the rig's page looks only at that
 // MIDI port (an emulator serving as a registered rig, to check the rig's path). Results go to build/device/scenarios/.
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
-import { download, smoke, smokeState } from './branch-firmware.mjs';
+import { boot, download, downloadEmuMidi, smoke, smokeState } from './branch-firmware.mjs';
 import { DEV_ENV, loadRig, pickRig, rigPage, survey } from './rig-link.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -32,11 +36,34 @@ const REPO = 'glvno/matryoshka';
 const args = process.argv.slice(2);
 const flag = (n) => args.includes(n);
 const opt = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
-const given = args.find((a, i) => !a.startsWith('--') && !['--only', '--install', '--url', '--port'].includes(args[i - 1]));
+const given = args.find((a, i) => !a.startsWith('--') && !['--only', '--install', '--url', '--port', '--gate'].includes(args[i - 1]));
 const DEVICE = flag('--device') || flag('--via-emu');   // the device test mode's path (a rig, or the emulator through it)
 const REAL = flag('--device') && !flag('--via-emu');    // a real FM-1: the registered rig
 const OUT = join(ROOT, DEVICE ? 'build/device/scenarios' : 'build/emu/scenarios');
 const only = opt('--only')?.split(',');
+const GATE = opt('--gate') ?? 'full';   // --install's gate: full (D-120) or boot (the boot check, the rig only: D-123)
+/** the scenarios' names, read from this file (so --list and a wrong --only answer before anything starts) */
+const SCENARIOS = (() => {
+  const src = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+  const from = src.search(/^ {2}const scenarios = \{$/m);
+  const body = src.slice(from, src.indexOf('\n  };\n', from));
+  return [...body.matchAll(/^    async (\w+)\(\)/gm)].map((m) => m[1]);
+})();
+if (flag('--list')) {
+  console.log(SCENARIOS.join('\n'));
+  process.exit(0);
+}
+{
+  const unknown = only?.filter((n) => !SCENARIOS.includes(n)) ?? [];
+  if (unknown.length) {
+    console.error(`no scenario named ${unknown.join(', ')}; the scenarios: ${SCENARIOS.join(' ')}`);
+    process.exit(2);
+  }
+  if (!['full', 'boot'].includes(GATE)) {
+    console.error(`--gate ${GATE}: full or boot`);
+    process.exit(2);
+  }
+}
 const PORT_NAME = `FM-1 (emu ${process.pid})`;
 
 // panel ids (web/src/fm1-ui.ts BUTTONS, fm1-emu's key matrix): 14.. the note keys from F3
@@ -335,24 +362,26 @@ async function launch(url) {
   return { browser, context };
 }
 
-/** --install RUN: that firmware CI run onto the rig, once the gate (D-120) passed on its builds and the rig is the one
- *  FM-1 connected (fm1_install.py takes the first FM-1 that answers) */
+/** --install RUN: that firmware CI run onto the rig, once the gate passed on its builds and the rig is the one FM-1
+ *  connected (fm1_install.py takes the first FM-1 that answers). The gate (`--gate`): full = emu:smoke and these
+ *  scenarios on the run's builds (D-120); boot = the boot check, emu:boot (D-123: the rig only, for iteration checks) */
 async function installOnRig(run, url) {
-  console.log(`-- install: firmware CI run ${run} on the rig`);
+  console.log(`-- install: firmware CI run ${run} on the rig (gate: ${GATE === 'boot' ? 'the boot check, emu:boot' : 'emu:smoke and emu:scenarios'})`);
   const dir = await download(run);
-  if (smokeState(dir) !== 'passed') {
-    console.log('emu:smoke on its build (about two minutes)');
-    if (!(await smoke(dir))) throw new Error(`the gate: emu:smoke failed on run ${run} (${dir}/smoke.log): nothing installed`);
+  if (GATE === 'boot') {
+    console.log('emu:boot on its builds (about 30 s)');
+    if (!(await boot(dir))) throw new Error(`the gate: the boot check failed on run ${run} (${dir}/boot.log): nothing installed`);
+  } else {
+    if (smokeState(dir) !== 'passed') {
+      console.log('emu:smoke on its build (about two minutes)');
+      if (!(await smoke(dir))) throw new Error(`the gate: emu:smoke failed on run ${run} (${dir}/smoke.log): nothing installed`);
+    }
+    const emuBin = await downloadEmuMidi(run, dir);
+    if (!emuBin) throw new Error(`run ${run} has no matryoshka-emu-midi artifact: no gate, nothing installed`);
+    console.log('emu:scenarios on its M1_EMU_MIDI build (about four minutes)');
+    if (spawnSync('node', [fileURLToPath(import.meta.url), emuBin], { cwd: join(ROOT, 'web'), stdio: 'inherit' }).status !== 0)
+      throw new Error(`the gate: emu:scenarios failed on run ${run}: nothing installed`);
   }
-  const emuDir = join(dir, 'emu-midi');
-  if (!existsSync(join(emuDir, 'matryoshka-emu.bin'))) {
-    mkdirSync(emuDir, { recursive: true });
-    spawnSync('gh', ['run', 'download', String(run), '-R', REPO, '-n', 'matryoshka-emu-midi', '-D', emuDir], { stdio: 'inherit' });
-  }
-  if (!existsSync(join(emuDir, 'matryoshka-emu.bin'))) throw new Error(`run ${run} has no matryoshka-emu-midi artifact: no gate, nothing installed`);
-  console.log('emu:scenarios on its M1_EMU_MIDI build (about four minutes)');
-  if (spawnSync('node', [fileURLToPath(import.meta.url), join(emuDir, 'matryoshka-emu.bin')], { cwd: join(ROOT, 'web'), stdio: 'inherit' }).status !== 0)
-    throw new Error(`the gate: emu:scenarios failed on run ${run}: nothing installed`);
   // the gate's own emulator ("FM-1 (emu …)") can outlive its run by a moment: wait for its port to go, so it is not counted as
   // a second FM-1 (the first try on the owner's rig was refused for it); a real second FM-1 still refuses the install below
   const emuPorts = () => spawnSync(PY, ['-c', 'import mido; print(sum("(emu " in n for n in mido.get_input_names()))'], { encoding: 'utf8' }).stdout.trim();
@@ -371,9 +400,14 @@ async function installOnRig(run, url) {
   if (spawnSync(PY, [join(ROOT, 'tools/fm1_install.py'), join(dir, 'matryoshka.fwsc'), '--yes'], { cwd: ROOT, stdio: 'inherit' }).status !== 0)
     throw new Error('fm1_install.py failed (the rig stays in update mode until an install finishes: run it again)');
   await sleep(4000);   // (its restart)
+  const gate = GATE === 'boot' ? 'boot (emu:boot, D-123: the rig only)' : 'full (emu:smoke and emu:scenarios, D-120)';
+  writeFileSync(join(OUT, 'install.json'), JSON.stringify({ run: String(run), gate: GATE, at: new Date().toISOString() }, null, 1));
+  console.log(`installed run ${run} on the rig; the gate it passed: ${gate}`);
+  return gate;
 }
 
 async function main() {
+  if (opt('--gate') && !flag('--install')) throw new Error('--gate goes with --install RUN');
   if (flag('--install') && !REAL) throw new Error('--install is for the rig: npm run device:scenarios -- --install RUN');
   if (REAL && !loadRig()) throw new Error('no rig registered: connect the rig alone and run npm run rig -- register');
   const fw = REAL ? null : firmware();
@@ -393,9 +427,10 @@ async function main() {
     await new Promise((res) => vite.stdout.on('data', (d) => { if (/ready in|Local:/.test(String(d))) res(); }));
   }
   console.log(`editor: ${url}`);
+  let installedGate = null;
   if (flag('--install')) {
     try {
-      await installOnRig(opt('--install'), url);
+      installedGate = await installOnRig(opt('--install'), url);
     } catch (e) {
       vite?.kill();
       throw e;
@@ -1339,7 +1374,7 @@ async function main() {
 
   try {
     for (const [name, run] of Object.entries(scenarios)) {
-      if (only && !only.includes(name)) continue;
+      if (only && name !== 'connect' && !only.includes(name)) continue;   // (connect opens the editor and syncs: the others need it)
       console.log(`-- ${name}`);
       try {
         await run();
@@ -1360,6 +1395,7 @@ async function main() {
   }
   const failed = results.filter((r) => !r.ok), skipped = results.filter((r) => r.skipped);
   const passed = results.length - failed.length - skipped.length;
+  if (installedGate) console.log(`\nthe rig runs firmware CI run ${opt('--install')}, installed after the gate ${installedGate}`);
   console.log(`\n${passed} of ${results.length} checks passed${skipped.length ? `, ${skipped.length} skipped (${skipped.map((f) => `${f.name}: ${f.reason}`).join('; ')})` : ''}${failed.length ? `; failed: ${failed.map((f) => f.name).join('; ')}` : ''}`);
   process.exit(failed.length ? 1 : 0);   // (a skip is no failure)
 }
