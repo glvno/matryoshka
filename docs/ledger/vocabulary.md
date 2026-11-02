@@ -30,6 +30,10 @@ The FM-1's 64 patch slots, its only patch list; PRESET steps the occupied slots.
 
 A factory engine's one-line description in the owner's wording, kept on the assembly definition.
 
+### Boot check
+
+`npm run emu:boot`: a firmware build run in the emulator for about 30 seconds. It checks that the build starts, draws its home page, makes sound from a key, enters update mode, answers the editor's HELLO, and answers the update handshake. Far shorter than the full emulator checks, it is enough only for the test rig while the owner iterates ([D-123](releases.md#D-123)).
+
 ### Browser-only ability
 
 Something only the browser's engine can do, such as a Delay time past 700 ms. A patch that uses one is over the FM-1 budget, so it is a sandbox patch. `browserOnly` in `web/src/patchbin.ts` lists them.

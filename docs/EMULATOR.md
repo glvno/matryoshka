@@ -28,6 +28,18 @@ its disassembly (artifact `matryoshka-elf`) for tracing such faults to a functio
 ## Commands
 
 - `cd web && npm run emu:smoke [-- FIRMWARE]`: the smoke test (below), about two minutes on an M1.
+- `cd web && npm run emu:boot [-- FIRMWARE] [--link EMU_BIN]`: the [**boot check**](ledger/vocabulary.md#boot-check)
+  (`m1emu boot`, `tools/emu/src/boot.rs`, built on the smoke test's checks), about 30 s (27 s on the M1, 20 s emulated).
+  On FIRMWARE, the bytes that get installed: the loading screen draws, the quick start and then the home page (factory
+  patch 0) come up, silence without keys and sound from a panel key, no register fm1-emu does not model besides P33,
+  and OCT- + OCT+ held at power-on enters update mode with the flash chip known. On EMU_BIN, the same commit's
+  `M1_EMU_MIDI=1` build (the plain build has no link the emulator can reach): HELLO is answered with INFO from the
+  loading screen and on the home page, and the update protocol's handshake (`ota.c`) is answered with a Matryoshka
+  identity (`FM-1_7..`) after boot and in update mode. That handshake is how the Install panel and `fm1_install.py`
+  find the FM-1, so a build that answers it keeps the way back. Without `--link` it takes `matryoshka-emu.bin` or
+  `emu-midi/matryoshka-emu.bin` next to FIRMWARE, else the CI run's `matryoshka-emu-midi` artifact, else it checks no
+  link and says so. The last line is the summary (`boot check: PASS ..` / `FAIL ..`); snapshots go to `build/emu/boot/`.
+  It is the test rig's gate while the owner iterates ([D-123](ledger/releases.md#D-123)), not a merge or release gate.
 - `cd web && npm run emu [-- FIRMWARE]`: the firmware in fm1-live's window (LCD, keys, buttons, knobs, sound, every
   MIDI input into the TRS jack; fm1-live prints its key map; built once into `tools/emu/live/`).
 - Without FIRMWARE both take `build/matryoshka.bin`, else download the latest firmware artifact of a successful
@@ -51,7 +63,7 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   falls behind under load), its MIDI on a CoreMIDI virtual source and destination named `NAME` (default `FM-1 (emu)`,
   which the editor's port match takes like a real FM-1), and a line protocol on stdin for the panel, the LCD and the
   audio (`tools/emu/src/serve.rs` lists it). `M1EMU_TRACE=1` prints every short message the FM-1 sends.
-- **`cd web && npm run emu:scenarios [-- BIN] [--only NAME,..] [--headed]`:** builds m1emu and the panel WebAssembly,
+- **`cd web && npm run emu:scenarios [-- BIN] [--only NAME,..] [--list] [--headed]`:** builds m1emu and the panel WebAssembly,
   starts this checkout's dev server on a free port (with `MATRYOSHKA_BUNDLED_FIRMWARE=1`, so its Flash tab starts no
   `emu:smoke` of its own beside the run, issue #521; the rig scripts' and `demo.ts`'s dev servers do the same), starts `m1emu serve`, and drives the editor in Chrome (playwright-core
   with the installed Chrome, headless) through the scenarios in `web/scripts/emu-scenarios.mjs`: connect and Sync; an
@@ -62,6 +74,9 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   `main.ts`) opens patches by name and reports the link's state. Without BIN it fetches the `matryoshka-emu-midi`
   artifact of this commit's firmware run (else its branch's, else main's). Results and LCD snapshots go to
   `build/emu/scenarios/`; about four minutes.
+- **One scenario by name:** `npm run emu:scenarios -- --only tieLire` (or `--only tieLire,tie808`) reruns just those;
+  `connect` always runs first, since it opens the editor and syncs, which the others need. `--list` prints the names; a
+  name that is not a scenario stops the run before anything starts. `device:scenarios` takes the same.
 - **A host that stops reading (`deafHost`, issue #375):** every other scenario has Chrome reading the FM-1's MIDI, so
   the FM-1's queue for the editor always empties. `deaf 1` makes `m1emu serve` stop taking packets from the mailbox; the
   firmware's SysEx queue then fills, as on a computer where no app reads the FM-1, and every message the FM-1 sends
@@ -116,11 +131,16 @@ link as `m1emu serve` drives the emulator:
   with the rig the only FM-1 connected, writes a hidden preset (`RIG_STRUCTURE`, values at random) and keeps the values
   in `~/.config/matryoshka/rig.json`; the Library does not list that preset. `npm run rig -- check` names the rig among
   the connected FM-1s.
-- **`cd web && npm run device:scenarios [-- --install RUN] [--only NAME,..] [--headed]`:** the scenarios of
+- **`cd web && npm run device:scenarios [-- --install RUN [--gate boot]] [--only NAME,..] [--headed]`:** the scenarios of
   `emu-scenarios.mjs` on the rig. The rig's page (`/__rig` on the dev server, `web/dev/rig-client.ts`) finds the FM-1s,
   asks each its INFO and the mark (nothing else), and drives only the rig; the editor's page sees only the rig's ports.
   `--install RUN` first installs that firmware CI run on the rig ([D-123](ledger/releases.md#D-123)): after `emu:smoke`
-  and `emu:scenarios` passed on that run's builds, and only when the rig is the one FM-1 connected. Results and the
+  and `emu:scenarios` passed on that run's builds, and only when the rig is the one FM-1 connected. With `--gate boot`,
+  for the owner's iteration checks, after the boot check (`emu:boot` on the run's two builds, about 30 s) instead; a
+  merge or a release still needs the full checks. Each gate's result is kept next to the download
+  (`build/flash/RUN/smoke.passed`, `boot.passed`, `.failed`, `.log`), and `build/device/scenarios/install.json` and the
+  run's last lines say which gate the installed build passed. The Install panel of the dev server and `npm run flash`
+  install on any FM-1, so they keep `emu:smoke` ([D-171](ledger/firmware-install.md#D-171)). Results and the
   screen as text go to `build/device/scenarios/`. Before the scenarios the runner taps HOME until the screen reports
   the device page (the menu, GLO, SEQ or a preset list left up), and stops with a message if it never does. The volume
   never stops a run ([D-125](ledger/releases.md#D-125)): on a rig whose firmware reads its peak after MASTER (no INFO

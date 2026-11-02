@@ -2,6 +2,10 @@
 // Our firmware on the emulated FM-1 (fm1-emu by Joakim Eriksson, MIT, pinned in tools/emu/Cargo.toml).
 //   npm run emu [-- FIRMWARE]          the panel in a window: LCD, keys, knobs, sound, MIDI in (fm1-live)
 //   npm run emu:smoke [-- FIRMWARE]    the scripted smoke test (tools/emu_smoke.sh)
+//   npm run emu:boot [-- FIRMWARE] [--link EMU_BIN]   the boot check (m1emu boot, about 30 s): boot, screen, sound,
+//                                      update mode; with the same commit's M1_EMU_MIDI=1 build (EMU_BIN, else
+//                                      matryoshka-emu.bin or emu-midi/matryoshka-emu.bin next to FIRMWARE, else the CI
+//                                      run's matryoshka-emu-midi artifact) also HELLO / INFO and the update handshake
 // FIRMWARE: a matryoshka.bin or a .fwsc. Without one: build/matryoshka.bin, else the latest firmware CI artifact of
 // glvno/matryoshka's main (needs `gh`), else web/public/firmware/matryoshka.fwsc.
 // fm1-live lists its keys when it starts; every MIDI input plays (TRS MIDI IN; USB is not emulated).
@@ -19,7 +23,11 @@ const REPO = 'glvno/matryoshka';
 
 const args = process.argv.slice(2);
 const smoke = args.includes('--smoke');
-const given = args.find((a) => !a.startsWith('--'));
+const boot = args.includes('--boot');
+const linkAt = args.indexOf('--link');
+const linkGiven = linkAt >= 0 ? args[linkAt + 1] : undefined;
+const given = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--link');
+let ciRun = null;   // the firmware CI run the firmware came from, if it was downloaded
 
 function run(cmd, argv, opts = {}) {
   const r = spawnSync(cmd, argv, { stdio: 'inherit', cwd: ROOT, ...opts });
@@ -44,6 +52,7 @@ function firmware() {
     mkdirSync(ci, { recursive: true });
     spawnSync('gh', ['run', 'download', id.stdout.trim(), '-R', REPO, '-n', 'matryoshka-firmware', '-D', ci], { stdio: 'inherit' });
     if (existsSync(join(ci, 'matryoshka.bin'))) {
+      ciRun = id.stdout.trim();
       console.log(`firmware: CI run ${id.stdout.trim()} of ${REPO} (${flag.slice(2)} ${value})`);
       return join(ci, 'matryoshka.bin');
     }
@@ -64,6 +73,24 @@ if (smoke) process.exit(run('sh', [join(ROOT, 'tools/emu_smoke.sh'), fw]));
 // fm1-emu's decoder misses long forward test-and-branch jumps; tools/emu/isa_fix.sh patches its fm1-isa crate
 const isa = execFileSync(join(ROOT, 'tools/emu/isa_fix.sh'), { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }).trim();
 if (run('cargo', ['build', '--release', '--quiet', '--manifest-path', join(EMU, 'Cargo.toml'), '--config', isa]) !== 0) process.exit(1);
+
+if (boot) {
+  /** the same commit's M1_EMU_MIDI=1 build, for the link checks: given, next to the firmware, else the CI run's */
+  const link = (() => {
+    if (linkGiven) return resolve(process.cwd(), linkGiven);
+    const near = [join(dirname(fw), 'matryoshka-emu.bin'), join(dirname(fw), 'emu-midi/matryoshka-emu.bin')].find((f) => existsSync(f));
+    if (near) return near;
+    if (!ciRun) return undefined;
+    const dir = join(OUT, 'ci/emu-midi');
+    mkdirSync(dir, { recursive: true });
+    spawnSync('gh', ['run', 'download', ciRun, '-R', REPO, '-n', 'matryoshka-emu-midi', '-D', dir], { stdio: 'inherit' });
+    return existsSync(join(dir, 'matryoshka-emu.bin')) ? join(dir, 'matryoshka-emu.bin') : undefined;
+  })();
+  console.log(link ? `link build: ${link}` : 'link build: none (no M1_EMU_MIDI=1 build found: HELLO / INFO and the update handshake are not checked; pass --link)');
+  const out = join(OUT, 'boot');
+  rmSync(out, { recursive: true, force: true });
+  process.exit(run(join(EMU, 'target/release/m1emu'), ['boot', fw, ...(link ? ['--link', link] : []), '--out', out]));
+}
 const live = join(EMU, 'live/bin', process.platform === 'win32' ? 'fm1-live.exe' : 'fm1-live');
 // (built from a patched copy of fm1-emu, tools/emu/live_build.sh: a cargo patch does not reach it. Builds made before
 // that, marked .isa-fixed / .isa-fixed-2 / .isa-fixed-3, ran a decoder without one of the fixes; they are rebuilt)
