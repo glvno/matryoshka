@@ -270,7 +270,7 @@ const FILTER_MIDI = (only) => {
       window.__midiLogged.add(p.id);
       p.addEventListener('midimessage', (e) => {
         if (e.data[0] === 0xb0) window.__midiLog.push([Math.round(performance.now()), ...e.data]);
-        else if (e.data[0] === 0xf8) (window.__clockLog = window.__clockLog ?? []).push(e.timeStamp);   // #473: the FM-1's clock
+        else if (e.data[0] === 0xf8) (window.__clockLog = window.__clockLog ?? []).push(e.timeStamp || performance.now());   // #473: the FM-1's clock
       });
     }
     // what the editor sends: the protocol's command bytes (F0 7D 4D 31 CMD ..), for the reports
