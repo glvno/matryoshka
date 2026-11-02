@@ -979,6 +979,14 @@ async function main() {
       await check('rec step: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
       const [C, E] = [7, 11].map((n) => 14 + n);
       await emu.tap(B.rec);
+      if (!(await emu.waitText('STEP 1', 1500))) {   // (an earlier scenario left the transport running: REC was a live take)
+        console.log('  note: the transport was running; REC off, PLAY to stop it, REC again');
+        await emu.tap(B.rec);
+        await sleep(300);
+        await emu.tap(B.play);
+        await sleep(500);
+        await emu.tap(B.rec);
+      }
       await check('rec step: REC, stopped: step record on step 1, the transport stays stopped', (await emu.waitText('STEP 1', 3000))
         && !(await emu.text('PATTERN REC')));
       await emu.tap(B.rec);
@@ -1116,7 +1124,7 @@ async function main() {
       let tone = false;
       for (let i = 0; i < 3 && !tone; i++) {        // ALGO a track a click, to TONE (the 2nd of 3)
         await emu.turn(ENC.algo, 1);
-        tone = await emu.waitText('TONE ARM P', 1500);
+        tone = await emu.waitText('TONE ARM', 1500);
       }
       await check('roll black: ALGO: the TONE track\'s roll', tone);
       const t0 = await tracks();
@@ -1127,22 +1135,24 @@ async function main() {
       await emu.key(KEY[0], false);
       await sleep(300);
       await loudCheck('roll black: stopped, black key 1 sounds its row', p, p > LOUD, `peak ${p}`);
-      await check('roll black: black key 1 keeps the TONE track (it picked a track before)', (await emu.text('TONE ARM P')) && !(await emu.text('CHORD')));
+      await check('roll black: black key 1 keeps the TONE track (it picked a track before)', (await emu.text('TONE ARM')) && !(await emu.text('CHORD')));
       await emu.tap(WHITE[13]);                     // a white key: a note on step 14 at black key 1's row
       const t1 = await until(async () => { const x = await tracks(); return added(t0.TONE, x.TONE).length === 1 ? x : null; }, 3000) ?? (await tracks());
       const low = added(t0.TONE, t1.TONE)[0];
       await check('roll black: then a white key writes on TONE, not on another track', !!low && low.at === 13 && fmt(t1.CHORD) === fmt(t0.CHORD) && fmt(t1.DRUMS) === fmt(t0.DRUMS), fmt(added(t0.TONE, t1.TONE)));
       await emu.tap(KEY[7]);                        // black key 8: the top row, 7 semitones up
       await emu.tap(WHITE[14]);
-      const t2 = await until(async () => { const x = await tracks(); return added(t1.TONE, x.TONE).length === 1 ? x : null; }, 3000) ?? (await tracks());
-      const high = added(t1.TONE, t2.TONE)[0];
+      // (the step's note at the top row switched: added, or taken away when the pattern had it there: D-809's pages)
+      const switched = (was, now) => [...added(was, now), ...added(now, was)];
+      const t2 = await until(async () => { const x = await tracks(); return switched(t1.TONE, x.TONE).length === 1 ? x : null; }, 3000) ?? (await tracks());
+      const high = switched(t1.TONE, t2.TONE)[0];
       await check('roll black: black key 8 is the top row: 7 semitones over black key 1\'s', !!low && !!high && high.at === 14 && high.note === low.note + 7, `${fmt([low])} then ${fmt([high])}`);
       await emu.tap(KEY[8]);                        // black key 9: nothing (8 rows), still TONE, still the top row
       await emu.tap(WHITE[14]);                     // (the top row's note on step 15 off again)
       await emu.tap(KEY[0]);
       await emu.tap(WHITE[13]);                     // (and the bottom row's on step 14)
       const t3 = await until(async () => { const x = await tracks(); return fmt(x.TONE) === fmt(t0.TONE) ? x : null; }, 3000) ?? (await tracks());
-      await check('roll black: black key 9 changes nothing; both notes off again (the track as it was)', fmt(t3.TONE) === fmt(t0.TONE) && (await emu.text('TONE ARM P')), fmt(added(t0.TONE, t3.TONE)));
+      await check('roll black: black key 9 changes nothing; both notes off again (the track as it was)', fmt(t3.TONE) === fmt(t0.TONE) && (await emu.text('TONE ARM')), fmt(added(t0.TONE, t3.TONE)));
       await emu.snap('roll-black');
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
