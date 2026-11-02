@@ -619,6 +619,13 @@ tick in, it sends its own again at its tempo ([D-477](ledger/link-and-midi.md#D-
   start's first sample. The clock calls that sample tick 0: PLAY's Start (0xFA) goes out in the render where the engine
   starts, followed by a tick at once, so a device that follows counts its steps from the same tick as the FM-1's tracks.
   Stop (0xFC) goes out in the render where it stops. A Start or Stop with no engine running goes out after three halves.
+- Measured on the test rig against the Mac (2026-11-01, `tools/m1_link.py clock 15 BPM [run]`, CoreMIDI's timestamps,
+  15 s each): at 120 bpm the period's deviation per tick averaged 0.24 ms (99 % within 0.38 ms, at most 0.44 ms) with
+  the transport running; at 300 bpm 0.23 ms (99 % within 0.38 ms, at most 0.42 ms) running and 0.25 ms (99 % within
+  0.40 ms) stopped. No tick was dropped and no link reply was refused for want of room (DIAG pages 116, 117).
+- A flash write (SAVE, a stored preset, the settings record 5 s after a tempo change while stopped) stops the audio for
+  its erase, and the clock with it: the measured gap was 38 ms, after which the clock goes on from where it was. The
+  ticks of that gap are not made up.
 - A host that stops reading: at most 8 ticks wait in the USB ring; later ones are dropped, so no burst of old ticks
   arrives when it reads again. SysEx goes first on the endpoint (`ep1_tx`): during a long editor message the ticks wait
   behind it.

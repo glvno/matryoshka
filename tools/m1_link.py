@@ -248,12 +248,14 @@ def main():
             if port is None:
                 sys.exit("no FM-1 input for the clock")
             mi.ignore_types(sysex=True, timing=False, active_sense=True)
-            stamps, acc = [], [0.0]
+            stamps, acc, others = [], [0.0], []
             def cb(ev, _):
                 msg, dt = ev
                 acc[0] += dt
                 if msg and msg[0] == 0xF8:
                     stamps.append(acc[0])
+                elif msg:
+                    others.append((acc[0], msg[0]))
             mode0 = bpm0 = None
             if len(a) > 2:                              # the global tempo for the run: TEMPO_NOW after INFO says what it was
                 link.out.send(frame(0x01))
@@ -272,6 +274,7 @@ def main():
             mi.set_callback(cb)
             mi.open_port(port)
             time.sleep(secs)
+            mi.cancel_callback()
             mi.close_port()
             if len(a) > 3 and a[3] == "run":
                 link.out.send(frame(0x25, [0]))
@@ -291,8 +294,20 @@ def main():
             slope = sum((x - mx) * (y - my) for x, y in zip(xs, stamps)) / sum((x - mx) ** 2 for x in xs)
             grid = [abs(y - (my + slope * (x - mx))) * 1e3 for x, y in zip(xs, stamps)]
             print(f"{n} ticks in {secs:g} s: mean period {mean:.3f} ms = {60000 / (24 * mean):.2f} bpm")
-            print(f"  period deviation per tick: mean {sum(dev) / len(dev):.3f} ms, max {max(dev):.3f} ms")
+            ds = sorted(dev)
+            print(f"  period deviation per tick: mean {sum(dev) / len(dev):.3f} ms, 99 % within {ds[len(ds) * 99 // 100]:.3f} ms, "
+                  f"max {max(dev):.3f} ms")
             print(f"  tick from a straight grid: mean {sum(grid) / n:.3f} ms, max {max(grid):.3f} ms")
+            if others:                                  # a patch load pauses the engine, a Start restarts the beat: not jitter
+                print(f"  NOTE: {len(others)} other messages came meanwhile ({', '.join(sorted({f'{b:#04x}' for _, b in others}))}): "
+                      f"someone used the FM-1, so the outliers may be theirs")
+                clean = [x for (t0, t1), x in zip(zip(stamps, stamps[1:]), per)
+                         if not any(t0 - 0.25 <= t <= t1 + 0.25 for t, _ in others)]
+                if len(clean) > 10:
+                    cm = sum(clean) / len(clean)
+                    cd = sorted(abs(x - cm) for x in clean)
+                    print(f"  the {len(clean)} periods with no other message within 250 ms: mean {cm:.3f} ms, deviation mean "
+                          f"{sum(cd) / len(cd):.3f} ms, 99 % within {cd[len(cd) * 99 // 100]:.3f} ms, max {cd[-1]:.3f} ms")
             print(f"  FM-1 counted {(w1[0] - w0[0]) & 0xFFFFFFFF} ticks sent, {(w1[1] - w0[1]) & 0xFFFFFFFF} dropped; "
                   f"link sends refused for no room {(l1[2] - l0[2]) & 0xFFFFFFFF}, with no host {(l1[1] - l0[1]) & 0xFFFFFFFF}")
     elif a[0] == "diag":
