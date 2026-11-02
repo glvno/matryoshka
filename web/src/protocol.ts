@@ -110,7 +110,7 @@
 import { noteWord, PATTERNS_MAX, SHIFT_MAX, SONG_LEN_MAX, SONGS_MAX, TRACK_NOTES_MAX, wordNote, type SongEntry, type StepNote } from './track';
 
 export const PREFIX = [0x7d, 0x4d, 0x31];
-export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, sandbox: 0x31, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e, testKey: 0x32, testTurn: 0x33, testScreen: 0x34, testPeak: 0x35, screen: 0x50, peak: 0x51, pattern: 0x36, song: 0x37, patternNow: 0x52, songNow: 0x53, armsNow: 0x54, tempo: 0x38, tempoNow: 0x55 } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
+export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, sandbox: 0x31, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e, testKey: 0x32, testTurn: 0x33, testScreen: 0x34, testPeak: 0x35, screen: 0x50, peak: 0x51, pattern: 0x36, song: 0x37, patternNow: 0x52, songNow: 0x53, armsNow: 0x54, tempo: 0x38, tempoNow: 0x55, locksNow: 0x56 } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
 export const PROTO_VERSION = 1;
 export const CHUNK_BYTES = 384;
 export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store', 'the preset store is full', 'no such preset'];
@@ -232,6 +232,18 @@ export function parseTrack(payload: number[]): { module: number; notes: StepNote
   const notes = Array.from({ length: payload[1] }, (_, j) => wordNote((payload[2 + 4 * j] | (payload[3 + 4 * j] << 8) | (payload[4 + 4 * j] << 16) | (payload[5 + 4 * j] << 24)) >>> 0));
   const pat = payload.length > 2 + 4 * payload[1] ? Math.min(PATTERNS_MAX - 1, payload[2 + 4 * payload[1]]) : 0;
   return { module: payload[0], notes, pat };
+}
+/** a device-form lock as the FM-1 reports it (LOCKS_NOW, #524): step, module index, parameter index, value */
+export interface RawLock { at: number; module: number; param: number; value: number }
+/** a LOCKS_NOW payload (unasked, after a lock edit on the SEQ page): the track's module index, the pattern (0-based) and
+ * that pattern's locks, 7 bytes each (step, module, parameter, i32 LE Q16 value) */
+export function parseLocksNow(payload: number[]): { module: number; pat: number; locks: RawLock[] } | null {
+  if (payload.length < 3 || payload.length < 3 + 7 * payload[2]) return null;
+  const locks = Array.from({ length: payload[2] }, (_, j) => {
+    const o = 3 + 7 * j;
+    return { at: payload[o], module: payload[o + 1], param: payload[o + 2], value: (payload[o + 3] | (payload[o + 4] << 8) | (payload[o + 5] << 16) | (payload[o + 6] << 24)) / 65536 };
+  });
+  return { module: payload[0], pat: Math.min(PATTERNS_MAX - 1, payload[1]), locks };
 }
 /** the patch's pattern (0-based) and the song playing (0 none) */
 export const patternFrame = (pattern: number, song: number): Uint8Array => frame(CMD.pattern, [pattern & 0xff, song & 0xff]);

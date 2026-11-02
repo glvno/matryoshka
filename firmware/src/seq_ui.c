@@ -106,6 +106,9 @@ static int8_t seq_held = -1;            /* the step whose white key is held (SEL
 static uint32_t seq_held_notes[TRACK_NOTES_MAX];   /* the track's notes before the held step's press switched it */
 static uint8_t seq_held_n;
 static uint8_t seq_held_turned;         /* a knob turned while it is held (the press's switch is undone once) */
+static uint8_t seq_lpg;                 /* P-locks (#524, #519 Q2): ALGO's stop with a step held, 0 its note (K1..K3 as ever), n
+                                         * the n-th page of the devices the track drives (K1..K4 lock its rows on the held
+                                         * step); kept over presses, back to 0 with another track */
 static int8_t seq_shown_pos = -2;       /* the playhead as last drawn */
 static const char *seq_msg_due;         /* a key's message for the bar, shown by the loop's pass (a key never draws: D-228) */
 static uint16_t seq_msg_ms;             /* ... its time on show (0: 800 ms) */
@@ -383,6 +386,7 @@ static void seq_select(uint32_t t)
     seq_trk = (uint8_t)t;
     seq_pg = 0;
     seq_held = -1;
+    seq_lpg = 0;
     seq_row = 0;
     seq_roll_trk = -1;                           /* (a roll opens around its notes again) */
     if (page != PAGE_SEQ)
@@ -1253,6 +1257,165 @@ static void seq_bar(void)
     bar_text(b, seq_rec ? C_RED : C_ACC);
 }
 
+/* ---- P-locks on the FM-1 (#524, the owner's design of 2026-11-01, #519 Q2 and Q11): a step held, ALGO pages through the
+ * pages of the devices the track drives (its first stop is the step's note, as before); K1..K4 lock that page's rows on the
+ * held step, from the lock's value or the row's normal one. Turning a row back to its normal value (or past it) removes the
+ * lock. The locks go into the pattern the track plays (one it has not got is made from pattern 1 first, as an edit of its
+ * notes makes it), the running patch (SAVE keeps them) and the editor (LOCKS_NOW). A step with locks has a corner mark on
+ * its cells; while it is held the track line lists the page's rows, a locked one marked * */
+
+/* the pages of the devices the track shown drives (pages_ui.c pg_dev[].track), as pg_page indices into out: their count */
+static uint32_t seq_lock_pages(uint16_t *out, uint32_t max)
+{
+    int mod = seq_module();
+    uint32_t d, e, g, n = 0;
+    if (mod < 0)
+        return 0;
+    pages_ensure();
+    for (e = 0; e < pg_ndev && pg_dev[e].module != mod; e++)
+        ;
+    if (e == pg_ndev)
+        return 0;
+    for (d = 0; d < pg_ndev; d++)
+        if (pg_dev[d].track == e)
+            for (g = 0; g < pg_dev[d].npg && n < max; g++)
+                out[n++] = (uint16_t)(pg_dev[d].pg0 + g);
+    return n;
+}
+/* the page ALGO's stop shows (seq_lpg), 0 the note's stop or none */
+static const ppage_t *seq_lock_page(void)
+{
+    uint16_t l[PG_PAGES];
+    uint32_t n = seq_lpg ? seq_lock_pages(l, PG_PAGES) : 0;
+    return seq_lpg && seq_lpg <= n ? &pg_page[l[seq_lpg - 1u]] : 0;
+}
+/* the pattern whose locks the grid shows: the one the track plays, or its pattern 1 when it has not got that one */
+static uint32_t seq_lock_pat(int mod)
+{
+    int p = eng_pattern_playing((uint32_t)mod);
+    return p > 0 && eng_pattern_has((uint32_t)mod, (uint32_t)p) ? (uint32_t)p : 0u;
+}
+/* the held step's press undone once (a knob turned on it: the step should keep what it had; as seq_grid_held, without
+ * putting a note there: a lock needs none) */
+static void seq_held_undo(int mod)
+{
+    if (seq_held_turned)
+        return;
+    seq_held_turned = 1;
+    (void)eng_steps_set_notes((uint32_t)mod, seq_held_notes, seq_held_n);
+    seq_sync(mod);
+}
+/* ALGO with a step held: the next / previous stop (0 the note, then the device's pages; it stays at the ends) */
+static void seq_lock_step(int32_t d)
+{
+    uint16_t l[PG_PAGES];
+    int mod = seq_module();
+    uint32_t n = seq_lock_pages(l, PG_PAGES);
+    int32_t s = clampi((int32_t)seq_lpg + (d > 0 ? 1 : -1), 0, (int32_t)n);
+    char m[32];
+    if (mod < 0 || seq_held < 0)
+        return;
+    seq_held_undo(mod);
+    if (!n) {
+        ui_msg("NO DEVICE TO LOCK", 1200);
+        return;
+    }
+    seq_lpg = (uint8_t)s;
+    if (!s)
+        put(m, "STEP NOTE")[0] = 0;
+    else {
+        const ppage_t *pg = &pg_page[l[s - 1]];
+        char t[16];
+        caps(t, pg->name, pg->nlen, 12u);
+        put(put(m, "LOCK "), t)[0] = 0;
+        if (pg->parts > 1u) {
+            char num[8], *q = m + str_len(m);
+            *q++ = ' ';
+            fmt_int(num, pg->part + 1);
+            q = put(q, num);
+            *q++ = '/';
+            fmt_int(num, pg->parts);
+            put(q, num)[0] = 0;
+        }
+    }
+    ui_msg(m, 1200);
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+}
+/* K1..K4 (knob k) with a step held on a lock page: its row locked on the step, from the lock's value or the normal one */
+static void seq_lock_turn(uint32_t k, int32_t clicks, int fast)
+{
+    const ppage_t *pg;
+    int mod = seq_module(), had, p, made;
+    uint32_t m, j;
+    int32_t normal, cur = 0, v;
+    char msg[40], t[16], num[16], unit[8];
+    if (mod < 0 || seq_held < 0 || !(pg = seq_lock_page()) || k >= pg->nrows)
+        return;
+    m = pg->mod[k];
+    j = pg->par[k];
+    seq_held_undo(mod);
+    if (pages_lock_turn(pg, k, 0, 1, 0, &v) < 0) {
+        ui_msg("THIS ROW CANNOT LOCK", 1200);
+        return;
+    }
+    made = !eng_pattern_has((uint32_t)mod, (uint32_t)eng_pattern_playing((uint32_t)mod));
+    if ((p = eng_locks_pattern((uint32_t)mod)) < 0)
+        return;
+    if (made)                                    /* (a pattern made from pattern 1: its notes into the patch and the editor) */
+        seq_sync(mod);
+    normal = eng_get_param(m, j);
+    had = eng_lock_get((uint32_t)mod, (uint32_t)p, (uint32_t)seq_held, m, j, &cur);
+    if (!had)
+        cur = normal;
+    (void)pages_lock_turn(pg, k, cur, clicks, fast, &v);
+    caps(t, pg->lab[k], pg->llen[k], 12u);
+    if (had && (v == normal || (cur > normal) != (v > normal))) {   /* back to the normal value, or past it: no lock */
+        (void)eng_lock_set((uint32_t)mod, (uint32_t)p, (uint32_t)seq_held, m, j, 0, 0, 0);
+        put(put(msg, t), ": NO LOCK")[0] = 0;
+    } else if (v == cur)
+        return;
+    else {
+        if (eng_lock_set((uint32_t)mod, (uint32_t)p, (uint32_t)seq_held, m, j, row_more(pg, k), v, 1) < 0) {
+            ui_msg("NO ROOM FOR MORE LOCKS", 1500);
+            return;
+        }
+        value_parts(&DEFS[eng_type(m)], j, v, num, unit);
+        put(put(put(put(put(msg, "LOCK "), t), " "), num), unit[0] ? " " : "")[0] = 0;
+        put(msg + str_len(msg), unit)[0] = 0;
+    }
+    if (!m1_patch_locks()) {                     /* (the patch would outgrow the FM-1's bytes: the edit is undone) */
+        if (had)
+            (void)eng_lock_set((uint32_t)mod, (uint32_t)p, (uint32_t)seq_held, m, j, 0, cur, 1);
+        else
+            (void)eng_lock_set((uint32_t)mod, (uint32_t)p, (uint32_t)seq_held, m, j, 0, 0, 0);
+        ui_msg("PATCH FULL", 1500);
+        return;
+    }
+    m1_locks_now((uint32_t)mod, (uint32_t)p);
+    ui_msg(msg, 1200);
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+}
+/* the track line while a step is held on a lock page: the page's rows, a row the step locks marked * */
+static int seq_lock_line(int mod, char *line, uint32_t max)
+{
+    const ppage_t *pg = seq_held >= 0 ? seq_lock_page() : 0;
+    uint32_t k, p;
+    char *q = line, t[16];
+    if (!pg)
+        return 0;
+    p = seq_lock_pat(mod);
+    for (k = 0; k < pg->nrows && (uint32_t)(q - line) + 16u < max; k++) {
+        caps(t, pg->lab[k], pg->llen[k], 8u);
+        if (k)
+            q = put(q, "  ");
+        if (eng_lock_get((uint32_t)mod, p, (uint32_t)seq_held, pg->mod[k], pg->par[k], 0))
+            *q++ = '*';
+        q = put(q, t);
+    }
+    *q = 0;
+    return 1;
+}
+
 /* The grid (the owner, 2026-10-23): a drum track's Drum map rows, or a melodic track's piano roll (#241), on the page's 16
  * steps at once, drawn in place against what is on the LCD (seq_grid_*), so a hit, a step or a row pick redraws only its
  * cells or two names, the playhead its two columns, a scroll of the roll its rows (names and the cells that changed):
@@ -1284,6 +1447,7 @@ static void seq_bar(void)
 #define C_CUR 0x3AEFu                   /* step record's cursor (#532): its column's empty cells (a dark sky) */
 #define GRID_CUR 0x100u                 /* a cell's code: in step record's cursor column */
 #define GRID_CUR_Y (GRID_TICK_Y + 3u)   /* the cursor's tick: 2 px under the playhead's */
+#define GRID_LOCK 0x200u                /* a cell's code: its step has P-locks (#524): a gold corner mark, top right */
 static uint16_t seq_grid_cell[ENG_DRUM_ROWS][16];  /* the cells as drawn (seq_grid_state's codes) */
 static int8_t seq_grid_row = -1, seq_grid_tick = -2; /* the selected row, the playhead's column as drawn (-1 none) */
 static int8_t seq_grid_cur = -2;        /* step record's cursor column as drawn (-1 none) */
@@ -1334,6 +1498,12 @@ static void seq_grid_paint(uint32_t r, uint32_t i, uint32_t s, uint32_t was)
         lcd_fill(x, y, GRID_CW, GRID_CH - fill, empty);
     if (fill)
         lcd_fill(x, y + GRID_CH - fill, GRID_CW, fill, (s & 2u) ? C_ACC : C_FG);
+    if (s & GRID_LOCK) {                         /* a step with P-locks (#519 Q11): a corner of 4, 3, 2, 1 px */
+        lcd_fill(x + GRID_CW - 4u, y, 4, 1, P_GOLD);
+        lcd_fill(x + GRID_CW - 3u, y + 1u, 3, 1, P_GOLD);
+        lcd_fill(x + GRID_CW - 2u, y + 2u, 2, 1, P_GOLD);
+        lcd_fill(x + GRID_CW - 1u, y + 3u, 1, 1, P_GOLD);
+    }
 }
 
 /* the roll's marker of column i (#241): a small triangle over the top row (up) or under the bottom row (down), pointing
@@ -1401,7 +1571,7 @@ static void seq_grid_ground(void)
 
 static void seq_grid_draw(int full, int mod, int map, const char *info)
 {
-    uint32_t cell[ENG_DRUM_ROWS][16], note[ENG_DRUM_ROWS], r, i, lo = map >= 0 ? 0xFFu : seq_roll_lo, mark = 0;
+    uint32_t cell[ENG_DRUM_ROWS][16], note[ENG_DRUM_ROWS], r, i, lo = map >= 0 ? 0xFFu : seq_roll_lo, mark = 0, locked = 0, hit = 0;
     const uint32_t *ws;
     int nn = eng_steps_notes((uint32_t)mod, &ws), j, pos = eng_steps_pos((uint32_t)mod), tick;
     int32_t len = seq_len(mod), k0 = seq_pg * 16;
@@ -1442,12 +1612,24 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
             }
     }
     seq_grid_line(0, 26, info, C_FG, 224);
+    {                                            /* the steps with P-locks (#524): bit i; and those with a hit shown */
+        uint32_t lp = seq_lock_pat(mod);
+        for (i = 0; i < 16u; i++)
+            if (k0 + (int)i < len && eng_locks_step((uint32_t)mod, lp, (uint32_t)(k0 + (int)i)))
+                locked |= 1u << i;
+        for (r = 0; r < ENG_DRUM_ROWS; r++)
+            for (i = 0; i < 16u; i++)
+                if (cell[r][i] > 1u)
+                    hit |= 1u << i;
+    }
     for (r = 0; r < ENG_DRUM_ROWS; r++) {
         int tint = map < 0 && note[r] % 12u == 0u;
         if (!seq_grid_ok || ((int)r == seq_grid_row) != (r == seq_row) || lo != seq_grid_lo)
             seq_grid_name(map, r);
         for (i = 0; i < 16u; i++) {
             uint32_t s = seq_grid_state(cell[r][i], k0 + (int)i, len, pos, tint, sr_on && k0 + (int)i == sr_k);
+            if ((locked >> i & 1u) && s != GRID_PAST && s != GRID_TIE && (hit >> i & 1u ? cell[r][i] > 1u : r == seq_row))
+                s |= GRID_LOCK;                  /* (on the step's hits; a step without one: the selected row's cell) */
             if (s != seq_grid_cell[r][i]) {
                 seq_grid_paint(r, i, s, seq_grid_cell[r][i]);
                 seq_grid_cell[r][i] = (uint16_t)s;
@@ -1498,15 +1680,20 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
         if (text_w(&FONT_S, line, -1) > 224u)
             *p = 0;
     }
-    seq_grid_line(1, 202, line, C_DIM, 224);
+    if (seq_lock_line(mod, line, sizeof line))  /* a step held on a lock page: its rows, the locked ones marked */
+        seq_grid_line(1, 202, line, P_GOLD, 224);
+    else
+        seq_grid_line(1, 202, line, C_DIM, 224);
     /* the hint line (FONT_S, at most 228 px: a longer one is cut), in the controls' words (#450: SELECT the knob, SEL the
      * button): a step held, its knobs; a track of more than 16 steps, OCT's pages (#490); else SEL's SONG page */
     if (sr_on)
         hint = "KEYS note  LFO rest/tie  K4 move  BLACK 10 del";
     else if (seq_kbd())
         hint = "KEYS record  SELECT row  OCT octave  FX acc";
+    else if (seq_held >= 0 && seq_lock_page())
+        hint = "HELD: K1-K4 lock  back to value: off  ALGO";
     else if (seq_held >= 0)
-        hint = map >= 0 ? "HELD STEP: K2 vel  SELECT chance" : "HELD STEP: K1 note  K2 vel  K3 chance";
+        hint = map >= 0 ? "HELD: K2 vel  SELECT chance  ALGO lock" : "HELD: K1 note  K2 vel  K3 chance  ALGO lock";
     else if (map >= 0 && seq_rec && seq_mod_armed(mod))
         hint = len > 16 ? "BLACK rec  SELECT row  WHITE step  OCT 17+" : "BLACK rec  SELECT row  WHITE step  FX acc";
     else if (map >= 0)

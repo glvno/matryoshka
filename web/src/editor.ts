@@ -1230,6 +1230,17 @@ export class Editor {
     this.stepGrids.get(id)?.refresh();
   }
 
+  /** a track's P-locks of pattern `pat` as the FM-1's SEQ page left them (#524, LOCKS_NOW): into the patch and the grid, an
+   * undo step like an edit here; not sent back (the FM-1 has them) */
+  locksFromDevice(id: number, locks: StepLock[], pat = 0): void {
+    const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
+    if (!m) return;
+    this.touch();
+    this.setLocks(m, locks, pat);
+    this.ev.onStructure(this.patch);
+    this.stepGrids.get(id)?.refresh();
+  }
+
   /** a Steps module's notes of pattern p (0-based; the selected one), valid, into the patch and the engines. A pattern the
    * track had not got is made (its notes are what the edit made of the pattern 1 it showed: track.ts patternOf) */
   private setNotes(m: ModuleInst, notes: StepNote[] | undefined, p = this.pattern): void {

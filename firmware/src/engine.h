@@ -341,6 +341,7 @@ uint32_t eng_knob_mask(uint32_t module, uint32_t knob);
 /* the FM-1 panel module whose knob k drives parameter j of `module` through a cable (then the knob, not the parameter, is turned), else -1 */
 /* the value of a parameter after `clicks` knob clicks of `unit_per_click` (Q16 fraction of the range; octaves for the cutoff) */
 int32_t eng_step_param(uint32_t module, uint32_t param, int32_t clicks, int32_t unit_per_click);
+int32_t eng_step_value(uint32_t module, uint32_t param, int32_t v, int32_t clicks, int32_t unit_per_click);   /* as eng_step_param, from v (a P-lock's) */
 int eng_param_is_log(uint32_t module, uint32_t param);
 /* index of the first module of a type (defs.h T_*), -1 if the patch has none */
 int eng_find(uint32_t type);
@@ -452,6 +453,22 @@ int eng_patterns_record(uint8_t *out, uint32_t cap);
 #define ENG_LOCK_TARGETS 32
 #define ENG_LOCK_PAIRS 6
 int eng_locks_count(void);                           /* the patch's locks, all tracks and patterns */
+/* track `module`'s lock on step k of pattern p on module m's parameter j: 1 and its value in *v (Q16), 0 none */
+int eng_lock_get(uint32_t module, uint32_t p, uint32_t k, uint32_t m, uint32_t j, int32_t *v);
+/* the locks on step k of pattern p */
+int eng_locks_step(uint32_t module, uint32_t p, uint32_t k);
+/* that lock set to v (on) or removed; a new row also sets the further parameters `also` lists (a page row's extras as the
+ * binary has them, ENG_ROW_MORE: u8 n, n (module, parameter); 0 none). 0 done, -1 no room (ENG_PAT_LOCKS, ENG_MAX_LOCKS,
+ * ENG_LOCK_TARGETS) or not a lockable parameter */
+int eng_lock_set(uint32_t module, uint32_t p, uint32_t k, uint32_t m, uint32_t j, const uint8_t *also, int32_t v, int on);
+/* the pattern the SEQ page's locks go into: the one the track plays; one it has not got is made first, from its pattern 1
+ * (its notes and its locks: track.ts, the editor's setLocks). -1 none */
+int eng_locks_pattern(uint32_t module);
+/* pattern p's locks, 7 bytes each into out (cap bytes): step, module, parameter, i32 LE value; their count, -1 no track */
+int eng_locks_list(uint32_t module, uint32_t p, uint8_t *out, uint32_t cap);
+/* the P-locks section as the engine has it now (patchbin.ts lockRecord), into out (cap bytes): its length, 0 when there
+ * are no locks, -1 when it does not fit */
+int eng_locks_record(uint8_t *out, uint32_t cap);
 /* arming and recording from the keys (#139): the armed Steps module (-1 none); live recording on a track; the notes it
  * recorded, one at a time (0: none); cursor entry's chord; a recorded note laid over the track */
 void eng_arm(int module);

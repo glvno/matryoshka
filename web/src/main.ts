@@ -323,6 +323,19 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
     } finally { mark(false); }
     return;
   }
+  if (e.kind === 'locks') {   // P-locks set on the FM-1's SEQ page (#524): into the patch, an undo step
+    const dev = deviceView(editor.patch, true).patch;
+    const id = dev.modules[e.module]?.id;
+    if (id === undefined) return;
+    const locks = e.locks.flatMap((l) => {
+      const m = dev.modules[l.module];
+      const pd = m ? DEFS[m.type]?.params[l.param] : undefined;
+      return m && pd ? [{ at: l.at, module: m.id, param: pd.name, value: l.value }] : [];
+    });
+    mark(true);
+    try { editor.locksFromDevice(id, locks, e.pat); } finally { mark(false); }
+    return;
+  }
   if (e.kind === 'arms') {   // the FM-1 armed or disarmed something on its panel (#191): the editor shows the same set
     if (from === 'device') armsReported = true;
     mark(true);                              // (not sent back: the FM-1 has it; an undo step no more than the editor's own ARM)
@@ -582,6 +595,7 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
     try { setPlaying(run); } finally { fromEmu = false; }
   },
   track: (m, notes, pat) => fm1Event({ kind: 'track', module: m, notes, pat }, 'emu'),
+  locks: (m, pat, locks) => fm1Event({ kind: 'locks', module: m, pat, locks }, 'emu'),
   pattern: (p, song) => fm1Event({ kind: 'pattern', pattern: p, song }, 'emu'),
   song: (k, entries) => fm1Event({ kind: 'song', song: k, entries }, 'emu'),
   mute: (m, on) => fm1Event({ kind: 'mute', module: m, on }, 'emu'),
@@ -630,8 +644,8 @@ const editor = new Editor($('canvas'), firstPatch, {
     host.setPatch(p);
     queueSave(p);
     showBudget();
-    if (live()) queueUpload();
-    queueEmu();
+    if (live() && !fromDevice) queueUpload();   // (from the FM-1: P-locks set there, #524; it has them)
+    if (!fromEmu) queueEmu();
   },
   onAtt(id, index, value) {
     host.send({ t: 'att', id, index, value });

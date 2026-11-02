@@ -641,6 +641,30 @@ static int pages_turn(uint32_t k, int32_t clicks, int fast, int fine, uint32_t *
     return 0;
 }
 
+/* row k of page pg turned by `clicks` from the value cur (a P-lock's, #524: not the parameter's), as pages_turn steps it:
+ * a choice a name a click, a logarithmic row 1/100 of its octaves, else its increment (fast: five times as far). 0 and
+ * the new value in *v; -1 for a row that cannot be locked (an FM-1 setting, a poly group's setting) */
+static int pages_lock_turn(const ppage_t *pg, uint32_t k, int32_t cur, int32_t clicks, int fast, int32_t *v)
+{
+    const def_t *d;
+    uint32_t m, j;
+    if (!pg || k >= pg->nrows || !clicks || pg->mod[k] == SETTING_ROW || (pg->par[k] & POLY_ROW) || eng_type(pg->mod[k]) == T_PART)
+        return -1;
+    m = pg->mod[k];
+    j = pg->par[k];
+    d = &DEFS[eng_type(m)];
+    if (d->pchoice && d->pchoice[j]) {
+        int32_t n = 0, i = (cur + 32768) >> 16;
+        while (d->pchoice[j][n])
+            n++;
+        *v = clampi(i + (clicks > 0 ? 1 : -1), 0, n - 1) << 16;
+    } else if (eng_param_is_log(m, j))
+        *v = eng_step_value(m, j, cur, clicks * (fast ? 5 : 1), 655);
+    else
+        *v = clampi(cur + clicks * (fast ? 5 : 1) * d->pinc[j], d->pmin[j], row_top(m, j, d));
+    return 0;
+}
+
 /* knob k set to a position u (Q16 0..1) of its row's range (MIDI CC 16..19): as pages_turn */
 static int pages_set_unit(uint32_t k, int32_t u, uint32_t *mod, uint32_t *par, int32_t *v)
 {

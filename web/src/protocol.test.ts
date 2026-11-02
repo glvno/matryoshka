@@ -181,6 +181,13 @@ describe('patterns and songs on the wire (#375, format 48)', () => {
     expect(parseTrack(p.payload)).toEqual({ module: 3, notes, pat: 5 });
     expect(parseTrack(parse(trackFrame(3, notes))!.payload)).toEqual({ module: 3, notes, pat: 0 });
   });
+  it('LOCKS_NOW (#524): a track\'s locks of a pattern, 7 bytes each', async () => {
+    const { parseLocksNow } = await import('./protocol');
+    const v = Math.round(-1.5 * 65536) >>> 0;
+    const p = parse(frame(CMD.locksNow, [4, 2, 2, 0, 7, 1, 0, 0, 0x64, 0, 5, 9, 3, v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, v >>> 24]))!;
+    expect(parseLocksNow(p.payload)).toEqual({ module: 4, pat: 2, locks: [{ at: 0, module: 7, param: 1, value: 100 }, { at: 5, module: 9, param: 3, value: -1.5 }] });
+    expect(parseLocksNow([4, 2, 2, 0, 7])).toBeNull();
+  });
   it('PATTERN, SONG and their unasked replies', async () => {
     const { patternFrame, songFrame, parsePatternNow, parseSongNow } = await import('./protocol');
     expect(parse(patternFrame(7, 2))).toEqual({ cmd: CMD.pattern, payload: [7, 2] });

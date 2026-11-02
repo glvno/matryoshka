@@ -179,6 +179,8 @@ static uint32_t help_rows(uint32_t t, const char **r)
         R("b:11|t:+|w:~step record");
         R("t:hold step +|c:2~velocity");
         R("t:hold step +|n:SELECT~chance");
+        R("t:hold step +|n:ALGO~lock pages");
+        R("t:hold step +|c:1234~lock rows");
         R("k:SEL|t:tap~song");
         R("k:SEQ|t:+|k:REC~clear track");
         break;
@@ -193,6 +195,8 @@ static uint32_t help_rows(uint32_t t, const char **r)
         R("t:hold step +|c:1~pitch");
         R("t:hold step +|c:2~velocity");
         R("t:hold step +|c:3~chance");
+        R("t:hold step +|n:ALGO~lock pages");
+        R("t:hold step +|c:1234~lock rows");
         if (longtrk)
             R("k:OCT-|t:/|k:OCT+~steps 17+");
         R("k:FX|t:+|k:OCT~keys' octave");

@@ -2067,6 +2067,15 @@ int32_t eng_step_param(uint32_t module, uint32_t j, int32_t clicks, int32_t unit
     return value_of(d, j, unit_of(d, j, E.node[module].par[j]) + clicks * unit_per_click);
 }
 
+int32_t eng_step_value(uint32_t module, uint32_t j, int32_t v, int32_t clicks, int32_t unit_per_click)
+{
+    const def_t *d;
+    if (module >= E.nmod || j >= DEFS[E.node[module].type].npar)
+        return 0;
+    d = &DEFS[E.node[module].type];
+    return value_of(d, j, unit_of(d, j, v) + clicks * unit_per_click);
+}
+
 int eng_param_is_log(uint32_t module, uint32_t j)
 {
     return module < E.nmod && j < DEFS[E.node[module].type].npar && DEFS[E.node[module].type].plog && DEFS[E.node[module].type].plog[j];
@@ -3309,6 +3318,236 @@ int eng_patterns_record(uint8_t *out, uint32_t cap)
         for (j = 0; j < E.song_n[k]; j++) {
             PUT(E.song_pat[k][j]);
             PUT((uint8_t)E.song_shift[k][j]);
+        }
+    }
+#undef PUT
+    return n <= cap || !out ? (int)n : -1;
+}
+
+/* ---- P-locks edited on the FM-1 (#524, #519 Q2; seq_ui.c): a held step's locks on the rows of the track's device */
+
+/* track t's locked row that sets parameter j of module m first (E.lt), ENG_LOCK_TARGETS none */
+static uint32_t lock_row(uint32_t t, uint32_t m, uint32_t j)
+{
+    uint32_t r;
+    for (r = 0; r < E.nlt; r++)
+        if (E.lt[r].trk == t && E.lt[r].mod[0] == m && E.lt[r].par[0] == j)
+            return r;
+    return ENG_LOCK_TARGETS;
+}
+/* track t's lock on step k of pattern p on row r (E.lk), E.nlk none */
+static uint32_t lock_at(uint32_t t, uint32_t p, uint32_t k, uint32_t r)
+{
+    uint32_t i;
+    for (i = 0; i < E.nlk; i++)
+        if (E.lk[i].trk == t && E.lk[i].pat == p && E.lk[i].at == k && E.lk[i].row == r)
+            return i;
+    return E.nlk;
+}
+/* a lock on module m's parameter j may be set: a plain parameter of a module of the patch (not a Part's settings) */
+static int lock_ok(uint32_t m, uint32_t j) { return m < E.nmod && E.node[m].type != T_PART && j < DEFS[E.node[m].type].npar; }
+
+int eng_lock_get(uint32_t module, uint32_t p, uint32_t k, uint32_t m, uint32_t j, int32_t *v)
+{
+    uint32_t t, r, i;
+    if (!steps_inst(module) || !lock_ok(m, j))
+        return 0;
+    t = E.node[module].trk;
+    if ((r = lock_row(t, m, j)) == ENG_LOCK_TARGETS || (i = lock_at(t, p, k, r)) == E.nlk)
+        return 0;
+    if (v)
+        *v = E.lk[i].v;
+    return 1;
+}
+int eng_locks_step(uint32_t module, uint32_t p, uint32_t k)
+{
+    uint32_t t, i, n = 0;
+    if (!steps_inst(module))
+        return 0;
+    t = E.node[module].trk;
+    for (i = 0; i < E.nlk; i++)
+        n += E.lk[i].trk == t && E.lk[i].pat == p && E.lk[i].at == k;
+    return (int)n;
+}
+int eng_lock_set(uint32_t module, uint32_t p, uint32_t k, uint32_t m, uint32_t j, const uint8_t *also, int32_t v, int on)
+{
+    uint32_t t, r, i, n = 0;
+    if (!steps_inst(module) || !lock_ok(m, j) || p >= ENG_PATTERNS || k >= TRACK_STEPS)
+        return -1;
+    t = E.node[module].trk;
+    r = lock_row(t, m, j);
+    i = r == ENG_LOCK_TARGETS ? E.nlk : lock_at(t, p, k, r);
+    E.trk_lkey[t] = -2;                          /* (applied again after the track's next block) */
+    if (!on) {
+        if (i == E.nlk)
+            return 0;
+        for (; i + 1u < E.nlk; i++)
+            E.lk[i] = E.lk[i + 1u];
+        E.nlk--;
+        for (i = 0; i < E.nlk && E.lk[i].row != r; i++)
+            ;
+        if (i == E.nlk) {                        /* no lock on the row is left: it goes, the rows after it move down */
+            for (i = r; i + 1u < E.nlt; i++)
+                E.lt[i] = E.lt[i + 1u];
+            E.nlt--;
+            for (i = 0; i < E.nlk; i++)
+                if (E.lk[i].row > r)
+                    E.lk[i].row--;
+        }
+        return 0;
+    }
+    if (i < E.nlk) {
+        E.lk[i].v = v;
+        return 0;
+    }
+    for (i = 0; i < E.nlk; i++)
+        n += E.lk[i].trk == t && E.lk[i].pat == p;
+    if (n >= ENG_PAT_LOCKS || E.nlk >= ENG_MAX_LOCKS || (r == ENG_LOCK_TARGETS && E.nlt >= ENG_LOCK_TARGETS))
+        return -1;
+    if (r == ENG_LOCK_TARGETS) {                 /* a new row: its parameter, then the further ones its page row sets */
+        lrow_t *x = &E.lt[r = E.nlt++];
+        x->trk = (uint8_t)t;
+        x->n = 1;
+        x->on = 0;
+        x->v = 0;
+        x->mod[0] = (uint8_t)m;
+        x->par[0] = (uint8_t)j;
+        E.node[m].locked = 1;
+        for (i = 0; also && i < also[0] && x->n < ENG_LOCK_PAIRS; i++) {
+            uint32_t am = also[1u + 2u * i], aj = also[2u + 2u * i], q;
+            if (!lock_ok(am, aj))
+                continue;
+            for (q = 0; q < x->n && !(x->mod[q] == am && x->par[q] == aj); q++)
+                ;
+            if (q < x->n)
+                continue;
+            x->mod[x->n] = (uint8_t)am;
+            x->par[x->n++] = (uint8_t)aj;
+            E.node[am].locked = 1;
+        }
+    }
+    E.lk[E.nlk].trk = (uint8_t)t;
+    E.lk[E.nlk].pat = (uint8_t)p;
+    E.lk[E.nlk].at = (uint8_t)k;
+    E.lk[E.nlk].row = (uint8_t)r;
+    E.lk[E.nlk].v = v;
+    E.nlk++;
+    return 0;
+}
+int eng_locks_pattern(uint32_t module)
+{
+    uint32_t t, p, i, n;
+    const uint32_t *w;
+    if (!steps_inst(module))
+        return -1;
+    t = E.node[module].trk;
+    p = E.trk_pat[t];
+    if (E.pat_has[t] >> p & 1u)
+        return (int)p;
+    n = (uint32_t)eng_pattern_notes(module, 0, &w);   /* the pattern made from pattern 1: its notes, then its locks */
+    {
+        uint32_t copy[TRACK_NOTES_MAX];
+        for (i = 0; i < n; i++)
+            copy[i] = w[i];
+        if (!trk_put_at(t, p, copy, n))
+            return -1;
+    }
+    n = E.nlk;
+    for (i = 0; i < n && E.nlk < ENG_MAX_LOCKS; i++)
+        if (E.lk[i].trk == t && E.lk[i].pat == 0u) {
+            E.lk[E.nlk] = E.lk[i];
+            E.lk[E.nlk++].pat = (uint8_t)p;
+        }
+    E.trk_lkey[t] = -2;
+    return (int)p;
+}
+int eng_locks_list(uint32_t module, uint32_t p, uint8_t *out, uint32_t cap)
+{
+    uint32_t t, i, n = 0;
+    if (!steps_inst(module))
+        return -1;
+    t = E.node[module].trk;
+    for (i = 0; i < E.nlk; i++) {
+        const lock_t *l = &E.lk[i];
+        if (l->trk != t || l->pat != p)
+            continue;
+        if (out && 7u * (n + 1u) <= cap) {
+            uint8_t *o = out + 7u * n;
+            o[0] = l->at;
+            o[1] = E.lt[l->row].mod[0];
+            o[2] = E.lt[l->row].par[0];
+            o[3] = (uint8_t)l->v;
+            o[4] = (uint8_t)((uint32_t)l->v >> 8);
+            o[5] = (uint8_t)((uint32_t)l->v >> 16);
+            o[6] = (uint8_t)((uint32_t)l->v >> 24);
+        }
+        n++;
+    }
+    return (int)n;
+}
+int eng_locks_record(uint8_t *out, uint32_t cap)
+{
+    uint32_t t, r, i, k, p, n = 0, nt = 0, at, nr, np;
+    uint8_t idx[ENG_LOCK_TARGETS];
+#define PUT(b) do { if (out && n < cap) out[n] = (uint8_t)(b); n++; } while (0)
+    if (!E.loaded || !E.nlk)
+        return 0;
+    for (t = 0; t < E.ntrk; t++) {
+        for (i = 0; i < E.nlk && E.lk[i].trk != t; i++)
+            ;
+        nt += i < E.nlk;
+    }
+    PUT(nt);
+    for (t = 0; t < E.ntrk; t++) {
+        for (i = 0; i < E.nlk && E.lk[i].trk != t; i++)
+            ;
+        if (i == E.nlk)
+            continue;
+        PUT(eng_steps_module(t));
+        at = n;
+        PUT(0);                                  /* (the row count, below) */
+        for (r = nr = 0; r < E.nlt; r++) {       /* the track's rows that hold a lock, in order */
+            idx[r] = 0xFFu;
+            if (E.lt[r].trk != t)
+                continue;
+            for (i = 0; i < E.nlk && E.lk[i].row != r; i++)
+                ;
+            if (i == E.nlk)
+                continue;
+            idx[r] = (uint8_t)nr++;
+            PUT(E.lt[r].n);
+            for (k = 0; k < E.lt[r].n; k++) {
+                PUT(E.lt[r].mod[k]);
+                PUT(E.lt[r].par[k]);
+            }
+        }
+        if (out && at < cap)
+            out[at] = (uint8_t)nr;
+        for (p = np = 0; p < ENG_PATTERNS; p++) {
+            for (i = 0; i < E.nlk && !(E.lk[i].trk == t && E.lk[i].pat == p); i++)
+                ;
+            np += i < E.nlk;
+        }
+        PUT(np);
+        for (p = 0; p < ENG_PATTERNS; p++) {
+            uint32_t c = 0;
+            for (i = 0; i < E.nlk; i++)
+                c += E.lk[i].trk == t && E.lk[i].pat == p;
+            if (!c)
+                continue;
+            PUT(p);
+            PUT(c);
+            for (i = 0; i < E.nlk; i++) {
+                const lock_t *l = &E.lk[i];
+                if (l->trk != t || l->pat != p)
+                    continue;
+                PUT(l->at);
+                PUT(idx[l->row]);
+                PUT(l->v);
+                PUT((uint32_t)l->v >> 8);
+                PUT((uint32_t)l->v >> 16);
+                PUT((uint32_t)l->v >> 24);
+            }
         }
     }
 #undef PUT
