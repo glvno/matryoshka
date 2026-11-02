@@ -225,7 +225,7 @@ Every module output says what range its signal has: hover an output jack or a ca
 
 ## Comments
 
-Right-click the empty canvas and choose **Add comment** (or "Add comment" in the palette) for a box of free text, like a Max comment: no ports, muted, under the cards. Type, then Ctrl/Cmd+Enter or click elsewhere; Esc puts the text back, and a comment left empty goes away. Double-click a comment to edit it, drag it to move it, drag its corner to resize it, right-click it for Edit text, Duplicate and Delete. Comments are selected (a click, Shift-click, a box), copied, pasted, duplicated, deleted and undone like cards. They are saved in the patch, its link and its .json file (at most 100 per patch, 500 characters each) and show in Show changes; the FM-1 never gets them.
+Right-click the empty canvas and choose **Add comment** (or "Add comment" in the palette) for a box of free text, like a Max comment: no ports, muted, under the cards. Type, then Ctrl/Cmd+Enter or click elsewhere; Esc puts the text back, and a comment left empty goes away. Double-click a comment to edit it, drag it to move it, drag its corner to resize it, right-click it for Edit text, Duplicate and Delete. Comments are selected (a click, Shift-click, a box), copied, pasted, duplicated, deleted and undone like cards. They are saved in the patch, its link and its .json file (at most 100 per patch, 500 characters each; a link without the layout leaves them out, as their places would no longer fit the cards) and show in Show changes; the FM-1 never gets them.
 
 ## Arpeggiator in the editor
 

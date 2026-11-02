@@ -79,14 +79,15 @@ describe('comment boxes (#518)', () => {
     expect(encodePatch(p)).toEqual(before);
   });
 
-  it('travel in a share link, with or without the layout', async () => {
+  it('travel in a share link with the layout; one without it leaves them out but keeps the notes', async () => {
     const p = base();
+    p.notes = 'a darker bass';
     addComment(p, 40, 50, 'turn the cutoff down for a darker bass\nsecond line <b>not markup</b>');
-    for (const layout of [true, false]) {
-      const s = await encodeShare(p, { base: 'https://example.test/', layout });
-      const back = await decodeShare(s.code, DEFS);
-      expect(back.comments).toEqual(p.comments);
-    }
+    const full = await decodeShare((await encodeShare(p, { base: 'https://example.test/', layout: true })).code, DEFS);
+    expect(full.comments).toEqual(p.comments);
+    const lean = await decodeShare((await encodeShare(p, { base: 'https://example.test/', layout: false })).code, DEFS);
+    expect(lean.comments).toBeUndefined();
+    expect(lean.notes).toBe('a darker bass');
   });
 
   it('show in Show changes as a line', () => {
