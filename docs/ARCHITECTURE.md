@@ -575,7 +575,7 @@ Serum 2's Voicing panel in this modular's terms, plus the parts of an analog pol
 ## MIDI in and out (#64, 2026-10-18)
 
 - In (USB and TRS): one channel (MENU > MIDI > MIDI CHANNEL, omni by default): notes (but see the key range below), pitch bend, CC 1 (mod), aftertouch, program change n = bank slot n, counted from 0 (program change 0 = slot 01; an empty slot, or while the editor's Live is on: ignored), CC 16..19 = K1..K4 (the rows of the page in focus), CC 22 = morph, CC 80..86 = presses (64 and up) and releases of the patch buttons FX..ARP, CC 123 = all notes off; clock, Start / Continue / Stop (MENU > CLOCK IN).
-- Out (USB only; MENU > MIDI > MIDI OUT, on by default; TRS has no out): every panel control, the "MIDI out map" below (#115). What came in is not sent out again. Not verified: USB is not emulated.
+- Out (USB only; MENU > MIDI > MIDI OUT, on by default; TRS has no out): every panel control, the "MIDI out map" below (#115), and MIDI clock (MENU > MIDI > CLOCK OUT, "MIDI clock out" below). What came in is not sent out again. Not verified: USB is not emulated.
 
 ### MIDI out map (#115, 2026-10-19)
 
@@ -592,13 +592,44 @@ checked by `tools/panel_test.sh`.
 | FX SCL ENV LFO EDIT GLO ARP | CC 80..86 |
 | HOME SAVE SEQ REC PLAY | CC 87, 88, 89, 90, 91 |
 | OCT- OCT+ | CC 92, 93 |
-| PLAY starting / stopping the transport | also Start 0xFA / Stop 0xFC (not when PLAY held + PRESET set the tempo) |
+| PLAY starting / stopping the transport | also Start 0xFA / Stop 0xFC (not when PLAY held + PRESET set the tempo), sent with the clock's tick 0 (below) |
+| the clock (MENU > MIDI > CLOCK OUT, on by default) | Clock 0xF8, 24 a quarter note at the tempo that plays, all the time ([D-477](ledger/link-and-midi.md#D-477)) |
 
 While the quick start or the controls sheet shows, only OCT, PLAY and the sheet's HOME go out, and a release only
 when its press went out ([D-245](ledger/device-ui.md#D-245)).
 
 Buttons send 127 on the press and 0 on the release, a switching patch button too (the editor and the FM-1 itself take
 CC 80..86 coming in the same way, so a switch is one press). CC 22 (morph) is in only.
+
+### MIDI clock out (#473, 2026-11-01)
+
+The FM-1 sends MIDI clock over USB all the time, at the tempo that plays: the global tempo while TEMPO is GLOBAL, else
+Main's ([D-907](ledger/device-ui.md#D-907)), as the web app's clock out does ([D-466](ledger/link-and-midi.md#D-466)).
+MENU > MIDI > CLOCK OUT (K4 on the MIDI tab, on by default; settings record byte 6 bit 1 set = off, so an older record
+reads as on) turns the clock off; Start / Stop still go out with PLAY. With MIDI OUT off nothing goes out. While MIDI
+clock in drives the clock ([D-452](ledger/link-and-midi.md#D-452)) the FM-1 sends no clock; half a second after the last
+tick in, it sends its own again at its tempo ([D-477](ledger/link-and-midi.md#D-477)).
+
+- Timing (`firmware/src/clock_out.h`): the ticks are the engine's (`eng_clock_out`: the ticks the last render made and
+  their samples), so they follow the audio clock, not the main loop. The audio ISR puts each in a ring of 8 with the
+  time it is due: the ISR's start, plus a half buffer (128 samples, when that render begins to sound), plus the tick's
+  sample. The 2 kHz timer, just before `usb_poll`, hands the due ones to the USB MIDI ring (`midi_out_event`). So a tick
+  leaves within 0.5 ms of its sample sounding, whatever the render's length; the host's USB frame (1 ms) adds its own.
+- Start: the engine resets the tempo's phase when the transport starts, and the tracks' first steps sound on the
+  start's first sample. The clock calls that sample tick 0: PLAY's Start (0xFA) goes out in the render where the engine
+  starts, followed by a tick at once, so a device that follows counts its steps from the same tick as the FM-1's tracks.
+  Stop (0xFC) goes out in the render where it stops. A Start or Stop with no engine running goes out after three halves.
+- A host that stops reading: at most 8 ticks wait in the USB ring; later ones are dropped, so no burst of old ticks
+  arrives when it reads again. SysEx goes first on the endpoint (`ep1_tx`): during a long editor message the ticks wait
+  behind it.
+- DIAG page 116 (`tools/m1_link.py clock`): ticks sent, ticks dropped, bytes waiting, the USB MIDI ring's fill, CLOCK
+  OUT, MIDI OUT, whether clock in drives, whether the transport runs. `tools/m1_link.py clock SECONDS` also times the
+  ticks the computer receives (CoreMIDI timestamps) and prints the period's mean and deviation.
+- The editor ignores 0xF8 from an input that is an FM-1 (the linked input, or one named like an FM-1: `input.ts`
+  `isFm1In`), so the browser's tempo does not follow the FM-1 unasked; Start / Stop still come in as before.
+- Tests: `tools/clock_out_test.sh` (ticks counted and timed at 20..300 bpm, a tempo change, global against patch tempo,
+  Start / Stop and tick 0, clock in, CLOCK OUT off, MIDI OUT off, a host that stops reading, the settings bit),
+  `panel_test` (the MIDI tab's K4).
 
 ### Following the FM-1's panel, any firmware (#120, 2026-10-19)
 

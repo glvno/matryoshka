@@ -96,6 +96,7 @@ static void m1_tempo(uint32_t patch, uint32_t bpm);           /* main.c: the edi
 static const uint8_t *pages_src(uint32_t *len) { *len = m1_cur_len; return m1_cur_len ? m1_cur : 0; }
 static uint32_t pages_gen(void) { return m1_gen; }
 #include "menu.c"
+#include "clock_out.h"       /* MIDI clock out (#473): the audio ISR times the ticks, the 2 kHz timer sends them */
 #include "seq_ui.c"
 #include "splash.c"
 #include "help_ui.c"         /* the controls sheet and the quick start (#450) */

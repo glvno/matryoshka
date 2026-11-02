@@ -88,6 +88,7 @@ void fm1_timer5_irq(uint32_t *f)                /* f: the saved r0..r3, reti, re
         next = fm1_ms + DIAG_EVERY_MS;
     }
     if (sub++ % 5u == 0u) {
+        clk_out_poll(t0);                       /* MIDI clock out: the ticks due now to the USB ring (clock_out.h) */
         usb_poll();                             /* 2 kHz: all USB SIE traffic lives here */
         uart_midi_poll();                       /* the TRS jack's DMA ring (128 bytes = 41 ms) */
     }
@@ -157,6 +158,8 @@ static uint32_t batt_us;                        /* the last battery read's time,
  *        packets, frames in them, SET_CUR requests, bus resets, last fill_min, USB frame number
  *   126: underruns, overruns, missed IN tokens, stalls, adj_up, adj_down, fill_lo (min of fill_min since the stream
  *        started, 0xFFFFFFFF: none yet), fill_hi
+ * page 116 MIDI clock out (clock_out.h, #473): ticks sent, ticks dropped, bytes waiting, USB MIDI ring fill, CLOCK OUT,
+ * MIDI OUT, clock in drives, the transport runs;
  * page 119 the overload guard (audio.c, #458): halves rendered, halves over 85 %, late halves (the hardware played them
  * before their render ended), then since the last read of this page the longest run of halves over 85 %, the longest
  * gap between two audio ISRs (us) and the shortest ISR (us), then parts shed since the last patch load and the guard's
@@ -193,6 +196,22 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
         return sizeof v;
     }
 #endif
+    if (page == 116u) {                         /* #473: MIDI clock out (clock_out.h), since boot: ticks sent, ticks dropped
+                                                 * (the host stopped reading), the bytes waiting for their time, the MIDI
+                                                 * packets waiting in the USB ring, CLOCK OUT, MIDI OUT, MIDI clock in drives */
+        uint32_t v[8];
+        v[0] = co_sent;
+        v[1] = co_dropped;
+        v[2] = co_w - co_r;
+        v[3] = mo_w - mo_r;
+        v[4] = cfg.clock_out;
+        v[5] = cfg.midi_out;
+        v[6] = (uint32_t)eng_clock_is_external();
+        v[7] = (uint32_t)eng_transport_running();
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
     if (page == 117u || page == 118u) {         /* #486: the editor link's counters (usb.c lk), since boot */
         uint32_t v[8];
         if (page == 118u) {                     /* in */
@@ -294,7 +313,7 @@ static int slot_used(uint32_t s) { return s < M1_SLOTS && (bank_mask >> s & 1u);
 
 /* the settings record: version, slot, octave + 8, LED mode, knob accel (bit 0; bit 1: the quick start off, D-247: a record
  * from before reads as on, and an older firmware reads the accel as before), the global tempo's low byte (byte 5,
- * D-907; was CPU in the bar), clock in, TEMPO and the tempo's bit 8 (byte 7, tempo_glo.h; was program change),
+ * D-907; was CPU in the bar), clock in (bit 0; bit 1: CLOCK OUT off, #473, read alike), TEMPO and the tempo's bit 8 (byte 7, tempo_glo.h; was program change),
  * MIDI channel, MIDI out, the bank's format, the selected module, REC's count-in (byte 12, #414: a record without
  * it, SET_MIN bytes, reads as OFF), the factory set the bank's untouched factory slots hold (bytes 13..15, #441: a
  * record without them reads as unknown). The version stays 1, so an older firmware reads the longer record too; it
@@ -314,7 +333,7 @@ static void settings_pack(uint8_t *d)
     d[2] = (uint8_t)(octave + 8);
     d[3] = cfg.leds;
     d[4] = (uint8_t)(cfg.accel | (cfg.quick ? 0u : 2u));
-    d[6] = cfg.clock_in;
+    d[6] = co_set_byte(cfg.clock_in, cfg.clock_out);   /* (bit 1: CLOCK OUT off, #473: clock_out.h) */
     gt_pack(d);                                 /* bytes 5 and 7: the global tempo and TEMPO (D-907) */
     d[8] = cfg.ch;
     d[9] = cfg.midi_out;                        /* (was the mixer's level before #60: values over 1 read as on) */
@@ -335,6 +354,7 @@ static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint3
     cfg.accel = d[4] & 1u;
     cfg.quick = !(d[4] & 2u);
     cfg.clock_in = d[6] & 1u;
+    cfg.clock_out = co_set_clock_out(d[6]);     /* (a record from before reads as ON) */
     gt_unpack(d, len);                          /* bytes 5 and 7 (CPU in the bar and program change before): the global tempo */
     cfg.ch = d[8] > 16u ? 0u : d[8];
     cfg.midi_out = d[9] == 0u ? 0u : 1u;
@@ -847,7 +867,9 @@ static void midi_send(uint32_t status, uint32_t d1, uint32_t d2)
 }
 static void midi_send_rt(uint32_t b)                /* a real-time byte: USB MIDI code index 0xF (one byte) */
 {
-    if (cfg.midi_out)
+    if (b == 0xFAu || b == 0xFCu)                   /* PLAY's Start / Stop: with the engine's edge, ahead of its tick 0 */
+        clk_out_play(b);                            /* (clock_out.h; MIDI OUT is read as it goes out) */
+    else if (cfg.midi_out)
         midi_out_event(0x0Fu | (b & 0xFFu) << 8);
 }
 

@@ -335,6 +335,11 @@ uint32_t eng_ticks(void);                 /* the clock's ticks so far (24 a quar
 int32_t eng_run_ticks(void);              /* ticks since the transport started (the Steps tracks' bars count from there:
                                            * 96 a bar of four beats), -1 until the engine has taken the start */
 int eng_clock_is_external(void);          /* MIDI clock drives the clock */
+/* MIDI clock out (#473, main.c clock_out.h): the ticks of the tempo the last eng_render made (none while MIDI clock
+ * drives the clock), up to `max` of their samples in it in *off, and the transport's edge in it in *edge (1 started,
+ * -1 stopped, 0 none). A render that starts the transport has a tick on the start's sample: tick 0, where the tracks'
+ * first steps sound, so a device that follows counts its steps from the same tick */
+uint32_t eng_clock_out(uint32_t *off, uint32_t max, int32_t *edge);
 /* The global tempo (GLO > PANEL > TEMPO, D-907; engine.ts tempoGlobal): with one set, every patch plays at it and a load
  * leaves it (Main's tempo parameter shows it; the patch's own value comes back with eng_tempo_global(0)). Main's tempo
  * set with eng_set_param moves it (a knob, PLAY held + PRESET, the editor's PARAM). MIDI clock overrides it as before.

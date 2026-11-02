@@ -31,7 +31,7 @@ import { buildAssembliesSection, storeAssembly, storeTutorialAssembly } from './
 import { AssemblyBrowser } from './browser';
 import { searchCommands, type Command } from './commands';
 import { buildFlashTab } from './flasher';
-import { attachKeyboard, attachMidi, followOctave, isTextEntry } from './input';
+import { attachKeyboard, attachMidi, followOctave, isFm1In, isTextEntry } from './input';
 import { Piano } from './piano';
 import { sliderJack } from './slider-jack';
 import { PANEL_BUTTONS } from './modules';
@@ -2191,6 +2191,7 @@ const setMidi = async (on: boolean): Promise<void> => {
       showMidi();
     },
     (port) => mirror.follows(port),   // (the followed FM-1's panel comes in through the mirror: not twice)
+    (port) => isFm1In(port, device.input?.id),   // (an FM-1 sends its clock all the time, #473: the tempo stays the editor's)
   );
   midiAsking = false;
   midiOn = !!midiSwitch;

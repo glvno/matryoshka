@@ -5103,7 +5103,7 @@ export class Editor {
   private focusedDevice(): Device | undefined { return this.gloOn ? this.gloDevice() : this.devices.find((d) => d.key === this.focus?.device); }
   private focusedPage(): Page | undefined { return this.gloOn ? this.gloDevice().pages[0] : this.focusedDevice()?.pages[this.focus!.page]; }
 
-  // ---- GLO (#199, #395): the FM-1's own menu (pages_ui.c menu_tab_page: MIDI channel, clock in, MIDI out; LEDs; ...), never the
+  // ---- GLO (#199, #395): the FM-1's own menu (pages_ui.c menu_tab_page: MIDI channel, clock in, MIDI out, clock out; LEDs; ...), never the
   // patch's: the editor has no rows for it (the patch's tempo and morph are on Main's device page, #196). Not one of the
   // devices: the pickers leave it, the focus stays where it was.
   private gloOn = false;

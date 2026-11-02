@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { attachKeyboard, attachMidi, followOctave } from './input';
+import { attachKeyboard, attachMidi, followOctave, isFm1In } from './input';
 
 // Exercise the installed event handlers without an audio device or a DOM dependency.
 class Control extends EventTarget {
@@ -113,6 +113,33 @@ describe('attachMidi', () => {
       nav.requestMIDIAccess = saved;
     }
     expect(sent).toEqual([{ t: 'on', note: 60, vel: 100 / 127, ch: 1 }]);
+  });
+
+  it('ignores MIDI clock from an FM-1 (#473: it sends its clock all the time), but not its Start / Stop or another clock', async () => {
+    const mk = (id: string, name: string) => ({ id, name, state: 'connected', onmidimessage: null as ((ev: unknown) => void) | null });
+    const fm1 = mk('a', 'Felucca'), daw = mk('b', 'IAC Driver Bus 1');
+    const nav = navigator as unknown as { requestMIDIAccess?: unknown };
+    const saved = nav.requestMIDIAccess;
+    nav.requestMIDIAccess = async () => ({ inputs: new Map([['a', fm1], ['b', daw]]), outputs: new Map() });
+    const sent: unknown[] = [];
+    try {
+      await attachMidi({ send: (m: unknown) => void sent.push(m) } as never, () => {}, undefined, () => false, (p) => isFm1In(p, null));
+      fm1.onmidimessage!({ target: fm1, data: new Uint8Array([0xf8]) });
+      fm1.onmidimessage!({ target: fm1, data: new Uint8Array([0xfa]) });
+      daw.onmidimessage!({ target: daw, data: new Uint8Array([0xf8]) });
+    } finally {
+      nav.requestMIDIAccess = saved;
+    }
+    expect(sent).toEqual([{ t: 'clockrun', on: true }, { t: 'clock' }]);
+  });
+});
+
+describe('isFm1In', () => {
+  it('is the linked input whatever its name, or one named like an FM-1, never an update loader', () => {
+    expect(isFm1In({ id: 'x', name: 'USB MIDI Device' }, 'x')).toBe(true);
+    expect(isFm1In({ id: 'x', name: 'USB MIDI Device' }, 'y')).toBe(false);
+    for (const name of ['Matryoshka FM-1', 'FM-1 (emu)', 'Felucca', 'FM1']) expect(isFm1In({ id: 'x', name }, null)).toBe(true);
+    for (const name of ['ota-FM-1_700', 'Felucca Update', 'IAC Driver Bus 1', 'Modular Thing']) expect(isFm1In({ id: 'x', name }, null)).toBe(false);
   });
 });
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### FM-1
+
+- The FM-1 sends MIDI clock over USB (#473), so a DAW, a synth or a second FM-1 can play in time with it. It sends 24 clocks a quarter note all the time, at the tempo it plays (the global tempo, or the patch's when TEMPO is PATCH), so the other gear has the tempo before you press PLAY. PLAY's Start and Stop go out as before, and the Start comes together with the first clock of the bar. GLO > MIDI > CLOCK OUT (K4) turns the clock off; it is on as made. With MIDI OUT off, nothing goes out. While MIDI clock comes in and drives the FM-1, it sends none of its own, and half a second after that clock stops it sends its own again.
+
+### Editor
+
+- The editor no longer follows MIDI clock that comes from an FM-1, so a connected FM-1 sending its clock does not change the editor's tempo (#473). Clock from other gear still drives the editor as before.
+
 ## 1.8.2 — 2026-11-01
 
 ### Editor

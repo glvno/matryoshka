@@ -699,8 +699,9 @@ int main(void)
     mlen = 0;                                               /* (the MIDI log holds 256 messages; the menu's steps below would fill it) */
     tap(BTN_GLO);
     check("GLO: the menu on its MIDI tab, a step on the trail", page == PAGE_MENU && menu_tab == MT_MIDI && trail_n == 1 && menu_page());
-    check("its header: MENU on coral; the rows: MIDI channel, clock in, MIDI out", px(2, 2) == P_CORAL && pages_now()->nrows == 3u
-          && pages_now()->mod[0] == SETTING_ROW && pages_now()->par[0] == MR_CH && pages_now()->par[2] == MR_MOUT);
+    check("its header: MENU on coral; the rows: MIDI channel, clock in, MIDI out, clock out", px(2, 2) == P_CORAL && pages_now()->nrows == 4u
+          && pages_now()->mod[0] == SETTING_ROW && pages_now()->par[0] == MR_CH && pages_now()->par[2] == MR_MOUT
+          && pages_now()->par[3] == MR_CLKOUT && on_screen("CLOCK OUT"));
     {
         uint32_t ch = cfg.ch;
         int stepped = presets_stepped;
@@ -708,6 +709,11 @@ int main(void)
         check("K1 on MIDI: the channel one step a click", cfg.ch == (ch < 16u ? ch + 1u : 16u));
         enc(2, -1);
         check("  and back", cfg.ch == ch);
+        check("K4 on MIDI: CLOCK OUT, ON as made (#473)", cfg.clock_out == 1u);
+        enc(5, -1);
+        check("  a turn left: OFF", cfg.clock_out == 0u && on_screen("OFF"));
+        enc(5, 1);
+        check("  a turn right: ON again", cfg.clock_out == 1u);
         enc(0, 1);
         check("SELECT in the menu: nothing", page == PAGE_MENU && menu_tab == MT_MIDI);
         enc(6, 1);
@@ -1388,7 +1394,7 @@ int main(void)
         check("K1 in the menu: the MIDI channel one step a turn, not the patch's tempo", cfg.ch == (ch < 16u ? ch + 1u : 16u) && eng_get_param((uint32_t)main, FM1_P_TEMPO) == bpm);
         enc(2, -4);
         later(1500);
-        check("the rows: MIDI channel, clock in, MIDI out", pages_now()->nrows == 3u && pages_now()->mod[0] == SETTING_ROW && cfg.ch == ch);
+        check("the rows: MIDI channel, clock in, MIDI out, clock out", pages_now()->nrows == 4u && pages_now()->mod[0] == SETTING_ROW && cfg.ch == ch);
         if (getenv("PANEL_SNAP_GLO")) {
             const char *keep = getenv("PANEL_SNAP");
             setenv("PANEL_SNAP", getenv("PANEL_SNAP_GLO"), 1);

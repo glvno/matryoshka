@@ -362,8 +362,9 @@ static void page_hold_poll(void)
 static void play_toggle(void)                       /* PLAY: the transport (the Main module's run output and clock); a stop
                                                      * ends recording too (#395: PLAY stops everything) */
 {
-    eng_transport(!eng_transport_running());
-    midi_send_rt(eng_transport_running() ? 0xFAu : 0xFCu);
+    int run = !eng_transport_running();
+    midi_send_rt(run ? 0xFAu : 0xFCu);              /* (asked first: main.c sends it with the render that starts or stops) */
+    eng_transport(run);
     if (!eng_transport_running() && seq_rec)
         seq_rec_off();
     leds_play();
