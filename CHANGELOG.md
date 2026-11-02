@@ -14,6 +14,8 @@
 - The Scope's screen can be read (#518): one scale for both traces, gridlines labelled with their values, the time per division, and a scale button (auto, ±1, ±4; auto fits the traces and labels the scale it chose). Under the screen each input shows its lowest and highest value, peak to peak, and its source with that output's range. The screen is 96 px tall, 64 before.
 - Comment boxes on the canvas, like Max comments (#518): right-click the empty canvas or use the palette's Add comment. They are moved, resized, selected, copied, deleted and undone like cards, saved in the patch, its link and its .json file (a link without the layout leaves them out), and never sent to the FM-1.
 
+- 8 Lire XL no longer clicks when it opens with HOLD up (#516). The drone used to start at full level on its first sample; now each pair's HOLD fades it in over 30 ms, as on 8 Lire since 1.8.2. Measured on the browser engine's render of 8 Lire XL opened with both HOLDs up: the largest jump in the first 100 ms fell from 0.50 of full scale to 0.04.
+
 - The editor no longer follows MIDI clock that comes from an FM-1, so a connected FM-1 sending its clock does not change the editor's tempo (#473). Clock from other gear still drives the editor as before.
 
 ## 1.8.2 — 2026-11-01
