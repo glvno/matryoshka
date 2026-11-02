@@ -370,6 +370,7 @@ static int marks_ok(int mod)
 
 #include "help_test.h"                              /* #450: OCT on release, the controls sheet, the quick start */
 #include "nudge_test.h"                             /* #450: the nudges (D-249), ENV in the menu */
+#include "steprec_test.h"                           /* #532: step record on the SEQ page */
 
 int main(void)
 {
@@ -4113,6 +4114,7 @@ int main(void)
         page_show(0);
     }
     nudge_suite();
+    steprec_suite();
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
     return failed != 0;
 }

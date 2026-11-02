@@ -917,6 +917,54 @@ async function main() {
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
     },
+    // #532: step record on the roll (Silver Box's PATTERN), read back through the link (TRACK_NOW: the editor's copy): black
+    // key 11 + step 1's white key starts it; a chord, two of its keys let go, LFO ties the one still held onto step 2, a key
+    // added there, a rest, a note, then black key 10 clears the last one. Relative to the chord's root, so the FM-1's
+    // octave does not matter
+    async stepRecord() {
+      await check('step record: Silver Box opens, synced', await openSynced('Silver Box'));
+      await check('step record: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
+      const [BK11, C, E, G, D, BK10] = [25, 7, 11, 14, 9, 22].map((n) => 14 + n);
+      await emu.key(BK11, true);
+      await sleep(150);
+      await emu.tap(WHITE[0]);
+      await emu.key(BK11, false);
+      await sleep(200);
+      await check('step record: black key 11 + step 1\'s white key: the bar says STEP 1, nothing written',
+        (await emu.waitText('STEP 1', 2000)) && (await trackNotes()).length === 0, fmt(await trackNotes()));
+      for (const k of [C, E, G]) { await emu.key(k, true); await sleep(80); }
+      await sleep(200);
+      await emu.key(E, false);
+      await emu.key(G, false);
+      await sleep(200);
+      await emu.tap(B.lfo);
+      await check('step record: LFO with one key still held: the cursor on step 2', await emu.waitText('STEP 2', 2000));
+      await emu.key(D, true);
+      await sleep(150);
+      await emu.key(D, false);
+      await sleep(150);
+      await emu.key(C, false);
+      let ns = await notesUntil((x) => x.length === 4);
+      const root = Math.min(...ns.filter((n) => n.at === 0).map((n) => n.note));
+      await check('step record: the chord on step 1, the held key tied over 2 steps, the others 1, the key added on step 2',
+        ns.length === 4 && noteAt(ns, 0, root)?.len === 2 && noteAt(ns, 0, root + 4)?.len === 1 && noteAt(ns, 0, root + 7)?.len === 1
+        && noteAt(ns, 1, root + 2)?.len === 1 && ns.every((n) => n.vel === 100), fmt(ns));
+      await check('step record: the last key let go moves the cursor to step 3', await emu.waitText('STEP 3', 2000));
+      await emu.tap(B.lfo);                         // a rest on step 3
+      await emu.tap(E);                             // a note on step 4
+      ns = await notesUntil((x) => x.length === 5);
+      await check('step record: LFO alone a rest (step 3 empty), then a note on step 4, the cursor on step 5',
+        ns.length === 5 && !noteAt(ns, 2) && noteAt(ns, 3, root + 4)?.len === 1 && (await emu.waitText('STEP 5', 2000)), fmt(ns));
+      await emu.snap('step-record');
+      await emu.tap(BK10);
+      ns = await notesUntil((x) => x.length === 4);
+      await check('step record: black key 10: back to step 4, its note cleared', ns.length === 4 && !noteAt(ns, 3)
+        && (await emu.waitText('STEP 4', 2000)), fmt(ns));
+      await emu.tap(B.home);
+      await check('step record: HOME ends it, the SEQ page stays', (await emu.waitText('SEQ+REC clear', 2000)) && !(await emu.text('STEP 4')));
+      await emu.tap(B.seq, 120);
+      await emu.waitOwnPage(3000);
+    },
     // #375: on a computer where no app reads the FM-1's MIDI, every message the FM-1 sends unasked (TRACK_NOW after a
     // step, PARAM_NOW after a knob) found the SysEx ring full and waited 200 ms: entering steps by hand stalled the panel
     // for seconds. The browser always read, so no scenario saw it: here m1emu stops taking the FM-1's packets (the same

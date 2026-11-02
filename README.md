@@ -62,6 +62,7 @@ Knobs and stuff. Every top-level module or assembly with card rows is a device, 
 * **GLO** opens the settings menu on its MIDI tab; ALGO steps the tabs (MIDI, PANEL, SYSTEM, INFO, GUIDE: the ideas behind the FM-1), K1–K4 set a tab's rows, ENV opens the environment, and GLO again or HOME goes back
 * **SEL** on a device's page arms that device alone (armed: disarms it); **SEQ** on a Steps track's page opens the SEQ page on that track
 * **SEQ** opens and closes the SEQ page, where the white keys are the track's steps
+* **Black key 11 held + a white key** on the SEQ page starts step record on that step: play a note or a chord and let go to write it and move on one step; LFO alone leaves a rest, LFO with keys held ties them onto the next step, FX held accents, K4 moves the cursor, black key 10 steps back and clears, HOME or SEQ stops. See [D-804](docs/ledger/steps.md#D-804)
 * **FX, LFO, EDIT, ARP** are patch buttons: the patch decides what each does (a gate, a Toggle that bypasses a module or assembly, or a list of device pages)
 * **SAVE held at power-on** boots in safe mode: it plays the fallback patch compiled into the firmware and reads nothing from flash (`SAFE MODE: FALLBACK PATCH`); the stored state stays in flash for the next normal boot, MENU > SYSTEM > FACTORY RESET erases it. A boot that did not get through makes the next one safe by itself; two failed boots in a row go to update mode. See [D-154](docs/ledger/firmware-install.md#D-154) and [D-155](docs/ledger/firmware-install.md#D-155).
 

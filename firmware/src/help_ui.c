@@ -8,7 +8,7 @@
  *
  * The sheet's rows are specs: parts separated by '|', then '~' and the description. A part: k:NAME a button (an outlined
  * keycap), n:NAME a grey knob and its name, c:DIGITS coloured knobs K1..K4 with their numbers, w: a white key, b: a
- * black key, t:TEXT grey joining words, m:TEXT bright words. Which rows show is decided per state as the sheet is drawn
+ * black key (b:N black key N), t:TEXT grey joining words, m:TEXT bright words. Which rows show is decided per state as the sheet is drawn
  * (help_rows), so the sheet follows the state (help_follow): rows that do not apply to the device in focus, the patch or
  * the tab are left out, and a patch button is listed by its job in the loaded patch. */
 
@@ -36,8 +36,9 @@ static uint32_t help_msg_ms;
 #define HC_ROWS 24u
 
 /* the states (D-245): the sheet's first tab is named after the one the FM-1 is in */
-enum { HS_DEVICE, HS_ENV, HS_DRUM, HS_ROLL, HS_LIVE, HS_SONG, HS_MENU, HS_SANDBOX };
-static const char *const HS_NAME[8] = {"DEVICE", "ENVIRONMENT", "DRUM STEPS", "PIANO ROLL", "LIVE TAKE", "SONG", "SETTINGS", "SANDBOX"};
+enum { HS_DEVICE, HS_ENV, HS_DRUM, HS_ROLL, HS_LIVE, HS_SONG, HS_MENU, HS_SANDBOX, HS_STEP };
+static const char *const HS_NAME[9] = {"DEVICE", "ENVIRONMENT", "DRUM STEPS", "PIANO ROLL", "LIVE TAKE", "SONG", "SETTINGS", "SANDBOX",
+                                       "STEP RECORD"};
 
 static uint32_t help_state(void)
 {
@@ -48,7 +49,7 @@ static uint32_t help_state(void)
     if (page == PAGE_SONG)
         return HS_SONG;
     if (page == PAGE_SEQ)
-        return seq_kbd() ? HS_LIVE : seq_module() >= 0 && seq_map() < 0 ? HS_ROLL : HS_DRUM;
+        return sr_on ? HS_STEP : seq_kbd() ? HS_LIVE : seq_module() >= 0 && seq_map() < 0 ? HS_ROLL : HS_DRUM;
     return sb_on ? HS_SANDBOX : HS_DEVICE;
 }
 
@@ -111,7 +112,7 @@ static uint32_t help_rows(uint32_t t, const char **r)
 #define R(x) (r[n++] = (x))
     if (t) {                                        /* EVERYWHERE: each button's job everywhere, then the combinations, but
                                                      * what the state's tab lists or gives another job (D-246) */
-        int seq = s == HS_DRUM || s == HS_ROLL || s == HS_LIVE || s == HS_SONG;
+        int seq = s == HS_DRUM || s == HS_ROLL || s == HS_LIVE || s == HS_SONG || s == HS_STEP;
         R("k:PLAY~start / stop");
         if (s != HS_SANDBOX)
             R("k:REC~record");
@@ -124,7 +125,7 @@ static uint32_t help_rows(uint32_t t, const char **r)
             R("k:ENV~environment");
         if (!seq && s != HS_SANDBOX)
             R("k:SEQ~steps page");
-        if (s != HS_DRUM && s != HS_ROLL && s != HS_MENU)
+        if (s != HS_DRUM && s != HS_ROLL && s != HS_MENU && s != HS_STEP)
             R("k:OCT-|t:/|k:OCT+~octave");
         R(E_TEMPO);
         if (s == HS_SANDBOX)
@@ -175,6 +176,7 @@ static uint32_t help_rows(uint32_t t, const char **r)
         R("n:PRESET~pattern");
         R("k:FX|t:+|w:~accent");
         R("k:LFO|t:+|w:~tie");
+        R("b:11|t:+|w:~step record");
         R("t:hold step +|c:2~velocity");
         R("t:hold step +|n:SELECT~chance");
         R("k:SEL|t:tap~song");
@@ -187,6 +189,7 @@ static uint32_t help_rows(uint32_t t, const char **r)
         R("k:SEL|t:+|m:KEY~jump to pitch");
         R("k:FX|t:+|w:~accent");
         R("k:LFO|t:+|w:~tie");
+        R("b:11|t:+|w:~step record");
         R("t:hold step +|c:1~pitch");
         R("t:hold step +|c:2~velocity");
         R("t:hold step +|c:3~chance");
@@ -197,6 +200,17 @@ static uint32_t help_rows(uint32_t t, const char **r)
         R("n:PRESET~pattern");
         R("k:SEL|t:tap~song");
         R("k:SEQ|t:+|k:REC~clear track");
+        break;
+    case HS_STEP:                                   /* step record (#532, D-804) */
+        R("m:KEYS~play, let go: write");
+        R("t:keys together~one chord");
+        R("k:LFO~rest");
+        R("t:keys held +|k:LFO~tie");
+        R("k:FX|t:held~accent");
+        R("c:4~move cursor");
+        R("b:10~back, clear step");
+        R("k:OCT-|t:/|k:OCT+~octave");
+        R("k:HOME|t:/|k:SEQ~end step record");
         break;
     case HS_LIVE:
         R("m:KEYS~record notes");
@@ -289,7 +303,7 @@ static uint32_t help_part(uint32_t x, uint32_t y, const char *p, uint32_t len, i
     case 'n': w = 16u + 4u + text_w(&FONT_S, buf, -1); break;
     case 'c': w = n * 17u - 1u; break;
     case 'w': w = 11u + text_w(&FONT_S, "WHITE", -1); break;
-    case 'b': w = 11u + text_w(&FONT_S, "BLACK", -1); break;
+    case 'b': w = 11u + text_w(&FONT_S, "BLACK", -1) + (n ? text_w(&FONT_S, " ", -1) + text_w(&FONT_S, buf, -1) : 0u); break;
     default: w = text_w(&FONT_S, buf, -1); break;
     }
     if (!draw)
@@ -315,10 +329,14 @@ static uint32_t help_part(uint32_t x, uint32_t y, const char *p, uint32_t len, i
         lcd_fill(x, y + 1u, 7, 15, P_INK);
         text_bc(&FONT_S, x + 11u, y + 2u, "WHITE", P_INK, P_PANEL, w - 10u, TA_LEFT);
         break;
-    case 'b':                                       /* a black key: night with a grey edge */
+    case 'b':                                       /* a black key: night with a grey edge; b:N its number after BLACK */
         lcd_fill(x, y + 1u, 7, 15, P_DIM);
         lcd_fill(x + 1u, y + 2u, 5, 13, P_NIGHT);
-        text_bc(&FONT_S, x + 11u, y + 2u, "BLACK", P_INK, P_PANEL, w - 10u, TA_LEFT);
+        {
+            char t[40];
+            *(n ? put(put(t, "BLACK "), buf) : put(t, "BLACK")) = 0;
+            text_bc(&FONT_S, x + 11u, y + 2u, t, P_INK, P_PANEL, w - 10u, TA_LEFT);
+        }
         break;
     default:
         text_bc(&FONT_S, x, y + 2u, buf, p[0] == 'm' ? P_INK : P_DIM, P_PANEL, w + 1u, TA_LEFT);

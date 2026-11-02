@@ -76,7 +76,7 @@ The whole tutorial as data: every chapter and step in `web/src/tutorial/course.j
 
 ### Cursor entry
 
-Recording in the editor with the transport stopped: the keys held together fill the cursor's step, then the cursor moves on. The FM-1 has none. Formerly called step entry.
+Recording in the editor with the transport stopped: the keys held together fill the cursor's step, then the cursor moves on. The FM-1's counterpart is step record. Formerly called step entry.
 
 ### Decider
 
@@ -453,6 +453,10 @@ Where a teammate can find the ruling being made: a pull request, an issue, a com
 ### Status line
 
 The line under the deck with hover help, messages, the FM-1 budget and the FM-1 chip.
+
+### Step record
+
+Entering notes on the FM-1's SEQ page one step after another, the way a cursor moves through text: the keys held together become the cursor's step when let go, and the cursor moves on. It starts with black key 11 held and a white key, and works with the transport stopped or playing. The editor's counterpart is cursor entry.
 
 ### Step write
 

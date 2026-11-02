@@ -68,6 +68,7 @@ static void m1_tempo_now(void);
 #define HOST_TEMPO_HOOK
 #define HOST_STEP_HOOKS
 #define HOST_LED_HOOKS
+#define HOST_THRU_HOOK
 
 #include "../test/host_ui.h"
 
@@ -98,6 +99,13 @@ static void ui_note_off(uint32_t note, uint32_t ch)
 {
     eng_note_off(note, ch);
     js_note(note, 0, 0u);
+}
+/* ... and what the SEQ page sounds through a track while a key is held (a drum grid's black key, #368; step record's
+ * keys, #532): the same note to the page, as the panel's keys reach the armed track there */
+static void host_steps_thru(uint32_t module, uint32_t note, uint32_t vel)
+{
+    eng_steps_thru(module, note, vel);
+    js_note(note, vel ? (int32_t)(vel >= 127u ? 65536u : (vel << 16) / 127u) : 0, vel != 0u);
 }
 #define eng_note_on ui_note_on
 #define eng_note_off ui_note_off

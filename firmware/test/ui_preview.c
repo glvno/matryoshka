@@ -97,6 +97,14 @@ int main(int argc, char **argv)
             seq_arm_shown(0);
         if (getenv("HELD"))
             seq_held = (int8_t)atoi(getenv("HELD"));
+        if (getenv("STEPREC") && eng_steps_module(seq_trk) >= 0) {   /* STEPREC=n: step record on step n (#532), the view on
+                                                     * its 16 steps */
+            sr_on = 1;
+            sr_trk = seq_trk;
+            sr_gen = pages_gen();
+            sr_k = (uint8_t)(atoi(getenv("STEPREC")) - 1);
+            seq_pg = (uint8_t)(sr_k / 16u);
+        }
     }
     if (page == PAGE_SONG)                                  /* the SONG page (#375) */
         song_prep();
