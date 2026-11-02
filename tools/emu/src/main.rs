@@ -3,6 +3,9 @@
 //!   m1emu smoke BIN [--out DIR] [--levels FILE] [--strict]
 //!       the scripted smoke test (smoke.rs); exit code 1 on any failed check (with --strict also on a
 //!       level warning); FILE = web/scripts/emu-levels.ts's output, the reference level per factory patch
+//!   m1emu boot BIN [--link EMU_BIN] [--out DIR]
+//!       the boot check (boot.rs, about 20 s emulated): boot, screen, sound, update mode; with EMU_BIN (the same
+//!       commit's M1_EMU_MIDI=1 build) also HELLO / INFO and the update handshake; exit code 1 on any failed check
 //!   m1emu run BIN [--ms N] [--keys SCRIPT] [--snap MS,..] [--wav FILE] [--flash-in F] [--flash-out F] [--text S]
 //!       a free run: SCRIPT is fm1-emu's (`800:n7,1500:n7^,2000:e6:1,2500:mc005`,
 //!       times in ms: key down, `^` up, encoder clicks, MIDI bytes); snapshots go to lcd_MS.png;
@@ -13,6 +16,7 @@
 //!
 //! BIN is the build's matryoshka.bin (app.bin, runs from 0x02000120).
 
+mod boot;
 mod font;
 mod machine;
 mod png;
@@ -23,7 +27,7 @@ use machine::Machine;
 use std::process::ExitCode;
 
 fn usage() -> ExitCode {
-    eprintln!("usage: m1emu smoke BIN [--out DIR] [--levels FILE] [--strict]\n       m1emu run BIN [--ms N] [--keys SCRIPT] [--snap MS,..] [--wav FILE] [--flash-in F] [--flash-out F] [--text S]\n       m1emu serve BIN [--flash-in F] [--name NAME]");
+    eprintln!("usage: m1emu smoke BIN [--out DIR] [--levels FILE] [--strict]\n       m1emu boot BIN [--link EMU_BIN] [--out DIR]\n       m1emu run BIN [--ms N] [--keys SCRIPT] [--snap MS,..] [--wav FILE] [--flash-in F] [--flash-out F] [--text S]\n       m1emu serve BIN [--flash-in F] [--name NAME]");
     ExitCode::from(2)
 }
 
@@ -46,6 +50,16 @@ fn main() -> ExitCode {
             let out = opt(&a, "--out").unwrap_or("build/emu/smoke");
             let levels = opt(&a, "--levels").map(|p| std::fs::read_to_string(p).unwrap_or_else(|e| panic!("{p}: {e}")));
             smoke::run(&app, out, levels.as_deref(), a.iter().any(|x| x == "--strict"))
+        }
+        "boot" => {
+            let link = match opt(&a, "--link").map(std::fs::read).transpose() {
+                Ok(l) => l,
+                Err(e) => {
+                    eprintln!("--link: {e}");
+                    return ExitCode::from(2);
+                }
+            };
+            boot::run(&app, link.as_deref(), opt(&a, "--out").unwrap_or("build/emu/boot"))
         }
         "run" => run(&app, &a),
         "serve" => {
