@@ -43,6 +43,7 @@ export const RULES: Rule[] = [
   { type: 'wavetable', params: ['pm'], reads: [], live: (c) => c.cabled('pm'), why: 'Patch the pm input to use the modulation index.' },
   { type: 'pd', params: ['pm'], reads: [], live: (c) => c.cabled('pm'), why: 'Patch the pm input to use the modulation index.' },
   { type: 'pd', params: ['range'], reads: ['wave', 'wave2'], live: (c) => Math.round(c.p('wave')) >= PD_RESO || Math.round(c.p('wave2')) > PD_RESO, why: 'Range raises only the resonance waveforms (reso 1, 2, 3).' },
+  { type: 'shreg', params: ['len'], reads: [], live: (c) => !c.cabled('in'), why: 'With in patched the new bits come from it: nothing comes round.' },
   { type: 'lfo', params: ['rate', 'range'], reads: ['sync'], live: (c) => c.p('sync') < 0.5, why: 'While synced the division sets the rate.' },
   { type: 'lfo', params: ['div', 'bpm', 'mult'], reads: ['sync'], live: (c) => c.p('sync') >= 0.5, why: 'Only used while the LFO is synced.' },
   { type: 'delay', params: ['note'], reads: ['sync'], live: (c) => c.p('sync') >= 0.5, why: 'The note lengths are for the synced delay.' },
