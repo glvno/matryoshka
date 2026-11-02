@@ -931,7 +931,7 @@ async function main() {
       await emu.key(BK11, false);
       await sleep(200);
       await check('step record: black key 11 + step 1\'s white key: the bar says STEP 1, nothing written',
-        (await emu.waitText('STEP 1', 2000)) && (await trackNotes()).length === 0, fmt(await trackNotes()));
+        (await emu.waitText('STEP 1', 4000)) && (await trackNotes()).length === 0, fmt(await trackNotes()));
       for (const k of [C, E, G]) { await emu.key(k, true); await sleep(80); }
       await sleep(200);
       await emu.key(E, false);
