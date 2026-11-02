@@ -17,10 +17,11 @@
                                            range; SECONDS: read again after that long and print the changes per second)
   tools/m1_link.py mem                    (#273: the boot's proof of .lowram and how deep each stack has gone since boot)
   tools/m1_link.py uitime [reset]         (the LCD's draw times: the last and the worst of each kind, in ms; reset zeroes them)
-  tools/m1_link.py clock [SECONDS]        (#473: MIDI clock out, DIAG page 116: ticks sent and dropped; SECONDS: also time
-                                           the ticks this computer receives, by CoreMIDI's timestamps, and print the mean
-                                           period, the deviation of each period and of each tick from a straight grid,
-                                           and the link's refused sends over that time, DIAG page 117)
+  tools/m1_link.py clock [SECONDS [BPM [run]]]   (#473: MIDI clock out, DIAG page 116: ticks sent and dropped; SECONDS:
+                                           also time the ticks this computer receives, by CoreMIDI's timestamps, and print
+                                           the mean period, the deviation of each period and of each tick from a straight
+                                           grid, and the link's refused sends over that time, DIAG page 117; BPM: at that
+                                           global tempo (TEMPO, set back after); run: with the transport running)
   tools/m1_link.py diag [DIS]             (what the last reset left: its cause, the crash record, where a stalled main loop
                                            was; DIS = the build's matryoshka.dis (CI artifact matryoshka-elf) names the functions)
 Needs mido and python-rtmidi (the Nix dev shell has them).
@@ -253,10 +254,30 @@ def main():
                 acc[0] += dt
                 if msg and msg[0] == 0xF8:
                     stamps.append(acc[0])
+            mode0 = bpm0 = None
+            if len(a) > 2:                              # the global tempo for the run: TEMPO_NOW after INFO says what it was
+                link.out.send(frame(0x01))
+                t = time.time()
+                while time.time() - t < 1.0 and mode0 is None:
+                    for m in link.inp.iter_pending():
+                        if m.type == "sysex" and list(m.data[:3]) == PREFIX and m.data[3] == 0x55:
+                            p = unpack7(m.data[4:])
+                            mode0, bpm0 = p[0], p[1] | p[2] << 8
+                    time.sleep(0.01)
+                bpm = int(a[2])
+                link.out.send(frame(0x38, [0, bpm & 0xFF, bpm >> 8]))
+            if len(a) > 3 and a[3] == "run":
+                link.out.send(frame(0x25, [1]))
+            time.sleep(0.5)
             mi.set_callback(cb)
             mi.open_port(port)
             time.sleep(secs)
             mi.close_port()
+            if len(a) > 3 and a[3] == "run":
+                link.out.send(frame(0x25, [0]))
+            if mode0 is not None:
+                link.out.send(frame(0x38, [mode0, bpm0 & 0xFF, bpm0 >> 8]))
+                print(f"(TEMPO set back to {'GLOBAL' if mode0 == 0 else 'PATCH'}, global tempo {bpm0})")
             w1, l1 = page(116), page(117)
             show(w1)
             if len(stamps) < 3:
