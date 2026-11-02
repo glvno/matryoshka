@@ -52,7 +52,8 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   which the editor's port match takes like a real FM-1), and a line protocol on stdin for the panel, the LCD and the
   audio (`tools/emu/src/serve.rs` lists it). `M1EMU_TRACE=1` prints every short message the FM-1 sends.
 - **`cd web && npm run emu:scenarios [-- BIN] [--only NAME,..] [--headed]`:** builds m1emu and the panel WebAssembly,
-  starts this checkout's dev server on a free port, starts `m1emu serve`, and drives the editor in Chrome (playwright-core
+  starts this checkout's dev server on a free port (with `MATRYOSHKA_BUNDLED_FIRMWARE=1`, so its Flash tab starts no
+  `emu:smoke` of its own beside the run, issue #521; the rig scripts' and `demo.ts`'s dev servers do the same), starts `m1emu serve`, and drives the editor in Chrome (playwright-core
   with the installed Chrome, headless) through the scenarios in `web/scripts/emu-scenarios.mjs`: connect and Sync; an
   over-budget patch is sandbox mode (the sandbox page on the LCD, the FM-1 silent under a key); ARP twice; OCT; PRESET;
   back under budget; the tab closed and reopened on a sandbox patch; Elvira 2 running, then Elvira 2 XL; a computer
@@ -78,7 +79,9 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   change nothing. Tied again, a plain white key on step 3 must cut it there and start a hit. With the transport running
   the peak is read in 25 ms windows over a pass. On 8 Lire and Elvira 2 a tied hit must keep 90 % of its peak through
   the next 300 ms (the tie holds the gate 406 ms), and an untied one must decay below 85 %. On the 808 Kit a tied hit's
-  peak and decay must match the untied one's. Through the device test mode (device:scenarios, or `--via-emu`) the
+  peak and decay must match the untied one's. Only a hit whose next 300 ms the profile covers counts (issue #520): on the
+  rig a window is a round trip longer than 25 ms, so a profile also catches the start of the next pass's hit, cut off by
+  the profile's end. Through the device test mode (device:scenarios, or `--via-emu`) the
   TEST_SCREEN head's patch buttons must show Main's LFO jack down while LFO is held on the SEQ page, and up while it is
   held on the device page.
 - **Arming (`arming`, issue #395, [D-235](ledger/device-ui.md#D-235), [D-545](ledger/steps.md#D-545)):** the checks
@@ -130,7 +133,8 @@ link as `m1emu serve` drives the emulator:
   `tools/m1_link.py uitime` reads the same. Run on two builds, it compares them.
 - **A TEST_PEAK asked again (#385):** about one TEST_PEAK in 500 gets no answer on the rig, and the rig's page asks
   again 2 s later. That answer holds the loudest sample of the whole 2 s. The scenarios' peak profiles (`windows`) leave
-  such a long window out and print a note; before, it read as one window at a hit's level out of nowhere.
+  such a long window out and print a note; before, it read as one window at a hit's level out of nowhere. The window
+  after it is flagged, and the tie checks take no hit whose 300 ms the gap overlaps (issue #520).
   `cd web && node scripts/rig-peak.mjs [--patch NAME] [--play] [--key] [--reads N] [--raw]` reads the peak in 25 ms
   windows on the rig and counts the long windows and the loud windows their neighbours do not explain.
 - **`npm run device:scenarios -- --via-emu`:** the device path against the emulator (its build has the test mode too),

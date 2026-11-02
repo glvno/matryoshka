@@ -29,6 +29,8 @@ import { FM1_PRESETS } from '../src/presets';
 
 const WEB = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = resolve(WEB, '..');
+/** its dev server serves the bundled firmware: no Flash tab emu:smoke of this branch's build beside the demo (#521) */
+const DEV_ENV = { ...process.env, MATRYOSHKA_BUNDLED_FIRMWARE: '1' };
 const OUT = join(ROOT, 'build/demo');
 const args = process.argv.slice(2);
 const flag = (n: string): boolean => args.includes(n);
@@ -568,7 +570,7 @@ async function main(): Promise<void> {
       const port = await freePort();
       if (!existsSync(join(WEB, 'public/fm1-ui.wasm')) && spawnSync('npm', ['run', '-s', 'fm1-wasm'], { cwd: WEB, stdio: 'inherit' }).status !== 0)
         throw new Error('npm run fm1-wasm failed (the Emulator view needs public/fm1-ui.wasm)');
-      const vite = spawn('npx', ['vite', '--port', String(port), '--strictPort', '--host', '::1'], { cwd: WEB, stdio: ['ignore', 'pipe', 'inherit'] });
+      const vite = spawn('npx', ['vite', '--port', String(port), '--strictPort', '--host', '::1'], { cwd: WEB, stdio: ['ignore', 'pipe', 'inherit'], env: DEV_ENV });
       children.push(vite);
       url = `http://[::1]:${port}/`;
       await new Promise<void>((res) => vite.stdout!.on('data', (d) => { if (/ready in|Local:/.test(String(d))) res(); }));
