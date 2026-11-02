@@ -49,11 +49,12 @@
 #ifndef FELUCCA_UAC_AS_FIRST
 #define FELUCCA_UAC_AS_FIRST 1
 #endif
-/* #535: full speed only. POWER's HSEnab (bit 5) lets the core chirp for high speed at a reset; with it (1.0 .. 1.8.3) a
- * Mac ran the FM-1 at high speed (POWER bit 4 HSMode set, the setup log), with descriptors that are full-speed ones
- * (bcdUSB 1.10, 64-byte bulk MIDI, isochronous bInterval 1 in frames), and an iPad (iPadOS 26, through a USB-A adapter)
- * reset it 11,269 times in 49 s without one SETUP. FELUCCA_USB_HS=1 is the old behaviour; the update loader keeps it
- * (its binary stays as shipped). */
+/* #535: POWER is written with SoftConn alone (0x40), not with bit 5 too (0x60, 1.0 .. 1.8.3), which in the Mentor MUSB
+ * register map is HSEnab (chirp for high speed at a reset). The descriptors are full-speed ones (bcdUSB 1.10). An iPad
+ * (iPadOS 26, through a USB-A adapter) reset the FM-1 11,269 times in 49 s without one SETUP (the setup log). Whether
+ * this register follows the MUSB map is not known: POWER reads 0x70 after a reset with either value written (bits 4..6
+ * set), while macOS reports the FM-1 at full speed with both (ioreg "Device Speed" 1). FELUCCA_USB_HS=1 is the old
+ * value; the update loader keeps it (its binary stays as shipped). */
 #ifndef FELUCCA_USB_HS
 #ifdef FELUCCA_LOADER
 #define FELUCCA_USB_HS 1
@@ -783,7 +784,7 @@ static void ep0_service(void)
         usb.has_pend_addr = 0;
 #if USB_LOG
         ul.addr = usb.pend_addr;
-        UL_EV(UL_ADDR, usb.pend_addr, sie_rd(S_POWER), 0, 0);   /* (POWER bit 4: the core runs at high speed) */
+        UL_EV(UL_ADDR, usb.pend_addr, sie_rd(S_POWER), 0, 0);   /* (POWER: the MUSB map's bit 4 is HSMode; not confirmed here) */
 #endif
     }
     sie_wr(S_INDEX, 0);

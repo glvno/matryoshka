@@ -469,14 +469,14 @@ def print_usblog(st, ct, ents, first, last, moved):
                                     (0x80, "STALL handshake sent")) if a & b]
             print(head + f"{usb_request(s):58} -> {out}" + (f"; {', '.join(notes)}" if notes else "") + rep)
         elif kind == 2:
-            print(head + f"BUS RESET (POWER {s[0]:#04x}{', HIGH SPEED' if s[0] & 0x10 else ''}; ends configuration {s[1]}, "
+            print(head + f"BUS RESET (POWER {s[0]:#04x}; ends configuration {s[1]}, "
                   f"address {s[2]})" + rep)
         elif kind == 3:
             print(head + f"SUSPEND (configuration {a})" + rep)
         elif kind == 4:
             print(head + f"RESUME (configuration {a})" + rep)
         elif kind == 5:
-            print(head + f"ADDRESS {a} takes effect (POWER {s[0]:#04x}{', HIGH SPEED' if s[0] & 0x10 else ''})" + rep)
+            print(head + f"ADDRESS {a} takes effect (POWER {s[0]:#04x})" + rep)
         elif kind == 6:
             left = s[1] | s[2] << 8
             print(head + f"SETUP_END: the host ended the transfer (CSR0 {a:#04x}"
