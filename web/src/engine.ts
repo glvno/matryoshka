@@ -14,6 +14,7 @@ import { ALLOC, deviceView, keysInto } from './poly';
 import { armView, type DeviceKey } from './arm';
 import { kindOf, switches, toggleTargets } from './buttons';
 import { fixNotes, PATTERNS_MAX, SONGS_MAX, type SongEntry, type StepNote } from './track';
+import { lockPlan, lockValue } from './locks';
 import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
 
 export const BLOCK = 128;
@@ -86,6 +87,16 @@ interface Node {
   inst: Inst[];
   /** the parameters the part flaws move (FLAW_TARGETS), with their definitions */
   flawParams: { key: 'bright' | 'env' | 'level'; pd: ParamDef }[];
+  /** the P-locks on it now (#524): per parameter the value a track's step locks it to, in place of `params` (null: none) */
+  lock: Record<string, number> | null;
+}
+
+/** a Steps track's P-locks as it plays them (locks.ts lockPlan): per locked row the parameters it sets, per pattern its
+ * locks, and the pattern and step it applied last (-2: apply again) */
+interface LockRun {
+  rows: { node: Node; pd: ParamDef }[][];
+  pats: Map<number, { at: number; row: number; value: number }[]>;
+  key: number;
 }
 
 /** a part: what its Part module outputs plus what the allocator needs */
@@ -273,7 +284,9 @@ export class Engine {
             range: [{}, {}],
             inst: Array.from({ length: ninst }, (_, v) => this.newInst(impl, instSeed(mi, v))),
             flawParams: FLAW_KEYS3.flatMap((key) => (FLAW_TARGETS[key][m.type] ?? []).map((name) => ({ key, pd: impl.def.params.find((q) => q.name === name)! }))),
+            lock: null,
           };
+      node.lock = null;
       node.group = group;
       node.params = { ...m.params };
       node.att = m.att ? [m.att[0], m.att[1]] : [1, 1];
@@ -331,6 +344,14 @@ export class Engine {
     this.arpHears = this.armedKeys.length ? new Set(this.arps.filter((a) => mainKeysTo.has(a.node.id)).map((a) => a.node.id)) : null;
     this.arpById = new Map(this.arps.map((a) => [a.node.id, a]));
     this.tracks = this.order.filter((n) => n.type === 'steps');
+    this.lockRuns = new Map(lockPlan(source, patch).map((t) => [
+      next.get(patch.modules[t.track].id)!,
+      {
+        rows: t.rows.map((r) => r.map(([i, j]) => { const node = next.get(patch.modules[i].id)!; return { node, pd: node.impl.def.params[j] }; })),
+        pats: new Map(t.pats.map((x) => [x.p, x.locks])),
+        key: -2,
+      },
+    ]));
     // tracks whose keys in a cable from Main's keys feeds: those keys pass through them while no track is armed (#138)
     this.fed = this.tracks.filter((node) => source.cables.some((c) => c.to.module === node.id && c.to.port === 'keys' && c.from.port === 'keys' && source.modules.find((m) => m.id === c.from.module)?.type === 'fm1')).map((node) => node.inst[0].state as StepsState);
     this.maps = this.order.filter((n) => n.type === 'drummap').flatMap((node) => {
@@ -389,6 +410,29 @@ export class Engine {
 
   /** the Steps modules, in processing order (their keys go out in this order: engine.c the same) */
   private tracks: Node[] = [];
+  /** the tracks with P-locks (#524) */
+  private lockRuns = new Map<Node, LockRun>();
+
+  /**
+   * A track's P-locks after its block (#524; engine.c locks_step, the same rule): while it plays (the transport runs, or a
+   * clock is in clk; not bypassed) and its playhead moved to another step or pattern, its locked rows go back to their
+   * normal values and the locks of the step it is on (of the pattern it plays: one it has not got plays its first's) set
+   * theirs. The modules after it in the processing order play them from this block, the others from the next.
+   */
+  private locksStep(node: Node): void {
+    const run = this.lockRuns.get(node);
+    if (!run) return;
+    const s = node.inst[0].state as StepsState;
+    const p = s.pats[s.pat] ? s.pat : 0;
+    const key = !node.bypass && s.pos >= 0 && (s.run || node.connected.clk) ? p * 64 + s.pos : -1;
+    if (key === run.key) return;
+    run.key = key;
+    for (const row of run.rows) for (const t of row) if (t.node.lock) delete t.node.lock[t.pd.name];
+    if (key < 0) return;
+    for (const l of run.pats.get(p) ?? [])
+      if (l.at === s.pos)
+        for (const t of run.rows[l.row]) (t.node.lock ??= {})[t.pd.name] = lockValue(t.pd, l.value);
+  }
 
   /**
    * The notes the Steps tracks started and ended in the last block, into the groups they play (DeviceGroup.src), in
@@ -679,7 +723,7 @@ export class Engine {
       route.mean = sum / n;
     }
     for (const pd of node.impl.def.params) {
-      const a = node.params[pd.name] ?? pd.default;
+      const a = node.lock?.[pd.name] ?? node.params[pd.name] ?? pd.default;   // (a P-lock in place of the normal value, #524)
       let base = node.paramsB && this.morphT > 0 ? morphValue(pd, a, node.paramsB[pd.name] ?? a, this.morphT) : a;
       let mod = 0;
       let touched = false;
@@ -782,7 +826,7 @@ export class Engine {
           else delete out.notes;
           const pats = st.pats.slice(1).map((x) => (x ? { ...x, notes: x.notes.map((y) => ({ ...y })) } : null));
           while (pats.length && !pats[pats.length - 1]) pats.pop();
-          if (pats.length) out.patterns = pats.map((x) => (x ? { ...(x.notes.length ? { notes: x.notes } : {}), ...(x.len !== undefined ? { len: x.len } : {}), ...(x.rate !== undefined ? { rate: x.rate } : {}) } : null));
+          if (pats.length) out.patterns = pats.map((x) => (x ? { ...(x.notes.length ? { notes: x.notes } : {}), ...(x.len !== undefined ? { len: x.len } : {}), ...(x.rate !== undefined ? { rate: x.rate } : {}), ...(x.locks?.length ? { locks: x.locks } : {}) } : null));
           else delete out.patterns;
         }
         return out;
@@ -1224,6 +1268,7 @@ export class Engine {
           this.run(node, inst, parts ? parts[v] : kb, inst.out, n);
           this.guard(node, inst, n);
         }
+        if (node.type === 'steps') this.locksStep(node);
       }
       if (n === BLOCK)
         this.groups.forEach((g, gi) =>

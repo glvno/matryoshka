@@ -3,7 +3,7 @@
 /* The engine built for rv32im, run by tools/cpu/rv32.mjs: counts instructions per module for the CPU estimate.
  * Host calls (ecall, a7 = call number): 1 read the patch into a buffer (a0 buf, a1 max -> length), 2 a profiling mark
  * (a0 stage, a1 node, a2 part, see ENG_PROF in engine.c), 3 the next event (-> 0 none, else (kind << 16) | note: kind 1
- * on, 2 off, 3 render a block), 93 exit (a0 code). Built by tools/cpu/build.sh. */
+ * on, 2 off, 3 render a block, 4 the transport: note 1 on, 0 off), 93 exit (a0 code). Built by tools/cpu/build.sh. */
 #include <stdint.h>
 
 static inline long host(long n, long a, long b, long c)
@@ -104,6 +104,10 @@ int main(void)
             NOTE_ON(note, 0xC000);
         else if (kind == 2)
             NOTE_OFF(note);
+#ifndef OLD_PRESET
+        else if (kind == 4)                         /* the transport on (1) / off (0): Steps tracks, P-locks */
+            eng_transport((int)note);
+#endif
         else {
             host(2, 6, 0, 0);
             eng_render(l, r, 128);

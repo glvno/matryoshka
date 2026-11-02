@@ -1464,6 +1464,21 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .step.play { overflow: visible; z-index: 1; }
 .step.past { opacity: .25; cursor: default; }
 .steps-screen.muted .step > i { opacity: .35; }
+/* P-locks (#524): a dot at the foot of a step with locks (click: its locks), and the list of a step's locks */
+.step > u { display: none; position: absolute; left: calc(50% - 4px); bottom: 0; z-index: 3; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--secondary); box-shadow: 0 0 0 1px var(--bar); cursor: pointer; }
+.step.locked > u { display: block; }
+.steps-screen { position: relative; }
+.lock-pop { position: absolute; z-index: 20; min-width: 220px; max-width: 320px; padding: 6px; border-radius: 6px; background: var(--panel);
+  border: 1px solid var(--line); box-shadow: 0 4px 14px rgb(0 0 0 / .35); font-size: 12px; }
+.lock-pop .lock-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font: var(--cap); font-size: 10px;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.lock-pop .lock-row { display: grid; grid-template-columns: 1fr 90px 20px; gap: 4px; align-items: center; margin-top: 3px; }
+.lock-pop .lock-add { grid-template-columns: 1fr; }
+.lock-pop input, .lock-pop select { min-width: 0; font-size: 12px; }
+.lock-pop button { padding: 0 4px; background: none; border: 0; color: var(--muted); cursor: pointer; }
+.lock-pop button:hover { color: var(--secondary); }
+.lock-pop .lock-none { color: var(--muted); }
 /* the card body lets clicks through except to its controls: a screen is one too (Arrange drags it, pick mode adds it) */
 .module .mbody .param.screen { pointer-events: auto; }
 /* the Scope's settings: a toolbar over its screen while hovered (not while choosing or arranging the card) */

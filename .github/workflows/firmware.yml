@@ -37,6 +37,7 @@ on:
       - web/src/test-patches.ts
       - web/src/test-poly.ts
       - web/src/track.ts
+      - web/src/locks.ts
       - web/src/wavetables.json
       - web/src/arm.ts
       - web/src/assemblies.ts

@@ -70,14 +70,14 @@ import { addComment, COMMENT_H, COMMENT_W, moveComments, pasteComments, removeCo
 import { patternStrip, type PatternStrip } from './pattern-strip';
 import { SongView } from './song';
 import type { PatternView } from './engine';
-import { fixNotes, fixPatterns, fixSeq, overdub, PATTERNS_MAX, patternOf, SONGS_MAX, type Pattern, type SeqState, type SongEntry, type StepNote } from './track';
+import { fixLocks, fixNotes, fixPatterns, fixSeq, overdub, PATTERNS_MAX, patternLocks as patternLocksOf, patternOf, SONGS_MAX, type Pattern, type SeqState, type SongEntry, type StepLock, type StepNote } from './track';
 import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './engines';
 import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, sameName, renamePreset, shortBy, shortPresetText, stepPreset, storePreset } from './device-presets';
 import { engineOf } from './library-presets';
 import { structureOf } from './structure';
 import { armable, armDrawing, armedWith, keepArmed, type DeviceKey } from './arm';
 import { PianoRoll } from './roll';
-import { stepGrid, stopEntry, type StepGrid } from './step-grid';
+import { stepGrid, stopEntry, type LockRow, type StepGrid } from './step-grid';
 import { FlawPanel } from './flaws-panel';
 import { clipText, copyItems, pasteClip, type Clip } from './clipboard';
 import { GUTTER_ROOM, ribbons, type RibbonCable, type RibbonFrame } from './ribbons';
@@ -1144,6 +1144,7 @@ export class Editor {
     return new Proxy(m, {
       get(t, k, r) {
         if (k === 'notes') return patternOf(t, pattern()).notes;
+        if (k === 'locks') return pattern() > 0 && t.patterns?.[pattern() - 1] ? t.patterns[pattern() - 1]!.locks : t.locks;   // (one it has not got plays pattern 1's)
         if (k === 'params') {
           const v = patternOf(t, pattern());
           return { ...t.params, len: v.len, rate: v.rate };
@@ -1171,7 +1172,12 @@ export class Editor {
         const t = m();
         if (!t) return;
         this.touch();
+        const locked = !!patternLocksOf(t, p)?.length;
         this.setNotes(t, undefined, p);
+        if (locked) {   // (its P-locks go with its notes, #524)
+          this.setLocks(t, undefined, p);
+          this.ev.onStructure(this.patch);
+        }
         this.stepGrids.get(id)?.refresh();
         this.refreshStrips();
       },
@@ -1242,6 +1248,42 @@ export class Editor {
     }
     this.ev.onTrack?.(m.id, n, p);
     if (this.roll?.id === m.id) this.roll.view.render();
+  }
+
+  /** the rows a Steps track's steps can lock (#524, #519 Q1): the rows of the devices it plays (pages.ts Device.track), not
+   * a Voice allocator's settings; each labelled with its device when the track plays more than one */
+  lockRows(id: number): LockRow[] {
+    const devs = devicesOf(this.patch, DEFS).filter((d) => d.track === id);
+    const seen = new Set<string>();
+    const out: LockRow[] = [];
+    for (const d of devs)
+      for (const pg of d.pages)
+        for (const r of pg.rows) {
+          const m = this.patch.modules.find((x) => x.id === r.module);
+          const pd = m && m.type !== ALLOC ? DEFS[m.type]?.params.find((q) => q.name === r.param) : undefined;
+          const key = `${r.module}/${r.param}`;
+          if (!m || !pd || seen.has(key)) continue;
+          seen.add(key);
+          out.push({ module: r.module, param: r.param, label: devs.length > 1 ? `${d.name}: ${r.label}` : r.label, pd, value: m.params[r.param] ?? pd.default });
+        }
+    return out;
+  }
+  /** a Steps module's locks of pattern p (0-based; the selected one), valid, into the patch. A pattern the track had not
+   * got is made: pattern 1's notes and locks (what it showed and played), then these locks */
+  private setLocks(m: ModuleInst, locks: StepLock[] | undefined, p = this.pattern): void {
+    const l = fixLocks(locks);
+    if (p <= 0) {
+      if (l) m.locks = l;
+      else delete m.locks;
+      return;
+    }
+    const pats: (Pattern | null)[] = [...(m.patterns ?? [])];
+    while (pats.length < p) pats.push(null);
+    const x: Pattern = { ...(pats[p - 1] ?? structuredClone({ ...(m.notes ? { notes: m.notes } : {}) })) };
+    if (l) x.locks = l;
+    else delete x.locks;
+    pats[p - 1] = x;
+    m.patterns = fixPatterns(pats);
   }
 
   /* ---- patterns and songs (#375; track.ts SeqState on Main: the selected pattern, the song playing, the songs) */
@@ -1356,11 +1398,13 @@ export class Editor {
     this.touch();
     for (const m of this.patch.modules) {
       if (m.type !== 'steps') continue;
-      const src = from <= 0 ? { ...(m.notes ? { notes: m.notes } : {}) } : m.patterns?.[from - 1] ?? null;
+      const src: Pattern | null = from <= 0 ? { ...(m.notes ? { notes: m.notes } : {}), ...(m.locks ? { locks: m.locks } : {}) } : m.patterns?.[from - 1] ?? null;
       if (to <= 0) {
         if (src) {
           if (src.notes?.length) m.notes = structuredClone(src.notes);
           else delete m.notes;
+          if (src.locks?.length) m.locks = structuredClone(src.locks);
+          else delete m.locks;
         }
         continue;
       }
@@ -1416,6 +1460,13 @@ export class Editor {
       },
       recording: () => this.recOn && this.armedTrack === m.id,
       roll: () => (this.roll?.id === m.id ? this.closeRoll() : this.openRoll(m.id)),
+      lockRows: () => this.lockRows(m.id),
+      locks: (l) => {
+        this.touch();
+        this.setLocks(m, l);
+        this.ev.onStructure(this.patch);
+        this.stepGrids.get(m.id)?.refresh();
+      },
     });
     this.stepGrids.set(m.id, grid);
     if (this.roll?.id === m.id) grid.rolled(true);
