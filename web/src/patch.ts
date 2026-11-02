@@ -320,10 +320,56 @@ export interface Patch {
   /** what the patch is about, in the author's words (the share sheet's "What's going on"; at most NOTES_MAX characters).
    * Editor only, like the name: it travels in a link and a .json file; the binary format and the FM-1 ignore it */
   notes?: string;
+  /** free text boxes on the canvas, like Max comments (#518; comments.ts): no ports, absent while there are none. Editor
+   * only, like `notes`: they travel in a link and a .json file; the binary format and the FM-1 ignore them */
+  comments?: CommentBox[];
+}
+
+/** a comment box on the canvas (Patch.comments): its id (its own series, not a module id), top left and size in layout
+ *  pixels, and its text (at most COMMENT_MAX characters) */
+export interface CommentBox {
+  id: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text: string;
 }
 
 /** the longest Patch.notes kept */
 export const NOTES_MAX = 500;
+
+/** the longest comment text kept, the most comments a patch keeps, and a comment box's smallest and largest size (px) */
+export const COMMENT_MAX = 500;
+export const COMMENTS_MAX = 100;
+export const COMMENT_MIN_W = 80, COMMENT_MIN_H = 28, COMMENT_MAX_SIZE = 2000;
+
+/** comments from JSON made valid: each with a whole-number id of its own, a finite position (not negative), a size within
+ *  the limits and its text as a string cut to COMMENT_MAX; anything else is dropped, and only the first COMMENTS_MAX stay */
+export function fixComments(raw: unknown): CommentBox[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CommentBox[] = [];
+  const ids = new Set<number>();
+  const size = (v: unknown, min: number, d: number): number => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.round(Math.min(COMMENT_MAX_SIZE, Math.max(min, n))) : d;
+  };
+  for (const c of raw) {
+    if (!c || typeof c !== 'object' || out.length >= COMMENTS_MAX) continue;
+    const r = c as Record<string, unknown>;
+    if (typeof r.text !== 'string' || !Number.isInteger(r.id) || ids.has(r.id as number)) continue;
+    ids.add(r.id as number);
+    out.push({
+      id: r.id as number,
+      x: Math.max(0, Number(r.x) || 0),
+      y: Math.max(0, Number(r.y) || 0),
+      w: size(r.w, COMMENT_MIN_W, 200),
+      h: size(r.h, COMMENT_MIN_H, 60),
+      text: r.text.slice(0, COMMENT_MAX),
+    });
+  }
+  return out;
+}
 
 /** the computer keyboard's octave range (Patch.octave, input.ts) */
 export const OCTAVE_MIN = -3, OCTAVE_MAX = 3;
@@ -784,6 +830,9 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
   p.name = String(p.name ?? 'patch');
   if (typeof p.notes !== 'string' || !p.notes.trim()) delete p.notes;
   else p.notes = p.notes.slice(0, NOTES_MAX);
+  const comments = fixComments(p.comments);
+  if (comments.length) p.comments = comments;
+  else delete p.comments;
   if (!hasMorph(p as Patch) || typeof p.morphName !== 'string') delete p.morphName;
   for (const k of SIDE_KEYS) if (!sideSourceOk(p as Patch, k, defs)) delete p[k];
   if (!Number.isInteger(p.octave) || p.octave === 0 || p.octave! < OCTAVE_MIN || p.octave! > OCTAVE_MAX) delete p.octave;

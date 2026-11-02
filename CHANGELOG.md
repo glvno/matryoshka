@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Editor
+
+- Every module output says its signal's range (#518): hover an output jack or a cable. An LFO gives −1..1 (times depth), an envelope 0..1, a pitch 1 per octave with 0 at middle C, an oscillator ±1 times its level, a gate 0 or 1; an Offset, Attenuverter or Math works it out from its settings.
+- The Scope's screen can be read (#518): one scale for both traces, gridlines labelled with their values, the time per division, and a scale button (auto, ±1, ±4; auto fits the traces and labels the scale it chose). Under the screen each input shows its lowest and highest value, peak to peak, and its source with that output's range. The screen is 96 px tall, 64 before.
+- Comment boxes on the canvas, like Max comments (#518): right-click the empty canvas or use the palette's Add comment. They are moved, resized, selected, copied, deleted and undone like cards, saved in the patch, its link and its .json file, and never sent to the FM-1.
+
 ## 1.8.2 — 2026-11-01
 
 ### Editor
