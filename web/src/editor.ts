@@ -21,7 +21,7 @@ import { cableRole } from './cable-role';
 import { addBreak, fm1Name, layoutOf, moveRows, moveSection, pagesOf, removeBreak, removeHeading, removeRows, renameHeading, rowKey, setLayout, type KnobOf, type Layout, type RowSpot, type Sec } from './arrange';
 import type { ParameterValues } from './engine';
 import { deviceBudget, DEVICE } from './patchbin';
-import { choiceName, formatValue, longName, moduleName, moduleTag } from './labels';
+import { choiceName, formatValue, longName, moduleName, moduleTag, moduleTitle, paramHint } from './labels';
 import { outputRange } from './ranges';
 import { picker } from './picker';
 import { selector } from './selector';
@@ -60,6 +60,7 @@ import {
   trackLabel,
   trackName,
   fixTrack,
+  moduleText,
   TRACK_NAME_MAX,
   DRUM_ROWS,
   COMMENT_MAX,
@@ -1054,12 +1055,26 @@ export class Editor {
     const head = document.createElement('div');
     head.className = 'mhead';
     const title = document.createElement('span');
-    title.append(this.tag(def.type), moduleName(def.type, def.label));
+    if (m.name && def.type !== 'steps') {
+      // its own name (#518), its type small underneath
+      const name = document.createElement('span');
+      name.className = 'mname';
+      const type = document.createElement('small');
+      type.className = 'mtype';
+      type.textContent = moduleName(def.type, def.label);
+      name.append(m.name, type);
+      title.append(this.tag(def.type), name);
+      title.title = `${m.name} (${moduleName(def.type, def.label)}): double-click to rename`;
+    } else {
+      title.append(this.tag(def.type), moduleName(def.type, def.label));
+      if (def.type !== 'fm1') title.title = 'double-click to rename';
+    }
+    if (def.type !== 'fm1') title.addEventListener('dblclick', (e) => { e.stopPropagation(); this.renameModule(m); });
     if (perVoice) title.append(this.badge(perVoice));
     const tools = document.createElement('span');
     tools.className = 'tools';
     if (open) tools.append(this.outButton(open, () => this.takeOutModule(open, m)));
-    if (!open && def.type !== 'steps' && armable(this.patch, `m${m.id}`)) tools.append(this.armButton(`m${m.id}`, moduleName(def.type, def.label)));
+    if (!open && def.type !== 'steps' && armable(this.patch, `m${m.id}`)) tools.append(this.armButton(`m${m.id}`, this.nameOf(m)));
     if (def.type !== 'fm1' && def.type !== 'output' && !EDITOR_ONLY.has(def.type)) tools.append(this.bypassButton(m, def, el));
     const menu = (at: Pt): void => this.contextMenu(m, def, at);
     tools.append(this.moreButton(menu));
@@ -1485,7 +1500,26 @@ export class Editor {
     if (k[0] === 'a') return assemblyById(this.patch, id)?.label ?? 'assembly';
     const m = this.patch.modules.find((x) => x.id === id);
     if (!m) return '';
-    return m.type === 'steps' ? trackLabel(this.patch, id) : m.name || moduleName(m.type, DEFS[m.type]?.label ?? '');
+    return this.nameOf(m);
+  }
+
+  /** a module as the canvas names it (#518): a Steps module by its track name, any other by its own name, else its type */
+  private nameOf(m: ModuleInst): string {
+    return m.type === 'steps' ? trackLabel(this.patch, m.id) : moduleTitle(m, DEFS[m.type]?.label ?? m.type);
+  }
+
+  /** give a module its own name (#518): a prompt; empty takes it back to its type's. A Steps module's is its track name */
+  private renameModule(m: ModuleInst): void {
+    const def = DEFS[m.type];
+    if (!def || m.type === 'fm1') return;
+    const v = window.prompt(m.type === 'steps' ? `Track name (at most ${TRACK_NAME_MAX} characters)` : `Name of this ${moduleName(m.type, def.label)} (empty: none)`, m.name ?? '');
+    if (v === null || v === undefined) return;
+    const name = m.type === 'steps' ? trackName(v) : moduleText(v);
+    if (name === (m.name ?? '')) return;
+    this.change(() => {
+      if (name) m.name = name;
+      else delete m.name;
+    });
   }
 
   /** ARM on one device: on / off, the others as they are */
@@ -1510,7 +1544,7 @@ export class Editor {
       const id = Number(k.slice(1));
       const names = k[0] === 'a' ? [assemblyById(this.patch, id)?.label ?? 'assembly']
         : this.patch.modules.find((m) => m.id === id)?.type === 'steps' ? this.trackPlays(id)
-        : [moduleName(this.patch.modules.find((m) => m.id === id)?.type ?? '', DEFS[this.patch.modules.find((m) => m.id === id)?.type ?? '']?.label ?? '')];
+        : [this.deviceName(k)];
       for (const n of names) if (!out.includes(n)) out.push(n);
     }
     return out;
@@ -1674,7 +1708,7 @@ export class Editor {
 
   /** what a track plays, by the names the canvas shows */
   private trackPlays(id: number): string[] {
-    return trackTargets(this.patch, id, (m) => moduleName(m.type, DEFS[m.type]?.label ?? m.type));
+    return trackTargets(this.patch, id, (m) => this.nameOf(m));
   }
 
   /** the Scope screens and envelope shapes drawn in this rebuild (onScreens) */
@@ -1735,7 +1769,7 @@ export class Editor {
         const from = this.patch.modules.find((x) => x.id === c.from.module);
         const kind = from && DEFS[from.type].outputs.find((q) => q.name === c.from.port)?.kind;
         // its name and its output's range for the readout under the screen (#518; the range follows the parameters)
-        return kind ? [{ id: c.from.module, port: c.from.port, kind, label: `${moduleName(from.type, DEFS[from.type].label)} ${longName(from.type, c.from.port)}`, range: () => outputRange(from.type, c.from.port, from.params) }] : [];
+        return kind ? [{ id: c.from.module, port: c.from.port, kind, label: `${this.nameOf(from)} ${longName(from.type, c.from.port)}`, range: () => outputRange(from.type, c.from.port, from.params) }] : [];
       }));
     this.screens.push({ m, el: screen, chans });
     row.append(this.scopeTools(m));
@@ -1985,6 +2019,10 @@ export class Editor {
       badge.textContent = ` ${tieText}`;
       name.title = tieText.startsWith('×') ? `one row for ${tieText.slice(1)} parameters: turning it moves them all` : `set by the "${tie!.label}" row of the card`;
       name.append(badge);
+    }
+    if (!name.title) {
+      const hint = paramHint(def.type, pd.name);
+      if (hint) name.title = hint;
     }
     // a Selector's position: over the positions in use (1..count, #358), by the names its card row gives them
     const range = (): ParamDef => rowRange(m.type, m.params, pd);
@@ -2615,6 +2653,7 @@ export class Editor {
       this.selected.add(m.id);
       this.bypassSelected();
     } });
+    if (def.type !== 'fm1') items.push({ text: 'Rename…', key: 'dbl-click', run: () => this.renameModule(m) });
     items.push({ text: 'Duplicate', key: '⌘D', run: () => {
       this.selected.clear();
       this.selected.add(m.id);
@@ -5747,7 +5786,7 @@ export class Editor {
   /** a cable end as the status line names it: the module and its port */
   private endName(e: Endpoint): string {
     const m = this.patch.modules.find((x) => x.id === e.module);
-    return m ? `${moduleName(m.type, DEFS[m.type]?.label ?? m.type)} ${e.port}` : e.port;
+    return m ? `${this.nameOf(m)} ${e.port}` : e.port;
   }
 
   /** the hovered cable's glow (design A): a copy over the cards, so its whole run shows where it passes behind one, and
@@ -5940,7 +5979,7 @@ export class Editor {
       if (port === pd.input) add(side, jack, 'control', null, `Built in: ${port} sets ${pd.name}`, true);
       else add(side, jack, 'control', () => this.change(() => {
         setInputRoute(m, DEFS[m.type], port, pd.name, false);
-      }), `Disconnect ${DEFS[m.type].label} ${port} → ${pd.name}`, true);
+      }), `Disconnect ${this.nameOf(m)} ${port} → ${pd.name}`, true);
     }
     const physicalCables = new Set<string>();
     for (const c of this.patch.cables) {

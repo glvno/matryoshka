@@ -101,7 +101,7 @@ describe('patterns and songs: the binary (format 48)', () => {
     tracks[0].patterns = [{ notes: [note(0, 2, 62, 127), note(3, 1, 64)] }, null, { notes: [note(20, 1, 40, 90, 50)], len: 24, rate: 6 }];
     const before = encodePatch(p).length;
     main.seq = { pattern: 2, song: 1, songs: [[{ pat: 0, shift: 0 }, { pat: 3, shift: -5 }]] };
-    expect(formatOf(p)).toBe(VERSION);
+    expect(formatOf(p)).toBe(48);
     const b = encodePatch(p);
     expect(b[1]).toBe(48);
     expect(new DataView(b.buffer).getUint16(6, true) & (FLAG_PATTERNS | FLAG_NOTES)).toBe(FLAG_PATTERNS | FLAG_NOTES);

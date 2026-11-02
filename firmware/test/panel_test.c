@@ -3507,6 +3507,32 @@ int main(void)
     }
     check("no renderer wrote the line buffer the LCD was still reading (#377: lcd_line is the other one, afresh each row)",
           lcd_line_clobbers == 0u);
+    {   /* a module with its own name (#518, format 49: a device of kind 2): golden.ts's fm-3pm-index kit names its carrier */
+        FILE *f = fopen("build/golden/fm-3pm-index.m1p", "rb");
+        if (!f)
+            printf("skip  named module: no build/golden/fm-3pm-index.m1p (tools/golden.sh writes it)\n");
+        else {
+            uint32_t d, n = 0, plain = 0;
+            pv_len = (uint32_t)fread(pv_bin, 1, sizeof pv_bin, f);
+            fclose(f);
+            check("named module: the patch loads (format 49)", pv_bin[1] == 49u && eng_load(pv_bin, pv_len) == 0);
+            pv_gen++;
+            page = 0;
+            pg_list_btn = -1;
+            pages_ensure();
+            for (d = 0; d < pg_ndev; d++)
+                if (pg_dev[d].module >= 0 && eng_type((uint32_t)pg_dev[d].module) == T_OSC) {
+                    n++;
+                    plain += pg_dev[d].nlen == 10u && !memcmp(pg_dev[d].name, "OSCILLATOR", 10);
+                }
+            for (d = 0; d < pg_ndev && !(pg_dev[d].nlen == 11u && !memcmp(pg_dev[d].name, "saw carrier", 11)); d++)
+                ;
+            check("named module: the carrier is a device by its name, its pages the oscillator's under that name",
+                  d < pg_ndev && pg_dev[d].module >= 0 && eng_type((uint32_t)pg_dev[d].module) == T_OSC &&
+                  pg_dev[d].npg == (OSC_NPAR + 3u) / 4u && pg_page[pg_dev[d].pg0].name == pg_dev[d].name);
+            check("named module: the other oscillators keep their type's name", n == 4u && plain == 3u);
+        }
+    }
     {   /* a card row that sets several parameters and a Selector's named positions (#357, #358): golden.ts's card-rows kit
          * (test-patches.ts cardRows): the voice's page is CUTOFF (both filters), RES (both), SOURCE (LOW HIGH RAW, 3 in use),
          * COUNT */

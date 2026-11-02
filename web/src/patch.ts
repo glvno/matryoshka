@@ -61,6 +61,10 @@ export interface ParamDef {
    * older format holds the type's parameters of its own format; the FM-1 reads it that way and gives this one its default
    * (engine.c eng_npar, defs.h psince). Only on the last parameters of a type, never decreasing. */
   since?: number;
+  /** the patch format (patchbin.ts VERSION) that let this parameter reach past `from` (a longer stretch, a choice appended,
+   * a higher max): a value past `from` is written in that format (patchbin.ts formatOf), so an FM-1 with older firmware
+   * never gets a value it would cut back to `from` */
+  grew?: { since: number; from: number };
 }
 
 /** position of a value in its range, 0..1 (logarithmic for log parameters) */
@@ -163,8 +167,11 @@ export interface ModuleInst {
    * off instead of acting while held, the switched ones that are on, and labels for K1..K6 and the buttons (the device's
    * player screen and legend show them; at most PANEL_LABEL_MAX characters of the LCD's font) */
   panel?: MainPanel;
-  /** a Steps module only: its track name (at most TRACK_NAME_MAX characters of the LCD's font; the device shows STEPS n
-   * without one) and its notes (#133, track.ts: start step, length, note, velocity, chance; sorted, absent while there
+  /** its name (#518): what the user calls it ("saw carrier"), shown on its card above its type, in cable tooltips, Show
+   * changes and the tutorial's checklist; at most MODULE_NAME_MAX characters, printable (moduleText). A top-level module's
+   * name is its device's name on the FM-1 (patchbin.ts, format 49), cut to the device names' length. A Steps module's
+   * name is its track name (at most TRACK_NAME_MAX characters of the LCD's font, trackName; the device shows STEPS n
+   * without one). A Steps module only: its notes (#133, track.ts: start step, length, note, velocity, chance; sorted, absent while there
    * are none). Patches from before #133 carry `steps` (a byte per step, stepByte) and the lanes `notes` / `vels` (a number
    * per step) instead: fixTrack turns them into notes. */
   name?: string;
@@ -226,8 +233,13 @@ export interface Step { on: boolean; accent: boolean; chance: number; tie?: bool
 export const stepOf = (b: number | undefined): Step => ({ on: !!((b ?? 0) & 1), accent: !!((b ?? 0) & 2), chance: 100 - 5 * Math.min(19, ((b ?? 0) >> 2) & 31), tie: !!((b ?? 0) & 0x80) });
 export const stepByte = (s: Step): number => (s.on ? 1 : 0) | (s.accent ? 2 : 0) | (Math.min(19, Math.max(0, Math.round((100 - s.chance) / 5))) << 2) | (s.tie ? 0x80 : 0);
 
+/** the most characters of a module's name (ModuleInst.name) */
+export const MODULE_NAME_MAX = 24;
+/** a module's name as it is kept: printable text (no control characters), spaces collapsed, MODULE_NAME_MAX characters */
+export const moduleText = (s: unknown): string => String(s ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MODULE_NAME_MAX).trim();
+
 /** a module's Steps data (name, notes) made valid in place, a pattern from before #133 turned into notes, a Drum map's row
- * names; other modules lose those fields */
+ * names; other modules lose those fields but their name (moduleText) */
 export function fixTrack(m: ModuleInst): void {
   if (m.type === 'drummap' && Array.isArray(m.names)) {
     const names = Array.from({ length: DRUM_ROWS }, (_, r) => trackName(m.names![r] ?? ''));
@@ -240,7 +252,9 @@ export function fixTrack(m: ModuleInst): void {
   delete old.steps;
   delete old.vels;
   if (m.type !== 'steps') {
-    delete m.name;
+    const name = typeof m.name === 'string' ? moduleText(m.name) : '';
+    if (name) m.name = name;
+    else delete m.name;
     delete m.notes;
     delete m.patterns;
     return;

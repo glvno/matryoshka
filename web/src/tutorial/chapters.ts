@@ -31,7 +31,7 @@ export function compileStep(st: StepData, roles: Roles): Step {
     listen: st.kind === 'continue' || !st.advance, optional: !!st.optional, superseded: !!st.superseded,
     transient: st.kind === 'continue' || parts.some(momentary), playback: st.kind === 'continue' ? !!st.playback : true,
     check: (s) => ok(s).every(Boolean),
-    todo: (s) => { const r = ok(s); return parts.filter((_, i) => !r[i]).map((p) => partLabel(p, roles)); },
+    todo: (s) => { const r = ok(s); return parts.filter((_, i) => !r[i]).map((p) => partLabel(p, roles, s)); },
     met: (s) => { const r = ok(s); return Object.fromEntries(parts.map((p, i) => [p.id, r[i]])); },
     targetsOf: (ids, s) => parts.filter((p) => ids.includes(p.id)).flatMap((p) => partTargets(p, s, roles)),
     // the first unmet part in reading order; a done step keeps pointing at its last part, so the panel stays anchored

@@ -286,6 +286,8 @@ interface OscState {
   ap: number[];
   /** the phases of unison voices 2..5 (voice 1 is `phase`), plain path only */
   ph: number[];
+  /** the summed phase modulation of a block (oscPm), radians */
+  pmc: Float32Array;
 }
 
 /** unison voice j of n: its detune in octaves, spread symmetrically from -detune to +detune cents */
@@ -317,6 +319,32 @@ function allpass(s: number[], k: number, a: number, x: number): number {
   return y;
 }
 
+/** a phase modulation index: radians of phase per unit of the modulator's signal. An oscillator's signal swings by its
+ * `level`, so the phase swings by level x pm radians. The card, a typed value and the FM-1's knobs reach PM_TOP; the
+ * parameter inputs, macro ranges and the morph move over 0..8, as before the stretch (#518) */
+export const PM_TOP = 16;
+const PM_INDEX: Partial<ParamDef> = { step: 0.01, unit: 'rad', top: PM_TOP, grew: { since: 49, from: 8 } };
+
+/**
+ * The oscillator's phase modulation as one signal and its index (#518). With only `pm` patched (or nothing): its signal
+ * and the `pm` index, as before. With `pm2`, `pm3` or `index` patched: the sum pm x in + pm2 x in2 + pm3 x in3 in
+ * radians, times the `index` input when that is patched, with index 1 (engine.c m_osc the same). Index 0: no phase
+ * modulation, the oscillator's plain path.
+ */
+function oscPm(c: Ctx, s: OscState): { pm: Float32Array; idx: number } {
+  const i1 = c.connected.pm ? (c.p.pm ?? 0) : 0;
+  if (!c.connected.pm2 && !c.connected.pm3 && !c.connected.index) return { pm: c.inp.pm, idx: i1 };
+  const i2 = c.connected.pm2 ? (c.p.pm2 ?? 0) : 0, i3 = c.connected.pm3 ? (c.p.pm3 ?? 0) : 0;
+  if (i1 <= 0 && i2 <= 0 && i3 <= 0) return { pm: c.inp.pm, idx: 0 };
+  if (s.pmc.length < c.n) s.pmc = new Float32Array(c.n);
+  const { pm, pm2, pm3, index } = c.inp, out = s.pmc, gain = c.connected.index;
+  for (let i = 0; i < c.n; i++) {
+    const r = i1 * pm[i] + i2 * pm2[i] + i3 * pm3[i];
+    out[i] = gain ? r * index[i] : r;
+  }
+  return { pm: out, idx: 1 };
+}
+
 const osc: ModuleImpl<OscState> = {
   def: {
     type: 'osc',
@@ -328,22 +356,24 @@ const osc: ModuleImpl<OscState> = {
       param('pw', 0.05, 0.95, 0.5, { step: 0.01 }),
       param('coarse', -48, 48, 0, { step: 1, unit: 'st' }),
       param('fine', -100, 100, 0, { step: 1, unit: 'ct' }),
-      param('pm', 0, 8, 0, { step: 0.01 }),
+      param('pm', 0, 8, 0, PM_INDEX),
       param('level', 0, 1, 0.8, { step: 0.01 }),
       param('fb', 0, 1, 0, { step: 0.01 }),
       param('unison', 1, 5, 1, { step: 1 }),
       param('detune', 0, 100, 10, { step: 1, unit: 'ct' }),
       param('blend', 0, 1, 0.5, { step: 0.01 }),
       param('stack', 0, 4, 0, { step: 1, choices: STACK_NAMES }),
+      param('pm2', 0, 8, 0, { ...PM_INDEX, since: 49 }),
+      param('pm3', 0, 8, 0, { ...PM_INDEX, since: 49 }),
     ],
   },
-  init: () => ({ phase: 0, s1: 0, y1: 0, y2: 0, pm1: 0, xb: 0, ap: [0, 0, 0, 0, 0, 0, 0, 0], ph: [0, 0, 0, 0] }),
+  init: () => ({ phase: 0, s1: 0, y1: 0, y2: 0, pm1: 0, xb: 0, ap: [0, 0, 0, 0, 0, 0, 0, 0], ph: [0, 0, 0, 0], pmc: new Float32Array(0) }),
   process(c, s) {
-    const { pitch, pm, sync } = c.inp;
+    const { pitch, sync } = c.inp;
     const pw = Math.min(0.95, Math.max(0.05, c.p.pw ?? 0.5));
     const base = (c.p.coarse ?? 0) / 12 + (c.p.fine ?? 0) / 1200;
     const kind = Math.round(c.p.wave ?? 0);
-    const idx = c.connected.pm ? (c.p.pm ?? 0) : 0;
+    const { pm, idx } = oscPm(c, s);
     const fb = c.p.fb ?? 0;
     const lvl = c.p.level ?? 1;
     const out = c.out.out;
@@ -454,7 +484,13 @@ export function delayDivIndex(time: number, tmin: number, tmax: number): number 
   return Math.max(0, Math.min(DELAY_DIVS.length - 1, Math.round(((time - tmin) / (tmax - tmin)) * (DELAY_DIVS.length - 1))));
 }
 
-const LFO_WAVES = [...WAVES, 'S&H'];
+/** the LFO's waves: random (#518, format 49) is a smooth random, a new target each cycle reached along an S-curve */
+export const LFO_WAVES = [...WAVES, 'S&H', 'random'];
+/** the LFO's random wave (LFO_WAVES) */
+export const LFO_RANDOM = 5;
+/** the S-curve the random wave takes from one value to the next over a cycle: 3x^2 - 2x^3, flat at both ends (engine.c
+ * lfo_smooth, on the phase's top 16 bits) */
+export const lfoSmooth = (x: number): number => x * x * (3 - 2 * x);
 
 /** the extra note lengths of the synced delay (its `note` row; 0 `time`: the time knob picks from DELAY_DIVS), in quarter
  * notes = num / den. Appended to, never reordered (a patch stores the index). */
@@ -472,6 +508,8 @@ export const DELAY_SWELL_DEN = 95;
 /** the soft clip in the swelling delay's loop: x - 4/27 x^3, flat at +-1 from |x| = 1.5 (engine.c dly_soft the same) */
 export const delayClip = (x: number): number => (x >= 1.5 ? 1 : x <= -1.5 ? -1 : x - (4 / 27) * x * x * x);
 
+/** the top of the LFO's wide range, Hz (55 before #518) */
+export const LFO_WIDE_MAX = 80;
 /** the free LFO's rate ranges: the `rate` row times LFO_RANGE_K (slow 0.0008..1.6 Hz, fast 0.04..80 Hz) */
 export const LFO_RANGES = ['norm', 'slow', 'fast', 'wide'];
 export const LFO_RANGE_K = [1, 1 / 25, 2, 1];
@@ -521,6 +559,9 @@ interface LfoState {
   /** samples since the last clk edge, and the smoothed distance between edges (0 = none seen yet) */
   since: number;
   interval: number;
+  /** the random wave: where its S-curve starts (its value when the cycle began) and its value at the last sample */
+  from: number;
+  last: number;
 }
 
 /** A triangle's rise occupies `duty` of its cycle; at the ends it becomes a falling or rising saw. */
@@ -532,11 +573,13 @@ function lfoWave(kind: number, phase: number, dt: number, duty: number): number 
 }
 
 /**
- * LFO. `rate` in Hz times the `range` (slow / 25, fast x2), or `wide` from 0.0008 to 55 Hz in wide range. With `sync`, one cycle per note length `div` (as the delay)
+ * LFO. `rate` in Hz times the `range` (slow / 25, fast x2), or `wide` from 0.0008 to LFO_WIDE_MAX (80) Hz in wide range. With `sync`, one cycle per note length `div` (as the delay)
  * at the `mult` speed (÷8 .. x8). The clk input is a 24 ppqn clock (the Main module's clock output): the cycle snaps to every
  * n-th edge (n = 24 x the note length in quarter notes; for a length that ends between ticks, to the first tick a whole
  * number of cycles ends on) and runs at the measured clock speed in between. Without a clock (none for half a second) it
- * runs at `bpm`. A rising edge at reset restarts the cycle. S&H draws a new value at every cycle start. `phase` moves where
+ * runs at `bpm`. A rising edge at reset restarts the cycle. S&H draws a new value at every cycle start; random draws one
+ * too and glides to it from where it is along an S-curve (lfoSmooth) over the cycle, so a reset or a snap never jumps it
+ * (`phase` does not move S&H or random: their cycle starts are where the new values come). `phase` moves where
  * a cycle starts on the wave (90 degrees: a sine starts at its peak); `dir` back runs the wave backward (a saw falls).
  */
 const lfo: ModuleImpl<LfoState> = {
@@ -546,7 +589,7 @@ const lfo: ModuleImpl<LfoState> = {
     inputs: [gate('clk'), gate('reset')],
     outputs: [control('out')],
     params: [
-      param('wave', 0, 4, 0, { step: 1, choices: LFO_WAVES }),
+      param('wave', 0, 4, 0, { step: 1, choices: LFO_WAVES, top: LFO_RANDOM, grew: { since: 49, from: 4 } }),
       param('rate', 0.02, 40, 4, { unit: 'Hz', step: 0.01, log: true, altText: { when: 'range', text: lfoRateText } }),
       param('depth', 0, 1, 1, { step: 0.01 }),
       param('sync', 0, 1, 0, { step: 1, choices: ['free', 'sync'], toggle: true }),
@@ -556,10 +599,10 @@ const lfo: ModuleImpl<LfoState> = {
       param('range', 0, 2, 0, { step: 1, choices: LFO_RANGES, top: 3, since: 35 }),
       param('dir', 0, 1, 0, { step: 1, choices: ['fwd', 'back'], toggle: true, since: 35 }),
       param('mult', 0, LFO_MULTS.length - 1, 3, { step: 1, choices: LFO_MULTS.map((m) => m.name), since: 35 }),
-      param('wide', 0.0008, 55, 4, { unit: 'Hz', step: 0.0001, log: true, since: 40 }),
+      param('wide', 0.0008, LFO_WIDE_MAX, 4, { unit: 'Hz', step: 0.0001, log: true, since: 40, grew: { since: 49, from: 55 } }),
     ],
   },
-  init: (sr) => ({ phase: 0, seed: 0x2545f491, held: 0, clkHi: false, rstHi: false, ticks: 0, wraps: 0, since: sr, interval: 0 }),
+  init: (sr) => ({ phase: 0, seed: 0x2545f491, held: 0, clkHi: false, rstHi: false, ticks: 0, wraps: 0, since: sr, interval: 0, from: 0, last: 0 }),
   process(c, s) {
     const kind = Math.round(c.p.wave ?? 0);
     // backward: the wave read at off - phase, which for these waves is -w(phase - off) (the triangle is the same both ways)
@@ -580,7 +623,8 @@ const lfo: ModuleImpl<LfoState> = {
     const range = Math.max(0, Math.min(LFO_RANGES.length - 1, Math.round(c.p.range ?? 0)));
     const dtFree = (range === 3 ? (c.p.wide ?? 4) : (c.p.rate ?? 1) * LFO_RANGE_K[range]) / c.sr;
     const newCycle = (): void => {
-      // sample & hold: new random value (-1..1) at every cycle start
+      // sample & hold: new random value (-1..1) at every cycle start; the random wave starts its S-curve where it is
+      s.from = s.last;
       s.seed = (Math.imul(s.seed, 1664525) + 1013904223) >>> 0;
       s.held = s.seed / 0x80000000 - 1;
     };
@@ -619,7 +663,10 @@ const lfo: ModuleImpl<LfoState> = {
         }
       }
       const ph = off ? s.phase + off - Math.floor(s.phase + off) : s.phase;
-      c.out.out[i] = (kind === 4 ? s.held : lfoWave(kind, ph, dt, duty)) * depth;
+      let w: number;
+      if (kind === LFO_RANDOM) w = s.last = s.from + (s.held - s.from) * lfoSmooth(s.phase);
+      else w = kind === 4 ? s.held : lfoWave(kind, ph, dt, duty);
+      c.out.out[i] = w * depth;
       c.out.pulse[i] = wave(3, ph, dt, duty) * (c.p.depth ?? 1) * (back ? -1 : 1);
     }
   },
@@ -1913,7 +1960,7 @@ const wavetable: ModuleImpl<WtState> = {
       param('pos', 0, 1, 0, { step: 0.01 }),
       param('coarse', -48, 48, 0, { step: 1, unit: 'st' }),
       param('fine', -100, 100, 0, { step: 1, unit: 'ct' }),
-      param('pm', 0, 8, 0, { step: 0.01 }),
+      param('pm', 0, 8, 0, PM_INDEX),
       param('level', 0, 1, 0.8, { step: 0.01 }),
     ],
   },
@@ -3015,7 +3062,7 @@ const pd: ModuleImpl<PdState> = {
       param('range', 0, PD_RANGE_MAX, 3, { step: 0.01, unit: 'oct' }),
       param('coarse', -48, 48, 0, { step: 1, unit: 'st' }),
       param('fine', -100, 100, 0, { step: 1, unit: 'ct' }),
-      param('pm', 0, 8, 0, { step: 0.01 }),
+      param('pm', 0, 8, 0, PM_INDEX),
       param('level', 0, 1, 0.8, { step: 0.01 }),
     ],
   },
@@ -3471,6 +3518,8 @@ for (const m of ALL)
 steps.def.inputs.push(keys('keys'));
 random.def.inputs.push(gate('clock'));
 ladder.def.inputs.push(control('fm'));
+// the oscillator's second and third phase modulation inputs and its audio-rate index (#518, format 49)
+osc.def.inputs.push(audio('pm2'), audio('pm3'), control('index'));
 lfo.def.inputs.push(control('shape'));
 lfo.def.outputs.push(control('pulse'));
 adsr.def.inputs.push(gate('hold'));

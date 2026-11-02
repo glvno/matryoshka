@@ -92,6 +92,9 @@ enum {
 #define OSC_I_SYNC 2
 #define OSC_I_P1 3
 #define OSC_I_P2 4
+#define OSC_I_PM2 5
+#define OSC_I_PM3 6
+#define OSC_I_INDEX 7
 #define OSC_O_OUT 0
 #define OSC_P_WAVE 0
 #define OSC_P_PW 1
@@ -104,9 +107,11 @@ enum {
 #define OSC_P_DETUNE 8
 #define OSC_P_BLEND 9
 #define OSC_P_STACK 10
-#define OSC_NIN 5
+#define OSC_P_PM2 11
+#define OSC_P_PM3 12
+#define OSC_NIN 8
 #define OSC_NOUT 1
-#define OSC_NPAR 11
+#define OSC_NPAR 13
 #define OSC_CVBASE 3
 #define OSC_NDATA 0
 
@@ -1057,31 +1062,32 @@ static const char *const FM1_PN[] = {"MORPH", "TEMPO"};
 static const uint8_t FM1_LOG[] = {0, 0};
 static const char *const FM1_UNIT[] = {"", "BPM"};
 static const char *const *const FM1_CH[] = {0, 0};
-static const char *const OSC_INNAMES[] = {"PITCH", "PM", "SYNC", "P1", "P2"};
-static const int32_t OSC_MIN[] = {0, 3277, -3145728, -6553600, 0, 0, 0, 65536, 0, 0, 0};
-static const int32_t OSC_MAX[] = {196608, 62259, 3145728, 6553600, 524288, 65536, 65536, 327680, 6553600, 65536, 262144};
-static const int32_t OSC_DEF[] = {0, 32768, 0, 0, 0, 52429, 0, 65536, 655360, 32768, 0};
-static const int32_t OSC_INC[] = {65536, 655, 65536, 131072, 5243, 655, 655, 65536, 65536, 655, 65536};
-static const int32_t OSC_STEP[] = {65536, 655, 65536, 65536, 655, 655, 655, 65536, 65536, 655, 65536};
-static const int32_t OSC_TOP[] = {327680, 62259, 3145728, 6553600, 524288, 65536, 65536, 327680, 6553600, 65536, 262144};
-static const char *const OSC_PN[] = {"WAVE", "PW", "COARSE", "FINE", "PM", "LEVEL", "FB", "UNISON", "DETUNE", "BLEND", "STACK"};
-static const uint8_t OSC_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-static const char *const OSC_UNIT[] = {"", "", "ST", "CT", "", "", "", "", "CT", "", ""};
+static const char *const OSC_INNAMES[] = {"PITCH", "PM", "SYNC", "P1", "P2", "PM2", "PM3", "INDEX"};
+static const int32_t OSC_MIN[] = {0, 3277, -3145728, -6553600, 0, 0, 0, 65536, 0, 0, 0, 0, 0};
+static const int32_t OSC_MAX[] = {196608, 62259, 3145728, 6553600, 524288, 65536, 65536, 327680, 6553600, 65536, 262144, 524288, 524288};
+static const int32_t OSC_DEF[] = {0, 32768, 0, 0, 0, 52429, 0, 65536, 655360, 32768, 0, 0, 0};
+static const int32_t OSC_INC[] = {65536, 655, 65536, 131072, 5243, 655, 655, 65536, 65536, 655, 65536, 5243, 5243};
+static const int32_t OSC_STEP[] = {65536, 655, 65536, 65536, 655, 655, 655, 65536, 65536, 655, 65536, 655, 655};
+static const int32_t OSC_TOP[] = {327680, 62259, 3145728, 6553600, 1048576, 65536, 65536, 327680, 6553600, 65536, 262144, 1048576, 1048576};
+static const uint8_t OSC_SINCE[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 49, 49};
+static const char *const OSC_PN[] = {"WAVE", "PW", "COARSE", "FINE", "PM", "LEVEL", "FB", "UNISON", "DETUNE", "BLEND", "STACK", "PM2", "PM3"};
+static const uint8_t OSC_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static const char *const OSC_UNIT[] = {"", "", "ST", "CT", "RAD", "", "", "", "CT", "", "", "RAD", "RAD"};
 static const char *const OSC_CH0[] = {"SINE", "TRIANGLE", "SAW", "SQUARE", "SHARKTOOTH", "REVERSE SAW", 0};
 static const char *const OSC_CH10[] = {"OFF", "+OCT", "+5TH", "+OCT+5TH", "-OCT", 0};
-static const char *const *const OSC_CH[] = {OSC_CH0, 0, 0, 0, 0, 0, 0, 0, 0, 0, OSC_CH10};
+static const char *const *const OSC_CH[] = {OSC_CH0, 0, 0, 0, 0, 0, 0, 0, 0, 0, OSC_CH10, 0, 0};
 static const char *const LFO_INNAMES[] = {"CLK", "RESET", "P1", "P2", "SHAPE"};
 static const int32_t LFO_MIN[] = {0, 1311, 0, 0, 0, 2621440, 0, 0, 0, 0, 52};
-static const int32_t LFO_MAX[] = {262144, 2621440, 65536, 65536, 655360, 19660800, 23592960, 131072, 65536, 393216, 3604480};
+static const int32_t LFO_MAX[] = {262144, 2621440, 65536, 65536, 655360, 19660800, 23592960, 131072, 65536, 393216, 5242880};
 static const int32_t LFO_DEF[] = {0, 262144, 65536, 0, 393216, 7864320, 0, 0, 0, 196608, 262144};
-static const int32_t LFO_INC[] = {65536, 26201, 655, 65536, 65536, 170394, 235930, 65536, 65536, 65536, 36044};
+static const int32_t LFO_INC[] = {65536, 26201, 655, 65536, 65536, 170394, 235930, 65536, 65536, 65536, 52428};
 static const int32_t LFO_STEP[] = {65536, 655, 655, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 7};
-static const int32_t LFO_TOP[] = {262144, 2621440, 65536, 65536, 655360, 19660800, 23592960, 196608, 65536, 393216, 3604480};
+static const int32_t LFO_TOP[] = {327680, 2621440, 65536, 65536, 655360, 19660800, 23592960, 196608, 65536, 393216, 5242880};
 static const uint8_t LFO_SINCE[] = {0, 0, 0, 0, 0, 0, 35, 35, 35, 35, 40};
 static const char *const LFO_PN[] = {"WAVE", "RATE", "DEPTH", "SYNC", "DIV", "BPM", "PHASE", "RANGE", "DIR", "MULT", "WIDE"};
 static const uint8_t LFO_LOG[] = {0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1};
 static const char *const LFO_UNIT[] = {"", "HZ", "", "", "", "", "DEG", "", "", "", "HZ"};
-static const char *const LFO_CH0[] = {"SINE", "TRIANGLE", "SAW", "SQUARE", "S&H", 0};
+static const char *const LFO_CH0[] = {"SINE", "TRIANGLE", "SAW", "SQUARE", "S&H", "RANDOM", 0};
 static const char *const LFO_CH3[] = {"FREE", "SYNC", 0};
 static const char *const LFO_CH4[] = {"1/16T", "1/16", "1/8T", "1/16.", "1/8", "1/8.", "1/4", "3/8", "1/2", "5/8", "1/1", 0};
 static const char *const LFO_CH7[] = {"NORM", "SLOW", "FAST", "WIDE", 0};
@@ -1243,10 +1249,10 @@ static const int32_t WAVETABLE_MAX[] = {196608, 65536, 3145728, 6553600, 524288,
 static const int32_t WAVETABLE_DEF[] = {0, 0, 0, 0, 0, 52429};
 static const int32_t WAVETABLE_INC[] = {65536, 655, 65536, 131072, 5243, 655};
 static const int32_t WAVETABLE_STEP[] = {65536, 655, 65536, 65536, 655, 655};
-static const int32_t WAVETABLE_TOP[] = {262144, 65536, 3145728, 6553600, 524288, 65536};
+static const int32_t WAVETABLE_TOP[] = {262144, 65536, 3145728, 6553600, 1048576, 65536};
 static const char *const WAVETABLE_PN[] = {"BANK", "POS", "COARSE", "FINE", "PM", "LEVEL"};
 static const uint8_t WAVETABLE_LOG[] = {0, 0, 0, 0, 0, 0};
-static const char *const WAVETABLE_UNIT[] = {"", "", "ST", "CT", "", ""};
+static const char *const WAVETABLE_UNIT[] = {"", "", "ST", "CT", "RAD", ""};
 static const char *const WAVETABLE_CH0[] = {"ANALOG", "ORGAN", "FORMANT", "DIGITAL", "EML COLOR", 0};
 static const char *const *const WAVETABLE_CH[] = {WAVETABLE_CH0, 0, 0, 0, 0, 0};
 static const char *const CHORUS_INNAMES[] = {"IN", "P1", "P2"};
@@ -1527,9 +1533,10 @@ static const int32_t PD_MAX[] = {458752, 524288, 65536, 327680, 3145728, 6553600
 static const int32_t PD_DEF[] = {0, 0, 32768, 196608, 0, 0, 0, 52429};
 static const int32_t PD_INC[] = {65536, 65536, 655, 3277, 65536, 131072, 5243, 655};
 static const int32_t PD_STEP[] = {65536, 65536, 655, 655, 65536, 65536, 655, 655};
+static const int32_t PD_TOP[] = {458752, 524288, 65536, 327680, 3145728, 6553600, 1048576, 65536};
 static const char *const PD_PN[] = {"WAVE", "WAVE2", "DCW", "RANGE", "COARSE", "FINE", "PM", "LEVEL"};
 static const uint8_t PD_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0};
-static const char *const PD_UNIT[] = {"", "", "", "OCT", "ST", "CT", "", ""};
+static const char *const PD_UNIT[] = {"", "", "", "OCT", "ST", "CT", "RAD", ""};
 static const char *const PD_CH0[] = {"SAW", "SQUARE", "PULSE", "DBL SINE", "SAW-PULSE", "RESO 1", "RESO 2", "RESO 3", 0};
 static const char *const PD_CH1[] = {"OFF", "SAW", "SQUARE", "PULSE", "DBL SINE", "SAW-PULSE", "RESO 1", "RESO 2", "RESO 3", 0};
 static const char *const *const PD_CH[] = {PD_CH0, PD_CH1, 0, 0, 0, 0, 0, 0};
@@ -1589,7 +1596,7 @@ static const char *const *const ESP_CH[] = {0, 0, 0, 0, 0};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH, 0, 0, FM1_STEP},   /* fm1 */
-    {OSC_NIN, OSC_NOUT, OSC_NPAR, 0, OSC_CVBASE, -1, OSC_NDATA, 1, OSC_MIN, OSC_MAX, OSC_DEF, OSC_INC, "OSCILLATOR", OSC_PN, OSC_INNAMES, OSC_LOG, OSC_UNIT, OSC_CH, OSC_TOP, 0, OSC_STEP},   /* osc */
+    {OSC_NIN, OSC_NOUT, OSC_NPAR, 0, OSC_CVBASE, -1, OSC_NDATA, 1, OSC_MIN, OSC_MAX, OSC_DEF, OSC_INC, "OSCILLATOR", OSC_PN, OSC_INNAMES, OSC_LOG, OSC_UNIT, OSC_CH, OSC_TOP, OSC_SINCE, OSC_STEP},   /* osc */
     {LFO_NIN, LFO_NOUT, LFO_NPAR, 0, LFO_CVBASE, -1, LFO_NDATA, 0, LFO_MIN, LFO_MAX, LFO_DEF, LFO_INC, "LFO", LFO_PN, LFO_INNAMES, LFO_LOG, LFO_UNIT, LFO_CH, LFO_TOP, LFO_SINCE, LFO_STEP},   /* lfo */
     {NOISE_NIN, NOISE_NOUT, NOISE_NPAR, 0, NOISE_CVBASE, -1, NOISE_NDATA, 1, NOISE_MIN, NOISE_MAX, NOISE_DEF, NOISE_INC, "NOISE", NOISE_PN, NOISE_INNAMES, NOISE_LOG, NOISE_UNIT, NOISE_CH, 0, 0, NOISE_STEP},   /* noise */
     {CONST_NIN, CONST_NOUT, CONST_NPAR, 0, CONST_CVBASE, -1, CONST_NDATA, 0, CONST_MIN, CONST_MAX, CONST_DEF, CONST_INC, "OFFSET", CONST_PN, CONST_INNAMES, CONST_LOG, CONST_UNIT, CONST_CH, 0, 0, CONST_STEP},   /* const */
@@ -1632,7 +1639,7 @@ static const def_t DEFS[N_TYPES] = {
     {STEPS_NIN, STEPS_NOUT, STEPS_NPAR, 0, STEPS_CVBASE, -1, STEPS_NDATA, 0, STEPS_MIN, STEPS_MAX, STEPS_DEF, STEPS_INC, "STEPS", STEPS_PN, STEPS_INNAMES, STEPS_LOG, STEPS_UNIT, STEPS_CH, STEPS_TOP, STEPS_SINCE, STEPS_STEP},   /* steps */
     {MACRO_NIN, MACRO_NOUT, MACRO_NPAR, 0, MACRO_CVBASE, -1, MACRO_NDATA, 0, MACRO_MIN, MACRO_MAX, MACRO_DEF, MACRO_INC, "MACRO", MACRO_PN, MACRO_INNAMES, MACRO_LOG, MACRO_UNIT, MACRO_CH, 0, 0, MACRO_STEP},   /* macro */
     {DRUMMAP_NIN, DRUMMAP_NOUT, DRUMMAP_NPAR, 0, DRUMMAP_CVBASE, -1, DRUMMAP_NDATA, 0, DRUMMAP_MIN, DRUMMAP_MAX, DRUMMAP_DEF, DRUMMAP_INC, "DRUM MAP", DRUMMAP_PN, DRUMMAP_INNAMES, DRUMMAP_LOG, DRUMMAP_UNIT, DRUMMAP_CH, 0, DRUMMAP_SINCE, DRUMMAP_STEP},   /* drummap */
-    {PD_NIN, PD_NOUT, PD_NPAR, 2, PD_CVBASE, -1, PD_NDATA, 1, PD_MIN, PD_MAX, PD_DEF, PD_INC, "PD OSC", PD_PN, PD_INNAMES, PD_LOG, PD_UNIT, PD_CH, 0, 0, PD_STEP},   /* pd */
+    {PD_NIN, PD_NOUT, PD_NPAR, 2, PD_CVBASE, -1, PD_NDATA, 1, PD_MIN, PD_MAX, PD_DEF, PD_INC, "PD OSC", PD_PN, PD_INNAMES, PD_LOG, PD_UNIT, PD_CH, PD_TOP, 0, PD_STEP},   /* pd */
     {ENV8_NIN, ENV8_NOUT, ENV8_NPAR, 0, ENV8_CVBASE, -1, ENV8_NDATA, 0, ENV8_MIN, ENV8_MAX, ENV8_DEF, ENV8_INC, "ENV 8", ENV8_PN, ENV8_INNAMES, ENV8_LOG, ENV8_UNIT, ENV8_CH, 0, 0, ENV8_STEP},   /* env8 */
     {SELECT_NIN, SELECT_NOUT, SELECT_NPAR, 1, SELECT_CVBASE, 1, SELECT_NDATA, 1, SELECT_MIN, SELECT_MAX, SELECT_DEF, SELECT_INC, "SELECTOR", SELECT_PN, SELECT_INNAMES, SELECT_LOG, SELECT_UNIT, SELECT_CH, 0, 0, SELECT_STEP},   /* select */
     {RATEENV_NIN, RATEENV_NOUT, RATEENV_NPAR, 0, RATEENV_CVBASE, -1, RATEENV_NDATA, 0, RATEENV_MIN, RATEENV_MAX, RATEENV_DEF, RATEENV_INC, "RATE ENV", RATEENV_PN, RATEENV_INNAMES, RATEENV_LOG, RATEENV_UNIT, RATEENV_CH, 0, 0, RATEENV_STEP},   /* rateenv */

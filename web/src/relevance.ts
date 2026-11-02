@@ -26,17 +26,20 @@ interface Rule {
   why: string;
 }
 
-/** the oscillator runs its FM path (feedback, or the pm input patched with an index): unison and stack are off there */
-const fm = (c: Ctx): boolean => c.p('fb') > 0 || (c.cabled('pm') && c.p('pm') > 0);
+/** the oscillator runs its FM path (feedback, or a pm input patched with an index, #518: pm, pm2, pm3): unison and stack
+ * are off there */
+const fm = (c: Ctx): boolean => c.p('fb') > 0 || (['pm', 'pm2', 'pm3'] as const).some((k) => c.cabled(k) && c.p(k) > 0);
 const STACK_OCT_FIFTH = 3; // STACK_NAMES '+oct+5th': three copies
 const SEQ_STEPS = [2, 3, 4, 5, 6, 7, 8];
 
 export const RULES: Rule[] = [
   { type: 'osc', params: ['pw'], reads: ['wave'], live: (c) => c.p('wave') === 3, why: 'Only the square wave has a pulse width.' },
-  { type: 'osc', params: ['unison', 'stack'], reads: ['fb', 'pm'], live: (c) => !fm(c), why: 'Unison and stack are off while the oscillator runs FM (feedback, or a patched pm input).' },
-  { type: 'osc', params: ['detune'], reads: ['unison', 'stack', 'fb', 'pm'], live: (c) => !fm(c) && (c.p('unison') >= 2 || c.p('stack') !== 0), why: 'Detune needs more than one copy: unison 2 or more, or a stack.' },
-  { type: 'osc', params: ['blend'], reads: ['unison', 'stack', 'fb', 'pm'], live: (c) => !fm(c) && (c.p('unison') >= 3 || c.p('stack') === STACK_OCT_FIFTH), why: 'Blend needs three copies or more: unison 3 or more, or the +oct+5th stack.' },
+  { type: 'osc', params: ['unison', 'stack'], reads: ['fb', 'pm', 'pm2', 'pm3'], live: (c) => !fm(c), why: 'Unison and stack are off while the oscillator runs FM (feedback, or a patched pm input).' },
+  { type: 'osc', params: ['detune'], reads: ['unison', 'stack', 'fb', 'pm', 'pm2', 'pm3'], live: (c) => !fm(c) && (c.p('unison') >= 2 || c.p('stack') !== 0), why: 'Detune needs more than one copy: unison 2 or more, or a stack.' },
+  { type: 'osc', params: ['blend'], reads: ['unison', 'stack', 'fb', 'pm', 'pm2', 'pm3'], live: (c) => !fm(c) && (c.p('unison') >= 3 || c.p('stack') === STACK_OCT_FIFTH), why: 'Blend needs three copies or more: unison 3 or more, or the +oct+5th stack.' },
   { type: 'osc', params: ['pm'], reads: [], live: (c) => c.cabled('pm'), why: 'Patch the pm input to use the modulation index.' },
+  { type: 'osc', params: ['pm2'], reads: [], live: (c) => c.cabled('pm2'), why: 'Patch the pm2 input to use its modulation index.' },
+  { type: 'osc', params: ['pm3'], reads: [], live: (c) => c.cabled('pm3'), why: 'Patch the pm3 input to use its modulation index.' },
   { type: 'wavetable', params: ['pm'], reads: [], live: (c) => c.cabled('pm'), why: 'Patch the pm input to use the modulation index.' },
   { type: 'pd', params: ['pm'], reads: [], live: (c) => c.cabled('pm'), why: 'Patch the pm input to use the modulation index.' },
   { type: 'pd', params: ['range'], reads: ['wave', 'wave2'], live: (c) => Math.round(c.p('wave')) >= PD_RESO || Math.round(c.p('wave2')) > PD_RESO, why: 'Range raises only the resonance waveforms (reso 1, 2, 3).' },

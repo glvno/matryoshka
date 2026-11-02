@@ -194,8 +194,9 @@ static int row_name(const ppage_t *pg, uint32_t k, int32_t v, char *out)
     return 0;
 }
 
-/* a plain module's pages: its parameters, four to a page, the module's name; an envelope draws its shape on the first */
-static void pages_plain(uint32_t m)
+/* a plain module's pages: its parameters, four to a page, the module's name (`name`, nlen bytes: its own, ENG_DEV_NAMED; 0
+ * its type's); an envelope draws its shape on the first */
+static void pages_plain(uint32_t m, const char *name, uint32_t nlen)
 {
     int t = eng_type(m);
     const def_t *d;
@@ -213,6 +214,10 @@ static void pages_plain(uint32_t m)
             pg_dev[pg_ndev].name = pg_tname[pg_ndev];
     }
     pg_dev[pg_ndev].nlen = (uint8_t)str_len(pg_dev[pg_ndev].name);
+    if (name && nlen) {                                 /* its own name (#518) */
+        pg_dev[pg_ndev].name = name;
+        pg_dev[pg_ndev].nlen = (uint8_t)nlen;
+    }
     pg_dev[pg_ndev].pg0 = (uint8_t)pg_npage;
     pg_dev[pg_ndev].npg = (uint8_t)n;
     pg_dev[pg_ndev].module = (int16_t)m;
@@ -305,12 +310,12 @@ static void pages_build(void)
     n = p[at++];
     for (d = 0; d < n && pg_ndev < PG_DEVS; d++) {
         uint32_t np, g;
-        if (p[at] == 0u) {
-            uint32_t was = pg_ndev;
-            pages_plain(p[at + 1u]);
+        if (p[at] == 0u || p[at] == ENG_DEV_NAMED) {
+            uint32_t was = pg_ndev, named = p[at] == ENG_DEV_NAMED;
+            pages_plain(p[at + 1u], named ? (const char *)p + at + 3u : 0, named ? p[at + 2u] : 0u);
             if (pg_ndev > was)
                 pg_dev[was].bin = (uint8_t)d;
-            at += 2u;
+            at += named ? 3u + p[at + 2u] : 2u;
             continue;
         }
         at++;

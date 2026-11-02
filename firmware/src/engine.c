@@ -384,7 +384,7 @@ typedef struct {
     union {
         struct { uint32_t phase; int32_t s1, y1, y2, pm1, xb, ap[8]; uint32_t ph[4], rc[5][2]; } osc;   /* s1: last sync sample; FM mode: feedback history, pm interpolation, decimator; ph: unison voices 2..5 (plain path); rc: their blep_pos caches, kept across blocks */
         struct { uint32_t seed; walk_t w; uint32_t held_seed; int32_t held, clock; } rnd;   /* seed: engine.ts instSeed */
-        struct { uint32_t phase, seed; int32_t held; uint32_t since; int32_t interval; uint16_t ticks; uint8_t clk_hi, rst_hi, wraps; } lfo;   /* interval: clock edge distance in samples, Q8; wraps: cycles ended since the last snap */
+        struct { uint32_t phase, seed; int32_t held; uint32_t since; int32_t interval; uint16_t ticks; uint8_t clk_hi, rst_hi, wraps; int32_t from, last; } lfo;   /* interval: clock edge distance in samples, Q8; wraps: cycles ended since the last snap; from, last: the random wave's start and its last value */
         struct { int32_t y; } gld;         /* Q24 */
         struct { uint32_t seed; int32_t y; } noise;   /* y: the colour one-pole, Q24 */
         struct { int32_t ic1[3], ic2[3]; } vow;       /* three band passes, Q20 */
@@ -3576,18 +3576,47 @@ static inline int32_t allpass16(int32_t *s, int32_t a, int32_t x)      /* y = a 
 static const int32_t STACK_OCT[5][3] = {{0}, {0, 65536}, {0, 38229}, {0, 65536, 103765}, {0, -65536}};
 static const uint8_t STACK_N[5] = {1, 2, 2, 3, 2};
 
+/* the oscillator's summed phase modulation (osc_pm), radians Q16, one block */
+static esig_t osc_pmc[ENG_BLOCK];
+/* The oscillator's phase modulation as one signal and its index (#518, modules.ts oscPm): with only pm patched (or
+ * nothing), that input and the pm index, as before; with pm2, pm3 or index patched, pm x in + pm2 x in2 + pm3 x in3 in
+ * radians (osc_pmc), times the index input when it is patched, and index 1. *idx 0: no phase modulation. */
+static const esig_t *osc_pm(const node_t *nd, inst_t *it, uint32_t n, int32_t *idx)
+{
+    const esig_t *pm = it->in[OSC_I_PM], *pm2 = it->in[OSC_I_PM2], *pm3 = it->in[OSC_I_PM3], *ix = it->in[OSC_I_INDEX];
+    int32_t i1 = nd->conn & (1u << OSC_I_PM) ? EF(it, OSC_P_PM) : 0, i2, i3;
+    uint32_t i;
+    *idx = i1;
+    if (!(nd->conn & ((1u << OSC_I_PM2) | (1u << OSC_I_PM3) | (1u << OSC_I_INDEX))))
+        return pm;
+    i2 = nd->conn & (1u << OSC_I_PM2) ? EF(it, OSC_P_PM2) : 0;
+    i3 = nd->conn & (1u << OSC_I_PM3) ? EF(it, OSC_P_PM3) : 0;
+    if (i1 <= 0 && i2 <= 0 && i3 <= 0) {
+        *idx = 0;
+        return pm;
+    }
+    for (i = 0; i < n; i++)
+        osc_pmc[i] = mul16(i1, pm[i]) + mul16(i2, pm2[i]) + mul16(i3, pm3[i]);
+    if (nd->conn & (1u << OSC_I_INDEX))
+        for (i = 0; i < n; i++)
+            osc_pmc[i] = mul16(osc_pmc[i], ix[i]);
+    *idx = ENG_ONE;
+    return osc_pmc;
+}
+
 static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
 {
-    const esig_t *pitch = it->in[OSC_I_PITCH], *pm = it->in[OSC_I_PM], *sync = it->in[OSC_I_SYNC];
+    const esig_t *pitch = it->in[OSC_I_PITCH], *pm, *sync = it->in[OSC_I_SYNC];
     esig_t *out = it->out[OSC_O_OUT];
     int32_t pw_q = clampi(EF(it, OSC_P_PW), 3277, 62259);                  /* 0.05 .. 0.95 */
     uint32_t pw = (uint32_t)pw_q << 16, phase = it->s.osc.phase, i;
     int32_t base = EF(it, OSC_P_COARSE) / 12 + EF(it, OSC_P_FINE) / 1200;
     int32_t kind = round_q16(EF(it, OSC_P_WAVE)), lvl = EF(it, OSC_P_LEVEL), fb = EF(it, OSC_P_FB);
-    int32_t idx = nd->conn & (1u << OSC_I_PM) ? EF(it, OSC_P_PM) : 0;
+    int32_t idx;
     int32_t y1, y2, pm1, xb, *ap = it->s.osc.ap, s1 = it->s.osc.s1;
     uint32_t dt_fm = 0;
     inc_ramp_t rpf;
+    pm = osc_pm(nd, it, n, &idx);
     if (idx <= 0 && fb <= 0) {                                             /* the plain oscillator: one wave per frame */
         int32_t ks = clampi(round_q16(EF(it, OSC_P_STACK)), 0, 4), nst = STACK_N[ks];
         int32_t nu = clampi(round_q16(EF(it, OSC_P_UNISON)), 1, 5), det = EF(it, OSC_P_DETUNE), doct[5], wq[5], j;
@@ -3783,8 +3812,19 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
 
 static void lfo_cycle(inst_t *it)
 {
+    it->s.lfo.from = it->s.lfo.last;             /* the random wave glides on from where it is */
     it->s.lfo.seed = it->s.lfo.seed * 1664525u + 1013904223u;
     it->s.lfo.held = (int32_t)(it->s.lfo.seed >> 15) - ENG_ONE;
+}
+
+/* the random wave (LFO_RANDOM, #518): from its start to the new value along 3x^2 - 2x^3 over the cycle (modules.ts
+ * lfoSmooth), x the phase's top 16 bits; it notes the value in `last` */
+#define LFO_RANDOM 5
+static inline int32_t lfo_smooth(inst_t *it, uint32_t phase)
+{
+    uint32_t x = phase >> 16, x2 = (uint32_t)(((uint64_t)x * x) >> 16);
+    int32_t s = (int32_t)(((uint64_t)x2 * (196608u - 2u * x)) >> 16);
+    return it->s.lfo.last = it->s.lfo.from + mul16(it->s.lfo.held - it->s.lfo.from, s);
 }
 
 /* the free-running LFO (no sync, nothing in clk / reset): the wave picked once a block. A function of its own: inside
@@ -3807,6 +3847,7 @@ static void __attribute__((noinline)) lfo_free(inst_t *it, esig_t *out, uint32_t
     case 1: LFO_FREE(wave_tri(phase + off)) break;
     case 2: LFO_FREE(wave_saw(phase + off, dt, lrc)) break;
     case 4: LFO_FREE(it->s.lfo.held) break;
+    case LFO_RANDOM: LFO_FREE(lfo_smooth(it, phase)) break;
     default: LFO_FREE(wave_square(phase + off, dt, 0x80000000u, lrc)) break;
     }
 #undef LFO_FREE
@@ -3917,7 +3958,7 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
                 lfo_cycle(it);              /* a new cycle: sample & hold takes a new random value */
             }
         }
-        w = kind == 4 ? it->s.lfo.held : lfo_wave(kind, phase + off, dt, duty, rise, fall, lrc);
+        w = kind == 4 ? it->s.lfo.held : kind == LFO_RANDOM ? lfo_smooth(it, phase) : lfo_wave(kind, phase + off, dt, duty, rise, fall, lrc);
         out[i] = mul16(w, depth);
         if (pulse != dummy_out) {
             int32_t pw = !duty ? -ENG_ONE : duty == 65536u ? ENG_ONE : wave_square(phase + off, dt, duty << 16, lrc);

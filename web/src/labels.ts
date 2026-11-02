@@ -18,6 +18,7 @@ const BY_TYPE: Record<string, Record<string, string>> = {
   fm1: { breath: 'breath (CC 2)', sustain: 'sustain (CC 64)', foot: 'foot switch (CC 65)' },
   adsr: { a: 'attack', d: 'decay', s: 'sustain', r: 'release', long: 'long times' },
   ladder: { fm: 'audio-rate cutoff' },
+  osc: { pm2: 'phase modulation 2', pm3: 'phase modulation 3', index: 'pm index' },
   filter: { hp6: 'high pass 6' },
   lfo: { phase: 'start phase', range: 'rate range', mult: 'sync speed', shape: 'shape (0..1)', pulse: 'pulse' },
   delay: { note: 'note length' },
@@ -66,8 +67,23 @@ const CHOICES: Record<string, Record<string, string>> = {
 /** a port's or parameter's label on a module of `type` */
 export const longName = (type: string, name: string): string => BY_TYPE[type]?.[name] ?? GENERIC[name] ?? name;
 
+/** what a parameter's name says on hover (#518: a phase modulation index), undefined for most */
+const PM_HINT = (input: string): string =>
+  `Phase modulation index in radians: the ${input} input's signal times this moves the phase. An oscillator swings by its level, so a modulator at level 0.5 into an index of 4 moves the phase by up to 2 radians (index = level × pm).`;
+const HINTS: Record<string, string> = {
+  'osc.pm': `${PM_HINT('pm')} The index input, when patched, multiplies all three.`,
+  'osc.pm2': `${PM_HINT('pm2')} The index input, when patched, multiplies all three.`,
+  'osc.pm3': `${PM_HINT('pm3')} The index input, when patched, multiplies all three.`,
+  'wavetable.pm': PM_HINT('pm'),
+  'pd.pm': PM_HINT('pm'),
+};
+export const paramHint = (type: string, name: string): string | undefined => HINTS[`${type}.${name}`];
+
 /** a module's title */
 export const moduleName = (type: string, label: string): string => MODULES[type] ?? label;
+/** a module as the editor names it (#518): its own name (ModuleInst.name), else its type's (moduleName; `label`: the
+ * type's label, DEFS[type].label) */
+export const moduleTitle = (m: { type: string; name?: string }, label: string): string => m.name || moduleName(m.type, label);
 
 /** a choice's label (an enum parameter's value) */
 export const choiceName = (type: string, param: string, choice: string): string => CHOICES[`${type}.${param}`]?.[choice] ?? choice;
