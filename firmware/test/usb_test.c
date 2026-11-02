@@ -2,12 +2,17 @@
  * Copyright (C) 2026 morgulbrut */
 /* Host test of usb.c's USB audio (FELUCCA_UAC) with a stand-in for the SIE (hal/fm1_usb.h):
  *   - the configuration descriptors, walked: every bLength, wTotalLength, the interface numbering and alt settings,
- *     endpoint counts, IADs, the audio control / MIDI streaming headers' lengths and collections, the 44.1-only format;
+ *     endpoint counts, IADs, the audio control / MIDI streaming headers' lengths and collections, the format (44.1
+ *     and 48 kHz, #535) and the endpoint's size (49 frames);
  *   - EP0 requests with the audio function presented and without it (update mode: SET_INTERFACE / SET_CUR / GET_CUR on
  *     the audio interface stall, as on a MIDI-only device);
+ *   - SET_CUR / GET_CUR / MIN / MAX at both rates, the packet sizes at each, and the setup log's record of the rate
+ *     asked for and the answers (#535);
  *   - the ring and packet logic over 60 s of drift both ways: renders of 128 frames at the I2S rate (44118 Hz and
  *     others), each tapped up to 2.6 ms after it started, one packet per 1 ms USB frame at 44100: every frame arrives
- *     exactly once, in order, no underrun / overrun, the fill stays in its band;
+ *     exactly once, in order, no underrun / overrun, the fill stays in its band; at 48000 the same through the
+ *     resampler, a sine whose every output frame must follow from the two before it (a lost or repeated frame shows);
+ *   - the 44.1 -> 48 kHz resampler (uac_fir.h) on sines: gain, THD+N, the folded image (printed, with limits);
  *   - SysEx in on EP1 while the MIDI ring is full of TRS clock (#177): refused (NAK) while the ring holds back, taken
  *     once midi_in_quiet (an update session, update mode) drops MIDI in;
  *   - SysEx out to a host that stops reading (#375): ota_wire_send waits at most 50 ms once, then gives up at once until
@@ -133,7 +138,8 @@ static void ota_idle(void)
 #include "../src/midi_uart.c"   /* the TRS jack's parser, fed through its DMA ring (uart_midi_take) */
 #endif
 
-#if FELUCCA_UAC && !FELUCCA_UAC_48K
+#if FELUCCA_UAC && FELUCCA_UAC_48K
+#include <math.h>
 static int fails;
 #define CHECK(c, ...)                                                                                                \
     do {                                                                                                             \
@@ -216,7 +222,7 @@ static void walk_config(const char *what, const uint8_t *c, uint32_t len, int ua
             if (d[2] == 0x84u) {
                 CHECK(uac, "%s: EP 0x84 without the audio function", what);
                 CHECK(bl == 9u && d[3] == 0x05u, "%s: EP4 isochronous async (bLength %u attr %02X)", what, bl, d[3]);
-                CHECK(le16(d + 4) >= 46u * 4u && le16(d + 4) <= 1023u, "%s: EP4 wMaxPacketSize %u", what, le16(d + 4));
+                CHECK(le16(d + 4) == 49u * 4u, "%s: EP4 wMaxPacketSize %u (49 frames: 48 kHz + 1)", what, le16(d + 4));
                 CHECK(d[6] == 1u, "%s: EP4 bInterval %u", what, d[6]);
             }
             if (ms_off)
@@ -251,8 +257,9 @@ static void walk_config(const char *what, const uint8_t *c, uint32_t len, int ua
                 ms_sum += bl;
             } else if (cur_cls == 1 && cur_sub == 2 && d[2] == 2u) {   /* AS format type I */
                 CHECK(d[3] == 1u && d[4] == 2u && d[5] == 2u && d[6] == 16u, "%s: format: PCM 2 ch 16 bit", what);
-                CHECK(d[7] == 1u && bl == 11u, "%s: format: %u rates (one expected: 44.1 only)", what, d[7]);
+                CHECK(d[7] == 2u && bl == 14u, "%s: format: %u rates (two expected: 44.1 and 48)", what, d[7]);
                 CHECK((d[8] | d[9] << 8 | d[10] << 16) == 44100, "%s: rate %u", what, d[8] | d[9] << 8 | d[10] << 16);
+                CHECK((d[11] | d[12] << 8 | d[13] << 16) == 48000, "%s: rate %u", what, d[11] | d[12] << 8 | d[13] << 16);
                 rates++;
             } else if (cur_cls == 1 && cur_sub == 2 && d[2] == 1u) {   /* AS general */
                 CHECK(d[3] == 2u, "%s: AS general links terminal %u (the USB streaming output is 2)", what, d[3]);
@@ -312,7 +319,7 @@ static void test_descriptors(void)
     usb_uac_on = 1;
     CHECK(get_desc(0x0100, &d, &l) && l == 18u && d[0] == 18u && d[1] == 1u, "device descriptor");
     CHECK(d[12] == BCD_LO(USB_CDC_ON) && d[13] == 3u, "bcdDevice %02X%02X", d[13], d[12]);
-    CHECK(d[12] == (USB_CDC_ON ? 0x91u + 2u * FELUCCA_USB_LAYOUT : 0x90u), "bcdDevice 3.90 (+CDC): %02X", d[12]);
+    CHECK(d[12] == (USB_CDC_ON ? 0xA1u + 2u * FELUCCA_USB_LAYOUT : 0xA0u), "bcdDevice 3.A0 (+CDC): %02X", d[12]);
     CHECK(get_desc(0x0200, &d, &l), "configuration descriptor");
     walk_config("audio + MIDI", d, l, 1, USB_CDC_ON);
 #if FELUCCA_CDC
@@ -363,23 +370,50 @@ static void test_power(void)
     usb.up = 0;
 }
 
+static uint32_t get_rate(uint8_t rq)                            /* GET_CUR / MIN / MAX of EP 0x84's rate (0: no answer) */
+{
+    if (setup(0xA2, rq, 0x0100, 0x84, 3) != 0x0A || ep0_sent_n != 3u)
+        return 0;
+    return ep0_sent[0] | (uint32_t)ep0_sent[1] << 8 | (uint32_t)ep0_sent[2] << 16;
+}
+
+static uint32_t packet_frames(void)                             /* the next isochronous packet's frames */
+{
+    txcsr1_ep4 = 0;
+    ep4_sent_n = 0;
+    uac_service();
+    return ep4_sent_n / 4u;
+}
+
 static void test_ep0(void)
 {
-    static const uint8_t R48[3] = {0x80, 0xBB, 0x00};
+    static const uint8_t R48[3] = {0x80, 0xBB, 0x00}, R44[3] = {0x44, 0xAC, 0x00};
     int r;
     usb.up = 1;
     usb_uac_on = 1;
     CHECK(setup(0x00, 9, 1, 0, 0) == 0x48 && usb.config == 1u, "SET_CONFIGURATION 1");
     CHECK(setup(0x01, 11, 1, UAC_AS_IF, 0) == 0x48 && uac.alt == 1u, "SET_INTERFACE AS alt 1");
     CHECK(setup(0x81, 10, 0, UAC_AS_IF, 1) == 0x0A && ep0_sent_n == 1u && ep0_sent[0] == 1u, "GET_INTERFACE AS");
+    CHECK(get_rate(0x81) == 44100, "GET_CUR after SET_CONFIGURATION: 44100");
+    CHECK(packet_frames() == 44u && packet_frames() == 44u, "44.1 kHz: packets of 44 frames ...");
+    for (r = 0; r < 7; r++)
+        packet_frames();
+    CHECK(packet_frames() == 45u, "... and every tenth of 45");
     r = setup(0x22, 1, 0x0100, 0x84, 3);
     CHECK(r == 0x40, "SET_CUR rate: data stage expected (%d)", r);
-    CHECK(data_stage(R48, 3) == 0x48, "SET_CUR 48000: acknowledged");
-    CHECK(setup(0xA2, 0x81, 0x0100, 0x84, 3) == 0x0A && ep0_sent_n == 3u &&
-              (ep0_sent[0] | ep0_sent[1] << 8 | ep0_sent[2] << 16) == 44100,
-          "GET_CUR after SET_CUR 48000: still 44100");
-    CHECK(setup(0xA2, 0x83, 0x0100, 0x84, 3) == 0x0A && (ep0_sent[0] | ep0_sent[1] << 8 | ep0_sent[2] << 16) == 44100,
-          "GET_MAX: 44100");
+    CHECK(data_stage(R48, 3) == 0x48 && uac.r48, "SET_CUR 48000: acknowledged, 48 kHz");
+    CHECK(get_rate(0x81) == 48000, "GET_CUR after SET_CUR 48000: 48000");
+    CHECK(get_rate(0x82) == 44100, "GET_MIN: 44100");
+    CHECK(get_rate(0x83) == 48000, "GET_MAX: 48000");
+    CHECK(setup(0xA2, 0x84, 0x0100, 0x84, 3) == 0x60, "GET_RES stalls (two discrete rates)");
+    for (r = 0; r < 12; r++)
+        CHECK(packet_frames() == 48u, "48 kHz: packets of 48 frames (silence until primed)");
+    CHECK(setup(0x22, 1, 0x0100, 0x84, 3) == 0x40 && data_stage(R44, 3) == 0x48 && !uac.r48 && get_rate(0x81) == 44100,
+          "SET_CUR 44100: back to 44.1");
+    CHECK(packet_frames() == 44u, "44.1 kHz again: packets of 44 frames");
+    CHECK(setup(0x22, 1, 0x0100, 0x84, 3) == 0x40 && data_stage(R48, 3) == 0x48 && uac.r48, "SET_CUR 48000 again");
+    CHECK(setup(0x00, 9, 1, 0, 0) == 0x48 && !uac.r48 && get_rate(0x81) == 44100, "SET_CONFIGURATION: back to 44.1");
+    CHECK(setup(0x01, 11, 1, UAC_AS_IF, 0) == 0x48 && uac.alt == 1u, "SET_INTERFACE AS alt 1 again");
     CHECK(setup(0x02, 1, 0, 0x84, 0) == 0x48, "CLEAR_FEATURE EP 0x84");
     CHECK(setup(0x01, 11, 0, UAC_AS_IF, 0) == 0x48 && uac.alt == 0u, "SET_INTERFACE AS alt 0");
     CHECK(setup(0x80, 6, 0x0200, 0, 255) == 0x02 && ep0_sent_n == 64u, "GET_DESCRIPTOR config: the first 64 bytes");
@@ -398,6 +432,7 @@ static void test_ep0(void)
     r = setup(0x80, 6, 0x0200, 0, 255);
     CHECK(r == 0x02 && ep0_sent_n == 64u, "MIDI only: GET_DESCRIPTOR config, first 64 bytes (%d %u)", r, ep0_sent_n);
     usb.e0_tx = 0;
+    ep4_sent_n = 0;
     uac_service();
     CHECK(ep4_sent_n == 0u, "MIDI only: no audio packets");
     usb_uac_switch(1);
@@ -538,10 +573,22 @@ static void test_usb_log(void)
     n0 = ul.out_data;
     CHECK(setup(0x22, 1, 0x0100, 0x84, 3) == 0x40 && (ev(k)->a & 7u) == UO_OUT, "log: SET_CUR waits for its data");
     {
-        static const uint8_t R[3] = {0x44, 0xAC, 0x00};
+        static const uint8_t R[3] = {0x80, 0xBB, 0x00};
         CHECK(data_stage(R, 3) == 0x48 && ev(k)->n == 3u && ul.out_data == n0 + 1u && (ev(k)->a & 7u) == UO_OUT,
               "log: SET_CUR's 3 bytes");
+        CHECK(ul.n == k + 2u && ev(k + 1u)->kind == UL_DATA && ev(k + 1u)->a == 0u && ev(k + 1u)->n == 3u &&
+                  !memcmp(ev(k + 1u)->s, R, 3),
+              "log: SET_CUR's data, 48000, in the entry after it");
     }
+    k += 2u;
+    /* GET_CUR: the reply logged after the SETUP (the rate the host is told) */
+    CHECK(setup(0xA2, 0x81, 0x0100, 0x84, 3) == 0x0A && (ev(k)->a & 7u) == UO_IN, "log: GET_CUR");
+    CHECK(ul.n == k + 2u && ev(k + 1u)->kind == UL_DATA && ev(k + 1u)->a == 1u && ev(k + 1u)->n == 3u &&
+              (ev(k + 1u)->s[0] | ev(k + 1u)->s[1] << 8 | ev(k + 1u)->s[2] << 16) == 48000,
+          "log: GET_CUR's reply, 48000");
+    k += 2u;
+    /* a standard request's reply is not logged as data */
+    CHECK(setup(0x80, 0, 0, 0, 2) == 0x0A && ul.n == k + 1u, "log: GET_STATUS's reply not logged");
     k++;
     /* the host abandons a transfer (SetupEnd) */
     n0 = ul.setup_end;
@@ -1043,6 +1090,184 @@ static void stream(double fs, double secs, uint32_t tap_max_us)
 }
 #endif
 
+#if FELUCCA_UAC && FELUCCA_UAC_48K
+/* #535: the stream at 48 kHz, as stream() at 44.1: renders of 128 frames at fs, each tapped up to tap_max_us after it
+ * started, through the resampler into the ring; the host takes 48 frames a ms. The input is a sine (L) and its negative
+ * (R), so the output is a sine of 147 / 160 the input's frequency per frame: every output frame must follow from the
+ * two before it (y[k+1] = 2 cos w y[k] - y[k-1], within a few LSB); a lost, repeated or stale frame breaks that. */
+static void stream48(double fs, double secs, uint32_t tap_max_us)
+{
+    const double amp = 12000.0, w_in = 2.0 * M_PI * 1000.0 / fs, w_out = w_in * UAC_FIR_M / UAC_FIR_L;
+    const double c2 = 2.0 * cos(w_out);
+    double t_half = HALF_FRAMES / fs, t_pkt = 0.001;
+    double next_half = 0.0137, next_tap = 1e9, next_pkt = 0.001;
+    uint32_t produced = 0, got = 0, bad = 0, settle_lo = 0xFFFFFFFFu, settle_hi = 0, adj0_up = 0, adj0_down = 0;
+    double worst = 0.0, y1l = 0, y2l = 0, y1r = 0, y2r = 0;
+    int32_t out[2u * HALF_FRAMES];
+    double t_end = secs, t_settle = 1.0;
+    int settled = 0;
+    memset(&uac, 0, sizeof uac);
+    ua_w = ua_r = 0;
+    usb.up = 1;
+    usb.config = 1;
+    usb_uac_on = 1;
+    uac_ep4_reset();
+    uac_stream(1);
+    uac_rate_set(48000);
+    txcsr1_ep4 = 0;
+    for (;;) {
+        double t = next_half < next_tap ? next_half : next_tap;
+        if (next_pkt < t)
+            t = next_pkt;
+        if (t > t_end)
+            break;
+        if (!settled && t >= t_settle) {
+            settled = 1;
+            adj0_up = uac.adj_up;
+            adj0_down = uac.adj_down;
+        }
+        if (t == next_pkt) {
+            uint32_t i, n, primed = uac.go && uac.ring48;
+            ep4_sent_n = 0;
+            uac_service();
+            n = ep4_sent_n / 4u;
+            CHECK(n >= 47u && n <= 49u, "48 kHz: packet of %u frames", n);
+            for (i = 0; i < n && primed; i++) {
+                double l = (int16_t)(ep4_sent[i] & 0xFFFFu), r = (int16_t)(ep4_sent[i] >> 16);
+                if (got >= 400u) {                              /* past the silence ahead and the filter's start */
+                    double el = fabs(l - (c2 * y1l - y2l)), er = fabs(r - (c2 * y1r - y2r));
+                    double e = el > er ? el : er;
+                    if (e > worst)
+                        worst = e;
+                    if (e > 8.0) {
+                        if (bad < 5u)
+                            printf("  48 kHz at %.4f s: frame %u off the sine by %.0f\n", t, got, e);
+                        bad++;
+                    }
+                }
+                y2l = y1l, y1l = l, y2r = y1r, y1r = r;
+                got++;
+            }
+            next_pkt += t_pkt * (1.0 + rnd(5) * 1e-5 - 2e-5);
+            if (settled) {
+                if (uac.fill_min < settle_lo)
+                    settle_lo = uac.fill_min;
+                if (uac.fill_min > settle_hi)
+                    settle_hi = uac.fill_min;
+            }
+        } else if (t == next_half) {
+            uac_render_start();
+            next_tap = t + (100 + rnd(tap_max_us - 100)) * 1e-6;
+            next_half += t_half;
+        } else {
+            uint32_t i;
+            for (i = 0; i < HALF_FRAMES; i++) {
+                int32_t v = uac.feed ? (int32_t)lrint(amp * sin(w_in * produced++)) : 0;
+                out[2u * i] = v * 256;
+                out[2u * i + 1u] = -v * 256;
+            }
+            uac_tap(out, HALF_FRAMES);
+            next_tap = 1e9;
+        }
+    }
+    {
+        int32_t net = (int32_t)(uac.adj_up - adj0_up) - (int32_t)(uac.adj_down - adj0_down);
+        double want = (fs * UAC_FIR_L / UAC_FIR_M - 48000.0) * (secs - t_settle);
+        printf("  48 kHz, fs %.0f, tap <= %u us: %u frames, %u packets, adj +%u -%u (net %d, drift %.0f), fill %u..%u "
+               "after 1 s, underruns %u overruns %u, worst step off the sine %.1f LSB\n",
+               fs, tap_max_us, got, uac.pkts, uac.adj_up, uac.adj_down, net, want, settle_lo, settle_hi, uac.underruns,
+               uac.overruns, worst);
+        CHECK(got > (uint32_t)(48000.0 * (secs - 0.1)), "48 kHz fs %.0f: only %u frames", fs, got);
+        CHECK(bad == 0u, "48 kHz fs %.0f: %u frames off the sine (lost / repeated)", fs, bad);
+        CHECK(uac.underruns == 0u && uac.overruns == 0u, "48 kHz fs %.0f: underruns %u overruns %u", fs, uac.underruns,
+              uac.overruns);
+        CHECK(settle_lo >= 49u, "48 kHz fs %.0f: the fill fell to %u (a packet must stay in hand)", fs, settle_lo);
+        CHECK(settle_lo + 8u >= UA_LO48 && settle_hi <= UA_HI48 + 8u, "48 kHz fs %.0f: fill %u..%u outside %u..%u", fs,
+              settle_lo, settle_hi, UA_LO48, UA_HI48);
+        CHECK(net > want - 60.0 && net < want + 60.0, "48 kHz fs %.0f: net adjustments %d, drift %.0f frames", fs, net,
+              want);
+    }
+    uac_stream(0);
+    uac_rate_set(44100);
+}
+
+/* #535: the resampler (uac_tap48 with uac_fir.h) on 1 s of a sine at f Hz (input at 44100, amplitude amp of 16 bit):
+ * the output's level at f (least squares on 48000 frames, an integer number of cycles), the image at 3900 + f (44100 - f
+ * folded by the 48 kHz sampling) and THD+N (everything but the two), each against the fundamental. The image is in the
+ * audio band (below 20 kHz) for f below 16.1 kHz: there the filter keeps it 95 dB down; above, it lands at 20..24 kHz */
+static void resample_sine(double f, double amp, double *gain_db, double *thdn_db, double *img_db)
+{
+    enum { SKIP = 200, K = 48000 };
+    static double y[K];
+    int32_t in[2u * HALF_FRAMES];
+    uint32_t got = 0, n_in = 0, i, bad_r = 0;
+    double a = 0, b = 0, c = 0, res = 0, ia = 0, ib = 0, fund;
+    memset(&uac, 0, sizeof uac);
+    memset(&rs, 0, sizeof rs);
+    ua_w = ua_r = 0;
+    while (got < SKIP + K) {
+        for (i = 0; i < HALF_FRAMES; i++, n_in++) {
+            int32_t v = (int32_t)lrint(amp * sin(2.0 * M_PI * f * n_in / 44100.0));
+            in[2u * i] = v * 256;
+            in[2u * i + 1u] = -v * 256;
+        }
+        uac_tap48(in, HALF_FRAMES);
+        while (ua_r != ua_w) {
+            uint32_t v = ua_ring[ua_r++ & (UA_N - 1u)];
+            int32_t l = (int16_t)(v & 0xFFFFu), r = (int16_t)(v >> 16);
+            if (got >= SKIP && got < SKIP + K)
+                y[got - SKIP] = l;
+            bad_r += l != -r && l != 32767 && r != 32767;        /* (R is -L but for the clipped -32768) */
+            got++;
+        }
+    }
+    CHECK(bad_r == 0u, "resampler %.0f Hz: R is not -L in %u frames", f, bad_r);
+    for (i = 0; i < K; i++) {                                   /* sin / cos at f and at the image over whole cycles */
+        double ph = 2.0 * M_PI * f * i / 48000.0, pi = 2.0 * M_PI * (3900.0 + f) * i / 48000.0;
+        a += y[i] * sin(ph);
+        b += y[i] * cos(ph);
+        c += y[i];
+        ia += y[i] * sin(pi);
+        ib += y[i] * cos(pi);
+    }
+    a *= 2.0 / K, b *= 2.0 / K, c /= K, ia *= 2.0 / K, ib *= 2.0 / K;
+    for (i = 0; i < K; i++) {                                   /* the rest, without the image (measured on its own) */
+        double ph = 2.0 * M_PI * f * i / 48000.0, pi = 2.0 * M_PI * (3900.0 + f) * i / 48000.0;
+        double e = y[i] - (a * sin(ph) + b * cos(ph) + c + ia * sin(pi) + ib * cos(pi));
+        res += e * e;
+    }
+    fund = sqrt(a * a + b * b);
+    *gain_db = 20.0 * log10(fund / amp);
+    *thdn_db = 10.0 * log10(res / K / (fund * fund / 2.0));
+    *img_db = 20.0 * log10(sqrt(ia * ia + ib * ib) / fund + 1e-12);
+}
+
+static void test_resampler(void)
+{
+    static const struct { double f, amp, gain_lo, gain_hi, thdn_max, img_max; } T[] = {
+        {1000.0, 29204.0, -0.05, 0.05, -90.0, -95.0},          /* -1 dBFS: at the 16-bit floor */
+        {5000.0, 16384.0, -0.05, 0.05, -85.0, -95.0},          /* -6 dBFS */
+        {10000.0, 16384.0, -0.05, 0.05, -85.0, -95.0},
+        {15000.0, 16384.0, -0.05, 0.05, -85.0, -95.0},         /* the image at 29.1 kHz folds to 18.9 kHz */
+        {18000.0, 16384.0, -0.1, 0.05, -85.0, -30.0},          /* image 26.1 kHz -> 21.9 kHz: above the audio band */
+        {20000.0, 16384.0, -1.5, 0.05, -85.0, -10.0},          /* the top of the passband; image at 23.9 kHz */
+    };
+    uint32_t i;
+    for (i = 0; i < sizeof T / sizeof T[0]; i++) {
+        double g, thdn, img;
+        resample_sine(T[i].f, T[i].amp, &g, &thdn, &img);
+        printf("  resampler %5.0f Hz at %5.1f dBFS: gain %+.3f dB, THD+N %.1f dB, image at %.1f kHz %.1f dB\n", T[i].f,
+               20.0 * log10(T[i].amp / 32768.0), g, thdn, (3900.0 + T[i].f) / 1000.0, img);
+        CHECK(g >= T[i].gain_lo && g <= T[i].gain_hi, "resampler %.0f Hz: gain %+.3f dB", T[i].f, g);
+        CHECK(thdn <= T[i].thdn_max, "resampler %.0f Hz: THD+N %.1f dB (limit %.0f)", T[i].f, thdn, T[i].thdn_max);
+        CHECK(img <= T[i].img_max, "resampler %.0f Hz: image %.1f dB (limit %.0f)", T[i].f, img, T[i].img_max);
+    }
+    memset(&uac, 0, sizeof uac);
+    memset(&rs, 0, sizeof rs);
+    ua_w = ua_r = 0;
+}
+#endif
+
 int main(int argc, char **argv)
 {
     if (argc > 1 && !strcmp(argv[1], "dump")) {                 /* the MIDI-only descriptors (or a UAC=0 build's) */
@@ -1061,15 +1286,15 @@ int main(int argc, char **argv)
         printf("\n");
         return 0;
     }
-#if FELUCCA_UAC && !FELUCCA_UAC_48K
+#if FELUCCA_UAC && FELUCCA_UAC_48K
     if (argc > 1 && !strcmp(argv[1], "trace")) {                /* the enumeration's SIE writes and EP0 packets */
         trace = stdout;
         enum_script();
         return 0;
     }
 #endif
-#if !FELUCCA_UAC || FELUCCA_UAC_48K
-    printf("usb_test needs FELUCCA_UAC=1 FELUCCA_UAC_48K=0\n");
+#if !FELUCCA_UAC || !FELUCCA_UAC_48K
+    printf("usb_test needs FELUCCA_UAC=1 FELUCCA_UAC_48K=1\n");
     return 2;
 #else
     test_descriptors();
@@ -1092,6 +1317,13 @@ int main(int argc, char **argv)
     stream(44118.0, 60.0, 300u);                                /* light renders: the tap right after the start */
     stream(44118.0, 60.0, 2900u);                               /* a render that takes the whole half */
     stream(44082.0, 60.0, 2900u);
+    stream48(44118.0, 60.0, 2600u);                             /* #535: 48 kHz through the resampler */
+    stream48(44082.0, 60.0, 2600u);
+    stream48(44160.0, 60.0, 2600u);
+    stream48(44040.0, 60.0, 2600u);
+    stream48(44118.0, 60.0, 2900u);
+    stream48(44118.0, 60.0, 300u);
+    test_resampler();
     if (fails) {
         printf("usb_test: %d failures\n", fails);
         return 1;

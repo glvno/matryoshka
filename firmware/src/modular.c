@@ -15,13 +15,10 @@
 #define FELUCCA_OTA_DRYRUN 0
 #define FELUCCA_CDC 0
 #ifndef FELUCCA_UAC
-#define FELUCCA_UAC 1            /* USB audio out (UAC1 recording device, 44.1 kHz 16-bit stereo; usb.c); FELUCCA_UAC=0 builds without */
+#define FELUCCA_UAC 1            /* USB audio out (UAC1 recording device, 16-bit stereo; usb.c); FELUCCA_UAC=0 builds without */
 #endif
 #ifndef FELUCCA_UAC_48K
-#define FELUCCA_UAC_48K 0        /* 48 kHz needs Felucca's resampler table uac_fir.h, not in this repo */
-#endif
-#if FELUCCA_UAC_48K
-#error "FELUCCA_UAC_48K needs uac_fir.h (not in this repo)"
+#define FELUCCA_UAC_48K 1        /* 44.1 and 48 kHz (#535: the iPad asks for 48); 48 resampled (uac_fir.h, tools/gen_uac_fir.py) */
 #endif
 #ifndef FELUCCA_UAC_TONE
 #define FELUCCA_UAC_TONE 0

@@ -154,7 +154,7 @@ static uint32_t batt_us;                        /* the last battery read's time,
  * the half buffer's budget (us), the overload mute, the halves rendered, the battery read's time (us, batt_poll) and its
  * smoothed reading (0..1023, 0 = none yet), then voices shed since the last patch load;
  * pages 125, 126 the USB audio stream (usb.c uac, FELUCCA_UAC; m1_link.py uac), 8 words each:
- *   125: flags (bit 0 presented, 1 alt 1 set by the host, 2 the host reads, 3 primed, 4 configured), streams started,
+ *   125: flags (bit 0 presented, 1 alt 1 set by the host, 2 the host reads, 3 primed, 4 configured, 5 48 kHz), streams started,
  *        packets, frames in them, SET_CUR requests, bus resets, last fill_min, USB frame number
  *   126: underruns, overruns, missed IN tokens, stalls, adj_up, adj_down, fill_lo (min of fill_min since the stream
  *        started, 0xFFFFFFFF: none yet), fill_hi
@@ -179,7 +179,7 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
         uint32_t v[8];
         if (page == 125u) {
             v[0] = (uint32_t)usb_uac_on | (uint32_t)(uac.alt != 0) << 1 | (uint32_t)uac.flowing << 2 |
-                   (uint32_t)uac.go << 3 | (uint32_t)(usb.config != 0) << 4;
+                   (uint32_t)uac.go << 3 | (uint32_t)(usb.config != 0) << 4 | (uint32_t)uac.r48 << 5;
             v[1] = uac.starts;
             v[2] = uac.pkts;
             v[3] = uac.frames;

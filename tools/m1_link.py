@@ -23,7 +23,8 @@
                                            grid, and the link's refused sends over that time, DIAG page 117; BPM: at that
                                            global tempo (TEMPO, set back after); run: with the transport running)
   tools/m1_link.py usblog [arm|wrap]      (#535: the USB setup log, DIAG pages 40..107: every control transfer a host started
-                                           since boot (or since `arm`) and the firmware's answer, bus resets, suspends, the
+                                           since boot (or since `arm`) and the firmware's answer, a class request's data (the rate
+                                           a host asks for: SET_CUR ... 48000 Hz), bus resets, suspends, the
                                            address taking effect; kept while the FM-1 stays powered, so a failed host's log
                                            can be read on another. arm: keep the next 128 entries (a one-shot capture), wrap:
                                            the newest again)
@@ -369,12 +370,13 @@ def print_uac(w):
     """main.c m1_diag pages 125 + 126 (usb.c uac)"""
     f = w[0]
     flags = [n for b, n in enumerate(("presented", "alt 1", "host reads", "primed", "configured")) if f >> b & 1]
+    flags.append("48 kHz" if f >> 5 & 1 else "44.1 kHz")
     lo, hi = w[14], w[15]
     band = "none yet" if lo == 0xFFFFFFFF else f"{lo}..{hi}"
     print(f"usb audio: {', '.join(flags) or 'off'}; streams {w[1]}, packets {w[2]}, frames {w[3]}, SET_CUR {w[4]}, "
           f"bus resets {w[5]}, USB frame {w[7]}")
     print(f"  underruns {w[8]}, overruns {w[9]}, missed {w[10]}, stalls {w[11]}, adj_up {w[12]}, adj_down {w[13]}, "
-          f"fill now {w[6]}, fill min..max {band} (band 160..208)")
+          f"fill now {w[6]}, fill min..max {band} (band {'174..226' if f >> 5 & 1 else '160..208'})")
 
 
 STD_REQ = {0: "GET_STATUS", 1: "CLEAR_FEATURE", 3: "SET_FEATURE", 5: "SET_ADDRESS", 6: "GET_DESCRIPTOR",
@@ -430,6 +432,17 @@ def usb_request(s):
             f"wValue {val:#06x} wIndex {idx:#06x} len {ln}")
 
 
+def usb_data_text(setup, e):
+    """a UL_DATA entry (usb.c ul_data: a 1 = the reply sent, 0 = the data received; n bytes, the first 8) in words:
+    an audio sampling frequency as Hz, anything else as hex"""
+    n = e[6] | e[7] << 8
+    b = bytes(e[8:8 + min(n, 8)])
+    rt, val = setup[0], setup[2] | setup[3] << 8
+    if rt >> 5 & 3 == 1 and rt & 31 == 2 and val >> 8 == 1 and n >= 3:
+        return f"{int.from_bytes(b[:3], 'little')} Hz"
+    return b.hex(" ") + (f" (+{n - 8} B)" if n > 8 else "")
+
+
 def print_usblog(st, ct, ents, first, last, moved):
     """main.c m1_diag pages 104, 105 and 40.. (usb.c ul, ul_ring, #535)"""
     n, base, oneshot, size, now = st[0], st[1], st[2] & 0xFF, st[2] >> 8 & 0xFFFF, st[3]
@@ -451,7 +464,7 @@ def print_usblog(st, ct, ents, first, last, moved):
         dt = "" if prev is None else f"+{(t - prev) & 0xFFFFFFFF}"
         prev = t
         rep = ""
-        if kind != 1 and cnt:
+        if kind not in (1, 15) and cnt:               # (a data entry's n is its byte count)
             t2 = int.from_bytes(bytes(s[4:8]), "little")
             rep = f"  x{cnt + 1}, the last at {t2 / 1000:.3f} s"
             prev = t2
@@ -459,15 +472,26 @@ def print_usblog(st, ct, ents, first, last, moved):
         if kind == 1:
             o = a & 7
             ln = s[6] | s[7] << 8
+            req = usb_request(s)
+            nxt = ents.get(k + 1) if k + 1 < last else None
+            data = None
+            if nxt is not None and nxt[4] == 15:          # the class request's data, logged after it (#535)
+                data = usb_data_text(s, nxt)
+                if nxt[5] == 0 and req.endswith(f" len {ln}"):
+                    req = req[:-len(f" len {ln}")] + f" {data}"   # SET_CUR(EP 0x84 SAMPLING_FREQ) 48000 Hz
             out = OUTCOME[o] if o < len(OUTCOME) else f"outcome {o}"
             if o == 2:
                 out = f"IN {cnt} B" + (" (short)" if cnt < ln else "") + (" +ZLP" if a & 0x40 else "") + \
-                      ("" if a & 0x08 else " (not all loaded)")
+                      ("" if a & 0x08 else " (not all loaded)") + (f": {data}" if data and nxt[5] == 1 else "")
             elif o == 3:
                 out = f"OUT {cnt} B received" if cnt else "OUT data stage awaited"
             notes = [x for b, x in ((0x10, "status done"), (0x20, "ABORTED by the host (SetupEnd)"),
                                     (0x80, "STALL handshake sent")) if a & b]
-            print(head + f"{usb_request(s):58} -> {out}" + (f"; {', '.join(notes)}" if notes else "") + rep)
+            print(head + f"{req:58} -> {out}" + (f"; {', '.join(notes)}" if notes else "") + rep)
+        elif kind == 15:
+            pe = ents.get(k - 1) if k > first else None
+            if pe is None or pe[4] != 1:                  # (its SETUP was not kept: shown on its own)
+                print(head + f"class request data {'sent' if a else 'received'}: {bytes(s[:min(cnt, 8)]).hex(' ')}")
         elif kind == 2:
             print(head + f"BUS RESET (POWER {s[0]:#04x}; ends configuration {s[1]}, "
                   f"address {s[2]})" + rep)
