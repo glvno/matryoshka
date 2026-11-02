@@ -961,7 +961,7 @@ async function main() {
       await check('step record: black key 10: back to step 4, its note cleared', ns.length === 4 && !noteAt(ns, 3)
         && (await emu.waitText('STEP 4', 2000)), fmt(ns));
       await emu.tap(B.home);
-      await check('step record: HOME ends it, the SEQ page stays', (await emu.waitText('SEQ+REC clear', 2000)) && !(await emu.text('STEP 4')));
+      await check('step record: HOME ends it, the SEQ page stays', (await emu.waitText('ALGO track', 2000)) && !(await emu.text('STEP 4')));
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
     },
