@@ -123,14 +123,15 @@ describe('the FM-1 UI as WebAssembly', () => {
     ]);
     tap(BUTTONS.home, 2000);                      // HOME: step record ends, the page stays
     expect(ui.page).toBe(8);
-    tap(BUTTONS.rec, 2200);                       // REC tapped, stopped: step record again, on the cursor's last step (5)
-    ui.keys(G4);
+    tap(BUTTONS.rec, 2200);                       // REC tapped, stopped: step record again, on the page's first step (1),
+    ui.keys(G4);                                  // not the cursor's last (5): G4 replaces step 1's chord
     ui.keys(0);
-    expect(notes.find((n) => n.at === 4)).toEqual({ at: 4, len: 1, note: 67, vel: 100 });
+    expect(notes.filter((n) => n.at === 0)).toEqual([{ at: 0, len: 1, note: 67, vel: 100 }]);
+    expect(notes.some((n) => n.at === 4)).toBe(false);
     tap(BUTTONS.rec, 2400);                       // REC again: it ends
     ui.keys(G4);
     ui.keys(0);
-    expect(notes.length).toBe(7);                 // (a white key then switches the selected row's step, not G4)
+    expect(notes.length).toBe(4);                 // (a white key then switches the selected row's step, not G4)
   }, 30_000);
   it('the panel drives it: SELECT / ALGO move the focus (and say so), K1 sets a parameter, HOME goes to the device\'s first page, then back along the trail', async () => {
     const focus: [number, number][] = [];

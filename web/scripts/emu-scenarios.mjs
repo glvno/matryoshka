@@ -1006,7 +1006,7 @@ async function main() {
       await emu.waitOwnPage(3000);
     },
     // the owner's REC gestures of 2026-11-02 (D-548, D-804, D-808) on the roll (Silver Box's PATTERN): REC, stopped, starts
-    // step record on step 1 and REC again ends it; REC again starts it on the cursor's last step; PLAY then starts the
+    // step record on step 1 and REC again ends it; REC again starts it on the page's first step; PLAY then starts the
     // transport and goes on as a live take, which records a key played; PLAY stops both. REC held + a black key still arms
     // (it disarms the track the page armed, and again arms it), and REC's release then starts nothing
     async recStepRecord() {
@@ -1092,6 +1092,67 @@ async function main() {
       await emu.turn(ENC.select, -1);
       await check('roll paging: SELECT after it: a page up, the pitch offset kept', await emu.waitText(range(lo0 + 1), 2000), range(lo0 + 1));
       await emu.snap('roll-paging');
+      await emu.tap(B.seq, 120);
+      await emu.waitOwnPage(3000);
+    },
+    // the owner on the rig, 2026-11-02 (D-804, D-809): in step record on the roll SEL held + a key wrote its note off
+    // screen and SEL's release opened the SONG page. SEL held + any key, white or black, is the pen there too: the view
+    // jumps to the fixed page of 8 pitches that holds the key's pitch, nothing is written, the cursor stays. REC from a
+    // stop starts step record on the page's first step, never where the cursor last was. A held step's K1 moves the view
+    // the same way. Silver Box's PATTERN; the keys' octave is the FM-1's, so each pitch is checked at the one octave that
+    // fits every check
+    async rollPen() {
+      await check('roll pen: Silver Box opens, synced', await openSynced('Silver Box'));
+      await check('roll pen: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
+      const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+      const nm = (n) => `${NAMES[n % 12]}${Math.floor(n / 12) - 1}`;
+      const pageOf = (p) => { const lo = Math.floor(p / 8) * 8; return `${nm(lo)}-${nm(lo + 7)}`; };
+      let octs = [-3, -2, -1, 0, 1, 2, 3];
+      /** the octaves at which key n's pitch is on the page the bar names (narrowing `octs`) */
+      const penShows = async (n) => {
+        await sleep(400);
+        const ok = [];
+        for (const o of octs) if (await emu.text(pageOf(53 + n + 12 * o))) ok.push(o);
+        octs = ok;
+        return ok.length > 0;
+      };
+      await emu.tap(B.rec);
+      await check('roll pen: REC, stopped: step record on step 1', await emu.waitText('STEP 1', 3000));
+      await emu.key(B.scl, true);
+      await sleep(150);
+      await emu.tap(WHITE[0]);                      // F3 at the keys' octave
+      await check('roll pen: in step record SEL + the lowest white key: the view on its pitch\'s page', await penShows(0), `octaves ${octs}`);
+      await emu.tap(WHITE[15]);                     // G5: 26 semitones up, another page
+      await check('roll pen: SEL + the highest white key: the view on its page', await penShows(26), `octaves ${octs}`);
+      await emu.tap(14 + 1);                        // black key 1 (F#3): its own pitch, not a row
+      await check('roll pen: SEL + black key 1: its own pitch\'s page, not a row', await penShows(1), `octaves ${octs}`);
+      await emu.key(B.scl, false);
+      await sleep(400);
+      let ns = await trackNotes();
+      await check('roll pen: nothing written, the cursor stays (STEP 1), SEL\'s release opens no SONG page', ns.length === 0
+        && (await emu.text('STEP 1')) && !(await emu.text('SONG 1')), fmt(ns));
+      await emu.snap('roll-pen-step-record');
+      await emu.tap(WHITE[0]);                      // a note on step 1, the cursor on step 2
+      ns = await notesUntil((x) => x.length === 1);
+      await check('roll pen: a key writes step 1, the cursor on step 2', ns.length === 1 && ns[0].at === 0 && (await emu.waitText('STEP 2', 2000)), fmt(ns));
+      await emu.tap(B.rec);
+      await check('roll pen: REC ends step record', await emu.waitText('ALGO track', 2000));
+      await emu.tap(B.rec);
+      await check('roll pen: REC again: step record on the page\'s first step (STEP 1), not the cursor\'s last (STEP 2)',
+        (await emu.waitText('STEP 1', 3000)) && !(await emu.text('STEP 2')));
+      await emu.tap(B.rec);
+      await emu.waitText('ALGO track', 2000);
+      await emu.key(WHITE[1], true);                // step 2 held: the selected row's pitch (F#3's) switched on there
+      await sleep(300);
+      await emu.turn(ENC.k1, 12);                   // + 12 semitones: off the page
+      await sleep(400);
+      ns = await notesUntil((x) => noteAt(x, 1)?.note !== undefined && x.length === 2);
+      const p = noteAt(ns, 1)?.note;
+      await check('roll pen: a held step + K1 an octave up: the view on the fixed page that holds its pitch', p !== undefined
+        && (await emu.waitText(pageOf(p), 2000)) && octs.some((o) => p === 54 + 12 * o + 12), `${fmt(ns)}, ${p === undefined ? '-' : pageOf(p)}`);
+      await emu.key(WHITE[1], false);
+      await sleep(200);
+      await emu.snap('roll-pen-k1');
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
     },
