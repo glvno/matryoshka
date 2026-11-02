@@ -16,6 +16,8 @@
 - Comment boxes on the canvas, like Max comments (#518): right-click the empty canvas or use the palette's Add comment. They are moved, resized, selected, copied, deleted and undone like cards, saved in the patch, its link and its .json file (a link without the layout leaves them out), and never sent to the FM-1.
 
 - The editor no longer follows MIDI clock that comes from an FM-1, so a connected FM-1 sending its clock does not change the editor's tempo (#473). Clock from other gear still drives the editor as before.
+- While the editor follows a connected FM-1, its transport follows the FM-1's own Start and Stop, and the editor no longer starts the FM-1's transport by itself (#549). Before, the editor's copy of the FM-1's panel could read a press differently from the FM-1 and send the result back: after SEL held + a key on the SEQ page (or REC held + a key), the FM-1's next REC started the transport and a live take instead of step record, and REC held + a black key on a device page started the transport while it only arms.
+- With Live on, a change that leaves the FM-1's patch as it is no longer sends the whole patch to the FM-1 again: adding, editing or moving a comment, moving a card, any change to the layout only. The editor compares the patch as the FM-1 would get it with what it sent last.
 
 ## 1.8.2 — 2026-11-01
 

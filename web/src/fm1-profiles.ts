@@ -44,6 +44,8 @@ const notes = (d: ArrayLike<number>): PanelInput[] => {
   if ((st === 0x90 || st === 0x80) && d.length >= 3) return [{ t: 'note', note: d[1], vel: d[2] / 127, on: st === 0x90 && d[2] > 0 }];
   return [];
 };
+/** MIDI Start or Continue (true), Stop (false), else null */
+const transportIn = (d: ArrayLike<number>): boolean | null => (d[0] === 0xfa || d[0] === 0xfb ? true : d[0] === 0xfc ? false : null);
 const cc = (d: ArrayLike<number>): [number, number] | null => ((d[0] & 0xf0) === 0xb0 && d.length >= 3 ? [d[1], d[2]] : null);
 /** a relative CC (two's complement: 1..63 up, 127..65 down) as clicks */
 export const relClicks = (v: number): number => (v >= 64 ? v - 128 : v);
@@ -57,8 +59,12 @@ const matryoshka: Profile = {
   name: 'Matryoshka',
   reports: new Set<Control>(['keys', 'master', 'select', 'algo', 'preset', 'k1', 'k2', 'k3', 'k4', ...ALL_BUTTONS]),
   translate(d) {
+    // Start / Stop: the FM-1's transport as it went (#549). The editor's transport follows these, not the copy of the panel
+    // logic that replays PLAY's CC, which can guess wrong (D-457)
+    const run = transportIn(d);
+    if (run !== null) return [{ t: 'transport', run }];
     const c = cc(d);
-    if (!c) return notes(d);   // (Start / Stop come with PLAY's own CC: not twice)
+    if (!c) return notes(d);
     const [n, v] = c;
     const id = BTN_CC.indexOf(n);
     if (id >= 0) return [{ t: 'button', id, down: v >= 64 }];
@@ -80,8 +86,8 @@ const felucca: Profile = {
   name: 'Felucca / Sloop',
   reports: new Set<Control>(['keys']),
   translate(d) {
-    if (d[0] === 0xfa || d[0] === 0xfb) return [{ t: 'transport', run: true }];
-    if (d[0] === 0xfc) return [{ t: 'transport', run: false }];
+    const run = transportIn(d);
+    if (run !== null) return [{ t: 'transport', run }];
     const c = cc(d);
     if (c?.[0] === 1) return [{ t: 'mod', v: c[1] / 127 }];
     return notes(d);

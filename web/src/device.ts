@@ -317,10 +317,10 @@ export class DeviceLink {
     return a;
   }
 
-  /** Upload and switch to the patch. Calls are serialised. */
-  upload(patch: Patch): Promise<void> {
+  /** Upload and switch to the patch (`bin`: it encoded already). Calls are serialised. */
+  upload(patch: Patch, encoded?: Uint8Array): Promise<void> {
     const run = async (): Promise<void> => {
-      const bin = encodePatch(patch);
+      const bin = encoded ?? encodePatch(patch);
       await this.sendChunks(bin);
       await this.ackFor(commitFrame(bin), CMD.commit);
     };

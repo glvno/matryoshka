@@ -64,6 +64,7 @@ import { clipText, parseClip, type Clip } from './clipboard';
 import { isGlobalTempo, patchTempo, readTempo, tempo, TEMPO_KEY, tempoNow } from './tempo';
 import { addableModules, assemblyShelves, openableByValue, openableGroups } from './catalog';
 import { binaryPage, browserOnly, deviceBudget, editorPage, encodePatch, overText, POLY_ROW, POLY_ROW_PARAMS, toQ16 } from './patchbin';
+import { UploadGate } from './upload-gate';
 import { ALLOC, deviceView } from './poly';
 import { AboutCard } from './about';
 import { whatsNew } from './whats-new';
@@ -185,6 +186,31 @@ window.setInterval(sandboxSend, SANDBOX_MS);
 let uploadTimer = 0;
 let uploading = false;
 let dirty = false;
+/** the encoded patch the FM-1 holds under Live: a structural change that leaves it the same (a comment, the layout) sends
+ *  nothing (upload-gate.ts) */
+const uploadGate = new UploadGate();
+/** after edits that went out live, the gate learns the bytes the FM-1 now holds once they stop for a moment (encoding a
+ *  big patch takes a few ms: not on every knob event) */
+const GATE_MS = 250;
+let gateTimer = 0;
+function liveEdited(): void {
+  if (!live()) return;
+  uploadGate.edited();
+  if (!uploadGate.stale) return;
+  clearTimeout(gateTimer);
+  gateTimer = window.setTimeout(() => {
+    if (!live()) return uploadGate.forget();
+    try { uploadGate.refresh(encodePatch(editor.patch)); } catch { uploadGate.forget(); }
+  }, GATE_MS);
+}
+/** a structural change under Live: the patch goes to the FM-1 again only when its encoded bytes changed */
+function structureChanged(): void {
+  let bin: Uint8Array | null = null;
+  try { bin = encodePatch(editor.patch); } catch { /* over the budget: sendPatch says so */ }
+  if (bin && onEditorPatch && !uploadGate.needs(bin)) return;
+  uploadGate.forget();   // (until the upload: the FM-1 holds the old bytes)
+  queueUpload();
+}
 const devStatus = (s: string): void => {
   $('dev-status').textContent = s;
   syncChip();
@@ -357,6 +383,7 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
 /** upload the current patch; changes made meanwhile cause one more upload */
 async function sendPatch(): Promise<boolean> {
   if (!fitsDevice) {
+    uploadGate.forget();
     devStatus('over the FM-1 budget: not sent (the FM-1 budget in the status line says what is over)');
     return false;
   }
@@ -369,7 +396,10 @@ async function sendPatch(): Promise<boolean> {
     do {
       dirty = false;
       devStatus('sending patch…');
-      await device.upload(editor.patch);
+      const bin = encodePatch(editor.patch);
+      uploadGate.forget();
+      await device.upload(editor.patch, bin);
+      uploadGate.took(bin);
       onEditorPatch = true;
       baseline = JSON.stringify(editor.patch);
       devStatus('patch on the FM-1');
@@ -578,6 +608,11 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
   preset: (d) => stepOpenList(d),
   save: () => saveCurrent(),
   transport: (run) => {
+    if (run === editor.playing) return;      // (the editor's own transport, passed to the copy: nothing new)
+    // following a connected FM-1 (#549, D-457): the copy replays its panel and can guess wrong (SEL + a key on the SEQ
+    // page reaches it as SEL tapped), so its PLAY or REC never drives the editor's transport, nor the FM-1's. The editor
+    // follows the FM-1's own Start / Stop (mirrorInput); the copy is put back in line when they do not confirm it
+    if (mirror.following) return emuRealign();
     fromEmu = true;
     try { setPlaying(run); } finally { fromEmu = false; }
   },
@@ -630,17 +665,19 @@ const editor = new Editor($('canvas'), firstPatch, {
     host.setPatch(p);
     queueSave(p);
     showBudget();
-    if (live()) queueUpload();
+    if (live()) structureChanged();
     queueEmu();
   },
   onAtt(id, index, value) {
+    if (fromDevice) uploadGate.forget();   // (the FM-1 changed its patch itself, or the copy of its panel did: its bytes are not known)
     host.send({ t: 'att', id, index, value });
     queueEmu();
     queueSave(editor.patch);
-    if (live() && !uploading) device.att(editor.patch, id, index, value);
+    if (live() && !uploading) { device.att(editor.patch, id, index, value); liveEdited(); }
     else if (live()) dirty = true;
   },
   onParam(id, name, value) {
+    if (fromDevice) uploadGate.forget();
     // Main's tempo while the tempo is global: the patch's own (an undo, A/B) is only saved; the engines, the FM-1 and the
     // FM-1 tab play the global tempo, which tempo.listen sends
     if (isGlobalTempo(editor.patch.modules.find((m) => m.id === id)?.type, name)) return queueSave(editor.patch);
@@ -665,32 +702,35 @@ const editor = new Editor($('canvas'), firstPatch, {
     }
     if (!fromEmu) emuParam(id, name, value);
     if (fromDevice) return;
-    if (live() && !uploading) device.param(editor.patch, id, name, value);
+    if (live() && !uploading) { device.param(editor.patch, id, name, value); liveEdited(); }
     else if (live()) dirty = true;
   },
   onTrack(id, notes, pat) {
+    if (fromDevice) uploadGate.forget();
     host.send({ t: 'track', id, notes, pat });
     if (!fromEmu) queueEmu();
     queueSave(editor.patch);
     if (fromDevice) return;
-    if (live() && !uploading) device.track(editor.patch, id, notes, pat);
+    if (live() && !uploading) { device.track(editor.patch, id, notes, pat); liveEdited(); }
     else if (live()) dirty = true;
   },
   onPattern(pattern, song) {   // (#375) the patch's pattern / song: each track takes it at the end of its pass
+    if (fromDevice) uploadGate.forget();
     host.send({ t: 'pattern', p: pattern });
     host.send({ t: 'song', n: song });
     if (!fromEmu) queueEmu();
     queueSave(editor.patch);
     if (fromDevice) return;
-    if (live() && !uploading) device.pattern(pattern, song);
+    if (live() && !uploading) { device.pattern(pattern, song); liveEdited(); }
     else if (live()) dirty = true;
   },
   onSong(k, entries) {
+    if (fromDevice) uploadGate.forget();
     host.send({ t: 'songs', songs: editor.songs() });
     if (!fromEmu) queueEmu();
     queueSave(editor.patch);
     if (fromDevice) return;
-    if (live() && !uploading) device.song(k, entries);
+    if (live() && !uploading) { device.song(k, entries); liveEdited(); }
     else if (live()) dirty = true;
   },
   onArm(armed, plays, through) {
@@ -714,18 +754,20 @@ const editor = new Editor($('canvas'), firstPatch, {
     if (live() && !uploading) device.mute(editor.patch, id, on);
   },
   onBypass(id, on) {
+    if (fromDevice) uploadGate.forget();
     host.send({ t: 'bypass', id, on });
     queueEmu();
     tutorial.bypassed();
     queueSave(editor.patch);
-    if (live() && !uploading) device.bypass(editor.patch, id, on);
+    if (live() && !uploading) { device.bypass(editor.patch, id, on); liveEdited(); }
     else if (live()) dirty = true;
   },
   onRange(id, index, name, range) {
+    if (fromDevice) uploadGate.forget();
     host.send({ t: 'range', id, index, name, range });
     queueEmu();
     queueSave(editor.patch);
-    if (live() && !uploading) device.range(editor.patch, id, index, name, range);
+    if (live() && !uploading) { device.range(editor.patch, id, index, name, range); liveEdited(); }
     else if (live()) dirty = true;
   },
   onTransport(on) {
@@ -766,6 +808,7 @@ const editor = new Editor($('canvas'), firstPatch, {
   },
   onLoad(p) {
     emuFresh = true;
+    uploadGate.forget();   // (a patch opened always goes to the FM-1 whole: its mutes, arms and pattern start afresh too)
     noteKeys.set(p.octave ?? 0); // a patch opens in the octave it was last played in
   },
   onHistory(kind) {
@@ -1643,7 +1686,8 @@ function setPlaying(on: boolean): void {
   if (on) host.mute(false);
   editor.playing = on;
   host.transport(on);
-  if (liveSync.transports(device.connected, liveOn)) device.transport(on);   // (sandbox mode too: the FM-1's PLAY in step)
+  // (sandbox mode too: the FM-1's PLAY in step; not the FM-1's own Start / Stop back to it, #549)
+  if (liveSync.transports(device.connected, liveOn) && !fromDevice) device.transport(on);
   clockOut.transport(on);
   if (!fromEmu) emu.ui?.transport(on);
   syncPlayBtn();
@@ -1688,6 +1732,15 @@ function emuLoad(): void {
   emuArm();                                  // (a load disarms the emulator's engine)
   const at = editor.focus && binaryPage(editor.patch, editor.focus.device, editor.focus.page);
   if (at) ui.focus(at[0], at[1]);
+}
+/** how long the FM-1's Start / Stop may take after the press the copy replayed (it goes out with the next render: a few ms) */
+const REALIGN_MS = 400;
+let realignTimer = 0;
+/** the copy of the panel logic started or stopped its transport on a replayed press (#549): unless the FM-1's own Start /
+ *  Stop confirms it meanwhile, the copy's transport goes back to the editor's */
+function emuRealign(): void {
+  clearTimeout(realignTimer);
+  realignTimer = window.setTimeout(() => emu.ui?.transport(editor.playing), REALIGN_MS);
 }
 /** the emulated FM-1 arms the editor's armed track (#139), so its REC records into it */
 function emuArm(): void {
@@ -1878,6 +1931,7 @@ async function connectFm1(): Promise<void> {
     for (const id of ['dev-send', 'dev-store']) $<HTMLInputElement>(id).disabled = false;
     $('dev-btn').textContent = 'Reconnect';
     armsReported = false;                                   // (whether this firmware reports its armed set shows with its first ARMS_NOW)
+    uploadGate.forget();                                    // (what this FM-1 holds is not known yet)
     if (!mirror.following) void followFm1('matryoshka');   // it runs Matryoshka (it answered HELLO): its panel drives the page
     offerSync();
     libraryDeviceChanged();
@@ -1918,7 +1972,10 @@ async function mirrorInput(i: PanelInput): Promise<void> {
       case 'mod': sink.send({ t: 'cc', n: 1, v: i.v * 127 }); break;
       case 'knob': if (!exactKnobs()) editor.turnKnob(i.k, i.u); break;   // (else PARAM_NOW names the row: device.onEvent)
       case 'master': emu.setMaster(i.v); host.setMaster(i.v); break;
-      case 'transport': setPlaying(i.run); break;
+      case 'transport':   // the FM-1's own Start / Stop (#549): the editor's transport and the copy's follow
+        if (i.run !== editor.playing) setPlaying(i.run);
+        else emu.ui?.transport(i.run);
+        break;
       case 'enc':
         if (i.n === ENCODERS.preset && sandboxOn() && fm1PlayHeld) {   // PLAY held + PRESET in sandbox mode: the browser's tempo
           // (D-232), a bpm a click as the FM-1 shows it; the FM-1's PLAY release then neither starts nor stops (as on the FM-1)
