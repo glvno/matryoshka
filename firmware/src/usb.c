@@ -49,9 +49,10 @@
 #ifndef FELUCCA_UAC_AS_FIRST
 #define FELUCCA_UAC_AS_FIRST 1
 #endif
-/* #535: POWER is written with SoftConn alone (0x40), not with bit 5 too (0x60, 1.0 .. 1.8.3), which in the Mentor MUSB
+/* #535: POWER is written with SoftConn alone (0x40), not with bit 5 too (0x60, 1.0 .. 1.8.2), which in the Mentor MUSB
  * register map is HSEnab (chirp for high speed at a reset). The descriptors are full-speed ones (bcdUSB 1.10). An iPad
- * (iPadOS 26, through a USB-A adapter) reset the FM-1 11,269 times in 49 s without one SETUP (the setup log). Whether
+ * (iPadOS 26, through a USB-A adapter) reset the FM-1 11,269 times in 49 s without one SETUP (the setup log); with
+ * this value and a USB hub between them it works (2026-11-02); whether the value or the hub made the difference was not separated. Whether
  * this register follows the MUSB map is not known: POWER reads 0x70 after a reset with either value written (bits 4..6
  * set), while macOS reports the FM-1 at full speed with both (ioreg "Device Speed" 1). FELUCCA_USB_HS=1 is the old
  * value; the update loader keeps it (its binary stays as shipped). */
