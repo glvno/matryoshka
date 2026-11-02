@@ -11,6 +11,10 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+/** a test script's dev server: it serves the bundled firmware package, so the page's first firmware request does not start the
+ *  Flash tab's own emu:smoke of this branch's CI build (dev/branch-firmware.ts), a second emulator beside the run that made
+ *  its timing checks flaky (#521). Nothing here installs through the Flash tab (--install runs fm1_install.py itself). */
+export const DEV_ENV = { ...process.env, MATRYOSHKA_BUNDLED_FIRMWARE: '1' };
 export const RIG_FILE = process.env.MATRYOSHKA_RIG_FILE ?? join(homedir(), '.config/matryoshka/rig.json');
 
 /** the registered rig's mark ({ values, registered }), or null */
@@ -39,7 +43,7 @@ const freePort = () => new Promise((res) => {
 /** a dev server of this checkout on a free port (never 5173): { url, stop } */
 export async function startEditor() {
   const port = await freePort();
-  const vite = spawn('npx', ['vite', '--port', String(port), '--strictPort', '--host', '::1'], { cwd: join(ROOT, 'web'), stdio: ['ignore', 'pipe', 'inherit'] });
+  const vite = spawn('npx', ['vite', '--port', String(port), '--strictPort', '--host', '::1'], { cwd: join(ROOT, 'web'), stdio: ['ignore', 'pipe', 'inherit'], env: DEV_ENV });
   process.on('exit', () => { try { vite.kill(); } catch { /* gone */ } });   // (however the script ends)
   for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP']) if (!process.listenerCount(s)) process.on(s, () => process.exit(130));
   await new Promise((res) => vite.stdout.on('data', (d) => { if (/ready in|Local:/.test(String(d))) res(); }));
