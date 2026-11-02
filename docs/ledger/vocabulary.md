@@ -316,7 +316,7 @@ One of a Steps track's note lists, numbered 1 to 64, with its own length and rat
 
 ### Piano roll
 
-A pitch-by-step grid for a Steps track's notes: the editor's drawer, and on the FM-1 a melodic track's SEQ page, 8 pitches at a time.
+A pitch-by-step grid for a Steps track's notes: the editor's drawer, and on the FM-1 a melodic track's SEQ page, 8 pitches at a time, paged by SELECT.
 
 ### Pick mode
 
@@ -456,7 +456,7 @@ The line under the deck with hover help, messages, the FM-1 budget and the FM-1 
 
 ### Step record
 
-Entering notes on the FM-1's SEQ page one step after another, the way a cursor moves through text: the keys held together become the cursor's step when let go, and the cursor moves on. It starts with black key 11 held and a white key, and works with the transport stopped or playing. The editor's counterpart is cursor entry.
+Entering notes on the FM-1's SEQ page one step after another, the way a cursor moves through text: the keys held together become the cursor's step when let go, and the cursor moves on. REC starts and ends it while the transport is stopped, and REC held with a white key starts it on that step, stopped or playing. PLAY turns it into a live take. The editor's counterpart is cursor entry.
 
 ### Step write
 

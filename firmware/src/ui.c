@@ -295,9 +295,10 @@ static void batt_mark_sync(void)
 
 static void bar_text(const char *s, uint16_t bg)
 {
-    char b[30];
+    char b[40];
     uint32_t n = str_len(s), i;
-    n = n > 28u ? 28u : n;                      /* (a nudge has at most 26, D-249; QUICK START OFF: GLO>SYSTEM 27, D-247) */
+    n = n > 38u ? 38u : n;                      /* (a nudge has at most 26, D-249; QUICK START OFF: GLO>SYSTEM 27, D-247; the
+                                                 * SEQ bar of a roll in step record about 36, D-809) */
     for (i = 0; i < n; i++)
         b[i] = s[i];
     b[n] = 0;
