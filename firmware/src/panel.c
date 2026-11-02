@@ -360,13 +360,17 @@ static void page_hold_poll(void)
 }
 
 static void play_toggle(void)                       /* PLAY: the transport (the Main module's run output and clock); a stop
-                                                     * ends recording too (#395: PLAY stops everything) */
+                                                     * ends recording too (#395: PLAY stops everything). A start in step
+                                                     * record makes it a live take: REC records (the owner, 2026-11-02,
+                                                     * D-804; seq_rec_press ends step record) */
 {
-    int run = !eng_transport_running();
+    int run = !eng_transport_running(), take = run && sr_on;
     midi_send_rt(run ? 0xFAu : 0xFCu);              /* (asked first: main.c sends it with the render that starts or stops) */
     eng_transport(run);
     if (!eng_transport_running() && seq_rec)
         seq_rec_off();
+    if (take && eng_transport_running())
+        seq_rec_press();
     leds_play();
     ui_dirty = ui_dirty ? ui_dirty : 1;
 }
@@ -498,8 +502,13 @@ static void panel_encoders(int32_t *st)
             seq_chance(st[4]);
             st[4] = 0;
         }
-        if (st[0] && seq_module() >= 0) {           /* no step held: SELECT moves the row (REC on or off; the roll scrolls) */
-            seq_row_step(st[0]);
+        if (st[0] && seq_module() >= 0) {           /* no step held: SELECT moves the row (REC on or off); the roll's view a
+                                                     * page of 8 pitches, with SEL held a pitch (D-809; SEL's release then
+                                                     * opens no SONG page, as after the pen) */
+            int fine = roll && (panel_held >> BTN_SEL & 1u);
+            if (fine)
+                seq_pen_ms = fm1_ms | 1u;
+            seq_row_step(st[0], fine);
             st[0] = 0;
         }
         if ((st[2] || st[3]) && seq_held >= 0) {   /* K1 / K2 with a step held: its note / velocity (not the Main knobs) */
@@ -612,6 +621,13 @@ static int panel_key(uint32_t n, int down, int quick)
     if (down && !sb_on && !help_on && (panel_held >> BTN_SEQ & 1u) && seq_black(n) >= 0) {   /* SEQ held + a black key: a mute */
         seq_mute_key(n);
         seq_held_used = 1;
+        return 1;
+    }
+    if (down && !sb_on && !help_on && page == PAGE_SEQ && (panel_held >> BTN_REC & 1u) && !(panel_held >> BTN_SEQ & 1u)
+        && seq_white(n) >= 0) {                     /* REC held + a white key on the SEQ page: step record from that step
+                                                     * (D-804); the key writes and sounds nothing, REC's release does nothing */
+        sr_rec_white(n);
+        rec_held_used = 1;
         return 1;
     }
     if (!(key_sounding & bit) && ((page == PAGE_SEQ && !seq_kbd() && !help_on) || !down)) {   /* the SEQ page: steps and tracks
@@ -871,9 +887,12 @@ static void panel_edges(uint32_t p, uint32_t rel)
     }
     if (rel & (1u << BTN_SEQ))
         seq_held_used = 0;
-    if ((rel & (1u << BTN_REC)) && !rec_held_used) {   /* REC (#395): the same on every page, the page stays. Stopped: the
-                                                     * transport starts (as PLAY) and it records; running: it records;
-                                                     * recording: it ends, the transport goes on */
+    if ((rel & (1u << BTN_REC)) && !rec_held_used && page == PAGE_SEQ)
+        sr_rec_tap();                               /* REC on the SEQ page: stopped, step record on / off; running, as below
+                                                     * (the owner, 2026-11-02: D-548, D-804) */
+    else if ((rel & (1u << BTN_REC)) && !rec_held_used) {   /* REC (#395): the same on every other page, the page stays.
+                                                     * Stopped: the transport starts (as PLAY) and it records; running: it
+                                                     * records; recording: it ends, the transport goes on */
         if (!seq_rec && !eng_transport_running())
             play_toggle();
         seq_rec_press();
