@@ -1245,14 +1245,55 @@ static void resample_sine(double f, double amp, double *gain_db, double *thdn_db
 static void test_resampler(void)
 {
     static const struct { double f, amp, gain_lo, gain_hi, thdn_max, img_max; } T[] = {
-        {1000.0, 29204.0, -0.05, 0.05, -90.0, -95.0},          /* -1 dBFS: at the 16-bit floor */
-        {5000.0, 16384.0, -0.05, 0.05, -85.0, -95.0},          /* -6 dBFS */
-        {10000.0, 16384.0, -0.05, 0.05, -85.0, -95.0},
-        {15000.0, 16384.0, -0.05, 0.05, -85.0, -95.0},         /* the image at 29.1 kHz folds to 18.9 kHz */
-        {18000.0, 16384.0, -0.1, 0.05, -85.0, -30.0},          /* image 26.1 kHz -> 21.9 kHz: above the audio band */
-        {20000.0, 16384.0, -1.5, 0.05, -85.0, -10.0},          /* the top of the passband; image at 23.9 kHz */
+        /* Q15 taps (32-bit sums): THD+N 4..5 dB above the 16-bit floor (-93 dB at -1 dBFS, -89 at -6) */
+        {1000.0, 29204.0, -0.05, 0.05, -86.0, -95.0},          /* -1 dBFS */
+        {5000.0, 16384.0, -0.05, 0.05, -83.0, -95.0},          /* -6 dBFS */
+        {10000.0, 16384.0, -0.05, 0.05, -83.0, -95.0},
+        {15000.0, 16384.0, -0.05, 0.05, -83.0, -92.0},         /* the image at 29.1 kHz folds to 18.9 kHz */
+        {18000.0, 16384.0, -0.1, 0.05, -83.0, -30.0},          /* image 26.1 kHz -> 21.9 kHz: above the audio band */
+        {20000.0, 16384.0, -1.5, 0.05, -80.0, -10.0},          /* the top of the passband; image at 23.9 kHz */
     };
     uint32_t i;
+    {   /* full-scale noise (every sample +-32767 or clipped beyond): the 32-bit sums never wrap; the output is the
+         * double-precision sum of the same taps over the clamped history, rounded, within 1 */
+        int32_t in[2u * HALF_FRAMES];
+        uint32_t n_in = 0, got = 0, bad = 0, b;
+        static int32_t hist[1u << 16];
+        uint32_t ph = 0, newest = 0;
+        memset(&uac, 0, sizeof uac);
+        memset(&rs, 0, sizeof rs);
+        ua_w = ua_r = 0;
+        for (b = 0; b < 400u; b++) {
+            for (i = 0; i < HALF_FRAMES; i++, n_in++) {
+                int32_t v = rnd(2) ? 40000 : -40000;           /* beyond full scale: clipped to 16 bit, then held */
+                in[2u * i] = v * 256;
+                in[2u * i + 1u] = -v * 256;
+                hist[n_in & 0xFFFFu] = v > UAC_X_MAX ? UAC_X_MAX : v < -UAC_X_MAX ? -UAC_X_MAX : v;
+            }
+            uac_tap48(in, HALF_FRAMES);
+            while (ua_r != ua_w) {                              /* output k: newest input newest, phase ph */
+                int32_t y = (int16_t)(ua_ring[ua_r++ & (UA_N - 1u)] & 0xFFFFu);
+                double s = 0;
+                uint32_t j;
+                for (j = 0; j < UAC_FIR_N; j++) {
+                    int32_t x = newest + j >= UAC_FIR_N - 1u ? hist[(newest + j - (UAC_FIR_N - 1u)) & 0xFFFFu] : 0;
+                    double c = ph < UAC_FIR_L / 2u ? UAC_FIR[ph][j] : UAC_FIR[UAC_FIR_L - 1u - ph][UAC_FIR_N - 1u - j];
+                    s += c * x;
+                }
+                s /= (double)(1 << UAC_FIR_Q);
+                s = s > 32767.0 ? 32767.0 : s < -32768.0 ? -32768.0 : s;
+                bad += fabs(s - y) > 1.0;
+                got++;
+                ph += UAC_FIR_M;
+                while (ph >= UAC_FIR_L) {
+                    ph -= UAC_FIR_L;
+                    newest++;
+                }
+            }
+        }
+        printf("  resampler on full-scale noise: %u frames, %u off the exact sum\n", got, bad);
+        CHECK(got > 50000u && bad == 0u, "resampler on full-scale noise: %u of %u frames wrong (a sum wrapped?)", bad, got);
+    }
     for (i = 0; i < sizeof T / sizeof T[0]; i++) {
         double g, thdn, img;
         resample_sine(T[i].f, T[i].amp, &g, &thdn, &img);

@@ -1422,7 +1422,23 @@ static inline int32_t uac_s16(int32_t v)
 #if FELUCCA_UAC_48K
 /* 44.1 -> 48 kHz (x 160 / 147), one block: each input frame enters the history, then the 1 or 2 output
  * frames whose newest input it is: phase ph, the window of UAC_FIR_N frames ending at it, the taps of
- * phase ph (or of 159 - ph backwards: the prototype is symmetric), Q30 into 64-bit sums. */
+ * phase ph (or of 159 - ph backwards: the prototype is symmetric), the taps in Q(UAC_FIR_Q) into
+ * uac_acc_t sums. Matryoshka (#535): Q15 into 32-bit sums. Felucca's Q30 into 64-bit sums cost the FM-1 about 9 % of
+ * a half more than 44.1 kHz streaming (Io 4, 8 notes: the guard's mean 2,295 -> 2,557 us, measured on the test rig).
+ * A phase's taps add up to at most 2.15 in magnitude, so the history is held within +-UAC_X_MAX (-0.8 dBFS) and a
+ * 32-bit sum never overflows (tools/gen_uac_fir.py checks the bound). */
+#if UAC_FIR_Q > 15
+typedef int64_t uac_acc_t;
+#define UAC_X_MAX 32767
+#else
+typedef int32_t uac_acc_t;
+#define UAC_X_MAX 30000
+#endif
+static inline int16_t uac_x(int32_t v)
+{
+    v >>= UAC_IN_SHIFT;
+    return (int16_t)(v > UAC_X_MAX ? UAC_X_MAX : v < -UAC_X_MAX ? -UAC_X_MAX : v);
+}
 static __attribute__((noinline)) void uac_tap48(const int32_t *out, uint32_t n)
 {
     uint32_t w = ua_w, i, j, k = 0, h = rs.w, ph = rs.ph;
@@ -1432,28 +1448,28 @@ static __attribute__((noinline)) void uac_tap48(const int32_t *out, uint32_t n)
     }
     for (i = 0; i < n; i++) {
         uint32_t s = h & (RS_H - 1u);
-        int16_t l = (int16_t)uac_s16(out[2u * i] >> UAC_IN_SHIFT), r = (int16_t)uac_s16(out[2u * i + 1u] >> UAC_IN_SHIFT);
+        int16_t l = uac_x(out[2u * i]), r = uac_x(out[2u * i + 1u]);
         rs.l[s] = rs.l[s + RS_H] = l;
         rs.r[s] = rs.r[s + RS_H] = r;
         h++;
         s = (h - UAC_FIR_N) & (RS_H - 1u);              /* the window: oldest .. this frame */
         do {
             const int16_t *x = &rs.l[s];                /* R: x[2 * RS_H] */
-            int64_t al = 0, ar = 0;
+            uac_acc_t al = 0, ar = 0;
             int32_t yl, yr;
             if (ph < UAC_FIR_L / 2u) {
-                const int32_t *c = UAC_FIR[ph];
+                const UAC_FIR_T *c = UAC_FIR[ph];
                 for (j = UAC_FIR_N; j; j--, x++) {
                     int32_t t = *c++;
-                    al += (int64_t)t * x[0];
-                    ar += (int64_t)t * x[2u * RS_H];
+                    al += (uac_acc_t)t * x[0];
+                    ar += (uac_acc_t)t * x[2u * RS_H];
                 }
             } else {
-                const int32_t *c = &UAC_FIR[UAC_FIR_L - 1u - ph][UAC_FIR_N - 1u];
+                const UAC_FIR_T *c = &UAC_FIR[UAC_FIR_L - 1u - ph][UAC_FIR_N - 1u];
                 for (j = UAC_FIR_N; j; j--, x++) {
                     int32_t t = *c--;
-                    al += (int64_t)t * x[0];
-                    ar += (int64_t)t * x[2u * RS_H];
+                    al += (uac_acc_t)t * x[0];
+                    ar += (uac_acc_t)t * x[2u * RS_H];
                 }
             }
             yl = uac_s16((int32_t)((al + (1 << (UAC_FIR_Q - 1))) >> UAC_FIR_Q));

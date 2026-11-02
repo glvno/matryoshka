@@ -37,7 +37,8 @@ from pathlib import Path
 
 L, M = 160, 147
 FS = 44100.0
-QB = 30
+QB = 15                                 # 32-bit sums on the FM-1 (usb.c uac_acc_t); int16 taps
+CTYPE = "int16_t" if QB <= 14 else "int32_t"
 N, BETA, FC = 24, 9.5, 22300.0          # taps per phase, Kaiser beta, cut-off (Hz at 44.1 kHz)
 STOP = 28000.0                          # images above this fold below 20 kHz at 48 kHz
 NFFT = 1 << 16
@@ -69,15 +70,47 @@ def prototype(n, beta, fc):
     return [v / s * L for v in h]
 
 
+PASS = [f * 500.0 for f in range(41)]   # 0 .. 20 kHz: where a phase's rounding error is weighed
+
+
+def fit(c):
+    """one phase's taps in Q(QB), summing to exactly 1 << QB, rounded so that the phase's response stays as close as
+    it can to the exact taps' over 0..20 kHz: plain rounding leaves each phase a slightly different gain and delay
+    there, which the output hears as noise (Q14: THD+N about -81 dB at 1 kHz); moving one step of rounding from one tap
+    to another while that lowers the summed squared error (complex, over PASS) takes most of it out"""
+    n = len(c)
+    s = sum(c)
+    c = [v / s * (1 << QB) for v in c]                  # the exact taps, summing to 1 << QB
+    q = [round(v) for v in c]
+    big = max(range(n), key=lambda i: abs(c[i]))
+    q[big] += (1 << QB) - sum(q)
+    rot = [[cmath.exp(-2j * math.pi * f / FS * j) for j in range(n)] for f in PASS]
+    err = [sum((q[j] - c[j]) * r[j] for j in range(n)) for r in rot]
+    cost = sum(abs(e) ** 2 for e in err)
+    while True:
+        best = None
+        for j in range(n):
+            for k in range(n):
+                if j == k:
+                    continue
+                d = [e + r[j] - r[k] for e, r in zip(err, rot)]   # q[j] + 1, q[k] - 1
+                cd = sum(abs(e) ** 2 for e in d)
+                if cd < cost - 1e-9 and (best is None or cd < best[0]):
+                    best = (cd, j, k, d)
+        if best is None:
+            return q
+        cost, j, k, err = best
+        q[j] += 1
+        q[k] -= 1
+
+
 def table(h, n):
-    """the Q30 table, phases 0..L-1, oldest input first, each phase summing to exactly 1 << QB"""
-    tab = []
-    for p in range(L):
-        c = h[p::L][::-1]
-        q = [round(v * (1 << QB)) for v in c]
-        big = max(range(n), key=lambda i: abs(c[i]))
-        q[big] += (1 << QB) - sum(q)
-        tab.append(q)
+    """the table, phases 0..L-1, oldest input first, each phase summing to exactly 1 << QB; phase L-1-p is phase p
+    backwards (the prototype is symmetric; usb.c stores phases 0..L/2-1 only)"""
+    tab = [None] * L
+    for p in range(L // 2):
+        tab[p] = fit(h[p::L][::-1])
+        tab[L - 1 - p] = tab[p][::-1]
     return tab
 
 
@@ -133,6 +166,9 @@ def measure(tab, n):
 
 def design(n, beta, fc):
     tab = table(prototype(n, beta, fc), n)
+    if QB <= 15:                       # 32-bit sums of 16-bit input: a phase's |taps| under 2^31 / 32768
+        worst = max(sum(abs(v) for v in t) for t in tab)
+        assert worst * 30000 < 1 << 31, f"a 32-bit sum can overflow ({worst})"
     for p in range(L // 2):            # the symmetry usb.c relies on
         d = max(abs(a - b) for a, b in zip(tab[L - 1 - p], tab[p][::-1]))
         assert d <= 1, f"phase {p}: not the mirror of phase {L - 1 - p} ({d})"
@@ -178,13 +214,14 @@ def main():
         f"#define UAC_FIR_M {M}u",
         f"#define UAC_FIR_N {N}u",
         f"#define UAC_FIR_Q {QB}",
-        f"static const int32_t UAC_FIR[{L // 2}][{N}] = {{",
+        f"#define UAC_FIR_T {CTYPE}",
+        f"static const {CTYPE} UAC_FIR[{L // 2}][{N}] = {{",
     ]
     for p in range(L // 2):
         lines.append("    {" + ", ".join(str(v) for v in tab[p]) + "},")
     lines.append("};")
     out.write_text("\n".join(lines) + "\n")
-    print(f"wrote {out}: {L // 2} x {N} taps, {L // 2 * N * 4} B")
+    print(f"wrote {out}: {L // 2} x {N} taps, {L // 2 * N * (2 if CTYPE == "int16_t" else 4)} B")
     print(line(N, BETA, FC, m))
 
 
