@@ -92,6 +92,35 @@ describe('the FM-1 UI as WebAssembly', () => {
     ui.mute(track, false);
     expect([key(2400), key(2600)]).toEqual([row, row]);      // playing: steady
   }, 120_000);
+  it('step record (#532): black key 11 + a white key, a chord, a tie of the key still held, a rest; the editor gets the notes', async () => {
+    let notes: { at: number; len: number; note: number; vel: number }[] = [];
+    const ui = await Fm1Ui.create(bytes, { track: (_m, ns) => { notes = ns.map(({ at, len, note, vel }) => ({ at, len, note, vel })); } });
+    expect(ui.load(encodePatch(FM1_PRESETS['Silver Box']()), 'SILVER BOX')).toBe(0);
+    ui.tick(1000);
+    const tap = (id: number, at: number): void => { ui.tick(at); ui.button(id, true); ui.tick(at + 50); ui.button(id, false); ui.tick(at + 100); };
+    tap(BUTTONS.seq, 1200);                       // the SEQ page: PATTERN's roll
+    expect(ui.page).toBe(8);
+    const [BK11, STEP1, C4, E4, G4, D4] = [25, 0, 7, 11, 14, 9].map((n) => 1 << n);
+    for (const k of [BK11, BK11 | STEP1, STEP1, 0]) ui.keys(k);
+    expect(notes).toEqual([]);                    // (started: nothing written, step 1 not switched)
+    const played = ui.keys(C4 | E4 | G4);         // a chord: each key sounds as it goes down
+    expect(played.filter((p) => p.on).length).toBe(3);
+    ui.keys(C4);                                  // E4, G4 let go; C4 held
+    tap(BUTTONS.lfo, 1500);                       // the tie: C4 on through step 2, the cursor there
+    ui.keys(C4 | D4);                             // D4 added on step 2
+    ui.keys(C4);
+    ui.keys(0);                                   // the last key let go: written, the cursor on step 3
+    tap(BUTTONS.lfo, 1800);                       // a rest on step 3
+    ui.keys(E4);
+    ui.keys(0);                                   // E4 on step 4
+    const sorted = [...notes].sort((a, b) => a.at - b.at || a.note - b.note);
+    expect(sorted).toEqual([
+      { at: 0, len: 2, note: 60, vel: 100 }, { at: 0, len: 1, note: 64, vel: 100 }, { at: 0, len: 1, note: 67, vel: 100 },
+      { at: 1, len: 1, note: 62, vel: 100 }, { at: 3, len: 1, note: 64, vel: 100 },
+    ]);
+    tap(BUTTONS.home, 2000);                      // HOME: step record ends, the page stays
+    expect(ui.page).toBe(8);
+  }, 30_000);
   it('the panel drives it: SELECT / ALGO move the focus (and say so), K1 sets a parameter, HOME goes to the device\'s first page, then back along the trail', async () => {
     const focus: [number, number][] = [];
     const params: number[][] = [];

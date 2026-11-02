@@ -264,14 +264,22 @@ static void m1_patch_notes(uint32_t mod) { (void)mod; }
 static void m1_patch_patterns(void) {}             /* (the preview keeps no patch: the engine has the patterns and songs) */
 static int m1_drum_name(uint32_t map, uint32_t r, char *out) { return eng_drum_name(pv_bin, pv_len, map, r, out); }
 #ifndef HOST_STEP_HOOKS                     /* (the wasm build tells the page instead) */
-static void m1_track_now(uint32_t mod) { (void)mod; }
+static uint32_t host_track_told;                    /* (panel_test.c: TRACK_NOW sent) */
+static void m1_track_now(uint32_t mod) { (void)mod; host_track_told++; }
 static void m1_mute_now(uint32_t mod, int on) { (void)mod; (void)on; }
 static void m1_arms_now(uint32_t lo, uint32_t hi) { (void)lo; (void)hi; }
 static uint32_t host_pattern_told, host_song_told;   /* (panel_test.c: PATTERN_NOW / SONG_NOW sent) */
 static void m1_pattern_now(void) { host_pattern_told++; }
 static void m1_song_now(uint32_t s) { (void)s; host_song_told++; }
 #endif
+#ifdef HOST_THRU_HOOK                       /* (the wasm build: what the SEQ page sounds through a track also goes to the page) */
+static void host_steps_thru(uint32_t module, uint32_t note, uint32_t vel);
+#define eng_steps_thru host_steps_thru
+#endif
 #include "../src/seq_ui.c"
+#ifdef HOST_THRU_HOOK
+#undef eng_steps_thru
+#endif
 #include "../src/splash.c"
 #include "../src/help_ui.c"
 

@@ -57,6 +57,20 @@
  *                   blinks on them, the keys sound as ever and nothing is recorded; REC again meanwhile: off, nothing
  *                   recorded. No click: the FM-1 has no metronome voice.
  *
+ * Step record (#532, the owner's design of 2026-11-01, D-804; a drum grid and the roll alike): black key 11 held + a white
+ * key starts it on that step. The bar says STEP n, the cursor's column is tinted, with a sky tick under it, and the view
+ * pages to the cursor's 16 steps (D-806). Stopped or running (the cursor is not the playhead):
+ *   keys            play their pitch through the track as they sound (the roll: the key's own at the keys' octave; a drum
+ *                   grid: the live take's rule, black keys 1..8 its rows, the white keys nothing unless the map repeats
+ *                   its rows, D-805), held together one chord; the last let go writes the cursor's step (what it held goes)
+ *                   and the cursor moves on one. Velocity 100, FX held at the press 127; a note one step long
+ *   LFO             no key held: a rest (the step cleared) and on one; keys held: those still held go on through the next
+ *                   step and the cursor moves there (those let go keep their length), a key pressed meanwhile starts on
+ *                   the cursor's step. Not past the pattern's end: there the held notes end and the cursor wraps (D-807)
+ *   K4              the cursor, a step a click, nothing written; black key 10: back one step and that step cleared
+ *   OCT- / OCT+     the keys' octave (D-806). The cursor wraps from the last step to step 1
+ *   HOME / SEQ      step record ends, the page stays; so does REC (which then acts), ALGO, another page or patch (D-808)
+ *
  * Key LEDs: the selected row's notes on the page bright, the step playing at the mid level (dark on a step that is on),
  * the selected row's black key bright (blinking: the track muted) and rows with notes dim (a drum track's and the
  * roll's alike, #387); the roll's keyboard (a live take): the keys held bright, every C dim. The top bar
@@ -103,6 +117,27 @@ static uint32_t seq_pen_ms;             /* fm1_ms | 1 of the last key that was t
                                          * nothing, D-541), 0 none */
 static uint32_t seq_shown_pat = 0xFFFFFFFFu;   /* the bar's pattern, queued pattern, song and entry as drawn */
 static uint8_t seq_shown_mark = 0xFFu;  /* ... and its ARM / REC (seq_bar_mark) */
+static uint8_t seq_shown_sr = 0xFFu;    /* ... and its STEP n (step record's cursor + 1, 0 none) */
+
+/* step record (#532, D-804): its state. The chord's notes come from the keys held together; a note starts on the cursor's
+ * step as its key goes down and ends on the cursor's step when let go (a tie moved the cursor meanwhile). Each write lays
+ * the chord over the track's notes as they were when its first key went down (seq_held_notes: no step is held meanwhile) */
+#define SR_START 25u                    /* black key 11 (F#5): held + a white key starts step record */
+#define SR_BACK 22u                     /* black key 10 (D#5): back one step, that step cleared */
+#define SR_NOTES 27u
+static uint8_t sr_on;                   /* step record runs */
+static uint8_t sr_k;                    /* the cursor: a step of the pattern */
+static uint8_t sr_from;                 /* the step the chord's first note started on */
+static uint8_t sr_trk;                  /* the track it runs on, and the patch then (another one ends it) */
+static uint32_t sr_gen;
+static uint32_t sr_keys;                /* the keys of the chord held now (bit n: key n) */
+static uint32_t sr_skip;                /* keys held as it started (black key 11, the white key) or past a tie at the end:
+                                         * their release is nobody's */
+static uint8_t sr_bk11;                 /* black key 11 held (on the SEQ page) */
+static uint8_t sr_n;                    /* the chord's notes: pitch, velocity, first and last step, keys holding it */
+static uint8_t sr_note[SR_NOTES], sr_vel[SR_NOTES], sr_at[SR_NOTES], sr_end[SR_NOTES], sr_hold[SR_NOTES];
+static uint8_t sr_of[27];               /* each held key's note in the chord */
+static void sr_stop(void);
 
 /* note key n (0 = F3) -> its white key's step on the page (0..15) or its black key's number (0..10: a row on the SEQ
  * page, a track with SEQ or REC held), else -1 */
@@ -317,10 +352,10 @@ static void seq_leds(void)
     }
     for (n = 0; n < 27u; n++) {
         int w = seq_white(n), b = seq_black(n), lit = 0, mid = 0, dim = 0;
-        if (kbd) {                               /* the armed track's keyboard: the keys held bright, every C dim (to find */
-            uint32_t note = (uint32_t)clampi(53 + (int32_t)n + 12 * octave, 0, 127);   /* your place) */
-            lit = (int)(ent_keys >> n & 1u);
-            dim = !lit && note % 12u == 0u;
+        if (kbd || sr_on) {                      /* the armed track's keyboard, step record's: the keys held bright, every */
+            uint32_t note = (uint32_t)clampi(53 + (int32_t)n + 12 * octave, 0, 127);   /* C dim (to find your place; */
+            lit = (int)((sr_on ? sr_keys : ent_keys) >> n & 1u);                       /* a drum grid: its rows' keys) */
+            dim = !lit && (sr_on && map >= 0 ? b >= 0 && b < (int)ENG_DRUM_ROWS : note % 12u == 0u);
         } else if (mod >= 0 && b >= 0) {        /* the rows (a drum track's; the roll's on screen, black key 1 its */
             uint32_t row = map >= 0 ? (uint32_t)b : 7u - (uint32_t)b;   /* bottom row, #387): the selected one bright */
             if (b < (int)ENG_DRUM_ROWS)          /* (blinking: muted), the others with notes dim */
@@ -344,6 +379,7 @@ static void seq_select(uint32_t t)
 {
     if (t >= (uint32_t)eng_steps_count())
         return;
+    sr_stop();                                   /* (another track: step record ends, D-808) */
     seq_trk = (uint8_t)t;
     seq_pg = 0;
     seq_held = -1;
@@ -518,6 +554,206 @@ static void seq_thru_up(uint32_t n)
     }
 }
 
+/* ---- step record (#532, D-804..D-808) */
+
+/* the note key n writes in step record on this grid: the roll its own pitch at the keys' octave; a drum grid as the keys
+ * reach a Drum map everywhere (panel.c panel_key, the live take's rule, D-805): black keys 1..8 its rows, another key
+ * its own note when the map repeats its rows, else nothing (-1) */
+static int sr_pitch(int map, uint32_t n)
+{
+    int b = seq_black(n), own = clampi(53 + (int32_t)n + 12 * octave, 0, 127);
+    if (map < 0)
+        return own;
+    if (b >= 0 && b < (int)ENG_DRUM_ROWS)
+        return eng_drummap_note((uint32_t)map, (uint32_t)b);
+    return eng_drummap_repeat((uint32_t)map) ? own : -1;
+}
+
+/* steps from..to replaced: the notes in seq_held_notes (the track as it was) less those starting on them, one starting
+ * before `from` and sounding into it ending before it (a tie through a written step is cut, as a plain white key cuts it,
+ * D-531), plus the chord's notes (with chord: a note still held ends on the cursor's step). Into the engine, the patch
+ * and the editor (TRACK_NOW) */
+static void sr_put(int mod, uint32_t from, uint32_t to, int chord)
+{
+    uint32_t w[TRACK_NOTES_MAX];
+    uint32_t i, m = 0;
+    for (i = 0; i < seq_held_n; i++) {
+        uint32_t x = seq_held_notes[i], at = x & 63u, last = at + ((x >> 6) & 63u);
+        if (at >= from && at <= to)
+            continue;
+        if (at < from && last >= from)
+            x = (x & ~(63u << 6)) | (from - at - 1u) << 6;
+        w[m++] = x;
+    }
+    for (i = 0; chord && i < sr_n && m < TRACK_NOTES_MAX; i++) {
+        uint32_t end = sr_hold[i] ? sr_k : sr_end[i];
+        w[m++] = sr_at[i] | (end - sr_at[i]) << 6 | (uint32_t)sr_note[i] << 12 | (uint32_t)sr_vel[i] << 19;
+    }
+    if (!eng_steps_set_notes((uint32_t)mod, w, m))
+        seq_msg_due = "TRACK FULL: 128 NOTES";
+    seq_sync(mod);
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+}
+
+/* step k made a rest: its notes go, a note sounding into it ends before it */
+static void sr_clear(int mod, uint32_t k)
+{
+    seq_held_keep(mod);
+    sr_put(mod, k, k, 0);
+}
+
+/* the cursor d steps on (a negative d back), wrapping at the pattern's ends; the view shows its 16 steps (D-806) */
+static void sr_move(int mod, int32_t d)
+{
+    int32_t len = seq_len(mod), k = ((int32_t)sr_k + d) % len;
+    if (k < 0)
+        k += len;
+    sr_k = (uint8_t)k;
+    if (seq_pg != k / 16) {
+        seq_pg = (uint8_t)(k / 16);
+        ui_dirty = ui_dirty < 2u ? 1 : 2;       /* (the grid redraws its cells in place) */
+    }
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+}
+
+/* black key 11 held + a white key (seq_key): step record starts on step k. Not while REC records (D-808): the keys
+ * would be recorded twice */
+static void sr_start(uint32_t n, int k)
+{
+    if (seq_rec) {
+        seq_msg_due = "STOP REC FOR STEP RECORD";
+        return;
+    }
+    sr_on = 1;
+    sr_k = (uint8_t)k;
+    sr_keys = 0;
+    sr_n = 0;
+    sr_skip = 1u << SR_START | 1u << n;
+    sr_trk = seq_trk;
+    sr_gen = pages_gen();
+    seq_held = -1;
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+}
+
+/* step record ends (HOME, SEQ, REC, ALGO, another page or patch): a chord still held is not written; its keys sound
+ * until let go */
+static void sr_stop(void)
+{
+    if (!sr_on)
+        return;
+    sr_on = 0;
+    sr_skip = 0;
+    sr_keys = 0;
+    sr_n = 0;
+    if (!ui_dirty)
+        ui_dirty = 1;
+}
+
+/* LFO in step record (panel.c): no key held, a rest and on one; keys held, the tie: the notes still held go on through
+ * the next step and the cursor moves there. At the pattern's last step a tie cannot go on (no tie across the loop's end,
+ * D-531): the chord is written as it is, the held keys' releases then do nothing, the cursor wraps (D-807) */
+static void sr_lfo(void)
+{
+    int mod = seq_module();
+    uint32_t i;
+    if (mod < 0)
+        return;
+    if (!sr_keys) {
+        sr_clear(mod, sr_k);
+        sr_move(mod, 1);
+        return;
+    }
+    if ((int32_t)sr_k + 1 >= seq_len(mod)) {
+        for (i = 0; i < sr_n; i++)
+            if (sr_hold[i]) {
+                sr_hold[i] = 0;
+                sr_end[i] = sr_k;
+            }
+        sr_put(mod, sr_from, sr_k, 1);
+        sr_skip |= sr_keys;
+        sr_keys = 0;
+        sr_n = 0;
+        seq_msg_due = "NO TIE PAST THE END";
+        sr_move(mod, 1);
+        return;
+    }
+    sr_k++;
+    sr_put(mod, sr_from, sr_k, 1);
+    sr_move(mod, 0);                             /* (the view follows the cursor) */
+}
+
+/* K4 in step record: the cursor, nothing written (not while a chord is held: its notes started where it was) */
+static void sr_knob(int32_t clicks)
+{
+    int mod = seq_module();
+    if (mod >= 0 && !sr_keys && clicks)
+        sr_move(mod, clicks);
+}
+
+/* a key in step record (seq_key). A press sounds its note through the track and joins the chord on the cursor's step;
+ * the last release writes the chord and moves the cursor on. Black key 10 (no chord held): back one step, cleared */
+static void sr_key(uint32_t n, int down)
+{
+    int mod = seq_module(), p;
+    uint32_t bit = 1u << n, i;
+    if (sr_skip & bit) {
+        if (!down) {
+            sr_skip &= ~bit;
+            seq_thru_up(n);
+        }
+        return;
+    }
+    if (mod < 0)
+        return;
+    if (n == SR_BACK) {
+        if (down && !sr_keys) {
+            sr_move(mod, -1);
+            sr_clear(mod, sr_k);
+        }
+        return;
+    }
+    if (!down) {
+        if (!(sr_keys & bit))
+            return;
+        sr_keys &= ~bit;
+        seq_thru_up(n);
+        i = sr_of[n];
+        if (i < sr_n && sr_hold[i] && !--sr_hold[i])
+            sr_end[i] = sr_k;
+        if (!sr_keys) {                          /* the last key let go: the chord written, the cursor on one */
+            sr_put(mod, sr_from, sr_k, 1);
+            sr_n = 0;
+            sr_move(mod, 1);
+        }
+        return;
+    }
+    if ((p = sr_pitch(seq_map(), n)) < 0)
+        return;                                  /* (a drum grid's key that reaches no row: silent, D-805) */
+    if (!sr_keys) {                              /* a new chord on the cursor's step, over the track as it is now */
+        sr_n = 0;
+        sr_from = sr_k;
+        seq_held_keep(mod);
+    }
+    for (i = 0; i < sr_n && !(sr_note[i] == (uint8_t)p && sr_at[i] == sr_k); i++)
+        ;
+    if (i == sr_n) {
+        if (sr_n >= SR_NOTES)
+            return;
+        sr_note[i] = (uint8_t)p;
+        sr_at[i] = sr_k;
+        sr_hold[i] = 0;
+        sr_n++;
+    }
+    sr_vel[i] = (panel_held >> BTN_ACC & 1u) ? ACCENT_VEL : STEP_VEL;
+    sr_hold[i]++;
+    sr_of[n] = (uint8_t)i;
+    sr_keys |= bit;
+    seq_thru_up(n);                              /* it sounds through the track while held (as a drum grid's black key) */
+    seq_thru_mod[n] = (uint8_t)mod;
+    seq_thru_note[n] = (uint8_t)(p + 1);
+    eng_steps_thru((uint32_t)mod, (uint32_t)p, sr_vel[i]);
+}
+
 /* a key on the SEQ page (n: note key 0..26). Drum track (the #139 follow-up): black keys 1..8 the Drum map's rows (heard
  * while held, and picked; while REC records the track, into the nearest step too: #395), white keys that row's hit on the
  * page's steps (FX held: an accent; LFO held: its tie, #368). The roll (#241): black keys 1..8 its rows on screen from the
@@ -527,6 +763,12 @@ static void seq_key(uint32_t n, int down)
 {
     int w = seq_white(n), b = seq_black(n), mod = seq_module(), map = seq_map();
     int fx = (int)(panel_held >> BTN_ACC & 1u);
+    if (n == SR_START)
+        sr_bk11 = (uint8_t)(down != 0);
+    if (sr_on) {
+        sr_key(n, down);
+        return;
+    }
     if (!down) {
         if (w >= 0 && seq_held == seq_pg * 16 + w) {
             seq_held = -1;
@@ -576,6 +818,10 @@ static void seq_key(uint32_t n, int down)
         uint32_t note = seq_grid_note(map, seq_row), have;
         if (k >= seq_len(mod))
             return;
+        if (sr_bk11) {                           /* black key 11 held: step record starts on this step (#532) */
+            sr_start(n, k);
+            return;
+        }
         seq_held_keep(mod);
         if (panel_held >> BTN_LFO & 1u) {        /* LFO held: the tie (not a held step) */
             seq_roll_tie(mod, (uint32_t)k, note);
@@ -795,6 +1041,7 @@ static void seq_rec_msg(void)
  * (#414: the bar says COUNT-IN until its first beat). The page stays */
 static void seq_rec_press(void)
 {
+    sr_stop();                                   /* (REC ends step record, then acts: D-808) */
     if (seq_rec) {
         seq_rec_off();
         ui_msg("REC OFF", 1000);
@@ -922,10 +1169,12 @@ static void seq_clear_cancel(void)
     seq_msg_ms = 0;
 }
 
-/* the page is left: the roll's keyboard forgets its keys (REC goes on: it is global, #395) */
+/* the page is left: the roll's keyboard forgets its keys (REC goes on: it is global, #395); step record ends */
 static void seq_leave(void)
 {
     ent_keys = 0;
+    sr_stop();
+    sr_bk11 = 0;
 }
 
 /* a key while the keys are the armed track's keyboard (the panel plays it, the engine records it): its LED */
@@ -988,12 +1237,18 @@ static void seq_bar(void)
         return;
     }
     seq_name(seq_trk, name);
+    if (sr_on) {                                 /* step record (#532): STEP n first, the cursor's step */
+        char num[8];
+        fmt_int(num, (int32_t)sr_k + 1);
+        p = put(put(put(p, "STEP "), num), "  ");
+    }
     p = put(p, name);
     if (seq_mod_armed(seq_module()))             /* the track shown is armed (#179): REC records it (#395) */
         p = put(p, seq_rec ? " REC" : " ARM");
     p = seq_pat_text(p);                         /* (after REC / ARM: name REC P03>P04) */
     seq_shown_pat = seq_pat_state();
     seq_shown_mark = seq_bar_mark();
+    seq_shown_sr = (uint8_t)(sr_on ? sr_k + 1u : 0u);
     *p = 0;
     bar_text(b, seq_rec ? C_RED : C_ACC);
 }
@@ -1008,7 +1263,8 @@ static void seq_bar(void)
  *          accent = coral, a chance fills it part way up, a note going on through the step (the roll) dim and joined to
  *          the cell before, past the length = nothing
  *   y  40  the roll's markers over the top row, y 192 under the bottom row (a note sounds on that step above / below)
- *   y 196  the playhead: a coral tick under its column
+ *   y 196  the playhead: a coral tick under its column; y 199 step record's cursor, a sky tick (its column's empty cells
+ *          tinted sky, #532)
  *   y 202  TRACK n/m, ARMED, MUTED
  *   y 222  the hint line */
 #define GRID_X 52u
@@ -1025,8 +1281,12 @@ static void seq_bar(void)
 #define C_BEAT 0x31C8u                  /* a beat's first empty cell */
 #define C_CROW 0x2987u                  /* the roll's C rows: an empty cell, its name's ground */
 #define C_CBEAT 0x3A49u                 /* ... a beat's first */
-static uint8_t seq_grid_cell[ENG_DRUM_ROWS][16];   /* the cells as drawn (seq_grid_state's codes) */
+#define C_CUR 0x3AEFu                   /* step record's cursor (#532): its column's empty cells (a dark sky) */
+#define GRID_CUR 0x100u                 /* a cell's code: in step record's cursor column */
+#define GRID_CUR_Y (GRID_TICK_Y + 3u)   /* the cursor's tick: 2 px under the playhead's */
+static uint16_t seq_grid_cell[ENG_DRUM_ROWS][16];  /* the cells as drawn (seq_grid_state's codes) */
 static int8_t seq_grid_row = -1, seq_grid_tick = -2; /* the selected row, the playhead's column as drawn (-1 none) */
+static int8_t seq_grid_cur = -2;        /* step record's cursor column as drawn (-1 none) */
 static uint8_t seq_grid_lo = 0xFFu;     /* the roll's lowest pitch as drawn (0xFF: a drum grid's names) */
 static uint8_t seq_grid_ok;             /* the grid is on the LCD (else the next draw is a whole one) */
 static uint32_t seq_grid_mark;          /* the roll's markers as drawn: bit c a note above the window on column c, bit 16 + c
@@ -1036,14 +1296,17 @@ static char seq_grid_text[3][48];       /* the info, track and hint lines as dra
 static uint32_t seq_grid_x(uint32_t i) { return GRID_X + 11u * i + 2u * (i / 4u); }
 
 /* a cell's code: GRID_PAST, GRID_TIE, else bit 0 a hit, bit 1 its accent, bits 2..6 its chance code (an empty cell:
- * GRID_TINT in a C row), bit 7 the step playing. w: the note word starting there, 1 a note through it, 0 none */
-static uint32_t seq_grid_state(uint32_t w, int k, int32_t len, int pos, int tint)
+ * GRID_TINT in a C row), bit 7 the step playing; GRID_CUR in step record's cursor column. w: the note word starting
+ * there, 1 a note through it, 0 none */
+static uint32_t seq_grid_state(uint32_t w, int k, int32_t len, int pos, int tint, int cur)
 {
     uint32_t s = 0;
     if (k >= len)
         return GRID_PAST;
     if (w == 1u)
-        return GRID_TIE;
+        return GRID_TIE;                         /* (a tie looks the same in the cursor's column: its tick shows it) */
+    if (cur && !w)
+        return GRID_CUR | (tint ? GRID_TINT : 0u);
     if (w) {
         uint32_t ch = (w >> 26) & 31u;
         s = 1u | (((w >> 19) & 127u) == ACCENT_VEL ? 2u : 0u) | (ch > 19u ? 19u : ch) << 2;
@@ -1056,7 +1319,8 @@ static uint32_t seq_grid_state(uint32_t w, int k, int32_t len, int pos, int tint
 static void seq_grid_paint(uint32_t r, uint32_t i, uint32_t s, uint32_t was)
 {
     uint32_t x = seq_grid_x(i), y = GRID_Y + GRID_RH * r, fill;
-    uint16_t empty = (s & 0x80u) ? C_HINT : (s & 0x7Fu) == GRID_TINT ? ((i & 3u) ? C_CROW : C_CBEAT) : (i & 3u) ? C_TRACK : C_BEAT;
+    uint16_t empty = (s & GRID_CUR) ? C_CUR : (s & 0x80u) ? C_HINT : (s & 0x7Fu) == GRID_TINT ? ((i & 3u) ? C_CROW : C_CBEAT)
+                     : (i & 3u) ? C_TRACK : C_BEAT;
     if (i && (s == GRID_TIE || was == GRID_TIE)) {
         uint32_t gx = seq_grid_x(i - 1u) + GRID_CW;
         lcd_fill(gx, y, x - gx, GRID_CH, s == GRID_TIE ? C_DIM : C_BG);
@@ -1152,6 +1416,7 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
                 seq_grid_cell[r][i] = GRID_NONE;
         seq_grid_row = -1;
         seq_grid_tick = -2;
+        seq_grid_cur = -2;
         seq_grid_mark = 0;
         seq_grid_ok = 0;
     }
@@ -1182,10 +1447,10 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
         if (!seq_grid_ok || ((int)r == seq_grid_row) != (r == seq_row) || lo != seq_grid_lo)
             seq_grid_name(map, r);
         for (i = 0; i < 16u; i++) {
-            uint32_t s = seq_grid_state(cell[r][i], k0 + (int)i, len, pos, tint);
+            uint32_t s = seq_grid_state(cell[r][i], k0 + (int)i, len, pos, tint, sr_on && k0 + (int)i == sr_k);
             if (s != seq_grid_cell[r][i]) {
                 seq_grid_paint(r, i, s, seq_grid_cell[r][i]);
-                seq_grid_cell[r][i] = (uint8_t)s;
+                seq_grid_cell[r][i] = (uint16_t)s;
             }
         }
     }
@@ -1205,6 +1470,14 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
             lcd_fill(seq_grid_x((uint32_t)tick), GRID_TICK_Y, GRID_CW, 3, C_ACC);
         seq_grid_tick = (int8_t)tick;
     }
+    tick = sr_on && sr_k >= k0 && sr_k < k0 + 16 ? sr_k - k0 : -1;
+    if (tick != seq_grid_cur) {                  /* step record's cursor tick: off the old column, onto the new */
+        if (seq_grid_cur >= 0)
+            lcd_fill(seq_grid_x((uint32_t)seq_grid_cur), GRID_CUR_Y, GRID_CW, 2, C_BG);
+        if (tick >= 0)
+            lcd_fill(seq_grid_x((uint32_t)tick), GRID_CUR_Y, GRID_CW, 2, P_SKY);
+        seq_grid_cur = (int8_t)tick;
+    }
     seq_shown_pos = (int8_t)pos;
     fmt_int(num, (int32_t)seq_trk + 1);
     p = put(line, "TRACK ");
@@ -1216,9 +1489,10 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
         p = put(p, "  ARMED");
     if (eng_steps_muted((uint32_t)mod))
         p = put(p, "  MUTED");
-    {                                            /* the hints where they fit (#231; the track shown is armed: #395) */
-        char *q = put(p, "  ALGO track");
-        *put(q, "  SEQ+REC clear") = 0;
+    {                                            /* the hints where they fit (#231; the track shown is armed: #395; step
+                                                  * record's, #532) */
+        char *q = put(p, sr_on ? "  FX acc" : "  ALGO track");
+        *put(q, sr_on ? "  HOME/SEQ done" : "  SEQ+REC clear") = 0;
         if (text_w(&FONT_S, line, -1) > 224u)
             *q = 0;
         if (text_w(&FONT_S, line, -1) > 224u)
@@ -1227,7 +1501,9 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
     seq_grid_line(1, 202, line, C_DIM, 224);
     /* the hint line (FONT_S, at most 228 px: a longer one is cut), in the controls' words (#450: SELECT the knob, SEL the
      * button): a step held, its knobs; a track of more than 16 steps, OCT's pages (#490); else SEL's SONG page */
-    if (seq_kbd())
+    if (sr_on)
+        hint = "KEYS note  LFO rest/tie  K4 move  BLACK 10 del";
+    else if (seq_kbd())
         hint = "KEYS record  SELECT row  OCT octave  FX acc";
     else if (seq_held >= 0)
         hint = map >= 0 ? "HELD STEP: K2 vel  SELECT chance" : "HELD STEP: K1 note  K2 vel  K3 chance";
@@ -1537,16 +1813,24 @@ static void seq_poll(void)
     if (seq_clear_at && fm1_ms - (seq_clear_at & ~1u) >= SEQ_CLEAR_MS)
         seq_clear_at = 0;                        /* (the clear asked in vain: its message ends with it) */
     song_poll();
-    if (page == PAGE_SEQ && eng_steps_count() && (seq_pat_state() != seq_shown_pat || seq_bar_mark() != seq_shown_mark) && !ui_yielding
+    if (page == PAGE_SEQ && eng_steps_count() && (seq_pat_state() != seq_shown_pat || seq_bar_mark() != seq_shown_mark
+        || seq_shown_sr != (uint8_t)(sr_on ? sr_k + 1u : 0u)) && !ui_yielding
         && !(msg_until && (int32_t)(fm1_ms - msg_until) < 0))
         header_draw();                           /* (a pattern taken at the end of a pass, a song's next entry, REC ended
-                                                  * by PLAY or a stop (#395): the bar, once a message on it is over) */
+                                                  * by PLAY or a stop (#395), step record's cursor: the bar, once a
+                                                  * message on it is over) */
     if (page != PAGE_SEQ) {
         kbd_was = -1;
         return;
     }
     if (seq_armed_gen != pages_gen())            /* another patch while the page shows: its track armed (#395) */
         seq_arm_shown(0);
+    if (sr_on && (sr_gen != pages_gen() || sr_trk != seq_trk || seq_module() < 0))
+        sr_stop();                               /* (another patch, track: step record ends, D-808) */
+    if (sr_on && (int32_t)sr_k >= seq_len(seq_module())) {
+        sr_k = 0;                                /* (the pattern got shorter under the cursor) */
+        ui_dirty = ui_dirty ? ui_dirty : 1;
+    }
     if (seq_kbd() != kbd_was) {                  /* REC on / off on the armed roll, a stop: its keyboard or the roll */
         kbd_was = (int8_t)seq_kbd();
         ent_keys = 0;

@@ -506,6 +506,10 @@ static void panel_encoders(int32_t *st)
             seq_value(st[2], st[3], knob_fast(1, st[2] ? st[2] : st[3]));
             st[2] = st[3] = 0;
         }
+        if (st[5] && sr_on) {                       /* K4 in step record (#532): the cursor, nothing written */
+            sr_knob(st[5]);
+            st[5] = 0;
+        }
     }
     if (page == PAGE_ENV) {                         /* the environment: SELECT the row (its first page on K1..K4), ALGO its presets */
         if (st[0] && pages_select(st[0])) {
@@ -821,9 +825,12 @@ static void panel_edges(uint32_t p, uint32_t rel)
         p &= ~((1u << BTN_ACC) | (1u << BTN_LFO));
     } else if (page == PAGE_SEQ) {                  /* the SEQ page: OCT- / OCT+ page through a long track (the roll with FX held:
                                                      * the keys' octave, the pen's), FX the accent key, LFO the tie (#368:
-                                                     * a drum track's too) */
+                                                     * a drum track's too). In step record (#532) LFO is the rest / tie and
+                                                     * OCT- / OCT+ the keys' octave (the view follows the cursor, D-806) */
         int roll = seq_module() >= 0 && seq_map() < 0;
-        if (!roll || !(panel_held >> BTN_ACC & 1u)) {
+        if (sr_on && (p & (1u << BTN_LFO)))
+            sr_lfo();
+        if (!sr_on && (!roll || !(panel_held >> BTN_ACC & 1u))) {
             if (oct_rel && seq_module() >= 0 && seq_len(seq_module()) <= 16)
                 ui_msg("ALL 16 STEPS SHOWN", NUDGE_MS);   /* (one page of steps: nothing to page to, D-249) */
             else if (oct_rel & (1u << BTN_OCT_DOWN))
@@ -838,6 +845,8 @@ static void panel_edges(uint32_t p, uint32_t rel)
      * not the press: panel_keys runs first in a pass, so a key that lands in the same pass as the press has set it (#179) */
     if ((rel & (1u << BTN_SEQ)) && !seq_held_used && page == PAGE_SONG)
         screen_back();                              /* SEQ on the SONG page: back to the SEQ page */
+    else if ((rel & (1u << BTN_SEQ)) && !seq_held_used && page == PAGE_SEQ && sr_on)
+        sr_stop();                                  /* SEQ in step record: it ends, the page stays (#532, D-808) */
     else if ((rel & (1u << BTN_SEQ)) && !seq_held_used) {
         if (page == 0 && pages_focus_track() >= 0)  /* from a Steps track's device page: that track's steps (#196) */
             seq_select((uint32_t)pages_focus_track());
@@ -925,7 +934,9 @@ static void panel_edges(uint32_t p, uint32_t rel)
                                                      * out of a dive back), unless PRESET turned the patch meanwhile; held
                                                      * alone it is nothing (#395) */
         home_turned = 0;
-    if ((rel & (1u << BTN_HOME)) && !home_turned)
+    if ((rel & (1u << BTN_HOME)) && !home_turned && page == PAGE_SEQ && sr_on)
+        sr_stop();                                  /* HOME in step record: it ends, the page stays (#532, D-808) */
+    else if ((rel & (1u << BTN_HOME)) && !home_turned)
         home_tap();
     if (p & (1u << BTN_PLAY))                       /* PLAY acts on release, unless PRESET turned the tempo meanwhile */
         play_turned = 0;
