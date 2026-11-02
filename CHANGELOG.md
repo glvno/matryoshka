@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.8.3 — 2026-11-01
+## 1.8.3 — 2026-11-02
 
 ### FM-1
 
@@ -14,6 +14,11 @@
 - The Scope's screen can be read (#518): one scale for both traces, gridlines labelled with their values, the time per division, and a scale button (auto, ±1, ±4; auto fits the traces and labels the scale it chose). Under the screen each input shows its lowest and highest value, peak to peak, and its source with that output's range. The screen is 96 px tall, 64 before.
 - Comment boxes on the canvas, like Max comments (#518): right-click the empty canvas or use the palette's Add comment. They are moved, resized, selected, copied, deleted and undone like cards, saved in the patch, its link and its .json file (a link without the layout leaves them out), and never sent to the FM-1.
 - The editor no longer follows MIDI clock that comes from an FM-1, so a connected FM-1 sending its clock does not change the editor's tempo (#473). Clock from other gear still drives the editor as before.
+
+### Testing and diagnostics
+
+- The FM-1 keeps a log of the last 128 USB requests and bus events since it was powered on (#535, #537), so a computer or tablet that fails to set it up can be diagnosed from another: `tools/m1_link.py usblog` reads it. It only watches; nothing the FM-1 sends over USB changes.
+- The scripted emulator and test-rig checks no longer start a second emulator beside a run, and the tie checks no longer fail now and then on a hit that runs past the end of what they measured (#520, #521, #529).
 
 ## 1.8.2 — 2026-11-01
 
