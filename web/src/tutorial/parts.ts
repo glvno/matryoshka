@@ -193,9 +193,15 @@ export function withId(spec: PartSpec, taken: Iterable<string>): Part {
   return { ...spec, id: slugId(partSlug(spec), taken) } as Part;
 }
 
-/** the checklist line */
-export function partLabel(part: PartSpec, roles: Roles): string {
-  const n = (r: Ref) => refName(roles, r);
+/** the checklist line; with the learner's patch (`s`), a module they named (#518) goes by its name */
+export function partLabel(part: PartSpec, roles: Roles, s?: S): string {
+  const named = (r: Ref): string | undefined => {
+    if (!s || r.every) return undefined;
+    let m: M;
+    try { m = resolve(s, roles, r); } catch { return undefined; }
+    return m?.name && m.type !== 'steps' ? `“${m.name}”` : undefined;
+  };
+  const n = (r: Ref) => named(r) ?? refName(roles, r);
   switch (part.kind) {
     case 'module': {
       const t = typeLabel(part.type);

@@ -770,6 +770,11 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .mhead > span:not(.tools), .fhead > span:not(.tools) { font: 600 15px/1 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .07em; }
 .mhead > span:not(.tools) { display: flex; align-items: center; gap: 7px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mhead .tools, .fhead .tools { flex-shrink: 0; }
+/* a module with its own name (#518): the name, its type small underneath */
+.mhead .mname { display: flex; flex-direction: column; justify-content: center; min-width: 0; gap: 1px; line-height: 1; overflow: hidden; }
+.mhead .mname, .mhead .mtype { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mhead .mname { font-size: 13px; }
+.mhead .mtype { font: 500 9px/1 'Barlow Semi Condensed', system-ui, sans-serif; letter-spacing: .06em; color: var(--muted); }
 .fhead > span:not(.tools) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mhead .voices, .fhead .voices { font: 500 12px/1.2 'Barlow', system-ui, sans-serif; white-space: nowrap; }
 .module .port > span:not(.dot) { line-height: 1.35; }

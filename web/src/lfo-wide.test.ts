@@ -35,7 +35,7 @@ it('keeps the old rate and modulation ranges, and defaults the appended paramete
   const range = DEFS.lfo.params.find(p => p.name === 'range')!;
   expect(rate).toMatchObject({ min: .02, max: 40 });
   expect(range).toMatchObject({ min: 0, max: 2, top: 3 });
-  expect(DEFS.lfo.params.at(-1)).toMatchObject({ name: 'wide', min: .0008, max: 55, since: 40 });
+  expect(DEFS.lfo.params.at(-1)).toMatchObject({ name: 'wide', min: .0008, max: 80, since: 40, grew: { since: 49, from: 55 } });
   expect(Object.values(defaultMap(DEFS.lfo)).flat()).not.toContain('wide');
   const p = emptyPatch(), lfo = addModule(p, DEFS.lfo, 0, 0);
   delete lfo.params.wide;

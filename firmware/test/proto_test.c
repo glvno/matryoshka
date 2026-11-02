@@ -326,7 +326,7 @@ static int patterns_test(const char *kit_path, const char *song_path)
     uint32_t t0, t1, sec, len0;
     const uint32_t *w;
     int n;
-    CHECK(kit[1] == ENG_PATCH_VERSION && (kit[7] & ENG_FLAG_PATTERNS) && m1_valid(kit, (uint32_t)nk) && !m1_valid(kit, (uint32_t)nk - 1u));
+    CHECK(kit[1] == 48u && (kit[7] & ENG_FLAG_PATTERNS) && m1_valid(kit, (uint32_t)nk) && !m1_valid(kit, (uint32_t)nk - 1u));
     m1_set_current(kit, (uint32_t)nk);
     CHECK(eng_load(m1_cur, m1_cur_len) == 0);
     sec = pat_section();
@@ -405,8 +405,8 @@ static int patterns_test(const char *kit_path, const char *song_path)
     CHECK(eng_song_get(0, 2) == (2 | 0xF9 << 8));
     /* a patch without patterns (an older format, upgraded): choosing pattern 2 makes the section, pattern 1 drops it */
     {
-        static uint8_t plain[M1_PATCH_MAX];
-        uint32_t i, pn = 0;
+        static uint8_t plain[M1_PATCH_MAX], up[M1_PATCH_MAX];
+        uint32_t i, pn = 0, ul;
         for (i = 0; i < M1_PATCH_MAX && i < (uint32_t)nk; i++)
             plain[i] = kit[i];
         memcpy(m1_cur, kit, (size_t)nk);                      /* the kit without its section, as format 47 */
@@ -419,12 +419,14 @@ static int patterns_test(const char *kit_path, const char *song_path)
         CHECK(m1_valid(plain, (uint32_t)nk - pn));
         m1_set_current(plain, (uint32_t)nk - pn);
         CHECK(m1_cur[1] == ENG_PATCH_VERSION && eng_load(m1_cur, m1_cur_len) == 0 && eng_patterns_record(0, 0) == 0);
+        ul = m1_cur_len;                                        /* (upgraded: records of types that grew since 47 are longer) */
+        memcpy(up, m1_cur, ul);
         pl[0] = 1;
         pl[1] = 0;
-        CHECK(send_frame(C_PATTERN, pl, 2u) == 1 && (m1_cur[7] & ENG_FLAG_PATTERNS) && m1_cur_len == (uint32_t)nk - pn + 4u && pat_agree());
+        CHECK(send_frame(C_PATTERN, pl, 2u) == 1 && (m1_cur[7] & ENG_FLAG_PATTERNS) && m1_cur_len == ul + 4u && pat_agree());
         pl[0] = 0;
-        CHECK(send_frame(C_PATTERN, pl, 2u) == 1 && !(m1_cur[7] & ENG_FLAG_PATTERNS) && m1_cur_len == (uint32_t)nk - pn && pat_agree());
-        CHECK(!memcmp(m1_cur + 2, plain + 2, (size_t)nk - pn - 2u));   /* (byte for byte as it was, but for its format) */
+        CHECK(send_frame(C_PATTERN, pl, 2u) == 1 && !(m1_cur[7] & ENG_FLAG_PATTERNS) && m1_cur_len == ul && pat_agree());
+        CHECK(!memcmp(m1_cur, up, ul));                         /* (byte for byte as it was) */
         plain[1] = 47;                                          /* a format 47 binary with the section: refused */
         memcpy(plain, kit, (size_t)nk);
         plain[1] = 47;

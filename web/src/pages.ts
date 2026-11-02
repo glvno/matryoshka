@@ -155,11 +155,11 @@ export function moduleRows(def: ModuleDef): ModuleDef['params'] {
 }
 
 /** a plain module's sections: one, its parameters in groups of four */
-function moduleSections(type: string, def: ModuleDef, id: number): Section[] {
+function moduleSections(type: string, def: ModuleDef, id: number, name?: string): Section[] {
   // the spelled-out name, or the short one where that would not fit the FM-1's screen
   const label = (name: string): string => { const long = longName(type, name); return long.length <= NAME_MAX ? long : name; };
   const items = moduleRows(def).map((pd) => ({ pd, knob: !pd.screen }));
-  return sectionsOf(moduleName(type, def.label), items, ({ pd }) => (pd.screen ? id : { module: id, param: pd.name, label: label(pd.name) }));
+  return sectionsOf(name || moduleName(type, def.label), items, ({ pd }) => (pd.screen ? id : { module: id, param: pd.name, label: label(pd.name) }));
 }
 
 /** an assembly's sections: its promoted parameters, cut at the headings, in groups */
@@ -202,7 +202,7 @@ function placeOf(p: Patch, a: AssemblyInst): { x: number; y: number } {
 const typeIn = (p: Patch) => (id: number): string | undefined => p.modules.find((m) => m.id === id)?.type;
 /** a plain module's pages, as its device would have them (the patch card draws them for any module) */
 export const modulePages = (p: Patch, m: ModuleInst, defs: Record<string, ModuleDef>): Page[] =>
-  defs[m.type] ? paginate(moduleSections(m.type, defs[m.type], m.id), typeIn(p)) : [];
+  defs[m.type] ? paginate(moduleSections(m.type, defs[m.type], m.id, m.name), typeIn(p)) : [];
 /** an assembly's pages, as its device would have them (the patch card draws them for a nested one too) */
 export const assemblyPages = (p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>): Page[] => paginate(assemblySections(p, a, defs), typeIn(p));
 
@@ -214,7 +214,7 @@ export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
   for (const m of p.modules) {
     if (inAsm.has(m.id) || NOT_DEVICES.has(m.type) || !defs[m.type]) continue;
     const pages = modulePages(p, m, defs);
-    const name = m.type === 'steps' && m.name ? m.name : moduleName(m.type, defs[m.type].label);
+    const name = m.name || moduleName(m.type, defs[m.type].label);   // its own name (#518; a Steps track's), else its type's
     if (pages.length) items.push({ x: m.x, y: m.y, dev: { key: `m${m.id}`, name, module: m.id, pages, ...(KINDS[m.type] ? { kind: KINDS[m.type] } : {}) } });
   }
   for (const a of assembliesOf(p)) {

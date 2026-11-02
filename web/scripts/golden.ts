@@ -329,7 +329,7 @@ lfoKit('lfo-reset-phase', { rate: 5, wave: 0, phase: 90, dir: 1 }, (wire, _c, rs
 lfoKit('lfo-fast-back', { rate: 20, range: 2, dir: 1, phase: 120 }, () => undefined);
 lfoKit('lfo-slow', { rate: 30, range: 1, wave: 0, phase: 90 }, () => undefined);
 // The slow endpoint is amplified after removing its DC offset, so a stalled phase cannot pass as a flat wave.
-for (const [wide, back, shape] of [[.0008, 0, -1], [55, 0, -1], [55, 1, .3]]) {
+for (const [wide, back, shape] of [[.0008, 0, -1], [55, 0, -1], [55, 1, .3], [80, 0, -1]]) {
   const name = `lfo-wide-${wide}-${back}`;
   tests[name] = make(name, (add, wire) => {
     const lfo = add('lfo', 0, 0, { wave: 2, range: 3, wide, dir: back });
@@ -349,6 +349,10 @@ for (const [wide, back, shape] of [[.0008, 0, -1], [55, 0, -1], [55, 1, .3]]) {
 }
 lfoKit('lfo-wide-sync', { range: 3, wide: 55, sync: 1, div: 6 }, (wire, clk, _r, lfo) => wire(clk, 'out', lfo, 'clk'));
 lfoKit('lfo-wide-reset', { range: 3, wide: 8, wave: 0, phase: 90 }, (wire, _c, rst, lfo) => wire(rst, 'out', lfo, 'reset'));
+// #518: the random wave (free with the wave picked once a block, synced to the clock, restarted by reset, backward)
+lfoKit('lfo-random', { wave: 5, rate: 7 }, () => undefined);
+lfoKit('lfo-random-clk', { sync: 1, div: 4, wave: 5 }, (wire, clk, _r, lfo) => wire(clk, 'out', lfo, 'clk'));
+lfoKit('lfo-random-reset', { rate: 3, wave: 5, dir: 1 }, (wire, _c, rst, lfo) => wire(rst, 'out', lfo, 'reset'));
 kit('noise-svf', (add, wire) => {
   const nz = add('noise', 0, 0, { level: 0.6 });
   const flt = add('filter', 0, 0, { cutoff: 900, res: 0.7 });
@@ -1292,6 +1296,37 @@ kit('fm-2op', (add, wire) => {
   wire(aenv, 'env', avca, 'cv');
   wire(avca, 'out', out, 'l');
   wire(avca, 'out', out, 'r');
+});
+// #518: three modulators into one carrier's pm, pm2 and pm3 (pm3 past the old top of 8 rad), an envelope on the index
+// input; a sine carrier (the firmware's sine operator path) and a square one with feedback (its general path)
+for (const [name, wave, fb] of [['fm-3pm-index', 0, 0], ['fm-3pm-index-fb', 3, 0.3]] as const)
+  kit(name, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const car = add('osc', 0, 0, { wave, fb, pm: 1.5, pm2: 3, pm3: 12, level: 0.8 });
+    const env = add('adsr', 0, 0, { a: 0.003, d: 0.3, s: 0.3, r: 0.2 });
+    const out = add('output', 0, 0);
+    [['pm', 7, 0.5], ['pm2', 12, 0.4], ['pm3', -5, 0.3]].forEach(([port, coarse, level]) => {
+      const m = add('osc', 0, 0, { wave: 0, coarse: coarse as number, level: level as number });
+      wire(kb, 'pitch', m, 'pitch');
+      wire(m, 'out', car, port as string);
+    });
+    wire(kb, 'pitch', car, 'pitch');
+    wire(kb, 'gate', env, 'gate');
+    wire(env, 'env', car, 'index');
+    wire(car, 'out', out, 'l');
+  });
+// a carrier with its own name (#518): a device of kind 2 in the device pages section, which eng_load skips like any device
+tests['fm-3pm-index'].modules.find((m) => m.type === 'osc' && m.params.pm3 === 12)!.name = 'saw carrier';
+kit('fm-pm2-only', (add, wire) => {
+  // pm2 alone (no index input): the summed path with one modulator; pm left unpatched
+  const kb = add('fm1', 0, 0);
+  const mod = add('osc', 0, 0, { wave: 0, coarse: 12, level: 0.9 });
+  const car = add('osc', 0, 0, { wave: 2, pm2: 2.5 });
+  const out = add('output', 0, 0);
+  wire(kb, 'pitch', mod, 'pitch');
+  wire(kb, 'pitch', car, 'pitch');
+  wire(mod, 'out', car, 'pm2');
+  wire(car, 'out', out, 'l');
 });
 kit('sync-glide-shape', (add, wire) => {
   // key-synced oscillator, a glide on its pitch, a synced LFO on the filter, the result through the shaper in each mode
