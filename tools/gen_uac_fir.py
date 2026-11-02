@@ -13,7 +13,7 @@ k * 147, so its phase is p = (k * 147) % 160 and its newest input frame is floor
     y[k] = sum_j  PROTO[p + 160 j] * x[newest - j],   j = 0 .. N - 1.
 UAC_FIR[p][i] holds those taps oldest input first (i = N - 1 - j), times L (each phase then sums to 1: unity gain at
 DC), in Q30, and only for p = 0 .. 79: the prototype is symmetric, so phase 159 - p is phase p read backwards
-(usb.c reads it so). Each phase's rounded taps are corrected to sum to exactly 1 << 30, the difference on its largest tap.
+(usb.c reads it so). Each phase's taps sum to exactly 1 << 30, rounded to stay closest to its exact response (fit()).
 
 The prototype is a Kaiser-windowed sinc of 160 * N taps. What it must do:
   - images that land in the audio band after the 48 kHz sampling: a tone at f leaves an image at 44.1 kHz - f, which
@@ -29,7 +29,8 @@ trade (2026-11-01): 16 taps keep 95 dB only with the passband 9 dB down at 18 kH
 work. 24 is the cheapest that keeps the top octave: 6,720 multiply-adds per 2.9 ms half (140 output frames x 24 x 2
 channels). The cut-off, 22.3 kHz, is a little under the highest that keeps 95 dB (22.5 kHz) for margin.
 Q30 taps against 16-bit input keep the rounding far below the 16-bit output's own (the measured 1 kHz noise is at the
-16-bit floor); firmware/test/usb_test.c measures the C code (level, THD+N, the folded image) on sines."""
+16-bit floor; Q15 taps, tried on the FM-1 with 32-bit sums, were 5 dB noisier and no faster); firmware/test/usb_test.c
+measures the C code (level, THD+N, the folded image) on sines."""
 import cmath
 import math
 import sys
