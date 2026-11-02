@@ -43,12 +43,21 @@
 #ifndef UAC_IN_SHIFT
 #define UAC_IN_SHIFT 0           /* uac_tap's input: Felucca's 16-bit range (Matryoshka: 8, 24-bit I2S words) */
 #endif
+#ifndef FELUCCA_UAC_MIDI_LAST
+#define FELUCCA_UAC_MIDI_LAST 1  /* the MIDI streaming interface after the audio streaming one (descriptors, below) */
+#endif
 #ifndef FELUCCA_UAC_AS_FIRST
 #define FELUCCA_UAC_AS_FIRST 1
 #endif
 #if !FELUCCA_UAC
 #undef FELUCCA_UAC_48K
 #define FELUCCA_UAC_48K 0
+#undef FELUCCA_UAC_AS_FIRST
+#define FELUCCA_UAC_AS_FIRST 0
+#undef FELUCCA_UAC_MIDI_LAST
+#define FELUCCA_UAC_MIDI_LAST 0
+#endif
+#if FELUCCA_UAC_MIDI_LAST                 /* the collection follows the interfaces: the stream comes first anyway */
 #undef FELUCCA_UAC_AS_FIRST
 #define FELUCCA_UAC_AS_FIRST 0
 #endif
@@ -216,15 +225,19 @@ static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
 }
 
 /* ------------------------------------------------------- descriptors --- */
-/* Two functions: audio + MIDI (0 audio control, 1 MIDI streaming, 2 audio streaming with FELUCCA_UAC)
+/* Two functions: audio + MIDI (0 audio control, 1 audio streaming, 2 MIDI streaming with FELUCCA_UAC and
+ * FELUCCA_UAC_MIDI_LAST, the default; 0 audio control, 1 MIDI streaming, 2 audio streaming with
+ * FELUCCA_UAC_MIDI_LAST=0, 1.0 .. 1.8.2's order; 0 audio control, 1 MIDI streaming without FELUCCA_UAC)
  * and, with FELUCCA_CDC, the CDC-ACM console (communication + data). The endpoints never move:
  * EP1 MIDI, EP2 CDC notify, EP3 CDC data, EP4 audio.
  * bcdDevice: 3.00 MIDI, +0.10 the audio input (+0.20 since 1.1: 44.1 and 48 kHz, FELUCCA_UAC_48K), +0.08 the
- * audio streaming interface first in the AC collection (1.5.1, FELUCCA_UAC_AS_FIRST, #67), +0.01 CDC
+ * audio streaming interface first in the AC collection (1.5.1, FELUCCA_UAC_AS_FIRST, #67), +0.80 MIDI the last
+ * interface (1.8.3, FELUCCA_UAC_MIDI_LAST: 3.90, Felucca's number for the same layout), +0.01 CDC
  * (+0.02 per FELUCCA_USB_LAYOUT step, so a host never reuses what it learnt about another layout).
  * FELUCCA_USB_LAYOUT, how the CDC build presents itself (#67: macOS 13-15 attach Apple's CDC composite
  * driver to a misc / IAD device that has a CDC function, and their kernel audio driver then never
- * takes the audio interfaces; macOS 26 / 27 (usbaudiod, matched per interface) and iOS / iPadOS work):
+ * takes the audio interfaces; that is the console, not the interface order below, which matters to macOS
+ * 13-15 and iPadOS without it):
  *   0  1.0: device class EF 02 01 (misc / IAD), audio + MIDI IF 0.., CDC last         (the default)
  *   1  CDC first: CDC IF 0-1, then audio + MIDI, both with IADs, EF 02 01
  *   2  as 0 with device class 00 00 01: outside AppleUSBCDC's device personalities
@@ -259,18 +272,31 @@ static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
 /* audio control for MIDI alone: the AC header lists the MIDI streaming interface only */
 #define D_AC_MIDI(a) 9, 4, (a), 0, 0, 1, 1, 0, 0, 9, 0x24, 1, 0x00, 0x01, 9, 0, 1, (a) + 1,
 #if FELUCCA_UAC
-/* the AC header's collection (#67): the audio streaming interface first, then the MIDI one. The kernel
- * AppleUSBAudio (macOS up to 15; its last published source, AppleUSBAudio-273.4.1,
- * AUAConfigurationDictionary::parseConfigurationDescriptor) drops a
- * MIDI streaming interface from the collection while it walks it with the count from bInCollection: with
- * MIDI listed first, the next look-up runs past the shortened list, the parser gives up before the audio
- * streaming interface and no audio device appears (MIDI still works). Listed last, MIDI is dropped at the
- * end of the walk and the audio streaming interface is parsed. The class spec gives the order no meaning
- * (Linux takes each listed interface on its own); FELUCCA_UAC_AS_FIRST=0: 1.0 .. 1.5's order (MIDI first). */
-#if FELUCCA_UAC_AS_FIRST
-#define AC_COLL(a) (a) + 2, (a) + 1
+/* The interface order (FELUCCA_UAC_MIDI_LAST; Felucca #67, bisected by darosh on macOS 15.8.1, fm1-loom#7;
+ * Felucca's BSP commit cd76d43): with the MIDI streaming interface as interface 1, between audio control and
+ * audio streaming, macOS 13-15 and iPadOS (26, USB-C) show neither the audio input nor, on the iPad, the MIDI
+ * port, whatever the AC collection lists or in which order. With the audio streaming interface right after
+ * audio control and MIDI after it, both appear there; Felucca's build with it was confirmed on iPadOS, macOS 15,
+ * Windows 11, Android and Linux. The collection lists the interfaces in their order and keeps MIDI: Linux's
+ * snd-usb-audio makes a MIDI port only for a MIDI streaming interface in the collection (sound/usb/card.c,
+ * snd_usb_create_streams). The class spec gives neither order a meaning.
+ *   1  audio control, audio streaming, MIDI; the collection {1, 2}                (the default, since 1.8.3)
+ *   0  audio control, MIDI, audio streaming (1.0 .. 1.8.2); the collection {2, 1} with FELUCCA_UAC_AS_FIRST
+ *      (1.5.1 .. 1.8.2: meant to carry the kernel AppleUSBAudio's collection walk, AppleUSBAudio-273.4.1
+ *      AUAConfigurationDictionary::parseConfigurationDescriptor, past MIDI; with MIDI as interface 1 it did not
+ *      help on macOS 15), else {1, 2}.
+ * The requests (SET_INTERFACE, GET_INTERFACE) use the numbers by name (UAC_AS_IF); the endpoints never move. */
+#if FELUCCA_UAC_MIDI_LAST
+#define IF_AS 1                                            /* from the audio function's first interface */
+#define IF_MIDI 2
 #else
-#define AC_COLL(a) (a) + 1, (a) + 2
+#define IF_MIDI 1
+#define IF_AS 2
+#endif
+#if FELUCCA_UAC_AS_FIRST || FELUCCA_UAC_MIDI_LAST
+#define AC_COLL(a) (a) + IF_AS, (a) + IF_MIDI
+#else
+#define AC_COLL(a) (a) + IF_MIDI, (a) + IF_AS
 #endif
 #define D_AC(a)                                                                                      \
     9, 4, (a), 0, 0, 1, 1, 0, 0,                                                                     \
@@ -287,6 +313,8 @@ static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
 #else
 #define D_AC(a) D_AC_MIDI(a)
 #define D_AS(s)
+#define IF_MIDI 1
+#define IF_AS 2
 #endif
 #define D_MIDI(m)                                                                                    \
     9, 4, (m), 0, 2, 1, 3, 0, 0,                                                                     \
@@ -299,7 +327,12 @@ static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
     5, 0x25, 1, 1, 1,                                                                                \
     9, 5, 0x81, 2, 64, 0, 0, 0, 0,                                                                   \
     5, 0x25, 1, 1, 3,
-#define D_AUDIO(a) D_AC(a) D_MIDI((a) + 1) D_AS((a) + 2)   /* audio + MIDI from interface a */
+/* audio + MIDI from interface a, in the order FELUCCA_UAC_MIDI_LAST picks */
+#if FELUCCA_UAC_MIDI_LAST
+#define D_AUDIO(a) D_AC(a) D_AS((a) + IF_AS) D_MIDI((a) + IF_MIDI)
+#else
+#define D_AUDIO(a) D_AC(a) D_MIDI((a) + IF_MIDI) D_AS((a) + IF_AS)
+#endif
 #define AUD_NIF (2 + FELUCCA_UAC)
 #define AUD_LEN (92 + (63 + FMT_LEN) * FELUCCA_UAC)
 #define D_CDC(c)                                                                                     \
@@ -315,7 +348,8 @@ static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
     7, 5, 0x83, 2, 64, 0, 0,                               /* EP3 IN bulk */
 #define CDC_LEN 66                                         /* with its IAD */
 #define BCD_LO(cdc)                                                                                  \
-    (0x10 * (FELUCCA_UAC + FELUCCA_UAC_48K) + 0x08 * FELUCCA_UAC_AS_FIRST + ((cdc) ? 0x01 + 2 * FELUCCA_USB_LAYOUT : 0))
+    (0x10 * (FELUCCA_UAC + FELUCCA_UAC_48K) + 0x08 * FELUCCA_UAC_AS_FIRST + 0x80 * FELUCCA_UAC_MIDI_LAST +        \
+     ((cdc) ? 0x01 + 2 * FELUCCA_USB_LAYOUT : 0))
 #define D_DEV_BCD(bcdusb, cls, sub, proto, lo)                                                       \
     18, 1, (bcdusb) & 0xFF, (bcdusb) >> 8, (cls), (sub), (proto), 64, 0x09, 0x12, FELUCCA_USB_PID & 0xFF, \
     FELUCCA_USB_PID >> 8, (lo), 0x03, 1, 2, 0, 1
@@ -375,7 +409,7 @@ static uint8_t usb_cdc_on = FELUCCA_CDC_DEFAULT != 0;      /* the console is pre
 #define USB_CDC_ON 0
 #define AUD_IF 0u
 #endif
-#define UAC_AS_IF (AUD_IF + 2u)
+#define UAC_AS_IF (AUD_IF + IF_AS)                         /* the audio streaming interface */
 static const uint8_t STR0[4] = {4, 3, 0x09, 0x04};
 #ifdef FELUCCA_LOADER                                /* the update loader keeps Felucca's manufacturer: it stays byte for byte */
 static const uint8_t STR1[] = {42, 3, 'H', 0, 0xFC, 0, 'g', 0, 'e', 0, 'l', 0, 't', 0, 'o', 0, 'n', 0, ' ', 0, 'I', 0,

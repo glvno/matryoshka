@@ -130,8 +130,11 @@ static void walk_config(const char *what, const uint8_t *c, uint32_t len, int ua
     int alts[16];
     uint32_t ac_off = 0, ac_cs_sum = 0, ac_total = 0, ms_off = 0, ms_sum = 0, ms_total = 0;
     uint8_t ac_coll[8], ac_ncoll = 0;
+    int sub_of[16], ep_if[32];                                  /* each interface's subclass, each endpoint's interface */
     for (i = 0; i < 16u; i++)
-        alts[i] = -1;
+        alts[i] = sub_of[i] = -1;
+    for (i = 0; i < 32u; i++)
+        ep_if[i] = -1;
     CHECK(len >= 9u && c[0] == 9u && c[1] == 2u, "%s: configuration header", what);
     CHECK(le16(c + 2) == len, "%s: wTotalLength %u, sent %u", what, le16(c + 2), len);
     for (off = 0; off < len;) {
@@ -160,6 +163,8 @@ static void walk_config(const char *what, const uint8_t *c, uint32_t len, int ua
                 CHECK(cur_alt == alts[cur_if] + 1, "%s: IF %d alt %d follows alt %d", what, cur_if, cur_alt,
                       alts[cur_if]);
                 alts[cur_if] = cur_alt;
+                if (cur_cls == 1)
+                    sub_of[cur_if] = cur_sub;
                 if (cur_alt == 0) {
                     CHECK((uint32_t)cur_if == seen_if, "%s: interface %d out of order (expected %u)", what, cur_if,
                           seen_if);
@@ -179,6 +184,7 @@ static void walk_config(const char *what, const uint8_t *c, uint32_t len, int ua
                 uint32_t bit = 1u << ((d[2] & 0x0Fu) + (d[2] & 0x80u ? 16u : 0u));
                 CHECK(!(ep_addrs & bit) || (d[2] == 0x84u && cur_alt == 1), "%s: endpoint %02X twice", what, d[2]);
                 ep_addrs |= bit;
+                ep_if[(d[2] & 0x0Fu) + (d[2] & 0x80u ? 16u : 0u)] = cur_if;
             }
             if (d[2] == 0x84u) {
                 CHECK(uac, "%s: EP 0x84 without the audio function", what);
@@ -238,10 +244,34 @@ static void walk_config(const char *what, const uint8_t *c, uint32_t len, int ua
     CHECK(ac_off != 0 || c[9 + (c[10] == 0x0B ? 8 : 0) + 1] == 4, "%s: no audio control", what);
     CHECK(ac_total == ac_cs_sum, "%s: AC header wTotalLength %u, class descriptors %u", what, ac_total, ac_cs_sum);
     CHECK(ac_ncoll == (uac ? 2u : 1u), "%s: AC collection has %u interfaces", what, ac_ncoll);
-    if (uac && ac_ncoll == 2u) {
-        uint32_t base = (uint32_t)ac_coll[0] > ac_coll[1] ? ac_coll[1] - 1u : ac_coll[0] - 1u;
-        CHECK(ac_coll[0] == base + 2u && ac_coll[1] == base + 1u,
-              "%s: the AS interface first in the collection (#67): %u %u", what, ac_coll[0], ac_coll[1]);
+    {
+        /* the audio function from its audio control interface a: with the audio input a, a + 1 audio streaming,
+         * a + 2 MIDI streaming (MIDI last: macOS 13-15 and iPadOS show no audio, on the iPad no MIDI, while MIDI is
+         * a + 1), the collection {a + 1, a + 2} (MIDI in it: Linux makes MIDI ports only for those); MIDI only:
+         * a, a + 1 MIDI streaming, the collection {a + 1}. EP1 belongs to MIDI streaming, EP4 to audio streaming. */
+        int a = -1;
+        for (i = 0; i < 16u; i++)
+            if (sub_of[i] == 1) {
+                a = (int)i;
+                break;
+            }
+        CHECK(a >= 0 && a + (uac ? 2 : 1) < 16, "%s: an audio control interface", what);
+        if (a >= 0 && a + 2 < 16) {
+            int ms = a + (uac ? 2 : 1);
+            if (uac) {
+                CHECK(sub_of[a + 1] == 2 && sub_of[a + 2] == 3,
+                      "%s: interfaces %d.. audio control, audio streaming, MIDI streaming (subclasses 1 %d %d)", what, a,
+                      sub_of[a + 1], sub_of[a + 2]);
+                CHECK(ac_ncoll == 2u && ac_coll[0] == a + 1 && ac_coll[1] == a + 2,
+                      "%s: the AC collection {%d, %d}, not {%u, %u}", what, a + 1, a + 2, ac_coll[0], ac_coll[1]);
+                CHECK(ep_if[4 + 16] == a + 1, "%s: EP 0x84 in interface %d, not %d", what, ep_if[4 + 16], a + 1);
+            } else {
+                CHECK(sub_of[a + 1] == 3, "%s: interface %d MIDI streaming (subclass %d)", what, a + 1, sub_of[a + 1]);
+                CHECK(ac_ncoll == 1u && ac_coll[0] == a + 1, "%s: the AC collection {%d}", what, a + 1);
+            }
+            CHECK(ep_if[1] == ms && ep_if[1 + 16] == ms, "%s: EP 0x01 / 0x81 in interfaces %d %d, not %d", what,
+                  ep_if[1], ep_if[1 + 16], ms);
+        }
     }
     CHECK(as_seen == (uac ? 1u : 0u), "%s: %u audio streaming alt 1 settings", what, as_seen);
     CHECK(rates == (uac ? 1u : 0u), "%s: %u format descriptors", what, rates);
@@ -255,7 +285,7 @@ static void test_descriptors(void)
     usb_uac_on = 1;
     CHECK(get_desc(0x0100, &d, &l) && l == 18u && d[0] == 18u && d[1] == 1u, "device descriptor");
     CHECK(d[12] == BCD_LO(USB_CDC_ON) && d[13] == 3u, "bcdDevice %02X%02X", d[13], d[12]);
-    CHECK(d[12] == (USB_CDC_ON ? 0x19u + 2u * FELUCCA_USB_LAYOUT : 0x18u), "bcdDevice 3.18 (+CDC): %02X", d[12]);
+    CHECK(d[12] == (USB_CDC_ON ? 0x91u + 2u * FELUCCA_USB_LAYOUT : 0x90u), "bcdDevice 3.90 (+CDC): %02X", d[12]);
     CHECK(get_desc(0x0200, &d, &l), "configuration descriptor");
     walk_config("audio + MIDI", d, l, 1, USB_CDC_ON);
 #if FELUCCA_CDC
@@ -323,6 +353,7 @@ static void test_ep0(void)
     usb.up = 1;
     CHECK(setup(0x00, 9, 1, 0, 0) == 0x48, "MIDI only: SET_CONFIGURATION 1");
     CHECK(setup(0x01, 11, 1, 2, 0) == 0x60 && uac.alt == 0u, "MIDI only: SET_INTERFACE 2 alt 1 stalls");
+    CHECK(setup(0x01, 11, 1, 1, 0) == 0x60 && uac.alt == 0u, "MIDI only: SET_INTERFACE 1 (MIDI) alt 1 stalls");
     CHECK(setup(0x22, 1, 0x0100, 0x84, 3) == 0x60, "MIDI only: SET_CUR stalls");
     CHECK(setup(0xA2, 0x81, 0x0100, 0x84, 3) == 0x60, "MIDI only: GET_CUR stalls");
     CHECK(setup(0x02, 1, 0, 0x84, 0) == 0x60, "MIDI only: CLEAR_FEATURE EP 0x84 stalls");
@@ -790,7 +821,7 @@ int main(int argc, char **argv)
         const uint8_t *d;
         uint16_t l, i;
 #if FELUCCA_UAC
-        usb_uac_on = 0;
+        usb_uac_on = argc > 2 && !strcmp(argv[2], "audio");   /* dump audio: the descriptors the app presents */
 #endif
         get_desc(0x0100, &d, &l);
         for (i = 0; i < l; i++)
