@@ -268,7 +268,10 @@ const FILTER_MIDI = (only) => {
     for (const p of keep(a.inputs).values()) {
       if (window.__midiLogged.has(p.id)) continue;
       window.__midiLogged.add(p.id);
-      p.addEventListener('midimessage', (e) => { if (e.data[0] === 0xb0) window.__midiLog.push([Math.round(performance.now()), ...e.data]); });
+      p.addEventListener('midimessage', (e) => {
+        if (e.data[0] === 0xb0) window.__midiLog.push([Math.round(performance.now()), ...e.data]);
+        else if (e.data[0] === 0xf8) (window.__clockLog = window.__clockLog ?? []).push(e.timeStamp);   // #473: the FM-1's clock
+      });
     }
     // what the editor sends: the protocol's command bytes (F0 7D 4D 31 CMD ..), for the reports
     window.__sent = window.__sent ?? [];
@@ -591,6 +594,41 @@ async function main() {
       const p = await emu.notePeak();
       await loudCheck('connect: the FM-1 plays Init from a key', p, p > LOUD, `peak ${p}`);
       await emu.snap('connect');
+    },
+    async clock() {   // #473: the FM-1 sends MIDI clock all the time, at its tempo; GLO > MIDI > CLOCK OUT (K4) turns it off
+      const tempo = async () => {
+        const g = await page.evaluate(() => { try { return JSON.parse(localStorage.getItem('matryoshka.tempo') ?? 'null'); } catch { return null; } });
+        return g?.mode === 'global' ? g.bpm : JSON.parse(await patchJson()).modules.find((m) => m.type === 'fm1')?.params.tempo;
+      };
+      const ticks = async (ms) => {
+        await page.evaluate(() => { window.__clockLog = []; });
+        await sleep(ms);
+        return page.evaluate(() => window.__clockLog.splice(0));
+      };
+      const bpm = Math.round((await tempo()) ?? 120), secs = 4;
+      const t = await ticks(secs * 1000);
+      const want = (bpm * 24 * secs) / 60;
+      // the emulator's time is not the wall clock's: there the clock only has to come; on the rig it has to keep the tempo
+      const per = t.slice(1).map((x, i) => x - t[i]);
+      const mean = per.length ? per.reduce((a, b) => a + b, 0) / per.length : 0;
+      const dev = per.map((x) => Math.abs(x - mean));
+      const jitter = per.length ? `mean period ${mean.toFixed(2)} ms (${(60000 / 24 / mean).toFixed(1)} bpm), period deviation mean ${(dev.reduce((a, b) => a + b, 0) / dev.length).toFixed(2)} ms, max ${Math.max(...dev).toFixed(2)} ms (the browser's timestamps)` : '';
+      await check('clock: the FM-1 sends MIDI clock while stopped', REAL ? Math.abs(t.length - want) <= want * 0.05 : t.length > 0,
+        `${t.length} clocks in ${secs} s at ${bpm} bpm (want ${REAL ? want : 'some'}); ${jitter}`);
+      await check('clock: the editor\'s tempo stays its own', Math.round((await tempo()) ?? 120) === bpm);
+      await emu.tap(B.glo);
+      const menu = await emu.waitText('CLOCK OUT', 3000);
+      await emu.turn(ENC.k4, -1);
+      await sleep(600);
+      const off = await ticks(1500);
+      await check('clock: GLO > MIDI > CLOCK OUT off: no clock', menu && off.length === 0, `${menu ? '' : 'no CLOCK OUT row; '}${off.length} clocks in 1.5 s`);
+      await emu.snap('clock-out-off');
+      await emu.turn(ENC.k4, 1);
+      await sleep(600);
+      const on = await ticks(1500);
+      await check('clock: CLOCK OUT on again: the clock comes back', on.length > 0, `${on.length} clocks in 1.5 s`);
+      await emu.tap(B.glo);
+      await check('clock: GLO again: the device page', await emu.waitOwnPage(3000));
     },
     async patterns() {   // #375: a pattern or song chosen on the FM-1 reaches the editor, the editor's reaches the FM-1
       await open('Silver Box');
