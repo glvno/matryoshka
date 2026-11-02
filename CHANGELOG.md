@@ -2,11 +2,17 @@
 
 ## Unreleased
 
+### FM-1
+
+- The FM-1 sends MIDI clock over USB (#473), so a DAW, a synth or a second FM-1 can play in time with it. It sends 24 clocks a quarter note all the time, at the tempo it plays (the global tempo, or the patch's when TEMPO is PATCH), so the other gear has the tempo before you press PLAY. PLAY's Start and Stop go out as before, and the Start comes together with the first clock of the bar. GLO > MIDI > CLOCK OUT (K4) turns the clock off; it is on as made. With MIDI OUT off, nothing goes out. While MIDI clock comes in and drives the FM-1, it sends none of its own, and half a second after that clock stops it sends its own again. Measured on the test rig against a Mac at 120 and 300 bpm: the time between two clocks was never more than 0.44 ms off (0.24 ms on average), with the transport running or stopped; before, the FM-1 sent no clock. Saving on the FM-1 pauses the clock for about 40 ms, as it pauses the sound.
+
 ### Editor
 
 - Every module output says its signal's range (#518): hover an output jack or a cable. An LFO gives −1..1 (times depth), an envelope 0..1, a pitch 1 per octave with 0 at middle C, an oscillator ±1 times its level, a gate 0 or 1; an Offset, Attenuverter or Math works it out from its settings.
 - The Scope's screen can be read (#518): one scale for both traces, gridlines labelled with their values, the time per division, and a scale button (auto, ±1, ±4; auto fits the traces and labels the scale it chose). Under the screen each input shows its lowest and highest value, peak to peak, and its source with that output's range. The screen is 96 px tall, 64 before.
 - Comment boxes on the canvas, like Max comments (#518): right-click the empty canvas or use the palette's Add comment. They are moved, resized, selected, copied, deleted and undone like cards, saved in the patch, its link and its .json file (a link without the layout leaves them out), and never sent to the FM-1.
+
+- The editor no longer follows MIDI clock that comes from an FM-1, so a connected FM-1 sending its clock does not change the editor's tempo (#473). Clock from other gear still drives the editor as before.
 
 ## 1.8.2 — 2026-11-01
 

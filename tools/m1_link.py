@@ -17,6 +17,11 @@
                                            range; SECONDS: read again after that long and print the changes per second)
   tools/m1_link.py mem                    (#273: the boot's proof of .lowram and how deep each stack has gone since boot)
   tools/m1_link.py uitime [reset]         (the LCD's draw times: the last and the worst of each kind, in ms; reset zeroes them)
+  tools/m1_link.py clock [SECONDS [BPM [run]]]   (#473: MIDI clock out, DIAG page 116: ticks sent and dropped; SECONDS:
+                                           also time the ticks this computer receives, by CoreMIDI's timestamps, and print
+                                           the mean period, the deviation of each period and of each tick from a straight
+                                           grid, and the link's refused sends over that time, DIAG page 117; BPM: at that
+                                           global tempo (TEMPO, set back after); run: with the transport running)
   tools/m1_link.py diag [DIS]             (what the last reset left: its cause, the crash record, where a stalled main loop
                                            was; DIS = the build's matryoshka.dis (CI artifact matryoshka-elf) names the functions)
 Needs mido and python-rtmidi (the Nix dev shell has them).
@@ -222,6 +227,89 @@ def main():
                   f"{f' ({fr / pk * 1000:.1f} Hz per packet ms)' if pk else ''}; underruns +{d[8]}, overruns +{d[9]}, "
                   f"missed +{d[10]}, stalls +{d[11]}, adj_up {d[12] / dt:.2f}/s, adj_down {d[13] / dt:.2f}/s "
                   f"(net {(d[12] - d[13]) / dt:+.2f} frames/s: the I2S clock against the host's)")
+    elif a[0] == "clock":
+        def page(n):
+            p = link.ask(frame(0x2B, [n]), (0x4B, n))
+            if len(p) < 33:
+                sys.exit(f"no DIAG page {n} (a firmware from before #473?)")
+            return [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range(8)]
+        def show(w):
+            print(f"clock out: {w[0]} ticks sent, {w[1]} dropped (host not reading), {w[2]} waiting for their time, "
+                  f"USB MIDI ring {w[3]}; CLOCK OUT {'on' if w[4] else 'off'}, MIDI OUT {'on' if w[5] else 'off'}, "
+                  f"clock in {'drives' if w[6] else 'idle'}, transport {'runs' if w[7] else 'stopped'}")
+        w0, l0 = page(116), page(117)
+        show(w0)
+        if len(a) > 1:
+            import rtmidi
+            secs = float(a[1])
+            mi = rtmidi.MidiIn()
+            port = next((k for k, n in enumerate(mi.get_ports())
+                         if any(x in n for x in ("Felucca", "Matryoshka", "Modular", "FM-1")) and "ota-" not in n), None)
+            if port is None:
+                sys.exit("no FM-1 input for the clock")
+            mi.ignore_types(sysex=True, timing=False, active_sense=True)
+            stamps, acc, others = [], [0.0], []
+            def cb(ev, _):
+                msg, dt = ev
+                acc[0] += dt
+                if msg and msg[0] == 0xF8:
+                    stamps.append(acc[0])
+                elif msg:
+                    others.append((acc[0], msg[0]))
+            mode0 = bpm0 = None
+            if len(a) > 2:                              # the global tempo for the run: TEMPO_NOW after INFO says what it was
+                link.out.send(frame(0x01))
+                t = time.time()
+                while time.time() - t < 1.0 and mode0 is None:
+                    for m in link.inp.iter_pending():
+                        if m.type == "sysex" and list(m.data[:3]) == PREFIX and m.data[3] == 0x55:
+                            p = unpack7(m.data[4:])
+                            mode0, bpm0 = p[0], p[1] | p[2] << 8
+                    time.sleep(0.01)
+                bpm = int(a[2])
+                link.out.send(frame(0x38, [0, bpm & 0xFF, bpm >> 8]))
+            if len(a) > 3 and a[3] == "run":
+                link.out.send(frame(0x25, [1]))
+            time.sleep(0.5)
+            mi.set_callback(cb)
+            mi.open_port(port)
+            time.sleep(secs)
+            mi.cancel_callback()
+            mi.close_port()
+            if len(a) > 3 and a[3] == "run":
+                link.out.send(frame(0x25, [0]))
+            if mode0 is not None:
+                link.out.send(frame(0x38, [mode0, bpm0 & 0xFF, bpm0 >> 8]))
+                print(f"(TEMPO set back to {'GLOBAL' if mode0 == 0 else 'PATCH'}, global tempo {bpm0})")
+            w1, l1 = page(116), page(117)
+            show(w1)
+            if len(stamps) < 3:
+                sys.exit(f"{len(stamps)} ticks received in {secs:g} s")
+            per = [(b - a_) * 1e3 for a_, b in zip(stamps, stamps[1:])]
+            mean = sum(per) / len(per)
+            dev = [abs(x - mean) for x in per]
+            n = len(stamps)
+            xs = range(n)
+            mx, my = (n - 1) / 2, sum(stamps) / n
+            slope = sum((x - mx) * (y - my) for x, y in zip(xs, stamps)) / sum((x - mx) ** 2 for x in xs)
+            grid = [abs(y - (my + slope * (x - mx))) * 1e3 for x, y in zip(xs, stamps)]
+            print(f"{n} ticks in {secs:g} s: mean period {mean:.3f} ms = {60000 / (24 * mean):.2f} bpm")
+            ds = sorted(dev)
+            print(f"  period deviation per tick: mean {sum(dev) / len(dev):.3f} ms, 99 % within {ds[len(ds) * 99 // 100]:.3f} ms, "
+                  f"max {max(dev):.3f} ms")
+            print(f"  tick from a straight grid: mean {sum(grid) / n:.3f} ms, max {max(grid):.3f} ms")
+            if others:                                  # a patch load pauses the engine, a Start restarts the beat: not jitter
+                print(f"  NOTE: {len(others)} other messages came meanwhile ({', '.join(sorted({f'{b:#04x}' for _, b in others}))}): "
+                      f"someone used the FM-1, so the outliers may be theirs")
+                clean = [x for (t0, t1), x in zip(zip(stamps, stamps[1:]), per)
+                         if not any(t0 - 0.25 <= t <= t1 + 0.25 for t, _ in others)]
+                if len(clean) > 10:
+                    cm = sum(clean) / len(clean)
+                    cd = sorted(abs(x - cm) for x in clean)
+                    print(f"  the {len(clean)} periods with no other message within 250 ms: mean {cm:.3f} ms, deviation mean "
+                          f"{sum(cd) / len(cd):.3f} ms, 99 % within {cd[len(cd) * 99 // 100]:.3f} ms, max {cd[-1]:.3f} ms")
+            print(f"  FM-1 counted {(w1[0] - w0[0]) & 0xFFFFFFFF} ticks sent, {(w1[1] - w0[1]) & 0xFFFFFFFF} dropped; "
+                  f"link sends refused for no room {(l1[2] - l0[2]) & 0xFFFFFFFF}, with no host {(l1[1] - l0[1]) & 0xFFFFFFFF}")
     elif a[0] == "diag":
         raw = []
         for page in range(32):

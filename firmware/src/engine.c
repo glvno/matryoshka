@@ -624,6 +624,9 @@ static void toggles_sync(void);
 static volatile uint32_t clk_ticks;   /* MIDI clock ticks (eng_clock_tick, the main loop) */
 static volatile uint8_t clk_ext;      /* MIDI clock drives the clock */
 static volatile uint8_t transport_on; /* the transport (eng_transport) */
+/* MIDI clock out (#473, eng_clock_out): the last eng_render's tempo ticks, their samples in it, the transport's edge in it */
+#define CKO_MAX 4u
+static struct { uint8_t n, run; int8_t edge; uint16_t off[CKO_MAX]; } cko;
 static volatile uint16_t tempo_glo;   /* the global tempo (eng_tempo_global): bpm, 0 none, ENG_TEMPO_ADOPT the next patch's */
 static uint8_t tempo_moved;           /* eng_set_param or a load moved it (eng_tempo_moved) */
 static int32_t tempo_own;             /* the running patch's own tempo (Q16) while the global one plays */
@@ -2802,6 +2805,14 @@ uint32_t eng_buttons_lit(void)
 uint32_t eng_ticks(void) { return E.ticks; }
 int32_t eng_run_ticks(void) { return E.running ? (int32_t)(E.ticks - E.run_ticks) : -1; }
 int eng_clock_is_external(void) { return clk_ext; }
+uint32_t eng_clock_out(uint32_t *off, uint32_t max, int32_t *edge)
+{
+    uint32_t k, n = cko.n < max ? cko.n : max;
+    for (k = 0; k < n; k++)
+        off[k] = cko.off[k];
+    *edge = cko.edge;
+    return n;
+}
 void eng_transport(int on) { transport_on = (uint8_t)(on != 0); }
 int eng_transport_running(void) { return transport_on; }
 
@@ -6639,8 +6650,15 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
     uint32_t off, i, k, s, v;
     for (i = 0; i < total; i++)
         left[i] = right[i] = 0;
-    if (!E.loaded)
+    cko.n = 0;
+    cko.edge = 0;
+    if (!E.loaded) {
+        if (transport_on != cko.run) {           /* (no patch: no ticks, but Start / Stop still go out) */
+            cko.run = transport_on;
+            cko.edge = transport_on ? 1 : -1;
+        }
         return;
+    }
     for (off = 0; off < total; off += ENG_BLOCK) {
         uint32_t n = total - off < ENG_BLOCK ? total - off : ENG_BLOCK;
         ENG_PROF(4, 0, 0);
@@ -6655,6 +6673,12 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             if (run && !E.running) {
                 E.tick_acc = 0;                  /* the transport starts: the tempo's ticks from here */
                 E.run_ticks = E.ticks;
+            }
+            if (run != cko.run) {                /* MIDI clock out: the transport's edge, and tick 0 on a start's first sample */
+                cko.run = run;
+                cko.edge = run ? 1 : -1;
+                if (run && !clk_ext && cko.n < CKO_MAX)
+                    cko.off[cko.n++] = (uint16_t)off;
             }
             E.running = run;
             t = clk_ticks;
@@ -6685,6 +6709,8 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                 while (E.tick_acc >= whole) {
                     E.tick_acc -= whole;
                     E.ticks++;
+                    if (cko.n < CKO_MAX)         /* (MIDI clock out: one a block up to 300 bpm) */
+                        cko.off[cko.n++] = (uint16_t)(off + (uint32_t)E.tick_off + (uint32_t)E.tick_n * (uint32_t)E.tick_len);
                     E.tick_n++;
                     seen = 1;
                 }

@@ -130,6 +130,7 @@ jobs:
           export
           tools/golden.sh
           tools/usb_test.sh
+          tools/clock_out_test.sh
           tools/peak_test.sh
           tools/frame_test.sh
           tools/ota_test.sh

@@ -24,6 +24,7 @@ static int32_t eng_l[HALF_FRAMES], eng_r[HALF_FRAMES];
 static void uac_render_start(void);
 static void uac_tap(const int32_t *out, uint32_t n);
 #endif
+static void clk_out_block(uint32_t t0, int rendered);   /* MIDI clock out (clock_out.h, #473): the render's ticks, timed */
 
 /* Overload guard (after Felucca's shed_check; the decision in ovl_guard.h, issue #458): a render that takes longer than
  * the half it fills is heard (the hardware plays the half before it is written, or the ISR misses a half), and far over
@@ -90,6 +91,7 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
             for (i = 0; i < HALF_WORDS; i++)
                 o[i] = 0;
         }
+        clk_out_block(t0, eng_run);
 #if FELUCCA_UAC
         uac_tap(o, HALF_FRAMES);
 #endif

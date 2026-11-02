@@ -74,17 +74,25 @@ export function followOctave(keys: Pick<NoteKeys, 'shift'>, panelOctave: () => n
   if (d) keys.shift(d);
 }
 
+/** an input that is an FM-1: the linked one (`linkedId`, the link's input: macOS may show it under another name, #187),
+ *  or one named like it (Matryoshka, FM-1, Felucca, the emulator's `FM-1 (emu)`); an update loader is none */
+export const isFm1In = (port: Pick<MIDIPort, 'id' | 'name'>, linkedId?: string | null): boolean =>
+  (!!linkedId && port.id === linkedId) || (/felucca|fm-?1|matryoshka/i.test(port.name ?? '') && !/ota-|felucca update/i.test(port.name ?? ''));
+
 /**
  * Asks for Web MIDI and plays from every input. Resolves to a switch (off: incoming messages are ignored and the notes
  * MIDI holds are released; the access itself stays until the page reloads), or null when MIDI could not be had.
  * `inputs` hears the number of inputs as it changes; `skip` names an input to ignore for now (an FM-1 whose panel the
  * mirror follows: its keys, knobs and buttons come in through the mirror, and here they would arrive twice).
+ * `noClock` names an input whose MIDI clock (0xF8) is ignored: an FM-1, which sends its clock all the time (#473), so the
+ * editor's tempo does not follow it unasked.
  */
 export async function attachMidi(
   host: Pick<AudioHost, 'send'>,
   status: (s: string) => void,
   inputs?: (n: number) => void,
   skip: (port: MIDIInput) => boolean = () => false,
+  noClock: (port: MIDIInput) => boolean = () => false,
 ): Promise<((on: boolean) => void) | null> {
   if (!navigator.requestMIDIAccess) {
     status('Web MIDI is not available in this browser');
@@ -102,7 +110,7 @@ export async function attachMidi(
   const message = (ev: MIDIMessageEvent): void => {
     if (!on || skip(ev.target as MIDIInput)) return;
     const [s, a, b] = ev.data ?? [];
-    if (s === 0xf8) return void host.send({ t: 'clock' });
+    if (s === 0xf8) return noClock(ev.target as MIDIInput) ? undefined : void host.send({ t: 'clock' });
     if (s === 0xfa || s === 0xfb || s === 0xfc) return void host.send({ t: 'clockrun', on: s !== 0xfc });
     const cmd = s & 0xf0, ch = (s & 0x0f) + 1; // the channel: a Voice allocator can take one only
     if (cmd === 0x90 && b > 0) {
