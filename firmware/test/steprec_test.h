@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
 /* #532, part of panel_test.c (its helpers): step record on the SEQ page (D-804..D-808; the owner's REC gestures of
- * 2026-11-02). REC held + a white key starts it on that step, REC tapped while stopped on the cursor's last step; the
+ * 2026-11-02). REC held + a white key starts it on that step, REC tapped while stopped on the first step of the page shown
+ * (never where the cursor last was); on the roll SEL held + any key is the pen (nothing written); the
  * keys play and write chords, LFO a rest or a tie, FX the accent, K4 the cursor, black key 10 back, the cursor wraps and
  * pages the view; stopped and running; REC, HOME, SEQ, ALGO end it; PLAY makes it a live take. On <7PH's PATTERN (the
  * roll) and the 808 Kit's DRUMS (a drum grid). PANEL_SNAP_STEPREC / PANEL_SNAP_STEPREC_DRUM write the screens. */
@@ -182,6 +183,38 @@ static void steprec_suite(void)
     check("  C4's key at octave +1 writes C5 on step 3", sr_len_at(pat, 2, 72) == 1u && sr_k == 3u);
     tap(BTN_OCT_DOWN);
 
+    /* the pen in step record (the owner on the rig, 2026-11-02): SEL held + any key, white or black, jumps the roll to
+     * that key's pitch (its fixed page when off screen, D-809) and sounds it; nothing is written, the cursor stays, and
+     * SEL's release opens no SONG page. Before: the key wrote its note off screen and SEL's release opened the SONG page */
+    {
+        int before = sr_notes(pat);
+        uint32_t k0 = sr_k;
+        later(1100);
+        panel_held |= 1u << BTN_SEL;
+        panel_edges(1u << BTN_SEL, 0);
+        loop();
+        steps_inst((uint32_t)pat)->s.stp.hit = 0;
+        sr_tap_key(K_G4);
+        later(1100);
+        check("SEL held + G4's white key in step record: the pen, the view on G4's page (E4-B4), the row G4, heard, nothing written, the cursor stays",
+              sr_on && seq_roll_lo == 64u && seq_grid_note(-1, seq_row) == 67u && steps_inst((uint32_t)pat)->s.stp.hit
+              && sr_notes(pat) == before && sr_k == k0 && bar_shows("STEP 4  PATTERN ARM E4-B4 P01", C_ACC));
+        sr_tap_key(1u);                                 /* black key 1: F#3 */
+        check("  SEL + black key 1: its own pitch (F#3), not a row; the view on C3-G3, nothing written", seq_roll_lo == 48u
+              && seq_grid_note(-1, seq_row) == 54u && sr_notes(pat) == before && sr_k == k0);
+        sr_tap_key(3u);                                 /* G#3: back on G#3-D#4 */
+        panel_held &= ~(1u << BTN_SEL);
+        panel_edges(0, 1u << BTN_SEL);
+        loop();
+        check("  SEL let go: no SONG page, step record goes on (G#3-D#4 again)", page == PAGE_SEQ && sr_on && seq_roll_lo == 56u
+              && sr_notes(pat) == before && sr_k == k0);
+        check("  drawn in place = drawn whole", sr_whole_same());
+        oct_pair();
+        check("  the step record sheet on the roll: SEL + any key jumps to a pitch; every row fits", help_on && help_state() == HS_STEP
+              && on_screen("jump to pitch") && sheet_fits());
+        tap(BTN_HOME);
+    }
+
     /* the wrap at the pattern's end, a tie there, then a longer pattern: the view pages with the cursor */
     {
         int32_t len = seq_len(pat);
@@ -245,8 +278,27 @@ static void steprec_suite(void)
     check("  the bar without STEP, the cursor's tick gone", bar_shows("PATTERN ARM G#3-D#4 P01", C_ACC) && px(seq_grid_x(1) + 5u, GRID_CUR_Y) == C_BG
           && strstr(seq_grid_text[1], "ALGO track"));
     tap(BTN_REC);
-    check("REC, stopped: step record again on the cursor's last step (2)", sr_on && sr_k == 1u && !eng_transport_running());
+    check("REC, stopped: step record on the page's first step (1), not the cursor's last step (2)", sr_on && sr_k == 0u
+          && !eng_transport_running());
     tap(BTN_HOME);
+    {                                                   /* steps 17-32 shown: REC starts on step 17 */
+        int32_t len = seq_len(pat);
+        eng_set_param((uint32_t)pat, STEPS_P_LEN, 32 << 16);
+        loop();
+        tap(BTN_OCT_UP);
+        tap(BTN_REC);
+        check("REC with steps 17-32 shown: step record on step 17", seq_pg == 1u && sr_on && sr_k == 16u && !eng_transport_running());
+        enc(5, 20);
+        tap(BTN_HOME);
+        check("  (K4 to step 5 (wrapped), HOME: step record ends; the view on steps 1-16)", !sr_on && sr_k == 4u && seq_pg == 0u);
+        tap(BTN_OCT_UP);
+        tap(BTN_REC);
+        check("  REC again on steps 17-32: step 17, not the cursor's last step (5)", sr_on && sr_k == 16u && seq_pg == 1u);
+        tap(BTN_HOME);
+        tap(BTN_OCT_DOWN);
+        eng_set_param((uint32_t)pat, STEPS_P_LEN, len << 16);
+        loop();
+    }
     sr_begin(0);
     tap(BTN_SEQ);
     check("SEQ: step record ends, the page stays", !sr_on && page == PAGE_SEQ);
@@ -258,7 +310,7 @@ static void steprec_suite(void)
     tap(BTN_REC);
     check("REC: step record ends, nothing else (stopped, no recording)", !sr_on && !seq_rec && !eng_transport_running());
     tap(BTN_REC);
-    check("  (REC: step record again, on the cursor's last step)", sr_on && !eng_transport_running());
+    check("  (REC: step record again, on step 1)", sr_on && sr_k == 0u && !eng_transport_running());
     {
         int at = mlen;
         tap(BTN_PLAY);
@@ -333,7 +385,8 @@ static void steprec_suite(void)
     tap(BTN_SEQ);
     check("SEQ: the drum grid's step record ends", !sr_on && page == PAGE_SEQ);
     tap(BTN_REC);
-    check("REC, stopped, on the drum grid: step record on the cursor's last step (3)", sr_on && sr_k == 2u && !eng_transport_running());
+    check("REC, stopped, on the drum grid: step record on the page's first step (1), not the cursor's last (3)", sr_on && sr_k == 0u
+          && !eng_transport_running());
     tap(BTN_PLAY);
     check("  PLAY: a live take of the drum track", !sr_on && seq_rec && eng_transport_running() && (E.trk_rec >> E.node[drums].trk & 1u));
     tap(BTN_PLAY);
