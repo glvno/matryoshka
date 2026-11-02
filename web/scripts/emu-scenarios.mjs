@@ -1100,8 +1100,9 @@ async function main() {
     // opened the SONG page; SEL held + any key, white or black, is the pen there too: the view jumps to the fixed page of
     // 8 pitches that holds the key's pitch, nothing is written, the cursor stays. A held step's K1 moves the view the same
     // way. Silver Box's PATTERN; the keys' octave is the FM-1's, so each pitch is checked at the one octave that fits
-    // every check. (Step record ends with HOME after the pen: the editor's copy of the FM-1 gets no SEQ-page keys, so it
-    // took SEL's release as a tap and shows the SONG page, where its REC would start the transport)
+    // every check. #549: the editor's copy of the FM-1 gets no SEQ-page keys, so it takes SEL's release after the pen (and
+    // REC's after REC held + a key) as a tap and guesses wrong; the FM-1's REC must still do what it does there (step
+    // record on or off, never a live take), the transport stays stopped, and the editor sends no TRANSPORT
     async rollPen() {
       await check('roll pen: Silver Box opens, synced', await openSynced('Silver Box'));
       await check('roll pen: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
@@ -1116,6 +1117,14 @@ async function main() {
         for (const o of octs) if (await emu.text(pageOf(53 + n + 12 * o))) ok.push(o);
         octs = ok;
         return ok.length > 0;
+      };
+      await page.evaluate(() => window.__sent.splice(0));
+      /** the transport stays stopped: the editor's, the FM-1's as the link last heard, and no TRANSPORT went to the FM-1 */
+      const stopped = async () => {
+        const st = await T();
+        const tr = (await page.evaluate(() => window.__sent.slice())).filter((x) => x[1] === 0x25);
+        return { ok: !st.playing && !st.deviceRunning && tr.length === 0 && !(await emu.text('PATTERN REC')),
+          why: `editor ${st.playing ? 'playing' : 'stopped'}, FM-1 ${st.deviceRunning ? 'running' : 'stopped'}, ${tr.length} TRANSPORT sent` };
       };
       await emu.tap(B.rec);
       await check('roll pen: REC, stopped: step record on step 1', await emu.waitText('STEP 1', 3000));
@@ -1142,6 +1151,34 @@ async function main() {
       await check('roll pen: nothing written, the cursor stays (STEP 1), SEL\'s release opens no SONG page', ns.length === 1
         && (await emu.text('STEP 1')) && !(await emu.text('SONG 1')), fmt(ns));
       await emu.snap('roll-pen-step-record');
+      await emu.tap(B.rec);
+      await sleep(600);
+      let t = await stopped();
+      await check('roll pen (#549): REC after the pen ends step record, no live take, the transport stays stopped',
+        (await emu.waitText('ALGO track', 2000)) && !(await emu.text('STEP ')) && t.ok, t.why);
+      await emu.key(B.scl, true);                   // the pen on the plain roll (the same key: its row stays the one selected)
+      await sleep(150);
+      await emu.tap(14 + 1);
+      await emu.key(B.scl, false);
+      await sleep(400);
+      await emu.tap(B.rec);
+      await sleep(600);
+      t = await stopped();
+      await check('roll pen (#549): the pen on the roll, then REC: step record (STEP 1), not a live take', (await emu.waitText('STEP 1', 2000)) && t.ok, t.why);
+      await emu.tap(B.rec);
+      await emu.waitText('ALGO track', 2000);
+      await emu.key(B.rec, true);                   // REC held + step 3's white key: step record from step 3
+      await sleep(150);
+      await emu.tap(WHITE[2]);
+      await emu.key(B.rec, false);
+      await sleep(400);
+      await check('roll pen (#549): REC held + step 3\'s white key: step record on step 3', await emu.waitText('STEP 3', 2000));
+      await emu.tap(B.rec);
+      await check('roll pen (#549): REC ends it', await emu.waitText('ALGO track', 2000));
+      await emu.tap(B.rec);
+      await sleep(600);
+      t = await stopped();
+      await check('roll pen (#549): the next REC: step record (STEP 1), not a live take, the transport stopped', (await emu.waitText('STEP 1', 2000)) && t.ok, t.why);
       await emu.tap(B.home);
       await check('roll pen: HOME ends step record', await emu.waitText('ALGO track', 2000));
       await emu.key(WHITE[1], true);                // step 2 held: the selected row's pitch (F#3's) switched on there
@@ -1157,6 +1194,18 @@ async function main() {
       await emu.snap('roll-pen-k1');
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
+      // #549: REC held + a black key on a device page arms (the copy sees REC tapped, which there would start the
+      // transport and record): the FM-1's transport stays stopped, the editor sends no TRANSPORT. Twice: armed as before
+      await page.evaluate(() => window.__sent.splice(0));
+      for (let i = 0; i < 2; i++) {
+        await emu.key(B.rec, true);
+        await sleep(150);
+        await emu.tap(14 + 1);
+        await emu.key(B.rec, false);
+        await sleep(800);
+        t = await stopped();
+        await check(`roll pen (#549): REC held + a black key on a device page (${i ? 'again' : 'once'}): the transport stays stopped, no TRANSPORT sent`, t.ok, t.why);
+      }
     },
     // #375: on a computer where no app reads the FM-1's MIDI, every message the FM-1 sends unasked (TRACK_NOW after a
     // step, PARAM_NOW after a knob) found the SysEx ring full and waited 200 ms: entering steps by hand stalled the panel

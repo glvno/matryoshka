@@ -644,13 +644,22 @@ tick in, it sends its own again at its tempo ([D-477](ledger/link-and-midi.md#D-
 - The page reads a connected FM-1 through plain MIDI only (`web/src/mirror.ts` `Fm1Mirror`: its own listener on the
   port; the firmware from M-VAVE's identity handshake, `fm1-profiles.ts` `firmwareOf`: FM-1_7MMmmpp ours (FM-1_7XY before 1.8), FM-1_9XY Felucca
   or Sloop, FM-1_0XX / 8XX M-VAVE; Baud Girl by hand). A profile per firmware (`PROFILES`) turns its messages into panel
-  inputs: Matryoshka the map above; M-VAVE the keys; Felucca / Sloop the keys, CC 1 (Felucca's MODW mode) as the
+  inputs: Matryoshka the map above, and its Start / Stop; M-VAVE the keys; Felucca / Sloop the keys, CC 1 (Felucca's MODW mode) as the
   modulation wheel, Start / Stop; Baud Girl the keys and K1..K4 as CC 74 / 71 / 73 / 72.
 - main.ts `mirrorInput`: buttons and encoders go through Matryoshka's panel logic (the FM-1 tab's WebAssembly copy,
   `Fm1View.drive`, loaded even while the tab is hidden; its focus / page events move the editor as the emulator's do)
   and the patch buttons also through `Editor.pressButton`; K1..K4 positions through `Editor.turnKnob`; keys, the
-  modulation wheel, MASTER and the transport to the page. Nothing is sent back to the FM-1 (`fromDevice`). PRESET is
-  not followed while Live is on (the FM-1 then plays the editor's patch; its slots are its own).
+  modulation wheel, MASTER and the transport to the page. Nothing is sent back to the FM-1 (`fromDevice`), the transport
+  included ([D-457](ledger/link-and-midi.md#D-457), #549): the copy gets no MIDI for the SEQ page's keys, so it can read
+  SEL or REC held + a key as a tap. While following, the copy's PLAY / REC (`js_transport`) never drives the editor's
+  transport; the editor's transport follows the FM-1's own Start / Stop (`setPlaying` under `fromDevice` sends no
+  TRANSPORT), and `emuRealign` sets the copy back to the editor's transport 400 ms after a replayed press the FM-1 did not
+  confirm. PRESET is not followed while Live is on (the FM-1 then plays the editor's patch; its slots are its own).
+- Under Live a structural change uploads the patch only when its encoded bytes differ from what the FM-1 holds
+  (`web/src/upload-gate.ts`, main.ts `structureChanged`): a comment or a layout change sends nothing. Edits sent live
+  bring the gate's copy up to date 250 ms after they stop (`liveEdited`); until then a structural change uploads. A change
+  that came from the FM-1 (`fromDevice`: it changed its own patch, a preset loaded there) forgets the bytes, so the next
+  structural change uploads. Opening a patch always uploads it (`onLoad`).
 - The Emulator view shows a "Mirroring your FM-1" marker over the panel (its tooltip names the firmware) and greys the
   controls that firmware does not report (`Fm1View.following`).
 - The FM-1's CC on the Live link are not used by the page. A knob's value arrives as its row's 7-bit position (CC 16..19),
