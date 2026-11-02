@@ -60,14 +60,15 @@
  *                   recorded. No click: the FM-1 has no metronome voice.
  *
  * Step record (#532, the owner's design of 2026-11-01 and 2026-11-02, D-804; a drum grid and the roll alike): REC tapped
- * with the transport stopped starts it on the cursor's last step (else step 1); REC held + a white key starts it on that
+ * with the transport stopped starts it on the first step of the page shown (1, 17 ...); REC held + a white key on that
  * step, stopped or running (that key writes and sounds nothing; while a live take records, the take ends first). The bar
  * says STEP n, the cursor's column is tinted, with a sky tick under it, REC's LED is lit and the view pages to the
  * cursor's 16 steps (D-806). Stopped or running (the cursor is not the playhead):
  *   keys            play their pitch through the track as they sound (the roll: the key's own at the keys' octave; a drum
  *                   grid: the live take's rule, black keys 1..8 its rows, the white keys nothing unless the map repeats
  *                   its rows, D-805), held together one chord; the last let go writes the cursor's step (what it held goes)
- *                   and the cursor moves on one. Velocity 100, FX held at the press 127; a note one step long
+ *                   and the cursor moves on one. Velocity 100, FX held at the press 127; a note one step long. On the
+                   roll SEL held + any key is the pen (above): nothing written, the cursor stays
  *   LFO             no key held: a rest (the step cleared) and on one; keys held: those still held go on through the next
  *                   step and the cursor moves there (those let go keep their length), a key pressed meanwhile starts on
  *                   the cursor's step. Not past the pattern's end: there the held notes end and the cursor wraps (D-807)
@@ -617,16 +618,13 @@ static void sr_move(int mod, int32_t d)
     ui_dirty = ui_dirty ? ui_dirty : 1;
 }
 
-/* step record starts on step k (-1: the cursor's last step on this track and patch, else step 1; D-804); key: the white
- * key REC held went down on (its release is nobody's), -1 none. The caller ends REC's recording first (D-808): the keys
- * would be recorded twice */
+/* step record starts on step k (D-804); key: the white key REC held went down on (its release is nobody's), -1 none.
+ * The caller ends REC's recording first (D-808): the keys would be recorded twice */
 static void sr_start(int k, int key)
 {
     int mod = seq_module();
-    if (mod < 0)
+    if (mod < 0 || k < 0 || k >= seq_len(mod))
         return;
-    if (k < 0)
-        k = sr_trk == seq_trk && sr_gen == pages_gen() && (int32_t)sr_k < seq_len(mod) ? sr_k : 0;
     sr_on = 1;
     sr_k = (uint8_t)k;
     sr_keys = 0;
@@ -769,7 +767,13 @@ static void seq_key(uint32_t n, int down)
 {
     int w = seq_white(n), b = seq_black(n), mod = seq_module(), map = seq_map();
     int fx = (int)(panel_held >> BTN_ACC & 1u);
-    if (sr_on) {
+    if (sr_on) {                                 /* (on the roll SEL held + any key is the pen, D-804: nothing written) */
+        if (down && mod >= 0 && map < 0 && (panel_held >> BTN_PEN & 1u)) {
+            seq_roll_aim(mod);
+            seq_pen(mod, n);
+            ui_dirty = ui_dirty ? ui_dirty : 1;
+            return;
+        }
         sr_key(n, down);
         return;
     }
@@ -1062,7 +1066,8 @@ static void seq_rec_press(void)
 }
 
 /* REC let go on the SEQ page (panel.c; the owner, 2026-11-02: D-548, D-804, D-808): step record on, it ends; else
- * stopped, step record starts on the cursor's last step; running, REC records as on every page. The page stays */
+ * stopped, step record starts on the first step of the page shown (never where the cursor last was); running, REC
+ * records as on every page. The page stays */
 static void sr_rec_tap(void)
 {
     if (sr_on)
@@ -1072,7 +1077,7 @@ static void sr_rec_tap(void)
     else if (seq_module() < 0)
         ui_msg("NO STEPS MODULE", 1000);
     else
-        sr_start(-1, -1);
+        sr_start(seq_pg * 16, -1);
 }
 
 /* REC held + white key n on the SEQ page (panel.c): step record from that step, stopped or running (in step record: the

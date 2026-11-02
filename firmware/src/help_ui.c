@@ -188,7 +188,7 @@ static uint32_t help_rows(uint32_t t, const char **r)
         R("b:~pick a row");
         R("n:SELECT~8 pitches up / down");
         R("k:SEL|t:+|n:SELECT~a pitch up / down");
-        R("k:SEL|t:+|m:KEY~jump to pitch");
+        R("k:SEL|t:+|m:ANY KEY~jump to pitch");
         R("k:FX|t:+|w:~accent");
         R("k:LFO|t:+|w:~tie");
         R("k:REC~step record");
@@ -207,11 +207,12 @@ static uint32_t help_rows(uint32_t t, const char **r)
     case HS_STEP:                                   /* step record (#532, D-804) */
         R("m:KEYS~play, let go: write");
         R("t:keys together~one chord");
-        R("k:LFO~rest");
-        R("t:keys held +|k:LFO~tie");
+        R("k:LFO~rest, keys held: tie");
         R("k:FX|t:held~accent");
         R("c:4~move cursor");
         R("b:10~back, clear step");
+        if (seq_module() >= 0 && seq_map() < 0)    /* (the roll: the pen, nothing written, D-804) */
+            R("k:SEL|t:+|m:ANY KEY~jump to pitch");
         R("k:OCT-|t:/|k:OCT+~octave");
         R("k:PLAY~play, record live");
         R("k:REC|t:/|k:HOME~end step record");
