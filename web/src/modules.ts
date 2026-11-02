@@ -3498,7 +3498,110 @@ const esp: ModuleImpl<EspState> = {
   },
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp];
+/** the Shift register's stages (#438) */
+export const SHREG_STAGES = 8;
+/** the seeds of a Shift register's starting pattern and of its flip stream, mixed with its instance seed (engine.c) */
+export const SHREG_PAT_SEED = 0x5bd1e995, SHREG_FLIP_SEED = 0x27d4eb2f;
+/** a pattern of all zeros would loop silence: a seed that gives one starts from this instead */
+export const SHREG_PAT_ZERO = 0xa5;
+interface ShregState {
+  /** the stages, s1 in bit 7 .. s8 in bit 0; the pattern a reset restores; the flip stream and where a reset restarts it */
+  reg: number; pat: number; rnd: number; rnd0: number;
+  /** the clock and reset were high at the previous sample */
+  c1: boolean; r1: boolean;
+}
+/** the dac output: the first `bits` stages as a binary number (s1 the highest bit), 0..1 in Q16, rounded (engine.c the same) */
+export const shregDac = (reg: number, bits: number): number => {
+  const d = (1 << bits) - 1;
+  return Math.floor(((reg >>> (SHREG_STAGES - bits)) * 65536 + (d >> 1)) / d);
+};
+/**
+ * Shift register (#438), after the Turing Machine and the Rungler: eight stages s1..s8 (each 0 or 1). On a rising `clock`
+ * edge (through 0.5) every stage takes the one before it and s1 takes a new bit: `in` (high at 0.5 or above) when it is
+ * patched, else stage `len` comes round again, so the pattern loops every `len` clocks. Each new bit flips with chance
+ * `flip` (0: the loop is locked, 0.5: random, 1: inverted every time round, a loop of 2 x len). `dac` reads the first
+ * `bits` stages as a binary number (s1 the highest bit), 0..1; `gate` is high while the clock is and s1 holds a 1. It
+ * starts from a pattern drawn from its instance seed (never all zeros); a rising `reset` brings that pattern back and
+ * restarts the flip stream, so the same sequence follows (a reset wins over a clock on the same sample). Both engines run
+ * the same integer stream (engine.c m_shreg).
+ */
+const shreg: ModuleImpl<ShregState> = {
+  def: {
+    type: 'shreg',
+    label: 'Shift register',
+    since: 49,
+    inputs: [gate('clock'), gate('in'), gate('reset')],
+    outputs: [...Array.from({ length: SHREG_STAGES }, (_, i) => gate(`s${i + 1}`)), control('dac'), gate('gate')],
+    params: [
+      param('len', 1, SHREG_STAGES, SHREG_STAGES, { step: 1 }),
+      param('flip', 0, 1, 0, { step: 0.01 }),
+      param('bits', 1, SHREG_STAGES, SHREG_STAGES, { step: 1 }),
+    ],
+  },
+  init: () => ({ reg: SHREG_PAT_ZERO, pat: SHREG_PAT_ZERO, rnd: 0, rnd0: 0, c1: false, r1: false }),
+  seed(s, seed) {
+    s.pat = s.reg = hash32(seed ^ SHREG_PAT_SEED) >>> 24 || SHREG_PAT_ZERO;
+    s.rnd = s.rnd0 = hash32(seed ^ SHREG_FLIP_SEED);
+  },
+  process(c, s) {
+    const len = Math.min(SHREG_STAGES, Math.max(1, Math.round(c.p.len ?? SHREG_STAGES)));
+    const bits = Math.min(SHREG_STAGES, Math.max(1, Math.round(c.p.bits ?? SHREG_STAGES)));
+    const flip = Math.round((c.p.flip ?? 0) * 65536);
+    const data = c.connected.in;
+    const { clock, reset } = c.inp, o = c.out;
+    let dac = shregDac(s.reg, bits) / 65536;
+    for (let i = 0; i < c.n; i++) {
+      const k = clock[i] >= 0.5, r = reset[i] >= 0.5;
+      if (r && !s.r1) {
+        s.reg = s.pat;
+        s.rnd = s.rnd0;
+        dac = shregDac(s.reg, bits) / 65536;
+      } else if (k && !s.c1) {
+        const src = data ? (c.inp.in[i] >= 0.5 ? 1 : 0) : (s.reg >>> (SHREG_STAGES - len)) & 1;
+        s.rnd = lcg(s.rnd);
+        s.reg = (s.reg >>> 1) | ((src ^ ((s.rnd >>> 16) < flip ? 1 : 0)) << 7);
+        dac = shregDac(s.reg, bits) / 65536;
+      }
+      s.c1 = k;
+      s.r1 = r;
+      for (let j = 0; j < SHREG_STAGES; j++) o[`s${j + 1}`][i] = (s.reg >>> (7 - j)) & 1;
+      o.dac[i] = dac;
+      o.gate[i] = k && s.reg & 0x80 ? 1 : 0;
+    }
+  },
+};
+
+/**
+ * Comparator (#438): `gt` is high while a is above b + `thresh` (b reads 0 with nothing patched, so thresh alone is the
+ * level), `lt` while it is below; `trig` is high for the one sample `gt` rises on. With `hyst` (hysteresis) a must pass
+ * b + thresh by more than hyst to go high and fall below it by more than hyst to go low, so a noisy or slow signal
+ * switches once per crossing. At exactly the level it keeps its state. Both engines the same (engine.c m_comp).
+ */
+const comp: ModuleImpl<{ hi: boolean }> = {
+  def: {
+    type: 'comp',
+    label: 'Comparator',
+    since: 49,
+    inputs: [control('a'), control('b')],
+    outputs: [gate('gt'), gate('lt'), gate('trig')],
+    params: [param('thresh', -1, 1, 0, { step: 0.01 }), param('hyst', 0, 0.5, 0, { step: 0.01 })],
+  },
+  init: () => ({ hi: false }),
+  process(c, s) {
+    const t = c.p.thresh ?? 0, h = c.p.hyst ?? 0;
+    const { a, b } = c.inp, o = c.out;
+    for (let i = 0; i < c.n; i++) {
+      const d = a[i] - b[i] - t;
+      const was = s.hi;
+      if (was ? d < -h : d > h) s.hi = !was;
+      o.gt[i] = s.hi ? 1 : 0;
+      o.lt[i] = s.hi ? 0 : 1;
+      o.trig[i] = s.hi && !was ? 1 : 0;
+    }
+  },
+};
+
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an

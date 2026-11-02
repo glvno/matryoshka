@@ -353,6 +353,79 @@ lfoKit('lfo-wide-reset', { range: 3, wide: 8, wave: 0, phase: 90 }, (wire, _c, r
 lfoKit('lfo-random', { wave: 5, rate: 7 }, () => undefined);
 lfoKit('lfo-random-clk', { sync: 1, div: 4, wave: 5 }, (wire, clk, _r, lfo) => wire(clk, 'out', lfo, 'clk'));
 lfoKit('lfo-random-reset', { rate: 3, wave: 5, dir: 1 }, (wire, _c, rst, lfo) => wire(rst, 'out', lfo, 'reset'));
+// the Shift register (#438): a locked 5-step loop read by its dac (an oscillator's pitch) and gate, a random one (flip 0.5,
+// a 3-bit dac) restarted by the keyboard's gate, and one shifting in a slow square (in patched, a Rungler-like stream)
+kit('shreg-loop', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const clk = add('lfo', 0, 0, { wave: 3, rate: 11, depth: 1 });
+  const sr = add('shreg', 0, 0, { len: 5, flip: 0, bits: 8 });
+  const osc = add('osc', 0, 0, { wave: 0, level: 0.6 });
+  const out = add('output', 0, 0, { level: 0.8 });
+  wire(clk, 'out', sr, 'clock');
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(sr, 'dac', osc, 'pitch');
+  wire(osc, 'out', out, 'l');
+  wire(sr, 'gate', out, 'r');
+});
+kit('shreg-flip', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const clk = add('lfo', 0, 0, { wave: 3, rate: 17, depth: 1 });
+  const sr = add('shreg', 0, 0, { len: 8, flip: 0.5, bits: 3 });
+  const mix = add('mixer', 0, 0, { l1: 0.5, l2: 0.25, l3: 0.25, l4: 0 });
+  const out = add('output', 0, 0, { level: 0.8 });
+  wire(clk, 'out', sr, 'clock');
+  wire(kb, 'gate', sr, 'reset');
+  wire(sr, 'dac', out, 'l');
+  wire(sr, 's1', mix, 'in1');
+  wire(sr, 's4', mix, 'in2');
+  wire(sr, 's8', mix, 'in3');
+  wire(mix, 'out', out, 'r');
+});
+kit('shreg-data', (add, wire) => {
+  const clk = add('lfo', 0, 0, { wave: 3, rate: 23, depth: 1 });
+  const data = add('lfo', 0, 0, { wave: 3, rate: 3.7, depth: 1 });
+  const rst = add('lfo', 0, 0, { wave: 3, rate: 0.9, depth: 1 });
+  const flip = add('lfo', 0, 0, { wave: 1, rate: 1.3, depth: 1 });
+  const sr = add('shreg', 0, 0, { len: 3, flip: 0.2, bits: 6 }, { map: { p1: ['flip', 'bits'] } });
+  const out = add('output', 0, 0, { level: 0.8 });
+  wire(clk, 'out', sr, 'clock');
+  wire(data, 'out', sr, 'in');
+  wire(rst, 'out', sr, 'reset');
+  wire(flip, 'out', sr, 'p1');
+  wire(sr, 'dac', out, 'l');
+  wire(sr, 's6', out, 'r');
+});
+// the Comparator (#438): a sine against a slow triangle with hysteresis (gt, trig), and a saw against a threshold moved
+// through p1 (lt)
+kit('comp-hyst', (add, wire) => {
+  const a = add('lfo', 0, 0, { wave: 0, rate: 7, depth: 1 });
+  const b = add('lfo', 0, 0, { wave: 1, rate: 0.6, depth: 0.5 });
+  const cmp = add('comp', 0, 0, { thresh: 0.1, hyst: 0.15 });
+  const mix = add('mixer', 0, 0, { l1: 0.5, l2: 0.5, l3: 0, l4: 0 });
+  const out = add('output', 0, 0, { level: 0.8 });
+  wire(a, 'out', cmp, 'a');
+  wire(b, 'out', cmp, 'b');
+  wire(cmp, 'gt', out, 'l');
+  wire(cmp, 'trig', mix, 'in1');
+  wire(cmp, 'lt', mix, 'in2');
+  wire(mix, 'out', out, 'r');
+});
+kit('comp-thresh', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const saw = add('lfo', 0, 0, { wave: 2, rate: 5, depth: 1 });
+  const mod = add('lfo', 0, 0, { wave: 0, rate: 0.8, depth: 1 });
+  const cmp = add('comp', 0, 0, { thresh: -0.2, hyst: 0 }, { map: { p1: ['thresh'] } });
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.7 });
+  const vca = add('vca', 0, 0);
+  const out = add('output', 0, 0, { level: 0.8 });
+  wire(saw, 'out', cmp, 'a');
+  wire(mod, 'out', cmp, 'p1');
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(osc, 'out', vca, 'in');
+  wire(cmp, 'lt', vca, 'cv');
+  wire(vca, 'out', out, 'l');
+  wire(cmp, 'gt', out, 'r');
+});
 kit('noise-svf', (add, wire) => {
   const nz = add('noise', 0, 0, { level: 0.6 });
   const flt = add('filter', 0, 0, { cutoff: 900, res: 0.7 });

@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 50
+#define N_TYPES 52
 enum {
     T_FM1,
     T_OSC,
@@ -55,6 +55,8 @@ enum {
     T_RATEENV,
     T_RATIO,
     T_ESP,
+    T_SHREG,
+    T_COMP,
 };
 
 /* fm1: Main */
@@ -977,6 +979,47 @@ enum {
 #define ESP_CVBASE 1
 #define ESP_NDATA 0
 
+/* shreg: Shift register */
+#define SHREG_I_CLOCK 0
+#define SHREG_I_IN 1
+#define SHREG_I_RESET 2
+#define SHREG_I_P1 3
+#define SHREG_I_P2 4
+#define SHREG_O_S1 0
+#define SHREG_O_S2 1
+#define SHREG_O_S3 2
+#define SHREG_O_S4 3
+#define SHREG_O_S5 4
+#define SHREG_O_S6 5
+#define SHREG_O_S7 6
+#define SHREG_O_S8 7
+#define SHREG_O_DAC 8
+#define SHREG_O_GATE 9
+#define SHREG_P_LEN 0
+#define SHREG_P_FLIP 1
+#define SHREG_P_BITS 2
+#define SHREG_NIN 5
+#define SHREG_NOUT 10
+#define SHREG_NPAR 3
+#define SHREG_CVBASE 3
+#define SHREG_NDATA 0
+
+/* comp: Comparator */
+#define COMP_I_A 0
+#define COMP_I_B 1
+#define COMP_I_P1 2
+#define COMP_I_P2 3
+#define COMP_O_GT 0
+#define COMP_O_LT 1
+#define COMP_O_TRIG 2
+#define COMP_P_THRESH 0
+#define COMP_P_HYST 1
+#define COMP_NIN 4
+#define COMP_NOUT 3
+#define COMP_NPAR 2
+#define COMP_CVBASE 2
+#define COMP_NDATA 0
+
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 #define DELAY_SYNC_TOP 520   /* ms: the synced note lengths spread over 1..this (modules.ts) */
@@ -1007,6 +1050,10 @@ static const int32_t RATIO_DETUNE_OCT[7] = {-142, -95, -47, 0, 47, 95, 142};
 #define FILTER_OSC_GAIN_Q24 93952410   /* the damping's growth per unit of res past it, times the band pass squared */
 #define FILTER_OSC_CLIP_Q20 2097152   /* the band-pass state is held to +-this there */
 #define FILTER_OSC_SEED_Q20 1024   /* the band-pass state a filter at rest starts from */
+#define SHREG_STAGES 8   /* the Shift register's stages (#438) */
+#define SHREG_PAT_SEED 0x5bd1e995u   /* mixed with the instance seed: its starting pattern */
+#define SHREG_FLIP_SEED 0x27d4eb2fu   /* mixed with the instance seed: its flip stream */
+#define SHREG_PAT_ZERO 0xa5u   /* the starting pattern when the seed gives all zeros */
 #define ADSR_LONG_Q16 157286   /* the ADSR's long: decay and release x 2.4 */
 
 #define TRACK_STEPS 64        /* a Steps track's most steps (track.ts); its name follows its pins in the record */
@@ -1593,6 +1640,26 @@ static const char *const ESP_PN[] = {"LEVEL", "LOWCUT", "HIGHCUT", "CVADJ", "THR
 static const uint8_t ESP_LOG[] = {0, 1, 1, 0, 0};
 static const char *const ESP_UNIT[] = {"", "HZ", "HZ", "ST", ""};
 static const char *const *const ESP_CH[] = {0, 0, 0, 0, 0};
+static const char *const SHREG_INNAMES[] = {"CLOCK", "IN", "RESET", "P1", "P2"};
+static const int32_t SHREG_MIN[] = {65536, 0, 65536};
+static const int32_t SHREG_MAX[] = {524288, 65536, 524288};
+static const int32_t SHREG_DEF[] = {524288, 0, 524288};
+static const int32_t SHREG_INC[] = {65536, 655, 65536};
+static const int32_t SHREG_STEP[] = {65536, 655, 65536};
+static const char *const SHREG_PN[] = {"LEN", "FLIP", "BITS"};
+static const uint8_t SHREG_LOG[] = {0, 0, 0};
+static const char *const SHREG_UNIT[] = {"", "", ""};
+static const char *const *const SHREG_CH[] = {0, 0, 0};
+static const char *const COMP_INNAMES[] = {"A", "B", "P1", "P2"};
+static const int32_t COMP_MIN[] = {-65536, 0};
+static const int32_t COMP_MAX[] = {65536, 32768};
+static const int32_t COMP_DEF[] = {0, 0};
+static const int32_t COMP_INC[] = {1311, 655};
+static const int32_t COMP_STEP[] = {655, 655};
+static const char *const COMP_PN[] = {"THRESH", "HYST"};
+static const uint8_t COMP_LOG[] = {0, 0};
+static const char *const COMP_UNIT[] = {"", ""};
+static const char *const *const COMP_CH[] = {0, 0};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH, 0, 0, FM1_STEP},   /* fm1 */
@@ -1645,4 +1712,6 @@ static const def_t DEFS[N_TYPES] = {
     {RATEENV_NIN, RATEENV_NOUT, RATEENV_NPAR, 0, RATEENV_CVBASE, -1, RATEENV_NDATA, 0, RATEENV_MIN, RATEENV_MAX, RATEENV_DEF, RATEENV_INC, "RATE ENV", RATEENV_PN, RATEENV_INNAMES, RATEENV_LOG, RATEENV_UNIT, RATEENV_CH, 0, 0, RATEENV_STEP},   /* rateenv */
     {RATIO_NIN, RATIO_NOUT, RATIO_NPAR, 0, RATIO_CVBASE, -1, RATIO_NDATA, 0, RATIO_MIN, RATIO_MAX, RATIO_DEF, RATIO_INC, "RATIO", RATIO_PN, RATIO_INNAMES, RATIO_LOG, RATIO_UNIT, RATIO_CH, 0, 0, RATIO_STEP},   /* ratio */
     {ESP_NIN, ESP_NOUT, ESP_NPAR, 0, ESP_CVBASE, 0, ESP_NDATA, 3, ESP_MIN, ESP_MAX, ESP_DEF, ESP_INC, "FOLLOWER", ESP_PN, ESP_INNAMES, ESP_LOG, ESP_UNIT, ESP_CH, 0, 0, ESP_STEP},   /* esp */
+    {SHREG_NIN, SHREG_NOUT, SHREG_NPAR, 0, SHREG_CVBASE, 1, SHREG_NDATA, 0, SHREG_MIN, SHREG_MAX, SHREG_DEF, SHREG_INC, "SHIFT REGISTER", SHREG_PN, SHREG_INNAMES, SHREG_LOG, SHREG_UNIT, SHREG_CH, 0, 0, SHREG_STEP},   /* shreg */
+    {COMP_NIN, COMP_NOUT, COMP_NPAR, 0, COMP_CVBASE, -1, COMP_NDATA, 0, COMP_MIN, COMP_MAX, COMP_DEF, COMP_INC, "COMPARATOR", COMP_PN, COMP_INNAMES, COMP_LOG, COMP_UNIT, COMP_CH, 0, 0, COMP_STEP},   /* comp */
 };
