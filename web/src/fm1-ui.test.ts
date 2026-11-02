@@ -121,6 +121,22 @@ describe('the FM-1 UI as WebAssembly', () => {
     tap(BUTTONS.home, 2000);                      // HOME: step record ends, the page stays
     expect(ui.page).toBe(8);
   }, 30_000);
+  it('P-locks (#524): a held step + ALGO + K1 locks the device\'s first row on it; the editor gets the locks', async () => {
+    let got: { module: number; pat: number; locks: { at: number; module: number; param: number; value: number }[] } | null = null;
+    const ui = await Fm1Ui.create(bytes, { locks: (module, pat, locks) => { got = { module, pat, locks }; } });
+    expect(ui.load(encodePatch(FM1_PRESETS['Silver Box']()), 'SILVER BOX')).toBe(0);
+    ui.tick(1000);
+    const tap = (id: number, at: number): void => { ui.tick(at); ui.button(id, true); ui.tick(at + 50); ui.button(id, false); ui.tick(at + 100); };
+    tap(BUTTONS.seq, 1200);                       // the SEQ page: PATTERN's roll
+    ui.keys(1 << 4);                              // step 3 held
+    ui.encoder(1, 1);                             // ALGO: the Silver Box's first page
+    ui.encoder(2, 2);                             // K1: its first row locked on step 3
+    ui.keys(0);
+    expect(got).not.toBeNull();
+    expect(got!.pat).toBe(0);
+    expect(got!.locks.length).toBe(1);
+    expect(got!.locks[0].at).toBe(2);
+  }, 30_000);
   it('the panel drives it: SELECT / ALGO move the focus (and say so), K1 sets a parameter, HOME goes to the device\'s first page, then back along the trail', async () => {
     const focus: [number, number][] = [];
     const params: number[][] = [];

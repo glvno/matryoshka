@@ -4,6 +4,7 @@
 // drives the panel and the clock, and draws the 240 x 240 RGB565 framebuffer. No DOM here: the editor's FM-1 tab
 // (#110) and the tests use it.
 import { wordNote, type SongEntry, type StepNote } from './track';
+import type { RawLock } from './protocol';
 
 /** what the emulated FM-1 tells the page */
 export interface Fm1Events {
@@ -23,6 +24,8 @@ export interface Fm1Events {
   /** the SEQ page: a track's notes as they are after an edit there (of pattern `pat`, 0-based: the one it plays), a track
    * muted (module = its index in the binary) */
   track?(module: number, notes: StepNote[], pat: number): void;
+  /** the SEQ page: a track's P-locks of pattern `pat` after an edit there (#524; device-form indices, values Q16 / 65536) */
+  locks?(module: number, pat: number, locks: RawLock[]): void;
   /** PRESET on the SEQ page or the SONG page chose the patch's pattern (0-based) or the song (0 none) (#375) */
   pattern?(pattern: number, song: number): void;
   /** the SONG page edited song s (0-based): its entries */
@@ -87,6 +90,10 @@ export class Fm1Ui {
       midi: (s: number, a: number, b: number) => ev.midi?.(s, a, b),
       transport: (r: number) => ev.transport?.(r !== 0),
       track: (m: number, at: number, n: number, pat: number) => ev.track?.(m, memory ? [...new Uint32Array(memory.buffer, at, n)].map(wordNote) : [], pat ?? 0),
+      locks: (m: number, pat: number, at: number, n: number) => ev.locks?.(m, pat, memory ? Array.from({ length: n }, (_, j) => {
+        const b = new Uint8Array(memory!.buffer, at + 7 * j, 7);
+        return { at: b[0], module: b[1], param: b[2], value: (b[3] | (b[4] << 8) | (b[5] << 16) | (b[6] << 24)) / 65536 };
+      }) : []),
       pattern: (p: number, song: number) => ev.pattern?.(p, song),
       song: (k: number, at: number, n: number) => ev.song?.(k, memory ? Array.from({ length: n }, (_, j) => {
         const b = new Uint8Array(memory!.buffer, at + 2 * j, 2);

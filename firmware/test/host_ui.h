@@ -271,7 +271,10 @@ static void m1_arms_now(uint32_t lo, uint32_t hi) { (void)lo; (void)hi; }
 static uint32_t host_pattern_told, host_song_told;   /* (panel_test.c: PATTERN_NOW / SONG_NOW sent) */
 static void m1_pattern_now(void) { host_pattern_told++; }
 static void m1_song_now(uint32_t s) { (void)s; host_song_told++; }
+static uint32_t host_locks_told;                     /* (panel_test.c: LOCKS_NOW sent) */
+static void m1_locks_now(uint32_t mod, uint32_t pat) { (void)mod; (void)pat; host_locks_told++; }
 #endif
+static int m1_patch_locks(void) { return 1; }      /* (the preview keeps no patch: the engine has the locks) */
 #ifdef HOST_THRU_HOOK                       /* (the wasm build: what the SEQ page sounds through a track also goes to the page) */
 static void host_steps_thru(uint32_t module, uint32_t note, uint32_t vel);
 #define eng_steps_thru host_steps_thru

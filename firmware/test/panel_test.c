@@ -751,7 +751,7 @@ int main(void)
                                                "OCT", "K1", "K2", "K3", "K4", "KNOB", "KNOBS", "BUTTON", "BUTTONS", "FX",
                                                "LFO", "EDIT", "ARP"};
             static const char *const IDEA[] = {"#PATCH", "#PRESET", "#DEVICE", "#ASSEMBLY", "#MODULE", "#ENGINE", "#PAGE",
-                                               "#TRACK", "#PATTERN", "#SONG", "#ARMING", "#THE ENVIRONMENT", "#SANDBOX MODE", "#LIVE"};
+                                               "#TRACK", "#PATTERN", "#P-LOCK", "#SONG", "#ARMING", "#THE ENVIRONMENT", "#SANDBOX MODE", "#LIVE"};
             uint32_t i, k, bad = 0, ctrl = 0, vocab = 0;
             for (i = 0; i < MAN_N; i++) {
                 const char *l = MANUAL[i];
@@ -774,7 +774,7 @@ int main(void)
             check("  GUIDE lines: at most 35 characters, capitals, no ';' (D-200)", bad == 0u);
             check("  GUIDE: the first two lines, then no control named (D-248)", !strcmp(MANUAL[0] + 1, "PRESS OCT- + OCT+")
                   && !strcmp(MANUAL[1] + 1, "TO SEE CONTROLS FOR CURRENT PAGE") && ctrl == 0u);
-            check("  GUIDE: a heading for each of the 14 ideas of D-248", vocab == 14u);
+            check("  GUIDE: a heading for each of the 14 ideas of D-248, and P-lock (#524)", vocab == 15u);
         }
         enc(1, 1);
         check("ALGO wraps to MIDI, the coral header back", menu_tab == MT_MIDI && px(2, 2) == P_CORAL);
@@ -1733,6 +1733,48 @@ int main(void)
         enc(0, -1);
         panel_keys(0);
         loop();
+        {                                                   /* P-locks (#524, #519 Q2 / Q11): step 1 held, ALGO to the device */
+            const ppage_t *lp;
+            uint32_t m0, j0, nl0 = (uint32_t)eng_locks_count(), told = host_locks_told, lpat = seq_lock_pat(pat);
+            int32_t normal, lv = 0;
+            panel_keys(1u << 0);
+            loop();
+            check("P-locks: a held step's hint names ALGO's lock pages", !strcmp(seq_grid_text[2], "HELD: K1 note  K2 vel  K3 chance  ALGO lock"));
+            enc(1, 1);                                      /* + ALGO: the first page of the device the track plays */
+            lp = seq_lock_page();
+            check("  + ALGO: the first page of the Silver Box (the device PATTERN drives), LOCK and its name in the bar, the hint its knobs",
+                  lp && seq_lpg == 1u && !strncmp(msg_text, "LOCK ", 5) && !strcmp(seq_grid_text[2], "HELD: K1-K4 lock  back to value: off  ALGO"));
+            m0 = lp ? lp->mod[0] : 0u;
+            j0 = lp ? lp->par[0] : 0u;
+            normal = eng_get_param(m0, j0);
+            enc(2, 3);                                      /* + K1: its first row locked on step 1, three clicks from its value */
+            check("  + K1: a lock on step 1 (the row's own value stays), LOCK in the bar, LOCKS_NOW sent, the note the press switched back",
+                  eng_lock_get((uint32_t)pat, lpat, 0u, m0, j0, &lv) && lv != normal && eng_get_param(m0, j0) == normal
+                  && (uint32_t)eng_locks_count() == nl0 + 1u && host_locks_told > told && !strncmp(msg_text, "LOCK ", 5)
+                  && eng_steps_note((uint32_t)pat, 0u, 46u));
+            check("  the step's cell has the gold corner mark, the track line marks the locked row",
+                  px(seq_grid_x(0) + GRID_CW - 1u, GRID_Y + GRID_RH * seq_row) == P_GOLD && seq_grid_text[1][0] == '*');
+            snap_to(getenv("PANEL_SNAP_LOCK"));
+            enc(2, -3);                                     /* back to the row's value: no lock */
+            check("  + K1 back to the row's value: the lock goes (NO LOCK), the mark too", !eng_lock_get((uint32_t)pat, lpat, 0u, m0, j0, 0)
+                  && (uint32_t)eng_locks_count() == nl0 && strstr(msg_text, "NO LOCK") != 0
+                  && px(seq_grid_x(0) + GRID_CW - 1u, GRID_Y + GRID_RH * seq_row) != P_GOLD);
+            enc(2, 2);                                      /* locked again, then the step let go: the lock stays */
+            enc(1, -1);                                     /* ALGO back: the note's stop, K1 the note again */
+            check("  ALGO back: the note's stop (K1 its note again)", seq_lpg == 0u && !seq_lock_page());
+            panel_keys(0);
+            loop();
+            check("  let go: the lock stays, marked", eng_locks_step((uint32_t)pat, lpat, 0u) == 1
+                  && px(seq_grid_x(0) + GRID_CW - 1u, GRID_Y + GRID_RH * seq_row) == P_GOLD);
+            panel_keys(1u << 0);                            /* (step 1 held: its lock removed, the note as it was) */
+            loop();
+            enc(1, 1);
+            enc(2, -2);
+            enc(1, -1);
+            panel_keys(0);
+            loop();
+            check("  (removed again)", eng_locks_step((uint32_t)pat, lpat, 0u) == 0 && eng_steps_note((uint32_t)pat, 0u, 46u));
+        }
 
         panel_held |= 1u << BTN_LFO;                        /* LFO + step 11: A#2 on step 9 (2 steps) goes on through it */
         panel_keys(1u << 18);
@@ -2546,7 +2588,7 @@ int main(void)
                 ;
             panel_keys(1u << wk);
             loop();
-            check("a step held: the hint says HELD STEP and its knobs", seq_held == 0 && !strcmp(seq_grid_text[2], "HELD STEP: K2 vel  SELECT chance"));
+            check("a step held: the hint says HELD and its knobs", seq_held == 0 && !strcmp(seq_grid_text[2], "HELD: K2 vel  SELECT chance  ALGO lock"));
             panel_keys(0);
             loop();
             check("  let go: the hint as before", seq_held < 0 && !strcmp(seq_grid_text[2], "BLACK/SELECT row  WHITE step  FX acc  OCT 17+"));

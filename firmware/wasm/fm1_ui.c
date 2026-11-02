@@ -60,6 +60,17 @@ static void m1_song_now(uint32_t s)
     js_song(s, e, n);
 }
 static void m1_mute_now(uint32_t mod, int on) { js_mute(mod, (uint32_t)on); }
+/* the SEQ page edited a track's P-locks (#524): pattern pat's locks, n of 7 bytes at `at` (step, module, parameter, i32 LE
+ * value), as the device link's LOCKS_NOW */
+WASM_IMPORT("locks") void js_locks(uint32_t mod, uint32_t pat, const uint8_t *at, uint32_t n);
+int eng_locks_list(uint32_t module, uint32_t p, uint8_t *out, uint32_t cap);
+static void m1_locks_now(uint32_t mod, uint32_t pat)
+{
+    static uint8_t l[7u * 64u];
+    int n = eng_locks_list(mod, pat, l, sizeof l);
+    if (n >= 0)
+        js_locks(mod, pat, l, (uint32_t)(n > 64 ? 64 : n));
+}
 static void m1_arms_now(uint32_t lo, uint32_t hi) { js_arms(lo, hi); }
 /* GLO > PANEL > TEMPO or the global tempo changed here (the menu, PLAY held + PRESET, Main's tempo row while GLOBAL): the
  * page's setting follows (D-907; as the device link's TEMPO_NOW). patch: 0 GLOBAL, 1 PATCH */

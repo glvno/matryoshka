@@ -487,6 +487,16 @@ static void panel_encoders(int32_t *st)
     if (page == PAGE_SEQ) {                         /* the SEQ page: ALGO picks the track; a step held: its chance, SELECT on a
                                                      * drum grid, K3 on the roll (the owner, 2026-10-24: there SELECT moves the row) */
         int roll = seq_module() >= 0 && seq_map() < 0;
+        uint32_t k;
+        if (st[1] && seq_held >= 0 && !sr_on) {     /* a step held: ALGO pages through the track's device (#524, P-locks) */
+            seq_lock_step(st[1]);
+            st[1] = 0;
+        }
+        for (k = 0; k < 4u; k++)                    /* ... and K1..K4 lock that page's rows on the step */
+            if (st[2u + k] && seq_held >= 0 && !sr_on && seq_lock_page()) {
+                seq_lock_turn(k, st[2u + k], knob_fast(2u + k, st[2u + k]));
+                st[2u + k] = 0;
+            }
         if (st[1] && eng_steps_count())
             seq_select((uint32_t)((seq_trk + (uint32_t)eng_steps_count() * 8u + (uint32_t)st[1]) % (uint32_t)eng_steps_count()));
         st[1] = 0;
