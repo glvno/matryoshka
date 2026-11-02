@@ -669,6 +669,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     queueEmu();
   },
   onAtt(id, index, value) {
+    if (fromDevice) uploadGate.forget();   // (the FM-1 changed its patch itself, or the copy of its panel did: its bytes are not known)
     host.send({ t: 'att', id, index, value });
     queueEmu();
     queueSave(editor.patch);
@@ -676,6 +677,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     else if (live()) dirty = true;
   },
   onParam(id, name, value) {
+    if (fromDevice) uploadGate.forget();
     // Main's tempo while the tempo is global: the patch's own (an undo, A/B) is only saved; the engines, the FM-1 and the
     // FM-1 tab play the global tempo, which tempo.listen sends
     if (isGlobalTempo(editor.patch.modules.find((m) => m.id === id)?.type, name)) return queueSave(editor.patch);
@@ -704,6 +706,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     else if (live()) dirty = true;
   },
   onTrack(id, notes, pat) {
+    if (fromDevice) uploadGate.forget();
     host.send({ t: 'track', id, notes, pat });
     if (!fromEmu) queueEmu();
     queueSave(editor.patch);
@@ -712,6 +715,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     else if (live()) dirty = true;
   },
   onPattern(pattern, song) {   // (#375) the patch's pattern / song: each track takes it at the end of its pass
+    if (fromDevice) uploadGate.forget();
     host.send({ t: 'pattern', p: pattern });
     host.send({ t: 'song', n: song });
     if (!fromEmu) queueEmu();
@@ -721,6 +725,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     else if (live()) dirty = true;
   },
   onSong(k, entries) {
+    if (fromDevice) uploadGate.forget();
     host.send({ t: 'songs', songs: editor.songs() });
     if (!fromEmu) queueEmu();
     queueSave(editor.patch);
@@ -749,6 +754,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     if (live() && !uploading) device.mute(editor.patch, id, on);
   },
   onBypass(id, on) {
+    if (fromDevice) uploadGate.forget();
     host.send({ t: 'bypass', id, on });
     queueEmu();
     tutorial.bypassed();
@@ -757,6 +763,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     else if (live()) dirty = true;
   },
   onRange(id, index, name, range) {
+    if (fromDevice) uploadGate.forget();
     host.send({ t: 'range', id, index, name, range });
     queueEmu();
     queueSave(editor.patch);
@@ -801,6 +808,7 @@ const editor = new Editor($('canvas'), firstPatch, {
   },
   onLoad(p) {
     emuFresh = true;
+    uploadGate.forget();   // (a patch opened always goes to the FM-1 whole: its mutes, arms and pattern start afresh too)
     noteKeys.set(p.octave ?? 0); // a patch opens in the octave it was last played in
   },
   onHistory(kind) {

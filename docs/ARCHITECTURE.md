@@ -657,7 +657,9 @@ tick in, it sends its own again at its tempo ([D-477](ledger/link-and-midi.md#D-
   confirm. PRESET is not followed while Live is on (the FM-1 then plays the editor's patch; its slots are its own).
 - Under Live a structural change uploads the patch only when its encoded bytes differ from what the FM-1 holds
   (`web/src/upload-gate.ts`, main.ts `structureChanged`): a comment or a layout change sends nothing. Edits sent live
-  bring the gate's copy up to date 250 ms after they stop (`liveEdited`); until then a structural change uploads.
+  bring the gate's copy up to date 250 ms after they stop (`liveEdited`); until then a structural change uploads. A change
+  that came from the FM-1 (`fromDevice`: it changed its own patch, a preset loaded there) forgets the bytes, so the next
+  structural change uploads. Opening a patch always uploads it (`onLoad`).
 - The Emulator view shows a "Mirroring your FM-1" marker over the panel (its tooltip names the firmware) and greys the
   controls that firmware does not report (`Fm1View.following`).
 - The FM-1's CC on the Live link are not used by the page. A knob's value arrives as its row's 7-bit position (CC 16..19),
