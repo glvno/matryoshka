@@ -22,6 +22,11 @@
                                            the mean period, the deviation of each period and of each tick from a straight
                                            grid, and the link's refused sends over that time, DIAG page 117; BPM: at that
                                            global tempo (TEMPO, set back after); run: with the transport running)
+  tools/m1_link.py usblog [arm|wrap]      (#535: the USB setup log, DIAG pages 40..107: every control transfer a host started
+                                           since boot (or since `arm`) and the firmware's answer, bus resets, suspends, the
+                                           address taking effect; kept while the FM-1 stays powered, so a failed host's log
+                                           can be read on another. arm: keep the next 128 entries (a one-shot capture), wrap:
+                                           the newest again)
   tools/m1_link.py diag [DIS]             (what the last reset left: its cause, the crash record, where a stalled main loop
                                            was; DIS = the build's matryoshka.dis (CI artifact matryoshka-elf) names the functions)
 Needs mido and python-rtmidi (the Nix dev shell has them).
@@ -310,6 +315,30 @@ def main():
                           f"{sum(cd) / len(cd):.3f} ms, 99 % within {cd[len(cd) * 99 // 100]:.3f} ms, max {cd[-1]:.3f} ms")
             print(f"  FM-1 counted {(w1[0] - w0[0]) & 0xFFFFFFFF} ticks sent, {(w1[1] - w0[1]) & 0xFFFFFFFF} dropped; "
                   f"link sends refused for no room {(l1[2] - l0[2]) & 0xFFFFFFFF}, with no host {(l1[1] - l0[1]) & 0xFFFFFFFF}")
+    elif a[0] == "usblog":
+        def page(n):
+            p = link.ask(frame(0x2B, [n]), (0x4B, n))
+            if len(p) < 33:
+                sys.exit("no USB setup log (DIAG pages 104 / 105: a firmware from before #535, or the update loader)")
+            return p[1:33]
+        words = lambda b: [int.from_bytes(bytes(b[4 * i:4 * i + 4]), "little") for i in range(8)]
+        if len(a) > 1 and a[1] in ("arm", "wrap"):
+            st = words(page(106 if a[1] == "arm" else 107))
+            print("one-shot capture armed: the next %d entries are kept (unplug, plug into the host under test, come back, "
+                  "run usblog)" % (st[2] >> 8 & 0xFFFF) if a[1] == "arm" else "the log keeps the newest entries again")
+            return
+        st, ct = words(page(104)), words(page(105))
+        ents = {}
+        n, base, oneshot, size = st[0], st[1], st[2] & 0xFF, st[2] >> 8 & 0xFFFF
+        first = base if oneshot else max(0, n - size)
+        last = min(n, base + size) if oneshot else n
+        pages = sorted({40 + (k % size) // 2 for k in range(first, last)})
+        data = {pg: page(pg) for pg in pages}
+        for k in range(first, last):
+            slot = k % size
+            ents[k] = data[40 + slot // 2][16 * (slot % 2):16 * (slot % 2) + 16]
+        st2 = words(page(104))
+        print_usblog(st, ct, ents, first, last, st2[0] != n)
     elif a[0] == "diag":
         raw = []
         for page in range(32):
@@ -346,6 +375,130 @@ def print_uac(w):
           f"bus resets {w[5]}, USB frame {w[7]}")
     print(f"  underruns {w[8]}, overruns {w[9]}, missed {w[10]}, stalls {w[11]}, adj_up {w[12]}, adj_down {w[13]}, "
           f"fill now {w[6]}, fill min..max {band} (band 160..208)")
+
+
+STD_REQ = {0: "GET_STATUS", 1: "CLEAR_FEATURE", 3: "SET_FEATURE", 5: "SET_ADDRESS", 6: "GET_DESCRIPTOR",
+           7: "SET_DESCRIPTOR", 8: "GET_CONFIGURATION", 9: "SET_CONFIGURATION", 10: "GET_INTERFACE", 11: "SET_INTERFACE",
+           12: "SYNCH_FRAME"}
+DESC = {1: "DEVICE", 2: "CONFIG", 3: "STRING", 4: "INTERFACE", 5: "ENDPOINT", 6: "DEVICE_QUALIFIER",
+        7: "OTHER_SPEED_CONFIG", 8: "INTERFACE_POWER", 9: "OTG", 10: "DEBUG", 11: "IAD", 15: "BOS", 0x21: "HID",
+        0x22: "HID_REPORT", 0x24: "CS_INTERFACE", 0x25: "CS_ENDPOINT"}
+AUDIO_REQ = {0x01: "SET_CUR", 0x02: "SET_MIN", 0x03: "SET_MAX", 0x04: "SET_RES", 0x81: "GET_CUR", 0x82: "GET_MIN",
+             0x83: "GET_MAX", 0x84: "GET_RES", 0xFF: "GET_STAT"}
+CDC_REQ = {0x20: "SET_LINE_CODING", 0x21: "GET_LINE_CODING", 0x22: "SET_CONTROL_LINE_STATE", 0x23: "SEND_BREAK"}
+OUTCOME = ["PENDING (no answer yet)", "ACK", "IN", "OUT", "STALL", "STALL (unknown request)"]
+
+
+def usb_request(s):
+    """a SETUP packet (8 bytes) in words: GET_DESCRIPTOR(CONFIG len 255), SET_CUR(EP 0x84 SAMPLING_FREQ), ..."""
+    rt, rq, val, idx, ln = s[0], s[1], s[2] | s[3] << 8, s[4] | s[5] << 8, s[6] | s[7] << 8
+    kind, rcp = rt >> 5 & 3, rt & 31
+    to = ["", f" IF {idx & 0xFF}", f" EP {idx & 0xFF:#04x}", " OTHER"][rcp] if rcp < 4 else f" recipient {rcp}"
+    if kind == 0:
+        name = STD_REQ.get(rq, f"standard request {rq:#04x}")
+        if rq == 6 or rq == 7:
+            t, i = val >> 8, val & 0xFF
+            d = DESC.get(t, f"type {t:#04x}")
+            if t == 3:
+                d += f" {i}" + (f" lang {idx:#06x}" if idx else "")
+            elif i:
+                d += f" {i}"
+            return f"{name}({d} len {ln})" + (to if rcp else "")
+        if rq == 5:
+            return f"SET_ADDRESS {val}"
+        if rq == 9:
+            return f"SET_CONFIGURATION {val}"
+        if rq == 11:
+            return f"SET_INTERFACE IF {idx} alt {val}"
+        if rq == 10:
+            return f"GET_INTERFACE IF {idx}"
+        if rq in (1, 3):
+            feat = {0: "ENDPOINT_HALT" if rcp == 2 else "feature 0", 1: "DEVICE_REMOTE_WAKEUP", 2: "TEST_MODE"}.get(val, f"feature {val}")
+            return f"{name}({feat}){to}"
+        return f"{name}{to}" + (f" len {ln}" if ln else "")
+    if kind == 1:
+        if rq in CDC_REQ:
+            return f"CDC {CDC_REQ[rq]}{to} wValue {val:#06x} len {ln}"
+        name = AUDIO_REQ.get(rq, f"class request {rq:#04x}")
+        if rcp == 2:
+            cs = {1: "SAMPLING_FREQ", 2: "PITCH"}.get(val >> 8, f"control {val >> 8}")
+            return f"audio {name}(EP {idx & 0xFF:#04x} {cs}) len {ln}"
+        if rcp == 1:
+            return f"audio {name}(IF {idx & 0xFF} entity {idx >> 8} control {val >> 8} ch {val & 0xFF}) len {ln}"
+        return f"class {name}{to} wValue {val:#06x} wIndex {idx:#06x} len {ln}"
+    return (f"{'VENDOR' if kind == 2 else 'RESERVED'} request {rq:#04x} ({'IN' if rt & 0x80 else 'OUT'}{to}) "
+            f"wValue {val:#06x} wIndex {idx:#06x} len {ln}")
+
+
+def print_usblog(st, ct, ents, first, last, moved):
+    """main.c m1_diag pages 104, 105 and 40.. (usb.c ul, ul_ring, #535)"""
+    n, base, oneshot, size, now = st[0], st[1], st[2] & 0xFF, st[2] >> 8 & 0xFFFF, st[3]
+    flags = st[7]
+    print(f"USB setup log: {n} entries since boot, {size} kept "
+          + (f"(one-shot capture from entry {base}: {max(0, n - base - size)} not kept)" if oneshot else "(the newest)")
+          + f"; FM-1 up {now / 1000:.1f} s")
+    print(f"  now: {'configured' if flags & 1 else 'not configured'}{', suspended' if flags & 2 else ''}"
+          f"{'' if flags & 4 else ', SIE off'}, address {flags >> 8 & 0xFF}; bus resets {st[4]}, suspends {st[5]}, "
+          f"SETUPs {st[6]}, SIE restarts {flags >> 16}")
+    print(f"  unknown requests {ct[0]}, stalls answered {ct[1]}, STALL handshakes {ct[2]} ({ct[3]} with a SETUP waiting), "
+          f"SetupEnd {ct[4]}, status stages {ct[5]}, OUT data stages {ct[6]}, SIE timeouts {ct[7]}")
+    if moved:
+        print("  (the log grew while it was read: the newest entries may be mixed)")
+    prev = None
+    for k in range(first, last):
+        e = ents[k]
+        t, kind, a, cnt, s = int.from_bytes(bytes(e[0:4]), "little"), e[4], e[5], e[6] | e[7] << 8, e[8:16]
+        dt = "" if prev is None else f"+{(t - prev) & 0xFFFFFFFF}"
+        prev = t
+        rep = ""
+        if kind != 1 and cnt:
+            t2 = int.from_bytes(bytes(s[4:8]), "little")
+            rep = f"  x{cnt + 1}, the last at {t2 / 1000:.3f} s"
+            prev = t2
+        head = f"{k:6} {t / 1000:10.3f} {dt:>8}  "
+        if kind == 1:
+            o = a & 7
+            ln = s[6] | s[7] << 8
+            out = OUTCOME[o] if o < len(OUTCOME) else f"outcome {o}"
+            if o == 2:
+                out = f"IN {cnt} B" + (" (short)" if cnt < ln else "") + (" +ZLP" if a & 0x40 else "") + \
+                      ("" if a & 0x08 else " (not all loaded)")
+            elif o == 3:
+                out = f"OUT {cnt} B received" if cnt else "OUT data stage awaited"
+            notes = [x for b, x in ((0x10, "status done"), (0x20, "ABORTED by the host (SetupEnd)"),
+                                    (0x80, "STALL handshake sent")) if a & b]
+            print(head + f"{usb_request(s):58} -> {out}" + (f"; {', '.join(notes)}" if notes else "") + rep)
+        elif kind == 2:
+            print(head + f"BUS RESET (POWER {s[0]:#04x}{', HIGH SPEED' if s[0] & 0x10 else ''}; ends configuration {s[1]}, "
+                  f"address {s[2]})" + rep)
+        elif kind == 3:
+            print(head + f"SUSPEND (configuration {a})" + rep)
+        elif kind == 4:
+            print(head + f"RESUME (configuration {a})" + rep)
+        elif kind == 5:
+            print(head + f"ADDRESS {a} takes effect (POWER {s[0]:#04x}{', HIGH SPEED' if s[0] & 0x10 else ''})" + rep)
+        elif kind == 6:
+            left = s[1] | s[2] << 8
+            print(head + f"SETUP_END: the host ended the transfer (CSR0 {a:#04x}"
+                  + (f", {left} B of IN data not yet loaded)" if s[0] else ")") + rep)
+        elif kind == 7:
+            print(head + f"STALL HANDSHAKE SENT WITH A SETUP WAITING (CSR0 {a:#04x}): that SETUP is left unanswered" + rep)
+        elif kind == 8:
+            print(head + f"EP0 status interrupt with no transfer (CSR0 {a:#04x})" + rep)
+        elif kind == 9:
+            print(head + (f"USB START: the SIE answers" if a else f"USB START FAILED ({s[0]} SIE timeouts)") + rep)
+        elif kind == 10:
+            print(head + f"SIE STOPPED ANSWERING (register {a}): USB off until the retry" + rep)
+        elif kind == 11:
+            print(head + f"frame number frozen at {s[0] | s[1] << 8} for 100 ms (unplugged / host asleep)" + rep)
+        elif kind == 12:
+            print(head + f"frame number moves again ({s[0] | s[1] << 8})" + rep)
+        elif kind == 13:
+            print(head + "DETACH (update)" + rep)
+        elif kind == 14:
+            print(head + f"PRESENTATION: {'console' if s[0] else 'audio function'} {'on' if a else 'off'} (re-enumerates)" + rep)
+        else:
+            print(head + f"event {kind} a {a:#04x} n {cnt} {bytes(s).hex()}")
 
 
 def print_diag(raw, dis_path):

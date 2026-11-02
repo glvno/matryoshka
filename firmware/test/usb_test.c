@@ -30,12 +30,24 @@ static uint32_t count0_in;               /* COUNT0 */
 static uint32_t txcsr1_ep4;              /* TXCSR1 of EP4: bit 0 = a packet is still queued */
 static uint32_t rxcsr1_ep1, rxcount_ep1; /* EP1 OUT: bit 0 = a packet waits (RxPktRdy), its length */
 static int csr0_last = -1;               /* the last value written to CSR0 */
+static uint32_t intrusb_in, intrtx1_in;  /* INTRUSB (bus events) and INTRTX1 (bit 0: EP0) for usb_poll */
+static uint32_t faddr_last;              /* the last value written to FADDR */
 static uint8_t ep0_sent[512];
 static uint32_t ep0_sent_n;
 static uint32_t ep4_sent[64];
 static uint32_t ep4_sent_n;              /* bytes */
 static uint32_t sim_regs(uint32_t r)
 {
+    if (r == 6u) {                       /* (read clears) */
+        uint32_t v = intrusb_in;
+        intrusb_in = 0;
+        return v;
+    }
+    if (r == 2u) {
+        uint32_t v = intrtx1_in;
+        intrtx1_in = 0;
+        return v;
+    }
     if (r == 17u && sie_index == 0u)
         return csr0_in;
     if (r == 22u && sie_index == 0u)
@@ -52,10 +64,15 @@ static void fm1_usb_reset(void) {}
 static void fm1_usb_attach(void *p) { (void)p; }
 static void fm1_usb_off(void) {}
 static uint32_t fm1_usb_sie_on(void) { return 1; }
+static FILE *trace;                      /* usb_test trace: every SIE write and EP0 packet */
 static void fm1_usb_sie_wr_start(uint32_t r, uint32_t v)
 {
+    if (trace)
+        fprintf(trace, "W %2u %02X\n", r, v & 0xFFu);
     if (r == 14u)
         sie_index = v;
+    if (r == 0u)
+        faddr_last = v;
     if (r == 17u && sie_index == 0u)
         csr0_last = (int)v;
     if (r == 20u && sie_index == 1u)
@@ -69,6 +86,13 @@ static void fm1_usb_ep_txbuf(uint32_t ep, void *p) { (void)ep; (void)p; }
 static void fm1_usb_ep_rxbuf(uint32_t ep, void *p) { (void)ep; (void)p; }
 static void fm1_usb_ep0_send(void *p, uint32_t n)
 {
+    if (trace) {
+        uint32_t i;
+        fprintf(trace, "D %2u", n);
+        for (i = 0; i < n; i++)
+            fprintf(trace, " %02X", ((uint8_t *)p)[i]);
+        fprintf(trace, "\n");
+    }
     if (ep0_sent_n + n <= sizeof ep0_sent)
         memcpy(ep0_sent + ep0_sent_n, p, n);
     ep0_sent_n += n;
@@ -367,6 +391,197 @@ static void test_ep0(void)
     usb.up = 0;
     usb.config = 0;
 }
+
+/* ------------------------------------------------------------------ the USB setup log, #535 --- */
+static void ep0_irq(uint32_t csr)                               /* an EP0 interrupt through usb_poll, CSR0 reading csr */
+{
+    csr0_in = csr;
+    intrtx1_in = 1;
+    usb_poll();
+}
+static void bus(uint32_t iu)                                    /* INTRUSB bits through usb_poll */
+{
+    intrusb_in = iu;
+    usb_poll();
+}
+/* an enumeration with every kind of answer (data, short, several packets, status, STALL, unknown, SetupEnd, OUT data,
+ * resets, suspend): `usb_test trace` prints the SIE writes and EP0 packets it causes, and tools/usb_test.sh compares a
+ * build with the log and one without (USB_LOG=0), which must be the same: the log only watches */
+static void enum_script(void)
+{
+    static const uint8_t R[3] = {0x44, 0xAC, 0x00};
+    uint32_t i;
+    usb_uac_on = 1;
+    usb.up = 1;
+    usb.config = 0;
+    bus(0x04);
+    setup(0x80, 6, 0x0100, 0, 64);
+    ep0_irq(0);
+    bus(0x04);
+    setup(0x00, 5, 7, 0, 0);
+    ep0_irq(0);
+    setup(0x80, 6, 0x0100, 0, 18);
+    ep0_irq(0);
+    setup(0x80, 6, 0x0200, 0, 9);
+    ep0_irq(0);
+    setup(0x80, 6, 0x0200, 0, 255);
+    for (i = 0; i < 8u && usb.e0_tx; i++)
+        ep0_irq(0);
+    ep0_irq(0);
+    setup(0x80, 6, 0x0600, 0, 10);
+    ep0_irq(0x04);
+    setup(0x80, 6, 0x0F00, 0, 5);
+    ep0_irq(0x05);
+    setup(0xC0, 0x33, 0, 0, 2);
+    setup(0x80, 6, 0x0300, 0, 255);
+    setup(0x80, 6, 0x0302, 0x0409, 255);
+    setup(0x80, 6, 0x0303, 0x0409, 255);
+    setup(0x80, 0, 0, 0, 2);
+    setup(0x00, 9, 1, 0, 0);
+    setup(0x01, 11, 0, 2, 0);
+    setup(0x01, 11, 1, 1, 0);
+    setup(0x22, 1, 0x0100, 0x84, 3);
+    data_stage(R, 3);
+    setup(0xA2, 0x81, 0x0100, 0x84, 3);
+    setup(0x80, 6, 0x0200, 0, 255);
+    ep0_irq(0x10);
+    bus(0x01);
+    bus(0x02);
+    bus(0x04);
+    usb.e0_tx = 0;
+    usb.up = 0;
+    usb.config = 0;
+}
+
+#if USB_LOG
+static usb_ev_t *ev(uint32_t k) { return &ul_ring[k & (USB_LOG_N - 1u)]; }
+static int is_setup(const usb_ev_t *e, uint8_t rt, uint8_t rq, uint16_t val, uint16_t len)
+{
+    return e->kind == UL_SETUP && e->s[0] == rt && e->s[1] == rq && (e->s[2] | e->s[3] << 8) == val &&
+           (e->s[6] | e->s[7] << 8) == len;
+}
+
+static void test_usb_log(void)
+{
+    uint32_t k0, k, i, n0;
+    usb_uac_on = 1;
+    usb.up = 1;
+    usb.config = 0;
+    ul.oneshot = 0;
+    fm1_ms = 1000;
+    k0 = ul.n;
+    bus(0x04);                                                  /* bus reset */
+    CHECK(ul.n == k0 + 1u && ev(k0)->kind == UL_RESET && ev(k0)->t == 1000u, "log: a bus reset");
+    fm1_ms = 1012;
+    /* GET_DESCRIPTOR(DEVICE) for 64 at address 0: 18 bytes, one short packet, then the status stage */
+    CHECK(setup(0x80, 6, 0x0100, 0, 64) == 0x0A, "log: device descriptor sent");
+    k = k0 + 1u;
+    CHECK(is_setup(ev(k), 0x80, 6, 0x0100, 64) && ev(k)->t == 1012u, "log: the SETUP's bytes and time");
+    CHECK((ev(k)->a & 7u) == UO_IN && ev(k)->n == 18u && (ev(k)->a & UF_LAST), "log: IN 18 bytes, last (a %02X n %u)",
+          ev(k)->a, ev(k)->n);
+    ep0_irq(0);
+    CHECK(ev(k)->a & UF_DONE, "log: its status stage");
+    /* SET_ADDRESS 5: the address takes effect at the next EP0 interrupt (the status stage's) */
+    CHECK(setup(0x00, 5, 5, 0, 0) == 0x48 && (ev(k + 1u)->a & 7u) == UO_ACK, "log: SET_ADDRESS acknowledged");
+    ep0_irq(0);
+    CHECK(faddr_last == 5u && ev(k + 2u)->kind == UL_ADDR && ev(k + 2u)->a == 5u && ul.addr == 5u, "log: address 5 set");
+    CHECK(ev(k + 1u)->a & UF_DONE, "log: SET_ADDRESS's status stage");
+    /* the configuration descriptor asked with 255 (175 bytes: 64 + 64 + 47; with the console 241: 64 * 3 + 49) */
+    {
+        const uint8_t *d;
+        uint16_t l;
+        get_desc(0x0200, &d, &l);
+        CHECK(setup(0x80, 6, 0x0200, 0, 255) == 0x02, "log: configuration, first packet");
+        for (i = 0; i < 8u && usb.e0_tx; i++)
+            ep0_irq(0);
+        k += 3u;
+        CHECK(is_setup(ev(k), 0x80, 6, 0x0200, 255) && (ev(k)->a & 7u) == UO_IN && ev(k)->n == l && (ev(k)->a & UF_LAST) &&
+                  !(ev(k)->a & UF_ZLP) && i == (l - 1u) / 64u,
+              "log: configuration %u bytes in %u packets (n %u a %02X)", l, i + 1u, ev(k)->n, ev(k)->a);
+    }
+    ep0_irq(0);
+    CHECK(ev(k)->a & UF_DONE, "log: configuration's status stage");
+    /* DEVICE_QUALIFIER on a full-speed device: STALL, then the SIE says the handshake went */
+    n0 = ul.stalls;
+    CHECK(setup(0x80, 6, 0x0600, 0, 10) == 0x60, "DEVICE_QUALIFIER stalls");
+    k++;
+    CHECK((ev(k)->a & 7u) == UO_STALL && ul.stalls == n0 + 1u, "log: DEVICE_QUALIFIER stalled");
+    ep0_irq(0x04);
+    CHECK((ev(k)->a & UF_STALLED) && ul.n == k + 1u, "log: STALL handshake sent, no event of its own");
+    /* a vendor request the firmware does not know */
+    n0 = ul.unknown;
+    CHECK(setup(0xC0, 0x33, 0, 0, 2) == 0x60, "a vendor request stalls");
+    k++;
+    CHECK((ev(k)->a & 7u) == UO_UNKNOWN && ul.unknown == n0 + 1u, "log: unknown request");
+    /* its STALL handshake with the next SETUP already waiting: logged as its own event (the SETUP stays unanswered) */
+    n0 = ul.stall_setup;
+    ep0_irq(0x05);
+    CHECK(ul.stall_setup == n0 + 1u && ev(k + 1u)->kind == UL_STALL_SENT && ev(k + 1u)->a == 0x05u,
+          "log: STALL sent with a SETUP waiting");
+    k += 2u;
+    /* SET_CONFIGURATION 1, SET_CUR with its 3-byte data stage */
+    CHECK(setup(0x00, 9, 1, 0, 0) == 0x48 && (ev(k)->a & 7u) == UO_ACK, "log: SET_CONFIGURATION");
+    k++;
+    n0 = ul.out_data;
+    CHECK(setup(0x22, 1, 0x0100, 0x84, 3) == 0x40 && (ev(k)->a & 7u) == UO_OUT, "log: SET_CUR waits for its data");
+    {
+        static const uint8_t R[3] = {0x44, 0xAC, 0x00};
+        CHECK(data_stage(R, 3) == 0x48 && ev(k)->n == 3u && ul.out_data == n0 + 1u && (ev(k)->a & 7u) == UO_OUT,
+              "log: SET_CUR's 3 bytes");
+    }
+    k++;
+    /* the host abandons a transfer (SetupEnd) */
+    n0 = ul.setup_end;
+    CHECK(setup(0x80, 6, 0x0200, 0, 255) == 0x02, "log: a configuration transfer starts");
+    ep0_irq(0x10);
+    CHECK((ev(k)->a & UF_ABORT) && ev(k)->n == 64u && ev(k + 1u)->kind == UL_SETUP_END && ul.setup_end == n0 + 1u &&
+              usb.e0_tx == 0u,
+          "log: SetupEnd");
+    k += 2u;
+    /* string descriptors: the language list, then the product with its language */
+    CHECK(setup(0x80, 6, 0x0300, 0, 255) == 0x0A && ev(k)->n == 4u, "log: string 0");
+    CHECK(setup(0x80, 6, 0x0302, 0x0409, 255) == 0x0A && ev(k + 1u)->n == sizeof STR2 && ev(k + 1u)->s[4] == 0x09u &&
+              ev(k + 1u)->s[5] == 0x04u,
+          "log: string 2 in 0x0409");
+    CHECK(setup(0x80, 6, 0x0303, 0x0409, 255) == 0x60 && (ev(k + 2u)->a & 7u) == UO_STALL, "log: string 3 stalls");
+    k += 3u;
+    /* the same bus event again counts in the last entry; another kind starts a new one */
+    usb.config = 0;
+    fm1_ms = 2000;
+    bus(0x01);
+    fm1_ms = 2005;
+    bus(0x01);
+    CHECK(ul.n == k + 1u && ev(k)->kind == UL_SUSPEND && ev(k)->n == 1u && ev(k)->t == 2000u &&
+              (ev(k)->s[4] | ev(k)->s[5] << 8) == 2005u,
+          "log: two suspends in one entry (n %u)", ev(k)->n);
+    bus(0x02);
+    CHECK(ul.n == k + 2u && ev(k + 1u)->kind == UL_RESUME, "log: resume");
+    k += 2u;
+    /* a reset ends the address and the transfer */
+    bus(0x04);
+    CHECK(ev(k)->kind == UL_RESET && ev(k)->s[2] == 5u && ul.addr == 0u && ul.cur == 0u, "log: reset after address 5");
+    k++;
+    /* the newest USB_LOG_N entries: older ones are overwritten */
+    for (i = 0; i < USB_LOG_N + 3u; i++)
+        setup(0x80, 0, 0, 0, 2);                                /* GET_STATUS */
+    CHECK(ul.n == k + USB_LOG_N + 3u && !ul_stored(k) && ul_stored(ul.n - USB_LOG_N) && is_setup(ev(ul.n - 1u), 0x80, 0, 0, 2),
+          "log: the ring keeps the newest");
+    /* a one-shot capture keeps the first USB_LOG_N from the arming on and counts the rest */
+    usb_log_arm();
+    k = ul.n;
+    bus(0x04);
+    for (i = 0; i < USB_LOG_N + 9u; i++)
+        setup(0x80, 6, (uint16_t)(0x0300 + (i & 1u)), 0, 255);
+    CHECK(ul.n == k + USB_LOG_N + 10u && ul.base == k && ev(k)->kind == UL_RESET && ul_stored(k) &&
+              ul_stored(k + USB_LOG_N - 1u) && !ul_stored(k + USB_LOG_N) && is_setup(ev(k + USB_LOG_N - 1u), 0x80, 6, 0x0300 + ((USB_LOG_N - 2u) & 1u), 255),
+          "log: one-shot capture full, the rest counted");
+    usb_log_wrap();
+    CHECK(!ul.oneshot && ul_stored(ul.n - 1u), "log: back to the newest");
+    usb.e0_tx = 0;
+    usb.up = 0;
+    usb.config = 0;
+}
+#endif
 
 /* ------------------------------------------------------------------ MIDI in, #177 --- */
 #if FELUCCA_OTA
@@ -833,12 +1048,22 @@ int main(int argc, char **argv)
         printf("\n");
         return 0;
     }
+#if FELUCCA_UAC && !FELUCCA_UAC_48K
+    if (argc > 1 && !strcmp(argv[1], "trace")) {                /* the enumeration's SIE writes and EP0 packets */
+        trace = stdout;
+        enum_script();
+        return 0;
+    }
+#endif
 #if !FELUCCA_UAC || FELUCCA_UAC_48K
     printf("usb_test needs FELUCCA_UAC=1 FELUCCA_UAC_48K=0\n");
     return 2;
 #else
     test_descriptors();
     test_ep0();
+#if USB_LOG
+    test_usb_log();
+#endif
 #if FELUCCA_OTA
     test_midi_in_quiet();
     test_sysex_burst();

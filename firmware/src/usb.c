@@ -211,6 +211,129 @@ static struct {
 } lk;
 
 static volatile uint32_t fm1_ms;                   /* also declared by core.h; parser-only host tests */
+
+/* #535: the USB setup log (DIAG pages 40..107, main.c m1_diag; tools/m1_link.py usblog). Every control transfer the host
+ * starts (its 8 SETUP bytes and what the firmware did with it) and the bus events (reset, suspend, resume, the address
+ * taking effect, the SIE start / loss, the frame number freezing / moving) go into a ring of USB_LOG_N entries, from the
+ * TIMER5 ISR (usb_poll) or from the main loop only while usb.up is 0 (usb_poll is idle then). Nothing is allocated, an
+ * entry is 16 bytes, nothing is cleared on a disconnect: the log lives while the FM-1 stays powered, so it can be read
+ * on another host than the one that failed. It only watches: the requests and their answers are the same with it.
+ * The device build puts it in .lowram (USB_LOG_MEM, modular.c); the update loader has none (USB_LOG 0).
+ * Normally the ring keeps the newest USB_LOG_N entries; usb_log_arm (DIAG page 106) starts a one-shot capture that
+ * keeps the first USB_LOG_N entries from then on and drops the rest (counted): unplug, plug into the host under test,
+ * come back, read. */
+#ifndef USB_LOG
+#ifdef FELUCCA_LOADER
+#define USB_LOG 0
+#else
+#define USB_LOG 1
+#endif
+#endif
+#if USB_LOG
+#ifndef USB_LOG_MEM
+#define USB_LOG_MEM
+#endif
+#define USB_LOG_N 128u                       /* a power of two; 2 entries a DIAG page */
+enum { UL_SETUP = 1, UL_RESET, UL_SUSPEND, UL_RESUME, UL_ADDR, UL_SETUP_END, UL_STALL_SENT, UL_STATUS, UL_START, UL_DEAD,
+       UL_FROZEN, UL_FRAME_RUN, UL_DETACH, UL_SWITCH };
+/* a SETUP's outcome (low 3 bits of a), then what happened to the transfer after (flags) */
+enum { UO_PENDING = 0, UO_ACK, UO_IN, UO_OUT, UO_STALL, UO_UNKNOWN };
+#define UF_LAST 0x08u                        /* the last IN data packet was loaded (DataEnd) */
+#define UF_DONE 0x10u                        /* an EP0 interrupt with nothing pending followed: the status stage completed */
+#define UF_ABORT 0x20u                       /* SetupEnd: the host ended the transfer before the firmware did */
+#define UF_ZLP 0x40u                         /* a zero-length data packet was sent */
+#define UF_STALLED 0x80u                     /* the SIE reported the STALL handshake sent */
+typedef struct {
+    uint32_t t;                              /* fm1_ms */
+    uint8_t kind, a;                         /* UL_*; SETUP: outcome | flags; others: see usb_log_add's callers */
+    uint16_t n;                              /* SETUP: data bytes loaded (IN) or received (OUT); others: a repeat count */
+    uint8_t s[8];                            /* SETUP: the 8 bytes; others: event data */
+} usb_ev_t;
+_Static_assert(sizeof(usb_ev_t) == 16u && (USB_LOG_N & (USB_LOG_N - 1u)) == 0, "16-byte entries, a power of two");
+static usb_ev_t ul_ring[USB_LOG_N] USB_LOG_MEM;
+static struct {
+    uint32_t n;                              /* entries added since boot (stored or not) */
+    uint32_t base;                           /* one-shot capture: the first entry's number */
+    uint32_t cur;                            /* the current SETUP's entry number + 1 (0: none) */
+    uint8_t oneshot;
+    uint8_t addr;                            /* the address last written to FADDR */
+    uint32_t unknown, stalls, stall_sent, stall_setup, setup_end, status, out_data, sie_timeouts;
+} ul USB_LOG_MEM;
+static usb_ev_t ul_spare USB_LOG_MEM;        /* where an entry goes when the one-shot capture is full */
+
+static int ul_stored(uint32_t k)             /* entry k is in the ring */
+{
+    return ul.oneshot ? k - ul.base < USB_LOG_N : ul.n - k <= USB_LOG_N;
+}
+
+static usb_ev_t *usb_log_add(uint32_t kind, uint32_t a)
+{
+    uint32_t k = ul.n, i;
+    usb_ev_t *e;
+    if (kind != UL_SETUP && k && ul_stored(k - 1u)) {            /* the same bus event again: count it in the last one */
+        e = &ul_ring[(k - 1u) & (USB_LOG_N - 1u)];
+        if (e->kind == kind && e->a == (uint8_t)a && e->n != 0xFFFFu) {
+            e->n++;
+            e->s[4] = (uint8_t)fm1_ms;                           /* (s[4..7]: the last one's time) */
+            e->s[5] = (uint8_t)(fm1_ms >> 8);
+            e->s[6] = (uint8_t)(fm1_ms >> 16);
+            e->s[7] = (uint8_t)(fm1_ms >> 24);
+            return &ul_spare;
+        }
+    }
+    ul.n = k + 1u;
+    e = ul_stored(k) ? &ul_ring[k & (USB_LOG_N - 1u)] : &ul_spare;
+    e->t = fm1_ms;
+    e->kind = (uint8_t)kind;
+    e->a = (uint8_t)a;
+    e->n = 0;
+    for (i = 0; i < 8u; i++)
+        e->s[i] = 0;
+    return e;
+}
+
+static usb_ev_t *ul_cur(void)                /* the current SETUP's entry (ul_spare: none, or not stored) */
+{
+    return ul.cur && ul_stored(ul.cur - 1u) ? &ul_ring[(ul.cur - 1u) & (USB_LOG_N - 1u)] : &ul_spare;
+}
+
+static void ul_outcome(uint32_t o)           /* the firmware's answer to the current SETUP (the first one counts) */
+{
+    usb_ev_t *e = ul_cur();
+    if (!(e->a & 7u))
+        e->a = (uint8_t)(e->a | o);
+}
+
+static void usb_log_arm(void)                /* main loop, interrupts off: a one-shot capture from the next entry */
+{
+    ul.base = ul.n;
+    ul.cur = 0;
+    ul.oneshot = 1;
+}
+
+static void usb_log_wrap(void)               /* main loop, interrupts off: the newest entries again (the default) */
+{
+    ul.cur = 0;
+    ul.oneshot = 0;
+}
+static void ul_ev(uint32_t kind, uint32_t a, uint32_t s0, uint32_t s1, uint32_t s2)   /* a bus event */
+{
+    usb_ev_t *e = usb_log_add(kind, a);
+    e->s[0] = (uint8_t)s0;
+    e->s[1] = (uint8_t)s1;
+    e->s[2] = (uint8_t)s2;
+}
+#define UL_EV(kind, a, s0, s1, s2) ul_ev(kind, a, s0, s1, s2)
+#define UL_FLAG(f) (ul_cur()->a |= (uint8_t)(f))
+#define UL_OUTCOME(o) ul_outcome(o)
+#define UL_COUNT(c) (ul.c++)
+#else
+#define UL_EV(kind, a, s0, s1, s2) ((void)0)
+#define UL_FLAG(f) ((void)0)
+#define UL_OUTCOME(o) ((void)0)
+#define UL_COUNT(c) ((void)0)
+#endif
+
 #include "midi_queue.h"
 static uint32_t midi_out_q[MQ];
 static volatile uint32_t mo_w, mo_r;
@@ -465,6 +588,14 @@ static int get_desc(uint32_t wvalue, const uint8_t **d, uint16_t *l)
 }
 
 /* ---------------------------------------------------------- the SIE --- */
+static void sie_dead(uint32_t r)                        /* the SIE stopped answering: usb_poll stops (usb_retry starts it) */
+{
+    (void)r;
+    if (usb.up)                                         /* (usb_start's own failures are logged by usb_start) */
+        UL_EV(UL_DEAD, r, 0, 0, 0);
+    usb.up = 0;
+}
+
 static void sie_wr(uint32_t r, uint32_t v)
 {
     uint32_t n = 20000;
@@ -473,10 +604,13 @@ static void sie_wr(uint32_t r, uint32_t v)
     fm1_usb_sie_wr_start(r, v);
     while (!fm1_usb_sie_done() && --n)
         ;
-    if (n)
+    if (n) {
         usb.timeouts = 0;                               /* consecutive failures only */
-    else if (++usb.timeouts > 50u)
-        usb.up = 0;                                     /* SIE dead (no clock?): stop polling it */
+        return;
+    }
+    UL_COUNT(sie_timeouts);
+    if (++usb.timeouts > 50u)
+        sie_dead(r);                                    /* SIE dead (no clock?): stop polling it */
 }
 
 static uint32_t sie_rd(uint32_t r)
@@ -487,8 +621,9 @@ static uint32_t sie_rd(uint32_t r)
     fm1_usb_sie_rd_start(r);
     while (!fm1_usb_sie_done())
         if (!--n) {
+            UL_COUNT(sie_timeouts);
             if (++usb.timeouts > 50u)
-                usb.up = 0;
+                sie_dead(r);
             return 0;
         }
     usb.timeouts = 0;
@@ -597,6 +732,13 @@ static void e0_chunk(void)
     last = usb.e0_left == 0 && !(n == 64u && usb.e0_zlp);
     if (usb.e0_left == 0 && n == 64u)
         usb.e0_zlp = 0;
+#if USB_LOG
+    {
+        usb_ev_t *e = ul_cur();
+        e->n = (uint16_t)(e->n + n);
+        e->a = (uint8_t)(e->a | (n ? 0u : UF_ZLP) | (last ? UF_LAST : 0u));
+    }
+#endif
     sie_wr(S_INDEX, 0);
     sie_wr(S_CSR0, last ? 0x0A : 0x02);
     if (last)
@@ -611,6 +753,7 @@ static void e0_send(const uint8_t *p, uint16_t len, uint16_t wlen)
     usb.e0_left = len;
     usb.e0_zlp = (len < wlen) && (len % 64u == 0);
     usb.e0_tx = 1;
+    UL_OUTCOME(UO_IN);
     sie_wr(S_INDEX, 0);
     sie_wr(S_CSR0, 0x40);
     e0_chunk();
@@ -625,10 +768,22 @@ static void ep0_service(void)
     if (usb.has_pend_addr) {
         sie_wr(S_FADDR, usb.pend_addr);
         usb.has_pend_addr = 0;
+#if USB_LOG
+        ul.addr = usb.pend_addr;
+        UL_EV(UL_ADDR, usb.pend_addr, sie_rd(S_POWER), 0, 0);   /* (POWER bit 4: the core runs at high speed) */
+#endif
     }
     sie_wr(S_INDEX, 0);
     csr = sie_rd(S_CSR0);
     if (csr & 0x04u) {                                  /* SentStall */
+#if USB_LOG
+        ul.stall_sent++;
+        UL_FLAG(UF_STALLED);
+        if (csr & 0x01u) {                              /* a SETUP waits with it: this return leaves it unanswered */
+            ul.stall_setup++;
+            UL_EV(UL_STALL_SENT, csr, 0, 0, 0);
+        }
+#endif
         sie_wr(S_CSR0, 0);
         usb.e0_tx = 0;
 #if FELUCCA_CDC
@@ -640,6 +795,11 @@ static void ep0_service(void)
         return;
     }
     if (csr & 0x10u) {                                  /* SetupEnd: the host abandoned the transfer */
+#if USB_LOG
+        ul.setup_end++;
+        UL_FLAG(UF_ABORT);
+        UL_EV(UL_SETUP_END, csr, usb.e0_tx, usb.e0_left, usb.e0_left >> 8);
+#endif
         sie_wr(S_CSR0, 0x80);
         usb.e0_tx = 0;
 #if FELUCCA_CDC
@@ -654,8 +814,18 @@ static void ep0_service(void)
             e0_chunk();
         return;
     }
-    if (!(csr & 0x01u))
+    if (!(csr & 0x01u)) {
+#if USB_LOG
+        if (!(csr & 0x14u)) {                           /* nothing pending: the status stage of the last transfer is over */
+            ul.status++;
+            if (ul.cur)
+                UL_FLAG(UF_DONE);
+            else
+                UL_EV(UL_STATUS, csr, 0, 0, 0);         /* an EP0 interrupt with no transfer to put it to (after a reset) */
+        }
+#endif
         return;
+    }
     fm1_usb_rx_sync();
 #if FELUCCA_CDC
     if (cdc.e0_rx) {                                    /* SET_LINE_CODING data stage */
@@ -663,21 +833,38 @@ static void ep0_service(void)
         for (i = 0; i < 7u && i < n; i++)
             cdc.line[i] = ep0buf[i];
         cdc.e0_rx = 0;
+#if USB_LOG
+        ul.out_data++;
+        ul_cur()->n = (uint16_t)n;
+#endif
         goto ack;
     }
 #endif
 #if FELUCCA_UAC
     if (uac.e0_rx) {                                    /* SET_CUR sampling frequency: 3 bytes, Hz */
+        uint32_t n = sie_rd(S_COUNT0);
         uac.rate_sets++;
-        if (sie_rd(S_COUNT0) >= 3u)
+        if (n >= 3u)
             uac_rate_set(ep0buf[0] | (uint32_t)ep0buf[1] << 8 | (uint32_t)ep0buf[2] << 16);
         uac.e0_rx = 0;
+#if USB_LOG
+        ul.out_data++;
+        ul_cur()->n = (uint16_t)n;
+#endif
         goto ack;
     }
 #endif
     for (i = 0; i < 8u; i++)
         s[i] = ep0buf[i];
     usb.setups++;
+#if USB_LOG
+    {
+        usb_ev_t *e = usb_log_add(UL_SETUP, 0);
+        for (i = 0; i < 8u; i++)
+            e->s[i] = s[i];
+        ul.cur = ul.n;
+    }
+#endif
     wvalue = (uint16_t)(s[2] | s[3] << 8);
     wlength = (uint16_t)(s[6] | s[7] << 8);
     switch ((uint32_t)s[0] << 8 | s[1]) {
@@ -762,6 +949,7 @@ static void ep0_service(void)
         if (!usb_cdc_on)
             goto stall;
         if (wlength) {
+            UL_OUTCOME(UO_OUT);
             cdc.e0_rx = 1;
             sie_wr(S_INDEX, 0);
             sie_wr(S_CSR0, 0x40);                       /* ServicedRxPktRdy, no DataEnd yet */
@@ -788,6 +976,7 @@ static void ep0_service(void)
         if (!UAC_ON || s[4] != 0x84u || s[3] != 1u)
             goto stall;
         if (wlength) {
+            UL_OUTCOME(UO_OUT);
             uac.e0_rx = 1;
             sie_wr(S_INDEX, 0);
             sie_wr(S_CSR0, 0x40);                       /* the 3 bytes follow */
@@ -814,13 +1003,18 @@ static void ep0_service(void)
     }
 #endif
     default:
+        UL_COUNT(unknown);
+        UL_OUTCOME(UO_UNKNOWN);
         goto stall;
     }
 ack:
+    UL_OUTCOME(UO_ACK);
     sie_wr(S_INDEX, 0);
     sie_wr(S_CSR0, 0x48);
     return;
 stall:
+    UL_COUNT(stalls);
+    UL_OUTCOME(UO_STALL);
     sie_wr(S_INDEX, 0);
     sie_wr(S_CSR0, 0x60);
 }
@@ -1452,12 +1646,17 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
             tick = 0;
             f = (uint16_t)(sie_rd(S_FRAME1) | (sie_rd(S_FRAME2) & 7u) << 8);
             if (f != usb.frame) {
+#if USB_LOG
+                if (usb.suspended)
+                    UL_EV(UL_FRAME_RUN, 0, f, f >> 8, 0);
+#endif
                 usb.frame = f;
                 usb.frame_same = 0;
                 usb.suspended = 0;
             } else if (++usb.frame_same >= 10u && !usb.suspended) {   /* 100 ms frozen: unplugged / host asleep */
                 usb.suspended = 1;
                 usb.frame_stalls++;
+                UL_EV(UL_FROZEN, 0, f, f >> 8, 0);
             }
         }
     }
@@ -1470,12 +1669,20 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
     ir = sie_rd(S_INTRRX1);                             /* 2 SIE round trips per poll */
 #endif
     if (iu & 0x01u) {                                   /* suspend: the bus went idle */
+        UL_EV(UL_SUSPEND, usb.config, 0, 0, 0);
         usb.suspends++;
         usb.suspended = 1;
     }
-    if (iu & 0x02u)                                     /* resume */
+    if (iu & 0x02u) {                                   /* resume */
+        UL_EV(UL_RESUME, usb.config, 0, 0, 0);
         usb.suspended = 0;
+    }
     if (iu & 0x04u) {                                   /* bus reset */
+#if USB_LOG
+        UL_EV(UL_RESET, 0, sie_rd(S_POWER), usb.config, ul.addr);   /* POWER, the configuration and address it ends */
+        ul.addr = 0;
+        ul.cur = 0;
+#endif
         usb.resets++;
         sie_wr(S_FADDR, 0);
         usb.config = 0;
@@ -1543,6 +1750,7 @@ static void usb_start(void)                             /* boot, or main-loop re
     sie_wr(S_INTRRX1E, 0);
     sie_wr(S_INTRRX2E, 0);
     fm1_usb_ep_enable(0x1Fu);
+    UL_EV(UL_START, usb.timeouts < 3u, usb.timeouts, 0, 0);   /* (before usb.up: usb_poll is idle while it logs) */
     usb.up = usb.timeouts < 3u;                         /* a dead SIE leaves USB off */
 }
 
@@ -1563,6 +1771,7 @@ static void usb_detach(void)
 {
     usb.detached = 1;
     usb.up = 0;
+    UL_EV(UL_DETACH, 0, 0, 0, 0);
     fm1_usb_off();
 }
 
@@ -1584,6 +1793,7 @@ static __attribute__((unused)) void usb_cdc_switch(uint32_t on)
     cdc.dtr = 0;                                        /* the console stops writing */
     cdc.rx_pend = 0;
     usb_cdc_on = (uint8_t)on;
+    UL_EV(UL_SWITCH, on, 1, 0, 0);                      /* (usb.up is 0: usb_poll is idle) */
 }
 #endif
 
@@ -1604,5 +1814,6 @@ static void usb_uac_switch(uint32_t on)
     usb.config = 0;
     uac_stream(0);
     usb_uac_on = (uint8_t)on;
+    UL_EV(UL_SWITCH, on, 0, 0, 0);                      /* (usb.up is 0: usb_poll is idle) */
 }
 #endif
