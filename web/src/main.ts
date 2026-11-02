@@ -1151,6 +1151,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Browse assembly library', run: () => browser.open() },
     { kind: 'command', label: 'Select all', detail: 'Ctrl/Cmd+A', keywords: 'everything modules assemblies', run: inPatch(() => editor.selectAll()) },
     { kind: 'command', label: 'Duplicate selection', detail: 'Ctrl/Cmd+D', run: inPatch(() => editor.duplicateSelected()) },
+    { kind: 'command', label: 'Add comment', detail: 'right-click the canvas', keywords: 'note text label annotate max box', run: inPatch(() => editor.addComment()) },
     { kind: 'command', label: 'Copy selection', detail: 'Ctrl/Cmd+C', keywords: 'clipboard', run: inPatch(() => copySelection()) },
     { kind: 'command', label: 'Cut selection', detail: 'Ctrl/Cmd+X', keywords: 'clipboard', run: inPatch(() => copySelection() && editor.removeSelected()) },
     { kind: 'command', label: 'Paste', detail: 'Ctrl/Cmd+V', keywords: 'clipboard', run: inPatch(() => void pasteFromPalette()) },
@@ -1441,14 +1442,18 @@ const clipboardIsOurs = (e: Event): boolean => {
 function copySelection(clipboardData?: DataTransfer | null): boolean {
   const clip = editor.copySelection();
   if (!clip) {
-    status.textContent = 'nothing to copy: select modules or assemblies (Main and the Output are not copied)';
+    status.textContent = 'nothing to copy: select modules, assemblies or comments (Main and the Output are not copied)';
     return false;
   }
   lastClip = clip;
   if (clipboardData) clipboardData.setData('text/plain', clipText(clip));
   else void navigator.clipboard?.writeText(clipText(clip)).catch(() => {});
-  const n = clip.def.modules.length;
-  status.textContent = `copied ${n} module${n === 1 ? '' : 's'}${clip.def.assemblies?.length ? ` in ${clip.def.assemblies.length} assembl${clip.def.assemblies.length === 1 ? 'y' : 'ies'}` : ''}`;
+  const n = clip.def?.modules.length ?? 0, asms = clip.def?.assemblies?.length ?? 0, notes = clip.comments?.length ?? 0;
+  const parts = [
+    ...(n || !notes ? [`${n} module${n === 1 ? '' : 's'}${asms ? ` in ${asms} assembl${asms === 1 ? 'y' : 'ies'}` : ''}`] : []),
+    ...(notes ? [`${notes} comment${notes === 1 ? '' : 's'}`] : []),
+  ];
+  status.textContent = `copied ${parts.join(' and ')}`;
   return true;
 }
 function pasteText(text: string | null): void {

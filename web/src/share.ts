@@ -44,11 +44,13 @@ export interface Share {
 }
 
 /** the patch without its card positions (and frame sizes, and the view): the cards open as a pile the editor tidies.
- *  The assemblies stay: which modules they hold is the patch's structure (device pages, poly racks), not layout. */
+ *  The assemblies stay: which modules they hold is the patch's structure (device pages, poly racks), not layout. The
+ *  comment boxes go: placed among cards that are tidied anew, they would point at the wrong ones (#518; the notes stay) */
 const slim = (p: Patch): Patch => {
   const s: Patch = { ...p, modules: p.modules.map((m) => ({ ...m, x: 0, y: 0 })) };
   if (p.assemblies) s.assemblies = p.assemblies.map(({ size: _s, frameSize: _f, ...a }) => ({ ...a, x: 0, y: 0 }));
   delete s.view;
+  delete s.comments;
   return s;
 };
 

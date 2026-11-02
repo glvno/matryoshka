@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // What changed between two versions of a patch (the diff view): parameters by module id, modules and cables added or
-// removed, and the rest (attenuverters, matrix, bypass, macro ranges, voices, morph) as one line each.
+// removed, and the rest (attenuverters, matrix, bypass, macro ranges, voices, morph, comments) as one line each.
 import type { ModuleDef, Patch, PolyCards } from './patch';
+import { commentChanges } from './comments';
 
 export interface PatchDiff {
   params: { module: number; label: string; name: string; from: number; to: number }[];
@@ -61,6 +62,8 @@ export function diffPatches(a: Patch, b: Patch, defs: Record<string, ModuleDef>)
   for (const label of pa.keys()) if (!pb.has(label)) d.other.push(`${label}: poly off`);
   if ((a.morphName ?? '') !== (b.morphName ?? '')) d.other.push(`morph B side: ${b.morphName ?? 'none'}`);
   if (a.name !== b.name) d.other.push(`name "${a.name}" → "${b.name}"`);
+  const comments = commentChanges(a, b);
+  if (comments) d.other.push(comments);
   return d;
 }
 

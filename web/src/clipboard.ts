@@ -3,9 +3,11 @@
 // (toDef on a scratch copy of the patch, the selected modules and assemblies as the members of a stand-in assembly), so it
 // carries nested assemblies, the cables among the copied items and Steps data the way saved assemblies do; cables to
 // anything not copied are left behind. A paste inserts that definition and ungroups the stand-in: the items land loose,
-// with fresh ids. As text it is JSON, which is what goes through the system clipboard.
+// with fresh ids. Comment boxes (#518) ride along as they are, beside the definition, and land offset like the rest. As
+// text it is JSON, which is what goes through the system clipboard.
 import { assembliesOf, EXCLUDED_TYPES, insertAssembly, toDef, ungroup, validateAssemblyDef, type AssemblyDef, type AssemblyInst } from './assembly';
-import type { ModuleDef, Patch } from './patch';
+import { fixComments, type CommentBox, type ModuleDef, type Patch } from './patch';
+import { pasteComments } from './comments';
 
 export const CLIP_FORMAT = 'matryoshka-clip';
 
@@ -15,12 +17,24 @@ export interface Clip {
   /** where the copied items' top left was in their patch (a paste lands offset from it) */
   x: number;
   y: number;
-  def: AssemblyDef;
+  /** the copied modules and assemblies; absent when only comments were copied */
+  def?: AssemblyDef;
+  /** the copied comment boxes where they were in their patch (#518) */
+  comments?: CommentBox[];
 }
 
 /** the clip of these modules and assemblies (top-level items of a selection: nested ones come with their assembly). Main
  *  and the Output are left out, as from any assembly; null when nothing else is left. */
-export function copyItems(p: Patch, moduleIds: number[], asmIds: number[]): Clip | null {
+export function copyItems(p: Patch, moduleIds: number[], asmIds: number[], commentIds: number[] = []): Clip | null {
+  const comments = structuredClone((p.comments ?? []).filter((c) => commentIds.includes(c.id)));
+  const clip = copyModules(p, moduleIds, asmIds);
+  if (!comments.length) return clip;
+  if (clip) return { ...clip, comments };
+  return { format: CLIP_FORMAT, version: 1, x: Math.min(...comments.map((c) => c.x)), y: Math.min(...comments.map((c) => c.y)), comments };
+}
+
+/** the clip of these modules and assemblies, without comments */
+function copyModules(p: Patch, moduleIds: number[], asmIds: number[]): Clip | null {
   const scratch = structuredClone(p);
   const mods = moduleIds.filter((id) => {
     const m = scratch.modules.find((x) => x.id === id);
@@ -75,17 +89,24 @@ export function parseClip(text: string, defs: Record<string, ModuleDef>): Clip |
   }
   const r = raw as Partial<Clip> | null;
   if (!r || r.format !== CLIP_FORMAT || r.version !== 1 || typeof r.x !== 'number' || typeof r.y !== 'number') return null;
+  const comments = fixComments(r.comments);
+  if (r.def === undefined) return comments.length ? { format: CLIP_FORMAT, version: 1, x: r.x, y: r.y, comments } : null;
   try {
-    return { format: CLIP_FORMAT, version: 1, x: r.x, y: r.y, def: validateAssemblyDef(r.def, defs) };
+    const clip: Clip = { format: CLIP_FORMAT, version: 1, x: r.x, y: r.y, def: validateAssemblyDef(r.def, defs) };
+    if (comments.length) clip.comments = comments;
+    return clip;
   } catch {
     return null;
   }
 }
 
-/** put the clip's items into `p` with their top left at (x, y); returns the new top-level module and assembly ids */
-export function pasteClip(p: Patch, defs: Record<string, ModuleDef>, clip: Clip, x: number, y: number): { modules: number[]; assemblies: number[] } {
+/** put the clip's items into `p` with their top left at (x, y); returns the new top-level module, assembly and comment ids */
+export function pasteClip(p: Patch, defs: Record<string, ModuleDef>, clip: Clip, x: number, y: number): { modules: number[]; assemblies: number[]; comments: number[] } {
+  const out = { modules: [] as number[], assemblies: [] as number[], comments: pasteComments(p, clip.comments ?? [], x - clip.x, y - clip.y) };
+  if (!clip.def) return out;
   const holder = insertAssembly(p, defs, structuredClone(clip.def), x, y);
-  const out = { modules: [...holder.modules], assemblies: [...(holder.children ?? [])] };
+  out.modules = [...holder.modules];
+  out.assemblies = [...(holder.children ?? [])];
   ungroup(p, holder.id);
   return out;
 }

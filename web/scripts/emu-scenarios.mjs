@@ -25,7 +25,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { download, smoke, smokeState } from './branch-firmware.mjs';
-import { loadRig, pickRig, rigPage, survey } from './rig-link.mjs';
+import { DEV_ENV, loadRig, pickRig, rigPage, survey } from './rig-link.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const REPO = 'glvno/matryoshka';
@@ -119,21 +119,27 @@ class Target {
   /** let `ms` pass on the FM-1 (a real one: the wall clock; the emulator overrides it with its own time) */
   elapse(ms) { return sleep(ms); }
   /** wait up to `ms` for `s` on the LCD */
-  /** the output's peak in `n` windows of about `ms` each: [ms since the first window began, peak] per window (#368: how long
-   *  a note sounds; the rig's windows are a round trip longer, hence the times). A window that took far longer is left out
-   *  (#385): now and then a TEST_PEAK gets no answer, the rig's link asks again 2 s later, and that answer holds the
-   *  loudest sample of the whole 2 s, so it read as one window at a hit's level out of nowhere. The times show the gap. */
+  /** the output's peak in `n` windows of about `ms` each: [ms since the first window began, peak, gap] per window (#368:
+   *  how long a note sounds; the rig's windows are a round trip longer, hence the times, which are when each answer came).
+   *  A window that took far longer is left out (#385): now and then a TEST_PEAK gets no answer, the rig's link asks again
+   *  2 s later, and that answer holds the loudest sample of the whole 2 s, so it read as one window at a hit's level out
+   *  of nowhere. The window after it says so (`gap`): what happened in the gap is unknown (#520). */
   async windows(n, ms) {
     const out = [];
     const t0 = Date.now();
     await this.mark();
-    let last = Date.now();
+    let last = Date.now(), gap = false;
     for (let i = 0; i < n; i++) {
       await sleep(ms);
       const p = await this.peak();
       const now = Date.now();
-      if (now - last > ms + 500) console.log(`  note: a window of ${now - last} ms left out (a TEST_PEAK asked again, #385)`);
-      else out.push([now - t0, p]);
+      if (now - last > ms + 500) {
+        console.log(`  note: a window of ${now - last} ms left out (a TEST_PEAK asked again, #385)`);
+        gap = true;
+      } else {
+        out.push([now - t0, p, gap]);
+        gap = false;
+      }
       last = now;
     }
     return out;
@@ -382,7 +388,7 @@ async function main() {
   let vite;
   if (!url) {
     const port = await freePort();
-    vite = own(spawn('npx', ['vite', '--port', String(port), '--strictPort', '--host', '::1'], { cwd: join(ROOT, 'web'), stdio: ['ignore', 'pipe', 'inherit'] }));
+    vite = own(spawn('npx', ['vite', '--port', String(port), '--strictPort', '--host', '::1'], { cwd: join(ROOT, 'web'), stdio: ['ignore', 'pipe', 'inherit'], env: DEV_ENV }));
     url = `http://[::1]:${port}/`;
     await new Promise((res) => vite.stdout.on('data', (d) => { if (/ready in|Local:/.test(String(d))) res(); }));
   }
@@ -496,22 +502,30 @@ async function main() {
   /** a pass and a bit with the transport running: the peak in windows of 25 ms (one step of 1/16 at 120 BPM = 125 ms) */
   async function passProfile() {
     await emu.tap(B.play);
-    await sleep(300);
+    await emu.elapse(300);                          // (on the FM-1's clock, #487)
     const w = await emu.windows(100, 25);
     await emu.tap(B.play);
     await sleep(600);
     return w;
   }
-  /** the hit in a profile: its onset (the window with the biggest rise that the next two windows keep at least half of: a
-   *  guard from before windows() left out the long windows of a TEST_PEAK asked again, #385), its peak (that window or the
-   *  next: an attack can span two) and how much of it the windows of the next `ms` keep at least (their lowest / the
-   *  peak): a voice held by its gate keeps about all of it, one let go decays */
+  /** the hit in a profile: its onset (the window with the biggest rise that the next two windows keep at least half of),
+   *  its peak (that window or the next: an attack can span two) and how much of it the windows of the next `ms` keep at
+   *  least (their lowest / the peak): a voice held by its gate keeps about all of it, one let go decays. Only a hit whose
+   *  next `ms` the profile covers whole counts (#520): the pass loops, so on the rig, whose windows are a round trip longer
+   *  than 25 ms, a profile also holds the start of the next pass's hit, and that one's `ms` ran past the profile's end
+   *  (the lowest of two or three windows read as kept); a window after a TEST_PEAK asked again (#385, `gap`) starts no
+   *  onset and ends the cover, since what happened in the gap is unknown. No such hit: top 0 (the check fails, saying so). */
   function hold(w, ms = 300) {
-    let i = 1;
-    const rise = (k) => (k + 2 < w.length && w[k + 1][1] * 2 >= w[k][1] && w[k + 2][1] * 2 >= w[k][1] ? w[k][1] - w[k - 1][1] : -Infinity);
-    for (let k = 2; k < w.length; k++) if (rise(k) > rise(i)) i = k;
-    const top = Math.max(w[i][1], w[i + 1]?.[1] ?? 0);
-    const after = w.filter((x) => x[0] > w[i + 1]?.[0] && x[0] <= w[i][0] + ms).map((x) => x[1]);
+    const end = w.length ? w[w.length - 1][0] : 0;
+    // (a gap runs from the window before the flagged one to it: none may overlap the onset's next `ms`)
+    const covered = (k) => w[k][0] + ms <= end && !w.some((x, j) => x[2] && j > k && w[j - 1][0] < w[k][0] + ms);
+    const rise = (k) => (k + 2 < w.length && !w[k][2] && !w[k + 1][2] && !w[k + 2][2] && covered(k)
+      && w[k + 1][1] * 2 >= w[k][1] && w[k + 2][1] * 2 >= w[k][1] ? w[k][1] - w[k - 1][1] : -Infinity);
+    let i = -1;
+    for (let k = 1; k < w.length; k++) if (rise(k) > (i < 0 ? -Infinity : rise(i))) i = k;
+    if (i < 0) return { at: -1, top: 0, low: 0, kept: 0 };
+    const top = Math.max(w[i][1], w[i + 1][1]);
+    const after = w.filter((x) => x[0] > w[i + 1][0] && x[0] <= w[i][0] + ms).map((x) => x[1]);
     const low = after.length ? Math.min(...after) : 0;
     return { at: w[i][0], top, low, kept: top ? +(low / top).toFixed(2) : 0 };
   }

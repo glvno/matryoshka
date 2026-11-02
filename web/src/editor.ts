@@ -22,6 +22,7 @@ import { addBreak, fm1Name, layoutOf, moveRows, moveSection, pagesOf, removeBrea
 import type { ParameterValues } from './engine';
 import { deviceBudget, DEVICE } from './patchbin';
 import { choiceName, formatValue, longName, moduleName, moduleTag } from './labels';
+import { outputRange } from './ranges';
 import { picker } from './picker';
 import { selector } from './selector';
 import { ALLOC, copiesOf, makeRoom, polyGroups, polyOfModule, setPoly, trackDrumMap, trackTargets } from './poly';
@@ -61,7 +62,10 @@ import {
   fixTrack,
   TRACK_NAME_MAX,
   DRUM_ROWS,
+  COMMENT_MAX,
+  type CommentBox,
 } from './patch';
+import { addComment, COMMENT_H, COMMENT_W, moveComments, pasteComments, removeComments, setCommentText, sizeComment } from './comments';
 import { patternStrip, type PatternStrip } from './pattern-strip';
 import { SongView } from './song';
 import type { PatternView } from './engine';
@@ -129,6 +133,11 @@ import { EXCLUDED_TYPES,
   copyRuns, copyStarts, setCopies, COPY_ROWS_MAX, COPIES_MAX } from './assembly';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
+/** a tooltip with the range of the output it is about (ranges.ts) on a line of its own */
+const withRange = (tip: string, m: ModuleInst, port: string): string => {
+  const r = outputRange(m.type, port, m.params);
+  return r ? `${tip}\nRange: ${r}` : tip;
+};
 /** a Page button held this long shows its list's first page while it is down (panel.c PAGE_HOLD_MS) */
 const PAGE_HOLD_MS = 400;
 
@@ -275,6 +284,10 @@ export class Editor {
   readonly selected = new Set<number>();
   /** the selected assemblies (collapsed cards and expanded frames): they move, duplicate and delete with the modules */
   readonly selectedAsm = new Set<number>();
+  /** the selected comment boxes (#518), by comment id */
+  readonly selectedComments = new Set<number>();
+  /** the comment boxes drawn in this rebuild, by comment id */
+  private commentEls = new Map<number, HTMLElement>();
   /** assemblies expanded in this session: the first expansion tidies the inside (#37) */
   private expandedOnce = new Set<number>();
   /** how far cables sag, 0 (taut, the default) .. 1: the sidebar's setting */
@@ -358,6 +371,15 @@ export class Editor {
       this.layoutFrames(); this.sizeCanvas(); this.positionCables();
     });
     canvas.addEventListener('pointerdown', (e) => this.rubberBand(e));
+    // right-click on the empty canvas: its menu (Add comment, #518)
+    canvas.addEventListener('contextmenu', (e) => {
+      const t = e.target as HTMLElement;
+      if (t.closest('.module, .fhead, .comment-box, .ctx, button, input, select, textarea, a')) return;
+      e.preventDefault();
+      const w = this.world.getBoundingClientRect();
+      const at = { x: (e.clientX - w.left) / this.zoom, y: (e.clientY - w.top) / this.zoom };
+      this.popMenu([{ text: 'Add comment', run: () => this.addComment(at) }], at);
+    });
     canvas.addEventListener('pointermove', (e) => { this.hover = e.pointerType === 'mouse' ? { x: e.clientX, y: e.clientY } : null; });
     // the mouse leaving the canvas forgets it, except for a dialog opened over it (the palette, by Ctrl/Cmd+K) or a click elsewhere
     canvas.addEventListener('pointerleave', (e) => {
@@ -412,6 +434,7 @@ export class Editor {
     this.stack = [];
     this.selected.clear();
     this.selectedAsm.clear();
+    this.selectedComments.clear();
     this.expandedOnce.clear();
     // a patch opens on its home device (D-217), as the FM-1 opens it: a device key is a module or assembly id, so the last
     // patch's focus could name a device of this one (Main is m1 in every patch) and sent the FM-1 there after the upload (#496)
@@ -678,6 +701,7 @@ export class Editor {
   selectOnly(ids: number[]): void {
     this.selected.clear();
     this.selectedAsm.clear();
+    this.selectedComments.clear();
     for (const id of ids) this.selected.add(id);
     this.rebuild();
   }
@@ -690,6 +714,7 @@ export class Editor {
     for (const a of assembliesOf(this.patch)) if (!a.open) this.expandedOnce.delete(a.id);
     this.selected.clear();
     this.selectedAsm.clear();
+    this.selectedComments.clear();
     this.rebuild();
     this.ev.onStructure(this.patch);
   }
@@ -751,6 +776,7 @@ export class Editor {
     this.cards.clear();
     this.frames.clear();
     this.containers.clear();
+    this.commentEls.clear();
     const copies = copiesOf(this.patch);
     const hidden = hiddenModules(this.patch);
     const hiddenAsm = hiddenAssemblies(this.patch);
@@ -786,6 +812,8 @@ export class Editor {
       this.modulesEl.append(this.card(m, DEFS[m.type], copies.get(m.id) ?? 0, a));
     }
     for (const a of visible) if (!a.open) this.modulesEl.append(this.container(a, perVoice(a), parentOf(this.patch, a.id)));
+    for (const id of this.selectedComments) if (!this.patch.comments?.some((c) => c.id === id)) this.selectedComments.delete(id);
+    for (const c of this.patch.comments ?? []) this.modulesEl.append(this.commentBox(c));
     const drawn = new Set(this.selRows.map((r) => r.key));
     for (const k of this.rowSel) if (!drawn.has(k)) this.rowSel.delete(k);
     if (!this.rowSel.size) this.rowTouch = false;
@@ -840,7 +868,7 @@ export class Editor {
   }
 
   private sizeCanvas(): void {
-    const elements = [...this.cards.values(), ...this.containers.values(), ...this.frames.values()];
+    const elements = [...this.cards.values(), ...this.containers.values(), ...this.frames.values(), ...this.commentEls.values()];
     const w = Math.max(this.canvas.clientWidth / this.zoom, ...elements.map((el) => el.offsetLeft + el.offsetWidth + 32));
     const h = Math.max(this.canvas.clientHeight / this.zoom, ...elements.map((el) => el.offsetTop + el.offsetHeight + 32));
     this.world.style.width = `${w}px`;
@@ -1706,14 +1734,15 @@ export class Editor {
       .flatMap((c) => {
         const from = this.patch.modules.find((x) => x.id === c.from.module);
         const kind = from && DEFS[from.type].outputs.find((q) => q.name === c.from.port)?.kind;
-        return kind ? [{ id: c.from.module, port: c.from.port, kind }] : [];
+        // its name and its output's range for the readout under the screen (#518; the range follows the parameters)
+        return kind ? [{ id: c.from.module, port: c.from.port, kind, label: `${moduleName(from.type, DEFS[from.type].label)} ${longName(from.type, c.from.port)}`, range: () => outputRange(from.type, c.from.port, from.params) }] : [];
       }));
     this.screens.push({ m, el: screen, chans });
     row.append(this.scopeTools(m));
     return row;
   }
 
-  /** a Scope screen's hover toolbar: its window (− / +, a 1-2-5 series) and time / spectrum */
+  /** a Scope screen's hover toolbar: its window (− / +, a 1-2-5 series), time / spectrum and the vertical scale */
   private scopeTools(m: ModuleInst): HTMLElement {
     const def = DEFS[m.type];
     const bar = document.createElement('div');
@@ -1747,7 +1776,16 @@ export class Editor {
     const rule = document.createElement('span');
     rule.className = 'scope-rule';
     show();
-    bar.append(shorter, value, longer, rule, ...modes);
+    // the vertical scale (#518): a click steps auto -> ±1 -> ±4 -> auto
+    const scales = def.params.find((q) => q.name === 'scale')!.choices ?? [];
+    const scaleAt = (): number => Math.max(0, Math.min(scales.length - 1, Math.round(m.params.scale ?? 0)));
+    const scaleBtn = this.button(scales[scaleAt()], 'Vertical scale: auto fits the traces; ±1 and ±4 stay put (click for the next)', () => {
+      this.setParam(m.id, 'scale', (scaleAt() + 1) % scales.length);
+      scaleBtn.textContent = scales[scaleAt()];
+    }, 'sm');
+    const rule3 = document.createElement('span');
+    rule3.className = 'scope-rule';
+    bar.append(shorter, value, longer, rule, ...modes, rule3, scaleBtn);
     // per voice (#54): only where something cabled in runs once per voice
     const copies = copiesOf(this.patch);
     const fed = this.patch.cables.filter((c) => c.to.module === m.id).some((c) => (copies.get(c.from.module) ?? 1) > 1);
@@ -2758,10 +2796,12 @@ export class Editor {
   /** remove the selected modules (and their cables) */
   removeSelected(): boolean {
     const { mods, asms } = this.dragSet();
-    if (!mods.length && !asms.length) return false;
+    const notes = this.selectedNotes();
+    if (!mods.length && !asms.length && !notes.length) return false;
     return this.change(() => {
       for (const a of asms) deleteAssembly(this.patch, a.id);
       for (const m of mods) if (this.patch.modules.includes(m)) removeModule(this.patch, m.id);
+      removeComments(this.patch, notes.map((c) => c.id));
     });
   }
 
@@ -2786,8 +2826,10 @@ export class Editor {
   /** move the selected cards by (dx, dy) pixels */
   nudgeSelected(dx: number, dy: number): boolean {
     const set = this.dragSet();
-    if (!set.mods.length && !set.asms.length) return false;
+    const notes = this.selectedNotes();
+    if (!set.mods.length && !set.asms.length && !notes.length) return false;
     this.touch();
+    moveComments(notes, dx, dy);
     for (const m of set.mods) {
       m.x = Math.max(0, m.x + dx);
       m.y = Math.max(0, m.y + dy);
@@ -2802,8 +2844,12 @@ export class Editor {
   duplicateSelected(): boolean {
     const set = this.dragSet();
     const ids = set.mods.filter((m) => m.type !== 'fm1').map((m) => m.id);
-    if (!ids.length && !set.asms.length) return false;
+    const notes = this.selectedNotes();
+    if (!ids.length && !set.asms.length && !notes.length) return false;
     return this.change(() => {
+      const noteCopies = pasteComments(this.patch, notes, 0, CARD_H / 2);
+      this.selectedComments.clear();
+      for (const id of noteCopies) this.selectedComments.add(id);
       // a selected assembly is copied through its definition, collapsed, below where it is
       const asmCopies = set.asms.map((a) => {
         const box = a.open ? this.frameRect(a) : { x: a.x, y: a.y, h: this.containers.get(a.id)?.offsetHeight ?? CARD_H / 2 };
@@ -2838,7 +2884,7 @@ export class Editor {
   /** the selection as a clip (Main and the Output are left out); null with nothing to copy */
   copySelection(): Clip | null {
     const set = this.dragSet();
-    const clip = copyItems(this.patch, set.mods.map((m) => m.id), set.asms.map((a) => a.id));
+    const clip = copyItems(this.patch, set.mods.map((m) => m.id), set.asms.map((a) => a.id), [...this.selectedComments]);
     if (clip) {
       this.clipKey = clipText(clip);
       this.clipPastes = 0;
@@ -2858,7 +2904,168 @@ export class Editor {
       for (const id of got.modules) this.selected.add(id);
       this.selectedAsm.clear();
       for (const id of got.assemblies) this.selectedAsm.add(id);
+      this.selectedComments.clear();
+      for (const id of got.comments) this.selectedComments.add(id);
     });
+  }
+
+  // ---- comment boxes (#518, comments.ts): free text on the canvas, moved, selected, copied and undone like the cards
+
+  /** the selected comments, as the patch has them */
+  private selectedNotes(): CommentBox[] {
+    return (this.patch.comments ?? []).filter((c) => this.selectedComments.has(c.id));
+  }
+
+  /** put a comment box's element where its comment is */
+  private placeComment(c: CommentBox): void {
+    const el = this.commentEls.get(c.id);
+    if (el) Object.assign(el.style, { left: `${c.x}px`, top: `${c.y}px` });
+  }
+
+  /** add a comment (at a canvas point, else where the next card would go) and open it for typing: one undo step with
+   *  its text; left empty it goes again without a step */
+  addComment(at?: Pt): boolean {
+    const p = at ?? this.slot(COMMENT_W);
+    let id = -1;
+    if (!this.change(() => { id = addComment(this.patch, p.x, p.y).id; })) return false;
+    this.select([], [], [id]);
+    const el = this.commentEls.get(id);
+    if (!at) this.scrollToCard(el, { x: p.x, y: p.y, w: COMMENT_W, h: COMMENT_H });
+    this.editComment(id, this.history.length);
+    return true;
+  }
+
+  /** a comment box: its text (as text, never markup), a resize handle; a drag on it moves the selection, a double-click
+   *  edits the text, a right-click opens its menu */
+  private commentBox(c: CommentBox): HTMLElement {
+    const el = document.createElement('div');
+    el.className = 'comment-box' + (this.selectedComments.has(c.id) ? ' selected' : '');
+    el.dataset.comment = String(c.id);
+    Object.assign(el.style, { left: `${c.x}px`, top: `${c.y}px`, width: `${c.w}px`, height: `${c.h}px` });
+    const text = document.createElement('div');
+    text.className = 'comment-text';
+    text.textContent = c.text;
+    el.append(text);
+    el.title = 'Comment: double-click to edit, drag to move, right-click for its menu';
+    this.commentEls.set(c.id, el);
+    el.addEventListener('dblclick', (e) => {
+      if ((e.target as HTMLElement).closest('textarea, .resize-handle')) return;
+      e.stopPropagation();
+      this.editComment(c.id);
+    });
+    el.addEventListener('contextmenu', (e) => {
+      if ((e.target as HTMLElement).closest('textarea')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const w = this.world.getBoundingClientRect();
+      this.commentMenu(c, { x: (e.clientX - w.left) / this.zoom, y: (e.clientY - w.top) / this.zoom });
+    });
+    let notes: CommentBox[] = [];
+    let set: { mods: ModuleInst[]; asms: AssemblyInst[] } = { mods: [], asms: [] };
+    this.dragOn(
+      el,
+      (e) => {
+        if ((e.target as HTMLElement).closest('textarea, .resize-handle') || e.button !== 0) return false;
+        if (e.shiftKey) {
+          if (this.selectedComments.has(c.id)) this.selectedComments.delete(c.id);
+          else this.selectedComments.add(c.id);
+          this.showSelection();
+          return false;
+        }
+        if (!this.selectedComments.has(c.id)) this.select([], [], [c.id]);
+        set = this.dragSet();
+        notes = this.selectedNotes();
+        this.touch();
+        return true;
+      },
+      (dx, dy) => {
+        for (const m of set.mods) this.place(m, dx, dy);
+        for (const a of set.asms) this.moveTree(a, dx, dy, false);
+        moveComments(notes, dx, dy);
+        for (const n of notes) this.placeComment(n);
+        if (set.mods.length || set.asms.length) {
+          this.layoutFrames();
+          this.drawCables();
+        }
+      },
+      () => {
+        this.sizeCanvas();
+        this.ev.onLayout(this.patch);
+        if (set.mods.length || set.asms.length) this.dropped(set, true);
+      },
+    );
+    let before = '';
+    el.append(resizeHandle('Resize the comment', () => this.zoom, {
+      start: () => { before = this.mark(); },
+      size: () => ({ width: el.offsetWidth, height: el.offsetHeight }),
+      resize: (width, height) => {
+        sizeComment(c, width, height);
+        Object.assign(el.style, { width: `${c.w}px`, height: `${c.h}px` });
+        this.sizeCanvas();
+      },
+      end: () => {
+        if (this.commit(before)) this.ev.onLayout(this.patch);
+      },
+    }));
+    return el;
+  }
+
+  /** a comment's menu (right-click on it) */
+  private commentMenu(c: CommentBox, at: Pt): void {
+    this.popMenu([
+      { text: 'Edit text', run: () => this.editComment(c.id) },
+      { text: 'Duplicate', key: '⌘D', run: () => {
+        this.select([], [], [c.id]);
+        this.duplicateSelected();
+      } },
+      { text: 'Delete', key: 'Del', danger: true, rule: true, run: () => this.change(() => removeComments(this.patch, [c.id])) },
+    ], at);
+  }
+
+  /**
+   * Type a comment's text in place: Enter makes a new line, Cmd / Ctrl+Enter or a click elsewhere keeps it (one undo
+   * step), Esc puts the text back. `fresh`: the comment was just added (the history's length then): left empty it goes
+   * again and takes its step with it.
+   */
+  editComment(id: number, fresh?: number): void {
+    const c = this.patch.comments?.find((x) => x.id === id);
+    const el = this.commentEls.get(id);
+    if (!c || !el || el.querySelector('textarea')) return;
+    const text = el.querySelector<HTMLElement>('.comment-text');
+    const area = document.createElement('textarea');
+    area.className = 'comment-edit';
+    area.value = c.text;
+    area.maxLength = COMMENT_MAX;
+    area.setAttribute('aria-label', 'Comment text');
+    text?.replaceWith(area);
+    el.classList.add('editing');
+    let done = false;
+    // a press anywhere else keeps the text (the canvas's own presses take no focus, so the text field would not blur)
+    const away = (e: Event): void => { if (!el.contains(e.target as Node)) finish(true); };
+    const finish = (keep: boolean): void => {
+      if (done) return;
+      done = true;
+      window.removeEventListener('pointerdown', away, true);
+      const value = keep ? area.value : c.text;
+      if (!value.trim()) {
+        const steps = this.history.length;
+        this.change(() => removeComments(this.patch, [id]));
+        // a comment added and left empty leaves no step behind (its add, then its removal)
+        if (fresh !== undefined && steps === fresh && this.history.length === fresh + 1) this.history.splice(fresh - 1, 2);
+        return;
+      }
+      if (!this.change(() => setCommentText(this.patch, id, value))) this.rebuild();
+    };
+    area.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+      else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); finish(true); }
+    });
+    area.addEventListener('blur', () => finish(true));
+    window.addEventListener('pointerdown', away, true);
+    area.addEventListener('pointerdown', (e) => e.stopPropagation());
+    area.focus();
+    area.select();
   }
 
   // ---- click-to-connect: a click on a jack arms it, a click on a jack of the other direction connects; Esc cancels
@@ -2957,7 +3164,10 @@ export class Editor {
     row.className = `port ${dir}`;
     const dot = this.jack(m, p, dir);
     const long = longName(m.type, p.name);
-    dot.title = (o.label ? `${o.label}: ${DEFS[m.type].label} ${long} (${p.kind})` : `${long} (${p.kind})`);
+    const tip = o.label ? `${o.label}: ${DEFS[m.type].label} ${long} (${p.kind})` : `${long} (${p.kind})`;
+    dot.title = tip;
+    // an output says its signal's range (ranges.ts), worked out when the pointer comes: it follows the parameters
+    if (dir === 'out') dot.addEventListener('pointerenter', () => { dot.title = withRange(tip, m, p.name); });
     const label = document.createElement('span');
     // a card's edge has little room: a long name gives way to the short one (the jack's tooltip has the long one)
     label.textContent = o.label ?? (o.short && long.length > 6 ? p.name : long);
@@ -4747,6 +4957,10 @@ export class Editor {
   /** move a drag set by (dx, dy): model and elements; the frames follow (a member pushes its frame's edge out) */
   private moveSet(set: { mods: ModuleInst[]; asms: AssemblyInst[] }, dx: number, dy: number): void {
     for (const m of set.mods) this.place(m, dx, dy);
+    // the selected comment boxes go along (#518)
+    const notes = this.selectedNotes();
+    moveComments(notes, dx, dy);
+    for (const c of notes) this.placeComment(c);
     for (const a of set.asms) this.moveTree(a, dx, dy, false);
     this.layoutFrames();
     this.drawCables();
@@ -4880,11 +5094,13 @@ export class Editor {
     this.groupDrag(handle, { asm: a }, (set) => this.dropped({ mods: set.mods, asms: [] }, false));
   }
 
-  private select(ids: number[], asms: number[] = []): void {
+  private select(ids: number[], asms: number[] = [], comments: number[] = []): void {
     this.selected.clear();
     this.selectedAsm.clear();
+    this.selectedComments.clear();
     for (const id of ids) this.selected.add(id);
     for (const id of asms) this.selectedAsm.add(id);
+    for (const id of comments) this.selectedComments.add(id);
     this.showSelection();
   }
 
@@ -4894,8 +5110,9 @@ export class Editor {
     const inAsm = new Set(assembliesOf(this.patch).flatMap((a) => a.modules));
     const mods = this.patch.modules.filter((m) => m !== docked && !inAsm.has(m.id)).map((m) => m.id);
     const asms = assembliesOf(this.patch).filter((a) => !parentOf(this.patch, a.id)).map((a) => a.id);
-    if (!mods.length && !asms.length) return false;
-    this.select(mods, asms);
+    const notes = (this.patch.comments ?? []).map((c) => c.id);
+    if (!mods.length && !asms.length && !notes.length) return false;
+    this.select(mods, asms, notes);
     return true;
   }
 
@@ -4912,6 +5129,7 @@ export class Editor {
   }
 
   private showSelection(): void {
+    for (const [id, el] of this.commentEls) el.classList.toggle('selected', this.selectedComments.has(id));
     for (const [id, el] of this.cards) el.classList.toggle('selected', this.selected.has(id));
     for (const [id, el] of [...this.containers, ...this.frames]) el.classList.toggle('selected', this.selectedAsm.has(id));
   }
@@ -4928,7 +5146,7 @@ export class Editor {
     const rowMode = this.inRowMode();
     const cardSpace = rowMode && e.pointerType !== 'touch' && !!t.closest('.module')
       && !t.closest('.mhead, .dot, .param, .port, .ehead, .ebreak, .arr-item, button, input, select, textarea, summary, label, .ctx, .resize-handle');
-    if (!body && !cardSpace && t.closest('.module, .fhead, .dot, button, input, select, .ctx')) return;
+    if (!body && !cardSpace && t.closest('.module, .fhead, .dot, button, input, select, textarea, .ctx, .comment-box')) return;
     e.preventDefault();
     // a click on the empty canvas drops an armed jack's ghost cable
     if (this.armed) return this.cancelArm();
@@ -4989,6 +5207,7 @@ export class Editor {
       box.remove();
       const hit: number[] = [];
       const hitAsm: number[] = [];
+      const hitNotes: number[] = [];
       if (r.w > 4 || r.h > 4) {
         const touches = (c: HTMLElement): boolean => c.offsetLeft < r.x + r.w && c.offsetLeft + c.offsetWidth > r.x && c.offsetTop < r.y + r.h && c.offsetTop + c.offsetHeight > r.y;
         const holds = (c: HTMLElement): boolean => c.offsetLeft >= r.x && c.offsetLeft + c.offsetWidth <= r.x + r.w && c.offsetTop >= r.y && c.offsetTop + c.offsetHeight <= r.y + r.h;
@@ -5000,11 +5219,13 @@ export class Editor {
         const coveredAsm = new Set(taken.flatMap((a) => descendants(this.patch, a).map((d) => d.id)));
         for (const id of [...hitAsm]) if (coveredAsm.has(id)) hitAsm.splice(hitAsm.indexOf(id), 1);
         for (const [id, c] of this.cards) if (!coveredMods.has(id) && touches(c)) hit.push(id);
+        for (const [id, c] of this.commentEls) if (touches(c)) hitNotes.push(id);
       }
       if (e.shiftKey) {
         hit.forEach((id) => this.selected.add(id));
         hitAsm.forEach((id) => this.selectedAsm.add(id));
-      } else this.select(hit, hitAsm);
+        hitNotes.forEach((id) => this.selectedComments.add(id));
+      } else this.select(hit, hitAsm, hitNotes);
       this.showSelection();
     };
     window.addEventListener('pointermove', move);
@@ -5597,7 +5818,8 @@ export class Editor {
       return svg;
     };
     for (const dot of [...this.ports.values(), ...this.sliderPorts.map((p) => p.jack)]) dot.classList.remove('connected');
-    const add = (from: HTMLElement, to: HTMLElement, kind: string, remove: (() => void) | null, title: string, internal = false, cable?: Cable): void => {
+    const add = (from: HTMLElement, to: HTMLElement, kind: string, remove: (() => void) | null, titleOf: string | (() => string), internal = false, cable?: Cable): void => {
+      const title = typeof titleOf === 'string' ? titleOf : titleOf();
       const path = document.createElementNS(SVGNS, 'path');
       path.setAttribute('class', `cable ${kind}${internal ? ' alias' : ''}${remove ? '' : ' fixed'}`);
       path.setAttribute('aria-label', title);
@@ -5611,6 +5833,9 @@ export class Editor {
         });
       }
       const hint = document.createElementNS(SVGNS, 'title'); hint.textContent = title; path.append(hint);
+      const titles: SVGTitleElement[] = [hint];
+      // a title from a function (a cable's source range) is worked out again when the pointer comes
+      const retitle = (): void => { if (typeof titleOf !== 'string') { const t = titleOf(); for (const h of titles) h.textContent = t; } };
       let layer = this.svg;
       let origin = this.world;
       if (internal) {
@@ -5641,6 +5866,7 @@ export class Editor {
       const lines = inner(path, origin);
       const group: SVGPathElement[] = [path, ...lines];
       const hover = (on: boolean): void => {
+        if (on) retitle();
         group.forEach((g) => g.classList.toggle('hover', on));
         if (origin === this.world) this.glow(on ? [{ path, from, to }] : []);
       };
@@ -5688,6 +5914,7 @@ export class Editor {
           hit.addEventListener('pointerenter', () => hover(true));
           hit.addEventListener('pointerleave', () => hover(false));
           const t = document.createElementNS(SVGNS, 'title'); t.textContent = title; hit.append(t);
+          titles.push(t);
           cardLayer(card, 'entry-cables', true).append(hit);
           this.cablePaths.push({ path: hit, from, to, origin: card });
         }
@@ -5727,10 +5954,9 @@ export class Editor {
       // drawn by the role of the input it lands on (cable-role.ts), not the kind of the output
       const role = cableRole(DEFS[this.patch.modules.find((x) => x.id === c.to.module)!.type], c.to.port);
       const kind = `${role === 'signal' ? 'audio' : role === 'mod' ? 'control' : role} role-${role}`;
-      void src;
       if (b) {
         const key = `${c.from.module}:${c.from.port}:${b.dataset.mod}:${b.dataset.port}`;
-        if (!physicalCables.has(key)) add(a, b, kind, () => this.removeCable(c), `${this.endName(c.from)} → ${this.endName(c.to)}. Click to disconnect it`, false, c);
+        if (!physicalCables.has(key)) add(a, b, kind, () => this.removeCable(c), () => withRange(`${this.endName(c.from)} → ${this.endName(c.to)}. Click to disconnect it`, src, c.from.port), false, c);
         physicalCables.add(key);
       } else
         // a pin has no jack: its cable is drawn to every thumb it feeds, and each drawn cable removes just that route
@@ -5739,7 +5965,7 @@ export class Editor {
           const tied = this.tiedCables(c).flatMap((end) => this.patch.cables.filter((x) => sameEnd(x.from, c.from) && sameEnd(x.to, end)));
           removeRoute(this.patch, c, pd.name);
           for (const x of tied) for (const t of tiedTo(this.patch, c.to.module, pd.name).slice(1)) if (t.module === x.to.module) removeRoute(this.patch, x, t.param);
-        }), `Disconnect from ${longName(this.patch.modules.find((x) => x.id === c.to.module)!.type, pd.name)}`, false, c);
+        }), () => withRange(`${this.endName(c.from)} → ${longName(this.patch.modules.find((x) => x.id === c.to.module)!.type, pd.name)}. Click to disconnect it`, src, c.from.port), false, c);
     }
     this.positionCables();
     this.markArm();
