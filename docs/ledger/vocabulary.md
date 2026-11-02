@@ -58,6 +58,10 @@ Folding an expanded assembly back into one card. Also called closed in the model
 
 The searchable list of every editor action, module, assembly and patch, opened with `/` or Ctrl/Cmd+K.
 
+### Comment box
+
+A box of free text on the editor's canvas, like a Max comment. It has no ports, is saved in the patch, and the FM-1 never gets it.
+
 ### Community shelf
 
 Patches other people submitted, from the curated `community.json`, shown in Library > Community. A user adds the ones they want, and only those appear in Your patches and the palette.
@@ -261,6 +265,10 @@ A short message in the FM-1's header (at most 26 characters) that says why a con
 ### Offline copy
 
 The bank as the editor keeps it in the browser (`matryoshka.bank`): what Send bank to FM-1 writes, and what the Library's FM-1 column shows while no FM-1 is connected.
+
+### Output range
+
+What values a module output's signal takes, said in words and numbers: −1..1 for an LFO, 0..1 for an envelope, 1 per octave for a pitch. The editor shows it when the pointer is over an output or a cable.
 
 ### Over budget
 
