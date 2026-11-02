@@ -2,7 +2,7 @@
 import type { AssemblyInst } from './assembly';
 import { migratePatchParts, migrateVoicing } from './poly';
 import { migrateKnobs } from './knob-migrate';
-import { fixNotes, fixPatterns, fixSeq, migrateSteps, type Pattern, type SeqState, type StepNote } from './track';
+import { fixLocks, fixNotes, fixPatterns, fixSeq, migrateSteps, type Pattern, type SeqState, type StepLock, type StepNote } from './track';
 // Patch data model, shared by the editor, the WebAudio engine and (later) the firmware encoder.
 
 /** keys: the held keys from Main to a Voice allocator (only into a keys input) */
@@ -179,6 +179,9 @@ export interface ModuleInst {
   /** a Steps module only: its patterns 2..PATTERNS_MAX (track.ts Pattern; null: it has none of that number, which then
    * plays its pattern 1); absent while there are none */
   patterns?: (Pattern | null)[];
+  /** a Steps module only: pattern 1's P-locks (#524, track.ts StepLock; patterns 2.. hold their own); absent while there
+   * are none */
+  locks?: StepLock[];
   /** the Main module only: the patch's selected pattern and its songs (track.ts SeqState); absent while pattern 1 is
    * selected, no song plays and there are no songs */
   seq?: SeqState;
@@ -257,8 +260,12 @@ export function fixTrack(m: ModuleInst): void {
     else delete m.name;
     delete m.notes;
     delete m.patterns;
+    delete m.locks;
     return;
   }
+  const locks = fixLocks(m.locks);
+  if (locks) m.locks = locks;
+  else delete m.locks;
   const patterns = fixPatterns(m.patterns);
   if (patterns) m.patterns = patterns;
   else delete m.patterns;

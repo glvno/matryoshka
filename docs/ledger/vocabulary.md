@@ -290,6 +290,10 @@ Four rows of a device's card that K1..K4 turn at once on the FM-1.
 
 The two inputs `p1` and `p2` most modules have, each with an attenuverter, routed onto parameters by a matrix.
 
+### P-lock
+
+A value of its own for one row of a device on one step of a Steps track's pattern (parameter lock, after Elektron's). The row plays it while the playhead is on that step and its normal value on the other steps.
+
 ### Paraphonic
 
 A poly assembly whose cards do not gate their own sound, so every card sounds whether played or not; its output is mixed at 1 / cards.

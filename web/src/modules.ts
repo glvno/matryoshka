@@ -3,7 +3,7 @@
 
 import { ARP_MODES, ARP_RATES } from './arpeggiator';
 import { DRUM_ROWS, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
-import { STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type SongEntry, type StepNote } from './track';
+import { STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type SongEntry, type StepLock, type StepNote } from './track';
 import WT from './wavetables.json';
 import { rateEnvelopeInit, rateEnvelopeProcess } from './rate-envelope';
 import { formatValue } from './labels';
@@ -2589,7 +2589,7 @@ export interface StepsSound { key: number; left: number; cnt: number; thru?: num
 export const TRACK_POLY = 8;
 
 /** a track's pattern as the engine holds it (track.ts Pattern; pattern 1 has no length or rate of its own) */
-export interface StepsPattern { notes: StepNote[]; len?: number; rate?: number }
+export interface StepsPattern { notes: StepNote[]; len?: number; rate?: number; locks?: StepLock[] }
 /** the patch's song state the engine shares with its tracks (Main's `seq`): the song playing (0 none) and the songs */
 export interface StepsSong { song: number; songs: SongEntry[][] }
 

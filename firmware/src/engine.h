@@ -125,13 +125,46 @@ static inline uint32_t eng_patterns_end(const uint8_t *p, uint32_t len, uint32_t
     }
     return at <= len ? at : 0;
 }
-/* the end of the Steps sections from `at` (the notes, flag bit 4; the patterns and songs, ENG_FLAG_PATTERNS): `at` when
- * the patch has neither, 0 when one is cut short */
+/* the end of the P-locks section (patchbin.ts lockRecord, flag bit 11 = p[7] bit 3, format 49, #524) that starts at `at`:
+ * u8 tracks, per track u8 module, u8 T rows, per row u8 n and n (module, parameter), u8 P, per pattern u8 its number, u8 L
+ * and L locks of 6 bytes (step, row, i32 value). 0 if it runs past `len` */
+#define ENG_FLAG_LOCKS 8u                       /* in p[7] */
+static inline uint32_t eng_locks_end(const uint8_t *p, uint32_t len, uint32_t at)
+{
+    uint32_t nt, t, k, n;
+    if (at >= len)
+        return 0;
+    nt = p[at++];
+    for (t = 0; t < nt; t++) {
+        if (at + 2u > len)
+            return 0;
+        n = p[at + 1u];
+        at += 2u;
+        for (k = 0; k < n; k++) {
+            if (at >= len)
+                return 0;
+            at += 1u + 2u * p[at];
+        }
+        if (at >= len)
+            return 0;
+        n = p[at++];
+        for (k = 0; k < n; k++) {
+            if (at + 2u > len)
+                return 0;
+            at += 2u + 6u * p[at + 1u];
+        }
+    }
+    return at <= len ? at : 0;
+}
+/* the end of the Steps sections from `at` (the notes, flag bit 4; the patterns and songs, ENG_FLAG_PATTERNS; the P-locks,
+ * ENG_FLAG_LOCKS): `at` when the patch has none, 0 when one is cut short */
 static inline uint32_t eng_steps_end(const uint8_t *p, uint32_t len, uint32_t at)
 {
     if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))
         return 0;
     if ((p[7] & ENG_FLAG_PATTERNS) && !(at = eng_patterns_end(p, len, at)))
+        return 0;
+    if ((p[7] & ENG_FLAG_LOCKS) && !(at = eng_locks_end(p, len, at)))
         return 0;
     return at;
 }
@@ -410,6 +443,15 @@ int eng_song_delete(uint32_t s, uint32_t k);
 /* the patterns and songs section as the engine has it now (patchbin.ts patternRecord), into out (cap bytes): its length,
  * 0 when there is nothing to write (pattern 1, no song, no patterns, no entries), -1 when it does not fit */
 int eng_patterns_record(uint8_t *out, uint32_t cap);
+/* P-locks (#524, format 49; track.ts StepLock, engine.ts locksStep): a lock on a step of a pattern sets a row of the
+ * device its track plays (the parameters of its locked row, ENG_LOCK_PAIRS at most) in place of their normal values
+ * while the track's playhead is on that step. ENG_PAT_LOCKS per pattern, ENG_MAX_LOCKS and ENG_LOCK_TARGETS rows per
+ * patch (patchbin.ts DEVICE.locks, locks.ts). */
+#define ENG_PAT_LOCKS 64
+#define ENG_MAX_LOCKS 256
+#define ENG_LOCK_TARGETS 32
+#define ENG_LOCK_PAIRS 6
+int eng_locks_count(void);                           /* the patch's locks, all tracks and patterns */
 /* arming and recording from the keys (#139): the armed Steps module (-1 none); live recording on a track; the notes it
  * recorded, one at a time (0: none); cursor entry's chord; a recorded note laid over the track */
 void eng_arm(int module);

@@ -36,6 +36,12 @@
 //                words: u16 LE short ones (track.ts shortWord, when every note of the pattern fits one: isShortNote) or u32 LE
 //                (noteWord); then u8 song count, per song u8 entry count, per entry u8 pattern, i8 shift. Pattern 1 of every
 //                track stays in the notes section, so a patch without patterns is written as before.
+//   with flag bit 11 (format 49, #524, written only when used: lockRecord): the P-locks, right after the patterns: u8 track
+//                count, per Steps module with locks, in module order: u8 module index, u8 T rows (1..LOCK_ROWS_MAX), per row
+//                u8 n (1..LOCK_PAIRS_MAX) and n (u8 module index, u8 parameter index): the parameters it sets, its own
+//                first, then the further ones its device page row sets (PageRow.also); then u8 P patterns with locks, per
+//                pattern u8 its number (0-based), u8 L (1..LOCKS_MAX), L locks: u8 step, u8 row (0..T-1), i32 LE value
+//                (Q16.16, the parameter's own units)
 //   with flag bit 5: the device pages (pages.ts): u8 device count, then per device u8 kind: 0 a plain module, then u8 its
 //                module index (the FM-1 makes its pages itself: its parameters in order, four to a page, named as in
 //                defs.h); 2 (format 49, #518) a plain module with its own name (ModuleInst.name; not a Steps module, whose
@@ -73,6 +79,7 @@ import { DEFS, DRUM_ROWS, drumRowName, PANEL_BUTTONS } from './modules';
 import { KIND_CODE, kindOf, mainOf, switches, toggleEngaged, toggleTargets } from './buttons';
 import { EDITOR_ONLY, flawOf, hasMorph, MAX_MODULES, MAX_PARTS, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ParamDef, type Patch } from './patch';
 import { isShortNote, noteWord, shortWord, type StepNote } from './track';
+import { lockPlan, PATCH_LOCKS_MAX } from './locks';
 import { deviceView, keysInto, MAX_POLY, type DeviceGroup } from './poly';
 import { devicesOf, NAME_MAX, type Device } from './pages';
 import { allModules, assemblyById, ROW_NAMES_MAX } from './assembly';
@@ -99,6 +106,28 @@ export const WRITE_FLOOR = 46;
 /** the formats past WRITE_FLOOR that only add a section the encoder writes when the patch uses it (format 48: the patterns
  * and songs, flag bit 10); every other format past WRITE_FLOOR appends parameters (ParamDef.since) */
 export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs' };
+/** the flag (u16 at offset 6) of the P-locks section (format 49, #524) */
+export const FLAG_LOCKS = 2048;
+
+/** the P-locks section's bytes (see the top of this file; locks.ts lockPlan), [] when no lock plays (`dev`: the device form) */
+export function lockRecord(source: Patch, dev: Patch): number[] {
+  const plan = lockPlan(source, dev);
+  if (!plan.length) return [];
+  const out: number[] = [plan.length];
+  for (const t of plan) {
+    out.push(t.track, t.rows.length);
+    for (const r of t.rows) out.push(r.length, ...r.flat());
+    out.push(t.pats.length);
+    for (const x of t.pats) {
+      out.push(x.p, x.locks.length);
+      for (const l of x.locks) {
+        const v = toQ16(l.value);
+        out.push(l.at, l.row, v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff);
+      }
+    }
+  }
+  return out;
+}
 /**
  * The 1.9 format (#518, #519): the one format change of release 1.9. Everything it adds is written only when a patch
  * uses it, so a patch without it stays in an older format an FM-1 with older firmware plays: parameters appended with
@@ -114,9 +143,11 @@ export function moduleDeviceName(dev: Patch, d: Device): string {
   const m = d.module === undefined ? undefined : dev.modules.find((x) => x.id === d.module);
   return m && m.type !== 'steps' && m.name ? deviceText(m.name) : '';
 }
-/** what a patch uses of FORMAT_1_9 besides its parameters (`dev`: its device form): a module device with its own name */
+/** what a patch uses of FORMAT_1_9 besides its parameters (`dev`: its device form): a module device with its own name,
+ * P-locks (#524) */
 function uses19(source: Patch, dev: Patch): boolean {
-  return dev.modules.some((m) => m.name && m.type !== 'steps') && deviceSection(source, dev).some((d) => moduleDeviceName(dev, d) !== '');
+  return (dev.modules.some((m) => m.name && m.type !== 'steps') && deviceSection(source, dev).some((d) => moduleDeviceName(dev, d) !== ''))
+    || lockRecord(source, dev).length > 0;
 }
 /** a type's parameters in a binary of format `v` (appended ones, ParamDef.since, come last) */
 export const paramsAt = (type: string, v: number): ParamDef[] => DEFS[type].params.filter((q) => (q.since ?? 0) <= v);
@@ -428,6 +459,7 @@ function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[], source?: Patch, nam
   const tracks = noteTracks(p);
   if (tracks.length) size += 1 + tracks.reduce((n, i) => n + trackRecSize(p.modules[i].notes!.length), 0);
   size += patternRecord(source ?? p, p).length;
+  size += lockRecord(source ?? p, p).length;
   if (ranges) size += 1 + 5 * ranges;
   const maps = drumMaps(p).length;
   if (maps) size += 1 + maps * (1 + DRUM_ROWS * TRACK_NAME_MAX);
@@ -452,6 +484,7 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
   const devs = deviceSection(source, p);
   const kinds = buttonRecord(source, p);
   const pats = patternRecord(source, p);
+  const locks = lockRecord(source, p);
   const { names } = presetNames(source, p, groups, devs, kinds.length);
   const size = sizeOf(p, groups, devs, source, names) + kinds.length;
   const ver = formatOf(source, p);
@@ -462,7 +495,7 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
   out[2] = p.modules.length;
   out[3] = groups.length;
   dv.setUint16(4, p.cables.length, true);
-  dv.setUint16(6, (morph ? FLAG_MORPH | FLAG_MORPH_MODULES : 0) | (ranges.length ? FLAG_RANGE : 0) | (routes.length ? FLAG_INPUT_MAP : 0) | (valued.length ? FLAG_NOTES : 0) | (devs.length ? FLAG_DEVICES | FLAG_EXTRAS : 0) | (kinds.length ? FLAG_BUTTONS : 0) | (drumMaps(p).length ? FLAG_NAMES : 0) | (pats.length ? FLAG_PATTERNS : 0), true);
+  dv.setUint16(6, (morph ? FLAG_MORPH | FLAG_MORPH_MODULES : 0) | (ranges.length ? FLAG_RANGE : 0) | (routes.length ? FLAG_INPUT_MAP : 0) | (valued.length ? FLAG_NOTES : 0) | (devs.length ? FLAG_DEVICES | FLAG_EXTRAS : 0) | (kinds.length ? FLAG_BUTTONS : 0) | (drumMaps(p).length ? FLAG_NAMES : 0) | (pats.length ? FLAG_PATTERNS : 0) | (locks.length ? FLAG_LOCKS : 0), true);
   let at = 8;
   for (const { cfg, src } of groups) {
     out.set([cfg.parts | (Math.min(MAX_PARTS, cfg.unisonParts ?? 0) << 4), cfg.assign, cfg.legato | (cfg.unison ? 0x80 : 0) | (cfg.unisonShare ? 0x40 : 0), cfg.priority | (cfg.steal === false ? 0x80 : 0)], at);
@@ -562,6 +595,10 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
     out.set(pats, at);
     at += pats.length;
   }
+  if (locks.length) {
+    out.set(locks, at);
+    at += locks.length;
+  }
   if (devs.length) {
     const rec = [...deviceRecord(devs, p), ...extrasRecord(devs, source, p, names)];
     out.set(rec, at);
@@ -594,7 +631,7 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
  */
 export const DEVICE = {
   modules: MAX_MODULES, cables: MAX_CABLES, poly: MAX_POLY, parts: MAX_PARTS, instances: 128, buffers: 255, params: 1536,
-  delays: 1, reverbs: 1, strings: 8, chorus: 1, grains: 1, arps: 2, tracks: 16, notes: 1536, bytes: 3840,
+  delays: 1, reverbs: 1, strings: 8, chorus: 1, grains: 1, arps: 2, tracks: 16, notes: 1536, locks: PATCH_LOCKS_MAX, bytes: 3840,
 } as const;
 
 export type BudgetKey = keyof typeof DEVICE;
@@ -625,7 +662,7 @@ export function browserOnly(p: Patch): string[] {
 
 const LABELS: Record<BudgetKey, string> = {
   modules: 'modules', cables: 'cables', poly: 'poly assemblies', parts: 'parts', instances: 'module instances', buffers: 'signal buffers', params: 'parameter values',
-  delays: 'delays', reverbs: 'reverbs', strings: 'string / comb lines', chorus: 'choruses', grains: 'granular lines', arps: 'arpeggiators', tracks: 'step tracks', notes: 'step notes', bytes: 'patch bytes',
+  delays: 'delays', reverbs: 'reverbs', strings: 'string / comb lines', chorus: 'choruses', grains: 'granular lines', arps: 'arpeggiators', tracks: 'step tracks', notes: 'step notes', locks: 'P-locks', bytes: 'patch bytes',
 };
 
 /**
@@ -692,7 +729,8 @@ export function deviceBudget(source: Patch): Budget {
   const used: Record<BudgetKey, number> = {
     modules: p.modules.length, cables: p.cables.length, poly: groups.length, parts: Math.max(1, ...[...copies.values()]),
     instances, buffers, params, delays: count('delay'), reverbs: count('reverb'), strings: count('string', 'comb'), chorus: count('chorus'),
-    grains: count('grain'), arps: count('arp'), tracks: count('steps'), notes: p.modules.reduce((n, m) => n + (m.type === 'steps' ? (m.notes?.length ?? 0) + (m.patterns ?? []).reduce((k, x) => k + (x?.notes?.length ?? 0), 0) : 0), 0), bytes: bytesOf(source, p, groups),
+    grains: count('grain'), arps: count('arp'), tracks: count('steps'), notes: p.modules.reduce((n, m) => n + (m.type === 'steps' ? (m.notes?.length ?? 0) + (m.patterns ?? []).reduce((k, x) => k + (x?.notes?.length ?? 0), 0) : 0), 0),
+    locks: p.modules.reduce((n, m) => n + (m.type === 'steps' ? (m.locks?.length ?? 0) + (m.patterns ?? []).reduce((k, x) => k + (x?.locks?.length ?? 0), 0) : 0), 0), bytes: bytesOf(source, p, groups),
   };
   const items = (Object.keys(DEVICE) as BudgetKey[]).map((key) => ({ key, label: LABELS[key], used: used[key], max: DEVICE[key] }));
   const over: BudgetItem[] = items.filter((i) => i.used > i.max);
