@@ -15,13 +15,16 @@ U="-DFELUCCA_UAC=1 -DFELUCCA_UAC_48K=0 -DUAC_IN_SHIFT=8"
 $CC $W $U -DFELUCCA_CDC=0 -DFELUCCA_OTA=1 -o build/usb_test firmware/test/usb_test.c
 $CC $W $U -DFELUCCA_CDC=1 -o build/usb_test_cdc firmware/test/usb_test.c
 $CC $W $U -DFELUCCA_CDC=0 -DFELUCCA_OTA=1 -DUSB_LOG=0 -o build/usb_test_nolog firmware/test/usb_test.c
-$CC $W -DFELUCCA_UAC=0 -DFELUCCA_CDC=0 -DUSB_LOG=0 -o build/usb_test_midi firmware/test/usb_test.c   # (as the update loader: no setup log)
+$CC $W $U -DFELUCCA_CDC=0 -DFELUCCA_OTA=1 -DFELUCCA_USB_HS=1 -o build/usb_test_hs firmware/test/usb_test.c   # (1.0 .. 1.8.3)
+$CC $W -DFELUCCA_UAC=0 -DFELUCCA_CDC=0 -DUSB_LOG=0 -DFELUCCA_USB_HS=1 -o build/usb_test_midi firmware/test/usb_test.c   # (as the update loader)
 fail=0
 build/usb_test || fail=1
 echo "with the CDC console:"
 build/usb_test_cdc || fail=1
 echo "without the setup log (USB_LOG=0):"
 build/usb_test_nolog || fail=1
+echo "with high speed allowed (FELUCCA_USB_HS=1, as before #535 and in the update loader):"
+build/usb_test_hs || fail=1
 # #535: the setup log only watches. An enumeration with every kind of answer makes the same SIE writes and EP0 packets
 # with it and without it
 build/usb_test trace > build/usb_trace_log.txt

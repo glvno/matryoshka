@@ -32,6 +32,7 @@ static uint32_t rxcsr1_ep1, rxcount_ep1; /* EP1 OUT: bit 0 = a packet waits (RxP
 static int csr0_last = -1;               /* the last value written to CSR0 */
 static uint32_t intrusb_in, intrtx1_in;  /* INTRUSB (bus events) and INTRTX1 (bit 0: EP0) for usb_poll */
 static uint32_t faddr_last;              /* the last value written to FADDR */
+static int power_last = -1;              /* the last value written to POWER */
 static uint8_t ep0_sent[512];
 static uint32_t ep0_sent_n;
 static uint32_t ep4_sent[64];
@@ -73,6 +74,8 @@ static void fm1_usb_sie_wr_start(uint32_t r, uint32_t v)
         sie_index = v;
     if (r == 0u)
         faddr_last = v;
+    if (r == 1u)
+        power_last = (int)v;
     if (r == 17u && sie_index == 0u)
         csr0_last = (int)v;
     if (r == 20u && sie_index == 1u)
@@ -348,6 +351,16 @@ static int data_stage(const uint8_t *p, uint32_t n)
     csr0_last = -1;
     ep0_service();
     return csr0_last;
+}
+
+/* #535: full speed only: usb_start writes POWER with SoftConn and without HSEnab (bit 5), unless FELUCCA_USB_HS */
+static void test_power(void)
+{
+    power_last = -1;
+    usb_start();
+    CHECK(power_last == (FELUCCA_USB_HS ? 0x60 : 0x40), "usb_start: POWER %02X (full speed only: 40)", power_last);
+    CHECK(!(power_last & 0x20) || FELUCCA_USB_HS, "usb_start: no HSEnab");
+    usb.up = 0;
 }
 
 static void test_ep0(void)
@@ -1060,6 +1073,7 @@ int main(int argc, char **argv)
     return 2;
 #else
     test_descriptors();
+    test_power();
     test_ep0();
 #if USB_LOG
     test_usb_log();

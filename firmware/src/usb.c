@@ -49,6 +49,19 @@
 #ifndef FELUCCA_UAC_AS_FIRST
 #define FELUCCA_UAC_AS_FIRST 1
 #endif
+/* #535: full speed only. POWER's HSEnab (bit 5) lets the core chirp for high speed at a reset; with it (1.0 .. 1.8.3) a
+ * Mac ran the FM-1 at high speed (POWER bit 4 HSMode set, the setup log), with descriptors that are full-speed ones
+ * (bcdUSB 1.10, 64-byte bulk MIDI, isochronous bInterval 1 in frames), and an iPad (iPadOS 26, through a USB-A adapter)
+ * reset it 11,269 times in 49 s without one SETUP. FELUCCA_USB_HS=1 is the old behaviour; the update loader keeps it
+ * (its binary stays as shipped). */
+#ifndef FELUCCA_USB_HS
+#ifdef FELUCCA_LOADER
+#define FELUCCA_USB_HS 1
+#else
+#define FELUCCA_USB_HS 0
+#endif
+#endif
+#define USB_POWER_ON (FELUCCA_USB_HS ? 0x60u : 0x40u)   /* SoftConn (bit 6), with HSEnab (bit 5) or without */
 #if !FELUCCA_UAC
 #undef FELUCCA_UAC_48K
 #define FELUCCA_UAC_48K 0
@@ -1743,7 +1756,7 @@ static void usb_start(void)                             /* boot, or main-loop re
     fm1_usb_reset();                                    /* reset whatever the ROM left */
     fm1_delay_ms(25);
     fm1_usb_attach(ep0buf);
-    sie_wr(S_POWER, 0x60);
+    sie_wr(S_POWER, USB_POWER_ON);                      /* full speed only unless FELUCCA_USB_HS */
     sie_wr(S_INTRUSBE, 0x07);                           /* suspend, resume, reset (polled) */
     sie_wr(S_INTRTX1E, 0x01);
     sie_wr(S_INTRTX2E, 0);
