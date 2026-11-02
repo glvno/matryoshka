@@ -56,6 +56,7 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 #include "engine.c"
 #include "presets.h"
 #include "audio.c"
+#define USB_LOG_MEM ENG_LOWRAM      /* usb.c: the USB setup log (#535), 2 KiB */
 #include "usb.c"
 #include "midi_uart.c"
 #include "storage_hw.c"
