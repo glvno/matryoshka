@@ -43,12 +43,12 @@ const RAM_HI: u32 = 0x01C8_0000;
 const KEEP: usize = 60 * 44118 * 2;
 
 /// The mailbox's word offsets (usb.c: magic0, magic1, in_w, in_r, out_w, out_r, in[256], out[256])
-struct Mailbox {
+pub(crate) struct Mailbox {
     base: u32,
 }
 
 impl Mailbox {
-    fn find(m: &mut Machine) -> Option<Mailbox> {
+    pub(crate) fn find(m: &mut Machine) -> Option<Mailbox> {
         let mut a = RAM_LO;
         while a + 8 <= RAM_HI {
             if m.soc.read32(a) == MAGIC0 && m.soc.read32(a + 4) == MAGIC1 {
@@ -62,7 +62,7 @@ impl Mailbox {
         self.base + 4 * i
     }
     /// host -> firmware: as many packets as fit
-    fn push(&self, m: &mut Machine, q: &mut VecDeque<u32>) {
+    pub(crate) fn push(&self, m: &mut Machine, q: &mut VecDeque<u32>) {
         let (iw, ir) = (m.soc.read32(self.w(2)), m.soc.read32(self.w(3)));
         let mut w = iw;
         while w.wrapping_sub(ir) < EMB_N {
@@ -75,7 +75,7 @@ impl Mailbox {
         }
     }
     /// firmware -> host: every packet waiting
-    fn pull(&self, m: &mut Machine, out: &mut Vec<u32>) {
+    pub(crate) fn pull(&self, m: &mut Machine, out: &mut Vec<u32>) {
         let (ow, mut or) = (m.soc.read32(self.w(4)), m.soc.read32(self.w(5)));
         if or == ow {
             return;
@@ -90,14 +90,14 @@ impl Mailbox {
 
 /// MIDI bytes (as CoreMIDI hands them over, SysEx possibly in pieces) -> USB-MIDI event packets (cable 0)
 #[derive(Default)]
-struct ToPackets {
+pub(crate) struct ToPackets {
     sx: Vec<u8>,
     in_sx: bool,
     run: Vec<u8>,
 }
 
 impl ToPackets {
-    fn feed(&mut self, b: u8, q: &mut VecDeque<u32>) {
+    pub(crate) fn feed(&mut self, b: u8, q: &mut VecDeque<u32>) {
         if b >= 0xF8 {
             q.push_back(0x0F | (b as u32) << 8);
             return;
@@ -173,13 +173,13 @@ impl ToPackets {
 /// ends a SysEx for a MIDI receiver (Chrome's Web MIDI parser, by its source, too): it is dropped, counted in `cut`, and
 /// the new message is kept.
 #[derive(Default)]
-struct ToBytes {
+pub(crate) struct ToBytes {
     sx: Vec<u8>,
     cut: u32,
 }
 
 impl ToBytes {
-    fn feed(&mut self, p: u32, out: &mut Vec<Vec<u8>>) {
+    pub(crate) fn feed(&mut self, p: u32, out: &mut Vec<Vec<u8>>) {
         let cin = p & 15;
         let b = [(p >> 8) as u8, (p >> 16) as u8, (p >> 24) as u8];
         let n = match cin {

@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
-/* #532, part of panel_test.c (its helpers): step record on the SEQ page (D-804..D-808). Black key 11 held + a white key
- * starts it on that step; the keys play and write chords, LFO a rest or a tie, FX the accent, K4 the cursor, black key 10
- * back, the cursor wraps and pages the view; stopped and running; REC, HOME, SEQ, ALGO end it. On <7PH's PATTERN (the
+/* #532, part of panel_test.c (its helpers): step record on the SEQ page (D-804..D-808; the owner's REC gestures of
+ * 2026-11-02). REC held + a white key starts it on that step, REC tapped while stopped on the cursor's last step; the
+ * keys play and write chords, LFO a rest or a tie, FX the accent, K4 the cursor, black key 10 back, the cursor wraps and
+ * pages the view; stopped and running; REC, HOME, SEQ, ALGO end it; PLAY makes it a live take. On <7PH's PATTERN (the
  * roll) and the 808 Kit's DRUMS (a drum grid). PANEL_SNAP_STEPREC / PANEL_SNAP_STEPREC_DRUM write the screens. */
 
 #define K_C4 7u                                         /* note keys (0 = F3): C4 E4 G4 D4 F4 B3 */
@@ -16,16 +17,31 @@ static uint32_t sr_held;                                /* the keys held, as pan
 static void sr_down(uint32_t n) { sr_held |= 1u << n; panel_keys(sr_held); loop(); }
 static void sr_up(uint32_t n) { sr_held &= ~(1u << n); panel_keys(sr_held); loop(); }
 static void sr_tap_key(uint32_t n) { sr_down(n); sr_up(n); }
-/* black key 11 held, the white key of step k (on the page shown) pressed, both let go */
+/* REC held, the white key of step k (on the page shown) pressed, REC let go, then the key */
 static void sr_begin(int k)
 {
     uint32_t n;
     for (n = 0; seq_white(n) != k % 16; n++)
         ;
-    sr_down(SR_START);
+    panel_held |= 1u << BTN_REC;
+    panel_edges(1u << BTN_REC, 0);
     sr_down(n);
-    sr_up(SR_START);
+    panel_held &= ~(1u << BTN_REC);
+    panel_edges(0, 1u << BTN_REC);
+    loop();
     sr_up(n);
+}
+/* the controls sheet's rows of the state now each fit the card (the description from x 124, or after parts that pass
+ * it, to 222) */
+static const char *sr_rows[HC_ROWS];
+static int sheet_fits(void)
+{
+    uint32_t n = help_rows(0, sr_rows), i, ok = 1;
+    for (i = 0; i < n; i++) {
+        uint32_t x = help_row(HC_X0, 0, sr_rows[i], HC_AC, 0), dx = x > HC_AC ? x + 2u : HC_AC;
+        ok &= dx + text_w(&FONT_S, strchr(sr_rows[i], '~') + 1, -1) <= 222u;
+    }
+    return (int)ok;
 }
 /* the track's note of this pitch starting on step k: its length (0 none) and velocity */
 static uint32_t sr_len_at(int mod, uint32_t k, uint32_t note)
@@ -83,19 +99,31 @@ static void steprec_suite(void)
     later(1500);
     sr_held = 0;
 
-    /* start: black key 11 + the white key of step 3 */
+    /* REC tapped, stopped: step record on step 1, REC again ends it, the transport stays stopped */
+    th0 = thru_head;
+    tap(BTN_REC);
+    check("REC, stopped, on the SEQ page: step record on step 1, the transport stays stopped, nothing recorded live",
+          sr_on && sr_k == 0u && !eng_transport_running() && !seq_rec && thru_head == th0);
+    check("  REC's LED lit", host_led_mask(fm1_led, 0) >> BTN_REC & 1u);
+    tap(BTN_REC);
+    check("REC again: step record ends, the page stays, still stopped", !sr_on && page == PAGE_SEQ && !eng_transport_running()
+          && !seq_rec && !(host_led_mask(fm1_led, 0) >> BTN_REC & 1u));
+
+    /* start: REC held + the white key of step 3 */
     told = host_track_told;
+    th0 = thru_head;
     sr_begin(2);
     later(1100);
-    check("black key 11 + the white key of step 3: step record on step 3, nothing written, the step not switched",
-          sr_on && sr_k == 2u && sr_notes(pat) == 0 && host_track_told == told && seq_held < 0);
-    check("  the bar says STEP 3 first", bar_shows("STEP 3  PATTERN ARM P01", C_ACC));
+    check("REC held + the white key of step 3: step record on step 3, nothing written or heard, the step not switched",
+          sr_on && sr_k == 2u && sr_notes(pat) == 0 && host_track_told == told && seq_held < 0 && thru_head == th0
+          && !eng_transport_running() && !seq_rec);
+    check("  the bar says STEP 3 first, then the roll's pitches", bar_shows("STEP 3  PATTERN ARM G#3-D#4 P01", C_ACC));
     cx = seq_grid_x(2) + 5u;
     cy = GRID_Y + GRID_RH * 1u + GRID_CH - 1u;
     check("  the cursor's column: its empty cells tinted, a sky tick under it; the next column plain",
           px(cx, cy) == C_CUR && px(cx, GRID_CUR_Y) == P_SKY && px(seq_grid_x(3) + 5u, cy) != C_CUR && px(seq_grid_x(3) + 5u, GRID_CUR_Y) == C_BG);
-    check("  the hint line: the keys, LFO, K4, black key 10", !strcmp(seq_grid_text[2], "KEYS note  LFO rest/tie  K4 move  BLACK 10 del")
-          && text_w(&FONT_S, seq_grid_text[2], -1) <= 228u && strstr(seq_grid_text[1], "HOME/SEQ done"));
+    check("  the hint line: the keys, LFO, K4, REC; the track line black key 10", !strcmp(seq_grid_text[2], "KEYS note  LFO rest/tie  K4 move  REC done")
+          && text_w(&FONT_S, seq_grid_text[2], -1) <= 228u && strstr(seq_grid_text[1], "BLACK 10 del"));
     check("  drawn in place = drawn whole", sr_whole_same());
 
     /* a chord, a tie of only the key still held, a key added after the tie (the issue's example) */
@@ -162,7 +190,7 @@ static void steprec_suite(void)
         sr_tap_key(K_E4);
         later(1100);
         check("a note on the last step: the cursor wraps to step 1, the bar says STEP 1", sr_len_at(pat, (uint32_t)len - 1u, 64) == 1u
-              && sr_k == 0u && bar_shows("STEP 1  PATTERN ARM P01", C_ACC));
+              && sr_k == 0u && bar_shows("STEP 1  PATTERN ARM G#3-D#4 P01", C_ACC));
         enc(5, -1);
         sr_down(K_G4);
         tap(BTN_LFO);
@@ -175,7 +203,7 @@ static void steprec_suite(void)
         enc(5, 17);
         later(1100);
         check("a 32-step track: K4 to step 18, the view shows steps 17-32", seq_len(pat) == 32 && sr_k == 17u && seq_pg == 1u
-              && px(seq_grid_x(1) + 5u, GRID_CUR_Y) == P_SKY && bar_shows("STEP 18  PATTERN ARM P01", C_ACC));
+              && px(seq_grid_x(1) + 5u, GRID_CUR_Y) == P_SKY && bar_shows("STEP 18  PATTERN ARM G#3-D#4 P01", C_ACC));
         enc(5, -2);
         check("  K4 back to step 16: the view shows steps 1-16", sr_k == 15u && seq_pg == 0u && px(seq_grid_x(15) + 5u, GRID_CUR_Y) == P_SKY);
         check("  drawn in place = drawn whole", sr_whole_same());
@@ -185,10 +213,12 @@ static void steprec_suite(void)
         check("  the 16-step track again: the cursor wrapped to step 1", sr_k == 0u && seq_pg == 0u);
     }
 
-    /* while the transport plays: the cursor is not the playhead */
+    /* while the transport plays (PLAY first, then REC held + a white key): the cursor is not the playhead */
+    tap(BTN_HOME);
     tap(BTN_PLAY);
     blocks(200);
     loop();
+    sr_begin(0);
     sr_tap_key(K_D4);
     check("running: D4 written on the cursor's step (1), wherever the playhead is", eng_transport_running() && sr_on
           && sr_len_at(pat, 0, 62) == 1u && sr_k == 1u);
@@ -196,29 +226,27 @@ static void steprec_suite(void)
     loop();
     snap_to(getenv("PANEL_SNAP_STEPREC"));
     tap(BTN_PLAY);
+    check("  PLAY then stops the transport, step record goes on", sr_on && !eng_transport_running() && !seq_rec);
 
     /* the controls sheet follows */
     oct_pair();
     check("OCT- + OCT+: the controls sheet says STEP RECORD", help_on && help_state() == HS_STEP && on_screen("STEP RECORD")
           && on_screen("one chord"));
-    {
-        const char *r[HC_ROWS];
-        uint32_t n = help_rows(0, r), i, ok = 1;
-        for (i = 0; i < n; i++) {                       /* (the description from x 124, or after parts that pass it, to 222) */
-            uint32_t x = help_row(HC_X0, 0, r[i], HC_AC, 0), dx = x > HC_AC ? x + 2u : HC_AC;
-            ok &= dx + text_w(&FONT_S, strchr(r[i], '~') + 1, -1) <= 222u;
-        }
-        check("  every row fits the card", ok && n <= HC_VIS + 2u);
-    }
+    check("  every row fits the card", sheet_fits() && help_rows(0, (const char **)sr_rows) <= HC_VIS + 2u);
     tap(BTN_HOME);
     check("  HOME closes the sheet; step record goes on", !help_on && sr_on && page == PAGE_SEQ);
 
     /* leaving: HOME, SEQ, ALGO, REC; REC on refuses it */
     tap(BTN_HOME);
     check("HOME: step record ends, the page stays", !sr_on && page == PAGE_SEQ);
+    check("  the piano roll's sheet: REC and REC + a white key, SELECT's pages, SEL + SELECT; every row fits", help_state() == HS_ROLL
+          && sheet_fits() && help_rows(0, sr_rows) > 0u);
     later(1100);
-    check("  the bar without STEP, the cursor's tick gone", bar_shows("PATTERN ARM P01", C_ACC) && px(seq_grid_x(1) + 5u, GRID_CUR_Y) == C_BG
+    check("  the bar without STEP, the cursor's tick gone", bar_shows("PATTERN ARM G#3-D#4 P01", C_ACC) && px(seq_grid_x(1) + 5u, GRID_CUR_Y) == C_BG
           && strstr(seq_grid_text[1], "ALGO track"));
+    tap(BTN_REC);
+    check("REC, stopped: step record again on the cursor's last step (2)", sr_on && sr_k == 1u && !eng_transport_running());
+    tap(BTN_HOME);
     sr_begin(0);
     tap(BTN_SEQ);
     check("SEQ: step record ends, the page stays", !sr_on && page == PAGE_SEQ);
@@ -228,9 +256,32 @@ static void steprec_suite(void)
     enc(1, 1);
     sr_begin(0);
     tap(BTN_REC);
-    check("REC: step record ends and REC records as ever (the roll's keys its keyboard)", !sr_on && seq_rec && eng_transport_running()
-          && seq_kbd());
+    check("REC: step record ends, nothing else (stopped, no recording)", !sr_on && !seq_rec && !eng_transport_running());
+    tap(BTN_REC);
+    check("  (REC: step record again, on the cursor's last step)", sr_on && !eng_transport_running());
+    {
+        int at = mlen;
+        tap(BTN_PLAY);
+        check("PLAY in step record: the transport starts (MIDI Start out), step record becomes a live take (the roll's keys its keyboard)",
+              !sr_on && seq_rec && eng_transport_running() && sent(at, 0xFAu, 0xFFu, 0xFFu) && seq_kbd()
+              && (E.trk_rec >> E.node[pat].trk & 1u) && !strcmp(msg_text, "REC PATTERN"));
+    }
+    tap(BTN_REC);
+    check("  REC then, running: the live take ends, the transport goes on (as on every page)", !sr_on && !seq_rec && eng_transport_running());
+    sr_begin(4);
+    check("REC held + a white key while running: step record on that step (5), the transport goes on", sr_on && sr_k == 4u
+          && eng_transport_running() && !seq_rec);
+    tap(BTN_REC);
+    check("  REC: step record ends; running, nothing records", !sr_on && !seq_rec && eng_transport_running());
+    tap(BTN_REC);
+    check("REC, running, not in step record: a live take as on every page", seq_rec && !sr_on && seq_kbd());
+    sr_begin(5);
+    loop();
+    check("REC held + a white key while a live take records: the take ends, step record on that step (6)", sr_on && sr_k == 5u
+          && !seq_rec && !E.trk_rec && eng_transport_running() && !strcmp(msg_text, "REC OFF: STEP RECORD"));
     tap(BTN_PLAY);
+    check("  PLAY while running in step record: the transport stops, step record goes on", sr_on && !eng_transport_running() && !seq_rec);
+    tap(BTN_HOME);
     sr_held = 0;
     sr_begin(0);
     tap(BTN_ENV);
@@ -252,7 +303,12 @@ static void steprec_suite(void)
     page_set(PAGE_SEQ);
     later(1500);
     sr_begin(0);
-    check("the drum grid: black key 11 + step 1's white key starts step record", sr_on && sr_k == 0u && seq_map() == map);
+    check("the drum grid: REC held + step 1's white key starts step record", sr_on && sr_k == 0u && seq_map() == map);
+    sr_stop();
+    check("  the drum grid's sheet: every row fits", help_state() == HS_DRUM && sheet_fits());
+    sr_begin(0);
+    later(1100);
+    check("  the drum grid's bar: no pitches", bar_shows("STEP 1  DRUMS ARM P01", C_ACC));
     th0 = thru_head;
     sr_down(1);                                         /* black key 1: row 1 (the kick) */
     sr_down(5);                                         /* black key 3: row 3 */
@@ -277,12 +333,22 @@ static void steprec_suite(void)
     tap(BTN_SEQ);
     check("SEQ: the drum grid's step record ends", !sr_on && page == PAGE_SEQ);
     tap(BTN_REC);
-    msg_text[0] = 0;
-    sr_begin(4);
-    loop();
-    check("black key 11 + a white key while REC records: no step record (STOP REC FOR STEP RECORD), the step not switched",
-          !sr_on && seq_rec && !strcmp(msg_text, "STOP REC FOR STEP RECORD") && sr_notes(drums) == 3);
+    check("REC, stopped, on the drum grid: step record on the cursor's last step (3)", sr_on && sr_k == 2u && !eng_transport_running());
     tap(BTN_PLAY);
+    check("  PLAY: a live take of the drum track", !sr_on && seq_rec && eng_transport_running() && (E.trk_rec >> E.node[drums].trk & 1u));
+    tap(BTN_PLAY);
+    {                                                   /* REC held + a black key on the SEQ page: arms as ever, no step record */
+        uint64_t was = eng_arm_mask_get();
+        panel_held |= 1u << BTN_REC;
+        panel_edges(1u << BTN_REC, 0);
+        sr_tap_key(1);
+        panel_held &= ~(1u << BTN_REC);
+        panel_edges(0, 1u << BTN_REC);
+        loop();
+        check("REC held + a black key on the drum grid: the track disarmed, no step record, REC's release does nothing",
+              eng_arm_mask_get() != was && !sr_on && !seq_rec && !eng_transport_running() && sr_notes(drums) == 3);
+        eng_arm_mask(was);
+    }
     tap(BTN_SEQ);
     later(1500);
     sr_held = 0;

@@ -2,6 +2,8 @@
 // The device checks that cross the editor link, scripted (#290): the real editor (this checkout's dev server, in Chrome)
 // against our firmware on the emulated FM-1, whose USB MIDI is a virtual MIDI port (`m1emu serve`, docs/EMULATOR.md).
 //   npm run emu:scenarios [-- FIRMWARE] [--only NAME,..] [--headed] [--keep]
+//   npm run emu:scenarios -- --list     the scenarios' names, for --only (`-- --only tieLire` reruns one; connect always
+//                                       runs first: it opens the editor and syncs, which the others need)
 // FIRMWARE: an M1_EMU_MIDI=1 build (matryoshka-emu.bin). Without one: the `matryoshka-emu-midi` artifact of the firmware
 // CI run of this checkout's commit, else its branch, else main (needs gh). --url: an editor already running (default: a
 // dev server of this checkout on a free port). --headed shows Chrome.
@@ -9,22 +11,24 @@
 // Results, LCD snapshots and page screenshots go to build/emu/scenarios/. Exit code 1 when a check fails.
 //
 // The same scenarios on the test rig, a real FM-1 (the device test mode, #291; npm run device:scenarios):
-//   npm run device:scenarios [-- --install RUN] [--only NAME,..] [--headed]
+//   npm run device:scenarios [-- --install RUN [--gate boot]] [--only NAME,..] [--headed]
 // drives the registered rig (scripts/rig.mjs) over the editor link: its panel (TEST_KEY / TEST_TURN), its screen as text
 // (TEST_SCREEN) and its output's peak (TEST_PEAK). The page sees only the rig's ports; another FM-1 connected is asked
 // HELLO and PRESET_GET (to tell it from the rig) and nothing else. --install RUN first installs that firmware CI run on
 // the rig, after the gate of D-120 (emu:smoke and these scenarios in the emulator, on that run's builds) passed, and only
-// when the rig is the one FM-1 connected (the installer takes the first FM-1 it finds). --via-emu: the device path against
+// when the rig is the one FM-1 connected (the installer takes the first FM-1 it finds). --gate boot: after the boot check
+// (emu:boot, about 30 s) instead, for the owner's iteration checks on the rig (D-123); merges and releases still take the
+// full gate. Which gate a build passed goes to build/device/scenarios/install.json. --via-emu: the device path against
 // the emulator (m1emu serve), to check the runner itself without a rig. --port NAME: the rig's page looks only at that
 // MIDI port (an emulator serving as a registered rig, to check the rig's path). Results go to build/device/scenarios/.
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
-import { download, smoke, smokeState } from './branch-firmware.mjs';
+import { boot, download, downloadEmuMidi, smoke, smokeState } from './branch-firmware.mjs';
 import { DEV_ENV, loadRig, pickRig, rigPage, survey } from './rig-link.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -32,11 +36,34 @@ const REPO = 'glvno/matryoshka';
 const args = process.argv.slice(2);
 const flag = (n) => args.includes(n);
 const opt = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
-const given = args.find((a, i) => !a.startsWith('--') && !['--only', '--install', '--url', '--port'].includes(args[i - 1]));
+const given = args.find((a, i) => !a.startsWith('--') && !['--only', '--install', '--url', '--port', '--gate'].includes(args[i - 1]));
 const DEVICE = flag('--device') || flag('--via-emu');   // the device test mode's path (a rig, or the emulator through it)
 const REAL = flag('--device') && !flag('--via-emu');    // a real FM-1: the registered rig
 const OUT = join(ROOT, DEVICE ? 'build/device/scenarios' : 'build/emu/scenarios');
 const only = opt('--only')?.split(',');
+const GATE = opt('--gate') ?? 'full';   // --install's gate: full (D-120) or boot (the boot check, the rig only: D-123)
+/** the scenarios' names, read from this file (so --list and a wrong --only answer before anything starts) */
+const SCENARIOS = (() => {
+  const src = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+  const from = src.search(/^ {2}const scenarios = \{$/m);
+  const body = src.slice(from, src.indexOf('\n  };\n', from));
+  return [...body.matchAll(/^    async (\w+)\(\)/gm)].map((m) => m[1]);
+})();
+if (flag('--list')) {
+  console.log(SCENARIOS.join('\n'));
+  process.exit(0);
+}
+{
+  const unknown = only?.filter((n) => !SCENARIOS.includes(n)) ?? [];
+  if (unknown.length) {
+    console.error(`no scenario named ${unknown.join(', ')}; the scenarios: ${SCENARIOS.join(' ')}`);
+    process.exit(2);
+  }
+  if (!['full', 'boot'].includes(GATE)) {
+    console.error(`--gate ${GATE}: full or boot`);
+    process.exit(2);
+  }
+}
 const PORT_NAME = `FM-1 (emu ${process.pid})`;
 
 // panel ids (web/src/fm1-ui.ts BUTTONS, fm1-emu's key matrix): 14.. the note keys from F3
@@ -335,24 +362,26 @@ async function launch(url) {
   return { browser, context };
 }
 
-/** --install RUN: that firmware CI run onto the rig, once the gate (D-120) passed on its builds and the rig is the one
- *  FM-1 connected (fm1_install.py takes the first FM-1 that answers) */
+/** --install RUN: that firmware CI run onto the rig, once the gate passed on its builds and the rig is the one FM-1
+ *  connected (fm1_install.py takes the first FM-1 that answers). The gate (`--gate`): full = emu:smoke and these
+ *  scenarios on the run's builds (D-120); boot = the boot check, emu:boot (D-123: the rig only, for iteration checks) */
 async function installOnRig(run, url) {
-  console.log(`-- install: firmware CI run ${run} on the rig`);
+  console.log(`-- install: firmware CI run ${run} on the rig (gate: ${GATE === 'boot' ? 'the boot check, emu:boot' : 'emu:smoke and emu:scenarios'})`);
   const dir = await download(run);
-  if (smokeState(dir) !== 'passed') {
-    console.log('emu:smoke on its build (about two minutes)');
-    if (!(await smoke(dir))) throw new Error(`the gate: emu:smoke failed on run ${run} (${dir}/smoke.log): nothing installed`);
+  if (GATE === 'boot') {
+    console.log('emu:boot on its builds (about 30 s)');
+    if (!(await boot(dir))) throw new Error(`the gate: the boot check failed on run ${run} (${dir}/boot.log): nothing installed`);
+  } else {
+    if (smokeState(dir) !== 'passed') {
+      console.log('emu:smoke on its build (about two minutes)');
+      if (!(await smoke(dir))) throw new Error(`the gate: emu:smoke failed on run ${run} (${dir}/smoke.log): nothing installed`);
+    }
+    const emuBin = await downloadEmuMidi(run, dir);
+    if (!emuBin) throw new Error(`run ${run} has no matryoshka-emu-midi artifact: no gate, nothing installed`);
+    console.log('emu:scenarios on its M1_EMU_MIDI build (about four minutes)');
+    if (spawnSync('node', [fileURLToPath(import.meta.url), emuBin], { cwd: join(ROOT, 'web'), stdio: 'inherit' }).status !== 0)
+      throw new Error(`the gate: emu:scenarios failed on run ${run}: nothing installed`);
   }
-  const emuDir = join(dir, 'emu-midi');
-  if (!existsSync(join(emuDir, 'matryoshka-emu.bin'))) {
-    mkdirSync(emuDir, { recursive: true });
-    spawnSync('gh', ['run', 'download', String(run), '-R', REPO, '-n', 'matryoshka-emu-midi', '-D', emuDir], { stdio: 'inherit' });
-  }
-  if (!existsSync(join(emuDir, 'matryoshka-emu.bin'))) throw new Error(`run ${run} has no matryoshka-emu-midi artifact: no gate, nothing installed`);
-  console.log('emu:scenarios on its M1_EMU_MIDI build (about four minutes)');
-  if (spawnSync('node', [fileURLToPath(import.meta.url), join(emuDir, 'matryoshka-emu.bin')], { cwd: join(ROOT, 'web'), stdio: 'inherit' }).status !== 0)
-    throw new Error(`the gate: emu:scenarios failed on run ${run}: nothing installed`);
   // the gate's own emulator ("FM-1 (emu …)") can outlive its run by a moment: wait for its port to go, so it is not counted as
   // a second FM-1 (the first try on the owner's rig was refused for it); a real second FM-1 still refuses the install below
   const emuPorts = () => spawnSync(PY, ['-c', 'import mido; print(sum("(emu " in n for n in mido.get_input_names()))'], { encoding: 'utf8' }).stdout.trim();
@@ -371,9 +400,14 @@ async function installOnRig(run, url) {
   if (spawnSync(PY, [join(ROOT, 'tools/fm1_install.py'), join(dir, 'matryoshka.fwsc'), '--yes'], { cwd: ROOT, stdio: 'inherit' }).status !== 0)
     throw new Error('fm1_install.py failed (the rig stays in update mode until an install finishes: run it again)');
   await sleep(4000);   // (its restart)
+  const gate = GATE === 'boot' ? 'boot (emu:boot, D-123: the rig only)' : 'full (emu:smoke and emu:scenarios, D-120)';
+  writeFileSync(join(OUT, 'install.json'), JSON.stringify({ run: String(run), gate: GATE, at: new Date().toISOString() }, null, 1));
+  console.log(`installed run ${run} on the rig; the gate it passed: ${gate}`);
+  return gate;
 }
 
 async function main() {
+  if (opt('--gate') && !flag('--install')) throw new Error('--gate goes with --install RUN');
   if (flag('--install') && !REAL) throw new Error('--install is for the rig: npm run device:scenarios -- --install RUN');
   if (REAL && !loadRig()) throw new Error('no rig registered: connect the rig alone and run npm run rig -- register');
   const fw = REAL ? null : firmware();
@@ -393,9 +427,10 @@ async function main() {
     await new Promise((res) => vite.stdout.on('data', (d) => { if (/ready in|Local:/.test(String(d))) res(); }));
   }
   console.log(`editor: ${url}`);
+  let installedGate = null;
   if (flag('--install')) {
     try {
-      await installOnRig(opt('--install'), url);
+      installedGate = await installOnRig(opt('--install'), url);
     } catch (e) {
       vite?.kill();
       throw e;
@@ -879,9 +914,14 @@ async function main() {
       await loudCheck('hold: let go, it decays (500 ms on: under half the held level)', top, late < heldMax / 2, d);
       let ns = await trackNotes();
       await check('hold: stopped, nothing recorded', ns.length === 0, fmt(ns));
-      // REC (the SEQ page armed this drum track; stopped, REC starts the transport and records it, #395): black key 2
-      // held about four steps
+      // REC then PLAY (the SEQ page armed this drum track; stopped, REC is step record there, and PLAY makes it a live take,
+      // D-548, D-804): black key 2 held about four steps
       await emu.tap(B.rec);
+      await check('hold: REC, stopped, on the grid: step record (STEP 1), nothing recorded', (await emu.waitText('STEP 1', 3000))
+        && (await trackNotes()).length === 0, fmt(await trackNotes()));
+      await emu.tap(B.play);
+      await sleep(300);
+      await check('hold: PLAY in step record: step record ends (a live take: the note below records)', !(await emu.text('STEP 1')));
       await emu.elapse(400);
       await emu.key(BLACK[1], true);
       await emu.elapse(450);                        // (450 ms on the FM-1's clock, however far the emulator lags, #487)
@@ -917,21 +957,21 @@ async function main() {
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
     },
-    // #532: step record on the roll (Silver Box's PATTERN), read back through the link (TRACK_NOW: the editor's copy): black
-    // key 11 + step 1's white key starts it; a chord, two of its keys let go, LFO ties the one still held onto step 2, a key
-    // added there, a rest, a note, then black key 10 clears the last one. Relative to the chord's root, so the FM-1's
-    // octave does not matter
+    // #532: step record on the roll (Silver Box's PATTERN), read back through the link (TRACK_NOW: the editor's copy): REC
+    // held + step 1's white key starts it (the owner, 2026-11-02, D-804); a chord, two of its keys let go, LFO ties the one
+    // still held onto step 2, a key added there, a rest, a note, then black key 10 clears the last one. Relative to the
+    // chord's root, so the FM-1's octave does not matter
     async stepRecord() {
       await check('step record: Silver Box opens, synced', await openSynced('Silver Box'));
       await check('step record: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
-      const [BK11, C, E, G, D, BK10] = [25, 7, 11, 14, 9, 22].map((n) => 14 + n);
-      await emu.key(BK11, true);
+      const [C, E, G, D, BK10] = [7, 11, 14, 9, 22].map((n) => 14 + n);
+      await emu.key(B.rec, true);
       await sleep(150);
       await emu.tap(WHITE[0]);
-      await emu.key(BK11, false);
+      await emu.key(B.rec, false);
       await sleep(200);
-      await check('step record: black key 11 + step 1\'s white key: the bar says STEP 1, nothing written',
-        (await emu.waitText('STEP 1', 4000)) && (await trackNotes()).length === 0, fmt(await trackNotes()));
+      await check('step record: REC held + step 1\'s white key: the bar says STEP 1, nothing written, the transport stopped',
+        (await emu.waitText('STEP 1', 4000)) && (await trackNotes()).length === 0 && !(await emu.text('PATTERN REC')), fmt(await trackNotes()));
       for (const k of [C, E, G]) { await emu.key(k, true); await sleep(80); }
       await sleep(200);
       await emu.key(E, false);
@@ -962,6 +1002,96 @@ async function main() {
         && (await emu.waitText('STEP 4', 2000)), fmt(ns));
       await emu.tap(B.home);
       await check('step record: HOME ends it, the SEQ page stays', (await emu.waitText('ALGO track', 2000)) && !(await emu.text('STEP 4')));
+      await emu.tap(B.seq, 120);
+      await emu.waitOwnPage(3000);
+    },
+    // the owner's REC gestures of 2026-11-02 (D-548, D-804, D-808) on the roll (Silver Box's PATTERN): REC, stopped, starts
+    // step record on step 1 and REC again ends it; REC again starts it on the cursor's last step; PLAY then starts the
+    // transport and goes on as a live take, which records a key played; PLAY stops both. REC held + a black key still arms
+    // (it disarms the track the page armed, and again arms it), and REC's release then starts nothing
+    async recStepRecord() {
+      await check('rec step: Silver Box opens, synced', await openSynced('Silver Box'));
+      await check('rec step: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
+      const [C, E] = [7, 11].map((n) => 14 + n);
+      await emu.tap(B.rec);
+      if (!(await emu.waitText('STEP 1', 1500))) {   // (an earlier scenario left the transport running: REC was a live take)
+        console.log('  note: the transport was running; REC off, PLAY to stop it, REC again');
+        await emu.tap(B.rec);
+        await sleep(300);
+        await emu.tap(B.play);
+        await sleep(500);
+        await emu.tap(B.rec);
+      }
+      await check('rec step: REC, stopped: step record on step 1, the transport stays stopped', (await emu.waitText('STEP 1', 3000))
+        && !(await emu.text('PATTERN REC')));
+      await emu.tap(B.rec);
+      await check('rec step: REC again: step record ends, the SEQ page stays', (await emu.waitText('ALGO track', 2000)) && !(await emu.text('STEP 1')));
+      await emu.tap(B.rec);
+      await check('rec step: REC again: step record on (step 1)', await emu.waitText('STEP 1', 3000));
+      await emu.tap(C);
+      let ns = await notesUntil((x) => x.length === 1);
+      await check('rec step: a key writes step 1, the cursor on step 2', ns.length === 1 && ns[0].at === 0 && ns[0].len === 1
+        && (await emu.waitText('STEP 2', 2000)), fmt(ns));
+      await emu.tap(B.play);
+      await check('rec step: PLAY in step record: the transport starts, a live take records (PATTERN REC)', await emu.waitText('PATTERN REC', 3000));
+      await check('rec step: the live take\'s hint (the roll\'s keys its keyboard, SELECT its pages)', await emu.waitText('KEYS record  SELECT page', 2000));
+      await emu.key(E, true);
+      await emu.elapse(300);
+      await emu.key(E, false);
+      ns = await notesUntil((x) => x.length === 2);
+      await check('rec step: a key played in the live take is recorded', ns.length === 2 && ns.some((n) => n.note === ns[0].note + 4 || n.note === ns[0].note - 4), fmt(ns));
+      await emu.tap(B.play);
+      await check('rec step: PLAY stops the transport and the take (PATTERN ARM)', await emu.waitText('PATTERN ARM', 3000));
+      await emu.key(B.rec, true);
+      await sleep(150);
+      await emu.tap(14 + 1);                        // REC held + black key 1: PATTERN (the page armed it) disarmed
+      await emu.key(B.rec, false);
+      await sleep(200);
+      await check('rec step: REC held + a black key still arms (here: disarms) a track', await emu.waitText('DISARMED', 2000));
+      await sleep(1300);
+      await check('rec step: REC\'s release after it starts no step record', !(await emu.text('STEP ')));
+      await emu.key(B.rec, true);
+      await sleep(150);
+      await emu.tap(14 + 1);                        // (armed again)
+      await emu.key(B.rec, false);
+      await sleep(300);
+      await emu.snap('rec-step-record');
+      await emu.tap(B.seq, 120);
+      await emu.waitOwnPage(3000);
+    },
+    // D-809 (the owner, 2026-11-02): SELECT pages the piano roll 8 pitches at a time (fixed pages, the bar names them) and
+    // SEL held + SELECT moves it a pitch, its release then opening no SONG page; the selected row stays on its screen row,
+    // so a white key writes 8 pitches lower after a page down and one higher after a fine step up. Silver Box's PATTERN
+    async rollPaging() {
+      await check('roll paging: Silver Box opens, synced', await openSynced('Silver Box'));
+      await check('roll paging: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
+      const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+      const nm = (n) => `${NAMES[n % 12]}${Math.floor(n / 12) - 1}`;
+      const range = (lo) => `${nm(lo)}-${nm(lo + 7)}`;
+      await emu.tap(WHITE[0]);                      // the selected row's pitch on step 1
+      let ns = await notesUntil((x) => x.length === 1);
+      const p0 = ns[0]?.note ?? 60, lo0 = Math.floor(p0 / 8) * 8;
+      await check('roll paging: the bar names the fixed page of 8 pitches the selected row is on', ns.length === 1
+        && (await emu.waitText(range(lo0), 2000)), `${fmt(ns)}, ${range(lo0)}`);
+      await emu.turn(ENC.select, 1);
+      await check('roll paging: SELECT: a page of 8 pitches down', await emu.waitText(range(lo0 - 8), 2000), range(lo0 - 8));
+      await emu.tap(WHITE[1]);
+      ns = await notesUntil((x) => x.length === 2);
+      await check('roll paging: the selected row stays on its screen row: a white key writes 8 pitches lower', noteAt(ns, 1)?.note === p0 - 8, fmt(ns));
+      await emu.key(B.scl, true);
+      await sleep(150);
+      await emu.turn(ENC.select, -1);
+      await sleep(150);
+      await emu.key(B.scl, false);
+      await sleep(400);
+      await check('roll paging: SEL held + SELECT: a pitch up, SEL\'s release opens no SONG page', (await emu.waitText(range(lo0 - 7), 2000))
+        && !(await emu.text('SONG 1')) && (await emu.text('ALGO track')), range(lo0 - 7));
+      await emu.tap(WHITE[2]);
+      ns = await notesUntil((x) => x.length === 3);
+      await check('roll paging: then a white key writes a pitch higher', noteAt(ns, 2)?.note === p0 - 7, fmt(ns));
+      await emu.turn(ENC.select, -1);
+      await check('roll paging: SELECT after it: a page up, the pitch offset kept', await emu.waitText(range(lo0 + 1), 2000), range(lo0 + 1));
+      await emu.snap('roll-paging');
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
     },
@@ -1029,7 +1159,7 @@ async function main() {
       let tone = false;
       for (let i = 0; i < 3 && !tone; i++) {        // ALGO a track a click, to TONE (the 2nd of 3)
         await emu.turn(ENC.algo, 1);
-        tone = await emu.waitText('TONE ARM P', 1500);
+        tone = await emu.waitText('TONE ARM', 1500);
       }
       await check('roll black: ALGO: the TONE track\'s roll', tone);
       const t0 = await tracks();
@@ -1040,22 +1170,24 @@ async function main() {
       await emu.key(KEY[0], false);
       await sleep(300);
       await loudCheck('roll black: stopped, black key 1 sounds its row', p, p > LOUD, `peak ${p}`);
-      await check('roll black: black key 1 keeps the TONE track (it picked a track before)', (await emu.text('TONE ARM P')) && !(await emu.text('CHORD')));
+      await check('roll black: black key 1 keeps the TONE track (it picked a track before)', (await emu.text('TONE ARM')) && !(await emu.text('CHORD')));
       await emu.tap(WHITE[13]);                     // a white key: a note on step 14 at black key 1's row
       const t1 = await until(async () => { const x = await tracks(); return added(t0.TONE, x.TONE).length === 1 ? x : null; }, 3000) ?? (await tracks());
       const low = added(t0.TONE, t1.TONE)[0];
       await check('roll black: then a white key writes on TONE, not on another track', !!low && low.at === 13 && fmt(t1.CHORD) === fmt(t0.CHORD) && fmt(t1.DRUMS) === fmt(t0.DRUMS), fmt(added(t0.TONE, t1.TONE)));
       await emu.tap(KEY[7]);                        // black key 8: the top row, 7 semitones up
       await emu.tap(WHITE[14]);
-      const t2 = await until(async () => { const x = await tracks(); return added(t1.TONE, x.TONE).length === 1 ? x : null; }, 3000) ?? (await tracks());
-      const high = added(t1.TONE, t2.TONE)[0];
+      // (the step's note at the top row switched: added, or taken away when the pattern had it there: D-809's pages)
+      const switched = (was, now) => [...added(was, now), ...added(now, was)];
+      const t2 = await until(async () => { const x = await tracks(); return switched(t1.TONE, x.TONE).length === 1 ? x : null; }, 3000) ?? (await tracks());
+      const high = switched(t1.TONE, t2.TONE)[0];
       await check('roll black: black key 8 is the top row: 7 semitones over black key 1\'s', !!low && !!high && high.at === 14 && high.note === low.note + 7, `${fmt([low])} then ${fmt([high])}`);
       await emu.tap(KEY[8]);                        // black key 9: nothing (8 rows), still TONE, still the top row
       await emu.tap(WHITE[14]);                     // (the top row's note on step 15 off again)
       await emu.tap(KEY[0]);
       await emu.tap(WHITE[13]);                     // (and the bottom row's on step 14)
       const t3 = await until(async () => { const x = await tracks(); return fmt(x.TONE) === fmt(t0.TONE) ? x : null; }, 3000) ?? (await tracks());
-      await check('roll black: black key 9 changes nothing; both notes off again (the track as it was)', fmt(t3.TONE) === fmt(t0.TONE) && (await emu.text('TONE ARM P')), fmt(added(t0.TONE, t3.TONE)));
+      await check('roll black: black key 9 changes nothing; both notes off again (the track as it was)', fmt(t3.TONE) === fmt(t0.TONE) && (await emu.text('TONE ARM')), fmt(added(t0.TONE, t3.TONE)));
       await emu.snap('roll-black');
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
@@ -1242,7 +1374,7 @@ async function main() {
 
   try {
     for (const [name, run] of Object.entries(scenarios)) {
-      if (only && !only.includes(name)) continue;
+      if (only && name !== 'connect' && !only.includes(name)) continue;   // (connect opens the editor and syncs: the others need it)
       console.log(`-- ${name}`);
       try {
         await run();
@@ -1263,6 +1395,7 @@ async function main() {
   }
   const failed = results.filter((r) => !r.ok), skipped = results.filter((r) => r.skipped);
   const passed = results.length - failed.length - skipped.length;
+  if (installedGate) console.log(`\nthe rig runs firmware CI run ${opt('--install')}, installed after the gate ${installedGate}`);
   console.log(`\n${passed} of ${results.length} checks passed${skipped.length ? `, ${skipped.length} skipped (${skipped.map((f) => `${f.name}: ${f.reason}`).join('; ')})` : ''}${failed.length ? `; failed: ${failed.map((f) => f.name).join('; ')}` : ''}`);
   process.exit(failed.length ? 1 : 0);   // (a skip is no failure)
 }
