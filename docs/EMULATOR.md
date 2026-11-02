@@ -40,6 +40,11 @@ its disassembly (artifact `matryoshka-elf`) for tracing such faults to a functio
   `emu-midi/matryoshka-emu.bin` next to FIRMWARE, else the CI run's `matryoshka-emu-midi` artifact, else it checks no
   link and says so. The last line is the summary (`boot check: PASS ..` / `FAIL ..`); snapshots go to `build/emu/boot/`.
   It is the test rig's gate while the owner iterates ([D-123](ledger/releases.md#D-123)), not a merge or release gate.
+- **Running them side by side:** `emu:smoke` and `emu:boot` count emulated time, not the wall clock, so several may run
+  at once with no lock. Two smokes on the same build at once gave identical results and byte-identical snapshots, only
+  slower: 474 s against 401 s (2026-11-02). Two runs in one checkout write to the same `build/emu/smoke/` (or
+  `build/emu/boot/`), so run them from different checkouts. `emu:scenarios` runs in real time and its checks depend on
+  timing, so it runs one at a time, on a machine doing nothing else.
 - `cd web && npm run emu [-- FIRMWARE]`: the firmware in fm1-live's window (LCD, keys, buttons, knobs, sound, every
   MIDI input into the TRS jack; fm1-live prints its key map; built once into `tools/emu/live/`).
 - Without FIRMWARE both take `build/matryoshka.bin`, else download the latest firmware artifact of a successful
