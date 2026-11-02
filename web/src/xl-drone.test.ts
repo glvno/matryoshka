@@ -63,6 +63,18 @@ describe('drone XLs', () => {
     expect(step).toBeLessThan(1 / 12);
   });
 
+  it('8 Lire XL: opened with both HOLDs up, the drone fades in, no step from silence (#516)', () => {
+    const p = XL_PRESETS['8 Lire XL']();
+    for (const a of p.assemblies ?? [])
+      for (const r of a.params.filter((x) => x.label === 'hold')) p.modules.find((m) => m.id === r.module)!.params[r.param] = 1;
+    const out = render(p, Math.ceil((0.1 * SR) / 128)); // the first 100 ms
+    let step = Math.abs(out[0]); // (from the silence before the patch)
+    for (let i = 1; i < out.length; i++) step = Math.max(step, Math.abs(out[i] - out[i - 1]));
+    // (the drone was at full level on sample 0: a step of 0.497; faded in over 30 ms its largest step is 0.04)
+    expect(step).toBeLessThan(0.05);
+    expect(rms(out, out.length >> 1)).toBeGreaterThan(0.05); // (and HOLD up still sounds)
+  });
+
   it('Meridian 8 XL: a steady voltage into a gate input is a drone, with no key held', () => {
     const quiet = XL_PRESETS['Meridian 8 XL']();
     const p = XL_PRESETS['Meridian 8 XL']();
