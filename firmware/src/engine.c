@@ -427,6 +427,8 @@ typedef struct {
                                                     * block; held: with repeat on (#184), the keys down (bit k & 31 of held[k >> 5]) */
         struct { int32_t count, c1, r1; } cdv;
         struct { int32_t v, c1; } sh;
+        struct { uint32_t rnd, rnd0; uint8_t reg, pat, c1, r1; } shr;   /* Shift register: the flip stream and where a reset restarts it; the stages (s1 in bit 7), the pattern a reset restores, clock / reset high at the previous sample */
+        struct { uint8_t hi; } cmp;   /* Comparator: gt is high */
         struct { int32_t rem, t1; } pls;
         struct { int32_t w[SELECT_NOUT - 1]; int8_t k; uint8_t fading; } sel;   /* Selector: each input's weight (Q16), the position (-1: none yet) */
     } s;
@@ -779,6 +781,13 @@ static void init_state(const node_t *nd, inst_t *it, uint32_t mod, uint32_t v)
     case T_CLKDIV:
         it->s.cdv.count = -1;
         break;
+    case T_SHREG: {                      /* modules.ts shreg.seed with engine.ts instSeed(module index, part) */
+        uint32_t seed = (mod * 8u + v + 1u) * 0x9e3779b9u;
+        uint8_t pat = (uint8_t)(hash32(seed ^ SHREG_PAT_SEED) >> 24);
+        it->s.shr.pat = it->s.shr.reg = pat ? pat : (uint8_t)SHREG_PAT_ZERO;
+        it->s.shr.rnd = it->s.shr.rnd0 = hash32(seed ^ SHREG_FLIP_SEED);
+        break;
+    }
     case T_SELECT:
         it->s.sel.k = -1;
         break;
@@ -6284,6 +6293,98 @@ static void m_sh(const node_t *nd, inst_t *it, uint32_t n)
     it->s.sh.c1 = c1;
 }
 
+/* the Shift register's dac: the first `bits` stages as a binary number (s1 the highest bit), 0..1 in Q16, rounded
+ * (modules.ts shregDac) */
+static int32_t shreg_dac(uint32_t reg, int32_t bits)
+{
+    uint32_t d = (1u << bits) - 1u;
+    return (int32_t)(((reg >> (SHREG_STAGES - bits)) * 65536u + (d >> 1)) / d);
+}
+
+/* Shift register (modules.ts shreg, #438): on a rising clock every stage takes the one before it and s1 takes a new bit,
+ * `in` when patched, else stage `len` comes round; the bit flips when the flip stream's next value is under `flip`. A
+ * rising reset restores the starting pattern and restarts the stream (it wins over a clock on the same sample). The
+ * stages, dac and gate are written only where something reads them; between edges the stages hold. */
+static void m_shreg(const node_t *nd, inst_t *it, uint32_t n)
+{
+    const esig_t *clock = it->in[SHREG_I_CLOCK], *in = it->in[SHREG_I_IN], *reset = it->in[SHREG_I_RESET];
+    esig_t *dac = it->out[SHREG_O_DAC], *go = it->out[SHREG_O_GATE];
+    int32_t len = clampi(round_q16(EF(it, SHREG_P_LEN)), 1, SHREG_STAGES), bits = clampi(round_q16(EF(it, SHREG_P_BITS)), 1, SHREG_STAGES);
+    uint32_t flip = (uint32_t)clampi(EF(it, SHREG_P_FLIP), 0, ENG_ONE), rnd = it->s.shr.rnd, reg = it->s.shr.reg, i, j, from = 0;
+    int data = (nd->conn >> SHREG_I_IN) & 1, c1 = it->s.shr.c1, r1 = it->s.shr.r1;
+    int32_t dv = shreg_dac(reg, bits);
+    if (!(nd->conn & ((1u << SHREG_I_CLOCK) | (1u << SHREG_I_RESET)))) {   /* no edges can come: everything holds */
+        for (j = 0; j < SHREG_STAGES; j++)
+            if (it->out[SHREG_O_S1 + j] != dummy_out)
+                fill(it->out[SHREG_O_S1 + j], (reg >> (7 - j)) & 1u ? ENG_ONE : 0, n);
+        if (dac != dummy_out)
+            fill(dac, dv, n);
+        if (go != dummy_out)
+            fill(go, 0, n);
+        it->s.shr.c1 = it->s.shr.r1 = 0;
+        return;
+    }
+    for (i = 0; i <= n; i++) {
+        int k = 0, r = 0, edge = 0;
+        if (i < n) {
+            k = clock[i] >= 32768;
+            r = reset[i] >= 32768;
+            edge = (r && !r1) || (k && !c1);
+        }
+        if (edge || i == n) {                /* the stages and dac held over from..i-1 */
+            for (j = 0; j < SHREG_STAGES; j++) {
+                esig_t *o = it->out[SHREG_O_S1 + j];
+                if (o != dummy_out)
+                    fill(o + from, (reg >> (7 - j)) & 1u ? ENG_ONE : 0, i - from);
+            }
+            if (dac != dummy_out)
+                fill(dac + from, dv, i - from);
+            from = i;
+            if (i == n)
+                break;
+            if (r && !r1) {
+                reg = it->s.shr.pat;
+                rnd = it->s.shr.rnd0;
+            } else {
+                uint32_t src = data ? in[i] >= 32768 : (reg >> (SHREG_STAGES - len)) & 1u;
+                rnd = lcg(rnd);
+                reg = (reg >> 1) | ((src ^ ((rnd >> 16) < flip)) << 7);
+            }
+            dv = shreg_dac(reg, bits);
+        }
+        c1 = k;
+        r1 = r;
+        if (go != dummy_out)
+            go[i] = k && (reg & 0x80u) ? ENG_ONE : 0;
+    }
+    it->s.shr.rnd = rnd;
+    it->s.shr.reg = (uint8_t)reg;
+    it->s.shr.c1 = (uint8_t)c1;
+    it->s.shr.r1 = (uint8_t)r1;
+}
+
+/* Comparator (modules.ts comp, #438): gt while a - b - thresh is above hyst, until it falls below -hyst; lt its inverse;
+ * trig the sample gt rises on */
+static void m_comp(const node_t *nd, inst_t *it, uint32_t n)
+{
+    const esig_t *a = it->in[COMP_I_A], *b = it->in[COMP_I_B];
+    esig_t *gt = it->out[COMP_O_GT], *lt = it->out[COMP_O_LT], *tr = it->out[COMP_O_TRIG];
+    int32_t t = EF(it, COMP_P_THRESH), h = EF(it, COMP_P_HYST);
+    int hi = it->s.cmp.hi;
+    uint32_t i;
+    for (i = 0; i < n; i++) {
+        int32_t d = a[i] - b[i] - t;
+        int was = hi;
+        if (was ? d < -h : d > h)
+            hi = !was;
+        gt[i] = hi ? ENG_ONE : 0;
+        lt[i] = hi ? 0 : ENG_ONE;
+        tr[i] = hi && !was ? ENG_ONE : 0;
+    }
+    it->s.cmp.hi = (uint8_t)hi;
+    (void)nd;
+}
+
 /* the quantizer's scales (modules.ts SCALES), semitones above the root */
 static const uint8_t SC_CHROM[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, SC_MAJ[] = {0, 2, 4, 5, 7, 9, 11}, SC_MIN[] = {0, 2, 3, 5, 7, 8, 10};
 static const uint8_t SC_PMAJ[] = {0, 2, 4, 7, 9}, SC_PMIN[] = {0, 3, 5, 7, 10}, SC_DOR[] = {0, 2, 3, 5, 7, 9, 10}, SC_MIX[] = {0, 2, 4, 5, 7, 9, 10};
@@ -6723,6 +6824,8 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_DRUMMAP: m_drummap(nd, it, n); break;
     case T_CLKDIV: m_clkdiv(nd, it, n); break;
     case T_SH: m_sh(nd, it, n); break;
+    case T_SHREG: m_shreg(nd, it, n); break;
+    case T_COMP: m_comp(nd, it, n); break;
     case T_QUANT: m_quant(nd, it, n); break;
     case T_PULSE: m_pulse(nd, it, n); break;
     case T_PAN: m_pan(nd, it, n); break;

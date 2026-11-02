@@ -178,6 +178,16 @@ export const OUTPUT_RANGES: Record<string, Record<string, Range>> = {
     env: '0 and up: the level it hears (1 = a full-scale signal)',
     trig: `${GATE} (1 while the level is over thresh)`,
   },
+  shreg: {
+    ...Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`s${i + 1}`, `${GATE} (stage ${i + 1}'s bit)`])),
+    dac: (p) => `0..1: stages 1..${Math.round(get(p, 'bits', 8))} as a binary number, stage 1 the highest bit`,
+    gate: `${GATE} (1 while the clock is high and stage 1 holds a 1)`,
+  },
+  comp: {
+    gt: `${GATE} (1 while a is above b + thresh)`,
+    lt: `${GATE} (1 while a is below b + thresh)`,
+    trig: `${GATE} (a one-sample pulse each time gt rises)`,
+  },
 };
 
 /** the range an output carries, worked out from the module's parameters now ('' for an output without one) */

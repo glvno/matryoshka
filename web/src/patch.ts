@@ -124,6 +124,9 @@ export interface ModuleDef {
   views?: ParamDef[];
   /** bytes the module's binary record carries after its parameters and pins (patchbin.ts): a Steps module's name and pattern */
   data?: number;
+  /** the patch format (patchbin.ts VERSION) that added this type, when it came with the 1.9 format or later: a patch with
+   * one is written in that format (patchbin.ts formatOf), so an FM-1 with older firmware is told to update */
+  since?: number;
 }
 
 /** a parameter or a display of a module type, by name (what a ParamRef can name) */
