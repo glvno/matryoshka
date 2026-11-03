@@ -3598,7 +3598,55 @@ const comp: ModuleImpl<{ hi: boolean }> = {
   },
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp];
+/** the Range module's ends reach ±this (#526) */
+export const RANGE_LIMIT = 8;
+/** with clamp off, how far past its input range the Range module follows a signal: t (0 at in low, 1 at in high) stays
+ * within ±this, so the output stays a finite number in both engines however near in low and in high are */
+export const RANGE_T_MAX = 64;
+/**
+ * The Range module's curve (#526): t + c·t·(t − 1) for t in 0..1 (c = 1: t², exponential; c = −1: 2t − t², logarithmic;
+ * 0: straight), and outside 0..1 a straight line on with the slope at that end (1 − c below, 1 + c above), so an unclamped
+ * signal never folds back. engine.c range_curve the same in Q16.
+ */
+export const rangeCurve = (t: number, c: number): number => (t < 0 ? t * (1 - c) : t > 1 ? 1 + (t - 1) * (1 + c) : t + c * t * (t - 1));
+/**
+ * Range (#526, after Max's [scale]): `in` from in low..in high to out low..out high, along a curve (−1 logarithmic,
+ * 0 straight, +1 exponential: rangeCurve). Either pair may run downwards (an inverted map). With clamp on the output stays
+ * between out low and out high; with it off a signal past the input range carries on past the output range (within
+ * RANGE_T_MAX input ranges). In low = in high gives out low. engine.c m_range the same in Q16.
+ */
+const range: ModuleImpl<Record<string, never>> = {
+  def: {
+    type: 'range',
+    label: 'Range',
+    since: 49,
+    inputs: [control('in')],
+    outputs: [control('out')],
+    params: [
+      param('inlo', -RANGE_LIMIT, RANGE_LIMIT, -1, { step: 0.01 }),
+      param('inhi', -RANGE_LIMIT, RANGE_LIMIT, 1, { step: 0.01 }),
+      param('outlo', -RANGE_LIMIT, RANGE_LIMIT, 0, { step: 0.01 }),
+      param('outhi', -RANGE_LIMIT, RANGE_LIMIT, 1, { step: 0.01 }),
+      param('curve', -1, 1, 0, { step: 0.01 }),
+      param('clamp', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
+    ],
+  },
+  init: () => ({}),
+  process(c) {
+    const lo = c.p.inlo ?? -1, span = (c.p.inhi ?? 1) - lo;
+    const olo = c.p.outlo ?? 0, oSpan = (c.p.outhi ?? 1) - olo;
+    const k = Math.min(1, Math.max(-1, c.p.curve ?? 0));
+    const clamp = (c.p.clamp ?? 0) >= 0.5;
+    const x = c.inp.in, o = c.out.out;
+    for (let i = 0; i < c.n; i++) {
+      let t = span ? (x[i] - lo) / span : 0;
+      t = clamp ? Math.min(1, Math.max(0, t)) : Math.min(RANGE_T_MAX, Math.max(-RANGE_T_MAX, t));
+      o[i] = olo + rangeCurve(t, k) * oSpan;
+    }
+  },
+};
+
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an

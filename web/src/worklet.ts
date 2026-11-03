@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // AudioWorklet wrapper around Engine.
 import { Engine } from './engine';
-import type { Patch } from './patch';
+import type { Patch, Range } from './patch';
 import type { SongEntry, StepNote } from './track';
 import { ViewStream, VoiceStreams, voiceSums, type ViewData } from './scope-stream';
 
@@ -17,7 +17,7 @@ export type HostMsg =
   | { t: 'param'; id: number; name: string; value: number }
   | { t: 'att'; id: number; index: number; value: number }
   | { t: 'bypass'; id: number; on: boolean }
-  | { t: 'range'; id: number; index: number; name: string; range: [number, number] | null }
+  | { t: 'range'; id: number; index: number; name: string; range: Range | null }
   | { t: 'transport'; on: boolean }
   /** the global tempo (D-907), null: each patch its own */
   | { t: 'tempo'; bpm: number | null }

@@ -443,7 +443,7 @@ typedef struct {
     uint8_t grp;                     /* its poly group (E.grp[]): 0 = it runs once and plays the shared keyboard */
     uint32_t map[6];                 /* the matrix: bit j of map[s] = source s controls parameter j. s: p1 p2 k1 k2 k3 k4 */
     uint32_t input_map[MAX_IN];      /* additional side-input destinations, independent of fixed links */
-    int32_t att[2];                  /* attenuverters of p1, p2: Q16, -1..1 */
+    int32_t att[2];                  /* attenuverters of p1, p2: Q16, -2..2 (patch.ts DEPTH_MAX, #526) */
     int32_t *par;                    /* its type's npar values in par_pool, then, when E.has_b, the morph B side (PARB): npar unit
                                       * positions (0..65535 of the range, octaves for a log parameter); par_spare until it loads */
     uint32_t over;                   /* bit j: parameter j's B side is past pmax (a stretch, DEF_TOP): PARB(nd)[j] is B - pmin in 1/2048 */
@@ -460,8 +460,10 @@ typedef struct {
 #define PARB(nd) ((nd)->par + DEFS[(nd)->type].npar)
 
 /* a macro range: input `pin` (0 p1, 1 p2) of module `mod` moves parameter `par` between lo and hi (0..255 of the range,
- * octaves for a log parameter, morph_unit space) instead of adding to its base */
-typedef struct { uint8_t mod, pin, par, lo, hi; } range_t;
+ * octaves for a log parameter, morph_unit space) instead of adding to its base; `bi` (format 49, #526: bit 7 of the pin
+ * byte, patchbin.ts RANGE_BIPOLAR): the input's -1..1 spans the ends, not 0..1 */
+typedef struct { uint8_t mod, pin, par, lo, hi, bi; } range_t;
+#define RANGE_BIPOLAR 0x80u
 
 typedef struct {
     esig_t *dst;
@@ -1484,7 +1486,7 @@ int eng_load(const uint8_t *p, uint32_t len)
             return -3;
         at = end;
     }
-    if (p[6] & 2u) {                             /* the macro ranges: u8 count, then module / pin / parameter / lo / hi each */
+    if (p[6] & 2u) {                             /* the macro ranges: u8 count, then module / pin (bit 7 bipolar) / parameter / lo / hi each */
         uint32_t nr;
         if (at >= len)
             return -3;
@@ -1492,7 +1494,7 @@ int eng_load(const uint8_t *p, uint32_t len)
         if (at + 5u * nr > len)
             return -3;
         for (i = 0; i < nr; i++, at += 5) {
-            uint32_t mod = p[at], pin = p[at + 1], par = p[at + 2];
+            uint32_t mod = p[at], pin = p[at + 1] & ~RANGE_BIPOLAR, par = p[at + 2];
             if (mod >= E.nmod || pin > 1u || par >= DEFS[E.node[mod].type].npar || !(E.node[mod].map[pin] >> par & 1u))
                 continue;                        /* not a destination of that pin: ignored */
             if (E.nranges >= ENG_MAX_RANGES)
@@ -1502,6 +1504,7 @@ int eng_load(const uint8_t *p, uint32_t len)
             E.ranges[E.nranges].par = (uint8_t)par;
             E.ranges[E.nranges].lo = p[at + 3];
             E.ranges[E.nranges].hi = p[at + 4];
+            E.ranges[E.nranges].bi = (p[at + 1] & RANGE_BIPOLAR) != 0;
             E.nranges++;
             E.node[mod].ranged[pin] |= 1u << par;
         }
@@ -1978,6 +1981,7 @@ int eng_range(uint32_t module, uint32_t input, uint32_t param, uint32_t *lo, uin
 
 int eng_set_range(uint32_t module, uint32_t input, uint32_t param, int on, uint32_t lo, uint32_t hi)
 {
+    int bi = (on & 2) != 0;                       /* (bit 1: bipolar, #526) */
     range_t *r;
     if (module >= E.nmod || input > 1u || param >= DEFS[E.node[module].type].npar)
         return 0;
@@ -1999,6 +2003,7 @@ int eng_set_range(uint32_t module, uint32_t input, uint32_t param, int on, uint3
     }
     r->lo = (uint8_t)(lo > 255u ? 255u : lo);
     r->hi = (uint8_t)(hi > 255u ? 255u : hi);
+    r->bi = (uint8_t)bi;
     E.node[module].ranged[input] |= 1u << param;
     return 1;
 }
@@ -6624,6 +6629,40 @@ static void m_comp(const node_t *nd, inst_t *it, uint32_t n)
     (void)nd;
 }
 
+/* the Range module's curve on t (Q16; modules.ts rangeCurve): t + c t (t - 1) inside 0..1, straight on with the end's
+ * slope outside it (1 - c below, 1 + c above) */
+static int32_t range_curve(int32_t t, int32_t c)
+{
+    if (t < 0)
+        return t - mul16(t, c);
+    if (t > ENG_ONE)
+        return ENG_ONE + mul16(t - ENG_ONE, ENG_ONE + c);
+    return t + mul16(c, mul16(t, t - ENG_ONE));
+}
+
+/* Range (#526; modules.ts range): in from in low..in high to out low..out high along the curve; clamp holds t to 0..1,
+ * else t stays within +-RANGE_T_MAX. 1 / (in high - in low) is worked out once a block (Q16), so a sample costs three
+ * 64-bit multiplies, two fewer with the curve at 0. */
+static void m_range(const node_t *nd, inst_t *it, uint32_t n)
+{
+    const esig_t *x = it->in[RANGE_I_IN];
+    esig_t *o = it->out[RANGE_O_OUT];
+    int32_t lo = EF(it, RANGE_P_INLO), span = EF(it, RANGE_P_INHI) - lo;
+    int32_t olo = EF(it, RANGE_P_OUTLO), ospan = EF(it, RANGE_P_OUTHI) - olo;
+    int32_t c = clampi(EF(it, RANGE_P_CURVE), -ENG_ONE, ENG_ONE);
+    int32_t tlo = EF(it, RANGE_P_CLAMP) >= ENG_ONE / 2 ? 0 : -RANGE_T_MAX * ENG_ONE, thi = tlo ? RANGE_T_MAX * ENG_ONE : ENG_ONE;
+    int64_t inv = span ? ((int64_t)1 << 32) / span : 0;
+    uint32_t i;
+    for (i = 0; i < n; i++) {
+        int64_t t = ((int64_t)(x[i] - lo) * inv) >> 16;
+        int32_t u = t < tlo ? tlo : t > thi ? thi : (int32_t)t;
+        if (c)
+            u = range_curve(u, c);
+        o[i] = olo + (int32_t)(((int64_t)u * ospan) >> 16);
+    }
+    (void)nd;
+}
+
 /* the quantizer's scales (modules.ts SCALES), semitones above the root */
 static const uint8_t SC_CHROM[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, SC_MAJ[] = {0, 2, 4, 5, 7, 9, 11}, SC_MIN[] = {0, 2, 3, 5, 7, 8, 10};
 static const uint8_t SC_PMAJ[] = {0, 2, 4, 7, 9}, SC_PMIN[] = {0, 3, 5, 7, 10}, SC_DOR[] = {0, 2, 3, 5, 7, 9, 10}, SC_MIX[] = {0, 2, 4, 5, 7, 9, 10};
@@ -6946,7 +6985,7 @@ static void apply_cv(const node_t *nd, inst_t *it, uint32_t n, const inst_t *pre
                     const range_t *r = range_find((uint32_t)(nd - E.node), s, j);
                     if (r) {
                         rg = r;
-                        rv += mean[s];
+                        rv += r->bi ? (mean[s] + ENG_ONE) >> 1 : mean[s];   /* (bipolar: -1..1 across the ends, #526) */
                         continue;
                     }
                 }
@@ -7065,6 +7104,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_SH: m_sh(nd, it, n); break;
     case T_SHREG: m_shreg(nd, it, n); break;
     case T_COMP: m_comp(nd, it, n); break;
+    case T_RANGE: m_range(nd, it, n); break;
     case T_QUANT: m_quant(nd, it, n); break;
     case T_PULSE: m_pulse(nd, it, n); break;
     case T_PAN: m_pan(nd, it, n); break;

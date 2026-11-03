@@ -16,10 +16,11 @@
 //   14 SLOT_ERASE  slot u8                           empty a slot; ACK
 //   15 SLOT_INFO   slot u8                           device answers SLOT_INFO (42)
 //   20 PARAM    module u8, param u8, value i32       live parameter change (Q16.16), no reply
-//   21 ATT      module u8, input u8 (0 p1, 1 p2), value i32   live attenuverter change (Q16.16, -1..1), no reply
+//   21 ATT      module u8, input u8 (0 p1, 1 p2), value i32   live attenuverter change (Q16.16, -2..2), no reply
 //   22 BYPASS   module u8, on u8 (0/1)               bypass a module (its outputs carry its through input or silence), no reply
 //   23 RANGE    module u8, pin u8 (0 p1, 1 p2), param u8, on u8, low u8, high u8   a macro range of the pin on the parameter
-//                                                    (ends 0..255 of the range, patchbin.ts), on 0 removes it; no reply
+//                                                    (ends 0..255 of the range, patchbin.ts), on 0 removes it, on bit 1
+//                                                    reads the pin's -1..1 across the ends (bipolar, #526); no reply
 //   25 TRANSPORT  run u8 (0 stop, 1 run)            the transport (PLAY: the Main module's run output and clock); no reply.
 //                                                    Offered by firmware whose INFO has feature bit 1. (24 was the arpeggiator's
 //                                                    settings until the Arpeggiator module replaced it: feature bit 0, retired.)
@@ -118,6 +119,7 @@
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
 
+import type { Range } from './patch';
 import { noteWord, PATTERNS_MAX, SHIFT_MAX, SONG_LEN_MAX, SONGS_MAX, TRACK_NOTES_MAX, wordNote, type SongEntry, type StepNote } from './track';
 
 export const PREFIX = [0x7d, 0x4d, 0x31];
@@ -289,8 +291,8 @@ export const liveFrame = (paused = false): Uint8Array => frame(CMD.live, paused 
 /** how often the editor says LIVE (the FM-1 holds it 5 s: firmware main.c LIVE_HOLD_MS) */
 export const LIVE_MS = 2000;
 /** a macro range of pin 0 / 1 on parameter `param`: ends 0..1, or null to remove it */
-export const rangeFrame = (module: number, pin: number, param: number, range: [number, number] | null): Uint8Array =>
-  frame(CMD.range, [module, pin, param, range ? 1 : 0, range ? Math.round(range[0] * 255) : 0, range ? Math.round(range[1] * 255) : 0]);
+export const rangeFrame = (module: number, pin: number, param: number, range: Range | null): Uint8Array =>
+  frame(CMD.range, [module, pin, param, range ? (range[2] === 1 ? 3 : 1) : 0, range ? Math.round(range[0] * 255) : 0, range ? Math.round(range[1] * 255) : 0]);
 
 export interface Info {
   version: number;
