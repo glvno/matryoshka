@@ -177,17 +177,17 @@ static void help_suite(void)
     later(1500);
     page_show(PAGE_ENV);                                /* the state changes (as the editor or a dive would): the sheet follows */
     loop();
-    check("the sheet follows the state: ENVIRONMENT", help_on && on_screen("ENVIRONMENT") && on_screen("device rows"));
+    check("the sheet follows the state: ENVIRONMENT", help_on && on_screen("ENVIRONMENT") && on_screen("device row"));
     seq_select(0);
     page_show(PAGE_SEQ);
     loop();
-    check("  the SEQ page of a melodic track: PIANO ROLL", help_on && help_state() == HS_ROLL && on_screen("PIANO ROLL") && on_screen("jump to pitch"));
+    check("  the SEQ page of a melodic track: PIANO ROLL", help_on && help_state() == HS_ROLL && on_screen("PIANO ROLL") && on_screen("toggle step record"));
     {
         const char *r[HC_ROWS];
         uint32_t n = help_rows(0, r);
         check("  more rows than fit: a scroll bar", n > HC_VIS && px(218, HC_TOP) != P_PANEL);
         enc(0, 1);
-        check("SELECT: one row down", help_top == 1u && !on_screen("step on / off") && on_screen("pick a row"));
+        check("SELECT: one row down", help_top == 1u && !on_screen("toggle step record") && on_screen("jump to pitch"));
         enc(0, 50);
         check("  SELECT far: stops with the last row at the bottom", help_top == n - HC_VIS && on_screen("clear track"));
         check("  scrolled in part = drawn whole", help_whole_same());

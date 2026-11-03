@@ -3,7 +3,7 @@
 // (help_ui.c hc_<name>), the pages' hint lines, and for firmware/test/controls_test.h each row's gesture and effect.
 // Checked here: each line fits the sheet's card (help_ui.c help_row's layout in FONT_S), each hint line its field, each
 // condition is a function in help_ui.c, no tab holds more lines than the sheet takes (HC_ROWS).
-import { BUTTON_ID, CONDITIONS, CONTROLS, EFFECTS, ENCODER_ID, HELP_STATES, HELP_STATE_NAME, HINT_ROWS, HINTS, hintText, LIST_MARK, PATCH_BUTTONS, README_END, README_START, readmeControls, rowSpec, sheetRows, type ControlRow, type Part } from '../src/controls';
+import { BUTTON_ID, CONDITIONS, CONTROLS, EFFECTS, ENCODER_ID, HELP_STATES, HELP_STATE_NAME, HINT_ROWS, HINTS, hintText, LIST_MARK, PATCH_BUTTONS, README_END, README_START, readmeControls, rowSpec, sheetRows, type ControlRow, type HelpState, type Part } from '../src/controls';
 
 /** FONT_S's advance per ASCII character (firmware/src/font_bc.h font_s_g, map 0x20.. in order) */
 export function fontAdvances(fontH: string): number[] {
@@ -46,8 +46,10 @@ export function controlsHeader(helpUi: string, fontH: string): string {
     ids.add(r.id);
     if (!r.sheet && !r.everywhere) throw new Error(`controls: ${r.id} shows nowhere`);
     if (r.gesture.where && r.gesture.where !== 'on END') throw new Error(`controls: ${r.id}: where "${r.gesture.where}" is not known to controls_test.h`);
+    for (const s of Object.keys(r.doesIn ?? {})) if (!r.sheet?.[s as HelpState]) throw new Error(`controls: ${r.id}: doesIn names ${s}, a tab it is not on`);
     // (`{list}`: checked with each patch button's name; help_fill puts a label that does not fit back to the name)
-    const lines = [rowSpec(r), ...(r.heading ? [`t:${r.heading}`] : [])].flatMap((l) => (l.includes(LIST_MARK) ? PAGE_BUTTONS.map((b) => l.replace(LIST_MARK, b)) : [l]));
+    const specs = [rowSpec(r), ...Object.keys(r.doesIn ?? {}).map((s) => rowSpec(r, s as HelpState))];
+    const lines = [...specs, ...(r.heading ? [`t:${r.heading}`] : [])].flatMap((l) => (l.includes(LIST_MARK) ? PAGE_BUTTONS.map((b) => l.replace(LIST_MARK, b)) : [l]));
     if (r.does.split(LIST_MARK).length > 2) throw new Error(`controls: ${r.id}: more than one ${LIST_MARK}`);
     for (const line of lines) {
       const w = lineWidth(line, adv);
@@ -70,7 +72,7 @@ export function controlsHeader(helpUi: string, fontH: string): string {
   w(`enum { HC_NONE, ${CONDITIONS.map((c) => `HC_${cname(c)}`).join(', ')}, HC_COUNT };`);
   w(`static int (*const HC_FN[HC_COUNT])(void) = {0, ${CONDITIONS.map((c) => `hc_${c}`).join(', ')}};`);
   w();
-  // the lines: a row's heading, then the row; the patch buttons' place
+  // the lines: a row's heading, then the row (and its words in a state of `doesIn`, after); the patch buttons' place
   type Line = { spec: string | null; row: number; cond: number; neg: number };
   const lines: Line[] = [];
   const lineOf = new Map<string, number[]>();
@@ -84,6 +86,8 @@ export function controlsHeader(helpUi: string, fontH: string): string {
     if (r.heading) at.push(lines.push({ spec: `t:${r.heading}`, row: i, ...c }) - 1);
     at.push(lines.push({ spec: rowSpec(r), row: i, ...c }) - 1);
     lineOf.set(r.id, at);
+    for (const s of Object.keys(r.doesIn ?? {}))
+      lineOf.set(`${r.id}@${s}`, [...at.slice(0, -1), lines.push({ spec: rowSpec(r, s as HelpState), row: i, ...c }) - 1]);
   });
   lineOf.set(PATCH_BUTTONS.id, [lines.push({ spec: null, row: 255, cond: 0, neg: 0 }) - 1]);
   if (lines.length >= 255) throw new Error('controls: more than 254 lines');
@@ -97,12 +101,16 @@ export function controlsHeader(helpUi: string, fontH: string): string {
   // the tabs: per state (HS_* order) its own tab, then its EVERYWHERE tab
   const tabs = (['state', 'everywhere'] as const).map((tab) => HELP_STATES.map((s) => {
     const rows = sheetRows(s, tab);
-    const at = rows.flatMap((r) => lineOf.get(r.id)!);
+    const at = rows.flatMap((r) => (tab === 'state' && lineOf.get(`${r.id}@${s}`)) || lineOf.get(r.id)!);
     const most = at.length + (rows.includes(PATCH_BUTTONS) ? PATCH_ROWS - 1 : 0);
     if (most > C_ROWS) throw new Error(`controls: ${s}'s ${tab} tab can hold ${most} lines, more than the sheet's ${C_ROWS}`);
     return at;
   }));
+  // the rows the sheet leaves out (`listed: false`) where they work, for the test only
+  const unlisted = (['state', 'everywhere'] as const).map((tab) => HELP_STATES.map((s) =>
+    sheetRows(s, tab, true).filter((r) => 'gesture' in r && r.listed === false).flatMap((r) => lineOf.get(r.id)!.slice(-1))));
   const max = Math.max(...tabs.flat().map((t) => t.length)) + 1;
+  const umax = Math.max(...unlisted.flat().map((t) => t.length)) + 1;
   w();
   w('/* the lines of each tab in order, CTL_END after the last: [0] the state\'s tab, [1] EVERYWHERE; per state in HS_* order */');
   w('#define CTL_END 255u');
@@ -130,6 +138,14 @@ export function controlsHeader(helpUi: string, fontH: string): string {
   // the gestures and effects, for the test
   w();
   w('#ifdef CTL_GESTURES');
+  w('/* the lines of the rows the sheet leaves out (controls.ts `listed: false`) in the tabs where they work, as CTL_SHEET */');
+  w(`static const uint8_t CTL_UNLISTED[2][${HELP_STATES.length}][${umax}] = {`);
+  unlisted.forEach((states) => {
+    w('    {');
+    states.forEach((at, i) => w(`        {${[...at, 'CTL_END'].join(', ')}},   /* ${HELP_STATES[i]} */`));
+    w('    },');
+  });
+  w('};');
   w('/* what each row does (firmware/test/controls_test.h checks it) */');
   w(`enum { ${EFFECTS.map((e) => `CE_${cname(e)}`).join(', ')}, CE_COUNT };`);
   w('/* a gesture part: a button (id: its matrix id), an encoder (id: panel_encoders\' index), K1..K4 (id: a mask, bit 0 K1), a');

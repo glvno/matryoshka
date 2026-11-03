@@ -48,7 +48,7 @@ describe('the controls strip is made from the controls table (#554, controls.ts)
     const v = stripView(at('roll', { stepHeld: true }));
     expect(v.held).toBe('step');
     expect(ids(v.rows)).toEqual(['held-pitch', 'held-velocity', 'held-chance', 'lock-pages', 'lock-rows']);
-    expect(v.knobs).toEqual(['pitch', 'velocity', 'chance', 'lock rows']);
+    expect(v.knobs).toEqual(['pitch', 'velocity', 'chance', 'p-lock rows']);
   });
 
   it('a held button with EVERYWHERE rows (PLAY: tempo), and one with nothing held + it (the state\'s own rows)', () => {

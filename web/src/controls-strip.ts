@@ -65,17 +65,17 @@ export function stripView(p: StripInput): StripView {
   const candidates: Modifier[] = [...(p.stepHeld ? ['step' as const] : []), ...heldButtons(p.held)];
   for (const m of candidates) {
     const rows = [...own, ...everywhere].filter((r) => usesModifier(r, m));
-    if (rows.length) return { state, name: HELP_STATE_NAME[state], title: HELP_STATE_TITLE[state], held: m, rows, everywhere: [], knobs: knobsOf(rows) };
+    if (rows.length) return { state, name: HELP_STATE_NAME[state], title: HELP_STATE_TITLE[state], held: m, rows, everywhere: [], knobs: knobsOf(rows, state) };
   }
-  return { state, name: HELP_STATE_NAME[state], title: HELP_STATE_TITLE[state], held: null, rows: own, everywhere, knobs: knobsOf(own.filter((r) => !r.gesture.hold)) };
+  return { state, name: HELP_STATE_NAME[state], title: HELP_STATE_TITLE[state], held: null, rows: own, everywhere, knobs: knobsOf(own.filter((r) => !r.gesture.hold), state) };
 }
 
 /** K1..K4's jobs among rows: the first row each knob turns */
-function knobsOf(rows: ControlRow[]): [string, string, string, string] {
+function knobsOf(rows: ControlRow[], state: HelpState): [string, string, string, string] {
   const out: [string, string, string, string] = ['', '', '', ''];
   for (let k = 0; k < 4; k++) {
     const r = rows.find((x) => x.gesture.do.some((d) => 'knobs' in d && d.knobs.includes(String(k + 1))));
-    if (r) out[k] = doesText(r);
+    if (r) out[k] = doesText(r, state);
   }
   return out;
 }
@@ -115,14 +115,15 @@ function part(spec: string, held: Modifier | null): HTMLElement {
   }
 }
 
-/** a row as chips: its gesture's parts, then what it does */
-export function rowChip(r: ControlRow, held: Modifier | null, lead = false): HTMLElement {
+/** a row as chips: its gesture's parts, then what it does (in `state`'s words: the sheet's `doesIn`) */
+export function rowChip(r: ControlRow, held: Modifier | null, lead = false, state?: HelpState): HTMLElement {
   const c = el('span', `cs-chip${lead ? ' lead' : ''}`);
   c.dataset.row = r.id;
   const spec = el('span', 'cs-spec');
   for (const s of gestureSpec(r.gesture).split('|').filter(Boolean)) spec.append(part(s, held));
   c.append(spec);
-  if (r.does) c.append(el('span', 'cs-does', doesText(r)));   // ({list}: the Page button, GUIDE_NOW does not name it)
+  const does = doesText(r, state);   // ({list}: the Page button, GUIDE_NOW does not name it)
+  if (does) c.append(el('span', 'cs-does', does));
   return c;
 }
 
@@ -159,7 +160,7 @@ export class ControlsStrip {
     );
     const body = el('div', 'cs-body');
     const rows = el('div', 'cs-rows');
-    v.rows.forEach((r, i) => rows.append(rowChip(r, v.held, i === 0)));
+    v.rows.forEach((r, i) => rows.append(rowChip(r, v.held, i === 0, v.state)));
     body.append(rows);
     if (v.everywhere.length) {
       const ev = el('div', 'cs-rows cs-everywhere');
