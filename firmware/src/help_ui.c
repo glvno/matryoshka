@@ -421,3 +421,37 @@ static void help_knobs_turn(int32_t select, int32_t algo)
         }
     }
 }
+
+/* ---- the FM-1's state for the editor (#549, #554): GUIDE_NOW (proto.c m1_guide_now), and the FM-1 tab's copy of the
+ * panel logic the same (fm1_ui.c fm1w_guide), so the two can be compared byte for byte:
+ *   0 the state (HS_*)            1 the page (ui.c page)         2 flags: bit0 step record, bit1 a live take (the keys are
+ *   the armed track's keyboard), bit2 REC records, bit3 sandbox mode, bit4 the controls sheet shows, bit5 the quick start
+ *   shows, bit6 the sheet's EVERYWHERE tab, bit7 a step's white key held
+ *   3 the device in focus          4 its page                     5 the SEQ page's track (among the Steps modules)
+ *   6 the menu's tab               7..8 the buttons held (matrix ids, LE)
+ *   9..10 the rows' conditions that hold (LE; bit c: controls.h HC_FN[c], c = 1.. as controls.ts CONDITIONS from 1)
+ *   11 the sheet's first row shown 12 the keys' octave (i8)       13 step record's cursor (a step of the pattern)
+ * The conditions are asked only with `conds` (they read the preset store): GUIDE_NOW asks them when anything else changed */
+#define GUIDE_BYTES 14u
+static void guide_state(uint8_t *p, int conds)
+{
+    uint32_t c, hc = 0;
+    if (conds)
+        for (c = 1; c < HC_COUNT; c++)
+            hc |= (uint32_t)(HC_FN[c]() != 0) << c;
+    p[0] = (uint8_t)help_state();
+    p[1] = page;
+    p[2] = (uint8_t)((sr_on ? 1u : 0u) | (seq_kbd() ? 2u : 0u) | (seq_rec ? 4u : 0u) | (sb_on ? 8u : 0u)
+         | (help_on == HELP_SHEET ? 16u : 0u) | (help_on == HELP_QUICK ? 32u : 0u) | (help_tab ? 64u : 0u) | (seq_held >= 0 ? 128u : 0u));
+    p[3] = (uint8_t)pg_cur_dev;
+    p[4] = (uint8_t)pg_cur_page;
+    p[5] = seq_trk;
+    p[6] = menu_tab;
+    p[7] = (uint8_t)panel_held;
+    p[8] = (uint8_t)((panel_held >> 8) & 0x3Fu);
+    p[9] = (uint8_t)hc;
+    p[10] = (uint8_t)(hc >> 8);
+    p[11] = help_top;
+    p[12] = (uint8_t)(int8_t)octave;
+    p[13] = sr_k;
+}

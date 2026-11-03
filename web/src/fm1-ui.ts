@@ -4,7 +4,7 @@
 // drives the panel and the clock, and draws the 240 x 240 RGB565 framebuffer. No DOM here: the editor's FM-1 tab
 // (#110) and the tests use it.
 import { wordNote, type SongEntry, type StepNote } from './track';
-import type { RawLock } from './protocol';
+import { GUIDE_BYTES, parseGuideNow, type PanelState, type RawLock } from './protocol';
 
 /** what the emulated FM-1 tells the page */
 export interface Fm1Events {
@@ -72,6 +72,8 @@ interface Exports {
   /** (absent from a wasm built before D-907) */
   fm1w_tempo?(patch: number, bpm: number): void;
   fm1w_focus_dev(): number; fm1w_focus_page(): number; fm1w_octave(): number;
+  /** (absent from a wasm built before #549) */
+  fm1w_held?(): number; fm1w_guide?(): number; fm1w_align_buf?(): number; fm1w_align?(): void;
 }
 
 export class Fm1Ui {
@@ -142,6 +144,23 @@ export class Fm1Ui {
   tempo(global: boolean, bpm: number): void { this.x.fm1w_tempo?.(global ? 0 : 1, Math.round(bpm)); }
   /** the editor's armed devices (#191): their modules as a mask (arm.ts armMask) */
   armMask(lo: number, hi: number): void { this.x.fm1w_arm_mask(lo >>> 0, hi >>> 0); }
+
+  /** the buttons held (bit: matrix id), as the panel logic took them; null from a wasm built before #549 */
+  get held(): number | null { return this.x.fm1w_held ? this.x.fm1w_held() : null; }
+  /** the panel's state as the FM-1's GUIDE_NOW says its own (#549, firmware/src/help_ui.c guide_state); null from a wasm
+   *  built before it */
+  guide(): PanelState | null {
+    const at = this.x.fm1w_guide?.();
+    return at === undefined ? null : parseGuideNow(new Uint8Array(this.x.memory.buffer, at, GUIDE_BYTES));
+  }
+  /** following an FM-1 (#549): put the panel logic back where the FM-1 says it is (its GUIDE_NOW's bytes), quietly: no
+   *  control's edge is played, nothing is told (firmware/src/panel.c panel_align) */
+  align(fm1: PanelState): void {
+    const at = this.x.fm1w_align_buf?.();
+    if (at === undefined || !this.x.fm1w_align) return;
+    new Uint8Array(this.x.memory.buffer, at, GUIDE_BYTES).set(fm1.raw.slice(0, GUIDE_BYTES));
+    this.x.fm1w_align();
+  }
 
   get page(): number { return this.x.fm1w_page(); }
   get focusDevice(): number { return this.x.fm1w_focus_dev(); }
