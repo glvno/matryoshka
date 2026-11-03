@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Patch editor: module cards on a canvas, SVG cables, drag-to-connect, a selection, assemblies and undo.
 import { resizeHandle } from './resize-handle';
-import { parseValue } from './value-input';
+import { FINE, parseValue, stepOf, stepToward, wholeSteps } from './value-input';
 import { isTextEntry } from './input';
 import { lockOf } from './relevance';
 import { clearAround, isPile, tidy, tidyAssembly } from './tidy';
@@ -2121,12 +2121,13 @@ export class Editor {
     }
     const val = document.createElement('output');
     // the number and its unit apart: the unit is drawn smaller (labels.ts formatValue)
-    const parts = (v: number, params = m.params): { num: string; unit: string } =>
+    const parts = (v: number, params = m.params, digits = 3): { num: string; unit: string } =>
       pd.altText && params[pd.altText.when] >= 0.5 ? { num: pd.altText.text(v, params), unit: '' }
         : pd.choices ? { num: choiceName(def.type, pd.name, pd.choices[Math.round(v)] ?? ''), unit: '' }
         : posNames ? { num: namesNow()[Math.round(v) - off] ?? String(Math.round(v)), unit: '' }
-        : formatValue(v, pd.unit, pd.min < 0);
-    const fmt = (v: number, params = m.params): string => { const p = parts(v, params); return p.unit ? `${p.num} ${p.unit}` : p.num; };
+        : formatValue(v, pd.unit, pd.min < 0, digits);
+    /** the bar's text, three significant figures; `digits`: more (the typing field opens with the full value, #538) */
+    const fmt = (v: number, params = m.params, digits = 3): string => { const p = parts(v, params, digits); return p.unit ? `${p.num} ${p.unit}` : p.num; };
     let shown = '';
     const show = (v: number, params = m.params): void => {
       const text = fmt(v, params);
@@ -2143,16 +2144,19 @@ export class Editor {
     this.refreshers.set(row, () => show(m.params[pd.name]));
     const input = document.createElement('input');
     input.type = 'range';
+    // a row that keeps any value (#538) has no grid on its slider: the browser would snap a value typed off it (1/8 on a
+    // row of 0.01 steps); its controls move it by steps from where it is (stepToward). A row of whole steps keeps its grid
+    const exact = !wholeSteps(pd);
     if (pd.log) {
       // a logarithmic parameter: the slider position is the fraction of the octaves
       input.min = '0';
       input.max = '1000';
-      input.step = '1';
-      input.value = String(Math.round(toUnit(pd, m.params[pd.name]) * 1000));
+      input.step = 'any';
+      input.value = String(toUnit(pd, m.params[pd.name]) * 1000);
     } else {
       input.min = String(pd.min);
       input.max = String(topOf(range())); // (the browser-only stretch too: the Delay's time to 1.6 s; a Selector's positions in use)
-      input.step = String(pd.step ?? (pd.max - pd.min) / 200);
+      input.step = exact ? 'any' : String(pd.step ?? (pd.max - pd.min) / 200);
       input.value = String(m.params[pd.name]);
     }
     input.setAttribute('aria-label', `${def.label} ${o.label ?? pd.name}`);
@@ -2161,7 +2165,7 @@ export class Editor {
     // slider units. Pointer capture also releases the edit lock when a drag ends outside the card.
     let editing = false;
     let offset = 0;
-    const posOf = (v: number): number => (pd.log ? Math.round(toUnit(pd, v) * 1000) : v);
+    const posOf = (v: number): number => (pd.log ? toUnit(pd, v) * 1000 : v);
     /** a value's place on the slider, 0..1 (its track spans the browser-only stretch too) */
     const trackOf = (v: number): number => (pd.log ? toUnit(pd, v) : (v - pd.min) / (topOf(range()) - pd.min));
     const begin = (): void => {
@@ -2175,7 +2179,27 @@ export class Editor {
     };
     input.onpointerup = input.onpointercancel = input.onlostpointercapture = () => { editing = false; };
     input.onkeydown = (e) => {
-      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown', ' '].includes(e.key)) begin();
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown', ' '].includes(e.key)) return;
+      begin();
+      if (!exact || e.key === ' ' || input.disabled) return;
+      // a row without a grid: a key moves the value by a step from where it is, a tenth of one with Shift (#538); Page
+      // keys a tenth of the range
+      e.preventDefault();
+      const rd = range(), from = m.params[pd.name], hi = pd.log ? pd.max : topOf(rd);
+      const dir = ['ArrowRight', 'ArrowUp', 'PageUp'].includes(e.key) ? 1 : -1;
+      const page = e.key.startsWith('Page'), fine = e.shiftKey && !page;
+      const to = e.key === 'Home' ? rd.min : e.key === 'End' ? hi
+        : fine ? from + dir * stepOf(pd) * FINE
+        : pd.log ? fromUnit(pd, toUnit(pd, from) + dir * (page ? 0.1 : 0.001))
+        : from + dir * (page ? (hi - rd.min) / 10 : stepOf(pd));
+      const v = stepToward(rd, from, to, { fine, atLeastOne: true, hi });
+      if (v === from) return;
+      // through the input event, as the native keys did (the thumb, the cables): the thumb at the new value, which oninput
+      // takes as it is
+      input.value = String(posOf(v) + offset);
+      if (fine) input.dataset.fine = '1';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      delete input.dataset.fine;
     };
     input.onkeyup = input.onblur = () => { editing = false; };
     // the value before the latest gesture began: a double-click's first press moves the thumb, typing puts it back
@@ -2191,12 +2215,19 @@ export class Editor {
       if (now - lastInput > TYPE_GAP_MS) gestureFrom = m.params[pd.name];
       lastInput = now;
       const pos = Math.min(Number(input.max), Math.max(Number(input.min), Number(input.value) - offset));
-      const v = pd.log ? snapTo(pd, fromUnit(pd, pos / 1000)) : Number(pos.toFixed(6));
+      // a row without a grid moves by steps from its value (a tenth of one on a Shift-drag: slider-jack.ts marks it), so a
+      // value typed off the grid stays off it (#538)
+      const to = pd.log ? fromUnit(pd, pos / 1000) : pos;
+      const v = exact ? stepToward(range(), m.params[pd.name], to, { fine: input.dataset.fine === '1', hi: pd.log ? pd.max : topOf(range()) })
+        : Number(pos.toFixed(6));
+      apply(v, Number(input.value));
+    };
+    /** set the base value `v` from the bar (the thumb at `at`, in slider units) */
+    const apply = (v: number, at: number): void => {
       if (m.params[pd.name] !== v) this.touch();
       m.params[pd.name] = v;
       // the text follows the thumb: the base itself, or with modulation the live value the drag holds under the pointer
       // (the engine's reports run a poll behind, so they are not shown until the edit ends)
-      const at = Number(input.value);
       show(!offset ? v : pd.log ? snapTo(pd, fromUnit(pd, at / 1000)) : Number(at.toFixed(6)));
       thumb?.setBase(offset ? trackOf(v) : null);
       if (def.params.some((q) => q.altText?.when === pd.name)) for (const el of row.parentElement?.children ?? []) this.refreshers.get(el as HTMLElement)?.(); // (the LFO's range: how its rate shows)
@@ -2263,7 +2294,7 @@ export class Editor {
       });
       this.sliderPorts.push({ m, pd, jack: pickJack, ticks: () => {} });
     }
-    const gesture = thumb ? 'Drag to adjust; Alt-drag to patch. Drop a cable on the thumb to connect.' : '';
+    const gesture = thumb ? 'Drag to adjust (Shift: a tenth of a step); Alt-drag to patch. Drop a cable on the thumb to connect.' : '';
     input.title = gesture;
     if (thumb) {
       thumb.jack.dataset.mod = String(m.id);
@@ -2339,7 +2370,7 @@ export class Editor {
         if (row.classList.contains('locked') || row.querySelector('.val-edit')) return;
         if (performance.now() - lastInput < TYPE_GAP_MS * 2 && m.params[pd.name] !== gestureFrom) this.setParam(m.id, pd.name, gestureFrom);
         this.endGesture(); // the double-click's own presses (moved and put back) leave no step
-        this.typeValue(row, fmt(m.params[pd.name]), (text) => {
+        this.typeValue(row, fmt(m.params[pd.name], m.params, 10), (text) => {
           if (posNames) {   // a named position: by its name, or its number
             const i = parseValue(text, { ...pd, choices: namesNow() }, namesNow());
             if (i === null) return false;
@@ -2347,9 +2378,8 @@ export class Editor {
             this.endGesture();
             return true;
           }
-          let v = parseValue(text, range(), names);
+          const v = parseValue(text, range(), names);   // kept as typed (#538): no snap to the row's step
           if (v === null) return false;
-          if (pd.log) v = snapTo(pd, v);
           this.setParam(m.id, pd.name, v);
           this.endGesture();
           return true;
@@ -2385,7 +2415,7 @@ export class Editor {
     field.value = text;
     field.spellcheck = false;
     field.setAttribute('aria-label', `Type a value for ${row.querySelector('span')?.textContent ?? 'the parameter'}`);
-    field.title = 'Enter sets it, Esc cancels. Units work: 2k, 440 Hz, 120 ms, 50 %, a choice by name.';
+    field.title = 'Enter sets it, Esc cancels. Units work: 2k, 440 Hz, 120 ms, 50 %, fractions (1/8, -1/3), a choice by name. Kept as typed.';
     let closed = false;
     const close = (): void => {
       if (closed) return;
@@ -2397,7 +2427,8 @@ export class Editor {
       if (e.key === 'Escape') { e.preventDefault(); close(); return; }
       if (e.key !== 'Enter' && e.key !== 'Tab') return;
       e.preventDefault();
-      if (!commit(field.value)) { field.classList.add('bad'); return; }
+      // the full value left as it opened: nothing to set (a value typed as 1/3 keeps all its digits)
+      if (field.value !== text && !commit(field.value)) { field.classList.add('bad'); return; }
       close();
       if (e.key !== 'Tab') return;
       const rows = [...(row.closest('.module, .dock-main') ?? this.modulesEl).querySelectorAll<HTMLElement>('.param.bar')].filter((r) => this.typers.has(r) && !r.classList.contains('locked'));
@@ -5513,11 +5544,11 @@ export class Editor {
     // choices and switches snap
     const rd = (): ParamDef => rowRange(m.type, m.params, pd);
     const unitOf = (v: number): number => (pd.choices ? (pd.choices.length > 1 ? Math.round(v) / (pd.choices.length - 1) : 0) : toUnit(rd(), v));
-    const valueOf = (u: number): number => {
+    // a value the dial aims at: by steps from the row's value (a tenth of one with Shift), not back onto the grid (#538)
+    const valueOf = (u: number, fine = false): number => {
       if (pd.toggle) return u >= 0.5 ? 1 : 0;
       if (pd.choices) return Math.round(u * (pd.choices.length - 1));
-      const v = fromUnit(rd(), u);
-      return pd.log ? snapTo(pd, v) : pd.step ? Math.round(v / pd.step) * pd.step : Number(v.toFixed(6));
+      return stepToward(rd(), this.shownParam(m, r.param), fromUnit(rd(), u), { fine, hi: rd().max });
     };
     const text = (v: number): string => {
       if (pd.choices) return choiceName(m.type, pd.name, pd.choices[Math.round(v)] ?? '');
@@ -5525,9 +5556,10 @@ export class Editor {
       const f = formatValue(v, pd.unit, pd.min < 0);
       return f.unit ? `${f.num} ${f.unit}` : f.num;
     };
-    const c = dragControl(dial, `K${i + 1}: ${r.label}`, 0, 1, unitOf(this.shownParam(m, r.param)), (u) => this.setParam(m.id, r.param, valueOf(u)), {
+    const c = dragControl(dial, `K${i + 1}: ${r.label}`, 0, 1, unitOf(this.shownParam(m, r.param)), (u, fine) => this.setParam(m.id, r.param, valueOf(u, fine)), {
       reset: unitOf(pd.default),
       text: (u) => text(valueOf(u)),
+      nudge: (notches, fine) => this.nudgeKnob(i, notches, fine),
       draw: (u) => dial.style.setProperty('--v', String(u)),
     });
     (dial as HTMLElement & { sync?: () => void }).sync = () => c.set(unitOf(this.shownParam(m, r.param)));
@@ -5611,18 +5643,19 @@ export class Editor {
     return true;
   }
 
-  /** a held 1..4 and the wheel: K(i + 1) by `notches` (a hundredth of its range each; a choice or a switch: one position) */
-  nudgeKnob(i: number, notches: number): boolean {
+  /** a held 1..4 and the wheel: K(i + 1) by `notches` (a hundredth of its range each; a choice or a switch: one position),
+   *  by steps from its value; `fine` (Shift): a tenth of a step each (#538) */
+  nudgeKnob(i: number, notches: number, fine = false): boolean {
     const r = this.focusedPage()?.rows[i];
     const m = r && this.patch.modules.find((x) => x.id === r.module);
     const pd = m && DEFS[m.type].params.find((q) => q.name === r!.param);
     if (!r || !m || !pd) return false;
     const v = this.shownParam(m, r.param);
     const rd = rowRange(m.type, m.params, pd);   // (a Selector's positions in use, #358)
-    const w = fromUnit(rd, Math.min(1, Math.max(0, toUnit(rd, v) + notches / 100)));
+    const w = fine ? v + notches * stepOf(pd) * FINE : fromUnit(rd, Math.min(1, Math.max(0, toUnit(rd, v) + notches / 100)));
     this.setParam(m.id, r.param, pd.toggle ? (notches > 0 ? 1 : 0)
       : pd.choices ? Math.min(pd.choices.length - 1, Math.max(0, Math.round(v) + Math.sign(notches)))
-      : pd.log ? snapTo(pd, w) : pd.step ? Math.round(w / pd.step) * pd.step : Number(w.toFixed(6)));
+      : stepToward(rd, v, w, { fine, atLeastOne: true, hi: fine ? topOf(rd) : Math.max(rd.max, Math.min(topOf(rd), v)) }));
     return true;
   }
 
@@ -5639,8 +5672,9 @@ export class Editor {
     if (!r || !m || !pd) return;
     const x = Math.min(1, Math.max(0, u));
     const rd = rowRange(m.type, m.params, pd);   // (a Selector's positions in use, #358: as the FM-1's pages_set_unit)
-    const v = pd.toggle ? (x >= 0.5 ? 1 : 0) : pd.choices ? Math.round(x * (pd.choices.length - 1)) : pd.log ? snapTo(pd, fromUnit(pd, x))
-      : rd !== pd ? Math.round(fromUnit(rd, x)) : Number(fromUnit(pd, x).toFixed(6));
+    // (a row without a grid: by steps from its value, so a value typed off the grid stays off it, #538)
+    const v = pd.toggle ? (x >= 0.5 ? 1 : 0) : pd.choices ? Math.round(x * (pd.choices.length - 1)) : rd !== pd ? Math.round(fromUnit(rd, x))
+      : wholeSteps(pd) ? Number(fromUnit(pd, x).toFixed(6)) : stepToward(pd, this.shownParam(m, r.param), fromUnit(pd, x), { hi: pd.max });
     this.setParam(m.id, r.param, v);
   }
 
