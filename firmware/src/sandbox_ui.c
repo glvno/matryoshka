@@ -230,6 +230,7 @@ static void sandbox_draw(int full)
         if (sb_dirty >> k & 1u) {
             bar_t b;
             b.used = (uint8_t)(sb.rows >> k & 1u);
+            b.grid = 0;
             caps(b.name, sb.label[k], b.used ? str_len(sb.label[k]) : 0u, SB_LABEL);
             put(b.num, b.used ? sb.value[k] : "")[0] = 0;
             put(b.unit, b.used ? sb.unit[k] : "")[0] = 0;

@@ -114,7 +114,7 @@ const close = (a: number[], b: number[]): void => a.forEach((v, i) => expect(v).
 
 describe('the Range module (#526)', () => {
   it('comes after the Comparator, in format 49, with one input and one output', () => {
-    expect(TYPE_ORDER.slice(-2)).toEqual(['comp', 'range']);
+    expect(TYPE_ORDER.slice(TYPE_ORDER.indexOf('comp'), TYPE_ORDER.indexOf('comp') + 2)).toEqual(['comp', 'range']);
     expect(DEFS.range.since).toBe(FORMAT_1_9);
     expect(DEFS.range.inputs.map((i) => i.name)).toEqual(['in', 'p1', 'p2']);
     expect(DEFS.range.outputs.map((o) => o.name)).toEqual(['out']);

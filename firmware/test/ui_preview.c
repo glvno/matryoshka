@@ -8,7 +8,7 @@
  * an older editor's page, BATT=0..3 or 4 (USB) the battery's level, HELP=quick the quick
  * start or HELP=sheet the controls sheet over the page (HELP_TAB=1 its EVERYWHERE tab, HELP_TOP=n scrolled n rows); on the SEQ page
  * STEPS_LEN=n the track's length, HELD=k step k held, ARM=1 the track armed (#450); PAGE 11 the SONG page; MSG=text a message in the bar;
- * ENVPAGE=1 the environment page
+ * ENVPAGE=1 the environment page; PATCHFILE=path plays that patch binary instead of the preset (PRESET_INDEX still names a slot)
  * tools/ui_preview.sh converts the image to PNG. With UI_PREVIEW_LIB defined it is only the host's stand-ins and the UI
  * (host_ui.h; panel_test.c includes it so). */
 #include <stdint.h>
@@ -52,6 +52,15 @@ int main(int argc, char **argv)
             for (i = 0; i < bin[2]; i++)
                 bin[8 + ENG_GROUP_REC + i] = 1;  /* eng_load keeps delay, reverb, chorus, granular and output out */
             len += extra;
+        }
+        if (getenv("PATCHFILE")) {                          /* a patch binary from a file instead (a golden kit, a panel fixture) */
+            FILE *pf = fopen(getenv("PATCHFILE"), "rb");
+            if (!pf) {
+                fprintf(stderr, "no such file\n");
+                return 1;
+            }
+            len = (uint32_t)fread(bin, 1, sizeof pv_bin, pf);
+            fclose(pf);
         }
         pv_len = len;
         if (eng_load(bin, len)) {

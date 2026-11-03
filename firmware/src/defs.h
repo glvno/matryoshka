@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 53
+#define N_TYPES 54
 enum {
     T_FM1,
     T_OSC,
@@ -58,6 +58,7 @@ enum {
     T_SHREG,
     T_COMP,
     T_RANGE,
+    T_MATRIX,
 };
 
 /* fm1: Main */
@@ -1038,6 +1039,39 @@ enum {
 #define RANGE_CVBASE 1
 #define RANGE_NDATA 0
 
+/* matrix: Matrix */
+#define MATRIX_I_IN1 0
+#define MATRIX_I_IN2 1
+#define MATRIX_I_IN3 2
+#define MATRIX_I_IN4 3
+#define MATRIX_I_P1 4
+#define MATRIX_I_P2 5
+#define MATRIX_O_OUT1 0
+#define MATRIX_O_OUT2 1
+#define MATRIX_O_OUT3 2
+#define MATRIX_O_OUT4 3
+#define MATRIX_P_I1O1 0
+#define MATRIX_P_I2O1 1
+#define MATRIX_P_I3O1 2
+#define MATRIX_P_I4O1 3
+#define MATRIX_P_I1O2 4
+#define MATRIX_P_I2O2 5
+#define MATRIX_P_I3O2 6
+#define MATRIX_P_I4O2 7
+#define MATRIX_P_I1O3 8
+#define MATRIX_P_I2O3 9
+#define MATRIX_P_I3O3 10
+#define MATRIX_P_I4O3 11
+#define MATRIX_P_I1O4 12
+#define MATRIX_P_I2O4 13
+#define MATRIX_P_I3O4 14
+#define MATRIX_P_I4O4 15
+#define MATRIX_NIN 6
+#define MATRIX_NOUT 4
+#define MATRIX_NPAR 16
+#define MATRIX_CVBASE 4
+#define MATRIX_NDATA 0
+
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 #define DELAY_SYNC_TOP 520   /* ms: the synced note lengths spread over 1..this (modules.ts) */
@@ -1689,6 +1723,16 @@ static const char *const RANGE_PN[] = {"INLO", "INHI", "OUTLO", "OUTHI", "CURVE"
 static const uint8_t RANGE_LOG[] = {0, 0, 0, 0, 0, 0};
 static const char *const RANGE_UNIT[] = {"", "", "", "", "", ""};
 static const char *const *const RANGE_CH[] = {0, 0, 0, 0, 0, ADSR_CH4};
+static const char *const MATRIX_INNAMES[] = {"IN1", "IN2", "IN3", "IN4", "P1", "P2"};
+static const int32_t MATRIX_MIN[] = {-65536, -65536, -65536, -65536, -65536, -65536, -65536, -65536, -65536, -65536, -65536, -65536, -65536, -65536, -65536, -65536};
+static const int32_t MATRIX_MAX[] = {65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536};
+static const int32_t MATRIX_DEF[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static const int32_t MATRIX_INC[] = {1311, 1311, 1311, 1311, 1311, 1311, 1311, 1311, 1311, 1311, 1311, 1311, 1311, 1311, 1311, 1311};
+static const int32_t MATRIX_STEP[] = {655, 655, 655, 655, 655, 655, 655, 655, 655, 655, 655, 655, 655, 655, 655, 655};
+static const char *const MATRIX_PN[] = {"I1O1", "I2O1", "I3O1", "I4O1", "I1O2", "I2O2", "I3O2", "I4O2", "I1O3", "I2O3", "I3O3", "I4O3", "I1O4", "I2O4", "I3O4", "I4O4"};
+static const uint8_t MATRIX_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static const char *const MATRIX_UNIT[] = {"", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""};
+static const char *const *const MATRIX_CH[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH, 0, 0, FM1_STEP},   /* fm1 */
@@ -1744,4 +1788,5 @@ static const def_t DEFS[N_TYPES] = {
     {SHREG_NIN, SHREG_NOUT, SHREG_NPAR, 0, SHREG_CVBASE, 1, SHREG_NDATA, 0, SHREG_MIN, SHREG_MAX, SHREG_DEF, SHREG_INC, "SHIFT REGISTER", SHREG_PN, SHREG_INNAMES, SHREG_LOG, SHREG_UNIT, SHREG_CH, 0, 0, SHREG_STEP},   /* shreg */
     {COMP_NIN, COMP_NOUT, COMP_NPAR, 0, COMP_CVBASE, -1, COMP_NDATA, 0, COMP_MIN, COMP_MAX, COMP_DEF, COMP_INC, "COMPARATOR", COMP_PN, COMP_INNAMES, COMP_LOG, COMP_UNIT, COMP_CH, 0, 0, COMP_STEP},   /* comp */
     {RANGE_NIN, RANGE_NOUT, RANGE_NPAR, 0, RANGE_CVBASE, 0, RANGE_NDATA, 0, RANGE_MIN, RANGE_MAX, RANGE_DEF, RANGE_INC, "RANGE", RANGE_PN, RANGE_INNAMES, RANGE_LOG, RANGE_UNIT, RANGE_CH, 0, 0, RANGE_STEP},   /* range */
+    {MATRIX_NIN, MATRIX_NOUT, MATRIX_NPAR, 0, MATRIX_CVBASE, -1, MATRIX_NDATA, 15, MATRIX_MIN, MATRIX_MAX, MATRIX_DEF, MATRIX_INC, "MATRIX", MATRIX_PN, MATRIX_INNAMES, MATRIX_LOG, MATRIX_UNIT, MATRIX_CH, 0, 0, MATRIX_STEP},   /* matrix */
 };

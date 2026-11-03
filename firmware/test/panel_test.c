@@ -3517,6 +3517,74 @@ int main(void)
               runs > 1000u && bad == 0u);
         cfg.accel = accel_was;
     }
+    {   /* #525: a Matrix device's pages are its four outputs (OUT 1..OUT 4, each its own group); each draws the whole 4 x 4
+         * grid (page_grid). K1..K4 turn the column's pins; ALGO moves the column; a pin of another column set from the editor
+         * shows with the ten-a-second pass. After each, the screen is the screen drawn whole, pixel for pixel */
+        static uint16_t inc[240 * 240];
+        static int32_t al[128], ar[128];
+        static const int32_t TURN[] = {1, 3, -1, 12, -30, 30, 5, -2};
+        uint32_t d, g, k, t, i, n, bad = 0, runs = 0, names = 0;
+        int mx = -1, turned = 1, grid = 1;
+        sb_on = 0;
+        page = 0;
+        check("Matrix fixture loads", load_fixture("build/panel-fixtures/matrix-audio.m1p") == 0);
+        pv_gen++;
+        eng_render(al, ar, 128);
+        screen_idle();
+        pages_ensure();
+        for (d = 0; d < pg_ndev; d++)
+            if (pg_dev[d].module >= 0 && eng_type((uint32_t)pg_dev[d].module) == T_MATRIX)
+                mx = (int)d;
+        check("the Matrix is a device of four pages", mx >= 0 && pg_dev[mx].npg == 4u);
+        for (g = 0; mx >= 0 && g < pg_dev[mx].npg; g++) {
+            const ppage_t *pg = &pg_page[pg_dev[mx].pg0 + g];
+            char want[8] = "OUT 1";
+            want[4] = (char)('1' + g);
+            names += pg->nlen == 5u && !memcmp(pg->name, want, 5) && pg->part == 0u && pg->parts == 1u;
+            grid &= page_grid(pg) == (int)g;
+            (void)pages_focus((uint32_t)mx, g);
+            ui_dirty = 2;
+            loop();
+            for (k = 0; k < PG_ROWS; k++)
+                for (t = 0; t < sizeof TURN / sizeof TURN[0]; t++) {
+                    uint32_t mod = (uint32_t)pg_dev[mx].module, par = g * MATRIX_NOUT + k;
+                    int32_t was = eng_get_param(mod, par), other = eng_get_param(mod, ((g + 1u) % MATRIX_NOUT) * MATRIX_NOUT + k);
+                    fm1_ms += 150u;
+                    enc(2u + k, TURN[t]);
+                    turned &= eng_get_param(mod, par) != was || was == DEFS[T_MATRIX].pmin[par] || was == DEFS[T_MATRIX].pmax[par];
+                    if (t == 3u) {                      /* the editor sets a pin of the next column */
+                        eng_set_param(mod, ((g + 1u) % MATRIX_NOUT) * MATRIX_NOUT + k, other ? 0 : 40000);
+                        eng_render(al, ar, 128);
+                        later(120);
+                    }
+                    if (t == 5u) {                      /* ALGO there and back */
+                        enc(1, 1);
+                        loop();
+                        enc(1, -1);
+                        loop();
+                    }
+                    memcpy(inc, fb, sizeof inc);
+                    ui_dirty = 2;
+                    loop();
+                    runs++;
+                    for (i = 0, n = 0; i < 240u * 240u; i++)
+                        n += inc[i] != fb[i];
+                    if (n) {
+                        if (bad < 6u)
+                            printf("      (Matrix page %u K%u turn %u: %u px differ)\n", g, k + 1u, t, n);
+                        bad++;
+                    }
+                }
+        }
+        check("the Matrix's pages: OUT 1..OUT 4, each its own group, each a grid of its column", names == 4u && grid);
+        check("K1..K4 on a Matrix page turn its column's pins (in 1..in 4)", turned);
+        check("the Matrix's grid redrawn in place (a turn, ALGO, the editor's pin) is the screen drawn whole", runs == 128u && bad == 0u);
+        (void)load("808 KIT");
+        pv_gen++;
+        page = 0;
+        trail_n = 0;
+        screen_idle();
+    }
     {   /* the owner's design (2026-10-24): on every page of every factory patch, reached by SELECT and ALGO (drawn in
          * passes, now and then stopped by a waiting click), and on every patch reached by PRESET (its toast first, the page
          * around it) and when its toast ends, the screen is the screen drawn whole, pixel for pixel; and the pixels each

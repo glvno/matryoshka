@@ -30,6 +30,10 @@ const BY_TYPE: Record<string, Record<string, string>> = {
   shreg: { in: 'data in', len: 'loop length', flip: 'flip chance', bits: 'dac bits' },
   comp: { thresh: 'threshold', hyst: 'hysteresis', gt: 'a above b', lt: 'a below b', trig: 'rise trigger' },
   range: { inlo: 'in low', inhi: 'in high', outlo: 'out low', outhi: 'out high' },
+  matrix: {
+    ...Object.fromEntries([1, 2, 3, 4].flatMap((k) => [[`in${k}`, `in ${k}`], [`out${k}`, `out ${k}`]])),
+    ...Object.fromEntries([1, 2, 3, 4].flatMap((i) => [1, 2, 3, 4].map((o) => [`i${i}o${o}`, `in ${i} → out ${o}`]))),
+  },
   steps: { dir: 'play mode' },
   rateenv: { ar: 'attack rate', d1r: 'decay 1 rate', d1l: 'decay 1 level', d2r: 'decay 2 rate', rr: 'release rate', krs: 'key rate scaling' },
   env8: { ...Object.fromEntries(Array.from({ length: 8 }, (_, i) => [[`l${i + 1}`, `level ${i + 1}`], [`r${i + 1}`, `rate ${i + 1}`]]).flat()), sus: 'sustain step', end: 'end step' },
@@ -104,7 +108,7 @@ const TAGS: Record<string, [string, TagFamily]> = {
   comb: ['COMB', 'fx'], modal: ['MODAL', 'fx'],
   mixer: ['MIX', 'util'], math: ['MATH', 'util'], logic: ['LOGIC', 'util'], const: ['DC', 'util'], macro: ['MACRO', 'util'], scale: ['SCALE', 'util'],
   output: ['OUT', 'util'], fm1: ['MAIN', 'util'], part: ['PART', 'util'], alloc: ['VOICES', 'util'], scope: ['SCOPE', 'util'],
-  drummap: ['MAP', 'mod'], pd: ['PD', 'src'], select: ['SEL', 'util'], shreg: ['SHREG', 'mod'], comp: ['COMP', 'util'], range: ['RANGE', 'util'],
+  drummap: ['MAP', 'mod'], pd: ['PD', 'src'], select: ['SEL', 'util'], shreg: ['SHREG', 'mod'], comp: ['COMP', 'util'], range: ['RANGE', 'util'], matrix: ['MATRIX', 'util'],
 };
 
 /** the short tag before a card's title and the family that colours it */
@@ -127,6 +131,7 @@ const ALIASES: Record<string, string> = {
   shreg: 'turing machine rungler bits random loop pattern sequence',
   comp: 'compare schmitt trigger threshold gate',
   range: 'scale map rescale bipolar unipolar curve clamp limit',
+  matrix: 'pin matrix routing mixer router patch bay crosspoint',
 };
 
 /** the words a module is found by in the palette and + Add module besides its name: its label, its card tag, its former
