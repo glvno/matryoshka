@@ -158,6 +158,12 @@ static uint32_t batt_us;                        /* the last battery read's time,
  *        packets, frames in them, SET_CUR requests, bus resets, last fill_min, USB frame number
  *   126: underruns, overruns, missed IN tokens, stalls, adj_up, adj_down, fill_lo (min of fill_min since the stream
  *        started, 0xFFFFFFFF: none yet), fill_hi
+ * pages 40..103 the USB setup log's ring (usb.c ul_ring, #535; m1_link.py usblog), two 16-byte entries a page, entry k
+ * in slot k % USB_LOG_N; page 104 its state (entries added, the one-shot capture's first entry, the mode | USB_LOG_N << 8 |
+ * the entry size << 24, fm1_ms now, bus resets, suspends, SETUPs, configured | suspended << 1 | up << 2 | the address
+ * << 8 | SIE restarts << 16), page 105 its counters (unknown requests, stalls answered, STALL handshakes sent, of those
+ * with a SETUP waiting, SetupEnd, status stages completed, OUT data stages, SIE timeouts); reading page 106 starts a
+ * one-shot capture (the next USB_LOG_N entries are kept), page 107 goes back to the newest entries; both answer as 104;
  * page 116 MIDI clock out (clock_out.h, #473): ticks sent, ticks dropped, bytes waiting, USB MIDI ring fill, CLOCK OUT,
  * MIDI OUT, clock in drives, the transport runs;
  * page 119 the overload guard (audio.c, #458): halves rendered, halves over 85 %, late halves (the hardware played them
@@ -190,6 +196,48 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
             v[5] = uac.adj_down;
             v[6] = uac.fill_lo;
             v[7] = uac.fill_hi;
+        }
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
+#endif
+#if USB_LOG
+    if (page >= 40u && page < 40u + USB_LOG_N / 2u) {    /* #535: the USB setup log's ring, two 16-byte entries a page */
+        const uint8_t *e = (const uint8_t *)&ul_ring[2u * (page - 40u)];
+        for (i = 0; i < 32u; i++)
+            out[i] = e[i];
+        return 32u;
+    }
+    if (page >= 104u && page <= 107u) {         /* #535: the USB setup log's state (106 arms a one-shot capture, 107 wraps) */
+        uint32_t v[8];
+        if (page == 106u || page == 107u) {
+            fm1_irq_off();
+            if (page == 106u)
+                usb_log_arm();
+            else
+                usb_log_wrap();
+            fm1_irq_on();
+        }
+        if (page == 105u) {
+            v[0] = ul.unknown;
+            v[1] = ul.stalls;
+            v[2] = ul.stall_sent;
+            v[3] = ul.stall_setup;
+            v[4] = ul.setup_end;
+            v[5] = ul.status;
+            v[6] = ul.out_data;
+            v[7] = ul.sie_timeouts;
+        } else {
+            v[0] = ul.n;
+            v[1] = ul.base;
+            v[2] = (uint32_t)ul.oneshot | USB_LOG_N << 8 | (uint32_t)sizeof(usb_ev_t) << 24;
+            v[3] = fm1_ms;
+            v[4] = usb.resets;
+            v[5] = usb.suspends;
+            v[6] = usb.setups;
+            v[7] = (uint32_t)(usb.config != 0) | (uint32_t)usb.suspended << 1 | (uint32_t)usb.up << 2 |
+                   (uint32_t)ul.addr << 8 | (uint32_t)usb.retries << 16;
         }
         for (i = 0; i < sizeof v; i++)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));

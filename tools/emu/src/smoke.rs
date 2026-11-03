@@ -38,18 +38,18 @@ pub const AUDIO_RATE: u32 = 44118;
 const PRESETS_H: &str = include_str!("../../../firmware/src/presets.h");
 
 /// Panel ids (fm1-emu / Felucca's table, confirmed by M-VAVE's fm1_open)
-const OCT_DOWN: u8 = 0;
-const OCT_UP: u8 = 1;
+pub(crate) const OCT_DOWN: u8 = 0;
+pub(crate) const OCT_UP: u8 = 1;
 const FX: u8 = 2;
 const ARP: u8 = 10;
 const SEQ: u8 = 11;
 const REC: u8 = 13;
 const GLO: u8 = 7;
 const ENV: u8 = 4;
-const HOME: u8 = 8;
+pub(crate) const HOME: u8 = 8;
 const SAVE: u8 = 9;
 const PLAY: u8 = 12;
-const C4: u8 = 14 + 7; // note keys start at F3
+pub(crate) const C4: u8 = 14 + 7; // note keys start at F3
 const PRESET: u8 = 6; // encoder
 const ALGO: u8 = 1; // encoder
 const SELECT: u8 = 0; // encoder
@@ -62,14 +62,14 @@ const SEL: u8 = 3; // the SEL button (SCL in Felucca's table)
 const HEADER_ROWS: usize = 36;
 
 /// Below this the output counts as silent, above `LOUD` as sounding (16-bit samples).
-const QUIET: i32 = 64;
-const LOUD: i32 = 1000;
+pub(crate) const QUIET: i32 = 64;
+pub(crate) const LOUD: i32 = 1000;
 
 /// (name, binary) of every factory patch in presets.h
 /// on the device page (pages_ui.c): the footer's octave at 0 ("= OCT =")
-const DEVICE_PAGE: &str = "= OCT =";
+pub(crate) const DEVICE_PAGE: &str = "= OCT =";
 
-fn factory() -> Vec<(String, Vec<u8>)> {
+pub(crate) fn factory() -> Vec<(String, Vec<u8>)> {
     let list = &PRESETS_H[PRESETS_H.find("PRESET_LIST[").expect("PRESET_LIST")..];
     let mut out = Vec::new();
     for line in list.lines().skip(1) {
@@ -85,16 +85,16 @@ fn factory() -> Vec<(String, Vec<u8>)> {
     out
 }
 
-struct Run {
-    out: String,
-    fails: Vec<String>,
-    warns: Vec<String>,
-    checks: u32,
-    shot: u32,
+pub(crate) struct Run {
+    pub(crate) out: String,
+    pub(crate) fails: Vec<String>,
+    pub(crate) warns: Vec<String>,
+    pub(crate) checks: u32,
+    pub(crate) shot: u32,
 }
 
 impl Run {
-    fn check(&mut self, what: &str, ok: bool, detail: String) {
+    pub(crate) fn check(&mut self, what: &str, ok: bool, detail: String) {
         self.checks += 1;
         let line = if detail.is_empty() { what.to_string() } else { format!("{what} ({detail})") };
         println!("{} {line}", if ok { "ok  " } else { "FAIL" });
@@ -112,13 +112,13 @@ impl Run {
         }
     }
 
-    fn snap(&mut self, m: &Machine, name: &str) {
+    pub(crate) fn snap(&mut self, m: &Machine, name: &str) {
         self.shot += 1;
         m.snap(&format!("{}/{:02}-{name}.png", self.out, self.shot));
     }
 
     /// `s` on the screen now; snapshot either way.
-    fn screen(&mut self, m: &Machine, what: &str, s: &str) -> bool {
+    pub(crate) fn screen(&mut self, m: &Machine, what: &str, s: &str) -> bool {
         let ok = font::on_screen(m.lcd(), s);
         self.snap(m, &what.replace(' ', "-"));
         self.check(what, ok, if ok { String::new() } else { format!("{s:?} not on the LCD at {} ms", m.ms()) });
@@ -139,7 +139,7 @@ fn patch_screen(t: &mut Run, m: &mut Machine, what: &str, name: &str) -> Result<
 }
 
 /// Run up to `max` ms more until `s` shows (checked every 50 ms).
-fn wait_text(m: &mut Machine, s: &str, max: u64) -> Result<bool, String> {
+pub(crate) fn wait_text(m: &mut Machine, s: &str, max: u64) -> Result<bool, String> {
     let end = m.ms() + max;
     while m.ms() < end {
         if font::on_screen(m.lcd(), s) {
@@ -152,7 +152,7 @@ fn wait_text(m: &mut Machine, s: &str, max: u64) -> Result<bool, String> {
 
 /// After power-on the quick start shows over the first page (D-247): wait up to `max` ms for it, then HOME closes it
 /// and the device page is drawn whole again. Whether it showed
-fn quick_start(m: &mut Machine, max: u64) -> Result<bool, String> {
+pub(crate) fn quick_start(m: &mut Machine, max: u64) -> Result<bool, String> {
     let shown = wait_text(m, "QUICK START", max)?;
     if shown {
         m.tap(HOME, 120, 400)?;
@@ -177,7 +177,7 @@ fn cpu_figure(m: &Machine) -> Option<u32> {
 }
 
 /// Peak of a note held for `hold` ms (from now).
-fn note_peak(m: &mut Machine, key: u8, hold: u64) -> Result<i32, String> {
+pub(crate) fn note_peak(m: &mut Machine, key: u8, hold: u64) -> Result<i32, String> {
     let mk = m.mark();
     m.key(key, true);
     m.run_for(hold)?;
@@ -514,10 +514,12 @@ fn long_delay(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String>
 /// lights), a black key picks the snare row (its name on coral), PLAY runs the track (sound), SEQ held + a black key
 /// mutes it and again brings it back, REC records the track. Arming (#139): REC held + a black key arms the track (no
 /// recording; the bar and the track's line say ARM, #179). REC is global (#395): stopped, it starts the transport and
-/// records the armed track (the page stays), PLAY stops both; the device pages name the armed track, REC held + the key
-/// again disarms; REC with nothing armed stays on the device page and says so. Then the piano roll (#241) on <7PH's
-/// melodic PATTERN: its pitch rows, a marker under a step with a note below the window, a white key switches the
-/// selected pitch on a step, REC records it with the 27 keys as its keyboard.
+/// records the armed track, except on the SEQ page, where it starts step record and PLAY then makes it a live take
+/// (D-548, D-804); PLAY stops both; the device pages name the armed track, REC held + the key again disarms; REC with
+/// nothing armed stays on the device page and says so. Then the piano roll (#241) on <7PH's melodic PATTERN: its pitch
+/// rows on a fixed page (the bar names it, D-809), a marker under a step with a note below the window, a white key
+/// switches the selected pitch on a step, SELECT pages the view, REC step record, PLAY a live take with the 27 keys as
+/// its keyboard.
 fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
     let Some(kit) = presets.iter().position(|(n, _)| n == "808 KIT") else {
         t.check("seq: the factory 808 Kit is there", false, String::new());
@@ -592,12 +594,17 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     t.screen(&m, "arm: REC's release after arming records nothing, the bar says ARM", "DRUMS ARM");
     t.screen(&m, "arm: the track's line says ARMED (#179)", "TRACK 1/1  ARMED");
     let mk = m.mark();
-    m.tap(REC, 120, 1300)?;                  // stopped: REC starts the transport and records the armed track (#395)
-    t.screen(&m, "rec: REC, stopped, with a drum track armed: it records, the grid stays", "DRUMS REC");
+    m.tap(REC, 120, 600)?;                   // stopped, on the SEQ page: REC starts step record (D-548, D-804)
+    t.screen(&m, "rec: REC, stopped, on the SEQ page: step record on step 1", "STEP 1  DRUMS ARM");
+    let p = m.peak_since(mk);
+    t.check("rec: REC, stopped, on the SEQ page: the transport stays stopped", p < QUIET, format!("peak {p}"));
+    let mk = m.mark();
+    m.tap(PLAY, 120, 1300)?;                 // PLAY in step record: the transport starts, a live take records the track
+    t.screen(&m, "rec: PLAY in step record: a live take, the grid stays", "DRUMS REC");
     t.snap(&m, "arm-drum-grid-rec");
     m.run_for(1000)?;
     let p = m.peak_since(mk);
-    t.check("rec: REC, stopped, starts the transport (the track sounds)", p > LOUD, format!("peak {p}"));
+    t.check("rec: PLAY in step record starts the transport (the track sounds)", p > LOUD, format!("peak {p}"));
     m.tap(PLAY, 120, 1300)?;
     t.screen(&m, "rec: PLAY stops the transport and the recording", "DRUMS ARM");
     m.tap(SEQ, 120, 400)?;
@@ -634,28 +641,29 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.tap(SEQ, 120, 400)?;
     if let Some(gb) = presets.iter().position(|(n, _)| n == "<7PH") {
         // the piano roll (#241): <7PH's PATTERN (melodic) on 8 pitch rows; a white key switches the selected pitch
-        // (A#3, the median) on a step; REC records the armed roll, all 27 keys its keyboard (#395)
+        // (B3, black key 4) on a step; REC step record, PLAY a live take, all 27 keys its keyboard (#395)
         m.midi(&[0xC0, gb as u8], 500)?;
         t.screen(&m, "roll: <7PH loads", "<7PH");
         m.tap(SEQ, 120, 400)?;
         m.turn(ALGO, 1, 600)?;               // DRUMS, then PATTERN
         t.screen(&m, "roll: PATTERN's piano roll", "BLACK row  SEL+KEY pen");
         t.screen(&m, "roll: its pitch rows (A#3 the median)", "A#3");
+        t.screen(&m, "roll: the bar names the fixed page of the median (G#3-D#4, D-809)", "PATTERN ARM G#3-D#4");
         // #387: the black keys pick the rows on screen, black key 1 the bottom one (its name on coral), not a track
         let name = |m: &Machine, r: usize| m.lcd()[(44 + 19 * r + 1) * 240 + 49];
         m.tap(14 + 1, 120, 400)?;            // black key 1 (F#3): the bottom row
         let (bottom, middle) = (name(&m, 7), name(&m, 4));
         t.check("roll: black key 1 picks the bottom row, not a track", bottom == 0xE3AB && middle != 0xE3AB,
             format!("{bottom:#06x} / {middle:#06x}"));
-        t.screen(&m, "roll: black key 1 keeps the track (PATTERN)", "PATTERN ARM P"); // (the page armed it, #395)
-        m.tap(14 + 8, 120, 400)?;            // black key 4 (C#4): the 4th row from the bottom, A#3 again
+        t.screen(&m, "roll: black key 1 keeps the track (PATTERN)", "PATTERN ARM G#3-D#4 P"); // (the page armed it, #395)
+        m.tap(14 + 8, 120, 400)?;            // black key 4 (C#4): the 4th row from the bottom (B3 on the page G#3-D#4)
         let back = name(&m, 4);
-        t.check("roll: black key 4 picks the 4th row from the bottom (A#3)", back == 0xE3AB, format!("{back:#06x}"));
+        t.check("roll: black key 4 picks the 4th row from the bottom (B3)", back == 0xE3AB, format!("{back:#06x}"));
         let below = m.lcd()[192 * 240 + 57]; // step 1's marker under the bottom row: A#2 is below the window
         let above = m.lcd()[42 * 240 + 57]; // (nothing above it on step 1)
         t.check("roll: a marker under a step with a note below the window", below == 0x9cf2 && above != 0x9cf2,
             format!("{below:#06x} / {above:#06x}"));
-        let cell = |m: &Machine| m.lcd()[(44 + 19 * 4 + 14) * 240 + 79]; // A#3 (row 5) on step 3 (x 74..83)
+        let cell = |m: &Machine| m.lcd()[(44 + 19 * 4 + 14) * 240 + 79]; // B3 (row 5) on step 3 (x 74..83)
         let before = cell(&m);
         m.tap(14 + 4, 120, 300)?;            // A3: the third white key = step 3
         let after = cell(&m);
@@ -664,9 +672,16 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
             format!("{before:#06x} -> {after:#06x}"));
         m.tap(14 + 4, 120, 300)?;            // (off again)
         t.screen(&m, "roll: ALGO arms the track it shows (#395)", "PATTERN ARM");
-        m.tap(REC, 120, 1300)?;              // PATTERN armed (by the page), stopped: the transport starts, it records
-        t.screen(&m, "roll: REC records the melodic track armed", "PATTERN REC");
-        t.screen(&m, "roll: while recording the keys are its keyboard", "KEYS record  SELECT row  OCT octave");
+        m.turn(SELECT, 1, 600)?;             // SELECT: the view a page of 8 pitches down (D-809)
+        t.screen(&m, "roll: SELECT pages the view 8 pitches down (C3-G3)", "PATTERN ARM C3-G3");
+        m.turn(SELECT, -1, 600)?;
+        t.screen(&m, "roll: SELECT back (G#3-D#4)", "PATTERN ARM G#3-D#4");
+        m.tap(REC, 120, 600)?;               // stopped: step record (D-804)
+        t.screen(&m, "roll: REC, stopped: step record", "STEP 1  PATTERN ARM");
+        t.screen(&m, "roll: step record's hint: REC ends it", "REC done");
+        m.tap(PLAY, 120, 1300)?;             // PLAY in step record: the transport starts, PATTERN (armed by the page) records
+        t.screen(&m, "roll: PLAY in step record: a live take of the melodic track armed", "PATTERN REC");
+        t.screen(&m, "roll: while recording the keys are its keyboard", "KEYS record  SELECT page  OCT octave");
         m.tap(REC, 120, 300)?;
         m.tap(PLAY, 120, 300)?;
         m.tap(SEQ, 120, 400)?;

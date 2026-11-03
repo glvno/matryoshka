@@ -92,7 +92,7 @@ describe('the FM-1 UI as WebAssembly', () => {
     ui.mute(track, false);
     expect([key(2400), key(2600)]).toEqual([row, row]);      // playing: steady
   }, 120_000);
-  it('step record (#532): black key 11 + a white key, a chord, a tie of the key still held, a rest; the editor gets the notes', async () => {
+  it('step record (#532): REC held + a white key, a chord, a tie of the key still held, a rest; the editor gets the notes', async () => {
     let notes: { at: number; len: number; note: number; vel: number }[] = [];
     const ui = await Fm1Ui.create(bytes, { track: (_m, ns) => { notes = ns.map(({ at, len, note, vel }) => ({ at, len, note, vel })); } });
     expect(ui.load(encodePatch(FM1_PRESETS['Silver Box']()), 'SILVER BOX')).toBe(0);
@@ -100,8 +100,11 @@ describe('the FM-1 UI as WebAssembly', () => {
     const tap = (id: number, at: number): void => { ui.tick(at); ui.button(id, true); ui.tick(at + 50); ui.button(id, false); ui.tick(at + 100); };
     tap(BUTTONS.seq, 1200);                       // the SEQ page: PATTERN's roll
     expect(ui.page).toBe(8);
-    const [BK11, STEP1, C4, E4, G4, D4] = [25, 0, 7, 11, 14, 9].map((n) => 1 << n);
-    for (const k of [BK11, BK11 | STEP1, STEP1, 0]) ui.keys(k);
+    const [STEP1, C4, E4, G4, D4] = [0, 7, 11, 14, 9].map((n) => 1 << n);
+    ui.button(BUTTONS.rec, true);                 // REC held + step 1's white key: step record there (D-804)
+    ui.keys(STEP1);
+    ui.button(BUTTONS.rec, false);                // (REC's release then does nothing)
+    ui.keys(0);
     expect(notes).toEqual([]);                    // (started: nothing written, step 1 not switched)
     const played = ui.keys(C4 | E4 | G4);         // a chord: each key sounds as it goes down
     expect(played.filter((p) => p.on).length).toBe(3);
@@ -120,6 +123,15 @@ describe('the FM-1 UI as WebAssembly', () => {
     ]);
     tap(BUTTONS.home, 2000);                      // HOME: step record ends, the page stays
     expect(ui.page).toBe(8);
+    tap(BUTTONS.rec, 2200);                       // REC tapped, stopped: step record again, on the page's first step (1),
+    ui.keys(G4);                                  // not the cursor's last (5): G4 replaces step 1's chord
+    ui.keys(0);
+    expect(notes.filter((n) => n.at === 0)).toEqual([{ at: 0, len: 1, note: 67, vel: 100 }]);
+    expect(notes.some((n) => n.at === 4)).toBe(false);
+    tap(BUTTONS.rec, 2400);                       // REC again: it ends
+    ui.keys(G4);
+    ui.keys(0);
+    expect(notes.length).toBe(4);                 // (a white key then switches the selected row's step, not G4)
   }, 30_000);
   it('P-locks (#524): a held step + ALGO + K1 locks the device\'s first row on it; the editor gets the locks', async () => {
     let got: { module: number; pat: number; locks: { at: number; module: number; param: number; value: number }[] } | null = null;
