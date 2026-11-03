@@ -162,9 +162,7 @@ export const CONTROLS: ControlRow[] = [
 
   // ---- ENVIRONMENT: one row per device
   { id: 'env-rows', gesture: { do: [E('SELECT')] }, does: 'device row', sheet: { env: 10 }, effect: 'focus' },
-  // the owner's "device's pg.1 params" (2026-11-03) is 1 px wider than the sheet (export-defs refuses it): these words
-  // until they choose others
-  { id: 'env-first-page', gesture: { do: [K('1234')] }, does: "row's first page", sheet: { env: 40 }, effect: 'param' },
+  { id: 'env-first-page', gesture: { do: [K('1234')] }, does: 'device pg.1 params', sheet: { env: 40 }, effect: 'param' },
   { id: 'env-presets', gesture: { do: [E('PRESET')] }, does: "row device's preset", when: 'dev_presets', sheet: { env: 30 }, effect: 'preset' },
   { id: 'env-presets-algo', gesture: { do: [E('ALGO')] }, does: "row device's preset", when: 'dev_presets', sheet: { env: 50 }, listed: false, effect: 'preset' },
   { id: 'env-arm', gesture: { do: [B('SEL')] }, does: 'arm / disarm device', when: 'dev_keys', sheet: { env: 20 }, effect: 'arm',

@@ -144,7 +144,7 @@ describe('the controls strip is made from the controls table (#554, controls.ts)
     expect(v.knobs!.filter(Boolean).length).toBeGreaterThan(0);
     expect(stripView(at('device', { device: d, devicePage: pg }, ), null).knobs).toEqual(Array(4).fill('adjust values'));
     expect(stripView(at('device', { device: d, devicePage: pg, held: 1 << BUTTON_ID.HOME }), sp).knobs, 'HOME held: fine turns of the same rows').toEqual(v.knobs);
-    expect(stripView(at('env', { device: d, devicePage: pg }), sp).knobs, 'elsewhere: the table').toEqual(Array(4).fill("row's first page"));
+    expect(stripView(at('env', { device: d, devicePage: pg }), sp).knobs, 'elsewhere: the table').toEqual(Array(4).fill('device pg.1 params'));
   });
 
   it('the piano roll and the drum grid: no K1..K4 until a step is held, then what each does with it', () => {
