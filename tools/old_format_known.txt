@@ -1,0 +1,36 @@
+# Known, intended differences for tools/old_format.sh: one "BASE KIT" pair per line.
+# A kit listed for a BASE renders differently on today's engine on purpose. Its line then reads "DIFFERS (known)" and does
+# not fail the check. Any other DIFFERS still fails it. A listed kit that renders the same again is named as well.
+#
+# v1.4.1, the default BASE: 1.8.2 changed the engine on purpose in two places, and the changes reach these 29 golden kits.
+#   #461: an oscillator works out its increment every 8 samples, with a straight line between (Io 4's vibrato).
+#   #484: a Delay's new time glides instead of jumping, so it does not click (Delay, 8 Lire).
+v1.4.1 -7ph
+v1.4.1 8-lire
+v1.4.1 808-kit
+v1.4.1 909-kit
+v1.4.1 briefcase-3
+v1.4.1 delay-sync-pingpong
+v1.4.1 env-lr
+v1.4.1 io-4
+v1.4.1 legato-glide
+v1.4.1 math-logic
+v1.4.1 meridian-8
+v1.4.1 morph
+v1.4.1 oracle-v
+v1.4.1 part-flaws
+v1.4.1 part-random
+v1.4.1 perun-4
+v1.4.1 poly-layers
+v1.4.1 poly-pluck
+v1.4.1 sallen-20
+v1.4.1 scrounge
+v1.4.1 seq-clock
+v1.4.1 seq-glide
+v1.4.1 sh-random
+v1.4.1 silver-box
+v1.4.1 spokes-6
+v1.4.1 steps-arp
+v1.4.1 steps-notes
+v1.4.1 steps-tie
+v1.4.1 sync-glide-shape
