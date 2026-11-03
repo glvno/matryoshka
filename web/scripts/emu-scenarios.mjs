@@ -504,8 +504,8 @@ async function main() {
   /** the editor's copy of the track until `f` holds of it (the FM-1's TRACK_NOW arrived), else the last read */
   const notesUntil = async (f, ms = 3000) => (await until(async () => { const ns = await trackNotes(); return f(ns) ? ns : null; }, ms)) ?? (await trackNotes());
   /** a patch opened in the editor and on the FM-1 (synced), the FM-1 on its device page */
-  async function openSynced(name) {
-    if (!(await open(name))) return false;
+  async function openSynced(name, opener = open) {
+    if (!(await opener(name))) return false;
     await sleep(600);
     const s = await until(async () => { const x = await T(); return !x.sandbox && x.live && x.chip === 'synced' && x.status === 'patch on the FM-1'; }, 10000);
     return !!s && (await emu.waitOwnPage(6000));
@@ -1370,6 +1370,15 @@ async function main() {
       await emu.tap(B.scl);
       await check('arming: SEL on the Arpeggiator alone: nothing here takes keys', await emu.waitText('NOTHING HERE TAKES KEYS', 1500));
       await emu.snap('arming-instrument');
+      // #215 (D-905): an instrument that no keys cable reaches, marked by the editor in the device extras, says so on SEL
+      // (Monolith D: a mono engine, so its Voicing leaves the patch the FM-1 gets) and arms nothing
+      await sleep(1300);
+      await check('arming: Monolith D with no keys cables opens, synced',
+        await openSynced('Monolith D', (n) => page.evaluate((x) => window.__m1test.openUnkeyed(x), n)));
+      await emu.tap(B.scl);
+      await check('arming: SEL on an instrument no keys cable reaches: NO KEYS REACH THIS DEVICE (#215)', await emu.waitText('NO KEYS REACH THIS DEVICE', 1500));
+      await check('arming: nothing armed, in the editor either', (await emu.waitText('KEYS WIRED', 3000)) && (await T()).armed.length === 0);
+      await emu.snap('arming-unreached');
     },
     // #504: under Live a SELECT or ALGO turn on the FM-1 reaches the editor twice, as FOCUS_NOW and as the mirror's MIDI;
     // the editor's focus must end on the FM-1's device and page, never one further
