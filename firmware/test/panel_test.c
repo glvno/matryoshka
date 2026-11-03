@@ -1614,6 +1614,77 @@ int main(void)
         panel_keys(0);
         loop();
         check("again: off", !eng_steps_note((uint32_t)pat, 2u, 58u) && roll_shows(pat));
+        {                                                   /* the owner's 1.9.0 device check (2026-11-03): a white key switches
+                                                             * its step when let go, unless the step was used while held */
+            uint32_t hw2;
+            panel_keys(1u << n);                            /* the empty step held: nothing yet, the hint names its knobs */
+            loop();
+            check("a white key held on an empty step: nothing switched yet, the step held, the hint HELD",
+                  !eng_steps_note((uint32_t)pat, 2u, 58u) && seq_held == 2 && !strcmp(seq_grid_text[2], HINT_HELD_ROLL));
+            panel_keys(0);
+            loop();
+            check("  let go with nothing done: the note there", eng_steps_note((uint32_t)pat, 2u, 58u) != 0);
+            panel_keys(1u << n);                            /* a note held: it stays while the key is down */
+            loop();
+            check("a white key held on a note: it stays while held", eng_steps_note((uint32_t)pat, 2u, 58u) != 0 && seq_held == 2);
+            later(200);
+            enc(3, -3);                                     /* + K2: its velocity; the release then switches nothing */
+            hw2 = eng_steps_note((uint32_t)pat, 2u, 58u);
+            check("  + K2: its velocity (97)", hw2 && ((hw2 >> 19) & 127u) == 97u);
+            panel_keys(0);
+            loop();
+            hw2 = eng_steps_note((uint32_t)pat, 2u, 58u);
+            check("  let go after a turn: the note stays, its velocity kept", hw2 && ((hw2 >> 19) & 127u) == 97u);
+            panel_keys(1u << n);                            /* held and let go with nothing done: off */
+            panel_keys(0);
+            loop();
+            check("a tap on the note: off", !eng_steps_note((uint32_t)pat, 2u, 58u));
+            panel_keys(1u << n);                            /* the empty step held + K3: the note there with its chance */
+            loop();
+            enc(4, -1);
+            panel_keys(0);
+            loop();
+            hw2 = eng_steps_note((uint32_t)pat, 2u, 58u);
+            check("an empty step held + K3, let go: the note there with its chance (95 %), not switched off again",
+                  hw2 && ((hw2 >> 26) & 31u) == 1u);
+            panel_keys(1u << n);                            /* (off again: a tap) */
+            panel_keys(0);
+            loop();
+            panel_keys(1u << n);                            /* the empty step held + ALGO (a lock page): used, nothing switched */
+            loop();
+            enc(1, 1);
+            enc(1, -1);
+            panel_keys(0);
+            loop();
+            check("an empty step held + ALGO, let go: nothing switched (a lock needs no note)",
+                  !eng_steps_note((uint32_t)pat, 2u, 58u) && seq_lpg == 0u && roll_shows(pat));
+            {                                               /* a second white key pressed while one is held: the first switched then */
+                uint32_t n2, k2;
+                for (k2 = 3; k2 < 15u && eng_steps_note((uint32_t)pat, k2, 58u); k2++)
+                    ;                                       /* (a step without A#3) */
+                for (n2 = 0; seq_white(n2) != (int)k2; n2++)
+                    ;
+                panel_keys(1u << n);
+                loop();
+                panel_keys(1u << n | 1u << n2);
+                loop();
+                check("a second white key while one is held: the first's step switched then, the second held",
+                      eng_steps_note((uint32_t)pat, 2u, 58u) && !eng_steps_note((uint32_t)pat, k2, 58u) && seq_held == (int)k2);
+                panel_keys(1u << n2);
+                loop();
+                panel_keys(0);
+                loop();
+                check("  both let go: both steps on", eng_steps_note((uint32_t)pat, 2u, 58u) && eng_steps_note((uint32_t)pat, k2, 58u));
+                panel_keys(1u << n);                        /* (both off again) */
+                panel_keys(0);
+                panel_keys(1u << n2);
+                panel_keys(0);
+                loop();
+                check("  (both off again)", !eng_steps_note((uint32_t)pat, 2u, 58u) && !eng_steps_note((uint32_t)pat, k2, 58u)
+                      && roll_shows(pat));
+            }
+        }
+        later(1600);                                        /* (the held step's messages gone from the bar) */
 
         fb_watch_reset();                                   /* SELECT (D-809): the view a page of 8 pitches down (C3-G3) */
         lcd_px = lcd_xfers = 0;
@@ -1762,9 +1833,9 @@ int main(void)
         loop();
         check("(FX + OCT+: octave 0 again)", octave == 0 && seq_grid_note(-1, seq_row) == 46u);
 
-        panel_keys(1u << 0);                                /* step 1 held (its A#2 switched off by the press) */
+        panel_keys(1u << 0);                                /* step 1 held (its A#2 stays: a press switches nothing) */
         loop();
-        enc(2, 1);                                          /* + K1: the note back, a semitone up, the row follows */
+        enc(2, 1);                                          /* + K1: the note a semitone up, the row follows */
         check("a held step + K1: its note in the selected row a semitone up (B2), the row follows it",
               eng_steps_note((uint32_t)pat, 0u, 47u) && !eng_steps_note((uint32_t)pat, 0u, 46u) && seq_grid_note(-1, seq_row) == 47u
               && !strcmp(msg_text, "STEP 1  B2  VEL 127"));
@@ -2528,6 +2599,18 @@ int main(void)
             check("a step held + SELECT: its chance (90 %), the row stays", seq_row == 0u && hw && ((hw >> 26) & 31u) == 2u);
         }
         panel_keys(0);
+        loop();
+        check("  let go after the turn: the hit stays (the owner's 1.9.0 device check: a used step switches nothing)",
+              eng_steps_note((uint32_t)drums, (uint32_t)k, seq_row_note(map, 0)) != 0);
+        panel_keys(1u << n);                                /* held with nothing done: the hit stays while held, off when let go */
+        loop();
+        check("a drum step held: its hit stays while the key is down", eng_steps_note((uint32_t)drums, (uint32_t)k, seq_row_note(map, 0)) != 0);
+        panel_keys(0);
+        loop();
+        check("  let go with nothing done: off", !eng_steps_note((uint32_t)drums, (uint32_t)k, seq_row_note(map, 0)));
+        panel_keys(1u << n);                                /* (on again, as it was, its chance 100 %) */
+        panel_keys(0);
+        loop();
         enc(0, 2);                                          /* (row 3 again) */
         for (k = 0; k < 16 && eng_steps_note((uint32_t)drums, (uint32_t)k, seq_row_note(map, 2)); k++)
             ;                                               /* a step without the clap */

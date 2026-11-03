@@ -1198,9 +1198,9 @@ async function main() {
       await check('roll pen (#549): the next REC: step record (STEP 1), not a live take, the transport stopped', (await emu.waitText('STEP 1', 2000)) && t.ok, t.why);
       await emu.tap(B.home);
       await check('roll pen: HOME ends step record', await emu.waitText('ALGO track', 2000));
-      await emu.key(WHITE[1], true);                // step 2 held: the selected row's pitch (F#3's) switched on there
+      await emu.key(WHITE[1], true);                // step 2 held (its press switches nothing: the release would)
       await sleep(300);
-      await emu.turn(ENC.k1, 12);                   // + 12 semitones: off the page
+      await emu.turn(ENC.k1, 12);                   // + K1: the selected row's pitch put there, 12 semitones up: off the page
       await sleep(400);
       ns = await notesUntil((x) => noteAt(x, 1)?.note !== undefined && x.length === 2);
       const p = noteAt(ns, 1)?.note;

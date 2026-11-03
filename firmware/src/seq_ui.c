@@ -10,11 +10,15 @@
  *   SELECT          a drum track: the selected row, a row a click (clamped at the first and the last); with a white key
  *                   held: that step's chance. The roll: its view, 8 pitches a click (the selected row stays on its
  *                   screen row); SEL held + SELECT: a pitch a click (D-809)
- *   white keys      the 16 steps of the page: the selected row's note on the step on / off (FX held: its accent). A held
- *                   white key + K2: its velocity; + SELECT (a drum track) or K3 (the roll; the owner, 2026-10-24): the
- *                   note's chance, 100 % .. 5 % in steps of 5; on the roll + K1: its pitch (a semitone a click, past the
- *                   step's other notes; the selected row follows it). Turning a knob on a held step undoes the press:
- *                   the track's notes as they were, the note there.
+ *   white keys      the 16 steps of the page: the selected row's note on the step on / off when the key is let go
+ *                   (the owner's 1.9.0 device check, 2026-11-03), unless the step was used while held: then nothing is
+ *                   switched. A held white key + K2: its velocity; + SELECT (a drum track) or K3 (the roll; the owner,
+ *                   2026-10-24): the note's chance, 100 % .. 5 % in steps of 5; on the roll + K1: its pitch (a semitone a
+ *                   click, past the step's other notes; the selected row follows it); ALGO / K1..K4 its locks (below).
+ *                   Such a turn on an empty step puts the selected row's note there (a lock puts none). Any knob turned
+ *                   with the step held uses it. FX held first: the accent on / off at the press, as before (a turn then
+ *                   undoes it: the track's notes as they were, the note there). A second white key pressed while one is
+ *                   held switches the first one's step then, as if it had been let go.
  *   REC             stopped: step record on / off (below, D-804); running: recording on / off, as on every page (#395,
  *                   below); it acts on its release. Held + a white key: step record from that step
  *   PRESET          the patch's pattern (#375, D-541): running, each track takes it at the end of its pass (the bar shows
@@ -113,7 +117,9 @@ static uint32_t ent_keys;               /* the keys held while they are the arme
 static int8_t seq_held = -1;            /* the step whose white key is held (SELECT / the roll's K3 its chance, K1 / K2 its values), -1 none */
 static uint32_t seq_held_notes[TRACK_NOTES_MAX];   /* the track's notes before the held step's press switched it */
 static uint8_t seq_held_n;
-static uint8_t seq_held_turned;         /* a knob turned while it is held (the press's switch is undone once) */
+static uint8_t seq_held_turned;         /* a knob turned while it is held (an FX press's switch is undone once; 1: none to undo) */
+static uint8_t seq_held_tap;            /* the held step not used yet: its key's release switches its note (seq_held_note) */
+static uint8_t seq_held_note;           /* ... the selected row's note when its key went down */
 static uint8_t seq_lpg;                 /* P-locks (#524, #519 Q2): ALGO's stop with a step held, 0 its note (K1..K3 as ever), n
                                          * the n-th page of the devices the track drives (K1..K4 lock its rows on the held
                                          * step); kept over presses, back to 0 with another track */
@@ -498,6 +504,19 @@ static void seq_roll_toggle(int mod, uint32_t k, uint32_t note, uint32_t vel)
     eng_steps_toggle((uint32_t)mod, k, note, vel);
 }
 
+/* the held step's pending switch (a white key's press, not used yet) done now: its key let go, or another white key
+ * pressed (the owner's 1.9.0 device check, 2026-11-03) */
+static void seq_held_tap_done(int mod)
+{
+    if (!seq_held_tap)
+        return;
+    seq_held_tap = 0;
+    if (mod < 0 || seq_held < 0 || seq_held >= seq_len(mod))
+        return;
+    seq_roll_toggle(mod, (uint32_t)seq_held, seq_held_note, STEP_VEL);
+    seq_sync(mod);
+}
+
 /* LFO held + a white key (the roll, #241; a drum track, #368; the rule of 2026-10-28): the selected row's note around
  * step k. On a step a note of that row runs through (started before k): k its last step already, the note is one step
  * again (TIE OFF), else it now ends on k (TIED). Else the row's last note starting before k ends on k (one press ties
@@ -785,6 +804,7 @@ static void seq_key(uint32_t n, int down)
     }
     if (!down) {
         if (w >= 0 && seq_held == seq_pg * 16 + w) {
+            seq_held_tap_done(mod);              /* (a tap: its step switched now; a step used while held: nothing) */
             seq_held = -1;
             ui_dirty = ui_dirty ? ui_dirty : 1;  /* (the hint line: no step held, #450) */
         }
@@ -832,6 +852,7 @@ static void seq_key(uint32_t n, int down)
         uint32_t note = seq_grid_note(map, seq_row), have;
         if (k >= seq_len(mod))
             return;
+        seq_held_tap_done(mod);                  /* (a white key still held, not used: its step switched first) */
         seq_held_keep(mod);
         if (panel_held >> BTN_LFO & 1u) {        /* LFO held: the tie (not a held step) */
             seq_roll_tie(mod, (uint32_t)k, note);
@@ -839,22 +860,30 @@ static void seq_key(uint32_t n, int down)
             ui_dirty = ui_dirty ? ui_dirty : 1;
             return;
         }
+        seq_held = (int8_t)k;
+        if (!fx) {                               /* a plain press: the step held, switched on its release if not used */
+            seq_held_turned = 1;                 /* (nothing to undo) */
+            seq_held_tap = 1;
+            seq_held_note = (uint8_t)note;
+            ui_dirty = ui_dirty ? ui_dirty : 1;  /* (the hint line: a step held, #450) */
+            return;
+        }
         have = eng_steps_note((uint32_t)mod, (uint32_t)k, note);
-        if (fx && have)                          /* FX held: the accent on / off */
+        if (have)                                /* FX held: the accent on / off, at the press */
             eng_steps_overdub((uint32_t)mod, (have & ~(127u << 19)) | (uint32_t)(((have >> 19) & 127u) == ACCENT_VEL ? STEP_VEL : ACCENT_VEL) << 19);
         else                                     /* (a step a tie runs through: the tie cut before it, #368 on a drum track) */
-            seq_roll_toggle(mod, (uint32_t)k, note, fx ? ACCENT_VEL : STEP_VEL);
+            seq_roll_toggle(mod, (uint32_t)k, note, ACCENT_VEL);
         seq_sync(mod);
-        seq_held = (int8_t)k;
         ui_dirty = ui_dirty ? ui_dirty : 1;
     }
 }
 
-/* the held step's note in the selected row, after the press's switch is undone once (an edit means it should play): its
- * note word, 0 when it cannot be there */
+/* the held step's note in the selected row, the step used (its release switches nothing) and an FX press's switch undone
+ * once (an edit means it should play): its note word, put there if it was not, 0 when it cannot be there */
 static uint32_t seq_grid_held(int map, int mod)
 {
     uint32_t note = seq_grid_note(map, seq_row), w;
+    seq_held_tap = 0;
     if (!seq_held_turned) {
         seq_held_turned = 1;
         (void)eng_steps_set_notes((uint32_t)mod, seq_held_notes, seq_held_n);
@@ -1345,10 +1374,11 @@ static uint32_t seq_lock_pat(int mod)
     int p = eng_pattern_playing((uint32_t)mod);
     return p > 0 && eng_pattern_has((uint32_t)mod, (uint32_t)p) ? (uint32_t)p : 0u;
 }
-/* the held step's press undone once (a knob turned on it: the step should keep what it had; as seq_grid_held, without
- * putting a note there: a lock needs none) */
+/* the held step used (its release switches nothing) and an FX press's switch undone once (a knob turned on it: the step
+ * should keep what it had; as seq_grid_held, without putting a note there: a lock needs none) */
 static void seq_held_undo(int mod)
 {
+    seq_held_tap = 0;
     if (seq_held_turned)
         return;
     seq_held_turned = 1;
