@@ -14,7 +14,7 @@
 // "+N more" toggle; the choice is remembered per viewer.
 import { kindOf, mainOf, switches } from './buttons';
 import {
-  BUTTON_ID, CONDITIONS, doesText, gestureSpec, HELP_STATE_NAME, HELP_STATE_TITLE, HELP_STATES, sheetRows, stateRows,
+  BUTTON_ID, CONDITIONS, doesText, gestureSpec, HELP_STATE_NAME, HELP_STATE_TITLE, HELP_STATES, sheetRows, stateRows, stripDoes,
   type Button, type Condition, type ControlRow, type HelpState,
 } from './controls';
 import { buttonLabel } from './modules';
@@ -185,7 +185,7 @@ function part(spec: string, held: Modifier | null): HTMLElement {
   }
 }
 
-/** a row as chips: its gesture's parts, then what it does (in `state`'s words: the sheet's `doesIn`); a patch button its
+/** a row as chips: its gesture's parts, then what it does in the strip's plain words (controls.ts stripDoes, in `state`'s words); a patch button its
  * cap, then its job in the patch */
 export function rowChip(r: StripRow, held: Modifier | null, lead = false, state?: HelpState): HTMLElement {
   const c = el('span', `cs-chip${lead ? ' lead' : ''}${isControl(r) ? '' : ' patch'}`);
@@ -193,7 +193,7 @@ export function rowChip(r: StripRow, held: Modifier | null, lead = false, state?
   const spec = el('span', 'cs-spec');
   for (const s of (isControl(r) ? gestureSpec(r.gesture) : `k:${r.button}`).split('|').filter(Boolean)) spec.append(part(s, held));
   c.append(spec);
-  const does = isControl(r) ? doesText(r, state) : r.does;   // ({list}: the Page button, GUIDE_NOW does not name it)
+  const does = isControl(r) ? stripDoes(r, state) : r.does;   // (the strip's own words; {list}: the Page button, GUIDE_NOW does not name it)
   if (does) c.append(el('span', 'cs-does', does));
   return c;
 }
@@ -264,7 +264,7 @@ export class ControlsStrip {
     if (v.everywhere.length) {
       const ev = el('div', 'cs-rows cs-everywhere');
       ev.append(el('span', 'cs-label', 'EVERYWHERE'));
-      for (const r of v.everywhere) ev.append(rowChip(r, null));
+      for (const r of v.everywhere) ev.append(rowChip(r, null, false, v.state));
       body.append(ev);
     }
     if (!v.knobs) { this.el.replaceChildren(head, body); return; }

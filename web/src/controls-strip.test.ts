@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { BUTTON_ID, CONDITIONS, CONTROLS, HELP_STATE_NAME, HELP_STATES, sheetRows, type Condition, type ControlRow, type HelpState } from './controls';
+import { BUTTON_ID, CONDITIONS, CONTROLS, HELP_STATE_NAME, HELP_STATES, sheetRows, stateRows, stripDoes, type Condition, type ControlRow, type HelpState } from './controls';
 import { ControlsStrip, conditionHolds, heldButtons, knobsOnlyHeld, MORE_KEY, SHEET_ROWS, stripPatch, stripView, type StripInput } from './controls-strip';
 import { setKind, setPages } from './buttons';
 import { DEFS } from './modules';
@@ -183,6 +183,37 @@ describe('ControlsStrip draws chips as the FM-1\'s sheet does', () => {
     expect(s.el.querySelector('.cs-from')!.textContent).toContain('your FM-1');
     s.draw(null, 'emu');
     expect(s.el.hidden).toBe(true);
+  });
+
+  it('a chip says what the row does in the strip\'s own words (`strip`, `stripIn` by state), not the sheet\'s short ones', () => {
+    localStorage.setItem(MORE_KEY, '1');
+    const words = (s: ControlsStrip, id: string): string | null | undefined => s.el.querySelector(`[data-row="${id}"] .cs-does`)?.textContent;
+    const s = new ControlsStrip();
+    s.draw(at('roll'), 'emu');
+    expect(words(s, 'step')).toBe('turn the selected pitch on or off at that step');
+    expect(words(s, 'step-record-there')).toBe('step record starting from that step');
+    expect(words(s, 'home'), 'EVERYWHERE too').toBe('go back one step');
+    s.draw(at('drum'), 'emu');
+    expect(words(s, 'step'), 'stripIn: the drum grid\'s own').toBe('turn the selected sound on or off at that step');
+    s.draw(at('device', { conditions: cond('list') }), 'emu');
+    expect(words(s, 'list-home'), '{list}: the Page button').toBe("leave the Page button's pages, back where you were");
+    // a row without them: its words off the sheet (plain), then the sheet's
+    const row = CONTROLS.find((r) => r.id === 'step')!;
+    const was = row.strip;
+    try {
+      delete row.strip;
+      s.draw(at('roll', { held: 1 }), 'emu');
+      s.draw(at('roll'), 'emu');
+      expect(words(s, 'step')).toBe(row.plain);
+    } finally { row.strip = was; }
+    localStorage.removeItem(MORE_KEY);
+  });
+
+  it('every row the strip can show has its own words, 3 words or more', () => {
+    for (const s of HELP_STATES) for (const r of [...stateRows(s), ...sheetRows(s, 'everywhere', true).filter((x): x is ControlRow => 'gesture' in x)]) {
+      expect(r.strip, `${s}: ${r.id}`).toBeTruthy();
+      expect(stripDoes(r, s).split(' ').length, `${s}: ${r.id}: ${stripDoes(r, s)}`).toBeGreaterThanOrEqual(3);
+    }
   });
 
   it('"+N more" shows every row and back; the choice is kept for this viewer', () => {
