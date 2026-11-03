@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.8.4 — 2026-11-03
 
 ### Editor
 
