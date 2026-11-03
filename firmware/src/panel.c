@@ -412,12 +412,16 @@ static void panel_encoders(int32_t *st)
         if (st[k])
             seq_clear_cancel();
     if (page == PAGE_MENU) {                        /* the menu (#395): ALGO the tab, SELECT the guide's scroll (menu.c); PRESET
-                                                     * steps the patches; a settings tab's K1..K4 go on below, as a device page's */
+                                                     * steps the patches, PLAY held + PRESET the tempo as everywhere (below,
+                                                     * #553); a settings tab's K1..K4 go on below, as a device page's */
+        int tempo = st[6] && (panel_held >> BTN_PLAY & 1u);
         menu_knobs(st);
-        if (st[6])
+        if (st[6] && !tempo)
             patch_turn(st[6]);
-        st[0] = st[1] = st[6] = 0;
-        if (!menu_page())
+        st[0] = st[1] = 0;
+        if (!tempo)
+            st[6] = 0;
+        if (!menu_page() && !tempo)
             return;
     }
     if (st[6] && (panel_held >> BTN_PLAY & 1u)) {   /* PLAY held + PRESET: the tempo (the Main module's; with TEMPO GLOBAL

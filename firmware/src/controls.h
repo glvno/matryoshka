@@ -130,7 +130,7 @@ static const uint8_t CTL_SHEET[2][9][21] = {
         {0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, CTL_END},   /* live */
         {0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, CTL_END},   /* song */
         {0, 1, 3, 5, 6, 8, 10, 11, 12, CTL_END},   /* menu */
-        {0, 3, 4, 7, 8, CTL_END},   /* sandbox */
+        {0, 4, 7, 8, CTL_END},   /* sandbox */
         {0, 2, 3, 4, 5, 8, 9, 10, 11, 12, CTL_END},   /* step */
     },
 };

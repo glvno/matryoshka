@@ -99,7 +99,7 @@ export const CONTROLS: ControlRow[] = [
   { id: 'play', gesture: { do: [B('PLAY')] }, does: 'start / stop', everywhere: at(10, ALL), effect: 'transport' },
   { id: 'rec', gesture: { do: [B('REC')] }, does: 'record', everywhere: at(20, but('sandbox', 'drum', 'roll', 'step')), effect: 'record' },
   { id: 'save', gesture: { do: [B('SAVE')] }, does: 'save patch', everywhere: at(30, but('menu', 'sandbox')), effect: 'save' },
-  { id: 'home', gesture: { do: [B('HOME')] }, does: 'back', everywhere: at(40, ALL), effect: 'back' },
+  { id: 'home', gesture: { do: [B('HOME')] }, does: 'back', everywhere: at(40, but('sandbox')), effect: 'back' },
   { id: 'glo', gesture: { do: [B('GLO')] }, does: 'settings', everywhere: at(50, but('menu')), effect: 'menu' },
   { id: 'env', gesture: { do: [B('ENV')] }, does: 'environment', everywhere: at(60, but('env', 'sandbox')), effect: 'env' },
   { id: 'seq', gesture: { do: [B('SEQ')] }, does: 'steps page', everywhere: at(70, but(...SEQ_STATES, 'sandbox')), effect: 'seq' },
