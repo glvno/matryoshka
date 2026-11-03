@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Editor
+
+- The ? help card's "On the FM-1" rows match the FM-1 again: HOME goes to the device's first page, then the patch's home page, and held alone does nothing; PRESET steps the focused device's presets and HOME + PRESET the patches; GLO opens the settings menu in tabs (MIDI, PANEL, SYSTEM, INFO, GUIDE); REC on the SEQ page starts step record while stopped; the piano roll's SELECT moves 8 pitches (SEL held: one). New rows for step record and SEQ held + a black key (mute). The Library's empty-bank text and the GLO and SEL hints in the button editor say the same.
+
 ## 1.8.3 — 2026-11-02
 
 ### FM-1
