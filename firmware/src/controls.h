@@ -50,7 +50,7 @@ static const ctl_line_t CTL_LINE[85] = {
     {"k:HOME|t:+|c:1234~fine adjust", 20, 0, 0},   /* fine */
     {"k:SEL~arm this device", 21, 4, 0},   /* arm-device */
     {"n:SELECT~device row", 22, 0, 0},   /* env-rows */
-    {"c:1234~row's first page", 23, 0, 0},   /* env-first-page */
+    {"c:1234~device pg.1 params", 23, 0, 0},   /* env-first-page */
     {"n:PRESET~row device's preset", 24, 2, 0},   /* env-presets */
     {"n:ALGO~row device's preset", 25, 2, 0},   /* env-presets-algo */
     {"k:SEL~arm / disarm device", 26, 4, 0},   /* env-arm */
