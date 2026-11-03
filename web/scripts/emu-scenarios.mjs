@@ -1260,7 +1260,7 @@ async function main() {
         await sleep(150);
         await emu.tap(BLACK[0]);
         await emu.key(B.seq, false);
-        await inStep(what, async (x) => x.fm1.page === 8 && (await emu.text('ALGO track')) && i >= 0);
+        await inStep(what, async (x) => x.fm1.page === 8 && i >= 0);   // (the bar says MUTED a while: no hint line to read)
       }
       // older firmware's path: the reports ignored, the copy guesses (SEL + a key = SEL tapped: its SONG page), and still
       // drives nothing
