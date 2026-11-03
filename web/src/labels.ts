@@ -135,18 +135,19 @@ export const moduleKeywords = (type: string, label: string): string =>
   [label, moduleTag(type).tag, FORMER[type], ALIASES[type]].filter(Boolean).join(' ');
 
 /** three significant figures, trailing zeros dropped */
-const sig = (v: number): string => String(Number(v.toPrecision(3)));
+const sig = (v: number, digits = 3): string => String(Number(v.toPrecision(digits)));
 
 /**
  * A parameter value for a card: the number and its unit apart (the unit is drawn smaller). Three significant figures;
- * kHz from 1000 Hz, ms below one second; a + on positive values of a parameter that can go negative.
+ * kHz from 1000 Hz, ms below one second; a + on positive values of a parameter that can go negative. `digits`: more
+ * significant figures (the typing field opens with the full value, #538).
  */
-export function formatValue(v: number, unit: string | undefined, signed: boolean): { num: string; unit: string } {
+export function formatValue(v: number, unit: string | undefined, signed: boolean, digits = 3): { num: string; unit: string } {
   if (!Number.isFinite(v)) return { num: String(v), unit: unit ?? '' };
   let u = unit ?? '';
   let x = v;
   if (u === 'Hz' && Math.abs(x) >= 1000) { x /= 1000; u = 'kHz'; }
   else if (u === 's' && Math.abs(x) < 1 && x !== 0) { x *= 1000; u = 'ms'; }
-  const num = Math.abs(x) < 1e-9 ? '0' : sig(x);
+  const num = Math.abs(x) < 1e-9 ? '0' : sig(x, digits);
   return { num: signed && x > 0 ? `+${num}` : num, unit: u };
 }
