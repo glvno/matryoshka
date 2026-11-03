@@ -2647,6 +2647,15 @@ if (import.meta.env.DEV) {
       if (o) loadNamed(o.load(), { from: o.from });
       return !!o;
     },
+    /** a patch opened as `open` opens it, with every keys cable gone: its instruments no keys cable reaches (#215) */
+    openUnkeyed: (name: string): boolean => {
+      const o = openableGroups().flatMap((g) => g.items).find((x) => x.name === name);
+      if (!o) return false;
+      const p = o.load();
+      p.cables = p.cables.filter((c) => c.from.port !== 'keys');
+      loadNamed(p, { from: o.from });
+      return true;
+    },
     state: () => ({
       connected: device.connected, live: liveOn, fits: fitsDevice, sandbox: sandboxOn(), chip: fm1State(), following: mirror.following,
       playing: editor.playing, deviceRunning: device.running, octave: noteKeys.octave(), focus: editor.focus, patch: editor.patch.name,

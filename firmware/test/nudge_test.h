@@ -43,7 +43,7 @@ static void nudge_snap(const char *name)
 
 static void nudge_suite(void)
 {
-    uint32_t p, b = 0, d, found = 0;
+    uint32_t p, b = 0, d, k, found = 0;
     int stepped, sv;
     uint64_t bank0 = bank_mask, arm0;
     char want[96];
@@ -179,6 +179,58 @@ static void nudge_suite(void)
             if (pg_cur_dev == was)
                 break;
         }
+        tap(BTN_SEL);
+        check("  on its environment row too", page == PAGE_ENV && pg_cur_dev == d && nudged("NO KEYS REACH THIS DEVICE"));
+        tap(BTN_HOME);
+    }
+
+    check("(the engine-unreached fixture: Monolith D and Hera 6, no keys cable into either)",
+          load_fixture("build/panel-fixtures/engine-unreached.m1p") == 0);
+    patch_label = "ENGINE UNREACHED";
+    pv_gen++;
+    trail_n = 0;
+    page_show(0);
+    screen_patch();
+    later(2000);
+    pages_ensure();
+    {
+        uint32_t mono = 0, poly = 0, main = 0;
+        for (d = 0; d < pg_ndev; d++) {
+            int m = pg_dev[d].module;
+            if (m >= 0 && eng_type((uint32_t)m) == T_FM1) {
+                check("Main carries no mark (the extras' track byte 0xFF)", !pg_dev[d].unreached);
+                main++;
+                continue;
+            }
+            if (m >= 0)
+                continue;
+            check("  an engine no keys cable reaches carries the editor's mark (ENG_KEYS_UNREACHED, D-905)", pg_dev[d].unreached
+                  && pg_dev[d].track == ENG_NO_TRACK);
+            pages_focus(d, 0);
+            loop();
+            later(1500);
+            arm0 = eng_arm_mask_get();
+            tap(BTN_SEL);
+            if (!env_listeners(d)) {
+                check("SEL on a mono engine no keys cable reaches: NO KEYS REACH THIS DEVICE (#215), the armed set kept",
+                      nudged("NO KEYS REACH THIS DEVICE") && eng_arm_mask_get() == arm0);
+                nudge_snap("no-keys-engine");
+                check("  the nudge ends: the screen as a whole redraw", nudge_ends_whole());
+                mono++;
+            } else {
+                check("SEL on a poly engine with no keys cable: it keeps its group, so SEL arms it (D-905)",
+                      env_armed(d) && eng_arm_mask_get() != arm0);
+                tap(BTN_SEL);                           /* (disarmed again: the keys wired) */
+                poly++;
+            }
+        }
+        check("  (each kind seen: Main, a mono engine, a poly engine)", main == 1u && mono == 1u && poly == 1u);
+        tap(BTN_ENV);                                   /* the same on the mono engine's environment row */
+        for (d = 0; d < pg_ndev; d++)
+            if (pg_dev[d].unreached && !env_listeners(d))
+                break;
+        for (k = 0; k < PG_DEVS && pg_cur_dev != d && d < pg_ndev; k++)
+            enc(0, pg_cur_dev < d ? 1 : -1);
         tap(BTN_SEL);
         check("  on its environment row too", page == PAGE_ENV && pg_cur_dev == d && nudged("NO KEYS REACH THIS DEVICE"));
         tap(BTN_HOME);

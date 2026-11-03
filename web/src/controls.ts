@@ -144,7 +144,7 @@ export const CONTROLS: ControlRow[] = [
   { id: 'fine', gesture: { hold: 'HOME', do: [K('1234')] }, does: 'fine adjust', sheet: { device: 50 }, effect: 'fine',
     help: 'fine turns: the least step of the row' },
   { id: 'arm-device', gesture: { do: [B('SEL')] }, does: 'arm this device', when: 'dev_keys', sheet: { device: 60 }, effect: 'arm',
-    help: 'arms the device on screen, so the keys play it, and disarms the others; on a device already armed it takes it out. A device with no keys input says NOTHING HERE TAKES KEYS. Nothing armed: Main’s cables decide what the keys play (KEYS WIRED)' },
+    help: 'arms the device on screen, so the keys play it, and disarms the others; on a device already armed it takes it out. A device with no keys input says NOTHING HERE TAKES KEYS, one whose keys input no cable reaches NO KEYS REACH THIS DEVICE. Nothing armed: Main’s cables decide what the keys play (KEYS WIRED)' },
 
   // ---- ENVIRONMENT: one row per device
   { id: 'env-rows', gesture: { do: [E('SELECT')] }, does: 'device rows', sheet: { env: 10 }, effect: 'focus' },
