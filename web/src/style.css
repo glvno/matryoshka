@@ -1574,7 +1574,7 @@ svg.slack-cable .cable.pending { pointer-events: none; }
   --f-body: var(--ref-coral); --f-edge: var(--ref-rust); --f-face: var(--ref-ivory);
   --f-tray: var(--ref-paper); --f-cap: #fff; --f-cap-ink: var(--ref-ink); --f-drop: color-mix(in srgb, var(--ref-night) 22%, transparent);
   --f-silk: var(--ref-ink); --f-dial: #fff; --f-dial-rim: var(--ref-sand); --f-glow: var(--ref-gold);
-  position: relative; flex: none; width: min(100%, calc((100dvh - 120px) * 1280 / 678), 1280px); aspect-ratio: 1280 / 678; container-type: inline-size;
+  position: relative; flex: none; width: min(100%, calc((100dvh - 120px - var(--strip-room, 0px)) * 1280 / 678), 1280px); aspect-ratio: 1280 / 678; container-type: inline-size;
   border-radius: 2.4cqw; background: var(--f-body); box-shadow: 0 6px 24px var(--shadow), inset 0 0 0 .25cqw var(--f-edge); color: var(--ink); }
 .fm1-body > * { position: absolute; box-sizing: border-box; }
 .fm1-face { border-radius: 1.6cqw; background: var(--f-face); }
@@ -1636,6 +1636,56 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .fm1-follow::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--secondary); }
 .fm1-follow[hidden] { display: none; }
 .fm1-view .unreported { opacity: .35; filter: grayscale(1); }
+
+/* the controls strip (controls-strip.ts, #554): under the emulated FM-1, after Blender's status bar. Big, high-contrast
+   type, readable across a room: the state's name, its controls as the FM-1's sheet draws them (button caps, encoder dots,
+   K1..K4 in their colours, white and black keys), and what K1..K4 do. While a modifier is held it turns gold and shows
+   that modifier's controls */
+#fm1-view:has(> .controls-strip:not([hidden])) { --strip-room: 210px; justify-content: flex-start; }
+.controls-strip { --cs: 19px; --mod: var(--gate); flex: none; box-sizing: border-box; width: min(100%, 1280px); display: grid;
+  grid-template-columns: minmax(170px, 1fr) minmax(0, 3.4fr) minmax(220px, 1.1fr); border: 1px solid var(--line); border-top: 3px solid var(--ink);
+  border-radius: 8px; background: var(--panel); color: var(--ink); font: 500 20px/1.25 'Barlow', system-ui, sans-serif; }
+.controls-strip[hidden] { display: none; }
+.controls-strip.mod { border-top-color: var(--mod); background: color-mix(in oklab, var(--mod) 14%, var(--panel)); }
+.controls-strip > div { min-width: 0; padding: 12px 16px; }
+.controls-strip > div + div { border-left: 1px solid var(--line); }
+.cs-name { font: 700 32px/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+.controls-strip.mod .cs-name { color: var(--mod); }
+.cs-sub { margin-top: 6px; font-size: 14px; line-height: 1.3; color: var(--muted); }
+.cs-from { margin-top: 10px; font: 600 11px/1.2 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.cs-body { display: grid; gap: 10px; align-content: start; }
+.cs-rows { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.cs-everywhere { --cs: 15px; font-size: 16px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.cs-label { font: 600 12px/1 'Barlow', system-ui, sans-serif; letter-spacing: .08em; color: var(--muted); }
+.cs-chip { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 3px 7px; border: 2px solid transparent; border-radius: 6px; }
+.cs-chip.lead { border-color: var(--accent); }
+.controls-strip.mod .cs-chip.lead { border-color: var(--mod); }
+.cs-spec { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.cs-does { font-weight: 600; }
+.cs-cap { display: inline-block; padding: 0 .35em; border: 2px solid var(--muted); border-radius: 4px; background: var(--panel); color: var(--ink);
+  font: 600 var(--cs)/1.35 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .03em; white-space: nowrap; }
+.cs-cap.held { background: var(--mod); border-color: var(--mod); color: var(--ref-night); }
+.cs-t.held { color: var(--mod); font-weight: 700; }
+.cs-enc, .cs-key { display: inline-flex; align-items: center; gap: 5px; font: 600 var(--cs)/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .03em; white-space: nowrap; }
+.cs-knobs { display: inline-flex; gap: 2px; }
+.cs-dot { position: relative; flex: none; display: inline-grid; place-items: center; width: calc(var(--cs) * 1.3); height: calc(var(--cs) * 1.3); border-radius: 50%;
+  background: var(--ref-mist); color: var(--ref-night); font: 700 calc(var(--cs) * .75)/1 'Barlow Condensed', system-ui, sans-serif; }
+.cs-dot::after { content: ''; position: absolute; top: 2px; left: calc(50% - 1px); width: 2px; height: 28%; background: color-mix(in srgb, var(--ref-night) 45%, transparent); }
+/* K1..K4 in the FM-1's knob colours (the panel's own, as in the Emu view's drawing) */
+.cs-dot.k1 { background: var(--ref-coral); } .cs-dot.k2 { background: var(--ref-gold); } .cs-dot.k3 { background: var(--ref-seafoam); } .cs-dot.k4 { background: var(--ref-sand); }
+.cs-key i { display: inline-block; width: calc(var(--cs) * .5); height: calc(var(--cs) * 1.3); border-radius: 2px; }
+.cs-key.white i { background: var(--ref-ivory); border: 1.5px solid var(--muted); }
+.cs-key.black i { background: var(--ref-night); border: 2px solid var(--ref-mist); }
+.cs-t { color: var(--muted); font-size: calc(var(--cs) * .9); }
+.cs-word { font: 700 var(--cs)/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .05em; }
+.cs-kmap { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; align-content: start; text-align: center; }
+.cs-kmap > div { display: grid; justify-items: center; gap: 5px; font: 600 16px/1.1 'Barlow Condensed', system-ui, sans-serif; }
+.cs-kmap .cs-dot { --cs: 24px; }
+.cs-kmap .off { opacity: .35; }
+@media (max-width: 860px) {
+  .controls-strip { grid-template-columns: 1fr; }
+  .controls-strip > div + div { border-left: 0; border-top: 1px solid var(--line); }
+}
 
 /* The status line under the keyboard (statusline.ts): what the pointer is over and what it does, then the FM-1 budget */
 .statusline { grid-column: 1 / -1; grid-row: 4; display: flex; background: var(--panel); align-items: center; gap: 12px; height: 24px; padding: 0 12px; border-top: 1px solid var(--line);
