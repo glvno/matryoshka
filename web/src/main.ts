@@ -3,6 +3,7 @@
 // everything else; then migrate.ts notes which storage keys the page found before anything here writes one
 import './site-move';
 import { renderFm1Help } from './controls-help';
+import { ControlsStrip } from './controls-strip';
 import { addUserPreset, currentValues, exportPresets, importPresets, presetsOf } from './device-presets';
 import { armedFromMask, armMask } from './arm';
 import './factory-presets'; // the factory engines' presets (#193)
@@ -294,7 +295,7 @@ let fromEmu = false;
  *  replayed turn just after it puts the FM-1 tab's copy of the panel back there */
 let focusNow: { device: number; page: number; at: number } | null = null;
 let deviceSlot: { slot: number; name: string } | null = null;
-/** the FM-1's panel state as it last reported it (GUIDE_NOW, #549; #554's GUIDE view follows it), null: not reported */
+/** the FM-1's panel state as it last reported it (GUIDE_NOW, #549; the controls strip follows it, #554), null: not reported */
 let fm1Panel: PanelState | null = null;
 /** the reports are ignored, as from older firmware (the emulator scenarios' check of the old path) */
 let panelIgnored = false;
@@ -708,6 +709,18 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
   used: () => { if (!host.running) void startAudio(); },
 }, emuMaster);
 emu.onReady = () => emuLoad();
+// the controls strip under the emulated FM-1 (#554): the connected FM-1's panel state while it reports it (GUIDE_NOW,
+// feature bit 18), else the Emu view's copy's (older firmware, or no FM-1)
+const controlsStrip = new ControlsStrip();
+emu.below(controlsStrip.el);
+let stripAt = 0;
+emu.onFrame = () => {
+  const now = performance.now();   // (twenty times a second: the copy's state asks its conditions, which read the preset store)
+  if (now - stripAt < 50) return;
+  stripAt = now;
+  if (panelReported() && fm1Panel) controlsStrip.draw(fm1Panel, 'fm1');
+  else controlsStrip.draw(emu.ui?.guide() ?? null, 'emu');
+};
 /** another patch opened (the emulator's focus starts at its first device) */
 let emuFresh = true;
 /** the name of the last patch the emulated FM-1 took (a refused one leaves it showing) */

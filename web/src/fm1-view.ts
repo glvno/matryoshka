@@ -113,6 +113,9 @@ export class Fm1View {
   private follow: HTMLElement;
   private farHeld = new Set<number>();
   private farTimer = 0;
+  private hint: HTMLElement;
+  /** called every frame while the view shows (the controls strip follows the panel's state, #554) */
+  onFrame: () => void = () => {};
   /** called once the module is up (the page then loads the patch into it) */
   onReady: (ui: Fm1Ui) => void = () => {};
 
@@ -157,7 +160,7 @@ export class Fm1View {
     this.chip.hidden = true;
     this.chip.addEventListener('click', () => { this.dismissed = null; this.alert.hidden = false; this.chip.hidden = true; });
     el.insertBefore(this.chip, body);
-    const hint = div('fm1-hint', el);
+    const hint = this.hint = div('fm1-hint', el);
     hint.textContent = 'Drag or scroll an encoder · Shift-click a button to hold it down · the computer keyboard plays the keys too';
     // "Mirroring your FM-1": over the panel, while a connected FM-1 drives it
     this.follow = document.createElement('p');
@@ -165,6 +168,9 @@ export class Fm1View {
     this.follow.hidden = true;
     el.insertBefore(this.follow, this.chip);
   }
+
+  /** an element docked under the panel, above its hint line (the controls strip, #554) */
+  below(e: HTMLElement): void { this.el.insertBefore(e, this.hint); }
 
   /** the module, loaded if it is not yet (following an FM-1 needs it while this tab is hidden too) */
   ready(): Promise<Fm1Ui | null> { return this.ensure(); }
@@ -251,6 +257,7 @@ export class Fm1View {
       ui.tick(performance.now() - this.t0);
       if (ui.takeDirty()) this.paint();
       this.paintLeds();
+      this.onFrame();
       this.frame = requestAnimationFrame(step);
     };
     cancelAnimationFrame(this.frame);

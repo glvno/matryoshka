@@ -74,6 +74,10 @@ Patches other people submitted, from the curated `community.json`, shown in Libr
 
 The FM-1's list of the controls that work in its current state, drawn as a card over the dimmed screen. Pressing OCT- and OCT+ together opens it ([D-245](device-ui.md#D-245)).
 
+### Controls strip
+
+A band under the emulated FM-1 in the [Emulator view](#emulator-view) that shows, in big type, the controls for what the FM-1 is doing now. It is made from the same table as the [controls sheet](#controls-sheet). While a button is held it shows what that button does with the other controls.
+
 ### Course
 
 The whole tutorial as data: every chapter and step in `web/src/tutorial/course.json`.
