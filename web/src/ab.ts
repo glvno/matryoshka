@@ -3,7 +3,7 @@
 // values differ the engines take them as live messages (the voices keep sounding); anything else is a full load.
 
 import { DEFS } from './modules';
-import { sameStructure, type Patch, type ModuleInst } from './patch';
+import { sameStructure, type Patch, type ModuleInst, type Range } from './patch';
 import type { StepNote } from './track';
 
 /** one live change, as the editor's onParam / onAtt / onBypass / onRange / onTrack events carry it */
@@ -11,7 +11,7 @@ export type LiveMsg =
   | { t: 'param'; id: number; name: string; value: number }
   | { t: 'att'; id: number; index: 0 | 1; value: number }
   | { t: 'bypass'; id: number; on: boolean }
-  | { t: 'range'; id: number; index: 0 | 1; name: string; range: [number, number] | null }
+  | { t: 'range'; id: number; index: 0 | 1; name: string; range: Range | null }
   | { t: 'track'; id: number; notes: StepNote[] | undefined };
 
 export interface FlipPlan {
@@ -86,7 +86,7 @@ function moduleChanges(m: ModuleInst, t: ModuleInst): LiveMsg[] {
     const names = new Set([...Object.keys(m.range?.[s] ?? {}), ...Object.keys(t.range?.[s] ?? {})]);
     for (const name of names) {
       const r = t.range?.[s]?.[name] ?? null;
-      if (!same(r, m.range?.[s]?.[name])) out.push({ t: 'range', id: m.id, index, name, range: r ? [r[0], r[1]] : null });
+      if (!same(r, m.range?.[s]?.[name])) out.push({ t: 'range', id: m.id, index, name, range: r ? (r[2] === 1 ? [r[0], r[1], 1] : [r[0], r[1]]) : null });
     }
   }
   if (m.type === 'steps' && !same(m.notes, t.notes)) out.push({ t: 'track', id: m.id, notes: t.notes ? clone(t.notes) : undefined });

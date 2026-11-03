@@ -2,7 +2,7 @@
 // Writes firmware/src/defs.h (module definitions for the C engine) and firmware/src/presets.h (the factory
 // patches as binary). Run from web/:  npx vite-node scripts/export-defs.ts
 import { readFileSync, writeFileSync } from 'node:fs';
-import { ADSR_LONG, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY } from '../src/modules';
+import { ADSR_LONG, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY } from '../src/modules';
 import { encodePatch, TYPE_ORDER, toQ16, VERSION } from '../src/patchbin';
 import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK_NAME_MAX } from '../src/patch';
 import { ACCENT_VEL, TRACK_NOTES_MAX } from '../src/track';
@@ -69,6 +69,7 @@ w(`#define FILTER_OSC_K_Q24 ${Math.round(FILTER_OSC_K * (1 << 24))}   /* the dam
 w(`#define FILTER_OSC_GAIN_Q24 ${Math.round(FILTER_OSC_GAIN * (1 << 24))}   /* the damping's growth per unit of res past it, times the band pass squared */`);
 w(`#define FILTER_OSC_CLIP_Q20 ${FILTER_OSC_CLIP * (1 << 20)}   /* the band-pass state is held to +-this there */`);
 w(`#define FILTER_OSC_SEED_Q20 ${Math.round(FILTER_OSC_SEED * (1 << 20))}   /* the band-pass state a filter at rest starts from */`);
+w(`#define RANGE_T_MAX ${RANGE_T_MAX}   /* the Range module (#526): t within +-this input ranges with clamp off */`);
 w(`#define SHREG_STAGES ${SHREG_STAGES}   /* the Shift register's stages (#438) */`);
 w(`#define SHREG_PAT_SEED 0x${SHREG_PAT_SEED.toString(16)}u   /* mixed with the instance seed: its starting pattern */`);
 w(`#define SHREG_FLIP_SEED 0x${SHREG_FLIP_SEED.toString(16)}u   /* mixed with the instance seed: its flip stream */`);

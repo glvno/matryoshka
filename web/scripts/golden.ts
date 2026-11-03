@@ -426,6 +426,79 @@ kit('comp-thresh', (add, wire) => {
   wire(vca, 'out', out, 'l');
   wire(cmp, 'gt', out, 'r');
 });
+// modulation scaling (#526): the Range module (a curve, unclamped past its input range; clamped and inverted), its curve
+// moved through p1; a depth past 1 (up to 2) on both pins; a bipolar macro range next to a plain one
+kit('range-curve', (add, wire) => {
+  const a = add('lfo', 0, 0, { wave: 0, rate: 3, depth: 1 });
+  const b = add('lfo', 0, 0, { wave: 1, rate: 2.2, depth: 1 });
+  const r1 = add('range', 0, 0, { inlo: -0.5, inhi: 0.5, outlo: -0.4, outhi: 0.6, curve: 0.7, clamp: 0 });
+  const r2 = add('range', 0, 0, { inlo: -0.8, inhi: 0.6, outlo: 0.7, outhi: -0.9, curve: -0.6, clamp: 1 });
+  const out = add('output', 0, 0, { level: 0.6 });
+  wire(a, 'out', r1, 'in');
+  wire(b, 'out', r2, 'in');
+  wire(r1, 'out', out, 'l');
+  wire(r2, 'out', out, 'r');
+});
+kit('range-pitch', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const lfo = add('lfo', 0, 0, { wave: 1, rate: 1.5, depth: 1 });
+  const mod = add('lfo', 0, 0, { wave: 0, rate: 0.7, depth: 1 });
+  const r = add('range', 0, 0, { inlo: -1, inhi: 1, outlo: -0.25, outhi: 1, curve: 0.3, clamp: 0 }, { map: { p1: ['curve'] } });
+  const sum = add('mixer', 0, 0, { l1: 1, l2: 1, l3: 0, l4: 0 });
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.6 });
+  const vca = add('vca', 0, 0);
+  const env = add('adsr', 0, 0, { a: 0.005, d: 0.2, s: 0.7, r: 0.2 });
+  const out = add('output', 0, 0, { level: 0.8 });
+  wire(lfo, 'out', r, 'in');
+  wire(mod, 'out', r, 'p1');
+  wire(kb, 'pitch', sum, 'in1');
+  wire(r, 'out', sum, 'in2');
+  wire(sum, 'out', osc, 'pitch');
+  wire(kb, 'gate', env, 'gate');
+  wire(osc, 'out', vca, 'in');
+  wire(env, 'env', vca, 'cv');
+  wire(vca, 'out', out, 'l');
+  wire(r, 'out', out, 'r');
+});
+kit('depth-2', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const lfo = add('lfo', 0, 0, { wave: 0, rate: 2, depth: 0.8 });
+  const env = add('adsr', 0, 0, { a: 0.01, d: 0.3, s: 0.3, r: 0.2 });
+  const osc = add('osc', 0, 0, { wave: 3, pw: 0.5, level: 0.6 }, { map: { p1: ['pw'] }, att: [-1.75, 1] });
+  const flt = add('filter', 0, 0, { cutoff: 300, res: 0.3 }, { map: { p1: ['cutoff'], p2: ['res'] }, att: [1.9, 0.4] });
+  const vca = add('vca', 0, 0);
+  const out = add('output', 0, 0, { level: 0.8 });
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(kb, 'gate', env, 'gate');
+  wire(lfo, 'out', osc, 'p1');
+  wire(env, 'env', flt, 'p1');
+  wire(lfo, 'out', flt, 'p2');
+  wire(osc, 'out', flt, 'in');
+  wire(flt, 'lp24', vca, 'in');
+  wire(env, 'env', vca, 'cv');
+  wire(vca, 'out', out, 'l');
+});
+kit('range-bipolar', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const lfo = add('lfo', 0, 0, { wave: 0, rate: 1.3, depth: 1 });
+  const env = add('adsr', 0, 0, { a: 0.3, d: 0.4, s: 0.5, r: 0.3 });
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.6 });
+  const flt = add('filter', 0, 0, { cutoff: 1000, res: 0.4 }, { map: { p1: ['cutoff'], p2: ['res'] }, att: [1, 1.5] });
+  const vca = add('vca', 0, 0);
+  const out = add('output', 0, 0, { level: 0.8 });
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(kb, 'gate', env, 'gate');
+  wire(lfo, 'out', flt, 'p1');
+  wire(env, 'env', flt, 'p2');
+  wire(osc, 'out', flt, 'in');
+  wire(flt, 'lp24', vca, 'in');
+  wire(env, 'env', vca, 'cv');
+  wire(vca, 'out', out, 'l');
+});
+{
+  const m = tests['range-bipolar'].modules.find((x) => x.type === 'filter')!;
+  m.range = { p1: { cutoff: [0.2, 0.75, 1] }, p2: { res: [0.1, 0.6] } };
+}
 kit('noise-svf', (add, wire) => {
   const nz = add('noise', 0, 0, { level: 0.6 });
   const flt = add('filter', 0, 0, { cutoff: 900, res: 0.7 });

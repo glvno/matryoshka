@@ -183,6 +183,12 @@ export const OUTPUT_RANGES: Record<string, Record<string, Range>> = {
     dac: (p) => `0..1: stages 1..${Math.round(get(p, 'bits', 8))} as a binary number, stage 1 the highest bit`,
     gate: `${GATE} (1 while the clock is high and stage 1 holds a 1)`,
   },
+  range: {
+    out: (p) => {
+      const lo = get(p, 'outlo', 0), hi = get(p, 'outhi', 1);
+      return get(p, 'clamp', 0) >= 0.5 ? `${span(Math.min(lo, hi), Math.max(lo, hi))} (out low..out high)` : `${span(lo, hi)} for in low..in high, and on past it outside that`;
+    },
+  },
   comp: {
     gt: `${GATE} (1 while a is above b + thresh)`,
     lt: `${GATE} (1 while a is below b + thresh)`,
