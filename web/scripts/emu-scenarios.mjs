@@ -29,7 +29,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { boot, download, downloadEmuMidi, smoke, smokeState } from './branch-firmware.mjs';
-import { DEV_ENV, loadRig, pickRig, rigPage, survey } from './rig-link.mjs';
+import { DEV_ENV, fm1Label, loadRig, pickRig, rigPage, survey } from './rig-link.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const REPO = 'glvno/matryoshka';
@@ -454,7 +454,7 @@ async function main() {
     if (REAL) {
       const s = await pickRig(rp);
       pair = s.rig;
-      console.log(`rig: ${pair.name} (firmware ${pair.info?.version ?? '?'}), ${s.pairs.length - 1} other FM-1${s.pairs.length === 2 ? '' : 's'} left alone`);
+      console.log(`rig: ${fm1Label(pair)};${s.pairs.length - 1} other FM-1${s.pairs.length === 2 ? '' : 's'} left alone`);
       masterMatters = !((pair.info?.features ?? 0) & 1024);   // (protocol.ts FEATURE_PEAK_PRE)
       await context.addInitScript(FILTER_MIDI, { ids: [pair.inId, pair.outId], except: '/__rig' });
     } else {

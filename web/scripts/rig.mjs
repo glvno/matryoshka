@@ -6,7 +6,7 @@
 // Both start a dev server of this checkout and Chrome (headless). check sends only HELLO and PRESET_GET, which change
 // nothing on any FM-1. --port NAME: look only at the MIDI port of that name (the emulator's, `m1emu serve --name`).
 import { chromium } from 'playwright-core';
-import { RIG_FILE, loadRig, newMark, rigPage, sameMark, saveRig, startEditor, survey } from './rig-link.mjs';
+import { RIG_FILE, fm1Label, loadRig, newMark, rigPage, sameMark, saveRig, startEditor, survey } from './rig-link.mjs';
 
 const cmd = process.argv[2];
 const portArg = process.argv.indexOf('--port');
@@ -35,10 +35,10 @@ try {
   const page = await rigPage(context, editor.url);
   const s = await survey(page);
   const TEST = 512;   // INFO feature bit 9 (protocol.ts FEATURE_TEST)
-  const fw = (p) => `firmware ${p.info?.version ?? '?'}, device test mode ${p.info && p.info.features & TEST ? 'yes' : 'no (install a firmware that has it)'}`;
+  const fw = (p) => `${fm1Label(p)}, device test mode ${p.info && p.info.features & TEST ? 'yes' : 'no (install a firmware that has it)'}`;
   if (cmd === 'check') {
     if (!s.pairs.length) console.log('no FM-1 answered');
-    for (const p of s.pairs) console.log(`${p === s.rig ? 'RIG  ' : 'other'} ${p.name}: ${fw(p)}`);
+    for (const p of s.pairs) console.log(`${p === s.rig ? 'RIG  ' : 'other'} ${fw(p)}`);
     if (!loadRig()) console.log(`no rig registered (${RIG_FILE})`);
     else if (!s.rig) console.log('the registered rig is not connected');
     code = s.rig ? 0 : 1;
