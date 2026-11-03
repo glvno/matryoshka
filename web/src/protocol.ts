@@ -87,6 +87,16 @@
 //   55 TEMPO_NOW  mode u8 (0 global, 1 patch), bpm u16 (0: not known yet)   after INFO (the answer to HELLO), and unasked
 //                                                    when the FM-1 changed the setting or the global tempo (its menu, PLAY
 //                                                    held + PRESET, Main's tempo row while global). Feature bit 16
+//   57 KEYS_NOW  key u8 (0 = F3; bit 7 pressed), keys u32 (held after it, bit n key n), held u16 (the buttons held then,
+//               matrix ids)                       unasked (#549, feature bit 18): every key edge the FM-1's panel takes,
+//                                                    while MENU > MIDI OUT is on and the editor said HELLO since power-on.
+//                                                    The editor's copy of the panel logic takes the same edge
+//   58 GUIDE_NOW  state u8 (controls.ts HELP_STATES), page u8, flags u8 (bit0 step record, bit1 a live take, bit2 REC
+//               records, bit3 sandbox mode, bit4 the controls sheet shows, bit5 the quick start, bit6 the sheet's
+//               EVERYWHERE tab, bit7 a step held), device u8, device page u8, track u8, menu tab u8, held u16 (buttons),
+//               conditions u16 (bit c: controls.ts CONDITIONS[c - 1] holds), sheet row u8, octave i8, step record's
+//               cursor u8                         unasked (#549, #554, feature bit 18): the panel's state after HELLO and
+//                                                    whenever it changed (firmware/src/help_ui.c guide_state)
 //   47 PARAM_NOW  module u8, param u8, value i32      unasked: a parameter turned on the FM-1 (K1..K4 on a device page)
 //   48 FOCUS_NOW  device u8, page u8                  unasked: the device page the FM-1 shows now (SELECT / ALGO / HOME)
 //   4C PRESET   index u8, count u8, structure u32, name 16 bytes, n u8   one of the FM-1's user presets (count 0: none)
@@ -103,7 +113,8 @@
 //               test mode, bit10 TEST_PEAK reads before MASTER, bits11..15 read patch formats35..39],
 //               [minimum readable patch format, maximum readable patch format], [firmware major, minor, patch:
 //               0.0.0 a dev or CI build; #216, absent from firmware before 1.8],
-//               [features 16..23: bit16 TEMPO / TEMPO_NOW, bit17 a preset carries up to 176 values]. Also unasked
+//               [features 16..23: bit16 TEMPO / TEMPO_NOW, bit17 a preset carries up to 176 values, bit18 KEYS_NOW /
+//               GUIDE_NOW]. Also unasked
 //               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8)
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
@@ -112,7 +123,7 @@ import type { Range } from './patch';
 import { noteWord, PATTERNS_MAX, SHIFT_MAX, SONG_LEN_MAX, SONGS_MAX, TRACK_NOTES_MAX, wordNote, type SongEntry, type StepNote } from './track';
 
 export const PREFIX = [0x7d, 0x4d, 0x31];
-export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, sandbox: 0x31, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e, testKey: 0x32, testTurn: 0x33, testScreen: 0x34, testPeak: 0x35, screen: 0x50, peak: 0x51, pattern: 0x36, song: 0x37, patternNow: 0x52, songNow: 0x53, armsNow: 0x54, tempo: 0x38, tempoNow: 0x55, locksNow: 0x56 } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
+export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, sandbox: 0x31, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e, testKey: 0x32, testTurn: 0x33, testScreen: 0x34, testPeak: 0x35, screen: 0x50, peak: 0x51, pattern: 0x36, song: 0x37, patternNow: 0x52, songNow: 0x53, armsNow: 0x54, tempo: 0x38, tempoNow: 0x55, locksNow: 0x56, keysNow: 0x57, guideNow: 0x58 } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
 export const PROTO_VERSION = 1;
 export const CHUNK_BYTES = 384;
 export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store', 'the preset store is full', 'no such preset'];
@@ -313,6 +324,9 @@ export const FEATURE_TEMPO = 1 << 16;
 /** INFO feature bit 17: PRESET_PUT / PRESET_DATA carry up to 176 values (the FM-1 stores a longer preset in two slots, #485);
  * older firmware takes 88 */
 export const FEATURE_LONG_PRESETS = 1 << 17;
+/** INFO feature bit 18 (#549): the FM-1 reports the key edges its panel takes (KEYS_NOW) and its panel's state (GUIDE_NOW),
+ * so the editor's copy of the panel logic stays in step; older firmware sends neither */
+export const FEATURE_PANEL_REPORT = 1 << 18;
 /** a preset's values at most over the link: with feature bit 17, and before it */
 export const PRESET_VALUES_MAX = 176;
 export const PRESET_VALUES_OLD = 88;
@@ -469,3 +483,51 @@ export const parsePeak = (p: Parsed): { peak: number; running: boolean; muted: b
  *  Library hides it */
 export const RIG_STRUCTURE = '7e57417e';
 export const RIG_PRESET = 'MATRYOSHKA RIG';
+
+// ---- the panel's reports (#549, #554, feature bit 18): what the FM-1's panel took, and its state
+
+/** a key edge the FM-1's panel took (KEYS_NOW): the key (0 = F3), pressed or let go, the keys held after it (bit n key n),
+ *  the buttons held then (bit: matrix id, fm1-ui.ts BUTTONS) */
+export interface KeysNow { key: number; down: boolean; keys: number; held: number }
+export const parseKeysNow = (payload: number[]): KeysNow | null =>
+  payload.length >= 7
+    ? { key: payload[0] & 0x1f, down: !!(payload[0] & 0x80), keys: (payload[1] | (payload[2] << 8) | (payload[3] << 16) | (payload[4] << 24)) >>> 0,
+        held: payload[5] | (payload[6] << 8) }
+    : null;
+/** the bytes of a GUIDE_NOW (firmware/src/help_ui.c GUIDE_BYTES) */
+export const GUIDE_BYTES = 14;
+/** the FM-1's panel state (GUIDE_NOW), or the FM-1 tab's copy's (fm1-ui.ts Fm1Ui.guide): the same bytes. `state` indexes
+ *  controls.ts HELP_STATES; `conditions` bit c is controls.ts CONDITIONS[c - 1]; `raw` the bytes as sent */
+export interface PanelState {
+  state: number; page: number; stepRecord: boolean; liveTake: boolean; recording: boolean; sandbox: boolean;
+  sheet: boolean; quickStart: boolean; everywhere: boolean; stepHeld: boolean;
+  device: number; devicePage: number; track: number; menuTab: number; held: number; conditions: number;
+  sheetRow: number; octave: number; cursor: number; raw: number[];
+}
+export function parseGuideNow(payload: ArrayLike<number>): PanelState | null {
+  if (payload.length < GUIDE_BYTES) return null;
+  const p = Array.from(payload).slice(0, GUIDE_BYTES);
+  const f = p[2];
+  return {
+    state: p[0], page: p[1], stepRecord: !!(f & 1), liveTake: !!(f & 2), recording: !!(f & 4), sandbox: !!(f & 8),
+    sheet: !!(f & 16), quickStart: !!(f & 32), everywhere: !!(f & 64), stepHeld: !!(f & 128),
+    device: p[3], devicePage: p[4], track: p[5], menuTab: p[6], held: p[7] | (p[8] << 8), conditions: p[9] | (p[10] << 8),
+    sheetRow: p[11], octave: (p[12] << 24) >> 24, cursor: p[13], raw: p,
+  };
+}
+/** where the FM-1 tab's copy of the panel logic is not where the FM-1 is (#549): the fields it puts back with
+ *  Fm1Ui.align (firmware/src/panel.c panel_align), named; [] when in step. The device page in focus counts on a device
+ *  page only, the track on the SEQ page only, the cursor in step record only; REC's recording, a live take and the
+ *  transport are the editor's to set (D-457), the quick start the FM-1's own */
+export function panelOffBy(copy: PanelState, fm1: PanelState): string[] {
+  const off: string[] = [];
+  if (copy.page !== fm1.page) off.push('page');
+  if (fm1.page === 0 && (copy.device !== fm1.device || copy.devicePage !== fm1.devicePage)) off.push('focus');
+  if (fm1.page === 8 && copy.track !== fm1.track) off.push('track');
+  if (fm1.page === 5 && copy.menuTab !== fm1.menuTab) off.push('menu tab');
+  if (copy.stepRecord !== fm1.stepRecord || (fm1.stepRecord && copy.cursor !== fm1.cursor)) off.push('step record');
+  if (copy.sheet !== fm1.sheet || (fm1.sheet && (copy.everywhere !== fm1.everywhere || copy.sheetRow !== fm1.sheetRow))) off.push('sheet');
+  if (copy.held !== fm1.held) off.push('held');
+  if (copy.octave !== fm1.octave) off.push('octave');
+  return off;
+}

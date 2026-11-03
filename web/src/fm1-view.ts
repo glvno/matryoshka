@@ -8,6 +8,7 @@
 import { inlineWordmarks, logoHtml } from './brand';
 import { keyBits } from './emu-keys';
 import { BUTTONS, ENCODERS, Fm1Ui, type Fm1Events, type KeyPlay } from './fm1-ui';
+import type { PanelState } from './protocol';
 
 /** keep a pointer's moves and release on el (a pointer that is already gone cannot be captured: then without) */
 const capture = (el: Element, id: number): void => { try { el.setPointerCapture(id); } catch { /* gone */ } };
@@ -178,7 +179,9 @@ export class Fm1View {
     ui.tick(performance.now() - this.t0);
     if (i.t === 'button') {
       this.btnEls.get(i.id)?.classList.toggle('down', i.down);
-      ui.button(i.id, i.down);
+      // (already so: a key the FM-1 reported with it held came first, keysNow; the press is not played twice)
+      const held = ui.held;
+      if (held === null || ((held >> i.id) & 1) !== (i.down ? 1 : 0)) ui.button(i.id, i.down);
       // a held button needs the clock running (GLO held in the menu, HOME + PRESET, a Page button's hold) while this tab is hidden too
       if (i.down) this.farHeld.add(i.id);
       else this.farHeld.delete(i.id);
@@ -188,6 +191,37 @@ export class Fm1View {
       const e = this.encEls.get(i.n);
       if (e) { e.turns += i.clicks; e.el.style.setProperty('--turn', `${e.turns * 18}deg`); }
     }
+    if (this.shown && ui.takeDirty()) this.paint();
+  }
+
+  /**
+   * A key edge the FM-1's panel took (KEYS_NOW, #549): its keys go through the panel logic here too, so a key its pages
+   * take (a step, the pen, REC + a white key, an arm, a mute) does here what it did there. The buttons it held then come
+   * first, as presses or releases, where they are not so here yet (the FM-1 sends its SysEx ahead of the buttons' MIDI,
+   * whose own press or release is then no news: drive). What the keys play here is not sounded: the FM-1's notes are
+   */
+  keysNow(keys: number, held: number): void {
+    const ui = this.ui;
+    if (!ui) return;
+    ui.tick(performance.now() - this.t0);
+    const was = (ui.held ?? 0) & 0x3fff;
+    for (let id = 0; id < 14; id++) {
+      const b = (held >> id) & 1;
+      if (((was >> id) & 1) === b) continue;
+      this.btnEls.get(id)?.classList.toggle('down', !!b);
+      ui.button(id, !!b);
+    }
+    ui.keys(keys);
+    for (const [k, el] of this.keyEls) el.classList.toggle('down', (keys >> k & 1) !== 0);
+    if (this.shown && ui.takeDirty()) this.paint();
+  }
+
+  /** the FM-1's panel state (GUIDE_NOW): the panel logic here put back there where it is not (#549) */
+  align(fm1: PanelState): void {
+    const ui = this.ui;
+    if (!ui) return;
+    ui.tick(performance.now() - this.t0);
+    ui.align(fm1);
     if (this.shown && ui.takeDirty()) this.paint();
   }
 

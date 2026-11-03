@@ -101,5 +101,6 @@ static uint32_t pages_gen(void) { return m1_gen; }
 #include "seq_ui.c"
 #include "splash.c"
 #include "help_ui.c"         /* the controls sheet and the quick start (#450) */
+#define M1_KEYS_NOW          /* panel.c reports its key edges to the editor (main.c m1_keys_now, #549) */
 #include "panel.c"
 #include "main.c"

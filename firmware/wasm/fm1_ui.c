@@ -120,6 +120,7 @@ static void host_steps_thru(uint32_t module, uint32_t note, uint32_t vel)
 }
 #define eng_note_on ui_note_on
 #define eng_note_off ui_note_off
+#define PANEL_ALIGN                             /* (panel_align: following an FM-1, its GUIDE_NOW puts the copy back in line) */
 #include "../src/panel.c"
 #undef eng_note_on
 #undef eng_note_off
@@ -362,3 +363,20 @@ WASM_EXPORT("fm1w_arm_mask") void fm1w_arm_mask(uint32_t lo, uint32_t hi)
 WASM_EXPORT("fm1w_focus_dev") uint32_t fm1w_focus_dev(void) { return pg_cur_dev; }
 WASM_EXPORT("fm1w_focus_page") uint32_t fm1w_focus_page(void) { return pg_cur_page; }
 WASM_EXPORT("fm1w_octave") int32_t fm1w_octave(void) { return octave; }
+
+/* following an FM-1 (#549): the buttons held here (matrix ids), so the page replays a press or release only when it is
+ * news; the panel's state as GUIDE_NOW reports the FM-1's (help_ui.c guide_state), to compare; and the FM-1's GUIDE_NOW
+ * (written at fm1w_align_buf) taken here, quietly, when the two differ (panel.c panel_align) */
+WASM_EXPORT("fm1w_held") uint32_t fm1w_held(void) { return panel_held; }
+static uint8_t guide_buf[GUIDE_BYTES], align_buf[GUIDE_BYTES];
+WASM_EXPORT("fm1w_guide") uint8_t *fm1w_guide(void)
+{
+    guide_state(guide_buf, 1);
+    return guide_buf;
+}
+WASM_EXPORT("fm1w_align_buf") uint8_t *fm1w_align_buf(void) { return align_buf; }
+WASM_EXPORT("fm1w_align") void fm1w_align(void)
+{
+    panel_align(align_buf);
+    panel_draw();
+}

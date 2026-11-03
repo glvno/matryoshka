@@ -9,7 +9,7 @@ import { deviceView } from './poly';
 /** a module's index on the FM-1: its place in the patch's device form (poly.ts deviceView: editor-only modules such as
  * the Scope are not there, so the editor's order is not the device's); -1 when the device does not have it */
 export const deviceIndex = (patch: Patch, moduleId: number): number => deviceView(patch, true).patch.modules.findIndex((m) => m.id === moduleId);
-import { FEATURE_LONG_PRESETS, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, parseLocksNow, type RawLock, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { FEATURE_LONG_PRESETS, FEATURE_PANEL_REPORT, parseKeysNow, parseGuideNow, type KeysNow, type PanelState, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, parseLocksNow, type RawLock, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 
 /** what connecting the FM-1 does with Live sync (#171): `sync` turns it on without asking, `ask` offers Sync / Not now,
  *  `off` leaves it off (Not now was chosen in this visit) */
@@ -170,7 +170,11 @@ export type DeviceEvent =
   | { kind: 'info' }
   /** GLO > PANEL > TEMPO and the global tempo as the FM-1 has them (TEMPO_NOW, D-907): after HELLO, and when they change
    *  there; bpm 0: not known yet */
-  | { kind: 'tempo'; global: boolean; bpm: number };
+  | { kind: 'tempo'; global: boolean; bpm: number }
+  /** a key edge the FM-1's panel took (KEYS_NOW, #549, feature bit 18) */
+  | ({ kind: 'keys' } & KeysNow)
+  /** the FM-1's panel state (GUIDE_NOW, #549, #554, feature bit 18): after HELLO and whenever it changed */
+  | { kind: 'guide'; state: PanelState };
 
 /** what the editor says when older firmware cannot store a preset whole (more than 88 values, D-476) */
 export const PRESET_NEEDS_UPDATE = 'Update the FM-1 to store this preset on it';
@@ -253,6 +257,10 @@ export class DeviceLink {
       if (pn) return this.onEvent({ kind: 'pattern', ...pn });
       const sn = p?.cmd === CMD.songNow ? parseSongNow(p.payload) : null;
       if (sn) return this.onEvent({ kind: 'song', ...sn });
+      const kn = p?.cmd === CMD.keysNow ? parseKeysNow(p.payload) : null;
+      if (kn) return this.onEvent({ kind: 'keys', ...kn });
+      const gn = p?.cmd === CMD.guideNow ? parseGuideNow(p.payload) : null;
+      if (gn) return this.onEvent({ kind: 'guide', state: gn });
       const tn = p?.cmd === CMD.tempoNow ? parseTempoNow(p.payload) : null;
       if (tn) return this.onEvent({ kind: 'tempo', ...tn });
       if (p?.cmd === CMD.muteNow && p.payload.length >= 2) return this.onEvent({ kind: 'mute', module: p.payload[0], on: !!p.payload[1] });
@@ -339,6 +347,11 @@ export class DeviceLink {
   /** the firmware shares the global tempo (TEMPO / TEMPO_NOW, INFO feature bit 16, D-907) */
   get hasTempo(): boolean {
     return !!(this.info && this.info.features & FEATURE_TEMPO);
+  }
+
+  /** the firmware reports its panel's key edges and state (KEYS_NOW / GUIDE_NOW, INFO feature bit 18, #549) */
+  get reportsPanel(): boolean {
+    return !!(this.info && this.info.features & FEATURE_PANEL_REPORT);
   }
 
   /** GLO > PANEL > TEMPO and the global tempo (bpm 0: leave it), to firmware that shares them */
