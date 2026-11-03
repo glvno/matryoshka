@@ -609,6 +609,13 @@ static uint8_t seq_held_used;                    /* SEQ is held and a black key 
 static uint8_t rec_held_used;                    /* REC is held and a black key armed a track: its release does not record */
 /* the keys as the panel last took them (bit n: key n down) */
 static uint32_t keys_now;
+/* every key edge the panel takes goes to the editor (#549: KEYS_NOW, main.c), so its copy of the panel logic takes the
+ * same keys; a build without the hook (the FM-1 tab's copy, the host tests) reports nothing */
+#ifdef M1_KEYS_NOW
+static void m1_keys_now(uint32_t n, int down);
+#else
+#define m1_keys_now(n, down) ((void)0)
+#endif
 /* one key edge (key n pressed or let go), shifted by the octave, -> the engine, the SEQ page. quick: from inside a redraw
  * (panel_draw's yield, #230), where nothing may draw: a REC / SEQ held + black key (an arm, a mute: a message, a row
  * redrawn) is then not taken (0, nothing done) and waits for the loop's pass. All else here only changes state and asks
@@ -622,6 +629,7 @@ static int panel_key(uint32_t n, int down, int quick)
     if (quick && down && !sb_on && !help_on && seq_black(n) >= 0 && (panel_held & (1u << BTN_REC | 1u << BTN_SEQ)))
         return 0;
     keys_now ^= bit;
+    m1_keys_now(n, down);
     if (down)                                       /* a key while the track's clear asks: not cleared (#231) */
         seq_clear_cancel();
     if (down && sb_on && !cfg.midi_out && !help_on)
@@ -1086,3 +1094,61 @@ static void panel_draw_now(void)
         view_draw(full);
     }
 }
+
+/* The FM-1 tab's copy of the panel logic put back in line with the FM-1 it follows (#549): g is the FM-1's GUIDE_NOW
+ * (help_ui.c guide_state). Only what differs is set, and quietly: no control's edge is played and nothing is told (the
+ * copy never drives the FM-1 or the editor, D-457). The buttons held are taken as they are (one the copy held and the
+ * FM-1 does not: let go without its release's job); the page, the device page in focus, the SEQ page's track and the
+ * menu's tab; step record and its cursor; the controls sheet, its tab and first row; the keys' octave. REC's recording
+ * and the transport follow the editor's (D-457), the quick start is the FM-1's own (after power-on). Only in the builds
+ * that follow an FM-1 (PANEL_ALIGN: the FM-1 tab's copy, the host tests) */
+#ifdef PANEL_ALIGN
+static void panel_align(const uint8_t *g)
+{
+    uint32_t held = ((uint32_t)g[7] | (uint32_t)g[8] << 8) & 0x3FFFu, off = panel_held & ~held;
+    uint32_t want = g[1];
+    int sr = (g[2] & 1u) != 0, sheet = (g[2] & 16u) != 0;
+    if ((held & ~panel_held) >> BTN_SEL & 1u)
+        sel_down_ms = fm1_ms;                       /* (as its press: a key since is the pen) */
+    panel_held = (panel_held & ~0x3FFFu) | held;
+    if (off >> BTN_SEQ & 1u)
+        seq_held_used = 0;
+    if (off >> BTN_REC & 1u)
+        rec_held_used = 0;
+    if (off & OCT_BTNS)
+        oct_used &= (uint8_t)~off;
+    if (sr_on && !sr)                               /* (before the page: step record ends with it) */
+        sr_stop();
+    if (want == PAGE_SEQ && g[5] != seq_trk)
+        seq_select(g[5]);
+    if (want == 0u && (g[3] != pg_cur_dev || g[4] != pg_cur_page) && pages_focus(g[3], g[4]))
+        ui_dirty = 2;
+    if (want == PAGE_MENU)
+        menu_tab = g[6];
+    if (want != page) {
+        if (want == PAGE_SONG)
+            song_prep();
+        else if (want == PAGE_ENV)
+            env_open();
+        if (want != 0u)
+            trail_push();
+        page_show(want);
+    }
+    if (sr && page == PAGE_SEQ && (!sr_on || sr_k != g[13]))
+        sr_start(g[13], -1);
+    if (sheet && help_on != HELP_SHEET)
+        help_open(HELP_SHEET);
+    else if (!sheet && help_on == HELP_SHEET)
+        help_close();
+    if (help_on == HELP_SHEET && (help_tab != ((g[2] & 64u) != 0) || help_top != g[11])) {
+        help_tab = (uint8_t)((g[2] & 64u) != 0);
+        help_top = g[11];
+        help_due = 1;
+    }
+    if (octave != (int8_t)g[12]) {
+        octave = (int8_t)g[12];
+        leds_octave();
+    }
+    ui_dirty = 2;
+}
+#endif

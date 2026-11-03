@@ -16,6 +16,22 @@ static void m1_param_now(uint32_t mod, uint32_t par, int32_t v) { (void)mod; (vo
 static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v) { (void)mod; (void)par; (void)v; }
 static void m1_panel_on(uint32_t mask) { (void)mask; }
 static void m1_patch_bypass(uint32_t mod, int on) { (void)mod; (void)on; }
+/* KEYS_NOW (#549): each key edge panel_key took, with the keys and buttons held then (report_test.h) */
+#define M1_KEYS_NOW
+#define PANEL_ALIGN
+static uint32_t kr_key[64], kr_keys[64], kr_held[64];
+static int kr_down[64], kr_n;
+static uint32_t keys_now;
+static void m1_keys_now(uint32_t n, int down)
+{
+    if (kr_n >= 64)
+        kr_n = 0;
+    kr_key[kr_n] = n;
+    kr_down[kr_n] = down;
+    kr_keys[kr_n] = keys_now;
+    kr_held[kr_n] = panel_held;
+    kr_n++;
+}
 #include "../src/panel.c"
 /* the hooks */
 static int presets_stepped, saved, midi_out;
@@ -381,6 +397,7 @@ static int marks_ok(int mod)
 #include "nudge_test.h"                             /* #450: the nudges (D-249), ENV in the menu */
 #include "steprec_test.h"                           /* #532: step record on the SEQ page */
 #include "controls_test.h"                          /* #553: every row of the controls table driven, its effect checked */
+#include "report_test.h"                            /* #549: KEYS_NOW, GUIDE_NOW, panel_align */
 
 int main(void)
 {
@@ -4240,6 +4257,7 @@ int main(void)
     nudge_suite();
     steprec_suite();
     controls_suite();
+    report_suite();
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
     return failed != 0;
 }
