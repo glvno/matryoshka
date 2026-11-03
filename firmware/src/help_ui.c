@@ -148,8 +148,10 @@ static uint32_t help_rows(uint32_t t, const char **r)
             R("n:PRESET~device presets");
         R("c:1234~adjust values");
         R("k:HOME|t:+|c:1234~fine adjust");
-        if (help_dev_keys())
-            R("k:SEL~arm this device");
+        if (help_dev_keys()) {
+            R("k:SEL~arm only this");
+            R("k:ENV|t:then|k:SEL~arm several");
+        }
         if (store)
             R(E_STORE);
         n += help_patch_rows(r + n);
@@ -162,7 +164,7 @@ static uint32_t help_rows(uint32_t t, const char **r)
             R("n:ALGO~row's presets");
         }
         if (help_dev_keys())
-            R("k:SEL~arm / disarm row");
+            R("k:SEL~add / drop row");
         if (store)
             R(E_STORE);
         break;
