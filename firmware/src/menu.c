@@ -2,15 +2,18 @@
  * Copyright (C) 2026 morgulbrut */
 /* The settings menu, after ui.c, pages_ui.c and sandbox_ui.c, before main.c:
  *
- * MENU (GLO; GLO again or HOME closes it; #395): the FM-1's settings in tabs (MIDI: MIDI CHANNEL, CLOCK IN, MIDI OUT, CLOCK OUT). ALGO steps the tabs: MIDI, PANEL and SYSTEM
+ * MENU (GLO; GLO again or HOME closes it; #395; its controls: web/src/controls.ts, #553): the FM-1's settings in tabs (MIDI: MIDI CHANNEL, CLOCK IN, MIDI OUT, CLOCK OUT). ALGO steps the tabs: MIDI, PANEL and SYSTEM
  * are pages of settings on K1..K4 (SYSTEM: UPDATE MODE, FACTORY RESET, QUICK START), drawn as a device page (pages_ui.c menu_tab_page; the knobs go through panel.c as on
  * a device page); INFO lists readings (drawn here) and GUIDE is a text SELECT scrolls (the ideas, D-248). The values are applied at once
  * and saved with the state (SAVE: main.c save bits; SAVE in the menu closes it). UPDATE MODE and FACTORY RESET (SYSTEM)
  * take a hold: a turn to the right arms the row for MENU_ARM_MS, GLO held 2 s then does it (menu_fire, from panel.c), so
- * a nudge never starts them. SELECT, OCT- and OCT+ do nothing in the menu; PRESET steps the patches as everywhere, ENV opens the environment
+ * a nudge never starts them. SELECT scrolls the GUIDE tab and does nothing on the others; OCT- and OCT+ do nothing in the
+ * menu; PRESET steps the patches, PLAY held + PRESET sets the tempo as everywhere (D-914), ENV opens the environment
  * (D-249).
  *
  * The state is plain bytes the main loop writes. */
+
+#include "controls.h"                              /* the controls table (web/src/controls.ts, #553): the hint line */
 
 #ifndef FELUCCA_VERSION
 #define FELUCCA_VERSION "v?"
@@ -187,7 +190,7 @@ static void menu_draw(int full)
     uint32_t t, r, y = MENU_Y + INFO_N * MENU_PITCH, x = 6;   /* (y: below the last row) */
     if (full || shown != menu_tab) {                /* (a new tab: the page is cleared, the hint changes) */
         lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
-        text_bc(&FONT_S, 8, 222, menu_tab == MT_GUIDE ? "SELECT  scroll    ALGO  tab    GLO  back" : "ALGO  tab    GLO  back", C_HINT, C_BG, 226, TA_LEFT);
+        text_bc(&FONT_S, 8, 222, menu_tab == MT_GUIDE ? HINT_MENU_GUIDE : HINT_MENU_INFO, C_HINT, C_BG, 226, TA_LEFT);   /* (controls.h) */
         shown = menu_tab;
     }
     for (t = 0; t < MT_COUNT; t++) {     /* the tabs: chips, the open one in seafoam (as a device's pages) */

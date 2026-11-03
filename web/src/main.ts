@@ -2,6 +2,7 @@
 // first of all: at the pages.dev address with no data, site-move.ts sends the visitor on to matryoshka.lol and stops
 // everything else; then migrate.ts notes which storage keys the page found before anything here writes one
 import './site-move';
+import { renderFm1Help } from './controls-help';
 import { addUserPreset, currentValues, exportPresets, importPresets, presetsOf } from './device-presets';
 import { armedFromMask, armMask } from './arm';
 import './factory-presets'; // the factory engines' presets (#193)
@@ -1398,6 +1399,7 @@ $('mobile-commands').onclick = () => openPalette();
 $('palette-close').onclick = () => palette.close();
 for (const button of document.querySelectorAll<HTMLButtonElement>('[data-query]')) button.onclick = () => prefill(button.dataset.query!);
 const help = $<HTMLDialogElement>('help');
+renderFm1Help($('help-fm1'));   // (the FM-1's controls, from the controls table: controls.ts, #553)
 $('help-btn').onclick = () => help.showModal();
 
 // A pointer interaction gives focus back to the page, so Space / arrows / Delete reach the shortcuts below, not the control.

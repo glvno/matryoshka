@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { BUTTON_ID, CONDITIONS, CONTROLS, gestureSpec, HELP_STATES, rowSpec, sheetRows } from './controls';
+import { BUTTON_ID, CONDITIONS, CONTROLS, fixedDoes, gestureSpec, gestureText, HELP_STATES, HINTS, hintText, rowSpec, sheetRows, stateRows } from './controls';
+import { fm1HelpGroups } from './controls-help';
+import { FIXED_DOES } from './modules';
 import { BUTTONS } from './fm1-ui';
-import { controlsHeader } from '../scripts/controls-h';
+import { controlsHeader, readmeWithControls } from '../scripts/controls-h';
 
 describe('the controls table (#553)', () => {
   it('names the buttons by the panel\'s matrix ids', () => {
@@ -35,4 +37,30 @@ describe('the controls table (#553)', () => {
   it('refuses a condition help_ui.c does not define', () => {
     expect(() => controlsHeader('', readFileSync(new URL('../../firmware/src/font_bc.h', import.meta.url), 'utf8'))).toThrow(/hc_list/);
   });
+  it('makes the hint lines from the rows\' hints', () => {
+    const h = (id: string): string => hintText(HINTS.find((x) => x.id === id)!);
+    expect(h('step_record')).toBe('KEYS note  LFO rest/tie  K4 move  REC done');
+    expect(h('held_roll')).toBe('HELD: K1 note  K2 vel  K3 chance  ALGO lock');
+    expect(h('menu_guide')).toBe('SELECT scroll  ALGO tab  GLO/HOME back');
+    expect(() => hintText({ id: 'x', items: ['no-such-row'], width: 228 })).toThrow(/no row/);
+  });
+  it('the ? card lists every row of every state, in the sheet\'s order', () => {
+    const groups = fm1HelpGroups();
+    for (const s of HELP_STATES) {
+      const g = groups.find((x) => x.state === s)!;
+      expect(g.rows.map((r) => r.keys), s).toEqual(stateRows(s).map((r) => gestureText(r.gesture)));
+    }
+    expect(groups.find((g) => g.title === 'Everywhere')!.rows.some((r) => r.keys === 'PLAY held + PRESET')).toBe(true);
+  });
+  it('FIXED_DOES says what the table says GLO, SEL and ENV do', () => {
+    expect(FIXED_DOES).toEqual({ glo: fixedDoes('GLO'), scl: fixedDoes('SEL'), env: fixedDoes('ENV') });
+    expect(FIXED_DOES.glo).toContain('run armed row');
+    expect(FIXED_DOES.scl).toContain('arm this device');
+    expect(FIXED_DOES.env).toContain('save device preset');
+  });
+  it('the README\'s list of controls is the table\'s (npm run export-defs)', () => {
+    const readme = readFileSync(new URL('../../README.md', import.meta.url), 'utf8');
+    expect(readmeWithControls(readme)).toBe(readme);
+  });
 });
+

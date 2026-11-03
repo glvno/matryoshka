@@ -18,6 +18,8 @@
  * second (the slot's number, the patch's name, a dash per filled slot), drawn first, the page around it; when it goes,
  * only its band is drawn again. A newer click stops a draw, so turning fast redraws only what is needed. */
 
+#include "controls.h"                              /* the controls table (web/src/controls.ts, #553): the menu's hint */
+
 /* ---- colours (RGB565): web/src/style.css's dark theme */
 #define P_NIGHT 0x10E4u
 #define P_STRIP 0x08A2u
@@ -1784,7 +1786,7 @@ static void menu_chips(void)
         text_bc(&FONT_S, x, y0 + 1u, MENU_TAB_NAME[t], t == menu_tab ? P_NIGHT : P_FAINT, t == menu_tab ? P_SEA : P_NIGHT, w, TA_CENTER);
         x += w + 4u;
     }
-    text_bc(&FONT_S, BAR_X, y0 + 19u, "ALGO: TAB   GLO: BACK   K1-K4: SET", P_FAINT, P_NIGHT, 232u - BAR_X, TA_LEFT);
+    text_bc(&FONT_S, BAR_X, y0 + 19u, HINT_MENU_PAGE, P_FAINT, P_NIGHT, 232u - BAR_X, TA_LEFT);   /* (controls.h, as menu.c's) */
 }
 
 /* SELECT or ALGO moved the focus (panel.c): the page it reached, drawn in passes (pages_staged) */
