@@ -45,7 +45,7 @@ export interface Gesture {
 /** what a row's gesture changes, as panel_test checks it (firmware/test/controls_test.h ctl_effect) */
 export const EFFECTS = [
   'transport', 'record', 'save', 'back', 'menu', 'env', 'seq', 'octave', 'tempo', 'patch', 'store', 'arm', 'mute',
-  'focus', 'device_page', 'leave_list', 'list_page', 'preset', 'param', 'fine',
+  'focus', 'device_page', 'list_back', 'list_page', 'preset', 'param', 'fine',
   'step', 'row', 'roll_view', 'roll_pitch', 'jump', 'track', 'pattern', 'accent', 'tie', 'step_record', 'step_record_at',
   'velocity', 'chance', 'pitch', 'lock_page', 'lock', 'song_page', 'clear', 'steps_page', 'keys_octave',
   'write', 'chord', 'rest', 'cursor', 'back_clear', 'live', 'end',
@@ -63,7 +63,8 @@ export type Condition = (typeof CONDITIONS)[number];
 export interface ControlRow {
   id: string;
   gesture: Gesture;
-  /** the sheet's description (after the gesture); '' none */
+  /** the sheet's description (after the gesture); '' none. `{list}`: the Page button whose list shows, as the top bar
+   * names it (help_ui.c help_fill; in the editor's and the README's words LIST_WORDS) */
   does: string;
   /** a grey line on the sheet before the row ("in the editor:") */
   heading?: string;
@@ -130,11 +131,11 @@ export const CONTROLS: ControlRow[] = [
     help: 'black key n: mutes track n, or unmutes it (any page)' },
 
   // ---- DEVICE: a device page
-  { id: 'list-leave', gesture: { do: [E('SELECT')] }, does: 'leave the list', when: 'list', sheet: { device: 10 }, effect: 'leave_list',
-    help: 'a Page button’s list showing: leaves it (a Page button’s press: the next page of its list; held: its first page while it is down)' },
-  { id: 'devices', gesture: { do: [E('SELECT')] }, does: 'devices', when: '!list', sheet: { device: 11 }, effect: 'focus',
-    help: 'the device in focus: every top-level module or assembly with card rows, Main, each Steps track and the Output' },
-  { id: 'list-pages', gesture: { do: [E('ALGO')] }, does: "the list's pages", when: 'list', sheet: { device: 20 }, effect: 'list_page' },
+  { id: 'list-home', gesture: { do: [B('HOME')] }, does: "leave {list}'s pages", when: 'list', sheet: { device: 5 }, effect: 'list_back',
+    help: 'a Page button’s list showing: leaves it, back to the page shown before the button’s first press (a Page button’s press: the next page of its list; held: its first page while it is down)' },
+  { id: 'devices', gesture: { do: [E('SELECT')] }, does: 'devices', sheet: { device: 10 }, effect: 'focus',
+    help: 'the device in focus: every top-level module or assembly with card rows, Main, each Steps track and the Output (a Page button’s list showing: it closes too)' },
+  { id: 'list-pages', gesture: { do: [E('ALGO')] }, does: "{list}'s pages", when: 'list', sheet: { device: 20 }, effect: 'list_page' },
   { id: 'device-pages', gesture: { do: [E('ALGO')] }, does: 'device pages', when: '!list', sheet: { device: 21 }, effect: 'device_page',
     help: 'the device’s pages of four rows (a Matrix: a page per output, OUT 1..OUT 4, each drawn as the whole grid with its column framed)' },
   { id: 'device-presets', gesture: { do: [E('PRESET')] }, does: 'device presets', when: 'dev_presets', sheet: { device: 30 }, effect: 'preset',
@@ -320,6 +321,13 @@ export function gestureSpec(g: Gesture): string {
   if (g.where) out.push(`t:${g.where}`);
   return out.join('|');
 }
+/** `{list}` in a row's words: the Page button whose list shows (help_ui.c fills in the top bar's name for it) */
+export const LIST_MARK = '{list}';
+/** `{list}` where no button is known (the editor's help, the README) */
+export const LIST_WORDS = 'the Page button';
+/** a row's words with no button known */
+export const doesText = (r: ControlRow): string => r.does.replace(LIST_MARK, LIST_WORDS);
+
 /** a row's line on the sheet: its gesture, '~' and what it does */
 export const rowSpec = (r: ControlRow): string => gestureSpec(r.gesture) + (r.does ? `~${r.does}` : '');
 
@@ -371,7 +379,7 @@ export function gestureText(g: Gesture): string {
 /** where a row applies, in words ('' everywhere it is listed) */
 const whenText = (r: ControlRow): string => (r.when && !r.when.startsWith('!') ? ` (${CONDITION_TEXT[r.when as Condition]})` : '');
 /** a row's words for the editor: what it does, at length, and where it applies */
-export const rowHelp = (r: ControlRow): string => (r.help ?? r.does) + whenText(r);
+export const rowHelp = (r: ControlRow): string => (r.help ?? doesText(r)) + whenText(r);
 
 /** what the FM-1 does that is no single control, for the editor's help: the sheet, the quick start, the keys */
 export const FM1_NOTES: { keys: string; text: string }[] = [
@@ -404,7 +412,7 @@ export function fixedDoes(b: Button): string {
     const how = g.hold === b ? `held + ${gestureText({ ...g, hold: undefined })}: ` : g.how === 'hold 2 s' ? 'held 2 s: '
       : g.how === 'tap' ? 'tapped: ' : g.hold ? `with ${g.hold === 'step' ? 'a held step' : `${g.hold} held`}: ` : '';
     const where = Object.keys(r.sheet ?? {}).map((s) => HELP_STATE_NAME[s as HelpState].toLowerCase());
-    return `${how}${r.does}${where.length ? ` (${where.join(', ')})` : ''}`;
+    return `${how}${doesText(r)}${where.length ? ` (${where.join(', ')})` : ''}`;
   }).join('; ');
 }
 
@@ -412,7 +420,7 @@ export const README_START = '<!-- controls: generated from web/src/controls.ts b
 export const README_END = '<!-- controls: end -->';
 /** the README's list of the FM-1's controls, between README_START and README_END (export-defs writes it, a test checks it) */
 export function readmeControls(): string {
-  const line = (r: ControlRow): string => `**${gestureText(r.gesture)}** ${r.does || 'go to the editor'}${whenText(r)}`;
+  const line = (r: ControlRow): string => `**${gestureText(r.gesture)}** ${doesText(r) || 'go to the editor'}${whenText(r)}`;
   const L = [README_START, '', `* **Everywhere:** ${everywhereRows().map((r) => line(r) + onlyIn(r)).join(' · ')}`];
   for (const s of HELP_STATES) L.push(`* **${HELP_STATE_TITLE[s][0].toUpperCase()}${HELP_STATE_TITLE[s].slice(1)}:** ${stateRows(s).map(line).join(' · ')}`);
   L.push('', README_END);

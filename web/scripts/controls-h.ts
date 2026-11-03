@@ -3,7 +3,7 @@
 // (help_ui.c hc_<name>), the pages' hint lines, and for firmware/test/controls_test.h each row's gesture and effect.
 // Checked here: each line fits the sheet's card (help_ui.c help_row's layout in FONT_S), each hint line its field, each
 // condition is a function in help_ui.c, no tab holds more lines than the sheet takes (HC_ROWS).
-import { BUTTON_ID, CONDITIONS, CONTROLS, EFFECTS, ENCODER_ID, HELP_STATES, HELP_STATE_NAME, HINT_ROWS, HINTS, hintText, PATCH_BUTTONS, README_END, README_START, readmeControls, rowSpec, sheetRows, type ControlRow, type Part } from '../src/controls';
+import { BUTTON_ID, CONDITIONS, CONTROLS, EFFECTS, ENCODER_ID, HELP_STATES, HELP_STATE_NAME, HINT_ROWS, HINTS, hintText, LIST_MARK, PATCH_BUTTONS, README_END, README_START, readmeControls, rowSpec, sheetRows, type ControlRow, type Part } from '../src/controls';
 
 /** FONT_S's advance per ASCII character (firmware/src/font_bc.h font_s_g, map 0x20.. in order) */
 export function fontAdvances(fontH: string): number[] {
@@ -32,6 +32,7 @@ export function lineWidth(spec: string, adv: number[]): { parts: number; right: 
 const C_ROWS = 24;          // help_ui.c HC_ROWS: the most lines a tab holds
 const RIGHT = 222;          // a line's last pixel column (the card's inside, help_row's text field)
 const PATCH_ROWS = 4;       // help_patch_rows: at most four
+const PAGE_BUTTONS = ['FX', 'LFO', 'EDIT', 'ARP'];   // the buttons a Page button's list can be on (help_ui.c help_fill names one)
 
 const cname = (s: string): string => s.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 
@@ -45,7 +46,10 @@ export function controlsHeader(helpUi: string, fontH: string): string {
     ids.add(r.id);
     if (!r.sheet && !r.everywhere) throw new Error(`controls: ${r.id} shows nowhere`);
     if (r.gesture.where && r.gesture.where !== 'on END') throw new Error(`controls: ${r.id}: where "${r.gesture.where}" is not known to controls_test.h`);
-    for (const line of [rowSpec(r), ...(r.heading ? [`t:${r.heading}`] : [])]) {
+    // (`{list}`: checked with each patch button's name; help_fill puts a label that does not fit back to the name)
+    const lines = [rowSpec(r), ...(r.heading ? [`t:${r.heading}`] : [])].flatMap((l) => (l.includes(LIST_MARK) ? PAGE_BUTTONS.map((b) => l.replace(LIST_MARK, b)) : [l]));
+    if (r.does.split(LIST_MARK).length > 2) throw new Error(`controls: ${r.id}: more than one ${LIST_MARK}`);
+    for (const line of lines) {
       const w = lineWidth(line, adv);
       if (w.right > RIGHT) throw new Error(`controls: ${r.id}: "${line}" is ${w.right - RIGHT} px wider than the sheet`);
     }
