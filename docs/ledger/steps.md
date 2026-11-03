@@ -81,5 +81,4 @@ Steps is the sequencer for melodies, chords and drums: a **Steps track** holds s
 
 - A master length for tracks of different lengths, so polymetric patches switch patterns and song entries together — issue #375.
 
-- How to arm an engine on the FM-1 when no keys cable from Main reaches it — issue #191
 - Whether the editor's arming reaches the FM-1 over the USB link (the FM-1's reaches the editor by [D-802](steps.md#D-802), proposed) — issue #191

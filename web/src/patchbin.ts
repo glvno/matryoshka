@@ -54,7 +54,9 @@
 //                parameters the row sets to its value, then u8 k (0..ROW_NAMES_MAX), k texts: its positions' names (a
 //                Selector's, position 1 first; capitals on the FM-1)
 //   with flag bit 8 (format 34; with the device pages, right after them): the device extras: u8 device count, then per
-//                device u8 track (the device index of the Steps track that drives it, pages.ts Device.track; 0xFF none),
+//                device u8 track (the device index of the Steps track that drives it, pages.ts Device.track; 0xFF none;
+//                0xFE none, and it is an engine no keys cable reaches, KEYS_UNREACHED, #215: firmware before 1.9 reads it as
+//                none, so any format carries it),
 //                u32 LE structure (an assembly's fingerprint, structure.ts; 0 a plain module), the name of the preset it was
 //                set to (a text, AssemblyInst.preset; empty none), u8 n and n (u8 module index, u8 parameter byte as a page
 //                row's): its card rows in canonical order (structure.ts rowOrder: the order of a preset's values; 0xFF 0xFF a
@@ -80,7 +82,7 @@ import { KIND_CODE, kindOf, mainOf, switches, toggleEngaged, toggleTargets } fro
 import { EDITOR_ONLY, flawOf, hasMorph, isBipolar, MAX_MODULES, MAX_PARTS, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ParamDef, type Patch } from './patch';
 import { isShortNote, noteWord, shortWord, type StepNote } from './track';
 import { lockPlan, PATCH_LOCKS_MAX } from './locks';
-import { deviceView, keysInto, MAX_POLY, type DeviceGroup } from './poly';
+import { deviceView, keyed, keysInto, MAX_POLY, type DeviceGroup } from './poly';
 import { devicesOf, NAME_MAX, type Device } from './pages';
 import { allModules, assemblyById, ROW_NAMES_MAX } from './assembly';
 import { structureAndRows } from './structure';
@@ -416,6 +418,21 @@ export function deviceRecord(devs: Device[], p: Patch): number[] {
   return out;
 }
 
+/** the device extras' track byte of an engine that no keys cable reaches and no track drives (#215, D-905): the FM-1 says
+ * NO KEYS REACH THIS DEVICE on SEL there, not NOTHING HERE TAKES KEYS. Firmware before 1.9 finds no device with this
+ * index, so it reads it as no track (ENG_NO_TRACK), the same as 0xFF: the byte needs no newer format */
+export const KEYS_UNREACHED = 0xfe;
+/** an engine device (engines.ts instIsEngine) whose keys input no keys cable reaches: none of its Voicings has a key source
+ * (poly.ts keyed: Main's keys or a Steps track, directly or through an Arpeggiator) and none of its Drum maps has one
+ * (keysInto). The device form leaves such a Voicing out, so without this mark the FM-1 cannot tell it from a device
+ * with no keys input */
+export function keysUnreached(source: Patch, d: Device): boolean {
+  const a = d.asm === undefined ? undefined : assemblyById(source, d.asm);
+  if (!a || !instIsEngine(source, a)) return false;
+  const ids = new Set(allModules(source, a));
+  return !source.modules.some((m) => ids.has(m.id) && ((m.type === 'alloc' && keyed(source, m)) || (m.type === 'drummap' && keysInto(source, m) !== null)));
+}
+
 /** the device extras section's bytes (see the top of this file); `dev` is the device form (its module indices) */
 export function extrasRecord(devs: Device[], source: Patch, dev: Patch = deviceView(source, true).patch, names?: string[]): number[] {
   if (!devs.length) return [];
@@ -427,7 +444,7 @@ export function extrasRecord(devs: Device[], source: Patch, dev: Patch = deviceV
     const sr = a ? structureAndRows(source, a) : undefined;
     const h = sr ? parseInt(sr.structure, 16) >>> 0 : 0;
     const name = names ? names[di] : deviceText(a?.preset ?? '');
-    out.push(t < 0 ? 0xff : t, h & 0xff, (h >>> 8) & 0xff, (h >>> 16) & 0xff, h >>> 24, name.length, ...Array.from(name, (c) => c.charCodeAt(0)));
+    out.push(t >= 0 ? t : keysUnreached(source, d) ? KEYS_UNREACHED : 0xff, h & 0xff, (h >>> 8) & 0xff, (h >>> 16) & 0xff, h >>> 24, name.length, ...Array.from(name, (c) => c.charCodeAt(0)));
     const rows = sr ? sr.rows : [];
     out.push(rows.length);
     for (const r of rows) {

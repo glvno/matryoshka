@@ -51,7 +51,7 @@ typedef struct {
     uint8_t bin, track;                                 /* its index in the binary's device list; the device that drives it (0xFF none) */
     uint32_t structure;                                 /* format 34's extras: an assembly's structure (0 none) */
     const uint8_t *rows;                                /* its card rows in canonical order (module, parameter byte) pairs */
-    uint8_t nrows, nmem;
+    uint8_t nrows, nmem, unreached;                     /* unreached: an engine no keys cable reaches (ENG_KEYS_UNREACHED, #215) */
     const uint8_t *mem;                                 /* the modules it is made of (#191: arming it arms them) */
 } pdev_t;
 typedef struct {
@@ -258,6 +258,7 @@ static void pages_extras(const uint8_t *p, uint32_t len)
         pg_dev[i].nrows = 0;
         pg_dev[i].mem = 0;
         pg_dev[i].nmem = 0;
+        pg_dev[i].unreached = 0;
         if (pg_names_fresh)
             pg_pname[i][0] = 0;
     }
@@ -274,6 +275,7 @@ static void pages_extras(const uint8_t *p, uint32_t len)
             for (j = 0; j < pg_ndev && (tr == 0xFFu || pg_dev[j].bin != tr); j++)
                 ;
             pg_dev[i].track = (uint8_t)(j < pg_ndev ? j : 0xFFu);
+            pg_dev[i].unreached = tr == ENG_KEYS_UNREACHED;
             pg_dev[i].structure = (uint32_t)p[at + 1u] | (uint32_t)p[at + 2u] << 8 | (uint32_t)p[at + 3u] << 16 | (uint32_t)p[at + 4u] << 24;
             if (pg_names_fresh) {
                 for (j = 0; j < nl && j < 16u; j++)
@@ -2010,12 +2012,14 @@ static uint64_t env_listeners(uint32_t d)
 
 static int env_armed(uint32_t d) { return (eng_arm_mask_get() & env_listeners(d)) != 0; }
 
-/* device d has a keys input that the binary still shows when no cable reaches it: a Drum map, whose keys source is then
- * none (#215; SEL says so, dev_arm, D-249). A Voicing no keys cable reaches is left out of the binary (poly.ts deviceView),
- * so such an engine reads as a device with no keys input (D-905). An Arpeggiator alone is no keys input that arms (D-235) */
+/* device d has a keys input that no cable may reach (#215; SEL says so, dev_arm, D-249): a Drum map, whose keys source is
+ * then none, or an engine the editor marks (the device extras' ENG_KEYS_UNREACHED, D-905): its Voicing, no keys cable
+ * reaching it, is left out of the binary (poly.ts deviceView). An Arpeggiator alone is no keys input that arms (D-235) */
 static int dev_keys_input(uint32_t d)
 {
     uint32_t k;
+    if (pg_dev[d].unreached)
+        return 1;
     if (pg_dev[d].mem) {
         for (k = 0; k < pg_dev[d].nmem; k++)
             if (eng_type(pg_dev[d].mem[k]) == T_DRUMMAP)
