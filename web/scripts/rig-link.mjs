@@ -17,6 +17,17 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 export const DEV_ENV = { ...process.env, MATRYOSHKA_BUNDLED_FIRMWARE: '1' };
 export const RIG_FILE = process.env.MATRYOSHKA_RIG_FILE ?? join(homedir(), '.config/matryoshka/rig.json');
 
+/** an FM-1 as the scripts print it: the firmware's version from INFO (protocol.ts Info.firmware; 0.0.0 a dev or CI build,
+ *  absent before 1.8), the link protocol apart, and the port name as a port: macOS caches a port's name, so a rig that
+ *  once ran Felucca can still show "Felucca" whatever it runs now */
+export function fm1Label(p) {
+  const f = p.info?.firmware;
+  const fw = !p.info ? 'firmware ? (no INFO)'
+    : !f ? 'firmware before 1.8'
+    : f.major || f.minor || f.patch ? `firmware ${f.major}.${f.minor}.${f.patch}` : 'firmware 0.0.0 (dev / CI build)';
+  return `${fw}, protocol ${p.info?.version ?? '?'}, port ${p.name}`;
+}
+
 /** the registered rig's mark ({ values, registered }), or null */
 export function loadRig() {
   if (!existsSync(RIG_FILE)) return null;
