@@ -1458,8 +1458,8 @@ window.addEventListener('keydown', (e) => {
     // nothing selected: Left / Right pick the device on Main's knobs (the FM-1's SELECT), Up / Down its page (ALGO) (#154)
     if (!done && !mod && (k === 'ArrowLeft' || k === 'ArrowRight')) done = editor.stepDevice(k === 'ArrowRight' ? 1 : -1);
     else if (!done && !mod && (k === 'ArrowUp' || k === 'ArrowDown')) done = editor.stepPage(k === 'ArrowDown' ? 1 : -1);
-  } else if (!mod && !e.altKey && KNOB_KEYS.includes(k)) {
-    heldKnob = KNOB_KEYS.indexOf(k);
+  } else if (!mod && !e.altKey && knobOf(e) >= 0) {
+    heldKnob = knobOf(e);
     done = true;
   }
   if (done) {
@@ -1469,23 +1469,25 @@ window.addEventListener('keydown', (e) => {
 }, true);
 // Hold 1..4 and turn the wheel: K1..K4 of the page on Main's knobs. The wheel's delta is gathered into notches (a hundredth
 // of the row's range each), so a trackpad's small steps add up the same way as a mouse wheel's clicks.
-const KNOB_KEYS = ['1', '2', '3', '4'];
+/** the knob a key 1..4 holds (by the key's place, so Shift + 1, which types !, still holds K1); -1 for other keys */
+const knobOf = (e: KeyboardEvent): number => ['1', '2', '3', '4'].indexOf(e.code.replace(/^(Digit|Numpad)/, ''));
 const WHEEL_NOTCH = 40;
 let heldKnob = -1;
 let knobWheel = 0;
 document.addEventListener('keyup', (e) => {
-  if (KNOB_KEYS.indexOf(e.key) === heldKnob) (heldKnob = -1), (knobWheel = 0);
+  if (knobOf(e) === heldKnob) (heldKnob = -1), (knobWheel = 0);
 }, true);
 window.addEventListener('blur', () => (heldKnob = -1));
 window.addEventListener('wheel', (e) => {
   if (heldKnob < 0 || currentTab !== 'patch' || e.ctrlKey || e.metaKey) return;
   e.preventDefault();
   e.stopImmediatePropagation();
-  knobWheel -= e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY * WHEEL_NOTCH / 3 : e.deltaY;
+  const delta = e.deltaY || (e.shiftKey ? e.deltaX : 0);   // (Shift turns a mouse wheel sideways on a Mac)
+  knobWheel -= e.deltaMode === WheelEvent.DOM_DELTA_LINE ? delta * WHEEL_NOTCH / 3 : delta;
   const notches = Math.trunc(knobWheel / WHEEL_NOTCH);
   if (!notches) return;
   knobWheel -= notches * WHEEL_NOTCH;
-  editor.nudgeKnob(heldKnob, notches);
+  editor.nudgeKnob(heldKnob, notches, e.shiftKey);   // Shift: a tenth of a step each (#538)
 }, { capture: true, passive: false });
 // Copy / cut / paste of the selection (clipboard.ts, #92): through the browser's copy / paste events, which reach the system
 // clipboard without a permission prompt; a clip is JSON, so it survives switching patches or tabs. `lastClip` is the in-app
