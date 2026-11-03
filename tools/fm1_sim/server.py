@@ -92,7 +92,11 @@ def run(lines, tool, args):
     if os.path.exists(settled_ppm) and open(settled_ppm, "rb").read() != open(ppm, "rb").read():
         settled_shot = os.path.join(SESSION, "screen-%03d-settled.png" % step)
         settled = png(settled_ppm, settled_shot)
-    text = open(heard).read().strip() if lines and lines[-1].startswith("listen") and os.path.exists(heard) else ""
+    listened = sum(1 for ln in lines if ln.startswith("listen"))
+    text = ""
+    if listened and os.path.exists(heard):              # this action's listen: the last block of the replay's heard file
+        blocks = open(heard).read().strip().split("notes:")
+        text = ("notes:" + blocks[-1]).strip() if len(blocks) > 1 else ""
     with open(LOG, "a") as f:
         f.write(json.dumps({"step": step, "tool": tool, "args": args, "screen": os.path.basename(shot),
                             "settled": "screen-%03d-settled.png" % step if settled else None, "heard": text,
@@ -165,8 +169,8 @@ def call(tool, a):
         return [{"type": "text", "text": "Noted. Stop here."}]
     m = {"press": lambda: ["press " + a["button"]], "hold": lambda: ["down " + a["button"]],
          "release": lambda: ["up " + a["button"]], "turn": lambda: ["turn %s %d" % (a["knob"], a["clicks"])],
-         "play_key": lambda: ["keydown %d" % a["key"], "wait 150", "keyup %d" % a["key"]],
-         "key_down": lambda: ["keydown %d" % a["key"]], "key_up": lambda: ["keyup %d" % a["key"]],
+         "play_key": lambda: ["keydown %d" % a["key"], "listen 150", "keyup %d" % a["key"]],   # (heard while pressed)
+         "key_down": lambda: ["keydown %d" % a["key"], "listen 300"], "key_up": lambda: ["keyup %d" % a["key"]],
          "wait": lambda: ["wait %d" % a["ms"]], "listen": lambda: ["listen %d" % a["ms"]]}
     if tool not in m:
         raise ValueError("no such tool")
@@ -174,7 +178,7 @@ def call(tool, a):
         return [{"type": "text", "text": "Say what you expect first (the expect field), then act."}]
     data, settled, text, rc = run(m[tool](), tool, a)
     out = screens(data, settled)
-    if tool == "listen":
+    if tool in ("listen", "play_key", "key_down"):
         out.append({"type": "text", "text": heard_words(text)})
     if rc == 3:
         out.append({"type": "text", "text": "(That action could not be done.)"})

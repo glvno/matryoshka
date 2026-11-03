@@ -28,7 +28,7 @@ def tune_match(notes):
     return best
 
 
-SIM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "build", "fm1_sim", "fm1_sim")
+SIM = os.environ.get("FM1_SIM_BIN") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "build", "fm1_sim", "fm1_sim")   # FM1_SIM_BIN: another build (a variant)
 
 
 def heard_after(d, st):
