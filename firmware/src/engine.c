@@ -6663,6 +6663,50 @@ static void m_range(const node_t *nd, inst_t *it, uint32_t n)
     (void)nd;
 }
 
+/* Matrix (#525; modules.ts matrix): out o = the sum of in i x pin (i, o) (Q16, -1..1), the pins at block rate as a Mixer's
+ * levels. Only outputs something reads are written, and of each only the inputs patched with a pin off 0 are read, so a
+ * sparse matrix costs what its pins in use cost. */
+#define MATRIX_N MATRIX_NOUT
+static void m_matrix(const node_t *nd, inst_t *it, uint32_t n)
+{
+    uint32_t i, o, k, m;
+    for (o = 0; o < MATRIX_N; o++) {
+        esig_t *out = it->out[MATRIX_O_OUT1 + o];
+        const esig_t *src[MATRIX_N];
+        int32_t g[MATRIX_N];
+        if (out == dummy_out)
+            continue;
+        for (m = 0, k = 0; k < MATRIX_N; k++) {
+            int32_t a = EF(it, MATRIX_P_I1O1 + o * MATRIX_N + k);
+            if (a && (nd->conn >> (MATRIX_I_IN1 + k)) & 1u) {
+                src[m] = it->in[MATRIX_I_IN1 + k];
+                g[m++] = a;
+            }
+        }
+        switch (m) {
+        case 0:
+            fill(out, 0, n);
+            break;
+        case 1:
+            for (i = 0; i < n; i++)
+                out[i] = mul16(src[0][i], g[0]);
+            break;
+        case 2:
+            for (i = 0; i < n; i++)
+                out[i] = mul16(src[0][i], g[0]) + mul16(src[1][i], g[1]);
+            break;
+        default:
+            for (i = 0; i < n; i++) {
+                int32_t v = mul16(src[0][i], g[0]) + mul16(src[1][i], g[1]) + mul16(src[2][i], g[2]);
+                if (m > 3u)
+                    v += mul16(src[3][i], g[3]);
+                out[i] = v;
+            }
+            break;
+        }
+    }
+}
+
 /* the quantizer's scales (modules.ts SCALES), semitones above the root */
 static const uint8_t SC_CHROM[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, SC_MAJ[] = {0, 2, 4, 5, 7, 9, 11}, SC_MIN[] = {0, 2, 3, 5, 7, 8, 10};
 static const uint8_t SC_PMAJ[] = {0, 2, 4, 7, 9}, SC_PMIN[] = {0, 3, 5, 7, 10}, SC_DOR[] = {0, 2, 3, 5, 7, 9, 10}, SC_MIX[] = {0, 2, 4, 5, 7, 9, 10};
@@ -7105,6 +7149,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_SHREG: m_shreg(nd, it, n); break;
     case T_COMP: m_comp(nd, it, n); break;
     case T_RANGE: m_range(nd, it, n); break;
+    case T_MATRIX: m_matrix(nd, it, n); break;
     case T_QUANT: m_quant(nd, it, n); break;
     case T_PULSE: m_pulse(nd, it, n); break;
     case T_PAN: m_pan(nd, it, n); break;

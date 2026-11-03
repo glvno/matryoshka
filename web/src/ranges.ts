@@ -189,6 +189,10 @@ export const OUTPUT_RANGES: Record<string, Record<string, Range>> = {
       return get(p, 'clamp', 0) >= 0.5 ? `${span(Math.min(lo, hi), Math.max(lo, hi))} (out low..out high)` : `${span(lo, hi)} for in low..in high, and on past it outside that`;
     },
   },
+  matrix: Object.fromEntries([1, 2, 3, 4].map((o) => [`out${o}`, (p: Params) => {
+    const sum = [1, 2, 3, 4].reduce((s, i) => s + Math.abs(get(p, `i${i}o${o}`, 0)), 0);
+    return `the inputs × their pins into out ${o}, summed; four ±1 inputs give up to ${sym(sum)}`;
+  }])),
   comp: {
     gt: `${GATE} (1 while a is above b + thresh)`,
     lt: `${GATE} (1 while a is below b + thresh)`,

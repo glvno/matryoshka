@@ -499,6 +499,54 @@ kit('range-bipolar', (add, wire) => {
   const m = tests['range-bipolar'].modules.find((x) => x.type === 'filter')!;
   m.range = { p1: { cutoff: [0.2, 0.75, 1] }, p2: { res: [0.1, 0.6] } };
 }
+// the Matrix (#525): two oscillators and a noise into four outputs, pins of both signs, an empty input and an output read
+// twice; a pin moved by an LFO through p1; the matrix routing control voltage (an LFO and an envelope into a pitch and a
+// cutoff)
+kit('matrix-audio', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const a = add('osc', 0, 0, { wave: 2, level: 0.6 });
+  const b = add('osc', 0, 0, { wave: 0, level: 0.7, coarse: 7 });
+  const nz = add('noise', 0, 0, { level: 0.3 });
+  const lfo = add('lfo', 0, 0, { wave: 1, rate: 1.7, depth: 1 });
+  const m = add('matrix', 0, 0, { i1o1: 0.5, i2o1: -0.75, i3o1: 0.2, i1o2: -0.3, i2o2: 0.6, i4o2: 1, i3o3: 1, i1o4: 0.125, i2o4: 0.25, i3o4: -0.5 }, { map: { p1: ['i2o2', 'i1o4'] }, att: [0.8, 0] });
+  const mix = add('mixer', 0, 0, { l1: 0.5, l2: 0.5, l3: 0.4, l4: 0 });
+  const out = add('output', 0, 0, { level: 0.7 });
+  wire(kb, 'pitch', a, 'pitch');
+  wire(kb, 'pitch', b, 'pitch');
+  wire(a, 'out', m, 'in1');
+  wire(b, 'out', m, 'in2');
+  wire(nz, 'out', m, 'in3');
+  wire(lfo, 'out', m, 'p1');
+  wire(m, 'out1', out, 'l');
+  wire(m, 'out2', mix, 'in1');
+  wire(m, 'out3', mix, 'in2');
+  wire(m, 'out4', mix, 'in3');
+  wire(m, 'out2', mix, 'in4');
+  wire(mix, 'out', out, 'r');
+});
+kit('matrix-cv', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const lfo = add('lfo', 0, 0, { wave: 0, rate: 4, depth: 1 });
+  const env = add('adsr', 0, 0, { a: 0.02, d: 0.3, s: 0.4, r: 0.2 });
+  const m = add('matrix', 0, 0, { i1o1: 1, i2o1: 0.1, i3o2: 1, i2o2: 0.5, i1o3: -1 });
+  const sum = add('mixer', 0, 0, { l1: 1, l2: 0.25, l3: 0, l4: 0 });
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.6 });
+  const flt = add('filter', 0, 0, { cutoff: 600, res: 0.5 }, { map: { p1: ['cutoff'] }, att: [0.6, 0] });
+  const vca = add('vca', 0, 0);
+  const out = add('output', 0, 0, { level: 0.8 });
+  wire(kb, 'gate', env, 'gate');
+  wire(kb, 'pitch', m, 'in1');
+  wire(lfo, 'out', m, 'in2');
+  wire(env, 'env', m, 'in3');
+  wire(m, 'out1', sum, 'in1');
+  wire(m, 'out2', flt, 'p1');
+  wire(m, 'out3', sum, 'in2');
+  wire(sum, 'out', osc, 'pitch');
+  wire(osc, 'out', flt, 'in');
+  wire(flt, 'lp24', vca, 'in');
+  wire(env, 'env', vca, 'cv');
+  wire(vca, 'out', out, 'l');
+});
 kit('noise-svf', (add, wire) => {
   const nz = add('noise', 0, 0, { level: 0.6 });
   const flt = add('filter', 0, 0, { cutoff: 900, res: 0.7 });
@@ -2994,7 +3042,7 @@ events['808 Kit'] = events['909 Kit'];
 if (process.argv.includes('--panel-fixtures')) {
   const out = new URL('../../build/panel-fixtures/', import.meta.url);
   mkdirSync(out, { recursive: true });
-  for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns'])
+  for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns', 'matrix-audio'])
     writeFileSync(new URL(`${name}.m1p`, out), encodePatch(tests[name], true));
   {
     // SEL's nudges (D-249, #215): arm-set with no keys cable into the second Voicing or the Drum map. The Drum map keeps a

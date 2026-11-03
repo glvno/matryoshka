@@ -43,7 +43,7 @@ function states(o: Record<string, Float32Array>, period: number, count: number):
 
 describe('Shift register (#438)', () => {
   it('is appended after the Follower, with eight stages, a dac and a gate', () => {
-    expect(TYPE_ORDER.slice(-4, -1)).toEqual(['esp', 'shreg', 'comp']);
+    expect(TYPE_ORDER.slice(TYPE_ORDER.indexOf('esp'), TYPE_ORDER.indexOf('esp') + 3)).toEqual(['esp', 'shreg', 'comp']);
     expect(DEFS.shreg.inputs.map((i) => i.name)).toEqual(['clock', 'in', 'reset', 'p1', 'p2']);
     expect(DEFS.shreg.outputs.map((o) => o.name)).toEqual(['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 'dac', 'gate']);
     expect(DEFS.shreg.params.map((q) => [q.name, q.default])).toEqual([['len', 8], ['flip', 0], ['bits', 8]]);

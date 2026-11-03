@@ -254,6 +254,10 @@ The FM-1 panel module (type `fm1`), the patch's only source of keys and MIDI.
 
 The panel under the canvas where the patch's one Main module lives: knobs, device and page pickers, the FM-1's buttons.
 
+### Matrix pin
+
+One of the Matrix module's 16 amounts, from −1 to 1, that sets how much of one input goes to one output. Not a [Pin](#pin), the hidden parameter input p1 or p2 every module has.
+
 ### MIDI profile
 
 A per-firmware table that turns a connected FM-1's MIDI messages into panel inputs, so the web app can follow any firmware.

@@ -3646,7 +3646,49 @@ const range: ModuleImpl<Record<string, never>> = {
   },
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range];
+/** the Matrix module's inputs and outputs (#525): MATRIX_N x MATRIX_N pins */
+export const MATRIX_N = 4;
+/** a Matrix pin's parameter: from input `i` to output `o` (1-based) */
+export const matrixPin = (i: number, o: number): string => `i${i}o${o}`;
+/**
+ * Matrix (#525, the pin matrix of #438): four inputs, four outputs, and a pin between each input and each output, an amount
+ * from −1 to 1 (0: not connected). out o = the sum of in i x pin (i, o). Its parameters go output by output (out 1's four
+ * pins, in 1..in 4, then out 2's), so each of its FM-1 device pages is one output's column: ALGO picks the column, K1..K4
+ * turn its four pins, and the page draws the whole grid (pages_ui.c). A pin moves at block rate, as a Mixer's level does.
+ * engine.c m_matrix the same in Q16.
+ */
+const matrix: ModuleImpl<null> = {
+  def: {
+    type: 'matrix',
+    label: 'Matrix',
+    since: 49,
+    inputs: Array.from({ length: MATRIX_N }, (_, i) => audio(`in${i + 1}`)),
+    outputs: Array.from({ length: MATRIX_N }, (_, o) => audio(`out${o + 1}`)),
+    params: Array.from({ length: MATRIX_N * MATRIX_N }, (_, k) => param(matrixPin((k % MATRIX_N) + 1, Math.floor(k / MATRIX_N) + 1), -1, 1, 0, { step: 0.01 })),
+  },
+  init: () => null,
+  process(c) {
+    for (let o = 1; o <= MATRIX_N; o++) {
+      if (c.used && !c.used[`out${o}`]) continue;
+      const out = c.out[`out${o}`];
+      const src: Float32Array[] = [], amt: number[] = [];
+      for (let i = 1; i <= MATRIX_N; i++) {
+        const a = c.p[matrixPin(i, o)] ?? 0;
+        if (a && c.connected[`in${i}`]) {
+          src.push(c.inp[`in${i}`]);
+          amt.push(a);
+        }
+      }
+      for (let s = 0; s < c.n; s++) {
+        let v = 0;
+        for (let k = 0; k < src.length; k++) v += src[k][s] * amt[k];
+        out[s] = v;
+      }
+    }
+  },
+};
+
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range, matrix];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an

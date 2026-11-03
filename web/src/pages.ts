@@ -158,7 +158,8 @@ export function moduleRows(def: ModuleDef): ModuleDef['params'] {
 function moduleSections(type: string, def: ModuleDef, id: number, name?: string): Section[] {
   // the spelled-out name, or the short one where that would not fit the FM-1's screen
   const label = (name: string): string => { const long = longName(type, name); return long.length <= NAME_MAX ? long : name; };
-  const items = moduleRows(def).map((pd) => ({ pd, knob: !pd.screen }));
+  // a Matrix (#525): a section per output, "out 1".."out 4", its four pins (pages_ui.c pages_plain the same)
+  const items = moduleRows(def).map((pd, i) => ({ pd, knob: !pd.screen, head: type === 'matrix' && i % PAGE_ROWS === 0 ? `out ${i / PAGE_ROWS + 1}` : undefined }));
   return sectionsOf(name || moduleName(type, def.label), items, ({ pd }) => (pd.screen ? id : { module: id, param: pd.name, label: label(pd.name) }));
 }
 
