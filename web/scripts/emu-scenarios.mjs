@@ -1034,7 +1034,7 @@ async function main() {
         && (await emu.waitText('STEP 2', 2000)), fmt(ns));
       await emu.tap(B.play);
       await check('rec step: PLAY in step record: the transport starts, a live take records (PATTERN REC)', await emu.waitText('PATTERN REC', 3000));
-      await check('rec step: the live take\'s hint (the roll\'s keys its keyboard, SELECT its pages)', await emu.waitText('KEYS record  SELECT page', 2000));
+      await check('rec step: the live take\'s hint (the roll\'s keys its keyboard, SELECT its view)', await emu.waitText('KEYS record  SELECT view', 2000));
       await emu.key(E, true);
       await emu.elapse(300);
       await emu.key(E, false);

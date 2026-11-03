@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Writes firmware/src/defs.h (module definitions for the C engine), firmware/src/presets.h (the factory
-// patches as binary) and firmware/src/controls.h (the FM-1's controls, src/controls.ts). Run from web/:  npx vite-node scripts/export-defs.ts
+// patches as binary), firmware/src/controls.h and the README's list of controls (the FM-1's controls, src/controls.ts).
+// Run from web/:  npx vite-node scripts/export-defs.ts
 import { readFileSync, writeFileSync } from 'node:fs';
 import { ADSR_LONG, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY } from '../src/modules';
 import { encodePatch, TYPE_ORDER, toQ16, VERSION } from '../src/patchbin';
@@ -10,7 +11,7 @@ import { MAX_POLY } from '../src/poly';
 import { FM1_PRESETS } from '../src/presets';
 import { FALLBACK_NAME, fallbackPatch } from '../src/fallback';
 import { factoryPresets } from '../src/factory-presets';
-import { controlsHeader } from './controls-h';
+import { controlsHeader, readmeWithControls } from './controls-h';
 const FACTORY_PRESETS = factoryPresets();
 
 const up = (s: string): string => s.toUpperCase().replace(/[^A-Z0-9]/g, '_');
@@ -222,4 +223,8 @@ P.push('};', '');
 writeFileSync(new URL('../../firmware/src/presets.h', import.meta.url), P.join('\n'));
 writeFileSync(new URL('../../firmware/src/controls.h', import.meta.url), controlsHeader(
   readFileSync(new URL('../../firmware/src/help_ui.c', import.meta.url), 'utf8'), readFileSync(new URL('../../firmware/src/font_bc.h', import.meta.url), 'utf8')));
-console.log('wrote defs.h, presets.h, controls.h');
+{ // the README's list of the FM-1's controls (between its controls markers), from the same table
+  const readme = new URL('../../README.md', import.meta.url);
+  writeFileSync(readme, readmeWithControls(readFileSync(readme, 'utf8')));
+}
+console.log('wrote defs.h, presets.h, controls.h, the README\'s controls');

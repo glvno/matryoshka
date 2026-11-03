@@ -82,6 +82,8 @@
  * roll's alike, #387); the roll's keyboard (a live take): the keys held bright, every C dim. The top bar
  * shows the track's name (STEPS n without one). Edits go into the running patch (SAVE keeps them) and to the editor. */
 
+#include "controls.h"                             /* the controls table (web/src/controls.ts, #553): the hint lines */
+
 #define PAGE_SEQ 8u
 #define BTN_SEQ 11u
 #define BTN_REC 13u
@@ -1721,8 +1723,8 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
         p = put(p, "  MUTED");
     {                                            /* the hints where they fit (#231; the track shown is armed: #395; step
                                                   * record's, #532) */
-        char *q = put(p, sr_on ? "  FX acc" : "  ALGO track");
-        *put(q, sr_on ? "  BLACK 10 del" : "  SEQ+REC clear") = 0;
+        char *q = put(put(p, "  "), sr_on ? HINT_ROW_SR_ACCENT : HINT_ROW_TRACK);   /* (controls.h, #553) */
+        *put(put(q, "  "), sr_on ? HINT_ROW_SR_BACK : HINT_ROW_CLEAR) = 0;
         if (text_w(&FONT_S, line, -1) > 224u)
             *q = 0;
         if (text_w(&FONT_S, line, -1) > 224u)
@@ -1732,22 +1734,22 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
         seq_grid_line(1, 202, line, P_GOLD, 224);
     else
         seq_grid_line(1, 202, line, C_DIM, 224);
-    /* the hint line (FONT_S, at most 228 px: a longer one is cut), in the controls' words (#450: SELECT the knob, SEL the
-     * button): a step held, its knobs; a track of more than 16 steps, OCT's pages (#490); else SEL's SONG page */
+    /* the hint line (FONT_S, at most 228 px: export-defs checks it), in the controls table's words (controls.ts HINTS,
+     * #553): a step held, its knobs; a track of more than 16 steps, OCT's pages (#490); else SEL's SONG page */
     if (sr_on)
-        hint = "KEYS note  LFO rest/tie  K4 move  REC done";
+        hint = HINT_STEP_RECORD;
     else if (seq_kbd())
-        hint = "KEYS record  SELECT page  OCT octave  FX acc";
+        hint = HINT_LIVE;
     else if (seq_held >= 0 && seq_lock_page())
-        hint = "HELD: K1-K4 lock  back to value: off  ALGO";
+        hint = HINT_HELD_LOCK;
     else if (seq_held >= 0)
-        hint = map >= 0 ? "HELD: K2 vel  SELECT chance  ALGO lock" : "HELD: K1 note  K2 vel  K3 chance  ALGO lock";
+        hint = map >= 0 ? HINT_HELD_DRUM : HINT_HELD_ROLL;
     else if (map >= 0 && seq_rec && seq_mod_armed(mod))
-        hint = len > 16 ? "BLACK rec  SELECT row  WHITE step  OCT 17+" : "BLACK rec  SELECT row  WHITE step  FX acc";
+        hint = len > 16 ? HINT_DRUM_REC_LONG : HINT_DRUM_REC;
     else if (map >= 0)
-        hint = len > 16 ? "BLACK/SELECT row  WHITE step  FX acc  OCT 17+" : "BLACK row  WHITE step  FX acc  SEL song";
+        hint = len > 16 ? HINT_DRUM_LONG : HINT_DRUM;
     else
-        hint = len > 16 ? "BLACK row  SEL+KEY pen  WHITE step  OCT 17+" : "BLACK row  SEL+KEY pen  WHITE step  SEL song";
+        hint = len > 16 ? HINT_ROLL_LONG : HINT_ROLL;
     seq_grid_line(2, 222, hint, C_HINT, 228);
     seq_grid_ok = 1;
 }
@@ -1766,7 +1768,7 @@ static void seq_draw(int full)
             lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
             text_bc(&FONT_M, 10, 56, "This patch has no Steps module.", C_FG, C_BG, 224, TA_LEFT);
             text_bc(&FONT_S, 10, 80, "Add one in the editor.", C_DIM, C_BG, 224, TA_LEFT);
-            text_bc(&FONT_S, 10, 222, "SEQ  back", C_HINT, C_BG, 224, TA_LEFT);
+            text_bc(&FONT_S, 10, 222, HINT_NO_TRACK, C_HINT, C_BG, 224, TA_LEFT);
         }
         return;
     }
@@ -2019,9 +2021,9 @@ static void song_draw(int full)
         *p = 0;
         song_line(r, SONG_Y + SONG_RH * r, t, k > n ? C_BG : k == n ? C_DIM : C_FG, k == song_cur, 120);
     }
-    /* (FONT_S, in the SEQ page's words: 205 and 225 px of 224 and 228, #450) */
-    song_line(SONG_ROWS + 1u, 202, "SELECT entry  K1 pat  K2 shift  FX+K1 insert", C_DIM, 0, 224);
-    song_line(SONG_ROWS + 2u, 222, "ALGO song  PRESET pat  SEQ+REC del  SEL back", C_HINT, 0, 228);
+    /* (FONT_S, the controls table's words: controls.ts HINTS, #553) */
+    song_line(SONG_ROWS + 1u, 202, HINT_SONG_1, C_DIM, 0, 224);
+    song_line(SONG_ROWS + 2u, 222, HINT_SONG_2, C_HINT, 0, 228);
     song_shown_play = (int16_t)play;
     song_ok = 1;
 }

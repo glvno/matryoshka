@@ -353,6 +353,7 @@ dialog.share-sheet { width: 800px; }
 .help-body { overflow: auto; padding: 4px 16px 16px; columns: 2 340px; column-gap: 28px; }
 .hsec { break-inside: avoid; padding-top: 12px; }
 .hsec h3 { margin: 0 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--line); font: var(--cap); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.hsec h4 { margin: 10px 0 0; font: var(--cap); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--secondary); }
 .hrow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; padding: 5px 0; }
 .hrow + .hrow { border-top: 1px dashed color-mix(in srgb, var(--line) 70%, transparent); }
 .hkeys { font: var(--cap); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--secondary); }

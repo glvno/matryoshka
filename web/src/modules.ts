@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The module library: definitions (shared with the editor) and DSP implementations.
 
+import { fixedDoes } from './controls';
 import { ARP_MODES, ARP_RATES } from './arpeggiator';
 import { DRUM_ROWS, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
 import { STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type SongEntry, type StepLock, type StepNote } from './track';
@@ -220,12 +221,8 @@ export const ASSIGN_MODES = ['rotate', 'lowest', 'reuse', 'reset'];
 export const PANEL_BUTTONS = ['fx', 'scl', 'env', 'lfo', 'edit', 'glo', 'arp'];
 /** a panel button's name on screen: SEL for `scl` (Felucca's table spells it SCL; the button reads SEL), else the id in capitals */
 export const buttonLabel = (b: string): string => (b === 'scl' ? 'SEL' : b.toUpperCase());
-/** what a fixed button does, for the dock and the button editor */
-export const FIXED_DOES: Record<string, string> = {
-  glo: 'the FM-1’s settings menu, in tabs (MIDI, PANEL, SYSTEM, INFO, GUIDE; ALGO switches them, K1..K4 set them on the FM-1); again: back',
-  scl: 'arms the device on screen on the FM-1, so the keys play it; on an armed one, disarms it (on an environment row: adds it or takes it out)',
-  env: 'the environment on the FM-1: every device from Main to the Output (here the canvas is the environment); held + SAVE stores the device’s preset',
-};   // SEQ and REC: the device's step page (#83)
+/** what a fixed button does, for the dock and the button editor: its rows of the FM-1's controls table (controls.ts, #553) */
+export const FIXED_DOES: Record<string, string> = { glo: fixedDoes('GLO'), scl: fixedDoes('SEL'), env: fixedDoes('ENV') };   // SEQ and REC: the device's step page (#83)
 /** the Main module's tempo range (bpm) */
 export const TEMPO_MIN = 20;
 export const TEMPO_MAX = 300;
