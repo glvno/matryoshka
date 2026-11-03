@@ -123,7 +123,7 @@ static void steprec_suite(void)
     cy = GRID_Y + GRID_RH * 1u + GRID_CH - 1u;
     check("  the cursor's column: its empty cells tinted, a sky tick under it; the next column plain",
           px(cx, cy) == C_CUR && px(cx, GRID_CUR_Y) == P_SKY && px(seq_grid_x(3) + 5u, cy) != C_CUR && px(seq_grid_x(3) + 5u, GRID_CUR_Y) == C_BG);
-    check("  the hint line: the keys, LFO, K4, REC; the track line black key 10", !strcmp(seq_grid_text[2], "KEYS note  LFO rest/tie  K4 move  REC done")
+    check("  the hint line: the keys, LFO, K4, REC; the track line black key 10", !strcmp(seq_grid_text[2], HINT_STEP_RECORD)
           && text_w(&FONT_S, seq_grid_text[2], -1) <= 228u && strstr(seq_grid_text[1], "BLACK 10 del"));
     check("  drawn in place = drawn whole", sr_whole_same());
 

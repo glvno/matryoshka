@@ -523,6 +523,15 @@ static int ct_listed(uint32_t i, uint32_t t)
     return 0;
 }
 
+/* a text on the screen (SCREEN keeps the first SCR_CH characters of each) */
+static int ct_shows(const char *t)
+{
+    char b[SCR_CH + 1u];
+    strncpy(b, t, SCR_CH);
+    b[SCR_CH] = 0;
+    return on_screen(b);
+}
+
 static void controls_suite(void)
 {
     uint32_t i, s, t, v, alt, rows = 0, runs = 0, bad = 0;
@@ -575,6 +584,10 @@ static void controls_suite(void)
             }
     }
     printf("      (controls: %u rows in their states, %u gestures driven, %u wrong)\n", (unsigned)rows, (unsigned)runs, (unsigned)bad);
+    /* the hint lines come from the table too: the menu's three (one wording, #553) and the SONG page's */
+    check("the menu's hint line from the table: a settings tab, INFO, GUIDE", ct_enter(HS_MENU, 0) && ct_shows(HINT_MENU_PAGE)
+          && ct_enter(HS_MENU, 3) && ct_shows(HINT_MENU_INFO) && ct_enter(HS_MENU, 4) && ct_shows(HINT_MENU_GUIDE));
+    check("the SONG page's two hint lines from the table", ct_enter(HS_SONG, 0) && ct_shows(HINT_SONG_1) && ct_shows(HINT_SONG_2));
     check("every row of the controls table does what it says in each state that lists it (web/src/controls.ts)", bad == 0u);
     ct_reset();
 }

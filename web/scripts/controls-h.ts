@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // firmware/src/controls.h from web/src/controls.ts (#553): the controls sheet's lines per state and tab, the conditions
-// (help_ui.c hc_<name>), and for firmware/test/controls_test.h each row's gesture and effect. Checked here: each line fits
-// the sheet's card (help_ui.c help_row's layout in FONT_S), each condition is a function in help_ui.c, no tab holds more
-// lines than the sheet takes (HC_ROWS).
-import { BUTTON_ID, CONDITIONS, CONTROLS, EFFECTS, ENCODER_ID, HELP_STATES, HELP_STATE_NAME, PATCH_BUTTONS, rowSpec, sheetRows, type ControlRow, type Part } from '../src/controls';
+// (help_ui.c hc_<name>), the pages' hint lines, and for firmware/test/controls_test.h each row's gesture and effect.
+// Checked here: each line fits the sheet's card (help_ui.c help_row's layout in FONT_S), each hint line its field, each
+// condition is a function in help_ui.c, no tab holds more lines than the sheet takes (HC_ROWS).
+import { BUTTON_ID, CONDITIONS, CONTROLS, EFFECTS, ENCODER_ID, HELP_STATES, HELP_STATE_NAME, HINT_ROWS, HINTS, hintText, PATCH_BUTTONS, README_END, README_START, readmeControls, rowSpec, sheetRows, type ControlRow, type Part } from '../src/controls';
 
 /** FONT_S's advance per ASCII character (firmware/src/font_bc.h font_s_g, map 0x20.. in order) */
 export function fontAdvances(fontH: string): number[] {
@@ -109,6 +109,20 @@ export function controlsHeader(helpUi: string, fontH: string): string {
     w('    },');
   });
   w('};');
+  // the hint lines (FONT_S, each within its field)
+  const tw = (t: string): number => [...t].reduce((n, c) => n + (adv[c.charCodeAt(0) - 32] ?? 0), 0);
+  w();
+  w('/* the pages\' hint lines, in the rows\' words (controls.ts HINTS): the text and the field it fits */');
+  for (const h of HINTS) {
+    const t = hintText(h);
+    if (tw(t) > h.width) throw new Error(`controls: the hint ${h.id} "${t}" is ${tw(t) - h.width} px wider than its ${h.width}`);
+    w(`#define HINT_${cname(h.id)} ${JSON.stringify(t)}   /* ${tw(t)} of ${h.width} px */`);
+  }
+  for (const id of HINT_ROWS) {
+    const t = CONTROLS.find((r) => r.id === id)?.hint;
+    if (!t) throw new Error(`controls: HINT_ROWS: ${id} has no hint`);
+    w(`#define HINT_ROW_${cname(id)} ${JSON.stringify(t)}`);
+  }
   // the gestures and effects, for the test
   w();
   w('#ifdef CTL_GESTURES');
@@ -141,4 +155,11 @@ export function controlsHeader(helpUi: string, fontH: string): string {
   w('#endif');
   w();
   return L.join('\n');
+}
+
+/** the README with its list of controls made again from the table (between README_START and README_END) */
+export function readmeWithControls(readme: string): string {
+  const a = readme.indexOf(README_START), b = readme.indexOf(README_END);
+  if (a < 0 || b < a) throw new Error('controls: README.md has no controls markers');
+  return readme.slice(0, a) + readmeControls() + readme.slice(b + README_END.length);
 }

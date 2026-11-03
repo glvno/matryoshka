@@ -1794,11 +1794,11 @@ int main(void)
             int32_t normal, lv = 0;
             panel_keys(1u << 0);
             loop();
-            check("P-locks: a held step's hint names ALGO's lock pages", !strcmp(seq_grid_text[2], "HELD: K1 note  K2 vel  K3 chance  ALGO lock"));
+            check("P-locks: a held step's hint names ALGO's lock pages", !strcmp(seq_grid_text[2], HINT_HELD_ROLL));
             enc(1, 1);                                      /* + ALGO: the first page of the device the track plays */
             lp = seq_lock_page();
             check("  + ALGO: the first page of the Silver Box (the device PATTERN drives), LOCK and its name in the bar, the hint its knobs",
-                  lp && seq_lpg == 1u && !strncmp(msg_text, "LOCK ", 5) && !strcmp(seq_grid_text[2], "HELD: K1-K4 lock  back to value: off  ALGO"));
+                  lp && seq_lpg == 1u && !strncmp(msg_text, "LOCK ", 5) && !strcmp(seq_grid_text[2], HINT_HELD_LOCK));
             m0 = lp ? lp->mod[0] : 0u;
             j0 = lp ? lp->par[0] : 0u;
             normal = eng_get_param(m0, j0);
@@ -1954,7 +1954,7 @@ int main(void)
         tap(BTN_SEQ);                                       /* SEQ while recording: the take's track, its keyboard */
         loop();
         check("SEQ while REC records: PATTERN's roll, all keys its keyboard (the hint says so)", page == PAGE_SEQ && seq_trk == 1u
-              && seq_kbd() && !strcmp(seq_grid_text[2], "KEYS record  SELECT page  OCT octave  FX acc"));
+              && seq_kbd() && !strcmp(seq_grid_text[2], HINT_LIVE));
         later(1100);
         check("  its bar: PATTERN REC on red", bar_shows("PATTERN REC G#3-D#4 P01", C_RED));
         snap_to(getenv("PANEL_SNAP_ROLL_REC"));
@@ -2063,7 +2063,7 @@ int main(void)
         page_set(PAGE_SEQ);
         later(1500);
         check("Scrounge's PATTERN: the drum grid of its map's rows, not the roll", page == PAGE_SEQ && seq_map() >= 0
-              && px(4u + GRID_NAME_W - 1u, GRID_Y + 1u) == C_ACC && !strcmp(seq_grid_text[2], "BLACK row  WHITE step  FX acc  SEL song"));
+              && px(4u + GRID_NAME_W - 1u, GRID_Y + 1u) == C_ACC && !strcmp(seq_grid_text[2], HINT_DRUM));
         snap_to(getenv("PANEL_SNAP_SCROUNGE"));
         while (page != 0u && trail_n)
             tap(BTN_HOME);
@@ -2638,17 +2638,17 @@ int main(void)
         eng_set_param((uint32_t)drums, STEPS_P_LEN, 32 << 16);
         ui_dirty = 2;
         loop();
-        check("a track of 32: the hint names OCT for steps 17 and up (#490)", !strcmp(seq_grid_text[2], "BLACK/SELECT row  WHITE step  FX acc  OCT 17+"));
+        check("a track of 32: the hint names OCT for steps 17 and up (#490)", !strcmp(seq_grid_text[2], HINT_DRUM_LONG));
         {                                                   /* a step held: the hint line names its knobs, let go: back (#450) */
             uint32_t wk;
             for (wk = 0; seq_white(wk) != 0; wk++)
                 ;
             panel_keys(1u << wk);
             loop();
-            check("a step held: the hint says HELD and its knobs", seq_held == 0 && !strcmp(seq_grid_text[2], "HELD: K2 vel  SELECT chance  ALGO lock"));
+            check("a step held: the hint says HELD and its knobs", seq_held == 0 && !strcmp(seq_grid_text[2], HINT_HELD_DRUM));
             panel_keys(0);
             loop();
-            check("  let go: the hint as before", seq_held < 0 && !strcmp(seq_grid_text[2], "BLACK/SELECT row  WHITE step  FX acc  OCT 17+"));
+            check("  let go: the hint as before", seq_held < 0 && !strcmp(seq_grid_text[2], HINT_DRUM_LONG));
         }
         tap(BTN_OCT_UP);
         ok = seq_pg == 1u && octave == 0;

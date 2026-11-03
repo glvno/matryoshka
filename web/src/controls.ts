@@ -74,6 +74,10 @@ export interface ControlRow {
   /** shown only when this condition holds */
   when?: Condition | `!${Condition}`;
   effect: Effect;
+  /** its words in a hint line on an FM-1 page (HINTS): the control's name, then a short word ("WHITE step") */
+  hint?: string;
+  /** what it does, at length, for the editor's help (else `does`) */
+  help?: string;
 }
 
 /** the patch buttons with a job in the loaded patch (help_ui.c help_patch_rows): made from the patch, not this table; this
@@ -96,101 +100,199 @@ const ANY_KEY: Part = { key: 'any' };
 export const CONTROLS: ControlRow[] = [
   // ---- EVERYWHERE: each button's job everywhere, then the combinations, but what the state's tab lists or gives another
   // job (D-246)
-  { id: 'play', gesture: { do: [B('PLAY')] }, does: 'start / stop', everywhere: at(10, ALL), effect: 'transport' },
-  { id: 'rec', gesture: { do: [B('REC')] }, does: 'record', everywhere: at(20, but('sandbox', 'drum', 'roll', 'step')), effect: 'record' },
-  { id: 'save', gesture: { do: [B('SAVE')] }, does: 'save patch', everywhere: at(30, but('menu', 'sandbox')), effect: 'save' },
-  { id: 'home', gesture: { do: [B('HOME')] }, does: 'back', everywhere: at(40, but('sandbox')), effect: 'back' },
-  { id: 'glo', gesture: { do: [B('GLO')] }, does: 'settings', everywhere: at(50, but('menu')), effect: 'menu' },
-  { id: 'env', gesture: { do: [B('ENV')] }, does: 'environment', everywhere: at(60, but('env', 'sandbox')), effect: 'env' },
-  { id: 'seq', gesture: { do: [B('SEQ')] }, does: 'steps page', everywhere: at(70, but(...SEQ_STATES, 'sandbox')), effect: 'seq' },
-  { id: 'octave', gesture: { do: [B('OCT-'), B('OCT+')] }, does: 'octave', sheet: { step: 80 }, everywhere: at(80, but('drum', 'roll', 'menu', 'step')), effect: 'octave' },
-  { id: 'tempo', gesture: { hold: 'PLAY', do: [E('PRESET')] }, does: 'tempo', everywhere: at(90, ALL), effect: 'tempo' },
-  { id: 'patch', gesture: { hold: 'HOME', do: [E('PRESET')] }, does: 'patches', everywhere: at(100, but('menu', 'sandbox')), effect: 'patch' },
-  { id: 'store', gesture: { hold: 'ENV', do: [B('SAVE')] }, does: 'save device preset', when: 'dev_store', sheet: { device: 90, env: 60 }, everywhere: at(110, but('device', 'env', 'sandbox')), effect: 'store' },
-  { id: 'arm', gesture: { hold: 'REC', do: [BLACK] }, does: 'arm a track', when: 'tracks', everywhere: at(120, but('sandbox')), effect: 'arm' },
-  { id: 'mute', gesture: { hold: 'SEQ', do: [BLACK] }, does: 'mute a track', when: 'tracks', everywhere: at(130, but('sandbox')), effect: 'mute' },
+  { id: 'play', gesture: { do: [B('PLAY')] }, does: 'start / stop', everywhere: at(10, ALL), effect: 'transport',
+    help: 'the transport: Main’s run output and clock (on release; while the controls sheet shows too)' },
+  { id: 'rec', gesture: { do: [B('REC')] }, does: 'record', everywhere: at(20, but('sandbox', 'drum', 'roll', 'step')), effect: 'record',
+    help: 'the same on every page but the SEQ page, and it never changes the page. Stopped: the transport starts and recording begins. Running: recording begins. Again: recording stops, the transport goes on. PLAY stops both. What records is the armed Steps tracks, over the notes already there; with none armed the bar says REC: NO TRACK ARMED' },
+  { id: 'save', gesture: { do: [B('SAVE')] }, does: 'save patch', everywhere: at(30, but('menu', 'sandbox')), effect: 'save',
+    help: 'the patch into its slot, with the panel settings' },
+  { id: 'home', gesture: { do: [B('HOME')] }, does: 'back', everywhere: at(40, but('menu', 'sandbox')), effect: 'back',
+    help: 'back one step, on release: on a device page to its device’s first page, then to the patch’s home page (its first device); out of the SEQ, SONG and environment pages, back where you were. Held alone it does nothing' },
+  { id: 'glo', gesture: { do: [B('GLO')] }, does: 'settings', everywhere: at(50, but('menu')), effect: 'menu',
+    help: 'the settings menu, in tabs: MIDI (MIDI channel, clock in, MIDI out, clock out), PANEL (LEDs, knob acceleration, count-in, TEMPO: GLOBAL or PATCH), SYSTEM (update mode, factory reset, quick start), INFO (version, CPU, bank slots, battery) and GUIDE (the ideas behind the FM-1)' },
+  { id: 'env', gesture: { do: [B('ENV')] }, does: 'environment', everywhere: at(60, but('env', 'sandbox')), effect: 'env',
+    help: 'the environment: every device from Main to the Output, each Steps track followed by what it plays (from the menu too)' },
+  { id: 'seq', gesture: { do: [B('SEQ')] }, does: 'steps page', everywhere: at(70, but(...SEQ_STATES, 'sandbox')), effect: 'seq',
+    help: 'the SEQ page: from a Steps track’s device page that track, else the track shown last' },
+  { id: 'seq-back', gesture: { do: [B('SEQ')] }, does: 'back', everywhere: at(70, ['drum', 'roll', 'live', 'song']), effect: 'back', hint: 'SEQ back',
+    help: 'out of the SEQ or SONG page, back where you were' },
+  { id: 'octave', gesture: { do: [B('OCT-'), B('OCT+')] }, does: 'octave', sheet: { step: 80 }, everywhere: at(80, but('drum', 'roll', 'menu', 'step')), effect: 'octave', hint: 'OCT octave',
+    help: 'the keys’ octave, up to three either way, on release: pressing both opens the controls sheet and changes neither' },
+  { id: 'tempo', gesture: { hold: 'PLAY', do: [E('PRESET')] }, does: 'tempo', everywhere: at(90, ALL), effect: 'tempo',
+    help: 'the tempo, 1 bpm a click (the global one while TEMPO is GLOBAL; in sandbox mode the browser’s); PLAY’s release then neither starts nor stops' },
+  { id: 'patch', gesture: { hold: 'HOME', do: [E('PRESET')] }, does: 'patches', everywhere: at(100, but('menu', 'sandbox')), effect: 'patch',
+    help: 'the patches in the bank (an empty bank says BANK EMPTY); HOME’s release then goes nowhere' },
+  { id: 'store', gesture: { hold: 'ENV', do: [B('SAVE')] }, does: 'save device preset', when: 'dev_store', sheet: { device: 90, env: 60 }, everywhere: at(110, but('device', 'env', 'sandbox')), effect: 'store',
+    help: 'the device in focus’s values as its preset (an assembly)' },
+  { id: 'arm', gesture: { hold: 'REC', do: [BLACK] }, does: 'arm a track', when: 'tracks', everywhere: at(120, but('sandbox')), effect: 'arm',
+    help: 'black key n: track n into the armed devices or out (any page)' },
+  { id: 'mute', gesture: { hold: 'SEQ', do: [BLACK] }, does: 'mute a track', when: 'tracks', everywhere: at(130, but('sandbox')), effect: 'mute',
+    help: 'black key n: mutes track n, or unmutes it (any page)' },
 
   // ---- DEVICE: a device page
-  { id: 'list-leave', gesture: { do: [E('SELECT')] }, does: 'leave the list', when: 'list', sheet: { device: 10 }, effect: 'leave_list' },
-  { id: 'devices', gesture: { do: [E('SELECT')] }, does: 'devices', when: '!list', sheet: { device: 11 }, effect: 'focus' },
+  { id: 'list-leave', gesture: { do: [E('SELECT')] }, does: 'leave the list', when: 'list', sheet: { device: 10 }, effect: 'leave_list',
+    help: 'a Page button’s list showing: leaves it (a Page button’s press: the next page of its list; held: its first page while it is down)' },
+  { id: 'devices', gesture: { do: [E('SELECT')] }, does: 'devices', when: '!list', sheet: { device: 11 }, effect: 'focus',
+    help: 'the device in focus: every top-level module or assembly with card rows, Main, each Steps track and the Output' },
   { id: 'list-pages', gesture: { do: [E('ALGO')] }, does: "the list's pages", when: 'list', sheet: { device: 20 }, effect: 'list_page' },
-  { id: 'device-pages', gesture: { do: [E('ALGO')] }, does: 'device pages', when: '!list', sheet: { device: 21 }, effect: 'device_page' },
-  { id: 'device-presets', gesture: { do: [E('PRESET')] }, does: 'device presets', when: 'dev_presets', sheet: { device: 30 }, effect: 'preset' },
-  { id: 'adjust', gesture: { do: [K('1234')] }, does: 'adjust values', sheet: { device: 40 }, effect: 'param' },
-  { id: 'fine', gesture: { hold: 'HOME', do: [K('1234')] }, does: 'fine adjust', sheet: { device: 50 }, effect: 'fine' },
-  { id: 'arm-device', gesture: { do: [B('SEL')] }, does: 'arm this device', when: 'dev_keys', sheet: { device: 60 }, effect: 'arm' },
+  { id: 'device-pages', gesture: { do: [E('ALGO')] }, does: 'device pages', when: '!list', sheet: { device: 21 }, effect: 'device_page',
+    help: 'the device’s pages of four rows' },
+  { id: 'device-presets', gesture: { do: [E('PRESET')] }, does: 'device presets', when: 'dev_presets', sheet: { device: 30 }, effect: 'preset',
+    help: 'the focused device’s presets, loaded as it turns (a module on its own has none)' },
+  { id: 'adjust', gesture: { do: [K('1234')] }, does: 'adjust values', sheet: { device: 40 }, effect: 'param',
+    help: 'the four rows of the page in focus' },
+  { id: 'fine', gesture: { hold: 'HOME', do: [K('1234')] }, does: 'fine adjust', sheet: { device: 50 }, effect: 'fine',
+    help: 'fine turns: the least step of the row' },
+  { id: 'arm-device', gesture: { do: [B('SEL')] }, does: 'arm this device', when: 'dev_keys', sheet: { device: 60 }, effect: 'arm',
+    help: 'arms the device on screen, so the keys play it, and disarms the others; on a device already armed it takes it out. A device with no keys input says NOTHING HERE TAKES KEYS. Nothing armed: Main’s cables decide what the keys play (KEYS WIRED)' },
 
   // ---- ENVIRONMENT: one row per device
   { id: 'env-rows', gesture: { do: [E('SELECT')] }, does: 'device rows', sheet: { env: 10 }, effect: 'focus' },
   { id: 'env-first-page', gesture: { do: [K('1234')] }, does: "row's first page", sheet: { env: 20 }, effect: 'param' },
   { id: 'env-presets', gesture: { do: [E('PRESET')] }, does: "row's presets", when: 'dev_presets', sheet: { env: 30 }, effect: 'preset' },
   { id: 'env-presets-algo', gesture: { do: [E('ALGO')] }, does: "row's presets", when: 'dev_presets', sheet: { env: 40 }, effect: 'preset' },
-  { id: 'env-arm', gesture: { do: [B('SEL')] }, does: 'arm / disarm row', when: 'dev_keys', sheet: { env: 50 }, effect: 'arm' },
+  { id: 'env-arm', gesture: { do: [B('SEL')] }, does: 'arm / disarm row', when: 'dev_keys', sheet: { env: 50 }, effect: 'arm',
+    help: 'the row’s device into the armed devices or out (several at once: a layer or a split)' },
 
   // ---- the SEQ page: a drum grid (DRUM STEPS) and a melodic track's piano roll (PIANO ROLL)
-  { id: 'step', gesture: { do: [WHITE] }, does: 'step on / off', sheet: { drum: 10, roll: 10 }, effect: 'step' },
-  { id: 'row-key', gesture: { do: [BLACK] }, does: 'pick a row', sheet: { drum: 20, roll: 20 }, effect: 'row' },
-  { id: 'row-select', gesture: { do: [E('SELECT')] }, does: 'pick a row', sheet: { drum: 30 }, effect: 'row' },
-  { id: 'roll-view', gesture: { do: [E('SELECT')] }, does: '8 pitches up / down', sheet: { roll: 30, live: 30 }, effect: 'roll_view' },
+  { id: 'step', gesture: { do: [WHITE] }, does: 'step on / off', sheet: { drum: 10, roll: 10 }, effect: 'step', hint: 'WHITE step',
+    help: 'the selected row’s hit or pitch on that step' },
+  { id: 'row-key', gesture: { do: [BLACK] }, does: 'pick a row', sheet: { drum: 20, roll: 20 }, effect: 'row', hint: 'BLACK row',
+    help: 'black keys 1..8: the rows (on the roll the 8 pitches shown, black key 1 the bottom one); a drum row sounds while held, and while REC records it records the hit into the nearest step' },
+  { id: 'row-select', gesture: { do: [E('SELECT')] }, does: 'pick a row', sheet: { drum: 30 }, effect: 'row', hint: 'SELECT row',
+    help: 'the row, silently' },
+  { id: 'roll-view', gesture: { do: [E('SELECT')] }, does: '8 pitches up / down', sheet: { roll: 30, live: 30 }, effect: 'roll_view', hint: 'SELECT view',
+    help: 'the next or previous 8 pitches; the bar names the pitches shown' },
   { id: 'roll-pitch', gesture: { hold: 'SEL', do: [E('SELECT')] }, does: 'a pitch up / down', sheet: { roll: 40 }, effect: 'roll_pitch' },
-  { id: 'pen', gesture: { hold: 'SEL', do: [ANY_KEY] }, does: 'jump to pitch', when: 'roll', sheet: { roll: 50, step: 70 }, effect: 'jump' },
-  { id: 'steps-page', gesture: { do: [B('OCT-'), B('OCT+')] }, does: 'steps 17+', when: 'long_track', sheet: { drum: 40, roll: 150 }, effect: 'steps_page' },
-  { id: 'track', gesture: { do: [E('ALGO')] }, does: 'track', sheet: { drum: 50, roll: 170, live: 40 }, effect: 'track' },
-  { id: 'pattern', gesture: { do: [E('PRESET')] }, does: 'pattern', sheet: { drum: 60, roll: 180, live: 50 }, effect: 'pattern' },
-  { id: 'accent', gesture: { hold: 'FX', do: [WHITE] }, does: 'accent', sheet: { drum: 70, roll: 60 }, effect: 'accent' },
-  { id: 'tie', gesture: { hold: 'LFO', do: [WHITE] }, does: 'tie', sheet: { drum: 80, roll: 70 }, effect: 'tie' },
-  { id: 'step-record', gesture: { do: [B('REC')] }, does: 'step record', sheet: { drum: 90, roll: 80 }, effect: 'step_record' },
-  { id: 'step-record-there', gesture: { hold: 'REC', do: [WHITE] }, does: 'step record there', sheet: { drum: 100, roll: 90 }, effect: 'step_record_at' },
-  { id: 'held-pitch', gesture: { hold: 'step', do: [K('1')] }, does: 'pitch', sheet: { roll: 100 }, effect: 'pitch' },
-  { id: 'held-velocity', gesture: { hold: 'step', do: [K('2')] }, does: 'velocity', sheet: { drum: 110, roll: 110 }, effect: 'velocity' },
-  { id: 'held-chance-select', gesture: { hold: 'step', do: [E('SELECT')] }, does: 'chance', sheet: { drum: 120 }, effect: 'chance' },
-  { id: 'held-chance', gesture: { hold: 'step', do: [K('3')] }, does: 'chance', sheet: { roll: 120 }, effect: 'chance' },
-  { id: 'lock-pages', gesture: { hold: 'step', do: [E('ALGO')] }, does: 'lock pages', sheet: { drum: 130, roll: 130 }, effect: 'lock_page' },
-  { id: 'lock-rows', gesture: { hold: 'step', do: [K('1234')] }, does: 'lock rows', sheet: { drum: 140, roll: 140 }, effect: 'lock' },
+  { id: 'pen', gesture: { hold: 'SEL', do: [ANY_KEY] }, does: 'jump to pitch', when: 'roll', sheet: { roll: 50, step: 70 }, effect: 'jump', hint: 'SEL+KEY pen',
+    help: 'the view jumps to that key’s pitch, which is selected and sounds; in step record nothing is written' },
+  { id: 'steps-page', gesture: { do: [B('OCT-'), B('OCT+')] }, does: 'steps 17+', when: 'long_track', sheet: { drum: 40, roll: 150 }, effect: 'steps_page', hint: 'OCT 17+',
+    help: 'a track of more than 16 steps: the next or previous 16' },
+  { id: 'track', gesture: { do: [E('ALGO')] }, does: 'track', sheet: { drum: 50, roll: 170, live: 40 }, effect: 'track', hint: 'ALGO track',
+    help: 'the track shown, which the page arms' },
+  { id: 'pattern', gesture: { do: [E('PRESET')] }, does: 'pattern', sheet: { drum: 60, roll: 180, live: 50 }, effect: 'pattern',
+    help: 'the patch’s pattern, 1..64: running, each track takes it at the end of its pass; stopped, at once. A track without that pattern plays its first' },
+  { id: 'accent', gesture: { hold: 'FX', do: [WHITE] }, does: 'accent', sheet: { drum: 70, roll: 60 }, effect: 'accent', hint: 'FX acc' },
+  { id: 'tie', gesture: { hold: 'LFO', do: [WHITE] }, does: 'tie', sheet: { drum: 80, roll: 70 }, effect: 'tie',
+    help: 'the note held on through that step (again: untie)' },
+  { id: 'step-record', gesture: { do: [B('REC')] }, does: 'step record', sheet: { drum: 90, roll: 80 }, effect: 'step_record',
+    help: 'stopped: step record from the first step shown; running, REC records as everywhere' },
+  { id: 'step-record-there', gesture: { hold: 'REC', do: [WHITE] }, does: 'step record there', sheet: { drum: 100, roll: 90 }, effect: 'step_record_at',
+    help: 'step record from that step (running too; during a live take it ends the take)' },
+  { id: 'held-pitch', gesture: { hold: 'step', do: [K('1')] }, does: 'pitch', sheet: { roll: 100 }, effect: 'pitch', hint: 'K1 note' },
+  { id: 'held-velocity', gesture: { hold: 'step', do: [K('2')] }, does: 'velocity', sheet: { drum: 110, roll: 110 }, effect: 'velocity', hint: 'K2 vel' },
+  { id: 'held-chance-select', gesture: { hold: 'step', do: [E('SELECT')] }, does: 'chance', sheet: { drum: 120 }, effect: 'chance', hint: 'SELECT chance' },
+  { id: 'held-chance', gesture: { hold: 'step', do: [K('3')] }, does: 'chance', sheet: { roll: 120 }, effect: 'chance', hint: 'K3 chance' },
+  { id: 'lock-pages', gesture: { hold: 'step', do: [E('ALGO')] }, does: 'lock pages', sheet: { drum: 130, roll: 130 }, effect: 'lock_page', hint: 'ALGO lock',
+    help: 'P-locks: pages through the device the track plays (its first stop is the step’s note, velocity and chance)' },
+  { id: 'lock-rows', gesture: { hold: 'step', do: [K('1234')] }, does: 'lock rows', sheet: { drum: 140, roll: 140 }, effect: 'lock', hint: 'K1-K4 lock',
+    help: 'on a lock page: that page’s rows locked on the held step; turned back to the row’s normal value, the lock goes' },
   { id: 'keys-octave', gesture: { hold: 'FX', do: [B('OCT')] }, does: "keys' octave", sheet: { roll: 160 }, effect: 'keys_octave' },
-  { id: 'song-page', gesture: { do: [B('SEL')], how: 'tap' }, does: 'song', sheet: { drum: 150, roll: 190 }, effect: 'song_page' },
-  { id: 'clear', gesture: { hold: 'SEQ', do: [B('REC')] }, does: 'clear track', sheet: { drum: 160, roll: 200 }, effect: 'clear' },
+  { id: 'song-page', gesture: { do: [B('SEL')], how: 'tap' }, does: 'song', sheet: { drum: 150, roll: 190 }, effect: 'song_page', hint: 'SEL song',
+    help: 'the SONG page (not after SEL held as the pen)' },
+  { id: 'clear', gesture: { hold: 'SEQ', do: [B('REC')] }, does: 'clear track', sheet: { drum: 160, roll: 200 }, effect: 'clear', hint: 'SEQ+REC clear',
+    help: 'the bar asks first; REC again within 3 s, SEQ still held, clears the selected track' },
 
   // ---- STEP RECORD (#532, D-804)
-  { id: 'sr-keys', gesture: { do: [{ key: 'keys' }] }, does: 'play, let go: write', sheet: { step: 10 }, effect: 'write' },
+  { id: 'sr-keys', gesture: { do: [{ key: 'keys' }] }, does: 'play, let go: write', sheet: { step: 10 }, effect: 'write', hint: 'KEYS note',
+    help: 'a note or a chord: letting go of the last key writes it on the cursor’s step and moves on one (on a drum grid black keys 1..8 write their rows)' },
   { id: 'sr-chord', gesture: { do: [{ key: 'chord' }] }, does: 'one chord', sheet: { step: 20 }, effect: 'chord' },
-  { id: 'sr-rest', gesture: { do: [B('LFO')] }, does: 'rest, keys held: tie', sheet: { step: 30 }, effect: 'rest' },
-  { id: 'sr-accent', gesture: { do: [B('FX')], how: 'held' }, does: 'accent', sheet: { step: 40 }, effect: 'accent' },
-  { id: 'sr-cursor', gesture: { do: [K('4')] }, does: 'move cursor', sheet: { step: 50 }, effect: 'cursor' },
-  { id: 'sr-back', gesture: { do: [{ key: 'black', n: 10 }] }, does: 'back, clear step', sheet: { step: 60 }, effect: 'back_clear' },
-  { id: 'sr-live', gesture: { do: [B('PLAY')] }, does: 'play, record live', sheet: { step: 90 }, effect: 'live' },
-  { id: 'sr-end', gesture: { do: [B('REC'), B('HOME')] }, does: 'end step record', sheet: { step: 100 }, effect: 'end' },
+  { id: 'sr-rest', gesture: { do: [B('LFO')] }, does: 'rest, keys held: tie', sheet: { step: 30 }, effect: 'rest', hint: 'LFO rest/tie' },
+  { id: 'sr-accent', gesture: { do: [B('FX')], how: 'held' }, does: 'accent', sheet: { step: 40 }, effect: 'accent', hint: 'FX acc' },
+  { id: 'sr-cursor', gesture: { do: [K('4')] }, does: 'move cursor', sheet: { step: 50 }, effect: 'cursor', hint: 'K4 move',
+    help: 'the cursor, nothing written; past the last step it wraps to step 1' },
+  { id: 'sr-back', gesture: { do: [{ key: 'black', n: 10 }] }, does: 'back, clear step', sheet: { step: 60 }, effect: 'back_clear', hint: 'BLACK 10 del' },
+  { id: 'sr-live', gesture: { do: [B('PLAY')] }, does: 'play, record live', sheet: { step: 90 }, effect: 'live',
+    help: 'the transport starts and step record goes on as a live take' },
+  { id: 'sr-end', gesture: { do: [B('REC'), B('HOME')] }, does: 'end step record', sheet: { step: 100 }, effect: 'end', hint: 'REC done',
+    help: 'step record ends, the page stays (SEQ too)' },
 
   // ---- LIVE TAKE: REC records the armed melodic track while the transport runs, on its SEQ page
-  { id: 'take', gesture: { do: [{ key: 'keys' }] }, does: 'record notes', sheet: { live: 10 }, effect: 'take' },
-  { id: 'take-accent', gesture: { do: [B('FX')], how: 'held' }, does: 'accented notes', sheet: { live: 20 }, effect: 'take_accent' },
+  { id: 'take', gesture: { do: [{ key: 'keys' }] }, does: 'record notes', sheet: { live: 10 }, effect: 'take', hint: 'KEYS record',
+    help: 'all 27 keys play the track and record their own pitch into the nearest step' },
+  { id: 'take-accent', gesture: { do: [B('FX')], how: 'held' }, does: 'accented notes', sheet: { live: 20 }, effect: 'take_accent', hint: 'FX acc' },
 
   // ---- SONG (#375, D-541)
-  { id: 'song-entry', gesture: { do: [E('SELECT')] }, does: 'pick entry', sheet: { song: 10 }, effect: 'entry' },
-  { id: 'song-pattern', gesture: { do: [K('1')] }, does: "entry's pattern", sheet: { song: 20 }, effect: 'entry_pattern' },
+  { id: 'song-entry', gesture: { do: [E('SELECT')] }, does: 'pick entry', sheet: { song: 10 }, effect: 'entry', hint: 'SELECT entry',
+    help: 'the entry (a pattern and a shift per row)' },
+  { id: 'song-pattern', gesture: { do: [K('1')] }, does: "entry's pattern", sheet: { song: 20 }, effect: 'entry_pattern', hint: 'K1 pat' },
   { id: 'song-add', gesture: { do: [K('1')], where: 'on END' }, does: 'add entry', sheet: { song: 30 }, effect: 'add_entry' },
-  { id: 'song-dup', gesture: { hold: 'FX', do: [K('1')] }, does: 'duplicate entry', sheet: { song: 40 }, effect: 'dup_entry' },
-  { id: 'song-shift', gesture: { do: [K('2')] }, does: 'transpose entry', sheet: { song: 50 }, effect: 'transpose' },
-  { id: 'song-play', gesture: { do: [K('4')] }, does: 'song on / off', sheet: { song: 60 }, effect: 'song_play' },
-  { id: 'song-sel', gesture: { do: [E('ALGO')] }, does: 'song 1-8', sheet: { song: 70 }, effect: 'song' },
-  { id: 'song-preset', gesture: { do: [E('PRESET')] }, does: 'selected pattern', sheet: { song: 80 }, effect: 'pattern' },
-  { id: 'song-delete', gesture: { hold: 'SEQ', do: [B('REC')] }, does: 'delete entry', sheet: { song: 90 }, effect: 'delete_entry' },
-  { id: 'song-back', gesture: { do: [B('SEL')] }, does: 'back to steps', sheet: { song: 100 }, effect: 'back_steps' },
+  { id: 'song-dup', gesture: { hold: 'FX', do: [K('1')] }, does: 'duplicate entry', sheet: { song: 40 }, effect: 'dup_entry', hint: 'FX+K1 copy',
+    help: 'a copy of the entry inserted before it' },
+  { id: 'song-shift', gesture: { do: [K('2')] }, does: 'transpose entry', sheet: { song: 50 }, effect: 'transpose', hint: 'K2 shift',
+    help: 'the entry’s shift, −12..+12 (never on a drum track)' },
+  { id: 'song-play', gesture: { do: [K('4')] }, does: 'song on / off', sheet: { song: 60 }, effect: 'song_play',
+    help: 'right: the song plays; left: the pattern again' },
+  { id: 'song-sel', gesture: { do: [E('ALGO')] }, does: 'song 1-8', sheet: { song: 70 }, effect: 'song', hint: 'ALGO song' },
+  { id: 'song-preset', gesture: { do: [E('PRESET')] }, does: 'selected pattern', sheet: { song: 80 }, effect: 'pattern', hint: 'PRESET pat' },
+  { id: 'song-delete', gesture: { hold: 'SEQ', do: [B('REC')] }, does: 'delete entry', sheet: { song: 90 }, effect: 'delete_entry', hint: 'SEQ+REC del',
+    help: 'asked first: REC again within 3 s deletes the entry' },
+  { id: 'song-back', gesture: { do: [B('SEL')] }, does: 'back to steps', sheet: { song: 100 }, effect: 'back_steps', hint: 'SEL back' },
 
   // ---- SETTINGS: the menu (GLO)
-  { id: 'menu-tab', gesture: { do: [E('ALGO')] }, does: 'tab', sheet: { menu: 10 }, effect: 'tab' },
-  { id: 'menu-scroll', gesture: { do: [E('SELECT')] }, does: 'scroll', when: 'menu_guide', sheet: { menu: 20 }, effect: 'scroll' },
-  { id: 'menu-set', gesture: { do: [K('1234')] }, does: 'set', when: 'menu_page', sheet: { menu: 30 }, effect: 'set' },
+  { id: 'menu-tab', gesture: { do: [E('ALGO')] }, does: 'tab', sheet: { menu: 10 }, effect: 'tab', hint: 'ALGO tab' },
+  { id: 'menu-scroll', gesture: { do: [E('SELECT')] }, does: 'scroll', when: 'menu_guide', sheet: { menu: 20 }, effect: 'scroll', hint: 'SELECT scroll',
+    help: 'the GUIDE tab: its text' },
+  { id: 'menu-set', gesture: { do: [K('1234')] }, does: 'set', when: 'menu_page', sheet: { menu: 30 }, effect: 'set', hint: 'K1-K4 set',
+    help: 'MIDI, PANEL and SYSTEM: the settings, which act at once' },
   { id: 'menu-patches', gesture: { do: [E('PRESET')] }, does: 'patches', sheet: { menu: 40 }, effect: 'patch' },
-  { id: 'menu-save', gesture: { do: [B('SAVE')] }, does: 'save, close', sheet: { menu: 50 }, effect: 'save_close' },
-  { id: 'menu-run', gesture: { do: [B('GLO')], how: 'hold 2 s' }, does: 'run armed row', when: 'menu_system', sheet: { menu: 60 }, effect: 'run_row' },
+  { id: 'menu-save', gesture: { do: [B('SAVE')] }, does: 'save, close', sheet: { menu: 50 }, effect: 'save_close', hint: 'SAVE close',
+    help: 'saves (the settings too) and closes the menu' },
+  { id: 'menu-back', gesture: { do: [B('GLO'), B('HOME')] }, does: 'back', sheet: { menu: 55 }, effect: 'back', hint: 'GLO/HOME back',
+    help: 'closes the menu, back where you were' },
+  { id: 'menu-run', gesture: { do: [B('GLO')], how: 'hold 2 s' }, does: 'run armed row', when: 'menu_system', sheet: { menu: 60 }, effect: 'run_row',
+    help: 'SYSTEM: UPDATE MODE and FACTORY RESET run only after their knob is turned right (armed for 5 s)' },
 
   // ---- SANDBOX: the editor's page; its own buttons go to the editor
   { id: 'sb-devices', gesture: { do: [E('SELECT')] }, does: 'devices', sheet: { sandbox: 10 }, effect: 'editor' },
   { id: 'sb-pages', gesture: { do: [E('ALGO')] }, does: 'device pages', sheet: { sandbox: 20 }, effect: 'editor' },
-  { id: 'sb-adjust', gesture: { do: [K('1234')] }, does: 'adjust values', sheet: { sandbox: 30 }, effect: 'editor' },
-  { id: 'sb-buttons', gesture: { do: [B('SEQ'), B('ENV'), B('REC'), B('SAVE'), B('SEL')], join: 'list' }, does: '', heading: 'in the editor:', sheet: { sandbox: 40 }, effect: 'editor' },
+  { id: 'sb-adjust', gesture: { do: [K('1234')] }, does: 'adjust values', sheet: { sandbox: 30 }, effect: 'editor',
+    help: 'the editor’s rows, from the positions it sent (nothing before its first page)' },
+  { id: 'sb-buttons', gesture: { do: [B('SEQ'), B('ENV'), B('REC'), B('SAVE'), B('SEL')], join: 'list' }, does: '', heading: 'in the editor:', sheet: { sandbox: 40 }, effect: 'editor',
+    help: 'their work is done in the editor; the FM-1 says so (SANDBOX: SEQ IN EDITOR)' },
 ];
+
+/** a hint line on an FM-1 page (FONT_S): its rows' hints in order, two spaces apart, after `lead`; an item's `text`
+ * stands for the rows named (two rows in one: "BLACK/SELECT row"); `width`: the line's field in pixels. export-defs
+ * writes each as HINT_<ID> into controls.h and refuses a line wider than its field */
+export interface HintLine { id: string; lead?: string; items: (string | { row: string | string[]; text: string })[]; width: number }
+export const HINTS: HintLine[] = [
+  // the SEQ page's line under the grid (seq_ui.c seq_grid_draw)
+  { id: 'step_record', items: ['sr-keys', 'sr-rest', 'sr-cursor', 'sr-end'], width: 228 },
+  { id: 'live', items: ['take', 'roll-view', 'octave', 'take-accent'], width: 228 },
+  { id: 'held_lock', lead: 'HELD:', items: [{ row: 'lock-rows', text: 'K1-K4 lock  back to value: off' }, { row: 'lock-pages', text: 'ALGO' }], width: 228 },
+  { id: 'held_drum', lead: 'HELD:', items: ['held-velocity', 'held-chance-select', 'lock-pages'], width: 228 },
+  { id: 'held_roll', lead: 'HELD:', items: ['held-pitch', 'held-velocity', 'held-chance', 'lock-pages'], width: 228 },
+  { id: 'drum_rec_long', items: [{ row: 'row-key', text: 'BLACK rec' }, 'row-select', 'step', 'steps-page'], width: 228 },
+  { id: 'drum_rec', items: [{ row: 'row-key', text: 'BLACK rec' }, 'row-select', 'step', 'accent'], width: 228 },
+  { id: 'drum_long', items: [{ row: ['row-key', 'row-select'], text: 'BLACK/SELECT row' }, 'step', 'accent', 'steps-page'], width: 228 },
+  { id: 'drum', items: ['row-key', 'step', 'accent', 'song-page'], width: 228 },
+  { id: 'roll_long', items: ['row-key', 'pen', 'step', 'steps-page'], width: 228 },
+  { id: 'roll', items: ['row-key', 'pen', 'step', 'song-page'], width: 228 },
+  { id: 'no_track', items: ['seq-back'], width: 224 },
+  // the SONG page's two lines (seq_ui.c song_draw)
+  { id: 'song_1', items: ['song-entry', 'song-pattern', 'song-shift', 'song-dup'], width: 224 },
+  { id: 'song_2', items: ['song-sel', 'song-preset', 'song-delete', 'song-back'], width: 228 },
+  // the menu's line: its settings tabs (pages_ui.c menu_chips), INFO and GUIDE (menu.c menu_draw)
+  { id: 'menu_page', items: ['menu-tab', 'menu-set', 'menu-back'], width: 226 },
+  { id: 'menu_info', items: ['menu-tab', 'menu-back'], width: 226 },
+  { id: 'menu_guide', items: ['menu-scroll', 'menu-tab', 'menu-back'], width: 226 },
+];
+/** the parts the SEQ page's track line adds where they fit (seq_ui.c), each alone: HINT_ROW_<ROW> */
+export const HINT_ROWS = ['sr-accent', 'sr-back', 'track', 'clear'];
+
+/** a hint line's text */
+export function hintText(h: HintLine): string {
+  const rows = new Map(CONTROLS.map((r) => [r.id, r]));
+  const items = h.items.map((it) => {
+    for (const id of typeof it === 'string' ? [it] : [it.row].flat()) if (!rows.has(id)) throw new Error(`controls: hint ${h.id} names no row ${id}`);
+    if (typeof it !== 'string') return it.text;
+    const t = rows.get(it)!.hint;
+    if (!t) throw new Error(`controls: hint ${h.id}: the row ${it} has no hint`);
+    return t;
+  });
+  return h.lead ? `${h.lead} ${items.join('  ')}` : items.join('  ');
+}
 
 /** a gesture in the sheet's row spec (help_ui.c: parts separated by '|': k: a button, n: a grey knob, c: K1..K4, w: a
  * white key, b: a black key, t: grey words, m: bright words) */
@@ -227,4 +329,92 @@ export function sheetRows(state: HelpState, tab: 'state' | 'everywhere'): (Contr
     tab === 'state' ? r.sheet?.[state] : r.everywhere?.[state];
   const all: (ControlRow | typeof PATCH_BUTTONS)[] = [...CONTROLS, PATCH_BUTTONS];
   return all.filter((r) => place(r) !== undefined).sort((a, b) => place(a)! - place(b)!);
+}
+
+// ---- the editor's and the README's words for the table
+
+/** a state in a sentence: where the FM-1 is */
+export const HELP_STATE_TITLE: Record<HelpState, string> = {
+  device: 'on a device page', env: 'on the environment (ENV)', drum: 'on the SEQ page of a drum track', roll: 'on the SEQ page of a melodic track (the piano roll)',
+  live: 'in a live take (REC on the SEQ page while running)', song: 'on the SONG page (SEL tapped on the SEQ page)', menu: 'in the settings menu (GLO)',
+  sandbox: 'in sandbox mode (the editor’s patch over budget under Live)', step: 'in step record (REC on the SEQ page while stopped)',
+};
+/** a condition in words: where the row applies */
+export const CONDITION_TEXT: Record<Condition, string> = {
+  list: 'while a Page button’s list shows', dev_presets: 'a device with presets', dev_store: 'an assembly', dev_keys: 'a device that takes keys',
+  long_track: 'a track of more than 16 steps', tracks: 'a patch with Steps tracks', menu_guide: 'the GUIDE tab', menu_page: 'the MIDI, PANEL and SYSTEM tabs',
+  menu_system: 'the SYSTEM tab', roll: 'a melodic track',
+};
+
+/** a gesture in words: "HOME held + PRESET", "a held step + K2", "OCT- / OCT+" */
+export function gestureText(g: Gesture): string {
+  const part = (p: Part): string => {
+    if ('button' in p) return p.button === 'OCT' ? 'OCT- / OCT+' : p.button;
+    if ('encoder' in p) return p.encoder;
+    if ('knobs' in p) return p.knobs === '1234' ? 'K1..K4' : `K${p.knobs}`;
+    switch (p.key) {
+      case 'white': return 'a white key';
+      case 'black': return p.n ? `black key ${p.n}` : 'a black key';
+      case 'any': return 'any key';
+      case 'keys': return 'the keys';
+      default: return 'keys together';
+    }
+  };
+  let t = g.do.map(part).join(g.join === 'list' ? ', ' : ' / ');
+  if (g.how === 'tap') t += ' tapped';
+  if (g.how === 'held') t += ' held + the keys';
+  if (g.how === 'hold 2 s') t += ' held 2 s';
+  if (g.hold) t = `${g.hold === 'step' ? 'a held step' : `${g.hold} held`} + ${t}`;
+  if (g.where) t += ` ${g.where}`;
+  return t;
+}
+/** where a row applies, in words ('' everywhere it is listed) */
+const whenText = (r: ControlRow): string => (r.when && !r.when.startsWith('!') ? ` (${CONDITION_TEXT[r.when as Condition]})` : '');
+/** a row's words for the editor: what it does, at length, and where it applies */
+export const rowHelp = (r: ControlRow): string => (r.help ?? r.does) + whenText(r);
+
+/** what the FM-1 does that is no single control, for the editor's help: the sheet, the quick start, the keys */
+export const FM1_NOTES: { keys: string; text: string }[] = [
+  { keys: 'OCT- + OCT+', text: 'the controls sheet: what the controls do where the FM-1 is now (its tab) and everywhere (EVERYWHERE), made from the same table as this list. ALGO switches the tab, SELECT scrolls, HOME closes it; the note keys and PLAY still work, the other controls do nothing meanwhile' },
+  { keys: 'quick start', text: 'the card after power-on: HOME closes it, OCT- + OCT+ opens the controls sheet instead, HOME + SAVE turns it off for good (GLO › SYSTEM › QUICK START or FACTORY RESET turns it on again)' },
+  { keys: 'FX, LFO, EDIT, ARP', text: 'patch buttons: the patch decides what each does (a gate, a Toggle that bypasses a module or assembly, or a list of device pages); the sheet lists each by its job in the loaded patch. On the SEQ and SONG pages FX and LFO have the jobs below' },
+  { keys: 'the keys', text: 'they play what is armed (SEL, REC held + a black key, the SEQ page arms the track it shows); nothing armed, Main’s cables decide (KEYS WIRED). While the keys reach a Drum map, black keys 1..8 play its rows on every page' },
+  { keys: 'SAVE held at power-on', text: 'safe mode: the fallback patch, nothing read from flash' },
+];
+
+/** an EVERYWHERE row listed in only a few states: which (" (on the SEQ and SONG pages)"), else '' */
+export function onlyIn(r: ControlRow): string {
+  const s = Object.keys(r.everywhere ?? {}) as HelpState[];
+  return s.length && s.length <= 4 ? ` (${s.map((x) => HELP_STATE_NAME[x].toLowerCase()).join(', ')})` : '';
+}
+/** the rows of a state's tab in the sheet's order, without the patch buttons */
+export const stateRows = (s: HelpState): ControlRow[] => sheetRows(s, 'state').filter((r): r is ControlRow => 'gesture' in r);
+/** the rows any EVERYWHERE tab lists, each once, in their order */
+export function everywhereRows(): ControlRow[] {
+  const first = (r: ControlRow): number => Math.min(...Object.values(r.everywhere ?? {}));
+  return CONTROLS.filter((r) => r.everywhere).sort((a, b) => first(a) - first(b));
+}
+
+/** what a fixed button does (modules.ts FIXED_DOES: the dock and the button editor): its rows, and the states' tabs that
+ * list them */
+export function fixedDoes(b: Button): string {
+  const mine = (p: Part): boolean => 'button' in p && p.button === b;
+  return CONTROLS.filter((r) => r.gesture.join !== 'list' && (r.gesture.hold === b || r.gesture.do.some(mine))).map((r) => {
+    const g = r.gesture;
+    const how = g.hold === b ? `held + ${gestureText({ ...g, hold: undefined })}: ` : g.how === 'hold 2 s' ? 'held 2 s: '
+      : g.how === 'tap' ? 'tapped: ' : g.hold ? `with ${g.hold === 'step' ? 'a held step' : `${g.hold} held`}: ` : '';
+    const where = Object.keys(r.sheet ?? {}).map((s) => HELP_STATE_NAME[s as HelpState].toLowerCase());
+    return `${how}${r.does}${where.length ? ` (${where.join(', ')})` : ''}`;
+  }).join('; ');
+}
+
+export const README_START = '<!-- controls: generated from web/src/controls.ts by `npm run export-defs`; edit the table, not this list -->';
+export const README_END = '<!-- controls: end -->';
+/** the README's list of the FM-1's controls, between README_START and README_END (export-defs writes it, a test checks it) */
+export function readmeControls(): string {
+  const line = (r: ControlRow): string => `**${gestureText(r.gesture)}** ${r.does || 'go to the editor'}${whenText(r)}`;
+  const L = [README_START, '', `* **Everywhere:** ${everywhereRows().map((r) => line(r) + onlyIn(r)).join(' · ')}`];
+  for (const s of HELP_STATES) L.push(`* **${HELP_STATE_TITLE[s][0].toUpperCase()}${HELP_STATE_TITLE[s].slice(1)}:** ${stateRows(s).map(line).join(' · ')}`);
+  L.push('', README_END);
+  return L.join('\n');
 }
