@@ -106,20 +106,53 @@ static uint32_t help_patch_rows(const char **out)
     return n;
 }
 
+/* a line's spec with "{list}" (controls.ts LIST_MARK) made the Page button whose list shows, as the top bar names it
+ * (pages_ui.c: the patch's label, else the button's name); a label whose words do not fit the description's field is
+ * the button's name. A line without it: the spec itself */
+static char help_list_row[2][48];
+static const char *help_fill(const char *spec, uint32_t k)
+{
+    const char *m = spec, *d;
+    char lab[16], *p;
+    while (*m && !(m[0] == '{' && m[1] == 'l' && m[2] == 'i' && m[3] == 's' && m[4] == 't' && m[5] == '}'))
+        m++;
+    if (!*m || pg_list_btn < 0 || k >= 2u)
+        return spec;
+    if (!panel_label((uint32_t)pg_list_btn, lab))
+        put(lab, PANEL_BTN_NAME[pg_list_btn])[0] = 0;
+    for (;;) {
+        p = help_list_row[k];
+        for (d = spec; d < m && p < help_list_row[k] + 40; d++)
+            *p++ = *d;
+        p = put(p, lab);
+        *put(p, m + 6) = 0;
+        for (d = help_list_row[k]; *d && *d != '~'; d++)
+            ;
+        if (!*d || text_w(&FONT_S, d + 1, -1) <= 222u - HC_AC || str_eq(lab, PANEL_BTN_NAME[pg_list_btn]))
+            return help_list_row[k];
+        put(lab, PANEL_BTN_NAME[pg_list_btn])[0] = 0;
+    }
+}
+
 /* the rows of tab t (0 the state's, 1 EVERYWHERE) in the state now: controls.h's lines of that tab whose condition holds,
- * the patch buttons in their place */
+ * the patch buttons in their place; help_line[i]: row i's line (CTL_LINE; CTL_PATCH a patch button's) */
+static uint8_t help_line[HC_ROWS];
 static uint32_t help_rows(uint32_t t, const char **r)
 {
     const uint8_t *l = CTL_SHEET[t ? 1 : 0][help_state()];
-    uint32_t n = 0;
+    uint32_t n = 0, fill = 0, k;
     for (; *l != CTL_END; l++) {
         const ctl_line_t *c = &CTL_LINE[*l];
         if (c->cond && !HC_FN[c->cond]() == !c->neg)
             continue;
-        if (c->row == CTL_PATCH)
-            n += help_patch_rows(r + n);
-        else
-            r[n++] = c->spec;
+        if (c->row == CTL_PATCH) {
+            for (k = help_patch_rows(r + n); k; k--)
+                help_line[n++] = (uint8_t)CTL_PATCH;
+        } else {
+            r[n] = help_fill(c->spec, fill);
+            fill += r[n] != c->spec;
+            help_line[n++] = *l;
+        }
     }
     return n;
 }
