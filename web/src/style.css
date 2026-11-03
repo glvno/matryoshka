@@ -1574,7 +1574,7 @@ svg.slack-cable .cable.pending { pointer-events: none; }
   --f-body: var(--ref-coral); --f-edge: var(--ref-rust); --f-face: var(--ref-ivory);
   --f-tray: var(--ref-paper); --f-cap: #fff; --f-cap-ink: var(--ref-ink); --f-drop: color-mix(in srgb, var(--ref-night) 22%, transparent);
   --f-silk: var(--ref-ink); --f-dial: #fff; --f-dial-rim: var(--ref-sand); --f-glow: var(--ref-gold);
-  position: relative; flex: none; width: min(100%, calc((100dvh - 120px - var(--strip-room, 0px)) * 1280 / 678), 1280px); aspect-ratio: 1280 / 678; container-type: inline-size;
+  position: relative; flex: none; width: min(100%, calc(var(--fm1-room, calc(100dvh - 120px - var(--strip-room, 0px))) * 1280 / 678), 1280px); aspect-ratio: 1280 / 678; container-type: inline-size;
   border-radius: 2.4cqw; background: var(--f-body); box-shadow: 0 6px 24px var(--shadow), inset 0 0 0 .25cqw var(--f-edge); color: var(--ink); }
 .fm1-body > * { position: absolute; box-sizing: border-box; }
 .fm1-face { border-radius: 1.6cqw; background: var(--f-face); }
@@ -1642,20 +1642,31 @@ svg.slack-cable .cable.pending { pointer-events: none; }
    K1..K4 in their colours, white and black keys), and what K1..K4 do. While a modifier is held it turns gold and shows
    that modifier's controls */
 #fm1-view:has(> .controls-strip:not([hidden])) { --strip-room: 210px; justify-content: flex-start; }
-.controls-strip { --cs: 19px; --mod: var(--gate); flex: none; box-sizing: border-box; width: min(100%, 1280px); display: grid;
-  grid-template-columns: minmax(170px, 1fr) minmax(0, 3.4fr) minmax(220px, 1.1fr); border: 1px solid var(--line); border-top: 3px solid var(--ink);
-  border-radius: 8px; background: var(--panel); color: var(--ink); font: 500 20px/1.25 'Barlow', system-ui, sans-serif; }
+.controls-strip { --cs: 22px; --mod: var(--gate); flex: none; box-sizing: border-box; width: min(100%, 1280px); display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(0, 3.6fr) minmax(250px, 1.15fr); border: 1px solid var(--line); border-top: 3px solid var(--ink);
+  border-radius: 10px; background: var(--panel); color: var(--ink); font: 500 22px/1.3 'Barlow', system-ui, sans-serif; }
 .controls-strip[hidden] { display: none; }
+/* the height of a state's first 8 rows at least, so the panel above keeps its size while holds come and go */
+#fm1-view > .controls-strip { min-height: 336px; }
+/* no K1..K4 column (the piano roll and the drum grid until a step is held): the rows take its room */
+.controls-strip.no-kmap { grid-template-columns: minmax(180px, 1fr) minmax(0, 4.75fr); }
 .controls-strip.mod { border-top-color: var(--mod); background: color-mix(in oklab, var(--mod) 14%, var(--panel)); }
-.controls-strip > div { min-width: 0; padding: 12px 16px; }
+.controls-strip > div { min-width: 0; padding: 14px 22px; }
 .controls-strip > div + div { border-left: 1px solid var(--line); }
-.cs-name { font: 700 32px/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+.cs-name { font: 700 38px/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
 .controls-strip.mod .cs-name { color: var(--mod); }
-.cs-sub { margin-top: 6px; font-size: 14px; line-height: 1.3; color: var(--muted); }
-.cs-from { margin-top: 10px; font: 600 11px/1.2 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-.cs-body { display: grid; gap: 10px; align-content: start; }
-.cs-rows { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
-.cs-everywhere { --cs: 15px; font-size: 16px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.cs-sub { margin-top: 8px; font-size: 16px; line-height: 1.35; color: var(--muted); }
+.cs-from { margin-top: 14px; font: 600 12px/1.2 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.cs-body { display: grid; gap: 12px; align-content: start; }
+.cs-rows { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+/* the state's own rows in columns, one control a cell, so the eye runs down them as down the FM-1's sheet */
+.cs-rows:not(.cs-everywhere) { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 6px 22px; }
+/* "+N more": the rows past the sheet's first screen (help_ui.c HC_VIS), the viewer's choice kept */
+.cs-more { justify-self: start; padding: 5px 14px; border: 2px dashed var(--muted); border-radius: 6px; background: none; color: var(--ink); cursor: pointer;
+  font: 600 19px/1.2 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; }
+.cs-more:hover, .cs-more:focus-visible { border-color: var(--accent); border-style: solid; }
+.cs-everywhere { --cs: 14px; font-size: 15px; gap: 2px 12px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.cs-everywhere .cs-chip { padding-block: 1px; }
 .cs-label { font: 600 12px/1 'Barlow', system-ui, sans-serif; letter-spacing: .08em; color: var(--muted); }
 .cs-chip { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 3px 7px; border: 2px solid transparent; border-radius: 6px; }
 .cs-chip.lead { border-color: var(--accent); }
@@ -1678,9 +1689,9 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .cs-key.black i { background: var(--ref-night); border: 2px solid var(--ref-mist); }
 .cs-t { color: var(--muted); font-size: calc(var(--cs) * .9); }
 .cs-word { font: 700 var(--cs)/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .05em; }
-.cs-kmap { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; align-content: start; text-align: center; }
-.cs-kmap > div { display: grid; justify-items: center; gap: 5px; font: 600 16px/1.1 'Barlow Condensed', system-ui, sans-serif; }
-.cs-kmap .cs-dot { --cs: 24px; }
+.cs-kmap { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; align-content: start; text-align: center; }
+.cs-kmap > div { display: grid; justify-items: center; gap: 8px; font: 600 19px/1.15 'Barlow Condensed', system-ui, sans-serif; }
+.cs-kmap .cs-dot { --cs: 30px; }
 .cs-kmap .off { opacity: .35; }
 @media (max-width: 860px) {
   .controls-strip { grid-template-columns: 1fr; }

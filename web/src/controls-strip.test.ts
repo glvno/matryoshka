@@ -2,13 +2,39 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { BUTTON_ID, CONDITIONS, CONTROLS, HELP_STATE_NAME, HELP_STATES, sheetRows, type Condition, type ControlRow, type HelpState } from './controls';
-import { ControlsStrip, conditionHolds, heldButtons, stripView, type StripInput } from './controls-strip';
+import { ControlsStrip, conditionHolds, heldButtons, knobsOnlyHeld, MORE_KEY, SHEET_ROWS, stripPatch, stripView, type StripInput } from './controls-strip';
+import { setKind, setPages } from './buttons';
+import { DEFS } from './modules';
+import { addModule, connect, emptyPatch, type Patch } from './patch';
+import { binaryPage } from './patchbin';
+import { devicesOf } from './pages';
+
+/** Main, an oscillator into a VCA into the Output; FX a Toggle of the VCA labelled DRIVE, LFO a Gate with no cable (no
+ * job), EDIT a Page button, ARP a Gate cabled into the VCA's cv that switches */
+function rig(): { p: Patch; osc: number } {
+  const p = emptyPatch('t');
+  const main = addModule(p, DEFS.fm1, 0, 0);
+  const osc = addModule(p, DEFS.osc, 200, 0);
+  const vca = addModule(p, DEFS.vca, 400, 0);
+  const out = addModule(p, DEFS.output, 600, 0);
+  connect(p, DEFS, { module: main.id, port: 'pitch' }, { module: osc.id, port: 'pitch' });
+  connect(p, DEFS, { module: osc.id, port: 'out' }, { module: vca.id, port: 'in' });
+  connect(p, DEFS, { module: vca.id, port: 'out' }, { module: out.id, port: 'l' });
+  connect(p, DEFS, { module: main.id, port: 'arp' }, { module: vca.id, port: 'cv' });
+  setKind(p, 'fx', 'bypass');
+  main.panel = { ...main.panel, targets: { fx: { module: vca.id } }, labels: { fx: 'DRIVE' }, toggle: ['arp'] };
+  setKind(p, 'lfo', 'gate');
+  setKind(p, 'edit', 'page');
+  setPages(p, 'edit', [{ device: `m${osc.id}`, page: 0 }]);
+  setKind(p, 'arp', 'gate');
+  return { p, osc: osc.id };
+}
 
 /** every condition holding (bit c: CONDITIONS[c - 1]) */
 const ALL_CONDS = CONDITIONS.reduce((m, _c, i) => m | (1 << (i + 1)), 0);
 const cond = (...on: Condition[]): number => on.reduce((m, c) => m | (1 << (CONDITIONS.indexOf(c) + 1)), 0);
 const at = (s: HelpState, o: Partial<StripInput> = {}): StripInput => ({ state: HELP_STATES.indexOf(s), held: 0, stepHeld: false, conditions: ALL_CONDS, ...o });
-const ids = (rows: ControlRow[]): string[] => rows.map((r) => r.id);
+const ids = (rows: { id: string }[]): string[] => rows.map((r) => r.id);
 /** the table's rows of a state's tab, in its order, whose condition holds (all conditions on: the positive ones) */
 const tableRows = (s: HelpState, tab: 'state' | 'everywhere', conds = ALL_CONDS): string[] =>
   sheetRows(s, tab).filter((r): r is ControlRow => 'gesture' in r).filter((r) => conditionHolds(r.when, conds)).map((r) => r.id);
@@ -19,7 +45,8 @@ describe('the controls strip is made from the controls table (#554, controls.ts)
     expect(v.state).toBe(s);
     expect(v.name).toBe(HELP_STATE_NAME[s]);
     expect(v.held).toBeNull();
-    expect(ids(v.rows)).toEqual(tableRows(s, 'state'));
+    expect(ids([...v.rows, ...v.more])).toEqual(tableRows(s, 'state'));
+    expect(v.rows.length, 'the sheet\'s first screen').toBe(Math.min(SHEET_ROWS, tableRows(s, 'state').length));
     expect(ids(v.everywhere)).toEqual(tableRows(s, 'everywhere'));
     expect(v.rows.length, 'every state lists rows').toBeGreaterThan(0);
   });
@@ -83,6 +110,53 @@ describe('the controls strip is made from the controls table (#554, controls.ts)
     expect(ids(stripView(at('step')).rows)).toEqual(before);
   });
 
+  it('a long state: the sheet\'s first 8 rows, the rest behind "+N more" (the patch buttons count, as on the sheet)', () => {
+    const sp = stripPatch(rig().p);
+    const v = stripView(at('device'), sp);
+    const all = sheetRows('device', 'state').flatMap((r) => ('gesture' in r ? (conditionHolds(r.when, ALL_CONDS) ? [r.id] : []) : sp.buttons.map((b) => b.id)));
+    expect(ids([...v.rows, ...v.more])).toEqual(all);
+    expect(v.rows).toHaveLength(SHEET_ROWS);
+    expect(v.more.length).toBe(all.length - SHEET_ROWS);
+    expect(ids(v.everywhere), 'EVERYWHERE as now: never cut').toEqual(tableRows('device', 'everywhere'));
+  });
+
+  it('the patch buttons with a job, worded as the sheet lists them (help_ui.c help_patch_rows), where PATCH_BUTTONS sits', () => {
+    const sp = stripPatch(rig().p);
+    expect(sp.buttons).toEqual([
+      { id: 'patch-fx', button: 'FX', does: 'drive on/off' },
+      { id: 'patch-edit', button: 'EDIT', does: 'edit pages' },
+      { id: 'patch-arp', button: 'ARP', does: 'arp on/off' },
+    ]);
+    const plain = stripView(at('device', { conditions: 0 }), sp);
+    const order = ids([...plain.rows, ...plain.more]);
+    expect(order.slice(-3), 'last on the device tab (PATCH_BUTTONS: 100)').toEqual(['patch-fx', 'patch-edit', 'patch-arp']);
+    expect(ids([...stripView(at('roll'), sp).rows, ...stripView(at('roll'), sp).more])).not.toContain('patch-fx');
+    expect(stripPatch(emptyPatch('none')).buttons, 'no Main: no patch buttons').toEqual([]);
+  });
+
+  it('a device page: K1..K4 named after the rows of the page in focus; without the patch, the table\'s words', () => {
+    const { p, osc } = rig();
+    const sp = stripPatch(p);
+    const [d, pg] = binaryPage(p, `m${osc}`, 0)!;
+    const want = devicesOf(p, DEFS).find((x) => x.key === `m${osc}`)!.pages[0].rows.slice(0, 4).map((r) => r.label);
+    const v = stripView(at('device', { device: d, devicePage: pg }), sp);
+    expect(v.knobs).toEqual([0, 1, 2, 3].map((k) => want[k] ?? ''));
+    expect(v.knobs!.filter(Boolean).length).toBeGreaterThan(0);
+    expect(stripView(at('device', { device: d, devicePage: pg }, ), null).knobs).toEqual(Array(4).fill('adjust values'));
+    expect(stripView(at('device', { device: d, devicePage: pg, held: 1 << BUTTON_ID.HOME }), sp).knobs, 'HOME held: fine turns of the same rows').toEqual(v.knobs);
+    expect(stripView(at('env', { device: d, devicePage: pg }), sp).knobs, 'elsewhere: the table').toEqual(Array(4).fill("row's first page"));
+  });
+
+  it('the piano roll and the drum grid: no K1..K4 until a step is held, then what each does with it', () => {
+    expect(['roll', 'drum'].filter((s) => knobsOnlyHeld(s as HelpState))).toEqual(['roll', 'drum']);
+    expect(HELP_STATES.filter(knobsOnlyHeld)).toEqual(['drum', 'roll']);
+    expect(stripView(at('roll')).knobs).toBeNull();
+    expect(stripView(at('drum')).knobs).toBeNull();
+    expect(stripView(at('roll', { stepHeld: true })).knobs).toEqual(['pitch', 'velocity', 'chance', 'p-lock rows']);
+    expect(stripView(at('drum', { stepHeld: true })).knobs).toEqual(['p-lock rows', 'velocity', 'p-lock rows', 'p-lock rows']);
+    expect(stripView(at('step')).knobs, 'step record: K4 the cursor, no step to hold').toEqual(['', '', '', 'move cursor']);
+  });
+
   it('heldButtons names the buttons by matrix id (OCT- and OCT+, not the OCT alias)', () => {
     expect(heldButtons((1 << BUTTON_ID['OCT-']) | (1 << BUTTON_ID['OCT+']) | (1 << BUTTON_ID.REC))).toEqual(['OCT-', 'OCT+', 'REC']);
   });
@@ -90,12 +164,13 @@ describe('the controls strip is made from the controls table (#554, controls.ts)
 
 describe('ControlsStrip draws chips as the FM-1\'s sheet does', () => {
   it('the state\'s name, a chip per row, the held cap in gold, and nothing redrawn when nothing changed', () => {
+    localStorage.removeItem(MORE_KEY);
     const s = new ControlsStrip();
     expect(s.el.hidden).toBe(true);
     s.draw(at('step'), 'emu');
     expect(s.el.hidden).toBe(false);
     expect(s.el.querySelector('.cs-name')!.textContent).toBe('STEP RECORD');
-    expect([...s.el.querySelectorAll('.cs-rows:not(.cs-everywhere) .cs-chip')].map((c) => (c as HTMLElement).dataset.row)).toEqual(tableRows('step', 'state'));
+    expect([...s.el.querySelectorAll('.cs-rows:not(.cs-everywhere) .cs-chip')].map((c) => (c as HTMLElement).dataset.row)).toEqual(tableRows('step', 'state').slice(0, SHEET_ROWS));
     expect(s.el.querySelector('.cs-from')!.textContent).toContain('Emu');
     const first = s.el.firstChild;
     s.draw(at('step'), 'emu');
@@ -108,5 +183,45 @@ describe('ControlsStrip draws chips as the FM-1\'s sheet does', () => {
     expect(s.el.querySelector('.cs-from')!.textContent).toContain('your FM-1');
     s.draw(null, 'emu');
     expect(s.el.hidden).toBe(true);
+  });
+
+  it('"+N more" shows every row and back; the choice is kept for this viewer', () => {
+    localStorage.removeItem(MORE_KEY);
+    const sp = stripPatch(rig().p);
+    const s = new ControlsStrip();
+    s.draw(at('device'), 'emu', sp);
+    const chips = (x: ControlsStrip): number => x.el.querySelectorAll('.cs-rows:not(.cs-everywhere) .cs-chip').length;
+    const v = stripView(at('device'), sp);
+    expect(chips(s)).toBe(SHEET_ROWS);
+    const more = s.el.querySelector<HTMLButtonElement>('.cs-more')!;
+    expect(more.textContent).toBe(`+${v.more.length} more`);
+    more.click();
+    expect(chips(s)).toBe(SHEET_ROWS + v.more.length);
+    expect(s.el.querySelector('.cs-more')!.textContent).toBe('fewer');
+    expect(s.el.querySelectorAll('.cs-chip.patch').length).toBe(3);
+    expect(localStorage.getItem(MORE_KEY)).toBe('1');
+    const again = new ControlsStrip();
+    again.draw(at('device'), 'emu', sp);
+    expect(chips(again), 'a new visit: still expanded').toBe(SHEET_ROWS + v.more.length);
+    again.el.querySelector<HTMLButtonElement>('.cs-more')!.click();
+    expect(chips(again)).toBe(SHEET_ROWS);
+    expect(localStorage.getItem(MORE_KEY)).toBe('0');
+    s.draw(at('sandbox'), 'emu', sp);
+    expect(s.el.querySelector('.cs-more'), 'a state that fits: no toggle').toBeNull();
+  });
+
+  it('the K1..K4 column: hidden on the piano roll until a step is held, the page\'s names on a device page', () => {
+    const { p, osc } = rig();
+    const sp = stripPatch(p);
+    const s = new ControlsStrip();
+    s.draw(at('roll'), 'emu', sp);
+    expect(s.el.querySelector('.cs-kmap')).toBeNull();
+    expect(s.el.classList.contains('no-kmap')).toBe(true);
+    s.draw(at('roll', { stepHeld: true }), 'emu', sp);
+    expect([...s.el.querySelectorAll('.cs-kmap > div')].map((k) => k.lastChild!.textContent)).toEqual(['pitch', 'velocity', 'chance', 'p-lock rows']);
+    const [d, pg] = binaryPage(p, `m${osc}`, 0)!;
+    s.draw(at('device', { device: d, devicePage: pg }), 'emu', sp);
+    expect(s.el.classList.contains('no-kmap')).toBe(false);
+    expect([...s.el.querySelectorAll('.cs-kmap > div')].map((k) => k.lastChild!.textContent)).toEqual(stripView(at('device', { device: d, devicePage: pg }), sp).knobs!.map((t) => t || '–'));
   });
 });
