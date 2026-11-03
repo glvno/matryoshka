@@ -7,17 +7,68 @@
 //
 // While a button is held (or a step's white key), the strip shows what that modifier does instead, the way Blender's
 // status bar changes while a modifier key is down: the rows whose gesture holds it.
+//
+// From the loaded patch (StripPatch, when the FM-1 shown plays the editor's patch) it adds what the table cannot know: the
+// patch buttons with a job (FX, LFO, EDIT, ARP, as the sheet lists them: help_ui.c help_patch_rows) and, on a device
+// page, the names of the rows K1..K4 turn there. A long state shows the sheet's first screen (SHEET_ROWS rows) and a
+// "+N more" toggle; the choice is remembered per viewer.
+import { kindOf, mainOf, switches } from './buttons';
 import {
-  BUTTON_ID, CONDITIONS, CONTROLS, doesText, gestureSpec, HELP_STATE_NAME, HELP_STATE_TITLE, HELP_STATES, sheetRows,
+  BUTTON_ID, CONDITIONS, doesText, gestureSpec, HELP_STATE_NAME, HELP_STATE_TITLE, HELP_STATES, sheetRows, stateRows, stripDoes,
   type Button, type Condition, type ControlRow, type HelpState,
 } from './controls';
+import { buttonLabel } from './modules';
+import { panelLabel, type Patch } from './patch';
+import { deviceSection } from './patchbin';
+import { deviceView } from './poly';
 import type { PanelState } from './protocol';
 
-/** what the strip needs of the panel's state (GUIDE_NOW, or the Emu copy's same bytes) */
-export type StripInput = Pick<PanelState, 'state' | 'held' | 'stepHeld' | 'conditions'>;
+/** what the strip needs of the panel's state (GUIDE_NOW, or the Emu copy's same bytes); the device page in focus too,
+ * for its knob names */
+export type StripInput = Pick<PanelState, 'state' | 'held' | 'stepHeld' | 'conditions'> & Partial<Pick<PanelState, 'device' | 'devicePage'>>;
+
+/** the rows the FM-1's controls sheet shows on its first screen (help_ui.c HC_VIS): the strip's rows before "+N more" */
+export const SHEET_ROWS = 8;
 
 /** the modifier a row's gesture holds: a button, or a held step */
 export type Modifier = Button | 'step';
+
+/** a patch button with a job in the loaded patch, as the sheet lists it: its name, then "label pages / on/off / held" */
+export interface PatchButtonRow { id: string; button: Button; does: string }
+/** a row of the strip: one of the controls table's, or a patch button's */
+export type StripRow = ControlRow | PatchButtonRow;
+const isControl = (r: StripRow): r is ControlRow => 'gesture' in r;
+
+/** what the strip takes from the loaded patch */
+export interface StripPatch {
+  /** the patch buttons with a job, in the sheet's order */
+  buttons: PatchButtonRow[];
+  /** the row names K1..K4 turn on the binary's device page [device][page] (the FM-1's indices, GUIDE_NOW's) */
+  pages: string[][][];
+}
+
+/** the patch buttons the sheet lists (help_ui.c help_patch_rows; SEL, ENV and GLO are fixed) */
+const PATCH_BUTTON_NAMES = ['fx', 'lfo', 'edit', 'arp'] as const;
+
+/** what the strip needs of a patch: its patch buttons with a job, worded as the FM-1's sheet words them (help_ui.c
+ * help_patch_rows: a Toggle or a Page button always has one, any other when a cable leaves its jack; the patch's label in
+ * lower case, else the button's name, then "pages", "on/off" when it switches, else "held"), and its device pages' row
+ * names as the binary lists them */
+export function stripPatch(source: Patch): StripPatch {
+  const dev = deviceView(source, true).patch;
+  const main = mainOf(dev);
+  const panel = mainOf(source)?.panel;
+  const buttons: PatchButtonRow[] = main ? PATCH_BUTTON_NAMES.flatMap((b) => {
+    const kind = kindOf(panel, b);
+    const job = kind === 'bypass' || kind === 'page' || dev.cables.some((c) => c.from.module === main.id && c.from.port === b);
+    if (!job) return [];
+    const label = (panelLabel(panel?.labels?.[b]) || buttonLabel(b)).toLowerCase();
+    const how = kind === 'page' ? 'pages' : kind === 'bypass' || switches(panel, b) ? 'on/off' : 'held';
+    return [{ id: `patch-${b}`, button: buttonLabel(b) as Button, does: `${label} ${how}` }];
+  }) : [];
+  const pages = deviceSection(source, dev).map((d) => d.pages.map((pg) => pg.rows.map((r) => r.label)));
+  return { buttons, pages };
+}
 
 export interface StripView {
   state: HelpState;
@@ -27,12 +78,15 @@ export interface StripView {
   title: string;
   /** the modifier held whose rows show, or null: the state's own rows */
   held: Modifier | null;
-  /** the rows to show first, in the table's order */
-  rows: ControlRow[];
+  /** the rows to show first, in the table's order (the patch buttons in their place): the sheet's first screen */
+  rows: StripRow[];
+  /** the rows after the first SHEET_ROWS, behind "+N more" */
+  more: StripRow[];
   /** the state's EVERYWHERE rows (none while a modifier shows) */
   everywhere: ControlRow[];
-  /** K1..K4: what each does among the rows shown, '' nothing */
-  knobs: [string, string, string, string];
+  /** K1..K4: what each does ('' nothing): on a device page the names of its rows, else from the rows shown; null hides
+   * them (a state whose knobs act only on a held step, with none held) */
+  knobs: [string, string, string, string] | null;
 }
 
 /** the buttons by matrix id, without the OCT alias (both OCT buttons have their own name) */
@@ -54,20 +108,36 @@ export const heldButtons = (held: number): Button[] => BUTTON_AT.filter((b) => (
 const usesModifier = (r: ControlRow, m: Modifier): boolean =>
   r.gesture.hold === m || (r.gesture.how === 'held' && r.gesture.do.some((p) => 'button' in p && p.button === m));
 
-/** the strip for a panel state: the controls table's rows for that state, in its order, with what is held */
-export function stripView(p: StripInput): StripView {
+/** a state whose K1..K4 act only on a held step (the piano roll, the drum grid): every row of it that turns one holds a
+ * step */
+export function knobsOnlyHeld(s: HelpState): boolean {
+  const k = stateRows(s).filter((r) => r.gesture.do.some((d) => 'knobs' in d));
+  return k.length > 0 && k.every((r) => r.gesture.hold === 'step');
+}
+
+/** the strip for a panel state: the controls table's rows for that state, in its order, with what is held; with the
+ * loaded patch, its patch buttons where the sheet puts them and the device page's knob names */
+export function stripView(p: StripInput, patch: StripPatch | null = null): StripView {
   const state = HELP_STATES[p.state] ?? 'device';
   const holds = (r: ControlRow): boolean => conditionHolds(r.when, p.conditions);
-  const tab = (t: 'state' | 'everywhere'): ControlRow[] => sheetRows(state, t).filter((r): r is ControlRow => 'gesture' in r).filter(holds);
-  const own = tab('state');
-  const everywhere = tab('everywhere');
+  const tab = (t: 'state' | 'everywhere'): StripRow[] =>
+    sheetRows(state, t).flatMap((r): StripRow[] => (!('gesture' in r) ? patch?.buttons ?? [] : holds(r) ? [r] : []));
+  const ownAll = tab('state');
+  const own = ownAll.filter(isControl);
+  const everywhere = tab('everywhere').filter(isControl);
+  const base = { state, name: HELP_STATE_NAME[state], title: HELP_STATE_TITLE[state] };
+  const split = (rows: StripRow[]): { rows: StripRow[]; more: StripRow[] } => ({ rows: rows.slice(0, SHEET_ROWS), more: rows.slice(SHEET_ROWS) });
+  // on a device page: the names of the rows K1..K4 turn on the page in focus (unknown without the patch)
+  const names = state === 'device' && p.device !== undefined && p.devicePage !== undefined ? patch?.pages[p.device]?.[p.devicePage] : undefined;
+  const pageKnobs = names ? ([0, 1, 2, 3].map((k) => names[k] ?? '') as [string, string, string, string]) : null;
   // a held step first, then the buttons held: the first whose rows this state lists
   const candidates: Modifier[] = [...(p.stepHeld ? ['step' as const] : []), ...heldButtons(p.held)];
   for (const m of candidates) {
     const rows = [...own, ...everywhere].filter((r) => usesModifier(r, m));
-    if (rows.length) return { state, name: HELP_STATE_NAME[state], title: HELP_STATE_TITLE[state], held: m, rows, everywhere: [], knobs: knobsOf(rows, state) };
+    if (rows.length) return { ...base, held: m, ...split(rows), everywhere: [], knobs: pageKnobs ?? knobsOf(rows, state) };
   }
-  return { state, name: HELP_STATE_NAME[state], title: HELP_STATE_TITLE[state], held: null, rows: own, everywhere, knobs: knobsOf(own.filter((r) => !r.gesture.hold), state) };
+  const knobs = pageKnobs ?? (knobsOnlyHeld(state) ? null : knobsOf(own.filter((r) => !r.gesture.hold), state));
+  return { ...base, held: null, ...split(ownAll), everywhere, knobs };
 }
 
 /** K1..K4's jobs among rows: the first row each knob turns */
@@ -115,14 +185,15 @@ function part(spec: string, held: Modifier | null): HTMLElement {
   }
 }
 
-/** a row as chips: its gesture's parts, then what it does (in `state`'s words: the sheet's `doesIn`) */
-export function rowChip(r: ControlRow, held: Modifier | null, lead = false, state?: HelpState): HTMLElement {
-  const c = el('span', `cs-chip${lead ? ' lead' : ''}`);
+/** a row as chips: its gesture's parts, then what it does in the strip's plain words (controls.ts stripDoes, in `state`'s words); a patch button its
+ * cap, then its job in the patch */
+export function rowChip(r: StripRow, held: Modifier | null, lead = false, state?: HelpState): HTMLElement {
+  const c = el('span', `cs-chip${lead ? ' lead' : ''}${isControl(r) ? '' : ' patch'}`);
   c.dataset.row = r.id;
   const spec = el('span', 'cs-spec');
-  for (const s of gestureSpec(r.gesture).split('|').filter(Boolean)) spec.append(part(s, held));
+  for (const s of (isControl(r) ? gestureSpec(r.gesture) : `k:${r.button}`).split('|').filter(Boolean)) spec.append(part(s, held));
   c.append(spec);
-  const does = doesText(r, state);   // ({list}: the Page button, GUIDE_NOW does not name it)
+  const does = isControl(r) ? stripDoes(r, state) : r.does;   // (the strip's own words; {list}: the Page button, GUIDE_NOW does not name it)
   if (does) c.append(el('span', 'cs-does', does));
   return c;
 }
@@ -130,10 +201,17 @@ export function rowChip(r: ControlRow, held: Modifier | null, lead = false, stat
 /** where the strip's state comes from */
 export type StripSource = 'emu' | 'fm1';
 
+/** where the viewer's "+N more" choice is kept (this browser only) */
+export const MORE_KEY = 'matryoshka.controlsStrip.more';
+const readMore = (): boolean => { try { return localStorage.getItem(MORE_KEY) === '1'; } catch { return false; } };
+
 /** the strip's element and its drawing: draw(state) redraws only when what it shows changed */
 export class ControlsStrip {
   readonly el: HTMLElement;
   private last = '';
+  /** every row of a long state, not only the sheet's first screen (the viewer's choice) */
+  private expanded = readMore();
+  private redraw: (() => void) | null = null;
   constructor() {
     this.el = el('section', 'controls-strip');
     this.el.setAttribute('aria-label', 'Controls strip: the FM-1 controls for what it is doing now');
@@ -141,15 +219,27 @@ export class ControlsStrip {
     this.el.hidden = true;
   }
 
-  /** draw the strip for a panel state (null: nothing known yet, hidden) */
-  draw(p: StripInput | null, source: StripSource): void {
-    if (!p) { this.el.hidden = true; this.last = ''; return; }
-    const v = stripView(p);
-    const key = JSON.stringify([source, v.state, v.held, v.rows.map((r) => r.id), v.everywhere.map((r) => r.id)]);
+  /** every row of a long state, or its first SHEET_ROWS; kept for this viewer */
+  setExpanded(on: boolean): void {
+    this.expanded = on;
+    try { localStorage.setItem(MORE_KEY, on ? '1' : '0'); } catch { /* storage blocked: this visit only */ }
+    this.last = '';
+    this.redraw?.();
+  }
+
+  /** draw the strip for a panel state (null: nothing known yet, hidden); `patch`: the loaded patch's buttons and pages,
+   * when the FM-1 shown plays the editor's patch */
+  draw(p: StripInput | null, source: StripSource, patch: StripPatch | null = null): void {
+    if (!p) { this.el.hidden = true; this.last = ''; this.redraw = null; return; }
+    this.redraw = () => this.draw(p, source, patch);
+    const v = stripView(p, patch);
+    const key = JSON.stringify([source, v.state, v.held, v.rows.map((r) => r.id), v.more.map((r) => r.id), v.everywhere.map((r) => r.id),
+      v.knobs, patch?.buttons.map((b) => b.does), this.expanded]);
     this.el.hidden = false;
     if (key === this.last) return;
     this.last = key;
     this.el.classList.toggle('mod', !!v.held);
+    this.el.classList.toggle('no-kmap', !v.knobs);
     this.el.dataset.state = v.state;
     const head = el('div', 'cs-head');
     const heldName = v.held === 'step' ? 'STEP' : v.held;
@@ -160,14 +250,24 @@ export class ControlsStrip {
     );
     const body = el('div', 'cs-body');
     const rows = el('div', 'cs-rows');
-    v.rows.forEach((r, i) => rows.append(rowChip(r, v.held, i === 0, v.state)));
+    const shown = this.expanded ? [...v.rows, ...v.more] : v.rows;
+    shown.forEach((r, i) => rows.append(rowChip(r, v.held, i === 0, v.state)));
+    if (v.more.length) {
+      const t = el('button', 'cs-more', this.expanded ? 'fewer' : `+${v.more.length} more`);
+      t.type = 'button';
+      t.setAttribute('aria-expanded', String(this.expanded));
+      t.title = this.expanded ? `back to the first ${SHEET_ROWS}, as the FM-1's controls sheet shows them` : 'every control here, past the sheet’s first screen';
+      t.addEventListener('click', () => this.setExpanded(!this.expanded));
+      rows.append(t);
+    }
     body.append(rows);
     if (v.everywhere.length) {
       const ev = el('div', 'cs-rows cs-everywhere');
       ev.append(el('span', 'cs-label', 'EVERYWHERE'));
-      for (const r of v.everywhere) ev.append(rowChip(r, null));
+      for (const r of v.everywhere) ev.append(rowChip(r, null, false, v.state));
       body.append(ev);
     }
+    if (!v.knobs) { this.el.replaceChildren(head, body); return; }
     const knobs = el('div', 'cs-kmap');
     v.knobs.forEach((t, i) => {
       const k = el('div', t ? '' : 'off');

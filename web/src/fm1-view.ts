@@ -90,6 +90,9 @@ export interface Fm1ViewHost extends Fm1Events {
   used?(): void;
 }
 
+/** the panel's least height in CSS px with something docked under it (a taller strip then scrolls the view) */
+const FM1_MIN_H = 360;
+
 export class Fm1View {
   ui: Fm1Ui | null = null;
   private loading: Promise<Fm1Ui | null> | null = null;
@@ -170,7 +173,25 @@ export class Fm1View {
   }
 
   /** an element docked under the panel, above its hint line (the controls strip, #554) */
-  below(e: HTMLElement): void { this.el.insertBefore(e, this.hint); }
+  below(e: HTMLElement): void {
+    this.el.insertBefore(e, this.hint);
+    // the panel takes the height the view has left over once everything beside it is laid out (--fm1-room, style.css
+    // .fm1-body), so the strip's rows show in full under it, never below the fold
+    const fit = (): void => {
+      const v = this.el;
+      if (v.hidden || !v.clientHeight) return;
+      const cs = getComputedStyle(v);
+      const gap = parseFloat(cs.rowGap) || 0;
+      const others = [...v.children].filter((c): c is HTMLElement => c instanceof HTMLElement && !c.classList.contains('fm1-body') && !c.hidden
+        && getComputedStyle(c).position !== 'absolute' && getComputedStyle(c).display !== 'none');
+      const room = v.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - others.reduce((s, c) => s + c.offsetHeight + gap, 0);
+      v.style.setProperty('--fm1-room', `${Math.max(FM1_MIN_H, Math.floor(room))}px`);
+    };
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(fit);
+    ro.observe(this.el);
+    ro.observe(e);
+  }
 
   /** the module, loaded if it is not yet (following an FM-1 needs it while this tab is hidden too) */
   ready(): Promise<Fm1Ui | null> { return this.ensure(); }

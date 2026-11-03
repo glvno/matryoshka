@@ -3,7 +3,7 @@
 // everything else; then migrate.ts notes which storage keys the page found before anything here writes one
 import './site-move';
 import { renderFm1Help } from './controls-help';
-import { ControlsStrip } from './controls-strip';
+import { ControlsStrip, stripPatch, type StripPatch } from './controls-strip';
 import { addUserPreset, currentValues, exportPresets, importPresets, presetsOf } from './device-presets';
 import { armedFromMask, armMask } from './arm';
 import './factory-presets'; // the factory engines' presets (#193)
@@ -713,13 +713,16 @@ emu.onReady = () => emuLoad();
 // feature bit 18), else the Emu view's copy's (older firmware, or no FM-1)
 const controlsStrip = new ControlsStrip();
 emu.below(controlsStrip.el);
+/** the patch the emulated FM-1 took last (its patch buttons and device pages' knob names, controls-strip.ts stripPatch):
+ *  the strip's words for them; a refused patch leaves the last one's, which the emulator still shows */
+let stripCtx: StripPatch | null = null;
 let stripAt = 0;
 emu.onFrame = () => {
   const now = performance.now();   // (twenty times a second: the copy's state asks its conditions, which read the preset store)
   if (now - stripAt < 50) return;
   stripAt = now;
-  if (panelReported() && fm1Panel) controlsStrip.draw(fm1Panel, 'fm1');
-  else controlsStrip.draw(emu.ui?.guide() ?? null, 'emu');
+  if (panelReported() && fm1Panel) controlsStrip.draw(fm1Panel, 'fm1', live() && onEditorPatch ? stripCtx : null);
+  else controlsStrip.draw(emu.ui?.guide() ?? null, 'emu', stripCtx);
 };
 /** another patch opened (the emulator's focus starts at its first device) */
 let emuFresh = true;
@@ -1804,6 +1807,7 @@ function emuLoad(): void {
       chip: emuLoaded ? `Showing ${emuLoaded} · this patch is too big` : 'This patch is too big for the FM-1', action: emuLoaded ? `Show ${emuLoaded}` : 'OK', more });
   } else {
     emuLoaded = editor.patch.name.toUpperCase();
+    stripCtx = stripPatch(editor.patch);
     emu.notice(b.fits ? null : { level: 'warn', title: 'Over the FM-1 budget',
       body: `${over}. It plays here, but it would ${b.over.some((i) => i.key === 'cpu') ? 'drop out' : 'not load'} on the device and will not upload until it fits.`,
       chip: `Over budget · ${over} · won’t upload`, action: 'Use the FM-1 view anyway', more });

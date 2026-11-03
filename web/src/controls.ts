@@ -87,6 +87,11 @@ export interface ControlRow {
   hint?: string;
   /** what it does, at length, for the editor's help (else `does`) */
   help?: string;
+  /** what it does in plain words for the editor's controls strip (#554, D-957), about 3 to 9 words with no width limit,
+   * where the sheet's own words are cut short for its small screen (else `plain`, then `does`); set from STRIP below */
+  strip?: string;
+  /** the strip's words on the tab of the states named, where they differ from `strip` */
+  stripIn?: Partial<Record<HelpState, string>>;
 }
 
 /** the patch buttons with a job in the loaded patch (help_ui.c help_patch_rows): made from the patch, not this table; this
@@ -263,6 +268,67 @@ export const CONTROLS: ControlRow[] = [
     help: 'their work is done in the editor; the FM-1 says so (SANDBOX: SEQ IN EDITOR)' },
 ];
 
+/** the controls strip's words for each row (ControlRow `strip`; a record: `stripIn` by state, `_` for the others), from
+ * michael glaviano's mockup of 2026-11-03, checked against each row's `help`. Kept apart from the rows so the sheet's
+ * words above stay easy to read */
+const STRIP: Record<string, string | ({ _: string } & Partial<Record<HelpState, string>>)> = {
+  // everywhere
+  home: 'go back one step', play: 'start or stop playback', rec: 'record what the keys play into the armed tracks',
+  save: 'save the patch, with its settings', glo: 'open settings: MIDI, panel, system, info, guide',
+  env: 'see every device in the patch, Main to Output', seq: 'open the step sequencer', 'seq-back': 'leave the steps page, back where you were',
+  octave: "shift the keys' octave", tempo: 'change the tempo, 1 bpm per click', patch: "step through the bank's patches",
+  store: { _: "save this device's values as a preset", env: "save this row's device as a preset" },
+  arm: 'arm or disarm track n for the keys', mute: 'mute or unmute track n',
+  // a device page
+  'list-home': "leave {list}'s pages, back where you were", 'list-pages': "flip through {list}'s pages",
+  adjust: 'turn the four values on this page', fine: 'turn a value in its smallest steps',
+  'arm-device': 'play this device from the keys (again: stop)', 'device-pages': "flip through this device's pages",
+  'device-presets': "load this device's presets as you turn", devices: 'move to the next or previous device in the patch',
+  // the environment
+  'env-rows': 'move up and down the device list', 'env-arm': "play this row's device from the keys (several at once: layer)",
+  'env-presets': "load presets for this row's device", 'env-presets-algo': "load presets for this row's device",
+  'env-first-page': "edit the first page of this row's device",
+  // the SEQ page
+  'row-key': { _: 'pick one of the 8 pitches on screen', drum: 'pick a drum sound (it plays while held)' },
+  step: { _: 'turn the selected pitch on or off at that step', drum: 'turn the selected sound on or off at that step' },
+  'row-select': 'pick a drum sound, silently', accent: 'accent that step (play it louder)',
+  'step-record': 'write notes one step at a time, from the first step shown', 'step-record-there': 'step record starting from that step',
+  pattern: 'change pattern (1..64; running: at the end of the pass)', 'song-page': 'arrange patterns into a song',
+  clear: 'clear the whole track (press REC again to confirm)', 'steps-page': 'show the next or previous 16 steps',
+  tie: 'tie the note on through that step', 'held-pitch': "change this step's pitch", 'held-velocity': "change this step's velocity",
+  'held-chance': 'change the chance this step plays', 'held-chance-select': 'change the chance this step plays',
+  track: 'pick which track to edit (the keys play it)', 'lock-pages': 'pick a device page to lock values on this step',
+  'lock-rows': 'lock these values on this step only (P-lock)', 'roll-view': 'show the next or previous 8 pitches',
+  'roll-pitch': 'scroll the view one pitch', pen: "jump the view to that key's pitch", 'keys-octave': "move the keys' octave instead of the grid",
+  // step record
+  'sr-end': 'stop step recording', 'sr-keys': 'play a note; letting go writes it and moves on', 'sr-chord': 'press keys together to write a chord',
+  'sr-rest': 'write a rest (with keys held: tie the note on)', 'sr-accent': 'accent the notes you write',
+  'sr-cursor': 'move the cursor without writing', 'sr-back': 'go back a step and clear it', 'sr-live': 'start playback and keep recording live',
+  // a live take
+  take: 'play the keys to record notes into the track', 'take-accent': 'record accented notes',
+  // the SONG page
+  'song-entry': 'pick a song entry', 'song-pattern': 'set which pattern the entry plays', 'song-add': 'add an entry at the end',
+  'song-dup': 'insert a copy of the entry before it', 'song-shift': 'transpose the entry (−12..+12)', 'song-play': 'play the song, or loop the pattern',
+  'song-sel': 'pick one of 8 songs', 'song-preset': 'change the selected pattern', 'song-delete': 'delete the entry (press REC again to confirm)',
+  'song-back': 'back to the steps page',
+  // the settings menu
+  'menu-save': 'save settings and close', 'menu-tab': 'next or previous settings tab', 'menu-scroll': 'scroll the GUIDE text',
+  'menu-set': 'change the four settings on this tab', 'menu-run': 'run an update or factory reset that is armed',
+  'menu-patches': "step through the bank's patches", 'menu-back': 'close the settings, back where you were',
+  // sandbox mode
+  'sb-devices': "move through the editor's devices", 'sb-pages': "flip through the editor's pages", 'sb-adjust': "turn the editor's values",
+  'sb-buttons': 'these work in the editor while sandboxed',
+};
+for (const r of CONTROLS) {
+  const w = STRIP[r.id];
+  if (typeof w === 'string') r.strip = w;
+  else if (w) {
+    const { _, ...by } = w;
+    r.strip = _;
+    r.stripIn = by;
+  }
+}
+
 /** a hint line on an FM-1 page (FONT_S): its rows' hints in order, two spaces apart, after `lead`; an item's `text`
  * stands for the rows named (two rows in one: "BLACK/SELECT row"); `width`: the line's field in pixels. export-defs
  * writes each as HINT_<ID> into controls.h and refuses a line wider than its field */
@@ -347,6 +413,10 @@ export const rowSpec = (r: ControlRow, state?: HelpState): string => {
 export const plainDoes = (r: ControlRow, state?: HelpState): string => (r.plain ?? sheetDoes(r, state)).replace(LIST_MARK, LIST_WORDS);
 /** a row's words with no button known (in a state's tab: its `doesIn` words), `{list}` as LIST_WORDS */
 export const doesText = (r: ControlRow, state?: HelpState): string => sheetDoes(r, state).replace(LIST_MARK, LIST_WORDS);
+/** a row's words on the editor's controls strip (in a state's tab: its `stripIn` words): `strip`, else its words off the
+ * sheet (plainDoes), `{list}` as LIST_WORDS */
+export const stripDoes = (r: ControlRow, state?: HelpState): string =>
+  ((state && r.stripIn?.[state]) ?? r.strip ?? plainDoes(r, state)).replace(LIST_MARK, LIST_WORDS);
 
 /** the rows of one tab of one state in order (`patch-buttons` where the patch's buttons go): those the sheet lists, or
  * with `all` the rows `listed: false` keeps off it too */
