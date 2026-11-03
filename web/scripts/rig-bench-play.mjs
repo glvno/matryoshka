@@ -9,7 +9,7 @@
 // A firmware without the draw times answers short: the script says so. The same script on two builds (main before a
 // change and the change) compares them.
 import { chromium } from 'playwright-core';
-import { rigPage, startEditor, survey } from './rig-link.mjs';
+import { fm1Label, rigPage, startEditor, survey } from './rig-link.mjs';
 
 const args = process.argv.slice(2);
 const opt = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
@@ -60,7 +60,7 @@ try {
   await rig.diag(127);
   const reset = await rig.diag(120);
   if (!reset.length) throw new Error('this firmware does not keep draw times (DIAG page 120): install a build that has them');
-  console.log(`rig ${s.rig.name}, firmware ${s.rig.info?.version ?? '?'}; ${ROUNDS} round(s) on ${PATCH ?? 'the patch it is on'}`);
+  console.log(`rig: ${fm1Label(s.rig)};${ROUNDS} round(s) on ${PATCH ?? 'the patch it is on'}`);
   for (let r = 0; r < ROUNDS; r++) {
     for (let i = 0; i < 8; i++) { await rig.turn(ENC.algo, 1); await sleep(350); }
     await sleep(800);

@@ -29,7 +29,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { boot, download, downloadEmuMidi, smoke, smokeState } from './branch-firmware.mjs';
-import { DEV_ENV, loadRig, pickRig, rigPage, survey } from './rig-link.mjs';
+import { DEV_ENV, fm1Label, loadRig, pickRig, rigPage, survey } from './rig-link.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const REPO = 'glvno/matryoshka';
@@ -454,7 +454,7 @@ async function main() {
     if (REAL) {
       const s = await pickRig(rp);
       pair = s.rig;
-      console.log(`rig: ${pair.name} (firmware ${pair.info?.version ?? '?'}), ${s.pairs.length - 1} other FM-1${s.pairs.length === 2 ? '' : 's'} left alone`);
+      console.log(`rig: ${fm1Label(pair)};${s.pairs.length - 1} other FM-1${s.pairs.length === 2 ? '' : 's'} left alone`);
       masterMatters = !((pair.info?.features ?? 0) & 1024);   // (protocol.ts FEATURE_PEAK_PRE)
       await context.addInitScript(FILTER_MIDI, { ids: [pair.inId, pair.outId], except: '/__rig' });
     } else {
@@ -480,6 +480,11 @@ async function main() {
   const T = () => page.evaluate(() => window.__m1test.state());
   const open = (name) => page.evaluate((n) => window.__m1test.open(n), name);
   const patchJson = () => page.evaluate(() => window.__m1test.patchJson());
+  /** the editor's tempo (bpm): the global one, else the patch's FM-1 module's */
+  const tempo = async () => {
+    const g = await page.evaluate(() => { try { return JSON.parse(localStorage.getItem('matryoshka.tempo') ?? 'null'); } catch { return null; } });
+    return g?.mode === 'global' ? g.bpm : JSON.parse(await patchJson()).modules.find((m) => m.type === 'fm1')?.params.tempo;
+  };
   const shot = (n) => page.screenshot({ path: join(OUT, `${n}-page.png`) }).catch(() => {});
   async function load() {
     await page.goto(url);
@@ -645,10 +650,6 @@ async function main() {
       await emu.snap('connect');
     },
     async clock() {   // #473: the FM-1 sends MIDI clock all the time, at its tempo; GLO > MIDI > CLOCK OUT (K4) turns it off
-      const tempo = async () => {
-        const g = await page.evaluate(() => { try { return JSON.parse(localStorage.getItem('matryoshka.tempo') ?? 'null'); } catch { return null; } });
-        return g?.mode === 'global' ? g.bpm : JSON.parse(await patchJson()).modules.find((m) => m.type === 'fm1')?.params.tempo;
-      };
       const ticks = async (ms) => {
         await page.evaluate(() => { window.__clockLog = []; });
         await sleep(ms);
@@ -923,13 +924,29 @@ async function main() {
       await sleep(300);
       await check('hold: PLAY in step record: step record ends (a live take: the note below records)', !(await emu.text('STEP 1')));
       await emu.elapse(400);
+      // #557: the FM-1 records the time it saw the key held, in whole steps from the step the note landed on (engine.c
+      // steps_thru / steps_thru_off: round((held + o) / step), o the snap to the nearest step, under half a step either
+      // way), so a hold of H ms records floor(H / step) .. ceil(H / step) steps. The emulator's hold is 450 ms on its own
+      // clock (#487). The rig's is timed on the Mac: each TEST_KEY crosses USB MIDI and its ACK returns once the FM-1 took
+      // it, so the FM-1 took the press between its send and its ACK, the release likewise, and the hold it saw lies between
+      // (release sent - press ACKed) and (release ACKed - press sent); once that came to at least 625 ms and recorded 6
+      // steps. Plus the release's longer debounce (the HAL's scan, fm1_input.h: about 9 ms against 2) and a block (2.7 ms)
+      // either way: 5 ms under, 15 ms over
+      const t0 = Date.now();
       await emu.key(BLACK[1], true);
+      const t1 = Date.now();
       await emu.elapse(450);                        // (450 ms on the FM-1's clock, however far the emulator lags, #487)
+      const t2 = Date.now();
       await emu.key(BLACK[1], false);
+      const t3 = Date.now();
+      const stepMs = 60000 / ((await tempo()) ?? 120) / 4;
+      const [hMin, hMax] = REAL ? [t2 - t1 - 5, t3 - t0 + 15] : [450, 450];
+      const [lo, hi] = REAL ? [Math.max(1, Math.floor(hMin / stepMs)), Math.ceil(hMax / stepMs)] : [3, 5];
       ns = await notesUntil((x) => x.length >= 1);
       const rec = ns.find((x) => x.note === 55);
-      await check('hold: REC on, running: a black key held about 450 ms records one note on its row, 3 to 5 steps long (125 ms a step)',
-        ns.length === 1 && !!rec && rec.len >= 3 && rec.len <= 5, fmt(ns));
+      await check('hold: REC on, running: a black key held about 450 ms records one note on its row, as many steps as the FM-1 saw it held',
+        ns.length === 1 && !!rec && rec.len >= lo && rec.len <= hi,
+        `${fmt(ns)}; want ${lo} to ${hi} steps (${stepMs.toFixed(1)} ms a step, held ${hMin}..${hMax} ms as the FM-1 saw it)`);
       // step write while REC plays: a white key on the selected row, the one black key 2 picked (#395)
       await emu.tap(WHITE[12]);
       ns = await notesUntil((x) => noteAt(x, 12, 55) !== undefined);
