@@ -67,7 +67,7 @@ The FM-1's controls, by where it is (the same table makes the FM-1's controls sh
 * **On the SONG page (SEL tapped on the SEQ page):** **SEL** back to steps · **SELECT** pick entry · **K1** entry's pattern · **K1 on END** add entry · **FX held + K1** duplicate entry · **K2** transpose entry · **K4** song on / off · **ALGO** song 1-8 · **PRESET** selected pattern · **SEQ held + REC** delete entry
 * **In the settings menu (GLO):** **SAVE** save, close · **ALGO** tab · **SELECT** scroll (the GUIDE tab) · **K1..K4** set (the MIDI, PANEL and SYSTEM tabs) · **GLO held 2 s** run armed row (the SYSTEM tab) · **PRESET** patches · **GLO / HOME** back
 * **In sandbox mode (the editor’s patch over budget under Live):** **SELECT** devices · **ALGO** device pages · **K1..K4** adjust values · **SEQ, ENV, REC, SAVE, SEL** go to the editor
-* **In step record (REC on the SEQ page while stopped):** **REC / HOME** end step record · **the keys** play, let go: write · **keys together** one chord · **LFO** rest, keys held: tie · **FX held + the keys** accent · **K4** move cursor · **black key 10** back, clear step · **SEL held + any key** jump to pitch (a melodic track) · **OCT- / OCT+** octave · **PLAY** play, record live
+* **In step record (REC on the SEQ page while stopped):** **REC** end step record · **the keys** play, let go: write · **keys together** one chord · **LFO** rest, keys held: tie · **FX held + the keys** accent · **K4** move cursor · **black key 10** back, clear step · **SEL held + any key** jump to pitch (a melodic track) · **OCT- / OCT+** octave · **PLAY** play, record live
 
 <!-- controls: end -->
 

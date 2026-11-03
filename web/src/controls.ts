@@ -157,7 +157,8 @@ export const CONTROLS: ControlRow[] = [
 
   // ---- ENVIRONMENT: one row per device
   { id: 'env-rows', gesture: { do: [E('SELECT')] }, does: 'device row', sheet: { env: 10 }, effect: 'focus' },
-  // the owner's "device's pg. 1 params" (2026-11-03) is 4 px wider than the sheet: these words until they choose others
+  // the owner's "device's pg.1 params" (2026-11-03) is 1 px wider than the sheet (export-defs refuses it): these words
+  // until they choose others
   { id: 'env-first-page', gesture: { do: [K('1234')] }, does: "row's first page", sheet: { env: 40 }, effect: 'param' },
   { id: 'env-presets', gesture: { do: [E('PRESET')] }, does: "row device's preset", when: 'dev_presets', sheet: { env: 30 }, effect: 'preset' },
   { id: 'env-presets-algo', gesture: { do: [E('ALGO')] }, does: "row device's preset", when: 'dev_presets', sheet: { env: 50 }, listed: false, effect: 'preset' },
@@ -165,11 +166,11 @@ export const CONTROLS: ControlRow[] = [
     help: 'the row’s device into the armed devices or out (several at once: a layer or a split)' },
 
   // ---- the SEQ page: a drum grid (DRUM STEPS) and a melodic track's piano roll (PIANO ROLL)
-  { id: 'step', gesture: { do: [WHITE] }, does: 'toggle rowstep n/16', plain: 'step on / off', sheet: { drum: 20, roll: 40 }, effect: 'step', hint: 'WHITE step',
+  { id: 'step', gesture: { do: [WHITE] }, does: 'toggle rowstep n', plain: 'step on / off', sheet: { drum: 20, roll: 40 }, effect: 'step', hint: 'WHITE step',
     help: 'the selected row’s hit or pitch on that step' },
   { id: 'row-key', gesture: { do: [BLACK] }, does: 'select note row 1-8', doesIn: { drum: 'pick a row' }, sheet: { drum: 10, roll: 30 }, effect: 'row', hint: 'BLACK row',
     help: 'black keys 1..8: the rows (on the roll the 8 pitches shown, black key 1 the bottom one); a drum row sounds while held, and while REC records it records the hit into the nearest step' },
-  { id: 'row-select', gesture: { do: [E('SELECT')] }, does: 'pick a row', sheet: { drum: 130 }, effect: 'row', hint: 'SELECT row',
+  { id: 'row-select', gesture: { do: [E('SELECT')] }, does: 'pick a row', sheet: { drum: 130 }, listed: false, effect: 'row', hint: 'SELECT row',
     help: 'the row, silently' },
   { id: 'roll-view', gesture: { do: [E('SELECT')] }, does: 'next 8-pitch page', sheet: { roll: 70, live: 30 }, effect: 'roll_view', hint: 'SELECT view',
     help: 'the next or previous 8 pitches; the bar names the pitches shown' },
@@ -214,7 +215,7 @@ export const CONTROLS: ControlRow[] = [
   { id: 'sr-back', gesture: { do: [{ key: 'black', n: 10 }] }, does: 'back, clear step', sheet: { step: 70 }, effect: 'back_clear', hint: 'BLACK 10 del' },
   { id: 'sr-live', gesture: { do: [B('PLAY')] }, does: 'play, record live', sheet: { step: 100 }, effect: 'live',
     help: 'the transport starts and step record goes on as a live take' },
-  { id: 'sr-end', gesture: { do: [B('REC'), B('HOME')] }, does: 'end step record', sheet: { step: 10 }, effect: 'end', hint: 'REC done',
+  { id: 'sr-end', gesture: { do: [B('REC')] }, does: 'end step record', sheet: { step: 10 }, effect: 'end', hint: 'REC done',
     help: 'step record ends, the page stays (SEQ too)' },
 
   // ---- LIVE TAKE: REC records the armed melodic track while the transport runs, on its SEQ page
@@ -237,7 +238,7 @@ export const CONTROLS: ControlRow[] = [
   { id: 'song-preset', gesture: { do: [E('PRESET')] }, does: 'selected pattern', sheet: { song: 90 }, effect: 'pattern', hint: 'PRESET pat' },
   { id: 'song-delete', gesture: { hold: 'SEQ', do: [B('REC')] }, does: 'delete entry', sheet: { song: 100 }, effect: 'delete_entry', hint: 'SEQ+REC del',
     help: 'asked first: REC again within 3 s deletes the entry' },
-  { id: 'song-back', gesture: { do: [B('SEL')] }, does: 'back to steps', sheet: { song: 10 }, effect: 'back_steps', hint: 'SEL back' },
+  { id: 'song-back', gesture: { do: [B('SEL')] }, does: 'back to steps', sheet: { song: 10 }, listed: false, effect: 'back_steps', hint: 'SEL back' },
 
   // ---- SETTINGS: the menu (GLO)
   { id: 'menu-tab', gesture: { do: [E('ALGO')] }, does: 'tab', sheet: { menu: 20 }, effect: 'tab', hint: 'ALGO tab' },
