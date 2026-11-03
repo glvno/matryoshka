@@ -41,9 +41,9 @@ static const ctl_line_t CTL_LINE[85] = {
     {"k:ENV|t:+|k:SAVE~save row's preset", 11, 3, 0},   /* store */
     {"k:REC|t:+|b:~arm a track", 12, 6, 0},   /* arm */
     {"k:SEQ|t:+|b:~mute a track", 13, 6, 0},   /* mute */
-    {"n:SELECT~leave the list", 14, 1, 0},   /* list-leave */
-    {"n:SELECT~this patch's devices", 15, 1, 1},   /* devices */
-    {"n:ALGO~the list's pages", 16, 1, 0},   /* list-pages */
+    {"k:HOME~leave {list}'s pages", 14, 1, 0},   /* list-home */
+    {"n:SELECT~this patch's devices", 15, 0, 0},   /* devices */
+    {"n:ALGO~{list}'s pages", 16, 1, 0},   /* list-pages */
     {"n:ALGO~this device's pages", 17, 1, 1},   /* device-pages */
     {"n:PRESET~this device's presets", 18, 2, 0},   /* device-presets */
     {"c:1234~adjust values", 19, 0, 0},   /* adjust */
@@ -190,7 +190,7 @@ static const uint8_t CTL_UNLISTED[2][9][2] = {
     },
 };
 /* what each row does (firmware/test/controls_test.h checks it) */
-enum { CE_TRANSPORT, CE_RECORD, CE_SAVE, CE_BACK, CE_MENU, CE_ENV, CE_SEQ, CE_OCTAVE, CE_TEMPO, CE_PATCH, CE_STORE, CE_ARM, CE_MUTE, CE_FOCUS, CE_DEVICE_PAGE, CE_LEAVE_LIST, CE_LIST_PAGE, CE_PRESET, CE_PARAM, CE_FINE, CE_STEP, CE_ROW, CE_ROLL_VIEW, CE_ROLL_PITCH, CE_JUMP, CE_TRACK, CE_PATTERN, CE_ACCENT, CE_TIE, CE_STEP_RECORD, CE_STEP_RECORD_AT, CE_VELOCITY, CE_CHANCE, CE_PITCH, CE_LOCK_PAGE, CE_LOCK, CE_SONG_PAGE, CE_CLEAR, CE_STEPS_PAGE, CE_KEYS_OCTAVE, CE_WRITE, CE_CHORD, CE_REST, CE_CURSOR, CE_BACK_CLEAR, CE_LIVE, CE_END, CE_TAKE, CE_TAKE_ACCENT, CE_ENTRY, CE_ENTRY_PATTERN, CE_ADD_ENTRY, CE_DUP_ENTRY, CE_TRANSPOSE, CE_SONG_PLAY, CE_SONG, CE_DELETE_ENTRY, CE_BACK_STEPS, CE_TAB, CE_SCROLL, CE_SET, CE_SAVE_CLOSE, CE_RUN_ROW, CE_EDITOR, CE_COUNT };
+enum { CE_TRANSPORT, CE_RECORD, CE_SAVE, CE_BACK, CE_MENU, CE_ENV, CE_SEQ, CE_OCTAVE, CE_TEMPO, CE_PATCH, CE_STORE, CE_ARM, CE_MUTE, CE_FOCUS, CE_DEVICE_PAGE, CE_LIST_BACK, CE_LIST_PAGE, CE_PRESET, CE_PARAM, CE_FINE, CE_STEP, CE_ROW, CE_ROLL_VIEW, CE_ROLL_PITCH, CE_JUMP, CE_TRACK, CE_PATTERN, CE_ACCENT, CE_TIE, CE_STEP_RECORD, CE_STEP_RECORD_AT, CE_VELOCITY, CE_CHANCE, CE_PITCH, CE_LOCK_PAGE, CE_LOCK, CE_SONG_PAGE, CE_CLEAR, CE_STEPS_PAGE, CE_KEYS_OCTAVE, CE_WRITE, CE_CHORD, CE_REST, CE_CURSOR, CE_BACK_CLEAR, CE_LIVE, CE_END, CE_TAKE, CE_TAKE_ACCENT, CE_ENTRY, CE_ENTRY_PATTERN, CE_ADD_ENTRY, CE_DUP_ENTRY, CE_TRANSPOSE, CE_SONG_PLAY, CE_SONG, CE_DELETE_ENTRY, CE_BACK_STEPS, CE_TAB, CE_SCROLL, CE_SET, CE_SAVE_CLOSE, CE_RUN_ROW, CE_EDITOR, CE_COUNT };
 /* a gesture part: a button (id: its matrix id), an encoder (id: panel_encoders' index), K1..K4 (id: a mask, bit 0 K1), a
  * white key, a black key (n: black key n, 0 any), any key, the keys played, keys together */
 enum { CK_BUTTON, CK_ENCODER, CK_KNOBS, CK_WHITE, CK_BLACK, CK_ANY, CK_KEYS, CK_CHORD };
@@ -215,7 +215,7 @@ static const ctl_row_t CTL_ROW[CTL_NROWS] = {
     {"store", CE_STORE, 4, CW_PRESS, 0, 1, {{CK_BUTTON, 9, 0}}},
     {"arm", CE_ARM, 13, CW_PRESS, 0, 1, {{CK_BLACK, 0, 0}}},
     {"mute", CE_MUTE, 11, CW_PRESS, 0, 1, {{CK_BLACK, 0, 0}}},
-    {"list-leave", CE_LEAVE_LIST, CH_NONE, CW_PRESS, 0, 1, {{CK_ENCODER, 0, 0}}},
+    {"list-home", CE_LIST_BACK, CH_NONE, CW_PRESS, 0, 1, {{CK_BUTTON, 8, 0}}},
     {"devices", CE_FOCUS, CH_NONE, CW_PRESS, 0, 1, {{CK_ENCODER, 0, 0}}},
     {"list-pages", CE_LIST_PAGE, CH_NONE, CW_PRESS, 0, 1, {{CK_ENCODER, 1, 0}}},
     {"device-pages", CE_DEVICE_PAGE, CH_NONE, CW_PRESS, 0, 1, {{CK_ENCODER, 1, 0}}},

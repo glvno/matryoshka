@@ -8,7 +8,7 @@
 // While a button is held (or a step's white key), the strip shows what that modifier does instead, the way Blender's
 // status bar changes while a modifier key is down: the rows whose gesture holds it.
 import {
-  BUTTON_ID, CONDITIONS, CONTROLS, gestureSpec, HELP_STATE_NAME, HELP_STATE_TITLE, HELP_STATES, sheetDoes, sheetRows,
+  BUTTON_ID, CONDITIONS, CONTROLS, doesText, gestureSpec, HELP_STATE_NAME, HELP_STATE_TITLE, HELP_STATES, sheetRows,
   type Button, type Condition, type ControlRow, type HelpState,
 } from './controls';
 import type { PanelState } from './protocol';
@@ -75,7 +75,7 @@ function knobsOf(rows: ControlRow[], state: HelpState): [string, string, string,
   const out: [string, string, string, string] = ['', '', '', ''];
   for (let k = 0; k < 4; k++) {
     const r = rows.find((x) => x.gesture.do.some((d) => 'knobs' in d && d.knobs.includes(String(k + 1))));
-    if (r) out[k] = sheetDoes(r, state);
+    if (r) out[k] = doesText(r, state);
   }
   return out;
 }
@@ -122,7 +122,7 @@ export function rowChip(r: ControlRow, held: Modifier | null, lead = false, stat
   const spec = el('span', 'cs-spec');
   for (const s of gestureSpec(r.gesture).split('|').filter(Boolean)) spec.append(part(s, held));
   c.append(spec);
-  const does = sheetDoes(r, state);
+  const does = doesText(r, state);   // ({list}: the Page button, GUIDE_NOW does not name it)
   if (does) c.append(el('span', 'cs-does', does));
   return c;
 }

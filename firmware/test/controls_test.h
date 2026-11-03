@@ -21,6 +21,7 @@ typedef struct {
     int mlen;
 } ct_snap_t;
 static int ct_mod;                                      /* the track shown when the gesture began, -1 none */
+static uint32_t ct_pre_dev, ct_pre_pg;                  /* the device page before the Page button's press (ct_page_button) */
 
 static uint32_t ct_fnv(uint32_t h, uint32_t v) { return (h ^ v) * 0x01000193u; }
 static uint32_t ct_params(void)
@@ -115,7 +116,9 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_MUTE: return a->mutes != b->mutes;
     case CE_FOCUS: return a->dev != b->dev;
     case CE_DEVICE_PAGE: return a->devpage != b->devpage;
-    case CE_LEAVE_LIST: return b->list_btn >= 0 && a->list_btn < 0;
+    case CE_LIST_BACK:                                  /* (the list closed, the page before the button's press back) */
+        return b->list_btn >= 0 && a->list_btn < 0 && a->page == 0u && a->dev == ct_pre_dev && a->devpage == ct_pre_pg
+            && (b->dev != ct_pre_dev || b->devpage != ct_pre_pg);
     case CE_LIST_PAGE: return a->list_step != b->list_step || a->dev != b->dev || a->devpage != b->devpage;
     case CE_PRESET: case CE_PARAM: case CE_FINE: return a->params != b->params;
     case CE_STEP: return a->notes_n != b->notes_n;
@@ -286,7 +289,9 @@ static int ct_page_button(void)
         return 0;
     page_show(0);
     trail_n = 0;
-    pages_focus(4, 0);
+    pages_focus(4, 0);                                  /* (the Output: not on the list, so HOME's way back shows) */
+    ct_pre_dev = pg_cur_dev;
+    ct_pre_pg = pg_cur_page;
     loop();
     tap(5);
     later(1500);
@@ -514,12 +519,9 @@ static int ct_listed(uint32_t i, uint32_t t)
 {
     const char *r[HC_ROWS];
     uint32_t n = help_rows(t, r), k;
-    for (k = 0; k < n; k++) {
-        uint32_t l;
-        for (l = 0; l < sizeof CTL_LINE / sizeof CTL_LINE[0]; l++)
-            if (CTL_LINE[l].row == i && CTL_LINE[l].spec == r[k])
-                return 1;
-    }
+    for (k = 0; k < n; k++)
+        if (help_line[k] != CTL_PATCH && CTL_LINE[help_line[k]].row == i)
+            return 1;
     return 0;
 }
 
@@ -599,6 +601,36 @@ static void controls_suite(void)
     /* the hint lines come from the table too: the menu's three (one wording, #553) and the SONG page's */
     check("the menu's hint line from the table: a settings tab, INFO, GUIDE", ct_enter(HS_MENU, 0) && ct_shows(HINT_MENU_PAGE)
           && ct_enter(HS_MENU, 3) && ct_shows(HINT_MENU_INFO) && ct_enter(HS_MENU, 4) && ct_shows(HINT_MENU_GUIDE));
+    {                                                   /* {list}: the Page button whose list shows, as the top bar names it */
+        const char *r[HC_ROWS];
+        uint32_t n = ct_enter(HS_DEVICE, 1) ? help_rows(0, r) : 0u, k, home = 0, algo = 0;
+        for (k = 0; k < n; k++) {
+            home |= !strcmp(r[k], "k:HOME~leave LFO's pages");
+            algo |= !strcmp(r[k], "n:ALGO~LFO's pages");
+        }
+        check("a Page button's list: the sheet's HOME and ALGO rows name it (leave LFO's pages, LFO's pages)", home && algo);
+        if (n && m1_panel()) {                          /* the patch's label for it, as the top bar; one too wide: the name */
+            uint8_t *lab = (uint8_t *)m1_panel() + 4u + 3u * ENG_PANEL_LABEL;
+            uint8_t was[ENG_PANEL_LABEL];
+            memcpy(was, lab, sizeof was);
+            memset(lab, 0, ENG_PANEL_LABEL);
+            memcpy(lab, "MOD", 3);
+            n = help_rows(0, r);
+            for (k = 0, home = 0; k < n; k++)
+                home |= !strcmp(r[k], "k:HOME~leave MOD's pages");
+            memcpy(lab, "WWWWWWWWWW", ENG_PANEL_LABEL);
+            n = help_rows(0, r);
+            for (k = 0, algo = 0; k < n; k++)
+                algo |= !strcmp(r[k], "k:HOME~leave LFO's pages");
+            memcpy(lab, was, sizeof was);
+            check("  the patch's label for it (MOD); a label too wide for the line: the button's name", home && algo);
+        }
+        if (n) {                                        /* the trail emptied under the list (a full trail): HOME still leaves it */
+            trail_n = 0;
+            tap(BTN_HOME);
+            check("  HOME with the trail empty: the list closes", pg_list_btn < 0);
+        }
+    }
     check("the SONG page's two hint lines from the table", ct_enter(HS_SONG, 0) && ct_shows(HINT_SONG_1) && ct_shows(HINT_SONG_2));
     check("every row of the controls table does what it says in each state it works in (web/src/controls.ts)", bad == 0u);
     ct_reset();

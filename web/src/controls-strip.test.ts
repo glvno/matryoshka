@@ -26,11 +26,12 @@ describe('the controls strip is made from the controls table (#554, controls.ts)
 
   it('a row\'s condition decides whether it shows (a device page, a Page button\'s list or not)', () => {
     const list = ids(stripView(at('device', { conditions: cond('list') })).rows);
-    expect(list).toContain('list-leave');
-    expect(list).not.toContain('devices');
+    expect(list[0], 'HOME leaves the list, first').toBe('list-home');
+    expect(list).toContain('list-pages');
+    expect(list).not.toContain('device-pages');
     const plain = ids(stripView(at('device', { conditions: 0 })).rows);
-    expect(plain).toContain('devices');
-    expect(plain).not.toContain('list-leave');
+    expect(plain).toContain('device-pages');
+    expect(plain).not.toContain('list-home');
     expect(plain, 'no presets: no PRESET row').not.toContain('device-presets');
   });
 

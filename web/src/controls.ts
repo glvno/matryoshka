@@ -45,7 +45,7 @@ export interface Gesture {
 /** what a row's gesture changes, as panel_test checks it (firmware/test/controls_test.h ctl_effect) */
 export const EFFECTS = [
   'transport', 'record', 'save', 'back', 'menu', 'env', 'seq', 'octave', 'tempo', 'patch', 'store', 'arm', 'mute',
-  'focus', 'device_page', 'leave_list', 'list_page', 'preset', 'param', 'fine',
+  'focus', 'device_page', 'list_back', 'list_page', 'preset', 'param', 'fine',
   'step', 'row', 'roll_view', 'roll_pitch', 'jump', 'track', 'pattern', 'accent', 'tie', 'step_record', 'step_record_at',
   'velocity', 'chance', 'pitch', 'lock_page', 'lock', 'song_page', 'clear', 'steps_page', 'keys_octave',
   'write', 'chord', 'rest', 'cursor', 'back_clear', 'live', 'end',
@@ -63,7 +63,8 @@ export type Condition = (typeof CONDITIONS)[number];
 export interface ControlRow {
   id: string;
   gesture: Gesture;
-  /** the sheet's description (after the gesture); '' none */
+  /** the sheet's description (after the gesture); '' none. `{list}`: the Page button whose list shows, as the top bar
+   * names it (help_ui.c help_fill; in the editor's and the README's words LIST_WORDS) */
   does: string;
   /** the sheet's description on the tab of the states named, where it differs from `does` */
   doesIn?: Partial<Record<HelpState, string>>;
@@ -138,11 +139,11 @@ export const CONTROLS: ControlRow[] = [
     help: 'black key n: mutes track n, or unmutes it (any page)' },
 
   // ---- DEVICE: a device page
-  { id: 'list-leave', gesture: { do: [E('SELECT')] }, does: 'leave the list', when: 'list', sheet: { device: 10 }, effect: 'leave_list',
-    help: 'a Page button’s list showing: leaves it (a Page button’s press: the next page of its list; held: its first page while it is down)' },
-  { id: 'devices', gesture: { do: [E('SELECT')] }, does: "this patch's devices", when: '!list', sheet: { device: 80 }, effect: 'focus',
-    help: 'the device in focus: every top-level module or assembly with card rows, Main, each Steps track and the Output' },
-  { id: 'list-pages', gesture: { do: [E('ALGO')] }, does: "the list's pages", when: 'list', sheet: { device: 20 }, effect: 'list_page' },
+  { id: 'list-home', gesture: { do: [B('HOME')] }, does: "leave {list}'s pages", when: 'list', sheet: { device: 10 }, effect: 'list_back',
+    help: 'a Page button’s list showing: leaves it, back to the page shown before the button’s first press (a Page button’s press: the next page of its list; held: its first page while it is down)' },
+  { id: 'devices', gesture: { do: [E('SELECT')] }, does: "this patch's devices", sheet: { device: 80 }, effect: 'focus',
+    help: 'the device in focus: every top-level module or assembly with card rows, Main, each Steps track and the Output (a Page button’s list showing: it closes too)' },
+  { id: 'list-pages', gesture: { do: [E('ALGO')] }, does: "{list}'s pages", when: 'list', sheet: { device: 20 }, effect: 'list_page' },
   { id: 'device-pages', gesture: { do: [E('ALGO')] }, does: "this device's pages", when: '!list', sheet: { device: 60 }, effect: 'device_page',
     help: 'the device’s pages of four rows (a Matrix: a page per output, OUT 1..OUT 4, each drawn as the whole grid with its column framed)' },
   { id: 'device-presets', gesture: { do: [E('PRESET')] }, does: "this device's presets", when: 'dev_presets', sheet: { device: 70 }, effect: 'preset',
@@ -329,6 +330,10 @@ export function gestureSpec(g: Gesture): string {
   if (g.where) out.push(`t:${g.where}`);
   return out.join('|');
 }
+/** `{list}` in a row's words: the Page button whose list shows (help_ui.c fills in the top bar's name for it) */
+export const LIST_MARK = '{list}';
+/** `{list}` where no button is known (the editor's help, the README) */
+export const LIST_WORDS = 'the Page button';
 /** a row's words on the sheet in a state's tab (`doesIn`), else `does` */
 export const sheetDoes = (r: ControlRow, state?: HelpState): string => (state && r.doesIn?.[state]) ?? r.does;
 /** a row's line on the sheet (in a state's tab, its `doesIn` words): its gesture, '~' and what it does */
@@ -336,8 +341,11 @@ export const rowSpec = (r: ControlRow, state?: HelpState): string => {
   const d = sheetDoes(r, state);
   return gestureSpec(r.gesture) + (d ? `~${d}` : '');
 };
-/** a row's words off the sheet (the editor, the README): `plain`, else its sheet words in that state */
-export const plainDoes = (r: ControlRow, state?: HelpState): string => r.plain ?? sheetDoes(r, state);
+/** a row's words off the sheet (the editor, the README) with no button known: `plain`, else its sheet words in that
+ * state, `{list}` as LIST_WORDS */
+export const plainDoes = (r: ControlRow, state?: HelpState): string => (r.plain ?? sheetDoes(r, state)).replace(LIST_MARK, LIST_WORDS);
+/** a row's words with no button known (in a state's tab: its `doesIn` words), `{list}` as LIST_WORDS */
+export const doesText = (r: ControlRow, state?: HelpState): string => sheetDoes(r, state).replace(LIST_MARK, LIST_WORDS);
 
 /** the rows of one tab of one state in order (`patch-buttons` where the patch's buttons go): those the sheet lists, or
  * with `all` the rows `listed: false` keeps off it too */

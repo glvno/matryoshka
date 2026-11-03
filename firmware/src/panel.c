@@ -238,6 +238,12 @@ static void home_tap(void)
 {
     uint32_t home;
     if (page != 0u || sb_on || pg_list_btn >= 0) {
+        if (!trail_n && page == 0u && !sb_on) {     /* (the list's step gone off a full trail: HOME still leaves it) */
+            pg_list_btn = -1;
+            pg_strip_dirty = 1;
+            page_mask();
+            ui_dirty = 2;
+        }
         screen_back();
         return;
     }
@@ -266,7 +272,8 @@ static void page_set(uint32_t p)
 
 /* ---- Page buttons (#117): a press puts the next page of the button's list on K1..K4 (round the list; the first press
  * a step on the trail, so HOME goes back to where you were); held, its first page shows while it is down. While one of
- * its pages shows the button is engaged (lit, its jack high) and the top bar names it. ALGO steps the list, SELECT leaves it. */
+ * its pages shows the button is engaged (lit, its jack high) and the top bar names it. ALGO steps the list, HOME leaves it
+ * (home_tap), SELECT too as it moves the device. */
 #define PAGE_HOLD_MS 400u
 static int8_t page_held = -1;                       /* the Page button down now, -1 none */
 static uint32_t page_t0;                            /* fm1_ms of its press */
