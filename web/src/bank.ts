@@ -10,7 +10,7 @@
 // Save as bank…. Nothing merges on its own. The FM-1 cannot send a patch back (SLOT_INFO gives a name and a length), so ←
 // copies this browser's own copy of the slot's patch: one with the slot's name and binary length. One bank for now; several
 // named banks are #220.
-// The PRESET knob of the FM-1 steps through the bank; with an empty bank it steps through the factory patches built into
+// HOME + PRESET on the FM-1 steps through the bank; with an empty bank it steps through the factory patches built into
 // the firmware.
 import type { DeviceLink } from './device';
 import { DEFS } from './modules';
@@ -418,7 +418,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
             title: copy ? `Copy into Your patches as "${copy.name}" (this browser's copy of it: the FM-1 cannot send a patch back)` : 'This browser has no copy of this patch, and the FM-1 cannot send a patch back',
             onclick: () => copy && toBrowser(copy.name, copy.patch) }),
         );
-      }) : [el('p', { class: 'muted', textContent: 'The bank is empty: the PRESET knob steps through the factory patches built into the firmware.' })]));
+      }) : [el('p', { class: 'muted', textContent: 'The bank is empty: HOME + PRESET steps through the factory patches built into the firmware.' })]));
       countEl.textContent = `${used.length} of ${SLOTS} slots used on the FM-1`;
     } else {
       bankEl.replaceChildren(...(list.length ? list.map((e, i) => el('div', { class: 'bank-row' },
@@ -484,11 +484,11 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
       }
     bar.value = 100;
     slots = await device.readBank();
-    status.textContent = `${total} patches are on the FM-1. Turn its PRESET knob to step through them.`;
+    status.textContent = `${total} patches are on the FM-1. Hold HOME and turn PRESET to step through them.`;
   });
   readBtn.onclick = () => void readDevice();
   erase.onclick = () => {
-    if (busy || !window.confirm('Erase every patch slot on the FM-1? The PRESET knob then steps through the factory patches built into the firmware.')) return;
+    if (busy || !window.confirm('Erase every patch slot on the FM-1? HOME + PRESET then steps through the factory patches built into the firmware.')) return;
     void run('Emptying the FM-1 bank', async () => {
       const have = await device.readBank();
       for (const s of have) if (s.used) await device.eraseSlot(s.slot);
