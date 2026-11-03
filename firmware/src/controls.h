@@ -25,7 +25,7 @@ static int (*const HC_FN[HC_COUNT])(void) = {0, hc_list, hc_dev_presets, hc_dev_
  * buttons go here), shown when HC_FN[cond]() is not neg */
 typedef struct { const char *spec; uint8_t row, cond, neg; } ctl_line_t;
 #define CTL_PATCH 255u
-static const ctl_line_t CTL_LINE[82] = {
+static const ctl_line_t CTL_LINE[85] = {
     {"k:PLAY~start / stop", 0, 0, 0},   /* play */
     {"k:REC~record", 1, 0, 0},   /* rec */
     {"k:SAVE~save patch", 2, 0, 0},   /* save */
@@ -38,42 +38,45 @@ static const ctl_line_t CTL_LINE[82] = {
     {"k:PLAY|t:+|n:PRESET~tempo", 9, 0, 0},   /* tempo */
     {"k:HOME|t:+|n:PRESET~patches", 10, 0, 0},   /* patch */
     {"k:ENV|t:+|k:SAVE~save device preset", 11, 3, 0},   /* store */
+    {"k:ENV|t:+|k:SAVE~save row's preset", 11, 3, 0},   /* store */
     {"k:REC|t:+|b:~arm a track", 12, 6, 0},   /* arm */
     {"k:SEQ|t:+|b:~mute a track", 13, 6, 0},   /* mute */
     {"n:SELECT~leave the list", 14, 1, 0},   /* list-leave */
-    {"n:SELECT~devices", 15, 1, 1},   /* devices */
+    {"n:SELECT~this patch's devices", 15, 1, 1},   /* devices */
     {"n:ALGO~the list's pages", 16, 1, 0},   /* list-pages */
-    {"n:ALGO~device pages", 17, 1, 1},   /* device-pages */
-    {"n:PRESET~device presets", 18, 2, 0},   /* device-presets */
+    {"n:ALGO~this device's pages", 17, 1, 1},   /* device-pages */
+    {"n:PRESET~this device's presets", 18, 2, 0},   /* device-presets */
     {"c:1234~adjust values", 19, 0, 0},   /* adjust */
     {"k:HOME|t:+|c:1234~fine adjust", 20, 0, 0},   /* fine */
     {"k:SEL~arm this device", 21, 4, 0},   /* arm-device */
-    {"n:SELECT~device rows", 22, 0, 0},   /* env-rows */
+    {"n:SELECT~device row", 22, 0, 0},   /* env-rows */
     {"c:1234~row's first page", 23, 0, 0},   /* env-first-page */
-    {"n:PRESET~row's presets", 24, 2, 0},   /* env-presets */
-    {"n:ALGO~row's presets", 25, 2, 0},   /* env-presets-algo */
-    {"k:SEL~arm / disarm row", 26, 4, 0},   /* env-arm */
-    {"w:~step on / off", 27, 0, 0},   /* step */
+    {"n:PRESET~row device's preset", 24, 2, 0},   /* env-presets */
+    {"n:ALGO~row device's preset", 25, 2, 0},   /* env-presets-algo */
+    {"k:SEL~arm / disarm device", 26, 4, 0},   /* env-arm */
+    {"w:~toggle rowstep n/16", 27, 0, 0},   /* step */
+    {"b:~select note row 1-8", 28, 0, 0},   /* row-key */
     {"b:~pick a row", 28, 0, 0},   /* row-key */
     {"n:SELECT~pick a row", 29, 0, 0},   /* row-select */
-    {"n:SELECT~8 pitches up / down", 30, 0, 0},   /* roll-view */
-    {"k:SEL|t:+|n:SELECT~a pitch up / down", 31, 0, 0},   /* roll-pitch */
+    {"n:SELECT~next 8-pitch page", 30, 0, 0},   /* roll-view */
+    {"k:SEL|t:+|n:SELECT~shift page up/down", 31, 0, 0},   /* roll-pitch */
     {"k:SEL|t:+|m:ANY KEY~jump to pitch", 32, 10, 0},   /* pen */
-    {"k:OCT-|t:/|k:OCT+~steps 17+", 33, 5, 0},   /* steps-page */
+    {"k:OCT-|t:/|k:OCT+~next/prev 16 steps", 33, 5, 0},   /* steps-page */
     {"n:ALGO~track", 34, 0, 0},   /* track */
     {"n:PRESET~pattern", 35, 0, 0},   /* pattern */
     {"k:FX|t:+|w:~accent", 36, 0, 0},   /* accent */
     {"k:LFO|t:+|w:~tie", 37, 0, 0},   /* tie */
-    {"k:REC~step record", 38, 0, 0},   /* step-record */
-    {"k:REC|t:+|w:~step record there", 39, 0, 0},   /* step-record-there */
+    {"k:REC~toggle step record", 38, 0, 0},   /* step-record */
+    {"k:REC|t:+|w:~^ but at step n/16", 39, 0, 0},   /* step-record-there */
+    {"k:REC|t:+|w:~^ but at step N/16", 39, 0, 0},   /* step-record-there */
     {"t:hold step +|c:1~pitch", 40, 0, 0},   /* held-pitch */
     {"t:hold step +|c:2~velocity", 41, 0, 0},   /* held-velocity */
     {"t:hold step +|n:SELECT~chance", 42, 0, 0},   /* held-chance-select */
     {"t:hold step +|c:3~chance", 43, 0, 0},   /* held-chance */
-    {"t:hold step +|n:ALGO~lock pages", 44, 0, 0},   /* lock-pages */
-    {"t:hold step +|c:1234~lock rows", 45, 0, 0},   /* lock-rows */
+    {"t:hold step +|n:ALGO~p-lock pages", 44, 0, 0},   /* lock-pages */
+    {"t:hold step +|c:1234~p-lock rows", 45, 0, 0},   /* lock-rows */
     {"k:FX|t:+|k:OCT~keys' octave", 46, 0, 0},   /* keys-octave */
-    {"k:SEL|t:tap~song", 47, 0, 0},   /* song-page */
+    {"k:SEL|t:tap~structure song", 47, 0, 0},   /* song-page */
     {"k:SEQ|t:+|k:REC~clear track", 48, 0, 0},   /* clear */
     {"m:KEYS~play, let go: write", 49, 0, 0},   /* sr-keys */
     {"t:keys together~one chord", 50, 0, 0},   /* sr-chord */
@@ -114,26 +117,26 @@ static const ctl_line_t CTL_LINE[82] = {
 #define CTL_END 255u
 static const uint8_t CTL_SHEET[2][9][21] = {
     {
-        {14, 15, 16, 17, 18, 19, 20, 21, 11, 81, CTL_END},   /* device */
-        {22, 23, 24, 25, 26, 11, CTL_END},   /* env */
-        {27, 28, 29, 33, 34, 35, 36, 37, 38, 39, 41, 42, 44, 45, 47, 48, CTL_END},   /* drum */
-        {27, 28, 30, 31, 32, 36, 37, 38, 39, 40, 41, 43, 44, 45, 33, 46, 34, 35, 47, 48, CTL_END},   /* roll */
-        {57, 58, 30, 34, 35, CTL_END},   /* live */
-        {59, 60, 61, 62, 63, 64, 65, 66, 67, 68, CTL_END},   /* song */
-        {69, 70, 71, 72, 73, 74, 75, CTL_END},   /* menu */
-        {76, 77, 78, 79, 80, CTL_END},   /* sandbox */
-        {49, 50, 51, 52, 53, 54, 32, 8, 55, 56, CTL_END},   /* step */
+        {15, 17, 20, 21, 22, 18, 19, 16, 11, 84, CTL_END},   /* device */
+        {23, 27, 25, 24, 12, CTL_END},   /* env */
+        {30, 28, 38, 40, 42, 37, 50, 51, 35, 39, 44, 45, 31, 36, 47, 48, CTL_END},   /* drum */
+        {40, 41, 29, 28, 39, 50, 32, 33, 34, 38, 43, 44, 46, 47, 48, 35, 49, 36, 37, 51, CTL_END},   /* roll */
+        {60, 61, 32, 36, 37, CTL_END},   /* live */
+        {71, 62, 63, 64, 65, 66, 67, 68, 69, 70, CTL_END},   /* song */
+        {76, 72, 73, 74, 78, 75, CTL_END},   /* menu */
+        {79, 80, 81, 82, 83, CTL_END},   /* sandbox */
+        {59, 52, 53, 54, 55, 56, 57, 34, 8, 58, CTL_END},   /* step */
     },
     {
-        {0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 12, 13, CTL_END},   /* device */
-        {0, 1, 2, 3, 4, 6, 8, 9, 10, 12, 13, CTL_END},   /* env */
-        {0, 2, 3, 4, 5, 7, 9, 10, 11, 12, 13, CTL_END},   /* drum */
-        {0, 2, 3, 4, 5, 7, 9, 10, 11, 12, 13, CTL_END},   /* roll */
-        {0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, CTL_END},   /* live */
-        {0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, CTL_END},   /* song */
-        {0, 1, 5, 6, 9, 11, 12, 13, CTL_END},   /* menu */
+        {3, 0, 1, 2, 4, 5, 6, 8, 9, 10, 13, 14, CTL_END},   /* device */
+        {3, 0, 1, 2, 4, 6, 8, 9, 10, 13, 14, CTL_END},   /* env */
+        {3, 0, 2, 4, 5, 9, 10, 11, 13, 14, CTL_END},   /* drum */
+        {3, 0, 2, 4, 5, 9, 10, 11, 13, 14, CTL_END},   /* roll */
+        {3, 0, 1, 2, 4, 5, 8, 9, 10, 11, 13, 14, CTL_END},   /* live */
+        {3, 0, 1, 2, 4, 5, 8, 9, 10, 11, 13, 14, CTL_END},   /* song */
+        {3, 0, 1, 5, 6, 9, 11, 13, 14, CTL_END},   /* menu */
         {0, 4, 8, 9, CTL_END},   /* sandbox */
-        {0, 2, 3, 4, 5, 9, 10, 11, 12, 13, CTL_END},   /* step */
+        {3, 0, 2, 4, 5, 9, 10, 11, 13, 14, CTL_END},   /* step */
     },
 };
 
@@ -161,6 +164,31 @@ static const uint8_t CTL_SHEET[2][9][21] = {
 #define HINT_ROW_CLEAR "SEQ+REC clear"
 
 #ifdef CTL_GESTURES
+/* the lines of the rows the sheet leaves out (controls.ts `listed: false`) in the tabs where they work, as CTL_SHEET */
+static const uint8_t CTL_UNLISTED[2][9][2] = {
+    {
+        {CTL_END},   /* device */
+        {26, CTL_END},   /* env */
+        {CTL_END},   /* drum */
+        {CTL_END},   /* roll */
+        {CTL_END},   /* live */
+        {CTL_END},   /* song */
+        {77, CTL_END},   /* menu */
+        {CTL_END},   /* sandbox */
+        {CTL_END},   /* step */
+    },
+    {
+        {CTL_END},   /* device */
+        {CTL_END},   /* env */
+        {7, CTL_END},   /* drum */
+        {7, CTL_END},   /* roll */
+        {7, CTL_END},   /* live */
+        {7, CTL_END},   /* song */
+        {CTL_END},   /* menu */
+        {CTL_END},   /* sandbox */
+        {CTL_END},   /* step */
+    },
+};
 /* what each row does (firmware/test/controls_test.h checks it) */
 enum { CE_TRANSPORT, CE_RECORD, CE_SAVE, CE_BACK, CE_MENU, CE_ENV, CE_SEQ, CE_OCTAVE, CE_TEMPO, CE_PATCH, CE_STORE, CE_ARM, CE_MUTE, CE_FOCUS, CE_DEVICE_PAGE, CE_LEAVE_LIST, CE_LIST_PAGE, CE_PRESET, CE_PARAM, CE_FINE, CE_STEP, CE_ROW, CE_ROLL_VIEW, CE_ROLL_PITCH, CE_JUMP, CE_TRACK, CE_PATTERN, CE_ACCENT, CE_TIE, CE_STEP_RECORD, CE_STEP_RECORD_AT, CE_VELOCITY, CE_CHANCE, CE_PITCH, CE_LOCK_PAGE, CE_LOCK, CE_SONG_PAGE, CE_CLEAR, CE_STEPS_PAGE, CE_KEYS_OCTAVE, CE_WRITE, CE_CHORD, CE_REST, CE_CURSOR, CE_BACK_CLEAR, CE_LIVE, CE_END, CE_TAKE, CE_TAKE_ACCENT, CE_ENTRY, CE_ENTRY_PATTERN, CE_ADD_ENTRY, CE_DUP_ENTRY, CE_TRANSPOSE, CE_SONG_PLAY, CE_SONG, CE_DELETE_ENTRY, CE_BACK_STEPS, CE_TAB, CE_SCROLL, CE_SET, CE_SAVE_CLOSE, CE_RUN_ROW, CE_EDITOR, CE_COUNT };
 /* a gesture part: a button (id: its matrix id), an encoder (id: panel_encoders' index), K1..K4 (id: a mask, bit 0 K1), a

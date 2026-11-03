@@ -26,7 +26,7 @@ describe('the controls table (#553)', () => {
     for (const c of CONDITIONS) expect(CONTROLS.some((r) => r.when?.replace('!', '') === c), c).toBe(true);
     for (const s of HELP_STATES)
       for (const tab of ['state', 'everywhere'] as const) {
-        const specs = sheetRows(s, tab).flatMap((r) => ('gesture' in r ? [`${rowSpec(r)}|${r.when ?? ''}`] : []));
+        const specs = sheetRows(s, tab).flatMap((r) => ('gesture' in r ? [`${tab === 'state' ? rowSpec(r, s) : rowSpec(r)}|${r.when ?? ''}`] : []));
         expect(new Set(specs).size, `${s} ${tab}`).toBe(specs.length);
       }
   });

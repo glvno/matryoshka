@@ -523,6 +523,16 @@ static int ct_listed(uint32_t i, uint32_t t)
     return 0;
 }
 
+/* row i, which the sheet leaves out (controls.ts `listed: false`), works now: its line's condition holds */
+static int ct_applies(uint32_t i)
+{
+    uint32_t l;
+    for (l = 0; l < sizeof CTL_LINE / sizeof CTL_LINE[0]; l++)
+        if (CTL_LINE[l].row == i)
+            return !CTL_LINE[l].cond || !HC_FN[CTL_LINE[l].cond]() != !CTL_LINE[l].neg;
+    return 0;
+}
+
 /* a text on the screen (SCREEN keeps the first SCR_CH characters of each) */
 static int ct_shows(const char *t)
 {
@@ -540,15 +550,17 @@ static void controls_suite(void)
         for (s = 0; s < HS_COUNT; s++)
             for (t = 0; t < 2u; t++) {
                 const uint8_t *l;
-                int placed = 0;
+                int placed = 0, unlisted = 0;
                 for (l = CTL_SHEET[t][s]; *l != CTL_END; l++)
                     placed |= CTL_LINE[*l].row == i;
-                if (!placed)
+                for (l = CTL_UNLISTED[t][s]; *l != CTL_END; l++)
+                    unlisted |= CTL_LINE[*l].row == i;
+                if (!placed && !unlisted)
                     continue;
                 for (alt = 0; alt < r->nalt; alt++) {
                     int shown = 0, ok = 0, dir;
                     for (v = 0; !ok && ct_enter(s, v); v++) {
-                        if (help_state() != s || !ct_listed(i, t))
+                        if (help_state() != s || !(placed ? ct_listed(i, t) : ct_applies(i)))
                             continue;
                         shown = 1;
                         for (dir = 1; !ok && dir >= -1; dir -= 2) {
@@ -588,6 +600,6 @@ static void controls_suite(void)
     check("the menu's hint line from the table: a settings tab, INFO, GUIDE", ct_enter(HS_MENU, 0) && ct_shows(HINT_MENU_PAGE)
           && ct_enter(HS_MENU, 3) && ct_shows(HINT_MENU_INFO) && ct_enter(HS_MENU, 4) && ct_shows(HINT_MENU_GUIDE));
     check("the SONG page's two hint lines from the table", ct_enter(HS_SONG, 0) && ct_shows(HINT_SONG_1) && ct_shows(HINT_SONG_2));
-    check("every row of the controls table does what it says in each state that lists it (web/src/controls.ts)", bad == 0u);
+    check("every row of the controls table does what it says in each state it works in (web/src/controls.ts)", bad == 0u);
     ct_reset();
 }
