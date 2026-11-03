@@ -12,6 +12,8 @@
 # BASE defaults to the newest release tag in HEAD's history (git describe), so a run reports only what changed since the
 # last release. At a patch format change, also run tools/old_format.sh v1.4.1, the last release with patch format 34
 # (D-250 in docs/ledger/patch-format.md).
+# A kit that tools/old_format_known.txt lists for BASE renders differently on purpose: it reads "DIFFERS (known)" and does
+# not fail the check. Any other difference fails it.
 set -e
 cd "$(dirname "$0")/.."
 BASE="${1:-$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD)}"
@@ -25,17 +27,26 @@ ln -s "$PWD/web/node_modules" "$T/base/web/node_modules"
 gcc -O1 -w -o "$T/base_test" "$T/base/firmware/test/host_test.c" -lm
 gcc -O1 -w -o "$T/new_test" firmware/test/host_test.c -lm
 gcc -O1 -w -o "$T/proto_test" firmware/test/proto_test.c -lm
-fail=0 n=0 pairs=""
+KNOWN=tools/old_format_known.txt
+known() { grep -v '^#' "$KNOWN" | grep -qx "$BASE $1"; }
+fail=0 n=0 nk=0 pairs=""
 for p in "$T"/base/build/golden/*.m1p; do
   k="${p%.m1p}"; b="$(basename "$k")"
   HOST_TEST_DUMP="$T/out/$b.base" "$T/base_test" "$p" "$k.ev" "$k.f32" > /dev/null || true
   HOST_TEST_DUMP="$T/out/$b.new" "$T/new_test" "$p" "$k.ev" "$k.f32" > /dev/null || true
   n=$((n + 1))
-  if [ ! -s "$T/out/$b.base" ] || ! cmp -s "$T/out/$b.base" "$T/out/$b.new"; then echo "DIFFERS $b"; fail=1; fi
+  if [ ! -s "$T/out/$b.base" ]; then echo "DIFFERS $b (no output from $BASE)"; fail=1
+  elif ! cmp -s "$T/out/$b.base" "$T/out/$b.new"; then
+    if known "$b"; then echo "DIFFERS (known) $b"; nk=$((nk + 1)); else echo "DIFFERS $b"; fail=1; fi
+  elif known "$b"; then echo "listed in $KNOWN but renders the same again: $b"
+  fi
   new="build/golden/$b.m1p"; [ -f "$new" ] || new=-
   pairs="$pairs $p $new"
 done
-[ $fail = 0 ] && echo "all $n older binaries ($BASE) render bit-identically with today's engine"
+if [ $fail = 0 ]; then
+  if [ $nk = 0 ]; then echo "all $n older binaries ($BASE) render bit-identically with today's engine"
+  else echo "all $n older binaries ($BASE) render bit-identically with today's engine, except $nk known, intended differences ($KNOWN)"; fi
+fi
 # shellcheck disable=SC2086
 "$T/proto_test" --old $pairs || fail=1
 exit $fail
