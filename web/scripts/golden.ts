@@ -9,7 +9,7 @@ import { cpuEstimate } from '../src/cpu';
 import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, sandboxFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
 import { make, FM1_PRESETS, type Build } from '../src/presets';
-import { addModule, defaultParams, emptyPatch, fixMatrix, newPatch, paramUnit, setMorphTarget, SOURCES, stepByte, type Patch, type PolyCfg } from '../src/patch';
+import { addModule, connect, defaultParams, emptyPatch, fixMatrix, newPatch, paramUnit, setMorphTarget, SOURCES, stepByte, type Patch, type PolyCfg } from '../src/patch';
 import { migrateSteps, overdub, type StepNote } from '../src/track';
 import { insertAssembly, makeAssembly } from '../src/assembly';
 import { FACTORY } from '../src/assemblies';
@@ -3007,10 +3007,15 @@ if (process.argv.includes('--panel-fixtures')) {
     writeFileSync(new URL('arm-unreached.m1p', out), encodePatch(p, true));
   }
   {
-    // an engine no keys cable reaches (#215, D-905): Oracle V (mono: its Voicing leaves the device form) and Hera 6 (poly:
-    // its group stays, so SEL arms it), wired to the Output, Main's keys cables gone. The device extras mark both
+    // an engine no keys cable reaches (#215, D-905): Monolith D (mono: its Voicing leaves the device form) and Hera 6 (poly:
+    // its group stays, so SEL arms it), on the Output's left and right, Main's keys cables gone. The device extras mark both
     const p = newPatch(DEFS);
-    for (const [name, y] of [['Oracle V', 0], ['Hera 6', 900]] as const) wireEngine(p, insertAssembly(p, DEFS, FACTORY.find((d) => d.name === name)!, 300, y));
+    const output = p.modules.find((m) => m.type === 'output')!;
+    for (const [name, y] of [['Monolith D', 0], ['Hera 6', 900]] as const) {
+      const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === name)!, 300, y);
+      wireEngine(p, a);
+      if (y) connect(p, DEFS, { module: a.outputs[0].module, port: a.outputs[0].port }, { module: output.id, port: 'r' });
+    }
     const main = p.modules.find((m) => m.type === 'fm1')!;
     p.cables = p.cables.filter((c) => !(c.from.module === main.id && c.from.port === 'keys'));
     writeFileSync(new URL('engine-unreached.m1p', out), encodePatch(p, true));

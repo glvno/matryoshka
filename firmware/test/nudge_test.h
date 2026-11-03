@@ -43,7 +43,7 @@ static void nudge_snap(const char *name)
 
 static void nudge_suite(void)
 {
-    uint32_t p, b = 0, d, found = 0;
+    uint32_t p, b = 0, d, k, found = 0;
     int stepped, sv;
     uint64_t bank0 = bank_mask, arm0;
     char want[96];
@@ -184,7 +184,7 @@ static void nudge_suite(void)
         tap(BTN_HOME);
     }
 
-    check("(the engine-unreached fixture: Oracle V and Hera 6, no keys cable into either)",
+    check("(the engine-unreached fixture: Monolith D and Hera 6, no keys cable into either)",
           load_fixture("build/panel-fixtures/engine-unreached.m1p") == 0);
     patch_label = "ENGINE UNREACHED";
     pv_gen++;
@@ -229,12 +229,8 @@ static void nudge_suite(void)
         for (d = 0; d < pg_ndev; d++)
             if (pg_dev[d].unreached && !env_listeners(d))
                 break;
-        while (pg_cur_dev != d && pg_cur_dev < pg_ndev) {
-            uint32_t was = pg_cur_dev;
+        for (k = 0; k < PG_DEVS && pg_cur_dev != d && d < pg_ndev; k++)
             enc(0, pg_cur_dev < d ? 1 : -1);
-            if (pg_cur_dev == was)
-                break;
-        }
         tap(BTN_SEL);
         check("  on its environment row too", page == PAGE_ENV && pg_cur_dev == d && nudged("NO KEYS REACH THIS DEVICE"));
         tap(BTN_HOME);
