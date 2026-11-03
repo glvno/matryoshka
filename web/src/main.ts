@@ -15,7 +15,7 @@ import type { HostMsg } from './worklet';
 import { chipState, DeviceLink, deviceIndex, liveSync, sandboxChip, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, type ChipState, type DeviceEvent } from './device';
 import { SITE_URL } from './site';
 import { sandboxKey, sandboxPage, sandboxStep, sandboxTempoTurn } from './sandbox-mode';
-import { LIVE_MS, slotLabel } from './protocol';
+import { LIVE_MS, panelOffBy, slotLabel, type PanelState } from './protocol';
 import { Fm1View } from './fm1-view';
 import { EmuKeys } from './emu-keys';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
@@ -294,8 +294,49 @@ let fromEmu = false;
  *  replayed turn just after it puts the FM-1 tab's copy of the panel back there */
 let focusNow: { device: number; page: number; at: number } | null = null;
 let deviceSlot: { slot: number; name: string } | null = null;
+/** the FM-1's panel state as it last reported it (GUIDE_NOW, #549; #554's GUIDE view follows it), null: not reported */
+let fm1Panel: PanelState | null = null;
+/** the reports are ignored, as from older firmware (the emulator scenarios' check of the old path) */
+let panelIgnored = false;
+/** the FM-1 tab's copy put back where the FM-1 is (#549): how often, and what differed the last time */
+let panelAligns = 0;
+let panelLastOff: string[] = [];
+let alignTimer = 0;
+/** how long after the FM-1's last GUIDE_NOW its state is compared with the copy's: the buttons' MIDI that the SysEx went
+ *  ahead of has arrived by then */
+const ALIGN_MS = 250;
+/** the followed FM-1 reports the key edges its panel takes and its state (KEYS_NOW / GUIDE_NOW, feature bit 18, #549):
+ *  its keys go through the FM-1 tab's copy too, and the copy is put back where the FM-1 is when they differ. Older
+ *  firmware: neither, the copy replays the buttons alone (D-457) */
+const panelReported = (): boolean => !panelIgnored && device.connected && device.reportsPanel && mirror.follows(device.input);
+/** after the FM-1's GUIDE_NOW: the copy compared with it once its buttons' MIDI is in, and put back where it differs */
+function alignSoon(): void {
+  clearTimeout(alignTimer);
+  alignTimer = window.setTimeout(() => {
+    const copy = emu.ui?.guide();
+    if (!copy || !fm1Panel || !panelReported()) return;
+    const off = panelOffBy(copy, fm1Panel);
+    if (!off.length) return;
+    panelAligns++;
+    panelLastOff = off;
+    emu.align(fm1Panel);
+  }, ALIGN_MS);
+}
 device.onEvent = (e) => {
   if (e.kind === 'info') return syncChip();   // (MENU > MIDI OUT changed: the chip says so in sandbox mode)
+  if (e.kind === 'keys') {   // a key edge the FM-1's panel took (#549): through the copy too, as the FM-1 took it
+    if (!panelReported()) return;
+    void emu.ready().then(() => {
+      fromDevice = true;     // (what the copy does with it is the FM-1's: its track edits come as TRACK_NOW, fm1Event)
+      try { emu.keysNow(e.keys, e.held); } finally { fromDevice = false; }
+    });
+    return;
+  }
+  if (e.kind === 'guide') {
+    fm1Panel = e.state;
+    if (panelReported()) alignSoon();
+    return;
+  }
   if (e.kind === 'tempo') {   // the FM-1's TEMPO setting and global tempo (D-907): after HELLO and when changed there
     fromDevice = true;
     try { tempo.set(e.bpm ? { mode: e.global ? 'global' : 'patch', bpm: e.bpm } : { mode: e.global ? 'global' : 'patch' }, 'device'); } finally { fromDevice = false; }
@@ -337,6 +378,10 @@ device.onEvent = (e) => {
 function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
   const mark = (on: boolean): void => { if (from === 'device') fromDevice = on; else fromEmu = on; };
   if (e.kind === 'slot') return;
+  // the copy's own edits while it replays an FM-1 that reports its panel (#549): the FM-1 sends its own (TRACK_NOW,
+  // LOCKS_NOW, PATTERN_NOW, SONG_NOW, MUTE), under Live; the copy's would be the same edit twice, or one the FM-1's patch
+  // did not take
+  if (from === 'emu' && fromDevice && panelReported() && ['track', 'locks', 'pattern', 'song', 'mute'].includes(e.kind)) return;
   if (e.kind === 'track' || e.kind === 'mute') {   // the FM-1's SEQ page (#83, #133): a track edited or recorded, a track muted
     const id = deviceView(editor.patch, true).patch.modules[e.module]?.id;   // (the compiled form the FM-1 got, as deviceIndex)
     if (id === undefined) return;
@@ -515,6 +560,8 @@ const sink = {
   send(msg: HostMsg, fromPanel = false): void {
     // CC 16..19 from a MIDI controller turn Main's knobs: the rows of the device page in focus
     if (msg.t === 'cc' && msg.n >= 16 && msg.n <= 19) return editor.turnKnob(msg.n - 16, msg.v / 127);
+    // a followed FM-1 that reports its keys (#549): they reach the copy as KEYS_NOW, its notes only sound here
+    if (fromDevice && (msg.t === 'on' || msg.t === 'off') && panelReported()) return sink.play(msg);
     // the Emulator view: its keys play what the emulated FM-1 plays for them (#467, emu-keys.ts)
     for (const m of emuKeys.route(msg, fromPanel)) sink.play(m);
   },
@@ -2621,6 +2668,13 @@ if (import.meta.env.DEV) {
       return !!o;
     },
     emu: () => ({ loaded: emuLoaded, device: emu.ui?.focusDevice ?? -1, page: emu.ui?.page ?? -1, octave: emu.ui?.octave ?? 0 }),
+    // #549: the FM-1's panel state (GUIDE_NOW) and the FM-1 tab's copy's, where they differ, how often the copy was put
+    // back; ignore: take no reports, as from older firmware
+    panel: () => {
+      const copy = emu.ui?.guide() ?? null;
+      return { reported: panelReported(), fm1: fm1Panel, copy, off: copy && fm1Panel ? panelOffBy(copy, fm1Panel) : null, aligns: panelAligns, lastOff: panelLastOff };
+    },
+    ignorePanel: (on: boolean): void => { panelIgnored = on; },
     // the factory preset nearest the assembly's card values now: its name, the rows that differ from it (0: it is that
     // preset, within the FM-1's Q16 rounding) and the rows there are
     presetNow: (label: string): { name: string; off: number; rows: number } | null => {

@@ -664,6 +664,18 @@ tick in, it sends its own again at its tempo ([D-477](ledger/link-and-midi.md#D-
   transport; the editor's transport follows the FM-1's own Start / Stop (`setPlaying` under `fromDevice` sends no
   TRANSPORT), and `emuRealign` sets the copy back to the editor's transport 400 ms after a replayed press the FM-1 did not
   confirm. PRESET is not followed while Live is on (the FM-1 then plays the editor's patch; its slots are its own).
+- The panel's reports (#549, INFO feature bit 18, [D-481](ledger/link-and-midi.md#D-481), [D-482](ledger/link-and-midi.md#D-482)):
+  after HELLO the FM-1 sends KEYS_NOW 0x57 for every key edge `panel_key` takes (main.c `m1_keys_now` queues it with
+  `keys_now` and `panel_held`, `keys_report` sends it in the loop; only with MENU > MIDI OUT on) and GUIDE_NOW 0x58 with
+  `guide_state` (help_ui.c, 14 bytes: the sheet's state, page, flags, focus, track, menu tab, buttons held, the rows'
+  conditions, sheet row, octave, step record's cursor) after HELLO and whenever it changes (`guide_poll`: the
+  conditions are asked only when the rest or `help_state_sig` changed). The editor (`panelReported`: the followed
+  FM-1 is the link's, with the bit) puts KEYS_NOW through the copy (`Fm1View.keysNow`: the reported held buttons first,
+  as presses or releases, then `Fm1Ui.keys`); `drive` then plays a button's MIDI only when it is news (`fm1w_held`), and
+  the FM-1's notes skip `EmuKeys`. The copy's own track / lock / pattern / song / mute results during the replay are
+  dropped (the FM-1 reports its own). 250 ms after the last GUIDE_NOW (`alignSoon`) `panelOffBy` compares it with the
+  copy's `fm1w_guide`; where they differ `fm1w_align` (panel.c `panel_align`, built with `PANEL_ALIGN`) sets the copy
+  there without playing an edge. `main.ts` keeps the last GUIDE_NOW in `fm1Panel` for the GUIDE view (#554).
 - Under Live a structural change uploads the patch only when its encoded bytes differ from what the FM-1 holds
   (`web/src/upload-gate.ts`, main.ts `structureChanged`): a comment or a layout change sends nothing. Edits sent live
   bring the gate's copy up to date 250 ms after they stop (`liveEdited`); until then a structural change uploads. A change

@@ -897,6 +897,53 @@ static void keys_yield(void)
     panel_key_queue(fm1_input_key_peek, fm1_input_key_pop, 1);
 }
 
+/* the panel's reports to the editor (#549, feature bit 18). KEYS_NOW: every key edge panel_key took, with the buttons held
+ * then, while MENU > MIDI OUT is on (the panel's own MIDI goes out then; the editor's copy of the panel logic reads
+ * both). Queued (a key edge from inside a redraw sends nothing there) and sent by the loop, in order; a full queue
+ * drops an edge, and the next one's keys held bring the editor's copy back in line */
+#define KQ 16u
+static uint32_t kq_key[KQ], kq_keys[KQ];
+static uint16_t kq_held[KQ];
+static uint8_t kq_w, kq_r;
+static void m1_keys_now(uint32_t n, int down)
+{
+    if (!m1_heard || !cfg.midi_out || (uint8_t)(kq_w - kq_r) >= KQ)
+        return;
+    kq_key[kq_w % KQ] = n | (down ? 0x80u : 0u);
+    kq_keys[kq_w % KQ] = keys_now;
+    kq_held[kq_w % KQ] = (uint16_t)(panel_held & 0x3FFFu);
+    kq_w++;
+}
+static void keys_report(void)
+{
+    for (; kq_r != kq_w; kq_r++)
+        m1_keys_report(kq_key[kq_r % KQ] & 31u, (kq_key[kq_r % KQ] & 0x80u) != 0, kq_keys[kq_r % KQ], kq_held[kq_r % KQ]);
+}
+/* GUIDE_NOW: the panel's state (help_ui.c guide_state) after HELLO and whenever it changed, its conditions asked again
+ * only then (they read the preset store), so a pass with nothing new costs a compare */
+static void guide_poll(void)
+{
+    static uint8_t last[GUIDE_BYTES];
+    static uint32_t last_sig;
+    uint8_t g[GUIDE_BYTES];
+    uint32_t i, sig;
+    if (!m1_heard)
+        return;
+    guide_state(g, 0);
+    sig = help_state_sig();
+    for (i = 0; i < GUIDE_BYTES; i++)
+        if (i != 9u && i != 10u && g[i] != last[i])
+            break;
+    if (i == GUIDE_BYTES && sig == last_sig && !m1_guide_due)
+        return;
+    m1_guide_due = 0;
+    last_sig = sig;
+    guide_state(g, 1);
+    for (i = 0; i < GUIDE_BYTES; i++)
+        last[i] = g[i];
+    m1_guide_now(g, GUIDE_BYTES);
+}
+
 static void buttons_poll(void)
 {
     uint32_t rel, p = fm1_input_edges(&rel);
@@ -1257,12 +1304,15 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         panel_status();
         midi_drain();
         keys_poll();
+        keys_report();
         buttons_poll();
         knobs_poll();
         batt_poll();
         master_poll();
         seq_poll();
         panel_draw();
+        keys_report();                                  /* (the edges taken during the redraw: keys_yield) */
+        guide_poll();
         cpu_poll();
         host_poll();
         tempo_poll();
