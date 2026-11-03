@@ -321,7 +321,8 @@ int32_t eng_get_eff(uint32_t module, uint32_t param);               /* what the 
 void eng_set_att(uint32_t module, uint32_t input, int32_t q16);      /* attenuverter of p1 / p2, Q16 */
 int32_t eng_att(uint32_t module, uint32_t input);
 /* a macro range of input 0 / 1 (p1 / p2) on a parameter: the input's value lands between lo and hi (0..255 of the
- * parameter's range, octaves for a log one) instead of adding to the base; on 0 removes it. 0 = no room / bad arguments */
+ * parameter's range, octaves for a log one) instead of adding to the base; on 0 removes it, bit 1 of on reads the input's
+ * -1..1 across the ends (bipolar, #526). 0 = no room / bad arguments */
 int eng_set_range(uint32_t module, uint32_t input, uint32_t param, int on, uint32_t lo, uint32_t hi);
 /* the range of input 0 / 1 on a parameter, 1 if there is one (lo / hi as above) */
 int eng_range(uint32_t module, uint32_t input, uint32_t param, uint32_t *lo, uint32_t *hi);

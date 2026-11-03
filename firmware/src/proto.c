@@ -705,7 +705,7 @@ static void m1_patch_range(uint32_t mod, uint32_t pin, uint32_t par, int on, uin
     }
     n = m1_cur[sec];
     for (i = 0, at = sec + 1u; i < n; i++, at += 5)
-        if (m1_cur[at] == mod && m1_cur[at + 1] == pin && m1_cur[at + 2] == par)
+        if (m1_cur[at] == mod && (m1_cur[at + 1] & 1u) == pin && m1_cur[at + 2] == par)
             break;
     if (i < n && !on) {                                         /* remove: the last entry moves into its place */
         uint32_t last = sec + 1u + 5u * (n - 1u), k;
@@ -728,7 +728,7 @@ static void m1_patch_range(uint32_t mod, uint32_t pin, uint32_t par, int on, uin
         m1_cur_len += 5u;
     }
     m1_cur[at] = (uint8_t)mod;
-    m1_cur[at + 1] = (uint8_t)pin;
+    m1_cur[at + 1] = (uint8_t)(pin | (on & 2 ? 0x80u : 0u));   /* (bit 7: bipolar, patchbin.ts RANGE_BIPOLAR) */
     m1_cur[at + 2] = (uint8_t)par;
     m1_cur[at + 3] = (uint8_t)lo;
     m1_cur[at + 4] = (uint8_t)hi;
@@ -904,8 +904,8 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         break;
     case C_RANGE:
         if (len >= 6u) {
-            if (eng_set_range(d[0], d[1], d[2], d[3] != 0, d[4], d[5]))
-                m1_patch_range(d[0], d[1], d[2], d[3] != 0, d[4], d[5]);
+            if (eng_set_range(d[0], d[1], d[2], d[3] & 3, d[4], d[5]))   /* (on: bit 0 on, bit 1 bipolar, #526) */
+                m1_patch_range(d[0], d[1], d[2], d[3] & 3, d[4], d[5]);
             m1_ui_changed();
         }
         break;

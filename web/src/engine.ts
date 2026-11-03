@@ -9,7 +9,7 @@
 // shared output gets that one buffer.
 
 import { type DrumMapState, dropRows, stepsGo, stepsPattern, type StepsSong, driftSeed, ENVELOPE_TYPES, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
-import { defaultMap, FLAW_TARGETS, flawOf, MAX_PARTS, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
+import { defaultMap, FLAW_TARGETS, flawOf, MAX_PARTS, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, rangeShare, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
 import { ALLOC, deviceView, keysInto } from './poly';
 import { armView, type DeviceKey } from './arm';
 import { kindOf, switches, toggleTargets } from './buttons';
@@ -667,7 +667,7 @@ export class Engine {
   setRange(id: number, index: number, name: string, range: Range | null): void {
     const n = this.nodes.get(id);
     if (!n || (index !== 0 && index !== 1)) return;
-    if (range) n.range[index][name] = [range[0], range[1]];
+    if (range) n.range[index][name] = range[2] === 1 ? [range[0], range[1], 1] : [range[0], range[1]];
     else delete n.range[index][name];
   }
 
@@ -736,7 +736,7 @@ export class Engine {
         const r = node.range[s][pd.name];
         if (r) {
           ranged = r;
-          rv += pins[s]!;
+          rv += rangeShare(r, pins[s]!);   // (a bipolar range reads the pin's −1..1 across its ends, #526)
         } else {
           mod += pins[s]!;
           touched = true;

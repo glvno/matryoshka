@@ -102,8 +102,19 @@ export function paramValue(pd: ParamDef, u: number): number {
   return pd.log ? pd.min * Math.pow(pd.max / pd.min, x) : pd.min + x * (pd.max - pd.min);
 }
 
-/** the macro range of pin `s` on parameter `name`: the pin's value 0..1 lands between these two unit positions instead of adding to the base */
-export type Range = [number, number];
+/** the most a parameter input's depth (attenuverter) reaches either way: twice the parameter's range (#526) */
+export const DEPTH_MAX = 2;
+/**
+ * The macro range of pin `s` on parameter `name`: the pin's value lands between these two unit positions instead of
+ * adding to the base. Its value 0..1 spans them; with the third entry 1 (bipolar, #526) its value −1..1 does, for a
+ * source that swings both ways (an LFO). The editor sets that from the source's range when the range is made
+ * (parameter-menu.ts), and a person can change it.
+ */
+export type Range = [number, number] | [number, number, 1];
+/** a macro range's ends and whether the pin's value is read as −1..1 */
+export const isBipolar = (r: Range | undefined): boolean => !!r && r[2] === 1;
+/** where a pin's value (times its depth) lands in a macro range, 0..1 between its ends (engine.c apply_cv the same) */
+export const rangeShare = (r: Range, v: number): number => (r[2] === 1 ? (v + 1) / 2 : v);
 export const rangeOf = (m: ModuleInst, s: 'p1' | 'p2', name: string): Range | undefined => m.range?.[s]?.[name];
 
 export interface ModuleDef {
@@ -151,7 +162,8 @@ export interface ModuleInst {
   x: number;
   y: number;
   params: Record<string, number>;
-  /** attenuverters of the parameter inputs p1 and p2, -1..1 (only on modules with paramInputs) */
+  /** attenuverters of the parameter inputs p1 and p2, -2..2 (DEPTH_MAX; only on modules with paramInputs): the share of the
+   * parameter's range an input of 1 moves it by (the editor shows it in the parameter's units, depth.ts) */
   att?: [number, number];
   /** the matrix: the parameters each source controls. p1 / p2 add (input mean x attenuverter x range) to them, k1..k4 are
    * the FM-1 knobs, which nudge them while the module is selected on the device (only on modules with paramInputs) */
@@ -163,9 +175,10 @@ export interface ModuleInst {
   /** the B side of a morph: the same parameters as `params`, taken from another patch of the same structure (setMorphTarget); the
    * Main module's `morph` (plus its morph input) fades every parameter from `params` to these. Not on the Main module. */
   paramsB?: Record<string, number>;
-  /** macro ranges: for a parameter that p1 / p2 controls (map), the input's value 0..1 lands between these two positions of the
-   * parameter's range (0..1, octaves for a log parameter; paramUnit) instead of adding to the base value */
-  range?: { p1?: Record<string, [number, number]>; p2?: Record<string, [number, number]> };
+  /** macro ranges: for a parameter that p1 / p2 controls (map), the input's value 0..1 (−1..1 for a bipolar one: Range)
+   * lands between these two positions of the parameter's range (0..1, octaves for a log parameter; paramUnit) instead of
+   * adding to the base value */
+  range?: { p1?: Record<string, Range>; p2?: Record<string, Range> };
   /** the Main module only: what the patch makes of the FM-1's panel (#60): which of its buttons (PANEL_BUTTONS) switch on and
    * off instead of acting while held, the switched ones that are on, and labels for K1..K6 and the buttons (the device's
    * player screen and legend show them; at most PANEL_LABEL_MAX characters of the LCD's font) */
@@ -652,7 +665,7 @@ export function fixMatrix(m: ModuleInst, def: ModuleDef): void {
     return;
   }
   const a = Array.isArray(m.att) ? m.att : [1, 1];
-  m.att = [0, 1].map((i) => Math.max(-1, Math.min(1, Number.isFinite(Number(a[i])) ? Number(a[i]) : 1))) as [number, number];
+  m.att = [0, 1].map((i) => Math.max(-DEPTH_MAX, Math.min(DEPTH_MAX, Number.isFinite(Number(a[i])) ? Number(a[i]) : 1))) as [number, number];
   const names = new Set(def.params.map((q) => q.name));
   const dm = defaultMap(def);
   const map = {} as Record<Source, string[]>;
@@ -666,8 +679,9 @@ export function fixMatrix(m: ModuleInst, def: ModuleDef): void {
       if (!r || typeof r !== 'object') continue;
       for (const name of map[s]) {
         const v = r[name];
-        if (!Array.isArray(v) || v.length !== 2 || !v.every((x) => Number.isFinite(Number(x)))) continue;
-        (out[s] ??= {})[name] = [Math.min(1, Math.max(0, Number(v[0]))), Math.min(1, Math.max(0, Number(v[1])))];
+        if (!Array.isArray(v) || v.length < 2 || v.length > 3 || !v.slice(0, 2).every((x) => Number.isFinite(Number(x)))) continue;
+        const ends: [number, number] = [Math.min(1, Math.max(0, Number(v[0]))), Math.min(1, Math.max(0, Number(v[1])))];
+        (out[s] ??= {})[name] = v[2] === 1 ? [...ends, 1] : ends;
       }
     }
     if (Object.keys(out).length) m.range = out;

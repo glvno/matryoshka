@@ -507,6 +507,7 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .routing-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .routing-head strong { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .routing-controls output { margin-left: auto; }
+.routing-controls .depth-value { width: 7.5em; margin-left: auto; text-align: right; font-variant-numeric: tabular-nums; }
 .routing-controls fieldset { display: flex; gap: 8px; border: 0; padding: 5px 0 0; margin: 5px 0 0; border-top: 1px solid var(--line); }
 .routing-controls legend { color: var(--muted); }
 .routing-source + .routing-source { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 4px; }

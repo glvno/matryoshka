@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The FM-1 as a Web MIDI SysEx peer: patch upload, store, live parameters (wire format: protocol.ts).
 import { DEFS } from './modules';
-import type { Patch } from './patch';
+import type { Patch, Range } from './patch';
 import type { SongEntry, StepNote } from './track';
 import { encodePatch, toQ16, VERSION } from './patchbin';
 import { deviceView } from './poly';
@@ -430,7 +430,7 @@ export class DeviceLink {
   }
 
   /** a macro range of p1 / p2 (index 0 / 1) on a parameter, or its removal */
-  range(patch: Patch, moduleId: number, index: number, name: string, range: [number, number] | null): void {
+  range(patch: Patch, moduleId: number, index: number, name: string, range: Range | null): void {
     if (!this.connected) return;
     const mi = deviceIndex(patch, moduleId);
     if (mi < 0) return;

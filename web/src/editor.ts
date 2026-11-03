@@ -6,7 +6,7 @@ import { isTextEntry } from './input';
 import { lockOf } from './relevance';
 import { clearAround, isPile, tidy, tidyAssembly } from './tidy';
 import { buttonLabel, DEFS, drumRowName, FIXED_DOES, PANEL_BUTTONS, rowRange } from './modules';
-import { FIXED_BUTTONS } from './patch';
+import { FIXED_BUTTONS, type Range } from './patch';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
 import { arpLitInverted, buttonLight, kindOf, pageList, setPages, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
 import { buttonEditor } from './button-editor';
@@ -197,7 +197,7 @@ export interface EditorEvents {
   /** a note into a Steps track's instrument, to hear it (the roll's keys and notes, #136; vel 0..127, 0: let go) */
   onThru?(id: number, note: number, vel: number): void;
   /** a macro range of p1 / p2 (index 0 / 1) on a parameter changed or was removed (null) */
-  onRange(id: number, index: number, name: string, range: [number, number] | null): void;
+  onRange(id: number, index: number, name: string, range: Range | null): void;
   /** the transport (the Play switch: the Main module's run output and clock; editor state, not saved) */
   onTransport(on: boolean): void;
   /** a patch button of the Main module (PANEL_BUTTONS index) held / let go or switched */
