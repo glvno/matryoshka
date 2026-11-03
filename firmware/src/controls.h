@@ -54,7 +54,7 @@ static const ctl_line_t CTL_LINE[85] = {
     {"n:PRESET~row device's preset", 24, 2, 0},   /* env-presets */
     {"n:ALGO~row device's preset", 25, 2, 0},   /* env-presets-algo */
     {"k:SEL~arm / disarm device", 26, 4, 0},   /* env-arm */
-    {"w:~toggle rowstep n/16", 27, 0, 0},   /* step */
+    {"w:~toggle rowstep n", 27, 0, 0},   /* step */
     {"b:~select note row 1-8", 28, 0, 0},   /* row-key */
     {"b:~pick a row", 28, 0, 0},   /* row-key */
     {"n:SELECT~pick a row", 29, 0, 0},   /* row-select */
@@ -85,7 +85,7 @@ static const ctl_line_t CTL_LINE[85] = {
     {"c:4~move cursor", 53, 0, 0},   /* sr-cursor */
     {"b:10~back, clear step", 54, 0, 0},   /* sr-back */
     {"k:PLAY~play, record live", 55, 0, 0},   /* sr-live */
-    {"k:REC|t:/|k:HOME~end step record", 56, 0, 0},   /* sr-end */
+    {"k:REC~end step record", 56, 0, 0},   /* sr-end */
     {"m:KEYS~record notes", 57, 0, 0},   /* take */
     {"k:FX|t:held~accented notes", 58, 0, 0},   /* take-accent */
     {"n:SELECT~pick entry", 59, 0, 0},   /* song-entry */
@@ -119,10 +119,10 @@ static const uint8_t CTL_SHEET[2][9][21] = {
     {
         {15, 17, 20, 21, 22, 18, 19, 16, 11, 84, CTL_END},   /* device */
         {23, 27, 25, 24, 12, CTL_END},   /* env */
-        {30, 28, 38, 40, 42, 37, 50, 51, 35, 39, 44, 45, 31, 36, 47, 48, CTL_END},   /* drum */
+        {30, 28, 38, 40, 42, 37, 50, 51, 35, 39, 44, 45, 36, 47, 48, CTL_END},   /* drum */
         {40, 41, 29, 28, 39, 50, 32, 33, 34, 38, 43, 44, 46, 47, 48, 35, 49, 36, 37, 51, CTL_END},   /* roll */
         {60, 61, 32, 36, 37, CTL_END},   /* live */
-        {71, 62, 63, 64, 65, 66, 67, 68, 69, 70, CTL_END},   /* song */
+        {62, 63, 64, 65, 66, 67, 68, 69, 70, CTL_END},   /* song */
         {76, 72, 73, 74, 78, 75, CTL_END},   /* menu */
         {79, 80, 81, 82, 83, CTL_END},   /* sandbox */
         {59, 52, 53, 54, 55, 56, 57, 34, 8, 58, CTL_END},   /* step */
@@ -169,10 +169,10 @@ static const uint8_t CTL_UNLISTED[2][9][2] = {
     {
         {CTL_END},   /* device */
         {26, CTL_END},   /* env */
-        {CTL_END},   /* drum */
+        {31, CTL_END},   /* drum */
         {CTL_END},   /* roll */
         {CTL_END},   /* live */
-        {CTL_END},   /* song */
+        {71, CTL_END},   /* song */
         {77, CTL_END},   /* menu */
         {CTL_END},   /* sandbox */
         {CTL_END},   /* step */
@@ -257,7 +257,7 @@ static const ctl_row_t CTL_ROW[CTL_NROWS] = {
     {"sr-cursor", CE_CURSOR, CH_NONE, CW_PRESS, 0, 1, {{CK_KNOBS, 8, 0}}},
     {"sr-back", CE_BACK_CLEAR, CH_NONE, CW_PRESS, 0, 1, {{CK_BLACK, 0, 10}}},
     {"sr-live", CE_LIVE, CH_NONE, CW_PRESS, 0, 1, {{CK_BUTTON, 12, 0}}},
-    {"sr-end", CE_END, CH_NONE, CW_PRESS, 0, 2, {{CK_BUTTON, 13, 0}, {CK_BUTTON, 8, 0}}},
+    {"sr-end", CE_END, CH_NONE, CW_PRESS, 0, 1, {{CK_BUTTON, 13, 0}}},
     {"take", CE_TAKE, CH_NONE, CW_PRESS, 0, 1, {{CK_KEYS, 0, 0}}},
     {"take-accent", CE_TAKE_ACCENT, CH_NONE, CW_HELD, 0, 1, {{CK_BUTTON, 2, 0}}},
     {"song-entry", CE_ENTRY, CH_NONE, CW_PRESS, 0, 1, {{CK_ENCODER, 0, 0}}},
