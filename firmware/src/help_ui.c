@@ -8,9 +8,13 @@
  *
  * The sheet's rows are specs: parts separated by '|', then '~' and the description. A part: k:NAME a button (an outlined
  * keycap), n:NAME a grey knob and its name, c:DIGITS coloured knobs K1..K4 with their numbers, w: a white key, b: a
- * black key (b:N black key N), t:TEXT grey joining words, m:TEXT bright words. Which rows show is decided per state as the sheet is drawn
- * (help_rows), so the sheet follows the state (help_follow): rows that do not apply to the device in focus, the patch or
- * the tab are left out, and a patch button is listed by its job in the loaded patch. */
+ * black key (b:N black key N), t:TEXT grey joining words, m:TEXT bright words. The rows, the states and tabs they show
+ * on, their order and conditions are web/src/controls.ts, the one table of the FM-1's controls (#553), generated into
+ * controls.h by export-defs. Which rows show is decided per state as the sheet is drawn (help_rows), so the sheet follows
+ * the state (help_follow): rows that do not apply to the device in focus, the patch or the tab are left out (their
+ * condition, hc_<name> below), and a patch button is listed by its job in the loaded patch. */
+
+#include "controls.h"
 
 #define HELP_SHEET 1u
 #define HELP_QUICK 2u
@@ -35,11 +39,7 @@ static uint32_t help_msg_ms;
 #define HC_VIS ((HC_BOT - HC_TOP) / HC_ROW)         /* rows that fit: 8 */
 #define HC_ROWS 24u
 
-/* the states (D-245): the sheet's first tab is named after the one the FM-1 is in */
-enum { HS_DEVICE, HS_ENV, HS_DRUM, HS_ROLL, HS_LIVE, HS_SONG, HS_MENU, HS_SANDBOX, HS_STEP };
-static const char *const HS_NAME[9] = {"DEVICE", "ENVIRONMENT", "DRUM STEPS", "PIANO ROLL", "LIVE TAKE", "SONG", "SETTINGS", "SANDBOX",
-                                       "STEP RECORD"};
-
+/* the state (D-245; controls.h HS_*): the sheet's first tab is named after it */
 static uint32_t help_state(void)
 {
     if (page == PAGE_MENU)
@@ -63,10 +63,19 @@ static uint32_t help_state_sig(void)
          | (uint32_t)(seq_trk & 15u) << 14 | len << 18 | (uint32_t)(eng_steps_count() > 0) << 19 | (pages_gen() & 0xFFFu) << 20;
 }
 
-/* the device in focus: it has presets to step / it can store one (an assembly) / it takes keys (SEL arms it) */
-static int help_dev_presets(void) { pages_ensure(); return pg_cur_dev < pg_ndev && dp_list(pg_cur_dev) > 0u; }
-static int help_dev_store(void) { pages_ensure(); return pg_cur_dev < pg_ndev && pg_dev[pg_cur_dev].structure != 0u; }
-static int help_dev_keys(void) { pages_ensure(); return pg_cur_dev < pg_ndev && env_listeners(pg_cur_dev) != 0u; }
+/* the rows' conditions (controls.ts CONDITIONS): the device in focus has presets to step / can store one (an assembly) /
+ * takes keys (SEL arms it); a Page button's list is on; the SEQ page's track is longer than 16 steps / a melodic track
+ * (the roll); the patch has tracks; the menu's tab is GUIDE / a page of settings / SYSTEM */
+static int hc_dev_presets(void) { pages_ensure(); return pg_cur_dev < pg_ndev && dp_list(pg_cur_dev) > 0u; }
+static int hc_dev_store(void) { pages_ensure(); return pg_cur_dev < pg_ndev && pg_dev[pg_cur_dev].structure != 0u; }
+static int hc_dev_keys(void) { pages_ensure(); return pg_cur_dev < pg_ndev && env_listeners(pg_cur_dev) != 0u; }
+static int hc_list(void) { return pg_list_btn >= 0; }
+static int hc_long_track(void) { int mod = seq_module(); return page == PAGE_SEQ && mod >= 0 && seq_len(mod) > 16; }
+static int hc_roll(void) { return seq_module() >= 0 && seq_map() < 0; }
+static int hc_tracks(void) { return eng_steps_count() > 0; }
+static int hc_menu_guide(void) { return menu_tab == MT_GUIDE; }
+static int hc_menu_page(void) { return menu_page() != 0; }
+static int hc_menu_system(void) { return menu_tab == MT_SYSTEM; }
 
 /* the rows of the patch buttons with a job in the loaded patch (FX, LFO, EDIT, ARP; SEL, ENV and GLO are fixed): the
  * button by its own name, then its job: a Toggle "name on/off", a Page button "name pages", a Gate with a cable from its
@@ -97,169 +106,21 @@ static uint32_t help_patch_rows(const char **out)
     return n;
 }
 
-#define E_TEMPO "k:PLAY|t:+|n:PRESET~tempo"
-#define E_PATCH "k:HOME|t:+|n:PRESET~patches"
-#define E_STORE "k:ENV|t:+|k:SAVE~save device preset"
-#define E_ARM "k:REC|t:+|b:~arm a track"
-#define E_MUTE "k:SEQ|t:+|b:~mute a track"
-
-/* the rows of tab t (0 the state's, 1 EVERYWHERE) in the state now */
+/* the rows of tab t (0 the state's, 1 EVERYWHERE) in the state now: controls.h's lines of that tab whose condition holds,
+ * the patch buttons in their place */
 static uint32_t help_rows(uint32_t t, const char **r)
 {
-    uint32_t n = 0, s = help_state();
-    int tracks = eng_steps_count() > 0, mod = seq_module(), store = help_dev_store();
-    int longtrk = page == PAGE_SEQ && mod >= 0 && seq_len(mod) > 16;
-#define R(x) (r[n++] = (x))
-    if (t) {                                        /* EVERYWHERE: each button's job everywhere, then the combinations, but
-                                                     * what the state's tab lists or gives another job (D-246) */
-        int seq = s == HS_DRUM || s == HS_ROLL || s == HS_LIVE || s == HS_SONG || s == HS_STEP;
-        R("k:PLAY~start / stop");
-        if (s != HS_SANDBOX && s != HS_DRUM && s != HS_ROLL && s != HS_STEP)
-            R("k:REC~record");                      /* (the SEQ page's tabs list REC: step record, D-804) */
-        if (s != HS_MENU && s != HS_SANDBOX)
-            R("k:SAVE~save patch");
-        R("k:HOME~back");
-        if (s != HS_MENU)
-            R("k:GLO~settings");
-        if (s != HS_ENV && s != HS_SANDBOX)
-            R("k:ENV~environment");
-        if (!seq && s != HS_SANDBOX)
-            R("k:SEQ~steps page");
-        if (s != HS_DRUM && s != HS_ROLL && s != HS_MENU && s != HS_STEP)
-            R("k:OCT-|t:/|k:OCT+~octave");
-        R(E_TEMPO);
-        if (s == HS_SANDBOX)
-            return n;
-        if (s != HS_MENU)
-            R(E_PATCH);
-        if (store && s != HS_DEVICE && s != HS_ENV)
-            R(E_STORE);
-        if (tracks) {
-            R(E_ARM);
-            R(E_MUTE);
-        }
-        return n;
+    const uint8_t *l = CTL_SHEET[t ? 1 : 0][help_state()];
+    uint32_t n = 0;
+    for (; *l != CTL_END; l++) {
+        const ctl_line_t *c = &CTL_LINE[*l];
+        if (c->cond && !HC_FN[c->cond]() == !c->neg)
+            continue;
+        if (c->row == CTL_PATCH)
+            n += help_patch_rows(r + n);
+        else
+            r[n++] = c->spec;
     }
-    switch (s) {
-    case HS_DEVICE:
-        R(pg_list_btn >= 0 ? "n:SELECT~leave the list" : "n:SELECT~devices");
-        R(pg_list_btn >= 0 ? "n:ALGO~the list's pages" : "n:ALGO~device pages");
-        if (help_dev_presets())
-            R("n:PRESET~device presets");
-        R("c:1234~adjust values");
-        R("k:HOME|t:+|c:1234~fine adjust");
-        if (help_dev_keys())
-            R("k:SEL~arm this device");
-        if (store)
-            R(E_STORE);
-        n += help_patch_rows(r + n);
-        break;
-    case HS_ENV:
-        R("n:SELECT~device rows");
-        R("c:1234~row's first page");
-        if (help_dev_presets()) {
-            R("n:PRESET~row's presets");
-            R("n:ALGO~row's presets");
-        }
-        if (help_dev_keys())
-            R("k:SEL~arm / disarm row");
-        if (store)
-            R(E_STORE);
-        break;
-    case HS_DRUM:
-        R("w:~step on / off");
-        R("b:~pick a row");
-        R("n:SELECT~pick a row");
-        if (longtrk)
-            R("k:OCT-|t:/|k:OCT+~steps 17+");
-        R("n:ALGO~track");
-        R("n:PRESET~pattern");
-        R("k:FX|t:+|w:~accent");
-        R("k:LFO|t:+|w:~tie");
-        R("k:REC~step record");
-        R("k:REC|t:+|w:~step record there");
-        R("t:hold step +|c:2~velocity");
-        R("t:hold step +|n:SELECT~chance");
-        R("t:hold step +|n:ALGO~lock pages");
-        R("t:hold step +|c:1234~lock rows");
-        R("k:SEL|t:tap~song");
-        R("k:SEQ|t:+|k:REC~clear track");
-        break;
-    case HS_ROLL:
-        R("w:~step on / off");
-        R("b:~pick a row");
-        R("n:SELECT~8 pitches up / down");
-        R("k:SEL|t:+|n:SELECT~a pitch up / down");
-        R("k:SEL|t:+|m:ANY KEY~jump to pitch");
-        R("k:FX|t:+|w:~accent");
-        R("k:LFO|t:+|w:~tie");
-        R("k:REC~step record");
-        R("k:REC|t:+|w:~step record there");
-        R("t:hold step +|c:1~pitch");
-        R("t:hold step +|c:2~velocity");
-        R("t:hold step +|c:3~chance");
-        R("t:hold step +|n:ALGO~lock pages");
-        R("t:hold step +|c:1234~lock rows");
-        if (longtrk)
-            R("k:OCT-|t:/|k:OCT+~steps 17+");
-        R("k:FX|t:+|k:OCT~keys' octave");
-        R("n:ALGO~track");
-        R("n:PRESET~pattern");
-        R("k:SEL|t:tap~song");
-        R("k:SEQ|t:+|k:REC~clear track");
-        break;
-    case HS_STEP:                                   /* step record (#532, D-804) */
-        R("m:KEYS~play, let go: write");
-        R("t:keys together~one chord");
-        R("k:LFO~rest, keys held: tie");
-        R("k:FX|t:held~accent");
-        R("c:4~move cursor");
-        R("b:10~back, clear step");
-        if (seq_module() >= 0 && seq_map() < 0)    /* (the roll: the pen, nothing written, D-804) */
-            R("k:SEL|t:+|m:ANY KEY~jump to pitch");
-        R("k:OCT-|t:/|k:OCT+~octave");
-        R("k:PLAY~play, record live");
-        R("k:REC|t:/|k:HOME~end step record");
-        break;
-    case HS_LIVE:
-        R("m:KEYS~record notes");
-        R("k:FX|t:held~accented notes");
-        R("n:SELECT~8 pitches up / down");
-        R("n:ALGO~track");
-        R("n:PRESET~pattern");
-        break;
-    case HS_SONG:
-        R("n:SELECT~pick entry");
-        R("c:1~entry's pattern");
-        R("c:1|t:on END~add entry");
-        R("k:FX|t:+|c:1~duplicate entry");
-        R("c:2~transpose entry");
-        R("c:4~song on / off");
-        R("n:ALGO~song 1-8");
-        R("n:PRESET~selected pattern");
-        R("k:SEQ|t:+|k:REC~delete entry");
-        R("k:SEL~back to steps");
-        break;
-    case HS_MENU:
-        R("n:ALGO~tab");
-        if (menu_tab == MT_GUIDE)
-            R("n:SELECT~scroll");
-        if (menu_page())
-            R("c:1234~set");
-        R("n:PRESET~patches");
-        R("k:SAVE~save, close");
-        if (menu_tab == MT_SYSTEM)
-            R("t:hold|k:GLO|t:2 s~run armed row");
-        break;
-    default:                                        /* sandbox mode: the editor's page; its own buttons go to the editor */
-        R("n:SELECT~devices");
-        R("n:ALGO~device pages");
-        R("c:1234~adjust values");
-        R("t:in the editor:");
-        R("k:SEQ|k:ENV|k:REC|k:SAVE|k:SEL");
-        break;
-    }
-#undef R
     return n;
 }
 

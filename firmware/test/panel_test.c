@@ -4,6 +4,7 @@
  * PLAY / tempo, a key and the MIDI out of every control (#115), checked on the core's state and on the LCD's framebuffer (ui_preview.c's stand-ins).
  *   tools/panel_test.sh */
 #define UI_PREVIEW_LIB
+#define CTL_GESTURES                                        /* (controls.h: the rows' gestures, controls_test.h) */
 #define FB_WATCH
 #include "ui_preview.c"
 
@@ -379,6 +380,7 @@ static int marks_ok(int mod)
 #include "help_test.h"                              /* #450: OCT on release, the controls sheet, the quick start */
 #include "nudge_test.h"                             /* #450: the nudges (D-249), ENV in the menu */
 #include "steprec_test.h"                           /* #532: step record on the SEQ page */
+#include "controls_test.h"                          /* #553: every row of the controls table driven, its effect checked */
 
 int main(void)
 {
@@ -4237,6 +4239,7 @@ int main(void)
     }
     nudge_suite();
     steprec_suite();
+    controls_suite();
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
     return failed != 0;
 }
