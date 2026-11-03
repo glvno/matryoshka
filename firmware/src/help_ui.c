@@ -114,8 +114,8 @@ static uint32_t help_rows(uint32_t t, const char **r)
                                                      * what the state's tab lists or gives another job (D-246) */
         int seq = s == HS_DRUM || s == HS_ROLL || s == HS_LIVE || s == HS_SONG || s == HS_STEP;
         R("k:PLAY~start / stop");
-        if (s != HS_SANDBOX)
-            R("k:REC~record");
+        if (s != HS_SANDBOX && s != HS_DRUM && s != HS_ROLL && s != HS_STEP)
+            R("k:REC~record");                      /* (the SEQ page's tabs list REC: step record, D-804) */
         if (s != HS_MENU && s != HS_SANDBOX)
             R("k:SAVE~save patch");
         R("k:HOME~back");
@@ -176,7 +176,8 @@ static uint32_t help_rows(uint32_t t, const char **r)
         R("n:PRESET~pattern");
         R("k:FX|t:+|w:~accent");
         R("k:LFO|t:+|w:~tie");
-        R("b:11|t:+|w:~step record");
+        R("k:REC~step record");
+        R("k:REC|t:+|w:~step record there");
         R("t:hold step +|c:2~velocity");
         R("t:hold step +|n:SELECT~chance");
         R("t:hold step +|n:ALGO~lock pages");
@@ -187,11 +188,13 @@ static uint32_t help_rows(uint32_t t, const char **r)
     case HS_ROLL:
         R("w:~step on / off");
         R("b:~pick a row");
-        R("n:SELECT~scroll rows");
-        R("k:SEL|t:+|m:KEY~jump to pitch");
+        R("n:SELECT~8 pitches up / down");
+        R("k:SEL|t:+|n:SELECT~a pitch up / down");
+        R("k:SEL|t:+|m:ANY KEY~jump to pitch");
         R("k:FX|t:+|w:~accent");
         R("k:LFO|t:+|w:~tie");
-        R("b:11|t:+|w:~step record");
+        R("k:REC~step record");
+        R("k:REC|t:+|w:~step record there");
         R("t:hold step +|c:1~pitch");
         R("t:hold step +|c:2~velocity");
         R("t:hold step +|c:3~chance");
@@ -208,18 +211,20 @@ static uint32_t help_rows(uint32_t t, const char **r)
     case HS_STEP:                                   /* step record (#532, D-804) */
         R("m:KEYS~play, let go: write");
         R("t:keys together~one chord");
-        R("k:LFO~rest");
-        R("t:keys held +|k:LFO~tie");
+        R("k:LFO~rest, keys held: tie");
         R("k:FX|t:held~accent");
         R("c:4~move cursor");
         R("b:10~back, clear step");
+        if (seq_module() >= 0 && seq_map() < 0)    /* (the roll: the pen, nothing written, D-804) */
+            R("k:SEL|t:+|m:ANY KEY~jump to pitch");
         R("k:OCT-|t:/|k:OCT+~octave");
-        R("k:HOME|t:/|k:SEQ~end step record");
+        R("k:PLAY~play, record live");
+        R("k:REC|t:/|k:HOME~end step record");
         break;
     case HS_LIVE:
         R("m:KEYS~record notes");
         R("k:FX|t:held~accented notes");
-        R("n:SELECT~pick a row");
+        R("n:SELECT~8 pitches up / down");
         R("n:ALGO~track");
         R("n:PRESET~pattern");
         break;

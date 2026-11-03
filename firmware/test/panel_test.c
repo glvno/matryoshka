@@ -226,6 +226,14 @@ static int bar_shows(const char *s, uint16_t bg)
     memcpy(fb, was, sizeof was);
     return same;
 }
+/* the SEQ bar of a piano roll: pre, the pitches it shows (C3-G3, D-809), post */
+static int bar_roll(const char *pre, const char *post, uint16_t bg)
+{
+    char b[48], *q;
+    q = seq_note_name(put(seq_note_name(put(put(b, pre), " "), seq_roll_lo), "-"), seq_roll_lo + 7u);
+    put(put(q, " "), post)[0] = 0;
+    return bar_shows(b, bg);
+}
 /* PANEL_SNAP=file.ppm: the LCD at the page-list step, to look at (tools/ui_preview.sh converts PPM to PNG) */
 static void snap_to(const char *path)
 {
@@ -1555,23 +1563,24 @@ int main(void)
         seq_select(1);
         page_set(PAGE_SEQ);
         later(1500);
-        check("SEQ on PATTERN: the roll (no Drum map), opened around its notes: the median A#3 on the middle row",
-              page == PAGE_SEQ && seq_map() < 0 && seq_roll_lo == 55u && seq_row == 4u && seq_grid_note(-1, seq_row) == 58u);
+        check("SEQ on PATTERN: the roll (no Drum map), on the fixed page of its median A#3 (G#3-D#4), A#3 selected",
+              page == PAGE_SEQ && seq_map() < 0 && seq_roll_lo == 56u && seq_row == 5u && seq_grid_note(-1, seq_row) == 58u);
+        later(1100);
+        check("  the bar names the page's pitches (D-809)", bar_shows("PATTERN ARM G#3-D#4 P01", C_ACC));
         check("the roll: each pitch's notes on the 16 steps, a 2-step note runs on dim, the C row tinted", roll_shows(pat)
-              && px(seq_grid_x(4) + GRID_CW, GRID_Y + GRID_RH * 4u + 5u) == C_DIM);
-        check("the markers: over the steps with notes above (D#4, F4), under those with notes below (A#2)", marks_ok(pat)
-              && px(seq_grid_x(0) + 5u, MARK_DN_Y) == C_DIM && px(seq_grid_x(11) + 5u, MARK_UP_Y + 2u) == C_DIM
-              && px(seq_grid_x(1) + 5u, MARK_DN_Y) == C_BG);
-        check("the names: pitches top down (D4 .. G3), the selected one on coral, C4's tinted",
-              px(4u + GRID_NAME_W - 1u, GRID_Y + GRID_RH * 4u + 1u) == C_ACC && px(4u + GRID_NAME_W - 1u, GRID_Y + GRID_RH * 2u + 1u) == C_CROW
-              && px(4u + GRID_NAME_W - 1u, GRID_Y + GRID_RH * 3u + 1u) == C_BG);
+              && px(seq_grid_x(4) + GRID_CW, GRID_Y + GRID_RH * 5u + 5u) == C_DIM);
+        check("the markers: over the steps with notes above (F4), under those with notes below (A#2)", marks_ok(pat)
+              && px(seq_grid_x(0) + 5u, MARK_DN_Y) == C_DIM && px(seq_grid_x(1) + 5u, MARK_DN_Y) == C_BG);
+        check("the names: pitches top down (D#4 .. G#3), the selected one on coral, C4's tinted",
+              px(4u + GRID_NAME_W - 1u, GRID_Y + GRID_RH * 5u + 1u) == C_ACC && px(4u + GRID_NAME_W - 1u, GRID_Y + GRID_RH * 3u + 1u) == C_CROW
+              && px(4u + GRID_NAME_W - 1u, GRID_Y + GRID_RH * 4u + 1u) == C_BG);
         snap_to(getenv("PANEL_SNAP_ROLL"));
 
         k = 2;                                              /* a white key: A#3 on step 3 (it has none) */
         for (n = 0; seq_white(n) != k; n++)
             ;
         x = seq_grid_x((uint32_t)k);
-        y = GRID_Y + GRID_RH * 4u;
+        y = GRID_Y + GRID_RH * 5u;
         fb_watch_reset();
         lcd_px = lcd_xfers = 0;
         panel_keys(1u << n);
@@ -1587,26 +1596,54 @@ int main(void)
         loop();
         check("again: off", !eng_steps_note((uint32_t)pat, 2u, 58u) && roll_shows(pat));
 
-        fb_watch_reset();                                   /* SELECT: the next row down (A3) */
+        fb_watch_reset();                                   /* SELECT (D-809): the view a page of 8 pitches down (C3-G3) */
         lcd_px = lcd_xfers = 0;
         enc(0, 1);
         all = fb_changed_in(0, 0, 240, 240);
-        part = fb_changed_in(4, GRID_Y + GRID_RH * 4u, 4 + GRID_NAME_W, GRID_Y + GRID_RH * 4u + FONT_S.h)
-             + fb_changed_in(4, GRID_Y + GRID_RH * 5u, 4 + GRID_NAME_W, GRID_Y + GRID_RH * 5u + FONT_S.h);
-        printf("      (roll, SELECT a row on: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
-        check("SELECT: the next pitch down, only the two names redrawn", seq_row == 5u && seq_grid_note(-1, seq_row) == 57u
-              && all > 0u && all == part && fb_blinked() == 0 && lcd_px <= 2u * GRID_NAME_W * FONT_S.h);
-        enc(0, -5);
-        check("SELECT back up to the top row (D4)", seq_row == 0u && seq_roll_lo == 55u);
-        fb_watch_reset();                                   /* past the top: the window scrolls a semitone */
+        part = fb_changed_in(0, 0, 240, BAR_H) + fb_changed_in(0, MARK_UP_Y, 240, GRID_TICK_Y);
+        printf("      (roll, SELECT a page on: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
+        check("SELECT: the view a page down (C3-G3), the selected row on its screen row (D3), only the bar and the rows redrawn",
+              seq_roll_lo == 48u && seq_row == 5u && seq_grid_note(-1, seq_row) == 50u && all > 0u && all == part
+              && fb_blinked_below(BAR_H) == 0 && roll_shows(pat) && marks_ok(pat) && bar_shows("PATTERN ARM C3-G3 P01", C_ACC));
+        check("  drawn in place = drawn whole", sr_whole_same());
+        enc(0, -1);
+        check("SELECT back: the page above (G#3-D#4)", seq_roll_lo == 56u && seq_row == 5u && roll_shows(pat) && marks_ok(pat));
+        enc(0, -30);
+        check("SELECT far up: the top page (G#9 the highest pitch, C9-G9)", seq_roll_lo == 120u && bar_shows("PATTERN ARM C9-G9 P01", C_ACC));
+        enc(0, 30);
+        check("SELECT far down: the bottom page (C-1-G-1)", seq_roll_lo == 0u && bar_shows("PATTERN ARM C-1-G-1 P01", C_ACC)
+              && roll_shows(pat) && marks_ok(pat));
+        enc(0, -7);
+        check("  (back on G#3-D#4)", seq_roll_lo == 56u);
+        fb_watch_reset();                                   /* SEL held + SELECT (D-809): a pitch at a time */
         lcd_px = lcd_xfers = 0;
+        panel_held |= 1u << BTN_SEL;
+        panel_edges(1u << BTN_SEL, 0);
         enc(0, -1);
         all = fb_changed_in(0, 0, 240, 240);
-        part = fb_changed_in(0, MARK_UP_Y, 240, GRID_TICK_Y);
-        printf("      (roll, a scroll: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
-        check("SELECT past the top row: the window scrolls (D#4 on top), only the rows redrawn (not the bar, the lines)",
-              seq_row == 0u && seq_roll_lo == 56u && seq_grid_note(-1, 0) == 63u && all > 0u && all == part && fb_blinked() == 0
-              && roll_shows(pat) && marks_ok(pat));
+        part = fb_changed_in(0, 0, 240, BAR_H) + fb_changed_in(0, MARK_UP_Y, 240, GRID_TICK_Y);
+        printf("      (roll, SEL + SELECT a pitch: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
+        check("SEL held + SELECT: the view a pitch up (A3-E4), only the bar and the rows redrawn", seq_roll_lo == 57u
+              && seq_grid_note(-1, 0) == 64u && all > 0u && all == part && fb_blinked_below(BAR_H) == 0 && roll_shows(pat) && marks_ok(pat)
+              && bar_shows("PATTERN ARM A3-E4 P01", C_ACC));
+        panel_held &= ~(1u << BTN_SEL);
+        panel_edges(0, 1u << BTN_SEL);
+        loop();
+        check("  SEL let go after it: no SONG page", page == PAGE_SEQ);
+        check("  drawn in place = drawn whole", sr_whole_same());
+        enc(0, 1);
+        check("SELECT after a fine scroll: a page down, the offset kept (A2-E3)", seq_roll_lo == 49u && roll_shows(pat) && marks_ok(pat));
+        enc(0, -1);
+        panel_held |= 1u << BTN_SEL;
+        panel_edges(1u << BTN_SEL, 0);
+        enc(0, 1);
+        panel_held &= ~(1u << BTN_SEL);
+        panel_edges(0, 1u << BTN_SEL);
+        loop();
+        panel_keys(1u << 17);                               /* (black key 8: the top row, D#4) */
+        panel_keys(0);
+        loop();
+        check("  (SEL + SELECT back: G#3-D#4 again, the top row picked)", seq_roll_lo == 56u && seq_row == 0u && page == PAGE_SEQ);
 
         {                                                   /* the roll's black keys (#387): 1..8 the rows on screen, black key 1
                                                              * the bottom one; stopped, the row sounds; the track stays */
@@ -1638,15 +1675,31 @@ int main(void)
             panel_keys(0);
             loop();
             check("roll: black key 9 does nothing (the track, the row stay)", seq_row == 0u && seq_trk == trk0 && seq_roll_lo == 56u);
-            enc(0, -1);                                     /* the window scrolls: black key 1 follows it (now A3) */
+            panel_held |= 1u << BTN_SEL;                    /* SEL + SELECT, the view a pitch up: black key 1 follows it (A3) */
+            panel_edges(1u << BTN_SEL, 0);
+            enc(0, -1);
+            panel_held &= ~(1u << BTN_SEL);
+            panel_edges(0, 1u << BTN_SEL);
             panel_keys(1u << 1);
             panel_keys(0);
             loop();
-            check("roll: the window scrolled a semitone, black key 1 is its new bottom row (A3)", seq_roll_lo == 57u && seq_row == 7u
+            check("roll: the view a pitch up, black key 1 is its new bottom row (A3)", seq_roll_lo == 57u && seq_row == 7u
                   && seq_grid_note(-1, seq_row) == 57u);
-            enc(0, 1);                                      /* (back as it was: G#3 at the bottom, the top row D#4) */
-            enc(0, -7);
-            check("  (SELECT back: the window and the row as before)", seq_roll_lo == 56u && seq_row == 0u);
+            enc(0, -1);
+            panel_keys(1u << 1);
+            panel_keys(0);
+            loop();
+            check("roll: a page up (F4-C5), black key 1 its bottom row (F4)", seq_roll_lo == 65u && seq_grid_note(-1, seq_row) == 65u);
+            enc(0, 1);
+            panel_held |= 1u << BTN_SEL;                    /* (back as it was: G#3 at the bottom, the top row D#4) */
+            panel_edges(1u << BTN_SEL, 0);
+            enc(0, 1);
+            panel_held &= ~(1u << BTN_SEL);
+            panel_edges(0, 1u << BTN_SEL);
+            panel_keys(1u << 17);
+            panel_keys(0);
+            loop();
+            check("  (back: the view and the row as before)", seq_roll_lo == 56u && seq_row == 0u);
         }
 
         steps_inst((uint32_t)pat)->s.stp.hit = 0;           /* FX held + OCT-: the keys' octave; then the pen, SEL held + a key */
@@ -1661,8 +1714,8 @@ int main(void)
         panel_keys(1u << 5);                                /* A#2 at octave -1 (out of the window) */
         panel_keys(0);
         loop();
-        check("SEL + a key (the pen): the selected row is its pitch (A#2), the window opens around it, heard, no note written",
-              seq_grid_note(-1, seq_row) == 46u && seq_roll_lo == 43u && lo0 != 43u && steps_inst((uint32_t)pat)->s.stp.hit
+        check("SEL + a key (the pen): the selected row is its pitch (A#2), the view on its fixed page (E2-B2), heard, no note written",
+              seq_grid_note(-1, seq_row) == 46u && seq_roll_lo == 40u && lo0 != 40u && steps_inst((uint32_t)pat)->s.stp.hit
               && (uint32_t)eng_steps_notes((uint32_t)pat, &w) == before && roll_shows(pat));
         check("  the markers: a triangle over each step with notes above the window (A#3 on step 2), none below",
               marks_ok(pat) && px(seq_grid_x(1) + 5u, MARK_UP_Y + 2u) == C_DIM && px(seq_grid_x(2) + 5u, MARK_UP_Y + 2u) == C_BG
@@ -1671,11 +1724,11 @@ int main(void)
         r0 = seq_row;
         fb_watch_reset();
         lcd_px = lcd_xfers = 0;
-        panel_keys(1u << 7);                                /* the pen on C3, in the window: the row moves, no scroll */
+        panel_keys(1u << 4);                                /* the pen on A2, on the page: the row moves, the view stays */
         panel_keys(0);
         loop();
         printf("      (roll, the pen in the window: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
-        check("the pen in the window: the row moves, only the two names redrawn", seq_grid_note(-1, seq_row) == 48u && seq_roll_lo == 43u
+        check("the pen in the window: the row moves, only the two names redrawn", seq_grid_note(-1, seq_row) == 45u && seq_roll_lo == 40u
               && fb_changed_in(0, 0, 240, 240) == fb_changed_in(4, GRID_Y + GRID_RH * r0, 4 + GRID_NAME_W, GRID_Y + GRID_RH * r0 + FONT_S.h)
                  + fb_changed_in(4, GRID_Y + GRID_RH * seq_row, 4 + GRID_NAME_W, GRID_Y + GRID_RH * seq_row + FONT_S.h));
         panel_keys(1u << 5);                                /* (A#2 again) */
@@ -1726,10 +1779,10 @@ int main(void)
         hw = eng_steps_note((uint32_t)pat, 0u, 46u);
         check("+ K3: its chance (90 %), the row stays", hw && ((hw >> 26) & 31u) == 2u && seq_grid_note(-1, seq_row) == 46u
               && !strcmp(msg_text, "CHANCE 90%"));
-        enc(0, 1);                                          /* + SELECT: the row moves, the chance stays */
+        enc(0, 1);                                          /* + SELECT: the view a page down, the chance stays */
         hw = eng_steps_note((uint32_t)pat, 0u, 46u);
-        check("+ SELECT with a step held on the roll: the row moves (A2), the chance stays", seq_grid_note(-1, seq_row) == 45u
-              && hw && ((hw >> 26) & 31u) == 2u);
+        check("+ SELECT with a step held on the roll: the view a page down (the row's pitch D2), the chance stays",
+              seq_roll_lo == 32u && seq_grid_note(-1, seq_row) == 38u && hw && ((hw >> 26) & 31u) == 2u);
         enc(0, -1);
         panel_keys(0);
         loop();
@@ -1899,9 +1952,9 @@ int main(void)
         tap(BTN_SEQ);                                       /* SEQ while recording: the take's track, its keyboard */
         loop();
         check("SEQ while REC records: PATTERN's roll, all keys its keyboard (the hint says so)", page == PAGE_SEQ && seq_trk == 1u
-              && seq_kbd() && !strcmp(seq_grid_text[2], "KEYS record  SELECT row  OCT octave  FX acc"));
+              && seq_kbd() && !strcmp(seq_grid_text[2], "KEYS record  SELECT page  OCT octave  FX acc"));
         later(1100);
-        check("  its bar: PATTERN REC on red", bar_shows("PATTERN REC P01", C_RED));
+        check("  its bar: PATTERN REC on red", bar_shows("PATTERN REC G#3-D#4 P01", C_RED));
         snap_to(getenv("PANEL_SNAP_ROLL_REC"));
         before = (uint32_t)eng_steps_notes((uint32_t)pat, &w);
         panel_keys(1u << 2);                                /* a white key (G3): its own pitch, not a step of the selected row */
@@ -1939,13 +1992,14 @@ int main(void)
         enc(1, 1);
         loop();
         check("  ALGO back: PATTERN records again", seq_rec && seq_trk == 1u && (E.trk_rec >> E.node[pat].trk & 1u) && seq_kbd());
+        mlen = 0;                                           /* (the MIDI log holds 256 messages; the clock out fills it) */
         {
             int at = mlen;
             tap(BTN_PLAY);                                  /* PLAY stops everything */
             check("PLAY while recording: the transport stops (MIDI Stop out) and recording ends", !seq_rec && !eng_transport_running()
                   && sent(at, 0xFCu, 0xFFu, 0xFFu) && !(E.trk_rec >> E.node[pat].trk & 1u) && page == PAGE_SEQ);
             later(1500);
-            check("  the bar says ARM again, not REC (redrawn by the loop)", bar_shows("PATTERN ARM P01", C_ACC));
+            check("  the bar says ARM again, not REC (redrawn by the loop)", bar_shows("PATTERN ARM G#3-D#4 P01", C_ACC));
         }
         (void)eng_steps_set_notes((uint32_t)pat, keep, (uint32_t)keep_n);
         seq_sync(pat);
@@ -1972,6 +2026,7 @@ int main(void)
         panel_held &= ~(1u << BTN_REC);
         panel_edges(0, 1u << BTN_REC);
         loop();
+        tap(BTN_PLAY);                                      /* (running: on the SEQ page REC stopped is step record, D-548) */
         tap(BTN_REC);
         check("REC with nothing armed: it still runs, the bar says so, nothing records", seq_rec && eng_transport_running()
               && eng_arm_mask_get() == 0u && !E.trk_rec && !seq_kbd() && page == PAGE_SEQ && !strcmp(msg_text, "REC: NO TRACK ARMED"));
@@ -2238,7 +2293,7 @@ int main(void)
         check("melodic track: REC held + black key 1 arms it, the bar's message and the track's line (ARMED) only, no blink",
               eng_armed() == drums && bar > 0u && line > 0u && all == bar + line && fb_blinked_below(BAR_H) == 0);
         later(1500);
-        check("melodic track: the bar says ARM", bar_shows("DRUMS ARM P01", C_ACC));
+        check("melodic track: the bar says ARM", bar_roll("DRUMS ARM", "P01", C_ACC));
         snap_to(getenv("PANEL_SNAP_ARM_TRACK"));
         fb_watch_reset();
         held_key(BTN_SEQ, 1);
@@ -3364,10 +3419,9 @@ int main(void)
             panel_held &= ~(1u << BTN_SEQ);
             panel_edges(0, 1u << BTN_SEQ);
             loop();
-            tap(BTN_REC);                                   /* REC alone: recording on / off as before */
-            check("  REC alone after it: recording on, nothing cleared", seq_rec != 0u && eng_steps_notes((uint32_t)mod, &w) == keep_n);
+            tap(BTN_REC);                                   /* REC alone: step record on / off (stopped, D-804) */
+            check("  REC alone after it: step record on, nothing cleared", sr_on && !seq_rec && eng_steps_notes((uint32_t)mod, &w) == keep_n);
             tap(BTN_REC);
-            tap(BTN_PLAY);                                  /* (REC started the transport, #395: stopped again) */
             (void)eng_steps_set_notes((uint32_t)mod, keep, (uint32_t)keep_n);
             seq_sync(mod);
             later(2000);
@@ -3698,7 +3752,7 @@ int main(void)
         enc(1, 1);
         check("ALGO there: the track it shows now armed, the one before disarmed", seq_trk == 1u && eng_arm_mask_get() == (uint64_t)1 << pat);
         later(1500);
-        check("  its bar: PATTERN ARM", bar_shows("PATTERN ARM P01", C_ACC));
+        check("  its bar: PATTERN ARM", bar_roll("PATTERN ARM", "P01", C_ACC));
         (void)load("<7PH");                                  /* another patch while the page shows (the editor's Send) */
         pv_gen++;
         loop();
@@ -3768,14 +3822,14 @@ int main(void)
         ui_dirty = 2;
         loop();
         mod = seq_module();
-        check("the SEQ bar shows the pattern (P01)", bar_shows("STEPS 1 ARM P01", C_ACC));
+        check("the SEQ bar shows the pattern (P01)", bar_roll("STEPS 1 ARM", "P01", C_ACC));
         told = host_pattern_told;
         enc(6, 1);
         eng_render(l, r, 128);
         later(1100);
         check("PRESET on the SEQ page: pattern 2, at once while stopped, the editor told", eng_pattern() == 1
               && eng_pattern_playing((uint32_t)mod) == 1 && host_pattern_told == told + 1u);
-        check("  the bar: P02; the page: its own length (5 steps)", bar_shows("STEPS 1 ARM P02", C_ACC) && seq_len(mod) == 5);
+        check("  the bar: P02; the page: its own length (5 steps)", bar_roll("STEPS 1 ARM", "P02", C_ACC) && seq_len(mod) == 5);
         eng_transport(1);
         for (i = 0; i < 4u; i++)
             eng_render(l, r, 128);
@@ -3783,12 +3837,12 @@ int main(void)
         later(1100);
         check("running: pattern 3 waits for the end of the track's pass", eng_pattern() == 2 && eng_pattern_playing((uint32_t)mod) == 1
               && eng_pattern_queued((uint32_t)mod) == 2);
-        check("  the bar: P02>P03", bar_shows("STEPS 1 ARM P02>P03", C_ACC));
+        check("  the bar: P02>P03", bar_roll("STEPS 1 ARM", "P02>P03", C_ACC));
         for (i = 0; i < 800u && eng_pattern_playing((uint32_t)mod) != 2; i++)
             eng_render(l, r, 128);
         loop();
         check("  at the end of the pass: P03 (its own length, 12 steps)", eng_pattern_playing((uint32_t)mod) == 2
-              && bar_shows("STEPS 1 ARM P03", C_ACC) && seq_len(mod) == 12);
+              && bar_roll("STEPS 1 ARM", "P03", C_ACC) && seq_len(mod) == 12);
         eng_transport(0);
         eng_render(l, r, 128);
         tap(BTN_SEL);

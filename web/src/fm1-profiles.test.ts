@@ -22,7 +22,9 @@ describe('FM-1 MIDI profiles (#120)', () => {
     expect(t(0xb0, 7, 0)).toEqual([{ t: 'master', v: 0 }]);
     expect(t(0x90, 60, 100)).toEqual([{ t: 'note', note: 60, vel: 100 / 127, on: true }]);
     expect(t(0x90, 60, 0)).toEqual([{ t: 'note', note: 60, vel: 0, on: false }]);
-    expect(t(0xfa)).toEqual([]);                            // PLAY's own CC says it
+    // Start / Stop: the FM-1's own transport, which the editor's follows (#549), not the copy's replay of PLAY's CC
+    expect(t(0xfa)).toEqual([{ t: 'transport', run: true }]);
+    expect(t(0xfc)).toEqual([{ t: 'transport', run: false }]);
     expect(relClicks(65)).toBe(-63);
   });
 
