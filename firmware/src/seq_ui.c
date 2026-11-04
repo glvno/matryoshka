@@ -1856,7 +1856,7 @@ static void seq_draw(int full)
 /* ---- the SONG page (#375; the owner, 2026-10-27: D-541, D-544): SEL tapped on the SEQ page. A song's entries, one a row
  * (03  P12  +5: its number, pattern, shift), an END row after the last; the patch plays its songs or its selected pattern.
  *   SELECT          the cursor (an entry, or END)
- *   K1              the entry's pattern; on END: adds an entry (the last one's pattern, no shift); FX held: a copy of the
+ *   K1              the entry's pattern; on END: adds an entry (the selected pattern, no shift); FX held: a copy of the
  *                   entry inserted before it
  *   K2              the entry's shift, -12..+12 semitones (a track that plays a Drum map is never shifted)
  *   K4              right: the song plays (from the end of each track's pass, its first entry), left: the pattern again
@@ -1944,8 +1944,9 @@ static void song_knobs(int32_t *st)
     if (st[0])
         song_cur = (uint8_t)clampi((int32_t)song_cur + st[0], 0, n);
     if (st[2]) {
-        if (song_cur >= n) {                     /* END: a new entry, the last one's pattern (the selected one first) */
-            if (n < ENG_SONG_LEN && !eng_song_put(song_sel, (uint32_t)n, n ? (uint32_t)eng_song_get(song_sel, (uint32_t)n - 1u) & 0xFFu : (uint32_t)eng_pattern(), 0))
+        if (song_cur >= n) {                     /* END: a new entry, the selected pattern (#582: as PRESET picked it; it
+                                                  * was the last entry's) */
+            if (n < ENG_SONG_LEN && !eng_song_put(song_sel, (uint32_t)n, (uint32_t)eng_pattern(), 0))
                 changed = 1;
             else if (n >= ENG_SONG_LEN)
                 ui_msg("SONG FULL: 64 ENTRIES", 1000);
