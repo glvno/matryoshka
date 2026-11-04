@@ -124,6 +124,7 @@ static uint8_t seq_lpg;                 /* P-locks (#524, #519 Q2): ALGO's stop 
                                          * the n-th page of the devices the track drives (K1..K4 lock its rows on the held
                                          * step); kept over presses, back to 0 with another track */
 static int8_t seq_shown_pos = -2;       /* the playhead as last drawn */
+static uint8_t seq_page_armed;           /* 1 + the track the SEQ page armed on opening, changing the armed set (#582) */
 static const char *seq_msg_due;         /* a key's message for the bar, shown by the loop's pass (a key never draws: D-228) */
 static uint16_t seq_msg_ms;             /* ... its time on show (0: 800 ms) */
 static char seq_msg_buf[28];            /* ... a message made up of a track's name */
@@ -1053,14 +1054,8 @@ static void seq_arm_shown(int opening)
     if (mod >= 0) {
         uint64_t was = eng_arm_mask_get();
         seq_arm_set((uint64_t)1 << mod);
-        if (eng_arm_mask_get() != was) {        /* (#582: the arming changed, and stays after the page: the bar says so) */
-            static char m[32];
-            char name[TRACK_NAME_MAX + 8];
-            seq_name(seq_trk, name);
-            put(put(m, name), " ARMED")[0] = 0;
-            seq_msg_due = m;
-            seq_msg_ms = 1200;
-        }
+        if (eng_arm_mask_get() != was)          /* (#582: the page changed the arming, which stays after it: seq_leave says so) */
+            seq_page_armed = (uint8_t)(seq_trk + 1u);
     }
 }
 
@@ -1254,6 +1249,19 @@ static void seq_leave(void)
 {
     ent_keys = 0;
     sr_stop();
+    if (seq_page_armed) {                        /* the page armed its track (#582): on the way out the bar says it stays so,
+                                                  * the footer's ARM name has a reason */
+        static char m[32];
+        char name[TRACK_NAME_MAX + 8];
+        uint32_t t = seq_page_armed - 1u;
+        seq_page_armed = 0;
+        if ((int)t < eng_steps_count() && seq_mod_armed(eng_steps_module(t))) {
+            seq_name(t, name);
+            put(put(m, name), " STAYS ARMED")[0] = 0;
+            seq_msg_due = m;
+            seq_msg_ms = 1500;
+        }
+    }
 }
 
 /* a key while the keys are the armed track's keyboard (the panel plays it, the engine records it): its LED */
@@ -1922,7 +1930,7 @@ static void seq_pattern_step(int32_t d)
                                                      * edit makes it from that first) */
         q[0] = 0;
     }
-    ui_msg(m, 1500);
+    ui_msg(m, 1000);
     if (!ui_dirty)
         ui_dirty = 1;
 }
