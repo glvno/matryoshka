@@ -41,6 +41,8 @@
 #define GRAIN_SPRAY (ENG_SR / 4u)   /* spray scatters a grain's start by up to this many samples (0.25 s) */
 #define RV_LEN 8074u                /* the eight FDN lines (5740), two input allpasses (570) and the 40 ms pre-delay (1764), int16 Q13 */
 #define DELAY_LEN 30944u            /* 700 ms and 61 samples at ENG_SR (#273; the reference engine, web/src/modules.ts, has the same length; ping-pong halves it) */
+#define DELAY_TIME_TOP (1600 * ENG_ONE)   /* ms: the time a 1.6 s line reaches (modules.ts DELAY_TIME_BROWSER), which a base past the knob's 700 keeps under modulation */
+#define DELAY_LONG 70649u           /* 1.6 s and 60 samples (modules.ts DELAY_LEN_BROWSER): the line of a patch whose lines leave room for it (#273 step 3, line_arena) */
 #define STR_LEN 1104u               /* ceil(ENG_SR / 40) + 1: the lowest string is 40 Hz, as the reference */
 #define CH_LEN 927u                 /* ceil(ENG_SR * 0.021): 12 ms +- 8 ms of sweep */
 #define MAX_HELD 128
@@ -401,7 +403,7 @@ typedef struct {
                                                     * modes' radii and normalised gains for kdec kdamp / kbr, ok: which are worked out */
         struct { int32_t a[8], b[8], ia; uint32_t phase; } fs;   /* the Hilbert chains (w1 w2 per section), chain A's delayed sample, the quadrature oscillator */
         struct { struct grain_line *ln; uint32_t w, acc, seed; uint8_t prev; } gr;   /* acc: grains per sample, Q24 */
-        struct { int16_t *buf; uint32_t w, t, seen, beat, cur; int32_t rate; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev; } dly;   /* t, ring, seen, beat: the clock tempo; cur, rate: the read position's distance behind w (samples Q16, 0 = not yet set) and its glide (dly_glide) */
+        struct { int16_t *buf; int64_t cur; uint32_t len, w, t, seen, beat; int32_t rate; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev; } dly;   /* len: its line's samples (DELAY_LONG or DELAY_LEN); cur 64 bits (#273 step 3) */   /* t, ring, seen, beat: the clock tempo; cur, rate: the read position's distance behind w (samples Q16, 0 = not yet set) and its glide (dly_glide) */
         struct { int16_t *buf; uint16_t li[8], ai[2], pi; int32_t lp[8]; uint32_t ph[2]; } rev;   /* the FDN lines' write indices, the diffusers', the pre-delay's; damping states; modulation phases */
         struct { int32_t v; uint32_t t; int32_t rk[4], inc[4], k[4]; uint32_t len[4]; uint8_t stage, prev, ok; } env;  /* Q30, like the ADSR; t: samples
                                                     * in the segment; rk, inc, k, len, ok: segments 1 2 3 and release, as m_adsr */
@@ -559,6 +561,7 @@ typedef struct {
     uint8_t order[ENG_MAX_MODULES], outputs[ENG_MAX_MODULES];
     uint8_t from_m[ENG_MAX_CABLES], from_p[ENG_MAX_CABLES], to_m[ENG_MAX_CABLES], to_p[ENG_MAX_CABLES];
     uint16_t ncab, nbuf, ndly, nrev, nstr, nch, ngr;
+    uint32_t dly_len;                /* the loaded patch's Delay line: DELAY_LONG or DELAY_LEN samples (#273 step 3) */
     node_t node[ENG_MAX_MODULES];
     sum_t sum[MAX_SUM];
     const esig_t *sum_src[MAX_SRC];
@@ -658,22 +661,35 @@ static const grp_t *cur_g;           /* its group (E.grp[0], the shared keyboard
 static pv_t *cur_pv;                 /* the part it plays */
 static esig_t buf_pool[ENG_NBUF][ENG_BLOCK] ENG_POOL;
 static uint8_t buf_own[ENG_NBUF];
-static int16_t dly_pool[ENG_NDELAY][DELAY_LEN] ENG_POOL;
-static uint8_t dly_own[ENG_NDELAY];
 static int16_t rev_pool[ENG_NREV][RV_LEN] ENG_LOWRAM;
 static uint8_t rev_own[ENG_NREV];
-static int16_t str_pool[ENG_NSTRING][STR_LEN] ENG_POOL;
-static uint8_t str_own[ENG_NSTRING];
 static int16_t ch_pool[ENG_NCHORUS][CH_LEN] ENG_LOWRAM;
 static uint8_t ch_own[ENG_NCHORUS];
 /* a granular line: the recording (Q13 like the delay) and the grains reading it (start, read phase from it Q16, rate Q16,
  * window phase and increment (u32 turns, half a turn over the grain), samples left) */
 typedef struct { uint32_t start, rp, rate, wph, winc, left; } grain_t;
 typedef struct grain_line { int16_t buf[GRAIN_LEN]; grain_t g[GRAIN_MAX]; } grain_line_t;
-#if ENG_NGRAIN > 0
-static grain_line_t gr_pool[ENG_NGRAIN] ENG_POOL;
-static uint8_t gr_own[ENG_NGRAIN];
-#endif
+/* The lines of the memory-hungry modules (#273 step 3: the delay, the strings and combs, the granular) share one area, as
+ * big as their fixed blocks were (a 700 ms delay line, 8 string lines, a granular line), divided when a patch loads
+ * (line_take, in module order). A patch keeps the counts of ENG_NDELAY, ENG_NSTRING, ENG_NGRAIN; its Delay gets the
+ * 1.6 s line (DELAY_LONG) when the area holds it besides the patch's other lines, which is every patch without a Granular
+ * module (eng_load: E.dly_len; patchbin.ts longDelay). The reverb and chorus lines stay in .lowram. */
+#define LINE_BYTES(n) (((uint32_t)(n) + 3u) & ~3u)
+#define LINE_ARENA (ENG_NDELAY * LINE_BYTES(2u * DELAY_LEN) + ENG_NSTRING * LINE_BYTES(2u * STR_LEN) + ENG_NGRAIN * LINE_BYTES(sizeof(grain_line_t)))
+static uint32_t line_arena[LINE_ARENA / 4u] ENG_POOL;
+static uint32_t line_used;                  /* bytes of it the loaded patch holds */
+static void *line_take(uint32_t bytes)      /* zeroed; 0 if it does not fit */
+{
+    uint8_t *z = (uint8_t *)line_arena + line_used;
+    uint32_t j;
+    bytes = LINE_BYTES(bytes);
+    if (bytes > LINE_ARENA - line_used)
+        return 0;
+    line_used += bytes;
+    for (j = 0; j < bytes; j++)
+        z[j] = 0;
+    return z;
+}
 /* the parameter slots (#351): each node gets its type's npar values (twice that with a morph B side), each instance its
  * type's npar effective values, taken in order at eng_load; a patch that needs more does not load (-8). Not MAX_PAR per
  * node and instance: most types have far fewer (patchbin.ts DEVICE.params, the editor's budget, counts the same). */
@@ -1060,13 +1076,9 @@ int eng_load(const uint8_t *p, uint32_t len)
     for (i = 0; i < ENG_MAX_INST; i++)
         inst_pool[i].eff = par_spare;
     pool_free(buf_own, ENG_NBUF);
-    pool_free(dly_own, ENG_NDELAY);
+    line_used = 0;
     pool_free(rev_own, ENG_NREV);
-    pool_free(str_own, ENG_NSTRING);
     pool_free(ch_own, ENG_NCHORUS);
-#if ENG_NGRAIN > 0
-    pool_free(gr_own, ENG_NGRAIN);
-#endif
     if (len < 8u || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION))
         return -1;
     if ((p[7] & ~(ENG_FLAG_EXTRAS | ENG_FLAG_MORPH_MODULES | ENG_FLAG_PATTERNS | ENG_FLAG_LOCKS)) || ((p[7] & ENG_FLAG_MORPH_MODULES) && (p[1] < 36u || !(p[6] & 1u))) || ((p[7] & ENG_FLAG_PATTERNS) && p[1] < 48u) || ((p[7] & ENG_FLAG_LOCKS) && p[1] < 49u) || (p[1] < 34u && p[7]) || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
@@ -1136,6 +1148,7 @@ int eng_load(const uint8_t *p, uint32_t len)
     E.nrev = 0;
     E.nstr = 0;
     E.nch = 0;
+    E.ngr = 0;
     E.ninst = 0;
     for (i = 0; i < E.nmod; i++) {
         node_t *nd = &E.node[i];
@@ -1516,7 +1529,18 @@ int eng_load(const uint8_t *p, uint32_t len)
             E.node[mod].ranged[pin] |= 1u << par;
         }
     }
-    /* the instances: state, the delay / reverb / string / chorus memories from the shared pools */
+    /* the instances: state, the delay / reverb / string / chorus memories from the shared pools; the Delay's line 1.6 s
+     * when the line area holds it besides the strings', combs' and granular's (line_arena) */
+    {
+        uint32_t nd = 0, ns = 0, ng = 0;
+        for (i = 0; i < E.nmod; i++) {
+            uint8_t t = E.node[i].type;
+            nd += t == T_DELAY ? E.node[i].ninst : 0u;
+            ns += t == T_STRING || t == T_COMB ? E.node[i].ninst : 0u;
+            ng += t == T_GRAIN ? E.node[i].ninst : 0u;
+        }
+        E.dly_len = ns * LINE_BYTES(2u * STR_LEN) + ng * LINE_BYTES(sizeof(grain_line_t)) + nd * LINE_BYTES(2u * DELAY_LONG) <= LINE_ARENA ? DELAY_LONG : DELAY_LEN;
+    }
     for (i = 0; i < E.nmod; i++) {
         node_t *nd = &E.node[i];
         int i0 = slots_take(inst_own, ENG_MAX_INST, nd->ninst);
@@ -1545,23 +1569,16 @@ int eng_load(const uint8_t *p, uint32_t len)
                     it->s.rev.buf[j] = 0;
             }
             if (nd->type == T_DELAY) {
-                int s = slot_take(dly_own, ENG_NDELAY);
-                if (s < 0)
+                if (E.ndly >= ENG_NDELAY || !(it->s.dly.buf = line_take(2u * E.dly_len)))
                     return -4;
                 E.ndly++;
-                it->s.dly.buf = dly_pool[s];
+                it->s.dly.len = E.dly_len;
                 it->s.dly.beat = ENG_SR / 2u;             /* 120 bpm until a clock has come in */
-                for (j = 0; j < DELAY_LEN; j++)
-                    it->s.dly.buf[j] = 0;
             }
             if (nd->type == T_STRING || nd->type == T_COMB) {         /* (the comb uses a string line, it->s.str) */
-                int s = slot_take(str_own, ENG_NSTRING);
-                if (s < 0)
+                if (E.nstr >= ENG_NSTRING || !(it->s.str.buf = line_take(2u * STR_LEN)))
                     return -4;
                 E.nstr++;
-                it->s.str.buf = str_pool[s];
-                for (j = 0; j < STR_LEN; j++)
-                    it->s.str.buf[j] = 0;
             }
             if (nd->type == T_CHORUS) {
                 int s = slot_take(ch_own, ENG_NCHORUS);
@@ -1573,18 +1590,9 @@ int eng_load(const uint8_t *p, uint32_t len)
                     it->s.ch.buf[j] = 0;
             }
             if (nd->type == T_GRAIN) {
-#if ENG_NGRAIN > 0
-                int s = slot_take(gr_own, ENG_NGRAIN);
-                uint8_t *z;
-                if (s < 0)
+                if (E.ngr >= ENG_NGRAIN || !(it->s.gr.ln = line_take(sizeof(grain_line_t))))
                     return -4;
                 E.ngr++;
-                it->s.gr.ln = &gr_pool[s];
-                for (z = (uint8_t *)it->s.gr.ln, j = 0; j < sizeof(grain_line_t); j++)
-                    z[j] = 0;
-#else
-                return -4;
-#endif
             }
         }
     }
@@ -5210,7 +5218,6 @@ static void m_mixer(const node_t *nd, inst_t *it, uint32_t n)
         out[i] = mul16(a[i], la) + mul16(b[i], lb) + mul16(c[i], lc) + mul16(d[i], ld);
 }
 
-#define DELAY_HALF (DELAY_LEN / 2u)
 
 /* the note length the time knob selects while the delay is synced: 1..DELAY_SYNC_TOP ms split into DELAY_NDIV steps, a time
  * past it the longest (modules.ts delayDivIndex; also used by the LCD) */
@@ -5240,32 +5247,34 @@ static inline int32_t dly_soft(int32_t x)
 #define DELAY_GLIDE_SHIFT 10             /* 1024 samples: 23 ms */
 #define DELAY_GLIDE_MAX 32768            /* half a sample a sample, Q16 */
 #define DELAY_GLIDE_ACC 128              /* the rate's change a sample: 0 to DELAY_GLIDE_MAX in 256 samples (6 ms) */
-static void dly_glide(inst_t *it, const esig_t *in, esig_t *out, esig_t *outr, uint32_t n, uint32_t tq, int32_t fb, int32_t mix, int pp, int swell)
+static void dly_glide(inst_t *it, const esig_t *in, esig_t *out, esig_t *outr, uint32_t n, int64_t tq, int32_t fb, int32_t mix, int pp, int swell)
 {
-    int16_t *buf = it->s.dly.buf, *bb = buf + DELAY_HALF;
-    uint32_t len = pp ? DELAY_HALF : DELAY_LEN, w = it->s.dly.w, cur = it->s.dly.cur, i;
-    int32_t dry = ENG_ONE - mix, rate = it->s.dly.rate, hi = (int32_t)(len - 1u) << 16;
+    int16_t *buf = it->s.dly.buf, *bb = buf + it->s.dly.len / 2u;
+    uint32_t len = pp ? it->s.dly.len / 2u : it->s.dly.len, w = it->s.dly.w, i;
+    int32_t dry = ENG_ONE - mix, rate = it->s.dly.rate;
+    int64_t cur = it->s.dly.cur, hi = (int64_t)(len - 1u) << 16;  /* (64 bits: a 1.6 s line is more samples than Q16 holds in 32) */
     if (swell)
         fb = (int32_t)((int64_t)fb * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
     if (w >= len)
         w = 0;
     for (i = 0; i < n; i++) {
-        int32_t diff = (int32_t)(tq - cur), rpos, fr, ea, x, c;
+        int64_t diff = tq - cur, rpos, c;
+        int32_t fr, ea, x, step = (int32_t)(diff >> DELAY_GLIDE_SHIFT);
         uint32_t i0, i1;
-        rate += clampi(clampi(diff >> DELAY_GLIDE_SHIFT, -DELAY_GLIDE_MAX, DELAY_GLIDE_MAX) - rate, -DELAY_GLIDE_ACC, DELAY_GLIDE_ACC);
+        rate += clampi(clampi(step, -DELAY_GLIDE_MAX, DELAY_GLIDE_MAX) - rate, -DELAY_GLIDE_ACC, DELAY_GLIDE_ACC);
         if (diff > -(1 << DELAY_GLIDE_SHIFT) && diff < 1 << DELAY_GLIDE_SHIFT && rate > -DELAY_GLIDE_ACC && rate < DELAY_GLIDE_ACC) {
             cur = tq;
             rate = 0;
         } else {
-            c = (int32_t)cur + rate;   /* (past the target only when it turned while moving: kept within the line) */
-            cur = (uint32_t)clampi(c, 65536, hi);
+            c = cur + rate;            /* (past the target only when it turned while moving: kept within the line) */
+            cur = c < 65536 ? 65536 : c > hi ? hi : c;
         }
-        rpos = (int32_t)(w << 16) - (int32_t)cur;
+        rpos = ((int64_t)w << 16) - cur;
         if (rpos < 0)
-            rpos += (int32_t)(len << 16);
-        i0 = (uint32_t)rpos >> 16;
+            rpos += (int64_t)len << 16;
+        i0 = (uint32_t)(rpos >> 16);
         i1 = i0 + 1u == len ? 0u : i0 + 1u;
-        fr = (rpos & 0xffff) >> 1;                    /* Q15: (b - a) x fr fits 32 bits */
+        fr = (int32_t)(rpos & 0xffff) >> 1;           /* Q15: (b - a) x fr fits 32 bits */
         ea = (int32_t)buf[i0] * 8 + ((((int32_t)buf[i1] - buf[i0]) * fr) >> 12);
         if (pp) {
             int32_t eb = (int32_t)bb[i0] * 8 + ((((int32_t)bb[i1] - bb[i0]) * fr) >> 12), dr = mul16(in[i], dry);
@@ -5301,7 +5310,12 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
     int32_t fb = EF(it, DELAY_P_FB), mix = EF(it, DELAY_P_MIX), dry = ENG_ONE - mix;
     int pp = EF(it, DELAY_P_PINGPONG) >= 32768, swell = EF(it, DELAY_P_SWELL) >= 32768;
     int32_t note = clampi((EF(it, DELAY_P_NOTE) + 32768) >> 16, 0, DELAY_NNOTE - 1);
-    int64_t smp, top = pp ? (int64_t)DELAY_HALF - 1 : (int64_t)DELAY_LEN - 1;
+    /* its line (L samples, ping-pong two halves of H); a time within the FM-1's range (the parameter's max, 700 ms) reads
+     * as from a line of DELAY_LEN, the line every patch had before #273 step 3, so a synced length past it is cut there
+     * as before (modules.ts: lim); only a time past it reaches the longer line */
+    const uint32_t L = it->s.dly.len, H = L / 2u;
+    const uint32_t lim = EF(it, DELAY_P_TIME) <= DEFS[T_DELAY].pmax[DELAY_P_TIME] && DELAY_LEN < L ? DELAY_LEN : L;
+    int64_t smp, top = pp ? (int64_t)(lim / 2u) - 1 : (int64_t)lim - 1, ltop = pp ? (int64_t)H - 1 : (int64_t)L - 1;
     if (nd->conn & (1u << DELAY_I_CLK)) {   /* tempo: the time of the last 24 clock pulses, smoothed */
         const esig_t *clk = it->in[DELAY_I_CLK];
         for (i = 0; i < n; i++) {
@@ -5328,22 +5342,22 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
     } else
         smp = ((int64_t)EF(it, DELAY_P_TIME) * ENG_SR + (int64_t)500 * 65536) / (1000 * 65536);   /* round(t_ms / 1000 * sr) */
     d = (uint32_t)(smp < 1 ? 1 : smp > top ? top : smp);
-    if (it->s.dly.cur == 0 || it->s.dly.cur > (uint32_t)top << 16)
-        it->s.dly.cur = it->s.dly.cur == 0 ? d << 16 : (uint32_t)top << 16;
-    if (it->s.dly.cur != d << 16 || it->s.dly.rate) {     /* the time moved: glide there (#484), the plain loops below once it has arrived */
-        dly_glide(it, in, out, outr, n, d << 16, fb, mix, pp, swell);
+    if (it->s.dly.cur == 0 || it->s.dly.cur > ltop << 16)
+        it->s.dly.cur = it->s.dly.cur == 0 ? (int64_t)d << 16 : ltop << 16;
+    if (it->s.dly.cur != (int64_t)d << 16 || it->s.dly.rate) {     /* the time moved: glide there (#484), the plain loops below once it has arrived */
+        dly_glide(it, in, out, outr, n, (int64_t)d << 16, fb, mix, pp, swell);
         return;
     }
     if (swell) {
         fb = (int32_t)((int64_t)fb * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
-        if (w >= (pp ? DELAY_HALF : DELAY_LEN))
+        if (w >= (pp ? H : L))
             w = 0;
         for (i = 0; i < n; i++) {
-            uint32_t len = pp ? DELAY_HALF : DELAY_LEN, rp = w >= d ? w - d : w + len - d;
+            uint32_t len = pp ? H : L, rp = w >= d ? w - d : w + len - d;
             int32_t ea = (int32_t)buf[rp] * 8, dr = mul16(in[i], dry);
             if (pp) {
-                int32_t eb = (int32_t)buf[DELAY_HALF + rp] * 8;
-                buf[DELAY_HALF + w] = dly_pack(dly_soft(mul16(ea, fb)));
+                int32_t eb = (int32_t)buf[H + rp] * 8;
+                buf[H + w] = dly_pack(dly_soft(mul16(ea, fb)));
                 buf[w] = dly_pack(dly_soft(in[i] + mul16(eb, fb)));
                 out[i] = dr + mul16(ea, mix);
                 outr[i] = dr + mul16(eb, mix);
@@ -5357,24 +5371,24 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
         }
     } else if (!pp) {
         for (i = 0; i < n; i++) {
-            uint32_t rp = w >= d ? w - d : w + DELAY_LEN - d;
+            uint32_t rp = w >= d ? w - d : w + L - d;
             int32_t r = (int32_t)buf[rp] * 8;
             buf[w] = dly_pack(in[i] + mul16(r, fb));
-            if (++w == DELAY_LEN)
+            if (++w == L)
                 w = 0;
             out[i] = mul16(in[i], dry) + mul16(r, mix);
             outr[i] = out[i];
         }
     } else {
-        int16_t *bb = buf + DELAY_HALF;
-        if (w >= DELAY_HALF)
+        int16_t *bb = buf + H;
+        if (w >= H)
             w = 0;
         for (i = 0; i < n; i++) {
-            uint32_t rp = w >= d ? w - d : w + DELAY_HALF - d;
+            uint32_t rp = w >= d ? w - d : w + H - d;
             int32_t ea = (int32_t)buf[rp] * 8, eb = (int32_t)bb[rp] * 8, dr = mul16(in[i], dry);
             bb[w] = dly_pack(mul16(ea, fb));
             buf[w] = dly_pack(in[i] + mul16(eb, fb));
-            if (++w == DELAY_HALF)
+            if (++w == H)
                 w = 0;
             out[i] = dr + mul16(ea, mix);
             outr[i] = dr + mul16(eb, mix);
@@ -7103,7 +7117,8 @@ static void apply_cv(const node_t *nd, inst_t *it, uint32_t n, const inst_t *pre
         else if (d->plog && d->plog[j])
             eff[j] = value_of(d, j, unit_of(d, j, v) + mod);            /* in octaves */
         else
-            eff[j] = clampi(v + mul16(mod, d->pmax[j] - d->pmin[j]), d->pmin[j], v > d->pmax[j] ? DEF_TOP(d, j) : d->pmax[j]);   /* (a base past pmax: a stretch) */
+            eff[j] = clampi(v + mul16(mod, d->pmax[j] - d->pmin[j]), d->pmin[j], v <= d->pmax[j] ? d->pmax[j]
+                            : d == &DEFS[T_DELAY] && j == DELAY_P_TIME ? DELAY_TIME_TOP : DEF_TOP(d, j));   /* (a base past pmax: a stretch; the Delay's time: its 1.6 s line, #273) */
     }
 }
 

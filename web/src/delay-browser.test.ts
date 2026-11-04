@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { DEFS, DELAY_SYNC_TOP, DELAY_TIME_BROWSER, DELAY_TIME_MAX, DEVICE_SR } from './modules';
 import { addModule, connect, emptyPatch, modulate, morphValue, topOf, type Patch } from './patch';
-import { browserOnly, deviceBudget, encodePatch, toQ16 } from './patchbin';
+import { browserOnly, deviceBudget, encodePatch, LINE_AREA, LINES, longDelay, toQ16 } from './patchbin';
 import { Engine } from './engine';
 
 const SR = 44100;
@@ -89,18 +89,41 @@ describe('the browser-only long Delay', () => {
     expect(morphValue(delayPd, 100, 500, 0.5)).toBeCloseTo(300, 9);
   });
 
-  it('a Delay over 700 ms is browser only: over the FM-1 budget with its reason, and never encoded', () => {
-    expect(browserOnly(delayPatch({ time: 701 }))).toEqual(['Delay over 700 ms: browser only']);
+  it('a Delay over 700 ms plays on the FM-1 in a patch without a Granular (its 1.6 s line, #273), else it is browser only', () => {
+    for (const time of [701, 1200, 1600]) {
+      const p = delayPatch({ time });
+      expect(longDelay(p)).toBe(true);
+      expect(browserOnly(p)).toEqual([]);
+      expect(deviceBudget(p).fits).toBe(true);
+      expect(() => encodePatch(p)).not.toThrow();
+    }
     const p = delayPatch({ time: 1200 });
-    expect(browserOnly(p)).toEqual(['Delay over 700 ms: browser only']);
+    const gr = addModule(p, DEFS.grain, 0, 0);   // (into the Delay, so the FM-1 runs it)
+    connect(p, DEFS, { module: p.modules[1].id, port: 'out' }, { module: gr.id, port: 'in' });
+    connect(p, DEFS, { module: gr.id, port: 'out' }, { module: p.modules[2].id, port: 'in' });
+    expect(longDelay(p)).toBe(false);
+    expect(browserOnly(p)).toEqual(['Delay over 700 ms with a Granular: browser only']);
     const b = deviceBudget(p);
     expect(b.fits).toBe(false);
-    expect(b.over).toContainEqual({ key: 'browser', label: 'Delay over 700 ms: browser only', used: 1, max: 0 });
-    expect(() => encodePatch(p)).toThrow(/over the FM-1 budget: Delay over 700 ms: browser only/);
-    // the morph's B side counts too
+    expect(b.over).toContainEqual({ key: 'browser', label: 'Delay over 700 ms with a Granular: browser only', used: 1, max: 0 });
+    expect(() => encodePatch(p)).toThrow(/over the FM-1 budget: Delay over 700 ms with a Granular: browser only/);
+    // the morph's B side past 700 ms stays the browser's (the FM-1 keeps a B side within the knob's range)
     const q = delayPatch({ time: 400 });
     q.modules.find((m) => m.type === 'delay')!.paramsB = { time: 1100 };
+    expect(browserOnly(q)).toEqual(['Delay over 700 ms: browser only']);
     expect(deviceBudget(q).fits).toBe(false);
+  });
+
+  it('the line area matches the firmware (engine.c): the 1.6 s line fits besides 8 strings, not besides a granular line', () => {
+    const c = readFileSync(new URL('../../firmware/src/engine.c', import.meta.url), 'utf8');
+    expect(c).toMatch(/#define DELAY_LONG 70649u/);
+    expect(c).toMatch(/#define DELAY_LEN 30944u/);
+    expect(c).toMatch(/#define STR_LEN 1104u/);
+    expect(c).toMatch(/#define GRAIN_LEN 44118u/);
+    expect(c).toMatch(/#define DELAY_TIME_TOP \(1600 \* ENG_ONE\)/);
+    expect(LINES.delayLong).toBe(2 * Math.ceil((DELAY_TIME_BROWSER / 1000) * DEVICE_SR) + 2 * 60 + 2);
+    expect(8 * LINES.string + LINES.delayLong).toBeLessThanOrEqual(LINE_AREA);
+    expect(LINES.grain + LINES.delayLong).toBeGreaterThan(LINE_AREA);
   });
 
   it('a Delay within 700 ms fits', () => {

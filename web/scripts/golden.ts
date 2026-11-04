@@ -1421,7 +1421,11 @@ delayKit('delay-sync-pingpong', { sync: 1, div: 6, bpm: 90, pingpong: 1 });
 delayKit('delay-long', { time: 650 });
 delayKit('delay-long-sync', { sync: 1, time: 416 });
 delayKit('delay-long-pingpong', { time: 700, pingpong: 1 });
-for (const n of ['delay-long', 'delay-long-sync', 'delay-long-pingpong']) ends[n] = 128 * 800;
+// #273 step 3: in a patch without a Granular the FM-1's Delay line is 1.6 s, so a time past 700 ms plays as in the browser
+// (ping-pong: half each side, so 1.5 s reads 800 ms of each half's line)
+delayKit('delay-1600', { time: 1550, fb: 0.5 });
+delayKit('delay-1600-pingpong', { time: 1500, pingpong: 1 });
+for (const n of ['delay-long', 'delay-long-sync', 'delay-long-pingpong', 'delay-1600', 'delay-1600-pingpong']) ends[n] = 128 * 1400;
 // #351: the extra note lengths (1/32; 1/2T, longer than the ping-pong half, is cut to it) and the swelling feedback
 delayKit('delay-sync-note', { sync: 1, note: 1 });
 delayKit('delay-sync-note-pingpong', { sync: 1, note: 2, pingpong: 1 });
