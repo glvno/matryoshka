@@ -224,7 +224,7 @@ export class Fm1View {
   /**
    * A key edge the FM-1's panel took (KEYS_NOW, #549): its keys go through the panel logic here too, so a key its pages
    * take (a step, the pen, REC + a white key, an arm, a mute) does here what it did there. The buttons it held then come
-   * first, as presses or releases, where they are not so here yet (the FM-1 sends its SysEx ahead of the buttons' MIDI,
+   * first, as presses or releases, where they are not so here yet (the FM-1 sends KEYS_NOW ahead of the buttons' MIDI,
    * whose own press or release is then no news: drive). What the keys play here is not sounded: the FM-1's notes are
    */
   keysNow(keys: number, held: number): void {
