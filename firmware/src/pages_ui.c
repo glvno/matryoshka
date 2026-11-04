@@ -82,6 +82,7 @@ static int (*pages_waiting)(void);                      /* main.c: an encoder's 
  * started when the new patch's pages are built */
 static uint32_t pg_patch_ask_ms;
 static uint8_t pg_patch_ask;
+static uint32_t pages_sounds(void);
 static void toast_start(void);
 static void toast_end(void);
 /* a Page button's list on K1..K4 (#117): its button (-1: none), the step showing, whether a hold peeks at its first page */
@@ -479,9 +480,16 @@ static void pages_ensure(void)
             pg_list_peek = 0;
             toast_end();
             if (pg_patch_ask && fm1_ms - pg_patch_ask_ms < 2000u) {   /* PRESET loaded it: its toast */
+                uint32_t n = pages_sounds();
                 pg_patch_ask = 0;
                 toast_start();
                 pg_algo_due = 1;
+                if (n > 1u) {                           /* (#582: a patch that can layer says so, and how) */
+                    static char m[32];
+                    m[0] = (char)('0' + (n > 9u ? 9u : n));
+                    put(m + 1, " SOUNDS: ENV+SEL LAYERS")[0] = 0;
+                    ui_msg(m, 2000);
+                }
             }
             pg_patch_ask = 0;
         }
@@ -2110,6 +2118,20 @@ static uint64_t env_listeners(uint32_t d)
 }
 
 static int env_armed(uint32_t d) { return (eng_arm_mask_get() & env_listeners(d)) != 0; }
+
+/* the patch's sounds (#582): its devices that take keys, the tracks, Main and an Arpeggiator alone apart (a track arms
+ * with what it plays: that one counts) */
+static uint32_t pages_sounds(void)
+{
+    uint32_t d, n = 0;
+    for (d = 0; d < pg_ndev; d++) {
+        int m = pg_dev[d].module;
+        if (m >= 0 && (eng_type((uint32_t)m) == T_STEPS || eng_type((uint32_t)m) == T_FM1))
+            continue;
+        n += env_listeners(d) != 0u;
+    }
+    return n;
+}
 
 /* device d has a keys input that no cable may reach (#215; SEL says so, dev_arm, D-249): a Drum map, whose keys source is
  * then none, or an engine the editor marks (the device extras' ENG_KEYS_UNREACHED, D-905): its Voicing, no keys cable
