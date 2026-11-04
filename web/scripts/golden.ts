@@ -2769,6 +2769,31 @@ tests['steps-arm'] = make('steps-arm', (add, wire) => {
   ends['steps-arm'] = 128 * 560;
 }
 
+// #384 (the owner's ruling of 2026-11-04): in a live take a note held round the loop back to where it started, or beyond,
+// is recorded as a drone; one held less is a plain note. Then the take plays: the drone holds, the note retriggers
+tests['steps-rec-drone'] = make('steps-rec-drone', (add, wire) => {
+  add('fm1', 0, 0, { tempo: 240 });
+  const st = add('steps', 200, 0, { len: 4, rate: 4, gate: 0.5 });
+  const al = add('alloc', 400, 0, { voices: 2, legato: 0 });
+  const o = add('osc', 600, 0, { wave: 2, level: 0.4 });
+  const e = add('adsr', 600, 200, { a: 0.004, d: 0.05, s: 0.5, r: 0.03 });
+  const v = add('vca', 800, 0);
+  const out = add('output', 1000, 0, { level: 0.6 });
+  wire(st, 'keys', al, 'keys');
+  wire(al, 'pitch', o, 'pitch');
+  wire(al, 'gate', e, 'gate');
+  wire(o, 'out', v, 'in');
+  wire(e, 'env', v, 'cv');
+  wire(v, 'out', out, 'l');
+  wire(st, 'trig', out, 'r');
+});
+{
+  const st = tests['steps-rec-drone'].modules.findIndex((m) => m.type === 'steps');
+  events['steps-rec-drone'] = [[128 * 4, 'run', 0], [128 * 10, 'arm', st], [128 * 11, 'rec', st, 1], [128 * 30, 'on', 60], [128 * 130, 'off', 60],
+    [128 * 150, 'on', 67], [128 * 180, 'off', 67], [128 * 200, 'take', 0], [128 * 201, 'rec', st, 0], [128 * 202, 'arm', -1], [128 * 600, 'stop', 0]];
+  ends['steps-rec-drone'] = 128 * 680;
+}
+
 tests['steps-direction-live'] = make('steps-direction-live', (add, wire) => {
   const main = add('fm1', 0, 0, { tempo: 240 });
   const st = add('steps', 0, 0, { len: 4, rate: 6, swing: 75 }, { map: { p1: ['dir'], p2: ['len'] } });
