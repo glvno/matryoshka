@@ -1319,16 +1319,20 @@ static uint8_t seq_bar_lo(void)
  * the rows show the row) */
 static void seq_bar(void)
 {
-    char b[32], name[TRACK_NAME_MAX + 8], *p = b;
+    char b[48], name[TRACK_NAME_MAX + 8], *p = b;
     if (!eng_steps_count()) {
         bar_text("NO STEPS MODULE", C_ACC);
         return;
     }
     seq_name(seq_trk, name);
-    if (sr_on) {                                 /* step record (#532): STEP n first, the cursor's step */
+    if (sr_on) {                                 /* step record (#532): STEP n/16 first, the cursor's step of the pattern's
+                                                  * length (#582: it wraps from 16/16 to 1/16) */
         char num[8];
+        int mod = seq_module();
         fmt_int(num, (int32_t)sr_k + 1);
-        p = put(put(put(p, "STEP "), num), "  ");
+        p = put(put(put(p, "STEP "), num), "/");
+        fmt_int(num, mod >= 0 ? seq_len(mod) : 16);
+        p = put(put(p, num), "  ");
     }
     p = put(p, name);
     if (seq_mod_armed(seq_module()))             /* the track shown is armed (#179): REC records it (#395) */
