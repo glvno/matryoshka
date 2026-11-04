@@ -3,7 +3,7 @@
 // fixed-point engine's instructions on an rv32im model (tools/cpu, `npm run cpu-costs`), calibrated on the factory patches
 // measured on the device (a scale plus a fixed time per block); a table measured on the FM-1 itself can replace it (`source`). Every figure here is an estimate.
 import TABLE from './cpu-costs.json';
-import { DEFS, LFO_RANGE_K, STACKS, TRACK_POLY } from './modules';
+import { DEFS, LFO_RANGE_K, MATRIX_N, matrixPin, STACKS, TRACK_POLY } from './modules';
 import { flawOf, hasMorph, type ModuleInst, type Patch } from './patch';
 import { deviceView } from './poly';
 
@@ -38,9 +38,29 @@ export interface TypeCost {
    * some inputs patched (firstOffWith: the filter's second stage also works out its own coefficients while the cv moves) */
   firstOff?: number;
   firstOffWith?: Record<string, number>;
+  /** an oscillator: cycles its summed phase modulation adds (#518: pm2, pm3 or the index input patched), over the FM path
+   * one patched pm input runs (OSC_PM_SUM) */
+  pmSum?: number;
   /** a Steps track that Main's keys pass through (a cable into its keys in): cycles per key sounding through it, counted
    * for as many keys as the patch's largest poly group has parts (the worst case the checks hold too) */
   thru?: number;
+  /** a Matrix (#525, engine.c m_matrix): `run` counts one output read with no pin in use; `out` the cycles each further
+   * output read adds, `pins[k - 1]` what an output with k pins in use adds (a pin in use: its input patched, its amount off 0
+   * or moved by a cable) */
+  matrix?: { out: number; pins: number[] };
+}
+
+/** a Matrix's cost over its `run` (TypeCost.matrix): its outputs read and, in each, its pins in use */
+export function matrixCost(m: ModuleInst, t: NonNullable<TypeCost['matrix']>, inputs: Set<string>, outputs: Set<string>, moved: Set<string>): number {
+  let add = -t.out;
+  for (let o = 1; o <= MATRIX_N; o++) {
+    if (!outputs.has(`out${o}`)) continue;
+    add += t.out;
+    let k = 0;
+    for (let i = 1; i <= MATRIX_N; i++) if (inputs.has(`in${i}`) && (paramOf(m, matrixPin(i, o)) !== 0 || moved.has(matrixPin(i, o)))) k++;
+    if (k) add += t.pins[k - 1];
+  }
+  return add;
 }
 
 export interface CpuTable {
@@ -130,6 +150,9 @@ export const dimSize = (d: CostDim): number => ('values' in d ? d.values.length 
 
 /** the run cost of one instance of `m`; `moved`: the parameters a parameter input or the morph moves (a mode that turns on
  * above a minimum counts as on then: the modulation may take it there) */
+/** an oscillator's inputs that make it sum its phase modulation (#518, engine.c osc_pm) */
+const OSC_PM_SUM = ['pm2', 'pm3', 'index'];
+
 export function runCost(m: ModuleInst, t: TypeCost, inputs: Set<string>, outputs: Set<string>, moved: Set<string> = new Set(), note = CPU.note): number {
   const shift = DEFS[m.type]?.inputs.some((i) => i.name === 'pitch') && !inputs.has('pitch') ? 60 - note : 0;
   let c = t.run;
@@ -243,7 +266,12 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU): CpuEstimate {
         work += runCost({ ...m, params: { ...m.params, gain } }, t, inputs, outputs, moved, table.note);
       }
       one += work / group.cfg.parts;
-    } else one += m.bypass ? table.bypass * outputs.size : runCost(m, t, inputs, outputs, moved, table.note);
+    } else if (!m.bypass && m.type === 'osc' && OSC_PM_SUM.some((i) => inputs.has(i))) {
+      // the summed phase modulation (#518, engine.c osc_pm): the FM path as with pm patched, when any patched index is above 0
+      const on = (['pm', 'pm2', 'pm3'] as const).some((k) => inputs.has(k) && (paramOf(m, k) > 0 || moved.has(k)));
+      one += runCost({ ...m, params: { ...m.params, pm: on ? Math.max(1, paramOf(m, 'pm')) : 0 } }, t, new Set([...inputs, 'pm']), outputs, moved, table.note) + (on ? t.pmSum ?? 0 : 0);
+    } else if (!m.bypass && t.matrix) one += t.run + matrixCost(m, t.matrix, inputs, outputs, moved);
+    else one += m.bypass ? table.bypass * outputs.size : runCost(m, t, inputs, outputs, moved, table.note);
     if (t.firstOff && !m.bypass && !outputs.has(def.outputs[0].name) && !(FIRST_ALSO[m.type] ?? []).some((o) => outputs.has(o)))
       one -= t.firstOff + Math.max(0, ...Object.entries(t.firstOffWith ?? {}).filter(([i]) => inputs.has(i)).map(([, v]) => v));
     // a pitch input that keeps moving: something that never holds still reaches it (an envelope or a glide only moves for a moment)

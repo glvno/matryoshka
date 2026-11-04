@@ -681,7 +681,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
         t.screen(&m, "roll: step record's hint: REC ends it", "REC done");
         m.tap(PLAY, 120, 1300)?;             // PLAY in step record: the transport starts, PATTERN (armed by the page) records
         t.screen(&m, "roll: PLAY in step record: a live take of the melodic track armed", "PATTERN REC");
-        t.screen(&m, "roll: while recording the keys are its keyboard", "KEYS record  SELECT page  OCT octave");
+        t.screen(&m, "roll: while recording the keys are its keyboard", "KEYS record  SELECT view  OCT octave");
         m.tap(REC, 120, 300)?;
         m.tap(PLAY, 120, 300)?;
         m.tap(SEQ, 120, 400)?;

@@ -18,6 +18,8 @@
  * second (the slot's number, the patch's name, a dash per filled slot), drawn first, the page around it; when it goes,
  * only its band is drawn again. A newer click stops a draw, so turning fast redraws only what is needed. */
 
+#include "controls.h"                              /* the controls table (web/src/controls.ts, #553): the menu's hint */
+
 /* ---- colours (RGB565): web/src/style.css's dark theme */
 #define P_NIGHT 0x10E4u
 #define P_STRIP 0x08A2u
@@ -49,7 +51,7 @@ typedef struct {
     uint8_t bin, track;                                 /* its index in the binary's device list; the device that drives it (0xFF none) */
     uint32_t structure;                                 /* format 34's extras: an assembly's structure (0 none) */
     const uint8_t *rows;                                /* its card rows in canonical order (module, parameter byte) pairs */
-    uint8_t nrows, nmem;
+    uint8_t nrows, nmem, unreached;                     /* unreached: an engine no keys cable reaches (ENG_KEYS_UNREACHED, #215) */
     const uint8_t *mem;                                 /* the modules it is made of (#191: arming it arms them) */
 } pdev_t;
 typedef struct {
@@ -194,8 +196,9 @@ static int row_name(const ppage_t *pg, uint32_t k, int32_t v, char *out)
     return 0;
 }
 
-/* a plain module's pages: its parameters, four to a page, the module's name; an envelope draws its shape on the first */
-static void pages_plain(uint32_t m)
+/* a plain module's pages: its parameters, four to a page, the module's name (`name`, nlen bytes: its own, ENG_DEV_NAMED; 0
+ * its type's); an envelope draws its shape on the first */
+static void pages_plain(uint32_t m, const char *name, uint32_t nlen)
 {
     int t = eng_type(m);
     const def_t *d;
@@ -213,6 +216,10 @@ static void pages_plain(uint32_t m)
             pg_dev[pg_ndev].name = pg_tname[pg_ndev];
     }
     pg_dev[pg_ndev].nlen = (uint8_t)str_len(pg_dev[pg_ndev].name);
+    if (name && nlen) {                                 /* its own name (#518) */
+        pg_dev[pg_ndev].name = name;
+        pg_dev[pg_ndev].nlen = (uint8_t)nlen;
+    }
     pg_dev[pg_ndev].pg0 = (uint8_t)pg_npage;
     pg_dev[pg_ndev].npg = (uint8_t)n;
     pg_dev[pg_ndev].module = (int16_t)m;
@@ -223,6 +230,13 @@ static void pages_plain(uint32_t m)
         pg->nlen = pg_dev[pg_ndev].nlen;
         pg->part = (uint8_t)j;
         pg->parts = (uint8_t)n;
+        if (t == T_MATRIX) {                            /* a Matrix: a page per output, each its own group (pages.ts) */
+            static const char *const OUTS[MATRIX_NOUT] = {"OUT 1", "OUT 2", "OUT 3", "OUT 4"};
+            pg->name = OUTS[j % MATRIX_NOUT];
+            pg->nlen = (uint8_t)str_len(pg->name);
+            pg->part = 0;
+            pg->parts = 1;
+        }
         pg->display = (uint8_t)(j == 0 && (t == T_ADSR || t == T_ENV || t == T_ENV8) ? m + 1u : 0u);
         pg->nrows = 0;
         for (r = 0; r < PG_ROWS && j * PG_ROWS + r < d->npar; r++) {
@@ -251,6 +265,7 @@ static void pages_extras(const uint8_t *p, uint32_t len)
         pg_dev[i].nrows = 0;
         pg_dev[i].mem = 0;
         pg_dev[i].nmem = 0;
+        pg_dev[i].unreached = 0;
         if (pg_names_fresh)
             pg_pname[i][0] = 0;
     }
@@ -267,6 +282,7 @@ static void pages_extras(const uint8_t *p, uint32_t len)
             for (j = 0; j < pg_ndev && (tr == 0xFFu || pg_dev[j].bin != tr); j++)
                 ;
             pg_dev[i].track = (uint8_t)(j < pg_ndev ? j : 0xFFu);
+            pg_dev[i].unreached = tr == ENG_KEYS_UNREACHED;
             pg_dev[i].structure = (uint32_t)p[at + 1u] | (uint32_t)p[at + 2u] << 8 | (uint32_t)p[at + 3u] << 16 | (uint32_t)p[at + 4u] << 24;
             if (pg_names_fresh) {
                 for (j = 0; j < nl && j < 16u; j++)
@@ -305,12 +321,12 @@ static void pages_build(void)
     n = p[at++];
     for (d = 0; d < n && pg_ndev < PG_DEVS; d++) {
         uint32_t np, g;
-        if (p[at] == 0u) {
-            uint32_t was = pg_ndev;
-            pages_plain(p[at + 1u]);
+        if (p[at] == 0u || p[at] == ENG_DEV_NAMED) {
+            uint32_t was = pg_ndev, named = p[at] == ENG_DEV_NAMED;
+            pages_plain(p[at + 1u], named ? (const char *)p + at + 3u : 0, named ? p[at + 2u] : 0u);
             if (pg_ndev > was)
                 pg_dev[was].bin = (uint8_t)d;
-            at += 2u;
+            at += named ? 3u + p[at + 2u] : 2u;
             continue;
         }
         at++;
@@ -633,6 +649,30 @@ static int pages_turn(uint32_t k, int32_t clicks, int fast, int fine, uint32_t *
             inc = d->pstep[j] > inc / 10 ? d->pstep[j] : inc / 10;
         *v = clampi(eng_get_param(m, j) + clicks * (fast ? 5 : 1) * inc, d->pmin[j], row_top(m, j, d));   /* (past pmax: a stretch) */
     }
+    return 0;
+}
+
+/* row k of page pg turned by `clicks` from the value cur (a P-lock's, #524: not the parameter's), as pages_turn steps it:
+ * a choice a name a click, a logarithmic row 1/100 of its octaves, else its increment (fast: five times as far). 0 and
+ * the new value in *v; -1 for a row that cannot be locked (an FM-1 setting, a poly group's setting) */
+static int pages_lock_turn(const ppage_t *pg, uint32_t k, int32_t cur, int32_t clicks, int fast, int32_t *v)
+{
+    const def_t *d;
+    uint32_t m, j;
+    if (!pg || k >= pg->nrows || !clicks || pg->mod[k] == SETTING_ROW || (pg->par[k] & POLY_ROW) || eng_type(pg->mod[k]) == T_PART)
+        return -1;
+    m = pg->mod[k];
+    j = pg->par[k];
+    d = &DEFS[eng_type(m)];
+    if (d->pchoice && d->pchoice[j]) {
+        int32_t n = 0, i = (cur + 32768) >> 16;
+        while (d->pchoice[j][n])
+            n++;
+        *v = clampi(i + (clicks > 0 ? 1 : -1), 0, n - 1) << 16;
+    } else if (eng_param_is_log(m, j))
+        *v = eng_step_value(m, j, cur, clicks * (fast ? 5 : 1), 655);
+    else
+        *v = clampi(cur + clicks * (fast ? 5 : 1) * d->pinc[j], d->pmin[j], row_top(m, j, d));
     return 0;
 }
 
@@ -1258,12 +1298,35 @@ static uint32_t row_h(void) { return (g_y1 - g_y0 - 3u * ROW_GAP + 2u) / 4u; }
 #define GLO_LIST_H 36u
 static void geo_page(int glo) { geo_set(LK_HH + 4u, FOOT_Y - 4u - (glo ? GLO_LIST_H : 0u)); }
 
-/* what a bar shows */
+/* what a bar shows; grid: a Matrix column's row (#525), its four pins `amt` (Q16) and the column the page turns `cur` */
 typedef struct {
-    uint8_t used;
+    uint8_t used, grid, cur;
     char name[24], num[20], unit[8];
     uint32_t base, live, nx, vx, ux;
+    int32_t amt[MATRIX_NOUT];
 } bar_t;
+
+/* ---- a Matrix's grid (#525, docs/ARCHITECTURE.md "Matrix"): a page whose four rows are the pins of one Matrix output, in1..in4
+ * in order (a plain Matrix device's pages are its columns: ALGO picks the column, K1..K4 turn its pins), draws the whole
+ * 4 x 4 grid instead of four bars. Bar k is input k's row: its tab and name (IN1..IN4), its four cells (one per output,
+ * left to right), each filled from its middle to its amount (right for above 0, left for below) in the knob's hue, the
+ * page's column framed; the framed cell's value on the right */
+#define MX_X0 44u                                     /* the first cell's x in the bar */
+#define MX_CW 26u                                     /* a cell's width */
+#define MX_GAP 3u
+#define MX_END (MX_X0 + MATRIX_NOUT * MX_CW + (MATRIX_NOUT - 1u) * MX_GAP)
+#define MX_IN 4u                                      /* a cell's inset from the bar's top and bottom */
+/* the Matrix output whose column page pg is, -1 when it is no such page */
+static int page_grid(const ppage_t *pg)
+{
+    uint32_t k, m;
+    if (!pg || pg->nrows != PG_ROWS || (pg->par[0] & POLY_ROW) || eng_type(m = pg->mod[0]) != T_MATRIX || pg->par[0] % MATRIX_NOUT)
+        return -1;
+    for (k = 1; k < PG_ROWS; k++)
+        if (pg->mod[k] != m || pg->par[k] != pg->par[0] + k)
+            return -1;
+    return pg->par[0] / MATRIX_NOUT;
+}
 static uint32_t bar_nb(void) { return BASE6(row_h() + 2u, LK_NS); }   /* the name's baseline in the bar */
 static uint32_t bar_vb(void) { return BASE6(row_h() + 2u, LK_VS); }   /* the value's */
 static uint32_t bar_ub(void) { return BASE6(row_h() + 6u, LK_US); }   /* the unit's */
@@ -1290,10 +1353,46 @@ static void bar_layout(bar_t *b)
     uw = b->unit[0] ? text_w(&FONT_F, b->unit, -1) : 0u;
     b->ux = BAR_W - 6u - uw;
     vr = b->unit[0] ? b->ux - 3u : BAR_W - 6u;
+    if (b->grid) {                                      /* the name before the cells, the value after them */
+        fit(b->name, &FONT_N, MX_X0 - b->nx - 3u);
+        fit(b->num, &FONT_V, vr > MX_END + 4u ? vr - MX_END - 4u : 0u);
+        b->vx = vr - text_w(&FONT_V, b->num, -1);
+        return;
+    }
     fit(b->num, &FONT_V, 110u);
     vw = text_w(&FONT_V, b->num, -1);
     b->vx = vr - vw;
     fit(b->name, &FONT_N, b->vx > b->nx + 6u ? b->vx - b->nx - 6u : 0u);
+}
+
+/* a grid row's scanline r (bar k: input k) into p[0..BAR_W): the panel, and inside MX_IN the four cells: the strip's colour
+ * (the page's column: the track's, framed in ivory), a faint tick in the middle, the fill from it to the amount edged in
+ * the hue */
+static void grid_row(const bar_t *b, uint32_t k, uint32_t r, uint16_t *p)
+{
+    uint32_t i, c, h = row_h();
+    for (i = 0; i < BAR_W; i++)
+        p[i] = P_PANEL;
+    if (r < MX_IN || r + MX_IN >= h)
+        return;
+    for (c = 0; c < MATRIX_NOUT; c++) {
+        uint32_t x0 = MX_X0 + c * (MX_CW + MX_GAP), mid = x0 + MX_CW / 2u, len, f0, f1;
+        int32_t a = clampi(b->amt[c], -ENG_ONE, ENG_ONE);
+        int cur = c == b->cur, rim = cur && (r == MX_IN || r + MX_IN + 1u == h);
+        len = (uint32_t)(((int64_t)(a < 0 ? -a : a) * (MX_CW / 2u) + 32768) >> 16);
+        f0 = a < 0 ? mid - len : mid;
+        f1 = a < 0 ? mid : mid + len;
+        for (i = x0; i < x0 + MX_CW; i++) {
+            uint16_t px = cur ? P_TRACK : P_STRIP;
+            if (i >= f0 && i < f1)
+                px = (a < 0 ? i < f0 + LK_ET : i + LK_ET >= f1) ? KNOB_HUE[k] : KNOB_FILL[k];
+            else if (i == mid)
+                px = P_FAINT;
+            if (rim || (cur && (i == x0 || i + 1u == x0 + MX_CW)))
+                px = P_INK;
+            p[i] = px;
+        }
+    }
 }
 
 /* bar k's scanline r into row[], the bar from row[ox] on (row[] is ox + BAR_W wide at least) */
@@ -1307,10 +1406,15 @@ static void bar_row(const bar_t *b, uint32_t k, uint32_t r, uint16_t *row, uint3
         text_at(row, w, &FONT_N, r, bar_nb(), "-", ox + b->nx, P_FAINT);
         return;
     }
-    for (i = 0; i < BAR_W; i++)
-        p[i] = i < base ? KNOB_FILL[k] : P_PANEL;
-    for (i = base > LK_ET ? base - LK_ET : 0u; i < base; i++)   /* the fill's edge */
-        p[i] = hue;
+    if (b->grid) {
+        grid_row(b, k, r, p);
+        base = live = 0;
+    } else {
+        for (i = 0; i < BAR_W; i++)
+            p[i] = i < base ? KNOB_FILL[k] : P_PANEL;
+        for (i = base > LK_ET ? base - LK_ET : 0u; i < base; i++)   /* the fill's edge */
+            p[i] = hue;
+    }
     if (live != base && r >= 4u && r + 4u < h) {        /* modulated: where the parameter is now (2 px, inside the bar) */
         uint32_t t = live < 1u ? 1u : live > BAR_W - 1u ? BAR_W - 1u : live;
         p[t - 1u] = p[t] = P_INK;
@@ -1601,12 +1705,23 @@ static void row_bar(uint32_t k, const bar_t *b) { row_bar_part(k, b, 0, row_h(),
 /* knob k's row of page pg (or an empty slot) as its bar shows it */
 static void pages_row(const ppage_t *pg, uint32_t k, bar_t *b)
 {
+    int o = page_grid(pg);
     b->used = (uint8_t)(pg && k < pg->nrows);
+    b->grid = (uint8_t)(o >= 0);
+    b->cur = 0;
     b->name[0] = b->num[0] = b->unit[0] = 0;
     b->base = b->live = 0;
     if (b->used) {
         row_show(pg, k, b->num, b->unit, BAR_W, &b->base, &b->live);
         caps(b->name, pg->lab[k], pg->llen[k], 16);
+    }
+    if (b->grid) {                                      /* input k's row: no live tick, its name IN1..IN4 */
+        uint32_t c;
+        b->cur = (uint8_t)o;
+        for (c = 0; c < MATRIX_NOUT; c++)
+            b->amt[c] = eng_get_param(pg->mod[k], c * MATRIX_NOUT + k);
+        b->live = b->base;
+        caps(b->name, DEFS[T_MATRIX].inname[MATRIX_I_IN1 + k], 3, 16);
     }
     if (b->base > BAR_W)
         b->base = BAR_W;
@@ -1627,6 +1742,16 @@ static uint32_t text_hash(const char *a, const char *b)
     return h;
 }
 
+/* a bar's value and unit as a hash (pg_drawn.txt); a grid row's cells and column too */
+static uint32_t bar_txt(const bar_t *b)
+{
+    uint32_t h = text_hash(b->num, b->unit), c;
+    if (b->grid)
+        for (c = 0; c < MATRIX_NOUT; c++)
+            h = (h ^ (uint32_t)b->amt[c] ^ (uint32_t)b->cur << 24) * 16777619u;
+    return h;
+}
+
 /* what knob k's bar shows now (pg_drawn): drawn whole with these */
 static void drawn_note(uint32_t k, const bar_t *b)
 {
@@ -1635,8 +1760,8 @@ static void drawn_note(uint32_t k, const bar_t *b)
     pg_drawn[k].base = (uint16_t)b->base;
     pg_drawn[k].live = (uint16_t)b->live;
     pg_drawn[k].vx = (uint16_t)b->vx;
-    pg_drawn[k].txt = text_hash(b->num, b->unit);
-    pg_drawn[k].name = text_hash(b->name, "") ^ b->used;
+    pg_drawn[k].txt = bar_txt(b);
+    pg_drawn[k].name = text_hash(b->name, "") ^ b->used ^ (uint32_t)b->grid << 1;
     pg_drawn[k].h = (uint8_t)row_h();
     pg_drawn[k].ok = 1;
 }
@@ -1692,8 +1817,13 @@ static void pages_row_update(const ppage_t *pg, uint32_t k)
     bar_t b;
     uint32_t n = 0, i, j, sp[4][4], h = row_h();
     pages_row(pg, k, &b);
-    if (!pg_drawn[k].ok || pg_drawn[k].h != h || pg_drawn[k].name != (text_hash(b.name, "") ^ b.used)) {
+    if (!pg_drawn[k].ok || pg_drawn[k].h != h || pg_drawn[k].name != (text_hash(b.name, "") ^ b.used ^ (uint32_t)b.grid << 1)
+        || (b.grid && (pg_drawn[k].txt != bar_txt(&b) || pg_drawn[k].vx != b.vx))) {   /* (a grid row: whole) */
         row_bar(k, &b);
+        drawn_note(k, &b);
+        return;
+    }
+    if (b.grid) {
         drawn_note(k, &b);
         return;
     }
@@ -1711,7 +1841,7 @@ static void pages_row_update(const ppage_t *pg, uint32_t k)
         if (now && !same)
             SPAN(b.live >= 2u ? b.live - 2u : 0u, b.live + 2u, 4u, h - 4u);
     }
-    if (b.used && (pg_drawn[k].vx != b.vx || pg_drawn[k].txt != text_hash(b.num, b.unit))) {   /* the value and unit */
+    if (b.used && (pg_drawn[k].vx != b.vx || pg_drawn[k].txt != bar_txt(&b))) {   /* the value and unit */
         uint32_t x = pg_drawn[k].vx < b.vx ? pg_drawn[k].vx : b.vx;
         SPAN(x >= 1u ? x - 1u : 0u, BAR_W - 5u, bar_vr0(), bar_vr1());
     }
@@ -1755,7 +1885,7 @@ static void menu_chips(void)
         text_bc(&FONT_S, x, y0 + 1u, MENU_TAB_NAME[t], t == menu_tab ? P_NIGHT : P_FAINT, t == menu_tab ? P_SEA : P_NIGHT, w, TA_CENTER);
         x += w + 4u;
     }
-    text_bc(&FONT_S, BAR_X, y0 + 19u, "ALGO: TAB   GLO: BACK   K1-K4: SET", P_FAINT, P_NIGHT, 232u - BAR_X, TA_LEFT);
+    text_bc(&FONT_S, BAR_X, y0 + 19u, HINT_MENU_PAGE, P_FAINT, P_NIGHT, 232u - BAR_X, TA_LEFT);   /* (controls.h, as menu.c's) */
 }
 
 /* SELECT or ALGO moved the focus (panel.c): the page it reached, drawn in passes (pages_staged) */
@@ -1918,7 +2048,7 @@ static void pages_ticks(void)
     for (k = 0; k < PG_ROWS; k++) {
         bar_t b;
         pages_row(pg, k, &b);
-        if (!pg_drawn[k].ok || b.base != pg_drawn[k].base || b.live != pg_drawn[k].live)
+        if (!pg_drawn[k].ok || b.base != pg_drawn[k].base || b.live != pg_drawn[k].live || (b.grid && bar_txt(&b) != pg_drawn[k].txt))
             pages_row_update(pg, k);
     }
 }
@@ -1961,12 +2091,14 @@ static int env_track_no(uint32_t d)
 
 /* the right-hand text of device d's row: Main's tempo, a track's length, ARMED */
 /* what arming device d arms (#191), as a module mask: its key listeners, and the key sources its keys come through (#395:
- * the track and the Arpeggiator in front of an instrument). An Arpeggiator alone is not a device to arm */
+ * the track and the Arpeggiator in front of an instrument). An Arpeggiator alone is not a device to arm, nor an engine the
+ * editor marks as one no keys cable reaches (D-905): a poly engine keeps its group without its Voicing, so its modules
+ * would arm a group with no Part that plays nothing, while the editor drew the armed keys into it and played it */
 static uint64_t env_listeners(uint32_t d)
 {
     uint64_t mask = 0;
     uint32_t k;
-    if (pg_dev[d].module >= 0 && eng_type((uint32_t)pg_dev[d].module) == T_ARP)
+    if (pg_dev[d].unreached || (pg_dev[d].module >= 0 && eng_type((uint32_t)pg_dev[d].module) == T_ARP))
         return 0;
     if (pg_dev[d].mem) {
         for (k = 0; k < pg_dev[d].nmem; k++)
@@ -1979,12 +2111,14 @@ static uint64_t env_listeners(uint32_t d)
 
 static int env_armed(uint32_t d) { return (eng_arm_mask_get() & env_listeners(d)) != 0; }
 
-/* device d has a keys input that the binary still shows when no cable reaches it: a Drum map, whose keys source is then
- * none (#215; SEL says so, dev_arm, D-249). A Voicing no keys cable reaches is left out of the binary (poly.ts deviceView),
- * so such an engine reads as a device with no keys input (D-905). An Arpeggiator alone is no keys input that arms (D-235) */
+/* device d has a keys input that no cable may reach (#215; SEL says so, dev_arm, D-249): a Drum map, whose keys source is
+ * then none, or an engine the editor marks (the device extras' ENG_KEYS_UNREACHED, D-905): its Voicing, no keys cable
+ * reaching it, is left out of the binary (poly.ts deviceView). An Arpeggiator alone is no keys input that arms (D-235) */
 static int dev_keys_input(uint32_t d)
 {
     uint32_t k;
+    if (pg_dev[d].unreached)
+        return 1;
     if (pg_dev[d].mem) {
         for (k = 0; k < pg_dev[d].nmem; k++)
             if (eng_type(pg_dev[d].mem[k]) == T_DRUMMAP)

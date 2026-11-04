@@ -24,7 +24,7 @@ static uint8_t m1_edited;                  /* proto.c: the running patch was edi
 static uint64_t bank_mask = 0x3FFFu;     /* slotstore.c: the occupied slots (the preview: the factory patches) */
 static uint8_t pv_bin[4096];               /* the previewed patch (proto.c's m1_cur) */
 static uint32_t pv_len;
-#define FELUCCA_VERSION "v1.8.4-DEV"
+#define FELUCCA_VERSION "v1.9.0-DEV"
 #define FM1_TICKS_PER_US 24u
 
 /* lcd.c's two line buffers (#377) and their rule: on the device the DMA reads the one just sent until the next transfer
@@ -271,7 +271,10 @@ static void m1_arms_now(uint32_t lo, uint32_t hi) { (void)lo; (void)hi; }
 static uint32_t host_pattern_told, host_song_told;   /* (panel_test.c: PATTERN_NOW / SONG_NOW sent) */
 static void m1_pattern_now(void) { host_pattern_told++; }
 static void m1_song_now(uint32_t s) { (void)s; host_song_told++; }
+static uint32_t host_locks_told;                     /* (panel_test.c: LOCKS_NOW sent) */
+static void m1_locks_now(uint32_t mod, uint32_t pat) { (void)mod; (void)pat; host_locks_told++; }
 #endif
+static int m1_patch_locks(void) { return 1; }      /* (the preview keeps no patch: the engine has the locks) */
 #ifdef HOST_THRU_HOOK                       /* (the wasm build: what the SEQ page sounds through a track also goes to the page) */
 static void host_steps_thru(uint32_t module, uint32_t note, uint32_t vel);
 #define eng_steps_thru host_steps_thru

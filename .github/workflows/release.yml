@@ -40,7 +40,7 @@ jobs:
         working-directory: web
         run: |
           npm run export-defs
-          git diff --exit-code ../firmware/src/defs.h ../firmware/src/presets.h || { echo "::error::defs.h / presets.h are stale: run 'npm run export-defs' and commit"; exit 1; }
+          git diff --exit-code ../firmware/src/defs.h ../firmware/src/presets.h ../firmware/src/controls.h ../README.md || { echo "::error::defs.h / presets.h / controls.h / the README's controls are stale: run 'npm run export-defs' and commit"; exit 1; }
       - name: build the release, no warnings, pool headroom >= 8 KB
         env:
           VERSION: ${{ inputs.version }}

@@ -17,9 +17,16 @@
 // chord, its velocities, one step long) and the cursor moves on; Backspace a rest (its notes go), Enter a tie, Left / Right
 // move the cursor, Escape or `rec` again stops (recordKey). With it running the engine records what is played (live
 // overdub: Engine.setRec, the editor's recorded).
+// P-locks (#524, #519 Q11): a step with locks shows a dot under it. Clicking the dot, or right-clicking any step, opens the
+// step's locks: each locked row with its value to edit or delete, and a row of the track's device to lock (at its normal
+// value, to edit from there).
 import { NOTE_NAMES } from './modules';
-import { STEPS_MAX, TRACK_NAME_MAX, trackName, type ModuleInst } from './patch';
-import { setChord, setStep, setStepValue, STEP_NOTE, STEP_VEL, stepView, type StepNote, type StepView } from './track';
+import { STEPS_MAX, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef } from './patch';
+import { locksAt, setChord, setLock, setStep, setStepValue, STEP_NOTE, STEP_VEL, stepView, type StepLock, type StepNote, type StepView } from './track';
+
+/** a row of the track's device a step can lock (#524): its module's parameter, its label ("filter cutoff"), its definition
+ * and its normal value now */
+export interface LockRow { module: number; param: string; label: string; pd: ParamDef; value: number }
 
 export interface StepGridOps {
   /** the track's new notes (one undo step per click; a drag is wrapped in begin / its result) */
@@ -36,6 +43,9 @@ export interface StepGridOps {
   recording(): boolean;
   /** open / close the piano roll on this track (#136) */
   roll(): void;
+  /** the rows of the device the track plays (#524: what a step can lock), and the shown pattern's new locks (an undo step) */
+  lockRows(): LockRow[];
+  locks(l: StepLock[] | undefined): void;
 }
 
 export interface StepGrid {
@@ -77,6 +87,8 @@ export function stopEntry(): void {
   a?.stop();
 }
 const LANES: Lane[] = ['steps', 'note', 'vel'];
+/** the locks list open (#524): its track and step, kept over the editor's rebuilds (an edit there rebuilds the card) */
+let lockOpen: { id: number; k: number } | null = null;
 /** the lane each grid shows, by module id (kept over the editor's rebuilds, not saved) */
 const laneOf = new Map<number, Lane>();
 
@@ -211,7 +223,9 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
       c.style.removeProperty('--note');
       c.firstElementChild!.textContent = '';
     }
-    c.title = tip(k);
+    const locked = locksAt(m.locks, k).length;
+    c.classList.toggle('locked', locked > 0);
+    c.title = tip(k) + (locked ? `\n${locked} P-lock${locked > 1 ? 's' : ''}: click the dot to edit` : '\nright-click: P-locks');
   };
   const paintAll = (): void => {
     const sp = lane === 'note' ? span() : undefined;
@@ -252,7 +266,9 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
         c.dataset.k = String(k);
         const label = document.createElement('b');
         const fill = document.createElement('i');
-        c.append(label, fill);
+        const dot = document.createElement('u');
+        dot.className = 'lock-dot';
+        c.append(label, fill, dot);
         if (k < n) cellInput(c, k);
         row.append(c);
         cells.push(c);
@@ -273,7 +289,116 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
     const r = c.getBoundingClientRect();
     return Math.max(1, Math.min(127, Math.round(((r.bottom - 2 - y) / Math.max(1, r.height - 4)) * 127)));
   };
+  /** the open locks list (#524): its step, or -1 */
+  let pop: HTMLElement | null = null;
+  let popK = -1;
+  const closeLocks = (): void => {
+    if (pop) lockOpen = null;
+    pop?.remove();
+    pop = null;
+    popK = -1;
+    document.removeEventListener('pointerdown', outside, true);
+  };
+  const outside = (e: Event): void => {
+    if (pop && !pop.contains(e.target as Node)) closeLocks();
+  };
+  /** the value control of a row: a choice list, else a number within its range */
+  const valueInput = (r: LockRow, v: number, set: (v: number) => void): HTMLElement => {
+    if (r.pd.choices) {
+      const sel = document.createElement('select');
+      r.pd.choices.forEach((name, i) => sel.append(new Option(name, String(i), false, Math.round(v) === i)));
+      sel.onchange = () => set(Number(sel.value));
+      return sel;
+    }
+    const inp = document.createElement('input');
+    inp.type = 'number';
+    inp.min = String(r.pd.min);
+    inp.max = String(r.pd.top ?? r.pd.max);
+    inp.step = String(r.pd.step ?? 0.01);
+    inp.value = String(Math.round(v * 1000) / 1000);
+    inp.onkeydown = (e) => e.stopPropagation(); // (typing is not the app's shortcuts)
+    inp.onchange = () => { const x = Number(inp.value); if (Number.isFinite(x)) set(Math.min(r.pd.top ?? r.pd.max, Math.max(r.pd.min, x))); };
+    return inp;
+  };
+  /** step k's locks, under its cell: each locked row (its value, × removes it), then a row to lock */
+  const openLocks = (k: number): void => {
+    closeLocks();
+    const lrows = ops.lockRows();
+    const box = document.createElement('div');
+    box.className = 'lock-pop';
+    box.onpointerdown = (e) => e.stopPropagation(); // (not a card drag)
+    const draw = (): void => {
+      box.replaceChildren();
+      const h = document.createElement('div');
+      h.className = 'lock-head';
+      h.textContent = `step ${k + 1}: P-locks`;
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.textContent = '×';
+      x.title = 'close';
+      x.onclick = closeLocks;
+      h.append(x);
+      box.append(h);
+      const mine = locksAt(m.locks, k);
+      const put = (r: { module: number; param: string }, v: number | null): void => {
+        ops.locks(setLock(m.locks, k, r.module, r.param, v));
+        paint(k);
+        draw();
+      };
+      for (const l of mine) {
+        const r = lrows.find((x) => x.module === l.module && x.param === l.param);
+        const line = document.createElement('div');
+        line.className = 'lock-row';
+        const name = document.createElement('span');
+        name.textContent = r?.label ?? `${l.param} (no longer on the device)`;
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.textContent = '×';
+        del.title = 'remove this lock: the step plays the normal value';
+        del.onclick = () => put(l, null);
+        line.append(name, r ? valueInput(r, l.value, (v) => put(l, v)) : document.createElement('span'), del);
+        box.append(line);
+      }
+      const free = lrows.filter((r) => !mine.some((l) => l.module === r.module && l.param === r.param));
+      if (!lrows.length) {
+        const why = document.createElement('div');
+        why.className = 'lock-none';
+        why.textContent = 'This track plays no device: cable it into an instrument to lock its rows.';
+        box.append(why);
+      } else if (free.length && mine.length < 64) {
+        const add = document.createElement('div');
+        add.className = 'lock-row lock-add';
+        const sel = document.createElement('select');
+        sel.append(new Option('lock a row…', ''));
+        free.forEach((r, i) => sel.append(new Option(r.label, String(i))));
+        sel.onchange = () => { const r = free[Number(sel.value)]; if (r) put(r, r.value); };
+        add.append(sel);
+        box.append(add);
+      }
+    };
+    draw();
+    const c = cells[k];
+    box.style.left = `${c.offsetLeft}px`;
+    box.style.top = `${c.offsetTop + c.offsetHeight + 4}px`;
+    rows.parentElement?.append(box);
+    pop = box;
+    popK = k;
+    lockOpen = { id: m.id, k };
+    document.addEventListener('pointerdown', outside, true);
+  };
   const cellInput = (c: HTMLElement, k: number): void => {
+    c.oncontextmenu = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openLocks(k);
+    };
+    (c.querySelector('.lock-dot') as HTMLElement).onpointerdown = (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation(); // (not the step's click)
+      if (popK === k) closeLocks();
+      else openLocks(k);
+    };
     c.ondblclick = (e) => {
       if (lane === 'steps') return;
       e.preventDefault();
@@ -424,6 +549,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
   build();
   setLane(lane);
   showArm(ops.armed());
+  if (lockOpen?.id === m.id) { const k = lockOpen.k; requestAnimationFrame(() => { if (el.isConnected && k < len()) openLocks(k); }); }
   if (entry?.id === m.id) startRec(entry.k); // (a rebuilt card picks the entry up where it was)
   else if (ops.recording()) startRec(0);
   return {
@@ -444,6 +570,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
     refresh() {
       if (builtLen !== len()) build(); // not only a new row: 16 -> 13 greys 14..16, 13 -> 16 makes them clickable
       else paintAll();
+      if (pop && popK >= 0) openLocks(popK);
       if (document.activeElement !== name) name.value = m.name ?? '';
     },
     armed: showArm,

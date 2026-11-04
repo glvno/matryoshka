@@ -509,8 +509,8 @@ async function main() {
   /** the editor's copy of the track until `f` holds of it (the FM-1's TRACK_NOW arrived), else the last read */
   const notesUntil = async (f, ms = 3000) => (await until(async () => { const ns = await trackNotes(); return f(ns) ? ns : null; }, ms)) ?? (await trackNotes());
   /** a patch opened in the editor and on the FM-1 (synced), the FM-1 on its device page */
-  async function openSynced(name) {
-    if (!(await open(name))) return false;
+  async function openSynced(name, opener = open) {
+    if (!(await opener(name))) return false;
     await sleep(600);
     const s = await until(async () => { const x = await T(); return !x.sandbox && x.live && x.chip === 'synced' && x.status === 'patch on the FM-1'; }, 10000);
     return !!s && (await emu.waitOwnPage(6000));
@@ -1051,7 +1051,7 @@ async function main() {
         && (await emu.waitText('STEP 2', 2000)), fmt(ns));
       await emu.tap(B.play);
       await check('rec step: PLAY in step record: the transport starts, a live take records (PATTERN REC)', await emu.waitText('PATTERN REC', 3000));
-      await check('rec step: the live take\'s hint (the roll\'s keys its keyboard, SELECT its pages)', await emu.waitText('KEYS record  SELECT page', 2000));
+      await check('rec step: the live take\'s hint (the roll\'s keys its keyboard, SELECT its view)', await emu.waitText('KEYS record  SELECT view', 2000));
       await emu.key(E, true);
       await emu.elapse(300);
       await emu.key(E, false);
@@ -1198,9 +1198,9 @@ async function main() {
       await check('roll pen (#549): the next REC: step record (STEP 1), not a live take, the transport stopped', (await emu.waitText('STEP 1', 2000)) && t.ok, t.why);
       await emu.tap(B.home);
       await check('roll pen: HOME ends step record', await emu.waitText('ALGO track', 2000));
-      await emu.key(WHITE[1], true);                // step 2 held: the selected row's pitch (F#3's) switched on there
+      await emu.key(WHITE[1], true);                // step 2 held (its press switches nothing: the release would)
       await sleep(300);
-      await emu.turn(ENC.k1, 12);                   // + 12 semitones: off the page
+      await emu.turn(ENC.k1, 12);                   // + K1: the selected row's pitch put there, 12 semitones up: off the page
       await sleep(400);
       ns = await notesUntil((x) => noteAt(x, 1)?.note !== undefined && x.length === 2);
       const p = noteAt(ns, 1)?.note;
@@ -1223,6 +1223,84 @@ async function main() {
         t = await stopped();
         await check(`roll pen (#549): REC held + a black key on a device page (${i ? 'again' : 'once'}): the transport stays stopped, no TRANSPORT sent`, t.ok, t.why);
       }
+    },
+    // #549 (D-481, D-482): the FM-1 reports the keys its pages take (KEYS_NOW) and its panel's state (GUIDE_NOW), so the
+    // editor's copy of its panel logic (the FM-1 tab, following it) stays where it is. After each gesture whose key sends
+    // no MIDI the copy's state equals the FM-1's (the page, step record and its cursor, the track, the sheet, the buttons
+    // held, the octave: protocol.ts panelOffBy), with no realign needed, and the editor sent the FM-1 nothing but LIVE.
+    // Then the reports ignored (older firmware): the copy reads SEL + a key as SEL tapped, as before, and still sends
+    // nothing; with them back the FM-1's next state puts it back
+    async mirrorKeys() {
+      await check('mirror keys: Silver Box opens, synced', await openSynced('Silver Box'));
+      const P = () => page.evaluate(() => window.__m1test.panel());
+      const p0 = await until(async () => { const x = await P(); return x.reported && x.fm1 && x.copy ? x : null; }, 4000) ?? (await P());
+      await check('mirror keys: the FM-1 reports its panel (INFO feature bit 18), the editor follows it', p0.reported && !!p0.fm1 && !!p0.copy,
+        `reported ${p0.reported}, GUIDE_NOW ${p0.fm1 ? 'heard' : 'none'}`);
+      await check('mirror keys: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
+      const off = (x) => (x.off === null ? ['no state'] : x.off);
+      /** after a gesture: the copy where the FM-1 is (no realign), nothing but LIVE sent to the FM-1 */
+      const inStep = async (what, extra = () => true) => {
+        await sleep(900);                           // (the last GUIDE_NOW, then ALIGN_MS)
+        const x = await P();
+        const sent = (await page.evaluate(() => window.__sent.splice(0))).filter((f) => f[1] !== 0x2c);
+        const ok = !off(x).length && x.aligns === aligns && (await extra(x));
+        await check(`mirror keys: ${what}: the copy's state is the FM-1's, no realign, nothing sent to the FM-1`, ok && !sent.length,
+          `off [${off(x).join(', ')}], realigns ${x.aligns - aligns}, FM-1 page ${x.fm1?.page} state ${x.fm1?.state}, copy page ${x.copy?.page} state ${x.copy?.state}, sent ${sent.map((f) => f[1].toString(16)).join(' ') || 'none'}`);
+        aligns = x.aligns;
+      };
+      let aligns = (await P()).aligns;
+      await page.evaluate(() => window.__sent.splice(0));
+      await emu.key(B.scl, true);                   // SEL held + a key: the pen; SEL's release opens no SONG page
+      await sleep(150);
+      await emu.tap(WHITE[0]);
+      await emu.key(B.scl, false);
+      await inStep('SEL + a key (the pen)', async (x) => x.fm1.page === 8 && (await emu.text('ALGO track')));
+      await emu.key(B.rec, true);                   // REC held + step 3's white key: step record on step 3
+      await sleep(150);
+      await emu.tap(WHITE[2]);
+      await emu.key(B.rec, false);
+      await inStep('REC + a white key (step record from step 3)', async (x) => x.fm1.stepRecord && x.fm1.cursor === 2 && (await emu.waitText('STEP 3', 2000)));
+      await emu.tap(B.rec);
+      await inStep('REC (step record ends)', async (x) => !x.fm1.stepRecord && x.fm1.page === 8);
+      await emu.key(B.rec, true);                   // REC held + black key 1: the track armed (it is already: disarmed)
+      await sleep(150);
+      await emu.tap(BLACK[0]);
+      await emu.key(B.rec, false);
+      await inStep('REC + a black key (arm)', async (x) => x.fm1.page === 8 && !x.fm1.recording);
+      await emu.key(B.rec, true);                   // (and armed again)
+      await sleep(150);
+      await emu.tap(BLACK[0]);
+      await emu.key(B.rec, false);
+      await inStep('REC + a black key again', async (x) => x.fm1.page === 8 && !x.fm1.recording);
+      for (const [i, what] of [[0, 'SEQ + a black key (mute)'], [1, 'SEQ + a black key again (unmute)']]) {
+        await emu.key(B.seq, true);
+        await sleep(150);
+        await emu.tap(BLACK[0]);
+        await emu.key(B.seq, false);
+        await inStep(what, async (x) => x.fm1.page === 8 && i >= 0);   // (the bar says MUTED a while: no hint line to read)
+      }
+      // older firmware's path: the reports ignored, the copy guesses (SEL + a key = SEL tapped: its SONG page), and still
+      // drives nothing
+      await page.evaluate(() => window.__m1test.ignorePanel(true));
+      await emu.key(B.scl, true);
+      await sleep(150);
+      await emu.tap(WHITE[0]);
+      await emu.key(B.scl, false);
+      await sleep(900);
+      let x = await P();
+      let sent = (await page.evaluate(() => window.__sent.splice(0))).filter((f) => f[1] !== 0x2c);
+      const st = await T();
+      await check('mirror keys: reports ignored (as older firmware): the copy reads SEL + a key as SEL tapped, as before, nothing sent, the transport stopped',
+        !x.reported && x.copy?.page === 11 && x.fm1?.page === 8 && !sent.length && !st.playing && x.aligns === aligns,
+        `copy page ${x.copy?.page}, FM-1 page ${x.fm1?.page}, sent ${sent.map((f) => f[1].toString(16)).join(' ') || 'none'}, ${st.playing ? 'playing' : 'stopped'}`);
+      await page.evaluate(() => window.__m1test.ignorePanel(false));
+      await emu.tap(B.seq, 120);                    // back to the device page: the FM-1's next GUIDE_NOW puts the copy back
+      await emu.waitOwnPage(3000);
+      await sleep(900);
+      x = await P();
+      sent = (await page.evaluate(() => window.__sent.splice(0))).filter((f) => f[1] !== 0x2c);
+      await check('mirror keys: the reports back, the FM-1\'s next state puts the copy back where it is (one realign), nothing sent',
+        !off(x).length && x.aligns > aligns && x.fm1?.page === 0 && !sent.length, `off [${off(x).join(', ')}], realigns ${x.aligns - aligns} (${x.lastOff.join(', ')}), sent ${sent.length}`);
     },
     // #375: on a computer where no app reads the FM-1's MIDI, every message the FM-1 sends unasked (TRACK_NOW after a
     // step, PARAM_NOW after a knob) found the SysEx ring full and waited 200 ms: entering steps by hand stalled the panel
@@ -1387,6 +1465,34 @@ async function main() {
       await emu.tap(B.scl);
       await check('arming: SEL on the Arpeggiator alone: nothing here takes keys', await emu.waitText('NOTHING HERE TAKES KEYS', 1500));
       await emu.snap('arming-instrument');
+      // #215 (D-905): an instrument that no keys cable reaches, marked by the editor in the device extras, says so on SEL
+      // (Monolith D: a mono engine, so its Voicing leaves the patch the FM-1 gets) and arms nothing
+      await sleep(1300);
+      await check('arming: Monolith D with no keys cables opens, synced',
+        await openSynced('Monolith D', (n) => page.evaluate((x) => window.__m1test.openUnkeyed(x), n)));
+      await emu.tap(B.scl);
+      await check('arming: SEL on an instrument no keys cable reaches: NO KEYS REACH THIS DEVICE (#215)', await emu.waitText('NO KEYS REACH THIS DEVICE', 1500));
+      await check('arming: nothing armed, in the editor either', (await emu.waitText('KEYS WIRED', 3000)) && (await T()).armed.length === 0);
+      await emu.snap('arming-unreached');
+      // D-905 / D-818: a poly engine too (Basic Poly keeps its group without its Voicing): SEL on its page and on its
+      // environment row says so and arms nothing, so the editor draws no armed keys into it and plays nothing the FM-1 does not
+      await sleep(1300);
+      await check('arming: Basic Poly with no keys cables opens, synced',
+        await openSynced('Basic Poly', (n) => page.evaluate((x) => window.__m1test.openUnkeyed(x), n)));
+      await check('arming: its device page is the one in focus', /basic poly/i.test((await T()).focusName), (await T()).focusName);
+      await emu.tap(B.scl);
+      await check('arming: SEL on a poly engine no keys cable reaches: NO KEYS REACH THIS DEVICE (D-905)', await emu.waitText('NO KEYS REACH THIS DEVICE', 1500));
+      await check('arming: the poly engine is not armed, in the editor either', (await emu.waitText('KEYS WIRED', 3000)) && (await T()).armed.length === 0);
+      await sleep(1300);
+      await emu.tap(B.env, 120);
+      await check('arming: ENV opens the environment on the poly engine\'s row', await emu.waitText('ENVIRONMENT', 3000));
+      await emu.tap(B.scl);
+      await check('arming: SEL on its environment row: NO KEYS REACH THIS DEVICE', await emu.waitText('NO KEYS REACH THIS DEVICE', 1500));
+      await sleep(600);
+      await check('arming: still nothing armed, in the editor either', (await T()).armed.length === 0);
+      await emu.snap('arming-unreached-poly');
+      await emu.tap(B.env, 120);
+      await emu.waitOwnPage(3000);
     },
     // #504: under Live a SELECT or ALGO turn on the FM-1 reaches the editor twice, as FOCUS_NOW and as the mirror's MIDI;
     // the editor's focus must end on the FM-1's device and page, never one further

@@ -114,19 +114,13 @@ static void help_suite(void)
     }
     enc(1, -1);
     check("ALGO left: the DEVICE tab again", help_tab == 0u && on_screen("adjust values"));
-    check("  the bottom line names SELECT scroll only when the tab's rows do not fit (D-912: a busy DEVICE tab scrolls)",
-          (help_rows(0, (const char *[HC_ROWS]){0}) > HC_VIS) == on_screen("scroll") && on_screen("close"));
-    {                                                   /* a tab whose rows fit: OUTPUT's (no presets, no keys), then back */
+    check("  its rows fit: the bottom line leaves SELECT out", help_rows(0, (const char *[HC_ROWS]){0}) <= HC_VIS && !on_screen("scroll")
+          && on_screen("close"));
+    {
         const char *r[HC_ROWS];
-        uint32_t d0 = pg_cur_dev, g0 = pg_cur_page, n;
-        pages_focus(pg_ndev - 1u, 0);
-        loop();
-        n = help_rows(0, r);
-        check("  a tab whose rows fit: the bottom line leaves SELECT out", n <= HC_VIS && !on_screen("scroll") && on_screen("close"));
+        uint32_t n = help_rows(0, r);
         enc(0, 1);
         check("SELECT on a sheet whose rows fit: it stays", n <= HC_VIS && help_top == 0u && px(218, HC_TOP) == P_PANEL);
-        pages_focus(d0, g0);
-        loop();
     }
     check("  SELECT and ALGO sent no MIDI", !sent(from, 0xB0u, CC_SELECT, 1u) && !sent(from, 0xB0u, CC_ALGO, 1u));
     k1m = pages_now()->mod[0];
@@ -183,17 +177,17 @@ static void help_suite(void)
     later(1500);
     page_show(PAGE_ENV);                                /* the state changes (as the editor or a dive would): the sheet follows */
     loop();
-    check("the sheet follows the state: ENVIRONMENT", help_on && on_screen("ENVIRONMENT") && on_screen("device rows"));
+    check("the sheet follows the state: ENVIRONMENT", help_on && on_screen("ENVIRONMENT") && on_screen("device row"));
     seq_select(0);
     page_show(PAGE_SEQ);
     loop();
-    check("  the SEQ page of a melodic track: PIANO ROLL", help_on && help_state() == HS_ROLL && on_screen("PIANO ROLL") && on_screen("jump to pitch"));
+    check("  the SEQ page of a melodic track: PIANO ROLL", help_on && help_state() == HS_ROLL && on_screen("PIANO ROLL") && on_screen("toggle step record"));
     {
         const char *r[HC_ROWS];
         uint32_t n = help_rows(0, r);
         check("  more rows than fit: a scroll bar", n > HC_VIS && px(218, HC_TOP) != P_PANEL);
         enc(0, 1);
-        check("SELECT: one row down", help_top == 1u && !on_screen("step on / off") && on_screen("pick a row"));
+        check("SELECT: one row down", help_top == 1u && !on_screen("toggle step record") && on_screen("jump to pitch"));
         enc(0, 50);
         check("  SELECT far: stops with the last row at the bottom", help_top == n - HC_VIS && on_screen("clear track"));
         check("  scrolled in part = drawn whole", help_whole_same());

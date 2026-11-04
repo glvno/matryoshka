@@ -19,7 +19,8 @@ export function diffPatches(a: Patch, b: Patch, defs: Record<string, ModuleDef>)
   const d: PatchDiff = { params: [], added: [], removed: [], cablesAdded: [], cablesRemoved: [], other: [] };
   const labelOf = (p: Patch, id: number): string => {
     const m = p.modules.find((x) => x.id === id);
-    return m ? `${defs[m.type]?.label ?? m.type} #${id}` : `#${id}`;
+    // its own name first (#518): "saw carrier (Oscillator #3)"
+    return m ? (m.name ? `${m.name} (${defs[m.type]?.label ?? m.type} #${id})` : `${defs[m.type]?.label ?? m.type} #${id}`) : `#${id}`;
   };
   const am = new Map(a.modules.map((m) => [m.id, m]));
   const bm = new Map(b.modules.map((m) => [m.id, m]));
@@ -38,6 +39,7 @@ export function diffPatches(a: Patch, b: Patch, defs: Record<string, ModuleDef>)
       const from = o.params[pd.name] ?? pd.default, to = m.params[pd.name] ?? pd.default;
       if (Math.abs(from - to) > 1e-9) d.params.push({ module: m.id, label, name: pd.name, from, to });
     }
+    if ((o.name ?? '') !== (m.name ?? '')) d.other.push(`${defs[m.type]?.label ?? m.type} #${m.id}: name "${o.name ?? ''}" → "${m.name ?? ''}"`);
     if (!!o.bypass !== !!m.bypass) d.other.push(`${label}: ${m.bypass ? 'bypassed' : 'on'}`);
     const att = (x: typeof m): string => (x.att ?? [1, 1]).map(fmt).join('/');
     if (att(o) !== att(m)) d.other.push(`${label}: attenuverters ${att(o)} → ${att(m)}`);

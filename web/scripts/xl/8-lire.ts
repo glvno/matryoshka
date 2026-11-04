@@ -130,6 +130,13 @@ export function lireXl(keys: Record<string, number>): Built {
     });
     const bleed = b.add('const', 9, 3, { value: 0.003 }); // the crosstalk: every voice sounds faintly all the time
     for (const h of holdPair) b.wire(bleed, 'out', h, 'b'); // (the floor under HOLD)
+    // a pair's HOLD reaches its VCAs through a Slew limiter (30 ms, as the FM-1 version's, #515): a patch or preset loaded
+    // with HOLD up fades the drone in instead of starting it with a step, a click (#516)
+    const holdIn = holdPair.map((h, p) => {
+      const g = b.add('glide', 2 + 2 * p, 15, { time: 0.03, curve: 0 });
+      b.wire(h, 'max', g, 'in');
+      return g;
+    });
     // a pair's plate sensitivity: 1, or 0.7 with FAST down (a plate opens less, and so more slowly)
     const sens = fast.map((f, p) => {
       const s = b.add('scale', 2 + 2 * p, 11, { gain: -0.3, offset: 1 });
@@ -152,7 +159,7 @@ export function lireXl(keys: Record<string, number>): Built {
       b.wire(tune, 'out', osc, 'pitch');
       b.wire(osc, 'out', shp, 'in');
       b.wire(shp, 'out', vca, 'in');
-      b.wire(holdPair[p], 'max', vca, 'cv');
+      b.wire(holdIn[p], 'out', vca, 'cv');
       b.wire(pitch[i >> 2], 'out', osc, 'pitch');
       b.wire(vlfo, 'out', osc, 'pitch');
       b.wire(sharp[p], 'out', shp, 'p1');

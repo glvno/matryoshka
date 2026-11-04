@@ -8,7 +8,7 @@ An in-place change to a row whose ruling still stands but whose facts moved. Wri
 
 ### Arm
 
-To make a device with a keys input hear Main's keys, cable or not. Several devices can be armed at once (a layer, or a split by their key ranges); while any is armed, only armed devices hear Main, and while none is, the cables decide. Arming reroutes only Main: other key sources keep playing what they drive. A device whose keys come through a track or an Arpeggiator arms them with it, so the keys reach it the way its cables take them. An Arpeggiator alone is not armed.
+To make a device with a keys input hear Main's keys, cable or not. Several devices can be armed at once (a layer, or a split by their key ranges); while any is armed, only armed devices hear Main, and while none is, the cables decide. Arming reroutes only Main: other key sources keep playing what they drive. A device whose keys come through a track or an Arpeggiator arms them with it, so the keys reach it the way its cables take them. An Arpeggiator alone is not armed, and neither is an engine that no keys cable reaches.
 
 ### Arrange mode
 
@@ -73,6 +73,10 @@ Patches other people submitted, from the curated `community.json`, shown in Libr
 ### Controls sheet
 
 The FM-1's list of the controls that work in its current state, drawn as a card over the dimmed screen. Pressing OCT- and OCT+ together opens it ([D-245](device-ui.md#D-245)).
+
+### Controls strip
+
+A band under the emulated FM-1 in the [Emulator view](#emulator-view) that shows, in big type, the controls for what the FM-1 is doing now. It is made from the same table as the [controls sheet](#controls-sheet). While a button is held it shows what that button does with the other controls.
 
 ### Course
 
@@ -254,6 +258,10 @@ The FM-1 panel module (type `fm1`), the patch's only source of keys and MIDI.
 
 The panel under the canvas where the patch's one Main module lives: knobs, device and page pickers, the FM-1's buttons.
 
+### Matrix pin
+
+One of the Matrix module's 16 amounts, from −1 to 1, that sets how much of one input goes to one output. Not a [Pin](#pin), the hidden parameter input p1 or p2 every module has.
+
 ### MIDI profile
 
 A per-firmware table that turns a connected FM-1's MIDI messages into panel inputs, so the web app can follow any firmware.
@@ -293,6 +301,10 @@ Four rows of a device's card that K1..K4 turn at once on the FM-1.
 ### Parameter pins
 
 The two inputs `p1` and `p2` most modules have, each with an attenuverter, routed onto parameters by a matrix.
+
+### P-lock
+
+A value of its own for one row of a device on one step of a Steps track's pattern (parameter lock, after Elektron's). The row plays it while the playhead is on that step and its normal value on the other steps.
 
 ### Paraphonic
 

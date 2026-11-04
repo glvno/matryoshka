@@ -52,12 +52,18 @@ export function sliderJack(input: HTMLInputElement, onPatch: (e: PointerEvent, j
   });
   // Drags set the value from the pointer's travel, a whole track for the whole range, a tenth of that with Shift (pressed
   // or let go mid-drag without a jump: the value moves by each step of the pointer, not from where the drag began). The
-  // input gets the pointerdown first (its handlers start the edit and capture the pointer).
+  // input gets the pointerdown first (its handlers start the edit and capture the pointer). While Shift is held the input
+  // carries data-fine, so its handler can move by a tenth of a step too (a card's bar, #538).
   const drag = (e: PointerEvent, from: number): void => {
     const min = Number(input.min), max = Number(input.max);
     const travel = Math.max(1, input.getBoundingClientRect().width - jack.getBoundingClientRect().width);
     let x = e.clientX, v = from;
     input.dispatchEvent(new PointerEvent('pointerdown', e));
+    const fine = (on: boolean): void => {
+      if (on) input.dataset.fine = '1';
+      else delete input.dataset.fine;
+    };
+    fine(e.shiftKey);
     const set = (): void => {
       const before = input.value;
       input.value = String(v);
@@ -68,6 +74,7 @@ export function sliderJack(input: HTMLInputElement, onPatch: (e: PointerEvent, j
       if (m.pointerId !== e.pointerId) return;
       v = Math.min(max, Math.max(min, v + ((m.clientX - x) / travel) * (max - min) * (m.shiftKey ? FINE : 1)));
       x = m.clientX;
+      fine(m.shiftKey);
       set();
     };
     const end = (u: PointerEvent): void => {
@@ -75,6 +82,7 @@ export function sliderJack(input: HTMLInputElement, onPatch: (e: PointerEvent, j
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', end);
       window.removeEventListener('pointercancel', end);
+      fine(false);
       input.dispatchEvent(new Event('change', { bubbles: true }));
     };
     window.addEventListener('pointermove', move);

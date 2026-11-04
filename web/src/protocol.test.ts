@@ -181,6 +181,32 @@ describe('patterns and songs on the wire (#375, format 48)', () => {
     expect(parseTrack(p.payload)).toEqual({ module: 3, notes, pat: 5 });
     expect(parseTrack(parse(trackFrame(3, notes))!.payload)).toEqual({ module: 3, notes, pat: 0 });
   });
+  it('LOCKS_NOW (#524): a track\'s locks of a pattern, 7 bytes each', async () => {
+    const { parseLocksNow } = await import('./protocol');
+    const v = Math.round(-1.5 * 65536) >>> 0;
+    const p = parse(frame(CMD.locksNow, [4, 2, 2, 0, 7, 1, 0, 0, 0x64, 0, 5, 9, 3, v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, v >>> 24]))!;
+    expect(parseLocksNow(p.payload)).toEqual({ module: 4, pat: 2, locks: [{ at: 0, module: 7, param: 1, value: 100 }, { at: 5, module: 9, param: 3, value: -1.5 }] });
+    expect(parseLocksNow([4, 2, 2, 0, 7])).toBeNull();
+  });
+  it('KEYS_NOW and GUIDE_NOW (#549): a key edge with the keys and buttons held; the panel state, compared', async () => {
+    const { parseKeysNow, parseGuideNow, panelOffBy, FEATURE_PANEL_REPORT } = await import('./protocol');
+    expect(FEATURE_PANEL_REPORT).toBe(1 << 18);
+    const k = parse(frame(CMD.keysNow, [0x80 | 4, 0x10, 0, 0, 0, 1 << 3, 0]))!;
+    expect(parseKeysNow(k.payload)).toEqual({ key: 4, down: true, keys: 0x10, held: 8 });
+    expect(parseKeysNow([4, 0, 0])).toBeNull();
+    const raw = [8, 8, 1 | 16 | 128, 2, 1, 1, 0, 0x08, 0x20, 0x00, 0x04, 3, 0xff, 2];
+    const g = parseGuideNow(parse(frame(CMD.guideNow, raw))!.payload)!;
+    expect(g).toMatchObject({ state: 8, page: 8, stepRecord: true, liveTake: false, sheet: true, stepHeld: true, device: 2, devicePage: 1, track: 1,
+      held: 0x2008, conditions: 0x400, sheetRow: 3, octave: -1, cursor: 2 });
+    expect(g.raw).toEqual(raw);
+    expect(parseGuideNow(raw.slice(0, 13))).toBeNull();
+    expect(panelOffBy(g, g)).toEqual([]);
+    const copy = parseGuideNow([8, 11, 0, 5, 0, 1, 0, 0, 0, 0, 0, 0, 0xff, 0])!;
+    expect(panelOffBy(copy, g)).toEqual(['page', 'step record', 'sheet', 'held']);
+    // a device page: the focus counts; the track and the cursor do not
+    const dev = parseGuideNow([0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0])!;
+    expect(panelOffBy(parseGuideNow([0, 0, 0, 2, 0, 3, 0, 0, 0, 0, 0, 0, 0, 5])!, dev)).toEqual(['focus']);
+  });
   it('PATTERN, SONG and their unasked replies', async () => {
     const { patternFrame, songFrame, parsePatternNow, parseSongNow } = await import('./protocol');
     expect(parse(patternFrame(7, 2))).toEqual({ cmd: CMD.pattern, payload: [7, 2] });

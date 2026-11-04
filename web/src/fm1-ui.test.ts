@@ -14,10 +14,11 @@ import { FM1_PRESETS } from './presets';
 import { DEFS } from './modules';
 import { devicesOf } from './pages';
 import { buildFm1Wasm } from '../scripts/fm1-wasm.mjs';
+import { panelOffBy } from './protocol';
 
 const ROOT = resolve(__dirname, '../..');
 const WASM = resolve(ROOT, 'web/public/fm1-ui.wasm');
-const SRC = ['firmware/wasm/fm1_ui.c', 'firmware/test/host_ui.h', 'firmware/src/panel.c', 'firmware/src/poly_edit.h', 'firmware/src/pages_ui.c', 'firmware/src/seq_ui.c', 'firmware/src/ui.c', 'firmware/src/engine.c', 'firmware/src/presets.h'];
+const SRC = ['firmware/wasm/fm1_ui.c', 'firmware/test/host_ui.h', 'firmware/src/panel.c', 'firmware/src/poly_edit.h', 'firmware/src/pages_ui.c', 'firmware/src/seq_ui.c', 'firmware/src/ui.c', 'firmware/src/engine.c', 'firmware/src/presets.h', 'firmware/src/help_ui.c'];
 
 /** the preview's framebuffer (RGB565 from its PPM's 8-bit channels, as it wrote them) */
 function preview(args: string[]): Uint8Array {
@@ -132,6 +133,64 @@ describe('the FM-1 UI as WebAssembly', () => {
     ui.keys(G4);
     ui.keys(0);
     expect(notes.length).toBe(4);                 // (a white key then switches the selected row's step, not G4)
+  }, 30_000);
+  it('#549: a copy that replays the FM-1\'s buttons and keys stays where the FM-1 is; one that gets no keys is put back by its state', async () => {
+    // the FM-1 (every input) and two copies of its panel logic following it: one given the buttons and the reported keys
+    // (KEYS_NOW), one the buttons only (older firmware: the SEQ page's keys send no MIDI)
+    const make = async (): Promise<Fm1Ui> => {
+      const u = await Fm1Ui.create(bytes);
+      expect(u.load(encodePatch(FM1_PRESETS['Silver Box']()), 'SILVER BOX')).toBe(0);
+      u.tick(1000);
+      return u;
+    };
+    const fm1 = await make(), keyed = await make(), plain = await make();
+    let t = 1000;
+    const all = [fm1, keyed, plain];
+    const button = (id: number, down: boolean): void => { t += 60; for (const u of all) { u.tick(t); u.button(id, down); } };
+    const keys = (bits: number): void => { t += 60; for (const u of [fm1, keyed]) { u.tick(t); u.keys(bits); } };
+    const tap = (id: number): void => { button(id, true); button(id, false); };
+    const off = (u: Fm1Ui): string[] => panelOffBy(u.guide()!, fm1.guide()!);
+    tap(BUTTONS.seq);                               // the SEQ page: PATTERN's roll
+    expect(fm1.page).toBe(8);
+    button(BUTTONS.scl, true);                      // SEL held + a key: the pen (the view moves), SEL's release opens nothing
+    keys(1 << 0);
+    keys(0);
+    button(BUTTONS.scl, false);
+    expect(fm1.page).toBe(8);
+    expect(off(keyed)).toEqual([]);
+    expect(off(plain)).toEqual(['page']);           // (it took SEL as tapped: the SONG page)
+    plain.align(fm1.guide()!);
+    expect(off(plain)).toEqual([]);
+    button(BUTTONS.rec, true);                      // REC held + step 3's white key: step record from step 3
+    keys(1 << 4);
+    button(BUTTONS.rec, false);
+    keys(0);
+    expect(fm1.guide()!.stepRecord && fm1.guide()!.cursor === 2).toBe(true);
+    expect(off(keyed)).toEqual([]);
+    expect(off(plain)).toContain('step record');
+    plain.align(fm1.guide()!);
+    expect(off(plain)).toEqual([]);
+    tap(BUTTONS.rec);                               // REC: step record ends on all three
+    expect(off(keyed)).toEqual([]);
+    expect(off(plain)).toEqual([]);
+    expect(fm1.guide()!.raw).toEqual(keyed.guide()!.raw);
+  }, 30_000);
+
+  it('P-locks (#524): a held step + ALGO + K1 locks the device\'s first row on it; the editor gets the locks', async () => {
+    let got: { module: number; pat: number; locks: { at: number; module: number; param: number; value: number }[] } | null = null;
+    const ui = await Fm1Ui.create(bytes, { locks: (module, pat, locks) => { got = { module, pat, locks }; } });
+    expect(ui.load(encodePatch(FM1_PRESETS['Silver Box']()), 'SILVER BOX')).toBe(0);
+    ui.tick(1000);
+    const tap = (id: number, at: number): void => { ui.tick(at); ui.button(id, true); ui.tick(at + 50); ui.button(id, false); ui.tick(at + 100); };
+    tap(BUTTONS.seq, 1200);                       // the SEQ page: PATTERN's roll
+    ui.keys(1 << 4);                              // step 3 held
+    ui.encoder(1, 1);                             // ALGO: the Silver Box's first page
+    ui.encoder(2, 2);                             // K1: its first row locked on step 3
+    ui.keys(0);
+    expect(got).not.toBeNull();
+    expect(got!.pat).toBe(0);
+    expect(got!.locks.length).toBe(1);
+    expect(got!.locks[0].at).toBe(2);
   }, 30_000);
   it('the panel drives it: SELECT / ALGO move the focus (and say so), K1 sets a parameter, HOME goes to the device\'s first page, then back along the trail', async () => {
     const focus: [number, number][] = [];

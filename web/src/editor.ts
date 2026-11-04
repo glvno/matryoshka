@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Patch editor: module cards on a canvas, SVG cables, drag-to-connect, a selection, assemblies and undo.
 import { resizeHandle } from './resize-handle';
-import { parseValue } from './value-input';
+import { FINE, parseValue, stepOf, stepToward, wholeSteps } from './value-input';
 import { isTextEntry } from './input';
 import { lockOf } from './relevance';
 import { clearAround, isPile, tidy, tidyAssembly } from './tidy';
 import { buttonLabel, DEFS, drumRowName, FIXED_DOES, PANEL_BUTTONS, rowRange } from './modules';
-import { FIXED_BUTTONS } from './patch';
+import { FIXED_BUTTONS, type Range } from './patch';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
 import { arpLitInverted, buttonLight, kindOf, pageList, setPages, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
 import { buttonEditor } from './button-editor';
 import { arpChoices, arpFree, type ArpChoice } from './arp-button';
-import { showUndo } from './toast';
+import { showToast, showUndo } from './toast';
 import { positionPopover } from './popover';
 import { parameterInputs, connectParameter, setInputRoute } from './parameter-routing';
 import { parameterMenu } from './parameter-menu';
@@ -21,7 +21,7 @@ import { cableRole } from './cable-role';
 import { addBreak, fm1Name, layoutOf, moveRows, moveSection, pagesOf, removeBreak, removeHeading, removeRows, renameHeading, rowKey, setLayout, type KnobOf, type Layout, type RowSpot, type Sec } from './arrange';
 import type { ParameterValues } from './engine';
 import { deviceBudget, DEVICE } from './patchbin';
-import { choiceName, formatValue, longName, moduleName, moduleTag } from './labels';
+import { choiceName, formatValue, longName, moduleName, moduleTag, moduleTitle, paramHint } from './labels';
 import { outputRange } from './ranges';
 import { picker } from './picker';
 import { selector } from './selector';
@@ -60,6 +60,7 @@ import {
   trackLabel,
   trackName,
   fixTrack,
+  moduleText,
   TRACK_NAME_MAX,
   DRUM_ROWS,
   COMMENT_MAX,
@@ -69,14 +70,14 @@ import { addComment, COMMENT_H, COMMENT_W, moveComments, pasteComments, removeCo
 import { patternStrip, type PatternStrip } from './pattern-strip';
 import { SongView } from './song';
 import type { PatternView } from './engine';
-import { fixNotes, fixPatterns, fixSeq, overdub, PATTERNS_MAX, patternOf, SONGS_MAX, type Pattern, type SeqState, type SongEntry, type StepNote } from './track';
+import { fixLocks, fixNotes, fixPatterns, fixSeq, overdub, PATTERNS_MAX, patternLocks as patternLocksOf, patternOf, SONGS_MAX, type Pattern, type SeqState, type SongEntry, type StepLock, type StepNote } from './track';
 import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './engines';
 import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, sameName, renamePreset, shortBy, shortPresetText, stepPreset, storePreset } from './device-presets';
 import { engineOf } from './library-presets';
 import { structureOf } from './structure';
-import { armable, armDrawing, armedWith, keepArmed, type DeviceKey } from './arm';
+import { armable, armDrawing, armedWith, keepArmed, noKeysReach, type DeviceKey } from './arm';
 import { PianoRoll } from './roll';
-import { stepGrid, stopEntry, type StepGrid } from './step-grid';
+import { stepGrid, stopEntry, type LockRow, type StepGrid } from './step-grid';
 import { FlawPanel } from './flaws-panel';
 import { clipText, copyItems, pasteClip, type Clip } from './clipboard';
 import { GUTTER_ROOM, ribbons, type RibbonCable, type RibbonFrame } from './ribbons';
@@ -196,7 +197,7 @@ export interface EditorEvents {
   /** a note into a Steps track's instrument, to hear it (the roll's keys and notes, #136; vel 0..127, 0: let go) */
   onThru?(id: number, note: number, vel: number): void;
   /** a macro range of p1 / p2 (index 0 / 1) on a parameter changed or was removed (null) */
-  onRange(id: number, index: number, name: string, range: [number, number] | null): void;
+  onRange(id: number, index: number, name: string, range: Range | null): void;
   /** the transport (the Play switch: the Main module's run output and clock; editor state, not saved) */
   onTransport(on: boolean): void;
   /** a patch button of the Main module (PANEL_BUTTONS index) held / let go or switched */
@@ -1054,12 +1055,26 @@ export class Editor {
     const head = document.createElement('div');
     head.className = 'mhead';
     const title = document.createElement('span');
-    title.append(this.tag(def.type), moduleName(def.type, def.label));
+    if (m.name && def.type !== 'steps') {
+      // its own name (#518), its type small underneath
+      const name = document.createElement('span');
+      name.className = 'mname';
+      const type = document.createElement('small');
+      type.className = 'mtype';
+      type.textContent = moduleName(def.type, def.label);
+      name.append(m.name, type);
+      title.append(this.tag(def.type), name);
+      title.title = `${m.name} (${moduleName(def.type, def.label)}): double-click to rename`;
+    } else {
+      title.append(this.tag(def.type), moduleName(def.type, def.label));
+      if (def.type !== 'fm1') title.title = 'double-click to rename';
+    }
+    if (def.type !== 'fm1') title.addEventListener('dblclick', (e) => { e.stopPropagation(); this.renameModule(m); });
     if (perVoice) title.append(this.badge(perVoice));
     const tools = document.createElement('span');
     tools.className = 'tools';
     if (open) tools.append(this.outButton(open, () => this.takeOutModule(open, m)));
-    if (!open && def.type !== 'steps' && armable(this.patch, `m${m.id}`)) tools.append(this.armButton(`m${m.id}`, moduleName(def.type, def.label)));
+    if (!open && def.type !== 'steps' && armable(this.patch, `m${m.id}`)) tools.append(this.armButton(`m${m.id}`, this.nameOf(m)));
     if (def.type !== 'fm1' && def.type !== 'output' && !EDITOR_ONLY.has(def.type)) tools.append(this.bypassButton(m, def, el));
     const menu = (at: Pt): void => this.contextMenu(m, def, at);
     tools.append(this.moreButton(menu));
@@ -1129,6 +1144,7 @@ export class Editor {
     return new Proxy(m, {
       get(t, k, r) {
         if (k === 'notes') return patternOf(t, pattern()).notes;
+        if (k === 'locks') return pattern() > 0 && t.patterns?.[pattern() - 1] ? t.patterns[pattern() - 1]!.locks : t.locks;   // (one it has not got plays pattern 1's)
         if (k === 'params') {
           const v = patternOf(t, pattern());
           return { ...t.params, len: v.len, rate: v.rate };
@@ -1156,7 +1172,12 @@ export class Editor {
         const t = m();
         if (!t) return;
         this.touch();
+        const locked = !!patternLocksOf(t, p)?.length;
         this.setNotes(t, undefined, p);
+        if (locked) {   // (its P-locks go with its notes, #524)
+          this.setLocks(t, undefined, p);
+          this.ev.onStructure(this.patch);
+        }
         this.stepGrids.get(id)?.refresh();
         this.refreshStrips();
       },
@@ -1209,6 +1230,17 @@ export class Editor {
     this.stepGrids.get(id)?.refresh();
   }
 
+  /** a track's P-locks of pattern `pat` as the FM-1's SEQ page left them (#524, LOCKS_NOW): into the patch and the grid, an
+   * undo step like an edit here; not sent back (the FM-1 has them) */
+  locksFromDevice(id: number, locks: StepLock[], pat = 0): void {
+    const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
+    if (!m) return;
+    this.touch();
+    this.setLocks(m, locks, pat);
+    this.ev.onStructure(this.patch);
+    this.stepGrids.get(id)?.refresh();
+  }
+
   /** a Steps module's notes of pattern p (0-based; the selected one), valid, into the patch and the engines. A pattern the
    * track had not got is made (its notes are what the edit made of the pattern 1 it showed: track.ts patternOf) */
   private setNotes(m: ModuleInst, notes: StepNote[] | undefined, p = this.pattern): void {
@@ -1227,6 +1259,42 @@ export class Editor {
     }
     this.ev.onTrack?.(m.id, n, p);
     if (this.roll?.id === m.id) this.roll.view.render();
+  }
+
+  /** the rows a Steps track's steps can lock (#524, #519 Q1): the rows of the devices it plays (pages.ts Device.track), not
+   * a Voice allocator's settings; each labelled with its device when the track plays more than one */
+  lockRows(id: number): LockRow[] {
+    const devs = devicesOf(this.patch, DEFS).filter((d) => d.track === id);
+    const seen = new Set<string>();
+    const out: LockRow[] = [];
+    for (const d of devs)
+      for (const pg of d.pages)
+        for (const r of pg.rows) {
+          const m = this.patch.modules.find((x) => x.id === r.module);
+          const pd = m && m.type !== ALLOC ? DEFS[m.type]?.params.find((q) => q.name === r.param) : undefined;
+          const key = `${r.module}/${r.param}`;
+          if (!m || !pd || seen.has(key)) continue;
+          seen.add(key);
+          out.push({ module: r.module, param: r.param, label: devs.length > 1 ? `${d.name}: ${r.label}` : r.label, pd, value: m.params[r.param] ?? pd.default });
+        }
+    return out;
+  }
+  /** a Steps module's locks of pattern p (0-based; the selected one), valid, into the patch. A pattern the track had not
+   * got is made: pattern 1's notes and locks (what it showed and played), then these locks */
+  private setLocks(m: ModuleInst, locks: StepLock[] | undefined, p = this.pattern): void {
+    const l = fixLocks(locks);
+    if (p <= 0) {
+      if (l) m.locks = l;
+      else delete m.locks;
+      return;
+    }
+    const pats: (Pattern | null)[] = [...(m.patterns ?? [])];
+    while (pats.length < p) pats.push(null);
+    const x: Pattern = { ...(pats[p - 1] ?? structuredClone({ ...(m.notes ? { notes: m.notes } : {}) })) };
+    if (l) x.locks = l;
+    else delete x.locks;
+    pats[p - 1] = x;
+    m.patterns = fixPatterns(pats);
   }
 
   /* ---- patterns and songs (#375; track.ts SeqState on Main: the selected pattern, the song playing, the songs) */
@@ -1341,11 +1409,13 @@ export class Editor {
     this.touch();
     for (const m of this.patch.modules) {
       if (m.type !== 'steps') continue;
-      const src = from <= 0 ? { ...(m.notes ? { notes: m.notes } : {}) } : m.patterns?.[from - 1] ?? null;
+      const src: Pattern | null = from <= 0 ? { ...(m.notes ? { notes: m.notes } : {}), ...(m.locks ? { locks: m.locks } : {}) } : m.patterns?.[from - 1] ?? null;
       if (to <= 0) {
         if (src) {
           if (src.notes?.length) m.notes = structuredClone(src.notes);
           else delete m.notes;
+          if (src.locks?.length) m.locks = structuredClone(src.locks);
+          else delete m.locks;
         }
         continue;
       }
@@ -1401,6 +1471,13 @@ export class Editor {
       },
       recording: () => this.recOn && this.armedTrack === m.id,
       roll: () => (this.roll?.id === m.id ? this.closeRoll() : this.openRoll(m.id)),
+      lockRows: () => this.lockRows(m.id),
+      locks: (l) => {
+        this.touch();
+        this.setLocks(m, l);
+        this.ev.onStructure(this.patch);
+        this.stepGrids.get(m.id)?.refresh();
+      },
     });
     this.stepGrids.set(m.id, grid);
     if (this.roll?.id === m.id) grid.rolled(true);
@@ -1485,7 +1562,26 @@ export class Editor {
     if (k[0] === 'a') return assemblyById(this.patch, id)?.label ?? 'assembly';
     const m = this.patch.modules.find((x) => x.id === id);
     if (!m) return '';
-    return m.type === 'steps' ? trackLabel(this.patch, id) : m.name || moduleName(m.type, DEFS[m.type]?.label ?? '');
+    return this.nameOf(m);
+  }
+
+  /** a module as the canvas names it (#518): a Steps module by its track name, any other by its own name, else its type */
+  private nameOf(m: ModuleInst): string {
+    return m.type === 'steps' ? trackLabel(this.patch, m.id) : moduleTitle(m, DEFS[m.type]?.label ?? m.type);
+  }
+
+  /** give a module its own name (#518): a prompt; empty takes it back to its type's. A Steps module's is its track name */
+  private renameModule(m: ModuleInst): void {
+    const def = DEFS[m.type];
+    if (!def || m.type === 'fm1') return;
+    const v = window.prompt(m.type === 'steps' ? `Track name (at most ${TRACK_NAME_MAX} characters)` : `Name of this ${moduleName(m.type, def.label)} (empty: none)`, m.name ?? '');
+    if (v === null || v === undefined) return;
+    const name = m.type === 'steps' ? trackName(v) : moduleText(v);
+    if (name === (m.name ?? '')) return;
+    this.change(() => {
+      if (name) m.name = name;
+      else delete m.name;
+    });
   }
 
   /** ARM on one device: on / off, the others as they are */
@@ -1510,7 +1606,7 @@ export class Editor {
       const id = Number(k.slice(1));
       const names = k[0] === 'a' ? [assemblyById(this.patch, id)?.label ?? 'assembly']
         : this.patch.modules.find((m) => m.id === id)?.type === 'steps' ? this.trackPlays(id)
-        : [moduleName(this.patch.modules.find((m) => m.id === id)?.type ?? '', DEFS[this.patch.modules.find((m) => m.id === id)?.type ?? '']?.label ?? '')];
+        : [this.deviceName(k)];
       for (const n of names) if (!out.includes(n)) out.push(n);
     }
     return out;
@@ -1674,7 +1770,7 @@ export class Editor {
 
   /** what a track plays, by the names the canvas shows */
   private trackPlays(id: number): string[] {
-    return trackTargets(this.patch, id, (m) => moduleName(m.type, DEFS[m.type]?.label ?? m.type));
+    return trackTargets(this.patch, id, (m) => this.nameOf(m));
   }
 
   /** the Scope screens and envelope shapes drawn in this rebuild (onScreens) */
@@ -1735,7 +1831,7 @@ export class Editor {
         const from = this.patch.modules.find((x) => x.id === c.from.module);
         const kind = from && DEFS[from.type].outputs.find((q) => q.name === c.from.port)?.kind;
         // its name and its output's range for the readout under the screen (#518; the range follows the parameters)
-        return kind ? [{ id: c.from.module, port: c.from.port, kind, label: `${moduleName(from.type, DEFS[from.type].label)} ${longName(from.type, c.from.port)}`, range: () => outputRange(from.type, c.from.port, from.params) }] : [];
+        return kind ? [{ id: c.from.module, port: c.from.port, kind, label: `${this.nameOf(from)} ${longName(from.type, c.from.port)}`, range: () => outputRange(from.type, c.from.port, from.params) }] : [];
       }));
     this.screens.push({ m, el: screen, chans });
     row.append(this.scopeTools(m));
@@ -1986,6 +2082,10 @@ export class Editor {
       name.title = tieText.startsWith('×') ? `one row for ${tieText.slice(1)} parameters: turning it moves them all` : `set by the "${tie!.label}" row of the card`;
       name.append(badge);
     }
+    if (!name.title) {
+      const hint = paramHint(def.type, pd.name);
+      if (hint) name.title = hint;
+    }
     // a Selector's position: over the positions in use (1..count, #358), by the names its card row gives them
     const range = (): ParamDef => rowRange(m.type, m.params, pd);
     const posNames = o.names && m.type === 'select' && pd.name === 'pos' ? o.names : undefined;
@@ -2021,12 +2121,13 @@ export class Editor {
     }
     const val = document.createElement('output');
     // the number and its unit apart: the unit is drawn smaller (labels.ts formatValue)
-    const parts = (v: number, params = m.params): { num: string; unit: string } =>
+    const parts = (v: number, params = m.params, digits = 3): { num: string; unit: string } =>
       pd.altText && params[pd.altText.when] >= 0.5 ? { num: pd.altText.text(v, params), unit: '' }
         : pd.choices ? { num: choiceName(def.type, pd.name, pd.choices[Math.round(v)] ?? ''), unit: '' }
         : posNames ? { num: namesNow()[Math.round(v) - off] ?? String(Math.round(v)), unit: '' }
-        : formatValue(v, pd.unit, pd.min < 0);
-    const fmt = (v: number, params = m.params): string => { const p = parts(v, params); return p.unit ? `${p.num} ${p.unit}` : p.num; };
+        : formatValue(v, pd.unit, pd.min < 0, digits);
+    /** the bar's text, three significant figures; `digits`: more (the typing field opens with the full value, #538) */
+    const fmt = (v: number, params = m.params, digits = 3): string => { const p = parts(v, params, digits); return p.unit ? `${p.num} ${p.unit}` : p.num; };
     let shown = '';
     const show = (v: number, params = m.params): void => {
       const text = fmt(v, params);
@@ -2043,16 +2144,19 @@ export class Editor {
     this.refreshers.set(row, () => show(m.params[pd.name]));
     const input = document.createElement('input');
     input.type = 'range';
+    // a row that keeps any value (#538) has no grid on its slider: the browser would snap a value typed off it (1/8 on a
+    // row of 0.01 steps); its controls move it by steps from where it is (stepToward). A row of whole steps keeps its grid
+    const exact = !wholeSteps(pd);
     if (pd.log) {
       // a logarithmic parameter: the slider position is the fraction of the octaves
       input.min = '0';
       input.max = '1000';
-      input.step = '1';
-      input.value = String(Math.round(toUnit(pd, m.params[pd.name]) * 1000));
+      input.step = 'any';
+      input.value = String(toUnit(pd, m.params[pd.name]) * 1000);
     } else {
       input.min = String(pd.min);
       input.max = String(topOf(range())); // (the browser-only stretch too: the Delay's time to 1.6 s; a Selector's positions in use)
-      input.step = String(pd.step ?? (pd.max - pd.min) / 200);
+      input.step = exact ? 'any' : String(pd.step ?? (pd.max - pd.min) / 200);
       input.value = String(m.params[pd.name]);
     }
     input.setAttribute('aria-label', `${def.label} ${o.label ?? pd.name}`);
@@ -2061,7 +2165,7 @@ export class Editor {
     // slider units. Pointer capture also releases the edit lock when a drag ends outside the card.
     let editing = false;
     let offset = 0;
-    const posOf = (v: number): number => (pd.log ? Math.round(toUnit(pd, v) * 1000) : v);
+    const posOf = (v: number): number => (pd.log ? toUnit(pd, v) * 1000 : v);
     /** a value's place on the slider, 0..1 (its track spans the browser-only stretch too) */
     const trackOf = (v: number): number => (pd.log ? toUnit(pd, v) : (v - pd.min) / (topOf(range()) - pd.min));
     const begin = (): void => {
@@ -2075,7 +2179,27 @@ export class Editor {
     };
     input.onpointerup = input.onpointercancel = input.onlostpointercapture = () => { editing = false; };
     input.onkeydown = (e) => {
-      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown', ' '].includes(e.key)) begin();
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown', ' '].includes(e.key)) return;
+      begin();
+      if (!exact || e.key === ' ' || input.disabled) return;
+      // a row without a grid: a key moves the value by a step from where it is, a tenth of one with Shift (#538); Page
+      // keys a tenth of the range
+      e.preventDefault();
+      const rd = range(), from = m.params[pd.name], hi = pd.log ? pd.max : topOf(rd);
+      const dir = ['ArrowRight', 'ArrowUp', 'PageUp'].includes(e.key) ? 1 : -1;
+      const page = e.key.startsWith('Page'), fine = e.shiftKey && !page;
+      const to = e.key === 'Home' ? rd.min : e.key === 'End' ? hi
+        : fine ? from + dir * stepOf(pd) * FINE
+        : pd.log ? fromUnit(pd, toUnit(pd, from) + dir * (page ? 0.1 : 0.001))
+        : from + dir * (page ? (hi - rd.min) / 10 : stepOf(pd));
+      const v = stepToward(rd, from, to, { fine, atLeastOne: true, hi });
+      if (v === from) return;
+      // through the input event, as the native keys did (the thumb, the cables): the thumb at the new value, which oninput
+      // takes as it is
+      input.value = String(posOf(v) + offset);
+      if (fine) input.dataset.fine = '1';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      delete input.dataset.fine;
     };
     input.onkeyup = input.onblur = () => { editing = false; };
     // the value before the latest gesture began: a double-click's first press moves the thumb, typing puts it back
@@ -2091,12 +2215,19 @@ export class Editor {
       if (now - lastInput > TYPE_GAP_MS) gestureFrom = m.params[pd.name];
       lastInput = now;
       const pos = Math.min(Number(input.max), Math.max(Number(input.min), Number(input.value) - offset));
-      const v = pd.log ? snapTo(pd, fromUnit(pd, pos / 1000)) : Number(pos.toFixed(6));
+      // a row without a grid moves by steps from its value (a tenth of one on a Shift-drag: slider-jack.ts marks it), so a
+      // value typed off the grid stays off it (#538)
+      const to = pd.log ? fromUnit(pd, pos / 1000) : pos;
+      const v = exact ? stepToward(range(), m.params[pd.name], to, { fine: input.dataset.fine === '1', hi: pd.log ? pd.max : topOf(range()) })
+        : Number(pos.toFixed(6));
+      apply(v, Number(input.value));
+    };
+    /** set the base value `v` from the bar (the thumb at `at`, in slider units) */
+    const apply = (v: number, at: number): void => {
       if (m.params[pd.name] !== v) this.touch();
       m.params[pd.name] = v;
       // the text follows the thumb: the base itself, or with modulation the live value the drag holds under the pointer
       // (the engine's reports run a poll behind, so they are not shown until the edit ends)
-      const at = Number(input.value);
       show(!offset ? v : pd.log ? snapTo(pd, fromUnit(pd, at / 1000)) : Number(at.toFixed(6)));
       thumb?.setBase(offset ? trackOf(v) : null);
       if (def.params.some((q) => q.altText?.when === pd.name)) for (const el of row.parentElement?.children ?? []) this.refreshers.get(el as HTMLElement)?.(); // (the LFO's range: how its rate shows)
@@ -2163,7 +2294,7 @@ export class Editor {
       });
       this.sliderPorts.push({ m, pd, jack: pickJack, ticks: () => {} });
     }
-    const gesture = thumb ? 'Drag to adjust; Alt-drag to patch. Drop a cable on the thumb to connect.' : '';
+    const gesture = thumb ? 'Drag to adjust (Shift: a tenth of a step); Alt-drag to patch. Drop a cable on the thumb to connect.' : '';
     input.title = gesture;
     if (thumb) {
       thumb.jack.dataset.mod = String(m.id);
@@ -2239,7 +2370,7 @@ export class Editor {
         if (row.classList.contains('locked') || row.querySelector('.val-edit')) return;
         if (performance.now() - lastInput < TYPE_GAP_MS * 2 && m.params[pd.name] !== gestureFrom) this.setParam(m.id, pd.name, gestureFrom);
         this.endGesture(); // the double-click's own presses (moved and put back) leave no step
-        this.typeValue(row, fmt(m.params[pd.name]), (text) => {
+        this.typeValue(row, fmt(m.params[pd.name], m.params, 10), (text) => {
           if (posNames) {   // a named position: by its name, or its number
             const i = parseValue(text, { ...pd, choices: namesNow() }, namesNow());
             if (i === null) return false;
@@ -2247,9 +2378,8 @@ export class Editor {
             this.endGesture();
             return true;
           }
-          let v = parseValue(text, range(), names);
+          const v = parseValue(text, range(), names);   // kept as typed (#538): no snap to the row's step
           if (v === null) return false;
-          if (pd.log) v = snapTo(pd, v);
           this.setParam(m.id, pd.name, v);
           this.endGesture();
           return true;
@@ -2285,7 +2415,7 @@ export class Editor {
     field.value = text;
     field.spellcheck = false;
     field.setAttribute('aria-label', `Type a value for ${row.querySelector('span')?.textContent ?? 'the parameter'}`);
-    field.title = 'Enter sets it, Esc cancels. Units work: 2k, 440 Hz, 120 ms, 50 %, a choice by name.';
+    field.title = 'Enter sets it, Esc cancels. Units work: 2k, 440 Hz, 120 ms, 50 %, fractions (1/8, -1/3), a choice by name. Kept as typed.';
     let closed = false;
     const close = (): void => {
       if (closed) return;
@@ -2297,7 +2427,8 @@ export class Editor {
       if (e.key === 'Escape') { e.preventDefault(); close(); return; }
       if (e.key !== 'Enter' && e.key !== 'Tab') return;
       e.preventDefault();
-      if (!commit(field.value)) { field.classList.add('bad'); return; }
+      // the full value left as it opened: nothing to set (a value typed as 1/3 keeps all its digits)
+      if (field.value !== text && !commit(field.value)) { field.classList.add('bad'); return; }
       close();
       if (e.key !== 'Tab') return;
       const rows = [...(row.closest('.module, .dock-main') ?? this.modulesEl).querySelectorAll<HTMLElement>('.param.bar')].filter((r) => this.typers.has(r) && !r.classList.contains('locked'));
@@ -2615,6 +2746,7 @@ export class Editor {
       this.selected.add(m.id);
       this.bypassSelected();
     } });
+    if (def.type !== 'fm1') items.push({ text: 'Rename…', key: 'dbl-click', run: () => this.renameModule(m) });
     items.push({ text: 'Duplicate', key: '⌘D', run: () => {
       this.selected.clear();
       this.selected.add(m.id);
@@ -3872,7 +4004,7 @@ export class Editor {
     }, 'pw');
     pw.classList.toggle('on', !a.bypass);
     pw.setAttribute('aria-pressed', String(!a.bypass));
-    const arm = !parentOf(this.patch, a.id) && armable(this.patch, `a${a.id}`) ? [this.armButton(`a${a.id}`, a.label)] : [];
+    const arm = parentOf(this.patch, a.id) ? [] : armable(this.patch, `a${a.id}`) ? [this.armButton(`a${a.id}`, a.label)] : noKeysReach(this.patch, `a${a.id}`) ? [this.noKeysButton(a.label)] : [];
     return [...arm, this.polyButton(a), pw, this.moreButton((at) => this.assemblyMenu(a, at))];
   }
 
@@ -3969,6 +4101,16 @@ export class Editor {
     b.classList.toggle('with', !on && by.length > 0);
     b.setAttribute('aria-pressed', !on && by.length ? 'mixed' : String(on));
     if (!on && by.length) b.title = `Armed with ${by.join(', ')}: Main’s keys go through ${name} to it. ARM arms ${name} on its own too`;
+    return b;
+  }
+
+  /** ARM on an engine no keys cable reaches (D-905, D-818): it arms nothing and says why, as SEL on the FM-1 does */
+  private noKeysButton(name: string): HTMLButtonElement {
+    const why = `No keys reach this device: cable keys into ${name}’s keys input to arm it`;
+    const b = this.button('', why, () => showToast('No keys reach this device'), 'sm arm-btn arm-dot no-keys');
+    b.setAttribute('aria-label', `Arm ${name}: no keys reach this device`);
+    b.setAttribute('aria-disabled', 'true');
+    b.dataset.hint = why;
     return b;
   }
 
@@ -5412,11 +5554,11 @@ export class Editor {
     // choices and switches snap
     const rd = (): ParamDef => rowRange(m.type, m.params, pd);
     const unitOf = (v: number): number => (pd.choices ? (pd.choices.length > 1 ? Math.round(v) / (pd.choices.length - 1) : 0) : toUnit(rd(), v));
-    const valueOf = (u: number): number => {
+    // a value the dial aims at: by steps from the row's value (a tenth of one with Shift), not back onto the grid (#538)
+    const valueOf = (u: number, fine = false): number => {
       if (pd.toggle) return u >= 0.5 ? 1 : 0;
       if (pd.choices) return Math.round(u * (pd.choices.length - 1));
-      const v = fromUnit(rd(), u);
-      return pd.log ? snapTo(pd, v) : pd.step ? Math.round(v / pd.step) * pd.step : Number(v.toFixed(6));
+      return stepToward(rd(), this.shownParam(m, r.param), fromUnit(rd(), u), { fine, hi: rd().max });
     };
     const text = (v: number): string => {
       if (pd.choices) return choiceName(m.type, pd.name, pd.choices[Math.round(v)] ?? '');
@@ -5424,9 +5566,10 @@ export class Editor {
       const f = formatValue(v, pd.unit, pd.min < 0);
       return f.unit ? `${f.num} ${f.unit}` : f.num;
     };
-    const c = dragControl(dial, `K${i + 1}: ${r.label}`, 0, 1, unitOf(this.shownParam(m, r.param)), (u) => this.setParam(m.id, r.param, valueOf(u)), {
+    const c = dragControl(dial, `K${i + 1}: ${r.label}`, 0, 1, unitOf(this.shownParam(m, r.param)), (u, fine) => this.setParam(m.id, r.param, valueOf(u, fine)), {
       reset: unitOf(pd.default),
       text: (u) => text(valueOf(u)),
+      nudge: (notches, fine) => this.nudgeKnob(i, notches, fine),
       draw: (u) => dial.style.setProperty('--v', String(u)),
     });
     (dial as HTMLElement & { sync?: () => void }).sync = () => c.set(unitOf(this.shownParam(m, r.param)));
@@ -5510,18 +5653,19 @@ export class Editor {
     return true;
   }
 
-  /** a held 1..4 and the wheel: K(i + 1) by `notches` (a hundredth of its range each; a choice or a switch: one position) */
-  nudgeKnob(i: number, notches: number): boolean {
+  /** a held 1..4 and the wheel: K(i + 1) by `notches` (a hundredth of its range each; a choice or a switch: one position),
+   *  by steps from its value; `fine` (Shift): a tenth of a step each (#538) */
+  nudgeKnob(i: number, notches: number, fine = false): boolean {
     const r = this.focusedPage()?.rows[i];
     const m = r && this.patch.modules.find((x) => x.id === r.module);
     const pd = m && DEFS[m.type].params.find((q) => q.name === r!.param);
     if (!r || !m || !pd) return false;
     const v = this.shownParam(m, r.param);
     const rd = rowRange(m.type, m.params, pd);   // (a Selector's positions in use, #358)
-    const w = fromUnit(rd, Math.min(1, Math.max(0, toUnit(rd, v) + notches / 100)));
+    const w = fine ? v + notches * stepOf(pd) * FINE : fromUnit(rd, Math.min(1, Math.max(0, toUnit(rd, v) + notches / 100)));
     this.setParam(m.id, r.param, pd.toggle ? (notches > 0 ? 1 : 0)
       : pd.choices ? Math.min(pd.choices.length - 1, Math.max(0, Math.round(v) + Math.sign(notches)))
-      : pd.log ? snapTo(pd, w) : pd.step ? Math.round(w / pd.step) * pd.step : Number(w.toFixed(6)));
+      : stepToward(rd, v, w, { fine, atLeastOne: true, hi: fine ? topOf(rd) : Math.max(rd.max, Math.min(topOf(rd), v)) }));
     return true;
   }
 
@@ -5538,8 +5682,9 @@ export class Editor {
     if (!r || !m || !pd) return;
     const x = Math.min(1, Math.max(0, u));
     const rd = rowRange(m.type, m.params, pd);   // (a Selector's positions in use, #358: as the FM-1's pages_set_unit)
-    const v = pd.toggle ? (x >= 0.5 ? 1 : 0) : pd.choices ? Math.round(x * (pd.choices.length - 1)) : pd.log ? snapTo(pd, fromUnit(pd, x))
-      : rd !== pd ? Math.round(fromUnit(rd, x)) : Number(fromUnit(pd, x).toFixed(6));
+    // (a row without a grid: by steps from its value, so a value typed off the grid stays off it, #538)
+    const v = pd.toggle ? (x >= 0.5 ? 1 : 0) : pd.choices ? Math.round(x * (pd.choices.length - 1)) : rd !== pd ? Math.round(fromUnit(rd, x))
+      : wholeSteps(pd) ? Number(fromUnit(pd, x).toFixed(6)) : stepToward(pd, this.shownParam(m, r.param), fromUnit(pd, x), { hi: pd.max });
     this.setParam(m.id, r.param, v);
   }
 
@@ -5747,7 +5892,7 @@ export class Editor {
   /** a cable end as the status line names it: the module and its port */
   private endName(e: Endpoint): string {
     const m = this.patch.modules.find((x) => x.id === e.module);
-    return m ? `${moduleName(m.type, DEFS[m.type]?.label ?? m.type)} ${e.port}` : e.port;
+    return m ? `${this.nameOf(m)} ${e.port}` : e.port;
   }
 
   /** the hovered cable's glow (design A): a copy over the cards, so its whole run shows where it passes behind one, and
@@ -5940,7 +6085,7 @@ export class Editor {
       if (port === pd.input) add(side, jack, 'control', null, `Built in: ${port} sets ${pd.name}`, true);
       else add(side, jack, 'control', () => this.change(() => {
         setInputRoute(m, DEFS[m.type], port, pd.name, false);
-      }), `Disconnect ${DEFS[m.type].label} ${port} → ${pd.name}`, true);
+      }), `Disconnect ${this.nameOf(m)} ${port} → ${pd.name}`, true);
     }
     const physicalCables = new Set<string>();
     for (const c of this.patch.cables) {

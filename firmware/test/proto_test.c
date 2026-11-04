@@ -326,7 +326,7 @@ static int patterns_test(const char *kit_path, const char *song_path)
     uint32_t t0, t1, sec, len0;
     const uint32_t *w;
     int n;
-    CHECK(kit[1] == ENG_PATCH_VERSION && (kit[7] & ENG_FLAG_PATTERNS) && m1_valid(kit, (uint32_t)nk) && !m1_valid(kit, (uint32_t)nk - 1u));
+    CHECK(kit[1] == 48u && (kit[7] & ENG_FLAG_PATTERNS) && m1_valid(kit, (uint32_t)nk) && !m1_valid(kit, (uint32_t)nk - 1u));
     m1_set_current(kit, (uint32_t)nk);
     CHECK(eng_load(m1_cur, m1_cur_len) == 0);
     sec = pat_section();
@@ -405,8 +405,8 @@ static int patterns_test(const char *kit_path, const char *song_path)
     CHECK(eng_song_get(0, 2) == (2 | 0xF9 << 8));
     /* a patch without patterns (an older format, upgraded): choosing pattern 2 makes the section, pattern 1 drops it */
     {
-        static uint8_t plain[M1_PATCH_MAX];
-        uint32_t i, pn = 0;
+        static uint8_t plain[M1_PATCH_MAX], up[M1_PATCH_MAX];
+        uint32_t i, pn = 0, ul;
         for (i = 0; i < M1_PATCH_MAX && i < (uint32_t)nk; i++)
             plain[i] = kit[i];
         memcpy(m1_cur, kit, (size_t)nk);                      /* the kit without its section, as format 47 */
@@ -419,12 +419,14 @@ static int patterns_test(const char *kit_path, const char *song_path)
         CHECK(m1_valid(plain, (uint32_t)nk - pn));
         m1_set_current(plain, (uint32_t)nk - pn);
         CHECK(m1_cur[1] == ENG_PATCH_VERSION && eng_load(m1_cur, m1_cur_len) == 0 && eng_patterns_record(0, 0) == 0);
+        ul = m1_cur_len;                                        /* (upgraded: records of types that grew since 47 are longer) */
+        memcpy(up, m1_cur, ul);
         pl[0] = 1;
         pl[1] = 0;
-        CHECK(send_frame(C_PATTERN, pl, 2u) == 1 && (m1_cur[7] & ENG_FLAG_PATTERNS) && m1_cur_len == (uint32_t)nk - pn + 4u && pat_agree());
+        CHECK(send_frame(C_PATTERN, pl, 2u) == 1 && (m1_cur[7] & ENG_FLAG_PATTERNS) && m1_cur_len == ul + 4u && pat_agree());
         pl[0] = 0;
-        CHECK(send_frame(C_PATTERN, pl, 2u) == 1 && !(m1_cur[7] & ENG_FLAG_PATTERNS) && m1_cur_len == (uint32_t)nk - pn && pat_agree());
-        CHECK(!memcmp(m1_cur + 2, plain + 2, (size_t)nk - pn - 2u));   /* (byte for byte as it was, but for its format) */
+        CHECK(send_frame(C_PATTERN, pl, 2u) == 1 && !(m1_cur[7] & ENG_FLAG_PATTERNS) && m1_cur_len == ul && pat_agree());
+        CHECK(!memcmp(m1_cur, up, ul));                         /* (byte for byte as it was) */
         plain[1] = 47;                                          /* a format 47 binary with the section: refused */
         memcpy(plain, kit, (size_t)nk);
         plain[1] = 47;
@@ -446,6 +448,120 @@ static int patterns_test(const char *kit_path, const char *song_path)
     free(kit);
     free(song);
     printf("patterns ok\n");
+    return 0;
+}
+
+/* the P-locks section of the running binary, 0 without one */
+static uint32_t lock_section(void)
+{
+    uint32_t at = m1_notes_at();
+    if (!at || !(m1_cur[7] & ENG_FLAG_LOCKS))
+        return 0;
+    if ((m1_cur[6] & 16u) && !(at = eng_notes_end(m1_cur, m1_cur_len, at)))
+        return 0;
+    if ((m1_cur[7] & ENG_FLAG_PATTERNS) && !(at = eng_patterns_end(m1_cur, m1_cur_len, at)))
+        return 0;
+    return at;
+}
+/* the engine's locks are what the running binary holds: the section byte for byte (eng_locks_record, the encoder's
+ * lockRecord), the whole binary valid, and a reload gives the same section back */
+static int locks_agree(void)
+{
+    static uint8_t rec[M1_PATCH_MAX], keep[M1_PATCH_MAX];
+    uint32_t sec = lock_section(), end;
+    int n = eng_locks_record(rec, sizeof rec);
+    if (n < 0 || !m1_valid(m1_cur, m1_cur_len))
+        return 0;
+    if (!n)
+        return !sec && !(m1_cur[7] & ENG_FLAG_LOCKS);
+    end = sec ? eng_locks_end(m1_cur, m1_cur_len, sec) : 0;
+    if (!sec || end - sec != (uint32_t)n || memcmp(m1_cur + sec, rec, (size_t)n))
+        return 0;
+    memcpy(keep, rec, (size_t)n);
+    if (eng_load(m1_cur, m1_cur_len) || eng_locks_record(rec, sizeof rec) != n || memcmp(rec, keep, (size_t)n))
+        return 0;
+    return 1;
+}
+/* the P-locks (#524, format 49) on the FM-1: the steps-locks kit as the encoder writes it, the engine's record of it, a
+ * lock changed, added on a new row and removed (the binary following each time), a pattern the track has not got made
+ * from pattern 1 (its notes and locks), LOCKS_NOW, every lock removed (the section goes), malformed sections refused */
+static int locks_test(const char *kit_path)
+{
+    static uint8_t rec[M1_PATCH_MAX], d[3u + 7u * ENG_PAT_LOCKS];
+    long nk;
+    uint8_t *kit = slurp(kit_path, &nk);
+    uint32_t t0, sec, f0 = 0, o0 = 0, i, len0, r0;
+    const uint32_t *w;
+    int32_t v = 0;
+    int n;
+    CHECK(kit[1] == 49u && (kit[7] & ENG_FLAG_LOCKS) && m1_valid(kit, (uint32_t)nk) && !m1_valid(kit, (uint32_t)nk - 1u));
+    m1_set_current(kit, (uint32_t)nk);
+    CHECK(eng_load(m1_cur, m1_cur_len) == 0);
+    sec = lock_section();
+    n = eng_locks_record(rec, sizeof rec);                      /* the engine writes what the encoder wrote */
+    CHECK(sec && n > 0 && sec + (uint32_t)n == eng_locks_end(m1_cur, m1_cur_len, sec) && !memcmp(m1_cur + sec, rec, (size_t)n));
+    CHECK(eng_locks_record(0, 0) == n && eng_locks_record(rec, (uint32_t)n - 1u) == -1);
+    CHECK(eng_locks_count() == 11);                             /* (6 + 2 on the first track, 3 on the second) */
+    t0 = (uint32_t)eng_steps_module(0);
+    for (i = 0; i < (uint32_t)eng_nmodules(); i++) {            /* the first track's oscillator and filter */
+        if (!f0 && eng_type(i) == T_FILTER)
+            f0 = i;
+        if (!o0 && eng_type(i) == T_OSC)
+            o0 = i;
+    }
+    CHECK(f0 && o0);
+    CHECK(eng_lock_get(t0, 0, 0, f0, FILTER_P_CUTOFF, &v) && v == 3000 << 16 && eng_locks_step(t0, 0, 0) == 2);
+    CHECK(eng_lock_get(t0, 1, 3, o0, OSC_P_WAVE, &v) && v == 0 && !eng_lock_get(t0, 0, 1, f0, FILTER_P_CUTOFF, 0));
+    len0 = m1_cur_len;
+    CHECK(eng_lock_set(t0, 0, 0, f0, FILTER_P_CUTOFF, 0, 2000 << 16, 1) == 0 && m1_patch_locks() && locks_agree());   /* changed */
+    CHECK(m1_cur_len == len0 && eng_lock_get(t0, 0, 0, f0, FILTER_P_CUTOFF, &v) && v == 2000 << 16);
+    CHECK(eng_lock_set(t0, 0, 9, o0, OSC_P_LEVEL, 0, 1 << 15, 1) == 0 && m1_patch_locks() && locks_agree());          /* a new row */
+    CHECK(m1_cur_len == len0 + 3u + 6u && eng_locks_count() == 12);
+    CHECK(eng_lock_set(t0, 0, 9, o0, OSC_P_LEVEL, 0, 0, 0) == 0 && m1_patch_locks() && locks_agree() && m1_cur_len == len0);   /* removed: its row too */
+    r0 = nreplies;                                              /* LOCKS_NOW: module, pattern, n, n x (step, module, parameter, i32) */
+    m1_locks_now(t0, 1);
+    CHECK(nreplies == r0 + 1u && replies[r0][4] == R_LOCKS_NOW && replies[r0][reply_len[r0] - 1u] == 0xF7);
+    CHECK(m1_unpack7(replies[r0] + 5, reply_len[r0] - 6u, d, sizeof d) == 3u + 7u * 2u && d[0] == t0 && d[1] == 1u && d[2] == 2u
+          && d[3] == 1u && d[4] == f0 && d[5] == FILTER_P_CUTOFF && (d[6] | d[7] << 8 | d[8] << 16 | (uint32_t)d[9] << 24) == 1800u << 16);
+    nreplies = r0;
+    eng_pattern_set(4);                                         /* stopped: pattern 5, which the track has not got */
+    {
+        static int32_t l[128], r[128];
+        eng_render(l, r, 128);
+    }
+    CHECK(eng_pattern_playing(t0) == 4 && !eng_pattern_has(t0, 4) && eng_locks_pattern(t0) == 4 && eng_pattern_has(t0, 4));
+    CHECK(eng_pattern_notes(t0, 4, &w) == eng_pattern_notes(t0, 0, &w) && eng_locks_list(t0, 4, 0, 0) == 6);   /* pattern 1's notes and locks */
+    m1_patch_notes(t0);
+    CHECK(m1_patch_locks() && locks_agree() && eng_locks_count() == 17);
+    for (n = 0; n < 64 && eng_locks_count(); n++) {             /* every lock removed: the section goes */
+        uint32_t p, k, m, j;
+        static uint8_t one[7];
+        int found = 0;
+        for (p = 0; p < ENG_PATTERNS && !found; p++)
+            for (k = 0; k < (uint32_t)eng_steps_count() && !found; k++)
+                if (eng_locks_list((uint32_t)eng_steps_module(k), p, one, sizeof one) > 0) {
+                    m = one[1];
+                    j = one[2];
+                    CHECK(eng_lock_set((uint32_t)eng_steps_module(k), p, one[0], m, j, 0, 0, 0) == 0);
+                    found = 1;
+                }
+    }
+    CHECK(eng_locks_count() == 0 && m1_patch_locks() && locks_agree() && !(m1_cur[7] & ENG_FLAG_LOCKS));
+    /* a format 48 binary refuses the section; malformed sections are refused */
+    memcpy(m1_cur, kit, (size_t)nk);
+    m1_cur_len = (uint32_t)nk;
+    m1_cur[1] = 48;
+    CHECK(!m1_valid(m1_cur, m1_cur_len) && eng_load(m1_cur, m1_cur_len) != 0);
+    m1_cur[1] = 49;
+    sec = lock_section();
+    CHECK(eng_load(m1_cur, m1_cur_len) == 0);
+    m1_cur[sec + 1u] = (uint8_t)o0;                             /* a track entry that names no Steps module */
+    CHECK(eng_load(m1_cur, m1_cur_len) != 0);
+    m1_cur[sec + 1u] = (uint8_t)t0;
+    m1_cur[sec + 3u] = ENG_LOCK_PAIRS + 1u;                     /* a row of too many parameters */
+    CHECK(eng_load(m1_cur, m1_cur_len) != 0);
+    free(kit);
+    printf("locks ok\n");
     return 0;
 }
 
@@ -834,6 +950,8 @@ int main(int argc, char **argv)
         printf("track notes ok\n");
     }
     if (argc > 13 && patterns_test(argv[12], argv[13]))         /* format 48: the patterns and songs */
+        return 1;
+    if (argc > 14 && locks_test(argv[14]))                      /* format 49: the P-locks (#524) */
         return 1;
     {   /* the presets (#195): PUT, PRESETS, GET, DEL, the full store, PRESET_STORED */
         uint8_t pl[4 + 16 + 1 + 4 * 177], fr[8 + (8 * sizeof pl + 6) / 7], got[sizeof pl];

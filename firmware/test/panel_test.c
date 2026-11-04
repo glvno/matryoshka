@@ -4,6 +4,7 @@
  * PLAY / tempo, a key and the MIDI out of every control (#115), checked on the core's state and on the LCD's framebuffer (ui_preview.c's stand-ins).
  *   tools/panel_test.sh */
 #define UI_PREVIEW_LIB
+#define CTL_GESTURES                                        /* (controls.h: the rows' gestures, controls_test.h) */
 #define FB_WATCH
 #include "ui_preview.c"
 
@@ -15,6 +16,22 @@ static void m1_param_now(uint32_t mod, uint32_t par, int32_t v) { (void)mod; (vo
 static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v) { (void)mod; (void)par; (void)v; }
 static void m1_panel_on(uint32_t mask) { (void)mask; }
 static void m1_patch_bypass(uint32_t mod, int on) { (void)mod; (void)on; }
+/* KEYS_NOW (#549): each key edge panel_key took, with the keys and buttons held then (report_test.h) */
+#define M1_KEYS_NOW
+#define PANEL_ALIGN
+static uint32_t kr_key[64], kr_keys[64], kr_held[64];
+static int kr_down[64], kr_n;
+static uint32_t keys_now;
+static void m1_keys_now(uint32_t n, int down)
+{
+    if (kr_n >= 64)
+        kr_n = 0;
+    kr_key[kr_n] = n;
+    kr_down[kr_n] = down;
+    kr_keys[kr_n] = keys_now;
+    kr_held[kr_n] = panel_held;
+    kr_n++;
+}
 #include "../src/panel.c"
 /* the hooks */
 static int presets_stepped, saved, midi_out;
@@ -379,6 +396,8 @@ static int marks_ok(int mod)
 #include "help_test.h"                              /* #450: OCT on release, the controls sheet, the quick start */
 #include "nudge_test.h"                             /* #450: the nudges (D-249), ENV in the menu */
 #include "steprec_test.h"                           /* #532: step record on the SEQ page */
+#include "controls_test.h"                          /* #553: every row of the controls table driven, its effect checked */
+#include "report_test.h"                            /* #549: KEYS_NOW, GUIDE_NOW, panel_align */
 
 int main(void)
 {
@@ -759,7 +778,7 @@ int main(void)
                                                "OCT", "K1", "K2", "K3", "K4", "KNOB", "KNOBS", "BUTTON", "BUTTONS", "FX",
                                                "LFO", "EDIT", "ARP"};
             static const char *const IDEA[] = {"#PATCH", "#PRESET", "#DEVICE", "#ASSEMBLY", "#MODULE", "#ENGINE", "#PAGE",
-                                               "#TRACK", "#PATTERN", "#SONG", "#ARMING", "#THE ENVIRONMENT", "#SANDBOX MODE", "#LIVE"};
+                                               "#TRACK", "#PATTERN", "#P-LOCK", "#SONG", "#ARMING", "#THE ENVIRONMENT", "#SANDBOX MODE", "#LIVE"};
             uint32_t i, k, bad = 0, ctrl = 0, vocab = 0;
             for (i = 0; i < MAN_N; i++) {
                 const char *l = MANUAL[i];
@@ -782,7 +801,7 @@ int main(void)
             check("  GUIDE lines: at most 35 characters, capitals, no ';' (D-200)", bad == 0u);
             check("  GUIDE: the first two lines, then no control named (D-248)", !strcmp(MANUAL[0] + 1, "PRESS OCT- + OCT+")
                   && !strcmp(MANUAL[1] + 1, "TO SEE CONTROLS FOR CURRENT PAGE") && ctrl == 0u);
-            check("  GUIDE: a heading for each of the 14 ideas of D-248", vocab == 14u);
+            check("  GUIDE: a heading for each of the 14 ideas of D-248, and P-lock (#524)", vocab == 15u);
         }
         enc(1, 1);
         check("ALGO wraps to MIDI, the coral header back", menu_tab == MT_MIDI && px(2, 2) == P_CORAL);
@@ -1595,6 +1614,77 @@ int main(void)
         panel_keys(0);
         loop();
         check("again: off", !eng_steps_note((uint32_t)pat, 2u, 58u) && roll_shows(pat));
+        {                                                   /* the owner's 1.9.0 device check (2026-11-03): a white key switches
+                                                             * its step when let go, unless the step was used while held */
+            uint32_t hw2;
+            panel_keys(1u << n);                            /* the empty step held: nothing yet, the hint names its knobs */
+            loop();
+            check("a white key held on an empty step: nothing switched yet, the step held, the hint HELD",
+                  !eng_steps_note((uint32_t)pat, 2u, 58u) && seq_held == 2 && !strcmp(seq_grid_text[2], HINT_HELD_ROLL));
+            panel_keys(0);
+            loop();
+            check("  let go with nothing done: the note there", eng_steps_note((uint32_t)pat, 2u, 58u) != 0);
+            panel_keys(1u << n);                            /* a note held: it stays while the key is down */
+            loop();
+            check("a white key held on a note: it stays while held", eng_steps_note((uint32_t)pat, 2u, 58u) != 0 && seq_held == 2);
+            later(200);
+            enc(3, -3);                                     /* + K2: its velocity; the release then switches nothing */
+            hw2 = eng_steps_note((uint32_t)pat, 2u, 58u);
+            check("  + K2: its velocity (97)", hw2 && ((hw2 >> 19) & 127u) == 97u);
+            panel_keys(0);
+            loop();
+            hw2 = eng_steps_note((uint32_t)pat, 2u, 58u);
+            check("  let go after a turn: the note stays, its velocity kept", hw2 && ((hw2 >> 19) & 127u) == 97u);
+            panel_keys(1u << n);                            /* held and let go with nothing done: off */
+            panel_keys(0);
+            loop();
+            check("a tap on the note: off", !eng_steps_note((uint32_t)pat, 2u, 58u));
+            panel_keys(1u << n);                            /* the empty step held + K3: the note there with its chance */
+            loop();
+            enc(4, -1);
+            panel_keys(0);
+            loop();
+            hw2 = eng_steps_note((uint32_t)pat, 2u, 58u);
+            check("an empty step held + K3, let go: the note there with its chance (95 %), not switched off again",
+                  hw2 && ((hw2 >> 26) & 31u) == 1u);
+            panel_keys(1u << n);                            /* (off again: a tap) */
+            panel_keys(0);
+            loop();
+            panel_keys(1u << n);                            /* the empty step held + ALGO (a lock page): used, nothing switched */
+            loop();
+            enc(1, 1);
+            enc(1, -1);
+            panel_keys(0);
+            loop();
+            check("an empty step held + ALGO, let go: nothing switched (a lock needs no note)",
+                  !eng_steps_note((uint32_t)pat, 2u, 58u) && seq_lpg == 0u && roll_shows(pat));
+            {                                               /* a second white key pressed while one is held: the first switched then */
+                uint32_t n2, k2;
+                for (k2 = 3; k2 < 15u && eng_steps_note((uint32_t)pat, k2, 58u); k2++)
+                    ;                                       /* (a step without A#3) */
+                for (n2 = 0; seq_white(n2) != (int)k2; n2++)
+                    ;
+                panel_keys(1u << n);
+                loop();
+                panel_keys(1u << n | 1u << n2);
+                loop();
+                check("a second white key while one is held: the first's step switched then, the second held",
+                      eng_steps_note((uint32_t)pat, 2u, 58u) && !eng_steps_note((uint32_t)pat, k2, 58u) && seq_held == (int)k2);
+                panel_keys(1u << n2);
+                loop();
+                panel_keys(0);
+                loop();
+                check("  both let go: both steps on", eng_steps_note((uint32_t)pat, 2u, 58u) && eng_steps_note((uint32_t)pat, k2, 58u));
+                panel_keys(1u << n);                        /* (both off again) */
+                panel_keys(0);
+                panel_keys(1u << n2);
+                panel_keys(0);
+                loop();
+                check("  (both off again)", !eng_steps_note((uint32_t)pat, 2u, 58u) && !eng_steps_note((uint32_t)pat, k2, 58u)
+                      && roll_shows(pat));
+            }
+        }
+        later(1600);                                        /* (the held step's messages gone from the bar) */
 
         fb_watch_reset();                                   /* SELECT (D-809): the view a page of 8 pitches down (C3-G3) */
         lcd_px = lcd_xfers = 0;
@@ -1743,9 +1833,9 @@ int main(void)
         loop();
         check("(FX + OCT+: octave 0 again)", octave == 0 && seq_grid_note(-1, seq_row) == 46u);
 
-        panel_keys(1u << 0);                                /* step 1 held (its A#2 switched off by the press) */
+        panel_keys(1u << 0);                                /* step 1 held (its A#2 stays: a press switches nothing) */
         loop();
-        enc(2, 1);                                          /* + K1: the note back, a semitone up, the row follows */
+        enc(2, 1);                                          /* + K1: the note a semitone up, the row follows */
         check("a held step + K1: its note in the selected row a semitone up (B2), the row follows it",
               eng_steps_note((uint32_t)pat, 0u, 47u) && !eng_steps_note((uint32_t)pat, 0u, 46u) && seq_grid_note(-1, seq_row) == 47u
               && !strcmp(msg_text, "STEP 1  B2  VEL 127"));
@@ -1786,6 +1876,48 @@ int main(void)
         enc(0, -1);
         panel_keys(0);
         loop();
+        {                                                   /* P-locks (#524, #519 Q2 / Q11): step 1 held, ALGO to the device */
+            const ppage_t *lp;
+            uint32_t m0, j0, nl0 = (uint32_t)eng_locks_count(), told = host_locks_told, lpat = seq_lock_pat(pat);
+            int32_t normal, lv = 0;
+            panel_keys(1u << 0);
+            loop();
+            check("P-locks: a held step's hint names ALGO's lock pages", !strcmp(seq_grid_text[2], HINT_HELD_ROLL));
+            enc(1, 1);                                      /* + ALGO: the first page of the device the track plays */
+            lp = seq_lock_page();
+            check("  + ALGO: the first page of the Silver Box (the device PATTERN drives), LOCK and its name in the bar, the hint its knobs",
+                  lp && seq_lpg == 1u && !strncmp(msg_text, "LOCK ", 5) && !strcmp(seq_grid_text[2], HINT_HELD_LOCK));
+            m0 = lp ? lp->mod[0] : 0u;
+            j0 = lp ? lp->par[0] : 0u;
+            normal = eng_get_param(m0, j0);
+            enc(2, 3);                                      /* + K1: its first row locked on step 1, three clicks from its value */
+            check("  + K1: a lock on step 1 (the row's own value stays), LOCK in the bar, LOCKS_NOW sent, the note the press switched back",
+                  eng_lock_get((uint32_t)pat, lpat, 0u, m0, j0, &lv) && lv != normal && eng_get_param(m0, j0) == normal
+                  && (uint32_t)eng_locks_count() == nl0 + 1u && host_locks_told > told && !strncmp(msg_text, "LOCK ", 5)
+                  && eng_steps_note((uint32_t)pat, 0u, 46u));
+            check("  the step's cell has the gold corner mark, the track line marks the locked row",
+                  px(seq_grid_x(0) + GRID_CW - 1u, GRID_Y + GRID_RH * seq_row) == P_GOLD && seq_grid_text[1][0] == '*');
+            snap_to(getenv("PANEL_SNAP_LOCK"));
+            enc(2, -3);                                     /* back to the row's value: no lock */
+            check("  + K1 back to the row's value: the lock goes (NO LOCK), the mark too", !eng_lock_get((uint32_t)pat, lpat, 0u, m0, j0, 0)
+                  && (uint32_t)eng_locks_count() == nl0 && strstr(msg_text, "NO LOCK") != 0
+                  && px(seq_grid_x(0) + GRID_CW - 1u, GRID_Y + GRID_RH * seq_row) != P_GOLD);
+            enc(2, 2);                                      /* locked again, then the step let go: the lock stays */
+            enc(1, -1);                                     /* ALGO back: the note's stop, K1 the note again */
+            check("  ALGO back: the note's stop (K1 its note again)", seq_lpg == 0u && !seq_lock_page());
+            panel_keys(0);
+            loop();
+            check("  let go: the lock stays, marked", eng_locks_step((uint32_t)pat, lpat, 0u) == 1
+                  && px(seq_grid_x(0) + GRID_CW - 1u, GRID_Y + GRID_RH * seq_row) == P_GOLD);
+            panel_keys(1u << 0);                            /* (step 1 held: its lock removed, the note as it was) */
+            loop();
+            enc(1, 1);
+            enc(2, -2);
+            enc(1, -1);
+            panel_keys(0);
+            loop();
+            check("  (removed again)", eng_locks_step((uint32_t)pat, lpat, 0u) == 0 && eng_steps_note((uint32_t)pat, 0u, 46u));
+        }
 
         panel_held |= 1u << BTN_LFO;                        /* LFO + step 11: A#2 on step 9 (2 steps) goes on through it */
         panel_keys(1u << 18);
@@ -1910,7 +2042,7 @@ int main(void)
         tap(BTN_SEQ);                                       /* SEQ while recording: the take's track, its keyboard */
         loop();
         check("SEQ while REC records: PATTERN's roll, all keys its keyboard (the hint says so)", page == PAGE_SEQ && seq_trk == 1u
-              && seq_kbd() && !strcmp(seq_grid_text[2], "KEYS record  SELECT page  OCT octave  FX acc"));
+              && seq_kbd() && !strcmp(seq_grid_text[2], HINT_LIVE));
         later(1100);
         check("  its bar: PATTERN REC on red", bar_shows("PATTERN REC G#3-D#4 P01", C_RED));
         snap_to(getenv("PANEL_SNAP_ROLL_REC"));
@@ -1950,6 +2082,7 @@ int main(void)
         enc(1, 1);
         loop();
         check("  ALGO back: PATTERN records again", seq_rec && seq_trk == 1u && (E.trk_rec >> E.node[pat].trk & 1u) && seq_kbd());
+        mlen = 0;                                           /* (the MIDI log holds 256 messages; the clock out fills it) */
         {
             int at = mlen;
             tap(BTN_PLAY);                                  /* PLAY stops everything */
@@ -2018,7 +2151,7 @@ int main(void)
         page_set(PAGE_SEQ);
         later(1500);
         check("Scrounge's PATTERN: the drum grid of its map's rows, not the roll", page == PAGE_SEQ && seq_map() >= 0
-              && px(4u + GRID_NAME_W - 1u, GRID_Y + 1u) == C_ACC && !strcmp(seq_grid_text[2], "BLACK row  WHITE step  FX acc  SEL song"));
+              && px(4u + GRID_NAME_W - 1u, GRID_Y + 1u) == C_ACC && !strcmp(seq_grid_text[2], HINT_DRUM));
         snap_to(getenv("PANEL_SNAP_SCROUNGE"));
         while (page != 0u && trail_n)
             tap(BTN_HOME);
@@ -2466,6 +2599,18 @@ int main(void)
             check("a step held + SELECT: its chance (90 %), the row stays", seq_row == 0u && hw && ((hw >> 26) & 31u) == 2u);
         }
         panel_keys(0);
+        loop();
+        check("  let go after the turn: the hit stays (the owner's 1.9.0 device check: a used step switches nothing)",
+              eng_steps_note((uint32_t)drums, (uint32_t)k, seq_row_note(map, 0)) != 0);
+        panel_keys(1u << n);                                /* held with nothing done: the hit stays while held, off when let go */
+        loop();
+        check("a drum step held: its hit stays while the key is down", eng_steps_note((uint32_t)drums, (uint32_t)k, seq_row_note(map, 0)) != 0);
+        panel_keys(0);
+        loop();
+        check("  let go with nothing done: off", !eng_steps_note((uint32_t)drums, (uint32_t)k, seq_row_note(map, 0)));
+        panel_keys(1u << n);                                /* (on again, as it was, its chance 100 %) */
+        panel_keys(0);
+        loop();
         enc(0, 2);                                          /* (row 3 again) */
         for (k = 0; k < 16 && eng_steps_note((uint32_t)drums, (uint32_t)k, seq_row_note(map, 2)); k++)
             ;                                               /* a step without the clap */
@@ -2593,17 +2738,17 @@ int main(void)
         eng_set_param((uint32_t)drums, STEPS_P_LEN, 32 << 16);
         ui_dirty = 2;
         loop();
-        check("a track of 32: the hint names OCT for steps 17 and up (#490)", !strcmp(seq_grid_text[2], "BLACK/SELECT row  WHITE step  FX acc  OCT 17+"));
+        check("a track of 32: the hint names OCT for steps 17 and up (#490)", !strcmp(seq_grid_text[2], HINT_DRUM_LONG));
         {                                                   /* a step held: the hint line names its knobs, let go: back (#450) */
             uint32_t wk;
             for (wk = 0; seq_white(wk) != 0; wk++)
                 ;
             panel_keys(1u << wk);
             loop();
-            check("a step held: the hint says HELD STEP and its knobs", seq_held == 0 && !strcmp(seq_grid_text[2], "HELD STEP: K2 vel  SELECT chance"));
+            check("a step held: the hint says HELD and its knobs", seq_held == 0 && !strcmp(seq_grid_text[2], HINT_HELD_DRUM));
             panel_keys(0);
             loop();
-            check("  let go: the hint as before", seq_held < 0 && !strcmp(seq_grid_text[2], "BLACK/SELECT row  WHITE step  FX acc  OCT 17+"));
+            check("  let go: the hint as before", seq_held < 0 && !strcmp(seq_grid_text[2], HINT_DRUM_LONG));
         }
         tap(BTN_OCT_UP);
         ok = seq_pg == 1u && octave == 0;
@@ -3455,6 +3600,74 @@ int main(void)
               runs > 1000u && bad == 0u);
         cfg.accel = accel_was;
     }
+    {   /* #525: a Matrix device's pages are its four outputs (OUT 1..OUT 4, each its own group); each draws the whole 4 x 4
+         * grid (page_grid). K1..K4 turn the column's pins; ALGO moves the column; a pin of another column set from the editor
+         * shows with the ten-a-second pass. After each, the screen is the screen drawn whole, pixel for pixel */
+        static uint16_t inc[240 * 240];
+        static int32_t al[128], ar[128];
+        static const int32_t TURN[] = {1, 3, -1, 12, -30, 30, 5, -2};
+        uint32_t d, g, k, t, i, n, bad = 0, runs = 0, names = 0;
+        int mx = -1, turned = 1, grid = 1;
+        sb_on = 0;
+        page = 0;
+        check("Matrix fixture loads", load_fixture("build/panel-fixtures/matrix-audio.m1p") == 0);
+        pv_gen++;
+        eng_render(al, ar, 128);
+        screen_idle();
+        pages_ensure();
+        for (d = 0; d < pg_ndev; d++)
+            if (pg_dev[d].module >= 0 && eng_type((uint32_t)pg_dev[d].module) == T_MATRIX)
+                mx = (int)d;
+        check("the Matrix is a device of four pages", mx >= 0 && pg_dev[mx].npg == 4u);
+        for (g = 0; mx >= 0 && g < pg_dev[mx].npg; g++) {
+            const ppage_t *pg = &pg_page[pg_dev[mx].pg0 + g];
+            char want[8] = "OUT 1";
+            want[4] = (char)('1' + g);
+            names += pg->nlen == 5u && !memcmp(pg->name, want, 5) && pg->part == 0u && pg->parts == 1u;
+            grid &= page_grid(pg) == (int)g;
+            (void)pages_focus((uint32_t)mx, g);
+            ui_dirty = 2;
+            loop();
+            for (k = 0; k < PG_ROWS; k++)
+                for (t = 0; t < sizeof TURN / sizeof TURN[0]; t++) {
+                    uint32_t mod = (uint32_t)pg_dev[mx].module, par = g * MATRIX_NOUT + k;
+                    int32_t was = eng_get_param(mod, par), other = eng_get_param(mod, ((g + 1u) % MATRIX_NOUT) * MATRIX_NOUT + k);
+                    fm1_ms += 150u;
+                    enc(2u + k, TURN[t]);
+                    turned &= eng_get_param(mod, par) != was || was == DEFS[T_MATRIX].pmin[par] || was == DEFS[T_MATRIX].pmax[par];
+                    if (t == 3u) {                      /* the editor sets a pin of the next column */
+                        eng_set_param(mod, ((g + 1u) % MATRIX_NOUT) * MATRIX_NOUT + k, other ? 0 : 40000);
+                        eng_render(al, ar, 128);
+                        later(120);
+                    }
+                    if (t == 5u) {                      /* ALGO there and back */
+                        enc(1, 1);
+                        loop();
+                        enc(1, -1);
+                        loop();
+                    }
+                    memcpy(inc, fb, sizeof inc);
+                    ui_dirty = 2;
+                    loop();
+                    runs++;
+                    for (i = 0, n = 0; i < 240u * 240u; i++)
+                        n += inc[i] != fb[i];
+                    if (n) {
+                        if (bad < 6u)
+                            printf("      (Matrix page %u K%u turn %u: %u px differ)\n", g, k + 1u, t, n);
+                        bad++;
+                    }
+                }
+        }
+        check("the Matrix's pages: OUT 1..OUT 4, each its own group, each a grid of its column", names == 4u && grid);
+        check("K1..K4 on a Matrix page turn its column's pins (in 1..in 4)", turned);
+        check("the Matrix's grid redrawn in place (a turn, ALGO, the editor's pin) is the screen drawn whole", runs == 128u && bad == 0u);
+        (void)load("808 KIT");
+        pv_gen++;
+        page = 0;
+        trail_n = 0;
+        screen_idle();
+    }
     {   /* the owner's design (2026-10-24): on every page of every factory patch, reached by SELECT and ALGO (drawn in
          * passes, now and then stopped by a waiting click), and on every patch reached by PRESET (its toast first, the page
          * around it) and when its toast ends, the screen is the screen drawn whole, pixel for pixel; and the pixels each
@@ -3560,6 +3773,32 @@ int main(void)
     }
     check("no renderer wrote the line buffer the LCD was still reading (#377: lcd_line is the other one, afresh each row)",
           lcd_line_clobbers == 0u);
+    {   /* a module with its own name (#518, format 49: a device of kind 2): golden.ts's fm-3pm-index kit names its carrier */
+        FILE *f = fopen("build/golden/fm-3pm-index.m1p", "rb");
+        if (!f)
+            printf("skip  named module: no build/golden/fm-3pm-index.m1p (tools/golden.sh writes it)\n");
+        else {
+            uint32_t d, n = 0, plain = 0;
+            pv_len = (uint32_t)fread(pv_bin, 1, sizeof pv_bin, f);
+            fclose(f);
+            check("named module: the patch loads (format 49)", pv_bin[1] == 49u && eng_load(pv_bin, pv_len) == 0);
+            pv_gen++;
+            page = 0;
+            pg_list_btn = -1;
+            pages_ensure();
+            for (d = 0; d < pg_ndev; d++)
+                if (pg_dev[d].module >= 0 && eng_type((uint32_t)pg_dev[d].module) == T_OSC) {
+                    n++;
+                    plain += pg_dev[d].nlen == 10u && !memcmp(pg_dev[d].name, "OSCILLATOR", 10);
+                }
+            for (d = 0; d < pg_ndev && !(pg_dev[d].nlen == 11u && !memcmp(pg_dev[d].name, "saw carrier", 11)); d++)
+                ;
+            check("named module: the carrier is a device by its name, its pages the oscillator's under that name",
+                  d < pg_ndev && pg_dev[d].module >= 0 && eng_type((uint32_t)pg_dev[d].module) == T_OSC &&
+                  pg_dev[d].npg == (OSC_NPAR + 3u) / 4u && pg_page[pg_dev[d].pg0].name == pg_dev[d].name);
+            check("named module: the other oscillators keep their type's name", n == 4u && plain == 3u);
+        }
+    }
     {   /* a card row that sets several parameters and a Selector's named positions (#357, #358): golden.ts's card-rows kit
          * (test-patches.ts cardRows): the voice's page is CUTOFF (both filters), RES (both), SOURCE (LOW HIGH RAW, 3 in use),
          * COUNT */
@@ -4168,6 +4407,8 @@ int main(void)
     }
     nudge_suite();
     steprec_suite();
+    controls_suite();
+    report_suite();
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
     return failed != 0;
 }

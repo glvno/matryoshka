@@ -39,10 +39,10 @@
 #define M1_PATCH_MAX 3840u                                   /* a bank slot is one 4 KB sector: 256 B of header, the patch */
 #define M1_VERSION 1
 
-enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_PRESETS = 0x2D, C_PRESET_GET = 0x2E, C_PRESET_PUT = 0x2F, C_PRESET_DEL = 0x30, C_SANDBOX = 0x31, C_TEST_KEY = 0x32, C_TEST_TURN = 0x33, C_TEST_SCREEN = 0x34, C_TEST_PEAK = 0x35, C_PATTERN = 0x36, C_SONG = 0x37, C_TEMPO = 0x38, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B, R_PRESET = 0x4C, R_PRESET_DATA = 0x4D, R_PRESET_STORED = 0x4E, R_SCREEN = 0x50, R_PEAK = 0x51, R_PATTERN_NOW = 0x52, R_SONG_NOW = 0x53, R_ARMS_NOW = 0x54, R_TEMPO_NOW = 0x55 };
+enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_PRESETS = 0x2D, C_PRESET_GET = 0x2E, C_PRESET_PUT = 0x2F, C_PRESET_DEL = 0x30, C_SANDBOX = 0x31, C_TEST_KEY = 0x32, C_TEST_TURN = 0x33, C_TEST_SCREEN = 0x34, C_TEST_PEAK = 0x35, C_PATTERN = 0x36, C_SONG = 0x37, C_TEMPO = 0x38, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B, R_PRESET = 0x4C, R_PRESET_DATA = 0x4D, R_PRESET_STORED = 0x4E, R_SCREEN = 0x50, R_PEAK = 0x51, R_PATTERN_NOW = 0x52, R_SONG_NOW = 0x53, R_ARMS_NOW = 0x54, R_TEMPO_NOW = 0x55, R_LOCKS_NOW = 0x56, R_KEYS_NOW = 0x57, R_GUIDE_NOW = 0x58 };
 #define M1_FEATURES 246u                                     /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW, bit 6 = LIVE, bit 7 = the presets (#195) (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
 #define M1_FEATURES2 255u                                     /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down, bit 11 = reads format 35, bit 12 = reads format 36, bit 13 = reads format 37, bit 14 = reads format 38, bit 15 = reads format 39 (legacy editor compatibility; INFO bytes 7..8 report the readable range) */
-#define M1_FEATURES3 3u                                       /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485) */
+#define M1_FEATURES3 7u                                       /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485), bit 18 = KEYS_NOW and GUIDE_NOW (the panel's keys and state, #549) */
 #define M1_INFO_MIDI_OUT 4u                                  /* INFO byte 3 (flags) bit 2: MENU > MIDI OUT is on (with feature bit 8) */
 #define M1_PNAME 16u                                         /* a preset's name (presetstore.c PS_NAME) */
 #define M1_PVALS 176u                                        /* a preset's values at most (presetstore.c PS_MAXV; 88 before feature bit 17) */
@@ -150,6 +150,27 @@ static void m1_info(void)
     p[12] = M1_FEATURES3;
     m1_reply(R_INFO, p, sizeof p);
 }
+
+/* the editor said HELLO since power-on: the panel's reports (KEYS_NOW, GUIDE_NOW) go out; a GUIDE_NOW is due (after INFO) */
+static uint8_t m1_heard, m1_guide_due;
+/* unasked (#549, feature bit 18): a key edge the panel took, with MENU > MIDI OUT on: key u8 (0 = F3; bit 7 pressed), the
+ * keys held after it (u32 LE, bit n key n), the buttons held then (u16 LE, matrix ids). The editor's copy of the panel
+ * logic takes the same edge with the same buttons held, as the keys' own MIDI notes cannot tell it */
+static void m1_keys_report(uint32_t key, int down, uint32_t keys, uint32_t held)
+{
+    uint8_t p[7];
+    p[0] = (uint8_t)((key & 31u) | (down ? 0x80u : 0u));
+    p[1] = (uint8_t)keys;
+    p[2] = (uint8_t)(keys >> 8);
+    p[3] = (uint8_t)(keys >> 16);
+    p[4] = (uint8_t)(keys >> 24);
+    p[5] = (uint8_t)held;
+    p[6] = (uint8_t)(held >> 8);
+    m1_reply(R_KEYS_NOW, p, 7);
+}
+/* unasked (#549, #554, feature bit 18): the panel's state (help_ui.c guide_state, n bytes) after HELLO and whenever it
+ * changed */
+static void m1_guide_now(const uint8_t *p, uint32_t n) { m1_reply(R_GUIDE_NOW, p, n); }
 
 /* TEMPO_NOW: GLO > PANEL > TEMPO (0 GLOBAL, 1 PATCH) and the global tempo (bpm, u16; 0 = not known yet), after INFO and
  * unasked when either changed on the FM-1 (D-907) */
@@ -384,7 +405,7 @@ static int m1_valid(const uint8_t *p, uint32_t len)
     uint32_t at = eng_records_at(p, len);
     if (!at || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION) || p[3] > POLY_MAX_GROUPS)
         return 0;
-    if ((p[7] & ~(ENG_FLAG_EXTRAS | ENG_FLAG_MORPH_MODULES | ENG_FLAG_PATTERNS)) || ((p[7] & ENG_FLAG_MORPH_MODULES) && (p[1] < 36u || !(p[6] & 1u))) || ((p[7] & ENG_FLAG_PATTERNS) && p[1] < 48u) || (p[1] < 34u && p[7]) || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
+    if ((p[7] & ~(ENG_FLAG_EXTRAS | ENG_FLAG_MORPH_MODULES | ENG_FLAG_PATTERNS | ENG_FLAG_LOCKS)) || ((p[7] & ENG_FLAG_MORPH_MODULES) && (p[1] < 36u || !(p[6] & 1u))) || ((p[7] & ENG_FLAG_PATTERNS) && p[1] < 48u) || ((p[7] & ENG_FLAG_LOCKS) && p[1] < 49u) || (p[1] < 34u && p[7]) || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
         return 0;
     if (p[2] > ENG_MAX_MODULES || ((uint32_t)p[4] | (uint32_t)p[5] << 8) > ENG_MAX_CABLES)
         return 0;
@@ -619,6 +640,47 @@ static void m1_patch_patterns(void)
     m1_edited = 1;
 }
 
+/* the P-locks as the engine has them into the binary (format 49, #524; SAVE keeps them): the section after the patterns
+ * replaced, made or dropped, what follows moves. 1 done; 0 when the binary is older than format 49 or would outgrow
+ * M1_PATCH_MAX (the caller undoes the engine's edit: the two never differ) */
+static int m1_patch_locks(void)
+{
+    uint32_t sec = m1_notes_at(), old = 0;
+    int n;
+    if (!sec || m1_cur[1] < 49u)
+        return 0;
+    if ((m1_cur[6] & 16u) && !(sec = eng_notes_end(m1_cur, m1_cur_len, sec)))
+        return 0;
+    if ((m1_cur[7] & ENG_FLAG_PATTERNS) && !(sec = eng_patterns_end(m1_cur, m1_cur_len, sec)))
+        return 0;
+    if ((m1_cur[7] & ENG_FLAG_LOCKS) && !(old = eng_locks_end(m1_cur, m1_cur_len, sec)))
+        return 0;
+    old = old ? old - sec : 0u;
+    n = eng_locks_record(0, 0);
+    if (n < 0 || m1_cur_len - old + (uint32_t)n > M1_PATCH_MAX)
+        return 0;
+    if (!n && !old)
+        return 1;
+    m1_splice(sec, old, (uint32_t)n);
+    (void)eng_locks_record(m1_cur + sec, (uint32_t)n);
+    m1_cur[7] = (uint8_t)(n ? m1_cur[7] | ENG_FLAG_LOCKS : m1_cur[7] & ~ENG_FLAG_LOCKS);
+    m1_edited = 1;
+    return 1;
+}
+/* unasked: a track's locks of a pattern after an edit on the SEQ page (#524; the editor follows): module, pattern, n, n
+ * (step, module, parameter, i32 LE value) */
+static void m1_locks_now(uint32_t mod, uint32_t pat)
+{
+    static uint8_t p[3u + 7u * ENG_PAT_LOCKS] ENG_POOL;
+    int n = eng_locks_list(mod, pat, p + 3, 7u * ENG_PAT_LOCKS);
+    if (n < 0)
+        return;
+    p[0] = (uint8_t)mod;
+    p[1] = (uint8_t)pat;
+    p[2] = (uint8_t)(n > (int)ENG_PAT_LOCKS ? ENG_PAT_LOCKS : n);
+    m1_reply_long(R_LOCKS_NOW, p, 3u + 7u * p[2]);
+}
+
 /* unasked: the patch's pattern and song as the FM-1 chose them (PRESET on the SEQ page, the SONG page; the editor follows) */
 static void m1_pattern_now(void)
 {
@@ -664,7 +726,7 @@ static void m1_patch_range(uint32_t mod, uint32_t pin, uint32_t par, int on, uin
     }
     n = m1_cur[sec];
     for (i = 0, at = sec + 1u; i < n; i++, at += 5)
-        if (m1_cur[at] == mod && m1_cur[at + 1] == pin && m1_cur[at + 2] == par)
+        if (m1_cur[at] == mod && (m1_cur[at + 1] & 1u) == pin && m1_cur[at + 2] == par)
             break;
     if (i < n && !on) {                                         /* remove: the last entry moves into its place */
         uint32_t last = sec + 1u + 5u * (n - 1u), k;
@@ -687,7 +749,7 @@ static void m1_patch_range(uint32_t mod, uint32_t pin, uint32_t par, int on, uin
         m1_cur_len += 5u;
     }
     m1_cur[at] = (uint8_t)mod;
-    m1_cur[at + 1] = (uint8_t)pin;
+    m1_cur[at + 1] = (uint8_t)(pin | (on & 2 ? 0x80u : 0u));   /* (bit 7: bipolar, patchbin.ts RANGE_BIPOLAR) */
     m1_cur[at + 2] = (uint8_t)par;
     m1_cur[at + 3] = (uint8_t)lo;
     m1_cur[at + 4] = (uint8_t)hi;
@@ -710,6 +772,8 @@ static int m1_handle(const uint8_t *f, uint32_t n)
     case C_HELLO:
         m1_info();
         m1_tempo_now();
+        m1_heard = 1;                                        /* (the editor is there: GUIDE_NOW, KEYS_NOW; main.c guide_poll) */
+        m1_guide_due = 1;
         break;
     case C_TEMPO:                                            /* mode u8, bpm u16 (0: the global tempo stays) */
         if (len >= 3u) {
@@ -863,8 +927,8 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         break;
     case C_RANGE:
         if (len >= 6u) {
-            if (eng_set_range(d[0], d[1], d[2], d[3] != 0, d[4], d[5]))
-                m1_patch_range(d[0], d[1], d[2], d[3] != 0, d[4], d[5]);
+            if (eng_set_range(d[0], d[1], d[2], d[3] & 3, d[4], d[5]))   /* (on: bit 0 on, bit 1 bipolar, #526) */
+                m1_patch_range(d[0], d[1], d[2], d[3] & 3, d[4], d[5]);
             m1_ui_changed();
         }
         break;

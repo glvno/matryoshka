@@ -16,11 +16,13 @@ on:
       - web/public/firmware/matryoshka.fwsc
       - web/package-lock.json
       - web/scripts/export-defs.ts
+      - web/scripts/controls-h.ts
       - web/scripts/legacy-factory.json
       - web/scripts/golden.ts
       - web/src/arpeggiator.ts
       - web/src/assembly.ts
       - web/src/cpu-costs.json
+      - web/src/controls.ts
       - web/src/cpu.ts
       - web/src/device-compile.ts
       - web/src/engine.ts
@@ -37,6 +39,7 @@ on:
       - web/src/test-patches.ts
       - web/src/test-poly.ts
       - web/src/track.ts
+      - web/src/locks.ts
       - web/src/wavetables.json
       - web/src/arm.ts
       - web/src/assemblies.ts
@@ -116,7 +119,7 @@ jobs:
         working-directory: web
         run: |
           npm run export-defs
-          git diff --exit-code ../firmware/src/defs.h ../firmware/src/presets.h || { echo "::error::defs.h / presets.h are stale: run 'npm run export-defs' and commit"; exit 1; }
+          git diff --exit-code ../firmware/src/defs.h ../firmware/src/presets.h ../firmware/src/controls.h ../README.md || { echo "::error::defs.h / presets.h / controls.h / the README's controls are stale: run 'npm run export-defs' and commit"; exit 1; }
       - name: build the firmware, no warnings, pool headroom >= 8 KB
         run: |
           export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"

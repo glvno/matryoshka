@@ -172,25 +172,43 @@ function bends(values: number[], costs: number[][], thr: number, step: boolean):
 }
 
 const GRID_MAX = 16384;
+/** settings left out of the dims search, counted another way (cpu.ts OSC_PM_SUM): the oscillator's summed phase modulation
+ * (#518) runs its FM path as one patched pm input does, plus the summing loop (TypeCost.pmSum); as dims they would push
+ * its wave and pitch out of the grid */
+const FOLDED: Record<string, { params: string[]; inputs: string[] }> = { osc: { params: ['pm2', 'pm3'], inputs: ['pm2', 'pm3', 'index'] } };
 /** types whose outputs each cost the same whatever else is patched (a constant fill per output): their outputs are
- * additive, not dimensions of the grid (the Drum map's sixteen would make a grid of 2^14 points; the Selector's eight gates) */
-const ADDITIVE_OUTPUTS = new Set(['drummap', 'select']);
+ * additive, not dimensions of the grid (the Drum map's sixteen would make a grid of 2^14 points; the Selector's eight gates; the Shift register's ten) */
+const ADDITIVE_OUTPUTS = new Set(['drummap', 'select', 'shreg']);
 /** `order`: where the setting stands in the definition, so that equal effects sort the same on every run (the probes finish
  * in any order) */
 type Dim = { dim: CostDim; values: number[]; effect: number; order: number; set: (cfg: KitCfg, v: number) => void };
 
+/** a Matrix (#525): its cost is its columns (TypeCost.matrix), not a grid of its sixteen pins: out1 read with k pins in use
+ * (in1..ink patched, their pins at 0.5) over none, and out2 read too, with none */
+async function matrixCost(): Promise<TypeCost> {
+  const base = await measure('matrix');
+  const ins = ['in1', 'in2', 'in3', 'in4'];
+  const pins = await Promise.all([1, 2, 3, 4].map(async (k) =>
+    Math.round((await measure('matrix', { inputs: ins.slice(0, k), params: Object.fromEntries(ins.slice(0, k).map((_, i) => [`i${i + 1}o1`, 0.5])) })).run - base.run)));
+  const out = Math.round((await measure('matrix', { outputs: ['out2'] })).run - base.run);
+  return { run: Math.round(base.run), cv: Math.round(base.cv), matrix: { out, pins } };
+}
+
 async function typeCost(type: string): Promise<TypeCost> {
+  if (type === 'matrix') return matrixCost();
   const def = DEFS[type];
   const base = await measure(type);
   const thr = Math.max(0.03 * base.run, 100);
   const pins = new Set(def.inputs.filter((i) => i.pin).map((i) => i.name));
-  const allInputs = def.inputs.filter((i) => !pins.has(i.name) && i.name !== 'pitch').map((i) => i.name);
+  const folded = FOLDED[type];
+  const allInputs = def.inputs.filter((i) => !pins.has(i.name) && i.name !== 'pitch' && !folded?.inputs.includes(i.name)).map((i) => i.name);
   const dims: Dim[] = [];
   const setParam = (name: string) => (cfg: KitCfg, v: number): void => void (cfg.params = { ...cfg.params, [name]: v });
   // 1. choices, switches, small integers: alone and with every input patched
   const numbers: ParamDef[] = [];
   await Promise.all(
     def.params.map(async (pd, order) => {
+      if (folded?.params.includes(pd.name)) return;
       if ((type === 'scale' || type === 'vca') && pd.name === 'gain') {
         const values = [0, 1, .37];
         const effect = await effectOf(type, (v) => ({ gain: v }), values, [{}, { inputs: allInputs }]);
@@ -253,6 +271,18 @@ async function typeCost(type: string): Promise<TypeCost> {
   if (ADDITIVE_OUTPUTS.has(type)) for (let i = dims.length - 1; i >= 0; i--) if ('output' in dims[i].dim) extra.unshift(...dims.splice(i, 1));
   while (dims.reduce((n, d) => n * d.values.length, 1) > GRID_MAX) extra.unshift(dims.pop()!);
   const out: TypeCost = { run: Math.round(base.run), cv: Math.round(base.cv) };
+  // the oscillator's summed phase modulation: all three pm inputs and the index patched against pm alone, the worse of the
+  // sine operator path and the general one (a square)
+  if (type === 'osc') {
+    const sum = await Promise.all([0, 3].map(async (wave) => {
+      const [all, one] = await Promise.all([
+        measure(type, { params: { wave, pm: 1, pm2: 1, pm3: 1 }, inputs: ['pm', 'pm2', 'pm3', 'index'] }),
+        measure(type, { params: { wave, pm: 1 }, inputs: ['pm'] }),
+      ]);
+      return all.run - one.run;
+    }));
+    out.pmSum = Math.max(0, Math.round(Math.max(...sum)));
+  }
   // a delay whose time keeps moving: its read position glides (engine.c dly_glide) instead of the plain loops; the worse of
   // free and ping-pong, less the pin's own cost (cv)
   if (type === 'delay') {
@@ -438,7 +468,7 @@ const types: Record<string, TypeCost> = Object.fromEntries(names.map((n, i) => [
 for (const type of names) {
   const t = types[type];
   const show = (d: CostDim): string => ('values' in d ? `${d.param}[${d.values.length}]` : 'above' in d ? `${d.param}>${d.above}` : 'points' in d ? `${d.param}~${d.points.length}` : 'exact' in d ? `${d.param}=${d.exact.join('/')}/other` : 'input' in d ? `in:${d.input}` : `out:${d.output}`);
-  console.log(`${type.padEnd(10)} run ${String(t.run).padStart(7)}  cv ${String(t.cv).padStart(5)}${t.dims ? `  ${t.dims.map(show).join(' ')} (${t.grid!.length})` : ''}${t.extra ? `  + ${t.extra.map((e) => show(e.dim)).join(' ')}` : ''}`);
+  console.log(`${type.padEnd(10)} run ${String(t.run).padStart(7)}  cv ${String(t.cv).padStart(5)}${t.dims ? `  ${t.dims.map(show).join(' ')} (${t.grid!.length})` : ''}${t.extra ? `  + ${t.extra.map((e) => show(e.dim)).join(' ')}` : ''}${t.matrix ? `  an output +${t.matrix.out}, pins in use +${t.matrix.pins.join(' / ')}` : ''}`);
 }
 const [cal, loop, sum, cv, bypass, thru] = await Promise.all([calibration(), loopCosts(types), sumCost(), cvCost(), bypassCost(), thruCost()]);
 types.steps.thru = thru;

@@ -384,7 +384,7 @@ typedef struct {
     union {
         struct { uint32_t phase; int32_t s1, y1, y2, pm1, xb, ap[8]; uint32_t ph[4], rc[5][2]; } osc;   /* s1: last sync sample; FM mode: feedback history, pm interpolation, decimator; ph: unison voices 2..5 (plain path); rc: their blep_pos caches, kept across blocks */
         struct { uint32_t seed; walk_t w; uint32_t held_seed; int32_t held, clock; } rnd;   /* seed: engine.ts instSeed */
-        struct { uint32_t phase, seed; int32_t held; uint32_t since; int32_t interval; uint16_t ticks; uint8_t clk_hi, rst_hi, wraps; } lfo;   /* interval: clock edge distance in samples, Q8; wraps: cycles ended since the last snap */
+        struct { uint32_t phase, seed; int32_t held; uint32_t since; int32_t interval; uint16_t ticks; uint8_t clk_hi, rst_hi, wraps; int32_t from, last; } lfo;   /* interval: clock edge distance in samples, Q8; wraps: cycles ended since the last snap; from, last: the random wave's start and its last value */
         struct { int32_t y; } gld;         /* Q24 */
         struct { uint32_t seed; int32_t y; } noise;   /* y: the colour one-pole, Q24 */
         struct { int32_t ic1[3], ic2[3]; } vow;       /* three band passes, Q20 */
@@ -427,6 +427,8 @@ typedef struct {
                                                     * block; held: with repeat on (#184), the keys down (bit k & 31 of held[k >> 5]) */
         struct { int32_t count, c1, r1; } cdv;
         struct { int32_t v, c1; } sh;
+        struct { uint32_t rnd, rnd0; uint8_t reg, pat, c1, r1; } shr;   /* Shift register: the flip stream and where a reset restarts it; the stages (s1 in bit 7), the pattern a reset restores, clock / reset high at the previous sample */
+        struct { uint8_t hi; } cmp;   /* Comparator: gt is high */
         struct { int32_t rem, t1; } pls;
         struct { int32_t w[SELECT_NOUT - 1]; int8_t k; uint8_t fading; } sel;   /* Selector: each input's weight (Q16), the position (-1: none yet) */
     } s;
@@ -441,12 +443,13 @@ typedef struct {
     uint8_t grp;                     /* its poly group (E.grp[]): 0 = it runs once and plays the shared keyboard */
     uint32_t map[6];                 /* the matrix: bit j of map[s] = source s controls parameter j. s: p1 p2 k1 k2 k3 k4 */
     uint32_t input_map[MAX_IN];      /* additional side-input destinations, independent of fixed links */
-    int32_t att[2];                  /* attenuverters of p1, p2: Q16, -1..1 */
+    int32_t att[2];                  /* attenuverters of p1, p2: Q16, -2..2 (patch.ts DEPTH_MAX, #526) */
     int32_t *par;                    /* its type's npar values in par_pool, then, when E.has_b, the morph B side (PARB): npar unit
                                       * positions (0..65535 of the range, octaves for a log parameter); par_spare until it loads */
     uint32_t over;                   /* bit j: parameter j's B side is past pmax (a stretch, DEF_TOP): PARB(nd)[j] is B - pmin in 1/2048 */
     uint32_t ranged[2];              /* bit j: input p1 / p2 has a macro range on parameter j (the entry is in E.ranges) */
     uint8_t trk;                     /* a Steps module: its track (E.trk_first / trk_n / trk_snd) */
+    uint8_t locked;                  /* a P-lock (#524) can set one of its parameters (apply_cv: lock_base) */
     uint8_t ksrc;                    /* a Drum map: where its keys come from (0 none, 1 the keys, 2 + a Steps module's or an
                                       * Arpeggiator's index); a Steps module: 1 = a cable from Main's keys into its keys in
                                       * (engine.ts fed); an Arpeggiator: 0 Main's keys, 2 + the Steps module cabled into its
@@ -457,8 +460,10 @@ typedef struct {
 #define PARB(nd) ((nd)->par + DEFS[(nd)->type].npar)
 
 /* a macro range: input `pin` (0 p1, 1 p2) of module `mod` moves parameter `par` between lo and hi (0..255 of the range,
- * octaves for a log parameter, morph_unit space) instead of adding to its base */
-typedef struct { uint8_t mod, pin, par, lo, hi; } range_t;
+ * octaves for a log parameter, morph_unit space) instead of adding to its base; `bi` (format 49, #526: bit 7 of the pin
+ * byte, patchbin.ts RANGE_BIPOLAR): the input's -1..1 spans the ends, not 0..1 */
+typedef struct { uint8_t mod, pin, par, lo, hi, bi; } range_t;
+#define RANGE_BIPOLAR 0x80u
 
 typedef struct {
     esig_t *dst;
@@ -506,6 +511,10 @@ typedef struct {
 /* a note a Steps track sounds (modules.ts StepsSound): the key it sent, steps to go after the one it is on, samples left;
  * thru: a key played into the track (#134, #139: the note played + 1, 0 = one of its own), sounding until it is let go */
 typedef struct { uint8_t key, left, thru; int32_t cnt; } snd_t;
+/* a locked row (#524): its track, its parameters (module, parameter; its own first), a lock on it now and its value */
+typedef struct { uint8_t trk, n, on, mod[ENG_LOCK_PAIRS], par[ENG_LOCK_PAIRS]; int32_t v; } lrow_t;
+/* a lock: its track, pattern, step, row (E.lt index) and value (Q16, the row's parameter's units) */
+typedef struct { uint8_t trk, pat, at, row; int32_t v; } lock_t;
 
 /* keys in (#139; engine.ts arm / thru): the keys played into a track (the armed one, or one a cable from Main's keys
  * feeds) wait in a ring the main loop fills and the audio side empties at the start of a block (eng_note_on runs
@@ -606,6 +615,11 @@ typedef struct {
     int8_t main;                     /* the Main module, -1 without one */
     int32_t morph;                   /* the morph position of this block, Q16 0..1: the Main's MORPH parameter plus the mean of its morph input */
     uint8_t idle_blk;                /* blocks mod IDLE_CHECK (never reset): which idle parts run their check (part_quiet) */
+    uint8_t nlt;                     /* the locked rows (#524, locks.ts lockPlan): each a track's, its parameters, whether a */
+    lrow_t lt[ENG_LOCK_TARGETS];     /* lock sets them now and to what */
+    uint16_t nlk;                    /* the locks, by track, then pattern (as the binary lists them) */
+    lock_t lk[ENG_MAX_LOCKS];
+    int16_t trk_lkey[ENG_MAX_TRACKS];   /* the pattern and step a track's locks were applied for (locks_step; -1 none, -2 again) */
 } eng_t;
 
 /* the slice of the pattern track t plays (one it has not got: pattern 0), its first note and count */
@@ -769,6 +783,13 @@ static void init_state(const node_t *nd, inst_t *it, uint32_t mod, uint32_t v)
     case T_CLKDIV:
         it->s.cdv.count = -1;
         break;
+    case T_SHREG: {                      /* modules.ts shreg.seed with engine.ts instSeed(module index, part) */
+        uint32_t seed = (mod * 8u + v + 1u) * 0x9e3779b9u;
+        uint8_t pat = (uint8_t)(hash32(seed ^ SHREG_PAT_SEED) >> 24);
+        it->s.shr.pat = it->s.shr.reg = pat ? pat : (uint8_t)SHREG_PAT_ZERO;
+        it->s.shr.rnd = it->s.shr.rnd0 = hash32(seed ^ SHREG_FLIP_SEED);
+        break;
+    }
     case T_SELECT:
         it->s.sel.k = -1;
         break;
@@ -1045,7 +1066,7 @@ int eng_load(const uint8_t *p, uint32_t len)
 #endif
     if (len < 8u || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION))
         return -1;
-    if ((p[7] & ~(ENG_FLAG_EXTRAS | ENG_FLAG_MORPH_MODULES | ENG_FLAG_PATTERNS)) || ((p[7] & ENG_FLAG_MORPH_MODULES) && (p[1] < 36u || !(p[6] & 1u))) || ((p[7] & ENG_FLAG_PATTERNS) && p[1] < 48u) || (p[1] < 34u && p[7]) || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
+    if ((p[7] & ~(ENG_FLAG_EXTRAS | ENG_FLAG_MORPH_MODULES | ENG_FLAG_PATTERNS | ENG_FLAG_LOCKS)) || ((p[7] & ENG_FLAG_MORPH_MODULES) && (p[1] < 36u || !(p[6] & 1u))) || ((p[7] & ENG_FLAG_PATTERNS) && p[1] < 48u) || ((p[7] & ENG_FLAG_LOCKS) && p[1] < 49u) || (p[1] < 34u && p[7]) || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
         return -1;
     for (i = 0; i < ENG_PANEL_BUTTONS; i++)      /* (before eng_buttons below: no Toggle of the last patch acts on this one) */
         E.btn_kind[i] = (uint8_t)ENG_BTN_GATE, E.btn_n[i] = 0;
@@ -1358,6 +1379,59 @@ int eng_load(const uint8_t *p, uint32_t len)
             }
         }
     }
+    E.nlt = 0;
+    E.nlk = 0;
+    for (i = 0; i < ENG_MAX_TRACKS; i++)
+        E.trk_lkey[i] = -2;
+    if (p[7] & ENG_FLAG_LOCKS) {                 /* the P-locks (format 49, #524, patchbin.ts lockRecord) */
+        uint32_t count, t, nr, r, np, k, n, pat, row0;
+        if (at >= len) return -3;
+        count = p[at++];
+        for (i = 0; i < count; i++) {
+            uint32_t mod;
+            if (at + 2u > len) return -3;
+            mod = p[at];
+            nr = p[at + 1u];
+            at += 2u;
+            if (mod >= E.nmod || E.node[mod].type != T_STEPS || !nr || E.nlt + nr > ENG_LOCK_TARGETS) return -3;
+            t = E.node[mod].trk;
+            row0 = E.nlt;
+            for (r = 0; r < nr; r++) {
+                lrow_t *x = &E.lt[E.nlt++];
+                if (at >= len || !p[at] || p[at] > ENG_LOCK_PAIRS || at + 1u + 2u * p[at] > len) return -3;
+                x->trk = (uint8_t)t;
+                x->n = p[at];
+                x->on = 0;
+                x->v = 0;
+                for (k = 0; k < x->n; k++) {
+                    uint32_t m = p[at + 1u + 2u * k], j = p[at + 2u + 2u * k];
+                    if (m >= E.nmod || j >= DEFS[E.node[m].type].npar || E.node[m].type == T_PART) return -3;
+                    x->mod[k] = (uint8_t)m;
+                    x->par[k] = (uint8_t)j;
+                    E.node[m].locked = 1;
+                }
+                at += 1u + 2u * x->n;
+            }
+            if (at >= len) return -3;
+            np = p[at++];
+            for (k = 0; k < np; k++) {
+                if (at + 2u > len) return -3;
+                pat = p[at];
+                n = p[at + 1u];
+                at += 2u;
+                if (pat >= ENG_PATTERNS || n > ENG_PAT_LOCKS || E.nlk + n > ENG_MAX_LOCKS || at + 6u * n > len) return -3;
+                for (r = 0; r < n; r++, at += 6u) {
+                    lock_t *l = &E.lk[E.nlk++];
+                    if (p[at] >= TRACK_STEPS || p[at + 1u] >= nr) return -3;
+                    l->trk = (uint8_t)t;
+                    l->pat = (uint8_t)pat;
+                    l->at = p[at];
+                    l->row = (uint8_t)(row0 + p[at + 1u]);
+                    l->v = rd32(p + at + 2u);
+                }
+            }
+        }
+    }
     pat_layout();                                /* (the slices in their order: every track's first, then the rest) */
     for (i = 0; i < E.ntrk; i++)                 /* every track plays the patch's pattern */
         E.trk_pat[i] = E.pat_sel;
@@ -1412,7 +1486,7 @@ int eng_load(const uint8_t *p, uint32_t len)
             return -3;
         at = end;
     }
-    if (p[6] & 2u) {                             /* the macro ranges: u8 count, then module / pin / parameter / lo / hi each */
+    if (p[6] & 2u) {                             /* the macro ranges: u8 count, then module / pin (bit 7 bipolar) / parameter / lo / hi each */
         uint32_t nr;
         if (at >= len)
             return -3;
@@ -1420,7 +1494,7 @@ int eng_load(const uint8_t *p, uint32_t len)
         if (at + 5u * nr > len)
             return -3;
         for (i = 0; i < nr; i++, at += 5) {
-            uint32_t mod = p[at], pin = p[at + 1], par = p[at + 2];
+            uint32_t mod = p[at], pin = p[at + 1] & ~RANGE_BIPOLAR, par = p[at + 2];
             if (mod >= E.nmod || pin > 1u || par >= DEFS[E.node[mod].type].npar || !(E.node[mod].map[pin] >> par & 1u))
                 continue;                        /* not a destination of that pin: ignored */
             if (E.nranges >= ENG_MAX_RANGES)
@@ -1430,6 +1504,7 @@ int eng_load(const uint8_t *p, uint32_t len)
             E.ranges[E.nranges].par = (uint8_t)par;
             E.ranges[E.nranges].lo = p[at + 3];
             E.ranges[E.nranges].hi = p[at + 4];
+            E.ranges[E.nranges].bi = (p[at + 1] & RANGE_BIPOLAR) != 0;
             E.nranges++;
             E.node[mod].ranged[pin] |= 1u << par;
         }
@@ -1798,6 +1873,57 @@ static void ramp_tick(void)
             r->off = 0;
     }
 }
+/* the base values with the P-locks on node nd (#524, engine.ts applyCv: a lock in place of the normal value): a copy of
+ * par with each locked parameter at its lock, clamped to its range (to its top: a stretch), or par when none locks it */
+static int32_t lock_buf[MAX_PAR];
+static const int32_t *lock_base(const node_t *nd, const int32_t *par, uint32_t npar)
+{
+    const def_t *d = &DEFS[nd->type];
+    uint32_t r, k, j, any = 0, m = (uint32_t)(nd - E.node);
+    for (r = 0; r < E.nlt; r++) {
+        const lrow_t *x = &E.lt[r];
+        if (!x->on)
+            continue;
+        for (k = 0; k < x->n; k++) {
+            if (x->mod[k] != m || x->par[k] >= npar)
+                continue;
+            if (!any) {
+                for (j = 0; j < npar; j++)
+                    lock_buf[j] = par[j];
+                any = 1;
+            }
+            lock_buf[x->par[k]] = clampi(x->v, d->pmin[x->par[k]], DEF_TOP(d, x->par[k]));
+        }
+    }
+    return any ? lock_buf : par;
+}
+
+/* track t's P-locks after its block (#524; engine.ts locksStep, the same rule): while it plays (the transport runs, or a
+ * clock is in clk; not bypassed) and its playhead moved to another step or pattern, its locked rows go back to their normal
+ * values and the locks of the step it is on (of the pattern it plays, TRK_P) set theirs. The modules after it in the
+ * processing order play them from this block, the others from the next. */
+static void locks_step(const node_t *nd, const inst_t *it)
+{
+    uint32_t t = nd->trk, r, i, p = TRK_P(t);
+    int32_t key = !nd->bypass && it->s.stp.pos >= 0 && (E.running || ((nd->conn >> STEPS_I_CLK) & 1u)) ? (int32_t)(p * 64u) + it->s.stp.pos : -1;
+    if (key == E.trk_lkey[t])
+        return;
+    E.trk_lkey[t] = (int16_t)key;
+    for (r = 0; r < E.nlt; r++)
+        if (E.lt[r].trk == t)
+            E.lt[r].on = 0;
+    if (key < 0)
+        return;
+    for (i = 0; i < E.nlk; i++) {
+        const lock_t *l = &E.lk[i];
+        if (l->trk == t && l->pat == p && l->at == (uint32_t)it->s.stp.pos) {
+            E.lt[l->row].on = 1;
+            E.lt[l->row].v = l->v;
+        }
+    }
+}
+int eng_locks_count(void) { return E.loaded ? E.nlk : 0; }
+
 /* the base values apply_cv works from: the node's, or a copy with its pending ramps added */
 static const int32_t *ramp_base(const node_t *nd, const int32_t *par, uint32_t npar)
 {
@@ -1855,6 +1981,7 @@ int eng_range(uint32_t module, uint32_t input, uint32_t param, uint32_t *lo, uin
 
 int eng_set_range(uint32_t module, uint32_t input, uint32_t param, int on, uint32_t lo, uint32_t hi)
 {
+    int bi = (on & 2) != 0;                       /* (bit 1: bipolar, #526) */
     range_t *r;
     if (module >= E.nmod || input > 1u || param >= DEFS[E.node[module].type].npar)
         return 0;
@@ -1876,6 +2003,7 @@ int eng_set_range(uint32_t module, uint32_t input, uint32_t param, int on, uint3
     }
     r->lo = (uint8_t)(lo > 255u ? 255u : lo);
     r->hi = (uint8_t)(hi > 255u ? 255u : hi);
+    r->bi = (uint8_t)bi;
     E.node[module].ranged[input] |= 1u << param;
     return 1;
 }
@@ -1951,6 +2079,15 @@ int32_t eng_step_param(uint32_t module, uint32_t j, int32_t clicks, int32_t unit
         return 0;
     d = &DEFS[E.node[module].type];
     return value_of(d, j, unit_of(d, j, E.node[module].par[j]) + clicks * unit_per_click);
+}
+
+int32_t eng_step_value(uint32_t module, uint32_t j, int32_t v, int32_t clicks, int32_t unit_per_click)
+{
+    const def_t *d;
+    if (module >= E.nmod || j >= DEFS[E.node[module].type].npar)
+        return 0;
+    d = &DEFS[E.node[module].type];
+    return value_of(d, j, unit_of(d, j, v) + clicks * unit_per_click);
 }
 
 int eng_param_is_log(uint32_t module, uint32_t j)
@@ -3201,6 +3338,236 @@ int eng_patterns_record(uint8_t *out, uint32_t cap)
     return n <= cap || !out ? (int)n : -1;
 }
 
+/* ---- P-locks edited on the FM-1 (#524, #519 Q2; seq_ui.c): a held step's locks on the rows of the track's device */
+
+/* track t's locked row that sets parameter j of module m first (E.lt), ENG_LOCK_TARGETS none */
+static uint32_t lock_row(uint32_t t, uint32_t m, uint32_t j)
+{
+    uint32_t r;
+    for (r = 0; r < E.nlt; r++)
+        if (E.lt[r].trk == t && E.lt[r].mod[0] == m && E.lt[r].par[0] == j)
+            return r;
+    return ENG_LOCK_TARGETS;
+}
+/* track t's lock on step k of pattern p on row r (E.lk), E.nlk none */
+static uint32_t lock_at(uint32_t t, uint32_t p, uint32_t k, uint32_t r)
+{
+    uint32_t i;
+    for (i = 0; i < E.nlk; i++)
+        if (E.lk[i].trk == t && E.lk[i].pat == p && E.lk[i].at == k && E.lk[i].row == r)
+            return i;
+    return E.nlk;
+}
+/* a lock on module m's parameter j may be set: a plain parameter of a module of the patch (not a Part's settings) */
+static int lock_ok(uint32_t m, uint32_t j) { return m < E.nmod && E.node[m].type != T_PART && j < DEFS[E.node[m].type].npar; }
+
+int eng_lock_get(uint32_t module, uint32_t p, uint32_t k, uint32_t m, uint32_t j, int32_t *v)
+{
+    uint32_t t, r, i;
+    if (!steps_inst(module) || !lock_ok(m, j))
+        return 0;
+    t = E.node[module].trk;
+    if ((r = lock_row(t, m, j)) == ENG_LOCK_TARGETS || (i = lock_at(t, p, k, r)) == E.nlk)
+        return 0;
+    if (v)
+        *v = E.lk[i].v;
+    return 1;
+}
+int eng_locks_step(uint32_t module, uint32_t p, uint32_t k)
+{
+    uint32_t t, i, n = 0;
+    if (!steps_inst(module))
+        return 0;
+    t = E.node[module].trk;
+    for (i = 0; i < E.nlk; i++)
+        n += E.lk[i].trk == t && E.lk[i].pat == p && E.lk[i].at == k;
+    return (int)n;
+}
+int eng_lock_set(uint32_t module, uint32_t p, uint32_t k, uint32_t m, uint32_t j, const uint8_t *also, int32_t v, int on)
+{
+    uint32_t t, r, i, n = 0;
+    if (!steps_inst(module) || !lock_ok(m, j) || p >= ENG_PATTERNS || k >= TRACK_STEPS)
+        return -1;
+    t = E.node[module].trk;
+    r = lock_row(t, m, j);
+    i = r == ENG_LOCK_TARGETS ? E.nlk : lock_at(t, p, k, r);
+    E.trk_lkey[t] = -2;                          /* (applied again after the track's next block) */
+    if (!on) {
+        if (i == E.nlk)
+            return 0;
+        for (; i + 1u < E.nlk; i++)
+            E.lk[i] = E.lk[i + 1u];
+        E.nlk--;
+        for (i = 0; i < E.nlk && E.lk[i].row != r; i++)
+            ;
+        if (i == E.nlk) {                        /* no lock on the row is left: it goes, the rows after it move down */
+            for (i = r; i + 1u < E.nlt; i++)
+                E.lt[i] = E.lt[i + 1u];
+            E.nlt--;
+            for (i = 0; i < E.nlk; i++)
+                if (E.lk[i].row > r)
+                    E.lk[i].row--;
+        }
+        return 0;
+    }
+    if (i < E.nlk) {
+        E.lk[i].v = v;
+        return 0;
+    }
+    for (i = 0; i < E.nlk; i++)
+        n += E.lk[i].trk == t && E.lk[i].pat == p;
+    if (n >= ENG_PAT_LOCKS || E.nlk >= ENG_MAX_LOCKS || (r == ENG_LOCK_TARGETS && E.nlt >= ENG_LOCK_TARGETS))
+        return -1;
+    if (r == ENG_LOCK_TARGETS) {                 /* a new row: its parameter, then the further ones its page row sets */
+        lrow_t *x = &E.lt[r = E.nlt++];
+        x->trk = (uint8_t)t;
+        x->n = 1;
+        x->on = 0;
+        x->v = 0;
+        x->mod[0] = (uint8_t)m;
+        x->par[0] = (uint8_t)j;
+        E.node[m].locked = 1;
+        for (i = 0; also && i < also[0] && x->n < ENG_LOCK_PAIRS; i++) {
+            uint32_t am = also[1u + 2u * i], aj = also[2u + 2u * i], q;
+            if (!lock_ok(am, aj))
+                continue;
+            for (q = 0; q < x->n && !(x->mod[q] == am && x->par[q] == aj); q++)
+                ;
+            if (q < x->n)
+                continue;
+            x->mod[x->n] = (uint8_t)am;
+            x->par[x->n++] = (uint8_t)aj;
+            E.node[am].locked = 1;
+        }
+    }
+    E.lk[E.nlk].trk = (uint8_t)t;
+    E.lk[E.nlk].pat = (uint8_t)p;
+    E.lk[E.nlk].at = (uint8_t)k;
+    E.lk[E.nlk].row = (uint8_t)r;
+    E.lk[E.nlk].v = v;
+    E.nlk++;
+    return 0;
+}
+int eng_locks_pattern(uint32_t module)
+{
+    uint32_t t, p, i, n;
+    const uint32_t *w;
+    if (!steps_inst(module))
+        return -1;
+    t = E.node[module].trk;
+    p = E.trk_pat[t];
+    if (E.pat_has[t] >> p & 1u)
+        return (int)p;
+    n = (uint32_t)eng_pattern_notes(module, 0, &w);   /* the pattern made from pattern 1: its notes, then its locks */
+    {
+        uint32_t copy[TRACK_NOTES_MAX];
+        for (i = 0; i < n; i++)
+            copy[i] = w[i];
+        if (!trk_put_at(t, p, copy, n))
+            return -1;
+    }
+    n = E.nlk;
+    for (i = 0; i < n && E.nlk < ENG_MAX_LOCKS; i++)
+        if (E.lk[i].trk == t && E.lk[i].pat == 0u) {
+            E.lk[E.nlk] = E.lk[i];
+            E.lk[E.nlk++].pat = (uint8_t)p;
+        }
+    E.trk_lkey[t] = -2;
+    return (int)p;
+}
+int eng_locks_list(uint32_t module, uint32_t p, uint8_t *out, uint32_t cap)
+{
+    uint32_t t, i, n = 0;
+    if (!steps_inst(module))
+        return -1;
+    t = E.node[module].trk;
+    for (i = 0; i < E.nlk; i++) {
+        const lock_t *l = &E.lk[i];
+        if (l->trk != t || l->pat != p)
+            continue;
+        if (out && 7u * (n + 1u) <= cap) {
+            uint8_t *o = out + 7u * n;
+            o[0] = l->at;
+            o[1] = E.lt[l->row].mod[0];
+            o[2] = E.lt[l->row].par[0];
+            o[3] = (uint8_t)l->v;
+            o[4] = (uint8_t)((uint32_t)l->v >> 8);
+            o[5] = (uint8_t)((uint32_t)l->v >> 16);
+            o[6] = (uint8_t)((uint32_t)l->v >> 24);
+        }
+        n++;
+    }
+    return (int)n;
+}
+int eng_locks_record(uint8_t *out, uint32_t cap)
+{
+    uint32_t t, r, i, k, p, n = 0, nt = 0, at, nr, np;
+    uint8_t idx[ENG_LOCK_TARGETS];
+#define PUT(b) do { if (out && n < cap) out[n] = (uint8_t)(b); n++; } while (0)
+    if (!E.loaded || !E.nlk)
+        return 0;
+    for (t = 0; t < E.ntrk; t++) {
+        for (i = 0; i < E.nlk && E.lk[i].trk != t; i++)
+            ;
+        nt += i < E.nlk;
+    }
+    PUT(nt);
+    for (t = 0; t < E.ntrk; t++) {
+        for (i = 0; i < E.nlk && E.lk[i].trk != t; i++)
+            ;
+        if (i == E.nlk)
+            continue;
+        PUT(eng_steps_module(t));
+        at = n;
+        PUT(0);                                  /* (the row count, below) */
+        for (r = nr = 0; r < E.nlt; r++) {       /* the track's rows that hold a lock, in order */
+            idx[r] = 0xFFu;
+            if (E.lt[r].trk != t)
+                continue;
+            for (i = 0; i < E.nlk && E.lk[i].row != r; i++)
+                ;
+            if (i == E.nlk)
+                continue;
+            idx[r] = (uint8_t)nr++;
+            PUT(E.lt[r].n);
+            for (k = 0; k < E.lt[r].n; k++) {
+                PUT(E.lt[r].mod[k]);
+                PUT(E.lt[r].par[k]);
+            }
+        }
+        if (out && at < cap)
+            out[at] = (uint8_t)nr;
+        for (p = np = 0; p < ENG_PATTERNS; p++) {
+            for (i = 0; i < E.nlk && !(E.lk[i].trk == t && E.lk[i].pat == p); i++)
+                ;
+            np += i < E.nlk;
+        }
+        PUT(np);
+        for (p = 0; p < ENG_PATTERNS; p++) {
+            uint32_t c = 0;
+            for (i = 0; i < E.nlk; i++)
+                c += E.lk[i].trk == t && E.lk[i].pat == p;
+            if (!c)
+                continue;
+            PUT(p);
+            PUT(c);
+            for (i = 0; i < E.nlk; i++) {
+                const lock_t *l = &E.lk[i];
+                if (l->trk != t || l->pat != p)
+                    continue;
+                PUT(l->at);
+                PUT(idx[l->row]);
+                PUT(l->v);
+                PUT((uint32_t)l->v >> 8);
+                PUT((uint32_t)l->v >> 16);
+                PUT((uint32_t)l->v >> 24);
+            }
+        }
+    }
+#undef PUT
+    return n <= cap || !out ? (int)n : -1;
+}
+
 int eng_steps_pos(uint32_t module)
 {
     inst_t *it = steps_inst(module);
@@ -3576,18 +3943,47 @@ static inline int32_t allpass16(int32_t *s, int32_t a, int32_t x)      /* y = a 
 static const int32_t STACK_OCT[5][3] = {{0}, {0, 65536}, {0, 38229}, {0, 65536, 103765}, {0, -65536}};
 static const uint8_t STACK_N[5] = {1, 2, 2, 3, 2};
 
+/* the oscillator's summed phase modulation (osc_pm), radians Q16, one block */
+static esig_t osc_pmc[ENG_BLOCK];
+/* The oscillator's phase modulation as one signal and its index (#518, modules.ts oscPm): with only pm patched (or
+ * nothing), that input and the pm index, as before; with pm2, pm3 or index patched, pm x in + pm2 x in2 + pm3 x in3 in
+ * radians (osc_pmc), times the index input when it is patched, and index 1. *idx 0: no phase modulation. */
+static const esig_t *osc_pm(const node_t *nd, inst_t *it, uint32_t n, int32_t *idx)
+{
+    const esig_t *pm = it->in[OSC_I_PM], *pm2 = it->in[OSC_I_PM2], *pm3 = it->in[OSC_I_PM3], *ix = it->in[OSC_I_INDEX];
+    int32_t i1 = nd->conn & (1u << OSC_I_PM) ? EF(it, OSC_P_PM) : 0, i2, i3;
+    uint32_t i;
+    *idx = i1;
+    if (!(nd->conn & ((1u << OSC_I_PM2) | (1u << OSC_I_PM3) | (1u << OSC_I_INDEX))))
+        return pm;
+    i2 = nd->conn & (1u << OSC_I_PM2) ? EF(it, OSC_P_PM2) : 0;
+    i3 = nd->conn & (1u << OSC_I_PM3) ? EF(it, OSC_P_PM3) : 0;
+    if (i1 <= 0 && i2 <= 0 && i3 <= 0) {
+        *idx = 0;
+        return pm;
+    }
+    for (i = 0; i < n; i++)
+        osc_pmc[i] = mul16(i1, pm[i]) + mul16(i2, pm2[i]) + mul16(i3, pm3[i]);
+    if (nd->conn & (1u << OSC_I_INDEX))
+        for (i = 0; i < n; i++)
+            osc_pmc[i] = mul16(osc_pmc[i], ix[i]);
+    *idx = ENG_ONE;
+    return osc_pmc;
+}
+
 static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
 {
-    const esig_t *pitch = it->in[OSC_I_PITCH], *pm = it->in[OSC_I_PM], *sync = it->in[OSC_I_SYNC];
+    const esig_t *pitch = it->in[OSC_I_PITCH], *pm, *sync = it->in[OSC_I_SYNC];
     esig_t *out = it->out[OSC_O_OUT];
     int32_t pw_q = clampi(EF(it, OSC_P_PW), 3277, 62259);                  /* 0.05 .. 0.95 */
     uint32_t pw = (uint32_t)pw_q << 16, phase = it->s.osc.phase, i;
     int32_t base = EF(it, OSC_P_COARSE) / 12 + EF(it, OSC_P_FINE) / 1200;
     int32_t kind = round_q16(EF(it, OSC_P_WAVE)), lvl = EF(it, OSC_P_LEVEL), fb = EF(it, OSC_P_FB);
-    int32_t idx = nd->conn & (1u << OSC_I_PM) ? EF(it, OSC_P_PM) : 0;
+    int32_t idx;
     int32_t y1, y2, pm1, xb, *ap = it->s.osc.ap, s1 = it->s.osc.s1;
     uint32_t dt_fm = 0;
     inc_ramp_t rpf;
+    pm = osc_pm(nd, it, n, &idx);
     if (idx <= 0 && fb <= 0) {                                             /* the plain oscillator: one wave per frame */
         int32_t ks = clampi(round_q16(EF(it, OSC_P_STACK)), 0, 4), nst = STACK_N[ks];
         int32_t nu = clampi(round_q16(EF(it, OSC_P_UNISON)), 1, 5), det = EF(it, OSC_P_DETUNE), doct[5], wq[5], j;
@@ -3783,8 +4179,19 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
 
 static void lfo_cycle(inst_t *it)
 {
+    it->s.lfo.from = it->s.lfo.last;             /* the random wave glides on from where it is */
     it->s.lfo.seed = it->s.lfo.seed * 1664525u + 1013904223u;
     it->s.lfo.held = (int32_t)(it->s.lfo.seed >> 15) - ENG_ONE;
+}
+
+/* the random wave (LFO_RANDOM, #518): from its start to the new value along 3x^2 - 2x^3 over the cycle (modules.ts
+ * lfoSmooth), x the phase's top 16 bits; it notes the value in `last` */
+#define LFO_RANDOM 5
+static inline int32_t lfo_smooth(inst_t *it, uint32_t phase)
+{
+    uint32_t x = phase >> 16, x2 = (uint32_t)(((uint64_t)x * x) >> 16);
+    int32_t s = (int32_t)(((uint64_t)x2 * (196608u - 2u * x)) >> 16);
+    return it->s.lfo.last = it->s.lfo.from + mul16(it->s.lfo.held - it->s.lfo.from, s);
 }
 
 /* the free-running LFO (no sync, nothing in clk / reset): the wave picked once a block. A function of its own: inside
@@ -3807,6 +4214,7 @@ static void __attribute__((noinline)) lfo_free(inst_t *it, esig_t *out, uint32_t
     case 1: LFO_FREE(wave_tri(phase + off)) break;
     case 2: LFO_FREE(wave_saw(phase + off, dt, lrc)) break;
     case 4: LFO_FREE(it->s.lfo.held) break;
+    case LFO_RANDOM: LFO_FREE(lfo_smooth(it, phase)) break;
     default: LFO_FREE(wave_square(phase + off, dt, 0x80000000u, lrc)) break;
     }
 #undef LFO_FREE
@@ -3917,7 +4325,7 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
                 lfo_cycle(it);              /* a new cycle: sample & hold takes a new random value */
             }
         }
-        w = kind == 4 ? it->s.lfo.held : lfo_wave(kind, phase + off, dt, duty, rise, fall, lrc);
+        w = kind == 4 ? it->s.lfo.held : kind == LFO_RANDOM ? lfo_smooth(it, phase) : lfo_wave(kind, phase + off, dt, duty, rise, fall, lrc);
         out[i] = mul16(w, depth);
         if (pulse != dummy_out) {
             int32_t pw = !duty ? -ENG_ONE : duty == 65536u ? ENG_ONE : wave_square(phase + off, dt, duty << 16, lrc);
@@ -6129,6 +6537,176 @@ static void m_sh(const node_t *nd, inst_t *it, uint32_t n)
     it->s.sh.c1 = c1;
 }
 
+/* the Shift register's dac: the first `bits` stages as a binary number (s1 the highest bit), 0..1 in Q16, rounded
+ * (modules.ts shregDac) */
+static int32_t shreg_dac(uint32_t reg, int32_t bits)
+{
+    uint32_t d = (1u << bits) - 1u;
+    return (int32_t)(((reg >> (SHREG_STAGES - bits)) * 65536u + (d >> 1)) / d);
+}
+
+/* Shift register (modules.ts shreg, #438): on a rising clock every stage takes the one before it and s1 takes a new bit,
+ * `in` when patched, else stage `len` comes round; the bit flips when the flip stream's next value is under `flip`. A
+ * rising reset restores the starting pattern and restarts the stream (it wins over a clock on the same sample). The
+ * stages, dac and gate are written only where something reads them; between edges the stages hold. */
+static void m_shreg(const node_t *nd, inst_t *it, uint32_t n)
+{
+    const esig_t *clock = it->in[SHREG_I_CLOCK], *in = it->in[SHREG_I_IN], *reset = it->in[SHREG_I_RESET];
+    esig_t *dac = it->out[SHREG_O_DAC], *go = it->out[SHREG_O_GATE];
+    int32_t len = clampi(round_q16(EF(it, SHREG_P_LEN)), 1, SHREG_STAGES), bits = clampi(round_q16(EF(it, SHREG_P_BITS)), 1, SHREG_STAGES);
+    uint32_t flip = (uint32_t)clampi(EF(it, SHREG_P_FLIP), 0, ENG_ONE), rnd = it->s.shr.rnd, reg = it->s.shr.reg, i, j, from = 0;
+    int data = (nd->conn >> SHREG_I_IN) & 1, c1 = it->s.shr.c1, r1 = it->s.shr.r1;
+    int32_t dv = shreg_dac(reg, bits);
+    if (!(nd->conn & ((1u << SHREG_I_CLOCK) | (1u << SHREG_I_RESET)))) {   /* no edges can come: everything holds */
+        for (j = 0; j < SHREG_STAGES; j++)
+            if (it->out[SHREG_O_S1 + j] != dummy_out)
+                fill(it->out[SHREG_O_S1 + j], (reg >> (7 - j)) & 1u ? ENG_ONE : 0, n);
+        if (dac != dummy_out)
+            fill(dac, dv, n);
+        if (go != dummy_out)
+            fill(go, 0, n);
+        it->s.shr.c1 = it->s.shr.r1 = 0;
+        return;
+    }
+    for (i = 0; i <= n; i++) {
+        int k = 0, r = 0, edge = 0;
+        if (i < n) {
+            k = clock[i] >= 32768;
+            r = reset[i] >= 32768;
+            edge = (r && !r1) || (k && !c1);
+        }
+        if (edge || i == n) {                /* the stages and dac held over from..i-1 */
+            for (j = 0; j < SHREG_STAGES; j++) {
+                esig_t *o = it->out[SHREG_O_S1 + j];
+                if (o != dummy_out)
+                    fill(o + from, (reg >> (7 - j)) & 1u ? ENG_ONE : 0, i - from);
+            }
+            if (dac != dummy_out)
+                fill(dac + from, dv, i - from);
+            from = i;
+            if (i == n)
+                break;
+            if (r && !r1) {
+                reg = it->s.shr.pat;
+                rnd = it->s.shr.rnd0;
+            } else {
+                uint32_t src = data ? in[i] >= 32768 : (reg >> (SHREG_STAGES - len)) & 1u;
+                rnd = lcg(rnd);
+                reg = (reg >> 1) | ((src ^ ((rnd >> 16) < flip)) << 7);
+            }
+            dv = shreg_dac(reg, bits);
+        }
+        c1 = k;
+        r1 = r;
+        if (go != dummy_out)
+            go[i] = k && (reg & 0x80u) ? ENG_ONE : 0;
+    }
+    it->s.shr.rnd = rnd;
+    it->s.shr.reg = (uint8_t)reg;
+    it->s.shr.c1 = (uint8_t)c1;
+    it->s.shr.r1 = (uint8_t)r1;
+}
+
+/* Comparator (modules.ts comp, #438): gt while a - b - thresh is above hyst, until it falls below -hyst; lt its inverse;
+ * trig the sample gt rises on */
+static void m_comp(const node_t *nd, inst_t *it, uint32_t n)
+{
+    const esig_t *a = it->in[COMP_I_A], *b = it->in[COMP_I_B];
+    esig_t *gt = it->out[COMP_O_GT], *lt = it->out[COMP_O_LT], *tr = it->out[COMP_O_TRIG];
+    int32_t t = EF(it, COMP_P_THRESH), h = EF(it, COMP_P_HYST);
+    int hi = it->s.cmp.hi;
+    uint32_t i;
+    for (i = 0; i < n; i++) {
+        int32_t d = a[i] - b[i] - t;
+        int was = hi;
+        if (was ? d < -h : d > h)
+            hi = !was;
+        gt[i] = hi ? ENG_ONE : 0;
+        lt[i] = hi ? 0 : ENG_ONE;
+        tr[i] = hi && !was ? ENG_ONE : 0;
+    }
+    it->s.cmp.hi = (uint8_t)hi;
+    (void)nd;
+}
+
+/* the Range module's curve on t (Q16; modules.ts rangeCurve): t + c t (t - 1) inside 0..1, straight on with the end's
+ * slope outside it (1 - c below, 1 + c above) */
+static int32_t range_curve(int32_t t, int32_t c)
+{
+    if (t < 0)
+        return t - mul16(t, c);
+    if (t > ENG_ONE)
+        return ENG_ONE + mul16(t - ENG_ONE, ENG_ONE + c);
+    return t + mul16(c, mul16(t, t - ENG_ONE));
+}
+
+/* Range (#526; modules.ts range): in from in low..in high to out low..out high along the curve; clamp holds t to 0..1,
+ * else t stays within +-RANGE_T_MAX. 1 / (in high - in low) is worked out once a block (Q16), so a sample costs three
+ * 64-bit multiplies, two fewer with the curve at 0. */
+static void m_range(const node_t *nd, inst_t *it, uint32_t n)
+{
+    const esig_t *x = it->in[RANGE_I_IN];
+    esig_t *o = it->out[RANGE_O_OUT];
+    int32_t lo = EF(it, RANGE_P_INLO), span = EF(it, RANGE_P_INHI) - lo;
+    int32_t olo = EF(it, RANGE_P_OUTLO), ospan = EF(it, RANGE_P_OUTHI) - olo;
+    int32_t c = clampi(EF(it, RANGE_P_CURVE), -ENG_ONE, ENG_ONE);
+    int32_t tlo = EF(it, RANGE_P_CLAMP) >= ENG_ONE / 2 ? 0 : -RANGE_T_MAX * ENG_ONE, thi = tlo ? RANGE_T_MAX * ENG_ONE : ENG_ONE;
+    int64_t inv = span ? ((int64_t)1 << 32) / span : 0;
+    uint32_t i;
+    for (i = 0; i < n; i++) {
+        int64_t t = ((int64_t)(x[i] - lo) * inv) >> 16;
+        int32_t u = t < tlo ? tlo : t > thi ? thi : (int32_t)t;
+        if (c)
+            u = range_curve(u, c);
+        o[i] = olo + (int32_t)(((int64_t)u * ospan) >> 16);
+    }
+    (void)nd;
+}
+
+/* Matrix (#525; modules.ts matrix): out o = the sum of in i x pin (i, o) (Q16, -1..1), the pins at block rate as a Mixer's
+ * levels. Only outputs something reads are written, and of each only the inputs patched with a pin off 0 are read, so a
+ * sparse matrix costs what its pins in use cost. */
+#define MATRIX_N MATRIX_NOUT
+static void m_matrix(const node_t *nd, inst_t *it, uint32_t n)
+{
+    uint32_t i, o, k, m;
+    for (o = 0; o < MATRIX_N; o++) {
+        esig_t *out = it->out[MATRIX_O_OUT1 + o];
+        const esig_t *src[MATRIX_N];
+        int32_t g[MATRIX_N];
+        if (out == dummy_out)
+            continue;
+        for (m = 0, k = 0; k < MATRIX_N; k++) {
+            int32_t a = EF(it, MATRIX_P_I1O1 + o * MATRIX_N + k);
+            if (a && (nd->conn >> (MATRIX_I_IN1 + k)) & 1u) {
+                src[m] = it->in[MATRIX_I_IN1 + k];
+                g[m++] = a;
+            }
+        }
+        switch (m) {
+        case 0:
+            fill(out, 0, n);
+            break;
+        case 1:
+            for (i = 0; i < n; i++)
+                out[i] = mul16(src[0][i], g[0]);
+            break;
+        case 2:
+            for (i = 0; i < n; i++)
+                out[i] = mul16(src[0][i], g[0]) + mul16(src[1][i], g[1]);
+            break;
+        default:
+            for (i = 0; i < n; i++) {
+                int32_t v = mul16(src[0][i], g[0]) + mul16(src[1][i], g[1]) + mul16(src[2][i], g[2]);
+                if (m > 3u)
+                    v += mul16(src[3][i], g[3]);
+                out[i] = v;
+            }
+            break;
+        }
+    }
+}
+
 /* the quantizer's scales (modules.ts SCALES), semitones above the root */
 static const uint8_t SC_CHROM[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, SC_MAJ[] = {0, 2, 4, 5, 7, 9, 11}, SC_MIN[] = {0, 2, 3, 5, 7, 8, 10};
 static const uint8_t SC_PMAJ[] = {0, 2, 4, 7, 9}, SC_PMIN[] = {0, 3, 5, 7, 10}, SC_DOR[] = {0, 2, 3, 5, 7, 9, 10}, SC_MIX[] = {0, 2, 4, 5, 7, 9, 10};
@@ -6408,6 +6986,8 @@ static void apply_cv(const node_t *nd, inst_t *it, uint32_t n, const inst_t *pre
     int32_t *eff = it->eff;
     if (ramp[0].left | ramp[1].left | ramp[2].left | ramp[3].left)   /* a knob's click still on its way (#405) */
         par = ramp_base(nd, par, d->npar);
+    if (nd->locked)                              /* P-locks (#524) */
+        par = lock_base(nd, par, d->npar);
     if (d->cvbase >= 0)
         for (s = 0; s < 2u; s++) {
             const esig_t *cv;
@@ -6449,7 +7029,7 @@ static void apply_cv(const node_t *nd, inst_t *it, uint32_t n, const inst_t *pre
                     const range_t *r = range_find((uint32_t)(nd - E.node), s, j);
                     if (r) {
                         rg = r;
-                        rv += mean[s];
+                        rv += r->bi ? (mean[s] + ENG_ONE) >> 1 : mean[s];   /* (bipolar: -1..1 across the ends, #526) */
                         continue;
                     }
                 }
@@ -6566,6 +7146,10 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_DRUMMAP: m_drummap(nd, it, n); break;
     case T_CLKDIV: m_clkdiv(nd, it, n); break;
     case T_SH: m_sh(nd, it, n); break;
+    case T_SHREG: m_shreg(nd, it, n); break;
+    case T_COMP: m_comp(nd, it, n); break;
+    case T_RANGE: m_range(nd, it, n); break;
+    case T_MATRIX: m_matrix(nd, it, n); break;
     case T_QUANT: m_quant(nd, it, n); break;
     case T_PULSE: m_pulse(nd, it, n); break;
     case T_PAN: m_pan(nd, it, n); break;
@@ -6832,6 +7416,8 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                     process(nd, it, n);
                 ENG_PROF(3, E.order[k], v);
             }
+            if (nd->type == T_STEPS && E.nlt)           /* its P-locks for the step it is on (#524) */
+                locks_step(nd, &inst_pool[nd->inst0]);
         }
         if (n == ENG_BLOCK)
             for (k = 1; k <= E.ngrp; k++) {             /* a released part that has gone quiet goes idle (part_quiet) */

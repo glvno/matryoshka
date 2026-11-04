@@ -5,10 +5,13 @@
 // (a track, an Arpeggiator in front of an instrument) arms them with it (#395, armedWith); an Arpeggiator alone is not armed. The engine plays the arm as a patch
 // transform (armView): Main's keys cables into unarmed devices go, Main's keys into each armed device's keys input come;
 // the editor draws exactly what the arm routes (armDrawing, #418, docs/ledger/editor.md D-641). Not saved, no undo.
+// An engine no keys cable reaches is not armed, in the editor or on the FM-1 (noKeysReach, docs/ledger/steps.md D-818).
 import { allModules, assembliesOf, assemblyById, parentOf, targetsOf, type AssemblyInst } from './assembly';
+import { instIsEngine } from './engines';
 import { DEFS } from './modules';
 import type { Cable, ModuleDef, Patch } from './patch';
-import { deviceView } from './poly';
+import { devicesOf } from './pages';
+import { deviceView, keyed, keysInto } from './poly';
 
 /** a device's key, as pages.ts names devices: `a<id>` an assembly, `m<id>` a module */
 export type DeviceKey = string;
@@ -42,9 +45,29 @@ export function keysTargets(p: Patch, key: DeviceKey, defs: Record<string, Modul
   return (defs[m.type]?.inputs ?? []).filter((x) => x.kind === 'keys').map((x) => ({ module: id, port: x.name }));
 }
 
-/** a device that can be armed: it has a keys input, and is not an Arpeggiator alone (#395: it is armed with what it plays) */
+/** an engine none of whose Voicings or Drum maps has a keys source (Main's keys or a Steps track, directly or through an
+ * Arpeggiator: poly.ts keyed, keysInto). The device form leaves its Voicing out (poly.ts deviceView), so the FM-1 cannot
+ * play it from the keys (#215) */
+export function engineUnreached(p: Patch, a: AssemblyInst): boolean {
+  if (!instIsEngine(p, a)) return false;
+  const ids = new Set(allModules(p, a));
+  return !p.modules.some((m) => ids.has(m.id) && ((m.type === 'alloc' && keyed(p, m)) || (m.type === 'drummap' && keysInto(p, m) !== null)));
+}
+
+/** a device that says NO KEYS REACH THIS DEVICE and is not armed (D-905, D-818): a top-level engine no keys cable reaches
+ * and no Steps track drives, the device the editor marks in the patch it sends (patchbin.ts KEYS_UNREACHED). Arming it
+ * would route Main's keys into a Voicing the FM-1 does not have, so the editor would play it and the FM-1 would not */
+export function noKeysReach(p: Patch, key: DeviceKey, defs: Record<string, ModuleDef> = DEFS): boolean {
+  if (key[0] !== 'a') return false;
+  const a = assemblyById(p, Number(key.slice(1)));
+  if (!a || parentOf(p, a.id) || !engineUnreached(p, a)) return false;
+  return devicesOf(p, defs).find((d) => d.asm === a.id)?.track === undefined;
+}
+
+/** a device that can be armed: it has a keys input, is not an Arpeggiator alone (#395: it is armed with what it plays) and
+ * is not an engine no keys cable reaches (noKeysReach) */
 export const armable = (p: Patch, key: DeviceKey, defs: Record<string, ModuleDef> = DEFS): boolean =>
-  !(key[0] === 'm' && p.modules.find((m) => m.id === Number(key.slice(1)))?.type === 'arp') && keysTargets(p, key, defs).length > 0;
+  !(key[0] === 'm' && p.modules.find((m) => m.id === Number(key.slice(1)))?.type === 'arp') && keysTargets(p, key, defs).length > 0 && !noKeysReach(p, key, defs);
 
 /** the key sources a keys input is fed through, back to Main (#395): the modules whose keys output cables into it, and theirs */
 function feeders(p: Patch, t: { module: number; port: string }, defs: Record<string, ModuleDef>, out: Set<number>): void {

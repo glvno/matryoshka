@@ -8,7 +8,7 @@
 #define FELUCCA_ID "FM-1_7000000"  /* package identity (build.py: the .fwsc marker string): FM-1_7MMmmpp, 7000000 dev / CI */
 #endif
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "v1.8.4-DEV"
+#define FELUCCA_VERSION "v1.9.0-DEV"
 #endif
 #define FELUCCA_FLASH 1
 #define FELUCCA_OTA 1
@@ -101,5 +101,6 @@ static uint32_t pages_gen(void) { return m1_gen; }
 #include "seq_ui.c"
 #include "splash.c"
 #include "help_ui.c"         /* the controls sheet and the quick start (#450) */
+#define M1_KEYS_NOW          /* panel.c reports its key edges to the editor (main.c m1_keys_now, #549) */
 #include "panel.c"
 #include "main.c"

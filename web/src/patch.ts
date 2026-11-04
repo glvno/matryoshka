@@ -2,7 +2,7 @@
 import type { AssemblyInst } from './assembly';
 import { migratePatchParts, migrateVoicing } from './poly';
 import { migrateKnobs } from './knob-migrate';
-import { fixNotes, fixPatterns, fixSeq, migrateSteps, type Pattern, type SeqState, type StepNote } from './track';
+import { fixLocks, fixNotes, fixPatterns, fixSeq, migrateSteps, type Pattern, type SeqState, type StepLock, type StepNote } from './track';
 // Patch data model, shared by the editor, the WebAudio engine and (later) the firmware encoder.
 
 /** keys: the held keys from Main to a Voice allocator (only into a keys input) */
@@ -61,6 +61,10 @@ export interface ParamDef {
    * older format holds the type's parameters of its own format; the FM-1 reads it that way and gives this one its default
    * (engine.c eng_npar, defs.h psince). Only on the last parameters of a type, never decreasing. */
   since?: number;
+  /** the patch format (patchbin.ts VERSION) that let this parameter reach past `from` (a longer stretch, a choice appended,
+   * a higher max): a value past `from` is written in that format (patchbin.ts formatOf), so an FM-1 with older firmware
+   * never gets a value it would cut back to `from` */
+  grew?: { since: number; from: number };
 }
 
 /** position of a value in its range, 0..1 (logarithmic for log parameters) */
@@ -98,8 +102,19 @@ export function paramValue(pd: ParamDef, u: number): number {
   return pd.log ? pd.min * Math.pow(pd.max / pd.min, x) : pd.min + x * (pd.max - pd.min);
 }
 
-/** the macro range of pin `s` on parameter `name`: the pin's value 0..1 lands between these two unit positions instead of adding to the base */
-export type Range = [number, number];
+/** the most a parameter input's depth (attenuverter) reaches either way: twice the parameter's range (#526) */
+export const DEPTH_MAX = 2;
+/**
+ * The macro range of pin `s` on parameter `name`: the pin's value lands between these two unit positions instead of
+ * adding to the base. Its value 0..1 spans them; with the third entry 1 (bipolar, #526) its value −1..1 does, for a
+ * source that swings both ways (an LFO). The editor sets that from the source's range when the range is made
+ * (parameter-menu.ts), and a person can change it.
+ */
+export type Range = [number, number] | [number, number, 1];
+/** a macro range's ends and whether the pin's value is read as −1..1 */
+export const isBipolar = (r: Range | undefined): boolean => !!r && r[2] === 1;
+/** where a pin's value (times its depth) lands in a macro range, 0..1 between its ends (engine.c apply_cv the same) */
+export const rangeShare = (r: Range, v: number): number => (r[2] === 1 ? (v + 1) / 2 : v);
 export const rangeOf = (m: ModuleInst, s: 'p1' | 'p2', name: string): Range | undefined => m.range?.[s]?.[name];
 
 export interface ModuleDef {
@@ -120,6 +135,9 @@ export interface ModuleDef {
   views?: ParamDef[];
   /** bytes the module's binary record carries after its parameters and pins (patchbin.ts): a Steps module's name and pattern */
   data?: number;
+  /** the patch format (patchbin.ts VERSION) that added this type, when it came with the 1.9 format or later: a patch with
+   * one is written in that format (patchbin.ts formatOf), so an FM-1 with older firmware is told to update */
+  since?: number;
 }
 
 /** a parameter or a display of a module type, by name (what a ParamRef can name) */
@@ -144,7 +162,8 @@ export interface ModuleInst {
   x: number;
   y: number;
   params: Record<string, number>;
-  /** attenuverters of the parameter inputs p1 and p2, -1..1 (only on modules with paramInputs) */
+  /** attenuverters of the parameter inputs p1 and p2, -2..2 (DEPTH_MAX; only on modules with paramInputs): the share of the
+   * parameter's range an input of 1 moves it by (the editor shows it in the parameter's units, depth.ts) */
   att?: [number, number];
   /** the matrix: the parameters each source controls. p1 / p2 add (input mean x attenuverter x range) to them, k1..k4 are
    * the FM-1 knobs, which nudge them while the module is selected on the device (only on modules with paramInputs) */
@@ -156,15 +175,19 @@ export interface ModuleInst {
   /** the B side of a morph: the same parameters as `params`, taken from another patch of the same structure (setMorphTarget); the
    * Main module's `morph` (plus its morph input) fades every parameter from `params` to these. Not on the Main module. */
   paramsB?: Record<string, number>;
-  /** macro ranges: for a parameter that p1 / p2 controls (map), the input's value 0..1 lands between these two positions of the
-   * parameter's range (0..1, octaves for a log parameter; paramUnit) instead of adding to the base value */
-  range?: { p1?: Record<string, [number, number]>; p2?: Record<string, [number, number]> };
+  /** macro ranges: for a parameter that p1 / p2 controls (map), the input's value 0..1 (−1..1 for a bipolar one: Range)
+   * lands between these two positions of the parameter's range (0..1, octaves for a log parameter; paramUnit) instead of
+   * adding to the base value */
+  range?: { p1?: Record<string, Range>; p2?: Record<string, Range> };
   /** the Main module only: what the patch makes of the FM-1's panel (#60): which of its buttons (PANEL_BUTTONS) switch on and
    * off instead of acting while held, the switched ones that are on, and labels for K1..K6 and the buttons (the device's
    * player screen and legend show them; at most PANEL_LABEL_MAX characters of the LCD's font) */
   panel?: MainPanel;
-  /** a Steps module only: its track name (at most TRACK_NAME_MAX characters of the LCD's font; the device shows STEPS n
-   * without one) and its notes (#133, track.ts: start step, length, note, velocity, chance; sorted, absent while there
+  /** its name (#518): what the user calls it ("saw carrier"), shown on its card above its type, in cable tooltips, Show
+   * changes and the tutorial's checklist; at most MODULE_NAME_MAX characters, printable (moduleText). A top-level module's
+   * name is its device's name on the FM-1 (patchbin.ts, format 49), cut to the device names' length. A Steps module's
+   * name is its track name (at most TRACK_NAME_MAX characters of the LCD's font, trackName; the device shows STEPS n
+   * without one). A Steps module only: its notes (#133, track.ts: start step, length, note, velocity, chance; sorted, absent while there
    * are none). Patches from before #133 carry `steps` (a byte per step, stepByte) and the lanes `notes` / `vels` (a number
    * per step) instead: fixTrack turns them into notes. */
   name?: string;
@@ -172,6 +195,9 @@ export interface ModuleInst {
   /** a Steps module only: its patterns 2..PATTERNS_MAX (track.ts Pattern; null: it has none of that number, which then
    * plays its pattern 1); absent while there are none */
   patterns?: (Pattern | null)[];
+  /** a Steps module only: pattern 1's P-locks (#524, track.ts StepLock; patterns 2.. hold their own); absent while there
+   * are none */
+  locks?: StepLock[];
   /** the Main module only: the patch's selected pattern and its songs (track.ts SeqState); absent while pattern 1 is
    * selected, no song plays and there are no songs */
   seq?: SeqState;
@@ -226,8 +252,13 @@ export interface Step { on: boolean; accent: boolean; chance: number; tie?: bool
 export const stepOf = (b: number | undefined): Step => ({ on: !!((b ?? 0) & 1), accent: !!((b ?? 0) & 2), chance: 100 - 5 * Math.min(19, ((b ?? 0) >> 2) & 31), tie: !!((b ?? 0) & 0x80) });
 export const stepByte = (s: Step): number => (s.on ? 1 : 0) | (s.accent ? 2 : 0) | (Math.min(19, Math.max(0, Math.round((100 - s.chance) / 5))) << 2) | (s.tie ? 0x80 : 0);
 
+/** the most characters of a module's name (ModuleInst.name) */
+export const MODULE_NAME_MAX = 24;
+/** a module's name as it is kept: printable text (no control characters), spaces collapsed, MODULE_NAME_MAX characters */
+export const moduleText = (s: unknown): string => String(s ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MODULE_NAME_MAX).trim();
+
 /** a module's Steps data (name, notes) made valid in place, a pattern from before #133 turned into notes, a Drum map's row
- * names; other modules lose those fields */
+ * names; other modules lose those fields but their name (moduleText) */
 export function fixTrack(m: ModuleInst): void {
   if (m.type === 'drummap' && Array.isArray(m.names)) {
     const names = Array.from({ length: DRUM_ROWS }, (_, r) => trackName(m.names![r] ?? ''));
@@ -240,11 +271,17 @@ export function fixTrack(m: ModuleInst): void {
   delete old.steps;
   delete old.vels;
   if (m.type !== 'steps') {
-    delete m.name;
+    const name = typeof m.name === 'string' ? moduleText(m.name) : '';
+    if (name) m.name = name;
+    else delete m.name;
     delete m.notes;
     delete m.patterns;
+    delete m.locks;
     return;
   }
+  const locks = fixLocks(m.locks);
+  if (locks) m.locks = locks;
+  else delete m.locks;
   const patterns = fixPatterns(m.patterns);
   if (patterns) m.patterns = patterns;
   else delete m.patterns;
@@ -628,7 +665,7 @@ export function fixMatrix(m: ModuleInst, def: ModuleDef): void {
     return;
   }
   const a = Array.isArray(m.att) ? m.att : [1, 1];
-  m.att = [0, 1].map((i) => Math.max(-1, Math.min(1, Number.isFinite(Number(a[i])) ? Number(a[i]) : 1))) as [number, number];
+  m.att = [0, 1].map((i) => Math.max(-DEPTH_MAX, Math.min(DEPTH_MAX, Number.isFinite(Number(a[i])) ? Number(a[i]) : 1))) as [number, number];
   const names = new Set(def.params.map((q) => q.name));
   const dm = defaultMap(def);
   const map = {} as Record<Source, string[]>;
@@ -642,8 +679,9 @@ export function fixMatrix(m: ModuleInst, def: ModuleDef): void {
       if (!r || typeof r !== 'object') continue;
       for (const name of map[s]) {
         const v = r[name];
-        if (!Array.isArray(v) || v.length !== 2 || !v.every((x) => Number.isFinite(Number(x)))) continue;
-        (out[s] ??= {})[name] = [Math.min(1, Math.max(0, Number(v[0]))), Math.min(1, Math.max(0, Number(v[1])))];
+        if (!Array.isArray(v) || v.length < 2 || v.length > 3 || !v.slice(0, 2).every((x) => Number.isFinite(Number(x)))) continue;
+        const ends: [number, number] = [Math.min(1, Math.max(0, Number(v[0]))), Math.min(1, Math.max(0, Number(v[1])))];
+        (out[s] ??= {})[name] = v[2] === 1 ? [...ends, 1] : ends;
       }
     }
     if (Object.keys(out).length) m.range = out;

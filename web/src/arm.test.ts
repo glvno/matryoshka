@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { armable, armableDevices, armDrawing, armedFromMask, armedWith, armMask, armView, keepArmed, mutedCables, virtualCables } from './arm';
+import { armable, armableDevices, armDrawing, armedFromMask, armedWith, armMask, armView, keepArmed, mutedCables, noKeysReach, virtualCables } from './arm';
 import { assembliesOf } from './assembly';
 import { deviceView } from './poly';
 import { FM1_PRESETS } from './presets';
 import { FACTORY } from './assemblies';
 import { insertAssembly } from './assembly';
 import { newPatch } from './patch';
-import { wireEngine } from './engines';
+import { defIsEngine, wireEngine } from './engines';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, type ModuleInst, type Patch } from './patch';
@@ -200,5 +200,67 @@ describe('what the editor draws for the arm (#418): everything the arm routes, n
 
   it('nothing armed: nothing drawn', () => {
     expect(armDrawing(rig().p, [])).toEqual({ virtual: [], live: [], muted: [], with: [] });
+  });
+});
+
+describe('an engine no keys cable reaches is not armed (D-905, D-818)', () => {
+  const ENGINES = FACTORY.filter((d) => defIsEngine(d));
+  /** the engine's modules in the device form, as the mask SEL on its page would arm without the mark (engine.c eng_arms) */
+  const ownMask = (p: Patch, ids: number[]): [number, number] => {
+    let lo = 0;
+    deviceView(p, true).patch.modules.forEach((m, i) => { if (ids.includes(m.id) && i < 32) lo |= 1 << i; });
+    return [lo >>> 0, 0];
+  };
+
+  it('every factory engine, poly and mono: armable with Main\'s keys cabled in, not without', () => {
+    expect(ENGINES.length).toBeGreaterThan(5);
+    let poly = 0;
+    for (const def of ENGINES) {
+      const p = newPatch(DEFS);
+      const a = insertAssembly(p, DEFS, def, 0, 0);
+      wireEngine(p, a);
+      const key = `a${a.id}`;
+      expect(armable(p, key), def.name).toBe(true);
+      expect(noKeysReach(p, key), def.name).toBe(false);
+      const main = p.modules.find((m) => m.type === 'fm1')!;
+      p.cables = p.cables.filter((c) => !(c.from.module === main.id && c.from.port === 'keys'));
+      if (a.poly) poly++;
+      expect(noKeysReach(p, key), def.name).toBe(true);
+      expect(armable(p, key), def.name).toBe(false);
+      expect(armableDevices(p), def.name).not.toContain(key);
+      expect(keepArmed(p, [key]), def.name).toEqual([]);
+      expect(virtualCables(p, [key]), def.name).toEqual([]);
+      expect(armView(p, [key]), def.name).toBe(p);
+      // (a mask naming its modules, as older firmware sends for a poly engine, arms nothing in the editor either)
+      expect(armedFromMask(p, ...ownMask(p, a.modules)), def.name).toEqual([]);
+    }
+    expect(poly, 'a poly engine among them').toBeGreaterThan(0);
+  });
+
+  it('Basic Poly with the keys cable into its Voicing removed (the 1.9.0 device check T12): no arm, no virtual cable, silent', () => {
+    const p = FM1_PRESETS['Basic Poly']();
+    const alloc = p.modules.find((m) => m.type === 'alloc')!;
+    p.cables = p.cables.filter((c) => !(c.to.module === alloc.id && c.to.port === 'keys'));
+    const a = assembliesOf(p).find((x) => x.modules.includes(alloc.id) || x.poly)!;
+    const key = `a${a.id}`;
+    expect(noKeysReach(p, key)).toBe(true);
+    expect(armable(p, key)).toBe(false);
+    expect(armedFromMask(p, ...ownMask(p, a.modules))).toEqual([]);
+    expect(armDrawing(p, [key]).virtual).toEqual([]);
+  });
+
+  it('an engine a Steps track drives through other cables keeps the track and no mark (D-295): it is armed as before', () => {
+    const p = newPatch(DEFS);
+    const def = ENGINES.find((d) => !!d.poly) ?? ENGINES[0];
+    const a = insertAssembly(p, DEFS, def, 0, 0);
+    wireEngine(p, a);
+    const main = p.modules.find((m) => m.type === 'fm1')!;
+    p.cables = p.cables.filter((c) => !(c.from.module === main.id && c.from.port === 'keys'));
+    const t = addModule(p, DEFS.steps, 0, 0);
+    expect(noKeysReach(p, `a${a.id}`)).toBe(true);
+    // the track's gate or pitch into any input on the card that takes it
+    const into = a.inputs.some((r) => ['gate', 'pitch'].some((o) => connect(p, DEFS, { module: t.id, port: o }, { module: r.module, port: r.port })));
+    expect(into, def.name).toBe(true);
+    expect(noKeysReach(p, `a${a.id}`)).toBe(false);
   });
 });

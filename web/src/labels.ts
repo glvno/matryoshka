@@ -18,6 +18,7 @@ const BY_TYPE: Record<string, Record<string, string>> = {
   fm1: { breath: 'breath (CC 2)', sustain: 'sustain (CC 64)', foot: 'foot switch (CC 65)' },
   adsr: { a: 'attack', d: 'decay', s: 'sustain', r: 'release', long: 'long times' },
   ladder: { fm: 'audio-rate cutoff' },
+  osc: { pm2: 'phase modulation 2', pm3: 'phase modulation 3', index: 'pm index' },
   filter: { hp6: 'high pass 6' },
   lfo: { phase: 'start phase', range: 'rate range', mult: 'sync speed', shape: 'shape (0..1)', pulse: 'pulse' },
   delay: { note: 'note length' },
@@ -26,6 +27,13 @@ const BY_TYPE: Record<string, Record<string, string>> = {
   env: { l1: 'level 1', r1: 'rate 1', l2: 'level 2', r2: 'rate 2', l3: 'level 3', r3: 'rate 3', l4: 'level 4', r4: 'rate 4', shot: 'one-shot' },
   ratio: { ratio: 'frequency ratio', detune: 'detune position' },
   esp: { level: 'signal level', lowcut: 'low cut', highcut: 'high cut', cvadj: 'cv adjust', amp: 'amp out', pitch: 'pitch (F-V)' },
+  shreg: { in: 'data in', len: 'loop length', flip: 'flip chance', bits: 'dac bits' },
+  comp: { thresh: 'threshold', hyst: 'hysteresis', gt: 'a above b', lt: 'a below b', trig: 'rise trigger' },
+  range: { inlo: 'in low', inhi: 'in high', outlo: 'out low', outhi: 'out high' },
+  matrix: {
+    ...Object.fromEntries([1, 2, 3, 4].flatMap((k) => [[`in${k}`, `in ${k}`], [`out${k}`, `out ${k}`]])),
+    ...Object.fromEntries([1, 2, 3, 4].flatMap((i) => [1, 2, 3, 4].map((o) => [`i${i}o${o}`, `in ${i} → out ${o}`]))),
+  },
   steps: { dir: 'play mode' },
   rateenv: { ar: 'attack rate', d1r: 'decay 1 rate', d1l: 'decay 1 level', d2r: 'decay 2 rate', rr: 'release rate', krs: 'key rate scaling' },
   env8: { ...Object.fromEntries(Array.from({ length: 8 }, (_, i) => [[`l${i + 1}`, `level ${i + 1}`], [`r${i + 1}`, `rate ${i + 1}`]]).flat()), sus: 'sustain step', end: 'end step' },
@@ -66,8 +74,23 @@ const CHOICES: Record<string, Record<string, string>> = {
 /** a port's or parameter's label on a module of `type` */
 export const longName = (type: string, name: string): string => BY_TYPE[type]?.[name] ?? GENERIC[name] ?? name;
 
+/** what a parameter's name says on hover (#518: a phase modulation index), undefined for most */
+const PM_HINT = (input: string): string =>
+  `Phase modulation index in radians: the ${input} input's signal times this moves the phase. An oscillator swings by its level, so a modulator at level 0.5 into an index of 4 moves the phase by up to 2 radians (index = level × pm).`;
+const HINTS: Record<string, string> = {
+  'osc.pm': `${PM_HINT('pm')} The index input, when patched, multiplies all three.`,
+  'osc.pm2': `${PM_HINT('pm2')} The index input, when patched, multiplies all three.`,
+  'osc.pm3': `${PM_HINT('pm3')} The index input, when patched, multiplies all three.`,
+  'wavetable.pm': PM_HINT('pm'),
+  'pd.pm': PM_HINT('pm'),
+};
+export const paramHint = (type: string, name: string): string | undefined => HINTS[`${type}.${name}`];
+
 /** a module's title */
 export const moduleName = (type: string, label: string): string => MODULES[type] ?? label;
+/** a module as the editor names it (#518): its own name (ModuleInst.name), else its type's (moduleName; `label`: the
+ * type's label, DEFS[type].label) */
+export const moduleTitle = (m: { type: string; name?: string }, label: string): string => m.name || moduleName(m.type, label);
 
 /** a choice's label (an enum parameter's value) */
 export const choiceName = (type: string, param: string, choice: string): string => CHOICES[`${type}.${param}`]?.[choice] ?? choice;
@@ -85,7 +108,7 @@ const TAGS: Record<string, [string, TagFamily]> = {
   comb: ['COMB', 'fx'], modal: ['MODAL', 'fx'],
   mixer: ['MIX', 'util'], math: ['MATH', 'util'], logic: ['LOGIC', 'util'], const: ['DC', 'util'], macro: ['MACRO', 'util'], scale: ['SCALE', 'util'],
   output: ['OUT', 'util'], fm1: ['MAIN', 'util'], part: ['PART', 'util'], alloc: ['VOICES', 'util'], scope: ['SCOPE', 'util'],
-  drummap: ['MAP', 'mod'], pd: ['PD', 'src'], select: ['SEL', 'util'],
+  drummap: ['MAP', 'mod'], pd: ['PD', 'src'], select: ['SEL', 'util'], shreg: ['SHREG', 'mod'], comp: ['COMP', 'util'], range: ['RANGE', 'util'], matrix: ['MATRIX', 'util'],
 };
 
 /** the short tag before a card's title and the family that colours it */
@@ -105,6 +128,10 @@ const ALIASES: Record<string, string> = {
   filter: 'multimode vcf svf state variable low pass high pass band pass notch peak all pass lp hp bp',
   ladder: 'filter vcf moog low pass lp',
   vowel: 'filter', comb: 'filter',
+  shreg: 'turing machine rungler bits random loop pattern sequence',
+  comp: 'compare schmitt trigger threshold gate',
+  range: 'scale map rescale bipolar unipolar curve clamp limit',
+  matrix: 'pin matrix routing mixer router patch bay crosspoint',
 };
 
 /** the words a module is found by in the palette and + Add module besides its name: its label, its card tag, its former
@@ -113,18 +140,19 @@ export const moduleKeywords = (type: string, label: string): string =>
   [label, moduleTag(type).tag, FORMER[type], ALIASES[type]].filter(Boolean).join(' ');
 
 /** three significant figures, trailing zeros dropped */
-const sig = (v: number): string => String(Number(v.toPrecision(3)));
+const sig = (v: number, digits = 3): string => String(Number(v.toPrecision(digits)));
 
 /**
  * A parameter value for a card: the number and its unit apart (the unit is drawn smaller). Three significant figures;
- * kHz from 1000 Hz, ms below one second; a + on positive values of a parameter that can go negative.
+ * kHz from 1000 Hz, ms below one second; a + on positive values of a parameter that can go negative. `digits`: more
+ * significant figures (the typing field opens with the full value, #538).
  */
-export function formatValue(v: number, unit: string | undefined, signed: boolean): { num: string; unit: string } {
+export function formatValue(v: number, unit: string | undefined, signed: boolean, digits = 3): { num: string; unit: string } {
   if (!Number.isFinite(v)) return { num: String(v), unit: unit ?? '' };
   let u = unit ?? '';
   let x = v;
   if (u === 'Hz' && Math.abs(x) >= 1000) { x /= 1000; u = 'kHz'; }
   else if (u === 's' && Math.abs(x) < 1 && x !== 0) { x *= 1000; u = 'ms'; }
-  const num = Math.abs(x) < 1e-9 ? '0' : sig(x);
+  const num = Math.abs(x) < 1e-9 ? '0' : sig(x, digits);
   return { num: signed && x > 0 ? `+${num}` : num, unit: u };
 }

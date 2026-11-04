@@ -353,6 +353,7 @@ dialog.share-sheet { width: 800px; }
 .help-body { overflow: auto; padding: 4px 16px 16px; columns: 2 340px; column-gap: 28px; }
 .hsec { break-inside: avoid; padding-top: 12px; }
 .hsec h3 { margin: 0 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--line); font: var(--cap); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.hsec h4 { margin: 10px 0 0; font: var(--cap); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--secondary); }
 .hrow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; padding: 5px 0; }
 .hrow + .hrow { border-top: 1px dashed color-mix(in srgb, var(--line) 70%, transparent); }
 .hkeys { font: var(--cap); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--secondary); }
@@ -506,6 +507,7 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .routing-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .routing-head strong { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .routing-controls output { margin-left: auto; }
+.routing-controls .depth-value { width: 7.5em; margin-left: auto; text-align: right; font-variant-numeric: tabular-nums; }
 .routing-controls fieldset { display: flex; gap: 8px; border: 0; padding: 5px 0 0; margin: 5px 0 0; border-top: 1px solid var(--line); }
 .routing-controls legend { color: var(--muted); }
 .routing-source + .routing-source { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 4px; }
@@ -770,6 +772,11 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .mhead > span:not(.tools), .fhead > span:not(.tools) { font: 600 15px/1 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .07em; }
 .mhead > span:not(.tools) { display: flex; align-items: center; gap: 7px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mhead .tools, .fhead .tools { flex-shrink: 0; }
+/* a module with its own name (#518): the name, its type small underneath */
+.mhead .mname { display: flex; flex-direction: column; justify-content: center; min-width: 0; gap: 1px; line-height: 1; overflow: hidden; }
+.mhead .mname, .mhead .mtype { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mhead .mname { font-size: 13px; }
+.mhead .mtype { font: 500 9px/1 'Barlow Semi Condensed', system-ui, sans-serif; letter-spacing: .06em; color: var(--muted); }
 .fhead > span:not(.tools) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mhead .voices, .fhead .voices { font: 500 12px/1.2 'Barlow', system-ui, sans-serif; white-space: nowrap; }
 .module .port > span:not(.dot) { line-height: 1.35; }
@@ -1415,6 +1422,9 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .module.armed-with:not(.selected):not(.armed) { outline: 2px dashed color-mix(in srgb, var(--arm) 65%, transparent); outline-offset: 1px; }
 .steps-screen.armed-with:not(.armed) { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--arm) 65%, transparent); }
 .arm-dot.with::before { background: color-mix(in srgb, var(--arm) 45%, transparent); border-color: var(--arm); }
+.arm-dot.no-keys { cursor: not-allowed; opacity: .55; }
+.arm-dot.no-keys::before { border-style: dashed; }
+.arm-dot.no-keys:hover::before { border-color: var(--muted); }
 /* the preset chip on an assembly device's header (#192): ‹ name › */
 :is(.mhead, .fhead) span.preset-chip { display: inline-flex; contain: none; font: inherit; text-transform: none; letter-spacing: normal; align-items: stretch; flex: none; width: 124px; height: 20px; margin-left: auto; margin-right: 6px;
   border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); }
@@ -1459,6 +1469,21 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .step.play { overflow: visible; z-index: 1; }
 .step.past { opacity: .25; cursor: default; }
 .steps-screen.muted .step > i { opacity: .35; }
+/* P-locks (#524): a dot at the foot of a step with locks (click: its locks), and the list of a step's locks */
+.step > u { display: none; position: absolute; left: calc(50% - 4px); bottom: 0; z-index: 3; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--secondary); box-shadow: 0 0 0 1px var(--bar); cursor: pointer; }
+.step.locked > u { display: block; }
+.steps-screen { position: relative; }
+.lock-pop { position: absolute; z-index: 20; min-width: 220px; max-width: 320px; padding: 6px; border-radius: 6px; background: var(--panel);
+  border: 1px solid var(--line); box-shadow: 0 4px 14px rgb(0 0 0 / .35); font-size: 12px; }
+.lock-pop .lock-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font: var(--cap); font-size: 10px;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.lock-pop .lock-row { display: grid; grid-template-columns: 1fr 90px 20px; gap: 4px; align-items: center; margin-top: 3px; }
+.lock-pop .lock-add { grid-template-columns: 1fr; }
+.lock-pop input, .lock-pop select { min-width: 0; font-size: 12px; }
+.lock-pop button { padding: 0 4px; background: none; border: 0; color: var(--muted); cursor: pointer; }
+.lock-pop button:hover { color: var(--secondary); }
+.lock-pop .lock-none { color: var(--muted); }
 /* the card body lets clicks through except to its controls: a screen is one too (Arrange drags it, pick mode adds it) */
 .module .mbody .param.screen { pointer-events: auto; }
 /* the Scope's settings: a toolbar over its screen while hovered (not while choosing or arranging the card) */
@@ -1552,7 +1577,7 @@ svg.slack-cable .cable.pending { pointer-events: none; }
   --f-body: var(--ref-coral); --f-edge: var(--ref-rust); --f-face: var(--ref-ivory);
   --f-tray: var(--ref-paper); --f-cap: #fff; --f-cap-ink: var(--ref-ink); --f-drop: color-mix(in srgb, var(--ref-night) 22%, transparent);
   --f-silk: var(--ref-ink); --f-dial: #fff; --f-dial-rim: var(--ref-sand); --f-glow: var(--ref-gold);
-  position: relative; flex: none; width: min(100%, calc((100dvh - 120px) * 1280 / 678), 1280px); aspect-ratio: 1280 / 678; container-type: inline-size;
+  position: relative; flex: none; width: min(100%, calc(var(--fm1-room, calc(100dvh - 120px - var(--strip-room, 0px))) * 1280 / 678), 1280px); aspect-ratio: 1280 / 678; container-type: inline-size;
   border-radius: 2.4cqw; background: var(--f-body); box-shadow: 0 6px 24px var(--shadow), inset 0 0 0 .25cqw var(--f-edge); color: var(--ink); }
 .fm1-body > * { position: absolute; box-sizing: border-box; }
 .fm1-face { border-radius: 1.6cqw; background: var(--f-face); }
@@ -1614,6 +1639,73 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .fm1-follow::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--secondary); }
 .fm1-follow[hidden] { display: none; }
 .fm1-view .unreported { opacity: .35; filter: grayscale(1); }
+
+/* the controls strip (controls-strip.ts, #554): under the emulated FM-1, after Blender's status bar. Big, high-contrast
+   type, readable across a room: the state's name, its controls as the FM-1's sheet draws them (button caps, encoder dots,
+   K1..K4 in their colours, white and black keys), and what K1..K4 do. While a modifier is held it turns gold and shows
+   that modifier's controls */
+#fm1-view:has(> .controls-strip:not([hidden])) { --strip-room: 210px; justify-content: flex-start; }
+/* a header line (the state's name, where the FM-1 is, what K1..K4 do), then the state's controls in the table's order, each
+   in a box of its own (its gesture, then its plain words), then EVERYWHERE in quieter boxes. The parts of a gesture are
+   sized against the words: button caps .7em, encoder names, keys and KEYS .82em, grey words .72em (michael glaviano's
+   cloud mockup, 2026-11-03) */
+.controls-strip { --mod: var(--gate); --cs-track: color-mix(in oklab, var(--ink) 22%, var(--panel)); --cs-raised: color-mix(in oklab, var(--ink) 4%, var(--panel));
+  flex: none; box-sizing: border-box; width: min(100%, 1280px); display: grid;
+  grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "head kmap" "body body"; border: 1px solid var(--line); border-top: 3px solid var(--ink);
+  border-radius: 10px; background: var(--panel); color: var(--ink); font: 500 21px/1.2 'Barlow', system-ui, sans-serif; }
+.controls-strip[hidden] { display: none; }
+/* no K1..K4 (the piano roll and the drum grid until a step is held): the header takes the line */
+.controls-strip.no-kmap { grid-template-areas: "head head" "body body"; }
+/* the height of a state with 8 rows at least, so the panel above keeps its size while holds come and go */
+#fm1-view > .controls-strip { min-height: 336px; align-content: start; }
+.controls-strip.mod { border-top-color: var(--mod); background: color-mix(in oklab, var(--mod) 10%, var(--panel)); }
+.cs-head { grid-area: head; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 18px; padding: 10px 22px 8px; border-bottom: 1px solid var(--line); }
+.cs-name { font: 700 34px/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+.controls-strip.mod .cs-name { color: var(--mod); }
+.cs-sub { font-size: 17px; line-height: 1.3; color: var(--muted); }
+.cs-from { margin-left: auto; font: 600 12px/1.2 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.cs-body { grid-area: body; min-width: 0; display: grid; gap: 10px; align-content: start; padding: 12px 22px 14px; }
+.cs-rows { display: flex; flex-wrap: wrap; align-items: center; gap: .45em; }
+/* "+N more": the rows past the sheet's first screen (help_ui.c HC_VIS), the viewer's choice kept */
+.cs-more { padding: .28em .7em; border: 1px dashed var(--muted); border-radius: .3em; background: none; color: var(--ink); cursor: pointer;
+  font: 600 .9em/1.1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; }
+.cs-more:hover, .cs-more:focus-visible { border-color: var(--accent); border-style: solid; }
+.cs-everywhere { font-size: 16px; gap: .4em; padding-top: 10px; border-top: 1px dashed var(--line); }
+.cs-label { margin-right: .3em; font: 600 12px/1 'Barlow', system-ui, sans-serif; letter-spacing: .08em; color: var(--muted); }
+/* a control: its gesture and its words in a box of its own */
+.cs-chip { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .32em; max-width: 100%; box-sizing: border-box; padding: .28em .5em; line-height: 1.1;
+  border: 1px solid var(--cs-track); border-radius: .3em; background: var(--cs-raised); font-family: 'Barlow Condensed', system-ui, sans-serif; }
+.cs-everywhere .cs-chip { border-color: var(--line); background: none; }
+.cs-chip.lead { border-color: var(--accent); }
+/* while a modifier is held: its rows' boxes in gold */
+.controls-strip.mod .cs-rows:not(.cs-everywhere) .cs-chip { border-color: var(--mod); }
+.cs-spec { display: inline-flex; align-items: center; gap: .32em; white-space: nowrap; }
+.cs-does { font-weight: 600; }
+.cs-everywhere .cs-does { font-weight: 500; }
+.cs-cap { display: inline-block; padding: .22em .42em; border: 1.5px solid var(--muted); border-radius: .22em; background: var(--panel); color: var(--ink);
+  font: 700 .7em/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; white-space: nowrap; }
+.cs-cap.held { background: var(--mod); border-color: var(--mod); color: var(--ref-night); }
+.cs-t.held { color: var(--mod); font-weight: 700; }
+.cs-enc, .cs-key, .cs-word { display: inline-flex; align-items: center; gap: .28em; font: 700 .82em/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; white-space: nowrap; }
+.cs-knobs { display: inline-flex; gap: .12em; }
+.cs-dot { position: relative; flex: none; display: inline-grid; place-items: center; width: 1.05em; height: 1.05em; border-radius: 50%;
+  background: var(--ref-mist); color: var(--ref-night); font-weight: 700; font-style: normal; }
+.cs-knobs .cs-dot, .cs-kmap .cs-dot { width: 1.75em; height: 1.75em; font: 700 .7em/1 'Barlow Condensed', system-ui, sans-serif; }
+.cs-dot::after { content: ''; position: absolute; top: .08em; left: calc(50% - .07em); width: .14em; height: .32em; background: color-mix(in srgb, var(--ref-night) 60%, transparent); }
+/* K1..K4 in the FM-1's knob colours (the panel's own, as in the Emu view's drawing) */
+.cs-dot.k1 { background: var(--ref-coral); } .cs-dot.k2 { background: var(--ref-gold); } .cs-dot.k3 { background: var(--ref-seafoam); } .cs-dot.k4 { background: var(--ref-sand); }
+.cs-key i { display: inline-block; width: .6em; height: 1.3em; border-radius: .12em; }
+.cs-key.white i { background: var(--ref-ivory); border: 1px solid var(--muted); box-sizing: border-box; }
+.cs-key.black i { background: var(--ref-night); box-shadow: 0 0 0 1px var(--ref-mist); }
+.cs-t { color: var(--muted); font-size: .72em; font-weight: 500; white-space: nowrap; }
+.cs-kmap { grid-area: kmap; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; padding: 10px 22px; border-bottom: 1px solid var(--line); border-left: 1px solid var(--line); }
+.cs-kmap > div { display: inline-flex; align-items: center; gap: 7px; font: 600 21px/1.1 'Barlow Condensed', system-ui, sans-serif; }
+.cs-kmap .cs-dot { font-size: 15px; }
+.cs-kmap .off { opacity: .35; }
+@media (max-width: 860px) {
+  .controls-strip, .controls-strip.no-kmap { grid-template-columns: 1fr; grid-template-areas: "head" "kmap" "body"; }
+  .cs-kmap { border-left: 0; }
+}
 
 /* The status line under the keyboard (statusline.ts): what the pointer is over and what it does, then the FM-1 budget */
 .statusline { grid-column: 1 / -1; grid-row: 4; display: flex; background: var(--panel); align-items: center; gap: 12px; height: 24px; padding: 0 12px; border-top: 1px solid var(--line);

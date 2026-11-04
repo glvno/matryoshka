@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The module library: definitions (shared with the editor) and DSP implementations.
 
+import { fixedDoes } from './controls';
 import { ARP_MODES, ARP_RATES } from './arpeggiator';
 import { DRUM_ROWS, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
-import { STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type SongEntry, type StepNote } from './track';
+import { STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type SongEntry, type StepLock, type StepNote } from './track';
 import WT from './wavetables.json';
 import { rateEnvelopeInit, rateEnvelopeProcess } from './rate-envelope';
 import { formatValue } from './labels';
@@ -220,12 +221,8 @@ export const ASSIGN_MODES = ['rotate', 'lowest', 'reuse', 'reset'];
 export const PANEL_BUTTONS = ['fx', 'scl', 'env', 'lfo', 'edit', 'glo', 'arp'];
 /** a panel button's name on screen: SEL for `scl` (Felucca's table spells it SCL; the button reads SEL), else the id in capitals */
 export const buttonLabel = (b: string): string => (b === 'scl' ? 'SEL' : b.toUpperCase());
-/** what a fixed button does, for the dock and the button editor */
-export const FIXED_DOES: Record<string, string> = {
-  glo: 'the FM-1’s settings menu, in tabs (MIDI, PANEL, SYSTEM, INFO, GUIDE; ALGO switches them, K1..K4 set them on the FM-1); again: back',
-  scl: 'arms the device on screen on the FM-1, so the keys play it; on an armed one, disarms it (on an environment row: adds it or takes it out)',
-  env: 'the environment on the FM-1: every device from Main to the Output (here the canvas is the environment); held + SAVE stores the device’s preset',
-};   // SEQ and REC: the device's step page (#83)
+/** what a fixed button does, for the dock and the button editor: its rows of the FM-1's controls table (controls.ts, #553) */
+export const FIXED_DOES: Record<string, string> = { glo: fixedDoes('GLO'), scl: fixedDoes('SEL'), env: fixedDoes('ENV') };   // SEQ and REC: the device's step page (#83)
 /** the Main module's tempo range (bpm) */
 export const TEMPO_MIN = 20;
 export const TEMPO_MAX = 300;
@@ -286,6 +283,8 @@ interface OscState {
   ap: number[];
   /** the phases of unison voices 2..5 (voice 1 is `phase`), plain path only */
   ph: number[];
+  /** the summed phase modulation of a block (oscPm), radians */
+  pmc: Float32Array;
 }
 
 /** unison voice j of n: its detune in octaves, spread symmetrically from -detune to +detune cents */
@@ -317,6 +316,32 @@ function allpass(s: number[], k: number, a: number, x: number): number {
   return y;
 }
 
+/** a phase modulation index: radians of phase per unit of the modulator's signal. An oscillator's signal swings by its
+ * `level`, so the phase swings by level x pm radians. The card, a typed value and the FM-1's knobs reach PM_TOP; the
+ * parameter inputs, macro ranges and the morph move over 0..8, as before the stretch (#518) */
+export const PM_TOP = 16;
+const PM_INDEX: Partial<ParamDef> = { step: 0.01, unit: 'rad', top: PM_TOP, grew: { since: 49, from: 8 } };
+
+/**
+ * The oscillator's phase modulation as one signal and its index (#518). With only `pm` patched (or nothing): its signal
+ * and the `pm` index, as before. With `pm2`, `pm3` or `index` patched: the sum pm x in + pm2 x in2 + pm3 x in3 in
+ * radians, times the `index` input when that is patched, with index 1 (engine.c m_osc the same). Index 0: no phase
+ * modulation, the oscillator's plain path.
+ */
+function oscPm(c: Ctx, s: OscState): { pm: Float32Array; idx: number } {
+  const i1 = c.connected.pm ? (c.p.pm ?? 0) : 0;
+  if (!c.connected.pm2 && !c.connected.pm3 && !c.connected.index) return { pm: c.inp.pm, idx: i1 };
+  const i2 = c.connected.pm2 ? (c.p.pm2 ?? 0) : 0, i3 = c.connected.pm3 ? (c.p.pm3 ?? 0) : 0;
+  if (i1 <= 0 && i2 <= 0 && i3 <= 0) return { pm: c.inp.pm, idx: 0 };
+  if (s.pmc.length < c.n) s.pmc = new Float32Array(c.n);
+  const { pm, pm2, pm3, index } = c.inp, out = s.pmc, gain = c.connected.index;
+  for (let i = 0; i < c.n; i++) {
+    const r = i1 * pm[i] + i2 * pm2[i] + i3 * pm3[i];
+    out[i] = gain ? r * index[i] : r;
+  }
+  return { pm: out, idx: 1 };
+}
+
 const osc: ModuleImpl<OscState> = {
   def: {
     type: 'osc',
@@ -328,22 +353,24 @@ const osc: ModuleImpl<OscState> = {
       param('pw', 0.05, 0.95, 0.5, { step: 0.01 }),
       param('coarse', -48, 48, 0, { step: 1, unit: 'st' }),
       param('fine', -100, 100, 0, { step: 1, unit: 'ct' }),
-      param('pm', 0, 8, 0, { step: 0.01 }),
+      param('pm', 0, 8, 0, PM_INDEX),
       param('level', 0, 1, 0.8, { step: 0.01 }),
       param('fb', 0, 1, 0, { step: 0.01 }),
       param('unison', 1, 5, 1, { step: 1 }),
       param('detune', 0, 100, 10, { step: 1, unit: 'ct' }),
       param('blend', 0, 1, 0.5, { step: 0.01 }),
       param('stack', 0, 4, 0, { step: 1, choices: STACK_NAMES }),
+      param('pm2', 0, 8, 0, { ...PM_INDEX, since: 49 }),
+      param('pm3', 0, 8, 0, { ...PM_INDEX, since: 49 }),
     ],
   },
-  init: () => ({ phase: 0, s1: 0, y1: 0, y2: 0, pm1: 0, xb: 0, ap: [0, 0, 0, 0, 0, 0, 0, 0], ph: [0, 0, 0, 0] }),
+  init: () => ({ phase: 0, s1: 0, y1: 0, y2: 0, pm1: 0, xb: 0, ap: [0, 0, 0, 0, 0, 0, 0, 0], ph: [0, 0, 0, 0], pmc: new Float32Array(0) }),
   process(c, s) {
-    const { pitch, pm, sync } = c.inp;
+    const { pitch, sync } = c.inp;
     const pw = Math.min(0.95, Math.max(0.05, c.p.pw ?? 0.5));
     const base = (c.p.coarse ?? 0) / 12 + (c.p.fine ?? 0) / 1200;
     const kind = Math.round(c.p.wave ?? 0);
-    const idx = c.connected.pm ? (c.p.pm ?? 0) : 0;
+    const { pm, idx } = oscPm(c, s);
     const fb = c.p.fb ?? 0;
     const lvl = c.p.level ?? 1;
     const out = c.out.out;
@@ -454,7 +481,13 @@ export function delayDivIndex(time: number, tmin: number, tmax: number): number 
   return Math.max(0, Math.min(DELAY_DIVS.length - 1, Math.round(((time - tmin) / (tmax - tmin)) * (DELAY_DIVS.length - 1))));
 }
 
-const LFO_WAVES = [...WAVES, 'S&H'];
+/** the LFO's waves: random (#518, format 49) is a smooth random, a new target each cycle reached along an S-curve */
+export const LFO_WAVES = [...WAVES, 'S&H', 'random'];
+/** the LFO's random wave (LFO_WAVES) */
+export const LFO_RANDOM = 5;
+/** the S-curve the random wave takes from one value to the next over a cycle: 3x^2 - 2x^3, flat at both ends (engine.c
+ * lfo_smooth, on the phase's top 16 bits) */
+export const lfoSmooth = (x: number): number => x * x * (3 - 2 * x);
 
 /** the extra note lengths of the synced delay (its `note` row; 0 `time`: the time knob picks from DELAY_DIVS), in quarter
  * notes = num / den. Appended to, never reordered (a patch stores the index). */
@@ -472,6 +505,8 @@ export const DELAY_SWELL_DEN = 95;
 /** the soft clip in the swelling delay's loop: x - 4/27 x^3, flat at +-1 from |x| = 1.5 (engine.c dly_soft the same) */
 export const delayClip = (x: number): number => (x >= 1.5 ? 1 : x <= -1.5 ? -1 : x - (4 / 27) * x * x * x);
 
+/** the top of the LFO's wide range, Hz (55 before #518) */
+export const LFO_WIDE_MAX = 80;
 /** the free LFO's rate ranges: the `rate` row times LFO_RANGE_K (slow 0.0008..1.6 Hz, fast 0.04..80 Hz) */
 export const LFO_RANGES = ['norm', 'slow', 'fast', 'wide'];
 export const LFO_RANGE_K = [1, 1 / 25, 2, 1];
@@ -521,6 +556,9 @@ interface LfoState {
   /** samples since the last clk edge, and the smoothed distance between edges (0 = none seen yet) */
   since: number;
   interval: number;
+  /** the random wave: where its S-curve starts (its value when the cycle began) and its value at the last sample */
+  from: number;
+  last: number;
 }
 
 /** A triangle's rise occupies `duty` of its cycle; at the ends it becomes a falling or rising saw. */
@@ -532,11 +570,13 @@ function lfoWave(kind: number, phase: number, dt: number, duty: number): number 
 }
 
 /**
- * LFO. `rate` in Hz times the `range` (slow / 25, fast x2), or `wide` from 0.0008 to 55 Hz in wide range. With `sync`, one cycle per note length `div` (as the delay)
+ * LFO. `rate` in Hz times the `range` (slow / 25, fast x2), or `wide` from 0.0008 to LFO_WIDE_MAX (80) Hz in wide range. With `sync`, one cycle per note length `div` (as the delay)
  * at the `mult` speed (÷8 .. x8). The clk input is a 24 ppqn clock (the Main module's clock output): the cycle snaps to every
  * n-th edge (n = 24 x the note length in quarter notes; for a length that ends between ticks, to the first tick a whole
  * number of cycles ends on) and runs at the measured clock speed in between. Without a clock (none for half a second) it
- * runs at `bpm`. A rising edge at reset restarts the cycle. S&H draws a new value at every cycle start. `phase` moves where
+ * runs at `bpm`. A rising edge at reset restarts the cycle. S&H draws a new value at every cycle start; random draws one
+ * too and glides to it from where it is along an S-curve (lfoSmooth) over the cycle, so a reset or a snap never jumps it
+ * (`phase` does not move S&H or random: their cycle starts are where the new values come). `phase` moves where
  * a cycle starts on the wave (90 degrees: a sine starts at its peak); `dir` back runs the wave backward (a saw falls).
  */
 const lfo: ModuleImpl<LfoState> = {
@@ -546,7 +586,7 @@ const lfo: ModuleImpl<LfoState> = {
     inputs: [gate('clk'), gate('reset')],
     outputs: [control('out')],
     params: [
-      param('wave', 0, 4, 0, { step: 1, choices: LFO_WAVES }),
+      param('wave', 0, 4, 0, { step: 1, choices: LFO_WAVES, top: LFO_RANDOM, grew: { since: 49, from: 4 } }),
       param('rate', 0.02, 40, 4, { unit: 'Hz', step: 0.01, log: true, altText: { when: 'range', text: lfoRateText } }),
       param('depth', 0, 1, 1, { step: 0.01 }),
       param('sync', 0, 1, 0, { step: 1, choices: ['free', 'sync'], toggle: true }),
@@ -556,10 +596,10 @@ const lfo: ModuleImpl<LfoState> = {
       param('range', 0, 2, 0, { step: 1, choices: LFO_RANGES, top: 3, since: 35 }),
       param('dir', 0, 1, 0, { step: 1, choices: ['fwd', 'back'], toggle: true, since: 35 }),
       param('mult', 0, LFO_MULTS.length - 1, 3, { step: 1, choices: LFO_MULTS.map((m) => m.name), since: 35 }),
-      param('wide', 0.0008, 55, 4, { unit: 'Hz', step: 0.0001, log: true, since: 40 }),
+      param('wide', 0.0008, LFO_WIDE_MAX, 4, { unit: 'Hz', step: 0.0001, log: true, since: 40, grew: { since: 49, from: 55 } }),
     ],
   },
-  init: (sr) => ({ phase: 0, seed: 0x2545f491, held: 0, clkHi: false, rstHi: false, ticks: 0, wraps: 0, since: sr, interval: 0 }),
+  init: (sr) => ({ phase: 0, seed: 0x2545f491, held: 0, clkHi: false, rstHi: false, ticks: 0, wraps: 0, since: sr, interval: 0, from: 0, last: 0 }),
   process(c, s) {
     const kind = Math.round(c.p.wave ?? 0);
     // backward: the wave read at off - phase, which for these waves is -w(phase - off) (the triangle is the same both ways)
@@ -580,7 +620,8 @@ const lfo: ModuleImpl<LfoState> = {
     const range = Math.max(0, Math.min(LFO_RANGES.length - 1, Math.round(c.p.range ?? 0)));
     const dtFree = (range === 3 ? (c.p.wide ?? 4) : (c.p.rate ?? 1) * LFO_RANGE_K[range]) / c.sr;
     const newCycle = (): void => {
-      // sample & hold: new random value (-1..1) at every cycle start
+      // sample & hold: new random value (-1..1) at every cycle start; the random wave starts its S-curve where it is
+      s.from = s.last;
       s.seed = (Math.imul(s.seed, 1664525) + 1013904223) >>> 0;
       s.held = s.seed / 0x80000000 - 1;
     };
@@ -619,7 +660,10 @@ const lfo: ModuleImpl<LfoState> = {
         }
       }
       const ph = off ? s.phase + off - Math.floor(s.phase + off) : s.phase;
-      c.out.out[i] = (kind === 4 ? s.held : lfoWave(kind, ph, dt, duty)) * depth;
+      let w: number;
+      if (kind === LFO_RANDOM) w = s.last = s.from + (s.held - s.from) * lfoSmooth(s.phase);
+      else w = kind === 4 ? s.held : lfoWave(kind, ph, dt, duty);
+      c.out.out[i] = w * depth;
       c.out.pulse[i] = wave(3, ph, dt, duty) * (c.p.depth ?? 1) * (back ? -1 : 1);
     }
   },
@@ -1913,7 +1957,7 @@ const wavetable: ModuleImpl<WtState> = {
       param('pos', 0, 1, 0, { step: 0.01 }),
       param('coarse', -48, 48, 0, { step: 1, unit: 'st' }),
       param('fine', -100, 100, 0, { step: 1, unit: 'ct' }),
-      param('pm', 0, 8, 0, { step: 0.01 }),
+      param('pm', 0, 8, 0, PM_INDEX),
       param('level', 0, 1, 0.8, { step: 0.01 }),
     ],
   },
@@ -2542,7 +2586,7 @@ export interface StepsSound { key: number; left: number; cnt: number; thru?: num
 export const TRACK_POLY = 8;
 
 /** a track's pattern as the engine holds it (track.ts Pattern; pattern 1 has no length or rate of its own) */
-export interface StepsPattern { notes: StepNote[]; len?: number; rate?: number }
+export interface StepsPattern { notes: StepNote[]; len?: number; rate?: number; locks?: StepLock[] }
 /** the patch's song state the engine shares with its tracks (Main's `seq`): the song playing (0 none) and the songs */
 export interface StepsSong { song: number; songs: SongEntry[][] }
 
@@ -3015,7 +3059,7 @@ const pd: ModuleImpl<PdState> = {
       param('range', 0, PD_RANGE_MAX, 3, { step: 0.01, unit: 'oct' }),
       param('coarse', -48, 48, 0, { step: 1, unit: 'st' }),
       param('fine', -100, 100, 0, { step: 1, unit: 'ct' }),
-      param('pm', 0, 8, 0, { step: 0.01 }),
+      param('pm', 0, 8, 0, PM_INDEX),
       param('level', 0, 1, 0.8, { step: 0.01 }),
     ],
   },
@@ -3451,7 +3495,200 @@ const esp: ModuleImpl<EspState> = {
   },
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp];
+/** the Shift register's stages (#438) */
+export const SHREG_STAGES = 8;
+/** the seeds of a Shift register's starting pattern and of its flip stream, mixed with its instance seed (engine.c) */
+export const SHREG_PAT_SEED = 0x5bd1e995, SHREG_FLIP_SEED = 0x27d4eb2f;
+/** a pattern of all zeros would loop silence: a seed that gives one starts from this instead */
+export const SHREG_PAT_ZERO = 0xa5;
+interface ShregState {
+  /** the stages, s1 in bit 7 .. s8 in bit 0; the pattern a reset restores; the flip stream and where a reset restarts it */
+  reg: number; pat: number; rnd: number; rnd0: number;
+  /** the clock and reset were high at the previous sample */
+  c1: boolean; r1: boolean;
+}
+/** the dac output: the first `bits` stages as a binary number (s1 the highest bit), 0..1 in Q16, rounded (engine.c the same) */
+export const shregDac = (reg: number, bits: number): number => {
+  const d = (1 << bits) - 1;
+  return Math.floor(((reg >>> (SHREG_STAGES - bits)) * 65536 + (d >> 1)) / d);
+};
+/**
+ * Shift register (#438), after the Turing Machine and the Rungler: eight stages s1..s8 (each 0 or 1). On a rising `clock`
+ * edge (through 0.5) every stage takes the one before it and s1 takes a new bit: `in` (high at 0.5 or above) when it is
+ * patched, else stage `len` comes round again, so the pattern loops every `len` clocks. Each new bit flips with chance
+ * `flip` (0: the loop is locked, 0.5: random, 1: inverted every time round, a loop of 2 x len). `dac` reads the first
+ * `bits` stages as a binary number (s1 the highest bit), 0..1; `gate` is high while the clock is and s1 holds a 1. It
+ * starts from a pattern drawn from its instance seed (never all zeros); a rising `reset` brings that pattern back and
+ * restarts the flip stream, so the same sequence follows (a reset wins over a clock on the same sample). Both engines run
+ * the same integer stream (engine.c m_shreg).
+ */
+const shreg: ModuleImpl<ShregState> = {
+  def: {
+    type: 'shreg',
+    label: 'Shift register',
+    since: 49,
+    inputs: [gate('clock'), gate('in'), gate('reset')],
+    outputs: [...Array.from({ length: SHREG_STAGES }, (_, i) => gate(`s${i + 1}`)), control('dac'), gate('gate')],
+    params: [
+      param('len', 1, SHREG_STAGES, SHREG_STAGES, { step: 1 }),
+      param('flip', 0, 1, 0, { step: 0.01 }),
+      param('bits', 1, SHREG_STAGES, SHREG_STAGES, { step: 1 }),
+    ],
+  },
+  init: () => ({ reg: SHREG_PAT_ZERO, pat: SHREG_PAT_ZERO, rnd: 0, rnd0: 0, c1: false, r1: false }),
+  seed(s, seed) {
+    s.pat = s.reg = hash32(seed ^ SHREG_PAT_SEED) >>> 24 || SHREG_PAT_ZERO;
+    s.rnd = s.rnd0 = hash32(seed ^ SHREG_FLIP_SEED);
+  },
+  process(c, s) {
+    const len = Math.min(SHREG_STAGES, Math.max(1, Math.round(c.p.len ?? SHREG_STAGES)));
+    const bits = Math.min(SHREG_STAGES, Math.max(1, Math.round(c.p.bits ?? SHREG_STAGES)));
+    const flip = Math.round((c.p.flip ?? 0) * 65536);
+    const data = c.connected.in;
+    const { clock, reset } = c.inp, o = c.out;
+    let dac = shregDac(s.reg, bits) / 65536;
+    for (let i = 0; i < c.n; i++) {
+      const k = clock[i] >= 0.5, r = reset[i] >= 0.5;
+      if (r && !s.r1) {
+        s.reg = s.pat;
+        s.rnd = s.rnd0;
+        dac = shregDac(s.reg, bits) / 65536;
+      } else if (k && !s.c1) {
+        const src = data ? (c.inp.in[i] >= 0.5 ? 1 : 0) : (s.reg >>> (SHREG_STAGES - len)) & 1;
+        s.rnd = lcg(s.rnd);
+        s.reg = (s.reg >>> 1) | ((src ^ ((s.rnd >>> 16) < flip ? 1 : 0)) << 7);
+        dac = shregDac(s.reg, bits) / 65536;
+      }
+      s.c1 = k;
+      s.r1 = r;
+      for (let j = 0; j < SHREG_STAGES; j++) o[`s${j + 1}`][i] = (s.reg >>> (7 - j)) & 1;
+      o.dac[i] = dac;
+      o.gate[i] = k && s.reg & 0x80 ? 1 : 0;
+    }
+  },
+};
+
+/**
+ * Comparator (#438): `gt` is high while a is above b + `thresh` (b reads 0 with nothing patched, so thresh alone is the
+ * level), `lt` while it is below; `trig` is high for the one sample `gt` rises on. With `hyst` (hysteresis) a must pass
+ * b + thresh by more than hyst to go high and fall below it by more than hyst to go low, so a noisy or slow signal
+ * switches once per crossing. At exactly the level it keeps its state. Both engines the same (engine.c m_comp).
+ */
+const comp: ModuleImpl<{ hi: boolean }> = {
+  def: {
+    type: 'comp',
+    label: 'Comparator',
+    since: 49,
+    inputs: [control('a'), control('b')],
+    outputs: [gate('gt'), gate('lt'), gate('trig')],
+    params: [param('thresh', -1, 1, 0, { step: 0.01 }), param('hyst', 0, 0.5, 0, { step: 0.01 })],
+  },
+  init: () => ({ hi: false }),
+  process(c, s) {
+    const t = c.p.thresh ?? 0, h = c.p.hyst ?? 0;
+    const { a, b } = c.inp, o = c.out;
+    for (let i = 0; i < c.n; i++) {
+      const d = a[i] - b[i] - t;
+      const was = s.hi;
+      if (was ? d < -h : d > h) s.hi = !was;
+      o.gt[i] = s.hi ? 1 : 0;
+      o.lt[i] = s.hi ? 0 : 1;
+      o.trig[i] = s.hi && !was ? 1 : 0;
+    }
+  },
+};
+
+/** the Range module's ends reach ±this (#526) */
+export const RANGE_LIMIT = 8;
+/** with clamp off, how far past its input range the Range module follows a signal: t (0 at in low, 1 at in high) stays
+ * within ±this, so the output stays a finite number in both engines however near in low and in high are */
+export const RANGE_T_MAX = 64;
+/**
+ * The Range module's curve (#526): t + c·t·(t − 1) for t in 0..1 (c = 1: t², exponential; c = −1: 2t − t², logarithmic;
+ * 0: straight), and outside 0..1 a straight line on with the slope at that end (1 − c below, 1 + c above), so an unclamped
+ * signal never folds back. engine.c range_curve the same in Q16.
+ */
+export const rangeCurve = (t: number, c: number): number => (t < 0 ? t * (1 - c) : t > 1 ? 1 + (t - 1) * (1 + c) : t + c * t * (t - 1));
+/**
+ * Range (#526, after Max's [scale]): `in` from in low..in high to out low..out high, along a curve (−1 logarithmic,
+ * 0 straight, +1 exponential: rangeCurve). Either pair may run downwards (an inverted map). With clamp on the output stays
+ * between out low and out high; with it off a signal past the input range carries on past the output range (within
+ * RANGE_T_MAX input ranges). In low = in high gives out low. engine.c m_range the same in Q16.
+ */
+const range: ModuleImpl<Record<string, never>> = {
+  def: {
+    type: 'range',
+    label: 'Range',
+    since: 49,
+    inputs: [control('in')],
+    outputs: [control('out')],
+    params: [
+      param('inlo', -RANGE_LIMIT, RANGE_LIMIT, -1, { step: 0.01 }),
+      param('inhi', -RANGE_LIMIT, RANGE_LIMIT, 1, { step: 0.01 }),
+      param('outlo', -RANGE_LIMIT, RANGE_LIMIT, 0, { step: 0.01 }),
+      param('outhi', -RANGE_LIMIT, RANGE_LIMIT, 1, { step: 0.01 }),
+      param('curve', -1, 1, 0, { step: 0.01 }),
+      param('clamp', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
+    ],
+  },
+  init: () => ({}),
+  process(c) {
+    const lo = c.p.inlo ?? -1, span = (c.p.inhi ?? 1) - lo;
+    const olo = c.p.outlo ?? 0, oSpan = (c.p.outhi ?? 1) - olo;
+    const k = Math.min(1, Math.max(-1, c.p.curve ?? 0));
+    const clamp = (c.p.clamp ?? 0) >= 0.5;
+    const x = c.inp.in, o = c.out.out;
+    for (let i = 0; i < c.n; i++) {
+      let t = span ? (x[i] - lo) / span : 0;
+      t = clamp ? Math.min(1, Math.max(0, t)) : Math.min(RANGE_T_MAX, Math.max(-RANGE_T_MAX, t));
+      o[i] = olo + rangeCurve(t, k) * oSpan;
+    }
+  },
+};
+
+/** the Matrix module's inputs and outputs (#525): MATRIX_N x MATRIX_N pins */
+export const MATRIX_N = 4;
+/** a Matrix pin's parameter: from input `i` to output `o` (1-based) */
+export const matrixPin = (i: number, o: number): string => `i${i}o${o}`;
+/**
+ * Matrix (#525, the pin matrix of #438): four inputs, four outputs, and a pin between each input and each output, an amount
+ * from −1 to 1 (0: not connected). out o = the sum of in i x pin (i, o). Its parameters go output by output (out 1's four
+ * pins, in 1..in 4, then out 2's), so each of its FM-1 device pages is one output's column: ALGO picks the column, K1..K4
+ * turn its four pins, and the page draws the whole grid (pages_ui.c). A pin moves at block rate, as a Mixer's level does.
+ * engine.c m_matrix the same in Q16.
+ */
+const matrix: ModuleImpl<null> = {
+  def: {
+    type: 'matrix',
+    label: 'Matrix',
+    since: 49,
+    inputs: Array.from({ length: MATRIX_N }, (_, i) => audio(`in${i + 1}`)),
+    outputs: Array.from({ length: MATRIX_N }, (_, o) => audio(`out${o + 1}`)),
+    params: Array.from({ length: MATRIX_N * MATRIX_N }, (_, k) => param(matrixPin((k % MATRIX_N) + 1, Math.floor(k / MATRIX_N) + 1), -1, 1, 0, { step: 0.01 })),
+  },
+  init: () => null,
+  process(c) {
+    for (let o = 1; o <= MATRIX_N; o++) {
+      if (c.used && !c.used[`out${o}`]) continue;
+      const out = c.out[`out${o}`];
+      const src: Float32Array[] = [], amt: number[] = [];
+      for (let i = 1; i <= MATRIX_N; i++) {
+        const a = c.p[matrixPin(i, o)] ?? 0;
+        if (a && c.connected[`in${i}`]) {
+          src.push(c.inp[`in${i}`]);
+          amt.push(a);
+        }
+      }
+      for (let s = 0; s < c.n; s++) {
+        let v = 0;
+        for (let k = 0; k < src.length; k++) v += src[k][s] * amt[k];
+        out[s] = v;
+      }
+    }
+  },
+};
+
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range, matrix];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an
@@ -3471,6 +3708,8 @@ for (const m of ALL)
 steps.def.inputs.push(keys('keys'));
 random.def.inputs.push(gate('clock'));
 ladder.def.inputs.push(control('fm'));
+// the oscillator's second and third phase modulation inputs and its audio-rate index (#518, format 49)
+osc.def.inputs.push(audio('pm2'), audio('pm3'), control('index'));
 lfo.def.inputs.push(control('shape'));
 lfo.def.outputs.push(control('pulse'));
 adsr.def.inputs.push(gate('hold'));

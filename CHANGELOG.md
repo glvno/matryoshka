@@ -1,10 +1,32 @@
 # Changelog
 
-## Unreleased
+## 1.9.0 — 2026-11-03
 
 ### FM-1
 
-- The controls sheet (OCT- + OCT+) says what SEL does to the keys. On a device page it reads "SEL arm only this", because it replaces what was armed, and a new row "ENV then SEL arm several" says how to play more than one at once. On the ENVIRONMENT page it reads "SEL add / drop row". In a simulated FM-1, an agent playing a new owner layered two sounds in 54, 56 and 61 actions with this wording, against 71, 78 and 121 before (three runs each; 2 of the 3 went straight to the ENVIRONMENT page, against 1 of 3 before).
+The patch format is 49. Older patches still play, and the editor offers an FM-1 on older firmware the update.
+
+- **P-locks:** a step can set any row of the device its track plays, such as cutoff or decay, to its own value on that step. To make one, hold the step, ALGO to the device's page and turn a knob.
+- **Matrix:** a new module with 4 inputs and 4 outputs. Each input-to-output pin runs −1..1. On the FM-1 it shows as a grid, with one page per output.
+- **Modulation scaling:** a route's depth reaches ±2, and "Play between two values" can use an LFO's full swing.
+- **New modules:** the Shift register (a Turing Machine and a Rungler in one), Range, and the Comparator.
+- **Phase modulation:** the Oscillator gets `pm2` and `pm3` plus an `index` input. Its `pm` goes up to 16.
+- **LFO:** a smooth `random` wave, and the wide range now goes up to 80 Hz.
+- **Module names:** a module you name in the editor shows that name on its page header, in capitals, up to 12 characters.
+- **Controls sheet:** a new row order and new wording. HOME is the way out of a Page button's list. Hint lines use the sheet's words, and PLAY held + PRESET sets the tempo in the settings menu too.
+- **`NO KEYS REACH THIS DEVICE`:** SEL shows it on an engine no keys cable reaches, poly or mono, and arms nothing.
+- **SEQ page:** a white key switches its step when you let go of it, and not if you turned a knob while holding it.
+
+### Editor
+
+- P-locks in the Steps grid: right-click a step to add them, and a step with locks gets a dot.
+- Rename any module.
+- Route depth is shown in the parameter's own units ("+2 oct"), and typed values stay exactly as typed, fractions included.
+- The controls strip under the Emu view's copy of the FM-1, showing what the controls do right now.
+- The Emu view stays on the FM-1's page, with no flicker.
+- The ? help card is built from the same table as the FM-1's controls sheet.
+- The editor refuses to arm an engine no keys reach.
+- 8 Lire XL no longer clicks when it opens.
 
 ## 1.8.4 — 2026-11-03
 

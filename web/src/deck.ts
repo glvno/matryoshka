@@ -20,13 +20,16 @@ export interface Control {
   held(): boolean;
 }
 
-export function dragControl(el: HTMLElement, label: string, lo: number, hi: number, value: number, onInput: (v: number) => void, o: {
+export function dragControl(el: HTMLElement, label: string, lo: number, hi: number, value: number, onInput: (v: number, fine: boolean) => void, o: {
   /** the value on release (the bend wheel); absent = it stays */
   spring?: number;
   /** double click puts this back */
   reset?: number;
   text: (v: number) => string;
   draw: (v: number) => void;
+  /** the wheel and the arrow / Page keys move the value this way instead (a notch: a hundredth of the range; `fine`: Shift
+   *  held, a tenth of a step: Main's knobs, #538); the control then follows through `set` */
+  nudge?: (notches: number, fine: boolean) => void;
 }): Control {
   let v = value;
   let holding = false;
@@ -42,12 +45,12 @@ export function dragControl(el: HTMLElement, label: string, lo: number, hi: numb
     el.title = `${label}: ${o.text(v)}`;
     o.draw(v);
   };
-  const move = (x: number): void => {
+  const move = (x: number, fine = false): void => {
     x = clamp(x, lo, hi);
     if (x === v) return;
     v = x;
     show();
-    onInput(v);
+    onInput(v, fine);
   };
   let y0 = 0, v0 = 0;
   el.addEventListener('pointerdown', (e) => {
@@ -64,7 +67,7 @@ export function dragControl(el: HTMLElement, label: string, lo: number, hi: numb
   });
   // 120 px of travel cover the range; Shift is four times finer
   el.addEventListener('pointermove', (e) => {
-    if (holding) move(v0 + ((y0 - e.clientY) / (e.shiftKey ? 480 : 120)) * (hi - lo));
+    if (holding) move(v0 + ((y0 - e.clientY) / (e.shiftKey ? 480 : 120)) * (hi - lo), e.shiftKey);
   });
   // touch: a sideways swipe scrolls the dock (touch-action: pan-x) and the browser cancels the drag; what it turned goes back
   el.addEventListener('pointercancel', () => { if (holding) move(v0); });
@@ -76,9 +79,17 @@ export function dragControl(el: HTMLElement, label: string, lo: number, hi: numb
   for (const t of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) el.addEventListener(t, release);
   el.addEventListener('wheel', (e) => {
     e.preventDefault();
-    move(v - Math.sign(e.deltaY) * 0.02 * (hi - lo));
+    const d = Math.sign(e.deltaY || (e.shiftKey ? e.deltaX : 0)); // (Shift turns a mouse wheel sideways on a Mac)
+    if (o.nudge) o.nudge(-2 * d, e.shiftKey);
+    else move(v - d * 0.02 * (hi - lo));
   }, { passive: false });
   el.addEventListener('keydown', (e) => {
+    const notches = { ArrowUp: 1, ArrowRight: 1, PageUp: 10, ArrowDown: -1, ArrowLeft: -1, PageDown: -10 }[e.key];
+    if (o.nudge && notches !== undefined) {
+      e.preventDefault();
+      o.nudge(notches, e.shiftKey && !e.key.startsWith('Page'));
+      return;
+    }
     const step = (hi - lo) * (e.key.startsWith('Page') ? 0.1 : 0.01);
     const to = { ArrowUp: v + step, ArrowRight: v + step, PageUp: v + step, ArrowDown: v - step, ArrowLeft: v - step, PageDown: v - step, Home: lo, End: hi }[e.key];
     if (to === undefined) return;

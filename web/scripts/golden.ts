@@ -9,9 +9,11 @@ import { cpuEstimate } from '../src/cpu';
 import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, sandboxFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
 import { make, FM1_PRESETS, type Build } from '../src/presets';
-import { addModule, defaultParams, emptyPatch, fixMatrix, paramUnit, setMorphTarget, SOURCES, stepByte, type Patch, type PolyCfg } from '../src/patch';
+import { addModule, connect, defaultParams, emptyPatch, fixMatrix, newPatch, paramUnit, setMorphTarget, SOURCES, stepByte, type Patch, type PolyCfg } from '../src/patch';
 import { migrateSteps, overdub, type StepNote } from '../src/track';
-import { makeAssembly } from '../src/assembly';
+import { insertAssembly, makeAssembly } from '../src/assembly';
+import { FACTORY } from '../src/assemblies';
+import { wireEngine } from '../src/engines';
 import { withParts } from '../src/test-poly';
 import { acid, cardRows } from '../src/test-patches';
 
@@ -329,7 +331,7 @@ lfoKit('lfo-reset-phase', { rate: 5, wave: 0, phase: 90, dir: 1 }, (wire, _c, rs
 lfoKit('lfo-fast-back', { rate: 20, range: 2, dir: 1, phase: 120 }, () => undefined);
 lfoKit('lfo-slow', { rate: 30, range: 1, wave: 0, phase: 90 }, () => undefined);
 // The slow endpoint is amplified after removing its DC offset, so a stalled phase cannot pass as a flat wave.
-for (const [wide, back, shape] of [[.0008, 0, -1], [55, 0, -1], [55, 1, .3]]) {
+for (const [wide, back, shape] of [[.0008, 0, -1], [55, 0, -1], [55, 1, .3], [80, 0, -1]]) {
   const name = `lfo-wide-${wide}-${back}`;
   tests[name] = make(name, (add, wire) => {
     const lfo = add('lfo', 0, 0, { wave: 2, range: 3, wide, dir: back });
@@ -349,6 +351,204 @@ for (const [wide, back, shape] of [[.0008, 0, -1], [55, 0, -1], [55, 1, .3]]) {
 }
 lfoKit('lfo-wide-sync', { range: 3, wide: 55, sync: 1, div: 6 }, (wire, clk, _r, lfo) => wire(clk, 'out', lfo, 'clk'));
 lfoKit('lfo-wide-reset', { range: 3, wide: 8, wave: 0, phase: 90 }, (wire, _c, rst, lfo) => wire(rst, 'out', lfo, 'reset'));
+// #518: the random wave (free with the wave picked once a block, synced to the clock, restarted by reset, backward)
+lfoKit('lfo-random', { wave: 5, rate: 7 }, () => undefined);
+lfoKit('lfo-random-clk', { sync: 1, div: 4, wave: 5 }, (wire, clk, _r, lfo) => wire(clk, 'out', lfo, 'clk'));
+lfoKit('lfo-random-reset', { rate: 3, wave: 5, dir: 1 }, (wire, _c, rst, lfo) => wire(rst, 'out', lfo, 'reset'));
+// the Shift register (#438): a locked 5-step loop read by its dac (an oscillator's pitch) and gate, a random one (flip 0.5,
+// a 3-bit dac) restarted by the keyboard's gate, and one shifting in a slow square (in patched, a Rungler-like stream)
+kit('shreg-loop', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const clk = add('lfo', 0, 0, { wave: 3, rate: 11, depth: 1 });
+  const sr = add('shreg', 0, 0, { len: 5, flip: 0, bits: 8 });
+  const osc = add('osc', 0, 0, { wave: 0, level: 0.6 });
+  const out = add('output', 0, 0, { level: 0.8 });
+  wire(clk, 'out', sr, 'clock');
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(sr, 'dac', osc, 'pitch');
+  wire(osc, 'out', out, 'l');
+  wire(sr, 'gate', out, 'r');
+});
+kit('shreg-flip', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const clk = add('lfo', 0, 0, { wave: 3, rate: 17, depth: 1 });
+  const sr = add('shreg', 0, 0, { len: 8, flip: 0.5, bits: 3 });
+  const mix = add('mixer', 0, 0, { l1: 0.5, l2: 0.25, l3: 0.25, l4: 0 });
+  const out = add('output', 0, 0, { level: 0.8 });
+  wire(clk, 'out', sr, 'clock');
+  wire(kb, 'gate', sr, 'reset');
+  wire(sr, 'dac', out, 'l');
+  wire(sr, 's1', mix, 'in1');
+  wire(sr, 's4', mix, 'in2');
+  wire(sr, 's8', mix, 'in3');
+  wire(mix, 'out', out, 'r');
+});
+kit('shreg-data', (add, wire) => {
+  const clk = add('lfo', 0, 0, { wave: 3, rate: 23, depth: 1 });
+  const data = add('lfo', 0, 0, { wave: 3, rate: 3.7, depth: 1 });
+  const rst = add('lfo', 0, 0, { wave: 3, rate: 0.9, depth: 1 });
+  const flip = add('lfo', 0, 0, { wave: 1, rate: 1.3, depth: 1 });
+  const sr = add('shreg', 0, 0, { len: 3, flip: 0.2, bits: 6 }, { map: { p1: ['flip', 'bits'] } });
+  const out = add('output', 0, 0, { level: 0.8 });
+  wire(clk, 'out', sr, 'clock');
+  wire(data, 'out', sr, 'in');
+  wire(rst, 'out', sr, 'reset');
+  wire(flip, 'out', sr, 'p1');
+  wire(sr, 'dac', out, 'l');
+  wire(sr, 's6', out, 'r');
+});
+// the Comparator (#438): a sine against a slow triangle with hysteresis (gt, trig), and a saw against a threshold moved
+// through p1 (lt)
+kit('comp-hyst', (add, wire) => {
+  const a = add('lfo', 0, 0, { wave: 0, rate: 7, depth: 1 });
+  const b = add('lfo', 0, 0, { wave: 1, rate: 0.6, depth: 0.5 });
+  const cmp = add('comp', 0, 0, { thresh: 0.1, hyst: 0.15 });
+  const mix = add('mixer', 0, 0, { l1: 0.5, l2: 0.5, l3: 0, l4: 0 });
+  const out = add('output', 0, 0, { level: 0.8 });
+  wire(a, 'out', cmp, 'a');
+  wire(b, 'out', cmp, 'b');
+  wire(cmp, 'gt', out, 'l');
+  wire(cmp, 'trig', mix, 'in1');
+  wire(cmp, 'lt', mix, 'in2');
+  wire(mix, 'out', out, 'r');
+});
+kit('comp-thresh', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const saw = add('lfo', 0, 0, { wave: 2, rate: 5, depth: 1 });
+  const mod = add('lfo', 0, 0, { wave: 0, rate: 0.8, depth: 1 });
+  const cmp = add('comp', 0, 0, { thresh: -0.2, hyst: 0 }, { map: { p1: ['thresh'] } });
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.7 });
+  const vca = add('vca', 0, 0);
+  const out = add('output', 0, 0, { level: 0.8 });
+  wire(saw, 'out', cmp, 'a');
+  wire(mod, 'out', cmp, 'p1');
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(osc, 'out', vca, 'in');
+  wire(cmp, 'lt', vca, 'cv');
+  wire(vca, 'out', out, 'l');
+  wire(cmp, 'gt', out, 'r');
+});
+// modulation scaling (#526): the Range module (a curve, unclamped past its input range; clamped and inverted), its curve
+// moved through p1; a depth past 1 (up to 2) on both pins; a bipolar macro range next to a plain one
+kit('range-curve', (add, wire) => {
+  const a = add('lfo', 0, 0, { wave: 0, rate: 3, depth: 1 });
+  const b = add('lfo', 0, 0, { wave: 1, rate: 2.2, depth: 1 });
+  const r1 = add('range', 0, 0, { inlo: -0.5, inhi: 0.5, outlo: -0.4, outhi: 0.6, curve: 0.7, clamp: 0 });
+  const r2 = add('range', 0, 0, { inlo: -0.8, inhi: 0.6, outlo: 0.7, outhi: -0.9, curve: -0.6, clamp: 1 });
+  const out = add('output', 0, 0, { level: 0.6 });
+  wire(a, 'out', r1, 'in');
+  wire(b, 'out', r2, 'in');
+  wire(r1, 'out', out, 'l');
+  wire(r2, 'out', out, 'r');
+});
+kit('range-pitch', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const lfo = add('lfo', 0, 0, { wave: 1, rate: 1.5, depth: 1 });
+  const mod = add('lfo', 0, 0, { wave: 0, rate: 0.7, depth: 1 });
+  const r = add('range', 0, 0, { inlo: -1, inhi: 1, outlo: -0.25, outhi: 1, curve: 0.3, clamp: 0 }, { map: { p1: ['curve'] } });
+  const sum = add('mixer', 0, 0, { l1: 1, l2: 1, l3: 0, l4: 0 });
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.6 });
+  const vca = add('vca', 0, 0);
+  const env = add('adsr', 0, 0, { a: 0.005, d: 0.2, s: 0.7, r: 0.2 });
+  const out = add('output', 0, 0, { level: 0.8 });
+  wire(lfo, 'out', r, 'in');
+  wire(mod, 'out', r, 'p1');
+  wire(kb, 'pitch', sum, 'in1');
+  wire(r, 'out', sum, 'in2');
+  wire(sum, 'out', osc, 'pitch');
+  wire(kb, 'gate', env, 'gate');
+  wire(osc, 'out', vca, 'in');
+  wire(env, 'env', vca, 'cv');
+  wire(vca, 'out', out, 'l');
+  wire(r, 'out', out, 'r');
+});
+kit('depth-2', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const lfo = add('lfo', 0, 0, { wave: 0, rate: 2, depth: 0.8 });
+  const env = add('adsr', 0, 0, { a: 0.01, d: 0.3, s: 0.3, r: 0.2 });
+  const osc = add('osc', 0, 0, { wave: 3, pw: 0.5, level: 0.6 }, { map: { p1: ['pw'] }, att: [-1.75, 1] });
+  const flt = add('filter', 0, 0, { cutoff: 300, res: 0.3 }, { map: { p1: ['cutoff'], p2: ['res'] }, att: [1.9, 0.4] });
+  const vca = add('vca', 0, 0);
+  const out = add('output', 0, 0, { level: 0.8 });
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(kb, 'gate', env, 'gate');
+  wire(lfo, 'out', osc, 'p1');
+  wire(env, 'env', flt, 'p1');
+  wire(lfo, 'out', flt, 'p2');
+  wire(osc, 'out', flt, 'in');
+  wire(flt, 'lp24', vca, 'in');
+  wire(env, 'env', vca, 'cv');
+  wire(vca, 'out', out, 'l');
+});
+kit('range-bipolar', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const lfo = add('lfo', 0, 0, { wave: 0, rate: 1.3, depth: 1 });
+  const env = add('adsr', 0, 0, { a: 0.3, d: 0.4, s: 0.5, r: 0.3 });
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.6 });
+  const flt = add('filter', 0, 0, { cutoff: 1000, res: 0.4 }, { map: { p1: ['cutoff'], p2: ['res'] }, att: [1, 1.5] });
+  const vca = add('vca', 0, 0);
+  const out = add('output', 0, 0, { level: 0.8 });
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(kb, 'gate', env, 'gate');
+  wire(lfo, 'out', flt, 'p1');
+  wire(env, 'env', flt, 'p2');
+  wire(osc, 'out', flt, 'in');
+  wire(flt, 'lp24', vca, 'in');
+  wire(env, 'env', vca, 'cv');
+  wire(vca, 'out', out, 'l');
+});
+{
+  const m = tests['range-bipolar'].modules.find((x) => x.type === 'filter')!;
+  m.range = { p1: { cutoff: [0.2, 0.75, 1] }, p2: { res: [0.1, 0.6] } };
+}
+// the Matrix (#525): two oscillators and a noise into four outputs, pins of both signs, an empty input and an output read
+// twice; a pin moved by an LFO through p1; the matrix routing control voltage (an LFO and an envelope into a pitch and a
+// cutoff)
+kit('matrix-audio', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const a = add('osc', 0, 0, { wave: 2, level: 0.6 });
+  const b = add('osc', 0, 0, { wave: 0, level: 0.7, coarse: 7 });
+  const nz = add('noise', 0, 0, { level: 0.3 });
+  const lfo = add('lfo', 0, 0, { wave: 1, rate: 1.7, depth: 1 });
+  const m = add('matrix', 0, 0, { i1o1: 0.5, i2o1: -0.75, i3o1: 0.2, i1o2: -0.3, i2o2: 0.6, i4o2: 1, i3o3: 1, i1o4: 0.125, i2o4: 0.25, i3o4: -0.5 }, { map: { p1: ['i2o2', 'i1o4'] }, att: [0.8, 0] });
+  const mix = add('mixer', 0, 0, { l1: 0.5, l2: 0.5, l3: 0.4, l4: 0 });
+  const out = add('output', 0, 0, { level: 0.7 });
+  wire(kb, 'pitch', a, 'pitch');
+  wire(kb, 'pitch', b, 'pitch');
+  wire(a, 'out', m, 'in1');
+  wire(b, 'out', m, 'in2');
+  wire(nz, 'out', m, 'in3');
+  wire(lfo, 'out', m, 'p1');
+  wire(m, 'out1', out, 'l');
+  wire(m, 'out2', mix, 'in1');
+  wire(m, 'out3', mix, 'in2');
+  wire(m, 'out4', mix, 'in3');
+  wire(m, 'out2', mix, 'in4');
+  wire(mix, 'out', out, 'r');
+});
+kit('matrix-cv', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const lfo = add('lfo', 0, 0, { wave: 0, rate: 4, depth: 1 });
+  const env = add('adsr', 0, 0, { a: 0.02, d: 0.3, s: 0.4, r: 0.2 });
+  const m = add('matrix', 0, 0, { i1o1: 1, i2o1: 0.1, i3o2: 1, i2o2: 0.5, i1o3: -1 });
+  const sum = add('mixer', 0, 0, { l1: 1, l2: 0.25, l3: 0, l4: 0 });
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.6 });
+  const flt = add('filter', 0, 0, { cutoff: 600, res: 0.5 }, { map: { p1: ['cutoff'] }, att: [0.6, 0] });
+  const vca = add('vca', 0, 0);
+  const out = add('output', 0, 0, { level: 0.8 });
+  wire(kb, 'gate', env, 'gate');
+  wire(kb, 'pitch', m, 'in1');
+  wire(lfo, 'out', m, 'in2');
+  wire(env, 'env', m, 'in3');
+  wire(m, 'out1', sum, 'in1');
+  wire(m, 'out2', flt, 'p1');
+  wire(m, 'out3', sum, 'in2');
+  wire(sum, 'out', osc, 'pitch');
+  wire(osc, 'out', flt, 'in');
+  wire(flt, 'lp24', vca, 'in');
+  wire(env, 'env', vca, 'cv');
+  wire(vca, 'out', out, 'l');
+});
 kit('noise-svf', (add, wire) => {
   const nz = add('noise', 0, 0, { level: 0.6 });
   const flt = add('filter', 0, 0, { cutoff: 900, res: 0.7 });
@@ -1292,6 +1492,37 @@ kit('fm-2op', (add, wire) => {
   wire(aenv, 'env', avca, 'cv');
   wire(avca, 'out', out, 'l');
   wire(avca, 'out', out, 'r');
+});
+// #518: three modulators into one carrier's pm, pm2 and pm3 (pm3 past the old top of 8 rad), an envelope on the index
+// input; a sine carrier (the firmware's sine operator path) and a square one with feedback (its general path)
+for (const [name, wave, fb] of [['fm-3pm-index', 0, 0], ['fm-3pm-index-fb', 3, 0.3]] as const)
+  kit(name, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const car = add('osc', 0, 0, { wave, fb, pm: 1.5, pm2: 3, pm3: 12, level: 0.8 });
+    const env = add('adsr', 0, 0, { a: 0.003, d: 0.3, s: 0.3, r: 0.2 });
+    const out = add('output', 0, 0);
+    [['pm', 7, 0.5], ['pm2', 12, 0.4], ['pm3', -5, 0.3]].forEach(([port, coarse, level]) => {
+      const m = add('osc', 0, 0, { wave: 0, coarse: coarse as number, level: level as number });
+      wire(kb, 'pitch', m, 'pitch');
+      wire(m, 'out', car, port as string);
+    });
+    wire(kb, 'pitch', car, 'pitch');
+    wire(kb, 'gate', env, 'gate');
+    wire(env, 'env', car, 'index');
+    wire(car, 'out', out, 'l');
+  });
+// a carrier with its own name (#518): a device of kind 2 in the device pages section, which eng_load skips like any device
+tests['fm-3pm-index'].modules.find((m) => m.type === 'osc' && m.params.pm3 === 12)!.name = 'saw carrier';
+kit('fm-pm2-only', (add, wire) => {
+  // pm2 alone (no index input): the summed path with one modulator; pm left unpatched
+  const kb = add('fm1', 0, 0);
+  const mod = add('osc', 0, 0, { wave: 0, coarse: 12, level: 0.9 });
+  const car = add('osc', 0, 0, { wave: 2, pm2: 2.5 });
+  const out = add('output', 0, 0);
+  wire(kb, 'pitch', mod, 'pitch');
+  wire(kb, 'pitch', car, 'pitch');
+  wire(mod, 'out', car, 'pm2');
+  wire(car, 'out', out, 'l');
 });
 kit('sync-glide-shape', (add, wire) => {
   // key-synced oscillator, a glide on its pitch, a synced LFO on the filter, the result through the shaper in each mode
@@ -2625,6 +2856,87 @@ for (const dirs of [[0, 0], [1, 3]]) {
   ends[name] = 128 * 1000;
 }
 
+// P-locks (#524, format 49): a melody track into an oscillator and a filter, its steps locking the filter's cutoff and
+// resonance and the oscillator's wave (a choice) on some steps, every other step back at the normal values; pattern 2 with
+// locks of its own, pattern 3 the track has not got (it plays pattern 1's notes and locks), stop (the locks let go) and
+// run; a second track on a clock in clk locks the second voice's level and cutoff past its range (clamped)
+tests['steps-locks'] = make('steps-locks', (add, wire) => {
+  add('fm1', 0, 0, { tempo: 200 });
+  const out = add('output', 2000, 0, { level: 0.6 });
+  const voice = (x: number, wave: number, p: Record<string, number>, port: string): void => {
+    const st = add('steps', x, 0, p);
+    const o = add('osc', x + 100, 0, { wave });
+    const f = add('filter', x + 150, 0, { cutoff: 800, res: 0.3 });
+    const env = add('adsr', x + 100, 200, { a: 0.002, d: 0.06, s: 0.5, r: 0.03 });
+    const v1 = add('vca', x + 200, 0);
+    wire(st, 'pitch', o, 'pitch'); wire(st, 'trig', env, 'gate');
+    wire(o, 'out', f, 'in'); wire(f, 'lp24', v1, 'in'); wire(env, 'env', v1, 'cv');
+    wire(v1, 'out', out, port);
+  };
+  voice(200, 1, { len: 8, rate: 6, gate: 0.6 }, 'l');
+  voice(700, 2, { len: 6, gate: 0.5 }, 'r');
+  add('lfo', 600, 400, { wave: 3, rate: 6, depth: 1 });
+});
+{
+  const p = tests['steps-locks'];
+  const [a, b] = p.modules.filter((m) => m.type === 'steps');
+  const [oa, ob] = p.modules.filter((m) => m.type === 'osc');
+  const [fa, fb] = p.modules.filter((m) => m.type === 'filter');
+  const lfo = p.modules.find((m) => m.type === 'lfo')!;
+  p.cables.push({ from: { module: lfo.id, port: 'out' }, to: { module: b.id, port: 'clk' } });
+  a.notes = [n(0, 1, 48), n(1, 1, 55, 127), n(2, 2, 60), n(4, 1, 63, 90), n(5, 1, 67), n(6, 1, 70, 40), n(7, 1, 72)];
+  a.locks = [
+    { at: 0, module: fa.id, param: 'cutoff', value: 3000 }, { at: 0, module: fa.id, param: 'res', value: 0.8 },
+    { at: 2, module: fa.id, param: 'cutoff', value: 250 }, { at: 3, module: oa.id, param: 'wave', value: 2 },
+    { at: 5, module: fa.id, param: 'cutoff', value: 6000 }, { at: 7, module: fa.id, param: 'res', value: 0.05 },
+  ];
+  a.patterns = [{ notes: [n(0, 2, 62, 127), n(2, 1, 65), n(3, 1, 67), n(4, 3, 70, 77)], len: 5,
+    locks: [{ at: 1, module: fa.id, param: 'cutoff', value: 1800 }, { at: 3, module: oa.id, param: 'wave', value: 0 }] }];
+  b.notes = [n(0, 1, 36), n(2, 1, 43, 70), n(3, 1, 39), n(5, 1, 36, 127)];
+  b.locks = [{ at: 2, module: fb.id, param: 'cutoff', value: 99999 }, { at: 3, module: ob.id, param: 'level', value: 0.2 }, { at: 5, module: fb.id, param: 'res', value: 0.9 }];
+  events['steps-locks'] = [[128 * 5, 'run', 0], [128 * 120, 'pat', 1], [128 * 300, 'pat', 2], [128 * 450, 'stop', 0], [128 * 480, 'pat', 0], [128 * 500, 'run', 0]];
+  ends['steps-locks'] = 128 * 700;
+}
+
+// P-locks on a poly device (#524, #519 Q5): a track of chords into three voices (an oscillator, two filters in series, an
+// envelope, a VCA); the device's cutoff row sets both filters (a row's further parameter, PageRow.also), so a lock on it
+// moves both, in every voice; a lock on the envelope's decay (no page row: it still plays)
+tests['steps-locks-poly'] = make('steps-locks-poly', (add, wire) => {
+  add('fm1', 0, 0, { tempo: 150 });
+  const st = add('steps', 200, 0, { len: 8, rate: 4, gate: 0.7 });
+  const al = add('alloc', 400, 0, { voices: 3 });
+  const o = add('osc', 600, 0, { wave: 1, level: 0.5 });
+  const f1 = add('filter', 650, 0, { cutoff: 900, res: 0.4 });
+  const f2 = add('filter', 700, 0, { cutoff: 900, res: 0.1 });
+  const e = add('adsr', 600, 200, { a: 0.003, d: 0.1, s: 0.5, r: 0.04 });
+  const v = add('vca', 800, 0);
+  const out = add('output', 1000, 0, { level: 0.6 });
+  wire(st, 'keys', al, 'keys');
+  wire(al, 'pitch', o, 'pitch');
+  wire(al, 'gate', e, 'gate');
+  wire(o, 'out', f1, 'in'); wire(f1, 'lp24', f2, 'in'); wire(f2, 'lp12', v, 'in');
+  wire(e, 'env', v, 'cv');
+  wire(v, 'out', out, 'l');
+});
+{
+  const p = tests['steps-locks-poly'];
+  const ids = p.modules.filter((m) => ['alloc', 'osc', 'filter', 'adsr', 'vca'].includes(m.type)).map((m) => m.id);
+  const [f1, f2] = p.modules.filter((m) => m.type === 'filter');
+  const e = p.modules.find((m) => m.type === 'adsr')!;
+  const asm = makeAssembly(p, ids, 'locked voices');
+  asm.poly = {};
+  asm.params = [{ module: f1.id, param: 'cutoff', label: 'cutoff', also: [{ module: f2.id, param: 'cutoff' }] }, { module: f1.id, param: 'res', label: 'res' }];
+  const st = p.modules.find((m) => m.type === 'steps')!;
+  st.notes = [n(0, 2, 48), n(0, 2, 55), n(0, 2, 60), n(2, 1, 67), n(3, 1, 50), n(3, 1, 57), n(4, 2, 62), n(6, 1, 65), n(6, 1, 69), n(7, 1, 72)];
+  st.locks = [
+    { at: 0, module: f1.id, param: 'cutoff', value: 4000 }, { at: 2, module: f1.id, param: 'cutoff', value: 300 },
+    { at: 3, module: f1.id, param: 'res', value: 0.9 }, { at: 4, module: e.id, param: 'd', value: 0.4 },
+    { at: 6, module: f1.id, param: 'cutoff', value: 9000 },
+  ];
+}
+events['steps-locks-poly'] = [[128 * 5, 'run', 0], [128 * 500, 'stop', 0]];
+ends['steps-locks-poly'] = 128 * 560;
+
 // songs (format 48): a song's entries, a pass each (patterns with their shift, back to the first after the last), stop and
 // PLAY start it again; another song chosen while running, then none (the selected pattern again, unshifted); a track that
 // plays a Drum map is never shifted (its notes stay on their rows) and a pattern it has not got plays its first
@@ -2732,7 +3044,7 @@ events['808 Kit'] = events['909 Kit'];
 if (process.argv.includes('--panel-fixtures')) {
   const out = new URL('../../build/panel-fixtures/', import.meta.url);
   mkdirSync(out, { recursive: true });
-  for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns'])
+  for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns', 'matrix-audio'])
     writeFileSync(new URL(`${name}.m1p`, out), encodePatch(tests[name], true));
   {
     // SEL's nudges (D-249, #215): arm-set with no keys cable into the second Voicing or the Drum map. The Drum map keeps a
@@ -2741,6 +3053,20 @@ if (process.argv.includes('--panel-fixtures')) {
     const unreached = new Set(p.modules.filter((m) => m.type === 'drummap' || (m.type === 'alloc' && m.y > 0)).map((m) => m.id));
     p.cables = p.cables.filter((c) => !(c.from.port === 'keys' && unreached.has(c.to.module)));
     writeFileSync(new URL('arm-unreached.m1p', out), encodePatch(p, true));
+  }
+  {
+    // an engine no keys cable reaches (#215, D-905): Monolith D (mono: its Voicing leaves the device form) and Hera 6 (poly:
+    // its group stays, so SEL arms it), on the Output's left and right, Main's keys cables gone. The device extras mark both
+    const p = newPatch(DEFS);
+    const output = p.modules.find((m) => m.type === 'output')!;
+    for (const [name, y] of [['Monolith D', 0], ['Hera 6', 900]] as const) {
+      const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === name)!, 300, y);
+      wireEngine(p, a);
+      if (y) connect(p, DEFS, { module: a.outputs[0].module, port: a.outputs[0].port }, { module: output.id, port: 'r' });
+    }
+    const main = p.modules.find((m) => m.type === 'fm1')!;
+    p.cables = p.cables.filter((c) => !(c.from.module === main.id && c.from.port === 'keys'));
+    writeFileSync(new URL('engine-unreached.m1p', out), encodePatch(p, true));
   }
   console.log('panel fixtures generated');
   process.exit(0);

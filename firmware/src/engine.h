@@ -10,7 +10,7 @@
 #define ENG_SR 44118u          /* the FM-1's I2S rate (M-VAVE fm1_open, FM1_AUDIO_HARDWARE_RATE); was 44100 until 1.1 */
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 48   /* 48: the patterns and songs section (flag bit 10 = p[7] bit 2, ENG_FLAG_PATTERNS: Steps patterns 2..64 with short note words, the selected pattern, up to eight songs), written only by patches that have patterns or songs; 47: filter osc parameter (self-oscillation) appended; 46: appended Follower module (esp); 45: filter hp6 output after existing ports; 44: Steps play direction; 43: appended Ratio module; 42: appended Rate Env module; 41: ADSR hold input after existing ports; 40: LFO wide-rate parameter; 39: group legato bit 6 selects shared unison with bit 7; 38: group parts byte high nibble is unison count (0 means all); 37: group priority bit 7 disables stealing, assign 3 rotates with key-release reset; 36: flag bit 9 is the mask of modules with a morph B side; 35: Tier 1 of #351: the types pd, env8, select; a device page row's extras (bit 6 of its parameter byte, ENG_ROW_MORE: the further parameters it sets, its positions' names; #357, #358); a type with more than 16 parameters writes its masks as u32; parameters appended to adsr (long), lfo (phase, range, dir, mult), delay (note, swell), reverb (freeze), pulse (inf), drummap (repeat): an older binary's record holds the parameters of its own format (eng_npar, defs.h psince) and the rest take their defaults; the Steps rates 7..8 and swing past 75 (ptop); 34: the device extras section (flag bit 8: p[7] bit 0; #194, #197): per device its driving Steps track, its structure, its preset's name; 33: the Drum maps' row names section (flag bit 7, the #139 follow-up); 32: the Drum map module (#137; its record's data byte: where its keys come from); 31: the Steps module holds notes (#133: its record only its name, the notes section at flag bit 4, a keys output instead of acc, a group's note source may be a Steps module); 30: the button kinds section (flag bit 6); 29: the device pages section (flag bit 5), the Main module without the knob outputs / parameters k1..k6, the panel section with 7 labels, the Macro module; 28: env shot (one-shot); 27: step values (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (name + pattern in its record), 7 panel buttons; 25: the group record's MIDI channel and key range; 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
+#define ENG_PATCH_VERSION 49   /* 49 (release 1.9, #518): the oscillator's pm2 / pm3 parameters and pm2, pm3, index inputs; a phase modulation index to 16 rad, the LFO's random wave and wide rate to 80 Hz (values past the old tops); a device of kind 2 (ENG_DEV_NAMED: a plain module with its own name) in the device pages; 48: the patterns and songs section (flag bit 10 = p[7] bit 2, ENG_FLAG_PATTERNS: Steps patterns 2..64 with short note words, the selected pattern, up to eight songs), written only by patches that have patterns or songs; 47: filter osc parameter (self-oscillation) appended; 46: appended Follower module (esp); 45: filter hp6 output after existing ports; 44: Steps play direction; 43: appended Ratio module; 42: appended Rate Env module; 41: ADSR hold input after existing ports; 40: LFO wide-rate parameter; 39: group legato bit 6 selects shared unison with bit 7; 38: group parts byte high nibble is unison count (0 means all); 37: group priority bit 7 disables stealing, assign 3 rotates with key-release reset; 36: flag bit 9 is the mask of modules with a morph B side; 35: Tier 1 of #351: the types pd, env8, select; a device page row's extras (bit 6 of its parameter byte, ENG_ROW_MORE: the further parameters it sets, its positions' names; #357, #358); a type with more than 16 parameters writes its masks as u32; parameters appended to adsr (long), lfo (phase, range, dir, mult), delay (note, swell), reverb (freeze), pulse (inf), drummap (repeat): an older binary's record holds the parameters of its own format (eng_npar, defs.h psince) and the rest take their defaults; the Steps rates 7..8 and swing past 75 (ptop); 34: the device extras section (flag bit 8: p[7] bit 0; #194, #197): per device its driving Steps track, its structure, its preset's name; 33: the Drum maps' row names section (flag bit 7, the #139 follow-up); 32: the Drum map module (#137; its record's data byte: where its keys come from); 31: the Steps module holds notes (#133: its record only its name, the notes section at flag bit 4, a keys output instead of acc, a group's note source may be a Steps module); 30: the button kinds section (flag bit 6); 29: the device pages section (flag bit 5), the Main module without the knob outputs / parameters k1..k6, the panel section with 7 labels, the Macro module; 28: env shot (one-shot); 27: step values (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (name + pattern in its record), 7 panel buttons; 25: the group record's MIDI channel and key range; 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
 #define ENG_PATCH_COMPAT_VERSION 31   /* (a format 31 patch reads the same; 31..34 with the parameter counts of their format) */
 #define ENG_MAX_PARTS 8               /* parts of a poly group (notes it plays at once) */
 #define ENG_GROUP_REC (8u + 5u * ENG_MAX_PARTS)   /* a poly group record: parts (low nibble; high nibble unison count), assign, legato (bit 7: unison, bit 6: shared), priority (bit 7: no stealing), five flaw bytes per part, the note source, MIDI channel, lowest and highest key (patchbin.ts GROUP_REC) */
@@ -125,13 +125,46 @@ static inline uint32_t eng_patterns_end(const uint8_t *p, uint32_t len, uint32_t
     }
     return at <= len ? at : 0;
 }
-/* the end of the Steps sections from `at` (the notes, flag bit 4; the patterns and songs, ENG_FLAG_PATTERNS): `at` when
- * the patch has neither, 0 when one is cut short */
+/* the end of the P-locks section (patchbin.ts lockRecord, flag bit 11 = p[7] bit 3, format 49, #524) that starts at `at`:
+ * u8 tracks, per track u8 module, u8 T rows, per row u8 n and n (module, parameter), u8 P, per pattern u8 its number, u8 L
+ * and L locks of 6 bytes (step, row, i32 value). 0 if it runs past `len` */
+#define ENG_FLAG_LOCKS 8u                       /* in p[7] */
+static inline uint32_t eng_locks_end(const uint8_t *p, uint32_t len, uint32_t at)
+{
+    uint32_t nt, t, k, n;
+    if (at >= len)
+        return 0;
+    nt = p[at++];
+    for (t = 0; t < nt; t++) {
+        if (at + 2u > len)
+            return 0;
+        n = p[at + 1u];
+        at += 2u;
+        for (k = 0; k < n; k++) {
+            if (at >= len)
+                return 0;
+            at += 1u + 2u * p[at];
+        }
+        if (at >= len)
+            return 0;
+        n = p[at++];
+        for (k = 0; k < n; k++) {
+            if (at + 2u > len)
+                return 0;
+            at += 2u + 6u * p[at + 1u];
+        }
+    }
+    return at <= len ? at : 0;
+}
+/* the end of the Steps sections from `at` (the notes, flag bit 4; the patterns and songs, ENG_FLAG_PATTERNS; the P-locks,
+ * ENG_FLAG_LOCKS): `at` when the patch has none, 0 when one is cut short */
 static inline uint32_t eng_steps_end(const uint8_t *p, uint32_t len, uint32_t at)
 {
     if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))
         return 0;
     if ((p[7] & ENG_FLAG_PATTERNS) && !(at = eng_patterns_end(p, len, at)))
+        return 0;
+    if ((p[7] & ENG_FLAG_LOCKS) && !(at = eng_locks_end(p, len, at)))
         return 0;
     return at;
 }
@@ -155,8 +188,11 @@ static inline uint32_t eng_row_more_end(const uint8_t *p, uint32_t len, uint32_t
     }
     return at <= len ? at : 0;
 }
+/* a device of the device pages section's kind 2 (format 49, #518; patchbin.ts NAMED_MODULE): a plain module with its own
+ * name, u8 its index and a text: its name */
+#define ENG_DEV_NAMED 2u
 /* the end of the device pages section (patchbin.ts, header flag bit 5) that starts at `at`, 0 when it is cut short:
- * u8 devices; per device u8 kind (0: u8 a plain module's index; 1: a text name, u8 pages, per page a text name, u8 part,
+ * u8 devices; per device u8 kind (0: u8 a plain module's index; 2, ENG_DEV_NAMED: u8 a plain module's index, a text name; 1: a text name, u8 pages, per page a text name, u8 part,
  * u8 parts, u8 display, u8 rows, per row u8 module, u8 parameter, a text label, with ENG_ROW_MORE in the parameter its
  * extras); a text is u8 length + that many bytes */
 static inline uint32_t eng_devices_end(const uint8_t *p, uint32_t len, uint32_t at)
@@ -170,6 +206,12 @@ static inline uint32_t eng_devices_end(const uint8_t *p, uint32_t len, uint32_t 
             return 0;
         if (p[at] == 0u) {
             at += 2u;
+            continue;
+        }
+        if (p[at] == ENG_DEV_NAMED) {
+            if (at + 2u >= len)
+                return 0;
+            at += 3u + p[at + 2u];
             continue;
         }
         if (p[at++] != 1u || at >= len)
@@ -205,13 +247,15 @@ static inline uint32_t eng_devices_end(const uint8_t *p, uint32_t len, uint32_t 
 
 /* the end of the device extras section (patchbin.ts, header flag bit 8 = bit 0 of p[7], format 34; right after the device
  * pages) that starts at `at`, 0 when it is cut short: u8 devices (the device pages section's count), per device u8 track (the
- * device index of the Steps track that drives it, ENG_NO_TRACK none), u32 LE structure (an assembly's fingerprint,
- * structure.ts; 0 a plain module), a text: the name of the preset it was set to (u8 length + that many bytes, 0 none),
+ * device index of the Steps track that drives it, ENG_NO_TRACK none, ENG_KEYS_UNREACHED none and an engine no keys cable
+ * reaches, #215), u32 LE structure (an assembly's fingerprint, structure.ts; 0 a plain module), a text: the name of the preset it was set to (u8 length + that many bytes, 0 none),
  * u8 n and n (u8 module, u8 parameter byte as a page row's): its card rows in the canonical order of a preset's values
  * (0xFF 0xFF: a row the FM-1 has not got), u8 m and m module indices: the modules it is made of (#191) */
 #define ENG_FLAG_EXTRAS 1u                      /* in p[7] */
 #define ENG_FLAG_MORPH_MODULES 2u /* header byte 7 bit 1 (flag bit 9), after the B set */
 #define ENG_NO_TRACK 0xFFu
+#define ENG_KEYS_UNREACHED 0xFEu                /* the track byte: no track, and an engine no keys cable reaches (#215, D-905;
+                                                 * firmware before 1.9 finds no such device: no track) */
 static inline uint32_t eng_extras_end(const uint8_t *p, uint32_t len, uint32_t at)
 {
     uint32_t n, d;
@@ -279,7 +323,8 @@ int32_t eng_get_eff(uint32_t module, uint32_t param);               /* what the 
 void eng_set_att(uint32_t module, uint32_t input, int32_t q16);      /* attenuverter of p1 / p2, Q16 */
 int32_t eng_att(uint32_t module, uint32_t input);
 /* a macro range of input 0 / 1 (p1 / p2) on a parameter: the input's value lands between lo and hi (0..255 of the
- * parameter's range, octaves for a log one) instead of adding to the base; on 0 removes it. 0 = no room / bad arguments */
+ * parameter's range, octaves for a log one) instead of adding to the base; on 0 removes it, bit 1 of on reads the input's
+ * -1..1 across the ends (bipolar, #526). 0 = no room / bad arguments */
 int eng_set_range(uint32_t module, uint32_t input, uint32_t param, int on, uint32_t lo, uint32_t hi);
 /* the range of input 0 / 1 on a parameter, 1 if there is one (lo / hi as above) */
 int eng_range(uint32_t module, uint32_t input, uint32_t param, uint32_t *lo, uint32_t *hi);
@@ -299,6 +344,7 @@ uint32_t eng_knob_mask(uint32_t module, uint32_t knob);
 /* the FM-1 panel module whose knob k drives parameter j of `module` through a cable (then the knob, not the parameter, is turned), else -1 */
 /* the value of a parameter after `clicks` knob clicks of `unit_per_click` (Q16 fraction of the range; octaves for the cutoff) */
 int32_t eng_step_param(uint32_t module, uint32_t param, int32_t clicks, int32_t unit_per_click);
+int32_t eng_step_value(uint32_t module, uint32_t param, int32_t v, int32_t clicks, int32_t unit_per_click);   /* as eng_step_param, from v (a P-lock's) */
 int eng_param_is_log(uint32_t module, uint32_t param);
 /* index of the first module of a type (defs.h T_*), -1 if the patch has none */
 int eng_find(uint32_t type);
@@ -401,6 +447,31 @@ int eng_song_delete(uint32_t s, uint32_t k);
 /* the patterns and songs section as the engine has it now (patchbin.ts patternRecord), into out (cap bytes): its length,
  * 0 when there is nothing to write (pattern 1, no song, no patterns, no entries), -1 when it does not fit */
 int eng_patterns_record(uint8_t *out, uint32_t cap);
+/* P-locks (#524, format 49; track.ts StepLock, engine.ts locksStep): a lock on a step of a pattern sets a row of the
+ * device its track plays (the parameters of its locked row, ENG_LOCK_PAIRS at most) in place of their normal values
+ * while the track's playhead is on that step. ENG_PAT_LOCKS per pattern, ENG_MAX_LOCKS and ENG_LOCK_TARGETS rows per
+ * patch (patchbin.ts DEVICE.locks, locks.ts). */
+#define ENG_PAT_LOCKS 64
+#define ENG_MAX_LOCKS 256
+#define ENG_LOCK_TARGETS 32
+#define ENG_LOCK_PAIRS 6
+int eng_locks_count(void);                           /* the patch's locks, all tracks and patterns */
+/* track `module`'s lock on step k of pattern p on module m's parameter j: 1 and its value in *v (Q16), 0 none */
+int eng_lock_get(uint32_t module, uint32_t p, uint32_t k, uint32_t m, uint32_t j, int32_t *v);
+/* the locks on step k of pattern p */
+int eng_locks_step(uint32_t module, uint32_t p, uint32_t k);
+/* that lock set to v (on) or removed; a new row also sets the further parameters `also` lists (a page row's extras as the
+ * binary has them, ENG_ROW_MORE: u8 n, n (module, parameter); 0 none). 0 done, -1 no room (ENG_PAT_LOCKS, ENG_MAX_LOCKS,
+ * ENG_LOCK_TARGETS) or not a lockable parameter */
+int eng_lock_set(uint32_t module, uint32_t p, uint32_t k, uint32_t m, uint32_t j, const uint8_t *also, int32_t v, int on);
+/* the pattern the SEQ page's locks go into: the one the track plays; one it has not got is made first, from its pattern 1
+ * (its notes and its locks: track.ts, the editor's setLocks). -1 none */
+int eng_locks_pattern(uint32_t module);
+/* pattern p's locks, 7 bytes each into out (cap bytes): step, module, parameter, i32 LE value; their count, -1 no track */
+int eng_locks_list(uint32_t module, uint32_t p, uint8_t *out, uint32_t cap);
+/* the P-locks section as the engine has it now (patchbin.ts lockRecord), into out (cap bytes): its length, 0 when there
+ * are no locks, -1 when it does not fit */
+int eng_locks_record(uint8_t *out, uint32_t cap);
 /* arming and recording from the keys (#139): the armed Steps module (-1 none); live recording on a track; the notes it
  * recorded, one at a time (0: none); cursor entry's chord; a recorded note laid over the track */
 void eng_arm(int module);

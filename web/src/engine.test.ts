@@ -1062,7 +1062,7 @@ describe('bypass', () => {
     const v = validatePatch({ ...p, modules: mods }, DEFS);
     expect(v.modules.map((m) => !!m.bypass)).toEqual([false, false, true, false]);
     const b = encodePatch(v);
-    const at = 8 + PANEL_BYTES + recordSize('fm1') + recordSize('osc');
+    const at = 8 + PANEL_BYTES + recordSize('fm1', b[1]) + recordSize('osc', b[1]);
     expect(b[at]).toBe(DEFS.filter ? (Object.keys(DEFS).indexOf('filter') | 0x80) : -1);
     expect(b[8 + PANEL_BYTES] & 0x80).toBe(0);
   });

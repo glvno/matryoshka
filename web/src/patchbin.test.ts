@@ -113,9 +113,9 @@ describe('binary patch format', () => {
 
   it('marks the parameters appended since format 34 (`since`), which the FM-1 reads an older binary without', () => {
     // format 34's types and their parameter counts where they grew (firmware/src/defs.h at v1.4.1)
-    const v34: Record<string, number> = { lfo: 6, adsr: 4, delay: 5, reverb: 5, pulse: 1, drummap: 8, alloc: 8, steps: 4, filter: 5 };
+    const v34: Record<string, number> = { osc: 11, lfo: 6, adsr: 4, delay: 5, reverb: 5, pulse: 1, drummap: 8, alloc: 8, steps: 4, filter: 5 };
     const nTypes34 = TYPE_ORDER.indexOf('pd'); // pd, env8, select came with format 35
-    expect(TYPE_ORDER.slice(nTypes34)).toEqual(['pd', 'env8', 'select', 'rateenv', 'ratio', 'esp']); // Rate Env in 42, Ratio in 43, Follower in 46
+    expect(TYPE_ORDER.slice(nTypes34)).toEqual(['pd', 'env8', 'select', 'rateenv', 'ratio', 'esp', 'shreg', 'comp', 'range', 'matrix']); // Rate Env in 42, Ratio in 43, Follower in 46, Shift register, Comparator, Range and Matrix in 49
     for (const t of TYPE_ORDER.slice(0, nTypes34)) {
       const ps = DEFS[t].params;
       expect(ps.filter((q) => (q.since ?? 0) <= 34).length, t).toBe(v34[t] ?? ps.length);
@@ -347,7 +347,7 @@ describe('binary patch format', () => {
     expect(b[osc]).toBe(TYPE_ORDER.indexOf('osc'));
     const dv = new DataView(b.buffer);
     expect(dv.getInt32(osc + 1, true)).toBe(2 * 65536); // wave = saw (2)
-    const att = osc + 1 + 4 * DEFS.osc.params.length; // osc: att1, att2, then the masks p1 p2 k1 k2 k3 k4
+    const att = osc + 1 + 4 * paramsAt('osc', b[1]).length; // osc: att1, att2, then the masks p1 p2 k1 k2 k3 k4
     expect(dv.getInt32(att, true)).toBe(65536);
     expect(dv.getInt32(att + 4, true)).toBe(65536);
     expect(Array.from(b.slice(att + 8, att + 20))).toEqual([1, 0, 2, 0, 1, 0, 2, 0, 4, 0, 8, 0]); // the default matrix, u16 LE

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { positionPopover } from './popover';
 import { canSeparate, isPin, parameterInputs, pinRoutes, removeRoute, separateDepth, setInputRoute } from './parameter-routing';
-import { paramValue, rangeOf, type Cable, type ModuleDef, type ModuleInst, type ParamDef, type Patch } from './patch';
+import { DEPTH_MAX, isBipolar, paramValue, rangeOf, type Cable, type ModuleDef, type ModuleInst, type ParamDef, type Patch, type Range } from './patch';
 import { DEFS } from './modules';
 import { choiceName, longName, moduleName } from './labels';
+import { depthScale, depthText, parseDepth, storedDepth } from './depth';
+import { outputRange } from './ranges';
 
 interface Events {
   patch(): Patch;
@@ -11,7 +13,14 @@ interface Events {
   /** a control is about to change the patch: one undo step per gesture (Editor.touch) */
   touch?(): void;
   onAtt(id: number, index: number, value: number): void;
-  onRange(id: number, index: number, name: string, range: [number, number] | null): void;
+  onRange(id: number, index: number, name: string, range: Range | null): void;
+}
+
+/** does the cable's source swing both ways (its output range, ranges.ts, starts below 0: an LFO's −1..1)? A macro range
+ * made on it reads its −1..1 across the two ends (#526) */
+export function swingsBoth(p: Patch, c: Cable): boolean {
+  const m = p.modules.find((x) => x.id === c.from.module);
+  return !!m && /^[^0-9−-]*[−-]\d*\.?\d+(e[+-]?\d+)?\.\./.test(outputRange(m.type, c.from.port, m.params));
 }
 
 const sourceName = (p: Patch, c: Cable): string => {
@@ -90,19 +99,35 @@ export function parameterMenu(m: ModuleInst, def: ModuleDef, pd: ParamDef, ev: E
     {
       const depthLabel = document.createElement('label');
       depthLabel.textContent = shared.length ? `Depth, shared with ${shared.map((n) => longName(def.type, n)).join(', ')}` : 'Depth';
+      // the depth reads in the parameter's units (#526): the slider moves in hundredths of the range, a typed value
+      // (a fraction too: "1/8 oct") is kept as typed, on the binary's Q16 grid
       const depth = document.createElement('input');
-      depth.type = 'range'; depth.min = '-1'; depth.max = '1'; depth.step = '.01';
+      depth.type = 'range'; depth.min = String(-DEPTH_MAX); depth.max = String(DEPTH_MAX); depth.step = '.01';
       depth.value = String(m.att![index]);
       depth.setAttribute('aria-label', `${def.label} ${label}: depth of ${name.textContent}`);
-      const value = document.createElement('output');
-      value.textContent = Number(depth.value).toFixed(2);
-      refreshers.push(() => { depth.value = String(m.att![index]); value.textContent = Number(depth.value).toFixed(2); });
-      depth.oninput = () => {
+      const value = document.createElement('input');
+      value.type = 'text';
+      value.className = 'depth-value';
+      value.size = 9;
+      value.value = depthText(pd, m.att![index]);
+      const { unit } = depthScale(pd);
+      value.title = `Type a depth${unit ? ` in ${unit === '%' ? '% of the slider' : unit}` : ''}, or a fraction like 1/8. Up to ${DEPTH_MAX} times the range either way.`;
+      value.setAttribute('aria-label', `${def.label} ${label}: depth of ${name.textContent}, typed`);
+      const set = (att: number): void => {
         ev.touch?.();
-        m.att![index] = Number(depth.value);
-        value.textContent = Number(depth.value).toFixed(2);
-        ev.onAtt(m.id, index, Number(depth.value));
+        m.att![index] = att;
+        depth.value = String(att);
+        value.value = depthText(pd, att);
+        ev.onAtt(m.id, index, att);
       };
+      refreshers.push(() => { depth.value = String(m.att![index]); value.value = depthText(pd, m.att![index]); });
+      depth.oninput = () => set(storedDepth(Number(depth.value)));
+      value.onchange = () => {
+        const att = parseDepth(value.value, pd);
+        if (att === null) value.value = depthText(pd, m.att![index]);
+        else set(att);
+      };
+      value.onkeydown = (e) => { if (e.key === 'Enter') value.blur(); };
       depthLabel.append(depth, value);
       group.append(depthLabel);
       if (shared.length && canSeparate(p, m, pd.name)) {
@@ -119,11 +144,24 @@ export function parameterMenu(m: ModuleInst, def: ModuleDef, pd: ParamDef, ev: E
     const range = document.createElement('input'); range.type = 'checkbox'; range.checked = !!r;
     range.setAttribute('aria-label', `${def.label}: ${name.textContent} plays ${label} between two values`);
     range.onchange = () => ev.change(() => {
-      if (range.checked) ((m.range ??= {})[pin] ??= {})[pd.name] = [0, 1];
+      // a source that swings both ways (an LFO) maps its whole swing between the ends (#526)
+      if (range.checked) ((m.range ??= {})[pin] ??= {})[pd.name] = swingsBoth(ev.patch(), cable) ? [0, 1, 1] : [0, 1];
       else delete m.range?.[pin]?.[pd.name];
     });
     rangeLabel.append(range, 'Play between two values');
     group.append(rangeLabel);
+    if (r) {
+      const biLabel = document.createElement('label');
+      const bi = document.createElement('input'); bi.type = 'checkbox'; bi.checked = isBipolar(r);
+      bi.setAttribute('aria-label', `${def.label}: ${name.textContent} on ${label} swings −1..1`);
+      biLabel.title = 'On: the source\'s −1..1 spans From..To (an LFO). Off: its 0..1 does (an envelope, a knob). Set from the source when the range is made.';
+      bi.onchange = () => ev.change(() => {
+        const now = rangeOf(m, pin, pd.name);
+        if (now) m.range![pin]![pd.name] = bi.checked ? [now[0], now[1], 1] : [now[0], now[1]];
+      });
+      biLabel.append(bi, 'Source swings −1..1');
+      group.append(biLabel);
+    }
     if (r) for (const end of [0, 1] as const) {
       const row = document.createElement('label');
       row.textContent = end ? 'To' : 'From';
@@ -139,7 +177,7 @@ export function parameterMenu(m: ModuleInst, def: ModuleDef, pd: ParamDef, ev: E
         ev.touch?.();
         r[end] = Number(input.value);
         show();
-        ev.onRange(m.id, index, pd.name, [r[0], r[1]]);
+        ev.onRange(m.id, index, pd.name, r);
       };
       show(); row.append(input, output); group.append(row);
     }

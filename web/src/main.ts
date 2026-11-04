@@ -2,6 +2,8 @@
 // first of all: at the pages.dev address with no data, site-move.ts sends the visitor on to matryoshka.lol and stops
 // everything else; then migrate.ts notes which storage keys the page found before anything here writes one
 import './site-move';
+import { renderFm1Help } from './controls-help';
+import { ControlsStrip, stripPatch, type StripPatch } from './controls-strip';
 import { addUserPreset, currentValues, exportPresets, importPresets, presetsOf } from './device-presets';
 import { armedFromMask, armMask } from './arm';
 import './factory-presets'; // the factory engines' presets (#193)
@@ -14,7 +16,7 @@ import type { HostMsg } from './worklet';
 import { chipState, DeviceLink, deviceIndex, liveSync, sandboxChip, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, type ChipState, type DeviceEvent } from './device';
 import { SITE_URL } from './site';
 import { sandboxKey, sandboxPage, sandboxStep, sandboxTempoTurn } from './sandbox-mode';
-import { LIVE_MS, slotLabel } from './protocol';
+import { LIVE_MS, panelOffBy, slotLabel, type PanelState } from './protocol';
 import { Fm1View } from './fm1-view';
 import { EmuKeys } from './emu-keys';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
@@ -74,6 +76,7 @@ import { ClockOut, isFm1Out, portLabels } from './clock-out';
 import { currentTheme, onThemeChange, setTheme, themeChoice, toggleTheme } from './theme';
 import { INSTALL_VERSION, installLabel } from './version';
 import { runningVersion, updateOffer } from './fm1-version';
+import { PanelAlign } from './panel-align';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const STORE = renamedKey('matryoshka.patch', 'modular-1.patch');
@@ -293,8 +296,48 @@ let fromEmu = false;
  *  replayed turn just after it puts the FM-1 tab's copy of the panel back there */
 let focusNow: { device: number; page: number; at: number } | null = null;
 let deviceSlot: { slot: number; name: string } | null = null;
+/** the FM-1's panel state as it last reported it (GUIDE_NOW, #549; the controls strip follows it, #554), null: not reported */
+let fm1Panel: PanelState | null = null;
+/** the reports are ignored, as from older firmware (the emulator scenarios' check of the old path) */
+let panelIgnored = false;
+/** the FM-1 tab's copy put back where the FM-1 is (#549): how often, and what differed the last time */
+let panelAligns = 0;
+let panelLastOff: string[] = [];
+/** the followed FM-1 reports the key edges its panel takes and its state (KEYS_NOW / GUIDE_NOW, feature bit 18, #549):
+ *  its keys go through the FM-1 tab's copy too, and the copy is put back where the FM-1 is when they differ. Older
+ *  firmware: neither, the copy replays the buttons alone (D-457) */
+const panelReported = (): boolean => !panelIgnored && device.connected && device.reportsPanel && mirror.follows(device.input);
+/** the copy compared with the FM-1's last GUIDE_NOW, ALIGN_MS after the last report or panel input the copy took (an
+ *  input after a report: the report that follows it is awaited, panel-align.ts), and put back where it differs */
+const panelAlign = new PanelAlign(() => {
+  const copy = emu.ui?.guide();
+  if (!copy || !fm1Panel || !panelReported()) return;
+  const off = panelOffBy(copy, fm1Panel);
+  if (!off.length) return;
+  panelAligns++;
+  panelLastOff = off;
+  emu.align(fm1Panel);
+});
+/** a GUIDE_NOW, or one of the followed FM-1's panel inputs the copy took: the comparison waits for the last of them */
+function alignSoon(): void {
+  if (fm1Panel && panelReported()) panelAlign.soon();
+}
 device.onEvent = (e) => {
   if (e.kind === 'info') return syncChip();   // (MENU > MIDI OUT changed: the chip says so in sandbox mode)
+  if (e.kind === 'keys') {   // a key edge the FM-1's panel took (#549): through the copy too, as the FM-1 took it
+    if (!panelReported()) return;
+    void emu.ready().then(() => {
+      fromDevice = true;     // (what the copy does with it is the FM-1's: its track edits come as TRACK_NOW, fm1Event)
+      try { emu.keysNow(e.keys, e.held); } finally { fromDevice = false; }
+      alignSoon();
+    });
+    return;
+  }
+  if (e.kind === 'guide') {
+    fm1Panel = e.state;
+    alignSoon();
+    return;
+  }
   if (e.kind === 'tempo') {   // the FM-1's TEMPO setting and global tempo (D-907): after HELLO and when changed there
     fromDevice = true;
     try { tempo.set(e.bpm ? { mode: e.global ? 'global' : 'patch', bpm: e.bpm } : { mode: e.global ? 'global' : 'patch' }, 'device'); } finally { fromDevice = false; }
@@ -336,6 +379,10 @@ device.onEvent = (e) => {
 function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
   const mark = (on: boolean): void => { if (from === 'device') fromDevice = on; else fromEmu = on; };
   if (e.kind === 'slot') return;
+  // the copy's own edits while it replays an FM-1 that reports its panel (#549): the FM-1 sends its own (TRACK_NOW,
+  // LOCKS_NOW, PATTERN_NOW, SONG_NOW, MUTE), under Live; the copy's would be the same edit twice, or one the FM-1's patch
+  // did not take
+  if (from === 'emu' && fromDevice && panelReported() && ['track', 'locks', 'pattern', 'song', 'mute'].includes(e.kind)) return;
   if (e.kind === 'track' || e.kind === 'mute') {   // the FM-1's SEQ page (#83, #133): a track edited or recorded, a track muted
     const id = deviceView(editor.patch, true).patch.modules[e.module]?.id;   // (the compiled form the FM-1 got, as deviceIndex)
     if (id === undefined) return;
@@ -347,6 +394,19 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
         if (from === 'device') emu.ui?.mute(e.module, e.on);   // (the emulator's black key lights follow the FM-1's mute)
       }
     } finally { mark(false); }
+    return;
+  }
+  if (e.kind === 'locks') {   // P-locks set on the FM-1's SEQ page (#524): into the patch, an undo step
+    const dev = deviceView(editor.patch, true).patch;
+    const id = dev.modules[e.module]?.id;
+    if (id === undefined) return;
+    const locks = e.locks.flatMap((l) => {
+      const m = dev.modules[l.module];
+      const pd = m ? DEFS[m.type]?.params[l.param] : undefined;
+      return m && pd ? [{ at: l.at, module: m.id, param: pd.name, value: l.value }] : [];
+    });
+    mark(true);
+    try { editor.locksFromDevice(id, locks, e.pat); } finally { mark(false); }
     return;
   }
   if (e.kind === 'arms') {   // the FM-1 armed or disarmed something on its panel (#191): the editor shows the same set
@@ -501,6 +561,8 @@ const sink = {
   send(msg: HostMsg, fromPanel = false): void {
     // CC 16..19 from a MIDI controller turn Main's knobs: the rows of the device page in focus
     if (msg.t === 'cc' && msg.n >= 16 && msg.n <= 19) return editor.turnKnob(msg.n - 16, msg.v / 127);
+    // a followed FM-1 that reports its keys (#549): they reach the copy as KEYS_NOW, its notes only sound here
+    if (fromDevice && (msg.t === 'on' || msg.t === 'off') && panelReported()) return sink.play(msg);
     // the Emulator view: its keys play what the emulated FM-1 plays for them (#467, emu-keys.ts)
     for (const m of emuKeys.route(msg, fromPanel)) sink.play(m);
   },
@@ -617,6 +679,7 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
     try { setPlaying(run); } finally { fromEmu = false; }
   },
   track: (m, notes, pat) => fm1Event({ kind: 'track', module: m, notes, pat }, 'emu'),
+  locks: (m, pat, locks) => fm1Event({ kind: 'locks', module: m, pat, locks }, 'emu'),
   pattern: (p, song) => fm1Event({ kind: 'pattern', pattern: p, song }, 'emu'),
   song: (k, entries) => fm1Event({ kind: 'song', song: k, entries }, 'emu'),
   mute: (m, on) => fm1Event({ kind: 'mute', module: m, on }, 'emu'),
@@ -646,6 +709,21 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
   used: () => { if (!host.running) void startAudio(); },
 }, emuMaster);
 emu.onReady = () => emuLoad();
+// the controls strip under the emulated FM-1 (#554): the connected FM-1's panel state while it reports it (GUIDE_NOW,
+// feature bit 18), else the Emu view's copy's (older firmware, or no FM-1)
+const controlsStrip = new ControlsStrip();
+emu.below(controlsStrip.el);
+/** the patch the emulated FM-1 took last (its patch buttons and device pages' knob names, controls-strip.ts stripPatch):
+ *  the strip's words for them; a refused patch leaves the last one's, which the emulator still shows */
+let stripCtx: StripPatch | null = null;
+let stripAt = 0;
+emu.onFrame = () => {
+  const now = performance.now();   // (twenty times a second: the copy's state asks its conditions, which read the preset store)
+  if (now - stripAt < 50) return;
+  stripAt = now;
+  if (panelReported() && fm1Panel) controlsStrip.draw(fm1Panel, 'fm1', live() && onEditorPatch ? stripCtx : null);
+  else controlsStrip.draw(emu.ui?.guide() ?? null, 'emu', stripCtx);
+};
 /** another patch opened (the emulator's focus starts at its first device) */
 let emuFresh = true;
 /** the name of the last patch the emulated FM-1 took (a refused one leaves it showing) */
@@ -665,8 +743,9 @@ const editor = new Editor($('canvas'), firstPatch, {
     host.setPatch(p);
     queueSave(p);
     showBudget();
-    if (live()) structureChanged();
-    queueEmu();
+    if (fromDevice) uploadGate.forget();   // (from the FM-1: P-locks set there, #524; it has them, its bytes are not known)
+    else if (live()) structureChanged();
+    if (!fromEmu) queueEmu();
   },
   onAtt(id, index, value) {
     if (fromDevice) uploadGate.forget();   // (the FM-1 changed its patch itself, or the copy of its panel did: its bytes are not known)
@@ -1226,6 +1305,8 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Fit patch to screen', keywords: 'zoom view', run: inPatch(() => editor.zoomToFit()) },
     { kind: 'command', label: 'Store to an FM-1 slot\u2026', keywords: 'bank flash save device', run: () => void storeToSlot() },
     { kind: 'command', label: 'Reset canvas scale', keywords: 'zoom 100%', run: inPatch(() => editor.setZoom(1)) },
+    // the patch's modules with their own names (#518): picking one selects it
+    ...editor.patch.modules.filter((m) => m.name && m.type !== 'steps' && DEFS[m.type]).map((m) => ({ kind: 'module in patch', tags: ['module'], label: m.name!, detail: moduleName(m.type, DEFS[m.type].label), keywords: 'select find named', run: inPatch(() => editor.reveal(m.id)) })),
     // the same lists as + Add module, the assembly browser and the Open picker (catalog.ts)
     ...addableModules(DEFS).map((m) => ({ kind: 'add module', tags: ['module'], label: m.name, keywords: moduleKeywords(m.type, m.def.label), run: () => editor.add(m.type) })),
     ...assemblyShelves().filter((a, i, all) => all.findIndex((b) => b.def === a.def) === i).map((a) => assembly(a.def, a.shelf)), // the drum kit once
@@ -1381,6 +1462,7 @@ $('mobile-commands').onclick = () => openPalette();
 $('palette-close').onclick = () => palette.close();
 for (const button of document.querySelectorAll<HTMLButtonElement>('[data-query]')) button.onclick = () => prefill(button.dataset.query!);
 const help = $<HTMLDialogElement>('help');
+renderFm1Help($('help-fm1'));   // (the FM-1's controls, from the controls table: controls.ts, #553)
 $('help-btn').onclick = () => help.showModal();
 
 // A pointer interaction gives focus back to the page, so Space / arrows / Delete reach the shortcuts below, not the control.
@@ -1441,8 +1523,8 @@ window.addEventListener('keydown', (e) => {
     // nothing selected: Left / Right pick the device on Main's knobs (the FM-1's SELECT), Up / Down its page (ALGO) (#154)
     if (!done && !mod && (k === 'ArrowLeft' || k === 'ArrowRight')) done = editor.stepDevice(k === 'ArrowRight' ? 1 : -1);
     else if (!done && !mod && (k === 'ArrowUp' || k === 'ArrowDown')) done = editor.stepPage(k === 'ArrowDown' ? 1 : -1);
-  } else if (!mod && !e.altKey && KNOB_KEYS.includes(k)) {
-    heldKnob = KNOB_KEYS.indexOf(k);
+  } else if (!mod && !e.altKey && knobOf(e) >= 0) {
+    heldKnob = knobOf(e);
     done = true;
   }
   if (done) {
@@ -1452,23 +1534,25 @@ window.addEventListener('keydown', (e) => {
 }, true);
 // Hold 1..4 and turn the wheel: K1..K4 of the page on Main's knobs. The wheel's delta is gathered into notches (a hundredth
 // of the row's range each), so a trackpad's small steps add up the same way as a mouse wheel's clicks.
-const KNOB_KEYS = ['1', '2', '3', '4'];
+/** the knob a key 1..4 holds (by the key's place, so Shift + 1, which types !, still holds K1); -1 for other keys */
+const knobOf = (e: KeyboardEvent): number => ['1', '2', '3', '4'].indexOf(e.code.replace(/^(Digit|Numpad)/, ''));
 const WHEEL_NOTCH = 40;
 let heldKnob = -1;
 let knobWheel = 0;
 document.addEventListener('keyup', (e) => {
-  if (KNOB_KEYS.indexOf(e.key) === heldKnob) (heldKnob = -1), (knobWheel = 0);
+  if (knobOf(e) === heldKnob) (heldKnob = -1), (knobWheel = 0);
 }, true);
 window.addEventListener('blur', () => (heldKnob = -1));
 window.addEventListener('wheel', (e) => {
   if (heldKnob < 0 || currentTab !== 'patch' || e.ctrlKey || e.metaKey) return;
   e.preventDefault();
   e.stopImmediatePropagation();
-  knobWheel -= e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY * WHEEL_NOTCH / 3 : e.deltaY;
+  const delta = e.deltaY || (e.shiftKey ? e.deltaX : 0);   // (Shift turns a mouse wheel sideways on a Mac)
+  knobWheel -= e.deltaMode === WheelEvent.DOM_DELTA_LINE ? delta * WHEEL_NOTCH / 3 : delta;
   const notches = Math.trunc(knobWheel / WHEEL_NOTCH);
   if (!notches) return;
   knobWheel -= notches * WHEEL_NOTCH;
-  editor.nudgeKnob(heldKnob, notches);
+  editor.nudgeKnob(heldKnob, notches, e.shiftKey);   // Shift: a tenth of a step each (#538)
 }, { capture: true, passive: false });
 // Copy / cut / paste of the selection (clipboard.ts, #92): through the browser's copy / paste events, which reach the system
 // clipboard without a permission prompt; a clip is JSON, so it survives switching patches or tabs. `lastClip` is the in-app
@@ -1723,6 +1807,7 @@ function emuLoad(): void {
       chip: emuLoaded ? `Showing ${emuLoaded} · this patch is too big` : 'This patch is too big for the FM-1', action: emuLoaded ? `Show ${emuLoaded}` : 'OK', more });
   } else {
     emuLoaded = editor.patch.name.toUpperCase();
+    stripCtx = stripPatch(editor.patch);
     emu.notice(b.fits ? null : { level: 'warn', title: 'Over the FM-1 budget',
       body: `${over}. It plays here, but it would ${b.over.some((i) => i.key === 'cpu') ? 'drop out' : 'not load'} on the device and will not upload until it fits.`,
       chip: `Over budget · ${over} · won’t upload`, action: 'Use the FM-1 view anyway', more });
@@ -1992,12 +2077,14 @@ async function mirrorInput(i: PanelInput): Promise<void> {
           break;
         }
         emu.drive(i);
+        alignSoon();
         refocusMirror(i.n === ENCODERS.select || i.n === ENCODERS.algo);
         break;
       case 'button': {
         if (i.id === BUTTONS.play) fm1PlayHeld = i.down;
         const b = PANEL_OF_ID.get(i.id);
         followOctave(noteKeys, () => emu.octave, () => emu.drive(i));   // (OCT- / OCT+: the editor's keys follow the FM-1's)
+        alignSoon();
         if (b !== undefined) editor.pressButton(b, i.down);
         refocusMirror(i.id === BUTTONS.home);
         break;
@@ -2579,6 +2666,15 @@ if (import.meta.env.DEV) {
       if (o) loadNamed(o.load(), { from: o.from });
       return !!o;
     },
+    /** a patch opened as `open` opens it, with every keys cable gone: its instruments no keys cable reaches (#215) */
+    openUnkeyed: (name: string): boolean => {
+      const o = openableGroups().flatMap((g) => g.items).find((x) => x.name === name);
+      if (!o) return false;
+      const p = o.load();
+      p.cables = p.cables.filter((c) => c.from.port !== 'keys');
+      loadNamed(p, { from: o.from });
+      return true;
+    },
     state: () => ({
       connected: device.connected, live: liveOn, fits: fitsDevice, sandbox: sandboxOn(), chip: fm1State(), following: mirror.following,
       playing: editor.playing, deviceRunning: device.running, octave: noteKeys.octave(), focus: editor.focus, patch: editor.patch.name,
@@ -2600,6 +2696,13 @@ if (import.meta.env.DEV) {
       return !!o;
     },
     emu: () => ({ loaded: emuLoaded, device: emu.ui?.focusDevice ?? -1, page: emu.ui?.page ?? -1, octave: emu.ui?.octave ?? 0 }),
+    // #549: the FM-1's panel state (GUIDE_NOW) and the FM-1 tab's copy's, where they differ, how often the copy was put
+    // back; ignore: take no reports, as from older firmware
+    panel: () => {
+      const copy = emu.ui?.guide() ?? null;
+      return { reported: panelReported(), fm1: fm1Panel, copy, off: copy && fm1Panel ? panelOffBy(copy, fm1Panel) : null, aligns: panelAligns, lastOff: panelLastOff };
+    },
+    ignorePanel: (on: boolean): void => { panelIgnored = on; },
     // the factory preset nearest the assembly's card values now: its name, the rows that differ from it (0: it is that
     // preset, within the FM-1's Q16 rounding) and the rows there are
     presetNow: (label: string): { name: string; off: number; rows: number } | null => {

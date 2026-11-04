@@ -8,6 +8,7 @@
 import { inlineWordmarks, logoHtml } from './brand';
 import { keyBits } from './emu-keys';
 import { BUTTONS, ENCODERS, Fm1Ui, type Fm1Events, type KeyPlay } from './fm1-ui';
+import type { PanelState } from './protocol';
 
 /** keep a pointer's moves and release on el (a pointer that is already gone cannot be captured: then without) */
 const capture = (el: Element, id: number): void => { try { el.setPointerCapture(id); } catch { /* gone */ } };
@@ -89,6 +90,9 @@ export interface Fm1ViewHost extends Fm1Events {
   used?(): void;
 }
 
+/** the panel's least height in CSS px with something docked under it (a taller strip then scrolls the view) */
+const FM1_MIN_H = 360;
+
 export class Fm1View {
   ui: Fm1Ui | null = null;
   private loading: Promise<Fm1Ui | null> | null = null;
@@ -112,6 +116,9 @@ export class Fm1View {
   private follow: HTMLElement;
   private farHeld = new Set<number>();
   private farTimer = 0;
+  private hint: HTMLElement;
+  /** called every frame while the view shows (the controls strip follows the panel's state, #554) */
+  onFrame: () => void = () => {};
   /** called once the module is up (the page then loads the patch into it) */
   onReady: (ui: Fm1Ui) => void = () => {};
 
@@ -156,13 +163,34 @@ export class Fm1View {
     this.chip.hidden = true;
     this.chip.addEventListener('click', () => { this.dismissed = null; this.alert.hidden = false; this.chip.hidden = true; });
     el.insertBefore(this.chip, body);
-    const hint = div('fm1-hint', el);
+    const hint = this.hint = div('fm1-hint', el);
     hint.textContent = 'Drag or scroll an encoder · Shift-click a button to hold it down · the computer keyboard plays the keys too';
     // "Mirroring your FM-1": over the panel, while a connected FM-1 drives it
     this.follow = document.createElement('p');
     this.follow.className = 'fm1-follow';
     this.follow.hidden = true;
     el.insertBefore(this.follow, this.chip);
+  }
+
+  /** an element docked under the panel, above its hint line (the controls strip, #554) */
+  below(e: HTMLElement): void {
+    this.el.insertBefore(e, this.hint);
+    // the panel takes the height the view has left over once everything beside it is laid out (--fm1-room, style.css
+    // .fm1-body), so the strip's rows show in full under it, never below the fold
+    const fit = (): void => {
+      const v = this.el;
+      if (v.hidden || !v.clientHeight) return;
+      const cs = getComputedStyle(v);
+      const gap = parseFloat(cs.rowGap) || 0;
+      const others = [...v.children].filter((c): c is HTMLElement => c instanceof HTMLElement && !c.classList.contains('fm1-body') && !c.hidden
+        && getComputedStyle(c).position !== 'absolute' && getComputedStyle(c).display !== 'none');
+      const room = v.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - others.reduce((s, c) => s + c.offsetHeight + gap, 0);
+      v.style.setProperty('--fm1-room', `${Math.max(FM1_MIN_H, Math.floor(room))}px`);
+    };
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(fit);
+    ro.observe(this.el);
+    ro.observe(e);
   }
 
   /** the module, loaded if it is not yet (following an FM-1 needs it while this tab is hidden too) */
@@ -178,7 +206,9 @@ export class Fm1View {
     ui.tick(performance.now() - this.t0);
     if (i.t === 'button') {
       this.btnEls.get(i.id)?.classList.toggle('down', i.down);
-      ui.button(i.id, i.down);
+      // (already so: a key the FM-1 reported with it held came first, keysNow; the press is not played twice)
+      const held = ui.held;
+      if (held === null || ((held >> i.id) & 1) !== (i.down ? 1 : 0)) ui.button(i.id, i.down);
       // a held button needs the clock running (GLO held in the menu, HOME + PRESET, a Page button's hold) while this tab is hidden too
       if (i.down) this.farHeld.add(i.id);
       else this.farHeld.delete(i.id);
@@ -188,6 +218,37 @@ export class Fm1View {
       const e = this.encEls.get(i.n);
       if (e) { e.turns += i.clicks; e.el.style.setProperty('--turn', `${e.turns * 18}deg`); }
     }
+    if (this.shown && ui.takeDirty()) this.paint();
+  }
+
+  /**
+   * A key edge the FM-1's panel took (KEYS_NOW, #549): its keys go through the panel logic here too, so a key its pages
+   * take (a step, the pen, REC + a white key, an arm, a mute) does here what it did there. The buttons it held then come
+   * first, as presses or releases, where they are not so here yet (the FM-1 sends KEYS_NOW ahead of the buttons' MIDI,
+   * whose own press or release is then no news: drive). What the keys play here is not sounded: the FM-1's notes are
+   */
+  keysNow(keys: number, held: number): void {
+    const ui = this.ui;
+    if (!ui) return;
+    ui.tick(performance.now() - this.t0);
+    const was = (ui.held ?? 0) & 0x3fff;
+    for (let id = 0; id < 14; id++) {
+      const b = (held >> id) & 1;
+      if (((was >> id) & 1) === b) continue;
+      this.btnEls.get(id)?.classList.toggle('down', !!b);
+      ui.button(id, !!b);
+    }
+    ui.keys(keys);
+    for (const [k, el] of this.keyEls) el.classList.toggle('down', (keys >> k & 1) !== 0);
+    if (this.shown && ui.takeDirty()) this.paint();
+  }
+
+  /** the FM-1's panel state (GUIDE_NOW): the panel logic here put back there where it is not (#549) */
+  align(fm1: PanelState): void {
+    const ui = this.ui;
+    if (!ui) return;
+    ui.tick(performance.now() - this.t0);
+    ui.align(fm1);
     if (this.shown && ui.takeDirty()) this.paint();
   }
 
@@ -217,6 +278,7 @@ export class Fm1View {
       ui.tick(performance.now() - this.t0);
       if (ui.takeDirty()) this.paint();
       this.paintLeds();
+      this.onFrame();
       this.frame = requestAnimationFrame(step);
     };
     cancelAnimationFrame(this.frame);
