@@ -477,12 +477,13 @@ static void seq_held_keep(int mod)
     seq_held_turned = 0;
 }
 
-/* the note of `note` that sounds on step k without starting there (a note through it), its index; -1 none */
-static int seq_through(const uint32_t *ws, int nn, uint32_t k, uint32_t note)
+/* the note of `note` that sounds on step k without starting there (a note through it, across the loop point too on a
+ * pattern of `len` steps), its index; -1 none */
+static int seq_through(const uint32_t *ws, int nn, uint32_t k, uint32_t note, uint32_t len)
 {
     int i;
     for (i = 0; i < nn; i++)
-        if (((ws[i] >> 12) & 127u) == note && (ws[i] & 63u) < k && k <= (ws[i] & 63u) + ((ws[i] >> 6) & 63u))
+        if (((ws[i] >> 12) & 127u) == note && eng_note_through(ws[i], k, len))
             return i;
     return -1;
 }
@@ -491,16 +492,16 @@ static int seq_through(const uint32_t *ws, int nn, uint32_t k, uint32_t note)
  * that note before it and starts one there */
 static void seq_roll_toggle(int mod, uint32_t k, uint32_t note, uint32_t vel)
 {
-    uint32_t w[TRACK_NOTES_MAX];
+    uint32_t w[TRACK_NOTES_MAX], len = (uint32_t)seq_len(mod);
     const uint32_t *ws;
-    int i, nn = eng_steps_notes((uint32_t)mod, &ws), t = seq_through(ws, nn, k, note);
+    int i, nn = eng_steps_notes((uint32_t)mod, &ws), t = seq_through(ws, nn, k, note, len);
     if (t < 0) {
         eng_steps_toggle((uint32_t)mod, k, note, vel);
         return;
     }
     for (i = 0; i < nn; i++)
         w[i] = ws[i];
-    w[t] = (w[t] & ~(63u << 6)) | (k - (w[t] & 63u) - 1u) << 6;     /* (length k - at) */
+    w[t] = eng_note_cut_before(w[t], k, len);
     (void)eng_steps_set_notes((uint32_t)mod, w, (uint32_t)nn);
     eng_steps_toggle((uint32_t)mod, k, note, vel);
 }
@@ -518,35 +519,59 @@ static void seq_held_tap_done(int mod)
     seq_sync(mod);
 }
 
-/* LFO held + a white key (the roll, #241; a drum track, #368; the rule of 2026-10-28): the selected row's note around
- * step k. On a step a note of that row runs through (started before k): k its last step already, the note is one step
- * again (TIE OFF), else it now ends on k (TIED). Else the row's last note starting before k ends on k (one press ties
- * step 1 to 16), a note of its own starting on k joining it (TIED). No note before k: NOTHING TO TIE (no tie across the
- * loop's end: a hit's own step is no tie) */
+/* LFO held + a white key (the roll, #241; a drum track, #368; the rule of 2026-10-28; #384): the selected row's note
+ * around step k, in grid order on the pattern's `len` steps. On a step a note of that row runs through (after its start,
+ * or across the loop point): k its last step already, the note is one step again (TIE OFF), else it now ends on k
+ * (TIED). Else the row's last note starting before k ends on k (one press ties step 1 to 16), a note of its own starting
+ * on k joining it (TIED). With no note of the row before k the tie wraps round the loop: the row's last note is tied
+ * across the loop point to end on k (TIED), or, starting on k itself, becomes a drone that never starts again (DRONE; a
+ * drone there already: one step again, TIE OFF). No note in the row: NOTHING TO TIE */
 static void seq_roll_tie(int mod, uint32_t k, uint32_t note)
 {
-    uint32_t w[TRACK_NOTES_MAX];
+    uint32_t w[TRACK_NOTES_MAX], len = (uint32_t)seq_len(mod);
     const uint32_t *ws;
-    int i, m, nn = eng_steps_notes((uint32_t)mod, &ws), t = seq_through(ws, nn, k, note), prev = -1;
+    int i, m, nn = eng_steps_notes((uint32_t)mod, &ws), t = seq_through(ws, nn, k, note, len), prev = -1, wrap;
     for (i = 0; i < nn; i++)
         w[i] = ws[i];
     if (t >= 0) {                                /* inside a note: it ends on k, or (k its last step) is one step again */
-        uint32_t at = w[t] & 63u, last = at + ((w[t] >> 6) & 63u);
-        w[t] = (w[t] & ~(63u << 6)) | (k == last ? 0u : k - at) << 6;
-        seq_msg_due = k == last ? "TIE OFF" : "TIED";
+        uint32_t at = w[t] & 63u, n = ((w[t] >> 6) & 63u) + 1u;
+        uint32_t last = (w[t] & ENG_NOTE_WRAP) && at + n > len ? at + n - len - 1u : at + n - 1u;
+        if (!eng_note_drone(w[t]) && k == last) {
+            w[t] &= ~(ENG_NOTE_WRAP | 63u << 6);
+            seq_msg_due = "TIE OFF";
+        } else {
+            w[t] = eng_note_end_on(w[t], k, len);
+            seq_msg_due = "TIED";
+        }
     } else {
         for (i = 0; i < nn; i++)                 /* the row's last note starting before k */
             if (((w[i] >> 12) & 127u) == note && (w[i] & 63u) < k && (prev < 0 || (w[i] & 63u) > (w[prev] & 63u)))
                 prev = i;
+        wrap = prev < 0;
+        if (wrap)                                /* none: the row's last note, whose tie wraps round the loop */
+            for (i = 0; i < nn; i++)
+                if (((w[i] >> 12) & 127u) == note && (w[i] & 63u) < len && (prev < 0 || (w[i] & 63u) > (w[prev] & 63u)))
+                    prev = i;
         if (prev < 0) {
             seq_msg_due = "NOTHING TO TIE";
             return;
         }
+        if ((w[prev] & 63u) == k) {              /* the last note starts on k: a drone, or one step again */
+            if (eng_note_drone(w[prev])) {
+                w[prev] &= ~(ENG_NOTE_WRAP | 63u << 6);
+                seq_msg_due = "TIE OFF";
+            } else {
+                w[prev] |= ENG_NOTE_WRAP | 63u << 6;
+                seq_msg_due = "DRONE";
+            }
+            (void)eng_steps_set_notes((uint32_t)mod, w, (uint32_t)nn);
+            return;
+        }
         {
-            uint32_t at = w[prev] & 63u, end = k + 1u;   /* (one past its last step) */
+            uint32_t at = w[prev] & 63u, extra = 0, n;
             for (i = m = 0; i < nn; i++) {       /* a note of its own on k joins it */
                 if (i != prev && ((w[i] >> 12) & 127u) == note && (w[i] & 63u) == k) {
-                    end = k + 1u + ((w[i] >> 6) & 63u);
+                    extra = (w[i] >> 6) & 63u;
                     continue;
                 }
                 w[m++] = w[i];
@@ -554,9 +579,11 @@ static void seq_roll_tie(int mod, uint32_t k, uint32_t note)
                     prev = m - 1;
             }
             nn = m;
-            if (end > TRACK_STEPS)
-                end = TRACK_STEPS;
-            w[prev] = (w[prev] & ~(63u << 6)) | (end - at - 1u) << 6;
+            w[prev] = eng_note_end_on(w[prev], k, len);
+            n = ((w[prev] >> 6) & 63u) + 1u + extra;
+            if (wrap ? n > len : at + n > TRACK_STEPS)
+                n = wrap ? len : TRACK_STEPS - at;
+            w[prev] = (w[prev] & ~(63u << 6)) | (n - 1u) << 6;
         }
         seq_msg_due = "TIED";
     }
@@ -604,13 +631,13 @@ static int sr_pitch(int map, uint32_t n)
 static void sr_put(int mod, uint32_t from, uint32_t to, int chord)
 {
     uint32_t w[TRACK_NOTES_MAX];
-    uint32_t i, m = 0;
+    uint32_t i, m = 0, len = (uint32_t)seq_len(mod);
     for (i = 0; i < seq_held_n; i++) {
-        uint32_t x = seq_held_notes[i], at = x & 63u, last = at + ((x >> 6) & 63u);
+        uint32_t x = seq_held_notes[i], at = x & 63u;
         if (at >= from && at <= to)
             continue;
-        if (at < from && last >= from)
-            x = (x & ~(63u << 6)) | (from - at - 1u) << 6;
+        if (eng_note_through(x, from, len))      /* (across the loop point too, #384) */
+            x = eng_note_cut_before(x, from, len);
         w[m++] = x;
     }
     for (i = 0; chord && i < sr_n && m < TRACK_NOTES_MAX; i++) {
@@ -1558,6 +1585,7 @@ static int seq_lock_line(int mod, char *line, uint32_t max)
 #define GRID_CUR 0x100u                 /* a cell's code: in step record's cursor column */
 #define GRID_CUR_Y (GRID_TICK_Y + 3u)   /* the cursor's tick: 2 px under the playhead's */
 #define GRID_LOCK 0x200u                /* a cell's code: its step has P-locks (#524): a gold corner mark, top right */
+#define GRID_DRONE 0x400u               /* a cell's code: a drone starts there (#384): the tie's band comes in at its left */
 static uint16_t seq_grid_cell[ENG_DRUM_ROWS][16];  /* the cells as drawn (seq_grid_state's codes) */
 static int8_t seq_grid_row = -1, seq_grid_tick = -2; /* the selected row, the playhead's column as drawn (-1 none) */
 static int8_t seq_grid_cur = -2;        /* step record's cursor column as drawn (-1 none) */
@@ -1608,6 +1636,8 @@ static void seq_grid_paint(uint32_t r, uint32_t i, uint32_t s, uint32_t was)
         lcd_fill(x, y, GRID_CW, GRID_CH - fill, empty);
     if (fill)
         lcd_fill(x, y + GRID_CH - fill, GRID_CW, fill, (s & 2u) ? C_ACC : C_FG);
+    if (s & GRID_DRONE)                          /* a drone (#384): tied round the loop onto its own step */
+        lcd_fill(x, y + GRID_CH / 2u - 2u, 3, 5, C_DIM);
     if (s & GRID_LOCK) {                         /* a step with P-locks (#519 Q11): a corner of 4, 3, 2, 1 px */
         lcd_fill(x + GRID_CW - 4u, y, 4, 1, P_GOLD);
         lcd_fill(x + GRID_CW - 3u, y + 1u, 3, 1, P_GOLD);
@@ -1706,18 +1736,18 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
             cell[r][i] = 0;
     }
     for (j = 0; j < nn; j++) {
-        int k = (int)(ws[j] & 63u) - k0, e = k + 1 + (int)((ws[j] >> 6) & 63u), c;
+        int k = (int)(ws[j] & 63u) - k0, c;
         uint32_t pn = (ws[j] >> 12) & 127u;
         if (map < 0 && (pn < lo || pn > lo + 7u))    /* the roll: a note above / below the window, on the steps it sounds */
-            for (c = k < 0 ? 0 : k; c < e && c < 16; c++)
-                if (k0 + c < len)
+            for (c = 0; c < 16; c++)
+                if (k0 + c < len && (c == k || eng_note_through(ws[j], (uint32_t)(k0 + c), (uint32_t)len)))
                     mark |= 1u << (c + (pn < lo ? 16 : 0));
         for (r = 0; r < ENG_DRUM_ROWS; r++)
             if (((ws[j] >> 12) & 127u) == note[r]) {
                 if (k >= 0 && k < 16 && cell[r][k] <= 1u)
                     cell[r][k] = ws[j];
-                for (c = k + 1 < 0 ? 0 : k + 1; c < e && c < 16; c++)   /* (the steps it goes on through) */
-                    if (!cell[r][c])
+                for (c = 0; c < 16; c++)         /* (the steps it goes on through, across the loop point too: #384) */
+                    if (!cell[r][c] && eng_note_through(ws[j], (uint32_t)(k0 + c), (uint32_t)len))
                         cell[r][c] = 1u;
             }
     }
@@ -1740,6 +1770,8 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
             uint32_t s = seq_grid_state(cell[r][i], k0 + (int)i, len, pos, tint, sr_on && k0 + (int)i == sr_k);
             if ((locked >> i & 1u) && s != GRID_PAST && s != GRID_TIE && (hit >> i & 1u ? cell[r][i] > 1u : r == seq_row))
                 s |= GRID_LOCK;                  /* (on the step's hits; a step without one: the selected row's cell) */
+            if (s != GRID_PAST && cell[r][i] > 1u && eng_note_drone(cell[r][i]))
+                s |= GRID_DRONE;
             if (s != seq_grid_cell[r][i]) {
                 seq_grid_paint(r, i, s, seq_grid_cell[r][i]);
                 seq_grid_cell[r][i] = (uint16_t)s;

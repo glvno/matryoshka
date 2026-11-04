@@ -2,11 +2,12 @@
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+# The level row (master / master) gen-presets sets in every preset, by loudness (#448): leave it to it.
 #
 # 1 kick
 #   1 kick / pitch = -2.25             -4..4
 #   1 kick / decay = 0.45 s            0.001..10 s
-#   1 kick / color = 0.4               0..8
+#   1 kick / color = 0.4 rad           0..16 rad
 #   1 kick / shape = 12 st             -48..48 st
 #   1 kick / sweep = 2.5               -4..4
 #   1 kick / contour = 0.05 s          0.001..5 s
@@ -33,7 +34,7 @@
 # 4 perc
 #   4 perc / pitch = -0.5              -4..4
 #   4 perc / decay = 0.25 s            0.001..10 s
-#   4 perc / color = 2.5               0..8
+#   4 perc / color = 2.5 rad           0..16 rad
 #   4 perc / shape = 19 st             -48..48 st
 #   4 perc / sweep = 0.3               -4..4
 #   4 perc / contour = 0.08 s          0.001..5 s
@@ -43,7 +44,7 @@
 #   5 tone / pitch = 0                 -4..4
 #   5 tone / decay = 0.5 s             0.001..5 s
 #   5 tone / color = 12 st             -48..48 st
-#   5 tone / shape = 1.5               0..8
+#   5 tone / shape = 1.5 rad           0..16 rad
 #   5 tone / sweep = 0                 0..1
 #   5 tone / contour = 0.3 s           0.001..5 s
 #   5 tone / volume = 0.35             0..1
@@ -62,7 +63,7 @@
 #   feedback = 0.4                     0..0.95
 # master
 #   dist = 1                           1..32
-#   master = 0.8                       0..1
+#   master = 0.81                      0..1
 #   out: a screen, not a value
 
 # Drafts of 2026-10-29 after the Elektron Model:Cycles, not yet listened to on the FM-1 (#413).
@@ -114,6 +115,7 @@ preset: Tight Techno
 time = 375
 feedback = 0.5
 dist = 2
+  master = 0.71
 
 preset: Boom Bap
 # a dusty, rounded kit: a longer softer kick, a thick dark snare, a dull metal, a woody perc, a low chord
@@ -156,7 +158,7 @@ preset: Boom Bap
 time = 280
 feedback = 0.25
 dist = 3
-master = 0.75
+  master = 0.5
 
 preset: Industrial
 # harsh FM: a long roaring kick, a noisy long snare, a ringing resonant metal, a falling perc, a long chord through a long delay, heavy distortion
@@ -204,7 +206,7 @@ preset: Industrial
 time = 500
 feedback = 0.6
 dist = 10
-master = 0.7
+  master = 0.26
 
 preset: FM Melodic
 # played melodically: a clean kick, a dry snare, a bell-like metal, a mallet perc, a long tone and a big open chord, both delayed
@@ -246,6 +248,7 @@ preset: FM Melodic
 6 chord / contour = 0.01
 6 chord / delay = 0.4
 feedback = 0.55
+  master = 0.73
 
 preset: Lo-fi House
 # warm and a bit dirty: a soft deep kick, a mid snare, a dull metal, a soft perc, a muted chord, mild distortion
@@ -288,4 +291,4 @@ preset: Lo-fi House
 time = 330
 feedback = 0.35
 dist = 4
-master = 0.75
+  master = 0.43

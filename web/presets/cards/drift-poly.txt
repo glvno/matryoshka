@@ -2,6 +2,7 @@
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+# The level row (level) gen-presets sets in every preset, by loudness (#448): leave it to it.
 #
 # (no heading)
 #   voices = 4                         1..16
@@ -12,6 +13,7 @@
 #   d = 0.35 s                         0.001..5 s
 #   s = 0.55                           0..1
 #   r = 0.3 s                          0.001..8 s
+#   level = 1.33                       0..2
 
 # Drafts of 2026-10-29 after a two-oscillator drifting polysynth, not yet listened to on the FM-1 (#413).
 engine: drift poly
@@ -25,6 +27,7 @@ preset: Drift Bass
   d = 0.3 s
   s = 0.4
   r = 0.2 s
+  level = 2
 
 preset: Slow Pad
 # six voices, not eight: 6 keeps the FM-1 near 75 % of the CPU (the rig survey of 2026-10-30, about 240 us a voice; eight
@@ -38,6 +41,7 @@ preset: Slow Pad
   d = 1.5 s
   s = 0.8
   r = 2.5 s
+  level = 1.05
 
 preset: Wobble Keys
   voices = 4
@@ -48,6 +52,7 @@ preset: Wobble Keys
   d = 0.5 s
   s = 0.2
   r = 0.4 s
+  level = 1.6
 
 preset: Seasick Lead
   voices = 1
@@ -58,6 +63,7 @@ preset: Seasick Lead
   d = 0.3 s
   s = 0.7
   r = 0.3 s
+  level = 1.01
 
 preset: Analog Strings
 # six voices, as Slow Pad: its chords broke up from clipping (the mixer levels now leave headroom, #413), not the CPU
@@ -69,3 +75,4 @@ preset: Analog Strings
   d = 0.8 s
   s = 0.85
   r = 1 s
+  level = 0.91

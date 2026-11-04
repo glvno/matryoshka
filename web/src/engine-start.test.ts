@@ -12,7 +12,7 @@ describe('"Start with an engine" (#160)', () => {
 
   it('has a tile per factory engine, with mono / stereo and a CPU figure', () => {
     expect(tiles.map((t) => t.name)).toEqual(FACTORY.filter((d) => defIsEngine(d)).map((d) => d.name));
-    expect(tiles).toHaveLength(24);
+    expect(tiles).toHaveLength(25);
     const by = (n: string) => tiles.find((t) => t.name === n)!;
     expect(by('Hera 6').stereo).toBe(true);
     expect(by('Oracle V').stereo).toBe(false);
@@ -21,6 +21,7 @@ describe('"Start with an engine" (#160)', () => {
     expect(by('Meridian 8').stereo).toBe(true); // the odd and even outputs
     expect(by('Perun 4').stereo).toBe(false); // mono, as the original
     expect(by('Spokes 6').stereo).toBe(false); // mono on the FM-1 (the XL has the pan)
+    expect(by('Verona 1').stereo).toBe(false); // mono on the FM-1 (the XL has the pan)
     for (const t of tiles) {
       expect(t.line.length, t.name).toBeGreaterThan(0);
       if (t.cpu !== null) expect(t.cpu, t.name).toBeGreaterThan(0);

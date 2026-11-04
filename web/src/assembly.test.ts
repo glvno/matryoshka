@@ -427,7 +427,7 @@ describe('assemblies', () => {
 
   it('ships factory assemblies that load, insert and play', () => {
     expect(FACTORY.map((d) => d.name)).toEqual([
-      '8 Lire', 'adsr operator', 'Algo Four', 'auto pan', 'barber pole', 'basic poly', 'boom kick', 'bowed glass', 'bowed string', 'Briefcase 3', 'Canvas', 'Cassia 1', 'clap', 'clock', 'cloud', 'cowbell', 'drift poly', 'drum kit', 'echo', 'Elvira 2', 'Expander S', 'filter voice', 'fm pair', 'gamelan', 'glass bell', 'hats', 'Hera 6', 'hihat', 'Io 4', 'kalimba', 'kick', 'marimba', 'Meridian 8', 'mono lead', 'Monolith D', 'noise voice', 'operator', 'Oracle V', 'Perun 4', 'pluck', 'rain', 'random melody', 'resonator bank', 'reverse pad', 'rim', 'Sallen 20', 'Scrounge', 'shimmer', 'sidechain pump', 'Silver Box', 'slicer', 'snare', 'Spokes 6', 'stack voice', 'stutter', 'sub bass', 'supersaw stack', 'tabla', 'talking filter', 'time smear', 'tom', 'Vernon 100', 'vibrato', 'voice', 'vowel voice', 'Wanderer', 'wavetable pad',
+      '8 Lire', 'adsr operator', 'Algo Four', 'auto pan', 'barber pole', 'basic poly', 'boom kick', 'bowed glass', 'bowed string', 'Briefcase 3', 'Canvas', 'Cassia 1', 'clap', 'clock', 'cloud', 'cowbell', 'drift poly', 'drum kit', 'echo', 'Elvira 2', 'Expander S', 'filter voice', 'fm pair', 'gamelan', 'glass bell', 'hats', 'Hera 6', 'hihat', 'Io 4', 'kalimba', 'kick', 'marimba', 'Meridian 8', 'mono lead', 'Monolith D', 'noise voice', 'operator', 'Oracle V', 'Perun 4', 'pluck', 'rain', 'random melody', 'resonator bank', 'reverse pad', 'rim', 'Sallen 20', 'Scrounge', 'shimmer', 'sidechain pump', 'Silver Box', 'slicer', 'snare', 'Spokes 6', 'stack voice', 'stutter', 'sub bass', 'supersaw stack', 'tabla', 'talking filter', 'time smear', 'tom', 'Vernon 100', 'Verona 1', 'vibrato', 'voice', 'vowel voice', 'Wanderer', 'wavetable pad',
     ]);
     for (const d of FACTORY) {
       expect(d.modules.every((m) => m.map === undefined || ['k1', 'k2', 'k3', 'k4'].every((k) => m.map![k as 'k1'].length === 0)), d.name).toBe(true);
@@ -930,7 +930,7 @@ describe('assembly card columns and headings', () => {
 
   it('the factory Oracle V has three sectioned columns and its output scope across the foot', () => {
     const d = FACTORY.find((x) => x.name === 'Oracle V')!;
-    expect(paramColumns(d.params).map((c) => c.length)).toEqual([13, 10, 11]);
+    expect(paramColumns(d.params).map((c) => c.length)).toEqual([14, 10, 11]);
     expect(plan(d.params)).toMatch(/^\{0-3 0:.* 1:.* 2:.* OUT\}$/);
     // the drum kit's knobs in two columns
     const kit = FACTORY.find((x) => x.name === 'drum kit')!;

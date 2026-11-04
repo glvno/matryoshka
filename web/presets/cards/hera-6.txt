@@ -2,6 +2,7 @@
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+# The level row (env / vca) gen-presets sets in every preset, by loudness (#448): leave it to it.
 #
 # voice
 #   voices = 6                         1..16
@@ -47,8 +48,7 @@ preset: Brass
   d = 0.5 s
   s = 0.55
   r = 0.25 s
-  # the VCA down (1 before), after the filter: six voices of it peaked 1.13 and clipped (#440)
-  vca = 0.8
+  vca = 0.91
   chorus mix = 0.35
 
 preset: Strings
@@ -64,8 +64,7 @@ preset: Strings
   d = 1 s
   s = 0.8
   r = 1.4 s
-  # the VCA at half (1 before), after the filter: six voices of it peaked 1.8 and clipped (#440)
-  vca = 0.5
+  vca = 0.56
   chorus depth = 0.7
   chorus mix = 0.6
 
@@ -80,8 +79,7 @@ preset: Bass
   d = 0.3 s
   s = 0.15
   r = 0.15 s
-  # the VCA at half (1 before), after the filter: the sub and the square peaked 1.8 at six voices and clipped (#440)
-  vca = 0.5
+  vca = 0.59
   chorus mix = 0
 
 preset: Organ
@@ -95,7 +93,6 @@ preset: Organ
   d = 0.1 s
   s = 1
   r = 0.05 s
-  # the VCA at 0.3 (1 before), after the open filter: the square, the sub and a held envelope peaked 3 at six voices (#440)
   vca = 0.3
   chorus rate = 5 Hz
   chorus depth = 0.3
@@ -119,3 +116,4 @@ preset: Glass Pad
   r = 3 s
   chorus depth = 0.9
   chorus mix = 0.7
+  vca = 1.44

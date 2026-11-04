@@ -2,6 +2,7 @@
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+# The level row (drums / level) gen-presets sets in every preset, by loudness (#448): leave it to it.
 #
 # drums
 #   kick tune = -29 st                 -48..48 st
@@ -16,6 +17,7 @@
 #   kick level = 0.8                   0..1
 #   snare level = 0.45                 0..1
 #   hats level = 0.35                  0..1
+#   level = 0.67                       0..1
 
 # Drafts of 2026-10-29 after a simple one-drum-per-key kit, not yet listened to on the FM-1 (#413).
 engine: drum kit
@@ -32,6 +34,7 @@ open decay = 0.3
 tom tune = -16
 kick level = 0.85
 snare level = 0.55
+  level = 0.68
 
 preset: Tight Techno
 # a clicky, short kick, a snappy snare, tight hats and a bright cowbell
@@ -47,6 +50,7 @@ cowbell tune = 12
 kick level = 0.85
 snare level = 0.4
 hats level = 0.4
+  level = 0.63
 
 preset: Electro 808
 # a long booming kick, a tonal snare, long open hat and high toms
@@ -62,6 +66,7 @@ cowbell tune = 14
 kick level = 0.9
 snare level = 0.5
 hats level = 0.3
+  level = 0.69
 
 preset: Lo-fi House
 # a soft, roomy kit: medium kick, a dark snare with a lot of noise, a lazy clap and loose hats
@@ -76,6 +81,7 @@ tom tune = -14
 kick level = 0.75
 snare level = 0.5
 hats level = 0.3
+  level = 0.85
 
 preset: Tribal Toms
 # a kit for tom patterns: a higher rounded kick, high tuned toms, a tonal snare and a high cowbell
@@ -91,3 +97,4 @@ cowbell tune = 20
 kick level = 0.8
 snare level = 0.45
 hats level = 0.25
+  level = 0.76

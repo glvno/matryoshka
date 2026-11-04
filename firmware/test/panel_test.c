@@ -13,7 +13,7 @@ static volatile uint32_t eng_shed_count;
 static int focus_dev = -1, focus_pg = -1, param_now = 0;
 static void m1_focus_now(uint32_t d, uint32_t g) { focus_dev = (int)d; focus_pg = (int)g; }
 static void m1_param_now(uint32_t mod, uint32_t par, int32_t v) { (void)mod; (void)par; (void)v; param_now++; }
-static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v) { (void)mod; (void)par; (void)v; }
+static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v);   /* (below: into pv_bin, as proto.c's into m1_cur) */
 static void m1_panel_on(uint32_t mask) { (void)mask; }
 static void m1_patch_bypass(uint32_t mod, int on) { (void)mod; (void)on; }
 /* KEYS_NOW (#549): each key edge panel_key took, with the keys and buttons held then (report_test.h) */
@@ -88,6 +88,26 @@ static void settings_store(void) { settings_stored++; }
 static int poly_row_set(uint32_t mod, uint32_t field, int32_t v)
 {
     return poly_patch_set(pv_bin, pv_len, mod, field, v, eng_load);
+}
+/* a row's value into the running binary, as proto.c's m1_patch_param does on the FM-1: a poly row's reload (above) then
+ * keeps the rows a preset set before it (#448: Cassia 1's voices row comes after some of its rows) */
+static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
+{
+    uint32_t at = eng_records_at(pv_bin, pv_len), i;
+    if (!at || mod >= pv_bin[2])
+        return;
+    for (i = 0; i < mod; i++) {
+        if (at >= pv_len || (pv_bin[at] & 0x7Fu) >= N_TYPES)
+            return;
+        at += eng_record_size(&DEFS[pv_bin[at] & 0x7Fu], pv_bin[1]);
+    }
+    if (at >= pv_len || (pv_bin[at] & 0x7Fu) >= N_TYPES || par >= eng_npar(&DEFS[pv_bin[at] & 0x7Fu], pv_bin[1]))
+        return;
+    at += 1u + 4u * par;
+    pv_bin[at] = (uint8_t)v;
+    pv_bin[at + 1u] = (uint8_t)(v >> 8);
+    pv_bin[at + 2u] = (uint8_t)(v >> 16);
+    pv_bin[at + 3u] = (uint8_t)((uint32_t)v >> 24);
 }
 
 #define ROWS_Y (LK_HH + 4u)                            /* the device page's first bar */
@@ -351,7 +371,7 @@ static int roll_shows(int mod)
             uint32_t k = seq_pg * 16u + st, p = seq_grid_note(-1, row), hw = eng_steps_note((uint32_t)mod, k, p), tie = 0;
             uint16_t want;
             for (i = 0; i < nn; i++)
-                tie |= ((w[i] >> 12) & 127u) == p && (w[i] & 63u) < k && k <= (w[i] & 63u) + ((w[i] >> 6) & 63u);
+                tie |= ((w[i] >> 12) & 127u) == p && eng_note_through(w[i], k, (uint32_t)seq_len(mod));
             if ((int32_t)k >= seq_len(mod))
                 want = C_BG;
             else if (hw)
@@ -493,15 +513,15 @@ int main(void)
     check("old-format edits cannot add new allocation settings", poly_row_set(mod, ENG_POLY_STEAL, 0) == -1 && poly_row_set(mod, ENG_POLY_ASSIGN, 3) == -1 && pv_bin[9] == 0 && pv_bin[11] == 0);
     fm1_ms = 10000;
     host_ps_init();
-    if (load("CASSIA 1") == 0) {                        /* #485: Cassia 1's 118 rows stored whole; one of 88 loads what it has */
+    if (load("CASSIA 1") == 0) {                        /* #485: Cassia 1's 119 rows stored whole; one of 88 loads what it has */
         uint32_t d, i, n, st, nv, rows;
         int at, same = 1, kept = 1;
         static int32_t full[PS_MAXV], init[PS_MAXV], one[PS_MAXV];
         char nm[17];
         pages_ensure();
-        for (d = 0; d < pg_ndev && pg_dev[d].nrows != 118u; d++)
+        for (d = 0; d < pg_ndev && pg_dev[d].nrows != 119u; d++)
             ;
-        check("(Cassia 1's device: 118 rows)", d < pg_ndev);
+        check("(Cassia 1's device: 119 rows)", d < pg_ndev);
         if (d < pg_ndev) {
             rows = pg_dev[d].nrows;
             (void)dp_list(d);
@@ -518,7 +538,7 @@ int main(void)
                 same = 0;
             for (i = 0; same && i < rows; i++)
                 same = ps_vbuf[i] == full[i];
-            check("ENV held + SAVE on Cassia 1: all 118 rows stored, in two slots", nv == rows && same && ps_count(PS_LIVE) == 2u);
+            check("ENV held + SAVE on Cassia 1: all 119 rows stored, in two slots", nv == rows && same && ps_count(PS_LIVE) == 2u);
             (void)dp_load(d, 0);                        /* (Init's values, then a preset of 88 as 1.8.1 stored them) */
             nv = dp_values(d);
             for (i = 0; i < nv; i++)
@@ -538,7 +558,7 @@ int main(void)
                 if (i >= 88u && pr_vals[i] != init[i])
                     kept = 0, printf("      (row %u: %d, Init's %d)\n", i, pr_vals[i], init[i]);
             }
-            check("  its 88 rows set in order, the other 30 keep their values", same && kept);
+            check("  its 88 rows set in order, the other 31 keep their values", same && kept);
             check("  the bar: STORED SHORT: SEE EDITOR (24 characters)", !strcmp(msg_text, "STORED SHORT: SEE EDITOR"));
             later(1500);
         }
@@ -761,7 +781,14 @@ int main(void)
         enc(4, -1);
         check("  and back to OFF", cfg.count_in == 0u && on_screen("OFF"));
         enc(1, 1);
-        check("ALGO again: SYSTEM (update mode, factory reset, quick start)", menu_tab == MT_SYSTEM && pages_now()->nrows == 3u && pages_now()->par[1] == MR_DEFAULTS && pages_now()->par[2] == MR_QUICK);
+        check("ALGO again: SYSTEM (update mode, factory reset, quick start, output)", menu_tab == MT_SYSTEM && pages_now()->nrows == 4u && pages_now()->par[1] == MR_DEFAULTS && pages_now()->par[2] == MR_QUICK && pages_now()->par[3] == MR_OUTPUT);
+        check("  OUTPUT reads STEREO (#612)", !out_mono && on_screen("STEREO"));
+        enc(5, 1);
+        check("K4 on SYSTEM: OUTPUT STEREO > MONO (#612)", out_mono == 1u && on_screen("MONO"));
+        enc(5, 1);
+        check("  stays at MONO", out_mono == 1u);
+        enc(5, -1);
+        check("  and back to STEREO", !out_mono && on_screen("STEREO"));
         enc(1, 1);
         check("ALGO again: INFO, a list, not a page", menu_tab == MT_INFO && !menu_page() && on_screen("BANK SLOTS") && on_screen("VERSION"));
         check("  its top bar is the plain bar with the patch's name, not the coral header's top", on_screen(patch_label));
@@ -1539,12 +1566,75 @@ int main(void)
                 loop();
                 w = eng_steps_note((uint32_t)drums, at, 55);
                 check("again (its last step): one step", w && ((w >> 6) & 63u) == 0u && !strcmp(msg_text, "TIE OFF"));
-                panel_keys(1u << 4);                        /* A3: step 3, its own hit, no row-2 hit before it */
+                panel_held &= ~(1u << BTN_LFO);
+            }
+            {                                               /* #384: the row's only hit on step 3. LFO + its own step: a drone
+                                                             * (tied round the loop onto itself); again: one step. Tied step by
+                                                             * step round the loop back to its step: a drone too */
+                static uint32_t row[TRACK_NOTES_MAX];
+                const uint32_t *ws2;
+                int n2 = eng_steps_notes((uint32_t)drums, &ws2), m2 = 0, j;
+                uint32_t len = (uint32_t)seq_len(drums), ym = GRID_Y + GRID_RH * seq_row + 7u, n16 = 0, n2k = 0, dim = 1, c;
+                for (j = 0; j < n2; j++)
+                    if (((ws2[j] >> 12) & 127u) != 55u)
+                        row[m2++] = ws2[j];
+                row[m2++] = 2u | 55u << 12 | (uint32_t)STEP_VEL << 19;
+                (void)eng_steps_set_notes((uint32_t)drums, row, (uint32_t)m2);
+                seq_sync(drums);
+                while (seq_white(n16) != 15)
+                    n16++;
+                while (seq_white(n2k) != 1)
+                    n2k++;
+                panel_held |= 1u << BTN_LFO;
+                panel_keys(1u << 4);                        /* A3: step 3, the hit's own step */
                 panel_keys(0);
                 loop();
                 w = eng_steps_note((uint32_t)drums, 2, 55);
-                check("LFO + a hit's own step with nothing before it: NOTHING TO TIE (no tie across the loop)",
-                      w && ((w >> 6) & 63u) == 0u && !strcmp(msg_text, "NOTHING TO TIE"));
+                for (c = 0; c < 16u && c < len; c++)
+                    if (c != 2u && px(seq_grid_x(c) + 5u, y) != C_DIM)
+                        dim = 0;
+                check("#384: LFO + a hit's own step with nothing before it: a drone (tied round the loop), every other step dim, its cell marked",
+                      w && eng_note_drone(w) && !strcmp(msg_text, "DRONE") && dim && px(seq_grid_x(2) + 5u, y) == C_FG
+                      && px(seq_grid_x(2) + 1u, ym) == C_DIM);
+                panel_keys(1u << 4);                        /* again: one step */
+                panel_keys(0);
+                loop();
+                w = eng_steps_note((uint32_t)drums, 2, 55);
+                check("  again: one step (TIE OFF), the mark gone", w && !(w & ENG_NOTE_WRAP) && ((w >> 6) & 63u) == 0u
+                      && !strcmp(msg_text, "TIE OFF") && px(seq_grid_x(2) + 1u, ym) == C_FG && px(seq_grid_x(3) + 5u, y) != C_DIM);
+                panel_keys(1u << n16);                      /* step 16, then step 2 across the loop, then its own step 3 */
+                panel_keys(0);
+                loop();
+                panel_keys(1u << n2k);
+                panel_keys(0);
+                loop();
+                w = eng_steps_note((uint32_t)drums, 2, 55);
+                check("  LFO + step 16, then step 2: tied across the loop point to end on step 2",
+                      w && (w & ENG_NOTE_WRAP) && !eng_note_drone(w) && ((w >> 6) & 63u) + 1u == len && !strcmp(msg_text, "TIED")
+                      && px(seq_grid_x(0) + 5u, y) == C_DIM && px(seq_grid_x(1) + 5u, y) == C_DIM);
+                panel_keys(1u << 4);
+                panel_keys(0);
+                loop();
+                w = eng_steps_note((uint32_t)drums, 2, 55);
+                check("  then its own step 3: the tie wraps round to it, a drone", w && eng_note_drone(w) && !strcmp(msg_text, "DRONE"));
+                panel_held &= ~(1u << BTN_LFO);
+                panel_keys(1u << 6);                        /* a plain white key on step 4: the drone cut before it, a hit there */
+                panel_keys(0);
+                loop();
+                w = eng_steps_note((uint32_t)drums, 2, 55);
+                check("  a plain white key on a step the drone runs through: the drone cut before it, a hit there",
+                      w && !(w & ENG_NOTE_WRAP) && ((w >> 6) & 63u) == 0u && eng_steps_note((uint32_t)drums, 3, 55));
+                panel_keys(1u << 0);                        /* (a plain white key on step 1: a hit there, nothing tied over it) */
+                panel_keys(0);
+                loop();
+                panel_held |= 1u << BTN_LFO;
+                panel_keys(1u << 0);                        /* LFO + step 1: the last hit (step 4) tied across the loop to it */
+                panel_keys(0);
+                loop();
+                w = eng_steps_note((uint32_t)drums, 3, 55);
+                check("  LFO + step 1 with hits after it: the row's last hit tied across the loop point, the hit on step 1 joining it",
+                      w && (w & ENG_NOTE_WRAP) && ((w >> 6) & 63u) + 1u == len - 3u + 1u && !eng_steps_note((uint32_t)drums, 0, 55)
+                      && !strcmp(msg_text, "TIED"));
                 panel_held &= ~(1u << BTN_LFO);
             }
             (void)eng_steps_set_notes((uint32_t)drums, keep, (uint32_t)keep_n);
@@ -1940,22 +2030,34 @@ int main(void)
         check("LFO + the note's last step: one step again (TIE OFF)", hw && ((hw >> 6) & 63u) == 0u && roll_shows(pat)
               && px(seq_grid_x(9) - 1u, GRID_Y + GRID_RH * seq_row + 5u) == C_BG && !strcmp(msg_text, "TIE OFF"));
         msg_text[0] = 0;
-        panel_keys(1u << 0);                                /* LFO + step 1: its own A#2, none before it (no tie across the loop) */
-        panel_keys(0);
-        loop();
-        check("LFO + a note's own step, nothing before it: NOTHING TO TIE", seq_white(0) == 0 && eng_steps_note((uint32_t)pat, 0u, 46u)
-              && ((eng_steps_note((uint32_t)pat, 0u, 46u) >> 6) & 63u) == 0u && !strcmp(msg_text, "NOTHING TO TIE"));
-        later(1000);
-        panel_yield = keys_yield_q;                         /* the roll's keys during a full redraw (D-228): nothing drawn from inside */
-        yield_xfers = 0;
-        msg_text[0] = 0;
-        kq_edge(0, 1);                                      /* LFO + step 1 again: its message waits for the loop's pass */
-        kq_edge(0, 0);
-        ui_dirty = 2;
-        panel_draw();
-        check("in a redraw, LFO + a step: taken, its message left for the pass", kq_r == kq_w && yield_xfers == 0u && !msg_text[0]);
-        loop();
-        check("  the pass shows it", !strcmp(msg_text, "NOTHING TO TIE"));
+        {
+            static uint32_t keep[TRACK_NOTES_MAX];
+            const uint32_t *ws;
+            int keep_n = eng_steps_notes((uint32_t)pat, &ws), i;
+            uint32_t len = (uint32_t)seq_len(pat);
+            for (i = 0; i < keep_n; i++)
+                keep[i] = ws[i];
+            panel_keys(1u << 0);                            /* LFO + step 1: its own A#2, none before it: the tie wraps round (#384) */
+            panel_keys(0);
+            loop();
+            hw = eng_steps_note((uint32_t)pat, 8u, 46u);
+            check("LFO + a note's own step, nothing before it, a later note of its row: that one tied across the loop point to it, joined",
+                  seq_white(0) == 0 && !eng_steps_note((uint32_t)pat, 0u, 46u) && hw && (hw & ENG_NOTE_WRAP)
+                  && ((hw >> 6) & 63u) + 1u == len - 8u + 1u && roll_shows(pat) && !strcmp(msg_text, "TIED"));
+            later(1000);
+            panel_yield = keys_yield_q;                     /* the roll's keys during a full redraw (D-228): nothing drawn from inside */
+            yield_xfers = 0;
+            msg_text[0] = 0;
+            kq_edge(0, 1);                                  /* LFO + step 1 again (its last step): its message waits for the loop's pass */
+            kq_edge(0, 0);
+            ui_dirty = 2;
+            panel_draw();
+            check("in a redraw, LFO + a step: taken, its message left for the pass", kq_r == kq_w && yield_xfers == 0u && !msg_text[0]);
+            loop();
+            check("  the pass shows it", !strcmp(msg_text, "TIE OFF") && ((eng_steps_note((uint32_t)pat, 8u, 46u) >> 6) & 63u) == 0u);
+            (void)eng_steps_set_notes((uint32_t)pat, keep, (uint32_t)keep_n);
+            seq_sync(pat);
+        }
         panel_held &= ~(1u << BTN_LFO);
         panel_held |= 1u << BTN_SEL;
         kq_edge(7, 1);                                      /* SEL + C4 (the pen) during a redraw */

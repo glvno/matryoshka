@@ -114,6 +114,10 @@ The form of a patch the engines and the FM-1 run (`deviceView`), in which every 
 
 An editor-only row a module can have (a scope screen, an envelope shape); it is not a parameter.
 
+### Drone
+
+A note of a **Steps track** tied across the loop point back onto its own step: it starts once and holds while the track plays, never starting again (issue #384).
+
 ### Drum map
 
 A module that sends each key to its own row's gate (mapped voicing), as a drum engine picks its drum.
@@ -233,6 +237,10 @@ The note-on / note-off output of a Steps track or Main that plays an instrument.
 ### Lesson editor
 
 The dev-server-only page (`/lesson-editor`) where the course is written and saved.
+
+### Level row
+
+The [**card row**](#card-row) of a factory [**engine**](#engine) that sets the level of its whole output, after any drive or distortion, so turning it changes how loud the engine is and nothing else. Some engines have two, one per output channel or per half of the output mixer, which move together. Each factory [**preset**](#preset) stores its own value, which is how the presets of one engine play at about the same loudness.
 
 ### Library
 

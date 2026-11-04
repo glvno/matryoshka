@@ -251,7 +251,9 @@
     "unison": 1,
     "detune": 10,
     "blend": 0.5,
-    "stack": 0
+    "stack": 0,
+    "pm2": 0,
+    "pm3": 0
    },
    "att": [
     1,
@@ -284,7 +286,9 @@
     "unison": 1,
     "detune": 10,
     "blend": 0.5,
-    "stack": 0
+    "stack": 0,
+    "pm2": 0,
+    "pm3": 0
    },
    "att": [
     1,
@@ -1229,7 +1233,7 @@
    "x": 2960,
    "y": 20,
    "params": {
-    "level": 0.93
+    "level": 0.85
    }
   },
   {
@@ -2546,6 +2550,12 @@
       "ENV>GAIN",
       "TRIG>EGS"
      ]
+    },
+    {
+     "module": 18,
+     "param": "gain",
+     "label": "volume",
+     "head": "output"
     }
    ]
   }

@@ -2,11 +2,13 @@
 // Writes the factory assemblies (src/assemblies/*.json) that are defined here as small patches: module grid positions,
 // cables, the exposed ports (an input with `also` fans out to several inner inputs) and the promoted parameters.
 // `voice` and `echo` are kept as files. Run from web/:  npx vite-node scripts/gen-assemblies.ts
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { DEFS, PD_RANGE_MAX, PD_WAVES, SELECT_N } from '../src/modules';
 import { defaultMap, defaultParams, rowDef, STEP_VEL, type ModuleInst, type PolyCards, type Source } from '../src/patch';
 import { defIsEngine } from '../src/engines';
 import { pinsToParams, type AssemblyDef, type NestedDef, type PortRef, type ParamRef } from '../src/assembly';
+import { cardRows } from '../src/preset-cards';
+import { clap, drum, hihat, kick, multi, sharedNoise, snare, type Voice } from './verona-voices';
 
 const OUT = new URL('../src/assemblies/', import.meta.url);
 /** the touch plates of 8 Lire and Elvira 2: the white keys from F3 (the drum kits' rows, gen-presets.ts KIT_NOTES); their
@@ -510,12 +512,16 @@ asm('drum kit', 'Drums', (b) => {
   });
   b.wire(mixB, 'out', mixA, 'in4');
   b.input('keys', map, 'keys');
-  b.output('out', mixA, 'out');
+  // the level row (#448): a one-input mixer after the mixers, set by gen-presets for loudness
+  const level = b.add('mixer', 8, 0, { l1: 0.5, l2: 0, l3: 0, l4: 0 });
+  b.wire(mixA, 'out', level, 'in1');
+  b.output('out', level, 'out');
   const half = Math.ceil((shown.length + 3) / 2); // the knobs and the three levels in two columns
   shown.forEach(({ label, at }, i) => b.param(label, at.module, at.param, i === 0 ? { head: 'drums' } : i === half ? { col: true } : {}));
   b.param('kick level', mixA, 'l1');
   b.param('snare level', mixA, 'l2');
   b.param('hats level', mixB, 'l1');
+  b.param('level', level, 'l1');
 });
 
 // a plucked string with a tracking low pass for the body
@@ -705,6 +711,7 @@ asm('mono lead', 'Voices', (b) => {
   b.param('legato', part, 'legato');
   b.param('priority', part, 'priority');
   for (const q of ['a', 'd', 's', 'r']) b.param(q, env, q);
+  b.param('level', vca, 'gain'); // the level row (#448): set by gen-presets for loudness
 }, {});
 
 // a supersaw pad of four voices: five detuned copies with the centre one held back (blend), an octave stacked on top, each
@@ -733,6 +740,7 @@ asm('supersaw stack', 'Voices', (b) => {
   b.param('width', width, 'gain');
   b.param('voices', part, 'voices');
   for (const q of ['a', 'd', 's', 'r']) b.param(q, env, q);
+  b.param('level', vca, 'gain'); // the level row (#448): set by gen-presets for loudness
 }, {});
 
 // an analog polysynth of four voices that has drifted out of spec: each oscillator's fine tune follows its own slow
@@ -769,6 +777,7 @@ asm('drift poly', 'Voices', (b) => {
   b.param('cutoff', flt, 'cutoff');
   b.param('res', flt, 'res');
   for (const q of ['a', 'd', 's', 'r']) b.param(q, env, q);
+  b.param('level', vca, 'gain'); // the level row (#448): set by gen-presets for loudness
 }, { flaws: [{ detune: 4, drift: 30, bright: 1, env: 5, level: 100 }, { detune: -6, drift: 45, bright: -2, env: -8, level: 95 }, { detune: 2, drift: 25, bright: 0, env: 12, level: 100 }, { detune: -3, drift: 35, bright: 3, env: -4, level: 92 }] });
 
 // the plainest polysynth: a Voice allocator of four voices and their cards (saw, low pass, ADSR, VCA), each playing its own note
@@ -791,6 +800,7 @@ asm('basic poly', 'Voices', (b) => {
   b.param('cutoff', flt, 'cutoff');
   b.param('res', flt, 'res');
   for (const q of ['a', 'd', 's', 'r']) b.param(q, env, q);
+  b.param('level', vca, 'gain'); // the level row (#448): set by gen-presets for loudness
 }, {});
 
 // Oracle V, a classic five-voice analog polysynth built like the instrument: the keyboard's keys go into the Voice allocator (the Z80), which
@@ -871,6 +881,7 @@ asm('Oracle V', 'Voices', (b) => {
   b.param('A level', oscA, 'level', { head: 'mixer' });
   b.param('B level', oscB, 'level');
   b.param('noise', nz, 'level');
+  b.param('volume', vca, 'gain'); // the Prophet-5's VOLUME, the level row (#448): each voice's VCA, set by gen-presets for loudness
   b.param('out', aScope, 'view', { span: 3 }); // the voice sum across the card's foot
   b.param('cutoff', flt, 'cutoff', { col: true, head: 'filter' });
   b.param('res', flt, 'res');
@@ -1046,7 +1057,8 @@ asm('Monolith D', 'Voices', (b) => {
   b.param('attack', aenv, 'a');
   b.param('decay', aDecay, 'value');
   b.param('sustain', aenv, 's');
-  b.param('a-440', a440On, 'pos', { head: 'output' });
+  b.param('volume', vca, 'gain', { head: 'output' }); // the Minimoog's MAIN OUTPUT VOLUME, the level row (#448): set by gen-presets for loudness
+  b.param('a-440', a440On, 'pos');
 });
 /** the names of the positions of a factory assembly's Selector rows (#358), by row label (every row of that label) */
 const namePositions = (asmName: string, names: Record<string, string[]>): void => {
@@ -1096,7 +1108,9 @@ asm('Silver Box', 'Voices', (b) => {
   const res = b.add('macro', 4, 1, { value: 0.75 });
   const flt = b.add('ladder', 4, 0, { cutoff: 260, res: 0, cvamt: 1, drive: 1 }, { p1: 'res' });
   const aenv = b.add('adsr', 5, 1, { a: 0.002, d: 2.5, s: 0, r: 0.02 });
-  const vca = b.add('vca', 5, 0, { gain: 0.8 }, { p1: 'gain', att: [0.25, 1] });
+  // (twice the level it had, the accent's share as well, #448: the volume row after it, a Mixer's 0..1, then has the room
+  // to bring the quiet presets to the loudness rule)
+  const vca = b.add('vca', 5, 0, { gain: 1.6 }, { p1: 'gain', att: [0.5, 1] });
   const waveform = b.add('select', 1, -1, { count: 2, pos: 1, v1: 0, v2: 1 });
   b.wire(waveform, 'out', osc, 'p1'); // saw at the base; the second position adds up to the square at the range's top
   const tune = b.add('macro', 1, 2, { value: 0.5 });
@@ -1125,7 +1139,10 @@ asm('Silver Box', 'Voices', (b) => {
   b.wire(part, 'gate', aenv, 'gate');
   b.wire(aenv, 'env', vca, 'cv');
   b.input('keys', part, 'keys');
-  b.output('out', vca, 'out');
+  // the TB-303's VOLUME, the level row (#448): a one-input mixer after the VCA (whose gain the accent moves), set by gen-presets for loudness
+  const volume = b.add('mixer', 6, 0, { l1: 0.5, l2: 0, l3: 0, l4: 0 });
+  b.wire(vca, 'out', volume, 'in1');
+  b.output('out', volume, 'out');
   b.param('waveform', waveform, 'pos', { head: 'tone' });
   b.param('tuning', tune, 'value');
   b.param('cut off freq', flt, 'cutoff');
@@ -1133,6 +1150,7 @@ asm('Silver Box', 'Voices', (b) => {
   b.param('env mod', envMod, 'gain');
   b.param('decay', meg, 'd');
   b.param('accent', accent, 'gain');
+  b.param('volume', volume, 'l1');
 });
 namePositions('Silver Box', { waveform: ['SAW', 'SQUARE'] });
 
@@ -1223,7 +1241,7 @@ asm('Hera 6', 'Voices', (b) => {
 //    wave 4, so position k plays the k-th wave); `wave 2` a Selector of off and seven waves (saw .. reso 2: a Selector
 //    has eight positions, so reso 3 is left out of wave 2 only), through the pm input routed to `wave2` (the position's
 //    value (k - 5) / 8 on its wave2 4, so position k is wave2 k - 1: 0 off, else that wave on every other cycle; the
-//    oscillator's own pm depth is 0, so pm does no phase modulation); `res range` an Offset through p2 (x 1/5, so the
+//    oscillator's own pm depth is 0, so pm does no phase modulation); `res` (the resonance range) an Offset through p2 (x 1/5, so the
 //    Offset is the range in octaves). Being signals, they let 1+1' hand line 1's settings to line 2. Init has wave 2 off
 //    on both lines and line 2 on reso 1 (#430).
 //  - the DCW: the line's DCW envelope plus key follow, velocity and aftertouch, summed into the PD Osc's dcw input.
@@ -1231,7 +1249,7 @@ asm('Hera 6', 'Voices', (b) => {
 // line 1's waveforms, range and DCW / DCA envelopes at line 2's pitch (`coarse`, `fine`): line 1'. The select's gate 3
 // moves a Crossfader per setting (0 line 2's own, 1 line 1's). Line 2's modulation (`mod`, a Selector, as the CZ's one
 // setting): 1 off, 2 ring (times line 1), 3 noise (times the noise); it picks a VCA's cv, 1 or the modulator. The DCO
-// envelope moves both lines' pitch by `depth` octaves; vibrato's wave (the CZ's saw down is a negative `vib depth`), rate,
+// envelope moves both lines' pitch by `depth` octaves; vibrato's wave (the CZ's saw down is a negative vibrato `depth`), rate,
 // depth in semitones (the LFO plays at 1/12: a step of the row is a cent, a click on the FM-1 8 cents) and delay; key
 // follow lowers the DCW and DCA levels from C4; velocity opens the DCA (and the DCW by `vel dcw`); aftertouch reaches
 // DCW, DCA and vibrato depth (the `at` input).
@@ -1251,7 +1269,7 @@ const CZ_STEPS = (s: [number, number][], sus: number, end: number): Record<strin
 asm('Cassia 1', 'Voices', (b) => {
   const part = b.add('alloc', 0, 4, { voices: 2 });
   const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 5.5, depth: 1 / 12 });
-  const vibS = b.add('scale', 0, 0.5, { gain: 0, offset: 0 }); // vib depth in semitones (negative: the CZ's saw down)
+  const vibS = b.add('scale', 0, 0.5, { gain: 0, offset: 0 }); // the vibrato's depth in semitones (negative: the CZ's saw down)
   const nz = b.add('noise', 0, 1, { level: 1, color: 0 });
   const scope = b.add('scope', 12, 0, { time: 16 });
   const atVib = b.add('scale', 0, 2.5, { gain: 0, offset: 0 });
@@ -1374,14 +1392,18 @@ asm('Cassia 1', 'Voices', (b) => {
   b.nest('voice', 3, 6, members, {});
   b.input('keys', part, 'keys');
   b.input('at', atVib, 'in', [atW, 'in'], [atA, 'in']);
-  b.output('out', sel, 'out');
+  // the CZ-1's VOLUME, the level row (#448): a one-input mixer after the voices, once, set by gen-presets for loudness
+  const volume = b.add('mixer', 11, 0.5, { l1: 0.5, l2: 0, l3: 0, l4: 0 });
+  b.wire(sel, 'out', volume, 'in1');
+  b.output('out', volume, 'out');
 
   b.param('voices', part, 'voices', { head: 'voice' });
   b.param('line', sel, 'pos');
-  b.param('vib wave', lfo, 'wave', { head: 'vibrato' });
-  b.param('vib rate', lfo, 'rate');
-  b.param('vib depth', vibS, 'gain');
-  b.param('vib delay', vdel, 'a');
+  b.param('vol', volume, 'l1'); // (the CZ-1's VOLUME, short: the patch has no bytes to spare)
+  b.param('wave', lfo, 'wave', { head: 'vibrato' }); // (the vibrato rows' short names, as the CZ-1's VIBRATO WAVE / RATE / DEPTH / DELAY: room for the volume row, #448)
+  b.param('rate', lfo, 'rate');
+  b.param('depth', vibS, 'gain');
+  b.param('delay', vdel, 'a');
   const envRows = (e: number, head: string, col: boolean): void => {
     b.param(head, e, 'view', { head, ...(col ? { col: true } : {}) });
     for (let k = 1; k <= 8; k++) {
@@ -1402,7 +1424,7 @@ asm('Cassia 1', 'Voices', (b) => {
   for (const [n, k, dcw, dca] of [[1, k1, dcw1, dca1], [2, k2, dcw2, dca2]] as const) {
     b.param('wave', k.wave, 'pos', { head: `line ${n}`, col: true });
     b.param('wave 2', k.wave2, 'pos');
-    b.param('res range', k.range, 'value');
+    b.param('res', k.range, 'value'); // (the CZ's resonance range, short: room for the volume row, #448)
     if (n === 2) {
       b.param('mod', mod, 'pos');
       b.param('coarse', pd2, 'coarse');
@@ -1623,6 +1645,7 @@ asm('Sallen 20', 'Voices', (b) => {
   b.param('cv adjust', esp, 'cvadj');
   b.param('threshold', esp, 'thresh');
   b.param('esp route', espRoute, 'pos');
+  b.param('volume', vca, 'gain', { head: 'output' }); // the MS-20's VOLUME, the level row (#448): set by gen-presets for loudness
 });
 namePositions('Sallen 20', {
   'vco 1 scale': ["32'", "16'", "8'", "4'"], 'vco 2 scale': ["16'", "8'", "4'", "2'"],
@@ -1701,6 +1724,7 @@ asm('Expander S', 'Voices', (b) => {
   for (const q of ['a', 'd', 's', 'r']) b.param(q, env2, q);
   b.param('lfo rate', lfo, 'rate', { head: 'lfo' });
   b.param('vibrato', vib, 'gain');
+  b.param('level', vca, 'gain', { head: 'output' }); // the level row (#448): each voice's VCA, set by gen-presets for loudness
   b.param('out', scope, 'view');
 });
 
@@ -3614,6 +3638,61 @@ asm('Spokes 6', 'Drums', (b) => {
   b.param('out', scope, 'view', { col: true });
 });
 
+// Verona 1, after the Vermona DRM1 MKIV (#613; its user manual, "The instrument channels", pages 11 to 18). The FM-1
+// version: six of its eight instrument channels, each with every knob of its panel and its own signal flow
+// (scripts/verona-voices.ts): KICK, DRUM 1, MULTI, SNARE, HI HAT 1, CLAP, and each channel's VOLUME. A Drum map row per
+// channel on the white keys from F3, the hi-hat on two (OPEN, and CLOSED with its fixed short decay, as the original's
+// two MIDI notes per hi-hat); a row's velocity is the channel's level, as the DRM1's MIDI velocity. The channels share
+// one white noise source; MASTER is the level of the mixer they all go into. Left out to fit the FM-1 (Verona 1 XL has
+// them, scripts/xl/verona-1.ts): DRUM 2 and HI HAT 2 (each the same as its pair), PAN, the clap's NOISE COLOR, the
+// hi-hat's TRIG switch (its two rows play open and closed), MULTI's PITCH 2 / PITCH 3 off position (here they are the
+// oscillators' coarse tune), and the kick's own noise envelope (its noise lasts as long as TIME).
+asm('Verona 1', 'Drums', (b) => {
+  const map = b.add('drummap', 0, 0, Object.fromEntries(PLATE_KEYS[1].map((n, r) => [`n${r + 1}`, n])));
+  b.module(map).names = ['KICK', 'DRUM 1', 'MULTI', 'SNARE', 'HH OPEN', 'HH CLOSE', 'CLAP', 'ROW 8'];
+  const noise = sharedNoise(b, 0, 1);
+  // MASTER: every channel into the mixer's first input, its level the overall volume
+  const mix = b.add('mixer', 7, 0, { l1: 0.7, l2: 0, l3: 0, l4: 0 });   // (MASTER is the level row, #448)
+  const channels: [string, Voice][] = [
+    ['kick', kick(b, 1, noise, { lean: true })],
+    ['drum 1', drum(b, 2, { coarse: -17, decay: 0.35 })],
+    ['multi', multi(b, 3, { lean: true })],
+    ['snare', snare(b, 4, noise)],
+    ['hi hat', hihat(b, 5, noise)],
+    ['clap', clap(b, 6, noise, { color: false })],
+  ];
+  /** each channel's Drum map row (the hi-hat's open row; its closed row is 6) */
+  const rows = [1, 2, 3, 4, 5, 7];
+  channels.forEach(([name, v], i) => {
+    const r = rows[i];
+    for (const [m, port] of v.gate) b.wire(map, `g${r}`, m, port);
+    b.wire(map, `v${r}`, v.vel[0], v.vel[1]);
+    if (v.closed) {
+      for (const [m, port] of v.closed) b.wire(map, 'g6', m, port);
+      b.wire(map, 'v6', v.closedVel![0], v.closedVel![1]);
+    }
+    b.wire(v.out[0], v.out[1], mix, 'in1');
+    b.nest(name, 1 + i, 0, v.members);
+  });
+  channels.forEach(([, v]) => {
+    const [first, ...also] = v.gate;
+    b.nestInput('gate', first[0], first[1], ...also);
+    if (v.closed) {
+      const [c0, ...cAlso] = v.closed;
+      b.nestInput('closed', c0[0], c0[1], ...cAlso);
+    }
+    b.nestInput('velocity', v.vel[0], v.vel[1]);
+    b.nestOutput('out', v.out[0], v.out[1]);
+  });
+  b.input('keys', map, 'keys');
+  b.output('out', mix, 'out');
+  channels.forEach(([name, v]) => {
+    v.rows.forEach(([label, m, param], k) => b.param(label, m, param, k === 0 ? { head: name, col: true } : {}));
+    b.param('volume', v.out[0], 'gain');
+  });
+  b.param('master', mix, 'l1', { head: 'master', col: true });
+});
+
 // an LFO through a Scale: vibrato (into a pitch input), tremolo (into a VCA's cv with an offset), a filter sweep
 asm('vibrato', 'Utilities', (b) => {
   const lfo = b.add('lfo', 0, 0, { wave: 0, rate: 5, depth: 1 });
@@ -4039,6 +4118,20 @@ for (const d of defs) {
   d.inputs = pinsToParams(d.inputs, d.params, moduleOf);
   for (const n of d.assemblies ?? []) n.inputs = pinsToParams(n.inputs, n.params, moduleOf);
 }
+// the engines' level rows at Init (#448): presets/cards/levels.json, which gen-presets' loudness step writes (each engine's
+// Init at about -18 LUFS for one key, its Output and its presets' level rows set with it: scripts/factory-build.ts)
+const LEVELS_FILE = new URL('../presets/cards/levels.json', import.meta.url);
+const LEVELS = (existsSync(LEVELS_FILE) ? JSON.parse(readFileSync(LEVELS_FILE, 'utf8')) : {}) as Record<string, Record<string, number>>;
+for (const [name, rows] of Object.entries(LEVELS)) {
+  const d = defs.find((x) => x.name === name);
+  if (!d) throw new Error(`presets/cards/levels.json: no factory assembly ${name}`);
+  for (const [key, v] of Object.entries(rows)) {
+    const r = cardRows(d).find((x) => x.key === key);
+    if (!r) throw new Error(`presets/cards/levels.json: ${name} has no row ${key}`);
+    const ref = d.params[r.i];
+    d.modules.find((m) => m.id === ref.module)!.params[ref.param] = v;
+  }
+}
 // the one-line description of each engine (the Engines shelf, engines.ts) on the "Start with an engine" tiles, the
 // assembly browser, the palette and the patch card. The owner's wording (2026-10-21): an engine that emulates an
 // instrument is "<that instrument> type shit", verbatim; the others say plainly what they are.
@@ -4062,6 +4155,7 @@ const BLURBS: Record<string, string> = {
   'Perun 4': 'Perkons HD-01 type shit',
   'Spokes 6': 'Model:Cycles type shit',
   'Cassia 1': 'CZ-1 type shit',
+  'Verona 1': 'DRM1 MKIV type shit',
   'drift poly': 'Two oscillators per voice, four voices that drift a little out of tune',
   'basic poly': 'The plainest polysynth: a saw, a low pass and an envelope per voice',
   'mono lead': 'One voice through a ladder filter, gliding between legato notes',

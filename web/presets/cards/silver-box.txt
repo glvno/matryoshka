@@ -2,6 +2,7 @@
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+# The level row (tone / volume) gen-presets sets in every preset, by loudness (#448): leave it to it.
 #
 # tone
 #   waveform = SAW                     SAW, SQUARE
@@ -11,6 +12,7 @@
 #   env mod = 2.6                      -4..4
 #   decay = 0.3 s                      0.001..5 s
 #   accent = 1                         -4..4
+#   volume = 1                         0..1
 
 # Drafts of 2026-10-29 after the Roland TB-303, not yet listened to on the FM-1 (#413).
 engine: Silver Box
@@ -22,6 +24,7 @@ preset: Acid Squelch
   env mod = 3.2
   decay = 0.25 s
   accent = 1.5
+  volume = 1
 
 preset: Rubber Square
   waveform = 2
@@ -30,6 +33,7 @@ preset: Rubber Square
   env mod = 2
   decay = 0.45 s
   accent = 1
+  volume = 0.74
 
 preset: Deep Sub 303
   waveform = 1
@@ -38,6 +42,7 @@ preset: Deep Sub 303
   env mod = 1.2
   decay = 0.6 s
   accent = 0.5
+  volume = 0.92
 
 preset: Short Zap
   waveform = 2
@@ -46,6 +51,7 @@ preset: Short Zap
   env mod = 3.8
   decay = 0.12 s
   accent = 2
+  volume = 0.88
 
 preset: Long Sweep
   waveform = 1
@@ -54,3 +60,4 @@ preset: Long Sweep
   env mod = 4
   decay = 1.2 s
   accent = 1
+  volume = 1
