@@ -808,7 +808,7 @@
       "params": {
         "drive": 1,
         "mode": 2,
-        "level": 0.8,
+        "level": 0.79,
         "os": 0,
         "sym": 0,
         "stages": 1
@@ -868,7 +868,8 @@
       "params": {
         "time": 16,
         "mode": 0,
-        "voices": 0
+        "voices": 0,
+        "scale": 0
       }
     }
   ],

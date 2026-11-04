@@ -2,6 +2,7 @@
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+# The level rows (voice / stack 1→2 mix, voice / stack 3→4 mix) gen-presets sets in every preset, by loudness (#448): leave them to it.
 #
 # voice
 #   voices = 3                         1..16
@@ -12,7 +13,7 @@
 #   ratio 1 = 0 st                     -48..48 st
 #   detune 1 = 0 ct                    -100..100 ct
 #   level 1 = 0.5                      0..2
-#   index 1 = 2.2                      0..8
+#   index 1 = 2.2 rad                  0..16 rad
 #   env 1: a screen, not a value
 #   r1 1 = 0.002 s                     0.001..10 s
 #   l2 1 = 0.6                         0..1
@@ -32,7 +33,7 @@
 #   ratio 3 = 0 st                     -48..48 st
 #   detune 3 = 0 ct                    -100..100 ct
 #   level 3 = 0.35                     0..2
-#   index 3 = 1.5                      0..8
+#   index 3 = 1.5 rad                  0..16 rad
 #   env 3: a screen, not a value
 #   r1 3 = 0.002 s                     0.001..10 s
 #   l2 3 = 0.5                         0..1
@@ -77,7 +78,8 @@ preset: Solid Bass
   r2 3 = 0.35 s
   l3 3 = 0.25
   r4 3 = 0.12 s
-  stack 3→4 mix = 0.5
+  stack 3→4 mix = 0.36
+  stack 1→2 mix = 0.5
 
 preset: Lately Bass
   # the DX100's Lately Bass (house music's): stack 3 at the note with operator 4 feeding back
@@ -106,7 +108,8 @@ preset: Lately Bass
   r2 1 = 0.4 s
   l3 1 = 0.5
   r4 1 = 0.12 s
-  stack 1→2 mix = 0.55
+  stack 1→2 mix = 0.78
+  stack 3→4 mix = 0.99
 
 preset: E Piano
   # a DX electric piano: stack 1 the body, 1:1, its modulator fading over a second and a half and
@@ -130,7 +133,8 @@ preset: E Piano
   r2 3 = 0.7 s
   l3 3 = 0.08
   r4 3 = 0.35 s
-  stack 3→4 mix = 0.45
+  stack 3→4 mix = 0.4
+  stack 1→2 mix = 0.63
 
 preset: Tubular Bell
   # a bell: operator 2 at 3.5 times the note (inharmonic) ringing for seconds; stack 3 an octave
@@ -155,8 +159,8 @@ preset: Tubular Bell
   l2 3 = 0.45
   r2 3 = 1.8 s
   r4 3 = 1.5 s
-  stack 1→2 mix = 0.6
-  stack 3→4 mix = 0.4
+  stack 1→2 mix = 0.64
+  stack 3→4 mix = 0.42
 
 preset: Brass Stab
   # DX brass: all four operators at the note, the two stacks detuned against each other, the
@@ -188,3 +192,5 @@ preset: Brass Stab
   d 4 = 0.4 s
   s 4 = 0.55
   r 4 = 0.22 s
+  stack 1→2 mix = 0.59
+  stack 3→4 mix = 0.59

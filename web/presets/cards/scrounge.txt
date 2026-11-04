@@ -2,6 +2,7 @@
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+# The level rows (out / vol a, out / vol b) gen-presets sets in every preset, by loudness (#448): leave them to it.
 #
 # voice 1
 #   voice 1 / pitch = -31 st           -48..48 st
@@ -32,7 +33,7 @@
 #   voice 3 / y = 0                    0..1
 # voice 4
 #   voice 4 / pitch = 7 st             -48..48 st
-#   growl = 2                          0..8
+#   growl = 2 rad                      0..16 rad
 #   voice 4 / tilt = 0.001 s           0.001..10 s
 #   voice 4 / gate = 0.12 s            0.001..10 s
 #   voice 4 / vol = 0.8                0..2
@@ -58,8 +59,8 @@
 #   chop depth = 0                     0..1
 #   melt = 0                           0..1
 # out
-#   vol a = 0.8                        0..1
-#   vol b = 0.8                        0..1
+#   vol a = 0.7                        0..1
+#   vol b = 0.7                        0..1
 #   out: a screen, not a value
 
 # Drafts of 2026-10-29 after the Scrooge lo-fi drum machine, not yet listened to on the FM-1 (#413).
@@ -92,6 +93,8 @@ voice 5 / pitch = -20
 squelch = 0.5
 voice 5 / gate = 0.2
 melt = 0.3
+  vol a = 0.64
+  vol b = 0.64
 
 preset: Crunch Techno
 # hard and split: the kick and tom on output A, the hits on B; a fast chop over everything, the tom follows x
@@ -122,7 +125,8 @@ voice 5 / x = 0.5
 chop = 16
 chop depth = 0.35
 melt = 0.15
-vol a = 0.85
+  vol a = 1
+  vol b = 0.94
 
 preset: Broken Glitch
 # broken: a rising kick (boom below zero), a long shredded hit, a swelling hat, a wild growl, a hard squelch;
@@ -153,6 +157,8 @@ y slew = 0.4
 chop = 11
 chop depth = 0.5
 melt = 0.5
+  vol a = 0.66
+  vol b = 0.66
 
 preset: Slow Dub
 # slow and long: a very low long kick, a soft hit, a washy hat, a lazy growl, a long tom that x swells
@@ -183,8 +189,8 @@ x slew = 0.3
 chop = 0.5
 chop depth = 0.2
 melt = 0.2
-vol a = 0.75
-vol b = 0.75
+  vol a = 0.64
+  vol b = 0.64
 
 preset: Clean Electro
 # the machine without its dirt: no grit, no melt, no chop; a punchy kick, a short tom, tight hits
@@ -210,3 +216,5 @@ voice 5 / gate = 0.15
 voice 5 / vol = 0.7
 melt = 0
 chop depth = 0
+  vol a = 0.76
+  vol b = 0.76

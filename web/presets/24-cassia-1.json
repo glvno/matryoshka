@@ -20,7 +20,7 @@
     },
     "targets": {
      "arp": {
-      "module": 41
+      "module": 42
      }
     }
    }
@@ -138,7 +138,8 @@
    "params": {
     "time": 16,
     "mode": 0,
-    "voices": 0
+    "voices": 0,
+    "scale": 0
    }
   },
   {
@@ -1101,15 +1102,43 @@
   },
   {
    "id": 39,
-   "type": "output",
-   "x": 4240,
-   "y": 20,
+   "type": "mixer",
+   "x": 3540,
+   "y": 340,
    "params": {
-    "level": 0.43
+    "l1": 0.5,
+    "l2": 0,
+    "l3": 0,
+    "l4": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "l1"
+    ],
+    "p2": [
+     "l2"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
    }
   },
   {
    "id": 40,
+   "type": "output",
+   "x": 4240,
+   "y": 20,
+   "params": {
+    "level": 0.73
+   }
+  },
+  {
+   "id": 41,
    "type": "steps",
    "x": 20,
    "y": 5680,
@@ -1147,7 +1176,7 @@
    "name": "PATTERN"
   },
   {
-   "id": 41,
+   "id": 42,
    "type": "arp",
    "x": 4240,
    "y": 5680,
@@ -1869,16 +1898,26 @@
    },
    "to": {
     "module": 39,
+    "port": "in1"
+   }
+  },
+  {
+   "from": {
+    "module": 39,
+    "port": "out"
+   },
+   "to": {
+    "module": 40,
     "port": "l"
    }
   },
   {
    "from": {
-    "module": 10,
+    "module": 39,
     "port": "out"
    },
    "to": {
-    "module": 39,
+    "module": 40,
     "port": "r"
    }
   },
@@ -1918,13 +1957,13 @@
     "port": "keys"
    },
    "to": {
-    "module": 40,
+    "module": 41,
     "port": "keys"
    }
   },
   {
    "from": {
-    "module": 41,
+    "module": 42,
     "port": "keys"
    },
    "to": {
@@ -1934,11 +1973,11 @@
   },
   {
    "from": {
-    "module": 40,
+    "module": 41,
     "port": "keys"
    },
    "to": {
-    "module": 41,
+    "module": 42,
     "port": "keys"
    }
   }
@@ -2110,7 +2149,7 @@
     {
      "module": 22,
      "param": "a",
-     "label": "vib delay"
+     "label": "delay"
     },
     {
      "module": 20,
@@ -2667,7 +2706,8 @@
     13,
     14,
     15,
-    16
+    16,
+    39
    ],
    "inputs": [
     {
@@ -2693,7 +2733,7 @@
    ],
    "outputs": [
     {
-     "module": 10,
+     "module": 39,
      "port": "out",
      "label": "out"
     }
@@ -2711,25 +2751,30 @@
      "label": "line"
     },
     {
+     "module": 39,
+     "param": "l1",
+     "label": "vol"
+    },
+    {
      "module": 3,
      "param": "wave",
-     "label": "vib wave",
+     "label": "wave",
      "head": "vibrato"
     },
     {
      "module": 3,
      "param": "rate",
-     "label": "vib rate"
+     "label": "rate"
     },
     {
      "module": 4,
      "param": "gain",
-     "label": "vib depth"
+     "label": "depth"
     },
     {
      "module": 22,
      "param": "a",
-     "label": "vib delay"
+     "label": "delay"
     },
     {
      "module": 20,
@@ -2898,7 +2943,7 @@
     {
      "module": 13,
      "param": "value",
-     "label": "res range"
+     "label": "res"
     },
     {
      "module": 27,
@@ -3129,7 +3174,7 @@
     {
      "module": 16,
      "param": "value",
-     "label": "res range"
+     "label": "res"
     },
     {
      "module": 38,

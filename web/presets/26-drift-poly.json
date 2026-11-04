@@ -137,7 +137,9 @@
     "unison": 1,
     "detune": 10,
     "blend": 0.5,
-    "stack": 0
+    "stack": 0,
+    "pm2": 0,
+    "pm3": 0
    },
    "att": [
     0.03,
@@ -172,7 +174,9 @@
     "unison": 1,
     "detune": 10,
     "blend": 0.5,
-    "stack": 0
+    "stack": 0,
+    "pm2": 0,
+    "pm3": 0
    },
    "att": [
     0.045,
@@ -284,7 +288,7 @@
    "x": 660,
    "y": 620,
    "params": {
-    "gain": 1
+    "gain": 1.33
    },
    "att": [
     1,
@@ -610,6 +614,11 @@
      "module": 10,
      "param": "r",
      "label": "r"
+    },
+    {
+     "module": 11,
+     "param": "gain",
+     "label": "level"
     }
    ],
    "poly": {

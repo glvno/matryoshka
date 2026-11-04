@@ -371,7 +371,9 @@
         "unison": 1,
         "detune": 10,
         "blend": 0.5,
-        "stack": 0
+        "stack": 0,
+        "pm2": 0,
+        "pm3": 0
       },
       "att": [
         0.25,
@@ -406,7 +408,9 @@
         "unison": 1,
         "detune": 10,
         "blend": 0.5,
-        "stack": 0
+        "stack": 0,
+        "pm2": 0,
+        "pm3": 0
       },
       "att": [
         0.25,
@@ -441,7 +445,9 @@
         "unison": 1,
         "detune": 10,
         "blend": 0.5,
-        "stack": 0
+        "stack": 0,
+        "pm2": 0,
+        "pm3": 0
       },
       "att": [
         0.25,
@@ -922,7 +928,7 @@
       "x": 1920,
       "y": 0,
       "params": {
-        "gain": 0.7
+        "gain": 0.44
       },
       "att": [
         1,
@@ -955,7 +961,9 @@
         "unison": 1,
         "detune": 10,
         "blend": 0.5,
-        "stack": 0
+        "stack": 0,
+        "pm2": 0,
+        "pm3": 0
       },
       "att": [
         1,
@@ -1810,10 +1818,15 @@
       "label": "sustain"
     },
     {
+      "module": 31,
+      "param": "gain",
+      "label": "volume",
+      "head": "output"
+    },
+    {
       "module": 33,
       "param": "pos",
       "label": "a-440",
-      "head": "output",
       "names": [
         "OFF",
         "ON"

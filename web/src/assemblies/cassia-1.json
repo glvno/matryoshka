@@ -118,7 +118,8 @@
       "params": {
         "time": 16,
         "mode": 0,
-        "voices": 0
+        "voices": 0,
+        "scale": 0
       }
     },
     {
@@ -1078,6 +1079,34 @@
         "k3": [],
         "k4": []
       }
+    },
+    {
+      "id": 38,
+      "type": "mixer",
+      "x": 3520,
+      "y": 280,
+      "params": {
+        "l1": 0.5,
+        "l2": 0,
+        "l3": 0,
+        "l4": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "l1"
+        ],
+        "p2": [
+          "l2"
+        ],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
     }
   ],
   "cables": [
@@ -1780,6 +1809,16 @@
         "module": 5,
         "port": "a"
       }
+    },
+    {
+      "from": {
+        "module": 9,
+        "port": "out"
+      },
+      "to": {
+        "module": 38,
+        "port": "in1"
+      }
     }
   ],
   "inputs": [
@@ -1806,7 +1845,7 @@
   ],
   "outputs": [
     {
-      "module": 9,
+      "module": 38,
       "port": "out",
       "label": "out"
     }
@@ -1824,25 +1863,40 @@
       "label": "line"
     },
     {
+      "module": 38,
+      "param": "l1",
+      "label": "vol"
+    },
+    {
       "module": 2,
       "param": "wave",
-      "label": "vib wave",
-      "head": "vibrato"
+      "label": "wave",
+      "head": "vibrato",
+      "names": [
+        "saw",
+        "square",
+        "pulse",
+        "dbl sine",
+        "saw-pulse",
+        "reso 1",
+        "reso 2",
+        "reso 3"
+      ]
     },
     {
       "module": 2,
       "param": "rate",
-      "label": "vib rate"
+      "label": "rate"
     },
     {
       "module": 3,
       "param": "gain",
-      "label": "vib depth"
+      "label": "depth"
     },
     {
       "module": 21,
       "param": "a",
-      "label": "vib delay"
+      "label": "delay"
     },
     {
       "module": 19,
@@ -2011,7 +2065,7 @@
     {
       "module": 12,
       "param": "value",
-      "label": "res range"
+      "label": "res"
     },
     {
       "module": 26,
@@ -2242,7 +2296,7 @@
     {
       "module": 15,
       "param": "value",
-      "label": "res range"
+      "label": "res"
     },
     {
       "module": 37,
@@ -2497,13 +2551,7 @@
         37
       ],
       "inputs": [],
-      "outputs": [
-        {
-          "module": 9,
-          "port": "out",
-          "label": "out"
-        }
-      ],
+      "outputs": [],
       "params": [
         {
           "module": 9,
@@ -2513,7 +2561,7 @@
         {
           "module": 21,
           "param": "a",
-          "label": "vib delay"
+          "label": "delay"
         },
         {
           "module": 19,

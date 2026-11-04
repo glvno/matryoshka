@@ -987,7 +987,7 @@ int main(int argc, char **argv)
         fr[3] = C_PRESET_GET;
         n0 = nreplies;
         CHECK(m1_handle(fr, w) == 1 && m1_unpack7(replies[n0] + 5, reply_len[n0] - 6, got, sizeof got) >= 21 && got[20] == 0xFF);
-        {   /* #485: 176 values (Cassia 1 has 118 rows) go both ways whole, 177 are refused; the frame fits the USB buffer */
+        {   /* #485: 176 values (Cassia 1 has 119 rows) go both ways whole, 177 are refused; the frame fits the USB buffer */
             nreplies = 0;
             fr[3] = C_PRESET_PUT;
             pl[20] = 176;

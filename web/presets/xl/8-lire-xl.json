@@ -1342,7 +1342,9 @@
     "unison": 1,
     "detune": 10,
     "blend": 0.5,
-    "stack": 0
+    "stack": 0,
+    "pm2": 0,
+    "pm3": 0
    },
    "att": [
     0.03,
@@ -1601,7 +1603,9 @@
     "unison": 1,
     "detune": 10,
     "blend": 0.5,
-    "stack": 0
+    "stack": 0,
+    "pm2": 0,
+    "pm3": 0
    },
    "att": [
     0.03,
@@ -1860,7 +1864,9 @@
     "unison": 1,
     "detune": 10,
     "blend": 0.5,
-    "stack": 0
+    "stack": 0,
+    "pm2": 0,
+    "pm3": 0
    },
    "att": [
     0.03,
@@ -2119,7 +2125,9 @@
     "unison": 1,
     "detune": 10,
     "blend": 0.5,
-    "stack": 0
+    "stack": 0,
+    "pm2": 0,
+    "pm3": 0
    },
    "att": [
     0.03,
@@ -2378,7 +2386,9 @@
     "unison": 1,
     "detune": 10,
     "blend": 0.5,
-    "stack": 0
+    "stack": 0,
+    "pm2": 0,
+    "pm3": 0
    },
    "att": [
     0.03,
@@ -2637,7 +2647,9 @@
     "unison": 1,
     "detune": 10,
     "blend": 0.5,
-    "stack": 0
+    "stack": 0,
+    "pm2": 0,
+    "pm3": 0
    },
    "att": [
     0.03,
@@ -2896,7 +2908,9 @@
     "unison": 1,
     "detune": 10,
     "blend": 0.5,
-    "stack": 0
+    "stack": 0,
+    "pm2": 0,
+    "pm3": 0
    },
    "att": [
     0.03,
@@ -3155,7 +3169,9 @@
     "unison": 1,
     "detune": 10,
     "blend": 0.5,
-    "stack": 0
+    "stack": 0,
+    "pm2": 0,
+    "pm3": 0
    },
    "att": [
     0.03,
@@ -4531,7 +4547,7 @@
    "x": 5520,
    "y": 20,
    "params": {
-    "level": 0.7
+    "level": 0.45
    }
   },
   {
