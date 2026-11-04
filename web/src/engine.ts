@@ -723,6 +723,10 @@ export class Engine {
       route.mean = sum / n;
     }
     for (const pd of node.impl.def.params) {
+      if (pd.fixed) {   // (set when the patch loads: the base value, ParamDef.fixed)
+        inst.eff[pd.name] = node.params[pd.name] ?? pd.default;
+        continue;
+      }
       const a = node.lock?.[pd.name] ?? node.params[pd.name] ?? pd.default;   // (a P-lock in place of the normal value, #524)
       let base = node.paramsB && this.morphT > 0 ? morphValue(pd, a, node.paramsB[pd.name] ?? a, this.morphT) : a;
       let mod = 0;

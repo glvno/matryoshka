@@ -461,20 +461,29 @@ export const DELAY_DIVS: { name: string; num: number; den: number }[] = [
 /** the clock input is the Main module's clock: 24 pulses per quarter note */
 export const DELAY_CLK_PPQN = 24;
 
-/** the delay's time knob, ms: as long as the FM-1's line (DELAY_LEN, 30944 samples at DEVICE_SR; ping-pong halves it).
- * 520 ms until #273 gave the FM-1's line the RAM it had left unused */
+/** the delay's time knob, ms: modulation and macro ranges span DELAY_TIME_MIN..DELAY_TIME_MAX (the FM-1's range before
+ * the length row); its base reaches DELAY_LENGTH_MAX (ParamDef.browserMax: on the A side the FM-1 plays it too, a morph
+ * B side past DELAY_TIME_MAX is the browser's, patchbin.ts browserOnly). The time plays up to the Delay's length (half of
+ * it with ping-pong): delayReach */
 export const DELAY_TIME_MIN = 1;
 export const DELAY_TIME_MAX = 700;
 /** synced, the time knob's note lengths stay spread over DELAY_TIME_MIN..DELAY_SYNC_TOP ms (the FM-1's range before #273), so a
  * stored synced delay keeps its note length; a time past it picks the longest (export-defs: defs.h DELAY_SYNC_TOP) */
 export const DELAY_SYNC_TOP = 520;
-/** the browser's delay reaches further (a browser-only ability: a patch past DELAY_TIME_MAX is over the FM-1 budget); its
- * line holds this much */
-export const DELAY_TIME_BROWSER = 1600;
-/** the FM-1's delay line, samples at DEVICE_SR (engine.c DELAY_LEN): 700 ms and 61 samples (even: ping-pong halves it) */
-const DELAY_LEN = 30944;
-/** the browser's line: DELAY_TIME_BROWSER and a little (as the FM-1's line is 700 ms and a little) */
-const DELAY_LEN_BROWSER = Math.ceil((DELAY_TIME_BROWSER / 1000) * DEVICE_SR) + 60;
+/** the Delay's `length` row (format 50, D-375): the most time its line holds, ms. Ping-pong splits the line into its two
+ * sides, so each reaches half the length. A Delay of an older patch reads DELAY_LENGTH_DEFAULT, the line every Delay had
+ * before the row. The FM-1 sizes the line when the patch loads (engine.c dly_samples): no input, macro range, morph,
+ * P-lock or knob moves the length while the patch plays (ParamDef.fixed) */
+export const DELAY_LENGTH_MIN = 10;
+export const DELAY_LENGTH_MAX = 1900;
+export const DELAY_LENGTH_DEFAULT = 700;
+/** a length's line, samples at DEVICE_SR: its samples rounded up to an even count (ping-pong halves it) and 60 more, so a
+ * time of the whole length still fits (700 ms: 30944, the line every Delay had before the length row; engine.c
+ * dly_samples) */
+export const delayLine = (ms: number): number => {
+  const l = Math.min(DELAY_LENGTH_MAX, Math.max(DELAY_LENGTH_MIN, Math.round(ms)));
+  return 2 * Math.floor((l * DEVICE_SR + 1999) / 2000) + 60;
+};
 
 /** which note length the time knob selects when the delay is synced: its range split into DELAY_DIVS.length steps */
 export function delayDivIndex(time: number, tmin: number, tmax: number): number {
@@ -1415,12 +1424,12 @@ function delayGlide(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, 
 
 /**
  * Delay. free: `time` in ms; sync: `time` picks a note length (DELAY_DIVS) at the tempo of the `clk` input (the Main module's
- * clock; 120 bpm until 24 pulses have come in). The tempo is the time of the last 24 pulses, smoothed. Ping-pong splits the
- * one buffer in two halves (A, B): the input enters A, A's echo goes to B, B's back to A, so the echoes alternate out
- * (left) and r (right), each with feedback `fb`; the dry/wet `mix` applies to both. Each half is at most half the buffer, so
- * the delay time is limited to about 350 ms then (800 ms past the FM-1's range). Without ping-pong r is the same as out.
- * The browser's `time` reaches DELAY_TIME_BROWSER (1.6 s), the FM-1's DELAY_TIME_MAX: within that the browser plays as the
- * FM-1 (its line's length bounds a synced note length too); past it the patch is browser only (patchbin.ts browserOnly).
+ * clock; 120 bpm until 24 pulses have come in). The tempo is the time of the last 24 pulses, smoothed. Its line holds
+ * `length` (delayLine; set when the patch loads, ParamDef.fixed): the time, free or synced, plays up to it. Ping-pong
+ * splits the line in two halves (A, B): the input enters A, A's echo goes to B, B's back to A, so the echoes alternate
+ * out (left) and r (right), each with feedback `fb`; the dry/wet `mix` applies to both. Each half is half the line, so
+ * with ping-pong the time plays up to half the length. Without ping-pong r is the same as out. Both engines size the line
+ * alike, so a patch plays the same in the browser and on the FM-1 (whose budget holds the lines: patchbin.ts lineBudget).
  * `note` (synced): one of DELAY_NOTES in place of the time knob's length. `swell`: the feedback x 198 / 95 (0.95 reads
  * 1.98) and the loop through a soft clip (delayClip), so a feedback past 1 swells to about full level and holds there.
  * A new time (a turned knob, a cable into `time`) is not a jump: the read position glides there (delayGlide, #484).
@@ -1432,24 +1441,27 @@ const delay: ModuleImpl<DelayState> = {
     inputs: [audio('in'), gate('clk')],
     outputs: [audio('out'), audio('r')],
     params: [
-      param('time', DELAY_TIME_MIN, DELAY_TIME_MAX, 250, { unit: 'ms', step: 1, browserMax: DELAY_TIME_BROWSER, altText: { when: 'sync', text: (v) => DELAY_DIVS[delayDivIndex(v, DELAY_TIME_MIN, DELAY_SYNC_TOP)].name } }),
+      param('time', DELAY_TIME_MIN, DELAY_TIME_MAX, 250, { unit: 'ms', step: 1, browserMax: DELAY_LENGTH_MAX, grew: { since: 50, from: DELAY_TIME_MAX }, altText: { when: 'sync', text: (v) => DELAY_DIVS[delayDivIndex(v, DELAY_TIME_MIN, DELAY_SYNC_TOP)].name } }),
       param('fb', 0, 0.95, 0.4, { step: 0.01, altText: { when: 'swell', text: (v) => ((v * DELAY_SWELL_NUM) / DELAY_SWELL_DEN).toFixed(2) } }),
       param('mix', 0, 1, 0.3, { step: 0.01 }),
       param('sync', 0, 1, 0, { step: 1, choices: ['free', 'sync'], toggle: true }),
       param('pingpong', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
       param('note', 0, DELAY_NOTES.length - 1, 0, { step: 1, choices: DELAY_NOTES.map((d) => d.name), since: 35 }),
       param('swell', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 35 }),
+      param('length', DELAY_LENGTH_MIN, DELAY_LENGTH_MAX, DELAY_LENGTH_DEFAULT, { unit: 'ms', step: 10, since: 50, fixed: true }),
     ],
   },
-  init: (sr) => ({ buf: new Float32Array(Math.round((sr * DELAY_LEN_BROWSER) / DEVICE_SR)), w: 0, cur: 0, rate: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2) }),
+  init: (sr) => ({ buf: new Float32Array(0), w: 0, cur: 0, rate: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2) }),
   process(c, s) {
+    // the line its length holds (at this sample rate); a new length (an edit) starts an empty line, as the FM-1's load does
+    const want = Math.round((c.sr * delayLine(c.p.length ?? DELAY_LENGTH_DEFAULT)) / DEVICE_SR);
+    if (s.buf.length !== want) {
+      s.buf = new Float32Array(want);
+      s.w = s.cur = s.rate = 0;
+    }
     const len = s.buf.length;
     const half = Math.floor(len / 2);
     const pp = (c.p.pingpong ?? 0) >= 0.5;
-    // a time within the FM-1's range plays as on the FM-1, whose line is shorter: a synced note length longer than that
-    // line is cut to it there, so here too. Only a time past it (browser only) reaches the longer line.
-    const fm1 = (c.p.time ?? 250) <= DELAY_TIME_MAX;
-    const lim = fm1 ? Math.round((c.sr * DELAY_LEN) / DEVICE_SR) : len;
     if (c.connected.clk) {
       for (let i = 0; i < c.n; i++) {
         s.t++;
@@ -1480,7 +1492,7 @@ const delay: ModuleImpl<DelayState> = {
     const o = c.out.out;
     const r = c.out.r;
     // the read position glides to a new time (delayGlide), then the plain loops below read at whole samples
-    const d = pp ? Math.max(1, Math.min(Math.floor(lim / 2) - 1, samples)) : Math.max(1, Math.min(lim - 1, samples));
+    const d = pp ? Math.max(1, Math.min(half - 1, samples)) : Math.max(1, Math.min(len - 1, samples));
     const top = (pp ? half : len) - 1;
     if (s.cur === 0 || s.cur > top * 65536) s.cur = s.cur === 0 ? d * 65536 : top * 65536;
     if (s.cur !== d * 65536 || s.rate) {
@@ -3151,13 +3163,23 @@ export const selectPos = (pos: number, count: number, cv: number): number => {
 export const selectCount = (params: Record<string, number>): number => Math.min(SELECT_N, Math.max(2, Math.round(params.count ?? SELECT_N)));
 /**
  * The range a row of this module's parameter offers (#358): a Selector's position spans the positions in use, 1..count,
- * so the card, the knobs and a typed value never pick one that plays nothing (the FM-1: pages_ui.c row_top). Any other
- * parameter: its own definition.
+ * so the card, the knobs and a typed value never pick one that plays nothing (the FM-1: pages_ui.c row_top); a free
+ * Delay's time spans 1 ms to what its line holds (delayReach). Any other parameter: its own definition.
  */
 export function rowRange(type: string, params: Record<string, number>, pd: ParamDef): ParamDef {
+  if (type === 'delay' && pd.name === 'time' && (params.sync ?? 0) < 0.5) {
+    const reach = delayReach(params);
+    return { ...pd, max: Math.min(pd.max, reach), top: reach > pd.max ? reach : undefined, browserMax: undefined };
+  }
   if (type !== 'select' || pd.name !== 'pos') return pd;
   return { ...pd, max: selectCount(params), top: undefined, browserMax: undefined };
 }
+/** the longest free time a Delay plays, whole ms: its length, half of it with ping-pong (each side has half the line; the
+ * FM-1: pages_ui.c row_top) */
+export const delayReach = (params: Record<string, number>): number => {
+  const l = Math.min(DELAY_LENGTH_MAX, Math.max(DELAY_LENGTH_MIN, Math.round(params.length ?? DELAY_LENGTH_DEFAULT)));
+  return Math.max(DELAY_TIME_MIN, (params.pingpong ?? 0) >= 0.5 ? Math.floor(l / 2) : l);
+};
 /** what a Selector's crossfade moves its weights by each sample (Q16, as the firmware: an integer increment, so both engines
  * fade alike); 65536 or more: it switches at once */
 export const selectFadeInc = (fade: number, sr: number): number => {

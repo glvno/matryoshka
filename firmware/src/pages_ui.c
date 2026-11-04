@@ -139,7 +139,20 @@ static int32_t row_top(uint32_t m, uint32_t j, const def_t *d)
 {
     if (eng_type(m) == T_SELECT && j == SELECT_P_POS)
         return clampi((eng_get_param(m, SELECT_P_COUNT) + 32768) >> 16, 2, (int32_t)(d->pmax[j] >> 16)) << 16;
+    if (eng_type(m) == T_DELAY && j == DELAY_P_TIME && eng_get_param(m, DELAY_P_SYNC) < 32768) {   /* a free Delay's time: up to
+                                                     * its length, half of it with ping-pong (modules.ts delayReach) */
+        int32_t l = clampi((eng_get_param(m, DELAY_P_LENGTH) + 32768) >> 16, DELAY_LENGTH_MIN, DELAY_LENGTH_MAX);
+        return (eng_get_param(m, DELAY_P_PINGPONG) >= 32768 ? l / 2 : l) << 16;
+    }
     return DEF_TOP(d, j);
+}
+/* a row set when the patch loads (DEF_FIXED: a Delay's length) does not turn here: the editor sets it */
+static int row_fixed(uint32_t m, uint32_t j)
+{
+    if (eng_type(m) < 0 || !DEF_FIXED((uint32_t)eng_type(m), j))
+        return 0;
+    ui_msg("SET IN THE EDITOR", 1200);
+    return 1;
 }
 
 /* row k's extras in the running binary (ENG_ROW_MORE), 0 when it has none: u8 n, n (module, parameter), u8 k, k texts */
@@ -627,6 +640,8 @@ static int pages_turn(uint32_t k, int32_t clicks, int fast, int fine, uint32_t *
         *v = clampi(poly_value(m, j & 0x7Fu) + (clicks > 0 ? 1 : -1), (j & 0x7Fu) == 0u ? 1 : 0, poly_max(j & 0x7Fu));
         return 1;
     }
+    if (row_fixed(m, j))
+        return -1;
     d = &DEFS[eng_type(m)];
     lag_note(k, m, j);                                  /* (the engine runs with it from its next block) */
     if (d->pchoice && d->pchoice[j]) {                  /* a choice steps one name a click */
@@ -659,7 +674,8 @@ static int pages_lock_turn(const ppage_t *pg, uint32_t k, int32_t cur, int32_t c
 {
     const def_t *d;
     uint32_t m, j;
-    if (!pg || k >= pg->nrows || !clicks || pg->mod[k] == SETTING_ROW || (pg->par[k] & POLY_ROW) || eng_type(pg->mod[k]) == T_PART)
+    if (!pg || k >= pg->nrows || !clicks || pg->mod[k] == SETTING_ROW || (pg->par[k] & POLY_ROW) || eng_type(pg->mod[k]) == T_PART
+        || (eng_type(pg->mod[k]) >= 0 && DEF_FIXED((uint32_t)eng_type(pg->mod[k]), pg->par[k])))   /* (a row set when the patch loads: no lock) */
         return -1;
     m = pg->mod[k];
     j = pg->par[k];
@@ -697,6 +713,8 @@ static int pages_set_unit(uint32_t k, int32_t u, uint32_t *mod, uint32_t *par, i
         *v = lo + (int32_t)((((int64_t)u * (hi - lo)) + 32768) >> 16);
         return 1;
     }
+    if (eng_type(m) >= 0 && DEF_FIXED((uint32_t)eng_type(m), j))   /* (MIDI CC: no message, the editor's knob says it) */
+        return -1;
     d = &DEFS[eng_type(m)];
     lag_note(k, m, j);
     if (d->pchoice && d->pchoice[j]) {
@@ -2467,8 +2485,8 @@ static int dp_load(uint32_t d, uint32_t k)
                 return -1;
             m1_param_now(mod, par, v);
         } else {
-            if (eng_type(mod) < 0 || par >= DEFS[eng_type(mod)].npar || eng_tempo_row(mod, par))   /* (a preset leaves
-                                                     * the global tempo, D-907) */
+            if (eng_type(mod) < 0 || par >= DEFS[eng_type(mod)].npar || eng_tempo_row(mod, par) || DEF_FIXED((uint32_t)eng_type(mod), par))   /* (a preset
+                                                     * leaves the global tempo, D-907, and a row set when the patch loads) */
                 continue;
             eng_set_param(mod, par, v);
             m1_patch_param(mod, par, v);

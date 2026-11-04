@@ -101,7 +101,7 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
             return;
         at += eng_record_size(&DEFS[pv_bin[at] & 0x7Fu], pv_bin[1]);
     }
-    if (at >= pv_len || (pv_bin[at] & 0x7Fu) >= N_TYPES || par >= eng_npar(&DEFS[pv_bin[at] & 0x7Fu], pv_bin[1]))
+    if (at >= pv_len || (pv_bin[at] & 0x7Fu) >= N_TYPES || par >= eng_npar(&DEFS[pv_bin[at] & 0x7Fu], pv_bin[1]) || DEF_FIXED(pv_bin[at] & 0x7Fu, par))
         return;
     at += 1u + 4u * par;
     pv_bin[at] = (uint8_t)v;

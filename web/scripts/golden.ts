@@ -1421,11 +1421,36 @@ delayKit('delay-sync-pingpong', { sync: 1, div: 6, bpm: 90, pingpong: 1 });
 delayKit('delay-long', { time: 650 });
 delayKit('delay-long-sync', { sync: 1, time: 416 });
 delayKit('delay-long-pingpong', { time: 700, pingpong: 1 });
-// #273 step 3: in a patch without a Granular the FM-1's Delay line is 1.6 s, so a time past 700 ms plays as in the browser
-// (ping-pong: half each side, so 1.5 s reads 800 ms of each half's line)
-delayKit('delay-1600', { time: 1550, fb: 0.5 });
-delayKit('delay-1600-pingpong', { time: 1500, pingpong: 1 });
-for (const n of ['delay-long', 'delay-long-sync', 'delay-long-pingpong', 'delay-1600', 'delay-1600-pingpong']) ends[n] = 128 * 1400;
+// the length row (D-375): a 1.6 s line plays a time past 700 ms (ping-pong: half each side, so 1.5 s reads 800 ms of each
+// half's line); a short line cuts a longer time, free and synced; the longest line
+delayKit('delay-1600', { time: 1550, fb: 0.5, length: 1600 });
+delayKit('delay-1600-pingpong', { time: 1500, pingpong: 1, length: 1600 });
+delayKit('delay-length-short', { time: 500, length: 120 });
+delayKit('delay-length-short-sync', { sync: 1, time: 416, length: 300 });
+delayKit('delay-length-short-pingpong', { time: 90, pingpong: 1, length: 150 });
+delayKit('delay-length-1900', { time: 1890, fb: 0.5, length: 1900 });
+for (const n of ['delay-long', 'delay-long-sync', 'delay-long-pingpong', 'delay-1600', 'delay-1600-pingpong', 'delay-length-1900']) ends[n] = 128 * 1400;
+// several Delays in one patch (the effect memory, D-375): three of different lengths in a chain, the last ping-pong
+kit('delays-three', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const osc = add('osc', 0, 0, { wave: 1, level: 0.5 });
+  const env = add('adsr', 0, 0, { a: 0.002, d: 0.05, s: 0, r: 0.05 });
+  const vca = add('vca', 0, 0);
+  const d1 = add('delay', 0, 0, { time: 90, fb: 0.5, mix: 0.5, length: 100 });
+  const d2 = add('delay', 0, 0, { time: 310, fb: 0.4, mix: 0.4, length: 1200 });
+  const d3 = add('delay', 0, 0, { time: 170, fb: 0.5, mix: 0.5, pingpong: 1, length: 400 });
+  const out = add('output', 0, 0);
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(kb, 'gate', env, 'gate');
+  wire(osc, 'out', vca, 'in');
+  wire(env, 'env', vca, 'cv');
+  wire(vca, 'out', d1, 'in');
+  wire(d1, 'out', d2, 'in');
+  wire(d2, 'out', d3, 'in');
+  wire(d3, 'out', out, 'l');
+  wire(d3, 'r', out, 'r');
+});
+ends['delays-three'] = 128 * 900;
 // #351: the extra note lengths (1/32; 1/2T, longer than the ping-pong half, is cut to it) and the swelling feedback
 delayKit('delay-sync-note', { sync: 1, note: 1 });
 delayKit('delay-sync-note-pingpong', { sync: 1, note: 2, pingpong: 1 });
@@ -1879,6 +1904,72 @@ kit(
   2,
 );
 
+// two reverbs and two choruses in one patch (the effect memory places their lines, D-375): in parallel, each on its side
+kit('reverbs-two', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const osc = add('osc', 0, 0, { wave: 0, level: 0.8 });
+  const env = add('adsr', 0, 0, { a: 0.002, d: 0.05, s: 0, r: 0.05 });
+  const vca = add('vca', 0, 0);
+  const r1 = add('reverb', 0, 0, { size: 0.8, damp: 0.3, mix: 0.6 });
+  const r2 = add('reverb', 0, 0, { size: 0.4, damp: 0.6, mix: 0.5 });
+  const out = add('output', 0, 0);
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(kb, 'gate', env, 'gate');
+  wire(osc, 'out', vca, 'in');
+  wire(env, 'env', vca, 'cv');
+  wire(vca, 'out', r1, 'in');
+  wire(vca, 'out', r2, 'in');
+  wire(r1, 'out', out, 'l');
+  wire(r2, 'out', out, 'r');
+});
+kit(
+  'choruses-two',
+  (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const o = add('osc', 0, 0, { wave: 2, level: 0.5 });
+    const env = add('adsr', 0, 0, { a: 0.02, d: 0.3, s: 0.7, r: 0.3 });
+    const vca = add('vca', 0, 0);
+    const c1 = add('chorus', 0, 0, { rate: 0.8, depth: 0.7, mix: 0.6 });
+    const c2 = add('chorus', 0, 0, { rate: 0.3, depth: 0.4, mix: 0.5 });
+    const out = add('output', 0, 0, { level: 0.7 });
+    wire(kb, 'pitch', o, 'pitch');
+    wire(kb, 'gate', env, 'gate');
+    wire(o, 'out', vca, 'in');
+    wire(env, 'env', vca, 'cv');
+    wire(vca, 'out', c1, 'in');
+    wire(c1, 'l', c2, 'in');
+    wire(c2, 'l', out, 'l');
+    wire(c2, 'r', out, 'r');
+  },
+  2,
+);
+
+// the most lines a patch had before the effect memory (D-375): 8 string lines (four strings, two voices), a 700 ms
+// Delay, a Granular, a reverb and a chorus, in a chain: the FM-1 places all of them in its two line areas
+kit(
+  'lines-full',
+  (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const ss = [0, 5, 7, 12].map((coarse, i) => add('string', 0, 0, { decay: 1 + i * 0.3, damp: 0.3, coarse, level: 0.4 }));
+    const mix = add('mixer', 0, 0, { l1: 0.5, l2: 0.5, l3: 0.5, l4: 0.5 });
+    const ch = add('chorus', 0, 0, { rate: 0.6, depth: 0.5, mix: 0.4 });
+    const dly = add('delay', 0, 0, { time: 180, fb: 0.4, mix: 0.4 });
+    const gr = add('grain', 0, 0, { position: 0.25, size: 0.0625, density: 15, pitch: 7, spray: 0.3, mix: 0.3 });
+    const rv = add('reverb', 0, 0, { size: 0.6, damp: 0.4, mix: 0.3 });
+    const out = add('output', 0, 0, { level: 0.6 });
+    ss.forEach((x, i) => {
+      wire(kb, 'pitch', x, 'pitch');
+      wire(kb, 'gate', x, 'gate');
+      wire(x, 'out', mix, `in${i + 1}`);
+    });
+    wire(mix, 'out', ch, 'in');
+    wire(ch, 'l', dly, 'in');
+    wire(dly, 'out', gr, 'in');
+    wire(gr, 'out', rv, 'in');
+    wire(rv, 'out', out, 'l');
+  },
+  2,
+);
 // a clocked sequence: square LFO -> clock divider -> pendulum sequencer -> quantizer -> oscillator; the sequencer's gate
 // through a pulse into the envelope; the divider's d4 syncs the oscillator
 kit('seq-clock', (add, wire) => {
