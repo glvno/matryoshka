@@ -544,6 +544,14 @@ after.push(() => {
     removeModule(p, id);
     removeMember(p, a, id);
   }
+  // Its volume (the level row, #448, a one-input mixer after the VCA) is left out as well: the kit's mixer sets the
+  // bass's level (in4), and the patch keeps its bytes
+  const volume = a.params.find((r) => r.label === 'volume')!;
+  const before = p.cables.find((c) => c.to.module === volume.module)!.from;
+  a.outputs = a.outputs.map((o) => (o.module === volume.module ? { ...o, module: before.module, port: before.port } : o));
+  a.params = a.params.filter((r) => r !== volume);
+  removeMember(p, a, volume.module);
+  removeModule(p, volume.module);
   wire(p, main.id, 'keys', st.id, 'keys');
   plugIn(p, st.id, 'keys', a, 'keys');
   plugOut(p, a, 'out', mix.id, 'in4');

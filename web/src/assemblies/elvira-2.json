@@ -868,7 +868,8 @@
       "params": {
         "time": 16,
         "mode": 0,
-        "voices": 0
+        "voices": 0,
+        "scale": 0
       }
     }
   ],

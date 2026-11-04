@@ -59,7 +59,9 @@
     "unison": 5,
     "detune": 22,
     "blend": 0.65,
-    "stack": 1
+    "stack": 1,
+    "pm2": 0,
+    "pm3": 0
    },
    "att": [
     1,
@@ -495,6 +497,11 @@
      "module": 5,
      "param": "r",
      "label": "r"
+    },
+    {
+     "module": 6,
+     "param": "gain",
+     "label": "level"
     }
    ],
    "poly": {}

@@ -118,7 +118,8 @@
       "params": {
         "time": 16,
         "mode": 0,
-        "voices": 0
+        "voices": 0,
+        "scale": 0
       }
     },
     {
@@ -1078,6 +1079,34 @@
         "k3": [],
         "k4": []
       }
+    },
+    {
+      "id": 38,
+      "type": "mixer",
+      "x": 3520,
+      "y": 280,
+      "params": {
+        "l1": 0.5,
+        "l2": 0,
+        "l3": 0,
+        "l4": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "l1"
+        ],
+        "p2": [
+          "l2"
+        ],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
     }
   ],
   "cables": [
@@ -1780,6 +1809,16 @@
         "module": 5,
         "port": "a"
       }
+    },
+    {
+      "from": {
+        "module": 9,
+        "port": "out"
+      },
+      "to": {
+        "module": 38,
+        "port": "in1"
+      }
     }
   ],
   "inputs": [
@@ -1806,7 +1845,7 @@
   ],
   "outputs": [
     {
-      "module": 9,
+      "module": 38,
       "port": "out",
       "label": "out"
     }
@@ -1822,6 +1861,11 @@
       "module": 9,
       "param": "pos",
       "label": "line"
+    },
+    {
+      "module": 38,
+      "param": "l1",
+      "label": "volume"
     },
     {
       "module": 2,
@@ -2497,13 +2541,7 @@
         37
       ],
       "inputs": [],
-      "outputs": [
-        {
-          "module": 9,
-          "port": "out",
-          "label": "out"
-        }
-      ],
+      "outputs": [],
       "params": [
         {
           "module": 9,

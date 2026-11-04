@@ -195,7 +195,9 @@
     "unison": 1,
     "detune": 10,
     "blend": 0.5,
-    "stack": 0
+    "stack": 0,
+    "pm2": 0,
+    "pm3": 0
    },
    "att": [
     1,
@@ -230,7 +232,9 @@
     "unison": 1,
     "detune": 10,
     "blend": 0.5,
-    "stack": 0
+    "stack": 0,
+    "pm2": 0,
+    "pm3": 0
    },
    "att": [
     1,
@@ -419,7 +423,8 @@
    "params": {
     "time": 16,
     "mode": 0,
-    "voices": 0
+    "voices": 0,
+    "scale": 0
    }
   },
   {
@@ -430,7 +435,8 @@
    "params": {
     "time": 16,
     "mode": 0,
-    "voices": 0
+    "voices": 0,
+    "scale": 0
    }
   },
   {
@@ -441,7 +447,8 @@
    "params": {
     "time": 500,
     "mode": 0,
-    "voices": 0
+    "voices": 0,
+    "scale": 0
    }
   },
   {
@@ -985,6 +992,11 @@
      "label": "amp r"
     },
     {
+     "module": 15,
+     "param": "gain",
+     "label": "volume"
+    },
+    {
      "module": 10,
      "param": "gain",
      "label": "pmod env→A"
@@ -1226,6 +1238,11 @@
      "module": 14,
      "param": "r",
      "label": "r"
+    },
+    {
+     "module": 15,
+     "param": "gain",
+     "label": "volume"
     },
     {
      "module": 10,

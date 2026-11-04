@@ -94,7 +94,9 @@
         "unison": 1,
         "detune": 10,
         "blend": 0.5,
-        "stack": 0
+        "stack": 0,
+        "pm2": 0,
+        "pm3": 0
       },
       "att": [
         1,
@@ -379,7 +381,9 @@
         "unison": 1,
         "detune": 10,
         "blend": 0.5,
-        "stack": 0
+        "stack": 0,
+        "pm2": 0,
+        "pm3": 0
       },
       "att": [
         1,
@@ -764,7 +768,9 @@
         "unison": 5,
         "detune": 90,
         "blend": 0.5,
-        "stack": 0
+        "stack": 0,
+        "pm2": 0,
+        "pm3": 0
       },
       "att": [
         1,
@@ -1410,7 +1416,9 @@
         "unison": 1,
         "detune": 10,
         "blend": 0.5,
-        "stack": 0
+        "stack": 0,
+        "pm2": 0,
+        "pm3": 0
       },
       "att": [
         1,
@@ -1445,7 +1453,9 @@
         "unison": 1,
         "detune": 10,
         "blend": 0.5,
-        "stack": 0
+        "stack": 0,
+        "pm2": 0,
+        "pm3": 0
       },
       "att": [
         1,
@@ -1595,6 +1605,34 @@
           "gain"
         ],
         "p2": [],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 59,
+      "type": "mixer",
+      "x": 2560,
+      "y": 0,
+      "params": {
+        "l1": 0.5,
+        "l2": 0,
+        "l3": 0,
+        "l4": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "l1"
+        ],
+        "p2": [
+          "l2"
+        ],
         "k1": [],
         "k2": [],
         "k3": [],
@@ -2382,6 +2420,16 @@
         "module": 2,
         "port": "in4"
       }
+    },
+    {
+      "from": {
+        "module": 2,
+        "port": "out"
+      },
+      "to": {
+        "module": 59,
+        "port": "in1"
+      }
     }
   ],
   "inputs": [
@@ -2393,7 +2441,7 @@
   ],
   "outputs": [
     {
-      "module": 2,
+      "module": 59,
       "port": "out",
       "label": "out"
     }
@@ -2460,6 +2508,11 @@
       "module": 3,
       "param": "l1",
       "label": "hats level"
+    },
+    {
+      "module": 59,
+      "param": "l1",
+      "label": "level"
     }
   ],
   "children": [

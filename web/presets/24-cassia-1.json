@@ -138,7 +138,8 @@
    "params": {
     "time": 16,
     "mode": 0,
-    "voices": 0
+    "voices": 0,
+    "scale": 0
    }
   },
   {
@@ -1101,24 +1102,14 @@
   },
   {
    "id": 39,
-   "type": "output",
-   "x": 4240,
-   "y": 20,
+   "type": "mixer",
+   "x": 3540,
+   "y": 340,
    "params": {
-    "level": 0.43
-   }
-  },
-  {
-   "id": 40,
-   "type": "steps",
-   "x": 20,
-   "y": 5680,
-   "params": {
-    "len": 16,
-    "rate": 4,
-    "swing": 50,
-    "gate": 0.25,
-    "dir": 0
+    "l1": 0.5,
+    "l2": 0,
+    "l3": 0,
+    "l4": 0
    },
    "att": [
     1,
@@ -1126,25 +1117,25 @@
    ],
    "map": {
     "p1": [
-     "len"
+     "l1"
     ],
     "p2": [
-     "rate"
+     "l2"
     ],
-    "k1": [
-     "len"
-    ],
-    "k2": [
-     "rate"
-    ],
-    "k3": [
-     "swing"
-    ],
-    "k4": [
-     "gate"
-    ]
-   },
-   "name": "PATTERN"
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 40,
+   "type": "output",
+   "x": 4240,
+   "y": 20,
+   "params": {
+    "level": 0.87
+   }
   },
   {
    "id": 41,
@@ -1869,16 +1860,26 @@
    },
    "to": {
     "module": 39,
+    "port": "in1"
+   }
+  },
+  {
+   "from": {
+    "module": 39,
+    "port": "out"
+   },
+   "to": {
+    "module": 40,
     "port": "l"
    }
   },
   {
    "from": {
-    "module": 10,
+    "module": 39,
     "port": "out"
    },
    "to": {
-    "module": 39,
+    "module": 40,
     "port": "r"
    }
   },
@@ -1914,16 +1915,6 @@
   },
   {
    "from": {
-    "module": 1,
-    "port": "keys"
-   },
-   "to": {
-    "module": 40,
-    "port": "keys"
-   }
-  },
-  {
-   "from": {
     "module": 41,
     "port": "keys"
    },
@@ -1934,7 +1925,7 @@
   },
   {
    "from": {
-    "module": 40,
+    "module": 1,
     "port": "keys"
    },
    "to": {
@@ -2667,7 +2658,8 @@
     13,
     14,
     15,
-    16
+    16,
+    39
    ],
    "inputs": [
     {
@@ -2693,7 +2685,7 @@
    ],
    "outputs": [
     {
-     "module": 10,
+     "module": 39,
      "port": "out",
      "label": "out"
     }
@@ -2709,6 +2701,11 @@
      "module": 10,
      "param": "pos",
      "label": "line"
+    },
+    {
+     "module": 39,
+     "param": "l1",
+     "label": "volume"
     },
     {
      "module": 3,
