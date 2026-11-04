@@ -13,6 +13,8 @@ static volatile uint8_t eng_run;
 static volatile uint32_t master_q12 = 2048;        /* the MASTER pot, 0..4088 (Q12), square law */
 static volatile int32_t patch_gain = 65536;        /* the mixer page's level of the patch, Q16 (0 = muted; menu.c) */
 static volatile uint8_t snd_muted;                 /* sandbox mode (sandbox_ui.c): the browser plays; the FM-1's patch runs on, unheard */
+static volatile uint8_t out_mono;                  /* GLO > SYSTEM > OUTPUT (#612): 1 MONO, the analog output's two sides carry
+                                                    * (L + R) / 2; USB audio stays stereo. Saved with the settings (main.c) */
 /* the device test mode's meter (TEST_PEAK, #291): before the MASTER pot (as at its default, so a script does not depend
  * on where the knob is), after mute */
 #include "test_peak.h"
@@ -95,6 +97,9 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
 #if FELUCCA_UAC
         uac_tap(o, HALF_FRAMES);
 #endif
+        if (out_mono)                                   /* (after USB audio took the half in stereo; never louder than a side) */
+            for (i = 0; i < HALF_FRAMES; i++)
+                o[2u * i] = o[2u * i + 1u] = (o[2u * i] + o[2u * i + 1u]) >> 1;
         fm1_audio_ack_half();
         all = fm1_ticks() - t0;                         /* includes the key scan and USB poll nested in the ISR */
         late = fm1_audio_free_half() != half;           /* the hardware already plays the half just written */
