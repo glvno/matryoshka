@@ -601,10 +601,12 @@ async function main() {
     await check(`${tag}: LFO + step 1, the hit's own step with nothing before it: a drone (tied round the loop, DRONE)`,
       said && noteAt(ns, 0, note)?.wrap === true && noteAt(ns, 0, note)?.len === 64 && ns.length === 1, fmt(ns));
     if (sustains) {
-      const w = await passProfile(), v = w.filter((x) => !x[2]).map((x) => x[1]);
-      const top = v.length ? Math.max(...v) : 0, low = v.length ? Math.min(...v) : 0;
+      // (from the window the attack reaches 80 % of the peak on: PLAY started the drone just before the profile)
+      const w = await passProfile(), all = w.filter((x) => !x[2]).map((x) => x[1]);
+      const top = all.length ? Math.max(...all) : 0, v = all.slice(Math.max(0, all.findIndex((x) => x >= 0.8 * top)));
+      const low = v.length ? Math.min(...v) : 0;
       console.log(`  ${tag} a drone, peaks per 25 ms: ${prof(w)}`);
-      await loudCheck(`${tag}: the drone holds through the loop point (every window of the pass keeps 80 % and more, above ${QUIET})`, top,
+      await loudCheck(`${tag}: the drone holds through the loop point (every window after its attack keeps 80 % and more, above ${QUIET})`, top,
         top > LOUD && low >= 0.8 * top && low > QUIET, `peak ${top}, lowest ${low}`);
     }
     said = await lfoSay(0, 'TIE OFF');
