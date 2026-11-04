@@ -189,6 +189,9 @@ window.setInterval(sandboxSend, SANDBOX_MS);
 let uploadTimer = 0;
 let uploading = false;
 let dirty = false;
+/** patches opened, and which of them the last finished upload sent (the emulator scenarios wait on it, __m1test, #588) */
+let loadsSeen = 0;
+let uploadedLoad = -1;
 /** the encoded patch the FM-1 holds under Live: a structural change that leaves it the same (a comment, the layout) sends
  *  nothing (upload-gate.ts) */
 const uploadGate = new UploadGate();
@@ -456,12 +459,14 @@ async function sendPatch(): Promise<boolean> {
     do {
       dirty = false;
       devStatus('sending patch…');
+      const load = loadsSeen;
       const bin = encodePatch(editor.patch);
       uploadGate.forget();
       await device.upload(editor.patch, bin);
       uploadGate.took(bin);
       onEditorPatch = true;
       baseline = JSON.stringify(editor.patch);
+      uploadedLoad = load;
       devStatus('patch on the FM-1');
       const at = editor.focus && binaryPage(editor.patch, editor.focus.device, editor.focus.page);
       if (at) device.focus(at[0], at[1]);   // the FM-1 opens on the page the knobs edit here
@@ -886,6 +891,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     tutorial.refresh();
   },
   onLoad(p) {
+    loadsSeen++;
     emuFresh = true;
     uploadGate.forget();   // (a patch opened always goes to the FM-1 whole: its mutes, arms and pattern start afresh too)
     noteKeys.set(p.octave ?? 0); // a patch opens in the octave it was last played in
@@ -2680,6 +2686,7 @@ if (import.meta.env.DEV) {
       playing: editor.playing, deviceRunning: device.running, octave: noteKeys.octave(), focus: editor.focus, patch: editor.patch.name,
       focusName: editor.devices.find((d) => d.key === editor.focus?.device)?.name ?? '',
       syncAsk: syncAsk.open, status: $('dev-status').textContent, armed: [...editor.armedSet],
+      loads: loadsSeen, uploadedLoad,
     }),
     patchJson: (): string => JSON.stringify(editor.patch),
     /** a device's first page into focus, by name (Main's knobs; with Live on, the FM-1 follows) */
