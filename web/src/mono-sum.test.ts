@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// #612: the FM-1's OUTPUT setting at MONO sends (L + R) / 2 to the analog output's left side (the tip) and silences the
-// right. That sum never peaks above the louder side, so no factory patch that keeps its stereo headroom (#440, headroom-1..4.test.ts) clips in mono. Every
+// #612: the FM-1's OUTPUT setting at MONO sends (L + R) / 2 to both sides of the analog output, and at MONO L to the left
+// side (the tip) only, the right silent. That sum never peaks above the louder side, so no factory patch that keeps its stereo headroom (#440, headroom-1..4.test.ts) clips in mono. Every
 // factory patch played as the headroom checks play it first (its own values, as many keys as its voices); the figures
 // (the stereo peak, the mono sum's, and the change in dB) are printed for the changelog's numbers.
 import { expect, it } from 'vitest';

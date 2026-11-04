@@ -531,9 +531,9 @@ static const ppage_t *menu_tab_page(void)
 /* a setting's place in its range, 0..width (its bar) */
 static uint32_t setting_bar(uint32_t row, uint32_t width)
 {
-    return row == MR_CH ? cfg.ch * width / 16u : row == MR_LEDS ? cfg.leds * width / 2u : row == MR_CIN ? cfg.count_in * width / 2u
+    return row == MR_CH ? cfg.ch * width / 16u : row == MR_LEDS ? cfg.leds * width / 2u : row == MR_OUTPUT ? out_mono * width / 2u : row == MR_CIN ? cfg.count_in * width / 2u
          : row == MR_UPDATE || row == MR_DEFAULTS ? (menu_armed == row ? width : 0u)
-         : (row == MR_CLOCK ? cfg.clock_in : row == MR_MOUT ? cfg.midi_out : row == MR_CLKOUT ? cfg.clock_out : row == MR_QUICK ? cfg.quick : row == MR_TEMPO ? gt_patch : row == MR_OUTPUT ? out_mono : cfg.accel) ? width : 0u;
+         : (row == MR_CLOCK ? cfg.clock_in : row == MR_MOUT ? cfg.midi_out : row == MR_CLKOUT ? cfg.clock_out : row == MR_QUICK ? cfg.quick : row == MR_TEMPO ? gt_patch : cfg.accel) ? width : 0u;
 }
 
 static const ppage_t *pages_now(void)
