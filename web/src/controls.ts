@@ -137,7 +137,7 @@ export const CONTROLS: ControlRow[] = [
   { id: 'tempo', gesture: { hold: 'PLAY', do: [E('PRESET')] }, does: 'tempo', everywhere: at(90, ALL), effect: 'tempo',
     help: 'the tempo, 1 bpm a click (the global one while TEMPO is GLOBAL; in sandbox mode the browser’s); PLAY’s release then neither starts nor stops' },
   { id: 'patch', gesture: { hold: 'HOME', do: [E('PRESET')] }, does: 'patches', everywhere: at(100, but('menu', 'sandbox')), effect: 'patch',
-    help: 'the patches in the bank (an empty bank says BANK EMPTY); HOME’s release then goes nowhere' },
+    help: 'the patches in the bank (an empty bank says BANK EMPTY; while the editor’s Live is on the patch stays, EDITOR LIVE: PATCH STAYS); HOME’s release then goes nowhere' },
   { id: 'store', gesture: { hold: 'ENV', do: [B('SAVE')] }, does: 'save device preset', doesIn: { env: "save row's preset" }, when: 'dev_store', sheet: { device: 90, env: 60 }, everywhere: at(110, but('device', 'env', 'sandbox')), effect: 'store',
     help: 'the device in focus’s values as its preset (an assembly)' },
   { id: 'arm', gesture: { hold: 'REC', do: [BLACK] }, does: 'arm a track', when: 'tracks', everywhere: at(120, but('sandbox')), effect: 'arm',

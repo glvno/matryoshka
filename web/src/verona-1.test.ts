@@ -51,6 +51,26 @@ function play(p: Patch, hits: [number, number][], ms: number, from = 0): number 
   return peak;
 }
 
+/** as `play`, with each key held: [at ms, note, on] (the keys stay down until their off, so two rows overlap) */
+function playHeld(p: Patch, evs: [number, number, boolean][], ms: number, from = 0): number {
+  const e = new Engine(SR);
+  e.load(p);
+  const l = new Float32Array(Math.round((SR * ms) / 1000));
+  const r = new Float32Array(l.length);
+  const at = (t: number): number => Math.round((SR * t) / 1000);
+  let done = 0;
+  for (const [t, note, on] of [...evs].sort((a, b) => a[0] - b[0])) {
+    e.render(l.subarray(done, at(t)), r.subarray(done, at(t)));
+    done = at(t);
+    if (on) e.noteOn(note, 100);
+    else e.noteOff(note);
+  }
+  e.render(l.subarray(done), r.subarray(done));
+  let peak = 0;
+  for (let i = at(from); i < l.length; i++) peak = Math.max(peak, Math.abs(l[i]));
+  return peak;
+}
+
 describe('Verona 1 (#613)', () => {
   const fm1 = (): Patch => FM1_PRESETS['Verona 1']();
   it('fits the FM-1 and is its last factory patch, with six channels of the original\'s knobs, VOLUME each, and MASTER', () => {
@@ -88,6 +108,16 @@ describe('Verona 1 (#613)', () => {
     expect(ringing).toBeGreaterThan(0.002);
     expect(cut).toBeLessThan(ringing / 20);
   });
+
+  it('a closed hit pressed while the open row\'s key is still down cuts it too (the 1.10 early check)', () => {
+    const p = fm1();
+    const map = p.modules.find((m) => m.type === 'drummap')!;
+    const [open, closed] = [map.params.n5, map.params.n6];
+    const ringing = playHeld(p, [[0, open, true], [300, open, false]], 400, 250);
+    const cut = playHeld(p, [[0, open, true], [20, closed, true], [300, open, false], [300, closed, false]], 400, 250);
+    expect(ringing).toBeGreaterThan(0.002);
+    expect(cut).toBeLessThan(ringing / 20);
+  });
 });
 
 describe('Verona 1 XL (#613)', () => {
@@ -112,5 +142,16 @@ describe('Verona 1 XL (#613)', () => {
     expect(play(p, [[0, closed.params.n2]], 400, 250)).toBeLessThan(1e-4);
     expect(play(p, [[0, closed.params.n2]], 60)).toBeGreaterThan(0.005);
     expect(p.modules.filter((m) => m.type === 'steps').map((m) => m.name)).toEqual(['PATTERN', 'CLOSED']);
+  });
+
+  it('a hi-hat row pressed while its other row\'s key is still down plays, either way round (the 1.10 early check)', () => {
+    const p = xl();
+    const maps = p.modules.filter((m) => m.type === 'drummap');
+    const closed = maps.find((m) => m.names?.[0] === 'HH 1 CL')!.params.n2;
+    const open = maps.find((m) => m.names?.[0] === 'KICK')!.params.n7;   // HI HAT 2 ships open
+    const ringing = playHeld(p, [[0, open, true], [300, open, false]], 400, 250);
+    expect(playHeld(p, [[0, open, true], [20, closed, true], [300, open, false], [300, closed, false]], 400, 250)).toBeLessThan(ringing / 20);
+    // the closed row held, then the open row: it rings
+    expect(playHeld(p, [[0, closed, true], [20, open, true], [300, open, false], [300, closed, false]], 400, 250)).toBeGreaterThan(ringing / 2);
   });
 });

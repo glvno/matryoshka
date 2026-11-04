@@ -4174,6 +4174,12 @@
   {
    "name": "MERIDIAN 8",
    "len": 3026,
+   "fnv": "16179e75",
+   "version": 46
+  },
+  {
+   "name": "MERIDIAN 8",
+   "len": 3026,
    "fnv": "4f21c757",
    "version": 46
   },
@@ -7805,6 +7811,18 @@
    "name": "VERNON 100",
    "len": 3821,
    "fnv": "d158b34a",
+   "version": 46
+  },
+  {
+   "name": "VERONA 1",
+   "len": 3821,
+   "fnv": "f8aab886",
+   "version": 46
+  },
+  {
+   "name": "VERONA DRUM 1",
+   "len": 3825,
+   "fnv": "0883c5ee",
    "version": 46
   },
   {

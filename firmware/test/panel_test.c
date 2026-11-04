@@ -3354,6 +3354,18 @@ int main(void)
         check("PRESET under Live (resumed): still held, EDITOR LIVE: PATCH STAYS", cur_preset == slot
               && presets_stepped == stepped && !strcmp(msg_text, "EDITOR LIVE: PATCH STAYS"));
         later(1600);
+        loop();
+        msg_text[0] = 0;                                    /* (the 1.10 early check: HOME still held, the bar says it) */
+        panel_held |= 1u << BTN_HOME;
+        panel_edges(1u << BTN_HOME, 0);
+        enc(6, 1);
+        loop();
+        check("  HOME still held: the header shows EDITOR LIVE: PATCH STAYS, the patch stays", cur_preset == slot
+              && !strcmp(msg_text, "EDITOR LIVE: PATCH STAYS") && on_screen("EDITOR LIVE: PATCH STAYS"));
+        panel_held &= ~(1u << BTN_HOME);
+        panel_edges(0, 1u << BTN_HOME);
+        loop();
+        later(1600);
         m1_live(1);                                         /* over the budget once more */
         check("LIVE paused after a resume: sandbox mode again", sb_on && snd_muted);
         later(LIVE_HOLD_MS + 100u);                          /* no LIVE for 5 s (a closed tab): the sound and PRESET are free */

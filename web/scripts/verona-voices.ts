@@ -126,21 +126,20 @@ export function drum(b: VoiceBuilder, col: number, o: { coarse: number; decay: n
   };
 }
 
-/** MULTI: DECAY PITCH BEND ATTACK PITCH 2 PITCH 3 HIGHPASS. PITCH (an Offset, octaves) moves all three oscillators;
+/** MULTI: DECAY PITCH BEND ATTACK PITCH 2 PITCH 3 HIGHPASS. PITCH (the bend Attenuverter's offset, octaves: its output,
+ * the envelope times BEND plus PITCH, goes into every oscillator's pitch) moves all three oscillators;
  * PITCH 2 / 3 set the second and third below it. In full (the XL) they are Offsets too (octaves), and at their lowest
  * (-4) the oscillator is off (a Math compares the Offset with -3.95 into a VCA), as the original's turn off fully
  * counter-clockwise. `lean` (the FM-1): they are the oscillators' coarse tune, without the off position. */
 export function multi(b: VoiceBuilder, col: number, o: { lean?: boolean } = {}): Voice {
-  const pitch = b.add('const', col, 0, { value: 0 });
   const amp = decayEnv(b, col, 0.5, 0.22);
   const bend = b.add('scale', col, 1, { gain: 0, offset: 0 });
   const o1 = b.add('osc', col, 1.5, { wave: 3, coarse: 19, level: 0.25 });
   const vca = b.add('vca', col, 4, { gain: 1 });
-  const members = [pitch, amp, bend, o1];
+  const members = [amp, bend, o1];
   /** the second or third oscillator, `oct` octaves below PITCH; returns its row */
   const extra = (row: number, oct: number): [number, string] => {
     const osc = b.add('osc', col, row + 0.33, { wave: 3, coarse: o.lean ? Math.round(19 + 12 * Math.max(oct, -4)) : 19, level: 0.25 });
-    b.wire(pitch, 'out', osc, 'pitch');
     b.wire(bend, 'out', osc, 'pitch');
     members.push(osc);
     if (o.lean) {
@@ -163,7 +162,6 @@ export function multi(b: VoiceBuilder, col: number, o: { lean?: boolean } = {}):
   const spike = decayEnv(b, col, 4.5, 0.002, 0.2);
   const hp = b.add('filter', col, 5, { cutoff: 250, res: 0.1 });
   const sum = b.add('vca', col, 5.5, { gain: VEL_GAIN });
-  b.wire(pitch, 'out', o1, 'pitch');
   b.wire(amp, 'env', bend, 'in');
   b.wire(bend, 'out', o1, 'pitch');
   b.wire(o1, 'out', vca, 'in');
@@ -176,7 +174,7 @@ export function multi(b: VoiceBuilder, col: number, o: { lean?: boolean } = {}):
     members,
     gate: [[amp, 'gate'], [spike, 'gate']],
     vel: [sum, 'cv'], out: [sum, 'out'],
-    rows: [['decay', amp, 'r2'], ['pitch', pitch, 'value'], ['bend', bend, 'gain'], ['attack', spike, 'l1'], ['pitch 2', ...p2], ['pitch 3', ...p3], ['highpass', hp, 'cutoff']],
+    rows: [['decay', amp, 'r2'], ['pitch', bend, 'offset'], ['bend', bend, 'gain'], ['attack', spike, 'l1'], ['pitch 2', ...p2], ['pitch 3', ...p3], ['highpass', hp, 'cutoff']],
   };
 }
 
@@ -207,6 +205,9 @@ export function snare(b: VoiceBuilder, col: number, noise: NoiseFrom): Voice {
   };
 }
 
+/** a hi-hat row's hit as a pulse this long (s): see hihat */
+export const HIT_PULSE = 0.002;
+
 /** the closed hi-hat's fixed decay (the original's is "fixed short", independent of DECAY) */
 export const CLOSED_DECAY = 0.045;
 
@@ -219,7 +220,14 @@ export const CLOSED_DECAY = 0.045;
  *    (a Math times the row's gate by the switch into the latch); `closed` is a second row that always plays it closed
  *    (the original's second MIDI note), and a second latch says which row hit last.
  *  - no `trig` (the FM-1): the row plays it open, `closed` closed, as the original's two MIDI notes.
- * The spike (ATTACK) opens the VCA further for a few milliseconds, so it is the hat's own sound and follows PITCH. */
+ * The spike (ATTACK) opens the VCA further for a few milliseconds, so it is the hat's own sound and follows PITCH.
+ * The two rows share the envelopes' gates and the latch's clock, and inputs add, so while one row's key is still down the
+ * other row's gate makes no new edge there and its hit is lost (the closed hat right after the open one, the 1.10 early
+ * check). So a row's gate comes in through a Pulse of its own (HIT_PULSE), which is down again 2 ms after the press: the
+ * other row's next press is a new edge, and the latch reads a closed hit as closed while the open row's key is held. The
+ * XL pulses both rows. The FM-1 version pulses only the open row (a second Pulse is 33 patch bytes it does not have), so
+ * there a closed hit right after an open one cuts it, but an open hit pressed while the closed row's key is still down
+ * is lost. */
 export function hihat(b: VoiceBuilder, col: number, noise: NoiseFrom, o: { trig?: 1 | 2; pitch?: number } = {}): Voice {
   const [nz, nzp] = noise(b, col, 0);
   const metal = b.add('osc', col, 0.5, { wave: 3, coarse: o.pitch ?? 30, level: 0.7, unison: 5, detune: 60, pw: 0.4 });
@@ -250,21 +258,29 @@ export function hihat(b: VoiceBuilder, col: number, noise: NoiseFrom, o: { trig?
   const rows: [string, number, string][] = [
     ['decay', amp, 'r3'], ['filter', lp, 'cutoff'], ['bend', bend, 'gain'], ['attack', spike, 'l1'], ['resonance', lp, 'res'], ['mix', mix, 'mix'], ['pitch', metal, 'coarse'],
   ];
+  const pOpen = b.add('pulse', col - 0.25, 2, { time: HIT_PULSE });
+  members.push(pOpen);
+  /** each row's hits from its own pulse: [[the pulse's trig]] is what the row's gate goes into */
+  const via = (pl: number, to: [number, string][]): [number, string][] => {
+    for (const [m, port] of to) b.wire(pl, 'out', m, port);
+    return [[pl, 'trig']];
+  };
   if (!o.trig) {
     b.wire(latch, 'out', vsel, 'pos');
-    return { members, gate: [...hits, [latch, 'in']], closed: hits, vel: [vsel, 'b'], closedVel: [vsel, 'a'], out: [sum, 'out'], rows };
+    return { members, gate: via(pOpen, [...hits, [latch, 'in']]), closed: hits, vel: [vsel, 'b'], closedVel: [vsel, 'a'], out: [sum, 'out'], rows };
   }
   // TRIG: open (1) or closed (0); the row's gate times it into the latch; a second latch, 1 after the row and 0 after the
   // closed row, picks the velocity
+  const pClosed = b.add('pulse', col - 0.25, 2.5, { time: HIT_PULSE });
   const trig = b.add('select', col + 0.5, 1.5, { pos: o.trig, count: 2, v1: 1, v2: 0 });
   const which = b.add('math', col + 0.5, 2, { ka: 1, kb: 1, off: 0 });
   const last = b.add('sh', col + 0.5, 2.5, { mode: 0 });
   b.wire(trig, 'out', which, 'b');
   b.wire(which, 'mul', latch, 'in');
   b.wire(last, 'out', vsel, 'pos');
-  members.push(trig, which, last);
+  members.push(pClosed, trig, which, last);
   rows.push(['trig', trig, 'pos']);
-  return { members, gate: [...hits, [which, 'a'], [last, 'in'], [last, 'clock']], closed: [...hits, [last, 'clock']], vel: [vsel, 'b'], closedVel: [vsel, 'a'], out: [sum, 'out'], rows };
+  return { members, gate: via(pOpen, [...hits, [which, 'a'], [last, 'in'], [last, 'clock']]), closed: via(pClosed, [...hits, [last, 'clock']]), vel: [vsel, 'b'], closedVel: [vsel, 'a'], out: [sum, 'out'], rows };
 }
 /** the TRIG switch's positions */
 export const TRIG_NAMES = ['open', 'closed'];
