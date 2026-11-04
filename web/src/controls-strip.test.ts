@@ -82,7 +82,7 @@ describe('the controls strip is made from the controls table (#554, controls.ts)
     expect(ids(stripView(at('device', { held: 1 << BUTTON_ID.PLAY })).rows)).toEqual(['tempo']);
     const lfo = stripView(at('device', { held: 1 << BUTTON_ID.LFO }));
     expect(lfo.held).toBeNull();
-    expect(ids(lfo.rows)).toEqual(tableRows('device', 'state'));
+    expect(ids([...lfo.rows, ...lfo.more])).toEqual(tableRows('device', 'state'));   // (a busy DEVICE tab: past SHEET_ROWS behind "+N more", D-917)
   });
 
   it('FX held in step record: the accent its own row holds while the keys play', () => {

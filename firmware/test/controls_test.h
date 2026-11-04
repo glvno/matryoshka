@@ -494,6 +494,10 @@ static void ct_part(const ctl_part_t *p, uint32_t how, int dir, uint32_t hold)
  * page's, which ALGO picks first with the step held (#524); a clear and a delete ask first, REC again does it (#231) */
 static void ct_drive(const ctl_row_t *r, uint32_t alt, int dir)
 {
+    if (r->first != CH_NONE) {                          /* (ENV then SEL: ENV tapped first, on the page it opens) */
+        tap(r->first);
+        later(500);
+    }
     if (r->at_end)                                      /* (on END: the SONG page's cursor past the last entry) */
         song_cur = (uint8_t)eng_song_len(song_sel);
     if (r->hold == CH_STEP) {

@@ -155,7 +155,8 @@ export function controlsHeader(helpUi: string, fontH: string): string {
   w('#define CH_STEP 254u');
   w('enum { CW_PRESS, CW_TAP, CW_HELD, CW_HOLD2S };   /* how: as the handler takes it, a tap, held while keys play, held 2 s */');
   w('typedef struct { uint8_t kind, id, n; } ctl_part_t;');
-  w('typedef struct { const char *id; uint8_t effect, hold, how, at_end, nalt; ctl_part_t alt[5]; } ctl_row_t;');
+  w('/* first: a button tapped before the rest (ENV then SEL), CH_NONE none */');
+  w('typedef struct { const char *id; uint8_t effect, first, hold, how, at_end, nalt; ctl_part_t alt[5]; } ctl_row_t;');
   const part = (p: Part): string => {
     if ('button' in p) return `{CK_BUTTON, ${BUTTON_ID[p.button]}, 0}`;
     if ('encoder' in p) return `{CK_ENCODER, ${ENCODER_ID[p.encoder]}, 0}`;
@@ -169,7 +170,8 @@ export function controlsHeader(helpUi: string, fontH: string): string {
     const hold = g.hold === undefined ? 'CH_NONE' : g.hold === 'step' ? 'CH_STEP' : String(BUTTON_ID[g.hold]);
     const how = g.how === 'tap' ? 'CW_TAP' : g.how === 'held' ? 'CW_HELD' : g.how === 'hold 2 s' ? 'CW_HOLD2S' : 'CW_PRESS';
     if (g.do.length > 5) throw new Error(`controls: ${r.id}: more than 5 parts`);
-    w(`    {"${r.id}", CE_${cname(r.effect)}, ${hold}, ${how}, ${g.where ? 1 : 0}, ${g.do.length}, {${g.do.map(part).join(', ')}}},`);
+    const first = g.first === undefined ? 'CH_NONE' : String(BUTTON_ID[g.first]);
+    w(`    {"${r.id}", CE_${cname(r.effect)}, ${first}, ${hold}, ${how}, ${g.where ? 1 : 0}, ${g.do.length}, {${g.do.map(part).join(', ')}}},`);
   }
   w('};');
   w('#endif');
