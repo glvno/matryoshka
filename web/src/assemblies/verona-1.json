@@ -27,7 +27,7 @@
         "MULTI",
         "SNARE",
         "HH OPEN",
-        "HH CLOSED",
+        "HH CLOSE",
         "CLAP",
         "ROW 8"
       ]
@@ -708,7 +708,7 @@
         "coarse": 19,
         "fine": 0,
         "pm": 0,
-        "level": 0.5,
+        "level": 0.25,
         "fb": 0,
         "unison": 1,
         "detune": 10,
@@ -768,7 +768,7 @@
         "coarse": 12,
         "fine": 0,
         "pm": 0,
-        "level": 0.5,
+        "level": 0.25,
         "fb": 0,
         "unison": 1,
         "detune": 10,
@@ -802,10 +802,10 @@
       "params": {
         "wave": 3,
         "pw": 0.5,
-        "coarse": 7,
+        "coarse": 12,
         "fine": 0,
         "pm": 0,
-        "level": 0.5,
+        "level": 0.25,
         "fb": 0,
         "unison": 1,
         "detune": 10,
@@ -1510,7 +1510,7 @@
       "x": 1920,
       "y": 1400,
       "params": {
-        "gain": 0.9
+        "gain": 0.6
       },
       "att": [
         1,

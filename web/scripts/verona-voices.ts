@@ -134,12 +134,12 @@ export function multi(b: VoiceBuilder, col: number, o: { lean?: boolean } = {}):
   const pitch = b.add('const', col, 0, { value: 0 });
   const amp = decayEnv(b, col, 0.5, 0.22);
   const bend = b.add('scale', col, 1, { gain: 0, offset: 0 });
-  const o1 = b.add('osc', col, 1.5, { wave: 3, coarse: 19, level: 0.5 });
+  const o1 = b.add('osc', col, 1.5, { wave: 3, coarse: 19, level: 0.25 });
   const vca = b.add('vca', col, 4, { gain: 1 });
   const members = [pitch, amp, bend, o1];
   /** the second or third oscillator, `oct` octaves below PITCH; returns its row */
   const extra = (row: number, oct: number): [number, string] => {
-    const osc = b.add('osc', col, row + 0.33, { wave: 3, coarse: o.lean ? Math.round(19 + 12 * Math.max(oct, -4)) : 19, level: o.lean && oct <= -4 ? 0 : 0.5 });
+    const osc = b.add('osc', col, row + 0.33, { wave: 3, coarse: o.lean ? Math.round(19 + 12 * Math.max(oct, -4)) : 19, level: 0.25 });
     b.wire(pitch, 'out', osc, 'pitch');
     b.wire(bend, 'out', osc, 'pitch');
     members.push(osc);
@@ -159,7 +159,7 @@ export function multi(b: VoiceBuilder, col: number, o: { lean?: boolean } = {}):
     return [k, 'value'];
   };
   const p2 = extra(2, -0.55);
-  const p3 = extra(3, o.lean ? -1 : -4);
+  const p3 = extra(3, o.lean ? -0.55 : -4);   // (the FM-1's third sounds: on the second's pitch)
   const spike = decayEnv(b, col, 4.5, 0.002, 0.2);
   const hp = b.add('filter', col, 5, { cutoff: 250, res: 0.1 });
   const sum = b.add('vca', col, 5.5, { gain: VEL_GAIN });
@@ -278,7 +278,7 @@ export function clap(b: VoiceBuilder, col: number, noise: NoiseFrom, o: { color:
   const and = b.add('logic', col, 1, { thresh: 0.5 });
   const cenv = decayEnv(b, col, 1.5, 0.008);
   const [nz, nzp] = noise(b, col, 2);
-  const nVca = b.add('vca', col, 2.5, { gain: 0.9 });
+  const nVca = b.add('vca', col, 2.5, { gain: 0.6 });
   const rEnv = decayEnv(b, col, 3, 0.2);
   const rVca = b.add('vca', col, 3.5, { gain: 0.45 });
   const lp = b.add('filter', col, 4, { cutoff: 2200, res: 0.45 });

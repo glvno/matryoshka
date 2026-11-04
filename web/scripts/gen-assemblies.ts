@@ -3626,7 +3626,7 @@ asm('Spokes 6', 'Drums', (b) => {
 // oscillators' coarse tune), and the kick's own noise envelope (its noise lasts as long as TIME).
 asm('Verona 1', 'Drums', (b) => {
   const map = b.add('drummap', 0, 0, Object.fromEntries(PLATE_KEYS[1].map((n, r) => [`n${r + 1}`, n])));
-  b.module(map).names = ['KICK', 'DRUM 1', 'MULTI', 'SNARE', 'HH OPEN', 'HH CLOSED', 'CLAP', 'ROW 8'];
+  b.module(map).names = ['KICK', 'DRUM 1', 'MULTI', 'SNARE', 'HH OPEN', 'HH CLOSE', 'CLAP', 'ROW 8'];
   const noise = sharedNoise(b, 0, 1);
   // MASTER: every channel into the mixer's first input, its level the overall volume
   const mix = b.add('mixer', 7, 0, { l1: 1, l2: 0, l3: 0, l4: 0 });

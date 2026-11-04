@@ -63,7 +63,7 @@
 # FM-1 (#613). The rows follow the original's knobs: see web/scripts/verona-voices.ts for what each does here.
 # bend: 0 none, up a falling sweep, below 0 a rising one (the kick's only falls). time: the kick's pitch sweep (and,
 # on the FM-1, its noise burst). wave: 1 a sine, up to an overdriven square. clap: the claps' rate, so their number
-# (below about 22 Hz one clap). The hi-hat plays open on HH OPEN and closed on HH CLOSED.
+# (below about 22 Hz one clap). The hi-hat plays open on HH OPEN and closed on HH CLOSE.
 engine: Verona 1
 
 preset: Dance Floor
