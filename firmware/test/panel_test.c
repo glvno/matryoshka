@@ -4138,7 +4138,37 @@ int main(void)
         check("FX + K1: a copy of it inserted before it", song_len() == 2 && eng_song_get(0, 1) == eng_song_get(0, 0));
         enc(5, 1);
         check("K4 right: the song plays", eng_song() == 1);
-        snap_to(getenv("PANEL_SNAP_SONG"));
+        {                                               /* (#582: the entry playing, its marker; stopped, none) */
+            uint32_t x, y, tri = 0;
+            enc(0, 5);                                  /* (the cursor on END: the entry's row not the cursor's bar) */
+            later(1100);
+            check("  stopped: the bar says SONG 1 STOPPED, no entry marked", bar_shows("SONG 1 STOPPED", C_ACC) && song_playing() < 0);
+            eng_transport(1);
+            for (i = 0; i < 4u; i++)
+                eng_render(l, r, 128);
+            loop();
+            for (y = SONG_Y; y < SONG_Y + 14u; y++)
+                for (x = 8u; x < 15u; x++)
+                    tri += px(x, y) == C_ACC;
+            check("  PLAY: entry 01 marked, a coral triangle before its number; the bar says SONG 1 PLAYS", song_playing() == 0
+                  && tri >= 20u && on_screen("01  P05  -3") && bar_shows("SONG 1 PLAYS", C_ACC));
+            snap_to(getenv("PANEL_SNAP_SONG"));
+            {
+                static uint16_t w0[240 * 240];
+                memcpy(w0, fb, sizeof w0);
+                ui_full = 1;
+                loop();
+                check("  the marked row drawn in place = drawn whole", !memcmp(w0, fb, sizeof w0));
+            }
+            eng_transport(0);
+            eng_render(l, r, 128);
+            loop();
+            for (tri = 0, y = SONG_Y; y < SONG_Y + 14u; y++)
+                for (x = 8u; x < 15u; x++)
+                    tri += px(x, y) == C_ACC;
+            check("  stopped again: no marker, SONG 1 STOPPED", !tri && bar_shows("SONG 1 STOPPED", C_ACC));
+            enc(0, -5);
+        }
         enc(5, -1);
         check("K4 left: the pattern plays again", eng_song() == 0);
         enc(1, 1);

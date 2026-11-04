@@ -712,11 +712,12 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
         t.screen(&m, "song: SEL tapped opens the SONG page", "SONG 1");
         t.screen(&m, "song: the demo song's entries", "01  P02  0");
         m.turn(K4, 1, 600)?;
-        t.screen(&m, "song: K4 right, song 1 plays", "SONG 1 PLAYS");
+        t.screen(&m, "song: K4 right, song 1 to play; stopped, the bar says so (#582)", "SONG 1 STOPPED");
         let mk = m.mark();
         m.tap(PLAY, 120, 2000)?;
         let p = m.peak_since(mk);
         t.check("song: PLAY plays the song", p > LOUD, format!("peak {p}"));
+        t.screen(&m, "song: PLAY, the bar says SONG 1 PLAYS", "SONG 1 PLAYS");
         t.snap(&m, "song-page");
         m.tap(PLAY, 120, 300)?;
         m.turn(K4, -1, 600)?;

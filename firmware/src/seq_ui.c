@@ -1909,25 +1909,28 @@ static void seq_draw(int full)
  *   SEQ held + REC  deletes the entry, asked first (REC again within 3 s), as the track clear
  *   PRESET          the pattern, as on the SEQ page
  *   SEL / HOME      back to the SEQ page
- * The entry each track plays is marked (>); only the rows that changed are redrawn. Edits go into the running patch (SAVE
+ * The entry the selected track plays is marked (a coral triangle and number, #582; stopped: none, the bar says SONG n
+ * STOPPED); only the rows that changed are redrawn. Edits go into the running patch (SAVE
  * keeps them) and to the editor (SONG_NOW, PATTERN_NOW). */
 #define SONG_ROWS 8u
 #define SONG_Y 44u
 #define SONG_RH 19u
 static uint8_t song_sel;                /* the song shown (0..ENG_SONGS - 1) */
 static uint8_t song_cur, song_top;      /* the cursor (an entry, or the song's length: END), the first row shown */
-static char song_text[SONG_ROWS + 3u][48];   /* the rows, the info, the footer and the hint as drawn (a row's first byte: 1 the cursor) */
+static char song_text[SONG_ROWS + 3u][48];   /* the rows, the info, the footer and the hint as drawn (a row's first byte: 1 the cursor, 2 not, | 4 the entry playing) */
 static uint8_t song_ok;                 /* the page is on the LCD as song_text says */
 static int16_t song_shown_play = -2;    /* the entry playing as drawn */
+static int8_t song_shown_run = -1;      /* the transport as the bar last said it (SONG n PLAYS / STOPPED) */
                                         /* song_del_at: SEQ held + REC: fm1_ms | 1 of the press that asked, 0 none */
 static uint8_t song_del_k;              /* ... the entry it asked for */
 
 static int song_len(void) { return eng_song_len(song_sel); }
-/* the entry the selected track plays in the song shown, -1 when that song does not play */
+/* the entry the selected track plays in the song shown, -1 when that song does not play or the transport is stopped
+ * (#582: stopped, no marker) */
 static int song_playing(void)
 {
     int mod = seq_module();
-    return mod >= 0 && eng_song() == song_sel + 1 ? eng_song_entry((uint32_t)mod) : -1;
+    return mod >= 0 && eng_song() == song_sel + 1 && eng_transport_running() ? eng_song_entry((uint32_t)mod) : -1;
 }
 /* the page about to open (panel.c, SEL tapped on the SEQ page): the song playing, else the last one shown */
 static void song_prep(void)
@@ -2055,7 +2058,8 @@ static void song_bar(void)
     char b[32], *p = b;
     p = put(p, "SONG ");
     *p++ = (char)('1' + song_sel);
-    p = put(p, eng_song() == song_sel + 1 ? " PLAYS" : eng_song() ? " (SONG " : " (PATTERN P");
+    song_shown_run = (int8_t)(eng_transport_running() != 0);
+    p = put(p, eng_song() == song_sel + 1 ? (song_shown_run ? " PLAYS" : " STOPPED") : eng_song() ? " (SONG " : " (PATTERN P");
     if (eng_song() && eng_song() != song_sel + 1) {
         *p++ = (char)('0' + eng_song());
         p = put(p, " PLAYS)");
@@ -2064,21 +2068,63 @@ static void song_bar(void)
     *p = 0;
     bar_text(b, C_ACC);
 }
-/* a text line of the page, drawn when it is not on the LCD as it is (cur: the cursor's colours) */
-static void song_line(uint32_t n, uint32_t y, const char *s, uint16_t fg, int cur, uint32_t field)
+/* a text line of the page, drawn when it is not on the LCD as it is (cur: the cursor's colours). mark < 0: a plain line
+ * at x 8; else an entry's (or END's) row: a marker column, then the text at x 18; mark 1 the entry playing (#582): a
+ * filled triangle and its number in the accent colour (on the cursor's bar both in the bar's text colour) */
+#define SONG_TX 10u                     /* the row's text, from the field's left (x 8) */
+static void song_line(uint32_t n, uint32_t y, const char *s, uint16_t fg, int cur, uint32_t field, int mark)
 {
-    uint32_t i;
-    if (song_ok && song_text[n][0] == (char)(cur ? 1 : 2)) {
+    uint32_t i, r, key = (cur ? 1u : 2u) | (mark > 0 ? 4u : 0u);
+    if (song_ok && song_text[n][0] == (char)key) {
         for (i = 0; s[i] && s[i] == song_text[n][1u + i]; i++)
             ;
         if (s[i] == song_text[n][1u + i])
             return;
     }
-    song_text[n][0] = (char)(cur ? 1 : 2);
+    song_text[n][0] = (char)key;
     for (i = 0; s[i] && i < sizeof song_text[n] - 2u; i++)
         song_text[n][1u + i] = s[i];
     song_text[n][1u + i] = 0;
-    text_bc(&FONT_S, 8, y, s, cur ? C_BG : fg, cur ? C_ACC : C_BG, field, TA_LEFT);
+    if (mark < 0) {
+        text_bc(&FONT_S, 8, y, s, cur ? C_BG : fg, cur ? C_ACC : C_BG, field, TA_LEFT);
+        return;
+    }
+    for (r = 0; r < FONT_S.h; r++) {             /* (a scanline at a time, as text_bcn: the row never blinks) */
+        uint16_t *row = lcd_line, bg = cur ? C_ACC : C_BG, ink = cur ? C_BG : fg, acc = cur ? C_BG : C_ACC;
+        uint32_t px = SONG_TX, num = 0;
+        int32_t k;
+        for (i = 0; i < field; i++)
+            row[i] = bg;
+        if (mark > 0)                            /* the triangle: 5 px wide, 9 high, on the digits' height */
+            for (i = 0; i < 5u; i++)
+                if (r >= 2u + i && r <= 10u - i)
+                    row[1u + i] = acc;
+        if (r == 0u)
+            scr_pend(SONG_TX, text_w(&FONT_S, s, -1), FONT_S.h, s, -1);
+        for (k = 0; s[k]; k++) {
+            uint32_t c = (uint8_t)s[k], j, rb;
+            const fglyph_t *g;
+            const uint8_t *bits;
+            uint8_t gi = c >= 0x20u && c < 0x7Fu ? FONT_S.map[c - 0x20u] : 255u;
+            uint16_t col;
+            if (gi == 255u)
+                continue;
+            num += c >= '0' && c <= '9' && num == (uint32_t)k;   /* (the leading digits: the entry's number) */
+            col = mark > 0 && (uint32_t)k < num ? acc : ink;
+            g = &FONT_S.g[gi];
+            rb = (g->w + 1u) / 2u;
+            bits = FONT_S.bits + g->off + r * rb;
+            for (j = 0; j < g->w; j++) {
+                uint32_t a = (j & 1u) ? bits[j >> 1] & 15u : bits[j >> 1] >> 4, at = px + (uint32_t)((int32_t)j + g->x);
+                if (a && at < field)
+                    row[at] = mix565(col, bg, a + (a > 7u ? 1u : 0u));
+            }
+            px += g->adv;
+            if (px >= field)
+                break;
+        }
+        lcd_line_out(8, y + r, field);
+    }
 }
 static void song_draw(int full)
 {
@@ -2107,13 +2153,12 @@ static void song_draw(int full)
     fmt_int(num, n);                             /* 12 ENTRIES  K4: PATTERN / SONG */
     p = put(put(t, num), n == 1 ? " ENTRY" : " ENTRIES");
     put(p, eng_song() == song_sel + 1 ? "  K4 LEFT: PATTERN" : "  K4 RIGHT: SONG")[0] = 0;
-    song_line(SONG_ROWS, 26, t, C_FG, 0, 224);
+    song_line(SONG_ROWS, 26, t, C_FG, 0, 224, -1);
     for (r = 0; r < SONG_ROWS; r++) {
         int k = song_top + (int)r;
         p = t;
-        if (k < n) {                             /* >03  P12  +5 */
+        if (k < n) {                             /* 03  P12  +5 (the entry playing: a triangle before it, song_line) */
             int e = eng_song_get(song_sel, (uint32_t)k), sh = (int8_t)(e >> 8);
-            *p++ = k == play ? '>' : ' ';
             p = put2(p, k + 1);
             p = put2(put(p, "  P"), (e & 0xFF) + 1);
             p = put(p, "  ");
@@ -2122,13 +2167,13 @@ static void song_draw(int full)
             fmt_int(num, sh);
             p = put(p, num);
         } else if (k == n)
-            p = put(p, n < (int)ENG_SONG_LEN ? " END   K1: ADD" : " END   FULL");
+            p = put(p, n < (int)ENG_SONG_LEN ? "END   K1: ADD" : "END   FULL");
         *p = 0;
-        song_line(r, SONG_Y + SONG_RH * r, t, k > n ? C_BG : k == n ? C_DIM : C_FG, k == song_cur, 120);
+        song_line(r, SONG_Y + SONG_RH * r, t, k > n ? C_BG : k == n ? C_DIM : C_FG, k == song_cur, 120, k < n && k == play);
     }
     /* (FONT_S, the controls table's words: controls.ts HINTS, #553) */
-    song_line(SONG_ROWS + 1u, 202, HINT_SONG_1, C_DIM, 0, 224);
-    song_line(SONG_ROWS + 2u, 222, HINT_SONG_2, C_HINT, 0, 228);
+    song_line(SONG_ROWS + 1u, 202, HINT_SONG_1, C_DIM, 0, 224, -1);
+    song_line(SONG_ROWS + 2u, 222, HINT_SONG_2, C_HINT, 0, 228, -1);
     song_shown_play = (int16_t)play;
     song_ok = 1;
 }
@@ -2139,6 +2184,9 @@ static void song_poll(void)
         song_del_at = 0;
     if (page == PAGE_SONG && song_playing() != song_shown_play && !ui_dirty)
         ui_dirty = 1;
+    if (page == PAGE_SONG && song_shown_run >= 0 && song_shown_run != (eng_transport_running() != 0)
+        && (!msg_until || fm1_ms >= msg_until))
+        header_draw();                           /* (PLAY or stop: SONG n PLAYS / STOPPED, #582; not over a message) */
 }
 
 /* the main loop, every pass: the LEDs, and the cells when the playhead moved */
