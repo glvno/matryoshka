@@ -4,10 +4,12 @@
 
 ### FM-1
 
+- **Drones (#384):** on the SEQ page, hold LFO and press a note's own step to tie it round the loop back onto itself. It starts once and keeps sounding while the track plays, with no new attack at the loop's end; the bar says DRONE, and the same press again makes it one step. You can also tie step by step past the last step: the note goes on across the end of the loop, and when the tie comes round to its own step it is a drone. A drone's cell has a short band at its left. A patch with a tied-round note is saved in format 50, which needs this firmware; every other patch stays in the older format.
 - The controls sheet (OCT- + OCT+) says what SEL does to the keys. On a device page it reads "SEL arm only this", because it replaces what was armed, and a new row "ENV then SEL arm several" says how to play more than one at once. On the ENVIRONMENT page it reads "SEL add / drop row". The editor's ? help card, its controls strip and the README say the same. In a simulated FM-1, an agent playing a new owner layered two sounds in 54, 56 and 61 actions with this wording, against 71, 78 and 121 before (three runs each; 2 of the 3 went straight to the ENVIRONMENT page, against 1 of 3 before).
 
 ### Editor
 
+- **Drones (#384):** Ctrl / Cmd-click on a Steps card's first step ties the note on the last step on across the loop, and a note tied round onto its own step is a drone. In the piano roll, L makes the selected notes drones (again: one step). Drones and notes tied across the loop are drawn on through the first steps, and both engines play them alike.
 - An assembly's "Delete with its modules" (and Delete with the assembly selected) now deletes everything inside it: the assemblies nested in it and their modules go too, instead of landing on the canvas (#560). One Undo brings all of it back.
 
 ## 1.9.0 — 2026-11-03

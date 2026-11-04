@@ -505,7 +505,7 @@ async function main() {
   // editor's copy of the track), heard through the peak, and Main's LFO jack through TEST_SCREEN's head (DEVICE only)
   const trackNotes = async () => JSON.parse(await patchJson()).modules.find((m) => m.type === 'steps')?.notes ?? [];
   const noteAt = (ns, at, note) => ns.find((n) => n.at === at && (note === undefined || n.note === note));
-  const fmt = (ns) => ns.map((n) => `${n.note}@${n.at}x${n.len}`).join(' ') || 'none';
+  const fmt = (ns) => ns.map((n) => `${n.note}@${n.at}x${n.len}${n.wrap ? '~' : ''}`).join(' ') || 'none';
   /** the editor's copy of the track until `f` holds of it (the FM-1's TRACK_NOW arrived), else the last read */
   const notesUntil = async (f, ms = 3000) => (await until(async () => { const ns = await trackNotes(); return f(ns) ? ns : null; }, ms)) ?? (await trackNotes());
   /** a patch opened in the editor and on the FM-1 (synced), the FM-1 on its device page */
@@ -572,7 +572,7 @@ async function main() {
   const prof = (w) => w.map((x) => x[1]).join(',');
   const LFO_BIT = 1 << 3;
   /** a 4-step note on step 1 back to one step, as D-531 says (2026-10-28): LFO + step 2 (inside it) ends it there, LFO +
-   *  step 2 again (its last step) makes it one step, LFO + step 1 (its own step, nothing before) is NOTHING TO TIE */
+   *  step 2 again (its last step) makes it one step */
   async function untie(tag, note) {
     await lfoKeys([1]);
     let ns = await notesUntil((x) => noteAt(x, 0, note)?.len === 2);
@@ -580,20 +580,42 @@ async function main() {
     await lfoKeys([1]);
     ns = await notesUntil((x) => noteAt(x, 0, note)?.len === 1);
     await check(`${tag}: LFO + step 2 again, its last step: one step`, noteAt(ns, 0, note)?.len === 1 && ns.length === 1, fmt(ns));
+  }   // Main's patch buttons: FX SCL ENV LFO EDIT GLO ARP (engine.h ENG_PANEL_BUTTONS)
+
+  /** LFO + step `k` (0-based) with the bar's word `say` checked while LFO is held */
+  async function lfoSay(k, say) {
     await emu.key(B.lfo, true);
     await sleep(150);
-    await emu.tap(WHITE[0]);
-    const said = await emu.waitText('NOTHING TO TIE', 1500);
+    await emu.tap(WHITE[k]);
+    const said = await emu.waitText(say, 1500);
     await emu.key(B.lfo, false);
     await sleep(300);
-    ns = await trackNotes();
-    await check(`${tag}: LFO + step 1, the hit's own step with nothing before it: NOTHING TO TIE, no change`, said && noteAt(ns, 0, note)?.len === 1 && ns.length === 1, fmt(ns));
-  }   // Main's patch buttons: FX SCL ENV LFO EDIT GLO ARP (engine.h ENG_PANEL_BUTTONS)
+    return said;
+  }
+  /** #384: the one-step hit on step 1, the only note of its track. LFO + its own step makes it a drone (DRONE): tied round
+   *  the loop onto itself, it never starts again. `sustains`: its voice holds while its gate is up, so a pass and more
+   *  must stay loud throughout (no new hit, no decay at the loop point). LFO + step 1 again: one step (TIE OFF) */
+  async function droneTie(tag, note, sustains) {
+    let said = await lfoSay(0, 'DRONE');
+    let ns = await notesUntil((x) => noteAt(x, 0, note)?.wrap === true);
+    await check(`${tag}: LFO + step 1, the hit's own step with nothing before it: a drone (tied round the loop, DRONE)`,
+      said && noteAt(ns, 0, note)?.wrap === true && noteAt(ns, 0, note)?.len === 64 && ns.length === 1, fmt(ns));
+    if (sustains) {
+      const w = await passProfile(), v = w.filter((x) => !x[2]).map((x) => x[1]);
+      const top = v.length ? Math.max(...v) : 0, low = v.length ? Math.min(...v) : 0;
+      console.log(`  ${tag} a drone, peaks per 25 ms: ${prof(w)}`);
+      await loudCheck(`${tag}: the drone holds through the loop point (every window of the pass keeps 80 % and more, above ${QUIET})`, top,
+        top > LOUD && low >= 0.8 * top && low > QUIET, `peak ${top}, lowest ${low}`);
+    }
+    said = await lfoSay(0, 'TIE OFF');
+    ns = await notesUntil((x) => noteAt(x, 0, note)?.len === 1 && !noteAt(x, 0, note)?.wrap);
+    await check(`${tag}: LFO + the drone's own step again: one step (TIE OFF)`, said && noteAt(ns, 0, note)?.len === 1 && !noteAt(ns, 0, note)?.wrap && ns.length === 1, fmt(ns));
+  }
 
   /** a drum track's grid (D-531 as of 2026-10-28): a hit on step 1 of row `row`, LFO + step 4 ties it through step 4 in one
    *  press, heard; LFO + step 2 (inside it) ends it there, LFO + step 2 again (its last step) makes it one step, heard again
-   *  at the same place; LFO + step 1 (its own step, nothing before it) is NOTHING TO TIE; tied again and cut by a plain
-   *  white key on step 3. `sustains`: the row's voice holds
+   *  at the same place; LFO + step 1 (its own step, nothing before it) makes it a drone, heard holding, and again one step
+   *  (#384); tied again and cut by a plain white key on step 3. `sustains`: the row's voice holds
    *  while its gate is up (8 Lire's plates), else a one-shot whose sound must not change (the 808 Kit) */
   async function drumTie(tag, name, row, sustains) {
     await check(`${tag}: ${name} opens, synced`, await openSynced(name));
@@ -611,6 +633,7 @@ async function main() {
     if (DEVICE) await check(`${tag}: LFO held on the SEQ page: Main's LFO jack stays down`, buttons !== undefined && !(buttons & LFO_BIT), `buttons ${buttons}`);
     const tiedW = await passProfile();
     await untie(tag, note);
+    await droneTie(tag, note, sustains);
     const againW = await passProfile();
     const u = hold(untiedW), t = hold(tiedW), a = hold(againW);
     console.log(`  ${tag} peaks per 25 ms, untied: ${prof(untiedW)}`);
@@ -967,6 +990,7 @@ async function main() {
       ns = await notesUntil((x) => noteAt(x, 0, note)?.len === 4);
       await check('tie roll: LFO + step 4: tied through it in one press (4 steps)', noteAt(ns, 0, note)?.len === 4 && ns.length === 1, fmt(ns));
       await untie('tie roll', note);
+      await droneTie('tie roll', note, false);
       await lfoKeys([3]);
       await emu.tap(WHITE[2]);
       ns = await notesUntil((x) => noteAt(x, 2, note) !== undefined);

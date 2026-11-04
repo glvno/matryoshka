@@ -95,8 +95,9 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   8 Lire, Elvira 2 and the 808 Kit's drum grids and Silver Box's piano roll, the track is cleared (SEQ held + REC twice)
   and a hit goes on step 1. LFO held + step 4 must tie it through step 4 in one press, as the editor's copy of the track
   (the FM-1's TRACK_NOW) shows. LFO + step 2 (inside the note) must end it there (2 steps), and LFO + step 2 again (its
-  last step) must make it one step. LFO + step 1 (the hit's own step, nothing before it) must say NOTHING TO TIE and
-  change nothing. Tied again, a plain white key on step 3 must cut it there and start a hit. With the transport running
+  last step) must make it one step. LFO + step 1 (the hit's own step, nothing before it) must make it a drone (DRONE; issue #384,
+  [D-819](ledger/steps.md#D-819)), on 8 Lire and Elvira 2 holding at 80 % of its peak or more through a pass and its loop
+  point, and LFO + step 1 again must make it one step (TIE OFF). Tied again, a plain white key on step 3 must cut it there and start a hit. With the transport running
   the peak is read in 25 ms windows over a pass. On 8 Lire and Elvira 2 a tied hit must keep 90 % of its peak through
   the next 300 ms (the tie holds the gate 406 ms), and an untied one must decay below 85 %. On the 808 Kit a tied hit's
   peak and decay must match the untied one's. Only a hit whose next 300 ms the profile covers counts (issue #520): on the

@@ -39141,7 +39141,7 @@
    ]
   },
   "steps": {
-   "run": 14280,
+   "run": 13899,
    "cv": 292,
    "dims": [
     {
@@ -39152,12 +39152,12 @@
     }
    ],
    "grid": [
-    14280,
-    14920,
-    16071,
-    16711
+    13899,
+    14539,
+    15946,
+    16586
    ],
-   "thru": 1952
+   "thru": 2048
   },
   "macro": {
    "run": 366,
@@ -48424,47 +48424,47 @@
  "checks": [
   {
    "name": "Oracle V",
-   "cycles": 401830
+   "cycles": 401833
   },
   {
    "name": "Init",
-   "cycles": 69373
+   "cycles": 69376
   },
   {
    "name": "Simple FM",
-   "cycles": 82279
+   "cycles": 82282
   },
   {
    "name": "Plucked String",
-   "cycles": 219616
+   "cycles": 219619
   },
   {
    "name": "Monolith D",
-   "cycles": 188984
+   "cycles": 188987
   },
   {
    "name": "Silver Box",
-   "cycles": 116424
+   "cycles": 116427
   },
   {
    "name": "Hera 6",
-   "cycles": 433487
+   "cycles": 433490
   },
   {
    "name": "Sallen 20",
-   "cycles": 270409
+   "cycles": 270412
   },
   {
    "name": "Expander S",
-   "cycles": 329451
+   "cycles": 329454
   },
   {
    "name": "Algo Four",
-   "cycles": 365493
+   "cycles": 365496
   },
   {
    "name": "Canvas",
-   "cycles": 424772
+   "cycles": 424775
   },
   {
    "name": "Wanderer",
@@ -48484,59 +48484,59 @@
   },
   {
    "name": "8 Lire",
-   "cycles": 249307
+   "cycles": 249310
   },
   {
    "name": "Elvira 2",
-   "cycles": 219829
+   "cycles": 219832
   },
   {
    "name": "Scrounge",
-   "cycles": 382295
+   "cycles": 382298
   },
   {
    "name": "Meridian 8",
-   "cycles": 358479
+   "cycles": 358482
   },
   {
    "name": "Perun 4",
-   "cycles": 336794
+   "cycles": 336797
   },
   {
    "name": "808 Kit",
-   "cycles": 442405
+   "cycles": 442408
   },
   {
    "name": "909 Kit",
-   "cycles": 282178
+   "cycles": 282181
   },
   {
    "name": "<7PH",
-   "cycles": 377449
+   "cycles": 377071
   },
   {
    "name": "Spokes 6",
-   "cycles": 389765
+   "cycles": 389006
   },
   {
    "name": "Cassia 1",
-   "cycles": 369420
+   "cycles": 369423
   },
   {
    "name": "Basic Poly",
-   "cycles": 208514
+   "cycles": 208517
   },
   {
    "name": "Drift Poly",
-   "cycles": 321038
+   "cycles": 321041
   },
   {
    "name": "Mono Lead",
-   "cycles": 90036
+   "cycles": 90039
   },
   {
    "name": "Supersaw Stack",
-   "cycles": 323009
+   "cycles": 323012
   },
   {
    "name": "Acid, 4 parts",

@@ -10,7 +10,7 @@ import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, sandboxFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
 import { make, FM1_PRESETS, type Build } from '../src/presets';
 import { addModule, connect, defaultParams, emptyPatch, fixMatrix, newPatch, paramUnit, setMorphTarget, SOURCES, stepByte, type Patch, type PolyCfg } from '../src/patch';
-import { migrateSteps, overdub, type StepNote } from '../src/track';
+import { migrateSteps, overdub, STEPS_MAX, type StepNote } from '../src/track';
 import { insertAssembly, makeAssembly } from '../src/assembly';
 import { FACTORY } from '../src/assemblies';
 import { wireEngine } from '../src/engines';
@@ -2854,6 +2854,36 @@ for (const dirs of [[0, 0], [1, 3]]) {
   events[name] = [[128 * 5, 'run', 0], [128 * 40, 'pat', 1], [128 * 200, 'pat', 2], [128 * 420, 'pat', 3], [128 * 600, 'stop', 0],
     [128 * 620, 'pat', 1], [128 * 640, 'run', 0], [128 * 800, 'pat', 0]];
   ends[name] = 128 * 1000;
+}
+
+// drones and ties across the loop point (#384, format 50): a track's keys into a two-voice allocator. A drone (tied round
+// the loop onto its own step) holds through every pass and never starts again; a note tied across the loop point runs on
+// into the next pass's first steps; a plain full-length note starts again each pass. Stop ends them, PLAY starts them
+// again; a pattern without the drone ends it, back to pattern 1 it starts on its step. The same forwards, in ping-pong
+// (the end of a pass cuts plain notes there, not tied ones) and at random
+for (const dir of [0, 2, 3]) {
+  const name = ['steps-drone', '', 'steps-drone-pp', 'steps-drone-rnd'][dir];
+  tests[name] = make(name, (add, wire) => {
+    add('fm1', 0, 0, { tempo: 200 });
+    const st = add('steps', 200, 0, { len: 6, rate: 5, gate: 0.6, dir });
+    const al = add('alloc', 400, 0, { voices: 2, legato: 0 });
+    const o = add('osc', 600, 0, { wave: 2, level: 0.4 });
+    const e = add('adsr', 600, 200, { a: 0.004, d: 0.06, s: 0.5, r: 0.03 });
+    const v = add('vca', 800, 0);
+    const out = add('output', 1000, 0, { level: 0.6 });
+    wire(st, 'keys', al, 'keys');
+    wire(al, 'pitch', o, 'pitch');
+    wire(al, 'gate', e, 'gate');
+    wire(o, 'out', v, 'in');
+    wire(e, 'env', v, 'cv');
+    wire(v, 'out', out, 'l');
+    wire(st, 'trig', out, 'r');
+  });
+  const t = tests[name].modules.find((m) => m.type === 'steps')!;
+  t.notes = [{ ...n(1, STEPS_MAX, 43), wrap: true }, { ...n(4, 4, 55, 90), wrap: true }, n(2, 1, 62, 127)];
+  t.patterns = [{ notes: [n(0, 6, 48), n(3, 1, 67)] }];
+  events[name] = [[128 * 5, 'run', 0], [128 * 260, 'stop', 0], [128 * 300, 'run', 0], [128 * 420, 'pat', 1], [128 * 600, 'pat', 0]];
+  ends[name] = 128 * 900;
 }
 
 // P-locks (#524, format 49): a melody track into an oscillator and a filter, its steps locking the filter's cutoff and
