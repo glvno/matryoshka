@@ -539,7 +539,7 @@ fn stereo_sides(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
     Ok(())
 }
 
-/// Verona 1's hi-hat (the 1.10 early check, D-865): stopped, black key 5 (HH OPEN) rings for its DECAY; black key 6 (HH
+/// Verona 1's hi-hat (the 1.10 early check, D-866): stopped, black key 5 (HH OPEN) rings for its DECAY; black key 6 (HH
 /// CLOSE) pressed 20 ms later while black key 5 is still down cuts it (a closed hit dies in 45 ms). Both keys are held for
 /// 300 ms; the peak is read 100..200 ms after the first press (the open hat is still loud there, a closed one is gone).
 fn verona_hats(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
