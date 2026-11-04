@@ -43,8 +43,10 @@ its disassembly (artifact `matryoshka-elf`) for tracing such faults to a functio
 - **Running them side by side:** `emu:smoke` and `emu:boot` count emulated time, not the wall clock, so several may run
   at once with no lock. Two smokes on the same build at once gave identical results and byte-identical snapshots, only
   slower: 474 s against 401 s (2026-11-02). Two runs in one checkout write to the same `build/emu/smoke/` (or
-  `build/emu/boot/`), so run them from different checkouts. `emu:scenarios` runs in real time and its checks depend on
-  timing, so it runs one at a time, on a machine doing nothing else.
+  `build/emu/boot/`), so run them from different checkouts. `emu:scenarios` may run side by side too, from different
+  checkouts (each writes `build/emu/scenarios/`, `build/emu/bridge/ci/` and the panel WebAssembly in its own), since it
+  waits on conditions and on the emulator's clock (#588, [D-136](ledger/releases.md#D-136), below): two runs side by side passed 10 rounds in a row on the M3 Max, 225 of 225 checks each, 277 to 471 s a round with the load average at 4 to 20 (2026-11-04). `device:scenarios` drives the one rig, so
+  it still runs alone.
 - `cd web && npm run emu [-- FIRMWARE]`: the firmware in fm1-live's window (LCD, keys, buttons, knobs, sound, every
   MIDI input into the TRS jack; fm1-live prints its key map; built once into `tools/emu/live/`).
 - Without FIRMWARE both take `build/matryoshka.bin`, else download the latest firmware artifact of a successful
@@ -78,7 +80,17 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   only the emulator's MIDI port, so a real FM-1 plugged in is never touched. A development-server hook (`__m1test` in
   `main.ts`) opens patches by name and reports the link's state. Without BIN it fetches the `matryoshka-emu-midi`
   artifact of this commit's firmware run (else its branch's, else main's). Results and LCD snapshots go to
-  `build/emu/scenarios/`; about four minutes.
+  `build/emu/scenarios/`; about five minutes. A run of every scenario that passes writes `scenarios.passed` (the
+  build's sha256) beside the build: in `build/flash/RUN/` for a build in its `emu-midi/` folder, else in the build's own
+  folder; a failed run removes it.
+- **Waits (#588):** the emulated FM-1 runs at about 0.75x the wall clock and falls further behind under load, so no
+  check waits a fixed wall-clock time for the FM-1. A tap waits for the key's release on the emulator's clock, a pause
+  after a press is emulated time (`elapse`, `wait`), and a wait for the screen is one `until` in emulated ms. A wait for
+  the editor polls its state (`__m1test`: an opened patch's own upload finished, `loads` and `uploadedLoad`). Every limit
+  is stretched 3 times (`M1_SCENARIO_SLACK`), which costs time only when a check fails. Before each scenario after
+  `connect`, the keys the script held are let go, HOME brings back a device page and PLAY stops a running transport, so a
+  scenario that failed halfway does not fail the ones after it; the sandbox scenarios open Hera 6 XL again if sandbox
+  mode is gone.
 - **One scenario by name:** `npm run emu:scenarios -- --only tieLire` (or `--only tieLire,tie808`) reruns just those;
   `connect` always runs first, since it opens the editor and syncs, which the others need. `--list` prints the names; a
   name that is not a scenario stops the run before anything starts. `device:scenarios` takes the same.
@@ -144,7 +156,8 @@ link as `m1emu serve` drives the emulator:
   `emu-scenarios.mjs` on the rig. The rig's page (`/__rig` on the dev server, `web/dev/rig-client.ts`) finds the FM-1s,
   asks each its INFO and the mark (nothing else), and drives only the rig; the editor's page sees only the rig's ports.
   `--install RUN` first installs that firmware CI run on the rig ([D-123](ledger/releases.md#D-123)): after `emu:smoke`
-  and `emu:scenarios` passed on that run's builds, and only when the rig is the one FM-1 connected. With `--gate boot`,
+  and `emu:scenarios` passed on that run's builds, and only when the rig is the one FM-1 connected. A build whose
+  `scenarios.passed` holds its sha256 is not run through `emu:scenarios` again, as `smoke.passed` skips `emu:smoke`. With `--gate boot`,
   for the owner's iteration checks, after the boot check (`emu:boot` on the run's two builds, about 30 s) instead; a
   merge or a release still needs the full checks. Each gate's result is kept next to the download
   (`build/flash/RUN/smoke.passed`, `boot.passed`, `.failed`, `.log`), and `build/device/scenarios/install.json` and the
