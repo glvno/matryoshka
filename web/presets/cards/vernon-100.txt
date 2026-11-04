@@ -2,6 +2,7 @@
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+# The level rows (output mixer / amp shaper, output mixer / osc 3/ext) gen-presets sets in every preset, by loudness (#448): leave them to it.
 #
 # oscillator 1
 #   oscillator 1 / color = 3           1..5
@@ -59,7 +60,7 @@
 # amp shaper
 #   env 1/env 2 = 2                    1..2
 # output mixer
-#   amp shaper = 0.8                   0..1
+#   amp shaper = 0.12                  0..1
 #   osc 3/ext = 0                      0..1
 #   out: a screen, not a value
 
@@ -96,6 +97,8 @@ preset: Fat Duo Lead
   envelope 2 / attack = 0.01 s
   envelope 2 / decay = 0.73
   envelope 2 / sustain = 0.85
+  amp shaper = 0.22
+  osc 3/ext = 0
 
 # Oscillator 1 in LO as a triangle sweeping the low pass over a saw-and-square bass an octave down.
 preset: Wobble Bass
@@ -115,6 +118,8 @@ preset: Wobble Bass
   envelope 2 / decay = 0.46
   envelope 2 / sustain = 1
   sus on/off = 2
+  amp shaper = 0.25
+  osc 3/ext = 0
 
 # Oscillator 1 in LO as a square steps the band pass and both pitches by a semitone: a sample-and-hold stand-in.
 preset: Stepped Pulse
@@ -134,6 +139,8 @@ preset: Stepped Pulse
   envelope 2 / attack = 0.005 s
   envelope 2 / decay = 0.73
   envelope 2 / sustain = 0.7
+  amp shaper = 0.61
+  osc 3/ext = 0
 
 # Oscillator 1 at audio rate, tracking the keys, into oscillators 2 and 3 through the mixer: clangorous FM, struck.
 preset: Metal Clang
@@ -158,6 +165,8 @@ preset: Metal Clang
   envelope 2 / decay = 0.86
   envelope 2 / sustain = 0
   sus on/off = 2
+  amp shaper = 1
+  osc 3/ext = 0
 
 # Oscillator 4 in LO as a slow triangle over the filter, long envelopes, a breath of pink noise: a sweeping pad.
 preset: Slow Sweep Pad
@@ -180,3 +189,5 @@ preset: Slow Sweep Pad
   envelope 2 / attack = 1.2 s
   envelope 2 / decay = 0.94
   envelope 2 / sustain = 0.8
+  amp shaper = 0.37
+  osc 3/ext = 0

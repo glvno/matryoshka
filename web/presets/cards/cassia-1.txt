@@ -2,15 +2,17 @@
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+# The level row (voice / vol) gen-presets sets in every preset, by loudness (#448): leave it to it.
 #
 # voice
 #   voices = 2                         1..16
 #   line = 4                           1..4
+#   vol = 0.5                          0..1
 # vibrato
-#   vib wave = triangle                sine, triangle, saw, square, S&H
-#   vib rate = 5.5 Hz                  0.02..40 Hz
-#   vib depth = 0                      -4..4
-#   vib delay = 0.6 s                  0.001..5 s
+#   vibrato / wave = triangle          sine, triangle, saw, square, S&H, random
+#   rate = 5.5 Hz                      0.02..40 Hz
+#   vibrato / depth = 0                -4..4
+#   delay = 0.6 s                      0.001..5 s
 # dco env
 #   dco env: a screen, not a value
 #   dco env / r1 = 0.05 s              0.001..10 s
@@ -31,7 +33,7 @@
 #   dco env / l8 = 0                   0..1
 #   dco env / sus = 2                  off, 1, 2, 3, 4, 5, 6, 7, 8
 #   dco env / end = 3                  1..8
-#   depth = 1                          -4..4
+#   dco env / depth = 1                -4..4
 # touch
 #   dcw kf = -0.15                     -4..4
 #   dca kf = -0.1                      -4..4
@@ -42,7 +44,7 @@
 # line 1
 #   line 1 / wave = saw                saw, square, pulse, dbl sine, saw-pulse, reso 1, reso 2, reso 3
 #   line 1 / wave 2 = off              off, saw, square, pulse, dbl sine, saw-pulse, reso 1, reso 2
-#   line 1 / res range = 3             -4..4
+#   line 1 / res = 3                   -4..4
 # dcw 1
 #   dcw 1: a screen, not a value
 #   dcw 1 / r1 = 0.05 s                0.001..10 s
@@ -86,7 +88,7 @@
 # line 2
 #   line 2 / wave = reso 1             saw, square, pulse, dbl sine, saw-pulse, reso 1, reso 2, reso 3
 #   line 2 / wave 2 = off              off, saw, square, pulse, dbl sine, saw-pulse, reso 1, reso 2
-#   line 2 / res range = 3             -4..4
+#   line 2 / res = 3                   -4..4
 #   mod = 1                            1..3
 #   coarse = 0 st                      -48..48 st
 #   fine = 0 ct                        -100..100 ct
@@ -134,7 +136,7 @@
 
 # Drafts of 2026-10-29 after the Casio CZ-1 (#413), listened to by the owner on 2026-10-29. Reso Pad moved onto a
 # resonance wave on 2026-10-30 (#430), not yet listened to. wave 2 off: no second waveform.
-# line: 1 line 1, 2 line 2, 3 1+1', 4 1+2' (both). mod: 1 off, 2 ring, 3 noise. vib depth is in semitones.
+# line: 1 line 1, 2 line 2, 3 1+1', 4 1+2' (both). mod: 1 off, 2 ring, 3 noise. vibrato / depth is in semitones.
 engine: Cassia 1
 
 preset: PD Bass
@@ -161,14 +163,15 @@ preset: PD Bass
   dca 1 / r4 = 0.1 s
   dca 1 / l4 = 0
   dca 1 / end = 4
+  vol = 0.61
 
 preset: PD Brass
   # synth brass: both lines play line 1's saw (1+1'), line 2 eight cents sharp, a pitch blip at
   # the start, the DCW swells in over a tenth of a second; aftertouch opens it and adds vibrato
   line = 3
   fine = 8 ct
-  vib depth = 0.24
-  vib delay = 0.8 s
+  vibrato / depth = 0.24
+  vibrato / delay = 0.8 s
   vel dcw = 0.3
   at dcw = 0.5
   at vib = 0.03
@@ -193,6 +196,7 @@ preset: PD Brass
   dca 1 / r4 = 0.3 s
   dca 1 / l4 = 0
   dca 1 / end = 4
+  vol = 0.41
 
 preset: Glass Bell
   # a bell: line 2 (a square, 29 semitones up) rings against line 1's double sine, both DCWs
@@ -233,16 +237,17 @@ preset: Glass Bell
   dca 2 / l3 = 0
   dca 2 / sus = off
   dca 2 / end = 3
+  vol = 0.65
 
 preset: Reso Pad
   # a pad: line 2's resonance wave (Init's reso 1) swept up four octaves by a two-second DCW
   # against line 1's saw-pulse, seven cents flat; slow DCAs, vibrato after a second and a half
   line 1 / wave = saw-pulse
-  line 2 / res range = 4
+  line 2 / res = 4
   fine = -7 ct
-  vib rate = 4.5 Hz
-  vib depth = 0.12
-  vib delay = 1.5 s
+  vibrato / rate = 4.5 Hz
+  vibrato / depth = 0.12
+  vibrato / delay = 1.5 s
   dcw kf = -0.1
   at dcw = 0.3
   dcw 1 / r1 = 0.9 s
@@ -276,6 +281,7 @@ preset: Reso Pad
   dca 2 / l3 = 0
   dca 2 / sus = 2
   dca 2 / end = 3
+  vol = 0.33
 
 preset: Tine Piano
   # an electric piano: line 1 a square that velocity opens and the DCW closes fast; line 2 an
@@ -318,3 +324,4 @@ preset: Tine Piano
   dca 2 / l3 = 0
   dca 2 / sus = off
   dca 2 / end = 3
+  vol = 0.61

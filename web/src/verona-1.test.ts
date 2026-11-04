@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Verona 1 and Verona 1 XL (#613, after the Vermona DRM1 MKIV; docs/ledger/patches-and-presets.md D-859..D-861): the
+// Verona 1 and Verona 1 XL (#613, after the Vermona DRM1 MKIV; docs/ledger/patches-and-presets.md D-862..D-864): the
 // cards carry the original's knobs per channel, every row sounds its channel, and a closed hi-hat cuts an open one.
 import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';

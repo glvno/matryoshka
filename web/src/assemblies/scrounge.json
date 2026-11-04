@@ -158,7 +158,7 @@
       "params": {
         "drive": 1.5,
         "mode": 0,
-        "level": 0.8,
+        "level": 0.7,
         "os": 0,
         "sym": 0,
         "stages": 1
@@ -188,7 +188,7 @@
       "params": {
         "drive": 1.5,
         "mode": 0,
-        "level": 0.8,
+        "level": 0.7,
         "os": 0,
         "sym": 0,
         "stages": 1
@@ -333,7 +333,9 @@
         "unison": 1,
         "detune": 10,
         "blend": 0.5,
-        "stack": 0
+        "stack": 0,
+        "pm2": 0,
+        "pm3": 0
       },
       "att": [
         1,
@@ -501,7 +503,9 @@
         "unison": 1,
         "detune": 10,
         "blend": 0.5,
-        "stack": 0
+        "stack": 0,
+        "pm2": 0,
+        "pm3": 0
       },
       "att": [
         1,
@@ -859,7 +863,9 @@
         "unison": 1,
         "detune": 10,
         "blend": 0.5,
-        "stack": 0
+        "stack": 0,
+        "pm2": 0,
+        "pm3": 0
       },
       "att": [
         1,
@@ -894,7 +900,9 @@
         "unison": 1,
         "detune": 10,
         "blend": 0.5,
-        "stack": 0
+        "stack": 0,
+        "pm2": 0,
+        "pm3": 0
       },
       "att": [
         1,
@@ -1062,7 +1070,9 @@
         "unison": 1,
         "detune": 10,
         "blend": 0.5,
-        "stack": 0
+        "stack": 0,
+        "pm2": 0,
+        "pm3": 0
       },
       "att": [
         1,
@@ -1330,7 +1340,8 @@
       "params": {
         "time": 16,
         "mode": 0,
-        "voices": 0
+        "voices": 0,
+        "scale": 0
       }
     }
   ],

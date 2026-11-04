@@ -4,7 +4,7 @@
 import { fixedDoes } from './controls';
 import { ARP_MODES, ARP_RATES } from './arpeggiator';
 import { DRUM_ROWS, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
-import { STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type SongEntry, type StepLock, type StepNote } from './track';
+import { isDrone, STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type SongEntry, type StepLock, type StepNote } from './track';
 import WT from './wavetables.json';
 import { rateEnvelopeInit, rateEnvelopeProcess } from './rate-envelope';
 import { formatValue } from './labels';
@@ -2581,7 +2581,10 @@ const arp: ModuleImpl<null> = {
 /** a note a Steps track is sounding: the key it sent (its note + the transpose), steps still to go after the one it is
  * on, samples until it ends (TRACK_POLY at most; engine.c trk_snd); `thru`: a key played into the armed track (#134,
  * the note played), sounding until it is let go */
-export interface StepsSound { key: number; left: number; cnt: number; thru?: number }
+export interface StepsSound { key: number; left: number; cnt: number; thru?: number; dr?: number }
+/** StepsSound.dr (engine.c snd_t dr, #384): bit 7 a note tied across the loop point (the end of a pass does not cut it),
+ * bits 0..6 a drone's step + 1 (it ties back onto that step and never starts again while its note is in the pattern) */
+export const SND_WRAP = 0x80;
 /** how many notes a Steps track sounds at once (a further note ends the oldest) */
 export const TRACK_POLY = 8;
 
@@ -2767,22 +2770,32 @@ const steps: ModuleImpl<StepsState> = {
       const sl = ext && s.period > 0 ? s.period : ext ? 6 * v.tickLen : step;
       // a note's samples from here: through to the next step while more follow (two steps at most), else gate of a step
       const hold = (left: number): number => (left > 0 ? 2 * sl : Math.max(1, Math.floor((gate * sl) / 65536)));
+      const semis = Math.floor((q16(transpose[i]) * 12 + 32768) / 65536);
+      const keyOf = (n: StepNote): number => Math.max(0, Math.min(127, Math.max(0, Math.min(127, n.note + s.shift)) + semis));
+      // a drone holds while its note is still a drone of the pattern playing, at the key it sounds (#384); else its gate tail
+      const lives = (x: StepsSound): boolean => s.notes.some((n) => n.at === ((x.dr ?? 0) & 0x7f) - 1 && isDrone(n) && keyOf(n) === x.key);
       for (const x of s.snd)
-        if (x.left > 0 && x.cnt > 0 && !s.mute) x.cnt = hold(--x.left);
+        if (x.left > 0 && x.cnt > 0 && !s.mute) {
+          if (!((x.dr ?? 0) & 0x7f)) x.cnt = hold(--x.left);
+          else if (lives(x)) x.cnt = hold(1);
+          else x.cnt = hold(x.left = 0);
+        }
       if (s.mute) return;
       const was = s.snd.some((x) => x.cnt > 0);
-      const semis = Math.floor((q16(transpose[i]) * 12 + 32768) / 65536);
       let j = 0, any = false;
       for (const n of s.notes) {
         if (n.at !== k) continue;
         if (notePlays(s.seed, s.loop, k, j++, n.chance)) {
           const note = Math.max(0, Math.min(127, n.note + s.shift)); // (a song entry's shift)
           const key = Math.max(0, Math.min(127, note + semis));
+          const drone = isDrone(n);
+          if (drone && s.snd.some((x) => x.dr === (SND_WRAP | (k + 1)) && x.key === key && x.cnt > 0)) continue; // (tied onto itself)
           const same = s.snd.findIndex((x) => x.key === key);
           if (same >= 0) end(same);
           if (s.snd.length >= TRACK_POLY) end(0);
-          const left = Math.min(n.len, Math.max(1, stepCycle(len, dir) - s.visit)) - 1;
-          s.snd.push({ key, left, cnt: hold(left) });
+          // a note tied across the loop point counts its length on into the next pass; a drone holds (#384)
+          const left = drone ? 1 : n.wrap ? n.len - 1 : Math.min(n.len, Math.max(1, stepCycle(len, dir) - s.visit)) - 1;
+          s.snd.push({ key, left, cnt: hold(left), ...(n.wrap ? { dr: drone ? SND_WRAP | (k + 1) : SND_WRAP } : {}) });
           s.ev.push(key | 0x80, n.vel);
           s.pitch = stepPitch(note);
           s.vel = n.vel / 127;
@@ -2875,7 +2888,7 @@ const steps: ModuleImpl<StepsState> = {
         // its gate tail. Forward keeps its older behaviour (D-538).
         if (next.visit === 0 && dir !== 0)
           for (const x of s.snd)
-            if (x.thru === undefined && x.left > 0 && x.cnt > 0) { x.left = 0; x.cnt = 1; }
+            if (x.thru === undefined && !x.dr && x.left > 0 && x.cnt > 0) { x.left = 0; x.cnt = 1; }
         s.pos = next.pos; s.visit = next.visit; s.loop = next.loop;
         const sl = ext ? s.period : step;
         s.ago = 0;

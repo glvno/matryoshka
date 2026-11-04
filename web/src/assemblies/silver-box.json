@@ -65,7 +65,9 @@
         "unison": 1,
         "detune": 10,
         "blend": 0.5,
-        "stack": 0
+        "stack": 0,
+        "pm2": 0,
+        "pm3": 0
       },
       "att": [
         1,
@@ -330,10 +332,10 @@
       "x": 1600,
       "y": 0,
       "params": {
-        "gain": 0.8
+        "gain": 1.6
       },
       "att": [
-        0.25,
+        0.5,
         1
       ],
       "map": {
@@ -424,6 +426,34 @@
         ],
         "p2": [
           "offset"
+        ],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 17,
+      "type": "mixer",
+      "x": 1920,
+      "y": 0,
+      "params": {
+        "l1": 1,
+        "l2": 0,
+        "l3": 0,
+        "l4": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "l1"
+        ],
+        "p2": [
+          "l2"
         ],
         "k1": [],
         "k2": [],
@@ -672,6 +702,16 @@
         "module": 13,
         "port": "cv"
       }
+    },
+    {
+      "from": {
+        "module": 13,
+        "port": "out"
+      },
+      "to": {
+        "module": 17,
+        "port": "in1"
+      }
     }
   ],
   "inputs": [
@@ -683,7 +723,7 @@
   ],
   "outputs": [
     {
-      "module": 13,
+      "module": 17,
       "port": "out",
       "label": "out"
     }
@@ -728,6 +768,11 @@
       "module": 8,
       "param": "gain",
       "label": "accent"
+    },
+    {
+      "module": 17,
+      "param": "l1",
+      "label": "volume"
     }
   ]
 }

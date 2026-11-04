@@ -2,6 +2,7 @@
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+# The level row (level) gen-presets sets in every preset, by loudness (#448): leave it to it.
 #
 # (no heading)
 #   unison = 5                         1..5
@@ -15,6 +16,7 @@
 #   d = 0.4 s                          0.001..5 s
 #   s = 0.75                           0..1
 #   r = 0.5 s                          0.001..8 s
+#   level = 0.99                       0..2
 
 # Drafts of 2026-10-29 after a detuned stereo supersaw, not yet listened to on the FM-1 (#413).
 engine: supersaw stack
@@ -31,6 +33,7 @@ preset: Trance Lead
   d = 0.3 s
   s = 0.8
   r = 0.3 s
+  level = 1.2
 
 preset: Wide Pad
   unison = 5
@@ -44,6 +47,7 @@ preset: Wide Pad
   d = 1.5 s
   s = 0.8
   r = 2.5 s
+  level = 0.96
 
 preset: Stack Bass
   unison = 3
@@ -57,6 +61,7 @@ preset: Stack Bass
   d = 0.3 s
   s = 0.5
   r = 0.2 s
+  level = 1.97
 
 preset: Fifth Stab
   unison = 4
@@ -70,6 +75,7 @@ preset: Fifth Stab
   d = 0.35 s
   s = 0
   r = 0.3 s
+  level = 1.44
 
 preset: Thin Saw Keys
   unison = 1
@@ -82,3 +88,4 @@ preset: Thin Saw Keys
   d = 0.5 s
   s = 0.3
   r = 0.5 s
+  level = 0.73

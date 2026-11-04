@@ -2,6 +2,7 @@
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+# The level row (level) gen-presets sets in every preset, by loudness (#448): leave it to it.
 #
 # (no heading)
 #   voices = 4                         1..16
@@ -12,6 +13,7 @@
 #   d = 0.3 s                          0.001..5 s
 #   s = 0.6                            0..1
 #   r = 0.3 s                          0.001..8 s
+#   level = 0.62                       0..2
 
 # Drafts of 2026-10-29 after the plainest polysynth, not yet listened to on the FM-1 (#413).
 engine: basic poly
@@ -25,6 +27,7 @@ preset: Fat Bass
   d = 0.25 s
   s = 0.3
   r = 0.15 s
+  level = 1.98
 
 preset: Pluck Keys
   voices = 6
@@ -35,6 +38,7 @@ preset: Pluck Keys
   d = 0.35 s
   s = 0
   r = 0.3 s
+  level = 1.54
 
 preset: Warm Strings
   voices = 8
@@ -45,6 +49,7 @@ preset: Warm Strings
   d = 1 s
   s = 0.8
   r = 1.2 s
+  level = 0.52
 
 preset: Square Lead
   voices = 1
@@ -55,6 +60,7 @@ preset: Square Lead
   d = 0.3 s
   s = 0.7
   r = 0.2 s
+  level = 0.42
 
 preset: Glass Bell
   voices = 8
@@ -65,3 +71,4 @@ preset: Glass Bell
   d = 1.5 s
   s = 0
   r = 1.5 s
+  level = 0.38

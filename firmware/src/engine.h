@@ -10,7 +10,7 @@
 #define ENG_SR 44118u          /* the FM-1's I2S rate (M-VAVE fm1_open, FM1_AUDIO_HARDWARE_RATE); was 44100 until 1.1 */
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 49   /* 49 (release 1.9, #518): the oscillator's pm2 / pm3 parameters and pm2, pm3, index inputs; a phase modulation index to 16 rad, the LFO's random wave and wide rate to 80 Hz (values past the old tops); a device of kind 2 (ENG_DEV_NAMED: a plain module with its own name) in the device pages; 48: the patterns and songs section (flag bit 10 = p[7] bit 2, ENG_FLAG_PATTERNS: Steps patterns 2..64 with short note words, the selected pattern, up to eight songs), written only by patches that have patterns or songs; 47: filter osc parameter (self-oscillation) appended; 46: appended Follower module (esp); 45: filter hp6 output after existing ports; 44: Steps play direction; 43: appended Ratio module; 42: appended Rate Env module; 41: ADSR hold input after existing ports; 40: LFO wide-rate parameter; 39: group legato bit 6 selects shared unison with bit 7; 38: group parts byte high nibble is unison count (0 means all); 37: group priority bit 7 disables stealing, assign 3 rotates with key-release reset; 36: flag bit 9 is the mask of modules with a morph B side; 35: Tier 1 of #351: the types pd, env8, select; a device page row's extras (bit 6 of its parameter byte, ENG_ROW_MORE: the further parameters it sets, its positions' names; #357, #358); a type with more than 16 parameters writes its masks as u32; parameters appended to adsr (long), lfo (phase, range, dir, mult), delay (note, swell), reverb (freeze), pulse (inf), drummap (repeat): an older binary's record holds the parameters of its own format (eng_npar, defs.h psince) and the rest take their defaults; the Steps rates 7..8 and swing past 75 (ptop); 34: the device extras section (flag bit 8: p[7] bit 0; #194, #197): per device its driving Steps track, its structure, its preset's name; 33: the Drum maps' row names section (flag bit 7, the #139 follow-up); 32: the Drum map module (#137; its record's data byte: where its keys come from); 31: the Steps module holds notes (#133: its record only its name, the notes section at flag bit 4, a keys output instead of acc, a group's note source may be a Steps module); 30: the button kinds section (flag bit 6); 29: the device pages section (flag bit 5), the Main module without the knob outputs / parameters k1..k6, the panel section with 7 labels, the Macro module; 28: env shot (one-shot); 27: step values (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (name + pattern in its record), 7 panel buttons; 25: the group record's MIDI channel and key range; 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
+#define ENG_PATCH_VERSION 50   /* 50 (release 1.10, #384): bit 31 of a note word (ENG_NOTE_WRAP): tied across the loop point, a drone with the most length; 49 (release 1.9, #518): the oscillator's pm2 / pm3 parameters and pm2, pm3, index inputs; a phase modulation index to 16 rad, the LFO's random wave and wide rate to 80 Hz (values past the old tops); a device of kind 2 (ENG_DEV_NAMED: a plain module with its own name) in the device pages; 48: the patterns and songs section (flag bit 10 = p[7] bit 2, ENG_FLAG_PATTERNS: Steps patterns 2..64 with short note words, the selected pattern, up to eight songs), written only by patches that have patterns or songs; 47: filter osc parameter (self-oscillation) appended; 46: appended Follower module (esp); 45: filter hp6 output after existing ports; 44: Steps play direction; 43: appended Ratio module; 42: appended Rate Env module; 41: ADSR hold input after existing ports; 40: LFO wide-rate parameter; 39: group legato bit 6 selects shared unison with bit 7; 38: group parts byte high nibble is unison count (0 means all); 37: group priority bit 7 disables stealing, assign 3 rotates with key-release reset; 36: flag bit 9 is the mask of modules with a morph B side; 35: Tier 1 of #351: the types pd, env8, select; a device page row's extras (bit 6 of its parameter byte, ENG_ROW_MORE: the further parameters it sets, its positions' names; #357, #358); a type with more than 16 parameters writes its masks as u32; parameters appended to adsr (long), lfo (phase, range, dir, mult), delay (note, swell), reverb (freeze), pulse (inf), drummap (repeat): an older binary's record holds the parameters of its own format (eng_npar, defs.h psince) and the rest take their defaults; the Steps rates 7..8 and swing past 75 (ptop); 34: the device extras section (flag bit 8: p[7] bit 0; #194, #197): per device its driving Steps track, its structure, its preset's name; 33: the Drum maps' row names section (flag bit 7, the #139 follow-up); 32: the Drum map module (#137; its record's data byte: where its keys come from); 31: the Steps module holds notes (#133: its record only its name, the notes section at flag bit 4, a keys output instead of acc, a group's note source may be a Steps module); 30: the button kinds section (flag bit 6); 29: the device pages section (flag bit 5), the Main module without the knob outputs / parameters k1..k6, the panel section with 7 labels, the Macro module; 28: env shot (one-shot); 27: step values (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (name + pattern in its record), 7 panel buttons; 25: the group record's MIDI channel and key range; 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
 #define ENG_PATCH_COMPAT_VERSION 31   /* (a format 31 patch reads the same; 31..34 with the parameter counts of their format) */
 #define ENG_MAX_PARTS 8               /* parts of a poly group (notes it plays at once) */
 #define ENG_GROUP_REC (8u + 5u * ENG_MAX_PARTS)   /* a poly group record: parts (low nibble; high nibble unison count), assign, legato (bit 7: unison, bit 6: shared), priority (bit 7: no stealing), five flaw bytes per part, the note source, MIDI channel, lowest and highest key (patchbin.ts GROUP_REC) */
@@ -301,6 +301,38 @@ int eng_drummap_repeat(uint32_t map);
  * only) */
 uint32_t eng_steps_note(uint32_t module, uint32_t k, uint32_t note);
 void eng_steps_toggle(uint32_t module, uint32_t k, uint32_t note, uint32_t vel);
+/* a note tied across the loop point (#384, format 50; track.ts NOTE_WRAP, StepNote.wrap): bit 31 of its word. Its length
+ * runs on past the end of the pass into the next pass's first steps; with the most length (64) it is a drone, tied back
+ * onto its own step (eng_note_drone). The helpers below are track.ts noteThrough, endOn, cutBefore on a word, in grid
+ * order on a pattern of `len` steps */
+#define ENG_NOTE_WRAP 0x80000000u
+static inline int eng_note_drone(uint32_t w) { return (w & ENG_NOTE_WRAP) && ((w >> 6) & 63u) == 63u; }
+/* does the note sound on step k without starting there */
+static inline int eng_note_through(uint32_t w, uint32_t k, uint32_t len)
+{
+    uint32_t at = w & 63u, n = ((w >> 6) & 63u) + 1u;
+    if (at < k && k < at + n)
+        return 1;
+    if (!(w & ENG_NOTE_WRAP) || at >= len || k >= at)
+        return 0;
+    return eng_note_drone(w) || k + len < at + n;
+}
+/* the note made to end on step k (k its last step): tied across the loop point when k comes before its start */
+static inline uint32_t eng_note_end_on(uint32_t w, uint32_t k, uint32_t len)
+{
+    uint32_t at = w & 63u, n = k >= at ? k - at + 1u : len - at + k + 1u;
+    return (w & ~(ENG_NOTE_WRAP | 63u << 6)) | (n - 1u) << 6 | (k < at ? ENG_NOTE_WRAP : 0u);
+}
+/* the note cut to end just before step k (a note through k; k is not its start) */
+static inline uint32_t eng_note_cut_before(uint32_t w, uint32_t k, uint32_t len)
+{
+    uint32_t at = w & 63u;
+    if (k > at)
+        return (w & ~(ENG_NOTE_WRAP | 63u << 6)) | (k - at - 1u) << 6;
+    if (k)
+        return eng_note_end_on(w, k - 1u, len);
+    return (w & ~(ENG_NOTE_WRAP | 63u << 6)) | (len - at - 1u) << 6;
+}
 int eng_steps_hit_note(uint32_t module, uint32_t note, int accent, int record);
 
 /* Install a patch from its binary form (web/src/patchbin.ts) into the selected voice. 0 on success, negative on error

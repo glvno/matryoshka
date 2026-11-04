@@ -27,7 +27,8 @@
 //   with flag bit 3: u8 count, then u8 module index, u8 input index, the parameter mask per routed input (u16 LE, or u32 LE
 //                when the module's type has more than 16 parameters: maskBytes)
 //   with flag bit 4: the tracks' notes (#133): u8 count, then per Steps module with notes, in module order: u8 module index,
-//                u8 n (1..TRACK_NOTES_MAX), n u32 LE notes (track.ts noteWord), sorted by start, then note
+//                u8 n (1..TRACK_NOTES_MAX), n u32 LE notes (track.ts noteWord), sorted by start, then note; bit 31 of a
+//                word (format 50, NOTE_WRAP): tied across the loop point
 //   with flag bit 10 (format 48, written only when used: patternRecord): the patterns and songs (track.ts Pattern, SeqState):
 //                u8 the selected pattern (0-based), u8 the song playing (0 none, 1..SONGS_MAX); u8 track count, per Steps module
 //                with patterns past its first, in module order: u8 module index, u8 P, then patterns 2..P+1, each u8 n: 0xFF the
@@ -97,7 +98,7 @@ export const GROUP_REC = 4 + 5 * MAX_PARTS + 4;
 /** bytes of the panel section (engine.h ENG_PANEL_BYTES): two masks and the labels */
 export const PANEL_BYTES = 4 + PANEL_LABEL_KEYS.length * PANEL_LABEL_MAX;
 export const MAX_CABLES = 255;
-export const VERSION = 49; // 49 (release 1.9, #518, #438, #526; FORMAT_1_9): the Shift register (shreg), Comparator (comp) and Range (range) modules appended after the Follower; bit 7 of a macro range's pin byte (RANGE_BIPOLAR: the pin's −1..1 spans the range); the oscillator's pm2 / pm3 parameters (ParamDef.since) and its pm2, pm3, index inputs after its existing ports; values past their old top (ParamDef.grew): a phase modulation index up to 16 rad, the LFO's random wave, its wide rate up to 80 Hz; a device of kind 2 in the device pages section (a plain module with its own name, NAMED_MODULE); 48: the patterns and songs section (flag bit 10, patternRecord: Steps patterns 2..64, short note words, the selected pattern, up to eight songs), written only when the patch has patterns or songs; 47: the filter's osc parameter (self-oscillation, off by default) after its existing parameters; 46: the Follower module (esp, after the MS-20's External Signal Processor) appended after Ratio; 45: the filter's hp6 output (a resonant 6 dB high pass) after its existing outputs; 44: Steps play direction; 43: appended Ratio module; 42: appended Rate Env module; 41: ADSR hold input after existing ports; 40: LFO wide-rate parameter; 39: group legato bit 6 selects shared unison, together with bit 7; 38: group parts byte high nibble selects unison voice count (0 means all); 37: group priority bit 7 disables voice stealing, assign 3 rotates with reset after all keys lift; 36: a module mask after the morph B set (flag bit 9) preserves which modules have a B side; 35: Tier 1 of #351: the types pd (phase distortion), env8 (eight-step envelope), select (Selector); a device page row's extras (bit 6 of its parameter byte, ROW_MORE: the further parameters it sets and its positions' names, #357, #358; a row without them is written as before); a type with more than 16 parameters writes its matrix and route masks as u32 (maskBytes); parameters appended to existing types (ParamDef.since): drummap repeat (9 parameters), adsr long, lfo phase / range / dir / mult, delay note / swell, reverb freeze, pulse inf, so a record of an older binary holds fewer parameters (the FM-1 reads it with its format's count and gives the rest their defaults: engine.c eng_npar); the Steps rate's choices 7..8 (1/2, 1/64) and swing past 75 (ParamDef.top); 34: the device extras section (flag bit 8: per device its driving Steps track, structure and preset name; #194, #197); 33: the Drum maps' row names section (flag bit 7, the #139 follow-up); 32: the Drum map module (#137; its record's data byte is the source of its keys); 31: the Steps module holds notes (#133): its record carries only its name, the notes section (flag bit 4) replaces the step values, its acc output is gone and it has a keys output (a group's note source may be a Steps module); 30: the button kinds section (flag bit 6: Nothing / Gate / Toggle and a Toggle's modules); 29: the device pages section (flag bit 5); the Main module lost the knob outputs and parameters k1..k6 (its knobs edit the page in focus), the panel section the knob labels (7 labels); the Macro module; 28: the level / rate envelope (env) got the shot parameter; 27: the step values section (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (its record ends with its name and pattern), the Main module lost the seq and rec button outputs (the panel section has 7 buttons, 13 labels); 25: a group record ends with its MIDI channel and key range (low, high); 24: the panel section (button modes, switched states, labels) after the group bytes, the Main module's k5 / k6 and button outputs; 23: the group record ends with its note source (an Arpeggiator), the Main module got the tempo parameter and the run output, the Arpeggiator module; 22: bit 7 of a group's legato byte = unison (a patch without unison still encodes as 21); 21: per-part flaws in the group record (GROUP_REC), the unit is gone; 20: poly assemblies (the group section after the header; the Main module lost legato, priority, unit and the spread, legato, jump, tol, drift outputs, the oscillator its drift; part and random modules); 19: voicing and drift: the Main module got legato, priority, unit (and the legato, jump, tol, drift outputs), the oscillator blend, stack, drift, the glide curve; 18: arbitrary side-input fan-out (flag bit 3); 17: switchable fixed input links (flag bit 2); unmodified patches still encode as 16; 16: the shaper got the sym and stages parameters; 15: macro ranges (flag bit 1); 14: the Main module got the morph input and parameter, header flag bit 0 = a morph B set follows the cables; 13: the shaper and the digitizer got the os (oversampling) parameter, the sequencer glide and gate; 12: bit 7 of the type byte marks a bypassed module; 11: the oscillator got the unison and detune parameters; 10: the merge of the two lines below: the Main module's clock output comes before spread, the lfo's inputs are clk, reset (the restart input was sync), the delay as in 8b, modules of the second and third batch; 9: the matrix masks are u16 (modules with more than 8 parameters), the modules of the second module batch; 8a: osc and lfo got the sync input (p1 / p2 moved), glide and shape modules, the panel's spread output; 8b: the delay has the clk input, r output and sync, pingpong parameters, the lfo got the clk and reset inputs and the sync, div, bpm parameters, the Main module's clock output; 7: the oscillator got the fb parameter; 6: the filter's outputs are lp24, lp12, bp, hp, mix; 5: the filter got the morph input (ports after cv moved), track and morph parameters; 4: the reverb module was added before the output
+export const VERSION = 50; // 50 (release 1.10, #384; FORMAT_1_10): bit 31 of a note word (track.ts NOTE_WRAP): the note is tied across the loop point, a drone with the most length; 49 (release 1.9, #518, #438, #526; FORMAT_1_9): the Shift register (shreg), Comparator (comp) and Range (range) modules appended after the Follower; bit 7 of a macro range's pin byte (RANGE_BIPOLAR: the pin's −1..1 spans the range); the oscillator's pm2 / pm3 parameters (ParamDef.since) and its pm2, pm3, index inputs after its existing ports; values past their old top (ParamDef.grew): a phase modulation index up to 16 rad, the LFO's random wave, its wide rate up to 80 Hz; a device of kind 2 in the device pages section (a plain module with its own name, NAMED_MODULE); 48: the patterns and songs section (flag bit 10, patternRecord: Steps patterns 2..64, short note words, the selected pattern, up to eight songs), written only when the patch has patterns or songs; 47: the filter's osc parameter (self-oscillation, off by default) after its existing parameters; 46: the Follower module (esp, after the MS-20's External Signal Processor) appended after Ratio; 45: the filter's hp6 output (a resonant 6 dB high pass) after its existing outputs; 44: Steps play direction; 43: appended Ratio module; 42: appended Rate Env module; 41: ADSR hold input after existing ports; 40: LFO wide-rate parameter; 39: group legato bit 6 selects shared unison, together with bit 7; 38: group parts byte high nibble selects unison voice count (0 means all); 37: group priority bit 7 disables voice stealing, assign 3 rotates with reset after all keys lift; 36: a module mask after the morph B set (flag bit 9) preserves which modules have a B side; 35: Tier 1 of #351: the types pd (phase distortion), env8 (eight-step envelope), select (Selector); a device page row's extras (bit 6 of its parameter byte, ROW_MORE: the further parameters it sets and its positions' names, #357, #358; a row without them is written as before); a type with more than 16 parameters writes its matrix and route masks as u32 (maskBytes); parameters appended to existing types (ParamDef.since): drummap repeat (9 parameters), adsr long, lfo phase / range / dir / mult, delay note / swell, reverb freeze, pulse inf, so a record of an older binary holds fewer parameters (the FM-1 reads it with its format's count and gives the rest their defaults: engine.c eng_npar); the Steps rate's choices 7..8 (1/2, 1/64) and swing past 75 (ParamDef.top); 34: the device extras section (flag bit 8: per device its driving Steps track, structure and preset name; #194, #197); 33: the Drum maps' row names section (flag bit 7, the #139 follow-up); 32: the Drum map module (#137; its record's data byte is the source of its keys); 31: the Steps module holds notes (#133): its record carries only its name, the notes section (flag bit 4) replaces the step values, its acc output is gone and it has a keys output (a group's note source may be a Steps module); 30: the button kinds section (flag bit 6: Nothing / Gate / Toggle and a Toggle's modules); 29: the device pages section (flag bit 5); the Main module lost the knob outputs and parameters k1..k6 (its knobs edit the page in focus), the panel section the knob labels (7 labels); the Macro module; 28: the level / rate envelope (env) got the shot parameter; 27: the step values section (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (its record ends with its name and pattern), the Main module lost the seq and rec button outputs (the panel section has 7 buttons, 13 labels); 25: a group record ends with its MIDI channel and key range (low, high); 24: the panel section (button modes, switched states, labels) after the group bytes, the Main module's k5 / k6 and button outputs; 23: the group record ends with its note source (an Arpeggiator), the Main module got the tempo parameter and the run output, the Arpeggiator module; 22: bit 7 of a group's legato byte = unison (a patch without unison still encodes as 21); 21: per-part flaws in the group record (GROUP_REC), the unit is gone; 20: poly assemblies (the group section after the header; the Main module lost legato, priority, unit and the spread, legato, jump, tol, drift outputs, the oscillator its drift; part and random modules); 19: voicing and drift: the Main module got legato, priority, unit (and the legato, jump, tol, drift outputs), the oscillator blend, stack, drift, the glide curve; 18: arbitrary side-input fan-out (flag bit 3); 17: switchable fixed input links (flag bit 2); unmodified patches still encode as 16; 16: the shaper got the sym and stages parameters; 15: macro ranges (flag bit 1); 14: the Main module got the morph input and parameter, header flag bit 0 = a morph B set follows the cables; 13: the shaper and the digitizer got the os (oversampling) parameter, the sequencer glide and gate; 12: bit 7 of the type byte marks a bypassed module; 11: the oscillator got the unison and detune parameters; 10: the merge of the two lines below: the Main module's clock output comes before spread, the lfo's inputs are clk, reset (the restart input was sync), the delay as in 8b, modules of the second and third batch; 9: the matrix masks are u16 (modules with more than 8 parameters), the modules of the second module batch; 8a: osc and lfo got the sync input (p1 / p2 moved), glide and shape modules, the panel's spread output; 8b: the delay has the clk input, r output and sync, pingpong parameters, the lfo got the clk and reset inputs and the sync, div, bpm parameters, the Main module's clock output; 7: the oscillator got the fb parameter; 6: the filter's outputs are lp24, lp12, bp, hp, mix; 5: the filter got the morph input (ports after cv moved), track and morph parameters; 4: the reverb module was added before the output
 /**
  * The lowest format the encoder writes: a patch that uses no parameter appended after it (ParamDef.since past it: a value
  * off its default on either morph side, a pin, macro range, input route or card row on it) is written in this format, its
@@ -106,9 +107,10 @@ export const VERSION = 49; // 49 (release 1.9, #518, #438, #526; FORMAT_1_9): th
  * `osc` is the first parameter written this way.
  */
 export const WRITE_FLOOR = 46;
-/** the formats past WRITE_FLOOR that only add a section the encoder writes when the patch uses it (format 48: the patterns
- * and songs, flag bit 10); every other format past WRITE_FLOOR appends parameters (ParamDef.since) */
-export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs' };
+/** the formats past WRITE_FLOOR that only add something the encoder writes when the patch uses it (format 48: the patterns
+ * and songs, flag bit 10; format 50: a note word's bit 31, NOTE_WRAP); every other format past WRITE_FLOOR appends
+ * parameters (ParamDef.since) */
+export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point' };
 /** the flag (u16 at offset 6) of the P-locks section (format 49, #524) */
 export const FLAG_LOCKS = 2048;
 
@@ -138,6 +140,16 @@ export function lockRecord(source: Patch, dev: Patch): number[] {
  * extends this format (its parameters carry `since: FORMAT_1_9`, its other uses go into uses19), never a new one.
  */
 export const FORMAT_1_9 = 49;
+/**
+ * The 1.10 format (#384): release 1.10's format change. A note tied across the loop point (track.ts StepNote.wrap, a
+ * drone among them) sets bit 31 of its word, which only format 50 has. A patch without one stays in an older format.
+ * Later 1.10 work extends this format, never a new one.
+ */
+export const FORMAT_1_10 = 50;
+/** what a patch uses of FORMAT_1_10 (`dev`: its device form): a note tied across the loop point, in any pattern */
+function uses110(dev: Patch): boolean {
+  return dev.modules.some((m) => m.type === 'steps' && [m.notes, ...(m.patterns ?? []).map((x) => x?.notes)].some((ns) => ns?.some((n) => n.wrap)));
+}
 /** a device of the device pages section's kind 2 (format 49): a plain module with its own name */
 export const NAMED_MODULE = 2;
 /** the name a plain module device carries in the binary (kind NAMED_MODULE), '' when it has none: its own name, as the
@@ -160,7 +172,7 @@ export const paramsAt = (type: string, v: number): ParamDef[] => DEFS[type].para
 /** the format encodePatch writes for this patch: VERSION, or WRITE_FLOOR when it uses nothing appended since (`dev`: its device form) */
 export function formatOf(source: Patch, dev: Patch = deviceView(source, true).patch): number {
   const late = (type: string): ParamDef[] => DEFS[type].params.filter((q) => (q.since ?? 0) > WRITE_FLOOR || (q.grew?.since ?? 0) > WRITE_FLOOR);
-  const floor = uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
+  const floor = uses110(dev) ? FORMAT_1_10 : uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
   if (!dev.modules.some((m) => late(m.type).length)) return floor;
   let v = floor;
   const rows = new Set<string>();
@@ -663,19 +675,44 @@ export interface BudgetItem { key: BudgetKey | 'cpu' | 'browser'; label: string;
 /** a budget line over its limit in words: "CPU 130 %", "Delay over 700 ms: browser only", "70 modules of 64" */
 export const overText = (i: BudgetItem): string => (i.key === 'cpu' ? `CPU ${i.used} %` : i.key === 'browser' ? i.label : `${i.used} ${i.label} of ${i.max}`);
 
+/** a line of the FM-1's line area in bytes, rounded to whole words (engine.c LINE_BYTES) */
+const lineBytes = (n: number): number => (n + 3) & ~3;
+/** the lines of the memory-hungry modules on the FM-1 (#273 step 3, engine.c line_arena): one area, divided when a patch
+ * loads. Its size is the three fixed blocks it replaced: a 700 ms delay line, DEVICE.strings string lines, a granular line */
+export const LINES = {
+  delay: lineBytes(2 * 30944), delayLong: lineBytes(2 * 70649), string: lineBytes(2 * 1104), grain: lineBytes(2 * 44118 + 8 * 24),
+} as const;
+export const LINE_AREA = DEVICE.delays * LINES.delay + DEVICE.strings * LINES.string + DEVICE.grains * LINES.grain;
+/** does the FM-1 give this patch's Delay its 1.6 s line (engine.c eng_load: E.dly_len): the area holds a long line per
+ * Delay besides the strings', combs' and granular's lines, counted per copy as eng_load takes them. With today's counts
+ * that is every patch without a Granular module */
+export function longDelay(source: Patch): boolean {
+  const { patch: p, groups } = deviceView(source, true);
+  const copies = new Map<number, number>();
+  groups.forEach((g) => g.modules.forEach((id) => copies.set(id, g.cfg.parts)));
+  const count = (...types: string[]): number => p.modules.filter((m) => types.includes(m.type)).reduce((n, m) => n + (copies.get(m.id) ?? 1), 0);
+  return count('string', 'comb') * LINES.string + count('grain') * LINES.grain + count('delay') * LINES.delayLong <= LINE_AREA;
+}
+
 /**
  * The browser-only abilities a patch uses, one reason each ("Delay over 700 ms: browser only"); none: the FM-1 can play
  * everything in it. Today: a parameter past the FM-1's range into its browser-only stretch (ParamDef.browserMax), on either
- * morph side. A patch with any is over the FM-1 budget (deviceBudget), so it is never sent.
+ * morph side. The Delay's time past 700 ms on its A side plays on the FM-1 too when it gives the Delay its 1.6 s line
+ * (longDelay, #273 step 3): then only a B side past it stays the browser's. A patch with any is over the FM-1 budget
+ * (deviceBudget), so it is never sent.
  */
 export function browserOnly(p: Patch): string[] {
   const out = new Set<string>();
+  let long: boolean | undefined;
   for (const m of p.modules) {
     const def = DEFS[m.type];
     if (!def) continue;
     for (const pd of def.params) {
       if (pd.browserMax === undefined) continue;
-      if ([m.params[pd.name], m.paramsB?.[pd.name]].some((v) => v !== undefined && v > pd.max)) out.add(`${def.label} over ${pd.max}${pd.unit ? ` ${pd.unit}` : ''}: browser only`);
+      const past = (v: number | undefined): boolean => v !== undefined && v > pd.max;
+      const lineOk = m.type === 'delay' && pd.name === 'time' && past(m.params[pd.name]) && !past(m.paramsB?.[pd.name]) && (long ??= longDelay(p));
+      if (!lineOk && [m.params[pd.name], m.paramsB?.[pd.name]].some(past))
+        out.add(`${def.label} over ${pd.max}${pd.unit ? ` ${pd.unit}` : ''}${m.type === 'delay' && !(long ??= longDelay(p)) ? ' with a Granular' : ''}: browser only`);
     }
   }
   return [...out];
