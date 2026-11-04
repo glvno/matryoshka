@@ -1550,7 +1550,7 @@ async function main() {
       // SEL on its first page arms it, and the keys play it; the Arpeggiator alone takes no keys
       await check('arming: Vernon 100 opens, synced', await openSynced('Vernon 100'));
       await emu.tap(B.scl);
-      await check('arming: SEL on Vernon 100\'s first page arms it (the bar names its track too, #582)', await emu.waitText('VERNON 100 + ', 1500));
+      await check('arming: SEL on Vernon 100\'s first page arms it', await emu.waitText('VERNON 100 ARMED', 1500));
       await emu.elapse(1300);
       const v = await emu.mark();
       await emu.key(WHITE[7], true);
