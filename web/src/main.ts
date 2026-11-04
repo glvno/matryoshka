@@ -1164,7 +1164,7 @@ function showBudget(): void {
   const lineLines = (): HTMLElement[] => {
     const lb = b.lines;
     const top = budgetLine('Effect memory', lb.fits ? lb.used / lb.max : Math.max(1.01, lb.used / lb.max), `${kb(lb.used)} / ${kb(lb.max)} KB`,
-      lb.fits ? 'The lines of the Delays, reverbs, choruses, strings, combs and the Granular, in the FM-1\'s two line areas' : linesAdvice(editor.patch));
+      lb.fits ? 'The lines of the Delays, reverbs, choruses, strings, combs and the Granular, in the FM-1\'s two line areas. A Delay takes its length; ping-pong: half per side' : linesAdvice(editor.patch));
     return [top, ...[...lb.modules].sort((x, y) => y.bytes - x.bytes).map((u) => {
       const mod = editor.patch.modules.find((x) => x.id === u.id);
       const name = moduleName(u.type, DEFS[u.type].label) + (mod?.name ? ` ${mod.name}` : '') + (u.copies > 1 ? ` ×${u.copies}` : '');
