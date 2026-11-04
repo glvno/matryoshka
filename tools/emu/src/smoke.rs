@@ -595,7 +595,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     t.screen(&m, "arm: the track's line says ARMED (#179)", "TRACK 1/1  ARMED");
     let mk = m.mark();
     m.tap(REC, 120, 600)?;                   // stopped, on the SEQ page: REC starts step record (D-548, D-804)
-    t.screen(&m, "rec: REC, stopped, on the SEQ page: step record on step 1", "STEP 1  DRUMS ARM");
+    t.screen(&m, "rec: REC, stopped, on the SEQ page: step record on step 1", "STEP 1/16  DRUMS ARM");
     let p = m.peak_since(mk);
     t.check("rec: REC, stopped, on the SEQ page: the transport stays stopped", p < QUIET, format!("peak {p}"));
     let mk = m.mark();
@@ -677,7 +677,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
         m.turn(SELECT, -1, 600)?;
         t.screen(&m, "roll: SELECT back (G#3-D#4)", "PATTERN ARM G#3-D#4");
         m.tap(REC, 120, 600)?;               // stopped: step record (D-804)
-        t.screen(&m, "roll: REC, stopped: step record", "STEP 1  PATTERN ARM");
+        t.screen(&m, "roll: REC, stopped: step record", "STEP 1/16  PATTERN ARM");
         t.screen(&m, "roll: step record's hint: REC ends it", "REC done");
         m.tap(PLAY, 120, 1300)?;             // PLAY in step record: the transport starts, PATTERN (armed by the page) records
         t.screen(&m, "roll: PLAY in step record: a live take of the melodic track armed", "PATTERN REC");

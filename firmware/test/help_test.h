@@ -209,6 +209,7 @@ static void help_suite(void)
     page_show(0);
     loop();
     check("  and back: DEVICE", on_screen("DEVICE") && on_screen("adjust values"));
+    later(1600);                                        /* (leaving the SEQ page said PATTERN STAYS ARMED, #582: gone first) */
     from = mlen;
     tap(BTN_HOME);
     check("HOME: the sheet closes, the device page as it was", !help_on && !lcd_ovl && page == 0u && pg_cur_dev == s0
