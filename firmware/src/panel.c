@@ -26,6 +26,9 @@ static uint8_t knob_touched, button_touched;  /* the knob (1..6) / patch button 
 #define BTN_ENV_IDX 2u                /* ENV (#197): fixed, the environment; its jack a Gate */
 #define FIXED_BTNS ((1u << BTN_GLO_IDX) | (1u << BTN_SEL_IDX) | (1u << BTN_ENV_IDX))
 static uint8_t play_turned;                   /* PRESET turned the tempo while PLAY was held: its release does not start / stop */
+static uint8_t play_hinted;                   /* PLAY held alone a moment: the bar said where the tempo is (#582) */
+static uint32_t play_down_ms;                 /* fm1_ms of PLAY's press */
+#define PLAY_HINT_MS 600u
 static uint8_t home_turned;                   /* PRESET turned the patch, or K1..K4 turned fine, while HOME was held: its release does
                                                * not go back (#395, #340) */
 
@@ -989,8 +992,11 @@ static void panel_edges(uint32_t p, uint32_t rel)
         sr_stop();                                  /* HOME in step record: it ends, the page stays (#532, D-808) */
     else if ((rel & (1u << BTN_HOME)) && !home_turned)
         home_tap();
-    if (p & (1u << BTN_PLAY))                       /* PLAY acts on release, unless PRESET turned the tempo meanwhile */
+    if (p & (1u << BTN_PLAY)) {                     /* PLAY acts on release, unless PRESET turned the tempo meanwhile */
         play_turned = 0;
+        play_hinted = 0;
+        play_down_ms = fm1_ms;
+    }
     if ((rel & (1u << BTN_PLAY)) && !play_turned)
         play_toggle();
 }
@@ -1012,6 +1018,17 @@ static void panel_status(void)
         sb_mout_due = 0;
         if (sb_on && !cfg.midi_out && !help_on)
             sb_mout_nudge();
+    }
+    if ((panel_held >> BTN_PLAY & 1u) && !play_turned && !play_hinted && !help_on && !sb_on
+        && fm1_ms - play_down_ms >= PLAY_HINT_MS) {   /* PLAY held alone a moment (#582): the tempo, and how it changes */
+        int panel = eng_find(T_FM1);
+        play_hinted = 1;
+        if (panel >= 0 && !eng_clock_is_external()) {
+            char m[32], num[8];
+            fmt_int(num, (eng_get_param((uint32_t)panel, FM1_P_TEMPO) + 32768) >> 16);
+            put(put(put(m, "TEMPO "), num), ": TURN PRESET")[0] = 0;   /* (22 characters at most) */
+            ui_msg(m, 1500);
+        }
     }
     if (knob_touched || button_touched) {           /* what was just moved, in the bar for a second */
         char m[40], name[16], num[12], *q = m;

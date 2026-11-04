@@ -330,14 +330,14 @@ static void help_sheet_draw(int full)
 /* the quick start (D-247) */
 static void help_quick_draw(void)
 {
-    static const char *const R[5] = {"n:SELECT~devices", "n:ALGO~device pages", "n:PRESET~device presets",
-                                     "k:HOME|t:+|n:PRESET~patches", "c:1234~adjust values"};
+    static const char *const R[6] = {"n:SELECT~devices", "n:ALGO~device pages", "n:PRESET~device presets",
+                                     "k:HOME|t:+|n:PRESET~patches", "k:PLAY|t:+|n:PRESET~tempo", "c:1234~adjust values"};
     static const char *const F[6] = {"HOME", " dismiss    ", "HOME", "+", "SAVE", " forever"};
     static const uint16_t FC[6] = {P_INK, P_FAINT, P_INK, P_FAINT, P_INK, P_FAINT};
     static const char *const K[2] = {"OCT-", "OCT+"};
-    const uint32_t cx = 120u, ky0 = 20u, kw = 46u, kh = 20u;
+    const uint32_t cx = 120u, ky0 = 15u, kw = 46u, kh = 20u, rh = 17u;   /* (six rows: 17 px apart, the sheet's 19 less) */
     uint32_t i, k, y, ac = 0;
-    for (i = 0; i < 5u; i++) {                      /* the description column: clear of the widest row */
+    for (i = 0; i < 6u; i++) {                      /* the description column: clear of the widest row */
         uint32_t e = help_row(HC_X0, 0, R[i], 0, 0);
         ac = e > ac ? e : ac;
     }
@@ -345,11 +345,11 @@ static void help_quick_draw(void)
     help_ground();
     lcd_fill(HC_IX, HC_M + 2u, HC_IW, 20, P_SKY);
     text_bc(&FONT_M, HC_IX, HC_M + 3u, "QUICK START", P_NIGHT, P_SKY, HC_IW, TA_CENTER);
-    for (i = 0, y = HC_M + 28u; i < 5u; i++, y += HC_ROW)
+    for (i = 0, y = HC_M + 27u; i < 6u; i++, y += rh)
         help_row(HC_X0, y, R[i], ac, 1);
     y += 2u;
     lcd_fill(HC_X0, y, HC_W - 16u, 1, P_TRACK);
-    text_bc(&FONT_S, HC_IX, y + 4u, "PRESS", P_DIM, P_PANEL, HC_IW, TA_CENTER);
+    text_bc(&FONT_S, HC_IX, y + 3u, "PRESS", P_DIM, P_PANEL, HC_IW, TA_CENTER);
     for (k = 0; k < 2u; k++) {                      /* OCT- + OCT+ as two ivory keycaps */
         uint32_t x = k ? cx + 10u : cx - 10u - kw, ky = y + ky0;
         lcd_fill(x, ky, kw, kh, P_INK);
@@ -360,7 +360,7 @@ static void help_quick_draw(void)
         text_bc(&FONT_S, x, ky + 3u, K[k], P_NIGHT, P_INK, kw, TA_CENTER);
     }
     text_bc(&FONT_M, cx - 10u, y + ky0, "+", P_INK, P_PANEL, 20, TA_CENTER);
-    text_bc(&FONT_S, HC_IX, y + ky0 + kh + 4u, "TO SEE CONTROLS FOR CURRENT PAGE", P_DIM, P_PANEL, HC_IW, TA_CENTER);
+    text_bc(&FONT_S, HC_IX, y + ky0 + kh + 3u, "TO SEE CONTROLS FOR CURRENT PAGE", P_DIM, P_PANEL, HC_IW, TA_CENTER);
     help_runs(HC_M + HC_W - 20u, F, FC, 6);
 }
 
