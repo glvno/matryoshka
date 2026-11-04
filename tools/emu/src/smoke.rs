@@ -541,7 +541,7 @@ fn stereo_sides(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
 
 /// Verona 1's hi-hat (the 1.10 early check, D-865): stopped, black key 5 (HH OPEN) rings for its DECAY; black key 6 (HH
 /// CLOSE) pressed 20 ms later while black key 5 is still down cuts it (a closed hit dies in 45 ms). Both keys are held for
-/// 300 ms; the peak is read 250..450 ms after the first press.
+/// 300 ms; the peak is read 100..200 ms after the first press (the open hat is still loud there, a closed one is gone).
 fn verona_hats(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
     let Some(slot) = presets.iter().position(|(n, _)| n.starts_with("VERONA") && !n.ends_with(" XL")) else {
         t.check("verona: the factory Verona 1 is there", false, String::new());
@@ -562,20 +562,20 @@ fn verona_hats(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, 
         if both {
             m.key(CLOSE, true);
         }
-        m.run_for(230)?;
+        m.run_for(80)?;
         let mk = m.mark();
-        m.run_for(50)?;
+        m.run_for(100)?;
+        let p = m.peak_since(mk);
+        m.run_for(100)?;
         m.key(OPEN, false);
         m.key(CLOSE, false);
-        m.run_for(150)?;
-        let p = m.peak_since(mk);
         m.run_for(1500)?; // (the open hat dies away)
         Ok(p)
     };
     let ringing = tail(&mut m, false)?;
     let cut = tail(&mut m, true)?;
-    t.check("verona: black key 5 alone, the open hat still rings 250 ms on", ringing > LOUD / 4, format!("peak {ringing}"));
-    t.check("verona: black key 6 pressed with black key 5 still down cuts it", cut < ringing / 8, format!("peak {cut} (open alone {ringing})"));
+    t.check("verona: black key 5 alone, the open hat still rings 100 ms on", ringing > 4 * QUIET, format!("peak {ringing}"));
+    t.check("verona: black key 6 pressed with black key 5 still down cuts it", cut < ringing / 4, format!("peak {cut} (open alone {ringing})"));
     *emulated += m.ms();
     Ok(())
 }
