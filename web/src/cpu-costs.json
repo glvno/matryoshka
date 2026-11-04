@@ -48444,7 +48444,7 @@
   },
   {
    "name": "Silver Box",
-   "cycles": 116100
+   "cycles": 121701
   },
   {
    "name": "Hera 6",
@@ -48468,7 +48468,7 @@
   },
   {
    "name": "Wanderer",
-   "cycles": 194636
+   "cycles": 195275
   },
   {
    "name": "Briefcase 3",
@@ -48476,7 +48476,7 @@
   },
   {
    "name": "Io 4",
-   "cycles": 511901
+   "cycles": 513179
   },
   {
    "name": "Vernon 100",
@@ -48520,23 +48520,27 @@
   },
   {
    "name": "Cassia 1",
-   "cycles": 368269
+   "cycles": 372293
   },
   {
    "name": "Basic Poly",
-   "cycles": 208074
+   "cycles": 210630
   },
   {
    "name": "Drift Poly",
-   "cycles": 320463
+   "cycles": 321741
   },
   {
    "name": "Mono Lead",
-   "cycles": 89859
+   "cycles": 90498
   },
   {
    "name": "Supersaw Stack",
-   "cycles": 322417
+   "cycles": 324973
+  },
+  {
+   "name": "Verona 1",
+   "cycles": 424730
   },
   {
    "name": "Acid, 4 parts",
@@ -48568,7 +48572,7 @@
   },
   {
    "name": "assembly basic poly",
-   "cycles": 177736
+   "cycles": 180292
   },
   {
    "name": "assembly boom kick",
@@ -48592,7 +48596,7 @@
   },
   {
    "name": "assembly Cassia 1",
-   "cycles": 346132
+   "cycles": 351720
   },
   {
    "name": "assembly clap",
@@ -48612,11 +48616,11 @@
   },
   {
    "name": "assembly drift poly",
-   "cycles": 290788
+   "cycles": 292066
   },
   {
    "name": "assembly drum kit",
-   "cycles": 410963
+   "cycles": 416551
   },
   {
    "name": "assembly echo",
@@ -48660,7 +48664,7 @@
   },
   {
    "name": "assembly Io 4",
-   "cycles": 508365
+   "cycles": 509643
   },
   {
    "name": "assembly kalimba",
@@ -48680,7 +48684,7 @@
   },
   {
    "name": "assembly mono lead",
-   "cycles": 72409
+   "cycles": 73048
   },
   {
    "name": "assembly Monolith D",
@@ -48744,7 +48748,7 @@
   },
   {
    "name": "assembly Silver Box",
-   "cycles": 97335
+   "cycles": 102923
   },
   {
    "name": "assembly slicer",
@@ -48772,7 +48776,7 @@
   },
   {
    "name": "assembly supersaw stack",
-   "cycles": 297047
+   "cycles": 299603
   },
   {
    "name": "assembly tabla",
@@ -48795,6 +48799,10 @@
    "cycles": 301562
   },
   {
+   "name": "assembly Verona 1",
+   "cycles": 409468
+  },
+  {
    "name": "assembly vibrato",
    "cycles": 16834
   },
@@ -48808,7 +48816,7 @@
   },
   {
    "name": "assembly Wanderer",
-   "cycles": 187959
+   "cycles": 188598
   },
   {
    "name": "assembly wavetable pad",

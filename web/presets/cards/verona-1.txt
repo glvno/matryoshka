@@ -7,7 +7,7 @@
 #   kick / decay = 0.5 s               0.001..10 s
 #   kick / pitch = -29 st              -48..48 st
 #   kick / bend = 2.2                  -4..4
-#   time = 0.045 s                     0.001..10 s
+#   time = 0.04 s                      0.001..10 s
 #   kick / wave = 1.4                  1..32
 #   kick / noise = 0.25                0..2
 #   kick / attack = 0.5                0..1
@@ -27,7 +27,7 @@
 #   multi / bend = 0                   -4..4
 #   multi / attack = 0.2               0..1
 #   pitch 2 = 12 st                    -48..48 st
-#   pitch 3 = 7 st                     -48..48 st
+#   pitch 3 = 12 st                    -48..48 st
 #   highpass = 250 Hz                  20..16000 Hz
 #   multi / volume = 1.27              0..2
 # snare
@@ -52,12 +52,12 @@
 #   clap / decay rev = 0.2 s           0.001..10 s
 #   clap / reverb = 0.45               0..2
 #   clap = 55 Hz                       0.0008..80 Hz
-#   clap / noise = 0.9                 0..2
+#   clap / noise = 0.6                 0..2
 #   clap / resonance = 0.45            0..1
 #   clap / filter = 2200 Hz            20..16000 Hz
 #   clap / volume = 1.27               0..2
 # master
-#   master = 1                         0..1
+#   master = 0.61                      0..1
 
 # Drafts of 2026-11-04 after the Vermona DRM1 MKIV's manual (its sound tips for each channel), not yet listened to on the
 # FM-1 (#613). The rows follow the original's knobs: see web/scripts/verona-voices.ts for what each does here.
@@ -78,6 +78,7 @@ hi hat / filter = 11000
 mix = 0.35
 clap / reverb = 0.6
 clap = 45
+  master = 0.59
 
 preset: Trouser Flap
 # DECAY at its longest for a long, low boom (the manual: Trap, drum and bass, dubstep); the bend kept low
@@ -91,6 +92,7 @@ kick / attack = 0.3
 snare / decay rev = 0.6
 snare / reverb = 0.25
 hi hat / decay = 0.5
+  master = 0.62
 
 preset: Beat Box 78
 # the snare with RESONANCE backed off, as a preset rhythm box from about 1978; a short kick, a thin hat, the multi a
@@ -110,6 +112,7 @@ mix = 0.2
 hi hat / bend = 0.5
 multi / decay = 0.12
 highpass = 500
+  master = 0.61
 
 preset: Clave and Conga
 # the manual's tip: the snare with FILTER and RESONANCE open and no noise is a clave; drum 1 a conga, the multi a bongo
@@ -123,10 +126,11 @@ drum 1 / bend = 0.15
 drum 1 / attack = 0.6
 multi / pitch = -0.2
 pitch 2 = -2
-pitch 3 = -48
+pitch 3 = -2
 multi / decay = 0.09
 highpass = 900
 hi hat / decay = 0.12
+  master = 0.97
 
 preset: Metal Works
 # FM in the audio range on drum 1 (atonal, metallic), the multi's three squares spread for a bell, hats bending up
@@ -145,3 +149,4 @@ hi hat / bend = -1.5
 hi hat / resonance = 0.6
 hi hat / pitch = 34
 hi hat / decay = 0.8
+  master = 0.9

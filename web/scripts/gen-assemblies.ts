@@ -3652,7 +3652,7 @@ asm('Verona 1', 'Drums', (b) => {
   b.module(map).names = ['KICK', 'DRUM 1', 'MULTI', 'SNARE', 'HH OPEN', 'HH CLOSE', 'CLAP', 'ROW 8'];
   const noise = sharedNoise(b, 0, 1);
   // MASTER: every channel into the mixer's first input, its level the overall volume
-  const mix = b.add('mixer', 7, 0, { l1: 1, l2: 0, l3: 0, l4: 0 });
+  const mix = b.add('mixer', 7, 0, { l1: 0.7, l2: 0, l3: 0, l4: 0 });   // (MASTER is the level row, #448)
   const channels: [string, Voice][] = [
     ['kick', kick(b, 1, noise, { lean: true })],
     ['drum 1', drum(b, 2, { coarse: -17, decay: 0.35 })],
