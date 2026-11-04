@@ -487,7 +487,7 @@ static void pages_ensure(void)
                 if (n > 1u) {                           /* (#582: a patch that can layer says so, and how) */
                     static char m[32];
                     m[0] = (char)('0' + (n > 9u ? 9u : n));
-                    put(m + 1, " SOUNDS: ENV+SEL LAYERS")[0] = 0;
+                    put(m + 1, " SOUNDS: ENV THEN SEL")[0] = 0;   /* (as the sheet says it: "ENV+SEL" read as both at once) */
                     ui_msg(m, 2000);
                 }
             }
