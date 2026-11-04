@@ -72,7 +72,7 @@ The FM-1's controls, by where it is (the same table makes the FM-1's controls sh
 <!-- controls: end -->
 
 * **FX, LFO, EDIT, ARP** are patch buttons: the patch decides what each does (a gate, a Toggle that bypasses a module or assembly, or a list of device pages)
-* **SAVE held at power-on** boots in safe mode: it plays the fallback patch compiled into the firmware and reads nothing from flash (`SAFE MODE: FALLBACK PATCH`); the stored state stays in flash for the next normal boot, MENU > SYSTEM > FACTORY RESET erases it. A boot that did not get through makes the next one safe by itself; two failed boots in a row go to update mode. See [D-154](docs/ledger/firmware-install.md#D-154) and [D-155](docs/ledger/firmware-install.md#D-155).
+* **SAVE held at power-on** boots in safe mode: it plays the fallback patch compiled into the firmware and reads nothing from flash (`SAFE MODE: RESTART TO LEAVE`); the stored state stays in flash for the next normal boot, MENU > SYSTEM > FACTORY RESET erases it. A boot that did not get through makes the next one safe by itself; two failed boots in a row go to update mode. See [D-154](docs/ledger/firmware-install.md#D-154) and [D-155](docs/ledger/firmware-install.md#D-155).
 
 ## Install on the FM-1
 
