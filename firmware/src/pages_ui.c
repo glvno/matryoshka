@@ -2091,12 +2091,14 @@ static int env_track_no(uint32_t d)
 
 /* the right-hand text of device d's row: Main's tempo, a track's length, ARMED */
 /* what arming device d arms (#191), as a module mask: its key listeners, and the key sources its keys come through (#395:
- * the track and the Arpeggiator in front of an instrument). An Arpeggiator alone is not a device to arm */
+ * the track and the Arpeggiator in front of an instrument). An Arpeggiator alone is not a device to arm, nor an engine the
+ * editor marks as one no keys cable reaches (D-905): a poly engine keeps its group without its Voicing, so its modules
+ * would arm a group with no Part that plays nothing, while the editor drew the armed keys into it and played it */
 static uint64_t env_listeners(uint32_t d)
 {
     uint64_t mask = 0;
     uint32_t k;
-    if (pg_dev[d].module >= 0 && eng_type((uint32_t)pg_dev[d].module) == T_ARP)
+    if (pg_dev[d].unreached || (pg_dev[d].module >= 0 && eng_type((uint32_t)pg_dev[d].module) == T_ARP))
         return 0;
     if (pg_dev[d].mem) {
         for (k = 0; k < pg_dev[d].nmem; k++)

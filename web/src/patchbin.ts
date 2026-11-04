@@ -82,12 +82,13 @@ import { KIND_CODE, kindOf, mainOf, switches, toggleEngaged, toggleTargets } fro
 import { EDITOR_ONLY, flawOf, hasMorph, isBipolar, MAX_MODULES, MAX_PARTS, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ParamDef, type Patch } from './patch';
 import { isShortNote, noteWord, shortWord, type StepNote } from './track';
 import { lockPlan, PATCH_LOCKS_MAX } from './locks';
-import { deviceView, keyed, keysInto, MAX_POLY, type DeviceGroup } from './poly';
+import { deviceView, keysInto, MAX_POLY, type DeviceGroup } from './poly';
 import { devicesOf, NAME_MAX, type Device } from './pages';
 import { allModules, assemblyById, ROW_NAMES_MAX } from './assembly';
 import { structureAndRows } from './structure';
 import { cpuEstimate, type CpuEstimate } from './cpu';
 import { instIsEngine } from './engines';
+import { engineUnreached } from './arm';
 
 export const TYPE_ORDER: string[] = Object.keys(DEFS).filter((t) => !EDITOR_ONLY.has(t));
 /** bytes of a poly group record: parts, assign, legato, priority, five flaw bytes per part, the note source, the MIDI
@@ -422,15 +423,12 @@ export function deviceRecord(devs: Device[], p: Patch): number[] {
  * NO KEYS REACH THIS DEVICE on SEL there, not NOTHING HERE TAKES KEYS. Firmware before 1.9 finds no device with this
  * index, so it reads it as no track (ENG_NO_TRACK), the same as 0xFF: the byte needs no newer format */
 export const KEYS_UNREACHED = 0xfe;
-/** an engine device (engines.ts instIsEngine) whose keys input no keys cable reaches: none of its Voicings has a key source
- * (poly.ts keyed: Main's keys or a Steps track, directly or through an Arpeggiator) and none of its Drum maps has one
- * (keysInto). The device form leaves such a Voicing out, so without this mark the FM-1 cannot tell it from a device
- * with no keys input */
+/** an engine device (engines.ts instIsEngine) whose keys input no keys cable reaches (arm.ts engineUnreached). The device
+ * form leaves its Voicing out, so without this mark the FM-1 cannot tell it from a device with no keys input. The editor
+ * does not arm it either (arm.ts noKeysReach, D-818) */
 export function keysUnreached(source: Patch, d: Device): boolean {
   const a = d.asm === undefined ? undefined : assemblyById(source, d.asm);
-  if (!a || !instIsEngine(source, a)) return false;
-  const ids = new Set(allModules(source, a));
-  return !source.modules.some((m) => ids.has(m.id) && ((m.type === 'alloc' && keyed(source, m)) || (m.type === 'drummap' && keysInto(source, m) !== null)));
+  return !!a && engineUnreached(source, a);
 }
 
 /** the device extras section's bytes (see the top of this file); `dev` is the device form (its module indices) */

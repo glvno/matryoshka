@@ -1474,6 +1474,25 @@ async function main() {
       await check('arming: SEL on an instrument no keys cable reaches: NO KEYS REACH THIS DEVICE (#215)', await emu.waitText('NO KEYS REACH THIS DEVICE', 1500));
       await check('arming: nothing armed, in the editor either', (await emu.waitText('KEYS WIRED', 3000)) && (await T()).armed.length === 0);
       await emu.snap('arming-unreached');
+      // D-905 / D-818: a poly engine too (Basic Poly keeps its group without its Voicing): SEL on its page and on its
+      // environment row says so and arms nothing, so the editor draws no armed keys into it and plays nothing the FM-1 does not
+      await sleep(1300);
+      await check('arming: Basic Poly with no keys cables opens, synced',
+        await openSynced('Basic Poly', (n) => page.evaluate((x) => window.__m1test.openUnkeyed(x), n)));
+      await check('arming: its device page is the one in focus', /basic poly/i.test((await T()).focusName), (await T()).focusName);
+      await emu.tap(B.scl);
+      await check('arming: SEL on a poly engine no keys cable reaches: NO KEYS REACH THIS DEVICE (D-905)', await emu.waitText('NO KEYS REACH THIS DEVICE', 1500));
+      await check('arming: the poly engine is not armed, in the editor either', (await emu.waitText('KEYS WIRED', 3000)) && (await T()).armed.length === 0);
+      await sleep(1300);
+      await emu.tap(B.env, 120);
+      await check('arming: ENV opens the environment on the poly engine\'s row', await emu.waitText('ENVIRONMENT', 3000));
+      await emu.tap(B.scl);
+      await check('arming: SEL on its environment row: NO KEYS REACH THIS DEVICE', await emu.waitText('NO KEYS REACH THIS DEVICE', 1500));
+      await sleep(600);
+      await check('arming: still nothing armed, in the editor either', (await T()).armed.length === 0);
+      await emu.snap('arming-unreached-poly');
+      await emu.tap(B.env, 120);
+      await emu.waitOwnPage(3000);
     },
     // #504: under Live a SELECT or ALGO turn on the FM-1 reaches the editor twice, as FOCUS_NOW and as the mirror's MIDI;
     // the editor's focus must end on the FM-1's device and page, never one further
