@@ -703,7 +703,7 @@ static void patch_boot(void)                    /* the slot the settings record 
     if (boot_safe || !flash_ok) {
         fallback_boot();
         if (boot_safe) {
-            boot_msg = "SAFE MODE: RESTART TO LEAVE";   /* (#582: what to do next; 27 characters) */
+            boot_msg = "SAFE MODE: RESTART TO EXIT";   /* (#582: what to do next; 26 characters, as a nudge, D-249) */
             boot_msg_ms = 4000;
         }
         return;

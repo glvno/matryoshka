@@ -1051,7 +1051,7 @@ static void panel_status(void)
             uint32_t w;
             seq_name((uint32_t)t, name);
             w = 3u + str_len(name) + (seq_mod_armed(eng_steps_module((uint32_t)t)) ? 1u : 0u);
-            if ((uint32_t)(q - m) + w > 30u)
+            if ((uint32_t)(q - m) + w > 26u)   /* (as a nudge: 26 characters, D-249) */
                 break;
             *q++ = ' ';
             *q++ = (char)('1' + t);

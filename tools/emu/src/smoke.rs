@@ -777,7 +777,7 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     t.check("safe mode: holding SAVE at power-on does not save", !saved, String::new());
     t.check("safe mode: no quick start (D-247)", !font::on_screen(m.lcd(), "QUICK START"), String::new());
     m.run_for(1500)?;                         // (the SAFE MODE message holds the bar for 4 s: still there)
-    t.screen(&m, "safe mode: the message stays up", "SAFE MODE: RESTART TO LEAVE");
+    t.screen(&m, "safe mode: the message stays up", "SAFE MODE: RESTART TO EXIT");
     wait_text(&mut m, "SAFE PATCH", 6000)?;   // (then the patch's name shows)
     t.screen(&m, "safe mode: the fallback patch", "SAFE PATCH");
     let p = midi_note_peak(&mut m, 60, 500)?;
