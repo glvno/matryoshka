@@ -418,6 +418,9 @@ static void panel_encoders(int32_t *st)
     for (k = 0; k < 7u; k++)                        /* a turn while the track's clear asks: not cleared (#231) */
         if (st[k])
             seq_clear_cancel();
+    if (page == PAGE_SEQ && seq_held >= 0 && (st[0] | st[1] | st[2] | st[3] | st[4] | st[5] | st[6]))
+        seq_held_tap = 0;                           /* any knob turned with a step held: the step used, its release switches
+                                                     * nothing (the owner's 1.9.0 device check, 2026-11-03) */
     if (page == PAGE_MENU) {                        /* the menu (#395): ALGO the tab, SELECT the guide's scroll (menu.c); PRESET
                                                      * steps the patches, PLAY held + PRESET the tempo as everywhere (below,
                                                      * #553); a settings tab's K1..K4 go on below, as a device page's */
