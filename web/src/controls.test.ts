@@ -55,7 +55,8 @@ describe('the controls table (#553)', () => {
   it('FIXED_DOES says what the table says GLO, SEL and ENV do', () => {
     expect(FIXED_DOES).toEqual({ glo: fixedDoes('GLO'), scl: fixedDoes('SEL'), env: fixedDoes('ENV') });
     expect(FIXED_DOES.glo).toContain('run armed row');
-    expect(FIXED_DOES.scl).toContain('arm this device');
+    expect(FIXED_DOES.scl).toContain('arm only this');
+    expect(FIXED_DOES.env).toContain('then SEL: arm several');
     expect(FIXED_DOES.env).toContain('save device preset');
   });
   it('the README\'s list of controls is the table\'s (npm run export-defs)', () => {

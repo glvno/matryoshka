@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### FM-1
+
+- The controls sheet (OCT- + OCT+) says what SEL does to the keys. On a device page it reads "SEL arm only this", because it replaces what was armed, and a new row "ENV then SEL arm several" says how to play more than one at once. On the ENVIRONMENT page it reads "SEL add / drop row". The editor's ? help card, its controls strip and the README say the same. In a simulated FM-1, an agent playing a new owner layered two sounds in 54, 56 and 61 actions with this wording, against 71, 78 and 121 before (three runs each; 2 of the 3 went straight to the ENVIRONMENT page, against 1 of 3 before).
+
 ## 1.9.0 — 2026-11-03
 
 ### FM-1

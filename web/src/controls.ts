@@ -33,8 +33,10 @@ export type Part =
                                                         // key, the keys played, keys pressed together
 /** what is done: `do` while `hold` is held. Several parts in `do` are alternatives (either one), or with `join: 'list'`
  * a list of buttons that all do the same. `how`: tap (a short press), held (kept down while the keys play), hold 2 s.
- * `where`: where on the screen it applies ("on END") */
+ * `where`: where on the screen it applies ("on END"). `first`: a button pressed and let go before (ENV then SEL: SEL on
+ * the page ENV opens) */
 export interface Gesture {
+  first?: Button;
   hold?: Button | 'step';
   do: Part[];
   join?: 'or' | 'list';
@@ -157,15 +159,17 @@ export const CONTROLS: ControlRow[] = [
     help: 'the four rows of the page in focus (on a Matrix’s page: the framed column’s pins, in 1..in 4)' },
   { id: 'fine', gesture: { hold: 'HOME', do: [K('1234')] }, does: 'fine adjust', sheet: { device: 40 }, effect: 'fine',
     help: 'fine turns: the least step of the row' },
-  { id: 'arm-device', gesture: { do: [B('SEL')] }, does: 'arm this device', when: 'dev_keys', sheet: { device: 50 }, effect: 'arm',
+  { id: 'arm-device', gesture: { do: [B('SEL')] }, does: 'arm only this', when: 'dev_keys', sheet: { device: 50 }, effect: 'arm',
     help: 'arms the device on screen, so the keys play it, and disarms the others; on a device already armed it takes it out. A device with no keys input says NOTHING HERE TAKES KEYS, one whose keys input no cable reaches NO KEYS REACH THIS DEVICE. Nothing armed: Main’s cables decide what the keys play (KEYS WIRED)' },
+  { id: 'arm-several', gesture: { first: 'ENV', do: [B('SEL')] }, does: 'arm several', when: 'dev_keys', sheet: { device: 55 }, effect: 'arm',
+    help: 'on the environment page (ENV), SEL adds the row’s device to the armed devices or drops it, so the keys play several at once (a layer or a split)' },
 
   // ---- ENVIRONMENT: one row per device
   { id: 'env-rows', gesture: { do: [E('SELECT')] }, does: 'device row', sheet: { env: 10 }, effect: 'focus' },
   { id: 'env-first-page', gesture: { do: [K('1234')] }, does: 'device pg.1 params', sheet: { env: 40 }, effect: 'param' },
   { id: 'env-presets', gesture: { do: [E('PRESET')] }, does: "row device's preset", when: 'dev_presets', sheet: { env: 30 }, effect: 'preset' },
   { id: 'env-presets-algo', gesture: { do: [E('ALGO')] }, does: "row device's preset", when: 'dev_presets', sheet: { env: 50 }, listed: false, effect: 'preset' },
-  { id: 'env-arm', gesture: { do: [B('SEL')] }, does: 'arm / disarm device', when: 'dev_keys', sheet: { env: 20 }, effect: 'arm',
+  { id: 'env-arm', gesture: { do: [B('SEL')] }, does: 'add / drop row', when: 'dev_keys', sheet: { env: 20 }, effect: 'arm',
     help: 'the row’s device into the armed devices or out (several at once: a layer or a split)' },
 
   // ---- the SEQ page: a drum grid (DRUM STEPS) and a melodic track's piano roll (PIANO ROLL)
@@ -280,7 +284,8 @@ const STRIP: Record<string, string | ({ _: string } & Partial<Record<HelpState, 
   // a device page
   'list-home': "leave {list}'s pages, back where you were", 'list-pages': "flip through {list}'s pages",
   adjust: 'turn the four values on this page', fine: 'turn a value in its smallest steps',
-  'arm-device': 'play this device from the keys (again: stop)', 'device-pages': "flip through this device's pages",
+  'arm-device': 'play only this device from the keys (again: stop)',
+  'arm-several': 'open the environment to arm several devices at once (a layer)', 'device-pages': "flip through this device's pages",
   'device-presets': "load this device's presets as you turn", devices: 'move to the next or previous device in the patch',
   // the environment
   'env-rows': 'move up and down the device list', 'env-arm': "play this row's device from the keys (several at once: layer)",
@@ -385,6 +390,7 @@ export function gestureSpec(g: Gesture): string {
     }
   };
   const out: string[] = [];
+  if (g.first) out.push(`k:${g.first}`, 't:then');
   if (g.how === 'hold 2 s') out.push('t:hold');
   if (g.hold === 'step') out.push('t:hold step +');
   else if (g.hold) out.push(`k:${g.hold}`, 't:+');
@@ -460,6 +466,7 @@ export function gestureText(g: Gesture): string {
   if (g.how === 'hold 2 s') t += ' held 2 s';
   if (g.hold) t = `${g.hold === 'step' ? 'a held step' : `${g.hold} held`} + ${t}`;
   if (g.where) t += ` ${g.where}`;
+  if (g.first) t = `${g.first} then ${t}`;
   return t;
 }
 /** where a row applies, in words ('' everywhere it is listed) */
@@ -493,9 +500,9 @@ export function everywhereRows(): ControlRow[] {
  * list them */
 export function fixedDoes(b: Button): string {
   const mine = (p: Part): boolean => 'button' in p && p.button === b;
-  return CONTROLS.filter((r) => r.gesture.join !== 'list' && (r.gesture.hold === b || r.gesture.do.some(mine))).map((r) => {
+  return CONTROLS.filter((r) => r.gesture.join !== 'list' && (r.gesture.first === b || r.gesture.hold === b || r.gesture.do.some(mine))).map((r) => {
     const g = r.gesture;
-    const how = g.hold === b ? `held + ${gestureText({ ...g, hold: undefined })}: ` : g.how === 'hold 2 s' ? 'held 2 s: '
+    const how = g.first === b ? `then ${gestureText({ ...g, first: undefined })}: ` : g.first ? `after ${g.first}: ` : g.hold === b ? `held + ${gestureText({ ...g, hold: undefined })}: ` : g.how === 'hold 2 s' ? 'held 2 s: '
       : g.how === 'tap' ? 'tapped: ' : g.hold ? `with ${g.hold === 'step' ? 'a held step' : `${g.hold} held`}: ` : '';
     const where = Object.keys(r.sheet ?? {}).map((s) => HELP_STATE_NAME[s as HelpState].toLowerCase());
     return `${how}${plainDoes(r)}${where.length ? ` (${where.join(', ')})` : ''}`;
