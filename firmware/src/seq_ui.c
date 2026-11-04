@@ -786,6 +786,11 @@ static void sr_key(uint32_t n, int down)
     }
     if ((p = sr_pitch(seq_map(), n)) < 0)
         return;                                  /* (a drum grid's key that reaches no row: silent, D-805) */
+    if (seq_map() < 0 && (p < seq_roll_lo || p > seq_roll_lo + 7)) {
+        seq_roll_show(p, 0);                     /* a note off the roll's view: the view moves to its page, as the pen's
+                                                  * (#582, D-809), so its pitch and its tie show */
+        ui_dirty = ui_dirty ? ui_dirty : 1;
+    }
     if (!sr_keys) {                              /* a new chord on the cursor's step, over the track as it is now */
         sr_n = 0;
         sr_from = sr_k;

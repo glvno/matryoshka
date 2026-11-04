@@ -222,8 +222,9 @@ static void steprec_suite(void)
         check("K4 to the last step", (int32_t)sr_k == len - 1);
         sr_tap_key(K_E4);
         later(1100);
-        check("a note on the last step: the cursor wraps to step 1, the bar says STEP 1", sr_len_at(pat, (uint32_t)len - 1u, 64) == 1u
-              && sr_k == 0u && bar_shows("STEP 1/16  PATTERN ARM G#3-D#4 P01", C_ACC));
+        check("a note on the last step: the cursor wraps to step 1, the bar says STEP 1; E4 was off the view, which moved to its page (#582)",
+              sr_len_at(pat, (uint32_t)len - 1u, 64) == 1u && sr_k == 0u && seq_roll_lo == 64u
+              && bar_shows("STEP 1/16  PATTERN ARM E4-B4 P01", C_ACC));
         enc(5, -1);
         sr_down(K_G4);
         tap(BTN_LFO);
@@ -236,7 +237,7 @@ static void steprec_suite(void)
         enc(5, 17);
         later(1100);
         check("a 32-step track: K4 to step 18, the view shows steps 17-32", seq_len(pat) == 32 && sr_k == 17u && seq_pg == 1u
-              && px(seq_grid_x(1) + 5u, GRID_CUR_Y) == P_SKY && bar_shows("STEP 18/32  PATTERN ARM G#3-D#4 P01", C_ACC));
+              && px(seq_grid_x(1) + 5u, GRID_CUR_Y) == P_SKY && bar_shows("STEP 18/32  PATTERN ARM E4-B4 P01", C_ACC));
         enc(5, -2);
         check("  K4 back to step 16: the view shows steps 1-16", sr_k == 15u && seq_pg == 0u && px(seq_grid_x(15) + 5u, GRID_CUR_Y) == P_SKY);
         check("  drawn in place = drawn whole", sr_whole_same());
