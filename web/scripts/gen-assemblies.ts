@@ -8,6 +8,7 @@ import { defaultMap, defaultParams, rowDef, STEP_VEL, type ModuleInst, type Poly
 import { defIsEngine } from '../src/engines';
 import { pinsToParams, type AssemblyDef, type NestedDef, type PortRef, type ParamRef } from '../src/assembly';
 import { cardRows } from '../src/preset-cards';
+import { clap, drum, hihat, kick, multi, sharedNoise, snare, type Voice } from './verona-voices';
 
 const OUT = new URL('../src/assemblies/', import.meta.url);
 /** the touch plates of 8 Lire and Elvira 2: the white keys from F3 (the drum kits' rows, gen-presets.ts KIT_NOTES); their
@@ -3637,6 +3638,61 @@ asm('Spokes 6', 'Drums', (b) => {
   b.param('out', scope, 'view', { col: true });
 });
 
+// Verona 1, after the Vermona DRM1 MKIV (#613; its user manual, "The instrument channels", pages 11 to 18). The FM-1
+// version: six of its eight instrument channels, each with every knob of its panel and its own signal flow
+// (scripts/verona-voices.ts): KICK, DRUM 1, MULTI, SNARE, HI HAT 1, CLAP, and each channel's VOLUME. A Drum map row per
+// channel on the white keys from F3, the hi-hat on two (OPEN, and CLOSED with its fixed short decay, as the original's
+// two MIDI notes per hi-hat); a row's velocity is the channel's level, as the DRM1's MIDI velocity. The channels share
+// one white noise source; MASTER is the level of the mixer they all go into. Left out to fit the FM-1 (Verona 1 XL has
+// them, scripts/xl/verona-1.ts): DRUM 2 and HI HAT 2 (each the same as its pair), PAN, the clap's NOISE COLOR, the
+// hi-hat's TRIG switch (its two rows play open and closed), MULTI's PITCH 2 / PITCH 3 off position (here they are the
+// oscillators' coarse tune), and the kick's own noise envelope (its noise lasts as long as TIME).
+asm('Verona 1', 'Drums', (b) => {
+  const map = b.add('drummap', 0, 0, Object.fromEntries(PLATE_KEYS[1].map((n, r) => [`n${r + 1}`, n])));
+  b.module(map).names = ['KICK', 'DRUM 1', 'MULTI', 'SNARE', 'HH OPEN', 'HH CLOSE', 'CLAP', 'ROW 8'];
+  const noise = sharedNoise(b, 0, 1);
+  // MASTER: every channel into the mixer's first input, its level the overall volume
+  const mix = b.add('mixer', 7, 0, { l1: 0.7, l2: 0, l3: 0, l4: 0 });   // (MASTER is the level row, #448)
+  const channels: [string, Voice][] = [
+    ['kick', kick(b, 1, noise, { lean: true })],
+    ['drum 1', drum(b, 2, { coarse: -17, decay: 0.35 })],
+    ['multi', multi(b, 3, { lean: true })],
+    ['snare', snare(b, 4, noise)],
+    ['hi hat', hihat(b, 5, noise)],
+    ['clap', clap(b, 6, noise, { color: false })],
+  ];
+  /** each channel's Drum map row (the hi-hat's open row; its closed row is 6) */
+  const rows = [1, 2, 3, 4, 5, 7];
+  channels.forEach(([name, v], i) => {
+    const r = rows[i];
+    for (const [m, port] of v.gate) b.wire(map, `g${r}`, m, port);
+    b.wire(map, `v${r}`, v.vel[0], v.vel[1]);
+    if (v.closed) {
+      for (const [m, port] of v.closed) b.wire(map, 'g6', m, port);
+      b.wire(map, 'v6', v.closedVel![0], v.closedVel![1]);
+    }
+    b.wire(v.out[0], v.out[1], mix, 'in1');
+    b.nest(name, 1 + i, 0, v.members);
+  });
+  channels.forEach(([, v]) => {
+    const [first, ...also] = v.gate;
+    b.nestInput('gate', first[0], first[1], ...also);
+    if (v.closed) {
+      const [c0, ...cAlso] = v.closed;
+      b.nestInput('closed', c0[0], c0[1], ...cAlso);
+    }
+    b.nestInput('velocity', v.vel[0], v.vel[1]);
+    b.nestOutput('out', v.out[0], v.out[1]);
+  });
+  b.input('keys', map, 'keys');
+  b.output('out', mix, 'out');
+  channels.forEach(([name, v]) => {
+    v.rows.forEach(([label, m, param], k) => b.param(label, m, param, k === 0 ? { head: name, col: true } : {}));
+    b.param('volume', v.out[0], 'gain');
+  });
+  b.param('master', mix, 'l1', { head: 'master', col: true });
+});
+
 // an LFO through a Scale: vibrato (into a pitch input), tremolo (into a VCA's cv with an offset), a filter sweep
 asm('vibrato', 'Utilities', (b) => {
   const lfo = b.add('lfo', 0, 0, { wave: 0, rate: 5, depth: 1 });
@@ -4099,6 +4155,7 @@ const BLURBS: Record<string, string> = {
   'Perun 4': 'Perkons HD-01 type shit',
   'Spokes 6': 'Model:Cycles type shit',
   'Cassia 1': 'CZ-1 type shit',
+  'Verona 1': 'DRM1 MKIV type shit',
   'drift poly': 'Two oscillators per voice, four voices that drift a little out of tune',
   'basic poly': 'The plainest polysynth: a saw, a low pass and an envelope per voice',
   'mono lead': 'One voice through a ladder filter, gliding between legato notes',
