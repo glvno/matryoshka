@@ -368,7 +368,7 @@ The ‹ name › control on an assembly device's card that picks one of its stor
 
 ### Quick start
 
-The card the FM-1 shows over its page after it starts. It lists how to move between devices, pages, presets and patches, and how to open the controls sheet.
+The card the FM-1 shows over its page after it starts. It lists how to move between devices, pages, presets and patches, how to set the tempo, and how to open the controls sheet.
 
 ### Rail
 
@@ -470,6 +470,10 @@ A list of up to 64 entries, each a pattern number and a shift (a transpose of up
 
 The FM-1's page for a patch's songs, opened from the SEQ page by tapping SEL: one row per entry, the song's number, and whether the patch plays its songs or its selected pattern.
 
+### Sound
+
+On the FM-1, a device of a patch that plays the keys by itself, such as an instrument or a drum kit, counted together with the track or Arpeggiator in front of it. Main, a Steps track and an Arpeggiator alone are not sounds. A patch with two sounds can play them together: ENV, then SEL on each.
+
 ### Source
 
 Where a teammate can find the ruling being made: a pull request, an issue, a commit, a document, a meeting note. Never something only one person can open.
@@ -568,7 +572,7 @@ The part of an engine that turns keys into notes for its voices. Allocated voici
 
 ### Wired
 
-The keys' state with no device armed: Main's cables decide where the keys go. Every patch loads wired. The FM-1's footer says `KEYS WIRED`.
+The keys' state with no device armed: Main's cables decide where the keys go. Every patch loads wired. The FM-1's footer says `KEYS WIRED`. The environment says `WIRED` on the rows of the devices the cables reach.
 
 ### XL
 
