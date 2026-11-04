@@ -620,6 +620,24 @@ for (const [name, asm, chord] of [['Basic Poly', 'basic poly', true], ['Drift Po
     return players(validatePatch(structuredClone(x.p), DEFS));
   });
 
+// Verona 1 (after the Vermona DRM1 MKIV, #613): a drum engine on the transport as every factory kit (D-330): Main's keys
+// into PATTERN, PATTERN's keys into the engine's Drum map. A 16-step pattern (X an accent): closed hats on every eighth, an
+// open hat on the last offbeat, the snare and clap on two and four, the drum and the multi in the gaps. After the last
+// factory patch (D-334); a drum engine gets no Arpeggiator (as Spokes 6).
+after.push(() => {
+  const x = around('Verona 1', 'Verona 1');
+  sequenced(x, 'PATTERN', {
+    1: 'X...x...X...x.x.',
+    2: '..........x...x.',
+    3: '...x.......x....',
+    4: '....X.......X...',
+    5: '..............x.',
+    6: 'x.x.x.x.x.x.x...',
+    7: '....x.......x..x',
+  });
+  return x.p;
+});
+
 // ---- write: build and check every patch first, then clear the folder (but the kept file), number them, the 909 Kit
 // after them, then the patches built from it
 const slug = (n: string): string => n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
