@@ -3753,6 +3753,11 @@ int main(void)
             fb_watch_reset();
             lcd_px = 0;
             later(1100);                                    /* the toast's end: its band alone */
+            if (pages_sounds() > 1u) {                      /* (#582: a patch of more sounds says so in the bar for 2 s: its end
+                                                             * is the bar's, apart) */
+                later(1000);
+                continue;
+            }
             end_px += lcd_px;
             end_n++;
             end_max = lcd_px > end_max ? lcd_px : end_max;
