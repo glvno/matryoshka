@@ -7,7 +7,7 @@
 ### FM-1
 
 - **Even loudness:** every factory patch and preset plays at about the same loudness, and none clips.
-- **Level row:** every engine has one (`level`, `volume` or `vol`). Presets you stored yourself for 11 of these engines stay with the patches you stored them on and don't show on the new factory patches.
+- **Level row:** every engine has one (`level`, `volume` or `vol`). Presets you stored yourself for 11 of these engines stay with the patches you stored them on and don't show on the new factory patches yet; a later update brings them over.
 - **Cassia 1:** shorter row names (`wave`, `rate`, `depth`, `delay`, `res`) to make room for `vol`.
 - **Controls sheet:** SEL reads "arm only this", with a new row "ENV then SEL arm several".
 
