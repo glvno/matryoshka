@@ -114,6 +114,10 @@ The form of a patch the engines and the FM-1 run (`deviceView`), in which every 
 
 An editor-only row a module can have (a scope screen, an envelope shape); it is not a parameter.
 
+### Drone
+
+A note of a **Steps track** tied across the loop point back onto its own step: it starts once and holds while the track plays, never starting again (issue #384).
+
 ### Drum map
 
 A module that sends each key to its own row's gate (mapped voicing), as a drum engine picks its drum.

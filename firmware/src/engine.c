@@ -511,8 +511,11 @@ typedef struct {
 } grp_t;
 
 /* a note a Steps track sounds (modules.ts StepsSound): the key it sent, steps to go after the one it is on, samples left;
- * thru: a key played into the track (#134, #139: the note played + 1, 0 = one of its own), sounding until it is let go */
-typedef struct { uint8_t key, left, thru; int32_t cnt; } snd_t;
+ * thru: a key played into the track (#134, #139: the note played + 1, 0 = one of its own), sounding until it is let go;
+ * dr (modules.ts SND_WRAP, #384): bit 7 a note tied across the loop point (the end of a pass does not cut it), bits 0..6 a
+ * drone's step + 1 */
+#define SND_WRAP 0x80u
+typedef struct { uint8_t key, left, thru, dr; int32_t cnt; } snd_t;
 /* a locked row (#524): its track, its parameters (module, parameter; its own first), a lock on it now and its value */
 typedef struct { uint8_t trk, n, on, mod[ENG_LOCK_PAIRS], par[ENG_LOCK_PAIRS]; int32_t v; } lrow_t;
 /* a lock: its track, pattern, step, row (E.lt index) and value (Q16, the row's parameter's units) */
@@ -1324,6 +1327,8 @@ int eng_load(const uint8_t *p, uint32_t len)
             for (j = 0; j < n; j++, at += 4u) {
                 uint32_t w = (uint32_t)rd32(p + at);
                 if ((p[1] < 44u && NW_AT(w) + NW_LEN(w) > TRACK_STEPS) || !NW_VEL(w)) return -3;
+                if (p[1] < 50u)                  /* (bit 31, a tie across the loop point, is format 50's) */
+                    w &= ~ENG_NOTE_WRAP;
                 E.trk_note[E.nnotes + j] = w;
             }
             E.pat_n[t][0] = (uint8_t)n;
@@ -1369,6 +1374,8 @@ int eng_load(const uint8_t *p, uint32_t len)
                         w = (uint32_t)rd32(p + at);
                         at += 4u;
                         if (!NW_VEL(w)) return -3;
+                        if (p[1] < 50u)
+                            w &= ~ENG_NOTE_WRAP;
                     }
                     E.trk_note[E.nnotes + j] = w;
                 }
@@ -3048,16 +3055,14 @@ static int steps_first(uint32_t t, uint32_t k)    /* the pool index of the first
             return (int)(TRK_FIRST(t) + i);
     return -1;
 }
-static int steps_tied(uint32_t t, uint32_t k)     /* no note starts on k and one started before goes on through it */
+static int steps_tied(uint32_t t, uint32_t k, uint32_t len)   /* no note starts on k and one goes on through it */
 {
     uint32_t i;
     if (steps_first(t, k) >= 0)
         return 0;
-    for (i = 0; i < TRK_N(t); i++) {
-        uint32_t w = E.trk_note[TRK_FIRST(t) + i];
-        if (NW_AT(w) < k && k < NW_AT(w) + NW_LEN(w))
+    for (i = 0; i < TRK_N(t); i++)
+        if (eng_note_through(E.trk_note[TRK_FIRST(t) + i], k, len))
             return 1;
-    }
     return 0;
 }
 int eng_steps_get(uint32_t module, uint32_t k)
@@ -3068,42 +3073,58 @@ int eng_steps_get(uint32_t module, uint32_t k)
         return -1;
     t = E.node[module].trk;
     if ((f = steps_first(t, k)) < 0)
-        return steps_tied(t, k) ? 0x80 : 0;
+        return steps_tied(t, k, (uint32_t)eng_steps_len(module)) ? 0x80 : 0;
     w = E.trk_note[f];
     return (int)(1u | (NW_VEL(w) == ACCENT_VEL ? 2u : 0u) | (NW_CODE(w) > 19u ? 19u : NW_CODE(w)) << 2);
 }
-/* step k set as a byte: tie = the notes sounding on the step before go on through it (its own notes give way; nothing
- * sounding: no change); else a tied step is untied (the notes through it end before it), on = a note there if it has none
+/* step k set as a byte: tie = the notes sounding on the step before (the first step: on the last, across the loop point,
+ * #384) go on through it, its own notes give way, a note tied onto its own start is a drone, a drone tied there again
+ * one step (nothing sounding: no change; track.ts setStep); else a tied step is untied (the notes through it end before
+ * it), on = a note there if it has none
  * (C4, the default velocity), its notes get the chance and the accent (full velocity; the accent taken away: the default
  * velocity); off = its notes go */
 void eng_steps_set(uint32_t module, uint32_t k, uint32_t b)
 {
-    uint32_t w[TRACK_NOTES_MAX + 1u], n, i, m, t, code = (b >> 2) & 31u, mine = 0;
+    uint32_t w[TRACK_NOTES_MAX + 1u], n, i, m, t, code = (b >> 2) & 31u, mine = 0, len;
     if (!steps_inst(module) || k >= TRACK_STEPS)
         return;
     t = E.node[module].trk;
     n = trk_copy(t, w);
+    len = (uint32_t)eng_steps_len(module);
     if (code > 19u)
         code = 19u;
     if (b & 0x80u) {
-        int any = 0;
+        uint32_t j = k ? k - 1u : len - 1u, any = 0, drone = 1;
+        uint8_t prev[TRACK_NOTES_MAX + 1u];       /* note i sounds on j, the step before, and not through k */
         for (i = 0; i < n; i++)
-            any |= NW_AT(w[i]) < k && NW_AT(w[i]) + NW_LEN(w[i]) >= k;
+            if ((prev[i] = (uint8_t)((NW_AT(w[i]) == j || eng_note_through(w[i], j, len)) && !eng_note_through(w[i], k, len)))) {
+                any = 1;
+                drone &= NW_AT(w[i]) == k && eng_note_drone(w[i]);
+            }
         if (!any)
             return;
-        for (i = m = 0; i < n; i++)
-            if (NW_AT(w[i]) != k) {
-                if (NW_AT(w[i]) < k && NW_AT(w[i]) + NW_LEN(w[i]) < k + 1u && NW_AT(w[i]) + NW_LEN(w[i]) >= k)
-                    w[i] = (w[i] & ~(63u << 6)) | (k - NW_AT(w[i])) << 6;   /* length k - at + 1 */
-                w[m++] = w[i];
+        for (i = m = 0; i < n; i++) {
+            if (!prev[i]) {
+                if (NW_AT(w[i]) != k)
+                    w[m++] = w[i];
+                continue;
             }
+            if (NW_AT(w[i]) == k)                /* (tied onto its own start: a drone, or one step again) */
+                w[i] = drone ? (w[i] & ~(ENG_NOTE_WRAP | 63u << 6)) : (w[i] | ENG_NOTE_WRAP | 63u << 6);
+            else if (k > NW_AT(w[i])) {
+                if (NW_AT(w[i]) + NW_LEN(w[i]) < k + 1u)
+                    w[i] = (w[i] & ~(63u << 6)) | (k - NW_AT(w[i])) << 6;   /* length k - at + 1 */
+            } else
+                w[i] = eng_note_end_on(w[i], k, len);
+            w[m++] = w[i];
+        }
         (void)trk_put(t, w, m);
         return;
     }
-    if (steps_tied(t, k))
+    if (steps_tied(t, k, len))
         for (i = 0; i < n; i++)
-            if (NW_AT(w[i]) < k && k < NW_AT(w[i]) + NW_LEN(w[i]))
-                w[i] = (w[i] & ~(63u << 6)) | (k - NW_AT(w[i]) - 1u) << 6;    /* length k - at */
+            if (eng_note_through(w[i], k, len))
+                w[i] = eng_note_cut_before(w[i], k, len);
     for (i = m = 0; i < n; i++) {
         if (NW_AT(w[i]) == k) {
             uint32_t vel = NW_VEL(w[i]);
@@ -3168,7 +3189,7 @@ int eng_steps_set_notes(uint32_t module, const uint32_t *notes, uint32_t n)
         return 0;
     for (i = 0; i < n; i++)
         if (NW_VEL(notes[i]))
-            w[m++] = notes[i] & 0x7FFFFFFFu;
+            w[m++] = notes[i];
     return trk_put(E.node[module].trk, w, m);
 }
 /* ------------------------------------------------------------------ patterns and songs (format 48) */
@@ -3227,7 +3248,7 @@ int eng_pattern_set_notes(uint32_t module, uint32_t p, const uint32_t *notes, ui
         return 0;
     for (i = 0; i < n; i++)
         if (NW_VEL(notes[i]))
-            w[m++] = notes[i] & 0x7FFFFFFFu;
+            w[m++] = notes[i];
     return trk_put_at(E.node[module].trk, p, w, m);
 }
 void eng_song_set(uint32_t n)
@@ -3314,7 +3335,7 @@ int eng_patterns_record(uint8_t *out, uint32_t cap)
             }
             for (j = 0; j < E.pat_n[t][k]; j++) {   /* short words when every note fits one (track.ts isShortNote) */
                 uint32_t w = E.trk_note[first + j];
-                sh &= NW_AT(w) < 16u && NW_LEN(w) <= 16u && (NW_VEL(w) == STEP_VEL || NW_VEL(w) == ACCENT_VEL) && !NW_CODE(w);
+                sh &= !(w & ENG_NOTE_WRAP) && NW_AT(w) < 16u && NW_LEN(w) <= 16u && (NW_VEL(w) == STEP_VEL || NW_VEL(w) == ACCENT_VEL) && !NW_CODE(w);
             }
             PUT(E.pat_n[t][k]);
             PUT(E.pat_len[t][k] | (sh ? 0x80u : 0u));
@@ -6098,6 +6119,7 @@ static void steps_start(uint32_t t, uint32_t node, uint32_t key, uint32_t vel, u
     E.trk_snd[t][j].key = (uint8_t)key;
     E.trk_snd[t][j].left = (uint8_t)left;
     E.trk_snd[t][j].thru = 0;
+    E.trk_snd[t][j].dr = 0;
     E.trk_snd[t][j].cnt = cnt;
     steps_key(node, key | 0x80u, vel);
 }
@@ -6208,6 +6230,23 @@ static void steps_thru(const node_t *nd, inst_t *it, int32_t len, int ext, int32
 /* step k of a Steps module comes up: the notes sounding go on to their next step, then the notes starting on it sound
  * (unless their chance says no, it was recorded ahead (skip) or the track is muted); tr: the transpose input (Q16 octaves,
  * whole semitones for the keys) */
+/* the key note word w sounds on track t (its note, a song entry's shift, the transpose's semitones) */
+static uint32_t steps_key_of(uint32_t t, uint32_t w, int32_t semis)
+{
+    return (uint32_t)clampi(clampi((int32_t)NW_NOTE(w) + E.trk_shift[t], 0, 127) + semis, 0, 127);
+}
+/* a drone (#384) holds while its note is still a drone of the pattern playing, at the key it sounds (modules.ts lives) */
+static int steps_drone_lives(uint32_t t, const snd_t *x, int32_t semis)
+{
+    uint32_t i, end = (uint32_t)TRK_FIRST(t) + TRK_N(t);
+    for (i = TRK_FIRST(t); i < end && i < ENG_MAX_NOTES; i++) {
+        uint32_t w = E.trk_note[i];
+        if (NW_AT(w) + 1u == (x->dr & 0x7Fu) && eng_note_drone(w) && steps_key_of(t, w, semis) == x->key)
+            return 1;
+    }
+    return 0;
+}
+
 static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int32_t gate, int32_t sl, int32_t tr)
 {
     uint32_t t = nd->trk, node = (uint32_t)(nd - E.node), i, j = 0, end;
@@ -6216,7 +6255,10 @@ static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int
     for (i = 0; i < E.trk_nsnd[t]; i++) {
         snd_t *x = &E.trk_snd[t][i];
         if (x->left > 0 && x->cnt > 0 && !it->s.stp.mute) {
-            x->left--;
+            if (!(x->dr & 0x7Fu))
+                x->left--;
+            else if (!steps_drone_lives(t, x, semis))
+                x->left = 0;
             x->cnt = steps_hold(x->left, gate, sl);
         }
     }
@@ -6241,12 +6283,24 @@ static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int
             continue;
         note = clampi((int32_t)NW_NOTE(w) + E.trk_shift[t], 0, 127);   /* (a song entry's shift) */
         key = clampi(note + semis, 0, 127);
-        {
+        if (eng_note_drone(w)) {                 /* (a drone tied onto itself: it goes on, nothing starts) */
+            uint32_t q;
+            for (q = 0; q < E.trk_nsnd[t]; q++)
+                if (E.trk_snd[t][q].dr == (SND_WRAP | (uint32_t)(k + 1)) && E.trk_snd[t][q].key == (uint32_t)key && E.trk_snd[t][q].cnt > 0)
+                    break;
+            if (q < E.trk_nsnd[t])
+                continue;
+            left = 1u;
+        } else if (w & ENG_NOTE_WRAP)            /* (tied across the loop point: its length counts on into the next pass) */
+            left = NW_LEN(w) - 1u;
+        else {
             int32_t dir = clampi(round_q16(EF(it, STEPS_P_DIR)), 0, 3);
             uint32_t remaining = (uint32_t)clampi(steps_cycle(len, dir) - it->s.stp.visit, 1, 126);
             left = (NW_LEN(w) < remaining ? NW_LEN(w) : remaining) - 1u;
         }
         steps_start(t, node, (uint32_t)key, NW_VEL(w), left, steps_hold(left, gate, sl));
+        if (w & ENG_NOTE_WRAP)
+            E.trk_snd[t][E.trk_nsnd[t] - 1u].dr = (uint8_t)(eng_note_drone(w) ? SND_WRAP | (uint32_t)(k + 1) : SND_WRAP);
         it->s.stp.pitch = steps_pitch((uint32_t)note);
         it->s.stp.vel = (int32_t)((NW_VEL(w) << 16) / 127u);
         E.trk_last[t] = (uint8_t)NW_NOTE(w);
@@ -6387,7 +6441,7 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
                 uint32_t j;
                 for (j = 0; j < E.trk_nsnd[t]; j++) {
                     snd_t *x = &E.trk_snd[t][j];
-                    if (!x->thru && x->left > 0 && x->cnt > 0) {
+                    if (!x->thru && !x->dr && x->left > 0 && x->cnt > 0) {
                         x->left = 0;
                         x->cnt = 1;
                     }
