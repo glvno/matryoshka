@@ -13,7 +13,7 @@ static volatile uint32_t eng_shed_count;
 static int focus_dev = -1, focus_pg = -1, param_now = 0;
 static void m1_focus_now(uint32_t d, uint32_t g) { focus_dev = (int)d; focus_pg = (int)g; }
 static void m1_param_now(uint32_t mod, uint32_t par, int32_t v) { (void)mod; (void)par; (void)v; param_now++; }
-static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v) { (void)mod; (void)par; (void)v; }
+static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v);   /* (below: into pv_bin, as proto.c's into m1_cur) */
 static void m1_panel_on(uint32_t mask) { (void)mask; }
 static void m1_patch_bypass(uint32_t mod, int on) { (void)mod; (void)on; }
 /* KEYS_NOW (#549): each key edge panel_key took, with the keys and buttons held then (report_test.h) */
@@ -88,6 +88,26 @@ static void settings_store(void) { settings_stored++; }
 static int poly_row_set(uint32_t mod, uint32_t field, int32_t v)
 {
     return poly_patch_set(pv_bin, pv_len, mod, field, v, eng_load);
+}
+/* a row's value into the running binary, as proto.c's m1_patch_param does on the FM-1: a poly row's reload (above) then
+ * keeps the rows a preset set before it (#448: Cassia 1's voices row comes after some of its rows) */
+static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
+{
+    uint32_t at = eng_records_at(pv_bin, pv_len), i;
+    if (!at || mod >= pv_bin[2])
+        return;
+    for (i = 0; i < mod; i++) {
+        if (at >= pv_len || (pv_bin[at] & 0x7Fu) >= N_TYPES)
+            return;
+        at += eng_record_size(&DEFS[pv_bin[at] & 0x7Fu], pv_bin[1]);
+    }
+    if (at >= pv_len || (pv_bin[at] & 0x7Fu) >= N_TYPES || par >= eng_npar(&DEFS[pv_bin[at] & 0x7Fu], pv_bin[1]))
+        return;
+    at += 1u + 4u * par;
+    pv_bin[at] = (uint8_t)v;
+    pv_bin[at + 1u] = (uint8_t)(v >> 8);
+    pv_bin[at + 2u] = (uint8_t)(v >> 16);
+    pv_bin[at + 3u] = (uint8_t)((uint32_t)v >> 24);
 }
 
 #define ROWS_Y (LK_HH + 4u)                            /* the device page's first bar */
@@ -493,15 +513,15 @@ int main(void)
     check("old-format edits cannot add new allocation settings", poly_row_set(mod, ENG_POLY_STEAL, 0) == -1 && poly_row_set(mod, ENG_POLY_ASSIGN, 3) == -1 && pv_bin[9] == 0 && pv_bin[11] == 0);
     fm1_ms = 10000;
     host_ps_init();
-    if (load("CASSIA 1") == 0) {                        /* #485: Cassia 1's 118 rows stored whole; one of 88 loads what it has */
+    if (load("CASSIA 1") == 0) {                        /* #485: Cassia 1's 119 rows stored whole; one of 88 loads what it has */
         uint32_t d, i, n, st, nv, rows;
         int at, same = 1, kept = 1;
         static int32_t full[PS_MAXV], init[PS_MAXV], one[PS_MAXV];
         char nm[17];
         pages_ensure();
-        for (d = 0; d < pg_ndev && pg_dev[d].nrows != 118u; d++)
+        for (d = 0; d < pg_ndev && pg_dev[d].nrows != 119u; d++)
             ;
-        check("(Cassia 1's device: 118 rows)", d < pg_ndev);
+        check("(Cassia 1's device: 119 rows)", d < pg_ndev);
         if (d < pg_ndev) {
             rows = pg_dev[d].nrows;
             (void)dp_list(d);
@@ -518,7 +538,7 @@ int main(void)
                 same = 0;
             for (i = 0; same && i < rows; i++)
                 same = ps_vbuf[i] == full[i];
-            check("ENV held + SAVE on Cassia 1: all 118 rows stored, in two slots", nv == rows && same && ps_count(PS_LIVE) == 2u);
+            check("ENV held + SAVE on Cassia 1: all 119 rows stored, in two slots", nv == rows && same && ps_count(PS_LIVE) == 2u);
             (void)dp_load(d, 0);                        /* (Init's values, then a preset of 88 as 1.8.1 stored them) */
             nv = dp_values(d);
             for (i = 0; i < nv; i++)
@@ -538,7 +558,7 @@ int main(void)
                 if (i >= 88u && pr_vals[i] != init[i])
                     kept = 0, printf("      (row %u: %d, Init's %d)\n", i, pr_vals[i], init[i]);
             }
-            check("  its 88 rows set in order, the other 30 keep their values", same && kept);
+            check("  its 88 rows set in order, the other 31 keep their values", same && kept);
             check("  the bar: STORED SHORT: SEE EDITOR (24 characters)", !strcmp(msg_text, "STORED SHORT: SEE EDITOR"));
             later(1500);
         }

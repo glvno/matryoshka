@@ -2,6 +2,7 @@
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+# The level row (mixer / volume) gen-presets sets in every preset, by loudness (#448): leave it to it.
 #
 # voice
 #   voices = 5                         1..16
@@ -19,6 +20,7 @@
 #   A level = 0.55                     0..1
 #   B level = 0.45                     0..1
 #   noise = 0                          0..1
+#   volume = 0.6                       0..2
 #   out: a screen, not a value
 # filter
 #   cutoff = 600 Hz                    20..16000 Hz
@@ -39,9 +41,9 @@
 #   amp / r = 0.4 s                    0.001..8 s
 # mod
 #   pmod env→A = 0                     -4..4
-#   pmod B→A = 0                       0..8
+#   pmod B→A = 0 rad                   0..16 rad
 #   lfo rate = 5 Hz                    0.02..40 Hz
-#   lfo wave = triangle                sine, triangle, saw, square, S&H
+#   lfo wave = triangle                sine, triangle, saw, square, S&H, random
 #   vibrato = 0.24                     -4..4
 #   lfo / osc A: a screen, not a value
 
@@ -70,6 +72,7 @@ preset: Sync Lead
   amp / r = 0.3 s
   pmod env→A = 2.5
   vibrato = 0.1
+  volume = 0.6
 
 # Two detuned saws, a slow filter attack: the brass swell.
 preset: Poly Brass
@@ -91,6 +94,7 @@ preset: Poly Brass
   amp / s = 0.9
   amp / r = 0.35 s
   vibrato = 0.08
+  volume = 0.47
 
 # Slow saws with light vibrato and long envelopes.
 preset: Vintage Strings
@@ -114,6 +118,7 @@ preset: Vintage Strings
   amp / r = 1.4 s
   lfo rate = 5.5 Hz
   vibrato = 0.2
+  volume = 0.42
 
 # Poly-mod FM: osc B, a 12th up, into osc A's phase; sines through an open filter with a percussive decay.
 preset: Poly-Mod Bell
@@ -140,6 +145,7 @@ preset: Poly-Mod Bell
   amp / r = 1.5 s
   pmod B→A = 3
   vibrato = 0
+  volume = 0.96
 
 # All five voices in unison: a pulse and a saw an octave down through a snappy low filter.
 preset: Unison Bass
@@ -165,3 +171,4 @@ preset: Unison Bass
   amp / s = 0.7
   amp / r = 0.2 s
   vibrato = 0
+  volume = 0.38

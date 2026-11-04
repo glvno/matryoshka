@@ -190,7 +190,7 @@
         "ratio": 3,
         "attack": 0.005,
         "release": 0.15,
-        "gain": 3
+        "gain": 2
       },
       "att": [
         1,

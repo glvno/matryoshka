@@ -1,1 +1,79 @@
-{}
+{
+ "8 Lire": {
+  "out / vol": 0.7
+ },
+ "Algo Four": {
+  "voice / stack 1→2 mix": 0.7,
+  "voice / stack 3→4 mix": 0.7
+ },
+ "basic poly": {
+  "level": 0.62
+ },
+ "Briefcase 3": {
+  "reverb / level": 0.67
+ },
+ "Canvas": {
+  "output / chan a": 1.76,
+  "output / chan b": 0
+ },
+ "Cassia 1": {
+  "voice / vol": 0.5
+ },
+ "drift poly": {
+  "level": 1.33
+ },
+ "drum kit": {
+  "drums / level": 0.67
+ },
+ "Elvira 2": {
+  "ouch / vol": 0.79
+ },
+ "Expander S": {
+  "output / level": 0.41
+ },
+ "Hera 6": {
+  "env / vca": 1
+ },
+ "Io 4": {
+  "vca / level": 0.56
+ },
+ "Meridian 8": {
+  "out / main": 0.81
+ },
+ "mono lead": {
+  "level": 1.19
+ },
+ "Monolith D": {
+  "output / volume": 0.44
+ },
+ "Oracle V": {
+  "mixer / volume": 0.6
+ },
+ "Perun 4": {
+  "master / master": 2
+ },
+ "Sallen 20": {
+  "output / volume": 0.75
+ },
+ "Scrounge": {
+  "out / vol a": 0.7,
+  "out / vol b": 0.7
+ },
+ "Silver Box": {
+  "tone / volume": 1
+ },
+ "Spokes 6": {
+  "master / master": 0.81
+ },
+ "supersaw stack": {
+  "level": 0.99
+ },
+ "Vernon 100": {
+  "output mixer / amp shaper": 0.12,
+  "output mixer / osc 3/ext": 0
+ },
+ "Wanderer": {
+  "filters · vca / vca level": 0.96,
+  "filters · vca / gain": 0
+ }
+}

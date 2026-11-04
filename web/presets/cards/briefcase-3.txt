@@ -2,6 +2,7 @@
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+# The level row (reverb / level) gen-presets sets in every preset, by loudness (#448): leave it to it.
 #
 # osc 1
 #   osc 1 / frequency = 0              -4..4
@@ -35,7 +36,7 @@
 #   trapezoid = 1                      0..1
 # reverb
 #   mix = 0.25                         0..1
-#   reverb / level = 1                 0..1
+#   reverb / level = 0.67              0..1
 # output
 #   filter 1 = 0.15                    0..1
 #   level 1 = 0.7                      -4..4
@@ -76,6 +77,7 @@ preset: Space Drone
   mix = 0.6
   filter 1 = 0.1
   filter 2 = 0.1
+  reverb / level = 1
 
 # Oscillator 2 at an inharmonic interval, the ring modulator up, a sharp trapezoid: a struck metal clang.
 preset: Ring Mod Clang
@@ -92,6 +94,7 @@ preset: Ring Mod Clang
   on = 0.05 s
   decay = 2 s
   mix = 0.45
+  reverb / level = 0.48
 
 # The filter past self-oscillation, pinged by a noise burst and tracking the keys: a resonant ping.
 preset: Resonant Ping
@@ -107,6 +110,7 @@ preset: Resonant Ping
   on = 0.02 s
   decay = 0.6 s
   mix = 0.5
+  reverb / level = 1
 
 # Noise alone through a resonant filter that oscillator 3 rocks slowly, long rise and fall: surf.
 preset: Sea Noise
@@ -124,6 +128,7 @@ preset: Sea Noise
   on = 3 s
   decay = 5 s
   mix = 0.55
+  reverb / level = 1
 
 # Both oscillators in unison, oscillator 3 as a 6 Hz vibrato, the trapezoid opening the filter: a buzzing lead.
 preset: Buzz Lead
@@ -141,3 +146,4 @@ preset: Buzz Lead
   on = 0.3 s
   decay = 0.8 s
   mix = 0.2
+  reverb / level = 0.46

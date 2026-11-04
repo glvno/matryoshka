@@ -158,7 +158,7 @@
       "params": {
         "drive": 1.5,
         "mode": 0,
-        "level": 0.8,
+        "level": 0.7,
         "os": 0,
         "sym": 0,
         "stages": 1
@@ -188,7 +188,7 @@
       "params": {
         "drive": 1.5,
         "mode": 0,
-        "level": 0.8,
+        "level": 0.7,
         "os": 0,
         "sym": 0,
         "stages": 1

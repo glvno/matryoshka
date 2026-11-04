@@ -20,7 +20,7 @@
     },
     "targets": {
      "arp": {
-      "module": 41
+      "module": 42
      }
     }
    }
@@ -1134,11 +1134,49 @@
    "x": 4240,
    "y": 20,
    "params": {
-    "level": 0.87
+    "level": 0.73
    }
   },
   {
    "id": 41,
+   "type": "steps",
+   "x": 20,
+   "y": 5680,
+   "params": {
+    "len": 16,
+    "rate": 4,
+    "swing": 50,
+    "gate": 0.25,
+    "dir": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "len"
+    ],
+    "p2": [
+     "rate"
+    ],
+    "k1": [
+     "len"
+    ],
+    "k2": [
+     "rate"
+    ],
+    "k3": [
+     "swing"
+    ],
+    "k4": [
+     "gate"
+    ]
+   },
+   "name": "PATTERN"
+  },
+  {
+   "id": 42,
    "type": "arp",
    "x": 4240,
    "y": 5680,
@@ -1915,7 +1953,17 @@
   },
   {
    "from": {
+    "module": 1,
+    "port": "keys"
+   },
+   "to": {
     "module": 41,
+    "port": "keys"
+   }
+  },
+  {
+   "from": {
+    "module": 42,
     "port": "keys"
    },
    "to": {
@@ -1925,11 +1973,11 @@
   },
   {
    "from": {
-    "module": 1,
+    "module": 41,
     "port": "keys"
    },
    "to": {
-    "module": 41,
+    "module": 42,
     "port": "keys"
    }
   }
@@ -2101,7 +2149,7 @@
     {
      "module": 22,
      "param": "a",
-     "label": "vib delay"
+     "label": "delay"
     },
     {
      "module": 20,
@@ -2705,28 +2753,28 @@
     {
      "module": 39,
      "param": "l1",
-     "label": "volume"
+     "label": "vol"
     },
     {
      "module": 3,
      "param": "wave",
-     "label": "vib wave",
+     "label": "wave",
      "head": "vibrato"
     },
     {
      "module": 3,
      "param": "rate",
-     "label": "vib rate"
+     "label": "rate"
     },
     {
      "module": 4,
      "param": "gain",
-     "label": "vib depth"
+     "label": "depth"
     },
     {
      "module": 22,
      "param": "a",
-     "label": "vib delay"
+     "label": "delay"
     },
     {
      "module": 20,
@@ -2895,7 +2943,7 @@
     {
      "module": 13,
      "param": "value",
-     "label": "res range"
+     "label": "res"
     },
     {
      "module": 27,
@@ -3126,7 +3174,7 @@
     {
      "module": 16,
      "param": "value",
-     "label": "res range"
+     "label": "res"
     },
     {
      "module": 38,

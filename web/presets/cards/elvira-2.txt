@@ -2,6 +2,7 @@
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+# The level row (ouch / vol) gen-presets sets in every preset, by loudness (#448): leave it to it.
 #
 # voice 1
 #   voice 1 / tune = -15 st            -48..48 st
@@ -49,12 +50,12 @@
 # ouch
 #   bite = 1                           1..32
 #   choke = 16000 Hz                   20..16000 Hz
-#   vol = 0.8                          0..1
+#   vol = 0.79                         0..1
 # lfos
 #   lfo 1 freq = 0.2 Hz                0.02..40 Hz
 #   lfo 1 → cutoff = 0                 -4..4
 #   lfo 2 freq = 3 Hz                  0.02..40 Hz
-#   lfo 2 wav = saw                    sine, triangle, saw, square, S&H
+#   lfo 2 wav = saw                    sine, triangle, saw, square, S&H, random
 #   lfo 2 → bite = 0                   -4..4
 #   out: a screen, not a value
 
@@ -95,6 +96,7 @@ fdbk = 0.35
 mix = 0.25
 lfo 1 freq = 0.08 Hz
 lfo 1 → cutoff = 0.4
+  vol = 0.69
 
 preset: Deep Drone
 # Self-running dark ambient: all four drones up on C2 / G2 / C3 / G3, a closed ladder breathing slowly.
@@ -123,7 +125,7 @@ fdbk = 0.6
 mix = 0.4
 bite = 2
 choke = 4000 Hz
-vol = 0.7
+  vol = 0.61
 lfo 1 freq = 0.05 Hz
 lfo 1 → cutoff = 0.8
 
@@ -165,6 +167,7 @@ choke = 9000 Hz
 lfo 2 freq = 0.4 Hz
 lfo 2 wav = S&H
 lfo 2 → bite = 0.5
+  vol = 0.42
 
 preset: Ouch Rhythm
 # Harsh and rhythmic from the keys: short plucks on a minor-seventh cluster, heavy crush, the ouch drive pulsed by a square LFO into a short feeding-back delay.
@@ -199,7 +202,7 @@ fdbk = 0.75
 mix = 0.5
 bite = 12
 choke = 5000 Hz
-vol = 0.6
+  vol = 0.51
 lfo 2 freq = 2.5 Hz
 lfo 2 wav = square
 lfo 2 → bite = 2
@@ -233,6 +236,6 @@ fdbk = 0.7
 mix = 0.45
 bite = 4
 choke = 7000 Hz
-vol = 0.65
+  vol = 0.35
 lfo 1 freq = 0.03 Hz
 lfo 1 → cutoff = 1.2

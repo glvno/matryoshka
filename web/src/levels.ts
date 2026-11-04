@@ -7,7 +7,7 @@
 // body (a bell, a pluck) reaches only what the cap allows. Each engine's level rows (LEVEL_ROWS, after any drive) carry
 // its presets' levels; the patch's Output carries its Init's. scripts/factory-build.ts `loudness` sets both;
 // levels-*.test.ts keeps them so.
-import { toDef, type AssemblyInst } from './assembly';
+import { allModules, toDef, type AssemblyInst } from './assembly';
 import { applyPreset, currentValues, presetsOf } from './device-presets';
 import { instIsEngine } from './engines';
 import { HEADROOM, patterns, peakOfPlay, renderPlay, voicesIn, ways, type Play } from './headroom';
@@ -40,7 +40,7 @@ export const LEVEL_ROWS: Record<string, string[]> = {
   'basic poly': ['level'],
   'Briefcase 3': ['reverb / level'],
   Canvas: ['output / chan a', 'output / chan b'],
-  'Cassia 1': ['voice / volume'],
+  'Cassia 1': ['voice / vol'],
   'drift poly': ['level'],
   'drum kit': ['drums / level'],
   'Elvira 2': ['ouch / vol'],
@@ -50,7 +50,7 @@ export const LEVEL_ROWS: Record<string, string[]> = {
   'Meridian 8': ['out / main'],
   'mono lead': ['level'],
   'Monolith D': ['output / volume'],
-  'Oracle V': ['amp / volume'],
+  'Oracle V': ['mixer / volume'],
   'Perun 4': ['master / master'],
   'Sallen 20': ['output / volume'],
   Scrounge: ['out / vol a', 'out / vol b'],
@@ -77,10 +77,11 @@ export function levelRows(p: Patch, a: AssemblyInst): LevelRow[] {
   });
 }
 
-/** a level row's value moved by a gain factor (in dB for a row in dB), rounded to its step and kept in its range */
-export function scaledRow(r: LevelRow, v: number, k: number): number {
+/** a level row's value moved by a gain factor (in dB for a row in dB), rounded to its step (down, with `down`: the
+ * peak cap binds) and kept in its range */
+export function scaledRow(r: LevelRow, v: number, k: number, down = false): number {
   const raw = r.db ? v + 20 * Math.log10(k) : v * k;
-  const stepped = Math.round(raw / r.step) * r.step;
+  const stepped = (down ? Math.floor(raw / r.step + 1e-6) : Math.round(raw / r.step)) * r.step;
   return +Math.min(r.max, Math.max(r.min, stepped)).toFixed(4);
 }
 
@@ -117,9 +118,36 @@ const lufs = (w: Play, secs: number): number => {
   return integratedLoudness(l, r, DEVICE_SR);
 };
 
-/** a patch's loudness and peak, played the ways above, at its Output level */
+/** a patch's loudness and peak, played the ways above, at its Output level (rendered at an Output of 0.1 and scaled:
+ * the engine clamps its output at 1, which would hide a peak over it) */
 export function measure(p: Patch): Loudness {
-  const peak = Math.max(...ways(p, '', voicesIn(p, p.modules.map((m) => m.id))).flatMap((w) => [DEVICE_SR, 48000].map((sr) => peakOfPlay(w, PEAK_SECS, sr))));
+  const out = p.modules.find((m) => m.type === 'output');
+  const lv = out?.params.level ?? 1;
+  if (out && lv !== MEASURE_AT) {
+    const q = structuredClone(p);
+    q.modules.find((m) => m.type === 'output')!.params.level = MEASURE_AT;
+    const m = measureAsIs(q);
+    const k = lv / MEASURE_AT;
+    return { single: m.single + 20 * Math.log10(k), chord: m.chord === null ? null : m.chord + 20 * Math.log10(k), peak: m.peak * k };
+  }
+  return measureAsIs(p);
+}
+/** the engines whose every preset must also hold eight keys at eight voices under the peak cap, whatever its own voices
+ * (drift-poly-headroom.test.ts, #413) */
+export const EIGHT_VOICES = new Set(['drift poly']);
+/** the Output's level a sound is measured at */
+const MEASURE_AT = 0.1;
+
+function measureAsIs(p: Patch): Loudness {
+  const all = ways(p, '', voicesIn(p, p.modules.map((m) => m.id)));
+  // (an engine listed in EIGHT_VOICES also with its Voicing at eight voices and eight keys held, as its test plays it)
+  for (const a of (p.assemblies ?? []).filter((x) => EIGHT_VOICES.has(x.name ?? ''))) {
+    const q = structuredClone(p);
+    const ids = new Set(allModules(q, (q.assemblies ?? []).find((x) => x.id === a.id)!));
+    for (const m of q.modules) if (m.type === 'alloc' && ids.has(m.id)) m.params.voices = 8;
+    all.push(...ways(q, '', 8).slice(0, 1));
+  }
+  const peak = Math.max(...all.flatMap((w) => [DEVICE_SR, 48000].map((sr) => peakOfPlay(w, PEAK_SECS, sr))));
   if (playsPattern(p)) return { single: lufs({ label: '', patch: p, notes: [], run: true }, PATTERN_SECS), chord: null, peak };
   const { key, chord } = keysOf(p);
   return { single: lufs({ label: '', patch: p, notes: key, run: false }, HOLD_SECS), chord: lufs({ label: '', patch: p, notes: chord, run: false }, HOLD_SECS), peak };
@@ -131,6 +159,9 @@ export function gainFor(m: Loudness): number {
   const db = Math.min(LOUDNESS - m.single, m.chord === null ? Infinity : CHORD_LOUDNESS - m.chord);
   return Math.min(Math.pow(10, db / 20), HEADROOM / Math.max(m.peak, 1e-9));
 }
+
+/** whether the peak cap is what binds a sound's gain */
+export const peakBound = (m: Loudness): boolean => HEADROOM / Math.max(m.peak, 1e-9) <= Math.pow(10, Math.min(LOUDNESS - m.single, m.chord === null ? Infinity : CHORD_LOUDNESS - m.chord) / 20);
 
 /** the loudness a sound lands at under the rule, in LUFS: LOUDNESS, or quieter where the chord or the peak cap binds */
 export const ruled = (m: Loudness): number => m.single + 20 * Math.log10(gainFor(m));
@@ -157,4 +188,27 @@ export function cases(p: Patch): Case[] {
     }
   });
   return out;
+}
+
+/** the factory sounds that land under their rule because their level rows run out of range (a row at its top with the
+ * Output at 1), as "patch / preset": how many dB short they land, measured (the owner, 2026-11-04: they stay under) */
+export const SHORT: Record<string, number> = {
+  'Briefcase 3 / Resonant Ping': 14.1,
+  'Briefcase 3 / Sea Noise': 10.9,
+  'Briefcase 3 / Space Drone': 6.0,
+  'Drift Poly / Drift Bass': 5.6,
+  'Vernon 100 / Metal Clang': 9.5,
+};
+
+/** the factory sounds of these patches that land off their rule by more than LOUDNESS_TOLERANCE (a SHORT one: off its
+ * listed shortfall by more), as "patch / preset: n dB" (the gain it would need) */
+export function offRule(patches: [string, () => Patch][]): string[] {
+  const off: string[] = [];
+  for (const [name, make] of patches)
+    for (const c of cases(make())) {
+      const db = 20 * Math.log10(gainFor(measure(c.patch)));
+      const id = `${name} / ${c.preset}`;
+      if (Math.abs(db - (SHORT[id] ?? 0)) > LOUDNESS_TOLERANCE) off.push(`${id}: ${db >= 0 ? '+' : ''}${db.toFixed(1)} dB`);
+    }
+  return off;
 }

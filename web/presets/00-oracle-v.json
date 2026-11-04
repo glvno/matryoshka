@@ -922,6 +922,11 @@
      "label": "B level"
     },
     {
+     "module": 15,
+     "param": "gain",
+     "label": "volume"
+    },
+    {
      "module": 13,
      "param": "cutoff",
      "label": "cutoff"
@@ -990,11 +995,6 @@
      "module": 14,
      "param": "r",
      "label": "amp r"
-    },
-    {
-     "module": 15,
-     "param": "gain",
-     "label": "volume"
     },
     {
      "module": 10,
@@ -1155,6 +1155,11 @@
      "label": "noise"
     },
     {
+     "module": 15,
+     "param": "gain",
+     "label": "volume"
+    },
+    {
      "module": 17,
      "param": "view",
      "label": "out",
@@ -1238,11 +1243,6 @@
      "module": 14,
      "param": "r",
      "label": "r"
-    },
-    {
-     "module": 15,
-     "param": "gain",
-     "label": "volume"
     },
     {
      "module": 10,

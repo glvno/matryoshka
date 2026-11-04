@@ -190,7 +190,7 @@
    "params": {
     "drive": 1,
     "mode": 0,
-    "level": 0.8,
+    "level": 0.81,
     "os": 0,
     "sym": 0,
     "stages": 1
@@ -1418,7 +1418,7 @@
    "x": 3280,
    "y": 20,
    "params": {
-    "level": 0.56
+    "level": 0.35
    }
   },
   {

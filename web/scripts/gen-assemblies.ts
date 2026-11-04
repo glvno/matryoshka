@@ -880,6 +880,7 @@ asm('Oracle V', 'Voices', (b) => {
   b.param('A level', oscA, 'level', { head: 'mixer' });
   b.param('B level', oscB, 'level');
   b.param('noise', nz, 'level');
+  b.param('volume', vca, 'gain'); // the Prophet-5's VOLUME, the level row (#448): each voice's VCA, set by gen-presets for loudness
   b.param('out', aScope, 'view', { span: 3 }); // the voice sum across the card's foot
   b.param('cutoff', flt, 'cutoff', { col: true, head: 'filter' });
   b.param('res', flt, 'res');
@@ -890,7 +891,6 @@ asm('Oracle V', 'Voices', (b) => {
   b.param('filter', fScope, 'view');
   b.param('amp env', aenv, 'view', { col: true, head: 'amp' });
   for (const q of ['a', 'd', 's', 'r']) b.param(q, aenv, q, { inner: `amp ${q}` });
-  b.param('volume', vca, 'gain'); // the Prophet-5's VOLUME, the level row (#448): each voice's VCA, set by gen-presets for loudness
   b.param('pmod env→A', polyEnv, 'gain', { head: 'mod' });
   b.param('pmod B→A', oscA, 'pm');
   b.param('lfo rate', lfo, 'rate');
@@ -1107,7 +1107,9 @@ asm('Silver Box', 'Voices', (b) => {
   const res = b.add('macro', 4, 1, { value: 0.75 });
   const flt = b.add('ladder', 4, 0, { cutoff: 260, res: 0, cvamt: 1, drive: 1 }, { p1: 'res' });
   const aenv = b.add('adsr', 5, 1, { a: 0.002, d: 2.5, s: 0, r: 0.02 });
-  const vca = b.add('vca', 5, 0, { gain: 0.8 }, { p1: 'gain', att: [0.25, 1] });
+  // (twice the level it had, the accent's share as well, #448: the volume row after it, a Mixer's 0..1, then has the room
+  // to bring the quiet presets to the loudness rule)
+  const vca = b.add('vca', 5, 0, { gain: 1.6 }, { p1: 'gain', att: [0.5, 1] });
   const waveform = b.add('select', 1, -1, { count: 2, pos: 1, v1: 0, v2: 1 });
   b.wire(waveform, 'out', osc, 'p1'); // saw at the base; the second position adds up to the square at the range's top
   const tune = b.add('macro', 1, 2, { value: 0.5 });
@@ -1238,7 +1240,7 @@ asm('Hera 6', 'Voices', (b) => {
 //    wave 4, so position k plays the k-th wave); `wave 2` a Selector of off and seven waves (saw .. reso 2: a Selector
 //    has eight positions, so reso 3 is left out of wave 2 only), through the pm input routed to `wave2` (the position's
 //    value (k - 5) / 8 on its wave2 4, so position k is wave2 k - 1: 0 off, else that wave on every other cycle; the
-//    oscillator's own pm depth is 0, so pm does no phase modulation); `res range` an Offset through p2 (x 1/5, so the
+//    oscillator's own pm depth is 0, so pm does no phase modulation); `res` (the resonance range) an Offset through p2 (x 1/5, so the
 //    Offset is the range in octaves). Being signals, they let 1+1' hand line 1's settings to line 2. Init has wave 2 off
 //    on both lines and line 2 on reso 1 (#430).
 //  - the DCW: the line's DCW envelope plus key follow, velocity and aftertouch, summed into the PD Osc's dcw input.
@@ -1246,7 +1248,7 @@ asm('Hera 6', 'Voices', (b) => {
 // line 1's waveforms, range and DCW / DCA envelopes at line 2's pitch (`coarse`, `fine`): line 1'. The select's gate 3
 // moves a Crossfader per setting (0 line 2's own, 1 line 1's). Line 2's modulation (`mod`, a Selector, as the CZ's one
 // setting): 1 off, 2 ring (times line 1), 3 noise (times the noise); it picks a VCA's cv, 1 or the modulator. The DCO
-// envelope moves both lines' pitch by `depth` octaves; vibrato's wave (the CZ's saw down is a negative `vib depth`), rate,
+// envelope moves both lines' pitch by `depth` octaves; vibrato's wave (the CZ's saw down is a negative vibrato `depth`), rate,
 // depth in semitones (the LFO plays at 1/12: a step of the row is a cent, a click on the FM-1 8 cents) and delay; key
 // follow lowers the DCW and DCA levels from C4; velocity opens the DCA (and the DCW by `vel dcw`); aftertouch reaches
 // DCW, DCA and vibrato depth (the `at` input).
@@ -1266,7 +1268,7 @@ const CZ_STEPS = (s: [number, number][], sus: number, end: number): Record<strin
 asm('Cassia 1', 'Voices', (b) => {
   const part = b.add('alloc', 0, 4, { voices: 2 });
   const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 5.5, depth: 1 / 12 });
-  const vibS = b.add('scale', 0, 0.5, { gain: 0, offset: 0 }); // vib depth in semitones (negative: the CZ's saw down)
+  const vibS = b.add('scale', 0, 0.5, { gain: 0, offset: 0 }); // the vibrato's depth in semitones (negative: the CZ's saw down)
   const nz = b.add('noise', 0, 1, { level: 1, color: 0 });
   const scope = b.add('scope', 12, 0, { time: 16 });
   const atVib = b.add('scale', 0, 2.5, { gain: 0, offset: 0 });
@@ -1396,11 +1398,11 @@ asm('Cassia 1', 'Voices', (b) => {
 
   b.param('voices', part, 'voices', { head: 'voice' });
   b.param('line', sel, 'pos');
-  b.param('volume', volume, 'l1');
-  b.param('vib wave', lfo, 'wave', { head: 'vibrato' });
-  b.param('vib rate', lfo, 'rate');
-  b.param('vib depth', vibS, 'gain');
-  b.param('vib delay', vdel, 'a');
+  b.param('vol', volume, 'l1'); // (the CZ-1's VOLUME, short: the patch has no bytes to spare)
+  b.param('wave', lfo, 'wave', { head: 'vibrato' }); // (the vibrato rows' short names, as the CZ-1's VIBRATO WAVE / RATE / DEPTH / DELAY: room for the volume row, #448)
+  b.param('rate', lfo, 'rate');
+  b.param('depth', vibS, 'gain');
+  b.param('delay', vdel, 'a');
   const envRows = (e: number, head: string, col: boolean): void => {
     b.param(head, e, 'view', { head, ...(col ? { col: true } : {}) });
     for (let k = 1; k <= 8; k++) {
@@ -1421,7 +1423,7 @@ asm('Cassia 1', 'Voices', (b) => {
   for (const [n, k, dcw, dca] of [[1, k1, dcw1, dca1], [2, k2, dcw2, dca2]] as const) {
     b.param('wave', k.wave, 'pos', { head: `line ${n}`, col: true });
     b.param('wave 2', k.wave2, 'pos');
-    b.param('res range', k.range, 'value');
+    b.param('res', k.range, 'value'); // (the CZ's resonance range, short: room for the volume row, #448)
     if (n === 2) {
       b.param('mod', mod, 'pos');
       b.param('coarse', pd2, 'coarse');

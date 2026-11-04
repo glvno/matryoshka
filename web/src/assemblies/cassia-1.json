@@ -1865,28 +1865,38 @@
     {
       "module": 38,
       "param": "l1",
-      "label": "volume"
+      "label": "vol"
     },
     {
       "module": 2,
       "param": "wave",
-      "label": "vib wave",
-      "head": "vibrato"
+      "label": "wave",
+      "head": "vibrato",
+      "names": [
+        "saw",
+        "square",
+        "pulse",
+        "dbl sine",
+        "saw-pulse",
+        "reso 1",
+        "reso 2",
+        "reso 3"
+      ]
     },
     {
       "module": 2,
       "param": "rate",
-      "label": "vib rate"
+      "label": "rate"
     },
     {
       "module": 3,
       "param": "gain",
-      "label": "vib depth"
+      "label": "depth"
     },
     {
       "module": 21,
       "param": "a",
-      "label": "vib delay"
+      "label": "delay"
     },
     {
       "module": 19,
@@ -2055,7 +2065,7 @@
     {
       "module": 12,
       "param": "value",
-      "label": "res range"
+      "label": "res"
     },
     {
       "module": 26,
@@ -2286,7 +2296,7 @@
     {
       "module": 15,
       "param": "value",
-      "label": "res range"
+      "label": "res"
     },
     {
       "module": 37,
@@ -2551,7 +2561,7 @@
         {
           "module": 21,
           "param": "a",
-          "label": "vib delay"
+          "label": "delay"
         },
         {
           "module": 19,

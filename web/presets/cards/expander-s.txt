@@ -2,6 +2,7 @@
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+# The level row (output / level) gen-presets sets in every preset, by loudness (#448): leave it to it.
 #
 # voice
 #   voices = 4                         1..16
@@ -35,6 +36,8 @@
 # lfo
 #   lfo rate = 5 Hz                    0.02..40 Hz
 #   vibrato = 0                        -4..4
+# output
+#   level = 0.41                       0..2
 #   out: a screen, not a value
 
 # Drafts of 2026-10-29 after the Oberheim SEM, not yet listened to on the FM-1 (#413).
@@ -61,6 +64,7 @@ preset: SEM Brass
   envelopes / r (2) = 0.3 s
   lfo rate = 5.5 Hz
   vibrato = 0.05
+  level = 0.48
 
 preset: SEM Bass
   voices = 1
@@ -84,6 +88,7 @@ preset: SEM Bass
   envelopes / d (2) = 0.3 s
   envelopes / s (2) = 0.6
   envelopes / r (2) = 0.15 s
+  level = 0.92
 
 preset: Notch Strings
   voices = 6
@@ -107,6 +112,7 @@ preset: Notch Strings
   envelopes / r (2) = 1.8 s
   lfo rate = 5.5 Hz
   vibrato = 0.03
+  level = 1.01
 
 preset: Highpass Pluck
   width = 0.6
@@ -129,6 +135,7 @@ preset: Highpass Pluck
   envelopes / d (2) = 0.4 s
   envelopes / s (2) = 0.2
   envelopes / r (2) = 0.3 s
+  level = 1.98
 
 preset: Unison Lead
   unison = on
@@ -154,3 +161,4 @@ preset: Unison Lead
   envelopes / r (2) = 0.3 s
   lfo rate = 6 Hz
   vibrato = 0.06
+  level = 0.55
