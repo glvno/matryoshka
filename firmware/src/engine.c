@@ -717,8 +717,6 @@ static int line_place(const uint32_t *bytes, uint32_t n, uint8_t *reg, uint32_t 
     }
     return 0;
 }
-static uint32_t line_sz[ENG_MAX_INST], line_off[ENG_MAX_INST];   /* eng_load's lines: their bytes and places */
-static uint8_t line_reg[ENG_MAX_INST];
 static void *line_at(uint8_t reg, uint32_t at, uint32_t bytes)   /* zeroed */
 {
     uint8_t *z = (uint8_t *)(reg ? line_arena : line_low) + at;
@@ -1080,6 +1078,9 @@ int eng_load(const uint8_t *p, uint32_t len)
 {
     uint32_t i, j, c, k, v, at, ncab, n0, nl;
     uint8_t st[ENG_MAX_MODULES], member[ENG_MAX_MODULES];
+    uint32_t line_sz[ENG_MAX_INST], line_off[ENG_MAX_INST];   /* the lines: their bytes and places (on the main loop's stack,
+                                                               * 1 KB: not the RAM region's, which the interrupts need) */
+    uint8_t line_reg[ENG_MAX_INST];
     E.loaded = 0;
     E.stamp = 0;
     for (i = 0; i < ENG_KNOBS; i++)              /* (a knob ramp of the patch before: gone) */
