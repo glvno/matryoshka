@@ -1281,8 +1281,9 @@ static void seq_leave(void)
 {
     ent_keys = 0;
     sr_stop();
-    if (seq_page_armed) {                        /* the page armed its track (#582): on the way out the bar says it stays so,
-                                                  * the footer's ARM name has a reason */
+    if (seq_page_armed && page != PAGE_SONG) {   /* the page armed its track (#582): on the way out the bar says it stays so,
+                                                  * the footer's ARM name has a reason (not on the way to the SONG page,
+                                                  * the SEQ page's own: said when that is left for another) */
         static char m[32];
         char name[TRACK_NAME_MAX + 8];
         uint32_t t = seq_page_armed - 1u;

@@ -4137,8 +4137,8 @@ int main(void)
         eng_transport(0);
         eng_render(l, r, 128);
         tap(BTN_SEL);
-        check("SEL tapped on the SEQ page: the SONG page, song 1, empty (END)", page == PAGE_SONG && song_sel == 0 && song_len() == 0
-              && on_screen("END"));
+        check("SEL tapped on the SEQ page: the SONG page, song 1, empty (END); its bar, not STAYS ARMED (#582)", page == PAGE_SONG
+              && song_sel == 0 && song_len() == 0 && on_screen("END") && on_screen("SONG 1") && !on_screen("STAYS ARMED"));
         told = host_song_told;
         enc(2, 1);
         check("K1 on END: an entry of the selected pattern, the editor told", song_len() == 1 && (eng_song_get(0, 0) & 0xFF) == 2
