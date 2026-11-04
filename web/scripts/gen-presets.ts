@@ -641,12 +641,12 @@ for (const [name, asm, chord] of [['Basic Poly', 'basic poly', true], ['Drift Po
     return players(validatePatch(structuredClone(x.p), DEFS));
   });
 
-// Verona 1 (after the Vermona DRM1 MKIV, #613): a drum engine on the transport as every factory kit (D-330): Main's keys
+// Verona Drum 1 (after the Vermona DRM1 MKIV, #613): a drum engine on the transport as every factory kit (D-330): Main's keys
 // into PATTERN, PATTERN's keys into the engine's Drum map. A 16-step pattern (X an accent): closed hats on every eighth, an
 // open hat on the last offbeat, the snare and clap on two and four, the drum and the multi in the gaps. After the last
 // factory patch (D-334); a drum engine gets no Arpeggiator (as Spokes 6).
 after.push(() => {
-  const x = around('Verona 1', 'Verona 1');
+  const x = around('Verona Drum 1', 'Verona Drum 1');
   sequenced(x, 'PATTERN', {
     1: 'X...x...X...x.x.',
     2: '..........x...x.',

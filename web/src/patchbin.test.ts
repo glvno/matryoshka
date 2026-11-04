@@ -398,3 +398,11 @@ describe('the budget counts what the FM-1 receives', () => {
     }
   });
 });
+
+describe('a name on the FM-1\'s screen (deviceText)', () => {
+  it('keeps a long name\'s closing number, without the space before it (D-862)', () => {
+    expect(deviceText('Verona Drum 1')).toBe('Verona Drum1');
+    expect(deviceText('Cassia 1')).toBe('Cassia 1');
+    expect(deviceText('supersaw stack')).toBe('supersaw sta');
+  });
+});
