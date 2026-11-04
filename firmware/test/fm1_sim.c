@@ -11,6 +11,7 @@
  *   keydown K / keyup K   a key (1..27, left to right, F3 up at octave 0) held / let go
  *   wait MS           time passing (the engine runs)
  *   listen MS         as wait, and what is heard goes to HEARD.txt
+ * Every action takes at least 50 ms (ACTION_MS) with the engine running before the next one.
  * OUT.ppm is the LCD after the last action; STATE.json what the grader reads (never shown to the player). */
 #include <math.h>
 #define UI_PREVIEW_LIB
@@ -105,6 +106,7 @@ static void hear_tracks(void)
     }
 }
 static double out_peak, out_energy;
+#define ACTION_MS 50u                                   /* the least time an action takes (main) */
 static void run_ms(uint32_t ms)
 {
     static int32_t l[128], r[128];
@@ -307,6 +309,7 @@ int main(int argc, char **argv)
         char verb[16] = "", arg[32] = "";
         long num = 0;
         int k, got;
+        uint32_t ran = 0;                               /* the engine time this action ran (a wait's, a listen's) */
         lineno++;
         got = sscanf(line, "%15s %31s %ld", verb, arg, &num);
         if (got < 1 || verb[0] == '#')
@@ -339,6 +342,7 @@ int main(int argc, char **argv)
             loop();
         } else if ((!strcmp(verb, "wait") || !strcmp(verb, "listen")) && (k = atoi(arg)) > 0 && k <= 60000) {
             heard_n = 0;
+            ran = (uint32_t)k;
             if (verb[0] == 'l') {
                 double whole = 0;
                 uint32_t sounds;
@@ -358,8 +362,10 @@ int main(int argc, char **argv)
             break;
         }
         n_ok++;
-        fm1_ms += 30u;
-        loop();
+        if (ran < ACTION_MS)                            /* (#582: every action at least ACTION_MS of time, the engine running,
+                                                         * before the next: no hand is faster, and a key in the same pass as
+                                                         * the SEL that armed its device found it not yet armed) */
+            run_ms(ACTION_MS - ran);
     }
     if (a)
         fclose(a);
