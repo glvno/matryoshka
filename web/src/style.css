@@ -1422,6 +1422,9 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .module.armed-with:not(.selected):not(.armed) { outline: 2px dashed color-mix(in srgb, var(--arm) 65%, transparent); outline-offset: 1px; }
 .steps-screen.armed-with:not(.armed) { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--arm) 65%, transparent); }
 .arm-dot.with::before { background: color-mix(in srgb, var(--arm) 45%, transparent); border-color: var(--arm); }
+.arm-dot.no-keys { cursor: not-allowed; opacity: .55; }
+.arm-dot.no-keys::before { border-style: dashed; }
+.arm-dot.no-keys:hover::before { border-color: var(--muted); }
 /* the preset chip on an assembly device's header (#192): ‹ name › */
 :is(.mhead, .fhead) span.preset-chip { display: inline-flex; contain: none; font: inherit; text-transform: none; letter-spacing: normal; align-items: stretch; flex: none; width: 124px; height: 20px; margin-left: auto; margin-right: 6px;
   border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); }

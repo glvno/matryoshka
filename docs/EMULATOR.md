@@ -112,6 +112,8 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   REC: NO TRACK ARMED with the environment still showing ([D-548](ledger/steps.md#D-548),
   [D-549](ledger/steps.md#D-549)); PLAY stops it. SEL again must arm it. Monolith D opened with every keys cable gone
   (the test hook `openUnkeyed`) must say NO KEYS REACH THIS DEVICE on SEL and arm nothing ([D-905](ledger/device-ui.md#D-905)).
+  Basic Poly opened the same way (a poly engine) must say it on SEL on its device page and on its environment row, and
+  the editor must show nothing armed ([D-818](ledger/steps.md#D-818)).
 - **A held drum hit (`drumHold`, issues #368 and #395, [D-523](ledger/steps.md#D-523)):** on 8 Lire's grid, stopped, a
   held black key must sound its row while held and record nothing. REC alone (no PLAY) must then start the transport
   and record: black key 2 held about 450 ms must land as one note of 3 to 5 steps on its row, and a white key must then
