@@ -72,6 +72,28 @@ export function plays(p: Patch): Play[] {
   return out;
 }
 
+/** the FM-1's analog output with GLO > SYSTEM > OUTPUT at MONO (#612): both sides carry (L + R) / 2, which never peaks
+ * above the louder side, so the stereo headroom covers it (firmware audio.c, `out_mono`) */
+export const monoOf = (l: number, r: number): number => (l + r) / 2;
+
+/** a play's peaks over `secs` (at the FM-1's rate) at the patch's Output level: both channels, and their mono sum (monoOf) */
+export function peaksOfPlay(w: Play, secs: number, sr = DEVICE_SR): { stereo: number; mono: number } {
+  const e = new Engine(sr);
+  e.load(w.patch);
+  if (w.pattern) e.setPattern(w.pattern);
+  e.transport(w.run);
+  for (const k of w.notes) e.noteOn(k, 1);
+  const l = new Float32Array(Math.round(sr * secs));
+  const r = new Float32Array(l.length);
+  e.render(l, r);
+  let stereo = 0, mono = 0;
+  for (let i = 0; i < l.length; i++) {
+    stereo = Math.max(stereo, Math.abs(l[i]), Math.abs(r[i]));
+    mono = Math.max(mono, Math.abs(monoOf(l[i], r[i])));
+  }
+  return { stereo, mono };
+}
+
 /** a play's peak over `secs` (at the FM-1's rate), both channels, at the patch's Output level (the engine clamps at 1: lower the Output first
  * to see past it) */
 export function peakOfPlay(w: Play, secs: number, sr = DEVICE_SR): number {
