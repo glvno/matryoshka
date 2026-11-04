@@ -76,6 +76,7 @@ import { ClockOut, isFm1Out, portLabels } from './clock-out';
 import { currentTheme, onThemeChange, setTheme, themeChoice, toggleTheme } from './theme';
 import { INSTALL_VERSION, installLabel } from './version';
 import { runningVersion, updateOffer } from './fm1-version';
+import { PanelAlign } from './panel-align';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const STORE = renamedKey('matryoshka.patch', 'modular-1.patch');
@@ -302,26 +303,24 @@ let panelIgnored = false;
 /** the FM-1 tab's copy put back where the FM-1 is (#549): how often, and what differed the last time */
 let panelAligns = 0;
 let panelLastOff: string[] = [];
-let alignTimer = 0;
-/** how long after the FM-1's last GUIDE_NOW its state is compared with the copy's: the buttons' MIDI that the SysEx went
- *  ahead of has arrived by then */
-const ALIGN_MS = 250;
 /** the followed FM-1 reports the key edges its panel takes and its state (KEYS_NOW / GUIDE_NOW, feature bit 18, #549):
  *  its keys go through the FM-1 tab's copy too, and the copy is put back where the FM-1 is when they differ. Older
  *  firmware: neither, the copy replays the buttons alone (D-457) */
 const panelReported = (): boolean => !panelIgnored && device.connected && device.reportsPanel && mirror.follows(device.input);
-/** after the FM-1's GUIDE_NOW: the copy compared with it once its buttons' MIDI is in, and put back where it differs */
+/** the copy compared with the FM-1's last GUIDE_NOW, ALIGN_MS after the last report or panel input the copy took (an
+ *  input after a report: the report that follows it is awaited, panel-align.ts), and put back where it differs */
+const panelAlign = new PanelAlign(() => {
+  const copy = emu.ui?.guide();
+  if (!copy || !fm1Panel || !panelReported()) return;
+  const off = panelOffBy(copy, fm1Panel);
+  if (!off.length) return;
+  panelAligns++;
+  panelLastOff = off;
+  emu.align(fm1Panel);
+});
+/** a GUIDE_NOW, or one of the followed FM-1's panel inputs the copy took: the comparison waits for the last of them */
 function alignSoon(): void {
-  clearTimeout(alignTimer);
-  alignTimer = window.setTimeout(() => {
-    const copy = emu.ui?.guide();
-    if (!copy || !fm1Panel || !panelReported()) return;
-    const off = panelOffBy(copy, fm1Panel);
-    if (!off.length) return;
-    panelAligns++;
-    panelLastOff = off;
-    emu.align(fm1Panel);
-  }, ALIGN_MS);
+  if (fm1Panel && panelReported()) panelAlign.soon();
 }
 device.onEvent = (e) => {
   if (e.kind === 'info') return syncChip();   // (MENU > MIDI OUT changed: the chip says so in sandbox mode)
@@ -330,12 +329,13 @@ device.onEvent = (e) => {
     void emu.ready().then(() => {
       fromDevice = true;     // (what the copy does with it is the FM-1's: its track edits come as TRACK_NOW, fm1Event)
       try { emu.keysNow(e.keys, e.held); } finally { fromDevice = false; }
+      alignSoon();
     });
     return;
   }
   if (e.kind === 'guide') {
     fm1Panel = e.state;
-    if (panelReported()) alignSoon();
+    alignSoon();
     return;
   }
   if (e.kind === 'tempo') {   // the FM-1's TEMPO setting and global tempo (D-907): after HELLO and when changed there
@@ -2077,12 +2077,14 @@ async function mirrorInput(i: PanelInput): Promise<void> {
           break;
         }
         emu.drive(i);
+        alignSoon();
         refocusMirror(i.n === ENCODERS.select || i.n === ENCODERS.algo);
         break;
       case 'button': {
         if (i.id === BUTTONS.play) fm1PlayHeld = i.down;
         const b = PANEL_OF_ID.get(i.id);
         followOctave(noteKeys, () => emu.octave, () => emu.drive(i));   // (OCT- / OCT+: the editor's keys follow the FM-1's)
+        alignSoon();
         if (b !== undefined) editor.pressButton(b, i.down);
         refocusMirror(i.id === BUTTONS.home);
         break;

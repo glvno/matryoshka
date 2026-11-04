@@ -686,8 +686,9 @@ tick in, it sends its own again at its tempo ([D-477](ledger/link-and-midi.md#D-
   FM-1 is the link's, with the bit) puts KEYS_NOW through the copy (`Fm1View.keysNow`: the reported held buttons first,
   as presses or releases, then `Fm1Ui.keys`); `drive` then plays a button's MIDI only when it is news (`fm1w_held`), and
   the FM-1's notes skip `EmuKeys`. The copy's own track / lock / pattern / song / mute results during the replay are
-  dropped (the FM-1 reports its own). 250 ms after the last GUIDE_NOW (`alignSoon`) `panelOffBy` compares it with the
-  copy's `fm1w_guide`; where they differ `fm1w_align` (panel.c `panel_align`, built with `PANEL_ALIGN`) sets the copy
+  dropped (the FM-1 reports its own). 250 ms after the last GUIDE_NOW, KEYS_NOW or button MIDI / turn the copy took
+  (`alignSoon`, `web/src/panel-align.ts`: GUIDE_NOW comes after the redraw a page change causes, the button's MIDI at
+  once) `panelOffBy` compares the last GUIDE_NOW with the copy's `fm1w_guide`; where they differ `fm1w_align` (panel.c `panel_align`, built with `PANEL_ALIGN`) sets the copy
   there without playing an edge. `main.ts` keeps the last GUIDE_NOW in `fm1Panel` for the controls strip (#554, `web/src/controls-strip.ts`).
 - Under Live a structural change uploads the patch only when its encoded bytes differ from what the FM-1 holds
   (`web/src/upload-gate.ts`, main.ts `structureChanged`): a comment or a layout change sends nothing. Edits sent live
