@@ -930,7 +930,7 @@ describe('assembly card columns and headings', () => {
 
   it('the factory Oracle V has three sectioned columns and its output scope across the foot', () => {
     const d = FACTORY.find((x) => x.name === 'Oracle V')!;
-    expect(paramColumns(d.params).map((c) => c.length)).toEqual([13, 10, 11]);
+    expect(paramColumns(d.params).map((c) => c.length)).toEqual([14, 10, 11]);
     expect(plan(d.params)).toMatch(/^\{0-3 0:.* 1:.* 2:.* OUT\}$/);
     // the drum kit's knobs in two columns
     const kit = FACTORY.find((x) => x.name === 'drum kit')!;

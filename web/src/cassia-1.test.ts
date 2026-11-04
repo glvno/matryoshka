@@ -12,8 +12,8 @@ import { FM1_PRESETS } from './presets';
 type Nodes = Map<number, { inst: { eff: Record<string, number> }[] }>;
 const cassia = (): Patch => FM1_PRESETS['Cassia 1']();
 const card = (p: Patch) => p.assemblies!.find((a) => instIsEngine(p, a) && a.params.some((r) => r.label === 'wave 2'))!;
-/** the row's target module of the n-th row with this label */
-const rowOf = (p: Patch, label: string, n = 0) => card(p).params.filter((r) => r.label === label)[n];
+/** the row's target module of the n-th row with this label on a line (the vibrato's `wave` is not a line's) */
+const rowOf = (p: Patch, label: string, n = 0) => card(p).params.filter((r) => r.label === label && p.modules.find((m) => m.id === r.module)!.type !== 'lfo')[n];
 const set = (p: Patch, label: string, n: number, v: number): void => {
   const r = rowOf(p, label, n);
   p.modules.find((m) => m.id === r.module)!.params[r.param] = v;

@@ -27,12 +27,12 @@ export interface Play {
   pattern?: number;
 }
 
-const voicesIn = (p: Patch, ids: number[]): number => {
+export const voicesIn = (p: Patch, ids: number[]): number => {
   const set = new Set(ids);
   return Math.max(1, ...p.modules.filter((m) => m.type === 'alloc' && set.has(m.id)).map((m) => Math.round(m.params.voices as number)));
 };
 /** the patterns that play something when the transport runs (0 = pattern 1; a Sequencer module runs in all of them) */
-function patterns(p: Patch): number[] {
+export function patterns(p: Patch): number[] {
   const out = new Set<number>();
   for (const m of p.modules) {
     if (m.type === 'seq') out.add(0);
@@ -43,7 +43,7 @@ function patterns(p: Patch): number[] {
   return [...out].sort((a, b) => a - b);
 }
 
-function ways(p: Patch, what: string, voices: number): Play[] {
+export function ways(p: Patch, what: string, voices: number): Play[] {
   const n = Math.min(8, voices);
   const out: Play[] = [{ label: `${what}, ${n} keys`, patch: p, notes: CHORD.slice(0, n), run: false }];
   for (const dm of p.modules.filter((m) => m.type === 'drummap')) {
@@ -72,9 +72,8 @@ export function plays(p: Patch): Play[] {
   return out;
 }
 
-/** a play's peak over `secs` (at the FM-1's rate), both channels, at the patch's Output level (the engine clamps at 1: lower the Output first
- * to see past it) */
-export function peakOfPlay(w: Play, secs: number, sr = DEVICE_SR): number {
+/** a play rendered for `secs` at `sr`: its left and right channels */
+export function renderPlay(w: Play, secs: number, sr = DEVICE_SR): [Float32Array, Float32Array] {
   const e = new Engine(sr);
   e.load(w.patch);
   if (w.pattern) e.setPattern(w.pattern);
@@ -83,6 +82,13 @@ export function peakOfPlay(w: Play, secs: number, sr = DEVICE_SR): number {
   const l = new Float32Array(Math.round(sr * secs));
   const r = new Float32Array(l.length);
   e.render(l, r);
+  return [l, r];
+}
+
+/** a play's peak over `secs` (at the FM-1's rate), both channels, at the patch's Output level (the engine clamps at 1: lower the Output first
+ * to see past it) */
+export function peakOfPlay(w: Play, secs: number, sr = DEVICE_SR): number {
+  const [l, r] = renderPlay(w, secs, sr);
   let peak = 0;
   for (let i = 0; i < l.length; i++) peak = Math.max(peak, Math.abs(l[i]), Math.abs(r[i]));
   return peak;

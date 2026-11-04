@@ -234,6 +234,10 @@ The note-on / note-off output of a Steps track or Main that plays an instrument.
 
 The dev-server-only page (`/lesson-editor`) where the course is written and saved.
 
+### Level row
+
+The [**card row**](#card-row) of a factory [**engine**](#engine) that sets the level of its whole output, after any drive or distortion, so turning it changes how loud the engine is and nothing else. Some engines have two, one per output channel or per half of the output mixer, which move together. Each factory [**preset**](#preset) stores its own value, which is how the presets of one engine play at about the same loudness.
+
 ### Library
 
 The editor's view for managing what is stored, in the browser and on the FM-1 (`#library`). Its sections are Patches, Assemblies and Presets; Patches and Presets show this browser and the FM-1 side by side. It opens nothing.

@@ -2,6 +2,7 @@
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+# The level row (master / master) gen-presets sets in every preset, by loudness (#448): leave it to it.
 #
 # voice 1
 #   voice 1 / tune = -27 st            -48..48 st
@@ -49,10 +50,10 @@
 #   lfo → time = 0.02                  -4..4
 # lfo
 #   lfo rate = 0.3 Hz                  0.02..40 Hz
-#   lfo wave = sine                    sine, triangle, saw, square, S&H
+#   lfo wave = sine                    sine, triangle, saw, square, S&H, random
 # master
 #   comp = -14 dB                      -40..0 dB
-#   master = 3 dB                      0..24 dB
+#   master = 2 dB                      0..24 dB
 #   out: a screen, not a value
 
 # Drafts of 2026-10-29 after the Erica Synths Perkons HD-01, not yet listened to on the FM-1 (#413).
@@ -94,7 +95,7 @@ time = 375
 feedback = 0.5
 lfo → time = 0.05
 comp = -20
-master = 4
+  master = 5.5 dB
 
 preset: Punchy Breaks
 # a short, open, punchy kick; a crisp analogue snare; a high-passed tight hat; a short metal
@@ -129,6 +130,7 @@ voice 4 / send = 0.1
 time = 150
 feedback = 0.2
 comp = -10
+  master = 0 dB
 
 preset: Distorted EBM
 # everything driven hard: a saturated mid-length kick, a digital snare, a growling low-passed hat,
@@ -165,7 +167,7 @@ lfo → time = 0.1
 lfo rate = 0.15
 lfo wave = triangle
 comp = -24
-master = 5
+  master = 5.5 dB
 
 preset: Dub Percussion
 # clean and wet: a soft deep kick; a formant snare, a band-ish hat and a high tuned metal all sent to a long,
@@ -203,6 +205,7 @@ feedback = 0.7
 lfo → time = 0.3
 lfo rate = 0.08
 comp = -16
+  master = 3.5 dB
 
 preset: Clicky Minimal
 # tiny sounds: a very short clicking kick with a big sweep, a short eml snare, a high-passed tick hat,
@@ -240,4 +243,4 @@ lfo → time = 0.5
 lfo rate = 2
 lfo wave = S&H
 comp = -8
-master = 2
+  master = 3 dB
