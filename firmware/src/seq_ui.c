@@ -1258,13 +1258,21 @@ static void seq_kbd_key(uint32_t n, int down)
 /* the device pages' info line: ARM / REC and the armed track's name (the colour: recording or not); 0 when none is armed */
 static int seq_arm_label(char *out, int *rec)
 {
-    int t = seq_armed_trk();
-    char name[TRACK_NAME_MAX + 8];
+    int t = seq_armed_trk(), k, more = 0;
+    char name[TRACK_NAME_MAX + 8], *q;
     if (t < 0)
         return 0;
+    for (k = 0; k < eng_steps_count(); k++)      /* (#582: the other armed tracks counted, "ARM DRUMS +1") */
+        more += k != t && seq_mod_armed(eng_steps_module((uint32_t)k));
     seq_name((uint32_t)t, name);
     *rec = seq_rec != 0;                         /* (REC on: the armed tracks record, #395; COUNT-IN until then, #414) */
-    put(put(out, seq_cin ? "COUNT-IN " : *rec ? "REC " : "ARM "), name)[0] = 0;
+    q = put(put(out, seq_cin ? "COUNT-IN " : *rec ? "REC " : "ARM "), name);
+    if (more) {
+        q = put(q, " +");
+        q[0] = (char)('0' + (more > 9 ? 9 : more));
+        q[1] = 0;
+    } else
+        q[0] = 0;
     return 1;
 }
 
