@@ -114,13 +114,19 @@ static void help_suite(void)
     }
     enc(1, -1);
     check("ALGO left: the DEVICE tab again", help_tab == 0u && on_screen("adjust values"));
-    check("  its rows fit: the bottom line leaves SELECT out", help_rows(0, (const char *[HC_ROWS]){0}) <= HC_VIS && !on_screen("scroll")
-          && on_screen("close"));
-    {
+    check("  the bottom line names SELECT scroll only when the tab's rows do not fit (D-912: a busy DEVICE tab scrolls)",
+          (help_rows(0, (const char *[HC_ROWS]){0}) > HC_VIS) == on_screen("scroll") && on_screen("close"));
+    {                                                   /* a tab whose rows fit: OUTPUT's (no presets, no keys), then back */
         const char *r[HC_ROWS];
-        uint32_t n = help_rows(0, r);
+        uint32_t d0 = pg_cur_dev, g0 = pg_cur_page, n;
+        pages_focus(pg_ndev - 1u, 0);
+        loop();
+        n = help_rows(0, r);
+        check("  a tab whose rows fit: the bottom line leaves SELECT out", n <= HC_VIS && !on_screen("scroll") && on_screen("close"));
         enc(0, 1);
         check("SELECT on a sheet whose rows fit: it stays", n <= HC_VIS && help_top == 0u && px(218, HC_TOP) == P_PANEL);
+        pages_focus(d0, g0);
+        loop();
     }
     check("  SELECT and ALGO sent no MIDI", !sent(from, 0xB0u, CC_SELECT, 1u) && !sent(from, 0xB0u, CC_ALGO, 1u));
     k1m = pages_now()->mod[0];
