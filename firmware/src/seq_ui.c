@@ -1904,8 +1904,15 @@ static void seq_pattern_step(int32_t d)
     eng_pattern_set((uint32_t)p);
     m1_patch_patterns();
     m1_pattern_now();
-    put(put2(put(m, "PATTERN "), p + 1), eng_song() ? " (SONG PLAYS)" : eng_transport_running() ? " NEXT" : "")[0] = 0;
-    ui_msg(m, 1000);
+    {
+        int mod = seq_module();
+        char *q = put(put2(put(m, "PATTERN "), p + 1), eng_song() ? " (SONG PLAYS)" : eng_transport_running() ? " NEXT" : "");
+        if (!eng_song() && p > 0 && mod >= 0 && !eng_pattern_has((uint32_t)mod, (uint32_t)p))
+            q = put(q, ": COPY OF 01");             /* (#582: a pattern the track has not got plays its pattern 1, and an
+                                                     * edit makes it from that first) */
+        q[0] = 0;
+    }
+    ui_msg(m, 1500);
     if (!ui_dirty)
         ui_dirty = 1;
 }
