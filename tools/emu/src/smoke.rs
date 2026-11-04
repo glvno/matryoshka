@@ -534,7 +534,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.run_for(1200)?;                        // (PRESET's toast over)
     t.screen(&m, "arm: a patch loads with nothing armed, the footer says KEYS WIRED (#395)", "KEYS WIRED");
     m.tap(SEL, 120, 300)?;                   // the home device, the Drum map: its keys come through DRUMS, armed with it
-    t.screen(&m, "arm: SEL on a device fed through a track arms it with the track (#395)", "DRUM MAP ARMED");
+    t.screen(&m, "arm: SEL on a device fed through a track arms it with the track (#395), named too (#582)", "DRUM MAP + DRUMS ARMED");
     m.run_for(1200)?;
     let mk = m.mark();
     m.tap(14 + 1, 120, 300)?;                // F#3, black key 1, on the device page: the kick (Main's keys into DRUMS, #141)

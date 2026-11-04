@@ -1177,12 +1177,26 @@ int main(void)
         check("SEL on the Drum map's row, its track armed: armed through it, so taken out with it, the keys WIRED",
               eng_arm_mask_get() == 0u && !strcmp(msg_text, "KEYS WIRED"));
         tap(3);
-        check("SEL there again: the track it plays through armed", eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(0)
-              && strstr(msg_text, " ARMED") != 0);
+        check("SEL there again: the track it plays through armed; the bar names both (#582)", eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(0)
+              && !strcmp(msg_text, "DRUM MAP + DRUMS ARMED"));
         pages_focus(1, 0);
         tap(3);
         check("SEL again on the track: disarmed, the keys WIRED (the bar says so)", eng_arm_mask_get() == 0u && eng_armed() < 0
               && !strcmp(msg_text, "KEYS WIRED"));
+        {
+            char s1[16], s2[16], s0[16];
+            env_status(0, s0);
+            env_status(1, s1);
+            env_status(2, s2);
+            check("  nothing armed: the track's and the Drum map's rows say WIRED (the keys reach them by cable, #582), Main's its tempo",
+                  !strcmp(s1, "WIRED") && !strcmp(s2, "WIRED") && strstr(s0, "BPM") != 0);
+            seq_arm_set((uint64_t)1 << eng_steps_module(0));
+            env_status(1, s1);
+            env_status(2, s2);
+            check("  armed: ARMED on both, no WIRED", !strcmp(s1, "ARMED") && !strcmp(s2, "ARMED"));
+            seq_arm_set(0);
+            loop();
+        }
         tap(4);
         panel_held |= 1u << 4;                              /* ENV held + SAVE: no environment on the release */
         panel_edges(1u << 4, 0);
