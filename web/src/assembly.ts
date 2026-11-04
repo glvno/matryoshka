@@ -845,12 +845,17 @@ export function ungroup(p: Patch, id: number): void {
   if (parent) reconcile(p, parent);
 }
 
-/** delete the assembly with its direct modules and their cables; nested assemblies survive (one level up) */
+/** delete the assembly with everything inside it: its nested assemblies, all their modules and those modules' cables (#560) */
 export function deleteAssembly(p: Patch, id: number): void {
   const a = assemblyById(p, id);
   if (!a) return;
-  for (const m of a.modules) removeModule(p, m);
-  ungroup(p, id);
+  for (const m of allModules(p, a)) removeModule(p, m);
+  const gone = new Set([id, ...descendants(p, a).map((d) => d.id)]);
+  const parent = parentOf(p, id);
+  detach(p, id);
+  p.assemblies = assembliesOf(p).filter((x) => !gone.has(x.id));
+  if (!p.assemblies.length) delete p.assemblies;
+  if (parent) reconcile(p, parent);
 }
 
 /** ports that were exposed only for cables to or from the newcomers become inner wiring again */

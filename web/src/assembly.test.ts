@@ -745,7 +745,7 @@ describe('assemblies', () => {
     // a bad tree is refused
     expect(() => validateAssemblyDef({ ...def, children: [7] }, DEFS)).toThrow(/does not exist/);
     expect(() => validateAssemblyDef({ ...def, children: [] }, DEFS)).toThrow(/in no assembly/);
-    // removeChild frees the child; ungroup of a parent hands its members to the grandparent; delete keeps children
+    // removeChild frees the child; ungroup of a parent hands its members to the grandparent; delete takes its children too (#560)
     removeChild(p, voice, envs.id);
     expect(parentOf(p, envs.id)).toBeUndefined();
     expect(voice.inputs.map((r) => r.port)).toEqual(['pitch', 'cv']);
@@ -758,8 +758,8 @@ describe('assemblies', () => {
     addChild(p, v3, envs.id);
     deleteAssembly(p, v3.id);
     expect(p.modules.some((m) => m.id === osc)).toBe(false);
-    expect(p.assemblies!.some((a) => a.id === envs.id)).toBe(true);
-    expect(allModules(p, envs)).toEqual([e1, e2]);
+    expect(p.assemblies!.some((a) => a.id === envs.id)).toBe(false);
+    expect(p.modules.some((m) => m.id === e1 || m.id === e2)).toBe(false);
   });
 
   it('repairs a bad nesting on load: missing children, two parents, loops and depth', () => {
