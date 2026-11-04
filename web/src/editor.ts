@@ -11,7 +11,7 @@ import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-butto
 import { arpLitInverted, buttonLight, kindOf, pageList, setPages, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
 import { buttonEditor } from './button-editor';
 import { arpChoices, arpFree, type ArpChoice } from './arp-button';
-import { showUndo } from './toast';
+import { showToast, showUndo } from './toast';
 import { positionPopover } from './popover';
 import { parameterInputs, connectParameter, setInputRoute } from './parameter-routing';
 import { parameterMenu } from './parameter-menu';
@@ -75,7 +75,7 @@ import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './
 import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, sameName, renamePreset, shortBy, shortPresetText, stepPreset, storePreset } from './device-presets';
 import { engineOf } from './library-presets';
 import { structureOf } from './structure';
-import { armable, armDrawing, armedWith, keepArmed, type DeviceKey } from './arm';
+import { armable, armDrawing, armedWith, keepArmed, noKeysReach, type DeviceKey } from './arm';
 import { PianoRoll } from './roll';
 import { stepGrid, stopEntry, type LockRow, type StepGrid } from './step-grid';
 import { FlawPanel } from './flaws-panel';
@@ -4004,7 +4004,7 @@ export class Editor {
     }, 'pw');
     pw.classList.toggle('on', !a.bypass);
     pw.setAttribute('aria-pressed', String(!a.bypass));
-    const arm = !parentOf(this.patch, a.id) && armable(this.patch, `a${a.id}`) ? [this.armButton(`a${a.id}`, a.label)] : [];
+    const arm = parentOf(this.patch, a.id) ? [] : armable(this.patch, `a${a.id}`) ? [this.armButton(`a${a.id}`, a.label)] : noKeysReach(this.patch, `a${a.id}`) ? [this.noKeysButton(a.label)] : [];
     return [...arm, this.polyButton(a), pw, this.moreButton((at) => this.assemblyMenu(a, at))];
   }
 
@@ -4101,6 +4101,16 @@ export class Editor {
     b.classList.toggle('with', !on && by.length > 0);
     b.setAttribute('aria-pressed', !on && by.length ? 'mixed' : String(on));
     if (!on && by.length) b.title = `Armed with ${by.join(', ')}: Main’s keys go through ${name} to it. ARM arms ${name} on its own too`;
+    return b;
+  }
+
+  /** ARM on an engine no keys cable reaches (D-905, D-818): it arms nothing and says why, as SEL on the FM-1 does */
+  private noKeysButton(name: string): HTMLButtonElement {
+    const why = `No keys reach this device: cable keys into ${name}’s keys input to arm it`;
+    const b = this.button('', why, () => showToast('No keys reach this device'), 'sm arm-btn arm-dot no-keys');
+    b.setAttribute('aria-label', `Arm ${name}: no keys reach this device`);
+    b.setAttribute('aria-disabled', 'true');
+    b.dataset.hint = why;
     return b;
   }
 

@@ -210,29 +210,36 @@ static void nudge_suite(void)
             loop();
             later(1500);
             arm0 = eng_arm_mask_get();
-            tap(BTN_SEL);
-            if (!env_listeners(d)) {
-                check("SEL on a mono engine no keys cable reaches: NO KEYS REACH THIS DEVICE (#215), the armed set kept",
-                      nudged("NO KEYS REACH THIS DEVICE") && eng_arm_mask_get() == arm0);
-                nudge_snap("no-keys-engine");
-                check("  the nudge ends: the screen as a whole redraw", nudge_ends_whole());
-                mono++;
-            } else {
-                check("SEL on a poly engine with no keys cable: it keeps its group, so SEL arms it (D-905)",
-                      env_armed(d) && eng_arm_mask_get() != arm0);
-                tap(BTN_SEL);                           /* (disarmed again: the keys wired) */
-                poly++;
+            {
+                uint64_t grp = 0;                       /* (a poly engine: its modules keep their group, D-905) */
+                for (k = 0; k < pg_dev[d].nmem; k++)
+                    grp |= eng_arms(pg_dev[d].mem[k]);
+                tap(BTN_SEL);
+                check(grp ? "SEL on a poly engine no keys cable reaches: NO KEYS REACH THIS DEVICE (D-905), the armed set kept"
+                          : "SEL on a mono engine no keys cable reaches: NO KEYS REACH THIS DEVICE (#215), the armed set kept",
+                      !env_listeners(d) && !env_armed(d) && nudged("NO KEYS REACH THIS DEVICE") && eng_arm_mask_get() == arm0);
+                if (grp) {
+                    poly++;
+                } else {
+                    nudge_snap("no-keys-engine");
+                    check("  the nudge ends: the screen as a whole redraw", nudge_ends_whole());
+                    mono++;
+                }
             }
         }
         check("  (each kind seen: Main, a mono engine, a poly engine)", main == 1u && mono == 1u && poly == 1u);
-        tap(BTN_ENV);                                   /* the same on the mono engine's environment row */
-        for (d = 0; d < pg_ndev; d++)
-            if (pg_dev[d].unreached && !env_listeners(d))
-                break;
-        for (k = 0; k < PG_DEVS && pg_cur_dev != d && d < pg_ndev; k++)
-            enc(0, pg_cur_dev < d ? 1 : -1);
-        tap(BTN_SEL);
-        check("  on its environment row too", page == PAGE_ENV && pg_cur_dev == d && nudged("NO KEYS REACH THIS DEVICE"));
+        tap(BTN_ENV);                                   /* the same on each engine's environment row, mono and poly */
+        for (d = 0; d < pg_ndev; d++) {
+            if (!pg_dev[d].unreached)
+                continue;
+            for (k = 0; k < PG_DEVS && pg_cur_dev != d; k++)
+                enc(0, pg_cur_dev < d ? 1 : -1);
+            arm0 = eng_arm_mask_get();
+            later(1500);
+            tap(BTN_SEL);
+            check("  on its environment row too, the armed set kept", page == PAGE_ENV && pg_cur_dev == d
+                  && nudged("NO KEYS REACH THIS DEVICE") && eng_arm_mask_get() == arm0);
+        }
         tap(BTN_HOME);
     }
 
