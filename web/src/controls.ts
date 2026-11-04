@@ -140,7 +140,7 @@ export const CONTROLS: ControlRow[] = [
     help: 'the patches in the bank (an empty bank says BANK EMPTY); HOME’s release then goes nowhere' },
   { id: 'store', gesture: { hold: 'ENV', do: [B('SAVE')] }, does: 'save device preset', doesIn: { env: "save row's preset" }, when: 'dev_store', sheet: { device: 90, env: 60 }, everywhere: at(110, but('device', 'env', 'sandbox')), effect: 'store',
     help: 'the device in focus’s values as its preset (an assembly)' },
-  { id: 'arm', gesture: { hold: 'REC', do: [BLACK] }, does: 'arm a track', when: 'tracks', everywhere: at(120, but('sandbox')), effect: 'arm',
+  { id: 'arm', gesture: { hold: 'REC', do: [BLACK] }, does: 'arm / disarm track', when: 'tracks', everywhere: at(120, but('sandbox')), effect: 'arm',
     help: 'black key n: track n into the armed devices or out (any page)' },
   { id: 'mute', gesture: { hold: 'SEQ', do: [BLACK] }, does: 'mute a track', when: 'tracks', everywhere: at(130, but('sandbox')), effect: 'mute',
     help: 'black key n: mutes track n, or unmutes it (any page)' },

@@ -622,6 +622,8 @@ static uint8_t key_eng[27];                      /* the note it played in the en
 #define KEY_SILENT 0xFFu                         /* or none (a white key on a Drum map) */
 static uint32_t key_sounding;                    /* bit n: key n started a note (not a key pressed on the SEQ page) */
 static uint8_t seq_held_used;                    /* SEQ is held and a black key muted a track: its release does not switch the page */
+static uint8_t rec_hinted;                       /* REC held alone a moment: the bar named the tracks' black keys (#582) */
+static uint32_t rec_down_ms;                     /* fm1_ms of REC's press */
 static uint8_t rec_held_used;                    /* REC is held and a black key armed a track: its release does not record */
 /* the keys as the panel last took them (bit n: key n down) */
 static uint32_t keys_now;
@@ -939,6 +941,10 @@ static void panel_edges(uint32_t p, uint32_t rel)
     }
     if (rel & (1u << BTN_REC))
         rec_held_used = 0;
+    if (p & (1u << BTN_REC)) {
+        rec_hinted = 0;
+        rec_down_ms = fm1_ms;
+    }
     if (oct_rel & (1u << BTN_OCT_DOWN))             /* (on release: D-245) */
         octave = octave > -3 ? octave - 1 : octave;
     if (oct_rel & (1u << BTN_OCT_UP))
@@ -1034,6 +1040,28 @@ static void panel_status(void)
             put(put(put(m, "TEMPO "), num), ": TURN PRESET")[0] = 0;   /* (22 characters at most) */
             ui_msg(m, 1500);
         }
+    }
+    if ((panel_held >> BTN_REC & 1u) && !rec_held_used && !rec_hinted && !help_on && !sb_on && eng_steps_count()
+        && !(panel_held >> BTN_SEQ & 1u) && fm1_ms - rec_down_ms >= PLAY_HINT_MS) {   /* REC held alone a moment (#582):
+                                                     * which black key arms which track, the armed ones marked */
+        char m[40], name[TRACK_NAME_MAX + 8], *q = put(m, "ARM:");
+        int t;
+        rec_hinted = 1;
+        for (t = 0; t < eng_steps_count() && t < 8; t++) {
+            uint32_t w;
+            seq_name((uint32_t)t, name);
+            w = 3u + str_len(name) + (seq_mod_armed(eng_steps_module((uint32_t)t)) ? 1u : 0u);
+            if ((uint32_t)(q - m) + w > 30u)
+                break;
+            *q++ = ' ';
+            *q++ = (char)('1' + t);
+            *q++ = ' ';
+            q = put(q, name);
+            if (seq_mod_armed(eng_steps_module((uint32_t)t)))
+                *q++ = '*';
+        }
+        *q = 0;
+        ui_msg(m, 2000);
     }
     if (drum_white_due) {                           /* a white key silent on a Drum map (#582): the drums are on the black keys */
         drum_white_due = 0;

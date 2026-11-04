@@ -39,7 +39,7 @@ static const ctl_line_t CTL_LINE[86] = {
     {"k:HOME|t:+|n:PRESET~patches", 10, 0, 0},   /* patch */
     {"k:ENV|t:+|k:SAVE~save device preset", 11, 3, 0},   /* store */
     {"k:ENV|t:+|k:SAVE~save row's preset", 11, 3, 0},   /* store */
-    {"k:REC|t:+|b:~arm a track", 12, 6, 0},   /* arm */
+    {"k:REC|t:+|b:~arm / disarm track", 12, 6, 0},   /* arm */
     {"k:SEQ|t:+|b:~mute a track", 13, 6, 0},   /* mute */
     {"k:HOME~leave {list}'s pages", 14, 1, 0},   /* list-home */
     {"n:SELECT~this patch's devices", 15, 0, 0},   /* devices */
