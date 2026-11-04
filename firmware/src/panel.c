@@ -406,6 +406,9 @@ static void panel_encoders(int32_t *st)
     uint32_t k;
     int panel = eng_find(T_FM1);
     int fine = panel_held >> BTN_HOME & 1u;         /* HOME held + K1..K4: fine turns (#340); HOME's release then goes nowhere */
+    if (help_on == HELP_QUICK && (st[0] | st[1] | st[2] | st[3] | st[4] | st[5] | st[6]))
+        help_close();                               /* the quick start: a knob turned closes it and then does its job (#582,
+                                                     * D-247; PLAY held + PRESET the tempo at once) */
     if (help_on) {                                  /* a card shows (help_ui.c, D-245): SELECT scrolls the sheet, ALGO switches
                                                      * its tabs, the rest does nothing; none of it goes out as MIDI (in sandbox
                                                      * mode the editor would act on it) */
@@ -798,7 +801,8 @@ static void panel_release_quiet(uint32_t rel)
 
 /* the buttons while a card shows (help_ui.c; pair: OCT- + OCT+ just went down together). The sheet: HOME closes it. The
  * quick start: HOME closes it, HOME + SAVE closes it and turns it off for good (stored at once, D-247), OCT- + OCT+ opens
- * the sheet in its place. On both PLAY starts and stops; every other button does nothing */
+ * the sheet in its place; any other button closes it and then does its job (panel_edges, #582). On the sheet PLAY starts
+ * and stops; every other button does nothing */
 static void help_edges(uint32_t p, uint32_t rel, int pair)
 {
     if (pair)
@@ -837,6 +841,11 @@ static void panel_edges(uint32_t p, uint32_t rel)
             oct_used &= (uint8_t)~(p & OCT_BTNS);
     }
     oct_rel = rel & OCT_BTNS & ~(uint32_t)oct_used;
+    if (help_on == HELP_QUICK && !pair && (p & ~(OCT_BTNS | 1u << BTN_HOME | 1u << BTN_SAVE))) {
+        help_close();                               /* the quick start: a button other than HOME, SAVE and the OCT pair closes
+                                                     * it and then does its job (#582, D-247) */
+        oct_rel = 0;                                /* (an OCT let go in the same pass was the card's) */
+    }
     {                                               /* MIDI out: every button, raw, before anything uses it. While a card shows
                                                      * only OCT, PLAY and the sheet's HOME (a mirror of the panel runs the same
                                                      * rules), and a release only if its press went out */
