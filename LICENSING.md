@@ -15,6 +15,12 @@ Copied files, to be changed only as part of Matryoshka's own work:
 
 Every one of these keeps its original `SPDX-License-Identifier` and copyright header.
 
+## Copied from X0X
+
+Source: <https://github.com/charlesvestal/fm1-x0x> (Charles Vestal, a Felucca fork) at commit `ca2d377e3b9522579245152a81781a575f4d2fea`. GPL-3.0-only.
+
+- `firmware/hal/fm1_cpu1.h`, `firmware/hal/fm1_cpu1.S`: the second core's start-up and job hand-off, after what Melodee (keremimo) and Jangada (zednaked) found. Unchanged but for a notice; not built yet (issue #271).
+
 ## JieLi SDK files (Apache-2.0)
 
 Packages made by `tools/build.py` embed three files from the JieLi AC79 SDK (`uboot.boot`, `cfg_tool.bin`, `cfg/eq_cfg_hw.bin`), Apache-2.0. They are not in this repository as files, but the prebuilt package that the web app bundles (`web/public/firmware/matryoshka.fwsc`, made by `tools/build.py` and `npm run firmware`, published on Cloudflare Pages) contains them, so the licence texts (`LICENSE-GPL-3.0.txt`, `LICENSE-Apache-2.0.txt`) are published next to it and linked from the Flash tab. Ship `LICENSES/Apache-2.0.txt` with every package. Other than the ymfm notice described below, the remaining texts in `LICENSES/` belong to Felucca's own bundled material (fonts, DSP ports) and apply only to files not copied here; they are kept so any later copy stays correctly attributed, and releases do not ship them.
