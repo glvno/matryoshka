@@ -338,7 +338,8 @@ for (const r of CONTROLS) {
 export interface HintLine { id: string; lead?: string; items: (string | { row: string | string[]; text: string })[]; width: number }
 export const HINTS: HintLine[] = [
   // the SEQ page's line under the grid (seq_ui.c seq_grid_draw)
-  { id: 'step_record', items: ['sr-keys', 'sr-rest', 'sr-cursor', 'sr-end'], width: 228 },
+  // (#582 p7: LFO's two jobs apart, the tie with a key held; K4's move left to the sheet for the room)
+  { id: 'step_record', items: ['sr-keys', { row: 'sr-rest', text: 'LFO rest  KEY+LFO tie' }, 'sr-end'], width: 228 },
   { id: 'live', items: ['take', 'roll-view', 'octave', 'take-accent'], width: 228 },
   { id: 'held_lock', lead: 'HELD:', items: [{ row: 'lock-rows', text: 'K1-K4 lock  back to value: off' }, { row: 'lock-pages', text: 'ALGO' }], width: 228 },
   { id: 'held_drum', lead: 'HELD:', items: ['held-velocity', 'held-chance-select', 'lock-pages'], width: 228 },

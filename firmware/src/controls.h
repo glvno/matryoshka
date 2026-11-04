@@ -142,7 +142,7 @@ static const uint8_t CTL_SHEET[2][9][21] = {
 };
 
 /* the pages' hint lines, in the rows' words (controls.ts HINTS): the text and the field it fits */
-#define HINT_STEP_RECORD "KEYS note  LFO rest/tie  K4 move  REC done"   /* 209 of 228 px */
+#define HINT_STEP_RECORD "KEYS note  LFO rest  KEY+LFO tie  REC done"   /* 206 of 228 px */
 #define HINT_LIVE "KEYS record  SELECT view  OCT octave  FX acc"   /* 219 of 228 px */
 #define HINT_HELD_LOCK "HELD: K1-K4 lock  back to value: off  ALGO"   /* 198 of 228 px */
 #define HINT_HELD_DRUM "HELD: K2 vel  SELECT chance  ALGO lock"   /* 188 of 228 px */
