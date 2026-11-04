@@ -410,7 +410,7 @@ async function installOnRig(run, url) {
     if (!emuBin) throw new Error(`run ${run} has no matryoshka-emu-midi artifact: no gate, nothing installed`);
     if (scenariosPassed(emuBin)) console.log(`emu:scenarios passed on its M1_EMU_MIDI build before (${scenariosMark(emuBin)}, the same sha256): not run again`);
     else {
-      console.log('emu:scenarios on its M1_EMU_MIDI build (about four minutes)');
+      console.log('emu:scenarios on its M1_EMU_MIDI build (about five minutes)');
       if (spawnSync('node', [fileURLToPath(import.meta.url), emuBin], { cwd: join(ROOT, 'web'), stdio: 'inherit' }).status !== 0)
         throw new Error(`the gate: emu:scenarios failed on run ${run}: nothing installed`);
     }
