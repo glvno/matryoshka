@@ -1050,8 +1050,18 @@ static void seq_arm_shown(int opening)
     seq_clamp();
     mod = seq_module();
     seq_armed_gen = pages_gen();
-    if (mod >= 0)
+    if (mod >= 0) {
+        uint64_t was = eng_arm_mask_get();
         seq_arm_set((uint64_t)1 << mod);
+        if (eng_arm_mask_get() != was) {        /* (#582: the arming changed, and stays after the page: the bar says so) */
+            static char m[32];
+            char name[TRACK_NAME_MAX + 8];
+            seq_name(seq_trk, name);
+            put(put(m, name), " ARMED")[0] = 0;
+            seq_msg_due = m;
+            seq_msg_ms = 1200;
+        }
+    }
 }
 
 /* the bar names what records (D-549): REC and the track, REC n TRACKS, or REC: NO TRACK ARMED (REC still runs: a track
