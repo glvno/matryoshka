@@ -263,7 +263,7 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
     case MR_MOUT: cfg.midi_out = (uint8_t)up; break;
     case MR_CLKOUT: cfg.clock_out = (uint8_t)up; break;  /* MIDI clock out with MIDI OUT (#473) */
     case MR_QUICK: cfg.quick = (uint8_t)up; break;  /* the quick start after power-on (D-240, D-247) */
-    case MR_OUTPUT: out_mono = (uint8_t)up; break;  /* STEREO, MONO: (L + R) / 2 on both sides of the analog output (#612) */
+    case MR_OUTPUT: out_mono = (uint8_t)up; break;  /* STEREO, MONO: (L + R) / 2 on the analog output's left side, the right silent (#612) */
     case MR_TEMPO:                                      /* GLOBAL, PATCH (D-907): kept 5 s later, without SAVE */
         if ((uint32_t)up != gt_patch) {
             gt_set((uint32_t)up, 0u, fm1_ms);

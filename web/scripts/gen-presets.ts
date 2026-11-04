@@ -233,9 +233,15 @@ presets.push(() => {
 
 
 // Meridian 8: the eight channels on the white keys from F3 (as the kits), a gate pattern on the transport (the original
-// needs a sequencer to power it); a held key keeps its channel powered
+// needs a sequencer to power it); a held key keeps its channel powered. Both of the assembly's outputs (the odd and the
+// even channels) go into the Output's l, which plays on both sides: centred, so every channel is heard on both sides and
+// the FM-1's OUTPUT MONO loses nothing (D-919). The cables are the patch's, not the assembly's, so its structure and its
+// presets stay as they are (the XL keeps the two sides).
 presets.push(() => {
   const x = around('Meridian 8', 'Meridian 8');
+  const r = x.a.outputs.find((o) => o.label === 'r')!;
+  x.p.cables = x.p.cables.filter((c) => !(c.to.module === x.out.id && c.to.port === 'r'));
+  wire(x.p, r.module, r.port, x.out.id, 'l');
   sequenced(x, 'PATTERN', {
     1: 'x.....x...x.....',
     2: '....x.......x...',
