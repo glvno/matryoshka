@@ -615,6 +615,9 @@ static void panel_encoders(int32_t *st)
 }
 
 static uint8_t key_note[27];                     /* the note each held key started, so a release (or an octave change in between) ends the right one */
+static uint8_t drum_white_due;                   /* a white key the Drum map gives no note (#582): panel_status says where drums are */
+static uint32_t drum_white_ms;                   /* (when it last said so: once in DRUM_WHITE_MS) */
+#define DRUM_WHITE_MS 8000u
 static uint8_t key_eng[27];                      /* the note it played in the engine: key_note, a Drum map row's (eng_keys_drummap), */
 #define KEY_SILENT 0xFFu                         /* or none (a white key on a Drum map) */
 static uint32_t key_sounding;                    /* bit n: key n started a note (not a key pressed on the SEQ page) */
@@ -687,6 +690,8 @@ static int panel_key(uint32_t n, int down, int quick)
         key_eng[n] = map < 0 ? key_note[n] : b >= 0 && b < (int)ENG_DRUM_ROWS ? (uint8_t)eng_drummap_note((uint32_t)map, (uint32_t)b)
             : eng_drummap_repeat((uint32_t)map) ? key_note[n] : KEY_SILENT;
         key_sounding |= bit;
+        if (key_eng[n] == KEY_SILENT && map >= 0)
+            drum_white_due = 1;                     /* (a key handler: state only, the bar is the loop's, D-228) */
         if (key_eng[n] != KEY_SILENT)
             eng_note_on(key_eng[n], vel == 127u ? ENG_ONE : (int32_t)((vel << 16) / 127u), cfg.ch ? cfg.ch : 1u);   /* the panel plays on the device's channel */
         if (key_eng[n] != KEY_SILENT)
@@ -1028,6 +1033,13 @@ static void panel_status(void)
             fmt_int(num, (eng_get_param((uint32_t)panel, FM1_P_TEMPO) + 32768) >> 16);
             put(put(put(m, "TEMPO "), num), ": TURN PRESET")[0] = 0;   /* (22 characters at most) */
             ui_msg(m, 1500);
+        }
+    }
+    if (drum_white_due) {                           /* a white key silent on a Drum map (#582): the drums are on the black keys */
+        drum_white_due = 0;
+        if (!help_on && (!drum_white_ms || fm1_ms - drum_white_ms >= DRUM_WHITE_MS)) {
+            drum_white_ms = fm1_ms | 1u;
+            ui_msg("DRUMS: BLACK KEYS 1-8", NUDGE_MS);
         }
     }
     if (knob_touched || button_touched) {           /* what was just moved, in the bar for a second */
