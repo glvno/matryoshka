@@ -15,6 +15,7 @@
     "golden": "vite-node scripts/golden.ts",
     "firmware": "node scripts/sync-firmware.mjs",
     "flash": "node scripts/flash.mjs",
+    "record": "node scripts/record.mjs",
     "export-defs": "vite-node scripts/export-defs.ts",
     "presets": "vite-node scripts/presets.ts",
     "cpu-costs": "vite-node scripts/cpu-costs.ts",
