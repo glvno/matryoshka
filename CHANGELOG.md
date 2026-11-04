@@ -6,14 +6,14 @@
 
 ### FM-1
 
-- **Even loudness (#448):** every factory patch and preset plays at about the same loudness. One key sits at about −18 LUFS (before: −37 to −5), a 4-key chord at most −15, and nothing goes over the 0.88 peak cap. Five presets whose level rows run out of range stay quieter.
-- **A level row on every engine** (`level`, `volume` or `vol`). Presets you stored for basic poly, drift poly, mono lead, supersaw stack, Expander S, Oracle V, Monolith D, Sallen 20, Silver Box, Cassia 1 and drum kit no longer match them.
-- **Cassia 1:** shorter row names to fit its `vol` row: `wave`, `rate`, `depth` and `delay` under vibrato, and `res` on each line.
-- **Controls sheet:** SEL reads "arm only this", a new row says "ENV then SEL arm several", and the ENVIRONMENT page reads "SEL add / drop row".
+- **Even loudness:** every factory patch and preset plays at about the same loudness, and none clips.
+- **Level row:** every engine has one (`level`, `volume` or `vol`). Presets you stored yourself for 11 of the engines no longer match their rows.
+- **Cassia 1:** shorter row names (`wave`, `rate`, `depth`, `delay`, `res`) to make room for `vol`.
+- **Controls sheet:** SEL reads "arm only this", with a new row "ENV then SEL arm several".
 
 ### Editor
 
-- "Delete with its modules" also deletes the assemblies nested inside, and one Undo brings them back (#560).
+- "Delete with its modules" also deletes nested assemblies, and one Undo brings them back.
 
 ## 1.9.0 — 2026-11-03
 
