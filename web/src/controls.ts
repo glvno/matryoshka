@@ -478,10 +478,10 @@ export const rowHelp = (r: ControlRow): string => (r.help ?? plainDoes(r)) + whe
 /** what the FM-1 does that is no single control, for the editor's help: the sheet, the quick start, the keys */
 export const FM1_NOTES: { keys: string; text: string }[] = [
   { keys: 'OCT- + OCT+', text: 'the controls sheet: what the controls do where the FM-1 is now (its tab) and everywhere (EVERYWHERE), made from the same table as this list. ALGO switches the tab, SELECT scrolls, HOME closes it; the note keys and PLAY still work, the other controls do nothing meanwhile' },
-  { keys: 'quick start', text: 'the card after power-on: HOME closes it, OCT- + OCT+ opens the controls sheet instead, HOME + SAVE turns it off for good (GLO › SYSTEM › QUICK START or FACTORY RESET turns it on again)' },
+  { keys: 'quick start', text: 'the card after power-on: HOME closes it, OCT- + OCT+ opens the controls sheet instead, HOME + SAVE turns it off for good (GLO › SYSTEM › QUICK START or FACTORY RESET turns it on again); any other knob or button closes it and then does its job' },
   { keys: 'FX, LFO, EDIT, ARP', text: 'patch buttons: the patch decides what each does (a gate, a Toggle that bypasses a module or assembly, or a list of device pages); the sheet lists each by its job in the loaded patch. On the SEQ and SONG pages FX and LFO have the jobs below' },
-  { keys: 'the keys', text: 'they play what is armed (SEL, REC held + a black key, the SEQ page arms the track it shows); nothing armed, Main’s cables decide (KEYS WIRED). While the keys reach a Drum map, black keys 1..8 play its rows on every page' },
-  { keys: 'SAVE held at power-on', text: 'safe mode: the fallback patch, nothing read from flash' },
+  { keys: 'the keys', text: 'they play what is armed (SEL, REC held + a black key, the SEQ page arms the track it shows); nothing armed, Main’s cables decide (KEYS WIRED, and the environment says WIRED on the devices they reach). While the keys reach a Drum map, black keys 1..8 play its rows on every page' },
+  { keys: 'SAVE held at power-on', text: 'safe mode: the fallback patch, nothing read from flash; a restart leaves it (the loading screen says HOLD SAVE: SAFE MODE)' },
 ];
 
 /** an EVERYWHERE row listed in only a few states: which (" (on the SEQ and SONG pages)"), else '' */
