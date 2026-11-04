@@ -7,14 +7,17 @@
 // The 909 Kit is kept as its file; <7PH (the 909 Kit's drums and a Silver Box on its own track) is built from it
 // and comes after it. The XLs (browser-only versions, web/presets/xl) are gen-xl.ts's. The helpers are factory-build.ts's.
 // Run from web/:  npx vite-node scripts/gen-presets.ts
-import { readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { DEFS } from '../src/modules';
 import { addModule, defaultMap, emptyPatch, paramUnit, removeModule, rowDef, STEP_VEL, validatePatch, type ModuleInst, type Patch } from '../src/patch';
 import { ACCENT_VEL, fixNotes, patternNotes, type StepNote } from '../src/track';
 import { FACTORY } from '../src/assemblies';
 import { allModules, fixAssemblies, insertAssembly, makeAssembly, removeMember, type AssemblyInst } from '../src/assembly';
 import { deviceBudget } from '../src/patchbin';
-import { around, headroom, level, mod, peakOf, players, plugIn, plugOut, row, wire, type Inst } from './factory-build';
+import { applyLevels, around, headroom, level, loudness, mod, peakOf, players, plugIn, plugOut, row, setCardLevels, wire, type Inst, type LevelPlan } from './factory-build';
+import { cardSlug } from '../src/preset-cards';
+import { peakOfPlay, plays } from '../src/headroom';
 
 const DIR = new URL('../presets/', import.meta.url);
 const KEEP = '909-kit.json'; // ours, kept as written
@@ -544,6 +547,18 @@ after.push(() => {
     removeModule(p, id);
     removeMember(p, a, id);
   }
+  // Its volume (the level row, #448, a one-input mixer after the VCA) is left out as well: the kit's mixer sets the
+  // bass's level (in4), and the patch keeps its bytes
+  const volume = a.params.find((r) => r.label === 'volume')!;
+  const before = p.cables.find((c) => c.to.module === volume.module)!.from;
+  a.outputs = a.outputs.map((o) => (o.module === volume.module ? { ...o, module: before.module, port: before.port } : o));
+  a.params = a.params.filter((r) => r !== volume);
+  removeMember(p, a, volume.module);
+  removeModule(p, volume.module);
+  // (and its VCA at the level it had before the volume row came, half the standalone's: the groove's balance as it was)
+  const vca = mod(p, before.module);
+  vca.params.gain = 0.8;
+  vca.att = [0.25, vca.att![1]];
   wire(p, main.id, 'keys', st.id, 'keys');
   plugIn(p, st.id, 'keys', a, 'keys');
   plugOut(p, a, 'out', mix.id, 'in4');
@@ -627,8 +642,44 @@ const slug = (n: string): string => n.toLowerCase().replace(/[^a-z0-9]+/g, '-').
 // (each as the editor holds it once opened: fixAssemblies reconciles every card with the cables crossing its frame, so a
 // factory patch the editor opens is the one the FM-1 plays and the budget counts, #465)
 const reconciled = (p: Patch): Patch => (fixAssemblies(p, DEFS), p);
-const made = presets.map((f) => headroom(reconciled(silverDemo(players(validatePatch(structuredClone(f()), DEFS))))));
-const later = after.map((f) => headroom(reconciled(validatePatch(structuredClone(f()), DEFS))));
+// (before headroom, loudness: the Output and the engine's level rows by the rule, #448; its plan sets the engine's Init
+// level rows, presets/cards/levels.json, and its presets' on the card)
+const plans: LevelPlan[] = [];
+const leveled = (p: Patch): Patch => {
+  const plan = loudness(p);
+  applyLevels(plan);
+  plans.push(plan);
+  return p;
+};
+/** headroom after the levels: it should find nothing to lower (say so when it does: the levels are not settled) */
+const capped = (p: Patch): Patch => {
+  const was = p.modules.find((m) => m.type === 'output')!.params.level;
+  headroom(p);
+  const now = p.modules.find((m) => m.type === 'output')!.params.level;
+  if (now !== was) {
+    console.log(`levels: headroom lowered ${p.name}'s Output ${was} -> ${now}`);
+    if (process.env.LEVEL_DEBUG) {
+      const o = p.modules.find((m) => m.type === 'output')!;
+      o.params.level = was;
+      for (const w of plays(p)) console.log('   ', w.label, w.notes.join(','), peakOfPlay(w, 3).toFixed(3), peakOfPlay(w, 3, 48000).toFixed(3));
+      o.params.level = now;
+    }
+  }
+  return p;
+};
+const made = presets.map((f) => capped(leveled(reconciled(silverDemo(players(validatePatch(structuredClone(f()), DEFS)))))));
+const later = after.map((f) => capped(leveled(reconciled(validatePatch(structuredClone(f()), DEFS)))));
+// the drum kit engine has no factory patch: it is measured in a stand-in (its Drum map's rows on a pattern, as the 808
+// Kit's) at an Output of 0.5, so its level rows carry its whole level
+{
+  const x = around('drum kit', 'drum kit');
+  sequenced(x, 'PATTERN', { 1: 'X...x...x.x.....', 2: '....X.......X..x', 3: '............X...', 4: 'x.X.x.X.x.X.x.X.', 6: '......x.......x.', 8: '..........x.....' });
+  const p = reconciled(validatePatch(structuredClone(x.p), DEFS));
+  p.modules.find((m) => m.type === 'output')!.params.level = 0.5;
+  const plan = loudness(p, { output: 0.5 });
+  applyLevels(plan);
+  plans.push(plan);
+}
 for (const p of [...made, ...later]) {
   const b = deviceBudget(p);
   if (!b.fits) {
@@ -646,3 +697,42 @@ made.forEach(write);
 writeFileSync(new URL(`${String(made.length).padStart(2, '0')}-${KEEP}`, DIR), keptJson);
 console.log(`${made.length} 909 Kit (kept)`);
 later.forEach((p, i) => write(p, made.length + 1 + i));
+
+// ---- the level plans (#448): each engine's Init level rows into presets/cards/levels.json (gen-assemblies sets them in
+// the factory assembly), each preset's onto its card. When either changed, the factory assemblies are made again and this
+// script runs again (the patches and the presets' measurements read them), until nothing moves.
+const LEVELS_FILE = new URL('cards/levels.json', DIR);
+const levelsBefore = existsSync(LEVELS_FILE) ? readFileSync(LEVELS_FILE, 'utf8') : '{}';
+const levels = JSON.parse(levelsBefore) as Record<string, Record<string, number>>;
+let moved = 0;
+for (const plan of plans) {
+  if (!plan.engine) continue;
+  levels[plan.engine] = plan.init;
+  const def = FACTORY.find((d) => d.name === plan.engine)!;
+  const file = new URL(`cards/${cardSlug(def.name)}.txt`, DIR);
+  const was = readFileSync(file, 'utf8');
+  let text = was;
+  for (const [name, values] of Object.entries(plan.presets)) text = setCardLevels(text, def, name, values);
+  if (text !== was) {
+    writeFileSync(file, text);
+    moved++;
+    console.log(`levels: presets/cards/${cardSlug(def.name)}.txt`);
+  }
+}
+const levelsNow = JSON.stringify(Object.fromEntries(Object.entries(levels).sort(([a], [b]) => a.localeCompare(b))), null, 1) + '\n';
+if (levelsNow !== levelsBefore) {
+  writeFileSync(LEVELS_FILE, levelsNow);
+  moved++;
+  console.log('levels: presets/cards/levels.json');
+}
+const round = Number(process.env.LEVEL_ROUND ?? 1);
+if (moved) {
+  if (round >= 5) throw new Error('the levels still move after 5 rounds');
+  console.log(`levels moved (round ${round}): the factory assemblies again, then this script`);
+  const run = (script: string, env: Record<string, string> = {}): void => {
+    const r = spawnSync('npx', ['vite-node', script], { stdio: 'inherit', env: { ...process.env, ...env } });
+    if (r.status !== 0) throw new Error(`${script} failed`);
+  };
+  run('scripts/gen-assemblies.ts');
+  run('scripts/gen-presets.ts', { LEVEL_ROUND: String(round + 1) });
+}

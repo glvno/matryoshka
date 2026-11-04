@@ -6,12 +6,15 @@ import { DEFS } from '../src/modules';
 import { addModule, connect, disconnect, emptyPatch, validatePatch, type Cable, type ModuleInst, type Patch } from '../src/patch';
 import { setKind, setSwitches, setTarget } from '../src/buttons';
 import { FACTORY } from '../src/assemblies';
-import { allModules, assembliesOf, insertAssembly, parentOf, type AssemblyInst } from '../src/assembly';
+import { allModules, assembliesOf, insertAssembly, parentOf, type AssemblyDef, type AssemblyInst } from '../src/assembly';
+import { LEVEL_ROWS, cases, gainFor, levelRows, measure, peakBound, scaledRow, type Case, type LevelRow, type Loudness } from '../src/levels';
+import { cardRows, formatValue } from '../src/preset-cards';
 import { deviceBudget } from '../src/patchbin';
 import { allocatorOf, setPoly } from '../src/poly';
 import { Engine } from '../src/engine';
 import { HEADROOM, peakOfPlay, plays } from '../src/headroom';
-import '../src/factory-presets'; // (the engines' factory presets, which headroom plays)
+import { factoryPresets } from '../src/factory-presets'; // (the engines' factory presets, which headroom plays)
+import { defStructureAndOrder } from '../src/structure';
 
 export type Ref = { module: number; param: string };
 /** a row of an assembly card by label; a label that repeats (a d s r) by the section after the row `after` */
@@ -190,3 +193,157 @@ export function players(p: Patch, browser = false): Patch {
   return p;
 }
 
+
+// ---- loudness (#448, src/levels.ts): the Output and the engine's level rows so that the patch and each factory preset of
+// its engine land on the rule (one key at about -18 LUFS, a chord at most 3 LU over that, no way of playing it over the
+// peak cap). The Output carries the patch's own sound (the engine at Init); each preset's level rows carry the rest.
+// The Output is kept where Init's rows stay as they are when the rows' ranges allow, else moved so they do. A sound
+// within LEVEL_HOLD of its rule keeps its value, so a run on settled levels changes nothing.
+const LEVEL_HOLD = 0.3;
+
+export interface LevelPlan {
+  /** the engine whose level rows were set (null: a patch without one, its Output only) */
+  engine: string | null;
+  /** the level rows' values at Init (the factory assembly's: presets/cards/levels.json) */
+  init: Record<string, number>;
+  /** each factory preset's level rows (its card's lines) */
+  presets: Record<string, Record<string, number>>;
+  /** what was measured, before */
+  measured: { preset: string; m: Loudness }[];
+}
+
+const dbOf = (k: number): number => 20 * Math.log10(k);
+
+/** set a patch's Output and its engine's level rows at Init by the rule; returns the plan (the presets' rows to write on
+ * the engine's card). `output` fixes the Output (an engine without a factory patch of its own, measured in a stand-in) */
+export function loudness(p: Patch, o: { output?: number } = {}): LevelPlan {
+  const out = p.modules.find((m) => m.type === 'output')!;
+  const o0 = out.params.level;
+  const list = cases(p);
+  const measured = list.map((c) => ({ preset: c.preset, m: measure(c.patch) }));
+  // (an assembly the players made an engine, a voice with a Voicing put in, has no presets: the Output alone)
+  // (also an engine with no factory presets here, as <7PH's Silver Box)
+  const engine = list.length > 1 && list[0].engine && LEVEL_ROWS[list[0].engine.name ?? ''] ? list[0].engine : null;
+  if (!engine) {
+    const g = gainFor(measured[0].m);
+    if (o.output === undefined && Math.abs(dbOf(g)) > LEVEL_HOLD) out.params.level = Math.max(0.01, Math.min(1, (peakBound(measured[0].m) ? Math.floor : Math.round)(o0 * g * 100) / 100));
+    return { engine: null, init: {}, presets: {}, measured };
+  }
+  if (list[0].preset !== 'Init') throw new Error(`${p.name}: its engine is at ${list[0].preset}, not Init`);
+  const rowsIn = (c: Case): LevelRow[] => levelRows(c.patch, c.engine!);
+  const valuesIn = (c: Case): number[] => rowsIn(c).map((r) => mod(c.patch, r.module).params[r.param]);
+  // Init's gain: the patch's own sound and, when the patch differs from it, the Init preset (the same rows), the quieter
+  const initAt = list.map((c, i) => (i === 0 || c.preset === 'Init' ? i : -1)).filter((i) => i >= 0);
+  const gains = measured.map((x) => gainFor(x.m));
+  const gInit = Math.min(...initAt.map((i) => gains[i]));
+  const bound = (i: number): boolean => initAt.includes(i) ? initAt.some((j) => peakBound(measured[j].m)) : peakBound(measured[i].m);
+  const rows = rowsIn(list[0]);
+  // the room each sound's rows have, up and down, as gain factors
+  const room = list.map((c) => {
+    const v = valuesIn(c);
+    let up = Infinity, dn = 0;
+    rows.forEach((r, k) => {
+      if (r.db) {
+        up = Math.min(up, Math.pow(10, (r.max - v[k]) / 20));
+        dn = Math.max(dn, Math.pow(10, (r.min - v[k]) / 20));
+      } else if (v[k] > 0) {
+        up = Math.min(up, r.max / v[k]);
+        dn = Math.max(dn, (r.min + r.step) / v[k]);
+      }
+    });
+    return { up, dn };
+  });
+  const gainOf = (i: number): number => (initAt.includes(i) ? gInit : gains[i]);
+  let output = o.output ?? o0;
+  if (o.output === undefined) {
+    const lo = o0 * Math.max(...list.map((_, i) => gainOf(i) / room[i].up));
+    const hi = Math.min(1, o0 * Math.min(...list.map((_, i) => gainOf(i) / room[i].dn)));
+    const pref = Math.abs(dbOf(gInit)) <= LEVEL_HOLD ? o0 : o0 * gInit;
+    output = Math.min(1, Math.max(lo, Math.min(hi, pref)));
+    output = Math.max(0.01, Math.min(1, (output === lo ? Math.ceil : Math.round)(output * 100 - 1e-6) / 100));
+    if (Math.abs(dbOf(output / o0)) < 1e-9) output = o0;
+  }
+  out.params.level = output;
+  const valuesFor = (i: number): number[] => {
+    const v = valuesIn(list[i]);
+    const k = (gainOf(i) * o0) / output;
+    if (Math.abs(dbOf(gainOf(i))) <= LEVEL_HOLD && Math.abs(dbOf(o0 / output)) < 1e-9) return v;
+    return rows.map((r, j) => scaledRow(r, v[j], k, bound(i)));
+  };
+  const keyed = (v: number[]): Record<string, number> => Object.fromEntries(rows.map((r, j) => [r.key, v[j]]));
+  const initValues = valuesFor(0);
+  rows.forEach((r, j) => (mod(p, r.module).params[r.param] = initValues[j]));
+  const presets: Record<string, Record<string, number>> = {};
+  list.forEach((c, i) => {
+    if (i === 0 || c.preset === 'Init') return;
+    presets[c.preset] = keyed(valuesFor(i));
+  });
+  return { engine: engine.name ?? null, init: keyed(initValues), presets, measured };
+}
+
+/** a card's text with a preset's level rows set (their lines replaced, or added at the end of its block); an old
+ * comment on a level row (the #440 cuts) goes with the line it explained */
+export function setCardLevels(text: string, def: AssemblyDef, preset: string, values: Record<string, number>): string {
+  const rows = cardRows(def);
+  const lines = text.split('\n');
+  const start = lines.findIndex((l) => l.trim().toLowerCase() === `preset: ${preset}`.toLowerCase());
+  if (start < 0) throw new Error(`${def.name}'s card: no preset ${preset}`);
+  let end = lines.findIndex((l, i) => i > start && /^\s*preset:/i.test(l));
+  if (end < 0) end = lines.length;
+  for (const [key, v] of Object.entries(values)) {
+    const r = rows.find((x) => x.key === key)!;
+    // (written as the card's header names it: the label alone when no other row has it)
+    const alone = rows.filter((x) => x.label === r.label).length === 1 && !rows.some((x) => x.key === r.label && x !== r);
+    const names = [key, ...(alone ? [r.label] : [])].map((n) => n.toLowerCase());
+    const line = `  ${alone ? r.label : key} = ${formatValue(r, v)}`;
+    const at = lines.findIndex((l, i) => i > start && i < end && names.includes(l.split('=')[0].trim().toLowerCase()) && l.includes('='));
+    if (at >= 0) {
+      lines[at] = line;
+      if (/^\s*#.*#440/.test(lines[at - 1])) {
+        lines.splice(at - 1, 1);
+        end--;
+      }
+    } else {
+      let last = end - 1;
+      while (last > start && (!lines[last].trim() || lines[last].trim().startsWith('#'))) last--;
+      lines.splice(last + 1, 0, line);
+      end++;
+    }
+  }
+  return lines.join('\n');
+}
+
+/** a plan's levels into this run's factory engine and presets (in memory), so that what follows (headroom, the patches
+ * after) plays the presets at their new levels; the files (levels.json, the cards) are written at the end */
+export function applyLevels(plan: LevelPlan): void {
+  if (!plan.engine) return;
+  const def = FACTORY.find((d) => d.name === plan.engine)!;
+  const rows = cardRows(def);
+  const { structure, order } = defStructureAndOrder(def);
+  const at = (key: string): { i: number; pos: number } => {
+    const i = rows.find((r) => r.key === key)!.i;
+    return { i, pos: order.indexOf(i) };
+  };
+  const list = factoryPresets().filter((x) => x.structure === structure);
+  const set = (name: string, values: Record<string, number>): void => {
+    const pr = list.find((x) => x.name === name);
+    if (!pr) throw new Error(`${def.name}: no factory preset ${name}`);
+    for (const [key, v] of Object.entries(values)) pr.values[at(key).pos] = v;
+  };
+  for (const [key, v] of Object.entries(plan.init)) {
+    const r = def.params[at(key).i];
+    def.modules.find((m) => m.id === r.module)!.params[r.param] = v;
+  }
+  set('Init', plan.init);
+  for (const [name, values] of Object.entries(plan.presets)) set(name, values);
+}
+
+/** an XL's Output by the loudness rule, from the patch as it is alone (its engines' presets come from their FM-1 versions'
+ * cards or the rules, and headroom() after keeps them under the cap) */
+export function loudnessOutput(p: Patch): Patch {
+  const out = p.modules.find((m) => m.type === 'output')!;
+  const m = measure(p);
+  const g = gainFor(m);
+  if (Math.abs(dbOf(g)) > LEVEL_HOLD) out.params.level = Math.max(0.01, Math.min(1, (peakBound(m) ? Math.floor : Math.round)(out.params.level * g * 100) / 100));
+  return p;
+}

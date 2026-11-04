@@ -100,7 +100,9 @@
         "unison": 1,
         "detune": 10,
         "blend": 0.5,
-        "stack": 0
+        "stack": 0,
+        "pm2": 0,
+        "pm3": 0
       },
       "att": [
         1,
@@ -135,7 +137,9 @@
         "unison": 1,
         "detune": 10,
         "blend": 0.5,
-        "stack": 0
+        "stack": 0,
+        "pm2": 0,
+        "pm3": 0
       },
       "att": [
         1,
@@ -297,7 +301,7 @@
       "x": 1280,
       "y": 0,
       "params": {
-        "gain": 0.6
+        "gain": 0.41
       },
       "att": [
         1,
@@ -371,7 +375,8 @@
       "params": {
         "time": 16,
         "mode": 0,
-        "voices": 0
+        "voices": 0,
+        "scale": 0
       }
     }
   ],
@@ -732,6 +737,12 @@
       "label": "vibrato"
     },
     {
+      "module": 11,
+      "param": "gain",
+      "label": "level",
+      "head": "output"
+    },
+    {
       "module": 14,
       "param": "view",
       "label": "out"
@@ -921,6 +932,11 @@
           "module": 10,
           "param": "r",
           "label": "r"
+        },
+        {
+          "module": 11,
+          "param": "gain",
+          "label": "level"
         },
         {
           "module": 4,

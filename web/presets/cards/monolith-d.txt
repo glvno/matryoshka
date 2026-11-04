@@ -2,6 +2,7 @@
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+# The level row (output / volume) gen-presets sets in every preset, by loudness (#448): leave it to it.
 #
 # controllers
 #   tune = 0                           -4..4
@@ -44,6 +45,7 @@
 #   contours / decay (2) = 0.67        0..1
 #   contours / sustain (2) = 0.85      0..1
 # output
+#   volume = 0.44                      0..2
 #   a-440 = OFF                        OFF, ON
 
 # Drafts of 2026-10-29 after the Minimoog Model D, not yet listened to on the FM-1 (#413).
@@ -76,6 +78,7 @@ preset: Fat Bass
   contours / decay (2) = 0.7
   contours / sustain (2) = 0.9
   decay on = 2
+  volume = 0.5
 
 # Three detuned 8' waves, glide on, the filter open with some emphasis: the singing lead.
 preset: Glide Lead
@@ -103,6 +106,7 @@ preset: Glide Lead
   contours / decay (2) = 0.8
   contours / sustain (2) = 1
   decay on = 2
+  volume = 0.56
 
 # Square and wide rectangle at 8' over a 16' square: the hollow lead.
 preset: Square Lead
@@ -129,6 +133,7 @@ preset: Square Lead
   contours / decay (2) = 0.8
   contours / sustain (2) = 1
   decay on = 2
+  volume = 0.32
 
 # Pink noise alone through a slow, resonant filter sweep: wind and surf.
 preset: Pink Wind
@@ -148,6 +153,7 @@ preset: Pink Wind
   contours / decay (2) = 0.95
   contours / sustain (2) = 0.6
   decay on = 2
+  volume = 2
 
 # A triangle at 8' with a faint 4' triangle, a soft attack, a gentle filter: a flute.
 preset: Soft Flute
@@ -171,3 +177,4 @@ preset: Soft Flute
   contours / decay (2) = 0.75
   contours / sustain (2) = 0.9
   decay on = 2
+  volume = 0.33

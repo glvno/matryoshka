@@ -27,12 +27,12 @@ export interface Play {
   pattern?: number;
 }
 
-const voicesIn = (p: Patch, ids: number[]): number => {
+export const voicesIn = (p: Patch, ids: number[]): number => {
   const set = new Set(ids);
   return Math.max(1, ...p.modules.filter((m) => m.type === 'alloc' && set.has(m.id)).map((m) => Math.round(m.params.voices as number)));
 };
 /** the patterns that play something when the transport runs (0 = pattern 1; a Sequencer module runs in all of them) */
-function patterns(p: Patch): number[] {
+export function patterns(p: Patch): number[] {
   const out = new Set<number>();
   for (const m of p.modules) {
     if (m.type === 'seq') out.add(0);
@@ -43,7 +43,7 @@ function patterns(p: Patch): number[] {
   return [...out].sort((a, b) => a - b);
 }
 
-function ways(p: Patch, what: string, voices: number): Play[] {
+export function ways(p: Patch, what: string, voices: number): Play[] {
   const n = Math.min(8, voices);
   const out: Play[] = [{ label: `${what}, ${n} keys`, patch: p, notes: CHORD.slice(0, n), run: false }];
   for (const dm of p.modules.filter((m) => m.type === 'drummap')) {
@@ -72,12 +72,8 @@ export function plays(p: Patch): Play[] {
   return out;
 }
 
-/** the FM-1's analog output with GLO > SYSTEM > OUTPUT at MONO (#612): both sides carry (L + R) / 2, which never peaks
- * above the louder side, so the stereo headroom covers it (firmware audio.c, `out_mono`) */
-export const monoOf = (l: number, r: number): number => (l + r) / 2;
-
-/** a play's peaks over `secs` (at the FM-1's rate) at the patch's Output level: both channels, and their mono sum (monoOf) */
-export function peaksOfPlay(w: Play, secs: number, sr = DEVICE_SR): { stereo: number; mono: number } {
+/** a play rendered for `secs` at `sr`: its left and right channels */
+export function renderPlay(w: Play, secs: number, sr = DEVICE_SR): [Float32Array, Float32Array] {
   const e = new Engine(sr);
   e.load(w.patch);
   if (w.pattern) e.setPattern(w.pattern);
@@ -86,6 +82,16 @@ export function peaksOfPlay(w: Play, secs: number, sr = DEVICE_SR): { stereo: nu
   const l = new Float32Array(Math.round(sr * secs));
   const r = new Float32Array(l.length);
   e.render(l, r);
+  return [l, r];
+}
+
+/** the FM-1's analog output with GLO > SYSTEM > OUTPUT at MONO (#612): both sides carry (L + R) / 2, which never peaks
+ * above the louder side, so the stereo headroom covers it (firmware audio.c, `out_mono`) */
+export const monoOf = (l: number, r: number): number => (l + r) / 2;
+
+/** a play's peaks over `secs` (at the FM-1's rate) at the patch's Output level: both channels, and their mono sum (monoOf) */
+export function peaksOfPlay(w: Play, secs: number, sr = DEVICE_SR): { stereo: number; mono: number } {
+  const [l, r] = renderPlay(w, secs, sr);
   let stereo = 0, mono = 0;
   for (let i = 0; i < l.length; i++) {
     stereo = Math.max(stereo, Math.abs(l[i]), Math.abs(r[i]));
@@ -97,14 +103,7 @@ export function peaksOfPlay(w: Play, secs: number, sr = DEVICE_SR): { stereo: nu
 /** a play's peak over `secs` (at the FM-1's rate), both channels, at the patch's Output level (the engine clamps at 1: lower the Output first
  * to see past it) */
 export function peakOfPlay(w: Play, secs: number, sr = DEVICE_SR): number {
-  const e = new Engine(sr);
-  e.load(w.patch);
-  if (w.pattern) e.setPattern(w.pattern);
-  e.transport(w.run);
-  for (const k of w.notes) e.noteOn(k, 1);
-  const l = new Float32Array(Math.round(sr * secs));
-  const r = new Float32Array(l.length);
-  e.render(l, r);
+  const [l, r] = renderPlay(w, secs, sr);
   let peak = 0;
   for (let i = 0; i < l.length; i++) peak = Math.max(peak, Math.abs(l[i]), Math.abs(r[i]));
   return peak;

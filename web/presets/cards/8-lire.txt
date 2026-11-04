@@ -2,6 +2,7 @@
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+# The level row (out / vol) gen-presets sets in every preset, by loudness (#448): leave it to it.
 #
 # 1-4
 #   1-4 / hold = 0                     0..1
@@ -121,6 +122,7 @@ time = 420 ms
 feedback = 0.4
 mix = 0.3
 drive = 1.2
+  vol = 0.78
 
 preset: Eight Drone
 # Self-running: both holds up on low fifths and octaves with slow beating, a touch of cross FM and a slow hyper LFO wandering the delay.
@@ -151,7 +153,7 @@ lfo → delay = 0.3
 time = 600 ms
 feedback = 0.6
 mix = 0.45
-vol = 0.55
+  vol = 0.59
 
 preset: Pair FM Bells
 # Keys: each side frequency-modulates the other, so every strike rings metallic; wide intervals, quick attacks, long decays.
@@ -192,6 +194,7 @@ sharp 7-8 = 4
 time = 300 ms
 feedback = 0.5
 mix = 0.4
+  vol = 0.55
 
 preset: Trill Delay
 # Rhythmic: voices 1-4 drone a low bed while keys 5-8 are short notes whose pitch is trilled by the hyper LFO (AND of two rates) into a tight ping-pong delay.
@@ -228,8 +231,7 @@ lfo → delay = 0.6
 time = 180 ms
 feedback = 0.7
 mix = 0.5
-# the volume after the drive down (0.7 before): the delay's feedback piled the eight keys up to 1.0, clipping (#440)
-vol = 0.6
+  vol = 0.62
 
 preset: Feedback Howl
 # Harsh and self-running: both holds up, every pair FM-ed by the other side and by the delay output, hard sharp and drive, a fast hyper LFO shaking the delay time.
@@ -265,4 +267,4 @@ time = 250 ms
 feedback = 0.8
 mix = 0.5
 drive = 4
-vol = 0.45
+  vol = 0.38
