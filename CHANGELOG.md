@@ -4,6 +4,7 @@
 
 ### FM-1
 
+- **A longer Delay (#273):** in a patch without a Granular module the FM-1's Delay now reaches 1.6 s (it was 700 ms), so a time you set past 700 ms in the editor plays on the FM-1 as in the browser instead of making the patch browser only. The delay, string and granular lines now share one memory area that a patch divides when it loads; with a Granular the Delay keeps its 700 ms line. The FM-1's knob still turns the time up to 700 ms. RAM: unchanged in total (the area is the three old blocks); each module copy is 16 bytes bigger (128 copies: 2 KB of the pool).
 - The controls sheet (OCT- + OCT+) says what SEL does to the keys. On a device page it reads "SEL arm only this", because it replaces what was armed, and a new row "ENV then SEL arm several" says how to play more than one at once. On the ENVIRONMENT page it reads "SEL add / drop row". The editor's ? help card, its controls strip and the README say the same. In a simulated FM-1, an agent playing a new owner layered two sounds in 54, 56 and 61 actions with this wording, against 71, 78 and 121 before (three runs each; 2 of the 3 went straight to the ENVIRONMENT page, against 1 of 3 before).
 
 ### Editor

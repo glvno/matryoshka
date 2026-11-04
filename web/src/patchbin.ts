@@ -663,19 +663,44 @@ export interface BudgetItem { key: BudgetKey | 'cpu' | 'browser'; label: string;
 /** a budget line over its limit in words: "CPU 130 %", "Delay over 700 ms: browser only", "70 modules of 64" */
 export const overText = (i: BudgetItem): string => (i.key === 'cpu' ? `CPU ${i.used} %` : i.key === 'browser' ? i.label : `${i.used} ${i.label} of ${i.max}`);
 
+/** a line of the FM-1's line area in bytes, rounded to whole words (engine.c LINE_BYTES) */
+const lineBytes = (n: number): number => (n + 3) & ~3;
+/** the lines of the memory-hungry modules on the FM-1 (#273 step 3, engine.c line_arena): one area, divided when a patch
+ * loads. Its size is the three fixed blocks it replaced: a 700 ms delay line, DEVICE.strings string lines, a granular line */
+export const LINES = {
+  delay: lineBytes(2 * 30944), delayLong: lineBytes(2 * 70649), string: lineBytes(2 * 1104), grain: lineBytes(2 * 44118 + 8 * 24),
+} as const;
+export const LINE_AREA = DEVICE.delays * LINES.delay + DEVICE.strings * LINES.string + DEVICE.grains * LINES.grain;
+/** does the FM-1 give this patch's Delay its 1.6 s line (engine.c eng_load: E.dly_len): the area holds a long line per
+ * Delay besides the strings', combs' and granular's lines, counted per copy as eng_load takes them. With today's counts
+ * that is every patch without a Granular module */
+export function longDelay(source: Patch): boolean {
+  const { patch: p, groups } = deviceView(source, true);
+  const copies = new Map<number, number>();
+  groups.forEach((g) => g.modules.forEach((id) => copies.set(id, g.cfg.parts)));
+  const count = (...types: string[]): number => p.modules.filter((m) => types.includes(m.type)).reduce((n, m) => n + (copies.get(m.id) ?? 1), 0);
+  return count('string', 'comb') * LINES.string + count('grain') * LINES.grain + count('delay') * LINES.delayLong <= LINE_AREA;
+}
+
 /**
  * The browser-only abilities a patch uses, one reason each ("Delay over 700 ms: browser only"); none: the FM-1 can play
  * everything in it. Today: a parameter past the FM-1's range into its browser-only stretch (ParamDef.browserMax), on either
- * morph side. A patch with any is over the FM-1 budget (deviceBudget), so it is never sent.
+ * morph side. The Delay's time past 700 ms on its A side plays on the FM-1 too when it gives the Delay its 1.6 s line
+ * (longDelay, #273 step 3): then only a B side past it stays the browser's. A patch with any is over the FM-1 budget
+ * (deviceBudget), so it is never sent.
  */
 export function browserOnly(p: Patch): string[] {
   const out = new Set<string>();
+  let long: boolean | undefined;
   for (const m of p.modules) {
     const def = DEFS[m.type];
     if (!def) continue;
     for (const pd of def.params) {
       if (pd.browserMax === undefined) continue;
-      if ([m.params[pd.name], m.paramsB?.[pd.name]].some((v) => v !== undefined && v > pd.max)) out.add(`${def.label} over ${pd.max}${pd.unit ? ` ${pd.unit}` : ''}: browser only`);
+      const past = (v: number | undefined): boolean => v !== undefined && v > pd.max;
+      const lineOk = m.type === 'delay' && pd.name === 'time' && past(m.params[pd.name]) && !past(m.paramsB?.[pd.name]) && (long ??= longDelay(p));
+      if (!lineOk && [m.params[pd.name], m.paramsB?.[pd.name]].some(past))
+        out.add(`${def.label} over ${pd.max}${pd.unit ? ` ${pd.unit}` : ''}${m.type === 'delay' && !(long ??= longDelay(p)) ? ' with a Granular' : ''}: browser only`);
     }
   }
   return [...out];
