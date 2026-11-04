@@ -4,6 +4,7 @@
 
 ### FM-1
 
+- **Mono output (#612):** GLO › SYSTEM › OUTPUT (K4) sets the headphone / line output to STEREO (as before) or MONO, which sends (L + R) / 2 to both sides, so one instrument cable into one input records everything: hard-panned voices, stereo delays and the Chorus's spread. The sum is never louder than the louder side, so nothing that fits in stereo clips in mono; measured on the web engine over the first second of each factory patch, 22 of 29 keep their peak, Hera 6, Io 4, 8 Lire and Supersaw Stack come out 1.2 to 1.8 dB lower, and Meridian 8 (one side only) 6 dB lower. USB audio stays stereo. The setting is saved with the FM-1's settings, and FACTORY RESET sets it back to STEREO.
 - The controls sheet (OCT- + OCT+) says what SEL does to the keys. On a device page it reads "SEL arm only this", because it replaces what was armed, and a new row "ENV then SEL arm several" says how to play more than one at once. On the ENVIRONMENT page it reads "SEL add / drop row". The editor's ? help card, its controls strip and the README say the same. In a simulated FM-1, an agent playing a new owner layered two sounds in 54, 56 and 61 actions with this wording, against 71, 78 and 121 before (three runs each; 2 of the 3 went straight to the ENVIRONMENT page, against 1 of 3 before).
 
 ### Editor

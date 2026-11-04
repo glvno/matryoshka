@@ -761,7 +761,14 @@ int main(void)
         enc(4, -1);
         check("  and back to OFF", cfg.count_in == 0u && on_screen("OFF"));
         enc(1, 1);
-        check("ALGO again: SYSTEM (update mode, factory reset, quick start)", menu_tab == MT_SYSTEM && pages_now()->nrows == 3u && pages_now()->par[1] == MR_DEFAULTS && pages_now()->par[2] == MR_QUICK);
+        check("ALGO again: SYSTEM (update mode, factory reset, quick start, output)", menu_tab == MT_SYSTEM && pages_now()->nrows == 4u && pages_now()->par[1] == MR_DEFAULTS && pages_now()->par[2] == MR_QUICK && pages_now()->par[3] == MR_OUTPUT);
+        check("  OUTPUT reads STEREO (#612)", !out_mono && on_screen("STEREO"));
+        enc(5, 1);
+        check("K4 on SYSTEM: OUTPUT STEREO > MONO (#612)", out_mono == 1u && on_screen("MONO"));
+        enc(5, 1);
+        check("  stays at MONO", out_mono == 1u);
+        enc(5, -1);
+        check("  and back to STEREO", !out_mono && on_screen("STEREO"));
         enc(1, 1);
         check("ALGO again: INFO, a list, not a page", menu_tab == MT_INFO && !menu_page() && on_screen("BANK SLOTS") && on_screen("VERSION"));
         check("  its top bar is the plain bar with the patch's name, not the coral header's top", on_screen(patch_label));
