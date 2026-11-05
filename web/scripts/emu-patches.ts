@@ -5,6 +5,7 @@
 //   build/emu/heavy-mono.m1p   one part of many such oscillators: nothing to drop, the guard must mute it (OVERLOAD)
 //   build/emu/panel.m1p        the patch buttons
 //   build/emu/long-delay.m1p, long-delay-pp.m1p   the Delay at the FM-1's longest time, plain and ping-pong (#273)
+//   build/emu/stereo-sides.m1p   a saw on the left only and a sine an octave up on the right only (STEREO keeps them apart)
 //   build/emu/old-drift-poly.m1p   the newest earlier factory Drift Poly committed in git (an update finds it in the bank:
 //                              the boot rewrites a slot holding it, #441)
 // encodePatch(p, true) skips the budget check (these are meant to be too heavy). Run from web/:
@@ -79,6 +80,24 @@ function longDelay(name: string, time: number, pingpong: number): Patch {
 }
 writeFileSync(new URL('long-delay.m1p', out), encodePatch(longDelay('EMU LONG DELAY', DEFS.delay.params.find((q) => q.name === 'time')!.max, 0)));
 writeFileSync(new URL('long-delay-pp.m1p', out), encodePatch(longDelay('EMU LONG PINGPONG', DEFS.delay.params.find((q) => q.name === 'time')!.max, 1)));
+
+/** each side its own signal (the 1.10 early check's T110 MONO L R): a saw into the Output's l, a sine an octave up into r */
+function stereoSides(): Patch {
+  const p = emptyPatch('EMU STEREO');
+  const main = addModule(p, DEFS.fm1, 0, 0);
+  const saw = addModule(p, DEFS.osc, 300, 0), sine = addModule(p, DEFS.osc, 300, 300);
+  const env = addModule(p, DEFS.adsr, 300, 600);
+  const vl = addModule(p, DEFS.vca, 600, 0), vr = addModule(p, DEFS.vca, 600, 300);
+  const o = addModule(p, DEFS.output, 900, 0);
+  Object.assign(saw.params, { wave: 2, level: 0.8 });
+  Object.assign(sine.params, { wave: 0, coarse: 12, level: 0.8 });
+  Object.assign(env.params, { a: 0.005, d: 0.3, s: 1, r: 0.3 });
+  o.params.level = 0.5;
+  for (const [a, ap, b, bp] of [[main, 'pitch', saw, 'pitch'], [main, 'pitch', sine, 'pitch'], [main, 'gate', env, 'gate'], [saw, 'out', vl, 'in'], [sine, 'out', vr, 'in'], [env, 'env', vl, 'cv'], [env, 'env', vr, 'cv'], [vl, 'out', o, 'l'], [vr, 'out', o, 'r']] as const)
+    if (!connect(p, DEFS, { module: a.id, port: ap }, { module: b.id, port: bp })) throw new Error(`stereo: ${ap} -> ${bp}`);
+  return p;
+}
+writeFileSync(new URL('stereo-sides.m1p', out), encodePatch(stereoSides()));
 
 for (const [file, p] of [
   ['heavy-poly.m1p', withParts(heavy('EMU HEAVY POLY', 3), 8)],

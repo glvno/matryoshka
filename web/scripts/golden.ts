@@ -280,6 +280,16 @@ kit('random-held', (add, wire) => {
     wire(r, 'held', out, port);
   }
 });
+// a saw hard left and a sine an octave up hard right (the 1.10 early check's T110 MONO L R): each side its own signal
+kit('stereo-sides', (add, wire) => {
+  const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.5 });
+  const saw = add('osc', 0, 0, { wave: 2, level: 0.8 }), sine = add('osc', 0, 0, { wave: 0, coarse: 12, level: 0.8 });
+  const env = add('adsr', 0, 0, { a: 0.005, d: 0.3, s: 1, r: 0.3 });
+  const vl = add('vca', 0, 0), vr = add('vca', 0, 0);
+  wire(kb, 'pitch', saw, 'pitch'); wire(kb, 'pitch', sine, 'pitch'); wire(kb, 'gate', env, 'gate');
+  wire(saw, 'out', vl, 'in'); wire(sine, 'out', vr, 'in'); wire(env, 'env', vl, 'cv'); wire(env, 'env', vr, 'cv');
+  wire(vl, 'out', out, 'l'); wire(vr, 'out', out, 'r');
+});
 kit('waves', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const mix = add('mixer', 0, 0, { l1: 0.25, l2: 0.25, l3: 0.25, l4: 0.25 });

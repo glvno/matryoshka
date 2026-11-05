@@ -726,7 +726,7 @@ Rows: [D-467](ledger/link-and-midi.md#D-467) (the mode), [D-468](ledger/link-and
   editor's PLAY and Space send TRANSPORT in sandbox mode as under Live (`liveSync.transports`), so a sequence the FM-1 was
   playing goes on in the browser and the FM-1's PLAY stays in step. Its knobs come as CC 16..19 positions (`Editor.turnKnob`); SELECT / ALGO move
   the editor's own focus (`sandboxStep`, wrapping as the FM-1 does: the firmware UI's WebAssembly copy may have refused a
-  patch this big); the buttons go through that copy as before, the keys to the browser engine; PRESET is not followed,
+  patch this big); the buttons go through that copy as before, the keys to the browser engine (the FM-1 sends them as plain notes; `web/src/sandbox-keys.ts` plays them as the FM-1's keys play the editor's patch: a Drum map's rows on black keys 1..8, [D-958](ledger/editor.md#D-958)); PRESET is not followed,
   but PRESET turned while the FM-1's PLAY is held (`fm1PlayHeld`, from PLAY's CC) moves Main's tempo a bpm a click within
   20..300 (`sandboxTempoTurn`) and tells the WebAssembly copy that PLAY was turned (`fm1w_play_turned`), so PLAY's
   release starts and stops nothing there either. Every `SANDBOX_MS` (80 ms) `sandboxSend` builds the page in focus

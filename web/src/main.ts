@@ -19,6 +19,7 @@ import { sandboxKey, sandboxPage, sandboxStep, sandboxTempoTurn } from './sandbo
 import { LIVE_MS, panelOffBy, slotLabel, type PanelState } from './protocol';
 import { Fm1View } from './fm1-view';
 import { EmuKeys } from './emu-keys';
+import { SandboxKeys } from './sandbox-keys';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { ScopeScreens } from './scope-view';
 import { EnvScreens } from './env-view';
@@ -560,14 +561,30 @@ const hands = new DeckControls(document.createElement('div'), {
   bend: (v) => sink.send({ t: 'bend', v }),
   mod: (v) => sink.send({ t: 'cc', n: 1, v: v * 127 }),
 });
+/** the FM-1's key notes in sandbox mode (sandbox-keys.ts) */
+const sandboxKeys = new SandboxKeys();
 /** notes go to the browser engine and, with Live on, to the FM-1. `fromPanel`: one of the keys the Emulator view takes as
  * the FM-1's own (the pill keys, the computer keyboard, the on-screen one), not MIDI */
 const sink = {
   send(msg: HostMsg, fromPanel = false): void {
     // CC 16..19 from a MIDI controller turn Main's knobs: the rows of the device page in focus
     if (msg.t === 'cc' && msg.n >= 16 && msg.n <= 19) return editor.turnKnob(msg.n - 16, msg.v / 127);
+    if (msg.t === 'panic') sandboxKeys.route(msg, editor.patch, editor.armedSet, 0);
+    // the FM-1's keys in sandbox mode: it sends plain notes (D-232), and they play what its keys play on the editor's
+    // patch (D-520: a Drum map's rows on black keys 1..8; sandbox-keys.ts), at the FM-1's octave
+    if (fromDevice && (msg.t === 'on' || msg.t === 'off') && (sandboxOn() || sandboxKeys.holds(msg.note))) {
+      for (const m of sandboxKeys.route(msg, editor.patch, editor.armedSet, fm1Panel?.octave ?? emu.ui?.octave ?? 0)) sink.play(m);
+      return;
+    }
     // a followed FM-1 that reports its keys (#549): they reach the copy as KEYS_NOW, its notes only sound here
     if (fromDevice && (msg.t === 'on' || msg.t === 'off') && panelReported()) return sink.play(msg);
+    // the Emulator view in sandbox mode: its keys are the FM-1's, so they play as the FM-1's do here (above); the copy
+    // still takes them (its lights), but it does not hold the patch
+    if (fromPanel && (msg.t === 'on' || msg.t === 'off') && ((sandboxOn() && emu.shown) || sandboxKeys.holds(msg.note))) {
+      emuKeys.route(msg, fromPanel);
+      for (const m of sandboxKeys.route(msg, editor.patch, editor.armedSet, emu.ui?.octave ?? 0)) sink.play(m);
+      return;
+    }
     // the Emulator view: its keys play what the emulated FM-1 plays for them (#467, emu-keys.ts)
     for (const m of emuKeys.route(msg, fromPanel)) sink.play(m);
   },
