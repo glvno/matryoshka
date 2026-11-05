@@ -175,6 +175,21 @@ export function stepView(notes: readonly StepNote[] | undefined, k: number, len?
 /** the notes starting on step k */
 export const notesAt = (notes: readonly StepNote[] | undefined, k: number): StepNote[] => notes?.filter((n) => n.at === k) ?? [];
 
+/**
+ * The row drone (#384, D-819; LFO + FX on the FM-1's SEQ page, Shift+L in the piano roll): the row's first note (the
+ * notes of pitch `note`, the earliest start) becomes a drone and the row's other notes go. A row that is one drone
+ * already becomes an ordinary one-step note on that step again (the notes taken away come back only through undo).
+ * undefined: the row has no notes (the FM-1 says NOTHING TO DRONE)
+ */
+export function droneRow(notes: readonly StepNote[] | undefined, note: number): { notes: StepNote[] | undefined; say: 'DRONE' | 'DRONE OFF' } | undefined {
+  const row = (notes ?? []).filter((n) => n.note === note);
+  if (!row.length) return undefined;
+  const first = row.reduce((a, n) => (n.at < a.at ? n : a));
+  const rest = (notes ?? []).filter((n) => n.note !== note);
+  if (row.length === 1 && isDrone(first)) return { notes: fixNotes([...rest, one(first)]), say: 'DRONE OFF' };
+  return { notes: fixNotes([...rest, { ...first, len: STEPS_MAX, wrap: true }]), say: 'DRONE' };
+}
+
 /** a note one step long, not tied across the loop point */
 const one = (n: StepNote): StepNote => {
   const out: StepNote = { ...n, len: 1 };

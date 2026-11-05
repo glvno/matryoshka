@@ -20,7 +20,7 @@ import { devicesOf, findRow, fixFocus, groupStarts, moduleRows, NAME_MAX, pageLa
 import { cableRole } from './cable-role';
 import { addBreak, fm1Name, layoutOf, moveRows, moveSection, pagesOf, removeBreak, removeHeading, removeRows, renameHeading, rowKey, setLayout, type KnobOf, type Layout, type RowSpot, type Sec } from './arrange';
 import type { ParameterValues } from './engine';
-import { deviceBudget, DEVICE } from './patchbin';
+import { delayRoom, deviceBudget, DEVICE, LINE_TYPES, lineBudget, linesAdvice } from './patchbin';
 import { choiceName, formatValue, longName, moduleName, moduleTag, moduleTitle, paramHint } from './labels';
 import { outputRange } from './ranges';
 import { picker } from './picker';
@@ -550,9 +550,27 @@ export class Editor {
   add(type: string): void {
     const at = this.slot();
     let id = -1;
+    let note = '';
     if (this.change(() => {
-      id = addModule(this.patch, DEFS[type], at.x, at.y).id;
+      const m = addModule(this.patch, DEFS[type], at.x, at.y);
+      id = m.id;
+      note = this.lineNote(m);
     })) this.scrollToCard(this.cards.get(id), { ...at, w: CARD_W, h: CARD_H });
+    if (note) showToast(note, 6000);
+  }
+
+  /** a new line-type module (patchbin.ts LINE_TYPES) and the FM-1's effect memory: a Delay takes the length that is left
+   * when its default does not fit; what to say when the memory is full ('' while it fits) */
+  private lineNote(m: ModuleInst): string {
+    if (!LINE_TYPES.includes(m.type)) return '';
+    if (m.type === 'delay' && !lineBudget(this.patch).fits) {
+      const room = delayRoom(this.patch, m.id);
+      if (room) {
+        m.params.length = room;
+        return `This Delay's length is ${room} ms: the rest of the effect memory is taken. Its length row sets it.`;
+      }
+    }
+    return lineBudget(this.patch).fits ? '' : `${linesAdvice(this.patch, m.id)} Until then this is a sandbox patch: it plays here, not on the FM-1.`;
   }
 
   /** put a saved assembly into the patch; an engine comes wired to Main's keys and, while nothing feeds it, the Output (one undo step) */
@@ -2155,7 +2173,7 @@ export class Editor {
       input.value = String(toUnit(pd, m.params[pd.name]) * 1000);
     } else {
       input.min = String(pd.min);
-      input.max = String(topOf(range())); // (the browser-only stretch too: the Delay's time to 1.6 s; a Selector's positions in use)
+      input.max = String(topOf(range())); // (a stretch too; a Delay's time up to its length; a Selector's positions in use)
       input.step = exact ? 'any' : String(pd.step ?? (pd.max - pd.min) / 200);
       input.value = String(m.params[pd.name]);
     }
@@ -2224,6 +2242,13 @@ export class Editor {
     };
     /** set the base value `v` from the bar (the thumb at `at`, in slider units) */
     const apply = (v: number, at: number): void => {
+      const capped = this.lengthCap(m, pd.name, v);   // (a Delay's length: up to what the effect memory has left)
+      if (capped !== v) {
+        v = capped;
+        at = posOf(v) + offset;
+        input.value = String(at);
+        if (v === m.params[pd.name]) return;
+      }
       if (m.params[pd.name] !== v) this.touch();
       m.params[pd.name] = v;
       // the text follows the thumb: the base itself, or with modulation the live value the drag holds under the pointer
@@ -2238,6 +2263,7 @@ export class Editor {
       this.relock(m.id);
     };
     if (m.type === ALLOC && pd.name === 'voices') input.addEventListener('change', () => this.rebuild()); // the ×N badges follow
+    if (m.type === 'delay' && ['length', 'pingpong', 'sync'].includes(pd.name)) input.addEventListener('change', () => this.rebuild()); // the time row's range follows (rowRange)
     if (pd.toggle) {
       input.type = 'checkbox';
       input.checked = m.params[pd.name] >= 0.5;
@@ -2256,7 +2282,7 @@ export class Editor {
     }
     // a thumb or a picker is a jack only where a cable dropped on it has somewhere to go: the module's parameter inputs,
     // the parameter's dedicated input, or a side input already routed to it
-    const canPatch = !!def.paramInputs || !!pd.input || parameterInputs(m, pd).length > 0;
+    const canPatch = !pd.fixed && (!!def.paramInputs || !!pd.input || parameterInputs(m, pd).length > 0);   // (not a row set when the patch loads)
     const thumb = canPatch && !pd.toggle && !choice ? sliderJack(input, (e, jack) => this.beginDrag(e, jack)) : null;
     // a slider with nothing to patch keeps the bar and a plain thumb (not a jack: no cable lands on it)
     const plain = !thumb && !pd.toggle && !choice ? sliderJack(input, () => {}) : null;
@@ -6144,9 +6170,22 @@ export class Editor {
   }
 
   /** set a parameter from outside the cards (the deck's knobs): as a slider would, the card follows on its next refresh */
+  /** a Delay's length stops at what the FM-1's effect memory has left besides the patch's other lines (patchbin.ts
+   * delayRoom), and a note says so and what takes the memory; any other value: `v`. A patch whose lines are already past
+   * the memory is a sandbox patch, with no FM-1 limits: its lengths go to the row's end */
+  private lengthCap(m: ModuleInst, name: string, v: number): number {
+    const was = m.params.length ?? DEFS.delay.params.find((q) => q.name === 'length')!.default;
+    if (m.type !== 'delay' || name !== 'length' || v <= was || !lineBudget(this.patch).fits) return v;
+    const cap = Math.max(was, delayRoom(this.patch, m.id));
+    if (v <= cap) return v;
+    showToast(`${linesAdvice(this.patch, m.id)} This Delay stops at ${cap} ms.`, 6000);
+    return cap;
+  }
+
   setParam(id: number, name: string, v: number): void {
     const m = this.patch.modules.find((x) => x.id === id);
     if (m && isGlobalTempo(m.type, name)) return tempo.set({ bpm: v });   // (the global tempo, not the patch's: D-907)
+    if (m) v = this.lengthCap(m, name, v);
     if (!m || m.params[name] === v) return;
     this.touch();
     m.params[name] = v;

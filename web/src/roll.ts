@@ -18,7 +18,7 @@
 import { NOTE_NAMES } from './modules';
 import type { ModuleInst } from './patch';
 import { renamedKey } from './storage-key';
-import { fixNotes, isDrone, STEP_VEL, STEPS_MAX, STEPS_RATES, type StepNote } from './track';
+import { droneRow, fixNotes, isDrone, STEP_VEL, STEPS_MAX, STEPS_RATES, type StepNote } from './track';
 
 export interface RollOps {
   /** the track as it is now (null: it is gone) and its label */
@@ -142,7 +142,7 @@ export class PianoRoll {
     help.textContent = '?';
     help.title = 'Click a note: select (Shift adds). Drag: move (Option: copy), its edges: length / start, Cmd-drag: velocity.\n'
       + 'Empty grid: drag a band; double-click adds a note, double-click a note removes it; right-click removes.\n'
-      + 'Delete removes the selection; arrows move it (Shift + ↑↓ an octave, Shift + ←→ length); L: a drone (tied round the loop, again: one step); Cmd-A / C / X / V / D; B draw mode; Esc.';
+      + 'Delete removes the selection; arrows move it (Shift + ↑↓ an octave, Shift + ←→ length); L: a drone (tied round the loop, again: one step), Shift+L: the row a drone (its first note held, the rest of the row gone); Cmd-A / C / X / V / D; B draw mode; Esc.';
     this.infoEl = document.createElement('span');
     this.infoEl.className = 'roll-info';
     const close = btn('×', 'roll-close', 'close the roll (Esc)', () => this.ops.close());
@@ -840,6 +840,21 @@ export class PianoRoll {
     if (alt) return false;
     if (lower === 'b') {
       this.setDraw(!this.draw);
+      return true;
+    }
+    if (lower === 'l' && shift) {
+      // the row drone (#384, D-819; LFO + FX on the FM-1): each selected note's row (pitch) becomes one drone, its first
+      // note held for as long as the pattern plays and the row's other notes gone; a row that is one drone: one step again
+      if (!picked.length) return true;
+      let ns: StepNote[] | undefined = this.notes;
+      let said = '';
+      for (const note of [...new Set(picked.map((n) => n.note))]) {
+        const r = droneRow(ns, note);
+        if (r) ({ notes: ns, say: said } = r);
+      }
+      this.sel.clear();
+      this.infoEl.textContent = said === 'DRONE OFF' ? 'one step again' : 'row drone: its first note held round the loop';
+      this.edit(ns ?? []);
       return true;
     }
     if (lower === 'l') {

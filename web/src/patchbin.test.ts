@@ -371,7 +371,9 @@ describe('binary patch format', () => {
     const two = subtractiveSaw();
     const out2 = two.modules.find((m) => m.type === 'output')!;
     for (let i = 0; i < 2; i++) connect(two, DEFS, { module: addModule(two, DEFS.reverb, 0, 0).id, port: 'out' }, { module: out2.id, port: 'l' });
-    expect(deviceBudget(two).over.map((i) => i.key)).toEqual(['reverbs']);
+    expect(deviceBudget(two).fits).toBe(true);   // (two reverbs: the effect memory holds them, D-375)
+    for (let i = 0; i < 12; i++) connect(two, DEFS, { module: addModule(two, DEFS.reverb, 0, 0).id, port: 'out' }, { module: out2.id, port: 'l' });
+    expect(deviceBudget(two).over.map((i) => i.key)).toContain('lines');
   });
 });
 
