@@ -683,6 +683,42 @@ static uint32_t bank_upgrade(void)
     return n;
 }
 
+#include "bank_new.h"
+/* after an update: each factory patch new in this firmware for this bank (the set it was brought to, `set`, did not have
+ * it) into its own slot if empty, else the first empty one, never over a used slot (bank_new.h, #630). Before bank_set
+ * moves on, with bank_upgrade; a power cut before the settings record: the next boot finds the placed ones by name. What
+ * the bar says once into msg (bn_msg); 0 when nothing was new */
+static int bank_add(uint32_t set, char *msg)
+{
+    static bn_plan_t plan;
+    uint64_t named = 0;
+    uint32_t s, i, k;
+    sl_hdr_t h;
+    char name[M1_NAME];
+    for (s = 0; s < M1_SLOTS; s++) {
+        if (!slot_used(s) || sl_head(s, &h, 0))
+            continue;
+        for (i = 0; i < N_PRESETS; i++) {
+            for (k = 0; k < M1_NAME && PRESET_LIST[i].name[k] && h.name[k] == PRESET_LIST[i].name[k]; k++)
+                ;
+            if (k == M1_NAME || (!PRESET_LIST[i].name[k] && !h.name[k]))
+                named |= (uint64_t)1 << i;
+        }
+    }
+    bn_plan(set, bank_mask, named, M1_SLOTS, &plan);
+    for (i = 0; i < N_PRESETS; i++) {
+        if (plan.slot[i] == BN_NONE)
+            continue;
+        for (k = 0; k < M1_NAME; k++)
+            name[k] = 0;
+        for (k = 0; k < M1_NAME && PRESET_LIST[i].name[k]; k++)
+            name[k] = PRESET_LIST[i].name[k];
+        fm1_wdt_feed();
+        (void)store_write(plan.slot[i], name, PRESET_LIST[i].data, PRESET_LIST[i].len);
+    }
+    return bn_msg(&plan, msg);
+}
+
 /* after an update, with bank_upgrade: the user presets of an earlier structure of a factory engine move to today's
  * structure (presetmig.c, D-865); how many moved */
 static uint32_t presets_upgrade(void)
@@ -730,12 +766,17 @@ static void patch_boot(void)                    /* the slot the settings record 
         boot_msg_ms = 2000;
     } else if (sl_read(SL_SETTINGS, set, &len, 0) == 0 && settings_unpack(set, len, &slot, &module) == 0) {
         if (bank_fmt < ENG_PATCH_VERSION || bank_set != FACTORY_SET_ID) {   /* the first boot after an update that changed the factory patches or the format */
-            uint32_t n = bank_upgrade(), moved = presets_upgrade();   /* (both before the settings record: a cut runs them again) */
+            static char new_msg[BN_BAR + 1u];
+            uint32_t was = bank_set, n = bank_upgrade(), moved = presets_upgrade();   /* (all before the settings record: a cut runs them again) */
+            int added = bank_add(was, new_msg);  /* (a factory patch new in this firmware, #630) */
             cur_preset = slot;
             sel = module;
             settings_pack(set);
             (void)store_write(SL_SETTINGS, 0, set, SET_LEN);
-            if (n) {
+            if (added) {                         /* (said over FACTORY PATCHES UPDATED: the new slot is the news) */
+                boot_msg = new_msg;
+                boot_msg_ms = 4000;
+            } else if (n) {
                 boot_msg = "FACTORY PATCHES UPDATED";
                 boot_msg_ms = 3000;
             } else if (moved) {

@@ -54,3 +54,32 @@ describe('earlier factory patches (the bank after an update)', () => {
     expect(table.some((t) => t.fnv === fnv32(p) && t.len === p.length)).toBe(false);
   });
 });
+
+// presets.h's RELEASED_SETS (scripts/legacy-factory.ts, export-defs): main.c bank_add places a factory patch the bank's
+// released set did not have by name (#630).
+describe('released factory sets (a new factory patch after an update)', () => {
+  const rows = [...now.matchAll(/\{0x([0-9a-f]{6})u, 0x([0-9a-f]+)ull\}/g)].map((m) => ({ set: parseInt(m[1], 16), has: BigInt('0x' + m[2]) }));
+  const tags = (() => {
+    try {
+      return execFileSync('git', ['tag', '-l', 'v*'], { encoding: 'utf8' }).split('\n').filter(Boolean);
+    } catch {
+      return [];
+    }
+  })();
+  it.skipIf(!tags.includes('v1.9.1'))('every release tag\'s factory set is listed with the names it had', () => {
+    for (const t of tags) {
+      const src = show(t);
+      if (!src) continue;
+      const set = parseInt(src.match(/#define FACTORY_SET_ID 0x([0-9a-f]+)u/)?.[1] ?? '0', 16);
+      const row = rows.find((r) => r.set === set);
+      expect(row, t).toBeDefined();
+      const had = new Set(parse(src).map((p) => p.name));
+      names.forEach((n, i) => { if (had.has(n)) expect((row!.has >> BigInt(i)) & 1n, `${t} ${n}`).toBe(1n); });
+    }
+  });
+  it('1.9.1\'s bank gets Verona Drum 1 and nothing else', () => {
+    const row = rows.find((r) => r.set === 0xb9a4a8)!;
+    const missing = names.filter((_, i) => !((row.has >> BigInt(i)) & 1n));
+    expect(missing).toEqual(['VERONA DRUM 1']);
+  });
+});
