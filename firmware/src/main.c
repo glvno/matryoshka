@@ -70,7 +70,7 @@ static uint32_t stack_deepest(char *lo, char *top)     /* the most bytes the sta
 /* #271: the second core (hal/fm1_cpu1.h, X0X's). Started at power-on before the audio and the timers, the only start that
  * works on the device (X0X's, Melodee's and Felucca's finding), and after the boot guard's update-mode check: not in update
  * mode, not after a failed boot, not when barred (fm1_c1_bar in .noinit: one core until power-off). Nothing renders on it
- * yet. Every C1_TEST_MS the main loop hands it the self-test (c1_sum: SIN_T read from the flash, the seed from the mailbox,
+ * yet. Every C1_TEST_MS the main loop hands it the self-test (c1_sum: a 64-word table in RAM, the seed from the mailbox,
  * the answer written to RAM) and checks the answer against its own. A wrong answer, a job it refuses (a misread check
  * word) or one not back in 8 ms holds it for good and bars it: one core until power-off (Melodee's fallback, the owner's
  * ruling of 2026-11-04). Update mode and the chip's boot mode hold it first; fm1_reboot and fm1_enter_update hold it too
@@ -83,11 +83,14 @@ static volatile uint32_t c1_out;                /* the self-test's answer, writt
 static uint32_t c1_pass, c1_fail, c1_wait_max, c1_last;
 static uint8_t c1_skip, c1_inject;
 
-static uint32_t c1_sum(uint32_t seed)           /* both cores run this: 256 words of SIN_T (from the flash) into a hash */
+static uint32_t c1_tab[64];                     /* the self-test's table: SIN_T's first 64 words, copied to RAM at the start so
+                                                 * the test reads no flash (a flash read every 100 ms beside core 0's code fetch) */
+
+static uint32_t c1_sum(uint32_t seed)           /* both cores run this: 256 words of c1_tab into a hash */
 {
-    uint32_t i, h = seed ^ 0x811C9DC5u, at = seed & 768u;
+    uint32_t i, h = seed ^ 0x811C9DC5u;
     for (i = 0; i < 256u; i++)
-        h = (h ^ (uint32_t)SIN_T[at + i]) * 0x01000193u;
+        h = (h ^ c1_tab[(seed + i) & 63u]) * 0x01000193u;
     return h;
 }
 
@@ -130,6 +133,9 @@ static void c1_test(void)
 static void c1_boot(int update)                 /* fm1_main, before the audio and the timers */
 {
     int locked;
+    uint32_t i;
+    for (i = 0; i < 64u; i++)
+        c1_tab[i] = (uint32_t)SIN_T[i * 16u];
     if (update || bootguard.failed) {
         c1_skip = update ? C1_SKIP_UPDATE : C1_SKIP_FAILED;
         return;
