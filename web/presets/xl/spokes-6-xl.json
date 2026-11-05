@@ -360,7 +360,8 @@
     "sync": 1,
     "pingpong": 1,
     "note": 0,
-    "swell": 0
+    "swell": 0,
+    "length": 700
    },
    "att": [
     1,
