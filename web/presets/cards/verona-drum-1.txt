@@ -112,7 +112,7 @@ mix = 0.2
 hi hat / bend = 0.5
 multi / decay = 0.12
 highpass = 500
-  master = 0.61
+  master = 0.6
 
 preset: Clave and Conga
 # the manual's tip: the snare with FILTER and RESONANCE open and no noise is a clave; drum 1 a conga, the multi a bongo
