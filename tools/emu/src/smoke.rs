@@ -641,11 +641,21 @@ fn panel(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     Ok(())
 }
 
-/// The Delay at its longest time (#273, web/scripts/emu-patches.ts): a short burst on a note, all wet (ping-pong with feedback 0.5). The
-/// echo comes 700 ms after the note (the FM-1's 30944-sample line); with ping-pong the left one after half the line, the right
-/// one after the whole. Nothing is heard before the first echo.
+/// The Delay's line in each of the two line areas (#273, #651; web/scripts/emu-patches.ts): a 700 ms one (the pool's
+/// area) and a 290 ms one (.lowram's), plain and ping-pong, a short burst on a note. Every 128-frame block of each echo
+/// is checked against the same block of the note itself, heard in the same run, at exactly the Delay's time: a hole
+/// (#651: a flash write in the middle of the echo stopped the sound for two blocks) or a misplaced echo fails, not only
+/// the first arrival. Plain: the note on the right, the echo on the left (as loud); ping-pong (mix and feedback 0.5): the
+/// note on both sides, then left (as loud), right (half), left (a quarter), the Delay's time apart.
 fn long_delay(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
-    for (file, name, left, right) in [("long-delay.m1p", "EMU LONG DELAY", 700u64, 700u64), ("long-delay-pp.m1p", "EMU LONG PINGPONG", 350, 701)] {
+    // (engine.c dly_samples and m_delay's time in samples; ping-pong plays up to half the line)
+    let line = |ms: u32| 2 * ((ms * AUDIO_RATE + 1999) / 2000) + 60;
+    for (file, name, ms, pp) in [
+        ("long-delay.m1p", "EMU LONG DELAY", 700u32, false),
+        ("long-delay-pp.m1p", "EMU LONG PINGPONG", 700, true),
+        ("low-delay.m1p", "EMU LOW DELAY", 290, false),
+        ("low-delay-pp.m1p", "EMU LOW PINGPONG", 290, true),
+    ] {
         let patch = std::fs::read(format!("build/emu/{file}")).map_err(|e| format!("build/emu/{file}: {e} (run web/scripts/emu-patches.ts)"))?;
         let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
         flash[0xA0000..0xA1000].copy_from_slice(&slot_sector(0, name, &patch, false));
@@ -656,16 +666,41 @@ fn long_delay(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String>
         patch_screen(t, &mut m, &format!("long delay: {name} loads"), name)?;   // (the footer cuts the name before KEYS WIRED)
         let mk = m.mark();
         m.midi(&[0x90, 60, 100], 60)?;
-        m.midi(&[0x80, 60, 0], 1500)?;
-        let first = |ch: usize| -> Option<u64> {
-            m.audio[mk..].iter().skip(ch).step_by(2).position(|s| (*s as i32).abs() > LOUD / 4).map(|i| i as u64 * 1000 / AUDIO_RATE as u64)
+        m.midi(&[0x80, 60, 0], 3 * ms as u64 + 400)?;
+        let a = &m.audio[mk..];
+        let side = |ch: usize| -> Vec<i32> { a.iter().skip(ch).step_by(2).map(|s| (*s as i32).abs()).collect() };
+        let (l, r) = (side(0), side(1));
+        let d = ((ms * AUDIO_RATE + 500) / 1000).min(if pp { line(ms) / 2 - 1 } else { line(ms) - 1 }) as usize;
+        // the note: from its first sample, its blocks down to 1/64 of its loudest (the echoes as quiet as 1/4 of it stay
+        // clear of the output's 16-bit steps)
+        let dry = if pp { &l } else { &r };
+        let Some(t0) = dry.iter().position(|&s| s > 0) else {
+            t.check(&format!("long delay: {name}: the note sounds"), false, String::new());
+            continue;
         };
-        let (l, r) = (first(0), first(1));
-        // (a quarter of LOUD: ping-pong's right echo is half its left one) the note reaches the engine a few ms after the MIDI
-        // bytes (UART, the next block): an echo within 30 ms of its time
-        let near = |got: Option<u64>, want: u64| got.is_some_and(|g| g >= want && g <= want + 30);
-        t.check(&format!("long delay: {name}'s left echo after {left} ms"), near(l, left), format!("first heard at {l:?} ms"));
-        t.check(&format!("long delay: {name}'s right echo after {right} ms"), near(r, right), format!("first heard at {r:?} ms"));
+        let blk = |v: &[i32], at: usize| v.get(at..(at + 128).min(v.len())).map_or(0, |b| b.iter().copied().max().unwrap_or(0));
+        let top = (0..64).map(|k| blk(dry, t0 + 128 * k)).max().unwrap_or(0);
+        let n = (0..64).take_while(|&k| k < 4 || blk(dry, t0 + 128 * k) * 64 >= top).count();
+        // (plain: the left has only the echo; ping-pong: after the note, nothing over its quietest block checked)
+        let (from, floor) = if pp { (t0 + 128 * n, top / 64) } else { (0, 0) };
+        let early = (from..t0 + d).find(|&i| l.get(i).is_none_or(|&s| s > floor) || pp && r.get(i).is_none_or(|&s| s > floor));
+        t.check(&format!("long delay: {name}: nothing before the first echo but the note"), early.is_none(), early.map_or(String::new(), |e| format!("sound at sample {e}, the note from {t0}")));
+        let echoes: Vec<(&str, &[i32], usize, i32)> = if pp {
+            vec![("left echo", &l, d, 1), ("right echo", &r, 2 * d, 2), ("second left echo", &l, 3 * d, 4)]
+        } else {
+            vec![("echo", &l, d, 1)]
+        };
+        for (what, v, lag, div) in echoes {
+            let bad = (0..n).find_map(|k| {
+                let (want, got) = (blk(dry, t0 + 128 * k) / div, blk(v, t0 + lag + 128 * k));
+                ((got - want).abs() > want / 8 + 4).then_some(format!("block {k} of {n}: peak {got}, the note's {want}"))
+            });
+            t.check(
+                &format!("long delay: {name}'s {what}: every block of it, {} ms after the note{}", lag as u64 * 1000 / AUDIO_RATE as u64, if div > 1 { format!(", 1/{div} as loud") } else { String::new() }),
+                bad.is_none(),
+                bad.unwrap_or_default(),
+            );
+        }
         *emulated += m.ms();
     }
     Ok(())

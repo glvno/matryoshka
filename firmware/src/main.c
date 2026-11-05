@@ -825,10 +825,10 @@ static void defaults_now(void)
 }
 
 /* each pass of the main loop: a global tempo moved here goes to the editor, and to the settings record once it has
- * rested 5 s and the transport is stopped (a flash write stops the sound for a moment) */
+ * rested 5 s, the transport is stopped and nothing was heard for 2 s (a flash write stops the sound for a moment, #651) */
 static void tempo_poll(void)
 {
-    uint32_t r = gt_poll(fm1_ms, !eng_transport_running());
+    uint32_t r = gt_poll(fm1_ms, gt_quiet(fm1_ms, eng_transport_running(), snd_heard_ms));
     if (r & 1u)
         m1_tempo_now();
     if ((r & 2u) && flash_ok && !boot_safe)

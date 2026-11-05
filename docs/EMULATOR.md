@@ -194,8 +194,9 @@ HOME held (the menu), HOME; the PRESET encoder; TRS MIDI program change and note
 (name shown, sound, its peak against the web engine's, from `web/scripts/emu-levels.ts`, within 6 dB as a warning);
 SAVE, the flash kept, a restart (STATE RESTORED and the state back); a patch bank written straight into the flash
 (three slots and one with a bad CRC; PRESET and program change step through the three and wrap); the safety steps
-(shedding and OVERLOAD, safe mode, update mode); the patch buttons and the SEQ page on the 808 Kit; the Delay at its
-longest time (#273: the echo 700 ms after the note, ping-pong 350 ms left and 700 ms right); no register
+(shedding and OVERLOAD, safe mode, update mode); the patch buttons and the SEQ page on the 808 Kit; a Delay
+with its line in each of the two line areas (#273, #651: 700 ms and 290 ms, plain and ping-pong; every 128-frame block of
+each echo against the same block of the note, at exactly the Delay's time); no register
 fm1-emu does not model besides P33. Snapshots of each step, a WAV and the levels table go to `build/emu/`.
 
 **Stack depth (#273).** `m1emu` fills 0x01C60000..0x01C7C000 with the word 0x5AC3A55C before the first instruction (the
