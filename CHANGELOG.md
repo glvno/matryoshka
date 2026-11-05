@@ -27,6 +27,8 @@
   - Safe mode says `SAFE MODE: RESTART TO EXIT`, and the loading screen says `HOLD SAVE: SAFE MODE`.
 - **An engine played only by a Steps track's other cables (#633):** a poly engine that no keys cable reaches, whose voices a Steps track plays through its pitch or trig cables, now says NO KEYS REACH THIS DEVICE on SEL and arms nothing, as an engine no keys reach at all does. SEL armed its voices, and then the keys played nothing. In the editor its ARM dot is dashed and arms nothing too. Cable keys into its keys input to arm it. Firmware 1.9 lists such an engine on the ENVIRONMENT page apart from its track.
 
+- **No dropout after a tempo change (#651):** the FM-1 saves the tempo to its settings 5 s after you change it, and that flash write stops the sound for about 35 ms. It now waits until nothing has sounded for 2 s, so a Delay echo or a held note is never cut. Measured on the test rig: a 34 ms stall in the middle of an echo before, none after. This could happen since 1.8.0.
+
 ### Editor
 
 - **Store to an FM-1 slot… lists the slots (#635):** it shows the FM-1's 64 slots, each with the name of the patch it holds or EMPTY, and chooses the first empty slot. You no longer need to know which slots are free. Choosing a used slot says what it holds, and the button reads Replace.
