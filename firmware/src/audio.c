@@ -21,6 +21,10 @@ static volatile uint8_t out_mono;                  /* GLO > SYSTEM > OUTPUT (#61
  * on where the knob is), after mute */
 #include "test_peak.h"
 static volatile uint32_t eng_us_last, eng_us_max, eng_halves;
+/* fm1_ms of the last half the patch was heard in (a sample of either side past SND_FLOOR, before MASTER): a flash write
+ * the FM-1 makes by itself waits for SND_REST_MS of silence (tempo_glo.h gt_quiet, #651), since it stops the sound */
+#define SND_FLOOR 32                                /* Q16: -66 dB */
+static volatile uint32_t snd_heard_ms;
 static int32_t eng_l[HALF_FRAMES], eng_r[HALF_FRAMES];
 #if FELUCCA_UAC
 /* USB audio out (usb.c, included after this file): the ring's fill is sampled as a half starts, then the half's I2S words
@@ -81,12 +85,16 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
             }
         }
         if (eng_run) {
+            uint32_t loud = 0;
             eng_render(eng_l, eng_r, HALF_FRAMES);
             int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)master_q12 * patch_gain) >> 16);
             for (i = 0; i < HALF_FRAMES; i++) {         /* Q16 (+-1.0) * MASTER -> 24 bit in the low bits, -6 dBFS ceiling */
                 o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
                 o[2u * i + 1u] = ((eng_r[i] * m) >> 12) << 6;
+                loud |= (uint32_t)(eng_l[i] + SND_FLOOR) > 2u * SND_FLOOR || (uint32_t)(eng_r[i] + SND_FLOOR) > 2u * SND_FLOOR;
             }
+            if (loud)
+                snd_heard_ms = fm1_ms;
             if (tp_on) {                                /* (only once a script asked: no cost otherwise) */
                 int32_t mr = snd_muted ? 0 : (int32_t)(((int64_t)2048 * patch_gain) >> 16);   /* MASTER at its default */
                 tp_block(eng_l, eng_r, HALF_FRAMES, mr);

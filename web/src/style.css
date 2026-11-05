@@ -316,6 +316,7 @@ dialog.sync-ask { width: 420px; }
 .sync-ask-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .sync-ask-actions button { min-height: 40px; padding: 6px 16px; font: 700 13px/1.15 'Barlow Semi Condensed', system-ui, sans-serif; letter-spacing: .05em; text-transform: uppercase; }
 @media (max-width: 700px) { .sync-ask-actions button { flex: 1; min-height: 44px; } }
+.store-slot-list { width: 100%; font: 13px/1.5 ui-monospace, 'SF Mono', Menlo, monospace; white-space: pre; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 5px; padding: 4px; }
 
 /* the share sheet (share-sheet.ts, #165): the help dialog's frame; the card preview beside the form, the four actions in a
    row (two by two on a phone), the hint under a rule */

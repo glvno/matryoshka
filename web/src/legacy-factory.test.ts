@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { PRESET_MIGRATIONS } from './preset-migrate';
 
 // presets.h's LEGACY_FACTORY (scripts/legacy-factory.ts, export-defs): main.c bank_upgrade rewrites a slot that is byte
 // for byte an earlier factory patch with today's of the same name. Checked against the factory bank of release 1.1.0
@@ -40,9 +41,10 @@ describe('earlier factory patches (the bank after an update)', () => {
   it('a slot holding one of today\'s patches is never rewritten', () => {
     for (const p of parse(now)) expect(table.some((t) => t.fnv === fnv32(p.bytes) && t.len === p.bytes.length), p.name).toBe(false);
   });
-  it('the factory set id is the fingerprint of today\'s factory patches', () => {
+  it('the factory set id is the fingerprint of today\'s factory patches and preset migrations (D-865)', () => {
     const id = parseInt(now.match(/#define FACTORY_SET_ID 0x([0-9a-f]{6})u/)?.[1] ?? '0', 16);
-    const h = parse(now).reduce((h, p) => [...new TextEncoder().encode(p.name), 0, ...p.bytes].reduce((h, x) => Math.imul(h ^ x, 0x01000193) >>> 0, h), 0x811c9dc5);
+    let h = parse(now).reduce((h, p) => [...new TextEncoder().encode(p.name), 0, ...p.bytes].reduce((h, x) => Math.imul(h ^ x, 0x01000193) >>> 0, h), 0x811c9dc5);
+    if (Object.keys(PRESET_MIGRATIONS).length) h = [...new TextEncoder().encode(JSON.stringify(PRESET_MIGRATIONS))].reduce((h, x) => Math.imul(h ^ x, 0x01000193) >>> 0, h);
     expect(id).toBe(h & 0xffffff || 1);
   });
   it('an edited copy is not', () => {
@@ -50,5 +52,34 @@ describe('earlier factory patches (the bank after an update)', () => {
     p[1] = 33;
     p[20] ^= 1;
     expect(table.some((t) => t.fnv === fnv32(p) && t.len === p.length)).toBe(false);
+  });
+});
+
+// presets.h's RELEASED_SETS (scripts/legacy-factory.ts, export-defs): main.c bank_add places a factory patch the bank's
+// released set did not have by name (#630).
+describe('released factory sets (a new factory patch after an update)', () => {
+  const rows = [...now.matchAll(/\{0x([0-9a-f]{6})u, 0x([0-9a-f]+)ull\}/g)].map((m) => ({ set: parseInt(m[1], 16), has: BigInt('0x' + m[2]) }));
+  const tags = (() => {
+    try {
+      return execFileSync('git', ['tag', '-l', 'v*'], { encoding: 'utf8' }).split('\n').filter(Boolean);
+    } catch {
+      return [];
+    }
+  })();
+  it.skipIf(!tags.includes('v1.9.1'))('every release tag\'s factory set is listed with the names it had', () => {
+    for (const t of tags) {
+      const src = show(t);
+      if (!src) continue;
+      const set = parseInt(src.match(/#define FACTORY_SET_ID 0x([0-9a-f]+)u/)?.[1] ?? '0', 16);
+      const row = rows.find((r) => r.set === set);
+      expect(row, t).toBeDefined();
+      const had = new Set(parse(src).map((p) => p.name));
+      names.forEach((n, i) => { if (had.has(n)) expect((row!.has >> BigInt(i)) & 1n, `${t} ${n}`).toBe(1n); });
+    }
+  });
+  it('1.9.1\'s bank gets Verona Drum 1 and nothing else', () => {
+    const row = rows.find((r) => r.set === 0xb9a4a8)!;
+    const missing = names.filter((_, i) => !((row.has >> BigInt(i)) & 1n));
+    expect(missing).toEqual(['VERONA DRUM 1']);
   });
 });

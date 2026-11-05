@@ -4588,6 +4588,8 @@ int main(void)
         check("  the clock runs at it", E.tick_len == (int32_t)(60u * ENG_SR / (126u * 24u)));
         r = gt_poll(t0 + GT_SAVE_MS, 0);
         check("  not written while the transport runs", !(r & 2u) && gt_due);
+        check("  quiet: stopped and nothing heard for 2 s, not while a note or an echo may still sound (#651)",
+              gt_quiet(t0 + 5000u, 0, t0 + 3000u) && !gt_quiet(t0 + 4999u, 0, t0 + 3000u) && !gt_quiet(t0 + 9000u, 1, t0));
         tap(BTN_PLAY);
         r = gt_poll(t0 + GT_SAVE_MS - 2u, 1);
         check("  not written before 5 s have passed", !(r & 2u));

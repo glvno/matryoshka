@@ -3228,6 +3228,20 @@ if (process.argv.includes('--panel-fixtures')) {
     p.cables = p.cables.filter((c) => !(c.from.module === main.id && c.from.port === 'keys'));
     writeFileSync(new URL('engine-unreached.m1p', out), encodePatch(p, true));
   }
+  {
+    // a poly engine a Steps track drives through other cables, no keys cable reaching its Voicing (#633, D-295): basic
+    // poly, Main's keys cable gone, a Steps track's pitch into its cutoff. Its group stays; the track byte keeps the track,
+    // with the mark's bit
+    const p = newPatch(DEFS);
+    const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'basic poly')!, 300, 0);
+    wireEngine(p, a);
+    const main = p.modules.find((m) => m.type === 'fm1')!;
+    p.cables = p.cables.filter((c) => !(c.from.module === main.id && c.from.port === 'keys'));
+    const t = addModule(p, DEFS.steps, 0, 0);
+    const cut = a.inputs.find((r) => r.label === 'cutoff cv')!;
+    if (!connect(p, DEFS, { module: t.id, port: 'pitch' }, { module: cut.module, port: cut.port })) throw new Error('engine-tracked: no cutoff cv');
+    writeFileSync(new URL('engine-tracked.m1p', out), encodePatch(p, true));
+  }
   console.log('panel fixtures generated');
   process.exit(0);
 }
