@@ -2,6 +2,11 @@
  "source": "estimate: the fixed-point engine counted on an rv32im model (tools/cpu), calibrated on 17 factory patches measured on the FM-1 (2026-10-20)",
  "cyclesPerUs": 233.4,
  "fixedUs": 23,
+ "cores": {
+  "idleUs": 80,
+  "splitEff": 0.9,
+  "survey": "docs/measurements/cpu-survey-2026-11-05-rig-core1-held.json, -rig-split.json, -rig-split-off.json (CI runs 41945370767, 42000479134)"
+ },
  "blockUs": 2901,
  "note": 72,
  "block": 4339,

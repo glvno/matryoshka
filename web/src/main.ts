@@ -1202,12 +1202,15 @@ function showBudget(): void {
     ...b.items.filter((i) => i.used > 0).flatMap((i) => (i.key === 'lines' ? lineLines() : [budgetLine(i.label, i.used / i.max, `${i.used} / ${i.max}`, '', i.max > 1)])),
     head('CPU, estimated'),
     ...costly,
+    // #271: the FM-1's second core takes the odd parts of each poly group; the figure above is core 0's
+    ...(b.cpu.splitGroups ? [budgetLine('Second core: poly parts', (b.cpu.oneCoreUs - b.cpu.us) / CPU.blockUs, `−${Math.round(100 * (b.cpu.oneCoreUs - b.cpu.us) / CPU.blockUs)} %`,
+      `On one core this patch would be about ${Math.round(100 * b.cpu.oneCoreUs / CPU.blockUs)} %`, false)] : []),
     ...(b.over.some((i) => i.key === 'browser') ? [head('Browser only'), ...b.over.filter((i) => i.key === 'browser').map((i) => budgetLine(i.label, 1.01, 'over', '', false))] : []),
   );
   const note = document.createElement('p');
   note.className = 'muted';
   note.textContent = b.fits
-    ? 'The CPU figure is an estimate: counted on a model of the FM-1\'s processor, calibrated on the factory patches measured on the FM-1. Treat anything above 80 % as tight.'
+    ? 'The CPU figure is an estimate of the FM-1\'s first core: counted on a model of its processor, calibrated on the factory patches measured on the FM-1. The second core plays half the parts of each poly group. Treat anything above 80 % as tight.'
     : 'A sandbox patch: it plays here in the browser with no FM-1 limits. It goes to the FM-1 once it fits under the bars; Library > Patches marks it SANDBOX.';
   list.append(note);
   showSandbox(b);

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The FM-1's CPU load of a patch, estimated from a table of costs (cpu-costs.json). The table comes from counting the
+// The FM-1's CPU load of a patch (core 0's: the second core takes a split poly group's odd parts, #271), estimated from a
+// table of costs (cpu-costs.json). The table comes from counting the
 // fixed-point engine's instructions on an rv32im model (tools/cpu, `npm run cpu-costs`), calibrated on the factory patches
 // measured on the device (a scale plus a fixed time per block); a table measured on the FM-1 itself can replace it (`source`). Every figure here is an estimate.
 import TABLE from './cpu-costs.json';
@@ -68,6 +69,9 @@ export interface CpuTable {
   source: string;
   /** the table's unit per microsecond on the FM-1 */
   cyclesPerUs: number;
+  /** the second core (#271): what an idle one costs core 0 a block (us), and the share of a split poly group's odd parts
+   * that comes off core 0 (fitted on the rig: scripts/cpu-costs.ts CORES) */
+  cores?: { idleUs: number; splitEff: number; survey: string };
   /** the time per block the counted engine leaves out (the rest of the audio interrupt: key scan, USB poll), whatever the patch */
   fixedUs: number;
   /** the time the audio interrupt has per block (128 frames at 44118 Hz) */
@@ -107,7 +111,16 @@ export interface CpuModule {
 }
 
 export interface CpuEstimate {
+  /** the estimate with one core (core 1 held: update mode, or given up by its fallback) */
+  oneCoreUs: number;
+  /** every module's cycles, as one core renders them */
   cycles: number;
+  /** the cycles the second core takes off core 0 (#271, engine.c render_split): in a poly group of 2 or more parts, the
+   * odd parts of each module but a Steps */
+  split: number;
+  /** the poly groups whose parts are split (each hands work over and waits for it) */
+  splitGroups: number;
+  /** on core 0, with the second core (cores 2) or without it (1) */
   us: number;
   /** fraction of the block's time */
   use: number;
@@ -209,7 +222,9 @@ function slope(p: Patch, id: number, seen = new Set<number>()): number {
 /** does a signal from module `id` change about every sample (the oscillator works out its increments only when the pitch moves)? */
 const keepsMoving = (p: Patch, id: number): boolean => slope(p, id) >= 0.5;
 
-export function cpuEstimate(source: Patch, table: CpuTable = CPU): CpuEstimate {
+/** cores: 2, the FM-1 since #271 (core 0's time: the split poly groups' odd parts on core 1, plus an idle second core's
+ * cost); 1 as with core 1 held */
+export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 = 2): CpuEstimate {
   // counted on what the FM-1 runs (poly.ts deviceView): an allocator is a Part in each group it drives
   const { patch: p, groups } = deviceView(source, true);
   const copies = new Map<number, number>();
@@ -217,7 +232,8 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU): CpuEstimate {
   groups.forEach((g, i) => g.modules.forEach((id) => (groupOf.set(id, i), copies.set(id, g.cfg.parts))));
   const ninst = (id: number): number => copies.get(id) ?? 1;
   const morph = hasMorph(p);
-  let total = table.block;
+  let total = table.block, split = 0;
+  const splitGroups = new Set<number>();
   const modules: CpuModule[] = [];
   for (const m of p.modules) {
     const def = DEFS[m.type];
@@ -283,10 +299,16 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU): CpuEstimate {
     if (t.thru && m.type === 'steps' && inputs.has('keys')) one += t.thru * Math.min(TRACK_POLY, Math.max(1, ...groups.map((g) => g.cfg.parts)));
     if (m.type === 'output') total += table.output;
     const k = ninst(m.id);
+    if (group && k >= 2 && m.type !== 'steps') {
+      split += one * Math.floor(k / 2);
+      splitGroups.add(groupOf.get(m.id)!);
+    }
     modules.push({ id: m.id, type: m.type, copies: k, cycles: one * k });
     total += one * k;
   }
   modules.sort((a, b) => b.cycles - a.cycles);
-  const us = total / table.cyclesPerUs + table.fixedUs;
-  return { cycles: total, us, use: us / table.blockUs, modules };
+  const oneCoreUs = total / table.cyclesPerUs + table.fixedUs;
+  const c = table.cores;
+  const us = cores === 2 && c ? oneCoreUs + c.idleUs - (c.splitEff * split) / table.cyclesPerUs : oneCoreUs;
+  return { cycles: total, split, splitGroups: splitGroups.size, oneCoreUs, us, use: us / table.blockUs, modules };
 }
