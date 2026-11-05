@@ -17,6 +17,7 @@ import { chipState, DeviceLink, deviceIndex, liveSync, sandboxChip, syncLine, sy
 import { SITE_URL } from './site';
 import { sandboxKey, sandboxPage, sandboxStep, sandboxTempoTurn } from './sandbox-mode';
 import { LIVE_MS, panelOffBy, slotLabel, type PanelState } from './protocol';
+import { chooseSlot } from './store-slot';
 import { Fm1View } from './fm1-view';
 import { EmuKeys } from './emu-keys';
 import { SandboxKeys } from './sandbox-keys';
@@ -2178,13 +2179,19 @@ $('dev-send').onclick = () => void sendPatch();
 /** the open patch into slot n of the FM-1's bank, under its name (the device does not switch to it) */
 async function storeToSlot(): Promise<void> {
   if (!device.connected) return devStatus('connect the FM-1 first (FM-1 & MIDI)');
-  const typed = window.prompt('Store into FM-1 slot (1-64):', String((deviceSlot?.slot ?? 0) + 1));
-  const n = Math.round(Number(typed));
-  if (!typed || !Number.isFinite(n) || n < 1 || n > 64) return;
   try {
-    // a used slot is overwritten only when the user says so (#148); Cancel sends nothing
+    // the slots with their names or EMPTY, the first empty one offered (#635)
+    devStatus('reading the FM-1\u2019s slots\u2026');
+    const slots = await device.readBank();
+    devStatus('');
+    const pick = await chooseSlot($<HTMLDialogElement>('store-slot'), slots, editor.patch.name, deviceSlot?.slot);
+    if (pick === null) return devStatus('nothing stored');
+    const n = pick + 1;
+    // a used slot is overwritten only when the user says so (#148, D-580): the dialog's Replace said so for what it showed;
+    // a slot that changed since asks again. Cancel sends nothing
     const was = await device.readSlot(n - 1);
-    if (was.used && !window.confirm(`FM-1 slot ${slotLabel(n - 1)} holds "${was.name}". Replace it with "${editor.patch.name}"?`)) return devStatus('nothing stored');
+    const shown = slots.find((s) => s.slot === pick);
+    if (was.used && !(shown?.used && shown.name === was.name) && !window.confirm(`FM-1 slot ${slotLabel(n - 1)} holds "${was.name}". Replace it with "${editor.patch.name}"?`)) return devStatus('nothing stored');
     await device.uploadSlot(n - 1, editor.patch.name.toUpperCase().slice(0, 20), editor.patch);
     devStatus(`"${editor.patch.name}" stored into FM-1 slot ${slotLabel(n - 1)}`);
   } catch (e) {
