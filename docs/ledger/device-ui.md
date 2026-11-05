@@ -77,6 +77,7 @@ The FM-1 is a patch player: patches are built in the browser, and the device pla
 
 ## Not yet settled
 
+- Proposed amendment to [D-240](device-ui.md#D-240): INFO lists the version, CPU, CPU peak, bank slots, battery and processor (2 CORES or 1 CORE, [D-377](engine.md#D-377)) — PR #643
 - Whether the stock battery thresholds (531 / 561 / 591) match this FM-1's readings on USB, unplugged full, later and near shutdown — issue #240
 - Whether OUTPUT MONO should also silence the right side, in case a mono (TS) plug in the output jack shorts it to ground (a hardware question) — issue #612
 - Whether GLO's page gets a level and a speaker mute (no such setting or hardware control is known) — issue #199
