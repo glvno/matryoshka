@@ -7815,8 +7815,20 @@
   },
   {
    "name": "VERONA 1",
+   "len": 3813,
+   "fnv": "41bf5f54",
+   "version": 46
+  },
+  {
+   "name": "VERONA 1",
    "len": 3821,
    "fnv": "f8aab886",
+   "version": 46
+  },
+  {
+   "name": "VERONA DRUM 1",
+   "len": 3825,
+   "fnv": "0883c5ee",
    "version": 46
   },
   {

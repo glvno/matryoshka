@@ -24,7 +24,10 @@
 //!    the format (#441): the untouched slot gets today's patch, an edited one and today's stay, once
 //! 9. the patch buttons (held / switched) and the SEQ page on the 808 Kit: a step, a track, PLAY, a mute, REC
 //! 10. the Delay's longest time (#273): its echo 700 ms after the note, ping-pong half of it on the left and 700 ms on the right
-//! 11. hardware the emulator does not model: any register besides P33 fails the test
+//! 11. STEREO (the 1.10 early check): a saw on the Output's l and a sine on its r come out on their own sides of the I2S
+//! 12. Verona Drum 1's hi-hat (the 1.10 early check): black key 6 (closed) pressed while black key 5 (open) is still down cuts
+//!     the open hat
+//! 13. hardware the emulator does not model: any register besides P33 fails the test
 //!
 //! Snapshots of every step go to OUT (PNG); a WAV of the first run too.
 
@@ -505,6 +508,75 @@ fn long_delay(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String>
         t.check(&format!("long delay: {name}'s right echo after {right} ms"), near(r, right), format!("first heard at {r:?} ms"));
         *emulated += m.ms();
     }
+    Ok(())
+}
+
+/// STEREO (the 1.10 early check, T110 MONO L R): a saw into the Output's l, a sine an octave up into its r
+/// (web/scripts/emu-patches.ts stereo-sides). Both sides of the I2S sound while a key is held, and they carry different
+/// signals: the right word is the right side, not a copy of the left and not silent.
+fn stereo_sides(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
+    let patch = std::fs::read("build/emu/stereo-sides.m1p").map_err(|e| format!("build/emu/stereo-sides.m1p: {e} (run web/scripts/emu-patches.ts)"))?;
+    let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
+    flash[0xA0000..0xA1000].copy_from_slice(&slot_sector(0, "EMU STEREO", &patch, false));
+    let mut m = Machine::boot(app, Some(&flash));
+    quick_start(&mut m, 9000)?;
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    m.run_for(2500)?;
+    patch_screen(t, &mut m, "stereo: EMU STEREO loads", "EMU STEREO")?;
+    m.midi(&[0x90, 60, 100], 400)?;
+    let mk = m.mark();
+    m.run_for(300)?;
+    let a = &m.audio[mk..];
+    let side = |ch: usize| a.iter().skip(ch).step_by(2).map(|s| (*s as i32).abs()).max().unwrap_or(0);
+    let (l, r) = (side(0), side(1));
+    let n = (a.len() / 2).max(1) as i64;
+    let diff = a.chunks(2).map(|f| ((f[0] as i32) - (*f.get(1).unwrap_or(&0) as i32)).unsigned_abs() as i64).sum::<i64>() / n;
+    m.midi(&[0x80, 60, 0], 300)?;
+    t.check("stereo: the left side (the saw) sounds", l > LOUD, format!("peak {l}"));
+    t.check("stereo: the right side (the sine) sounds", r > LOUD, format!("peak {r}"));
+    t.check("stereo: the two sides differ (each its own signal)", diff > LOUD as i64 / 4, format!("mean |L - R| {diff}"));
+    *emulated += m.ms();
+    Ok(())
+}
+
+/// Verona Drum 1's hi-hat (the 1.10 early check, D-866): stopped, black key 5 (HH OPEN) rings for its DECAY; black key 6 (HH
+/// CLOSE) pressed 20 ms later while black key 5 is still down cuts it (a closed hit dies in 45 ms). Both keys are held for
+/// 300 ms; the peak is read 100..200 ms after the first press (the open hat is still loud there, a closed one is gone).
+fn verona_hats(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
+    let Some(slot) = presets.iter().position(|(n, _)| n.starts_with("VERONA") && !n.ends_with(" XL")) else {
+        t.check("verona: the factory Verona Drum 1 is there", false, String::new());
+        return Ok(());
+    };
+    const OPEN: u8 = 24; // D#4, black key 5
+    const CLOSE: u8 = 27; // F#4, black key 6
+    let mut m = Machine::boot(app, None);
+    quick_start(&mut m, 9000)?;
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    m.run_for(2500)?;
+    m.midi(&[0xC0, slot as u8], 500)?;
+    t.screen(&m, "verona: Verona Drum 1 loads", &presets[slot].0);
+    m.run_for(1500)?;
+    let tail = |m: &mut Machine, both: bool| -> Result<i32, String> {
+        m.key(OPEN, true);
+        m.run_for(20)?;
+        if both {
+            m.key(CLOSE, true);
+        }
+        m.run_for(80)?;
+        let mk = m.mark();
+        m.run_for(100)?;
+        let p = m.peak_since(mk);
+        m.run_for(100)?;
+        m.key(OPEN, false);
+        m.key(CLOSE, false);
+        m.run_for(1500)?; // (the open hat dies away)
+        Ok(p)
+    };
+    let ringing = tail(&mut m, false)?;
+    let cut = tail(&mut m, true)?;
+    t.check("verona: black key 5 alone, the open hat still rings 100 ms on", ringing > 4 * QUIET, format!("peak {ringing}"));
+    t.check("verona: black key 6 pressed with black key 5 still down cuts it", cut < ringing / 4, format!("peak {cut} (open alone {ringing})"));
+    *emulated += m.ms();
     Ok(())
 }
 
@@ -1219,6 +1291,8 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     count_in(app, t, emulated)?;
     global_tempo(app, t, emulated)?;
     long_delay(app, t, emulated)?;
+    stereo_sides(app, t, emulated)?;
+    verona_hats(app, t, emulated, &presets)?;
 
     // ---- 9. unmodelled hardware
     let known = [0x13e08u32, 0x13e0c]; // P33 (watchdog, reset reason, reboot): fm1_sys.h
