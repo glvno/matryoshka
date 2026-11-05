@@ -109,14 +109,17 @@ describe('Verona Drum 1 (#613)', () => {
     expect(cut).toBeLessThan(ringing / 20);
   });
 
-  it('a closed hit pressed while the open row\'s key is still down cuts it too (the 1.10 early check)', () => {
+  it('a hi-hat row pressed while its other row\'s key is still down plays, either way round (the 1.10 early check, D-866)', () => {
     const p = fm1();
     const map = p.modules.find((m) => m.type === 'drummap')!;
     const [open, closed] = [map.params.n5, map.params.n6];
     const ringing = playHeld(p, [[0, open, true], [300, open, false]], 400, 250);
-    const cut = playHeld(p, [[0, open, true], [20, closed, true], [300, open, false], [300, closed, false]], 400, 250);
     expect(ringing).toBeGreaterThan(0.002);
+    // the open row held, then the closed row: it cuts the open hat
+    const cut = playHeld(p, [[0, open, true], [20, closed, true], [300, open, false], [300, closed, false]], 400, 250);
     expect(cut).toBeLessThan(ringing / 20);
+    // the closed row held, then the open row: it rings
+    expect(playHeld(p, [[0, closed, true], [20, open, true], [300, open, false], [300, closed, false]], 400, 250)).toBeGreaterThan(ringing / 2);
   });
 });
 

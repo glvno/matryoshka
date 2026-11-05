@@ -735,8 +735,9 @@ fn stereo_sides(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
 }
 
 /// Verona Drum 1's hi-hat (the 1.10 early check, D-866): stopped, black key 5 (HH OPEN) rings for its DECAY; black key 6 (HH
-/// CLOSE) pressed 20 ms later while black key 5 is still down cuts it (a closed hit dies in 45 ms). Both keys are held for
-/// 300 ms; the peak is read 100..200 ms after the first press (the open hat is still loud there, a closed one is gone).
+/// CLOSE) pressed 20 ms later while black key 5 is still down cuts it (a closed hit dies in 45 ms); the other way round,
+/// black key 5 pressed 20 ms after black key 6 while that is still down rings open. Both keys are held for 300 ms; the peak
+/// is read 100..200 ms after the first press (the open hat is still loud there, a closed one is gone).
 fn verona_hats(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
     let Some(slot) = presets.iter().position(|(n, _)| n.starts_with("VERONA") && !n.ends_with(" XL")) else {
         t.check("verona: the factory Verona Drum 1 is there", false, String::new());
@@ -751,11 +752,12 @@ fn verona_hats(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, 
     m.midi(&[0xC0, slot as u8], 500)?;
     t.screen(&m, "verona: Verona Drum 1 loads", &presets[slot].0);
     m.run_for(1500)?;
-    let tail = |m: &mut Machine, both: bool| -> Result<i32, String> {
-        m.key(OPEN, true);
+    // the first key down, the second (if any) 20 ms later, both held to 300 ms: the peak 100..200 ms after the first press
+    let tail = |m: &mut Machine, first: u8, then: Option<u8>| -> Result<i32, String> {
+        m.key(first, true);
         m.run_for(20)?;
-        if both {
-            m.key(CLOSE, true);
+        if let Some(k) = then {
+            m.key(k, true);
         }
         m.run_for(80)?;
         let mk = m.mark();
@@ -767,10 +769,14 @@ fn verona_hats(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, 
         m.run_for(1500)?; // (the open hat dies away)
         Ok(p)
     };
-    let ringing = tail(&mut m, false)?;
-    let cut = tail(&mut m, true)?;
+    let ringing = tail(&mut m, OPEN, None)?;
+    let cut = tail(&mut m, OPEN, Some(CLOSE))?;
+    let closed = tail(&mut m, CLOSE, None)?;
+    let reopened = tail(&mut m, CLOSE, Some(OPEN))?;
     t.check("verona: black key 5 alone, the open hat still rings 100 ms on", ringing > 4 * QUIET, format!("peak {ringing}"));
     t.check("verona: black key 6 pressed with black key 5 still down cuts it", cut < ringing / 4, format!("peak {cut} (open alone {ringing})"));
+    t.check("verona: black key 6 alone, the closed hat is gone 100 ms on", closed < ringing / 4, format!("peak {closed} (open alone {ringing})"));
+    t.check("verona: black key 5 pressed with black key 6 still down rings open", reopened > ringing / 2, format!("peak {reopened} (open alone {ringing})"));
     *emulated += m.ms();
     Ok(())
 }

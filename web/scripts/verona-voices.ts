@@ -178,30 +178,33 @@ export function multi(b: VoiceBuilder, col: number, o: { lean?: boolean } = {}):
   };
 }
 
-/** SNARE: DECAY REV REVERB DECAY NOISE NOISE ATTACK RESONANCE FILTER */
-export function snare(b: VoiceBuilder, col: number, noise: NoiseFrom): Voice {
+/** SNARE: DECAY REV REVERB DECAY NOISE NOISE ATTACK RESONANCE FILTER. `lean` (the FM-1): NOISE and REVERB are their
+ * envelopes' peak levels (0..1) instead of the gains of two VCAs (0..2), and one VCA takes the noise with both envelopes
+ * added in its cv: the same sum, one VCA fewer (it makes room for the hi-hat's second Pulse). The envelopes rise at a
+ * fixed rate, so a lower peak is reached sooner (at NOISE 0.55, 0.45 ms sooner of a 1 ms rise). */
+export function snare(b: VoiceBuilder, col: number, noise: NoiseFrom, o: { lean?: boolean } = {}): Voice {
   const [nz, nzp] = noise(b, col, 0);
-  const nEnv = decayEnv(b, col, 0.5, 0.16);
-  const nVca = b.add('vca', col, 1, { gain: 0.55 });
-  const rEnv = decayEnv(b, col, 1.5, 0.35);
-  const rVca = b.add('vca', col, 2, { gain: 0.12 });
+  const nEnv = decayEnv(b, col, 0.5, 0.16, o.lean ? 0.55 : 1);
+  const nVca = b.add('vca', col, 1, { gain: o.lean ? 1 : 0.55 });
+  const rEnv = decayEnv(b, col, 1.5, 0.35, o.lean ? 0.12 : 1);
+  const rVca = o.lean ? nVca : b.add('vca', col, 2, { gain: 0.12 });
   const spike = decayEnv(b, col, 2.5, 0.001, 1);
   const lp = b.add('filter', col, 3, { cutoff: 240, res: 0.88 });
   const sum = b.add('vca', col, 3.5, { gain: VEL_GAIN });
   b.wire(nz, nzp, nVca, 'in');
   b.wire(nEnv, 'env', nVca, 'cv');
-  b.wire(nz, nzp, rVca, 'in');
+  if (!o.lean) b.wire(nz, nzp, rVca, 'in');
   b.wire(rEnv, 'env', rVca, 'cv');
   b.wire(spike, 'env', lp, 'in');
   b.wire(lp, 'lp12', sum, 'in');
   b.wire(nVca, 'out', sum, 'in');
-  b.wire(rVca, 'out', sum, 'in');
+  if (!o.lean) b.wire(rVca, 'out', sum, 'in');
   const own = isShared(b, nz) ? [] : [nz];
   return {
-    members: [...own, nEnv, nVca, rEnv, rVca, spike, lp, sum],
+    members: [...own, nEnv, nVca, rEnv, ...(o.lean ? [] : [rVca]), spike, lp, sum],
     gate: [[nEnv, 'gate'], [rEnv, 'gate'], [spike, 'gate']],
     vel: [sum, 'cv'], out: [sum, 'out'],
-    rows: [['decay rev', rEnv, 'r2'], ['reverb', rVca, 'gain'], ['decay noise', nEnv, 'r2'], ['noise', nVca, 'gain'], ['attack', spike, 'l1'], ['resonance', lp, 'res'], ['filter', lp, 'cutoff']],
+    rows: [['decay rev', rEnv, 'r2'], o.lean ? ['reverb', rEnv, 'l1'] : ['reverb', rVca, 'gain'], ['decay noise', nEnv, 'r2'], o.lean ? ['noise', nEnv, 'l1'] : ['noise', nVca, 'gain'], ['attack', spike, 'l1'], ['resonance', lp, 'res'], ['filter', lp, 'cutoff']],
   };
 }
 
@@ -224,10 +227,9 @@ export const CLOSED_DECAY = 0.045;
  * The two rows share the envelopes' gates and the latch's clock, and inputs add, so while one row's key is still down the
  * other row's gate makes no new edge there and its hit is lost (the closed hat right after the open one, the 1.10 early
  * check). So a row's gate comes in through a Pulse of its own (HIT_PULSE), which is down again 2 ms after the press: the
- * other row's next press is a new edge, and the latch reads a closed hit as closed while the open row's key is held. The
- * XL pulses both rows. The FM-1 version pulses only the open row (a second Pulse is 33 patch bytes it does not have), so
- * there a closed hit right after an open one cuts it, but an open hit pressed while the closed row's key is still down
- * is lost. */
+ * other row's next press is a new edge, and the latch reads a closed hit as closed while the open row's key is held. Both
+ * versions pulse both rows (the FM-1's snare makes room for the second Pulse, see snare's `lean`), so either row pressed
+ * while the other's key is still down plays. */
 export function hihat(b: VoiceBuilder, col: number, noise: NoiseFrom, o: { trig?: 1 | 2; pitch?: number } = {}): Voice {
   const [nz, nzp] = noise(b, col, 0);
   const metal = b.add('osc', col, 0.5, { wave: 3, coarse: o.pitch ?? 30, level: 0.7, unison: 5, detune: 60, pw: 0.4 });
@@ -267,7 +269,9 @@ export function hihat(b: VoiceBuilder, col: number, noise: NoiseFrom, o: { trig?
   };
   if (!o.trig) {
     b.wire(latch, 'out', vsel, 'pos');
-    return { members, gate: via(pOpen, [...hits, [latch, 'in']]), closed: hits, vel: [vsel, 'b'], closedVel: [vsel, 'a'], out: [sum, 'out'], rows };
+    const pClosed = b.add('pulse', col - 0.25, 2.5, { time: HIT_PULSE });
+    members.push(pClosed);
+    return { members, gate: via(pOpen, [...hits, [latch, 'in']]), closed: via(pClosed, hits), vel: [vsel, 'b'], closedVel: [vsel, 'a'], out: [sum, 'out'], rows };
   }
   // TRIG: open (1) or closed (0); the row's gate times it into the latch; a second latch, 1 after the row and 0 after the
   // closed row, picks the velocity
