@@ -1747,6 +1747,29 @@ async function main() {
       await shot('ab-flip');
       await tempoPatch(false);
     },
+    // #635: "Store to an FM-1 slot…" lists the FM-1's 64 slots with their names or EMPTY and chooses the first empty one.
+    // Read only: Cancel stores nothing (the rig's bank stays as it is)
+    async storeSlotList() {
+      await page.keyboard.press('/');
+      await page.waitForSelector('#palette[open]', { timeout: 2000 });
+      await page.fill('#palette-input', 'Store to an FM-1 slot');
+      await page.keyboard.press('Enter');
+      const open = await page.waitForSelector('#store-slot[open]', { timeout: 15000 * SLACK }).then(() => true, () => false);
+      await check('store slot: the dialog opens after reading the slots', open);
+      if (!open) return;
+      const list = await page.evaluate(() => {
+        const sel = document.getElementById('store-slot-list');
+        return { texts: [...sel.options].map((o) => o.textContent), chosen: sel.selectedIndex, button: document.getElementById('store-slot-go').textContent };
+      });
+      const empty = list.texts.findIndex((t) => / {2}EMPTY$/.test(t));
+      await check('store slot: 64 slots, each numbered', list.texts.length === 64 && list.texts.every((t, i) => t.startsWith(String(i + 1).padStart(2, '0') + '  ')), list.texts.slice(0, 4).join(' | '));
+      await check('store slot: a used slot shows its patch\'s name', list.texts.some((t) => !/ {2}EMPTY$/.test(t) && t.length > 4), list.texts.slice(0, 4).join(' | '));
+      await check('store slot: the first empty slot is chosen (Store), else a used one (Replace)',
+        empty >= 0 ? list.chosen === empty && list.button === 'Store' : list.button === 'Replace', `chosen ${list.chosen}, first empty ${empty}, ${list.button}`);
+      await shot('store-slot');
+      await page.keyboard.press('Escape');
+      await check('store slot: Cancel closes it', !!(await until(() => page.evaluate(() => !document.querySelector('#store-slot[open]')), 2000)));
+    },
   };
 
   try {

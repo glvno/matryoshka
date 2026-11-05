@@ -161,6 +161,16 @@
           <div class="sync-ask-actions"><button value="sync" class="primary" autofocus>Sync</button><button value="later">Not now</button></div>
         </form>
       </dialog>
+      <!-- "Store to an FM-1 slot…" (#635, store-slot.ts): the FM-1's slots with their names or EMPTY, the first empty one chosen -->
+      <dialog id="store-slot" class="help sync-ask store-slot" aria-labelledby="store-slot-title" aria-describedby="store-slot-text">
+        <form method="dialog" class="sync-ask-body">
+          <h2 id="store-slot-title">Store to an FM-1 slot</h2>
+          <p id="store-slot-text"></p>
+          <select id="store-slot-list" class="store-slot-list" aria-label="FM-1 slot"></select>
+          <p id="store-slot-note" class="muted"></p>
+          <div class="sync-ask-actions"><button id="store-slot-go" value="store" class="primary">Store</button><button value="">Cancel</button></div>
+        </form>
+      </dialog>
       <dialog id="about" class="help about" aria-labelledby="about-title"></dialog>
       <dialog id="engine-start" class="help engine-start" aria-labelledby="engine-start-title"></dialog>
       <dialog id="share-sheet" class="help share-sheet" aria-labelledby="share-title"></dialog>
