@@ -57,7 +57,8 @@
 //   with flag bit 8 (format 34; with the device pages, right after them): the device extras: u8 device count, then per
 //                device u8 track (the device index of the Steps track that drives it, pages.ts Device.track; 0xFF none;
 //                0xFE none, and it is an engine no keys cable reaches, KEYS_UNREACHED, #215: firmware before 1.9 reads it as
-//                none, so any format carries it),
+//                none, so any format carries it; 0x80 | t, KEYS_UNREACHED_TRACK, #633: the track t drives it through other
+//                cables, and it is an engine no keys cable reaches: firmware before 1.10 reads it as no track),
 //                u32 LE structure (an assembly's fingerprint, structure.ts; 0 a plain module), the name of the preset it was
 //                set to (a text, AssemblyInst.preset; empty none), u8 n and n (u8 module index, u8 parameter byte as a page
 //                row's): its card rows in canonical order (structure.ts rowOrder: the order of a preset's values; 0xFF 0xFF a
@@ -439,6 +440,10 @@ export function deviceRecord(devs: Device[], p: Patch): number[] {
  * NO KEYS REACH THIS DEVICE on SEL there, not NOTHING HERE TAKES KEYS. Firmware before 1.9 finds no device with this
  * index, so it reads it as no track (ENG_NO_TRACK), the same as 0xFF: the byte needs no newer format */
 export const KEYS_UNREACHED = 0xfe;
+/** the bit of the track byte that marks an engine no keys cable reaches that a Steps track drives through other cables,
+ * such as pitch and gate (#633, D-295): 0x80 | the track's device index. Firmware before 1.10 finds no device with this
+ * index, so it reads it as no track: the device plays the same and its environment row is not listed under the track */
+export const KEYS_UNREACHED_TRACK = 0x80;
 /** an engine device (engines.ts instIsEngine) whose keys input no keys cable reaches (arm.ts engineUnreached). The device
  * form leaves its Voicing out, so without this mark the FM-1 cannot tell it from a device with no keys input. The editor
  * does not arm it either (arm.ts noKeysReach, D-818) */
@@ -458,7 +463,8 @@ export function extrasRecord(devs: Device[], source: Patch, dev: Patch = deviceV
     const sr = a ? structureAndRows(source, a) : undefined;
     const h = sr ? parseInt(sr.structure, 16) >>> 0 : 0;
     const name = names ? names[di] : deviceText(a?.preset ?? '');
-    out.push(t >= 0 ? t : keysUnreached(source, d) ? KEYS_UNREACHED : 0xff, h & 0xff, (h >>> 8) & 0xff, (h >>> 16) & 0xff, h >>> 24, name.length, ...Array.from(name, (c) => c.charCodeAt(0)));
+    const marked = keysUnreached(source, d);
+    out.push(t >= 0 ? (marked ? KEYS_UNREACHED_TRACK | t : t) : marked ? KEYS_UNREACHED : 0xff, h & 0xff, (h >>> 8) & 0xff, (h >>> 16) & 0xff, h >>> 24, name.length, ...Array.from(name, (c) => c.charCodeAt(0)));
     const rows = sr ? sr.rows : [];
     out.push(rows.length);
     for (const r of rows) {

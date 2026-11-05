@@ -248,7 +248,8 @@ static inline uint32_t eng_devices_end(const uint8_t *p, uint32_t len, uint32_t 
 /* the end of the device extras section (patchbin.ts, header flag bit 8 = bit 0 of p[7], format 34; right after the device
  * pages) that starts at `at`, 0 when it is cut short: u8 devices (the device pages section's count), per device u8 track (the
  * device index of the Steps track that drives it, ENG_NO_TRACK none, ENG_KEYS_UNREACHED none and an engine no keys cable
- * reaches, #215), u32 LE structure (an assembly's fingerprint, structure.ts; 0 a plain module), a text: the name of the preset it was set to (u8 length + that many bytes, 0 none),
+ * reaches, #215; ENG_KEYS_UNREACHED_TRACK | t: the track t drives it through other cables, and it is an engine no keys
+ * cable reaches, #633), u32 LE structure (an assembly's fingerprint, structure.ts; 0 a plain module), a text: the name of the preset it was set to (u8 length + that many bytes, 0 none),
  * u8 n and n (u8 module, u8 parameter byte as a page row's): its card rows in the canonical order of a preset's values
  * (0xFF 0xFF: a row the FM-1 has not got), u8 m and m module indices: the modules it is made of (#191) */
 #define ENG_FLAG_EXTRAS 1u                      /* in p[7] */
@@ -256,6 +257,9 @@ static inline uint32_t eng_devices_end(const uint8_t *p, uint32_t len, uint32_t 
 #define ENG_NO_TRACK 0xFFu
 #define ENG_KEYS_UNREACHED 0xFEu                /* the track byte: no track, and an engine no keys cable reaches (#215, D-905;
                                                  * firmware before 1.9 finds no such device: no track) */
+#define ENG_KEYS_UNREACHED_TRACK 0x80u          /* the track byte's bit: | the device index of the Steps track that drives
+                                                 * it through pitch / gate, and an engine no keys cable reaches (#633, D-295;
+                                                 * firmware before 1.10 finds no such device: no track) */
 static inline uint32_t eng_extras_end(const uint8_t *p, uint32_t len, uint32_t at)
 {
     uint32_t n, d;

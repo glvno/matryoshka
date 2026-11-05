@@ -5,8 +5,8 @@ import { FACTORY } from './assemblies';
 import { insertAssembly } from './assembly';
 import { defIsEngine, wireEngine } from './engines';
 import { DEFS } from './modules';
-import { newPatch, type Patch } from './patch';
-import { deviceSection, encodePatch, extrasRecord, formatOf, KEYS_UNREACHED, keysUnreached } from './patchbin';
+import { addModule, connect, newPatch, type Patch } from './patch';
+import { deviceSection, encodePatch, extrasRecord, formatOf, KEYS_UNREACHED, KEYS_UNREACHED_TRACK, keysUnreached } from './patchbin';
 import { deviceView } from './poly';
 
 /** the extras' track byte of each device the binary lists, by device key */
@@ -48,6 +48,29 @@ describe('an engine no keys cable reaches (#215)', () => {
       // the mark takes no newer format
       expect(encodePatch(p)[1], def.name).toBe(wired);
     }
+  });
+
+  it('a Steps track driving it through pitch or trig keeps its number, with the mark\'s bit (#633, D-295)', () => {
+    let seen = 0;
+    for (const def of ENGINES) {
+      const p = newPatch(DEFS);
+      const a = insertAssembly(p, DEFS, def, 0, 0);
+      wireEngine(p, a);
+      const main = p.modules.find((m) => m.type === 'fm1')!;
+      p.cables = p.cables.filter((c) => !(c.from.module === main.id && c.from.port === 'keys'));
+      const t = addModule(p, DEFS.steps, 0, 0);
+      if (!a.inputs.some((r) => ['trig', 'pitch'].some((o) => connect(p, DEFS, { module: t.id, port: o }, { module: r.module, port: r.port })))) continue;
+      const dev = deviceView(p, true).patch;
+      const devs = deviceSection(p, dev);
+      const d = devs.find((x) => x.asm === a.id)!;
+      const track = devs.findIndex((x) => x.module === t.id);
+      expect(d.track, def.name).toBe(t.id);
+      expect(track, def.name).toBeGreaterThanOrEqual(0);
+      expect(keysUnreached(p, d), def.name).toBe(true);
+      expect(trackBytes(p).get(d.key), def.name).toBe(KEYS_UNREACHED_TRACK | track);
+      seen++;
+    }
+    expect(seen, 'engines a track can drive by pitch or trig').toBeGreaterThan(0);
   });
 
   it('a device that is no engine is never marked', () => {

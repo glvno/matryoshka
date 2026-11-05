@@ -51,7 +51,7 @@ typedef struct {
     uint8_t bin, track;                                 /* its index in the binary's device list; the device that drives it (0xFF none) */
     uint32_t structure;                                 /* format 34's extras: an assembly's structure (0 none) */
     const uint8_t *rows;                                /* its card rows in canonical order (module, parameter byte) pairs */
-    uint8_t nrows, nmem, unreached;                     /* unreached: an engine no keys cable reaches (ENG_KEYS_UNREACHED, #215) */
+    uint8_t nrows, nmem, unreached;                     /* unreached: an engine no keys cable reaches (ENG_KEYS_UNREACHED, #215; ENG_KEYS_UNREACHED_TRACK, #633) */
     const uint8_t *mem;                                 /* the modules it is made of (#191: arming it arms them) */
 } pdev_t;
 typedef struct {
@@ -289,14 +289,18 @@ static void pages_extras(const uint8_t *p, uint32_t len)
     }
     cnt = p[at++];
     for (k = 0; k < cnt; k++) {
-        uint32_t nl = p[at + 5u], tr = p[at];
+        uint32_t nl = p[at + 5u], tr = p[at], un;
         for (i = 0; i < pg_ndev && pg_dev[i].bin != k; i++)
             ;
         if (i < pg_ndev) {
+            /* (no keys cable reaches it: 0xFE with no track, or the track's index with bit 7, #633) */
+            un = tr == ENG_KEYS_UNREACHED || (tr != ENG_NO_TRACK && (tr & ENG_KEYS_UNREACHED_TRACK));
+            if (un)
+                tr = tr == ENG_KEYS_UNREACHED ? ENG_NO_TRACK : tr & ~ENG_KEYS_UNREACHED_TRACK;
             for (j = 0; j < pg_ndev && (tr == 0xFFu || pg_dev[j].bin != tr); j++)
                 ;
             pg_dev[i].track = (uint8_t)(j < pg_ndev ? j : 0xFFu);
-            pg_dev[i].unreached = tr == ENG_KEYS_UNREACHED;
+            pg_dev[i].unreached = (uint8_t)un;
             pg_dev[i].structure = (uint32_t)p[at + 1u] | (uint32_t)p[at + 2u] << 8 | (uint32_t)p[at + 3u] << 16 | (uint32_t)p[at + 4u] << 24;
             if (pg_names_fresh) {
                 for (j = 0; j < nl && j < 16u; j++)

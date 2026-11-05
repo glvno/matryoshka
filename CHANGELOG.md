@@ -23,6 +23,7 @@
   - Step record's bar shows the pattern's length (`STEP 3/16`), its hint line reads "LFO rest  KEY+LFO tie", and a note written above or below the piano roll's view moves the view to it.
   - Patterns and songs: PRESET to a pattern the track has not got says `PATTERN 02: COPY OF 01`; K1 on the SONG page's END adds the selected pattern (it was the last entry's); the entry playing has a coral triangle and number, and stopped, none is marked and the bar says `SONG 1 STOPPED`.
   - Safe mode says `SAFE MODE: RESTART TO EXIT`, and the loading screen says `HOLD SAVE: SAFE MODE`.
+- **An engine played only by a Steps track's other cables (#633):** a poly engine that no keys cable reaches, whose voices a Steps track plays through its pitch or trig cables, now says NO KEYS REACH THIS DEVICE on SEL and arms nothing, as an engine no keys reach at all does. SEL armed its voices, and then the keys played nothing. In the editor its ARM dot is dashed and arms nothing too. Cable keys into its keys input to arm it. Firmware 1.9 lists such an engine on the ENVIRONMENT page apart from its track.
 
 ### Editor
 

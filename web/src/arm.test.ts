@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { armable, armableDevices, armDrawing, armedFromMask, armedWith, armMask, armView, keepArmed, mutedCables, noKeysReach, virtualCables } from './arm';
 import { assembliesOf } from './assembly';
+import { devicesOf } from './pages';
 import { deviceView } from './poly';
 import { FM1_PRESETS } from './presets';
 import { FACTORY } from './assemblies';
@@ -249,7 +250,7 @@ describe('an engine no keys cable reaches is not armed (D-905, D-818)', () => {
     expect(armDrawing(p, [key]).virtual).toEqual([]);
   });
 
-  it('an engine a Steps track drives through other cables keeps the track and no mark (D-295): it is armed as before', () => {
+  it('an engine a Steps track drives through other cables, no keys cable reaching it (#633, D-295): still not armed', () => {
     const p = newPatch(DEFS);
     const def = ENGINES.find((d) => !!d.poly) ?? ENGINES[0];
     const a = insertAssembly(p, DEFS, def, 0, 0);
@@ -258,9 +259,20 @@ describe('an engine no keys cable reaches is not armed (D-905, D-818)', () => {
     p.cables = p.cables.filter((c) => !(c.from.module === main.id && c.from.port === 'keys'));
     const t = addModule(p, DEFS.steps, 0, 0);
     expect(noKeysReach(p, `a${a.id}`)).toBe(true);
-    // the track's gate or pitch into any input on the card that takes it
-    const into = a.inputs.some((r) => ['gate', 'pitch'].some((o) => connect(p, DEFS, { module: t.id, port: o }, { module: r.module, port: r.port })));
+    // the track's trig or pitch into any input on the card that takes it
+    const into = a.inputs.some((r) => ['trig', 'pitch'].some((o) => connect(p, DEFS, { module: t.id, port: o }, { module: r.module, port: r.port })));
     expect(into, def.name).toBe(true);
+    expect(devicesOf(p, DEFS).find((d) => d.asm === a.id)?.track, 'the track drives it').toBe(t.id);
+    expect(noKeysReach(p, `a${a.id}`)).toBe(true);
+    expect(armable(p, `a${a.id}`)).toBe(false);
+    expect(armableDevices(p)).not.toContain(`a${a.id}`);
+    expect(armedFromMask(p, ...ownMask(p, a.modules))).toEqual([]);
+    // (Main's keys into the track and the track's keys into the engine: reached, armed with the track)
+    const main2 = p.modules.find((m) => m.type === 'fm1')!;
+    connect(p, DEFS, { module: main2.id, port: 'keys' }, { module: t.id, port: 'keys' });
+    const keysIn = a.inputs.find((r) => DEFS[p.modules.find((m) => m.id === r.module)!.type].inputs.find((x) => x.name === r.port)?.kind === 'keys')!;
+    connect(p, DEFS, { module: t.id, port: 'keys' }, { module: keysIn.module, port: keysIn.port });
     expect(noKeysReach(p, `a${a.id}`)).toBe(false);
+    expect(armable(p, `a${a.id}`)).toBe(true);
   });
 });
