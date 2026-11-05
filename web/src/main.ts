@@ -4,7 +4,7 @@
 import './site-move';
 import { renderFm1Help } from './controls-help';
 import { ControlsStrip, stripPatch, type StripPatch } from './controls-strip';
-import { addUserPreset, currentValues, exportPresets, importPresets, presetsOf } from './device-presets';
+import { addUserPreset, currentValues, exportPresets, importPresets, migrateUserPresets, presetsOf } from './device-presets';
 import { armedFromMask, armMask } from './arm';
 import './factory-presets'; // the factory engines' presets (#193)
 import { applyImport, backupFile, backupKeys, collectKeys, importSummary, receiveMigration } from './migrate';
@@ -754,6 +754,11 @@ let emuTimer = 0;
 /** the editor's notes as the emulated FM-1's keys while its view shows (emu-keys.ts) */
 const emuKeys = new EmuKeys(emu);
 const firstPatch = loadSaved() ?? starterPatch();
+// the user's presets stored for an earlier structure of a factory engine move to today's (D-865), before any list shows them
+{
+  const moved = migrateUserPresets();
+  if (moved) showToast(`${moved} of your presets moved to the updated factory engines`);
+}
 // the global tempo setting (D-907, wired below) before the editor draws Main's tempo row; a first visit: Global, at this
 // patch's tempo
 tempo.set(readTempo((() => { try { return localStorage.getItem(TEMPO_KEY); } catch { return null; } })(), patchTempo(firstPatch)));
