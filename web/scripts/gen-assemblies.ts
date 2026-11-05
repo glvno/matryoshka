@@ -3647,7 +3647,8 @@ asm('Spokes 6', 'Drums', (b) => {
 // one white noise source; MASTER is the level of the mixer they all go into. Left out to fit the FM-1 (Verona Drum 1 XL has
 // them, scripts/xl/verona-drum-1.ts): DRUM 2 and HI HAT 2 (each the same as its pair), PAN, the clap's NOISE COLOR, the
 // hi-hat's TRIG switch (its two rows play open and closed), MULTI's PITCH 2 / PITCH 3 off position (here they are the
-// oscillators' coarse tune), and the kick's own noise envelope (its noise lasts as long as TIME).
+// oscillators' coarse tune), the kick's own noise envelope (its noise lasts as long as TIME), and the snare's second noise
+// VCA (NOISE and REVERB are its envelopes' levels, 0..1).
 asm('Verona Drum 1', 'Drums', (b) => {
   const map = b.add('drummap', 0, 0, Object.fromEntries(PLATE_KEYS[1].map((n, r) => [`n${r + 1}`, n])));
   b.module(map).names = ['KICK', 'DRUM 1', 'MULTI', 'SNARE', 'HH OPEN', 'HH CLOSE', 'CLAP', 'ROW 8'];
@@ -3658,7 +3659,7 @@ asm('Verona Drum 1', 'Drums', (b) => {
     ['kick', kick(b, 1, noise, { lean: true })],
     ['drum 1', drum(b, 2, { coarse: -17, decay: 0.35 })],
     ['multi', multi(b, 3, { lean: true })],
-    ['snare', snare(b, 4, noise)],
+    ['snare', snare(b, 4, noise, { lean: true })],
     ['hi hat', hihat(b, 5, noise)],
     ['clap', clap(b, 6, noise, { color: false })],
   ];
