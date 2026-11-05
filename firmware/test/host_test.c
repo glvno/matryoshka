@@ -5,11 +5,13 @@
  * .par: the parameter values the editor's budget counts for the patch (patchbin.ts DEVICE.params); eng_load must take as many.
  * .ev: lines "frame on NOTE VEL" / "frame off NOTE" (frame a multiple of 128, ascending), last line "end FRAMES"; "frame
  * pat N" / "frame song N" choose the patch's pattern / song (format 48).
- * .f32: float32 stereo interleaved reference output. Prints max and rms error (full scale = 1.0). */
+ * .f32: float32 stereo interleaved reference output. Prints max and rms error (full scale = 1.0).
+ * HOST_CORES=1|2 renders the split segments' lane 1 deferred or on a thread (lanes_host.h, #271). */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "lanes_host.h"           /* the second core's double (#271): HOST_CORES, HOST_CHAOS, HOST_LOST */
 #include "../src/engine.c"
 
 static uint8_t *slurp(const char *path, long *n)

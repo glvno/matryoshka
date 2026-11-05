@@ -16,8 +16,9 @@
   tools/m1_link.py uac [SECONDS]          (the USB audio stream: state, glitch counters, rate adjustments, the ring's fill
                                            range; SECONDS: read again after that long and print the changes per second)
   tools/m1_link.py mem                    (#273: the boot's proof of .lowram and how deep each stack has gone since boot)
-  tools/m1_link.py cores [inject]         (#271: the second core: 2 CORES / 1 CORE, its self-tests; inject: one wrong job,
-                                           which must fall back to one core until power-off)
+  tools/m1_link.py cores [inject | split on|off]   (#271: the second core: 2 CORES / 1 CORE, its self-tests; inject: one
+                                           wrong job, which must fall back to one core until power-off; split off: core 0
+                                           renders every part, core 1 stays up, for measuring; on again at boot)
   tools/m1_link.py uitime [reset]         (the LCD's draw times: the last and the worst of each kind, in ms; reset zeroes them)
   tools/m1_link.py clock [SECONDS [BPM [run]]]   (#473: MIDI clock out, DIAG page 116: ticks sent and dropped; SECONDS:
                                            also time the ticks this computer receives, by CoreMIDI's timestamps, and print
@@ -206,16 +207,18 @@ def main():
             print(f"{name} stack: {used} of {size} B at most since boot ({size - used} B never reached)")
     elif a[0] == "cores":                               # #271: the second core (DIAG 114; "cores inject": 113 first)
         page = 113 if len(a) > 1 and a[1] == "inject" else 114
+        if len(a) > 2 and a[1] == "split":                 # the render's split off / on (DIAG 110 / 111; on at boot)
+            page = 110 if a[2] == "off" else 111
         p = link.ask(frame(0x2B, [page]), (0x4B, page))
         if len(p) < 33:
             sys.exit("no second-core page (a firmware from before #271)")
         w = [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range(8)]
-        on, gave, barred, skip = w[0] & 0xFF, (w[0] >> 8) & 0xFF, (w[0] >> 16) & 0xFF, w[0] >> 24
+        on, gave, barred, skip = w[0] & 0xFF, (w[0] >> 8) & 0xFF, (w[0] >> 16) & 0xFF, (w[0] >> 24) & 0x7F
         why = {0: "", 1: " (wrong job refused)", 2: " (job late)", 3: " (barred: one core until power-off)",
                4: " (wrong self-test answer)"}.get(gave, f" ({gave})")
         skipped = {1: ", not started: update mode", 2: ", not started: the last boot failed"}.get(skip, "")
         print(f"{'2 CORES' if on else '1 CORE'}{why if gave else ''}{skipped}; barred {'yes' if barred else 'no'}; "
-              f"trace {w[1]:#010x}")
+              f"trace {w[1]:#010x}; split {'OFF' if w[0] >> 31 else 'on'}")
         print(f"self-test passed {w[2]}, failed {w[3]}; refused jobs {w[4]}; jobs done {w[7]}; "
               f"core 1 stack {w[5]} B used; longest wait {w[6]} us since the last read")
         if page == 113:

@@ -69,9 +69,10 @@ static uint32_t stack_deepest(char *lo, char *top)     /* the most bytes the sta
 
 /* #271: the second core (hal/fm1_cpu1.h, X0X's). Started at power-on before the audio and the timers, the only start that
  * works on the device (X0X's, Melodee's and Felucca's finding), and after the boot guard's update-mode check: not in update
- * mode, not after a failed boot, not when barred (fm1_c1_bar in .noinit: one core until power-off). Nothing renders on it
- * yet. Every C1_TEST_MS the main loop hands it the self-test (c1_sum: SIN_T read from the flash, the seed from the mailbox,
- * the answer written to RAM) and checks the answer against its own. A wrong answer, a job it refuses (a misread check
+ * mode, not after a failed boot, not when barred (fm1_c1_bar in .noinit: one core until power-off). It renders the odd
+ * parts of each poly segment (engine.c render_split, from the audio interrupt). Every C1_TEST_MS the main loop also
+ * hands it the self-test, with the interrupts off (c1_sum: SIN_T read from the flash, the seed from the mailbox, the
+ * answer written to RAM) and checks the answer against its own. A wrong answer, a job it refuses (a misread check
  * word) or one not back in 8 ms holds it for good and bars it: one core until power-off (Melodee's fallback, the owner's
  * ruling of 2026-11-04). Update mode and the chip's boot mode hold it first; fm1_reboot and fm1_enter_update hold it too
  * (fm1_sys.h). DIAG page 114 (tools/m1_link.py cores) reports it, page 113 arms one wrong check word (the fallback's
@@ -96,25 +97,30 @@ static void c1_job(uint32_t seed)               /* (runs on core 1) */
     c1_out = c1_sum(seed);
 }
 
-static void c1_test(void)
+static void c1_test(int irqs)                    /* irqs: the interrupts are on (the main loop; not at boot) */
 {
-    uint32_t seed, want, t0, dt;
-    int rc;
+    uint32_t seed, want, t0, dt, k;
+    int rc, w;
     if (!fm1_c1_on)
         return;
     seed = fm1_ticks();
     want = c1_sum(seed);
     c1_out = ~want;
+    k = irqs ? fm1__lock() : 0u;                /* the render hands core 1 its jobs from the audio interrupt: one job at a
+                                                 * time, so the self-test's hand-off and wait run with the interrupts off */
     t0 = fm1_ticks();
     rc = c1_inject ? fm1_cpu1_run_mischecked(c1_job, seed) : fm1_cpu1_run(c1_job, seed);
     c1_inject = 0;
+    w = rc ? fm1_cpu1_wait() : 0;
+    dt = fm1_ticks() - t0;
+    if (irqs)
+        fm1__unlock(k);
     if (!rc)
         return;
-    if (fm1_cpu1_wait() != 0) {                 /* refused or late: held and barred (fm1_cpu1_wait) */
+    if (w != 0) {                               /* refused or late: held and barred (fm1_cpu1_wait) */
         c1_fail++;
         return;
     }
-    dt = fm1_ticks() - t0;
     if (c1_out != want) {
         fm1_cpu1_hold();
         fm1_cpu1_bar();
@@ -142,7 +148,7 @@ static void c1_boot(int update)                 /* fm1_main, before the audio an
     fm1_guard_enable(FM1_GUARD_PC);
     if (locked)
         fm1_guard_lock_top();
-    c1_test();
+    c1_test(0);
     cores_up = fm1_c1_on ? 2u : 1u;
 }
 
@@ -151,7 +157,7 @@ static void c1_poll(void)                       /* the main loop */
     uint8_t up;
     if (fm1_ms - c1_last >= C1_TEST_MS) {
         c1_last = fm1_ms;
-        c1_test();
+        c1_test(1);
     }
     up = fm1_c1_on ? 2u : 1u;
     if (up != cores_up) {
@@ -380,12 +386,16 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
         return sizeof v;
     }
-    if (page == 113u || page == 114u) {         /* #271: the second core (113 first arms one wrong check word: the fallback) */
+    if (page >= 110u && page <= 114u) {         /* #271: the second core (113 first arms one wrong check word: the fallback;
+                                                 * 110 / 111 turn the render's split off / on, 112 reads) */
         uint32_t v[8];
         if (page == 113u)
             c1_inject = 1;
+        if (page == 110u || page == 111u)
+            lanes_off = page == 110u;
         v[0] = (uint32_t)fm1_c1_on | (uint32_t)fm1_c1_gave_up << 8 |
-               (uint32_t)(fm1_c1_bar.magic == FM1_C1_BAR_MAGIC && fm1_c1_bar.barred == 1u) << 16 | (uint32_t)c1_skip << 24;
+               (uint32_t)(fm1_c1_bar.magic == FM1_C1_BAR_MAGIC && fm1_c1_bar.barred == 1u) << 16 | (uint32_t)c1_skip << 24 |
+               (uint32_t)lanes_off << 31;
         v[1] = fm1_c1_trace;
         v[2] = c1_pass;
         v[3] = c1_fail;

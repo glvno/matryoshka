@@ -25,7 +25,7 @@ ln -s "$PWD/web/node_modules" "$T/base/web/node_modules"
 (cd "$T/base/web" && npx vite-node scripts/golden.ts) > /dev/null       # the older binaries: $T/base/build/golden
 [ -d build/golden ] || (cd web && npx vite-node scripts/golden.ts) > /dev/null
 gcc -O1 -w -o "$T/base_test" "$T/base/firmware/test/host_test.c" -lm
-gcc -O1 -w -o "$T/new_test" firmware/test/host_test.c -lm
+gcc -O1 -w -o "$T/new_test" firmware/test/host_test.c -lm -lpthread
 gcc -O1 -w -o "$T/proto_test" firmware/test/proto_test.c -lm
 KNOWN=tools/old_format_known.txt
 known() { grep -v '^#' "$KNOWN" | grep -qx "$BASE $1"; }
