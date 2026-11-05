@@ -328,8 +328,12 @@ export const ROW_MORE = 0x40;
 export const rowParam = (type: string, param: string): number =>
   type === 'part' ? (POLY_ROW_PARAMS.includes(param) ? POLY_ROW | POLY_ROW_PARAMS.indexOf(param) : -1) : DEFS[type].params.findIndex((q) => q.name === param);
 
-/** a name as the FM-1's font draws it: printable ASCII (an arrow becomes >), NAME_MAX characters */
-export const deviceText = (s: string): string => s.replace(/→/g, '>').replace(/←/g, '<').replace(/[–—−]/g, '-').replace(/[^\x20-\x7e]/g, '').slice(0, NAME_MAX).trim();
+/** a name as the FM-1's font draws it: printable ASCII (an arrow becomes >), NAME_MAX characters. A longer name that ends
+ * in a number loses the space before it, so the number stays ("Verona Drum 1" is "Verona Drum1", D-862) */
+export const deviceText = (s: string): string => {
+  const t = s.replace(/→/g, '>').replace(/←/g, '<').replace(/[–—−]/g, '-').replace(/[^\x20-\x7e]/g, '').trim();
+  return (t.length > NAME_MAX ? t.replace(/ +(\d+)$/, '$1') : t).slice(0, NAME_MAX).trim();
+};
 
 /** the device pages as the binary lists them: rows on modules the device form dropped are left out, and so are pages
  * and devices left empty */

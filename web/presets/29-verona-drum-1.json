@@ -1,6 +1,6 @@
 {
  "version": 2,
- "name": "Verona 1",
+ "name": "Verona Drum 1",
  "modules": [
   {
    "id": 1,
@@ -3427,8 +3427,8 @@
   {
    "v": 1,
    "id": 7,
-   "name": "Verona 1",
-   "label": "Verona 1",
+   "name": "Verona Drum 1",
+   "label": "Verona Drum 1",
    "x": 20,
    "y": 60,
    "open": false,
