@@ -81,11 +81,11 @@ describe('Live over the FM-1 budget (#200)', () => {
     expect(said(true, true, fits0)).toEqual([]);                 // Live, the patch fits: plain LIVE, edits sent
     expect(liveSync.syncs(true, true, fits0)).toBe(true);
     const reverbs = [0, 1].map(() => {
-      const r = addModule(p, DEFS.reverb, 0, 0);
+      const r = addModule(p, DEFS.grain, 0, 0);
       connect(p, DEFS, { module: r.id, port: 'out' }, { module: out.id, port: 'l' });
       return r.id;
     });
-    const fits1 = deviceBudget(p).fits;                          // two reverbs: over the budget
+    const fits1 = deviceBudget(p).fits;                          // two Granulars: over the effect memory
     expect(fits1).toBe(false);
     expect(liveSync.pausesNow(true, true, fits0, fits1)).toBe(true); // the FM-1 is told at once
     expect(said(true, true, fits1)).toEqual([1]);                // and every LIVE_MS after: paused, PRESET still held

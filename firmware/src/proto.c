@@ -139,7 +139,7 @@ static void m1_info(void)
     p[1] = ENG_MAX_MODULES;
     p[2] = ENG_MAX_CABLES;
     p[3] = (uint8_t)((m1_flash_ok() ? 1u : 0u) | (m1_cur_len ? 2u : 0u) | (m1_midi_out() ? M1_INFO_MIDI_OUT : 0u));
-    p[4] = ENG_NDELAY;                                       /* delay lines (shared by the voices) */
+    p[4] = 255u;                                             /* (was the delay count: any number since 1.10, the effect memory holds their lines) */
     p[5] = M1_FEATURES;
     p[6] = M1_FEATURES2;
     p[7] = ENG_PATCH_COMPAT_VERSION;
@@ -246,6 +246,9 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
         return;
     if (!at || par >= eng_npar(&DEFS[M1_TYPE(m1_cur[at])], m1_cur[1]))   /* (an older format's record without it: m1_set_current
                                                                          * upgrades the binary, unless it would not fit) */
+        return;
+    if (DEF_FIXED(M1_TYPE(m1_cur[at]), par))                 /* (a row set when the patch loads, a Delay's length: only a new
+                                                              * patch from the editor changes it, so a stored patch always fits) */
         return;
     m1_put32(at + 1u + 4u * par, v);
     m1_edited = 1;

@@ -269,9 +269,10 @@ enum {
 #define DELAY_P_PINGPONG 4
 #define DELAY_P_NOTE 5
 #define DELAY_P_SWELL 6
+#define DELAY_P_LENGTH 7
 #define DELAY_NIN 4
 #define DELAY_NOUT 2
-#define DELAY_NPAR 7
+#define DELAY_NPAR 8
 #define DELAY_CVBASE 2
 #define DELAY_NDATA 0
 
@@ -1075,6 +1076,8 @@ enum {
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 #define DELAY_SYNC_TOP 520   /* ms: the synced note lengths spread over 1..this (modules.ts) */
+#define DELAY_LENGTH_MIN 10   /* ms: the Delay's length row (modules.ts; engine.c dly_samples sizes its line) */
+#define DELAY_LENGTH_MAX 1900
 static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {1, 1, 1, 3, 1, 3, 1, 3, 2, 5, 4};
 static const uint8_t DELAY_DIV_DEN[DELAY_NDIV] = {6, 4, 3, 8, 2, 4, 1, 2, 1, 2, 1};
 static const char *const DELAY_DIV_NAME[DELAY_NDIV] = {"1/16T", "1/16", "1/8T", "1/16.", "1/8", "1/8.", "1/4", "3/8", "1/2", "5/8", "1/1"};
@@ -1151,6 +1154,8 @@ typedef struct {
 } def_t;
 /* the most parameter j of def d takes: its stretch past pmax (ptop), else pmax */
 #define DEF_TOP(d, j) ((d)->ptop ? (d)->ptop[j] : (d)->pmax[j])
+/* parameter j of type t is set when a patch loads (ParamDef.fixed: a Delay's length, its line's size), never while it plays */
+#define DEF_FIXED(t, j) (((t) == T_DELAY && (j) == DELAY_P_LENGTH))
 
 static const char *const FM1_INNAMES[] = {"MORPH"};
 static const int32_t FM1_MIN[] = {0, 1310720};
@@ -1268,17 +1273,17 @@ static const uint8_t MIXER_LOG[] = {0, 0, 0, 0};
 static const char *const MIXER_UNIT[] = {"", "", "", ""};
 static const char *const *const MIXER_CH[] = {0, 0, 0, 0};
 static const char *const DELAY_INNAMES[] = {"IN", "CLK", "P1", "P2"};
-static const int32_t DELAY_MIN[] = {65536, 0, 0, 0, 0, 0, 0};
-static const int32_t DELAY_MAX[] = {45875200, 62259, 65536, 65536, 65536, 327680, 65536};
-static const int32_t DELAY_DEF[] = {16384000, 26214, 19661, 0, 0, 0, 0};
-static const int32_t DELAY_INC[] = {458097, 655, 655, 65536, 65536, 65536, 65536};
-static const int32_t DELAY_STEP[] = {65536, 655, 655, 65536, 65536, 65536, 65536};
-static const uint8_t DELAY_SINCE[] = {0, 0, 0, 0, 0, 35, 35};
-static const char *const DELAY_PN[] = {"TIME", "FB", "MIX", "SYNC", "PINGPONG", "NOTE", "SWELL"};
-static const uint8_t DELAY_LOG[] = {0, 0, 0, 0, 0, 0, 0};
-static const char *const DELAY_UNIT[] = {"MS", "", "", "", "", "", ""};
+static const int32_t DELAY_MIN[] = {65536, 0, 0, 0, 0, 0, 0, 655360};
+static const int32_t DELAY_MAX[] = {45875200, 62259, 65536, 65536, 65536, 327680, 65536, 124518400};
+static const int32_t DELAY_DEF[] = {16384000, 26214, 19661, 0, 0, 0, 0, 45875200};
+static const int32_t DELAY_INC[] = {458097, 655, 655, 65536, 65536, 65536, 65536, 1238630};
+static const int32_t DELAY_STEP[] = {65536, 655, 655, 65536, 65536, 65536, 65536, 655360};
+static const uint8_t DELAY_SINCE[] = {0, 0, 0, 0, 0, 35, 35, 50};
+static const char *const DELAY_PN[] = {"TIME", "FB", "MIX", "SYNC", "PINGPONG", "NOTE", "SWELL", "LENGTH"};
+static const uint8_t DELAY_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0};
+static const char *const DELAY_UNIT[] = {"MS", "", "", "", "", "", "", "MS"};
 static const char *const DELAY_CH5[] = {"TIME", "1/32", "1/2T", "1/2.", "1/1T", "1/1.", 0};
-static const char *const *const DELAY_CH[] = {0, 0, 0, LFO_CH3, ADSR_CH4, DELAY_CH5, ADSR_CH4};
+static const char *const *const DELAY_CH[] = {0, 0, 0, LFO_CH3, ADSR_CH4, DELAY_CH5, ADSR_CH4, 0};
 static const char *const REVERB_INNAMES[] = {"IN", "P1", "P2"};
 static const int32_t REVERB_MIN[] = {0, 0, 0, 0, 0, 0};
 static const int32_t REVERB_MAX[] = {65536, 65536, 65536, 2621440, 65536, 65536};
