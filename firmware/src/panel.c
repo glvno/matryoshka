@@ -26,6 +26,9 @@ static uint8_t knob_touched, button_touched;  /* the knob (1..6) / patch button 
 #define BTN_ENV_IDX 2u                /* ENV (#197): fixed, the environment; its jack a Gate */
 #define FIXED_BTNS ((1u << BTN_GLO_IDX) | (1u << BTN_SEL_IDX) | (1u << BTN_ENV_IDX))
 static uint8_t play_turned;                   /* PRESET turned the tempo while PLAY was held: its release does not start / stop */
+static uint8_t play_hinted;                   /* PLAY held alone a moment: the bar said where the tempo is (#582) */
+static uint32_t play_down_ms;                 /* fm1_ms of PLAY's press */
+#define PLAY_HINT_MS 600u
 static uint8_t home_turned;                   /* PRESET turned the patch, or K1..K4 turned fine, while HOME was held: its release does
                                                * not go back (#395, #340) */
 
@@ -403,6 +406,9 @@ static void panel_encoders(int32_t *st)
     uint32_t k;
     int panel = eng_find(T_FM1);
     int fine = panel_held >> BTN_HOME & 1u;         /* HOME held + K1..K4: fine turns (#340); HOME's release then goes nowhere */
+    if (help_on == HELP_QUICK && (st[0] | st[1] | st[2] | st[3] | st[4] | st[5] | st[6]))
+        help_close();                               /* the quick start: a knob turned closes it and then does its job (#582,
+                                                     * D-247; PLAY held + PRESET the tempo at once) */
     if (help_on) {                                  /* a card shows (help_ui.c, D-245): SELECT scrolls the sheet, ALGO switches
                                                      * its tabs, the rest does nothing; none of it goes out as MIDI (in sandbox
                                                      * mode the editor would act on it) */
@@ -612,10 +618,15 @@ static void panel_encoders(int32_t *st)
 }
 
 static uint8_t key_note[27];                     /* the note each held key started, so a release (or an octave change in between) ends the right one */
+static uint8_t drum_white_due;                   /* a white key the Drum map gives no note (#582): panel_status says where drums are */
+static uint32_t drum_white_ms;                   /* (when it last said so: once in DRUM_WHITE_MS) */
+#define DRUM_WHITE_MS 8000u
 static uint8_t key_eng[27];                      /* the note it played in the engine: key_note, a Drum map row's (eng_keys_drummap), */
 #define KEY_SILENT 0xFFu                         /* or none (a white key on a Drum map) */
 static uint32_t key_sounding;                    /* bit n: key n started a note (not a key pressed on the SEQ page) */
 static uint8_t seq_held_used;                    /* SEQ is held and a black key muted a track: its release does not switch the page */
+static uint8_t rec_hinted;                       /* REC held alone a moment: the bar named the tracks' black keys (#582) */
+static uint32_t rec_down_ms;                     /* fm1_ms of REC's press */
 static uint8_t rec_held_used;                    /* REC is held and a black key armed a track: its release does not record */
 /* the keys as the panel last took them (bit n: key n down) */
 static uint32_t keys_now;
@@ -684,6 +695,8 @@ static int panel_key(uint32_t n, int down, int quick)
         key_eng[n] = map < 0 ? key_note[n] : b >= 0 && b < (int)ENG_DRUM_ROWS ? (uint8_t)eng_drummap_note((uint32_t)map, (uint32_t)b)
             : eng_drummap_repeat((uint32_t)map) ? key_note[n] : KEY_SILENT;
         key_sounding |= bit;
+        if (key_eng[n] == KEY_SILENT && map >= 0)
+            drum_white_due = 1;                     /* (a key handler: state only, the bar is the loop's, D-228) */
         if (key_eng[n] != KEY_SILENT)
             eng_note_on(key_eng[n], vel == 127u ? ENG_ONE : (int32_t)((vel << 16) / 127u), cfg.ch ? cfg.ch : 1u);   /* the panel plays on the device's channel */
         if (key_eng[n] != KEY_SILENT)
@@ -788,7 +801,8 @@ static void panel_release_quiet(uint32_t rel)
 
 /* the buttons while a card shows (help_ui.c; pair: OCT- + OCT+ just went down together). The sheet: HOME closes it. The
  * quick start: HOME closes it, HOME + SAVE closes it and turns it off for good (stored at once, D-247), OCT- + OCT+ opens
- * the sheet in its place. On both PLAY starts and stops; every other button does nothing */
+ * the sheet in its place; any other button closes it and then does its job (panel_edges, #582). On the sheet PLAY starts
+ * and stops; every other button does nothing */
 static void help_edges(uint32_t p, uint32_t rel, int pair)
 {
     if (pair)
@@ -827,6 +841,11 @@ static void panel_edges(uint32_t p, uint32_t rel)
             oct_used &= (uint8_t)~(p & OCT_BTNS);
     }
     oct_rel = rel & OCT_BTNS & ~(uint32_t)oct_used;
+    if (help_on == HELP_QUICK && !pair && (p & ~(OCT_BTNS | 1u << BTN_HOME | 1u << BTN_SAVE))) {
+        help_close();                               /* the quick start: a button other than HOME, SAVE and the OCT pair closes
+                                                     * it and then does its job (#582, D-247) */
+        oct_rel = 0;                                /* (an OCT let go in the same pass was the card's) */
+    }
     {                                               /* MIDI out: every button, raw, before anything uses it. While a card shows
                                                      * only OCT, PLAY and the sheet's HOME (a mirror of the panel runs the same
                                                      * rules), and a release only if its press went out */
@@ -934,6 +953,10 @@ static void panel_edges(uint32_t p, uint32_t rel)
     }
     if (rel & (1u << BTN_REC))
         rec_held_used = 0;
+    if (p & (1u << BTN_REC)) {
+        rec_hinted = 0;
+        rec_down_ms = fm1_ms;
+    }
     if (oct_rel & (1u << BTN_OCT_DOWN))             /* (on release: D-245) */
         octave = octave > -3 ? octave - 1 : octave;
     if (oct_rel & (1u << BTN_OCT_UP))
@@ -992,8 +1015,11 @@ static void panel_edges(uint32_t p, uint32_t rel)
         sr_stop();                                  /* HOME in step record: it ends, the page stays (#532, D-808) */
     else if ((rel & (1u << BTN_HOME)) && !home_turned)
         home_tap();
-    if (p & (1u << BTN_PLAY))                       /* PLAY acts on release, unless PRESET turned the tempo meanwhile */
+    if (p & (1u << BTN_PLAY)) {                     /* PLAY acts on release, unless PRESET turned the tempo meanwhile */
         play_turned = 0;
+        play_hinted = 0;
+        play_down_ms = fm1_ms;
+    }
     if ((rel & (1u << BTN_PLAY)) && !play_turned)
         play_toggle();
 }
@@ -1015,6 +1041,46 @@ static void panel_status(void)
         sb_mout_due = 0;
         if (sb_on && !cfg.midi_out && !help_on)
             sb_mout_nudge();
+    }
+    if ((panel_held >> BTN_PLAY & 1u) && !play_turned && !play_hinted && !help_on && !sb_on
+        && fm1_ms - play_down_ms >= PLAY_HINT_MS) {   /* PLAY held alone a moment (#582): the tempo, and how it changes */
+        int panel = eng_find(T_FM1);
+        play_hinted = 1;
+        if (panel >= 0 && !eng_clock_is_external()) {
+            char m[32], num[8];
+            fmt_int(num, (eng_get_param((uint32_t)panel, FM1_P_TEMPO) + 32768) >> 16);
+            put(put(put(m, "TEMPO "), num), ": TURN PRESET")[0] = 0;   /* (22 characters at most) */
+            ui_msg(m, 1500);
+        }
+    }
+    if ((panel_held >> BTN_REC & 1u) && !rec_held_used && !rec_hinted && !help_on && !sb_on && eng_steps_count()
+        && !(panel_held >> BTN_SEQ & 1u) && fm1_ms - rec_down_ms >= PLAY_HINT_MS) {   /* REC held alone a moment (#582):
+                                                     * which black key arms which track, the armed ones marked */
+        char m[40], name[TRACK_NAME_MAX + 8], *q = put(m, "ARM:");
+        int t;
+        rec_hinted = 1;
+        for (t = 0; t < eng_steps_count() && t < 8; t++) {
+            uint32_t w;
+            seq_name((uint32_t)t, name);
+            w = 3u + str_len(name) + (seq_mod_armed(eng_steps_module((uint32_t)t)) ? 1u : 0u);
+            if ((uint32_t)(q - m) + w > 26u)   /* (as a nudge: 26 characters, D-249) */
+                break;
+            *q++ = ' ';
+            *q++ = (char)('1' + t);
+            *q++ = ' ';
+            q = put(q, name);
+            if (seq_mod_armed(eng_steps_module((uint32_t)t)))
+                *q++ = '*';
+        }
+        *q = 0;
+        ui_msg(m, 2000);
+    }
+    if (drum_white_due) {                           /* a white key silent on a Drum map (#582): the drums are on the black keys */
+        drum_white_due = 0;
+        if (!help_on && (!drum_white_ms || fm1_ms - drum_white_ms >= DRUM_WHITE_MS)) {
+            drum_white_ms = fm1_ms | 1u;
+            ui_msg("DRUMS: BLACK KEYS 1-8", NUDGE_MS);
+        }
     }
     if (knob_touched || button_touched) {           /* what was just moved, in the bar for a second */
         char m[40], name[16], num[12], *q = m;

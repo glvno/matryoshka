@@ -606,7 +606,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.run_for(1200)?;                        // (PRESET's toast over)
     t.screen(&m, "arm: a patch loads with nothing armed, the footer says KEYS WIRED (#395)", "KEYS WIRED");
     m.tap(SEL, 120, 300)?;                   // the home device, the Drum map: its keys come through DRUMS, armed with it
-    t.screen(&m, "arm: SEL on a device fed through a track arms it with the track (#395)", "DRUM MAP ARMED");
+    t.screen(&m, "arm: SEL on a device fed through a track arms it with the track (#395), named too (#582)", "DRUM MAP + DRUMS ARMED");
     m.run_for(1200)?;
     let mk = m.mark();
     m.tap(14 + 1, 120, 300)?;                // F#3, black key 1, on the device page: the kick (Main's keys into DRUMS, #141)
@@ -667,7 +667,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     t.screen(&m, "arm: the track's line says ARMED (#179)", "TRACK 1/1  ARMED");
     let mk = m.mark();
     m.tap(REC, 120, 600)?;                   // stopped, on the SEQ page: REC starts step record (D-548, D-804)
-    t.screen(&m, "rec: REC, stopped, on the SEQ page: step record on step 1", "STEP 1  DRUMS ARM");
+    t.screen(&m, "rec: REC, stopped, on the SEQ page: step record on step 1", "STEP 1/16  DRUMS ARM");
     let p = m.peak_since(mk);
     t.check("rec: REC, stopped, on the SEQ page: the transport stays stopped", p < QUIET, format!("peak {p}"));
     let mk = m.mark();
@@ -749,7 +749,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
         m.turn(SELECT, -1, 600)?;
         t.screen(&m, "roll: SELECT back (G#3-D#4)", "PATTERN ARM G#3-D#4");
         m.tap(REC, 120, 600)?;               // stopped: step record (D-804)
-        t.screen(&m, "roll: REC, stopped: step record", "STEP 1  PATTERN ARM");
+        t.screen(&m, "roll: REC, stopped: step record", "STEP 1/16  PATTERN ARM");
         t.screen(&m, "roll: step record's hint: REC ends it", "REC done");
         m.tap(PLAY, 120, 1300)?;             // PLAY in step record: the transport starts, PATTERN (armed by the page) records
         t.screen(&m, "roll: PLAY in step record: a live take of the melodic track armed", "PATTERN REC");
@@ -784,11 +784,12 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
         t.screen(&m, "song: SEL tapped opens the SONG page", "SONG 1");
         t.screen(&m, "song: the demo song's entries", "01  P02  0");
         m.turn(K4, 1, 600)?;
-        t.screen(&m, "song: K4 right, song 1 plays", "SONG 1 PLAYS");
+        t.screen(&m, "song: K4 right, song 1 to play; stopped, the bar says so (#582)", "SONG 1 STOPPED");
         let mk = m.mark();
         m.tap(PLAY, 120, 2000)?;
         let p = m.peak_since(mk);
         t.check("song: PLAY plays the song", p > LOUD, format!("peak {p}"));
+        t.screen(&m, "song: PLAY, the bar says SONG 1 PLAYS", "SONG 1 PLAYS");
         t.snap(&m, "song-page");
         m.tap(PLAY, 120, 300)?;
         m.turn(K4, -1, 600)?;
@@ -849,7 +850,7 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     t.check("safe mode: holding SAVE at power-on does not save", !saved, String::new());
     t.check("safe mode: no quick start (D-247)", !font::on_screen(m.lcd(), "QUICK START"), String::new());
     m.run_for(1500)?;                         // (the SAFE MODE message holds the bar for 4 s: still there)
-    t.screen(&m, "safe mode: the message stays up", "SAFE MODE: FALLBACK PATCH");
+    t.screen(&m, "safe mode: the message stays up", "SAFE MODE: RESTART TO EXIT");
     wait_text(&mut m, "SAFE PATCH", 6000)?;   // (then the patch's name shows)
     t.screen(&m, "safe mode: the fallback patch", "SAFE PATCH");
     let p = midi_note_peak(&mut m, 60, 500)?;

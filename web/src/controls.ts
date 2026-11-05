@@ -140,7 +140,7 @@ export const CONTROLS: ControlRow[] = [
     help: 'the patches in the bank (an empty bank says BANK EMPTY; while the editor’s Live is on the patch stays, EDITOR LIVE: PATCH STAYS); HOME’s release then goes nowhere' },
   { id: 'store', gesture: { hold: 'ENV', do: [B('SAVE')] }, does: 'save device preset', doesIn: { env: "save row's preset" }, when: 'dev_store', sheet: { device: 90, env: 60 }, everywhere: at(110, but('device', 'env', 'sandbox')), effect: 'store',
     help: 'the device in focus’s values as its preset (an assembly)' },
-  { id: 'arm', gesture: { hold: 'REC', do: [BLACK] }, does: 'arm a track', when: 'tracks', everywhere: at(120, but('sandbox')), effect: 'arm',
+  { id: 'arm', gesture: { hold: 'REC', do: [BLACK] }, does: 'arm / disarm track', when: 'tracks', everywhere: at(120, but('sandbox')), effect: 'arm',
     help: 'black key n: track n into the armed devices or out (any page)' },
   { id: 'mute', gesture: { hold: 'SEQ', do: [BLACK] }, does: 'mute a track', when: 'tracks', everywhere: at(130, but('sandbox')), effect: 'mute',
     help: 'black key n: mutes track n, or unmutes it (any page)' },
@@ -340,7 +340,8 @@ for (const r of CONTROLS) {
 export interface HintLine { id: string; lead?: string; items: (string | { row: string | string[]; text: string })[]; width: number }
 export const HINTS: HintLine[] = [
   // the SEQ page's line under the grid (seq_ui.c seq_grid_draw)
-  { id: 'step_record', items: ['sr-keys', 'sr-rest', 'sr-cursor', 'sr-end'], width: 228 },
+  // (#582 p7: LFO's two jobs apart, the tie with a key held; K4's move left to the sheet for the room)
+  { id: 'step_record', items: ['sr-keys', { row: 'sr-rest', text: 'LFO rest  KEY+LFO tie' }, 'sr-end'], width: 228 },
   { id: 'live', items: ['take', 'roll-view', 'octave', 'take-accent'], width: 228 },
   { id: 'held_lock', lead: 'HELD:', items: [{ row: 'lock-rows', text: 'K1-K4 lock  back to value: off' }, { row: 'lock-pages', text: 'ALGO' }], width: 228 },
   { id: 'held_drum', lead: 'HELD:', items: ['held-velocity', 'held-chance-select', 'lock-pages'], width: 228 },
@@ -479,10 +480,10 @@ export const rowHelp = (r: ControlRow): string => (r.help ?? plainDoes(r)) + whe
 /** what the FM-1 does that is no single control, for the editor's help: the sheet, the quick start, the keys */
 export const FM1_NOTES: { keys: string; text: string }[] = [
   { keys: 'OCT- + OCT+', text: 'the controls sheet: what the controls do where the FM-1 is now (its tab) and everywhere (EVERYWHERE), made from the same table as this list. ALGO switches the tab, SELECT scrolls, HOME closes it; the note keys and PLAY still work, the other controls do nothing meanwhile' },
-  { keys: 'quick start', text: 'the card after power-on: HOME closes it, OCT- + OCT+ opens the controls sheet instead, HOME + SAVE turns it off for good (GLO › SYSTEM › QUICK START or FACTORY RESET turns it on again)' },
+  { keys: 'quick start', text: 'the card after power-on: HOME closes it, OCT- + OCT+ opens the controls sheet instead, HOME + SAVE turns it off for good (GLO › SYSTEM › QUICK START or FACTORY RESET turns it on again); any other knob or button closes it and then does its job' },
   { keys: 'FX, LFO, EDIT, ARP', text: 'patch buttons: the patch decides what each does (a gate, a Toggle that bypasses a module or assembly, or a list of device pages); the sheet lists each by its job in the loaded patch. On the SEQ and SONG pages FX and LFO have the jobs below' },
-  { keys: 'the keys', text: 'they play what is armed (SEL, REC held + a black key, the SEQ page arms the track it shows); nothing armed, Main’s cables decide (KEYS WIRED). While the keys reach a Drum map, black keys 1..8 play its rows on every page' },
-  { keys: 'SAVE held at power-on', text: 'safe mode: the fallback patch, nothing read from flash' },
+  { keys: 'the keys', text: 'they play what is armed (SEL, REC held + a black key, the SEQ page arms the track it shows); nothing armed, Main’s cables decide (KEYS WIRED, and the environment says WIRED on the devices they reach). While the keys reach a Drum map, black keys 1..8 play its rows on every page' },
+  { keys: 'SAVE held at power-on', text: 'safe mode: the fallback patch, nothing read from flash; a restart leaves it (the loading screen says HOLD SAVE: SAFE MODE)' },
 ];
 
 /** an EVERYWHERE row listed in only a few states: which (" (on the SEQ and SONG pages)"), else '' */

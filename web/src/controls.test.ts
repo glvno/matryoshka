@@ -39,7 +39,7 @@ describe('the controls table (#553)', () => {
   });
   it('makes the hint lines from the rows\' hints', () => {
     const h = (id: string): string => hintText(HINTS.find((x) => x.id === id)!);
-    expect(h('step_record')).toBe('KEYS note  LFO rest/tie  K4 move  REC done');
+    expect(h('step_record')).toBe('KEYS note  LFO rest  KEY+LFO tie  REC done');
     expect(h('held_roll')).toBe('HELD: K1 note  K2 vel  K3 chance  ALGO lock');
     expect(h('menu_guide')).toBe('SELECT scroll  ALGO tab  GLO/HOME back');
     expect(() => hintText({ id: 'x', items: ['no-such-row'], width: 228 })).toThrow(/no row/);

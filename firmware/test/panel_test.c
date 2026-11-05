@@ -1181,12 +1181,26 @@ int main(void)
         check("SEL on the Drum map's row, its track armed: armed through it, so taken out with it, the keys WIRED",
               eng_arm_mask_get() == 0u && !strcmp(msg_text, "KEYS WIRED"));
         tap(3);
-        check("SEL there again: the track it plays through armed", eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(0)
-              && strstr(msg_text, " ARMED") != 0);
+        check("SEL there again: the track it plays through armed; the bar names both (#582)", eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(0)
+              && !strcmp(msg_text, "DRUM MAP + DRUMS ARMED"));
         pages_focus(1, 0);
         tap(3);
         check("SEL again on the track: disarmed, the keys WIRED (the bar says so)", eng_arm_mask_get() == 0u && eng_armed() < 0
               && !strcmp(msg_text, "KEYS WIRED"));
+        {
+            char s1[16], s2[16], s0[16];
+            env_status(0, s0);
+            env_status(1, s1);
+            env_status(2, s2);
+            check("  nothing armed: the track's and the Drum map's rows say WIRED (the keys reach them by cable, #582), Main's its tempo",
+                  !strcmp(s1, "WIRED") && !strcmp(s2, "WIRED") && strstr(s0, "BPM") != 0);
+            seq_arm_set((uint64_t)1 << eng_steps_module(0));
+            env_status(1, s1);
+            env_status(2, s2);
+            check("  armed: ARMED on both, no WIRED", !strcmp(s1, "ARMED") && !strcmp(s2, "ARMED"));
+            seq_arm_set(0);
+            loop();
+        }
         tap(4);
         panel_held |= 1u << 4;                              /* ENV held + SAVE: no environment on the release */
         panel_edges(1u << 4, 0);
@@ -3941,6 +3955,11 @@ int main(void)
             fb_watch_reset();
             lcd_px = 0;
             later(1100);                                    /* the toast's end: its band alone */
+            if (pages_sounds() > 1u) {                      /* (#582: a patch of more sounds says so in the bar for 2 s: its end
+                                                             * is the bar's, apart) */
+                later(1000);
+                continue;
+            }
             end_px += lcd_px;
             end_n++;
             end_max = lcd_px > end_max ? lcd_px : end_max;
@@ -4204,8 +4223,8 @@ int main(void)
         eng_transport(0);
         eng_render(l, r, 128);
         tap(BTN_SEL);
-        check("SEL tapped on the SEQ page: the SONG page, song 1, empty (END)", page == PAGE_SONG && song_sel == 0 && song_len() == 0
-              && on_screen("END"));
+        check("SEL tapped on the SEQ page: the SONG page, song 1, empty (END); its bar, not STAYS ARMED (#582)", page == PAGE_SONG
+              && song_sel == 0 && song_len() == 0 && on_screen("END") && on_screen("SONG 1") && !on_screen("STAYS ARMED"));
         told = host_song_told;
         enc(2, 1);
         check("K1 on END: an entry of the selected pattern, the editor told", song_len() == 1 && (eng_song_get(0, 0) & 0xFF) == 2
@@ -4219,7 +4238,37 @@ int main(void)
         check("FX + K1: a copy of it inserted before it", song_len() == 2 && eng_song_get(0, 1) == eng_song_get(0, 0));
         enc(5, 1);
         check("K4 right: the song plays", eng_song() == 1);
-        snap_to(getenv("PANEL_SNAP_SONG"));
+        {                                               /* (#582: the entry playing, its marker; stopped, none) */
+            uint32_t x, y, tri = 0;
+            enc(0, 5);                                  /* (the cursor on END: the entry's row not the cursor's bar) */
+            later(1100);
+            check("  stopped: the bar says SONG 1 STOPPED, no entry marked", bar_shows("SONG 1 STOPPED", C_ACC) && song_playing() < 0);
+            eng_transport(1);
+            for (i = 0; i < 4u; i++)
+                eng_render(l, r, 128);
+            loop();
+            for (y = SONG_Y; y < SONG_Y + 14u; y++)
+                for (x = 8u; x < 15u; x++)
+                    tri += px(x, y) == C_ACC;
+            check("  PLAY: entry 01 marked, a coral triangle before its number; the bar says SONG 1 PLAYS", song_playing() == 0
+                  && tri >= 20u && on_screen("01  P05  -3") && bar_shows("SONG 1 PLAYS", C_ACC));
+            snap_to(getenv("PANEL_SNAP_SONG"));
+            {
+                static uint16_t w0[240 * 240];
+                memcpy(w0, fb, sizeof w0);
+                ui_full = 1;
+                loop();
+                check("  the marked row drawn in place = drawn whole", !memcmp(w0, fb, sizeof w0));
+            }
+            eng_transport(0);
+            eng_render(l, r, 128);
+            loop();
+            for (tri = 0, y = SONG_Y; y < SONG_Y + 14u; y++)
+                for (x = 8u; x < 15u; x++)
+                    tri += px(x, y) == C_ACC;
+            check("  stopped again: no marker, SONG 1 STOPPED", !tri && bar_shows("SONG 1 STOPPED", C_ACC));
+            enc(0, -5);
+        }
         enc(5, -1);
         check("K4 left: the pattern plays again", eng_song() == 0);
         enc(1, 1);

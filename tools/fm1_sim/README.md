@@ -4,7 +4,7 @@ Measures how well the FM-1 teaches itself ([D-134](../../docs/ledger/releases.md
 
 ## The parts
 
-- `firmware/test/fm1_sim.c`: the firmware's panel, screen and engine code, built for the Mac. Each run replays a list of actions from power-on: the bank's first patch, with the quick start card showing. It writes the screen, the screen once any message has gone, a state file for the grader, and what was heard.
+- `firmware/test/fm1_sim.c`: the firmware's panel, screen and engine code, built for the Mac. Each run replays a list of actions from power-on: the bank's first patch, with the quick start card showing. It writes the screen, the screen once any message has gone, a state file for the grader, and what was heard. Every action takes at least 50 ms, with the engine running, before the next one: no hand is faster, and a key pressed in the same instant as the SEL that armed its device would find it not yet armed.
 - `server.py`: the FM-1 as tools for the agent: look, press, hold, release, turn, play a key, hold a key, release a key, wait, listen, done. Every action needs a forecast (`expect`). It returns the screen as an image, never as text. It uses only Python's standard library.
 - `fm1-naive-owner.md`: the agent's definition. Its only tools are those of `server.py`.
 - `grade.py`: checks a goal from the session replayed from power-on (goals: `patch`, `preset`, `layer`, `tempo`, `rowboat`).

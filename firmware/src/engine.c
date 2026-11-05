@@ -2727,6 +2727,21 @@ static void thru_put(uint32_t module, uint32_t kv, uint32_t vel)
 #define ARMED(m) (E.armm >> (m) & 1u)
 static int hears_grp(uint32_t g) { return !E.armm || (g && (E.armg >> g & 1u)); }
 static int hears_trk(uint32_t m) { return E.armm ? ARMED(m) : E.node[m].ksrc != 0u; }
+/* module m hears Main's keys now, armed or by its cables (engine.h; the environment's WIRED, #582): a Steps track, an
+ * Arpeggiator or a Drum map on the keys, a member of a group the keys play */
+int eng_hears_keys(uint32_t m)
+{
+    const node_t *nd;
+    if (!E.loaded || m >= E.nmod || m >= 64u)
+        return 0;
+    nd = &E.node[m];
+    switch (nd->type) {
+    case T_STEPS: return hears_trk(m);
+    case T_ARP: return arp_hears_main(m);
+    case T_DRUMMAP: return nd->ksrc == 1u && (!E.armm || ARMED(m));
+    default: return nd->grp && !E.grp[nd->grp].src && hears_grp(nd->grp);
+    }
+}
 void eng_note_on(uint32_t note, int32_t vel_q16, uint32_t ch)
 {
     uint32_t g, v = (uint32_t)clampi((int32_t)(((int64_t)vel_q16 * 127 + 32768) >> 16), 1, 127);
