@@ -39,14 +39,15 @@ const SURVEY = {
   fit: 'device % = 1.041 x estimate + 0.8, 17 patches, peak of rest / 1 / 4 / 8 notes',
 };
 /** The second core (#271), fitted to the test rig's surveys of every factory patch (docs/measurements/2026-11-05-rig-second-
- * core.md): the time an idle second core costs core 0 is the median, over the patches that do not split, of the steady
- * 8-key time with core 1 up minus with core 1 held (80 us; mean 75, at most 129). A split poly group saves core 0 about the
- * time its odd parts take: the least-squares fit is 1.04 x the modelled time of those parts; 0.9 is taken, under every
- * poly patch's measured saving, so the estimate never promises more room than the FM-1 has. */
+ * core.md) against release-1.10's head before #271 (the one-core firmware): what the second core costs core 0 is the median,
+ * over the patches that do not split, of the steady 8-key time on the dual-core build minus on that one (24 us; from -31 to
+ * +80). A split poly group saves core 0 about the time its odd parts take (least squares: 1.00 x their modelled time); 0.85
+ * is taken, so the estimate stays under each poly patch's measured saving (within its noise) and never promises more room
+ * than the FM-1 has. */
 const CORES = {
-  idleUs: 80,
-  splitEff: 0.9,
-  survey: 'docs/measurements/cpu-survey-2026-11-05-rig-core1-held.json, -rig-split.json, -rig-split-off.json (CI runs 41945370767, 42000479134)',
+  idleUs: 24,
+  splitEff: 0.85,
+  survey: 'docs/measurements/cpu-survey-2026-11-05-rig-release-1.10-head.json (CI run 42096997058) against -rig-merged-split.json (CI run 42093061899)',
 };
 const BLOCKS = 24;
 const SKIP = 3; // blocks before the maximum is taken for a module kit (the first notes, envelopes starting)

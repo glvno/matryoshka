@@ -3,9 +3,9 @@
  "cyclesPerUs": 233.4,
  "fixedUs": 23,
  "cores": {
-  "idleUs": 80,
-  "splitEff": 0.9,
-  "survey": "docs/measurements/cpu-survey-2026-11-05-rig-core1-held.json, -rig-split.json, -rig-split-off.json (CI runs 41945370767, 42000479134)"
+  "idleUs": 24,
+  "splitEff": 0.85,
+  "survey": "docs/measurements/cpu-survey-2026-11-05-rig-release-1.10-head.json (CI run 42096997058) against -rig-merged-split.json (CI run 42093061899)"
  },
  "blockUs": 2901,
  "note": 72,

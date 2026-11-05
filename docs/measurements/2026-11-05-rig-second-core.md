@@ -56,3 +56,44 @@ The split build is CI run 42000479134 (branch `dual-core-271-split`). On the sam
 Means over the factory patches, split against one core: rest +5.9 %, 1 key +3.2 %, 4 keys −6.6 %, 8 keys −7.0 %. The poly patches gain 22–38 % with 4 or 8 keys. Patches with no poly group of two or more parts pay only the idle cost (+2 to +16 %, the most on the lightest).
 
 The 10-minute soak on Io 4 with the split passed. It ran 6,009 self-tests with none failed, and core 1 rendered about 420,000 jobs. Core 1's stack held at most 1,800 of its 3,584 bytes. Core 0's main stack held at most 4,976 bytes and its interrupt stack 2,624.
+
+## The shipped build against release-1.10 (2026-11-05, afternoon)
+
+The figure that counts for users: release-1.10's head before #271 (CI run 42096997058, no second-core code: `cpu-survey-2026-11-05-rig-release-1.10-head.json`) against the merged dual-core build (CI run 42093061899): with core 1 held by its fallback (`-rig-merged-one-core.json`; the rig was barred at the time), with the split off and core 1 idle (`-rig-merged-split-off.json`), and with the split (`-rig-merged-split.json`). Steady µs a half with 8 keys held:
+
+| patch | release-1.10 (one core) | dual-core build, core 1 held | split off, core 1 idle | split |
+|---|---|---|---|---|
+| Oracle V | 1915 | 1916 (+0.1 %) | 1916 (+0.1 %) | 1345 (-29.8 %) |
+| Init | 548 | 567 (+3.5 %) | 575 (+4.9 %) | 572 (+4.4 %) |
+| Simple FM | 582 | 608 (+4.5 %) | 609 (+4.6 %) | 612 (+5.2 %) |
+| Plucked String | 1206 | 1162 (-3.6 %) | 1160 (-3.8 %) | 781 (-35.2 %) |
+| Monolith D | 1111 | 1106 (-0.5 %) | 1119 (+0.7 %) | 1114 (+0.3 %) |
+| Silver Box | 794 | 830 (+4.5 %) | 844 (+6.3 %) | 834 (+5.0 %) |
+| Hera 6 | 2085 | 2070 (-0.7 %) | 2073 (-0.6 %) | 1379 (-33.9 %) |
+| Sallen 20 | 1551 | 1551 (+0.0 %) | 1551 (+0.0 %) | 1560 (+0.6 %) |
+| Expander S | 1763 | 1801 (+2.2 %) | 1776 (+0.7 %) | 1119 (-36.5 %) |
+| Algo Four | 1722 | 1786 (+3.7 %) | 1797 (+4.4 %) | 1313 (-23.8 %) |
+| Canvas | 2177 | 2209 (+1.5 %) | 2202 (+1.1 %) | 2224 (+2.2 %) |
+| Wanderer | 1068 | 1073 (+0.5 %) | 1088 (+1.9 %) | 1082 (+1.3 %) |
+| Briefcase 3 | 2159 | 2152 (-0.3 %) | 2148 (-0.5 %) | 2171 (+0.6 %) |
+| Io 4 | 2392 | 2435 (+1.8 %) | 2452 (+2.5 %) | 1678 (-29.8 %) |
+| Vernon 100 | 1371 | 1392 (+1.5 %) | 1403 (+2.3 %) | 1403 (+2.3 %) |
+| 8 Lire | 1432 | 1453 (+1.5 %) | 1478 (+3.2 %) | 1458 (+1.8 %) |
+| Elvira 2 | 1308 | 1317 (+0.7 %) | 1333 (+1.9 %) | 1322 (+1.1 %) |
+| Scrounge | 2050 | 2061 (+0.5 %) | 2036 (-0.7 %) | 2019 (-1.5 %) |
+| Meridian 8 | 1867 | 1892 (+1.3 %) | 1870 (+0.2 %) | 1882 (+0.8 %) |
+| Perun 4 | 1902 | 1912 (+0.5 %) | 1903 (+0.1 %) | 1901 (-0.1 %) |
+| 808 Kit | 2294 | 2357 (+2.7 %) | 2332 (+1.7 %) | 2331 (+1.6 %) |
+| 909 Kit | 1511 | 1515 (+0.3 %) | 1517 (+0.4 %) | 1501 (-0.7 %) |
+| <7PH | 1969 | 2021 (+2.6 %) | 2015 (+2.3 %) | 2014 (+2.3 %) |
+| Spokes 6 | 2070 | 2160 (+4.3 %) | 2122 (+2.5 %) | 2150 (+3.9 %) |
+| Cassia 1 | 2139 | 2110 (-1.4 %) | 2110 (-1.4 %) | 1342 (-37.3 %) |
+| Basic Poly | 1169 | 1151 (-1.5 %) | 1166 (-0.3 %) | 779 (-33.4 %) |
+| Drift Poly | 1672 | 1661 (-0.7 %) | 1648 (-1.4 %) | 1048 (-37.3 %) |
+| Mono Lead | 679 | 689 (+1.5 %) | 688 (+1.3 %) | 691 (+1.8 %) |
+| Supersaw Stack | 1669 | 1671 (+0.1 %) | 1668 (-0.1 %) | 1049 (-37.1 %) |
+| Verona Drum 1 | 2326 | 2323 (-0.1 %) | 2307 (-0.8 %) | 2354 (+1.2 %) |
+
+Split against release-1.10, all factory patches: mean −10.0 % with 8 keys. The poly patches run 24 to 37 % faster. The others run −1.5 to +5.2 % (Simple FM +5.2 %, Silver Box +5.0 %, Init +4.4 %): a median of 24 µs a half. The earlier tables on this page used a baseline taken with core 1 held right after the fallback test, which read 3 to 15 % lower on the light patches than either release-1.10 or the dual-core build with core 1 held. Their idle-cost figures (up to +16 %) overstate what shipping costs. The CPU model (`web/scripts/cpu-costs.ts CORES`) is fitted to this table.
+
+The 10-minute soak on Io 4 passed on this build: 5,999 self-tests, none failed, about 440,000 render jobs on core 1. Core 1's stack held at most 1,800 bytes.
