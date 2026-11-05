@@ -39,6 +39,8 @@ use std::process::ExitCode;
 pub const AUDIO_RATE: u32 = 44118;
 
 const PRESETS_H: &str = include_str!("../../../firmware/src/presets.h");
+/// Earlier presets of factory engines and what the editor makes of them (web/scripts/export-defs.ts, D-865)
+const PMIG_CASES_H: &str = include_str!("../../../firmware/test/pmig_cases.h");
 
 /// Panel ids (fm1-emu / Felucca's table, confirmed by M-VAVE's fm1_open)
 pub(crate) const OCT_DOWN: u8 = 0;
@@ -398,10 +400,91 @@ fn bank_record(f: &[u8], id: u32) -> Option<(u32, Vec<u8>)> {
         .max_by_key(|r| r.0)
 }
 
+/// One of PMIG_CASES_H's cases: name, the earlier structure, today's, the earlier values, the values the editor makes (Q16)
+struct PmCase { name: String, from: u32, to: u32, old: Vec<i32>, want: Vec<i32> }
+fn pm_cases() -> Vec<PmCase> {
+    let arr = |n: &str| -> Vec<i32> {
+        let d = &PMIG_CASES_H[PMIG_CASES_H.find(&format!("{n}[")).unwrap_or_else(|| panic!("{n}"))..];
+        d[d.find('{').unwrap() + 1..d.find('}').unwrap()].split(',').map(|x| x.trim().parse().unwrap()).collect()
+    };
+    let list = &PMIG_CASES_H[PMIG_CASES_H.find("PMC_LIST[").expect("PMC_LIST")..];
+    list.lines().skip(1).map_while(|l| l.trim().strip_prefix("{\"")).enumerate().map(|(i, rest)| {
+        let name = rest[..rest.find('"').unwrap()].to_string();
+        let f: Vec<&str> = rest[rest.find('"').unwrap() + 2..].split(',').map(|x| x.trim()).collect();
+        let hex = |x: &str| u32::from_str_radix(x.trim_start_matches("0x").trim_end_matches('u'), 16).unwrap();
+        PmCase { name, from: hex(f[0]), to: hex(f[1]), old: arr(&format!("PMC_OLD_{i}")), want: arr(&format!("PMC_WANT_{i}")) }
+    }).collect()
+}
+
+/// CRC-16 (CCITT, 0xFFFF): proto.c m1_crc16
+fn crc16(data: &[u8]) -> u16 {
+    let mut crc = 0xffffu32;
+    for &b in data {
+        crc ^= (b as u32) << 8;
+        for _ in 0..8 {
+            crc = if crc & 0x8000 != 0 { ((crc << 1) ^ 0x1021) & 0xffff } else { (crc << 1) & 0xffff };
+        }
+    }
+    crc as u16
+}
+
+/// The preset store (firmware/src/presetstore.c): 7 sectors from 0x99000, 10 slots of 384 bytes each; a slot is a 32-byte
+/// header (magic "PRS1", or "PRS2" for a record's second slot, sequence number, structure, value count, CRC-16, name) and
+/// up to 88 Q16 values. A preset of more takes two slots of one sector. Written into `sec`'s first slots.
+fn preset_record(f: &mut [u8], sec: usize, seq: u32, structure: u32, name: &str, vals: &[i32]) {
+    let bytes = |v: &[i32]| v.iter().flat_map(|x| x.to_le_bytes()).collect::<Vec<u8>>();
+    let slot = |f: &mut [u8], k: usize, magic: u32, n: usize, crc: u16, v: &[i32]| {
+        let at = 0x99000 + sec * 0x1000 + k * 384;
+        let mut h = Vec::new();
+        h.extend_from_slice(&magic.to_le_bytes());
+        h.extend_from_slice(&seq.to_le_bytes());
+        h.extend_from_slice(&structure.to_le_bytes());
+        h.extend_from_slice(&(n as u16).to_le_bytes());
+        h.extend_from_slice(&crc.to_le_bytes());
+        let mut nm = [0u8; 16];
+        nm[..name.len()].copy_from_slice(name.as_bytes());
+        h.extend_from_slice(&nm);
+        f[at..at + 32].copy_from_slice(&h);
+        let b = bytes(v);
+        f[at + 32..at + 32 + b.len()].copy_from_slice(&b);
+    };
+    let first = vals.len().min(88);
+    if vals.len() > 88 {
+        slot(f, 1, 0x3253_5250, vals.len() - 88, crc16(&bytes(&vals[88..])), &vals[88..]);
+    }
+    slot(f, 0, 0x3153_5250, vals.len(), crc16(&bytes(vals)), &vals[..first]);
+}
+
+/// The live presets in the store: (structure, name, values)
+fn preset_records(f: &[u8]) -> Vec<(u32, String, Vec<i32>)> {
+    let word = |a: usize| u32::from_le_bytes(f[a..a + 4].try_into().unwrap());
+    let vals = |a: usize, n: usize| (0..n).map(|k| word(a + 32 + 4 * k) as i32).collect::<Vec<i32>>();
+    let mut out = Vec::new();
+    for i in 0..70usize {
+        let at = 0x99000 + (i / 10) * 0x1000 + (i % 10) * 384;
+        if word(at) != 0x3153_5250 {
+            continue;
+        }
+        let (seq, st, n) = (word(at + 4), word(at + 8), (word(at + 12) & 0xffff) as usize);
+        let name = String::from_utf8_lossy(&f[at + 16..at + 32]).trim_end_matches('\0').to_string();
+        let mut v = vals(at, n.min(88));
+        if n > 88 {
+            let tail = (0..10usize).map(|k| 0x99000 + (i / 10) * 0x1000 + k * 384).find(|&t| word(t) == 0x3253_5250 && word(t + 4) == seq);
+            match tail {
+                Some(t) => v.extend(vals(t, n - 88)),
+                None => continue,
+            }
+        }
+        out.push((st, name, v));
+    }
+    out
+}
+
 /// After an update that changed a factory patch but not the format (#441): a bank from 1.6.0 (a 12-byte settings record
 /// at today's format, no factory set) with slot 0 an earlier factory Drift Poly (untouched), slot 1 an edited copy of
 /// it and slot 2 today's Init. The boot rewrites slot 0 with today's Drift Poly and says FACTORY PATCHES UPDATED,
-/// leaves slots 1 and 2 alone and stores the factory set (settings bytes 13..15); the next boot rewrites nothing.
+/// leaves slots 1 and 2 alone and stores the factory set (settings bytes 13..15); the next boot rewrites nothing. The same
+/// boot moves the user presets of earlier engine structures to today's, with the values the editor gives them (D-865).
 fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
     let old = std::fs::read("build/emu/old-drift-poly.m1p").map_err(|e| format!("build/emu/old-drift-poly.m1p: {e} (run web/scripts/emu-patches.ts)"))?;
     let today = |name: &str| presets.iter().find(|p| p.0 == name).map(|p| p.1.clone()).ok_or(format!("no factory {name}"));
@@ -419,6 +502,12 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
     // 1.6.0's settings record: version 1, slot 2, octave 0, LEDs, accel, CPU bar, clock in, program change, channel,
     // MIDI out, the bank's format (today's), module 0
     put(&mut flash, 0xA3000, record(64, 4, "", &[1, 2, 8, 0, 1, 0, 0, 0, 0, 1, version, 0], false));
+    // user presets stored for earlier structures of factory engines (D-865): a 1.9.0 Cassia 1, basic poly and Oracle V, a
+    // Cassia 1 of 88 values (stored before 1.8.2), a Cassia 1 from before #430, an 8 Lire from before D-852
+    let cases = pm_cases();
+    for (c, k) in cases.iter().zip(0..) {
+        preset_record(&mut flash, k, 100 + k as u32, c.from, &c.name, &c.old);
+    }
     let mut m = Machine::boot(app, Some(&flash));
     quick_start(&mut m, 9000)?;
     let said = wait_text(&mut m, "FACTORY PATCHES UPDATED", 1000)?;
@@ -436,6 +525,16 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
     t.check("upgrade: a slot holding today's patch is not rewritten", s2 == (3, init.clone()), format!("sequence {}", s2.0));
     let set = bank_record(&f, 64).ok_or("settings gone")?.1;
     let got = if set.len() >= 16 { set[13] as u32 | (set[14] as u32) << 8 | (set[15] as u32) << 16 } else { 0 };
+    let store = preset_records(&f);
+    for c in &cases {
+        let moved = store.iter().find(|r| r.0 == c.to && r.1 == c.name);
+        let left = store.iter().any(|r| r.0 == c.from && r.1 == c.name);
+        let detail = match moved {
+            Some(r) => format!("{} values, {} differ from the editor's", r.2.len(), r.2.iter().zip(&c.want).filter(|(a, b)| a != b).count() + r.2.len().abs_diff(c.want.len())),
+            None => "not moved".into(),
+        };
+        t.check(&format!("upgrade: the preset {} ({:08x}) moves to {:08x} with the editor's values", c.name, c.from, c.to), moved.map_or(false, |r| r.2 == c.want) && !left, detail);
+    }
     t.check("upgrade: the settings record keeps the factory set (16 bytes, 13..15)", set.len() == 16 && got == set_id && set[1] == 2, format!("{} bytes, set {got:06x}, FACTORY_SET_ID {set_id:06x}", set.len()));
     let mut m = Machine::boot(app, Some(&f));
     quick_start(&mut m, 9000)?;

@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
 /* The preset store (firmware/src/presetstore.c, #194) on the host, over a RAM flash that behaves like NOR: an erase sets a
- * sector to 0xFF, a program only clears bits. A program can be cut after n bytes (a power cut). tools/preset_test.sh. */
+ * sector to 0xFF, a program only clears bits. A program can be cut after n bytes (a power cut). tools/preset_test.sh.
+ * Also the presets of earlier engine structures moving to today's (presetmig.c, D-865) against what the editor makes of
+ * them (pmig_cases.h, from web/scripts/export-defs.ts). */
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -63,6 +65,9 @@ static uint16_t m1_crc16(const uint8_t *p, uint32_t n)
 }
 
 #include "../src/presetstore.c"
+#include "../src/presets.h"
+#include "../src/presetmig.c"
+#include "pmig_cases.h"
 
 static int fails;
 #define CHECK(c, what) do { if (c) printf("ok    %s\n", what); else { printf("FAIL  %s\n", what); fails++; } } while (0)
@@ -427,6 +432,98 @@ static void pair_tests(void)
     }
 }
 
+/* ---- user presets of earlier engine structures move to today's (presetmig.c, #627, D-865) ---- */
+
+/* the store holds case c moved (1), as it was (0), or something else (-1) */
+static int moved_as(uint32_t c)
+{
+    int32_t got;
+    uint32_t n, k;
+    int at_new = ps_find(PMC_LIST[c].to, PMC_LIST[c].name), at_old = ps_find(PMC_LIST[c].from, PMC_LIST[c].name);
+    if (at_new >= 0 && at_old < 0) {
+        if (get(PMC_LIST[c].to, PMC_LIST[c].name, &got, &n) || n != PMC_LIST[c].nnew)
+            return -1;
+        for (k = 0; k < n; k++)
+            if (ps_vbuf[k] != PMC_LIST[c].want[k])
+                return -1;
+        return 1;
+    }
+    if (at_old >= 0 && at_new < 0) {
+        if (get(PMC_LIST[c].from, PMC_LIST[c].name, &got, &n) || n != PMC_LIST[c].nold)
+            return -1;
+        for (k = 0; k < n; k++)
+            if (ps_vbuf[k] != PMC_LIST[c].old[k])
+                return -1;
+        return 0;
+    }
+    return -1;
+}
+
+static void put_cases(void)
+{
+    uint32_t c;
+    memset(flash, 0xFF, sizeof flash);
+    ps_scan();
+    for (c = 0; c < N_PMC; c++)
+        (void)ps_put(PMC_LIST[c].from, PMC_LIST[c].name, PMC_LIST[c].old, PMC_LIST[c].nold);
+    ps_put(0x0BADF00Du, "NOT AN ENGINE", PMC_LIST[0].old, 12);   /* (a structure no migration names) */
+}
+
+static void migration_tests(void)
+{
+    static int32_t work[PS_MAXV];
+    static uint8_t after[FLASH_N];
+    uint32_t c, all = 1, moved;
+    long cut, total;
+    int ok = 1, stays = 0;
+    put_cases();
+    moved = pm_run(work);
+    for (c = 0; c < N_PMC; c++)
+        if (moved_as(c) != 1) {
+            printf("      (%s did not move as the editor moves it)\n", PMC_LIST[c].name);
+            all = 0;
+        }
+    CHECK(all && moved == N_PMC && ps_list(0x0BADF00Du, 0, 0) == 1u && store_ok(),
+          "earlier presets (1.9.0 Cassia 1, basic poly, Oracle V; one of 88 values; before #430 and D-852) move to today's structure: the editor's values");
+    memcpy(after, flash, sizeof flash);
+    ps_scan();
+    CHECK(pm_run(work) == 0u && !memcmp(after, flash, sizeof flash), "a second run moves nothing, writes nothing");
+
+    /* a preset named as one of today's factory presets stays as it was (the editor does the same) */
+    put_cases();
+    for (c = 0; c < N_FPRESETS && !stays; c++)
+        if (FPRESET_LIST[c].structure == PMC_LIST[1].to && strcmp(FPRESET_LIST[c].name, "INIT")) {
+            (void)ps_put(PMC_LIST[1].from, FPRESET_LIST[c].name, PMC_LIST[1].old, PMC_LIST[1].nold);
+            (void)pm_run(work);
+            stays = ps_find(PMC_LIST[1].from, FPRESET_LIST[c].name) >= 0 && ps_find(PMC_LIST[1].to, FPRESET_LIST[c].name) < 0;
+        }
+    CHECK(stays, "one named as a factory preset of today's structure stays as it was");
+
+    /* the power cut at every programmed byte of the run: the next boot runs it again and ends as an uncut run */
+    put_cases();
+    cut_after = 1L << 30;
+    (void)pm_run(work);
+    total = (1L << 30) - cut_after;
+    cut_after = -1;
+    for (cut = 0; cut <= total && ok; cut++) {
+        put_cases();
+        cut_after = cut;
+        cut_hit = 0;
+        (void)pm_run(work);
+        cut_after = -1;
+        ps_scan();                                      /* (the power back) */
+        (void)pm_run(work);                             /* (the next boot: the settings record was not written) */
+        ps_scan();
+        for (c = 0; c < N_PMC && ok; c++)
+            ok = moved_as(c) == 1;
+        ok = ok && ps_list(0x0BADF00Du, 0, 0) == 1u && store_ok();
+        if (!ok)
+            printf("      (a cut after %ld bytes went wrong)\n", cut);
+    }
+    CHECK(ok, "a power cut at any byte of the run: the next boot ends with every preset moved, none twice");
+    printf("      (%ld bytes programmed by a run)\n", total);
+}
+
 int main(void)
 {
     int32_t v[PS_MAXV], got;
@@ -516,6 +613,7 @@ int main(void)
     CHECK(ps_list(0, 0, 0) == 0u, "foreign bytes: no presets read");
     CHECK(ps_put(0xABCD1234u, "NEW", v, 10) == 0 && ps_list(0, 0, 0) == 1u, "and storing works (dead slots compacted)");
     pair_tests();
+    migration_tests();
     printf(fails ? "preset store test FAILED\n" : "preset store test passed\n");
     return fails != 0;
 }

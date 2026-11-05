@@ -26,7 +26,7 @@ jobs:
       - name: generated factory assemblies are current
         run: |
           npx vite-node scripts/gen-assemblies.ts
-          git diff --exit-code src/assemblies || { echo "::error::src/assemblies/*.json are stale: run 'npx vite-node scripts/gen-assemblies.ts' (then gen-presets.ts, legacy-factory.ts and export-defs) and commit"; exit 1; }
+          git diff --exit-code src/assemblies src/preset-lineage.json src/preset-migrations.json || { echo "::error::src/assemblies/*.json or the preset lineage (src/preset-lineage.json, src/preset-migrations.json, D-865) are stale: run 'npx vite-node scripts/gen-assemblies.ts' (then gen-presets.ts, legacy-factory.ts and export-defs) and commit"; exit 1; }
       # the FM-1's UI as WebAssembly (firmware/wasm/fm1_ui.c -> public/fm1-ui.wasm): the editor's FM-1 tab and fm1-ui.test.ts
       - name: clang + wasm-ld, the FM-1 UI as WebAssembly
         run: |

@@ -683,6 +683,16 @@ static uint32_t bank_upgrade(void)
     return n;
 }
 
+/* after an update, with bank_upgrade: the user presets of an earlier structure of a factory engine move to today's
+ * structure (presetmig.c, D-865); how many moved */
+static uint32_t presets_upgrade(void)
+{
+    if (!N_PMIG)
+        return 0;
+    boot_step("PRESETS");
+    return pm_run(pr_vals);                     /* (pr_vals: pages_ui.c's preset values, unused until the pages are up) */
+}
+
 /* safe mode: SAVE held while the loading screen is up, or the previous boot did not get through (bootguard): nothing is
  * read from the flash (the bank stays: a normal boot opens it again) */
 static uint8_t boot_safe;
@@ -720,13 +730,16 @@ static void patch_boot(void)                    /* the slot the settings record 
         boot_msg_ms = 2000;
     } else if (sl_read(SL_SETTINGS, set, &len, 0) == 0 && settings_unpack(set, len, &slot, &module) == 0) {
         if (bank_fmt < ENG_PATCH_VERSION || bank_set != FACTORY_SET_ID) {   /* the first boot after an update that changed the factory patches or the format */
-            uint32_t n = bank_upgrade();
+            uint32_t n = bank_upgrade(), moved = presets_upgrade();   /* (both before the settings record: a cut runs them again) */
             cur_preset = slot;
             sel = module;
             settings_pack(set);
             (void)store_write(SL_SETTINGS, 0, set, SET_LEN);
             if (n) {
                 boot_msg = "FACTORY PATCHES UPDATED";
+                boot_msg_ms = 3000;
+            } else if (moved) {
+                boot_msg = "PRESETS UPDATED";
                 boot_msg_ms = 3000;
             }
         }
