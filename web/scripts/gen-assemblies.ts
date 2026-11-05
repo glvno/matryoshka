@@ -9,6 +9,7 @@ import { defIsEngine } from '../src/engines';
 import { pinsToParams, type AssemblyDef, type NestedDef, type PortRef, type ParamRef } from '../src/assembly';
 import { cardRows } from '../src/preset-cards';
 import { clap, drum, hihat, kick, multi, sharedNoise, snare, type Voice } from './verona-voices';
+import { updateLineage } from './lineage-lib';
 
 const OUT = new URL('../src/assemblies/', import.meta.url);
 /** the touch plates of 8 Lire and Elvira 2: the white keys from F3 (the drum kits' rows, gen-presets.ts KIT_NOTES); their
@@ -4170,3 +4171,9 @@ for (const [i, d] of defs.entries()) {
 }
 for (const d of defs) writeFileSync(new URL(`${d.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.json`, OUT), JSON.stringify(d, null, 2) + '\n');
 console.log(`wrote ${defs.length} assemblies: ${defs.map((d) => d.name).join(', ')}`);
+{ // a factory engine whose structure changed: its earlier structure stays in the lineage, so the presets stored for it move
+  // (#627, D-865, scripts/lineage-lib.ts)
+  const r = updateLineage();
+  if (r.changed.length) console.log(`preset lineage: recorded ${r.changed.join(', ')}`);
+  for (const p of r.problems) console.error(p.message);
+}
