@@ -418,6 +418,10 @@ The state the editor and a connected FM-1 are in when Live is on and the editor'
 
 A patch over the FM-1 budget: too big for the FM-1, or using a browser-only ability. It plays in the browser with no limits and is never sent to the FM-1. It is a normal patch, not an error; the editor marks it SANDBOX in gold.
 
+### Second core
+
+The FM-1 chip's other processor core (core 1). The firmware runs on core 0; the second core takes the jobs core 0 hands it, one at a time.
+
 ### Section
 
 The rows under one card heading; it holds one or more groups.
