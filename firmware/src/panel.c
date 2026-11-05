@@ -1042,6 +1042,11 @@ static void panel_status(void)
         if (sb_on && !cfg.midi_out && !help_on)
             sb_mout_nudge();
     }
+    if (!(panel_held >> BTN_PLAY & 1u))             /* (up: no hint until the next press's edge, panel_edges, sets its time;
+                                                     * knobs_poll can see a press before buttons_poll takes its edge) */
+        play_hinted = 1;
+    if (!(panel_held >> BTN_REC & 1u))
+        rec_hinted = 1;
     if ((panel_held >> BTN_PLAY & 1u) && !play_turned && !play_hinted && !help_on && !sb_on
         && fm1_ms - play_down_ms >= PLAY_HINT_MS) {   /* PLAY held alone a moment (#582): the tempo, and how it changes */
         int panel = eng_find(T_FM1);
