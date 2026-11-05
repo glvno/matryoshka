@@ -32,7 +32,7 @@ static void sandbox_bar(void);
 
 /* the settings' rows (menu.c; the menu's MIDI, PANEL and SYSTEM tabs show them as pages: pages_ui.c menu_tab_page) */
 enum { MR_LEDS, MR_ACCEL, MR_CIN, MR_CH, MR_CLOCK, MR_MOUT, MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_TEMPO,
-       MR_CLKOUT, MR_OUTPUT, MR_COUNT };
+       MR_CLKOUT, MR_OUTPUT, MR_CORES, MR_COUNT };
 /* the menu's tabs (menu.c, #395): MIDI, PANEL and SYSTEM are pages of settings on K1..K4, INFO a list of readings, GUIDE a text
  * (the ideas behind the controls, D-248) */
 enum { MT_MIDI, MT_PANEL, MT_SYSTEM, MT_INFO, MT_GUIDE, MT_COUNT };
@@ -61,6 +61,7 @@ static void cfg_defaults(void)
     out_mono = 0;                       /* (and the output stereo again, #612) */
 }
 static uint32_t cpu_pct;                /* the audio ISR's peak time over the last half second, in % of the 2.9 ms half buffer */
+static uint8_t cores_up = 1;            /* the processor cores at work: 2 while the second core runs and passes its self-test (main.c, #271) */
 static volatile uint8_t ui_dirty;               /* 1: the knob rows need a redraw, 2: the module changed too (title, picture) */
 static uint8_t ui_full;                         /* a patch was loaded: the whole screen (header too) at the next panel_draw */
 static uint32_t panel_held;                     /* the buttons held now, matrix ids as bits (main.c sets it from the HAL, panel.c) */

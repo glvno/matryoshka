@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * From X0X (github.com/charlesvestal/fm1-x0x, Charles Vestal, commit ca2d377), firmware/hal, unchanged but for this
- * notice; after what Melodee (keremimo) and Jangada (zednaked) found. Not built yet in Matryoshka (#271, a spike). */
+ * From X0X (github.com/charlesvestal/fm1-x0x, Charles Vestal, commit ca2d377), firmware/hal; after what Melodee (keremimo)
+ * and Jangada (zednaked) found. Changed for Matryoshka (#271): the stacks are app.ld's (_c1_ustack.._c1_sstack_top, at
+ * the bottom of core 0's main stack area, not .bss), the mark covers the whole user stack (FM1_C1_STACK_WORDS gone),
+ * fm1_cpu1_halt is Melodee's safe hold (fm1_core1_stop.h: the bus traps masked while core 1 stops), and the helpers
+ * after fm1_cpu1_wait (the stack used, a job with a wrong check word for the fallback's test) are ours. */
 /* The AC79's second core (docs/plans/2026-10-04-dual-core-and-clock.md), with what Melodee's
  * dual-core audio (github.com/keremimo/melodee, GPL-3.0) found on the device.
  *
@@ -27,6 +30,7 @@
  * the flash off only with interrupts off. So the flash is never off under it. */
 #pragma once
 #include <stdint.h>
+#include "fm1_core1_stop.h"
 
 #define FM1_C1_CON (*(volatile uint32_t *)0x1EEE004u)
 #define FM1_C1_CLK (*(volatile uint32_t *)0x00010008u)
@@ -34,8 +38,7 @@
 #define FM1_C1_SYNC() __asm__ volatile("csync" ::: "memory")
 
 extern void fm1_c1_entry(void);
-extern uint32_t _c1_ustack[], _c1_sstack_top[];
-#define FM1_C1_STACK_WORDS (2816u / 4u)
+extern uint32_t _c1_ustack[], _c1_ustack_top[], _c1_sstack_top[];   /* app.ld */
 #define FM1_C1_MARK 0x43314D4Bu                  /* "C1MK": how deep core 1's stack has gone */
 typedef struct {
     volatile uint32_t job, arg;                 /* core 0: job + 1 hands fn(arg) over */
@@ -107,9 +110,7 @@ void __attribute__((section(".c1_text"), noreturn, used)) fm1_c1_main(void)
  * cleared (after a reset that did not hold it) */
 static inline void fm1_cpu1_halt(void)
 {
-    FM1_C1_CON |= 0x2u;
-    FM1_C1_CON &= ~0x8u;
-    FM1_C1_SYNC();
+    fm1_core1_stop();
 }
 
 static void fm1_cpu1_hold(void)
@@ -130,7 +131,7 @@ static int fm1_cpu1_start(void)
         fm1_c1_gave_up = 3;
         return -1;
     }
-    for (i = 0; i < FM1_C1_STACK_WORDS; i++)
+    for (i = 0; _c1_ustack + i < _c1_ustack_top; i++)
         _c1_ustack[i] = FM1_C1_MARK;
     fm1_c1_mb.alive = 0;
     fm1_c1_trace = 0;
@@ -195,4 +196,32 @@ static inline int fm1_cpu1_wait(void)
             return -1;
         }
     }
+}
+
+/* ---- Matryoshka's (#271) */
+
+/* the bytes of core 1's user stack it has used since its start (the mark fm1_cpu1_start leaves) */
+static uint32_t fm1_cpu1_stack_used(void)
+{
+    const uint32_t *p = _c1_ustack;
+    while (p < _c1_ustack_top && *p == FM1_C1_MARK)
+        p++;
+    return (uint32_t)((uintptr_t)_c1_ustack_top - (uintptr_t)p);
+}
+
+/* fm1_cpu1_run with a wrong check word (DIAG page 113: the fallback's test): core 1 must refuse the job, count it
+ * (mb.bad) and run nothing; fm1_cpu1_wait then gives core 1 up */
+static inline int fm1_cpu1_run_mischecked(void (*fn)(uint32_t), uint32_t arg)
+{
+    uint32_t job;
+    if (!fm1_c1_on)
+        return 0;
+    job = fm1_c1_mb.job + 1u;
+    fm1_c1_mb.fn = fn;
+    fm1_c1_mb.arg = arg;
+    fm1_c1_mb.check = ~FM1_C1_CHECK(fn, arg, job);
+    FM1_C1_SYNC();
+    fm1_c1_mb.job = job;
+    FM1_C1_SYNC();
+    return 1;
 }

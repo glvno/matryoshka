@@ -27,9 +27,9 @@ static void defaults_now(void);
 
 static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "KNOB ACCEL", "COUNT-IN", "MIDI CHANNEL", "CLOCK IN", "MIDI OUT",
                                               "VERSION", "CPU", "CPU PEAK", "BANK SLOTS", "BATTERY", "UPDATE MODE", "FACTORY RESET",
-                                              "QUICK START", "TEMPO", "CLOCK OUT", "OUTPUT"};
-#define INFO_N 5u
-static const uint8_t INFO_ROWS[INFO_N] = {MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT};   /* the INFO tab's list, top down */
+                                              "QUICK START", "TEMPO", "CLOCK OUT", "OUTPUT", "PROCESSOR"};
+#define INFO_N 6u
+static const uint8_t INFO_ROWS[INFO_N] = {MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_CORES};   /* the INFO tab's list, top down */
 #define MENU_ARM_MS 5000u                               /* an armed SYSTEM row waits this long for GLO's hold */
 
 static uint32_t cpu_peak;                       /* the highest CPU % since boot */
@@ -84,6 +84,7 @@ static void menu_value(uint32_t row, char *out)
     case MR_QUICK: p = put(p, ONOFF[cfg.quick]); break;
     case MR_OUTPUT: p = put(p, out_mono ? "MONO" : "STEREO"); break;
     case MR_VERSION: p = put(p, FELUCCA_VERSION); break;
+    case MR_CORES: p = put(p, cores_up == 2 ? "2 CORES" : "1 CORE"); break;   /* (#271: main.c c1_poll) */
     case MR_BATT: {                              /* the smoothed reading (0..1023) and the bars it gives (ui.c ui_battery) */
         uint8_t s = batt_shown();
         if (s == BATT_NONE) {

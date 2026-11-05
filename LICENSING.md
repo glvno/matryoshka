@@ -19,7 +19,14 @@ Every one of these keeps its original `SPDX-License-Identifier` and copyright he
 
 Source: <https://github.com/charlesvestal/fm1-x0x> (Charles Vestal, a Felucca fork) at commit `ca2d377e3b9522579245152a81781a575f4d2fea`. GPL-3.0-only.
 
-- `firmware/hal/fm1_cpu1.h`, `firmware/hal/fm1_cpu1.S`: the second core's start-up and job hand-off, after what Melodee (keremimo) and Jangada (zednaked) found. Unchanged but for a notice; not built yet (issue #271).
+- `firmware/hal/fm1_cpu1.h`, `firmware/hal/fm1_cpu1.S`: the second core's start-up and job hand-off, after what Melodee (keremimo) and Jangada (zednaked) found. Built since issue #271. The notice at the top of each file lists what Matryoshka changed: the stacks are placed by `firmware/app.ld`, the hold is Melodee's (below), and two helpers are added at the end.
+- The additions to `firmware/hal/fm1_guard.h` (`fm1_guard_pc_open`, `fm1_guard_top_locked`), the holds in `firmware/hal/fm1_sys.h` and the fault on the second core in `firmware/hal/fm1_irq.h` follow X0X's files at the same commit.
+
+## Copied from Melodee
+
+Source: <https://github.com/keremimo/melodee> (Kerem Kilic, Ellic Studio, a Felucca fork) at commit `165d177`. GPL-3.0-only.
+
+- `firmware/hal/fm1_core1_stop.h`: the safe hold of the second core, adapted there from Felucca 1.6.1. Its notice lists what Matryoshka changed. It keeps Melodee's copyright lines, Kerem Kilic and Leo Kuroshita.
 
 ## JieLi SDK files (Apache-2.0)
 

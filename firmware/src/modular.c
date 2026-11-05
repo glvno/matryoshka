@@ -33,6 +33,7 @@
 #include "fm1_sys.h"
 #include "fm1_irq.h"
 #include "fm1_guard.h"
+#include "fm1_cpu1.h"          /* the second core (#271: main.c starts it and checks it; nothing renders on it yet) */
 #include "fm1_input.h"
 #include "fm1_timer.h"
 #include "fm1_audio.h"

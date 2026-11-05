@@ -826,6 +826,7 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     t.screen(&m, "menu: the INFO tab", "VERSION");
     t.screen(&m, "menu: the bank's slots", &format!("{} OF 64", presets.len()));
     t.screen(&m, "menu: the battery's reading (fm1-emu's ch 3: 640, 3 bars)", "640  3/3");
+    t.screen(&m, "menu: the second core runs and passes its self-test (#271)", "2 CORES");
     m.turn(ALGO, 1, 400)?;
     t.screen(&m, "menu: the GUIDE tab (D-248) points at the controls sheet", "PRESS OCT- + OCT+");
     m.tap(ENV, 120, 600)?;

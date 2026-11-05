@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * From X0X (github.com/charlesvestal/fm1-x0x, Charles Vestal, commit ca2d377), firmware/hal, unchanged but for this
- * notice; after what Melodee (keremimo) and Jangada (zednaked) found. Not built yet in Matryoshka (#271, a spike). */
+ * From X0X (github.com/charlesvestal/fm1-x0x, Charles Vestal, commit ca2d377), firmware/hal; after what Melodee
+ * (keremimo) and Jangada (zednaked) found. Changed for Matryoshka (#271): the two stacks are no longer reserved here
+ * (.bss.c1stack); firmware/app.ld places them (_c1_ustack, _c1_ustack_top, _c1_sstack_top). */
 /* The AC79's second core: its entry, as the AC79 SDK's cpu.a/startup.S.o (and Melodee's dual-core
  * audio) have it: interrupts off, no interrupt configuration, its own user and supervisor stacks,
  * then out of the start-up interrupt into fm1_c1_main (in RAM, fm1_cpu1.h), which never returns.
@@ -20,14 +21,3 @@ fm1_c1_entry:
 	ssp = _c1_sstack_top
 	reti = fm1_c1_main
 	rti
-
-	.section .bss.c1stack,"aw",@nobits
-	.balign 8
-	.globl _c1_ustack
-_c1_ustack:			/* after rti the core runs on this one: the render's (filled with a mark at start) */
-	.space 2816
-_c1_ustack_top:
-_c1_sstack:			/* exceptions only (no interrupts on this core) */
-	.space 256
-	.globl _c1_sstack_top
-_c1_sstack_top:

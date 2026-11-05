@@ -7,7 +7,7 @@
  * mode); OCT- + OCT+ held at power-on and MENU > UPDATE MODE -> update mode (USB + OTA only); the audio overload guard
  * (audio.c) keeps the main loop alive. The chip's mask-ROM mode only by its explicit SysEx (chip_boot). */
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
-extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[];
+extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[], _c1_start[], _c1_end[], _c1_load[];
 
 
 /* Diagnostics for the device bring-up (#140), read with tools/m1_link.py diag: what the last run left behind. When the main
@@ -67,6 +67,99 @@ static uint32_t stack_deepest(char *lo, char *top)     /* the most bytes the sta
     return (uint32_t)(top - (char *)d);
 }
 
+/* #271: the second core (hal/fm1_cpu1.h, X0X's). Started at power-on before the audio and the timers, the only start that
+ * works on the device (X0X's, Melodee's and Felucca's finding), and after the boot guard's update-mode check: not in update
+ * mode, not after a failed boot, not when barred (fm1_c1_bar in .noinit: one core until power-off). Nothing renders on it
+ * yet. Every C1_TEST_MS the main loop hands it the self-test (c1_sum: SIN_T read from the flash, the seed from the mailbox,
+ * the answer written to RAM) and checks the answer against its own. A wrong answer, a job it refuses (a misread check
+ * word) or one not back in 8 ms holds it for good and bars it: one core until power-off (Melodee's fallback, the owner's
+ * ruling of 2026-11-04). Update mode and the chip's boot mode hold it first; fm1_reboot and fm1_enter_update hold it too
+ * (fm1_sys.h). DIAG page 114 (tools/m1_link.py cores) reports it, page 113 arms one wrong check word (the fallback's
+ * test); MENU > INFO > PROCESSOR says 2 CORES or 1 CORE (ui.c cores_up). */
+#define C1_TEST_MS 100u
+#define C1_WRONG 4u                             /* fm1_c1_gave_up: its answer was wrong (1 refused a job, 2 late, 3 barred) */
+enum { C1_TRIED, C1_SKIP_UPDATE, C1_SKIP_FAILED };
+static volatile uint32_t c1_out;                /* the self-test's answer, written by core 1 */
+static uint32_t c1_pass, c1_fail, c1_wait_max, c1_last;
+static uint8_t c1_skip, c1_inject;
+
+static uint32_t c1_sum(uint32_t seed)           /* both cores run this: 256 words of SIN_T (from the flash) into a hash */
+{
+    uint32_t i, h = seed ^ 0x811C9DC5u, at = seed & 768u;
+    for (i = 0; i < 256u; i++)
+        h = (h ^ (uint32_t)SIN_T[at + i]) * 0x01000193u;
+    return h;
+}
+
+static void c1_job(uint32_t seed)               /* (runs on core 1) */
+{
+    c1_out = c1_sum(seed);
+}
+
+static void c1_test(void)
+{
+    uint32_t seed, want, t0, dt;
+    int rc;
+    if (!fm1_c1_on)
+        return;
+    seed = fm1_ticks();
+    want = c1_sum(seed);
+    c1_out = ~want;
+    t0 = fm1_ticks();
+    rc = c1_inject ? fm1_cpu1_run_mischecked(c1_job, seed) : fm1_cpu1_run(c1_job, seed);
+    c1_inject = 0;
+    if (!rc)
+        return;
+    if (fm1_cpu1_wait() != 0) {                 /* refused or late: held and barred (fm1_cpu1_wait) */
+        c1_fail++;
+        return;
+    }
+    dt = fm1_ticks() - t0;
+    if (c1_out != want) {
+        fm1_cpu1_hold();
+        fm1_cpu1_bar();
+        fm1_c1_gave_up = C1_WRONG;
+        c1_fail++;
+        return;
+    }
+    c1_pass++;
+    if (dt > c1_wait_max)
+        c1_wait_max = dt;
+}
+
+static void c1_boot(int update)                 /* fm1_main, before the audio and the timers */
+{
+    int locked;
+    if (update || bootguard.failed) {
+        c1_skip = update ? C1_SKIP_UPDATE : C1_SKIP_FAILED;
+        return;
+    }
+    locked = fm1_guard_top_locked();            /* (not yet at boot: left so) */
+    if (locked)
+        fm1_guard_unlock_top();                 /* its entry word is in the protected top of RAM */
+    fm1_guard_pc_open();                        /* it starts in the chip's ROM */
+    (void)fm1_cpu1_start();
+    fm1_guard_enable(FM1_GUARD_PC);
+    if (locked)
+        fm1_guard_lock_top();
+    c1_test();
+    cores_up = fm1_c1_on ? 2u : 1u;
+}
+
+static void c1_poll(void)                       /* the main loop */
+{
+    uint8_t up;
+    if (fm1_ms - c1_last >= C1_TEST_MS) {
+        c1_last = fm1_ms;
+        c1_test();
+    }
+    up = fm1_c1_on ? 2u : 1u;
+    if (up != cores_up) {
+        cores_up = up;
+        menu_value_draw(MR_CORES);
+    }
+}
+
 void fm1_timer5_irq(uint32_t *f)                /* f: the saved r0..r3, reti, rets, psr (fm1_isr.S) */
 {
     static uint32_t sub, last, acc, next;
@@ -109,6 +202,8 @@ static void fm1_fault(const fm1_crash_t *c)
 {
     char b[12];
     uint32_t t0;
+    if (fm1_c1_on)
+        fm1_cpu1_bar();                         /* a crash beside the second core: one core until power-off (X0X's, #271) */
     fm1_audio_stop();
     lcd_service = lcd_yield = 0;                  /* a fault screen must not resume input or engine work */
     lcd_wake_now();
@@ -285,6 +380,24 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
         return sizeof v;
     }
+    if (page == 113u || page == 114u) {         /* #271: the second core (113 first arms one wrong check word: the fallback) */
+        uint32_t v[8];
+        if (page == 113u)
+            c1_inject = 1;
+        v[0] = (uint32_t)fm1_c1_on | (uint32_t)fm1_c1_gave_up << 8 |
+               (uint32_t)(fm1_c1_bar.magic == FM1_C1_BAR_MAGIC && fm1_c1_bar.barred == 1u) << 16 | (uint32_t)c1_skip << 24;
+        v[1] = fm1_c1_trace;
+        v[2] = c1_pass;
+        v[3] = c1_fail;
+        v[4] = fm1_c1_mb.bad;
+        v[5] = fm1_cpu1_stack_used();
+        v[6] = c1_wait_max / FM1_TICKS_PER_US;
+        v[7] = fm1_c1_mb.done;
+        c1_wait_max = 0;
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
     if (page == 124u) {                         /* #273: .lowram and the stacks */
         uint32_t v[8];
         v[0] = lowram_state;
@@ -294,7 +407,7 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
         v[4] = stack_deepest(_ustack_lo, _ustack_top);
         v[5] = (uint32_t)(_sstack_top - _sstack_lo);
         v[6] = stack_deepest(_sstack_lo, _sstack_top);
-        v[7] = (uint32_t)((uintptr_t)_guard0 - (uintptr_t)_pool_end);   /* the pool left free */
+        v[7] = (uint32_t)((uintptr_t)_c1_ustack - (uintptr_t)_pool_end);   /* the pool left free (up to core 1's stacks, #271) */
         for (i = 0; i < sizeof v; i++)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
         return sizeof v;
@@ -1124,6 +1237,7 @@ static uint32_t m1_test_peak(void)
  * should start the firmware again (not verified). */
 static void chip_boot(void)
 {
+    fm1_cpu1_hold();                            /* (#271) */
     fm1_audio_stop();
     lcd_fill(0, 0, 240, 240, C_BG);
     text5x7(12, 100, "CHIP BOOT MODE", 2, C_ACC, C_BG);
@@ -1156,6 +1270,8 @@ static void update_screen(const char *why)
 
 static void update_only(const char *why)
 {
+    fm1_cpu1_hold();                            /* update mode is one core (#271) */
+    cores_up = 1;
     eng_run = 0;
     booting = 0;
     bootguard.pending = 0;                      /* this boot did not fail: a watchdog reset from here starts normally */
@@ -1227,6 +1343,8 @@ static void fm1_main(int update)                    /* update: the boot guard sa
     fm1_input_init();
     fm1_adc_init();
     master_boot();
+    boot_step("CORES");
+    c1_boot(update);                                    /* the second core (#271): before the audio and the timers */
     boot_step("AUDIO");
     audio_init();
     boot_step("MIDI");
@@ -1316,6 +1434,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         keys_report();                                  /* (the edges taken during the redraw: keys_yield) */
         guide_poll();
         cpu_poll();
+        c1_poll();
         host_poll();
         tempo_poll();
     }
@@ -1325,6 +1444,8 @@ void fm1_cstart(void)
 {
     uint32_t *s, *d, p3, src, wdt;
     int update = 0;
+    fm1_cpu1_halt();                            /* a second core left running by the reset would read the RAM cleared
+                                                 * below (X0X's, after Jangada, fm1-x0x#10; #271) */
     fm1_time_init();
     fm1_reset_reason();
     p3 = fm1_boot.p3_rst;
@@ -1356,6 +1477,8 @@ void fm1_cstart(void)
         *d = *s;
     for (s = _rt_load, d = _rt_start; d < _rt_end; s++, d++)
         *d = *s;                                /* flash driver code that must run from RAM */
+    for (s = _c1_load, d = _c1_start; d < _c1_end; s++, d++)
+        *d = *s;                                /* the second core's waiting loop (fm1_cpu1.h, #271) */
     fm1_mailbox_clear();
     diag_prev.p3 = p3;                          /* (diag_prev is in .bss: after the clear above) */
     diag_prev.src = src;
