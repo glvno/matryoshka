@@ -2828,7 +2828,9 @@ const steps: ModuleImpl<StepsState> = {
         const r = s.rin.findIndex((x) => x.note === note);
         if (r >= 0) {
           const x = s.rin.splice(r, 1)[0];
-          s.took.push({ note: { at: x.at, len: Math.min(STEPS_MAX, Math.max(1, Math.round(x.t / s.sl))), note, vel: x.vel }, loop: x.loop });
+          // held round the loop back to where it started, or beyond: a drone (#384, D-819)
+          const held = Math.max(1, Math.round(x.t / s.sl));
+          s.took.push({ note: held >= stepCycle(len, dir) ? { at: x.at, len: STEPS_MAX, note, vel: x.vel, wrap: true } : { at: x.at, len: Math.min(STEPS_MAX, held), note, vel: x.vel }, loop: x.loop });
         }
         if (!(s.thru[e] & 0x80)) continue;
         if (live) {

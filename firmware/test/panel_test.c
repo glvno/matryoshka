@@ -1637,6 +1637,76 @@ int main(void)
                       && !strcmp(msg_text, "TIED"));
                 panel_held &= ~(1u << BTN_LFO);
             }
+            {                                               /* #384, the owner's ruling of 2026-11-04: LFO + FX, no step held, the
+                                                             * selected row one drone: its first note holds, the rest go; again an
+                                                             * ordinary step; an empty row says so; step record keeps LFO's rest */
+                static uint32_t row[TRACK_NOTES_MAX];
+                const uint32_t *ws3;
+                int n3 = eng_steps_notes((uint32_t)drums, &ws3), m3 = 0, j, mine = 0, other = 0;
+                uint32_t r0 = seq_row, note = seq_grid_note(seq_map(), seq_row), before;
+                for (j = 0; j < n3; j++)
+                    if (((ws3[j] >> 12) & 127u) != note)
+                        row[m3++] = ws3[j];
+                other = m3;
+                row[m3++] = 4u | note << 12 | (uint32_t)STEP_VEL << 19;
+                row[m3++] = 9u | 1u << 6 | note << 12 | (uint32_t)ACCENT_VEL << 19;
+                row[m3++] = 13u | note << 12 | (uint32_t)STEP_VEL << 19;
+                (void)eng_steps_set_notes((uint32_t)drums, row, (uint32_t)m3);
+                seq_sync(drums);
+                panel_held |= 1u << BTN_LFO;
+                tap(BTN_ACC);
+                panel_held &= ~(1u << BTN_LFO);
+                loop();
+                n3 = eng_steps_notes((uint32_t)drums, &ws3);
+                for (j = 0; j < n3; j++)
+                    mine += ((ws3[j] >> 12) & 127u) == note;
+                w = eng_steps_note((uint32_t)drums, 4, note);
+                check("#384: LFO + FX on a row of three hits: its first hit a drone, the other two gone (DRONE), the rest of the track kept",
+                      w && eng_note_drone(w) && mine == 1 && n3 == other + 1 && !strcmp(msg_text, "DRONE")
+                      && px(seq_grid_x(4) + 1u, GRID_Y + GRID_RH * seq_row + 7u) == C_DIM && px(seq_grid_x(9) + 5u, y) == C_DIM);
+                panel_held |= 1u << BTN_ACC;                /* FX held first, then LFO: the same */
+                tap(BTN_LFO);
+                panel_held &= ~(1u << BTN_ACC);
+                loop();
+                w = eng_steps_note((uint32_t)drums, 4, note);
+                check("  FX + LFO again: an ordinary one-step hit on that step (DRONE OFF)", w && !(w & ENG_NOTE_WRAP) && ((w >> 6) & 63u) == 0u
+                      && !strcmp(msg_text, "DRONE OFF"));
+                {                                           /* a row without notes (the rest of the kit's rows cleared) */
+                    uint32_t nr = (r0 + 1u) % ENG_DRUM_ROWS, keepn = 0;
+                    static uint32_t kw[TRACK_NOTES_MAX];
+                    n3 = eng_steps_notes((uint32_t)drums, &ws3);
+                    for (j = 0; j < n3; j++)
+                        if (((ws3[j] >> 12) & 127u) != seq_grid_note(seq_map(), nr))
+                            kw[keepn++] = ws3[j];
+                    (void)eng_steps_set_notes((uint32_t)drums, kw, keepn);
+                    seq_sync(drums);
+                    seq_row = (uint8_t)nr;
+                }
+                note = seq_grid_note(seq_map(), seq_row);
+                before = (uint32_t)eng_steps_notes((uint32_t)drums, &ws3);
+                for (j = 0, mine = 0; j < (int)before; j++)
+                    mine += ((ws3[j] >> 12) & 127u) == note;
+                check("  (an empty row found)", !mine);
+                {
+                    panel_held |= 1u << BTN_LFO;
+                    tap(BTN_ACC);
+                    panel_held &= ~(1u << BTN_LFO);
+                    loop();
+                    check("  on an empty row: NOTHING TO DRONE, nothing changed", !strcmp(msg_text, "NOTHING TO DRONE")
+                          && (uint32_t)eng_steps_notes((uint32_t)drums, &ws3) == before);
+                }
+                seq_row = (uint8_t)r0;
+                sr_start(0, -1);                            /* step record: LFO + FX is LFO's rest, no drone */
+                msg_text[0] = 0;
+                before = sr_k;
+                panel_held |= 1u << BTN_ACC;
+                tap(BTN_LFO);
+                panel_held &= ~(1u << BTN_ACC);
+                loop();
+                check("  in step record FX + LFO is LFO's rest (the cursor on), no drone", sr_on && sr_k == before + 1u && strcmp(msg_text, "DRONE"));
+                sr_stop();
+                loop();
+            }
             (void)eng_steps_set_notes((uint32_t)drums, keep, (uint32_t)keep_n);
             seq_sync(drums);
         }
