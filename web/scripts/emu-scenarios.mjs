@@ -31,6 +31,8 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { boot, download, downloadEmuMidi, smoke, smokeState } from './branch-firmware.mjs';
 import { DEV_ENV, fm1Label, loadRig, pickRig, rigPage, survey } from './rig-link.mjs';
+import { parseWav, startCapture } from './audio-capture.mjs';
+import { CHECK_SCENARIOS, checkScenarios } from './device-check.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const REPO = 'glvno/matryoshka';
@@ -48,7 +50,7 @@ const SCENARIOS = (() => {
   const src = readFileSync(fileURLToPath(import.meta.url), 'utf8');
   const from = src.search(/^ {2}const scenarios = \{$/m);
   const body = src.slice(from, src.indexOf('\n  };\n', from));
-  return [...body.matchAll(/^    async (\w+)\(\)/gm)].map((m) => m[1]);
+  return [...[...body.matchAll(/^    async (\w+)\(\)/gm)].map((m) => m[1]), ...CHECK_SCENARIOS];
 })();
 if (flag('--list')) {
   console.log(SCENARIOS.join('\n'));
@@ -205,11 +207,31 @@ class Target {
   waitSandboxPage(ms = 3000) {
     return this.waitFor(async () => (await this.text('SANDBOX')) && (await this.text('= OCT =')) && !(await this.text('KEYS AND KNOBS')), ms);
   }
+  /** the screen's texts as drawn (TEST_SCREEN; the emulator's through the rig's page on its port, `rp`) */
+  async texts() { return (await this.screen()).texts.map((t) => t.s); }
+  /** `s` is one of the screen's texts, whole (`text` also takes a part of one: MONO is part of MONO L) */
+  async shows(s) { return (await this.texts()).includes(s); }
+  /** wait up to `ms` (times SLACK) for `s` as a whole text */
+  waitShows(s, ms = 3000) { return this.waitFor(() => this.shows(s), ms); }
+  /** DIAG page n's bytes as 32-bit words (main.c m1_diag) */
+  async diagWords(n) {
+    const b = await this.diag(n);
+    return Array.from({ length: b.length >> 2 }, (_, i) => (b[4 * i] | b[4 * i + 1] << 8 | b[4 * i + 2] << 16 | b[4 * i + 3] << 24) >>> 0);
+  }
 }
 
 /** a real FM-1 (or the emulator) over the editor link's device test mode (#291): the rig's page (dev/rig-client.ts) */
 class RigTarget extends Target {
-  constructor(page) { super(); this.page = page; }
+  constructor(page) { super(); this.page = page; this.rp = page; }
+  diag(n) { return this.page.evaluate((x) => window.__rig.diag(x), n); }
+  /** a recording of what the FM-1 plays: its USB audio on this Mac (audio-capture.mjs), when the rig is the one FM-1
+   *  connected (`audioWhy` says why not, else); { stop() } or { why } */
+  async record(name) {
+    if (this.audioWhy) return { why: this.audioWhy };
+    // (USB audio is taken after MASTER: with the knob all the way down it is silent, and the volume never fails a check, D-125)
+    if ((await this.page.evaluate(() => window.__rig.peak())).masterDown) return { why: 'MASTER down (the USB audio comes after it)' };
+    return startCapture(join(OUT, `${name}.wav`));
+  }
   press(id, hold) { return this.page.evaluate(([i, h]) => window.__rig.tap(i, h), [id, hold]); }
   down(id, down) { return this.page.evaluate(([i, d]) => window.__rig.key(i, d), [id, down]); }
   turn(enc, clicks) { return this.page.evaluate(([e, c]) => window.__rig.turn(e, c), [enc, clicks]); }
@@ -304,6 +326,15 @@ class Emu extends Target {
   async until(ms, s) { const [, seen, n] = (await this.cmd(`until ${ms} ${s}`)).split(' '); return seen === '1' ? Number(n) : null; }
   /** a host that takes nothing from the FM-1 (a computer where no app reads its MIDI, #375), or one that reads again */
   deaf(on) { return this.cmd(`deaf ${on ? 1 : 0}`); }
+  /** (Target's, through the rig's page on the emulator's port: TEST_SCREEN, DIAG; main makes it before the editor's page
+   *  when a scenario of device-check.mjs runs) */
+  screen() { if (!this.rp) throw new Error('no rig page on the emulator\'s port'); return this.rp.evaluate(() => window.__rig.screen()); }
+  diag(n) { if (!this.rp) throw new Error('no rig page on the emulator\'s port'); return this.rp.evaluate((x) => window.__rig.diag(x), n); }
+  /** a recording of the FM-1's I2S output (the emulator's audio from now until stop(), as `wav` writes it) */
+  async record(name) {
+    const m = await this.mark(), file = join(OUT, `${name}.wav`);
+    return { stop: async () => { await this.cmd(`wav ${m} ${file}`); return parseWav(readFileSync(file)); } };
+  }
   quit() { try { this.proc.stdin.write('quit\n'); } catch { /* gone */ } }
 }
 
@@ -361,6 +392,12 @@ async function loudCheck(name, p, ok, detail) {
     return;
   }
   await check(name, ok, detail);
+}
+/** a check this target cannot make (the rig's USB audio while another FM-1 is connected, the analog mix on the rig): counted
+ *  apart, as MASTER down is, and no failure */
+async function skip(name, reason) {
+  results.push({ name, status: 'skip', ok: true, skipped: true, reason });
+  console.log(`SKIP ${name}: ${reason}`);
 }
 /** wait until `f()` gives something, up to `ms` times SLACK on the wall clock (the editor's side of the link); that, or the
  *  last `f()` */
@@ -480,6 +517,7 @@ async function main() {
   const { browser, context } = await launch(url);
   process.on('exit', () => { try { browser.process()?.kill(); } catch { /* gone */ } });
   let emu = emuProc;
+  let rigAudioWhy = '';
   if (DEVICE) {
     if (!REAL || opt('--port')) await context.addInitScript(FILTER_MIDI, { name: REAL ? opt('--port') : PORT_NAME });
     const rp = await rigPage(context, url);
@@ -490,18 +528,30 @@ async function main() {
       console.log(`rig: ${fm1Label(pair)};${s.pairs.length - 1} other FM-1${s.pairs.length === 2 ? '' : 's'} left alone`);
       masterMatters = !((pair.info?.features ?? 0) & 1024);   // (protocol.ts FEATURE_PEAK_PRE)
       await context.addInitScript(FILTER_MIDI, { ids: [pair.inId, pair.outId], except: '/__rig' });
+      // (the rig's USB audio is recorded by its input's name, so only while it is the one FM-1 connected)
+      rigAudioWhy = s.pairs.length === 1 && s.ports === 1 ? '' : `${s.pairs.length} FM-1s connected: which audio input is the rig's is not known`;
     } else {
       [pair] = await rp.evaluate(() => window.__rig.pairs());
       if (!pair) throw new Error('the emulated FM-1 did not answer on its port');
       await rp.evaluate((x) => window.__rig.pick(x), pair);
     }
     emu = new RigTarget(rp);
+    emu.audioWhy = REAL ? rigAudioWhy : 'the emulator through the device test mode has no USB audio';
     // a known start: the device page (the owner's rig was once left on HOME held's SYSTEM page, and every check failed)
     if (!(await emu.home())) { const h = await emu.screen(); throw new Error(`the FM-1 did not come back to its device page with HOME (screen page ${h.page}${h.booting ? ', still booting' : ''}): bring it there by hand and run again`); }
     // MASTER does not matter to the checks (TEST_PEAK reads before it), but say so when nothing can be heard
     if ((await rp.evaluate(() => window.__rig.peak())).masterDown) console.log('  note: MASTER is all the way down: the checks do not depend on it, but you will hear nothing');
   } else {
     await context.addInitScript(FILTER_MIDI, { name: PORT_NAME });
+    // the device check's scenarios read the screen's texts and DIAG pages: through the rig's page on the emulator's port,
+    // made before the editor's page (its HELLO goes out before the editor connects, as with --via-emu)
+    if (!only || only.some((n) => CHECK_SCENARIOS.includes(n))) {
+      const rp = await rigPage(context, url);
+      const [pair] = await rp.evaluate(() => window.__rig.pairs());
+      if (!pair) throw new Error('the emulated FM-1 did not answer on its port');
+      await rp.evaluate((x) => window.__rig.pick(x), pair);
+      emu.rp = rp;
+    }
   }
   // after power-on the quick start shows over the first page (D-247) and takes the panel until HOME closes it
   if (await emu.waitText('QUICK START', (DEVICE ? 1000 : 8000) / SLACK)) {   // (a probe: not stretched by SLACK)
@@ -1771,6 +1821,12 @@ async function main() {
       await check('store slot: Cancel closes it', !!(await until(() => page.evaluate(() => !document.querySelector('#store-slot[open]')), 2000)));
     },
   };
+  // the owner's device check of the release, as scenarios (device-check.mjs, the checks that need no ears, hands or power
+  // switch), after the ones above; `page` is a getter (reconnect opens a new one)
+  Object.assign(scenarios, checkScenarios({
+    emu, get page() { return page; }, T, open, patchJson, openSynced, sentAfter, check, loudCheck, until, trackNotes, notesUntil, fmt,
+    noteAt, shot, passProfile, skip, B, BLACK, WHITE, ENC, C4, QUIET, LOUD, SLACK, DEVICE, REAL, OUT,
+  }));
 
   try {
     for (const [name, run] of Object.entries(scenarios)) {
