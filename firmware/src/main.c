@@ -76,7 +76,7 @@ static uint32_t stack_deepest(char *lo, char *top)     /* the most bytes the sta
  * ruling of 2026-11-04). Update mode and the chip's boot mode hold it first; fm1_reboot and fm1_enter_update hold it too
  * (fm1_sys.h). DIAG page 114 (tools/m1_link.py cores) reports it, page 113 arms one wrong check word (the fallback's
  * test); MENU > INFO > PROCESSOR says 2 CORES or 1 CORE (ui.c cores_up). */
-#define C1_TEST_MS 100u
+#define C1_TEST_MS 0xFFFFFFF0u   /* DIAGNOSTIC BUILD (#271): no periodic self-test, only the one at boot */
 #define C1_WRONG 4u                             /* fm1_c1_gave_up: its answer was wrong (1 refused a job, 2 late, 3 barred) */
 enum { C1_TRIED, C1_SKIP_UPDATE, C1_SKIP_FAILED };
 static volatile uint32_t c1_out;                /* the self-test's answer, written by core 1 */
