@@ -2,8 +2,8 @@
  * From X0X (github.com/charlesvestal/fm1-x0x, Charles Vestal, commit ca2d377), firmware/hal; after what Melodee (keremimo)
  * and Jangada (zednaked) found. Changed for Matryoshka (#271): the stacks are app.ld's (_c1_ustack.._c1_sstack_top, at
  * the bottom of core 0's main stack area, not .bss), the mark covers the whole user stack (FM1_C1_STACK_WORDS gone),
- * fm1_cpu1_halt is Melodee's safe hold (fm1_core1_stop.h: the bus traps masked while core 1 stops), and the helpers
- * after fm1_cpu1_wait (the stack used, a job with a wrong check word for the fallback's test) are ours. */
+ * fm1_cpu1_halt is Melodee's safe hold (fm1_core1_stop.h: the bus traps masked while core 1 stops), the idle loop pauses between two looks at the mailbox (after Melodee), and the helpers after fm1_cpu1_wait (the
+ * stack used, a job with a wrong check word for the fallback's test) are ours. */
 /* The AC79's second core (docs/plans/2026-10-04-dual-core-and-clock.md), with what Melodee's
  * dual-core audio (github.com/keremimo/melodee, GPL-3.0) found on the device.
  *
@@ -36,6 +36,7 @@
 #define FM1_C1_CLK (*(volatile uint32_t *)0x00010008u)
 #define FM1_C1_T4 (*(volatile uint32_t *)0x10804u)       /* TIMER4, 24 MHz */
 #define FM1_C1_SYNC() __asm__ volatile("csync" ::: "memory")
+#define FM1_C1_RELAX 16u                         /* idle core 1: 16 x 4 nops between two looks at its mailbox (Matryoshka) */
 
 extern void fm1_c1_entry(void);
 extern uint32_t _c1_ustack[], _c1_ustack_top[], _c1_sstack_top[];   /* app.ld */
@@ -80,8 +81,14 @@ void __attribute__((section(".c1_text"), noreturn, used)) fm1_c1_main(void)
     for (;;) {
         uint32_t j = fm1_c1_mb.job;
         FM1_C1_SYNC();
-        if (j == done)
+        if (j == done) {
+            /* idle: a pause in registers before the next look (Melodee's fm1_aw_relax; #271): polling the mailbox
+             * back to back slowed core 0's audio by 4-5 % on the test rig (the shared bus and caches) */
+            uint32_t r;
+            for (r = 0; r < FM1_C1_RELAX; r++)
+                __asm__ volatile("nop\n\tnop\n\tnop\n\tnop" ::: "memory");
             continue;
+        }
         if (j == done + 1u) {
             void (*fn)(uint32_t) = fm1_c1_mb.fn;
             uint32_t arg = fm1_c1_mb.arg;
