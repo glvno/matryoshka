@@ -82,6 +82,7 @@ static int (*pages_waiting)(void);                      /* main.c: an encoder's 
  * started when the new patch's pages are built */
 static uint32_t pg_patch_ask_ms;
 static uint8_t pg_patch_ask;
+static uint32_t pages_sounds(void);
 static void toast_start(void);
 static void toast_end(void);
 /* a Page button's list on K1..K4 (#117): its button (-1: none), the step showing, whether a hold peeks at its first page */
@@ -492,9 +493,16 @@ static void pages_ensure(void)
             pg_list_peek = 0;
             toast_end();
             if (pg_patch_ask && fm1_ms - pg_patch_ask_ms < 2000u) {   /* PRESET loaded it: its toast */
+                uint32_t n = pages_sounds();
                 pg_patch_ask = 0;
                 toast_start();
                 pg_algo_due = 1;
+                if (n > 1u) {                           /* (#582: a patch that can layer says so, and how) */
+                    static char m[32];
+                    m[0] = (char)('0' + (n > 9u ? 9u : n));
+                    put(m + 1, " SOUNDS: ENV THEN SEL")[0] = 0;   /* (as the sheet says it: "ENV+SEL" read as both at once) */
+                    ui_msg(m, 2000);
+                }
             }
             pg_patch_ask = 0;
         }
@@ -2076,7 +2084,8 @@ static void pages_ticks(void)
  * on; ENV or HOME goes back. SELECT moves the row (the device in focus: K1..K4 turn its first page), SEL opens its device
  * pages. A Steps track's row reads its name; the devices it drives follow it, indented, with a stripe in the track's hue
  * (Decision 5D, from the device extras of format 34). A row: the name, the preset it was set to (coral), and on the right
- * what it is doing (Main's tempo, a track's length, ARMED); a long row cuts the preset name first. */
+ * what it is doing (Main's tempo, a track's length, ARMED, or WIRED while nothing is armed); a long row cuts the preset name
+ * first. */
 #define ENV_Y0 24u
 #define ENV_ROW_H 26u
 #define ENV_ROWS 8u
@@ -2107,7 +2116,6 @@ static int env_track_no(uint32_t d)
     return -1;
 }
 
-/* the right-hand text of device d's row: Main's tempo, a track's length, ARMED */
 /* what arming device d arms (#191), as a module mask: its key listeners, and the key sources its keys come through (#395:
  * the track and the Arpeggiator in front of an instrument). An Arpeggiator alone is not a device to arm, nor an engine the
  * editor marks as one no keys cable reaches (D-905): a poly engine keeps its group without its Voicing, so its modules
@@ -2129,6 +2137,20 @@ static uint64_t env_listeners(uint32_t d)
 
 static int env_armed(uint32_t d) { return (eng_arm_mask_get() & env_listeners(d)) != 0; }
 
+/* the patch's sounds (#582): its devices that take keys, the tracks, Main and an Arpeggiator alone apart (a track arms
+ * with what it plays: that one counts) */
+static uint32_t pages_sounds(void)
+{
+    uint32_t d, n = 0;
+    for (d = 0; d < pg_ndev; d++) {
+        int m = pg_dev[d].module;
+        if (m >= 0 && (eng_type((uint32_t)m) == T_STEPS || eng_type((uint32_t)m) == T_FM1))
+            continue;
+        n += env_listeners(d) != 0u;
+    }
+    return n;
+}
+
 /* device d has a keys input that no cable may reach (#215; SEL says so, dev_arm, D-249): a Drum map, whose keys source is
  * then none, or an engine the editor marks (the device extras' ENG_KEYS_UNREACHED, D-905): its Voicing, no keys cable
  * reaching it, is left out of the binary (poly.ts deviceView). An Arpeggiator alone is no keys input that arms (D-235) */
@@ -2147,6 +2169,7 @@ static int dev_keys_input(uint32_t d)
 }
 
 static void seq_arm_set(uint64_t mask);                 /* (seq_ui.c: the armed set changed; REC on: they record) */
+static void seq_name(uint32_t t, char *out);            /* (seq_ui.c: a track's name as the bar shows it) */
 
 /* SEL arms the device in focus (#395), a toggle. Armed, it is taken out of the armed set, the others stay; the last one
  * out leaves the keys WIRED (Main's cables decide). Not armed: layer (the environment) adds it to the set (a layer, a
@@ -2167,9 +2190,40 @@ static void dev_arm(int layer)
     seq_arm_set(mask);
     caps(t, pg_dev[pg_cur_dev].name, pg_dev[pg_cur_dev].nlen, 14);
     put(put(m, t), env_armed(pg_cur_dev) ? " ARMED" : " DISARMED")[0] = 0;
+    if (env_armed(pg_cur_dev) && env_track_no(pg_cur_dev) < 0) {   /* (#582: a track that came along is named too, as the
+                                                     * footer then names it: SILVER BOX + PATTERN ARMED; 26 characters, else
+                                                     * the track's name alone) */
+        int k;
+        for (k = 0; k < eng_steps_count(); k++) {
+            int mod = eng_steps_module((uint32_t)k);
+            char tn[TRACK_NAME_MAX + 8], tc[TRACK_NAME_MAX + 8];
+            if (mod < 0 || mod >= 64 || !(l >> mod & 1u))
+                continue;
+            seq_name((uint32_t)k, tn);
+            caps(tc, tn, str_len(tn), TRACK_NAME_MAX + 7u);
+            if (str_len(t) + 3u + str_len(tc) + 6u <= 26u)
+                put(put(put(put(m, t), " + "), tc), " ARMED")[0] = 0;
+            else
+                put(put(m, tc), " ARMED")[0] = 0;
+            break;
+        }
+    }
     ui_msg(eng_arm_mask_get() ? m : "KEYS WIRED", 1200);
 }
 
+/* nothing armed and the keys reach device d by its cables (#582): its row says WIRED, dim, where ARMED goes (the footer's
+ * KEYS WIRED, a row at a time) */
+static int env_wired(uint32_t d)
+{
+    uint64_t l = eng_arm_mask_get() ? 0u : env_listeners(d);
+    uint32_t m;
+    for (m = 0; m < 64u && l >> m; m++)
+        if ((l >> m & 1u) && eng_hears_keys(m))
+            return 1;
+    return 0;
+}
+
+/* the right-hand text of device d's row: Main's tempo, a track's length, ARMED, WIRED */
 static void env_status(uint32_t d, char *out)
 {
     int m = pg_dev[d].module, t = m >= 0 ? eng_type((uint32_t)m) : -1;
@@ -2177,6 +2231,8 @@ static void env_status(uint32_t d, char *out)
     out[0] = 0;
     if (env_armed(d)) {
         put(out, "ARMED")[0] = 0;
+    } else if (env_wired(d)) {
+        put(out, "WIRED")[0] = 0;
     } else if (t == T_FM1) {
         fmt_int(num, (eng_get_param((uint32_t)m, FM1_P_TEMPO) + 32768) >> 16);
         put(put(out, num), " BPM")[0] = 0;

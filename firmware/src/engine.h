@@ -517,6 +517,9 @@ uint64_t eng_arm_mask_get(void);
  * a Part or card of a group that takes the keys, a Drum map on the keys, an Arpeggiator); when its keys come through a
  * key source (a group's or a Drum map's Arpeggiator or track), that source, and the track an Arpeggiator plays; 0 none */
 uint64_t eng_arms(uint32_t m);
+/* module m hears Main's keys now (the armed set's, else by its cables): a Steps track, an Arpeggiator or a Drum map on the
+ * keys, a member of a group the keys play; 0 not (the environment marks the devices the cables reach WIRED, #582) */
+int eng_hears_keys(uint32_t m);
 /* the Drum map Main's keys reach (the armed set's, else the ones cabled), when they reach one and nothing that plays them as
  * notes (a group, the shared keyboard, an Arpeggiator, a track into no Drum map): the panel's black keys 1..8 play its rows
  * (panel.c panel_key); -1 none */

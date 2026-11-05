@@ -209,6 +209,7 @@ static void help_suite(void)
     page_show(0);
     loop();
     check("  and back: DEVICE", on_screen("DEVICE") && on_screen("adjust values"));
+    later(1600);                                        /* (leaving the SEQ page said PATTERN STAYS ARMED, #582: gone first) */
     from = mlen;
     tap(BTN_HOME);
     check("HOME: the sheet closes, the device page as it was", !help_on && !lcd_ovl && page == 0u && pg_cur_dev == s0
@@ -226,10 +227,35 @@ static void help_suite(void)
     loop();
     check("the quick start: its title, rows, PRESS OCT- + OCT+, its bottom line", help_on == HELP_QUICK && on_screen("QUICK START")
           && on_screen("device presets") && on_screen("TO SEE CONTROLS FOR CURRENT") && on_screen("forever"));
-    enc(0, 1);
-    enc(1, 1);
-    check("  SELECT and ALGO: nothing", help_on == HELP_QUICK && help_tab == 0u && help_top == 0u);
     check("  a whole redraw gives the same pixels", help_whole_same());
+    sv0 = saved;
+    tap(BTN_SAVE);
+    check("  SAVE alone: nothing, the card stays", help_on == HELP_QUICK && saved == sv0);
+    enc(0, 1);                                          /* (#582: any other control closes it and then does its job) */
+    check("  SELECT: the card closes, then SELECT moves the device", !help_on && (pg_cur_dev != s0 || pg_ndev < 2u));
+    enc(0, -1);
+    help_open(HELP_QUICK);
+    loop();
+    {
+        int panel = eng_find(T_FM1), was_run = eng_transport_running();
+        int32_t bpm = panel >= 0 ? (eng_get_param((uint32_t)panel, FM1_P_TEMPO) + 32768) >> 16 : 0;
+        panel_held |= 1u << BTN_PLAY;
+        panel_edges(1u << BTN_PLAY, 0);
+        check("  PLAY pressed: the card closes", !help_on);
+        enc(6, 1);
+        panel_held &= ~(1u << BTN_PLAY);
+        panel_edges(0, 1u << BTN_PLAY);
+        loop();
+        check("  PLAY held + PRESET then: the tempo a click up, PLAY's release starts nothing", panel < 0
+              || (((eng_get_param((uint32_t)panel, FM1_P_TEMPO) + 32768) >> 16) == bpm + 1 && eng_transport_running() == was_run));
+        if (panel >= 0) {
+            eng_set_param((uint32_t)panel, FM1_P_TEMPO, bpm << 16);
+            m1_patch_param((uint32_t)panel, FM1_P_TEMPO, bpm << 16);
+        }
+    }
+    later(1100);
+    help_open(HELP_QUICK);
+    loop();
     from = mlen;
     tap(BTN_HOME);
     check("  HOME: closed, still on for the next power-on; HOME sent nothing (no mirror shows the quick start)", !help_on && cfg.quick == 1u

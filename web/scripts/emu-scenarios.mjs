@@ -1545,7 +1545,7 @@ async function main() {
       await check('arming: the 808 Kit opens, synced', await openSynced('808 Kit'));
       await check('arming: a patch loads with nothing armed: the footer says KEYS WIRED', await emu.waitText('KEYS WIRED', 3000));
       await emu.tap(B.scl);                         // the home device, the Drum map: its keys come through DRUMS (#395)
-      await check('arming: SEL on a device fed through a track arms it with the track', await emu.waitText('DRUM MAP ARMED', 1500));
+      await check('arming: SEL on a device fed through a track arms it with the track, the bar names both (#582)', await emu.waitText('DRUM MAP + DRUMS ARMED', 1500));
       await check('arming: the editor shows the set the FM-1 armed (ARMS_NOW, #191)', !!(await until(async () => (await T()).armed.length > 0, 2000)));
       await emu.elapse(1300);
       await emu.turn(ENC.select, 1);                // the next device, an instrument of the kit: its voices take no keys
