@@ -217,6 +217,13 @@ static uint32_t fm1_cpu1_stack_used(void)
     return (uint32_t)((uintptr_t)_c1_ustack_top - (uintptr_t)p);
 }
 
+/* a job handed over and not finished yet (the main loop's self-test, when the audio interrupt wants core 1: #271) */
+static inline int fm1_cpu1_busy(void)
+{
+    FM1_C1_SYNC();
+    return fm1_c1_on && fm1_c1_mb.done != fm1_c1_mb.job;
+}
+
 /* fm1_cpu1_run with a wrong check word (DIAG page 113: the fallback's test): core 1 must refuse the job, count it
  * (mb.bad) and run nothing; fm1_cpu1_wait then gives core 1 up */
 static inline int fm1_cpu1_run_mischecked(void (*fn)(uint32_t), uint32_t arg)
