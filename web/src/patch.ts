@@ -57,6 +57,10 @@ export interface ParamDef {
   screen?: true;
   /** set from its module's screen (the Scope's hover toolbar), never a row of a card nor promoted */
   onScreen?: true;
+  /** set when the patch loads, never while it plays: the size of a Delay's line (its length). No parameter input, macro
+   * range, morph side, P-lock or FM-1 knob moves it (both engines read the base value; the FM-1's page shows it and says
+   * to set it in the editor); a change sends the whole patch to the FM-1 again (defs.h DEF_FIXED) */
+  fixed?: true;
   /** the patch format (patchbin.ts VERSION) that appended this parameter to a type that existed before it. A binary of an
    * older format holds the type's parameters of its own format; the FM-1 reads it that way and gives this one its default
    * (engine.c eng_npar, defs.h psince). Only on the last parameters of a type, never decreasing. */
@@ -771,6 +775,18 @@ export function processingOrder(p: Patch): { order: number[]; feedback: Set<Cabl
 }
 
 /** Structural check of a patch loaded from JSON. Version 1 patches (one `<param>_cv` input per parameter) are converted, and a `midi` module becomes the FM-1 panel. Throws with a readable message. */
+/**
+ * A Delay from before its length row (format 50): the length its line had. 700 ms, the FM-1's line; a time past it (the
+ * browser's stretch to 1.6 s, on either morph side) played up to the browser's 1.6 s line, half of it with ping-pong, so
+ * such a Delay gets the length that plays it the same.
+ */
+function delayLength(m: { params: Record<string, number>; paramsB?: Record<string, number> }): void {
+  const t = Math.max(Number(m.params.time) || 0, Number(m.paramsB?.time) || 0);
+  if (!(t > 700)) return;
+  const pp = (Number(m.params.pingpong) || 0) >= 0.5;
+  m.params.length = Math.min(1900, Math.ceil(Math.min(1600, pp ? 2 * t : t) / 10) * 10);
+}
+
 export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Patch {
   const p = raw as Omit<Patch, 'version'> & { version: number };
   if (!p || (p.version !== 1 && p.version !== 2) || !Array.isArray(p.modules) || !Array.isArray(p.cables)) throw new Error('not a Matryoshka patch');
@@ -788,6 +804,7 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
     if (!def) throw new Error(`unknown module type "${m.type}"`);
     if (!Number.isInteger(m.id) || seen.has(m.id)) throw new Error(`bad or duplicate module id ${m.id}`);
     seen.add(m.id);
+    if (m.type === 'delay' && m.params && m.params.length === undefined) delayLength(m);
     m.params = { ...defaultParams(def), ...(m.params ?? {}) };
     m.x = Number(m.x) || 0;
     m.y = Number(m.y) || 0;

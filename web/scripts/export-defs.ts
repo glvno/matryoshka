@@ -3,7 +3,7 @@
 // patches as binary), firmware/src/controls.h and the README's list of controls (the FM-1's controls, src/controls.ts).
 // Run from web/:  npx vite-node scripts/export-defs.ts
 import { readFileSync, writeFileSync } from 'node:fs';
-import { ADSR_LONG, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY } from '../src/modules';
+import { ADSR_LONG, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_LENGTH_MAX, DELAY_LENGTH_MIN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY } from '../src/modules';
 import { encodePatch, TYPE_ORDER, toQ16, VERSION } from '../src/patchbin';
 import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK_NAME_MAX } from '../src/patch';
 import { ACCENT_VEL, TRACK_NOTES_MAX } from '../src/track';
@@ -44,6 +44,8 @@ for (const t of TYPE_ORDER) {
 w(`#define DELAY_NDIV ${DELAY_DIVS.length}`);
 w(`#define DELAY_CLK_PPQN ${DELAY_CLK_PPQN}`);
 w(`#define DELAY_SYNC_TOP ${DELAY_SYNC_TOP}   /* ms: the synced note lengths spread over 1..this (modules.ts) */`);
+w(`#define DELAY_LENGTH_MIN ${DELAY_LENGTH_MIN}   /* ms: the Delay's length row (modules.ts; engine.c dly_samples sizes its line) */`);
+w(`#define DELAY_LENGTH_MAX ${DELAY_LENGTH_MAX}`);
 w(`static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {${DELAY_DIVS.map((d) => d.num).join(', ')}};`);
 w(`static const uint8_t DELAY_DIV_DEN[DELAY_NDIV] = {${DELAY_DIVS.map((d) => d.den).join(', ')}};`);
 w(`static const char *const DELAY_DIV_NAME[DELAY_NDIV] = {${DELAY_DIVS.map((d) => `"${d.name}"`).join(', ')}};`);
@@ -123,6 +125,12 @@ w('    const int32_t *pstep;   /* Q16.16, 0: none: the editor\'s step (ParamDef.
 w('} def_t;');
 w('/* the most parameter j of def d takes: its stretch past pmax (ptop), else pmax */');
 w('#define DEF_TOP(d, j) ((d)->ptop ? (d)->ptop[j] : (d)->pmax[j])');
+{
+  // the rows set when a patch loads (ParamDef.fixed): no knob, preset, input or edit moves them while it plays
+  const fixed = TYPE_ORDER.flatMap((t) => DEFS[t].params.filter((p) => p.fixed).map((p) => `((t) == T_${up(t)} && (j) == ${up(t)}_P_${up(p.name)})`));
+  w('/* parameter j of type t is set when a patch loads (ParamDef.fixed: a Delay\'s length, its line\'s size), never while it plays */');
+  w(`#define DEF_FIXED(t, j) (${fixed.join(' || ') || '0'})`);
+}
 w();
 const choiceLists = new Map<string, string>();
 for (const t of TYPE_ORDER) {
