@@ -36,7 +36,8 @@
 #define FM1_C1_CLK (*(volatile uint32_t *)0x00010008u)
 #define FM1_C1_T4 (*(volatile uint32_t *)0x10804u)       /* TIMER4, 24 MHz */
 #define FM1_C1_SYNC() __asm__ volatile("csync" ::: "memory")
-#define FM1_C1_RELAX 16u                         /* idle core 1: 16 x 4 nops between two looks at its mailbox (Matryoshka) */
+#define FM1_C1_RELAX 1024u                       /* idle core 1: 1,024 x 4 nops (about 12 us at 360 MHz) between two looks at its
+                                                 * mailbox; 16 (0.2 us) still cost core 0 3-5 % on the test rig (Matryoshka) */
 
 extern void fm1_c1_entry(void);
 extern uint32_t _c1_ustack[], _c1_ustack_top[], _c1_sstack_top[];   /* app.ld */
