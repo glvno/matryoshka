@@ -239,7 +239,11 @@ static int old_format(int n, char **argv)
             return 1;
         }
         CHECK(eng_load(old, (uint32_t)no) == 0);
-        E.tick_acc = E.ticks = 0;                             /* (the tempo clock runs on across loads: both from 0) */
+        /* (the tempo clock and the idle parts' check phase run on across loads, idle_blk by design, #434: both renders
+         * from 0. Without it the two renders' idle checks fall in different blocks, and a part woken from outside its group,
+         * poly-feedback's shared Delay into each voice's mixer, wakes in another block: #624) */
+        E.tick_acc = E.ticks = 0;
+        E.idle_blk = 0;
         run(a_l, a_r);
         eng_all_notes_off();
         m1_set_current(old, (uint32_t)no);
@@ -251,6 +255,7 @@ static int old_format(int n, char **argv)
         CHECK(m1_valid(m1_cur, m1_cur_len));
         CHECK(eng_load(m1_cur, m1_cur_len) == 0);
         E.tick_acc = E.ticks = 0;
+        E.idle_blk = 0;
         run(b_l, b_r);
         eng_all_notes_off();
         if (memcmp(a_l, b_l, sizeof a_l) || memcmp(a_r, b_r, sizeof a_r)) {
