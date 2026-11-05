@@ -1,6 +1,6 @@
 {
  "version": 2,
- "name": "Verona 1 XL",
+ "name": "Verona Drum 1 XL",
  "modules": [
   {
    "id": 1,
@@ -2982,7 +2982,7 @@
    "x": 3600,
    "y": 20,
    "params": {
-    "level": 0.24
+    "level": 0.2
    }
   },
   {
@@ -5884,8 +5884,8 @@
   {
    "v": 1,
    "id": 9,
-   "name": "Verona 1 XL",
-   "label": "Verona 1 XL",
+   "name": "Verona Drum 1 XL",
+   "label": "Verona Drum 1 XL",
    "x": 20,
    "y": 60,
    "open": false,

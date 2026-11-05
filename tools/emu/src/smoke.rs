@@ -25,7 +25,7 @@
 //! 9. the patch buttons (held / switched) and the SEQ page on the 808 Kit: a step, a track, PLAY, a mute, REC
 //! 10. the Delay's longest time (#273): its echo 700 ms after the note, ping-pong half of it on the left and 700 ms on the right
 //! 11. STEREO (the 1.10 early check): a saw on the Output's l and a sine on its r come out on their own sides of the I2S
-//! 12. Verona 1's hi-hat (the 1.10 early check): black key 6 (closed) pressed while black key 5 (open) is still down cuts
+//! 12. Verona Drum 1's hi-hat (the 1.10 early check): black key 6 (closed) pressed while black key 5 (open) is still down cuts
 //!     the open hat
 //! 13. hardware the emulator does not model: any register besides P33 fails the test
 //!
@@ -539,12 +539,12 @@ fn stereo_sides(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
     Ok(())
 }
 
-/// Verona 1's hi-hat (the 1.10 early check, D-866): stopped, black key 5 (HH OPEN) rings for its DECAY; black key 6 (HH
+/// Verona Drum 1's hi-hat (the 1.10 early check, D-866): stopped, black key 5 (HH OPEN) rings for its DECAY; black key 6 (HH
 /// CLOSE) pressed 20 ms later while black key 5 is still down cuts it (a closed hit dies in 45 ms). Both keys are held for
 /// 300 ms; the peak is read 100..200 ms after the first press (the open hat is still loud there, a closed one is gone).
 fn verona_hats(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
     let Some(slot) = presets.iter().position(|(n, _)| n.starts_with("VERONA") && !n.ends_with(" XL")) else {
-        t.check("verona: the factory Verona 1 is there", false, String::new());
+        t.check("verona: the factory Verona Drum 1 is there", false, String::new());
         return Ok(());
     };
     const OPEN: u8 = 24; // D#4, black key 5
@@ -554,7 +554,7 @@ fn verona_hats(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, 
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     m.midi(&[0xC0, slot as u8], 500)?;
-    t.screen(&m, "verona: Verona 1 loads", &presets[slot].0);
+    t.screen(&m, "verona: Verona Drum 1 loads", &presets[slot].0);
     m.run_for(1500)?;
     let tail = |m: &mut Machine, both: bool| -> Result<i32, String> {
         m.key(OPEN, true);

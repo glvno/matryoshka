@@ -82,7 +82,7 @@ static void menu_value(uint32_t row, char *out)
     case MR_MOUT: p = put(p, ONOFF[cfg.midi_out]); break;
     case MR_CLKOUT: p = put(p, ONOFF[cfg.clock_out]); break;
     case MR_QUICK: p = put(p, ONOFF[cfg.quick]); break;
-    case MR_OUTPUT: p = put(p, out_mono ? "MONO" : "STEREO"); break;
+    case MR_OUTPUT: p = put(p, out_mono == 2u ? "MONO L" : out_mono ? "MONO" : "STEREO"); break;
     case MR_VERSION: p = put(p, FELUCCA_VERSION); break;
     case MR_BATT: {                              /* the smoothed reading (0..1023) and the bars it gives (ui.c ui_battery) */
         uint8_t s = batt_shown();
@@ -263,7 +263,11 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
     case MR_MOUT: cfg.midi_out = (uint8_t)up; break;
     case MR_CLKOUT: cfg.clock_out = (uint8_t)up; break;  /* MIDI clock out with MIDI OUT (#473) */
     case MR_QUICK: cfg.quick = (uint8_t)up; break;  /* the quick start after power-on (D-240, D-247) */
-    case MR_OUTPUT: out_mono = (uint8_t)up; break;  /* STEREO, MONO: (L + R) / 2 on both sides of the analog output (#612) */
+    case MR_OUTPUT: {                                   /* STEREO, MONO (the sum on both sides), MONO L (on the left only), #612 */
+        int32_t v = (int32_t)out_mono + d;
+        out_mono = (uint8_t)(v < 0 ? 0 : v > 2 ? 2 : v);
+        break;
+    }
     case MR_TEMPO:                                      /* GLOBAL, PATCH (D-907): kept 5 s later, without SAVE */
         if ((uint32_t)up != gt_patch) {
             gt_set((uint32_t)up, 0u, fm1_ms);

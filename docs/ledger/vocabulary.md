@@ -36,7 +36,7 @@ A factory engine's one-line description in the owner's wording, kept on the asse
 
 ### Browser-only ability
 
-Something only the browser's engine can do, such as a Delay time past 700 ms. A patch that uses one is over the FM-1 budget, so it is a sandbox patch. `browserOnly` in `web/src/patchbin.ts` lists them.
+Something only the browser's engine can do, such as a Delay time past 700 ms on a morph B side. A patch that uses one is over the FM-1 budget, so it is a sandbox patch. `browserOnly` in `web/src/patchbin.ts` lists them.
 
 ### Budget meter
 
@@ -125,6 +125,10 @@ A module that sends each key to its own row's gate (mapped voicing), as a drum e
 ### Edit binding
 
 Main's K1..K4 are bound to the rows of the page in focus; they edit those rows and are not signals in the patch.
+
+### Effect memory
+
+The FM-1's RAM for the lines of its line-type modules: every Delay, reverb, chorus, string, comb and Granular. It is two areas, about 190 KB together, divided when a patch loads, and a patch fits only when every line does. A Delay's line holds its length. The editor's budget shows how much a patch takes and which module takes what.
 
 ### Emulator view
 

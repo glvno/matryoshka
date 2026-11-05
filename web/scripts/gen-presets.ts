@@ -233,9 +233,15 @@ presets.push(() => {
 
 
 // Meridian 8: the eight channels on the white keys from F3 (as the kits), a gate pattern on the transport (the original
-// needs a sequencer to power it); a held key keeps its channel powered
+// needs a sequencer to power it); a held key keeps its channel powered. Both of the assembly's outputs (the odd and the
+// even channels) go into the Output's l, which plays on both sides: centred, so every channel is heard on both sides and
+// the FM-1's OUTPUT MONO loses nothing (D-919). The cables are the patch's, not the assembly's, so its structure and its
+// presets stay as they are (the XL keeps the two sides).
 presets.push(() => {
   const x = around('Meridian 8', 'Meridian 8');
+  const r = x.a.outputs.find((o) => o.label === 'r')!;
+  x.p.cables = x.p.cables.filter((c) => !(c.to.module === x.out.id && c.to.port === 'r'));
+  wire(x.p, r.module, r.port, x.out.id, 'l');
   sequenced(x, 'PATTERN', {
     1: 'x.....x...x.....',
     2: '....x.......x...',
@@ -635,12 +641,12 @@ for (const [name, asm, chord] of [['Basic Poly', 'basic poly', true], ['Drift Po
     return players(validatePatch(structuredClone(x.p), DEFS));
   });
 
-// Verona 1 (after the Vermona DRM1 MKIV, #613): a drum engine on the transport as every factory kit (D-330): Main's keys
+// Verona Drum 1 (after the Vermona DRM1 MKIV, #613): a drum engine on the transport as every factory kit (D-330): Main's keys
 // into PATTERN, PATTERN's keys into the engine's Drum map. A 16-step pattern (X an accent): closed hats on every eighth, an
 // open hat on the last offbeat, the snare and clap on two and four, the drum and the multi in the gaps. After the last
 // factory patch (D-334); a drum engine gets no Arpeggiator (as Spokes 6).
 after.push(() => {
-  const x = around('Verona 1', 'Verona 1');
+  const x = around('Verona Drum 1', 'Verona Drum 1');
   // the Output's l only (its r then plays the l, as in every engine): one cable fewer for the FM-1's patch bytes
   const out = x.p.modules.find((m) => m.type === 'output')!;
   x.p.cables = x.p.cables.filter((c) => !(c.to.module === out.id && c.to.port === 'r'));

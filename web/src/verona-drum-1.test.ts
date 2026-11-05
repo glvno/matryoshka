@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Verona 1 and Verona 1 XL (#613, after the Vermona DRM1 MKIV; docs/ledger/patches-and-presets.md D-862..D-864): the
+// Verona Drum 1 and Verona Drum 1 XL (#613, after the Vermona DRM1 MKIV; docs/ledger/patches-and-presets.md D-862..D-864): the
 // cards carry the original's knobs per channel, every row sounds its channel, and a closed hi-hat cuts an open one.
 import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
@@ -71,12 +71,12 @@ function playHeld(p: Patch, evs: [number, number, boolean][], ms: number, from =
   return peak;
 }
 
-describe('Verona 1 (#613)', () => {
-  const fm1 = (): Patch => FM1_PRESETS['Verona 1']();
+describe('Verona Drum 1 (#613)', () => {
+  const fm1 = (): Patch => FM1_PRESETS['Verona Drum 1']();
   it('fits the FM-1 and is its last factory patch, with six channels of the original\'s knobs, VOLUME each, and MASTER', () => {
-    expect(Object.keys(FM1_PRESETS).at(-1)).toBe('Verona 1');
+    expect(Object.keys(FM1_PRESETS).at(-1)).toBe('Verona Drum 1');
     expect(deviceBudget(fm1()).fits).toBe(true);
-    const s = sections(fm1(), 'Verona 1');
+    const s = sections(fm1(), 'Verona Drum 1');
     expect([...s.keys()]).toEqual(['kick', 'drum 1', 'multi', 'snare', 'hi hat', 'clap', 'master']);
     const want: Record<string, string[]> = { kick: KNOBS.kick, 'drum 1': KNOBS.drum, multi: KNOBS.multi, snare: KNOBS.snare, 'hi hat': KNOBS.hat, clap: KNOBS.clap.filter((k) => k !== 'noise color') };
     for (const [head, knobs] of Object.entries(want)) expect(s.get(head), head).toEqual([...knobs, 'volume']);
@@ -120,10 +120,10 @@ describe('Verona 1 (#613)', () => {
   });
 });
 
-describe('Verona 1 XL (#613)', () => {
-  const xl = (): Patch => XL_PRESETS['Verona 1 XL']();
+describe('Verona Drum 1 XL (#613)', () => {
+  const xl = (): Patch => XL_PRESETS['Verona Drum 1 XL']();
   it('has all eight channels with every knob, PAN and VOLUME each, MASTER, and the hi-hats\' TRIG switch', () => {
-    const s = sections(xl(), 'Verona 1 XL');
+    const s = sections(xl(), 'Verona Drum 1 XL');
     expect([...s.keys()]).toEqual(['kick', 'drum 1', 'drum 2', 'multi', 'snare', 'hi hat 1', 'hi hat 2', 'clap', 'master']);
     const want: Record<string, string[]> = {
       kick: KNOBS.kick, 'drum 1': KNOBS.drum, 'drum 2': KNOBS.drum, multi: KNOBS.multi, snare: KNOBS.snare,

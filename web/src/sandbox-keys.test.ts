@@ -10,8 +10,8 @@ describe('sandbox keys (D-520 in sandbox mode)', () => {
     expect([0, 2, 4, 6, 7, 26, 27, -1].map(blackKey)).toEqual([-1, -1, -1, -1, -1, -1, -1, -1]);
   });
 
-  it('Verona 1 XL: its keys reach the PATTERN track\'s Drum map, black keys 1..8 its rows, the white keys nothing', () => {
-    const p = XL_PRESETS['Verona 1 XL']();
+  it('Verona Drum 1 XL: its keys reach the PATTERN track\'s Drum map, black keys 1..8 its rows, the white keys nothing', () => {
+    const p = XL_PRESETS['Verona Drum 1 XL']();
     const map = keysDrumMap(p)!;
     expect(map?.names?.[0]).toBe('KICK');
     const rows = Array.from({ length: 8 }, (_, r) => map.params[`n${r + 1}`]);
@@ -29,7 +29,7 @@ describe('sandbox keys (D-520 in sandbox mode)', () => {
   });
 
   it('a note-off ends what its note-on played, a silent key stays silent', () => {
-    const p = XL_PRESETS['Verona 1 XL']();
+    const p = XL_PRESETS['Verona Drum 1 XL']();
     const k = new SandboxKeys();
     const row1 = keysDrumMap(p)!.params.n1;
     expect(k.route({ t: 'on', note: 54, vel: 0.8 }, p, [], 0)).toEqual([{ t: 'on', note: row1, vel: 0.8 }]);

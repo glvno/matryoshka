@@ -66,7 +66,7 @@ import { inlineWordmarks } from './brand';
 import { clipText, parseClip, type Clip } from './clipboard';
 import { isGlobalTempo, patchTempo, readTempo, tempo, TEMPO_KEY, tempoNow } from './tempo';
 import { addableModules, assemblyShelves, openableByValue, openableGroups } from './catalog';
-import { binaryPage, browserOnly, deviceBudget, editorPage, encodePatch, overText, POLY_ROW, POLY_ROW_PARAMS, toQ16 } from './patchbin';
+import { binaryPage, deviceBudget, editorPage, encodePatch, kb, linesAdvice, overText, POLY_ROW, POLY_ROW_PARAMS, toQ16 } from './patchbin';
 import { UploadGate } from './upload-gate';
 import { ALLOC, deviceView } from './poly';
 import { AboutCard } from './about';
@@ -793,10 +793,18 @@ const editor = new Editor($('canvas'), firstPatch, {
       queueEmu();
       return;
     }
-    // a parameter with a browser-only stretch (the Delay's time past 700 ms) can take the patch over the FM-1 budget or
-    // back under it: the budget first, so Live pauses before the value would go out (and sends the patch again once it fits)
+    // a parameter set when the patch loads (ParamDef.fixed: a Delay's length, the size of its line) changes the effect
+    // memory: the budget again, and the FM-1 takes the whole patch again (it sizes the lines as it loads)
     const pd = DEFS[editor.patch.modules.find((m) => m.id === id)?.type ?? '']?.params.find((q) => q.name === name);
-    if (pd?.browserMax !== undefined && (browserOnly(editor.patch).length > 0) === fitsDevice) {
+    if (pd?.fixed) {
+      showBudget();
+      if (live() && !fromDevice) queueUpload();
+      queueEmu();
+      return;
+    }
+    // a parameter with a browser-only stretch (ParamDef.browserMax; none today) can take the patch over the FM-1 budget or
+    // back under it: the budget first, so Live pauses before the value would go out (and sends the patch again once it fits)
+    if (pd?.browserMax !== undefined) {
       const was = fitsDevice;
       showBudget();
       if (!was && fitsDevice && live() && !fromDevice) queueUpload();
@@ -1169,9 +1177,23 @@ function showBudget(): void {
     line.addEventListener('click', () => editor.reveal(mod.id));
     return line;
   });
+  // the effect memory: the total, then each line-type module's share (a click selects it), largest first
+  const lineLines = (): HTMLElement[] => {
+    const lb = b.lines;
+    const top = budgetLine('Effect memory', lb.fits ? lb.used / lb.max : Math.max(1.01, lb.used / lb.max), `${kb(lb.used)} / ${kb(lb.max)} KB`,
+      lb.fits ? 'The lines of the Delays, reverbs, choruses, strings, combs and the Granular, in the FM-1\'s two line areas. A Delay takes its length; ping-pong: half per side' : linesAdvice(editor.patch));
+    return [top, ...[...lb.modules].sort((x, y) => y.bytes - x.bytes).map((u) => {
+      const mod = editor.patch.modules.find((x) => x.id === u.id);
+      const name = moduleName(u.type, DEFS[u.type].label) + (mod?.name ? ` ${mod.name}` : '') + (u.copies > 1 ? ` ×${u.copies}` : '');
+      const line = budgetLine(`\u2003${name}`, u.bytes / lb.max, `${kb(u.bytes)} KB`, 'Select it', false);
+      line.classList.add('pick');
+      if (mod) line.addEventListener('click', () => editor.reveal(mod.id));
+      return line;
+    })];
+  };
   list.replaceChildren(
     head('Memory'),
-    ...b.items.filter((i) => i.used > 0).map((i) => budgetLine(i.label, i.used / i.max, `${i.used} / ${i.max}`, '', i.max > 1)),
+    ...b.items.filter((i) => i.used > 0).flatMap((i) => (i.key === 'lines' ? lineLines() : [budgetLine(i.label, i.used / i.max, `${i.used} / ${i.max}`, '', i.max > 1)])),
     head('CPU, estimated'),
     ...costly,
     ...(b.over.some((i) => i.key === 'browser') ? [head('Browser only'), ...b.over.filter((i) => i.key === 'browser').map((i) => budgetLine(i.label, 1.01, 'over', '', false))] : []),
@@ -1815,7 +1837,7 @@ function emuLoad(): void {
   // a patch over the budget still loads here (the emulator has the firmware's tables, not its timing): a notice says so
   // and the view stays usable; past the tables themselves the firmware refuses it and the last patch stays
   const b = deviceBudget(editor.patch);
-  const over = b.over.map((i) => i.key === 'cpu' || i.key === 'browser' ? overText(i) : `${i.used} ${i.label} (the FM-1 holds ${i.max})`).join(', ');
+  const over = b.over.map((i) => i.key === 'cpu' || i.key === 'browser' ? overText(i) : i.key === 'lines' ? linesAdvice(editor.patch) : `${i.used} ${i.label} (the FM-1 holds ${i.max})`).join(', ');
   let err = 0;
   try {
     err = ui.load(encodePatch(editor.patch, true), editor.patch.name.toUpperCase(), { fresh: emuFresh });

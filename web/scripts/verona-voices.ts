@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Verona 1's voices (#613), after the instrument channels of the Vermona DRM1 MKIV (its user manual, "The instrument
+// Verona Drum 1's voices (#613), after the instrument channels of the Vermona DRM1 MKIV (its user manual, "The instrument
 // channels of the DRM1 MKIV", pages 11 to 18: vermona.com, drm1mk4_manual_web_en.pdf). One function per channel, each the
 // channel's own signal flow with one row per knob, named as the panel names it. gen-assemblies.ts builds the FM-1 engine
-// from them (six channels, one shared noise source) and scripts/xl/verona-1.ts the XL (all eight, each with its own noise,
+// from them (six channels, one shared noise source) and scripts/xl/verona-drum-1.ts the XL (all eight, each with its own noise,
 // pan and the second hi-hat notes). Both builders have `add`, `wire` and `module`, which is all a voice needs.
 //
 // What each knob does, after the manual:

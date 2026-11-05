@@ -371,7 +371,9 @@ describe('binary patch format', () => {
     const two = subtractiveSaw();
     const out2 = two.modules.find((m) => m.type === 'output')!;
     for (let i = 0; i < 2; i++) connect(two, DEFS, { module: addModule(two, DEFS.reverb, 0, 0).id, port: 'out' }, { module: out2.id, port: 'l' });
-    expect(deviceBudget(two).over.map((i) => i.key)).toEqual(['reverbs']);
+    expect(deviceBudget(two).fits).toBe(true);   // (two reverbs: the effect memory holds them, D-375)
+    for (let i = 0; i < 12; i++) connect(two, DEFS, { module: addModule(two, DEFS.reverb, 0, 0).id, port: 'out' }, { module: out2.id, port: 'l' });
+    expect(deviceBudget(two).over.map((i) => i.key)).toContain('lines');
   });
 });
 
@@ -396,5 +398,13 @@ describe('the budget counts what the FM-1 receives', () => {
       const kept = engines.reduce((n, d) => n + NAME_MAX - deviceText(assemblyById(p, d.asm!)!.preset ?? '').length, 0);
       expect(used, name).toBe(encodePatch(p).length + kept);
     }
+  });
+});
+
+describe('a name on the FM-1\'s screen (deviceText)', () => {
+  it('keeps a long name\'s closing number, without the space before it (D-862)', () => {
+    expect(deviceText('Verona Drum 1')).toBe('Verona Drum1');
+    expect(deviceText('Cassia 1')).toBe('Cassia 1');
+    expect(deviceText('supersaw stack')).toBe('supersaw sta');
   });
 });

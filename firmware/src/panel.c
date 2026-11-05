@@ -868,6 +868,9 @@ static void panel_edges(uint32_t p, uint32_t rel)
     }
     if (page == PAGE_MENU)                          /* the menu: OCT- / OCT+ do nothing there (#395) */
         oct_rel = 0;
+    if (page == PAGE_SEQ && !sr_on && (((p >> BTN_LFO & 1u) && (panel_held >> BTN_ACC & 1u))
+                                       || ((p >> BTN_ACC & 1u) && (panel_held >> BTN_LFO & 1u))))
+        seq_row_drone();                            /* LFO + FX, outside step record: the selected row a drone (#384, D-819) */
     if (page == PAGE_SEQ && seq_kbd()) {            /* the armed track's keyboard (a live take): OCT the octave, FX and LFO are the
                                                      * page's */
         p &= ~((1u << BTN_ACC) | (1u << BTN_LFO));
