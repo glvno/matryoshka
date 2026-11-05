@@ -590,6 +590,45 @@ static void seq_roll_tie(int mod, uint32_t k, uint32_t note)
     (void)eng_steps_set_notes((uint32_t)mod, w, (uint32_t)nn);
 }
 
+/* LFO + FX with no step held, outside step record (#384, D-819: the owner's ruling of 2026-11-04): the selected row's
+ * first note becomes a drone, the row's other notes go (DRONE); a row that is one drone already is an ordinary one-step
+ * note on that step again (DRONE OFF); a row without notes: NOTHING TO DRONE (track.ts droneRow) */
+static void seq_row_drone(void)
+{
+    uint32_t w[TRACK_NOTES_MAX], note;
+    const uint32_t *ws;
+    int mod = seq_module(), i, m, nn, first = -1, count = 0;
+    if (mod < 0 || seq_held >= 0)
+        return;
+    note = seq_grid_note(seq_map(), seq_row);
+    nn = eng_steps_notes((uint32_t)mod, &ws);
+    for (i = 0; i < nn; i++)
+        if (((ws[i] >> 12) & 127u) == note) {
+            count++;
+            if (first < 0 || (ws[i] & 63u) < (ws[first] & 63u))
+                first = i;
+        }
+    if (first < 0) {
+        seq_msg_due = "NOTHING TO DRONE";
+        return;
+    }
+    for (i = m = 0; i < nn; i++)
+        if (i == first) {
+            uint32_t x = ws[i];
+            if (count == 1 && eng_note_drone(x)) {
+                w[m++] = x & ~(ENG_NOTE_WRAP | 63u << 6);
+                seq_msg_due = "DRONE OFF";
+            } else {
+                w[m++] = x | ENG_NOTE_WRAP | 63u << 6;
+                seq_msg_due = "DRONE";
+            }
+        } else if (((ws[i] >> 12) & 127u) != note)
+            w[m++] = ws[i];
+    (void)eng_steps_set_notes((uint32_t)mod, w, (uint32_t)m);
+    seq_sync(mod);
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+}
+
 /* SEL held + a key on the roll (#241): the pen. The selected row is that key's pitch (the keys' octave; off screen: the
  * view shows its fixed page, D-809), and the pitch sounds */
 static void seq_pen(int mod, uint32_t n)

@@ -1076,6 +1076,43 @@ async function main() {
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
     },
+    // #384, the owner's ruling of 2026-11-04: LFO + FX with no step held makes the selected row one drone: its first note
+    // held for as long as the pattern plays, the row's other notes gone; again an ordinary one-step note. On 8 Lire's grid,
+    // three hits on row 1 (steps 2, 5, 9); heard holding over a pass and its loop point
+    async rowDrone() {
+      await check('row drone: 8 Lire opens, synced', await openSynced('8 Lire'));
+      await check('row drone: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
+      await emu.tap(BLACK[0]);
+      for (const k of [1, 4, 8]) await emu.tap(WHITE[k]);
+      let ns = await notesUntil((x) => x.length === 3);
+      const note = ns[0]?.note;
+      await check('row drone: three hits on row 1', ns.length === 3, fmt(ns));
+      await emu.key(B.lfo, true);
+      await emu.elapse(150);
+      await emu.tap(B.fx);
+      const said = await emu.waitText('DRONE', 1500);
+      await emu.key(B.lfo, false);
+      await emu.elapse(300);
+      ns = await notesUntil((x) => x.length === 1 && x[0].wrap === true);
+      await check('row drone: LFO + FX: the row one drone on its first hit (step 2), the other hits gone (DRONE)',
+        said && ns.length === 1 && noteAt(ns, 1, note)?.wrap === true && noteAt(ns, 1, note)?.len === 64, fmt(ns));
+      const w = await passProfile(), all = w.filter((x) => !x[2]).map((x) => x[1]);
+      const top = all.length ? Math.max(...all) : 0, v = all.slice(Math.max(0, all.findIndex((x) => x >= 0.8 * top)));
+      const low = v.length ? Math.min(...v) : 0;
+      console.log(`  row drone peaks per 25 ms: ${prof(w)}`);
+      await loudCheck(`row drone: it holds through the loop point (every window after its attack keeps 80 % and more, above ${QUIET})`, top,
+        top > LOUD && low >= 0.8 * top && low > QUIET, `peak ${top}, lowest ${low}`);
+      await emu.key(B.fx, true);
+      await emu.elapse(150);
+      await emu.tap(B.lfo);
+      const off = await emu.waitText('DRONE OFF', 1500);
+      await emu.key(B.fx, false);
+      await emu.elapse(300);
+      ns = await notesUntil((x) => x.length === 1 && !x[0].wrap && x[0].len === 1);
+      await check('row drone: FX + LFO again: an ordinary one-step hit on step 2 (DRONE OFF)', off && ns.length === 1 && noteAt(ns, 1, note)?.len === 1, fmt(ns));
+      await emu.tap(B.seq, 120);
+      await emu.waitOwnPage(3000);
+    },
     // #532: step record on the roll (Silver Box's PATTERN), read back through the link (TRACK_NOW: the editor's copy): REC
     // held + step 1's white key starts it (the owner, 2026-11-02, D-804); a chord, two of its keys let go, LFO ties the one
     // still held onto step 2, a key added there, a rest, a note, then black key 10 clears the last one. Relative to the

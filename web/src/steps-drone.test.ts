@@ -5,7 +5,7 @@ import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type ModuleInst } from './patch';
 import { encodePatch, formatOf, FORMAT_1_10 } from './patchbin';
-import { cutBefore, endOn, fixNotes, isDrone, isShortNote, noteThrough, noteWord, setStep, STEPS_MAX, stepView, wordNote, type StepNote } from './track';
+import { cutBefore, droneRow, endOn, fixNotes, isDrone, isShortNote, noteThrough, noteWord, setStep, STEPS_MAX, stepView, wordNote, type StepNote } from './track';
 
 const SR = 48000, STEP = 6000;
 const n = (at: number, len: number, note = 60, wrap = false): StepNote => ({ at, len, note, vel: 100, ...(wrap ? { wrap: true } : {}) });
@@ -135,5 +135,34 @@ describe('the binary (format 50)', () => {
     expect(formatOf(w)).toBe(FORMAT_1_10);
     expect(encodePatch(w)[1]).toBe(FORMAT_1_10);
     expect(w.modules.find((m) => m.type === 'steps')!.notes).toEqual([n(0, STEPS_MAX, 60, true)]);
+  });
+});
+
+describe('the row drone and the live-record drone (#384, the owner rulings of 2026-11-04)', () => {
+  it('a row becomes one drone: its first note, the other notes of the row gone; again: one step; an empty row: nothing', () => {
+    const t = [n(2, 1, 60), n(6, 2, 60), n(9, 1, 60), n(4, 1, 64)];
+    const r = droneRow(t, 60)!;
+    expect(r.say).toBe('DRONE');
+    expect(r.notes).toEqual([n(2, STEPS_MAX, 60, true), n(4, 1, 64)]);
+    const back = droneRow(r.notes, 60)!;
+    expect(back.say).toBe('DRONE OFF');
+    expect(back.notes).toEqual([n(2, 1, 60), n(4, 1, 64)]);
+    expect(droneRow(t, 50)).toBeUndefined();
+  });
+
+  it('live record: a note held round the loop back to where it started becomes a drone; a shorter one stays a note', () => {
+    for (const [held, drone] of [[4.2, true], [5.5, true], [2.6, false]] as const) {
+      const { e, st } = rig([]);
+      e.arm(st.id);
+      e.setRec(st.id, true);
+      play(e, 1000);
+      e.noteOn(67, 1);
+      play(e, Math.round(STEP * held));
+      e.noteOff(67);
+      play(e, 256);
+      const rec = e.takeRecorded();
+      expect(rec).toHaveLength(1);
+      expect(isDrone(rec[0].note), `held ${held} steps`).toBe(drone);
+    }
   });
 });

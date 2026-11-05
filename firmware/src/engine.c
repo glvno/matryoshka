@@ -6183,13 +6183,15 @@ static void steps_thru_off(uint32_t t, uint32_t node, const inst_t *it, uint32_t
             rin_t x = E.rin[j];
             int32_t sl = it->s.stp.slen, len = x.t > 0 && sl > 0 ? (int32_t)((x.t + sl / 2) / sl) : 1;
             uint8_t h = took_head;
+            /* held round the loop back to where it started, or beyond: a drone (#384, D-819; modules.ts) */
+            int drone = len >= steps_cycle(steps_len(it, t), clampi(round_q16(EF(it, STEPS_P_DIR)), 0, 3));
             len = clampi(len, 1, TRACK_STEPS);
             for (; j + 1u < E.nrin; j++)
                 E.rin[j] = E.rin[j + 1u];
             E.nrin--;
             if ((uint8_t)(h - took_tail) < ENG_TOOK) {
                 took_ring[h % ENG_TOOK][0] = node;
-                took_ring[h % ENG_TOOK][1] = NW(x.at, (uint32_t)len, note, x.vel, 0u);
+                took_ring[h % ENG_TOOK][1] = drone ? NW(x.at, TRACK_STEPS, note, x.vel, 0u) | ENG_NOTE_WRAP : NW(x.at, (uint32_t)len, note, x.vel, 0u);
                 took_head = (uint8_t)(h + 1u);
             }
             break;

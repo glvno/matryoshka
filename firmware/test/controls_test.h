@@ -130,6 +130,7 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_PATTERN: return a->pattern != b->pattern;
     case CE_ACCENT: case CE_TAKE_ACCENT: return a->acc_n != b->acc_n;
     case CE_TIE: return a->len_sum != b->len_sum;
+    case CE_DRONE: return a->notes_sum != b->notes_sum || a->msg_sum != b->msg_sum;   /* (an empty row: NOTHING TO DRONE) */
     case CE_STEP_RECORD: return a->sr_on && !b->sr_on;
     case CE_STEP_RECORD_AT: return a->sr_on && !b->sr_on && a->sr_k == (uint32_t)CT_STEP;
     case CE_VELOCITY: return same_notes && a->vel_sum != b->vel_sum;
