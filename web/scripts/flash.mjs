@@ -7,12 +7,13 @@
 //   npm run flash -- --info             print the connected FM-1's identity, install nothing
 // --no-smoke skips the smoke test; --port NAME, --force and --yes go to fm1_install.py, which asks before it writes unless
 // --yes (a shell with no prompt, such as Claude Code's `!`, answers no).
-// fm1_install.py needs mido + python-rtmidi: build/venv (made with uv on the first run when it is missing).
+// fm1_install.py needs mido + python-rtmidi: build/venv (this checkout's, else the main checkout's for a git worktree;
+// made with uv on the first run when neither is there).
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { isMatryoshkaProduct, productOf } from '../src/flasher/fm1pkg.js';
-import { REPO, ROOT, download, findBuild, smoke, smokeState } from './branch-firmware.mjs';
+import { REPO, ROOT, download, findBuild, smoke, smokeState, venvPython } from './branch-firmware.mjs';
 
 const VENV = join(ROOT, 'build/venv');
 const PY = join(VENV, 'bin/python');
@@ -39,8 +40,9 @@ const given = args.find((a) => !a.startsWith('--') && !taken.has(a));
 
 /** a Python with mido + python-rtmidi */
 function python() {
-  const ok = () => existsSync(PY) && spawnSync(PY, ['-c', 'import mido, rtmidi'], { stdio: 'ignore' }).status === 0;
-  if (ok()) return PY;
+  const ok = (py = PY) => existsSync(py) && spawnSync(py, ['-c', 'import mido, rtmidi'], { stdio: 'ignore' }).status === 0;
+  const found = venvPython();
+  if (found && ok(found)) return found;
   console.log('setting up build/venv (mido, python-rtmidi) with uv');
   // (homebrew's python3: uv's own pick can ask for another version)
   const base = existsSync('/opt/homebrew/bin/python3') ? ['-p', '/opt/homebrew/bin/python3'] : [];

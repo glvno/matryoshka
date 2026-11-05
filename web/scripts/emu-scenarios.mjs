@@ -28,7 +28,7 @@ import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
-import { boot, download, downloadEmuMidi, smoke, smokeState } from './branch-firmware.mjs';
+import { boot, download, downloadEmuMidi, smoke, smokeState, venvPython } from './branch-firmware.mjs';
 import { DEV_ENV, fm1Label, loadRig, pickRig, rigPage, survey } from './rig-link.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -353,7 +353,8 @@ const until = async (f, ms = 3000) => {
   return f();
 };
 
-const PY = join(ROOT, 'build/venv/bin/python');   // fm1_install.py's (mido + python-rtmidi; npm run flash -- --info sets it up)
+// fm1_install.py's Python (mido + python-rtmidi): build/venv, this checkout's or the main checkout's (npm run flash -- --info sets it up)
+const NO_VENV = 'build/venv is missing (here and in the main checkout): run npm run flash -- --info once (it sets it up)';
 
 async function launch(url) {
   const browser = await chromium.launch({ channel: 'chrome', headless: !flag('--headed'), args: ['--autoplay-policy=no-user-gesture-required'] });
@@ -384,8 +385,9 @@ async function installOnRig(run, url) {
   }
   // the gate's own emulator ("FM-1 (emu …)") can outlive its run by a moment: wait for its port to go, so it is not counted as
   // a second FM-1 (the first try on the owner's rig was refused for it); a real second FM-1 still refuses the install below
+  const PY = venvPython();
+  if (!PY) throw new Error(NO_VENV);
   const emuPorts = () => spawnSync(PY, ['-c', 'import mido; print(sum("(emu " in n for n in mido.get_input_names()))'], { encoding: 'utf8' }).stdout.trim();
-  if (!existsSync(PY)) throw new Error('build/venv is missing: run npm run flash -- --info once (it sets it up)');
   for (let t = Date.now(); emuPorts() !== '0' && Date.now() - t < 15000; ) await sleep(500);
   const { browser, context } = await launch(url);
   try {
@@ -395,7 +397,6 @@ async function installOnRig(run, url) {
   } finally {
     await browser.close();
   }
-  if (!existsSync(PY)) throw new Error('build/venv is missing: run npm run flash -- --info once (it sets it up)');
   console.log(`installing ${join(dir, 'matryoshka.fwsc')} on the rig`);
   if (spawnSync(PY, [join(ROOT, 'tools/fm1_install.py'), join(dir, 'matryoshka.fwsc'), '--yes'], { cwd: ROOT, stdio: 'inherit' }).status !== 0)
     throw new Error('fm1_install.py failed (the rig stays in update mode until an install finishes: run it again)');

@@ -5,7 +5,7 @@
 // tested there once (emu:smoke, its result kept next to it). Used by `npm run flash` and the dev server's Flash tab
 // (dev/branch-firmware.ts), which install on any FM-1 and so take only emu:smoke, and by `npm run device:scenarios --
 // --install RUN`, the test rig's install, which may take the boot check instead (--gate boot, D-123).
-import { execFile, spawn } from 'node:child_process';
+import { execFile, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, createWriteStream } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +13,21 @@ import { fileURLToPath } from 'node:url';
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 export const REPO = 'glvno/matryoshka';
 const SOURCES = ['firmware', 'tools/build.py'];
+
+/** build/venv, the Python with mido + python-rtmidi that tools/fm1_install.py and tools/m1_link.py need: this checkout's,
+ *  else (a fresh git worktree has none) the main checkout's, found through `git rev-parse --git-common-dir`; undefined
+ *  when neither exists. Says in one line when it takes the main checkout's. */
+export function venvPython() {
+  const own = join(ROOT, 'build/venv/bin/python');
+  if (existsSync(own)) return own;
+  const r = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: ROOT, encoding: 'utf8' });
+  const main = r.status === 0 ? join(dirname(r.stdout.trim()), 'build/venv/bin/python') : undefined;
+  if (main && main !== own && existsSync(main)) {
+    console.log(`using the main checkout's venv: ${dirname(dirname(main))}`);
+    return main;
+  }
+  return undefined;
+}
 
 const run = (cmd, args) => new Promise((ok) => {
   execFile(cmd, args, { cwd: ROOT, maxBuffer: 16 << 20 }, (err, stdout) => ok({ code: err ? (typeof err.code === 'number' ? err.code : 1) : 0, out: String(stdout).trim() }));
