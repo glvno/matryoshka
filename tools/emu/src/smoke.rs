@@ -21,7 +21,8 @@
 //!    and ENV from it (the environment, HOME back to the tab, D-249); OCT- +
 //!    OCT+ held at power-on and MENU > SYSTEM > UPDATE MODE (K1, then GLO held) = update mode (no engine)
 //!    then the bank's power-loss rules and the first boot's factory bank; an update that changed a factory patch but not
-//!    the format (#441): the untouched slot gets today's patch, an edited one and today's stay, once
+//!    the format (#441): the untouched slot gets today's patch, an edited one and today's stay, once; a factory patch
+//!    new since the bank's factory set goes into its own slot, else the first empty one, said once (#630)
 //! 9. the patch buttons (held / switched) and the SEQ page on the 808 Kit: a step, a track, PLAY, a mute, REC
 //! 10. the Delay's longest time (#273): its echo 700 ms after the note, ping-pong half of it on the left and 700 ms on the right
 //! 11. STEREO (the 1.10 early check): a saw on the Output's l and a sine on its r come out on their own sides of the I2S
@@ -400,8 +401,10 @@ fn bank_record(f: &[u8], id: u32) -> Option<(u32, Vec<u8>)> {
 
 /// After an update that changed a factory patch but not the format (#441): a bank from 1.6.0 (a 12-byte settings record
 /// at today's format, no factory set) with slot 0 an earlier factory Drift Poly (untouched), slot 1 an edited copy of
-/// it and slot 2 today's Init. The boot rewrites slot 0 with today's Drift Poly and says FACTORY PATCHES UPDATED,
-/// leaves slots 1 and 2 alone and stores the factory set (settings bytes 13..15); the next boot rewrites nothing.
+/// it and slot 2 today's Init. The boot rewrites slot 0 with today's Drift Poly, leaves slots 1 and 2 alone and stores
+/// the factory set (settings bytes 13..15); the factory patches 1.6.0 did not have (#630: Basic Poly, Mono Lead, Supersaw
+/// Stack, Verona Drum 1; Drift Poly is there by name) go into their own empty slots, and the bar says so (over FACTORY
+/// PATCHES UPDATED); the next boot rewrites and adds nothing.
 fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
     let old = std::fs::read("build/emu/old-drift-poly.m1p").map_err(|e| format!("build/emu/old-drift-poly.m1p: {e} (run web/scripts/emu-patches.ts)"))?;
     let today = |name: &str| presets.iter().find(|p| p.0 == name).map(|p| p.1.clone()).ok_or(format!("no factory {name}"));
@@ -421,8 +424,8 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
     put(&mut flash, 0xA3000, record(64, 4, "", &[1, 2, 8, 0, 1, 0, 0, 0, 0, 1, version, 0], false));
     let mut m = Machine::boot(app, Some(&flash));
     quick_start(&mut m, 9000)?;
-    let said = wait_text(&mut m, "FACTORY PATCHES UPDATED", 1000)?;
-    t.check("upgrade: a same-format factory change says FACTORY PATCHES UPDATED", said, String::new());
+    let said = wait_text(&mut m, "4 NEW PATCHES ADDED", 1000)?;
+    t.check("upgrade: the patches new since 1.6.0 are added, said once (#630)", said, String::new());
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     t.screen(&m, "upgrade: boot opens the settings record's slot", "INIT");
@@ -434,14 +437,72 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
     t.check("upgrade: the edited copy stays as it is", s1 == (2, edited.clone()), format!("sequence {}", s1.0));
     let s2 = bank_record(&f, 2).ok_or("slot 2 gone")?;
     t.check("upgrade: a slot holding today's patch is not rewritten", s2 == (3, init.clone()), format!("sequence {}", s2.0));
+    let added = ["BASIC POLY", "MONO LEAD", "SUPERSAW STACK", "VERONA DRUM 1"].iter().all(|n| {
+        let i = presets.iter().position(|p| p.0 == *n);
+        i.is_some_and(|i| bank_record(&f, i as u32).is_some_and(|r| r.1 == presets[i].1))
+    });
+    t.check("upgrade: Basic Poly, Mono Lead, Supersaw Stack, Verona Drum 1 in their own slots", added, String::new());
+    t.check("upgrade: Drift Poly (there by name) is not added again", bank_record(&f, 26).is_none(), String::new());
     let set = bank_record(&f, 64).ok_or("settings gone")?.1;
     let got = if set.len() >= 16 { set[13] as u32 | (set[14] as u32) << 8 | (set[15] as u32) << 16 } else { 0 };
     t.check("upgrade: the settings record keeps the factory set (16 bytes, 13..15)", set.len() == 16 && got == set_id && set[1] == 2, format!("{} bytes, set {got:06x}, FACTORY_SET_ID {set_id:06x}", set.len()));
     let mut m = Machine::boot(app, Some(&f));
     quick_start(&mut m, 9000)?;
-    let again = wait_text(&mut m, "FACTORY PATCHES UPDATED", 2500)?;
+    let again = wait_text(&mut m, "NEW PATCHES ADDED", 2500)? || wait_text(&mut m, "FACTORY PATCHES UPDATED", 10)?;
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     t.check("upgrade: the next boot rewrites nothing", !again && m.flash() == f, String::new());
+    *emulated += m.ms();
+    Ok(())
+}
+
+/// A factory patch new in this firmware (#630): a bank from 1.9.1 (its factory set in the settings record) with slots 0..2
+/// holds the first three factory patches. The boot puts Verona Drum 1 (factory index 29) into its own slot, the FM-1's 30,
+/// says NEW: 30. VERONA DRUM 1 once, and the slot loads it; the next boot adds nothing. With a patch of the owner's in
+/// slot 29, it goes into the first empty slot (the FM-1's 4) and slot 29 stays as it is.
+fn new_patch(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
+    let version: u8 = include_str!("../../../firmware/src/engine.h").split("#define ENG_PATCH_VERSION ").nth(1).and_then(|s| s.split_whitespace().next()?.parse().ok()).ok_or("ENG_PATCH_VERSION")?;
+    let v = presets.iter().position(|p| p.0 == "VERONA DRUM 1").ok_or("no factory VERONA DRUM 1")?;
+    let put = |f: &mut Vec<u8>, at: usize, s: Vec<u8>| f[at..at + 0x1000].copy_from_slice(&s);
+    let bank = |own_taken: bool| {
+        let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
+        for i in 0..3usize {
+            put(&mut flash, 0xA0000 + i * 0x1000, record(i as u32, 1 + i as u32, &presets[i].0, &presets[i].1, false));
+        }
+        if own_taken {
+            put(&mut flash, 0xA3000, record(v as u32, 4, "MY PATCH", &presets[1].1, false));
+        }
+        // 1.9.1's settings record: slot 0, octave 0, today's format, module 0, count-in off, factory set b9a4a8
+        put(&mut flash, 0xA4000, record(64, 5, "", &[1, 0, 8, 0, 1, 0, 0, 0, 0, 1, version, 0, 0, 0xa8, 0xa4, 0xb9], false));
+        flash
+    };
+    let mut m = Machine::boot(app, Some(&bank(false)));
+    quick_start(&mut m, 9000)?;
+    let said = wait_text(&mut m, "NEW: 30. VERONA DRUM 1", 1000)?;
+    t.check("new patch: a bank from 1.9.1 gets Verona Drum 1, said once (NEW: 30. VERONA DRUM 1)", said, String::new());
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    m.run_for(2500)?;
+    let f = m.flash();
+    let s = bank_record(&f, v as u32);
+    t.check("new patch: in its own slot (29, the FM-1's 30), today's bytes", s.as_ref().is_some_and(|r| r.1 == presets[v].1), String::new());
+    t.check("new patch: slots 0..2 untouched, none other added", (0..3u32).all(|i| bank_record(&f, i).is_some_and(|r| r.0 == 1 + i)) && (3..64u32).filter(|&i| i != v as u32).all(|i| bank_record(&f, i).is_none()), String::new());
+    m.midi(&[0xC0, v as u8], 500)?;
+    t.screen(&m, "new patch: slot 30 loads Verona Drum 1", "VERONA DRUM 1");
+    *emulated += m.ms();
+    let mut m = Machine::boot(app, Some(&f));
+    quick_start(&mut m, 9000)?;
+    let again = wait_text(&mut m, "VERONA DRUM 1", 2500)?;
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    t.check("new patch: the next boot adds and says nothing", !again && m.flash() == f, String::new());
+    *emulated += m.ms();
+
+    let mut m = Machine::boot(app, Some(&bank(true)));
+    quick_start(&mut m, 9000)?;
+    let said = wait_text(&mut m, "NEW: 4. VERONA DRUM 1", 1000)?;
+    t.check("new patch: its own slot taken: the first empty one, said (NEW: 4. VERONA DRUM 1)", said, String::new());
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    let f = m.flash();
+    t.check("new patch: the owner's slot 29 stays as it is", bank_record(&f, v as u32).is_some_and(|r| r.0 == 4 && r.1 == presets[1].1), String::new());
+    t.check("new patch: Verona Drum 1 in slot 3", bank_record(&f, 3).is_some_and(|r| r.1 == presets[v].1), String::new());
     *emulated += m.ms();
     Ok(())
 }
@@ -1286,6 +1347,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     safety(app, t, emulated, &presets)?;
     store(app, t, emulated, &presets)?;
     upgrade(app, t, emulated, &presets)?;
+    new_patch(app, t, emulated, &presets)?;
     panel(app, t, emulated)?;
     seq(app, t, emulated, &presets)?;
     count_in(app, t, emulated)?;

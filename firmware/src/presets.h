@@ -269,6 +269,16 @@ static const struct { uint32_t fnv; uint16_t len; uint8_t now; } LEGACY_FACTORY[
     {0xfe109631u, 1573, 9}, {0xfe7f0cd8u, 348, 3}, {0xff4af862u, 1147, 7}, {0xffde33d8u, 2959, 21},
 };
 
+/* the factory sets released firmwares wrote (web/scripts/released-factory.json): the set id (0: a firmware from before
+   the id, 1.6.0 and older) and which of today's patches it had by name (bit n: PRESET_LIST[n]) */
+#define N_RELEASED_SETS 4
+static const struct { uint32_t set; uint64_t has; } RELEASED_SETS[N_RELEASED_SETS] = {
+    {0x000000u, 0x1ffffffull},   /* v1.0.0 .. v1.6.0 */
+    {0x09c6ebu, 0x1fffffffull},   /* v1.7.0 .. v1.8.1 */
+    {0xb9a4a8u, 0x1fffffffull},   /* v1.9.1 */
+    {0xec32dbu, 0x1fffffffull},   /* v1.8.2 .. v1.9.0 */
+};
+
 /* the factory engines' presets (web/src/factory-presets.ts): structure, name, values (Q16, canonical row order) */
 static const int32_t FPV_0[59] = {-1441792,458752,-983040,0,58982,196608,1311,78643,131072,39322,163840,29491,22938,65536,21626880,262144,-196608,0,-983040,-393216,98304,45875,39322,163840,1311,78643,-1441792,0,-196608,262144,655,39322,0,65536,0,0,0,0,0,655,39322,-655360,0,131072,0,0,58982,196608,0,131072,45875,0,65536,0,0,0,131072,0,124518};
 static const int32_t FPV_1[59] = {-1114112,262144,-786432,-196608,32768,229376,19661,163840,98304,26214,196608,26214,19661,65536,27525120,458752,-196608,0,-524288,-393216,78643,51118,26214,196608,19661,163840,-1572864,0,0,262144,19661,163840,0,65536,0,0,0,262144,-262144,19661,163840,-327680,327680,98304,0,0,32768,229376,0,98304,45875,0,65536,0,0,0,98304,0,124518};

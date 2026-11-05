@@ -220,6 +220,19 @@ P.push('};', '');
   for (let i = 0; i < rows.length; i += 4) P.push('    ' + rows.slice(i, i + 4).map((x) => `{0x${x.fnv}u, ${x.len}, ${now.get(x.name)}}`).join(', ') + ',');
   P.push('};', '');
 }
+{ // the factory sets released firmwares wrote (scripts/legacy-factory.ts): after an update, a factory patch the bank's set
+  // did not have by name goes into a free slot (main.c bank_add, #630)
+  const sets = (JSON.parse(readFileSync(new URL('./released-factory.json', import.meta.url), 'utf8')) as { sets: { set: string; tags: string[]; names: string[] }[] }).sets;
+  if (presetNames.length > 64) throw new Error('RELEASED_SETS keeps today\'s factory patches in 64 bits');
+  P.push('/* the factory sets released firmwares wrote (web/scripts/released-factory.json): the set id (0: a firmware from before', '   the id, 1.6.0 and older) and which of today\'s patches it had by name (bit n: PRESET_LIST[n]) */');
+  P.push(`#define N_RELEASED_SETS ${sets.length}`);
+  P.push('static const struct { uint32_t set; uint64_t has; } RELEASED_SETS[N_RELEASED_SETS] = {');
+  for (const s of sets) {
+    const has = presetNames.reduce((m, n, i) => (s.names.includes(n.toUpperCase()) ? m | (1n << BigInt(i)) : m), 0n);
+    P.push(`    {0x${s.set}u, 0x${has.toString(16)}ull},   /* ${s.tags[0]}${s.tags.length > 1 ? ' .. ' + s.tags[s.tags.length - 1] : ''} */`);
+  }
+  P.push('};', '');
+}
 { // the factory engines' presets (#193, #194): read-only in ROM, values Q16 in canonical row order (structure.ts)
   P.push('/* the factory engines\' presets (web/src/factory-presets.ts): structure, name, values (Q16, canonical row order) */');
   FACTORY_PRESETS.forEach((p, i) => P.push(`static const int32_t FPV_${i}[${p.values.length}] = {${p.values.map(toQ16).join(',')}};`));
