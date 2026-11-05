@@ -12,6 +12,9 @@ import { FM1_PRESETS } from '../src/presets';
 import { FALLBACK_NAME, fallbackPatch } from '../src/fallback';
 import { factoryPresets } from '../src/factory-presets';
 import { controlsHeader, readmeWithControls } from './controls-h';
+import { PRESET_MIGRATIONS } from '../src/preset-migrate';
+import { readLineage } from './lineage-lib';
+import { CASE_PICKS, casesHeader, migrationCases, migrationTables } from './preset-migration-c';
 const FACTORY_PRESETS = factoryPresets();
 
 const up = (s: string): string => s.toUpperCase().replace(/[^A-Z0-9]/g, '_');
@@ -194,7 +197,9 @@ presetNames.forEach((n, i) => {
   // a change makes the boot rewrite the untouched factory slots (main.c bank_upgrade)
   let h = 0x811c9dc5;
   for (const n of presetNames) for (const x of [...new TextEncoder().encode(n.toUpperCase()), 0, ...encodePatch(FM1_PRESETS[n]())]) h = Math.imul(h ^ x, 0x01000193) >>> 0;
-  P.push('', '/* the factory set (PRESET_LIST: names and bytes), 24 bits of FNV-1a, never 0: kept in the settings record, a change', '   makes the boot rewrite the untouched factory slots (main.c bank_upgrade) */');
+  // then the preset migrations (D-865), when there are any: a new map makes the boot move the presets it covers
+  if (Object.keys(PRESET_MIGRATIONS).length) for (const x of new TextEncoder().encode(JSON.stringify(PRESET_MIGRATIONS))) h = Math.imul(h ^ x, 0x01000193) >>> 0;
+  P.push('', '/* the factory set (PRESET_LIST: names and bytes, then web/src/preset-migrations.json as JSON when it has any), 24 bits', '   of FNV-1a, never 0: kept in the settings record, a change makes the boot rewrite the untouched factory slots and move', '   the user presets of earlier engine structures (main.c bank_upgrade, presets_upgrade) */');
   P.push(`#define FACTORY_SET_ID 0x${((h & 0xffffff) || 1).toString(16).padStart(6, '0')}u`);
 }
 P.push('', `#define N_PRESETS ${presetNames.length}`);
@@ -241,11 +246,17 @@ P.push('};', '');
   FACTORY_PRESETS.forEach((p, i) => P.push(`    {0x${p.structure}u, "${p.name.toUpperCase().replace(/[^ -~]/g, '').replace(/"/g, '')}", ${p.values.length}, FPV_${i}},`));
   P.push('};', '');
 }
+const MIG = migrationTables(PRESET_MIGRATIONS);   // (after FPRESET_LIST: presetmig.c reads both)
+P.push(...MIG.lines);
 writeFileSync(new URL('../../firmware/src/presets.h', import.meta.url), P.join('\n'));
+{ // the preset migrations' test cases (firmware/test/preset_test.c, tools/emu/src/smoke.rs)
+  const initOf = (s: string): number[] | undefined => FACTORY_PRESETS.find((p) => p.structure === s && p.name === 'Init')?.values;
+  writeFileSync(new URL('../../firmware/test/pmig_cases.h', import.meta.url), casesHeader(migrationCases(readLineage(), PRESET_MIGRATIONS, initOf, CASE_PICKS)));
+}
 writeFileSync(new URL('../../firmware/src/controls.h', import.meta.url), controlsHeader(
   readFileSync(new URL('../../firmware/src/help_ui.c', import.meta.url), 'utf8'), readFileSync(new URL('../../firmware/src/font_bc.h', import.meta.url), 'utf8')));
 { // the README's list of the FM-1's controls (between its controls markers), from the same table
   const readme = new URL('../../README.md', import.meta.url);
   writeFileSync(readme, readmeWithControls(readFileSync(readme, 'utf8')));
 }
-console.log('wrote defs.h, presets.h, controls.h, the README\'s controls');
+console.log(`wrote defs.h, presets.h (preset migrations: ${MIG.bytes} bytes), controls.h, the README's controls, test/pmig_cases.h`);

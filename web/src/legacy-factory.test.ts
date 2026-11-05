@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { PRESET_MIGRATIONS } from './preset-migrate';
 
 // presets.h's LEGACY_FACTORY (scripts/legacy-factory.ts, export-defs): main.c bank_upgrade rewrites a slot that is byte
 // for byte an earlier factory patch with today's of the same name. Checked against the factory bank of release 1.1.0
@@ -40,9 +41,10 @@ describe('earlier factory patches (the bank after an update)', () => {
   it('a slot holding one of today\'s patches is never rewritten', () => {
     for (const p of parse(now)) expect(table.some((t) => t.fnv === fnv32(p.bytes) && t.len === p.bytes.length), p.name).toBe(false);
   });
-  it('the factory set id is the fingerprint of today\'s factory patches', () => {
+  it('the factory set id is the fingerprint of today\'s factory patches and preset migrations (D-865)', () => {
     const id = parseInt(now.match(/#define FACTORY_SET_ID 0x([0-9a-f]{6})u/)?.[1] ?? '0', 16);
-    const h = parse(now).reduce((h, p) => [...new TextEncoder().encode(p.name), 0, ...p.bytes].reduce((h, x) => Math.imul(h ^ x, 0x01000193) >>> 0, h), 0x811c9dc5);
+    let h = parse(now).reduce((h, p) => [...new TextEncoder().encode(p.name), 0, ...p.bytes].reduce((h, x) => Math.imul(h ^ x, 0x01000193) >>> 0, h), 0x811c9dc5);
+    if (Object.keys(PRESET_MIGRATIONS).length) h = [...new TextEncoder().encode(JSON.stringify(PRESET_MIGRATIONS))].reduce((h, x) => Math.imul(h ^ x, 0x01000193) >>> 0, h);
     expect(id).toBe(h & 0xffffff || 1);
   });
   it('an edited copy is not', () => {

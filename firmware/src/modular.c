@@ -87,6 +87,7 @@ static void m1_tempo(uint32_t patch, uint32_t bpm);           /* main.c: the edi
 #include "proto.c"
 #include "slotstore.c"
 #include "presetstore.c"
+#include "presetmig.c"         /* user presets of earlier engine structures move at the first boot after an update (D-865) */
 #ifdef M1_BENCH
 #include "bench.c"
 #endif
