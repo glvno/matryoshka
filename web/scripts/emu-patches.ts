@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Patches the emulator smoke test (tools/emu, `m1emu smoke`) seeds into the flash bank, as patch binaries:
-//   build/emu/heavy-poly.m1p   eight parts of a heavy voice (oversampled unison oscillators): far over the CPU budget,
+//   build/emu/heavy-poly.m1p   eight parts of a heavy voice (six oversampled unison oscillators): far over the CPU budget,
+//                              on two cores too (#271: each core renders four parts),
 //                              the overload guard must drop parts until it plays
 //   build/emu/heavy-mono.m1p   one part of many such oscillators: nothing to drop, the guard must mute it (OVERLOAD)
 //   build/emu/panel.m1p        the patch buttons
@@ -112,7 +113,7 @@ function stereoSides(): Patch {
 writeFileSync(new URL('stereo-sides.m1p', out), encodePatch(stereoSides()));
 
 for (const [file, p] of [
-  ['heavy-poly.m1p', withParts(heavy('EMU HEAVY POLY', 3), 8)],
+  ['heavy-poly.m1p', withParts(heavy('EMU HEAVY POLY', 6), 8)],
   ['heavy-mono.m1p', heavy('EMU HEAVY MONO', 24)],
 ] as const) {
   writeFileSync(new URL(file, out), encodePatch(p, true));

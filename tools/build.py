@@ -240,6 +240,7 @@ def build_app():
     tc_all(("cc", "-c", FW / "crt0.S", "-o", OUT / "crt0.o"),
            ("cc", "-c", FW / "hal" / "fm1_vec.S", "-o", OUT / "fm1_vec.o"),
            ("cc", "-c", FW / "hal" / "fm1_isr.S", "-o", OUT / "fm1_isr.o"),
+           ("cc", "-c", FW / "hal" / "fm1_cpu1.S", "-o", OUT / "fm1_cpu1.o"),   # the second core's entry (#271)
            cmain)
     if size:
         subprocess.run([sys.executable, SRC / "tools" / "size_fns.py", OUT / "matryoshka.ll", OUT / "matryoshka_size.ll"],
@@ -247,23 +248,26 @@ def build_app():
         tc("cc", *[f for f in flags if not f.startswith(("-I", "-D", "-W"))], "-c",
            OUT / "matryoshka_size.ll", "-o", OUT / "matryoshka.o")
     elf = OUT / "matryoshka.elf"
-    tc("pi32v2/bin/ld", "-T", FW / "app.ld", OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o",
+    tc("pi32v2/bin/ld", "-T", FW / "app.ld", OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o", OUT / "fm1_cpu1.o",
        OUT / "matryoshka.o", str(toolchain() / "pi32v2" / "lib" / "libcompiler-rt.a"), "-o", elf)   # soft float, 64-bit helpers
-    for sect in ("text.bin", "data.bin", "ramtext.bin"):
+    for sect in ("text.bin", "data.bin", "ramtext.bin", "c1text.bin"):
         (OUT / sect).unlink(missing_ok=True)
-    *_, syms, dis, rt = tc_all(("common/bin/objcopy", "-O", "binary", "-j", ".text", elf, OUT / "text.bin"),
-                               ("common/bin/objcopy", "-O", "binary", "-j", ".data", elf, OUT / "data.bin"),
-                               ("common/bin/objcopy", "-O", "binary", "-j", ".ram_text", elf, OUT / "ramtext.bin"),
-                               ("common/bin/objdump", "-t", elf),
-                               ("common/bin/objdump", "-d", elf),
-                               ("common/bin/objdump", "-d", "-j", ".ram_text", elf))
+    *_, syms, dis, rt, c1 = tc_all(("common/bin/objcopy", "-O", "binary", "-j", ".text", elf, OUT / "text.bin"),
+                                   ("common/bin/objcopy", "-O", "binary", "-j", ".data", elf, OUT / "data.bin"),
+                                   ("common/bin/objcopy", "-O", "binary", "-j", ".ram_text", elf, OUT / "ramtext.bin"),
+                                   ("common/bin/objcopy", "-O", "binary", "-j", ".c1_text", elf, OUT / "c1text.bin"),
+                                   ("common/bin/objdump", "-t", elf),
+                                   ("common/bin/objdump", "-d", elf),
+                                   ("common/bin/objdump", "-d", "-j", ".ram_text", elf),
+                                   ("common/bin/objdump", "-d", "-j", ".c1_text", elf))
     (OUT / "matryoshka.dis").write_text(dis)
 
     def symv(name):
         return int(re.search(r"^([0-9a-f]+) .*\s" + name + r"$", syms, re.M).group(1), 16)
     img = bytearray((OUT / "text.bin").read_bytes())
-    # .ram_text and .data follow .text at their load addresses; crt0 copies them by words
-    for sect, lname in (("ramtext.bin", "_rt_load"), ("data.bin", "_data_load")):
+    # .ram_text, .c1_text (the second core's waiting loop, #271) and .data follow .text at their load addresses; the boot
+    # copies them by words (main.c fm1_cstart)
+    for sect, lname in (("ramtext.bin", "_rt_load"), ("c1text.bin", "_c1_load"), ("data.bin", "_data_load")):
         load = symv(lname)
         if load % 4:
             raise SystemExit(f"{lname} {load:#x} is not word aligned")
@@ -275,21 +279,35 @@ def build_app():
             img += blob
     img += b"\xff" * (-len(img) % 4)
     (OUT / "matryoshka.bin").write_bytes(img)
-    return bytes(img), syms, dis, rt
+    return bytes(img), syms, dis, (rt, c1)
 
 
-def check(img, syms, dis, rt):
+def check(img, syms, dis, rts):
     errors, notes = [], []
     m = re.search(r"^([0-9a-f]+) .*\s_start$", syms, re.M)
     if not m or int(m.group(1), 16) != APP_XIP:
         errors.append(f"_start is not at {APP_XIP:#x}")
     if img[:4] != bytes.fromhex("04818000"):
         errors.append(f"image starts with {img[:4].hex()}, not the entry stub")
+    rt, c1 = rts
     rt_calls = [ln for ln in rt.splitlines() if re.search(r"\bcall\b", ln)]
     if rt_calls:                    # RAM code runs with the flash off: no calls into XIP
         errors.append(f".ram_text contains calls: {rt_calls[:3]}")
     else:
         notes.append(f".ram_text: {len([ln for ln in rt.splitlines() if LINE.match(ln)])} insns, no calls")
+    # .c1_text (#271): the second core waits in it while core 0 may have the flash off. Its one way out to the flash is
+    # the job it was handed (a call through a register); no call to a fixed address, no address in the XIP window
+    c1_ins = [mm.group(3) for mm in map(LINE.match, c1.splitlines()) if mm]
+    c1_fixed = [i for i in c1_ins if re.search(r"\bcall\b", i) and not re.search(r"\bcall\s+r\d+\b", i)]
+    c1_xip = [i for i in c1_ins for v in re.findall(r"(?<![\w.])(-?\d+)\b", i)
+              if 0x02000000 <= int(v) & 0xFFFFFFFF < 0x02100000]
+    c1_jobs = sum(1 for i in c1_ins if re.search(r"\bcall\b", i))
+    if not c1_ins:
+        errors.append(".c1_text is empty: the second core's waiting loop is missing (hal/fm1_cpu1.h)")
+    elif c1_fixed or c1_xip:
+        errors.append(f".c1_text reaches the flash: {(c1_fixed + c1_xip)[:3]}")
+    else:
+        notes.append(f".c1_text: {len(c1_ins)} insns, {c1_jobs} call through a register (the job), no flash address")
     for ln in dis.splitlines():     # nothing may call or load an address in the chip ROM
         mm = LINE.match(ln)
         if not mm:
@@ -312,8 +330,11 @@ def check(img, syms, dis, rt):
     notes.append(f"image {len(img)} B; RAM .data+.bss {bss} B of {ram_len}; pool {pool} B of {pool_len}")
     lowram, lr_free = sym("_lr_end") - sym("_lr_start"), sym("_lr_limit") - sym("_lr_end")
     ustack, sstack = sym("_ustack_top") - sym("_ustack_lo"), sym("_sstack_top") - sym("_sstack_lo")
-    notes.append(f".lowram {lowram} B ({lr_free} B free after it and .ram_text); stacks: main {ustack} B, "
-                 f"supervisor {sstack} B")
+    c1u, c1s = sym("_c1_ustack_top") - sym("_c1_ustack"), sym("_c1_sstack_top") - sym("_c1_ustack_top")
+    notes.append(f".lowram {lowram} B ({lr_free} B free after it, .ram_text and .c1_text); stacks: main {ustack} B, "
+                 f"supervisor {sstack} B, core 1 {c1u} + {c1s} B")
+    if not sym("_pool_end") <= sym("_c1_ustack") < sym("_c1_sstack_top") <= sym("_guard0"):
+        errors.append("app.ld: core 1's stacks are not between the pool and the main stack's guard band")
     if region["RAM"][0] + ram_len != region["POOL"][0]:
         errors.append("app.ld: POOL does not start where RAM ends")
     if ram_len - bss < 4096:                      # keep >= 4 KiB of .bss spare (state the audio side touches)
