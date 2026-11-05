@@ -473,8 +473,8 @@ static uint32_t popcount64(uint64_t v)
 static int slot_used(uint32_t s) { return s < M1_SLOTS && (bank_mask >> s & 1u); }
 
 /* the settings record: version, slot, octave + 8, LED mode, knob accel (bit 0; bit 1: the quick start off, D-247: a record
- * from before reads as on, and an older firmware reads the accel as before; bit 2: OUTPUT MONO, #612, a record from before
- * reads as STEREO), the global tempo's low byte (byte 5,
+ * from before reads as on, and an older firmware reads the accel as before; bits 2..3: OUTPUT, #612: 0 STEREO, 1 MONO, 2
+ * MONO L, a record from before reads as STEREO), the global tempo's low byte (byte 5,
  * D-907; was CPU in the bar), clock in (bit 0; bit 1: CLOCK OUT off, #473, read alike), TEMPO and the tempo's bit 8 (byte 7, tempo_glo.h; was program change),
  * MIDI channel, MIDI out, the bank's format, the selected module, REC's count-in (byte 12, #414: a record without
  * it, SET_MIN bytes, reads as OFF), the factory set the bank's untouched factory slots hold (bytes 13..15, #441: a
@@ -494,7 +494,7 @@ static void settings_pack(uint8_t *d)
     d[1] = (uint8_t)cur_preset;
     d[2] = (uint8_t)(octave + 8);
     d[3] = cfg.leds;
-    d[4] = (uint8_t)(cfg.accel | (cfg.quick ? 0u : 2u) | (out_mono ? 4u : 0u));   /* (bit 2: OUTPUT MONO, #612) */
+    d[4] = (uint8_t)(cfg.accel | (cfg.quick ? 0u : 2u) | (uint8_t)(out_mono << 2));   /* (bits 2..3: OUTPUT, #612) */
     d[6] = co_set_byte(cfg.clock_in, cfg.clock_out);   /* (bit 1: CLOCK OUT off, #473: clock_out.h) */
     gt_pack(d);                                 /* bytes 5 and 7: the global tempo and TEMPO (D-907) */
     d[8] = cfg.ch;
@@ -515,7 +515,9 @@ static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint3
     cfg.leds = d[3] > 2u ? 2u : d[3];
     cfg.accel = d[4] & 1u;
     cfg.quick = !(d[4] & 2u);
-    out_mono = (uint8_t)(d[4] >> 2 & 1u);       /* (a record from before reads as STEREO) */
+    out_mono = (uint8_t)(d[4] >> 2 & 3u);       /* (a record from before reads as STEREO) */
+    if (out_mono > 2u)
+        out_mono = 0;
     cfg.clock_in = d[6] & 1u;
     cfg.clock_out = co_set_clock_out(d[6]);     /* (a record from before reads as ON) */
     gt_unpack(d, len);                          /* bytes 5 and 7 (CPU in the bar and program change before): the global tempo */

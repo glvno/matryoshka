@@ -78,7 +78,7 @@
 // Type indices are the position in TYPE_ORDER (append only: the firmware has the same list in defs.h).
 // Port indices are positions in ModuleDef.outputs / inputs (explicit ports first, then the `<param>_cv` inputs).
 
-import { DEFS, DRUM_ROWS, drumRowName, PANEL_BUTTONS } from './modules';
+import { DEFS, delayLine, DELAY_LENGTH_DEFAULT, DRUM_ROWS, drumRowName, PANEL_BUTTONS } from './modules';
 import { KIND_CODE, kindOf, mainOf, switches, toggleEngaged, toggleTargets } from './buttons';
 import { EDITOR_ONLY, flawOf, hasMorph, isBipolar, MAX_MODULES, MAX_PARTS, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ParamDef, type Patch } from './patch';
 import { isShortNote, noteWord, shortWord, type StepNote } from './track';
@@ -328,8 +328,12 @@ export const ROW_MORE = 0x40;
 export const rowParam = (type: string, param: string): number =>
   type === 'part' ? (POLY_ROW_PARAMS.includes(param) ? POLY_ROW | POLY_ROW_PARAMS.indexOf(param) : -1) : DEFS[type].params.findIndex((q) => q.name === param);
 
-/** a name as the FM-1's font draws it: printable ASCII (an arrow becomes >), NAME_MAX characters */
-export const deviceText = (s: string): string => s.replace(/→/g, '>').replace(/←/g, '<').replace(/[–—−]/g, '-').replace(/[^\x20-\x7e]/g, '').slice(0, NAME_MAX).trim();
+/** a name as the FM-1's font draws it: printable ASCII (an arrow becomes >), NAME_MAX characters. A longer name that ends
+ * in a number loses the space before it, so the number stays ("Verona Drum 1" is "Verona Drum1", D-862) */
+export const deviceText = (s: string): string => {
+  const t = s.replace(/→/g, '>').replace(/←/g, '<').replace(/[–—−]/g, '-').replace(/[^\x20-\x7e]/g, '').trim();
+  return (t.length > NAME_MAX ? t.replace(/ +(\d+)$/, '$1') : t).slice(0, NAME_MAX).trim();
+};
 
 /** the device pages as the binary lists them: rows on modules the device form dropped are left out, and so are pages
  * and devices left empty */
@@ -659,12 +663,29 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
   return out;
 }
 
+/** a line of the FM-1's line areas in bytes, rounded to whole words (engine.c LINE_BYTES) */
+const lineBytes = (n: number): number => (n + 3) & ~3;
+/** the lines of the fixed-size line modules, bytes (engine.c): a string or comb line per copy (STR_LEN), the granular's 1 s
+ * and its grain records (grain_line_t), the reverb's eight lines, allpasses and pre-delay (RV_LEN), the chorus's (CH_LEN) */
+export const LINES = {
+  string: lineBytes(2 * 1104), grain: lineBytes(2 * 44118 + 8 * 24), reverb: lineBytes(2 * 8074), chorus: lineBytes(2 * 927),
+} as const;
+/** a Delay's line, bytes, from its length (modules.ts delayLine; engine.c dly_samples) */
+export const delayBytes = (ms: number): number => lineBytes(2 * delayLine(ms));
+/**
+ * The FM-1's two line areas, bytes (engine.c line_low, line_arena): the effect memory. `low` is in the RAM below the RAM
+ * region (.lowram, D-373): what the reverb and chorus lines took there and 8 KiB more. `pool` is in the pool: what the
+ * fixed blocks of a 700 ms delay line, 8 string lines and a granular line took (D-375). A line goes whole into one area
+ * (linePlace).
+ */
+export const LINE_AREAS = { low: LINES.reverb + LINES.chorus + 8192, pool: delayBytes(DELAY_LENGTH_DEFAULT) + 8 * LINES.string + LINES.grain } as const;
 /** the FM-1's limits (firmware/src/engine.c, the one-voice build: ENG_MAX_MODULES, ENG_MAX_CABLES, POLY_MAX_GROUPS,
- * POLY_MAX_PARTS, ENG_MAX_INST, ENG_NBUF, ENG_PAR_WORDS, ENG_NDELAY, ENG_NREV, ENG_NSTRING, ENG_NCHORUS, ENG_NGRAIN, ENG_MAX_TRACKS, ENG_MAX_NOTES; proto.c M1_PATCH_MAX).
+ * POLY_MAX_PARTS, ENG_MAX_INST, ENG_NBUF, ENG_PAR_WORDS, ENG_MAX_ARPS, ENG_MAX_TRACKS, ENG_MAX_NOTES; proto.c M1_PATCH_MAX).
+ * `lines`: the bytes of the two line areas (LINE_AREAS), the effect memory every line-type module's lines share.
  */
 export const DEVICE = {
   modules: MAX_MODULES, cables: MAX_CABLES, poly: MAX_POLY, parts: MAX_PARTS, instances: 128, buffers: 255, params: 1536,
-  delays: 1, reverbs: 1, strings: 8, chorus: 1, grains: 1, arps: 2, tracks: 16, notes: 1536, locks: PATCH_LOCKS_MAX, bytes: 3840,
+  lines: LINE_AREAS.low + LINE_AREAS.pool, arps: 2, tracks: 16, notes: 1536, locks: PATCH_LOCKS_MAX, bytes: 3840,
 } as const;
 
 export type BudgetKey = keyof typeof DEVICE;
@@ -672,47 +693,120 @@ export type BudgetKey = keyof typeof DEVICE;
  * browser-only ability the patch uses, `label` says which, used 1 of 0) */
 export interface BudgetItem { key: BudgetKey | 'cpu' | 'browser'; label: string; used: number; max: number }
 
-/** a budget line over its limit in words: "CPU 130 %", "Delay over 700 ms: browser only", "70 modules of 64" */
-export const overText = (i: BudgetItem): string => (i.key === 'cpu' ? `CPU ${i.used} %` : i.key === 'browser' ? i.label : `${i.used} ${i.label} of ${i.max}`);
+/** kilobytes, one decimal under 10 KB, else whole */
+export const kb = (bytes: number): string => (bytes < 10240 ? (bytes / 1024).toFixed(1) : String(Math.round(bytes / 1024)));
+/** a budget line over its limit in words: "CPU 130 %", "Effect memory 200 of 190 KB", "70 modules of 64" */
+export const overText = (i: BudgetItem): string => (i.key === 'cpu' ? `CPU ${i.used} %` : i.key === 'browser' ? i.label
+  : i.key === 'lines' ? `Effect memory ${kb(i.used)} of ${kb(i.max)} KB${i.used <= i.max ? ' (the lines do not fit its two areas)' : ''}` : `${i.used} ${i.label} of ${i.max}`);
 
-/** a line of the FM-1's line area in bytes, rounded to whole words (engine.c LINE_BYTES) */
-const lineBytes = (n: number): number => (n + 3) & ~3;
-/** the lines of the memory-hungry modules on the FM-1 (#273 step 3, engine.c line_arena): one area, divided when a patch
- * loads. Its size is the three fixed blocks it replaced: a 700 ms delay line, DEVICE.strings string lines, a granular line */
-export const LINES = {
-  delay: lineBytes(2 * 30944), delayLong: lineBytes(2 * 70649), string: lineBytes(2 * 1104), grain: lineBytes(2 * 44118 + 8 * 24),
-} as const;
-export const LINE_AREA = DEVICE.delays * LINES.delay + DEVICE.strings * LINES.string + DEVICE.grains * LINES.grain;
-/** does the FM-1 give this patch's Delay its 1.6 s line (engine.c eng_load: E.dly_len): the area holds a long line per
- * Delay besides the strings', combs' and granular's lines, counted per copy as eng_load takes them. With today's counts
- * that is every patch without a Granular module */
-export function longDelay(source: Patch): boolean {
+/** the types whose modules take lines from the effect memory */
+export const LINE_TYPES = ['delay', 'string', 'comb', 'grain', 'reverb', 'chorus'];
+/** the line of each fixed-size line type, bytes (the comb uses a string line) */
+const FIXED_LINE: Record<string, number> = { string: LINES.string, comb: LINES.string, grain: LINES.grain, reverb: LINES.reverb, chorus: LINES.chorus };
+
+/**
+ * Where the FM-1 puts lines of these sizes (bytes), as engine.c line_place does when a patch loads: the largest first (of
+ * equal ones the first), each into the area with the least room that holds it (`low` when both have the same). The area of
+ * each line (0 low, 1 pool), or null when one does not fit.
+ */
+export function linePlace(sizes: number[]): (0 | 1)[] | null {
+  const free = [LINE_AREAS.low, LINE_AREAS.pool];
+  const out: (0 | 1)[] = new Array(sizes.length);
+  const order = sizes.map((b, i) => i).sort((x, y) => sizes[y] - sizes[x] || x - y);
+  for (const i of order) {
+    const b = sizes[i];
+    const ok0 = b <= free[0], ok1 = b <= free[1];
+    if (!ok0 && !ok1) return null;
+    const r: 0 | 1 = ok0 && (!ok1 || free[0] <= free[1]) ? 0 : 1;
+    free[r] -= b;
+    out[i] = r;
+  }
+  return out;
+}
+
+/** one line-type module's share of the effect memory: its lines (one per copy: a string or comb in a poly assembly has one per
+ * part), bytes */
+export interface LineUse { id: number; type: string; copies: number; bytes: number }
+/** the effect memory a patch takes on the FM-1: each line-type module's lines, the total, and whether they fit the areas */
+export interface LineBudget { modules: LineUse[]; used: number; max: number; fits: boolean }
+/** the effect memory of a patch's device form (the lines eng_load takes, a copy per part as it counts them) */
+export function lineBudget(source: Patch): LineBudget {
   const { patch: p, groups } = deviceView(source, true);
   const copies = new Map<number, number>();
   groups.forEach((g) => g.modules.forEach((id) => copies.set(id, g.cfg.parts)));
-  const count = (...types: string[]): number => p.modules.filter((m) => types.includes(m.type)).reduce((n, m) => n + (copies.get(m.id) ?? 1), 0);
-  return count('string', 'comb') * LINES.string + count('grain') * LINES.grain + count('delay') * LINES.delayLong <= LINE_AREA;
+  return linesOf(p, (id) => copies.get(id) ?? 1);
+}
+function linesOf(p: Patch, ninst: (id: number) => number): LineBudget {
+  const modules: LineUse[] = [];
+  const sizes: number[] = [];
+  for (const m of p.modules) {
+    if (!LINE_TYPES.includes(m.type)) continue;
+    const one = m.type === 'delay' ? delayBytes(m.params.length ?? DELAY_LENGTH_DEFAULT) : FIXED_LINE[m.type];
+    const n = ninst(m.id);
+    for (let k = 0; k < n; k++) sizes.push(one);
+    modules.push({ id: m.id, type: m.type, copies: n, bytes: one * n });
+  }
+  const used = sizes.reduce((a, b) => a + b, 0);
+  return { modules, used, max: DEVICE.lines, fits: linePlace(sizes) !== null };
+}
+/**
+ * The longest length (ms, a whole step of the row) Delay `id` can take with every other line of the patch where it is, at
+ * least `floor`; 0 when even the shortest does not fit. The editor's length row stops there (lengthRoom).
+ */
+export function delayRoom(source: Patch, id: number): number {
+  const pd = DEFS.delay.params.find((q) => q.name === 'length')!;
+  const m = source.modules.find((x) => x.id === id);
+  if (!m || m.type !== 'delay') return 0;
+  const was = m.params.length;
+  const fits = (ms: number): boolean => {
+    m.params.length = ms;
+    try { return lineBudget(source).fits; } finally { if (was === undefined) delete m.params.length; else m.params.length = was; }
+  };
+  const step = pd.step ?? 10;
+  if (!fits(pd.min)) return 0;
+  let lo = pd.min, hi = pd.max;
+  if (fits(hi)) return hi;
+  while (hi - lo > step) {
+    const mid = lo + Math.floor((hi - lo) / 2 / step) * step;
+    if (fits(mid)) lo = mid; else hi = mid;
+  }
+  return lo;
+}
+/**
+ * What to say when a patch's lines do not fit the effect memory (or a length stops at what is left): the memory used, and
+ * what takes the most of it besides `except` (a module id: the one being changed), so the user knows what to shorten or
+ * remove. "Effect memory full: 186 of 190 KB used. Shorten a Delay or remove the Granular (86 KB)."
+ */
+export function linesAdvice(source: Patch, except?: number): string {
+  const b = lineBudget(source);
+  const others = b.modules.filter((u) => u.id !== except).sort((x, y) => y.bytes - x.bytes);
+  const name = (u: LineUse): string => `the ${DEFS[u.type].label}${u.copies > 1 ? ` (×${u.copies})` : ''}`;
+  const delays = others.filter((u) => u.type === 'delay');
+  const big = others.find((u) => u.type !== 'delay');
+  const tips = [delays.length ? `shorten ${delays.length > 1 ? 'another Delay' : 'the other Delay'}` : '', big ? `remove ${name(big)} (${kb(big.bytes)} KB)` : ''].filter(Boolean);
+  return `Effect memory full: ${kb(b.used)} of ${kb(b.max)} KB used.${tips.length ? ` ${tips.join(' or ').replace(/^./, (c) => c.toUpperCase())}.` : ''}`;
 }
 
 /**
- * The browser-only abilities a patch uses, one reason each ("Delay over 700 ms: browser only"); none: the FM-1 can play
- * everything in it. Today: a parameter past the FM-1's range into its browser-only stretch (ParamDef.browserMax), on either
- * morph side. The Delay's time past 700 ms on its A side plays on the FM-1 too when it gives the Delay its 1.6 s line
- * (longDelay, #273 step 3): then only a B side past it stays the browser's. A patch with any is over the FM-1 budget
+ * The browser-only abilities a patch uses, one reason each ("Delay over 700 ms on the morph B side: browser only"); none:
+ * the FM-1 can play everything in it. A parameter past the FM-1's range into its browser-only stretch
+ * (ParamDef.browserMax), on either morph side. The Delay's time is the one such parameter: past 700 ms on its A side
+ * the FM-1 plays it too (up to the Delay's length, which the effect memory holds: lineBudget), so only a B side past it
+ * is the browser's (the FM-1 keeps a B side past the range in 16 bits). A patch with any is over the FM-1 budget
  * (deviceBudget), so it is never sent.
  */
 export function browserOnly(p: Patch): string[] {
   const out = new Set<string>();
-  let long: boolean | undefined;
   for (const m of p.modules) {
     const def = DEFS[m.type];
     if (!def) continue;
     for (const pd of def.params) {
       if (pd.browserMax === undefined) continue;
       const past = (v: number | undefined): boolean => v !== undefined && v > pd.max;
-      const lineOk = m.type === 'delay' && pd.name === 'time' && past(m.params[pd.name]) && !past(m.paramsB?.[pd.name]) && (long ??= longDelay(p));
-      if (!lineOk && [m.params[pd.name], m.paramsB?.[pd.name]].some(past))
-        out.add(`${def.label} over ${pd.max}${pd.unit ? ` ${pd.unit}` : ''}${m.type === 'delay' && !(long ??= longDelay(p)) ? ' with a Granular' : ''}: browser only`);
+      const aOk = m.type === 'delay' && pd.name === 'time';
+      const over = `${def.label} over ${pd.max}${pd.unit ? ` ${pd.unit}` : ''}`;
+      if (!aOk && past(m.params[pd.name])) out.add(`${over}: browser only`);
+      if (past(m.paramsB?.[pd.name])) out.add(`${over}${aOk ? ' on the morph B side' : ''}: browser only`);
     }
   }
   return [...out];
@@ -720,15 +814,15 @@ export function browserOnly(p: Patch): string[] {
 
 const LABELS: Record<BudgetKey, string> = {
   modules: 'modules', cables: 'cables', poly: 'poly assemblies', parts: 'parts', instances: 'module instances', buffers: 'signal buffers', params: 'parameter values',
-  delays: 'delays', reverbs: 'reverbs', strings: 'string / comb lines', chorus: 'choruses', grains: 'granular lines', arps: 'arpeggiators', tracks: 'step tracks', notes: 'step notes', locks: 'P-locks', bytes: 'patch bytes',
+  lines: 'effect memory', arps: 'arpeggiators', tracks: 'step tracks', notes: 'step notes', locks: 'P-locks', bytes: 'patch bytes',
 };
 
 /**
  * What a patch costs on the FM-1, counted the way eng_load allocates: one instance per copy of a module (a module in a
  * poly assembly has one per part); one signal buffer per connected output port and copy, plus one per input copy with
  * two or more sources (a module outside a poly assembly reading a per-part output has one source per part); per module its
- * type's parameters (twice that when the patch has a morph B side) and per copy their effective values; the shared
- * lines (delay, reverb, chorus, granular) once each, a string or comb line per copy. `items` lists every limit, `over`
+ * type's parameters (twice that when the patch has a morph B side) and per copy their effective values; the lines of the
+ * line-type modules in the effect memory (`lines`: lineBudget, over when they do not fit). `items` lists every limit, `over`
  * those the patch exceeds, `memory` the fullest one as a fraction (single lines count only when exceeded) and `fullest` that
  * line; `cpu` the estimated processor load (cpu.ts); `use` the larger of the two. `fits` is false when the firmware would
  * refuse the patch or, by the estimate, could not render it in time, or when the patch uses a browser-only ability
@@ -745,6 +839,8 @@ export interface Budget {
   fullest: BudgetItem | undefined;
   cpu: CpuEstimate;
   use: number;
+  /** the effect memory: each line-type module's share (lineBudget) */
+  lines: LineBudget;
 }
 
 /** the patch bytes the budget counts: the binary's, plus the room kept for the engine devices' preset names (presetNames) */
@@ -784,14 +880,14 @@ export function deviceBudget(source: Patch): Budget {
   const morph = hasMorph(p);
   for (const m of p.modules) params += DEFS[m.type].params.length * ((morph ? 2 : 1) + ninst(m.id));
   const count = (...types: string[]): number => p.modules.filter((m) => types.includes(m.type)).reduce((n, m) => n + ninst(m.id), 0);
+  const lines = linesOf(p, ninst);
   const used: Record<BudgetKey, number> = {
     modules: p.modules.length, cables: p.cables.length, poly: groups.length, parts: Math.max(1, ...[...copies.values()]),
-    instances, buffers, params, delays: count('delay'), reverbs: count('reverb'), strings: count('string', 'comb'), chorus: count('chorus'),
-    grains: count('grain'), arps: count('arp'), tracks: count('steps'), notes: p.modules.reduce((n, m) => n + (m.type === 'steps' ? (m.notes?.length ?? 0) + (m.patterns ?? []).reduce((k, x) => k + (x?.notes?.length ?? 0), 0) : 0), 0),
+    instances, buffers, params, lines: lines.used, arps: count('arp'), tracks: count('steps'), notes: p.modules.reduce((n, m) => n + (m.type === 'steps' ? (m.notes?.length ?? 0) + (m.patterns ?? []).reduce((k, x) => k + (x?.notes?.length ?? 0), 0) : 0), 0),
     locks: p.modules.reduce((n, m) => n + (m.type === 'steps' ? (m.locks?.length ?? 0) + (m.patterns ?? []).reduce((k, x) => k + (x?.locks?.length ?? 0), 0) : 0), 0), bytes: bytesOf(source, p, groups),
   };
   const items = (Object.keys(DEVICE) as BudgetKey[]).map((key) => ({ key, label: LABELS[key], used: used[key], max: DEVICE[key] }));
-  const over: BudgetItem[] = items.filter((i) => i.used > i.max);
+  const over: BudgetItem[] = items.filter((i) => (i.key === 'lines' ? !lines.fits : i.used > i.max));
   // a one- or two-of-a-kind slot (one delay, one reverb, two arpeggiators ...) is either there or not: it shows only when
   // exceeded, so a patch with its one reverb or one of its two arpeggiators does not read as half full or full
   const counted = items.filter((i) => i.max > 2 || i.used > i.max);
@@ -800,6 +896,6 @@ export function deviceBudget(source: Patch): Budget {
   const cpu = cpuEstimate(source);
   if (cpu.use > 1) over.push({ key: 'cpu', label: 'CPU (estimate)', used: Math.round(cpu.use * 100), max: 100 });
   for (const label of browserOnly(source)) over.push({ key: 'browser', label, used: 1, max: 0 });
-  return { buffers, instances, fits: !over.length, items, over, memory, fullest, cpu, use: Math.max(memory, cpu.use) };
+  return { buffers, instances, fits: !over.length, items, over, memory, fullest, cpu, use: Math.max(memory, cpu.use), lines };
 }
 

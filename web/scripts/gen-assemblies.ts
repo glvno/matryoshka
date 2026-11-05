@@ -3638,16 +3638,16 @@ asm('Spokes 6', 'Drums', (b) => {
   b.param('out', scope, 'view', { col: true });
 });
 
-// Verona 1, after the Vermona DRM1 MKIV (#613; its user manual, "The instrument channels", pages 11 to 18). The FM-1
+// Verona Drum 1, after the Vermona DRM1 MKIV (#613; its user manual, "The instrument channels", pages 11 to 18). The FM-1
 // version: six of its eight instrument channels, each with every knob of its panel and its own signal flow
 // (scripts/verona-voices.ts): KICK, DRUM 1, MULTI, SNARE, HI HAT 1, CLAP, and each channel's VOLUME. A Drum map row per
 // channel on the white keys from F3, the hi-hat on two (OPEN, and CLOSED with its fixed short decay, as the original's
 // two MIDI notes per hi-hat); a row's velocity is the channel's level, as the DRM1's MIDI velocity. The channels share
-// one white noise source; MASTER is the level of the mixer they all go into. Left out to fit the FM-1 (Verona 1 XL has
-// them, scripts/xl/verona-1.ts): DRUM 2 and HI HAT 2 (each the same as its pair), PAN, the clap's NOISE COLOR, the
+// one white noise source; MASTER is the level of the mixer they all go into. Left out to fit the FM-1 (Verona Drum 1 XL has
+// them, scripts/xl/verona-drum-1.ts): DRUM 2 and HI HAT 2 (each the same as its pair), PAN, the clap's NOISE COLOR, the
 // hi-hat's TRIG switch (its two rows play open and closed), MULTI's PITCH 2 / PITCH 3 off position (here they are the
 // oscillators' coarse tune), and the kick's own noise envelope (its noise lasts as long as TIME).
-asm('Verona 1', 'Drums', (b) => {
+asm('Verona Drum 1', 'Drums', (b) => {
   const map = b.add('drummap', 0, 0, Object.fromEntries(PLATE_KEYS[1].map((n, r) => [`n${r + 1}`, n])));
   b.module(map).names = ['KICK', 'DRUM 1', 'MULTI', 'SNARE', 'HH OPEN', 'HH CLOSE', 'CLAP', 'ROW 8'];
   const noise = sharedNoise(b, 0, 1);
@@ -4155,7 +4155,7 @@ const BLURBS: Record<string, string> = {
   'Perun 4': 'Perkons HD-01 type shit',
   'Spokes 6': 'Model:Cycles type shit',
   'Cassia 1': 'CZ-1 type shit',
-  'Verona 1': 'DRM1 MKIV type shit',
+  'Verona Drum 1': 'DRM1 MKIV type shit',
   'drift poly': 'Two oscillators per voice, four voices that drift a little out of tune',
   'basic poly': 'The plainest polysynth: a saw, a low pass and an envelope per voice',
   'mono lead': 'One voice through a ladder filter, gliding between legato notes',

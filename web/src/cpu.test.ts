@@ -121,8 +121,8 @@ describe('CPU estimate against the device survey (docs/measurements/cpu-survey-2
   changed.add('canvas');
   changed.add('briefcase 3');
   // patches added since the survey (#182, Elvira 2, Scrounge, Meridian 8, Perun 4, <7PH, Spokes 6, Cassia 1, the four simple
-  // engines of #413, Verona 1): measure them on the device, then add them to the survey file
-  const unmeasured = new Set(['8 lire', 'elvira 2', 'scrounge', 'meridian 8', 'perun 4', '<7ph', 'spokes 6', 'cassia 1', 'basic poly', 'drift poly', 'mono lead', 'supersaw stack', 'verona 1']);
+  // engines of #413, Verona Drum 1): measure them on the device, then add them to the survey file
+  const unmeasured = new Set(['8 lire', 'elvira 2', 'scrounge', 'meridian 8', 'perun 4', '<7ph', 'spokes 6', 'cassia 1', 'basic poly', 'drift poly', 'mono lead', 'supersaw stack', 'verona drum 1']);
   it('covers every factory patch', () => expect(survey.length + unmeasured.size).toBe(Object.keys(FM1_PRESETS).length));
   for (const r of survey)
     it.skipIf(changed.has(r.name.toLowerCase()))(`is within -4 / +6 points of the device: ${r.name}`, () => {

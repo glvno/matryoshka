@@ -101,7 +101,7 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
             return;
         at += eng_record_size(&DEFS[pv_bin[at] & 0x7Fu], pv_bin[1]);
     }
-    if (at >= pv_len || (pv_bin[at] & 0x7Fu) >= N_TYPES || par >= eng_npar(&DEFS[pv_bin[at] & 0x7Fu], pv_bin[1]))
+    if (at >= pv_len || (pv_bin[at] & 0x7Fu) >= N_TYPES || par >= eng_npar(&DEFS[pv_bin[at] & 0x7Fu], pv_bin[1]) || DEF_FIXED(pv_bin[at] & 0x7Fu, par))
         return;
     at += 1u + 4u * par;
     pv_bin[at] = (uint8_t)v;
@@ -784,9 +784,13 @@ int main(void)
         check("ALGO again: SYSTEM (update mode, factory reset, quick start, output)", menu_tab == MT_SYSTEM && pages_now()->nrows == 4u && pages_now()->par[1] == MR_DEFAULTS && pages_now()->par[2] == MR_QUICK && pages_now()->par[3] == MR_OUTPUT);
         check("  OUTPUT reads STEREO (#612)", !out_mono && on_screen("STEREO"));
         enc(5, 1);
-        check("K4 on SYSTEM: OUTPUT STEREO > MONO (#612)", out_mono == 1u && on_screen("MONO"));
+        check("K4 on SYSTEM: OUTPUT STEREO > MONO (#612)", out_mono == 1u && on_screen("MONO") && !on_screen("MONO L"));
         enc(5, 1);
-        check("  stays at MONO", out_mono == 1u);
+        check("  then MONO L", out_mono == 2u && on_screen("MONO L"));
+        enc(5, 1);
+        check("  stays at MONO L", out_mono == 2u);
+        enc(5, -1);
+        check("  back to MONO", out_mono == 1u && !on_screen("MONO L"));
         enc(5, -1);
         check("  and back to STEREO", !out_mono && on_screen("STEREO"));
         enc(1, 1);

@@ -85,8 +85,9 @@ export function renderPlay(w: Play, secs: number, sr = DEVICE_SR): [Float32Array
   return [l, r];
 }
 
-/** the FM-1's analog output with GLO > SYSTEM > OUTPUT at MONO (#612): both sides carry (L + R) / 2, which never peaks
- * above the louder side, so the stereo headroom covers it (firmware audio.c, `out_mono`) */
+/** the FM-1's analog output with GLO > SYSTEM > OUTPUT at MONO (#612): both sides carry (L + R) / 2 (at MONO L the left side
+ * only, the right silent), which never peaks above the louder side, so the stereo headroom covers it (firmware audio.c,
+ * `out_mono`) */
 export const monoOf = (l: number, r: number): number => (l + r) / 2;
 
 /** a play's peaks over `secs` (at the FM-1's rate) at the patch's Output level: both channels, and their mono sum (monoOf) */
