@@ -58,7 +58,7 @@ export const LEVEL_ROWS: Record<string, string[]> = {
   'Spokes 6': ['master / master'],
   'supersaw stack': ['level'],
   'Vernon 100': ['output mixer / amp shaper', 'output mixer / osc 3/ext'],
-  'Verona 1': ['master / master'],
+  'Verona Drum 1': ['master / master'],
   Wanderer: ['filters · vca / vca level', 'filters · vca / gain'],
 };
 

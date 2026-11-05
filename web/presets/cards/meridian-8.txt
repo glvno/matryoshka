@@ -75,7 +75,7 @@ crumble = 6
 8 bacid / pitch = -31
 acid = 0.85
 1-2 = -1.5
-  main = 0.82
+  main = 0.83
 
 preset: Broken Beat
 # glitchy and off-kilter: a bright dot, a rising dual (ping below zero), a bar-like sys, a crumbled cympath,
@@ -99,7 +99,7 @@ vowel = 2.5
 acid = 0.6
 3-4 = 2
 6-7 = 1.5
-  main = 0.94
+  main = 0.95
 
 preset: Lo-fi Hip Hop
 # soft and dull: a muffled dot, a lazy dual, low everything, a sandy cympath, quiet bacid
@@ -123,7 +123,7 @@ vowel = 1
 8 bacid / pitch = -29
 acid = 0.4
 8 bacid / vol = 0.7
-  main = 0.99
+  main = 1
 
 preset: Industrial
 # harsh: an open, high dot, a hard pinging dual, a metal bar sys, a squashed plast, a shredded cympath,

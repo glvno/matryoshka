@@ -19,7 +19,7 @@ static uint32_t eng_us_last = 316, eng_us_max = 358;
 static uint8_t eng_overload;               /* audio.c: the overload guard muted the patch */
 static int32_t patch_gain;                 /* audio.c: the mixer level */
 static volatile uint8_t snd_muted;         /* audio.c: sandbox mode muted the FM-1 */
-static volatile uint8_t out_mono;          /* audio.c: GLO > SYSTEM > OUTPUT MONO (#612) */
+static volatile uint8_t out_mono;          /* audio.c: GLO > SYSTEM > OUTPUT: 0 STEREO, 1 MONO, 2 MONO L (#612) */
 static uint8_t m1_edited;                  /* proto.c: the running patch was edited */
 #define M1_SLOTS 64u
 static uint64_t bank_mask = 0x3FFFu;     /* slotstore.c: the occupied slots (the preview: the factory patches) */

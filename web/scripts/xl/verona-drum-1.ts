@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Verona 1 XL (#613): the whole Vermona DRM1 MKIV (its user manual: vermona.com, drm1mk4_manual_web_en.pdf, "Sound
+// Verona Drum 1 XL (#613): the whole Vermona DRM1 MKIV (its user manual: vermona.com, drm1mk4_manual_web_en.pdf, "Sound
 // Generation" and "The instrument channels", pages 10 to 18; "MIDI Functions", pages 19 and 20). All eight instrument
 // channels, each with every knob of its panel and its own signal flow (scripts/verona-voices.ts says what each knob
 // does): KICK, DRUM 1, DRUM 2, MULTI, SNARE, HI HAT 1, HI HAT 2, CLAP. Every channel has its PAN and VOLUME, and MASTER
@@ -10,7 +10,7 @@
 // second to change it); a second Drum map plays the closed hi-hats of both channels whatever TRIG says, as the
 // original's second MIDI note per hi-hat does (rows HH 1 CL and HH 2 CL, on G4 and A4). PATTERN (a Steps track, D-330)
 // plays the first map, CLOSED the second; Main's keys go into both, so the keyboard plays all ten.
-// The FM-1 version (web/presets/NN-verona-1.json) leaves out Drum 2 and Hi Hat 2 (each the same as its pair), PAN, the
+// The FM-1 version (web/presets/NN-verona-drum-1.json) leaves out Drum 2 and Hi Hat 2 (each the same as its pair), PAN, the
 // closed-hat notes, NOISE COLOR (its six channels share one white noise) and MASTER.
 // Not here (D-347): the TRIG buttons (the keys and the rows play the channels), the individual outputs and inserts and
 // the trigger inputs (jacks), MIDI learn and the trigger modes (the Drum map's notes are its rows' settings).
@@ -45,7 +45,7 @@ export const PATTERN: Record<number, string> = {
   8: '....x.......x..x',
 };
 
-const ENGINE: Built = define('Verona 1 XL', (b) => {
+const ENGINE: Built = define('Verona Drum 1 XL', (b) => {
   const map = b.add('drummap', 0, 0, Object.fromEntries(KIT_NOTES.map((n, r) => [`n${r + 1}`, n])));
   b.module(map).names = CHANNELS.map(([, row]) => row);
   const closed = b.add('drummap', 0, 1, { n1: 67, n2: 69, n3: 0, n4: 0, n5: 0, n6: 0, n7: 0, n8: 0 });
@@ -99,7 +99,7 @@ for (const r of ENGINE.def.params) if (r.label === 'trig') r.names = [...TRIG_NA
 /** a Steps track named `name` between Main's keys and the engine's input `input`, holding `rows` (row → steps) of `map` */
 function track(p: Patch, name: string, y: number, input: string, rows: Record<number, string>): void {
   const main = p.modules.find((m) => m.type === 'fm1')!;
-  const a = assembliesOf(p).find((x) => x.name === 'Verona 1 XL')!;
+  const a = assembliesOf(p).find((x) => x.name === 'Verona Drum 1 XL')!;
   const into = a.inputs.find((r) => r.label === input)!;
   p.cables = p.cables.filter((c) => !(c.from.module === main.id && c.to.module === into.module && c.to.port === into.port));
   const st = addModule(p, DEFS.steps, 20, y);
@@ -116,9 +116,9 @@ function track(p: Patch, name: string, y: number, input: string, rows: Record<nu
 }
 
 export const xl: Xl = {
-  base: 'Verona 1',
+  base: 'Verona Drum 1',
   build: (fm1: Patch): Patch => {
-    const { p, main, a } = around('Verona 1 XL', ENGINE);
+    const { p, main, a } = around('Verona Drum 1 XL', ENGINE);
     const closed = a.inputs.find((r) => r.label === 'closed keys')!;
     wire(p, main.id, 'keys', closed.module, closed.port);
     track(p, 'PATTERN', 300, 'keys', PATTERN);

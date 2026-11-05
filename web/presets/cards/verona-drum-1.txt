@@ -1,4 +1,4 @@
-# Verona 1: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# Verona Drum 1: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
@@ -64,7 +64,7 @@
 # bend: 0 none, up a falling sweep, below 0 a rising one (the kick's only falls). time: the kick's pitch sweep (and,
 # on the FM-1, its noise burst). wave: 1 a sine, up to an overdriven square. clap: the claps' rate, so their number
 # (below about 22 Hz one clap). The hi-hat plays open on HH OPEN and closed on HH CLOSE.
-engine: Verona 1
+engine: Verona Drum 1
 
 preset: Dance Floor
 # the manual's dance kick: short decay, more bend, little time; a tight hat and a full clap
