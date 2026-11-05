@@ -21,3 +21,19 @@ fm1_c1_entry:
 	ssp = _c1_sstack_top
 	reti = fm1_c1_main
 	rti
+
+/* #271 diagnostic: core 1's wake-up (IRQ 121, the software latch's bit 1, enabled in core 1's bank only): it only
+ * clears the latch. In RAM with the waiting loop (.c1_text). Core 1 sleeps in `idle` between jobs; core 0 raises
+ * the latch when it hands a job over (fm1_cpu1_run) and again while it waits (fm1_cpu1_wait), so a wake-up that
+ * came just before the `idle` is not lost. */
+	.section .c1_text.wake,"ax",@progbits
+	.balign 4
+	.globl fm1_c1_wake_isr
+fm1_c1_wake_isr:
+	[--sp] = {r1-r0}
+	r0 = 0x1EEF1A4
+	r1 = 2
+	[r0 + 0] = r1
+	csync
+	{r1-r0} = [sp++]
+	rti

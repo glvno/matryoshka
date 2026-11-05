@@ -40,6 +40,9 @@
                                                  * short: the render hands it jobs and waits for them) */
 
 extern void fm1_c1_entry(void);
+extern void fm1_c1_wake_isr(void);              /* fm1_cpu1.S: core 1's wake-up (IRQ 121) */
+#define FM1_C1_WAKE_IRQ 121u
+#define FM1_C1_WAKE() (*(volatile uint32_t *)0x1EEF1A0u = 1u << (FM1_C1_WAKE_IRQ - 120u))   /* the software latch */
 extern uint32_t _c1_ustack[], _c1_ustack_top[], _c1_sstack_top[];   /* app.ld */
 #define FM1_C1_MARK 0x43314D4Bu                  /* "C1MK": how deep core 1's stack has gone */
 typedef struct {
@@ -76,6 +79,10 @@ void __attribute__((section(".c1_text"), noreturn, used)) fm1_c1_main(void)
     *(volatile uint32_t *)0x1EEF2E4u = lo;
     *(volatile uint32_t *)0x1EEF2D0u = (*(volatile uint32_t *)0x1EEF2D0u & ~((1u << 2) | (0x1Fu << 16))) | (1u << 3);
     fm1_c1_trace = 0xC1000002;
+    {   /* #271: its wake-up (IRQ 121, enabled in its own bank by fm1_cpu1_start) on, every other source off */
+        uint32_t ic = 0x100u;
+        __asm__ volatile("icfg = %0\n\tcsync\n\tsti" :: "r"(ic) : "memory");
+    }
     done = fm1_c1_mb.done;
     fm1_c1_mb.alive = 1;
     FM1_C1_SYNC();
@@ -83,11 +90,7 @@ void __attribute__((section(".c1_text"), noreturn, used)) fm1_c1_main(void)
         uint32_t j = fm1_c1_mb.job;
         FM1_C1_SYNC();
         if (j == done) {
-            /* idle: a pause in registers before the next look (Melodee's fm1_aw_relax; #271): polling the mailbox
-             * back to back slowed core 0's audio by 4-5 % on the test rig (the shared bus and caches) */
-            uint32_t r;
-            for (r = 0; r < FM1_C1_RELAX; r++)
-                __asm__ volatile("nop\n\tnop\n\tnop\n\tnop" ::: "memory");
+            __asm__ volatile("idle" ::: "memory");    /* #271: asleep until core 0 raises its wake-up */
             continue;
         }
         if (j == done + 1u) {
@@ -148,6 +151,8 @@ static int fm1_cpu1_start(void)
     FM1_C1_SYNC();
     for (i = 0; i < 32u; i++)                   /* its interrupt bank: all off (core 0's is at 0x1EEF100) */
         *(volatile uint32_t *)(0x1EEF300u + 4u * i) = 0;
+    *(volatile uint32_t *)(0x01C7FE00u + 4u * FM1_C1_WAKE_IRQ) = (uint32_t)(uintptr_t)&fm1_c1_wake_isr;   /* its vector */
+    *(volatile uint32_t *)(0x1EEF300u + 4u * (FM1_C1_WAKE_IRQ >> 3)) = 0x3u << (4u * (FM1_C1_WAKE_IRQ & 7u));   /* on, prio 1 */
     *(volatile uint32_t *)0x01C7FFF8u = (uint32_t)(uintptr_t)&fm1_c1_entry;
     saved = FM1_C1_CLK;
     FM1_C1_CLK = saved | 0x8u;
@@ -179,6 +184,7 @@ static inline int fm1_cpu1_run(void (*fn)(uint32_t), uint32_t arg)
     FM1_C1_SYNC();
     fm1_c1_mb.job = job;
     FM1_C1_SYNC();
+    FM1_C1_WAKE();
     return 1;
 }
 
@@ -186,8 +192,12 @@ static inline int fm1_cpu1_run(void (*fn)(uint32_t), uint32_t arg)
  * caller does the work) */
 static inline int fm1_cpu1_wait(void)
 {
-    uint32_t t0 = FM1_C1_T4;
+    uint32_t t0 = FM1_C1_T4, poke = t0;
     for (;;) {
+        if (FM1_C1_T4 - poke > 48u) {           /* #271: every 2 us of waiting, the wake-up again (one lost in a race) */
+            poke = FM1_C1_T4;
+            FM1_C1_WAKE();
+        }
         FM1_C1_SYNC();
         if (fm1_c1_mb.bad) {                    /* a unit that cannot run it: one core */
             fm1_cpu1_hold();
@@ -238,5 +248,6 @@ static inline int fm1_cpu1_run_mischecked(void (*fn)(uint32_t), uint32_t arg)
     FM1_C1_SYNC();
     fm1_c1_mb.job = job;
     FM1_C1_SYNC();
+    FM1_C1_WAKE();
     return 1;
 }
