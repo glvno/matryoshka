@@ -238,12 +238,15 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
   what its description says and fits the FM-1.
 - **How they hear the FM-1.** Besides TEST_PEAK and the screen's texts (TEST_SCREEN), these scenarios record what the
   FM-1 plays (`web/scripts/audio-capture.mjs`). On the emulator the recording is its I2S output, from `m1emu serve`'s
-  `wav`. On the rig it is the FM-1's USB audio, recorded on the Mac with ffmpeg (`brew install ffmpeg`) from the input
-  named "Matryoshka". On the emulator the run opens the rig's page on the emulator's MIDI port
+  `wav`. On the rig it is the FM-1's USB audio, recorded on the Mac from the input named "Matryoshka" by
+  `tools/fm1_rec.swift`. That small recorder uses Apple's AVAudioEngine and is built into `build/` the first time it is
+  needed, with `swiftc` from Xcode's command line tools. ffmpeg's avfoundation input is not used: on 2026-11-06 it kept
+  only 9.2 s of a 30 s capture of the rig and joined the pieces with no gap, while AVAudioEngine kept every sample. On
+  the emulator the run opens the rig's page on the emulator's MIDI port
   before the editor's page, for the screen's texts and the DIAG pages.
 - **What the rig's recording cannot show.** The FM-1 takes its USB audio before GLO > SYSTEM > OUTPUT mixes the sides
   and after MASTER (`firmware/src/audio.c`). So the MONO and MONO L checks hear the emulator only, and on the rig they
-  are skipped. A check that needs the recording is also skipped, not failed, when there is none: ffmpeg is missing,
+  are skipped. A check that needs the recording is also skipped, not failed, when there is none: the recorder cannot be built,
   MASTER is all the way down, or a second FM-1 is connected, so which audio input is the rig's is not known. It is also
   skipped when MASTER is so far down that the recording's loudest sample is more than 26 dB under what TEST_PEAK heard.
   TEST_PEAK reads as if MASTER sat at its default, so such a recording is lost in the USB audio's own noise. Skips are

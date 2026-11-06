@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // What the scenarios hear as a recording (scripts/device-check.mjs): the emulated FM-1's I2S output (m1emu serve `wav`) or
-// the rig's USB audio, recorded on this Mac with ffmpeg's avfoundation input (the FM-1 shows up as an input named
+// the rig's USB audio, recorded on this Mac with AVAudioEngine (tools/fm1_rec.swift; the FM-1 shows up as an input named
 // "Matryoshka", 16 bit 44.1 kHz stereo), read back as two channels of floats, and
 // the measures the checks take of it.
 //
@@ -9,11 +9,12 @@
 // rig's USB audio proves what both sides carry in STEREO, the echoes, the drones and the dropouts.
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
+import { createInterface } from 'node:readline';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** a WAV file's channels as floats (-1..1): PCM of 16, 24 or 32 bits, or 32-bit float. ffmpeg's header may hold no sizes
- *  while it writes (0 or 0xFFFFFFFF): the data then runs to the file's end */
+/** a WAV file's channels as floats (-1..1): PCM of 16, 24 or 32 bits, or 32-bit float. a header without sizes (0 or
+ *  0xFFFFFFFF, as a writer still running leaves it): the data then runs to the file's end */
 export function parseWav(buf) {
   const u32 = (o) => buf.readUInt32LE(o), u16 = (o) => buf.readUInt16LE(o);
   if (buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WAVE') throw new Error('not a WAV file');
@@ -45,64 +46,59 @@ export function parseWav(buf) {
   throw new Error('WAV without data');
 }
 
-/** the audio inputs avfoundation lists on this Mac */
-export function audioInputs() {
-  const r = spawnSync('ffmpeg', ['-hide_banner', '-f', 'avfoundation', '-list_devices', 'true', '-i', ''], { encoding: 'utf8' });
-  if (r.error) return null;   // (no ffmpeg)
-  const part = r.stderr.split('audio devices:')[1] ?? '';
-  return [...part.matchAll(/\] \[(\d+)\] (.+)$/gm)].map((m) => ({ index: Number(m[1]), name: m[2].trim() }));
+/** the recorder (tools/fm1_rec.swift, AVAudioEngine), built into build/ when missing or older than its source; null without
+ *  swiftc (Xcode's command line tools). ffmpeg's avfoundation input is not used to record: it delivered about a third of the
+ *  FM-1's buffers (9.2 s of a 30 s capture, 2026-11-06), spliced together, which no timing check survives */
+function recorder() {
+  const root = new URL('../../', import.meta.url).pathname, src = `${root}tools/fm1_rec.swift`, bin = `${root}build/fm1_rec`;
+  if (existsSync(bin) && statSync(bin).mtimeMs >= statSync(src).mtimeMs) return bin;
+  const r = spawnSync('swiftc', ['-O', src, '-o', bin], { encoding: 'utf8' });
+  return r.status === 0 ? bin : null;
 }
 
 /**
- * Start recording input `name` (avfoundation, "Matryoshka" = the FM-1's USB audio) into `file`, a 16-bit stereo WAV.
- * Resolves once samples are flowing (the file grows past its header), so what is done after it is in the recording;
- * `stop()` ends it and gives the channels. null when there is no ffmpeg, no such input, or more than one input of that name
- * (two FM-1s: which one is the rig is not known), with the reason in `why`.
+ * Start recording input `name` ("Matryoshka" = the FM-1's USB audio, its USB product string whatever name macOS keeps for
+ * its MIDI port) into `file`, a 16-bit WAV. Resolves once samples are flowing and the stream's start-up silence is over, so
+ * what is done after it is in the recording; `stop()` ends it and gives the channels with `flow` (how much audio came in how
+ * long), or { stalled, why } when less than 80 % of the samples the time holds came. { why } (a skip, D-140) when there is
+ * no recorder, no such input or more than one; { stalled, why } when the input sends nothing for 8 s.
  */
 export async function startCapture(file, name = 'Matryoshka', warmMs = 1500) {
-  const ins = audioInputs();
-  if (!ins) return { why: 'no ffmpeg (brew install ffmpeg)' };
-  // the FM-1's USB audio names itself "Matryoshka" (its USB product string, whatever name macOS keeps for its MIDI port);
-  // another name of the family is taken only when it is the one such input
-  let same = ins.filter((i) => i.name === name);
-  if (!same.length) same = ins.filter((i) => /matryoshka|fm-1|felucca/i.test(i.name) && !/aggregate|multi-output/i.test(i.name));
-  if (same.length !== 1) return { why: same.length ? `${same.length} audio inputs look like an FM-1 (${same.map((i) => i.name).join(', ')}): which is the rig's is not known` : `no audio input named "${name}" (inputs: ${ins.map((i) => i.name).join(', ')})` };
-  const input = same[0].name;
-  // (by name, not by its index: the list's order changes when a device comes or goes, as an Aggregate Device did, 2026-11-06)
-  const ff = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'avfoundation', '-i', `:${input}`, '-ac', '2', '-c:a', 'pcm_s16le', file],
-    { stdio: ['pipe', 'ignore', 'pipe'] });
+  const bin = recorder();
+  if (!bin) return { why: 'no recorder: tools/fm1_rec.swift needs swiftc (xcode-select --install)' };
+  const p = spawn(bin, [name, file], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const lines = [];
+  let wake = null;
+  createInterface({ input: p.stdout }).on('line', (l) => { lines.push(l); wake?.(); });
   let err = '';
-  ff.stderr.on('data', (d) => { err += d; });
-  const done = new Promise((res) => ff.on('exit', (c) => res(c)));
+  p.stderr.on('data', (d) => { err += d; });
+  const exited = new Promise((res) => p.on('exit', (c) => { res(c); wake?.(); }));
   const t0 = Date.now();
-  // (header 44 bytes, then 4 bytes a frame: 0.1 s in)
-  while (!(existsSync(file) && statSync(file).size > 44 + 17640)) {
-    if (ff.exitCode !== null || Date.now() - t0 > 8000) {
-      try { ff.kill(); } catch { /* gone */ }
-      return { stalled: true, why: `"${input}" sent no audio in 8 s (its USB audio stream is not running)${err ? `: ${err.trim().split('\n').pop()}` : ''}` };
+  while (!lines.some((l) => l.startsWith('rec ') || l.startsWith('error'))) {
+    if (p.exitCode !== null || Date.now() - t0 > 8000) {
+      try { p.kill(); } catch { /* gone */ }
+      const e = lines.find((l) => l.startsWith('error'));
+      return e ? { why: e.slice(6) } : { stalled: true, why: `"${name}" sent no audio in 8 s (its USB audio stream is not running)${err ? `: ${err.trim().split('\n').pop()}` : ''}` };
     }
-    await sleep(50);
+    await Promise.race([new Promise((r) => { wake = r; }), sleep(100)]);
   }
-  // (the FM-1 sends silence for about 1.5 s after the Mac opens its USB audio, as the rig did on 2026-11-06: what happens in
-  // that time would be missing from the recording, so the capture is ready only after it)
-  const t1 = Date.now();   // (about 0.1 s of audio had come by then)
+  const e = lines.find((l) => l.startsWith('error'));
+  if (e) { try { p.kill(); } catch { /* gone */ } return { why: e.slice(6) }; }
+  // (the FM-1 sends silence for about 1.5 s after the Mac opens its USB audio: what happens in that time would be lost)
   await sleep(warmMs);
   return {
-    /** the recording (with `flow`: how much audio came in how long), or { stalled, why } when the stream stalled: less than 80 % of the wall clock's samples arrived (the rig's
-     *  stream once delivered 0.55 s in 3 s, all of it silence) */
     async stop() {
-      // (what the FM-1 played last is still on its way through USB, CoreAudio and ffmpeg's buffers: about half a second)
+      // (what the FM-1 played last is still on its way through USB and CoreAudio's buffers)
       await sleep(800);
-      const want = (Date.now() - t1) / 1000 + 0.1;
-      try { ff.stdin.write('q'); } catch { /* gone */ }
-      const t = setTimeout(() => ff.kill('SIGINT'), 3000);
-      await done;
+      try { p.stdin.write('q\n'); p.stdin.end(); } catch { /* gone */ }
+      const t = setTimeout(() => p.kill('SIGINT'), 3000);
+      await exited;
       clearTimeout(t);
-      // (counted in the finished file: while ffmpeg runs, its writes reach the file in buffered chunks, so the file's size
-      // then says little about the stream)
-      const a = parseWav(readFileSync(file)), got = a.l.length / a.rate;
-      const flow = `${got.toFixed(2)} s of audio came in ${want.toFixed(2)} s`;
-      if (got < 0.8 * want) return { stalled: true, why: `"${input}" stalled: ${flow}` };
+      const m = lines.map((l) => /^frames (\d+) seconds ([\d.]+)$/.exec(l)).find(Boolean);
+      if (!m) return { stalled: true, why: `the recorder ended without its count${err ? `: ${err.trim().split('\n').pop()}` : ''}` };
+      const a = parseWav(readFileSync(file)), got = Number(m[1]) / a.rate, took = Number(m[2]);
+      const flow = `${got.toFixed(2)} s of audio came in ${took.toFixed(2)} s`;
+      if (got < 0.8 * took) return { stalled: true, why: `"${name}" stalled: ${flow}` };
       return Object.assign(a, { flow });
     },
   };

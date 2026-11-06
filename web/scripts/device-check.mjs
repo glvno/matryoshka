@@ -76,7 +76,7 @@ export function checkScenarios(h) {
   /** the rig's USB audio is a shipped feature: a stream the FM-1 opened and then stopped feeding (or never fed) is a failure,
    *  with its USB audio counters (DIAG 125: on, starts, packets, frames, rate sets, bus resets, lowest fill, USB frame; 126:
    *  underruns, overruns, missed, stalls, rate nudges up / down, fill low / high), and the checks that needed the recording
-   *  are skipped (D-140). The first recording that flows passes it once; no ffmpeg or no single FM-1 input stays a skip */
+   *  are skipped (D-140). The first recording that flows passes it once; no recorder or no single FM-1 input stays a skip */
   let flowed = false;
   async function streams(a) {
     if (!REAL) return;
