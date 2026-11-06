@@ -13,7 +13,8 @@ rm -rf "$T" && mkdir -p "$T/base/src" "$T/base/test" "$T/out"
 [ -d build/golden ] || (cd web && npx vite-node scripts/golden.ts)
 for f in $(git ls-tree --name-only "$BASE" firmware/src/); do git show "$BASE:$f" > "$T/base/src/$(basename "$f")"; done
 git show "$BASE:firmware/test/host_test.c" > "$T/base/test/host_test.c"
-gcc -O1 -w -o "$T/base_test" "$T/base/test/host_test.c" -lm
+git show "$BASE:firmware/test/lanes_host.h" > "$T/base/test/lanes_host.h" 2>/dev/null || rm -f "$T/base/test/lanes_host.h"
+gcc -O1 -w -o "$T/base_test" "$T/base/test/host_test.c" -lm -lpthread
 gcc -O1 -w -o "$T/new_test" firmware/test/host_test.c -lm -lpthread
 fail=0 n=0
 for p in build/golden/*.m1p; do
