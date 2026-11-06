@@ -18,7 +18,7 @@
 import { NOTE_NAMES } from './modules';
 import type { ModuleInst } from './patch';
 import { renamedKey } from './storage-key';
-import { fixNotes, STEP_VEL, STEPS_MAX, STEPS_RATES, type StepNote } from './track';
+import { droneRow, fixNotes, isDrone, STEP_VEL, STEPS_MAX, STEPS_RATES, type StepNote } from './track';
 
 export interface RollOps {
   /** the track as it is now (null: it is gone) and its label */
@@ -142,7 +142,7 @@ export class PianoRoll {
     help.textContent = '?';
     help.title = 'Click a note: select (Shift adds). Drag: move (Option: copy), its edges: length / start, Cmd-drag: velocity.\n'
       + 'Empty grid: drag a band; double-click adds a note, double-click a note removes it; right-click removes.\n'
-      + 'Delete removes the selection; arrows move it (Shift + ↑↓ an octave, Shift + ←→ length); Cmd-A / C / X / V / D; B draw mode; Esc.';
+      + 'Delete removes the selection; arrows move it (Shift + ↑↓ an octave, Shift + ←→ length); L: a drone (tied round the loop, again: one step), Shift+L: the row a drone (its first note held, the rest of the row gone); Cmd-A / C / X / V / D; B draw mode; Esc.';
     this.infoEl = document.createElement('span');
     this.infoEl.className = 'roll-info';
     const close = btn('×', 'roll-close', 'close the roll (Esc)', () => this.ops.close());
@@ -355,16 +355,27 @@ export class PianoRoll {
     // the notes
     const ns = this.notes;
     this.sel = new Set([...this.sel].filter((s) => ns.some((n) => id(n) === s)));
-    this.notesEl.replaceChildren(...ns.filter((n) => { const r = this.rowOf(n.note); return r >= 0 && r < rows; }).map((n) => {
+    this.notesEl.replaceChildren(...ns.filter((n) => { const r = this.rowOf(n.note); return r >= 0 && r < rows; }).flatMap((n) => {
+      // a note tied across the loop point (#384) is drawn to the end of the track and again from its first step, as
+      // far as it runs on into the next pass (a drone: up to its own start)
+      const wraps = !!n.wrap && n.at < this.len && (isDrone(n) || n.at + n.len > this.len);
       const d = document.createElement('div');
-      d.className = 'roll-note' + (this.sel.has(id(n)) ? ' sel' : '') + (n.at >= this.len ? ' past' : '');
+      d.className = 'roll-note' + (this.sel.has(id(n)) ? ' sel' : '') + (n.at >= this.len ? ' past' : '') + (isDrone(n) && wraps ? ' drone' : '');
       d.style.left = `${n.at * sw + 1}px`;
       d.style.top = `${this.rowOf(n.note) * rh + 1}px`;
       d.style.height = `${rh - 2}px`;
-      d.style.width = `${Math.max(3, n.len * sw - 2)}px`;
+      d.style.width = `${Math.max(3, (wraps ? this.len - n.at : n.len) * sw - 2)}px`;
       d.style.setProperty('--vel', String(n.vel / 127));
       d.title = this.describe(n);
-      return d;
+      if (!wraps) return [d];
+      const on = isDrone(n) ? n.at : Math.min(n.at, n.at + n.len - this.len);
+      if (on <= 0) return [d];
+      const c = d.cloneNode() as HTMLElement;
+      c.classList.add('wrapped');
+      c.style.left = '1px';
+      c.style.width = `${Math.max(3, on * sw - 2)}px`;
+      c.title = d.title;
+      return [d, c];
     }));
     // the velocity lane: a bar per note at its start
     this.velLane.replaceChildren(...ns.map((n) => {
@@ -422,7 +433,8 @@ export class PianoRoll {
   }
 
   private describe(n: StepNote): string {
-    return `step ${n.at + 1} · ${this.pitchName(n.note)} · ${n.len} step${n.len > 1 ? 's' : ''} · vel ${n.vel}${n.chance ? ` · ${n.chance} %` : ''}`;
+    const len = isDrone(n) ? 'a drone (tied round the loop onto itself)' : `${n.len} step${n.len > 1 ? 's' : ''}${n.wrap ? ' (on across the loop point)' : ''}`;
+    return `step ${n.at + 1} · ${this.pitchName(n.note)} · ${len} · vel ${n.vel}${n.chance ? ` · ${n.chance} %` : ''}`;
   }
 
   /** a note by what its row says: a Drum map row's name, else the pitch */
@@ -828,6 +840,33 @@ export class PianoRoll {
     if (alt) return false;
     if (lower === 'b') {
       this.setDraw(!this.draw);
+      return true;
+    }
+    if (lower === 'l' && shift) {
+      // the row drone (#384, D-819; LFO + FX on the FM-1): each selected note's row (pitch) becomes one drone, its first
+      // note held for as long as the pattern plays and the row's other notes gone; a row that is one drone: one step again
+      if (!picked.length) return true;
+      let ns: StepNote[] | undefined = this.notes;
+      let said = '';
+      for (const note of [...new Set(picked.map((n) => n.note))]) {
+        const r = droneRow(ns, note);
+        if (r) ({ notes: ns, say: said } = r);
+      }
+      this.sel.clear();
+      this.infoEl.textContent = said === 'DRONE OFF' ? 'one step again' : 'row drone: its first note held round the loop';
+      this.edit(ns ?? []);
+      return true;
+    }
+    if (lower === 'l') {
+      // the selected notes become drones, tied round the loop onto themselves (#384); all drones already: one step again
+      if (!picked.length) return true;
+      const off = picked.every(isDrone);
+      const changed = picked.map((n): StepNote => {
+        const { wrap: _w, ...rest } = n;
+        return off ? { ...rest, len: 1 } : { ...rest, len: STEPS_MAX, wrap: true };
+      });
+      this.infoEl.textContent = off ? 'one step again' : `drone${changed.length > 1 ? 's' : ''}: tied round the loop`;
+      this.edit(over(changed, rest));
       return true;
     }
     if (k === 'Delete' || k === 'Backspace') {

@@ -1,4 +1,4 @@
-//! One emulated FM-1 running our app.bin: fm1-emu's cpu0 + SoC (+ cpu1 once released), the
+//! One emulated FM-1 running our app.bin: fm1-emu's cpu0 + SoC (+ cpu1 once released, until held), the
 //! front panel driven at the current emulated time, the audio and the LCD read back.
 //! The run loop is fm1-live's (`fm1_soc::machine::run_dual` over `run_blocks`).
 
@@ -15,6 +15,8 @@ pub const FLASH_SIZE: usize = 1 << 20;
 pub const PAINT: u32 = 0x5AC3_A55C;
 const PAINT_LO: u32 = 0x01C6_0000;
 const PAINT_HI: u32 = 0x01C7_C000; // NOINIT starts here (firmware/app.ld)
+/// The second core's control word (hal/fm1_cpu1.h FM1_C1_CON): bit 3 set = it runs.
+const C1_CON: u32 = 0x01EE_E004;
 
 pub struct Machine {
     pub cpu: Cpu,
@@ -67,6 +69,12 @@ impl Machine {
             let jit = self.cpu.jit_on;
             let Machine { cpu, cpu1, soc, pending_tick, .. } = self;
             machine::run_dual(cpu1, soc, 100_000, RAM_SIZE, jit, |soc, k| machine::run_blocks(cpu, soc, k, pending_tick))?;
+            // the hold (#271): fm1-emu pauses a core only by the stock firmware's C1_CON bit 2 pulse; our firmware (X0X's
+            // and Melodee's hold) sets bit 1 and clears bit 3. Bit 3 clear stops core 1 here; a later start (0x10008 bit
+            // 3 again) boots it from its entry word, as the chip does. Checked between stretches of 100,000 instructions.
+            if self.cpu1.is_some() && self.soc.read32(C1_CON) & 8 == 0 {
+                self.cpu1 = None;
+            }
             let a = &mut self.soc.periph.audio;
             self.audio.extend(a.drain(..));
         }

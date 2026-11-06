@@ -3,7 +3,7 @@
 // patches as binary), firmware/src/controls.h and the README's list of controls (the FM-1's controls, src/controls.ts).
 // Run from web/:  npx vite-node scripts/export-defs.ts
 import { readFileSync, writeFileSync } from 'node:fs';
-import { ADSR_LONG, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY } from '../src/modules';
+import { ADSR_LONG, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_LENGTH_MAX, DELAY_LENGTH_MIN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY } from '../src/modules';
 import { encodePatch, TYPE_ORDER, toQ16, VERSION } from '../src/patchbin';
 import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK_NAME_MAX } from '../src/patch';
 import { ACCENT_VEL, TRACK_NOTES_MAX } from '../src/track';
@@ -12,6 +12,9 @@ import { FM1_PRESETS } from '../src/presets';
 import { FALLBACK_NAME, fallbackPatch } from '../src/fallback';
 import { factoryPresets } from '../src/factory-presets';
 import { controlsHeader, readmeWithControls } from './controls-h';
+import { PRESET_MIGRATIONS } from '../src/preset-migrate';
+import { readLineage } from './lineage-lib';
+import { CASE_PICKS, casesHeader, migrationCases, migrationTables } from './preset-migration-c';
 const FACTORY_PRESETS = factoryPresets();
 
 const up = (s: string): string => s.toUpperCase().replace(/[^A-Z0-9]/g, '_');
@@ -44,6 +47,8 @@ for (const t of TYPE_ORDER) {
 w(`#define DELAY_NDIV ${DELAY_DIVS.length}`);
 w(`#define DELAY_CLK_PPQN ${DELAY_CLK_PPQN}`);
 w(`#define DELAY_SYNC_TOP ${DELAY_SYNC_TOP}   /* ms: the synced note lengths spread over 1..this (modules.ts) */`);
+w(`#define DELAY_LENGTH_MIN ${DELAY_LENGTH_MIN}   /* ms: the Delay's length row (modules.ts; engine.c dly_samples sizes its line) */`);
+w(`#define DELAY_LENGTH_MAX ${DELAY_LENGTH_MAX}`);
 w(`static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {${DELAY_DIVS.map((d) => d.num).join(', ')}};`);
 w(`static const uint8_t DELAY_DIV_DEN[DELAY_NDIV] = {${DELAY_DIVS.map((d) => d.den).join(', ')}};`);
 w(`static const char *const DELAY_DIV_NAME[DELAY_NDIV] = {${DELAY_DIVS.map((d) => `"${d.name}"`).join(', ')}};`);
@@ -123,6 +128,12 @@ w('    const int32_t *pstep;   /* Q16.16, 0: none: the editor\'s step (ParamDef.
 w('} def_t;');
 w('/* the most parameter j of def d takes: its stretch past pmax (ptop), else pmax */');
 w('#define DEF_TOP(d, j) ((d)->ptop ? (d)->ptop[j] : (d)->pmax[j])');
+{
+  // the rows set when a patch loads (ParamDef.fixed): no knob, preset, input or edit moves them while it plays
+  const fixed = TYPE_ORDER.flatMap((t) => DEFS[t].params.filter((p) => p.fixed).map((p) => `((t) == T_${up(t)} && (j) == ${up(t)}_P_${up(p.name)})`));
+  w('/* parameter j of type t is set when a patch loads (ParamDef.fixed: a Delay\'s length, its line\'s size), never while it plays */');
+  w(`#define DEF_FIXED(t, j) (${fixed.join(' || ') || '0'})`);
+}
 w();
 const choiceLists = new Map<string, string>();
 for (const t of TYPE_ORDER) {
@@ -186,7 +197,9 @@ presetNames.forEach((n, i) => {
   // a change makes the boot rewrite the untouched factory slots (main.c bank_upgrade)
   let h = 0x811c9dc5;
   for (const n of presetNames) for (const x of [...new TextEncoder().encode(n.toUpperCase()), 0, ...encodePatch(FM1_PRESETS[n]())]) h = Math.imul(h ^ x, 0x01000193) >>> 0;
-  P.push('', '/* the factory set (PRESET_LIST: names and bytes), 24 bits of FNV-1a, never 0: kept in the settings record, a change', '   makes the boot rewrite the untouched factory slots (main.c bank_upgrade) */');
+  // then the preset migrations (D-865), when there are any: a new map makes the boot move the presets it covers
+  if (Object.keys(PRESET_MIGRATIONS).length) for (const x of new TextEncoder().encode(JSON.stringify(PRESET_MIGRATIONS))) h = Math.imul(h ^ x, 0x01000193) >>> 0;
+  P.push('', '/* the factory set (PRESET_LIST: names and bytes, then web/src/preset-migrations.json as JSON when it has any), 24 bits', '   of FNV-1a, never 0: kept in the settings record, a change makes the boot rewrite the untouched factory slots and move', '   the user presets of earlier engine structures (main.c bank_upgrade, presets_upgrade) */');
   P.push(`#define FACTORY_SET_ID 0x${((h & 0xffffff) || 1).toString(16).padStart(6, '0')}u`);
 }
 P.push('', `#define N_PRESETS ${presetNames.length}`);
@@ -212,6 +225,19 @@ P.push('};', '');
   for (let i = 0; i < rows.length; i += 4) P.push('    ' + rows.slice(i, i + 4).map((x) => `{0x${x.fnv}u, ${x.len}, ${now.get(x.name)}}`).join(', ') + ',');
   P.push('};', '');
 }
+{ // the factory sets released firmwares wrote (scripts/legacy-factory.ts): after an update, a factory patch the bank's set
+  // did not have by name goes into a free slot (main.c bank_add, #630)
+  const sets = (JSON.parse(readFileSync(new URL('./released-factory.json', import.meta.url), 'utf8')) as { sets: { set: string; tags: string[]; names: string[] }[] }).sets;
+  if (presetNames.length > 64) throw new Error('RELEASED_SETS keeps today\'s factory patches in 64 bits');
+  P.push('/* the factory sets released firmwares wrote (web/scripts/released-factory.json): the set id (0: a firmware from before', '   the id, 1.6.0 and older) and which of today\'s patches it had by name (bit n: PRESET_LIST[n]) */');
+  P.push(`#define N_RELEASED_SETS ${sets.length}`);
+  P.push('static const struct { uint32_t set; uint64_t has; } RELEASED_SETS[N_RELEASED_SETS] = {');
+  for (const s of sets) {
+    const has = presetNames.reduce((m, n, i) => (s.names.includes(n.toUpperCase()) ? m | (1n << BigInt(i)) : m), 0n);
+    P.push(`    {0x${s.set}u, 0x${has.toString(16)}ull},   /* ${s.tags[0]}${s.tags.length > 1 ? ' .. ' + s.tags[s.tags.length - 1] : ''} */`);
+  }
+  P.push('};', '');
+}
 { // the factory engines' presets (#193, #194): read-only in ROM, values Q16 in canonical row order (structure.ts)
   P.push('/* the factory engines\' presets (web/src/factory-presets.ts): structure, name, values (Q16, canonical row order) */');
   FACTORY_PRESETS.forEach((p, i) => P.push(`static const int32_t FPV_${i}[${p.values.length}] = {${p.values.map(toQ16).join(',')}};`));
@@ -220,11 +246,17 @@ P.push('};', '');
   FACTORY_PRESETS.forEach((p, i) => P.push(`    {0x${p.structure}u, "${p.name.toUpperCase().replace(/[^ -~]/g, '').replace(/"/g, '')}", ${p.values.length}, FPV_${i}},`));
   P.push('};', '');
 }
+const MIG = migrationTables(PRESET_MIGRATIONS);   // (after FPRESET_LIST: presetmig.c reads both)
+P.push(...MIG.lines);
 writeFileSync(new URL('../../firmware/src/presets.h', import.meta.url), P.join('\n'));
+{ // the preset migrations' test cases (firmware/test/preset_test.c, tools/emu/src/smoke.rs)
+  const initOf = (s: string): number[] | undefined => FACTORY_PRESETS.find((p) => p.structure === s && p.name === 'Init')?.values;
+  writeFileSync(new URL('../../firmware/test/pmig_cases.h', import.meta.url), casesHeader(migrationCases(readLineage(), PRESET_MIGRATIONS, initOf, CASE_PICKS)));
+}
 writeFileSync(new URL('../../firmware/src/controls.h', import.meta.url), controlsHeader(
   readFileSync(new URL('../../firmware/src/help_ui.c', import.meta.url), 'utf8'), readFileSync(new URL('../../firmware/src/font_bc.h', import.meta.url), 'utf8')));
 { // the README's list of the FM-1's controls (between its controls markers), from the same table
   const readme = new URL('../../README.md', import.meta.url);
   writeFileSync(readme, readmeWithControls(readFileSync(readme, 'utf8')));
 }
-console.log('wrote defs.h, presets.h, controls.h, the README\'s controls');
+console.log(`wrote defs.h, presets.h (preset migrations: ${MIG.bytes} bytes), controls.h, the README's controls, test/pmig_cases.h`);

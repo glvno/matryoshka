@@ -11,7 +11,7 @@ CF=""
 rm -rf build/golden                          # (kits that are gone must not be compared from an old run)
 (cd web && npx vite-node scripts/golden.ts)
 mkdir -p build
-gcc -O1 -Wall -Wextra -Wno-unused-parameter -Wno-unused-result $CF -o build/host_test firmware/test/host_test.c -lm
+gcc -O1 -Wall -Wextra -Wno-unused-parameter -Wno-unused-result $CF -o build/host_test firmware/test/host_test.c -lm -lpthread
 gcc -O1 -Wall -Wextra -Wno-unused-parameter -Wno-unused-result $CF -o build/proto_test firmware/test/proto_test.c -lm
 gcc -O1 -Wall -Wextra -Wno-unused-parameter -Wno-unused-result $CF -o build/idle_test firmware/test/idle_test.c -lm
 fail=0

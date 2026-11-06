@@ -130,7 +130,7 @@ export function headroom(p: Patch, secs = 3): Patch {
 // alone, else neither. The drum kits, <7PH and Spokes 6 get neither on the FM-1 (Spokes 6's melodic voices play their
 // Steps tracks' pitch and gate, which an arpeggiator's keys cannot reach); an XL is the kitchen sink and gets both, a
 // kit's arpeggiator between its DRUMS track and its Drum map.
-export const DRUMS = new Set(['808 Kit', '909 Kit', '<7PH', 'Spokes 6']);
+export const DRUMS = new Set(['808 Kit', '909 Kit', '<7PH', 'Spokes 6', 'Verona Drum 1']);
 export type Player = 'both' | 'arp' | 'none';
 export function withPlayers(src: Patch, what: Player): Patch {
   const p = structuredClone(src);

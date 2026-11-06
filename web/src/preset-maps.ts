@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Hand-written maps for user presets when a factory engine was rebuilt (#627, D-865): which rows of an earlier structure
+// feed which rows of the next one, where the automatic map (scripts/lineage-lib.ts: a row that is still there keeps its
+// value, a new row takes the engine's Init value) does not cover the change. A structure change whose automatic map
+// leaves an earlier row out needs an entry here: a map, or `none` (the presets of that structure stay as they are). The
+// tests fail until it has one. Rows are named as in src/preset-lineage.json: type#id.param, in the structure they belong
+// to. A row of the newer structure not named here is matched automatically, or takes the Init value.
+
+/** how one row of the newer structure gets its value: from one earlier row as it is; from one or two earlier rows read as
+ * whole numbers through a table (the value at place (a - lo[0]) * n[1] + (b - lo[1]), each held inside its n places);
+ * or the engine's Init value */
+export type HandRow = 'init' | { from: string } | { table: string[]; lo: number[]; n: number[]; v: number[] };
+export type HandMap =
+  | { engine: string; from: string; to: string; why: string; rows: Record<string, HandRow> }
+  | { engine: string; from: string; to: string; none: string };
+
+/** the positions 1..8 of an eight-way Selector from a number 0..7 */
+const ONE_UP = [1, 2, 3, 4, 5, 6, 7, 8];
+
+export const HAND_MAPS: HandMap[] = [
+  // ---- 1.5.0 (#430's predecessors): the FM-1 instruments rebuilt at parity with their originals. Their 1.2 .. 1.4
+  // structures had other modules and rows altogether: no map.
+  ...([
+    ['Briefcase 3', '06ea3383', 'cf5034d5'], ['Canvas', 'b708700b', '5ae3f8ec'], ['Io 4', '6573011a', 'bcfb20df'],
+    ['Monolith D', '404a1620', '44089bcc'], ['Sallen 20', '52587cb7', '2db4c1e1'], ['Silver Box', 'e18a8dd2', '105fd470'],
+    ['Vernon 100', '00c036a8', '41211a52'], ['Wanderer', '1486a89e', '2700d0b6'],
+  ] as const).map(([engine, from, to]): HandMap => ({ engine, from, to, none: 'rebuilt in 1.5.0 from the original\'s panel: other modules and rows' })),
+
+  // ---- 1.7.0, D-852: the hold and drone rows are Macros, not Consts. The number that reaches the voice at a row value is
+  // the same, so the value carries over as it is.
+  {
+    engine: '8 Lire', from: 'd34140e9', to: '15c37cee', why: 'D-852: the hold rows became Macros (same value)',
+    rows: { 'macro#41.value': { from: 'const#41.value' }, 'macro#42.value': { from: 'const#42.value' } },
+  },
+  {
+    engine: 'Elvira 2', from: '90b55ac5', to: '2596beed', why: 'D-852: the drone rows became Macros (same value)',
+    rows: {
+      'macro#9.value': { from: 'const#9.value' }, 'macro#14.value': { from: 'const#14.value' },
+      'macro#19.value': { from: 'const#19.value' }, 'macro#24.value': { from: 'const#24.value' },
+    },
+  },
+
+  // ---- 1.7.0, issue #430 (D-706): Cassia 1's line controls follow the CZ-1's. A line's wave was a number 0..7 (saw ..
+  // reso 3) and is now a Selector at that position + 1; wave 2 was 0..8 (off, saw .. reso 3) and is now a Selector of off
+  // and seven waveforms (reso 3 is left out: it lands on reso 2). The line row (1, 2, 1+2') and the 1+1' switch are one
+  // Selector: 1, 2, 1+1', 1+2'. The ring and noise switches (each 1 off, 2 on; noise after ring) are one mod row: 1 off,
+  // 2 ring, 3 noise.
+  {
+    engine: 'Cassia 1', from: '62d178d5', to: '2b89b424', why: 'issue #430: the waves, line and modulation became Selectors',
+    rows: {
+      'select#10.pos': { table: ['const#10.value'], lo: [0], n: [8], v: ONE_UP },
+      'select#13.pos': { table: ['const#13.value'], lo: [0], n: [8], v: ONE_UP },
+      'select#11.pos': { table: ['const#11.value'], lo: [0], n: [8], v: ONE_UP },
+      'select#14.pos': { table: ['const#14.value'], lo: [0], n: [8], v: ONE_UP },
+      // line 1, 2, 1+2' (old) by 1+1' off, on: 1, 2, 1+1' (3), 1+2' (4)
+      'select#9.pos': { table: ['select#43.pos', 'const#9.value'], lo: [1, 0], n: [3, 2], v: [1, 1, 2, 2, 4, 3] },
+      // ring off, on by noise off, on: noise wins (it comes after the ring)
+      'select#37.pos': { table: ['select#40.pos', 'select#42.pos'], lo: [1, 1], n: [2, 2], v: [1, 3, 2, 3] },
+    },
+  },
+];

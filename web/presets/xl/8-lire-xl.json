@@ -4010,7 +4010,8 @@
     "sync": 0,
     "pingpong": 0,
     "note": 0,
-    "swell": 0
+    "swell": 0,
+    "length": 700
    },
    "att": [
     1,
@@ -4212,7 +4213,8 @@
     "sync": 0,
     "pingpong": 0,
     "note": 0,
-    "swell": 0
+    "swell": 0,
+    "length": 700
    },
    "att": [
     1,

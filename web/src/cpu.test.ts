@@ -121,16 +121,37 @@ describe('CPU estimate against the device survey (docs/measurements/cpu-survey-2
   changed.add('canvas');
   changed.add('briefcase 3');
   // patches added since the survey (#182, Elvira 2, Scrounge, Meridian 8, Perun 4, <7PH, Spokes 6, Cassia 1, the four simple
-  // engines of #413): measure them on the device, then add them to the survey file
-  const unmeasured = new Set(['8 lire', 'elvira 2', 'scrounge', 'meridian 8', 'perun 4', '<7ph', 'spokes 6', 'cassia 1', 'basic poly', 'drift poly', 'mono lead', 'supersaw stack']);
+  // engines of #413, Verona Drum 1): measure them on the device, then add them to the survey file
+  const unmeasured = new Set(['8 lire', 'elvira 2', 'scrounge', 'meridian 8', 'perun 4', '<7ph', 'spokes 6', 'cassia 1', 'basic poly', 'drift poly', 'mono lead', 'supersaw stack', 'verona drum 1']);
   it('covers every factory patch', () => expect(survey.length + unmeasured.size).toBe(Object.keys(FM1_PRESETS).length));
   for (const r of survey)
     it.skipIf(changed.has(r.name.toLowerCase()))(`is within -4 / +6 points of the device: ${r.name}`, () => {
       const name = byName.get(r.name.toLowerCase());
       if (!name) throw new Error(`the survey's ${r.name} is not a factory patch`);
       const device = (100 * Math.max(r.idle_us, r.n1_us, r.n4_us, r.n8_us)) / r.budget_us;
-      const est = 100 * cpuEstimate(FM1_PRESETS[name]()).use;
+      const est = 100 * cpuEstimate(FM1_PRESETS[name](), CPU, 1).use;   // (that survey ran on one core)
       expect(est).toBeGreaterThanOrEqual(device - 4);
       expect(est).toBeLessThanOrEqual(device + 6);
     });
+});
+
+// #271: the second core. The split survey of 2026-11-05 (every factory patch on the test rig, split on, CI run 42093061899)
+// against release-1.10's head before #271 (CI run 42096997058): core 0's estimate against the device. The estimate is the one-core model plus the idle cost minus the split's saving
+// (scripts/cpu-costs.ts CORES), so it keeps the one-core model's band; and the split must never be estimated to save more than
+// it saved on the rig.
+describe('CPU estimate with two cores (docs/measurements/cpu-survey-2026-11-05-rig-merged-split.json)', () => {
+  type Reading = { name: string; n0_us: number; n1_us: number; n4_us: number; n8_us: number; n8_samples: number[]; budget_us: number };
+  const read = (f: string) => new Map((JSON.parse(readFileSync(new URL(`../../docs/measurements/${f}`, import.meta.url), 'utf8')) as Reading[]).map((r) => [r.name.toLowerCase(), r]));
+  const split = read('cpu-survey-2026-11-05-rig-merged-split.json'), one = read('cpu-survey-2026-11-05-rig-release-1.10-head.json');
+  const steady = (r: Reading) => [...r.n8_samples.slice(1)].sort((a, b) => a - b)[(r.n8_samples.length - 1) >> 1];
+  it('has the second core in the table', () => expect(CPU.cores?.idleUs).toBeGreaterThan(0));
+  for (const name of Object.keys(FM1_PRESETS)) {
+    const s = split.get(name.toLowerCase()), o = one.get(name.toLowerCase());
+    if (!s || !o) continue;
+    it(`never promises more than the split saved on the rig: ${name}`, () => {
+      const e = cpuEstimate(FM1_PRESETS[name]());
+      const modelled = e.oneCoreUs - e.us, measured = steady(o) - steady(s);
+      expect(modelled).toBeLessThanOrEqual(measured + 60);   // (60 us: the idle cost spreads -31..+80 us about its 24 us median)
+    });
+  }
 });

@@ -51,7 +51,7 @@ export const EFFECTS = [
   'step', 'row', 'roll_view', 'roll_pitch', 'jump', 'track', 'pattern', 'accent', 'tie', 'step_record', 'step_record_at',
   'velocity', 'chance', 'pitch', 'lock_page', 'lock', 'song_page', 'clear', 'steps_page', 'keys_octave',
   'write', 'chord', 'rest', 'cursor', 'back_clear', 'live', 'end',
-  'take', 'take_accent',
+  'take', 'take_accent', 'drone',
   'entry', 'entry_pattern', 'add_entry', 'dup_entry', 'transpose', 'song_play', 'song', 'delete_entry', 'back_steps',
   'tab', 'scroll', 'set', 'save_close', 'run_row',
   'editor',
@@ -125,7 +125,7 @@ export const CONTROLS: ControlRow[] = [
   { id: 'home', gesture: { do: [B('HOME')] }, does: 'back', everywhere: at(5, but('sandbox')), effect: 'back',
     help: 'back one step, on release: on a device page to its device’s first page, then to the patch’s home page (its first device); out of the SEQ, SONG and environment pages, back where you were. Held alone it does nothing' },
   { id: 'glo', gesture: { do: [B('GLO')] }, does: 'settings', everywhere: at(50, but('menu')), effect: 'menu',
-    help: 'the settings menu, in tabs: MIDI (MIDI channel, clock in, MIDI out, clock out), PANEL (LEDs, knob acceleration, count-in, TEMPO: GLOBAL or PATCH), SYSTEM (update mode, factory reset, quick start), INFO (version, CPU, bank slots, battery) and GUIDE (the ideas behind the FM-1)' },
+    help: 'the settings menu, in tabs: MIDI (MIDI channel, clock in, MIDI out, clock out), PANEL (LEDs, knob acceleration, count-in, TEMPO: GLOBAL or PATCH), SYSTEM (update mode, factory reset, quick start, OUTPUT: STEREO, MONO, the sum of both sides on both, for headphones or a stereo input, or MONO L, the sum on the left only and the right silent, for one mono cable into a recorder), INFO (version, CPU, bank slots, battery) and GUIDE (the ideas behind the FM-1)' },
   { id: 'env', gesture: { do: [B('ENV')] }, does: 'environment', everywhere: at(60, but('env', 'sandbox')), effect: 'env',
     help: 'the environment: every device from Main to the Output, each Steps track followed by what it plays (from the menu too)' },
   { id: 'seq', gesture: { do: [B('SEQ')] }, does: 'steps page', everywhere: at(70, but(...SEQ_STATES, 'sandbox')), effect: 'seq',
@@ -137,10 +137,10 @@ export const CONTROLS: ControlRow[] = [
   { id: 'tempo', gesture: { hold: 'PLAY', do: [E('PRESET')] }, does: 'tempo', everywhere: at(90, ALL), effect: 'tempo',
     help: 'the tempo, 1 bpm a click (the global one while TEMPO is GLOBAL; in sandbox mode the browser’s); PLAY’s release then neither starts nor stops' },
   { id: 'patch', gesture: { hold: 'HOME', do: [E('PRESET')] }, does: 'patches', everywhere: at(100, but('menu', 'sandbox')), effect: 'patch',
-    help: 'the patches in the bank (an empty bank says BANK EMPTY); HOME’s release then goes nowhere' },
+    help: 'the patches in the bank (an empty bank says BANK EMPTY; while the editor’s Live is on the patch stays, EDITOR LIVE: PATCH STAYS); HOME’s release then goes nowhere' },
   { id: 'store', gesture: { hold: 'ENV', do: [B('SAVE')] }, does: 'save device preset', doesIn: { env: "save row's preset" }, when: 'dev_store', sheet: { device: 90, env: 60 }, everywhere: at(110, but('device', 'env', 'sandbox')), effect: 'store',
     help: 'the device in focus’s values as its preset (an assembly)' },
-  { id: 'arm', gesture: { hold: 'REC', do: [BLACK] }, does: 'arm a track', when: 'tracks', everywhere: at(120, but('sandbox')), effect: 'arm',
+  { id: 'arm', gesture: { hold: 'REC', do: [BLACK] }, does: 'arm / disarm track', when: 'tracks', everywhere: at(120, but('sandbox')), effect: 'arm',
     help: 'black key n: track n into the armed devices or out (any page)' },
   { id: 'mute', gesture: { hold: 'SEQ', do: [BLACK] }, does: 'mute a track', when: 'tracks', everywhere: at(130, but('sandbox')), effect: 'mute',
     help: 'black key n: mutes track n, or unmutes it (any page)' },
@@ -192,7 +192,9 @@ export const CONTROLS: ControlRow[] = [
     help: 'the patch’s pattern, 1..64: running, each track takes it at the end of its pass; stopped, at once. A track without that pattern plays its first' },
   { id: 'accent', gesture: { hold: 'FX', do: [WHITE] }, does: 'accent', sheet: { drum: 30, roll: 100 }, effect: 'accent', hint: 'FX acc' },
   { id: 'tie', gesture: { hold: 'LFO', do: [WHITE] }, does: 'tie', sheet: { drum: 100, roll: 50 }, effect: 'tie',
-    help: 'the note held on through that step (again: untie)' },
+    help: 'the note held on through that step (again: untie). With no note of the row before that step, the tie wraps round the loop: the row’s last note goes on across the loop’s end to it, and on the note’s own step it becomes a drone that never starts again (again: one step)' },
+  { id: 'row-drone', gesture: { hold: 'LFO', do: [B('FX')] }, does: 'row drone', sheet: { drum: 105, roll: 195 }, effect: 'drone',
+    help: 'the selected row as one drone: its first note holds for as long as the pattern plays, and the row’s other notes go (again: one step; an empty row says NOTHING TO DRONE). Not in step record, where LFO is the rest / tie' },
   { id: 'step-record', gesture: { do: [B('REC')] }, does: 'toggle step record', sheet: { drum: 40, roll: 10 }, effect: 'step_record',
     help: 'stopped: step record from the first step shown; running, REC records as everywhere' },
   { id: 'step-record-there', gesture: { hold: 'REC', do: [WHITE] }, does: '^ but at step n/16', doesIn: { drum: '^ but at step N/16' }, plain: 'step record from that step', sheet: { drum: 50, roll: 20 }, effect: 'step_record_at',
@@ -298,7 +300,7 @@ const STRIP: Record<string, string | ({ _: string } & Partial<Record<HelpState, 
   'step-record': 'write notes one step at a time, from the first step shown', 'step-record-there': 'step record starting from that step',
   pattern: 'change pattern (1..64; running: at the end of the pass)', 'song-page': 'arrange patterns into a song',
   clear: 'clear the whole track (press REC again to confirm)', 'steps-page': 'show the next or previous 16 steps',
-  tie: 'tie the note on through that step', 'held-pitch': "change this step's pitch", 'held-velocity': "change this step's velocity",
+  tie: 'tie the note on through that step (on its own step: a drone)', 'row-drone': 'make the selected row one long held note (a drone)', 'held-pitch': "change this step's pitch", 'held-velocity': "change this step's velocity",
   'held-chance': 'change the chance this step plays', 'held-chance-select': 'change the chance this step plays',
   track: 'pick which track to edit (the keys play it)', 'lock-pages': 'pick a device page to lock values on this step',
   'lock-rows': 'lock these values on this step only (P-lock)', 'roll-view': 'show the next or previous 8 pitches',
@@ -338,7 +340,8 @@ for (const r of CONTROLS) {
 export interface HintLine { id: string; lead?: string; items: (string | { row: string | string[]; text: string })[]; width: number }
 export const HINTS: HintLine[] = [
   // the SEQ page's line under the grid (seq_ui.c seq_grid_draw)
-  { id: 'step_record', items: ['sr-keys', 'sr-rest', 'sr-cursor', 'sr-end'], width: 228 },
+  // (#582 p7: LFO's two jobs apart, the tie with a key held; K4's move left to the sheet for the room)
+  { id: 'step_record', items: ['sr-keys', { row: 'sr-rest', text: 'LFO rest  KEY+LFO tie' }, 'sr-end'], width: 228 },
   { id: 'live', items: ['take', 'roll-view', 'octave', 'take-accent'], width: 228 },
   { id: 'held_lock', lead: 'HELD:', items: [{ row: 'lock-rows', text: 'K1-K4 lock  back to value: off' }, { row: 'lock-pages', text: 'ALGO' }], width: 228 },
   { id: 'held_drum', lead: 'HELD:', items: ['held-velocity', 'held-chance-select', 'lock-pages'], width: 228 },
@@ -477,10 +480,10 @@ export const rowHelp = (r: ControlRow): string => (r.help ?? plainDoes(r)) + whe
 /** what the FM-1 does that is no single control, for the editor's help: the sheet, the quick start, the keys */
 export const FM1_NOTES: { keys: string; text: string }[] = [
   { keys: 'OCT- + OCT+', text: 'the controls sheet: what the controls do where the FM-1 is now (its tab) and everywhere (EVERYWHERE), made from the same table as this list. ALGO switches the tab, SELECT scrolls, HOME closes it; the note keys and PLAY still work, the other controls do nothing meanwhile' },
-  { keys: 'quick start', text: 'the card after power-on: HOME closes it, OCT- + OCT+ opens the controls sheet instead, HOME + SAVE turns it off for good (GLO › SYSTEM › QUICK START or FACTORY RESET turns it on again)' },
+  { keys: 'quick start', text: 'the card after power-on: HOME closes it, OCT- + OCT+ opens the controls sheet instead, HOME + SAVE turns it off for good (GLO › SYSTEM › QUICK START or FACTORY RESET turns it on again); any other knob or button closes it and then does its job' },
   { keys: 'FX, LFO, EDIT, ARP', text: 'patch buttons: the patch decides what each does (a gate, a Toggle that bypasses a module or assembly, or a list of device pages); the sheet lists each by its job in the loaded patch. On the SEQ and SONG pages FX and LFO have the jobs below' },
-  { keys: 'the keys', text: 'they play what is armed (SEL, REC held + a black key, the SEQ page arms the track it shows); nothing armed, Main’s cables decide (KEYS WIRED). While the keys reach a Drum map, black keys 1..8 play its rows on every page' },
-  { keys: 'SAVE held at power-on', text: 'safe mode: the fallback patch, nothing read from flash' },
+  { keys: 'the keys', text: 'they play what is armed (SEL, REC held + a black key, the SEQ page arms the track it shows); nothing armed, Main’s cables decide (KEYS WIRED, and the environment says WIRED on the devices they reach). While the keys reach a Drum map, black keys 1..8 play its rows on every page' },
+  { keys: 'SAVE held at power-on', text: 'safe mode: the fallback patch, nothing read from flash; a restart leaves it (the loading screen says HOLD SAVE: SAFE MODE)' },
 ];
 
 /** an EVERYWHERE row listed in only a few states: which (" (on the SEQ and SONG pages)"), else '' */

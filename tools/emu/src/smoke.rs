@@ -21,10 +21,14 @@
 //!    and ENV from it (the environment, HOME back to the tab, D-249); OCT- +
 //!    OCT+ held at power-on and MENU > SYSTEM > UPDATE MODE (K1, then GLO held) = update mode (no engine)
 //!    then the bank's power-loss rules and the first boot's factory bank; an update that changed a factory patch but not
-//!    the format (#441): the untouched slot gets today's patch, an edited one and today's stay, once
+//!    the format (#441): the untouched slot gets today's patch, an edited one and today's stay, once; a factory patch
+//!    new since the bank's factory set goes into its own slot, else the first empty one, said once (#630)
 //! 9. the patch buttons (held / switched) and the SEQ page on the 808 Kit: a step, a track, PLAY, a mute, REC
 //! 10. the Delay's longest time (#273): its echo 700 ms after the note, ping-pong half of it on the left and 700 ms on the right
-//! 11. hardware the emulator does not model: any register besides P33 fails the test
+//! 11. STEREO (the 1.10 early check): a saw on the Output's l and a sine on its r come out on their own sides of the I2S
+//! 12. Verona Drum 1's hi-hat (the 1.10 early check): black key 6 (closed) pressed while black key 5 (open) is still down cuts
+//!     the open hat
+//! 13. hardware the emulator does not model: any register besides P33 fails the test
 //!
 //! Snapshots of every step go to OUT (PNG); a WAV of the first run too.
 
@@ -36,6 +40,8 @@ use std::process::ExitCode;
 pub const AUDIO_RATE: u32 = 44118;
 
 const PRESETS_H: &str = include_str!("../../../firmware/src/presets.h");
+/// Earlier presets of factory engines and what the editor makes of them (web/scripts/export-defs.ts, D-865)
+const PMIG_CASES_H: &str = include_str!("../../../firmware/test/pmig_cases.h");
 
 /// Panel ids (fm1-emu / Felucca's table, confirmed by M-VAVE's fm1_open)
 pub(crate) const OCT_DOWN: u8 = 0;
@@ -395,10 +401,93 @@ fn bank_record(f: &[u8], id: u32) -> Option<(u32, Vec<u8>)> {
         .max_by_key(|r| r.0)
 }
 
+/// One of PMIG_CASES_H's cases: name, the earlier structure, today's, the earlier values, the values the editor makes (Q16)
+struct PmCase { name: String, from: u32, to: u32, old: Vec<i32>, want: Vec<i32> }
+fn pm_cases() -> Vec<PmCase> {
+    let arr = |n: &str| -> Vec<i32> {
+        let d = &PMIG_CASES_H[PMIG_CASES_H.find(&format!("{n}[")).unwrap_or_else(|| panic!("{n}"))..];
+        d[d.find('{').unwrap() + 1..d.find('}').unwrap()].split(',').map(|x| x.trim().parse().unwrap()).collect()
+    };
+    let list = &PMIG_CASES_H[PMIG_CASES_H.find("PMC_LIST[").expect("PMC_LIST")..];
+    list.lines().skip(1).map_while(|l| l.trim().strip_prefix("{\"")).enumerate().map(|(i, rest)| {
+        let name = rest[..rest.find('"').unwrap()].to_string();
+        let f: Vec<&str> = rest[rest.find('"').unwrap() + 2..].split(',').map(|x| x.trim()).collect();
+        let hex = |x: &str| u32::from_str_radix(x.trim_start_matches("0x").trim_end_matches('u'), 16).unwrap();
+        PmCase { name, from: hex(f[0]), to: hex(f[1]), old: arr(&format!("PMC_OLD_{i}")), want: arr(&format!("PMC_WANT_{i}")) }
+    }).collect()
+}
+
+/// CRC-16 (CCITT, 0xFFFF): proto.c m1_crc16
+fn crc16(data: &[u8]) -> u16 {
+    let mut crc = 0xffffu32;
+    for &b in data {
+        crc ^= (b as u32) << 8;
+        for _ in 0..8 {
+            crc = if crc & 0x8000 != 0 { ((crc << 1) ^ 0x1021) & 0xffff } else { (crc << 1) & 0xffff };
+        }
+    }
+    crc as u16
+}
+
+/// The preset store (firmware/src/presetstore.c): 7 sectors from 0x99000, 10 slots of 384 bytes each; a slot is a 32-byte
+/// header (magic "PRS1", or "PRS2" for a record's second slot, sequence number, structure, value count, CRC-16, name) and
+/// up to 88 Q16 values. A preset of more takes two slots of one sector. Written into `sec`'s first slots.
+fn preset_record(f: &mut [u8], sec: usize, seq: u32, structure: u32, name: &str, vals: &[i32]) {
+    let bytes = |v: &[i32]| v.iter().flat_map(|x| x.to_le_bytes()).collect::<Vec<u8>>();
+    let slot = |f: &mut [u8], k: usize, magic: u32, n: usize, crc: u16, v: &[i32]| {
+        let at = 0x99000 + sec * 0x1000 + k * 384;
+        let mut h = Vec::new();
+        h.extend_from_slice(&magic.to_le_bytes());
+        h.extend_from_slice(&seq.to_le_bytes());
+        h.extend_from_slice(&structure.to_le_bytes());
+        h.extend_from_slice(&(n as u16).to_le_bytes());
+        h.extend_from_slice(&crc.to_le_bytes());
+        let mut nm = [0u8; 16];
+        nm[..name.len()].copy_from_slice(name.as_bytes());
+        h.extend_from_slice(&nm);
+        f[at..at + 32].copy_from_slice(&h);
+        let b = bytes(v);
+        f[at + 32..at + 32 + b.len()].copy_from_slice(&b);
+    };
+    let first = vals.len().min(88);
+    if vals.len() > 88 {
+        slot(f, 1, 0x3253_5250, vals.len() - 88, crc16(&bytes(&vals[88..])), &vals[88..]);
+    }
+    slot(f, 0, 0x3153_5250, vals.len(), crc16(&bytes(vals)), &vals[..first]);
+}
+
+/// The live presets in the store: (structure, name, values)
+fn preset_records(f: &[u8]) -> Vec<(u32, String, Vec<i32>)> {
+    let word = |a: usize| u32::from_le_bytes(f[a..a + 4].try_into().unwrap());
+    let vals = |a: usize, n: usize| (0..n).map(|k| word(a + 32 + 4 * k) as i32).collect::<Vec<i32>>();
+    let mut out = Vec::new();
+    for i in 0..70usize {
+        let at = 0x99000 + (i / 10) * 0x1000 + (i % 10) * 384;
+        if word(at) != 0x3153_5250 {
+            continue;
+        }
+        let (seq, st, n) = (word(at + 4), word(at + 8), (word(at + 12) & 0xffff) as usize);
+        let name = String::from_utf8_lossy(&f[at + 16..at + 32]).trim_end_matches('\0').to_string();
+        let mut v = vals(at, n.min(88));
+        if n > 88 {
+            let tail = (0..10usize).map(|k| 0x99000 + (i / 10) * 0x1000 + k * 384).find(|&t| word(t) == 0x3253_5250 && word(t + 4) == seq);
+            match tail {
+                Some(t) => v.extend(vals(t, n - 88)),
+                None => continue,
+            }
+        }
+        out.push((st, name, v));
+    }
+    out
+}
+
 /// After an update that changed a factory patch but not the format (#441): a bank from 1.6.0 (a 12-byte settings record
 /// at today's format, no factory set) with slot 0 an earlier factory Drift Poly (untouched), slot 1 an edited copy of
-/// it and slot 2 today's Init. The boot rewrites slot 0 with today's Drift Poly and says FACTORY PATCHES UPDATED,
-/// leaves slots 1 and 2 alone and stores the factory set (settings bytes 13..15); the next boot rewrites nothing.
+/// it and slot 2 today's Init. The boot rewrites slot 0 with today's Drift Poly, leaves slots 1 and 2 alone and stores
+/// the factory set (settings bytes 13..15); the factory patches 1.6.0 did not have (#630: Basic Poly, Mono Lead, Supersaw
+/// Stack, Verona Drum 1; Drift Poly is there by name) go into their own empty slots, and the bar says so (over FACTORY
+/// PATCHES UPDATED); the next boot rewrites and adds nothing. The same boot moves the user presets of earlier engine
+/// structures to today's, with the values the editor gives them (D-865).
 fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
     let old = std::fs::read("build/emu/old-drift-poly.m1p").map_err(|e| format!("build/emu/old-drift-poly.m1p: {e} (run web/scripts/emu-patches.ts)"))?;
     let today = |name: &str| presets.iter().find(|p| p.0 == name).map(|p| p.1.clone()).ok_or(format!("no factory {name}"));
@@ -416,10 +505,16 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
     // 1.6.0's settings record: version 1, slot 2, octave 0, LEDs, accel, CPU bar, clock in, program change, channel,
     // MIDI out, the bank's format (today's), module 0
     put(&mut flash, 0xA3000, record(64, 4, "", &[1, 2, 8, 0, 1, 0, 0, 0, 0, 1, version, 0], false));
+    // user presets stored for earlier structures of factory engines (D-865): a 1.9.0 Cassia 1, basic poly and Oracle V, a
+    // Cassia 1 of 88 values (stored before 1.8.2), a Cassia 1 from before #430, an 8 Lire from before D-852
+    let cases = pm_cases();
+    for (c, k) in cases.iter().zip(0..) {
+        preset_record(&mut flash, k, 100 + k as u32, c.from, &c.name, &c.old);
+    }
     let mut m = Machine::boot(app, Some(&flash));
     quick_start(&mut m, 9000)?;
-    let said = wait_text(&mut m, "FACTORY PATCHES UPDATED", 1000)?;
-    t.check("upgrade: a same-format factory change says FACTORY PATCHES UPDATED", said, String::new());
+    let said = wait_text(&mut m, "4 NEW PATCHES ADDED", 1000)?;
+    t.check("upgrade: the patches new since 1.6.0 are added, said once (#630)", said, String::new());
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     t.screen(&m, "upgrade: boot opens the settings record's slot", "INIT");
@@ -431,14 +526,82 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
     t.check("upgrade: the edited copy stays as it is", s1 == (2, edited.clone()), format!("sequence {}", s1.0));
     let s2 = bank_record(&f, 2).ok_or("slot 2 gone")?;
     t.check("upgrade: a slot holding today's patch is not rewritten", s2 == (3, init.clone()), format!("sequence {}", s2.0));
+    let added = ["BASIC POLY", "MONO LEAD", "SUPERSAW STACK", "VERONA DRUM 1"].iter().all(|n| {
+        let i = presets.iter().position(|p| p.0 == *n);
+        i.is_some_and(|i| bank_record(&f, i as u32).is_some_and(|r| r.1 == presets[i].1))
+    });
+    t.check("upgrade: Basic Poly, Mono Lead, Supersaw Stack, Verona Drum 1 in their own slots", added, String::new());
+    t.check("upgrade: Drift Poly (there by name) is not added again", bank_record(&f, 26).is_none(), String::new());
     let set = bank_record(&f, 64).ok_or("settings gone")?.1;
     let got = if set.len() >= 16 { set[13] as u32 | (set[14] as u32) << 8 | (set[15] as u32) << 16 } else { 0 };
+    let store = preset_records(&f);
+    for c in &cases {
+        let moved = store.iter().find(|r| r.0 == c.to && r.1 == c.name);
+        let left = store.iter().any(|r| r.0 == c.from && r.1 == c.name);
+        let detail = match moved {
+            Some(r) => format!("{} values, {} differ from the editor's", r.2.len(), r.2.iter().zip(&c.want).filter(|(a, b)| a != b).count() + r.2.len().abs_diff(c.want.len())),
+            None => "not moved".into(),
+        };
+        t.check(&format!("upgrade: the preset {} ({:08x}) moves to {:08x} with the editor's values", c.name, c.from, c.to), moved.map_or(false, |r| r.2 == c.want) && !left, detail);
+    }
     t.check("upgrade: the settings record keeps the factory set (16 bytes, 13..15)", set.len() == 16 && got == set_id && set[1] == 2, format!("{} bytes, set {got:06x}, FACTORY_SET_ID {set_id:06x}", set.len()));
     let mut m = Machine::boot(app, Some(&f));
     quick_start(&mut m, 9000)?;
-    let again = wait_text(&mut m, "FACTORY PATCHES UPDATED", 2500)?;
+    let again = wait_text(&mut m, "NEW PATCHES ADDED", 2500)? || wait_text(&mut m, "FACTORY PATCHES UPDATED", 10)?;
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     t.check("upgrade: the next boot rewrites nothing", !again && m.flash() == f, String::new());
+    *emulated += m.ms();
+    Ok(())
+}
+
+/// A factory patch new in this firmware (#630): a bank from 1.9.1 (its factory set in the settings record) with slots 0..2
+/// holds the first three factory patches. The boot puts Verona Drum 1 (factory index 29) into its own slot, the FM-1's 30,
+/// says NEW: 30. VERONA DRUM 1 once, and the slot loads it; the next boot adds nothing. With a patch of the owner's in
+/// slot 29, it goes into the first empty slot (the FM-1's 4) and slot 29 stays as it is.
+fn new_patch(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
+    let version: u8 = include_str!("../../../firmware/src/engine.h").split("#define ENG_PATCH_VERSION ").nth(1).and_then(|s| s.split_whitespace().next()?.parse().ok()).ok_or("ENG_PATCH_VERSION")?;
+    let v = presets.iter().position(|p| p.0 == "VERONA DRUM 1").ok_or("no factory VERONA DRUM 1")?;
+    let put = |f: &mut Vec<u8>, at: usize, s: Vec<u8>| f[at..at + 0x1000].copy_from_slice(&s);
+    let bank = |own_taken: bool| {
+        let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
+        for i in 0..3usize {
+            put(&mut flash, 0xA0000 + i * 0x1000, record(i as u32, 1 + i as u32, &presets[i].0, &presets[i].1, false));
+        }
+        if own_taken {
+            put(&mut flash, 0xA3000, record(v as u32, 4, "MY PATCH", &presets[1].1, false));
+        }
+        // 1.9.1's settings record: slot 0, octave 0, today's format, module 0, count-in off, factory set b9a4a8
+        put(&mut flash, 0xA4000, record(64, 5, "", &[1, 0, 8, 0, 1, 0, 0, 0, 0, 1, version, 0, 0, 0xa8, 0xa4, 0xb9], false));
+        flash
+    };
+    let mut m = Machine::boot(app, Some(&bank(false)));
+    quick_start(&mut m, 9000)?;
+    let said = wait_text(&mut m, "NEW: 30. VERONA DRUM 1", 1000)?;
+    t.check("new patch: a bank from 1.9.1 gets Verona Drum 1, said once (NEW: 30. VERONA DRUM 1)", said, String::new());
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    m.run_for(2500)?;
+    let f = m.flash();
+    let s = bank_record(&f, v as u32);
+    t.check("new patch: in its own slot (29, the FM-1's 30), today's bytes", s.as_ref().is_some_and(|r| r.1 == presets[v].1), String::new());
+    t.check("new patch: slots 0..2 untouched, none other added", (0..3u32).all(|i| bank_record(&f, i).is_some_and(|r| r.0 == 1 + i)) && (3..64u32).filter(|&i| i != v as u32).all(|i| bank_record(&f, i).is_none()), String::new());
+    m.midi(&[0xC0, v as u8], 500)?;
+    t.screen(&m, "new patch: slot 30 loads Verona Drum 1", "VERONA DRUM 1");
+    *emulated += m.ms();
+    let mut m = Machine::boot(app, Some(&f));
+    quick_start(&mut m, 9000)?;
+    let again = wait_text(&mut m, "VERONA DRUM 1", 2500)?;
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    t.check("new patch: the next boot adds and says nothing", !again && m.flash() == f, String::new());
+    *emulated += m.ms();
+
+    let mut m = Machine::boot(app, Some(&bank(true)));
+    quick_start(&mut m, 9000)?;
+    let said = wait_text(&mut m, "NEW: 4. VERONA DRUM 1", 1000)?;
+    t.check("new patch: its own slot taken: the first empty one, said (NEW: 4. VERONA DRUM 1)", said, String::new());
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    let f = m.flash();
+    t.check("new patch: the owner's slot 29 stays as it is", bank_record(&f, v as u32).is_some_and(|r| r.0 == 4 && r.1 == presets[1].1), String::new());
+    t.check("new patch: Verona Drum 1 in slot 3", bank_record(&f, 3).is_some_and(|r| r.1 == presets[v].1), String::new());
     *emulated += m.ms();
     Ok(())
 }
@@ -478,11 +641,21 @@ fn panel(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     Ok(())
 }
 
-/// The Delay at its longest time (#273, web/scripts/emu-patches.ts): a short burst on a note, all wet (ping-pong with feedback 0.5). The
-/// echo comes 700 ms after the note (the FM-1's 30944-sample line); with ping-pong the left one after half the line, the right
-/// one after the whole. Nothing is heard before the first echo.
+/// The Delay's line in each of the two line areas (#273, #651; web/scripts/emu-patches.ts): a 700 ms one (the pool's
+/// area) and a 290 ms one (.lowram's), plain and ping-pong, a short burst on a note. Every 128-frame block of each echo
+/// is checked against the same block of the note itself, heard in the same run, at exactly the Delay's time: a hole
+/// (#651: a flash write in the middle of the echo stopped the sound for two blocks) or a misplaced echo fails, not only
+/// the first arrival. Plain: the note on the right, the echo on the left (as loud); ping-pong (mix and feedback 0.5): the
+/// note on both sides, then left (as loud), right (half), left (a quarter), the Delay's time apart.
 fn long_delay(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
-    for (file, name, left, right) in [("long-delay.m1p", "EMU LONG DELAY", 700u64, 700u64), ("long-delay-pp.m1p", "EMU LONG PINGPONG", 350, 701)] {
+    // (engine.c dly_samples and m_delay's time in samples; ping-pong plays up to half the line)
+    let line = |ms: u32| 2 * ((ms * AUDIO_RATE + 1999) / 2000) + 60;
+    for (file, name, ms, pp) in [
+        ("long-delay.m1p", "EMU LONG DELAY", 700u32, false),
+        ("long-delay-pp.m1p", "EMU LONG PINGPONG", 700, true),
+        ("low-delay.m1p", "EMU LOW DELAY", 290, false),
+        ("low-delay-pp.m1p", "EMU LOW PINGPONG", 290, true),
+    ] {
         let patch = std::fs::read(format!("build/emu/{file}")).map_err(|e| format!("build/emu/{file}: {e} (run web/scripts/emu-patches.ts)"))?;
         let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
         flash[0xA0000..0xA1000].copy_from_slice(&slot_sector(0, name, &patch, false));
@@ -493,18 +666,118 @@ fn long_delay(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String>
         patch_screen(t, &mut m, &format!("long delay: {name} loads"), name)?;   // (the footer cuts the name before KEYS WIRED)
         let mk = m.mark();
         m.midi(&[0x90, 60, 100], 60)?;
-        m.midi(&[0x80, 60, 0], 1500)?;
-        let first = |ch: usize| -> Option<u64> {
-            m.audio[mk..].iter().skip(ch).step_by(2).position(|s| (*s as i32).abs() > LOUD / 4).map(|i| i as u64 * 1000 / AUDIO_RATE as u64)
+        m.midi(&[0x80, 60, 0], 3 * ms as u64 + 400)?;
+        let a = &m.audio[mk..];
+        let side = |ch: usize| -> Vec<i32> { a.iter().skip(ch).step_by(2).map(|s| (*s as i32).abs()).collect() };
+        let (l, r) = (side(0), side(1));
+        let d = ((ms * AUDIO_RATE + 500) / 1000).min(if pp { line(ms) / 2 - 1 } else { line(ms) - 1 }) as usize;
+        // the note: from its first sample, its blocks down to 1/64 of its loudest (the echoes as quiet as 1/4 of it stay
+        // clear of the output's 16-bit steps)
+        let dry = if pp { &l } else { &r };
+        let Some(t0) = dry.iter().position(|&s| s > 0) else {
+            t.check(&format!("long delay: {name}: the note sounds"), false, String::new());
+            continue;
         };
-        let (l, r) = (first(0), first(1));
-        // (a quarter of LOUD: ping-pong's right echo is half its left one) the note reaches the engine a few ms after the MIDI
-        // bytes (UART, the next block): an echo within 30 ms of its time
-        let near = |got: Option<u64>, want: u64| got.is_some_and(|g| g >= want && g <= want + 30);
-        t.check(&format!("long delay: {name}'s left echo after {left} ms"), near(l, left), format!("first heard at {l:?} ms"));
-        t.check(&format!("long delay: {name}'s right echo after {right} ms"), near(r, right), format!("first heard at {r:?} ms"));
+        let blk = |v: &[i32], at: usize| v.get(at..(at + 128).min(v.len())).map_or(0, |b| b.iter().copied().max().unwrap_or(0));
+        let top = (0..64).map(|k| blk(dry, t0 + 128 * k)).max().unwrap_or(0);
+        let n = (0..64).take_while(|&k| k < 4 || blk(dry, t0 + 128 * k) * 64 >= top).count();
+        // (plain: the left has only the echo; ping-pong: after the note, nothing over its quietest block checked)
+        let (from, floor) = if pp { (t0 + 128 * n, top / 64) } else { (0, 0) };
+        let early = (from..t0 + d).find(|&i| l.get(i).is_none_or(|&s| s > floor) || pp && r.get(i).is_none_or(|&s| s > floor));
+        t.check(&format!("long delay: {name}: nothing before the first echo but the note"), early.is_none(), early.map_or(String::new(), |e| format!("sound at sample {e}, the note from {t0}")));
+        let echoes: Vec<(&str, &[i32], usize, i32)> = if pp {
+            vec![("left echo", &l, d, 1), ("right echo", &r, 2 * d, 2), ("second left echo", &l, 3 * d, 4)]
+        } else {
+            vec![("echo", &l, d, 1)]
+        };
+        for (what, v, lag, div) in echoes {
+            let bad = (0..n).find_map(|k| {
+                let (want, got) = (blk(dry, t0 + 128 * k) / div, blk(v, t0 + lag + 128 * k));
+                ((got - want).abs() > want / 8 + 4).then_some(format!("block {k} of {n}: peak {got}, the note's {want}"))
+            });
+            t.check(
+                &format!("long delay: {name}'s {what}: every block of it, {} ms after the note{}", lag as u64 * 1000 / AUDIO_RATE as u64, if div > 1 { format!(", 1/{div} as loud") } else { String::new() }),
+                bad.is_none(),
+                bad.unwrap_or_default(),
+            );
+        }
         *emulated += m.ms();
     }
+    Ok(())
+}
+
+/// STEREO (the 1.10 early check, T110 MONO L R): a saw into the Output's l, a sine an octave up into its r
+/// (web/scripts/emu-patches.ts stereo-sides). Both sides of the I2S sound while a key is held, and they carry different
+/// signals: the right word is the right side, not a copy of the left and not silent.
+fn stereo_sides(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
+    let patch = std::fs::read("build/emu/stereo-sides.m1p").map_err(|e| format!("build/emu/stereo-sides.m1p: {e} (run web/scripts/emu-patches.ts)"))?;
+    let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
+    flash[0xA0000..0xA1000].copy_from_slice(&slot_sector(0, "EMU STEREO", &patch, false));
+    let mut m = Machine::boot(app, Some(&flash));
+    quick_start(&mut m, 9000)?;
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    m.run_for(2500)?;
+    patch_screen(t, &mut m, "stereo: EMU STEREO loads", "EMU STEREO")?;
+    m.midi(&[0x90, 60, 100], 400)?;
+    let mk = m.mark();
+    m.run_for(300)?;
+    let a = &m.audio[mk..];
+    let side = |ch: usize| a.iter().skip(ch).step_by(2).map(|s| (*s as i32).abs()).max().unwrap_or(0);
+    let (l, r) = (side(0), side(1));
+    let n = (a.len() / 2).max(1) as i64;
+    let diff = a.chunks(2).map(|f| ((f[0] as i32) - (*f.get(1).unwrap_or(&0) as i32)).unsigned_abs() as i64).sum::<i64>() / n;
+    m.midi(&[0x80, 60, 0], 300)?;
+    t.check("stereo: the left side (the saw) sounds", l > LOUD, format!("peak {l}"));
+    t.check("stereo: the right side (the sine) sounds", r > LOUD, format!("peak {r}"));
+    t.check("stereo: the two sides differ (each its own signal)", diff > LOUD as i64 / 4, format!("mean |L - R| {diff}"));
+    *emulated += m.ms();
+    Ok(())
+}
+
+/// Verona Drum 1's hi-hat (the 1.10 early check, D-866): stopped, black key 5 (HH OPEN) rings for its DECAY; black key 6 (HH
+/// CLOSE) pressed 20 ms later while black key 5 is still down cuts it (a closed hit dies in 45 ms); the other way round,
+/// black key 5 pressed 20 ms after black key 6 while that is still down rings open. Both keys are held for 300 ms; the peak
+/// is read 100..200 ms after the first press (the open hat is still loud there, a closed one is gone).
+fn verona_hats(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
+    let Some(slot) = presets.iter().position(|(n, _)| n.starts_with("VERONA") && !n.ends_with(" XL")) else {
+        t.check("verona: the factory Verona Drum 1 is there", false, String::new());
+        return Ok(());
+    };
+    const OPEN: u8 = 24; // D#4, black key 5
+    const CLOSE: u8 = 27; // F#4, black key 6
+    let mut m = Machine::boot(app, None);
+    quick_start(&mut m, 9000)?;
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    m.run_for(2500)?;
+    m.midi(&[0xC0, slot as u8], 500)?;
+    t.screen(&m, "verona: Verona Drum 1 loads", &presets[slot].0);
+    m.run_for(1500)?;
+    // the first key down, the second (if any) 20 ms later, both held to 300 ms: the peak 100..200 ms after the first press
+    let tail = |m: &mut Machine, first: u8, then: Option<u8>| -> Result<i32, String> {
+        m.key(first, true);
+        m.run_for(20)?;
+        if let Some(k) = then {
+            m.key(k, true);
+        }
+        m.run_for(80)?;
+        let mk = m.mark();
+        m.run_for(100)?;
+        let p = m.peak_since(mk);
+        m.run_for(100)?;
+        m.key(OPEN, false);
+        m.key(CLOSE, false);
+        m.run_for(1500)?; // (the open hat dies away)
+        Ok(p)
+    };
+    let ringing = tail(&mut m, OPEN, None)?;
+    let cut = tail(&mut m, OPEN, Some(CLOSE))?;
+    let closed = tail(&mut m, CLOSE, None)?;
+    let reopened = tail(&mut m, CLOSE, Some(OPEN))?;
+    t.check("verona: black key 5 alone, the open hat still rings 100 ms on", ringing > 4 * QUIET, format!("peak {ringing}"));
+    t.check("verona: black key 6 pressed with black key 5 still down cuts it", cut < ringing / 4, format!("peak {cut} (open alone {ringing})"));
+    t.check("verona: black key 6 alone, the closed hat is gone 100 ms on", closed < ringing / 4, format!("peak {closed} (open alone {ringing})"));
+    t.check("verona: black key 5 pressed with black key 6 still down rings open", reopened > ringing / 2, format!("peak {reopened} (open alone {ringing})"));
+    *emulated += m.ms();
     Ok(())
 }
 
@@ -534,7 +807,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.run_for(1200)?;                        // (PRESET's toast over)
     t.screen(&m, "arm: a patch loads with nothing armed, the footer says KEYS WIRED (#395)", "KEYS WIRED");
     m.tap(SEL, 120, 300)?;                   // the home device, the Drum map: its keys come through DRUMS, armed with it
-    t.screen(&m, "arm: SEL on a device fed through a track arms it with the track (#395)", "DRUM MAP ARMED");
+    t.screen(&m, "arm: SEL on a device fed through a track arms it with the track (#395), named too (#582)", "DRUM MAP + DRUMS ARMED");
     m.run_for(1200)?;
     let mk = m.mark();
     m.tap(14 + 1, 120, 300)?;                // F#3, black key 1, on the device page: the kick (Main's keys into DRUMS, #141)
@@ -595,7 +868,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     t.screen(&m, "arm: the track's line says ARMED (#179)", "TRACK 1/1  ARMED");
     let mk = m.mark();
     m.tap(REC, 120, 600)?;                   // stopped, on the SEQ page: REC starts step record (D-548, D-804)
-    t.screen(&m, "rec: REC, stopped, on the SEQ page: step record on step 1", "STEP 1  DRUMS ARM");
+    t.screen(&m, "rec: REC, stopped, on the SEQ page: step record on step 1", "STEP 1/16  DRUMS ARM");
     let p = m.peak_since(mk);
     t.check("rec: REC, stopped, on the SEQ page: the transport stays stopped", p < QUIET, format!("peak {p}"));
     let mk = m.mark();
@@ -677,7 +950,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
         m.turn(SELECT, -1, 600)?;
         t.screen(&m, "roll: SELECT back (G#3-D#4)", "PATTERN ARM G#3-D#4");
         m.tap(REC, 120, 600)?;               // stopped: step record (D-804)
-        t.screen(&m, "roll: REC, stopped: step record", "STEP 1  PATTERN ARM");
+        t.screen(&m, "roll: REC, stopped: step record", "STEP 1/16  PATTERN ARM");
         t.screen(&m, "roll: step record's hint: REC ends it", "REC done");
         m.tap(PLAY, 120, 1300)?;             // PLAY in step record: the transport starts, PATTERN (armed by the page) records
         t.screen(&m, "roll: PLAY in step record: a live take of the melodic track armed", "PATTERN REC");
@@ -712,11 +985,12 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
         t.screen(&m, "song: SEL tapped opens the SONG page", "SONG 1");
         t.screen(&m, "song: the demo song's entries", "01  P02  0");
         m.turn(K4, 1, 600)?;
-        t.screen(&m, "song: K4 right, song 1 plays", "SONG 1 PLAYS");
+        t.screen(&m, "song: K4 right, song 1 to play; stopped, the bar says so (#582)", "SONG 1 STOPPED");
         let mk = m.mark();
         m.tap(PLAY, 120, 2000)?;
         let p = m.peak_since(mk);
         t.check("song: PLAY plays the song", p > LOUD, format!("peak {p}"));
+        t.screen(&m, "song: PLAY, the bar says SONG 1 PLAYS", "SONG 1 PLAYS");
         t.snap(&m, "song-page");
         m.tap(PLAY, 120, 300)?;
         m.turn(K4, -1, 600)?;
@@ -777,7 +1051,7 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     t.check("safe mode: holding SAVE at power-on does not save", !saved, String::new());
     t.check("safe mode: no quick start (D-247)", !font::on_screen(m.lcd(), "QUICK START"), String::new());
     m.run_for(1500)?;                         // (the SAFE MODE message holds the bar for 4 s: still there)
-    t.screen(&m, "safe mode: the message stays up", "SAFE MODE: FALLBACK PATCH");
+    t.screen(&m, "safe mode: the message stays up", "SAFE MODE: RESTART TO EXIT");
     wait_text(&mut m, "SAFE PATCH", 6000)?;   // (then the patch's name shows)
     t.screen(&m, "safe mode: the fallback patch", "SAFE PATCH");
     let p = midi_note_peak(&mut m, 60, 500)?;
@@ -826,6 +1100,7 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     t.screen(&m, "menu: the INFO tab", "VERSION");
     t.screen(&m, "menu: the bank's slots", &format!("{} OF 64", presets.len()));
     t.screen(&m, "menu: the battery's reading (fm1-emu's ch 3: 640, 3 bars)", "640  3/3");
+    t.screen(&m, "menu: the second core runs and passes its self-test (#271)", "2 CORES");
     m.turn(ALGO, 1, 400)?;
     t.screen(&m, "menu: the GUIDE tab (D-248) points at the controls sheet", "PRESS OCT- + OCT+");
     m.tap(ENV, 120, 600)?;
@@ -1213,11 +1488,14 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     safety(app, t, emulated, &presets)?;
     store(app, t, emulated, &presets)?;
     upgrade(app, t, emulated, &presets)?;
+    new_patch(app, t, emulated, &presets)?;
     panel(app, t, emulated)?;
     seq(app, t, emulated, &presets)?;
     count_in(app, t, emulated)?;
     global_tempo(app, t, emulated)?;
     long_delay(app, t, emulated)?;
+    stereo_sides(app, t, emulated)?;
+    verona_hats(app, t, emulated, &presets)?;
 
     // ---- 9. unmodelled hardware
     let known = [0x13e08u32, 0x13e0c]; // P33 (watchdog, reset reason, reboot): fm1_sys.h

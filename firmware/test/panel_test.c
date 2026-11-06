@@ -101,7 +101,7 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
             return;
         at += eng_record_size(&DEFS[pv_bin[at] & 0x7Fu], pv_bin[1]);
     }
-    if (at >= pv_len || (pv_bin[at] & 0x7Fu) >= N_TYPES || par >= eng_npar(&DEFS[pv_bin[at] & 0x7Fu], pv_bin[1]))
+    if (at >= pv_len || (pv_bin[at] & 0x7Fu) >= N_TYPES || par >= eng_npar(&DEFS[pv_bin[at] & 0x7Fu], pv_bin[1]) || DEF_FIXED(pv_bin[at] & 0x7Fu, par))
         return;
     at += 1u + 4u * par;
     pv_bin[at] = (uint8_t)v;
@@ -371,7 +371,7 @@ static int roll_shows(int mod)
             uint32_t k = seq_pg * 16u + st, p = seq_grid_note(-1, row), hw = eng_steps_note((uint32_t)mod, k, p), tie = 0;
             uint16_t want;
             for (i = 0; i < nn; i++)
-                tie |= ((w[i] >> 12) & 127u) == p && (w[i] & 63u) < k && k <= (w[i] & 63u) + ((w[i] >> 6) & 63u);
+                tie |= ((w[i] >> 12) & 127u) == p && eng_note_through(w[i], k, (uint32_t)seq_len(mod));
             if ((int32_t)k >= seq_len(mod))
                 want = C_BG;
             else if (hw)
@@ -781,7 +781,18 @@ int main(void)
         enc(4, -1);
         check("  and back to OFF", cfg.count_in == 0u && on_screen("OFF"));
         enc(1, 1);
-        check("ALGO again: SYSTEM (update mode, factory reset, quick start)", menu_tab == MT_SYSTEM && pages_now()->nrows == 3u && pages_now()->par[1] == MR_DEFAULTS && pages_now()->par[2] == MR_QUICK);
+        check("ALGO again: SYSTEM (update mode, factory reset, quick start, output)", menu_tab == MT_SYSTEM && pages_now()->nrows == 4u && pages_now()->par[1] == MR_DEFAULTS && pages_now()->par[2] == MR_QUICK && pages_now()->par[3] == MR_OUTPUT);
+        check("  OUTPUT reads STEREO (#612)", !out_mono && on_screen("STEREO"));
+        enc(5, 1);
+        check("K4 on SYSTEM: OUTPUT STEREO > MONO (#612)", out_mono == 1u && on_screen("MONO") && !on_screen("MONO L"));
+        enc(5, 1);
+        check("  then MONO L", out_mono == 2u && on_screen("MONO L"));
+        enc(5, 1);
+        check("  stays at MONO L", out_mono == 2u);
+        enc(5, -1);
+        check("  back to MONO", out_mono == 1u && !on_screen("MONO L"));
+        enc(5, -1);
+        check("  and back to STEREO", !out_mono && on_screen("STEREO"));
         enc(1, 1);
         check("ALGO again: INFO, a list, not a page", menu_tab == MT_INFO && !menu_page() && on_screen("BANK SLOTS") && on_screen("VERSION"));
         check("  its top bar is the plain bar with the patch's name, not the coral header's top", on_screen(patch_label));
@@ -1170,12 +1181,26 @@ int main(void)
         check("SEL on the Drum map's row, its track armed: armed through it, so taken out with it, the keys WIRED",
               eng_arm_mask_get() == 0u && !strcmp(msg_text, "KEYS WIRED"));
         tap(3);
-        check("SEL there again: the track it plays through armed", eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(0)
-              && strstr(msg_text, " ARMED") != 0);
+        check("SEL there again: the track it plays through armed; the bar names both (#582)", eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(0)
+              && !strcmp(msg_text, "DRUM MAP + DRUMS ARMED"));
         pages_focus(1, 0);
         tap(3);
         check("SEL again on the track: disarmed, the keys WIRED (the bar says so)", eng_arm_mask_get() == 0u && eng_armed() < 0
               && !strcmp(msg_text, "KEYS WIRED"));
+        {
+            char s1[16], s2[16], s0[16];
+            env_status(0, s0);
+            env_status(1, s1);
+            env_status(2, s2);
+            check("  nothing armed: the track's and the Drum map's rows say WIRED (the keys reach them by cable, #582), Main's its tempo",
+                  !strcmp(s1, "WIRED") && !strcmp(s2, "WIRED") && strstr(s0, "BPM") != 0);
+            seq_arm_set((uint64_t)1 << eng_steps_module(0));
+            env_status(1, s1);
+            env_status(2, s2);
+            check("  armed: ARMED on both, no WIRED", !strcmp(s1, "ARMED") && !strcmp(s2, "ARMED"));
+            seq_arm_set(0);
+            loop();
+        }
         tap(4);
         panel_held |= 1u << 4;                              /* ENV held + SAVE: no environment on the release */
         panel_edges(1u << 4, 0);
@@ -1559,13 +1584,146 @@ int main(void)
                 loop();
                 w = eng_steps_note((uint32_t)drums, at, 55);
                 check("again (its last step): one step", w && ((w >> 6) & 63u) == 0u && !strcmp(msg_text, "TIE OFF"));
-                panel_keys(1u << 4);                        /* A3: step 3, its own hit, no row-2 hit before it */
+                panel_held &= ~(1u << BTN_LFO);
+            }
+            {                                               /* #384: the row's only hit on step 3. LFO + its own step: a drone
+                                                             * (tied round the loop onto itself); again: one step. Tied step by
+                                                             * step round the loop back to its step: a drone too */
+                static uint32_t row[TRACK_NOTES_MAX];
+                const uint32_t *ws2;
+                int n2 = eng_steps_notes((uint32_t)drums, &ws2), m2 = 0, j;
+                uint32_t len = (uint32_t)seq_len(drums), ym = GRID_Y + GRID_RH * seq_row + 7u, n16 = 0, n2k = 0, dim = 1, c;
+                for (j = 0; j < n2; j++)
+                    if (((ws2[j] >> 12) & 127u) != 55u)
+                        row[m2++] = ws2[j];
+                row[m2++] = 2u | 55u << 12 | (uint32_t)STEP_VEL << 19;
+                (void)eng_steps_set_notes((uint32_t)drums, row, (uint32_t)m2);
+                seq_sync(drums);
+                while (seq_white(n16) != 15)
+                    n16++;
+                while (seq_white(n2k) != 1)
+                    n2k++;
+                panel_held |= 1u << BTN_LFO;
+                panel_keys(1u << 4);                        /* A3: step 3, the hit's own step */
                 panel_keys(0);
                 loop();
                 w = eng_steps_note((uint32_t)drums, 2, 55);
-                check("LFO + a hit's own step with nothing before it: NOTHING TO TIE (no tie across the loop)",
-                      w && ((w >> 6) & 63u) == 0u && !strcmp(msg_text, "NOTHING TO TIE"));
+                for (c = 0; c < 16u && c < len; c++)
+                    if (c != 2u && px(seq_grid_x(c) + 5u, y) != C_DIM)
+                        dim = 0;
+                check("#384: LFO + a hit's own step with nothing before it: a drone (tied round the loop), every other step dim, its cell marked",
+                      w && eng_note_drone(w) && !strcmp(msg_text, "DRONE") && dim && px(seq_grid_x(2) + 5u, y) == C_FG
+                      && px(seq_grid_x(2) + 1u, ym) == C_DIM);
+                panel_keys(1u << 4);                        /* again: one step */
+                panel_keys(0);
+                loop();
+                w = eng_steps_note((uint32_t)drums, 2, 55);
+                check("  again: one step (TIE OFF), the mark gone", w && !(w & ENG_NOTE_WRAP) && ((w >> 6) & 63u) == 0u
+                      && !strcmp(msg_text, "TIE OFF") && px(seq_grid_x(2) + 1u, ym) == C_FG && px(seq_grid_x(3) + 5u, y) != C_DIM);
+                panel_keys(1u << n16);                      /* step 16, then step 2 across the loop, then its own step 3 */
+                panel_keys(0);
+                loop();
+                panel_keys(1u << n2k);
+                panel_keys(0);
+                loop();
+                w = eng_steps_note((uint32_t)drums, 2, 55);
+                check("  LFO + step 16, then step 2: tied across the loop point to end on step 2",
+                      w && (w & ENG_NOTE_WRAP) && !eng_note_drone(w) && ((w >> 6) & 63u) + 1u == len && !strcmp(msg_text, "TIED")
+                      && px(seq_grid_x(0) + 5u, y) == C_DIM && px(seq_grid_x(1) + 5u, y) == C_DIM);
+                panel_keys(1u << 4);
+                panel_keys(0);
+                loop();
+                w = eng_steps_note((uint32_t)drums, 2, 55);
+                check("  then its own step 3: the tie wraps round to it, a drone", w && eng_note_drone(w) && !strcmp(msg_text, "DRONE"));
                 panel_held &= ~(1u << BTN_LFO);
+                panel_keys(1u << 6);                        /* a plain white key on step 4: the drone cut before it, a hit there */
+                panel_keys(0);
+                loop();
+                w = eng_steps_note((uint32_t)drums, 2, 55);
+                check("  a plain white key on a step the drone runs through: the drone cut before it, a hit there",
+                      w && !(w & ENG_NOTE_WRAP) && ((w >> 6) & 63u) == 0u && eng_steps_note((uint32_t)drums, 3, 55));
+                panel_keys(1u << 0);                        /* (a plain white key on step 1: a hit there, nothing tied over it) */
+                panel_keys(0);
+                loop();
+                panel_held |= 1u << BTN_LFO;
+                panel_keys(1u << 0);                        /* LFO + step 1: the last hit (step 4) tied across the loop to it */
+                panel_keys(0);
+                loop();
+                w = eng_steps_note((uint32_t)drums, 3, 55);
+                check("  LFO + step 1 with hits after it: the row's last hit tied across the loop point, the hit on step 1 joining it",
+                      w && (w & ENG_NOTE_WRAP) && ((w >> 6) & 63u) + 1u == len - 3u + 1u && !eng_steps_note((uint32_t)drums, 0, 55)
+                      && !strcmp(msg_text, "TIED"));
+                panel_held &= ~(1u << BTN_LFO);
+            }
+            {                                               /* #384, the owner's ruling of 2026-11-04: LFO + FX, no step held, the
+                                                             * selected row one drone: its first note holds, the rest go; again an
+                                                             * ordinary step; an empty row says so; step record keeps LFO's rest */
+                static uint32_t row[TRACK_NOTES_MAX];
+                const uint32_t *ws3;
+                int n3 = eng_steps_notes((uint32_t)drums, &ws3), m3 = 0, j, mine = 0, other = 0;
+                uint32_t r0 = seq_row, note = seq_grid_note(seq_map(), seq_row), before;
+                for (j = 0; j < n3; j++)
+                    if (((ws3[j] >> 12) & 127u) != note)
+                        row[m3++] = ws3[j];
+                other = m3;
+                row[m3++] = 4u | note << 12 | (uint32_t)STEP_VEL << 19;
+                row[m3++] = 9u | 1u << 6 | note << 12 | (uint32_t)ACCENT_VEL << 19;
+                row[m3++] = 13u | note << 12 | (uint32_t)STEP_VEL << 19;
+                (void)eng_steps_set_notes((uint32_t)drums, row, (uint32_t)m3);
+                seq_sync(drums);
+                panel_held |= 1u << BTN_LFO;
+                tap(BTN_ACC);
+                panel_held &= ~(1u << BTN_LFO);
+                loop();
+                n3 = eng_steps_notes((uint32_t)drums, &ws3);
+                for (j = 0; j < n3; j++)
+                    mine += ((ws3[j] >> 12) & 127u) == note;
+                w = eng_steps_note((uint32_t)drums, 4, note);
+                check("#384: LFO + FX on a row of three hits: its first hit a drone, the other two gone (DRONE), the rest of the track kept",
+                      w && eng_note_drone(w) && mine == 1 && n3 == other + 1 && !strcmp(msg_text, "DRONE")
+                      && px(seq_grid_x(4) + 1u, GRID_Y + GRID_RH * seq_row + 7u) == C_DIM && px(seq_grid_x(9) + 5u, y) == C_DIM);
+                panel_held |= 1u << BTN_ACC;                /* FX held first, then LFO: the same */
+                tap(BTN_LFO);
+                panel_held &= ~(1u << BTN_ACC);
+                loop();
+                w = eng_steps_note((uint32_t)drums, 4, note);
+                check("  FX + LFO again: an ordinary one-step hit on that step (DRONE OFF)", w && !(w & ENG_NOTE_WRAP) && ((w >> 6) & 63u) == 0u
+                      && !strcmp(msg_text, "DRONE OFF"));
+                {                                           /* a row without notes (the rest of the kit's rows cleared) */
+                    uint32_t nr = (r0 + 1u) % ENG_DRUM_ROWS, keepn = 0;
+                    static uint32_t kw[TRACK_NOTES_MAX];
+                    n3 = eng_steps_notes((uint32_t)drums, &ws3);
+                    for (j = 0; j < n3; j++)
+                        if (((ws3[j] >> 12) & 127u) != seq_grid_note(seq_map(), nr))
+                            kw[keepn++] = ws3[j];
+                    (void)eng_steps_set_notes((uint32_t)drums, kw, keepn);
+                    seq_sync(drums);
+                    seq_row = (uint8_t)nr;
+                }
+                note = seq_grid_note(seq_map(), seq_row);
+                before = (uint32_t)eng_steps_notes((uint32_t)drums, &ws3);
+                for (j = 0, mine = 0; j < (int)before; j++)
+                    mine += ((ws3[j] >> 12) & 127u) == note;
+                check("  (an empty row found)", !mine);
+                {
+                    panel_held |= 1u << BTN_LFO;
+                    tap(BTN_ACC);
+                    panel_held &= ~(1u << BTN_LFO);
+                    loop();
+                    check("  on an empty row: NOTHING TO DRONE, nothing changed", !strcmp(msg_text, "NOTHING TO DRONE")
+                          && (uint32_t)eng_steps_notes((uint32_t)drums, &ws3) == before);
+                }
+                seq_row = (uint8_t)r0;
+                sr_start(0, -1);                            /* step record: LFO + FX is LFO's rest, no drone */
+                msg_text[0] = 0;
+                before = sr_k;
+                panel_held |= 1u << BTN_ACC;
+                tap(BTN_LFO);
+                panel_held &= ~(1u << BTN_ACC);
+                loop();
+                check("  in step record FX + LFO is LFO's rest (the cursor on), no drone", sr_on && sr_k == before + 1u && strcmp(msg_text, "DRONE"));
+                sr_stop();
+                loop();
             }
             (void)eng_steps_set_notes((uint32_t)drums, keep, (uint32_t)keep_n);
             seq_sync(drums);
@@ -1960,22 +2118,34 @@ int main(void)
         check("LFO + the note's last step: one step again (TIE OFF)", hw && ((hw >> 6) & 63u) == 0u && roll_shows(pat)
               && px(seq_grid_x(9) - 1u, GRID_Y + GRID_RH * seq_row + 5u) == C_BG && !strcmp(msg_text, "TIE OFF"));
         msg_text[0] = 0;
-        panel_keys(1u << 0);                                /* LFO + step 1: its own A#2, none before it (no tie across the loop) */
-        panel_keys(0);
-        loop();
-        check("LFO + a note's own step, nothing before it: NOTHING TO TIE", seq_white(0) == 0 && eng_steps_note((uint32_t)pat, 0u, 46u)
-              && ((eng_steps_note((uint32_t)pat, 0u, 46u) >> 6) & 63u) == 0u && !strcmp(msg_text, "NOTHING TO TIE"));
-        later(1000);
-        panel_yield = keys_yield_q;                         /* the roll's keys during a full redraw (D-228): nothing drawn from inside */
-        yield_xfers = 0;
-        msg_text[0] = 0;
-        kq_edge(0, 1);                                      /* LFO + step 1 again: its message waits for the loop's pass */
-        kq_edge(0, 0);
-        ui_dirty = 2;
-        panel_draw();
-        check("in a redraw, LFO + a step: taken, its message left for the pass", kq_r == kq_w && yield_xfers == 0u && !msg_text[0]);
-        loop();
-        check("  the pass shows it", !strcmp(msg_text, "NOTHING TO TIE"));
+        {
+            static uint32_t keep[TRACK_NOTES_MAX];
+            const uint32_t *ws;
+            int keep_n = eng_steps_notes((uint32_t)pat, &ws), i;
+            uint32_t len = (uint32_t)seq_len(pat);
+            for (i = 0; i < keep_n; i++)
+                keep[i] = ws[i];
+            panel_keys(1u << 0);                            /* LFO + step 1: its own A#2, none before it: the tie wraps round (#384) */
+            panel_keys(0);
+            loop();
+            hw = eng_steps_note((uint32_t)pat, 8u, 46u);
+            check("LFO + a note's own step, nothing before it, a later note of its row: that one tied across the loop point to it, joined",
+                  seq_white(0) == 0 && !eng_steps_note((uint32_t)pat, 0u, 46u) && hw && (hw & ENG_NOTE_WRAP)
+                  && ((hw >> 6) & 63u) + 1u == len - 8u + 1u && roll_shows(pat) && !strcmp(msg_text, "TIED"));
+            later(1000);
+            panel_yield = keys_yield_q;                     /* the roll's keys during a full redraw (D-228): nothing drawn from inside */
+            yield_xfers = 0;
+            msg_text[0] = 0;
+            kq_edge(0, 1);                                  /* LFO + step 1 again (its last step): its message waits for the loop's pass */
+            kq_edge(0, 0);
+            ui_dirty = 2;
+            panel_draw();
+            check("in a redraw, LFO + a step: taken, its message left for the pass", kq_r == kq_w && yield_xfers == 0u && !msg_text[0]);
+            loop();
+            check("  the pass shows it", !strcmp(msg_text, "TIE OFF") && ((eng_steps_note((uint32_t)pat, 8u, 46u) >> 6) & 63u) == 0u);
+            (void)eng_steps_set_notes((uint32_t)pat, keep, (uint32_t)keep_n);
+            seq_sync(pat);
+        }
         panel_held &= ~(1u << BTN_LFO);
         panel_held |= 1u << BTN_SEL;
         kq_edge(7, 1);                                      /* SEL + C4 (the pen) during a redraw */
@@ -3272,6 +3442,18 @@ int main(void)
         check("PRESET under Live (resumed): still held, EDITOR LIVE: PATCH STAYS", cur_preset == slot
               && presets_stepped == stepped && !strcmp(msg_text, "EDITOR LIVE: PATCH STAYS"));
         later(1600);
+        loop();
+        msg_text[0] = 0;                                    /* (the 1.10 early check: HOME still held, the bar says it) */
+        panel_held |= 1u << BTN_HOME;
+        panel_edges(1u << BTN_HOME, 0);
+        enc(6, 1);
+        loop();
+        check("  HOME still held: the header shows EDITOR LIVE: PATCH STAYS, the patch stays", cur_preset == slot
+              && !strcmp(msg_text, "EDITOR LIVE: PATCH STAYS") && on_screen("EDITOR LIVE: PATCH STAYS"));
+        panel_held &= ~(1u << BTN_HOME);
+        panel_edges(0, 1u << BTN_HOME);
+        loop();
+        later(1600);
         m1_live(1);                                         /* over the budget once more */
         check("LIVE paused after a resume: sandbox mode again", sb_on && snd_muted);
         later(LIVE_HOLD_MS + 100u);                          /* no LIVE for 5 s (a closed tab): the sound and PRESET are free */
@@ -3773,6 +3955,11 @@ int main(void)
             fb_watch_reset();
             lcd_px = 0;
             later(1100);                                    /* the toast's end: its band alone */
+            if (pages_sounds() > 1u) {                      /* (#582: a patch of more sounds says so in the bar for 2 s: its end
+                                                             * is the bar's, apart) */
+                later(1000);
+                continue;
+            }
             end_px += lcd_px;
             end_n++;
             end_max = lcd_px > end_max ? lcd_px : end_max;
@@ -4036,8 +4223,8 @@ int main(void)
         eng_transport(0);
         eng_render(l, r, 128);
         tap(BTN_SEL);
-        check("SEL tapped on the SEQ page: the SONG page, song 1, empty (END)", page == PAGE_SONG && song_sel == 0 && song_len() == 0
-              && on_screen("END"));
+        check("SEL tapped on the SEQ page: the SONG page, song 1, empty (END); its bar, not STAYS ARMED (#582)", page == PAGE_SONG
+              && song_sel == 0 && song_len() == 0 && on_screen("END") && on_screen("SONG 1") && !on_screen("STAYS ARMED"));
         told = host_song_told;
         enc(2, 1);
         check("K1 on END: an entry of the selected pattern, the editor told", song_len() == 1 && (eng_song_get(0, 0) & 0xFF) == 2
@@ -4051,7 +4238,37 @@ int main(void)
         check("FX + K1: a copy of it inserted before it", song_len() == 2 && eng_song_get(0, 1) == eng_song_get(0, 0));
         enc(5, 1);
         check("K4 right: the song plays", eng_song() == 1);
-        snap_to(getenv("PANEL_SNAP_SONG"));
+        {                                               /* (#582: the entry playing, its marker; stopped, none) */
+            uint32_t x, y, tri = 0;
+            enc(0, 5);                                  /* (the cursor on END: the entry's row not the cursor's bar) */
+            later(1100);
+            check("  stopped: the bar says SONG 1 STOPPED, no entry marked", bar_shows("SONG 1 STOPPED", C_ACC) && song_playing() < 0);
+            eng_transport(1);
+            for (i = 0; i < 4u; i++)
+                eng_render(l, r, 128);
+            loop();
+            for (y = SONG_Y; y < SONG_Y + 14u; y++)
+                for (x = 8u; x < 15u; x++)
+                    tri += px(x, y) == C_ACC;
+            check("  PLAY: entry 01 marked, a coral triangle before its number; the bar says SONG 1 PLAYS", song_playing() == 0
+                  && tri >= 20u && on_screen("01  P05  -3") && bar_shows("SONG 1 PLAYS", C_ACC));
+            snap_to(getenv("PANEL_SNAP_SONG"));
+            {
+                static uint16_t w0[240 * 240];
+                memcpy(w0, fb, sizeof w0);
+                ui_full = 1;
+                loop();
+                check("  the marked row drawn in place = drawn whole", !memcmp(w0, fb, sizeof w0));
+            }
+            eng_transport(0);
+            eng_render(l, r, 128);
+            loop();
+            for (tri = 0, y = SONG_Y; y < SONG_Y + 14u; y++)
+                for (x = 8u; x < 15u; x++)
+                    tri += px(x, y) == C_ACC;
+            check("  stopped again: no marker, SONG 1 STOPPED", !tri && bar_shows("SONG 1 STOPPED", C_ACC));
+            enc(0, -5);
+        }
         enc(5, -1);
         check("K4 left: the pattern plays again", eng_song() == 0);
         enc(1, 1);
@@ -4371,6 +4588,8 @@ int main(void)
         check("  the clock runs at it", E.tick_len == (int32_t)(60u * ENG_SR / (126u * 24u)));
         r = gt_poll(t0 + GT_SAVE_MS, 0);
         check("  not written while the transport runs", !(r & 2u) && gt_due);
+        check("  quiet: stopped and nothing heard for 2 s, not while a note or an echo may still sound (#651)",
+              gt_quiet(t0 + 5000u, 0, t0 + 3000u) && !gt_quiet(t0 + 4999u, 0, t0 + 3000u) && !gt_quiet(t0 + 9000u, 1, t0));
         tap(BTN_PLAY);
         r = gt_poll(t0 + GT_SAVE_MS - 2u, 1);
         check("  not written before 5 s have passed", !(r & 2u));

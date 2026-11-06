@@ -13,6 +13,7 @@
  * the mark. Needs engine.h. */
 #define GT_MARK 0x80u
 #define GT_SAVE_MS 5000u                 /* the settings record is written this long after the last change */
+#define GT_REST_MS 2000u                 /* ... and once nothing was heard for this long: more than the longest Delay (1.9 s) */
 
 static uint8_t gt_patch;                 /* TEMPO: 0 GLOBAL, 1 PATCH */
 static uint16_t gt_bpm;                  /* the global tempo, kept while PATCH too (0: not known: the running patch's) */
@@ -64,9 +65,16 @@ static void gt_set(uint32_t patch, uint32_t bpm, uint32_t now)
     gt_changed(now);
 }
 
+/* gt_poll's `quiet` (#651): the transport is stopped and the patch has not been heard for GT_REST_MS (heard: audio.c
+ * snd_heard_ms), so the write's moment without sound cuts no note and no echo (a Delay's line holds at most 1.9 s) */
+static int gt_quiet(uint32_t now, int running, uint32_t heard)
+{
+    return !running && now - heard >= GT_REST_MS;
+}
+
 /* each turn of the main loop: bit 0 = the engine moved the global tempo (a knob, PLAY held + PRESET, the editor's PARAM,
  * a boot that adopted a patch's): tell the editor; bit 1 = the settings record is due and may be written now (`quiet`:
- * nothing plays that a flash write would cut: the transport is stopped) */
+ * nothing plays that a flash write would cut: gt_quiet) */
 static uint32_t gt_poll(uint32_t now, int quiet)
 {
     uint32_t r = 0;

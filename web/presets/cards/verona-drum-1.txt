@@ -1,0 +1,152 @@
+# Verona Drum 1: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# kick
+#   kick / decay = 0.5 s               0.001..10 s
+#   kick / pitch = -29 st              -48..48 st
+#   kick / bend = 2.2                  -4..4
+#   time = 0.04 s                      0.001..10 s
+#   kick / wave = 1.4                  1..32
+#   kick / noise = 0.25                0..2
+#   kick / attack = 0.5                0..1
+#   kick / volume = 1.27               0..2
+# drum 1
+#   drum 1 / decay = 0.35 s            0.001..10 s
+#   drum 1 / pitch = -17 st            -48..48 st
+#   drum 1 / bend = 0.5                -4..4
+#   drum 1 / attack = 0.3              0..1
+#   fm int = 0                         -4..4
+#   fm freq = -24 st                   -48..48 st
+#   drum 1 / wave = 1.2                1..32
+#   drum 1 / volume = 1.27             0..2
+# multi
+#   multi / decay = 0.22 s             0.001..10 s
+#   multi / pitch = 0                  -4..4
+#   multi / bend = 0                   -4..4
+#   multi / attack = 0.2               0..1
+#   pitch 2 = 12 st                    -48..48 st
+#   pitch 3 = 12 st                    -48..48 st
+#   highpass = 250 Hz                  20..16000 Hz
+#   multi / volume = 1.27              0..2
+# snare
+#   snare / decay rev = 0.35 s         0.001..10 s
+#   snare / reverb = 0.12              0..2
+#   decay noise = 0.16 s               0.001..10 s
+#   snare / noise = 0.55               0..2
+#   snare / attack = 1                 0..1
+#   snare / resonance = 0.88           0..1
+#   snare / filter = 240 Hz            20..16000 Hz
+#   snare / volume = 1.27              0..2
+# hi hat
+#   hi hat / decay = 0.35 s            0.001..10 s
+#   hi hat / filter = 9000 Hz          20..16000 Hz
+#   hi hat / bend = 0                  -4..4
+#   hi hat / attack = 0.4              0..1
+#   hi hat / resonance = 0.25          0..1
+#   mix = 0.5                          0..1
+#   hi hat / pitch = 30 st             -48..48 st
+#   hi hat / volume = 1.27             0..2
+# clap
+#   clap / decay rev = 0.2 s           0.001..10 s
+#   clap / reverb = 0.45               0..2
+#   clap = 55 Hz                       0.0008..80 Hz
+#   clap / noise = 0.6                 0..2
+#   clap / resonance = 0.45            0..1
+#   clap / filter = 2200 Hz            20..16000 Hz
+#   clap / volume = 1.27               0..2
+# master
+#   master = 0.61                      0..1
+
+# Drafts of 2026-11-04 after the Vermona DRM1 MKIV's manual (its sound tips for each channel), not yet listened to on the
+# FM-1 (#613). The rows follow the original's knobs: see web/scripts/verona-voices.ts for what each does here.
+# bend: 0 none, up a falling sweep, below 0 a rising one (the kick's only falls). time: the kick's pitch sweep (and,
+# on the FM-1, its noise burst). wave: 1 a sine, up to an overdriven square. clap: the claps' rate, so their number
+# (below about 22 Hz one clap). The hi-hat plays open on HH OPEN and closed on HH CLOSE.
+engine: Verona Drum 1
+
+preset: Dance Floor
+# the manual's dance kick: short decay, more bend, little time; a tight hat and a full clap
+kick / decay = 0.32
+kick / pitch = -28
+kick / bend = 2.8
+time = 0.03
+kick / attack = 0.7
+hi hat / decay = 0.25
+hi hat / filter = 11000
+mix = 0.35
+clap / reverb = 0.6
+clap = 45
+  master = 0.59
+
+preset: Trouser Flap
+# DECAY at its longest for a long, low boom (the manual: Trap, drum and bass, dubstep); the bend kept low
+kick / decay = 2.5
+kick / pitch = -31
+kick / bend = 0.9
+time = 0.09
+kick / wave = 1.8
+kick / noise = 0.1
+kick / attack = 0.3
+snare / decay rev = 0.6
+snare / reverb = 0.25
+hi hat / decay = 0.5
+  master = 0.62
+
+preset: Beat Box 78
+# the snare with RESONANCE backed off, as a preset rhythm box from about 1978; a short kick, a thin hat, the multi a
+# cowbell
+kick / decay = 0.18
+kick / pitch = -24
+kick / bend = 1.2
+kick / wave = 1
+kick / noise = 0
+snare / resonance = 0.55
+snare / filter = 900
+snare / noise = 0.35
+decay noise = 0.08
+snare / reverb = 0
+hi hat / decay = 0.15
+mix = 0.2
+hi hat / bend = 0.5
+multi / decay = 0.12
+highpass = 500
+  master = 0.6
+
+preset: Clave and Conga
+# the manual's tip: the snare with FILTER and RESONANCE open and no noise is a clave; drum 1 a conga, the multi a bongo
+snare / filter = 2500
+snare / resonance = 0.98
+snare / noise = 0
+snare / reverb = 0
+drum 1 / pitch = -5
+drum 1 / decay = 0.25
+drum 1 / bend = 0.15
+drum 1 / attack = 0.6
+multi / pitch = -0.2
+pitch 2 = -2
+pitch 3 = -2
+multi / decay = 0.09
+highpass = 900
+hi hat / decay = 0.12
+  master = 0.97
+
+preset: Metal Works
+# FM in the audio range on drum 1 (atonal, metallic), the multi's three squares spread for a bell, hats bending up
+drum 1 / pitch = 2
+drum 1 / fm int = 1.5
+fm freq = 9
+drum 1 / decay = 0.6
+drum 1 / bend = -0.3
+drum 1 / wave = 3
+multi / pitch = 0.4
+pitch 2 = 8
+pitch 3 = 3
+multi / decay = 0.7
+highpass = 1200
+hi hat / bend = -1.5
+hi hat / resonance = 0.6
+hi hat / pitch = 34
+hi hat / decay = 0.8
+  master = 0.9

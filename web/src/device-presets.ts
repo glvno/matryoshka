@@ -7,6 +7,7 @@
 import { tiedTo, type AssemblyInst } from './assembly';
 import { DEFS } from './modules';
 import { topOf, type Patch } from './patch';
+import { migrationRank, movePreset } from './preset-migrate';
 import { rowOrder, structureOf } from './structure';
 
 export interface Preset {
@@ -55,6 +56,36 @@ export function fixPreset(raw: unknown): Preset | null {
   const values = o.values.map(Number);
   if (values.some((v) => !Number.isFinite(v))) return null;
   return { structure: o.structure, name, values };
+}
+
+/** a factory engine's Init values for a structure, if it has them */
+const initOf = (structure: string): number[] | undefined => factoryFor(structure).find((p) => p.name === 'Init')?.values;
+
+/** a user preset stored for an earlier structure of a factory engine, moved to today's structure (D-865,
+ * preset-migrate.ts): rows still there keep their values, new ones take the engine's Init values. Null when its structure
+ * does not move, or a factory preset of today's structure has its name (it then stays as it is). */
+export function movedPreset(structure: string, name: string, values: number[]): { structure: string; values: number[] } | null {
+  const m = movePreset(structure, values, initOf);
+  return m && !factoryFor(m.structure).some((f) => sameName(f.name, name)) ? m : null;
+}
+
+/** move the user's presets of earlier structures to today's (once as the app starts, D-865): each replaces its old copy,
+ * and a preset of today's structure of the same name (the older structure's moved first, so the newer one's wins).
+ * How many moved. */
+export function migrateUserPresets(): number {
+  const list = userPresets();
+  const due = list.map((p) => ({ p, r: migrationRank(p.structure) })).filter((x) => x.r >= 0).sort((a, b) => a.r - b.r);
+  if (!due.length) return 0;
+  let out = list;
+  let n = 0;
+  for (const { p } of due) {
+    const m = movedPreset(p.structure, p.name, p.values);
+    if (!m) continue;
+    out = [...out.filter((x) => x !== p && !(x.structure === m.structure && sameName(x.name, p.name))), { structure: m.structure, name: p.name, values: m.values }];
+    n++;
+  }
+  if (n) writeUser(out);
+  return n;
 }
 
 /** the user's presets */
@@ -145,9 +176,12 @@ export function storePreset(p: Patch, a: AssemblyInst, name: string): string {
 
 /** a user preset from elsewhere (the FM-1, #195): stored under its name, over one of the same structure and name in any
  * case (which keeps its own spelling); a name in capitals only, as the FM-1 writes them, otherwise takes the editor's
- * style (INIT 2 -> Init 2). False when a factory one has that name. Returns the name it is stored under */
+ * style (INIT 2 -> Init 2). One of an earlier structure of a factory engine moves to today's (D-865). False when a
+ * factory one has that name. Returns the name it is stored under */
 export function addUserPreset(structure: string, name: string, values: number[]): string | false {
   let n = fixName(name);
+  const m = movedPreset(structure, n, values);   // (from an FM-1 that has not moved its presets yet, D-865)
+  if (m) ({ structure, values } = m);
   if (!n || factoryFor(structure).some((f) => sameName(f.name, n))) return false;
   const users = userPresets();
   const had = users.find((x) => x.structure === structure && sameName(x.name, n));
@@ -180,10 +214,12 @@ export function deletePreset(structure: string, name: string): boolean {
 /** the user's library as a file */
 export const exportPresets = (): { format: string; presets: Preset[] } => ({ format: PRESETS_FORMAT, presets: userPresets() });
 
-/** a library file's presets merged into the user's (same structure and name: the file's wins); null when it is not one */
+/** a library file's presets merged into the user's (same structure and name: the file's wins; one of an earlier structure
+ * of a factory engine moves to today's, D-865); null when it is not one */
 export function importPresets(raw: unknown): number | null {
   if (!raw || typeof raw !== 'object' || (raw as { format?: unknown }).format !== PRESETS_FORMAT) return null;
-  const incoming = Array.isArray((raw as { presets?: unknown }).presets) ? ((raw as { presets: unknown[] }).presets).map(fixPreset).filter((p): p is Preset => !!p) : [];
+  const incoming = (Array.isArray((raw as { presets?: unknown }).presets) ? ((raw as { presets: unknown[] }).presets).map(fixPreset).filter((p): p is Preset => !!p) : [])
+    .map((p) => ({ ...p, ...movedPreset(p.structure, p.name, p.values) }));   // (an older file: D-865)
   const key = (x: Preset): string => `${x.structure}/${x.name.toLowerCase()}`;
   const have = new Map(userPresets().map((x) => [key(x), x]));
   for (const x of incoming) have.set(key(x), x);

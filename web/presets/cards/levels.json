@@ -72,6 +72,9 @@
   "output mixer / amp shaper": 0.12,
   "output mixer / osc 3/ext": 0
  },
+ "Verona Drum 1": {
+  "master / master": 0.61
+ },
  "Wanderer": {
   "filters · vca / vca level": 0.96,
   "filters · vca / gain": 0

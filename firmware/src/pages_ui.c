@@ -51,7 +51,7 @@ typedef struct {
     uint8_t bin, track;                                 /* its index in the binary's device list; the device that drives it (0xFF none) */
     uint32_t structure;                                 /* format 34's extras: an assembly's structure (0 none) */
     const uint8_t *rows;                                /* its card rows in canonical order (module, parameter byte) pairs */
-    uint8_t nrows, nmem, unreached;                     /* unreached: an engine no keys cable reaches (ENG_KEYS_UNREACHED, #215) */
+    uint8_t nrows, nmem, unreached;                     /* unreached: an engine no keys cable reaches (ENG_KEYS_UNREACHED, #215; ENG_KEYS_UNREACHED_TRACK, #633) */
     const uint8_t *mem;                                 /* the modules it is made of (#191: arming it arms them) */
 } pdev_t;
 typedef struct {
@@ -82,6 +82,7 @@ static int (*pages_waiting)(void);                      /* main.c: an encoder's 
  * started when the new patch's pages are built */
 static uint32_t pg_patch_ask_ms;
 static uint8_t pg_patch_ask;
+static uint32_t pages_sounds(void);
 static void toast_start(void);
 static void toast_end(void);
 /* a Page button's list on K1..K4 (#117): its button (-1: none), the step showing, whether a hold peeks at its first page */
@@ -139,7 +140,20 @@ static int32_t row_top(uint32_t m, uint32_t j, const def_t *d)
 {
     if (eng_type(m) == T_SELECT && j == SELECT_P_POS)
         return clampi((eng_get_param(m, SELECT_P_COUNT) + 32768) >> 16, 2, (int32_t)(d->pmax[j] >> 16)) << 16;
+    if (eng_type(m) == T_DELAY && j == DELAY_P_TIME && eng_get_param(m, DELAY_P_SYNC) < 32768) {   /* a free Delay's time: up to
+                                                     * its length, half of it with ping-pong (modules.ts delayReach) */
+        int32_t l = clampi((eng_get_param(m, DELAY_P_LENGTH) + 32768) >> 16, DELAY_LENGTH_MIN, DELAY_LENGTH_MAX);
+        return (eng_get_param(m, DELAY_P_PINGPONG) >= 32768 ? l / 2 : l) << 16;
+    }
     return DEF_TOP(d, j);
+}
+/* a row set when the patch loads (DEF_FIXED: a Delay's length) does not turn here: the editor sets it */
+static int row_fixed(uint32_t m, uint32_t j)
+{
+    if (eng_type(m) < 0 || !DEF_FIXED((uint32_t)eng_type(m), j))
+        return 0;
+    ui_msg("SET IN THE EDITOR", 1200);
+    return 1;
 }
 
 /* row k's extras in the running binary (ENG_ROW_MORE), 0 when it has none: u8 n, n (module, parameter), u8 k, k texts */
@@ -275,14 +289,18 @@ static void pages_extras(const uint8_t *p, uint32_t len)
     }
     cnt = p[at++];
     for (k = 0; k < cnt; k++) {
-        uint32_t nl = p[at + 5u], tr = p[at];
+        uint32_t nl = p[at + 5u], tr = p[at], un;
         for (i = 0; i < pg_ndev && pg_dev[i].bin != k; i++)
             ;
         if (i < pg_ndev) {
+            /* (no keys cable reaches it: 0xFE with no track, or the track's index with bit 7, #633) */
+            un = tr == ENG_KEYS_UNREACHED || (tr != ENG_NO_TRACK && (tr & ENG_KEYS_UNREACHED_TRACK));
+            if (un)
+                tr = tr == ENG_KEYS_UNREACHED ? ENG_NO_TRACK : tr & ~ENG_KEYS_UNREACHED_TRACK;
             for (j = 0; j < pg_ndev && (tr == 0xFFu || pg_dev[j].bin != tr); j++)
                 ;
             pg_dev[i].track = (uint8_t)(j < pg_ndev ? j : 0xFFu);
-            pg_dev[i].unreached = tr == ENG_KEYS_UNREACHED;
+            pg_dev[i].unreached = (uint8_t)un;
             pg_dev[i].structure = (uint32_t)p[at + 1u] | (uint32_t)p[at + 2u] << 8 | (uint32_t)p[at + 3u] << 16 | (uint32_t)p[at + 4u] << 24;
             if (pg_names_fresh) {
                 for (j = 0; j < nl && j < 16u; j++)
@@ -479,9 +497,16 @@ static void pages_ensure(void)
             pg_list_peek = 0;
             toast_end();
             if (pg_patch_ask && fm1_ms - pg_patch_ask_ms < 2000u) {   /* PRESET loaded it: its toast */
+                uint32_t n = pages_sounds();
                 pg_patch_ask = 0;
                 toast_start();
                 pg_algo_due = 1;
+                if (n > 1u) {                           /* (#582: a patch that can layer says so, and how) */
+                    static char m[32];
+                    m[0] = (char)('0' + (n > 9u ? 9u : n));
+                    put(m + 1, " SOUNDS: ENV THEN SEL")[0] = 0;   /* (as the sheet says it: "ENV+SEL" read as both at once) */
+                    ui_msg(m, 2000);
+                }
             }
             pg_patch_ask = 0;
         }
@@ -509,9 +534,9 @@ static const char *const MENU_TAB_NAME[MT_COUNT] = {"MIDI", "PANEL", "SYSTEM", "
 static ppage_t pg_menu;
 static const ppage_t *menu_tab_page(void)
 {
-    static const char *const LAB[3][PG_ROWS] = {{"MIDI CHANNEL", "CLOCK IN", "MIDI OUT", "CLOCK OUT"}, {"LEDS", "KNOB ACCEL", "COUNT-IN", "TEMPO"}, {"UPDATE MODE", "FACTORY RESET", "QUICK START", ""}};
-    static const uint8_t ROW[3][PG_ROWS] = {{MR_CH, MR_CLOCK, MR_MOUT, MR_CLKOUT}, {MR_LEDS, MR_ACCEL, MR_CIN, MR_TEMPO}, {MR_UPDATE, MR_DEFAULTS, MR_QUICK, 0}};
-    static const uint8_t N[3] = {4, 4, 3};
+    static const char *const LAB[3][PG_ROWS] = {{"MIDI CHANNEL", "CLOCK IN", "MIDI OUT", "CLOCK OUT"}, {"LEDS", "KNOB ACCEL", "COUNT-IN", "TEMPO"}, {"UPDATE MODE", "FACTORY RESET", "QUICK START", "OUTPUT"}};
+    static const uint8_t ROW[3][PG_ROWS] = {{MR_CH, MR_CLOCK, MR_MOUT, MR_CLKOUT}, {MR_LEDS, MR_ACCEL, MR_CIN, MR_TEMPO}, {MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_OUTPUT}};
+    static const uint8_t N[3] = {4, 4, 4};
     uint32_t t = menu_tab > MT_SYSTEM ? MT_MIDI : menu_tab, k;
     pg_menu.name = MENU_TAB_NAME[t];
     pg_menu.nlen = (uint8_t)str_len(MENU_TAB_NAME[t]);
@@ -531,7 +556,7 @@ static const ppage_t *menu_tab_page(void)
 /* a setting's place in its range, 0..width (its bar) */
 static uint32_t setting_bar(uint32_t row, uint32_t width)
 {
-    return row == MR_CH ? cfg.ch * width / 16u : row == MR_LEDS ? cfg.leds * width / 2u : row == MR_CIN ? cfg.count_in * width / 2u
+    return row == MR_CH ? cfg.ch * width / 16u : row == MR_LEDS ? cfg.leds * width / 2u : row == MR_OUTPUT ? out_mono * width / 2u : row == MR_CIN ? cfg.count_in * width / 2u
          : row == MR_UPDATE || row == MR_DEFAULTS ? (menu_armed == row ? width : 0u)
          : (row == MR_CLOCK ? cfg.clock_in : row == MR_MOUT ? cfg.midi_out : row == MR_CLKOUT ? cfg.clock_out : row == MR_QUICK ? cfg.quick : row == MR_TEMPO ? gt_patch : cfg.accel) ? width : 0u;
 }
@@ -627,6 +652,8 @@ static int pages_turn(uint32_t k, int32_t clicks, int fast, int fine, uint32_t *
         *v = clampi(poly_value(m, j & 0x7Fu) + (clicks > 0 ? 1 : -1), (j & 0x7Fu) == 0u ? 1 : 0, poly_max(j & 0x7Fu));
         return 1;
     }
+    if (row_fixed(m, j))
+        return -1;
     d = &DEFS[eng_type(m)];
     lag_note(k, m, j);                                  /* (the engine runs with it from its next block) */
     if (d->pchoice && d->pchoice[j]) {                  /* a choice steps one name a click */
@@ -659,7 +686,8 @@ static int pages_lock_turn(const ppage_t *pg, uint32_t k, int32_t cur, int32_t c
 {
     const def_t *d;
     uint32_t m, j;
-    if (!pg || k >= pg->nrows || !clicks || pg->mod[k] == SETTING_ROW || (pg->par[k] & POLY_ROW) || eng_type(pg->mod[k]) == T_PART)
+    if (!pg || k >= pg->nrows || !clicks || pg->mod[k] == SETTING_ROW || (pg->par[k] & POLY_ROW) || eng_type(pg->mod[k]) == T_PART
+        || (eng_type(pg->mod[k]) >= 0 && DEF_FIXED((uint32_t)eng_type(pg->mod[k]), pg->par[k])))   /* (a row set when the patch loads: no lock) */
         return -1;
     m = pg->mod[k];
     j = pg->par[k];
@@ -697,6 +725,8 @@ static int pages_set_unit(uint32_t k, int32_t u, uint32_t *mod, uint32_t *par, i
         *v = lo + (int32_t)((((int64_t)u * (hi - lo)) + 32768) >> 16);
         return 1;
     }
+    if (eng_type(m) >= 0 && DEF_FIXED((uint32_t)eng_type(m), j))   /* (MIDI CC: no message, the editor's knob says it) */
+        return -1;
     d = &DEFS[eng_type(m)];
     lag_note(k, m, j);
     if (d->pchoice && d->pchoice[j]) {
@@ -2058,7 +2088,8 @@ static void pages_ticks(void)
  * on; ENV or HOME goes back. SELECT moves the row (the device in focus: K1..K4 turn its first page), SEL opens its device
  * pages. A Steps track's row reads its name; the devices it drives follow it, indented, with a stripe in the track's hue
  * (Decision 5D, from the device extras of format 34). A row: the name, the preset it was set to (coral), and on the right
- * what it is doing (Main's tempo, a track's length, ARMED); a long row cuts the preset name first. */
+ * what it is doing (Main's tempo, a track's length, ARMED, or WIRED while nothing is armed); a long row cuts the preset name
+ * first. */
 #define ENV_Y0 24u
 #define ENV_ROW_H 26u
 #define ENV_ROWS 8u
@@ -2089,7 +2120,6 @@ static int env_track_no(uint32_t d)
     return -1;
 }
 
-/* the right-hand text of device d's row: Main's tempo, a track's length, ARMED */
 /* what arming device d arms (#191), as a module mask: its key listeners, and the key sources its keys come through (#395:
  * the track and the Arpeggiator in front of an instrument). An Arpeggiator alone is not a device to arm, nor an engine the
  * editor marks as one no keys cable reaches (D-905): a poly engine keeps its group without its Voicing, so its modules
@@ -2111,6 +2141,20 @@ static uint64_t env_listeners(uint32_t d)
 
 static int env_armed(uint32_t d) { return (eng_arm_mask_get() & env_listeners(d)) != 0; }
 
+/* the patch's sounds (#582): its devices that take keys, the tracks, Main and an Arpeggiator alone apart (a track arms
+ * with what it plays: that one counts) */
+static uint32_t pages_sounds(void)
+{
+    uint32_t d, n = 0;
+    for (d = 0; d < pg_ndev; d++) {
+        int m = pg_dev[d].module;
+        if (m >= 0 && (eng_type((uint32_t)m) == T_STEPS || eng_type((uint32_t)m) == T_FM1))
+            continue;
+        n += env_listeners(d) != 0u;
+    }
+    return n;
+}
+
 /* device d has a keys input that no cable may reach (#215; SEL says so, dev_arm, D-249): a Drum map, whose keys source is
  * then none, or an engine the editor marks (the device extras' ENG_KEYS_UNREACHED, D-905): its Voicing, no keys cable
  * reaching it, is left out of the binary (poly.ts deviceView). An Arpeggiator alone is no keys input that arms (D-235) */
@@ -2129,6 +2173,7 @@ static int dev_keys_input(uint32_t d)
 }
 
 static void seq_arm_set(uint64_t mask);                 /* (seq_ui.c: the armed set changed; REC on: they record) */
+static void seq_name(uint32_t t, char *out);            /* (seq_ui.c: a track's name as the bar shows it) */
 
 /* SEL arms the device in focus (#395), a toggle. Armed, it is taken out of the armed set, the others stay; the last one
  * out leaves the keys WIRED (Main's cables decide). Not armed: layer (the environment) adds it to the set (a layer, a
@@ -2149,9 +2194,40 @@ static void dev_arm(int layer)
     seq_arm_set(mask);
     caps(t, pg_dev[pg_cur_dev].name, pg_dev[pg_cur_dev].nlen, 14);
     put(put(m, t), env_armed(pg_cur_dev) ? " ARMED" : " DISARMED")[0] = 0;
+    if (env_armed(pg_cur_dev) && env_track_no(pg_cur_dev) < 0) {   /* (#582: a track that came along is named too, as the
+                                                     * footer then names it: SILVER BOX + PATTERN ARMED; 26 characters, else
+                                                     * the track's name alone) */
+        int k;
+        for (k = 0; k < eng_steps_count(); k++) {
+            int mod = eng_steps_module((uint32_t)k);
+            char tn[TRACK_NAME_MAX + 8], tc[TRACK_NAME_MAX + 8];
+            if (mod < 0 || mod >= 64 || !(l >> mod & 1u))
+                continue;
+            seq_name((uint32_t)k, tn);
+            caps(tc, tn, str_len(tn), TRACK_NAME_MAX + 7u);
+            if (str_len(t) + 3u + str_len(tc) + 6u <= 26u)
+                put(put(put(put(m, t), " + "), tc), " ARMED")[0] = 0;
+            else
+                put(put(m, tc), " ARMED")[0] = 0;
+            break;
+        }
+    }
     ui_msg(eng_arm_mask_get() ? m : "KEYS WIRED", 1200);
 }
 
+/* nothing armed and the keys reach device d by its cables (#582): its row says WIRED, dim, where ARMED goes (the footer's
+ * KEYS WIRED, a row at a time) */
+static int env_wired(uint32_t d)
+{
+    uint64_t l = eng_arm_mask_get() ? 0u : env_listeners(d);
+    uint32_t m;
+    for (m = 0; m < 64u && l >> m; m++)
+        if ((l >> m & 1u) && eng_hears_keys(m))
+            return 1;
+    return 0;
+}
+
+/* the right-hand text of device d's row: Main's tempo, a track's length, ARMED, WIRED */
 static void env_status(uint32_t d, char *out)
 {
     int m = pg_dev[d].module, t = m >= 0 ? eng_type((uint32_t)m) : -1;
@@ -2159,6 +2235,8 @@ static void env_status(uint32_t d, char *out)
     out[0] = 0;
     if (env_armed(d)) {
         put(out, "ARMED")[0] = 0;
+    } else if (env_wired(d)) {
+        put(out, "WIRED")[0] = 0;
     } else if (t == T_FM1) {
         fmt_int(num, (eng_get_param((uint32_t)m, FM1_P_TEMPO) + 32768) >> 16);
         put(put(out, num), " BPM")[0] = 0;
@@ -2467,8 +2545,8 @@ static int dp_load(uint32_t d, uint32_t k)
                 return -1;
             m1_param_now(mod, par, v);
         } else {
-            if (eng_type(mod) < 0 || par >= DEFS[eng_type(mod)].npar || eng_tempo_row(mod, par))   /* (a preset leaves
-                                                     * the global tempo, D-907) */
+            if (eng_type(mod) < 0 || par >= DEFS[eng_type(mod)].npar || eng_tempo_row(mod, par) || DEF_FIXED((uint32_t)eng_type(mod), par))   /* (a preset
+                                                     * leaves the global tempo, D-907, and a row set when the patch loads) */
                 continue;
             eng_set_param(mod, par, v);
             m1_patch_param(mod, par, v);

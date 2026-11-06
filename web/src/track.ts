@@ -35,6 +35,44 @@ export interface StepNote {
   vel: number;
   /** percent, 5..100 in steps of 5 (each time round the pattern a hash decides; modules.ts notePlays); absent = 100 */
   chance?: number;
+  /** tied across the loop point (#384, format 50): its length runs on past the end of the pass into the next pass's first
+   * steps instead of being cut there. With the most length (STEPS_MAX) it is a drone: it ties back onto its own step and
+   * never starts again while it plays (isDrone). Absent = cut at the end of the pass */
+  wrap?: boolean;
+}
+
+/** a drone (#384): a note tied across the loop point with the most length, which ties back onto itself */
+export const isDrone = (n: StepNote): boolean => !!n.wrap && n.len >= STEPS_MAX;
+
+/** does note n sound on step k without starting there, in grid order on a pattern of `len` steps: after its start, or
+ * (tied across the loop point) on the first steps of the pattern its length runs on into. Without `len`, no wrap */
+export function noteThrough(n: StepNote, k: number, len?: number): boolean {
+  if (n.at < k && k < n.at + n.len) return true;
+  if (!n.wrap || len === undefined || n.at >= len || k >= n.at) return false;
+  return isDrone(n) || k < n.at + n.len - len;
+}
+
+/** note n made to end on step k of a pattern of `len` steps (k its last step), tied across the loop point when k comes
+ * before its start; k on its start is one step */
+export function endOn(n: StepNote, k: number, len: number): StepNote {
+  const out: StepNote = { ...n, len: k >= n.at ? k - n.at + 1 : len - n.at + k + 1 };
+  if (k < n.at) out.wrap = true;
+  else delete out.wrap;
+  return out;
+}
+
+/** note n cut to end just before step k (a note through k), or undefined when nothing of it is left */
+export function cutBefore(n: StepNote, k: number, len: number): StepNote | undefined {
+  if (k === n.at) return undefined;
+  if (k > n.at) {
+    const out: StepNote = { ...n, len: k - n.at };
+    delete out.wrap;
+    return out;
+  }
+  if (k > 0) return endOn(n, k - 1, len);
+  const out: StepNote = { ...n, len: len - n.at };
+  delete out.wrap;
+  return out;
 }
 
 const int = (v: unknown, lo: number, hi: number): number | null => {
@@ -65,6 +103,7 @@ export function fixNotes(raw: unknown): StepNote[] | undefined {
     const n: StepNote = { at, len: int(o.len, 1, STEPS_MAX) ?? 1, note, vel: int(o.vel, 1, 127) ?? STEP_VEL };
     const chance = fixChance(o.chance);
     if (chance !== undefined) n.chance = chance;
+    if (o.wrap === true) n.wrap = true;
     out.push(n);
   }
   out.sort(order);
@@ -98,13 +137,15 @@ export function migrateSteps(steps: unknown, notes?: unknown, vels?: unknown): S
 }
 
 /** a note in the binary (patchbin.ts, engine.c): u32 LE, bits 0..5 the start, 6..11 the length - 1, 12..18 the note,
- * 19..25 the velocity, 26..30 the chance code (100 - chance) / 5 */
+ * 19..25 the velocity, 26..30 the chance code (100 - chance) / 5, bit 31 tied across the loop point (NOTE_WRAP, format 50) */
+export const NOTE_WRAP = 0x80000000;
 export const noteWord = (n: StepNote): number =>
-  (n.at | ((n.len - 1) << 6) | (n.note << 12) | (n.vel << 19) | (((100 - (n.chance ?? 100)) / 5) << 26)) >>> 0;
+  ((n.at | ((n.len - 1) << 6) | (n.note << 12) | (n.vel << 19) | (((100 - (n.chance ?? 100)) / 5) << 26)) >>> 0) + (n.wrap ? NOTE_WRAP : 0);
 export function wordNote(w: number): StepNote {
   const n: StepNote = { at: w & 63, len: ((w >>> 6) & 63) + 1, note: (w >>> 12) & 127, vel: (w >>> 19) & 127 };
   const code = Math.min(19, (w >>> 26) & 31);
   if (code) n.chance = 100 - 5 * code;
+  if (w & NOTE_WRAP) n.wrap = true;
   return n;
 }
 
@@ -119,15 +160,13 @@ export interface StepView {
   vel: number;
 }
 
-const covers = (n: StepNote, k: number): boolean => n.at < k && k < n.at + n.len;
-
-export function stepView(notes: readonly StepNote[] | undefined, k: number): StepView {
+export function stepView(notes: readonly StepNote[] | undefined, k: number, len?: number): StepView {
   const first = notes?.find((n) => n.at === k);
   return {
     on: !!first,
     accent: first?.vel === ACCENT_VEL,
     chance: first?.chance ?? 100,
-    tie: !first && !!notes?.some((n) => covers(n, k)),
+    tie: !first && !!notes?.some((n) => noteThrough(n, k, len)),
     note: first?.note ?? STEP_NOTE,
     vel: first?.vel ?? STEP_VEL,
   };
@@ -137,22 +176,50 @@ export function stepView(notes: readonly StepNote[] | undefined, k: number): Ste
 export const notesAt = (notes: readonly StepNote[] | undefined, k: number): StepNote[] => notes?.filter((n) => n.at === k) ?? [];
 
 /**
- * Step k edited as a step (the card's steps lane, the SEQ page): tie = the notes sounding on the step before go on through
- * it (the step's own notes give way; nothing sounding: no change). Otherwise a tied step is untied (the notes through it
- * end before it); on = a note there if it has none (C4, the default velocity), its notes get the chance and the accent
- * (full velocity; taking the accent away: the default velocity); off = its notes go. Returns the new list (undefined:
- * none left).
+ * The row drone (#384, D-819; LFO + FX on the FM-1's SEQ page, Shift+L in the piano roll): the row's first note (the
+ * notes of pitch `note`, the earliest start) becomes a drone and the row's other notes go. A row that is one drone
+ * already becomes an ordinary one-step note on that step again (the notes taken away come back only through undo).
+ * undefined: the row has no notes (the FM-1 says NOTHING TO DRONE)
  */
-export function setStep(notes: readonly StepNote[] | undefined, k: number, s: { on: boolean; accent: boolean; chance: number; tie?: boolean }): StepNote[] | undefined {
+export function droneRow(notes: readonly StepNote[] | undefined, note: number): { notes: StepNote[] | undefined; say: 'DRONE' | 'DRONE OFF' } | undefined {
+  const row = (notes ?? []).filter((n) => n.note === note);
+  if (!row.length) return undefined;
+  const first = row.reduce((a, n) => (n.at < a.at ? n : a));
+  const rest = (notes ?? []).filter((n) => n.note !== note);
+  if (row.length === 1 && isDrone(first)) return { notes: fixNotes([...rest, one(first)]), say: 'DRONE OFF' };
+  return { notes: fixNotes([...rest, { ...first, len: STEPS_MAX, wrap: true }]), say: 'DRONE' };
+}
+
+/** a note one step long, not tied across the loop point */
+const one = (n: StepNote): StepNote => {
+  const out: StepNote = { ...n, len: 1 };
+  delete out.wrap;
+  return out;
+};
+
+/**
+ * Step k edited as a step (the card's steps lane): tie = the notes sounding on the step before (for the first step, on the
+ * pattern's last: across the loop point, #384) go on through it, the step's own notes give way; a note that would tie
+ * onto its own start becomes a drone, and a drone tied there again is one step (nothing sounding: no change). Otherwise a tied step is untied (the notes through it end before it); on = a note there if it has none
+ * (C4, the default velocity), its notes get the chance and the accent (full velocity; taking the accent away: the default
+ * velocity); off = its notes go. `len`: the pattern's length (ties across the loop point; without it, none). Returns the
+ * new list (undefined: none left).
+ */
+export function setStep(notes: readonly StepNote[] | undefined, k: number, s: { on: boolean; accent: boolean; chance: number; tie?: boolean }, len = STEPS_MAX): StepNote[] | undefined {
   let out = (notes ?? []).map((n) => ({ ...n }));
   if (s.tie) {
-    const prev = out.filter((n) => n.at < k && n.at + n.len >= k);
+    const j = k > 0 ? k - 1 : len - 1;
+    const prev = out.filter((n) => (n.at === j || noteThrough(n, j, len)) && !noteThrough(n, k, len));
     if (!prev.length) return fixNotes(out);
-    out = out.filter((n) => n.at !== k);
-    for (const n of prev) n.len = Math.max(n.len, k - n.at + 1);
+    const drone = prev.every((n) => n.at === k && isDrone(n));
+    out = out.filter((n) => n.at !== k || prev.includes(n)).map((n) => {
+      if (!prev.includes(n)) return n;
+      if (n.at === k) return drone ? one(n) : { ...n, len: STEPS_MAX, wrap: true };
+      return k > n.at ? { ...n, len: Math.max(n.len, k - n.at + 1) } : endOn(n, k, len);
+    });
     return fixNotes(out);
   }
-  if (stepView(out, k).tie) for (const n of out) if (covers(n, k)) n.len = k - n.at;
+  if (stepView(out, k, len).tie) out = out.flatMap((n) => (noteThrough(n, k, len) ? cutBefore(n, k, len) ?? [] : [n]));
   if (!s.on) return fixNotes(out.filter((n) => n.at !== k));
   const chance = fixChance(s.chance);
   const mine = out.filter((n) => n.at === k);
@@ -187,9 +254,9 @@ export function setStepValue(notes: readonly StepNote[] | undefined, k: number, 
 
 /** step k holds exactly these notes (cursor entry of a chord, #135): its own notes go (a note tied through it ends before it),
  * each key a note one step long at its velocity (1..127), the step's chance kept */
-export function setChord(notes: readonly StepNote[] | undefined, k: number, keys: readonly { note: number; vel: number }[]): StepNote[] | undefined {
+export function setChord(notes: readonly StepNote[] | undefined, k: number, keys: readonly { note: number; vel: number }[], len = STEPS_MAX): StepNote[] | undefined {
   const chance = stepView(notes, k).on ? stepView(notes, k).chance : 100;
-  const out = setStep(notes, k, { on: false, accent: false, chance: 100 }) ?? [];
+  const out = setStep(notes, k, { on: false, accent: false, chance: 100 }, len) ?? [];
   for (const x of keys)
     if (out.length < TRACK_NOTES_MAX && k >= 0 && k < STEPS_MAX)
       out.push({ at: k, len: 1, note: Math.max(0, Math.min(127, Math.round(x.note))), vel: Math.max(1, Math.min(127, Math.round(x.vel))), ...(chance < 100 ? { chance } : {}) });
@@ -300,7 +367,7 @@ export function patternOf(m: { notes?: StepNote[]; patterns?: (Pattern | null)[]
 
 /** a short note word (format 48's patterns section, 16 bits): bits 0..3 the start, 4..7 the length - 1, 8..14 the note,
  * 15 the accent (full velocity, else the default velocity); for a pattern whose every note fits it (isShortNote) */
-export const isShortNote = (n: StepNote): boolean => n.at < 16 && n.len <= 16 && (n.vel === STEP_VEL || n.vel === ACCENT_VEL) && (n.chance ?? 100) === 100;
+export const isShortNote = (n: StepNote): boolean => !n.wrap && n.at < 16 && n.len <= 16 && (n.vel === STEP_VEL || n.vel === ACCENT_VEL) && (n.chance ?? 100) === 100;
 export const shortWord = (n: StepNote): number => n.at | ((n.len - 1) << 4) | (n.note << 8) | (n.vel === ACCENT_VEL ? 0x8000 : 0);
 export const wordShort = (w: number): StepNote => ({ at: w & 15, len: ((w >> 4) & 15) + 1, note: (w >> 8) & 127, vel: w & 0x8000 ? ACCENT_VEL : STEP_VEL });
 

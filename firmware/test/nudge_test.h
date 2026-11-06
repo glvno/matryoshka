@@ -243,6 +243,40 @@ static void nudge_suite(void)
         tap(BTN_HOME);
     }
 
+    check("(the engine-tracked fixture: basic poly, a Steps track's pitch into its cutoff, no keys cable into it, #633)",
+          load_fixture("build/panel-fixtures/engine-tracked.m1p") == 0);
+    patch_label = "ENGINE TRACKED";
+    pv_gen++;
+    trail_n = 0;
+    page_show(0);
+    screen_patch();
+    later(2000);
+    pages_ensure();
+    {
+        uint32_t seen = 0;
+        for (d = 0; d < pg_ndev; d++) {
+            uint32_t tr = pg_dev[d].track;
+            uint64_t grp = 0;
+            if (pg_dev[d].module >= 0)
+                continue;
+            check("  the engine carries the mark and keeps its track (ENG_KEYS_UNREACHED_TRACK, D-295)", pg_dev[d].unreached
+                  && tr < pg_ndev && pg_dev[tr].module >= 0 && eng_type((uint32_t)pg_dev[tr].module) == T_STEPS);
+            for (k = 0; k < pg_dev[d].nmem; k++)
+                grp |= eng_arms(pg_dev[d].mem[k]);
+            check("  (a poly engine: its modules keep their group)", grp != 0u);
+            pages_focus(d, 0);
+            loop();
+            later(1500);
+            arm0 = eng_arm_mask_get();
+            tap(BTN_SEL);
+            check("SEL on a poly engine a track drives through other cables: NO KEYS REACH THIS DEVICE (#633), the armed set kept",
+                  !env_listeners(d) && !env_armed(d) && nudged("NO KEYS REACH THIS DEVICE") && eng_arm_mask_get() == arm0);
+            seen++;
+        }
+        check("  (the engine seen)", seen == 1u);
+        tap(BTN_HOME);
+    }
+
     check("(ORACLE V for sandbox mode)", load("ORACLE V") == 0);   /* sandbox mode's nudges (D-232) */
     patch_label = "ORACLE V";
     pv_gen++;

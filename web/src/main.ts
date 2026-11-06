@@ -4,7 +4,7 @@
 import './site-move';
 import { renderFm1Help } from './controls-help';
 import { ControlsStrip, stripPatch, type StripPatch } from './controls-strip';
-import { addUserPreset, currentValues, exportPresets, importPresets, presetsOf } from './device-presets';
+import { addUserPreset, currentValues, exportPresets, importPresets, migrateUserPresets, presetsOf } from './device-presets';
 import { armedFromMask, armMask } from './arm';
 import './factory-presets'; // the factory engines' presets (#193)
 import { applyImport, backupFile, backupKeys, collectKeys, importSummary, receiveMigration } from './migrate';
@@ -16,9 +16,11 @@ import type { HostMsg } from './worklet';
 import { chipState, DeviceLink, deviceIndex, liveSync, sandboxChip, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, type ChipState, type DeviceEvent } from './device';
 import { SITE_URL } from './site';
 import { sandboxKey, sandboxPage, sandboxStep, sandboxTempoTurn } from './sandbox-mode';
-import { LIVE_MS, panelOffBy, slotLabel, type PanelState } from './protocol';
+import { LIVE_MS, panelOffBy, slotLabel, type PanelState, type SlotInfo } from './protocol';
+import { chooseSlot } from './store-slot';
 import { Fm1View } from './fm1-view';
 import { EmuKeys } from './emu-keys';
+import { SandboxKeys } from './sandbox-keys';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { ScopeScreens } from './scope-view';
 import { EnvScreens } from './env-view';
@@ -65,7 +67,7 @@ import { inlineWordmarks } from './brand';
 import { clipText, parseClip, type Clip } from './clipboard';
 import { isGlobalTempo, patchTempo, readTempo, tempo, TEMPO_KEY, tempoNow } from './tempo';
 import { addableModules, assemblyShelves, openableByValue, openableGroups } from './catalog';
-import { binaryPage, browserOnly, deviceBudget, editorPage, encodePatch, overText, POLY_ROW, POLY_ROW_PARAMS, toQ16 } from './patchbin';
+import { binaryPage, deviceBudget, editorPage, encodePatch, kb, linesAdvice, overText, POLY_ROW, POLY_ROW_PARAMS, toQ16 } from './patchbin';
 import { UploadGate } from './upload-gate';
 import { ALLOC, deviceView } from './poly';
 import { AboutCard } from './about';
@@ -189,6 +191,9 @@ window.setInterval(sandboxSend, SANDBOX_MS);
 let uploadTimer = 0;
 let uploading = false;
 let dirty = false;
+/** patches opened, and which of them the last finished upload sent (the emulator scenarios wait on it, __m1test, #588) */
+let loadsSeen = 0;
+let uploadedLoad = -1;
 /** the encoded patch the FM-1 holds under Live: a structural change that leaves it the same (a comment, the layout) sends
  *  nothing (upload-gate.ts) */
 const uploadGate = new UploadGate();
@@ -456,12 +461,14 @@ async function sendPatch(): Promise<boolean> {
     do {
       dirty = false;
       devStatus('sending patch…');
+      const load = loadsSeen;
       const bin = encodePatch(editor.patch);
       uploadGate.forget();
       await device.upload(editor.patch, bin);
       uploadGate.took(bin);
       onEditorPatch = true;
       baseline = JSON.stringify(editor.patch);
+      uploadedLoad = load;
       devStatus('patch on the FM-1');
       const at = editor.focus && binaryPage(editor.patch, editor.focus.device, editor.focus.page);
       if (at) device.focus(at[0], at[1]);   // the FM-1 opens on the page the knobs edit here
@@ -555,14 +562,30 @@ const hands = new DeckControls(document.createElement('div'), {
   bend: (v) => sink.send({ t: 'bend', v }),
   mod: (v) => sink.send({ t: 'cc', n: 1, v: v * 127 }),
 });
+/** the FM-1's key notes in sandbox mode (sandbox-keys.ts) */
+const sandboxKeys = new SandboxKeys();
 /** notes go to the browser engine and, with Live on, to the FM-1. `fromPanel`: one of the keys the Emulator view takes as
  * the FM-1's own (the pill keys, the computer keyboard, the on-screen one), not MIDI */
 const sink = {
   send(msg: HostMsg, fromPanel = false): void {
     // CC 16..19 from a MIDI controller turn Main's knobs: the rows of the device page in focus
     if (msg.t === 'cc' && msg.n >= 16 && msg.n <= 19) return editor.turnKnob(msg.n - 16, msg.v / 127);
+    if (msg.t === 'panic') sandboxKeys.route(msg, editor.patch, editor.armedSet, 0);
+    // the FM-1's keys in sandbox mode: it sends plain notes (D-232), and they play what its keys play on the editor's
+    // patch (D-520: a Drum map's rows on black keys 1..8; sandbox-keys.ts), at the FM-1's octave
+    if (fromDevice && (msg.t === 'on' || msg.t === 'off') && (sandboxOn() || sandboxKeys.holds(msg.note))) {
+      for (const m of sandboxKeys.route(msg, editor.patch, editor.armedSet, fm1Panel?.octave ?? emu.ui?.octave ?? 0)) sink.play(m);
+      return;
+    }
     // a followed FM-1 that reports its keys (#549): they reach the copy as KEYS_NOW, its notes only sound here
     if (fromDevice && (msg.t === 'on' || msg.t === 'off') && panelReported()) return sink.play(msg);
+    // the Emulator view in sandbox mode: its keys are the FM-1's, so they play as the FM-1's do here (above); the copy
+    // still takes them (its lights), but it does not hold the patch
+    if (fromPanel && (msg.t === 'on' || msg.t === 'off') && ((sandboxOn() && emu.shown) || sandboxKeys.holds(msg.note))) {
+      emuKeys.route(msg, fromPanel);
+      for (const m of sandboxKeys.route(msg, editor.patch, editor.armedSet, emu.ui?.octave ?? 0)) sink.play(m);
+      return;
+    }
     // the Emulator view: its keys play what the emulated FM-1 plays for them (#467, emu-keys.ts)
     for (const m of emuKeys.route(msg, fromPanel)) sink.play(m);
   },
@@ -732,6 +755,11 @@ let emuTimer = 0;
 /** the editor's notes as the emulated FM-1's keys while its view shows (emu-keys.ts) */
 const emuKeys = new EmuKeys(emu);
 const firstPatch = loadSaved() ?? starterPatch();
+// the user's presets stored for an earlier structure of a factory engine move to today's (D-865), before any list shows them
+{
+  const moved = migrateUserPresets();
+  if (moved) showToast(`${moved} of your presets moved to the updated factory engines`);
+}
 // the global tempo setting (D-907, wired below) before the editor draws Main's tempo row; a first visit: Global, at this
 // patch's tempo
 tempo.set(readTempo((() => { try { return localStorage.getItem(TEMPO_KEY); } catch { return null; } })(), patchTempo(firstPatch)));
@@ -771,10 +799,18 @@ const editor = new Editor($('canvas'), firstPatch, {
       queueEmu();
       return;
     }
-    // a parameter with a browser-only stretch (the Delay's time past 700 ms) can take the patch over the FM-1 budget or
-    // back under it: the budget first, so Live pauses before the value would go out (and sends the patch again once it fits)
+    // a parameter set when the patch loads (ParamDef.fixed: a Delay's length, the size of its line) changes the effect
+    // memory: the budget again, and the FM-1 takes the whole patch again (it sizes the lines as it loads)
     const pd = DEFS[editor.patch.modules.find((m) => m.id === id)?.type ?? '']?.params.find((q) => q.name === name);
-    if (pd?.browserMax !== undefined && (browserOnly(editor.patch).length > 0) === fitsDevice) {
+    if (pd?.fixed) {
+      showBudget();
+      if (live() && !fromDevice) queueUpload();
+      queueEmu();
+      return;
+    }
+    // a parameter with a browser-only stretch (ParamDef.browserMax; none today) can take the patch over the FM-1 budget or
+    // back under it: the budget first, so Live pauses before the value would go out (and sends the patch again once it fits)
+    if (pd?.browserMax !== undefined) {
       const was = fitsDevice;
       showBudget();
       if (!was && fitsDevice && live() && !fromDevice) queueUpload();
@@ -886,6 +922,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     tutorial.refresh();
   },
   onLoad(p) {
+    loadsSeen++;
     emuFresh = true;
     uploadGate.forget();   // (a patch opened always goes to the FM-1 whole: its mutes, arms and pattern start afresh too)
     noteKeys.set(p.octave ?? 0); // a patch opens in the octave it was last played in
@@ -1146,17 +1183,34 @@ function showBudget(): void {
     line.addEventListener('click', () => editor.reveal(mod.id));
     return line;
   });
+  // the effect memory: the total, then each line-type module's share (a click selects it), largest first
+  const lineLines = (): HTMLElement[] => {
+    const lb = b.lines;
+    const top = budgetLine('Effect memory', lb.fits ? lb.used / lb.max : Math.max(1.01, lb.used / lb.max), `${kb(lb.used)} / ${kb(lb.max)} KB`,
+      lb.fits ? 'The lines of the Delays, reverbs, choruses, strings, combs and the Granular, in the FM-1\'s two line areas. A Delay takes its length; ping-pong: half per side' : linesAdvice(editor.patch));
+    return [top, ...[...lb.modules].sort((x, y) => y.bytes - x.bytes).map((u) => {
+      const mod = editor.patch.modules.find((x) => x.id === u.id);
+      const name = moduleName(u.type, DEFS[u.type].label) + (mod?.name ? ` ${mod.name}` : '') + (u.copies > 1 ? ` ×${u.copies}` : '');
+      const line = budgetLine(`\u2003${name}`, u.bytes / lb.max, `${kb(u.bytes)} KB`, 'Select it', false);
+      line.classList.add('pick');
+      if (mod) line.addEventListener('click', () => editor.reveal(mod.id));
+      return line;
+    })];
+  };
   list.replaceChildren(
     head('Memory'),
-    ...b.items.filter((i) => i.used > 0).map((i) => budgetLine(i.label, i.used / i.max, `${i.used} / ${i.max}`, '', i.max > 1)),
+    ...b.items.filter((i) => i.used > 0).flatMap((i) => (i.key === 'lines' ? lineLines() : [budgetLine(i.label, i.used / i.max, `${i.used} / ${i.max}`, '', i.max > 1)])),
     head('CPU, estimated'),
     ...costly,
+    // #271: the FM-1's second core takes the odd parts of each poly group; the figure above is core 0's
+    ...(b.cpu.splitGroups ? [budgetLine('Second core: poly parts', (b.cpu.oneCoreUs - b.cpu.us) / CPU.blockUs, `−${Math.round(100 * (b.cpu.oneCoreUs - b.cpu.us) / CPU.blockUs)} %`,
+      `On one core this patch would be about ${Math.round(100 * b.cpu.oneCoreUs / CPU.blockUs)} %`, false)] : []),
     ...(b.over.some((i) => i.key === 'browser') ? [head('Browser only'), ...b.over.filter((i) => i.key === 'browser').map((i) => budgetLine(i.label, 1.01, 'over', '', false))] : []),
   );
   const note = document.createElement('p');
   note.className = 'muted';
   note.textContent = b.fits
-    ? 'The CPU figure is an estimate: counted on a model of the FM-1\'s processor, calibrated on the factory patches measured on the FM-1. Treat anything above 80 % as tight.'
+    ? 'The CPU figure is an estimate of the FM-1\'s first core: counted on a model of its processor, calibrated on the factory patches measured on the FM-1. The second core plays half the parts of each poly group. Treat anything above 80 % as tight.'
     : 'A sandbox patch: it plays here in the browser with no FM-1 limits. It goes to the FM-1 once it fits under the bars; Library > Patches marks it SANDBOX.';
   list.append(note);
   showSandbox(b);
@@ -1792,7 +1846,7 @@ function emuLoad(): void {
   // a patch over the budget still loads here (the emulator has the firmware's tables, not its timing): a notice says so
   // and the view stays usable; past the tables themselves the firmware refuses it and the last patch stays
   const b = deviceBudget(editor.patch);
-  const over = b.over.map((i) => i.key === 'cpu' || i.key === 'browser' ? overText(i) : `${i.used} ${i.label} (the FM-1 holds ${i.max})`).join(', ');
+  const over = b.over.map((i) => i.key === 'cpu' || i.key === 'browser' ? overText(i) : i.key === 'lines' ? linesAdvice(editor.patch) : `${i.used} ${i.label} (the FM-1 holds ${i.max})`).join(', ');
   let err = 0;
   try {
     err = ui.load(encodePatch(editor.patch, true), editor.patch.name.toUpperCase(), { fresh: emuFresh });
@@ -2133,13 +2187,19 @@ $('dev-send').onclick = () => void sendPatch();
 /** the open patch into slot n of the FM-1's bank, under its name (the device does not switch to it) */
 async function storeToSlot(): Promise<void> {
   if (!device.connected) return devStatus('connect the FM-1 first (FM-1 & MIDI)');
-  const typed = window.prompt('Store into FM-1 slot (1-64):', String((deviceSlot?.slot ?? 0) + 1));
-  const n = Math.round(Number(typed));
-  if (!typed || !Number.isFinite(n) || n < 1 || n > 64) return;
   try {
-    // a used slot is overwritten only when the user says so (#148); Cancel sends nothing
+    // the slots with their names or EMPTY, the first empty one offered (#635)
+    devStatus('reading the FM-1\u2019s slots\u2026');
+    const slots = await device.readBank();
+    devStatus('');
+    const pick = await chooseSlot($<HTMLDialogElement>('store-slot'), slots, editor.patch.name, deviceSlot?.slot);
+    if (pick === null) return devStatus('nothing stored');
+    const n = pick + 1;
+    // a used slot is overwritten only when the user says so (#148, D-580): the dialog's Replace said so for what it showed;
+    // a slot that changed since asks again. Cancel sends nothing
     const was = await device.readSlot(n - 1);
-    if (was.used && !window.confirm(`FM-1 slot ${slotLabel(n - 1)} holds "${was.name}". Replace it with "${editor.patch.name}"?`)) return devStatus('nothing stored');
+    const shown = slots.find((s) => s.slot === pick);
+    if (was.used && !(shown?.used && shown.name === was.name) && !window.confirm(`FM-1 slot ${slotLabel(n - 1)} holds "${was.name}". Replace it with "${editor.patch.name}"?`)) return devStatus('nothing stored');
     await device.uploadSlot(n - 1, editor.patch.name.toUpperCase().slice(0, 20), editor.patch);
     devStatus(`"${editor.patch.name}" stored into FM-1 slot ${slotLabel(n - 1)}`);
   } catch (e) {
@@ -2680,6 +2740,7 @@ if (import.meta.env.DEV) {
       playing: editor.playing, deviceRunning: device.running, octave: noteKeys.octave(), focus: editor.focus, patch: editor.patch.name,
       focusName: editor.devices.find((d) => d.key === editor.focus?.device)?.name ?? '',
       syncAsk: syncAsk.open, status: $('dev-status').textContent, armed: [...editor.armedSet],
+      loads: loadsSeen, uploadedLoad, selected: [...editor.selected], slot: deviceSlot?.slot ?? -1,
     }),
     patchJson: (): string => JSON.stringify(editor.patch),
     /** a device's first page into focus, by name (Main's knobs; with Live on, the FM-1 follows) */
@@ -2725,6 +2786,40 @@ if (import.meta.env.DEV) {
       await device.putPreset(pr.structure, as, pr.values);
       const back = await device.getPreset(pr.structure, as);
       return back && back.every((v, i) => Math.abs(v - pr.values[i]) < 1e-4) ? back.length : -1;
+    },
+    // the release's device check as scenarios (scripts/device-check.mjs): its test patches kept in Your patches, as the
+    // owner keeps them; the Open picker's chip of one (FM-1 · NN % or SANDBOX)
+    save: (json: string): boolean => keepPatch(validatePatch(JSON.parse(json), DEFS)).ok,
+    unsave: (name: string): boolean => !!removeSaved(name),
+    chip: (name: string): string | null => openableGroups().flatMap((g) => g.items).find((x) => x.name === name)?.chip().text ?? null,
+    // the FM-1's bank: its slots (SLOT_INFO), a slot emptied, a binary stored as it is (an older format's, as a bank an earlier
+    // firmware wrote holds)
+    slots: async (): Promise<SlotInfo[]> => device.readBank(),
+    eraseSlot: (slot: number): Promise<void> => device.eraseSlot(slot),
+    storeBin: (slot: number, name: string, bytes: number[]): Promise<void> => device.uploadSlotBin(slot, name, Uint8Array.from(bytes)),
+    // the browser's own output (sandbox mode plays here) since the last ask, read every 20 ms from an analyser on the
+    // engine's output (audio.ts meter): its loudest sample (0..1) and its energy (the sum of the squares of each read, an
+    // analyser's 2048 samples: comparable between asks, not a level); null while the audio does not run
+    level: (): { peak: number; energy: number } | null => {
+      const a = host.meter();
+      if (!a || !host.running) return null;
+      const w = window as unknown as { __m1level?: { peak: number; energy: number } };
+      if (!w.__m1level) {
+        const st = { peak: 0, energy: 0 };
+        const buf = new Float32Array(a.fftSize);
+        setInterval(() => {
+          a.getFloatTimeDomainData(buf);
+          for (const x of buf) {
+            if (Math.abs(x) > st.peak) st.peak = Math.abs(x);
+            st.energy += x * x;
+          }
+        }, 20);
+        w.__m1level = st;
+      }
+      const m = { ...w.__m1level };
+      w.__m1level.peak = 0;
+      w.__m1level.energy = 0;
+      return m;
     },
   };
 }

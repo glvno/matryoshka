@@ -16,6 +16,10 @@
   tools/m1_link.py uac [SECONDS]          (the USB audio stream: state, glitch counters, rate adjustments, the ring's fill
                                            range; SECONDS: read again after that long and print the changes per second)
   tools/m1_link.py mem                    (#273: the boot's proof of .lowram and how deep each stack has gone since boot)
+  tools/m1_link.py cores [inject | split on|off | stress on|off]   (#271: the second core: 2 CORES / 1 CORE, its self-tests; inject: one
+                                           wrong job, which must fall back to one core until power-off; split off: core 0
+                                           renders every part, core 1 stays up, for measuring; on again at boot; stress on:
+                                           the self-test every 1 ms with its hand-off's race window widened, off at boot)
   tools/m1_link.py uitime [reset]         (the LCD's draw times: the last and the worst of each kind, in ms; reset zeroes them)
   tools/m1_link.py clock [SECONDS [BPM [run]]]   (#473: MIDI clock out, DIAG page 116: ticks sent and dropped; SECONDS:
                                            also time the ticks this computer receives, by CoreMIDI's timestamps, and print
@@ -202,6 +206,32 @@ def main():
         print(f".lowram {w[1]} B {state.get(w[0], w[0])}, {w[2]} B free after it; pool {w[7]} B free")
         for name, size, used in (("main", w[3], w[4]), ("supervisor", w[5], w[6])):
             print(f"{name} stack: {used} of {size} B at most since boot ({size - used} B never reached)")
+    elif a[0] == "cores":                               # #271: the second core (DIAG 114; "cores inject": 113 first)
+        page = 113 if len(a) > 1 and a[1] == "inject" else 114
+        if len(a) > 2 and a[1] == "split":                 # the render's split off / on (DIAG 110 / 111; on at boot)
+            page = 110 if a[2] == "off" else 111
+        if len(a) > 2 and a[1] == "stress":                # the self-test every 1 ms, its race window widened (DIAG 108 / 109)
+            page = 108 if a[2] == "on" else 109
+        p = link.ask(frame(0x2B, [page]), (0x4B, page))
+        if len(p) < 33:
+            sys.exit("no second-core page (a firmware from before #271)")
+        w = [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range(8)]
+        on, gave, barred, skip = w[0] & 0xFF, (w[0] >> 8) & 0xFF, (w[0] >> 16) & 0xFF, (w[0] >> 24) & 0x7F
+        why = {0: "", 1: " (wrong job refused)", 2: " (job late)", 3: " (barred: one core until power-off)",
+               4: " (wrong self-test answer)"}.get(gave, f" ({gave})")
+        skipped = {1: ", not started: update mode", 2: ", not started: the last boot failed"}.get(skip, "")
+        print(f"{'2 CORES' if on else '1 CORE'}{why if gave else ''}{skipped}; barred {'yes' if barred else 'no'}; "
+              f"trace {w[1]:#010x}; split {'OFF' if w[0] >> 31 else 'on'}")
+        print(f"self-test passed {w[2]}, failed {w[3]}; refused jobs {w[4]}; jobs done {w[7]}; "
+              f"core 1 stack {w[5]} B used; longest wait {w[6]} us since the last read")
+        if page == 113:
+            print("one wrong check word armed for the next self-test (within 100 ms): run `cores` again")
+        q = link.ask(frame(0x2B, [115]), (0x4B, 115))      # the last failed self-test (DIAG 115, firmware since the race fix)
+        if len(q) >= 13:
+            x = [int.from_bytes(bytes(q[1 + 4 * i:5 + 4 * i]), "little") for i in range(3)]
+            if w[3]:
+                print(f"last failed self-test: answer {x[2]:#010x}, wrong bits {x[0]:#010x}"
+                      f"{' (never written: the job did not run)' if x[0] == 0xFFFFFFFF else ''}, seed {x[1]:#010x}")
     elif a[0] == "uitime":
         if len(a) > 1 and a[1] == "reset":
             link.ask(frame(0x2B, [120]), (0x4B, 120))

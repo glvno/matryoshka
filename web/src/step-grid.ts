@@ -4,7 +4,8 @@
 // and edits them as steps (stepView / setStep / setStepValue): a step is on when notes start there, tied when a note
 // started before goes on through it. Three lanes (#93), picked in the head:
 //   steps: a click switches a step on / off, Shift- or Alt-click its accent (full velocity), Ctrl / Cmd-click ties it to
-//          the note before (#128: the note goes on through it), a vertical drag sets its chance (5 % steps);
+//          the note before (#128: the note goes on through it; on the first step, the note on the last step goes on across
+//          the loop point, and a note tied round onto its own step is a drone, #384), a vertical drag sets its chance;
 //   note:  a vertical drag sets the step's note (a chord moves as one; a semitone per NOTE_PX, Shift an octave; an off
 //          step gets a note), double click C4;
 //   vel:   press and sweep across the steps to draw their velocities (the height in the cell), double click the default.
@@ -22,7 +23,7 @@
 // value, to edit from there).
 import { NOTE_NAMES } from './modules';
 import { STEPS_MAX, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef } from './patch';
-import { locksAt, setChord, setLock, setStep, setStepValue, STEP_NOTE, STEP_VEL, stepView, type StepLock, type StepNote, type StepView } from './track';
+import { isDrone, locksAt, setChord, setLock, setStep, setStepValue, STEP_NOTE, STEP_VEL, stepView, type StepLock, type StepNote, type StepView } from './track';
 
 /** a row of the track's device a step can lock (#524): its module's parameter, its label ("filter cutoff"), its definition
  * and its normal value now */
@@ -97,7 +98,11 @@ const ROW = 16;
 const DRAG_PX = 4;
 const NOTE_PX = 6;
 
-const view = (m: ModuleInst, k: number): StepView => stepView(m.notes, k);
+/** the track's length (ties across the loop point wrap round to its first steps, #384) */
+const lenOf = (m: ModuleInst): number => Math.min(STEPS_MAX, Math.max(1, Math.round(m.params.len ?? 16)));
+const view = (m: ModuleInst, k: number): StepView => stepView(m.notes, k, lenOf(m));
+/** a drone starts on step k (#384): a note tied across the loop point back onto itself */
+const droneAt = (m: ModuleInst, k: number): boolean => (m.notes ?? []).some((n) => n.at === k && isDrone(n));
 const noteOf = (m: ModuleInst, k: number): number => view(m, k).note;
 const velOf = (m: ModuleInst, k: number): number => view(m, k).vel;
 
@@ -200,7 +205,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
   const tip = (k: number): string => {
     const s = view(m, k);
     const chord = (m.notes ?? []).filter((n) => n.at === k).map((n) => NOTE_NAMES[n.note]);
-    const what = s.tie ? ': tied (the note before goes on)' : s.on ? `${s.accent ? ', accented' : ''}${s.chance < 100 ? `, ${s.chance} %` : ''}` : ': off';
+    const what = s.tie ? ': tied (the note before goes on)' : s.on ? `${droneAt(m, k) ? ', a drone (tied round the loop onto itself)' : ''}${s.accent ? ', accented' : ''}${s.chance < 100 ? `, ${s.chance} %` : ''}` : ': off';
     const vals = s.on ? ` · ${chord.join(' ')}, velocity ${s.vel}` : '';
     const how = { steps: 'click: on / off, Shift-click: accent, Ctrl / Cmd-click: tie, drag up / down: chance', note: 'drag up / down: note (Shift: octaves), double click: C4', vel: 'press and sweep: velocity, double click: default' }[lane];
     return `step ${k + 1}${what}${vals}\n${how}`;
@@ -212,6 +217,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
     c.classList.toggle('on', s.on);
     c.classList.toggle('acc', s.on && s.accent);
     c.classList.toggle('tie', s.tie);
+    c.classList.toggle('drone', s.on && droneAt(m, k));
     let v = s.on ? s.chance / 100 : 0;
     if (lane === 'vel') v = s.on ? s.vel / 127 : 0;
     c.style.setProperty('--chance', String(v));
@@ -233,7 +239,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
   };
   /** a step edited as a step (setStep): every step is repainted (a tie or an untie changes the steps around it) */
   const write = (k: number, s: { on: boolean; accent: boolean; chance: number; tie?: boolean }): void => {
-    ops.notes(setStep(m.notes, k, s));
+    ops.notes(setStep(m.notes, k, s, lenOf(m)));
     paintAll();
   };
   const writeValue = (k: number, note: number, vel: number): void => {
@@ -522,7 +528,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
       off: (note) => {
         if (!down.delete(note) || !chord.size) return;
         const at = entry!.k;
-        ops.notes(setChord(m.notes, at, [...chord].map(([n, v]) => ({ note: n, vel: v }))));
+        ops.notes(setChord(m.notes, at, [...chord].map(([n, v]) => ({ note: n, vel: v })), lenOf(m)));
         chord = new Map(); // (the keys still down were in it; a key played now starts the next chord)
         paintAll();
         move(at + 1);

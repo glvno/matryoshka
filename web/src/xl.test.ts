@@ -9,15 +9,25 @@ import { addModule, connect, type Patch } from './patch';
 import { FM1_PRESETS, isXl, PRESETS, withXls, XL_PRESETS, xlBase } from './presets';
 import { buildXls, xlFile, type Xl } from '../scripts/xl/xl';
 
-/** the placeholder: Init with a 1.2 s Delay after it (browser only, so a sandbox patch) */
+/** the placeholder: Init with a 1.2 s Delay after it and a Granular and two 1 s Delays beside it (over the FM-1's effect
+ * memory, D-375, so a sandbox patch) */
 const initXl: Xl = {
   base: 'Init',
   build(p: Patch): Patch {
     const out = p.modules.find((m) => m.type === 'output')!;
     const from = p.cables.find((c) => c.to.module === out.id)!.from;
     p.cables = p.cables.filter((c) => c.to.module !== out.id);
+    const gr = addModule(p, DEFS.grain, 1600, 300);
     const dly = addModule(p, DEFS.delay, 1600, 20);
-    Object.assign(dly.params, { time: 1200, fb: 0.5, mix: 0.4 });
+    connect(p, DEFS, from, { module: gr.id, port: 'in' });
+    connect(p, DEFS, { module: gr.id, port: 'out' }, { module: dly.id, port: 'in' });
+    Object.assign(dly.params, { time: 1200, fb: 0.5, mix: 0.4, length: 1200 });
+    for (let i = 0; i < 2; i++) {
+      const more = addModule(p, DEFS.delay, 1900, 20 + 300 * i);
+      Object.assign(more.params, { time: 900, length: 1000 });
+      connect(p, DEFS, from, { module: more.id, port: 'in' });
+      connect(p, DEFS, { module: more.id, port: 'out' }, { module: out.id, port: 'l' });
+    }
     connect(p, DEFS, from, { module: dly.id, port: 'in' });
     connect(p, DEFS, { module: dly.id, port: 'out' }, { module: out.id, port: 'l' });
     connect(p, DEFS, { module: dly.id, port: 'r' }, { module: out.id, port: 'r' });
@@ -37,7 +47,7 @@ describe('XLs', () => {
     expect(x.patch.name).toBe('Init XL');
     expect(x.patch.modules.some((m) => m.type === 'delay')).toBe(true);
     expect(x.budget.fits).toBe(false); // a sandbox patch: allowed
-    expect(x.budget.over.map((i) => i.label)).toContain('Delay over 700 ms: browser only');
+    expect(x.budget.over.map((i) => i.key)).toContain('lines');
     expect(() => buildXls([{ ...initXl, base: 'No Such Patch' }], FM1_PRESETS)).toThrow(/no FM-1 factory patch/);
     expect(() => buildXls([initXl, initXl], FM1_PRESETS)).toThrow(/two XLs/);
     // an XL that fits the FM-1 is allowed too

@@ -36,7 +36,7 @@ A factory engine's one-line description in the owner's wording, kept on the asse
 
 ### Browser-only ability
 
-Something only the browser's engine can do, such as a Delay time past 700 ms. A patch that uses one is over the FM-1 budget, so it is a sandbox patch. `browserOnly` in `web/src/patchbin.ts` lists them.
+Something only the browser's engine can do, such as a Delay time past 700 ms on a morph B side. A patch that uses one is over the FM-1 budget, so it is a sandbox patch. `browserOnly` in `web/src/patchbin.ts` lists them.
 
 ### Budget meter
 
@@ -114,6 +114,10 @@ The form of a patch the engines and the FM-1 run (`deviceView`), in which every 
 
 An editor-only row a module can have (a scope screen, an envelope shape); it is not a parameter.
 
+### Drone
+
+A note of a **Steps track** tied across the loop point back onto its own step: it starts once and holds while the track plays, never starting again (issue #384).
+
 ### Drum map
 
 A module that sends each key to its own row's gate (mapped voicing), as a drum engine picks its drum.
@@ -121,6 +125,10 @@ A module that sends each key to its own row's gate (mapped voicing), as a drum e
 ### Edit binding
 
 Main's K1..K4 are bound to the rows of the page in focus; they edit those rows and are not signals in the patch.
+
+### Effect memory
+
+The FM-1's RAM for the lines of its line-type modules: every Delay, reverb, chorus, string, comb and Granular. It is two areas, about 190 KB together, divided when a patch loads, and a patch fits only when every line does. A Delay's line holds its length. The editor's budget shows how much a patch takes and which module takes what.
 
 ### Emulator view
 
@@ -364,7 +372,7 @@ The ‹ name › control on an assembly device's card that picks one of its stor
 
 ### Quick start
 
-The card the FM-1 shows over its page after it starts. It lists how to move between devices, pages, presets and patches, and how to open the controls sheet.
+The card the FM-1 shows over its page after it starts. It lists how to move between devices, pages, presets and patches, how to set the tempo, and how to open the controls sheet.
 
 ### Rail
 
@@ -413,6 +421,10 @@ The state the editor and a connected FM-1 are in when Live is on and the editor'
 ### Sandbox patch
 
 A patch over the FM-1 budget: too big for the FM-1, or using a browser-only ability. It plays in the browser with no limits and is never sent to the FM-1. It is a normal patch, not an error; the editor marks it SANDBOX in gold.
+
+### Second core
+
+The FM-1 chip's other processor core (core 1). The firmware runs on core 0; the second core takes the jobs core 0 hands it, one at a time.
 
 ### Section
 
@@ -465,6 +477,10 @@ A list of up to 64 entries, each a pattern number and a shift (a transpose of up
 ### SONG page
 
 The FM-1's page for a patch's songs, opened from the SEQ page by tapping SEL: one row per entry, the song's number, and whether the patch plays its songs or its selected pattern.
+
+### Sound
+
+On the FM-1, a device of a patch that plays the keys by itself, such as an instrument or a drum kit, counted together with the track or Arpeggiator in front of it. Main, a Steps track and an Arpeggiator alone are not sounds. A patch with two sounds can play them together: ENV, then SEL on each.
 
 ### Source
 
@@ -564,7 +580,7 @@ The part of an engine that turns keys into notes for its voices. Allocated voici
 
 ### Wired
 
-The keys' state with no device armed: Main's cables decide where the keys go. Every patch loads wired. The FM-1's footer says `KEYS WIRED`.
+The keys' state with no device armed: Main's cables decide where the keys go. Every patch loads wired. The FM-1's footer says `KEYS WIRED`. The environment says `WIRED` on the rows of the devices the cables reach.
 
 ### XL
 

@@ -8,7 +8,7 @@
 #define FELUCCA_ID "FM-1_7000000"  /* package identity (build.py: the .fwsc marker string): FM-1_7MMmmpp, 7000000 dev / CI */
 #endif
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "v1.9.1-DEV"
+#define FELUCCA_VERSION "v1.10.0-DEV"
 #endif
 #define FELUCCA_FLASH 1
 #define FELUCCA_OTA 1
@@ -33,6 +33,7 @@
 #include "fm1_sys.h"
 #include "fm1_irq.h"
 #include "fm1_guard.h"
+#include "fm1_cpu1.h"          /* the second core (#271: main.c starts and checks it; engine.c render_split hands it parts) */
 #include "fm1_input.h"
 #include "fm1_timer.h"
 #include "fm1_audio.h"
@@ -53,6 +54,15 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 #include "font_bc.c"
 #define ENG_POOL __attribute__((section(".pool")))
 #define ENG_LOWRAM __attribute__((section(".lowram")))   /* app.ld: the SRAM below the RAM region (#273) */
+#define ENG_LANE_HOOKS 1           /* #271: engine.c hands lane 1 of a split segment to the second core (fm1_cpu1.h) */
+static uint8_t lanes_off;                  /* DIAG pages 110 / 111 (tools/m1_link.py cores split off / on): core 0 renders every part (to measure) */
+static int eng_lane_run(void (*fn)(uint32_t), uint32_t arg)
+{
+    if (lanes_off || (fm1_cpu1_busy() && fm1_cpu1_wait() != 0))   /* the main loop's self-test first, if this interrupt */
+        return 0;                                                   /* came between its hand-off and its wait */
+    return fm1_cpu1_run(fn, arg);
+}
+static int eng_lane_wait(void) { return fm1_cpu1_wait(); }   /* -1: given up (held, barred): core 0 renders the lane */
 #include "engine.c"
 #include "presets.h"
 #include "audio.c"
@@ -87,6 +97,7 @@ static void m1_tempo(uint32_t patch, uint32_t bpm);           /* main.c: the edi
 #include "proto.c"
 #include "slotstore.c"
 #include "presetstore.c"
+#include "presetmig.c"         /* user presets of earlier engine structures move at the first boot after an update (D-865) */
 #ifdef M1_BENCH
 #include "bench.c"
 #endif

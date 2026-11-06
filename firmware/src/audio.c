@@ -13,10 +13,18 @@ static volatile uint8_t eng_run;
 static volatile uint32_t master_q12 = 2048;        /* the MASTER pot, 0..4088 (Q12), square law */
 static volatile int32_t patch_gain = 65536;        /* the mixer page's level of the patch, Q16 (0 = muted; menu.c) */
 static volatile uint8_t snd_muted;                 /* sandbox mode (sandbox_ui.c): the browser plays; the FM-1's patch runs on, unheard */
+static volatile uint8_t out_mono;                  /* GLO > SYSTEM > OUTPUT (#612, D-919): 0 STEREO; 1 MONO, (L + R) / 2 on
+                                                    * both sides of the analog output; 2 MONO L, the sum on the left side
+                                                    * (the tip) and the right silent, so a mono (TS) plug has nothing to
+                                                    * short. USB audio stays stereo. Saved with the settings (main.c) */
 /* the device test mode's meter (TEST_PEAK, #291): before the MASTER pot (as at its default, so a script does not depend
  * on where the knob is), after mute */
 #include "test_peak.h"
 static volatile uint32_t eng_us_last, eng_us_max, eng_halves;
+/* fm1_ms of the last half the patch was heard in (a sample of either side past SND_FLOOR, before MASTER): a flash write
+ * the FM-1 makes by itself waits for SND_REST_MS of silence (tempo_glo.h gt_quiet, #651), since it stops the sound */
+#define SND_FLOOR 32                                /* Q16: -66 dB */
+static volatile uint32_t snd_heard_ms;
 static int32_t eng_l[HALF_FRAMES], eng_r[HALF_FRAMES];
 #if FELUCCA_UAC
 /* USB audio out (usb.c, included after this file): the ring's fill is sampled as a half starts, then the half's I2S words
@@ -77,12 +85,16 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
             }
         }
         if (eng_run) {
+            uint32_t loud = 0;
             eng_render(eng_l, eng_r, HALF_FRAMES);
             int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)master_q12 * patch_gain) >> 16);
             for (i = 0; i < HALF_FRAMES; i++) {         /* Q16 (+-1.0) * MASTER -> 24 bit in the low bits, -6 dBFS ceiling */
                 o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
                 o[2u * i + 1u] = ((eng_r[i] * m) >> 12) << 6;
+                loud |= (uint32_t)(eng_l[i] + SND_FLOOR) > 2u * SND_FLOOR || (uint32_t)(eng_r[i] + SND_FLOOR) > 2u * SND_FLOOR;
             }
+            if (loud)
+                snd_heard_ms = fm1_ms;
             if (tp_on) {                                /* (only once a script asked: no cost otherwise) */
                 int32_t mr = snd_muted ? 0 : (int32_t)(((int64_t)2048 * patch_gain) >> 16);   /* MASTER at its default */
                 tp_block(eng_l, eng_r, HALF_FRAMES, mr);
@@ -95,6 +107,12 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
 #if FELUCCA_UAC
         uac_tap(o, HALF_FRAMES);
 #endif
+        if (out_mono)                                   /* (after USB audio took the half in stereo; never louder than a side) */
+            for (i = 0; i < HALF_FRAMES; i++) {         /* MONO: the sum on both sides; MONO L: on the left (tip), the right silent */
+                int32_t s = (o[2u * i] + o[2u * i + 1u]) >> 1;
+                o[2u * i] = s;
+                o[2u * i + 1u] = out_mono == 2u ? 0 : s;
+            }
         fm1_audio_ack_half();
         all = fm1_ticks() - t0;                         /* includes the key scan and USB poll nested in the ISR */
         late = fm1_audio_free_half() != half;           /* the hardware already plays the half just written */

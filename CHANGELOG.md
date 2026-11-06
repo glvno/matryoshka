@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+## 1.10.0 — 2026-11-06
+
+### FM-1
+
+A patch with a drone is saved in format 50, which needs this firmware; every other patch keeps the older format.
+
+- **Dual core:** the FM-1 plays on both of its processor cores. Poly patches use 24–37 % less of the audio time, with the same sound bit for bit. INFO › PROCESSOR shows `2 CORES`.
+- **Verona Drum 1:** a new factory drum engine after the Vermona DRM1 MKIV (slot 30), with five presets. Its hi-hats cut and ring in either order.
+- **Effect memory:** a patch can have several Delays, reverbs, choruses, strings and Granulars, as long as they fit in 190 KB. Each Delay has a LENGTH, up to 1.9 s, set in the editor.
+- **Drones:** a note or a whole row can hold for as long as the pattern plays. Make one on the SEQ page (LFO held + a note's own step, or LFO + FX for a row), or hold a note round the loop in a live take.
+- **Mono output:** GLO › SYSTEM › OUTPUT sets STEREO, MONO or MONO L (MONO L is for one mono cable into a recorder).
+- **Your presets come back:** presets you stored before an engine's controls changed (1.7.0 and 1.9.1) show again on today's factory patch, under their own names.
+- **New factory patches reach an updated FM-1:** each goes into an empty slot, never over one of yours, and the bar says where.
+- **Improved on-device controls discoverability:** hints for the tempo, arming, layered sounds, drum keys, step record, patterns and songs.
+- **Fixes:** no dropout after a tempo change; an engine no keys reach says so on SEL instead of arming silently.
+
+### Editor
+
+- **Store to an FM-1 slot** lists all 64 slots with their names, and picks the first empty one.
+- **Effect memory** in the FM-1 budget, with each Delay's LENGTH row.
+- **Drones** in the Steps card and the piano roll (L, and Shift+L for a row).
+- **Sandbox mode** plays a Drum map on the FM-1's black keys.
+- **New community patch: Babushka** by fairplay, a Benjolin-like Rungler (#663).
+
 ## 1.9.1 — 2026-11-04
 
 ### FM-1

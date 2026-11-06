@@ -124,6 +124,7 @@ static uint8_t seq_lpg;                 /* P-locks (#524, #519 Q2): ALGO's stop 
                                          * the n-th page of the devices the track drives (K1..K4 lock its rows on the held
                                          * step); kept over presses, back to 0 with another track */
 static int8_t seq_shown_pos = -2;       /* the playhead as last drawn */
+static uint8_t seq_page_armed;           /* 1 + the track the SEQ page armed on opening, changing the armed set (#582) */
 static const char *seq_msg_due;         /* a key's message for the bar, shown by the loop's pass (a key never draws: D-228) */
 static uint16_t seq_msg_ms;             /* ... its time on show (0: 800 ms) */
 static char seq_msg_buf[28];            /* ... a message made up of a track's name */
@@ -476,12 +477,13 @@ static void seq_held_keep(int mod)
     seq_held_turned = 0;
 }
 
-/* the note of `note` that sounds on step k without starting there (a note through it), its index; -1 none */
-static int seq_through(const uint32_t *ws, int nn, uint32_t k, uint32_t note)
+/* the note of `note` that sounds on step k without starting there (a note through it, across the loop point too on a
+ * pattern of `len` steps), its index; -1 none */
+static int seq_through(const uint32_t *ws, int nn, uint32_t k, uint32_t note, uint32_t len)
 {
     int i;
     for (i = 0; i < nn; i++)
-        if (((ws[i] >> 12) & 127u) == note && (ws[i] & 63u) < k && k <= (ws[i] & 63u) + ((ws[i] >> 6) & 63u))
+        if (((ws[i] >> 12) & 127u) == note && eng_note_through(ws[i], k, len))
             return i;
     return -1;
 }
@@ -490,16 +492,16 @@ static int seq_through(const uint32_t *ws, int nn, uint32_t k, uint32_t note)
  * that note before it and starts one there */
 static void seq_roll_toggle(int mod, uint32_t k, uint32_t note, uint32_t vel)
 {
-    uint32_t w[TRACK_NOTES_MAX];
+    uint32_t w[TRACK_NOTES_MAX], len = (uint32_t)seq_len(mod);
     const uint32_t *ws;
-    int i, nn = eng_steps_notes((uint32_t)mod, &ws), t = seq_through(ws, nn, k, note);
+    int i, nn = eng_steps_notes((uint32_t)mod, &ws), t = seq_through(ws, nn, k, note, len);
     if (t < 0) {
         eng_steps_toggle((uint32_t)mod, k, note, vel);
         return;
     }
     for (i = 0; i < nn; i++)
         w[i] = ws[i];
-    w[t] = (w[t] & ~(63u << 6)) | (k - (w[t] & 63u) - 1u) << 6;     /* (length k - at) */
+    w[t] = eng_note_cut_before(w[t], k, len);
     (void)eng_steps_set_notes((uint32_t)mod, w, (uint32_t)nn);
     eng_steps_toggle((uint32_t)mod, k, note, vel);
 }
@@ -517,35 +519,59 @@ static void seq_held_tap_done(int mod)
     seq_sync(mod);
 }
 
-/* LFO held + a white key (the roll, #241; a drum track, #368; the rule of 2026-10-28): the selected row's note around
- * step k. On a step a note of that row runs through (started before k): k its last step already, the note is one step
- * again (TIE OFF), else it now ends on k (TIED). Else the row's last note starting before k ends on k (one press ties
- * step 1 to 16), a note of its own starting on k joining it (TIED). No note before k: NOTHING TO TIE (no tie across the
- * loop's end: a hit's own step is no tie) */
+/* LFO held + a white key (the roll, #241; a drum track, #368; the rule of 2026-10-28; #384): the selected row's note
+ * around step k, in grid order on the pattern's `len` steps. On a step a note of that row runs through (after its start,
+ * or across the loop point): k its last step already, the note is one step again (TIE OFF), else it now ends on k
+ * (TIED). Else the row's last note starting before k ends on k (one press ties step 1 to 16), a note of its own starting
+ * on k joining it (TIED). With no note of the row before k the tie wraps round the loop: the row's last note is tied
+ * across the loop point to end on k (TIED), or, starting on k itself, becomes a drone that never starts again (DRONE; a
+ * drone there already: one step again, TIE OFF). No note in the row: NOTHING TO TIE */
 static void seq_roll_tie(int mod, uint32_t k, uint32_t note)
 {
-    uint32_t w[TRACK_NOTES_MAX];
+    uint32_t w[TRACK_NOTES_MAX], len = (uint32_t)seq_len(mod);
     const uint32_t *ws;
-    int i, m, nn = eng_steps_notes((uint32_t)mod, &ws), t = seq_through(ws, nn, k, note), prev = -1;
+    int i, m, nn = eng_steps_notes((uint32_t)mod, &ws), t = seq_through(ws, nn, k, note, len), prev = -1, wrap;
     for (i = 0; i < nn; i++)
         w[i] = ws[i];
     if (t >= 0) {                                /* inside a note: it ends on k, or (k its last step) is one step again */
-        uint32_t at = w[t] & 63u, last = at + ((w[t] >> 6) & 63u);
-        w[t] = (w[t] & ~(63u << 6)) | (k == last ? 0u : k - at) << 6;
-        seq_msg_due = k == last ? "TIE OFF" : "TIED";
+        uint32_t at = w[t] & 63u, n = ((w[t] >> 6) & 63u) + 1u;
+        uint32_t last = (w[t] & ENG_NOTE_WRAP) && at + n > len ? at + n - len - 1u : at + n - 1u;
+        if (!eng_note_drone(w[t]) && k == last) {
+            w[t] &= ~(ENG_NOTE_WRAP | 63u << 6);
+            seq_msg_due = "TIE OFF";
+        } else {
+            w[t] = eng_note_end_on(w[t], k, len);
+            seq_msg_due = "TIED";
+        }
     } else {
         for (i = 0; i < nn; i++)                 /* the row's last note starting before k */
             if (((w[i] >> 12) & 127u) == note && (w[i] & 63u) < k && (prev < 0 || (w[i] & 63u) > (w[prev] & 63u)))
                 prev = i;
+        wrap = prev < 0;
+        if (wrap)                                /* none: the row's last note, whose tie wraps round the loop */
+            for (i = 0; i < nn; i++)
+                if (((w[i] >> 12) & 127u) == note && (w[i] & 63u) < len && (prev < 0 || (w[i] & 63u) > (w[prev] & 63u)))
+                    prev = i;
         if (prev < 0) {
             seq_msg_due = "NOTHING TO TIE";
             return;
         }
+        if ((w[prev] & 63u) == k) {              /* the last note starts on k: a drone, or one step again */
+            if (eng_note_drone(w[prev])) {
+                w[prev] &= ~(ENG_NOTE_WRAP | 63u << 6);
+                seq_msg_due = "TIE OFF";
+            } else {
+                w[prev] |= ENG_NOTE_WRAP | 63u << 6;
+                seq_msg_due = "DRONE";
+            }
+            (void)eng_steps_set_notes((uint32_t)mod, w, (uint32_t)nn);
+            return;
+        }
         {
-            uint32_t at = w[prev] & 63u, end = k + 1u;   /* (one past its last step) */
+            uint32_t at = w[prev] & 63u, extra = 0, n;
             for (i = m = 0; i < nn; i++) {       /* a note of its own on k joins it */
                 if (i != prev && ((w[i] >> 12) & 127u) == note && (w[i] & 63u) == k) {
-                    end = k + 1u + ((w[i] >> 6) & 63u);
+                    extra = (w[i] >> 6) & 63u;
                     continue;
                 }
                 w[m++] = w[i];
@@ -553,13 +579,54 @@ static void seq_roll_tie(int mod, uint32_t k, uint32_t note)
                     prev = m - 1;
             }
             nn = m;
-            if (end > TRACK_STEPS)
-                end = TRACK_STEPS;
-            w[prev] = (w[prev] & ~(63u << 6)) | (end - at - 1u) << 6;
+            w[prev] = eng_note_end_on(w[prev], k, len);
+            n = ((w[prev] >> 6) & 63u) + 1u + extra;
+            if (wrap ? n > len : at + n > TRACK_STEPS)
+                n = wrap ? len : TRACK_STEPS - at;
+            w[prev] = (w[prev] & ~(63u << 6)) | (n - 1u) << 6;
         }
         seq_msg_due = "TIED";
     }
     (void)eng_steps_set_notes((uint32_t)mod, w, (uint32_t)nn);
+}
+
+/* LFO + FX with no step held, outside step record (#384, D-819: the owner's ruling of 2026-11-04): the selected row's
+ * first note becomes a drone, the row's other notes go (DRONE); a row that is one drone already is an ordinary one-step
+ * note on that step again (DRONE OFF); a row without notes: NOTHING TO DRONE (track.ts droneRow) */
+static void seq_row_drone(void)
+{
+    uint32_t w[TRACK_NOTES_MAX], note;
+    const uint32_t *ws;
+    int mod = seq_module(), i, m, nn, first = -1, count = 0;
+    if (mod < 0 || seq_held >= 0)
+        return;
+    note = seq_grid_note(seq_map(), seq_row);
+    nn = eng_steps_notes((uint32_t)mod, &ws);
+    for (i = 0; i < nn; i++)
+        if (((ws[i] >> 12) & 127u) == note) {
+            count++;
+            if (first < 0 || (ws[i] & 63u) < (ws[first] & 63u))
+                first = i;
+        }
+    if (first < 0) {
+        seq_msg_due = "NOTHING TO DRONE";
+        return;
+    }
+    for (i = m = 0; i < nn; i++)
+        if (i == first) {
+            uint32_t x = ws[i];
+            if (count == 1 && eng_note_drone(x)) {
+                w[m++] = x & ~(ENG_NOTE_WRAP | 63u << 6);
+                seq_msg_due = "DRONE OFF";
+            } else {
+                w[m++] = x | ENG_NOTE_WRAP | 63u << 6;
+                seq_msg_due = "DRONE";
+            }
+        } else if (((ws[i] >> 12) & 127u) != note)
+            w[m++] = ws[i];
+    (void)eng_steps_set_notes((uint32_t)mod, w, (uint32_t)m);
+    seq_sync(mod);
+    ui_dirty = ui_dirty ? ui_dirty : 1;
 }
 
 /* SEL held + a key on the roll (#241): the pen. The selected row is that key's pitch (the keys' octave; off screen: the
@@ -603,13 +670,13 @@ static int sr_pitch(int map, uint32_t n)
 static void sr_put(int mod, uint32_t from, uint32_t to, int chord)
 {
     uint32_t w[TRACK_NOTES_MAX];
-    uint32_t i, m = 0;
+    uint32_t i, m = 0, len = (uint32_t)seq_len(mod);
     for (i = 0; i < seq_held_n; i++) {
-        uint32_t x = seq_held_notes[i], at = x & 63u, last = at + ((x >> 6) & 63u);
+        uint32_t x = seq_held_notes[i], at = x & 63u;
         if (at >= from && at <= to)
             continue;
-        if (at < from && last >= from)
-            x = (x & ~(63u << 6)) | (from - at - 1u) << 6;
+        if (eng_note_through(x, from, len))      /* (across the loop point too, #384) */
+            x = eng_note_cut_before(x, from, len);
         w[m++] = x;
     }
     for (i = 0; chord && i < sr_n && m < TRACK_NOTES_MAX; i++) {
@@ -758,6 +825,11 @@ static void sr_key(uint32_t n, int down)
     }
     if ((p = sr_pitch(seq_map(), n)) < 0)
         return;                                  /* (a drum grid's key that reaches no row: silent, D-805) */
+    if (seq_map() < 0 && (p < seq_roll_lo || p > seq_roll_lo + 7)) {
+        seq_roll_show(p, 0);                     /* a note off the roll's view: the view moves to its page, as the pen's
+                                                  * (#582, D-809), so its pitch and its tie show */
+        ui_dirty = ui_dirty ? ui_dirty : 1;
+    }
     if (!sr_keys) {                              /* a new chord on the cursor's step, over the track as it is now */
         sr_n = 0;
         sr_from = sr_k;
@@ -1050,8 +1122,12 @@ static void seq_arm_shown(int opening)
     seq_clamp();
     mod = seq_module();
     seq_armed_gen = pages_gen();
-    if (mod >= 0)
+    if (mod >= 0) {
+        uint64_t was = eng_arm_mask_get();
         seq_arm_set((uint64_t)1 << mod);
+        if (eng_arm_mask_get() != was)          /* (#582: the page changed the arming, which stays after it: seq_leave says so) */
+            seq_page_armed = (uint8_t)(seq_trk + 1u);
+    }
 }
 
 /* the bar names what records (D-549): REC and the track, REC n TRACKS, or REC: NO TRACK ARMED (REC still runs: a track
@@ -1244,6 +1320,20 @@ static void seq_leave(void)
 {
     ent_keys = 0;
     sr_stop();
+    if (seq_page_armed && page != PAGE_SONG) {   /* the page armed its track (#582): on the way out the bar says it stays so,
+                                                  * the footer's ARM name has a reason (not on the way to the SONG page,
+                                                  * the SEQ page's own: said when that is left for another) */
+        static char m[32];
+        char name[TRACK_NAME_MAX + 8];
+        uint32_t t = seq_page_armed - 1u;
+        seq_page_armed = 0;
+        if ((int)t < eng_steps_count() && seq_mod_armed(eng_steps_module(t))) {
+            seq_name(t, name);
+            put(put(m, name), " STAYS ARMED")[0] = 0;
+            seq_msg_due = m;
+            seq_msg_ms = 1500;
+        }
+    }
 }
 
 /* a key while the keys are the armed track's keyboard (the panel plays it, the engine records it): its LED */
@@ -1258,13 +1348,21 @@ static void seq_kbd_key(uint32_t n, int down)
 /* the device pages' info line: ARM / REC and the armed track's name (the colour: recording or not); 0 when none is armed */
 static int seq_arm_label(char *out, int *rec)
 {
-    int t = seq_armed_trk();
-    char name[TRACK_NAME_MAX + 8];
+    int t = seq_armed_trk(), k, more = 0;
+    char name[TRACK_NAME_MAX + 8], *q;
     if (t < 0)
         return 0;
+    for (k = 0; k < eng_steps_count(); k++)      /* (#582: the other armed tracks counted, "ARM DRUMS +1") */
+        more += k != t && seq_mod_armed(eng_steps_module((uint32_t)k));
     seq_name((uint32_t)t, name);
     *rec = seq_rec != 0;                         /* (REC on: the armed tracks record, #395; COUNT-IN until then, #414) */
-    put(put(out, seq_cin ? "COUNT-IN " : *rec ? "REC " : "ARM "), name)[0] = 0;
+    q = put(put(out, seq_cin ? "COUNT-IN " : *rec ? "REC " : "ARM "), name);
+    if (more) {
+        q = put(q, " +");
+        q[0] = (char)('0' + (more > 9 ? 9 : more));
+        q[1] = 0;
+    } else
+        q[0] = 0;
     return 1;
 }
 
@@ -1311,16 +1409,20 @@ static uint8_t seq_bar_lo(void)
  * the rows show the row) */
 static void seq_bar(void)
 {
-    char b[32], name[TRACK_NAME_MAX + 8], *p = b;
+    char b[48], name[TRACK_NAME_MAX + 8], *p = b;
     if (!eng_steps_count()) {
         bar_text("NO STEPS MODULE", C_ACC);
         return;
     }
     seq_name(seq_trk, name);
-    if (sr_on) {                                 /* step record (#532): STEP n first, the cursor's step */
+    if (sr_on) {                                 /* step record (#532): STEP n/16 first, the cursor's step of the pattern's
+                                                  * length (#582: it wraps from 16/16 to 1/16) */
         char num[8];
+        int mod = seq_module();
         fmt_int(num, (int32_t)sr_k + 1);
-        p = put(put(put(p, "STEP "), num), "  ");
+        p = put(put(put(p, "STEP "), num), "/");
+        fmt_int(num, mod >= 0 ? seq_len(mod) : 16);
+        p = put(put(p, num), "  ");
     }
     p = put(p, name);
     if (seq_mod_armed(seq_module()))             /* the track shown is armed (#179): REC records it (#395) */
@@ -1528,6 +1630,7 @@ static int seq_lock_line(int mod, char *line, uint32_t max)
 #define GRID_CUR 0x100u                 /* a cell's code: in step record's cursor column */
 #define GRID_CUR_Y (GRID_TICK_Y + 3u)   /* the cursor's tick: 2 px under the playhead's */
 #define GRID_LOCK 0x200u                /* a cell's code: its step has P-locks (#524): a gold corner mark, top right */
+#define GRID_DRONE 0x400u               /* a cell's code: a drone starts there (#384): the tie's band comes in at its left */
 static uint16_t seq_grid_cell[ENG_DRUM_ROWS][16];  /* the cells as drawn (seq_grid_state's codes) */
 static int8_t seq_grid_row = -1, seq_grid_tick = -2; /* the selected row, the playhead's column as drawn (-1 none) */
 static int8_t seq_grid_cur = -2;        /* step record's cursor column as drawn (-1 none) */
@@ -1578,6 +1681,8 @@ static void seq_grid_paint(uint32_t r, uint32_t i, uint32_t s, uint32_t was)
         lcd_fill(x, y, GRID_CW, GRID_CH - fill, empty);
     if (fill)
         lcd_fill(x, y + GRID_CH - fill, GRID_CW, fill, (s & 2u) ? C_ACC : C_FG);
+    if (s & GRID_DRONE)                          /* a drone (#384): tied round the loop onto its own step */
+        lcd_fill(x, y + GRID_CH / 2u - 2u, 3, 5, C_DIM);
     if (s & GRID_LOCK) {                         /* a step with P-locks (#519 Q11): a corner of 4, 3, 2, 1 px */
         lcd_fill(x + GRID_CW - 4u, y, 4, 1, P_GOLD);
         lcd_fill(x + GRID_CW - 3u, y + 1u, 3, 1, P_GOLD);
@@ -1676,18 +1781,18 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
             cell[r][i] = 0;
     }
     for (j = 0; j < nn; j++) {
-        int k = (int)(ws[j] & 63u) - k0, e = k + 1 + (int)((ws[j] >> 6) & 63u), c;
+        int k = (int)(ws[j] & 63u) - k0, c;
         uint32_t pn = (ws[j] >> 12) & 127u;
         if (map < 0 && (pn < lo || pn > lo + 7u))    /* the roll: a note above / below the window, on the steps it sounds */
-            for (c = k < 0 ? 0 : k; c < e && c < 16; c++)
-                if (k0 + c < len)
+            for (c = 0; c < 16; c++)
+                if (k0 + c < len && (c == k || eng_note_through(ws[j], (uint32_t)(k0 + c), (uint32_t)len)))
                     mark |= 1u << (c + (pn < lo ? 16 : 0));
         for (r = 0; r < ENG_DRUM_ROWS; r++)
             if (((ws[j] >> 12) & 127u) == note[r]) {
                 if (k >= 0 && k < 16 && cell[r][k] <= 1u)
                     cell[r][k] = ws[j];
-                for (c = k + 1 < 0 ? 0 : k + 1; c < e && c < 16; c++)   /* (the steps it goes on through) */
-                    if (!cell[r][c])
+                for (c = 0; c < 16; c++)         /* (the steps it goes on through, across the loop point too: #384) */
+                    if (!cell[r][c] && eng_note_through(ws[j], (uint32_t)(k0 + c), (uint32_t)len))
                         cell[r][c] = 1u;
             }
     }
@@ -1710,6 +1815,8 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
             uint32_t s = seq_grid_state(cell[r][i], k0 + (int)i, len, pos, tint, sr_on && k0 + (int)i == sr_k);
             if ((locked >> i & 1u) && s != GRID_PAST && s != GRID_TIE && (hit >> i & 1u ? cell[r][i] > 1u : r == seq_row))
                 s |= GRID_LOCK;                  /* (on the step's hits; a step without one: the selected row's cell) */
+            if (s != GRID_PAST && cell[r][i] > 1u && eng_note_drone(cell[r][i]))
+                s |= GRID_DRONE;
             if (s != seq_grid_cell[r][i]) {
                 seq_grid_paint(r, i, s, seq_grid_cell[r][i]);
                 seq_grid_cell[r][i] = (uint16_t)s;
@@ -1834,7 +1941,7 @@ static void seq_draw(int full)
 /* ---- the SONG page (#375; the owner, 2026-10-27: D-541, D-544): SEL tapped on the SEQ page. A song's entries, one a row
  * (03  P12  +5: its number, pattern, shift), an END row after the last; the patch plays its songs or its selected pattern.
  *   SELECT          the cursor (an entry, or END)
- *   K1              the entry's pattern; on END: adds an entry (the last one's pattern, no shift); FX held: a copy of the
+ *   K1              the entry's pattern; on END: adds an entry (the selected pattern, no shift); FX held: a copy of the
  *                   entry inserted before it
  *   K2              the entry's shift, -12..+12 semitones (a track that plays a Drum map is never shifted)
  *   K4              right: the song plays (from the end of each track's pass, its first entry), left: the pattern again
@@ -1842,25 +1949,28 @@ static void seq_draw(int full)
  *   SEQ held + REC  deletes the entry, asked first (REC again within 3 s), as the track clear
  *   PRESET          the pattern, as on the SEQ page
  *   SEL / HOME      back to the SEQ page
- * The entry each track plays is marked (>); only the rows that changed are redrawn. Edits go into the running patch (SAVE
+ * The entry the selected track plays is marked (a coral triangle and number, #582; stopped: none, the bar says SONG n
+ * STOPPED); only the rows that changed are redrawn. Edits go into the running patch (SAVE
  * keeps them) and to the editor (SONG_NOW, PATTERN_NOW). */
 #define SONG_ROWS 8u
 #define SONG_Y 44u
 #define SONG_RH 19u
 static uint8_t song_sel;                /* the song shown (0..ENG_SONGS - 1) */
 static uint8_t song_cur, song_top;      /* the cursor (an entry, or the song's length: END), the first row shown */
-static char song_text[SONG_ROWS + 3u][48];   /* the rows, the info, the footer and the hint as drawn (a row's first byte: 1 the cursor) */
+static char song_text[SONG_ROWS + 3u][48];   /* the rows, the info, the footer and the hint as drawn (a row's first byte: 1 the cursor, 2 not, | 4 the entry playing) */
 static uint8_t song_ok;                 /* the page is on the LCD as song_text says */
 static int16_t song_shown_play = -2;    /* the entry playing as drawn */
+static int8_t song_shown_run = -1;      /* the transport as the bar last said it (SONG n PLAYS / STOPPED) */
                                         /* song_del_at: SEQ held + REC: fm1_ms | 1 of the press that asked, 0 none */
 static uint8_t song_del_k;              /* ... the entry it asked for */
 
 static int song_len(void) { return eng_song_len(song_sel); }
-/* the entry the selected track plays in the song shown, -1 when that song does not play */
+/* the entry the selected track plays in the song shown, -1 when that song does not play or the transport is stopped
+ * (#582: stopped, no marker) */
 static int song_playing(void)
 {
     int mod = seq_module();
-    return mod >= 0 && eng_song() == song_sel + 1 ? eng_song_entry((uint32_t)mod) : -1;
+    return mod >= 0 && eng_song() == song_sel + 1 && eng_transport_running() ? eng_song_entry((uint32_t)mod) : -1;
 }
 /* the page about to open (panel.c, SEL tapped on the SEQ page): the song playing, else the last one shown */
 static void song_prep(void)
@@ -1892,7 +2002,14 @@ static void seq_pattern_step(int32_t d)
     eng_pattern_set((uint32_t)p);
     m1_patch_patterns();
     m1_pattern_now();
-    put(put2(put(m, "PATTERN "), p + 1), eng_song() ? " (SONG PLAYS)" : eng_transport_running() ? " NEXT" : "")[0] = 0;
+    {
+        int mod = seq_module();
+        char *q = put(put2(put(m, "PATTERN "), p + 1), eng_song() ? " (SONG PLAYS)" : eng_transport_running() ? " NEXT" : "");
+        if (!eng_song() && p > 0 && mod >= 0 && !eng_pattern_has((uint32_t)mod, (uint32_t)p))
+            q = put(q, ": COPY OF 01");             /* (#582: a pattern the track has not got plays its pattern 1, and an
+                                                     * edit makes it from that first) */
+        q[0] = 0;
+    }
     ui_msg(m, 1000);
     if (!ui_dirty)
         ui_dirty = 1;
@@ -1915,8 +2032,9 @@ static void song_knobs(int32_t *st)
     if (st[0])
         song_cur = (uint8_t)clampi((int32_t)song_cur + st[0], 0, n);
     if (st[2]) {
-        if (song_cur >= n) {                     /* END: a new entry, the last one's pattern (the selected one first) */
-            if (n < ENG_SONG_LEN && !eng_song_put(song_sel, (uint32_t)n, n ? (uint32_t)eng_song_get(song_sel, (uint32_t)n - 1u) & 0xFFu : (uint32_t)eng_pattern(), 0))
+        if (song_cur >= n) {                     /* END: a new entry, the selected pattern (#582: as PRESET picked it; it
+                                                  * was the last entry's) */
+            if (n < ENG_SONG_LEN && !eng_song_put(song_sel, (uint32_t)n, (uint32_t)eng_pattern(), 0))
                 changed = 1;
             else if (n >= ENG_SONG_LEN)
                 ui_msg("SONG FULL: 64 ENTRIES", 1000);
@@ -1980,7 +2098,8 @@ static void song_bar(void)
     char b[32], *p = b;
     p = put(p, "SONG ");
     *p++ = (char)('1' + song_sel);
-    p = put(p, eng_song() == song_sel + 1 ? " PLAYS" : eng_song() ? " (SONG " : " (PATTERN P");
+    song_shown_run = (int8_t)(eng_transport_running() != 0);
+    p = put(p, eng_song() == song_sel + 1 ? (song_shown_run ? " PLAYS" : " STOPPED") : eng_song() ? " (SONG " : " (PATTERN P");
     if (eng_song() && eng_song() != song_sel + 1) {
         *p++ = (char)('0' + eng_song());
         p = put(p, " PLAYS)");
@@ -1989,21 +2108,63 @@ static void song_bar(void)
     *p = 0;
     bar_text(b, C_ACC);
 }
-/* a text line of the page, drawn when it is not on the LCD as it is (cur: the cursor's colours) */
-static void song_line(uint32_t n, uint32_t y, const char *s, uint16_t fg, int cur, uint32_t field)
+/* a text line of the page, drawn when it is not on the LCD as it is (cur: the cursor's colours). mark < 0: a plain line
+ * at x 8; else an entry's (or END's) row: a marker column, then the text at x 18; mark 1 the entry playing (#582): a
+ * filled triangle and its number in the accent colour (on the cursor's bar both in the bar's text colour) */
+#define SONG_TX 10u                     /* the row's text, from the field's left (x 8) */
+static void song_line(uint32_t n, uint32_t y, const char *s, uint16_t fg, int cur, uint32_t field, int mark)
 {
-    uint32_t i;
-    if (song_ok && song_text[n][0] == (char)(cur ? 1 : 2)) {
+    uint32_t i, r, key = (cur ? 1u : 2u) | (mark > 0 ? 4u : 0u);
+    if (song_ok && song_text[n][0] == (char)key) {
         for (i = 0; s[i] && s[i] == song_text[n][1u + i]; i++)
             ;
         if (s[i] == song_text[n][1u + i])
             return;
     }
-    song_text[n][0] = (char)(cur ? 1 : 2);
+    song_text[n][0] = (char)key;
     for (i = 0; s[i] && i < sizeof song_text[n] - 2u; i++)
         song_text[n][1u + i] = s[i];
     song_text[n][1u + i] = 0;
-    text_bc(&FONT_S, 8, y, s, cur ? C_BG : fg, cur ? C_ACC : C_BG, field, TA_LEFT);
+    if (mark < 0) {
+        text_bc(&FONT_S, 8, y, s, cur ? C_BG : fg, cur ? C_ACC : C_BG, field, TA_LEFT);
+        return;
+    }
+    for (r = 0; r < FONT_S.h; r++) {             /* (a scanline at a time, as text_bcn: the row never blinks) */
+        uint16_t *row = lcd_line, bg = cur ? C_ACC : C_BG, ink = cur ? C_BG : fg, acc = cur ? C_BG : C_ACC;
+        uint32_t px = SONG_TX, num = 0;
+        int32_t k;
+        for (i = 0; i < field; i++)
+            row[i] = bg;
+        if (mark > 0)                            /* the triangle: 5 px wide, 9 high, on the digits' height */
+            for (i = 0; i < 5u; i++)
+                if (r >= 2u + i && r <= 10u - i)
+                    row[1u + i] = acc;
+        if (r == 0u)
+            scr_pend(SONG_TX, text_w(&FONT_S, s, -1), FONT_S.h, s, -1);
+        for (k = 0; s[k]; k++) {
+            uint32_t c = (uint8_t)s[k], j, rb;
+            const fglyph_t *g;
+            const uint8_t *bits;
+            uint8_t gi = c >= 0x20u && c < 0x7Fu ? FONT_S.map[c - 0x20u] : 255u;
+            uint16_t col;
+            if (gi == 255u)
+                continue;
+            num += c >= '0' && c <= '9' && num == (uint32_t)k;   /* (the leading digits: the entry's number) */
+            col = mark > 0 && (uint32_t)k < num ? acc : ink;
+            g = &FONT_S.g[gi];
+            rb = (g->w + 1u) / 2u;
+            bits = FONT_S.bits + g->off + r * rb;
+            for (j = 0; j < g->w; j++) {
+                uint32_t a = (j & 1u) ? bits[j >> 1] & 15u : bits[j >> 1] >> 4, at = px + (uint32_t)((int32_t)j + g->x);
+                if (a && at < field)
+                    row[at] = mix565(col, bg, a + (a > 7u ? 1u : 0u));
+            }
+            px += g->adv;
+            if (px >= field)
+                break;
+        }
+        lcd_line_out(8, y + r, field);
+    }
 }
 static void song_draw(int full)
 {
@@ -2032,13 +2193,12 @@ static void song_draw(int full)
     fmt_int(num, n);                             /* 12 ENTRIES  K4: PATTERN / SONG */
     p = put(put(t, num), n == 1 ? " ENTRY" : " ENTRIES");
     put(p, eng_song() == song_sel + 1 ? "  K4 LEFT: PATTERN" : "  K4 RIGHT: SONG")[0] = 0;
-    song_line(SONG_ROWS, 26, t, C_FG, 0, 224);
+    song_line(SONG_ROWS, 26, t, C_FG, 0, 224, -1);
     for (r = 0; r < SONG_ROWS; r++) {
         int k = song_top + (int)r;
         p = t;
-        if (k < n) {                             /* >03  P12  +5 */
+        if (k < n) {                             /* 03  P12  +5 (the entry playing: a triangle before it, song_line) */
             int e = eng_song_get(song_sel, (uint32_t)k), sh = (int8_t)(e >> 8);
-            *p++ = k == play ? '>' : ' ';
             p = put2(p, k + 1);
             p = put2(put(p, "  P"), (e & 0xFF) + 1);
             p = put(p, "  ");
@@ -2047,13 +2207,13 @@ static void song_draw(int full)
             fmt_int(num, sh);
             p = put(p, num);
         } else if (k == n)
-            p = put(p, n < (int)ENG_SONG_LEN ? " END   K1: ADD" : " END   FULL");
+            p = put(p, n < (int)ENG_SONG_LEN ? "END   K1: ADD" : "END   FULL");
         *p = 0;
-        song_line(r, SONG_Y + SONG_RH * r, t, k > n ? C_BG : k == n ? C_DIM : C_FG, k == song_cur, 120);
+        song_line(r, SONG_Y + SONG_RH * r, t, k > n ? C_BG : k == n ? C_DIM : C_FG, k == song_cur, 120, k < n && k == play);
     }
     /* (FONT_S, the controls table's words: controls.ts HINTS, #553) */
-    song_line(SONG_ROWS + 1u, 202, HINT_SONG_1, C_DIM, 0, 224);
-    song_line(SONG_ROWS + 2u, 222, HINT_SONG_2, C_HINT, 0, 228);
+    song_line(SONG_ROWS + 1u, 202, HINT_SONG_1, C_DIM, 0, 224, -1);
+    song_line(SONG_ROWS + 2u, 222, HINT_SONG_2, C_HINT, 0, 228, -1);
     song_shown_play = (int16_t)play;
     song_ok = 1;
 }
@@ -2064,6 +2224,9 @@ static void song_poll(void)
         song_del_at = 0;
     if (page == PAGE_SONG && song_playing() != song_shown_play && !ui_dirty)
         ui_dirty = 1;
+    if (page == PAGE_SONG && song_shown_run >= 0 && song_shown_run != (eng_transport_running() != 0)
+        && (!msg_until || fm1_ms >= msg_until))
+        header_draw();                           /* (PLAY or stop: SONG n PLAYS / STOPPED, #582; not over a message) */
 }
 
 /* the main loop, every pass: the LEDs, and the cells when the playhead moved */

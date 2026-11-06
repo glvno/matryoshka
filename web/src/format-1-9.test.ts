@@ -98,7 +98,7 @@ describe('format 49 is written only when a patch uses it', () => {
   };
 
   it('keeps an older format without any of it', () => {
-    expect(VERSION).toBe(FORMAT_1_9);
+    expect(VERSION).toBeGreaterThanOrEqual(FORMAT_1_9); // (1.10's format 50 came after it, #384)
     expect(formatOf(base().p)).toBe(WRITE_FLOOR);
     expect(encodePatch(base().p)[1]).toBe(WRITE_FLOOR);
   });
