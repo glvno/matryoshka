@@ -65,6 +65,7 @@ export function checkScenarios(h) {
       throw e;
     }
     const a = await r.stop();
+    if (a.why) return a;
     const p = await emu.peak(m), got = top2(a) * 32768;
     if (REAL && p > LOUD && got < p / 20)
       return { why: `MASTER is low: the USB audio's loudest is ${db(got / p)} dB under TEST_PEAK's (at MASTER's default), too far into its noise (D-140)` };

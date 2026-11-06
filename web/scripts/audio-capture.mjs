@@ -62,9 +62,14 @@ export function audioInputs() {
 export async function startCapture(file, name = 'Matryoshka', warmMs = 1500) {
   const ins = audioInputs();
   if (!ins) return { why: 'no ffmpeg (brew install ffmpeg)' };
-  const same = ins.filter((i) => i.name === name);
-  if (same.length !== 1) return { why: same.length ? `${same.length} audio inputs named "${name}" (more than one FM-1)` : `no audio input named "${name}"` };
-  const ff = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'avfoundation', '-i', `:${same[0].index}`, '-ac', '2', '-c:a', 'pcm_s16le', file],
+  // the FM-1's USB audio names itself "Matryoshka" (its USB product string, whatever name macOS keeps for its MIDI port);
+  // another name of the family is taken only when it is the one such input
+  let same = ins.filter((i) => i.name === name);
+  if (!same.length) same = ins.filter((i) => /matryoshka|fm-1|felucca/i.test(i.name) && !/aggregate|multi-output/i.test(i.name));
+  if (same.length !== 1) return { why: same.length ? `${same.length} audio inputs look like an FM-1 (${same.map((i) => i.name).join(', ')}): which is the rig's is not known` : `no audio input named "${name}" (inputs: ${ins.map((i) => i.name).join(', ')})` };
+  const input = same[0].name;
+  // (by name, not by its index: the list's order changes when a device comes or goes, as an Aggregate Device did, 2026-11-06)
+  const ff = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'avfoundation', '-i', `:${input}`, '-ac', '2', '-c:a', 'pcm_s16le', file],
     { stdio: ['pipe', 'ignore', 'pipe'] });
   let err = '';
   ff.stderr.on('data', (d) => { err += d; });
@@ -74,21 +79,26 @@ export async function startCapture(file, name = 'Matryoshka', warmMs = 1500) {
   while (!(existsSync(file) && statSync(file).size > 44 + 17640)) {
     if (ff.exitCode !== null || Date.now() - t0 > 8000) {
       try { ff.kill(); } catch { /* gone */ }
-      return { why: `ffmpeg did not record "${name}"${err ? `: ${err.trim().split('\n').pop()}` : ''}` };
+      return { why: `"${input}" sent no audio in 8 s (its USB audio stream is not running)${err ? `: ${err.trim().split('\n').pop()}` : ''}` };
     }
     await sleep(50);
   }
   // (the FM-1 sends silence for about 1.5 s after the Mac opens its USB audio, as the rig did on 2026-11-06: what happens in
   // that time would be missing from the recording, so the capture is ready only after it)
   await sleep(warmMs);
+  const t1 = Date.now(), at1 = statSync(file).size;
   return {
+    /** the recording, or { why } when the stream stalled: less than 80 % of the wall clock's samples arrived (the rig's
+     *  stream once delivered 0.55 s in 3 s, all of it silence) */
     async stop() {
       // (what the FM-1 played last is still on its way through USB, CoreAudio and ffmpeg's buffers: about half a second)
       await sleep(800);
+      const got = (statSync(file).size - at1) / 4, want = ((Date.now() - t1) / 1000) * 44100;
       try { ff.stdin.write('q'); } catch { /* gone */ }
       const t = setTimeout(() => ff.kill('SIGINT'), 3000);
       await done;
       clearTimeout(t);
+      if (got < 0.8 * want) return { why: `"${input}" stalled: ${(got / 44100).toFixed(2)} s of audio came in ${(want / 44100).toFixed(2)} s` };
       return parseWav(readFileSync(file));
     },
   };
