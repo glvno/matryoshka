@@ -56,6 +56,7 @@ export function checkScenarios(h) {
     const r = await emu.record(name);
     if (r.why) {
       await during();
+      await streams(r);
       return { why: r.why };
     }
     try {
@@ -65,11 +66,27 @@ export function checkScenarios(h) {
       throw e;
     }
     const a = await r.stop();
+    await streams(a);
     if (a.why) return a;
     const p = await emu.peak(m), got = top2(a) * 32768;
     if (REAL && p > LOUD && got < p / 20)
       return { why: `MASTER is low: the USB audio's loudest is ${db(got / p)} dB under TEST_PEAK's (at MASTER's default), too far into its noise (D-140)` };
     return a;
+  }
+  /** the rig's USB audio is a shipped feature: a stream the FM-1 opened and then stopped feeding (or never fed) is a failure,
+   *  with its USB audio counters (DIAG 125: on, starts, packets, frames, rate sets, bus resets, lowest fill, USB frame; 126:
+   *  underruns, overruns, missed, stalls, rate nudges up / down, fill low / high), and the checks that needed the recording
+   *  are skipped (D-140). The first recording that flows passes it once; no ffmpeg or no single FM-1 input stays a skip */
+  let flowed = false;
+  async function streams(a) {
+    if (!REAL) return;
+    if (a.stalled) {
+      const c = `DIAG 125 ${JSON.stringify(await emu.diagWords(125).catch(() => null))}, 126 ${JSON.stringify(await emu.diagWords(126).catch(() => null))}`;
+      await check('USB audio streams: the FM-1 feeds the stream the Mac opened', false, `${a.why}; ${c}`);
+    } else if (a.flow && !flowed) {
+      flowed = true;
+      await check('USB audio streams: the FM-1 feeds the stream the Mac opened', true, a.flow);
+    }
   }
   /** a check that needs a recording: skipped (with the reason) when the target has none */
   async function heard(name, a, ok, detail) {

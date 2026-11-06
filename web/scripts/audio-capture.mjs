@@ -79,7 +79,7 @@ export async function startCapture(file, name = 'Matryoshka', warmMs = 1500) {
   while (!(existsSync(file) && statSync(file).size > 44 + 17640)) {
     if (ff.exitCode !== null || Date.now() - t0 > 8000) {
       try { ff.kill(); } catch { /* gone */ }
-      return { why: `"${input}" sent no audio in 8 s (its USB audio stream is not running)${err ? `: ${err.trim().split('\n').pop()}` : ''}` };
+      return { stalled: true, why: `"${input}" sent no audio in 8 s (its USB audio stream is not running)${err ? `: ${err.trim().split('\n').pop()}` : ''}` };
     }
     await sleep(50);
   }
@@ -88,7 +88,7 @@ export async function startCapture(file, name = 'Matryoshka', warmMs = 1500) {
   await sleep(warmMs);
   const t1 = Date.now(), at1 = statSync(file).size;
   return {
-    /** the recording, or { why } when the stream stalled: less than 80 % of the wall clock's samples arrived (the rig's
+    /** the recording (with `flow`: how much audio came in how long), or { stalled, why } when the stream stalled: less than 80 % of the wall clock's samples arrived (the rig's
      *  stream once delivered 0.55 s in 3 s, all of it silence) */
     async stop() {
       // (what the FM-1 played last is still on its way through USB, CoreAudio and ffmpeg's buffers: about half a second)
@@ -98,8 +98,9 @@ export async function startCapture(file, name = 'Matryoshka', warmMs = 1500) {
       const t = setTimeout(() => ff.kill('SIGINT'), 3000);
       await done;
       clearTimeout(t);
-      if (got < 0.8 * want) return { why: `"${input}" stalled: ${(got / 44100).toFixed(2)} s of audio came in ${(want / 44100).toFixed(2)} s` };
-      return parseWav(readFileSync(file));
+      const flow = `${(got / 44100).toFixed(2)} s of audio came in ${(want / 44100).toFixed(2)} s`;
+      if (got < 0.8 * want) return { stalled: true, why: `"${input}" stalled: ${flow}` };
+      return Object.assign(parseWav(readFileSync(file)), { flow });
     },
   };
 }

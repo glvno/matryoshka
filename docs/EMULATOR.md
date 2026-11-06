@@ -248,6 +248,10 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
   skipped when MASTER is so far down that the recording's loudest sample is more than 26 dB under what TEST_PEAK heard.
   TEST_PEAK reads as if MASTER sat at its default, so such a recording is lost in the USB audio's own noise. Skips are
   counted apart, as for MASTER down ([D-125](ledger/releases.md#D-125)).
+- **The USB audio stream itself.** USB audio is a feature the FM-1 ships, so a stream it opens and then stops feeding is
+  a failure, not a skip. The check "USB audio streams" fails when no audio comes within 8 s, or when less than 80 % of
+  the expected audio arrives. Its message carries the FM-1's USB audio counters (DIAG pages 125 and 126). The checks that
+  needed that recording are skipped. The first recording that flows passes it once in a run.
 - **The keys' octave.** A device run first brings the keys' octave back to 0 with OCT- or OCT+. The checks know a device
   page by the footer's "= OCT =", and the rig was once left at OCT +.
 - **The rig's bank.** `checkStore` and `checkOldPattern` store into the bank's first empty slot and empty it again.
