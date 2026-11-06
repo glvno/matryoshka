@@ -82,6 +82,7 @@ static uint32_t stack_deepest(char *lo, char *top)     /* the most bytes the sta
 enum { C1_TRIED, C1_SKIP_UPDATE, C1_SKIP_FAILED };
 static volatile uint32_t c1_out;                /* the self-test's answer, written by core 1 */
 static uint32_t c1_pass, c1_fail, c1_wait_max, c1_last;
+static uint32_t c1_bad_xor, c1_bad_seed, c1_bad_out;   /* the wrong answer of the last failed self-test (DIAG page 115) */
 static uint8_t c1_skip, c1_inject;
 
 static uint32_t c1_sum(uint32_t seed)           /* both cores run this: 256 words of SIN_T (from the flash) into a hash */
@@ -97,18 +98,25 @@ static void c1_job(uint32_t seed)               /* (runs on core 1) */
     c1_out = c1_sum(seed);
 }
 
-static void c1_test(void)
+static void c1_test(int irqs)                   /* irqs: the interrupts are on (the main loop; not at boot) */
 {
-    uint32_t seed, want, t0, dt;
+    uint32_t seed, want, t0, dt, k = 0;
     int rc, w;
     if (!fm1_c1_on)
         return;
     seed = fm1_ticks();
     want = c1_sum(seed);
     c1_out = ~want;
-    t0 = fm1_ticks();                           /* (the audio interrupt may come in between: its hand-off waits for this
-                                                 * job first, modular.c eng_lane_run, and this wait then sees its job done) */
+    t0 = fm1_ticks();
+    /* the hand-off with the interrupts off: the audio interrupt hands core 1 its lane jobs too (modular.c eng_lane_run).
+     * Coming between this job's words and its number, it saw nothing outstanding, handed its own job over under the
+     * same number, and this test's job never ran: a wrong answer, and core 1 given up for nothing (the rig, 2026-11-06).
+     * Once the number is out, the interrupt waits for this job first (fm1_cpu1_busy), so the wait below keeps them on. */
+    if (irqs)
+        k = fm1__lock();
     rc = c1_inject ? fm1_cpu1_run_mischecked(c1_job, seed) : fm1_cpu1_run(c1_job, seed);
+    if (irqs)
+        fm1__unlock(k);
     c1_inject = 0;
     w = rc ? fm1_cpu1_wait() : 0;
     dt = fm1_ticks() - t0;
@@ -119,6 +127,9 @@ static void c1_test(void)
         return;
     }
     if (c1_out != want) {
+        c1_bad_xor = c1_out ^ want;             /* (~0: the answer was never written, the job never ran) */
+        c1_bad_seed = seed;
+        c1_bad_out = c1_out;
         fm1_cpu1_hold();
         fm1_cpu1_bar();
         fm1_c1_gave_up = C1_WRONG;
@@ -145,7 +156,7 @@ static void c1_boot(int update)                 /* fm1_main, before the audio an
     fm1_guard_enable(FM1_GUARD_PC);
     if (locked)
         fm1_guard_lock_top();
-    c1_test();
+    c1_test(0);
     cores_up = fm1_c1_on ? 2u : 1u;
 }
 
@@ -154,7 +165,7 @@ static void c1_poll(void)                       /* the main loop */
     uint8_t up;
     if (fm1_ms - c1_last >= C1_TEST_MS) {
         c1_last = fm1_ms;
-        c1_test();
+        c1_test(1);
     }
     up = fm1_c1_on ? 2u : 1u;
     if (up != cores_up) {
@@ -379,6 +390,16 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
             v[6] = usb.frame_stalls;
             v[7] = (uint32_t)usb.suspended | (uint32_t)(usb.config != 0) << 1 | (so_w - so_r) << 8;
         }
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
+    if (page == 115u) {                         /* #271: the last failed self-test: its answer XOR the right one (all ones:
+                                                 * never written), the seed, the answer */
+        uint32_t v[3];
+        v[0] = c1_bad_xor;
+        v[1] = c1_bad_seed;
+        v[2] = c1_bad_out;
         for (i = 0; i < sizeof v; i++)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
         return sizeof v;

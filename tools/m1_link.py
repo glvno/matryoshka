@@ -223,6 +223,12 @@ def main():
               f"core 1 stack {w[5]} B used; longest wait {w[6]} us since the last read")
         if page == 113:
             print("one wrong check word armed for the next self-test (within 100 ms): run `cores` again")
+        q = link.ask(frame(0x2B, [115]), (0x4B, 115))      # the last failed self-test (DIAG 115, firmware since the race fix)
+        if len(q) >= 13:
+            x = [int.from_bytes(bytes(q[1 + 4 * i:5 + 4 * i]), "little") for i in range(3)]
+            if w[3]:
+                print(f"last failed self-test: answer {x[2]:#010x}, wrong bits {x[0]:#010x}"
+                      f"{' (never written: the job did not run)' if x[0] == 0xFFFFFFFF else ''}, seed {x[1]:#010x}")
     elif a[0] == "uitime":
         if len(a) > 1 and a[1] == "reset":
             link.ask(frame(0x2B, [120]), (0x4B, 120))
