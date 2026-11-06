@@ -16,9 +16,10 @@
   tools/m1_link.py uac [SECONDS]          (the USB audio stream: state, glitch counters, rate adjustments, the ring's fill
                                            range; SECONDS: read again after that long and print the changes per second)
   tools/m1_link.py mem                    (#273: the boot's proof of .lowram and how deep each stack has gone since boot)
-  tools/m1_link.py cores [inject | split on|off]   (#271: the second core: 2 CORES / 1 CORE, its self-tests; inject: one
+  tools/m1_link.py cores [inject | split on|off | stress on|off]   (#271: the second core: 2 CORES / 1 CORE, its self-tests; inject: one
                                            wrong job, which must fall back to one core until power-off; split off: core 0
-                                           renders every part, core 1 stays up, for measuring; on again at boot)
+                                           renders every part, core 1 stays up, for measuring; on again at boot; stress on:
+                                           the self-test every 1 ms with its hand-off's race window widened, off at boot)
   tools/m1_link.py uitime [reset]         (the LCD's draw times: the last and the worst of each kind, in ms; reset zeroes them)
   tools/m1_link.py clock [SECONDS [BPM [run]]]   (#473: MIDI clock out, DIAG page 116: ticks sent and dropped; SECONDS:
                                            also time the ticks this computer receives, by CoreMIDI's timestamps, and print
@@ -209,6 +210,8 @@ def main():
         page = 113 if len(a) > 1 and a[1] == "inject" else 114
         if len(a) > 2 and a[1] == "split":                 # the render's split off / on (DIAG 110 / 111; on at boot)
             page = 110 if a[2] == "off" else 111
+        if len(a) > 2 and a[1] == "stress":                # the self-test every 1 ms, its race window widened (DIAG 108 / 109)
+            page = 108 if a[2] == "on" else 109
         p = link.ask(frame(0x2B, [page]), (0x4B, page))
         if len(p) < 33:
             sys.exit("no second-core page (a firmware from before #271)")

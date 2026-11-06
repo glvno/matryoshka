@@ -78,6 +78,8 @@ static uint32_t stack_deepest(char *lo, char *top)     /* the most bytes the sta
  * (fm1_sys.h). DIAG page 114 (tools/m1_link.py cores) reports it, page 113 arms one wrong check word (the fallback's
  * test); MENU > INFO > PROCESSOR says 2 CORES or 1 CORE (ui.c cores_up). */
 #define C1_TEST_MS 100u
+static uint32_t c1_test_ms = C1_TEST_MS;        /* DIAG 108 (a stress test, until 109 or a restart): every 1 ms, and the
+                                                 * hand-off's race window widened to 100 us (fm1_c1_race_ticks) */
 #define C1_WRONG 4u                             /* fm1_c1_gave_up: its answer was wrong (1 refused a job, 2 late, 3 barred) */
 enum { C1_TRIED, C1_SKIP_UPDATE, C1_SKIP_FAILED };
 static volatile uint32_t c1_out;                /* the self-test's answer, written by core 1 */
@@ -163,7 +165,7 @@ static void c1_boot(int update)                 /* fm1_main, before the audio an
 static void c1_poll(void)                       /* the main loop */
 {
     uint8_t up;
-    if (fm1_ms - c1_last >= C1_TEST_MS) {
+    if (fm1_ms - c1_last >= c1_test_ms) {
         c1_last = fm1_ms;
         c1_test(1);
     }
@@ -393,6 +395,11 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
         for (i = 0; i < sizeof v; i++)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
         return sizeof v;
+    }
+    if (page == 108u || page == 109u) {         /* #271: the self-test stress on (108) / off (109); reads as 114 */
+        c1_test_ms = page == 108u ? 1u : C1_TEST_MS;
+        fm1_c1_race_ticks = page == 108u ? 100u * FM1_TICKS_PER_US : 0u;
+        page = 114u;
     }
     if (page == 115u) {                         /* #271: the last failed self-test: its answer XOR the right one (all ones:
                                                  * never written), the seed, the answer */
