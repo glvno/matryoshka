@@ -39,6 +39,7 @@
 - **Drones (#384):** Ctrl / Cmd-click on a Steps card's first step ties the note on the last step on across the loop, and a note tied round onto its own step is a drone. In the piano roll, L makes the selected notes drones (again: one step). Drones and notes tied across the loop are drawn on through the first steps, and both engines play them alike.
 - **Row drones (#384):** in the piano roll, Shift+L turns each selected note's row into one drone (its first note held, the row's other notes gone; again: one step).
 - An assembly's "Delete with its modules" (and Delete with the assembly selected) now deletes everything inside it: the assemblies nested in it and their modules go too, instead of landing on the canvas (#560). One Undo brings all of it back.
+- A new community patch, **Babushka** by fairplay (#663): a Benjolin-like Rungler. Two oscillators drive a shift register that steps their pitches and a resonant filter's cutoff, so it makes its chaotic stream without a key; the keys move the first oscillator. It plays on the FM-1.
 
 ## 1.9.0 — 2026-11-03
 
