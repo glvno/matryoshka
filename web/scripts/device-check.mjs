@@ -494,7 +494,11 @@ export function checkScenarios(h) {
       // drag SHORT's length row to its top: it stops at 700 ms and says why; the FM-1 loads the patch again
       await page().evaluate(() => window.__sent.splice(0));
       // (a card the page shows over the canvas, the tutorial's offer, would take the drag)
-      await page().evaluate(() => [...document.querySelectorAll('.tutorial-offer button')].find((b) => /not now/i.test(b.textContent))?.click());
+      await page().evaluate(() => {
+        // (cards over the canvas: the tutorial's offer, the sandbox card a sandbox patch earlier showed)
+        for (const c of document.querySelectorAll('.tutorial-offer')) [...c.querySelectorAll('button')].find((b) => /not now|got it/i.test(b.textContent))?.click();
+        document.querySelector('.toast .toast-close')?.click();   // (an Undo toast of the patch opened)
+      });
       const row = page().locator(`.module[data-id="${shortId}"] input[aria-label="Delay length"]`);
       await row.scrollIntoViewIfNeeded();
       const box = await row.boundingBox();
@@ -504,11 +508,13 @@ export function checkScenarios(h) {
         await page().mouse.move(box.x + box.width + 300, box.y + box.height / 2, { steps: 12 });
         await page().mouse.up();
       }
+      // (the drag must reach the row: what is under the pointer is said when it did not)
+      const pointed = box ? await page().evaluate(([x, y]) => { const e = document.elementFromPoint(x, y); return e ? `${e.tagName.toLowerCase()}.${[...e.classList].join('.')}` : 'nothing'; }, [box.x + box.width / 2, box.y + box.height / 2]) : 'no row';
       await shot('check-delays-drag');
-      const toast = await until(() => page().evaluate(() => document.querySelector('.toast span')?.textContent ?? ''), 2000);
+      const toast = await until(() => page().evaluate(() => { const t = document.querySelector('.toast span')?.textContent ?? ''; return /^Effect memory/.test(t) ? t : ''; }), 2000);
       const len = (await paramsOf('SHORT')).length;
       await check('4.5 delays: SHORT\'s length dragged to its top stops at 700 ms, a note says the memory is full and why',
-        len === 700 && /^Effect memory full: \d+ of 190 KB used\. Shorten the other Delay\. This Delay stops at 700 ms\.$/.test(toast), `length ${len}; "${toast}"`);
+        len === 700 && /^Effect memory full: \d+ of 190 KB used\. Shorten the other Delay\. This Delay stops at 700 ms\.$/.test(toast), `length ${len}; "${toast}"; under the pointer: ${pointed}`);
       const up = await until(async () => {
         const x = await T();
         return x.status === 'patch on the FM-1' && x.chip === 'synced' && (await page().evaluate(() => window.__sent.some((f) => f[1] === 0x10 || f[1] === 0x11))) ? x : null;

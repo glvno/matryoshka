@@ -495,6 +495,7 @@ async function main() {
     vite = own(spawn('npx', ['vite', '--port', String(port), '--strictPort', '--host', '::1'], { cwd: join(ROOT, 'web'), stdio: ['ignore', 'pipe', 'inherit'], env: DEV_ENV }));
     url = `http://[::1]:${port}/`;
     await new Promise((res) => vite.stdout.on('data', (d) => { if (/ready in|Local:/.test(String(d))) res(); }));
+    vite.stdout.on('data', (d) => { for (const l of String(d).split('\n')) if (/reload|optimiz/i.test(l)) console.log(`  note (vite): ${l.trim()}`); });
   }
   console.log(`editor: ${url}`);
   let installedGate = null;
@@ -558,8 +559,15 @@ async function main() {
     await emu.tap(B.home);
     await emu.elapse(300);
   }
-  let page = await context.newPage();
-  page.on('pageerror', (e) => console.log(`  page error: ${e.message}`));
+  /** the editor's page: its errors, and a load after its first (a reload drops the link to the FM-1: say when) */
+  const watch = (p) => {
+    let loaded = 0;
+    p.on('pageerror', (e) => console.log(`  page error: ${e.message}`));
+    p.on('framenavigated', (f) => { if (f === p.mainFrame() && loaded++) console.log(`  note: the editor's page loaded again (${new Date().toISOString()})`); });
+    p.on('console', (m) => { if (/^\[vite\]/.test(m.text()) && !/connect/.test(m.text())) console.log(`  note: ${m.text()}`); });
+    return p;
+  };
+  let page = watch(await context.newPage());
   const T = () => page.evaluate(() => window.__m1test.state());
   const open = (name) => page.evaluate((n) => window.__m1test.open(n), name);
   const patchJson = () => page.evaluate(() => window.__m1test.patchJson());
@@ -977,8 +985,7 @@ async function main() {
       await page.close();   // the tab goes: the FM-1 plays its own patch again after about 5 s
       const own = await emu.waitOwnPage(9000);
       await check('reconnect: the tab closed, the FM-1 leaves sandbox mode', own);
-      page = await context.newPage();
-      page.on('pageerror', (e) => console.log(`  page error: ${e.message}`));
+      page = watch(await context.newPage());
       await load();
       const s0 = await T();
       await check('reconnect: the editor reopens on the sandbox patch', s0.patch === 'Hera 6 XL' && !s0.fits, s0.patch);
