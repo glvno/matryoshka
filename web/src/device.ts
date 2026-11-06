@@ -373,8 +373,13 @@ export class DeviceLink {
 
   /** Put a patch into patch slot 0..31 of the FM-1's bank (flash); it is not loaded. */
   uploadSlot(slot: number, name: string, patch: Patch): Promise<void> {
+    return this.uploadSlotBin(slot, name, encodePatch(patch));
+  }
+
+  /** a patch binary as it is into slot 0..63 (`uploadSlot`'s second half; the scenarios store a binary of an older format
+   *  with it, as a bank written by an earlier firmware holds) */
+  uploadSlotBin(slot: number, name: string, bin: Uint8Array): Promise<void> {
     return this.serial(async () => {
-      const bin = encodePatch(patch);
       await this.sendChunks(bin);
       await this.ackFor(slotFrame(slot, name, bin), CMD.slot, slot, FLASH_TIMEOUT);
     });

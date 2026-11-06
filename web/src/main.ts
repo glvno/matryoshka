@@ -16,7 +16,7 @@ import type { HostMsg } from './worklet';
 import { chipState, DeviceLink, deviceIndex, liveSync, sandboxChip, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, type ChipState, type DeviceEvent } from './device';
 import { SITE_URL } from './site';
 import { sandboxKey, sandboxPage, sandboxStep, sandboxTempoTurn } from './sandbox-mode';
-import { LIVE_MS, panelOffBy, slotLabel, type PanelState } from './protocol';
+import { LIVE_MS, panelOffBy, slotLabel, type PanelState, type SlotInfo } from './protocol';
 import { chooseSlot } from './store-slot';
 import { Fm1View } from './fm1-view';
 import { EmuKeys } from './emu-keys';
@@ -2740,7 +2740,7 @@ if (import.meta.env.DEV) {
       playing: editor.playing, deviceRunning: device.running, octave: noteKeys.octave(), focus: editor.focus, patch: editor.patch.name,
       focusName: editor.devices.find((d) => d.key === editor.focus?.device)?.name ?? '',
       syncAsk: syncAsk.open, status: $('dev-status').textContent, armed: [...editor.armedSet],
-      loads: loadsSeen, uploadedLoad,
+      loads: loadsSeen, uploadedLoad, selected: [...editor.selected], slot: deviceSlot?.slot ?? -1,
     }),
     patchJson: (): string => JSON.stringify(editor.patch),
     /** a device's first page into focus, by name (Main's knobs; with Live on, the FM-1 follows) */
@@ -2786,6 +2786,40 @@ if (import.meta.env.DEV) {
       await device.putPreset(pr.structure, as, pr.values);
       const back = await device.getPreset(pr.structure, as);
       return back && back.every((v, i) => Math.abs(v - pr.values[i]) < 1e-4) ? back.length : -1;
+    },
+    // the release's device check as scenarios (scripts/device-check.mjs): its test patches kept in Your patches, as the
+    // owner keeps them; the Open picker's chip of one (FM-1 · NN % or SANDBOX)
+    save: (json: string): boolean => keepPatch(validatePatch(JSON.parse(json), DEFS)).ok,
+    unsave: (name: string): boolean => !!removeSaved(name),
+    chip: (name: string): string | null => openableGroups().flatMap((g) => g.items).find((x) => x.name === name)?.chip().text ?? null,
+    // the FM-1's bank: its slots (SLOT_INFO), a slot emptied, a binary stored as it is (an older format's, as a bank an earlier
+    // firmware wrote holds)
+    slots: async (): Promise<SlotInfo[]> => device.readBank(),
+    eraseSlot: (slot: number): Promise<void> => device.eraseSlot(slot),
+    storeBin: (slot: number, name: string, bytes: number[]): Promise<void> => device.uploadSlotBin(slot, name, Uint8Array.from(bytes)),
+    // the browser's own output (sandbox mode plays here) since the last ask, read every 20 ms from an analyser on the
+    // engine's output (audio.ts meter): its loudest sample (0..1) and its energy (the sum of the squares of each read, an
+    // analyser's 2048 samples: comparable between asks, not a level); null while the audio does not run
+    level: (): { peak: number; energy: number } | null => {
+      const a = host.meter();
+      if (!a || !host.running) return null;
+      const w = window as unknown as { __m1level?: { peak: number; energy: number } };
+      if (!w.__m1level) {
+        const st = { peak: 0, energy: 0 };
+        const buf = new Float32Array(a.fftSize);
+        setInterval(() => {
+          a.getFloatTimeDomainData(buf);
+          for (const x of buf) {
+            if (Math.abs(x) > st.peak) st.peak = Math.abs(x);
+            st.energy += x * x;
+          }
+        }, 20);
+        w.__m1level = st;
+      }
+      const m = { ...w.__m1level };
+      w.__m1level.peak = 0;
+      w.__m1level.energy = 0;
+      return m;
     },
   };
 }

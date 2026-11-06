@@ -76,7 +76,7 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   with the installed Chrome, headless) through the scenarios in `web/scripts/emu-scenarios.mjs`: connect and Sync; an
   over-budget patch is sandbox mode (the sandbox page on the LCD, the FM-1 silent under a key); ARP twice; OCT; PRESET;
   back under budget; the tab closed and reopened on a sandbox patch; Elvira 2 running, then Elvira 2 XL; a computer
-  where no app reads the FM-1's MIDI (issue #375, `deafHost`, below); ties on the SEQ page (issue #368, below); an A/B flip with Live on (issue #103: values only, so PARAM frames and no upload, and each side sounds as it did); a Cassia 1 preset of 118 values sent to the FM-1's store, read back whole and loaded there with PRESET, every row reaching the editor (issue #485, `longPreset`). The page sees
+  where no app reads the FM-1's MIDI (issue #375, `deafHost`, below); ties on the SEQ page (issue #368, below); an A/B flip with Live on (issue #103: values only, so PARAM frames and no upload, and each side sounds as it did); a Cassia 1 preset of 118 values sent to the FM-1's store, read back whole and loaded there with PRESET, every row reaching the editor (issue #485, `longPreset`); then the release's device check (`check..`, below). The page sees
   only the emulator's MIDI port, so a real FM-1 plugged in is never touched. A development-server hook (`__m1test` in
   `main.ts`) opens patches by name and reports the link's state. Without BIN it fetches the `matryoshka-emu-midi`
   artifact of this commit's firmware run (else its branch's, else main's). Results and LCD snapshots go to
@@ -182,8 +182,86 @@ link as `m1emu serve` drives the emulator:
 - **`npm run device:scenarios -- --via-emu`:** the device path against the emulator (its build has the test mode too),
   to check the runner and the firmware's side without a rig.
 
-Not covered: the audio leaving the FM-1 (the peak is read inside the firmware, before the codec and USB audio), USB
-plugging, the scenarios' sound judged by ear.
+### The release's device check as scenarios
+
+The owner's device check of release 1.10 had 40 steps. Every step that needs no ears, no hands and no power switch is
+now a scenario in `web/scripts/device-check.mjs`. These scenarios run after the others, in `emu:scenarios` and in
+`device:scenarios`. They must pass on the rig before a release candidate. The owner's own check is then only what they
+leave out: the analog output heard in headphones and recorded over a mono cable, each instrument played by hand to judge
+its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)). A check that needs a recording it cannot trust is skipped, not failed ([D-140](ledger/releases.md#D-140)).
+
+- **The scenarios.** There is one scenario for each section of the check. Each check's name starts with its step on the
+  check's page: `1.3` is section 1, step 3.
+  - `checkOutput` (steps 1.1 to 1.5, [D-918](ledger/device-ui.md#D-918), [D-919](ledger/device-ui.md#D-919)): GLO >
+    SYSTEM > OUTPUT steps through STEREO, MONO and MONO L and stops there. `T110 MONO L R` has a saw on the left and a
+    sine an octave higher on the right. Each side's level at the two pitches says which sound is on which side. Meridian
+    8 sits in both ears in STEREO, and in MONO it is as loud as in STEREO.
+  - `checkVerona` (steps 2.1 to 2.5, [D-862](ledger/patches-and-presets.md#D-862) to
+    [D-866](ledger/patches-and-presets.md#D-866)): the header reads VERONA DRUM1. A white key plays nothing and the bar
+    says DRUMS: BLACK KEYS 1-8. The hi-hats are measured as peaks in 25 ms windows. A closed hit cuts the open hat in
+    both orders of pressing. An open hit pressed while the closed key is held rings on (#657). Verona Drum 1 XL goes to
+    sandbox mode, and the browser's own output (an analyser on the editor's engine) plays every black key and no white
+    key. Which drum each black key plays is judged by ear only on the owner's page.
+  - `checkRowDrone` (steps 3.1 to 3.4, [D-819](ledger/steps.md#D-819)): on `T110 DRONE`, LFO held + FX makes row E3 one
+    drone and removes its second note. E3's own pitch holds over the loop point with no new attack. Again it is one
+    step, and an empty row says NOTHING TO DRONE.
+  - `checkLiveDrone` (steps 3.5 to 3.7): step record's bar and hint on `T111 LIVE DRONE`, and FX + LFO there is a rest.
+    A key held for 3 s in a live take becomes a drone that holds round the loop. The editor's roll draws it across the
+    whole track. PLAY releases it, and leaving the page says PATTERN STAYS ARMED.
+  - `checkDelays` (steps 4.1 to 4.5, [D-375](ledger/engine.md#D-375), [D-376](ledger/engine.md#D-376)): on
+    `T111 TWO DELAYS`, one note gives an echo on the right at 300 ms and one on the left at 1200 ms. On the FM-1, LENGTH
+    says SET IN THE EDITOR and TIME stops at the length. The editor's budget shows 129 / 190 KB of effect memory with a
+    line for each Delay, and a click on a line selects its card. Dragging SHORT's length to its top stops at 700 ms with
+    the note that says why. The patch then goes to the FM-1 again and both echoes still play.
+  - `checkNoKeys` (steps 5.1 and 5.2, [D-905](ledger/device-ui.md#D-905), [D-295](ledger/patch-format.md#D-295)): on
+    `T111 NO KEYS` the engine's ARM dot is dashed and arms nothing. On the FM-1, SEL says NO KEYS REACH THIS DEVICE and
+    the keys play nothing.
+  - `checkStore` (steps 6.1 to 6.4, [D-959](ledger/editor.md#D-959), [D-297](ledger/patch-format.md#D-297)):
+    `T110 DRONE STORED` holds its drone. "Store to an FM-1 slot…" lists the 64 slots. A used slot says what it holds and
+    the button reads Replace. Store goes into the first empty slot. With Live on, HOME held + PRESET says EDITOR LIVE:
+    PATCH STAYS. With Live off, PRESET away and back to that slot still plays the drone. The slot is emptied again at the
+    end.
+  - `checkOldPattern` (step 6.5): Silver Box's bytes as release 1.9.1 wrote them into the bank (format 48, kept in
+    `web/scripts/check-old-patch.json`) go into an empty slot. Loaded with PRESET, its pattern 2 plays as today's Silver
+    Box does. That an older binary renders the same as on its own release is proven on the host by
+    `tools/old_format.sh`.
+  - `checkTeach` (steps 7.1 to 7.3, [D-247](ledger/device-ui.md#D-247), [D-917](ledger/device-ui.md#D-917)), with Live
+    off: PRESET to <7PH says 2 SOUNDS: ENV THEN SEL. REC held shows the ARM: hint, and REC held + a black key arms a
+    second track (ARM DRUMS +1) and starts nothing. PLAY held shows TEMPO n: TURN PRESET, and turning PRESET then
+    starts nothing.
+  - `checkDualCore` (steps 8.1, 8.2 and 8.4, [D-380](ledger/engine.md#D-380)): INFO's PROCESSOR row reads 2 CORES. Io 4,
+    Hera 6 and Cassia 1 each play 8 held keys with nothing shed, no overload (DIAG pages 119 and 127) and no dropout in
+    the recording. On the rig, the INFO tab's CPU row must read under 80 % with the keys held. Monolith D and Simple FM
+    sound.
+- **The test patches** are built in `web/scripts/check-fixtures.mjs` from the check page's descriptions. Each run keeps
+  them in the editor's Your patches, as the owner keeps them. `web/src/check-fixtures.test.ts` checks that each one is
+  what its description says and fits the FM-1.
+- **How they hear the FM-1.** Besides TEST_PEAK and the screen's texts (TEST_SCREEN), these scenarios record what the
+  FM-1 plays (`web/scripts/audio-capture.mjs`). On the emulator the recording is its I2S output, from `m1emu serve`'s
+  `wav`. On the rig it is the FM-1's USB audio, recorded on the Mac from the input named "Matryoshka" by
+  `tools/fm1_rec.swift`. That small recorder uses Apple's AVAudioEngine and is built into `build/` the first time it is
+  needed, with `swiftc` from Xcode's command line tools. ffmpeg's avfoundation input is not used: on 2026-11-06 it kept
+  only 9.2 s of a 30 s capture of the rig and joined the pieces with no gap, while AVAudioEngine kept every sample. On
+  the emulator the run opens the rig's page on the emulator's MIDI port
+  before the editor's page, for the screen's texts and the DIAG pages.
+- **What the rig's recording cannot show.** The FM-1 takes its USB audio before GLO > SYSTEM > OUTPUT mixes the sides
+  and after MASTER (`firmware/src/audio.c`). So the MONO and MONO L checks hear the emulator only, and on the rig they
+  are skipped. A check that needs the recording is also skipped, not failed, when there is none: the recorder cannot be built,
+  MASTER is all the way down, or a second FM-1 is connected, so which audio input is the rig's is not known. It is also
+  skipped when MASTER is so far down that the recording's loudest sample is more than 26 dB under what TEST_PEAK heard.
+  TEST_PEAK reads as if MASTER sat at its default, so such a recording is lost in the USB audio's own noise. Skips are
+  counted apart, as for MASTER down ([D-125](ledger/releases.md#D-125)).
+- **The USB audio stream itself.** USB audio is a feature the FM-1 ships, so a stream it opens and then stops feeding is
+  a failure, not a skip. The check "USB audio streams" fails when no audio comes within 8 s, or when less than 80 % of
+  the expected audio arrives. Its message carries the FM-1's USB audio counters (DIAG pages 125 and 126). The checks that
+  needed that recording are skipped. The first recording that flows passes it once in a run.
+- **The keys' octave.** A device run first brings the keys' octave back to 0 with OCT- or OCT+. The checks know a device
+  page by the footer's "= OCT =", and the rig was once left at OCT +.
+- **The rig's bank.** `checkStore` and `checkOldPattern` store into the bank's first empty slot and empty it again.
+  With no empty slot they skip those checks. `checkStore`, `checkOldPattern` and `checkTeach` turn Live off and back on.
+
+Not covered: the analog output (the codec; the device check's scenarios record USB audio, which comes before OUTPUT's
+mix), USB plugging, the scenarios' sound judged by ear.
 
 ## The smoke test (`tools/emu/src/smoke.rs`)
 

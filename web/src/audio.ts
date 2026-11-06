@@ -159,6 +159,18 @@ export class AudioHost {
    * would otherwise be lost */
   private watches = new Map<string, HostMsg>();
 
+  /** the engine's output (before the master gain) into an analyser, made at the first ask; null before the audio runs.
+   *  The scenarios (scripts/emu-scenarios.mjs, the dev server's __m1test) read the browser's level from it */
+  private analyser: AnalyserNode | null = null;
+  meter(): AnalyserNode | null {
+    if (!this.analyser && this.ctx && this.node) {
+      this.analyser = this.ctx.createAnalyser();
+      this.analyser.fftSize = 2048;
+      this.node.connect(this.analyser);
+    }
+    return this.analyser;
+  }
+
   send(msg: HostMsg): void {
     if (msg.t === 'watch' || msg.t === 'view' || msg.t === 'envwatch') this.watches.set(msg.key, msg);
     else if (msg.t === 'unwatch' || msg.t === 'unview' || msg.t === 'unenvwatch') this.watches.delete(msg.key);
