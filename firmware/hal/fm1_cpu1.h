@@ -166,6 +166,10 @@ static int fm1_cpu1_start(void)
     return 0;
 }
 
+/* test only (tools/c1_race.sh, #271): ticks of TIMER4 to wait between writing a job and publishing its number, which
+ * widens the window in which an interrupt can come between the two; 0 (always, outside that test) waits nothing */
+static volatile uint32_t fm1_c1_race_ticks;
+
 /* hand core 1 a job: 1 = it took it (fm1_cpu1_wait before touching what it works on) */
 static inline int fm1_cpu1_run(void (*fn)(uint32_t), uint32_t arg)
 {
@@ -176,6 +180,11 @@ static inline int fm1_cpu1_run(void (*fn)(uint32_t), uint32_t arg)
     fm1_c1_mb.fn = fn;
     fm1_c1_mb.arg = arg;
     fm1_c1_mb.check = FM1_C1_CHECK(fn, arg, job);
+    if (fm1_c1_race_ticks) {
+        uint32_t t = FM1_C1_T4;
+        while (FM1_C1_T4 - t < fm1_c1_race_ticks)
+            ;
+    }
     FM1_C1_SYNC();
     fm1_c1_mb.job = job;
     FM1_C1_SYNC();

@@ -7,9 +7,11 @@
 //!       the boot check (boot.rs, about 20 s emulated): boot, screen, sound, update mode; with EMU_BIN (the same
 //!       commit's M1_EMU_MIDI=1 build) also HELLO / INFO and the update handshake; exit code 1 on any failed check
 //!   m1emu run BIN [--ms N] [--keys SCRIPT] [--snap MS,..] [--wav FILE] [--flash-in F] [--flash-out F] [--text S]
+//!       [--poke ADDR=VALUE@MS,..] [--peek ADDR,..]
 //!       a free run: SCRIPT is fm1-emu's (`800:n7,1500:n7^,2000:e6:1,2500:mc005`,
 //!       times in ms: key down, `^` up, encoder clicks, MIDI bytes); snapshots go to lcd_MS.png;
-//!       --text prints whether the string is on the screen at the end
+//!       --text prints whether the string is on the screen at the end; --poke writes a RAM word at that emulated time and
+//!       --peek prints RAM words at the end (addresses and values in hex, from the build's ELF: tools/c1_race.sh, #271)
 //!   m1emu serve BIN [--flash-in F] [--name NAME]
 //!       real time, USB MIDI on a virtual MIDI port NAME ("FM-1 (emu)"), commands on stdin (serve.rs); BIN must be an
 //!       M1_EMU_MIDI=1 build (CI artifact matryoshka-emu-midi)
@@ -102,14 +104,46 @@ fn run(app: &[u8], a: &[String]) -> ExitCode {
     let mut snaps: Vec<u64> = opt(a, "--snap").map(|s| s.split(',').filter_map(|t| t.trim().parse().ok()).collect()).unwrap_or_default();
     snaps.sort_unstable();
     snaps.push(end);
+    let hex = |t: &str| u32::from_str_radix(t.trim().trim_start_matches("0x"), 16).ok();
+    // --poke ADDR=VALUE@MS: (ms, addr, value), applied when emulated time reaches ms
+    let mut pokes: Vec<(u64, u32, u32)> = opt(a, "--poke")
+        .map(|s| {
+            s.split(',')
+                .filter_map(|p| {
+                    let (av, ms) = p.split_once('@')?;
+                    let (ad, v) = av.split_once('=')?;
+                    Some((ms.trim().parse().ok()?, hex(ad)?, hex(v)?))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    pokes.sort_unstable();
     let t0 = std::time::Instant::now();
     let mut halted = None;
+    let mut next_poke = 0;
     for s in snaps {
+        while next_poke < pokes.len() && pokes[next_poke].0 <= s {
+            let (ms, ad, v) = pokes[next_poke];
+            if let Err(e) = m.run_to(ms) {
+                halted = Some(e);
+                break;
+            }
+            fm1_core::Bus::write32(&mut m.soc, ad, v);
+            next_poke += 1;
+        }
+        if halted.is_some() {
+            break;
+        }
         if let Err(e) = m.run_to(s) {
             halted = Some(e);
             break;
         }
         m.snap(&format!("lcd_{s}.png"));
+    }
+    if let Some(list) = opt(a, "--peek") {
+        for ad in list.split(',').filter_map(hex) {
+            println!("peek {ad:#010x} = {:#010x}", fm1_core::Bus::read32(&mut m.soc, ad));
+        }
     }
     let wall = t0.elapsed().as_secs_f64();
     println!("{} ms emulated in {wall:.1} s ({:.2}x real time), audio peak {}", m.ms(), m.ms() as f64 / 1000.0 / wall, m.peak_since(0));

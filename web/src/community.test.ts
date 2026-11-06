@@ -23,6 +23,14 @@ describe('the community list (#157)', () => {
     expect((await loadCommunity()).every((c) => c.patch)).toBe(true);
   });
 
+  it('Babushka (#663) opens with its Rungler collapsed and fits the FM-1', async () => {
+    const c = (await loadCommunity()).find((x) => x.entry.title === 'Babushka');
+    expect(c?.entry.author).toBe('fairplay');
+    const p = c!.patch!;
+    expect(p.assemblies?.map((a) => [a.name, a.open])).toEqual([['Rungler', false]]);
+    expect(chipOf(p).fits).toBe(true);
+  });
+
   it('names what is wrong with an entry', async () => {
     const { code } = await encodeShare(Object.values(PRESETS)[0]());
     const good = { title: 'A patch', author: 'someone', licence: 'CC-BY-SA-4.0', source: 'https://www.reddit.com/r/MVaveFM1/comments/x', code, added: '2026-10-21' };
