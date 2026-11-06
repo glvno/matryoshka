@@ -141,11 +141,13 @@ export function checkScenarios(h) {
     await emu.key(B.home, false);
     await emu.elapse(400);
   }
-  /** HOME held + PRESET a click at a time until the patch named `name` plays (its name in the top bar); at most 64 */
-  async function presetTo(name) {
+  /** HOME held + PRESET a click at a time until the patch named `name` plays (its name in the top bar), at most 64; with
+   *  `slot`, until the FM-1 says it plays that slot (SLOT_NOW), since a bank may hold another patch of that name */
+  async function presetTo(name, slot = -1) {
     for (let i = 0; i < 65; i++) {
       await presetPatch(1);
-      if (await emu.waitFor(async () => (await emu.texts()).some((t) => t.includes(name)), 600)) return true;
+      if (await emu.waitFor(async () => (await emu.texts()).some((t) => t.includes(name)), 600)
+        && (slot < 0 || (await until(async () => (await T()).slot === slot, 1000)))) return true;
     }
     return false;
   }
@@ -616,7 +618,7 @@ export function checkScenarios(h) {
         if (slot < 0) return skip('6.4 store: the stored slot plays its drone', 'nothing was stored');
         await presetPatch(1);
         await emu.elapse(800);
-        const back = await presetTo('T110 DRONE STORED');   // (whole: a bank may hold the owner's own T110 DRONE)
+        const back = await presetTo('T110 DRONE', slot);   // (by its slot: the bank may hold the owner's own copies)
         await check('6.4 store: HOME held + PRESET to another patch and back to the slot stored', back, (await emu.texts()).slice(0, 3).join(' | '));
         await emu.tap(B.seq, 120);
         await emu.waitText('ALGO track', 3000);
@@ -662,7 +664,7 @@ export function checkScenarios(h) {
         await check(`6.5 old pattern: Silver Box as 1.9.1 stored it (format ${old.format}) in slot ${slot + 1}`, s?.used && s.name === old.name, JSON.stringify(s));
         await check('6.5 old pattern: Live off', await live(false));
         await emu.elapse(1000);
-        await check('6.5 old pattern: HOME held + PRESET to it', await presetTo(old.name), (await emu.texts()).slice(0, 3).join(' | '));
+        await check('6.5 old pattern: HOME held + PRESET to it', await presetTo(old.name, slot), (await emu.texts()).slice(0, 3).join(' | '));
         const then = await pass('1.9.1\'s Silver Box from the bank');
         await loudCheck('6.5 old pattern: SEQ, its pattern 2, PLAY: it plays as today\'s Silver Box does (running, its loudest within 20 %, as many loud windows within a third)', then.top,
           then.p2 && then.run && then.top > LOUD && Math.abs(then.top - now.top) <= 0.2 * now.top && Math.abs(then.loud - now.loud) <= Math.max(3, now.loud / 3),

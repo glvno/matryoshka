@@ -2740,7 +2740,7 @@ if (import.meta.env.DEV) {
       playing: editor.playing, deviceRunning: device.running, octave: noteKeys.octave(), focus: editor.focus, patch: editor.patch.name,
       focusName: editor.devices.find((d) => d.key === editor.focus?.device)?.name ?? '',
       syncAsk: syncAsk.open, status: $('dev-status').textContent, armed: [...editor.armedSet],
-      loads: loadsSeen, uploadedLoad, selected: [...editor.selected],
+      loads: loadsSeen, uploadedLoad, selected: [...editor.selected], slot: deviceSlot?.slot ?? -1,
     }),
     patchJson: (): string => JSON.stringify(editor.patch),
     /** a device's first page into focus, by name (Main's knobs; with Live on, the FM-1 follows) */
