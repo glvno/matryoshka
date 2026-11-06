@@ -540,6 +540,15 @@ async function main() {
     emu.audioWhy = REAL ? rigAudioWhy : 'the emulator through the device test mode has no USB audio';
     // a known start: the device page (the owner's rig was once left on HOME held's SYSTEM page, and every check failed)
     if (!(await emu.home())) { const h = await emu.screen(); throw new Error(`the FM-1 did not come back to its device page with HOME (screen page ${h.page}${h.booting ? ', still booting' : ''}): bring it there by hand and run again`); }
+    // the keys' octave back to 0: the footer's "= OCT =" is how the checks know a device page, and pitches count from it
+    // (the owner's rig was left at OCT + after a by-hand check, 2026-11-06, and every device-page check failed)
+    for (let i = 0; i < 6; i++) {
+      const foot = (await emu.texts()).find((t) => /^(= OCT =|OCT \++|-+ OCT)$/.test(t));
+      if (!foot || foot === '= OCT =') break;
+      console.log(`  note: the keys' octave was ${foot}: OCT ${foot.startsWith('OCT') ? '-' : '+'} brings it back to 0`);
+      await emu.tap(foot.startsWith('OCT') ? B.octDown : B.octUp);
+      await emu.elapse(400);
+    }
     // MASTER does not matter to the checks (TEST_PEAK reads before it), but say so when nothing can be heard
     if ((await rp.evaluate(() => window.__rig.peak())).masterDown) console.log('  note: MASTER is all the way down: the checks do not depend on it, but you will hear nothing');
   } else {

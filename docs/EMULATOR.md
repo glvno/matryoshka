@@ -244,8 +244,12 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
 - **What the rig's recording cannot show.** The FM-1 takes its USB audio before GLO > SYSTEM > OUTPUT mixes the sides
   and after MASTER (`firmware/src/audio.c`). So the MONO and MONO L checks hear the emulator only, and on the rig they
   are skipped. A check that needs the recording is also skipped, not failed, when there is none: ffmpeg is missing,
-  MASTER is all the way down, or a second FM-1 is connected, so which audio input is the rig's is not known. Skips are
+  MASTER is all the way down, or a second FM-1 is connected, so which audio input is the rig's is not known. It is also
+  skipped when MASTER is so far down that the recording's loudest sample is more than 26 dB under what TEST_PEAK heard.
+  TEST_PEAK reads as if MASTER sat at its default, so such a recording is lost in the USB audio's own noise. Skips are
   counted apart, as for MASTER down ([D-125](ledger/releases.md#D-125)).
+- **The keys' octave.** A device run first brings the keys' octave back to 0 with OCT- or OCT+. The checks know a device
+  page by the footer's "= OCT =", and the rig was once left at OCT +.
 - **The rig's bank.** `checkStore` and `checkOldPattern` store into the bank's first empty slot and empty it again.
   With no empty slot they skip those checks. `checkStore`, `checkOldPattern` and `checkTeach` turn Live off and back on.
 

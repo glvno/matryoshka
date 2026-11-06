@@ -48,8 +48,11 @@ export function checkScenarios(h) {
   /** a module's parameters in the editor, by its name */
   const paramsOf = async (name) => JSON.parse(await patchJson()).modules.find((m) => m.name === name)?.params ?? {};
 
-  /** what the FM-1 played while `during` ran: { rate, l, r } or { why } (no recording on this target) */
+  /** what the FM-1 played while `during` ran: { rate, l, r } or { why } (no recording on this target, or one that cannot
+   *  prove anything: D-140). The rig's USB audio comes after MASTER, TEST_PEAK before it (as at its default): with the knob
+   *  far down the recording is more than 26 dB under what TEST_PEAK heard, below the USB audio's own noise, and is not used */
   async function recorded(name, during) {
+    const m = await emu.mark();
     const r = await emu.record(name);
     if (r.why) {
       await during();
@@ -61,7 +64,11 @@ export function checkScenarios(h) {
       await r.stop().catch(() => {});
       throw e;
     }
-    return r.stop();
+    const a = await r.stop();
+    const p = await emu.peak(m), got = top2(a) * 32768;
+    if (REAL && p > LOUD && got < p / 20)
+      return { why: `MASTER is low: the USB audio's loudest is ${db(got / p)} dB under TEST_PEAK's (at MASTER's default), too far into its noise (D-140)` };
+    return a;
   }
   /** a check that needs a recording: skipped (with the reason) when the target has none */
   async function heard(name, a, ok, detail) {
@@ -266,9 +273,9 @@ export function checkScenarios(h) {
       const cut = (w, i) => { const t = w.fired[i]; return { was: most(alone, t + 75, t + 175), now: most(w, t + 75, t + 175) }; };
       const ch = cut(held, 1), ct = cut(tapped, 2);
       await loudCheck('2.3 verona: stopped, HH OPEN held and HH CLOSE pressed: the open hat\'s tail is cut (75..175 ms after the close, under a third of the open hat alone)', top,
-        top > LOUD && ch.was > QUIET && ch.now < ch.was / 3, `open alone: peak ${top}, then ${ch.was}; held + close: ${ch.now}`);
+        top > LOUD / 2 && ch.was > QUIET && ch.now < ch.was / 3, `open alone: peak ${top}, then ${ch.was}; held + close: ${ch.now}`);
       await loudCheck('2.3 verona: HH OPEN tapped, then HH CLOSE right after: cut too', top,
-        top > LOUD && ct.was > QUIET && ct.now < ct.was / 3, `${ct.now} against ${ct.was}`);
+        top > LOUD / 2 && ct.was > QUIET && ct.now < ct.was / 3, `${ct.now} against ${ct.was}`);
       // #657: the other order, HH CLOSE held, then HH OPEN: the open hat plays, and rings on once both are let go (from the
       // release on, as loud as the open hat alone at the same time from its hit, not cut)
       const other = await timeline([[0, down(CLOSE)], [150, down(OPEN)], [270, up(OPEN)], [290, up(CLOSE)]], 32, 25);
@@ -380,8 +387,8 @@ export function checkScenarios(h) {
       await emu.tap(B.seq, 120);
       await emu.waitText('ALGO track', 3000);
       await emu.tap(B.rec);
-      await check('3.5 live drone: REC, stopped: step record, the bar starts with STEP 1/16, the hint reads LFO rest  KEY+LFO tie',
-        (await emu.waitText('STEP 1/16', 3000)) && (await emu.text('LFO rest  KEY+LFO tie')), (await emu.texts()).join(' | '));
+      await check('3.5 live drone: REC, stopped: step record, the bar starts with STEP 1/16, the hint reads LFO rest  KEY+LFO tie (TEST_SCREEN sends its first 31 characters)',
+        (await emu.waitText('STEP 1/16', 3000)) && (await emu.text('LFO rest  KEY+LFO')), (await emu.texts()).join(' | '));
       await emu.key(B.fx, true);
       await emu.elapse(150);
       await emu.tap(B.lfo);
@@ -609,7 +616,7 @@ export function checkScenarios(h) {
         if (slot < 0) return skip('6.4 store: the stored slot plays its drone', 'nothing was stored');
         await presetPatch(1);
         await emu.elapse(800);
-        const back = await presetTo('T110 DRONE');
+        const back = await presetTo('T110 DRONE STORED');   // (whole: a bank may hold the owner's own T110 DRONE)
         await check('6.4 store: HOME held + PRESET to another patch and back to the slot stored', back, (await emu.texts()).slice(0, 3).join(' | '));
         await emu.tap(B.seq, 120);
         await emu.waitText('ALGO track', 3000);

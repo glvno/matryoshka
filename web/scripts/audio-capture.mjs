@@ -59,7 +59,7 @@ export function audioInputs() {
  * `stop()` ends it and gives the channels. null when there is no ffmpeg, no such input, or more than one input of that name
  * (two FM-1s: which one is the rig is not known), with the reason in `why`.
  */
-export async function startCapture(file, name = 'Matryoshka') {
+export async function startCapture(file, name = 'Matryoshka', warmMs = 1500) {
   const ins = audioInputs();
   if (!ins) return { why: 'no ffmpeg (brew install ffmpeg)' };
   const same = ins.filter((i) => i.name === name);
@@ -78,8 +78,13 @@ export async function startCapture(file, name = 'Matryoshka') {
     }
     await sleep(50);
   }
+  // (the FM-1 sends silence for about 1.5 s after the Mac opens its USB audio, as the rig did on 2026-11-06: what happens in
+  // that time would be missing from the recording, so the capture is ready only after it)
+  await sleep(warmMs);
   return {
     async stop() {
+      // (what the FM-1 played last is still on its way through USB, CoreAudio and ffmpeg's buffers: about half a second)
+      await sleep(800);
       try { ff.stdin.write('q'); } catch { /* gone */ }
       const t = setTimeout(() => ff.kill('SIGINT'), 3000);
       await done;
