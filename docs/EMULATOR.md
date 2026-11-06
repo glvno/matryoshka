@@ -188,7 +188,7 @@ The owner's device check of release 1.10 had 40 steps. Every step that needs no 
 now a scenario in `web/scripts/device-check.mjs`. These scenarios run after the others, in `emu:scenarios` and in
 `device:scenarios`. They must pass on the rig before a release candidate. The owner's own check is then only what they
 leave out: the analog output heard in headphones and recorded over a mono cable, each instrument played by hand to judge
-its feel, and every step across a power cycle (the owner, 2026-11-05).
+its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)). A check that needs a recording it cannot trust is skipped, not failed ([D-140](ledger/releases.md#D-140)).
 
 - **The scenarios.** There is one scenario for each section of the check. Each check's name starts with its step on the
   check's page: `1.3` is section 1, step 3.
