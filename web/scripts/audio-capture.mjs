@@ -85,22 +85,25 @@ export async function startCapture(file, name = 'Matryoshka', warmMs = 1500) {
   }
   // (the FM-1 sends silence for about 1.5 s after the Mac opens its USB audio, as the rig did on 2026-11-06: what happens in
   // that time would be missing from the recording, so the capture is ready only after it)
+  const t1 = Date.now();   // (about 0.1 s of audio had come by then)
   await sleep(warmMs);
-  const t1 = Date.now(), at1 = statSync(file).size;
   return {
     /** the recording (with `flow`: how much audio came in how long), or { stalled, why } when the stream stalled: less than 80 % of the wall clock's samples arrived (the rig's
      *  stream once delivered 0.55 s in 3 s, all of it silence) */
     async stop() {
       // (what the FM-1 played last is still on its way through USB, CoreAudio and ffmpeg's buffers: about half a second)
       await sleep(800);
-      const got = (statSync(file).size - at1) / 4, want = ((Date.now() - t1) / 1000) * 44100;
+      const want = (Date.now() - t1) / 1000 + 0.1;
       try { ff.stdin.write('q'); } catch { /* gone */ }
       const t = setTimeout(() => ff.kill('SIGINT'), 3000);
       await done;
       clearTimeout(t);
-      const flow = `${(got / 44100).toFixed(2)} s of audio came in ${(want / 44100).toFixed(2)} s`;
+      // (counted in the finished file: while ffmpeg runs, its writes reach the file in buffered chunks, so the file's size
+      // then says little about the stream)
+      const a = parseWav(readFileSync(file)), got = a.l.length / a.rate;
+      const flow = `${got.toFixed(2)} s of audio came in ${want.toFixed(2)} s`;
       if (got < 0.8 * want) return { stalled: true, why: `"${input}" stalled: ${flow}` };
-      return Object.assign(parseWav(readFileSync(file)), { flow });
+      return Object.assign(a, { flow });
     },
   };
 }
