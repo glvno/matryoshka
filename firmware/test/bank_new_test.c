@@ -58,7 +58,8 @@ int main(void)
     check("a factory patch the owner deleted is not new: only Verona Drum 1 comes", p.placed == 1 && p.slot[v] == 29);
 
     bn_plan(0xabcdefu, has29, has29, 64, &p);
-    check("a set from between releases: only what no release had (Verona Drum 1)", p.placed == 1 && p.slot[v] == 29);
+    /* since v1.10.0 every factory patch is in a released set, so a bank from between releases gets nothing new */
+    check("a set from between releases: only what no release had (none since 1.10.0)", p.placed == 0);
     bn_plan(FACTORY_SET_ID, has29, has29, 64, &p);
     check("today's set: nothing placed, nothing said", p.placed == 0 && !bn_msg(&p, msg));
 
