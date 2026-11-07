@@ -1880,7 +1880,7 @@ async function main() {
       // (the attempt holds the port while it waits for HELLO's answer: its end is the status line's message)
       const s = (await until(async () => { const x = await T(); return !x.connected && /leaves it alone/.test(x.status ?? '') ? x : null; }, 8000)) ?? (await T());
       const after = await page.evaluate((n) => (window.__sent ?? []).slice(n).map((x) => x[1]), sent);
-      await check('editor ignore: Connect does not link to it', !s.connected && !s.live, `connected ${s.connected}`);
+      await check('editor ignore: Connect does not link to it', !s.connected && s.chip === 'not connected', `connected ${s.connected}, chip ${s.chip}`);
       await check('editor ignore: it says which FM-1 is set to ignore the editor and how to undo it', /set to ignore the editor/.test(s.status ?? '') && /EDITOR to ALLOW/.test(s.status ?? ''), s.status ?? '');
       await check('editor ignore: nothing but HELLO went to it', after.length > 0 && after.every((c) => c === 0x01), after.join(' '));
       await shot('editor-ignore');
