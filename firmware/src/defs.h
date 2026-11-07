@@ -113,9 +113,10 @@ enum {
 #define OSC_P_STACK 10
 #define OSC_P_PM2 11
 #define OSC_P_PM3 12
+#define OSC_P_ANALOG 13
 #define OSC_NIN 8
 #define OSC_NOUT 1
-#define OSC_NPAR 13
+#define OSC_NPAR 14
 #define OSC_CVBASE 3
 #define OSC_NDATA 0
 
@@ -1131,6 +1132,16 @@ static const int32_t RATIO_DETUNE_OCT[7] = {-142, -95, -47, 0, 47, 95, 142};
 #define FILTER_OSC_GAIN_Q24 93952410   /* the damping's growth per unit of res past it, times the band pass squared */
 #define FILTER_OSC_CLIP_Q20 2097152   /* the band-pass state is held to +-this there */
 #define FILTER_OSC_SEED_Q20 1024   /* the band-pass state a filter at rest starts from */
+/* the Oscillator's analog shape (#673, modules.ts analogShape) at analog 1, Q16: the saw's curve, the reset's dip, the
+ * tolerance of each, the triangle's peak offset, the pulse width offset; the dip's length in samples at DEVICE_SR (Q16) */
+#define ANALOG_CURVE_Q16 22938
+#define ANALOG_DIP_Q16 7864
+#define ANALOG_TOL_Q16 19661
+#define ANALOG_SKEW_Q16 1966
+#define ANALOG_PWO_Q16 983
+#define ANALOG_DIP_SAMPLES_Q16 72283
+/* the saw's curve: (1 - e^-x) / x at x = i / 256 (0 .. 0.5), Q30 (engine.c ana_saw) */
+static const int32_t ANALOG_SAWC_T[129] = {1073741824, 1071647400, 1069558421, 1067474872, 1065396737, 1063323999, 1061256643, 1059194653, 1057138014, 1055086710, 1053040725, 1051000044, 1048964651, 1046934531, 1044909669, 1042890048, 1040875655, 1038866473, 1036862488, 1034863684, 1032870046, 1030881560, 1028898209, 1026919980, 1024946857, 1022978825, 1021015869, 1019057976, 1017105130, 1015157315, 1013214519, 1011276726, 1009343921, 1007416091, 1005493220, 1003575294, 1001662299, 999754220, 997851044, 995952756, 994059341, 992170787, 990287078, 988408200, 986534140, 984664883, 982800416, 980940724, 979085795, 977235613, 975390166, 973549439, 971713419, 969882093, 968055446, 966233466, 964416138, 962603449, 960795386, 958991935, 957193084, 955398818, 953609125, 951823990, 950043403, 948267348, 946495813, 944728785, 942966250, 941208197, 939454611, 937705481, 935960793, 934220534, 932484692, 930753253, 929026206, 927303538, 925585235, 923871286, 922161677, 920456397, 918755433, 917058772, 915366402, 913678311, 911994487, 910314916, 908639588, 906968489, 905301608, 903638932, 901980450, 900326149, 898676017, 897030043, 895388214, 893750518, 892116945, 890487481, 888862115, 887240836, 885623631, 884010490, 882401399, 880796348, 879195326, 877598320, 876005319, 874416311, 872831286, 871250232, 869673137, 868099991, 866530781, 864965497, 863404127, 861846660, 860293086, 858743392, 857197568, 855655603, 854117486, 852583206, 851052751, 849526112, 848003276, 846484234, 844968974};
 #define RANGE_T_MAX 64   /* the Range module (#526): t within +-this input ranges with clamp off */
 #define SHREG_STAGES 8   /* the Shift register's stages (#438) */
 #define SHREG_PAT_SEED 0x5bd1e995u   /* mixed with the instance seed: its starting pattern */
@@ -1199,19 +1210,19 @@ static const uint8_t FM1_LOG[] = {0, 0};
 static const char *const FM1_UNIT[] = {"", "BPM"};
 static const char *const *const FM1_CH[] = {0, 0};
 static const char *const OSC_INNAMES[] = {"PITCH", "PM", "SYNC", "P1", "P2", "PM2", "PM3", "INDEX"};
-static const int32_t OSC_MIN[] = {0, 3277, -3145728, -6553600, 0, 0, 0, 65536, 0, 0, 0, 0, 0};
-static const int32_t OSC_MAX[] = {196608, 62259, 3145728, 6553600, 524288, 65536, 65536, 327680, 6553600, 65536, 262144, 524288, 524288};
-static const int32_t OSC_DEF[] = {0, 32768, 0, 0, 0, 52429, 0, 65536, 655360, 32768, 0, 0, 0};
-static const int32_t OSC_INC[] = {65536, 655, 65536, 131072, 5243, 655, 655, 65536, 65536, 655, 65536, 5243, 5243};
-static const int32_t OSC_STEP[] = {65536, 655, 65536, 65536, 655, 655, 655, 65536, 65536, 655, 65536, 655, 655};
-static const int32_t OSC_TOP[] = {327680, 62259, 3145728, 6553600, 1048576, 65536, 65536, 327680, 6553600, 65536, 262144, 1048576, 1048576};
-static const uint8_t OSC_SINCE[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 49, 49};
-static const char *const OSC_PN[] = {"WAVE", "PW", "COARSE", "FINE", "PM", "LEVEL", "FB", "UNISON", "DETUNE", "BLEND", "STACK", "PM2", "PM3"};
-static const uint8_t OSC_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-static const char *const OSC_UNIT[] = {"", "", "ST", "CT", "RAD", "", "", "", "CT", "", "", "RAD", "RAD"};
+static const int32_t OSC_MIN[] = {0, 3277, -3145728, -6553600, 0, 0, 0, 65536, 0, 0, 0, 0, 0, 0};
+static const int32_t OSC_MAX[] = {196608, 62259, 3145728, 6553600, 524288, 65536, 65536, 327680, 6553600, 65536, 262144, 524288, 524288, 65536};
+static const int32_t OSC_DEF[] = {0, 32768, 0, 0, 0, 52429, 0, 65536, 655360, 32768, 0, 0, 0, 0};
+static const int32_t OSC_INC[] = {65536, 655, 65536, 131072, 5243, 655, 655, 65536, 65536, 655, 65536, 5243, 5243, 655};
+static const int32_t OSC_STEP[] = {65536, 655, 65536, 65536, 655, 655, 655, 65536, 65536, 655, 65536, 655, 655, 655};
+static const int32_t OSC_TOP[] = {327680, 62259, 3145728, 6553600, 1048576, 65536, 65536, 327680, 6553600, 65536, 262144, 1048576, 1048576, 65536};
+static const uint8_t OSC_SINCE[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 49, 49, 51};
+static const char *const OSC_PN[] = {"WAVE", "PW", "COARSE", "FINE", "PM", "LEVEL", "FB", "UNISON", "DETUNE", "BLEND", "STACK", "PM2", "PM3", "ANALOG"};
+static const uint8_t OSC_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static const char *const OSC_UNIT[] = {"", "", "ST", "CT", "RAD", "", "", "", "CT", "", "", "RAD", "RAD", ""};
 static const char *const OSC_CH0[] = {"SINE", "TRIANGLE", "SAW", "SQUARE", "SHARKTOOTH", "REVERSE SAW", 0};
 static const char *const OSC_CH10[] = {"OFF", "+OCT", "+5TH", "+OCT+5TH", "-OCT", 0};
-static const char *const *const OSC_CH[] = {OSC_CH0, 0, 0, 0, 0, 0, 0, 0, 0, 0, OSC_CH10, 0, 0};
+static const char *const *const OSC_CH[] = {OSC_CH0, 0, 0, 0, 0, 0, 0, 0, 0, 0, OSC_CH10, 0, 0, 0};
 static const char *const LFO_INNAMES[] = {"CLK", "RESET", "P1", "P2", "SHAPE"};
 static const int32_t LFO_MIN[] = {0, 1311, 0, 0, 0, 2621440, 0, 0, 0, 0, 52};
 static const int32_t LFO_MAX[] = {262144, 2621440, 65536, 65536, 655360, 19660800, 23592960, 131072, 65536, 393216, 5242880};

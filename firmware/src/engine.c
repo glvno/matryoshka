@@ -306,6 +306,94 @@ static int32_t wave(int32_t kind, uint32_t ph, uint32_t dt, uint32_t pw, uint32_
 }
 
 
+/* The Oscillator's analog shape (#673, modules.ts analogShape / waveAnalog) for one block: the saw's curve
+ * r = p T(c p) / T(c) with T(x) = (1 - e^-x) / x from ANALOG_SAWC_T, 1 / T(c) and the mean of 2 r - 1 from their series
+ * (c / 2 + c^2 / 12 - c^4 / 720, c / 6 - c^3 / 360: under 1e-6 off at c = 0.455); the reset's dip; the triangle's peak and
+ * slopes; the pulse width. */
+typedef struct {
+    uint32_t cs;                 /* c in table steps per turn: x / (1 / 256) = c p 256, u32 of 128 table steps */
+    int32_t c, inv, off;         /* c Q16, 1 / T(c) Q30, 1 + the mean of 2 r - 1 (Q16) */
+    int32_t h, hb;               /* the dip, 1 + h / 2 (the reset's step with the dip's first half), Q16 */
+    uint32_t dw;                 /* the dip's length in samples, Q16 */
+    uint32_t pk, kup, kdn;       /* the triangle's peak (u32 turns), its rising and falling slopes (2^49 / turns) */
+    uint32_t pw;                 /* the pulse width, u32 turns */
+} ana_t;
+
+static void ana_init(ana_t *a, int32_t amt, const int16_t *tol, uint32_t dw, int32_t pw_q)
+{
+    int32_t c = mul16(mul16(ANALOG_CURVE_Q16, amt), ENG_ONE + ((ANALOG_TOL_Q16 * tol[0]) >> 15)), sk;
+    int64_t c30, c2, c3;
+    if (c < 7)                                           /* (1e-4, as modules.ts) */
+        c = 7;
+    c30 = (int64_t)c << 14;
+    c2 = (c30 * c30) >> 30;
+    c3 = (c2 * c30) >> 30;
+    a->c = c;
+    a->cs = (uint32_t)c << 17;
+    a->inv = (int32_t)((1 << 30) + (c30 >> 1) + c2 / 12 - ((c2 * c2) >> 30) / 720);
+    a->off = ENG_ONE + (int32_t)((c30 / 6 - c3 / 360) >> 14);
+    a->h = mul16(mul16(ANALOG_DIP_Q16, amt), ENG_ONE + ((ANALOG_TOL_Q16 * tol[1]) >> 15));
+    a->hb = ENG_ONE + (a->h >> 1);
+    a->dw = dw;
+    sk = (mul16(ANALOG_SKEW_Q16, amt) * tol[2]) >> 15;
+    a->pk = 0x80000000u + (uint32_t)(sk * 65536);
+    a->kup = (uint32_t)((1ull << 49) / a->pk);
+    a->kdn = (uint32_t)((1ull << 49) / (0u - a->pk));
+    a->pw = (uint32_t)clampi(pw_q + ((mul16(ANALOG_PWO_Q16, amt) * tol[3]) >> 15), 3277, 62259) << 16;
+}
+
+/* the curved saw: band-limited reset (polyBLEP, the dip's first half with it), corner (polyBLAMP) and dip's end (polyBLEP) */
+static int32_t ana_saw(uint32_t ph, uint32_t dt, const ana_t *a, uint32_t *rc)
+{
+    uint32_t x = (uint32_t)(((uint64_t)ph * a->cs) >> 32), i = x >> 25, fr = (x >> 9) & 0xFFFFu, w;
+    int32_t t = ANALOG_SAWC_T[i] + (int32_t)(((int64_t)(ANALOG_SAWC_T[i + 1u] - ANALOG_SAWC_T[i]) * fr) >> 16);
+    int32_t v = (int32_t)(((uint64_t)ph * (uint32_t)mulq(t, a->inv, 30)) >> 45) - a->off;
+    if (ph < dt || ph > 0u - dt) {
+        int32_t u, b, y;
+        if (ph < dt) {
+            u = (int32_t)blep_pos(ph, dt, rc);
+            b = 2 * u - (int32_t)(((int64_t)u * u) >> 16) - ENG_ONE;
+        } else {
+            u = (int32_t)blep_pos(0u - ph, dt, rc);
+            b = (int32_t)(((int64_t)u * u) >> 16) - 2 * u + ENG_ONE;
+        }
+        y = ENG_ONE - u;
+        y = mul16(mul16(y, y), y);                        /* x^3; the corner: 2 c dt x^3 / 6 */
+        v += mul16((int32_t)(((int64_t)a->c * dt) >> 31), mul16(y, 10923)) - mul16(a->hb, b);
+    }
+    w = (uint32_t)(((uint64_t)dt * a->dw) >> 16);
+    if (w > 0x40000000u)
+        w = 0x40000000u;
+    if (ph < w)
+        v -= a->h;
+    return v + mul16(a->h >> 1, poly_blep(ph - w, dt, rc));
+}
+
+static int32_t ana_tri(uint32_t ph, const ana_t *a)
+{
+    return ph < a->pk ? (int32_t)(((uint64_t)ph * a->kup) >> 32) - ENG_ONE
+                      : ENG_ONE - (int32_t)(((uint64_t)(ph - a->pk) * a->kdn) >> 32);
+}
+
+/* modules.ts waveAnalog: the kinds of wave() */
+static int32_t ana_wave(int32_t kind, uint32_t ph, uint32_t dt, const ana_t *a, uint32_t *rc)
+{
+    switch (kind) {
+    case 0:
+        return sin_turn(ph);
+    case 1:
+        return ana_tri(ph, a);
+    case 2:
+        return ana_saw(ph, dt, a, rc);
+    case 4:
+        return (ana_tri(ph, a) + ana_saw(ph, dt, a, rc)) >> 1;
+    case 5:
+        return -ana_saw(ph, dt, a, rc);
+    default:
+        return wave_square(ph, dt, a->pw, rc);
+    }
+}
+
 /* log2 of a Q16 value (or of any positive integer: the offset cancels in ratios), Q16 */
 static int32_t log2_q16(uint32_t x)
 {
@@ -383,7 +471,7 @@ typedef struct {
     const esig_t *in[MAX_IN];
     esig_t *out[MAX_OUT];
     union {
-        struct { uint32_t phase; int32_t s1, y1, y2, pm1, xb, ap[8]; uint32_t ph[4], rc[5][2]; } osc;   /* s1: last sync sample; FM mode: feedback history, pm interpolation, decimator; ph: unison voices 2..5 (plain path); rc: their blep_pos caches, kept across blocks */
+        struct { uint32_t phase; int32_t s1, y1, y2, pm1, xb, ap[8]; uint32_t ph[4], rc[5][2]; int16_t tol[4]; } osc;   /* s1: last sync sample; FM mode: feedback history, pm interpolation, decimator; ph: unison voices 2..5 (plain path); rc: their blep_pos caches, kept across blocks; tol: the part's analog tolerances, Q15 (modules.ts analogTol) */
         struct { uint32_t seed; walk_t w; uint32_t held_seed; int32_t held, clock; } rnd;   /* seed: engine.ts instSeed */
         struct { uint32_t phase, seed; int32_t held; uint32_t since; int32_t interval; uint16_t ticks; uint8_t clk_hi, rst_hi, wraps; int32_t from, last; } lfo;   /* interval: clock edge distance in samples, Q8; wraps: cycles ended since the last snap; from, last: the random wave's start and its last value */
         struct { int32_t y; } gld;         /* Q24 */
@@ -850,6 +938,12 @@ static esig_t *buf_alloc(void)
 static void init_state(const node_t *nd, inst_t *it, uint32_t mod, uint32_t v)
 {
     switch (nd->type) {
+    case T_OSC: {                        /* modules.ts analogTol with engine.ts instSeed(module index, part) */
+        uint32_t seed = (mod * 8u + v + 1u) * 0x9e3779b9u, j;
+        for (j = 0; j < 4; j++)
+            it->s.osc.tol[j] = (int16_t)q15(hash32(seed ^ ((j + 1u) * 0x85ebca6bu)));
+        break;
+    }
     case T_RANDOM:                       /* modules.ts random.seed with engine.ts instSeed(module index, part) */
         it->s.rnd.seed = (mod * 8u + v + 1u) * 0x9e3779b9u;
         walk_init(&it->s.rnd.w, it->s.rnd.seed ^ 0x2545f491u);
@@ -4278,6 +4372,50 @@ static const esig_t *osc_pm(const node_t *nd, inst_t *it, uint32_t n, int32_t *i
     return pm_c;
 }
 
+/* The plain oscillator with the analog shape (#673): any copy count, the sync input, the wave picked per sample. Out of
+ * m_osc so that analog 0 keeps its loops as they are. */
+static __attribute__((noinline)) void osc_ana(const node_t *nd, inst_t *it, uint32_t n, int32_t kind, int32_t base, int32_t lvl,
+                                              int32_t nu, const int32_t *doct, const int32_t *wq, const ana_t *a)
+{
+    const esig_t *pitch = it->in[OSC_I_PITCH], *sync = it->in[OSC_I_SYNC];
+    esig_t *out = it->out[OSC_O_OUT];
+    uint32_t ph[5], dts[5], (*rc)[2] = it->s.osc.rc, i;
+    inc_ramp_t rp[5];
+    int32_t s1 = it->s.osc.s1, j, synced = (nd->conn & (1u << OSC_I_SYNC)) != 0;
+    ph[0] = it->s.osc.phase;
+    for (j = 1; j < nu; j++)
+        ph[j] = it->s.osc.ph[j - 1];
+    for (j = 0; j < nu; j++)
+        inc_start(rp + j, pitch, base + doct[j]);
+    for (i = 0; i < n;) {
+        uint32_t e = INC_END(i);
+        for (j = 0; j < nu; j++)
+            dts[j] = inc_span(rp + j, pitch, base + doct[j], INC_TO(e));
+        for (; i < e; i++) {
+            int32_t y = 0;
+            if (synced) {                                   /* a rising edge on sync restarts the phases */
+                int rst = sync[i] >= 32768 && s1 < 32768;
+                s1 = sync[i];
+                if (rst)
+                    for (j = 0; j < nu; j++)
+                        ph[j] = 0;
+            }
+            for (j = 0; j < nu; j++) {
+                ph[j] += dts[j];
+                y += mul16(ana_wave(kind, ph[j], dts[j], a, rc[j]), wq[j]);
+                dts[j] += (uint32_t)rp[j].d;
+            }
+            out[i] = mul16(y, lvl);
+        }
+    }
+    if (!synced)
+        s1 = n ? sync[n - 1] : s1;                          /* (the unconnected sync input reads 0) */
+    it->s.osc.phase = ph[0];
+    for (j = 1; j < nu; j++)
+        it->s.osc.ph[j - 1] = ph[j];
+    it->s.osc.s1 = s1;
+}
+
 static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *pitch = it->in[OSC_I_PITCH], *pm, *sync = it->in[OSC_I_SYNC];
@@ -4290,6 +4428,8 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
     int32_t y1, y2, pm1, xb, *ap = it->s.osc.ap, s1 = it->s.osc.s1;
     uint32_t dt_fm = 0;
     inc_ramp_t rpf;
+    int32_t amt = kind ? EF(it, OSC_P_ANALOG) : 0;                       /* the analog shape (#673; the sine has none) */
+    ana_t ana;
     pm = osc_pm(nd, it, n, &idx);
     if (idx <= 0 && fb <= 0) {                                             /* the plain oscillator: one wave per frame */
         int32_t ks = clampi(round_q16(EF(it, OSC_P_STACK)), 0, 4), nst = STACK_N[ks];
@@ -4313,7 +4453,14 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
                 wq[j] = (int32_t)(((int64_t)w[j] << 16) / sum);
         }
         uint32_t dts[5], (*rc)[2] = it->s.osc.rc;
-        if (nu == 1) {                                                      /* one phase: the wave picked once a block */
+        if (amt > 0) {
+            ana_init(&ana, amt > ENG_ONE ? ENG_ONE : amt, it->s.osc.tol, ANALOG_DIP_SAMPLES_Q16, pw_q);
+            osc_ana(nd, it, n, kind, base, lvl, nu, doct, wq, &ana);
+            n = 0;                                                          /* skips both loops below */
+            phase = it->s.osc.phase;
+            s1 = it->s.osc.s1;
+        }
+        if (n && nu == 1) {                                                 /* one phase: the wave picked once a block */
             uint32_t *r = rc[0];
             int32_t d0 = base + doct[0];
             inc_ramp_t r1;
@@ -4451,31 +4598,38 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
         n = 0;
     }
     uint32_t *frc = it->s.osc.rc[0];                  /* blep_pos's cache, kept across blocks */
-    INC_LOOP(rpf, base) {
-        uint32_t dt = dt_ >> 1, sub;
-        int32_t pm_now = idx > 0 ? pm[i] : 0, pm_mid = (pm1 + pm_now) >> 1, ya = 0;
-        if (sync[i] >= 32768 && s1 < 32768)
-            phase = 0;
-        s1 = sync[i];
-        pm1 = pm_now;
-        for (sub = 0; sub < 2; sub++) {
-            uint32_t ph;
-            int32_t y;
-            phase += dt;
-            ph = phase + (uint32_t)(((int64_t)mul16(idx, sub ? pm_now : pm_mid) * TURN_PER_RAD) >> 16)
-                       + (uint32_t)((int64_t)mul16(fb, (y1 + y2) >> 1) << 15);   /* fb: Q16 of pi = half a turn */
-            y = wave(kind, ph, dt, pw, frc);
-            y2 = y1;
-            y1 = y;
-            if (sub) {        /* path 0 takes the even sub-sample, path 1 the odd one of the previous frame (the z^-1) */
-                int32_t p0 = allpass16(ap + 4, HB_A[2], allpass16(ap, HB_A[0], ya));
-                int32_t p1 = allpass16(ap + 6, HB_A[3], allpass16(ap + 2, HB_A[1], xb));
-                xb = y;
-                out[i] = mul16((p0 + p1) >> 1, lvl);
-            } else
-                ya = y;
-        }
+#define OSC_FM(W)                                                                       \
+    INC_LOOP(rpf, base) {                                                               \
+        uint32_t dt = dt_ >> 1, sub;                                                    \
+        int32_t pm_now = idx > 0 ? pm[i] : 0, pm_mid = (pm1 + pm_now) >> 1, ya = 0;     \
+        if (sync[i] >= 32768 && s1 < 32768)                                             \
+            phase = 0;                                                                  \
+        s1 = sync[i];                                                                   \
+        pm1 = pm_now;                                                                   \
+        for (sub = 0; sub < 2; sub++) {                                                 \
+            uint32_t ph;                                                                \
+            int32_t y;                                                                  \
+            phase += dt;                                                                \
+            ph = phase + (uint32_t)(((int64_t)mul16(idx, sub ? pm_now : pm_mid) * TURN_PER_RAD) >> 16) \
+                       + (uint32_t)((int64_t)mul16(fb, (y1 + y2) >> 1) << 15);   /* fb: Q16 of pi = half a turn */ \
+            y = (W);                                                                    \
+            y2 = y1;                                                                    \
+            y1 = y;                                                                     \
+            if (sub) {        /* path 0 takes the even sub-sample, path 1 the odd one of the previous frame (the z^-1) */ \
+                int32_t p0 = allpass16(ap + 4, HB_A[2], allpass16(ap, HB_A[0], ya));     \
+                int32_t p1 = allpass16(ap + 6, HB_A[3], allpass16(ap + 2, HB_A[1], xb)); \
+                xb = y;                                                                 \
+                out[i] = mul16((p0 + p1) >> 1, lvl);                                    \
+            } else                                                                      \
+                ya = y;                                                                 \
+        }                                                                               \
     }
+    if (amt > 0 && n) {                               /* the analog shape at the doubled rate: the dip twice the samples */
+        ana_init(&ana, amt > ENG_ONE ? ENG_ONE : amt, it->s.osc.tol, 2u * ANALOG_DIP_SAMPLES_Q16, pw_q);
+        OSC_FM(ana_wave(kind, ph, dt, &ana, frc))
+    } else
+        OSC_FM(wave(kind, ph, dt, pw, frc))
+#undef OSC_FM
     it->s.osc.phase = phase;
     it->s.osc.s1 = s1;
     it->s.osc.y1 = y1;

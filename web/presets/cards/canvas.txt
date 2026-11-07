@@ -104,7 +104,7 @@ preset: Sequencer Run
   mode 1 = 1
   level 1 proc = 1
   reverb = 0.25
-  chan a = 0.62
+  chan a = 0.63
   chan b = 0
 
 # The complex oscillator folded hard, the mod osc a fifth up in f.m. with the envelope opening the index: a keyboard lead.
@@ -157,7 +157,7 @@ preset: Easel Bongos
   mode 1 = 1
   level 1 proc = 1.3
   reverb = 0.3
-  chan a = 0.67
+  chan a = 0.68
   chan b = 0
 
 # The folder at its deepest, the mod osc five octaves down in a.m. as a slow tremolo, the gate as a plain VCA: a drone.
@@ -181,7 +181,7 @@ preset: Fold Drone
   mode 1 = 3
   level 1 proc = 1
   reverb = 0.45
-  chan a = 0.31
+  chan a = 0.33
   chan b = 0
 
 # A pure sine with f.m. near 3:1 that the envelope lets ring out, a four-stage sequence clocked by the pulser: chimes.
