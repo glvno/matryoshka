@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""Tests of tools/fm1_install.py's package checks, its memory of which M-VAVE package an install was writing (#183)
-and its boot code read (#264).
+"""Tests of tools/fm1_install.py's package checks, its memory of which M-VAVE package an install was writing (#183),
+its boot code read (#264) and its pin to one USB location, the test rig's (#698, tools/fm1_usb.py).
 No device and no MIDI library needed. M-VAVE's Official Open is not in the repository (licence): FM1_OPEN_FILE names a
 local copy (its .fwsc or the Workbench page) for the one test that needs it.
   python3 tools/fm1_install_test.py"""
 import hashlib
+import json
 import os
 import sys
 import tempfile
@@ -13,6 +14,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fm1_install as fi  # noqa: E402
+import fm1_usb  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 V15 = os.path.join(ROOT, "web/public/firmware/FM-1_015.fwsc")
@@ -314,6 +316,180 @@ class BuildIdentity(unittest.TestCase):
                 build.release_identity(bad)
         with self.assertRaises(SystemExit):
             build.check_identity("FM-1_7" + "0" * 20)
+
+
+# ---- #698: two FM-1s with the same port name, told apart by USB location (a stand-in CoreMIDI and python-rtmidi)
+
+def identity_packet(text):
+    body = bytes([0x00, 0x59, 0x11, 27, 0, 0]) + text.encode().ljust(27, b"\0")
+    return b"\xF0" + fi.pack7(body + bytes([~sum(body[6:]) & 0xFF])) + b"\xF7"
+
+
+def preset_data(values):
+    key = fm1_usb.RIG_STRUCTURE.to_bytes(4, "little") + fm1_usb.RIG_PRESET.encode().ljust(16, b"\0")
+    if values is None:
+        return fm1_usb.frame(fm1_usb.R_PRESET_DATA, key + b"\xFF")
+    return fm1_usb.frame(fm1_usb.R_PRESET_DATA, key + bytes([len(values)]) +
+                         b"".join(int(v * 65536).to_bytes(4, "little", signed=True) for v in values))
+
+
+class Usb:
+    """FM-1s on USB: each {location, name, identity, mark} has one source and one destination, in this order; the
+    CoreMIDI and rtmidi stand-ins read the same list"""
+
+    def __init__(self, devices):
+        self.devices = devices
+        self.listening = {}     # source index -> callback
+        self.sent = []          # (location, packet)
+
+    def endpoints(self, kind):
+        return [{"name": d["name"], "device": d["name"], "uid": hash((kind, d["location"], d["name"])) & 0x7FFFFFFF,
+                 "location": d["location"], "offline": False} for d in self.devices]
+
+    def answer(self, i, pkt):
+        d = self.devices[i]
+        self.sent.append((d["location"], bytes(pkt)))
+        out = []
+        if bytes(pkt) == fi.HS_QUERY:
+            out.append(identity_packet(d["identity"]))
+        elif bytes(pkt[:5]) == b"\xF0" + fm1_usb.PREFIX + bytes([fm1_usb.C_PRESET_GET]) and not d["identity"].startswith("ota-"):
+            out.append(preset_data(d["mark"]))
+        cb = self.listening.get(i)
+        for o in out:
+            if cb:
+                cb((list(o), 0.0), None)
+
+    def rtmidi(self):
+        usb = self
+
+        class Port:
+            def __init__(self):
+                self.i = None
+
+            def get_ports(self):
+                return [d["name"] for d in usb.devices]
+
+            def open_port(self, i):
+                self.i = i
+
+            def close_port(self):
+                usb.listening.pop(self.i, None)
+
+            def delete(self):
+                pass
+
+        class MidiIn(Port):
+            def ignore_types(self, **k):
+                pass
+
+            def set_callback(self, cb):
+                usb.listening[self.i] = cb
+
+        class MidiOut(Port):
+            def send_message(self, msg):
+                usb.answer(self.i, msg)
+
+        return type("rtmidi", (), {"MidiIn": MidiIn, "MidiOut": MidiOut})
+
+
+OWNER, RIG = 0x01100000, 0x01130000
+MARK = [26492, 12530, 1078, 17828]
+
+
+class RigPin(unittest.TestCase):
+    def setUp(self):
+        self.old = dict(fi.DELAY)
+        fi.DELAY.update(hs=0.05)
+        self.rig_file = os.path.join(tempfile.mkdtemp(), "rig.json")
+        with open(self.rig_file, "w") as f:
+            json.dump({"values": MARK, "usbLocation": "0x01130000"}, f)
+        self.old_rig, fi.RIG_FILE = fi.RIG_FILE, self.rig_file
+        self.installed = []
+        self.old_install = fi.Updater.install
+        fi.Updater.install = lambda up, dev, image, product, *a, **k: self.installed.append((up.backend.location, dev.id.text))
+        self.old_read = fm1_usb.read_mark
+        fm1_usb.read_mark = lambda link: self.old_read(link, tries=1, wait=0.05)
+
+    def tearDown(self):
+        fi.DELAY.update(self.old)
+        fi.RIG_FILE = self.old_rig
+        fi.Updater.install = self.old_install
+        fm1_usb.read_mark = self.old_read
+
+    def usb(self, *devices):
+        return Usb([{"location": loc, "name": "Matryoshka", "identity": ident, "mark": mark} for loc, ident, mark in devices])
+
+    def backend(self, usb, location=RIG):
+        return fm1_usb.LocatedBackend(location, cm=usb, rtmidi=usb.rtmidi(), delay=0)
+
+    def run_rig(self, usb, *extra):
+        import io
+        buf = io.StringIO()
+        code = fi.main([OURS, "--rig", "--yes", *extra], backend=self.backend(usb), out=buf)
+        return code, buf.getvalue()
+
+    def test_only_the_ports_at_the_location_are_seen(self):
+        usb = self.usb((OWNER, "FM-1_7011000", None), (RIG, "FM-1_7000000", MARK))
+        be = self.backend(usb)
+        self.assertEqual(be.input_names(), ["Matryoshka"])
+        link = be.open("Matryoshka", "Matryoshka")
+        link.send(fi.HS_QUERY)
+        self.assertEqual(usb.sent, [(RIG, fi.HS_QUERY)])
+        self.assertEqual(fi.parse_identity(link.read(0.1)).text, "FM-1_7000000")
+        self.assertEqual(self.backend(usb, 0x01200000).input_names(), [])
+
+    def test_the_rig_beside_the_owners_fm1(self):
+        """the owner's FM-1 comes first in CoreMIDI's order with the same name: nothing reaches it"""
+        usb = self.usb((OWNER, "FM-1_7011000", None), (RIG, "FM-1_7000000", MARK))
+        code, out = self.run_rig(usb)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.installed, [(RIG, "FM-1_7000000")])
+        self.assertFalse([p for loc, p in usb.sent if loc != RIG])
+        self.assertIn("its mark reads back at USB location 0x01130000", out)
+
+    def test_another_fm1_in_the_rigs_socket_is_refused(self):
+        for mark in (None, [1, 2, 3, 4]):
+            self.installed = []
+            usb = self.usb((OWNER, "FM-1_7011000", MARK), (RIG, "FM-1_7011000", mark))
+            self.assertEqual(self.run_rig(usb)[0], 9, mark)
+            self.assertEqual(self.installed, [])
+
+    def test_a_rig_in_update_mode_is_left_for_a_person(self):
+        usb = self.usb((RIG, "ota-FM-1_700", None))
+        self.assertEqual(self.run_rig(usb)[0], 9)
+        self.assertEqual(self.installed, [])
+
+    def test_nothing_at_the_location(self):
+        usb = self.usb((OWNER, "FM-1_7011000", MARK))
+        self.assertEqual(self.run_rig(usb)[0], 3)
+        self.assertFalse(usb.sent)
+
+    def test_without_a_recorded_location_it_refuses(self):
+        with open(self.rig_file, "w") as f:
+            json.dump({"values": MARK}, f)
+        usb = self.usb((RIG, "FM-1_7000000", MARK))
+        self.assertEqual(self.run_rig(usb)[0], 2)
+        self.assertFalse(usb.sent)
+
+    def test_ports_that_change_during_the_open_are_refused(self):
+        usb = self.usb((OWNER, "FM-1_7011000", None), (RIG, "FM-1_7000000", MARK))
+        be = self.backend(usb)
+        real = usb.endpoints
+        calls = []
+
+        def shifting(kind):
+            calls.append(kind)
+            return real(kind) if len(calls) < 2 else list(reversed(real(kind)))
+        usb.endpoints = shifting
+        with self.assertRaises(OSError):
+            be.open("Matryoshka", "Matryoshka")
+
+    def test_mark_frames(self):
+        self.assertEqual(fm1_usb.parse_preset_data(preset_data(MARK)), MARK)
+        self.assertEqual(fm1_usb.parse_preset_data(preset_data(None)), [])
+        self.assertIsNone(fm1_usb.parse_preset_data(identity_packet("FM-1_7000000")))
+        self.assertEqual(fm1_usb.parse_location("1130000"), RIG)
+        self.assertEqual(fm1_usb.location_text(RIG), "0x01130000")
 
 
 if __name__ == "__main__":

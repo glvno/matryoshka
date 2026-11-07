@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // What the scenarios hear as a recording (scripts/device-check.mjs): the emulated FM-1's I2S output (m1emu serve `wav`) or
 // the rig's USB audio, recorded on this Mac with AVAudioEngine (tools/fm1_rec.swift; the FM-1 shows up as an input named
-// "Matryoshka", 16 bit 44.1 kHz stereo), read back as two channels of floats, and
+// "Matryoshka", 16 bit 44.1 kHz stereo, picked by the rig's USB location), read back as two channels of floats, and
 // the measures the checks take of it.
 //
 // The two are not the same signal (firmware/src/audio.c): the I2S words get the GLO > SYSTEM > OUTPUT mix (MONO, MONO L),
@@ -58,7 +58,8 @@ function recorder() {
 
 /**
  * Start recording input `name` ("Matryoshka" = the FM-1's USB audio, its USB product string whatever name macOS keeps for
- * its MIDI port) into `file`, a 16-bit WAV. Resolves once samples are flowing and the stream's start-up silence is over, so
+ * its MIDI port; or `usb-location:1130000`, the USB audio input at that USB location, which tells two FM-1s apart, #698)
+ * into `file`, a 16-bit WAV. Resolves once samples are flowing and the stream's start-up silence is over, so
  * what is done after it is in the recording; `stop()` ends it and gives the channels with `flow` (how much audio came in how
  * long), or { stalled, why } when less than 80 % of the samples the time holds came. { why } (a skip, D-140) when there is
  * no recorder, no such input or more than one; { stalled, why } when the input sends nothing for 8 s.

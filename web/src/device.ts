@@ -9,7 +9,7 @@ import { deviceView } from './poly';
 /** a module's index on the FM-1: its place in the patch's device form (poly.ts deviceView: editor-only modules such as
  * the Scope are not there, so the editor's order is not the device's); -1 when the device does not have it */
 export const deviceIndex = (patch: Patch, moduleId: number): number => deviceView(patch, true).patch.modules.findIndex((m) => m.id === moduleId);
-import { FEATURE_LONG_PRESETS, FEATURE_PANEL_REPORT, parseKeysNow, parseGuideNow, type KeysNow, type PanelState, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, parseLocksNow, type RawLock, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { FEATURE_LONG_PRESETS, FEATURE_PANEL_REPORT, parseKeysNow, parseGuideNow, type KeysNow, type PanelState, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_PRESET, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, parseLocksNow, type RawLock, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 
 /** what connecting the FM-1 does with Live sync (#171): `sync` turns it on without asking, `ask` offers Sync / Not now,
  *  `off` leaves it off (Not now was chosen in this visit) */
@@ -127,6 +127,12 @@ export function linkCandidates(inputs: Iterable<MIDIInput>, outputs: Iterable<MI
   return [...pairs.filter((p) => p.named), ...pairs.filter((p) => !p.named)];
 }
 
+/** an FM-1 that answered HELLO (#698): its ports, its INFO, and whether it carries the test rig's mark (a hidden preset,
+ *  D-122), which the chooser shows so the owner can tell the rig from their own FM-1 */
+export interface FoundFm1 { inp: MIDIInput; out: MIDIOutput; info: Info; rig: boolean }
+/** Connect's choice when more than one FM-1 answers (#698): the one to link, or null (none: nothing is connected) */
+export type ChooseFm1 = (found: FoundFm1[]) => Promise<FoundFm1 | null>;
+
 /** Connect FM-1's message when no port answered HELLO (`tried`: some pair was asked), with the ports it saw, so the user
  *  can tell what the computer calls the FM-1 */
 export function notFound(inputs: Iterable<MIDIPort>, outputs: Iterable<MIDIPort>, tried: boolean): string {
@@ -204,7 +210,13 @@ export class DeviceLink {
     return this.inp;
   }
 
-  async connect(): Promise<Info> {
+  /**
+   * Connect FM-1: HELLO to each pair named like an FM-1, and to every other pair when none of those answers (D-474). With
+   * one FM-1 answering it is the one linked. With more (#698: the owner's test rig beside their own FM-1), `choose`
+   * picks one (without it, the first). Two FM-1s may carry the same port name, so each FM-1-named output is asked in turn
+   * and its INFO tells which input is its own.
+   */
+  async connect(choose?: ChooseFm1): Promise<Info> {
     if (!navigator.requestMIDIAccess) throw new Error('Web MIDI is not available in this browser (use Chrome or Edge)');
     if (this.inp) this.inp.onmidimessage = null; // a reconnect: let go of the old port
     this.out = this.inp = null;
@@ -220,7 +232,15 @@ export class DeviceLink {
     const inputs = [...access.inputs.values()], outputs = [...access.outputs.values()];
     // the ports named like an FM-1 first; then, as macOS may show it under another name (#187), every other in / out pair
     const pairs = linkCandidates(inputs, outputs);
-    for (const c of pairs) {
+    const found = await this.probe(pairs.filter((c) => c.named));
+    if (found.length) {
+      const pick = found.length === 1 ? found[0] : choose ? await choose(found) : found[0];
+      if (!pick) throw new Error(`${found.length} FM-1s answered and none was chosen: not connected`);
+      this.attach(pick.inp, pick.out);
+      this.info = pick.info;
+      return pick.info;
+    }
+    for (const c of pairs.filter((x) => !x.named)) {
       this.attach(c.inp, c.out);
       try {
         return await this.hello(c.named ? TRIES : 1);
@@ -230,6 +250,58 @@ export class DeviceLink {
       }
     }
     throw new Error(notFound(inputs, outputs, pairs.length > 0));
+  }
+
+  /**
+   * The FM-1s among `cands` (#698): each output in turn gets HELLO, and the input its INFO comes back on is that FM-1's
+   * (one of the output's name, when there is one). Two inputs of the same name: asked once more, so an INFO another
+   * program's HELLO drew from the other FM-1 is not taken for this one's. The inputs' own listeners are put back after.
+   * With more than one FM-1, each is asked for the test rig's mark (PRESET_GET, which changes nothing).
+   */
+  private async probe(cands: LinkCandidate[]): Promise<FoundFm1[]> {
+    const ins = [...new Set(cands.map((c) => c.inp))], outs = [...new Set(cands.map((c) => c.out))];
+    const before = new Map(ins.map((i) => [i, i.onmidimessage]));
+    let heard: ((inp: MIDIInput, p: NonNullable<ReturnType<typeof parse>>) => void) | null = null;
+    for (const inp of ins)
+      inp.onmidimessage = (ev) => {
+        const p = ev.data ? parse(ev.data) : null;
+        if (p && heard) heard(inp, p);
+      };
+    /** the first frame `match` takes on one of `from`, after `frame` went to `out`; null after `ms` */
+    const ask = (out: MIDIOutput, frame: Uint8Array, from: MIDIInput[], match: (p: NonNullable<ReturnType<typeof parse>>) => boolean, ms = ACK_TIMEOUT) =>
+      new Promise<{ inp: MIDIInput; p: NonNullable<ReturnType<typeof parse>> } | null>((res) => {
+        const t = window.setTimeout(() => { heard = null; res(null); }, ms);
+        heard = (inp, p) => {
+          if (!from.includes(inp) || !match(p)) return;
+          clearTimeout(t);
+          heard = null;
+          res({ inp, p });
+        };
+        out.send(frame);
+      });
+    const isInfo = (p: NonNullable<ReturnType<typeof parse>>): boolean => p.cmd === CMD.info && !!parseInfo(p);
+    const found: FoundFm1[] = [];
+    try {
+      for (const out of outs) {
+        const free = ins.filter((i) => !found.some((f) => f.inp === i));
+        const same = free.filter((i) => (i.name ?? '') === (out.name ?? ''));
+        const from = same.length ? same : free;
+        if (!from.length) break;
+        let r = null;
+        for (let k = 0, tries = found.length ? 1 : TRIES; k < tries && !r; k++) r = await ask(out, helloFrame(), from, isInfo);
+        if (r && from.length > 1) r = await ask(out, helloFrame(), [r.inp], isInfo);   // (the same input again: its own)
+        if (r) found.push({ inp: r.inp, out, info: parseInfo(r.p)!, rig: false });
+      }
+      if (found.length > 1)
+        for (const f of found) {
+          const r = await ask(f.out, presetGetFrame(RIG_STRUCTURE, RIG_PRESET), [f.inp], (p) => p.cmd === CMD.presetData && parsePresetData(p)?.structure === RIG_STRUCTURE, 500);
+          f.rig = !!r && !!parsePresetData(r.p)?.values;
+        }
+    } finally {
+      heard = null;
+      for (const [inp, h] of before) inp.onmidimessage = h;
+    }
+    return found;
   }
 
   /** listen on `inp` and send to `out`: the link's ports from now on */

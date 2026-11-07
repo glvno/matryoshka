@@ -18,6 +18,7 @@ import { SITE_URL } from './site';
 import { sandboxKey, sandboxPage, sandboxStep, sandboxTempoTurn } from './sandbox-mode';
 import { LIVE_MS, panelOffBy, slotLabel, type PanelState, type SlotInfo } from './protocol';
 import { chooseSlot } from './store-slot';
+import { chooseFm1, keepChoice, readChoice, rememberedFm1 } from './choose-fm1';
 import { Fm1View } from './fm1-view';
 import { EmuKeys } from './emu-keys';
 import { SandboxKeys } from './sandbox-keys';
@@ -35,7 +36,7 @@ import { buildAssembliesSection, storeAssembly, storeTutorialAssembly } from './
 import { AssemblyBrowser } from './browser';
 import { searchCommands, type Command } from './commands';
 import { buildFlashTab } from './flasher';
-import { attachKeyboard, attachMidi, followOctave, isFm1In, isTextEntry } from './input';
+import { attachKeyboard, attachMidi, followOctave, isFm1In, isTextEntry, otherFm1 } from './input';
 import { Piano } from './piano';
 import { sliderJack } from './slider-jack';
 import { PANEL_BUTTONS } from './modules';
@@ -2063,9 +2064,18 @@ try {
 }
 
 // FM-1 link: FM-1 & MIDI's Connect and the Connect FM-1 button over the canvas
-async function connectFm1(): Promise<void> {
+/** `again`: Reconnect, which asks again which FM-1 when more than one answers (#698); else the one this browser
+ *  remembers is taken without asking */
+async function connectFm1(again = false): Promise<void> {
   try {
-    const info = await device.connect();
+    const info = await device.connect(async (found) => {
+      const kept = readChoice();
+      const known = again ? null : rememberedFm1(found, kept);
+      if (known) return known;
+      const pick = await chooseFm1($<HTMLDialogElement>('choose-fm1'), found, kept);
+      if (pick) keepChoice(pick.inp.id);
+      return pick;
+    });
     devStatus(`FM-1 connected (protocol ${info.version}, up to ${info.maxModules} modules, flash ${info.flashOk ? 'ok' : 'not available'})`);
     for (const id of ['dev-send', 'dev-store']) $<HTMLInputElement>(id).disabled = false;
     $('dev-btn').textContent = 'Reconnect';
@@ -2090,7 +2100,7 @@ async function offerFirmwareUpdate(): Promise<void> {
   showAction(text, 'Update', openInstall, 12000);
 }
 $('dev-btn').onclick = async () => {
-  await connectFm1();
+  await connectFm1(device.connected);
   if (!device.connected) void offerInstall();
 };
 
@@ -2399,7 +2409,7 @@ const setMidi = async (on: boolean): Promise<void> => {
       midiInputs = n;
       showMidi();
     },
-    (port) => mirror.follows(port),   // (the followed FM-1's panel comes in through the mirror: not twice)
+    (port) => mirror.follows(port) || otherFm1(port, device.connected ? device.input?.id : null),   // (the followed FM-1's panel comes in through the mirror: not twice; another FM-1 than the linked one, #698)
     (port) => isFm1In(port, device.input?.id),   // (an FM-1 sends its clock all the time, #473: the tempo stays the editor's)
   );
   midiAsking = false;
