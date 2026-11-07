@@ -674,9 +674,9 @@ typedef struct grain_line { int16_t buf[GRAIN_LEN]; grain_t g[GRAIN_MAX]; } grai
  * a granular line) and the spare copy, so every patch that loaded before still loads. The editor's budget models the same (web/src/patchbin.ts ARENA, memoryBudget). A build whose inst_t
  * is bigger (a 64-bit host) gets the difference for every copy it can take, so it loads what the FM-1 loads; the fit is
  * counted in the FM-1's bytes (arena_free). */
-#define ENG_INST_BYTES 272u
+#define ENG_INST_BYTES 264u
 #define ENG_BUF_BYTES (ENG_BLOCK * 4u)
-#if UINTPTR_MAX == 0xFFFFFFFFu && !defined(__wasm__)
+#if defined(M1_FW_MAJOR) && !defined(__wasm__)              /* (the FM-1 build, tools/build.py: its compiler's size) */
 typedef char eng_inst_bytes_check[sizeof(inst_t) == ENG_INST_BYTES ? 1 : -1];   /* (patchbin.ts INST_BYTES follows it) */
 #endif
 /* The lines of the line-type modules: the Delays (their length, dly_samples), the strings and combs (a line per copy),
@@ -687,8 +687,8 @@ typedef char eng_inst_bytes_check[sizeof(inst_t) == ENG_INST_BYTES ? 1 : -1];   
 #define LINE_BYTES(n) (((uint32_t)(n) + 3u) & ~3u)
 #define LINE_ARENA (LINE_BYTES(2u * DELAY_LEN) + 8u * LINE_BYTES(2u * STR_LEN) + LINE_BYTES(sizeof(grain_line_t)))   /* 167,980 B */
 #define LINE_LOW (LINE_BYTES(2u * RV_LEN) + LINE_BYTES(2u * CH_LEN) + 8192u)                                        /* 26,196 B */
-#define ENG_ARENA (LINE_ARENA + 255u * ENG_BUF_BYTES + 129u * ENG_INST_BYTES + 1536u * 4u)                       /* 339,772 B */
-#define ENG_ARENA_HOST (ENG_ARENA + (ENG_MAX_INST + 1u) * (uint32_t)(sizeof(inst_t) - ENG_INST_BYTES))
+#define ENG_ARENA (LINE_ARENA + 255u * ENG_BUF_BYTES + 129u * ENG_INST_BYTES + 1536u * 4u)                       /* 338,740 B */
+#define ENG_ARENA_HOST (ENG_ARENA + (ENG_MAX_INST + 1u) * (sizeof(inst_t) > ENG_INST_BYTES ? (uint32_t)sizeof(inst_t) - ENG_INST_BYTES : 0u))
 static uint32_t eng_arena[ENG_ARENA_HOST / 4u] ENG_POOL;
 static uint32_t ar_lo, ar_hi, ar_ninst;      /* bytes taken from the bottom and from the top; copies taken (the spare too) */
 static uint32_t line_low[LINE_LOW / 4u] ENG_LOWRAM;
@@ -696,7 +696,7 @@ static uint32_t arena_size = ENG_ARENA;     /* (a test may make it smaller, to r
 /* the arena's bytes still free, counted as on the FM-1 (a copy as ENG_INST_BYTES) */
 static uint32_t arena_free(void)
 {
-    uint32_t used = ar_lo - ar_ninst * (uint32_t)(sizeof(inst_t) - ENG_INST_BYTES) + ar_hi;
+    uint32_t used = ar_lo - ar_ninst * (uint32_t)sizeof(inst_t) + ar_ninst * ENG_INST_BYTES + ar_hi;
     return used < arena_size ? arena_size - used : 0u;
 }
 /* n bytes from the bottom (a multiple of 4), 0 if they do not fit */

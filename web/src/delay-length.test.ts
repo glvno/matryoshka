@@ -158,7 +158,7 @@ describe('the FM-1\'s memory (the lines: D-375; one arena, #649)', () => {
     expect(engineC).toMatch(/#define LINE_LOW \(LINE_BYTES\(2u \* RV_LEN\) \+ LINE_BYTES\(2u \* CH_LEN\) \+ 8192u\)/);
     expect(delayBytes(700) + 8 * LINES.string + LINES.grain).toBe(OLD_POOL);
     expect(LINE_LOW).toBe(26196);
-    expect(ARENA).toBe(OLD_POOL + 255 * 512 + 129 * 272 + 1536 * 4);
+    expect(ARENA).toBe(OLD_POOL + 255 * 512 + 129 * 264 + 1536 * 4);
     expect(engineC).toMatch(/#define ENG_ARENA \(LINE_ARENA \+ 255u \* ENG_BUF_BYTES \+ 129u \* ENG_INST_BYTES \+ 1536u \* 4u\)/);
     expect(LINES).toEqual({ string: 2208, grain: 88428, reverb: 16148, chorus: 1856 });
     expect(delayBytes(700)).toBe(61888);
@@ -195,7 +195,7 @@ describe('the FM-1\'s memory (the lines: D-375; one arena, #649)', () => {
     expect(f.lines.fits).toBe(false);
     expect(f.fits).toBe(false);
     expect(f.over.map((i) => i.key)).toEqual(['memory']);
-    expect(linesAdvice(full)).toMatch(/^Memory full: \d+ of 357 KB used\. Shorten another Delay or remove the Granular \(86 KB\)\.$/);
+    expect(linesAdvice(full)).toMatch(/^Memory full: \d+ of 356 KB used\. Shorten another Delay or remove the Granular \(86 KB\)\.$/);
     expect(() => encodePatch(full)).toThrow(/over the FM-1 budget/);
   });
 

@@ -792,7 +792,7 @@ export const LINES = {
 export const delayBytes = (ms: number): number => lineBytes(2 * delayLine(ms));
 /** bytes of one module copy (engine.c inst_t, ENG_INST_BYTES), one signal buffer (ENG_BUF_BYTES: 128 samples of 4 bytes) and
  * one parameter value in the FM-1's memory */
-export const INST_BYTES = 272, BUF_BYTES = 512, PAR_BYTES = 4;
+export const INST_BYTES = 264, BUF_BYTES = 512, PAR_BYTES = 4;
 /**
  * The FM-1's memory a patch takes (#649, engine.c eng_arena, ENG_ARENA): one arena divided when the patch loads, as big
  * as the fixed pools it replaced (128 copies, 255 buffers, 1536 values, and the line area of a 700 ms delay line, 8 string
@@ -820,7 +820,7 @@ export interface BudgetItem { key: BudgetKey | 'cpu' | 'browser'; label: string;
 
 /** kilobytes, one decimal under 10 KB, else whole */
 export const kb = (bytes: number): string => (bytes < 10240 ? (bytes / 1024).toFixed(1) : String(Math.round(bytes / 1024)));
-/** a budget line over its limit in words: "CPU 130 %", "Memory 400 of 357 KB", "70 modules of 64" */
+/** a budget line over its limit in words: "CPU 130 %", "Memory 400 of 356 KB", "70 modules of 64" */
 export const overText = (i: BudgetItem): string => (i.key === 'cpu' ? `CPU ${i.used} %` : i.key === 'browser' ? i.label
   : i.key === 'memory' ? `Memory ${kb(i.used)} of ${kb(i.max)} KB${i.used <= i.max ? ' (the lines do not fit what is left)' : ''}` : `${i.used} ${i.label} of ${i.max}`);
 
@@ -945,7 +945,7 @@ export function delayRoom(source: Patch, id: number): number {
 /**
  * What to say when a patch does not fit the FM-1's memory (or a length stops at what is left): the memory used, and what
  * takes the most of it besides `except` (a module id: the one being changed), so the user knows what to shorten or remove.
- * "Memory full: 350 of 357 KB used. Shorten the other Delay or remove the Granular (86 KB)." When the module copies take
+ * "Memory full: 350 of 356 KB used. Shorten the other Delay or remove the Granular (86 KB)." When the module copies take
  * more than any line, fewer voices come first.
  */
 export function linesAdvice(source: Patch, except?: number): string {
