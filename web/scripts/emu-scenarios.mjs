@@ -1712,6 +1712,23 @@ async function main() {
       await emu.snap('arming-env');
       await emu.tap(B.env, 120);
       await emu.waitOwnPage(3000);
+      // #191 (D-821): the editor's own arming reaches the FM-1 (ARMS, feature bit 20), and the FM-1 plays by it
+      const drums = (await until(async () => { const a = (await T()).armed; return a.length ? a : null; }, 2000)) ?? [];
+      await page.evaluate(() => window.__m1test.arm([]));
+      await check('arming: disarmed in the editor: the FM-1 disarms too, KEYS WIRED (ARMS, #191)', await emu.waitText('KEYS WIRED', 3000));
+      await emu.elapse(1300);
+      await page.evaluate((k) => window.__m1test.arm(k), drums);
+      await check('arming: DRUMS armed in the editor: the FM-1 arms it, its footer says ARM DRUMS (#191)', drums.length > 0 && (await emu.waitText('ARM DRUMS', 3000)), `editor's set ${drums.join(' ')}`);
+      const ka = await emu.mark();
+      await emu.key(BLACK[0], true);
+      await emu.elapse(300);
+      await emu.key(BLACK[0], false);
+      const kp = await emu.peak(ka);
+      await loudCheck('arming: armed from the editor, black key 1 plays the kick through DRUMS', kp, kp > LOUD, `peak ${kp}`);
+      await check('arming: the editor\'s set stays as it set it (the FM-1 sends nothing back)', JSON.stringify((await T()).armed) === JSON.stringify(drums));
+      await page.evaluate(() => window.__m1test.arm([]));
+      await emu.waitText('KEYS WIRED', 3000);
+      await emu.elapse(1000);
       // an instrument whose keys come through its Arpeggiator alone (Io 4: no PATTERN track, the rig shed voices with it; Vernon
       // 100 has its track since format 51, #667): SEL on its first page arms it, and the keys play it; the Arpeggiator alone
       // takes no keys

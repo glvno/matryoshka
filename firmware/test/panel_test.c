@@ -4294,6 +4294,25 @@ int main(void)
         tap(3);
         check("SEL on two environment rows: both armed (a layer)", page == PAGE_ENV && pg_cur_dev == (uint32_t)dp
               && eng_arm_mask_get() == ((uint64_t)1 << drums | (uint64_t)1 << pat) && env_armed((uint32_t)dd) && env_armed((uint32_t)dp));
+        {                                                   /* #191: a key with two armed reaches both, as engine.ts plays a set */
+            static int32_t l2[128], r2[128];
+            uint32_t hd = 0, hp = 0;
+            th = thru_head;
+            panel_keys(1u << 7);                            /* C4 */
+            eng_render(l2, r2, 128);
+            {
+                uint8_t h;
+                for (h = th; h != thru_head; h++) {
+                    hd |= thru_ring[h % ENG_THRU][0] == (uint8_t)drums && (thru_ring[h % ENG_THRU][1] & 0x80u);
+                    hp |= thru_ring[h % ENG_THRU][0] == (uint8_t)pat && (thru_ring[h % ENG_THRU][1] & 0x80u);
+                }
+            }
+            panel_keys(0);
+            eng_render(l2, r2, 128);
+            loop();
+            printf("      (two armed, a key: DRUMS %s, PATTERN %s)\n", hd ? "heard" : "-", hp ? "heard" : "-");
+            check("  a key with both armed plays through both tracks (#191)", hd && hp);
+        }
         pages_select(dd - dp);
         loop();
         tap(3);
