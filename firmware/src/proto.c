@@ -205,8 +205,9 @@ static void m1_set_current(const uint8_t *p, uint32_t len)
     for (i = 0; i < len; i++)
         m1_cur[i] = p[i];
     m1_cur_len = len;
-    (void)eng_upgrade(m1_cur, &m1_cur_len, M1_PATCH_MAX);   /* an older format's patch in today's (SAVE keeps edits of the
-                                                         * parameters added since); one that would not fit stays as it is */
+    (void)eng_upgrade(m1_cur, &m1_cur_len, M1_PATCH_MAX);   /* an older format's patch with counted records (an edit of a
+                                                         * parameter it leaves out grows its record: m1_patch_param);
+                                                         * one that would not fit stays as it is */
     m1_edited = 0;
     m1_gen++;
 }
@@ -221,13 +222,11 @@ static uint32_t m1_record(uint32_t mod)
     if (!at || mod >= m1_cur[2])
         return 0;
     for (i = 0; i < mod; i++) {
-        const def_t *d;
-        if (at >= m1_cur_len || M1_TYPE(m1_cur[at]) >= N_TYPES)
+        if (!eng_rec_ok(m1_cur, m1_cur_len, at))
             return 0;
-        d = &DEFS[M1_TYPE(m1_cur[at])];
-        at += eng_record_size(d, m1_cur[1]);
+        at += eng_rec_size(m1_cur, at);
     }
-    return at < m1_cur_len && M1_TYPE(m1_cur[at]) < N_TYPES ? at : 0;
+    return eng_rec_ok(m1_cur, m1_cur_len, at) ? at : 0;
 }
 
 static void m1_put32(uint32_t at, int32_t v)
@@ -244,13 +243,16 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
     uint32_t at = m1_record(mod);
     if (eng_tempo_row(mod, par))                             /* the global tempo moved, not the patch's own (D-907) */
         return;
-    if (!at || par >= eng_npar(&DEFS[M1_TYPE(m1_cur[at])], m1_cur[1]))   /* (an older format's record without it: m1_set_current
-                                                                         * upgrades the binary, unless it would not fit) */
-        return;
-    if (DEF_FIXED(M1_TYPE(m1_cur[at]), par))                 /* (a row set when the patch loads, a Delay's length: only a new
+    if (!at || DEF_FIXED(M1_TYPE(m1_cur[at]), par))          /* (a row set when the patch loads, a Delay's length: only a new
                                                               * patch from the editor changes it, so a stored patch always fits) */
         return;
-    m1_put32(at + 1u + 4u * par, v);
+    if (par >= eng_rec_npar(m1_cur, at)) {                   /* a counted record that leaves it out (at its default) grows to
+                                                              * hold it; an older format's record without it: m1_set_current
+                                                              * upgrades the binary, unless it would not fit */
+        if (m1_cur[1] < ENG_COUNTED || eng_rec_grow(m1_cur, &m1_cur_len, M1_PATCH_MAX, mod, par + 1u))
+            return;
+    }
+    m1_put32(at + eng_rec_head(m1_cur[1]) + 4u * par, v);
     m1_edited = 1;
 }
 
@@ -277,7 +279,7 @@ static void m1_patch_att(uint32_t mod, uint32_t input, int32_t v)
     uint32_t at = m1_record(mod);
     if (!at || input >= 2u || DEFS[M1_TYPE(m1_cur[at])].cvbase < 0)
         return;
-    m1_put32(at + 1u + 4u * eng_npar(&DEFS[M1_TYPE(m1_cur[at])], m1_cur[1]) + 4u * input, v);
+    m1_put32(at + eng_rec_head(m1_cur[1]) + 4u * eng_rec_npar(m1_cur, at) + 4u * input, v);
     m1_edited = 1;
 }
 
@@ -289,7 +291,7 @@ static uint32_t m1_track_at(uint32_t mod)
     if (!at || M1_TYPE(m1_cur[at]) != T_STEPS)
         return 0;
     d = &DEFS[T_STEPS];
-    at += eng_record_size(d, m1_cur[1]) - d->ndata;
+    at += eng_rec_size(m1_cur, at) - d->ndata;
     return at + TRACK_NAME_MAX <= m1_cur_len ? at : 0;
 }
 
