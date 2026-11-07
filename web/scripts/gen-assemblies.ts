@@ -4114,6 +4114,124 @@ asm('auto pan', 'Effects', (b) => {
   b.param('centre', pan, 'pan');
 });
 
+// ---- effects built from the Follower, the Comparator, the Compressor and the Waveshaper (#661)
+
+// an envelope filter (auto-wah): the Follower's envelope of the input opens a resonant low pass, so playing harder opens it.
+// `sensitivity` is the Follower's input level (how far a given level sweeps), `range` the octaves the envelope can add,
+// `level` the output's (an Attenuverter: the resonance's peak is loud).
+asm('envelope filter', 'Effects', (b) => {
+  const fol = b.add('esp', 0, 1, { level: 2 });
+  const flt = b.add('filter', 0, 0, { cutoff: 250, res: 0.7, cvamt: 3 });
+  const lvl = b.add('scale', 1, 0, { gain: 0.6, offset: 0 });
+  b.wire(fol, 'env', flt, 'cv');
+  b.wire(flt, 'lp12', lvl, 'in');
+  b.input('in', flt, 'in', [fol, 'in']);
+  b.output('out', lvl, 'out');
+  b.param('sensitivity', fol, 'level');
+  b.param('cutoff', flt, 'cutoff');
+  b.param('range', flt, 'cvamt');
+  b.param('res', flt, 'res');
+  b.param('level', lvl, 'gain');
+});
+
+// a ducking delay: the Compressor, keyed by the dry signal, turns the echoes down while you play; they come up in the
+// gaps. `duck` is its ratio (1: no ducking), `threshold` the level that starts it, `release` how fast the echoes come back.
+asm('ducking delay', 'Effects', (b) => {
+  const dly = b.add('delay', 0, 0, { time: 375, fb: 0.45, mix: 1 });
+  const dyn = b.add('dyn', 1, 0, { thresh: -36, ratio: 20, attack: 0.005, release: 0.3, gain: 0 });
+  const xf = b.add('xfade', 2, 0, { mix: 0.4 });
+  b.wire(dly, 'out', dyn, 'in');
+  b.wire(dyn, 'out', xf, 'b');
+  b.input('in', dly, 'in', [dyn, 'side'], [xf, 'a']);
+  b.output('out', xf, 'out');
+  b.param('time', dly, 'time');
+  b.param('feedback', dly, 'fb');
+  b.param('mix', xf, 'mix');
+  b.param('duck', dyn, 'ratio');
+  b.param('threshold', dyn, 'thresh');
+  b.param('release', dyn, 'release');
+});
+
+// a gated reverb (the 80s snare): a big reverb, all wet, through a VCA. The Follower's envelope of the dry signal past the
+// Comparator's threshold opens the gate; it stays open while the input is loud and at least `hold` after each hit (Pulse,
+// or-ed by Logic), then shuts in `close` (the ADSR's release).
+asm('gated reverb', 'Effects', (b) => {
+  const rv = b.add('reverb', 0, 0, { size: 0.85, damp: 0.3, mix: 1, mod: 0.2 });
+  const vca = b.add('vca', 1, 0, { gain: 0.7 });
+  const xf = b.add('xfade', 2, 0, { mix: 0.5 });
+  const fol = b.add('esp', 0, 1, { level: 1 });
+  const cmp = b.add('comp', 1, 1, { thresh: 0.1, hyst: 0.02 });
+  const pl = b.add('pulse', 2, 1, { time: 0.25 });
+  const lg = b.add('logic', 3, 1);
+  const env = b.add('adsr', 4, 1, { a: 0.001, d: 0.1, s: 1, r: 0.03 });
+  b.wire(fol, 'env', cmp, 'a');
+  b.wire(cmp, 'trig', pl, 'trig');
+  b.wire(cmp, 'gt', lg, 'a');
+  b.wire(pl, 'out', lg, 'b');
+  b.wire(lg, 'or', env, 'gate');
+  b.wire(env, 'env', vca, 'cv');
+  b.wire(rv, 'out', vca, 'in');
+  b.wire(vca, 'out', xf, 'b');
+  b.input('in', rv, 'in', [fol, 'in'], [xf, 'a']);
+  b.output('out', xf, 'out');
+  b.param('threshold', cmp, 'thresh');
+  b.param('hold', pl, 'time');
+  b.param('close', env, 'r');
+  b.param('size', rv, 'size');
+  b.param('damp', rv, 'damp');
+  b.param('mix', xf, 'mix');
+});
+
+// overdrive / fuzz: the Compressor first (sustain: more ratio, more even drive), a high pass that keeps the lows out of the
+// drive, the Waveshaper, then a low pass for the tone. `shape` soft is an overdrive, hard a fuzz, fold a folder.
+asm('overdrive', 'Effects', (b) => {
+  const dyn = b.add('dyn', 0, 0, { thresh: -24, ratio: 4, attack: 0.005, release: 0.15, gain: 6 });
+  const pre = b.add('filter', 1, 0, { cutoff: 120, res: 0 });
+  const sh = b.add('shape', 2, 0, { drive: 6, mode: 0, level: 0.5, sym: 0.1 });
+  const post = b.add('filter', 3, 0, { cutoff: 3000, res: 0 });
+  b.wire(dyn, 'out', pre, 'in');
+  b.wire(pre, 'hp', sh, 'in');
+  b.wire(sh, 'out', post, 'in');
+  b.input('in', dyn, 'in');
+  b.output('out', post, 'lp12');
+  b.param('drive', sh, 'drive');
+  b.param('tone', post, 'cutoff');
+  b.param('shape', sh, 'mode');
+  b.param('sustain', dyn, 'ratio');
+  b.param('low cut', pre, 'cutoff');
+  b.param('level', sh, 'level');
+});
+
+// an octave fuzz: the Follower's band pass of the input past the Comparator is a square at the played pitch; the Clock
+// divider halves it (a quarter-duty pulse an octave down), the Attenuverter centres it on 0 and a VCA puts the input's
+// envelope back on it. Mixed with the input through a hard Waveshaper, then a low pass for the tone. `tracking` is the band
+// pass's top: lower it when the octave warbles on a bright sound.
+asm('octave fuzz', 'Effects', (b) => {
+  const sh = b.add('shape', 0, 0, { drive: 12, mode: 1, level: 0.5 });
+  const mix = b.add('mixer', 1, 0, { l1: 0.45, l2: 0.45, l3: 0, l4: 0 });
+  const tone = b.add('filter', 2, 0, { cutoff: 2500, res: 0 });
+  const fol = b.add('esp', 0, 1, { level: 1, lowcut: 60, highcut: 600 });
+  const cmp = b.add('comp', 1, 1, { thresh: 0, hyst: 0.01 });
+  const dv = b.add('clkdiv', 2, 1, { div: 2 });
+  const sc = b.add('scale', 3, 1, { gain: 2, offset: -0.5 });
+  const vca = b.add('vca', 3, 0);
+  b.wire(fol, 'bp', cmp, 'a');
+  b.wire(cmp, 'gt', dv, 'clock');
+  b.wire(dv, 'out', sc, 'in');
+  b.wire(sc, 'out', vca, 'in');
+  b.wire(fol, 'env', vca, 'cv');
+  b.wire(sh, 'out', mix, 'in1');
+  b.wire(vca, 'out', mix, 'in2');
+  b.wire(mix, 'out', tone, 'in');
+  b.input('in', sh, 'in', [fol, 'in']);
+  b.output('out', tone, 'lp12');
+  b.param('drive', sh, 'drive');
+  b.param('fuzz', mix, 'l1');
+  b.param('octave', mix, 'l2');
+  b.param('tone', tone, 'cutoff');
+  b.param('tracking', fol, 'highcut');
+});
+
 // an exposed pin is offered as the sliders it routes to (the editor has no p1 / p2 jacks): the same migration as on load
 for (const d of defs) {
   const moduleOf = (id: number): ModuleInst | undefined => d.modules.find((m) => m.id === id);

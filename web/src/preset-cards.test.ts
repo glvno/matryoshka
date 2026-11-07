@@ -3,12 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { FACTORY } from './assemblies';
 import { toDef } from './assembly';
 import { defIsEngine, instIsEngine } from './engines';
-import { CARDS, cardOf, presetsByRules, presetsOfDef, xlEnginePresets, xlPresetsOfDef } from './factory-presets';
+import { CARDS, cardOf, factoryPresets, presetsByRules, presetsOfDef, shippedPresets, xlEnginePresets, xlPresetsOfDef } from './factory-presets';
 import { cardRows, cardSlug, cardTemplate, formatCard, formatPreset, parseCard, projectPresets } from './preset-cards';
 import { XL_PRESETS } from './presets';
 import { defRowOrder, defStructure } from './structure';
 
 const ENGINES = FACTORY.filter((d) => defIsEngine(d));
+const EFFECTS = FACTORY.filter((d) => d.category === 'Effects' && !defIsEngine(d));
 const HERA = ENGINES.find((d) => d.name === 'Hera 6')!;
 /** where a row (by its key) sits in a preset's values */
 const at = (def: typeof HERA, key: string): number => {
@@ -112,20 +113,29 @@ describe('preset cards (#413)', () => {
     expect(parseCard(t, HERA).errors).toEqual(['the file holds no preset']);
   });
 
-  it('every card in presets/cards/ is an engine\'s, reads clean, and gives it three to five presets after Init', () => {
+  it('every card in presets/cards/ is an engine\'s or an effect\'s (#661), reads clean, and gives it three to five presets after Init', () => {
     expect(Object.keys(CARDS).length).toBeGreaterThan(0);
     for (const [slug, text] of Object.entries(CARDS)) {
-      const d = ENGINES.find((x) => cardSlug(x.name) === slug);
+      const d = [...ENGINES, ...EFFECTS].find((x) => cardSlug(x.name) === slug);
       expect(d, slug).toBeTruthy();
       const r = parseCard(text, d!);
       expect(r.errors, slug).toEqual([]);
       expect(r.presets.length - 1, slug).toBeGreaterThanOrEqual(3);
       expect(r.presets.length - 1, slug).toBeLessThanOrEqual(5);
-      // the card is what the engine ships
-      expect(presetsOfDef(d!).map((p) => p.name)).toEqual(r.presets.map((p) => p.name));
+      // the card is what the engine (or effect) ships
+      expect(shippedPresets(d!).map((p) => p.name)).toEqual(r.presets.map((p) => p.name));
       expect(cardOf(d!)?.presets.length).toBe(r.presets.length);
     }
     expect(presetsOfDef(HERA).map((p) => p.name)).toEqual(['Init', 'Brass', 'Strings', 'Bass', 'Organ', 'Glass Pad']);
+  });
+
+  it('an effect ships its card\'s presets (on the FM-1 too) and no rule-made ones without a card (#661)', () => {
+    const duck = FACTORY.find((d) => d.name === 'ducking delay')!;
+    expect(shippedPresets(duck).map((p) => p.name)).toEqual(['Init', 'Long Wash', 'Slapback', 'Gentle Duck', 'Pump Echo']);
+    expect(factoryPresets().filter((p) => p.structure === shippedPresets(duck)[0].structure).map((p) => p.name)).toEqual(shippedPresets(duck).map((p) => p.name));
+    expect(shippedPresets(FACTORY.find((d) => d.name === 'echo')!)).toEqual([]);
+    expect(cardTemplate(duck).trimEnd().endsWith('effect: ducking delay')).toBe(true);
+    expect(parseCard('engine: ducking delay\npreset: A\n  time = 100 ms\n', duck).errors).toEqual([]);
   });
 
   it('an XL built as its original\'s whole panel keeps the rule-made presets: its rows are not its FM-1 version\'s', () => {

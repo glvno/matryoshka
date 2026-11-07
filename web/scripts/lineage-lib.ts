@@ -18,6 +18,7 @@ import { rowTargets, validateAssemblyDef, type AssemblyDef } from '../src/assemb
 import { defIsEngine } from '../src/engines';
 import { DEFS } from '../src/modules';
 import { HAND_MAPS, type HandMap } from '../src/preset-maps';
+import { cardSlug } from '../src/preset-cards';
 import type { Migration, MigrationOp } from '../src/preset-migrate';
 import { defStructureAndOrder } from '../src/structure';
 
@@ -54,12 +55,16 @@ export function entryOf(def: AssemblyDef): LineageEntry {
   return { structure, rows };
 }
 
-/** the factory engines of the assembly files in a directory (today's: src/assemblies), by name */
+/** a factory effect with a preset card (#661) ships presets too: its structures are kept as an engine's */
+const CARD_DIR = new URL('../presets/cards/', import.meta.url);
+const hasCard = (def: AssemblyDef): boolean => existsSync(new URL(`${cardSlug(def.name)}.txt`, CARD_DIR));
+
+/** the factory engines (and effects with a card) of the assembly files in a directory (today's: src/assemblies), by name */
 export function factoryEngines(files: { name: string; text: string }[]): Map<string, AssemblyDef> {
   const out = new Map<string, AssemblyDef>();
   for (const f of files.filter((x) => x.name.endsWith('.json')).sort((a, b) => a.name.localeCompare(b.name))) {
     const def = validateAssemblyDef(JSON.parse(f.text), DEFS);
-    if (defIsEngine(def)) out.set(def.name, def);
+    if (defIsEngine(def) || hasCard(def)) out.set(def.name, def);
   }
   return out;
 }

@@ -4,7 +4,8 @@
 // them: an engine with a card ships Init plus the card's presets, in the card's order, in the browser and in the FM-1's
 // ROM (export-defs); an engine without one keeps the rule-made variations. The file:
 //
-//   engine: Hera 6                 the engine's name, once, before the first preset
+//   engine: Hera 6                 the engine's name, once, before the first preset (an effect's card, #661, may say
+//                                  "effect: ducking delay")
 //   preset: Brass                  starts a preset (its name, up to PRESET_NAME_MAX characters; the FM-1 shows 16)
 //     filters / cutoff = 1800 Hz   a row's value: "section / label = value"; the label alone when it is the only one
 //     dco / wave = saw             a choice row takes the choice's name (a Selector row its named position's, or its
@@ -159,7 +160,7 @@ export function parseCard(text: string, def: AssemblyDef): CardParse {
     const n = k + 1;
     const line = raw.replace(/#.*$/, '').trim();
     if (!line) return;
-    let m = /^engine\s*:\s*(.+)$/i.exec(line);
+    let m = /^(?:engine|effect)\s*:\s*(.+)$/i.exec(line);
     if (m) {
       if (engine !== undefined) errors.push(`line ${n}: the engine is named twice`);
       engine = m[1].trim();
@@ -228,7 +229,7 @@ export function formatPreset(def: AssemblyDef, name: string, values: number[]): 
 
 /** a whole card file for an engine's presets (Init is left out: it is the engine itself) */
 export const formatCard = (def: AssemblyDef, presets: Preset[]): string =>
-  [`engine: ${def.name}`, '', ...presets.filter((p) => p.name !== 'Init').map((p) => formatPreset(def, p.name, p.values))].join('\n\n').replace(/\n\n\n/g, '\n\n') + '\n';
+  [`${def.category === 'Effects' ? 'effect' : 'engine'}: ${def.name}`, '', ...presets.filter((p) => p.name !== 'Init').map((p) => formatPreset(def, p.name, p.values))].join('\n\n').replace(/\n\n\n/g, '\n\n') + '\n';
 
 /** a new card for an engine: the rules of the file, then every row with Init's value and its range, as comments */
 export function cardTemplate(def: AssemblyDef): string {
@@ -256,7 +257,7 @@ export function cardTemplate(def: AssemblyDef): string {
     const range = pd.toggle ? 'off, on' : r.names ? r.names.join(', ') : pd.choices ? pd.choices.slice(0, (pd.top ?? pd.max) + 1).join(', ') : `${num(pd.min)}..${num(r.positions ?? pd.top ?? pd.max)}${pd.unit ? ` ${pd.unit}` : ''}`;
     out.push(`#   ${`${key} = ${formatValue(r, r.init)}`.padEnd(34)} ${range}`);
   }
-  out.push('', `engine: ${def.name}`, '');
+  out.push('', `${def.category === 'Effects' ? 'effect' : 'engine'}: ${def.name}`, '');
   return out.join('\n');
 }
 

@@ -3260,6 +3260,32 @@ if (process.argv.includes('--panel-fixtures')) {
   process.exit(0);
 }
 
+// the effect assemblies of #661 (envelope filter, ducking delay, gated reverb, overdrive, octave fuzz) as factory-made: a
+// played saw under an envelope into each, its out on both sides. The notes' gaps let the ducking delay's echoes and the
+// gated reverb's gate move
+for (const name of ['envelope filter', 'ducking delay', 'gated reverb', 'overdrive', 'octave fuzz']) {
+  const key = `fx-${name.replace(/ /g, '-')}`;
+  const p = emptyPatch(key);
+  const kb = addModule(p, DEFS.fm1, 0, 0), out = addModule(p, DEFS.output, 0, 0);
+  out.params.level = 0.8;
+  const osc = addModule(p, DEFS.osc, 0, 0), env = addModule(p, DEFS.adsr, 0, 0), vca = addModule(p, DEFS.vca, 0, 0);
+  Object.assign(osc.params, { wave: 2, level: 0.8, coarse: -12 });
+  Object.assign(env.params, { a: 0.005, d: 0.2, s: 0.6, r: 0.1 });
+  const w = (a: number, ap: string, b: number, bp: string): void => {
+    if (!connect(p, DEFS, { module: a, port: ap }, { module: b, port: bp })) throw new Error(`${key}: ${ap} -> ${bp}`);
+  };
+  w(kb.id, 'pitch', osc.id, 'pitch'); w(kb.id, 'gate', env.id, 'gate');
+  w(osc.id, 'out', vca.id, 'in'); w(env.id, 'env', vca.id, 'cv');
+  const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === name)!, 300, 0);
+  const inp = a.inputs.find((r) => r.label === 'in')!;
+  for (const t of [{ module: inp.module, port: inp.port }, ...(inp.also ?? [])]) w(vca.id, 'out', t.module, t.port);
+  const o = a.outputs.find((r) => r.label === 'out')!;
+  w(o.module, o.port, out.id, 'l'); w(o.module, o.port, out.id, 'r');
+  tests[key] = p;
+  events[key] = [[0, 'on', 48], [128 * 60, 'off', 48], [128 * 160, 'on', 55], [128 * 175, 'off', 55], [128 * 260, 'on', 43], [128 * 280, 'off', 43]];
+  ends[key] = 128 * 400;
+}
+
 // the factory drum kits play on the transport: their kits start it with the notes
 for (const [name, patch] of Object.entries(tests))
   if (!events[name] && patch.modules.some((m) => m.type === 'steps')) events[name] = [[0, 'run', 0], ...EVENTS];
