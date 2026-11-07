@@ -3138,8 +3138,8 @@ const steps: ModuleImpl<StepsState> = {
       }
       if (s.pend > 0 && --s.pend === 0 && (dir === 0 || s.pstep < len)) fire(s.pstep, i);
       s.ago++;
-      if (s.once === 1) adv = 0; // (play once: its passes are played, #632)
       for (; adv > 0; adv--) {
+        if (s.once === 1) break; // (play once: its passes are played, #632)
         let next = nextStep(s, len, dir);
         if (next.visit === 0) { // the end of a pass: a song's next entry, a queued pattern
           if (s.once === 1 || (s.once > 1 && --s.once === 1)) break; // (play once: the last pass ended, #632)
