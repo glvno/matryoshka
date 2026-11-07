@@ -144,7 +144,13 @@ for (const t of TYPE_ORDER) {
   w(`static const int32_t ${up(t)}_MIN[] = {${row((p) => p.min)}};`);
   w(`static const int32_t ${up(t)}_MAX[] = {${row((p) => p.max)}};`);
   w(`static const int32_t ${up(t)}_DEF[] = {${row((p) => p.default)}};`);
-  w(`static const int32_t ${up(t)}_INC[] = {${row((p) => Math.max(p.step ?? 0, (p.max - p.min) / 100))}};`);
+  // a knob click: 1/100 of the range, at least the step; a row of whole steps moves a whole number of them, so a click
+  // stays on its grid (a Delay time of 1 ms went to 7.99, not 8)
+  const inc = (p: (typeof ps)[number]): number => {
+    const step = p.step ?? 0, c = Math.max(step, (p.max - p.min) / 100);
+    return step >= 1 && Number.isInteger(step) ? Math.max(1, Math.round(c / step)) * step : c;
+  };
+  w(`static const int32_t ${up(t)}_INC[] = {${row(inc)}};`);
   w(`static const int32_t ${up(t)}_STEP[] = {${row((p) => p.step ?? 0)}};`);
   // (engine.c keeps a morph B side past max as B - min in 1/2048 of a unit, in 16 bits: a stretch is under 32 wide)
   for (const p of ps) if (p.top !== undefined && (p.log || p.top - p.min >= 32)) throw new Error(`${t}.${p.name}: a stretch (top) must be linear and under 32 wide`);
