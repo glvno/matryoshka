@@ -826,7 +826,7 @@ static void *line_at(uint8_t reg, uint32_t at, uint32_t bytes)   /* zeroed */
  * Not MAX_PAR per node and instance: most types have far fewer (patchbin.ts, the editor's budget, counts the same). */
 static uint32_t par_used;                   /* values taken (host_test checks the editor's count) */
 static int32_t par_spare[2u * MAX_PAR];     /* what a node or instance points at before it is loaded (eng_get_param after a failed load) */
-static node_t node_none;                    /* E.node before a load has taken the patch's (its nmod is 0 then) */
+static node_t node_none ENG_POOL;           /* E.node before a load has taken the patch's (its nmod is 0 then; in the pool, not the RAM region) */
 
 static int32_t *par_take(uint32_t n)        /* n zeroed values, 0 if they do not fit */
 {
