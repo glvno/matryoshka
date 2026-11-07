@@ -530,7 +530,7 @@ static void pages_patch_ask(void)
  * on K1..K4, drawn as a device page. MIDI: the MIDI channel, clock in, MIDI out (K3: sandbox mode's hint names it), clock
  * out (#473); PANEL:
  * the LEDs, knob acceleration; SYSTEM: update mode, factory reset (a turn arms the row, GLO held 2 s does it: menu.c
- * menu_fire), the quick start after power-on (D-247), OUTPUT (D-919); its second page (ALGO again, #702): EDITOR, USB LEVEL (#600), OUT LEVEL (#631). The settings live in the state (SAVE), never in a patch (menu.c setting_step). A row of them is a setting,
+ * menu_fire), the quick start after power-on (D-247), OUTPUT (D-919); its second page (ALGO again, #702): EDITOR, USB LEVEL (#600), 3.5MM OUT (#631). The settings live in the state (SAVE), never in a patch (menu.c setting_step). A row of them is a setting,
  * not a module's parameter: SETTING_ROW in its module byte. */
 #define SETTING_ROW 0xFFu
 static void setting_step(uint32_t row, int32_t s);      /* menu.c */
@@ -541,9 +541,9 @@ static ppage_t pg_menu;
 static const ppage_t *menu_tab_page(void)
 {
     static const char *const LAB[4][PG_ROWS] = {{"MIDI CHANNEL", "CLOCK IN", "MIDI OUT", "CLOCK OUT"}, {"LEDS", "KNOB ACCEL", "COUNT-IN", "TEMPO"}, {"UPDATE MODE", "FACTORY RESET", "QUICK START", "OUTPUT"},
-                                                {"EDITOR", "USB LEVEL", "OUT LEVEL", ""}};
+                                                {"EDITOR", "USB LEVEL", "3.5MM OUT", ""}};
     static const uint8_t ROW[4][PG_ROWS] = {{MR_CH, MR_CLOCK, MR_MOUT, MR_CLKOUT}, {MR_LEDS, MR_ACCEL, MR_CIN, MR_TEMPO}, {MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_OUTPUT},
-                                            {MR_EDITOR, MR_USBLVL, MR_OUTLVL, MR_OUTLVL}};
+                                            {MR_EDITOR, MR_USBLVL, MR_OUT35, MR_OUT35}};
     static const uint8_t N[4] = {4, 4, 4, 3};           /* (the fourth: SYSTEM's second page, #702) */
     uint32_t t = menu_tab > MT_SYSTEM ? MT_MIDI : menu_tab, k;
     if (t == MT_SYSTEM && menu_sys2)
@@ -566,9 +566,9 @@ static const ppage_t *menu_tab_page(void)
 /* a setting's place in its range, 0..width (its bar) */
 static uint32_t setting_bar(uint32_t row, uint32_t width)
 {
-    return row == MR_CH ? cfg.ch * width / 16u : row == MR_LEDS ? cfg.leds * width / 2u : row == MR_OUTPUT ? out_mono * width / 2u : row == MR_EDITOR ? cfg.editor_ignore * width : row == MR_USBLVL ? usb_level * width / (LVL_N - 1u) : row == MR_OUTLVL ? out_level * width / (LVL_N - 1u) : row == MR_CIN ? cfg.count_in * width / 2u
+    return row == MR_CH ? cfg.ch * width / 16u : row == MR_LEDS ? cfg.leds * width / 2u : row == MR_OUTPUT ? out_mono * width / 2u : row == MR_EDITOR ? cfg.editor_ignore * width : row == MR_USBLVL ? usb_level * width / (LVL_N - 1u) : row == MR_CIN ? cfg.count_in * width / 2u
          : row == MR_UPDATE || row == MR_DEFAULTS ? (menu_armed == row ? width : 0u)
-         : (row == MR_CLOCK ? cfg.clock_in : row == MR_MOUT ? cfg.midi_out : row == MR_CLKOUT ? cfg.clock_out : row == MR_QUICK ? cfg.quick : row == MR_TEMPO ? gt_patch : cfg.accel) ? width : 0u;
+         : (row == MR_CLOCK ? cfg.clock_in : row == MR_MOUT ? cfg.midi_out : row == MR_CLKOUT ? cfg.clock_out : row == MR_QUICK ? cfg.quick : row == MR_TEMPO ? gt_patch : row == MR_OUT35 ? !out_off : cfg.accel) ? width : 0u;
 }
 
 static const ppage_t *pages_now(void)
@@ -1566,10 +1566,11 @@ static void toast_first(void)
  * KEYS WIRED after it while nothing is armed, #395, the name cut first), the tempo and a quarter note ("MIDI" on MIDI
  * clock), the octave as = OCT = / OCT + / -- OCT and the battery, spread from margin to margin. In sandbox mode (D-232)
  * the same on gold, with SANDBOX in place of the name and the editor's tempo (sandbox_ui.c sb_foot). The battery: 0..3
- * bars, a bolt on USB power, red when empty */
+ * bars, a bolt on USB power, red when empty. Left of it while GLO > SYSTEM > 3.5MM OUT is OFF (#631, D-925): a red
+ * speaker with an X, the speaker and the jack silent */
 static int sb_foot(char *name, char *tempo);            /* sandbox_ui.c */
 typedef struct {
-    uint8_t mode, rec;                                  /* 1: sandbox mode (gold); REC (the name in red) */
+    uint8_t mode, rec, off;                             /* 1: sandbox mode (gold); REC (the name in red); 3.5MM OUT OFF (the mark) */
     char a[40], t[8], o[8], w[12];                      /* the name, the tempo, the octave, WIRED */
     uint32_t xa, xt, xo, xw;                            /* where each goes */
 } foot_t;
@@ -1579,6 +1580,9 @@ static uint32_t ft_drawn;                               /* the hash of the foote
                                                          * octave runs -3..3: panel.c), the text centred in it, so the
                                                          * tempo stays put when the octave changes (panel_test.c checks) */
 #define BATT_FY (FOOT_MID - 3u)
+#define OFF_FW 9u                                       /* 3.5MM OUT OFF's mark (#631): 9 x 6, 3 px left of the battery */
+#define OFF_FX (BATT_FX - 3u - OFF_FW)
+static const char OFF_MARK[6][10] = {"..#......", ".##.#..#.", "###..##..", "###..##..", ".##.#..#.", "..#......"};
 static int seq_arm_label(char *out, int *rec);          /* (seq_ui.c) */
 static const uint8_t NOTE_A[9][6] = {                   /* the quarter note as the mock draws it (4-bit coverage), x - 1 .. x + 4 */
     {0, 0, 0, 0, 6, 9}, {0, 0, 0, 0, 6, 9}, {0, 0, 0, 0, 6, 9}, {0, 0, 0, 0, 6, 9}, {0, 0, 0, 0, 6, 9},
@@ -1586,11 +1590,13 @@ static const uint8_t NOTE_A[9][6] = {                   /* the quarter note as t
 
 static uint32_t foot_layout(foot_t *f)
 {
-    uint32_t h = 2166136261u, wa, wt, wo, gap16, i;
+    uint32_t h = 2166136261u, wa, wt, wo, wm, gap16, i;
     int panel = eng_find(T_FM1), rec = 0, wired;
     const char *s;
     char *q;
     memset(f, 0, sizeof *f);
+    f->off = out_off;
+    wm = f->off ? OFF_FW + 3u : 0u;                     /* (the mark's room, taken from the spaces and the name) */
     if (sb_on && page == 0u) {                          /* sandbox mode (D-232): SANDBOX where the name goes, on gold, and the
                                                          * editor's tempo; KEYS WIRED as the editor says */
         f->mode = 1;
@@ -1622,7 +1628,7 @@ static uint32_t foot_layout(foot_t *f)
         wo = FOOT_OCT_W;
         {                                               /* nothing armed: KEYS WIRED after the name, in the tempo's ink */
             uint32_t ww = wired ? text_w(&FONT_F, " KEYS WIRED", -1) : 0u;
-            fit(f->a, &FONT_F, 240u - 12u - 13u - wt - wo - 3u * 6u - ww);
+            fit(f->a, &FONT_F, 240u - 12u - 13u - wm - wt - wo - 3u * 6u - ww);
             wa = text_w(&FONT_F, f->a, -1);
             if (ww) {
                 put(f->w, "KEYS WIRED")[0] = 0;
@@ -1630,7 +1636,7 @@ static uint32_t foot_layout(foot_t *f)
                 wa += ww;
             }
         }
-        gap16 = (228u - wa - wt - wo - 13u) * 16u / 3u;  /* (space between: the battery ends at the right margin) */
+        gap16 = (228u - wa - wt - wo - 13u - wm) * 16u / 3u;  /* (space between: the battery ends at the right margin) */
         f->xa = 6u;
         f->xt = 6u + ((wa * 16u + gap16 + 8u) >> 4);
         f->xo = 6u + (((wa + wt) * 16u + 2u * gap16 + 8u) >> 4) + (FOOT_OCT_W - text_w(&FONT_F, f->o, -1)) / 2u;
@@ -1677,12 +1683,18 @@ static void foot_row(const foot_t *f, uint32_t y, uint16_t *row)
                     row[nx + i - 1u] = mix565(P_INK2, row[nx + i - 1u], a + (a > 7u ? 1u : 0u));
             }
     }
-    if (y >= BATT_FY && y < BATT_FY + 6u)
+    if (y >= BATT_FY && y < BATT_FY + 6u) {
         for (i = 0; i < 13u; i++) {
             uint16_t c = batt_px(i, y - BATT_FY, lvl);
             if (c)
                 row[BATT_FX + i] = c;
         }
+        if (f->off && y == BATT_FY)                     /* (the device test mode's SCREEN reads the mark as a text) */
+            scr_pend(OFF_FX, OFF_FW, 6u, "3.5MM OFF", -1);
+        for (i = 0; f->off && i < OFF_FW; i++)
+            if (OFF_MARK[y - BATT_FY][i] == '#')
+                row[OFF_FX + i] = P_WARN;
+    }
 }
 
 /* the footer, whole (or when what it shows changed: whole 0) */

@@ -15,7 +15,7 @@ import { FIXTURES, NOTE, oldPatch } from './check-fixtures.mjs';
 
 /** the scenarios' names, in the order they run (scripts/emu-scenarios.mjs lists them for --only and --list) */
 export const CHECK_SCENARIOS = ['checkOutput', 'checkVerona', 'checkRowDrone', 'checkLiveDrone', 'checkDelays', 'checkNoKeys', 'checkStore',
-  'checkOldPattern', 'checkTeach', 'checkDualCore', 'checkUsbLevel', 'checkOutLevel'];
+  'checkOldPattern', 'checkTeach', 'checkDualCore', 'checkUsbLevel', 'check35mmOut'];
 
 /** `h`: what emu-scenarios.mjs's scenarios use (the target, the editor's page, the checks) */
 export function checkScenarios(h) {
@@ -245,36 +245,74 @@ export function checkScenarios(h) {
         await menuClose();
       }
     },
-    // ---- OUT LEVEL (#631): the analog output at a fixed level, MASTER aside. The emulator's recording is its I2S output
-    // (the analog side): there -12 DB must sit 12 dB under 0 DB; on the rig the recording is USB audio, which OUT LEVEL
-    // must leave as it was, and the analog level is the owner's (a recorder, by ear)
-    async checkOutLevel() {
+    // ---- 3.5MM OUT (#631, D-925): the speaker and the jack off, USB audio apart. By the row (K3 on GLO > SYSTEM 2/2) and by
+    // HOME + OCT- + OCT+ held 2 s; the footer's mark (SCREEN reads it as 3.5MM OFF). The emulator's recording is its I2S
+    // output (the analog side): OFF must be silent there. The rig's recording is its USB audio: OFF must leave it as it
+    // was, and the speaker is the owner's ears. The setting ends as the scenario found it (nothing here SAVEs it)
+    async check35mmOut() {
       const K3 = ENC.k3;
-      try {
-        await check('out level: T110 MONO L R opens, synced', !!(await fixture(FIXTURES.monoLR)));
-        await check('out level: GLO > SYSTEM 2/2, its third row OUT LEVEL reads KNOB', (await menuTab('OUT LEVEL')) && (await levelOf('OUT LEVEL')) === 'KNOB', `${await levelOf('OUT LEVEL')}`);
-        await menuClose();
-        const held = (tag) => recorded(`out-level-${tag}`, async () => { await emu.key(C4, true); await emu.elapse(700); await emu.key(C4, false); await emu.elapse(200); });
-        const at = async (want) => {
-          const v = (await menuTab('OUT LEVEL')) && (await levelTo(K3, 'OUT LEVEL', want));
-          await check(`out level: K3 to ${want}`, v === want, `${v}`);
-          await menuClose();
-          return held(want.replace(' ', ''));
-        };
-        if (!REAL) {
-          const lo = await at('-12 DB'), top = await at('0 DB');
-          const l = lo.why ? 0 : rmsOf(lo.l), t = top.why ? 0 : rmsOf(top.l);
-          await heard('out level: -12 DB sits 12 dB under 0 DB (the I2S output, within 0.5 dB)', lo, l > FLOOR && Math.abs(20 * Math.log10(l / t) + 12) <= 0.5, `-12 DB ${db(l)} dB, 0 DB ${db(t)} dB`);
-          await skip('out level: the speaker and the jack at the fixed level, MASTER turned', 'the emulator\'s MASTER stays put and the rig records USB audio: the owner\'s recorder proves it');
-        } else {
-          const knob = await held('knob'), lo = await at('-24 DB');
-          const k = knob.why ? 0 : rmsOf(knob.l), f = lo.why ? 0 : rmsOf(lo.l);
-          await heard('out level: -24 DB leaves USB audio at MASTER\'s level (the rig\'s recording, within 0.3 dB)', lo, k > FLOOR && Math.abs(20 * Math.log10(f / k)) <= 0.3, `KNOB ${db(k)} dB, -24 DB ${db(f)} dB`);
-          await skip('out level: the speaker and the jack at the fixed level, MASTER turned', 'the rig records USB audio, not the analog output: the owner\'s recorder proves it');
+      /** the row's value: ON or OFF, beside its name */
+      const valueOf = async () => {
+        const t = (await emu.screen()).texts;
+        const y = t.find((x) => x.s === '3.5MM OUT')?.y;
+        return t.find((x) => Math.abs(x.y - (y ?? -99)) <= 14 && /^(ON|OFF)$/.test(x.s))?.s;
+      };
+      const setTo = async (want) => {
+        for (let i = 0; i < 2 && (await valueOf()) !== want; i++) {
+          await emu.turn(K3, want === 'ON' ? 1 : -1);
+          await emu.elapse(300);
         }
+        return valueOf();
+      };
+      /** HOME, OCT- and OCT+ down together for 2.3 s; `during` runs while they are still held (the top bar's message) */
+      const hold3 = async (during) => {
+        for (const b of [B.home, B.octDown, B.octUp]) await emu.key(b, true);
+        await emu.elapse(2300);
+        const r = await during();
+        for (const b of [B.octUp, B.octDown, B.home]) await emu.key(b, false);
+        await emu.elapse(400);
+        return r;
+      };
+      const held = (tag) => recorded(`out-35mm-${tag}`, async () => { await emu.key(C4, true); await emu.elapse(700); await emu.key(C4, false); await emu.elapse(200); });
+      const level = (a) => (a.why ? 0 : rmsOf(a.l) + rmsOf(a.r));
+      let was;
+      try {
+        await check('3.5mm out: T110 MONO L R opens, synced', !!(await fixture(FIXTURES.monoLR)));
+        await check('3.5mm out: GLO > SYSTEM 2/2, its third row 3.5MM OUT reads ON or OFF', !!(await menuTab('3.5MM OUT')) && !!(was = await valueOf()), `${was}`);
+        await check('3.5mm out: K3 right: ON, no mark', (await setTo('ON')) === 'ON' && !(await emu.text('3.5MM OFF')), `${await valueOf()}`);
+        await menuClose();
+        const on = await held('on');
+        await menuTab('3.5MM OUT');
+        await check('3.5mm out: K3 left: OFF, the footer\'s mark (3.5MM OFF)', (await setTo('OFF')) === 'OFF' && (await emu.text('3.5MM OFF')), `${await valueOf()}`);
+        await menuClose();
+        await check('3.5mm out: the mark on the device page too', await emu.text('3.5MM OFF'));
+        const off = await held('off');
+        if (!REAL) {
+          await heard('3.5mm out: ON: the analog output (the I2S) plays', on, level(on) > FLOOR, `${db(level(on))} dB`);
+          await heard('3.5mm out: OFF: the analog output is silent', off, top2(off) === 0, `peak ${db(top2(off))} dB`);
+          await skip('3.5mm out: OFF leaves USB audio as it was', 'the emulator has no USB audio: tools/audio_out_test.sh and the rig\'s recording prove it');
+        } else {
+          const k = level(on), f = level(off);
+          await heard('3.5mm out: OFF leaves USB audio at its level (the rig\'s recording, within 0.3 dB)', off, k > FLOOR && Math.abs(20 * Math.log10(f / k)) <= 0.3, `ON ${db(k)} dB, OFF ${db(f)} dB`);
+          await skip('3.5mm out: OFF silences the speaker and the jack', 'the rig records USB audio, not the analog output: the owner\'s ears prove it');
+        }
+        const p0 = (await emu.screen()).page, octOf = async () => (await emu.texts()).find((t) => /OCT/.test(t)), oct0 = await octOf();
+        const toastOn = await hold3(async () => (await emu.text('3.5MM OUT ON')) && !(await emu.text('3.5MM OFF')));
+        await check('3.5mm out: HOME + OCT- + OCT+ held 2 s: ON, the top bar says 3.5MM OUT ON, the mark goes', toastOn);
+        await check('3.5mm out: let go: no controls sheet, HOME went nowhere, the octave as it was', !(await emu.text('EVERYWHERE')) && (await emu.screen()).page === p0
+          && (await octOf()) === oct0, `page ${(await emu.screen()).page}, ${await octOf()} (was ${oct0})`);
+        const back = await held('combo-on');
+        if (!REAL) await heard('3.5mm out: ON by the hold: the analog output plays again', back, level(back) > FLOOR, `${db(level(back))} dB`);
+        const toastOff = await hold3(async () => (await emu.text('3.5MM OUT OFF')) && (await emu.text('3.5MM OFF')));
+        await check('3.5mm out: held 2 s again: OFF, the top bar says 3.5MM OUT OFF, the mark shows', toastOff);
+        await emu.elapse(2000);                           // (the message gone: menuTab looks for the row's name)
+        await menuTab('3.5MM OUT');
+        await check('3.5mm out: the row reads OFF', (await valueOf()) === 'OFF', `${await valueOf()}`);
+        await menuClose();
       } finally {
-        if (await menuTab('OUT LEVEL')) await levelTo(K3, 'OUT LEVEL', 'KNOB');
-        await check('out level: back to KNOB', (await levelOf('OUT LEVEL')) === 'KNOB', `${await levelOf('OUT LEVEL')}`);
+        const want = was ?? 'ON';
+        if (await menuTab('3.5MM OUT')) await setTo(want);
+        await check(`3.5mm out: as the scenario found it (${want})`, (await valueOf()) === want, `${await valueOf()}`);
         await menuClose();
       }
     },

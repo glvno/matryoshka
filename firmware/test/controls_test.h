@@ -12,7 +12,7 @@
 
 /* what a row's effect is checked on */
 typedef struct {
-    uint32_t page, sr_on, sr_k, run, once, rec, saved, stepped, dev, devpage, menu_tab, man_top, updates, cfg_sum;
+    uint32_t page, sr_on, sr_k, run, once, rec, saved, stepped, dev, devpage, menu_tab, man_top, updates, cfg_sum, out_off;
     int32_t octave, tempo, list_btn, list_step;
     uint32_t params, arms, mutes, trk, row, roll_lo, seq_pg, pattern, lpg, locks;
     int32_t notes_n;
@@ -54,6 +54,7 @@ static void ct_take(ct_snap_t *s)
     s->man_top = man_top;
     s->updates = (uint32_t)(host_updates + host_defaults);
     s->cfg_sum = ct_fnv(ct_fnv(ct_fnv(ct_fnv(ct_fnv(ct_fnv(0, cfg.ch), cfg.midi_out), cfg.count_in), cfg.quick), (uint32_t)gt_patch), cfg.clock_in);
+    s->out_off = out_off;
     s->octave = octave;
     s->tempo = (panel >= 0 ? eng_get_param((uint32_t)panel, FM1_P_TEMPO) : 0) + (int32_t)eng_tempo_global_get();
     s->params = ct_params();
@@ -162,6 +163,8 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_SET: return a->cfg_sum != b->cfg_sum;
     case CE_SAVE_CLOSE: return a->saved != b->saved && a->page != PAGE_MENU;
     case CE_RUN_ROW: return a->updates != b->updates;
+    case CE_ANALOG_OUT: return a->out_off != b->out_off && a->page == b->page && a->sr_on == b->sr_on && a->octave == b->octave && !help_on;   /* (HOME
+                                                         * and the OCTs did nothing of their own, no sheet) */
     case CE_EDITOR: {                                   /* sandbox mode: out as MIDI to the editor, nothing here moved (D-232) */
         int i, cc = 0;
         for (i = b->mlen; i < a->mlen; i++)
@@ -202,6 +205,7 @@ static void ct_reset(void)
     if (seq_rec)
         seq_rec_off();
     sandbox_set(0);
+    out_off = 0;
     panel_held = 0;
     panel_keys(0);
     for (i = 0; i < 2u; i++)
@@ -503,7 +507,15 @@ static void ct_drive(const ctl_row_t *r, uint32_t alt, int dir)
     }
     if (r->at_end)                                      /* (on END: the SONG page's cursor past the last entry) */
         song_cur = (uint8_t)eng_song_len(song_sel);
-    if (r->hold == CH_STEP) {
+    if (r->all) {                                       /* (buttons together: down in order, held, up in reverse) */
+        uint32_t k;
+        for (k = 0; k < r->all; k++)
+            ct_down(r->alt[k].id);
+        if (r->how == CW_HOLD2S)
+            later(2100);
+        for (k = r->all; k-- > 0;)
+            ct_up(r->alt[k].id);
+    } else if (r->hold == CH_STEP) {
         uint32_t n = ct_white(CT_STEP);
         ct_key(n, 1);
         if (r->effect == CE_LOCK)

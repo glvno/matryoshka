@@ -854,8 +854,46 @@ static void help_edges(uint32_t p, uint32_t rel, int pair)
     panel_release_quiet(rel & ~(1u << BTN_HOME));
 }
 
+/* HOME + OCT- + OCT+ held 2 s, on any page (#631, D-925): GLO > SYSTEM > 3.5MM OUT on / off, and a toast says which.
+ * Three buttons for 2 s, so it is not hit by chance. With HOME down first the OCT pair does not open the controls sheet
+ * (panel_edges); with a card open (the pair first) the card closes as it turns over. HOME's release then goes nowhere,
+ * and the OCTs' do nothing (oct_used). Returns rel without HOME's release when that is the case */
+#define OUT_BTNS (OCT_BTNS | 1u << BTN_HOME)
+#define OUT_HOLD_MS 2000u
+static uint32_t out_t0;                             /* fm1_ms | 1 as the three were all down (bit 1: turned over); 0: not all down */
+static uint8_t out_home;                            /* the three were all down since HOME's press */
+static uint32_t out_combo(uint32_t p, uint32_t rel)
+{
+    if (p & (1u << BTN_HOME))
+        out_home = 0;
+    if ((panel_held & OUT_BTNS) != OUT_BTNS) {
+        out_t0 = 0;
+    } else if (!out_t0) {
+        out_t0 = (fm1_ms | 1u) & ~2u;
+        out_home = 1;
+    } else if (!(out_t0 & 2u) && fm1_ms - (out_t0 & ~3u) >= OUT_HOLD_MS) {
+        const char *m;
+        out_t0 |= 2u;
+        out_off = (uint8_t)!out_off;
+        m = out_off ? "3.5MM OUT OFF" : "3.5MM OUT ON";
+        if (help_on) {                              /* (the toast in the bar once the card has gone) */
+            help_msg = m;
+            help_msg_ms = 2000;
+            help_close();
+        } else {
+            ui_msg(m, 2000);
+        }
+        ui_dirty = ui_dirty ? ui_dirty : 1;         /* (the footer's mark) */
+    }
+    if (out_home && (rel & (1u << BTN_HOME))) {
+        out_home = 0;
+        rel &= ~(1u << BTN_HOME);
+    }
+    return rel;
+}
+
 /* buttons pressed (p) and let go (rel) since the last call, matrix ids as bits; call it often, also with no edges: a
- * GLO held in the menu does its armed row after 2 s */
+ * GLO held in the menu does its armed row after 2 s, HOME + OCT- + OCT+ turns 3.5MM OUT over after 2 s */
 static void panel_edges(uint32_t p, uint32_t rel)
 {
     uint32_t oct_rel;
@@ -863,7 +901,7 @@ static void panel_edges(uint32_t p, uint32_t rel)
     if (p & OCT_BTNS) {                             /* an OCT down while the other is (or both at once): the pair (D-245) */
         if ((panel_held & OCT_BTNS) == OCT_BTNS) {
             oct_used = (uint8_t)OCT_BTNS;
-            pair = 1;
+            pair = !(panel_held >> BTN_HOME & 1u);  /* (HOME held: 3.5MM OUT's hold instead, out_combo) */
         } else
             oct_used &= (uint8_t)~(p & OCT_BTNS);
     }
@@ -886,6 +924,7 @@ static void panel_edges(uint32_t p, uint32_t rel)
         }
         midi_btn_sent = (midi_btn_sent | po) & ~rel;
     }
+    rel = out_combo(p, rel);
     if (help_on || pair) {                          /* a card shows, or the pair opens the sheet */
         help_edges(p, rel, pair);
         return;

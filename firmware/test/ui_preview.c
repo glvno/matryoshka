@@ -133,6 +133,8 @@ int main(int argc, char **argv)
     patch_label = PRESET_LIST[p].name;
     if (getenv("MIDIOUT"))
         cfg.midi_out = (uint8_t)atoi(getenv("MIDIOUT"));
+    if (getenv("OUT35"))                                    /* OUT35=0: GLO > SYSTEM > 3.5MM OUT OFF, its mark in the footer (#631) */
+        out_off = (uint8_t)!atoi(getenv("OUT35"));
     if (getenv("SANDBOX")) {                                /* sandbox mode: the card, or (2) a page of the editor's, (3) an
                                                              * older editor's (no device, group or tempo fields) */
         sandbox_live(1, 5000);
