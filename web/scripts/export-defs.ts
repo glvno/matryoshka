@@ -52,8 +52,8 @@ w(`#define DELAY_LENGTH_MAX ${DELAY_LENGTH_MAX}`);
 w(`#define DELAY_REACH_MAX ${DELAY_REACH_MAX}   /* ms: the longest time, the longest length at the lowest rate (#659) */`);
 w(`#define DELAY_NRATE ${DELAY_RATES.length}   /* the Delay's rate row (#659): step r keeps every (1 << r)-th sample */`);
 w(`#define DELAY_TAIL ${DELAY_TAIL}   /* samples at the line end with a lower rate or Tape on: the filters' state (modules.ts) */`);
-w(`/* the low pass in front of a lower rate's line (modules.ts delayAaCoefs at DEVICE_SR), per rate step 1..: two sections, b0 a1 a2 Q28 */`);
-w(`static const int32_t DELAY_AA[DELAY_NRATE - 1][6] = {${[2, 4].map((k) => `{${delayAaCoefs(DEVICE_SR, k).flat().map((c) => Math.round(c * 2 ** 28)).join(', ')}}`).join(', ')}};`);
+w(`/* the low pass in front of a lower rate's line (modules.ts delayAaCoefs at DEVICE_SR), per rate step 1..: two sections, b0 a1 a2 Q30 (engine.c dly_aa) */`);
+w(`static const int32_t DELAY_AA[DELAY_NRATE - 1][6] = {${[2, 4].map((k) => `{${delayAaCoefs(DEVICE_SR, k).flat().map((c) => Math.round(c * 2 ** 30)).join(', ')}}`).join(', ')}};`);
 w(`/* Tape (#660): the loop's one-pole low pass and high pass per rate step (Q24, at a line written every 1 << r samples), the
  * wow and flutter increments (u32 turns a sample) and depths at the wow row's top (1/256 samples), the heads (bit j: head
  * j + 1 at j + 1 times the time) and 1 / n of n heads (Q16) */`);

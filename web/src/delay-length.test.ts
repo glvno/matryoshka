@@ -116,7 +116,7 @@ describe('the Delay\'s length row', () => {
     expect(modulate(timePd, 300, -1)).toBe(1);
     expect(modulate(timePd, 1200, 0)).toBe(1200);
     expect(modulate(timePd, 1600, 1)).toBe(1600 + DELAY_TIME_MAX - 1);   // (within the stretch: the longest time at the lowest rate, #659)
-    expect(modulate(timePd, 7000, 1)).toBe(DELAY_LENGTH_MAX * 4);
+    expect(modulate(timePd, DELAY_LENGTH_MAX * 4 - 300, 1)).toBe(DELAY_LENGTH_MAX * 4);
     expect(morphValue(timePd, 300, 1200, 0.5)).toBe(750);
     expect(engineC).toMatch(/#define DELAY_TIME_TOP \(DELAY_REACH_MAX \* ENG_ONE\)/);
   });
@@ -163,7 +163,16 @@ describe('the FM-1\'s memory (the lines: D-375; one arena, #649)', () => {
     expect(engineC).toMatch(/#define ENG_ARENA \(LINE_ARENA \+ 255u \* ENG_BUF_BYTES \+ 129u \* ENG_INST_BYTES \+ 1536u \* 4u\)/);
     expect(LINES).toEqual({ string: 2208, grain: 88428, reverb: 16148, chorus: 1856 });
     expect(delayBytes(700)).toBe(61888);
-    expect(delayBytes(DELAY_LENGTH_MAX)).toBeLessThanOrEqual(OLD_POOL);
+    // the longest length is what one Delay's line can take of the arena beside a Main and an Output (#649): 10 ms more
+    // would not fit even there
+    expect(delayBytes(DELAY_LENGTH_MAX)).toBeLessThanOrEqual(ARENA);
+    const one = linesPatch([['delay']]);
+    const b = lineBudget(one);
+    expect(DELAY_LENGTH_MAX).toBe(3800);
+    expect(delayBytes(DELAY_LENGTH_MAX) + b.copiesBytes + b.buffersBytes + b.paramsBytes).toBeLessThanOrEqual(ARENA);
+    const lengthBytes = (ms: number): number => 2 * (2 * Math.floor((ms * DEVICE_SR + 1999) / 2000) + 60);   // (delayBytes stops at the longest)
+    expect(lengthBytes(DELAY_LENGTH_MAX)).toBe(delayBytes(DELAY_LENGTH_MAX));
+    expect(lengthBytes(DELAY_LENGTH_MAX + 20) + b.copiesBytes + b.buffersBytes + b.paramsBytes).toBeGreaterThan(ARENA);
   });
 
   it('holds every patch the FM-1 played before (a 700 ms Delay, 8 strings, a Granular, a reverb, a chorus, any subset)', () => {
@@ -213,5 +222,13 @@ describe('the FM-1\'s memory (the lines: D-375; one arena, #649)', () => {
     expect(lineBudget(p).fits).toBe(false);
     const one = linesPatch([['delay']]);
     expect(delayRoom(one, one.modules.find((m) => m.type === 'delay')!.id)).toBe(DELAY_LENGTH_MAX);
+  });
+
+  it('a length past 1.9 s (1.10\'s longest) is format 51; up to it the patch keeps its older format', () => {
+    const p = linesPatch([['delay', { length: 1900 }]]);
+    expect(formatOf(p)).toBeLessThan(51);
+    p.modules.find((m) => m.type === 'delay')!.params.length = 1910;
+    expect(formatOf(p)).toBe(51);
+    expect(DEFS.delay.params.find((q) => q.name === 'length')!.grew).toEqual({ since: 51, from: 1900 });
   });
 });

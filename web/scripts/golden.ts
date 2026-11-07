@@ -1504,16 +1504,17 @@ delayKit('delay-length-short-pingpong', { time: 90, pingpong: 1, length: 150 });
 delayKit('delay-length-1900', { time: 1890, fb: 0.5, length: 1900 });
 for (const n of ['delay-long', 'delay-long-sync', 'delay-long-pingpong', 'delay-1600', 'delay-1600-pingpong', 'delay-length-1900']) ends[n] = 128 * 1400;
 // the rate row (#659): 22k and 11k hold two and four times the length (a time past the length), ping-pong, synced, the
-// swell, the longest (7.6 s), a time that glides (a square LFO on its pin) and a rate that changes while it plays (it
-// empties the line)
+// swell, the longest (15.1 s), a time that glides (a square LFO on its pin) and a rate that changes while it plays (the
+// echoes play on at the new speed, then glide back to the time), with ping-pong, with Tape, between all three rates; a
+// loud saw and noise at 22k and 11k (the low pass in front of the line)
 delayKit('delay-rate-22k', { time: 1300, fb: 0.5, length: 700, rate: 1 });
 delayKit('delay-rate-11k', { time: 2700, fb: 0.5, length: 700, rate: 2 });
 delayKit('delay-rate-22k-pingpong', { time: 450, pingpong: 1, length: 500, rate: 1 });
 delayKit('delay-rate-11k-sync', { sync: 1, time: 416, length: 300, rate: 2 });
 delayKit('delay-rate-11k-swell', { time: 330, fb: 0.8, swell: 1, length: 200, rate: 2 });
-delayKit('delay-rate-max', { time: 7590, fb: 0.3, length: 1900, rate: 2 });
+delayKit('delay-rate-max', { time: 15070, fb: 0.3, length: 3770, rate: 2 });   // (3770 ms: the longest this kit's arena holds)
 for (const n of ['delay-rate-22k', 'delay-rate-11k', 'delay-rate-22k-pingpong']) ends[n] = 128 * 1400;
-ends['delay-rate-max'] = 128 * 2700;
+ends['delay-rate-max'] = 128 * 5300;
 const delayModKit = (name: string, params: Record<string, number>, param: string, lfoRate: number, depth: number): void =>
   kit(name, (add, wire) => {
     const kb = add('fm1', 0, 0);
@@ -1535,7 +1536,30 @@ const delayModKit = (name: string, params: Record<string, number>, param: string
 delayModKit('delay-rate-glide', { time: 400, length: 700, rate: 1 }, 'time', 2.3, 0.3);
 delayModKit('delay-rate-glide-pingpong', { time: 300, length: 700, rate: 2, pingpong: 1 }, 'time', 1.7, 0.25);
 delayModKit('delay-rate-switch', { time: 180, length: 400, rate: 0 }, 'rate', 1.3, 0.5);
-for (const n of ['delay-rate-glide', 'delay-rate-glide-pingpong', 'delay-rate-switch']) ends[n] = 128 * 700;
+delayModKit('delay-rate-switch-pingpong', { time: 150, length: 500, rate: 0, pingpong: 1 }, 'rate', 1.1, 0.5);
+delayModKit('delay-rate-switch-11k', { time: 230, length: 300, rate: 1, fb: 0.7 }, 'rate', 0.9, 1);
+delayModKit('delay-rate-switch-tape', { time: 170, length: 400, rate: 0, tape: 1, heads: 3 }, 'rate', 1.2, 0.5);
+for (const n of ['delay-rate-glide', 'delay-rate-glide-pingpong', 'delay-rate-switch', 'delay-rate-switch-pingpong', 'delay-rate-switch-11k', 'delay-rate-switch-tape']) ends[n] = 128 * 700;
+// the longest length at 44k (#649: what one Delay can take of the arena); a saw and noise at full level into 22k and 11k
+delayKit('delay-length-max', { time: 3760, fb: 0.4, length: 3770 });
+ends['delay-length-max'] = 128 * 1500;
+const delayLoudKit = (name: string, params: Record<string, number>): void =>
+  kit(name, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const osc = add('osc', 0, 0, { wave: 1, level: 1 });
+    const noise = add('noise', 0, 0, { level: 0.6 });
+    const mix = add('mixer', 0, 0, { l1: 1, l2: 1 });
+    const dly = add('delay', 0, 0, { fb: 0.5, mix: 1, ...params });
+    const out = add('output', 0, 0);
+    wire(kb, 'pitch', osc, 'pitch');
+    wire(osc, 'out', mix, 'in1');
+    wire(noise, 'out', mix, 'in2');
+    wire(mix, 'out', dly, 'in');
+    wire(dly, 'out', out, 'l');
+    wire(dly, 'r', out, 'r');
+  });
+delayLoudKit('delay-rate-loud-22k', { time: 300, length: 300, rate: 1 });
+delayLoudKit('delay-rate-loud-11k', { time: 500, length: 200, rate: 2, pingpong: 1 });
 // Tape (#660): the loop's filters and saturation, wow and flutter (none, some, the most), ping-pong, swell, a lower rate,
 // every HEADS choice (heads past the line clamp to it), Tape switched on and off while it plays (a pin), the wow moved
 delayKit('delay-tape', { time: 220, fb: 0.7, tape: 1, wow: 0.3 });
@@ -1555,9 +1579,10 @@ delayKit('delay-tape-heads-clamp', { time: 400, fb: 0.5, tape: 1, heads: 6, leng
 for (const n of ['delay-tape-22k', 'delay-tape-11k-pingpong', 'delay-tape-heads-clamp']) ends[n] = 128 * 900;
 delayModKit('delay-tape-switch', { time: 160, length: 500, tape: 0, wow: 0.5 }, 'tape', 1.1, 0.5);
 delayModKit('delay-tape-switch-22k', { time: 300, length: 500, tape: 0, rate: 1, heads: 3 }, 'tape', 0.9, 0.5);
+delayModKit('delay-tape-switch-pingpong', { time: 140, length: 400, tape: 0, pingpong: 1 }, 'tape', 1.3, 0.5);
 delayModKit('delay-tape-glide', { time: 300, length: 700, tape: 1, heads: 3 }, 'time', 2.1, 0.2);
 delayModKit('delay-tape-wowmod', { time: 200, length: 500, tape: 1, wow: 0.2 }, 'wow', 3.3, 0.4);
-for (const n of ['delay-tape-switch', 'delay-tape-switch-22k', 'delay-tape-glide', 'delay-tape-wowmod']) ends[n] = 128 * 700;
+for (const n of ['delay-tape-switch', 'delay-tape-switch-22k', 'delay-tape-switch-pingpong', 'delay-tape-glide', 'delay-tape-wowmod']) ends[n] = 128 * 700;
 // several Delays in one patch (the effect memory, D-375): three of different lengths in a chain, the last ping-pong
 kit('delays-three', (add, wire) => {
   const kb = add('fm1', 0, 0);
