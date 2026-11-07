@@ -20,7 +20,7 @@
         "low": 0,
         "high": 127,
         "steal": 1,
-        "stack": 0
+        "stack": 1
       }
     },
     {
@@ -426,9 +426,54 @@
         "voices": 0,
         "scale": 0
       }
+    },
+    {
+      "id": 16,
+      "type": "select",
+      "x": 0,
+      "y": 1680,
+      "params": {
+        "pos": 1,
+        "count": 2,
+        "fade": 0,
+        "v1": 0,
+        "v2": 0,
+        "v3": 0,
+        "v4": 0,
+        "v5": 0,
+        "v6": 0,
+        "v7": 0,
+        "v8": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "pos"
+        ],
+        "p2": [
+          "count"
+        ],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
     }
   ],
   "cables": [
+    {
+      "from": {
+        "module": 16,
+        "port": "g2"
+      },
+      "to": {
+        "module": 1,
+        "port": "unison"
+      }
+    },
     {
       "from": {
         "module": 1,
@@ -660,6 +705,15 @@
       "param": "voices",
       "label": "voices",
       "head": "voice"
+    },
+    {
+      "module": 16,
+      "param": "pos",
+      "label": "poly/mono",
+      "names": [
+        "POLY",
+        "MONO"
+      ]
     },
     {
       "module": 11,

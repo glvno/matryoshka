@@ -47,6 +47,8 @@ import {
 export const MAX_POLY = 4;
 /** the allocator module's type */
 export const ALLOC = 'alloc';
+/** a Voicing's inputs that move its settings by a cable (#681); its Part has them too (deviceView) */
+export const VOICING_CABLE_INPUTS = ['assign', 'unison'];
 
 export interface PolyGroup {
   asm: AssemblyInst;
@@ -195,7 +197,8 @@ export interface DeviceGroup {
  * others are appended), its cables into that group come from that group's Part. Its cables into modules outside its
  * groups come from the first group's Part (a group's per-part outputs sum there); an allocator that drives no group gets
  * a group of its own for them, or, with one voice played the keyboard's way (legato auto, last note), a Part outside any
- * group (the shared keyboard). An allocator without keys plays nothing: its cables go (one with neither cables nor cards is
+ * group (the shared keyboard); one with a cable into its assign or unison input always gets a group, and each of its
+ * Parts gets that cable (#681). An allocator without keys plays nothing: its cables go (one with neither cables nor cards is
  * left out). Group order: the poly assemblies in
  * overlay order, then the allocators' own groups.
  */
@@ -225,6 +228,8 @@ export function deviceView(source: Patch, compile = false): { patch: Patch; grou
       cables = cables.filter((c) => c.from.module !== alloc.id && c.to.module !== alloc.id);
       continue;
     }
+    // a cable into its assign / unison input (#681) reaches each of its Parts (added below); its keys cable goes
+    const modeIn = cables.filter((c) => c.to.module === alloc.id && VOICING_CABLE_INPUTS.includes(c.to.port));
     cables = cables.filter((c) => c.to.module !== alloc.id);
     const parts = new Map<number, number>(); // group index -> its Part's id
     mine.forEach((g, k) => {
@@ -240,8 +245,9 @@ export function deviceView(source: Patch, compile = false): { patch: Patch; grou
       modules[slot] = partAt(alloc, alloc.id);
       const cfg = polyCfg(alloc);
       // (an arpeggiated, sequenced or split allocator always gets a group of its own: the shared keyboard plays every key)
-      if (cfg.parts > 1 || cfg.unison || cfg.unisonParts || cfg.legato || cfg.priority || arp || cfg.channel || cfg.low !== undefined || cfg.high !== undefined) out.push({ key: `a${alloc.id}:${cfg.parts}`, cfg, modules: new Set([alloc.id]) });
+      if (cfg.parts > 1 || cfg.unison || cfg.unisonParts || cfg.legato || cfg.priority || arp || cfg.channel || cfg.low !== undefined || cfg.high !== undefined || modeIn.length) out.push({ key: `a${alloc.id}:${cfg.parts}`, cfg, modules: new Set([alloc.id]) });
     }
+    for (const id of mine.length ? [...parts.values()] : [alloc.id]) for (const c of modeIn) cables.push({ from: c.from, to: { module: id, port: c.to.port } });
     if (arp) {
       for (const i of mine) out[i].src = arp.id;
       const own = out.find((g) => g.key === `a${alloc.id}:${polyCfg(alloc).parts}`);

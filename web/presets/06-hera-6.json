@@ -20,7 +20,7 @@
     },
     "targets": {
      "arp": {
-      "module": 18
+      "module": 21
      }
     }
    }
@@ -408,6 +408,90 @@
   },
   {
    "id": 16,
+   "type": "select",
+   "x": 340,
+   "y": 2300,
+   "params": {
+    "pos": 1,
+    "count": 3,
+    "fade": 0,
+    "v1": 0,
+    "v2": 0,
+    "v3": 1,
+    "v4": 0,
+    "v5": 0,
+    "v6": 0,
+    "v7": 0,
+    "v8": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "pos"
+    ],
+    "p2": [
+     "count"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 17,
+   "type": "scale",
+   "x": 20,
+   "y": 2300,
+   "params": {
+    "gain": -0.5917517095361369,
+    "offset": 1
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 18,
+   "type": "vca",
+   "x": 1620,
+   "y": 620,
+   "params": {
+    "gain": 1
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 19,
    "type": "output",
    "x": 2640,
    "y": 20,
@@ -416,10 +500,10 @@
    }
   },
   {
-   "id": 17,
+   "id": 20,
    "type": "steps",
    "x": 20,
-   "y": 2040,
+   "y": 2600,
    "params": {
     "len": 16,
     "rate": 4,
@@ -454,10 +538,10 @@
    "name": "PATTERN"
   },
   {
-   "id": 18,
+   "id": 21,
    "type": "arp",
    "x": 2640,
-   "y": 2040,
+   "y": 2600,
    "params": {
     "mode": 0,
     "rate": 4,
@@ -469,6 +553,46 @@
   }
  ],
  "cables": [
+  {
+   "from": {
+    "module": 16,
+    "port": "out"
+   },
+   "to": {
+    "module": 7,
+    "port": "unison"
+   }
+  },
+  {
+   "from": {
+    "module": 16,
+    "port": "g2"
+   },
+   "to": {
+    "module": 7,
+    "port": "assign"
+   }
+  },
+  {
+   "from": {
+    "module": 16,
+    "port": "out"
+   },
+   "to": {
+    "module": 17,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 17,
+    "port": "out"
+   },
+   "to": {
+    "module": 18,
+    "port": "cv"
+   }
+  },
   {
    "from": {
     "module": 7,
@@ -635,6 +759,16 @@
     "port": "out"
    },
    "to": {
+    "module": 18,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 18,
+    "port": "out"
+   },
+   "to": {
     "module": 13,
     "port": "in"
    }
@@ -665,7 +799,7 @@
     "port": "l"
    },
    "to": {
-    "module": 16,
+    "module": 19,
     "port": "l"
    }
   },
@@ -675,7 +809,7 @@
     "port": "r"
    },
    "to": {
-    "module": 16,
+    "module": 19,
     "port": "r"
    }
   },
@@ -685,13 +819,13 @@
     "port": "keys"
    },
    "to": {
-    "module": 17,
+    "module": 20,
     "port": "keys"
    }
   },
   {
    "from": {
-    "module": 18,
+    "module": 21,
     "port": "keys"
    },
    "to": {
@@ -701,11 +835,11 @@
   },
   {
    "from": {
-    "module": 17,
+    "module": 20,
     "port": "keys"
    },
    "to": {
-    "module": 18,
+    "module": 21,
     "port": "keys"
    }
   }
@@ -902,7 +1036,10 @@
     7,
     13,
     14,
-    15
+    15,
+    16,
+    17,
+    18
    ],
    "inputs": [
     {
@@ -929,6 +1066,16 @@
      "param": "voices",
      "label": "voices",
      "head": "voice"
+    },
+    {
+     "module": 16,
+     "param": "pos",
+     "label": "assign mode",
+     "names": [
+      "POLY 1",
+      "POLY 2",
+      "UNISON"
+     ]
     },
     {
      "module": 2,

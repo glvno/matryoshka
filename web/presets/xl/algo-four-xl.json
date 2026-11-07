@@ -20,7 +20,7 @@
     },
     "targets": {
      "arp": {
-      "module": 102
+      "module": 103
      }
     }
    }
@@ -40,7 +40,7 @@
     "low": 0,
     "high": 127,
     "steal": 1,
-    "stack": 0
+    "stack": 1
    }
   },
   {
@@ -2739,6 +2739,41 @@
   },
   {
    "id": 100,
+   "type": "select",
+   "x": 20,
+   "y": 1460,
+   "params": {
+    "pos": 1,
+    "count": 2,
+    "fade": 0,
+    "v1": 0,
+    "v2": 0,
+    "v3": 0,
+    "v4": 0,
+    "v5": 0,
+    "v6": 0,
+    "v7": 0,
+    "v8": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "pos"
+    ],
+    "p2": [
+     "count"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 101,
    "type": "output",
    "x": 2960,
    "y": 20,
@@ -2747,7 +2782,7 @@
    }
   },
   {
-   "id": 101,
+   "id": 102,
    "type": "steps",
    "x": 20,
    "y": 4280,
@@ -2785,7 +2820,7 @@
    "name": "PATTERN"
   },
   {
-   "id": 102,
+   "id": 103,
    "type": "arp",
    "x": 2960,
    "y": 4280,
@@ -4572,11 +4607,21 @@
   },
   {
    "from": {
+    "module": 100,
+    "port": "g2"
+   },
+   "to": {
+    "module": 2,
+    "port": "unison"
+   }
+  },
+  {
+   "from": {
     "module": 98,
     "port": "out"
    },
    "to": {
-    "module": 100,
+    "module": 101,
     "port": "l"
    }
   },
@@ -4586,7 +4631,7 @@
     "port": "out"
    },
    "to": {
-    "module": 100,
+    "module": 101,
     "port": "r"
    }
   },
@@ -4686,13 +4731,13 @@
     "port": "keys"
    },
    "to": {
-    "module": 101,
+    "module": 102,
     "port": "keys"
    }
   },
   {
    "from": {
-    "module": 102,
+    "module": 103,
     "port": "keys"
    },
    "to": {
@@ -4702,11 +4747,11 @@
   },
   {
    "from": {
-    "module": 101,
+    "module": 102,
     "port": "keys"
    },
    "to": {
-    "module": 102,
+    "module": 103,
     "port": "keys"
    }
   }
@@ -5328,7 +5373,8 @@
     68,
     79,
     90,
-    99
+    99,
+    100
    ],
    "inputs": [
     {
@@ -5773,11 +5819,15 @@
      ]
     },
     {
-     "module": 2,
-     "param": "voices",
+     "module": 100,
+     "param": "pos",
      "label": "poly/mono",
      "col": true,
-     "head": "performance"
+     "head": "performance",
+     "names": [
+      "POLY",
+      "MONO"
+     ]
     },
     {
      "module": 32,
@@ -5863,5 +5913,5 @@
    ]
   }
  ],
- "notes": "DX100 panel; one OP picker selects all fourteen operator controls. POLY/MONO is voice count (8/1): Selectors cannot set it. LFO SPEED covers 0.0008–55 Hz. AR/D1R/D2R use 0..31 rates: zero stops the stage; D2R zero holds D1L. D1L/RR use 0..15. Rate scaling uses 0..3. PB MODE selects LOW/HIGH/KON. Breath uses CC 2; foot uses CC 64. Ratio has the original 64 choices; detune has -3..+3 positions (up to 2.6 cents). Bend uses octaves. Cartridge, MIDI settings and stored patch memory are hardware/stora"
+ "notes": "DX100 panel; one OP picker selects all fourteen operator controls. LFO SPEED covers 0.0008–55 Hz. AR/D1R/D2R use 0..31 rates: zero stops the stage; D2R zero holds D1L. D1L/RR use 0..15. Rate scaling uses 0..3. PB MODE selects LOW/HIGH/KON. Breath uses CC 2; foot uses CC 64. Ratio has the original 64 choices; detune has -3..+3 positions (up to 2.6 cents). Bend uses octaves. Cartridge, MIDI settings and stored patch memory are hardware/storage, not reproduced."
 }

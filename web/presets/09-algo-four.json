@@ -20,7 +20,7 @@
     },
     "targets": {
      "arp": {
-      "module": 19
+      "module": 20
      }
     }
    }
@@ -40,7 +40,7 @@
     "low": 0,
     "high": 127,
     "steal": 1,
-    "stack": 0
+    "stack": 1
    }
   },
   {
@@ -449,6 +449,41 @@
   },
   {
    "id": 17,
+   "type": "select",
+   "x": 20,
+   "y": 1740,
+   "params": {
+    "pos": 1,
+    "count": 2,
+    "fade": 0,
+    "v1": 0,
+    "v2": 0,
+    "v3": 0,
+    "v4": 0,
+    "v5": 0,
+    "v6": 0,
+    "v7": 0,
+    "v8": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "pos"
+    ],
+    "p2": [
+     "count"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 18,
    "type": "output",
    "x": 2320,
    "y": 20,
@@ -457,10 +492,10 @@
    }
   },
   {
-   "id": 18,
+   "id": 19,
    "type": "steps",
    "x": 20,
-   "y": 1480,
+   "y": 2040,
    "params": {
     "len": 16,
     "rate": 4,
@@ -495,10 +530,10 @@
    "name": "PATTERN"
   },
   {
-   "id": 19,
+   "id": 20,
    "type": "arp",
    "x": 2320,
-   "y": 1480,
+   "y": 2040,
    "params": {
     "mode": 0,
     "rate": 4,
@@ -510,6 +545,16 @@
   }
  ],
  "cables": [
+  {
+   "from": {
+    "module": 17,
+    "port": "g2"
+   },
+   "to": {
+    "module": 2,
+    "port": "unison"
+   }
+  },
   {
    "from": {
     "module": 2,
@@ -726,7 +771,7 @@
     "port": "out"
    },
    "to": {
-    "module": 17,
+    "module": 18,
     "port": "l"
    }
   },
@@ -736,7 +781,7 @@
     "port": "out"
    },
    "to": {
-    "module": 17,
+    "module": 18,
     "port": "r"
    }
   },
@@ -746,13 +791,13 @@
     "port": "keys"
    },
    "to": {
-    "module": 18,
+    "module": 19,
     "port": "keys"
    }
   },
   {
    "from": {
-    "module": 19,
+    "module": 20,
     "port": "keys"
    },
    "to": {
@@ -762,11 +807,11 @@
   },
   {
    "from": {
-    "module": 18,
+    "module": 19,
     "port": "keys"
    },
    "to": {
-    "module": 19,
+    "module": 20,
     "port": "keys"
    }
   }
@@ -1051,7 +1096,8 @@
    "open": false,
    "modules": [
     2,
-    16
+    16,
+    17
    ],
    "inputs": [
     {
@@ -1073,6 +1119,15 @@
      "param": "voices",
      "label": "voices",
      "head": "voice"
+    },
+    {
+     "module": 17,
+     "param": "pos",
+     "label": "poly/mono",
+     "names": [
+      "POLY",
+      "MONO"
+     ]
     },
     {
      "module": 12,

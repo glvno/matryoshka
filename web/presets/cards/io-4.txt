@@ -54,8 +54,7 @@
 # keys
 #   transpose = NORMAL                 NORMAL, -1 OCT
 #   tuning = 0                         -4..4
-#   assign = rotate                    rotate, lowest, reuse, reset
-#   unison = off                       off, on, share
+#   key assign = POLY I                POLY I, POLY II, UNISON I, UNISON II
 #   hold = 1                           1..2
 #   ensemble = 2                       1..2
 #   out: a screen, not a value
@@ -126,12 +125,12 @@ preset: Unison Lead
   vca / d = 0.4 s
   vca / s = 0.9
   vca / r = 0.3 s
-  level = 0.29
+  level = 0.27
   lfo / rate = 4.5 Hz
   delay time = 0.4 s
   portamento = 0.12 s
   switch = 2
-  unison = on
+  key assign = UNISON I
   ensemble = 1
 
 # The TRIGGER's sample and hold steps the cutoff of a resonant filter on a sustained pulse.

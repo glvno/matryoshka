@@ -95,7 +95,7 @@ export function casesHeader(cases: MigrationCase[]): string {
 }
 
 /** the cases every check uses: a 1.9.0 preset of Cassia 1, basic poly and Oracle V (#627's done-when), one stored before
- * 1.8.2 (Cassia 1, 88 values), and the hand-written maps (Cassia 1 before #430, 8 Lire before D-852) */
+ * 1.8.2 (Cassia 1, 88 values), and the hand-written maps (Cassia 1 before #430, 8 Lire before D-852, Io 4 before #681) */
 export const CASE_PICKS = [
   { name: 'MY CASSIA', from: '2b89b424' },
   { name: 'MY POLY', from: '77fdb539' },
@@ -103,4 +103,5 @@ export const CASE_PICKS = [
   { name: 'SHORT CZ', from: '2b89b424', short: 88 },
   { name: 'OLD CZ', from: '62d178d5' },
   { name: 'OLD LIRE', from: 'd34140e9' },
+  { name: 'MY IO 4', from: 'bcfb20df' },
 ];

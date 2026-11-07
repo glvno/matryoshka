@@ -214,6 +214,13 @@ export const PRIORITIES = ['last', 'low', 'high'];
 /** how a poly assembly hands notes to its parts (engine.ts allocate): the next part in turn, the lowest-numbered free
  * part, or a free part whose last note was the key (else the one free the longest) */
 export const ASSIGN_MODES = ['rotate', 'lowest', 'reuse', 'reset'];
+/**
+ * A Voicing's `assign` or `unison` with a signal on its input of that name (#681): the input moves the setting by whole
+ * choices, one a unit, rounded to the nearest (a gate steps it once; a Selector's values pick a choice), within the
+ * setting's choices (assign 0..3, unison 0 off, 1 on, 2 share). Both engines read the input's first sample once a block,
+ * after the block, so the next block's keys are handed out that way (engine.ts voicingCables, engine.c group_cables).
+ */
+export const voicingSetting = (base: number, cv: number, top: number): number => Math.min(top, Math.max(0, Math.round(base) + Math.floor(cv + 0.5)));
 
 /** the FM-1 panel's buttons a patch owns (#57 decision 4), gate outputs of the Main module; the device keeps PRESET, PLAY,
  * SAVE, HOME and OCT- / OCT+. The knobs K1..K4 are no signals: they edit the rows of the device page in focus (pages.ts),
@@ -2689,12 +2696,13 @@ const crush: ModuleImpl<{ held: number; cnt: number } & OsState> = {
  * do not hold it any more: old ones get an allocator instead). A poly assembly's own keyboard: the note its part plays (pitch with the bend and the part's detune / drift flaw, gate, velocity), the part's place among
  * the parts (index -1 first .. 1 last, 0 with one part), whether the note began over a held one (legato) and its pitch
  * step from the previous note in octaves (jump; the first from C4). Outside a poly assembly it is the shared keyboard.
+ * Its `assign` and `unison` inputs are its Voicing's (the engine reads them for the group: engine.ts voicingCables).
  */
 const part: ModuleImpl<null> = {
   def: {
     type: 'part',
     label: 'Part',
-    inputs: [],
+    inputs: [control('assign'), control('unison')],
     outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump'), gate('trig'), gate('low'), gate('high'), gate('unison')],
     params: [],
   },
@@ -2772,20 +2780,21 @@ export const NOTE_NAMES = Array.from({ length: 128 }, (_, n) => `${PITCH_CLASSES
  * output is per voice: into a poly assembly voice i reaches copy i (the voice cards), into a module that runs once the
  * voices sum. The poly assemblies it feeds run once per voice. The engines run it in its Part form (poly.ts deviceView).
  * channel / low / high: it takes only the keys of that MIDI channel (all = the device's) between those notes (a split or
- * a layer per channel); an Arpeggiator's notes are judged by the range only.
+ * a layer per channel); an Arpeggiator's notes are judged by the range only. The `assign` and `unison` inputs move those
+ * settings by a cable (voicingSetting, #681: one Selector row can be a polysynth's whole key assign switch).
  */
 const alloc: ModuleImpl<null> = {
   def: {
     type: 'alloc',
     label: 'Voicing',
-    inputs: [keys('keys')],
+    inputs: [keys('keys'), control('assign'), control('unison')],
     outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump'), gate('trig'), gate('low'), gate('high'), gate('unison')],
     params: [
       param('voices', 1, 16, 4, { step: 1 }),
-      param('assign', 0, 2, 0, { step: 1, choices: ASSIGN_MODES, top: 3 }),
+      param('assign', 0, 2, 0, { step: 1, choices: ASSIGN_MODES, top: 3, input: 'assign', rest: (p, cv) => voicingSetting(p.assign ?? 0, cv, 3) }),
       param('legato', 0, 2, 0, { step: 1, choices: LEGATO_MODES }),
       param('priority', 0, 2, 0, { step: 1, choices: PRIORITIES }),
-      param('unison', 0, 1, 0, { step: 1, choices: UNISON_ASSIGN, top: 2 }),
+      param('unison', 0, 1, 0, { step: 1, choices: UNISON_ASSIGN, top: 2, input: 'unison', rest: (p, cv) => voicingSetting(p.unison ?? 0, cv, 2) }),
       param('channel', 0, 16, 0, { step: 1, choices: KEY_CHANNELS }),
       param('low', 0, 127, 0, { step: 1, choices: NOTE_NAMES }),
       param('high', 0, 127, 127, { step: 1, choices: NOTE_NAMES }),

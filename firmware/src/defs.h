@@ -707,6 +707,8 @@ enum {
 #define SHIFT_NDATA 0
 
 /* part: Part */
+#define PART_I_ASSIGN 0
+#define PART_I_UNISON 1
 #define PART_O_PITCH 0
 #define PART_O_GATE 1
 #define PART_O_VEL 2
@@ -717,7 +719,7 @@ enum {
 #define PART_O_LOW 7
 #define PART_O_HIGH 8
 #define PART_O_UNISON 9
-#define PART_NIN 0
+#define PART_NIN 2
 #define PART_NOUT 10
 #define PART_NPAR 0
 #define PART_CVBASE -1
@@ -739,6 +741,8 @@ enum {
 
 /* alloc: Voicing */
 #define ALLOC_I_KEYS 0
+#define ALLOC_I_ASSIGN 1
+#define ALLOC_I_UNISON 2
 #define ALLOC_O_PITCH 0
 #define ALLOC_O_GATE 1
 #define ALLOC_O_VEL 2
@@ -759,7 +763,7 @@ enum {
 #define ALLOC_P_HIGH 7
 #define ALLOC_P_STEAL 8
 #define ALLOC_P_STACK 9
-#define ALLOC_NIN 1
+#define ALLOC_NIN 3
 #define ALLOC_NOUT 10
 #define ALLOC_NPAR 10
 #define ALLOC_CVBASE -1
@@ -1584,7 +1588,7 @@ static const char *const SHIFT_PN[] = {"SHIFT", "CVAMT", "MIX"};
 static const uint8_t SHIFT_LOG[] = {0, 0, 0};
 static const char *const SHIFT_UNIT[] = {"HZ", "HZ", ""};
 static const char *const *const SHIFT_CH[] = {0, 0, 0};
-static const char *const PART_INNAMES[] = {0};
+static const char *const PART_INNAMES[] = {"ASSIGN", "UNISON"};
 static const char *const RANDOM_INNAMES[] = {"P1", "P2", "CLOCK"};
 static const int32_t RANDOM_MIN[] = {0, 3277};
 static const int32_t RANDOM_MAX[] = {65536, 1310720};
@@ -1596,7 +1600,7 @@ static const uint8_t RANDOM_LOG[] = {0, 1};
 static const char *const RANDOM_UNIT[] = {"", "HZ"};
 static const char *const RANDOM_CH0[] = {"FIXED", "WALK", 0};
 static const char *const *const RANDOM_CH[] = {RANDOM_CH0, 0};
-static const char *const ALLOC_INNAMES[] = {"KEYS"};
+static const char *const ALLOC_INNAMES[] = {"KEYS", "ASSIGN", "UNISON"};
 static const int32_t ALLOC_MIN[] = {65536, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static const int32_t ALLOC_MAX[] = {1048576, 131072, 131072, 131072, 65536, 1048576, 8323072, 8323072, 65536, 1048576};
 static const int32_t ALLOC_DEF[] = {262144, 0, 0, 0, 0, 0, 0, 8323072, 65536, 0};
@@ -1808,7 +1812,7 @@ static const def_t DEFS[N_TYPES] = {
     {SHIFT_NIN, SHIFT_NOUT, SHIFT_NPAR, 2, SHIFT_CVBASE, 0, SHIFT_NDATA, 3, SHIFT_MIN, SHIFT_MAX, SHIFT_DEF, SHIFT_INC, "FREQ SHIFTER", SHIFT_PN, SHIFT_INNAMES, SHIFT_LOG, SHIFT_UNIT, SHIFT_CH, 0, 0, SHIFT_STEP},   /* shift */
     {PART_NIN, PART_NOUT, PART_NPAR, 0, PART_CVBASE, -1, PART_NDATA, 0, 0, 0, 0, 0, "PART", 0, PART_INNAMES, 0, 0, 0, 0, 0, 0},   /* part */
     {RANDOM_NIN, RANDOM_NOUT, RANDOM_NPAR, 0, RANDOM_CVBASE, -1, RANDOM_NDATA, 0, RANDOM_MIN, RANDOM_MAX, RANDOM_DEF, RANDOM_INC, "RANDOM", RANDOM_PN, RANDOM_INNAMES, RANDOM_LOG, RANDOM_UNIT, RANDOM_CH, 0, 0, RANDOM_STEP},   /* random */
-    {ALLOC_NIN, ALLOC_NOUT, ALLOC_NPAR, 0, ALLOC_CVBASE, -1, ALLOC_NDATA, 0, ALLOC_MIN, ALLOC_MAX, ALLOC_DEF, ALLOC_INC, "VOICING", ALLOC_PN, ALLOC_INNAMES, ALLOC_LOG, ALLOC_UNIT, ALLOC_CH, ALLOC_TOP, ALLOC_SINCE, ALLOC_STEP},   /* alloc */
+    {ALLOC_NIN, ALLOC_NOUT, ALLOC_NPAR, 6, ALLOC_CVBASE, -1, ALLOC_NDATA, 0, ALLOC_MIN, ALLOC_MAX, ALLOC_DEF, ALLOC_INC, "VOICING", ALLOC_PN, ALLOC_INNAMES, ALLOC_LOG, ALLOC_UNIT, ALLOC_CH, ALLOC_TOP, ALLOC_SINCE, ALLOC_STEP},   /* alloc */
     {ARP_NIN, ARP_NOUT, ARP_NPAR, 0, ARP_CVBASE, -1, ARP_NDATA, 0, ARP_MIN, ARP_MAX, ARP_DEF, ARP_INC, "ARPEGGIATOR", ARP_PN, ARP_INNAMES, ARP_LOG, ARP_UNIT, ARP_CH, 0, 0, ARP_STEP},   /* arp */
     {STEPS_NIN, STEPS_NOUT, STEPS_NPAR, 0, STEPS_CVBASE, -1, STEPS_NDATA, 0, STEPS_MIN, STEPS_MAX, STEPS_DEF, STEPS_INC, "STEPS", STEPS_PN, STEPS_INNAMES, STEPS_LOG, STEPS_UNIT, STEPS_CH, STEPS_TOP, STEPS_SINCE, STEPS_STEP},   /* steps */
     {MACRO_NIN, MACRO_NOUT, MACRO_NPAR, 0, MACRO_CVBASE, -1, MACRO_NDATA, 0, MACRO_MIN, MACRO_MAX, MACRO_DEF, MACRO_INC, "MACRO", MACRO_PN, MACRO_INNAMES, MACRO_LOG, MACRO_UNIT, MACRO_CH, 0, 0, MACRO_STEP},   /* macro */

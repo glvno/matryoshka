@@ -58,4 +58,15 @@ export const HAND_MAPS: HandMap[] = [
       'select#37.pos': { table: ['select#40.pos', 'select#42.pos'], lo: [1, 1], n: [2, 2], v: [1, 3, 2, 3] },
     },
   },
+
+  // ---- 1.11, issue #681: Io 4's KEY ASSIGNMENT is one Selector (POLY I, POLY II, UNISON I, UNISON II) whose cables set
+  // the Voicing's assign and unison, where it was the Voicing's assign row (rotate, lowest, reuse, reset) and unison row
+  // (off, on, share). Unison on is UNISON I and share UNISON II, whatever the assign; with unison off, lowest is POLY II
+  // and the other assign modes (rotate, and reuse and reset, which the JP-4 has not got) are POLY I.
+  {
+    engine: 'Io 4', from: 'bcfb20df', to: '908f8d0d', why: 'issue #681: the assign and unison rows became one key assign switch',
+    rows: {
+      'select#55.pos': { table: ['alloc#1.assign', 'alloc#1.unison'], lo: [0, 0], n: [4, 3], v: [1, 3, 4, 2, 3, 4, 1, 3, 4, 1, 3, 4] },
+    },
+  },
 ];

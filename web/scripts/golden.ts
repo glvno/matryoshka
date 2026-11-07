@@ -849,6 +849,55 @@ for (const stack of [0, 1, 2, 4, 8]) for (const priority of [0, 1, 2]) {
     [512, 'off', 55], [640, 'off', 60], [768, 'on', 72], [896, 'off', 72]];
   ends[name] = 1024;
 }
+// A key assign switch on a cable (#681): a Selector, moved by the mod wheel, sets the Voicing's unison by its value and
+// its assign by its second position's gate, as Io 4's KEY ASSIGNMENT does (POLY I, POLY II, UNISON I, UNISON II). Keys
+// held across each change: into unison the parts take the notes they play, out of it they keep them.
+{
+  const name = 'voicing-cable-key-assign';
+  let ids: number[] = [];
+  kit(name, (add, wire) => {
+    const main = add('fm1', 0, 0);
+    const sel = add('select', 0, 0, { count: 4, pos: 1, v1: 0, v2: 0, v3: 1, v4: 2 });
+    wire(main, 'mod', sel, 'pos');
+    const part = add('part', 0, 0), pitch = add('vca', 0, 0), mode = add('vca', 0, 0);
+    const out = add('output', 0, 0, { level: .2 });
+    wire(sel, 'out', part, 'unison'); wire(sel, 'g2', part, 'assign');
+    wire(part, 'pitch', pitch, 'in'); wire(part, 'gate', pitch, 'cv'); wire(pitch, 'out', out, 'l');
+    wire(part, 'unison', mode, 'in'); wire(part, 'index', mode, 'cv'); wire(mode, 'out', out, 'r');
+    ids = [part, pitch, mode];
+  });
+  polyAsm(tests[name], ids, { parts: 4 });
+  events[name] = [[0, 'on', 60], [0, 'on', 64], [128 * 10, 'on', 67], [128 * 20, 'cc', 1, 85], [128 * 30, 'off', 67],
+    [128 * 40, 'cc', 1, 127], [128 * 50, 'on', 72], [128 * 60, 'cc', 1, 42], [128 * 70, 'off', 60], [128 * 70, 'on', 55],
+    [128 * 80, 'off', 64], [128 * 80, 'off', 72], [128 * 80, 'on', 48], [128 * 90, 'cc', 1, 0], [128 * 100, 'on', 50],
+    [128 * 100, 'on', 52], [128 * 101, 'on', 53], [128 * 110, 'cc', 1, 85], [128 * 120, 'off', 48], [128 * 120, 'off', 50],
+    [128 * 120, 'off', 52], [128 * 120, 'off', 53], [128 * 120, 'off', 55]];
+  ends[name] = 128 * 140;
+}
+// POLY / MONO on a cable (#681, Algo Four): unison with a stack of one, switched by a Selector's gate; each assign mode by
+// a Selector's value (reset included); and a one-voice Voicing whose cable gives it a group of its own
+for (const [name, cfg] of [['voicing-cable-mono', { parts: 3, unisonParts: 1, legato: 1 }], ['voicing-cable-assign', { parts: 3, priority: 1 }], ['voicing-cable-one', { parts: 1 }]] as const) {
+  let ids: number[] = [];
+  kit(name, (add, wire) => {
+    const main = add('fm1', 0, 0);
+    const sel = add('select', 0, 0, { count: 4, pos: 1, v1: 0, v2: 1, v3: 2, v4: 3 });
+    wire(main, 'mod', sel, 'pos');
+    const part = add('part', 0, 0), pitch = add('vca', 0, 0), mode = add('vca', 0, 0);
+    const out = add('output', 0, 0, { level: .2 });
+    if (name === 'voicing-cable-assign') wire(sel, 'out', part, 'assign');
+    else wire(sel, 'g2', part, 'unison');
+    wire(part, 'pitch', pitch, 'in'); wire(part, 'gate', pitch, 'cv'); wire(pitch, 'out', out, 'l');
+    wire(part, 'unison', mode, 'in'); wire(part, 'trig', mode, 'cv'); wire(mode, 'out', out, 'r');
+    ids = [part, pitch, mode];
+  });
+  polyAsm(tests[name], ids, cfg);
+  events[name] = [[0, 'on', 60], [128 * 5, 'on', 64], [128 * 10, 'cc', 1, 42], [128 * 15, 'on', 67], [128 * 20, 'off', 60],
+    [128 * 25, 'off', 67], [128 * 30, 'cc', 1, 85], [128 * 32, 'on', 60], [128 * 34, 'off', 60], [128 * 36, 'on', 62],
+    [128 * 38, 'on', 65], [128 * 40, 'cc', 1, 127], [128 * 42, 'off', 62], [128 * 44, 'off', 65], [128 * 44, 'on', 62],
+    [128 * 46, 'on', 69], [128 * 48, 'off', 69], [128 * 50, 'on', 71], [128 * 52, 'cc', 1, 0], [128 * 54, 'on', 72],
+    [128 * 60, 'off', 62], [128 * 60, 'off', 64], [128 * 60, 'off', 71], [128 * 60, 'off', 72]];
+  ends[name] = 128 * 70;
+}
 // Extreme-note flags are observable per voice: multiply by that voice's pitch before summing.
 for (const unison of [false, true]) for (const steal of [false, true]) {
   const name = `voice-extremes-${unison}-${steal}`;
