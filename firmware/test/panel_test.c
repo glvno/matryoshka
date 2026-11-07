@@ -529,6 +529,32 @@ int main(void)
     pv_bin[11] = 0;
     check("format 36 keeps ordinary allocation", eng_load(pv_bin, pv_len) == 0 && eng_poly_get(0, ENG_POLY_STEAL) == 1);
     check("old-format edits cannot add new allocation settings", poly_row_set(mod, ENG_POLY_STEAL, 0) == -1 && poly_row_set(mod, ENG_POLY_ASSIGN, 3) == -1 && pv_bin[9] == 0 && pv_bin[11] == 0);
+    {                                                   /* a VOICES row stops at what the CPU holds (format 51: the
+                                                         * row's top, gen-presets voiceTops); one without a top offers 8 */
+        static const char *const NAME[2] = {"CASSIA 1", "ORACLE V"};
+        static const int32_t WANT[2] = {6, ENG_MAX_PARTS};
+        uint32_t t, d, g, k;
+        for (t = 0; t < 2u; t++) {
+            int found = 0, ok = 0;
+            check(NAME[t], load(NAME[t]) == 0);
+            pages_ensure();
+            for (d = 0; d < pg_ndev && !found; d++)
+                for (g = pg_dev[d].pg0; g < (uint32_t)pg_dev[d].pg0 + pg_dev[d].npg && !found; g++)
+                    for (k = 0; k < pg_page[g].nrows && !found; k++)
+                        if (pg_page[g].par[k] == POLY_ROW) {
+                            uint32_t m, par;
+                            int32_t v = 0;
+                            found = 1;
+                            pg_cur_dev = d;
+                            pg_cur_page = g - pg_dev[d].pg0;
+                            ok = poly_top(&pg_page[g], k) == WANT[t] && poly_row_set(pg_page[g].mod[k], 0, WANT[t]) == 0
+                                 && pages_turn(k, 1, 0, 0, &m, &par, &v) == 1 && v == WANT[t]
+                                 && pages_turn(k, -1, 0, 0, &m, &par, &v) == 1 && v == WANT[t] - 1;
+                        }
+            printf("      (%s: VOICES top %d)\n", NAME[t], (int)WANT[t]);
+            check(t ? "Oracle V's VOICES row (no top) reaches all eight voices" : "Cassia 1's VOICES row stops at six voices, a turn up there stays", found && ok);
+        }
+    }
     fm1_ms = 10000;
     host_ps_init();
     if (load("CASSIA 1") == 0) {                        /* #485: Cassia 1's 119 rows stored whole; one of 88 loads what it has */

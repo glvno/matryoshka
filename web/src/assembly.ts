@@ -16,6 +16,7 @@ import {
   fixCards,
   fixInputRoutes,
   fixTrack,
+  MAX_PARTS,
   removeModule,
   sameEnd,
   type Cable,
@@ -66,6 +67,10 @@ export interface ParamRef {
   /** names of a Selector's positions (#358), position 1 first: the row is a row of named choices on the card, on the
    * Selector's own card and on the FM-1. Only on a Selector's `pos` row; ROW_NAMES_MAX names of ROW_NAME_MAX characters */
   names?: string[];
+  /** the FM-1's top for this row: on a Voice allocator's `voices` row, the most voices the FM-1's VOICES row offers (2 ..
+   * MAX_PARTS - 1; none: MAX_PARTS). gen-presets sets it on a factory patch whose CPU estimate would pass the FM-1's budget
+   * with more voices (voiceTops, D-870); the editor and the browser engine do not read it */
+  top?: number;
   /** this row starts copies of the same controls, shown one at a time (`RowCopies`): layout only */
   copies?: RowCopies;
 }
@@ -104,8 +109,9 @@ export function sameRange(a: ParamDef, b: ParamDef): boolean {
 }
 
 /** the extras of a promoted parameter from a file: the further targets and the position names, each only when well formed */
-function rowExtras(r: Record<string, unknown>): Pick<ParamRef, 'also' | 'names'> {
-  const out: Pick<ParamRef, 'also' | 'names'> = {};
+function rowExtras(r: Record<string, unknown>): Pick<ParamRef, 'also' | 'names' | 'top'> {
+  const out: Pick<ParamRef, 'also' | 'names' | 'top'> = {};
+  if (r.param === 'voices' && Number.isInteger(r.top) && (r.top as number) >= 1 && (r.top as number) < MAX_PARTS) out.top = r.top as number;
   if (Array.isArray(r.also)) {
     const also = r.also.flatMap((t: unknown) => (isRec(t) && Number.isInteger(Number(t.module)) && typeof t.param === 'string' ? [{ module: Number(t.module), param: t.param }] : []));
     if (also.length) out.also = also;
@@ -1326,6 +1332,7 @@ export function toDef(p: Patch, a: AssemblyInst): AssemblyDef {
     const n = remap(r);
     if (r.also) n.also = r.also.map(remap);
     if (r.names) n.names = [...r.names];
+    if (r.top !== undefined) n.top = r.top;
     if (r.copies) n.copies = { ...r.copies };
     return n;
   };
@@ -1402,6 +1409,7 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
     const n = remap(r);
     if (r.also) n.also = r.also.map(remap);
     if (r.names) n.names = [...r.names];
+    if (r.top !== undefined) n.top = r.top;
     if (r.copies) n.copies = { ...r.copies };
     return n;
   };
@@ -1570,6 +1578,7 @@ export function validateAssemblyDef(raw: unknown, defs: Record<string, ModuleDef
       const ex = rowExtras(r);
       if (ex.also) ex.also = ex.also.filter((t) => { const tt = typeOf(t.module); const tq = tt ? rowDef(defs[tt], t.param) : undefined; return !!tq && tt !== 'alloc' && sameRange(pd, tq); });
       if (!ex.also?.length) delete ex.also;
+      if (t !== 'alloc') delete ex.top;
       if (ex.names && !(t === 'select' && r.param === 'pos')) delete ex.names;
       return [{ module: Number(r.module), param: String(r.param), label: String(r.label ?? r.param), ...rowLayout(r), ...ex }];
     }));
