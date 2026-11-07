@@ -46,7 +46,7 @@ describe('phase modulation (#518)', () => {
   });
 
   it('appends pm2 / pm3 after the existing parameters and pm2, pm3, index after the existing ports', () => {
-    expect(DEFS.osc.params.slice(-2).map((q) => [q.name, q.since])).toEqual([['pm2', 49], ['pm3', 49]]);
+    expect(DEFS.osc.params.slice(11, 13).map((q) => [q.name, q.since])).toEqual([['pm2', 49], ['pm3', 49]]); // (analog after them: format 51, #673)
     expect(DEFS.osc.inputs.map((i) => i.name)).toEqual(['pitch', 'pm', 'sync', 'p1', 'p2', 'pm2', 'pm3', 'index']);
     expect(paramsAt('osc', 48).length).toBe(11);
   });

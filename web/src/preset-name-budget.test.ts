@@ -53,6 +53,7 @@ describe('preset names and the FM-1 budget (#452)', () => {
 
   it('another device\'s name goes along while it fits, else it is left out (as the FM-1 does)', () => {
     const p = FM1_PRESETS['<7PH']();
+    for (const m of p.modules) if (m.type === 'osc') m.params.analog = 0; // (in its older format, nearly full: analog moves it to format 51's counted records, #673)
     const drum = p.assemblies!.find((x) => !instIsEngine(p, x) && devicesOf(p, DEFS).some((d) => d.asm === x.id))!;
     expect(layout(p).base.bytes).toBeGreaterThan(DEVICE.bytes - 'SNAPPY'.length);   // (in the format it is written in: #667)
     const before = encodePatch(p).length;
