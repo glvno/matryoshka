@@ -416,7 +416,8 @@ fn flash_chips(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, 
     *emulated += m.ms();
 
     let mut m = Machine::boot_jedec(app, None, Some(0xEF_4014));   // a Winbond W25Q80: not a known chip
-    let shown = wait_text(&mut m, "NO FLASH ID", 15000)?;
+    quick_start(&mut m, 9000)?;                                      // (the boot message waits for the quick start to close)
+    let shown = wait_text(&mut m, "NO FLASH ID", 3000)?;
     t.check("flash chips: an unknown chip says NO FLASH ID (#72)", shown, String::new());
     m.run_for(500)?;
     t.check("flash chips: nothing written to an unknown chip", m.flash().iter().all(|&b| b == 0xff), String::new());
