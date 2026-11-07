@@ -13,6 +13,9 @@
 //   the panel (PANEL_BYTES, always): u16 LE the buttons that switch (bit i = PANEL_BUTTONS[i]), u16 LE the switched ones that are
 //                on, then PANEL_LABEL_KEYS.length labels of PANEL_LABEL_MAX bytes (ASCII, zero padded): the buttons
 //   per module:  u8 type index (bit 7 set: the module is bypassed), then one i32 LE per parameter (Q16.16), in the order of the definition;
+//                since format 51 (COUNTED, #667) a u8 parameter count n follows the type byte and only the first n parameters
+//                follow it: the ones after them are at their defaults on both morph sides (storedParams), and the reader gives
+//                them their defaults (engine.c eng_rec_npar);
 //                modules with parameter inputs (paramInputs) then add i32 att1, i32 att2 (Q16.16, -2..2 since 1.9, #526; every firmware reads them unclamped) and
 //                six matrix masks for the sources p1, p2, k1, k2, k3, k4 (bit n = the n-th parameter), each u16 LE, or u32 LE
 //                for a type with more than 16 parameters (maskBytes; since format 35: every type of an older patch has at most 16, so
@@ -20,7 +23,7 @@
 //                then the module's data (ModuleDef.data bytes): a Steps module's name (TRACK_NAME_MAX bytes, ASCII, zero
 //                padded); a Drum map's u8 keys source (0 none, 1 Main's keys, 2 + the module index of a Steps module)
 //   per cable:   u8 from module index, u8 from output index, u8 to module index, u8 to input index
-//   with flag bit 0, per module: one i32 LE per parameter (Q16.16), the B side of the morph (the Main module's morph
+//   with flag bit 0, per module: one i32 LE per parameter its record holds (Q16.16), the B side of the morph (the Main module's morph
 //                parameter and input fade every parameter from the record's value to this one)
 //   with flag bit 9, after the B values: ceil(module count / 8) bytes, bit i marks module i as having a B side.
 //   with flag bit 2 (legacy, read by the firmware, never written since fixed links became permanent): one u8 disabled-input mask per module
@@ -81,7 +84,7 @@
 
 import { DEFS, delayLine, DELAY_LENGTH_DEFAULT, DRUM_ROWS, drumRowName, PANEL_BUTTONS } from './modules';
 import { KIND_CODE, kindOf, mainOf, switches, toggleEngaged, toggleTargets } from './buttons';
-import { EDITOR_ONLY, flawOf, hasMorph, isBipolar, MAX_MODULES, MAX_PARTS, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ParamDef, type Patch } from './patch';
+import { EDITOR_ONLY, flawOf, hasMorph, isBipolar, MAX_MODULES, MAX_PARTS, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef, type Patch } from './patch';
 import { isShortNote, noteWord, shortWord, type StepNote } from './track';
 import { lockPlan, PATCH_LOCKS_MAX } from './locks';
 import { deviceView, keysInto, MAX_POLY, type DeviceGroup } from './poly';
@@ -99,7 +102,7 @@ export const GROUP_REC = 4 + 5 * MAX_PARTS + 4;
 /** bytes of the panel section (engine.h ENG_PANEL_BYTES): two masks and the labels */
 export const PANEL_BYTES = 4 + PANEL_LABEL_KEYS.length * PANEL_LABEL_MAX;
 export const MAX_CABLES = 255;
-export const VERSION = 50; // 50 (release 1.10, #384; FORMAT_1_10): bit 31 of a note word (track.ts NOTE_WRAP): the note is tied across the loop point, a drone with the most length; 49 (release 1.9, #518, #438, #526; FORMAT_1_9): the Shift register (shreg), Comparator (comp) and Range (range) modules appended after the Follower; bit 7 of a macro range's pin byte (RANGE_BIPOLAR: the pin's −1..1 spans the range); the oscillator's pm2 / pm3 parameters (ParamDef.since) and its pm2, pm3, index inputs after its existing ports; values past their old top (ParamDef.grew): a phase modulation index up to 16 rad, the LFO's random wave, its wide rate up to 80 Hz; a device of kind 2 in the device pages section (a plain module with its own name, NAMED_MODULE); 48: the patterns and songs section (flag bit 10, patternRecord: Steps patterns 2..64, short note words, the selected pattern, up to eight songs), written only when the patch has patterns or songs; 47: the filter's osc parameter (self-oscillation, off by default) after its existing parameters; 46: the Follower module (esp, after the MS-20's External Signal Processor) appended after Ratio; 45: the filter's hp6 output (a resonant 6 dB high pass) after its existing outputs; 44: Steps play direction; 43: appended Ratio module; 42: appended Rate Env module; 41: ADSR hold input after existing ports; 40: LFO wide-rate parameter; 39: group legato bit 6 selects shared unison, together with bit 7; 38: group parts byte high nibble selects unison voice count (0 means all); 37: group priority bit 7 disables voice stealing, assign 3 rotates with reset after all keys lift; 36: a module mask after the morph B set (flag bit 9) preserves which modules have a B side; 35: Tier 1 of #351: the types pd (phase distortion), env8 (eight-step envelope), select (Selector); a device page row's extras (bit 6 of its parameter byte, ROW_MORE: the further parameters it sets and its positions' names, #357, #358; a row without them is written as before); a type with more than 16 parameters writes its matrix and route masks as u32 (maskBytes); parameters appended to existing types (ParamDef.since): drummap repeat (9 parameters), adsr long, lfo phase / range / dir / mult, delay note / swell, reverb freeze, pulse inf, so a record of an older binary holds fewer parameters (the FM-1 reads it with its format's count and gives the rest their defaults: engine.c eng_npar); the Steps rate's choices 7..8 (1/2, 1/64) and swing past 75 (ParamDef.top); 34: the device extras section (flag bit 8: per device its driving Steps track, structure and preset name; #194, #197); 33: the Drum maps' row names section (flag bit 7, the #139 follow-up); 32: the Drum map module (#137; its record's data byte is the source of its keys); 31: the Steps module holds notes (#133): its record carries only its name, the notes section (flag bit 4) replaces the step values, its acc output is gone and it has a keys output (a group's note source may be a Steps module); 30: the button kinds section (flag bit 6: Nothing / Gate / Toggle and a Toggle's modules); 29: the device pages section (flag bit 5); the Main module lost the knob outputs and parameters k1..k6 (its knobs edit the page in focus), the panel section the knob labels (7 labels); the Macro module; 28: the level / rate envelope (env) got the shot parameter; 27: the step values section (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (its record ends with its name and pattern), the Main module lost the seq and rec button outputs (the panel section has 7 buttons, 13 labels); 25: a group record ends with its MIDI channel and key range (low, high); 24: the panel section (button modes, switched states, labels) after the group bytes, the Main module's k5 / k6 and button outputs; 23: the group record ends with its note source (an Arpeggiator), the Main module got the tempo parameter and the run output, the Arpeggiator module; 22: bit 7 of a group's legato byte = unison (a patch without unison still encodes as 21); 21: per-part flaws in the group record (GROUP_REC), the unit is gone; 20: poly assemblies (the group section after the header; the Main module lost legato, priority, unit and the spread, legato, jump, tol, drift outputs, the oscillator its drift; part and random modules); 19: voicing and drift: the Main module got legato, priority, unit (and the legato, jump, tol, drift outputs), the oscillator blend, stack, drift, the glide curve; 18: arbitrary side-input fan-out (flag bit 3); 17: switchable fixed input links (flag bit 2); unmodified patches still encode as 16; 16: the shaper got the sym and stages parameters; 15: macro ranges (flag bit 1); 14: the Main module got the morph input and parameter, header flag bit 0 = a morph B set follows the cables; 13: the shaper and the digitizer got the os (oversampling) parameter, the sequencer glide and gate; 12: bit 7 of the type byte marks a bypassed module; 11: the oscillator got the unison and detune parameters; 10: the merge of the two lines below: the Main module's clock output comes before spread, the lfo's inputs are clk, reset (the restart input was sync), the delay as in 8b, modules of the second and third batch; 9: the matrix masks are u16 (modules with more than 8 parameters), the modules of the second module batch; 8a: osc and lfo got the sync input (p1 / p2 moved), glide and shape modules, the panel's spread output; 8b: the delay has the clk input, r output and sync, pingpong parameters, the lfo got the clk and reset inputs and the sync, div, bpm parameters, the Main module's clock output; 7: the oscillator got the fb parameter; 6: the filter's outputs are lp24, lp12, bp, hp, mix; 5: the filter got the morph input (ports after cv moved), track and morph parameters; 4: the reverb module was added before the output
+export const VERSION = 51; // 51 (release 1.11, #667; FORMAT_1_11): a module record's parameter count after its type byte (COUNTED): the parameters after the count are at their defaults on both morph sides and are not written, nor their morph B values; written only when the patch uses 1.11 or would not fit the FM-1 otherwise (formatOf); 50 (release 1.10, #384; FORMAT_1_10): bit 31 of a note word (track.ts NOTE_WRAP): the note is tied across the loop point, a drone with the most length; 49 (release 1.9, #518, #438, #526; FORMAT_1_9): the Shift register (shreg), Comparator (comp) and Range (range) modules appended after the Follower; bit 7 of a macro range's pin byte (RANGE_BIPOLAR: the pin's −1..1 spans the range); the oscillator's pm2 / pm3 parameters (ParamDef.since) and its pm2, pm3, index inputs after its existing ports; values past their old top (ParamDef.grew): a phase modulation index up to 16 rad, the LFO's random wave, its wide rate up to 80 Hz; a device of kind 2 in the device pages section (a plain module with its own name, NAMED_MODULE); 48: the patterns and songs section (flag bit 10, patternRecord: Steps patterns 2..64, short note words, the selected pattern, up to eight songs), written only when the patch has patterns or songs; 47: the filter's osc parameter (self-oscillation, off by default) after its existing parameters; 46: the Follower module (esp, after the MS-20's External Signal Processor) appended after Ratio; 45: the filter's hp6 output (a resonant 6 dB high pass) after its existing outputs; 44: Steps play direction; 43: appended Ratio module; 42: appended Rate Env module; 41: ADSR hold input after existing ports; 40: LFO wide-rate parameter; 39: group legato bit 6 selects shared unison, together with bit 7; 38: group parts byte high nibble selects unison voice count (0 means all); 37: group priority bit 7 disables voice stealing, assign 3 rotates with reset after all keys lift; 36: a module mask after the morph B set (flag bit 9) preserves which modules have a B side; 35: Tier 1 of #351: the types pd (phase distortion), env8 (eight-step envelope), select (Selector); a device page row's extras (bit 6 of its parameter byte, ROW_MORE: the further parameters it sets and its positions' names, #357, #358; a row without them is written as before); a type with more than 16 parameters writes its matrix and route masks as u32 (maskBytes); parameters appended to existing types (ParamDef.since): drummap repeat (9 parameters), adsr long, lfo phase / range / dir / mult, delay note / swell, reverb freeze, pulse inf, so a record of an older binary holds fewer parameters (the FM-1 reads it with its format's count and gives the rest their defaults: engine.c eng_npar); the Steps rate's choices 7..8 (1/2, 1/64) and swing past 75 (ParamDef.top); 34: the device extras section (flag bit 8: per device its driving Steps track, structure and preset name; #194, #197); 33: the Drum maps' row names section (flag bit 7, the #139 follow-up); 32: the Drum map module (#137; its record's data byte is the source of its keys); 31: the Steps module holds notes (#133): its record carries only its name, the notes section (flag bit 4) replaces the step values, its acc output is gone and it has a keys output (a group's note source may be a Steps module); 30: the button kinds section (flag bit 6: Nothing / Gate / Toggle and a Toggle's modules); 29: the device pages section (flag bit 5); the Main module lost the knob outputs and parameters k1..k6 (its knobs edit the page in focus), the panel section the knob labels (7 labels); the Macro module; 28: the level / rate envelope (env) got the shot parameter; 27: the step values section (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (its record ends with its name and pattern), the Main module lost the seq and rec button outputs (the panel section has 7 buttons, 13 labels); 25: a group record ends with its MIDI channel and key range (low, high); 24: the panel section (button modes, switched states, labels) after the group bytes, the Main module's k5 / k6 and button outputs; 23: the group record ends with its note source (an Arpeggiator), the Main module got the tempo parameter and the run output, the Arpeggiator module; 22: bit 7 of a group's legato byte = unison (a patch without unison still encodes as 21); 21: per-part flaws in the group record (GROUP_REC), the unit is gone; 20: poly assemblies (the group section after the header; the Main module lost legato, priority, unit and the spread, legato, jump, tol, drift outputs, the oscillator its drift; part and random modules); 19: voicing and drift: the Main module got legato, priority, unit (and the legato, jump, tol, drift outputs), the oscillator blend, stack, drift, the glide curve; 18: arbitrary side-input fan-out (flag bit 3); 17: switchable fixed input links (flag bit 2); unmodified patches still encode as 16; 16: the shaper got the sym and stages parameters; 15: macro ranges (flag bit 1); 14: the Main module got the morph input and parameter, header flag bit 0 = a morph B set follows the cables; 13: the shaper and the digitizer got the os (oversampling) parameter, the sequencer glide and gate; 12: bit 7 of the type byte marks a bypassed module; 11: the oscillator got the unison and detune parameters; 10: the merge of the two lines below: the Main module's clock output comes before spread, the lfo's inputs are clk, reset (the restart input was sync), the delay as in 8b, modules of the second and third batch; 9: the matrix masks are u16 (modules with more than 8 parameters), the modules of the second module batch; 8a: osc and lfo got the sync input (p1 / p2 moved), glide and shape modules, the panel's spread output; 8b: the delay has the clk input, r output and sync, pingpong parameters, the lfo got the clk and reset inputs and the sync, div, bpm parameters, the Main module's clock output; 7: the oscillator got the fb parameter; 6: the filter's outputs are lp24, lp12, bp, hp, mix; 5: the filter got the morph input (ports after cv moved), track and morph parameters; 4: the reverb module was added before the output
 /**
  * The lowest format the encoder writes: a patch that uses no parameter appended after it (ParamDef.since past it: a value
  * off its default on either morph side, a pin, macro range, input route or card row on it) is written in this format, its
@@ -109,9 +112,9 @@ export const VERSION = 50; // 50 (release 1.10, #384; FORMAT_1_10): bit 31 of a 
  */
 export const WRITE_FLOOR = 46;
 /** the formats past WRITE_FLOOR that only add something the encoder writes when the patch uses it (format 48: the patterns
- * and songs, flag bit 10; format 50: a note word's bit 31, NOTE_WRAP); every other format past WRITE_FLOOR appends
- * parameters (ParamDef.since) */
-export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point' };
+ * and songs, flag bit 10; format 50: a note word's bit 31, NOTE_WRAP; format 51: counted records, when the patch would not
+ * fit otherwise, COUNTED); every other format past WRITE_FLOOR appends parameters (ParamDef.since) */
+export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records' };
 /** the flag (u16 at offset 6) of the P-locks section (format 49, #524) */
 export const FLAG_LOCKS = 2048;
 
@@ -147,6 +150,33 @@ export const FORMAT_1_9 = 49;
  * Later 1.10 work extends this format, never a new one.
  */
 export const FORMAT_1_10 = 50;
+/**
+ * The 1.11 format (#667): release 1.11's format change. A module record carries its parameter count (COUNTED) and leaves
+ * out the parameters after it, which are at their defaults. The encoder writes it for a patch that uses something of 1.11
+ * (a parameter appended with `since: FORMAT_1_11`) or that would not fit the FM-1's bytes in an older format, so every
+ * other patch stays in the format an FM-1 with 1.10 firmware plays. Later 1.11 work extends this format, never a new one.
+ */
+export const FORMAT_1_11 = 51;
+/** the first format whose module records carry their parameter count (engine.c ENG_COUNTED) */
+export const COUNTED = FORMAT_1_11;
+/**
+ * The parameters module `m`'s record holds in a binary of format `v`: before COUNTED, every parameter of its type in that
+ * format (paramsAt); since, those up to the last one off its default on either morph side (`morph`: the patch has a B set),
+ * so the record leaves out the trailing ones at their defaults, and at least the first `keep` (fm1Rows: the ones the FM-1
+ * can change in its binary, so a knob or a preset there never makes it grow). Compared as written (Q16.16), as the FM-1
+ * reads them.
+ */
+export function storedParams(m: ModuleInst, v: number, morph: boolean, keep = 0): ParamDef[] {
+  const ps = paramsAt(m.type, v);
+  if (v < COUNTED) return ps;
+  let n = ps.length;
+  for (; n > Math.min(keep, ps.length); n--) {
+    const pd = ps[n - 1], d = toQ16(pd.default);
+    const a = m.params[pd.name] ?? pd.default;
+    if (toQ16(a) !== d || (morph && toQ16(m.paramsB?.[pd.name] ?? a) !== d)) break;
+  }
+  return ps.slice(0, n);
+}
 /** what a patch uses of FORMAT_1_10 (`dev`: its device form): a note tied across the loop point, in any pattern */
 function uses110(dev: Patch): boolean {
   return dev.modules.some((m) => m.type === 'steps' && [m.notes, ...(m.patterns ?? []).map((x) => x?.notes)].some((ns) => ns?.some((n) => n.wrap)));
@@ -170,8 +200,11 @@ function uses19(source: Patch, dev: Patch): boolean {
 }
 /** a type's parameters in a binary of format `v` (appended ones, ParamDef.since, come last) */
 export const paramsAt = (type: string, v: number): ParamDef[] => DEFS[type].params.filter((q) => (q.since ?? 0) <= v);
-/** the format encodePatch writes for this patch: VERSION, or WRITE_FLOOR when it uses nothing appended since (`dev`: its device form) */
-export function formatOf(source: Patch, dev: Patch = deviceView(source, true).patch): number {
+/** the format encodePatch writes for this patch: the lowest that holds it (baseFormat), or COUNTED when that one does
+ * not fit the FM-1's bytes and the counted records are smaller (`view`: its device form) */
+export const formatOf = (source: Patch, view: ReturnType<typeof deviceView> = deviceView(source, true)): number => layout(source, view).v;
+/** the lowest format that holds what this patch uses: VERSION, or WRITE_FLOOR when it uses nothing appended since (`dev`: its device form) */
+export function baseFormat(source: Patch, dev: Patch = deviceView(source, true).patch): number {
   const late = (type: string): ParamDef[] => DEFS[type].params.filter((q) => (q.since ?? 0) > WRITE_FLOOR || (q.grew?.since ?? 0) > WRITE_FLOOR);
   const floor = uses110(dev) ? FORMAT_1_10 : uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
   if (!dev.modules.some((m) => late(m.type).length)) return floor;
@@ -198,11 +231,59 @@ export function formatOf(source: Patch, dev: Patch = deviceView(source, true).pa
     }
   return v;
 }
-/** bytes of a module record */
 /** bytes of a parameter mask of this type (the matrix, an input route): u16, u32 past 16 parameters (engine.c eng_mask_bytes) */
 export const maskBytes = (type: string): 2 | 4 => (DEFS[type].params.length > 16 ? 4 : 2);
-export const recordSize = (type: string, v = VERSION): number =>
-  1 + 4 * paramsAt(type, v).length + (DEFS[type].paramInputs ? 8 + SOURCES.length * maskBytes(type) : 0) + (DEFS[type].data ?? 0);
+/** bytes of a module record of this type in a binary of format `v` before COUNTED (every parameter of its format) */
+export const recordSize = (type: string, v = COUNTED - 1): number => {
+  if (v >= COUNTED) throw new Error('recordSize: a counted record\'s size depends on its values (moduleRecordSize)');
+  return 1 + 4 * paramsAt(type, v).length + recordExtra(type);
+};
+/** bytes of a module record after its type byte, its count and its parameters: the attenuverters and masks, its data */
+const recordExtra = (type: string): number => (DEFS[type].paramInputs ? 8 + SOURCES.length * maskBytes(type) : 0) + (DEFS[type].data ?? 0);
+/** bytes of module `m`'s record in a binary of format `v` (`morph`: the patch has a B set; `keep`: storedParams) */
+export const moduleRecordSize = (m: ModuleInst, v: number, morph: boolean, keep = 0): number =>
+  1 + (v >= COUNTED ? 1 : 0) + 4 * storedParams(m, v, morph, keep).length + recordExtra(m.type);
+/**
+ * Per module id, how many of its first parameters the FM-1 can change in its copy of the patch (proto.c m1_patch_param):
+ * up to the last one a device page row (or a parameter the row also sets) or a device's card row names, every one of a
+ * plain module's device (the FM-1 makes its pages from all of them), and Main's tempo.
+ * A counted record keeps them (storedParams), so the binary keeps its size when the FM-1 turns a knob or loads a preset.
+ * `dev`: the device form; `devs`: its device pages (deviceSection).
+ */
+export function fm1Rows(source: Patch, dev: Patch, devs: Device[]): Map<number, number> {
+  const out = new Map<number, number>();
+  const byId = new Map(dev.modules.map((m) => [m.id, m]));
+  const take = (module: number, param: string): void => {
+    const m = byId.get(module);
+    const i = m ? rowParam(m.type, param) : -1;
+    if (m && i >= 0 && !(i & POLY_ROW) && m.type !== 'part') out.set(module, Math.max(out.get(module) ?? 0, i + 1));
+  };
+  for (const d of devs) {
+    const own = d.module === undefined ? undefined : byId.get(d.module);
+    if (own) out.set(own.id, DEFS[own.type].params.length);   // (a plain module's device: the FM-1 pages all its parameters)
+    for (const pg of d.pages) for (const r of pg.rows) {
+      take(r.module, r.param);
+      for (const t of r.also ?? []) take(t.module, t.param);
+    }
+    const a = d.asm === undefined ? undefined : assemblyById(source, d.asm);
+    if (a) for (const r of cardRows(source, a).rows) take(r.module, r.param);
+  }
+  for (const m of dev.modules) if (m.type === 'fm1') take(m.id, 'tempo');
+  return out;
+}
+/** structureAndRows, worked out once per assembly while `layout` runs (it sizes the patch in two forms, each with its
+ * device extras); the patch does not change meanwhile */
+let rowsMemo: Map<object, ReturnType<typeof structureAndRows>> | null = null;
+/** the device pages and extras sections' bytes by the preset names they carry, while `layout` runs */
+let sizesMemo: Map<string, number> | null = null;
+const cardRows = (source: Patch, a: Parameters<typeof structureAndRows>[1]): ReturnType<typeof structureAndRows> => {
+  let r = rowsMemo?.get(a);
+  if (!r) {
+    r = structureAndRows(source, a);
+    rowsMemo?.set(a, r);
+  }
+  return r;
+};
 export const Q = 65536;
 
 /** bit 7 of a module record's type byte: the module is bypassed */
@@ -367,12 +448,18 @@ export function editorPage(source: Patch, device: number, page: number): { devic
 
 /** bytes of a patch's device pages section (0 without one) */
 export const deviceBytes = (source: Patch): number => {
-  const { patch: p, groups } = deviceView(source, true);
-  const devs = deviceSection(source, p);
-  return devicesSize(devs, p, source, presetNames(source, p, groups, devs, buttonRecord(source, p).length).names);
+  const l = layout(source);
+  return devicesSize(l.devs, l.p, source, l.names);
 };
 
-const devicesSize = (devs: Device[], p: Patch, source?: Patch, names?: string[]): number => deviceRecord(devs, p).length + (source ? extrasRecord(devs, source, p, names).length : 0);
+const devicesSize = (devs: Device[], p: Patch, source?: Patch, names?: string[]): number => {
+  const key = sizesMemo && source ? (names ?? ['\u0001']).join('\u0000') : undefined;   // (while layout runs: the same for both forms)
+  const known = key === undefined ? undefined : sizesMemo!.get(key);
+  if (known !== undefined) return known;
+  const n = deviceRecord(devs, p).length + (source ? extrasRecord(devs, source, p, names).length : 0);
+  if (key !== undefined) sizesMemo!.set(key, n);
+  return n;
+};
 
 /**
  * The preset names the device extras write, one per device, and the room the FM-1 budget keeps for them (#452). An engine
@@ -382,14 +469,14 @@ const devicesSize = (devs: Device[], p: Patch, source?: Patch, names?: string[])
  * else left out, as the FM-1 skips a name that does not fit (proto.c m1_preset_name). `tail`: the bytes after the
  * device section that sizeOf does not count (the button kinds).
  */
-export function presetNames(source: Patch, p: Patch, dg: DeviceGroup[], devs: Device[], tail: number): { names: string[]; reserve: number } {
+export function presetNames(source: Patch, p: Patch, dg: DeviceGroup[], devs: Device[], tail: number, v = formatOf(source), keep = fm1Rows(source, p, devs)): { names: string[]; reserve: number } {
   const asm = devs.map((d) => (d.asm === undefined ? undefined : assemblyById(source, d.asm)));
   const kept = asm.map((a) => !!a && instIsEngine(source, a));
   const full = asm.map((a) => deviceText(a?.preset ?? ''));
   const names = full.map((n, i) => (kept[i] ? n : ''));
   const reserve = names.reduce((k, n, i) => k + (kept[i] ? NAME_MAX - n.length : 0), 0);
   if (full.every((n, i) => kept[i] || !n)) return { names, reserve };
-  let room = DEVICE.bytes - sizeOf(p, dg, devs, source, names) - tail - reserve;
+  let room = DEVICE.bytes - sizeOf(p, dg, devs, v, keep, source, names) - tail - reserve;
   full.forEach((n, i) => {
     if (kept[i] || !n || n.length > room) return;
     names[i] = n;
@@ -460,7 +547,7 @@ export function extrasRecord(devs: Device[], source: Patch, dev: Patch = deviceV
   devs.forEach((d, di) => {
     const t = d.track === undefined ? -1 : devs.findIndex((x) => x.module === d.track);
     const a = d.asm === undefined ? undefined : assemblyById(source, d.asm);
-    const sr = a ? structureAndRows(source, a) : undefined;
+    const sr = a ? cardRows(source, a) : undefined;
     const h = sr ? parseInt(sr.structure, 16) >>> 0 : 0;
     const name = names ? names[di] : deviceText(a?.preset ?? '');
     const marked = keysUnreached(source, d);
@@ -479,23 +566,52 @@ export function extrasRecord(devs: Device[], source: Patch, dev: Patch = deviceV
 }
 
 /** bytes of the binary patch (what the FM-1 must hold, M1_PATCH_MAX) */
-export function encodedSize(source: Patch): number {
-  const { patch: p, groups: dg } = deviceView(source, true);
+export const encodedSize = (source: Patch): number => layout(source).size;
+
+/**
+ * How a patch is written (`view`: its device form): its format `v` (the lowest that holds it, baseFormat; COUNTED when
+ * that one is over the FM-1's bytes and the counted records are smaller, #667), the preset names the device extras carry
+ * and the room kept for them (presetNames), the binary's `size` and the device pages and button kinds it holds. `need`:
+ * the bytes the budget counts, the smaller of the two forms with the room kept, so the room counted records free shows
+ * in every patch while a patch that fits an older format is still written in it. `force`: counted records whatever the
+ * size (tests and golden kits).
+ */
+export function layout(source: Patch, view: ReturnType<typeof deviceView> = deviceView(source, true), force = false) {
+  if (rowsMemo) return layoutOf(source, view, force);
+  rowsMemo = new Map();
+  sizesMemo = new Map();
+  try {
+    return layoutOf(source, view, force);
+  } finally {
+    rowsMemo = sizesMemo = null;
+  }
+}
+function layoutOf(source: Patch, view: ReturnType<typeof deviceView>, force: boolean) {
+  const { patch: p, groups } = view;
   const devs = deviceSection(source, p);
-  const tail = buttonRecord(source, p).length;
-  return sizeOf(p, dg, devs, source, presetNames(source, p, dg, devs, tail).names) + tail;
+  const kinds = buttonRecord(source, p);
+  const keep = fm1Rows(source, p, devs);
+  const at = (v: number) => {
+    const { names, reserve } = presetNames(source, p, groups, devs, kinds.length, v, keep);
+    return { v, names, reserve, size: sizeOf(p, groups, devs, v, keep, source, names) + kinds.length };
+  };
+  const base = at(baseFormat(source, p));
+  const counted = base.v < COUNTED ? at(COUNTED) : base;
+  const need = Math.min(base.size + base.reserve, counted.size + counted.reserve);
+  const w = !force && (base.size + base.reserve <= DEVICE.bytes || need === base.size + base.reserve) ? base : counted;
+  return { p, groups, devs, kinds, keep, ...w, need, base: { v: base.v, bytes: base.size + base.reserve }, counted: counted.size + counted.reserve };
 }
 
-function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[], source?: Patch, names?: string[]): number {
+function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[], v: number, keep: Map<number, number>, source?: Patch, names?: string[]): number {
   const groups = dg.length;
   const routes = routesOf(p);
   const ranges = rangeList(p).length;
-  const v = formatOf(source ?? p, p);
+  const morph = hasMorph(p);
   let size = 8 + GROUP_REC * groups + (groups ? p.modules.length : 0) + PANEL_BYTES;
-  for (const m of p.modules) size += recordSize(m.type, v);
+  for (const m of p.modules) size += moduleRecordSize(m, v, morph, keep.get(m.id));
   size += 4 * p.cables.length;
-  if (hasMorph(p)) {
-    for (const m of p.modules) size += 4 * paramsAt(m.type, v).length;
+  if (morph) {
+    for (const m of p.modules) size += 4 * storedParams(m, v, morph, keep.get(m.id)).length;
     size += Math.ceil(p.modules.length / 8);
   }
   if (routes.length) size += 1 + routes.reduce((n, r) => n + 2 + r.bytes, 0);
@@ -512,25 +628,19 @@ function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[], source?: Patch, nam
 /** the module indices of the Drum maps (their row names go into the binary, flag bit 7) */
 export const drumMaps = (p: Patch): number[] => p.modules.flatMap((m, i) => (m.type === 'drummap' ? [i] : []));
 
-/** the binary patch; throws when the patch does not fit the FM-1 (deviceBudget): only a patch that fits is ever sent */
 /** the binary patch; refused when it is over the FM-1 budget, unless `anyway` (tools that count the engine's work on patches the
- * estimate has not seen yet: scripts/cpu-costs.ts) */
-export function encodePatch(source: Patch, anyway = false): Uint8Array {
+ * estimate has not seen yet: scripts/cpu-costs.ts). `counted`: in format COUNTED whatever its size (tests, golden kits) */
+export function encodePatch(source: Patch, anyway = false, counted = false): Uint8Array {
   const budget = deviceBudget(source);
   if (!budget.fits && !anyway) throw new Error(`over the FM-1 budget: ${budget.over.map((i) => (i.key === 'browser' ? i.label : `${i.label} ${i.used} of ${i.max}`)).join(', ')}`);
-  const { patch: p, groups } = deviceView(source, true);
+  const { p, groups, devs, kinds, keep, names, size, v: ver } = layout(source, undefined, counted);
   const index = new Map(p.modules.map((m, i) => [m.id, i]));
   const morph = hasMorph(p);
   const ranges = rangeList(p);
   const routes = routesOf(p);
   const valued = noteTracks(p);
-  const devs = deviceSection(source, p);
-  const kinds = buttonRecord(source, p);
   const pats = patternRecord(source, p);
   const locks = lockRecord(source, p);
-  const { names } = presetNames(source, p, groups, devs, kinds.length);
-  const size = sizeOf(p, groups, devs, source, names) + kinds.length;
-  const ver = formatOf(source, p);
   const out = new Uint8Array(size);
   const dv = new DataView(out.buffer);
   out[0] = 0xa1;
@@ -567,7 +677,9 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
   for (const m of p.modules) {
     const def = DEFS[m.type];
     out[at++] = TYPE_ORDER.indexOf(m.type) | (m.bypass ? BYPASS_BIT : 0);
-    for (const pd of paramsAt(m.type, ver)) {
+    const ps = storedParams(m, ver, morph, keep.get(m.id));
+    if (ver >= COUNTED) out[at++] = ps.length;
+    for (const pd of ps) {
       dv.setInt32(at, toQ16(m.params[pd.name] ?? pd.default), true);
       at += 4;
     }
@@ -607,7 +719,7 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
   }
   if (morph)
     for (const m of p.modules)
-      for (const pd of paramsAt(m.type, ver)) {
+      for (const pd of storedParams(m, ver, morph, keep.get(m.id))) {
         dv.setInt32(at, toQ16(m.paramsB?.[pd.name] ?? m.params[pd.name] ?? pd.default), true);
         at += 4;
       }
@@ -850,15 +962,11 @@ export interface Budget {
 }
 
 /** the patch bytes the budget counts: the binary's, plus the room kept for the engine devices' preset names (presetNames) */
-function bytesOf(source: Patch, p: Patch, groups: DeviceGroup[]): number {
-  const devs = deviceSection(source, p);
-  const tail = buttonRecord(source, p).length;
-  const { names, reserve } = presetNames(source, p, groups, devs, tail);
-  return sizeOf(p, groups, devs, source, names) + tail + reserve;
-}
+const bytesOf = (source: Patch, view: ReturnType<typeof deviceView>): number => layout(source, view).need;
 
 export function deviceBudget(source: Patch): Budget {
-  const { patch: p, groups } = deviceView(source, true);
+  const view = deviceView(source, true);
+  const { patch: p, groups } = view;
   const copies = new Map<number, number>();
   const groupOf = new Map<number, number>();
   groups.forEach((g, i) => g.modules.forEach((id) => (groupOf.set(id, i), copies.set(id, g.cfg.parts))));
@@ -890,7 +998,7 @@ export function deviceBudget(source: Patch): Budget {
   const used: Record<BudgetKey, number> = {
     modules: p.modules.length, cables: p.cables.length, poly: groups.length, parts: Math.max(1, ...[...copies.values()]),
     instances, buffers, params, lines: lines.used, arps: count('arp'), tracks: count('steps'), notes: p.modules.reduce((n, m) => n + (m.type === 'steps' ? (m.notes?.length ?? 0) + (m.patterns ?? []).reduce((k, x) => k + (x?.notes?.length ?? 0), 0) : 0), 0),
-    locks: p.modules.reduce((n, m) => n + (m.type === 'steps' ? (m.locks?.length ?? 0) + (m.patterns ?? []).reduce((k, x) => k + (x?.locks?.length ?? 0), 0) : 0), 0), bytes: bytesOf(source, p, groups),
+    locks: p.modules.reduce((n, m) => n + (m.type === 'steps' ? (m.locks?.length ?? 0) + (m.patterns ?? []).reduce((k, x) => k + (x?.locks?.length ?? 0), 0) : 0), 0), bytes: bytesOf(source, view),
   };
   const items = (Object.keys(DEVICE) as BudgetKey[]).map((key) => ({ key, label: LABELS[key], used: used[key], max: DEVICE[key] }));
   const over: BudgetItem[] = items.filter((i) => (i.key === 'lines' ? !lines.fits : i.used > i.max));

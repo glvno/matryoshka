@@ -3261,6 +3261,19 @@ if (process.argv.includes('--panel-fixtures')) {
 for (const [name, patch] of Object.entries(tests))
   if (!events[name] && patch.modules.some((m) => m.type === 'steps')) events[name] = [[0, 'run', 0], ...EVENTS];
 
+// #667: counted records (format 51). Every FM-1 factory patch and the morph, macro range and input route kits again,
+// written with counted records whatever their size: the C engine must give the parameters a record leaves out their
+// defaults, on both morph sides
+const counted = new Set<string>();
+for (const name of [...Object.keys(FM1_PRESETS), 'morph', 'morph-unassigned', 'fixed-links', 'side-input-fanout']) {
+  if (!tests[name] || bins[name]) continue;
+  const twin = `${name} counted`;
+  tests[twin] = structuredClone(tests[name]);
+  if (events[name]) events[twin] = events[name];
+  if (ends[name]) ends[twin] = ends[name];
+  counted.add(twin);
+}
+
 for (const [name, patch] of Object.entries(tests)) {
   const e = new Engine(SR);
   e.load(patch);
@@ -3310,7 +3323,7 @@ for (const [name, patch] of Object.entries(tests)) {
   const f = slug(name);
   const cpu = cpuEstimate(patch).use;
   if (cpu > 1) console.log(`${name}: estimated at ${Math.round(cpu * 100)} % of the FM-1's CPU (a correctness kit, not a real-time one)`);
-  writeFileSync(new URL(`${f}.m1p`, OUT), bins[name] ?? encodePatch(patch, true));
+  writeFileSync(new URL(`${f}.m1p`, OUT), bins[name] ?? encodePatch(patch, true, counted.has(name)));
   // the parameter values the editor's budget counts (DEVICE.params), which eng_load must take exactly (host_test checks)
   if (!bins[name]) writeFileSync(new URL(`${f}.par`, OUT), `${deviceBudget(patch).items.find((i) => i.key === 'params')!.used}\n`);
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
