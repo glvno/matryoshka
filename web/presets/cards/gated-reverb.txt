@@ -1,0 +1,41 @@
+# gated reverb: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# (no heading)
+#   threshold = 0.1                    -1..1
+#   hold = 0.25 s                      0.001..2 s
+#   close = 0.03 s                     0.001..8 s
+#   size = 0.85                        0..1
+#   damp = 0.3                         0..1
+#   mix = 0.5                          0..1
+
+effect: gated reverb
+# Drafts of 2026-11-07 (#661), checked by the behaviour tests in src/fx-assemblies.test.ts, not yet listened to on the FM-1.
+
+preset: 80s Snare
+  hold = 0.3 s
+  close = 0.02 s
+  size = 0.9
+  mix = 0.5
+
+preset: Short Gate
+  hold = 0.12 s
+  close = 0.01 s
+  size = 0.7
+  mix = 0.45
+
+preset: Big Room Cut
+  hold = 0.5 s
+  close = 0.08 s
+  size = 0.95
+  damp = 0.2
+  mix = 0.45
+
+preset: Soft Gate
+  hold = 0.25 s
+  close = 0.25 s
+  size = 0.8
+  damp = 0.5
+  mix = 0.4
