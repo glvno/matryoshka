@@ -13,10 +13,10 @@ import { CPU, CPU_WARN } from './cpu';
 import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
-import { chipState, DeviceLink, deviceIndex, liveSync, sandboxChip, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, type ChipState, type DeviceEvent } from './device';
+import { chipState, DeviceLink, deviceIndex, IGNORED_NOW, liveSync, sandboxChip, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, type ChipState, type DeviceEvent } from './device';
 import { SITE_URL } from './site';
 import { sandboxKey, sandboxPage, sandboxStep, sandboxTempoTurn } from './sandbox-mode';
-import { LIVE_MS, panelOffBy, slotLabel, type PanelState, type SlotInfo } from './protocol';
+import { editorSkips, LIVE_MS, panelOffBy, slotLabel, type PanelState, type SlotInfo } from './protocol';
 import { chooseSlot } from './store-slot';
 import { Fm1View } from './fm1-view';
 import { EmuKeys } from './emu-keys';
@@ -328,7 +328,14 @@ function alignSoon(): void {
   if (fm1Panel && panelReported()) panelAlign.soon();
 }
 device.onEvent = (e) => {
-  if (e.kind === 'info') return syncChip();   // (MENU > MIDI OUT changed: the chip says so in sandbox mode)
+  if (e.kind === 'info') {
+    if (editorSkips(device.info)) {   // (#702: set to ignore the editor while linked: the editor lets go of it, and of its panel)
+      const port = device.input;
+      device.release();
+      if (mirror.following && mirror.follows(port)) unfollowFm1(IGNORED_NOW);
+    }
+    return syncChip();   // (MENU > MIDI OUT changed: the chip says so in sandbox mode)
+  }
   if (e.kind === 'keys') {   // a key edge the FM-1's panel took (#549): through the copy too, as the FM-1 took it
     if (!panelReported()) return;
     void emu.ready().then(() => {

@@ -32,11 +32,12 @@ static void sandbox_bar(void);
 
 /* the settings' rows (menu.c; the menu's MIDI, PANEL and SYSTEM tabs show them as pages: pages_ui.c menu_tab_page) */
 enum { MR_LEDS, MR_ACCEL, MR_CIN, MR_CH, MR_CLOCK, MR_MOUT, MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_TEMPO,
-       MR_CLKOUT, MR_OUTPUT, MR_CORES, MR_COUNT };
+       MR_CLKOUT, MR_OUTPUT, MR_CORES, MR_EDITOR, MR_COUNT };
 /* the menu's tabs (menu.c, #395): MIDI, PANEL and SYSTEM are pages of settings on K1..K4, INFO a list of readings, GUIDE a text
  * (the ideas behind the controls, D-248) */
 enum { MT_MIDI, MT_PANEL, MT_SYSTEM, MT_INFO, MT_GUIDE, MT_COUNT };
 static uint8_t menu_tab;
+static uint8_t menu_sys2;                       /* the SYSTEM tab on its second page (ALGO steps SYSTEM 1/2, then 2/2: EDITOR, #702) */
 static int menu_page(void) { return page == PAGE_MENU && menu_tab <= MT_SYSTEM; }   /* the menu on a tab drawn as a device page */
 /* the settings of the menu (menu.c); saved with the state (SAVE) */
 static struct {
@@ -50,7 +51,10 @@ static struct {
     uint8_t count_in;                   /* REC waits this many bars before it records (#414): 0 off, 1, 2 */
     uint8_t quick;                      /* the quick start shows after power-on (help_ui.c, D-247) */
     uint8_t clock_out;                  /* MIDI clock goes out with MIDI OUT (clock_out.h, #473) */
-} cfg = {2, 1, 1, 0, 1, 1, 1, 0, 1, 1};
+    uint8_t editor_ignore;              /* GLO > SYSTEM > EDITOR at IGNORE (#702): INFO says so and the editor leaves this FM-1
+                                         * alone; the firmware itself refuses nothing (proto.c) */
+} cfg = {2, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0};
+static uint8_t editor_info_due;         /* EDITOR changed (menu.c): INFO goes to an editor that said HELLO (main.c editor_poll, #702) */
 static void cfg_defaults(void)
 {
     cfg.cpu_bar = cfg.accel = cfg.clock_in = cfg.prog_chg = cfg.midi_out = cfg.clock_out = 1;
@@ -59,6 +63,7 @@ static void cfg_defaults(void)
     cfg.count_in = 0;
     cfg.quick = 1;                      /* (FACTORY RESET turns the quick start on again, D-247) */
     out_mono = 0;                       /* (and the output stereo again, #612) */
+    cfg.editor_ignore = 0;              /* (and EDITOR at ALLOW, #702) */
 }
 static uint32_t cpu_pct;                /* the audio ISR's peak time over the last half second, in % of the 2.9 ms half buffer */
 static uint8_t cores_up = 1;            /* the processor cores at work: 2 while the second core runs and passes its self-test (main.c, #271) */
