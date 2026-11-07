@@ -52,7 +52,8 @@ typedef struct {
     uint32_t structure;                                 /* format 34's extras: an assembly's structure (0 none) */
     const uint8_t *rows;                                /* its card rows in canonical order (module, parameter byte) pairs */
     uint8_t nrows, nmem, unreached;                     /* unreached: an engine no keys cable reaches (ENG_KEYS_UNREACHED, #215; ENG_KEYS_UNREACHED_TRACK, #633) */
-    const uint8_t *mem;                                 /* the modules it is made of (#191: arming it arms them) */
+    uint8_t mrun;                                       /* mem is one run (ENG_MEMBER_RUN): its first module, the rest follow it */
+    const uint8_t *mem;                                 /* the modules it is made of (#191: arming it arms them; pg_mem) */
 } pdev_t;
 typedef struct {
     const char *name;
@@ -63,6 +64,8 @@ typedef struct {
                                                          * parameters it sets, its positions' names; #357, #358), 0 none */
 } ppage_t;
 static pdev_t pg_dev[PG_DEVS] UI_POOL;
+/* the k-th module device d is made of (k < nmem) */
+static uint32_t pg_mem(uint32_t d, uint32_t k) { return pg_dev[d].mrun ? pg_dev[d].mem[0] + k : pg_dev[d].mem[k]; }
 static char pg_tname[PG_DEVS][9] UI_POOL;              /* a Steps track's name, for its device (m1_track_name: 8 characters) */
 static char pg_pname[PG_DEVS][17] UI_POOL;             /* the preset each device was set to (#194; read from the extras for a new patch) */
 static ppage_t pg_page[PG_PAGES] UI_POOL;
@@ -285,6 +288,7 @@ static void pages_extras(const uint8_t *p, uint32_t len)
         pg_dev[i].nrows = 0;
         pg_dev[i].mem = 0;
         pg_dev[i].nmem = 0;
+        pg_dev[i].mrun = 0;
         pg_dev[i].unreached = 0;
         if (pg_names_fresh)
             pg_pname[i][0] = 0;
@@ -321,10 +325,11 @@ static void pages_extras(const uint8_t *p, uint32_t len)
         }
         at += 1u + 2u * p[at];
         if (i < pg_ndev) {
-            pg_dev[i].nmem = p[at];
+            pg_dev[i].nmem = p[at] & (uint8_t)~ENG_MEMBER_RUN;
+            pg_dev[i].mrun = (p[at] & ENG_MEMBER_RUN) != 0u;
             pg_dev[i].mem = p + at + 1u;
         }
-        at += 1u + p[at];
+        at += 1u + ((p[at] & ENG_MEMBER_RUN) ? 1u : p[at]);
     }
     pg_names_fresh = 0;
 }
@@ -358,6 +363,7 @@ static void pages_build(void)
         pg_dev[pg_ndev].nlen = p[at];
         at += 1u + p[at];
         np = p[at++];
+        /* (format 51, D-1003: an empty page name is the device's, an empty row label its parameter's name) */
         pg_dev[pg_ndev].pg0 = (uint8_t)pg_npage;
         pg_dev[pg_ndev].module = -1;
         for (g = 0; g < np; g++) {
@@ -366,6 +372,10 @@ static void pages_build(void)
             if (pg) {
                 pg->name = (const char *)p + at + 1u;
                 pg->nlen = p[at];
+                if (!pg->nlen && p[1] >= ENG_COUNTED) {
+                    pg->name = pg_dev[pg_ndev].name;
+                    pg->nlen = pg_dev[pg_ndev].nlen;
+                }
             }
             at += 1u + p[at];
             nr = p[at + 3u];
@@ -385,6 +395,10 @@ static void pages_build(void)
                     pg->par[pg->nrows] = (uint8_t)par;
                     pg->lab[pg->nrows] = (const char *)p + at + 3u;
                     pg->llen[pg->nrows] = p[at + 2u];
+                    if (!p[at + 2u] && p[1] >= ENG_COUNTED && !(par & POLY_ROW)) {
+                        pg->lab[pg->nrows] = DEFS[eng_type(p[at])].pname[par];
+                        pg->llen[pg->nrows] = (uint8_t)str_len(pg->lab[pg->nrows]);
+                    }
                     pg->xo[pg->nrows] = (uint16_t)(more ? at + 3u + p[at + 2u] : 0u);
                     pg->nrows++;
                 }
@@ -2148,7 +2162,7 @@ static uint64_t env_listeners(uint32_t d)
         return 0;
     if (pg_dev[d].mem) {
         for (k = 0; k < pg_dev[d].nmem; k++)
-            mask |= eng_arms(pg_dev[d].mem[k]);
+            mask |= eng_arms(pg_mem(d, k));
     } else if (pg_dev[d].module >= 0) {
         mask = eng_arms((uint32_t)pg_dev[d].module);
     }
@@ -2181,7 +2195,7 @@ static int dev_keys_input(uint32_t d)
         return 1;
     if (pg_dev[d].mem) {
         for (k = 0; k < pg_dev[d].nmem; k++)
-            if (eng_type(pg_dev[d].mem[k]) == T_DRUMMAP)
+            if (eng_type(pg_mem(d, k)) == T_DRUMMAP)
                 return 1;
         return 0;
     }

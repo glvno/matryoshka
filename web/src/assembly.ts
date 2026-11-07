@@ -427,7 +427,6 @@ export const EXCLUDED_TYPES = new Set(['fm1', 'output']);
 /** how deep assemblies nest (a top-level assembly is level 1): no limit the user meets (the FM-1 never sees assemblies);
  * only a guard for the walks up the tree */
 export const MAX_DEPTH = 64;
-const KNOBS = ['k1', 'k2', 'k3', 'k4'] as const;
 
 export const assembliesOf = (p: Patch): AssemblyInst[] => p.assemblies ?? [];
 export const assemblyById = (p: Patch, id: number): AssemblyInst | undefined => assembliesOf(p).find((a) => a.id === id);
@@ -1292,11 +1291,7 @@ export function tileMembers(p: Patch, a: AssemblyInst): void {
 
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 
-function stripKnobs(m: ModuleInst): void {
-  if (m.map) for (const k of KNOBS) m.map[k] = [];
-}
-
-/** the saved form of an assembly: every module with local ids 1..n, nested assemblies with local ids, positions from the top left member, no knob assignments */
+/** the saved form of an assembly: every module with local ids 1..n, nested assemblies with local ids, positions from the top left member */
 export function toDef(p: Patch, a: AssemblyInst): AssemblyDef {
   const nested = descendants(p, a);
   const order = [...a.modules, ...nested.flatMap((d) => d.modules)];
@@ -1314,7 +1309,6 @@ export function toDef(p: Patch, a: AssemblyInst): AssemblyDef {
     m.id = local.get(m.id)!;
     m.x -= x0;
     m.y -= y0;
-    stripKnobs(m);
   }
   const remap = <T extends { module: number }>(r: T): T => ({ ...r, module: local.get(r.module)! });
   const port = (r: PortRef): PortRef => {
@@ -1389,7 +1383,6 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
     }
     fixInputRoutes(m, defs[src.type]);
     fixMatrix(m, defs[src.type]);
-    stripKnobs(m);
     fresh.set(src.id, m.id);
   }
   const remap = <T extends { module: number }>(r: T): T => ({ ...r, module: fresh.get(r.module)! });
@@ -1530,7 +1523,6 @@ export function validateAssemblyDef(raw: unknown, defs: Record<string, ModuleDef
     fixMatrix(m, def);
     fixInputRoutes(m, def);
     fixTrack(m);
-    stripKnobs(m);
   }
   const typeOf = (id: number): string | undefined => d.modules.find((m) => m.id === id)?.type;
   {   // a Steps module's acc output is gone (#133: an accent is full velocity): its cables and the cards' acc jacks go

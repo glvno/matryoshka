@@ -3987,7 +3987,7 @@ const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, de
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an
- * attenuverter (-1..1), and a matrix that says which parameters p1, p2 and the knobs k1..k4 control. A parameter's
+ * attenuverter (-1..1), and a matrix that says which parameters p1 and p2 control. A parameter's
  * effective value is its base + (block mean of p1 x att1 + block mean of p2 x att2, for the inputs that control it) x
  * (max - min), clamped.
  */
