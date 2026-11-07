@@ -6,7 +6,7 @@ import { DEFS } from './modules';
 import { addModule, connect, newPatch, removeModule } from './patch';
 import { deviceBudget, encodePatch, VERSION } from './patchbin';
 import { FM1_PRESETS } from './presets';
-import { CMD, frame, liveFrame, parse, RIG_PRESET, RIG_STRUCTURE } from './protocol';
+import { CMD, frame, liveFrame, parse } from './protocol';
 import { subtractiveSaw } from './test-patches';
 
 const names = Object.keys(FM1_PRESETS);
@@ -269,52 +269,6 @@ describe('DeviceLink.connect', () => {
     await withMidi([other.i, fm1.i], [other.o, fm1.o], () => link.connect());
     expect(link.input).toBe(fm1.i);
     expect(other.o.sent.length).toBe(0);
-  });
-  // #698: two FM-1s of the same name (the owner's test rig beside their own): each output is asked, its own input answers
-  const fm1Pair = (n: string, o: { rig?: boolean } = {}): { i: FakePort; o: FakePort } => {
-    const p = { i: port(`in-${n}`, 'Matryoshka'), o: port(`out-${n}`, 'Matryoshka') };
-    p.o.send = (d) => {
-      p.o.sent.push(d);
-      const f = parse(d);
-      if (f?.cmd === CMD.hello) setTimeout(() => p.i.onmidimessage?.({ data: frame(CMD.info, [1, 64, 255, 3, 1, 0, 1, 48, 48]) }), 2);
-      if (f?.cmd === CMD.presetGet) {
-        const h = parseInt(RIG_STRUCTURE, 16);
-        const key = [h & 0xff, (h >>> 8) & 0xff, (h >>> 16) & 0xff, h >>> 24, ...Array.from({ length: 16 }, (_, k) => RIG_PRESET.charCodeAt(k) || 0)];
-        setTimeout(() => p.i.onmidimessage?.({ data: frame(CMD.presetData, o.rig ? [...key, 1, 0, 0, 1, 0] : [...key, 0xff]) }), 2);
-      }
-    };
-    return p;
-  };
-  it('with two FM-1s of the same name, finds both, lets `choose` pick, links that one and gives the other its listener back', async () => {
-    const mine = fm1Pair('a'), rig = fm1Pair('b', { rig: true });
-    const was = (): void => {};
-    rig.i.onmidimessage = was;   // (attachMidi's listener, say)
-    const link = new DeviceLink();
-    let offered: { id: string; rig: boolean }[] = [];
-    await withMidi([mine.i, rig.i], [mine.o, rig.o], () => link.connect(async (found) => {
-      offered = found.map((f) => ({ id: f.inp.id, rig: f.rig }));
-      return found.find((f) => f.rig) ?? null;
-    }));
-    expect(offered).toEqual([{ id: 'in-a', rig: false }, { id: 'in-b', rig: true }]);
-    expect(link.input).toBe(rig.i as unknown as MIDIInput);
-    expect(mine.i.onmidimessage).toBeNull();
-    expect(link.connected).toBe(true);
-  });
-  it('with one FM-1 asks nobody to choose', async () => {
-    const mine = fm1Pair('a');
-    const link = new DeviceLink();
-    let asked = false;
-    await withMidi([mine.i], [mine.o], () => link.connect(async (f) => { asked = true; return f[0]; }));
-    expect(asked).toBe(false);
-    expect(link.input).toBe(mine.i as unknown as MIDIInput);
-    expect(mine.o.sent.map((d) => parse(d)?.cmd)).toEqual([CMD.hello]);   // (no PRESET_GET: nothing to tell apart)
-  });
-  it('connects nothing when the choice is cancelled', async () => {
-    const a = fm1Pair('a'), b = fm1Pair('b');
-    const link = new DeviceLink();
-    const err = await withMidi([a.i, b.i], [a.o, b.o], () => link.connect(async () => null)).catch((e: Error) => e);
-    expect((err as Error).message).toMatch(/2 FM-1s answered and none was chosen/);
-    expect(link.connected).toBe(false);
   });
   it('lists the ports it saw when nothing answers', async () => {
     const link = new DeviceLink();

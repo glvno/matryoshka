@@ -4,7 +4,7 @@
 
 ### Editor
 
-- **Two FM-1s on one computer:** when more than one FM-1 answers, Connect lists them with their firmware version and lets you choose (Play a note tells two alike apart). This browser remembers your choice; Reconnect asks again. The FM-1 you did not choose no longer plays notes or starts and stops the transport in the editor. One FM-1 connects as before.
+- **Two FM-1s on one computer:** while the editor is connected to one FM-1, notes and Start / Stop from another FM-1 no longer play or move anything in the editor.
 
 ## 1.10.0 — 2026-11-06
 

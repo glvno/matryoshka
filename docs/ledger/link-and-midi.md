@@ -49,5 +49,4 @@ The editor and the FM-1 talk over a SysEx protocol on USB MIDI, and new capabili
 - Muting the FM-1's speaker while a computer records its USB audio — issue #169
 - Connect FM-1 fails on macOS Sequoia after flashing (only plain MIDI is seen) — issue #187
 - Whether Matryoshka uses the FM-1's Bluetooth (Bluetooth MIDI for a shared clock first), or recommends a Bluetooth MIDI adapter on the TRS input — issue #266
-
-- Proposed amendment to [D-474](link-and-midi.md#D-474) (decider: michael glaviano): Connect FM-1 sends HELLO to every output named like an FM-1. The input that answers is that FM-1's own, because two FM-1s can carry the same port name. When more than one FM-1 answers, a dialog lists each with its firmware version and port, and marks the test rig. Connect links the one chosen. The browser remembers the choice, and the next Connect takes it without asking; Reconnect asks again. While linked, MIDI from any other FM-1 plays nothing in the editor. One FM-1 connects as before, with no dialog. Issue #698.
+- Proposed (decider: michael glaviano): while the editor is connected to one FM-1, notes, controls and Start / Stop from any other FM-1 play nothing and move nothing in the editor (`otherFm1` in `web/src/input.ts`). With no FM-1 connected, every MIDI input plays as before. Issue #698.

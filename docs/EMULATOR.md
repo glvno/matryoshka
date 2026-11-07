@@ -176,13 +176,13 @@ link as `m1emu serve` drives the emulator:
   never stops a run ([D-125](ledger/releases.md#D-125)): on a rig whose firmware reads its peak after MASTER (no INFO
   feature bit 10), a check that hears nothing is skipped as "MASTER down"; skips are counted apart and are no failure.
 - **The owner's own FM-1 beside the rig (issue #698).** The rig's scripts may run while the owner plays their own FM-1
-  in Chrome on the site. The rig's page asks the other FM-1 only HELLO and PRESET_GET, the installer and the recorder go
-  by the rig's USB location, and the editor's Connect lets the owner choose their own FM-1 and remembers it. While
-  linked, the editor plays nothing from another FM-1's MIDI, so the rig's test keys and its PLAY do not reach the owner's
-  page. A rig install restarts the rig twice on USB (into update mode and back), but not macOS's MIDI service
-  (`MIDIServer` ran on through the rig install of 2026-11-06). Chrome may stop hearing the rig's own port after that
-  (quit and reopen Chrome to hear it again); whether it also stops hearing the owner's FM-1 is checked with both
-  plugged in. Never restart `MIDIServer` (`killall MIDIServer`) while the owner plays: Chrome then hears no MIDI until it is quit and opened again.
+  in Chrome on the site. The rig's page asks the other FM-1 only HELLO and PRESET_GET, and the installer and the
+  recorder go by the rig's USB location. While the editor is connected to one FM-1, it plays nothing from another
+  FM-1's MIDI, so the rig's test keys and its PLAY do not reach the owner's page. The editor's Connect still takes the
+  first FM-1 that answers, which can be the rig. A rig install restarts the rig twice on USB (into update mode and back),
+  but not macOS's MIDI service (`MIDIServer` ran on through the rig install of 2026-11-06). In the two-device test of
+  2026-11-06, Chrome still heard the owner's FM-1 after a rig install. Never restart `MIDIServer`
+  (`killall MIDIServer`) while the owner plays: Chrome then hears no MIDI until it is quit and opened again.
 - **`cd web && npm run rig:bench [-- --patch NAME] [--rounds N]`:** the LCD's draw times on the rig, with the rig the
   only FM-1 connected (it refuses otherwise, before sending anything but INFO and the mark's read). It zeroes the times,
   pages with ALGO and SELECT, turns K1..K4, opens and closes GLO and steps PRESET on and back, then prints the last and

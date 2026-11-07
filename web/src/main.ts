@@ -18,7 +18,6 @@ import { SITE_URL } from './site';
 import { sandboxKey, sandboxPage, sandboxStep, sandboxTempoTurn } from './sandbox-mode';
 import { LIVE_MS, panelOffBy, slotLabel, type PanelState, type SlotInfo } from './protocol';
 import { chooseSlot } from './store-slot';
-import { chooseFm1, keepChoice, readChoice, rememberedFm1 } from './choose-fm1';
 import { Fm1View } from './fm1-view';
 import { EmuKeys } from './emu-keys';
 import { SandboxKeys } from './sandbox-keys';
@@ -2064,18 +2063,9 @@ try {
 }
 
 // FM-1 link: FM-1 & MIDI's Connect and the Connect FM-1 button over the canvas
-/** `again`: Reconnect, which asks again which FM-1 when more than one answers (#698); else the one this browser
- *  remembers is taken without asking */
-async function connectFm1(again = false): Promise<void> {
+async function connectFm1(): Promise<void> {
   try {
-    const info = await device.connect(async (found) => {
-      const kept = readChoice();
-      const known = again ? null : rememberedFm1(found, kept);
-      if (known) return known;
-      const pick = await chooseFm1($<HTMLDialogElement>('choose-fm1'), found, kept);
-      if (pick) keepChoice(pick.inp.id);
-      return pick;
-    });
+    const info = await device.connect();
     devStatus(`FM-1 connected (protocol ${info.version}, up to ${info.maxModules} modules, flash ${info.flashOk ? 'ok' : 'not available'})`);
     for (const id of ['dev-send', 'dev-store']) $<HTMLInputElement>(id).disabled = false;
     $('dev-btn').textContent = 'Reconnect';
@@ -2100,7 +2090,7 @@ async function offerFirmwareUpdate(): Promise<void> {
   showAction(text, 'Update', openInstall, 12000);
 }
 $('dev-btn').onclick = async () => {
-  await connectFm1(device.connected);
+  await connectFm1();
   if (!device.connected) void offerInstall();
 };
 
