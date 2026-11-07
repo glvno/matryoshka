@@ -171,6 +171,21 @@ static char *put_num(char *d, int32_t q16)
     return put_hundredths(d, (int32_t)x, a >= 10000 ? 0 : a >= 1000 ? 1 : 2);
 }
 
+/* parameter j's number: a row of whole steps (the editor's step 1, 10, ...) holding a whole number shows no decimals (2,
+ * not 2.00), as the editor's card does; a value typed between its steps keeps them */
+static char *put_value(char *d, const def_t *def, uint32_t j, int32_t q16)
+{
+    int32_t st = def->pstep ? def->pstep[j] : 0;
+    if (st >= 65536 && !(st & 0xFFFF)) {
+        int64_t h = (int64_t)q16 * 100, x = (h + (h < 0 ? -32768 : 32768)) / 65536;   /* hundredths, rounded as put_num */
+        if (x % 100 == 0) {
+            fmt_int(d, (int32_t)(x / 100));
+            return d + str_len(d);
+        }
+    }
+    return put_num(d, q16);
+}
+
 /* parameter j of a module type as the LCD shows it: a choice by name (SAW), else the number and its unit (1200 HZ) */
 static char *put_param(char *d, const def_t *def, uint32_t j, int32_t q16)
 {
@@ -184,7 +199,7 @@ static char *put_param(char *d, const def_t *def, uint32_t j, int32_t q16)
         *d = 0;
         return d;
     }
-    d = put_num(d, q16);
+    d = put_value(d, def, j, q16);
     if (def->punit && def->punit[j][0]) {
         *d++ = ' ';
         d = put(d, def->punit[j]);
