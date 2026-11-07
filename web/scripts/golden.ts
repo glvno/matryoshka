@@ -1487,6 +1487,28 @@ delayModKit('delay-rate-glide', { time: 400, length: 700, rate: 1 }, 'time', 2.3
 delayModKit('delay-rate-glide-pingpong', { time: 300, length: 700, rate: 2, pingpong: 1 }, 'time', 1.7, 0.25);
 delayModKit('delay-rate-switch', { time: 180, length: 400, rate: 0 }, 'rate', 1.3, 0.5);
 for (const n of ['delay-rate-glide', 'delay-rate-glide-pingpong', 'delay-rate-switch']) ends[n] = 128 * 700;
+// Tape (#660): the loop's filters and saturation, wow and flutter (none, some, the most), ping-pong, swell, a lower rate,
+// every HEADS choice (heads past the line clamp to it), Tape switched on and off while it plays (a pin), the wow moved
+delayKit('delay-tape', { time: 220, fb: 0.7, tape: 1, wow: 0.3 });
+delayKit('delay-tape-nowow', { time: 180, fb: 0.6, tape: 1, wow: 0 });
+delayKit('delay-tape-wow1', { time: 260, fb: 0.6, tape: 1, wow: 1 });
+delayKit('delay-tape-pingpong', { time: 150, fb: 0.7, tape: 1, pingpong: 1, heads: 3 });
+delayKit('delay-tape-swell', { time: 90, fb: 0.9, tape: 1, swell: 1, heads: 6 });
+delayKit('delay-tape-22k', { time: 900, fb: 0.6, tape: 1, rate: 1, heads: 4, length: 700 });
+delayKit('delay-tape-11k-pingpong', { time: 700, fb: 0.6, tape: 1, rate: 2, pingpong: 1, heads: 5, length: 700 });
+delayKit('delay-tape-heads-2', { time: 120, fb: 0.5, tape: 1, heads: 1 });
+delayKit('delay-tape-heads-3', { time: 110, fb: 0.5, tape: 1, heads: 2 });
+delayKit('delay-tape-heads-12', { time: 130, fb: 0.6, tape: 1, heads: 3 });
+delayKit('delay-tape-heads-13', { time: 100, fb: 0.6, tape: 1, heads: 4 });
+delayKit('delay-tape-heads-23', { time: 90, fb: 0.6, tape: 1, heads: 5 });
+delayKit('delay-tape-heads-123', { time: 100, fb: 0.8, tape: 1, heads: 6 });
+delayKit('delay-tape-heads-clamp', { time: 400, fb: 0.5, tape: 1, heads: 6, length: 600 });
+for (const n of ['delay-tape-22k', 'delay-tape-11k-pingpong', 'delay-tape-heads-clamp']) ends[n] = 128 * 900;
+delayModKit('delay-tape-switch', { time: 160, length: 500, tape: 0, wow: 0.5 }, 'tape', 1.1, 0.5);
+delayModKit('delay-tape-switch-22k', { time: 300, length: 500, tape: 0, rate: 1, heads: 3 }, 'tape', 0.9, 0.5);
+delayModKit('delay-tape-glide', { time: 300, length: 700, tape: 1, heads: 3 }, 'time', 2.1, 0.2);
+delayModKit('delay-tape-wowmod', { time: 200, length: 500, tape: 1, wow: 0.2 }, 'wow', 3.3, 0.4);
+for (const n of ['delay-tape-switch', 'delay-tape-switch-22k', 'delay-tape-glide', 'delay-tape-wowmod']) ends[n] = 128 * 700;
 // several Delays in one patch (the effect memory, D-375): three of different lengths in a chain, the last ping-pong
 kit('delays-three', (add, wire) => {
   const kb = add('fm1', 0, 0);

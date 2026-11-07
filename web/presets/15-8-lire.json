@@ -208,7 +208,10 @@
     "note": 0,
     "swell": 0,
     "length": 700,
-    "rate": 0
+    "rate": 0,
+    "tape": 0,
+    "wow": 0.3,
+    "heads": 0
    },
    "att": [
     1,
