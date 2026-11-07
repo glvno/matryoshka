@@ -503,16 +503,16 @@ export function checkScenarios(h) {
       await emu.elapse(800);
       const t = (await paramsOf('LONG')).time;
       await check('4.3 delays: ALGO to LONG 1/2, K1 (TIME) right: it stops at 1200 (its length)', pg && t === 1200 && (await emu.text('1200')), `its page 1 (TIME, FB ..) ${pg}, time ${t}; ${(await emu.texts()).slice(0, 6).join(' | ')}`);
-      // the budget's effect memory lines
+      // the budget's memory lines (#649: one memory, what takes the most of it under it)
       await page().click('#budget summary');
       const lines = await until(() => page().evaluate(() => {
         const items = [...document.querySelectorAll('#budget .budget-item')].map((e) => e.textContent.replace(/\s+/g, ' ').trim());
-        return items.some((x) => x.startsWith('Effect memory')) ? items : null;
+        return items.some((x) => /^Memory\d/.test(x)) ? items : null;
       }), 2000) ?? [];
-      const mem = lines.find((x) => x.startsWith('Effect memory')) ?? '';
-      const under = lines.slice(lines.indexOf(mem) + 1, lines.indexOf(mem) + 3);
-      await check('4.4 delays: the FM-1 budget: Effect memory 129 / 190 KB, a line under it for LONG and one for SHORT',
-        mem === 'Effect memory129 / 190 KB' && under.some((x) => /^Delay LONG/.test(x)) && under.some((x) => /^Delay SHORT/.test(x)), [mem, ...under].join(' | '));
+      const mem = lines.find((x) => /^Memory\d/.test(x)) ?? '';
+      const under = lines.slice(lines.indexOf(mem) + 1, lines.indexOf(mem) + 6);
+      await check('4.4 delays: the FM-1 budget: Memory of 356 KB, LONG its largest share, a line for SHORT under it',
+        /^Memory\d+ \/ 356 KB$/.test(mem) && /^Delay LONG/.test(under[0] ?? '') && under.some((x) => /^Delay SHORT/.test(x)), [mem, ...under].join(' | '));
       const shortId = JSON.parse(await patchJson()).modules.find((m) => m.name === 'SHORT')?.id;
       await page().evaluate(() => [...document.querySelectorAll('#budget .budget-item.pick')].find((e) => /Delay SHORT/.test(e.textContent))?.click());
       const sel = await until(async () => (await T()).selected.includes(shortId), 2000);
@@ -538,10 +538,11 @@ export function checkScenarios(h) {
       // (the drag must reach the row: what is under the pointer is said when it did not)
       const pointed = box ? await page().evaluate(([x, y]) => { const e = document.elementFromPoint(x, y); return e ? `${e.tagName.toLowerCase()}.${[...e.classList].join('.')}` : 'nothing'; }, [box.x + box.width / 2, box.y + box.height / 2]) : 'no row';
       await shot('check-delays-drag');
-      const toast = await until(() => page().evaluate(() => { const t = document.querySelector('.toast span')?.textContent ?? ''; return /^Effect memory/.test(t) ? t : ''; }), 2000);
+      const toast = await until(() => page().evaluate(() => { const t = document.querySelector('.toast span')?.textContent ?? ''; return /^Memory full/.test(t) ? t : ''; }), 1000);
       const len = (await paramsOf('SHORT')).length;
-      await check('4.5 delays: SHORT\'s length dragged to its top stops at 700 ms, a note says the memory is full and why',
-        len === 700 && /^Effect memory full: \d+ of 190 KB used\. Shorten the other Delay\. This Delay stops at 700 ms\.$/.test(toast), `length ${len}; "${toast}"; under the pointer: ${pointed}`);
+      // (#649: the memory holds both lines at their longest, 1200 and 1900 ms: the row reaches its top, no note)
+      await check('4.5 delays: SHORT\'s length dragged to its top reaches 1900 ms (the memory holds it), no memory note',
+        len === 1900 && !toast, `length ${len}; "${toast ?? ''}"; under the pointer: ${pointed}`);
       const up = await until(async () => {
         const x = await T();
         return x.status === 'patch on the FM-1' && x.chip === 'synced' && (await page().evaluate(() => window.__sent.some((f) => f[1] === 0x10 || f[1] === 0x11))) ? x : null;
