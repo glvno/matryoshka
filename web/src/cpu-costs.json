@@ -41849,7 +41849,7 @@
   },
   {
    "name": "assembly basic poly",
-   "cycles": 181422
+   "cycles": 181474
   },
   {
    "name": "assembly boom kick",
@@ -41857,19 +41857,19 @@
   },
   {
    "name": "assembly bowed glass",
-   "cycles": 101605
+   "cycles": 101635
   },
   {
    "name": "assembly bowed string",
-   "cycles": 62854
+   "cycles": 62884
   },
   {
    "name": "assembly Briefcase 3",
-   "cycles": 533982
+   "cycles": 544035
   },
   {
    "name": "assembly Canvas",
-   "cycles": 417625
+   "cycles": 417689
   },
   {
    "name": "assembly Cassia 1",
@@ -41877,7 +41877,7 @@
   },
   {
    "name": "assembly clap",
-   "cycles": 57694
+   "cycles": 57451
   },
   {
    "name": "assembly clock",
@@ -41889,15 +41889,15 @@
   },
   {
    "name": "assembly cowbell",
-   "cycles": 60112
+   "cycles": 59869
   },
   {
    "name": "assembly drift poly",
-   "cycles": 293399
+   "cycles": 293543
   },
   {
    "name": "assembly drum kit",
-   "cycles": 421849
+   "cycles": 420877
   },
   {
    "name": "assembly ducking delay",
@@ -41909,19 +41909,19 @@
   },
   {
    "name": "assembly Elvira 2",
-   "cycles": 203340
+   "cycles": 203129
   },
   {
    "name": "assembly envelope filter",
-   "cycles": 46523
+   "cycles": 46537
   },
   {
    "name": "assembly Expander S",
-   "cycles": 314685
+   "cycles": 378109
   },
   {
    "name": "assembly filter voice",
-   "cycles": 39189
+   "cycles": 38946
   },
   {
    "name": "assembly fm pair",
@@ -41941,19 +41941,19 @@
   },
   {
    "name": "assembly hats",
-   "cycles": 115631
+   "cycles": 115388
   },
   {
    "name": "assembly Hera 6",
-   "cycles": 411465
+   "cycles": 445593
   },
   {
    "name": "assembly hihat",
-   "cycles": 40339
+   "cycles": 40096
   },
   {
    "name": "assembly Io 4",
-   "cycles": 515566
+   "cycles": 537143
   },
   {
    "name": "assembly kalimba",
@@ -41969,23 +41969,23 @@
   },
   {
    "name": "assembly Meridian 8",
-   "cycles": 351767
+   "cycles": 351831
   },
   {
    "name": "assembly mono lead",
-   "cycles": 74135
+   "cycles": 74165
   },
   {
    "name": "assembly Monolith D",
-   "cycles": 167960
+   "cycles": 173373
   },
   {
    "name": "assembly noise voice",
-   "cycles": 36821
+   "cycles": 36578
   },
   {
    "name": "assembly octave fuzz",
-   "cycles": 53376
+   "cycles": 53133
   },
   {
    "name": "assembly operator",
@@ -41993,19 +41993,19 @@
   },
   {
    "name": "assembly Oracle V",
-   "cycles": 415176
+   "cycles": 442221
   },
   {
    "name": "assembly overdrive",
-   "cycles": 55657
+   "cycles": 55171
   },
   {
    "name": "assembly Perun 4",
-   "cycles": 325245
+   "cycles": 325297
   },
   {
    "name": "assembly pluck",
-   "cycles": 52821
+   "cycles": 52836
   },
   {
    "name": "assembly rain",
@@ -42029,11 +42029,11 @@
   },
   {
    "name": "assembly Sallen 20",
-   "cycles": 288712
+   "cycles": 313536
   },
   {
    "name": "assembly Scrounge",
-   "cycles": 367235
+   "cycles": 367028
   },
   {
    "name": "assembly shimmer",
@@ -42045,7 +42045,7 @@
   },
   {
    "name": "assembly Silver Box",
-   "cycles": 107714
+   "cycles": 117724
   },
   {
    "name": "assembly slicer",
@@ -42053,15 +42053,15 @@
   },
   {
    "name": "assembly snare",
-   "cycles": 59587
+   "cycles": 59344
   },
   {
    "name": "assembly Spokes 6",
-   "cycles": 344255
+   "cycles": 344029
   },
   {
    "name": "assembly stack voice",
-   "cycles": 50476
+   "cycles": 50233
   },
   {
    "name": "assembly stutter",
@@ -42069,11 +42069,11 @@
   },
   {
    "name": "assembly sub bass",
-   "cycles": 59593
+   "cycles": 59608
   },
   {
    "name": "assembly supersaw stack",
-   "cycles": 300877
+   "cycles": 299905
   },
   {
    "name": "assembly tabla",
@@ -42093,11 +42093,11 @@
   },
   {
    "name": "assembly Vernon 100",
-   "cycles": 307560
+   "cycles": 315908
   },
   {
    "name": "assembly Verona Drum 1",
-   "cycles": 410961
+   "cycles": 409993
   },
   {
    "name": "assembly vibrato",
@@ -42105,7 +42105,7 @@
   },
   {
    "name": "assembly voice",
-   "cycles": 82667
+   "cycles": 82554
   },
   {
    "name": "assembly vowel voice",
@@ -42113,11 +42113,11 @@
   },
   {
    "name": "assembly Wanderer",
-   "cycles": 195023
+   "cycles": 200189
   },
   {
    "name": "assembly wavetable pad",
-   "cycles": 61456
+   "cycles": 61469
   }
  ],
  "calibration": {
