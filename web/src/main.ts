@@ -479,6 +479,8 @@ async function sendPatch(): Promise<boolean> {
       devStatus('patch on the FM-1');
       const at = editor.focus && binaryPage(editor.patch, editor.focus.device, editor.focus.page);
       if (at) device.focus(at[0], at[1]);   // the FM-1 opens on the page the knobs edit here
+      // (a patch loaded disarms the FM-1: the editor's armed set again, #191)
+      if (editor.armedSet.size) device.arms(...armMask(editor.patch, editor.armedSet));
     } while (dirty);
   } catch (e) {
     devStatus(`${(e as Error).message}`);
@@ -608,9 +610,9 @@ const sink = {
     hands.track(msg);
     if (msg.t === 'on') tutorial.noteOn();
     if (live() && !fromDevice) {   // (what the FM-1 played itself is not sent back)
-      // (the keys of a device armed in the editor stay here: the FM-1 does not take the editor's arm yet, #139 / #191;
-      // a set the FM-1 armed itself hears them there, D-802)
-      if (!editor.armedSet.size || armFromDevice) device.note(msg as { t: string; note?: number; vel?: number });
+      // (the keys of a device armed in the editor stay here unless the FM-1 takes the editor's arm (ARMS, #191); a set the
+      // FM-1 armed itself hears them there, D-802)
+      if (!editor.armedSet.size || armFromDevice || device.takesArms) device.note(msg as { t: string; note?: number; vel?: number });
       if (msg.t === 'bend') device.bend(msg.v);
       else if (msg.t === 'cc') device.cc(msg.n, msg.v);
     }
@@ -877,6 +879,9 @@ const editor = new Editor($('canvas'), firstPatch, {
   onArm(armed, plays, through) {
     armFromDevice = fromDevice && armed.length > 0;
     host.send({ t: 'arm', devices: armed });
+    // the editor's own arming reaches a Live FM-1 that takes it (ARMS, #191): it routes its panel's keys and the editor's
+    // notes by the same set. What the FM-1 reported (ARMS_NOW) is not sent back
+    if (!fromDevice && live() && !uploading) device.arms(...armMask(editor.patch, editor.armedSet));
     if (!armsApplying) emuArm();
     armPlays = plays;
     armThrough = through;
@@ -2769,6 +2774,8 @@ if (import.meta.env.DEV) {
       loads: loadsSeen, uploadedLoad, selected: [...editor.selected], slot: deviceSlot?.slot ?? -1,
     }),
     patchJson: (): string => JSON.stringify(editor.patch),
+    /** the editor's armed set, as its ARM buttons set it (device keys, editor.armedSet) (#191) */
+    arm: (keys: string[]): void => editor.setArmed(keys),
     /** a device's first page into focus, by name (Main's knobs; with Live on, the FM-1 follows) */
     focus: (name: string): boolean => {
       const d = editor.devices.find((x) => x.name === name);

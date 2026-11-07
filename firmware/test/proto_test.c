@@ -182,6 +182,8 @@ static uint32_t m1_test_peak(void) { return 1234u | 1u << 16 | 1u << 17; }
 #include "../src/tempo_glo.h"
 static int tempo_calls;
 static void m1_tempo(uint32_t patch, uint32_t bpm) { tempo_calls++; gt_set(patch, bpm, 1000u); }   /* (main.c's) */
+static int arms_calls;
+static void m1_arms(uint32_t lo, uint32_t hi) { arms_calls++; eng_arm_mask((uint64_t)hi << 32 | lo); }   /* (main.c's, #191) */
 #include "../src/proto.c"
 
 static uint8_t *slurp(const char *path, long *n)
@@ -732,6 +734,24 @@ int main(int argc, char **argv)
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
         CHECK(n == 13u && (p[3] & M1_INFO_EDITOR_IGNORE) && (p[3] & M1_INFO_MIDI_OUT));
         editor_ignore_on = 0;
+    }
+    /* ARMS (#191, feature bit 20): the editor's armed set, lo u32 LE then hi, as the FM-1's own; no reply, no ARMS_NOW */
+    {
+        uint8_t q[24] = {0x7D, 0x4D, 0x31, C_ARMS}, pl[8] = {0}, p[16];
+        uint32_t n, mods = 0, k;
+        for (k = 0; k < (uint32_t)eng_nmodules() && k < 32u; k++)
+            mods |= 1u << k;
+        CHECK(M1_FEATURES3 & 16u);                             /* (feature bit 20 in INFO byte 12) */
+        pl[0] = 0x05u;                                         /* modules 0 and 2 */
+        n = 4u + m1_pack7(pl, 8u, q + 4);
+        nreplies = 0;
+        CHECK(m1_handle(q, n) == 1 && arms_calls == 1 && nreplies == 0 && eng_arm_mask_get() == (0x05u & mods));
+        pl[0] = 0;
+        n = 4u + m1_pack7(pl, 8u, q + 4);
+        CHECK(m1_handle(q, n) == 1 && arms_calls == 2 && nreplies == 0 && eng_arm_mask_get() == 0u);
+        n = 4u + m1_pack7(pl, 7u, q + 4);                      /* (too short: nothing) */
+        CHECK(m1_handle(q, n) == 1 && arms_calls == 2);
+        (void)p;
     }
     /* TEMPO (D-907, feature bit 16): GLOBAL at a tempo, PATCH; Main's tempo shows what plays, the patch keeps its own */
     {
