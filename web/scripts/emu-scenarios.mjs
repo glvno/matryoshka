@@ -1203,15 +1203,19 @@ async function main() {
         return ok;
       };
       await check('rec count-in: GLO > PANEL > COUNT-IN 1 BAR', await countIn(1));
-      await emu.tap(B.rec);
+      await emu.key(B.rec, true);                   // (REC acts on its release: the windows from there, so beat 1 is in them)
+      await emu.elapse(80);
+      await emu.key(B.rec, false);
       const win = await emu.windows(48, 25);       // (Init's track is empty and no key is held: only the click is heard)
       const counting = await emu.text('COUNT-IN');
       const onsets = win.filter((w, i) => w[1] > LOUD && (i === 0 || win[i - 1][1] <= LOUD)).map((w) => w[0]);
       const beat = onsets.length >= 3 ? (onsets[onsets.length - 1] - onsets[1]) / (onsets.length - 2) : onsets.length === 2 ? onsets[1] - onsets[0] : 0;
       console.log(`  rec count-in: the count-in's peaks per 25 ms: ${prof(win)}`);
       await check('rec count-in: REC, stopped: the transport starts and the bar counts in (COUNT-IN)', counting);
-      await loudCheck('rec count-in: a click on each beat of the count-in, a beat apart', Math.max(...win.map((w) => w[1])),
-        beat >= 200 && onsets.length === Math.min(4, Math.floor(1200 / beat) + 1) && onsets.slice(1).every((t, i) => Math.abs(t - onsets[i] - beat) <= 40),
+      // beat 1 within 300 ms of REC's release (the panel's scan and a main loop pass), then each beat that fits in 1.2 s
+      await loudCheck('rec count-in: a click on each beat of the count-in from beat 1, a beat apart', Math.max(...win.map((w) => w[1])),
+        beat >= 200 && onsets[0] <= 300 && onsets.length === Math.min(4, Math.floor((1175 - onsets[0]) / beat) + 1)
+          && onsets.slice(1).every((t, i) => Math.abs(t - onsets[i] - beat) <= 40),
         `click onsets at ${onsets.join(' ')} ms (a beat ${beat} ms)`);
       await until(async () => !(await emu.text('COUNT-IN')), 5000);
       await emu.elapse(Math.max(beat, 300));
