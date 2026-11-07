@@ -128,6 +128,18 @@
    "version": 46
   },
   {
+   "name": "<7PH",
+   "len": 3639,
+   "fnv": "cb833d15",
+   "version": 51
+  },
+  {
+   "name": "<7PH",
+   "len": 3615,
+   "fnv": "e7f013cd",
+   "version": 51
+  },
+  {
    "name": "303 ACID",
    "len": 140,
    "fnv": "1d419c2d",
@@ -1089,6 +1101,12 @@
   },
   {
    "name": "ALGO FOUR",
+   "len": 1992,
+   "fnv": "0184964b",
+   "version": 51
+  },
+  {
+   "name": "ALGO FOUR",
    "len": 1250,
    "fnv": "739803b2",
    "version": 51
@@ -1448,6 +1466,18 @@
    "version": 46
   },
   {
+   "name": "BRIEFCASE 3",
+   "len": 3753,
+   "fnv": "00474ad8",
+   "version": 51
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 3755,
+   "fnv": "c59738a8",
+   "version": 51
+  },
+  {
    "name": "BRIGHT SAW",
    "len": 354,
    "fnv": "353751d2",
@@ -1656,6 +1686,12 @@
    "len": 3779,
    "fnv": "e3df32b0",
    "version": 46
+  },
+  {
+   "name": "CANVAS",
+   "len": 3252,
+   "fnv": "335e7a3f",
+   "version": 51
   },
   {
    "name": "CANVAS",
@@ -2666,6 +2702,18 @@
    "version": 46
   },
   {
+   "name": "EXPANDER S",
+   "len": 1205,
+   "fnv": "74bae75f",
+   "version": 51
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1249,
+   "fnv": "b60bb13c",
+   "version": 51
+  },
+  {
    "name": "FAT MONO",
    "len": 338,
    "fnv": "f16cf75c",
@@ -3393,6 +3441,12 @@
   },
   {
    "name": "HERA 6",
+   "len": 1281,
+   "fnv": "5405a284",
+   "version": 51
+  },
+  {
+   "name": "HERA 6",
    "len": 1273,
    "fnv": "6a28fb3c",
    "version": 51
@@ -3927,8 +3981,20 @@
   },
   {
    "name": "IO 4",
+   "len": 3324,
+   "fnv": "74cc0b9f",
+   "version": 51
+  },
+  {
+   "name": "IO 4",
    "len": 3292,
    "fnv": "8f12b041",
+   "version": 51
+  },
+  {
+   "name": "IO 4",
+   "len": 3304,
+   "fnv": "a236629f",
    "version": 51
   },
   {
@@ -4664,6 +4730,18 @@
    "version": 46
   },
   {
+   "name": "MONOLITH D",
+   "len": 2834,
+   "fnv": "1f2cee84",
+   "version": 51
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 2754,
+   "fnv": "72d0c53c",
+   "version": 51
+  },
+  {
    "name": "NES ARP LEAD",
    "len": 163,
    "fnv": "2762afb6",
@@ -5016,6 +5094,18 @@
    "len": 1318,
    "fnv": "e2ca20d0",
    "version": 46
+  },
+  {
+   "name": "ORACLE V",
+   "len": 1292,
+   "fnv": "40eae73b",
+   "version": 51
+  },
+  {
+   "name": "ORACLE V",
+   "len": 1236,
+   "fnv": "db01a302",
+   "version": 51
   },
   {
    "name": "ORGAN",
@@ -6068,6 +6158,18 @@
    "version": 47
   },
   {
+   "name": "SALLEN 20",
+   "len": 2912,
+   "fnv": "5daeb77d",
+   "version": 51
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 2856,
+   "fnv": "f3924c39",
+   "version": 51
+  },
+  {
    "name": "SCROUNGE",
    "len": 2953,
    "fnv": "7b2b7345",
@@ -6498,6 +6600,18 @@
    "len": 1150,
    "fnv": "8d1994bc",
    "version": 48
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 1257,
+   "fnv": "6baec04e",
+   "version": 51
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 1229,
+   "fnv": "cd7aacd7",
+   "version": 51
   },
   {
    "name": "SIMPLE FM",
@@ -8001,8 +8115,20 @@
   },
   {
    "name": "VERNON 100",
+   "len": 3415,
+   "fnv": "905ae523",
+   "version": 51
+  },
+  {
+   "name": "VERNON 100",
    "len": 3395,
    "fnv": "a75f70f8",
+   "version": 51
+  },
+  {
+   "name": "VERNON 100",
+   "len": 3427,
+   "fnv": "af81fa3a",
    "version": 51
   },
   {
@@ -8370,6 +8496,18 @@
    "len": 3824,
    "fnv": "7dca03c5",
    "version": 46
+  },
+  {
+   "name": "WANDERER",
+   "len": 3239,
+   "fnv": "17698a9d",
+   "version": 51
+  },
+  {
+   "name": "WANDERER",
+   "len": 3187,
+   "fnv": "5b82f483",
+   "version": 51
   },
   {
    "name": "WANDERER",
