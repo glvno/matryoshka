@@ -259,7 +259,8 @@
    "y": 340,
    "params": {
     "time": 0.005,
-    "curve": 0
+    "curve": 0,
+    "fall": 0
    },
    "att": [
     1,
@@ -1166,7 +1167,8 @@
    "y": 2356,
    "params": {
     "time": 0.001,
-    "curve": 0
+    "curve": 0,
+    "fall": 0
    },
    "att": [
     1,
