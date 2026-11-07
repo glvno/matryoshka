@@ -7814,6 +7814,12 @@
    "version": 46
   },
   {
+   "name": "VERNON 100",
+   "len": 3395,
+   "fnv": "a75f70f8",
+   "version": 51
+  },
+  {
    "name": "VERONA 1",
    "len": 3813,
    "fnv": "41bf5f54",
@@ -8166,6 +8172,12 @@
    "len": 3824,
    "fnv": "7dca03c5",
    "version": 46
+  },
+  {
+   "name": "WANDERER",
+   "len": 3175,
+   "fnv": "bb6439e5",
+   "version": 51
   },
   {
    "name": "WARM PAD",

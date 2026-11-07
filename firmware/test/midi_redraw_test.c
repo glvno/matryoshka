@@ -158,6 +158,7 @@ int main(void)
                     found = 1;
                     pages_focus(d, g);
                     int told = param_now;
+                    arena_size = ENG_ARENA - arena_free();   /* (#649: the arena holds Cassia's eight voices; as small as two take) */
                     midi_enqueue(0x0Bu | 0xB0u << 8 | (16u + k) << 16 | 127u << 24, 1);
                     midi_enqueue(9u | 0x90u << 8 | 72u << 16 | 100u << 24, 1);
                     midi_drain();
@@ -165,6 +166,7 @@ int main(void)
                           eng_poly_get(0, 0) == 2 && pv_bin[8] == 2 && param_now == told);
                     check("note behind rejected MIDI voice edit plays, and the drain unlocks",
                           mi_r == mi_w && E.grp[0].nheld == 1 && !midi_draining);
+                    arena_size = ENG_ARENA;
                 }
             }
         check("Cassia has a MIDI-editable voices row", found);

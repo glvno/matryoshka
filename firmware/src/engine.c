@@ -20,17 +20,20 @@
 #define ENG_LOWRAM
 #endif
 
-/* The patch: modules, cables, summed inputs; below them the memories (pools of slots with an owner, slot_take; a load
- * frees them and takes what it needs). A patch that finds no free slot does not load (-4 lines, -6 buffers, -7
- * instances, -8 parameter slots): NO ROOM on the panel. Keep DEVICE in web/src/patchbin.ts, the HELLO reply (proto.c) and the MEMORY lines
- * of manual.c in step. */
+/* The patch: modules, cables, summed inputs; below them the memory: one arena a load divides as the patch needs it
+ * (#649, eng_arena: the module copies, the parameter values, the signal buffers and the lines). A patch that does not
+ * fit does not load (-4 lines, -6 buffers, -7 instances, -8 parameter values): NO ROOM on the panel. The counts below are
+ * sanity caps. Keep DEVICE and ARENA in web/src/patchbin.ts, the HELLO reply (proto.c) and the MEMORY lines of manual.c
+ * in step. */
 #define ENG_MAX_MODULES 64          /* (the module list, `order`, `outputs` are uint8 indices; the binary header byte 2) */
 #define ENG_MAX_RANGES 48           /* macro ranges (patch.ts ModuleInst.range) */
 #define ENG_MAX_CABLES 255           /* (the HELLO reply carries it in a byte) */
 #define MAX_SUM 160                 /* summed inputs (an input of an instance with two or more sources) */
 #define MAX_SRC 320                 /* their sources: a shared input reading a per-note output has one per note */
-#define ENG_MAX_INST 128            /* module instances: a shared module has one, a per-note module one per note */
-#define ENG_NBUF 255u               /* signal buffers of ENG_BLOCK samples (a connected output, a summed input) */
+#define ENG_MAX_INST 254u           /* module instances (copies): a shared module has one, a per-note module one per note
+                                     * (node_t inst0 is a byte, and copy 0 of the arena is the spare: inst_pool) */
+#define ENG_NBUF 1023u              /* signal buffers of ENG_BLOCK samples (a connected output, a summed input) */
+#define ENG_MAX_LINES 128u          /* lines (eng_load's lists of them are on the main loop's stack) */
 /* the lines of the Delays, reverbs, choruses, strings, combs and granulars: as many as the two line areas hold (line_place) */
 #define GRAIN_LEN 44118u            /* GRAIN_SECONDS x ENG_SR */
 #define GRAIN_MAX 8
@@ -492,6 +495,10 @@ typedef struct {
     uint8_t no_steal;               /* format 37: refuse extra polyphonic notes instead of taking a held voice */
     uint32_t down[4];               /* all 128 held input keys, even if stolen or refused */
     uint8_t unison, stack;           /* unison mode and its voice count (0: all parts) */
+    uint8_t assign0, unison0;        /* assign and unison as the record sets them; assign and unison are as they play: a
+                                      * cable into the Part's assign / unison input moves them (#681, group_cables) */
+    uint8_t mode;                    /* that Part's node, 0xFF: no such cable */
+    int32_t cv[2];                   /* what those cables carried at the end of the last block (Q16) */
     int8_t detune[ENG_MAX_PARTS];    /* each part's flaws (patch.ts PartFlaw): cents, */
     uint8_t drift[ENG_MAX_PARTS];    /* % of +-20 cents of wander, */
     int8_t bright[ENG_MAX_PARTS];    /* semitones on the filter cutoffs, */
@@ -660,9 +667,9 @@ static int32_t tempo_own;             /* the running patch's own tempo (Q16) whi
 static void tempo_apply(void);
 static volatile uint16_t panel_buttons; /* the patch buttons held / switched on (eng_buttons) */
 
-/* the memories: slot i of a pool is taken while own[i] is 1 */
-static inst_t inst_pool[ENG_MAX_INST] ENG_POOL;
-static uint8_t inst_own[ENG_MAX_INST];
+/* the arena's module copies (inst_pool, at the start of eng_arena below): inst_pool[0] is the spare every node points at
+ * until its own copies are taken (eff = par_spare, eng_get_param after a failed load); a load takes the rest in module
+ * order (arena_inst) */
 /* the part an instance renders (0 for a module that runs once), its group (E.grp[0], the shared keyboard, for a module that
  * runs once) and the part it plays: from the instance itself, so two cores can render two parts at once (#271) */
 #define IT_V(nd, it) ((uint32_t)((it) - &inst_pool[(nd)->inst0]))
@@ -671,23 +678,67 @@ static uint8_t inst_own[ENG_MAX_INST];
 /* the lane an instance renders in (#271): the odd parts of a poly group are lane 1, which the second core may render while
  * core 0 renders lane 0; each lane has its own scratch (lane_scr) and its own dummy output */
 #define IT_LANE(nd, it) ((nd)->grp ? IT_V(nd, it) & 1u : 0u)
-static esig_t buf_pool[ENG_NBUF][ENG_BLOCK] ENG_POOL;
-static uint8_t buf_own[ENG_NBUF];
 /* a granular line: the recording (Q13 like the delay) and the grains reading it (start, read phase from it Q16, rate Q16,
  * window phase and increment (u32 turns, half a turn over the grain), samples left) */
 typedef struct { uint32_t start, rp, rate, wph, winc, left; } grain_t;
 typedef struct grain_line { int16_t buf[GRAIN_LEN]; grain_t g[GRAIN_MAX]; } grain_line_t;
+/* The memory a patch takes (#649): one arena in the pool, divided when the patch loads. From its bottom, the spare copy
+ * and the module copies (inst_t, ENG_INST_BYTES each on the FM-1), then the signal buffers (ENG_BUF_BYTES); from its top
+ * the parameter values (4 bytes each: a node's, twice that with a morph B side, and each copy's effective ones); the lines
+ * of the line-type modules go last, into what is left between them or into line_low. The arena is as big as the fixed
+ * pools it replaces were (128 copies, 255 buffers, 1536 values, the line area of a 700 ms delay line, 8 string lines and
+ * a granular line) and the spare copy, so every patch that loaded before still loads. The editor's budget models the same (web/src/patchbin.ts ARENA, memoryBudget). A build whose inst_t
+ * is bigger (a 64-bit host) gets the difference for every copy it can take, so it loads what the FM-1 loads; the fit is
+ * counted in the FM-1's bytes (arena_free). */
+#define ENG_INST_BYTES 264u
+#define ENG_BUF_BYTES (ENG_BLOCK * 4u)
+#if defined(M1_FW_MAJOR) && !defined(__wasm__)              /* (the FM-1 build, tools/build.py: its compiler's size) */
+typedef char eng_inst_bytes_check[sizeof(inst_t) == ENG_INST_BYTES ? 1 : -1];   /* (patchbin.ts INST_BYTES follows it) */
+#endif
 /* The lines of the line-type modules: the Delays (their length, dly_samples), the strings and combs (a line per copy),
  * the granulars, the reverbs and the choruses (D-375). They share two areas, divided when a patch loads (line_place):
- * line_arena in the pool, as big as the fixed blocks of a 700 ms delay line, 8 string lines and a granular line were,
- * and line_low in .lowram (D-373), as big as the reverb and chorus lines were there and 8 KiB more. The editor's budget
- * models the same (web/src/patchbin.ts LINE_AREAS, linePlace, lineBudget): a patch fits when every line does. A new
- * line-type module only needs its bytes in line_bytes. */
+ * what the arena has left, and line_low in .lowram (D-373), as big as the reverb and chorus lines were there and 8 KiB
+ * more. The editor's budget models the same (web/src/patchbin.ts linePlace, memoryBudget): a patch fits when every line
+ * does. A new line-type module only needs its bytes in line_bytes. */
 #define LINE_BYTES(n) (((uint32_t)(n) + 3u) & ~3u)
 #define LINE_ARENA (LINE_BYTES(2u * DELAY_LEN) + 8u * LINE_BYTES(2u * STR_LEN) + LINE_BYTES(sizeof(grain_line_t)))   /* 167,980 B */
 #define LINE_LOW (LINE_BYTES(2u * RV_LEN) + LINE_BYTES(2u * CH_LEN) + 8192u)                                        /* 26,196 B */
-static uint32_t line_arena[LINE_ARENA / 4u] ENG_POOL;
+#define ENG_ARENA (LINE_ARENA + 255u * ENG_BUF_BYTES + 129u * ENG_INST_BYTES + 1536u * 4u)                       /* 338,740 B */
+#define ENG_ARENA_HOST (ENG_ARENA + (ENG_MAX_INST + 1u) * (sizeof(inst_t) > ENG_INST_BYTES ? (uint32_t)sizeof(inst_t) - ENG_INST_BYTES : 0u))
+static uint32_t eng_arena[ENG_ARENA_HOST / 4u] ENG_POOL __attribute__((aligned(8)));
+#define inst_pool ((inst_t *)eng_arena)           /* (the copies start the arena: a fixed address, as the old array's) */
+static uint32_t ar_lo, ar_hi, ar_ninst;      /* bytes taken from the bottom and from the top; copies taken (the spare too) */
 static uint32_t line_low[LINE_LOW / 4u] ENG_LOWRAM;
+static uint32_t arena_size = ENG_ARENA;     /* (a test may make it smaller, to reach a patch that does not fit) */
+/* the arena's bytes still free, counted as on the FM-1 (a copy as ENG_INST_BYTES) */
+static uint32_t arena_free(void)
+{
+    uint32_t used = ar_lo - ar_ninst * (uint32_t)sizeof(inst_t) + ar_ninst * ENG_INST_BYTES + ar_hi;
+    return used < arena_size ? arena_size - used : 0u;
+}
+/* n bytes from the bottom (a multiple of 4), 0 if they do not fit */
+static void *arena_lo(uint32_t n)
+{
+    uint8_t *q = (uint8_t *)eng_arena + ar_lo;
+    if (n > arena_free())
+        return 0;
+    ar_lo += n;
+    return q;
+}
+/* `count` zeroed module copies in a row, their first index, -1 if they do not fit (or past ENG_MAX_INST) */
+static int arena_inst(uint32_t count)
+{
+    uint32_t i0 = ar_ninst, j;
+    uint8_t *z;
+    if (ar_ninst + count > ENG_MAX_INST + 1u || (count && arena_free() < count * ENG_INST_BYTES))
+        return -1;
+    z = (uint8_t *)&inst_pool[i0];
+    ar_lo += count * (uint32_t)sizeof(inst_t);
+    ar_ninst += count;
+    for (j = 0; j < count * sizeof(inst_t); j++)
+        z[j] = 0;
+    return (int)i0;
+}
 /* a Delay's line, samples, from its length (Q16 ms, rounded to whole ms, 10..1900): the length's samples rounded up to an
  * even count (ping-pong halves it) and 60 more, so a time of the whole length fits; 700 ms: DELAY_LEN (modules.ts
  * delayLine) */
@@ -709,8 +760,8 @@ static uint32_t line_bytes(uint32_t t, const int32_t *par)
     }
 }
 /* Where n lines of these sizes go (patchbin.ts linePlace): the largest first (of equal ones the first), each into the
- * area with the least room that holds it (line_low when both have the same); reg[i] its area (0 line_low, 1 line_arena),
- * at[i] its byte offset there. 0 = every line placed, -1 one does not fit. */
+ * area with the least room that holds it (line_low when both have the same); reg[i] its area (0 line_low, 1 what the
+ * arena has left, from ar_lo), at[i] its byte offset there. 0 = every line placed, -1 one does not fit. */
 static int line_place(const uint32_t *bytes, uint32_t n, uint8_t *reg, uint32_t *at)
 {
     uint32_t used[2] = {0, 0}, i, k;
@@ -723,7 +774,7 @@ static int line_place(const uint32_t *bytes, uint32_t n, uint8_t *reg, uint32_t 
             if (reg[i] == 0xFFu && (best == n || bytes[i] > bytes[best]))
                 best = i;
         f0 = LINE_LOW - used[0];
-        f1 = LINE_ARENA - used[1];
+        f1 = arena_free() - used[1];
         ok0 = bytes[best] <= f0;
         ok1 = bytes[best] <= f1;
         if (!ok0 && !ok1)
@@ -737,27 +788,27 @@ static int line_place(const uint32_t *bytes, uint32_t n, uint8_t *reg, uint32_t 
 }
 static void *line_at(uint8_t reg, uint32_t at, uint32_t bytes)   /* zeroed */
 {
-    uint8_t *z = (uint8_t *)(reg ? line_arena : line_low) + at;
+    uint8_t *z = (uint8_t *)(reg ? (uint32_t *)((uint8_t *)eng_arena + ar_lo) : line_low) + at;
     uint32_t j;
     for (j = 0; j < bytes; j++)
         z[j] = 0;
     return z;
 }
-/* the parameter slots (#351): each node gets its type's npar values (twice that with a morph B side), each instance its
- * type's npar effective values, taken in order at eng_load; a patch that needs more does not load (-8). Not MAX_PAR per
- * node and instance: most types have far fewer (patchbin.ts DEVICE.params, the editor's budget, counts the same). */
-#define ENG_PAR_WORDS 1536u
-static int32_t par_pool[ENG_PAR_WORDS] ENG_POOL;
-static uint32_t par_used;
+/* the parameter values (#351): each node gets its type's npar values (twice that with a morph B side), each instance its
+ * type's npar effective values, taken from the arena's top at eng_load; a patch that does not fit does not load (-8).
+ * Not MAX_PAR per node and instance: most types have far fewer (patchbin.ts, the editor's budget, counts the same). */
+static uint32_t par_used;                   /* values taken (host_test checks the editor's count) */
 static int32_t par_spare[2u * MAX_PAR];     /* what a node or instance points at before it is loaded (eng_get_param after a failed load) */
 
 static int32_t *par_take(uint32_t n)        /* n zeroed values, 0 if they do not fit */
 {
-    int32_t *q = par_pool + par_used;
+    int32_t *q;
     uint32_t i;
-    if (n > ENG_PAR_WORDS - par_used)
+    if (4u * n > arena_free())
         return 0;
+    ar_hi += 4u * n;
     par_used += n;
+    q = (int32_t *)((uint8_t *)eng_arena + ENG_ARENA_HOST - ar_hi);
     for (i = 0; i < n; i++)
         q[i] = 0;
     return q;
@@ -767,29 +818,6 @@ static const esig_t zero_buf[ENG_BLOCK];
 static esig_t dummy_out[ENG_BLOCK], dummy_out1[ENG_BLOCK];   /* every unconnected output (lane 1's, dummy_out1: #271) */
 #define IS_DUMMY(p) ((p) == dummy_out || (p) == dummy_out1)
 
-static void pool_free(uint8_t *own, uint32_t n)          /* every slot back to the pool */
-{
-    uint32_t i;
-    for (i = 0; i < n; i++)
-        own[i] = 0;
-}
-
-static int slots_take(uint8_t *own, uint32_t n, uint32_t count)   /* `count` free slots in a row, -1 if none */
-{
-    uint32_t i, run = 0;
-    for (i = 0; i < n; i++) {
-        run = own[i] ? 0 : run + 1;
-        if (run == count) {
-            uint32_t k;
-            for (k = i + 1 - count; k <= i; k++)
-                own[k] = 1;
-            return (int)(i + 1 - count);
-        }
-    }
-    return -1;
-}
-
-static int slot_take(uint8_t *own, uint32_t n) { return slots_take(own, n, 1); }
 
 /* ------------------------------------------------------------------ patch loading */
 
@@ -811,11 +839,9 @@ static esig_t *buf_alloc(void)
 {
     esig_t *b;
     uint32_t i;
-    int k = slot_take(buf_own, ENG_NBUF);
-    if (k < 0)
+    if (E.nbuf >= ENG_NBUF || !(b = (esig_t *)arena_lo(ENG_BUF_BYTES)))
         return 0;
     E.nbuf++;
-    b = buf_pool[k];
     for (i = 0; i < ENG_BLOCK; i++)
         b[i] = 0;
     return b;
@@ -1171,9 +1197,9 @@ int eng_load(const uint8_t *p, uint32_t len)
 {
     uint32_t i, j, c, k, v, at, ncab, n0, nl;
     uint8_t st[ENG_MAX_MODULES], member[ENG_MAX_MODULES], held[ENG_MAX_MODULES];   /* held: the parameters each record holds */
-    uint32_t line_sz[ENG_MAX_INST], line_off[ENG_MAX_INST];   /* the lines: their bytes and places (on the main loop's stack,
-                                                               * 1 KB: not the RAM region's, which the interrupts need) */
-    uint8_t line_reg[ENG_MAX_INST];
+    uint32_t line_sz[ENG_MAX_LINES], line_off[ENG_MAX_LINES];   /* the lines: their bytes and places (on the main loop's
+                                                                 * stack, 1 KB: not the RAM region's, which the interrupts need) */
+    uint8_t line_reg[ENG_MAX_LINES];
     E.loaded = 0;
     E.stamp = 0;
     for (i = 0; i < ENG_KNOBS; i++)              /* (a knob ramp of the patch before: gone) */
@@ -1199,14 +1225,17 @@ int eng_load(const uint8_t *p, uint32_t len)
     E.grp[0].assign = E.grp[0].legato = E.grp[0].priority = 0;
     E.grp[0].src = E.grp[0].ch = E.grp[0].lo = 0;
     E.grp[0].hi = 127u;
+    E.grp[0].mode = 0xFFu;
     groups_reset();
-    pool_free(inst_own, ENG_MAX_INST);           /* what this voice's old patch held */
+    ar_lo = ar_hi = ar_ninst = 0;                /* the arena: the old patch's memory is free again */
     par_used = 0;
-    for (i = 0; i < ENG_MAX_MODULES; i++)
+    (void)arena_inst(1u);                        /* the spare (inst_pool[0]): every node's until it has its own */
+    inst_pool[0].eff = par_spare;
+    for (i = 0; i < ENG_MAX_MODULES; i++) {
         E.node[i].par = par_spare;
-    for (i = 0; i < ENG_MAX_INST; i++)
-        inst_pool[i].eff = par_spare;
-    pool_free(buf_own, ENG_NBUF);
+        E.node[i].inst0 = 0;
+        E.node[i].ninst = 1;
+    }
     if (len < 8u || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION))
         return -1;
     if ((p[7] & ~(ENG_FLAG_EXTRAS | ENG_FLAG_MORPH_MODULES | ENG_FLAG_PATTERNS | ENG_FLAG_LOCKS)) || ((p[7] & ENG_FLAG_MORPH_MODULES) && (p[1] < 36u || !(p[6] & 1u))) || ((p[7] & ENG_FLAG_PATTERNS) && p[1] < 48u) || ((p[7] & ENG_FLAG_LOCKS) && p[1] < 49u) || (p[1] < 34u && p[7]) || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
@@ -1238,6 +1267,10 @@ int eng_load(const uint8_t *p, uint32_t len)
         g->assign = q[1];
         g->legato = q[2] & 0x3Fu;
         g->unison = q[2] & 0x80u ? (q[2] & 0x40u ? 2u : 1u) : 0u;
+        g->assign0 = g->assign;
+        g->unison0 = g->unison;
+        g->mode = 0xFFu;
+        g->cv[0] = g->cv[1] = 0;
         g->priority = q[3] & 0x7Fu;
         g->no_steal = q[3] >> 7;
         for (v = 0; v < ENG_MAX_PARTS; v++) {
@@ -1331,7 +1364,18 @@ int eng_load(const uint8_t *p, uint32_t len)
         at += d->ndata;
         /* the memories of delay, reverb, chorus, granular and the output exist once (patch.ts SHARED_TYPES) */
         nd->grp = nd->type == T_DELAY || nd->type == T_REVERB || nd->type == T_CHORUS || nd->type == T_GRAIN || nd->type == T_OUTPUT || nd->type == T_ARP || nd->type == T_STEPS || nd->type == T_DRUMMAP ? 0u : member[i];
-        nd->ninst = E.grp[nd->grp].parts;
+        {                                        /* its copies, from the arena's bottom (the spare until then) */
+            int i0 = arena_inst(E.grp[nd->grp].parts);
+            if (i0 < 0) {
+                nd->ninst = 1;
+                return -7;
+            }
+            for (k = 0; k < E.grp[nd->grp].parts; k++)
+                inst_pool[i0 + (int)k].eff = par_spare;
+            nd->inst0 = (uint8_t)i0;
+            nd->ninst = E.grp[nd->grp].parts;
+            E.ninst = (uint8_t)(E.ninst + nd->ninst);
+        }
         if (nd->type == T_FM1 && E.main < 0)
             E.main = (int8_t)i;
         if (nd->type == T_ARP) {                 /* an arpeggiator: its note logic runs before the modules (arp_block) */
@@ -1370,6 +1414,8 @@ int eng_load(const uint8_t *p, uint32_t len)
             E.node[tm].ksrc = 1u;                /* Main's keys pass through the track while none is armed (#138) */
         if (E.node[fm].type == T_STEPS && fp == STEPS_O_KEYS && E.node[tm].type == T_ARP && tp == ARP_I_KEYS)
             E.node[tm].ksrc = (uint8_t)(2u + fm);   /* the arpeggiator plays the track's notes, not Main's keys */
+        if (E.node[tm].type == T_PART && E.node[tm].grp)  /* a cable into a Part's assign or unison input (#681) */
+            E.grp[E.node[tm].grp].mode = tm;
     }
     if (p[6] & 1u) {                             /* the morph B set: one Q16 value per parameter of every module, kept as unit positions */
         for (i = 0; i < E.nmod; i++) {
@@ -1654,56 +1700,17 @@ int eng_load(const uint8_t *p, uint32_t len)
             E.node[mod].ranged[pin] |= 1u << par;
         }
     }
-    /* the instances: state, and the lines of the line-type modules, placed in the two line areas (line_place) */
-    nl = 0;
-    {
-        for (i = 0; i < E.nmod; i++) {
-            uint32_t b = line_bytes(E.node[i].type, E.node[i].par);
-            for (k = 0; b && k < E.node[i].ninst; k++) {
-                if (nl >= ENG_MAX_INST)
-                    return -7;
-                line_sz[nl++] = b;
-            }
-        }
-        if (line_place(line_sz, nl, line_reg, line_off))
-            return -4;
-        nl = 0;
-    }
+    /* the instances (their copies were taken with their records): state and effective values */
     for (i = 0; i < E.nmod; i++) {
         node_t *nd = &E.node[i];
-        int i0 = slots_take(inst_own, ENG_MAX_INST, nd->ninst);
-        if (i0 < 0)
-            return -7;
-        nd->inst0 = (uint8_t)i0;
-        E.ninst = (uint8_t)(E.ninst + nd->ninst);
         for (k = 0; k < nd->ninst; k++) {
             inst_t *it = &inst_pool[nd->inst0 + k];
-            uint8_t *z = (uint8_t *)it;
-            for (j = 0; j < sizeof *it; j++)
-                z[j] = 0;
             it->eff = par_take(DEFS[nd->type].npar);
             if (!it->eff) {
                 it->eff = par_spare;
                 return -8;
             }
             init_state(nd, it, i, k);
-            {
-                uint32_t b = line_bytes(nd->type, nd->par);   /* (its line: placed above, in the same order) */
-                void *ln = b ? line_at(line_reg[nl], line_off[nl], b) : 0;
-                nl += b ? 1u : 0u;
-                if (nd->type == T_REVERB)
-                    it->s.rev.buf = (int16_t *)ln;
-                else if (nd->type == T_DELAY) {
-                    it->s.dly.buf = (int16_t *)ln;
-                    it->s.dly.len = dly_samples(nd->par[DELAY_P_LENGTH]);
-                    it->s.dly.beat = ENG_SR / 2u;             /* 120 bpm until a clock has come in */
-                } else if (nd->type == T_STRING || nd->type == T_COMB)
-                    it->s.str.buf = (int16_t *)ln;
-                else if (nd->type == T_CHORUS)
-                    it->s.ch.buf = (int16_t *)ln;
-                else if (nd->type == T_GRAIN)
-                    it->s.gr.ln = (grain_line_t *)ln;
-            }
         }
     }
     /* output buffers: one per connected output port and instance, the dummy for the unconnected ports */
@@ -1774,6 +1781,40 @@ int eng_load(const uint8_t *p, uint32_t len)
             it->nsum = (uint8_t)(E.nsum - it->sum0);
         }
     }
+    /* the lines of the line-type modules, last: into what the arena has left and line_low (line_place) */
+    nl = 0;
+    for (i = 0; i < E.nmod; i++) {
+        uint32_t b = line_bytes(E.node[i].type, E.node[i].par);
+        for (k = 0; b && k < E.node[i].ninst; k++) {
+            if (nl >= ENG_MAX_LINES)
+                return -4;
+            line_sz[nl++] = b;
+        }
+    }
+    if (line_place(line_sz, nl, line_reg, line_off))
+        return -4;
+    nl = 0;
+    for (i = 0; i < E.nmod; i++) {
+        node_t *nd = &E.node[i];
+        uint32_t b = line_bytes(nd->type, nd->par);
+        for (k = 0; b && k < nd->ninst; k++) {
+            inst_t *it = &inst_pool[nd->inst0 + k];
+            void *ln = line_at(line_reg[nl], line_off[nl], b);
+            nl++;
+            if (nd->type == T_REVERB)
+                it->s.rev.buf = (int16_t *)ln;
+            else if (nd->type == T_DELAY) {
+                it->s.dly.buf = (int16_t *)ln;
+                it->s.dly.len = dly_samples(nd->par[DELAY_P_LENGTH]);
+                it->s.dly.beat = ENG_SR / 2u;             /* 120 bpm until a clock has come in */
+            } else if (nd->type == T_STRING || nd->type == T_COMB)
+                it->s.str.buf = (int16_t *)ln;
+            else if (nd->type == T_CHORUS)
+                it->s.ch.buf = (int16_t *)ln;
+            else if (nd->type == T_GRAIN)
+                it->s.gr.ln = (grain_line_t *)ln;
+        }
+    }
     for (i = 0; i < E.nmod; i++)
         st[i] = 0;
     E.norder = 0;
@@ -1835,13 +1876,21 @@ int eng_groups(void) { return E.loaded ? E.ngrp : 0; }
 
 static void mono_update(grp_t *g);
 
+/* a Voicing's assign or unison with a cable into its input (modules.ts voicingSetting, #681): moved by whole choices, one
+ * a unit (cv Q16, rounded to the nearest), within 0..top */
+static int32_t vsetting(int32_t base, int32_t cv, int32_t top)
+{
+    int32_t v = base + (int32_t)(((int64_t)cv + 32768) >> 16);
+    return v < 0 ? 0 : v > top ? top : v;
+}
+
 int eng_poly_get(uint32_t g, uint32_t field)
 {
     const grp_t *x;
     if (!E.loaded || g >= E.ngrp || field >= ENG_NPOLY)
         return -1;
     x = &E.grp[1u + g];
-    return field == ENG_POLY_PARTS ? x->parts : field == ENG_POLY_ASSIGN ? x->assign : field == ENG_POLY_LEGATO ? x->legato : field == ENG_POLY_PRIORITY ? x->priority : field == ENG_POLY_UNISON ? x->unison : field == ENG_POLY_STACK ? x->stack : !x->no_steal;
+    return field == ENG_POLY_PARTS ? x->parts : field == ENG_POLY_ASSIGN ? x->assign0 : field == ENG_POLY_LEGATO ? x->legato : field == ENG_POLY_PRIORITY ? x->priority : field == ENG_POLY_UNISON ? x->unison0 : field == ENG_POLY_STACK ? x->stack : !x->no_steal;
 }
 
 int eng_module_group(uint32_t module) { return E.loaded && module < E.nmod ? E.node[module].grp : 0; }
@@ -1853,8 +1902,10 @@ int eng_poly_set(uint32_t g, uint32_t field, uint32_t v)
         || v > (field == ENG_POLY_STACK ? ENG_MAX_PARTS : field == ENG_POLY_ASSIGN ? 3u : field == ENG_POLY_STEAL ? 1u : 2u))
         return 0;
     x = &E.grp[1u + g];
-    if (field == ENG_POLY_ASSIGN) x->assign = (uint8_t)v;
-    else if (field == ENG_POLY_LEGATO) x->legato = (uint8_t)v;
+    if (field == ENG_POLY_ASSIGN) {
+        x->assign0 = (uint8_t)v;
+        x->assign = (uint8_t)vsetting(v, x->cv[0], 3);   /* (with a cable: moved by what it carries) */
+    } else if (field == ENG_POLY_LEGATO) x->legato = (uint8_t)v;
     else if (field == ENG_POLY_PRIORITY) x->priority = (uint8_t)v;
     else if (field == ENG_POLY_STACK) {
         uint32_t i;
@@ -2328,6 +2379,76 @@ static void mono_part(const grp_t *g, pv_t *x, int k)
             x->off_stamp = ++E.stamp;
         x->gate = 0;
         x->on = 0;
+    }
+}
+
+/* a group's unison mode changes to u (engine.ts unisonSwitch). Into unison from off: the notes its parts play, oldest
+ * first, become the held keys and the parts take them as unison does. Out of it: the parts keep their notes until their
+ * keys are let go. Between on and share: the held keys again. One part: nothing changes. */
+static void __attribute__((noinline)) unison_switch(grp_t *g, uint32_t u)
+{
+    uint32_t was = g->unison, i, j, n = 0;
+    uint8_t ord[ENG_MAX_PARTS];
+    g->unison = (uint8_t)u;
+    if (g->parts == 1)
+        return;
+    if (!was) {
+        for (i = 0; i < g->parts; i++) {         /* the sounding parts by their notes' age (equal ages: part order) */
+            const pv_t *x = &E.pv[g->pv0 + i];
+            if (!x->on)
+                continue;
+            for (j = n; j && E.pv[g->pv0 + ord[j - 1u]].on_stamp > x->on_stamp; j--)
+                ord[j] = ord[j - 1u];
+            ord[j] = (uint8_t)i;
+            n++;
+        }
+        g->nheld = 0;
+        for (i = 0; i < n; i++) {
+            const pv_t *x = &E.pv[g->pv0 + ord[i]];
+            for (j = 0; j < g->nheld && g->held_note[j] != x->note; j++)
+                ;
+            if (j < g->nheld)
+                continue;
+            g->held_note[g->nheld] = x->note;
+            g->held_vel[g->nheld++] = x->vel;
+        }
+        mono_update(g);
+    } else if (!u)
+        g->nheld = 0;
+    else
+        mono_update(g);
+}
+
+/* the end of a block (engine.ts voicingCables, #681): what the cables into each group's Part's assign and unison inputs
+ * carry, their first sample (summed as the Part's input is), sets the group's assign and unison for the next block's keys */
+static void __attribute__((noinline)) group_cables(void)
+{
+    uint32_t k, c, v;
+    for (k = 1; k <= E.ngrp; k++) {
+        grp_t *g = &E.grp[k];
+        int32_t cv[2] = {0, 0}, u;
+        if (g->mode == 0xFFu)
+            continue;
+        for (c = 0; c < E.ncab; c++) {
+            uint32_t fm = E.from_m[c], fp = E.from_p[c], tp = E.to_p[c];
+            const node_t *f = &E.node[fm];
+            if (E.to_m[c] != g->mode || tp > PART_I_UNISON)
+                continue;
+            if (f->grp && f->grp != k) {
+                int32_t w = para_w(fm, fp);
+                for (v = 0; v < f->ninst; v++) {
+                    int32_t a = buf_of(fm, fp, v)[0];
+                    cv[tp] += w ? mul16(a, w) : a;
+                }
+            } else
+                cv[tp] += buf_of(fm, fp, 0)[0];
+        }
+        g->cv[0] = cv[0];
+        g->cv[1] = cv[1];
+        g->assign = (uint8_t)vsetting(g->assign0, cv[0], 3);
+        u = vsetting(g->unison0, cv[1], 2);
+        if (u != (int32_t)g->unison)
+            unison_switch(g, (uint32_t)u);
     }
 }
 
@@ -7984,6 +8105,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             E.pv[k].retrig = 0;
             E.pv[k].key_trig = 0;
         }
+        group_cables();                                 /* (#681: after the triggers, so a regroup's restart is the next block's) */
         for (k = 0; k < E.nout; k++) {
             const node_t *o = &E.node[E.outputs[k]];
             const inst_t *it = &inst_pool[o->inst0];

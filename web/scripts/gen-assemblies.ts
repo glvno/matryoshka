@@ -1160,7 +1160,13 @@ namePositions('Silver Box', { waveform: ['SAW', 'SQUARE'] });
 // square sub-oscillator an octave below, the 24 dB low pass (a ladder: its cutoff updates per block, which keeps six
 // cards cheap) swept by the one ADSR that also shapes the level. Once, as on the original: the noise, the LFO (into
 // the oscillators' fine tune by `lfo → pitch`, into the filter by `lfo → filter`, into the pulse width by `pwm`), the
-// high pass after the voices and the stereo chorus.
+// high pass after the voices and the stereo chorus. The ASSIGN MODE is one switch, `assign mode` (#681): a Selector whose
+// value moves the Voicing's unison and whose second position's gate moves its assign, by cables: POLY 1 (assign rotate:
+// the next voice in turn, releases overlap), POLY 2 (assign lowest: the lowest free voice, so a note cuts the release of
+// the one before), UNISON (all six voices on one key). In UNISON the voices' sum passes at HERA_UNISON (1 / sqrt 6: six
+// voices about as loud as one when their phases differ, under full scale when they all agree) so it does not clip.
+/** the level of Hera 6's six voices in UNISON (#681) */
+const HERA_UNISON = 1 / Math.sqrt(6);
 asm('Hera 6', 'Voices', (b) => {
   const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 3, depth: 1 });
   const vib = b.add('scale', 0, 1, { gain: 0, offset: 0 });
@@ -1176,6 +1182,13 @@ asm('Hera 6', 'Voices', (b) => {
   const hpf = b.add('filter', 5, 0, { cutoff: 20, res: 0 });
   const ch = b.add('chorus', 6, 0, { rate: 0.5, depth: 0.55, mix: 0.5 });
   const scope = b.add('scope', 7, 0, { time: 16 });
+  const assign = b.add('select', 1, 4, { count: 3, pos: 1, v1: 0, v2: 0, v3: 1 }); // POLY 1, POLY 2, UNISON
+  b.wire(assign, 'out', part, 'unison');
+  b.wire(assign, 'g2', part, 'assign');
+  const uniLevel = b.add('scale', 0, 4, { gain: HERA_UNISON - 1, offset: 1 }); // 1, or HERA_UNISON in UNISON
+  b.wire(assign, 'out', uniLevel, 'in');
+  const uniVca = b.add('vca', 5, 1, { gain: 1 });
+  b.wire(uniLevel, 'out', uniVca, 'cv');
   b.nest('voice', 2, 2, [osc, sub, flt, env, vca], {
     flaws: [{ detune: 0, drift: 0, bright: 1, env: 2, level: 100 }, { detune: 0, drift: 0, bright: -1, env: -3, level: 98 }, { detune: 0, drift: 0, bright: 0, env: 4, level: 100 }, { detune: 0, drift: 0, bright: 1, env: -2, level: 97 }, { detune: 0, drift: 0, bright: -2, env: 1, level: 99 }, { detune: 0, drift: 0, bright: 2, env: -4, level: 100 }],
   });
@@ -1195,7 +1208,8 @@ asm('Hera 6', 'Voices', (b) => {
   b.wire(vib, 'out', sub, 'p1');
   b.wire(pwm, 'out', osc, 'p2');
   b.wire(lflt, 'out', flt, 'cv');
-  b.wire(vca, 'out', hpf, 'in');
+  b.wire(vca, 'out', uniVca, 'in');
+  b.wire(uniVca, 'out', hpf, 'in');
   b.wire(hpf, 'hp', ch, 'in');
   b.wire(hpf, 'hp', scope, 'a');
   b.input('keys', part, 'keys');
@@ -1208,6 +1222,7 @@ asm('Hera 6', 'Voices', (b) => {
   b.output('r', ch, 'r');
   b.nestOutput('out', vca, 'out');
   b.param('voices', part, 'voices', { head: 'voice' });
+  b.param('assign mode', assign, 'pos');
   b.param('lfo rate', lfo, 'rate', { head: 'lfo' });
   b.param('lfo → pitch', vib, 'gain');
   b.param('pwm', pwm, 'gain');
@@ -1229,6 +1244,7 @@ asm('Hera 6', 'Voices', (b) => {
   b.param('chorus mix', ch, 'mix');
   b.param('out', scope, 'view');
 });
+namePositions('Hera 6', { 'assign mode': ['POLY 1', 'POLY 2', 'UNISON'] });
 
 // Cassia 1, a phase distortion polysynth after the Casio CZ-1 (waveforms,
 // line select, DCO / DCW / DCA envelopes, key follow, vibrato, ring and noise modulation, velocity and aftertouch). It was
@@ -1737,9 +1753,10 @@ asm('Expander S', 'Voices', (b) => {
 // much they modulate), each carrier's `index` how far its phase follows its modulator. The carriers' envelopes are
 // DX-style (rates are segment times, levels where each segment goes), the modulators' ADSRs (half the cost, so three
 // voices fit). Patch the stacks differently on the expanded card for the
-// other algorithms.
+// other algorithms. POLY / MONO is one switch, `poly/mono` (#681): a Selector whose MONO gate turns the Voicing's unison on
+// by a cable, with a unison stack of one voice: MONO plays one voice, the last key held.
 asm('Algo Four', 'Voices', (b) => {
-  const part = b.add('alloc', 0, 2, { voices: 3 });
+  const part = b.add('alloc', 0, 2, { voices: 3, stack: 1 });
   const op: number[] = [];
   const env: number[] = [];
   const vca: number[] = [];
@@ -1757,6 +1774,8 @@ asm('Algo Four', 'Voices', (b) => {
   });
   const mix = b.add('mixer', 5, 0, { l1: 0.7, l2: 0.7, l3: 0, l4: 0 });
   const scope = b.add('scope', 6, 0, { time: 16 });
+  const polyMono = b.add('select', 0, 3, { count: 2, pos: 1 }); // POLY, MONO
+  b.wire(polyMono, 'g2', part, 'unison');
   b.nest('voice', 1, 3, [...op, ...env, ...vca, mix], { flaws: [{ detune: 0, drift: 0, bright: 0, env: 0, level: 100 }, { detune: 0, drift: 0, bright: 0, env: 0, level: 100 }, { detune: 0, drift: 0, bright: 0, env: 0, level: 100 }] });
   for (let i = 0; i < 4; i++) {
     b.wire(part, 'pitch', op[i], 'pitch');
@@ -1774,6 +1793,7 @@ asm('Algo Four', 'Voices', (b) => {
   b.nestInput('gate', env[0], 'gate', [env[1], 'gate'], [env[2], 'gate'], [env[3], 'gate']);
   b.output('out', mix, 'out');
   b.param('voices', part, 'voices', { head: 'voice' });
+  b.param('poly/mono', polyMono, 'pos');
   b.param('feedback', op[3], 'fb');
   b.param('stack 1→2 mix', mix, 'l1');
   b.param('stack 3→4 mix', mix, 'l2');
@@ -1788,6 +1808,7 @@ asm('Algo Four', 'Voices', (b) => {
   }
   b.param('out', scope, 'view');
 });
+namePositions('Algo Four', { 'poly/mono': ['POLY', 'MONO'] });
 
 // Canvas, after Buchla's Music Easel (the 208 Stored Program Sound Source and the 218 keyboard), one voice, its card the
 // Easel's panel section by section (Allen Strange, "Programming and Metaprogramming in the Electro-Organism", the Easel's
@@ -2418,11 +2439,12 @@ asm('Briefcase 3', 'Voices', (b) => {
 // lever's LFO depth, LFO MOD (the depth at full wheel) and BEND SENS (the reach: VCO 1 octave, VCF 2 octaves, VCA about
 // one unit of gain), with the three switches 1 LFO, 2 OFF, 3 BEND for VCO, VCF and VCA (the part's own 2-semitone bend is
 // taken back out of the keys); PORTAMENTO (time; switch 1 off, 2 on: a slew per voice, each voice gliding from its own last
-// note); TRANSPOSE (1 normal, 2 one octave down); TUNING (+-50 cents: 0.04 octave). The KEY ASSIGNMENT MODE is two rows
-// of the Voice allocator: `assign` rotate is POLY I, lowest POLY II; `unison` on is UNISON I (all four voices on the
-// lowest key held); SHARE is UNISON II (four voices on one key, two each on two keys, one each on three or four).
+// note); TRANSPOSE (1 normal, 2 one octave down); TUNING (+-50 cents: 0.04 octave). The KEY ASSIGNMENT MODE is one
+// switch, `key assign` (#681): a Selector whose value moves the Voicing's unison and whose second position's gate moves
+// its assign, by cables: POLY I (assign rotate), POLY II (assign lowest), UNISON I (unison on: all four voices on the
+// lowest key held), UNISON II (unison share: four voices on one key, two each on two keys, one each on three or four).
 // HOLD (1 off, 2 on): a voice whose key is let go keeps its gate while its VCA envelope still sounds.
-// The combined four-position assignment control still uses separate assign/unison rows. EXT CLOCK, the VCF CONT, EXP and DAMPER pedals, the memories and VOLUME
+// EXT CLOCK, the VCF CONT, EXP and DAMPER pedals, the memories and VOLUME
 // (the patch's level) are hardware or storage. The LFO's rate reaches 55 Hz (the JP-4's 80 Hz).
 import { BEND_OCT } from '../src/modules';
 /** Io 4 and Vernon 100 have many small modules: lay them all out on the grid in the order they were added, eight a row */
@@ -2571,6 +2593,10 @@ asm('Io 4', 'Voices', (b) => {
   const allVca = b.add('vca', 5.5, 2.5, { gain: 1 });
   b.wire(vca, 'out', allVca, 'in');
   b.wire(leverGain, 'out', allVca, 'cv');
+  // the KEY ASSIGNMENT switch: its value into the Voicing's unison (0 0 1 2), its POLY II gate into assign (lowest)
+  const keyAssign = b.add('select', 0, 7, { count: 4, pos: 1, v1: 0, v2: 0, v3: 1, v4: 2 });
+  b.wire(keyAssign, 'out', part, 'unison');
+  b.wire(keyAssign, 'g2', part, 'assign');
   b.wire(allVca, 'out', hpf, 'in');
   b.wire(hpf, 'hp', ens, 'in');
   b.wire(hpf, 'hp', scope, 'a');
@@ -2619,8 +2645,7 @@ asm('Io 4', 'Voices', (b) => {
   b.param('switch', portaSel, 'pos');
   b.param('transpose', transSel, 'pos', { head: 'keys' });
   b.param('tuning', vcoMod, 'offset');
-  b.param('assign', part, 'assign');
-  b.param('unison', part, 'unison');
+  b.param('key assign', keyAssign, 'pos');
   b.param('hold', holdSel, 'pos');
   b.param('ensemble', ensSel, 'pos');
   b.param('out', scope, 'view');
@@ -2635,6 +2660,7 @@ asm('Io 4', 'Voices', (b) => {
     ['wave form', ['OFF', 'SAW', 'SQUARE', 'PULSE']], ['kybd follow', ['10%', '40%', '70%', '100%']],
     ['polarity', ['NORM', 'INV']], ['wave form', ['SINE', 'SQUARE', 'SAW', 'REV SAW']], ['norm/wide', ['NORM', 'WIDE']],
     ['vco', LEVER], ['vcf', LEVER], ['vca', LEVER], ['transpose', ['NORMAL', '-1 OCT']],
+    ['key assign', ['POLY I', 'POLY II', 'UNISON I', 'UNISON II']],
   ];
   const d = defs.find((x) => x.name === 'Io 4')!;
   let at = 0;

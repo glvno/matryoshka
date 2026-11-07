@@ -128,7 +128,7 @@ Main's K1..K4 are bound to the rows of the page in focus; they edit those rows a
 
 ### Effect memory
 
-The FM-1's RAM for the lines of its line-type modules: every Delay, reverb, chorus, string, comb and Granular. It is two areas, about 190 KB together, divided when a patch loads, and a patch fits only when every line does. A Delay's line holds its length, or two or four times that at a lower rate. The editor's budget shows how much a patch takes and which module takes what.
+The FM-1's RAM for the lines of its line-type modules: every Delay, reverb, chorus, string, comb and Granular. It is two areas, divided when a patch loads: what the patch's memory arena has left after its module copies, signal buffers and parameter values, and about 26 KB of other RAM. A patch fits only when every line does. A Delay's line holds its length, or two or four times that at a lower rate. The editor's budget shows how much a patch takes and which module takes what.
 
 ### Emulator view
 

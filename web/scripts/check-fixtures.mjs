@@ -48,7 +48,7 @@ export const droneStored = () => basicPoly('T110 DRONE STORED', [{ ...step(0, NO
 export const liveDrone = () => basicPoly('T111 LIVE DRONE', [step(4, NOTE.C4), step(12, NOTE.C4)]);
 
 /** T111 TWO DELAYS (D-375, D-376): a saw pluck into two Delays, LONG (1200 ms, its line 1200 ms) to the left and SHORT
- *  (300 ms, its line 300 ms) to the right, each one echo (no feedback), half dry. Effect memory: 129 of 190 KB */
+ *  (300 ms, its line 300 ms) to the right, each one echo (no feedback), half dry. Its lines: 129 KB of the FM-1's memory */
 export function twoDelays() {
   const p = basicPoly('T111 TWO DELAYS');
   Object.assign(p.modules.find((m) => m.id === 5).params, { a: 0.002, d: 0.12, s: 0, r: 0.08 });   // (a pluck)

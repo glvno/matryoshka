@@ -20,7 +20,7 @@
     },
     "targets": {
      "arp": {
-      "module": 57
+      "module": 58
      }
     }
    }
@@ -1611,6 +1611,41 @@
   },
   {
    "id": 56,
+   "type": "select",
+   "x": 1940,
+   "y": 3420,
+   "params": {
+    "pos": 1,
+    "count": 4,
+    "fade": 0,
+    "v1": 0,
+    "v2": 0,
+    "v3": 1,
+    "v4": 2,
+    "v5": 0,
+    "v6": 0,
+    "v7": 0,
+    "v8": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "pos"
+    ],
+    "p2": [
+     "count"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 57,
    "type": "output",
    "x": 2640,
    "y": 20,
@@ -1619,7 +1654,7 @@
    }
   },
   {
-   "id": 57,
+   "id": 58,
    "type": "arp",
    "x": 2640,
    "y": 3720,
@@ -2316,6 +2351,26 @@
   },
   {
    "from": {
+    "module": 56,
+    "port": "out"
+   },
+   "to": {
+    "module": 2,
+    "port": "unison"
+   }
+  },
+  {
+   "from": {
+    "module": 56,
+    "port": "g2"
+   },
+   "to": {
+    "module": 2,
+    "port": "assign"
+   }
+  },
+  {
+   "from": {
     "module": 55,
     "port": "out"
    },
@@ -2360,7 +2415,7 @@
     "port": "l"
    },
    "to": {
-    "module": 56,
+    "module": 57,
     "port": "l"
    }
   },
@@ -2370,7 +2425,7 @@
     "port": "r"
    },
    "to": {
-    "module": 56,
+    "module": 57,
     "port": "r"
    }
   },
@@ -2396,7 +2451,7 @@
   },
   {
    "from": {
-    "module": 57,
+    "module": 58,
     "port": "keys"
    },
    "to": {
@@ -2406,7 +2461,7 @@
   },
   {
    "from": {
-    "module": 57,
+    "module": 58,
     "port": "keys"
    },
    "to": {
@@ -2420,7 +2475,7 @@
     "port": "keys"
    },
    "to": {
-    "module": 57,
+    "module": 58,
     "port": "keys"
    }
   },
@@ -2430,7 +2485,7 @@
     "port": "out"
    },
    "to": {
-    "module": 57,
+    "module": 58,
     "port": "clk"
    }
   }
@@ -2687,7 +2742,8 @@
     52,
     53,
     54,
-    55
+    55,
+    56
    ],
    "inputs": [
     {
@@ -3016,14 +3072,15 @@
      "label": "tuning"
     },
     {
-     "module": 2,
-     "param": "assign",
-     "label": "assign"
-    },
-    {
-     "module": 2,
-     "param": "unison",
-     "label": "unison"
+     "module": 56,
+     "param": "pos",
+     "label": "key assign",
+     "names": [
+      "POLY I",
+      "POLY II",
+      "UNISON I",
+      "UNISON II"
+     ]
     },
     {
      "module": 7,

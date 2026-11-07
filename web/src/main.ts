@@ -67,7 +67,7 @@ import { inlineWordmarks } from './brand';
 import { clipText, parseClip, type Clip } from './clipboard';
 import { isGlobalTempo, patchTempo, readTempo, tempo, TEMPO_KEY, tempoNow } from './tempo';
 import { addableModules, assemblyShelves, openableByValue, openableGroups } from './catalog';
-import { binaryPage, deviceBudget, editorPage, encodePatch, kb, linesAdvice, overText, POLY_ROW, POLY_ROW_PARAMS, toQ16 } from './patchbin';
+import { binaryPage, deviceBudget, editorPage, encodePatch, kb, linesAdvice, overText, POLY_ROW, POLY_ROW_PARAMS, SANITY_CAPS, toQ16 } from './patchbin';
 import { UploadGate } from './upload-gate';
 import { ALLOC, deviceView } from './poly';
 import { AboutCard } from './about';
@@ -1214,23 +1214,33 @@ function showBudget(): void {
     line.addEventListener('click', () => editor.reveal(mod.id));
     return line;
   });
-  // the effect memory: the total, then each line-type module's share (a click selects it), largest first
+  // the memory (#649): the total, then what takes it, largest first: the module copies, signal buffers and parameter
+  // values, and each line-type module's lines (a click selects it)
   const lineLines = (): HTMLElement[] => {
     const lb = b.lines;
-    const top = budgetLine('Effect memory', lb.fits ? lb.used / lb.max : Math.max(1.01, lb.used / lb.max), `${kb(lb.used)} / ${kb(lb.max)} KB`,
-      lb.fits ? 'The lines of the Delays, reverbs, choruses, strings, combs and the Granular, in the FM-1\'s two line areas. A Delay takes its length; ping-pong: half per side' : linesAdvice(editor.patch));
-    return [top, ...[...lb.modules].sort((x, y) => y.bytes - x.bytes).map((u) => {
-      const mod = editor.patch.modules.find((x) => x.id === u.id);
-      const name = moduleName(u.type, DEFS[u.type].label) + (mod?.name ? ` ${mod.name}` : '') + (u.copies > 1 ? ` ×${u.copies}` : '');
-      const line = budgetLine(`\u2003${name}`, u.bytes / lb.max, `${kb(u.bytes)} KB`, 'Select it', false);
-      line.classList.add('pick');
-      if (mod) line.addEventListener('click', () => editor.reveal(mod.id));
+    const top = budgetLine('Memory', lb.fits ? lb.used / lb.max : Math.max(1.01, lb.used / lb.max), `${kb(lb.used)} / ${kb(lb.max)} KB`,
+      lb.fits ? 'The FM-1\'s memory for a patch: its module copies (one per voice in a poly assembly), signal buffers, parameter values, and the lines of the Delays, reverbs, choruses, strings, combs and the Granular. A Delay takes its length; ping-pong: half per side' : linesAdvice(editor.patch));
+    const parts: { name: string; bytes: number; hint: string; id?: number }[] = [
+      { name: `Module copies ×${lb.pool.instances}`, bytes: lb.copiesBytes, hint: 'One per module, one per voice in a poly assembly' },
+      { name: `Signal buffers ×${lb.pool.buffers}`, bytes: lb.buffersBytes, hint: 'One per connected output (per voice), one per input that sums cables' },
+      { name: `Parameter values ×${lb.pool.params}`, bytes: lb.paramsBytes, hint: 'Each module\'s values (twice with a morph B side), and each copy\'s' },
+      ...lb.modules.map((u) => {
+        const mod = editor.patch.modules.find((x) => x.id === u.id);
+        return { name: moduleName(u.type, DEFS[u.type].label) + (mod?.name ? ` ${mod.name}` : '') + (u.copies > 1 ? ` ×${u.copies}` : ''), bytes: u.bytes, hint: 'Select it', id: mod?.id };
+      }),
+    ];
+    return [top, ...parts.filter((x) => x.bytes > 0).sort((x, y) => y.bytes - x.bytes).map((u) => {
+      const line = budgetLine(`\u2003${u.name}`, u.bytes / lb.max, `${kb(u.bytes)} KB`, u.hint, false);
+      if (u.id !== undefined) {
+        line.classList.add('pick');
+        line.addEventListener('click', () => editor.reveal(u.id!));
+      }
       return line;
     })];
   };
   list.replaceChildren(
     head('Memory'),
-    ...b.items.filter((i) => i.used > 0).flatMap((i) => (i.key === 'lines' ? lineLines() : [budgetLine(i.label, i.used / i.max, `${i.used} / ${i.max}`, '', i.max > 1)])),
+    ...b.items.filter((i) => i.used > 0 && (!SANITY_CAPS.has(i.key) || i.used > i.max)).flatMap((i) => (i.key === 'memory' ? lineLines() : [budgetLine(i.label, i.used / i.max, `${i.used} / ${i.max}`, '', i.max > 1)])),
     head('CPU, estimated'),
     ...costly,
     // #271: the FM-1's second core takes the odd parts of each poly group; the figure above is core 0's
@@ -1877,7 +1887,7 @@ function emuLoad(): void {
   // a patch over the budget still loads here (the emulator has the firmware's tables, not its timing): a notice says so
   // and the view stays usable; past the tables themselves the firmware refuses it and the last patch stays
   const b = deviceBudget(editor.patch);
-  const over = b.over.map((i) => i.key === 'cpu' || i.key === 'browser' ? overText(i) : i.key === 'lines' ? linesAdvice(editor.patch) : `${i.used} ${i.label} (the FM-1 holds ${i.max})`).join(', ');
+  const over = b.over.map((i) => i.key === 'cpu' || i.key === 'browser' ? overText(i) : i.key === 'memory' ? linesAdvice(editor.patch) : `${i.used} ${i.label} (the FM-1 holds ${i.max})`).join(', ');
   let err = 0;
   try {
     err = ui.load(encodePatch(editor.patch, true), editor.patch.name.toUpperCase(), { fresh: emuFresh });

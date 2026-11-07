@@ -996,7 +996,10 @@ static void defaults_now(void)
  * rested 5 s, the transport is stopped and nothing was heard for 2 s (a flash write stops the sound for a moment, #651) */
 static void tempo_poll(void)
 {
-    uint32_t r = gt_poll(fm1_ms, gt_quiet(fm1_ms, eng_transport_running(), snd_heard_ms));
+    uint32_t heard = snd_heard_ms;                   /* (read before the clock: the audio interrupt only moves it forward,
+                                                      * to the clock it reads, so heard <= now; gt_quiet is signed too) */
+    uint32_t now = fm1_ms;
+    uint32_t r = gt_poll(now, gt_quiet(now, eng_transport_running(), heard));
     if (r & 1u)
         m1_tempo_now();
     if ((r & 2u) && flash_ok && !boot_safe)

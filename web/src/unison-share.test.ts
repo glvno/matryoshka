@@ -72,10 +72,15 @@ it('encodes shared unison without changing older unison or legato values', () =>
   expect(pdef.max).toBe(1); expect(pdef.top).toBe(2); expect(pdef.toggle).toBeUndefined();
 });
 
-it('Io 4 keeps its four voices and exposes the shared mode on its existing unison row', () => {
+it('Io 4 keeps its four voices and reaches the shared mode by its key assign switch (UNISON II, #681)', () => {
   const p = FM1_PRESETS['Io 4']();
-  const row = p.assemblies!.flatMap(a => a.params).find(r => r.param === 'unison' && p.modules.find(m => m.id === r.module)?.type === 'alloc')!;
-  const alloc = p.modules.find(m => m.id === row.module)!;
+  const row = p.assemblies!.flatMap(a => a.params).find(r => r.label === 'key assign')!;
+  expect(row.names).toEqual(['POLY I', 'POLY II', 'UNISON I', 'UNISON II']);
+  const sel = p.modules.find(m => m.id === row.module)!;
+  const into = p.cables.find(c => c.from.module === sel.id && c.from.port === 'out')!;
+  const alloc = p.modules.find(m => m.id === into.to.module)!;
+  expect(alloc.type).toBe('alloc'); expect(into.to.port).toBe('unison');
   expect(alloc.params.voices).toBe(4); expect(alloc.params.priority).toBe(1);
-  expect(DEFS.alloc.params.find(p => p.name === row.param)!.choices).toEqual(['off', 'on', 'share']);
+  expect(sel.params.v4).toBe(2); // UNISON II: share
+  expect(DEFS.alloc.params.find(p => p.name === 'unison')!.choices).toEqual(['off', 'on', 'share']);
 });

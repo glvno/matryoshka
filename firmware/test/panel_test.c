@@ -468,6 +468,7 @@ int main(void)
         ;
     poly_row_set(mod, 0, 4);
     check("Cassia accepts four voices in memory", eng_poly_get(0, 0) == 4);
+    arena_size = ENG_ARENA - arena_free();   /* (#649: the arena holds Cassia's eight voices; made as small as four take) */
     poly_row_set(mod, 0, 5);
     check("a rejected fifth voice restores the engine and patch", eng_poly_get(0, 0) == 4 && pv_bin[8] == 4);
     poly_row_set(mod, 0, 2);
@@ -483,6 +484,7 @@ int main(void)
     check("unison count row spans all hardware voices", poly_max(ENG_POLY_STACK) == ENG_MAX_PARTS);
     check("poly count edits preserve the unison count", poly_row_set(mod, ENG_POLY_PARTS, 4) == 0 && pv_bin[8] == 0x14u);
     check("rejected poly edit restores both counts", poly_row_set(mod, ENG_POLY_PARTS, 5) != 0 && pv_bin[8] == 0x14u && eng_poly_get(0, ENG_POLY_STACK) == 1 && eng_poly_get(0, ENG_POLY_PARTS) == 4);
+    arena_size = ENG_ARENA;
     check("unison count survives reloading", eng_load(pv_bin, pv_len) == 0 && eng_poly_get(0, ENG_POLY_STACK) == 1);
     check("unison can use one of four voices", poly_row_set(mod, ENG_POLY_UNISON, 1) == 0 && eng_poly_get(0, ENG_POLY_UNISON) == 1);
     group_on(&E.grp[1], 60, ENG_ONE); /* Cassia receives keys through its Arpeggiator. */
@@ -4747,6 +4749,9 @@ int main(void)
         check("  not written while the transport runs", !(r & 2u) && gt_due);
         check("  quiet: stopped and nothing heard for 2 s, not while a note or an echo may still sound (#651)",
               gt_quiet(t0 + 5000u, 0, t0 + 3000u) && !gt_quiet(t0 + 4999u, 0, t0 + 3000u) && !gt_quiet(t0 + 9000u, 1, t0));
+        /* the audio interrupt set heard a tick after the now the main loop read (PR #707's smoke): not quiet */
+        check("a sound heard a tick after the main loop's clock is not quiet (no flash write into it)",
+              !gt_quiet(t0 + 5000u, 0, t0 + 5001u) && !gt_quiet(t0 + 5000u, 0, t0 + 5000u) && !gt_quiet(0u, 0, 1u));
         tap(BTN_PLAY);
         r = gt_poll(t0 + GT_SAVE_MS - 2u, 1);
         check("  not written before 5 s have passed", !(r & 2u));

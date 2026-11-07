@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type ModuleInst, type Patch } from './patch';
-import { deviceBudget, encodedSize, encodePatch, FLAG_NOTES, FLAG_PATTERNS, formatOf, patternRecord, VERSION } from './patchbin';
-import { deviceView } from './poly';
+import { DEVICE, deviceBudget, encodedSize, encodePatch, FLAG_NOTES, FLAG_PATTERNS, formatOf, layout, patternRecord, VERSION } from './patchbin';
+import { deviceView, VOICING_CABLE_INPUTS } from './poly';
 import { FM1_PRESETS } from './presets';
 import { fixPatterns, fixSeq, isShortNote, noteWord, patternOf, shortWord, wordShort, type StepNote } from './track';
 
@@ -90,7 +90,11 @@ describe('patterns and songs: the binary (format 48)', () => {
       if (p.modules.some((m) => m.patterns?.length || m.seq)) continue;
       expect(patternRecord(p, deviceView(p, true).patch), name).toEqual([]);
       const b = encodePatch(p, true);
-      expect(b[1], name).toBeLessThan(VERSION);
+      // (or counted records, format 51, when its old format is over the FM-1's bytes: #667; or 51 for a key assign
+      // switch on a cable, #681)
+      const dev = deviceView(p, true).patch;
+      const cabled = dev.cables.some((c) => VOICING_CABLE_INPUTS.includes(c.to.port) && dev.modules.find((m) => m.id === c.to.module)?.type === 'part');
+      if (layout(p).base.bytes <= DEVICE.bytes && !cabled) expect(b[1], name).toBeLessThan(VERSION);
       expect(b[7] & (FLAG_PATTERNS >> 8), name).toBe(0);
     }
   });
