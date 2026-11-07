@@ -819,8 +819,8 @@ asm('Oracle V', 'Voices', (b) => {
   const nz = b.add('noise', 1, 0, { level: 0 });
   const part = b.add('alloc', 1, 2, { voices: 5 });
   const gl = b.add('glide', 2, 1, { time: 0.001 });
-  const oscB = b.add('osc', 2, 0, { wave: 2, level: 0.45, fine: 7 }, { p1: 'fine' });
-  const oscA = b.add('osc', 3, 0, { wave: 2, level: 0.55 }, { p1: 'fine' });
+  const oscB = b.add('osc', 2, 0, { wave: 2, level: 0.45, fine: 7, analog: 1 }, { p1: 'fine' });
+  const oscA = b.add('osc', 3, 0, { wave: 2, level: 0.55, analog: 1 }, { p1: 'fine' });
   const polyEnv = b.add('scale', 3, 1, { gain: 0, offset: 0 });
   const sync = b.add('scale', 3, 2, { gain: 0, offset: 0 });
   const fenv = b.add('adsr', 4, 1, { a: 0.01, d: 0.6, s: 0.35, r: 0.4 });
@@ -935,7 +935,7 @@ asm('Monolith D', 'Voices', (b) => {
   const range = (row: number, pos: number): number => b.add('select', 1, row, { count: 6, pos, v1: -4, v2: -2, v3: -1, v4: 0, v5: 1, v6: 2 });
   const wave = (row: number, pos: number): number => b.add('select', 2, row, { count: 6, pos, v1: -4, v2: row === 2 ? 1.333 : 0, v3: -2.667, v4: -1, v5: -1.556, v6: -1.889 });
   const osc = (row: number, p: Record<string, number>): number => {
-    const o = b.add('osc', 3, row, { wave: 4, pw: 0.95, level: 1, ...p });
+    const o = b.add('osc', 3, row, { wave: 4, pw: 0.95, level: 1, ...p, analog: 1 });
     pins(o, ['wave'], ['pw'], [0.25, 0.5]);
     return o;
   };
@@ -1099,7 +1099,7 @@ asm('Silver Box', 'Voices', (b) => {
   const glideUnit = (t: number): number => Math.log(t / 0.001) / Math.log(5000);
   const part = b.add('alloc', 0, 1, { voices: 1, legato: 0 });
   const gl = b.add('glide', 1, 1, { time: 0.001 }, { p1: 'time', att: [0.45, 1] });
-  const osc = b.add('osc', 1, 0, { wave: 2, level: 0.8, coarse: -12 }, { p1: 'wave' });
+  const osc = b.add('osc', 1, 0, { wave: 2, level: 0.8, coarse: -12, analog: 1 }, { p1: 'wave' });
   const accOn = b.add('logic', 0, 2, { thresh: 0.9 });
   const meg = b.add('adsr', 2, 1, { a: 0.001, d: 0.3, s: 0, r: 0.05 }, { p1: 'd', att: [-1, 1] });
   const megAcc = b.add('adsr', 2, 2, { a: 0.001, d: 0.2, s: 0, r: 0.05 });
@@ -1491,9 +1491,9 @@ asm('Sallen 20', 'Voices', (b) => {
   // 0.1), ring modulator
   const w1 = b.add('select', 2, 0, { count: 4, pos: 2, v1: 0, v2: 0.333, v3: 0.667, v4: 0.667 });
   const w2 = b.add('select', 2, 1, { count: 4, pos: 2, v1: 0, v2: 0.333, v3: 0.333, v4: 0.333 });
-  const o1 = b.add('osc', 3, 0, { wave: 1, level: 1, pw: 0.5 });
+  const o1 = b.add('osc', 3, 0, { wave: 1, level: 1, pw: 0.5, analog: 1 });
   pins(o1, ['wave'], [], [1, 1]);
-  const o2 = b.add('osc', 3, 1, { wave: 2, level: 1, pw: 0.5, coarse: 7 });
+  const o2 = b.add('osc', 3, 1, { wave: 2, level: 1, pw: 0.5, coarse: 7, analog: 1 });
   pins(o2, ['wave'], ['pw'], [1, -0.444]);
   const nz = b.add('noise', 3, 2, { level: 1, color: 0 });
   const v1 = b.add('xfade', 4, 0, { mix: 0 });
@@ -1679,8 +1679,8 @@ asm('Expander S', 'Voices', (b) => {
   const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 5, depth: 1 });
   const vib = b.add('scale', 0, 1, { gain: 0, offset: 0 });
   const part = b.add('alloc', 0, 2, { voices: 4 });
-  const o1 = b.add('osc', 1, 0, { wave: 2, level: 0.5 }, { p1: 'fine' });
-  const o2 = b.add('osc', 1, 1, { wave: 3, level: 0.4, pw: 0.4, fine: 5 }, { p1: 'fine' });
+  const o1 = b.add('osc', 1, 0, { wave: 2, level: 0.5, analog: 1 }, { p1: 'fine' });
+  const o2 = b.add('osc', 1, 1, { wave: 3, level: 0.4, pw: 0.4, fine: 5, analog: 1 }, { p1: 'fine' });
   const flt = b.add('filter', 2, 0, { cutoff: 1100, res: 0.35 }, { p1: 'cutoff' });
   const amt = b.add('scale', 2, 2, { gain: 0.25, offset: 0 });
   const mode = b.add('xfade', 3, 0, { mix: 0 });
@@ -1841,9 +1841,9 @@ namePositions('Algo Four', { 'poly/mono': ['POLY', 'MONO'] });
 //   tune`, `timbre wave` (the timbre switch: triangle, saw or square), `timbre mix` (the timbre pot: sine to that
 //   wave), `timbre` (the timbre offset: the wave folder's drive). One phase for both waves: two Oscillators on one pitch.
 // - Dual lopass gate: per gate `mode` (1 lopass, 2 combination, 3 vca), `level` and its processing; gate 2's `source` (1
-//   preamp: needs audio input, silent here; 2 mod osc; 3 gate 1). Each gate: a slew (the vactrol) into a 12 dB low pass (a
-//   Ladder's) whose cutoff follows the level (20 Hz closed, 15 kHz open) and a VCA: lopass leaves the VCA open, vca the
-//   filter.
+//   preamp: needs audio input, silent here; 2 mod osc; 3 gate 1). Each gate: a slew (the vactrol: opening in 10 ms,
+//   closing in 350 ms, #669) into a 12 dB low pass (a Ladder's) whose cutoff follows the level (20 Hz closed, 15 kHz open)
+//   and a VCA: lopass leaves the VCA open, vca the filter.
 // - Output: `chan a` (gate 1), `chan b` (gate 2, 180 degrees out of phase), `reverb` (our reverb, mono).
 // Not here (the FM-1): the patch field and the inverter (Canvas XL's), the preamp / envelope detector (audio input); the
 // trim pots. The switches are numbered: their names would cost about 280 of the 65 bytes left (#358's names are Canvas XL's).
@@ -1897,7 +1897,7 @@ asm('Canvas', 'Voices', (b) => {
   // ---- modulation oscillator, and the modulation switch (gate 3: a.m., which moves the a.m. selector to its index)
   const mKbd = b.add('select', 11, 0, { count: 2, pos: 1 });
   const mRange = b.add('select', 11, 1, { count: 3, pos: 2, v1: 0, v2: 0, v3: -5 });
-  const mosc = b.add('osc', 12, 0, { wave: 1, level: 1, coarse: 7 });
+  const mosc = b.add('osc', 12, 0, { wave: 1, level: 1, coarse: 7, analog: 1 });
   const idx = b.add('scale', 12, 1, { gain: 1, offset: 0 }, { p1: 'gain', att: [0.25, 1] });
   const modSel = b.add('select', 13, 0, { count: 3, pos: 2 });
   const amDepth = b.add('math', 13, 1, { ka: 1, kb: 1, off: 0 });
@@ -1913,7 +1913,7 @@ asm('Canvas', 'Voices', (b) => {
   const pPol = b.add('select', 14, 1, { count: 2, pos: 2, v1: -1, v2: 1 });
   const pProc = b.add('vca', 14, 2, { gain: 0 });
   const posc = b.add('osc', 15, 0, { wave: 0, level: 1, pm: 1.2 });
-  const tw = b.add('osc', 15, 1, { wave: 2, level: 1, pm: 1.2 });
+  const tw = b.add('osc', 15, 1, { wave: 2, level: 1, pm: 1.2, analog: 1 });
   const tMix = b.add('xfade', 16, 0, { mix: 0 });
   const fold = b.add('shape', 16, 1, { drive: 2.2, mode: 2, level: 1, stages: 2, sym: 0.1 }, { p1: 'drive' });
   const tProc = b.add('scale', 16, 2, { gain: 0, offset: 0 });
@@ -1940,7 +1940,7 @@ asm('Canvas', 'Voices', (b) => {
   // pass (20 Hz x 2^(9.6 x level)) and a VCA; the mode switch opens one or the other (lopass: the VCA open; vca: the filter)
   const gate = (col: number, ...inputs: [number, string][]) => {
     const lvl = b.add('scale', col, 2, { gain: 0.75, offset: 0 });
-    const vac = b.add('glide', col, 3, { time: 0.04, curve: 0 });
+    const vac = b.add('glide', col, 3, { time: 0.01, curve: 0, fall: 0.35 });
     const cut = b.add('scale', col + 1, 3, { gain: 2.4, offset: 0 });
     const fSel = b.add('select', col + 1, 2, { count: 3, pos: 2, v3: 4 });
     const aSel = b.add('math', col + 2, 2, { ka: 1, kb: 1, off: 0 });
@@ -2059,7 +2059,7 @@ asm('Wanderer', 'Voices', (b) => {
   const fm1 = b.add('math', 2, 3, { ka: 0, kb: 0, off: 0 });
   const pws1 = b.add('select', 2, 4, { count: 2, pos: 1 });
   const pwm1 = b.add('scale', 2, 5, { gain: 0, offset: 0 });
-  const o1 = b.add('osc', 3, 0, { wave: 2, level: 1, pw: 0.5 }, { p1: 'pw' });
+  const o1 = b.add('osc', 3, 0, { wave: 2, level: 1, pw: 0.5, analog: 1 }, { p1: 'pw' });
   // ---- VCO 2
   const fa2 = b.add('select', 4, 1, { count: 2, pos: 1 });
   const fb2 = b.add('select', 4, 2, { count: 2, pos: 1 });
@@ -2067,7 +2067,7 @@ asm('Wanderer', 'Voices', (b) => {
   const pws2 = b.add('select', 4, 4, { count: 2, pos: 1 });
   const pwm2 = b.add('scale', 4, 5, { gain: 0, offset: 0 });
   const sync = b.add('select', 3, 2, { count: 2, pos: 1 });
-  const o2 = b.add('osc', 5, 0, { wave: 3, level: 1, pw: 0.35, coarse: 12, fine: 4 }, { p1: 'pw' });
+  const o2 = b.add('osc', 5, 0, { wave: 3, level: 1, pw: 0.35, coarse: 12, fine: 4, analog: 1 }, { p1: 'pw' });
   // ---- sample and hold
   const nz = b.add('noise', 3, 3, { level: 1, color: 0 });
   const sh2 = b.add('select', 3, 5, { count: 2, pos: 1 });
@@ -2302,8 +2302,10 @@ asm('Briefcase 3', 'Voices', (b) => {
   const part = b.add('alloc', 0, 3, { voices: 1 });
   // ---- the oscillators: each output its own Oscillator on its column's pitch (one phase: the same pitch, the same start)
   const o1s = b.add('osc', 1, 0, { wave: 0, level: 0.6 });
-  const o1r = b.add('osc', 1, 1, { wave: 2, level: 0.5 });
-  const o2s = b.add('osc', 1, 2, { wave: 3, level: 0.35, pw: 0.5 });
+  // (the analog shape on the two that sound as made: 32 bytes an oscillator, and the Arpeggiator needs the rest, #673;
+  // Briefcase 3 XL has it on all five)
+  const o1r = b.add('osc', 1, 1, { wave: 2, level: 0.5, analog: 1 });
+  const o2s = b.add('osc', 1, 2, { wave: 3, level: 0.35, pw: 0.5, analog: 1 });
   const o2t = b.add('osc', 1, 3, { wave: 1, level: 0 });
   const o3s = b.add('osc', 1, 4, { wave: 3, level: 0, pw: 0.5, coarse: -48 });
   const o3t = b.add('osc', 1, 5, { wave: 1, level: 1, coarse: -48 });
@@ -2540,7 +2542,7 @@ asm('Io 4', 'Voices', (b) => {
   b.wire(leverVcf, 'out', fsum, 'in');
   // ---- a voice
   const glide = b.add('glide', 2, 0, { time: 0.15, curve: 0 }, { p1: 'time' });
-  const osc = b.add('osc', 3, 0, { wave: 2, level: 0.6, pw: 0.5 }, { p1: 'wave', p2: 'pw', att: [1, -1] });
+  const osc = b.add('osc', 3, 0, { wave: 2, level: 0.6, pw: 0.5, analog: 1 }, { p1: 'wave', p2: 'pw', att: [1, -1] });
   const sub = b.add('osc', 3, 0.5, { wave: 3, level: 0, coarse: -12 }, { p1: 'level', att: [0.5, 1] });
   const waveVca = b.add('vca', 3.5, 0, { gain: 1 });
   const flt = b.add('ladder', 4, 0, { cutoff: 1800, res: 0.25, cvamt: 2, track: 0 }, { p2: 'cutoff', att: [1, 1 / Math.log2(800)] }); // p2: 1 octave a unit
@@ -2747,7 +2749,7 @@ asm('Vernon 100', 'Voices', (b) => {
     return { knob, outs: [l, r] };
   };
   // ---- oscillator 1: its colour (wave on p1: x 3; the narrow pulse's width on p2; the falling ramp the ramp times -1)
-  const o1 = b.add('osc', 3, 0, { wave: 0, level: 1, pw: 0.5 }, { p1: 'wave', p2: 'pw', att: [1, -0.4 / 0.9] });
+  const o1 = b.add('osc', 3, 0, { wave: 0, level: 1, pw: 0.5, analog: 1 }, { p1: 'wave', p2: 'pw', att: [1, -0.4 / 0.9] });
   const color1 = b.add('select', 3, 0.5, { count: 5, pos: 3, v1: 2 / 3, v2: 2 / 3, v3: 1 / 3, v4: 1, v5: 1 });
   b.wire(color1, 'out', o1, 'p1');
   b.wire(color1, 'g5', o1, 'p2');
