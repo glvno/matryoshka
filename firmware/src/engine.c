@@ -651,9 +651,9 @@ static int32_t tempo_own;             /* the running patch's own tempo (Q16) whi
 static void tempo_apply(void);
 static volatile uint16_t panel_buttons; /* the patch buttons held / switched on (eng_buttons) */
 
-/* the arena's module copies (eng_arena): inst_pool[0] is the spare every node points at until its own copies are taken
- * (eff = par_spare, eng_get_param after a failed load); a load takes the rest in module order (arena_inst) */
-static inst_t *inst_pool;
+/* the arena's module copies (inst_pool, at the start of eng_arena below): inst_pool[0] is the spare every node points at
+ * until its own copies are taken (eff = par_spare, eng_get_param after a failed load); a load takes the rest in module
+ * order (arena_inst) */
 /* the part an instance renders (0 for a module that runs once), its group (E.grp[0], the shared keyboard, for a module that
  * runs once) and the part it plays: from the instance itself, so two cores can render two parts at once (#271) */
 #define IT_V(nd, it) ((uint32_t)((it) - &inst_pool[(nd)->inst0]))
@@ -689,7 +689,8 @@ typedef char eng_inst_bytes_check[sizeof(inst_t) == ENG_INST_BYTES ? 1 : -1];   
 #define LINE_LOW (LINE_BYTES(2u * RV_LEN) + LINE_BYTES(2u * CH_LEN) + 8192u)                                        /* 26,196 B */
 #define ENG_ARENA (LINE_ARENA + 255u * ENG_BUF_BYTES + 129u * ENG_INST_BYTES + 1536u * 4u)                       /* 338,740 B */
 #define ENG_ARENA_HOST (ENG_ARENA + (ENG_MAX_INST + 1u) * (sizeof(inst_t) > ENG_INST_BYTES ? (uint32_t)sizeof(inst_t) - ENG_INST_BYTES : 0u))
-static uint32_t eng_arena[ENG_ARENA_HOST / 4u] ENG_POOL;
+static uint32_t eng_arena[ENG_ARENA_HOST / 4u] ENG_POOL __attribute__((aligned(8)));
+#define inst_pool ((inst_t *)eng_arena)           /* (the copies start the arena: a fixed address, as the old array's) */
 static uint32_t ar_lo, ar_hi, ar_ninst;      /* bytes taken from the bottom and from the top; copies taken (the spare too) */
 static uint32_t line_low[LINE_LOW / 4u] ENG_LOWRAM;
 static uint32_t arena_size = ENG_ARENA;     /* (a test may make it smaller, to reach a patch that does not fit) */
@@ -1211,7 +1212,6 @@ int eng_load(const uint8_t *p, uint32_t len)
     groups_reset();
     ar_lo = ar_hi = ar_ninst = 0;                /* the arena: the old patch's memory is free again */
     par_used = 0;
-    inst_pool = (inst_t *)eng_arena;
     (void)arena_inst(1u);                        /* the spare (inst_pool[0]): every node's until it has its own */
     inst_pool[0].eff = par_spare;
     for (i = 0; i < ENG_MAX_MODULES; i++) {
