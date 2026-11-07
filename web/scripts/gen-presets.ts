@@ -15,7 +15,7 @@ import { ACCENT_VEL, fixNotes, patternNotes, type StepNote } from '../src/track'
 import { FACTORY } from '../src/assemblies';
 import { allModules, fixAssemblies, insertAssembly, makeAssembly, removeMember, type AssemblyInst } from '../src/assembly';
 import { deviceBudget } from '../src/patchbin';
-import { applyLevels, around, headroom, level, loudness, mod, peakOf, players, plugIn, plugOut, row, setCardLevels, wire, type Inst, type LevelPlan } from './factory-build';
+import { applyLevels, around, headroom, level, loudness, mod, peakOf, players, plugIn, plugOut, row, setCardLevels, voiceTops, wire, type Inst, type LevelPlan } from './factory-build';
 import { cardSlug } from '../src/preset-cards';
 import { peakOfPlay, plays } from '../src/headroom';
 
@@ -695,8 +695,8 @@ const capped = (p: Patch): Patch => {
   }
   return p;
 };
-const made = presets.map((f) => capped(leveled(reconciled(silverDemo(players(validatePatch(structuredClone(f()), DEFS)))))));
-const later = after.map((f) => capped(leveled(reconciled(validatePatch(structuredClone(f()), DEFS)))));
+const made = presets.map((f) => voiceTops(capped(leveled(reconciled(silverDemo(players(validatePatch(structuredClone(f()), DEFS))))))));
+const later = after.map((f) => voiceTops(capped(leveled(reconciled(validatePatch(structuredClone(f()), DEFS))))));
 // the drum kit engine has no factory patch: it is measured in a stand-in (its Drum map's rows on a pattern, as the 808
 // Kit's) at an Output of 0.5, so its level rows carry its whole level
 {

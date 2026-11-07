@@ -4315,21 +4315,34 @@ asm('auto pan', 'Effects', (b) => {
 
 // an envelope filter (auto-wah): the Follower's envelope of the input opens a resonant low pass, so playing harder opens it.
 // `sensitivity` is the Follower's input level (how far a given level sweeps), `range` the octaves the envelope can add,
-// `level` the output's (an Attenuverter: the resonance's peak is loud).
+// `level` the output's (an Attenuverter: the resonance's peak is loud). `mode` (a Selector) picks the Multimode filter's
+// output: 24 or 12 dB low pass, band pass (the classic wah) or high pass, crossfaded over 5 ms against clicks. `sweep` (a
+// Selector of the envelope and the envelope turned over by an Attenuverter) moves the cutoff up or down as you play
+// harder: a down sweep starts at the cutoff and closes from there.
 asm('envelope filter', 'Effects', (b) => {
   const fol = b.add('esp', 0, 1, { level: 2 });
+  const inv = b.add('scale', 1, 1, { gain: -1, offset: 0 });
+  const dir = b.add('select', 2, 1, { count: 2, pos: 1, fade: 0 });
   const flt = b.add('filter', 0, 0, { cutoff: 250, res: 0.7, cvamt: 3 });
-  const lvl = b.add('scale', 1, 0, { gain: 0.6, offset: 0 });
-  b.wire(fol, 'env', flt, 'cv');
-  b.wire(flt, 'lp12', lvl, 'in');
+  const mode = b.add('select', 1, 0, { count: 4, pos: 2, fade: 5 });
+  const lvl = b.add('scale', 2, 0, { gain: 0.6, offset: 0 });
+  b.wire(fol, 'env', dir, 'in1');
+  b.wire(fol, 'env', inv, 'in');
+  b.wire(inv, 'out', dir, 'in2');
+  b.wire(dir, 'out', flt, 'cv');
+  ['lp24', 'lp12', 'bp', 'hp'].forEach((out, k) => b.wire(flt, out, mode, `in${k + 1}`));
+  b.wire(mode, 'out', lvl, 'in');
   b.input('in', flt, 'in', [fol, 'in']);
   b.output('out', lvl, 'out');
   b.param('sensitivity', fol, 'level');
   b.param('cutoff', flt, 'cutoff');
   b.param('range', flt, 'cvamt');
   b.param('res', flt, 'res');
+  b.param('mode', mode, 'pos');
+  b.param('sweep', dir, 'pos');
   b.param('level', lvl, 'gain');
 });
+namePositions('envelope filter', { mode: ['LP24', 'LP12', 'BP', 'HP'], sweep: ['UP', 'DOWN'] });
 
 // a ducking delay: the Compressor, keyed by the dry signal, turns the echoes down while you play; they come up in the
 // gaps. `duck` is its ratio (1: no ducking), `threshold` the level that starts it, `release` how fast the echoes come back.
