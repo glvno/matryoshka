@@ -66,10 +66,12 @@ static void gt_set(uint32_t patch, uint32_t bpm, uint32_t now)
 }
 
 /* gt_poll's `quiet` (#651): the transport is stopped and the patch has not been heard for GT_REST_MS (heard: audio.c
- * snd_heard_ms), so the write's moment without sound cuts no note and no echo (a Delay's line holds at most 1.9 s) */
+ * snd_heard_ms), so the write's moment without sound cuts no note and no echo (a Delay's line holds at most 1.9 s).
+ * Signed: the audio interrupt may set `heard` to a tick after the `now` the caller read, which is not quiet (unsigned,
+ * now - heard wrapped to 4 billion and the write cut an echo, PR #707's smoke) */
 static int gt_quiet(uint32_t now, int running, uint32_t heard)
 {
-    return !running && now - heard >= GT_REST_MS;
+    return !running && (int32_t)(now - heard) >= (int32_t)GT_REST_MS;
 }
 
 /* each turn of the main loop: bit 0 = the engine moved the global tempo (a knob, PLAY held + PRESET, the editor's PARAM,
