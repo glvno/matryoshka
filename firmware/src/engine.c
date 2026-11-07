@@ -906,8 +906,28 @@ static inline uint32_t eng_mask_bytes(const def_t *d, uint32_t ver) { return eng
 static inline uint32_t eng_rdmask(const uint8_t *p, uint32_t bytes) { return bytes == 4u ? (uint32_t)rd32(p) : ((uint32_t)p[0] | (uint32_t)p[1] << 8); }
 /* bytes a module record has beyond its type byte and parameters: the attenuverters and the matrix, then its data */
 static inline uint32_t eng_record_extra(const def_t *d, uint32_t ver) { return (d->cvbase >= 0 ? 8u + 6u * eng_mask_bytes(d, ver) : 0u) + d->ndata; }
-/* a module record's size in a binary of format `ver`, its type byte included */
-static inline uint32_t eng_record_size(const def_t *d, uint32_t ver) { return 1u + 4u * eng_npar(d, ver) + eng_record_extra(d, ver); }
+/* bytes before a record's parameters: its type byte, and since ENG_COUNTED (#667) its parameter count */
+static inline uint32_t eng_rec_head(uint32_t ver) { return ver >= ENG_COUNTED ? 2u : 1u; }
+/* the parameters the record at p[at] holds (its type byte valid; since ENG_COUNTED p[at + 1] must be in the binary): its
+ * count since ENG_COUNTED (the ones after it are at their defaults, patchbin.ts storedParams), else its format's
+ * (eng_npar). A count past its format's is malformed: eng_rec_ok */
+static inline uint32_t eng_rec_npar(const uint8_t *p, uint32_t at)
+{
+    return p[1] >= ENG_COUNTED ? p[at + 1u] : eng_npar(&DEFS[p[at] & 0x7Fu], p[1]);
+}
+/* the record at p[at] (at < len) is whole enough to size: its type is known and, since ENG_COUNTED, its count is in the
+ * binary and at most its format's parameters */
+static inline int eng_rec_ok(const uint8_t *p, uint32_t len, uint32_t at)
+{
+    return at < len && (p[at] & 0x7Fu) < N_TYPES
+        && (p[1] < ENG_COUNTED || (at + 1u < len && p[at + 1u] <= eng_npar(&DEFS[p[at] & 0x7Fu], p[1])));
+}
+/* the size of the record at p[at] (eng_rec_ok), its type byte included */
+static inline uint32_t eng_rec_size(const uint8_t *p, uint32_t at)
+{
+    const def_t *d = &DEFS[p[at] & 0x7Fu];
+    return eng_rec_head(p[1]) + 4u * eng_rec_npar(p, at) + eng_record_extra(d, p[1]);
+}
 
 /* the type of module `mod` in a patch binary, -1 if the binary is malformed (a route's mask width depends on it) */
 static int eng_type_at(const uint8_t *p, uint32_t len, uint32_t mod)
@@ -916,11 +936,11 @@ static int eng_type_at(const uint8_t *p, uint32_t len, uint32_t mod)
     if (!at || mod >= p[2])
         return -1;
     for (i = 0; i <= mod; i++) {
-        if (at >= len || (p[at] & 0x7Fu) >= N_TYPES)
+        if (!eng_rec_ok(p, len, at))
             return -1;
         if (i == mod)
             return p[at] & 0x7Fu;
-        at += eng_record_size(&DEFS[p[at] & 0x7Fu], p[1]);
+        at += eng_rec_size(p, at);
     }
     return -1;
 }
@@ -947,19 +967,17 @@ static uint32_t eng_records_end(const uint8_t *p, uint32_t len, uint32_t *npar)
     if (!at)
         return 0;
     for (i = 0; i < p[2]; i++) {
-        const def_t *d;
-        if (at >= len || (p[at] & 0x7Fu) >= N_TYPES)
+        if (!eng_rec_ok(p, len, at))
             return 0;
-        d = &DEFS[p[at] & 0x7Fu];
-        at += eng_record_size(d, p[1]);
-        n += eng_npar(d, p[1]);
+        n += eng_rec_npar(p, at);
+        at += eng_rec_size(p, at);
     }
     if (npar)
         *npar = n;
     return at <= len ? at : 0;
 }
 /* where the sections after the cables start (the fixed links, flag bit 2, first): past the records, the cables and the
- * morph B set (flag bit 0: one value per parameter the records hold); 0 if malformed */
+ * morph B set (flag bit 0: one value per parameter the records hold, eng_rec_npar); 0 if malformed */
 static uint32_t eng_cables_end(const uint8_t *p, uint32_t len)
 {
     uint32_t npar, at = eng_records_end(p, len, &npar);
@@ -971,10 +989,12 @@ static uint32_t eng_cables_end(const uint8_t *p, uint32_t len)
     return at <= len ? at : 0;
 }
 
-/* Rewrite a binary of an older format in place into today's (ENG_PATCH_VERSION): every record and the morph B set get
- * the parameters added since, at their defaults (the encoder writes a B side equal to the value), everything else stays.
- * It plays the same: eng_load gives the missing parameters those defaults too. *len grows; cap: the buffer's size. 0 =
- * done (or already today's format), -1 malformed or it would not fit (the binary is left as it was). */
+/* Rewrite a binary of an older format in place into a counted one (ENG_COUNTED, engine.h eng_upgrade): every record gets
+ * its count, the parameters at the end of a record at their defaults on both morph sides leave it and the morph B set
+ * (patchbin.ts storedParams), everything else stays. It plays the same: eng_load gives the missing parameters those
+ * defaults too. *len changes; cap: the buffer's size. Only a binary that would fit with the count bytes and every
+ * parameter it holds now is rewritten. 0 = done (or already counted), -1 malformed or it would not fit (the binary is
+ * left as it was). */
 static void eng_put32(uint8_t *p, int32_t v)
 {
     p[0] = (uint8_t)v;
@@ -988,56 +1008,110 @@ static void eng_open_gap(uint8_t *p, uint32_t len, uint32_t at, uint32_t n)   /*
     for (k = len; k > at; k--)
         p[k - 1u + n] = p[k - 1u];
 }
+static void eng_close_gap(uint8_t *p, uint32_t len, uint32_t at, uint32_t n)  /* bytes at + n..len move down by n */
+{
+    uint32_t k;
+    for (k = at; k + n < len; k++)
+        p[k] = p[k + n];
+}
 int eng_upgrade(uint8_t *p, uint32_t *len, uint32_t cap)
 {
-    uint32_t ver, at, i, j, grow = 0, n0, morph, ncab;
-    if (*len < 8u || p[0] != 0xA1u || p[1] >= ENG_PATCH_VERSION)
+    uint32_t ver, at, b, i, n0, morph, ncab;
+    uint8_t keep[ENG_MAX_MODULES];               /* the parameters each record keeps */
+    if (*len < 8u || p[0] != 0xA1u || p[1] >= ENG_COUNTED)
         return *len >= 8u && p[0] == 0xA1u ? 0 : -1;
     ver = p[1];
     morph = p[6] & 1u;
     ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
-    if (!(at = eng_records_end(p, *len, 0)) || at + 4u * ncab > *len)
+    if (p[2] > ENG_MAX_MODULES || !(b = eng_records_end(p, *len, 0)) || b + 4u * ncab > *len)
         return -1;
+    b += 4u * ncab;                              /* the morph B set (in the old layout) */
     at = eng_records_at(p, *len);
-    for (i = 0; i < p[2]; i++) {                 /* what it grows by */
+    for (i = 0; i < p[2]; i++) {                 /* what each record keeps: up to its last value off its default */
         const def_t *d = &DEFS[p[at] & 0x7Fu];
-        grow += 4u * (d->npar - eng_npar(d, ver)) * (morph ? 2u : 1u);
+        uint32_t n;
         if (eng_mask_bytes(d, ver) != eng_mask_bytes(d, ENG_PATCH_VERSION))
             return -1;                           /* (a type whose masks widened: none so far) */
-        at += eng_record_size(d, ver);
+        n = n0 = eng_npar(d, ver);
+        if (morph && b + 4u * n0 > *len)
+            return -1;
+        while (n && rd32(p + at + 1u + 4u * (n - 1u)) == d->pdef[n - 1u] && (!morph || rd32(p + b + 4u * (n - 1u)) == d->pdef[n - 1u]))
+            n--;
+        keep[i] = (uint8_t)n;
+        at += eng_rec_size(p, at);
+        if (morph)
+            b += 4u * n0;
     }
-    if (*len + grow > cap)
+    if (*len + p[2] > cap)                       /* (counted, with every parameter it holds now: so an edit of any of them on
+                                                  * the FM-1 can always grow its record back, eng_rec_grow) */
         return -1;
-    at = eng_records_at(p, *len);
-    for (i = 0; i < p[2]; i++) {                 /* the records: the new parameters after the old ones */
+    at = eng_records_at(p, *len);                /* the parameters at their defaults leave, the records first */
+    for (i = 0; i < p[2]; i++) {
         const def_t *d = &DEFS[p[at] & 0x7Fu];
         n0 = eng_npar(d, ver);
-        at += 1u + 4u * n0;
-        if (n0 < d->npar) {
-            eng_open_gap(p, *len, at, 4u * (d->npar - n0));
-            *len += 4u * (d->npar - n0);
-            for (j = n0; j < d->npar; j++, at += 4)
-                eng_put32(p + at, d->pdef[j]);
-        }
-        at += eng_record_extra(d, ENG_PATCH_VERSION);
+        at += 1u + 4u * keep[i];
+        eng_close_gap(p, *len, at, 4u * (n0 - keep[i]));
+        *len -= 4u * (n0 - keep[i]);
+        at += eng_record_extra(d, ver);
     }
     at += 4u * ncab;
-    if (morph) {                                 /* the morph B set, the same way (the records are today's now) */
+    if (morph) {                                 /* then the morph B set (the records' types are where they were, less the gaps) */
         uint32_t r = eng_records_at(p, *len);
         for (i = 0; i < p[2]; i++) {
             const def_t *d = &DEFS[p[r] & 0x7Fu];
-            r += eng_record_size(d, ENG_PATCH_VERSION);
+            r += 1u + 4u * keep[i] + eng_record_extra(d, ver);
             n0 = eng_npar(d, ver);
-            at += 4u * n0;
-            if (n0 < d->npar) {
-                eng_open_gap(p, *len, at, 4u * (d->npar - n0));
-                *len += 4u * (d->npar - n0);
-                for (j = n0; j < d->npar; j++, at += 4)
-                    eng_put32(p + at, d->pdef[j]);
-            }
+            at += 4u * keep[i];
+            eng_close_gap(p, *len, at, 4u * (n0 - keep[i]));
+            *len -= 4u * (n0 - keep[i]);
         }
     }
+    at = eng_records_at(p, *len);                /* then each record's count after its type byte */
+    for (i = 0; i < p[2]; i++) {
+        const def_t *d = &DEFS[p[at] & 0x7Fu];
+        eng_open_gap(p, *len, at + 1u, 1u);
+        *len += 1u;
+        p[at + 1u] = keep[i];
+        at += 2u + 4u * keep[i] + eng_record_extra(d, ver);
+    }
     p[1] = ENG_PATCH_VERSION;
+    return 0;
+}
+
+int eng_rec_grow(uint8_t *p, uint32_t *len, uint32_t cap, uint32_t mod, uint32_t npar)
+{
+    uint32_t at, b, i, j, n, k, morph, ncab;
+    const def_t *d;
+    if (*len < 8u || p[0] != 0xA1u || p[1] < ENG_COUNTED || mod >= p[2] || !(b = eng_records_end(p, *len, 0)))
+        return -1;
+    morph = p[6] & 1u;
+    ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
+    b += 4u * ncab;                              /* the morph B set */
+    at = eng_records_at(p, *len);
+    for (i = 0; i < mod; i++) {
+        b += 4u * eng_rec_npar(p, at);
+        at += eng_rec_size(p, at);
+    }
+    d = &DEFS[p[at] & 0x7Fu];
+    n = p[at + 1u];
+    if (npar > eng_npar(d, p[1]))
+        return -1;
+    if (npar <= n)
+        return 0;
+    k = npar - n;
+    if (*len + 4u * k * (morph ? 2u : 1u) > cap || (morph && b + 4u * n > *len))
+        return -1;
+    if (morph) {                                 /* its B values first: they come after the record */
+        eng_open_gap(p, *len, b + 4u * n, 4u * k);
+        *len += 4u * k;
+        for (j = n; j < npar; j++)
+            eng_put32(p + b + 4u * j, d->pdef[j]);
+    }
+    eng_open_gap(p, *len, at + 2u + 4u * n, 4u * k);
+    *len += 4u * k;
+    for (j = n; j < npar; j++)
+        eng_put32(p + at + 2u + 4u * j, d->pdef[j]);
+    p[at + 1u] = (uint8_t)npar;
     return 0;
 }
 
@@ -1084,7 +1158,7 @@ static void pat_layout(void)
 int eng_load(const uint8_t *p, uint32_t len)
 {
     uint32_t i, j, c, k, v, at, ncab, n0, nl;
-    uint8_t st[ENG_MAX_MODULES], member[ENG_MAX_MODULES];
+    uint8_t st[ENG_MAX_MODULES], member[ENG_MAX_MODULES], held[ENG_MAX_MODULES];   /* held: the parameters each record holds */
     uint32_t line_sz[ENG_MAX_INST], line_off[ENG_MAX_INST];   /* the lines: their bytes and places (on the main loop's stack,
                                                                * 1 KB: not the RAM region's, which the interrupts need) */
     uint8_t line_reg[ENG_MAX_INST];
@@ -1194,15 +1268,16 @@ int eng_load(const uint8_t *p, uint32_t len)
         for (j = 0; j < sizeof *nd; j++)
             z[j] = 0;
         nd->par = par_spare;
-        if (at >= len || (p[at] & 0x7Fu) >= N_TYPES)
+        if (!eng_rec_ok(p, len, at))
             return -3;
         nd->type = p[at] & 0x7Fu;
         nd->bypass = (uint8_t)(p[at] >> 7 && nd->type != T_FM1 && nd->type != T_OUTPUT);   /* bit 7: bypassed (never the panel or the output) */
-        at++;
         d = &DEFS[nd->type];
-        n0 = eng_npar(d, p[1]);                  /* (an older format's record: the parameters it had then) */
-        if (at + eng_record_size(d, p[1]) - 1u > len)
+        n0 = eng_rec_npar(p, at);                /* (an older format's record: the parameters it had then; a counted one: its count) */
+        held[i] = (uint8_t)n0;
+        if (at + eng_rec_size(p, at) > len)
             return -3;
+        at += eng_rec_head(p[1]);
         nd->par = par_take((p[6] & 1u) ? 2u * d->npar : d->npar);   /* (with the morph B side, flag bit 0) */
         if (!nd->par) {
             nd->par = par_spare;
@@ -1213,7 +1288,7 @@ int eng_load(const uint8_t *p, uint32_t len)
                 nd->par[j] = rd32(p + at);
                 at += 4;
             } else
-                nd->par[j] = d->pdef[j];          /* added since the binary's format */
+                nd->par[j] = d->pdef[j];          /* added since the binary's format, or after a counted record's count */
         if (d->cvbase >= 0) {
             uint32_t mb = eng_mask_bytes(d, p[1]);
             nd->att[0] = rd32(p + at);
@@ -1288,7 +1363,7 @@ int eng_load(const uint8_t *p, uint32_t len)
             node_t *nd = &E.node[i];
             const def_t *d = &DEFS[nd->type];
             int32_t *pb = PARB(nd);
-            uint32_t n0 = eng_npar(d, p[1]);     /* (an older format: its parameters then; the rest at their defaults) */
+            uint32_t n0 = held[i];               /* (as many as its record holds; the rest at their defaults) */
             if (at + 4u * n0 > len)
                 return -3;
             nd->morph = 1;
