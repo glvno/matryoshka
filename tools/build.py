@@ -311,7 +311,7 @@ def check(img, syms, dis, rts):
     fn = "?"
     for ln in dis.splitlines():     # nothing may call or load an address in the chip ROM
         mm = LINE.match(ln)
-        if not mm and ln.rstrip().endswith(":"):
+        if not mm and ln.rstrip().endswith(":") and not re.search(r"[<\s]\.", " " + ln):
             fn = ln.strip()[:60]
         if not mm:
             continue
