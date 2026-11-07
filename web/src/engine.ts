@@ -8,7 +8,7 @@
 // held). A module reading another group's per-part output gets the sum over those parts; a per-part module reading a
 // shared output gets that one buffer.
 
-import { type DrumMapState, dropRows, stepsGo, stepsPattern, type StepsSong, driftSeed, ENVELOPE_TYPES, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
+import { CLICK_ACCENT_HZ, CLICK_HZ, CLICK_MS, clickSample, ONCE_BAR, type DrumMapState, dropRows, stepsGo, stepsPattern, type StepsSong, driftSeed, ENVELOPE_TYPES, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
 import { defaultMap, FLAW_TARGETS, flawOf, MAX_PARTS, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, rangeShare, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
 import { ALLOC, deviceView, keysInto } from './poly';
 import { armView, type DeviceKey } from './arm';
@@ -189,6 +189,13 @@ export class Engine {
   private extSince = 0;
   private extLen = 0;
   private running = false;
+  /** play once (#632, playOnce): 0 not, 1 counting in, 2 playing; ticks counted into the count-in, its first block to
+   * come (beat 1's click on its first sample); the click sounding: its sample (-1 none) and half period in samples */
+  private once = 0;
+  private cin = 0;
+  private cinFirst = false;
+  private clickK = -1;
+  private clickHalf = 1;
   /** the FM-1's patch buttons (bit i = PANEL_BUTTONS[i]): held, or switched on */
   private buttons = 0;
   /** per patch button: the modules a Toggle bypasses (buttons.ts toggleTargets), null for the other kinds; and whether it switches */
@@ -987,10 +994,41 @@ export class Engine {
     this.extLen = 0;
   }
 
-  /** the transport (PLAY, MIDI Start / Stop): the Main module's run output, and its clock output pulses only while it runs */
+  /** the transport (PLAY, MIDI Start / Stop): the Main module's run output, and its clock output pulses only while it runs.
+   * It ends play once (#632) where it is: on, the transport runs on as if PLAY had started it */
   transport(on: boolean): void {
+    if (this.once) this.onceEnd();
     if (on && !this.running) this.tickAcc = 0;
     this.running = on;
+  }
+
+  /** play once (#632; engine.c eng_play_once, the same): the transport stops, a bar of four beats is counted in on the
+   * clock with a click on each beat (CLICK_*: beat 1 higher), from the next block's first sample; then the transport
+   * starts and each Steps track the clock steps plays its pattern once, or the song's entries once each, and plays no
+   * step after; when every such track is done the transport stops by itself */
+  playOnce(): void {
+    this.running = false;
+    for (const node of this.tracks) (node.inst[0].state as StepsState).once = 0;
+    this.once = 1;
+    this.cin = 0;
+    this.cinFirst = true;
+    this.tickAcc = 0;
+  }
+  /** play once: 0 not, 1 counting in, 2 playing */
+  get onceState(): number {
+    return this.once;
+  }
+  private onceEnd(): void {
+    this.once = 0;
+    for (const node of this.tracks) (node.inst[0].state as StepsState).once = 0;
+  }
+  /** play once's count-in is over: the transport starts, each track the clock steps counts its passes */
+  private onceStart(): void {
+    this.once = 2;
+    this.running = true;
+    this.tickAcc = 0;
+    const song = this.song.song > 0 ? this.song.songs[this.song.song - 1]?.length ?? 0 : 0;
+    for (const node of this.tracks) (node.inst[0].state as StepsState).once = node.connected.clk ? 0 : (song || 1) + 2;
   }
 
   /** a patch button (PANEL_BUTTONS index) held or switched: the host does the switching, the engine keeps the state */
@@ -1187,6 +1225,7 @@ export class Engine {
     const all = [this.kb, ...this.groups];
     for (let off = 0; off < total; off += BLOCK) {
       const n = Math.min(BLOCK, total - off);
+      if (this.once === 1 && this.cin >= ONCE_BAR) this.onceStart();
       // the clock: MIDI ticks while external, else the global tempo or the Main module's (bpm x 24 ticks a minute, in whole
       // bpm as the firmware does)
       const bpm = Math.min(TEMPO_MAX, Math.max(TEMPO_MIN, Math.round(this.tempoGlobal ?? this.main?.params.tempo ?? TEMPO_DEFAULT)));
@@ -1218,6 +1257,16 @@ export class Engine {
         }
       }
       const clock = seen && this.running; // the Main module's clock output: one pulse per block that saw a tick while running
+      // play once's count-in (#632): beat 1's click on this block's first sample, then one on each 24th tick
+      let clickAt = -1, accent = false;
+      if (this.once === 1) {
+        if (this.cinFirst) (clickAt = 0), (accent = true), (this.cinFirst = false);
+        else if (seen) {
+          const before = this.cin;
+          this.cin += nt;
+          if (this.cin < ONCE_BAR && Math.floor(this.cin / PPQN) > Math.floor(before / PPQN)) clickAt = Math.max(0, tick);
+        }
+      }
       this.trackKeys();
       for (const a of this.arps)
         if (!a.node.bypass) // (bypassed it plays nothing of its own: the keys it hears went straight on)
@@ -1293,6 +1342,21 @@ export class Engine {
         for (let i = 0; i < n; i++) {
           left[off + i] += l[i] * lvl;
           right[off + i] += r[i] * lvl;
+        }
+      }
+      if (this.once === 2 && !this.tracks.some((t) => (t.inst[0].state as StepsState).once >= 2)) {
+        this.onceEnd(); // (every track played its passes: the transport stops, from the next block)
+        this.running = false;
+      }
+      if (clickAt >= 0 || this.clickK >= 0) { // the count-in's click, on both sides (engine.c the same)
+        const len = Math.floor((this.sampleRate * CLICK_MS) / 1000);
+        for (let i = 0; i < n; i++) {
+          if (i === clickAt) (this.clickK = 0), (this.clickHalf = Math.max(1, Math.floor(this.sampleRate / (2 * (accent ? CLICK_ACCENT_HZ : CLICK_HZ)))));
+          if (this.clickK < 0) continue;
+          const v = clickSample(this.clickK, len, this.clickHalf);
+          left[off + i] += v;
+          right[off + i] += v;
+          if (++this.clickK >= len) this.clickK = -1;
         }
       }
     }

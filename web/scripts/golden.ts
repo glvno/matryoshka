@@ -25,7 +25,7 @@ mkdirSync(OUT, { recursive: true });
  * (absent: 1; rec: 1 on, 0 off; cc: controller value 0..127; thon / thoff: the note played into that track's keys in, at
  * velocity 100 / let go: engine.ts thru, engine.c eng_steps_thru, #368)]; take: the notes recorded so far go into their
  * tracks (the editor's overdub, the panel's) */
-type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'rec' | 'take' | 'cc' | 'pat' | 'song' | 'thon' | 'thoff', number, number?];
+type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'once' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'rec' | 'take' | 'cc' | 'pat' | 'song' | 'thon' | 'thoff', number, number?];
 const EVENTS: Ev[] = [
   [0, 'on', 60],
   [128 * 40, 'on', 67],
@@ -1451,6 +1451,61 @@ delayKit('delay-length-short-sync', { sync: 1, time: 416, length: 300 });
 delayKit('delay-length-short-pingpong', { time: 90, pingpong: 1, length: 150 });
 delayKit('delay-length-1900', { time: 1890, fb: 0.5, length: 1900 });
 for (const n of ['delay-long', 'delay-long-sync', 'delay-long-pingpong', 'delay-1600', 'delay-1600-pingpong', 'delay-length-1900']) ends[n] = 128 * 1400;
+// the rate row (#659): 22k and 11k hold two and four times the length (a time past the length), ping-pong, synced, the
+// swell, the longest (7.6 s), a time that glides (a square LFO on its pin) and a rate that changes while it plays (it
+// empties the line)
+delayKit('delay-rate-22k', { time: 1300, fb: 0.5, length: 700, rate: 1 });
+delayKit('delay-rate-11k', { time: 2700, fb: 0.5, length: 700, rate: 2 });
+delayKit('delay-rate-22k-pingpong', { time: 450, pingpong: 1, length: 500, rate: 1 });
+delayKit('delay-rate-11k-sync', { sync: 1, time: 416, length: 300, rate: 2 });
+delayKit('delay-rate-11k-swell', { time: 330, fb: 0.8, swell: 1, length: 200, rate: 2 });
+delayKit('delay-rate-max', { time: 7590, fb: 0.3, length: 1900, rate: 2 });
+for (const n of ['delay-rate-22k', 'delay-rate-11k', 'delay-rate-22k-pingpong']) ends[n] = 128 * 1400;
+ends['delay-rate-max'] = 128 * 2700;
+const delayModKit = (name: string, params: Record<string, number>, param: string, lfoRate: number, depth: number): void =>
+  kit(name, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const osc = add('osc', 0, 0, { wave: 1, level: 0.5 });
+    const env = add('adsr', 0, 0, { a: 0.002, d: 0.05, s: 0, r: 0.05 });
+    const vca = add('vca', 0, 0);
+    const lfo = add('lfo', 0, 0, { wave: 3, rate: lfoRate, depth });
+    const dly = add('delay', 0, 0, { fb: 0.6, mix: 0.5, ...params }, { map: { p1: [param] } });
+    const out = add('output', 0, 0);
+    wire(kb, 'pitch', osc, 'pitch');
+    wire(kb, 'gate', env, 'gate');
+    wire(osc, 'out', vca, 'in');
+    wire(env, 'env', vca, 'cv');
+    wire(vca, 'out', dly, 'in');
+    wire(lfo, 'out', dly, 'p1');
+    wire(dly, 'out', out, 'l');
+    wire(dly, 'r', out, 'r');
+  });
+delayModKit('delay-rate-glide', { time: 400, length: 700, rate: 1 }, 'time', 2.3, 0.3);
+delayModKit('delay-rate-glide-pingpong', { time: 300, length: 700, rate: 2, pingpong: 1 }, 'time', 1.7, 0.25);
+delayModKit('delay-rate-switch', { time: 180, length: 400, rate: 0 }, 'rate', 1.3, 0.5);
+for (const n of ['delay-rate-glide', 'delay-rate-glide-pingpong', 'delay-rate-switch']) ends[n] = 128 * 700;
+// Tape (#660): the loop's filters and saturation, wow and flutter (none, some, the most), ping-pong, swell, a lower rate,
+// every HEADS choice (heads past the line clamp to it), Tape switched on and off while it plays (a pin), the wow moved
+delayKit('delay-tape', { time: 220, fb: 0.7, tape: 1, wow: 0.3 });
+delayKit('delay-tape-nowow', { time: 180, fb: 0.6, tape: 1, wow: 0 });
+delayKit('delay-tape-wow1', { time: 260, fb: 0.6, tape: 1, wow: 1 });
+delayKit('delay-tape-pingpong', { time: 150, fb: 0.7, tape: 1, pingpong: 1, heads: 3 });
+delayKit('delay-tape-swell', { time: 90, fb: 0.9, tape: 1, swell: 1, heads: 6 });
+delayKit('delay-tape-22k', { time: 900, fb: 0.6, tape: 1, rate: 1, heads: 4, length: 700 });
+delayKit('delay-tape-11k-pingpong', { time: 700, fb: 0.6, tape: 1, rate: 2, pingpong: 1, heads: 5, length: 700 });
+delayKit('delay-tape-heads-2', { time: 120, fb: 0.5, tape: 1, heads: 1 });
+delayKit('delay-tape-heads-3', { time: 110, fb: 0.5, tape: 1, heads: 2 });
+delayKit('delay-tape-heads-12', { time: 130, fb: 0.6, tape: 1, heads: 3 });
+delayKit('delay-tape-heads-13', { time: 100, fb: 0.6, tape: 1, heads: 4 });
+delayKit('delay-tape-heads-23', { time: 90, fb: 0.6, tape: 1, heads: 5 });
+delayKit('delay-tape-heads-123', { time: 100, fb: 0.8, tape: 1, heads: 6 });
+delayKit('delay-tape-heads-clamp', { time: 400, fb: 0.5, tape: 1, heads: 6, length: 600 });
+for (const n of ['delay-tape-22k', 'delay-tape-11k-pingpong', 'delay-tape-heads-clamp']) ends[n] = 128 * 900;
+delayModKit('delay-tape-switch', { time: 160, length: 500, tape: 0, wow: 0.5 }, 'tape', 1.1, 0.5);
+delayModKit('delay-tape-switch-22k', { time: 300, length: 500, tape: 0, rate: 1, heads: 3 }, 'tape', 0.9, 0.5);
+delayModKit('delay-tape-glide', { time: 300, length: 700, tape: 1, heads: 3 }, 'time', 2.1, 0.2);
+delayModKit('delay-tape-wowmod', { time: 200, length: 500, tape: 1, wow: 0.2 }, 'wow', 3.3, 0.4);
+for (const n of ['delay-tape-switch', 'delay-tape-switch-22k', 'delay-tape-glide', 'delay-tape-wowmod']) ends[n] = 128 * 700;
 // several Delays in one patch (the effect memory, D-375): three of different lengths in a chain, the last ping-pong
 kit('delays-three', (add, wire) => {
   const kb = add('fm1', 0, 0);
@@ -3139,6 +3194,16 @@ tests['steps-song'] = make('steps-song', (add, wire) => {
   ends['steps-song'] = 128 * 960;
 }
 
+// play once (#632): a bar counted in with a click on each beat (beat 1 higher), then each track plays its pattern once,
+// the shorter ones then silent until the longest ends and the transport stops by itself; again, and PLAY in the count-in
+// (it ends play once and the transport runs on), then a stop. A song: its entries once each
+tests['play-once'] = structuredClone(tests['steps-kit']);
+events['play-once'] = [[128 * 5, 'once', 0], [128 * 1300, 'once', 0], [128 * 1600, 'run', 0], [128 * 1800, 'stop', 0]];
+ends['play-once'] = 128 * 1850;
+tests['play-once-song'] = structuredClone(tests['steps-song']);
+events['play-once-song'] = [[128 * 5, 'once', 0], [128 * 700, 'pat', 1], [128 * 720, 'song', 0], [128 * 740, 'once', 0]];
+ends['play-once-song'] = 128 * 1300;
+
 // arming as a set (#191): two Voicing modules on Main's keys (A's gate left, B's right) and a Drum map on them (its first
 // row's gate added right); armed: only the armed ones hear Main, several at once; none: the cables again
 tests['arm-set'] = make('arm-set', (add, wire) => {
@@ -3338,6 +3403,7 @@ for (const [name, patch] of Object.entries(tests)) {
     else if (kind === 'bon' || kind === 'boff') e.setButton(note, kind === 'bon');
     else if (kind === 'ext' || kind === 'int') e.clockExternal(kind === 'ext');
     else if (kind === 'tick') e.clockTick();
+    else if (kind === 'once') e.playOnce();
     else e.transport(kind === 'run');
   }
   seg(END);

@@ -2222,7 +2222,7 @@ export class Editor {
     input.onkeyup = input.onblur = () => { editing = false; };
     // the value before the latest gesture began: a double-click's first press moves the thumb, typing puts it back
     let gestureFrom = m.params[pd.name];
-    let lastInput = 0;
+    let lastInput = -Infinity;   // (no input yet: performance.now() starts at 0 when the page opens, #577)
     input.oninput = () => {
       // a pinch took over from the finger on the slider (touchGestures put the value back): the thumb stays
       if (this.pinching) {

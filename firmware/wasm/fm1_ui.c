@@ -23,6 +23,9 @@ WASM_IMPORT("preset") void js_preset(int32_t d);
 WASM_IMPORT("save") void js_save(void);
 WASM_IMPORT("midi") void js_midi(uint32_t status, uint32_t d1, uint32_t d2);
 WASM_IMPORT("transport") void js_transport(uint32_t run);
+/* SEQ held + PLAY began play once (#632): the page's engine counts in and plays once itself, with the click (the
+ * transport's starts and stops play once makes here are not told: the page's own come from its engine) */
+WASM_IMPORT("once") void js_once(void);
 /* the SEQ page edited a track (its notes as they are now: n words at `at` in memory, track.ts noteWord, of the pattern it
  * plays, 0-based), muted a track: module = its index in the binary */
 WASM_IMPORT("track") void js_track(uint32_t mod, const uint32_t *at, uint32_t n, uint32_t pat);
@@ -134,9 +137,10 @@ static void leds_play(void)
     int run = eng_transport_running();
     fm1_led_key(BTN_PLAY, !run);                /* stopped: PLAY's red LED; running: the green one breathes (main.c) */
     host_led_set(fm1_led_breath, BTN_PLAY, run);
-    if (run != play_was) {                      /* PLAY: the page's transport follows */
+    if (run != play_was) {                      /* PLAY: the page's transport follows (not play once's own, #632) */
         play_was = run;
-        js_transport((uint32_t)run);
+        if (!play_auto)
+            js_transport((uint32_t)run);
     }
 }
 static void leds_panel(void)
@@ -297,12 +301,17 @@ WASM_EXPORT("fm1w_button") void fm1w_button(uint32_t id, uint32_t down)
 {
     if (id >= 32u)
         return;
+    static uint8_t once_told;
     if (down) {
         panel_held |= 1u << id;
         panel_edges(1u << id, 0);
     } else {
         panel_held &= ~(1u << id);
         panel_edges(0, 1u << id);
+    }
+    if (play_once_asked != once_told) {         /* (#632: SEQ held + PLAY) */
+        once_told = play_once_asked;
+        js_once();
     }
     panel_draw();
 }

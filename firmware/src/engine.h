@@ -415,6 +415,15 @@ void eng_clock_tick(void);
 void eng_clock_external(int on);
 void eng_transport(int on);
 int eng_transport_running(void);
+/* Play once (#632; engine.ts playOnce): the transport stops, one bar of four beats is counted in on the clock with a click
+ * on each beat (added to the output, on both sides), then the transport starts and each Steps track the clock steps
+ * plays its pattern once, or the song's entries once each; when all are done the transport stops by itself (its edges
+ * then come out of eng_clock_out as 2 / -2). eng_transport ends it where it is. eng_once_state: 0 not, 1 counting in,
+ * 2 playing */
+#define ENG_PLAY_ONCE
+void eng_play_once(void);
+int eng_once_state(void);
+uint32_t eng_once_beat(void);          /* the count-in's beat, 0..3 (0 until it counts) */
 /* the patch buttons (bit i = button i of ENG_PANEL_BUTTONS): held or switched on; the Main module's button outputs */
 void eng_buttons(uint32_t mask);
 /* what button b does (ENG_BTN_*), and a Toggle's modules (their count; *list points at their indices) */

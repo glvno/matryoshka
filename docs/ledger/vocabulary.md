@@ -128,7 +128,7 @@ Main's K1..K4 are bound to the rows of the page in focus; they edit those rows a
 
 ### Effect memory
 
-The FM-1's RAM for the lines of its line-type modules: every Delay, reverb, chorus, string, comb and Granular. It is two areas, about 190 KB together, divided when a patch loads, and a patch fits only when every line does. A Delay's line holds its length. The editor's budget shows how much a patch takes and which module takes what.
+The FM-1's RAM for the lines of its line-type modules: every Delay, reverb, chorus, string, comb and Granular. It is two areas, about 190 KB together, divided when a patch loads, and a patch fits only when every line does. A Delay's line holds its length, or two or four times that at a lower rate. The editor's budget shows how much a patch takes and which module takes what.
 
 ### Emulator view
 
@@ -357,6 +357,10 @@ A patch whose cards mostly overlap, as one opened from a link without positions.
 ### Pin
 
 One of a module's two hidden parameter inputs (p1, p2) that the editor assigns when a cable is dropped on a parameter.
+
+### Play once
+
+On the FM-1, a way to play the patch's pattern or song through once: one bar is counted in with a click, the pattern or each song entry plays once, and the transport stops by itself. SEQ held + PLAY starts it.
 
 ### Poly assembly
 

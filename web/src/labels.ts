@@ -21,7 +21,7 @@ const BY_TYPE: Record<string, Record<string, string>> = {
   osc: { pm2: 'phase modulation 2', pm3: 'phase modulation 3', index: 'pm index' },
   filter: { hp6: 'high pass 6' },
   lfo: { phase: 'start phase', range: 'rate range', mult: 'sync speed', shape: 'shape (0..1)', pulse: 'pulse' },
-  delay: { note: 'note length' },
+  delay: { note: 'note length', wow: 'wow / flutter' },
   pulse: { inf: 'infinite' },
   mixer: { l1: 'level 1', l2: 'level 2', l3: 'level 3', l4: 'level 4' },
   env: { l1: 'level 1', r1: 'rate 1', l2: 'level 2', r2: 'rate 2', l3: 'level 3', r3: 'rate 3', l4: 'level 4', r4: 'rate 4', shot: 'one-shot' },
@@ -83,7 +83,11 @@ const HINTS: Record<string, string> = {
   'osc.pm3': `${PM_HINT('pm3')} The index input, when patched, multiplies all three.`,
   'wavetable.pm': PM_HINT('pm'),
   'pd.pm': PM_HINT('pm'),
-  'delay.length': 'The most time this Delay holds, set here in the editor (the FM-1 shows it). Its time plays up to it; ping-pong: half per side, as both sides share the line. It takes 8.6 KB of the FM-1\'s effect memory per 100 ms.',
+  'delay.length': 'The most time this Delay holds, set here in the editor (the FM-1 shows it). Its time plays up to it; ping-pong: half per side, as both sides share the line. It takes 8.6 KB of the FM-1\'s effect memory per 100 ms at rate 44k. At 22k the same memory holds 200 ms, at 11k 400 ms, and this row shows that longer time.',
+  'delay.tape': 'Tape: echoes like a tape echo. Each repeat loses some highs and lows, the loop saturates softly instead of running away, and the wow / flutter row wobbles the echoes. The heads row picks up to three playback heads. Off: the plain Delay, exactly as without Tape.',
+  'delay.wow': 'With Tape on: how much the tape wobbles. A slow wow (0.6 Hz) and a fast flutter (6.7 Hz) move the echo\'s time, at most 1 ms and 0.1 ms either way, so its pitch bends a little.',
+  'delay.heads': 'With Tape on: which playback heads sound. Head 1 plays at the time, head 2 at twice it, head 3 at three times it, all from the same memory. Several heads share the level: each plays at a half or a third. A head past the Delay\'s length plays at its end.',
+  'delay.rate': 'The rate this Delay keeps its sound at. 44k keeps every sample: full quality. 22k keeps every second sample: twice the time in the same memory, and only frequencies up to about 9 kHz. 11k keeps every fourth sample: four times the time, up to about 4.4 kHz. So echoes at a lower rate sound darker. The length row shows the time at this rate (at most 1.9 s, 3.8 s, 7.6 s). A new rate empties the Delay.',
   'delay.pingpong': 'Ping-pong: half per side. Both sides share the Delay\'s line, so each echoes up to half its length.',
 };
 export const paramHint = (type: string, name: string): string | undefined => HINTS[`${type}.${name}`];

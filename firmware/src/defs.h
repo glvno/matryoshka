@@ -270,9 +270,13 @@ enum {
 #define DELAY_P_NOTE 5
 #define DELAY_P_SWELL 6
 #define DELAY_P_LENGTH 7
+#define DELAY_P_RATE 8
+#define DELAY_P_TAPE 9
+#define DELAY_P_WOW 10
+#define DELAY_P_HEADS 11
 #define DELAY_NIN 4
 #define DELAY_NOUT 2
-#define DELAY_NPAR 8
+#define DELAY_NPAR 12
 #define DELAY_CVBASE 2
 #define DELAY_NDATA 0
 
@@ -1079,6 +1083,23 @@ enum {
 #define DELAY_SYNC_TOP 520   /* ms: the synced note lengths spread over 1..this (modules.ts) */
 #define DELAY_LENGTH_MIN 10   /* ms: the Delay's length row (modules.ts; engine.c dly_samples sizes its line) */
 #define DELAY_LENGTH_MAX 1900
+#define DELAY_REACH_MAX 7600   /* ms: the longest time, the longest length at the lowest rate (#659) */
+#define DELAY_NRATE 3   /* the Delay's rate row (#659): step r keeps every (1 << r)-th sample */
+#define DELAY_TAIL 48   /* samples at the line end with a lower rate or Tape on: the filters' state (modules.ts) */
+/* the low pass in front of a lower rate's line (modules.ts delayAaCoefs at DEVICE_SR), per rate step 1..: two sections, b0 a1 a2 Q28 */
+static const int32_t DELAY_AA[DELAY_NRATE - 1][6] = {{49366084, -88308736, 17337617, 67995108, -121633346, 125178320}, {16612181, -281481305, 79494572, 20926246, -354580001, 169849529}};
+/* Tape (#660): the loop's one-pole low pass and high pass per rate step (Q24, at a line written every 1 << r samples), the
+ * wow and flutter increments (u32 turns a sample) and depths at the wow row's top (1/256 samples), the heads (bit j: head
+ * j + 1 at j + 1 times the time) and 1 / n of n heads (Q16) */
+static const int32_t DELAY_TAPE_LPQ[DELAY_NRATE] = {7286151, 11408010, 15058911};
+static const int32_t DELAY_TAPE_HPQ[DELAY_NRATE] = {190065, 377977, 747438};
+#define DELAY_WOW_INC 58411u
+#define DELAY_FLUTTER_INC 652257u
+#define DELAY_WOW_D8 11294
+#define DELAY_FLUTTER_D8 1129
+#define DELAY_NHEADS 7
+static const uint8_t DELAY_HEAD_MASK[DELAY_NHEADS] = {1, 2, 4, 3, 5, 6, 7};
+static const int32_t DELAY_HEAD_GAIN[4] = {0, 65536, 32768, 21845};
 static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {1, 1, 1, 3, 1, 3, 1, 3, 2, 5, 4};
 static const uint8_t DELAY_DIV_DEN[DELAY_NDIV] = {6, 4, 3, 8, 2, 4, 1, 2, 1, 2, 1};
 static const char *const DELAY_DIV_NAME[DELAY_NDIV] = {"1/16T", "1/16", "1/8T", "1/16.", "1/8", "1/8.", "1/4", "3/8", "1/2", "5/8", "1/1"};
@@ -1117,6 +1138,11 @@ static const int32_t RATIO_DETUNE_OCT[7] = {-142, -95, -47, 0, 47, 95, 142};
 #define TRACK_NAME_MAX 8
 #define TRACK_NOTES_MAX 128   /* notes per track (the notes section, flag bit 4; track.ts noteWord) */
 #define TRACK_POLY 8          /* notes a track sounds at once (modules.ts) */
+#define ONCE_BAR 96u          /* play once (#632): the count-in's bar in clock ticks (modules.ts) */
+#define CLICK_MS 25u           /* ... its click on each beat: ms to nothing, level (Q16), Hz on beats 2..4 and on beat 1 */
+#define CLICK_LEVEL_Q16 16384
+#define CLICK_HZ 1000u
+#define CLICK_ACCENT_HZ 2000u
 #define STEP_NOTE 60           /* a new step's note and velocity (track.ts), an accent's velocity */
 #define STEP_VEL 100
 #define ACCENT_VEL 127
@@ -1274,17 +1300,19 @@ static const uint8_t MIXER_LOG[] = {0, 0, 0, 0};
 static const char *const MIXER_UNIT[] = {"", "", "", ""};
 static const char *const *const MIXER_CH[] = {0, 0, 0, 0};
 static const char *const DELAY_INNAMES[] = {"IN", "CLK", "P1", "P2"};
-static const int32_t DELAY_MIN[] = {65536, 0, 0, 0, 0, 0, 0, 655360};
-static const int32_t DELAY_MAX[] = {45875200, 62259, 65536, 65536, 65536, 327680, 65536, 124518400};
-static const int32_t DELAY_DEF[] = {16384000, 26214, 19661, 0, 0, 0, 0, 45875200};
-static const int32_t DELAY_INC[] = {458752, 655, 655, 65536, 65536, 65536, 65536, 1310720};
-static const int32_t DELAY_STEP[] = {65536, 655, 655, 65536, 65536, 65536, 65536, 655360};
-static const uint8_t DELAY_SINCE[] = {0, 0, 0, 0, 0, 35, 35, 50};
-static const char *const DELAY_PN[] = {"TIME", "FB", "MIX", "SYNC", "PINGPONG", "NOTE", "SWELL", "LENGTH"};
-static const uint8_t DELAY_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0};
-static const char *const DELAY_UNIT[] = {"MS", "", "", "", "", "", "", "MS"};
+static const int32_t DELAY_MIN[] = {65536, 0, 0, 0, 0, 0, 0, 655360, 0, 0, 0, 0};
+static const int32_t DELAY_MAX[] = {45875200, 62259, 65536, 65536, 65536, 327680, 65536, 124518400, 131072, 65536, 65536, 393216};
+static const int32_t DELAY_DEF[] = {16384000, 26214, 19661, 0, 0, 0, 0, 45875200, 0, 0, 19661, 0};
+static const int32_t DELAY_INC[] = {458752, 655, 655, 65536, 65536, 65536, 65536, 1310720, 65536, 65536, 655, 65536};
+static const int32_t DELAY_STEP[] = {65536, 655, 655, 65536, 65536, 65536, 65536, 655360, 65536, 65536, 655, 65536};
+static const uint8_t DELAY_SINCE[] = {0, 0, 0, 0, 0, 35, 35, 50, 51, 51, 51, 51};
+static const char *const DELAY_PN[] = {"TIME", "FB", "MIX", "SYNC", "PINGPONG", "NOTE", "SWELL", "LENGTH", "RATE", "TAPE", "WOW", "HEADS"};
+static const uint8_t DELAY_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static const char *const DELAY_UNIT[] = {"MS", "", "", "", "", "", "", "MS", "", "", "", ""};
 static const char *const DELAY_CH5[] = {"TIME", "1/32", "1/2T", "1/2.", "1/1T", "1/1.", 0};
-static const char *const *const DELAY_CH[] = {0, 0, 0, LFO_CH3, ADSR_CH4, DELAY_CH5, ADSR_CH4, 0};
+static const char *const DELAY_CH8[] = {"44K", "22K", "11K", 0};
+static const char *const DELAY_CH11[] = {"1", "2", "3", "1+2", "1+3", "2+3", "1+2+3", 0};
+static const char *const *const DELAY_CH[] = {0, 0, 0, LFO_CH3, ADSR_CH4, DELAY_CH5, ADSR_CH4, 0, DELAY_CH8, ADSR_CH4, 0, DELAY_CH11};
 static const char *const REVERB_INNAMES[] = {"IN", "P1", "P2"};
 static const int32_t REVERB_MIN[] = {0, 0, 0, 0, 0, 0};
 static const int32_t REVERB_MAX[] = {65536, 65536, 65536, 2621440, 65536, 65536};

@@ -38,7 +38,7 @@
 #define GRAIN_SPRAY (ENG_SR / 4u)   /* spray scatters a grain's start by up to this many samples (0.25 s) */
 #define RV_LEN 8074u                /* the eight FDN lines (5740), two input allpasses (570) and the 40 ms pre-delay (1764), int16 Q13 */
 #define DELAY_LEN 30944u            /* the line of a 700 ms length (dly_samples), every Delay's before the length row (D-375) */
-#define DELAY_TIME_TOP (DELAY_LENGTH_MAX * ENG_ONE)   /* ms: what a Delay's time reaches past the knob's 700 (modules.ts browserMax), kept under modulation; its line limits it as it plays */
+#define DELAY_TIME_TOP (DELAY_REACH_MAX * ENG_ONE)   /* ms: what a Delay's time reaches past the knob's 700 (modules.ts browserMax: the longest length at the lowest rate), kept under modulation; its line limits it as it plays */
 #define STR_LEN 1104u               /* ceil(ENG_SR / 40) + 1: the lowest string is 40 Hz, as the reference */
 #define CH_LEN 927u                 /* ceil(ENG_SR * 0.021): 12 ms +- 8 ms of sweep */
 #define MAX_HELD 128
@@ -399,7 +399,7 @@ typedef struct {
                                                     * modes' radii and normalised gains for kdec kdamp / kbr, ok: which are worked out */
         struct { int32_t a[8], b[8], ia; uint32_t phase; } fs;   /* the Hilbert chains (w1 w2 per section), chain A's delayed sample, the quadrature oscillator */
         struct { struct grain_line *ln; uint32_t w, acc, seed; uint8_t prev; } gr;   /* acc: grains per sample, Q24 */
-        struct { int16_t *buf; int64_t cur; uint32_t len, w, t, seen, beat; int32_t rate; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev; } dly;   /* len: its line's samples, from its length (dly_samples); cur 64 bits (a long line is more samples than Q16 holds in 32) */   /* t, ring, seen, beat: the clock tempo; cur, rate: the read position's distance behind w (samples Q16, 0 = not yet set) and its glide (dly_glide) */
+        struct { int16_t *buf; int64_t cur; uint32_t len, w, t, seen, beat; int32_t rate; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev, rk, ph, tp; } dly;   /* len: its line's samples, from its length (dly_samples); cur 64 bits (a long line is more samples than Q16 holds in 32) */   /* t, ring, seen, beat: the clock tempo; cur, rate: the read position's distance behind w (samples Q16, 0 = not yet set) and its glide (dly_glide); rk, ph: a lower rate (#659, dly_slow): the rate step's k the line holds (0 none yet), the sample within a line sample; tp: Tape on (#660, dly_tape) */
         struct { int16_t *buf; uint16_t li[8], ai[2], pi; int32_t lp[8]; uint32_t ph[2]; } rev;   /* the FDN lines' write indices, the diffusers', the pre-delay's; damping states; modulation phases */
         struct { int32_t v; uint32_t t; int32_t rk[4], inc[4], k[4]; uint32_t len[4]; uint8_t stage, prev, ok; } env;  /* Q30, like the ADSR; t: samples
                                                     * in the segment; rk, inc, k, len, ok: segments 1 2 3 and release, as m_adsr */
@@ -621,6 +621,9 @@ typedef struct {
     uint16_t nlk;                    /* the locks, by track, then pattern (as the binary lists them) */
     lock_t lk[ENG_MAX_LOCKS];
     int16_t trk_lkey[ENG_MAX_TRACKS];   /* the pattern and step a track's locks were applied for (locks_step; -1 none, -2 again) */
+    uint8_t trk_once[ENG_MAX_TRACKS];   /* play once (#632, modules.ts StepsState.once): 0 not, 1 its passes played (it
+                                         * goes on silent: steps_fire), n >= 2: n - 1 pass ends to go (the start counts as
+                                         * one; steps_turn counts) */
 } eng_t;
 
 /* the slice of the pattern track t plays (one it has not got: pattern 0), its first note and count */
@@ -639,6 +642,15 @@ static void toggles_sync(void);
 static volatile uint32_t clk_ticks;   /* MIDI clock ticks (eng_clock_tick, the main loop) */
 static volatile uint8_t clk_ext;      /* MIDI clock drives the clock */
 static volatile uint8_t transport_on; /* the transport (eng_transport) */
+/* play once (#632, eng_play_once; engine.ts playOnce, the same): the main loop's last word (once_cmd: 1 play once, 2 end
+ * it) counts once_gen up and the next block takes it (once_seen); the engine's state (once_st: 0 not, 1 counting in, 2
+ * playing), the transport while it plays (once_run: eng_transport_running adds it), the count-in's ticks, its first
+ * block to come, the transport's edge in this render made by play once (eng_clock_out: 2 / -2); the click sounding:
+ * its sample (-1 none) and half period */
+static volatile uint8_t once_cmd, once_gen, once_st, once_run;
+static uint8_t once_seen, once_first, once_edge;
+static uint32_t once_cin;
+static int32_t click_k = -1, click_half = 1;
 /* MIDI clock out (#473, eng_clock_out): the last eng_render's tempo ticks, their samples in it, the transport's edge in it */
 #define CKO_MAX 4u
 static struct { uint8_t n, run; int8_t edge; uint16_t off[CKO_MAX]; } cko;
@@ -1313,6 +1325,7 @@ int eng_load(const uint8_t *p, uint32_t len)
             E.trk_shift[nd->trk] = 0;
             E.trk_nsnd[nd->trk] = 0;
             E.trk_last[nd->trk] = STEP_NOTE;
+            E.trk_once[nd->trk] = 0;
         }
         nd->ksrc = nd->type == T_DRUMMAP ? p[at] : 0u;   /* (checked once every module is read) */
         at += d->ndata;
@@ -3078,8 +3091,38 @@ uint32_t eng_clock_out(uint32_t *off, uint32_t max, int32_t *edge)
     *edge = cko.edge;
     return n;
 }
-void eng_transport(int on) { transport_on = (uint8_t)(on != 0); }
-int eng_transport_running(void) { return transport_on; }
+/* the transport also ends play once where it is (on: it runs on as if PLAY had started it) */
+void eng_transport(int on)
+{
+    transport_on = (uint8_t)(on != 0);
+    if (once_st || (once_gen != once_seen && once_cmd == 1u)) {
+        once_cmd = 2;
+        once_gen++;
+    }
+}
+int eng_transport_running(void) { return transport_on || (once_run && once_gen == once_seen); }
+void eng_play_once(void)
+{
+    transport_on = 0;
+    once_cmd = 1;
+    once_gen++;
+}
+int eng_once_state(void) { return once_gen != once_seen ? (once_cmd == 1u ? 1 : 0) : once_st; }
+uint32_t eng_once_beat(void) { return once_gen != once_seen || once_st != 1u ? 0u : once_cin / 24u; }
+/* the click's sample k of len, half a period `half` samples (modules.ts clickSample: exact in both engines) */
+static int32_t click_sample(int32_t k, int32_t len, int32_t half)
+{
+    int32_t a = (int32_t)((int64_t)CLICK_LEVEL_Q16 * (len - k) / len);
+    return (k / half) & 1 ? -a : a;
+}
+static void once_end(void)
+{
+    uint32_t t;
+    once_st = 0;
+    once_run = 0;
+    for (t = 0; t < ENG_MAX_TRACKS; t++)
+        E.trk_once[t] = 0;
+}
 
 /* ------------------------------------------------------------------ Steps modules (the SEQ page) */
 /* A traversal's visit number is independent of its chosen step: swing and note lengths follow time order. */
@@ -5413,6 +5456,202 @@ static void dly_glide(inst_t *it, const esig_t *in, esig_t *out, esig_t *outr, u
     it->s.dly.rate = rate;
 }
 
+/* the Delay at a lower rate (modules.ts delaySlow, #659: RATE 22k / 11k, k = 1 << sh samples a line sample): the input
+ * through a 4-pole low pass (DELAY_AA, two sections in direct form I, states Q24 in the DELAY_TAIL samples after the line,
+ * which is `len` samples), every k-th sample of it with the feedback written to the line; every sample reads the line
+ * between two of its samples (linear) at the time's distance behind the write head (cur, samples Q16), so the time keeps
+ * its sample resolution. A moving time glides as in dly_glide. Plain, swelling and ping-pong in one loop. */
+static void __attribute__((noinline)) dly_slow(inst_t *it, const esig_t *in, esig_t *out, esig_t *outr, uint32_t n, int64_t tq, int32_t fb, int32_t mix, int pp, int swell, uint32_t sh, uint32_t len)
+{
+    const uint32_t k = 1u << sh, H = len / 2u, nl = pp ? H : len;
+    const int32_t sub = (int32_t)(65536u >> sh);      /* a sample in line samples, Q16 */
+    int16_t *buf = it->s.dly.buf, *bb = buf + H;
+    int32_t *lp = (int32_t *)(void *)(buf + len);   /* x1 x2 y1 y2 of each section, Q24 (len is even: 4-byte aligned) */
+    const int32_t *c = DELAY_AA[sh - 1u];
+    int moving = it->s.dly.cur != tq || it->s.dly.rate;   /* (a flag: the 64-bit compare every sample cost more) */
+    int32_t x1 = lp[0], x2 = lp[1], u1 = lp[2], u2 = lp[3], v1 = lp[4], v2 = lp[5], y1 = lp[6], y2 = lp[7];
+    uint32_t w = it->s.dly.w, ph = it->s.dly.ph, i;
+    int32_t dry = ENG_ONE - mix, rate = it->s.dly.rate, rdi, rdf;
+    int64_t cur = it->s.dly.cur, lo = (int64_t)k << 16, hi = ((int64_t)(nl - 1u) << sh) << 16, rd;
+    if (swell)
+        fb = (int32_t)((int64_t)fb * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
+    if (w >= nl)
+        w = 0;
+    rd = (cur + (int64_t)k - 1) >> sh;              /* the distance in line samples, rounded up (Q16) */
+    rdi = (int32_t)(rd >> 16);
+    rdf = (int32_t)(rd & 0xffff);
+    for (i = 0; i < n; i++) {
+        int32_t fr, ea, eb = 0, x, u, y, t, i0, i1;
+        if (moving) {
+            int64_t diff = tq - cur, cc;
+            int32_t step = (int32_t)(diff >> DELAY_GLIDE_SHIFT);
+            rate += clampi(clampi(step, -DELAY_GLIDE_MAX, DELAY_GLIDE_MAX) - rate, -DELAY_GLIDE_ACC, DELAY_GLIDE_ACC);
+            if (diff > -(1 << DELAY_GLIDE_SHIFT) && diff < 1 << DELAY_GLIDE_SHIFT && rate > -DELAY_GLIDE_ACC && rate < DELAY_GLIDE_ACC) {
+                cur = tq;
+                rate = 0;
+                moving = 0;
+            } else {
+                cc = cur + rate;
+                cur = cc < lo ? lo : cc > hi ? hi : cc;
+            }
+            rd = (cur + (int64_t)k - 1) >> sh;
+            rdi = (int32_t)(rd >> 16);
+            rdf = (int32_t)(rd & 0xffff);
+        }
+        /* line sample w is written at its last sample (ph = k - 1) and stands for that sample's time: the read is at
+         * w + ((ph - k + 1) - cur) / k line samples (floor), split into a whole part and a fraction */
+        t = ((int32_t)ph - (int32_t)k + 1) * sub - rdf;
+        i0 = (int32_t)w - rdi + (t >> 16);
+        if (i0 < 0)
+            i0 += (int32_t)nl;
+        i1 = i0 + 1 == (int32_t)nl ? 0 : i0 + 1;
+        fr = (t & 0xffff) >> 1;                       /* Q15 */
+        ea = (int32_t)buf[i0] * 8 + ((((int32_t)buf[i1] - buf[i0]) * fr) >> 12);
+        if (pp)
+            eb = (int32_t)bb[i0] * 8 + ((((int32_t)bb[i1] - bb[i0]) * fr) >> 12);
+        x = clampi(in[i], -32 * ENG_ONE, 32 * ENG_ONE) << 8;   /* Q24 (+-32: -64 Q16 looks like a ROM address to tools/build.py) */
+        u = (int32_t)(((int64_t)c[0] * (x + 2 * x1 + x2) - (int64_t)c[1] * u1 - (int64_t)c[2] * u2 + (1 << 27)) >> 28);
+        x2 = x1; x1 = x; u2 = u1; u1 = u;
+        y = (int32_t)(((int64_t)c[3] * (u + 2 * v1 + v2) - (int64_t)c[4] * y1 - (int64_t)c[5] * y2 + (1 << 27)) >> 28);
+        v2 = v1; v1 = u; y2 = y1; y1 = y;
+        if (ph == k - 1u) {
+            int32_t y16 = (y + 128) >> 8, v;
+            if (pp) {
+                v = mul16(ea, fb);
+                bb[w] = dly_pack(swell ? dly_soft(v) : v);
+                v = y16 + mul16(eb, fb);
+            } else
+                v = y16 + mul16(ea, fb);
+            buf[w] = dly_pack(swell ? dly_soft(v) : v);
+            ph = 0;
+            if (++w == nl)
+                w = 0;
+        } else
+            ph++;
+        {
+            int32_t dr = mul16(in[i], dry);
+            out[i] = dr + mul16(ea, mix);
+            outr[i] = pp ? dr + mul16(eb, mix) : out[i];
+        }
+    }
+    lp[0] = x1; lp[1] = x2; lp[2] = u1; lp[3] = u2; lp[4] = v1; lp[5] = v2; lp[6] = y1; lp[7] = y2;
+    it->s.dly.w = w;
+    it->s.dly.ph = (uint8_t)ph;
+    it->s.dly.cur = cur;
+    it->s.dly.rate = rate;
+}
+
+/* Tape's loop (modules.ts delayTape): the echo e times fb through a one-pole low pass (*l) and a high pass (the low
+ * pass's output less a slower low pass of it, *h); Q24 states, Q16 in and out */
+static inline int32_t tape_loop(int32_t *l, int32_t *h, int32_t e, int32_t fb, int32_t pl, int32_t phq)
+{
+    int32_t v = clampi(mul16(e, fb), -32 * ENG_ONE, 32 * ENG_ONE) << 8;
+    *l += (int32_t)(((int64_t)pl * (v - *l)) >> 24);
+    *h += (int32_t)(((int64_t)phq * (*l - *h)) >> 24);
+    return (*l - *h + 128) >> 8;
+}
+
+/* the Delay with Tape on (modules.ts delayTape, #660), at any rate (k = 1 << sh): the heads (bit j of mask: head j + 1 at
+ * j + 1 times the time, clamped to the line) read the line between two samples at their distance plus the wow and flutter
+ * offset (two sines, worked out per block and ramped across it in whole steps), and sound together at 1 / n each. The
+ * feedback runs through a one-pole low pass and high pass (DELAY_TAPE_LPQ / HPQ, Q24) and, with the input (through the
+ * rate's low pass at a lower rate), through dly_soft into the line. Distances in 1/256 samples (32 bits). The state in the
+ * line's tail: the rate's low pass in words 0..7, Tape's loop filters (A low, A high, B low, B high), the wow and flutter
+ * phases and the last offset in 8..14. */
+static void __attribute__((noinline)) dly_tape(inst_t *it, const esig_t *in, esig_t *out, esig_t *outr, uint32_t n, int64_t tq, int32_t fb, int32_t mix, int pp, int swell, uint32_t sh, uint32_t len, int32_t wow, uint32_t mask)
+{
+    const uint32_t k = 1u << sh, H = len / 2u, nl = pp ? H : len;
+    const int32_t sub = (int32_t)(256u >> sh), lo8 = (int32_t)k << 8, hi8 = (int32_t)(((nl - 1u) << sh) << 8);
+    int16_t *buf = it->s.dly.buf, *bb = buf + H;
+    int32_t *tl = (int32_t *)(void *)(buf + len);
+    const int32_t *c = sh ? DELAY_AA[sh - 1u] : 0, pl = DELAY_TAPE_LPQ[sh], phq = DELAY_TAPE_HPQ[sh];
+    int32_t hj[3], nh = 0, g, lA = tl[8], hA = tl[9], lB = tl[10], hB = tl[11];
+    int moving = it->s.dly.cur != tq || it->s.dly.rate;
+    uint32_t w = it->s.dly.w, ph = it->s.dly.ph, i, wph, fph;
+    int32_t dry = ENG_ONE - mix, rate = it->s.dly.rate, m0 = tl[14], m1, step, cur8;
+    int64_t cur = it->s.dly.cur, lo = (int64_t)k << 16, hi = ((int64_t)(nl - 1u) << sh) << 16;
+    if (swell)
+        fb = (int32_t)((int64_t)fb * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
+    if (w >= nl)
+        w = 0;
+    wph = (uint32_t)tl[12] + DELAY_WOW_INC * n;
+    fph = (uint32_t)tl[13] + DELAY_FLUTTER_INC * n;
+    tl[12] = (int32_t)wph;
+    tl[13] = (int32_t)fph;
+    m1 = (int32_t)((((int64_t)DELAY_WOW_D8 * sin_turn(wph) + (int64_t)DELAY_FLUTTER_D8 * sin_turn(fph)) >> 16) * clampi(wow, 0, ENG_ONE) >> 16);
+    step = (m1 - m0) / (int32_t)n;
+    cur8 = (int32_t)(cur >> 8);
+    for (i = 1; i <= 3u; i++)                       /* the heads that sound: their multiples of the time */
+        if (mask & (1u << (i - 1u)))
+            hj[nh++] = (int32_t)i;
+    g = DELAY_HEAD_GAIN[nh];
+    for (i = 0; i < n; i++) {
+        int32_t ea = 0, eb = 0, y, m = m0 + step * (int32_t)(i + 1u), base = ((int32_t)ph - (int32_t)k + 1) * sub, j;
+        if (moving) {
+            int64_t diff = tq - cur, cc;
+            int32_t st = (int32_t)(diff >> DELAY_GLIDE_SHIFT);
+            rate += clampi(clampi(st, -DELAY_GLIDE_MAX, DELAY_GLIDE_MAX) - rate, -DELAY_GLIDE_ACC, DELAY_GLIDE_ACC);
+            if (diff > -(1 << DELAY_GLIDE_SHIFT) && diff < 1 << DELAY_GLIDE_SHIFT && rate > -DELAY_GLIDE_ACC && rate < DELAY_GLIDE_ACC) {
+                cur = tq;
+                rate = 0;
+                moving = 0;
+            } else {
+                cc = cur + rate;
+                cur = cc < lo ? lo : cc > hi ? hi : cc;
+            }
+            cur8 = (int32_t)(cur >> 8);
+        }
+        for (j = 0; j < nh; j++) {
+            int32_t d8, pos, i0, i1, fr;
+            d8 = clampi(hj[j] * cur8 + m, lo8, hi8);
+            pos = (int32_t)(w << 8) + base - ((d8 + (int32_t)k - 1) >> sh);
+            if (pos < 0)
+                pos += (int32_t)(nl << 8);
+            i0 = pos >> 8;
+            i1 = i0 + 1 == (int32_t)nl ? 0 : i0 + 1;
+            fr = pos & 255;
+            ea += (int32_t)buf[i0] * 8 + ((((int32_t)buf[i1] - buf[i0]) * fr) >> 5);
+            if (pp)
+                eb += (int32_t)bb[i0] * 8 + ((((int32_t)bb[i1] - bb[i0]) * fr) >> 5);
+        }
+        if (nh > 1) {
+            ea = mul16(ea, g);
+            eb = mul16(eb, g);
+        }
+        y = in[i];
+        if (sh) {
+            int32_t x = clampi(in[i], -32 * ENG_ONE, 32 * ENG_ONE) << 8, u;   /* Q24 */
+            u = (int32_t)(((int64_t)c[0] * (x + 2 * tl[0] + tl[1]) - (int64_t)c[1] * tl[2] - (int64_t)c[2] * tl[3] + (1 << 27)) >> 28);
+            tl[1] = tl[0]; tl[0] = x; tl[3] = tl[2]; tl[2] = u;
+            y = (int32_t)(((int64_t)c[3] * (u + 2 * tl[4] + tl[5]) - (int64_t)c[4] * tl[6] - (int64_t)c[5] * tl[7] + (1 << 27)) >> 28);
+            tl[5] = tl[4]; tl[4] = u; tl[7] = tl[6]; tl[6] = y;
+            y = (y + 128) >> 8;
+        }
+        if (ph == k - 1u) {
+            if (pp) {
+                bb[w] = dly_pack(dly_soft(tape_loop(&lB, &hB, ea, fb, pl, phq)));
+                buf[w] = dly_pack(dly_soft(y + tape_loop(&lA, &hA, eb, fb, pl, phq)));
+            } else
+                buf[w] = dly_pack(dly_soft(y + tape_loop(&lA, &hA, ea, fb, pl, phq)));
+            ph = 0;
+            if (++w == nl)
+                w = 0;
+        } else
+            ph++;
+        {
+            int32_t dr = mul16(in[i], dry);
+            out[i] = dr + mul16(ea, mix);
+            outr[i] = pp ? dr + mul16(eb, mix) : out[i];
+        }
+    }
+    tl[8] = lA; tl[9] = hA; tl[10] = lB; tl[11] = hB;
+    tl[14] = m0 + step * (int32_t)n;
+    it->s.dly.w = w;
+    it->s.dly.ph = (uint8_t)ph;
+    it->s.dly.cur = cur;
+    it->s.dly.rate = rate;
+}
+
 /* free or synced time (see modules.ts); ping-pong splits the buffer in two halves, A (input, left) and B (right), see
  * modules.ts. note: a synced length of its own (DELAY_NOTE_NUM / DEN) in place of the time knob's; swell: the feedback
  * x 198 / 95 and the loop through dly_soft (the loops below, apart, so the plain one stays as it was) */
@@ -5425,9 +5664,30 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
     int32_t fb = EF(it, DELAY_P_FB), mix = EF(it, DELAY_P_MIX), dry = ENG_ONE - mix;
     int pp = EF(it, DELAY_P_PINGPONG) >= 32768, swell = EF(it, DELAY_P_SWELL) >= 32768;
     int32_t note = clampi((EF(it, DELAY_P_NOTE) + 32768) >> 16, 0, DELAY_NNOTE - 1);
-    /* its line (L samples, from its length; ping-pong two halves of H): the time, free or synced, plays up to it */
-    const uint32_t L = it->s.dly.len, H = L / 2u;
-    int64_t smp, top = pp ? (int64_t)H - 1 : (int64_t)L - 1;
+    /* its rate (#659): step sh keeps every (1 << sh)-th sample (dly_slow), the line DELAY_TAIL samples shorter for the low
+     * pass's state; a new rate empties the line and the read starts where the time is */
+    const uint32_t sh = (uint32_t)clampi((EF(it, DELAY_P_RATE) + 32768) >> 16, 0, DELAY_NRATE - 1);
+    const int tape = EF(it, DELAY_P_TAPE) >= 32768;   /* Tape (#660): dly_tape, the line DELAY_TAIL samples shorter too */
+    /* its line (L samples, from its length; ping-pong two halves of H): the time, free or synced, plays up to it (times k) */
+    const uint32_t L = sh || tape ? it->s.dly.len - DELAY_TAIL : it->s.dly.len, H = L / 2u;
+    int64_t smp, top = ((pp ? (int64_t)H : (int64_t)L) - 1) << sh;
+    if (it->s.dly.rk != 1u << sh) {
+        if (it->s.dly.rk) {
+            for (i = 0; i < it->s.dly.len; i++)
+                buf[i] = 0;
+            w = it->s.dly.w = it->s.dly.ph = 0;
+            it->s.dly.cur = 0;
+            it->s.dly.rate = 0;
+        }
+        it->s.dly.rk = (uint8_t)(1u << sh);
+        it->s.dly.tp = (uint8_t)tape;
+    }
+    if (it->s.dly.tp != (uint8_t)tape) {   /* Tape on or off keeps the line: its tail changes role (Tape's state, or line
+                                              * again) and is zeroed; at a lower rate the rate's low pass keeps words 0..7 */
+        for (i = it->s.dly.len - DELAY_TAIL + (sh ? 16u : 0u); i < it->s.dly.len; i++)
+            buf[i] = 0;
+        it->s.dly.tp = (uint8_t)tape;
+    }
     if (nd->conn & (1u << DELAY_I_CLK)) {   /* tempo: the time of the last 24 clock pulses, smoothed */
         const esig_t *clk = it->in[DELAY_I_CLK];
         for (i = 0; i < n; i++) {
@@ -5453,9 +5713,20 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
         smp = ((int64_t)DELAY_DIV_NUM[div] * it->s.dly.beat * 2 + DELAY_DIV_DEN[div]) / ((int64_t)DELAY_DIV_DEN[div] * 2);
     } else
         smp = ((int64_t)EF(it, DELAY_P_TIME) * ENG_SR + (int64_t)500 * 65536) / (1000 * 65536);   /* round(t_ms / 1000 * sr) */
-    d = (uint32_t)(smp < 1 ? 1 : smp > top ? top : smp);
+    d = (uint32_t)(smp < (1 << sh) ? (1 << sh) : smp > top ? top : smp);
     if (it->s.dly.cur == 0 || it->s.dly.cur > top << 16)
         it->s.dly.cur = it->s.dly.cur == 0 ? (int64_t)d << 16 : top << 16;
+    if (tape) {
+        it->s.dly.w = w;
+        dly_tape(it, in, out, outr, n, (int64_t)d << 16, fb, mix, pp, swell, sh, L, EF(it, DELAY_P_WOW),
+                 DELAY_HEAD_MASK[clampi((EF(it, DELAY_P_HEADS) + 32768) >> 16, 0, DELAY_NHEADS - 1)]);
+        return;
+    }
+    if (sh) {
+        it->s.dly.w = w;
+        dly_slow(it, in, out, outr, n, (int64_t)d << 16, fb, mix, pp, swell, sh, L);
+        return;
+    }
     if (it->s.dly.cur != (int64_t)d << 16 || it->s.dly.rate) {     /* the time moved: glide there (#484), the plain loops below once it has arrived */
         dly_glide(it, in, out, outr, n, (int64_t)d << 16, fb, mix, pp, swell);
         return;
@@ -6376,7 +6647,7 @@ static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int
             x->cnt = steps_hold(x->left, gate, sl);
         }
     }
-    if (it->s.stp.mute)
+    if (it->s.stp.mute || E.trk_once[t] == 1u)   /* (play once: its passes played, no note more, #632) */
         return;
     if (it->s.stp.skip == k && !it->s.stp.skipn) {
         it->s.stp.skip = -1;
@@ -6451,6 +6722,8 @@ static void m_drummap(const node_t *nd, inst_t *it, uint32_t n)
 static void steps_turn(uint32_t t)
 {
     uint32_t s = E.song;
+    if (E.trk_once[t] > 1u)                      /* (play once, #632: at 1 its passes are played, steps_fire) */
+        E.trk_once[t]--;
     if (s && E.song_n[s - 1u]) {
         int32_t k = E.trk_spos[t] + 1 >= (int32_t)E.song_n[s - 1u] ? 0 : E.trk_spos[t] + 1;
         E.trk_spos[t] = (int8_t)k;
@@ -7553,6 +7826,17 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
         left[i] = right[i] = 0;
     cko.n = 0;
     cko.edge = 0;
+    if (once_gen != once_seen) {                 /* play once asked for or ended (#632): from this render */
+        uint8_t c = once_cmd;
+        once_seen = once_gen;
+        once_end();
+        if (c == 1u && E.loaded) {
+            once_st = 1;
+            once_cin = 0;
+            once_first = 1;
+            E.tick_acc = 0;
+        }
+    }
     if (!E.loaded) {
         if (transport_on != cko.run) {           /* (no patch: no ticks, but Start / Stop still go out) */
             cko.run = transport_on;
@@ -7562,7 +7846,19 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
     }
     for (off = 0; off < total; off += ENG_BLOCK) {
         uint32_t n = total - off < ENG_BLOCK ? total - off : ENG_BLOCK;
+        int32_t click_at = -1, accent = 0;
         ENG_PROF(4, 0, 0);
+        if (once_st == 1u && once_cin >= ONCE_BAR) {   /* play once's count-in is over: the transport starts, each track */
+            uint32_t s = E.song && E.song_n[E.song - 1u] ? E.song_n[E.song - 1u] : 1u;   /* the clock steps counts */
+            once_st = 2;                                                                       /* its passes */
+            once_run = 1;
+            once_edge = 1;
+            for (k = 0; k < E.norder; k++) {
+                const node_t *nd = &E.node[E.order[k]];
+                if (nd->type == T_STEPS)
+                    E.trk_once[nd->trk] = ((nd->conn >> STEPS_I_CLK) & 1u) ? 0u : (uint8_t)(s + 2u);
+            }
+        }
         if (ramp[0].left | ramp[1].left | ramp[2].left | ramp[3].left)
             ramp_tick();
         E.morph = E.has_b ? morph_position(n) : 0;
@@ -7570,18 +7866,19 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
              * minute) */
             uint32_t bpm = tempo_glo > ENG_TEMPO_ADOPT ? tempo_glo
                          : E.main >= 0 ? (uint32_t)clampi((E.node[E.main].par[FM1_P_TEMPO] + 32768) >> 16, 20, 300) : TEMPO_DEFAULT, seen = 0, t;
-            uint8_t run = transport_on;
+            uint8_t run = transport_on | once_run;
             if (run && !E.running) {
                 E.tick_acc = 0;                  /* the transport starts: the tempo's ticks from here */
                 E.run_ticks = E.ticks;
             }
             if (run != cko.run) {                /* MIDI clock out: the transport's edge, and tick 0 on a start's first sample */
                 cko.run = run;
-                cko.edge = run ? 1 : -1;
+                cko.edge = (int8_t)((run ? 1 : -1) * (once_edge ? 2 : 1));
                 if (run && !clk_ext && cko.n < CKO_MAX)
                     cko.off[cko.n++] = (uint16_t)off;
             }
             E.running = run;
+            once_edge = 0;
             t = clk_ticks;
             /* where this block's ticks fall (Steps modules start their steps there, engine.ts render): MIDI clock ticks on the
              * first sample, the tempo's on the sample that completes the tick; samples per tick (measured from MIDI clock) */
@@ -7614,6 +7911,19 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                         cko.off[cko.n++] = (uint16_t)(off + (uint32_t)E.tick_off + (uint32_t)E.tick_n * (uint32_t)E.tick_len);
                     E.tick_n++;
                     seen = 1;
+                }
+            }
+            if (once_st == 1u) {                 /* play once's count-in (#632): beat 1's click on this block's first sample,
+                                                  * then one on each 24th tick */
+                if (once_first) {
+                    click_at = 0;
+                    accent = 1;
+                    once_first = 0;
+                } else if (seen) {
+                    uint32_t before = once_cin;
+                    once_cin += (uint32_t)E.tick_n;
+                    if (once_cin < ONCE_BAR && once_cin / 24u > before / 24u)
+                        click_at = E.tick_off > 0 ? E.tick_off : 0;
                 }
             }
             if (!run)
@@ -7682,6 +7992,31 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             for (i = 0; i < n; i++) {
                 left[off + i] += mul16(l[i], lvl);
                 right[off + i] += mul16(r[i], lvl);
+            }
+        }
+        if (once_st == 2u) {                            /* every track played its passes: the transport stops (next block) */
+            for (k = 0; k < E.ntrk && E.trk_once[k] < 2u; k++)
+                ;
+            if (k == E.ntrk) {
+                once_end();
+                once_edge = 1;
+            }
+        }
+        if (click_at >= 0 || click_k >= 0) {           /* the count-in's click, on both sides (engine.ts the same) */
+            const int32_t len = (int32_t)(ENG_SR * CLICK_MS / 1000u);
+            for (i = 0; i < n; i++) {
+                int32_t c;
+                if ((int32_t)i == click_at) {
+                    click_k = 0;
+                    click_half = (int32_t)(ENG_SR / (2u * (accent ? CLICK_ACCENT_HZ : CLICK_HZ)));
+                }
+                if (click_k < 0)
+                    continue;
+                c = click_sample(click_k, len, click_half > 0 ? click_half : 1);
+                left[off + i] += c;
+                right[off + i] += c;
+                if (++click_k >= len)
+                    click_k = -1;
             }
         }
         ENG_PROF(5, 0, 0);
