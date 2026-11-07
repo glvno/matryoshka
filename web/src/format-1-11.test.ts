@@ -64,12 +64,12 @@ describe('counted records (#667, format 51)', () => {
     expect(m.length).toBe(b.length + 4 * n + 4 * b[at + 1] + 1);   // (+ the B modules mask)
   });
 
-  it('writes a patch that fits in an older format as before, and counts the smaller form in the budget', () => {
+  it('writes a patch that fits in an older format as before (else counted), and counts the smaller form in the budget', () => {
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
       const p = make();
       const l = layout(p);
-      expect(formatOf(p), name).toBeLessThan(COUNTED);
-      expect(l.base.bytes, name).toBeLessThanOrEqual(DEVICE.bytes);
+      // in its old format when that holds it; counted (Wanderer and Vernon 100, with their PATTERN track) when not
+      expect(formatOf(p), name).toBe(l.base.bytes <= DEVICE.bytes ? l.base.v : COUNTED);
       expect(deviceBudget(p).items.find((i) => i.key === 'bytes')!.used, name).toBe(Math.min(l.base.bytes, l.counted));
     }
   });

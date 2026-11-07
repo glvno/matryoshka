@@ -97,7 +97,7 @@ preset: Sync Lead
   s = 0.3
   r = 0.3 s
   portamento = 0.1
-  vca level = 3.27
+  vca level = 3.26
   gain = 0
 
 # The LFO clocks noise into the sample and hold, which steps the filter and nudges the pitch; the AR repeats with the LFO while a key is held.
@@ -145,7 +145,7 @@ preset: Ring Bell
   d = 1.2 s
   s = 0
   r = 1.2 s
-  vca level = 2.5
+  vca level = 2.49
   gain = 0
 
 # Both VCOs an octave down into a low, punchy filter on the ADSR.
