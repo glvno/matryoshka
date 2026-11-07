@@ -8,9 +8,9 @@
 // held). A module reading another group's per-part output gets the sum over those parts; a per-part module reading a
 // shared output gets that one buffer.
 
-import { CLICK_ACCENT_HZ, CLICK_HZ, CLICK_MS, clickSample, ONCE_BAR, type DrumMapState, dropRows, stepsGo, stepsPattern, type StepsSong, driftSeed, ENVELOPE_TYPES, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
+import { CLICK_ACCENT_HZ, CLICK_HZ, CLICK_MS, clickSample, ONCE_BAR, type DrumMapState, dropRows, stepsGo, stepsPattern, type StepsSong, driftSeed, ENVELOPE_TYPES, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, voicingSetting, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
 import { defaultMap, FLAW_TARGETS, flawOf, MAX_PARTS, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, rangeShare, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
-import { ALLOC, deviceView, keysInto } from './poly';
+import { ALLOC, deviceView, keysInto, VOICING_CABLE_INPUTS } from './poly';
 import { armView, type DeviceKey } from './arm';
 import { kindOf, switches, toggleTargets } from './buttons';
 import { fixNotes, PATTERNS_MAX, SONGS_MAX, type SongEntry, type StepNote } from './track';
@@ -129,7 +129,13 @@ interface Group {
   down: number[];
   /** where its notes come from: -1 the keys (Main), else the id of the Arpeggiator or Steps module that feeds its allocator */
   src: number;
+  /** its Voicing's assign and unison (0 off, 1 on, 2 share) as the patch sets them; cfg holds them as they play, moved by
+   * `cv`, what the cables into its Part's assign and unison inputs carried at the end of the last block (#681) */
+  base: [number, number];
+  cv: [number, number];
 }
+/** a group's unison setting as one number: 0 off, 1 on, 2 share (engine.c grp_t unison) */
+const unisonOf = (cfg: PolyCfg): number => (cfg.unisonShare ? 2 : cfg.unison ? 1 : 0);
 
 /** an Arpeggiator module as it runs: its note logic (arpeggiator.ts) and the groups it plays. `feed`: the Steps track
  * cabled into its keys in (its id: it plays that track's notes, not Main's keys), -1 Main's keys. Bypassed it hands the
@@ -156,6 +162,7 @@ const KEYBOARD: PolyCfg = { parts: 1, assign: 0, legato: 0, priority: 0 };
 /** g: the poly group's index (its parts' drift seeds), -1 for the shared keyboard */
 const newGroup = (key: string, cfg: PolyCfg, g: number): Group => ({
   key, cfg: { ...cfg }, parts: Array.from({ length: cfg.parts }, (_, i) => newVoice(i, cfg.parts, driftSeed(g + 1, i))), held: [], rot: 0, down: [0, 0, 0, 0], src: -1,
+  base: [cfg.assign, unisonOf(cfg)], cv: [0, 0],
 });
 /** the tempo without a Main module */
 const TEMPO_DEFAULT = 120;
@@ -171,6 +178,8 @@ export class Engine {
   private kb: Group = newGroup('kb', KEYBOARD, -1);
   /** the poly assemblies' allocators, in polyGroups order */
   private groups: Group[] = [];
+  /** the Part modules a cable moves the assign or unison of (#681), in group order (voicingCables) */
+  private modeParts: Node[] = [];
   private stamp = 0;
   /** the patch as loaded (an allocator's setting changes the groups: setParam reloads it) */
   private src: Patch | null = null;
@@ -248,17 +257,26 @@ export class Engine {
     source = armView(source, this.armedKeys); // the armed devices hear Main's keys, the others not (#190); unchanged while none is
     const { patch, groups: pg } = deviceView(source, compile);
     const oldGroups = new Map(this.groups.map((g) => [g.key, g]));
+    const groupOf = new Map<number, number>();
+    pg.forEach((x, i) => x.modules.forEach((id) => groupOf.set(id, i)));
+    // the groups whose Part has a cable into its assign or unison input (#681): they keep what it carried
+    const typeOf = new Map(patch.modules.map((m) => [m.id, m.type]));
+    const cabled = new Set(patch.cables.filter((c) => typeOf.get(c.to.module) === 'part' && VOICING_CABLE_INPUTS.includes(c.to.port)).map((c) => groupOf.get(c.to.module) ?? -1));
     this.groups = pg.map((x, i) => {
-      const g = oldGroups.get(x.key) ?? newGroup(x.key, x.cfg, i);
-      const stackChanged = g.cfg.unisonParts !== x.cfg.unisonParts || (g.cfg.unison && x.cfg.unison && g.cfg.unisonShare !== x.cfg.unisonShare);
+      const old = oldGroups.get(x.key);
+      const g = old ?? newGroup(x.key, x.cfg, i);
+      const was = { ...g.cfg };
       g.cfg = { ...x.cfg };
-      if (stackChanged && g.cfg.unison) this.monoUpdate(g);
+      g.base = [x.cfg.assign, unisonOf(x.cfg)];
+      if (!cabled.has(i)) g.cv = [0, 0];
+      this.voicingSet(g);
+      // a change of unison mode regroups the parts (unisonSwitch); a new unison count while in unison takes the held keys again
+      if (old && unisonOf(was) !== unisonOf(g.cfg)) this.unisonSwitch(g, unisonOf(was));
+      else if (old && g.cfg.unison && was.unisonParts !== g.cfg.unisonParts) this.monoUpdate(g);
       g.src = x.src ?? -1;
       for (const v of g.parts) v.idle = false; // the patch changed: every part runs and is judged again
       return g;
     });
-    const groupOf = new Map<number, number>();
-    pg.forEach((x, i) => x.modules.forEach((id) => groupOf.set(id, i)));
     const next = new Map<number, Node>();
     const mainSeq = source.modules.find((m) => m.type === 'fm1')?.seq;
     this.song.song = mainSeq?.song ?? 0;
@@ -331,6 +349,7 @@ export class Engine {
     const { order } = processingOrder(patch);
     this.order = order.map((id) => next.get(id)!);
     this.outputs = this.order.filter((n) => n.type === 'output');
+    this.modeParts = this.order.filter((n) => n.type === 'part' && n.group >= 0 && VOICING_CABLE_INPUTS.some((port) => n.connected[port])).sort((a, b) => a.group - b.group);
     this.main = this.order.find((n) => n.type === 'fm1') ?? null;
     this.hasB = this.order.some((n) => n.paramsB);
     const mainInst = patch.modules.find((m) => m.type === 'fm1');   // the switched-on buttons the patch was saved with
@@ -1094,6 +1113,56 @@ export class Engine {
     }
   }
 
+  /** a group's assign and unison as they play: the patch's, moved by its cables (modules.ts voicingSetting) */
+  private voicingSet(g: Group): void {
+    const a = voicingSetting(g.base[0], g.cv[0], 3), u = voicingSetting(g.base[1], g.cv[1], 2);
+    if (a !== g.cfg.assign) g.cfg.assign = a;
+    if (u !== unisonOf(g.cfg)) {
+      g.cfg.unison = u > 0;
+      g.cfg.unisonShare = u === 2;
+    }
+  }
+
+  /**
+   * The end of a block (#681): what the cables into each Part's assign and unison inputs carry, their first sample (summed
+   * as the Part's input would be), sets its group's assign and unison for the keys of the next block (engine.c
+   * group_cables).
+   */
+  private voicingCables(): void {
+    for (const node of this.modeParts) {
+      const g = this.groups[node.group];
+      const cv: [number, number] = [0, 0];
+      for (const s of node.sources) {
+        const k = VOICING_CABLE_INPUTS.indexOf(s.port);
+        if (k < 0) continue;
+        const fg = s.from.group;
+        if (fg >= 0 && fg !== node.group) for (const inst of s.from.inst) cv[k] += s.w === 1 ? inst.out[s.fromPort][0] : inst.out[s.fromPort][0] * s.w;
+        else cv[k] += s.from.inst[0].out[s.fromPort][0];
+      }
+      g.cv = cv;
+      const was = unisonOf(g.cfg);
+      this.voicingSet(g);
+      if (unisonOf(g.cfg) !== was) this.unisonSwitch(g, was);
+    }
+  }
+
+  /**
+   * A group's unison mode changed from `from` (0 off, 1 on, 2 share). Into unison: the notes its parts play, oldest first,
+   * become the held keys, and the parts take them as unison does. Out of it: the parts keep their notes until their keys
+   * are let go, and new keys are handed out polyphonically. Between on and share: the held keys again. One part: nothing
+   * changes (it plays the held keys either way). (engine.c unison_switch)
+   */
+  private unisonSwitch(g: Group, from: number): void {
+    if (g.parts.length === 1) return;
+    if (!from) {
+      g.held = [];
+      for (const x of g.parts.filter((p) => p.on).sort((a, b) => a.onStamp - b.onStamp))
+        if (!g.held.some((h) => h.note === x.note)) g.held.push({ note: x.note, vel: x.velocity });
+      this.monoUpdate(g);
+    } else if (!unisonOf(g.cfg)) g.held = [];
+    else this.monoUpdate(g);
+  }
+
   /**
    * One part: the gate stays up while any key is down; the sounding key is the last, lowest or highest held (priority). A
    * change of key while the gate is up is a legato transition: the legato output goes to 1 and, with legato off, the
@@ -1334,6 +1403,7 @@ export class Engine {
           }),
         );
       for (const g of all) for (const x of g.parts) { x.retrig = false; x.keyTrig = false; }
+      if (this.modeParts.length) this.voicingCables();
       for (const o of this.outputs) {
         const inst = o.inst[0];
         const lvl = inst.eff.level ?? 1;

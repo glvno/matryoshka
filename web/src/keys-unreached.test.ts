@@ -45,8 +45,9 @@ describe('an engine no keys cable reaches (#215)', () => {
       p.cables = p.cables.filter((c) => !keys.includes(c));
       expect(keysUnreached(p, d!), def.name).toBe(true);
       expect(trackBytes(p).get(d!.key), def.name).toBe(KEYS_UNREACHED);
-      // the mark takes no newer format
-      expect(encodePatch(p)[1], def.name).toBe(wired);
+      // the mark takes no newer format (an engine no keys reach may take an older one: its Voicing's cables go, #681)
+      expect(encodePatch(p)[1], def.name).toBeLessThanOrEqual(wired);
+      expect(encodePatch(p)[1], def.name).toBe(formatOf(p));
     }
   });
 

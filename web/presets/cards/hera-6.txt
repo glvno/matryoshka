@@ -6,6 +6,7 @@
 #
 # voice
 #   voices = 6                         1..16
+#   assign mode = POLY 1               POLY 1, POLY 2, UNISON
 # lfo
 #   lfo rate = 3 Hz                    0.02..40 Hz
 #   lfo → pitch = 0                    -4..4

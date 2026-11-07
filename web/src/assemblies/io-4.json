@@ -1588,6 +1588,41 @@
         "k3": [],
         "k4": []
       }
+    },
+    {
+      "id": 55,
+      "type": "select",
+      "x": 1920,
+      "y": 3360,
+      "params": {
+        "pos": 1,
+        "count": 4,
+        "fade": 0,
+        "v1": 0,
+        "v2": 0,
+        "v3": 1,
+        "v4": 2,
+        "v5": 0,
+        "v6": 0,
+        "v7": 0,
+        "v8": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "pos"
+        ],
+        "p2": [
+          "count"
+        ],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
     }
   ],
   "cables": [
@@ -2273,6 +2308,26 @@
     },
     {
       "from": {
+        "module": 55,
+        "port": "out"
+      },
+      "to": {
+        "module": 1,
+        "port": "unison"
+      }
+    },
+    {
+      "from": {
+        "module": 55,
+        "port": "g2"
+      },
+      "to": {
+        "module": 1,
+        "port": "assign"
+      }
+    },
+    {
+      "from": {
         "module": 54,
         "port": "out"
       },
@@ -2629,14 +2684,15 @@
       "label": "tuning"
     },
     {
-      "module": 1,
-      "param": "assign",
-      "label": "assign"
-    },
-    {
-      "module": 1,
-      "param": "unison",
-      "label": "unison"
+      "module": 55,
+      "param": "pos",
+      "label": "key assign",
+      "names": [
+        "POLY I",
+        "POLY II",
+        "UNISON I",
+        "UNISON II"
+      ]
     },
     {
       "module": 6,

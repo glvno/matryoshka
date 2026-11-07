@@ -87,7 +87,7 @@ import { KIND_CODE, kindOf, mainOf, switches, toggleEngaged, toggleTargets } fro
 import { EDITOR_ONLY, flawOf, hasMorph, isBipolar, MAX_MODULES, MAX_PARTS, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef, type Patch } from './patch';
 import { isShortNote, noteWord, shortWord, type StepNote } from './track';
 import { lockPlan, PATCH_LOCKS_MAX } from './locks';
-import { deviceView, keysInto, MAX_POLY, type DeviceGroup } from './poly';
+import { deviceView, keysInto, MAX_POLY, type DeviceGroup, VOICING_CABLE_INPUTS } from './poly';
 import { devicesOf, NAME_MAX, type Device } from './pages';
 import { allModules, assemblyById, ROW_NAMES_MAX } from './assembly';
 import { structureAndRows } from './structure';
@@ -177,6 +177,12 @@ export function storedParams(m: ModuleInst, v: number, morph: boolean, keep = 0)
   }
   return ps.slice(0, n);
 }
+/** what a patch uses of FORMAT_1_11 besides its parameters (`dev`: its device form): a cable into a Part's assign or
+ * unison input (#681; firmware before 1.11 refuses a cable into a port it does not know) */
+function uses111(dev: Patch): boolean {
+  const parts = new Set(dev.modules.filter((m) => m.type === 'part').map((m) => m.id));
+  return dev.cables.some((c) => parts.has(c.to.module) && VOICING_CABLE_INPUTS.includes(c.to.port));
+}
 /** what a patch uses of FORMAT_1_10 (`dev`: its device form): a note tied across the loop point, in any pattern */
 function uses110(dev: Patch): boolean {
   return dev.modules.some((m) => m.type === 'steps' && [m.notes, ...(m.patterns ?? []).map((x) => x?.notes)].some((ns) => ns?.some((n) => n.wrap)));
@@ -206,7 +212,7 @@ export const formatOf = (source: Patch, view: ReturnType<typeof deviceView> = de
 /** the lowest format that holds what this patch uses: VERSION, or WRITE_FLOOR when it uses nothing appended since (`dev`: its device form) */
 export function baseFormat(source: Patch, dev: Patch = deviceView(source, true).patch): number {
   const late = (type: string): ParamDef[] => DEFS[type].params.filter((q) => (q.since ?? 0) > WRITE_FLOOR || (q.grew?.since ?? 0) > WRITE_FLOOR);
-  const floor = uses110(dev) ? FORMAT_1_10 : uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
+  const floor = uses111(dev) ? FORMAT_1_11 : uses110(dev) ? FORMAT_1_10 : uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
   if (!dev.modules.some((m) => late(m.type).length)) return floor;
   let v = floor;
   const rows = new Set<string>();

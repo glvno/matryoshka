@@ -495,6 +495,10 @@ typedef struct {
     uint8_t no_steal;               /* format 37: refuse extra polyphonic notes instead of taking a held voice */
     uint32_t down[4];               /* all 128 held input keys, even if stolen or refused */
     uint8_t unison, stack;           /* unison mode and its voice count (0: all parts) */
+    uint8_t assign0, unison0;        /* assign and unison as the record sets them; assign and unison are as they play: a
+                                      * cable into the Part's assign / unison input moves them (#681, group_cables) */
+    uint8_t mode;                    /* that Part's node, 0xFF: no such cable */
+    int32_t cv[2];                   /* what those cables carried at the end of the last block (Q16) */
     int8_t detune[ENG_MAX_PARTS];    /* each part's flaws (patch.ts PartFlaw): cents, */
     uint8_t drift[ENG_MAX_PARTS];    /* % of +-20 cents of wander, */
     int8_t bright[ENG_MAX_PARTS];    /* semitones on the filter cutoffs, */
@@ -1221,6 +1225,7 @@ int eng_load(const uint8_t *p, uint32_t len)
     E.grp[0].assign = E.grp[0].legato = E.grp[0].priority = 0;
     E.grp[0].src = E.grp[0].ch = E.grp[0].lo = 0;
     E.grp[0].hi = 127u;
+    E.grp[0].mode = 0xFFu;
     groups_reset();
     ar_lo = ar_hi = ar_ninst = 0;                /* the arena: the old patch's memory is free again */
     par_used = 0;
@@ -1262,6 +1267,10 @@ int eng_load(const uint8_t *p, uint32_t len)
         g->assign = q[1];
         g->legato = q[2] & 0x3Fu;
         g->unison = q[2] & 0x80u ? (q[2] & 0x40u ? 2u : 1u) : 0u;
+        g->assign0 = g->assign;
+        g->unison0 = g->unison;
+        g->mode = 0xFFu;
+        g->cv[0] = g->cv[1] = 0;
         g->priority = q[3] & 0x7Fu;
         g->no_steal = q[3] >> 7;
         for (v = 0; v < ENG_MAX_PARTS; v++) {
@@ -1405,6 +1414,8 @@ int eng_load(const uint8_t *p, uint32_t len)
             E.node[tm].ksrc = 1u;                /* Main's keys pass through the track while none is armed (#138) */
         if (E.node[fm].type == T_STEPS && fp == STEPS_O_KEYS && E.node[tm].type == T_ARP && tp == ARP_I_KEYS)
             E.node[tm].ksrc = (uint8_t)(2u + fm);   /* the arpeggiator plays the track's notes, not Main's keys */
+        if (E.node[tm].type == T_PART && E.node[tm].grp)  /* a cable into a Part's assign or unison input (#681) */
+            E.grp[E.node[tm].grp].mode = tm;
     }
     if (p[6] & 1u) {                             /* the morph B set: one Q16 value per parameter of every module, kept as unit positions */
         for (i = 0; i < E.nmod; i++) {
@@ -1865,13 +1876,21 @@ int eng_groups(void) { return E.loaded ? E.ngrp : 0; }
 
 static void mono_update(grp_t *g);
 
+/* a Voicing's assign or unison with a cable into its input (modules.ts voicingSetting, #681): moved by whole choices, one
+ * a unit (cv Q16, rounded to the nearest), within 0..top */
+static int32_t vsetting(int32_t base, int32_t cv, int32_t top)
+{
+    int32_t v = base + (int32_t)(((int64_t)cv + 32768) >> 16);
+    return v < 0 ? 0 : v > top ? top : v;
+}
+
 int eng_poly_get(uint32_t g, uint32_t field)
 {
     const grp_t *x;
     if (!E.loaded || g >= E.ngrp || field >= ENG_NPOLY)
         return -1;
     x = &E.grp[1u + g];
-    return field == ENG_POLY_PARTS ? x->parts : field == ENG_POLY_ASSIGN ? x->assign : field == ENG_POLY_LEGATO ? x->legato : field == ENG_POLY_PRIORITY ? x->priority : field == ENG_POLY_UNISON ? x->unison : field == ENG_POLY_STACK ? x->stack : !x->no_steal;
+    return field == ENG_POLY_PARTS ? x->parts : field == ENG_POLY_ASSIGN ? x->assign0 : field == ENG_POLY_LEGATO ? x->legato : field == ENG_POLY_PRIORITY ? x->priority : field == ENG_POLY_UNISON ? x->unison0 : field == ENG_POLY_STACK ? x->stack : !x->no_steal;
 }
 
 int eng_module_group(uint32_t module) { return E.loaded && module < E.nmod ? E.node[module].grp : 0; }
@@ -1883,8 +1902,10 @@ int eng_poly_set(uint32_t g, uint32_t field, uint32_t v)
         || v > (field == ENG_POLY_STACK ? ENG_MAX_PARTS : field == ENG_POLY_ASSIGN ? 3u : field == ENG_POLY_STEAL ? 1u : 2u))
         return 0;
     x = &E.grp[1u + g];
-    if (field == ENG_POLY_ASSIGN) x->assign = (uint8_t)v;
-    else if (field == ENG_POLY_LEGATO) x->legato = (uint8_t)v;
+    if (field == ENG_POLY_ASSIGN) {
+        x->assign0 = (uint8_t)v;
+        x->assign = (uint8_t)vsetting(v, x->cv[0], 3);   /* (with a cable: moved by what it carries) */
+    } else if (field == ENG_POLY_LEGATO) x->legato = (uint8_t)v;
     else if (field == ENG_POLY_PRIORITY) x->priority = (uint8_t)v;
     else if (field == ENG_POLY_STACK) {
         uint32_t i;
@@ -2358,6 +2379,76 @@ static void mono_part(const grp_t *g, pv_t *x, int k)
             x->off_stamp = ++E.stamp;
         x->gate = 0;
         x->on = 0;
+    }
+}
+
+/* a group's unison mode changes to u (engine.ts unisonSwitch). Into unison from off: the notes its parts play, oldest
+ * first, become the held keys and the parts take them as unison does. Out of it: the parts keep their notes until their
+ * keys are let go. Between on and share: the held keys again. One part: nothing changes. */
+static void __attribute__((noinline)) unison_switch(grp_t *g, uint32_t u)
+{
+    uint32_t was = g->unison, i, j, n = 0;
+    uint8_t ord[ENG_MAX_PARTS];
+    g->unison = (uint8_t)u;
+    if (g->parts == 1)
+        return;
+    if (!was) {
+        for (i = 0; i < g->parts; i++) {         /* the sounding parts by their notes' age (equal ages: part order) */
+            const pv_t *x = &E.pv[g->pv0 + i];
+            if (!x->on)
+                continue;
+            for (j = n; j && E.pv[g->pv0 + ord[j - 1u]].on_stamp > x->on_stamp; j--)
+                ord[j] = ord[j - 1u];
+            ord[j] = (uint8_t)i;
+            n++;
+        }
+        g->nheld = 0;
+        for (i = 0; i < n; i++) {
+            const pv_t *x = &E.pv[g->pv0 + ord[i]];
+            for (j = 0; j < g->nheld && g->held_note[j] != x->note; j++)
+                ;
+            if (j < g->nheld)
+                continue;
+            g->held_note[g->nheld] = x->note;
+            g->held_vel[g->nheld++] = x->vel;
+        }
+        mono_update(g);
+    } else if (!u)
+        g->nheld = 0;
+    else
+        mono_update(g);
+}
+
+/* the end of a block (engine.ts voicingCables, #681): what the cables into each group's Part's assign and unison inputs
+ * carry, their first sample (summed as the Part's input is), sets the group's assign and unison for the next block's keys */
+static void __attribute__((noinline)) group_cables(void)
+{
+    uint32_t k, c, v;
+    for (k = 1; k <= E.ngrp; k++) {
+        grp_t *g = &E.grp[k];
+        int32_t cv[2] = {0, 0}, u;
+        if (g->mode == 0xFFu)
+            continue;
+        for (c = 0; c < E.ncab; c++) {
+            uint32_t fm = E.from_m[c], fp = E.from_p[c], tp = E.to_p[c];
+            const node_t *f = &E.node[fm];
+            if (E.to_m[c] != g->mode || tp > PART_I_UNISON)
+                continue;
+            if (f->grp && f->grp != k) {
+                int32_t w = para_w(fm, fp);
+                for (v = 0; v < f->ninst; v++) {
+                    int32_t a = buf_of(fm, fp, v)[0];
+                    cv[tp] += w ? mul16(a, w) : a;
+                }
+            } else
+                cv[tp] += buf_of(fm, fp, 0)[0];
+        }
+        g->cv[0] = cv[0];
+        g->cv[1] = cv[1];
+        g->assign = (uint8_t)vsetting(g->assign0, cv[0], 3);
+        u = vsetting(g->unison0, cv[1], 2);
+        if (u != (int32_t)g->unison)
+            unison_switch(g, (uint32_t)u);
     }
 }
 
@@ -8014,6 +8105,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             E.pv[k].retrig = 0;
             E.pv[k].key_trig = 0;
         }
+        group_cables();                                 /* (#681: after the triggers, so a regroup's restart is the next block's) */
         for (k = 0; k < E.nout; k++) {
             const node_t *o = &E.node[E.outputs[k]];
             const inst_t *it = &inst_pool[o->inst0];

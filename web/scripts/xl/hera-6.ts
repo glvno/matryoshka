@@ -15,8 +15,8 @@
 //   CHORUS     chorus (switch: OFF, I, II)
 //   bender     dco, vcf, lfo (the controller's DCO, VCF and LFO sliders)
 //   portamento portamento (the time knob), porta switch (OFF, ON)
-//   keys       assign mode (POLY 1, POLY 2), unison (POLY 1 and POLY 2 pressed together: solo unison), key transpose, tune
-// That is 34 rows for the Juno's 33 controls: the assign mode buttons are two rows (see "Not on the card").
+//   keys       assign mode (switch: POLY 1, POLY 2, UNISON: POLY 1 and POLY 2 pressed together), key transpose, tune
+// That is 33 rows for the Juno's 33 controls.
 // How each is built:
 // - Each voice's low pass follows its envelope, the LFO, the keys and the bender per sample: the Multimode's 24 dB low
 //   pass in place of the Ladder, whose cutoff moves once per 128-sample block. env, lfo and kybd are amounts in octaves;
@@ -37,7 +37,8 @@
 //   vibrato by the LFO slider); portamento, its switch and time (a slew per voice: each voice glides from its own last
 //   note, as on the original, whose manual suggests Poly 2 for it).
 // - Assign mode: Poly 1 (the next voice in turn, releases overlap), Poly 2 (the lowest free voice, so a note cuts the
-//   release of the one before), and both pressed, solo unison (all six voices on one key).
+//   release of the one before), and both pressed, solo unison (all six voices on one key): the FM-1 version's Selector,
+//   whose cables set the Voicing's assign and unison (#681).
 // - Key transpose (+-1 octave in semitones: an offset quantized to semitones, before the portamento and the key follow);
 //   the rear panel's tune (+-1/4 tone).
 // - The PEDAL HOLD jack: Main's sustain output (MIDI CC 64) is the pedal: a voice whose key is let go keeps its gate while it is down
@@ -46,9 +47,6 @@
 // - Construction, kept at its values in the patch: the voice count (six, as the original), the chorus modules' settings,
 //   the bass boost's level, the hold's threshold (the pedal plays it).
 // - VOLUME: the Output module's level, outside the card.
-// - The assign mode is two rows, `assign mode` (rotate is POLY 1, lowest is POLY 2; the Voicing's third choice, reuse, is
-//   not the Juno's) and `unison`: a switch of the three would need the Voicing's settings on a Selector (D-635 keeps a
-//   Voicing's settings off a shared row), in both engines.
 // - Poly 2 with six keys down takes over a voice (the original then plays no more keys). Its assign control still needs to select
 //   the allocator's no-steal setting together with lowest-free assignment.
 // - The patch shift pedal jack, the tape interface, the memory and the MIDI function switch: hardware and storage, no part
@@ -63,7 +61,7 @@ import { ADSR_LONG, BEND_OCT, DEFS } from '../../src/modules';
 import { paramUnit } from '../../src/patch';
 
 // the FM-1 version's local module ids (src/assemblies/hera-6.json)
-const LFO = 1, VIB = 2, PWM = 3, LFO_FILTER = 4, NOISE = 5, PART = 6, OSC = 7, SUB = 8, LADDER = 9, ENV = 10, VCA = 11, HPF = 12, CHORUS = 13, SCOPE = 14;
+const LFO = 1, VIB = 2, PWM = 3, LFO_FILTER = 4, NOISE = 5, PART = 6, OSC = 7, SUB = 8, LADDER = 9, ENV = 10, VCA = 11, HPF = 12, CHORUS = 13, SCOPE = 14, ASSIGN = 15, UNI_VCA = 17;
 /** the quantizer's scales (modules.ts SCALES): chromatic */
 const CHROMATIC = 0;
 /** the high pass's cutoff, Hz, at the HPF's positions 2 and 3 (by ear) */
@@ -209,7 +207,7 @@ export const xl: Xl = {
       // ---- the HPF: four positions on a Selector, its value into the high pass's cutoff pin (in the cutoff's octaves) and
       // its first position's gate into the bass boost's level pin (a low pass of the voices mixed in beside the high pass)
       const boost = e.add('filter', 5, 1, { cutoff: 120, res: 0, cvamt: 1, track: 0 });
-      e.wire(VCA, 'out', boost, 'in');
+      e.wire(UNI_VCA, 'out', boost, 'in'); // (after UNISON's level, #681)
       const sum = e.add('mixer', 5.5, 0.5, { l1: 1, l2: 0, l3: 0, l4: 0 }, { p1: 'l2' });
       e.unwire(HPF, 'hp', CHORUS, 'in');
       e.unwire(HPF, 'hp', SCOPE, 'a');
@@ -267,8 +265,7 @@ export const xl: Xl = {
       e.param('lfo', leverDepth, 'gain');
       e.param('portamento', porta, 'time', { head: 'portamento' });
       named(e, 'porta switch', portaOn, ['OFF', 'ON']);
-      e.param('assign mode', PART, 'assign', { head: 'keys' });
-      e.param('unison', PART, 'unison');
+      named(e, 'assign mode', ASSIGN, ['POLY 1', 'POLY 2', 'UNISON'], { head: 'keys' });
       e.param('key transpose', transpose, 'value');
       e.param('tune', tune, 'value');
       // the voice card shows the card's rows of its own modules, and only those
@@ -283,4 +280,4 @@ export const xl: Xl = {
   },
 };
 
-const NOTES = "Juno-106 panel, six voices. MIDI CC 64 is the hold pedal; Output sets volume. Assign needs two rows: Selectors cannot set Voicing settings. Poly 2 steals when all voices are busy; its card still needs to select no-steal with Poly 2. HPF 2/3 and chorus II settings are approximated by ear. Patch shift, tape, memory and the MIDI function switch are hardware or storage, not reproduced.";
+const NOTES = "Juno-106 panel, six voices. MIDI CC 64 is the hold pedal; Output sets volume. Poly 2 steals when all voices are busy; its card still needs to select no-steal with Poly 2. HPF 2/3 and chorus II settings are approximated by ear. Patch shift, tape, memory and the MIDI function switch are hardware or storage, not reproduced.";
