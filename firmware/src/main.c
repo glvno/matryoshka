@@ -511,7 +511,7 @@ static int slot_used(uint32_t s) { return s < M1_SLOTS && (bank_mask >> s & 1u);
 /* the settings record: version, slot, octave + 8, LED mode, knob accel (bit 0; bit 1: the quick start off, D-247: a record
  * from before reads as on, and an older firmware reads the accel as before; bits 2..3: OUTPUT, #612: 0 STEREO, 1 MONO, 2
  * MONO L, a record from before reads as STEREO; bit 4: EDITOR, #702: 0 ALLOW, 1 IGNORE, a record from before reads as
- * ALLOW; bits 5..7: USB LEVEL, #600: 0 KNOB, 1..7 a fixed level, out_level.h, a record from before reads as KNOB), the
+ * ALLOW; bits 5..7 unused: a development build wrote USB LEVEL there, #600, never released, and they are not read), the
  * global tempo's low byte (byte 5,
  * D-907; was CPU in the bar), clock in (bit 0; bit 1: CLOCK OUT off, #473, read alike; bit 2: 3.5MM OUT off, #631, a
  * record from before reads as ON), TEMPO and the tempo's bit 8 (byte 7, tempo_glo.h; was program change),
@@ -533,7 +533,7 @@ static void settings_pack(uint8_t *d)
     d[1] = (uint8_t)cur_preset;
     d[2] = (uint8_t)(octave + 8);
     d[3] = cfg.leds;
-    d[4] = (uint8_t)(cfg.accel | (cfg.quick ? 0u : 2u) | (uint8_t)(out_mono << 2) | (cfg.editor_ignore ? 16u : 0u) | (uint8_t)(usb_level << 5));   /* (bits 2..3: OUTPUT, #612; bit 4: EDITOR, #702; bits 5..7: USB LEVEL, #600) */
+    d[4] = (uint8_t)(cfg.accel | (cfg.quick ? 0u : 2u) | (uint8_t)(out_mono << 2) | (cfg.editor_ignore ? 16u : 0u));   /* (bits 2..3: OUTPUT, #612; bit 4: EDITOR, #702) */
     d[6] = (uint8_t)(co_set_byte(cfg.clock_in, cfg.clock_out) | (out_off ? 4u : 0u));   /* (bit 1: CLOCK OUT off, #473:
                                                 * clock_out.h; bit 2: 3.5MM OUT off, #631) */
     gt_pack(d);                                 /* bytes 5 and 7: the global tempo and TEMPO (D-907) */
@@ -559,7 +559,6 @@ static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint3
     if (out_mono > 2u)
         out_mono = 0;
     cfg.editor_ignore = (uint8_t)(d[4] >> 4 & 1u);  /* (a record from before reads as ALLOW) */
-    usb_level = (uint8_t)(d[4] >> 5);               /* (a record from before reads as KNOB) */
     cfg.clock_in = d[6] & 1u;
     cfg.clock_out = co_set_clock_out(d[6]);     /* (a record from before reads as ON) */
     out_off = (uint8_t)(d[6] >> 2 & 1u);        /* (a record from before reads as ON) */

@@ -15,7 +15,7 @@ import { FIXTURES, NOTE, oldPatch } from './check-fixtures.mjs';
 
 /** the scenarios' names, in the order they run (scripts/emu-scenarios.mjs lists them for --only and --list) */
 export const CHECK_SCENARIOS = ['checkOutput', 'checkVerona', 'checkRowDrone', 'checkLiveDrone', 'checkDelays', 'checkNoKeys', 'checkStore',
-  'checkOldPattern', 'checkTeach', 'checkDualCore', 'checkUsbLevel', 'check35mmOut'];
+  'checkOldPattern', 'checkTeach', 'checkDualCore', 'check35mmOut'];
 
 /** `h`: what emu-scenarios.mjs's scenarios use (the target, the editor's page, the checks) */
 export function checkScenarios(h) {
@@ -71,7 +71,6 @@ export function checkScenarios(h) {
     const p = await emu.peak(m), got = top2(a) * 32768;
     if (REAL && p > LOUD && got < p / 20)
       return { why: `MASTER is low: the USB audio's loudest is ${db(got / p)} dB under TEST_PEAK's (at MASTER's default), too far into its noise (D-140)` };
-    a.testPeak = p;   // (TEST_PEAK over the recording, as at MASTER's default: USB LEVEL's checks compare with it)
     return a;
   }
   /** the rig's USB audio is a shipped feature: a stream the FM-1 opened and then stopped feeding (or never fed) is a failure,
@@ -193,64 +192,14 @@ export function checkScenarios(h) {
     return { top, low, kept: top ? r2(low / top) : 0, rise: r2(rise), windows: p.map((x) => +(x * 1000).toFixed(1)).join(',') };
   }
 
-  /** a level row's value on GLO > SYSTEM 2/2 (USB LEVEL: KNOB, -24 DB .. 0 DB) */
-  const levelOf = async (row) => {
-    const t = (await emu.screen()).texts;
-    const y = t.find((x) => x.s === row)?.y;
-    return t.find((x) => Math.abs(x.y - (y ?? -99)) <= 14 && /^(KNOB|-?\d+ DB)$/.test(x.s))?.s;
-  };
-  /** turn knob `k` (ENC index) a click at a time until the row reads `want`, at most 9 clicks */
-  async function levelTo(k, row, want) {
-    for (let i = 0; i < 9 && (await levelOf(row)) !== want; i++) {
-      await emu.turn(k, want === 'KNOB' ? -1 : 1);
-      await emu.elapse(300);
-    }
-    return levelOf(row);
-  }
-
   return {
     // ---- 1. OUTPUT: STEREO, MONO, MONO L (D-918, D-919), steps 1.1..1.5
-    // ---- USB LEVEL (#600): what goes to the computer, apart from MASTER. The emulator has no USB audio: there the analog
-    // output (its I2S) must stay as it was; on the rig the USB recording must sit at the fixed level whatever MASTER is
-    async checkUsbLevel() {
-      const K2 = ENC.k2;
-      try {
-        await check('usb level: T110 MONO L R opens, synced', !!(await fixture(FIXTURES.monoLR)));
-        await check('usb level: GLO > SYSTEM 2/2, its second row USB LEVEL reads KNOB', (await menuTab('USB LEVEL')) && (await levelOf('USB LEVEL')) === 'KNOB', `${await levelOf('USB LEVEL')}`);
-        await menuClose();
-        const held = (tag) => recorded(`usb-level-${tag}`, async () => { await emu.key(C4, true); await emu.elapse(700); await emu.key(C4, false); await emu.elapse(200); });
-        const knob = REAL ? null : await held('knob');
-        const at = async (want) => {
-          const v = (await menuTab('USB LEVEL')) && (await levelTo(K2, 'USB LEVEL', want));
-          await check(`usb level: K2 to ${want}`, v === want, `${v}`);
-          await menuClose();
-          return held(want.replace(' ', ''));
-        };
-        const lo = await at('-12 DB');
-        if (!REAL) {
-          await skip('usb level: the computer records -12 DB under MASTER at its top', 'the emulator has no USB audio: the rig\'s recording proves it');
-          const k = knob.why ? 0 : rmsOf(knob.l), f = lo.why ? 0 : rmsOf(lo.l);
-          await heard('usb level: the analog output stays at MASTER\'s level (the I2S output, within 0.3 dB)', lo, k > FLOOR && Math.abs(20 * Math.log10(f / k)) <= 0.3, `KNOB ${db(k)} dB, -12 DB ${db(f)} dB`);
-        } else {
-          // TEST_PEAK reads as if MASTER sat at its default (Q12 2048): -12 DB is Q12 1027, so the recording's loudest is
-          // about 6 dB under it, -6 DB (2049) level with it, wherever the knob is
-          const rel = (a) => (a.why || !a.testPeak ? NaN : 20 * Math.log10((top2(a) * 32768) / a.testPeak));
-          const mid = await at('-6 DB');
-          await heard('usb level: -12 DB: the computer records 6 dB under TEST_PEAK, wherever MASTER is (within 1.5 dB)', lo, Math.abs(rel(lo) + 6) <= 1.5, `${rel(lo).toFixed(1)} dB`);
-          await heard('usb level: -6 DB: level with TEST_PEAK (within 1.5 dB), 6 dB over -12 DB', mid, Math.abs(rel(mid)) <= 1.5 && Math.abs(rel(mid) - rel(lo) - 6) <= 1, `${rel(mid).toFixed(1)} dB`);
-        }
-      } finally {
-        if (await menuTab('USB LEVEL')) await levelTo(K2, 'USB LEVEL', 'KNOB');
-        await check('usb level: back to KNOB', (await levelOf('USB LEVEL')) === 'KNOB', `${await levelOf('USB LEVEL')}`);
-        await menuClose();
-      }
-    },
-    // ---- 3.5MM OUT (#631, D-925): the speaker and the jack off, USB audio apart. By the row (K3 on GLO > SYSTEM 2/2) and by
+    // ---- 3.5MM OUT (#631, D-925): the speaker and the jack off, USB audio at MASTER's level. By the row (K2 on GLO > SYSTEM 2/2) and by
     // HOME + OCT- + OCT+ held 2 s; the footer's mark (SCREEN reads it as 3.5MM OFF). The emulator's recording is its I2S
     // output (the analog side): OFF must be silent there. The rig's recording is its USB audio: OFF must leave it as it
     // was, and the speaker is the owner's ears. The setting ends as the scenario found it (nothing here SAVEs it)
     async check35mmOut() {
-      const K3 = ENC.k3;
+      const K2 = ENC.k2;
       /** the row's value: ON or OFF, beside its name */
       const valueOf = async () => {
         const t = (await emu.screen()).texts;
@@ -259,7 +208,7 @@ export function checkScenarios(h) {
       };
       const setTo = async (want) => {
         for (let i = 0; i < 2 && (await valueOf()) !== want; i++) {
-          await emu.turn(K3, want === 'ON' ? 1 : -1);
+          await emu.turn(K2, want === 'ON' ? 1 : -1);
           await emu.elapse(300);
         }
         return valueOf();
@@ -280,12 +229,12 @@ export function checkScenarios(h) {
       let was;
       try {
         await check('3.5mm out: T110 MONO L R opens, synced', !!(await fixture(FIXTURES.monoLR)));
-        await check('3.5mm out: GLO > SYSTEM 2/2, its third row 3.5MM OUT reads ON or OFF', !!(await menuTab('3.5MM OUT')) && !!(was = await valueOf()), `${was}`);
-        await check('3.5mm out: K3 right: ON, no mark', (await setTo('ON')) === 'ON' && !(await mark()), `${await valueOf()}`);
+        await check('3.5mm out: GLO > SYSTEM 2/2, its second row 3.5MM OUT reads ON or OFF', !!(await menuTab('3.5MM OUT')) && !!(was = await valueOf()), `${was}`);
+        await check('3.5mm out: K2 right: ON, no mark', (await setTo('ON')) === 'ON' && !(await mark()), `${await valueOf()}`);
         await menuClose();
         const on = await held('on');
         await menuTab('3.5MM OUT');
-        await check('3.5mm out: K3 left: OFF, the footer\'s mark (3.5MM OFF)', (await setTo('OFF')) === 'OFF' && (await mark()), `${await valueOf()}`);
+        await check('3.5mm out: K2 left: OFF, the footer\'s mark (3.5MM OFF)', (await setTo('OFF')) === 'OFF' && (await mark()), `${await valueOf()}`);
         await menuClose();
         await check('3.5mm out: the mark on the device page too', await mark());
         const off = await held('off');

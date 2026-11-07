@@ -2,9 +2,10 @@
  * Copyright (C) 2026 michael glaviano */
 /* Host test of the audio ISR's outputs (firmware/src/audio.c fm1_alnk0_irq): what USB audio takes (uac_tap) and what the
  * analog output (the speaker and the headphone jack, the I2S half) plays, under GLO > SYSTEM's settings:
- *   - 3.5MM OUT ON (#631, D-925): the analog half bit for bit what it was before the setting (MASTER's level, USB LEVEL's
- *     second render, OUTPUT's mono fold);
- *   - 3.5MM OUT OFF: the analog half silent, with every USB LEVEL and OUTPUT; USB audio the same words as with ON;
+ *   - 3.5MM OUT ON (#631, D-925): the analog half bit for bit what it was before the setting (MASTER's level, OUTPUT's
+ *     mono fold);
+ *   - 3.5MM OUT OFF: the analog half silent, with every MASTER and OUTPUT; USB audio the same words as with ON, at
+ *     MASTER's level, stereo;
  *   - the engine stopped: both silent.
  * The emulator has no USB audio, so this is where USB audio's side of the setting is checked.
  *   tools/audio_out_test.sh */
@@ -51,7 +52,7 @@ static void before(int32_t *o, uint32_t knob, uint32_t mono)
             o[2u * i + 1u] = mono == 2u ? 0 : s;
         }
 }
-/* USB audio's words: its level, stereo */
+/* USB audio's words: MASTER's level, stereo */
 static void usb_words(int32_t *o, uint32_t q)
 {
     uint32_t i;
@@ -74,35 +75,32 @@ int main(void)
 {
     static const uint32_t KNOBS[3] = {300, 2048, 4088};
     int32_t want[HALF_WORDS], wusb[HALF_WORDS];
-    uint32_t i, k, lv, mono, n = 0, bad_on = 0, bad_off = 0, bad_usb = 0;
+    uint32_t i, k, mono, n = 0, bad_on = 0, bad_off = 0, bad_usb = 0;
     for (i = 0; i < 128u; i++) {                       /* a loud, uneven signal: both sides differ */
         sig_l[i] = (int32_t)((i * 977u) % 131072u) - 65536;
         sig_r[i] = (int32_t)((i * 613u + 4000u) % 131072u) - 65536;
     }
     eng_run = 1;
     for (k = 0; k < 3u; k++)
-        for (lv = 0; lv < LVL_N; lv++)
-            for (mono = 0; mono < 3u; mono++) {
-                master_q12 = KNOBS[k];
-                usb_level = (uint8_t)lv;
-                out_mono = (uint8_t)mono;
-                out_off = 0;
-                fm1_alnk0_irq();
-                before(want, KNOBS[k], mono);
-                usb_words(wusb, lvl_q12(lv, KNOBS[k]));
-                bad_on += memcmp(abuf, want, sizeof want) != 0;
-                bad_usb += memcmp(usb, wusb, sizeof wusb) != 0;
-                out_off = 1;
-                fm1_alnk0_irq();
-                bad_off += !silent(abuf);
-                bad_usb += memcmp(usb, wusb, sizeof wusb) != 0;
-                n++;
-            }
+        for (mono = 0; mono < 3u; mono++) {
+            master_q12 = KNOBS[k];
+            out_mono = (uint8_t)mono;
+            out_off = 0;
+            fm1_alnk0_irq();
+            before(want, KNOBS[k], mono);
+            usb_words(wusb, KNOBS[k]);
+            bad_on += memcmp(abuf, want, sizeof want) != 0;
+            bad_usb += memcmp(usb, wusb, sizeof wusb) != 0;
+            out_off = 1;
+            fm1_alnk0_irq();
+            bad_off += !silent(abuf);
+            bad_usb += memcmp(usb, wusb, sizeof wusb) != 0;
+            n++;
+        }
     CHECK(bad_on == 0u, "3.5MM OUT ON: the analog half bit for bit as before, at MASTER's level (%u of %u settings differ)", bad_on, n);
-    CHECK(bad_off == 0u, "3.5MM OUT OFF: the analog half silent, every MASTER, USB LEVEL and OUTPUT (%u of %u not)", bad_off, n);
-    CHECK(bad_usb == 0u, "USB audio: the same words with 3.5MM OUT ON and OFF, at USB LEVEL's level, stereo (%u of %u differ)", bad_usb, 2u * n);
+    CHECK(bad_off == 0u, "3.5MM OUT OFF: the analog half silent, every MASTER and OUTPUT (%u of %u not)", bad_off, n);
+    CHECK(bad_usb == 0u, "USB audio: the same words with 3.5MM OUT ON and OFF, at MASTER's level, stereo (%u of %u differ)", bad_usb, 2u * n);
     master_q12 = 2048;
-    usb_level = 0;
     out_mono = 0;
     out_off = 1;
     snd_muted = 1;                                      /* sandbox mode: both silent, as before */

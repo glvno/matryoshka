@@ -541,7 +541,7 @@ static void pages_patch_ask(void)
  * on K1..K4, drawn as a device page. MIDI: the MIDI channel, clock in, MIDI out (K3: sandbox mode's hint names it), clock
  * out (#473); PANEL:
  * the LEDs, knob acceleration; SYSTEM: update mode, factory reset (a turn arms the row, GLO held 2 s does it: menu.c
- * menu_fire), the quick start after power-on (D-247), OUTPUT (D-919); its second page (ALGO again, #702): EDITOR, USB LEVEL (#600), 3.5MM OUT (#631). The settings live in the state (SAVE), never in a patch (menu.c setting_step). A row of them is a setting,
+ * menu_fire), the quick start after power-on (D-247), OUTPUT (D-919); its second page (ALGO again, #702): EDITOR, 3.5MM OUT (#631). The settings live in the state (SAVE), never in a patch (menu.c setting_step). A row of them is a setting,
  * not a module's parameter: SETTING_ROW in its module byte. */
 #define SETTING_ROW 0xFFu
 static void setting_step(uint32_t row, int32_t s);      /* menu.c */
@@ -552,10 +552,10 @@ static ppage_t pg_menu;
 static const ppage_t *menu_tab_page(void)
 {
     static const char *const LAB[4][PG_ROWS] = {{"MIDI CHANNEL", "CLOCK IN", "MIDI OUT", "CLOCK OUT"}, {"LEDS", "KNOB ACCEL", "COUNT-IN", "TEMPO"}, {"UPDATE MODE", "FACTORY RESET", "QUICK START", "OUTPUT"},
-                                                {"EDITOR", "USB LEVEL", "3.5MM OUT", ""}};
+                                                {"EDITOR", "3.5MM OUT", "", ""}};
     static const uint8_t ROW[4][PG_ROWS] = {{MR_CH, MR_CLOCK, MR_MOUT, MR_CLKOUT}, {MR_LEDS, MR_ACCEL, MR_CIN, MR_TEMPO}, {MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_OUTPUT},
-                                            {MR_EDITOR, MR_USBLVL, MR_OUT35, MR_OUT35}};
-    static const uint8_t N[4] = {4, 4, 4, 3};           /* (the fourth: SYSTEM's second page, #702) */
+                                            {MR_EDITOR, MR_OUT35, MR_OUT35, MR_OUT35}};
+    static const uint8_t N[4] = {4, 4, 4, 2};           /* (the fourth: SYSTEM's second page, #702) */
     uint32_t t = menu_tab > MT_SYSTEM ? MT_MIDI : menu_tab, k;
     if (t == MT_SYSTEM && menu_sys2)
         t = 3u;
@@ -577,7 +577,7 @@ static const ppage_t *menu_tab_page(void)
 /* a setting's place in its range, 0..width (its bar) */
 static uint32_t setting_bar(uint32_t row, uint32_t width)
 {
-    return row == MR_CH ? cfg.ch * width / 16u : row == MR_LEDS ? cfg.leds * width / 2u : row == MR_OUTPUT ? out_mono * width / 2u : row == MR_EDITOR ? cfg.editor_ignore * width : row == MR_USBLVL ? usb_level * width / (LVL_N - 1u) : row == MR_CIN ? cfg.count_in * width / 2u
+    return row == MR_CH ? cfg.ch * width / 16u : row == MR_LEDS ? cfg.leds * width / 2u : row == MR_OUTPUT ? out_mono * width / 2u : row == MR_EDITOR ? cfg.editor_ignore * width : row == MR_CIN ? cfg.count_in * width / 2u
          : row == MR_UPDATE || row == MR_DEFAULTS ? (menu_armed == row ? width : 0u)
          : (row == MR_CLOCK ? cfg.clock_in : row == MR_MOUT ? cfg.midi_out : row == MR_CLKOUT ? cfg.clock_out : row == MR_QUICK ? cfg.quick : row == MR_TEMPO ? gt_patch : row == MR_OUT35 ? !out_off : cfg.accel) ? width : 0u;
 }
