@@ -484,6 +484,29 @@ class RigPin(unittest.TestCase):
         with self.assertRaises(OSError):
             be.open("Matryoshka", "Matryoshka")
 
+    def test_dry_run_checks_everything_and_sends_only_reads(self):
+        """--rig --dry-run: the right rig is named and nothing is installed; the wrong FM-1 in the rig's socket is refused
+        as without it; either way only the identity handshake and the mark's read went out"""
+        reads = lambda usb: all(p == fi.HS_QUERY or p[4] == fm1_usb.C_PRESET_GET for _, p in usb.sent)
+        usb = self.usb((OWNER, "FM-1_7011000", None), (RIG, "FM-1_7000000", MARK))
+        code, out = self.run_rig(usb, "--dry-run")
+        self.assertEqual(code, 0, out)
+        self.assertRegex(out, r"dry run: would install FM-1_7\d+ on FM-1_7000000 \(Matryoshka\) at USB location 0x01130000")
+        self.assertEqual(self.installed, [])
+        self.assertTrue(usb.sent and reads(usb) and all(loc == RIG for loc, _ in usb.sent))
+        usb = self.usb((OWNER, "FM-1_7011000", MARK), (RIG, "FM-1_7011000", None))   # (the owner's FM-1 in the rig's socket)
+        self.assertEqual(self.run_rig(usb, "--dry-run")[0], 9)
+        self.assertEqual(self.installed, [])
+        self.assertTrue(reads(usb))
+
+    def test_dry_run_never_reaches_install(self):
+        """--dry-run returns before Updater.install, with no stand-in for it"""
+        fi.Updater.install = self.old_install
+        usb = self.usb((RIG, "FM-1_7000000", MARK))
+        code, out = self.run_rig(usb, "--dry-run")
+        self.assertEqual(code, 0, out)
+        self.assertNotIn(fi.UPGRADE, [p for _, p in usb.sent])
+
     def test_mark_frames(self):
         self.assertEqual(fm1_usb.parse_preset_data(preset_data(MARK)), MARK)
         self.assertEqual(fm1_usb.parse_preset_data(preset_data(None)), [])

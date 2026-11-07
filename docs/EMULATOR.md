@@ -161,7 +161,8 @@ link as `m1emu serve` drives the emulator:
   `--install RUN` first installs that firmware CI run on the rig ([D-123](ledger/releases.md#D-123)): after `emu:smoke`
   and `emu:scenarios` passed on that run's builds, through `tools/fm1_install.py --rig`. That installer sees only the
   MIDI ports at the rig's USB location, reads the mark there before it sends anything, and refuses when the FM-1 there
-  is not the rig (exit code 9). Another FM-1 may stay connected: nothing reaches it (issue #698). A rig registered before
+  is not the rig (exit code 9). Another FM-1 may stay connected: nothing reaches it (issue #698). `--rig --dry-run` runs
+  the same checks and says what it would install where, sending only the identity handshake and the mark's read. A rig registered before
   #698, with no location kept, must still be the one FM-1 connected. A rig left in update mode is finished by hand,
   `tools/fm1_install.py PACKAGE --location 0x01130000`, never by a script. A build whose
   `scenarios.passed` holds its sha256 is not run through `emu:scenarios` again, as `smoke.passed` skips `emu:smoke`. With `--gate boot`,

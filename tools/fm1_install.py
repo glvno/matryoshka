@@ -23,6 +23,8 @@ the FM-1 restarts and the installed identity is checked.
   fm1_install.py PACKAGE.fwsc --rig   (the test rig, D-122 / D-123: its USB location and mark from
                                       ~/.config/matryoshka/rig.json; installs only when the FM-1 at that location runs
                                       and carries the mark. A rig left in update mode is finished by hand with --location)
+  fm1_install.py PACKAGE.fwsc --dry-run [--rig | --location HEX]   (every check, then what would be installed where;
+                                      only the identity handshake and, with --rig, the mark's read go to the FM-1)
 
 If the FM-1 is still in update mode (an earlier install was cut off), the
 install finishes the write, when that loader may write this package. Needs mido with python-rtmidi.
@@ -883,6 +885,13 @@ def run(a, backend, out, ask):
         import fm1_usb
         check_rig(dev, rig, fm1_usb.read_mark, a.location)
         print(f"the test rig: its mark reads back at USB location {a.location}", file=out)
+    if a.dry_run:
+        dev.link.close()
+        where = f" at USB location {a.location}" if a.location else ""
+        what = "finish the write of" if dev.id.loader else "install"
+        print(f"dry run: would {what} {product} on {dev.id.text} ({dev.name}){where}; nothing was sent that changes the FM-1",
+              file=out)
+        return 0
     print(f"device:  {dev.id.text}  ({dev.name})" + ("  in update mode: the write will be finished" if dev.id.loader else ""),
           file=out)
     if not a.yes and not ask("Install? Do not unplug the FM-1 while writing. [y/N] "):
@@ -914,6 +923,8 @@ def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty):
     ap.add_argument("--rig", action="store_true", help="the registered test rig only: its USB location and mark from "
                                                        "~/.config/matryoshka/rig.json (npm run rig -- register)")
     ap.add_argument("--yes", action="store_true", help="do not ask for confirmation")
+    ap.add_argument("--dry-run", action="store_true", help="run every check (location, mark, package) and say what would "
+                                                           "be installed where, then stop: nothing that changes the FM-1 is sent")
     ap.add_argument("--force", action="store_true", help="install a package without the Felucca loader marker")
     ap.add_argument("--sure", action="store_true", help="finish a cut-off install in M-VAVE's loader with this package "
                                                         "although it is not recorded which one it was writing")
