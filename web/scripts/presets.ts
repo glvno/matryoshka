@@ -2,6 +2,7 @@
 // The factory engines' preset cards (#413, src/preset-cards.ts): the text files in web/presets/cards/ that hold the
 // presets written by hand. Run from web/:
 //   npm run presets                          every factory engine: its card (or that it has none) and its presets
+//                                            (a factory effect may have a card too, #661: "card 'ducking delay' --new")
 //   npm run presets -- card "Hera 6"         the engine's card as a new file would start: the rules, Init and the ranges
 //   npm run presets -- card "Hera 6" --new   the same, written to presets/cards/hera-6.txt (never over an existing file)
 //   npm run presets -- show "Hera 6"         the engine's presets as it ships them now, as card blocks (rule-made or the card's)
@@ -14,11 +15,12 @@ import { FACTORY } from '../src/assemblies';
 import type { AssemblyDef } from '../src/assembly';
 import { PRESETS_FORMAT, fixPreset, type Preset } from '../src/device-presets';
 import { defIsEngine } from '../src/engines';
-import { CARDS, cardOf, presetsOfDef } from '../src/factory-presets';
+import { CARDS, cardOf, hasFactoryPresets, shippedPresets } from '../src/factory-presets';
 import { cardSlug, cardTemplate, formatPreset, parseCard } from '../src/preset-cards';
 import { defStructure } from '../src/structure';
 
-const ENGINES = FACTORY.filter((d) => defIsEngine(d));
+/** the engines, and the effects (which ship presets only from a card, #661) */
+const ENGINES = FACTORY.filter((d) => defIsEngine(d) || d.category === 'Effects');
 const [cmd, ...rest] = process.argv.slice(2);
 
 const engine = (name: string | undefined): AssemblyDef => {
@@ -33,9 +35,9 @@ const engine = (name: string | undefined): AssemblyDef => {
 const fileOf = (d: AssemblyDef): URL => new URL(`../presets/cards/${cardSlug(d.name)}.txt`, import.meta.url);
 
 if (!cmd) {
-  for (const d of ENGINES) {
+  for (const d of ENGINES.filter((x) => hasFactoryPresets(x))) {
     const card = cardOf(d);
-    const list = presetsOfDef(d);
+    const list = shippedPresets(d);
     console.log(`${d.name.padEnd(14)} ${(card ? `cards/${cardSlug(d.name)}.txt` : 'no card, rule-made').padEnd(26)} ${list.map((p) => p.name).join(', ')}`);
   }
 } else if (cmd === 'card') {
@@ -52,7 +54,7 @@ if (!cmd) {
   } else process.stdout.write(text);
 } else if (cmd === 'show') {
   const d = engine(rest[0]);
-  const list = presetsOfDef(d);
+  const list = shippedPresets(d);
   console.log(`# ${d.name}: ${cardOf(d) ? 'its card' : 'rule-made'} (${list.length - 1} presets after Init)\nengine: ${d.name}\n`);
   for (const p of list.slice(1)) console.log(`${formatPreset(d, p.name, p.values)}\n`);
 } else if (cmd === 'check') {

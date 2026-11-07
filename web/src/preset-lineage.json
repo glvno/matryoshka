@@ -868,6 +868,16 @@
         ["mixer#59.l1","level",12]
       ]}
     ],
+    "ducking delay": [
+      {"structure": "5d6fdcbc", "rows": [
+        ["delay#1.fb","feedback",1],
+        ["delay#1.time","time",0],
+        ["dyn#2.ratio","duck",3],
+        ["dyn#2.release","release",5],
+        ["dyn#2.thresh","threshold",4],
+        ["xfade#3.mix","mix",2]
+      ]}
+    ],
     "Elvira 2": [
       {"structure": "80fa9d89", "since": "1.2.0", "rows": [
         ["crush#15.rate","mod",12],
@@ -1014,6 +1024,15 @@
         ["macro#24.value","drone",31]
       ]}
     ],
+    "envelope filter": [
+      {"structure": "6fb617f3", "rows": [
+        ["scale#3.gain","level",4],
+        ["esp#1.level","sensitivity",0],
+        ["filter#2.cutoff","cutoff",1],
+        ["filter#2.cvamt","range",2],
+        ["filter#2.res","res",3]
+      ]}
+    ],
     "Expander S": [
       {"structure": "fd1ded89", "since": "1.2.0", "rows": [
         ["scale#2.gain","vibrato",26],
@@ -1075,6 +1094,16 @@
         ["xfade#8.mix","mode",13],
         ["filter#6.cutoff","cutoff",11],
         ["filter#6.res","resonance",12]
+      ]}
+    ],
+    "gated reverb": [
+      {"structure": "69203269", "rows": [
+        ["reverb#1.damp","damp",4],
+        ["reverb#1.size","size",3],
+        ["pulse#6.time","hold",1],
+        ["comp#5.thresh","threshold",0],
+        ["xfade#3.mix","mix",5],
+        ["adsr#8.r","close",2]
       ]}
     ],
     "Hera 6": [
@@ -1359,6 +1388,15 @@
         ["select#21.pos","filter mod",26]
       ]}
     ],
+    "octave fuzz": [
+      {"structure": "f455b887", "rows": [
+        ["mixer#2.l1","fuzz",1],
+        ["mixer#2.l2","octave",2],
+        ["esp#4.highcut","tracking",4],
+        ["shape#1.drive","drive",0],
+        ["filter#3.cutoff","tone",3]
+      ]}
+    ],
     "Oracle V": [
       {"structure": "ca47b1a9", "since": "1.2.0", "rows": [
         ["scale#9.gain","pmod env→A",28],
@@ -1432,6 +1470,16 @@
         ["ladder#12.cvamt","env amt",16],
         ["ladder#12.res","res",15],
         ["ladder#12.track","kbd track",17]
+      ]}
+    ],
+    "overdrive": [
+      {"structure": "4ed621e4", "rows": [
+        ["filter#2.cutoff","low cut",4],
+        ["shape#3.drive","drive",0],
+        ["shape#3.level","level",5],
+        ["shape#3.mode","shape",2],
+        ["dyn#1.ratio","sustain",3],
+        ["filter#4.cutoff","tone",1]
       ]}
     ],
     "Perun 4": [
