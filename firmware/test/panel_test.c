@@ -806,6 +806,67 @@ int main(void)
         check("  back to MONO", out_mono == 1u && !on_screen("MONO L"));
         enc(5, -1);
         check("  and back to STEREO", !out_mono && on_screen("STEREO"));
+        check("  the header says SYSTEM 1/2 (#702)", on_screen("SYSTEM 1/2"));
+        enc(1, 1);
+        check("ALGO again: SYSTEM's second page, EDITOR on K1 (#702)", menu_tab == MT_SYSTEM && menu_sys2 && menu_page() && pages_now()->nrows == 3u
+              && pages_now()->par[0] == MR_EDITOR && on_screen("SYSTEM 2/2") && on_screen("EDITOR") && on_screen("ALLOW"));
+        check("  no armed-row line in the controls sheet's conditions there", !hc_menu_system());
+        enc(2, 1);
+        check("K1 right: EDITOR IGNORE", cfg.editor_ignore == 1u && on_screen("IGNORE"));
+        check("  an INFO is due for the editor (main.c editor_poll)", editor_info_due == 1u);
+        {
+            uint8_t leds = cfg.leds;
+            cfg_defaults();
+            check("  FACTORY RESET's defaults: ALLOW", cfg.editor_ignore == 0u);
+            cfg.editor_ignore = 1;
+            cfg.leds = leds;
+        }
+        enc(2, -1);
+        check("K1 left: EDITOR ALLOW", cfg.editor_ignore == 0u && on_screen("ALLOW"));
+        enc(2, 4);
+        enc(2, -1);
+        check("  any turn steps once: ALLOW again", cfg.editor_ignore == 0u);
+        check("K2 on SYSTEM 2/2: USB LEVEL, KNOB as made (#600)", pages_now()->par[1] == MR_USBLVL && usb_level == 0u && on_screen("USB LEVEL") && on_screen("KNOB"));
+        enc(3, 1);
+        check("  a turn right: -24 DB, the quietest fixed level first", usb_level == 1u && on_screen("-24 DB"));
+        enc(3, 1);
+        enc(3, 1);
+        check("  then -18 DB, -12 DB", usb_level == 3u && on_screen("-12 DB"));
+        for (int i = 0; i < 6; i++)
+            enc(3, 1);
+        check("  0 DB at most (the knob at its top)", usb_level == 7u && on_screen("0 DB") && !on_screen("-0 DB"));
+        check("  its level: the knob's top, 4088; -12 DB a quarter of it; KNOB the knob's", lvl_q12(7, 100) == 4088u && lvl_q12(3, 100) == 1027u && lvl_q12(0, 100) == 100u);
+        {
+            uint8_t leds = cfg.leds, ign = cfg.editor_ignore;
+            cfg_defaults();
+            check("  FACTORY RESET's defaults: KNOB", usb_level == 0u);
+            cfg.leds = leds;
+            cfg.editor_ignore = ign;
+            usb_level = 7;
+        }
+        for (int i = 0; i < 8; i++)
+            enc(3, -1);
+        check("  back to KNOB", usb_level == 0u && on_screen("KNOB"));
+        check("K3 on SYSTEM 2/2: OUT LEVEL, KNOB as made (#631)", pages_now()->par[2] == MR_OUTLVL && out_level == 0u && on_screen("OUT LEVEL"));
+        enc(4, 1);
+        check("  a turn right: -24 DB, USB LEVEL stays KNOB", out_level == 1u && usb_level == 0u && on_screen("-24 DB"));
+        for (int i = 0; i < 8; i++)
+            enc(4, 1);
+        check("  0 DB at most", out_level == 7u && on_screen("0 DB"));
+        {
+            uint8_t leds = cfg.leds, ign = cfg.editor_ignore;
+            cfg_defaults();
+            check("  FACTORY RESET's defaults: KNOB", out_level == 0u);
+            cfg.leds = leds;
+            cfg.editor_ignore = ign;
+            out_level = 7;
+        }
+        for (int i = 0; i < 8; i++)
+            enc(4, -1);
+        check("  back to KNOB", out_level == 0u);
+        enc(1, -1);
+        check("ALGO back: SYSTEM 1/2", menu_tab == MT_SYSTEM && !menu_sys2 && pages_now()->par[3] == MR_OUTPUT && on_screen("SYSTEM 1/2"));
+        enc(1, 1);
         enc(1, 1);
         check("ALGO again: INFO, a list, not a page", menu_tab == MT_INFO && !menu_page() && on_screen("BANK SLOTS") && on_screen("VERSION"));
         check("  its top bar is the plain bar with the patch's name, not the coral header's top", on_screen(patch_label));
