@@ -1069,12 +1069,14 @@
       ]}
     ],
     "envelope filter": [
-      {"structure": "6fb617f3", "rows": [
-        ["scale#3.gain","level",4],
+      {"structure": "27946e75", "rows": [
+        ["scale#6.gain","level",6],
+        ["filter#4.cutoff","cutoff",1],
+        ["filter#4.cvamt","range",2],
+        ["filter#4.res","res",3],
         ["esp#1.level","sensitivity",0],
-        ["filter#2.cutoff","cutoff",1],
-        ["filter#2.cvamt","range",2],
-        ["filter#2.res","res",3]
+        ["select#5.pos","mode",4],
+        ["select#3.pos","sweep",5]
       ]}
     ],
     "Expander S": [
