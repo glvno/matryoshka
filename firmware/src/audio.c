@@ -21,6 +21,10 @@ static volatile uint8_t usb_level;                 /* GLO > SYSTEM > USB LEVEL (
                                                     * the analog output; 1..7 a fixed level MASTER does not change
                                                     * (out_level.h), so the speaker can be turned down and the computer
                                                     * still records. Saved with the settings (main.c) */
+static volatile uint8_t out_level;                 /* GLO > SYSTEM > OUT LEVEL (#631): 0 KNOB, the analog output (speaker,
+                                                    * headphone or line jack) at MASTER's level; 1..7 a fixed level MASTER
+                                                    * does not change (out_level.h), so every take into a recorder has the
+                                                    * same level. Saved with the settings (main.c) */
 #include "out_level.h"
 /* the device test mode's meter (TEST_PEAK, #291): before the MASTER pot (as at its default, so a script does not depend
  * on where the knob is), after mute */
@@ -89,7 +93,8 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
                 eng_overload = 1;
             }
         }
-        uint32_t knob = master_q12, uq = knob;          /* (read once: the main loop moves it) */
+        uint32_t knob = master_q12, aq = lvl_q12(out_level, knob), uq = aq;   /* (read once: the main loop moves it) the
+                                                                                 * analog output's level (#631) */
 #if FELUCCA_UAC
         uq = lvl_q12(usb_level, knob);                  /* USB audio's level (#600): MASTER's at KNOB */
 #endif
@@ -117,8 +122,9 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
 #if FELUCCA_UAC
         uac_tap(o, HALF_FRAMES);
 #endif
-        if (eng_run && uq != knob) {                    /* USB LEVEL fixed (#600): the analog output again, at MASTER's level */
-            int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)knob * patch_gain) >> 16);
+        if (eng_run && uq != aq) {                      /* USB LEVEL (#600) and OUT LEVEL (#631) differ: the analog output
+                                                         * again, at its own level */
+            int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)aq * patch_gain) >> 16);
             for (i = 0; i < HALF_FRAMES; i++) {
                 o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
                 o[2u * i + 1u] = ((eng_r[i] * m) >> 12) << 6;

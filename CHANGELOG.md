@@ -9,6 +9,7 @@
 - **Two FM-1s on one computer:** while the editor is connected to one FM-1, notes and Start / Stop from another FM-1 no longer play or move anything in the editor.
 - **An FM-1 the editor leaves alone:** GLO › SYSTEM › EDITOR (ALGO to the SYSTEM tab's second page) set to IGNORE, and the editor no longer connects to that FM-1 or installs firmware on it; set while connected, the editor lets go of it. Connect says so and how to undo it, instead of "no FM-1 found". For a live FM-1 you keep apart, or a second FM-1 on the same computer. The default is ALLOW, and FACTORY RESET sets ALLOW again.
 - **USB audio apart from the volume knob:** GLO › SYSTEM › USB LEVEL (the SYSTEM tab's second page) sets what the FM-1 sends to the computer to a fixed level, from -24 DB to 0 DB (the knob all the way up). Turn the knob down and the speaker goes quiet while the editor and your recording program still hear the FM-1. The default, KNOB, follows the knob as before.
+- **A fixed output level for recording:** GLO › SYSTEM › OUT LEVEL does the same for the speaker and the headphone or line jack, so every take into a recorder (a Zoom R4, say) comes in at the same level whatever the knob is set to. KNOB, the default, follows the knob as before. Mind the level when headphones are plugged in: at a fixed level the knob does not turn them down.
 
 ## 1.10.0 — 2026-11-06
 

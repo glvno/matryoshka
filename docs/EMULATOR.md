@@ -263,7 +263,8 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
   the emulator the run opens the rig's page on the emulator's MIDI port
   before the editor's page, for the screen's texts and the DIAG pages.
 - **What the rig's recording cannot show.** The FM-1 takes its USB audio before GLO > SYSTEM > OUTPUT mixes the sides
-  and after MASTER, or at GLO > SYSTEM > USB LEVEL's fixed level (`firmware/src/audio.c`). So the MONO and MONO L checks hear the emulator only, and on the rig they
+  and after MASTER, or at GLO > SYSTEM > USB LEVEL's fixed level (`firmware/src/audio.c`). GLO > SYSTEM > OUT LEVEL
+  changes the analog output only, so its checks hear the emulator only. So the MONO and MONO L checks hear the emulator only, and on the rig they
   are skipped. A check that needs the recording is also skipped, not failed, when there is none: the recorder cannot be built,
   MASTER is all the way down, or a second FM-1 is connected and the FM-1 at the rig's USB location does not carry the
   mark (or no location is kept), so which audio input is the rig's is not known. It is also
