@@ -1207,8 +1207,10 @@ static void panel_align(const uint8_t *g)
         seq_select(g[5]);
     if (want == 0u && (g[3] != pg_cur_dev || g[4] != pg_cur_page) && pages_focus(g[3], g[4]))
         ui_dirty = 2;
-    if (want == PAGE_MENU)
-        menu_tab = g[6];
+    if (want == PAGE_MENU) {
+        menu_tab = (uint8_t)(g[6] & 127u);
+        menu_sys2 = (uint8_t)(g[6] >> 7);                   /* (SYSTEM's second page, #702) */
+    }
     if (want != page) {
         if (want == PAGE_SONG)
             song_prep();

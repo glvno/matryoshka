@@ -8,6 +8,7 @@ import { OPEN_RELEASES, logicalImage, productOf, validateOpenPackage, validateSt
 import { FELUCCA_WARNING, firmwareKind, runsFelucca } from './felucca-store';
 import { runningVersion, updateOffer } from './fm1-version';
 import { type MvaveTarget, TARGET_NAME, WHICH_TARGET, rememberTarget, targetGuard } from './mvave-target';
+import { CMD, editorSkips, helloFrame, parse, parseInfo } from './protocol';
 
 /** why Official Open does not come with the app (fm1_open's THIRD_PARTY.md allows passing the engine on inside FM-1
  *  firmware; Matryoshka ships only open-source files) */
@@ -57,8 +58,29 @@ export const BOOT_CODE_IS_OTHER =
   '("update failed -5"). Keep Matryoshka. Please report it at https://github.com/glvno/matryoshka/issues with the ' +
   'code below; "tools/fm1_install.py --info --save-head boot.bin" saves the start-up part to a file to attach.';
 
+/** the Install panel's refusal for an FM-1 set to ignore the editor (#702): nothing is sent, and how to undo it */
+export const IGNORED_INSTALL = 'This FM-1 is set to ignore the editor, so nothing was installed: on it, GLO \u203a SYSTEM \u203a EDITOR to ALLOW, then press the button again.';
+
+/** a running FM-1 the Install panel passes over (#702): Matryoshka that answers HELLO with GLO > SYSTEM > EDITOR at
+ *  IGNORE. `link` is fm1ota.js's (send, read); other firmware is never asked, and no answer counts as ALLOW */
+export async function ignoresEditor(link: { send(b: number[] | Uint8Array): boolean; read(ms: number): Promise<number[] | null> }, id: { text: string }): Promise<boolean> {
+  if (firmwareKind(id.text) !== 'matryoshka' || !link.send(helloFrame())) return false;
+  const end = Date.now() + 800;
+  while (Date.now() < end) {
+    const f = await link.read(end - Date.now());
+    if (!f) break;
+    const p = parse(f);
+    if (p?.cmd === CMD.info) return editorSkips(parseInfo(p));
+  }
+  return false;
+}
+
+/** Check the connection, on an FM-1 set to ignore the editor (#702) */
+export const IGNORED_CHECK = 'This FM-1 is set to ignore the editor: the install buttons leave it alone. On it, GLO \u203a SYSTEM \u203a EDITOR to ALLOW to install.';
+
 const ERRORS: Record<string, string> = {
   notfound: 'FM-1 not found. Check the USB data cable and close other apps that use the MIDI port.',
+  ignored: IGNORED_INSTALL,
   model: 'This package is for a different device.',
   stopped: 'The device stopped answering. Nothing was written if this happened in the check step.',
   noloader: 'The update loader did not appear. Replug USB and press Install again; the device stays in update mode.',
@@ -164,7 +186,7 @@ export function buildFlashTab(root: HTMLElement): void {
   const accepted = (): boolean => ack.checked;
   const supported = 'requestMIDIAccess' in navigator;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const access = async (): Promise<any> => new Updater(await navigator.requestMIDIAccess({ sysex: true }), log);
+  const access = async (): Promise<any> => new Updater(await navigator.requestMIDIAccess({ sysex: true }), log, { skip: ignoresEditor });
 
   /** every button's action; `installs` (the four install runs, not Check the connection) guards the page against
    *  closing until the run ends */
@@ -271,8 +293,10 @@ export function buildFlashTab(root: HTMLElement): void {
       const dev = await (await access()).find();
       if (!dev) throw Object.assign(new Error('not found'), { code: 'notfound' });
       log(`${dev.id.text}  [${/^ota-/i.test(dev.id.model) ? 'update loader: an update was not finished' : 'running'}]  port: ${dev.name}`);
+      const ignored = !/^ota-/i.test(dev.id.model) && (await ignoresEditor(dev.link, dev.id));
       dev.link.close();
       if (/^ota-/i.test(dev.id.model)) return;
+      if (ignored) log(IGNORED_CHECK);
       const older = updateOffer(runningVersion(null, dev.id.text), bundle?.dev ? null : bundle?.version);   // (#216)
       if (older) log(`${older} Install Matryoshka firmware updates it.`);
       noteForeign(dev.id.text);

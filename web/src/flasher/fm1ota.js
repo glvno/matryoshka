@@ -191,13 +191,17 @@ async function handshake(link, tries = 3) {
 }
 
 export class Updater {
-  constructor(access, log) {
+  // opts.skip(link, id): an async test that passes over a running FM-1 when installing (#702)
+  constructor(access, log, opts) {
     this.access = access;
     this.log = log || (() => {});
+    this.skip = opts && opts.skip;
+    this.skipped = null;
   }
 
-  // every in/out pair with the same port name that answers the handshake
-  async find(filter) {
+  // every in/out pair with the same port name that answers the handshake; `skip(link, id)` (async) passes over a device
+  // that answered (an FM-1 set to ignore the editor, #702: its identity goes to this.skipped)
+  async find(filter, skip) {
     const outs = [...this.access.outputs.values()];
     for (const input of this.access.inputs.values()) {
       if (input.state === "disconnected") continue;
@@ -207,7 +211,10 @@ export class Updater {
       try { await input.open(); await output.open(); } catch (_) { continue; }
       const link = new Link(input, output);
       const id = await handshake(link, 2);
-      if (id && (!filter || filter(id))) return { link, id, name: input.name };
+      if (id && (!filter || filter(id))) {
+        if (!skip || !(await skip(link, id))) return { link, id, name: input.name };
+        this.skipped = id.text;
+      }
       link.close();
     }
     return null;
@@ -268,10 +275,13 @@ export class Updater {
     }
   }
 
-  // full install: running firmware -> loader -> new firmware
+  // full install: running firmware -> loader -> new firmware. `this.skip` (the constructor's option) passes over a running
+  // FM-1 the install must leave alone (#702); the FM-1 coming back after the install is never skipped
   async install(image, product, onStep) {
     const step = onStep || (() => {});
-    const dev = await this.find((id) => !IS_OTA(id));
+    this.skipped = null;
+    const dev = await this.find((id) => !IS_OTA(id), this.skip);
+    if (!dev && this.skipped) throw fail("ignored", `${this.skipped} is set to ignore the editor`);
     if (!dev) throw fail("notfound", "FM-1 not found (USB cable, and no other app using it?)");
     const [model] = product.split("_");
     if (dev.id.model !== model) { dev.link.close(); throw fail("model", `the device is ${dev.id.text}, the package is for ${product}`); }
