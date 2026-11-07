@@ -310,10 +310,9 @@ def check(img, syms, dis, rts):
         notes.append(f".c1_text: {len(c1_ins)} insns, {c1_jobs} call through a register (the job), no flash address")
     fn = "?"
     for ln in dis.splitlines():     # nothing may call or load an address in the chip ROM
-        head = re.search(r"<([^>+]+)>:\s*$", ln)
-        if head:
-            fn = head.group(1)
         mm = LINE.match(ln)
+        if not mm and ln.rstrip().endswith(":"):
+            fn = ln.strip()[:60]
         if not mm:
             continue
         for v in re.findall(r"= (-?\d+) <|call -?\d+ <[^:>]*: ([0-9a-f]+) >", mm.group(3)):
