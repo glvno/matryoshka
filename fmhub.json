@@ -1,0 +1,9 @@
+{
+  "what": "A modular synth for the FM-1: 30 factory patches built from nested modules, from classic polysynths to drum machines, each played with four knobs per page, plus a step sequencer with patterns and songs. Build your own patches in the browser editor and send them to the FM-1 over USB.",
+  "author": "michael glaviano",
+  "kinds": ["synth"],
+  "play": "https://matryoshka.lol/#emu",
+  "editor": "https://matryoshka.lol/",
+  "image": "web/public/brand/fmhub-card.png",
+  "color": "#E7775D"
+}
