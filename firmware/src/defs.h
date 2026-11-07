@@ -315,9 +315,10 @@ enum {
 #define GLIDE_O_OUT 0
 #define GLIDE_P_TIME 0
 #define GLIDE_P_CURVE 1
+#define GLIDE_P_FALL 2
 #define GLIDE_NIN 3
 #define GLIDE_NOUT 1
-#define GLIDE_NPAR 2
+#define GLIDE_NPAR 3
 #define GLIDE_CVBASE 1
 #define GLIDE_NDATA 0
 
@@ -1346,16 +1347,17 @@ static const uint8_t OUTPUT_LOG[] = {0};
 static const char *const OUTPUT_UNIT[] = {""};
 static const char *const *const OUTPUT_CH[] = {0};
 static const char *const GLIDE_INNAMES[] = {"IN", "P1", "P2"};
-static const int32_t GLIDE_MIN[] = {66, 0};
-static const int32_t GLIDE_MAX[] = {327680, 65536};
-static const int32_t GLIDE_DEF[] = {6554, 0};
-static const int32_t GLIDE_INC[] = {3276, 65536};
-static const int32_t GLIDE_STEP[] = {66, 65536};
-static const char *const GLIDE_PN[] = {"TIME", "CURVE"};
-static const uint8_t GLIDE_LOG[] = {1, 0};
-static const char *const GLIDE_UNIT[] = {"S", ""};
+static const int32_t GLIDE_MIN[] = {66, 0, 0};
+static const int32_t GLIDE_MAX[] = {327680, 65536, 327680};
+static const int32_t GLIDE_DEF[] = {6554, 0, 0};
+static const int32_t GLIDE_INC[] = {3276, 65536, 3277};
+static const int32_t GLIDE_STEP[] = {66, 65536, 66};
+static const uint8_t GLIDE_SINCE[] = {0, 0, 51};
+static const char *const GLIDE_PN[] = {"TIME", "CURVE", "FALL"};
+static const uint8_t GLIDE_LOG[] = {1, 0, 0};
+static const char *const GLIDE_UNIT[] = {"S", "", "S"};
 static const char *const GLIDE_CH1[] = {"EXP", "LIN", 0};
-static const char *const *const GLIDE_CH[] = {0, GLIDE_CH1};
+static const char *const *const GLIDE_CH[] = {0, GLIDE_CH1, 0};
 static const char *const SHAPE_INNAMES[] = {"IN", "P1", "P2"};
 static const int32_t SHAPE_MIN[] = {65536, 0, 0, 0, -65536, 65536};
 static const int32_t SHAPE_MAX[] = {2097152, 131072, 65536, 65536, 65536, 262144};
@@ -1794,7 +1796,7 @@ static const def_t DEFS[N_TYPES] = {
     {DELAY_NIN, DELAY_NOUT, DELAY_NPAR, 0, DELAY_CVBASE, 0, DELAY_NDATA, 3, DELAY_MIN, DELAY_MAX, DELAY_DEF, DELAY_INC, "DELAY", DELAY_PN, DELAY_INNAMES, DELAY_LOG, DELAY_UNIT, DELAY_CH, 0, DELAY_SINCE, DELAY_STEP},   /* delay */
     {REVERB_NIN, REVERB_NOUT, REVERB_NPAR, 0, REVERB_CVBASE, 0, REVERB_NDATA, 1, REVERB_MIN, REVERB_MAX, REVERB_DEF, REVERB_INC, "REVERB", REVERB_PN, REVERB_INNAMES, REVERB_LOG, REVERB_UNIT, REVERB_CH, 0, REVERB_SINCE, REVERB_STEP},   /* reverb */
     {OUTPUT_NIN, OUTPUT_NOUT, OUTPUT_NPAR, 0, OUTPUT_CVBASE, -1, OUTPUT_NDATA, 0, OUTPUT_MIN, OUTPUT_MAX, OUTPUT_DEF, OUTPUT_INC, "OUTPUT", OUTPUT_PN, OUTPUT_INNAMES, OUTPUT_LOG, OUTPUT_UNIT, OUTPUT_CH, 0, 0, OUTPUT_STEP},   /* output */
-    {GLIDE_NIN, GLIDE_NOUT, GLIDE_NPAR, 0, GLIDE_CVBASE, 0, GLIDE_NDATA, 0, GLIDE_MIN, GLIDE_MAX, GLIDE_DEF, GLIDE_INC, "SLEW LIMITER", GLIDE_PN, GLIDE_INNAMES, GLIDE_LOG, GLIDE_UNIT, GLIDE_CH, 0, 0, GLIDE_STEP},   /* glide */
+    {GLIDE_NIN, GLIDE_NOUT, GLIDE_NPAR, 0, GLIDE_CVBASE, 0, GLIDE_NDATA, 0, GLIDE_MIN, GLIDE_MAX, GLIDE_DEF, GLIDE_INC, "SLEW LIMITER", GLIDE_PN, GLIDE_INNAMES, GLIDE_LOG, GLIDE_UNIT, GLIDE_CH, 0, GLIDE_SINCE, GLIDE_STEP},   /* glide */
     {SHAPE_NIN, SHAPE_NOUT, SHAPE_NPAR, 0, SHAPE_CVBASE, 0, SHAPE_NDATA, 1, SHAPE_MIN, SHAPE_MAX, SHAPE_DEF, SHAPE_INC, "WAVESHAPER", SHAPE_PN, SHAPE_INNAMES, SHAPE_LOG, SHAPE_UNIT, SHAPE_CH, 0, 0, SHAPE_STEP},   /* shape */
     {ENV_NIN, ENV_NOUT, ENV_NPAR, 0, ENV_CVBASE, -1, ENV_NDATA, 0, ENV_MIN, ENV_MAX, ENV_DEF, ENV_INC, "ENV L/R", ENV_PN, ENV_INNAMES, ENV_LOG, ENV_UNIT, ENV_CH, 0, 0, ENV_STEP},   /* env */
     {STRING_NIN, STRING_NOUT, STRING_NPAR, 0, STRING_CVBASE, -1, STRING_NDATA, 1, STRING_MIN, STRING_MAX, STRING_DEF, STRING_INC, "STRING", STRING_PN, STRING_INNAMES, STRING_LOG, STRING_UNIT, STRING_CH, 0, 0, STRING_STEP},   /* string */
