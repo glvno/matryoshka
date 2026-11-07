@@ -850,13 +850,15 @@ export function checkScenarios(h) {
           // the settings record, as the global tempo's write makes it 5 s after a change (D-907); DIAG 129 writes it now,
           // since that write waits for 2 s of silence (D-921) and a held note would hold it back
           ['the settings record (DIAG 129)', async () => { await emu.diag(129); }],
-          // SAVE on the FM-1: the running factory patch, unedited, back into its slot, then the settings record
-          ['SAVE', async () => { await emu.tap(B.save); await emu.waitShows('SAVED', 4000); }],
+          // SAVE on the FM-1: the running factory patch, unedited, back into its slot, then the settings record (DIAG 128's
+          // count of erases and programs says it wrote)
+          ['SAVE', async () => { await emu.tap(B.save); await emu.elapse(1500); }],
           // a device preset stored over the link (the rig's structure, its own name: it replaces itself each run)
           ['a preset store', async () => { await emu.rp.evaluate(() => window.__rig.presetPut('FLASH TEST', [1, 2, 3, 4])); }],
         ];
         const [, , , , , s0] = await emu.diagWords(128).catch(() => []);
         for (const [what, write] of kinds) {
+          const e0 = await emu.diagWords(128).then((d) => d[0] + d[1], () => 0);
           await emu.key(C4, true);
           await emu.elapse(600);
           const a = await recorded(`flash-${what.replace(/\W+/g, '-')}`, async () => {
@@ -879,8 +881,13 @@ export function checkScenarios(h) {
               if (med) worst = Math.min(worst, v / med);
             }
           }
+          const e1 = await emu.diagWords(128).then((d) => d[0] + d[1], () => 0);
+          await check(`flash write: ${what} wrote the flash (DIAG 128)`, e1 > e0, `erases + programs ${e0} -> ${e1}`);
           const loud = a.why ? 0 : Math.max(rmsOf(a.l), rmsOf(a.r));
-          await heard(`flash write: ${what} with C4 held on Basic Poly: no dropout in the recording`, a, loud > FLOOR && gaps.length === 0 && dips === 0,
+          // (a gap of one USB packet, 1 ms, comes about 0.4 s after SAVE on the rig with or without #656: issue #729; the
+          // flash write's own gaps were 6 to 11 ms)
+          const long = gaps.filter((g) => g[1] > 1.5);
+          await heard(`flash write: ${what} with C4 held on Basic Poly: no dropout over 1.5 ms in the recording`, a, loud > FLOOR && long.length === 0 && dips === 0,
             `RMS ${db(loud)} dB, ${gaps.length} dropouts${gaps.length ? ` (${gaps.slice(0, 4).map((g) => `${g[1]} ms at ${g[0]}`).join(', ')}; ${r2(gaps.reduce((t, g) => t + g[1], 0))} ms in all)` : ''}, ${dips} halves under 30 % of the note's level (lowest ${r2(worst * 100)} %)`);
         }
         const st = await emu.diagWords(128).catch(() => null);
