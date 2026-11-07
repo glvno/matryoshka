@@ -1,0 +1,162 @@
+{
+  "format": "matryoshka-assembly",
+  "version": 1,
+  "name": "envelope filter",
+  "category": "Effects",
+  "modules": [
+    {
+      "id": 1,
+      "type": "esp",
+      "x": 0,
+      "y": 560,
+      "params": {
+        "level": 2,
+        "lowcut": 40,
+        "highcut": 2000,
+        "cvadj": 0,
+        "thresh": 0.1
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "level"
+        ],
+        "p2": [
+          "lowcut"
+        ],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "filter",
+      "x": 0,
+      "y": 0,
+      "params": {
+        "cutoff": 250,
+        "res": 0.7,
+        "cvamt": 3,
+        "track": 0,
+        "morph": 0,
+        "osc": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "cutoff"
+        ],
+        "p2": [
+          "res"
+        ],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "scale",
+      "x": 320,
+      "y": 0,
+      "params": {
+        "gain": 0.6,
+        "offset": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "gain"
+        ],
+        "p2": [
+          "offset"
+        ],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": {
+        "module": 1,
+        "port": "env"
+      },
+      "to": {
+        "module": 2,
+        "port": "cv"
+      }
+    },
+    {
+      "from": {
+        "module": 2,
+        "port": "lp12"
+      },
+      "to": {
+        "module": 3,
+        "port": "in"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "module": 2,
+      "port": "in",
+      "label": "in",
+      "also": [
+        {
+          "module": 1,
+          "port": "in"
+        }
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "module": 3,
+      "port": "out",
+      "label": "out"
+    }
+  ],
+  "params": [
+    {
+      "module": 1,
+      "param": "level",
+      "label": "sensitivity"
+    },
+    {
+      "module": 2,
+      "param": "cutoff",
+      "label": "cutoff"
+    },
+    {
+      "module": 2,
+      "param": "cvamt",
+      "label": "range"
+    },
+    {
+      "module": 2,
+      "param": "res",
+      "label": "res"
+    },
+    {
+      "module": 3,
+      "param": "gain",
+      "label": "level"
+    }
+  ]
+}

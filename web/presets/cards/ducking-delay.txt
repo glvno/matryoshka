@@ -1,0 +1,44 @@
+# ducking delay: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# (no heading)
+#   time = 375 ms                      1..700 ms
+#   feedback = 0.45                    0..0.95
+#   mix = 0.4                          0..1
+#   duck = 20                          1..20
+#   threshold = -36 dB                 -40..0 dB
+#   release = 0.3 s                    0.01..1 s
+
+effect: ducking delay
+# Drafts of 2026-11-07 (#661), checked by the behaviour tests in src/fx-assemblies.test.ts, not yet listened to on the FM-1.
+
+preset: Long Wash
+  time = 650 ms
+  feedback = 0.7
+  mix = 0.5
+  threshold = -40 dB
+  release = 0.6 s
+
+preset: Slapback
+  time = 110 ms
+  feedback = 0.1
+  mix = 0.35
+  duck = 8
+  threshold = -30 dB
+  release = 0.1 s
+
+preset: Gentle Duck
+  time = 500 ms
+  feedback = 0.5
+  duck = 3
+  threshold = -24 dB
+  release = 0.4 s
+
+preset: Pump Echo
+  time = 250 ms
+  feedback = 0.6
+  mix = 0.5
+  threshold = -40 dB
+  release = 0.15 s
