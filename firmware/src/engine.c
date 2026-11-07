@@ -649,8 +649,9 @@ static uint8_t once_seen, once_first, once_edge;
 static uint32_t once_cin;
 static int32_t click_k = -1, click_half = 1;
 /* per track (modules.ts StepsState.once): 0 not, 1 its passes played (no step from here), n >= 2: n - 1 pass ends to go
- * (the start counts as one). Outside E, so the engine's state keeps its layout */
-static uint8_t trk_once[ENG_MAX_TRACKS];
+ * (the start counts as one). Outside E, so the engine's state keeps its layout; in the pool beside it (a .bss address
+ * here came out as an immediate build.py takes for a ROM address) */
+static uint8_t trk_once[ENG_MAX_TRACKS] ENG_POOL;
 /* MIDI clock out (#473, eng_clock_out): the last eng_render's tempo ticks, their samples in it, the transport's edge in it */
 #define CKO_MAX 4u
 static struct { uint8_t n, run; int8_t edge; uint16_t off[CKO_MAX]; } cko;
