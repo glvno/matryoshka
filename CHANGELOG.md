@@ -6,6 +6,7 @@
 - **Granular follows the keyboard:** a new `pitch` input takes the same pitch signal as an oscillator, so the Main module's pitch output plays the grains in tune (C4 = the recording's own pitch). Before, a pin from the pitch output on the `pitch` slider moved 4 semitones per key, and in the browser most notes landed a semitone flat.
 - **Two FM-1s on one computer:** while the editor is connected to one FM-1, notes and Start / Stop from another FM-1 no longer play or move anything in the editor.
 - **An FM-1 the editor leaves alone:** GLO › SYSTEM › EDITOR (ALGO to the SYSTEM tab's second page) set to IGNORE, and the editor no longer connects to that FM-1 or installs firmware on it; set while connected, the editor lets go of it. Connect says so and how to undo it, instead of "no FM-1 found". For a live FM-1 you keep apart, or a second FM-1 on the same computer. The default is ALLOW, and FACTORY RESET sets ALLOW again.
+- **USB audio apart from the volume knob:** GLO › SYSTEM › USB LEVEL (the SYSTEM tab's second page) sets what the FM-1 sends to the computer to a fixed level, from -24 DB to 0 DB (the knob all the way up). Turn the knob down and the speaker goes quiet while the editor and your recording program still hear the FM-1. The default, KNOB, follows the knob as before.
 
 ## 1.10.0 — 2026-11-06
 

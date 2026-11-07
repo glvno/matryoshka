@@ -76,7 +76,7 @@ const B = { octDown: 0, octUp: 1, fx: 2, scl: 3, env: 4, lfo: 5, edit: 6, glo: 7
 const C4 = 14 + 7;
 const BLACK = [15, 17, 19, 22, 24, 27, 29, 31];   // F#3 .. A#4's black keys: a drum grid's rows 1..8
 const WHITE = [14, 16, 18, 20, 21, 23, 25, 26, 28, 30, 32, 33, 35, 37, 38, 40];   // F3 .. G5's white keys: steps 1..16 on the grid
-const ENC = { select: 0, algo: 1, k1: 2, k4: 5, preset: 6 };
+const ENC = { select: 0, algo: 1, k1: 2, k2: 3, k3: 4, k4: 5, preset: 6 };
 const QUIET = 64;
 const LOUD = 1000;
 /** how many times its usual time a wait for a condition may take before it counts as failed (#588: a busy machine, a
