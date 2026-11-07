@@ -3,7 +3,7 @@
 // patches as binary), firmware/src/controls.h and the README's list of controls (the FM-1's controls, src/controls.ts).
 // Run from web/:  npx vite-node scripts/export-defs.ts
 import { readFileSync, writeFileSync } from 'node:fs';
-import { ADSR_LONG, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_LENGTH_MAX, DELAY_LENGTH_MIN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY } from '../src/modules';
+import { ADSR_LONG, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_LENGTH_MAX, DELAY_REACH_MAX, DELAY_RATES, DELAY_TAIL, delayAaCoefs, DEVICE_SR, DELAY_LENGTH_MIN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY } from '../src/modules';
 import { encodePatch, TYPE_ORDER, toQ16, VERSION } from '../src/patchbin';
 import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK_NAME_MAX } from '../src/patch';
 import { ACCENT_VEL, TRACK_NOTES_MAX } from '../src/track';
@@ -49,6 +49,11 @@ w(`#define DELAY_CLK_PPQN ${DELAY_CLK_PPQN}`);
 w(`#define DELAY_SYNC_TOP ${DELAY_SYNC_TOP}   /* ms: the synced note lengths spread over 1..this (modules.ts) */`);
 w(`#define DELAY_LENGTH_MIN ${DELAY_LENGTH_MIN}   /* ms: the Delay's length row (modules.ts; engine.c dly_samples sizes its line) */`);
 w(`#define DELAY_LENGTH_MAX ${DELAY_LENGTH_MAX}`);
+w(`#define DELAY_REACH_MAX ${DELAY_REACH_MAX}   /* ms: the longest time, the longest length at the lowest rate (#659) */`);
+w(`#define DELAY_NRATE ${DELAY_RATES.length}   /* the Delay's rate row (#659): step r keeps every (1 << r)-th sample */`);
+w(`#define DELAY_TAIL ${DELAY_TAIL}   /* samples at a lower rate's line end: its low pass's state (modules.ts) */`);
+w(`/* the low pass in front of a lower rate's line (modules.ts delayAaCoefs at DEVICE_SR), per rate step 1..: two sections, b0 a1 a2 Q28 */`);
+w(`static const int32_t DELAY_AA[DELAY_NRATE - 1][6] = {${[2, 4].map((k) => `{${delayAaCoefs(DEVICE_SR, k).flat().map((c) => Math.round(c * 2 ** 28)).join(', ')}}`).join(', ')}};`);
 w(`static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {${DELAY_DIVS.map((d) => d.num).join(', ')}};`);
 w(`static const uint8_t DELAY_DIV_DEN[DELAY_NDIV] = {${DELAY_DIVS.map((d) => d.den).join(', ')}};`);
 w(`static const char *const DELAY_DIV_NAME[DELAY_NDIV] = {${DELAY_DIVS.map((d) => `"${d.name}"`).join(', ')}};`);

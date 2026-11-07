@@ -462,9 +462,9 @@ export const DELAY_DIVS: { name: string; num: number; den: number }[] = [
 export const DELAY_CLK_PPQN = 24;
 
 /** the delay's time knob, ms: modulation and macro ranges span DELAY_TIME_MIN..DELAY_TIME_MAX (the FM-1's range before
- * the length row); its base reaches DELAY_LENGTH_MAX (ParamDef.browserMax: on the A side the FM-1 plays it too, a morph
- * B side past DELAY_TIME_MAX is the browser's, patchbin.ts browserOnly). The time plays up to the Delay's length (half of
- * it with ping-pong): delayReach */
+ * the length row); its base reaches DELAY_REACH_MAX (ParamDef.browserMax: on the A side the FM-1 plays it too, a morph
+ * B side past DELAY_TIME_MAX is the browser's, patchbin.ts browserOnly). The time plays up to the Delay's length times its
+ * rate's k (half of it with ping-pong): delayReach */
 export const DELAY_TIME_MIN = 1;
 export const DELAY_TIME_MAX = 700;
 /** synced, the time knob's note lengths stay spread over DELAY_TIME_MIN..DELAY_SYNC_TOP ms (the FM-1's range before #273), so a
@@ -477,6 +477,8 @@ export const DELAY_SYNC_TOP = 520;
 export const DELAY_LENGTH_MIN = 10;
 export const DELAY_LENGTH_MAX = 1900;
 export const DELAY_LENGTH_DEFAULT = 700;
+/** the longest time a Delay plays, ms: the longest length at the lowest rate (#659: RATE 11k holds four times its length) */
+export const DELAY_REACH_MAX = DELAY_LENGTH_MAX * 4;
 /** a length's line, samples at DEVICE_SR: its samples rounded up to an even count (ping-pong halves it) and 60 more, so a
  * time of the whole length still fits (700 ms: 30944, the line every Delay had before the length row; engine.c
  * dly_samples) */
@@ -513,6 +515,26 @@ export const DELAY_SWELL_NUM = 198;
 export const DELAY_SWELL_DEN = 95;
 /** the soft clip in the swelling delay's loop: x - 4/27 x^3, flat at +-1 from |x| = 1.5 (engine.c dly_soft the same) */
 export const delayClip = (x: number): number => (x >= 1.5 ? 1 : x <= -1.5 ? -1 : x - (4 / 27) * x * x * x);
+
+/** the Delay's `rate` (#659, format 51): the rate its line holds the sound at, the FM-1's own (44.1 kHz) and a half and a
+ * quarter of it. The same line then holds two or four times as much time, and keeps frequencies up to a half or a quarter
+ * as high. Appended to, never reordered (a patch stores the index). */
+export const DELAY_RATES = ['44k', '22k', '11k'];
+/** the samples a line sample stands for at rate step r (DELAY_RATES): 1, 2, 4 */
+export const delayRateK = (r: number): number => 1 << Math.max(0, Math.min(DELAY_RATES.length - 1, Math.round(r)));
+/** the samples at a line's end that hold its rate filter's state at a lower rate (engine.c the same words): the line is
+ * that much shorter there */
+export const DELAY_TAIL = 16;
+/** the low pass in front of a lower rate's line: 4-pole Butterworth (two sections of these Q), its corner 0.4 of the line's
+ * rate (8.8 kHz at 22k, 4.4 kHz at 11k), in Hz at DEVICE_SR so the browser filters alike */
+export const DELAY_AA_Q = [0.5411961, 1.3065630];
+export const DELAY_AA_CORNER = 0.4;
+/** a section's coefficients at sample rate sr for rate step k (2 or 4): b0 (b1 = 2 b0, b2 = b0), a1, a2 */
+export const delayAaCoefs = (sr: number, k: number): number[][] =>
+  DELAY_AA_Q.map((q) => {
+    const kk = Math.tan((Math.PI * DELAY_AA_CORNER * DEVICE_SR) / (k * sr)), n = 1 / (1 + kk / q + kk * kk);
+    return [kk * kk * n, 2 * (kk * kk - 1) * n, (1 - kk / q + kk * kk) * n];
+  });
 
 /** the top of the LFO's wide range, Hz (55 before #518) */
 export const LFO_WIDE_MAX = 80;
@@ -1378,6 +1400,11 @@ interface DelayState {
   seen: number;
   prev: boolean;
   beat: number;
+  /** a lower rate (#659): the step's k the line holds (0: none yet), the sample within a line sample, the low pass's state
+   * (two sections: x1 x2 y1 y2) */
+  rk: number;
+  ph: number;
+  lp: Float64Array;
 }
 
 /** the glide: the rate heads for 1 / 2^DELAY_GLIDE_SHIFT of the distance a sample (1024 samples, 23 ms), at most
@@ -1428,6 +1455,61 @@ function delayGlide(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, 
 }
 
 /**
+ * The Delay at a lower rate (#659: RATE 22k or 11k, k = 2 or 4 samples a line sample). The input goes through a 4-pole low
+ * pass (delayAaCoefs) and every k-th sample of it, with the feedback, is written to the line (`len` line samples, the
+ * filter's state in the DELAY_TAIL samples after them, as on the FM-1). Every sample reads the line between two of its
+ * samples (linear), at the time's distance behind the write head in samples (s.cur, x 65536), so the time keeps its
+ * sample resolution and the echo is smooth between line samples. The time glides as delayGlide's does, sample by sample.
+ * Plain, swelling and ping-pong in one loop.
+ */
+function delaySlow(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, pp: boolean, clip: (x: number) => number, k: number, len: number): void {
+  const buf = s.buf, half = Math.floor(len / 2), n = pp ? half : len, top = (n - 1) * k * 65536;
+  const o = c.out.out, r = c.out.r, lp = s.lp;
+  const [[b0, a1, a2], [c0, d1, d2]] = delayAaCoefs(c.sr, k);
+  const clampi = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
+  if (s.w >= n) s.w = 0;
+  for (let i = 0; i < c.n; i++) {
+    if (s.cur !== tq || s.rate) {
+      const diff = tq - s.cur;
+      s.rate += clampi(clampi(Math.floor(diff / (1 << DELAY_GLIDE_SHIFT)), -DELAY_GLIDE_MAX, DELAY_GLIDE_MAX) - s.rate, -DELAY_GLIDE_ACC, DELAY_GLIDE_ACC);
+      if (diff > -(1 << DELAY_GLIDE_SHIFT) && diff < 1 << DELAY_GLIDE_SHIFT && s.rate > -DELAY_GLIDE_ACC && s.rate < DELAY_GLIDE_ACC) {
+        s.cur = tq;
+        s.rate = 0;
+      } else s.cur = clampi(s.cur + s.rate, k * 65536, top);
+    }
+    // the line sample s.w is written at the block's last sample (s.ph = k - 1): it stands for that sample's time
+    let pos = s.w * 65536 + Math.floor(((s.ph - k + 1) * 65536 - s.cur) / k);
+    if (pos < 0) pos += n * 65536;
+    const i0 = Math.floor(pos / 65536), i1 = i0 + 1 === n ? 0 : i0 + 1, f = (pos - i0 * 65536) / 65536;
+    const ea = buf[i0] + (buf[i1] - buf[i0]) * f;
+    const x = c.inp.in[i];
+    // the low pass in front of the line: two sections (direct form I), every sample
+    const xs = Math.max(-32, Math.min(32, x));
+    const u = b0 * (xs + 2 * lp[0] + lp[1]) - a1 * lp[2] - a2 * lp[3];
+    lp[1] = lp[0]; lp[0] = xs; lp[3] = lp[2]; lp[2] = u;
+    const y = c0 * (u + 2 * lp[4] + lp[5]) - d1 * lp[6] - d2 * lp[7];
+    lp[5] = lp[4]; lp[4] = u; lp[7] = lp[6]; lp[6] = y;
+    if (pp) {
+      const eb = buf[half + i0] + (buf[half + i1] - buf[half + i0]) * f;
+      if (s.ph === k - 1) {
+        buf[half + s.w] = clip(ea * fb);
+        buf[s.w] = clip(y + eb * fb);
+      }
+      o[i] = x * (1 - mix) + ea * mix;
+      r[i] = x * (1 - mix) + eb * mix;
+    } else {
+      if (s.ph === k - 1) buf[s.w] = clip(y + ea * fb);
+      o[i] = x * (1 - mix) + ea * mix;
+      r[i] = o[i];
+    }
+    if (++s.ph === k) {
+      s.ph = 0;
+      s.w = s.w + 1 === n ? 0 : s.w + 1;
+    }
+  }
+}
+
+/**
  * Delay. free: `time` in ms; sync: `time` picks a note length (DELAY_DIVS) at the tempo of the `clk` input (the Main module's
  * clock; 120 bpm until 24 pulses have come in). The tempo is the time of the last 24 pulses, smoothed. Its line holds
  * `length` (delayLine; set when the patch loads, ParamDef.fixed): the time, free or synced, plays up to it. Ping-pong
@@ -1438,6 +1520,8 @@ function delayGlide(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, 
  * `note` (synced): one of DELAY_NOTES in place of the time knob's length. `swell`: the feedback x 198 / 95 (0.95 reads
  * 1.98) and the loop through a soft clip (delayClip), so a feedback past 1 swells to about full level and holds there.
  * A new time (a turned knob, a cable into `time`) is not a jump: the read position glides there (delayGlide, #484).
+ * `rate` (#659): 44k keeps every sample; 22k and 11k low-pass the input and keep every 2nd or 4th sample, so the same line
+ * holds two or four times its length (delaySlow; the length row shows that time). A new rate empties the line.
  */
 const delay: ModuleImpl<DelayState> = {
   def: {
@@ -1446,25 +1530,36 @@ const delay: ModuleImpl<DelayState> = {
     inputs: [audio('in'), gate('clk')],
     outputs: [audio('out'), audio('r')],
     params: [
-      param('time', DELAY_TIME_MIN, DELAY_TIME_MAX, 250, { unit: 'ms', step: 1, browserMax: DELAY_LENGTH_MAX, grew: { since: 50, from: DELAY_TIME_MAX }, altText: { when: 'sync', text: (v) => DELAY_DIVS[delayDivIndex(v, DELAY_TIME_MIN, DELAY_SYNC_TOP)].name } }),
+      param('time', DELAY_TIME_MIN, DELAY_TIME_MAX, 250, { unit: 'ms', step: 1, browserMax: DELAY_REACH_MAX, grew: { since: 50, from: DELAY_TIME_MAX }, altText: { when: 'sync', text: (v) => DELAY_DIVS[delayDivIndex(v, DELAY_TIME_MIN, DELAY_SYNC_TOP)].name } }),
       param('fb', 0, 0.95, 0.4, { step: 0.01, altText: { when: 'swell', text: (v) => ((v * DELAY_SWELL_NUM) / DELAY_SWELL_DEN).toFixed(2) } }),
       param('mix', 0, 1, 0.3, { step: 0.01 }),
       param('sync', 0, 1, 0, { step: 1, choices: ['free', 'sync'], toggle: true }),
       param('pingpong', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
       param('note', 0, DELAY_NOTES.length - 1, 0, { step: 1, choices: DELAY_NOTES.map((d) => d.name), since: 35 }),
       param('swell', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 35 }),
-      param('length', DELAY_LENGTH_MIN, DELAY_LENGTH_MAX, DELAY_LENGTH_DEFAULT, { unit: 'ms', step: 10, since: 50, fixed: true }),
+      param('length', DELAY_LENGTH_MIN, DELAY_LENGTH_MAX, DELAY_LENGTH_DEFAULT, { unit: 'ms', step: 10, since: 50, fixed: true, altText: { when: 'rate', text: (v, p) => `${Math.round(v) * delayRateK(p.rate ?? 0)} ms` } }),
+      param('rate', 0, DELAY_RATES.length - 1, 0, { step: 1, choices: DELAY_RATES, since: 51 }),
     ],
   },
-  init: (sr) => ({ buf: new Float32Array(0), w: 0, cur: 0, rate: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2) }),
+  init: (sr) => ({ buf: new Float32Array(0), w: 0, cur: 0, rate: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2), rk: 0, ph: 0, lp: new Float64Array(8) }),
   process(c, s) {
     // the line its length holds (at this sample rate); a new length (an edit) starts an empty line, as the FM-1's load does
     const want = Math.round((c.sr * delayLine(c.p.length ?? DELAY_LENGTH_DEFAULT)) / DEVICE_SR);
     if (s.buf.length !== want) {
       s.buf = new Float32Array(want);
-      s.w = s.cur = s.rate = 0;
+      s.w = s.cur = s.rate = s.rk = 0;
     }
-    const len = s.buf.length;
+    // the rate (#659): a new one empties the line (its samples stand for another time) and starts the read where the time is
+    const k = delayRateK(c.p.rate ?? 0);
+    if (s.rk !== k) {
+      if (s.rk) {
+        s.buf.fill(0);
+        s.lp.fill(0);
+        s.w = s.ph = s.cur = s.rate = 0;
+      }
+      s.rk = k;
+    }
+    const len = k > 1 ? s.buf.length - DELAY_TAIL : s.buf.length;
     const half = Math.floor(len / 2);
     const pp = (c.p.pingpong ?? 0) >= 0.5;
     if (c.connected.clk) {
@@ -1497,9 +1592,13 @@ const delay: ModuleImpl<DelayState> = {
     const o = c.out.out;
     const r = c.out.r;
     // the read position glides to a new time (delayGlide), then the plain loops below read at whole samples
-    const d = pp ? Math.max(1, Math.min(half - 1, samples)) : Math.max(1, Math.min(len - 1, samples));
-    const top = (pp ? half : len) - 1;
+    const top = ((pp ? half : len) - 1) * k;
+    const d = Math.max(k, Math.min(top, samples));
     if (s.cur === 0 || s.cur > top * 65536) s.cur = s.cur === 0 ? d * 65536 : top * 65536;
+    if (k > 1) {
+      delaySlow(c, s, d * 65536, fb, mix, pp, clip, k, len);
+      return;
+    }
     if (s.cur !== d * 65536 || s.rate) {
       delayGlide(c, s, d * 65536, fb, mix, pp, clip);
       return;
@@ -3181,10 +3280,10 @@ export function rowRange(type: string, params: Record<string, number>, pd: Param
   if (type !== 'select' || pd.name !== 'pos') return pd;
   return { ...pd, max: selectCount(params), top: undefined, browserMax: undefined };
 }
-/** the longest free time a Delay plays, whole ms: its length, half of it with ping-pong (each side has half the line; the
- * FM-1: pages_ui.c row_top) */
+/** the longest free time a Delay plays, whole ms: its length times its rate's k (#659: twice at 22k, four times at 11k),
+ * half of it with ping-pong (each side has half the line; the FM-1: pages_ui.c row_top) */
 export const delayReach = (params: Record<string, number>): number => {
-  const l = Math.min(DELAY_LENGTH_MAX, Math.max(DELAY_LENGTH_MIN, Math.round(params.length ?? DELAY_LENGTH_DEFAULT)));
+  const l = Math.min(DELAY_LENGTH_MAX, Math.max(DELAY_LENGTH_MIN, Math.round(params.length ?? DELAY_LENGTH_DEFAULT))) * delayRateK(params.rate ?? 0);
   return Math.max(DELAY_TIME_MIN, (params.pingpong ?? 0) >= 0.5 ? Math.floor(l / 2) : l);
 };
 /** what a Selector's crossfade moves its weights by each sample (Q16, as the firmware: an integer increment, so both engines
