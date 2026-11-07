@@ -282,6 +282,7 @@ static uint32_t batt_us;                        /* the last battery read's time,
  * before their render ended), then since the last read of this page the longest run of halves over 85 %, the longest
  * gap between two audio ISRs (us) and the shortest ISR (us), then parts shed since the last patch load and the guard's
  * mean ISR time (us) */
+static void settings_store(void);
 static uint32_t m1_diag(uint32_t page, uint8_t *out)
 {
     const uint8_t *b = (const uint8_t *)&diag_prev;
@@ -463,6 +464,23 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
         ovl_run_max = 0;
         ovl_gap_max = 0;
         ovl_us_min = 0xFFFFFFFFu;
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
+    if (page == 128u || page == 129u) {         /* #656: the store's flash writes (storage_hw.c st_stat); 129 first writes the
+                                                 * settings record (a test: it does not wait for silence as D-921's does) */
+        uint32_t v[8];
+        if (page == 129u)
+            settings_store();
+        v[0] = st_stat.erases;
+        v[1] = st_stat.progs;
+        v[2] = st_stat.off_max;
+        v[3] = st_stat.erase_max;
+        v[4] = st_stat.prog_max;
+        v[5] = 0;
+        v[6] = 0;
+        v[7] = 0;
         for (i = 0; i < sizeof v; i++)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
         return sizeof v;

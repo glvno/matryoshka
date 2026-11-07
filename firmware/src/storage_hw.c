@@ -4,6 +4,9 @@
  * audio keeps up, erases and writes only inside the storage areas, the audio buffer silenced
  * first. The host tests (storage_test.c) provide their own st_* on a simulated NOR. */
 static uint8_t flash_ok;                 /* JEDEC id matched at boot (persist_boot) */
+/* DIAG page 128 (#656): the store's flash writes since boot: erases and page programs, the longest stretch with the
+ * interrupts off (us), the longest erase / program (us) */
+static struct { uint32_t erases, progs, off_max, erase_max, prog_max; } st_stat;
 static int st_read(uint32_t off, void *dst, uint32_t n)   /* 256-byte IRQ-off windows: audio keeps up */
 {
     uint8_t *d = dst;
@@ -31,12 +34,19 @@ static int st_erase(uint32_t off)
     int rc;
     if (!FL_STORE_OK(off, 0x1000u))
         return -8;
+    uint32_t t0 = fm1_ticks(), dt;
     f = irq_save();
     audio_silence();
     fm1__led_lines(0);                          /* (#236) the erase stops the LED scan for ~17 ms (the IRQs are off and its code */
     rc = FL_FAR(fl_erase4k_ram)(off, &took);    /* is in the flash): one column would stay lit at full duty and the rest dark, a */
     irq_restore(f);                             /* flash of the whole panel. Dark rows: the panel just drops out; the tick lights */
-    return rc;                                  /* the rows again at its next pass */
+    dt = (fm1_ticks() - t0) / FM1_TICKS_PER_US; /* the rows again at its next pass */
+    st_stat.erases++;
+    if (dt > st_stat.off_max)
+        st_stat.off_max = dt;
+    if (dt > st_stat.erase_max)
+        st_stat.erase_max = dt;
+    return rc;
 }
 /* fl_write reads its source with XIP off: a source in the flash (.rodata: a factory patch, presetstore's zero word) hangs
  * the CPU on a cache miss (a preset delete froze the FM-1), so every write goes through a RAM copy, a page at a time */
@@ -53,7 +63,17 @@ static int st_prog(uint32_t off, const void *src, uint32_t n)
             k = n;
         for (i = 0; i < k; i++)
             bounce[i] = s[i];
-        if ((rc = fl_write(off, bounce, k)))
+        {
+            uint32_t t0 = fm1_ticks(), dt;
+            rc = fl_write(off, bounce, k);
+            dt = (fm1_ticks() - t0) / FM1_TICKS_PER_US;
+            st_stat.progs++;
+            if (dt > st_stat.off_max)
+                st_stat.off_max = dt;
+            if (dt > st_stat.prog_max)
+                st_stat.prog_max = dt;
+        }
+        if (rc)
             return rc;
         off += k;
         s += k;
