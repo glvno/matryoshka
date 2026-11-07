@@ -3369,7 +3369,8 @@
    "y": 60,
    "params": {
     "time": 0.1,
-    "curve": 0
+    "curve": 0,
+    "fall": 0
    },
    "att": [
     1,
@@ -4656,7 +4657,8 @@
    "y": 60,
    "params": {
     "time": 0.1,
-    "curve": 0
+    "curve": 0,
+    "fall": 0
    },
    "att": [
     1,
@@ -5943,7 +5945,8 @@
    "y": 60,
    "params": {
     "time": 0.1,
-    "curve": 0
+    "curve": 0,
+    "fall": 0
    },
    "att": [
     1,
@@ -7230,7 +7233,8 @@
    "y": 60,
    "params": {
     "time": 0.1,
-    "curve": 0
+    "curve": 0,
+    "fall": 0
    },
    "att": [
     1,
@@ -8517,7 +8521,8 @@
    "y": 3420,
    "params": {
     "time": 0.1,
-    "curve": 0
+    "curve": 0,
+    "fall": 0
    },
    "att": [
     1,
@@ -9804,7 +9809,8 @@
    "y": 3420,
    "params": {
     "time": 0.1,
-    "curve": 0
+    "curve": 0,
+    "fall": 0
    },
    "att": [
     1,
@@ -11091,7 +11097,8 @@
    "y": 3420,
    "params": {
     "time": 0.1,
-    "curve": 0
+    "curve": 0,
+    "fall": 0
    },
    "att": [
     1,
@@ -12378,7 +12385,8 @@
    "y": 3420,
    "params": {
     "time": 0.1,
-    "curve": 0
+    "curve": 0,
+    "fall": 0
    },
    "att": [
     1,
