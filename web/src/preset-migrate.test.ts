@@ -117,7 +117,7 @@ describe('a 1.9.0 preset on today\'s factory patch (#627 done-when)', () => {
         const j = before.findIndex((x) => x[0] === r[0]);
         expect(mine!.values[k], `${engine} ${r[0]} "${r[1]}"`).toBe(j >= 0 ? old[j] : init[k]);
       });
-      expect(now.length - before.length, engine).toBe(1);
+      expect(now.length - before.length, engine).toBe(engine === 'Cassia 1' ? 35 : 1);   // (Cassia 1: the CZ-1 rows of #658)
       expect(applyPreset(p, a, mine!)).toBe(true);
       expect(currentValues(p, a)).toEqual(mine!.values);
       const [l, rr] = renderPlay(ways(p, engine, 4)[0], 0.5);

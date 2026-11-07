@@ -1838,6 +1838,12 @@
    "version": 51
   },
   {
+   "name": "CASSIA 1",
+   "len": 2669,
+   "fnv": "e365d87f",
+   "version": 51
+  },
+  {
    "name": "CLAV",
    "len": 272,
    "fnv": "fb345c62",
@@ -2676,6 +2682,12 @@
    "len": 1259,
    "fnv": "df4da24f",
    "version": 45
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 2363,
+   "fnv": "3fa928a6",
+   "version": 46
   },
   {
    "name": "EXPANDER S",
@@ -5099,6 +5111,12 @@
    "name": "ORACLE V",
    "len": 1292,
    "fnv": "40eae73b",
+   "version": 51
+  },
+  {
+   "name": "ORACLE V",
+   "len": 3517,
+   "fnv": "52096ae1",
    "version": 51
   },
   {

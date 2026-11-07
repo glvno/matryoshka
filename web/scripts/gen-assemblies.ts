@@ -1282,8 +1282,10 @@ const CZ_STEPS = (s: [number, number][], sus: number, end: number): Record<strin
   }
   return p;
 };
+/** Cassia 1's chorus at Init (#658, the owner's feature parity by default: the CZ-1's chorus on) */
+const CASSIA_CHORUS = 0.5;
 asm('Cassia 1', 'Voices', (b) => {
-  const part = b.add('alloc', 0, 4, { voices: 2 });
+  const part = b.add('alloc', 0, 4, { voices: 4 });
   const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 5.5, depth: 1 / 12 });
   const vibS = b.add('scale', 0, 0.5, { gain: 0, offset: 0 }); // the vibrato's depth in semitones (negative: the CZ's saw down)
   const nz = b.add('noise', 0, 1, { level: 1, color: 0 });
@@ -1370,14 +1372,12 @@ asm('Cassia 1', 'Voices', (b) => {
     b.wire(c.wave[0], c.wave[1], pd, 'p1');
     b.wire(c.range[0], c.range[1], pd, 'p2');
     b.wire(c.wave2[0], c.wave2[1], pd, 'pm');
-    for (const [m, port] of [[part, 'pitch'], [pdepth, 'out'], [vgate, 'out']] as R[]) b.wire(m, port, pd, 'pitch');   // pitch: the key, DCO envelope, vibrato
-    for (const [m, port] of [dcw, [kfw, 'out'], [velW, 'out'], [atW, 'out']] as R[]) b.wire(m, port, pd, 'dcw');
+    b.wire(vgate, 'out', pd, 'pitch');   // pitch: the vibrato here; the key (glided), its DCO envelope and velocity below
+    for (const [m, port] of [dcw, [atW, 'out']] as R[]) b.wire(m, port, pd, 'dcw'); // dcw: its envelope, aftertouch; key follow and velocity below
     return pd;
   };
   const dcaVca = (col: number): number => {
-    const vca = add('vca', col, 5, { gain: 0.075 }, { p1: 'gain', att: [0.225, 1] }); // velocity 1 reaches 0.3 a line, 0.6 both
-    b.wire(part, 'vel', vca, 'p1');
-    b.wire(kfa, 'out', vca, 'p1');
+    const vca = add('vca', col, 5, { gain: 0.075 }, { p1: 'gain', att: [0.225, 1] }); // velocity 1 reaches 0.3 a line, 0.6 both (velocity and key follow below)
     b.wire(atA, 'out', vca, 'p1');
     return vca;
   };
@@ -1398,20 +1398,64 @@ asm('Cassia 1', 'Voices', (b) => {
   b.wire(modV, 'out', v2, 'in');
   b.wire(dcaX[0], dcaX[1], v2, 'cv');
   // the line select's outputs: 1 line 1, 2 line 2, 3 and 4 both
-  b.wire(v1, 'out', sel, 'in1');
-  b.wire(v2, 'out', sel, 'in2');
-  for (const i of ['in3', 'in4']) {
-    b.wire(v1, 'out', sel, i);
-    b.wire(v2, 'out', sel, i);
-  }
   b.wire(sel, 'out', scope, 'a');
-  b.nest('voice', 3, 6, members, {});
   b.input('keys', part, 'keys');
   b.input('at', atVib, 'in', [atW, 'in'], [atA, 'in']);
-  // the CZ-1's VOLUME, the level row (#448): a one-input mixer after the voices, once, set by gen-presets for loudness
+  // the CZ-1's VOLUME, the level row (#448): a one-input mixer after the voices, once, set by gen-presets for loudness;
+  // then the CZ-1's stereo chorus
   const volume = b.add('mixer', 11, 0.5, { l1: 0.5, l2: 0, l3: 0, l4: 0 });
   b.wire(sel, 'out', volume, 'in1');
-  b.output('out', volume, 'out');
+
+  // ---- (1.11, #658: added after the modules above, so their numbers stay) per voice: line 2's own DCO envelope (the CZ
+  // has one per line; line 1's in 1+1'), the glide, each line's velocity to its DCO, DCW and DCA, its key follow and LEVEL
+  const dco2 = add('env8', 2, 5.5, CZ_STEPS([[0.05, 0], [0.3, 0], [0.5, 0]], 2, 3));
+  const pdepth2 = add('scale', 2, 6, { gain: 1, offset: 0 });
+  const glide = add('glide', 0, 5, { time: 0.001 });
+  const velP1 = add('scale', 2, 9.5, { gain: 0, offset: 0 });
+  const velP2 = add('scale', 2, 10, { gain: 0, offset: 0 });
+  const kfw2 = add('scale', 3, 8.5, { gain: -0.15, offset: 0 });
+  const kfa2 = add('scale', 3, 9, { gain: -0.1, offset: 0 });
+  const velW2 = add('scale', 3, 9.5, { gain: 0, offset: 0 });
+  const velA1 = add('scale', 4, 9.5, { gain: 1, offset: 0 });
+  const velA2 = add('scale', 4, 10, { gain: 1, offset: 0 });
+  const dcoX = add('xfade', 4, 3, { mix: 0 });
+  const lvl1 = add('scale', 8, 5, { gain: 1, offset: 0 });
+  const lvl2 = add('scale', 8, 5.5, { gain: 1, offset: 0 });
+  b.wire(part, 'gate', dco2, 'gate');
+  b.wire(dco2, 'env', pdepth2, 'in');
+  b.wire(pdepth2, 'out', dcoX, 'a');
+  b.wire(pdepth, 'out', dcoX, 'b');
+  b.wire(mode[0], mode[1], dcoX, 'pos');
+  b.wire(part, 'pitch', glide, 'in');
+  for (const m of [velP1, velP2, velW2, velA1, velA2]) b.wire(part, 'vel', m, 'in');
+  for (const m of [kfw2, kfa2]) b.wire(part, 'pitch', m, 'in');
+  for (const [pd, dco, kf, vw, vp] of [[pd1, pdepth, kfw, velW, velP1], [pd2, dcoX, kfw2, velW2, velP2]]) {
+    for (const m of [glide, dco, vp]) b.wire(m, 'out', pd, 'pitch');
+    for (const m of [kf, vw]) b.wire(m, 'out', pd, 'dcw');
+  }
+  for (const [v, va, kf, lvl, k] of [[v1, velA1, kfa, lvl1, 'in1'], [v2, velA2, kfa2, lvl2, 'in2']] as const) {
+    b.wire(va, 'out', v, 'p1');
+    b.wire(kf, 'out', v, 'p1');
+    b.wire(v, 'out', lvl, 'in');
+    for (const i of [k, 'in3', 'in4']) b.wire(lvl, 'out', sel, i);
+  }
+  b.nest('voice', 3, 6, members, {});
+  // the performance controls, once (#658): the bend range (the Voicing's pitch carries 2 semitones of bend: taken out,
+  // then the range put back), the mod wheel on the vibrato, OCTAVE (-1, 0, +1), into each voice's glide
+  const bendIn = b.add('scale', 0, 11, { gain: BEND_OCT, offset: 0 });
+  const unbend = b.add('scale', 0, 11.5, { gain: -BEND_OCT, offset: 0 });
+  const octave = b.add('select', 0, 12, { count: 3, pos: 2, v1: -1, v2: 0, v3: 1 });
+  const pitchBus = b.add('scale', 1, 11, { gain: 1, offset: 0 });
+  for (const m of [bendIn, unbend, octave]) b.wire(m, 'out', pitchBus, 'in');
+  b.wire(pitchBus, 'out', glide, 'in');
+  const modVib = b.add('scale', 1, 12, { gain: 0, offset: 0 });
+  b.wire(modVib, 'out', vgate, 'cv');
+  b.input('bend', bendIn, 'in', [unbend, 'in']);
+  b.input('wheel', modVib, 'in');
+  const chorus = b.add('chorus', 12, 0.5, { mix: CASSIA_CHORUS });
+  b.wire(volume, 'out', chorus, 'in');
+  b.output('l', chorus, 'l');
+  b.output('r', chorus, 'r');
 
   b.param('voices', part, 'voices', { head: 'voice' });
   b.param('line', sel, 'pos');
@@ -1420,6 +1464,11 @@ asm('Cassia 1', 'Voices', (b) => {
   b.param('rate', lfo, 'rate');
   b.param('depth', vibS, 'gain');
   b.param('delay', vdel, 'a');
+  b.param('mod vib', modVib, 'gain');
+  b.param('glide', glide, 'time', { head: 'keys' });
+  b.param('bend', bendIn, 'gain');
+  b.param('octave', octave, 'pos');
+  b.param('chorus', chorus, 'mix');
   const envRows = (e: number, head: string, col: boolean): void => {
     b.param(head, e, 'view', { head, ...(col ? { col: true } : {}) });
     for (let k = 1; k <= 8; k++) {
@@ -1431,9 +1480,20 @@ asm('Cassia 1', 'Voices', (b) => {
   };
   envRows(dco, 'dco env', false);
   b.param('depth', pdepth, 'gain');
+  envRows(dco2, 'dco env 2', false);
+  b.param('depth 2', pdepth2, 'gain');
   b.param('dcw kf', kfw, 'gain', { head: 'touch' });
   b.param('dca kf', kfa, 'gain');
   b.param('vel dcw', velW, 'gain');
+  b.param('vel dca', velA1, 'gain');
+  b.param('vel dco', velP1, 'gain');
+  b.param('dcw kf 2', kfw2, 'gain');
+  b.param('dca kf 2', kfa2, 'gain');
+  b.param('vel dcw 2', velW2, 'gain');
+  b.param('vel dca 2', velA2, 'gain');
+  b.param('vel dco 2', velP2, 'gain');
+  b.param('level 1', lvl1, 'gain');
+  b.param('level 2', lvl2, 'gain');
   b.param('at dcw', atW, 'gain');
   b.param('at dca', atA, 'gain');
   b.param('at vib', atVib, 'gain');
@@ -1451,7 +1511,7 @@ asm('Cassia 1', 'Voices', (b) => {
   }
   b.param('out', scope, 'view', { col: true });
 });
-namePositions('Cassia 1', { wave: PD_WAVES, 'wave 2': ['off', ...PD_WAVES.slice(0, SELECT_N - 1)] });
+namePositions('Cassia 1', { wave: PD_WAVES, 'wave 2': ['off', ...PD_WAVES.slice(0, SELECT_N - 1)], octave: ['-1', '0', '+1'] });
 
 // Sallen 20, after the Korg MS-20 (its owner's manual, 1978; the MS-20 mini's, which reproduces its circuit, for the key
 // priority): the instrument as it plays with nothing patched, its panel's controls named as the original names them. One
