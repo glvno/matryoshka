@@ -7,7 +7,7 @@
 //! 2. sound: silent without keys, a note on a panel key, silent again after the release
 //! 3. pages: GLO (the menu, again: back), PLAY twice, HOME (on the patch's home page: nothing, the page stays), SELECT /
 //!    ALGO (the header shows where they went, no toast; back again: as it was), ALGO then HOME (the device's first page),
-//!    SELECT then HOME (the patch's home page, #391), GLO (the menu's MIDI tab), ALGO (its INFO tab), HOME (back out of
+//!    SELECT then HOME (the patch's home page, #391), GLO (the menu's MIDI tab), ALGO four times (its INFO tab), HOME (back out of
 //!    it), HOME held (nothing, #395)
 //! 4. PRESET encoder: alone, the focused device's preset (#395); HOME held, forward, forward, back
 //!    then K1..K4 on Elvira 2's drone row: a fast click only after one the same way, HOME held a fine click (#340)
@@ -1096,6 +1096,10 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     m.turn(ALGO, 1, 400)?;
     m.turn(ALGO, 1, 400)?;
     t.screen(&m, "menu: SYSTEM > QUICK START, off (D-240)", "QUICK START");
+    t.screen(&m, "  its header: SYSTEM 1/2 (#702)", "SYSTEM 1/2");
+    m.turn(ALGO, 1, 400)?;
+    t.screen(&m, "menu: ALGO again, SYSTEM's second page (#702)", "SYSTEM 2/2");
+    t.screen(&m, "  its EDITOR row, ALLOW as made", "ALLOW");
     m.turn(ALGO, 1, 400)?;
     t.screen(&m, "menu: the INFO tab", "VERSION");
     t.screen(&m, "menu: the bank's slots", &format!("{} OF 64", presets.len()));
@@ -1109,7 +1113,9 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     t.screen(&m, "  HOME: back to the menu's GUIDE tab", "PRESS OCT- + OCT+");
     m.turn(ALGO, -1, 400)?;
     m.turn(ALGO, -1, 400)?;
-    t.screen(&m, "menu: the SYSTEM tab", "SYSTEM");
+    t.screen(&m, "menu: back from GUIDE: INFO, then SYSTEM's second page", "SYSTEM 2/2");
+    m.turn(ALGO, -1, 400)?;
+    t.screen(&m, "menu: the SYSTEM tab's first page", "SYSTEM 1/2");
     m.turn(K1, 1, 400)?;
     m.tap(GLO, 2200, 800)?;
     t.screen(&m, "menu: K1 arms UPDATE MODE, GLO held 2 s enters update mode", "FROM THE MENU");
@@ -1327,8 +1333,8 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     t.screen(&m, "  (the next patch)", &presets[1].0);
     patch_turn(&mut m, -1, 500)?;
     t.screen(&m, "  (and back, so step 4 starts from patch 1)", &presets[0].0);
-    m.turn(ALGO, 3, 400)?;
-    t.screen(&m, "ALGO three times: the INFO tab", "VERSION");
+    m.turn(ALGO, 4, 400)?;
+    t.screen(&m, "ALGO four times (SYSTEM has two pages, #702): the INFO tab", "VERSION");
     m.tap(HOME, 120, 400)?;
     t.screen(&m, "HOME tapped: back out of the menu", DEVICE_PAGE);
     m.tap(HOME, 1000, 400)?;
