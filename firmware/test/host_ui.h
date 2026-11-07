@@ -253,11 +253,9 @@ static struct { uint32_t buttons; } fm1_in;
 static void m1_track_name(uint32_t mod, char *out)     /* (proto.c's, on the previewed binary) */
 {
     uint32_t at = eng_records_at(pv_bin, pv_len), i;
-    for (i = 0; i < mod; i++) {
-        const def_t *d = &DEFS[pv_bin[at] & 0x7Fu];
-        at += eng_record_size(d, pv_bin[1]);
-    }
-    at += eng_record_size(&DEFS[T_STEPS], pv_bin[1]) - DEFS[T_STEPS].ndata;
+    for (i = 0; i < mod; i++)
+        at += eng_rec_size(pv_bin, at);
+    at += eng_rec_size(pv_bin, at) - DEFS[T_STEPS].ndata;
     for (i = 0; i < TRACK_NAME_MAX && pv_bin[at + i]; i++)
         out[i] = (char)pv_bin[at + i];
     out[i] = 0;

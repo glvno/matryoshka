@@ -1860,11 +1860,11 @@ async function main() {
       /** GLO > SYSTEM's second page (ALGO steps MIDI, PANEL, SYSTEM 1/2, SYSTEM 2/2) */
       const editorRow = async () => {
         await emu.tap(B.glo);
-        for (let i = 0; i < 6 && !(await emu.text('EDITOR')); i++) {
+        for (let i = 0; i < 6 && !(await emu.text('SYSTEM 2/2')); i++) {   // (not 'EDITOR': the footer may say FROM EDITOR)
           await emu.turn(ENC.algo, 1);
           await emu.elapse(300);
         }
-        return emu.text('EDITOR');
+        return emu.text('SYSTEM 2/2');
       };
       const row = await editorRow();
       await emu.turn(ENC.k1, 1);
@@ -1877,9 +1877,10 @@ async function main() {
       await emu.waitOwnPage(3000);
       const sent = await page.evaluate(() => (window.__sent ?? []).length);
       await connect();
-      const s = await T();
+      // (the attempt holds the port while it waits for HELLO's answer: its end is the status line's message)
+      const s = (await until(async () => { const x = await T(); return !x.connected && /leaves it alone/.test(x.status ?? '') ? x : null; }, 8000)) ?? (await T());
       const after = await page.evaluate((n) => (window.__sent ?? []).slice(n).map((x) => x[1]), sent);
-      await check('editor ignore: Connect does not link to it', !s.connected && !s.live, `connected ${s.connected}`);
+      await check('editor ignore: Connect does not link to it', !s.connected && s.chip === 'not connected', `connected ${s.connected}, chip ${s.chip}`);
       await check('editor ignore: it says which FM-1 is set to ignore the editor and how to undo it', /set to ignore the editor/.test(s.status ?? '') && /EDITOR to ALLOW/.test(s.status ?? ''), s.status ?? '');
       await check('editor ignore: nothing but HELLO went to it', after.length > 0 && after.every((c) => c === 0x01), after.join(' '));
       await shot('editor-ignore');
@@ -1892,6 +1893,8 @@ async function main() {
       await connect();
       const back = (await until(async () => { const x = await T(); return x.live ? x : null; })) ?? (await T());
       await check('editor ignore: at ALLOW, Connect links and syncs again', back.connected && back.live && back.chip === 'synced', `chip ${back.chip}`);
+      // (a Connect click while still linked opens FM-1 & MIDI: closed, so the next scenarios' clicks reach the page)
+      await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach((d) => d.close()));
     },
   };
   // the owner's device check of the release, as scenarios (device-check.mjs, the checks that need no ears, hands or power

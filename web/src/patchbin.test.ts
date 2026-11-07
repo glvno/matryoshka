@@ -390,13 +390,14 @@ describe('the budget\'s memory reading', () => {
 describe('the budget counts what the FM-1 receives', () => {
   // the button record (non-gate panel buttons) went uncounted: a patch could pass the budget and still be over M1_PATCH_MAX
   // (plus the room kept for each engine device's preset name, #452: NAME_MAX less the name it has)
-  it('patch bytes equal the encoded size for every factory patch, plus the room kept for engine preset names', () => {
+  it('patch bytes equal the encoded size (the smaller form) for every factory patch, plus the room kept for engine preset names', () => {
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
       const p = make();
       const used = deviceBudget(p).items.find((i) => i.key === 'bytes')!.used;
       const engines = devicesOf(p, DEFS).filter((d) => d.asm !== undefined && instIsEngine(p, assemblyById(p, d.asm)!));
       const kept = engines.reduce((n, d) => n + NAME_MAX - deviceText(assemblyById(p, d.asm!)!.preset ?? '').length, 0);
-      expect(used, name).toBe(encodePatch(p).length + kept);
+      // (the smaller of the two forms: the lowest older format's, or counted records, #667)
+      expect(used, name).toBe(Math.min(encodePatch(p).length, encodePatch(p, false, true).length) + kept);
     }
   });
 });

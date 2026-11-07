@@ -48628,12 +48628,20 @@
    "cycles": 421931
   },
   {
+   "name": "assembly ducking delay",
+   "cycles": 29678
+  },
+  {
    "name": "assembly echo",
    "cycles": 134123
   },
   {
    "name": "assembly Elvira 2",
    "cycles": 203338
+  },
+  {
+   "name": "assembly envelope filter",
+   "cycles": 29012
   },
   {
    "name": "assembly Expander S",
@@ -48650,6 +48658,10 @@
   {
    "name": "assembly gamelan",
    "cycles": 101901
+  },
+  {
+   "name": "assembly gated reverb",
+   "cycles": 149013
   },
   {
    "name": "assembly glass bell",
@@ -48700,12 +48712,20 @@
    "cycles": 36870
   },
   {
+   "name": "assembly octave fuzz",
+   "cycles": 53429
+  },
+  {
    "name": "assembly operator",
    "cycles": 26655
   },
   {
    "name": "assembly Oracle V",
    "cycles": 365061
+  },
+  {
+   "name": "assembly overdrive",
+   "cycles": 55706
   },
   {
    "name": "assembly Perun 4",
