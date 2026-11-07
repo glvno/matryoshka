@@ -27,6 +27,9 @@ static uint8_t knob_touched, button_touched;  /* the knob (1..6) / patch button 
 #define FIXED_BTNS ((1u << BTN_GLO_IDX) | (1u << BTN_SEL_IDX) | (1u << BTN_ENV_IDX))
 static uint8_t play_turned;                   /* PRESET turned the tempo while PLAY was held: its release does not start / stop */
 static uint8_t play_hinted;                   /* PLAY held alone a moment: the bar said where the tempo is (#582) */
+static uint8_t play_auto;                     /* leds_play is told of a start or stop play once made itself (#632; the editor's
+                                               * FM-1 tab plays its own play once, fm1_ui.c) */
+static uint8_t play_once_asked;               /* SEQ held + PLAY started play once: counts up (fm1_ui.c tells the page) */
 static uint32_t play_down_ms;                 /* fm1_ms of PLAY's press */
 #define PLAY_HINT_MS 600u
 static uint8_t home_turned;                   /* PRESET turned the patch, or K1..K4 turned fine, while HOME was held: its release does
@@ -374,8 +377,10 @@ static void play_toggle(void)                       /* PLAY: the transport (the 
                                                      * record makes it a live take: REC records (the owner, 2026-11-02,
                                                      * D-804; seq_rec_press ends step record) */
 {
-    int run = !eng_transport_running(), take = run && sr_on;
-    midi_send_rt(run ? 0xFAu : 0xFCu);              /* (asked first: main.c sends it with the render that starts or stops) */
+    int was = eng_transport_running(), run = !was && eng_once_state() != 1, take = run && sr_on;   /* (in play once's count-in:
+                                                     * it stops, #632) */
+    if (run || was)
+        midi_send_rt(run ? 0xFAu : 0xFCu);          /* (asked first: main.c sends it with the render that starts or stops) */
     eng_transport(run);
     if (!eng_transport_running() && seq_rec)
         seq_rec_off();
@@ -385,6 +390,28 @@ static void play_toggle(void)                       /* PLAY: the transport (the 
     ui_dirty = ui_dirty ? ui_dirty : 1;
 }
 
+
+/* SEQ held + PLAY (#632, the owner's ruling of 2026-11-04 on issue #632, the control Proposed in D-TBD): play once. Stopped:
+ * one bar is counted in with a click on each beat (the engine's, heard on both outputs), then the pattern or the song
+ * plays once and the transport stops by itself (eng_play_once); a whole take into a recorder without touching the
+ * transport. Running, or counting in: it stops, as PLAY. Step record ends first (as SEQ ends it, D-808) */
+static void play_once_press(void)
+{
+    if (eng_transport_running() || eng_once_state()) {
+        play_toggle();
+        return;
+    }
+    if (!eng_steps_count()) {
+        ui_msg("NO STEPS MODULE", NUDGE_MS);
+        return;
+    }
+    sr_stop();
+    eng_play_once();
+    play_once_asked++;
+    ui_msg("COUNT-IN 1", 4000);                     /* (panel_status names each beat) */
+    leds_play();
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+}
 
 /* a turn of `clicks` on knob slot `s` (0 the tempo, 1 a step's value, 2..5 K1..K4) is a fast one: KNOB ACCEL on, within
  * 80 ms of the slot's last click and the same way as it. A reversal is always a single step, so a turn right and then
@@ -1015,6 +1042,13 @@ static void panel_edges(uint32_t p, uint32_t rel)
         sr_stop();                                  /* HOME in step record: it ends, the page stays (#532, D-808) */
     else if ((rel & (1u << BTN_HOME)) && !home_turned)
         home_tap();
+    if ((p & (1u << BTN_PLAY)) && (panel_held >> BTN_SEQ & 1u) && !sb_on) {   /* SEQ held + PLAY (#632): play once, on the
+                                                     * press; neither SEQ's release nor PLAY's then does its own */
+        seq_held_used = 1;
+        p &= ~(1u << BTN_PLAY);
+        play_turned = play_hinted = 1;
+        play_once_press();
+    }
     if (p & (1u << BTN_PLAY)) {                     /* PLAY acts on release, unless PRESET turned the tempo meanwhile */
         play_turned = 0;
         play_hinted = 0;
@@ -1041,6 +1075,34 @@ static void panel_status(void)
         sb_mout_due = 0;
         if (sb_on && !cfg.midi_out && !help_on)
             sb_mout_nudge();
+    }
+    {                                               /* play once (#632): the transport as the engine starts and stops it (the
+                                                     * PLAY LED, the editor's FM-1 tab); the count-in's beats in the bar */
+        static int8_t run_seen = -1;
+        static uint8_t beat_seen = 0xFFu;
+        int run = eng_transport_running(), st = eng_once_state();
+        if (run != run_seen) {
+            run_seen = (int8_t)run;
+            play_auto = 1;
+            leds_play();
+            play_auto = 0;
+            ui_dirty = ui_dirty ? ui_dirty : 1;
+        }
+        if (st == 1 && !help_on) {
+            uint32_t b = eng_once_beat();
+            if (b != beat_seen && b < 4u) {
+                char m[] = "COUNT-IN 1";
+                m[9] = (char)('1' + b);
+                ui_msg(m, 4000);
+            }
+            beat_seen = (uint8_t)b;
+        } else if (beat_seen != 0xFFu) {         /* the count-in is over: playing once, or it ended (PLAY) */
+            if (st == 2)
+                ui_msg("PLAY ONCE", 1500);
+            else
+                ui_msg_clear();
+            beat_seen = 0xFFu;
+        }
     }
     if (!(panel_held >> BTN_PLAY & 1u))             /* (up: no hint until the next press's edge, panel_edges, sets its time;
                                                      * knobs_poll can see a press before buttons_poll takes its edge) */

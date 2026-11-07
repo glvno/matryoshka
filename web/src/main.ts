@@ -674,6 +674,18 @@ const envs = new EnvScreens((msg) => host.send(msg), () => host.running && !host
 host.onEnv = (key, states) => envs.receive(key, states);
 host.onSteps = (view, pats) => editor.showSteps(view, pats);
 host.onRecorded = (took) => editor.recorded(took);
+// the engine started or stopped its transport itself: play once (#632) after its count-in and at its end. The editor's
+// transport, its MIDI clock out and the emulated FM-1 follow (an echo of the editor's own transport is no news)
+host.onRun = (on) => {
+  if (on === editor.playing) return;
+  if (on) host.mute(false);
+  editor.playing = on;
+  if (liveSync.transports(device.connected, liveOn) && !fromDevice) device.transport(on);
+  clockOut.transport(on);
+  emu.ui?.transport(on);
+  syncPlayBtn();
+  showArmed();
+};
 /** the sidebar's sliders whose thumbs are jacks (cable slack, zoom): see sideSlider below; filled once the editor exists */
 const sides = new Map<SideKey, SideSlider>();
 /** the zoom slider's setting (the user's zoom; a source adds to it) */
@@ -707,6 +719,13 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
     if (mirror.following) return emuRealign();
     fromEmu = true;
     try { setPlaying(run); } finally { fromEmu = false; }
+  },
+  // SEQ held + PLAY on the emulated FM-1 (#632): the browser engine plays once, with the count-in's click (following a
+  // connected FM-1, its own play once plays and its Start / Stop drive the editor's transport)
+  once: () => {
+    if (mirror.following) return;
+    host.playOnce();
+    if (editor.playing) (editor.playing = false), clockOut.transport(false), syncPlayBtn();
   },
   track: (m, notes, pat) => fm1Event({ kind: 'track', module: m, notes, pat }, 'emu'),
   locks: (m, pat, locks) => fm1Event({ kind: 'locks', module: m, pat, locks }, 'emu'),

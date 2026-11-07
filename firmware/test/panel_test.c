@@ -3181,6 +3181,70 @@ int main(void)
         while (page != 0u && trail_n)
             tap(BTN_HOME);
     }
+    {                                                       /* play once (#632): SEQ held + PLAY counts in a bar with a click,
+                                                             * plays the pattern once and stops by itself */
+        static int32_t l[128], r[128];
+        uint32_t guard, i, beats = 0, peak = 0, t0, run_ticks;
+        int m0;
+        (void)load("808 KIT");
+        page_show(0);
+        loop();
+        m0 = mlen;
+        panel_held |= 1u << BTN_SEQ;
+        panel_edges(1u << BTN_SEQ, 0);
+        panel_held |= 1u << BTN_PLAY;
+        panel_edges(1u << BTN_PLAY, 0);
+        check("SEQ held + PLAY, stopped: play once counts in (COUNT-IN 1), the transport stays stopped, no Start yet",
+              eng_once_state() == 1 && !eng_transport_running() && !strcmp(msg_text, "COUNT-IN 1") && !sent(m0, 0xFAu, 0xFFu, 0xFFu));
+        panel_held &= ~(1u << BTN_PLAY);
+        panel_edges(0, 1u << BTN_PLAY);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        loop();
+        check("  PLAY's and SEQ's releases do nothing of their own: still counting in, the page stays", eng_once_state() == 1 && page == 0u);
+        for (guard = 0; eng_once_state() == 1 && guard < 4000u; guard++) {
+            eng_render(l, r, 128);
+            for (i = 0; i < 128u; i++)
+                peak = (uint32_t)(l[i] < 0 ? -l[i] : l[i]) > peak ? (uint32_t)(l[i] < 0 ? -l[i] : l[i]) : peak;
+            fm1_ms += 3;
+            loop();
+            if (!strncmp(msg_text, "COUNT-IN ", 9) && msg_text[9] >= '1' && msg_text[9] <= '4')
+                beats |= 1u << (msg_text[9] - '1');
+        }
+        check("  the count-in's click is on the output (a quarter of full scale)", peak >= 16000u && peak <= 16400u);
+        check("  the bar counts the beats, COUNT-IN 1 to COUNT-IN 4", beats == 15u);
+        t0 = eng_ticks();
+        check("  after the bar: the transport runs, the bar says PLAY ONCE", eng_once_state() == 2 && eng_transport_running() && !strcmp(msg_text, "PLAY ONCE"));
+        for (guard = 0; eng_transport_running() && guard < 4000u; guard++) {
+            eng_render(l, r, 128);
+            loop();
+        }
+        run_ticks = eng_ticks() - t0;
+        printf("      (the 808 Kit's pattern played once in %u ticks)\n", (unsigned)run_ticks);
+        check("  the pattern played once, then the transport stopped by itself", !eng_transport_running() && eng_once_state() == 0
+              && run_ticks >= 90u && run_ticks <= 100u);
+        panel_held |= 1u << BTN_SEQ;
+        panel_edges(1u << BTN_SEQ, 0);
+        tap(BTN_PLAY);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        blocks(100);
+        loop();
+        m0 = mlen;
+        tap(BTN_PLAY);
+        blocks(2);
+        loop();
+        check("PLAY during the count-in: play once ends, all stopped, no Stop sent (nothing had started)", eng_once_state() == 0
+              && !eng_transport_running() && !sent(m0, 0xFCu, 0xFFu, 0xFFu));
+        tap(BTN_PLAY);
+        check("(PLAY: running)", eng_transport_running());
+        panel_held |= 1u << BTN_SEQ;
+        panel_edges(1u << BTN_SEQ, 0);
+        tap(BTN_PLAY);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        check("SEQ held + PLAY while running: it stops, as PLAY", !eng_transport_running() && eng_once_state() == 0 && page == 0u);
+    }
     {                                                       /* #170, the owner's design (2026-10-24): PRESET grows the footer
                                                              * into a toast (the slot, the name, the filled slots), the new
                                                              * patch's page drawn around it at once */

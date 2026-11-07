@@ -46,7 +46,7 @@ export interface Gesture {
 
 /** what a row's gesture changes, as panel_test checks it (firmware/test/controls_test.h ctl_effect) */
 export const EFFECTS = [
-  'transport', 'record', 'save', 'back', 'menu', 'env', 'seq', 'octave', 'tempo', 'patch', 'store', 'arm', 'mute',
+  'transport', 'play_once', 'record', 'save', 'back', 'menu', 'env', 'seq', 'octave', 'tempo', 'patch', 'store', 'arm', 'mute',
   'focus', 'device_page', 'list_back', 'list_page', 'preset', 'param', 'fine',
   'step', 'row', 'roll_view', 'roll_pitch', 'jump', 'track', 'pattern', 'accent', 'tie', 'step_record', 'step_record_at',
   'velocity', 'chance', 'pitch', 'lock_page', 'lock', 'song_page', 'clear', 'steps_page', 'keys_octave',
@@ -144,6 +144,8 @@ export const CONTROLS: ControlRow[] = [
     help: 'black key n: track n into the armed devices or out (any page)' },
   { id: 'mute', gesture: { hold: 'SEQ', do: [BLACK] }, does: 'mute a track', when: 'tracks', everywhere: at(130, but('sandbox')), effect: 'mute',
     help: 'black key n: mutes track n, or unmutes it (any page)' },
+  { id: 'play-once', gesture: { hold: 'SEQ', do: [B('PLAY')] }, does: 'count in, play once', when: 'tracks', everywhere: at(135, but('sandbox')), effect: 'play_once',
+    help: 'play once, for recording a whole take into a recorder: stopped, one bar is counted in with a click on each beat (heard on the jack and on USB audio), then the pattern or the song plays once and the transport stops by itself. Running or counting in: it stops, as PLAY' },
 
   // ---- DEVICE: a device page
   { id: 'list-home', gesture: { do: [B('HOME')] }, does: "leave {list}'s pages", when: 'list', sheet: { device: 10 }, effect: 'list_back',
@@ -283,6 +285,7 @@ const STRIP: Record<string, string | ({ _: string } & Partial<Record<HelpState, 
   octave: "shift the keys' octave", tempo: 'change the tempo, 1 bpm per click', patch: "step through the bank's patches",
   store: { _: "save this device's values as a preset", env: "save this row's device as a preset" },
   arm: 'arm or disarm track n for the keys', mute: 'mute or unmute track n',
+  'play-once': 'count in a bar, play the pattern or song once, stop',
   // a device page
   'list-home': "leave {list}'s pages, back where you were", 'list-pages': "flip through {list}'s pages",
   adjust: 'turn the four values on this page', fine: 'turn a value in its smallest steps',

@@ -131,6 +131,12 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   held black key must sound its row while held and record nothing. REC alone (no PLAY) must then start the transport
   and record: black key 2 held about 450 ms must land as one note of 3 to 5 steps on its row, and a white key must then
   place a step on the row that black key picked. PLAY stops the transport and the recording.
+- **Play once (`playOnce`, issue #632, [D-820](ledger/steps.md#D-820)):** on the 808 Kit, SEQ held + PLAY must count in
+  with a click on each beat (the peak in 25 ms windows over the first 1.2 s: one onset a beat, a beat apart, the beat
+  read from the first two), the bar must say `COUNT-IN`, and the transport must stay stopped meanwhile (no Start reaches
+  the editor). After the count-in the bar says `PLAY ONCE` and the FM-1's Start reaches the editor; half a pass in it
+  still runs, and after the pass it stops by itself (its Stop reaches the editor). SEQ held + PLAY again, then PLAY a beat
+  later, must end it with nothing started.
 - **When:** every pull request that changes firmware runs `emu:smoke` and `emu:scenarios` on its own CI build before it
   merges ([D-120](ledger/releases.md#D-120)).
 
