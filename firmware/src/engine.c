@@ -621,6 +621,8 @@ typedef struct {
     uint16_t nlk;                    /* the locks, by track, then pattern (as the binary lists them) */
     lock_t lk[ENG_MAX_LOCKS];
     int16_t trk_lkey[ENG_MAX_TRACKS];   /* the pattern and step a track's locks were applied for (locks_step; -1 none, -2 again) */
+    uint8_t trk_once[ENG_MAX_TRACKS];   /* play once (#632, modules.ts StepsState.once): 0 not, 1 its passes played (no step
+                                         * from here), n >= 2: n - 1 pass ends to go (the start counts as one) */
 } eng_t;
 
 /* the slice of the pattern track t plays (one it has not got: pattern 0), its first note and count */
@@ -639,6 +641,15 @@ static void toggles_sync(void);
 static volatile uint32_t clk_ticks;   /* MIDI clock ticks (eng_clock_tick, the main loop) */
 static volatile uint8_t clk_ext;      /* MIDI clock drives the clock */
 static volatile uint8_t transport_on; /* the transport (eng_transport) */
+/* play once (#632, eng_play_once; engine.ts playOnce, the same): the main loop's last word (once_cmd: 1 play once, 2 end
+ * it) counts once_gen up and the next block takes it (once_seen); the engine's state (once_st: 0 not, 1 counting in, 2
+ * playing), the transport while it plays (once_run: eng_transport_running adds it), the count-in's ticks, its first
+ * block to come, the transport's edge in this render made by play once (eng_clock_out: 2 / -2); the click sounding:
+ * its sample (-1 none) and half period */
+static volatile uint8_t once_cmd, once_gen, once_st, once_run;
+static uint8_t once_seen, once_first, once_edge;
+static uint32_t once_cin;
+static int32_t click_k = -1, click_half = 1;
 /* MIDI clock out (#473, eng_clock_out): the last eng_render's tempo ticks, their samples in it, the transport's edge in it */
 #define CKO_MAX 4u
 static struct { uint8_t n, run; int8_t edge; uint16_t off[CKO_MAX]; } cko;
@@ -1313,6 +1324,7 @@ int eng_load(const uint8_t *p, uint32_t len)
             E.trk_shift[nd->trk] = 0;
             E.trk_nsnd[nd->trk] = 0;
             E.trk_last[nd->trk] = STEP_NOTE;
+            E.trk_once[nd->trk] = 0;
         }
         nd->ksrc = nd->type == T_DRUMMAP ? p[at] : 0u;   /* (checked once every module is read) */
         at += d->ndata;
@@ -3078,8 +3090,38 @@ uint32_t eng_clock_out(uint32_t *off, uint32_t max, int32_t *edge)
     *edge = cko.edge;
     return n;
 }
-void eng_transport(int on) { transport_on = (uint8_t)(on != 0); }
-int eng_transport_running(void) { return transport_on; }
+/* the transport also ends play once where it is (on: it runs on as if PLAY had started it) */
+void eng_transport(int on)
+{
+    transport_on = (uint8_t)(on != 0);
+    if (once_st || (once_gen != once_seen && once_cmd == 1u)) {
+        once_cmd = 2;
+        once_gen++;
+    }
+}
+int eng_transport_running(void) { return transport_on || (once_run && once_gen == once_seen); }
+void eng_play_once(void)
+{
+    transport_on = 0;
+    once_cmd = 1;
+    once_gen++;
+}
+int eng_once_state(void) { return once_gen != once_seen ? (once_cmd == 1u ? 1 : 0) : once_st; }
+uint32_t eng_once_beat(void) { return once_gen != once_seen || once_st != 1u ? 0u : once_cin / 24u; }
+/* the click's sample k of len, half a period `half` samples (modules.ts clickSample: exact in both engines) */
+static int32_t click_sample(int32_t k, int32_t len, int32_t half)
+{
+    int32_t a = (int32_t)((int64_t)CLICK_LEVEL_Q16 * (len - k) / len);
+    return (k / half) & 1 ? -a : a;
+}
+static void once_end(void)
+{
+    uint32_t t;
+    once_st = 0;
+    once_run = 0;
+    for (t = 0; t < ENG_MAX_TRACKS; t++)
+        E.trk_once[t] = 0;
+}
 
 /* ------------------------------------------------------------------ Steps modules (the SEQ page) */
 /* A traversal's visit number is independent of its chosen step: swing and note lengths follow time order. */
@@ -6536,10 +6578,14 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
         it->s.stp.sst++;
         if (it->s.stp.pend > 0 && --it->s.stp.pend == 0 && (dir == 0 || it->s.stp.pstep < len))
             steps_fire(nd, it, it->s.stp.pstep, len, gate, sl, tr[i]);
+        if (E.trk_once[t] == 1u)                 /* (play once: its passes are played, #632) */
+            adv = 0;
         for (; adv > 0; adv--) {
             int32_t sw, d = 0;
             step_visit_t next = steps_next(it, len, dir);
             if (next.visit == 0) {               /* the end of a pass: a song's next entry, a queued pattern */
+                if (E.trk_once[t] > 1u && --E.trk_once[t] == 1u)
+                    break;                       /* (play once: the last pass ended, #632) */
                 steps_turn(t);
                 len = steps_len(it, t);
                 ht = RATE_HT[TRK_P(t) && E.pat_rate[t][TRK_P(t)] != 0xFFu ? E.pat_rate[t][TRK_P(t)] : clampi(round_q16(EF(it, STEPS_P_RATE)), 0, 8)];
@@ -7553,6 +7599,17 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
         left[i] = right[i] = 0;
     cko.n = 0;
     cko.edge = 0;
+    if (once_gen != once_seen) {                 /* play once asked for or ended (#632): from this render */
+        uint8_t c = once_cmd;
+        once_seen = once_gen;
+        once_end();
+        if (c == 1u && E.loaded) {
+            once_st = 1;
+            once_cin = 0;
+            once_first = 1;
+            E.tick_acc = 0;
+        }
+    }
     if (!E.loaded) {
         if (transport_on != cko.run) {           /* (no patch: no ticks, but Start / Stop still go out) */
             cko.run = transport_on;
@@ -7562,7 +7619,19 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
     }
     for (off = 0; off < total; off += ENG_BLOCK) {
         uint32_t n = total - off < ENG_BLOCK ? total - off : ENG_BLOCK;
+        int32_t click_at = -1, accent = 0;
         ENG_PROF(4, 0, 0);
+        if (once_st == 1u && once_cin >= ONCE_BAR) {   /* play once's count-in is over: the transport starts, each track */
+            uint32_t s = E.song && E.song_n[E.song - 1u] ? E.song_n[E.song - 1u] : 1u;   /* the clock steps counts */
+            once_st = 2;                                                                       /* its passes */
+            once_run = 1;
+            once_edge = 1;
+            for (k = 0; k < E.norder; k++) {
+                const node_t *nd = &E.node[E.order[k]];
+                if (nd->type == T_STEPS)
+                    E.trk_once[nd->trk] = ((nd->conn >> STEPS_I_CLK) & 1u) ? 0u : (uint8_t)(s + 2u);
+            }
+        }
         if (ramp[0].left | ramp[1].left | ramp[2].left | ramp[3].left)
             ramp_tick();
         E.morph = E.has_b ? morph_position(n) : 0;
@@ -7570,18 +7639,19 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
              * minute) */
             uint32_t bpm = tempo_glo > ENG_TEMPO_ADOPT ? tempo_glo
                          : E.main >= 0 ? (uint32_t)clampi((E.node[E.main].par[FM1_P_TEMPO] + 32768) >> 16, 20, 300) : TEMPO_DEFAULT, seen = 0, t;
-            uint8_t run = transport_on;
+            uint8_t run = transport_on | once_run;
             if (run && !E.running) {
                 E.tick_acc = 0;                  /* the transport starts: the tempo's ticks from here */
                 E.run_ticks = E.ticks;
             }
             if (run != cko.run) {                /* MIDI clock out: the transport's edge, and tick 0 on a start's first sample */
                 cko.run = run;
-                cko.edge = run ? 1 : -1;
+                cko.edge = (int8_t)((run ? 1 : -1) * (once_edge ? 2 : 1));
                 if (run && !clk_ext && cko.n < CKO_MAX)
                     cko.off[cko.n++] = (uint16_t)off;
             }
             E.running = run;
+            once_edge = 0;
             t = clk_ticks;
             /* where this block's ticks fall (Steps modules start their steps there, engine.ts render): MIDI clock ticks on the
              * first sample, the tempo's on the sample that completes the tick; samples per tick (measured from MIDI clock) */
@@ -7614,6 +7684,19 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                         cko.off[cko.n++] = (uint16_t)(off + (uint32_t)E.tick_off + (uint32_t)E.tick_n * (uint32_t)E.tick_len);
                     E.tick_n++;
                     seen = 1;
+                }
+            }
+            if (once_st == 1u) {                 /* play once's count-in (#632): beat 1's click on this block's first sample,
+                                                  * then one on each 24th tick */
+                if (once_first) {
+                    click_at = 0;
+                    accent = 1;
+                    once_first = 0;
+                } else if (seen) {
+                    uint32_t before = once_cin;
+                    once_cin += (uint32_t)E.tick_n;
+                    if (once_cin < ONCE_BAR && once_cin / 24u > before / 24u)
+                        click_at = E.tick_off > 0 ? E.tick_off : 0;
                 }
             }
             if (!run)
@@ -7682,6 +7765,31 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             for (i = 0; i < n; i++) {
                 left[off + i] += mul16(l[i], lvl);
                 right[off + i] += mul16(r[i], lvl);
+            }
+        }
+        if (once_st == 2u) {                            /* every track played its passes: the transport stops (next block) */
+            for (k = 0; k < E.ntrk && E.trk_once[k] < 2u; k++)
+                ;
+            if (k == E.ntrk) {
+                once_end();
+                once_edge = 1;
+            }
+        }
+        if (click_at >= 0 || click_k >= 0) {           /* the count-in's click, on both sides (engine.ts the same) */
+            const int32_t len = (int32_t)(ENG_SR * CLICK_MS / 1000u);
+            for (i = 0; i < n; i++) {
+                int32_t c;
+                if ((int32_t)i == click_at) {
+                    click_k = 0;
+                    click_half = (int32_t)(ENG_SR / (2u * (accent ? CLICK_ACCENT_HZ : CLICK_HZ)));
+                }
+                if (click_k < 0)
+                    continue;
+                c = click_sample(click_k, len, click_half > 0 ? click_half : 1);
+                left[off + i] += c;
+                right[off + i] += c;
+                if (++click_k >= len)
+                    click_k = -1;
             }
         }
         ENG_PROF(5, 0, 0);

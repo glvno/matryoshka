@@ -121,6 +121,10 @@ int main(int argc, char **argv)
             eng_buttons(!strcmp(kind, "bon") ? eng_buttons_get() | 1u << note : eng_buttons_get() & ~(1u << note));
         } else if (!strcmp(kind, "run") || !strcmp(kind, "stop")) {
             eng_transport(!strcmp(kind, "run"));
+        } else if (!strcmp(kind, "once")) {      /* (#632) play once with its count-in */
+#ifdef ENG_PLAY_ONCE /* engine_exact.sh also builds this harness with older engine headers */
+            eng_play_once();
+#endif
         } else if (!strcmp(kind, "ext") || !strcmp(kind, "int")) {
             eng_clock_external(!strcmp(kind, "ext"));
         } else if (!strcmp(kind, "tick")) {

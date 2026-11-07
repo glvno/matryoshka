@@ -1117,6 +1117,11 @@ static const int32_t RATIO_DETUNE_OCT[7] = {-142, -95, -47, 0, 47, 95, 142};
 #define TRACK_NAME_MAX 8
 #define TRACK_NOTES_MAX 128   /* notes per track (the notes section, flag bit 4; track.ts noteWord) */
 #define TRACK_POLY 8          /* notes a track sounds at once (modules.ts) */
+#define ONCE_BAR 96u          /* play once (#632): the count-in's bar in clock ticks (modules.ts) */
+#define CLICK_MS 25u           /* ... its click on each beat: ms to nothing, level (Q16), Hz on beats 2..4 and on beat 1 */
+#define CLICK_LEVEL_Q16 16384
+#define CLICK_HZ 1000u
+#define CLICK_ACCENT_HZ 2000u
 #define STEP_NOTE 60           /* a new step's note and velocity (track.ts), an accent's velocity */
 #define STEP_VEL 100
 #define ACCENT_VEL 127

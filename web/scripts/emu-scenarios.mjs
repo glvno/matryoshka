@@ -1141,6 +1141,45 @@ async function main() {
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
     },
+    async playOnce() {   // #632 (D-820): SEQ held + PLAY counts in a bar with a click, plays the pattern once, stops by itself
+      await check('play once: the 808 Kit opens, synced', await openSynced('808 Kit'));
+      const bpm = Math.round((await tempo()) ?? 120), beat = 60000 / bpm, bar = 4 * beat;
+      await emu.key(B.seq, true);
+      await emu.elapse(100);
+      await emu.key(B.play, true);
+      const win = await emu.windows(Math.round((bar * 0.9) / 25), 25);   // (the count-in's first 90 %: the 808 Kit is silent)
+      const counting = await emu.text('COUNT-IN 4');
+      await emu.key(B.play, false);
+      await emu.key(B.seq, false);
+      const st = await T();
+      await check('play once: SEQ held + PLAY, stopped: the bar counts the beats (COUNT-IN 4 on the fourth)', counting);
+      await check('play once: the transport stays stopped during the count-in (no Start reached the editor)', !st.deviceRunning && !st.playing,
+        `FM-1 ${st.deviceRunning ? 'running' : 'stopped'}, editor ${st.playing ? 'playing' : 'stopped'}`);
+      const onsets = win.filter((w, i) => w[1] > LOUD && (i === 0 || win[i - 1][1] <= LOUD)).map((w) => w[0]);
+      console.log(`  play once: the count-in's peaks per 25 ms: ${prof(win)}`);
+      await loudCheck(`play once: a click on each beat of the count-in (${bpm} bpm: every ${beat.toFixed(0)} ms)`, Math.max(...win.map((w) => w[1])),
+        onsets.length === Math.min(4, Math.ceil((bar * 0.9) / beat)) && onsets.slice(1).every((t, i) => Math.abs(t - onsets[i] - beat) <= 60),
+        `click onsets at ${onsets.join(' ')} ms`);
+      await check('play once: after the bar it plays (PLAY ONCE)', await emu.waitText('PLAY ONCE', bar));
+      const ran = await until(async () => (await T()).deviceRunning, 3000);
+      await check('play once: the FM-1\'s Start reaches the editor after the count-in', !!ran);
+      await emu.elapse(bar * 0.5);
+      await check('play once: still playing half a pass in', (await T()).deviceRunning);
+      await emu.elapse(bar * 0.8);
+      const stopped = await until(async () => !(await T()).deviceRunning && !(await T()).playing, 3000);
+      await check('play once: after the pass the FM-1 stops by itself (its Stop reaches the editor)', !!stopped,
+        `FM-1 ${(await T()).deviceRunning ? 'running' : 'stopped'}`);
+      // PLAY in the count-in: it ends there, nothing starts
+      await emu.key(B.seq, true);
+      await emu.elapse(100);
+      await emu.tap(B.play);
+      await emu.key(B.seq, false);
+      await emu.elapse(beat);
+      await emu.tap(B.play);
+      await emu.elapse(bar * 1.5);
+      await check('play once: PLAY in the count-in ends it, nothing starts', !(await T()).deviceRunning && !(await emu.text('PLAY ONCE')));
+      await emu.snap('play-once');
+    },
     async tieRoll() {   // the piano roll (#241) keeps its tie: Silver Box's PATTERN, pattern 1 (empty)
       await check('tie roll: Silver Box opens, synced', await openSynced('Silver Box'));
       await check('tie roll: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));

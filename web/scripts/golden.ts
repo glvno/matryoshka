@@ -25,7 +25,7 @@ mkdirSync(OUT, { recursive: true });
  * (absent: 1; rec: 1 on, 0 off; cc: controller value 0..127; thon / thoff: the note played into that track's keys in, at
  * velocity 100 / let go: engine.ts thru, engine.c eng_steps_thru, #368)]; take: the notes recorded so far go into their
  * tracks (the editor's overdub, the panel's) */
-type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'rec' | 'take' | 'cc' | 'pat' | 'song' | 'thon' | 'thoff', number, number?];
+type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'once' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'rec' | 'take' | 'cc' | 'pat' | 'song' | 'thon' | 'thoff', number, number?];
 const EVENTS: Ev[] = [
   [0, 'on', 60],
   [128 * 40, 'on', 67],
@@ -3139,6 +3139,16 @@ tests['steps-song'] = make('steps-song', (add, wire) => {
   ends['steps-song'] = 128 * 960;
 }
 
+// play once (#632): a bar counted in with a click on each beat (beat 1 higher), then each track plays its pattern once,
+// the shorter ones then silent until the longest ends and the transport stops by itself; again, and PLAY in the count-in
+// (it ends play once and the transport runs on), then a stop. A song: its entries once each
+tests['play-once'] = structuredClone(tests['steps-kit']);
+events['play-once'] = [[128 * 5, 'once', 0], [128 * 1300, 'once', 0], [128 * 1600, 'run', 0], [128 * 1800, 'stop', 0]];
+ends['play-once'] = 128 * 1850;
+tests['play-once-song'] = structuredClone(tests['steps-song']);
+events['play-once-song'] = [[128 * 5, 'once', 0], [128 * 700, 'pat', 1], [128 * 720, 'song', 0], [128 * 740, 'once', 0]];
+ends['play-once-song'] = 128 * 1300;
+
 // arming as a set (#191): two Voicing modules on Main's keys (A's gate left, B's right) and a Drum map on them (its first
 // row's gate added right); armed: only the armed ones hear Main, several at once; none: the cables again
 tests['arm-set'] = make('arm-set', (add, wire) => {
@@ -3338,6 +3348,7 @@ for (const [name, patch] of Object.entries(tests)) {
     else if (kind === 'bon' || kind === 'boff') e.setButton(note, kind === 'bon');
     else if (kind === 'ext' || kind === 'int') e.clockExternal(kind === 'ext');
     else if (kind === 'tick') e.clockTick();
+    else if (kind === 'once') e.playOnce();
     else e.transport(kind === 'run');
   }
   seg(END);
