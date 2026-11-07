@@ -5770,10 +5770,10 @@ static inline int32_t tape_loop(int32_t *l, int32_t *h, int32_t e, int32_t fb, u
  * per head. */
 
 /* dly_tape's loop while the time stands and its heads stay inside the line (see there), for pp and nh known at the call,
- * so that each case keeps its state in registers: q the heads' points (1/256 samples, modulo M, step inc), st the loop
+ * so that each case keeps its state in registers: q the heads' points (1/256 samples, modulo M) and their steps, st the loop
  * filters (A low, A high, B low, B high), ys the input to write */
 HOT void tape_fast(const int pp, const int nh, int16_t *buf, uint32_t nl, uint32_t sh, uint32_t *wp, uint32_t *php,
-                   int32_t *q, int32_t inc, int32_t M, int32_t g, const esig_t *in, const int32_t *yp, esig_t *out,
+                   int32_t *q, int32_t M, int32_t g, const esig_t *in, const int32_t *yp, esig_t *out,
                    esig_t *outr, uint32_t n, int32_t fb, int32_t mix, uint32_t pl, uint32_t phq, int32_t *st)
 {
     int16_t *bb = buf + nl;
@@ -5781,9 +5781,10 @@ HOT void tape_fast(const int pp, const int nh, int16_t *buf, uint32_t nl, uint32
     const int32_t dry = ENG_ONE - mix;
     uint32_t w = *wp, ph = *php, i;
     int32_t q0 = q[0], q1 = nh > 1 ? q[1] : 0, q2 = nh > 2 ? q[2] : 0, lA = st[0], hA = st[1], lB = st[2], hB = st[3];
+    const int32_t inc0 = q[3], inc1 = nh > 1 ? q[4] : 0, inc2 = nh > 2 ? q[5] : 0;
     for (i = 0; i < n; i++) {
         int32_t ea, eb = 0, pos, i0, i1, fr;
-#define TAPE_HEAD(qj, first)                                                                                \
+#define TAPE_HEAD(qj, incj, first)                                                                          \
         pos = (qj) >> sh;                                                                                   \
         i0 = pos >> 8;                                                                                      \
         i1 = i0 + 1 == (int32_t)nl ? 0 : i0 + 1;                                                            \
@@ -5791,15 +5792,15 @@ HOT void tape_fast(const int pp, const int nh, int16_t *buf, uint32_t nl, uint32
         ea = (first ? 0 : ea) + (int32_t)buf[i0] * 8 + ((((int32_t)buf[i1] - buf[i0]) * fr) >> 5);           \
         if (pp)                                                                                             \
             eb = (first ? 0 : eb) + (int32_t)bb[i0] * 8 + ((((int32_t)bb[i1] - bb[i0]) * fr) >> 5);         \
-        qj += inc;                                                                                          \
+        qj += incj;                                                                                         \
         if (qj >= M)                                                                                        \
             qj -= M;
-        TAPE_HEAD(q0, 1)
+        TAPE_HEAD(q0, inc0, 1)
         if (nh > 1) {
-            TAPE_HEAD(q1, 0)
+            TAPE_HEAD(q1, inc1, 0)
         }
         if (nh > 2) {
-            TAPE_HEAD(q2, 0)
+            TAPE_HEAD(q2, inc2, 0)
         }
 #undef TAPE_HEAD
         if (nh > 1) {
@@ -5863,12 +5864,19 @@ static void __attribute__((noinline)) dly_tape(inst_t *it, const esig_t *in, esi
             hj[nh++] = (int32_t)i;
     g = DELAY_HEAD_GAIN[nh];
     if (!moving && step > -256 && step < 256) {
-        int32_t q[3], j;
-        const int32_t M = (int32_t)((nl << sh) << 8), inc = 256 - step;
+        int32_t q[6], j;                            /* q[j]: head j's point, q[3 + j] its step */
+        const int32_t M = (int32_t)((nl << sh) << 8);
         const int32_t W = ((int32_t)(w << sh) + (int32_t)ph - (int32_t)k + 1) << 8;   /* the write head's time, 1/256 samples */
         for (j = 0; j < nh; j++) {
             int32_t d0 = hj[j] * cur8 + m0 + step, d1 = hj[j] * cur8 + m0 + step * (int32_t)n;
-            if (d0 < lo8 || d0 > hi8 || d1 < lo8 || d1 > hi8)
+            q[3 + j] = 256 - step;
+            if (d0 > hi8 && d1 > hi8) {             /* past the line's end the whole block: it plays at the end */
+                d0 = hi8;
+                q[3 + j] = 256;
+            } else if (d0 < lo8 && d1 < lo8) {
+                d0 = lo8;
+                q[3 + j] = 256;
+            } else if (d0 < lo8 || d0 > hi8 || d1 < lo8 || d1 > hi8)
                 break;
             q[j] = W - d0;
             if (q[j] < 0)
@@ -5877,13 +5885,13 @@ static void __attribute__((noinline)) dly_tape(inst_t *it, const esig_t *in, esi
         if (j == nh) {
             int32_t st[4] = {lA, hA, lB, hB};
             if (pp) {
-                if (nh == 1) tape_fast(1, 1, buf, nl, sh, &w, &ph, q, inc, M, g, in, yp, out, outr, n, fb, mix, pl, phq, st);
-                else if (nh == 2) tape_fast(1, 2, buf, nl, sh, &w, &ph, q, inc, M, g, in, yp, out, outr, n, fb, mix, pl, phq, st);
-                else tape_fast(1, 3, buf, nl, sh, &w, &ph, q, inc, M, g, in, yp, out, outr, n, fb, mix, pl, phq, st);
+                if (nh == 1) tape_fast(1, 1, buf, nl, sh, &w, &ph, q, M, g, in, yp, out, outr, n, fb, mix, pl, phq, st);
+                else if (nh == 2) tape_fast(1, 2, buf, nl, sh, &w, &ph, q, M, g, in, yp, out, outr, n, fb, mix, pl, phq, st);
+                else tape_fast(1, 3, buf, nl, sh, &w, &ph, q, M, g, in, yp, out, outr, n, fb, mix, pl, phq, st);
             } else {
-                if (nh == 1) tape_fast(0, 1, buf, nl, sh, &w, &ph, q, inc, M, g, in, yp, out, outr, n, fb, mix, pl, phq, st);
-                else if (nh == 2) tape_fast(0, 2, buf, nl, sh, &w, &ph, q, inc, M, g, in, yp, out, outr, n, fb, mix, pl, phq, st);
-                else tape_fast(0, 3, buf, nl, sh, &w, &ph, q, inc, M, g, in, yp, out, outr, n, fb, mix, pl, phq, st);
+                if (nh == 1) tape_fast(0, 1, buf, nl, sh, &w, &ph, q, M, g, in, yp, out, outr, n, fb, mix, pl, phq, st);
+                else if (nh == 2) tape_fast(0, 2, buf, nl, sh, &w, &ph, q, M, g, in, yp, out, outr, n, fb, mix, pl, phq, st);
+                else tape_fast(0, 3, buf, nl, sh, &w, &ph, q, M, g, in, yp, out, outr, n, fb, mix, pl, phq, st);
             }
             lA = st[0]; hA = st[1]; lB = st[2]; hB = st[3];
             goto done;
