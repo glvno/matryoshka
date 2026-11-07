@@ -121,6 +121,10 @@ int main(int argc, char **argv)
     if (argc > 7) {                                         /* page 5: the menu's tab (4 = GUIDE) */
         int t = atoi(argv[7]);
         menu_tab = (uint8_t)(t < 0 ? 0 : t >= MT_COUNT ? MT_COUNT - 1 : t);
+        if (t == 12) {                                      /* 12: SYSTEM's second page (#702) */
+            menu_tab = MT_SYSTEM;
+            menu_sys2 = 1;
+        }
     }
     if (argc > 8) {                                         /* .. and the first line of the manual */
         int t = atoi(argv[8]), max = (int)MAN_N - (int)MAN_VIS;

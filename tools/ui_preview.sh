@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Render the device LCD of a factory preset on the host:
 #   tools/ui_preview.sh OUT.png PRESET [MODULE [OCTAVE [PAGE [ARP_STEP [MENU_TAB [GUIDE_LINE [POLY]]]]]]]
-# PAGE 0 player, 9 the loading screen (splash.c), 5 menu (MENU_TAB 0..4, 4 = GUIDE from GUIDE_LINE), 8 SEQ (MODULE = the track, the 7th
+# PAGE 0 player, 9 the loading screen (splash.c), 5 menu (MENU_TAB 0..4, 4 = GUIDE from GUIDE_LINE, 12 = SYSTEM 2/2), 8 SEQ (MODULE = the track, the 7th
 # argument (here the transport, 1 = running) then REC: the SEQ page draws the third track muted); POLY = parts: the whole
 # patch as one poly group of that many parts. On the SEQ page STEPREC=n shows step record's cursor on step n (#532)
 set -e
