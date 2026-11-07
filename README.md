@@ -162,7 +162,7 @@ Assemblies are an editor-only overlay: the patch stays a flat list of modules an
 - **Noise** has a `color` parameter: 0 is white, 1 rolls the top off from about 220 Hz.
 ## Unison
 
-- The **Oscillator** has `unison` (1..5 copies) and `detune` (cents, spread from −detune to +detune): a supersaw or a thick pulse from one module, summed so the peak stays at `level`. Sync restarts all copies. With `pm` connected or `fb` above 0 the oscillator runs its FM path, which plays one copy.
+- The **Oscillator** has `unison` (1..5 copies) and `detune` (cents, spread from −detune to +detune): a supersaw or a thick pulse from one module, summed so the peak stays at `level`. Sync restarts all copies. With `pm` connected or `fb` above 0 the oscillator runs its FM path, which plays one copy. `analog` (0..1, 0 = ideal waves) gives it an analog oscillator's flaws: a slightly curved saw ramp with a short dip at each reset, a triangle peak and pulse width a little off centre, each voice its own; the analog factory instruments play at 1.
 
 ## Frequency shifter
 
