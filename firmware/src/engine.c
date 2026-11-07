@@ -4729,20 +4729,37 @@ static void m_scale(const node_t *nd, inst_t *it, uint32_t n)
 static int32_t env_rate(int32_t t_q16);
 static int32_t env_rate_n(uint32_t n);
 
+/* lin glide's step for a time (Q16 s): one unit per that time, Q24 per sample */
+static int32_t glide_step(int32_t t)
+{
+    int64_t den = (int64_t)t * ENG_SR;                                    /* samples, Q16 */
+    return den > ((int64_t)1 << 16) ? (int32_t)(((int64_t)1 << 40) / den) : 1 << 24;
+}
+
 /* a one-pole glide: 99 % of a step in `time` (the envelope's rate curve, Q30 per sample). The state is Q24 (+-128):
- * in Q16 the step k * (in - y) would round to nothing while still 1 % short of the target, which a pitch can hear. */
+ * in Q16 the step k * (in - y) would round to nothing while still 1 % short of the target, which a pitch can hear.
+ * `fall` above 0 (#669): a falling input moves at that time instead (modules.ts glide). */
 static void m_glide(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *in = it->in[GLIDE_I_IN];
     esig_t *out = it->out[0];
-    int32_t k = env_rate(EF(it, GLIDE_P_TIME)), y = it->s.gld.y;
+    int32_t k = env_rate(EF(it, GLIDE_P_TIME)), y = it->s.gld.y, fall = EF(it, GLIDE_P_FALL);
     uint32_t i;
     if (round_q16(EF(it, GLIDE_P_CURVE)) == 1) {   /* lin: one unit per `time`, Q24 per sample (modules.ts glide) */
-        int64_t den = (int64_t)EF(it, GLIDE_P_TIME) * ENG_SR;             /* samples, Q16 */
-        int32_t step = den > ((int64_t)1 << 16) ? (int32_t)(((int64_t)1 << 40) / den) : 1 << 24;
+        int32_t step = glide_step(EF(it, GLIDE_P_TIME)), down = fall > 0 ? glide_step(fall) : step;
         for (i = 0; i < n; i++) {
             int32_t d = (clampi(in[i], -(1 << 23), (1 << 23) - 1) << 8) - y;
-            y += d > step ? step : d < -step ? -step : d;
+            y += d > step ? step : d < -down ? -down : d;
+            out[i] = (y + 128) >> 8;
+        }
+        it->s.gld.y = y;
+        return;
+    }
+    if (fall > 0) {                                /* rising at `time`, falling at `fall` */
+        int32_t kd = env_rate(fall);
+        for (i = 0; i < n; i++) {
+            int32_t d = (clampi(in[i], -(1 << 23), (1 << 23) - 1) << 8) - y;
+            y += mulq(d >= 0 ? k : kd, d, 30);
             out[i] = (y + 128) >> 8;
         }
         it->s.gld.y = y;

@@ -1908,7 +1908,9 @@ export const GLIDE_CURVES = ['exp', 'lin'];
 
 /**
  * portamento, or a slew on any control. exp: a one-pole glide that reaches 99 % of a step in `time`, whatever its size;
- * lin: a constant rate of one unit (an octave of pitch) per `time`, so a bigger step takes longer
+ * lin: a constant rate of one unit (an octave of pitch) per `time`, so a bigger step takes longer. `fall` (#669, format
+ * 51): a falling input moves at its own time, a rising one at `time` (a vactrol opens quickly and closes slowly); 0, the
+ * default, falls at `time` too
  */
 const glide: ModuleImpl<{ y: number }> = {
   def: {
@@ -1916,20 +1918,35 @@ const glide: ModuleImpl<{ y: number }> = {
     label: 'Slew limiter',
     inputs: [control('in')],
     outputs: [control('out')],
-    params: [param('time', 0.001, 5, 0.1, { unit: 's', step: 0.001, log: true }), param('curve', 0, 1, 0, { step: 1, choices: GLIDE_CURVES })],
+    params: [
+      param('time', 0.001, 5, 0.1, { unit: 's', step: 0.001, log: true }),
+      param('curve', 0, 1, 0, { step: 1, choices: GLIDE_CURVES }),
+      param('fall', 0, 5, 0, { unit: 's', step: 0.001, since: 51 }),
+    ],
   },
   init: () => ({ y: 0 }),
   process(c, s) {
+    const fall = c.p.fall ?? 0;
     if (Math.round(c.p.curve ?? 0) === 1) {
       const step = 1 / Math.max((c.p.time ?? 0.1) * c.sr, 1);
+      const down = fall > 0 ? 1 / Math.max(fall * c.sr, 1) : step;
       for (let i = 0; i < c.n; i++) {
         const d = c.inp.in[i] - s.y;
-        s.y += d > step ? step : d < -step ? -step : d;
+        s.y += d > step ? step : d < -down ? -down : d;
         c.out.out[i] = s.y;
       }
       return;
     }
     const k = 1 - Math.exp(-4.6 / Math.max((c.p.time ?? 0.1) * c.sr, 1));
+    if (fall > 0) {
+      const kd = 1 - Math.exp(-4.6 / Math.max(fall * c.sr, 1));
+      for (let i = 0; i < c.n; i++) {
+        const d = c.inp.in[i] - s.y;
+        s.y += (d >= 0 ? k : kd) * d;
+        c.out.out[i] = s.y;
+      }
+      return;
+    }
     for (let i = 0; i < c.n; i++) {
       s.y += k * (c.inp.in[i] - s.y);
       c.out.out[i] = s.y;
