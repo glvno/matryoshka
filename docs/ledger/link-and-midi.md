@@ -49,3 +49,4 @@ The editor and the FM-1 talk over a SysEx protocol on USB MIDI, and new capabili
 - Muting the FM-1's speaker while a computer records its USB audio — issue #169
 - Connect FM-1 fails on macOS Sequoia after flashing (only plain MIDI is seen) — issue #187
 - Whether Matryoshka uses the FM-1's Bluetooth (Bluetooth MIDI for a shared clock first), or recommends a Bluetooth MIDI adapter on the TRS input — issue #266
+- Proposed (decider: michael glaviano): while the editor is connected to one FM-1, notes, controls and Start / Stop from any other FM-1 play nothing and move nothing in the editor (`otherFm1` in `web/src/input.ts`). With no FM-1 connected, every MIDI input plays as before. Issue #698.

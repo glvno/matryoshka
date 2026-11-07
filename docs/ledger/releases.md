@@ -51,3 +51,7 @@ The web editor and the FM-1 firmware are released together under one version, ta
 
 ## Not yet settled
 
+- Proposed amendment to [D-122](releases.md#D-122) (decider: michael glaviano): `npm run rig -- register` also keeps the rig's USB location next to the mark in `~/.config/matryoshka/rig.json`. The USB location is the number macOS gives the socket the rig is plugged into, hub ports included. The rig is registered again, alone, after it moves to another socket. The scripts still drive only the FM-1 that carries the mark. Issue #698.
+- Proposed amendment to [D-123](releases.md#D-123) (decider: michael glaviano): "The install runs only when the rig is the one FM-1 connected" becomes: the install goes through `tools/fm1_install.py --rig`. That installer sees only the MIDI ports at the rig's USB location, and it installs only when the FM-1 there carries the rig's mark. Another FM-1 may stay connected, and nothing is sent to it. A rig left in update mode is finished by a person, with `--location`, never by a script. A rig registered without a location must still be the one FM-1 connected. Issue #698.
+- Proposed amendment to [D-140](releases.md#D-140) (decider: michael glaviano): the recorder takes the USB audio input at the rig's USB location, not the input named "Matryoshka". "A second FM-1 is connected" becomes: a second FM-1 is connected and the FM-1 at the rig's USB location does not carry the mark, or no location is kept. Issue #698.
+

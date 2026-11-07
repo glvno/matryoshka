@@ -79,6 +79,11 @@ export function followOctave(keys: Pick<NoteKeys, 'shift'>, panelOctave: () => n
 export const isFm1In = (port: Pick<MIDIPort, 'id' | 'name'>, linkedId?: string | null): boolean =>
   (!!linkedId && port.id === linkedId) || (/felucca|fm-?1|matryoshka/i.test(port.name ?? '') && !/ota-|felucca update/i.test(port.name ?? ''));
 
+/** an FM-1 other than the linked one (#698): with two on one computer (the owner's test rig beside their own), the one
+ *  the editor is not linked to plays nothing here and its Start / Stop moves nothing. Nothing linked: none is skipped */
+export const otherFm1 = (port: Pick<MIDIPort, 'id' | 'name'>, linkedId?: string | null): boolean =>
+  !!linkedId && port.id !== linkedId && isFm1In(port);
+
 /**
  * Asks for Web MIDI and plays from every input. Resolves to a switch (off: incoming messages are ignored and the notes
  * MIDI holds are released; the access itself stays until the page reloads), or null when MIDI could not be had.
