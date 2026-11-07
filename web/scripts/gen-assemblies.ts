@@ -854,11 +854,14 @@ asm('Oracle V', 'Voices', (b) => {
   const pwBSet = b.add('scale', 2.5, 1.75, { gain: 0, offset: 0.5 });
   const pwA = b.add('scale', 3.5, 2, { gain: 2, offset: -1 });
   const cmpA = b.add('math', 3.5, 2.5, { ka: 1, kb: 1, off: 0 });
-  const sawA = b.add('scale', 4, 2.5, { gain: 1, offset: 0 });   // A's SAW on / off
-  const pulseA = b.add('scale', 4, 2.75, { gain: 0, offset: 0 }); // A's PULSE on / off
+  // the wave switches, OFF / ON as on the panel (a Selector passing its in2 when ON)
+  const sawA = offOn(4, 2.5, 2);
+  const pulseA = offOn(4, 2.75, 1);
   const pwB = b.add('scale', 2.5, 2, { gain: 4, offset: -2 });
   const cmpB = b.add('math', 2.5, 2.5, { ka: 2, kb: 1, off: 0 });
-  const bWaves = b.add('mixer', 3, 3, { l1: 1, l2: 0, l3: 0, l4: 0 }); // B's saw, triangle, pulse
+  const sawB = offOn(3, 3, 2);
+  const triB = offOn(3, 3.25, 1);
+  const pulseB = offOn(3, 3.5, 1);
   const mix = b.add('mixer', 4, 0.5, { l1: 0.55, l2: 0.45, l3: 0, l4: 0 }); // the mixer: A, B, noise
   // Poly Mod
   const pmB = b.add('scale', 3, 1.5, { gain: 0, offset: 0 });
@@ -875,21 +878,22 @@ asm('Oracle V', 'Voices', (b) => {
   // oscillator B's keyboard switch, unison detune
   const kbd = offOn(2, 3.5, 2);
   const uniDetune = b.add('vca', 1.5, 3, { gain: 0 });
-  const voice = [gl, oscB, oscA, polyEnv, sync, fenv, flt, aenv, vca, pwA, cmpA, sawA, pulseA, pwB, cmpB, bWaves, mix, pmB, pbus,
+  const voice = [gl, oscB, oscA, polyEnv, sync, fenv, flt, aenv, vca, pwA, cmpA, sawA, pulseA, pwB, cmpB, sawB, triB, pulseB, mix, pmB, pbus,
     toFreqA, toPwA, toFilter, velF, velA, fVel, envAmt, aVel, kbd, uniDetune];
 
   // ---- once: the LFO's three waves, Wheel-Mod, aftertouch, the keys' switches
   const lfoTri = b.add('math', 0.5, 0, { ka: 2, kb: 0, off: 0 });  // |2 saw| (- 1 at the mixer)
   const lfoSq = b.add('math', 0.5, 0.5, { ka: 1, kb: 0, off: 0 }); // saw > 0: 0 / 1
   const lfoSqS = b.add('scale', 0.75, 0.5, { gain: 2, offset: -1 });   // to -1 / 1
-  const lfoMix = b.add('mixer', 1, 0.5, { l1: 0, l2: 1, l3: 0, l4: 0 }); // saw, triangle, square
+  const lfoSaw = offOn(1, 0.5, 1);
+  const lfoTriOn = offOn(1, 0.75, 2);
+  const lfoSqOn = offOn(1, 1, 1);
   const source = b.add('xfade', 1, 1, { mix: 0 });                   // source mix: LFO .. noise
   const initial = b.add('const', 0.5, 1, { value: 0 });               // LFO initial amount
   const wFreqB = b.add('scale', 0.5, 2, { gain: 0.24, offset: 0 });
   const wPwA = b.add('scale', 0.5, 2.5, { gain: 0, offset: 0 });
   const wPwB = b.add('scale', 0.5, 3, { gain: 0, offset: 0 });
   const wFilter = b.add('scale', 0.5, 3.5, { gain: 0, offset: 0 });
-  const atIn = b.add('scale', 6, 4, { gain: 1, offset: 0 });
   const atFilter = b.add('scale', 6.5, 4, { gain: 0, offset: 0 });
   const atLfo = b.add('scale', 6.5, 4.5, { gain: 0, offset: 0 });
   const loFreq = offOn(1, 3.5, 1, { v1: 0, v2: -7 });                  // B's LO FREQ: 7 octaves down
@@ -899,6 +903,12 @@ asm('Oracle V', 'Voices', (b) => {
   const tuneOct = b.add('scale', 0.5, 5.5, { gain: 1 / 12, offset: 0 }, { p1: 'offset', att: [1 / 8, 1] }); // (+ transpose on p1: offset's range is 8)
   const fltMod = b.add('scale', 0.5, 4, { gain: 1, offset: 0 });       // aftertouch and Wheel-Mod into the filter, once
 
+  // (the modules 1.11 added, laid out on the grid to the right of the first 17: the voice's, then those once)
+  {
+    const added = Array.from({ length: lfoTri - 18 + (tuneOct - lfoTri + 1) }, (_, k) => 18 + k);
+    const inVoice = added.filter((id) => voice.includes(id)), once = added.filter((id) => !voice.includes(id));
+    [inVoice, once].forEach((ids, g) => ids.forEach((id, k) => Object.assign(b.module(id), { x: (8 + 4 * g + (k % 4)) * GX, y: Math.floor(k / 4) * GY })));
+  }
   b.nest('voice', 1, 1, voice, {
     flaws: [{ detune: 3, drift: 20, bright: 1, env: 4, level: 100 }, { detune: -4, drift: 25, bright: -1, env: -5, level: 97 }, { detune: 1, drift: 15, bright: 0, env: 6, level: 100 }, { detune: -2, drift: 20, bright: 2, env: -3, level: 95 }, { detune: 5, drift: 30, bright: -2, env: 2, level: 98 }],
   });
@@ -920,20 +930,20 @@ asm('Oracle V', 'Voices', (b) => {
   b.wire(pwASet, 'out', pwA, 'in');
   b.wire(oscA, 'out', cmpA, 'a');
   b.wire(pwA, 'out', cmpA, 'b');
-  b.wire(oscA, 'out', sawA, 'in');
-  b.wire(cmpA, 'cmp', pulseA, 'in');
-  b.wire(minusHalf, 'out', pulseA, 'in');
+  b.wire(oscA, 'out', sawA, 'in2');
+  b.wire(cmpA, 'cmp', pulseA, 'in2');
+  b.wire(minusHalf, 'out', pulseA, 'in2');
   b.wire(pwBSet, 'out', pwB, 'in');
   b.wire(oscB, 'out', cmpB, 'a');
   b.wire(pwB, 'out', cmpB, 'b');
-  b.wire(oscB, 'out', bWaves, 'in1');
-  b.wire(cmpB, 'abs', bWaves, 'in2');
-  b.wire(minusOne, 'out', bWaves, 'in2');
-  b.wire(cmpB, 'cmp', bWaves, 'in3');
-  b.wire(minusHalf, 'out', bWaves, 'in3');
+  b.wire(oscB, 'out', sawB, 'in2');
+  b.wire(cmpB, 'abs', triB, 'in2');
+  b.wire(minusOne, 'out', triB, 'in2');
+  b.wire(cmpB, 'cmp', pulseB, 'in2');
+  b.wire(minusHalf, 'out', pulseB, 'in2');
   b.wire(sawA, 'out', mix, 'in1');
   b.wire(pulseA, 'out', mix, 'in1');
-  b.wire(bWaves, 'out', mix, 'in2');
+  for (const w of [sawB, triB, pulseB]) b.wire(w, 'out', mix, 'in2');
   b.wire(nz, 'out', mix, 'in3');
   b.wire(mix, 'out', flt, 'in');
   b.wire(oscB, 'out', sync, 'in');
@@ -951,7 +961,7 @@ asm('Oracle V', 'Voices', (b) => {
   b.wire(aVel, 'out', vca, 'cv');
   // Poly Mod
   b.wire(fenv, 'env', polyEnv, 'in');
-  b.wire(bWaves, 'out', pmB, 'in');
+  for (const w of [sawB, triB, pulseB]) b.wire(w, 'out', pmB, 'in');
   b.wire(polyEnv, 'out', pbus, 'in');
   b.wire(pmB, 'out', pbus, 'in');
   b.wire(pbus, 'out', toFreqA, 'in2');
@@ -963,18 +973,16 @@ asm('Oracle V', 'Voices', (b) => {
   // the LFO: saw, triangle (|2 saw| - 1) and square (2 (saw > 0) - 1), in phase
   b.wire(lfo, 'out', lfoTri, 'a');
   b.wire(lfo, 'out', lfoSq, 'a');
-  b.wire(lfo, 'out', lfoMix, 'in1');
-  b.wire(lfoTri, 'abs', lfoMix, 'in2');
-  b.wire(minusOne, 'out', lfoMix, 'in2');
+  b.wire(lfo, 'out', lfoSaw, 'in2');
+  b.wire(lfoTri, 'abs', lfoTriOn, 'in2');
+  b.wire(minusOne, 'out', lfoTriOn, 'in2');
   b.wire(lfoSq, 'cmp', lfoSqS, 'in');
-  b.wire(lfoSqS, 'out', lfoMix, 'in3');
+  b.wire(lfoSqS, 'out', lfoSqOn, 'in2');
   // Wheel-Mod: the source mix through the wheel (plus the initial amount and aftertouch), to its five destinations
-  b.wire(lfoMix, 'out', source, 'a');
+  for (const w of [lfoSaw, lfoTriOn, lfoSqOn]) b.wire(w, 'out', source, 'a');
   b.wire(nz, 'out', source, 'b');
   b.wire(source, 'out', wheel, 'in');
   b.wire(initial, 'out', wheel, 'cv');
-  b.wire(atIn, 'out', atFilter, 'in');
-  b.wire(atIn, 'out', atLfo, 'in');
   b.wire(atLfo, 'out', wheel, 'cv');
   b.wire(atFilter, 'out', fltMod, 'in');
   b.wire(fltMod, 'out', flt, 'cv');
@@ -989,11 +997,11 @@ asm('Oracle V', 'Voices', (b) => {
   b.wire(release, 'out', aenv, 'p2');
   b.wire(flt, 'lp24', fScope, 'a');
   b.wire(vca, 'out', aScope, 'a');
-  b.wire(lfoMix, 'out', mScope, 'a');
+  b.wire(source, 'out', mScope, 'a');
   b.wire(oscA, 'out', mScope, 'b');
   b.input('keys', part, 'keys');
   b.input('wheel', wheel, 'cv');
-  b.input('at', atIn, 'in');
+  b.input('at', atFilter, 'in', [atLfo, 'in']);
   b.nestInput('pitch', gl, 'in');
   b.nestInput('gate', fenv, 'gate', [aenv, 'gate']);
   b.nestInput('noise', mix, 'in3');
@@ -1004,7 +1012,7 @@ asm('Oracle V', 'Voices', (b) => {
   b.nestInput('filter', flt, 'cv');
   b.nestInput('release', fenv, 'p2', [aenv, 'p2']);
   b.nestInput('lo freq', oscB, 'pitch');
-  b.nestInput('tri offset', bWaves, 'in2');
+  b.nestInput('tri offset', triB, 'in2');
   b.output('out', vca, 'out');
   b.nestOutput('filter', flt, 'lp24');
   b.nestOutput('osc A', oscA, 'out');
@@ -1019,15 +1027,15 @@ asm('Oracle V', 'Voices', (b) => {
   b.param('transpose', transpose, 'pos');
   b.param('tune', tune, 'value');
   b.param('release', release, 'pos');
-  b.param('saw', sawA, 'gain', { head: 'osc A', inner: 'A saw' });
-  b.param('pulse', pulseA, 'gain', { inner: 'A pulse' });
+  b.param('saw', sawA, 'pos', { col: true, head: 'osc A', inner: 'A saw' });
+  b.param('pulse', pulseA, 'pos', { inner: 'A pulse' });
   b.param('pw', pwASet, 'offset', { inner: 'A pw' });
   b.param('sync', sync, 'gain');
   b.param('freq', oscB, 'coarse', { head: 'osc B', inner: 'B freq' });
   b.param('fine', oscB, 'fine', { inner: 'B fine' });
-  b.param('saw', bWaves, 'l1', { inner: 'B saw' });
-  b.param('tri', bWaves, 'l2', { inner: 'B tri' });
-  b.param('pulse', bWaves, 'l3', { inner: 'B pulse' });
+  b.param('saw', sawB, 'pos', { inner: 'B saw' });
+  b.param('tri', triB, 'pos', { inner: 'B tri' });
+  b.param('pulse', pulseB, 'pos', { inner: 'B pulse' });
   b.param('pw', pwBSet, 'offset', { inner: 'B pw' });
   b.param('lo freq', loFreq, 'pos');
   b.param('keyboard', kbd, 'pos', { inner: 'B kbd' });
@@ -1045,7 +1053,7 @@ asm('Oracle V', 'Voices', (b) => {
   b.param('filter', fScope, 'view');
   b.param('amp env', aenv, 'view', { col: true, head: 'amp' });
   for (const q of ['a', 'd', 's', 'r']) b.param(q, aenv, q, { inner: `amp ${q}` });
-  b.param('vel filter', velF, 'pos', { head: 'velocity · aftertouch' });
+  b.param('vel filter', velF, 'pos', { col: true, head: 'velocity · aftertouch' });
   b.param('vel amp', velA, 'pos');
   b.param('at filter', atFilter, 'gain');
   b.param('at lfo', atLfo, 'gain');
@@ -1055,9 +1063,9 @@ asm('Oracle V', 'Voices', (b) => {
   b.param('pw A', toPwA, 'pos', { inner: 'pmod pw A' });
   b.param('filter', toFilter, 'pos', { inner: 'pmod filter' });
   b.param('lfo rate', lfo, 'rate', { head: 'lfo' });
-  b.param('saw', lfoMix, 'l1', { inner: 'lfo saw' });
-  b.param('tri', lfoMix, 'l2', { inner: 'lfo tri' });
-  b.param('square', lfoMix, 'l3', { inner: 'lfo square' });
+  b.param('saw', lfoSaw, 'pos', { inner: 'lfo saw' });
+  b.param('tri', lfoTriOn, 'pos', { inner: 'lfo tri' });
+  b.param('square', lfoSqOn, 'pos', { inner: 'lfo square' });
   b.param('lfo / osc A', mScope, 'view');
   b.param('source mix', source, 'mix', { head: 'wheel mod' });
   b.param('lfo amount', initial, 'value');

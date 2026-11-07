@@ -15,7 +15,7 @@ export type HandMap =
   | { engine: string; from: string; to: string; none: string };
 
 /** Oracle V's structure in 1.11 (#658) */
-const ORACLE_1_11 = '0cedd923';
+const ORACLE_1_11 = '6282b61f';
 
 /** the positions 1..8 of an eight-way Selector from a number 0..7 */
 const ONE_UP = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -86,21 +86,22 @@ export const HAND_MAPS: HandMap[] = [
       ...Object.fromEntries(['alloc#5.voices', 'alloc#5.unison', 'glide#6.time', 'ladder#12.cutoff', 'ladder#12.res', 'ladder#12.track', 'lfo#1.rate',
         'osc#7.coarse', 'osc#7.fine', 'scale#10.gain', 'scale#9.gain', 'scale#3.gain', 'vca#14.gain', 'scope#15.view', 'scope#16.view', 'scope#17.view']
         .map((r) => [r, { from: r }])),
-      'mixer#29.l1': { from: 'osc#8.level' },
-      'mixer#29.l2': { from: 'osc#7.level' },
-      'mixer#29.l3': { from: 'noise#4.level' },
+      'mixer#31.l1': { from: 'osc#8.level' },
+      'mixer#31.l2': { from: 'osc#7.level' },
+      'mixer#31.l3': { from: 'noise#4.level' },
       'scale#20.offset': { from: 'osc#8.pw' },
-      'scale#38.gain': { from: 'ladder#12.cvamt' },
-      'scale#48.gain': { from: 'scale#3.gain' },
-      // waves (osc: sine, triangle, saw, square, sharktooth, reverse saw; LFO: sine, triangle, saw, square, S&H, random)
-      'scale#24.gain': { table: ['osc#8.wave'], lo: [0], n: [6], v: [1, 1, 1, 0, 1, 1] },
-      'scale#25.gain': { table: ['osc#8.wave'], lo: [0], n: [6], v: [0, 0, 0, 1, 0, 0] },
-      'mixer#28.l1': { table: ['osc#7.wave'], lo: [0], n: [6], v: [0, 0, 1, 0, 1, 1] },
-      'mixer#28.l2': { table: ['osc#7.wave'], lo: [0], n: [6], v: [1, 1, 0, 0, 0, 0] },
-      'mixer#28.l3': { table: ['osc#7.wave'], lo: [0], n: [6], v: [0, 0, 0, 1, 0, 0] },
-      'mixer#45.l1': { table: ['lfo#1.wave'], lo: [0], n: [6], v: [0, 0, 1, 0, 0, 0] },
-      'mixer#45.l2': { table: ['lfo#1.wave'], lo: [0], n: [6], v: [1, 1, 0, 0, 1, 1] },
-      'mixer#45.l3': { table: ['lfo#1.wave'], lo: [0], n: [6], v: [0, 0, 0, 1, 0, 0] },
+      'scale#40.gain': { from: 'ladder#12.cvamt' },
+      'scale#52.gain': { from: 'scale#3.gain' },
+      // the wave switches (1 OFF, 2 ON) from the waves (osc: sine, triangle, saw, square, sharktooth, reverse saw; LFO: sine,
+      // triangle, saw, square, S&H, random)
+      'select#24.pos': { table: ['osc#8.wave'], lo: [0], n: [6], v: [2, 2, 2, 1, 2, 2] },
+      'select#25.pos': { table: ['osc#8.wave'], lo: [0], n: [6], v: [1, 1, 1, 2, 1, 1] },
+      'select#28.pos': { table: ['osc#7.wave'], lo: [0], n: [6], v: [1, 1, 2, 1, 2, 2] },
+      'select#29.pos': { table: ['osc#7.wave'], lo: [0], n: [6], v: [2, 2, 1, 1, 1, 1] },
+      'select#30.pos': { table: ['osc#7.wave'], lo: [0], n: [6], v: [1, 1, 1, 2, 1, 1] },
+      'select#47.pos': { table: ['lfo#1.wave'], lo: [0], n: [6], v: [1, 1, 2, 1, 1, 1] },
+      'select#48.pos': { table: ['lfo#1.wave'], lo: [0], n: [6], v: [2, 2, 1, 1, 2, 2] },
+      'select#49.pos': { table: ['lfo#1.wave'], lo: [0], n: [6], v: [1, 1, 1, 2, 1, 1] },
     },
   },
 ];

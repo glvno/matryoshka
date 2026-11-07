@@ -16,16 +16,16 @@
 #   tune = 0                           -4..4
 #   release = ON                       OFF, ON
 # osc A
-#   osc A / saw = 1                    -4..4
-#   osc A / pulse = 0                  -4..4
+#   osc A / saw = ON                   OFF, ON
+#   osc A / pulse = OFF                OFF, ON
 #   osc A / pw = 0.5                   -4..4
 #   sync = 0                           -4..4
 # osc B
 #   freq = 0 st                        -48..48 st
 #   fine = 7 ct                        -100..100 ct
-#   osc B / saw = 1                    0..1
-#   osc B / tri = 0                    0..1
-#   osc B / pulse = 0                  0..1
+#   osc B / saw = ON                   OFF, ON
+#   osc B / tri = OFF                  OFF, ON
+#   osc B / pulse = OFF                OFF, ON
 #   osc B / pw = 0.5                   -4..4
 #   lo freq = OFF                      OFF, ON
 #   keyboard = ON                      OFF, ON
@@ -65,9 +65,9 @@
 #   poly mod / filter = OFF            OFF, ON
 # lfo
 #   lfo rate = 5 Hz                    0.02..40 Hz
-#   lfo / saw = 0                      0..1
-#   lfo / tri = 1                      0..1
-#   square = 0                         0..1
+#   lfo / saw = OFF                    OFF, ON
+#   lfo / tri = ON                     OFF, ON
+#   square = OFF                       OFF, ON
 #   lfo / osc A: a screen, not a value
 # wheel mod
 #   source mix = 0                     0..1
@@ -102,7 +102,7 @@ preset: Sync Lead
   filt env = 2.5
   wheel mod / freq A = 0.1
   freq B = 0.1
-  volume = 0.6
+  volume = 0.7
 
 # Two detuned saws, a slow filter attack: the brass swell.
 preset: Poly Brass
@@ -123,7 +123,7 @@ preset: Poly Brass
   amp / r = 0.35 s
   wheel mod / freq A = 0.08
   freq B = 0.08
-  volume = 0.47
+  volume = 0.48
 
 # Slow saws with light vibrato and long envelopes.
 preset: Vintage Strings
@@ -152,8 +152,8 @@ preset: Vintage Strings
 preset: Poly-Mod Bell
   # five voices since 1.11: osc B now moves osc A's frequency, as the Prophet-5's Poly Mod does, where it went into osc A's
   # phase (three voices then: four overloaded the test rig, docs/measurements/2026-10-30-rig-oracle-v-presets.json)
-  osc B / saw = 0
-  osc B / tri = 1
+  osc B / saw = OFF
+  osc B / tri = ON
   freq = 19 st
   fine = 4 ct
   A level = 0.7
@@ -173,14 +173,14 @@ preset: Poly-Mod Bell
   osc B = 1.5
   wheel mod / freq A = 0
   freq B = 0
-  volume = 0.96
+  volume = 0.74
 
 # All five voices in unison: a pulse and a saw an octave down through a snappy low filter.
 preset: Unison Bass
   unison = on
   glide = 0.04 s
-  osc A / saw = 0
-  osc A / pulse = 1
+  osc A / saw = OFF
+  osc A / pulse = ON
   osc A / pw = 0.3
   freq = -12 st
   fine = 6 ct
@@ -200,4 +200,4 @@ preset: Unison Bass
   amp / r = 0.2 s
   wheel mod / freq A = 0
   freq B = 0
-  volume = 0.38
+  volume = 0.48
