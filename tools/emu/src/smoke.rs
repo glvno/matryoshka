@@ -20,7 +20,8 @@
 //!    start); HOME + SAVE turns the quick start off for good (the next power-on has none); the menu's GUIDE tab (D-248)
 //!    and ENV from it (the environment, HOME back to the tab, D-249); OCT- +
 //!    OCT+ held at power-on and MENU > SYSTEM > UPDATE MODE (K1, then GLO held) = update mode (no engine)
-//!    then the bank's power-loss rules and the first boot's factory bank; an update that changed a factory patch but not
+//!    then the bank's power-loss rules and the first boot's factory bank (also on a UC25HQ80 flash chip; an unknown chip is
+//!    left alone, #739); an update that changed a factory patch but not
 //!    the format (#441): the untouched slot gets today's patch, an edited one and today's stay, once; a factory patch
 //!    new since the bank's factory set goes into its own slot, else the first empty one, said once (#630)
 //! 9. the patch buttons (held / switched) and the SEQ page on the 808 Kit: a step, a track, PLAY, a mute, REC
@@ -387,6 +388,38 @@ fn store(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8
     let last = presets.len() - 1;
     m.midi(&[0xC0, last as u8], 500)?;
     t.screen(&m, "store: the last factory slot", &presets[last].0);
+    *emulated += m.ms();
+    flash_chips(app, t, emulated, presets)
+}
+
+/// The flash chips (#739): a UC25HQ80 (JEDEC B3 60 14) stores as the Puya does (the first boot writes the factory bank, a
+/// restart reads it back); an unknown chip is left alone (NO FLASH ID, nothing written).
+fn flash_chips(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
+    let mut m = Machine::boot_jedec(app, None, Some(0xB3_6014));
+    quick_start(&mut m, 9000)?;
+    let written = wait_text(&mut m, "FACTORY BANK WRITTEN", 1000)?;
+    t.check("flash chips: a UC25HQ80 takes the first boot's factory bank (#739)", written, String::new());
+    t.check("flash chips: a UC25HQ80 is a known chip", !font::on_screen(m.lcd(), "NO FLASH ID"), String::new());
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    m.run_for(500)?;
+    let f = m.flash();
+    t.check("flash chips: the UC25HQ80's bank holds factory slot 0", bank_record(&f, 0).map(|r| r.1) == Some(presets[0].1.clone()), String::new());
+    *emulated += m.ms();
+    let mut m = Machine::boot_jedec(app, Some(&f), Some(0xB3_6014));
+    quick_start(&mut m, 9000)?;
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    m.run_for(500)?;
+    t.check("flash chips: a UC25HQ80 reads its bank back after a restart", !font::on_screen(m.lcd(), "FACTORY BANK WRITTEN"), String::new());
+    let last = presets.len() - 1;
+    m.midi(&[0xC0, last as u8], 500)?;
+    t.screen(&m, "flash chips: the UC25HQ80's last factory slot", &presets[last].0);
+    *emulated += m.ms();
+
+    let mut m = Machine::boot_jedec(app, None, Some(0xEF_4014));   // a Winbond W25Q80: not a known chip
+    let shown = wait_text(&mut m, "NO FLASH ID", 15000)?;
+    t.check("flash chips: an unknown chip says NO FLASH ID (#72)", shown, String::new());
+    m.run_for(500)?;
+    t.check("flash chips: nothing written to an unknown chip", m.flash().iter().all(|&b| b == 0xff), String::new());
     *emulated += m.ms();
     Ok(())
 }
