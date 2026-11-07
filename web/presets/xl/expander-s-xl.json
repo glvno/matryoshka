@@ -3544,7 +3544,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 1
    },
    "att": [
     1,
@@ -3581,7 +3582,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 1
    },
    "att": [
     1,
@@ -4340,8 +4342,7 @@
     "cvamt": 2,
     "track": 0,
     "morph": 0,
-    "osc": 0,
-    "drive": 1
+    "osc": 0
    },
    "att": [
     1,
@@ -4833,7 +4834,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 1
    },
    "att": [
     1,
@@ -4870,7 +4872,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 1
    },
    "att": [
     1,
@@ -5629,8 +5632,7 @@
     "cvamt": 2,
     "track": 0,
     "morph": 0,
-    "osc": 0,
-    "drive": 1
+    "osc": 0
    },
    "att": [
     1,
@@ -6122,7 +6124,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 1
    },
    "att": [
     1,
@@ -6159,7 +6162,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 1
    },
    "att": [
     1,
@@ -6918,8 +6922,7 @@
     "cvamt": 2,
     "track": 0,
     "morph": 0,
-    "osc": 0,
-    "drive": 1
+    "osc": 0
    },
    "att": [
     1,
@@ -7411,7 +7414,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 1
    },
    "att": [
     1,
@@ -7448,7 +7452,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 1
    },
    "att": [
     1,
@@ -8207,8 +8212,7 @@
     "cvamt": 2,
     "track": 0,
     "morph": 0,
-    "osc": 0,
-    "drive": 1
+    "osc": 0
    },
    "att": [
     1,
@@ -8700,7 +8704,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 1
    },
    "att": [
     1,
@@ -8737,7 +8742,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 1
    },
    "att": [
     1,
@@ -9496,8 +9502,7 @@
     "cvamt": 2,
     "track": 0,
     "morph": 0,
-    "osc": 0,
-    "drive": 1
+    "osc": 0
    },
    "att": [
     1,
@@ -9989,7 +9994,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 1
    },
    "att": [
     1,
@@ -10026,7 +10032,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 1
    },
    "att": [
     1,
@@ -10785,8 +10792,7 @@
     "cvamt": 2,
     "track": 0,
     "morph": 0,
-    "osc": 0,
-    "drive": 1
+    "osc": 0
    },
    "att": [
     1,
@@ -11278,7 +11284,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 1
    },
    "att": [
     1,
@@ -11315,7 +11322,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 1
    },
    "att": [
     1,
@@ -12074,8 +12082,7 @@
     "cvamt": 2,
     "track": 0,
     "morph": 0,
-    "osc": 0,
-    "drive": 1
+    "osc": 0
    },
    "att": [
     1,
@@ -12567,7 +12574,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 1
    },
    "att": [
     1,
@@ -12604,7 +12612,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 1
    },
    "att": [
     1,
@@ -13363,8 +13372,7 @@
     "cvamt": 2,
     "track": 0,
     "morph": 0,
-    "osc": 0,
-    "drive": 1
+    "osc": 0
    },
    "att": [
     1,

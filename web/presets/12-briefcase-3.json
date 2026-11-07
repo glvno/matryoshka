@@ -61,7 +61,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 0
    },
    "att": [
     1,
@@ -98,7 +99,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 1
    },
    "att": [
     1,
@@ -135,7 +137,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 1
    },
    "att": [
     1,
@@ -172,7 +175,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 0
    },
    "att": [
     1,
@@ -209,7 +213,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 0
    },
    "att": [
     1,
@@ -246,7 +251,8 @@
     "blend": 0.5,
     "stack": 0,
     "pm2": 0,
-    "pm3": 0
+    "pm3": 0,
+    "analog": 0
    },
    "att": [
     1,
@@ -428,9 +434,7 @@
     "res": 0.55,
     "drive": 1,
     "cvamt": 4,
-    "track": 0,
-    "diode": 1,
-    "stsat": 0
+    "track": 0
    },
    "att": [
     1,
@@ -751,8 +755,7 @@
     "cvamt": 1,
     "track": 0,
     "morph": 0.15,
-    "osc": 0,
-    "drive": 0
+    "osc": 0
    },
    "att": [
     1,
@@ -831,8 +834,7 @@
     "cvamt": 1,
     "track": 0,
     "morph": 0.15,
-    "osc": 0,
-    "drive": 0
+    "osc": 0
    },
    "att": [
     1,

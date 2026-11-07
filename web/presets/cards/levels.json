@@ -13,7 +13,7 @@
   "reverb / level": 0.67
  },
  "Canvas": {
-  "output / chan a": 1.76,
+  "output / chan a": 1.81,
   "output / chan b": 0
  },
  "Cassia 1": {
@@ -32,7 +32,7 @@
   "output / level": 0.41
  },
  "Hera 6": {
-  "env / vca": 1.01
+  "env / vca": 1
  },
  "Io 4": {
   "vca / level": 0.56
@@ -44,7 +44,7 @@
   "level": 1.19
  },
  "Monolith D": {
-  "output / volume": 0.47
+  "output / volume": 0.44
  },
  "Oracle V": {
   "mixer / volume": 0.6
@@ -76,7 +76,7 @@
   "master / master": 0.61
  },
  "Wanderer": {
-  "filters · vca / vca level": 0.94,
+  "filters · vca / vca level": 0.96,
   "filters · vca / gain": 0
  }
 }

@@ -3,7 +3,7 @@
 // patches as binary), firmware/src/controls.h and the README's list of controls (the FM-1's controls, src/controls.ts).
 // Run from web/:  npx vite-node scripts/export-defs.ts
 import { readFileSync, writeFileSync } from 'node:fs';
-import { ADSR_LONG, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, FILTER_DRIVE_KNEE, FILTER_DRIVE_TOP, DIODE_W180, DIODE_KCRIT, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_LENGTH_MAX, DELAY_REACH_MAX, DELAY_RATES, DELAY_TAIL, delayAaCoefs, DEVICE_SR, DELAY_TAPE_LP, DELAY_TAPE_HP, delayTapePole, DELAY_WOW_HZ, DELAY_FLUTTER_HZ, DELAY_WOW_MS, DELAY_FLUTTER_MS, turnInc, delayDepth8, DELAY_HEADS, DELAY_HEAD_MASK, DELAY_HEAD_GAIN, DELAY_LENGTH_MIN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY, ONCE_BAR, CLICK_MS, CLICK_LEVEL_Q16, CLICK_HZ, CLICK_ACCENT_HZ } from '../src/modules';
+import { ADSR_LONG, ANALOG_CURVE, ANALOG_DIP, ANALOG_DIP_S, ANALOG_PWO, ANALOG_SKEW, ANALOG_TOL, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, FILTER_DRIVE_KNEE, FILTER_DRIVE_TOP, DIODE_W180, DIODE_KCRIT, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_LENGTH_MAX, DELAY_REACH_MAX, DELAY_RATES, DELAY_TAIL, delayAaCoefs, DEVICE_SR, DELAY_TAPE_LP, DELAY_TAPE_HP, delayTapePole, DELAY_WOW_HZ, DELAY_FLUTTER_HZ, DELAY_WOW_MS, DELAY_FLUTTER_MS, turnInc, delayDepth8, DELAY_HEADS, DELAY_HEAD_MASK, DELAY_HEAD_GAIN, DELAY_LENGTH_MIN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY, ONCE_BAR, CLICK_MS, CLICK_LEVEL_Q16, CLICK_HZ, CLICK_ACCENT_HZ } from '../src/modules';
 import { encodePatch, TYPE_ORDER, toQ16, VERSION } from '../src/patchbin';
 import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK_NAME_MAX } from '../src/patch';
 import { ACCENT_VEL, TRACK_NOTES_MAX } from '../src/track';
@@ -97,6 +97,16 @@ w(`#define FILTER_DRIVE_KNEE_Q20 ${FILTER_DRIVE_KNEE * (1 << 20)}   /* the Multi
 w(`#define FILTER_DRIVE_TOP_Q20 ${FILTER_DRIVE_TOP * (1 << 20)}   /* the clip's level drive r |bp| is held to this */`);
 w(`#define DIODE_IW180_Q24 ${Math.round((1 << 24) / DIODE_W180)}   /* the Ladder's diode mode (#671): 1 / the loop's -180 degree frequency */`);
 w(`#define DIODE_KCRIT_Q24 ${Math.round(DIODE_KCRIT * (1 << 24))}   /* the loop gain that self-oscillates there (res 1) */`);
+w(`/* the Oscillator's analog shape (#673, modules.ts analogShape) at analog 1, Q16: the saw's curve, the reset's dip, the
+ * tolerance of each, the triangle's peak offset, the pulse width offset; the dip's length in samples at DEVICE_SR (Q16) */`);
+w(`#define ANALOG_CURVE_Q16 ${Math.round(ANALOG_CURVE * 65536)}`);
+w(`#define ANALOG_DIP_Q16 ${Math.round(ANALOG_DIP * 65536)}`);
+w(`#define ANALOG_TOL_Q16 ${Math.round(ANALOG_TOL * 65536)}`);
+w(`#define ANALOG_SKEW_Q16 ${Math.round(ANALOG_SKEW * 65536)}`);
+w(`#define ANALOG_PWO_Q16 ${Math.round(ANALOG_PWO * 65536)}`);
+w(`#define ANALOG_DIP_SAMPLES_Q16 ${Math.round(ANALOG_DIP_S * DEVICE_SR * 65536)}`);
+w(`/* the saw's curve: (1 - e^-x) / x at x = i / 256 (0 .. 0.5), Q30 (engine.c ana_saw) */`);
+w(`static const int32_t ANALOG_SAWC_T[129] = {${Array.from({ length: 129 }, (_, i) => { const x = i / 256; return Math.round((x ? -Math.expm1(-x) / x : 1) * 2 ** 30); }).join(', ')}};`);
 w(`#define RANGE_T_MAX ${RANGE_T_MAX}   /* the Range module (#526): t within +-this input ranges with clamp off */`);
 w(`#define SHREG_STAGES ${SHREG_STAGES}   /* the Shift register's stages (#438) */`);
 w(`#define SHREG_PAT_SEED 0x${SHREG_PAT_SEED.toString(16)}u   /* mixed with the instance seed: its starting pattern */`);

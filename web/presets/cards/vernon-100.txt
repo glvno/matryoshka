@@ -139,7 +139,7 @@ preset: Stepped Pulse
   envelope 2 / attack = 0.005 s
   envelope 2 / decay = 0.73
   envelope 2 / sustain = 0.7
-  amp shaper = 0.66
+  amp shaper = 0.61
   osc 3/ext = 0
 
 # Oscillator 1 at audio rate, tracking the keys, into oscillators 2 and 3 through the mixer: clangorous FM, struck.

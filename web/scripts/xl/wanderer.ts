@@ -56,8 +56,8 @@ const built = define('Wanderer XL', (b) => {
   const fm1 = b.add('math', 2, 3, { ka: 0, kb: 0, off: 0 });
   const pws1 = b.add('select', 2, 4, { count: 2, pos: 1 });
   const pwm1 = b.add('scale', 2, 5, { gain: 0, offset: 0 });
-  const o1s = b.add('osc', 3, 0, { wave: 2, level: 1 });
-  const o1p = b.add('osc', 3, 1, { wave: 3, level: 1, pw: 0.5 });
+  const o1s = b.add('osc', 3, 0, { wave: 2, level: 1, analog: 1 });
+  const o1p = b.add('osc', 3, 1, { wave: 3, level: 1, pw: 0.5, analog: 1 });
   b.pin(o1p, 'p1', 'pw');
   // ---- VCO 2
   const fine2 = b.add('select', 4, 0, { count: 2, pos: 1, v1: 0.0033 });
@@ -67,8 +67,8 @@ const built = define('Wanderer XL', (b) => {
   const pws2 = b.add('select', 4, 4, { count: 2, pos: 1 });
   const pwm2 = b.add('scale', 4, 5, { gain: 0, offset: 0 });
   const sync = b.add('select', 3, 2, { count: 2, pos: 1 });
-  const o2s = b.add('osc', 5, 0, { wave: 2, level: 1 });
-  const o2p = b.add('osc', 5, 1, { wave: 3, level: 1, pw: 0.35 });
+  const o2s = b.add('osc', 5, 0, { wave: 2, level: 1, analog: 1 });
+  const o2p = b.add('osc', 5, 1, { wave: 3, level: 1, pw: 0.35, analog: 1 });
   b.pin(o2p, 'p1', 'pw');
   // ---- noise (WHITE / PINK: a Selector's value into its color) and the sample and hold
   const nz = b.add('noise', 3, 3, { level: 1, color: 0 });

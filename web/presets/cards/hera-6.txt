@@ -49,7 +49,7 @@ preset: Brass
   d = 0.5 s
   s = 0.55
   r = 0.25 s
-  vca = 0.93
+  vca = 0.91
   chorus mix = 0.35
 
 preset: Strings
@@ -65,7 +65,7 @@ preset: Strings
   d = 1 s
   s = 0.8
   r = 1.4 s
-  vca = 0.59
+  vca = 0.56
   chorus depth = 0.7
   chorus mix = 0.6
 
@@ -80,7 +80,7 @@ preset: Bass
   d = 0.3 s
   s = 0.15
   r = 0.15 s
-  vca = 0.65
+  vca = 0.59
   chorus mix = 0
 
 preset: Organ
@@ -94,7 +94,7 @@ preset: Organ
   d = 0.1 s
   s = 1
   r = 0.05 s
-  vca = 0.38
+  vca = 0.3
   chorus rate = 5 Hz
   chorus depth = 0.3
 
@@ -117,4 +117,4 @@ preset: Glass Pad
   r = 3 s
   chorus depth = 0.9
   chorus mix = 0.7
-  vca = 1.42
+  vca = 1.44

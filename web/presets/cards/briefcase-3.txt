@@ -94,7 +94,7 @@ preset: Ring Mod Clang
   on = 0.05 s
   decay = 2 s
   mix = 0.45
-  reverb / level = 0.46
+  reverb / level = 0.48
 
 # The filter past self-oscillation, pinged by a noise burst and tracking the keys: a resonant ping.
 preset: Resonant Ping
@@ -146,4 +146,4 @@ preset: Buzz Lead
   on = 0.3 s
   decay = 0.8 s
   mix = 0.2
-  reverb / level = 0.45
+  reverb / level = 0.46
