@@ -122,6 +122,24 @@
    "version": 46
   },
   {
+   "name": "<7PH",
+   "len": 3828,
+   "fnv": "b9dc004e",
+   "version": 46
+  },
+  {
+   "name": "<7PH",
+   "len": 3639,
+   "fnv": "cb833d15",
+   "version": 51
+  },
+  {
+   "name": "<7PH",
+   "len": 3615,
+   "fnv": "e7f013cd",
+   "version": 51
+  },
+  {
    "name": "303 ACID",
    "len": 140,
    "fnv": "1d419c2d",
@@ -399,6 +417,12 @@
   },
   {
    "name": "8 LIRE",
+   "len": 3372,
+   "fnv": "abc67def",
+   "version": 46
+  },
+  {
+   "name": "8 LIRE",
    "len": 3304,
    "fnv": "dd27cf81",
    "version": 46
@@ -629,6 +653,12 @@
    "name": "808 KIT",
    "len": 3230,
    "fnv": "54ee0fa7",
+   "version": 46
+  },
+  {
+   "name": "808 KIT",
+   "len": 3230,
+   "fnv": "9544cd48",
    "version": 46
   },
   {
@@ -872,6 +902,12 @@
    "version": 46
   },
   {
+   "name": "909 KIT",
+   "len": 2963,
+   "fnv": "a96dfb0c",
+   "version": 46
+  },
+  {
    "name": "ALGO FOUR",
    "len": 772,
    "fnv": "bdf8c0cb",
@@ -1065,9 +1101,27 @@
   },
   {
    "name": "ALGO FOUR",
+   "len": 1992,
+   "fnv": "0184964b",
+   "version": 51
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 1250,
+   "fnv": "739803b2",
+   "version": 51
+  },
+  {
+   "name": "ALGO FOUR",
    "len": 1575,
    "fnv": "fa91a6e2",
    "version": 51
+  },
+  {
+   "name": "BASIC POLY",
+   "len": 631,
+   "fnv": "039dfc60",
+   "version": 46
   },
   {
    "name": "BASIC POLY",
@@ -1412,6 +1466,18 @@
    "version": 46
   },
   {
+   "name": "BRIEFCASE 3",
+   "len": 3755,
+   "fnv": "c59738a8",
+   "version": 51
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 3811,
+   "fnv": "fc581f29",
+   "version": 51
+  },
+  {
    "name": "BRIGHT SAW",
    "len": 354,
    "fnv": "353751d2",
@@ -1612,8 +1678,26 @@
   {
    "name": "CANVAS",
    "len": 3779,
+   "fnv": "a0fea18b",
+   "version": 46
+  },
+  {
+   "name": "CANVAS",
+   "len": 3779,
    "fnv": "e3df32b0",
    "version": 46
+  },
+  {
+   "name": "CANVAS",
+   "len": 3252,
+   "fnv": "335e7a3f",
+   "version": 51
+  },
+  {
+   "name": "CANVAS",
+   "len": 3188,
+   "fnv": "45cc21c9",
+   "version": 51
   },
   {
    "name": "CASSIA 1",
@@ -1737,9 +1821,27 @@
   },
   {
    "name": "CASSIA 1",
+   "len": 3828,
+   "fnv": "df81612d",
+   "version": 46
+  },
+  {
+   "name": "CASSIA 1",
    "len": 3741,
    "fnv": "f4dc056d",
    "version": 46
+  },
+  {
+   "name": "CASSIA 1",
+   "len": 3722,
+   "fnv": "2a55e408",
+   "version": 51
+  },
+  {
+   "name": "CASSIA 1",
+   "len": 2669,
+   "fnv": "e365d87f",
+   "version": 51
   },
   {
    "name": "CLAV",
@@ -1751,6 +1853,12 @@
    "name": "DRIFT POLY",
    "len": 839,
    "fnv": "9d236e13",
+   "version": 46
+  },
+  {
+   "name": "DRIFT POLY",
+   "len": 864,
+   "fnv": "c810acb7",
    "version": 46
   },
   {
@@ -2386,6 +2494,12 @@
   {
    "name": "ELVIRA 2",
    "len": 2267,
+   "fnv": "d7913f54",
+   "version": 46
+  },
+  {
+   "name": "ELVIRA 2",
+   "len": 2267,
    "fnv": "e7fec460",
    "version": 46
   },
@@ -2586,6 +2700,24 @@
    "len": 1259,
    "fnv": "a1314948",
    "version": 46
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1280,
+   "fnv": "d4b4656b",
+   "version": 46
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1205,
+   "fnv": "74bae75f",
+   "version": 51
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1249,
+   "fnv": "b60bb13c",
+   "version": 51
   },
   {
    "name": "FAT MONO",
@@ -3309,6 +3441,18 @@
   },
   {
    "name": "HERA 6",
+   "len": 913,
+   "fnv": "0e4c1340",
+   "version": 51
+  },
+  {
+   "name": "HERA 6",
+   "len": 1281,
+   "fnv": "5405a284",
+   "version": 51
+  },
+  {
+   "name": "HERA 6",
    "len": 1273,
    "fnv": "6a28fb3c",
    "version": 51
@@ -3626,6 +3770,12 @@
    "version": 46
   },
   {
+   "name": "INIT",
+   "len": 542,
+   "fnv": "ce542ab2",
+   "version": 46
+  },
+  {
    "name": "IO 4",
    "len": 546,
    "fnv": "2660bff9",
@@ -3837,8 +3987,26 @@
   },
   {
    "name": "IO 4",
+   "len": 3324,
+   "fnv": "74cc0b9f",
+   "version": 51
+  },
+  {
+   "name": "IO 4",
    "len": 3292,
    "fnv": "8f12b041",
+   "version": 51
+  },
+  {
+   "name": "IO 4",
+   "len": 3304,
+   "fnv": "a236629f",
+   "version": 51
+  },
+  {
+   "name": "IO 4",
+   "len": 2182,
+   "fnv": "eb623bbb",
    "version": 51
   },
   {
@@ -4198,6 +4366,12 @@
   {
    "name": "MERIDIAN 8",
    "len": 3026,
+   "fnv": "4dc21754",
+   "version": 46
+  },
+  {
+   "name": "MERIDIAN 8",
+   "len": 3026,
    "fnv": "4f21c757",
    "version": 46
   },
@@ -4326,6 +4500,12 @@
    "len": 436,
    "fnv": "2f244845",
    "version": 8
+  },
+  {
+   "name": "MONO LEAD",
+   "len": 690,
+   "fnv": "76308c9d",
+   "version": 46
   },
   {
    "name": "MONO LEAD",
@@ -4540,6 +4720,12 @@
   {
    "name": "MONOLITH D",
    "len": 3105,
+   "fnv": "4151609e",
+   "version": 46
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 3105,
    "fnv": "a7635b99",
    "version": 46
   },
@@ -4548,6 +4734,18 @@
    "len": 3094,
    "fnv": "ea483565",
    "version": 46
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 2834,
+   "fnv": "1f2cee84",
+   "version": 51
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 2754,
+   "fnv": "72d0c53c",
+   "version": 51
   },
   {
    "name": "NES ARP LEAD",
@@ -4898,6 +5096,30 @@
    "version": 46
   },
   {
+   "name": "ORACLE V",
+   "len": 1318,
+   "fnv": "e2ca20d0",
+   "version": 46
+  },
+  {
+   "name": "ORACLE V",
+   "len": 1292,
+   "fnv": "40eae73b",
+   "version": 51
+  },
+  {
+   "name": "ORACLE V",
+   "len": 3517,
+   "fnv": "52096ae1",
+   "version": 51
+  },
+  {
+   "name": "ORACLE V",
+   "len": 1236,
+   "fnv": "db01a302",
+   "version": 51
+  },
+  {
    "name": "ORGAN",
    "len": 268,
    "fnv": "acb41837",
@@ -5129,6 +5351,12 @@
    "name": "PERUN 4",
    "len": 2807,
    "fnv": "34267c9a",
+   "version": 46
+  },
+  {
+   "name": "PERUN 4",
+   "len": 2807,
+   "fnv": "4570224d",
    "version": 46
   },
   {
@@ -5447,6 +5675,12 @@
    "name": "PLUCKED STRING",
    "len": 453,
    "fnv": "4b4f63f7",
+   "version": 46
+  },
+  {
+   "name": "PLUCKED STRING",
+   "len": 453,
+   "fnv": "56b154f8",
    "version": 46
   },
   {
@@ -5920,6 +6154,12 @@
   {
    "name": "SALLEN 20",
    "len": 3120,
+   "fnv": "80c964e4",
+   "version": 47
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 3120,
    "fnv": "9d2d7491",
    "version": 47
   },
@@ -5928,6 +6168,18 @@
    "len": 3098,
    "fnv": "f4404325",
    "version": 47
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 2912,
+   "fnv": "5daeb77d",
+   "version": 51
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 2856,
+   "fnv": "f3924c39",
+   "version": 51
   },
   {
    "name": "SCROUNGE",
@@ -6036,6 +6288,12 @@
    "len": 3219,
    "fnv": "2499a1fa",
    "version": 45
+  },
+  {
+   "name": "SCROUNGE",
+   "len": 3219,
+   "fnv": "26a5aea0",
+   "version": 46
   },
   {
    "name": "SCROUNGE",
@@ -6334,6 +6592,12 @@
   {
    "name": "SILVER BOX",
    "len": 1288,
+   "fnv": "2cb3f37b",
+   "version": 48
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 1288,
    "fnv": "7e193a62",
    "version": 48
   },
@@ -6348,6 +6612,18 @@
    "len": 1150,
    "fnv": "8d1994bc",
    "version": 48
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 1257,
+   "fnv": "6baec04e",
+   "version": 51
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 1229,
+   "fnv": "cd7aacd7",
+   "version": 51
   },
   {
    "name": "SIMPLE FM",
@@ -6527,6 +6803,12 @@
    "name": "SIMPLE FM",
    "len": 762,
    "fnv": "5a203c8c",
+   "version": 46
+  },
+  {
+   "name": "SIMPLE FM",
+   "len": 762,
+   "fnv": "afa71d24",
    "version": 46
   },
   {
@@ -6870,6 +7152,12 @@
    "len": 3580,
    "fnv": "4d031294",
    "version": 45
+  },
+  {
+   "name": "SPOKES 6",
+   "len": 3580,
+   "fnv": "12cce16e",
+   "version": 46
   },
   {
    "name": "SPOKES 6",
@@ -7377,6 +7665,12 @@
   },
   {
    "name": "SUPERSAW STACK",
+   "len": 744,
+   "fnv": "d27032f3",
+   "version": 46
+  },
+  {
+   "name": "SUPERSAW STACK",
    "len": 734,
    "fnv": "dd05da55",
    "version": 46
@@ -7833,8 +8127,26 @@
   },
   {
    "name": "VERNON 100",
+   "len": 3415,
+   "fnv": "905ae523",
+   "version": 51
+  },
+  {
+   "name": "VERNON 100",
    "len": 3395,
    "fnv": "a75f70f8",
+   "version": 51
+  },
+  {
+   "name": "VERNON 100",
+   "len": 3427,
+   "fnv": "af81fa3a",
+   "version": 51
+  },
+  {
+   "name": "VERNON 100",
+   "len": 2158,
+   "fnv": "ef7f0430",
    "version": 51
   },
   {
@@ -7865,6 +8177,12 @@
    "name": "VERONA DRUM 1",
    "len": 3817,
    "fnv": "3eadc8cc",
+   "version": 46
+  },
+  {
+   "name": "VERONA DRUM 1",
+   "len": 3817,
+   "fnv": "98f22058",
    "version": 46
   },
   {
@@ -8190,6 +8508,24 @@
    "len": 3824,
    "fnv": "7dca03c5",
    "version": 46
+  },
+  {
+   "name": "WANDERER",
+   "len": 3239,
+   "fnv": "17698a9d",
+   "version": 51
+  },
+  {
+   "name": "WANDERER",
+   "len": 3187,
+   "fnv": "5b82f483",
+   "version": 51
+  },
+  {
+   "name": "WANDERER",
+   "len": 2128,
+   "fnv": "5b86f097",
+   "version": 51
   },
   {
    "name": "WANDERER",
