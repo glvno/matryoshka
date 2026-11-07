@@ -629,7 +629,7 @@ typedef struct {
     lock_t lk[ENG_MAX_LOCKS];
     int16_t trk_lkey[ENG_MAX_TRACKS];   /* the pattern and step a track's locks were applied for (locks_step; -1 none, -2 again) */
     uint8_t trk_once[ENG_MAX_TRACKS];   /* play once (#632, modules.ts StepsState.once): 0 not, 1 its passes played (it
-                                         * goes on silent: steps_fire), n >= 2: n - 1 pass ends to go (the start counts as
+                                         * loops on until the last ends: steps_fire), n >= 2: n - 1 pass ends to go (the start counts as
                                          * one; steps_turn counts) */
 } eng_t;
 
@@ -657,7 +657,23 @@ static volatile uint8_t transport_on; /* the transport (eng_transport) */
 static volatile uint8_t once_cmd, once_gen, once_st, once_run;
 static uint8_t once_seen, once_first, once_edge;
 static uint32_t once_cin;
-static int32_t click_k = -1, click_half = 1;
+/* play once: the sample of this block where the last Steps track still playing its passes ends them (steps_once_at; -1
+ * not in this block). From there no track plays a note more: a shorter track loops until then (D-820) */
+static int32_t once_end_at = -1;
+/* REC's count-in click (D-803, eng_count_in): the main loop's request (the ticks then, the bars; 0 none) counts cin_gen
+ * up and a block while the transport runs takes it (cin_seen); then the bar it starts on and the one it ends on, in
+ * ticks from the transport's start (eng_run_ticks), as seq_ui.c seq_cin_poll counts them */
+static volatile uint8_t cin_gen, cin_req_bars;
+static volatile uint32_t cin_req_at;
+static uint8_t cin_seen, cin_on;
+static uint32_t cin_from, cin_end;
+/* the click (both count-ins): its sample (-1 none) and half period as the block goes. It is not in eng_render's output:
+ * eng_click_mix adds it to the analog output only (D-820), from where it stood as the render began (click_k0, click_h0)
+ * and the clicks the render started (click_ev: the sample, the half period) */
+#define CLICK_EV 4u
+static int32_t click_k = -1, click_half = 1, click_k0 = -1, click_h0 = 1;
+static uint32_t click_nev;
+static struct { uint32_t at; int32_t half; } click_ev[CLICK_EV];
 /* MIDI clock out (#473, eng_clock_out): the last eng_render's tempo ticks, their samples in it, the transport's edge in it */
 #define CKO_MAX 4u
 static struct { uint8_t n, run; int8_t edge; uint16_t off[CKO_MAX]; } cko;
@@ -3220,6 +3236,16 @@ void eng_transport(int on)
         once_cmd = 2;
         once_gen++;
     }
+    if (!on)                                     /* (a stop ends REC's count-in click, asked for or counting) */
+        eng_count_in(0u, 0u);
+}
+/* REC's count-in click (D-803; engine.ts countIn, the same): `bars` bars of clicks from the transport's start, or, running
+ * already at `at` (eng_ticks then), from the next bar line; 0 bars: none (REC off) */
+void eng_count_in(uint32_t at, uint32_t bars)
+{
+    cin_req_at = at;
+    cin_req_bars = (uint8_t)bars;
+    cin_gen++;
 }
 int eng_transport_running(void) { return transport_on || (once_run && once_gen == once_seen); }
 void eng_play_once(void)
@@ -3235,6 +3261,33 @@ static int32_t click_sample(int32_t k, int32_t len, int32_t half)
 {
     int32_t a = (int32_t)((int64_t)CLICK_LEVEL_Q16 * (len - k) / len);
     return (k / half) & 1 ? -a : a;
+}
+/* the count-in's click of the last eng_render added to (left, right) of the same length, each side then held to full
+ * scale: the analog output's (audio.c, after USB audio took the half without it, D-820); nonzero when any sounded */
+int eng_click_mix(int32_t *left, int32_t *right, uint32_t total)
+{
+    const int32_t len = (int32_t)(ENG_SR * CLICK_MS / 1000u);
+    int32_t k = click_k0, half = click_h0;
+    uint32_t e = 0, i;
+    int any = 0;
+    if (k < 0 && !click_nev)
+        return 0;
+    for (i = 0; i < total; i++) {
+        int32_t c;
+        if (e < click_nev && click_ev[e].at == i) {
+            k = 0;
+            half = click_ev[e++].half;
+        }
+        if (k < 0)
+            continue;
+        c = click_sample(k, len, half);
+        left[i] = clampi(left[i] + c, -ENG_ONE, ENG_ONE);
+        right[i] = clampi(right[i] + c, -ENG_ONE, ENG_ONE);
+        any = 1;
+        if (++k >= len)
+            k = -1;
+    }
+    return any;
 }
 static void once_end(void)
 {
@@ -6753,7 +6806,7 @@ static int steps_drone_lives(uint32_t t, const snd_t *x, int32_t semis)
     return 0;
 }
 
-static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int32_t gate, int32_t sl, int32_t tr)
+static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int32_t gate, int32_t sl, int32_t tr, int32_t at)
 {
     uint32_t t = nd->trk, node = (uint32_t)(nd - E.node), i, j = 0, end;
     int32_t semis = (int32_t)(((int64_t)tr * 12 + 32768) >> 16);
@@ -6768,8 +6821,9 @@ static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int
             x->cnt = steps_hold(x->left, gate, sl);
         }
     }
-    if (it->s.stp.mute || E.trk_once[t] == 1u)   /* (play once: its passes played, no note more, #632) */
-        return;
+    if (it->s.stp.mute || (E.trk_once[t] == 1u && once_end_at >= 0 && at >= once_end_at))
+        return;                                  /* (play once: its passes played, it loops on until the last track's end,
+                                                  * then no note more: D-820) */
     if (it->s.stp.skip == k && !it->s.stp.skipn) {
         it->s.stp.skip = -1;
         return;
@@ -6843,7 +6897,7 @@ static void m_drummap(const node_t *nd, inst_t *it, uint32_t n)
 static void steps_turn(uint32_t t)
 {
     uint32_t s = E.song;
-    if (E.trk_once[t] > 1u)                      /* (play once, #632: at 1 its passes are played, steps_fire) */
+    if (E.trk_once[t] > 1u)                      /* (play once, #632: at 1 its passes are played, it loops on: steps_fire) */
         E.trk_once[t]--;
     if (s && E.song_n[s - 1u]) {
         int32_t k = E.trk_spos[t] + 1 >= (int32_t)E.song_n[s - 1u] ? 0 : E.trk_spos[t] + 1;
@@ -6859,9 +6913,9 @@ static void steps_turn(uint32_t t)
     E.trk_q[t] = 0xFFu;
 }
 
+static const uint8_t RATE_HT[9] = {48, 32, 24, 16, 12, 8, 6, 96, 3};   /* half ticks a step: track.ts STEPS_RATE_HT */
 static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
 {
-    static const uint8_t RATE_HT[9] = {48, 32, 24, 16, 12, 8, 6, 96, 3};   /* half ticks a step: track.ts STEPS_RATE_HT */
     const esig_t *clk = it->in[STEPS_I_CLK], *reset = it->in[STEPS_I_RESET], *tr = it->in[STEPS_I_TRANSPOSE];
     esig_t *trig = it->out[STEPS_O_TRIG], *keys = it->out[STEPS_O_KEYS], *pitch = it->out[STEPS_O_PITCH], *vel = it->out[STEPS_O_VEL];
     uint32_t t = nd->trk, node = (uint32_t)(nd - E.node);
@@ -6929,7 +6983,7 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
         }
         it->s.stp.sst++;
         if (it->s.stp.pend > 0 && --it->s.stp.pend == 0 && (dir == 0 || it->s.stp.pstep < len))
-            steps_fire(nd, it, it->s.stp.pstep, len, gate, sl, tr[i]);
+            steps_fire(nd, it, it->s.stp.pstep, len, gate, sl, tr[i], (int32_t)i);
         for (; adv > 0; adv--) {
             int32_t sw, d = 0;
             step_visit_t next = steps_next(it, len, dir);
@@ -6966,7 +7020,7 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
                 it->s.stp.pend = d;
                 it->s.stp.pstep = it->s.stp.pos;
             } else
-                steps_fire(nd, it, it->s.stp.pos, len, gate, sl, tr[i]);
+                steps_fire(nd, it, it->s.stp.pos, len, gate, sl, tr[i], (int32_t)i);
         }
         {
             int up = E.trk_nsnd[t] && !it->s.stp.gap && steps_sounding(t);
@@ -6987,6 +7041,59 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
         if (E.rin[i].trk == t)
             E.rin[i].t += (int32_t)n;
     it->s.stp.run = E.running;
+}
+
+/* play once (D-820): the sample of this block on which the pass of the Steps track nd ends (steps_turn), -1 none; from
+ * where it stands before the block, its clock's steps counted as m_steps will count them (the start, a step half a tick
+ * on, the block's ticks); a reset edge is not foreseen (modules.ts stepsTurnAt, the same) */
+static int32_t steps_turn_at(const node_t *nd, uint32_t n)
+{
+    const inst_t *it = &inst_pool[nd->inst0];
+    uint32_t t = nd->trk;
+    int32_t len = steps_len(it, t), dir = clampi(round_q16(EF(it, STEPS_P_DIR)), 0, 3), need, q;
+    int32_t ht = RATE_HT[TRK_P(t) && E.pat_rate[t][TRK_P(t)] != 0xFFu ? E.pat_rate[t][TRK_P(t)] : clampi(round_q16(EF(it, STEPS_P_RATE)), 0, 8)];
+    int32_t count = it->s.stp.count, half = it->s.stp.half;
+    if (!E.running)
+        return -1;
+    if (!it->s.stp.run)                          /* (the start: its first step, a pass's start, on sample 0) */
+        return 0;
+    need = it->s.stp.pos < 0 ? 1 : steps_cycle(len, dir) - it->s.stp.visit;   /* steps to the pass's end */
+    if (half > 0 && half - 1 < (int32_t)n && (E.tick_off < 0 || half - 1 <= E.tick_off)) {
+        if (--need == 0)
+            return half - 1;
+        half = 0;
+    }
+    if (E.tick_off >= 0) {
+        if (half > 0 && --need == 0)
+            return E.tick_off;
+        for (q = 0; q < E.tick_n; q++)
+            if ((count += 2) >= ht) {
+                count = 0;
+                if (--need == 0)
+                    return E.tick_off;
+            }
+    }
+    return -1;
+}
+/* play once (D-820): the sample of this block on which the last track still playing its passes ends them (every such
+ * track on its last pass and ending it in this block, the latest of them), -1 none (engine.ts the same) */
+static int32_t steps_once_at(uint32_t n)
+{
+    uint32_t k;
+    int32_t end = -1;
+    if (once_st != 2u)
+        return -1;
+    for (k = 0; k < E.norder; k++) {
+        const node_t *nd = &E.node[E.order[k]];
+        int32_t a;
+        if (nd->type != T_STEPS || E.trk_once[nd->trk] < 2u)
+            continue;
+        a = E.trk_once[nd->trk] == 2u ? steps_turn_at(nd, n) : -1;
+        if (a < 0)
+            return -1;
+        end = a > end ? a : end;
+    }
+    return end;
 }
 
 /* The step sequencer (modules.ts seq): out is the current step all the time, gate follows the clock unless the step is a
@@ -7947,6 +8054,9 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
         left[i] = right[i] = 0;
     cko.n = 0;
     cko.edge = 0;
+    click_k0 = click_k;                          /* (eng_click_mix: the click from here) */
+    click_h0 = click_half;
+    click_nev = 0;
     if (once_gen != once_seen) {                 /* play once asked for or ended (#632): from this render */
         uint8_t c = once_cmd;
         once_seen = once_gen;
@@ -7988,7 +8098,9 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             uint32_t bpm = tempo_glo > ENG_TEMPO_ADOPT ? tempo_glo
                          : E.main >= 0 ? (uint32_t)clampi((E.node[E.main].par[FM1_P_TEMPO] + 32768) >> 16, 20, 300) : TEMPO_DEFAULT, seen = 0, t;
             uint8_t run = transport_on | once_run;
-            if (run && !E.running) {
+            uint32_t was = E.ticks;              /* (the ticks before this block's: REC's count-in) */
+            int start = run && !E.running;
+            if (start) {
                 E.tick_acc = 0;                  /* the transport starts: the tempo's ticks from here */
                 E.run_ticks = E.ticks;
             }
@@ -8047,6 +8159,31 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                         click_at = E.tick_off > 0 ? E.tick_off : 0;
                 }
             }
+            if (!run)                            /* REC's count-in (D-803, seq_ui.c seq_cin_poll counts the same bars): */
+                cin_on = 0;                      /* a click on each beat from the bar it starts on (beat 1 higher) */
+            else {
+                uint32_t r0 = was - E.run_ticks, r1 = E.ticks - E.run_ticks, r;
+                if (cin_gen != cin_seen) {       /* (asked for: taken once the transport runs) */
+                    int32_t at = (int32_t)(cin_req_at - E.run_ticks);
+                    cin_seen = cin_gen;
+                    cin_on = cin_req_bars != 0u;
+                    cin_from = at > 0 ? ((uint32_t)at + ONCE_BAR - 1u) / ONCE_BAR * ONCE_BAR : 0u;
+                    cin_end = cin_from + cin_req_bars * ONCE_BAR;
+                }
+                if (cin_on) {
+                    if (start && cin_from == 0u) {   /* beat 1 on the start's first sample */
+                        click_at = 0;
+                        accent = 1;
+                    }
+                    for (r = r0 + 1u; r - r0 <= r1 - r0; r++)   /* each tick of this block */
+                        if (r >= cin_from && r < cin_end && r % 24u == 0u) {
+                            click_at = E.tick_off > 0 ? E.tick_off : 0;
+                            accent = (r - cin_from) % ONCE_BAR == 0u;
+                        }
+                    if (r1 >= cin_end)
+                        cin_on = 0;
+                }
+            }
             if (!run)
                 E.tick_off = -1;
             E.clk_seen = t;
@@ -8068,6 +8205,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                     ENG_PROF(3, E.arp[k].node, 0);     /* include note scheduling in this module's CPU cost */
                 }
         }
+        once_end_at = steps_once_at(n);                 /* (play once: where a shorter track's looping ends, D-820) */
         for (k = 1; k <= E.ngrp; k++) {                 /* the parts' pitch flaws: detune + drift (engine.ts render) */
             const grp_t *g = &E.grp[k];
             for (v = 0; v < g->parts; v++) {
@@ -8124,22 +8262,21 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                 once_edge = 1;
             }
         }
-        if (click_at >= 0 || click_k >= 0) {           /* the count-in's click, on both sides (engine.ts the same) */
+        if (click_at >= 0 || click_k >= 0) {           /* the count-in's click: not in this output, eng_click_mix adds it
+                                                         * to the analog one (D-820); here only where it stands */
             const int32_t len = (int32_t)(ENG_SR * CLICK_MS / 1000u);
-            for (i = 0; i < n; i++) {
-                int32_t c;
-                if ((int32_t)i == click_at) {
-                    click_k = 0;
-                    click_half = (int32_t)(ENG_SR / (2u * (accent ? CLICK_ACCENT_HZ : CLICK_HZ)));
+            if (click_at >= 0) {
+                click_half = (int32_t)(ENG_SR / (2u * (accent ? CLICK_ACCENT_HZ : CLICK_HZ)));
+                click_half = click_half > 0 ? click_half : 1;
+                click_k = (int32_t)n - click_at;
+                if (click_nev < CLICK_EV) {
+                    click_ev[click_nev].at = off + (uint32_t)click_at;
+                    click_ev[click_nev++].half = click_half;
                 }
-                if (click_k < 0)
-                    continue;
-                c = click_sample(click_k, len, click_half > 0 ? click_half : 1);
-                left[off + i] += c;
-                right[off + i] += c;
-                if (++click_k >= len)
-                    click_k = -1;
-            }
+            } else
+                click_k += (int32_t)n;
+            if (click_k >= len)
+                click_k = -1;
         }
         ENG_PROF(5, 0, 0);
     }
