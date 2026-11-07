@@ -621,6 +621,10 @@ typedef struct {
     uint16_t nlk;                    /* the locks, by track, then pattern (as the binary lists them) */
     lock_t lk[ENG_MAX_LOCKS];
     int16_t trk_lkey[ENG_MAX_TRACKS];   /* the pattern and step a track's locks were applied for (locks_step; -1 none, -2 again) */
+    uint8_t trk_once[ENG_MAX_TRACKS];   /* play once (#632, modules.ts StepsState.once): 0 not, 1 its passes played (no step
+                                         * from here), n >= 2: n - 1 pass ends to go (the start counts as one). (Kept here: as
+                                         * a static of its own, its address came out as an immediate build.py takes for a ROM
+                                         * address) */
 } eng_t;
 
 /* the slice of the pattern track t plays (one it has not got: pattern 0), its first note and count */
@@ -648,10 +652,6 @@ static volatile uint8_t once_cmd, once_gen, once_st, once_run;
 static uint8_t once_seen, once_first, once_edge;
 static uint32_t once_cin;
 static int32_t click_k = -1, click_half = 1;
-/* per track (modules.ts StepsState.once): 0 not, 1 its passes played (no step from here), n >= 2: n - 1 pass ends to go
- * (the start counts as one). Outside E, so the engine's state keeps its layout; in the pool beside it (a .bss address
- * here came out as an immediate build.py takes for a ROM address) */
-static uint8_t trk_once[ENG_MAX_TRACKS] ENG_POOL;
 /* MIDI clock out (#473, eng_clock_out): the last eng_render's tempo ticks, their samples in it, the transport's edge in it */
 #define CKO_MAX 4u
 static struct { uint8_t n, run; int8_t edge; uint16_t off[CKO_MAX]; } cko;
@@ -1326,7 +1326,7 @@ int eng_load(const uint8_t *p, uint32_t len)
             E.trk_shift[nd->trk] = 0;
             E.trk_nsnd[nd->trk] = 0;
             E.trk_last[nd->trk] = STEP_NOTE;
-            trk_once[nd->trk] = 0;
+            E.trk_once[nd->trk] = 0;
         }
         nd->ksrc = nd->type == T_DRUMMAP ? p[at] : 0u;   /* (checked once every module is read) */
         at += d->ndata;
@@ -3122,7 +3122,7 @@ static void once_end(void)
     once_st = 0;
     once_run = 0;
     for (t = 0; t < ENG_MAX_TRACKS; t++)
-        trk_once[t] = 0;
+        E.trk_once[t] = 0;
 }
 
 /* ------------------------------------------------------------------ Steps modules (the SEQ page) */
@@ -6808,13 +6808,13 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
         it->s.stp.sst++;
         if (it->s.stp.pend > 0 && --it->s.stp.pend == 0 && (dir == 0 || it->s.stp.pstep < len))
             steps_fire(nd, it, it->s.stp.pstep, len, gate, sl, tr[i]);
-        if (adv && trk_once[t] == 1u)            /* (play once: its passes are played, #632) */
+        if (adv && E.trk_once[t] == 1u)          /* (play once: its passes are played, #632) */
             adv = 0;
         for (; adv > 0; adv--) {
             int32_t sw, d = 0;
             step_visit_t next = steps_next(it, len, dir);
             if (next.visit == 0) {               /* the end of a pass: a song's next entry, a queued pattern */
-                if (trk_once[t] > 1u && --trk_once[t] == 1u)
+                if (E.trk_once[t] > 1u && --E.trk_once[t] == 1u)
                     break;                       /* (play once: the last pass ended, #632) */
                 steps_turn(t);
                 len = steps_len(it, t);
@@ -7859,7 +7859,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             for (k = 0; k < E.norder; k++) {
                 const node_t *nd = &E.node[E.order[k]];
                 if (nd->type == T_STEPS)
-                    trk_once[nd->trk] = ((nd->conn >> STEPS_I_CLK) & 1u) ? 0u : (uint8_t)(s + 2u);
+                    E.trk_once[nd->trk] = ((nd->conn >> STEPS_I_CLK) & 1u) ? 0u : (uint8_t)(s + 2u);
             }
         }
         if (ramp[0].left | ramp[1].left | ramp[2].left | ramp[3].left)
@@ -7998,7 +7998,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             }
         }
         if (once_st == 2u) {                            /* every track played its passes: the transport stops (next block) */
-            for (k = 0; k < E.ntrk && trk_once[k] < 2u; k++)
+            for (k = 0; k < E.ntrk && E.trk_once[k] < 2u; k++)
                 ;
             if (k == E.ntrk) {
                 once_end();
