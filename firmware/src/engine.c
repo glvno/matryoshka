@@ -7494,10 +7494,10 @@ static void m_range(const node_t *nd, inst_t *it, uint32_t n)
     int32_t lo = EF(it, RANGE_P_INLO), span = EF(it, RANGE_P_INHI) - lo;
     int32_t olo = EF(it, RANGE_P_OUTLO), ospan = EF(it, RANGE_P_OUTHI) - olo;
     int32_t c = clampi(EF(it, RANGE_P_CURVE), -ENG_ONE, ENG_ONE);
-    const int clamp = EF(it, RANGE_P_CLAMP) >= ENG_ONE / 2;
-    int32_t thi = clamp ? ENG_ONE : RANGE_T_MAX * ENG_ONE, tlo;
-    __asm__("" : "+r"(thi));   /* (-RANGE_T_MAX Q16 as a constant is 0xFFC00000, which build.py rejects as a chip ROM address) */
-    tlo = clamp ? 0 : -thi;
+    const int32_t clamp = EF(it, RANGE_P_CLAMP) >= ENG_ONE / 2;
+    /* tlo 0 or -RANGE_T_MAX Q16 as a shift of clamp - 1: written as a constant it is 0xFFC00000, which build.py rejects as
+     * a chip ROM address */
+    const int32_t thi = clamp ? ENG_ONE : RANGE_T_MAX * ENG_ONE, tlo = (clamp - 1) * (RANGE_T_MAX * ENG_ONE);
     int64_t inv = span ? ((int64_t)1 << 32) / span : 0;
     uint32_t i;
     for (i = 0; i < n; i++) {
