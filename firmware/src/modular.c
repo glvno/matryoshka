@@ -86,6 +86,7 @@ static void m1_transport(int run);                             /* main.c: the ed
 static void m1_focus(uint32_t dev, uint32_t pg);               /* main.c: the editor's FOCUS command (a device page) */
 static void m1_live(uint32_t paused);                          /* live.c: the editor's LIVE command (it drives the FM-1; paused: its patch is a sandbox patch) */
 static int m1_midi_out(void);                                  /* main.c: MENU > MIDI OUT (INFO says it) */
+static int m1_editor_ignore(void);                             /* main.c: GLO > SYSTEM > EDITOR at IGNORE (INFO says it, #702) */
 #include "sandbox_msg.h"
 static void m1_sandbox(const sb_page_t *s);                    /* sandbox_ui.c: the editor's page in sandbox mode */
 static int m1_test_key(uint32_t id, int down);                 /* main.c: the device test mode (#291) */

@@ -239,6 +239,7 @@ static void fm1_fault(const fm1_crash_t *c)
 
 /* proto.c hooks */
 static int m1_flash_ok(void) { return flash_ok; }
+static int m1_editor_ignore(void) { return cfg.editor_ignore; }   /* proto.c INFO: GLO > SYSTEM > EDITOR at IGNORE (#702) */
 static int m1_midi_out(void) { return cfg.midi_out; }   /* proto.c INFO: MENU > MIDI OUT (sandbox mode needs it) */
 static void m1_send(const uint8_t *f, uint32_t n) { (void)ota_wire_send(f, n); }
 static int m1_apply(const uint8_t *patch, uint32_t len)
@@ -509,7 +510,8 @@ static int slot_used(uint32_t s) { return s < M1_SLOTS && (bank_mask >> s & 1u);
 
 /* the settings record: version, slot, octave + 8, LED mode, knob accel (bit 0; bit 1: the quick start off, D-247: a record
  * from before reads as on, and an older firmware reads the accel as before; bits 2..3: OUTPUT, #612: 0 STEREO, 1 MONO, 2
- * MONO L, a record from before reads as STEREO), the global tempo's low byte (byte 5,
+ * MONO L, a record from before reads as STEREO; bit 4: EDITOR, #702: 0 ALLOW, 1 IGNORE, a record from before reads as
+ * ALLOW), the global tempo's low byte (byte 5,
  * D-907; was CPU in the bar), clock in (bit 0; bit 1: CLOCK OUT off, #473, read alike), TEMPO and the tempo's bit 8 (byte 7, tempo_glo.h; was program change),
  * MIDI channel, MIDI out, the bank's format, the selected module, REC's count-in (byte 12, #414: a record without
  * it, SET_MIN bytes, reads as OFF), the factory set the bank's untouched factory slots hold (bytes 13..15, #441: a
@@ -529,7 +531,7 @@ static void settings_pack(uint8_t *d)
     d[1] = (uint8_t)cur_preset;
     d[2] = (uint8_t)(octave + 8);
     d[3] = cfg.leds;
-    d[4] = (uint8_t)(cfg.accel | (cfg.quick ? 0u : 2u) | (uint8_t)(out_mono << 2));   /* (bits 2..3: OUTPUT, #612) */
+    d[4] = (uint8_t)(cfg.accel | (cfg.quick ? 0u : 2u) | (uint8_t)(out_mono << 2) | (cfg.editor_ignore ? 16u : 0u));   /* (bits 2..3: OUTPUT, #612; bit 4: EDITOR, #702) */
     d[6] = co_set_byte(cfg.clock_in, cfg.clock_out);   /* (bit 1: CLOCK OUT off, #473: clock_out.h) */
     gt_pack(d);                                 /* bytes 5 and 7: the global tempo and TEMPO (D-907) */
     d[8] = cfg.ch;
@@ -553,6 +555,7 @@ static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint3
     out_mono = (uint8_t)(d[4] >> 2 & 3u);       /* (a record from before reads as STEREO) */
     if (out_mono > 2u)
         out_mono = 0;
+    cfg.editor_ignore = (uint8_t)(d[4] >> 4 & 1u);  /* (a record from before reads as ALLOW) */
     cfg.clock_in = d[6] & 1u;
     cfg.clock_out = co_set_clock_out(d[6]);     /* (a record from before reads as ON) */
     gt_unpack(d, len);                          /* bytes 5 and 7 (CPU in the bar and program change before): the global tempo */
@@ -1125,6 +1128,16 @@ static void keys_report(void)
     for (; kq_r != kq_w; kq_r++)
         m1_keys_report(kq_key[kq_r % KQ] & 31u, (kq_key[kq_r % KQ] & 0x80u) != 0, kq_keys[kq_r % KQ], kq_held[kq_r % KQ]);
 }
+/* GLO > SYSTEM > EDITOR changed (#702): an editor that said HELLO hears it in an INFO nobody asked for, and at IGNORE lets go */
+static void editor_poll(void)
+{
+    if (!editor_info_due)
+        return;
+    editor_info_due = 0;
+    if (m1_heard)
+        m1_info();
+}
+
 /* GUIDE_NOW: the panel's state (help_ui.c guide_state) after HELLO and whenever it changed, its conditions asked again
  * only then (they read the preset store), so a pass with nothing new costs a compare */
 static void guide_poll(void)
@@ -1524,6 +1537,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         panel_draw();
         keys_report();                                  /* (the edges taken during the redraw: keys_yield) */
         guide_poll();
+        editor_poll();
         cpu_poll();
         c1_poll();
         host_poll();

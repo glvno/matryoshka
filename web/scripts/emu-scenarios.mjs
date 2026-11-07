@@ -531,6 +531,8 @@ async function main() {
   let rigAudioWhy = '', rigAudioIn = 'Matryoshka';
   if (DEVICE) {
     if (!REAL || opt('--port')) await context.addInitScript(FILTER_MIDI, { name: REAL ? opt('--port') : PORT_NAME });
+    // the test tools' page: the editor connects to the rig though it is set to ignore the editor (#702, protocol.ts rigTools)
+    await context.addInitScript(() => { window.__m1RigTools = true; });
     const rp = await rigPage(context, url);
     let pair;
     if (REAL) {
@@ -1851,6 +1853,45 @@ async function main() {
       await shot('store-slot');
       await page.keyboard.press('Escape');
       await check('store slot: Cancel closes it', !!(await until(() => page.evaluate(() => !document.querySelector('#store-slot[open]')), 2000)));
+    },
+    async editorIgnore() {   // #702: GLO > SYSTEM > EDITOR at IGNORE: the editor lets go, Connect skips the FM-1 and says why
+      // (the rig tools' page connects to an FM-1 at IGNORE all the same: the test rig is set so, D-123)
+      if (DEVICE) return skip('editor ignore: the editor leaves an FM-1 at IGNORE alone', 'the test tools\' page connects to it by design (#702)');
+      /** GLO > SYSTEM's second page (ALGO steps MIDI, PANEL, SYSTEM 1/2, SYSTEM 2/2) */
+      const editorRow = async () => {
+        await emu.tap(B.glo);
+        for (let i = 0; i < 6 && !(await emu.text('EDITOR')); i++) {
+          await emu.turn(ENC.algo, 1);
+          await emu.elapse(300);
+        }
+        return emu.text('EDITOR');
+      };
+      const row = await editorRow();
+      await emu.turn(ENC.k1, 1);
+      await emu.elapse(400);
+      await check('editor ignore: GLO > SYSTEM 2/2, K1 right: EDITOR IGNORE', row && (await emu.text('IGNORE')) && (await emu.text('SYSTEM 2/2')));
+      await emu.snap('editor-ignore');
+      const gone = await until(async () => { const x = await T(); return !x.connected ? x : null; }, 4000);
+      await check('editor ignore: set while linked, the editor lets go of the FM-1 and says why', !!gone && /set to ignore the editor/.test(gone.status ?? ''), (gone ?? (await T())).status ?? '');
+      await emu.tap(B.glo);
+      await emu.waitOwnPage(3000);
+      const sent = await page.evaluate(() => (window.__sent ?? []).length);
+      await connect();
+      const s = await T();
+      const after = await page.evaluate((n) => (window.__sent ?? []).slice(n).map((x) => x[1]), sent);
+      await check('editor ignore: Connect does not link to it', !s.connected && !s.live, `connected ${s.connected}`);
+      await check('editor ignore: it says which FM-1 is set to ignore the editor and how to undo it', /set to ignore the editor/.test(s.status ?? '') && /EDITOR to ALLOW/.test(s.status ?? ''), s.status ?? '');
+      await check('editor ignore: nothing but HELLO went to it', after.length > 0 && after.every((c) => c === 0x01), after.join(' '));
+      await shot('editor-ignore');
+      await editorRow();
+      await emu.turn(ENC.k1, -1);
+      await emu.elapse(400);
+      await check('editor ignore: K1 left: EDITOR ALLOW', await emu.text('ALLOW'));
+      await emu.tap(B.glo);
+      await emu.waitOwnPage(3000);
+      await connect();
+      const back = (await until(async () => { const x = await T(); return x.live ? x : null; })) ?? (await T());
+      await check('editor ignore: at ALLOW, Connect links and syncs again', back.connected && back.live && back.chip === 'synced', `chip ${back.chip}`);
     },
   };
   // the owner's device check of the release, as scenarios (device-check.mjs, the checks that need no ears, hands or power

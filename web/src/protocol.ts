@@ -108,14 +108,15 @@
 //   51 PEAK     peak u16 (16 bit, before MASTER: as at its default), flags u8 (bit0 the engine runs, bit1 the sound is muted:
 //               sandbox mode, bit2 MASTER is all the way down)
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded, bit2 MENU > MIDI OUT on: with
-//               feature bit 8), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
+//               feature bit 8, bit3 GLO > SYSTEM > EDITOR at IGNORE: with feature bit 19, #702), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
 //               bit5 TRACK / TRACK_NOW, bit6 LIVE, bit7 presets], [features 8..15: bit8 sandbox mode, bit9 the device
 //               test mode, bit10 TEST_PEAK reads before MASTER, bits11..15 read patch formats35..39],
 //               [minimum readable patch format, maximum readable patch format], [firmware major, minor, patch:
 //               0.0.0 a dev or CI build; #216, absent from firmware before 1.8],
 //               [features 16..23: bit16 TEMPO / TEMPO_NOW, bit17 a preset carries up to 176 values, bit18 KEYS_NOW /
-//               GUIDE_NOW]. Also unasked
-//               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8)
+//               GUIDE_NOW, bit19 flags bit3 says EDITOR]. Also unasked
+//               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8), and when EDITOR changed after
+//               a HELLO (feature bit 19)
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
 
@@ -308,6 +309,9 @@ export interface Info {
   patchFormats?: { min: number; max: number };
   /** MENU > MIDI OUT is on (the FM-1's panel reaches the editor); null: the firmware does not say (no feature bit 8) */
   midiOut: boolean | null;
+  /** GLO > SYSTEM > EDITOR is at IGNORE (#702): the editor leaves this FM-1 alone. Firmware without the setting (no feature
+   *  bit 19) counts as ALLOW */
+  editorIgnored?: boolean;
   /** the firmware's version (INFO bytes 9..11, #216; 0.0.0 a dev or CI build); absent from firmware before 1.8, whose
    *  identity (FM-1_7XY) gives major and minor */
   firmware?: { major: number; minor: number; patch: number };
@@ -327,6 +331,10 @@ export const FEATURE_LONG_PRESETS = 1 << 17;
 /** INFO feature bit 18 (#549): the FM-1 reports the key edges its panel takes (KEYS_NOW) and its panel's state (GUIDE_NOW),
  * so the editor's copy of the panel logic stays in step; older firmware sends neither */
 export const FEATURE_PANEL_REPORT = 1 << 18;
+/** INFO feature bit 19 (#702): INFO's flags bit 3 says GLO > SYSTEM > EDITOR (set: IGNORE) */
+export const FEATURE_EDITOR_SETTING = 1 << 19;
+/** INFO's flags bit 3: EDITOR at IGNORE (with feature bit 19) */
+const INFO_EDITOR_IGNORE = 8;
 /** a preset's values at most over the link: with feature bit 17, and before it */
 export const PRESET_VALUES_MAX = 176;
 export const PRESET_VALUES_OLD = 88;
@@ -335,9 +343,16 @@ export function parseInfo(p: Parsed): Info | null {
   const features = (p.payload[5] ?? 0) | ((p.payload[6] ?? 0) << 8) | ((p.payload[12] ?? 0) << 16);
   return { version: p.payload[0], maxModules: p.payload[1], maxCables: p.payload[2], flashOk: !!(p.payload[3] & 1), patchLoaded: !!(p.payload[3] & 2), delays: p.payload[4], features,
     midiOut: features & FEATURE_SANDBOX ? !!(p.payload[3] & 4) : null,
+    editorIgnored: !!(features & FEATURE_EDITOR_SETTING) && !!(p.payload[3] & INFO_EDITOR_IGNORE),
     ...(p.payload.length >= 9 ? { patchFormats: { min: p.payload[7], max: p.payload[8] } } : {}),
     ...(p.payload.length >= 12 ? { firmware: { major: p.payload[9], minor: p.payload[10], patch: p.payload[11] } } : {}) };
 }
+/** the test tools drive the editor's own page against the test rig, which is set to IGNORE so the site leaves it alone
+ *  (#702): their page (scripts/emu-scenarios.mjs --device) sets this before it loads. Nothing else does */
+export const rigTools = (): boolean => (globalThis as { __m1RigTools?: unknown }).__m1RigTools === true;
+/** an FM-1 the editor and its Install panel skip (#702): it answered HELLO with GLO > SYSTEM > EDITOR at IGNORE, and this
+ *  is not the test tools' page */
+export const editorSkips = (info: Info | null, rig = rigTools()): boolean => !!info?.editorIgnored && !rig;
 export const parseAck = (p: Parsed): Ack | null => (p.cmd === CMD.ack && p.payload.length >= 4 ? { cmd: p.payload[0], seq: p.payload[1], status: p.payload[2], aux: p.payload[3] } : null);
 
 // ---- presets (#195): the FM-1's user presets, by structure (structure.ts, 8 hex digits) and name

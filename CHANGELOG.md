@@ -5,6 +5,7 @@
 - **FM-1: whole numbers look whole.** Rows that move in whole steps (coarse tuning, voices, Env 8 `end`, Selector positions, lengths, bits) show `2`, not `2.00`, as the editor does. Their knob clicks stay on whole steps: Delay time moves 7 ms a click (was 6.99, so 1 ms went to 7.99), the tempo and the LFO's bpm 3 (were 2.8 and 2.6), and Voicing's key range and the Drum map's notes one note (were 1.27).
 - **Granular follows the keyboard:** a new `pitch` input takes the same pitch signal as an oscillator, so the Main module's pitch output plays the grains in tune (C4 = the recording's own pitch). Before, a pin from the pitch output on the `pitch` slider moved 4 semitones per key, and in the browser most notes landed a semitone flat.
 - **Two FM-1s on one computer:** while the editor is connected to one FM-1, notes and Start / Stop from another FM-1 no longer play or move anything in the editor.
+- **An FM-1 the editor leaves alone:** GLO › SYSTEM › EDITOR (ALGO to the SYSTEM tab's second page) set to IGNORE, and the editor no longer connects to that FM-1 or installs firmware on it; set while connected, the editor lets go of it. Connect says so and how to undo it, instead of "no FM-1 found". For a live FM-1 you keep apart, or a second FM-1 on the same computer. The default is ALLOW, and FACTORY RESET sets ALLOW again.
 
 ## 1.10.0 — 2026-11-06
 

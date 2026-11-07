@@ -131,6 +131,8 @@ static void m1_send(const uint8_t *f, uint32_t n)
 }
 static int midi_out_on = 1;                                   /* MENU > MIDI OUT (INFO's flag bit 2) */
 static int m1_midi_out(void) { return midi_out_on; }
+static int editor_ignore_on;                                   /* GLO > SYSTEM > EDITOR at IGNORE (INFO's flag bit 3, #702) */
+static int m1_editor_ignore(void) { return editor_ignore_on; }
 #include "../src/sandbox_msg.h"
 static sb_page_t sb_got;                                      /* the last SANDBOX page */
 static int sb_calls;
@@ -695,6 +697,14 @@ int main(int argc, char **argv)
         CHECK(n == 13u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION);
         CHECK(!(p[3] & M1_INFO_MIDI_OUT));
         midi_out_on = 1;
+        /* #702: EDITOR at IGNORE is flag bit 3, with feature bit 19; at ALLOW the bit is clear (as in older firmware) */
+        CHECK((M1_FEATURES3 & 8u) && !(p[3] & M1_INFO_EDITOR_IGNORE));
+        editor_ignore_on = 1;
+        nreplies = 0;
+        CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 2);
+        n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
+        CHECK(n == 13u && (p[3] & M1_INFO_EDITOR_IGNORE) && (p[3] & M1_INFO_MIDI_OUT));
+        editor_ignore_on = 0;
     }
     /* TEMPO (D-907, feature bit 16): GLOBAL at a tempo, PATCH; Main's tempo shows what plays, the patch keeps its own */
     {

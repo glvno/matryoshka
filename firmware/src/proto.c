@@ -20,6 +20,8 @@
  *   static int  m1_preset_del(uint32_t structure, const char *name);   0 = ok, -1 none
  *   static void m1_sandbox(const sb_page_t *s);                 SANDBOX: the editor's page while its patch is a sandbox patch
  *   static int  m1_midi_out(void);                              MENU > MIDI OUT is on (INFO says so, with feature bit 8)
+ *   static int  m1_editor_ignore(void);                         GLO > SYSTEM > EDITOR is at IGNORE (INFO says so, with feature
+ *                                                               bit 19; the firmware refuses nothing, #702)
  *   static int  m1_test_key(uint32_t id, int down);             the device test mode (#291): a panel key held / let go as if
  *                                                               by a hand (ids as the HAL's: 0..13 buttons, 14..40 the keys); 0 = ok
  *   static int  m1_test_turn(uint32_t enc, int32_t clicks);     an encoder turned (0 SELECT, 1 ALGO, 2..5 K1..K4, 6 PRESET); 0 = ok
@@ -42,8 +44,10 @@
 enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_PRESETS = 0x2D, C_PRESET_GET = 0x2E, C_PRESET_PUT = 0x2F, C_PRESET_DEL = 0x30, C_SANDBOX = 0x31, C_TEST_KEY = 0x32, C_TEST_TURN = 0x33, C_TEST_SCREEN = 0x34, C_TEST_PEAK = 0x35, C_PATTERN = 0x36, C_SONG = 0x37, C_TEMPO = 0x38, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B, R_PRESET = 0x4C, R_PRESET_DATA = 0x4D, R_PRESET_STORED = 0x4E, R_SCREEN = 0x50, R_PEAK = 0x51, R_PATTERN_NOW = 0x52, R_SONG_NOW = 0x53, R_ARMS_NOW = 0x54, R_TEMPO_NOW = 0x55, R_LOCKS_NOW = 0x56, R_KEYS_NOW = 0x57, R_GUIDE_NOW = 0x58 };
 #define M1_FEATURES 246u                                     /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW, bit 6 = LIVE, bit 7 = the presets (#195) (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
 #define M1_FEATURES2 255u                                     /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down, bit 11 = reads format 35, bit 12 = reads format 36, bit 13 = reads format 37, bit 14 = reads format 38, bit 15 = reads format 39 (legacy editor compatibility; INFO bytes 7..8 report the readable range) */
-#define M1_FEATURES3 7u                                       /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485), bit 18 = KEYS_NOW and GUIDE_NOW (the panel's keys and state, #549) */
+#define M1_FEATURES3 15u                                      /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485), bit 18 = KEYS_NOW and GUIDE_NOW (the panel's keys and state, #549), bit 19 = INFO's flags bit 3 says GLO > SYSTEM > EDITOR (#702) */
 #define M1_INFO_MIDI_OUT 4u                                  /* INFO byte 3 (flags) bit 2: MENU > MIDI OUT is on (with feature bit 8) */
+#define M1_INFO_EDITOR_IGNORE 8u                             /* INFO byte 3 (flags) bit 3: GLO > SYSTEM > EDITOR is at IGNORE, the
+                                                              * editor leaves this FM-1 alone (with feature bit 19, #702) */
 #define M1_PNAME 16u                                         /* a preset's name (presetstore.c PS_NAME) */
 #define M1_PVALS 176u                                        /* a preset's values at most (presetstore.c PS_MAXV; 88 before feature bit 17) */
 #define M1_SLOTS 64u                                         /* the bank (slotstore.c) */
@@ -129,7 +133,8 @@ static void m1_slot_now(uint32_t slot, const char *name)
 #define M1_FW_PATCH 0
 #endif
 
-/* INFO: the answer to HELLO, and unasked when MENU > MIDI OUT changed under the editor's Live (live.c). Bytes 9..11 (#216):
+/* INFO: the answer to HELLO, and unasked when MENU > MIDI OUT changed under the editor's Live (live.c) or GLO > SYSTEM >
+ * EDITOR changed after a HELLO (menu.c, #702). Bytes 9..11 (#216):
  * the firmware's major, minor and patch, as in its identity FM-1_7MMmmpp; older firmware ends at byte 8. Byte 12: feature
  * bits 16..23 (bit 16 TEMPO / TEMPO_NOW, D-907) */
 static void m1_info(void)
@@ -138,7 +143,8 @@ static void m1_info(void)
     p[0] = M1_VERSION;
     p[1] = ENG_MAX_MODULES;
     p[2] = ENG_MAX_CABLES;
-    p[3] = (uint8_t)((m1_flash_ok() ? 1u : 0u) | (m1_cur_len ? 2u : 0u) | (m1_midi_out() ? M1_INFO_MIDI_OUT : 0u));
+    p[3] = (uint8_t)((m1_flash_ok() ? 1u : 0u) | (m1_cur_len ? 2u : 0u) | (m1_midi_out() ? M1_INFO_MIDI_OUT : 0u)
+                     | (m1_editor_ignore() ? M1_INFO_EDITOR_IGNORE : 0u));
     p[4] = 255u;                                             /* (was the delay count: any number since 1.10, the effect memory holds their lines) */
     p[5] = M1_FEATURES;
     p[6] = M1_FEATURES2;

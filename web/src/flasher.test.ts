@@ -6,7 +6,8 @@ import { describe, expect, it } from 'vitest';
 import { isMatryoshkaProduct, OPEN_HEAD_SHA256, MVAVE_LOADER_SHA256, OPEN_RELEASES, STOCK_V15_SHA256, V15_HEAD_SHA256, crc16, headIs, headWhich, logicalImage, openPackageProblem, productOf, validateOpenPackage, validateStockPackage, workbenchPackages } from './flasher/fm1pkg.js';
 // @ts-ignore untyped JS module
 import { Updater, bootMismatch, headProblem, loaderFits, pack7, readHead, unpack7 } from './flasher/fm1ota.js';
-import { BOOT_CODE_HELP, BOOT_CODE_IS_OPEN, BOOT_CODE_IS_OTHER, BOOT_CODE_IS_V15, MVAVE_WORKBENCH, OPEN_WHY, guardUnload } from './flasher';
+import { BOOT_CODE_HELP, BOOT_CODE_IS_OPEN, BOOT_CODE_IS_OTHER, BOOT_CODE_IS_V15, IGNORED_INSTALL, MVAVE_WORKBENCH, OPEN_WHY, guardUnload, ignoresEditor } from './flasher';
+import { CMD, frame, parse } from './protocol';
 
 const stock = (): Uint8Array => new Uint8Array(readFileSync(new URL('../public/firmware/FM-1_015.fwsc', import.meta.url)));
 
@@ -370,5 +371,40 @@ describe('the unload guard during an install (#147)', () => {
     expect(leave(t)).toBe(true);
     g.disarm();
     expect(leave(t)).toBe(false);
+  });
+});
+
+describe('an FM-1 set to ignore the editor (#702)', () => {
+  /** a running FM-1's link: INFO (EDITOR at IGNORE or ALLOW) to HELLO, after a frame of something else */
+  const fm1Link = (ignore: boolean | null) => {
+    const q: number[][] = [];
+    const sent: number[][] = [];
+    return {
+      sent,
+      send: (b: number[] | Uint8Array) => {
+        sent.push(Array.from(b));
+        if (ignore !== null && parse(b)?.cmd === CMD.hello)
+          q.push(Array.from(frame(CMD.tempoNow, [0, 120, 0])), Array.from(frame(CMD.info, [1, 64, 255, 1 | (ignore ? 8 : 0), 8, 246, 255, 31, 48, 1, 11, 0, 15])));
+        return true;
+      },
+      read: async () => q.shift() ?? null,
+    };
+  };
+  it('the Install panel asks a running Matryoshka HELLO and passes over one at IGNORE', async () => {
+    expect(await ignoresEditor(fm1Link(true), { text: 'FM-1_7011100' })).toBe(true);
+    expect(await ignoresEditor(fm1Link(false), { text: 'FM-1_7011100' })).toBe(false);
+    expect(await ignoresEditor(fm1Link(null), { text: 'FM-1_7011100' })).toBe(false);   // (no answer: ALLOW)
+    const stock = fm1Link(true);
+    expect(await ignoresEditor(stock, { text: 'FM-1_015' })).toBe(false);   // (other firmware is never asked)
+    expect(stock.sent).toEqual([]);
+  });
+  it('an install with only an ignored FM-1 on USB sends nothing and says how to undo it', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const up: any = new Updater({ inputs: new Map(), outputs: new Map() }, () => {}, { skip: async () => true });
+    let skipArg: unknown = null;
+    up.find = async (_f: unknown, skip: unknown) => ((skipArg = skip), (up.skipped = 'FM-1_7011100'), null);
+    await expect(up.install(new Uint8Array(8), 'FM-1_7011100')).rejects.toMatchObject({ code: 'ignored' });
+    expect(skipArg).toBe(up.skip);
+    expect(IGNORED_INSTALL).toMatch(/GLO \u203a SYSTEM \u203a EDITOR to ALLOW/);
   });
 });

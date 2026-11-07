@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { parsePeak, parseScreen, testKeyFrame, testScreenFrame, testTurnFrame, fm1Ascii, parseInfo, parseSandbox, SANDBOX_BYTES, SANDBOX_EXT_BYTES, sandboxFrame, sandboxPayload, type SandboxPage, chunkFrames, CMD, commitFrame, crc16, devicePresetName, frame, LIVE_MS, liveFrame, pack7, paramFrame, parse, parsePresetData, parsePresetEntry, parsePresetStored, parseSlot, presetPutFrame, slotEraseFrame, slotFrame, slotInfoFrame, unpack7 } from './protocol';
+import { editorSkips, parsePeak, parseScreen, testKeyFrame, testScreenFrame, testTurnFrame, fm1Ascii, parseInfo, parseSandbox, SANDBOX_BYTES, SANDBOX_EXT_BYTES, sandboxFrame, sandboxPayload, type SandboxPage, chunkFrames, CMD, commitFrame, crc16, devicePresetName, frame, LIVE_MS, liveFrame, pack7, paramFrame, parse, parsePresetData, parsePresetEntry, parsePresetStored, parseSlot, presetPutFrame, slotEraseFrame, slotFrame, slotInfoFrame, unpack7 } from './protocol';
 
 describe('SysEx protocol', () => {
   it('packs and unpacks every length without loss and with 7-bit bytes only', () => {
@@ -143,6 +143,17 @@ describe('sandbox mode on the wire', () => {
     const extended = parseInfo(parse(frame(CMD.info, [1, 64, 255, 7, 8, 246, 255, 31, 200]))!)!;
     expect(extended).toMatchObject({ patchFormats: { min: 31, max: 200 }, features: 65526, midiOut: true });
     expect(extended.firmware).toBeUndefined();   // firmware before 1.8: its identity says major and minor
+  });
+
+  it('INFO: GLO > SYSTEM > EDITOR at IGNORE in flag bit 3, only with feature bit 19 (#702)', () => {
+    const info = (flags: number, f3: number) => parseInfo(parse(frame(CMD.info, [1, 64, 255, flags, 8, 246, 255, 31, 48, 1, 11, 0, f3]))!)!;
+    expect(info(1 | 8, 15).editorIgnored).toBe(true);
+    expect(info(1, 15).editorIgnored).toBe(false);
+    expect(info(1 | 8, 7).editorIgnored).toBe(false);   // (no feature bit 19: firmware without the setting counts as ALLOW)
+    expect(parseInfo(parse(frame(CMD.info, [1, 64, 255, 15, 8, 246, 255]))!)!.editorIgnored).toBe(false);
+    expect(editorSkips(info(1 | 8, 15), false)).toBe(true);
+    expect(editorSkips(info(1 | 8, 15), true)).toBe(false);   // (the test tools' page: the rig is set to IGNORE)
+    expect(editorSkips(null, false)).toBe(false);
   });
 
   it('INFO: the firmware version in bytes 9..11 (#216)', () => {
