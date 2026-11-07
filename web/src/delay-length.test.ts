@@ -6,7 +6,9 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { DEFS, delayLine, delayReach, DELAY_LENGTH_DEFAULT, DELAY_LENGTH_MAX, DELAY_SYNC_TOP, DELAY_TIME_MAX, DEVICE_SR, rowRange } from './modules';
 import { addModule, connect, emptyPatch, modulate, morphValue, topOf, validatePatch, type Patch } from './patch';
-import { browserOnly, delayBytes, delayRoom, deviceBudget, encodePatch, formatOf, LINE_AREAS, lineBudget, linePlace, LINES, linesAdvice, toQ16 } from './patchbin';
+import { ARENA, browserOnly, delayBytes, delayRoom, deviceBudget, encodePatch, formatOf, LINE_LOW, lineBudget, linePlace, LINES, linesAdvice, toQ16 } from './patchbin';
+/** the line area the FM-1 had in its pool before the arena (#649): a 700 ms delay line, 8 string lines and a granular line */
+const OLD_POOL = 167980;
 import { Engine } from './engine';
 
 const SR = 44100;
@@ -147,34 +149,36 @@ describe('the Delay\'s length row', () => {
   });
 });
 
-describe('the effect memory', () => {
+describe('the FM-1\'s memory (the lines: D-375; one arena, #649)', () => {
   it('has the firmware\'s two line areas and line sizes (engine.c)', () => {
     expect(engineC).toMatch(/#define STR_LEN 1104u/);
     expect(engineC).toMatch(/#define GRAIN_LEN 44118u/);
     expect(engineC).toMatch(/#define RV_LEN 8074u/);
     expect(engineC).toMatch(/#define CH_LEN 927u/);
     expect(engineC).toMatch(/#define LINE_LOW \(LINE_BYTES\(2u \* RV_LEN\) \+ LINE_BYTES\(2u \* CH_LEN\) \+ 8192u\)/);
-    expect(LINE_AREAS.pool).toBe(167980);
-    expect(LINE_AREAS.low).toBe(26196);
+    expect(delayBytes(700) + 8 * LINES.string + LINES.grain).toBe(OLD_POOL);
+    expect(LINE_LOW).toBe(26196);
+    expect(ARENA).toBe(OLD_POOL + 255 * 512 + 129 * 272 + 1536 * 4);
+    expect(engineC).toMatch(/#define ENG_ARENA \(LINE_ARENA \+ 255u \* ENG_BUF_BYTES \+ 129u \* ENG_INST_BYTES \+ 1536u \* 4u\)/);
     expect(LINES).toEqual({ string: 2208, grain: 88428, reverb: 16148, chorus: 1856 });
     expect(delayBytes(700)).toBe(61888);
-    expect(delayBytes(DELAY_LENGTH_MAX)).toBeLessThanOrEqual(LINE_AREAS.pool);
+    expect(delayBytes(DELAY_LENGTH_MAX)).toBeLessThanOrEqual(OLD_POOL);
   });
 
   it('holds every patch the FM-1 played before (a 700 ms Delay, 8 strings, a Granular, a reverb, a chorus, any subset)', () => {
     for (let d = 0; d <= 1; d++) for (let s = 0; s <= 8; s++) for (let g = 0; g <= 1; g++) for (let r = 0; r <= 1; r++) for (let c = 0; c <= 1; c++) {
       const sizes = [...Array(d).fill(delayBytes(700)), ...Array(s).fill(LINES.string), ...Array(g).fill(LINES.grain), ...Array(r).fill(LINES.reverb), ...Array(c).fill(LINES.chorus)];
-      expect(linePlace(sizes), `${d} ${s} ${g} ${r} ${c}`).not.toBeNull();
+      expect(linePlace(sizes, OLD_POOL), `${d} ${s} ${g} ${r} ${c}`).not.toBeNull();   // (what the arena leaves a patch within the old pools)
     }
   });
 
   it('places the largest first, each into the area with the least room that holds it', () => {
-    expect(linePlace([LINES.grain, delayBytes(700), LINES.reverb, LINES.chorus])).toEqual([1, 1, 1, 0]);
-    expect(linePlace([LINES.reverb, LINES.reverb])).toEqual([0, 1]);
-    expect(linePlace([LINE_AREAS.pool + 4])).toBeNull();
+    expect(linePlace([LINES.grain, delayBytes(700), LINES.reverb, LINES.chorus], OLD_POOL)).toEqual([1, 1, 1, 0]);
+    expect(linePlace([LINES.reverb, LINES.reverb], OLD_POOL)).toEqual([0, 1]);
+    expect(linePlace([OLD_POOL + 4], OLD_POOL)).toBeNull();
     // within the total but not in the two areas: a 1.75 s Delay fills most of the pool's, two reverbs do not fit the low one
-    expect(delayBytes(1750) + 2 * LINES.reverb).toBeLessThan(LINE_AREAS.low + LINE_AREAS.pool);
-    expect(linePlace([delayBytes(1750), LINES.reverb, LINES.reverb])).toBeNull();
+    expect(delayBytes(1750) + 2 * LINES.reverb).toBeLessThan(LINE_LOW + OLD_POOL);
+    expect(linePlace([delayBytes(1750), LINES.reverb, LINES.reverb], OLD_POOL)).toBeNull();
   });
 
   it('any number of Delays, reverbs and choruses while their lines fit; over it the patch is a sandbox patch, and says why', () => {
@@ -182,23 +186,26 @@ describe('the effect memory', () => {
     const b = deviceBudget(three);
     expect(b.lines.fits).toBe(true);
     expect(b.fits).toBe(true);
-    expect(b.lines.used).toBe(delayBytes(500) + delayBytes(300) + delayBytes(900) + 2 * LINES.reverb + 2 * LINES.chorus);
-    expect(b.items.find((i) => i.key === 'lines')).toMatchObject({ label: 'effect memory', max: LINE_AREAS.low + LINE_AREAS.pool });
+    expect(b.lines.lines).toBe(delayBytes(500) + delayBytes(300) + delayBytes(900) + 2 * LINES.reverb + 2 * LINES.chorus);
+    expect(b.lines.used).toBe(b.lines.lines + b.lines.copiesBytes + b.lines.buffersBytes + b.lines.paramsBytes);
+    expect(b.items.find((i) => i.key === 'memory')).toMatchObject({ label: 'memory', max: ARENA + LINE_LOW });
     expect(() => encodePatch(three)).not.toThrow();
-    const full = linesPatch([['delay', { length: 1000 }], ['delay', { length: 1000 }], ['grain']]);
+    const full = linesPatch([['delay', { length: 1900 }], ['delay', { length: 1900 }], ['delay', { length: 1900 }], ['grain']]);
     const f = deviceBudget(full);
     expect(f.lines.fits).toBe(false);
     expect(f.fits).toBe(false);
-    expect(f.over.map((i) => i.key)).toEqual(['lines']);
-    expect(linesAdvice(full)).toMatch(/^Effect memory full: \d+ of 190 KB used\. Shorten another Delay or remove the Granular \(86 KB\)\.$/);
+    expect(f.over.map((i) => i.key)).toEqual(['memory']);
+    expect(linesAdvice(full)).toMatch(/^Memory full: \d+ of 357 KB used\. Shorten another Delay or remove the Granular \(86 KB\)\.$/);
     expect(() => encodePatch(full)).toThrow(/over the FM-1 budget/);
   });
 
   it('a Delay\'s length stops at what the memory has left besides the other lines (the editor\'s length row)', () => {
-    const p = linesPatch([['grain'], ['delay', { length: 200 }], ['reverb']]);
-    const id = p.modules.find((m) => m.type === 'delay')!.id;
+    const p = linesPatch([['grain'], ['grain'], ['delay', { length: 1500 }], ['delay', { length: 200 }], ['reverb']]);
+    const id = p.modules.find((m) => m.type === 'delay' && m.params.length === 200)!.id;
     const room = delayRoom(p, id);
     expect(room % 10).toBe(0);
+    expect(room).toBeGreaterThan(0);
+    expect(room).toBeLessThan(DELAY_LENGTH_MAX);
     p.modules.find((m) => m.id === id)!.params.length = room;
     expect(lineBudget(p).fits).toBe(true);
     p.modules.find((m) => m.id === id)!.params.length = room + 10;

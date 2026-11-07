@@ -468,6 +468,7 @@ int main(void)
         ;
     poly_row_set(mod, 0, 4);
     check("Cassia accepts four voices in memory", eng_poly_get(0, 0) == 4);
+    arena_size = ENG_ARENA - arena_free();   /* (#649: the arena holds Cassia's eight voices; made as small as four take) */
     poly_row_set(mod, 0, 5);
     check("a rejected fifth voice restores the engine and patch", eng_poly_get(0, 0) == 4 && pv_bin[8] == 4);
     poly_row_set(mod, 0, 2);
@@ -483,6 +484,7 @@ int main(void)
     check("unison count row spans all hardware voices", poly_max(ENG_POLY_STACK) == ENG_MAX_PARTS);
     check("poly count edits preserve the unison count", poly_row_set(mod, ENG_POLY_PARTS, 4) == 0 && pv_bin[8] == 0x14u);
     check("rejected poly edit restores both counts", poly_row_set(mod, ENG_POLY_PARTS, 5) != 0 && pv_bin[8] == 0x14u && eng_poly_get(0, ENG_POLY_STACK) == 1 && eng_poly_get(0, ENG_POLY_PARTS) == 4);
+    arena_size = ENG_ARENA;
     check("unison count survives reloading", eng_load(pv_bin, pv_len) == 0 && eng_poly_get(0, ENG_POLY_STACK) == 1);
     check("unison can use one of four voices", poly_row_set(mod, ENG_POLY_UNISON, 1) == 0 && eng_poly_get(0, ENG_POLY_UNISON) == 1);
     group_on(&E.grp[1], 60, ENG_ONE); /* Cassia receives keys through its Arpeggiator. */

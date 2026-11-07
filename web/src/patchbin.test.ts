@@ -300,7 +300,7 @@ describe('binary patch format', () => {
   });
 
   it('counts parameter values as eng_load takes them: per module its type\'s, twice with a morph B side, plus per copy', () => {
-    const used = (q: Patch): number => deviceBudget(q).items.find((i) => i.key === 'params')!.used;
+    const used = (q: Patch): number => deviceBudget(q).params;
     const mono = subtractiveSaw();
     const npar = mono.modules.reduce((n, m) => n + DEFS[m.type].params.length, 0);
     expect(used(mono)).toBe(2 * npar); // one copy each
@@ -371,9 +371,9 @@ describe('binary patch format', () => {
     const two = subtractiveSaw();
     const out2 = two.modules.find((m) => m.type === 'output')!;
     for (let i = 0; i < 2; i++) connect(two, DEFS, { module: addModule(two, DEFS.reverb, 0, 0).id, port: 'out' }, { module: out2.id, port: 'l' });
-    expect(deviceBudget(two).fits).toBe(true);   // (two reverbs: the effect memory holds them, D-375)
-    for (let i = 0; i < 12; i++) connect(two, DEFS, { module: addModule(two, DEFS.reverb, 0, 0).id, port: 'out' }, { module: out2.id, port: 'l' });
-    expect(deviceBudget(two).over.map((i) => i.key)).toContain('lines');
+    expect(deviceBudget(two).fits).toBe(true);   // (two reverbs: the memory holds them, D-375)
+    for (let i = 0; i < 30; i++) connect(two, DEFS, { module: addModule(two, DEFS.reverb, 0, 0).id, port: 'out' }, { module: out2.id, port: 'l' });
+    expect(deviceBudget(two).over.map((i) => i.key)).toContain('memory');
   });
 });
 

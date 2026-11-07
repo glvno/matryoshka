@@ -8,7 +8,7 @@ import { deviceBudget, encodePatch, FLAG_INPUTS, PANEL_BYTES, recordSize, toQ16 
 import { cpuEstimate } from '../src/cpu';
 import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, sandboxFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
-import { make, FM1_PRESETS, type Build } from '../src/presets';
+import { make, FM1_PRESETS, XL_PRESETS, type Build } from '../src/presets';
 import { addModule, connect, defaultParams, emptyPatch, fixMatrix, newPatch, paramUnit, setMorphTarget, SOURCES, stepByte, type Patch, type PolyCfg } from '../src/patch';
 import { migrateSteps, overdub, STEPS_MAX, type StepNote } from '../src/track';
 import { insertAssembly, makeAssembly } from '../src/assembly';
@@ -148,6 +148,9 @@ for (const shape of [0, .25, .5, .75, 1]) for (const back of [0, 1]) {
   });
 }
 for (const [n, p] of Object.entries(FM1_PRESETS)) tests[n] = p();
+// #649: XLs the FM-1's one memory arena holds (Hera 6 XL: 151 module copies, past the 128 of the fixed pools before it;
+// Wanderer XL: it fits with format 51, #667)
+for (const n of ['Hera 6 XL', 'Wanderer XL']) tests[n] = XL_PRESETS[n]();
 events['Wanderer'] = [[0, 'on', 60], [128 * 20, 'on', 72], [128 * 40, 'on', 67], [128 * 60, 'off', 72], [128 * 80, 'off', 60], [128 * 100, 'off', 67]];
 // Mono Lead: its notes one after another. A note over a held one lengthens its glide to 166 ms (the allocator's legato output on
 // the Glide's time), and a gliding pitch leaves a small phase offset between the engines (within a cent, nothing at rest),
@@ -3324,8 +3327,9 @@ for (const [name, patch] of Object.entries(tests)) {
   const cpu = cpuEstimate(patch).use;
   if (cpu > 1) console.log(`${name}: estimated at ${Math.round(cpu * 100)} % of the FM-1's CPU (a correctness kit, not a real-time one)`);
   writeFileSync(new URL(`${f}.m1p`, OUT), bins[name] ?? encodePatch(patch, true, counted.has(name)));
-  // the parameter values the editor's budget counts (DEVICE.params), which eng_load must take exactly (host_test checks)
-  if (!bins[name]) writeFileSync(new URL(`${f}.par`, OUT), `${deviceBudget(patch).items.find((i) => i.key === 'params')!.used}\n`);
+  // the parameter values, signal buffers and module copies the editor's budget counts (patchbin.ts poolUse), which eng_load
+  // must take exactly (host_test checks): the FM-1's memory is counted from them (#649)
+  if (!bins[name]) { const b = deviceBudget(patch); writeFileSync(new URL(`${f}.par`, OUT), `${b.params} ${b.buffers} ${b.instances}\n`); }
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
   writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' || k === 'arms' || k === 'pat' || k === 'song' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' || k === 'thon' || k === 'thoff' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }

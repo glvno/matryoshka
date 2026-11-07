@@ -35,7 +35,7 @@ beforeAll(() => {
 }, 120_000);
 
 describe('the FM-1 UI as WebAssembly', () => {
-  it('keeps Cassia playable after rapid turns request more voices than fit, without sending rejected values', async () => {
+  it('keeps Cassia playable after rapid turns of its voices row, past its top', async () => {
     const patch = FM1_PRESETS['Cassia 1']();
     const values: number[] = [];
     const ui = await Fm1Ui.create(bytes, { param: (_m, p, v) => { if (p === 0x80) values.push(v); } });
@@ -50,10 +50,11 @@ describe('the FM-1 UI as WebAssembly', () => {
       ui.tick(1000 + i * 10);
       ui.encoder(ENCODERS.k1 + k, 5);
     }
-    expect(values).toEqual([3 << 16, 4 << 16]);
+    // (#649: the memory holds Cassia's eight voices, the voices row's top; before the arena it held four)
+    expect([...new Set(values)]).toEqual([3, 4, 5, 6, 7, 8].map((v) => v << 16));
     ui.encoder(ENCODERS.k1 + k, -5);
     ui.encoder(ENCODERS.k1 + k, -5);
-    expect(values.slice(-2)).toEqual([3 << 16, 2 << 16]);
+    expect(values.slice(-2)).toEqual([7 << 16, 6 << 16]);
   }, 30_000);
 
   it('draws a device page pixel for pixel as the host preview of the same firmware', async () => {
