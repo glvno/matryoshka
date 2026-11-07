@@ -42,7 +42,7 @@ preset: Deep Sub 303
   env mod = 1.2
   decay = 0.6 s
   accent = 0.5
-  volume = 0.92
+  volume = 0.9
 
 preset: Short Zap
   waveform = 2

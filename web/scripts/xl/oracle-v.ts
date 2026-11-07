@@ -157,7 +157,7 @@ export const xl: Xl = {
       // its pitch, so both oscillators follow them.
       const fm1Fine = e.m(OSC_B).params.fine ?? 0;
       Object.assign(e.m(OSC_B).params, { wave: 2, level: 1, coarse: 0, fine: 0 });
-      const tri = per('osc', 2, 2, { wave: 1, level: 1 });
+      const tri = per('osc', 2, 2, { wave: 1, level: 1, analog: 1 });
       e.wire(busB, 'out', tri, 'pitch');
       const bFreq = e.add('const', 0, 1, { value: 0 });
       const bFreqQ = e.add('quant', 0.5, 1, { scale: 0, root: 0 });
