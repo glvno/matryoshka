@@ -46,11 +46,9 @@ export function keepChoice(id: string): void {
   }
 }
 
-/** Play a note: middle C on `out` now, its release 400 ms later by the page's timer. Neither carries a Web MIDI
- *  timestamp. With the release sent ahead with a timestamp, Play a note sounded only after dozens of seconds on real
- *  FM-1s (the owner's two-device test of #698), while the editor link, which never sends ahead, stayed prompt. The
- *  emulator's virtual port heard it after 156 ms, so the delay is on the USB path, where a timestamped message is
- *  scheduled; sending nothing ahead takes it out of play */
+/** Play a note: middle C on `out` now, its release 400 ms later by the page's timer, with no Web MIDI timestamp. The FM-1
+ *  plays it with its current patch, so a patch where middle C sounds nothing (a drum patch's white keys, a patch no keys
+ *  reach) or MASTER down is silent. On the test rig the dialog's note sounded 37 to 88 ms after the click (#698) */
 export function playNote(out: Pick<MIDIOutput, 'send'>, later: (f: () => void, ms: number) => unknown = (f, ms) => setTimeout(f, ms)): void {
   out.send([0x90, 60, 100]);
   later(() => out.send([0x80, 60, 0]), 400);
