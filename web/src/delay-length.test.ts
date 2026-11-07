@@ -64,7 +64,7 @@ describe('the Delay\'s length row', () => {
   it('is a row of format 50 set when the patch loads; an older Delay reads 700 ms, the line it had', () => {
     expect(lengthPd).toMatchObject({ min: 10, max: DELAY_LENGTH_MAX, default: DELAY_LENGTH_DEFAULT, since: 50, fixed: true, unit: 'ms' });
     expect(DELAY_LENGTH_DEFAULT).toBe(700);
-    expect(DEFS.delay.params.at(-2)).toBe(lengthPd);   // (the rate row, #659, after it)
+    expect(DEFS.delay.params.indexOf(lengthPd)).toBe(7);   // (the rate row, #659, and Tape's rows, #660, after it)
     expect(delayLine(700)).toBe(30944);   // engine.c DELAY_LEN, every Delay's line before the row
     for (const ms of [10, 11, 120, 333, 700, 1001, 1900]) {
       expect(delayLine(ms) % 2).toBe(0);
