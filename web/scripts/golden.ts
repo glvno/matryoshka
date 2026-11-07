@@ -1454,6 +1454,39 @@ delayKit('delay-length-short-sync', { sync: 1, time: 416, length: 300 });
 delayKit('delay-length-short-pingpong', { time: 90, pingpong: 1, length: 150 });
 delayKit('delay-length-1900', { time: 1890, fb: 0.5, length: 1900 });
 for (const n of ['delay-long', 'delay-long-sync', 'delay-long-pingpong', 'delay-1600', 'delay-1600-pingpong', 'delay-length-1900']) ends[n] = 128 * 1400;
+// the rate row (#659): 22k and 11k hold two and four times the length (a time past the length), ping-pong, synced, the
+// swell, the longest (7.6 s), a time that glides (a square LFO on its pin) and a rate that changes while it plays (it
+// empties the line)
+delayKit('delay-rate-22k', { time: 1300, fb: 0.5, length: 700, rate: 1 });
+delayKit('delay-rate-11k', { time: 2700, fb: 0.5, length: 700, rate: 2 });
+delayKit('delay-rate-22k-pingpong', { time: 450, pingpong: 1, length: 500, rate: 1 });
+delayKit('delay-rate-11k-sync', { sync: 1, time: 416, length: 300, rate: 2 });
+delayKit('delay-rate-11k-swell', { time: 330, fb: 0.8, swell: 1, length: 200, rate: 2 });
+delayKit('delay-rate-max', { time: 7590, fb: 0.3, length: 1900, rate: 2 });
+for (const n of ['delay-rate-22k', 'delay-rate-11k', 'delay-rate-22k-pingpong']) ends[n] = 128 * 1400;
+ends['delay-rate-max'] = 128 * 2700;
+const delayModKit = (name: string, params: Record<string, number>, param: string, lfoRate: number, depth: number): void =>
+  kit(name, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const osc = add('osc', 0, 0, { wave: 1, level: 0.5 });
+    const env = add('adsr', 0, 0, { a: 0.002, d: 0.05, s: 0, r: 0.05 });
+    const vca = add('vca', 0, 0);
+    const lfo = add('lfo', 0, 0, { wave: 3, rate: lfoRate, depth });
+    const dly = add('delay', 0, 0, { fb: 0.6, mix: 0.5, ...params }, { map: { p1: [param] } });
+    const out = add('output', 0, 0);
+    wire(kb, 'pitch', osc, 'pitch');
+    wire(kb, 'gate', env, 'gate');
+    wire(osc, 'out', vca, 'in');
+    wire(env, 'env', vca, 'cv');
+    wire(vca, 'out', dly, 'in');
+    wire(lfo, 'out', dly, 'p1');
+    wire(dly, 'out', out, 'l');
+    wire(dly, 'r', out, 'r');
+  });
+delayModKit('delay-rate-glide', { time: 400, length: 700, rate: 1 }, 'time', 2.3, 0.3);
+delayModKit('delay-rate-glide-pingpong', { time: 300, length: 700, rate: 2, pingpong: 1 }, 'time', 1.7, 0.25);
+delayModKit('delay-rate-switch', { time: 180, length: 400, rate: 0 }, 'rate', 1.3, 0.5);
+for (const n of ['delay-rate-glide', 'delay-rate-glide-pingpong', 'delay-rate-switch']) ends[n] = 128 * 700;
 // several Delays in one patch (the effect memory, D-375): three of different lengths in a chain, the last ping-pong
 kit('delays-three', (add, wire) => {
   const kb = add('fm1', 0, 0);

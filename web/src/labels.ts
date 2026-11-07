@@ -83,7 +83,8 @@ const HINTS: Record<string, string> = {
   'osc.pm3': `${PM_HINT('pm3')} The index input, when patched, multiplies all three.`,
   'wavetable.pm': PM_HINT('pm'),
   'pd.pm': PM_HINT('pm'),
-  'delay.length': 'The most time this Delay holds, set here in the editor (the FM-1 shows it). Its time plays up to it; ping-pong: half per side, as both sides share the line. It takes 8.6 KB of the FM-1\'s memory per 100 ms.',
+  'delay.length': 'The most time this Delay holds, set here in the editor (the FM-1 shows it). Its time plays up to it; ping-pong: half per side, as both sides share the line. It takes 8.6 KB of the FM-1\'s memory per 100 ms at rate 44k. At 22k the same memory holds 200 ms, at 11k 400 ms, and this row shows that longer time.',
+  'delay.rate': 'The rate this Delay keeps its sound at. 44k keeps every sample: full quality. 22k keeps every second sample: twice the time in the same memory, and only frequencies up to about 9 kHz. 11k keeps every fourth sample: four times the time, up to about 4.4 kHz. So echoes at a lower rate sound darker. The length row shows the time at this rate (at most 1.9 s, 3.8 s, 7.6 s). A new rate empties the Delay.',
   'delay.pingpong': 'Ping-pong: half per side. Both sides share the Delay\'s line, so each echoes up to half its length.',
 };
 export const paramHint = (type: string, name: string): string | undefined => HINTS[`${type}.${name}`];

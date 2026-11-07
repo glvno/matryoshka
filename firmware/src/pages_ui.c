@@ -134,6 +134,12 @@ static int32_t poly_max(uint32_t f) { return f == 0u || f == ENG_POLY_STACK ? EN
 static const ppage_t *pages_now(void);
 static void caps(char *out, const char *s, uint32_t n, uint32_t max);
 
+/* a Delay's rate step's k (#659): 1, 2 or 4 samples a line sample */
+static int32_t dly_k(uint32_t m)
+{
+    return 1 << clampi((eng_get_param(m, DELAY_P_RATE) + 32768) >> 16, 0, DELAY_NRATE - 1);
+}
+
 /* a Selector's position row spans the positions in use, 1..count (#358: it never offers one that plays nothing): the
  * top of row j of module m, Q16 (else the parameter's own, DEF_TOP) */
 static int32_t row_top(uint32_t m, uint32_t j, const def_t *d)
@@ -141,8 +147,8 @@ static int32_t row_top(uint32_t m, uint32_t j, const def_t *d)
     if (eng_type(m) == T_SELECT && j == SELECT_P_POS)
         return clampi((eng_get_param(m, SELECT_P_COUNT) + 32768) >> 16, 2, (int32_t)(d->pmax[j] >> 16)) << 16;
     if (eng_type(m) == T_DELAY && j == DELAY_P_TIME && eng_get_param(m, DELAY_P_SYNC) < 32768) {   /* a free Delay's time: up to
-                                                     * its length, half of it with ping-pong (modules.ts delayReach) */
-        int32_t l = clampi((eng_get_param(m, DELAY_P_LENGTH) + 32768) >> 16, DELAY_LENGTH_MIN, DELAY_LENGTH_MAX);
+                                                     * its length times its rate's k, half of it with ping-pong (modules.ts delayReach) */
+        int32_t l = clampi((eng_get_param(m, DELAY_P_LENGTH) + 32768) >> 16, DELAY_LENGTH_MIN, DELAY_LENGTH_MAX) * dly_k(m);
         return (eng_get_param(m, DELAY_P_PINGPONG) >= 32768 ? l / 2 : l) << 16;
     }
     return DEF_TOP(d, j);
@@ -524,7 +530,7 @@ static void pages_patch_ask(void)
  * on K1..K4, drawn as a device page. MIDI: the MIDI channel, clock in, MIDI out (K3: sandbox mode's hint names it), clock
  * out (#473); PANEL:
  * the LEDs, knob acceleration; SYSTEM: update mode, factory reset (a turn arms the row, GLO held 2 s does it: menu.c
- * menu_fire), the quick start after power-on (D-247), OUTPUT (D-919); its second page (ALGO again, #702): EDITOR. The settings live in the state (SAVE), never in a patch (menu.c setting_step). A row of them is a setting,
+ * menu_fire), the quick start after power-on (D-247), OUTPUT (D-919); its second page (ALGO again, #702): EDITOR, USB LEVEL (#600), OUT LEVEL (#631). The settings live in the state (SAVE), never in a patch (menu.c setting_step). A row of them is a setting,
  * not a module's parameter: SETTING_ROW in its module byte. */
 #define SETTING_ROW 0xFFu
 static void setting_step(uint32_t row, int32_t s);      /* menu.c */
@@ -535,10 +541,10 @@ static ppage_t pg_menu;
 static const ppage_t *menu_tab_page(void)
 {
     static const char *const LAB[4][PG_ROWS] = {{"MIDI CHANNEL", "CLOCK IN", "MIDI OUT", "CLOCK OUT"}, {"LEDS", "KNOB ACCEL", "COUNT-IN", "TEMPO"}, {"UPDATE MODE", "FACTORY RESET", "QUICK START", "OUTPUT"},
-                                                {"EDITOR", "", "", ""}};
+                                                {"EDITOR", "USB LEVEL", "OUT LEVEL", ""}};
     static const uint8_t ROW[4][PG_ROWS] = {{MR_CH, MR_CLOCK, MR_MOUT, MR_CLKOUT}, {MR_LEDS, MR_ACCEL, MR_CIN, MR_TEMPO}, {MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_OUTPUT},
-                                            {MR_EDITOR, MR_EDITOR, MR_EDITOR, MR_EDITOR}};
-    static const uint8_t N[4] = {4, 4, 4, 1};           /* (the fourth: SYSTEM's second page, #702) */
+                                            {MR_EDITOR, MR_USBLVL, MR_OUTLVL, MR_OUTLVL}};
+    static const uint8_t N[4] = {4, 4, 4, 3};           /* (the fourth: SYSTEM's second page, #702) */
     uint32_t t = menu_tab > MT_SYSTEM ? MT_MIDI : menu_tab, k;
     if (t == MT_SYSTEM && menu_sys2)
         t = 3u;
@@ -560,7 +566,7 @@ static const ppage_t *menu_tab_page(void)
 /* a setting's place in its range, 0..width (its bar) */
 static uint32_t setting_bar(uint32_t row, uint32_t width)
 {
-    return row == MR_CH ? cfg.ch * width / 16u : row == MR_LEDS ? cfg.leds * width / 2u : row == MR_OUTPUT ? out_mono * width / 2u : row == MR_EDITOR ? cfg.editor_ignore * width : row == MR_CIN ? cfg.count_in * width / 2u
+    return row == MR_CH ? cfg.ch * width / 16u : row == MR_LEDS ? cfg.leds * width / 2u : row == MR_OUTPUT ? out_mono * width / 2u : row == MR_EDITOR ? cfg.editor_ignore * width : row == MR_USBLVL ? usb_level * width / (LVL_N - 1u) : row == MR_OUTLVL ? out_level * width / (LVL_N - 1u) : row == MR_CIN ? cfg.count_in * width / 2u
          : row == MR_UPDATE || row == MR_DEFAULTS ? (menu_armed == row ? width : 0u)
          : (row == MR_CLOCK ? cfg.clock_in : row == MR_MOUT ? cfg.midi_out : row == MR_CLKOUT ? cfg.clock_out : row == MR_QUICK ? cfg.quick : row == MR_TEMPO ? gt_patch : cfg.accel) ? width : 0u;
 }
@@ -675,7 +681,8 @@ static int pages_turn(uint32_t k, int32_t clicks, int fast, int fine, uint32_t *
             *v = clicks > 0 ? (f < *v ? f : *v) : (f > *v ? f : *v);
         }
     } else {
-        int32_t inc = d->pinc[j];
+        int32_t inc = d->pinc[j] * (eng_type(m) == T_DELAY && j == DELAY_P_TIME ? dly_k(m) : 1);   /* (a Delay's time: k times the
+                                                     * click at a lower rate, #659, so the knob spans the longer reach alike) */
         if (fine)                                       /* a fine click: a tenth of a click, never under the editor's step */
             inc = d->pstep[j] > inc / 10 ? d->pstep[j] : inc / 10;
         *v = clampi(eng_get_param(m, j) + clicks * (fast ? 5 : 1) * inc, d->pmin[j], row_top(m, j, d));   /* (past pmax: a stretch) */
@@ -704,7 +711,7 @@ static int pages_lock_turn(const ppage_t *pg, uint32_t k, int32_t cur, int32_t c
     } else if (eng_param_is_log(m, j))
         *v = eng_step_value(m, j, cur, clicks * (fast ? 5 : 1), 655);
     else
-        *v = clampi(cur + clicks * (fast ? 5 : 1) * d->pinc[j], d->pmin[j], row_top(m, j, d));
+        *v = clampi(cur + clicks * (fast ? 5 : 1) * d->pinc[j] * (eng_type(m) == T_DELAY && j == DELAY_P_TIME ? dly_k(m) : 1), d->pmin[j], row_top(m, j, d));
     return 0;
 }
 
@@ -822,7 +829,7 @@ static void value_parts(const def_t *d, uint32_t j, int32_t q16, char *num, char
 }
 
 /* the value a row plays, where a switch of its module stretches it (the editor's card shows the same): the ADSR's long
- * (decay and release x 2.4), the Delay's swell (feedback x 198 / 95) and the LFO's free rate in its slow / fast range
+ * (decay and release x 2.4), the Delay's swell (feedback x 198 / 95), its length at a lower rate (x 2, x 4) and the LFO's free rate in its slow / fast range
  * (/ 25, x 2: modules.ts lfoRateText); the bar keeps the knob's range */
 static int32_t stretched(uint32_t m, uint32_t j, int32_t v)
 {
@@ -835,6 +842,8 @@ static int32_t stretched(uint32_t m, uint32_t j, int32_t v)
         return (int32_t)(((int64_t)v * ADSR_LONG_Q16) >> 16);
     if (t == T_DELAY && j == DELAY_P_FB && eng_get_param(m, DELAY_P_SWELL) >= 32768)
         return (int32_t)((int64_t)v * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
+    if (t == T_DELAY && j == DELAY_P_LENGTH)            /* the time the line holds at its rate (#659) */
+        return v * dly_k(m);
     return v;
 }
 
