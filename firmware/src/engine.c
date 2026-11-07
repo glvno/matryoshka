@@ -6126,13 +6126,13 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
             int32_t ea = (int32_t)buf[rp] * 8, dr = mul16(in[i], dry);
             if (pp) {
                 int32_t eb = (int32_t)buf[H + rp] * 8;
-                buf[H + w] = dly_pack(dly_soft(mul16(ea, fb)));
-                buf[w] = dly_pack(dly_soft(in[i] + mul16(eb, fb)));
-                out[i] = dr + mul16(ea, mix);
-                outr[i] = dr + mul16(eb, mix);
+                buf[H + w] = dly_pack(dly_soft(MUL_E(ea, fb)));
+                buf[w] = dly_pack(dly_soft(in[i] + MUL_E(eb, fb)));
+                out[i] = dr + MUL_E(ea, mix);
+                outr[i] = dr + MUL_E(eb, mix);
             } else {
-                buf[w] = dly_pack(dly_soft(in[i] + mul16(ea, fb)));
-                out[i] = dr + mul16(ea, mix);
+                buf[w] = dly_pack(dly_soft(in[i] + MUL_E(ea, fb)));
+                out[i] = dr + MUL_E(ea, mix);
                 outr[i] = out[i];
             }
             if (++w == len)
@@ -6142,10 +6142,10 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
         for (i = 0; i < n; i++) {
             uint32_t rp = w >= d ? w - d : w + L - d;
             int32_t r = (int32_t)buf[rp] * 8;
-            buf[w] = dly_pack(in[i] + mul16(r, fb));
+            buf[w] = dly_pack(in[i] + MUL_E(r, fb));
             if (++w == L)
                 w = 0;
-            out[i] = mul16(in[i], dry) + mul16(r, mix);
+            out[i] = mul16(in[i], dry) + MUL_E(r, mix);
             outr[i] = out[i];
         }
     } else {
@@ -6155,12 +6155,12 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
         for (i = 0; i < n; i++) {
             uint32_t rp = w >= d ? w - d : w + H - d;
             int32_t ea = (int32_t)buf[rp] * 8, eb = (int32_t)bb[rp] * 8, dr = mul16(in[i], dry);
-            bb[w] = dly_pack(mul16(ea, fb));
-            buf[w] = dly_pack(in[i] + mul16(eb, fb));
+            bb[w] = dly_pack(MUL_E(ea, fb));
+            buf[w] = dly_pack(in[i] + MUL_E(eb, fb));
             if (++w == H)
                 w = 0;
-            out[i] = dr + mul16(ea, mix);
-            outr[i] = dr + mul16(eb, mix);
+            out[i] = dr + MUL_E(ea, mix);
+            outr[i] = dr + MUL_E(eb, mix);
         }
     }
     it->s.dly.w = w;
