@@ -25,6 +25,9 @@ static uint8_t flash_ok;                 /* JEDEC id matched at boot (persist_bo
 #define ST_RUN_MAX (450u * FM1_TICKS_PER_US)    /* ... and the most, so the 2 kHz USB poll (TIMER5) is not held back long */
 #define ST_SERVE_MAX (250000u * FM1_TICKS_PER_US)   /* a write still running after 250 ms finishes without steps (the
                                                  * watchdog is 8 s) */
+#define ST_STEP_JEDEC 0x856014u          /* the Puya P25Q80H, whose suspend and resume the steps use; another chip (#739: the
+                                          * UC25HQ80, 0xB36014, on newer FM-1s) writes as before #656 until its own is known */
+static uint32_t st_jedec;                /* the flash chip's JEDEC id, read at boot (main.c fm1_main) */
 static uint8_t st_serve;                 /* the interrupts are on (fm1_main): a write may hand them steps; before, it zeroes the
                                           * audio and keeps them off, as before #656 */
 /* DIAG page 128 (#656): the store's flash writes since boot: erases, page programs, the longest stretch with the

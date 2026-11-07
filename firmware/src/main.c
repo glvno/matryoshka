@@ -1467,7 +1467,8 @@ static void host_poll(void)
 
 static void fm1_main(int update)                    /* update: the boot guard saw two failed boots */
 {
-    flash_ok = FL_FAR(fl_jedec_ram)() == 0x856014u;     /* the expected 1 MiB part, else no OTA staging */
+    st_jedec = FL_FAR(fl_jedec_ram)();
+    flash_ok = st_jedec == 0x856014u;                   /* the expected 1 MiB part, else no OTA staging */
     if (flash_ok)
         ota_boot_cleanup();                             /* staging area left by an update */
     lcd_init();
@@ -1486,7 +1487,8 @@ static void fm1_main(int update)                    /* update: the boot guard sa
     fm1_timer5_start(isr_timer5, 4);
     fm1_guard_lock_top();
     fm1_irq_enable_all();
-    st_serve = 1;                                       /* store writes run in steps the interrupts get between (#656) */
+    st_serve = st_jedec == ST_STEP_JEDEC;               /* store writes run in steps the interrupts get between (#656), on
+                                                         * the chip whose suspend is known (#739: others write as before) */
     fm1_delay_ms(30);                                   /* the key scan has run: OCT- + OCT+ can be read */
 #if FELUCCA_UAC
     if (update || (fm1_in.buttons & 3u) == 3u)          /* update mode: decided before the first attach, so the */
