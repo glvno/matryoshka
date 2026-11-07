@@ -1063,6 +1063,8 @@ const logic: ModuleImpl<null> = {
 /** the granular module's buffer: one second, and up to this many grains at once */
 export const GRAIN_SECONDS = 1;
 export const GRAIN_MAX = 8;
+/** the grains' pitch (input plus slider) is clamped to this many octaves either way */
+export const GRAIN_OCT = 4;
 /** spray scatters a grain's start by up to this many seconds */
 const GRAIN_SPRAY_S = 0.25;
 
@@ -1088,8 +1090,9 @@ interface GrainState {
  * Granular: records its input into a one second buffer (freeze stops the recording) and plays up to GRAIN_MAX grains from
  * it. `density` grains per second start on their own (0 = none), a rising edge on `trig` starts one too. A grain reads
  * `size` seconds of the buffer, `position` back from the newest audio (0 = the newest, 1 = the oldest) plus a random
- * `spray` (up to 0.25 s), at the rate 2^(pitch / 12), under a Hann window, linearly interpolated; the grains are summed
- * (not normalised: density x size is the average overlap). out = in (1 - mix) + grains mix. Shared like the delay: one
+ * `spray` (up to 0.25 s), at the rate 2^(pitch in + pitch / 12) (the input in octaves like every pitch signal, C4 = 0 =
+ * the recording's own pitch; the sum clamped to +-GRAIN_OCT octaves), under a Hann window, linearly interpolated; the
+ * grains are summed (not normalised: density x size is the average overlap). out = in (1 - mix) + grains mix. Shared like the delay: one
  * instance per patch, one line on the FM-1.
  */
 const grain: ModuleImpl<GrainState> = {
@@ -1119,7 +1122,9 @@ const grain: ModuleImpl<GrainState> = {
   process(c, s) {
     const LEN = s.buf.length;
     const dinc = Math.floor(((c.p.density ?? 0) / c.sr) * 16777216) / 16777216; // grains per sample, in steps of 2^-24 like the firmware, so both spawn on the same samples
-    const rate = Math.pow(2, Math.trunc(c.p.pitch ?? 0) / 12);
+    // as engine.c: the input's first sample (Q16) plus the slider, not snapped to whole semitones (a pin or the morph glides)
+    const oct = Math.round(c.inp.pitch[0] * 65536) / 65536 + Math.trunc(((c.p.pitch ?? 0) * 65536) / 12) / 65536;
+    const rate = Math.pow(2, Math.max(-GRAIN_OCT, Math.min(GRAIN_OCT, oct)));
     let len = Math.max(1, Math.round((c.p.size ?? 0.08) * c.sr));
     let span = Math.floor(len * rate) + 1;
     if (span > LEN - 2) {
@@ -3751,6 +3756,8 @@ lfo.def.inputs.push(control('shape'));
 lfo.def.outputs.push(control('pulse'));
 adsr.def.inputs.push(gate('hold'));
 filter.def.outputs.push(audio('hp6'));
+// Granular's pitch input in octaves, as the Comb filter's (the slider in semitones could not track a keyboard)
+grain.def.inputs.push(control('pitch'));
 
 export const IMPLS: Record<string, ModuleImpl> = Object.fromEntries(ALL.map((m) => [m.def.type, m as ModuleImpl]));
 
