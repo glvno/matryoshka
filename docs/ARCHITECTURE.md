@@ -942,7 +942,7 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
     SELECT 51,976 → 46,944; one K1 click 684 → 1,218 (0.9 → 1.6 ms; the bars are taller); one PRESET 52,210 → 46,992;
     the toast's end 4,400 → 14,400 (it is a band now); a whole page 107,810 → 57,600 (144 → 77 ms). Preview:
     `PATCHTOAST=1 [BANK=n SLOT=s] tools/ui_preview.sh`, `BATT=0..4`. There is
-  no picture area: the envelope drawing and page map are gone (faint envelopes in the bars are #112). SELECT steps the devices, ALGO the pages, K1..K4 edit relatively (fast turns five times as far, never on a reversal; HOME held, a tenth of a click, not under the row's editor step: #340, [D-244](ledger/device-ui.md#D-244); a click reaches the module over 23 ms: #405),
+  no picture area: the envelope drawing and page map are gone (faint envelopes in the bars are #112). SELECT steps the devices, ALGO the pages, K1..K4 edit relatively (fast turns five times as far, never on a reversal; HOME held, a tenth of a click, not under the row's editor step: #340, [D-244](ledger/device-ui.md#D-244); a click on a row of whole steps is a whole number of them, and such a row shows a whole value without decimals: [D-922](ledger/device-ui.md#D-922); a click reaches the module over 23 ms: #405),
   HOME climbs (`home_tap`, #391, [D-243](ledger/device-ui.md#D-243)): on a later page of a device to its first page, on a
   device's first page to the patch's home page (`pages_home`), on the home page nothing; out of a dive it goes back along
   the trail (below); MIDI CC 16..19 set the rows (absolute). A poly row writes the

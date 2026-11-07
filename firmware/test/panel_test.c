@@ -430,6 +430,17 @@ int main(void)
         check("slow LFO endpoint displays millihertz instead of zero", !strcmp(num, "0.79") && !strcmp(unit, "mHz"));
         value_parts(&DEFS[T_LFO], LFO_P_WIDE, 55 << 16, num, unit);
         check("fast LFO endpoint displays hertz", !strcmp(num, "55.0") && !strcmp(unit, "Hz"));
+        /* a row of whole steps shows a whole number without decimals, as the editor's card does (2, not 2.00) */
+        value_parts(&DEFS[T_OSC], OSC_P_COARSE, 2 << 16, num, unit);
+        check("whole-step row: 2 st, not 2.00", !strcmp(num, "2") && !strcmp(unit, "st"));
+        value_parts(&DEFS[T_OSC], OSC_P_COARSE, -12 * 65536, num, unit);
+        check("whole-step row: -12 st, not -12.0", !strcmp(num, "-12"));
+        value_parts(&DEFS[T_OSC], OSC_P_COARSE, 5 << 15, num, unit);
+        check("whole-step row: a value typed between its steps keeps its decimals (2.50)", !strcmp(num, "2.50"));
+        value_parts(&DEFS[T_LFO], LFO_P_DEPTH, 65536, num, unit);
+        check("a row of fractional steps keeps its decimals (1.00)", !strcmp(num, "1.00"));
+        check("a whole-step row's knob click is whole steps: Delay time 7 ms, so 1 ms goes to 8 (was 6.99, to 7.99)",
+              DEFS[T_DELAY].pinc[DELAY_P_TIME] == 7 << 16);
     }
     {                                                       /* #396: a bent (plog 2) cutoff at its top read as at its bottom, so the
                                                              * bar went empty at 20 kHz and the next click up landed near 20 Hz */
