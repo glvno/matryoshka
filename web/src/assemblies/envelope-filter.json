@@ -31,6 +31,67 @@
     },
     {
       "id": 2,
+      "type": "scale",
+      "x": 320,
+      "y": 560,
+      "params": {
+        "gain": -1,
+        "offset": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "gain"
+        ],
+        "p2": [
+          "offset"
+        ],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "select",
+      "x": 640,
+      "y": 560,
+      "params": {
+        "pos": 1,
+        "count": 2,
+        "fade": 0,
+        "v1": 0,
+        "v2": 0,
+        "v3": 0,
+        "v4": 0,
+        "v5": 0,
+        "v6": 0,
+        "v7": 0,
+        "v8": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "pos"
+        ],
+        "p2": [
+          "count"
+        ],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 4,
       "type": "filter",
       "x": 0,
       "y": 0,
@@ -56,9 +117,44 @@
       }
     },
     {
-      "id": 3,
-      "type": "scale",
+      "id": 5,
+      "type": "select",
       "x": 320,
+      "y": 0,
+      "params": {
+        "pos": 2,
+        "count": 4,
+        "fade": 5,
+        "v1": 0,
+        "v2": 0,
+        "v3": 0,
+        "v4": 0,
+        "v5": 0,
+        "v6": 0,
+        "v7": 0,
+        "v8": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "pos"
+        ],
+        "p2": [
+          "count"
+        ],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "scale",
+      "x": 640,
       "y": 0,
       "params": {
         "gain": 0.6,
@@ -85,24 +181,94 @@
         "port": "env"
       },
       "to": {
+        "module": 3,
+        "port": "in1"
+      }
+    },
+    {
+      "from": {
+        "module": 1,
+        "port": "env"
+      },
+      "to": {
         "module": 2,
-        "port": "cv"
+        "port": "in"
       }
     },
     {
       "from": {
         "module": 2,
-        "port": "lp12"
+        "port": "out"
       },
       "to": {
         "module": 3,
+        "port": "in2"
+      }
+    },
+    {
+      "from": {
+        "module": 3,
+        "port": "out"
+      },
+      "to": {
+        "module": 4,
+        "port": "cv"
+      }
+    },
+    {
+      "from": {
+        "module": 4,
+        "port": "lp24"
+      },
+      "to": {
+        "module": 5,
+        "port": "in1"
+      }
+    },
+    {
+      "from": {
+        "module": 4,
+        "port": "lp12"
+      },
+      "to": {
+        "module": 5,
+        "port": "in2"
+      }
+    },
+    {
+      "from": {
+        "module": 4,
+        "port": "bp"
+      },
+      "to": {
+        "module": 5,
+        "port": "in3"
+      }
+    },
+    {
+      "from": {
+        "module": 4,
+        "port": "hp"
+      },
+      "to": {
+        "module": 5,
+        "port": "in4"
+      }
+    },
+    {
+      "from": {
+        "module": 5,
+        "port": "out"
+      },
+      "to": {
+        "module": 6,
         "port": "in"
       }
     }
   ],
   "inputs": [
     {
-      "module": 2,
+      "module": 4,
       "port": "in",
       "label": "in",
       "also": [
@@ -115,7 +281,7 @@
   ],
   "outputs": [
     {
-      "module": 3,
+      "module": 6,
       "port": "out",
       "label": "out"
     }
@@ -127,22 +293,42 @@
       "label": "sensitivity"
     },
     {
-      "module": 2,
+      "module": 4,
       "param": "cutoff",
       "label": "cutoff"
     },
     {
-      "module": 2,
+      "module": 4,
       "param": "cvamt",
       "label": "range"
     },
     {
-      "module": 2,
+      "module": 4,
       "param": "res",
       "label": "res"
     },
     {
+      "module": 5,
+      "param": "pos",
+      "label": "mode",
+      "names": [
+        "LP24",
+        "LP12",
+        "BP",
+        "HP"
+      ]
+    },
+    {
       "module": 3,
+      "param": "pos",
+      "label": "sweep",
+      "names": [
+        "UP",
+        "DOWN"
+      ]
+    },
+    {
+      "module": 6,
       "param": "gain",
       "label": "level"
     }

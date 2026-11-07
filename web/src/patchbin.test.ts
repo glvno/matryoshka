@@ -281,7 +281,8 @@ describe('binary patch format', () => {
         return v51 && !(rowParam(m.type, r.param) & POLY_ROW) && deviceText(r.label).toUpperCase() === r.param.toUpperCase() ? 1 : txt(r.label);
       };
       // a row's extras (#357, #358): u8 count and 2 bytes per further parameter, u8 count and a text per position name
-      const more = (r: { also?: unknown[]; names?: string[] }): number => (r.also?.length || r.names?.length ? 2 + 2 * (r.also?.length ?? 0) + (r.names ?? []).reduce((k, s) => k + txt(s), 0) : 0);
+      // (a poly row's extras: u8 its top, a VOICES row with one: format 51)
+      const more = (r: { param: string; also?: unknown[]; names?: string[]; top?: number }): number => (r.top !== undefined && r.param === 'voices' ? 1 : r.also?.length || r.names?.length ? 2 + 2 * (r.also?.length ?? 0) + (r.names ?? []).reduce((k, s) => k + txt(s), 0) : 0);
       const pages = devs.length ? 1 + devs.reduce((n, d) => n + (d.module !== undefined ? 2 : 2 + txt(d.name) + d.pages.reduce((k, pg) => k + pageTxt(pg, d) + 4 + pg.rows.reduce((j, r) => j + 2 + labelTxt(r) + more(r), 0), 0)), 0)
         + 1 + devs.reduce((n, d) => n + 8 + deviceText((d.asm !== undefined ? make().assemblies?.find((x) => x.id === d.asm)?.preset : '') ?? '').length + 2 * (d.asm !== undefined ? make().assemblies!.find((x) => x.id === d.asm)!.params.length : 0) + extrasMembers(make(), p, d, b[1]), 0) : 0; // and the extras
       const valued = p.modules.filter((m) => m.type === 'steps' && m.notes?.length);

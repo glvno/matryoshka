@@ -2587,7 +2587,8 @@
      "module": 2,
      "param": "voices",
      "label": "voices",
-     "head": "voice"
+     "head": "voice",
+     "top": 6
     },
     {
      "module": 10,

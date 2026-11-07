@@ -170,7 +170,18 @@ static const uint8_t *row_more(const ppage_t *pg, uint32_t k)
 {
     uint32_t len;
     const uint8_t *p = pages_src(&len);
-    return p && k < pg->nrows && pg->xo[k] && pg->xo[k] < len ? p + pg->xo[k] : 0;
+    return p && k < pg->nrows && !(pg->par[k] & POLY_ROW) && pg->xo[k] && pg->xo[k] < len ? p + pg->xo[k] : 0;
+}
+
+/* the top of poly row k of page pg: its own (format 51: the most voices a VOICES row offers, the CPU's limit for the patch,
+ * patchbin.ts polyTop) where the binary gives one, else the setting's (poly_max) */
+static int32_t poly_top(const ppage_t *pg, uint32_t k)
+{
+    uint32_t len, f = pg->par[k] & 0x7Fu;
+    const uint8_t *p = pages_src(&len);
+    if (f == ENG_POLY_PARTS && p && pg->xo[k] && pg->xo[k] < len && p[pg->xo[k]])
+        return clampi(p[pg->xo[k]], 1, poly_max(f));
+    return poly_max(f);
 }
 
 /* a row's further parameters take its value (#357): the engine and the running binary; the editor follows the first and
@@ -387,7 +398,7 @@ static void pages_build(void)
             }
             at += 4u;
             for (r = 0; r < nr; r++) {
-                uint32_t par = p[at + 1u], more = !(par & POLY_ROW) && (par & ENG_ROW_MORE);
+                uint32_t par = p[at + 1u], more = (par & ENG_ROW_MORE) != 0u;   /* (a poly row's: u8 top, poly_top) */
                 if (more)
                     par &= ~ENG_ROW_MORE;
                 if (pg && pg->nrows < PG_ROWS && p[at] < (uint32_t)eng_nmodules() && eng_type(p[at]) >= 0 && row_ok(p[at], par)) {
@@ -405,7 +416,7 @@ static void pages_build(void)
                 at += 2u;
                 at += 1u + p[at];
                 if (more)
-                    at = eng_row_more_end(p, len, at);   /* (eng_devices_end checked it) */
+                    at = par & POLY_ROW ? at + 1u : eng_row_more_end(p, len, at);   /* (eng_devices_end checked it) */
             }
             if (pg && pg->nrows)
                 pg_npage++;
@@ -673,7 +684,7 @@ static int pages_turn(uint32_t k, int32_t clicks, int fast, int fine, uint32_t *
         return 2;
     }
     if (j & POLY_ROW) {                                 /* a poly group's setting: one step a click (main.c applies it) */
-        *v = clampi(poly_value(m, j & 0x7Fu) + (clicks > 0 ? 1 : -1), (j & 0x7Fu) == 0u ? 1 : 0, poly_max(j & 0x7Fu));
+        *v = clampi(poly_value(m, j & 0x7Fu) + (clicks > 0 ? 1 : -1), (j & 0x7Fu) == 0u ? 1 : 0, poly_top(pg, k));
         return 1;
     }
     if (row_fixed(m, j))
@@ -746,7 +757,7 @@ static int pages_set_unit(uint32_t k, int32_t u, uint32_t *mod, uint32_t *par, i
     *mod = m;
     *par = j;
     if (j & POLY_ROW) {
-        int32_t lo = (j & 0x7Fu) == 0u ? 1 : 0, hi = poly_max(j & 0x7Fu);
+        int32_t lo = (j & 0x7Fu) == 0u ? 1 : 0, hi = poly_top(pg, k);
         *v = lo + (int32_t)((((int64_t)u * (hi - lo)) + 32768) >> 16);
         return 1;
     }
@@ -777,7 +788,7 @@ static uint32_t pages_cc(uint32_t k)
     if (pg->mod[k] == SETTING_ROW)
         return setting_bar(pg->par[k], 127u);
     if (pg->par[k] & POLY_ROW)
-        return (uint32_t)(poly_value(pg->mod[k], pg->par[k] & 0x7Fu) * 127 / poly_max(pg->par[k] & 0x7Fu));
+        return (uint32_t)(clampi(poly_value(pg->mod[k], pg->par[k] & 0x7Fu), 0, poly_top(pg, k)) * 127 / poly_top(pg, k));
     {
         const def_t *d = &DEFS[eng_type(pg->mod[k])];
         uint32_t j = pg->par[k];
@@ -882,7 +893,7 @@ static void row_show(const ppage_t *pg, uint32_t k, char *num, char *unit, uint3
             fmt_int(num, v);
         else
             put(num, f == 1u ? POLY_ASSIGN_NAME[clampi(v, 0, 3)] : f == 2u ? POLY_LEGATO_NAME[clampi(v, 0, 2)] : f == 3u ? POLY_PRIORITY_NAME[clampi(v, 0, 2)] : UNI[clampi(v, 0, 2)])[0] = 0;
-        *base = *live = (uint32_t)(v * (int32_t)width / poly_max(f));
+        *base = *live = (uint32_t)(clampi(v, 0, poly_top(pg, k)) * (int32_t)width / poly_top(pg, k));
         return;
     }
     if (eng_type(m) < 0 || j >= DEFS[eng_type(m)].npar) {   /* a row that is not the running patch's: nothing to show */
@@ -2552,6 +2563,17 @@ static const uint8_t *dev_row_more(uint32_t d, uint32_t mod, uint32_t par)
     return 0;
 }
 
+/* the top of device d's poly row on module mod's setting par (poly_top), poly_max when it has no such row */
+static int32_t dev_poly_top(uint32_t d, uint32_t mod, uint32_t par)
+{
+    uint32_t g, k;
+    for (g = pg_dev[d].pg0; g < (uint32_t)pg_dev[d].pg0 + pg_dev[d].npg && g < PG_PAGES; g++)
+        for (k = 0; k < pg_page[g].nrows; k++)
+            if (pg_page[g].mod[k] == mod && pg_page[g].par[k] == par)
+                return poly_top(&pg_page[g], k);
+    return poly_max(par & 0x7Fu);
+}
+
 /* load list entry k of device d: its rows take the values (the running binary and the editor too); an entry of fewer
  * values than the device has rows (a Cassia 1 preset stored before 1.8.2 kept 88 of its 118, #485, D-858) sets the rows it
  * has, in order, and the rest keep their values (dp_short says so) */
@@ -2571,9 +2593,11 @@ static int dp_load(uint32_t d, uint32_t k)
         if (par & POLY_ROW) {
             if (!row_ok(mod, par))
                 continue;
-            if (poly_row_set(mod, par & 0x7Fu, (v + 32768) >> 16))
+            v = clampi((v + 32768) >> 16, 0, dev_poly_top(d, mod, par));   /* (a VOICES row's top: a preset of more
+                                                     * voices plays the most the row offers) */
+            if (poly_row_set(mod, par & 0x7Fu, v))
                 return -1;
-            m1_param_now(mod, par, v);
+            m1_param_now(mod, par, v << 16);
         } else {
             if (eng_type(mod) < 0 || par >= DEFS[eng_type(mod)].npar || eng_tempo_row(mod, par) || DEF_FIXED((uint32_t)eng_type(mod), par))   /* (a preset
                                                      * leaves the global tempo, D-907, and a row set when the patch loads) */
