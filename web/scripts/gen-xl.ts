@@ -5,7 +5,7 @@
 // export-defs.ts and the bank read only web/presets/*.json (src/presets.ts FM1_PRESETS).
 // Run from web/:  npx vite-node scripts/gen-xl.ts
 // `--shard i/n` builds and writes only every n-th XL from the i-th (0-based) and deletes nothing: n of them at once, one per
-// core, make every file in a fraction of the time (the web workflow's check that the committed XLs are current).
+// core, make every file in a fraction of the time (to check quickly that the committed XLs are current).
 import { mkdirSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { FM1_PRESETS } from '../src/presets';
 import { browserOnly } from '../src/patchbin';
