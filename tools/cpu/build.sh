@@ -5,9 +5,12 @@
 #   build/cpu/plain.elf  the engine without them (totals)
 #   build/cpu/old.elf    the engine of M1-0.2 (b907693) with its 303 Acid: the patch whose CPU load was measured on the FM-1
 #   build/cpu/bench.elf  the fixed-point kernels of firmware/src/bench.c, also measured on the FM-1
-# The flags follow tools/build.py (-Os).
+# The flags follow tools/build.py (-Os). The cycle counts follow the compiler: web/src/cpu-costs.json is made with the clang
+# in tools/cpu/clang-version (a table made with another version differs from the committed one: D-383).
 set -e
 cd "$(dirname "$0")/../.."
+PIN=$(cat tools/cpu/clang-version)
+clang --version | head -1 | grep -qE " version $PIN( |$)" || echo "warning: $(clang --version | head -1), not clang $PIN (tools/cpu/clang-version): the counts will differ from the committed cpu-costs.json" >&2
 OUT=build/cpu
 mkdir -p "$OUT/old"
 CC="clang --target=riscv32-unknown-elf -march=rv32im -mabi=ilp32 -Os -ffunction-sections -fno-builtin -ffreestanding -nostdlib -Wall -Wno-unused-function -fuse-ld=lld -Wl,-T,tools/cpu/link.ld"
