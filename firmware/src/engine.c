@@ -399,7 +399,7 @@ typedef struct {
                                                     * modes' radii and normalised gains for kdec kdamp / kbr, ok: which are worked out */
         struct { int32_t a[8], b[8], ia; uint32_t phase; } fs;   /* the Hilbert chains (w1 w2 per section), chain A's delayed sample, the quadrature oscillator */
         struct { struct grain_line *ln; uint32_t w, acc, seed; uint8_t prev; } gr;   /* acc: grains per sample, Q24 */
-        struct { int16_t *buf; int64_t cur; uint32_t len, w, t, seen, beat; int32_t rate; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev, rk, ph; } dly;   /* len: its line's samples, from its length (dly_samples); cur 64 bits (a long line is more samples than Q16 holds in 32) */   /* t, ring, seen, beat: the clock tempo; cur, rate: the read position's distance behind w (samples Q16, 0 = not yet set) and its glide (dly_glide); rk, ph: a lower rate (#659, dly_slow): the rate step's k the line holds (0 none yet), the sample within a line sample */
+        struct { int16_t *buf; int64_t cur; uint32_t len, w, t, seen, beat; int32_t rate; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev, rk, ph, tp; } dly;   /* len: its line's samples, from its length (dly_samples); cur 64 bits (a long line is more samples than Q16 holds in 32) */   /* t, ring, seen, beat: the clock tempo; cur, rate: the read position's distance behind w (samples Q16, 0 = not yet set) and its glide (dly_glide); rk, ph: a lower rate (#659, dly_slow): the rate step's k the line holds (0 none yet), the sample within a line sample; tp: Tape on (#660, dly_tape) */
         struct { int16_t *buf; uint16_t li[8], ai[2], pi; int32_t lp[8]; uint32_t ph[2]; } rev;   /* the FDN lines' write indices, the diffusers', the pre-delay's; damping states; modulation phases */
         struct { int32_t v; uint32_t t; int32_t rk[4], inc[4], k[4]; uint32_t len[4]; uint8_t stage, prev, ok; } env;  /* Q30, like the ADSR; t: samples
                                                     * in the segment; rk, inc, k, len, ok: segments 1 2 3 and release, as m_adsr */
@@ -5498,6 +5498,117 @@ static void __attribute__((noinline)) dly_slow(inst_t *it, const esig_t *in, esi
     it->s.dly.rate = rate;
 }
 
+/* Tape's loop (modules.ts delayTape): the echo e times fb through a one-pole low pass (*l) and a high pass (the low
+ * pass's output less a slower low pass of it, *h); Q24 states, Q16 in and out */
+static inline int32_t tape_loop(int32_t *l, int32_t *h, int32_t e, int32_t fb, int32_t pl, int32_t phq)
+{
+    int32_t v = clampi(mul16(e, fb), -32 * ENG_ONE, 32 * ENG_ONE) << 8;
+    *l += (int32_t)(((int64_t)pl * (v - *l)) >> 24);
+    *h += (int32_t)(((int64_t)phq * (*l - *h)) >> 24);
+    return (*l - *h + 128) >> 8;
+}
+
+/* the Delay with Tape on (modules.ts delayTape, #660), at any rate (k = 1 << sh): the heads (bit j of mask: head j + 1 at
+ * j + 1 times the time, clamped to the line) read the line between two samples at their distance plus the wow and flutter
+ * offset (two sines, worked out per block and ramped across it in whole steps), and sound together at 1 / n each. The
+ * feedback runs through a one-pole low pass and high pass (DELAY_TAPE_LPQ / HPQ, Q24) and, with the input (through the
+ * rate's low pass at a lower rate), through dly_soft into the line. Distances in 1/256 samples (32 bits). The state in the
+ * line's tail: the rate's low pass in words 0..7, Tape's loop filters (A low, A high, B low, B high), the wow and flutter
+ * phases and the last offset in 8..14. */
+static void __attribute__((noinline)) dly_tape(inst_t *it, const esig_t *in, esig_t *out, esig_t *outr, uint32_t n, int64_t tq, int32_t fb, int32_t mix, int pp, int swell, uint32_t sh, uint32_t len, int32_t wow, uint32_t mask)
+{
+    const uint32_t k = 1u << sh, H = len / 2u, nl = pp ? H : len;
+    const int32_t sub = (int32_t)(256u >> sh), lo8 = (int32_t)k << 8, hi8 = (int32_t)(((nl - 1u) << sh) << 8);
+    int16_t *buf = it->s.dly.buf, *bb = buf + H;
+    int32_t *tl = (int32_t *)(void *)(buf + len);
+    const int32_t *c = sh ? DELAY_AA[sh - 1u] : 0, pl = DELAY_TAPE_LPQ[sh], phq = DELAY_TAPE_HPQ[sh];
+    int32_t hj[3], nh = 0, g, lA = tl[8], hA = tl[9], lB = tl[10], hB = tl[11];
+    int moving = it->s.dly.cur != tq || it->s.dly.rate;
+    uint32_t w = it->s.dly.w, ph = it->s.dly.ph, i, wph, fph;
+    int32_t dry = ENG_ONE - mix, rate = it->s.dly.rate, m0 = tl[14], m1, step, cur8;
+    int64_t cur = it->s.dly.cur, lo = (int64_t)k << 16, hi = ((int64_t)(nl - 1u) << sh) << 16;
+    if (swell)
+        fb = (int32_t)((int64_t)fb * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
+    if (w >= nl)
+        w = 0;
+    wph = (uint32_t)tl[12] + DELAY_WOW_INC * n;
+    fph = (uint32_t)tl[13] + DELAY_FLUTTER_INC * n;
+    tl[12] = (int32_t)wph;
+    tl[13] = (int32_t)fph;
+    m1 = (int32_t)((((int64_t)DELAY_WOW_D8 * sin_turn(wph) + (int64_t)DELAY_FLUTTER_D8 * sin_turn(fph)) >> 16) * clampi(wow, 0, ENG_ONE) >> 16);
+    step = (m1 - m0) / (int32_t)n;
+    cur8 = (int32_t)(cur >> 8);
+    for (i = 1; i <= 3u; i++)                       /* the heads that sound: their multiples of the time */
+        if (mask & (1u << (i - 1u)))
+            hj[nh++] = (int32_t)i;
+    g = DELAY_HEAD_GAIN[nh];
+    for (i = 0; i < n; i++) {
+        int32_t ea = 0, eb = 0, y, m = m0 + step * (int32_t)(i + 1u), base = ((int32_t)ph - (int32_t)k + 1) * sub, j;
+        if (moving) {
+            int64_t diff = tq - cur, cc;
+            int32_t st = (int32_t)(diff >> DELAY_GLIDE_SHIFT);
+            rate += clampi(clampi(st, -DELAY_GLIDE_MAX, DELAY_GLIDE_MAX) - rate, -DELAY_GLIDE_ACC, DELAY_GLIDE_ACC);
+            if (diff > -(1 << DELAY_GLIDE_SHIFT) && diff < 1 << DELAY_GLIDE_SHIFT && rate > -DELAY_GLIDE_ACC && rate < DELAY_GLIDE_ACC) {
+                cur = tq;
+                rate = 0;
+                moving = 0;
+            } else {
+                cc = cur + rate;
+                cur = cc < lo ? lo : cc > hi ? hi : cc;
+            }
+            cur8 = (int32_t)(cur >> 8);
+        }
+        for (j = 0; j < nh; j++) {
+            int32_t d8, pos, i0, i1, fr;
+            d8 = clampi(hj[j] * cur8 + m, lo8, hi8);
+            pos = (int32_t)(w << 8) + base - ((d8 + (int32_t)k - 1) >> sh);
+            if (pos < 0)
+                pos += (int32_t)(nl << 8);
+            i0 = pos >> 8;
+            i1 = i0 + 1 == (int32_t)nl ? 0 : i0 + 1;
+            fr = pos & 255;
+            ea += (int32_t)buf[i0] * 8 + ((((int32_t)buf[i1] - buf[i0]) * fr) >> 5);
+            if (pp)
+                eb += (int32_t)bb[i0] * 8 + ((((int32_t)bb[i1] - bb[i0]) * fr) >> 5);
+        }
+        if (nh > 1) {
+            ea = mul16(ea, g);
+            eb = mul16(eb, g);
+        }
+        y = in[i];
+        if (sh) {
+            int32_t x = clampi(in[i], -32 * ENG_ONE, 32 * ENG_ONE) << 8, u;   /* Q24 */
+            u = (int32_t)(((int64_t)c[0] * (x + 2 * tl[0] + tl[1]) - (int64_t)c[1] * tl[2] - (int64_t)c[2] * tl[3] + (1 << 27)) >> 28);
+            tl[1] = tl[0]; tl[0] = x; tl[3] = tl[2]; tl[2] = u;
+            y = (int32_t)(((int64_t)c[3] * (u + 2 * tl[4] + tl[5]) - (int64_t)c[4] * tl[6] - (int64_t)c[5] * tl[7] + (1 << 27)) >> 28);
+            tl[5] = tl[4]; tl[4] = u; tl[7] = tl[6]; tl[6] = y;
+            y = (y + 128) >> 8;
+        }
+        if (ph == k - 1u) {
+            if (pp) {
+                bb[w] = dly_pack(dly_soft(tape_loop(&lB, &hB, ea, fb, pl, phq)));
+                buf[w] = dly_pack(dly_soft(y + tape_loop(&lA, &hA, eb, fb, pl, phq)));
+            } else
+                buf[w] = dly_pack(dly_soft(y + tape_loop(&lA, &hA, ea, fb, pl, phq)));
+            ph = 0;
+            if (++w == nl)
+                w = 0;
+        } else
+            ph++;
+        {
+            int32_t dr = mul16(in[i], dry);
+            out[i] = dr + mul16(ea, mix);
+            outr[i] = pp ? dr + mul16(eb, mix) : out[i];
+        }
+    }
+    tl[8] = lA; tl[9] = hA; tl[10] = lB; tl[11] = hB;
+    tl[14] = m0 + step * (int32_t)n;
+    it->s.dly.w = w;
+    it->s.dly.ph = (uint8_t)ph;
+    it->s.dly.cur = cur;
+    it->s.dly.rate = rate;
+}
+
 /* free or synced time (see modules.ts); ping-pong splits the buffer in two halves, A (input, left) and B (right), see
  * modules.ts. note: a synced length of its own (DELAY_NOTE_NUM / DEN) in place of the time knob's; swell: the feedback
  * x 198 / 95 and the loop through dly_soft (the loops below, apart, so the plain one stays as it was) */
@@ -5513,8 +5624,9 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
     /* its rate (#659): step sh keeps every (1 << sh)-th sample (dly_slow), the line DELAY_TAIL samples shorter for the low
      * pass's state; a new rate empties the line and the read starts where the time is */
     const uint32_t sh = (uint32_t)clampi((EF(it, DELAY_P_RATE) + 32768) >> 16, 0, DELAY_NRATE - 1);
+    const int tape = EF(it, DELAY_P_TAPE) >= 32768;   /* Tape (#660): dly_tape, the line DELAY_TAIL samples shorter too */
     /* its line (L samples, from its length; ping-pong two halves of H): the time, free or synced, plays up to it (times k) */
-    const uint32_t L = sh ? it->s.dly.len - DELAY_TAIL : it->s.dly.len, H = L / 2u;
+    const uint32_t L = sh || tape ? it->s.dly.len - DELAY_TAIL : it->s.dly.len, H = L / 2u;
     int64_t smp, top = ((pp ? (int64_t)H : (int64_t)L) - 1) << sh;
     if (it->s.dly.rk != 1u << sh) {
         if (it->s.dly.rk) {
@@ -5525,6 +5637,13 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
             it->s.dly.rate = 0;
         }
         it->s.dly.rk = (uint8_t)(1u << sh);
+        it->s.dly.tp = (uint8_t)tape;
+    }
+    if (it->s.dly.tp != (uint8_t)tape) {   /* Tape on or off keeps the line: its tail changes role (Tape's state, or line
+                                              * again) and is zeroed; at a lower rate the rate's low pass keeps words 0..7 */
+        for (i = it->s.dly.len - DELAY_TAIL + (sh ? 16u : 0u); i < it->s.dly.len; i++)
+            buf[i] = 0;
+        it->s.dly.tp = (uint8_t)tape;
     }
     if (nd->conn & (1u << DELAY_I_CLK)) {   /* tempo: the time of the last 24 clock pulses, smoothed */
         const esig_t *clk = it->in[DELAY_I_CLK];
@@ -5554,6 +5673,12 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
     d = (uint32_t)(smp < (1 << sh) ? (1 << sh) : smp > top ? top : smp);
     if (it->s.dly.cur == 0 || it->s.dly.cur > top << 16)
         it->s.dly.cur = it->s.dly.cur == 0 ? (int64_t)d << 16 : top << 16;
+    if (tape) {
+        it->s.dly.w = w;
+        dly_tape(it, in, out, outr, n, (int64_t)d << 16, fb, mix, pp, swell, sh, L, EF(it, DELAY_P_WOW),
+                 DELAY_HEAD_MASK[clampi((EF(it, DELAY_P_HEADS) + 32768) >> 16, 0, DELAY_NHEADS - 1)]);
+        return;
+    }
     if (sh) {
         it->s.dly.w = w;
         dly_slow(it, in, out, outr, n, (int64_t)d << 16, fb, mix, pp, swell, sh, L);
