@@ -50,11 +50,12 @@ describe('the FM-1 UI as WebAssembly', () => {
       ui.tick(1000 + i * 10);
       ui.encoder(ENCODERS.k1 + k, 5);
     }
-    // (#649: the memory holds Cassia's eight voices, the voices row's top; before the arena it held four)
-    expect([...new Set(values)]).toEqual([3, 4, 5, 6, 7, 8].map((v) => v << 16));
+    // (#649: the memory holds Cassia's eight voices; the voices row's top is six, what the CPU estimate holds: the
+    // row's top in the binary, gen-presets voiceTops)
+    expect([...new Set(values)]).toEqual([3, 4, 5, 6].map((v) => v << 16));
     ui.encoder(ENCODERS.k1 + k, -5);
     ui.encoder(ENCODERS.k1 + k, -5);
-    expect(values.slice(-2)).toEqual([7 << 16, 6 << 16]);
+    expect(values.slice(-2)).toEqual([5 << 16, 4 << 16]);
   }, 30_000);
 
   it('draws a device page pixel for pixel as the host preview of the same firmware', async () => {

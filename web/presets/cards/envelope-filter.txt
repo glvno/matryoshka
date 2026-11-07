@@ -8,15 +8,19 @@
 #   cutoff = 250 Hz                    20..16000 Hz
 #   range = 3 oct                      0..4 oct
 #   res = 0.7                          0..1
+#   mode = LP12                        LP24, LP12, BP, HP
+#   sweep = UP                         UP, DOWN
 #   level = 0.6                        -4..4
 
 effect: envelope filter
-# Drafts of 2026-11-07 (#661), checked by the behaviour tests in src/fx-assemblies.test.ts, not yet listened to on the FM-1.
+# Drafts of 2026-11-07 (#661; mode and sweep rows by the owner's ruling of 2026-11-07), checked by the behaviour tests in src/fx-assemblies.test.ts, not yet listened to on the FM-1.
 
 preset: Funk Quack
   sensitivity = 2.5
-  cutoff = 300 Hz
-  res = 0.8
+  cutoff = 250 Hz
+  res = 0.6
+  mode = BP
+  level = 1.4
 
 preset: Subtle
   sensitivity = 1
@@ -29,8 +33,10 @@ preset: Deep Sweep
   cutoff = 120 Hz
   range = 4 oct
   res = 0.6
+  mode = LP24
 
-preset: Squelch
-  cutoff = 200 Hz
+preset: Down Squelch
+  cutoff = 3000 Hz
   range = 3.5 oct
   res = 0.92
+  sweep = DOWN
