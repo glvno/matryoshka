@@ -98,6 +98,55 @@ describe('effect assemblies (#661)', () => {
     expect(mean(env.subarray(env.length / 2))).toBeGreaterThan(0.5);
   });
 
+  it('envelope filter: the mode row picks low pass 24 / 12, band pass or high pass', () => {
+    // the envelope held still (sensitivity 0), the cutoff at 1 kHz: a sine's gain below, at and above the cutoff
+    const gainAt = (mode: number, coarse: number): number => {
+      const x = rig('envelope filter', { coarse });
+      x.row('sensitivity', 0);
+      x.row('cutoff', 1000);
+      x.row('res', 0.3);
+      x.row('level', 1);
+      x.row('mode', mode);
+      x.run(0.2, 0.5, []);
+      const [y, inp] = x.run(0.3, 0.5, [x.out, x.input]);
+      return rms(y) / rms(inp);
+    };
+    // C2 (65 Hz, four octaves under), C6 (about 1 kHz), C9 (8.4 kHz, three octaves over)
+    const at = (mode: number) => ({ low: gainAt(mode, -24), mid: gainAt(mode, 24), high: gainAt(mode, 60) });
+    const lp24 = at(1), lp12 = at(2), bp = at(3), hp = at(4);
+    // the low passes keep the low sine and cut the high one, 24 dB an octave far more than 12
+    for (const r of [lp24, lp12]) {
+      expect(r.low).toBeGreaterThan(0.9);
+      expect(r.high).toBeLessThan(0.05);
+    }
+    expect(lp24.high).toBeLessThan(lp12.high * 0.2);
+    // the band pass keeps the middle and cuts both ends
+    expect(bp.mid).toBeGreaterThan(0.5);
+    expect(bp.low).toBeLessThan(0.1);
+    expect(bp.high).toBeLessThan(0.2);
+    // the high pass keeps the high sine and cuts the low one
+    expect(hp.high).toBeGreaterThan(0.9);
+    expect(hp.low).toBeLessThan(0.01);
+  });
+
+  it('envelope filter: sweep DOWN closes the cutoff as the input gets louder', () => {
+    const x = rig('envelope filter', { coarse: -12, wave: 2 });
+    const f0 = C4 / 2;
+    x.row('sweep', 2);
+    x.row('cutoff', 4000);
+    const bright = (level: number): number => {
+      x.run(0.3, level, [x.out]);
+      const [y] = x.run(0.2, level, [x.out]);
+      return tone(y, 6 * f0) / tone(y, f0);
+    };
+    const quiet = bright(0.05), loud = bright(0.8);
+    expect(quiet).toBeGreaterThan(loud * 4);
+    // UP (the default) the other way round, from the same cutoff
+    x.row('sweep', 1);
+    x.row('cutoff', 250);
+    expect(bright(0.8)).toBeGreaterThan(bright(0.05) * 4);
+  });
+
   it('ducking delay: the echoes drop while the dry signal plays and come back in the gap', () => {
     const x = rig('ducking delay', { coarse: 0 });
     // echoes before the Compressor (the Delay's wet line) and after it (what is heard)
@@ -192,18 +241,22 @@ describe('effect assemblies (#661)', () => {
     for (const name of ['envelope filter', 'ducking delay', 'gated reverb', 'overdrive', 'octave fuzz']) {
       const list = shippedPresets(FACTORY.find((d) => d.name === name)!);
       expect(list.length, name).toBeGreaterThanOrEqual(4);
-      for (const pr of list)
-        for (const src of [{ coarse: -24, wave: 2 }, { noise: true }]) {
+      for (const pr of list) {
+        const sawGains: number[] = [];
+        for (const src of [{ coarse: -24, wave: 2 }, { coarse: 0, wave: 2 }, { noise: true }]) {
           const x = rig(name, { ...src, preset: pr.name });
           const [y, inp] = x.run(1, 0.5, [x.out, x.input]);
           const [t] = x.run(1, 0, [x.out]);
           const peak = Math.max(...y.map(Math.abs), ...t.map(Math.abs));
           const gain = rms(y, y.length / 2) / rms(inp, inp.length / 2);
           expect(peak, `${name} ${pr.name}`).toBeLessThan(1);
-          // (noise loses most of its energy in a low pass: the loudness is compared on the saw)
-          if (!src.noise) expect(gain, `${name} ${pr.name}`).toBeGreaterThan(0.3);
+          if (!src.noise) sawGains.push(gain);
           expect(gain, `${name} ${pr.name}`).toBeLessThan(1.5);
         }
+        // (noise loses most of its energy in a low pass, and a band pass takes away a low saw's fundamental: the
+        // loudness is compared on the saw, C2 or C4, that passes the most)
+        expect(Math.max(...sawGains), `${name} ${pr.name}`).toBeGreaterThan(0.3);
+      }
     }
   });
 });

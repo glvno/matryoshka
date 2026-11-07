@@ -2799,7 +2799,8 @@
    "y": 10140,
    "params": {
     "time": 0.001,
-    "curve": 0
+    "curve": 0,
+    "fall": 0
    },
    "att": [
     1,
@@ -5192,7 +5193,8 @@
    "y": 10140,
    "params": {
     "time": 0.001,
-    "curve": 0
+    "curve": 0,
+    "fall": 0
    },
    "att": [
     1,
@@ -7655,7 +7657,8 @@
    "y": 10140,
    "params": {
     "time": 0.001,
-    "curve": 0
+    "curve": 0,
+    "fall": 0
    },
    "att": [
     1,
@@ -10118,7 +10121,8 @@
    "y": 10140,
    "params": {
     "time": 0.001,
-    "curve": 0
+    "curve": 0,
+    "fall": 0
    },
    "att": [
     1,
@@ -13168,7 +13172,11 @@
     "pingpong": 0,
     "note": 0,
     "swell": 0,
-    "length": 700
+    "length": 700,
+    "rate": 0,
+    "tape": 0,
+    "wow": 0.3,
+    "heads": 0
    },
    "att": [
     1,

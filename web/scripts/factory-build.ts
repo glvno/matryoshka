@@ -3,7 +3,7 @@
 // patch around a factory assembly (around), its rows by label (row, Inst.set), cables into and out of an assembly
 // (plugIn, plugOut), the Output's level from a render (level) and the players (an Arpeggiator and a PATTERN track: players).
 import { DEFS } from '../src/modules';
-import { addModule, connect, disconnect, emptyPatch, validatePatch, type Cable, type ModuleInst, type Patch } from '../src/patch';
+import { addModule, connect, disconnect, emptyPatch, MAX_PARTS, validatePatch, type Cable, type ModuleInst, type Patch } from '../src/patch';
 import { setKind, setSwitches, setTarget } from '../src/buttons';
 import { FACTORY } from '../src/assemblies';
 import { allModules, assembliesOf, insertAssembly, parentOf, type AssemblyDef, type AssemblyInst } from '../src/assembly';
@@ -178,6 +178,29 @@ export function withPlayers(src: Patch, what: Player): Patch {
   setSwitches(p, 'arp', true);
   return p;
 }
+/**
+ * The FM-1's VOICES rows capped at what its CPU holds (owner's ruling of 2026-11-07, D-870): on each card row of a Voice
+ * allocator's voices, `top` is the most voices with which the patch still fits the FM-1's budget (deviceBudget: the CPU
+ * estimate at most 100 %, the factory patches' own bar), when that is fewer than MAX_PARTS; else no top. The patch keeps
+ * its own voices. The editor and the browser engine do not read the top.
+ */
+export function voiceTops(p: Patch): Patch {
+  for (const a of assembliesOf(p))
+    for (const r of a.params) {
+      const m = p.modules.find((x) => x.id === r.module);
+      if (m?.type !== 'alloc' || r.param !== 'voices') continue;
+      delete r.top;
+      let top = MAX_PARTS;
+      for (; top > 1; top--) {
+        const q = structuredClone(p);
+        q.modules.find((x) => x.id === m.id)!.params.voices = top;
+        if (deviceBudget(q).fits) break;
+      }
+      if (top < MAX_PARTS) r.top = Math.max(top, Math.round(m.params.voices ?? 1));
+    }
+  return p;
+}
+
 /** the most a patch takes: the players that fit the FM-1 (its limits; the CPU estimate's warning is no bar); with
  * `browser` (an XL: it never goes to the FM-1) both, whatever the budget, the drum kits too */
 export function players(p: Patch, browser = false): Patch {
