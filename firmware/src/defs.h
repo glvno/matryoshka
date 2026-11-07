@@ -638,6 +638,7 @@ enum {
 #define GRAIN_I_TRIG 1
 #define GRAIN_I_P1 2
 #define GRAIN_I_P2 3
+#define GRAIN_I_PITCH 4
 #define GRAIN_O_OUT 0
 #define GRAIN_P_POSITION 0
 #define GRAIN_P_SIZE 1
@@ -646,7 +647,7 @@ enum {
 #define GRAIN_P_SPRAY 4
 #define GRAIN_P_FREEZE 5
 #define GRAIN_P_MIX 6
-#define GRAIN_NIN 4
+#define GRAIN_NIN 5
 #define GRAIN_NOUT 1
 #define GRAIN_NPAR 7
 #define GRAIN_CVBASE 2
@@ -1515,7 +1516,7 @@ static const char *const LOGIC_PN[] = {"THRESH"};
 static const uint8_t LOGIC_LOG[] = {0};
 static const char *const LOGIC_UNIT[] = {""};
 static const char *const *const LOGIC_CH[] = {0};
-static const char *const GRAIN_INNAMES[] = {"IN", "TRIG", "P1", "P2"};
+static const char *const GRAIN_INNAMES[] = {"IN", "TRIG", "P1", "P2", "PITCH"};
 static const int32_t GRAIN_MIN[] = {0, 655, 0, -1572864, 0, 0, 0};
 static const int32_t GRAIN_MAX[] = {65536, 32768, 6553600, 1572864, 65536, 65536, 65536};
 static const int32_t GRAIN_DEF[] = {19661, 5243, 1310720, 0, 13107, 0, 32768};

@@ -1153,6 +1153,17 @@ kit('grain', (add, wire) => {
   wire(lfo, 'out', gr, 'trig');
   wire(gr, 'out', out, 'l');
 });
+// Granular played from the keyboard: the pitch input in octaves on top of the slider (one octave up, so a high key
+// reaches the +4 octave clamp), a recorded saw re-pitched by every note
+kit('grain-pitch', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.7 });
+  const gr = add('grain', 0, 0, { position: 0.25, size: 0.0625, density: 25, pitch: 12, spray: 0, mix: 1 });
+  const out = add('output', 0, 0);
+  wire(osc, 'out', gr, 'in');
+  wire(kb, 'pitch', gr, 'pitch');
+  wire(gr, 'out', out, 'l');
+});
 kit('comb', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const osc = add('osc', 0, 0, { wave: 2, level: 0.5 });

@@ -34,6 +34,7 @@
 /* the lines of the Delays, reverbs, choruses, strings, combs and granulars: as many as the two line areas hold (line_place) */
 #define GRAIN_LEN 44118u            /* GRAIN_SECONDS x ENG_SR */
 #define GRAIN_MAX 8
+#define GRAIN_OCT 4                 /* the grains' pitch (in + slider) is clamped to +-4 octaves (modules.ts GRAIN_OCT) */
 #define GRAIN_SPRAY (ENG_SR / 4u)   /* spray scatters a grain's start by up to this many samples (0.25 s) */
 #define RV_LEN 8074u                /* the eight FDN lines (5740), two input allpasses (570) and the 40 ms pre-delay (1764), int16 Q13 */
 #define DELAY_LEN 30944u            /* the line of a 700 ms length (dly_samples), every Delay's before the length row (D-375) */
@@ -5107,8 +5108,8 @@ static inline int16_t dly_pack(int32_t v)
 
 /* Granular (modules.ts `grain`): records in into a 1 s line (Q13), plays up to GRAIN_MAX Hann-windowed grains from it.
  * A grain starts `density` times a second (Q24 accumulator) or on a rising edge of trig, at `position` of the span back
- * from the write head plus a random spray, and reads `size` seconds at 2^(pitch / 12), linearly interpolated. The window
- * is sin^2 of half a turn over the grain (sin_turn). The line is int16 Q13 like the delay's. */
+ * from the write head plus a random spray, and reads `size` seconds at 2^(pitch in + pitch / 12) (clamped to +-GRAIN_OCT
+ * octaves), linearly interpolated. The window is sin^2 of half a turn over the grain (sin_turn). The line is int16 Q13 like the delay's. */
 static void grain_spawn(inst_t *it, uint32_t len, uint32_t span, uint32_t rate, uint32_t avail, int32_t position, uint32_t sprayS)
 {
     grain_line_t *ln = it->s.gr.ln;
@@ -5143,7 +5144,8 @@ static void m_grain(const node_t *nd, inst_t *it, uint32_t n)
     int16_t *buf = ln->buf;
     uint32_t w = it->s.gr.w, acc = it->s.gr.acc, i, k;
     uint32_t dinc = (uint32_t)(((uint64_t)(uint32_t)EF(it, GRAIN_P_DENSITY) << 8) / ENG_SR);     /* grains per sample, Q24 */
-    uint32_t rate = exp2_q16(EF(it, GRAIN_P_PITCH) / 12 + (16 << 16));
+    int32_t oct = clampi(it->in[GRAIN_I_PITCH][0] + EF(it, GRAIN_P_PITCH) / 12, -(GRAIN_OCT << 16), GRAIN_OCT << 16);
+    uint32_t rate = exp2_q16(oct + (16 << 16));                         /* Q16 */
     uint32_t len = (uint32_t)(((int64_t)EF(it, GRAIN_P_SIZE) * ENG_SR + 32768) >> 16), span, avail;
     uint32_t sprayS = (uint32_t)mul16(EF(it, GRAIN_P_SPRAY), GRAIN_SPRAY);
     int32_t position = EF(it, GRAIN_P_POSITION), mix = EF(it, GRAIN_P_MIX), dry = ENG_ONE - mix;

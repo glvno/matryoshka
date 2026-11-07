@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Granular follows the keyboard:** a new `pitch` input takes the same pitch signal as an oscillator, so the Main module's pitch output plays the grains in tune (C4 = the recording's own pitch). Before, a pin from the pitch output on the `pitch` slider moved 4 semitones per key, and in the browser most notes landed a semitone flat.
+
 ## 1.10.0 — 2026-11-06
 
 ### FM-1
