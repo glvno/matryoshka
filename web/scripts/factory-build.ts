@@ -179,7 +179,7 @@ export function withPlayers(src: Patch, what: Player): Patch {
   return p;
 }
 /**
- * The FM-1's VOICES rows capped at what its CPU holds (owner's ruling of 2026-11-07, D-TBD): on each card row of a Voice
+ * The FM-1's VOICES rows capped at what its CPU holds (owner's ruling of 2026-11-07, D-870): on each card row of a Voice
  * allocator's voices, `top` is the most voices with which the patch still fits the FM-1's budget (deviceBudget: the CPU
  * estimate at most 100 %, the factory patches' own bar), when that is fewer than MAX_PARTS; else no top. The patch keeps
  * its own voices. The editor and the browser engine do not read the top.

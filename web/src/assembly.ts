@@ -69,7 +69,7 @@ export interface ParamRef {
   names?: string[];
   /** the FM-1's top for this row: on a Voice allocator's `voices` row, the most voices the FM-1's VOICES row offers (2 ..
    * MAX_PARTS - 1; none: MAX_PARTS). gen-presets sets it on a factory patch whose CPU estimate would pass the FM-1's budget
-   * with more voices (voiceTops, D-TBD); the editor and the browser engine do not read it */
+   * with more voices (voiceTops, D-870); the editor and the browser engine do not read it */
   top?: number;
   /** this row starts copies of the same controls, shown one at a time (`RowCopies`): layout only */
   copies?: RowCopies;
