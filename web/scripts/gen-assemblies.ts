@@ -1906,9 +1906,9 @@ namePositions('Algo Four', { 'poly/mono': ['POLY', 'MONO'] });
 //   tune`, `timbre wave` (the timbre switch: triangle, saw or square), `timbre mix` (the timbre pot: sine to that
 //   wave), `timbre` (the timbre offset: the wave folder's drive). One phase for both waves: two Oscillators on one pitch.
 // - Dual lopass gate: per gate `mode` (1 lopass, 2 combination, 3 vca), `level` and its processing; gate 2's `source` (1
-//   preamp: needs audio input, silent here; 2 mod osc; 3 gate 1). Each gate: a slew (the vactrol) into a 12 dB low pass (a
-//   Ladder's) whose cutoff follows the level (20 Hz closed, 15 kHz open) and a VCA: lopass leaves the VCA open, vca the
-//   filter.
+//   preamp: needs audio input, silent here; 2 mod osc; 3 gate 1). Each gate: a slew (the vactrol: opening in 10 ms,
+//   closing in 350 ms, #669) into a 12 dB low pass (a Ladder's) whose cutoff follows the level (20 Hz closed, 15 kHz open)
+//   and a VCA: lopass leaves the VCA open, vca the filter.
 // - Output: `chan a` (gate 1), `chan b` (gate 2, 180 degrees out of phase), `reverb` (our reverb, mono).
 // Not here (the FM-1): the patch field and the inverter (Canvas XL's), the preamp / envelope detector (audio input); the
 // trim pots. The switches are numbered: their names would cost about 280 of the 65 bytes left (#358's names are Canvas XL's).
@@ -2005,7 +2005,7 @@ asm('Canvas', 'Voices', (b) => {
   // pass (20 Hz x 2^(9.6 x level)) and a VCA; the mode switch opens one or the other (lopass: the VCA open; vca: the filter)
   const gate = (col: number, ...inputs: [number, string][]) => {
     const lvl = b.add('scale', col, 2, { gain: 0.75, offset: 0 });
-    const vac = b.add('glide', col, 3, { time: 0.04, curve: 0 });
+    const vac = b.add('glide', col, 3, { time: 0.01, curve: 0, fall: 0.35 });
     const cut = b.add('scale', col + 1, 3, { gain: 2.4, offset: 0 });
     const fSel = b.add('select', col + 1, 2, { count: 3, pos: 2, v3: 4 });
     const aSel = b.add('math', col + 2, 2, { ka: 1, kb: 1, off: 0 });
