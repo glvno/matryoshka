@@ -7,6 +7,7 @@
  *   tools/clock_out_test.sh */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "../src/engine.c"
 #include "../src/presets.h"
 
@@ -248,6 +249,34 @@ int main(void)
     play_ms(100);
     check("MIDI OUT off: nothing goes out, the clock included", log_n == at);
     cfg.midi_out = 1;
+
+    {                                               /* play once (#632): the engine starts and stops the transport itself */
+        int fa;
+        for (k = 0; k < N_PRESETS && strcmp(PRESET_LIST[k].name, "808 KIT"); k++)
+            ;
+        check("the 808 Kit loads (play once)", k < N_PRESETS && eng_load(PRESET_LIST[k].data, PRESET_LIST[k].len) == 0);
+        set_tempo(120);
+        play_ms(300);
+        at = log_n;
+        eng_play_once();
+        play_ms(1900);
+        check("play once: no Start during the count-in (a bar: 2 s at 120 bpm), the clock goes on", count(at, 0xFAu) == 0
+              && abs(count(at, 0xF8u) - 91) <= 2);
+        play_ms(300);
+        fa = first(at, 0xFAu);
+        check("play once: then a Start, unasked, and tick 0 with it", count(at, 0xFAu) == 1 && fa >= 0 && log_b[fa + 1] == 0xF8u
+              && log_t[fa + 1] == log_t[fa]);
+        play_ms(2200);
+        check("play once: after the pattern's pass a Stop, unasked, and the transport stopped", count(at, 0xFCu) == 1
+              && first(at, 0xFCu) > fa && !eng_transport_running());
+        at = log_n;
+        eng_play_once();
+        play_ms(500);
+        play(0);                                    /* PLAY in the count-in (this helper asks for its Stop) */
+        play_ms(3000);
+        check("play once ended in the count-in: no Start, and no Stop but the one PLAY asked for", count(at, 0xFAu) == 0 && count(at, 0xFCu) == 1);
+        check("a factory patch with Main loads again", load_factory() >= 0);
+    }
 
     at = log_n;                                     /* MIDI clock in drives the clock: nothing passed on, no own clock */
     eng_clock_external(1);

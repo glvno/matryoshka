@@ -12,7 +12,7 @@
 
 /* what a row's effect is checked on */
 typedef struct {
-    uint32_t page, sr_on, sr_k, run, rec, saved, stepped, dev, devpage, menu_tab, man_top, updates, cfg_sum;
+    uint32_t page, sr_on, sr_k, run, once, rec, saved, stepped, dev, devpage, menu_tab, man_top, updates, cfg_sum;
     int32_t octave, tempo, list_btn, list_step;
     uint32_t params, arms, mutes, trk, row, roll_lo, seq_pg, pattern, lpg, locks;
     int32_t notes_n;
@@ -41,6 +41,7 @@ static void ct_take(ct_snap_t *s)
     s->sr_on = sr_on;
     s->sr_k = sr_k;
     s->run = (uint32_t)eng_transport_running();
+    s->once = (uint32_t)eng_once_state();
     s->rec = seq_rec;
     s->saved = (uint32_t)saved;
     s->stepped = (uint32_t)presets_stepped;
@@ -102,6 +103,7 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     int same_notes = a->notes_n == b->notes_n;
     switch (e) {
     case CE_TRANSPORT: return a->run != b->run;
+    case CE_PLAY_ONCE: return a->run != b->run || a->once != b->once;   /* (stopped: the count-in; running: a stop) */
     case CE_RECORD: return a->rec != b->rec;
     case CE_SAVE: return a->saved != b->saved;
     case CE_BACK: return moved || (b->sr_on && !a->sr_on);
@@ -195,7 +197,7 @@ static void ct_reset(void)
         tap(BTN_HOME);
     if (sr_on)
         sr_stop();
-    if (eng_transport_running())
+    if (eng_transport_running() || eng_once_state())
         tap(BTN_PLAY);
     if (seq_rec)
         seq_rec_off();

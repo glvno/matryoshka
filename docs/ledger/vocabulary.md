@@ -358,6 +358,10 @@ A patch whose cards mostly overlap, as one opened from a link without positions.
 
 One of a module's two hidden parameter inputs (p1, p2) that the editor assigns when a cable is dropped on a parameter.
 
+### Play once
+
+On the FM-1, a way to play the patch's pattern or song through once: one bar is counted in with a click, the pattern or each song entry plays once, and the transport stops by itself. SEQ held + PLAY starts it.
+
 ### Poly assembly
 
 An assembly whose members run once per voice of the Voicing module that feeds it; also called a rack of voice cards.

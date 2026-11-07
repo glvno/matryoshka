@@ -10,7 +10,8 @@
  * buffer (when the rendered half begins to sound), plus the tick's sample in the render. The 2 kHz timer
  * (clk_out_poll, before usb_poll) hands each byte to the USB ring when its time comes, so a tick leaves within half a
  * millisecond of its sample sounding, whatever the render's length. Start (PLAY) goes out in the render where the
- * engine starts the transport, just before that render's tick 0; Stop in the render where it stops.
+ * engine starts the transport, just before that render's tick 0; Stop in the render where it stops. Play once (#632)
+ * starts and stops the transport itself: its Start and Stop go out the same way, unasked.
  *
  * The time base is TIMER4's 24 MHz count (fm1_ticks), which wraps every 179 s: times are compared as differences. */
 
@@ -69,6 +70,8 @@ static void clk_out_block(uint32_t t0, int rendered)
                 co_push(t0 + (CO_LAT_SAMPLES + (n ? off[0] : 0u)) * 1000000u / ENG_SR * FM1_TICKS_PER_US, b);
         }
     }
+    if ((edge == 2 || edge == -2) && out)   /* play once started or stopped the transport itself (#632): its Start / Stop */
+        co_push(t0 + (CO_LAT_SAMPLES + (edge > 0 && n ? off[0] : 0u)) * 1000000u / ENG_SR * FM1_TICKS_PER_US, edge > 0 ? 0xFAu : 0xFCu);
     if (clock)
         for (k = 0; k < n; k++)
             co_push(t0 + (CO_LAT_SAMPLES + off[k]) * 1000000u / ENG_SR * FM1_TICKS_PER_US, 0xF8u);
