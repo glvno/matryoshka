@@ -6808,12 +6808,11 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
         it->s.stp.sst++;
         if (it->s.stp.pend > 0 && --it->s.stp.pend == 0 && (dir == 0 || it->s.stp.pstep < len))
             steps_fire(nd, it, it->s.stp.pstep, len, gate, sl, tr[i]);
+        if (adv && trk_once[t] == 1u)            /* (play once: its passes are played, #632) */
+            adv = 0;
         for (; adv > 0; adv--) {
             int32_t sw, d = 0;
-            step_visit_t next;
-            if (trk_once[t] == 1u)               /* (play once: its passes are played, #632) */
-                break;
-            next = steps_next(it, len, dir);
+            step_visit_t next = steps_next(it, len, dir);
             if (next.visit == 0) {               /* the end of a pass: a song's next entry, a queued pattern */
                 if (trk_once[t] > 1u && --trk_once[t] == 1u)
                     break;                       /* (play once: the last pass ended, #632) */
