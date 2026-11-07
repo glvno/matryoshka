@@ -1729,18 +1729,19 @@ async function main() {
       await page.evaluate(() => window.__m1test.arm([]));
       await emu.waitText('KEYS WIRED', 3000);
       await emu.elapse(1000);
-      // an instrument whose keys come through its track and Arpeggiator (every factory instrument; the owner, 2026-10-28):
-      // SEL on its first page arms it, and the keys play it; the Arpeggiator alone takes no keys
-      await check('arming: Vernon 100 opens, synced', await openSynced('Vernon 100'));
+      // an instrument whose keys come through its Arpeggiator alone (Io 4: no PATTERN track, the rig shed voices with it; Vernon
+      // 100 has its track since format 51, #667): SEL on its first page arms it, and the keys play it; the Arpeggiator alone
+      // takes no keys
+      await check('arming: Io 4 opens, synced', await openSynced('Io 4'));
       await emu.tap(B.scl);
-      await check('arming: SEL on Vernon 100\'s first page arms it', await emu.waitText('VERNON 100 ARMED', 1500));
+      await check('arming: SEL on Io 4\'s first page arms it', await emu.waitText('IO 4 ARMED', 1500));
       await emu.elapse(1300);
       const v = await emu.mark();
       await emu.key(WHITE[7], true);
       await emu.elapse(300);
       await emu.key(WHITE[7], false);
       const vp = await emu.peak(v);
-      await loudCheck('arming: Vernon 100 armed, a white key plays it', vp, vp > LOUD, `peak ${vp}`);
+      await loudCheck('arming: Io 4 armed, a white key plays it', vp, vp > LOUD, `peak ${vp}`);
       await emu.elapse(1000);
       await emu.tap(B.scl);                         // SEL is a toggle (D-239): armed, it takes it out
       await check('arming: SEL again on its page disarms it, the keys WIRED', await emu.waitText('KEYS WIRED', 1500));

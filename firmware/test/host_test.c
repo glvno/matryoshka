@@ -58,12 +58,17 @@ int main(int argc, char **argv)
         fprintf(stderr, "eng_load failed (%d)\n", rc);
         return 1;
     }
-#ifdef ENG_PAR_WORDS                    /* (tools/engine_exact.sh builds this file against an older engine too) */
+#if defined(ENG_PAR_WORDS) || defined(ENG_ARENA)   /* (tools/engine_exact.sh builds this file against an older engine too) */
     if (argc > 4) {
         FILE *pf = fopen(argv[4], "r");
-        unsigned want = 0;
-        if (pf && fscanf(pf, "%u", &want) == 1 && want != par_used) {
+        unsigned want = 0, bufs = 0, insts = 0;
+        int n = pf ? fscanf(pf, "%u %u %u", &want, &bufs, &insts) : 0;
+        if (n >= 1 && want != par_used) {
             printf("parameter values: eng_load took %u, the editor's budget counts %u\n", (unsigned)par_used, want);
+            return 1;
+        }
+        if (n == 3 && (bufs != E.nbuf || insts != E.ninst)) {   /* (#649: the memory is counted from them) */
+            printf("signal buffers / module copies: eng_load took %u / %u, the editor's budget counts %u / %u\n", (unsigned)E.nbuf, (unsigned)E.ninst, bufs, insts);
             return 1;
         }
         if (pf)

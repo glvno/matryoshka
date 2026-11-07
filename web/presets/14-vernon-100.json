@@ -20,7 +20,7 @@
     },
     "targets": {
      "arp": {
-      "module": 61
+      "module": 62
      }
     }
    }
@@ -1670,6 +1670,44 @@
   },
   {
    "id": 61,
+   "type": "steps",
+   "x": 20,
+   "y": 4280,
+   "params": {
+    "len": 16,
+    "rate": 4,
+    "swing": 50,
+    "gate": 0.25,
+    "dir": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "len"
+    ],
+    "p2": [
+     "rate"
+    ],
+    "k1": [
+     "len"
+    ],
+    "k2": [
+     "rate"
+    ],
+    "k3": [
+     "swing"
+    ],
+    "k4": [
+     "gate"
+    ]
+   },
+   "name": "PATTERN"
+  },
+  {
+   "id": 62,
    "type": "arp",
    "x": 2640,
    "y": 4280,
@@ -2646,7 +2684,17 @@
   },
   {
    "from": {
+    "module": 1,
+    "port": "keys"
+   },
+   "to": {
     "module": 61,
+    "port": "keys"
+   }
+  },
+  {
+   "from": {
+    "module": 62,
     "port": "keys"
    },
    "to": {
@@ -2656,7 +2704,7 @@
   },
   {
    "from": {
-    "module": 61,
+    "module": 62,
     "port": "keys"
    },
    "to": {
@@ -2666,11 +2714,11 @@
   },
   {
    "from": {
-    "module": 1,
+    "module": 61,
     "port": "keys"
    },
    "to": {
-    "module": 61,
+    "module": 62,
     "port": "keys"
    }
   }

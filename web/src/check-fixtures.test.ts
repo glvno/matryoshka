@@ -60,7 +60,7 @@ describe('the device check\'s test patches', () => {
     const d = (n: string) => p.modules.find((m) => m.type === 'delay' && m.name === n)!.params;
     expect([d('LONG').time, d('LONG').length, d('SHORT').time, d('SHORT').length]).toEqual([1200, 1200, 300, 300]);
     const lb = lineBudget(p);
-    expect([Math.round(lb.used / 1024), Math.round(lb.max / 1024), lb.fits]).toEqual([129, 190, true]);
+    expect([Math.round(lb.lines / 1024), Math.round(lb.max / 1024), lb.fits]).toEqual([129, 356, true]);   // (the lines; the memory: #649)
   });
 
   it('T111 NO KEYS: no keys cable reaches the engine, a Steps track drives its cutoff (#633)', () => {

@@ -8,7 +8,7 @@ import { devicesOf, NAME_MAX } from './pages';
 import { assemblyById, makeAssembly } from './assembly';
 import { instIsEngine } from './engines';
 import { engineBytes } from './test-bin';
-import { buttonRecord, deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION, formatOf, paramsAt, SECTION_FORMATS, WRITE_FLOOR } from './patchbin';
+import { buttonRecord, deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION, formatOf, paramsAt, SECTION_FORMATS, WRITE_FLOOR, COUNTED, layout, moduleRecordSize } from './patchbin';
 import { FM1_PRESETS } from './presets';
 import { deviceView, polyGroups } from './poly';
 import { polyCfg, withParts } from './test-poly';
@@ -56,6 +56,9 @@ describe('binary patch format', () => {
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
       const p = make();
       if (polyGroups(p).length) continue; // a poly assembly is not only layout: its cards run once per voice
+      // (a patch written with counted records keeps the parameters its device rows name, #667: they differ without the
+      // overlay's devices, so the comparison holds for the patches an older format holds)
+      if (formatOf(p) >= COUNTED) continue;
       const flat = { ...p, assemblies: undefined };
       delete flat.assemblies;
       expect(engineBytes(p), name).toEqual(engineBytes(flat));
@@ -274,7 +277,8 @@ describe('binary patch format', () => {
       const pages = devs.length ? 1 + devs.reduce((n, d) => n + (d.module !== undefined ? 2 : 2 + txt(d.name) + d.pages.reduce((k, pg) => k + txt(pg.name) + 4 + pg.rows.reduce((j, r) => j + 2 + txt(r.label) + more(r), 0), 0)), 0)
         + 1 + devs.reduce((n, d) => n + 8 + deviceText((d.asm !== undefined ? make().assemblies?.find((x) => x.id === d.asm)?.preset : '') ?? '').length + 2 * (d.asm !== undefined ? make().assemblies!.find((x) => x.id === d.asm)!.params.length : 0) + extrasMembers(make(), p, d), 0) : 0; // and the extras
       const valued = p.modules.filter((m) => m.type === 'steps' && m.notes?.length);
-      const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + PANEL_BYTES + p.modules.reduce((s, m) => s + 1 + 4 * paramsAt(m.type, b[1]).length + (DEFS[m.type].paramInputs ? 8 + 6 * maskBytes(m.type) : 0) + (DEFS[m.type].data ?? 0), 0) + 4 * p.cables.length
+      const keep = layout(make()).keep;   // (counted records, #667: a record's size follows its values and the rows kept)
+      const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + PANEL_BYTES + p.modules.reduce((s, m) => s + (b[1] >= COUNTED ? moduleRecordSize(m, b[1], false, keep.get(m.id)) : 1 + 4 * paramsAt(m.type, b[1]).length + (DEFS[m.type].paramInputs ? 8 + 6 * maskBytes(m.type) : 0) + (DEFS[m.type].data ?? 0)), 0) + 4 * p.cables.length
         + (valued.length ? 1 + valued.reduce((n, m) => n + 2 + 4 * m.notes!.length, 0) : 0) + pages + buttonRecord(make(), p).length
         + (drumMaps(p).length ? 1 + drumMaps(p).length * (1 + 8 * 8) : 0)
         + (rangeList(p).length ? 1 + 5 * rangeList(p).length : 0) // the macro ranges (the 909 Kit's velocity VCAs)
@@ -300,7 +304,7 @@ describe('binary patch format', () => {
   });
 
   it('counts parameter values as eng_load takes them: per module its type\'s, twice with a morph B side, plus per copy', () => {
-    const used = (q: Patch): number => deviceBudget(q).items.find((i) => i.key === 'params')!.used;
+    const used = (q: Patch): number => deviceBudget(q).params;
     const mono = subtractiveSaw();
     const npar = mono.modules.reduce((n, m) => n + DEFS[m.type].params.length, 0);
     expect(used(mono)).toBe(2 * npar); // one copy each
@@ -371,9 +375,9 @@ describe('binary patch format', () => {
     const two = subtractiveSaw();
     const out2 = two.modules.find((m) => m.type === 'output')!;
     for (let i = 0; i < 2; i++) connect(two, DEFS, { module: addModule(two, DEFS.reverb, 0, 0).id, port: 'out' }, { module: out2.id, port: 'l' });
-    expect(deviceBudget(two).fits).toBe(true);   // (two reverbs: the effect memory holds them, D-375)
-    for (let i = 0; i < 12; i++) connect(two, DEFS, { module: addModule(two, DEFS.reverb, 0, 0).id, port: 'out' }, { module: out2.id, port: 'l' });
-    expect(deviceBudget(two).over.map((i) => i.key)).toContain('lines');
+    expect(deviceBudget(two).fits).toBe(true);   // (two reverbs: the memory holds them, D-375)
+    for (let i = 0; i < 30; i++) connect(two, DEFS, { module: addModule(two, DEFS.reverb, 0, 0).id, port: 'out' }, { module: out2.id, port: 'l' });
+    expect(deviceBudget(two).over.map((i) => i.key)).toContain('memory');
   });
 });
 
