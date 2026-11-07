@@ -60,6 +60,7 @@ static void audio_silence(void)                 /* IRQs off: the DMA would loop 
 
 typedef struct {
     uint32_t op, off, n;                 /* 0x20 erase 4 KiB at off, or 0x02 program n bytes (one page) at off */
+    uint8_t hdr[4];                      /* the command and its address, as sent */
     const uint8_t *src;                  /* the bytes to program, in RAM */
     volatile int32_t *quiet;             /* the audio buffer, zeroed when a suspend is not taken */
     uint32_t quiet_n;
@@ -69,98 +70,119 @@ typedef struct {
     int rc;
 } st_op_t;
 
-/* one step: start (state 0) or resume (state 1) the write, then poll until it is done (2, rc set) or suspended for the
- * interrupts (1). IRQs off, args in RAM; no calls, no constants from the flash (tools/build.py checks the calls). Returns
- * with the flash's read path on either way. */
+/* fl_op_step's phases, one bit each (tested with &, never ==: a chain of == the compiler may turn into a table, and a
+ * table would be read from the flash): each is one transaction on the flash chip, sent from one place (.ram_text is
+ * small) */
+#define FP_WREN 0x001u
+#define FP_WEL 0x002u
+#define FP_CMD 0x004u
+#define FP_RESUME 0x008u
+#define FP_POLL 0x010u
+#define FP_SR2 0x020u
+#define FP_SUSPEND 0x040u
+#define FP_SUSWAIT 0x080u
+#define FP_SUSCHK 0x100u
+#define FP_DONE 0x200u
+#define FP_READS (FP_WEL | FP_POLL | FP_SR2 | FP_SUSWAIT | FP_SUSCHK)   /* the phases that read a status byte back */
+
+/* one step: start (state 0) or resume (state 1) the write, then poll until it is done (state 2, rc set) or suspended for
+ * the interrupts (state 1). IRQs off, args in RAM; no calls (tools/build.py checks), no constants from the flash, no
+ * switch or table (it would be read from the flash). Returns with the flash's read path on either way. */
 static RAMFN void fl_op_step(st_op_t *b)
 {
     fl_saved_t s;
-    uint32_t t0, t, i;
+    uint32_t t0, ts = 0, i, nh, nd, ph, v;
     if (fl_enter(&s)) {
         b->rc = -2;
         b->state = 2u;
         return;
     }
     t0 = T4_CNT;
+    ph = FP_RESUME;
     if (b->state == 0u) {
+        ph = FP_WREN;
         if (b->op == 0x20u ? !FL_STORE_OK(b->off, 0x1000u) || (b->off & 0xFFFu)
                            : !FL_STORE_OK(b->off, b->n) || !b->n || ((b->off & 0xFFu) + b->n) > 256u) {
             b->rc = -1;
-            b->state = 2u;
-            fl_exit(&s);
-            return;
+            ph = FP_DONE;
         }
-        fl_wren();
-        if (!(fl_rdsr(0x05) & 2u)) {
-            b->rc = -3;
-            b->state = 2u;
-            fl_exit(&s);
-            return;
-        }
-        fl_cs(0);
-        fl_tx((uint8_t)b->op);
-        fl_addr(b->off);
-        if (b->op == 0x02u)
-            for (i = 0; i < b->n; i++)
-                fl_tx(b->src[i]);
-        fl_cs(1);
-        b->t_start = t0;
-    } else {
-        fl_cs(0);
-        fl_tx(0x7A);                                /* resume */
-        fl_cs(1);
     }
-    b->state = 1u;
-    for (;;) {
-        t = T4_CNT;
-        if (!(fl_rdsr(0x05) & 1u)) {
-            if (!(fl_rdsr(0x35) & ST_SR2_SUS)) {    /* not busy and nothing suspended: done */
-                b->rc = 0;
-                break;
+    while (!(ph & FP_DONE)) {
+        uint8_t one = ph & FP_WREN ? 0x06u : ph & FP_RESUME ? 0x7Au : ph & FP_SUSPEND ? 0x75u
+                    : ph & (FP_SR2 | FP_SUSCHK) ? 0x35u : 0x05u;
+        const uint8_t *h = ph & FP_CMD ? b->hdr : &one;
+        nh = ph & FP_CMD ? 4u : 1u;
+        nd = ph & FP_CMD && b->op == 0x02u ? b->n : 0u;
+        fl_cs(0);
+        for (i = 0; i < nh + nd; i++)
+            fl_tx(i < nh ? h[i] : b->src[i - nh]);
+        v = ph & FP_READS ? fl_rx() : 0u;
+        fl_cs(1);
+        if (ph & FP_WREN) {
+            ph = FP_WEL;
+        } else if (ph & FP_WEL) {
+            ph = FP_CMD;
+            if (!(v & 2u)) {                    /* WEL did not set */
+                b->rc = -3;
+                ph = FP_DONE;
             }
-            fl_cs(0);                               /* suspended though no step is open (a suspend taken late): resume */
-            fl_tx(0x7A);
-            fl_cs(1);
+        } else if (ph & (FP_CMD | FP_RESUME)) {
             t0 = T4_CNT;
-            continue;
-        }
-        if (t - b->t_start > ST_TIMEOUT) {
-            b->rc = -4;
-            break;
-        }
-        if (b->serve && t - b->t_start > ST_SERVE_MAX)
-            b->serve = 0u;
-        if (b->serve && t - t0 >= ST_RUN_MIN && (t - t0 >= ST_RUN_MAX || (ST_ALNK_CON2 & 0x80u))) {
-            uint32_t ts = T4_CNT;
-            fl_cs(0);
-            fl_tx(0x75);                            /* suspend */
-            fl_cs(1);
-            while ((fl_rdsr(0x05) & 1u) && T4_CNT - ts < ST_SUS_MAX)
-                ;
-            if (fl_rdsr(0x05) & 1u) {               /* not taken: no more steps; this write runs to its end */
+            if (ph & FP_CMD)
+                b->t_start = t0;
+            ph = FP_POLL;
+        } else if (ph & FP_POLL) {
+            uint32_t t = T4_CNT;
+            if (!(v & 1u))
+                ph = FP_SR2;                    /* not busy: done, or suspended */
+            else if (t - b->t_start > ST_TIMEOUT) {
+                b->rc = -4;
+                ph = FP_DONE;
+            } else {
+                if (b->serve && t - b->t_start > ST_SERVE_MAX)
+                    b->serve = 0u;
+                if (b->serve && t - t0 >= ST_RUN_MIN && (t - t0 >= ST_RUN_MAX || (ST_ALNK_CON2 & 0x80u)))
+                    ph = FP_SUSPEND;
+            }
+        } else if (ph & FP_SR2) {             /* nothing suspended: done; suspended though no step is open: resume */
+            ph = v & ST_SR2_SUS ? FP_RESUME : FP_DONE;
+            if (ph & FP_DONE)
+                b->rc = 0;
+        } else if (ph & FP_SUSPEND) {
+            ts = T4_CNT;
+            ph = FP_SUSWAIT;
+        } else if (ph & FP_SUSWAIT) {
+            if (!(v & 1u))
+                ph = FP_SUSCHK;
+            else if (T4_CNT - ts > ST_SUS_MAX) {    /* not taken: no more steps; this write runs to its end, the audio
+                                                     * buffer zeroed (the hardware would loop it) */
                 volatile int32_t *q = b->quiet;
                 b->serve = 0u;
                 b->sus_fail++;
                 for (i = 0; i < b->quiet_n; i++)
                     q[i] = 0;
-                continue;
+                ph = FP_POLL;
             }
-            if (!(fl_rdsr(0x35) & ST_SR2_SUS)) {    /* it ended before the suspend: done */
-                b->rc = 0;
-                break;
+        } else {                                /* FP_SUSCHK: suspended: the read path back on for the interrupts */
+            if (!(v & ST_SR2_SUS)) {
+                b->rc = 0;                      /* (it ended before the suspend) */
+                ph = FP_DONE;
+            } else {
+                v = T4_CNT - t0;
+                if (v > b->off_max)
+                    b->off_max = v;
+                b->state = 1u;
+                fl_exit(&s);
+                return;
             }
-            t = T4_CNT;
-            if (t - t0 > b->off_max)
-                b->off_max = t - t0;
-            fl_exit(&s);                            /* suspended: the read path back on for the interrupts */
-            return;
         }
     }
-    fl_inval(b->off, b->op == 0x20u ? 0x1000u : b->n);
+    if (!b->rc)
+        fl_inval(b->off, b->op == 0x20u ? 0x1000u : b->n);
     b->state = 2u;
-    t = T4_CNT;
-    if (t - t0 > b->off_max)
-        b->off_max = t - t0;
+    v = T4_CNT - t0;
+    if (v > b->off_max)
+        b->off_max = v;
     fl_exit(&s);
 }
 
@@ -171,6 +193,10 @@ static int st_op(uint32_t op, uint32_t off, const uint8_t *src, uint32_t n)
     uint32_t f, t0 = fm1_ticks(), dt;
     b.op = op;
     b.off = off;
+    b.hdr[0] = (uint8_t)op;
+    b.hdr[1] = (uint8_t)(off >> 16);
+    b.hdr[2] = (uint8_t)(off >> 8);
+    b.hdr[3] = (uint8_t)off;
     b.src = src;
     b.n = n;
     b.quiet = abuf;
