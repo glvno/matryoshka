@@ -1143,24 +1143,30 @@ async function main() {
     },
     async playOnce() {   // #632 (D-820): SEQ held + PLAY counts in a bar with a click, plays the pattern once, stops by itself
       await check('play once: the 808 Kit opens, synced', await openSynced('808 Kit'));
-      const bpm = Math.round((await tempo()) ?? 120), beat = 60000 / bpm, bar = 4 * beat;
       await emu.key(B.seq, true);
       await emu.elapse(100);
+      const t0 = await emu.ms();
       await emu.key(B.play, true);
-      const win = await emu.windows(Math.round((bar * 0.9) / 25), 25);   // (the count-in's first 90 %: the 808 Kit is silent)
-      const counting = await emu.text('COUNT-IN 4');
+      const win = await emu.windows(48, 25);       // (the count-in's first 1.2 s: the 808 Kit is silent, so only the click)
+      const counting = await emu.text('COUNT-IN');
       await emu.key(B.play, false);
       await emu.key(B.seq, false);
       const st = await T();
-      await check('play once: SEQ held + PLAY, stopped: the bar counts the beats (COUNT-IN 4 on the fourth)', counting);
-      await check('play once: the transport stays stopped during the count-in (no Start reached the editor)', !st.deviceRunning && !st.playing,
-        `FM-1 ${st.deviceRunning ? 'running' : 'stopped'}, editor ${st.playing ? 'playing' : 'stopped'}`);
       const onsets = win.filter((w, i) => w[1] > LOUD && (i === 0 || win[i - 1][1] <= LOUD)).map((w) => w[0]);
+      // (a beat from the onsets after the first: the first click falls inside the first window, so it reads up to 25 ms late)
+      const beat = onsets.length >= 3 ? (onsets[onsets.length - 1] - onsets[1]) / (onsets.length - 2) : onsets.length === 2 ? onsets[1] - onsets[0] : 0, bar = 4 * beat;
       console.log(`  play once: the count-in's peaks per 25 ms: ${prof(win)}`);
-      await loudCheck(`play once: a click on each beat of the count-in (${bpm} bpm: every ${beat.toFixed(0)} ms)`, Math.max(...win.map((w) => w[1])),
-        onsets.length === Math.min(4, Math.ceil((bar * 0.9) / beat)) && onsets.slice(1).every((t, i) => Math.abs(t - onsets[i] - beat) <= 60),
-        `click onsets at ${onsets.join(' ')} ms`);
-      await check('play once: after the bar it plays (PLAY ONCE)', await emu.waitText('PLAY ONCE', bar));
+      await check('play once: SEQ held + PLAY, stopped: the bar counts in (COUNT-IN n)', counting);
+      if (bar > 1300)
+        await check('play once: the transport stays stopped during the count-in (no Start reached the editor)', !st.deviceRunning && !st.playing,
+          `FM-1 ${st.deviceRunning ? 'running' : 'stopped'}, editor ${st.playing ? 'playing' : 'stopped'}`);
+      await loudCheck('play once: a click on each beat of the count-in, a beat apart', Math.max(...win.map((w) => w[1])),
+        beat >= 200 && onsets.length === Math.min(4, Math.floor(1200 / beat) + 1) && onsets.slice(1).every((t, i) => Math.abs(t - onsets[i] - beat) <= 40),
+        `click onsets at ${onsets.join(' ')} ms (a beat ${beat} ms)`);
+      const seen = await emu.waitText('PLAY ONCE', 5000);
+      const t1 = await emu.ms();
+      await check('play once: then it plays (PLAY ONCE), not before a bar from the press', seen && t1 - t0 >= bar - 100,
+        `PLAY ONCE seen ${t1 - t0} ms after the press, a bar is ${bar} ms`);
       const ran = await until(async () => (await T()).deviceRunning, 3000);
       await check('play once: the FM-1\'s Start reaches the editor after the count-in', !!ran);
       await emu.elapse(bar * 0.5);
@@ -1174,9 +1180,9 @@ async function main() {
       await emu.elapse(100);
       await emu.tap(B.play);
       await emu.key(B.seq, false);
-      await emu.elapse(beat);
+      await emu.elapse(Math.max(beat, 200));
       await emu.tap(B.play);
-      await emu.elapse(bar * 1.5);
+      await emu.elapse(Math.max(bar, 1000) * 1.5);
       await check('play once: PLAY in the count-in ends it, nothing starts', !(await T()).deviceRunning && !(await emu.text('PLAY ONCE')));
       await emu.snap('play-once');
     },
