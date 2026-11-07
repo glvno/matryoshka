@@ -60,6 +60,13 @@ export function looseModel(p: Patch): boolean {
   if (p.cables.some((c) => c.to.port === 'pitch' && fromEnv(c.from.module))) return true;
   // an LFO whose rate a knob or another signal sets: the model charges it at its fastest (a pitch it moves every sample)
   if (p.modules.some((m) => m.type === 'lfo' && Math.round(m.params.wave ?? 0) !== 4 && p.cables.some((c) => c.to.module === m.id))) return true;
-  // a filter's cutoff an LFO or a Follower's envelope moves (the envelope filter, #661: unfed in the check, so it stands still)
-  return p.cables.some((c) => c.to.port === 'cv' && p.modules.find((m) => m.id === c.to.module)?.type === 'filter' && ['lfo', 'esp'].includes(p.modules.find((m) => m.id === c.from.module)?.type ?? ''));
+  // a filter's cutoff an LFO or a Follower's envelope moves, directly or through other modules (the envelope filter, #661:
+  // unfed in the check, so it stands still; its envelope reaches the cutoff through the sweep row's Selector)
+  const fromMover = (id: number, seen = new Set<number>()): boolean => {
+    if (seen.has(id)) return false;
+    seen.add(id);
+    if (['lfo', 'esp'].includes(byId.get(id)?.type ?? '')) return true;
+    return p.cables.some((c) => c.to.module === id && fromMover(c.from.module, seen));
+  };
+  return p.cables.some((c) => c.to.port === 'cv' && byId.get(c.to.module)?.type === 'filter' && fromMover(c.from.module));
 }

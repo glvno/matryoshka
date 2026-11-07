@@ -867,14 +867,21 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   assign, legato, priority, unison, steal) name its group setting: in the device form the allocator is its group's Part, and
   the parameter byte is 0x80 + the field (`POLY_ROW_PARAMS`). `binaryPage` / `editorPage` map the editor's focus to the
   binary's indices. `eng_devices_end` (engine.h) walks the section; `eng_load` skips it.
-- Page row extras (format 35, #357, #358): bit 6 of a row's parameter byte (`ROW_MORE`, engine.h `ENG_ROW_MORE`; never on
-  a poly row) says the row's extras follow its label: u8 n and n (module index, parameter index) pairs, the further
+- Page row extras (format 35, #357, #358): bit 6 of a row's parameter byte (`ROW_MORE`, engine.h `ENG_ROW_MORE`; on a
+  poly row only from format 51, below) says the row's extras follow its label: u8 n and n (module index, parameter index) pairs, the further
   parameters the row sets, then u8 k and k texts, its positions' names in capitals. A row without them is written as
   before, so every binary written before them is unchanged. The FM-1 keeps where each row's extras start (`ppage_t.xo`,
   an offset into the running binary): K1..K4 and MIDI CC 16..19 write the row's value to each further parameter too
   (`pages_also`, after the first; PARAM_NOW names only the first, the editor sets the rest), a preset loaded on the FM-1
   does the same (`dp_load`, `dev_row_more`), and a named position shows its name for the value (`row_name`). A Selector
   module's `pos` row spans 1..count on the FM-1 (`row_top`: the knobs, CC, the bar and MIDI out), as on the card.
+- A VOICES row's top (format 51, [D-870](ledger/patches-and-presets.md#D-870)): on a poly row the extras are one byte, the
+  most voices the FM-1's VOICES row offers (`ParamRef.top` on a Voice allocator's voices card row, `PageRow.top`,
+  `patchbin.ts` `polyTop`; written only with a top, which makes the patch format 51, `uses111`). `gen-presets` sets it
+  (`factory-build.ts` `voiceTops`) to the most voices with which the factory patch still fits the FM-1's budget, when that
+  is under eight: Cassia 1's is 6. The FM-1 keeps it at `ppage_t.xo` as other extras (`row_more` gives none for a poly
+  row); `poly_top` is the top of the knobs, MIDI CC 16..19, the bar and MIDI out, and `dp_load` holds a preset's voices to
+  it (`dev_poly_top`). The editor and the browser engine do not read it.
 - Protocol: FOCUS 0x29 (host → device: show a page), PARAM_NOW 0x47 (a row turned on the FM-1: module, parameter, Q16)
   and FOCUS_NOW 0x48 (the page the FM-1 shows) from the device; INFO feature bit 4. With Live on the editor follows the
   FM-1's page and turns, and sends its own focus; an upload is followed by the focus.
