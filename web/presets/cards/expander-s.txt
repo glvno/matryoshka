@@ -150,7 +150,7 @@ preset: Highpass Pluck
   envelopes / d (2) = 0.4 s
   envelopes / s (2) = 0.2
   envelopes / r (2) = 0.3 s
-  level = 2
+  level = 1.91
 
 preset: Unison Lead
   unison = on
