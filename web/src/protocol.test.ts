@@ -156,6 +156,17 @@ describe('sandbox mode on the wire', () => {
     expect(editorSkips(null, false)).toBe(false);
   });
 
+  it('ARMS (#191): the editor\'s armed set as proto.c reads it (lo u32 LE, then hi), feature bit 20', async () => {
+    const { armsFrame, FEATURE_ARMS } = await import('./protocol');
+    const p = parse(armsFrame(0x80000005, 0x00000101))!;
+    expect(p.cmd).toBe(0x39);
+    expect(p.payload).toEqual([5, 0, 0, 0x80, 1, 1, 0, 0]);
+    expect(parse(armsFrame(0, 0))!.payload).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(FEATURE_ARMS).toBe(1 << 20);
+    const info = parseInfo(parse(frame(CMD.info, [1, 64, 255, 1, 8, 246, 255, 31, 51, 0, 0, 0, 31]))!)!;
+    expect(info.features & FEATURE_ARMS).toBeTruthy();
+  });
+
   it('INFO: the firmware version in bytes 9..11 (#216)', () => {
     const info = parseInfo(parse(frame(CMD.info, [1, 64, 255, 7, 8, 246, 255, 31, 48, 1, 8, 0]))!)!;
     expect(info).toMatchObject({ patchFormats: { min: 31, max: 48 }, firmware: { major: 1, minor: 8, patch: 0 } });

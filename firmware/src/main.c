@@ -1278,6 +1278,16 @@ static void m1_focus(uint32_t dev, uint32_t pg)
         ui_dirty = 2;
 }
 static void m1_ui_changed(void) { ui_dirty = 2; }    /* proto.c: the editor bypassed a module: title and picture */
+/* ARMS from the editor (proto.c, #191): its armed set becomes the FM-1's, so the panel's keys and the editor's notes play
+ * the same devices; REC records into it from now on (seq_rec_sync). Not reported back (no ARMS_NOW) */
+static void m1_arms(uint32_t lo, uint32_t hi)
+{
+    if (((uint64_t)hi << 32 | lo) == eng_arm_mask_get())
+        return;
+    eng_arm_mask((uint64_t)hi << 32 | lo);
+    seq_rec_sync();
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+}
 static void m1_ui_rows(void) { ui_dirty = ui_dirty ? ui_dirty : 1; }   /* proto.c: the editor moved a parameter (Live) */
 
 /* The device test mode (#291): a script on the Mac drives the panel over the editor link and reads the screen and the
