@@ -15,7 +15,7 @@ import { FIXTURES, NOTE, oldPatch } from './check-fixtures.mjs';
 
 /** the scenarios' names, in the order they run (scripts/emu-scenarios.mjs lists them for --only and --list) */
 export const CHECK_SCENARIOS = ['checkOutput', 'checkVerona', 'checkRowDrone', 'checkLiveDrone', 'checkDelays', 'checkNoKeys', 'checkStore',
-  'checkOldPattern', 'checkTeach', 'checkDualCore', 'checkUsbLevel'];
+  'checkOldPattern', 'checkTeach', 'checkDualCore', 'checkUsbLevel', 'checkOutLevel'];
 
 /** `h`: what emu-scenarios.mjs's scenarios use (the target, the editor's page, the checks) */
 export function checkScenarios(h) {
@@ -242,6 +242,39 @@ export function checkScenarios(h) {
       } finally {
         if (await menuTab('USB LEVEL')) await levelTo(K2, 'USB LEVEL', 'KNOB');
         await check('usb level: back to KNOB', (await levelOf('USB LEVEL')) === 'KNOB', `${await levelOf('USB LEVEL')}`);
+        await menuClose();
+      }
+    },
+    // ---- OUT LEVEL (#631): the analog output at a fixed level, MASTER aside. The emulator's recording is its I2S output
+    // (the analog side): there -12 DB must sit 12 dB under 0 DB; on the rig the recording is USB audio, which OUT LEVEL
+    // must leave as it was, and the analog level is the owner's (a recorder, by ear)
+    async checkOutLevel() {
+      const K3 = ENC.k3;
+      try {
+        await check('out level: T110 MONO L R opens, synced', !!(await fixture(FIXTURES.monoLR)));
+        await check('out level: GLO > SYSTEM 2/2, its third row OUT LEVEL reads KNOB', (await menuTab('OUT LEVEL')) && (await levelOf('OUT LEVEL')) === 'KNOB', `${await levelOf('OUT LEVEL')}`);
+        await menuClose();
+        const held = (tag) => recorded(`out-level-${tag}`, async () => { await emu.key(C4, true); await emu.elapse(700); await emu.key(C4, false); await emu.elapse(200); });
+        const at = async (want) => {
+          const v = (await menuTab('OUT LEVEL')) && (await levelTo(K3, 'OUT LEVEL', want));
+          await check(`out level: K3 to ${want}`, v === want, `${v}`);
+          await menuClose();
+          return held(want.replace(' ', ''));
+        };
+        if (!REAL) {
+          const lo = await at('-12 DB'), top = await at('0 DB');
+          const l = lo.why ? 0 : rmsOf(lo.l), t = top.why ? 0 : rmsOf(top.l);
+          await heard('out level: -12 DB sits 12 dB under 0 DB (the I2S output, within 0.5 dB)', lo, l > FLOOR && Math.abs(20 * Math.log10(l / t) + 12) <= 0.5, `-12 DB ${db(l)} dB, 0 DB ${db(t)} dB`);
+          await skip('out level: the speaker and the jack at the fixed level, MASTER turned', 'the emulator\'s MASTER stays put and the rig records USB audio: the owner\'s recorder proves it');
+        } else {
+          const knob = await held('knob'), lo = await at('-24 DB');
+          const k = knob.why ? 0 : rmsOf(knob.l), f = lo.why ? 0 : rmsOf(lo.l);
+          await heard('out level: -24 DB leaves USB audio at MASTER\'s level (the rig\'s recording, within 0.3 dB)', lo, k > FLOOR && Math.abs(20 * Math.log10(f / k)) <= 0.3, `KNOB ${db(k)} dB, -24 DB ${db(f)} dB`);
+          await skip('out level: the speaker and the jack at the fixed level, MASTER turned', 'the rig records USB audio, not the analog output: the owner\'s recorder proves it');
+        }
+      } finally {
+        if (await menuTab('OUT LEVEL')) await levelTo(K3, 'OUT LEVEL', 'KNOB');
+        await check('out level: back to KNOB', (await levelOf('OUT LEVEL')) === 'KNOB', `${await levelOf('OUT LEVEL')}`);
         await menuClose();
       }
     },
