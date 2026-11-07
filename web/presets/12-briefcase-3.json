@@ -10,6 +10,19 @@
    "params": {
     "morph": 0,
     "tempo": 120
+   },
+   "panel": {
+    "toggle": [
+     "arp"
+    ],
+    "kinds": {
+     "arp": "bypass"
+    },
+    "targets": {
+     "arp": {
+      "module": 65
+     }
+    }
    }
   },
   {
@@ -163,7 +176,7 @@
     "stack": 0,
     "pm2": 0,
     "pm3": 0,
-    "analog": 1
+    "analog": 0
    },
    "att": [
     1,
@@ -201,7 +214,7 @@
     "stack": 0,
     "pm2": 0,
     "pm3": 0,
-    "analog": 1
+    "analog": 0
    },
    "att": [
     1,
@@ -239,7 +252,7 @@
     "stack": 0,
     "pm2": 0,
     "pm3": 0,
-    "analog": 1
+    "analog": 0
    },
    "att": [
     1,
@@ -1756,6 +1769,20 @@
    "params": {
     "level": 1
    }
+  },
+  {
+   "id": 65,
+   "type": "arp",
+   "x": 5840,
+   "y": 3160,
+   "params": {
+    "mode": 0,
+    "rate": 4,
+    "octaves": 1,
+    "gate": 0.5,
+    "latch": 0
+   },
+   "bypass": true
   }
  ],
  "cables": [
@@ -3571,16 +3598,6 @@
   },
   {
    "from": {
-    "module": 1,
-    "port": "keys"
-   },
-   "to": {
-    "module": 2,
-    "port": "keys"
-   }
-  },
-  {
-   "from": {
     "module": 27,
     "port": "mix"
    },
@@ -3597,6 +3614,26 @@
    "to": {
     "module": 64,
     "port": "r"
+   }
+  },
+  {
+   "from": {
+    "module": 65,
+    "port": "keys"
+   },
+   "to": {
+    "module": 2,
+    "port": "keys"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "keys"
+   },
+   "to": {
+    "module": 65,
+    "port": "keys"
    }
   }
  ],
