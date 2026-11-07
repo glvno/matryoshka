@@ -37,11 +37,22 @@ pub fn xip_of(app: &[u8]) -> Vec<u8> {
 impl Machine {
     /// Boot `app` (the build's matryoshka.bin). `flash`: the SPI flash chip's contents (a
     /// previous run's `flash()`), else erased.
+    /// The flash chip answers the JEDEC id M1EMU_JEDEC (six hex digits, e.g. B36014 for the UC25HQ80, #739) if set, else
+    /// fm1-emu's Puya (85 60 14).
     pub fn boot(app: &[u8], flash: Option<&[u8]>) -> Machine {
+        let env = std::env::var("M1EMU_JEDEC").ok().and_then(|v| u32::from_str_radix(v.trim_start_matches("0x"), 16).ok());
+        Machine::boot_jedec(app, flash, env)
+    }
+
+    /// `boot` with the flash chip answering `jedec` (maker, type, capacity) when given.
+    pub fn boot_jedec(app: &[u8], flash: Option<&[u8]>, jedec: Option<u32>) -> Machine {
         let mut soc = Soc::new(RAM_SIZE, xip_of(app));
         soc.periph.skip_idle = true;
         if let Some(f) = flash {
             soc.flash.load(f);
+        }
+        if let Some(id) = jedec {
+            soc.flash.jedec = [(id >> 16) as u8, (id >> 8) as u8, id as u8];
         }
         let mut cpu = Cpu::new(ENTRY);
         // fm1-emu's AArch64 JIT (macOS only) renders our engine wrong at 7ca5b96 (most factory patches come out
