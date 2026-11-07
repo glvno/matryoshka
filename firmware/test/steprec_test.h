@@ -392,7 +392,7 @@ static void steprec_suite(void)
     check("  PLAY: a live take of the drum track", !sr_on && seq_rec && eng_transport_running() && (E.trk_rec >> E.node[drums].trk & 1u));
     tap(BTN_PLAY);
     {                                                   /* REC held + a black key on the SEQ page: arms as ever, no step record */
-        uint64_t was = eng_arm_mask_get();
+        uint64_t was = m64(eng_arm_mask_get());
         panel_held |= 1u << BTN_REC;
         panel_edges(1u << BTN_REC, 0);
         sr_tap_key(1);
@@ -400,8 +400,8 @@ static void steprec_suite(void)
         panel_edges(0, 1u << BTN_REC);
         loop();
         check("REC held + a black key on the drum grid: the track disarmed, no step record, REC's release does nothing",
-              eng_arm_mask_get() != was && !sr_on && !seq_rec && !eng_transport_running() && sr_notes(drums) == 3);
-        eng_arm_mask(was);
+              m64(eng_arm_mask_get()) != was && !sr_on && !seq_rec && !eng_transport_running() && sr_notes(drums) == 3);
+        eng_arm_mask(s64(was));
     }
     tap(BTN_SEQ);
     later(1500);

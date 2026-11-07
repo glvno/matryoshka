@@ -94,7 +94,7 @@ static void m1_param_now(uint32_t mod, uint32_t par, int32_t v);   /* proto.c: a
 static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v); /* proto.c: the running binary follows */
 static int poly_row_set(uint32_t mod, uint32_t field, int32_t v); /* main.c: a poly group's setting */
 static void m1_preset_stored(uint32_t structure, const char *name);   /* proto.c: a preset stored here (#195) */
-static void m1_arms_now(uint32_t lo, uint32_t hi);              /* proto.c: the armed modules changed here (#191) */
+static void m1_arms_now(eng_mset_t mask);                       /* proto.c: the armed modules changed here (#191) */
 static const uint8_t *pages_src(uint32_t *len);         /* the running patch's binary (proto.c m1_cur; the preview's) */
 static uint32_t pages_gen(void);                        /* changes when another patch becomes current */
 
@@ -1608,7 +1608,7 @@ static uint32_t foot_layout(foot_t *f)
             put(f->t, "MIDI")[0] = 0;
         else
             fmt_int(f->t, panel >= 0 ? (eng_get_param((uint32_t)panel, FM1_P_TEMPO) + 32768) >> 16 : 120);
-        wired = !eng_arm_mask_get();
+        wired = !mset_any(eng_arm_mask_get());
     }
     {
         q = f->o;                                       /* = OCT =, OCT +, OCT ++, - OCT, -- OCT (the owner, 2026-10-24) */
@@ -2140,22 +2140,22 @@ static int env_track_no(uint32_t d)
  * the track and the Arpeggiator in front of an instrument). An Arpeggiator alone is not a device to arm, nor an engine the
  * editor marks as one no keys cable reaches (D-905): a poly engine keeps its group without its Voicing, so its modules
  * would arm a group with no Part that plays nothing, while the editor drew the armed keys into it and played it */
-static uint64_t env_listeners(uint32_t d)
+static eng_mset_t env_listeners(uint32_t d)
 {
-    uint64_t mask = 0;
+    eng_mset_t mask = mset_none();
     uint32_t k;
     if (pg_dev[d].unreached || (pg_dev[d].module >= 0 && eng_type((uint32_t)pg_dev[d].module) == T_ARP))
-        return 0;
+        return mask;
     if (pg_dev[d].mem) {
         for (k = 0; k < pg_dev[d].nmem; k++)
-            mask |= eng_arms(pg_dev[d].mem[k]);
+            mask = mset_or(mask, eng_arms(pg_dev[d].mem[k]));
     } else if (pg_dev[d].module >= 0) {
         mask = eng_arms((uint32_t)pg_dev[d].module);
     }
     return mask;
 }
 
-static int env_armed(uint32_t d) { return (eng_arm_mask_get() & env_listeners(d)) != 0; }
+static int env_armed(uint32_t d) { return mset_any(mset_and(eng_arm_mask_get(), env_listeners(d))); }
 
 /* the patch's sounds (#582): its devices that take keys, the tracks, Main and an Arpeggiator alone apart (a track arms
  * with what it plays: that one counts) */
@@ -2166,7 +2166,7 @@ static uint32_t pages_sounds(void)
         int m = pg_dev[d].module;
         if (m >= 0 && (eng_type((uint32_t)m) == T_STEPS || eng_type((uint32_t)m) == T_FM1))
             continue;
-        n += env_listeners(d) != 0u;
+        n += (uint32_t)mset_any(env_listeners(d));
     }
     return n;
 }
@@ -2188,7 +2188,7 @@ static int dev_keys_input(uint32_t d)
     return pg_dev[d].module >= 0 && eng_type((uint32_t)pg_dev[d].module) == T_DRUMMAP;
 }
 
-static void seq_arm_set(uint64_t mask);                 /* (seq_ui.c: the armed set changed; REC on: they record) */
+static void seq_arm_set(eng_mset_t mask);                 /* (seq_ui.c: the armed set changed; REC on: they record) */
 static void seq_name(uint32_t t, char *out);            /* (seq_ui.c: a track's name as the bar shows it) */
 
 /* SEL arms the device in focus (#395), a toggle. Armed, it is taken out of the armed set, the others stay; the last one
@@ -2197,16 +2197,16 @@ static void seq_name(uint32_t t, char *out);            /* (seq_ui.c: a track's 
  * set as it is, and the nudge says why: no keys input, or one no cable reaches (D-249). State and a message only */
 static void dev_arm(int layer)
 {
-    uint64_t l, mask;
+    eng_mset_t l, mask;
     char m[32], t[20];
     pages_ensure();
     if (pg_cur_dev >= pg_ndev)
         return;
-    if (!(l = env_listeners(pg_cur_dev))) {
+    if (!mset_any(l = env_listeners(pg_cur_dev))) {
         ui_msg(dev_keys_input(pg_cur_dev) ? "NO KEYS REACH THIS DEVICE" : "NOTHING HERE TAKES KEYS", 1200);
         return;
     }
-    mask = env_armed(pg_cur_dev) ? eng_arm_mask_get() & ~l : layer ? eng_arm_mask_get() | l : l;
+    mask = env_armed(pg_cur_dev) ? mset_minus(eng_arm_mask_get(), l) : layer ? mset_or(eng_arm_mask_get(), l) : l;
     seq_arm_set(mask);
     caps(t, pg_dev[pg_cur_dev].name, pg_dev[pg_cur_dev].nlen, 14);
     put(put(m, t), env_armed(pg_cur_dev) ? " ARMED" : " DISARMED")[0] = 0;
@@ -2217,7 +2217,7 @@ static void dev_arm(int layer)
         for (k = 0; k < eng_steps_count(); k++) {
             int mod = eng_steps_module((uint32_t)k);
             char tn[TRACK_NAME_MAX + 8], tc[TRACK_NAME_MAX + 8];
-            if (mod < 0 || mod >= 64 || !(l >> mod & 1u))
+            if (mod < 0 || !mset_has(l, (uint32_t)mod))
                 continue;
             seq_name((uint32_t)k, tn);
             caps(tc, tn, str_len(tn), TRACK_NAME_MAX + 7u);
@@ -2228,17 +2228,17 @@ static void dev_arm(int layer)
             break;
         }
     }
-    ui_msg(eng_arm_mask_get() ? m : "KEYS WIRED", 1200);
+    ui_msg(mset_any(eng_arm_mask_get()) ? m : "KEYS WIRED", 1200);
 }
 
 /* nothing armed and the keys reach device d by its cables (#582): its row says WIRED, dim, where ARMED goes (the footer's
  * KEYS WIRED, a row at a time) */
 static int env_wired(uint32_t d)
 {
-    uint64_t l = eng_arm_mask_get() ? 0u : env_listeners(d);
+    eng_mset_t l = mset_any(eng_arm_mask_get()) ? mset_none() : env_listeners(d);
     uint32_t m;
-    for (m = 0; m < 64u && l >> m; m++)
-        if ((l >> m & 1u) && eng_hears_keys(m))
+    for (m = 0; m < ENG_MAX_MODULES; m++)
+        if (mset_has(l, m) && eng_hears_keys(m))
             return 1;
     return 0;
 }

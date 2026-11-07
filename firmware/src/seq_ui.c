@@ -200,7 +200,7 @@ static int seq_armed_trk(void)
     return -1;
 }
 /* a module is in the armed set (#191) */
-static int seq_mod_armed(int mod) { return mod >= 0 && (eng_arm_mask_get() >> mod & 1u); }
+static int seq_mod_armed(int mod) { return mod >= 0 && mset_has(eng_arm_mask_get(), (uint32_t)mod); }
 /* REC's LED: lit while REC is on, blinking on the beats of the count-in */
 static int seq_rec_lit(void) { return seq_rec && (seq_cin != 2u || seq_cin_lit); }
 /* the SEQ bar's mark: bit 0 the track shown armed (ARM / REC), bit 1 REC on (the bar red) */
@@ -1095,12 +1095,12 @@ static void seq_rec_off(void)
 
 /* the armed set becomes `mask` (#395: SEL on a device page or an environment row, the SEQ page's track), the editor's FM-1
  * tab told; while REC is on, the tracks armed now record and the others stop (seq_rec_sync) */
-static void seq_arm_set(uint64_t mask)
+static void seq_arm_set(eng_mset_t mask)
 {
-    if (mask == eng_arm_mask_get())
+    if (mset_eq(mask, eng_arm_mask_get()))
         return;
     eng_arm_mask(mask);
-    m1_arms_now((uint32_t)eng_arm_mask_get(), (uint32_t)(eng_arm_mask_get() >> 32));
+    m1_arms_now(eng_arm_mask_get());
     seq_rec_sync();
     seq_track_redraw();
 }
@@ -1123,9 +1123,9 @@ static void seq_arm_shown(int opening)
     mod = seq_module();
     seq_armed_gen = pages_gen();
     if (mod >= 0) {
-        uint64_t was = eng_arm_mask_get();
-        seq_arm_set((uint64_t)1 << mod);
-        if (eng_arm_mask_get() != was)          /* (#582: the page changed the arming, which stays after it: seq_leave says so) */
+        eng_mset_t was = eng_arm_mask_get();
+        seq_arm_set(mset_one((uint32_t)mod));
+        if (!mset_eq(eng_arm_mask_get(), was))          /* (#582: the page changed the arming, which stays after it: seq_leave says so) */
             seq_page_armed = (uint8_t)(seq_trk + 1u);
     }
 }
@@ -1263,11 +1263,11 @@ static void seq_arm_key(uint32_t n)
     if (seq_no_track(b))
         return;
     mod = eng_steps_module((uint32_t)b);
-    eng_arm_mask(eng_arm_mask_get() ^ (uint64_t)1 << mod);   /* (#191: one of the armed set, the others stay) */
-    m1_arms_now((uint32_t)eng_arm_mask_get(), (uint32_t)(eng_arm_mask_get() >> 32));
+    eng_arm_mask(mset_flip(eng_arm_mask_get(), (uint32_t)mod));   /* (#191: one of the armed set, the others stay) */
+    m1_arms_now(eng_arm_mask_get());
     seq_rec_sync();                              /* (REC on: it records from now on, or no longer: #395) */
     seq_name((uint32_t)b, name);
-    put(put(m, name), (eng_arm_mask_get() >> mod & 1u) ? " ARMED" : " DISARMED")[0] = 0;
+    put(put(m, name), mset_has(eng_arm_mask_get(), (uint32_t)mod) ? " ARMED" : " DISARMED")[0] = 0;
     ui_msg(m, 1200);
     seq_track_redraw();
 }

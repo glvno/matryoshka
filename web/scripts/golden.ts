@@ -25,7 +25,7 @@ mkdirSync(OUT, { recursive: true });
  * (absent: 1; rec: 1 on, 0 off; cc: controller value 0..127; thon / thoff: the note played into that track's keys in, at
  * velocity 100 / let go: engine.ts thru, engine.c eng_steps_thru, #368)]; take: the notes recorded so far go into their
  * tracks (the editor's overdub, the panel's) */
-type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'once' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'rec' | 'take' | 'cc' | 'pat' | 'song' | 'thon' | 'thoff', number, number?];
+type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'once' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'armx' | 'rec' | 'take' | 'cc' | 'pat' | 'song' | 'thon' | 'thoff', number, number?];
 const EVENTS: Ev[] = [
   [0, 'on', 60],
   [128 * 40, 'on', 67],
@@ -3282,6 +3282,38 @@ tests['arm-set'] = make('arm-set', (add, wire) => {
   ends['arm-set'] = 128 * 200;
 }
 
+// more than 64 modules (#721, the FM-1's cap 128): arm-set's devices with a chain of 64 mixers (the Drum map's row into the
+// first, the last into the mix) before the Voicings, so they sit past index 63 and the Drum map before them; armed as sets
+// that span the module set's words ('armx': two indices)
+tests['arm-many'] = make('arm-many', (add, wire) => {
+  const main = add('fm1', 0, 0);
+  const dm = add('drummap', 200, 600);
+  const chain: number[] = [];
+  for (let k = 0; k < 64; k++) chain.push(add('mixer', 800 + 40 * (k % 8), 40 * Math.floor(k / 8), { l1: 1 }));
+  for (let k = 1; k < 64; k++) wire(chain[k - 1], 'out', chain[k], 'in1');
+  const a = add('alloc', 200, 0, { voices: 2 });
+  const b = add('alloc', 200, 300, { voices: 2 });
+  const mr = add('mixer', 400, 300, { l1: 0.5, l2: 0.5 });
+  const out = add('output', 600, 0, { level: 0.6 });
+  wire(main, 'keys', a, 'keys');
+  wire(main, 'keys', b, 'keys');
+  wire(main, 'keys', dm, 'keys');
+  wire(a, 'gate', out, 'l');
+  wire(b, 'gate', mr, 'in1');
+  wire(dm, 'g1', chain[0], 'in1');
+  wire(chain[63], 'out', mr, 'in2');
+  wire(mr, 'out', out, 'r');
+});
+{
+  const idx = (t: string, k = 0): number => tests['arm-many'].modules.map((m, i) => (m.type === t ? i : -1)).filter((i) => i >= 0)[k];
+  const [a, b, dm] = [idx('alloc', 0), idx('alloc', 1), idx('drummap')];
+  if (a < 64 || b < 64 || dm >= 32 || tests['arm-many'].modules.length <= 64) throw new Error('arm-many: the Voicings past 63, the Drum map in the first word');
+  events['arm-many'] = [[128 * 4, 'on', 60], [128 * 20, 'off', 60], [128 * 30, 'armx', b, -1], [128 * 40, 'on', 62], [128 * 60, 'off', 62],
+    [128 * 70, 'armx', a, dm], [128 * 80, 'on', 36], [128 * 100, 'off', 36], [128 * 110, 'armx', a, b],
+    [128 * 120, 'on', 64], [128 * 140, 'armx', -1, -1], [128 * 150, 'off', 64], [128 * 160, 'on', 36], [128 * 180, 'off', 36]];
+  ends['arm-many'] = 128 * 200;
+}
+
 // disabled fixed links (format 17's flag bit 2, never written since the links became permanent; the firmware still reads
 // it): the binary carries the LFO -> filter cv cable with the filter's cv input masked off (the VCA's mask 0 keeps its cv),
 // so the firmware must play the reference, which is the same patch without that cable
@@ -3334,6 +3366,15 @@ if (process.argv.includes('--panel-fixtures')) {
   mkdirSync(out, { recursive: true });
   for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns', 'matrix-audio'])
     writeFileSync(new URL(`${name}.m1p`, out), encodePatch(tests[name], true));
+  {
+    // more than 64 modules (#721): arm-many with the Drum map moved last (index 69, a device past 63) and its chain of
+    // mixers as one assembly
+    const p = structuredClone(tests['arm-many']);
+    const dm = p.modules.findIndex((m) => m.type === 'drummap');
+    p.modules.push(...p.modules.splice(dm, 1));
+    makeAssembly(p, p.modules.filter((m) => m.type === 'mixer' && m.x >= 800).map((m) => m.id), 'chain');
+    writeFileSync(new URL('arm-many.m1p', out), encodePatch(p, true));
+  }
   {
     // SEL's nudges (D-249, #215): arm-set with no keys cable into the second Voicing or the Drum map. The Drum map keeps a
     // keys input that no cable reaches (NO KEYS REACH THIS DEVICE), next to the Mixer, which has none
@@ -3440,6 +3481,7 @@ for (const [name, patch] of Object.entries(tests)) {
     seg(fr);
     if (kind === 'arm') e.arm(note < 0 ? null : patch.modules[note].id);
     else if (kind === 'arms') e.arm(patch.modules.flatMap((m, i) => (Math.floor(note / 2 ** i) % 2 ? [`m${m.id}`] : [])));   // (#191: a mask of module indices)
+    else if (kind === 'armx') e.arm(patch.modules.flatMap((m, i) => (i === note || i === ch ? [`m${m.id}`] : [])));   // (#721: two indices, any of 0..127)
     else if (kind === 'rec') e.setRec(patch.modules[note].id, !!ch);
     else if (kind === 'thon' || kind === 'thoff') e.thru(patch.modules[note].id, ch ?? 60, kind === 'thon' ? 100 : 0);
     else if (kind === 'take')
@@ -3470,9 +3512,9 @@ for (const [name, patch] of Object.entries(tests)) {
   writeFileSync(new URL(`${f}.m1p`, OUT), bins[name] ?? encodePatch(patch, true, counted.has(name)));
   // the parameter values, signal buffers and module copies the editor's budget counts (patchbin.ts poolUse), which eng_load
   // must take exactly (host_test checks): the FM-1's memory is counted from them (#649)
-  if (!bins[name]) { const b = deviceBudget(patch); writeFileSync(new URL(`${f}.par`, OUT), `${b.params} ${b.buffers} ${b.instances}\n`); }
+  if (!bins[name]) { const b = deviceBudget(patch); writeFileSync(new URL(`${f}.par`, OUT), `${b.params} ${b.buffers} ${b.instances} ${b.lines.nodes}\n`); }
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
-  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' || k === 'arms' || k === 'pat' || k === 'song' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' || k === 'thon' || k === 'thoff' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
+  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' || k === 'arms' || k === 'pat' || k === 'song' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' || k === 'thon' || k === 'thoff' || k === 'armx' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }
 // protocol test input: upload of the acid kit, then a cutoff change on its filter
 {

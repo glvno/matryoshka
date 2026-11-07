@@ -371,12 +371,12 @@ describe('assemblies', () => {
     const def = FACTORY.find((d) => d.name === 'voice')!;
     const p = emptyPatch();
     const out = addModule(p, DEFS.output, 0, 0);
-    for (let i = 0; i < 13; i++) {
+    for (let i = 0; i < 26; i++) {
       const a = insertAssembly(p, DEFS, def, 0, 0);
       const o = a.outputs.find((r) => r.label === 'out')!;
       connect(p, DEFS, { module: o.module, port: o.port }, { module: out.id, port: 'l' }); // wired: unwired modules are never sent (device-compile.ts)
     }
-    expect(p.modules).toHaveLength(66);
+    expect(p.modules).toHaveLength(131);   // (past the FM-1's 128, #721)
     expect(deviceBudget(p).over.map((i) => i.key)).toContain('modules');
   });
 

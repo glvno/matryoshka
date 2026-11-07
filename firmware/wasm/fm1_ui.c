@@ -10,6 +10,7 @@
  * Built by web/scripts/fm1-wasm.mjs (npm run fm1-wasm) into web/public/fm1-ui.wasm. */
 #include <stdint.h>
 #include "../src/libc.c"
+#include "../src/engine.h"                 /* (eng_mset_t, for the armed set below; host_ui.h includes engine.c) */
 
 #define WASM_IMPORT(name) __attribute__((import_module("fm1"), import_name(name)))
 #define WASM_EXPORT(name) __attribute__((export_name(name)))
@@ -34,9 +35,9 @@ WASM_IMPORT("track") void js_track(uint32_t mod, const uint32_t *at, uint32_t n,
 WASM_IMPORT("pattern") void js_pattern(uint32_t pat, uint32_t song);
 WASM_IMPORT("song") void js_song(uint32_t s, const uint8_t *at, uint32_t n);
 WASM_IMPORT("mute") void js_mute(uint32_t mod, uint32_t on);
-/* the FM-1 armed or disarmed (#139, #191: REC held + a black key, REC on an environment row): the armed modules as a mask
- * (lo, hi: modules 0..31, 32..63); the page arms the same devices */
-WASM_IMPORT("arms") void js_arms(uint32_t lo, uint32_t hi);
+/* the FM-1 armed or disarmed (#139, #191: REC held + a black key, REC on an environment row): the armed modules as
+ * ENG_MSET_WORDS words (w0: modules 0..31, w1 32..63, ..., #721); the page arms the same devices */
+WASM_IMPORT("arms") void js_arms(uint32_t w0, uint32_t w1, uint32_t w2, uint32_t w3);
 int eng_steps_notes(uint32_t module, const uint32_t **w);   /* (engine.c, included by host_ui.h) */
 int eng_pattern_playing(uint32_t module);
 int eng_pattern(void);
@@ -74,7 +75,7 @@ static void m1_locks_now(uint32_t mod, uint32_t pat)
     if (n >= 0)
         js_locks(mod, pat, l, (uint32_t)(n > 64 ? 64 : n));
 }
-static void m1_arms_now(uint32_t lo, uint32_t hi) { js_arms(lo, hi); }
+static void m1_arms_now(eng_mset_t s) { js_arms(s.w[0], s.w[1], s.w[2], s.w[3]); }
 /* GLO > PANEL > TEMPO or the global tempo changed here (the menu, PLAY held + PRESET, Main's tempo row while GLOBAL): the
  * page's setting follows (D-907; as the device link's TEMPO_NOW). patch: 0 GLOBAL, 1 PATCH */
 WASM_IMPORT("tempo") void js_tempo(uint32_t patch, uint32_t bpm);
@@ -361,11 +362,12 @@ WASM_EXPORT("fm1w_transport") void fm1w_transport(uint32_t run)
         ui_dirty = 1;
     panel_draw();
 }
-/* the editor's armed devices (#191) as a mask of their modules (lo, hi): only they hear the keys; REC records the armed
- * Steps tracks (seq_rec_sync, #395), the info line names the first */
-WASM_EXPORT("fm1w_arm_mask") void fm1w_arm_mask(uint32_t lo, uint32_t hi)
+/* the editor's armed devices (#191) as a set of their modules (w0..w3, ENG_MSET_WORDS, #721): only they hear the keys;
+ * REC records the armed Steps tracks (seq_rec_sync, #395), the info line names the first */
+WASM_EXPORT("fm1w_arm_mask") void fm1w_arm_mask(uint32_t w0, uint32_t w1, uint32_t w2, uint32_t w3)
 {
-    eng_arm_mask((uint64_t)lo | (uint64_t)hi << 32);
+    eng_mset_t s = {{w0, w1, w2, w3}};
+    eng_arm_mask(s);
     ui_dirty = 2;
     panel_draw();
 }

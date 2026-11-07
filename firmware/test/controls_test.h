@@ -57,7 +57,7 @@ static void ct_take(ct_snap_t *s)
     s->octave = octave;
     s->tempo = (panel >= 0 ? eng_get_param((uint32_t)panel, FM1_P_TEMPO) : 0) + (int32_t)eng_tempo_global_get();
     s->params = ct_params();
-    s->arms = (uint32_t)eng_arm_mask_get();
+    s->arms = (uint32_t)m64(eng_arm_mask_get());
     for (i = 0; (int)i < eng_steps_count(); i++)
         s->mutes |= (uint32_t)(eng_steps_muted((uint32_t)eng_steps_module(i)) != 0) << i;
     s->trk = seq_trk;
@@ -180,7 +180,7 @@ static void ct_focus_assembly(void)
     uint32_t d;
     pages_ensure();
     for (d = 0; d < pg_ndev; d++)
-        if (pg_dev[d].structure && dp_list(d) > 0u && env_listeners(d)) {
+        if (pg_dev[d].structure && dp_list(d) > 0u && m64(env_listeners(d))) {
             pages_focus(d, 0);
             return;
         }

@@ -269,7 +269,7 @@ static int m1_drum_name(uint32_t map, uint32_t r, char *out) { return eng_drum_n
 static uint32_t host_track_told;                    /* (panel_test.c: TRACK_NOW sent) */
 static void m1_track_now(uint32_t mod) { (void)mod; host_track_told++; }
 static void m1_mute_now(uint32_t mod, int on) { (void)mod; (void)on; }
-static void m1_arms_now(uint32_t lo, uint32_t hi) { (void)lo; (void)hi; }
+static void m1_arms_now(eng_mset_t mask) { (void)mask; }
 static uint32_t host_pattern_told, host_song_told;   /* (panel_test.c: PATTERN_NOW / SONG_NOW sent) */
 static void m1_pattern_now(void) { host_pattern_told++; }
 static void m1_song_now(uint32_t s) { (void)s; host_song_told++; }

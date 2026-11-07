@@ -183,7 +183,8 @@ static uint32_t m1_test_peak(void) { return 1234u | 1u << 16 | 1u << 17; }
 static int tempo_calls;
 static void m1_tempo(uint32_t patch, uint32_t bpm) { tempo_calls++; gt_set(patch, bpm, 1000u); }   /* (main.c's) */
 static int arms_calls;
-static void m1_arms(uint32_t lo, uint32_t hi) { arms_calls++; eng_arm_mask((uint64_t)hi << 32 | lo); }   /* (main.c's, #191) */
+static eng_mset_t arms_last;                                  /* (what the link carried, before the engine keeps the patch's) */
+static void m1_arms(eng_mset_t mask) { arms_calls++; arms_last = mask; eng_arm_mask(mask); }   /* (main.c's, #191) */
 #include "../src/proto.c"
 
 static uint8_t *slurp(const char *path, long *n)
@@ -735,23 +736,34 @@ int main(int argc, char **argv)
         CHECK(n == 13u && (p[3] & M1_INFO_EDITOR_IGNORE) && (p[3] & M1_INFO_MIDI_OUT));
         editor_ignore_on = 0;
     }
-    /* ARMS (#191, feature bit 20): the editor's armed set, lo u32 LE then hi, as the FM-1's own; no reply, no ARMS_NOW */
+    /* ARMS (#191, feature bit 20): the editor's armed set, u32 LE words, as the FM-1's own; no reply, no ARMS_NOW. Two words
+     * from an editor before feature bit 21, ENG_MSET_WORDS from one after (#721: modules 0..127) */
     {
-        uint8_t q[24] = {0x7D, 0x4D, 0x31, C_ARMS}, pl[8] = {0}, p[16];
+        uint8_t q[40] = {0x7D, 0x4D, 0x31, C_ARMS}, pl[16] = {0};
         uint32_t n, mods = 0, k;
         for (k = 0; k < (uint32_t)eng_nmodules() && k < 32u; k++)
             mods |= 1u << k;
         CHECK(M1_FEATURES3 & 16u);                             /* (feature bit 20 in INFO byte 12) */
+        CHECK(M1_FEATURES3 & 32u);                             /* (feature bit 21: the wide form, #721) */
         pl[0] = 0x05u;                                         /* modules 0 and 2 */
         n = 4u + m1_pack7(pl, 8u, q + 4);
         nreplies = 0;
-        CHECK(m1_handle(q, n) == 1 && arms_calls == 1 && nreplies == 0 && eng_arm_mask_get() == (0x05u & mods));
+        CHECK(m1_handle(q, n) == 1 && arms_calls == 1 && nreplies == 0 && eng_arm_mask_get().w[0] == (0x05u & mods)
+              && !eng_arm_mask_get().w[1] && !arms_last.w[2] && !arms_last.w[3]);
         pl[0] = 0;
         n = 4u + m1_pack7(pl, 8u, q + 4);
-        CHECK(m1_handle(q, n) == 1 && arms_calls == 2 && nreplies == 0 && eng_arm_mask_get() == 0u);
+        CHECK(m1_handle(q, n) == 1 && arms_calls == 2 && nreplies == 0 && !mset_any(eng_arm_mask_get()));
         n = 4u + m1_pack7(pl, 7u, q + 4);                      /* (too short: nothing) */
         CHECK(m1_handle(q, n) == 1 && arms_calls == 2);
-        (void)p;
+        pl[0] = 0x05u;                                         /* the wide form: modules 0, 2, 64 and 127 */
+        pl[8] = 0x01u;
+        pl[15] = 0x80u;
+        n = 4u + m1_pack7(pl, 16u, q + 4);
+        CHECK(m1_handle(q, n) == 1 && arms_calls == 3 && nreplies == 0 && arms_last.w[0] == 5u && arms_last.w[1] == 0u
+              && arms_last.w[2] == 1u && arms_last.w[3] == 0x80000000u && eng_arm_mask_get().w[0] == (0x05u & mods));
+        memset(pl, 0, sizeof pl);
+        n = 4u + m1_pack7(pl, 16u, q + 4);
+        CHECK(m1_handle(q, n) == 1 && arms_calls == 4 && !mset_any(eng_arm_mask_get()));
     }
     /* TEMPO (D-907, feature bit 16): GLOBAL at a tempo, PATCH; Main's tempo shows what plays, the patch keeps its own */
     {
@@ -961,13 +973,16 @@ int main(int argc, char **argv)
                   && !memcmp(replies[r0] + 5, replies[63], reply_len[r0] - 6u));
             nreplies = r0;
         }
-        {                                                        /* R_ARMS_NOW (m1_arms_now, #191): the mask, lo u32 LE then hi */
-            uint8_t d[8];
+        {                                                        /* R_ARMS_NOW (m1_arms_now, #191): the set, ENG_MSET_WORDS u32 LE
+                                                                  * (#721); its first 8 bytes are the old form (modules 0..63) */
+            uint8_t d[4u * ENG_MSET_WORDS];
+            eng_mset_t s = {{0x00000005u, 0x80000001u, 0x00000001u, 0x80000000u}};
             uint32_t r0 = nreplies;
-            m1_arms_now(0x00000005u, 0x80000001u);
+            m1_arms_now(s);
             CHECK(nreplies == r0 + 1u && replies[r0][4] == R_ARMS_NOW && replies[r0][reply_len[r0] - 1u] == 0xF7);
-            CHECK(m1_unpack7(replies[r0] + 5, reply_len[r0] - 6u, d, sizeof d) == 8u);
+            CHECK(m1_unpack7(replies[r0] + 5, reply_len[r0] - 6u, d, sizeof d) == 16u);
             CHECK(d[0] == 5u && d[1] == 0u && d[2] == 0u && d[3] == 0u && d[4] == 1u && d[5] == 0u && d[6] == 0u && d[7] == 0x80u);
+            CHECK(d[8] == 1u && d[9] == 0u && d[14] == 0u && d[15] == 0x80u && mset_eq(mset_read(d, ENG_MSET_WORDS), s));
             nreplies = r0;
         }
         base = m1_notes_at();
