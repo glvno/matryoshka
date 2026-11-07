@@ -310,7 +310,7 @@ def check(img, syms, dis, rts):
         notes.append(f".c1_text: {len(c1_ins)} insns, {c1_jobs} call through a register (the job), no flash address")
     fn = "?"
     for ln in dis.splitlines():     # nothing may call or load an address in the chip ROM
-        head = re.match(r"^[0-9a-f]+ <([^>]+)>:", ln)
+        head = re.search(r"<([^>+]+)>:\s*$", ln)
         if head:
             fn = head.group(1)
         mm = LINE.match(ln)
