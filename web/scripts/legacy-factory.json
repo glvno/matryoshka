@@ -1658,6 +1658,12 @@
    "version": 46
   },
   {
+   "name": "CANVAS",
+   "len": 3188,
+   "fnv": "45cc21c9",
+   "version": 51
+  },
+  {
    "name": "CASSIA 1",
    "len": 1627,
    "fnv": "55aec3e4",

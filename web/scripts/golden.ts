@@ -306,6 +306,13 @@ kit('osc-analog-high', (add, wire) => {
   wire(kb, 'pitch', o, 'pitch'); wire(kb, 'pitch', q, 'pitch'); wire(o, 'out', out, 'l'); wire(q, 'out', out, 'r');
 });
 events['osc-analog-high'] = [[0, 'on', 100], [128 * 60, 'on', 88], [128 * 120, 'off', 88]];
+// the top of the range: 0.19 to 0.45 of a turn a sample (C8 and above, coarse +24), where the dip's span wraps
+kit('osc-analog-top', (add, wire) => {
+  const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.5 });
+  const o = add('osc', 0, 0, { wave: 2, analog: 1, coarse: 24, level: 0.8 }), q = add('osc', 0, 0, { wave: 5, analog: 1, coarse: 12, level: 0.8 });
+  wire(kb, 'pitch', o, 'pitch'); wire(kb, 'pitch', q, 'pitch'); wire(o, 'out', out, 'l'); wire(q, 'out', out, 'r');
+});
+events['osc-analog-top'] = [[0, 'on', 96], [128 * 40, 'on', 108], [128 * 80, 'on', 120], [128 * 120, 'off', 120]];
 kit('osc-analog-parts', (add, wire) => {
   const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.3 });
   const o = add('osc', 0, 0, { wave: 2, analog: 1, level: 0.6 }), q = add('osc', 0, 0, { wave: 3, analog: 1, pw: 0.5, level: 0.4 });
