@@ -1064,6 +1064,12 @@
    "version": 46
   },
   {
+   "name": "ALGO FOUR",
+   "len": 1575,
+   "fnv": "fa91a6e2",
+   "version": 51
+  },
+  {
    "name": "BASIC POLY",
    "len": 606,
    "fnv": "59743633",
@@ -3302,6 +3308,12 @@
    "version": 46
   },
   {
+   "name": "HERA 6",
+   "len": 1273,
+   "fnv": "6a28fb3c",
+   "version": 51
+  },
+  {
    "name": "HI-HAT",
    "len": 146,
    "fnv": "641c8e55",
@@ -3822,6 +3834,12 @@
    "len": 3838,
    "fnv": "ce19f981",
    "version": 46
+  },
+  {
+   "name": "IO 4",
+   "len": 3292,
+   "fnv": "8f12b041",
+   "version": 51
   },
   {
    "name": "KICK",
