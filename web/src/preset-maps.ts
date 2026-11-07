@@ -14,6 +14,9 @@ export type HandMap =
   | { engine: string; from: string; to: string; why: string; rows: Record<string, HandRow> }
   | { engine: string; from: string; to: string; none: string };
 
+/** Oracle V's structure in 1.11 (#658) */
+const ORACLE_1_11 = '0cedd923';
+
 /** the positions 1..8 of an eight-way Selector from a number 0..7 */
 const ONE_UP = [1, 2, 3, 4, 5, 6, 7, 8];
 
@@ -67,6 +70,37 @@ export const HAND_MAPS: HandMap[] = [
     engine: 'Io 4', from: 'bcfb20df', to: '908f8d0d', why: 'issue #681: the assign and unison rows became one key assign switch',
     rows: {
       'select#55.pos': { table: ['alloc#1.assign', 'alloc#1.unison'], lo: [0, 0], n: [4, 3], v: [1, 3, 4, 2, 3, 4, 1, 3, 4, 1, 3, 4] },
+    },
+  },
+
+  // ---- 1.11, issue #658: Oracle V gets the Prophet-5's functions its FM-1 version had cut. Oscillator A's wave became its
+  // SAW and PULSE switches (square: pulse only; any other wave: saw only), B's its SAW, TRI and PULSE (sine and triangle:
+  // tri; square: pulse; the others: saw), the LFO's wave its SAW, TRI and SQUARE (sine, triangle, S&H and random: tri). The
+  // A, B and noise levels moved to the mixer, the envelope amount from the filter to its own row, the vibrato to Wheel-Mod's
+  // freq A and freq B. Poly Mod's filter envelope amount keeps its value; its osc B amount (a phase-modulation index
+  // before, a frequency amount now) starts at Init.
+  {
+    engine: 'Oracle V', from: '7a7a26f6', to: ORACLE_1_11, why: 'issue #658: the Prophet-5 functions the FM-1 version had cut',
+    rows: {
+      ...Object.fromEntries(['adsr#11', 'adsr#13'].flatMap((m) => ['a', 'd', 's', 'r', 'view'].map((q) => [`${m}.${q}`, { from: `${m}.${q}` }]))),
+      ...Object.fromEntries(['alloc#5.voices', 'alloc#5.unison', 'glide#6.time', 'ladder#12.cutoff', 'ladder#12.res', 'ladder#12.track', 'lfo#1.rate',
+        'osc#7.coarse', 'osc#7.fine', 'scale#10.gain', 'scale#9.gain', 'scale#3.gain', 'vca#14.gain', 'scope#15.view', 'scope#16.view', 'scope#17.view']
+        .map((r) => [r, { from: r }])),
+      'mixer#29.l1': { from: 'osc#8.level' },
+      'mixer#29.l2': { from: 'osc#7.level' },
+      'mixer#29.l3': { from: 'noise#4.level' },
+      'scale#20.offset': { from: 'osc#8.pw' },
+      'scale#38.gain': { from: 'ladder#12.cvamt' },
+      'scale#48.gain': { from: 'scale#3.gain' },
+      // waves (osc: sine, triangle, saw, square, sharktooth, reverse saw; LFO: sine, triangle, saw, square, S&H, random)
+      'scale#24.gain': { table: ['osc#8.wave'], lo: [0], n: [6], v: [1, 1, 1, 0, 1, 1] },
+      'scale#25.gain': { table: ['osc#8.wave'], lo: [0], n: [6], v: [0, 0, 0, 1, 0, 0] },
+      'mixer#28.l1': { table: ['osc#7.wave'], lo: [0], n: [6], v: [0, 0, 1, 0, 1, 1] },
+      'mixer#28.l2': { table: ['osc#7.wave'], lo: [0], n: [6], v: [1, 1, 0, 0, 0, 0] },
+      'mixer#28.l3': { table: ['osc#7.wave'], lo: [0], n: [6], v: [0, 0, 0, 1, 0, 0] },
+      'mixer#45.l1': { table: ['lfo#1.wave'], lo: [0], n: [6], v: [0, 0, 1, 0, 0, 0] },
+      'mixer#45.l2': { table: ['lfo#1.wave'], lo: [0], n: [6], v: [1, 1, 0, 0, 1, 1] },
+      'mixer#45.l3': { table: ['lfo#1.wave'], lo: [0], n: [6], v: [0, 0, 0, 1, 0, 0] },
     },
   },
 ];

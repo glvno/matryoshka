@@ -7,15 +7,28 @@
 # voice
 #   voices = 5                         1..16
 #   unison = off                       off, on, share
+#   uni voices = all                   all, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+#   uni detune = 0                     0..2
+#   priority = last                    last, low, high
+#   retrigger = auto                   auto, off, on
 #   glide = 0.001 s                    0.001..5 s
+#   transpose = 0                      -2 OCT, -1 OCT, 0, +1 OCT, +2 OCT
+#   tune = 0                           -4..4
+#   release = ON                       OFF, ON
 # osc A
-#   osc A / wave = saw                 sine, triangle, saw, square, sharktooth, reverse saw
-#   pw = 0.5                           0.05..0.95
+#   osc A / saw = 1                    -4..4
+#   osc A / pulse = 0                  -4..4
+#   osc A / pw = 0.5                   -4..4
 #   sync = 0                           -4..4
 # osc B
-#   osc B / wave = saw                 sine, triangle, saw, square, sharktooth, reverse saw
 #   freq = 0 st                        -48..48 st
 #   fine = 7 ct                        -100..100 ct
+#   osc B / saw = 1                    0..1
+#   osc B / tri = 0                    0..1
+#   osc B / pulse = 0                  0..1
+#   osc B / pw = 0.5                   -4..4
+#   lo freq = OFF                      OFF, ON
+#   keyboard = ON                      OFF, ON
 # mixer
 #   A level = 0.55                     0..1
 #   B level = 0.45                     0..1
@@ -25,42 +38,58 @@
 # filter
 #   cutoff = 600 Hz                    20..16000 Hz
 #   res = 0.2                          0..1
-#   env amt = 3.5 oct                  0..4 oct
+#   env amt = 3.5                      -4..4
 #   kbd track = off                    off, on
 #   filter env: a screen, not a value
 #   filter / a = 0.01 s                0.001..5 s
 #   filter / d = 0.6 s                 0.001..5 s
 #   filter / s = 0.35                  0..1
 #   filter / r = 0.4 s                 0.001..8 s
-#   filter: a screen, not a value
+#   filter / filter: a screen, not a value
 # amp
 #   amp env: a screen, not a value
 #   amp / a = 0.01 s                   0.001..5 s
 #   amp / d = 0.5 s                    0.001..5 s
 #   amp / s = 0.8                      0..1
 #   amp / r = 0.4 s                    0.001..8 s
-# mod
-#   pmod env→A = 0                     -4..4
-#   pmod B→A = 0 rad                   0..16 rad
+# velocity · aftertouch
+#   vel filter = OFF                   OFF, ON
+#   vel amp = OFF                      OFF, ON
+#   at filter = 0                      -4..4
+#   at lfo = 0                         -4..4
+# poly mod
+#   filt env = 0                       -4..4
+#   osc B = 0                          -4..4
+#   poly mod / freq A = ON             OFF, ON
+#   poly mod / pw A = OFF              OFF, ON
+#   poly mod / filter = OFF            OFF, ON
+# lfo
 #   lfo rate = 5 Hz                    0.02..40 Hz
-#   lfo wave = triangle                sine, triangle, saw, square, S&H, random
-#   vibrato = 0.24                     -4..4
+#   lfo / saw = 0                      0..1
+#   lfo / tri = 1                      0..1
+#   square = 0                         0..1
 #   lfo / osc A: a screen, not a value
+# wheel mod
+#   source mix = 0                     0..1
+#   lfo amount = 0                     -4..4
+#   wheel mod / freq A = 0.24          -4..4
+#   freq B = 0.24                      -4..4
+#   wheel mod / pw A = 0               -4..4
+#   pw B = 0                           -4..4
+#   wheel mod / filter = 0             -4..4
 
 # Drafts of 2026-10-29 after the Prophet-5, not yet listened to on the FM-1 (#413).
 engine: Oracle V
 
 # The poly-mod sync lead: the filter envelope drives osc A's pitch against osc B, which it is synced to.
 preset: Sync Lead
-  osc A / wave = saw
   sync = 1
-  osc B / wave = saw
   fine = 0 ct
   A level = 0.7
   B level = 0.2
   cutoff = 1200 Hz
   res = 0.3
-  env amt = 3 oct
+  env amt = 3
   kbd track = on
   filter / a = 0.005 s
   filter / d = 0.9 s
@@ -70,20 +99,19 @@ preset: Sync Lead
   amp / d = 0.5 s
   amp / s = 0.9
   amp / r = 0.3 s
-  pmod env→A = 2.5
-  vibrato = 0.1
+  filt env = 2.5
+  wheel mod / freq A = 0.1
+  freq B = 0.1
   volume = 0.6
 
 # Two detuned saws, a slow filter attack: the brass swell.
 preset: Poly Brass
-  osc A / wave = saw
-  osc B / wave = saw
   fine = 10 ct
   A level = 0.5
   B level = 0.5
   cutoff = 400 Hz
   res = 0.1
-  env amt = 3 oct
+  env amt = 3
   kbd track = on
   filter / a = 0.07 s
   filter / d = 0.35 s
@@ -93,20 +121,19 @@ preset: Poly Brass
   amp / d = 0.3 s
   amp / s = 0.9
   amp / r = 0.35 s
-  vibrato = 0.08
+  wheel mod / freq A = 0.08
+  freq B = 0.08
   volume = 0.47
 
 # Slow saws with light vibrato and long envelopes.
 preset: Vintage Strings
-  osc A / wave = saw
-  osc B / wave = saw
   fine = 12 ct
   # the mixer a quarter down (0.5 / 0.5 before): five voices of it peaked 1.1 and clipped (#440)
   A level = 0.37
   B level = 0.37
   cutoff = 1500 Hz
   res = 0
-  env amt = 1.2 oct
+  env amt = 1.2
   kbd track = on
   filter / a = 0.8 s
   filter / d = 1 s
@@ -117,23 +144,23 @@ preset: Vintage Strings
   amp / s = 1
   amp / r = 1.4 s
   lfo rate = 5.5 Hz
-  vibrato = 0.2
+  wheel mod / freq A = 0.2
+  freq B = 0.2
   volume = 0.42
 
-# Poly-mod FM: osc B, a 12th up, into osc A's phase; sines through an open filter with a percussive decay.
+# Poly-mod FM: osc B's triangle, a 12th up, into osc A's frequency; through an open filter with a percussive decay.
 preset: Poly-Mod Bell
-  # three voices, not five: osc B into osc A's phase costs about a third more per voice, and four voices measured
-  # 2,923 us of the FM-1's 2,902 us block on the test rig (2026-10-30, docs/measurements/2026-10-30-rig-oracle-v-presets.json)
-  voices = 3
-  osc A / wave = sine
-  osc B / wave = sine
+  # five voices since 1.11: osc B now moves osc A's frequency, as the Prophet-5's Poly Mod does, where it went into osc A's
+  # phase (three voices then: four overloaded the test rig, docs/measurements/2026-10-30-rig-oracle-v-presets.json)
+  osc B / saw = 0
+  osc B / tri = 1
   freq = 19 st
   fine = 4 ct
   A level = 0.7
   B level = 0
   cutoff = 4000 Hz
   res = 0.1
-  env amt = 1 oct
+  env amt = 1
   kbd track = on
   filter / a = 0.001 s
   filter / d = 1.2 s
@@ -143,17 +170,18 @@ preset: Poly-Mod Bell
   amp / d = 1.5 s
   amp / s = 0
   amp / r = 1.5 s
-  pmod B→A = 3
-  vibrato = 0
+  osc B = 1.5
+  wheel mod / freq A = 0
+  freq B = 0
   volume = 0.96
 
 # All five voices in unison: a pulse and a saw an octave down through a snappy low filter.
 preset: Unison Bass
   unison = on
   glide = 0.04 s
-  osc A / wave = square
-  pw = 0.3
-  osc B / wave = saw
+  osc A / saw = 0
+  osc A / pulse = 1
+  osc A / pw = 0.3
   freq = -12 st
   fine = 6 ct
   # the mixer a little down (0.5 / 0.5 before): the unison's five voices on one key peaked 0.92, near clipping (#440)
@@ -161,7 +189,7 @@ preset: Unison Bass
   B level = 0.44
   cutoff = 350 Hz
   res = 0.25
-  env amt = 2.5 oct
+  env amt = 2.5
   filter / a = 0.002 s
   filter / d = 0.35 s
   filter / s = 0.1
@@ -170,5 +198,6 @@ preset: Unison Bass
   amp / d = 0.4 s
   amp / s = 0.7
   amp / r = 0.2 s
-  vibrato = 0
+  wheel mod / freq A = 0
+  freq B = 0
   volume = 0.38

@@ -114,9 +114,9 @@ export class Ed {
   }
 }
 
-/** a copy of a factory assembly to edit */
-export function edit(name: string, f: (e: Ed) => void): AssemblyDef {
-  const src = FACTORY.find((d) => d.name === name);
+/** a copy of a factory assembly to edit (`base`: a definition of it other than today's factory one) */
+export function edit(name: string, f: (e: Ed) => void, base?: AssemblyDef): AssemblyDef {
+  const src = base ?? FACTORY.find((d) => d.name === name);
   if (!src) throw new Error(`no factory assembly ${name}`);
   const def = structuredClone(src);
   f(new Ed(def));

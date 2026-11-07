@@ -42,6 +42,10 @@ import { paramUnit } from '../../src/patch';
 import { players, level, plugIn } from '../factory-build';
 import type { Xl } from './xl';
 import { aroundDef, edit } from './asm-edit';
+import type { AssemblyDef } from '../../src/assembly';
+// the FM-1 version as release 1.10 shipped it, which this XL was written against: the FM-1 version gained most of the XL's
+// functions in 1.11 (#658) with other modules, and this XL is to be retired once the FM-1 version is checked on the rig
+import BASE from './oracle-v-base.json';
 
 // the FM-1 version's local module ids (src/assemblies/oracle-v.json)
 const LFO = 1, WHEEL = 2, VIB = 3, NOISE = 4, ALLOC = 5, GLIDE = 6, OSC_B = 7, OSC_A = 8, POLY_ENV = 9, SYNC = 10, FENV = 11,
@@ -417,7 +421,7 @@ export const xl: Xl = {
       e.param('filter rev', rev, 'mix');
       e.param('vintage', vintage, 'value');
       e.param('A-440', a440, 'level');
-    });
+    }, BASE as unknown as AssemblyDef);
     const x = aroundDef('Oracle V', def);
     plugIn(x.p, x.main.id, 'bend', x.a, 'bend');
     plugIn(x.p, x.main.id, 'at', x.a, 'at');
