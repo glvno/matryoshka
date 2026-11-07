@@ -621,10 +621,9 @@ typedef struct {
     uint16_t nlk;                    /* the locks, by track, then pattern (as the binary lists them) */
     lock_t lk[ENG_MAX_LOCKS];
     int16_t trk_lkey[ENG_MAX_TRACKS];   /* the pattern and step a track's locks were applied for (locks_step; -1 none, -2 again) */
-    uint8_t trk_once[ENG_MAX_TRACKS];   /* play once (#632, modules.ts StepsState.once): 0 not, 1 its passes played (no step
-                                         * from here), n >= 2: n - 1 pass ends to go (the start counts as one). (Kept here: as
-                                         * a static of its own, its address came out as an immediate build.py takes for a ROM
-                                         * address) */
+    uint8_t trk_once[ENG_MAX_TRACKS];   /* play once (#632, modules.ts StepsState.once): 0 not, 1 its passes played (it
+                                         * goes on silent: steps_fire), n >= 2: n - 1 pass ends to go (the start counts as
+                                         * one; steps_turn counts) */
 } eng_t;
 
 /* the slice of the pattern track t plays (one it has not got: pattern 0), its first note and count */
@@ -6648,7 +6647,7 @@ static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int
             x->cnt = steps_hold(x->left, gate, sl);
         }
     }
-    if (it->s.stp.mute)
+    if (it->s.stp.mute || E.trk_once[t] == 1u)   /* (play once: its passes played, no note more, #632) */
         return;
     if (it->s.stp.skip == k && !it->s.stp.skipn) {
         it->s.stp.skip = -1;
@@ -6723,6 +6722,8 @@ static void m_drummap(const node_t *nd, inst_t *it, uint32_t n)
 static void steps_turn(uint32_t t)
 {
     uint32_t s = E.song;
+    if (E.trk_once[t] > 1u)                      /* (play once, #632: at 1 its passes are played, steps_fire) */
+        E.trk_once[t]--;
     if (s && E.song_n[s - 1u]) {
         int32_t k = E.trk_spos[t] + 1 >= (int32_t)E.song_n[s - 1u] ? 0 : E.trk_spos[t] + 1;
         E.trk_spos[t] = (int8_t)k;
@@ -6808,14 +6809,10 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
         it->s.stp.sst++;
         if (it->s.stp.pend > 0 && --it->s.stp.pend == 0 && (dir == 0 || it->s.stp.pstep < len))
             steps_fire(nd, it, it->s.stp.pstep, len, gate, sl, tr[i]);
-        if (adv && E.trk_once[t] == 1u)          /* (play once: its passes are played, #632) */
-            adv = 0;
         for (; adv > 0; adv--) {
             int32_t sw, d = 0;
             step_visit_t next = steps_next(it, len, dir);
             if (next.visit == 0) {               /* the end of a pass: a song's next entry, a queued pattern */
-                if (E.trk_once[t] > 1u && --E.trk_once[t] == 1u)
-                    break;                       /* (play once: the last pass ended, #632) */
                 steps_turn(t);
                 len = steps_len(it, t);
                 ht = RATE_HT[TRK_P(t) && E.pat_rate[t][TRK_P(t)] != 0xFFu ? E.pat_rate[t][TRK_P(t)] : clampi(round_q16(EF(it, STEPS_P_RATE)), 0, 8)];

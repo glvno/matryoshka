@@ -2872,8 +2872,8 @@ export interface StepsState {
   seed: number;
   /** muted (the device's SEQ page, the editor's card; never saved): no new notes */
   mute: boolean;
-  /** play once (#632, Engine.playOnce): 0 not, 1 its passes played (no step from here), n >= 2: n - 1 pass ends to go
-   * (the start counts as one) */
+  /** play once (#632, Engine.playOnce): 0 not, 1 its passes played (it goes on silent), n >= 2: n - 1 pass ends to go
+   * (the start counts as one; stepsTurn counts) */
   once: number;
   /** the transport as the last block saw it, the clk / reset inputs' last samples */
   run: boolean;
@@ -2932,6 +2932,7 @@ export function stepsGo(s: StepsState, p: number): void {
 /** the end of a pass (engine.c steps_turn): in a song, the next entry's pattern and shift (after the last, the first
  * again); else a queued pattern */
 function stepsTurn(s: StepsState): void {
+  if (s.once > 1) s.once--; // (play once, #632: at 1 its passes are played, fire plays no more)
   const song = s.song.song > 0 ? s.song.songs[s.song.song - 1] : undefined;
   if (song?.length) {
     s.songPos = s.songPos + 1 >= song.length ? 0 : s.songPos + 1;
@@ -3040,7 +3041,7 @@ const steps: ModuleImpl<StepsState> = {
           else if (lives(x)) x.cnt = hold(1);
           else x.cnt = hold(x.left = 0);
         }
-      if (s.mute) return;
+      if (s.mute || s.once === 1) return; // (play once: its passes played, no note more, #632)
       const was = s.snd.some((x) => x.cnt > 0);
       let j = 0, any = false;
       for (const n of s.notes) {
@@ -3138,11 +3139,9 @@ const steps: ModuleImpl<StepsState> = {
       }
       if (s.pend > 0 && --s.pend === 0 && (dir === 0 || s.pstep < len)) fire(s.pstep, i);
       s.ago++;
-      if (adv && s.once === 1) adv = 0; // (play once: its passes are played, #632)
       for (; adv > 0; adv--) {
         let next = nextStep(s, len, dir);
         if (next.visit === 0) { // the end of a pass: a song's next entry, a queued pattern
-          if (s.once === 1 || (s.once > 1 && --s.once === 1)) break; // (play once: the last pass ended, #632)
           stepsTurn(s);
           shape();
           next = nextStep(s, len, dir);
