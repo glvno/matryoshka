@@ -17,6 +17,11 @@ static volatile uint8_t out_mono;                  /* GLO > SYSTEM > OUTPUT (#61
                                                     * both sides of the analog output; 2 MONO L, the sum on the left side
                                                     * (the tip) and the right silent, so a mono (TS) plug has nothing to
                                                     * short. USB audio stays stereo. Saved with the settings (main.c) */
+static volatile uint8_t usb_level;                 /* GLO > SYSTEM > USB LEVEL (#600): 0 KNOB, USB audio at MASTER's level as
+                                                    * the analog output; 1..7 a fixed level MASTER does not change
+                                                    * (out_level.h), so the speaker can be turned down and the computer
+                                                    * still records. Saved with the settings (main.c) */
+#include "out_level.h"
 /* the device test mode's meter (TEST_PEAK, #291): before the MASTER pot (as at its default, so a script does not depend
  * on where the knob is), after mute */
 #include "test_peak.h"
@@ -84,10 +89,15 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
                 eng_overload = 1;
             }
         }
+        uint32_t knob = master_q12, uq = knob;          /* (read once: the main loop moves it) */
+#if FELUCCA_UAC
+        uq = lvl_q12(usb_level, knob);                  /* USB audio's level (#600): MASTER's at KNOB */
+#endif
         if (eng_run) {
             uint32_t loud = 0;
             eng_render(eng_l, eng_r, HALF_FRAMES);
-            int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)master_q12 * patch_gain) >> 16);
+            int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)uq * patch_gain) >> 16);   /* (USB audio's level first: it takes
+                                                                                            * the half below) */
             for (i = 0; i < HALF_FRAMES; i++) {         /* Q16 (+-1.0) * MASTER -> 24 bit in the low bits, -6 dBFS ceiling */
                 o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
                 o[2u * i + 1u] = ((eng_r[i] * m) >> 12) << 6;
@@ -107,6 +117,13 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
 #if FELUCCA_UAC
         uac_tap(o, HALF_FRAMES);
 #endif
+        if (eng_run && uq != knob) {                    /* USB LEVEL fixed (#600): the analog output again, at MASTER's level */
+            int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)knob * patch_gain) >> 16);
+            for (i = 0; i < HALF_FRAMES; i++) {
+                o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
+                o[2u * i + 1u] = ((eng_r[i] * m) >> 12) << 6;
+            }
+        }
         if (out_mono)                                   /* (after USB audio took the half in stereo; never louder than a side) */
             for (i = 0; i < HALF_FRAMES; i++) {         /* MONO: the sum on both sides; MONO L: on the left (tip), the right silent */
                 int32_t s = (o[2u * i] + o[2u * i + 1u]) >> 1;
