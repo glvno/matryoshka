@@ -278,6 +278,55 @@ const polyAsm = (p: Patch, ids: number[], cfg: Partial<PolyCfg>): void => {
   p.cables.push({ from: { module: main.id, port: 'keys' }, to: { module: alloc.id, port: 'keys' } });
   makeAssembly(p, ids, `poly ${ids.join(' ')}`).poly = cfg.flaws ? { flaws: cfg.flaws } : {};
 };
+// The Oscillator's analog shape (#673): every wave at analog 1 and the saw at 0.4, plain (left) and through a VCA (right);
+// unison with sync; the FM path (pm, feedback); a high saw (E7, the band-limiting); four parts, each its own tolerances
+for (const [wave, analog] of [[1, 1], [2, 1], [2, 0.4], [3, 1], [4, 1], [5, 1]]) {
+  kit(`osc-analog-${wave}-${analog}`, (add, wire) => {
+    const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.5 });
+    const o = add('osc', 0, 0, { wave, analog, pw: 0.3, level: 0.8 });
+    const env = add('adsr', 0, 0, { a: 0.005, d: 0.3, s: 0.5, r: 0.3 }), vca = add('vca', 0, 0);
+    wire(kb, 'pitch', o, 'pitch'); wire(o, 'out', out, 'l');
+    wire(kb, 'gate', env, 'gate'); wire(o, 'out', vca, 'in'); wire(env, 'env', vca, 'cv'); wire(vca, 'out', out, 'r');
+  });
+}
+kit('osc-analog-unison-sync', (add, wire) => {
+  const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.5 });
+  const o = add('osc', 0, 0, { wave: 2, analog: 1, unison: 3, detune: 15, coarse: 7, level: 0.8 });
+  const m = add('osc', 0, 0, { wave: 3, analog: 0.7, level: 1 });
+  wire(kb, 'pitch', o, 'pitch'); wire(kb, 'pitch', m, 'pitch'); wire(m, 'out', o, 'sync');
+  wire(o, 'out', out, 'l'); wire(m, 'out', out, 'r');
+});
+kit('osc-analog-fm', (add, wire) => {
+  const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.5 });
+  const mod = add('osc', 0, 0, { wave: 0, coarse: 12, level: 0.3 });
+  const o = add('osc', 0, 0, { wave: 2, analog: 1, pm: 1, level: 0.8 });
+  const f = add('osc', 0, 0, { wave: 4, analog: 1, fb: 0.2, level: 0.8 });
+  for (const x of [mod, o, f]) wire(kb, 'pitch', x, 'pitch');
+  wire(mod, 'out', o, 'pm'); wire(o, 'out', out, 'l'); wire(f, 'out', out, 'r');
+});
+kit('osc-analog-high', (add, wire) => {
+  const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.5 });
+  const o = add('osc', 0, 0, { wave: 2, analog: 1, level: 0.8 }), q = add('osc', 0, 0, { wave: 4, analog: 1, level: 0.8 });
+  wire(kb, 'pitch', o, 'pitch'); wire(kb, 'pitch', q, 'pitch'); wire(o, 'out', out, 'l'); wire(q, 'out', out, 'r');
+});
+events['osc-analog-high'] = [[0, 'on', 100], [128 * 60, 'on', 88], [128 * 120, 'off', 88]];
+// the top of the range: 0.19 to 0.45 of a turn a sample (C8 and above, coarse +24), where the dip's span wraps
+kit('osc-analog-top', (add, wire) => {
+  const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.5 });
+  const o = add('osc', 0, 0, { wave: 2, analog: 1, coarse: 24, level: 0.8 }), q = add('osc', 0, 0, { wave: 5, analog: 1, coarse: 12, level: 0.8 });
+  wire(kb, 'pitch', o, 'pitch'); wire(kb, 'pitch', q, 'pitch'); wire(o, 'out', out, 'l'); wire(q, 'out', out, 'r');
+});
+events['osc-analog-top'] = [[0, 'on', 96], [128 * 40, 'on', 108], [128 * 80, 'on', 120], [128 * 120, 'off', 120]];
+kit('osc-analog-parts', (add, wire) => {
+  const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.3 });
+  const o = add('osc', 0, 0, { wave: 2, analog: 1, level: 0.6 }), q = add('osc', 0, 0, { wave: 3, analog: 1, pw: 0.5, level: 0.4 });
+  const t = add('osc', 0, 0, { wave: 1, analog: 1, coarse: -12, level: 0.5 });
+  const env = add('adsr', 0, 0, { a: 0.005, d: 0.3, s: 0.6, r: 0.2 }), vca = add('vca', 0, 0);
+  const mix = add('mixer', 0, 0, { l1: 0.5, l2: 0.5, l3: 0.5 });
+  for (const x of [o, q, t]) wire(kb, 'pitch', x, 'pitch');
+  wire(o, 'out', mix, 'in1'); wire(q, 'out', mix, 'in2'); wire(t, 'out', mix, 'in3');
+  wire(mix, 'out', vca, 'in'); wire(kb, 'gate', env, 'gate'); wire(env, 'env', vca, 'cv'); wire(vca, 'out', out, 'l');
+}, 4);
 kit('random-held', (add, wire) => {
   const clock = add('lfo', 0, 0, { wave: 3, rate: 13, depth: 1 });
   const out = add('output', 0, 0);
@@ -667,6 +716,20 @@ kit('unison-stack', (add, wire) => {
   wire(osc3, 'out', mix, 'in3');
   wire(mix, 'out', out, 'l');
 });
+// The Slew limiter's fall time (#669): a gate rises at `time`, falls at `fall`, exp and lin, and a pitch gliding down slower
+// than up into a sine (left); fall 0 (right: the same as `time`)
+for (const curve of [0, 1]) for (const fall of [0, 0.35, 0.002]) {
+  const name = `glide-fall-${curve ? 'lin' : 'exp'}-${fall}`;
+  tests[name] = make(name, (add, wire) => {
+    const main = add('fm1', 0, 0), out = add('output', 0, 0, { level: 1 });
+    const g = add('glide', 0, 0, { time: 0.01, curve, fall });
+    const p = add('glide', 0, 0, { time: 0.02, curve, fall: fall ? fall / 3 : 0 });
+    const o = add('osc', 0, 0, { wave: 0, level: 0.5 });
+    wire(main, 'gate', g, 'in'); wire(g, 'out', out, 'l');
+    wire(main, 'pitch', p, 'in'); wire(p, 'out', o, 'pitch'); wire(o, 'out', out, 'r');
+  });
+  events[name] = [[0, 'on', 72], [128 * 20, 'off', 72], [128 * 50, 'on', 48], [128 * 60, 'on', 60], [128 * 70, 'off', 60], [128 * 140, 'off', 48]];
+}
 // mono, high priority, legato off (envelopes restart on every change of key): one glide timed by the legato output through a
 // macro range (legato-only portamento), one linear glide timed by |jump| (scaled)
 tests['legato-glide'] = makeOld('legato-glide', (add, wire) => {

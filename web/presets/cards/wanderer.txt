@@ -145,7 +145,7 @@ preset: Ring Bell
   d = 1.2 s
   s = 0
   r = 1.2 s
-  vca level = 2.49
+  vca level = 2.5
   gain = 0
 
 # Both VCOs an octave down into a low, punchy filter on the ADSR.
@@ -169,7 +169,7 @@ preset: Punch Bass
   s = 0.3
   r = 0.2 s
   portamento = 0
-  vca level = 3.93
+  vca level = 3.96
   gain = 0
 
 # LFO vibrato on VCO 1 and pulse width modulation on VCO 2, a little portamento: the lead.
@@ -195,5 +195,5 @@ preset: PWM Lead
   s = 0.7
   r = 0.3 s
   portamento = 0.15
-  vca level = 1.03
+  vca level = 1.04
   gain = 0

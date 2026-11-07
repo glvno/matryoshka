@@ -137,6 +137,7 @@ function polyBlep(t: number, dt: number): number {
   return 0;
 }
 
+const waveIdeal = (kind: number, phase: number, dt: number, pw: number): number => wave(kind, phase, dt, pw);
 function wave(kind: number, phase: number, dt: number, pw = 0.5): number {
   switch (kind) {
     case 0:
@@ -155,6 +156,85 @@ function wave(kind: number, phase: number, dt: number, pw = 0.5): number {
       v -= polyBlep((phase + 1 - pw) % 1, dt);
       return v;
     }
+  }
+}
+
+/**
+ * The Oscillator's analog wave shape (#673, format 51): `analog` 0..1 scales the flaws of an analog VCO, 0 (the default) the
+ * ideal waves above. Saw: the ramp charges like a capacitor from a slightly soft current source,
+ * r = (1 - e^(-c phase)) / (1 - e^(-c)) with c = ANALOG_CURVE x analog, its mean taken out (AC coupled); at the reset the
+ * wave dips ANALOG_DIP below its bottom for ANALOG_DIP_S. Band-limited: polyBLEP on both steps of the reset and the dip,
+ * polyBLAMP on the ramp's corner at the reset (its slope changes by 2c). Triangle: the peak moves off centre (naive, as the
+ * ideal triangle). Square: the pulse width moves. Sharktooth and reverse saw: from the curved saw (and the skewed triangle).
+ * Sine: unchanged. Each part has its own fixed tolerances (its instance seed, engine.ts instSeed): the curve and the dip
+ * +-ANALOG_TOL of theirs, the triangle's peak up to ANALOG_SKEW of a cycle, the pulse width up to ANALOG_PWO. engine.c
+ * osc_ana the same in fixed point (the curve from a table, SAWC_T).
+ */
+export const ANALOG_CURVE = 0.35;
+export const ANALOG_DIP = 0.12;
+export const ANALOG_DIP_S = 25e-6;
+export const ANALOG_TOL = 0.3;
+export const ANALOG_SKEW = 0.03;
+export const ANALOG_PWO = 0.015;
+/** a part's four tolerances (curve, dip, triangle peak, pulse width), -1..1 from its instance seed (engine.c init_state) */
+export const analogTol = (seed: number): number[] => [1, 2, 3, 4].map((j) => q15(hash32((seed ^ Math.imul(j, 0x85ebca6b)) >>> 0)) / 32768);
+interface AnalogShape {
+  /** the curve, its normalisation 1 / (1 - e^-c), the mean of 2 r - 1 */
+  c: number;
+  e: number;
+  mean: number;
+  /** the dip (of the full swing 2), the dip's length in samples, the triangle's peak (phase), the pulse width's offset */
+  h: number;
+  w: number;
+  peak: number;
+  pwo: number;
+}
+function analogShape(amt: number, tol: number[], sr: number): AnalogShape {
+  const c = Math.max(1e-4, ANALOG_CURVE * amt * (1 + ANALOG_TOL * tol[0]));
+  const e = 1 / (1 - Math.exp(-c));
+  return { c, e, mean: 2 * (e - 1 / c) - 1, h: ANALOG_DIP * amt * (1 + ANALOG_TOL * tol[1]), w: ANALOG_DIP_S * sr,
+    peak: 0.5 + ANALOG_SKEW * amt * tol[2], pwo: ANALOG_PWO * amt * tol[3] };
+}
+/** poly-BLAMP residual: the corner of a ramp whose slope changes by 1 per cycle at phase 0, scaled by dt */
+function polyBlamp(t: number, dt: number): number {
+  if (t < dt) {
+    const x = 1 - t / dt;
+    return (x * x * x) / 6;
+  }
+  if (t > 1 - dt) {
+    const x = 1 - (1 - t) / dt;
+    return (x * x * x) / 6;
+  }
+  return 0;
+}
+function analogSaw(phase: number, dt: number, a: AnalogShape): number {
+  let v = 2 * (1 - Math.exp(-a.c * phase)) * a.e - 1 - a.mean;
+  v -= (1 + a.h / 2) * polyBlep(phase, dt);
+  v += 2 * a.c * dt * polyBlamp(phase, dt);
+  const w = Math.min(0.25, a.w * dt); // the dip's length in phase
+  if (phase < w) v -= a.h;
+  v += (a.h / 2) * polyBlep((phase - w + 1) % 1, dt);
+  return v;
+}
+function analogTri(phase: number, a: AnalogShape): number {
+  const p = a.peak;
+  return phase < p ? -1 + (2 * phase) / p : 1 - (2 * (phase - p)) / (1 - p);
+}
+/** the analog wave (kind as wave()) */
+function waveAnalog(kind: number, phase: number, dt: number, pw: number, a: AnalogShape): number {
+  switch (kind) {
+    case 0:
+      return Math.sin(2 * Math.PI * phase);
+    case 1:
+      return analogTri(phase, a);
+    case 2:
+      return analogSaw(phase, dt, a);
+    case 4:
+      return (analogTri(phase, a) + analogSaw(phase, dt, a)) / 2;
+    case 5:
+      return -analogSaw(phase, dt, a);
+    default:
+      return wave(3, phase, dt, Math.min(0.95, Math.max(0.05, pw + a.pwo)));
   }
 }
 
@@ -292,6 +372,8 @@ interface OscState {
   ph: number[];
   /** the summed phase modulation of a block (oscPm), radians */
   pmc: Float32Array;
+  /** this part's analog tolerances (analogTol) */
+  tol: number[];
 }
 
 /** unison voice j of n: its detune in octaves, spread symmetrically from -detune to +detune cents */
@@ -369,10 +451,20 @@ const osc: ModuleImpl<OscState> = {
       param('stack', 0, 4, 0, { step: 1, choices: STACK_NAMES }),
       param('pm2', 0, 8, 0, { ...PM_INDEX, since: 49 }),
       param('pm3', 0, 8, 0, { ...PM_INDEX, since: 49 }),
+      param('analog', 0, 1, 0, { step: 0.01, since: 51 }),
     ],
   },
-  init: () => ({ phase: 0, s1: 0, y1: 0, y2: 0, pm1: 0, xb: 0, ap: [0, 0, 0, 0, 0, 0, 0, 0], ph: [0, 0, 0, 0], pmc: new Float32Array(0) }),
+  init: () => ({ phase: 0, s1: 0, y1: 0, y2: 0, pm1: 0, xb: 0, ap: [0, 0, 0, 0, 0, 0, 0, 0], ph: [0, 0, 0, 0], pmc: new Float32Array(0), tol: [0, 0, 0, 0] }),
+  seed(s, seed) {
+    s.tol = analogTol(seed);
+  },
   process(c, s) {
+    const amt = Math.min(1, c.p.analog ?? 0);
+    // the analog shape (#673): its waves in place of wave(); in FM mode at the doubled rate (the dip as long in time)
+    const an = amt > 0 ? analogShape(amt, s.tol, c.sr) : undefined;
+    const anFm = an && { ...an, w: an.w * 2 };
+    const wave = an ? (k: number, ph: number, dt: number, pw: number): number => waveAnalog(k, ph, dt, pw, an) : waveIdeal;
+    const waveFm = anFm ? (k: number, ph: number, dt: number, pw: number): number => waveAnalog(k, ph, dt, pw, anFm) : waveIdeal;
     const { pitch, sync } = c.inp;
     const pw = Math.min(0.95, Math.max(0.05, c.p.pw ?? 0.5));
     const base = (c.p.coarse ?? 0) / 12 + (c.p.fine ?? 0) / 1200;
@@ -436,7 +528,7 @@ const osc: ModuleImpl<OscState> = {
         if (s.phase >= 1) s.phase -= 1;
         let ph = s.phase + (idx * (sub ? pmNow : pmMid) + fb * FB_RAD * (s.y1 + s.y2) * 0.5) * K;
         ph -= Math.floor(ph);
-        const y = wave(kind, ph, dt, pw);
+        const y = waveFm(kind, ph, dt, pw);
         s.y2 = s.y1;
         s.y1 = y;
         if (sub) {
@@ -1908,7 +2000,9 @@ export const GLIDE_CURVES = ['exp', 'lin'];
 
 /**
  * portamento, or a slew on any control. exp: a one-pole glide that reaches 99 % of a step in `time`, whatever its size;
- * lin: a constant rate of one unit (an octave of pitch) per `time`, so a bigger step takes longer
+ * lin: a constant rate of one unit (an octave of pitch) per `time`, so a bigger step takes longer. `fall` (#669, format
+ * 51): a falling input moves at its own time, a rising one at `time` (a vactrol opens quickly and closes slowly); 0, the
+ * default, falls at `time` too
  */
 const glide: ModuleImpl<{ y: number }> = {
   def: {
@@ -1916,20 +2010,35 @@ const glide: ModuleImpl<{ y: number }> = {
     label: 'Slew limiter',
     inputs: [control('in')],
     outputs: [control('out')],
-    params: [param('time', 0.001, 5, 0.1, { unit: 's', step: 0.001, log: true }), param('curve', 0, 1, 0, { step: 1, choices: GLIDE_CURVES })],
+    params: [
+      param('time', 0.001, 5, 0.1, { unit: 's', step: 0.001, log: true }),
+      param('curve', 0, 1, 0, { step: 1, choices: GLIDE_CURVES }),
+      param('fall', 0, 5, 0, { unit: 's', step: 0.001, since: 51 }),
+    ],
   },
   init: () => ({ y: 0 }),
   process(c, s) {
+    const fall = c.p.fall ?? 0;
     if (Math.round(c.p.curve ?? 0) === 1) {
       const step = 1 / Math.max((c.p.time ?? 0.1) * c.sr, 1);
+      const down = fall > 0 ? 1 / Math.max(fall * c.sr, 1) : step;
       for (let i = 0; i < c.n; i++) {
         const d = c.inp.in[i] - s.y;
-        s.y += d > step ? step : d < -step ? -step : d;
+        s.y += d > step ? step : d < -down ? -down : d;
         c.out.out[i] = s.y;
       }
       return;
     }
     const k = 1 - Math.exp(-4.6 / Math.max((c.p.time ?? 0.1) * c.sr, 1));
+    if (fall > 0) {
+      const kd = 1 - Math.exp(-4.6 / Math.max(fall * c.sr, 1));
+      for (let i = 0; i < c.n; i++) {
+        const d = c.inp.in[i] - s.y;
+        s.y += (d >= 0 ? k : kd) * d;
+        c.out.out[i] = s.y;
+      }
+      return;
+    }
     for (let i = 0; i < c.n; i++) {
       s.y += k * (c.inp.in[i] - s.y);
       c.out.out[i] = s.y;

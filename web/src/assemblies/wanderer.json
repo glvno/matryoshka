@@ -90,7 +90,8 @@
       "y": 0,
       "params": {
         "time": 0.001,
-        "curve": 1
+        "curve": 1,
+        "fall": 0
       },
       "att": [
         1,
@@ -112,7 +113,8 @@
       "y": 560,
       "params": {
         "time": 0.001,
-        "curve": 1
+        "curve": 1,
+        "fall": 0
       },
       "att": [
         1,
@@ -364,7 +366,8 @@
         "blend": 0.5,
         "stack": 0,
         "pm2": 0,
-        "pm3": 0
+        "pm3": 0,
+        "analog": 1
       },
       "att": [
         1,
@@ -566,7 +569,8 @@
         "blend": 0.5,
         "stack": 0,
         "pm2": 0,
-        "pm3": 0
+        "pm3": 0,
+        "analog": 1
       },
       "att": [
         1,
@@ -714,7 +718,8 @@
       "y": 3360,
       "params": {
         "time": 0.001,
-        "curve": 0
+        "curve": 0,
+        "fall": 0
       },
       "att": [
         1,
