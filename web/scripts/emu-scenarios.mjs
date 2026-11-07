@@ -1212,9 +1212,10 @@ async function main() {
       const beat = onsets.length >= 3 ? (onsets[onsets.length - 1] - onsets[1]) / (onsets.length - 2) : onsets.length === 2 ? onsets[1] - onsets[0] : 0;
       console.log(`  rec count-in: the count-in's peaks per 25 ms: ${prof(win)}`);
       await check('rec count-in: REC, stopped: the transport starts and the bar counts in (COUNT-IN)', counting);
-      // beat 1 within 300 ms of REC's release (the panel's scan and a main loop pass), then each beat that fits in 1.2 s
+      // beat 1 within 300 ms of REC's release (the panel's scan and a main loop pass), then the bar's other beats: all four
+      // in the 1.2 s, or three when the fourth falls past it (the 25 ms windows round the onsets either way)
       await loudCheck('rec count-in: a click on each beat of the count-in from beat 1, a beat apart', Math.max(...win.map((w) => w[1])),
-        beat >= 200 && onsets[0] <= 300 && onsets.length === Math.min(4, Math.floor((1175 - onsets[0]) / beat) + 1)
+        beat >= 200 && onsets[0] <= 300 && (onsets.length === 4 || (onsets.length === 3 && onsets[0] + 3 * beat > 1150))
           && onsets.slice(1).every((t, i) => Math.abs(t - onsets[i] - beat) <= 40),
         `click onsets at ${onsets.join(' ')} ms (a beat ${beat} ms)`);
       await until(async () => !(await emu.text('COUNT-IN')), 5000);
