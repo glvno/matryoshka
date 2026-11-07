@@ -116,7 +116,7 @@ describe('binary patch format', () => {
 
   it('marks the parameters appended since format 34 (`since`), which the FM-1 reads an older binary without', () => {
     // format 34's types and their parameter counts where they grew (firmware/src/defs.h at v1.4.1)
-    const v34: Record<string, number> = { osc: 11, lfo: 6, adsr: 4, delay: 5, reverb: 5, pulse: 1, drummap: 8, alloc: 8, steps: 4, filter: 5 };
+    const v34: Record<string, number> = { osc: 11, lfo: 6, adsr: 4, delay: 5, reverb: 5, pulse: 1, drummap: 8, alloc: 8, steps: 4, filter: 5, glide: 2 };
     const nTypes34 = TYPE_ORDER.indexOf('pd'); // pd, env8, select came with format 35
     expect(TYPE_ORDER.slice(nTypes34)).toEqual(['pd', 'env8', 'select', 'rateenv', 'ratio', 'esp', 'shreg', 'comp', 'range', 'matrix']); // Rate Env in 42, Ratio in 43, Follower in 46, Shift register, Comparator, Range and Matrix in 49
     for (const t of TYPE_ORDER.slice(0, nTypes34)) {
@@ -273,7 +273,8 @@ describe('binary patch format', () => {
       const devs = deviceSection(make(), p);
       const txt = (t: string): number => 1 + deviceText(t).length;
       // a row's extras (#357, #358): u8 count and 2 bytes per further parameter, u8 count and a text per position name
-      const more = (r: { also?: unknown[]; names?: string[] }): number => (r.also?.length || r.names?.length ? 2 + 2 * (r.also?.length ?? 0) + (r.names ?? []).reduce((k, s) => k + txt(s), 0) : 0);
+      // (a poly row's extras: u8 its top, a VOICES row with one: format 51)
+      const more = (r: { param: string; also?: unknown[]; names?: string[]; top?: number }): number => (r.top !== undefined && r.param === 'voices' ? 1 : r.also?.length || r.names?.length ? 2 + 2 * (r.also?.length ?? 0) + (r.names ?? []).reduce((k, s) => k + txt(s), 0) : 0);
       const pages = devs.length ? 1 + devs.reduce((n, d) => n + (d.module !== undefined ? 2 : 2 + txt(d.name) + d.pages.reduce((k, pg) => k + txt(pg.name) + 4 + pg.rows.reduce((j, r) => j + 2 + txt(r.label) + more(r), 0), 0)), 0)
         + 1 + devs.reduce((n, d) => n + 8 + deviceText((d.asm !== undefined ? make().assemblies?.find((x) => x.id === d.asm)?.preset : '') ?? '').length + 2 * (d.asm !== undefined ? make().assemblies!.find((x) => x.id === d.asm)!.params.length : 0) + extrasMembers(make(), p, d), 0) : 0; // and the extras
       const valued = p.modules.filter((m) => m.type === 'steps' && m.notes?.length);

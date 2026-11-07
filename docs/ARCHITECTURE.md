@@ -253,7 +253,7 @@ The assembly browser and the palette put the engines on an **Engines** shelf, fi
 ## Sync, glide, shaper, spread
 
 - `sync` (a gate input) on `osc` and `lfo`: a rising edge through 0.5 sets the phase to 0 before that sample's increment; the previous sample is kept in the state (`s1`). The oscillator honours it in both the plain and the FM path.
-- `glide`: `y += k (x - y)` per sample with the ADSR's rate curve (`env_rate`, 99 % in `time`); the fixed-point state is Q24 because in Q16 the step rounds to nothing while the output is still about 1 % short, which on a pitch is audible and broke the golden comparison.
+- `glide`: `y += k (x - y)` per sample with the ADSR's rate curve (`env_rate`, 99 % in `time`); the fixed-point state is Q24 because in Q16 the step rounds to nothing while the output is still about 1 % short, which on a pitch is audible and broke the golden comparison. With `fall` above 0 (#669, [D-772](ledger/modules.md#D-772)) a falling input takes `env_rate(fall)` (lin: the step of `fall`), a rising one `time`; `fall` 0 runs the loops as before.
 - `shape`: `drive` (1..32, log) into soft (`1.5 x - x^3 / 2` to the knee at 1, then flat), hard (clamp) or fold (triangle of period 4, two's complement masking does the modulo in fixed point), then `level`. The peak is 1 in every mode. `sym` (-1..1) is added to the driven sample before the curve; `stages` (1..4) cascades the curve with `y = curve(2 y)` between stages (`shapeChain` / `shape_chain`), inside the oversampler when `os` is on. No state is added. Patch format 16 (two new parameters). Golden kit `wavefold` (fold, sym 0.3, three stages, oversampled, drive swept by an LFO): 2.0 % rel rms, the fold corners move with the sweep.
 - `spread`: a per-voice panel output, `(2 v - (n - 1)) / (n - 1)` for voice v of n. Now the Part module's `index` (see Polyphony).
 - Binary patch format 8: the two sync inputs moved `p1` / `p2` of osc and lfo, two module types were appended, the panel grew an output. `TYPE_COLOR` in `ui.c` has entries for the new types.
@@ -867,14 +867,21 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   assign, legato, priority, unison, steal) name its group setting: in the device form the allocator is its group's Part, and
   the parameter byte is 0x80 + the field (`POLY_ROW_PARAMS`). `binaryPage` / `editorPage` map the editor's focus to the
   binary's indices. `eng_devices_end` (engine.h) walks the section; `eng_load` skips it.
-- Page row extras (format 35, #357, #358): bit 6 of a row's parameter byte (`ROW_MORE`, engine.h `ENG_ROW_MORE`; never on
-  a poly row) says the row's extras follow its label: u8 n and n (module index, parameter index) pairs, the further
+- Page row extras (format 35, #357, #358): bit 6 of a row's parameter byte (`ROW_MORE`, engine.h `ENG_ROW_MORE`; on a
+  poly row only from format 51, below) says the row's extras follow its label: u8 n and n (module index, parameter index) pairs, the further
   parameters the row sets, then u8 k and k texts, its positions' names in capitals. A row without them is written as
   before, so every binary written before them is unchanged. The FM-1 keeps where each row's extras start (`ppage_t.xo`,
   an offset into the running binary): K1..K4 and MIDI CC 16..19 write the row's value to each further parameter too
   (`pages_also`, after the first; PARAM_NOW names only the first, the editor sets the rest), a preset loaded on the FM-1
   does the same (`dp_load`, `dev_row_more`), and a named position shows its name for the value (`row_name`). A Selector
   module's `pos` row spans 1..count on the FM-1 (`row_top`: the knobs, CC, the bar and MIDI out), as on the card.
+- A VOICES row's top (format 51, [D-870](ledger/patches-and-presets.md#D-870)): on a poly row the extras are one byte, the
+  most voices the FM-1's VOICES row offers (`ParamRef.top` on a Voice allocator's voices card row, `PageRow.top`,
+  `patchbin.ts` `polyTop`; written only with a top, which makes the patch format 51, `uses111`). `gen-presets` sets it
+  (`factory-build.ts` `voiceTops`) to the most voices with which the factory patch still fits the FM-1's budget, when that
+  is under eight: Cassia 1's is 6. The FM-1 keeps it at `ppage_t.xo` as other extras (`row_more` gives none for a poly
+  row); `poly_top` is the top of the knobs, MIDI CC 16..19, the bar and MIDI out, and `dp_load` holds a preset's voices to
+  it (`dev_poly_top`). The editor and the browser engine do not read it.
 - Protocol: FOCUS 0x29 (host → device: show a page), PARAM_NOW 0x47 (a row turned on the FM-1: module, parameter, Q16)
   and FOCUS_NOW 0x48 (the page the FM-1 shows) from the device; INFO feature bit 4. With Live on the editor follows the
   FM-1's page and turns, and sends its own focus; an upload is followed by the focus.

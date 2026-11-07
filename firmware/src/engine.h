@@ -170,7 +170,8 @@ static inline uint32_t eng_steps_end(const uint8_t *p, uint32_t len, uint32_t at
     return at;
 }
 /* bit 6 of a page row's parameter byte (format 35, #357 / #358): the row's extras follow its label: u8 n, n (u8 module,
- * u8 parameter): the further parameters it sets to its value; u8 k, k texts: its positions' names */
+ * u8 parameter): the further parameters it sets to its value; u8 k, k texts: its positions' names. On a poly row (bit 7;
+ * format 51, only the voices row) the extras are u8 top: the most voices its VOICES row offers (patchbin.ts polyTop) */
 #define ENG_ROW_MORE 0x40u
 /* the end of a page row's extras that start at `at`, 0 when they are cut short */
 static inline uint32_t eng_row_more_end(const uint8_t *p, uint32_t len, uint32_t at)
@@ -233,12 +234,14 @@ static inline uint32_t eng_devices_end(const uint8_t *p, uint32_t len, uint32_t 
                 uint32_t more;
                 if (at + 2u > len)
                     return 0;
-                more = (p[at + 1u] & 0x80u) == 0u && (p[at + 1u] & ENG_ROW_MORE);
+                more = p[at + 1u] & ENG_ROW_MORE ? (p[at + 1u] & 0x80u ? 1u : 2u) : 0u;   /* (1: a poly row's top) */
                 at += 2u;
                 if (at >= len)
                     return 0;
                 at += 1u + p[at];
-                if (more && !(at = eng_row_more_end(p, len, at)))
+                if (more == 1u && ++at > len)
+                    return 0;
+                if (more == 2u && !(at = eng_row_more_end(p, len, at)))
                     return 0;
             }
         }

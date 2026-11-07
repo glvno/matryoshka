@@ -35,6 +35,8 @@ export interface PageRow {
   also?: RowTarget[];
   /** its positions' names (#358: a Selector's, from its card row) */
   names?: string[];
+  /** the FM-1's top for a Voice allocator's voices row (ParamRef.top): the most voices its VOICES row offers */
+  top?: number;
 }
 export interface Page {
   /** the heading, or the device's name for rows before the first heading */
@@ -181,6 +183,7 @@ function assemblySections(p: Patch, a: AssemblyInst, defs: Record<string, Module
     const names = it.r.names ?? tie?.names(row.module, row.param);
     if (also.length) row.also = also;
     if (names) row.names = names;
+    if (it.r.top !== undefined) row.top = it.r.top;
     return row;
   });
 }

@@ -130,9 +130,9 @@ describe('Canvas (the Music Easel)', () => {
     const p = FM1_PRESETS.Canvas();
     set(p, 'trigger', 2, 1); // the envelope's: pulser
     set(p, 'trigger', 2, 2); // the pulser's: self
-    set(p, 'period', 0.1);
+    set(p, 'period', 0.25); // (a shorter period's bursts run together: the lopass gate closes in 350 ms, #669)
     set(p, 'decay', 0.01);
-    const x = play(p, [48], SR);
+    const x = play(p, [48], 2 * SR);
     let bursts = 0, on = false;
     const win = 441;
     for (let i = 0; i + win <= x.length; i += win) {
@@ -140,7 +140,7 @@ describe('Canvas (the Music Easel)', () => {
       if (loud && !on) bursts++;
       on = loud;
     }
-    expect(bursts).toBeGreaterThanOrEqual(8);
+    expect(bursts).toBeGreaterThanOrEqual(7);
     expect(bursts).toBeLessThanOrEqual(11);
   });
 
