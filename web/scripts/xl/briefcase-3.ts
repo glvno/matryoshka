@@ -54,6 +54,8 @@ export const xl: Xl = {
   base: 'Briefcase 3',
   build: () => {
     const def = edit('Briefcase 3', (e) => {
+      // ---- the analog shape on every oscillator but the sine (the FM-1 version has it on the two that sound as made, #673)
+      for (const o of [O2T, O3S, O3T]) e.m(o).params.analog = 1;
       // ---- the matrix card goes: its pins become the main card's rows
       delete e.def.assemblies;
       delete e.def.children;
