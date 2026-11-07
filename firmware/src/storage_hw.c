@@ -20,13 +20,15 @@
  * zeroed so the hardware does not loop it. Each run between a resume and the next suspend lasts at least ST_RUN_MIN:
  * the datasheet asks for 100 us so that an erase makes progress. The update path (ota_hw.c, the loader) keeps the
  * plain driver in hal/fm1_flash.h. */
-static uint8_t flash_ok;                 /* JEDEC id matched at boot (persist_boot) */
+static uint8_t flash_ok;                 /* a known JEDEC id at boot (FL_JEDEC_OK) */
 #define ST_RUN_MIN (150u * FM1_TICKS_PER_US)    /* the least a resumed erase or program runs before the next suspend */
 #define ST_RUN_MAX (450u * FM1_TICKS_PER_US)    /* ... and the most, so the 2 kHz USB poll (TIMER5) is not held back long */
 #define ST_SERVE_MAX (250000u * FM1_TICKS_PER_US)   /* a write still running after 250 ms finishes without steps (the
                                                  * watchdog is 8 s) */
-#define ST_STEP_JEDEC 0x856014u          /* the Puya P25Q80H, whose suspend and resume the steps use; another chip (#739: the
-                                          * UC25HQ80, 0xB36014, on newer FM-1s) writes as before #656 until its own is known */
+#define ST_STEP_JEDEC FL_JEDEC_PUYA      /* the Puya P25Q80H, the one chip the steps were checked on (the test rig, 2026-11-07).
+                                          * The UCUN UC25HQ80 (#739) has the same 75h / 7Ah and SUS bits, but its erase needs
+                                          * runs of 200 us to make progress, over ST_RUN_MIN: it writes as before #656 until a
+                                          * unit of it is checked */
 static uint32_t st_jedec;                /* the flash chip's JEDEC id, read at boot (main.c fm1_main) */
 static uint8_t st_serve;                 /* the interrupts are on (fm1_main): a write may hand them steps; before, it zeroes the
                                           * audio and keeps them off, as before #656 */

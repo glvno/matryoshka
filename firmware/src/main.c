@@ -1468,7 +1468,7 @@ static void host_poll(void)
 static void fm1_main(int update)                    /* update: the boot guard saw two failed boots */
 {
     st_jedec = FL_FAR(fl_jedec_ram)();
-    flash_ok = st_jedec == 0x856014u;                   /* the expected 1 MiB part, else no OTA staging */
+    flash_ok = FL_JEDEC_OK(st_jedec);                   /* a known 1 MiB part (fm1_flash_id.h), else no store, no OTA staging */
     if (flash_ok)
         ota_boot_cleanup();                             /* staging area left by an update */
     lcd_init();
@@ -1513,7 +1513,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
     boot_safe = (uint8_t)((fm1_in.buttons >> BTN_SAVE & 1u) || bootguard.failed >= 1u);   /* SAVE held, or the last boot failed */
     patch_boot();
     patches_up = 1;
-    if (!flash_ok) {                                    /* another flash chip than the one OTA knows: say so (#72) */
+    if (!flash_ok) {                                    /* a flash chip the firmware does not know: say so (#72) */
         boot_msg = "NO FLASH ID: NO UPDATES";
         boot_msg_ms = 8000;
     }
