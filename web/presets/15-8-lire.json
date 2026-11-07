@@ -1283,7 +1283,8 @@
    "y": 2300,
    "params": {
     "time": 0.03,
-    "curve": 0
+    "curve": 0,
+    "fall": 0
    },
    "att": [
     1,
@@ -1309,7 +1310,8 @@
    "y": 2300,
    "params": {
     "time": 0.03,
-    "curve": 0
+    "curve": 0,
+    "fall": 0
    },
    "att": [
     1,

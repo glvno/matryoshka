@@ -705,6 +705,20 @@ kit('unison-stack', (add, wire) => {
   wire(osc3, 'out', mix, 'in3');
   wire(mix, 'out', out, 'l');
 });
+// The Slew limiter's fall time (#669): a gate rises at `time`, falls at `fall`, exp and lin, and a pitch gliding down slower
+// than up into a sine (left); fall 0 (right: the same as `time`)
+for (const curve of [0, 1]) for (const fall of [0, 0.35, 0.002]) {
+  const name = `glide-fall-${curve ? 'lin' : 'exp'}-${fall}`;
+  tests[name] = make(name, (add, wire) => {
+    const main = add('fm1', 0, 0), out = add('output', 0, 0, { level: 1 });
+    const g = add('glide', 0, 0, { time: 0.01, curve, fall });
+    const p = add('glide', 0, 0, { time: 0.02, curve, fall: fall ? fall / 3 : 0 });
+    const o = add('osc', 0, 0, { wave: 0, level: 0.5 });
+    wire(main, 'gate', g, 'in'); wire(g, 'out', out, 'l');
+    wire(main, 'pitch', p, 'in'); wire(p, 'out', o, 'pitch'); wire(o, 'out', out, 'r');
+  });
+  events[name] = [[0, 'on', 72], [128 * 20, 'off', 72], [128 * 50, 'on', 48], [128 * 60, 'on', 60], [128 * 70, 'off', 60], [128 * 140, 'off', 48]];
+}
 // mono, high priority, legato off (envelopes restart on every change of key): one glide timed by the legato output through a
 // macro range (legato-only portamento), one linear glide timed by |jump| (scaled)
 tests['legato-glide'] = makeOld('legato-glide', (add, wire) => {

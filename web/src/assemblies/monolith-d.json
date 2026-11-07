@@ -30,7 +30,8 @@
       "y": 0,
       "params": {
         "time": 0.04,
-        "curve": 0
+        "curve": 0,
+        "fall": 0
       },
       "att": [
         1,
