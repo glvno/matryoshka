@@ -3,8 +3,7 @@
   "out / vol": 0.7
  },
  "Algo Four": {
-  "voice / stack 1→2 mix": 0.7,
-  "voice / stack 3→4 mix": 0.7
+  "voice / volume": 0.34
  },
  "basic poly": {
   "level": 0.62

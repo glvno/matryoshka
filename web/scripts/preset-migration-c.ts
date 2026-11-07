@@ -104,4 +104,5 @@ export const CASE_PICKS = [
   { name: 'OLD CZ', from: '62d178d5' },
   { name: 'OLD LIRE', from: 'd34140e9' },
   { name: 'MY IO 4', from: 'bcfb20df' },
+  { name: 'MY ALGO', from: '666a5214' },
 ];

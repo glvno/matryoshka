@@ -1745,64 +1745,100 @@ asm('Expander S', 'Voices', (b) => {
   b.param('out', scope, 'view');
 });
 
-// Algo Four, a four-operator FM polysynth after the 4-op Yamaha DX / TX family: the keys go into the Voice allocator,
-// which plays three voice cards. A card: four operators (an oscillator, an envelope and a VCA each) in two
-// stacks, operator 2 into the phase of operator 1 and operator 4 into operator 3; 1 and 3 are heard. Operator 4's
-// `feedback` is off: above 0 it runs oversampled like a carrier (three voices then estimate over the FM-1's CPU).
-// An operator's `ratio` is its frequency ratio in semitones above the note, `level` its output (for 2 and 4: how
-// much they modulate), each carrier's `index` how far its phase follows its modulator. The carriers' envelopes are
-// DX-style (rates are segment times, levels where each segment goes), the modulators' ADSRs (half the cost, so three
-// voices fit). Patch the stacks differently on the expanded card for the
-// other algorithms. POLY / MONO is one switch, `poly/mono` (#681): a Selector whose MONO gate turns the Voicing's unison on
-// by a cable, with a unison stack of one voice: MONO plays one voice, the last key held.
+// Algo Four, a four-operator FM polysynth after the Yamaha DX100 (its Owner's Manual: chapter IV "The Voice Parameters"):
+// the keys go into the Voice allocator, which plays eight voice cards, the DX100's eight voices (#658). A card: four
+// operators (an oscillator, an envelope and a VCA each) and the DX100's eight algorithms, as Algo Four XL builds them: the
+// `algorithm` row is a Selector whose value table puts its position on its out, which moves each voice's four route
+// Selectors to the same position, one in front of the phase input of each of operators 1, 2 and 3 and one for what is
+// heard. Input k of each takes what algorithm k sends there, cables summed (the table at ALGO_PATHS). An operator's pitch
+// is the note plus its `ratio`, a Ratio module (the DX100's 64 frequency ratios and its seven DETUNE positions, -3..+3),
+// once for all voices since it is the same for each. `level` is its OUT LEVEL (for a modulator: how far it moves the
+// phase of the operators it feeds), each modulated operator's `index` how far its phase follows its modulators, and
+// `feedback` operator 4's own feedback (above 0 it runs oversampled like a modulated operator: the CPU estimate rises
+// with it). The modulators' envelopes are ADSRs (half the cost of the carriers' level / rate envelopes). An operator runs
+// its oversampled phase-modulation path only while its index is above 0: operator 2's `index` row is set in the presets
+// that use algorithms 1, 2, 3 and 6, the ones that modulate operator 2 (at 0 those algorithms leave operator 2 plain).
+// `volume` (the DX100's VOLUME slider) is the level of all voices summed. POLY / MONO is one switch, `poly/mono` (#681): a
+// Selector whose MONO gate turns the Voicing's unison on by a cable, with a unison stack of one voice: MONO plays one
+// voice, the last key held.
+/** the DX100's algorithms as paths: from operator, into operator (0: heard), the algorithms (1..8) that have it.
+ * Operator 1 is heard in every algorithm. The same table as Algo Four XL's (scripts/xl/algo-four.ts PATHS). */
+const ALGO_PATHS: [number, number, number[]][] = [
+  [2, 1, [1, 2, 3, 4, 5]],
+  [3, 1, [4]],
+  [4, 1, [3, 6]],
+  [3, 2, [1, 2, 3]],
+  [4, 2, [2, 6]],
+  [4, 3, [1, 4, 5, 6, 7]],
+  [2, 0, [6, 7, 8]],
+  [3, 0, [5, 6, 7, 8]],
+  [4, 0, [8]],
+];
 asm('Algo Four', 'Voices', (b) => {
-  const part = b.add('alloc', 0, 2, { voices: 3, stack: 1 });
+  const part = b.add('alloc', 0, 2, { voices: 8, stack: 1 });
   const op: number[] = [];
   const env: number[] = [];
   const vca: number[] = [];
-  const setup: [Record<string, number>, Record<string, number>, number][] = [
-    [{ wave: 0, level: 1, pm: 2.2 }, { l1: 1, r1: 0.002, l2: 0.6, r2: 1.2, l3: 0.35, r3: 1, l4: 0, r4: 0.5 }, 0.5],
-    [{ wave: 0, level: 1, coarse: 12 }, { l1: 1, r1: 0.002, l2: 0.4, r2: 0.6, l3: 0.2, r3: 2, l4: 0, r4: 0.4 }, 0.8],
-    [{ wave: 0, level: 1, pm: 1.5 }, { l1: 1, r1: 0.002, l2: 0.5, r2: 0.25, l3: 0, r3: 0.6, l4: 0, r4: 0.3 }, 0.35],
-    [{ wave: 0, level: 1, coarse: 45, fine: 70 }, { l1: 1, r1: 0.001, l2: 0.2, r2: 0.12, l3: 0, r3: 0.3, l4: 0, r4: 0.2 }, 0.6],
+  const ratio: number[] = [];
+  // operator: oscillator, envelope, VCA gain, the Ratio's position (RATIOS: 4 = 1.00, 8 = 2.00, 42 = 14.00)
+  const setup: [Record<string, number>, Record<string, number>, number, number][] = [
+    [{ wave: 0, level: 1, pm: 2.2 }, { l1: 1, r1: 0.002, l2: 0.6, r2: 1.2, l3: 0.35, r3: 1, l4: 0, r4: 0.5 }, 0.5, 4],
+    [{ wave: 0, level: 1 }, { l1: 1, r1: 0.002, l2: 0.4, r2: 0.6, l3: 0.2, r3: 2, l4: 0, r4: 0.4 }, 0.8, 8],
+    [{ wave: 0, level: 1, pm: 1.5 }, { l1: 1, r1: 0.002, l2: 0.5, r2: 0.25, l3: 0, r3: 0.6, l4: 0, r4: 0.3 }, 0.35, 4],
+    [{ wave: 0, level: 1 }, { l1: 1, r1: 0.001, l2: 0.2, r2: 0.12, l3: 0, r3: 0.3, l4: 0, r4: 0.2 }, 0.6, 42],
   ];
-  // the modulators' envelopes are ADSRs (half the cost of a level / rate envelope), so three voices fit
-  setup.forEach(([o, e, g], i) => {
+  setup.forEach(([o, e, g, r], i) => {
     op.push(b.add('osc', 1 + i, 0, o));
     env.push(i % 2 === 0 ? b.add('env', 1 + i, 1, e) : b.add('adsr', 1 + i, 1, { a: e.r1, d: e.r2, s: e.l3, r: e.r4 }));
     vca.push(b.add('vca', 1 + i, 2, { gain: g }));
+    ratio.push(b.add('ratio', 1 + i, -1, { ratio: r, detune: 3 }));
   });
-  const mix = b.add('mixer', 5, 0, { l1: 0.7, l2: 0.7, l3: 0, l4: 0 });
-  const scope = b.add('scope', 6, 0, { time: 16 });
+  // the algorithm (1..8): its value table puts the position on its out as 0..1, which moves each voice's route Selectors
+  // (their own position 1) to the same position
+  const algo = b.add('select', 0, -1, { count: 8, pos: 5, ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8].map((k) => [`v${k}`, (k - 1) / 7])) });
+  // in front of the phase input of operators 1, 2 and 3: input k what algorithm k sends there (cables summed); and for
+  // operators 2, 3 and 4 a heard switch, input k the operator when algorithm k hears it (operator 1 is always heard)
+  const into = [0, 1, 2].map((i) => b.add('select', 1 + i, 3, { count: 8, pos: 1 }));
+  const heard = [1, 2, 3].map((i) => b.add('select', 1 + i, 4, { count: 8, pos: 1 }));
+  const volume = b.add('mixer', 6, 1, { l1: 0.7, l2: 0, l3: 0, l4: 0 });
+  const scope = b.add('scope', 7, 0, { time: 16 });
   const polyMono = b.add('select', 0, 3, { count: 2, pos: 1 }); // POLY, MONO
   b.wire(polyMono, 'g2', part, 'unison');
-  b.nest('voice', 1, 3, [...op, ...env, ...vca, mix], { flaws: [{ detune: 0, drift: 0, bright: 0, env: 0, level: 100 }, { detune: 0, drift: 0, bright: 0, env: 0, level: 100 }, { detune: 0, drift: 0, bright: 0, env: 0, level: 100 }] });
+  b.nest('voice', 1, 3, [...op, ...env, ...vca, ...into, ...heard], { flaws: Array.from({ length: 8 }, () => ({ detune: 0, drift: 0, bright: 0, env: 0, level: 100 })) });
   for (let i = 0; i < 4; i++) {
     b.wire(part, 'pitch', op[i], 'pitch');
+    b.wire(ratio[i], 'pitch', op[i], 'pitch');
     b.wire(part, 'gate', env[i], 'gate');
     b.wire(op[i], 'out', vca[i], 'in');
     b.wire(env[i], 'env', vca[i], 'cv');
   }
-  b.wire(vca[1], 'out', op[0], 'pm');
-  b.wire(vca[3], 'out', op[2], 'pm');
-  b.wire(vca[0], 'out', mix, 'in1');
-  b.wire(vca[2], 'out', mix, 'in2');
-  b.wire(mix, 'out', scope, 'a');
+  for (const s of [...into, ...heard]) b.wire(algo, 'out', s, 'pos');
+  for (let k = 1; k <= 8; k++)
+    for (const [from, to, algos] of ALGO_PATHS) if (algos.includes(k)) b.wire(vca[from - 1], 'out', to ? into[to - 1] : heard[from - 2], `in${k}`);
+  for (let i = 0; i < 3; i++) b.wire(into[i], 'out', op[i], 'pm');
+  // what is heard, summed over the voices into the volume
+  b.wire(vca[0], 'out', volume, 'in1');
+  for (const h of heard) b.wire(h, 'out', volume, 'in1');
+  b.wire(volume, 'out', scope, 'a');
   b.input('keys', part, 'keys');
   b.nestInput('pitch', op[0], 'pitch', [op[1], 'pitch'], [op[2], 'pitch'], [op[3], 'pitch']);
   b.nestInput('gate', env[0], 'gate', [env[1], 'gate'], [env[2], 'gate'], [env[3], 'gate']);
-  b.output('out', mix, 'out');
+  for (let i = 0; i < 4; i++) b.nestInput(`ratio ${i + 1}`, op[i], 'pitch');
+  b.nestInput('algorithm', into[0], 'pos', [into[1], 'pos'], [into[2], 'pos'], ...heard.map((h): [number, string] => [h, 'pos']));
+  b.nestOutput('op 1', vca[0], 'out');
+  heard.forEach((h, i) => b.nestOutput(`op ${i + 2}`, h, 'out'));
+  b.output('out', volume, 'out');
   b.param('voices', part, 'voices', { head: 'voice' });
   b.param('poly/mono', polyMono, 'pos');
+  b.param('algorithm', algo, 'pos');
   b.param('feedback', op[3], 'fb');
-  b.param('stack 1→2 mix', mix, 'l1');
-  b.param('stack 3→4 mix', mix, 'l2');
+  b.param('volume', volume, 'l1');
   for (let i = 0; i < 4; i++) {
     const n = i + 1;
-    b.param(`ratio ${n}`, op[i], 'coarse', { col: true, head: `operator ${n}${i % 2 === 0 ? ' (carrier)' : ''}` });
-    b.param(`detune ${n}`, op[i], 'fine');
+    b.param(`ratio ${n}`, ratio[i], 'ratio', { col: true, head: `operator ${n}` });
+    b.param(`detune ${n}`, ratio[i], 'detune');
     b.param(`level ${n}`, vca[i], 'gain');
-    if (i % 2 === 0) b.param(`index ${n}`, op[i], 'pm');
+    if (i < 3) b.param(`index ${n}`, op[i], 'pm');
     b.param(`env ${n}`, env[i], 'view');
     for (const q of i % 2 === 0 ? ['r1', 'l2', 'r2', 'l3', 'r4'] : ['a', 'd', 's', 'r']) b.param(`${q} ${n}`, env[i], q, { inner: `op${n} ${q}` });
   }
