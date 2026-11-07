@@ -6,7 +6,7 @@
 #   build/cpu/old.elf    the engine of M1-0.2 (b907693) with its 303 Acid: the patch whose CPU load was measured on the FM-1
 #   build/cpu/bench.elf  the fixed-point kernels of firmware/src/bench.c, also measured on the FM-1
 # The flags follow tools/build.py (-Os). The cycle counts follow the compiler: web/src/cpu-costs.json is made with the clang
-# in tools/cpu/clang-version (the web workflow's check rebuilds the table with that one and fails when it differs).
+# in tools/cpu/clang-version (a table made with another version differs from the committed one: D-383).
 set -e
 cd "$(dirname "$0")/../.."
 PIN=$(cat tools/cpu/clang-version)
