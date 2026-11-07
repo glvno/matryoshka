@@ -1,0 +1,39 @@
+# overdrive: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# (no heading)
+#   drive = 6                          1..32
+#   tone = 3000 Hz                     20..16000 Hz
+#   shape = soft                       soft, hard, fold
+#   sustain = 4                        1..20
+#   low cut = 120 Hz                   20..16000 Hz
+#   level = 0.5                        0..1
+
+effect: overdrive
+# Drafts of 2026-11-07 (#661), checked by the behaviour tests in src/fx-assemblies.test.ts, not yet listened to on the FM-1.
+
+preset: Warm Drive
+  drive = 3
+  tone = 4000 Hz
+  sustain = 2
+  low cut = 80 Hz
+  level = 0.6
+
+preset: Crunch
+  drive = 10
+  low cut = 150 Hz
+
+preset: Fuzz
+  drive = 24
+  tone = 2200 Hz
+  shape = hard
+  sustain = 10
+  low cut = 60 Hz
+  level = 0.4
+
+preset: Folded
+  tone = 5000 Hz
+  shape = fold
+  level = 0.7

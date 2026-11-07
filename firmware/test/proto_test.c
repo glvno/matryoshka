@@ -219,7 +219,7 @@ static int old_format(int n, char **argv)
 {
     static int32_t a_l[128 * 40], a_r[128 * 40], b_l[128 * 40], b_r[128 * 40];
     static uint8_t old[M1_PATCH_MAX];
-    int k, same = 0, other = 0, kept = 0, current = 0;
+    int k, same = 0, other = 0, kept = 0, current = 0, grown = 0;
     for (k = 0; k + 1 < n; k += 2) {
         long no, nn = 0;
         uint8_t *o = slurp(argv[k], &no), *nw = strcmp(argv[k + 1], "-") ? slurp(argv[k + 1], &nn) : 0;
@@ -264,6 +264,32 @@ static int old_format(int n, char **argv)
             fprintf(stderr, "FAIL %s: the upgraded binary renders differently\n", argv[k]);
             return 1;
         }
+        {                                                     /* every record grown to hold all its parameters (an edit on
+                                                               * the FM-1 of one a counted record leaves out: m1_patch_param,
+                                                               * eng_rec_grow) still plays the same; one that would not fit
+                                                               * leaves the binary as it was */
+            static uint8_t was[M1_PATCH_MAX];
+            for (m = 0; m < m1_cur[2]; m++) {
+                uint32_t at = m1_record(m), wl = m1_cur_len;
+                CHECK(at);
+                memcpy(was, m1_cur, m1_cur_len);
+                if (eng_rec_grow(m1_cur, &m1_cur_len, M1_PATCH_MAX, m, eng_npar(&DEFS[m1_cur[at] & 0x7Fu], m1_cur[1])))
+                    CHECK(m1_cur_len == wl && !memcmp(was, m1_cur, wl));
+                else
+                    grown++;
+            }
+            CHECK(m1_valid(m1_cur, m1_cur_len));
+            CHECK(eng_load(m1_cur, m1_cur_len) == 0);
+            E.tick_acc = E.ticks = 0;
+            E.idle_blk = 0;
+            run(b_l, b_r);
+            eng_all_notes_off();
+            if (memcmp(a_l, b_l, sizeof a_l) || memcmp(a_r, b_r, sizeof a_r)) {
+                fprintf(stderr, "FAIL %s: the grown binary renders differently\n", argv[k]);
+                return 1;
+            }
+            m1_set_current(old, (uint32_t)no);
+        }
         for (m = 0; m < old[2]; m++)
             for (r = 0; r < 8u; r++) {
                 char x[32], y[32];
@@ -279,8 +305,8 @@ static int old_format(int n, char **argv)
         free(o);
         free(nw);
     }
-    printf("older format ok: %d binaries load, upgrade and render bit-identically; %d upgraded as today's encoder writes them, %d differ, %d too big to upgrade, %d already in today's format\n",
-           n / 2, same, other, kept, current);
+    printf("older format ok: %d binaries load, upgrade and render bit-identically; %d upgraded as today's encoder writes them, %d differ, %d too big to upgrade, %d already in today's format; %d records grown to all their parameters render the same\n",
+           n / 2, same, other, kept, current, grown);
     return 0;
 }
 
@@ -641,7 +667,8 @@ int main(int argc, char **argv)
     CHECK(memcmp(a_l, b_l, sizeof a_l) == 0 && memcmp(a_r, b_r, sizeof a_r) == 0);
     /* the stored copy carries the live parameter */
     {
-        uint32_t at2 = m1_record(mod) + 1u + 4u * par, at3 = m1_record(amod) + 1u + 4u * DEFS[m1_cur[m1_record(amod)]].npar + 4u * ain;
+        uint32_t at2 = m1_record(mod) + eng_rec_head(m1_cur[1]) + 4u * par;
+        uint32_t at3 = m1_record(amod) + eng_rec_head(m1_cur[1]) + 4u * eng_rec_npar(m1_cur, m1_record(amod)) + 4u * ain;
         CHECK((int32_t)((uint32_t)m1_cur[at2] | (uint32_t)m1_cur[at2 + 1] << 8 | (uint32_t)m1_cur[at2 + 2] << 16 | (uint32_t)m1_cur[at2 + 3] << 24) == val);
         CHECK((int32_t)((uint32_t)m1_cur[at3] | (uint32_t)m1_cur[at3 + 1] << 8 | (uint32_t)m1_cur[at3 + 2] << 16 | (uint32_t)m1_cur[at3 + 3] << 24) == aval);
     }
@@ -712,8 +739,10 @@ int main(int argc, char **argv)
         uint8_t q[16] = {0x7D, 0x4D, 0x31, C_TEMPO}, pl[3], p[8];
         uint32_t n, rec, own;
         CHECK(m >= 0);
-        rec = m1_record((uint32_t)m) + 1u + 4u * FM1_P_TEMPO;
-        own = (uint32_t)m1_cur[rec] | (uint32_t)m1_cur[rec + 1] << 8 | (uint32_t)m1_cur[rec + 2] << 16 | (uint32_t)m1_cur[rec + 3] << 24;
+        rec = m1_record((uint32_t)m) + eng_rec_head(m1_cur[1]) + 4u * FM1_P_TEMPO;
+        own = FM1_P_TEMPO < eng_rec_npar(m1_cur, m1_record((uint32_t)m))   /* (a counted record may leave it out at its default) */
+            ? (uint32_t)m1_cur[rec] | (uint32_t)m1_cur[rec + 1] << 8 | (uint32_t)m1_cur[rec + 2] << 16 | (uint32_t)m1_cur[rec + 3] << 24
+            : (uint32_t)DEFS[T_FM1].pdef[FM1_P_TEMPO];
         pl[0] = 0; pl[1] = 133; pl[2] = 0;                     /* GLOBAL at 133 */
         n = 4u + m1_pack7(pl, 3u, q + 4);
         nreplies = 0;
@@ -724,7 +753,7 @@ int main(int argc, char **argv)
             uint8_t pp[6] = {(uint8_t)m, FM1_P_TEMPO, 0, 0, 140, 0}, fq[16] = {0x7D, 0x4D, 0x31, C_PARAM};
             uint32_t w = 4u + m1_pack7(pp, 6u, fq + 4);
             CHECK(m1_handle(fq, w) == 1 && eng_tempo_global_get() == 140u);
-            CHECK(((uint32_t)m1_cur[rec] | (uint32_t)m1_cur[rec + 1] << 8 | (uint32_t)m1_cur[rec + 2] << 16 | (uint32_t)m1_cur[rec + 3] << 24) == own);
+            CHECK(FM1_P_TEMPO >= eng_rec_npar(m1_cur, m1_record((uint32_t)m)) || ((uint32_t)m1_cur[rec] | (uint32_t)m1_cur[rec + 1] << 8 | (uint32_t)m1_cur[rec + 2] << 16 | (uint32_t)m1_cur[rec + 3] << 24) == own);
             CHECK(gt_poll(2000u, 1) & 1u);                     /* (main.c then tells the editor: TEMPO_NOW) */
             nreplies = 0;
             m1_tempo_now();

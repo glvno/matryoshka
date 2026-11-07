@@ -97,13 +97,15 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
     if (!at || mod >= pv_bin[2])
         return;
     for (i = 0; i < mod; i++) {
-        if (at >= pv_len || (pv_bin[at] & 0x7Fu) >= N_TYPES)
+        if (!eng_rec_ok(pv_bin, pv_len, at))
             return;
-        at += eng_record_size(&DEFS[pv_bin[at] & 0x7Fu], pv_bin[1]);
+        at += eng_rec_size(pv_bin, at);
     }
-    if (at >= pv_len || (pv_bin[at] & 0x7Fu) >= N_TYPES || par >= eng_npar(&DEFS[pv_bin[at] & 0x7Fu], pv_bin[1]) || DEF_FIXED(pv_bin[at] & 0x7Fu, par))
+    if (!eng_rec_ok(pv_bin, pv_len, at) || par >= eng_npar(&DEFS[pv_bin[at] & 0x7Fu], pv_bin[1]) || DEF_FIXED(pv_bin[at] & 0x7Fu, par))
         return;
-    at += 1u + 4u * par;
+    if (par >= eng_rec_npar(pv_bin, at) && (pv_bin[1] < ENG_COUNTED || eng_rec_grow(pv_bin, &pv_len, sizeof pv_bin, mod, par + 1u)))
+        return;
+    at += eng_rec_head(pv_bin[1]) + 4u * par;
     pv_bin[at] = (uint8_t)v;
     pv_bin[at + 1u] = (uint8_t)(v >> 8);
     pv_bin[at + 2u] = (uint8_t)(v >> 16);

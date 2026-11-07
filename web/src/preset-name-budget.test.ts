@@ -9,7 +9,7 @@ import { applyPreset, presetsOf } from './device-presets';
 import { instIsEngine } from './engines';
 import { DEFS } from './modules';
 import { devicesOf, NAME_MAX } from './pages';
-import { DEVICE, deviceBudget, deviceText, encodePatch } from './patchbin';
+import { DEVICE, deviceBudget, deviceText, encodePatch, layout } from './patchbin';
 import { FM1_PRESETS } from './presets';
 import type { Patch } from './patch';
 
@@ -54,7 +54,7 @@ describe('preset names and the FM-1 budget (#452)', () => {
   it('another device\'s name goes along while it fits, else it is left out (as the FM-1 does)', () => {
     const p = FM1_PRESETS['<7PH']();
     const drum = p.assemblies!.find((x) => !instIsEngine(p, x) && devicesOf(p, DEFS).some((d) => d.asm === x.id))!;
-    expect(bytes(p)).toBeGreaterThan(DEVICE.bytes - 'SNAPPY'.length);
+    expect(layout(p).base.bytes).toBeGreaterThan(DEVICE.bytes - 'SNAPPY'.length);   // (in the format it is written in: #667)
     const before = encodePatch(p).length;
     drum.preset = 'SNAPPY';
     expect(deviceBudget(p).fits).toBe(true);

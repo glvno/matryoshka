@@ -1,0 +1,36 @@
+# envelope filter: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# (no heading)
+#   sensitivity = 2                    0..4
+#   cutoff = 250 Hz                    20..16000 Hz
+#   range = 3 oct                      0..4 oct
+#   res = 0.7                          0..1
+#   level = 0.6                        -4..4
+
+effect: envelope filter
+# Drafts of 2026-11-07 (#661), checked by the behaviour tests in src/fx-assemblies.test.ts, not yet listened to on the FM-1.
+
+preset: Funk Quack
+  sensitivity = 2.5
+  cutoff = 300 Hz
+  res = 0.8
+
+preset: Subtle
+  sensitivity = 1
+  cutoff = 500 Hz
+  range = 2 oct
+  res = 0.4
+
+preset: Deep Sweep
+  sensitivity = 3
+  cutoff = 120 Hz
+  range = 4 oct
+  res = 0.6
+
+preset: Squelch
+  cutoff = 200 Hz
+  range = 3.5 oct
+  res = 0.92
