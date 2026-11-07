@@ -131,7 +131,7 @@ function glidePatch(src: 'legato' | 'jump' | 'none', glide: Record<string, numbe
   const kb = addAlloc(p, { parts: 1 }).id;
   const g = addModule(p, DEFS.glide, 0, 0);
   Object.assign(g.params, glide);
-  g.map = { p1: ['time'], p2: [], k1: [], k2: [], k3: [], k4: [] };
+  g.map = { p1: ['time'], p2: [] };
   if (range) g.range = { p1: { time: range } };
   const out = addModule(p, DEFS.output, 0, 0);
   out.params.level = 1;
