@@ -273,19 +273,21 @@ export function checkScenarios(h) {
         await emu.elapse(400);
         return r;
       };
+      /** the footer's mark: an icon, so it is read from SCREEN's texts (`3.5MM OFF`), not the emulator's pixels */
+      const mark = async () => (await emu.texts()).includes('3.5MM OFF');
       const held = (tag) => recorded(`out-35mm-${tag}`, async () => { await emu.key(C4, true); await emu.elapse(700); await emu.key(C4, false); await emu.elapse(200); });
       const level = (a) => (a.why ? 0 : rmsOf(a.l) + rmsOf(a.r));
       let was;
       try {
         await check('3.5mm out: T110 MONO L R opens, synced', !!(await fixture(FIXTURES.monoLR)));
         await check('3.5mm out: GLO > SYSTEM 2/2, its third row 3.5MM OUT reads ON or OFF', !!(await menuTab('3.5MM OUT')) && !!(was = await valueOf()), `${was}`);
-        await check('3.5mm out: K3 right: ON, no mark', (await setTo('ON')) === 'ON' && !(await emu.text('3.5MM OFF')), `${await valueOf()}`);
+        await check('3.5mm out: K3 right: ON, no mark', (await setTo('ON')) === 'ON' && !(await mark()), `${await valueOf()}`);
         await menuClose();
         const on = await held('on');
         await menuTab('3.5MM OUT');
-        await check('3.5mm out: K3 left: OFF, the footer\'s mark (3.5MM OFF)', (await setTo('OFF')) === 'OFF' && (await emu.text('3.5MM OFF')), `${await valueOf()}`);
+        await check('3.5mm out: K3 left: OFF, the footer\'s mark (3.5MM OFF)', (await setTo('OFF')) === 'OFF' && (await mark()), `${await valueOf()}`);
         await menuClose();
-        await check('3.5mm out: the mark on the device page too', await emu.text('3.5MM OFF'));
+        await check('3.5mm out: the mark on the device page too', await mark());
         const off = await held('off');
         if (!REAL) {
           await heard('3.5mm out: ON: the analog output (the I2S) plays', on, level(on) > FLOOR, `${db(level(on))} dB`);
@@ -297,13 +299,13 @@ export function checkScenarios(h) {
           await skip('3.5mm out: OFF silences the speaker and the jack', 'the rig records USB audio, not the analog output: the owner\'s ears prove it');
         }
         const p0 = (await emu.screen()).page, octOf = async () => (await emu.texts()).find((t) => /OCT/.test(t)), oct0 = await octOf();
-        const toastOn = await hold3(async () => (await emu.text('3.5MM OUT ON')) && !(await emu.text('3.5MM OFF')));
+        const toastOn = await hold3(async () => (await emu.text('3.5MM OUT ON')) && !(await mark()));
         await check('3.5mm out: HOME + OCT- + OCT+ held 2 s: ON, the top bar says 3.5MM OUT ON, the mark goes', toastOn);
         await check('3.5mm out: let go: no controls sheet, HOME went nowhere, the octave as it was', !(await emu.text('EVERYWHERE')) && (await emu.screen()).page === p0
           && (await octOf()) === oct0, `page ${(await emu.screen()).page}, ${await octOf()} (was ${oct0})`);
         const back = await held('combo-on');
         if (!REAL) await heard('3.5mm out: ON by the hold: the analog output plays again', back, level(back) > FLOOR, `${db(level(back))} dB`);
-        const toastOff = await hold3(async () => (await emu.text('3.5MM OUT OFF')) && (await emu.text('3.5MM OFF')));
+        const toastOff = await hold3(async () => (await emu.text('3.5MM OUT OFF')) && (await mark()));
         await check('3.5mm out: held 2 s again: OFF, the top bar says 3.5MM OUT OFF, the mark shows', toastOff);
         await emu.elapse(2000);                           // (the message gone: menuTab looks for the row's name)
         await menuTab('3.5MM OUT');
