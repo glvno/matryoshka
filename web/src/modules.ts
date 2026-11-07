@@ -522,9 +522,9 @@ export const delayClip = (x: number): number => (x >= 1.5 ? 1 : x <= -1.5 ? -1 :
 export const DELAY_RATES = ['44k', '22k', '11k'];
 /** the samples a line sample stands for at rate step r (DELAY_RATES): 1, 2, 4 */
 export const delayRateK = (r: number): number => 1 << Math.max(0, Math.min(DELAY_RATES.length - 1, Math.round(r)));
-/** the samples at a line's end that hold its rate filter's state at a lower rate (engine.c the same words): the line is
- * that much shorter there */
-export const DELAY_TAIL = 16;
+/** the samples at a line's end that hold its filters' state at a lower rate or with Tape on (engine.c the same words: the
+ * rate's low pass in words 0..7, Tape's in 8..14): the line is that much shorter there */
+export const DELAY_TAIL = 48;
 /** the low pass in front of a lower rate's line: 4-pole Butterworth (two sections of these Q), its corner 0.4 of the line's
  * rate (8.8 kHz at 22k, 4.4 kHz at 11k), in Hz at DEVICE_SR so the browser filters alike */
 export const DELAY_AA_Q = [0.5411961, 1.3065630];
@@ -535,6 +535,29 @@ export const delayAaCoefs = (sr: number, k: number): number[][] =>
     const kk = Math.tan((Math.PI * DELAY_AA_CORNER * DEVICE_SR) / (k * sr)), n = 1 / (1 + kk / q + kk * kk);
     return [kk * kk * n, 2 * (kk * kk - 1) * n, (1 - kk / q + kk * kk) * n];
   });
+
+/** Tape (#660): the gentle low pass and high pass in the feedback loop (one pole each, Hz), so each repeat loses some
+ * highs and lows; the loop runs through delayClip */
+export const DELAY_TAPE_LP = 4000;
+export const DELAY_TAPE_HP = 80;
+/** a one-pole's coefficient for a corner of `hz` at a line written every k samples at sample rate sr */
+export const delayTapePole = (hz: number, sr: number, k: number): number => 1 - Math.exp((-2 * Math.PI * hz * k) / sr);
+/** Tape's wow and flutter: two sines in the read position, their rates (Hz) and their depths at the `wow` row's top (ms
+ * either way of the time) */
+export const DELAY_WOW_HZ = 0.6;
+export const DELAY_FLUTTER_HZ = 6.7;
+export const DELAY_WOW_MS = 1;
+export const DELAY_FLUTTER_MS = 0.1;
+/** an accumulator's increment for `hz`, u32 turns a sample (engine.c the same, from defs.h at DEVICE_SR) */
+export const turnInc = (hz: number, sr: number): number => Math.round((hz * 2 ** 32) / sr);
+/** a depth in ms as 1/256 samples at sr */
+export const delayDepth8 = (ms: number, sr: number): number => Math.round((ms / 1000) * sr * 256);
+/** Tape's playback heads (#660): at 1x, 2x and 3x the time; the HEADS row picks these (bit j: head j + 1). Appended to,
+ * never reordered. The heads sound together at 1 / n each, into the output and the feedback. */
+export const DELAY_HEADS = ['1', '2', '3', '1+2', '1+3', '2+3', '1+2+3'];
+export const DELAY_HEAD_MASK = [1, 2, 4, 3, 5, 6, 7];
+/** 1 / n of the heads sounding, Q16 (engine.c the same table) */
+export const DELAY_HEAD_GAIN = [0, 65536, 32768, 21845];
 
 /** the top of the LFO's wide range, Hz (55 before #518) */
 export const LFO_WIDE_MAX = 80;
@@ -1405,6 +1428,13 @@ interface DelayState {
   rk: number;
   ph: number;
   lp: Float64Array;
+  /** Tape (#660): on (the last block's), the loop filters' states (A side, B side: low pass, high pass's low pass), the
+   * wow and flutter phases (u32 turns) and the read offset they gave last (1/256 samples) */
+  tp: boolean;
+  tl: Float64Array;
+  wph: number;
+  fph: number;
+  m: number;
 }
 
 /** the glide: the rate heads for 1 / 2^DELAY_GLIDE_SHIFT of the distance a sample (1024 samples, 23 ms), at most
@@ -1510,6 +1540,82 @@ function delaySlow(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, p
 }
 
 /**
+ * The Delay with Tape on (#660), at any rate (k = 1, 2, 4): the heads (bit j of `mask`: head j + 1 at j + 1 times the
+ * time, clamped to the line) read the line between two of its samples at their distance plus the wow and flutter offset
+ * (two sines, `wow` their depth, worked out per block and ramped across it), and sound together at 1 / n each. The
+ * feedback goes through a one-pole low pass and high pass (DELAY_TAPE_LP / HP) and, with the input (through the rate's
+ * low pass at a lower rate), through delayClip into the line. Distances in 1/256 samples. Plain and ping-pong, swell too.
+ */
+function delayTape(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, pp: boolean, k: number, len: number, wow: number, mask: number): void {
+  const buf = s.buf, half = Math.floor(len / 2), nl = pp ? half : len, top = (nl - 1) * k * 65536, lo8 = k * 256, hi8 = (nl - 1) * k * 256;
+  const o = c.out.out, r = c.out.r, lp = s.lp, tl = s.tl;
+  const [[b0, a1, a2], [c0, d1, d2]] = k > 1 ? delayAaCoefs(c.sr, k) : [[0, 0, 0], [0, 0, 0]];
+  const pl = delayTapePole(DELAY_TAPE_LP, c.sr, k), ph_ = delayTapePole(DELAY_TAPE_HP, c.sr, k);
+  const clampi = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
+  const heads = [1, 2, 3].filter((j) => mask & (1 << (j - 1)));
+  const g = DELAY_HEAD_GAIN[heads.length] / 65536;
+  // the wow and flutter offset at the block's end, ramped from the last one in whole steps (as the FM-1)
+  s.wph = (s.wph + turnInc(DELAY_WOW_HZ, c.sr) * c.n) % 2 ** 32;
+  s.fph = (s.fph + turnInc(DELAY_FLUTTER_HZ, c.sr) * c.n) % 2 ** 32;
+  const sinq = (ph: number): number => Math.round(Math.sin((2 * Math.PI * ph) / 2 ** 32) * 65536);
+  const wq = Math.round(Math.max(0, Math.min(1, wow)) * 65536);
+  const m1 = Math.floor((Math.floor((delayDepth8(DELAY_WOW_MS, c.sr) * sinq(s.wph) + delayDepth8(DELAY_FLUTTER_MS, c.sr) * sinq(s.fph)) / 65536) * wq) / 65536);
+  const m0 = s.m, step = Math.trunc((m1 - m0) / c.n);
+  const read = (side: number, d8: number): number => {
+    const rd = Math.floor((clampi(d8, lo8, hi8) + k - 1) / k);
+    let pos = s.w * 256 + (s.ph - k + 1) * (256 / k) - rd;
+    if (pos < 0) pos += nl * 256;
+    const i0 = Math.floor(pos / 256), i1 = i0 + 1 === nl ? 0 : i0 + 1, f = (pos - i0 * 256) / 256;
+    return buf[side + i0] + (buf[side + i1] - buf[side + i0]) * f;
+  };
+  for (let i = 0; i < c.n; i++) {
+    if (s.cur !== tq || s.rate) {
+      const diff = tq - s.cur;
+      s.rate += clampi(clampi(Math.floor(diff / (1 << DELAY_GLIDE_SHIFT)), -DELAY_GLIDE_MAX, DELAY_GLIDE_MAX) - s.rate, -DELAY_GLIDE_ACC, DELAY_GLIDE_ACC);
+      if (diff > -(1 << DELAY_GLIDE_SHIFT) && diff < 1 << DELAY_GLIDE_SHIFT && s.rate > -DELAY_GLIDE_ACC && s.rate < DELAY_GLIDE_ACC) {
+        s.cur = tq;
+        s.rate = 0;
+      } else s.cur = clampi(s.cur + s.rate, k * 65536, top);
+    }
+    const cur8 = Math.floor(s.cur / 256), m = m0 + step * (i + 1);
+    let ea = 0, eb = 0;
+    for (const j of heads) {
+      ea += read(0, j * cur8 + m);
+      if (pp) eb += read(half, j * cur8 + m);
+    }
+    ea *= g;
+    eb *= g;
+    const x = c.inp.in[i];
+    let y = x;
+    if (k > 1) {
+      const xs = Math.max(-32, Math.min(32, x));
+      const u = b0 * (xs + 2 * lp[0] + lp[1]) - a1 * lp[2] - a2 * lp[3];
+      lp[1] = lp[0]; lp[0] = xs; lp[3] = lp[2]; lp[2] = u;
+      y = c0 * (u + 2 * lp[4] + lp[5]) - d1 * lp[6] - d2 * lp[7];
+      lp[5] = lp[4]; lp[4] = u; lp[7] = lp[6]; lp[6] = y;
+    }
+    if (s.ph === k - 1) {
+      // the loop: low pass, then high pass (the low pass's output less a slower low pass of it), per side
+      const loop = (e: number, at: number): number => {
+        const v = Math.max(-32, Math.min(32, e * fb));
+        tl[at] += pl * (v - tl[at]);
+        tl[at + 1] += ph_ * (tl[at] - tl[at + 1]);
+        return tl[at] - tl[at + 1];
+      };
+      if (pp) {
+        buf[half + s.w] = delayClip(loop(ea, 2));
+        buf[s.w] = delayClip(y + loop(eb, 0));
+      } else buf[s.w] = delayClip(y + loop(ea, 0));
+      s.ph = 0;
+      s.w = s.w + 1 === nl ? 0 : s.w + 1;
+    } else s.ph++;
+    o[i] = x * (1 - mix) + ea * mix;
+    r[i] = pp ? x * (1 - mix) + eb * mix : o[i];
+  }
+  s.m = m0 + step * c.n;
+}
+
+/**
  * Delay. free: `time` in ms; sync: `time` picks a note length (DELAY_DIVS) at the tempo of the `clk` input (the Main module's
  * clock; 120 bpm until 24 pulses have come in). The tempo is the time of the last 24 pulses, smoothed. Its line holds
  * `length` (delayLine; set when the patch loads, ParamDef.fixed): the time, free or synced, plays up to it. Ping-pong
@@ -1539,27 +1645,44 @@ const delay: ModuleImpl<DelayState> = {
       param('swell', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 35 }),
       param('length', DELAY_LENGTH_MIN, DELAY_LENGTH_MAX, DELAY_LENGTH_DEFAULT, { unit: 'ms', step: 10, since: 50, fixed: true, altText: { when: 'rate', text: (v, p) => `${Math.round(v) * delayRateK(p.rate ?? 0)} ms` } }),
       param('rate', 0, DELAY_RATES.length - 1, 0, { step: 1, choices: DELAY_RATES, since: 51 }),
+      param('tape', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 51 }),
+      param('wow', 0, 1, 0.3, { step: 0.01, since: 51 }),
+      param('heads', 0, DELAY_HEADS.length - 1, 0, { step: 1, choices: DELAY_HEADS, since: 51 }),
     ],
   },
-  init: (sr) => ({ buf: new Float32Array(0), w: 0, cur: 0, rate: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2), rk: 0, ph: 0, lp: new Float64Array(8) }),
+  init: (sr) => ({ buf: new Float32Array(0), w: 0, cur: 0, rate: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2), rk: 0, ph: 0, lp: new Float64Array(8), tp: false, tl: new Float64Array(4), wph: 0, fph: 0, m: 0 }),
   process(c, s) {
     // the line its length holds (at this sample rate); a new length (an edit) starts an empty line, as the FM-1's load does
     const want = Math.round((c.sr * delayLine(c.p.length ?? DELAY_LENGTH_DEFAULT)) / DEVICE_SR);
     if (s.buf.length !== want) {
       s.buf = new Float32Array(want);
-      s.w = s.cur = s.rate = s.rk = 0;
+      s.w = s.cur = s.rate = s.rk = s.ph = s.wph = s.fph = s.m = 0;
+      s.tp = false;
+      s.lp.fill(0);
+      s.tl.fill(0);
     }
     // the rate (#659): a new one empties the line (its samples stand for another time) and starts the read where the time is
     const k = delayRateK(c.p.rate ?? 0);
+    const tape = (c.p.tape ?? 0) >= 0.5;
     if (s.rk !== k) {
       if (s.rk) {
         s.buf.fill(0);
         s.lp.fill(0);
-        s.w = s.ph = s.cur = s.rate = 0;
+        s.tl.fill(0);
+        s.w = s.ph = s.cur = s.rate = s.wph = s.fph = s.m = 0;
       }
       s.rk = k;
+      s.tp = tape;
     }
-    const len = k > 1 ? s.buf.length - DELAY_TAIL : s.buf.length;
+    // Tape on or off (#660) keeps the line: only its tail changes role (Tape's state, or line again), so it is zeroed (at a
+    // lower rate the rate's filter keeps its words)
+    if (s.tp !== tape) {
+      s.buf.fill(0, s.buf.length - DELAY_TAIL + (k > 1 ? 16 : 0));
+      s.tl.fill(0);
+      s.wph = s.fph = s.m = 0;
+      s.tp = tape;
+    }
+    const len = k > 1 || tape ? s.buf.length - DELAY_TAIL : s.buf.length;
     const half = Math.floor(len / 2);
     const pp = (c.p.pingpong ?? 0) >= 0.5;
     if (c.connected.clk) {
@@ -1587,7 +1710,7 @@ const delay: ModuleImpl<DelayState> = {
     const swell = (c.p.swell ?? 0) >= 0.5;
     const fb = ((c.p.fb ?? 0) * (swell ? DELAY_SWELL_NUM : 1)) / (swell ? DELAY_SWELL_DEN : 1);
     // swell: the loop through a soft clip (it holds a feedback past 1 at about full level instead of running away)
-    const clip = swell ? delayClip : (x: number): number => x;
+    const clip = swell || tape ? delayClip : (x: number): number => x;
     const mix = c.p.mix ?? 0;
     const o = c.out.out;
     const r = c.out.r;
@@ -1595,6 +1718,11 @@ const delay: ModuleImpl<DelayState> = {
     const top = ((pp ? half : len) - 1) * k;
     const d = Math.max(k, Math.min(top, samples));
     if (s.cur === 0 || s.cur > top * 65536) s.cur = s.cur === 0 ? d * 65536 : top * 65536;
+    if (tape) {
+      if (s.w >= (pp ? half : len)) s.w = 0;
+      delayTape(c, s, d * 65536, fb, mix, pp, k, len, c.p.wow ?? 0, DELAY_HEAD_MASK[Math.max(0, Math.min(DELAY_HEADS.length - 1, Math.round(c.p.heads ?? 0)))]);
+      return;
+    }
     if (k > 1) {
       delaySlow(c, s, d * 65536, fb, mix, pp, clip, k, len);
       return;

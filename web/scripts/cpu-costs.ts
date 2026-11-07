@@ -183,6 +183,8 @@ function bends(values: number[], costs: number[][], thr: number, step: boolean):
 }
 
 const GRID_MAX = 16384;
+/** more settings a type's choices are tried in: the Delay's heads (#660) cost only with Tape on */
+const CHOICE_CONTEXTS: Record<string, KitCfg[]> = { delay: [{ params: { tape: 1 } }] };
 /** settings left out of the dims search, counted another way (cpu.ts OSC_PM_SUM): the oscillator's summed phase modulation
  * (#518) runs its FM path as one patched pm input does, plus the summing loop (TypeCost.pmSum); as dims they would push
  * its wave and pitch out of the grid */
@@ -228,7 +230,7 @@ async function typeCost(type: string): Promise<TypeCost> {
       }
       const t = tries(pd);
       if (!t.discrete) return void numbers.push(pd);
-      const effect = await effectOf(type, (v) => ({ [pd.name]: v }), t.values, [{}, { inputs: allInputs }]);
+      const effect = await effectOf(type, (v) => ({ [pd.name]: v }), t.values, [{}, { inputs: allInputs }, ...(CHOICE_CONTEXTS[type] ?? [])]);
       if (effect > thr) dims.push({ dim: { param: pd.name, values: t.values }, values: t.values, effect, order, set: setParam(pd.name) });
     }),
   );

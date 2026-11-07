@@ -48,7 +48,7 @@ function render(p: Patch, secs: number): { l: Float32Array; r: Float32Array; e: 
 
 describe('the Delay\'s rate row', () => {
   it('is a row of format 51 with three steps, 44k by default', () => {
-    expect(DEFS.delay.params.at(-1)).toBe(ratePd);
+    expect(DEFS.delay.params.indexOf(ratePd)).toBe(8);
     expect(ratePd).toMatchObject({ min: 0, max: 2, default: 0, since: FORMAT_1_11, choices: ['44k', '22k', '11k'] });
     expect(DELAY_RATES.map((_, r) => delayRateK(r))).toEqual([1, 2, 4]);
     expect(DELAY_REACH_MAX).toBe(DELAY_LENGTH_MAX * 4);
