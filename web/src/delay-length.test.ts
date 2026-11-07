@@ -64,7 +64,7 @@ describe('the Delay\'s length row', () => {
   it('is a row of format 50 set when the patch loads; an older Delay reads 700 ms, the line it had', () => {
     expect(lengthPd).toMatchObject({ min: 10, max: DELAY_LENGTH_MAX, default: DELAY_LENGTH_DEFAULT, since: 50, fixed: true, unit: 'ms' });
     expect(DELAY_LENGTH_DEFAULT).toBe(700);
-    expect(DEFS.delay.params.at(-1)).toBe(lengthPd);
+    expect(DEFS.delay.params.at(-2)).toBe(lengthPd);   // (the rate row, #659, after it)
     expect(delayLine(700)).toBe(30944);   // engine.c DELAY_LEN, every Delay's line before the row
     for (const ms of [10, 11, 120, 333, 700, 1001, 1900]) {
       expect(delayLine(ms) % 2).toBe(0);
@@ -109,13 +109,14 @@ describe('the Delay\'s length row', () => {
   });
 
   it('modulation and morph past 700 ms stay in the stretch; within the range they are as before', () => {
-    expect(topOf(timePd)).toBe(DELAY_LENGTH_MAX);
+    expect(topOf(timePd)).toBe(DELAY_LENGTH_MAX * 4);   // (the longest length at the lowest rate, #659)
     expect(modulate(timePd, 300, 1)).toBe(DELAY_TIME_MAX);
     expect(modulate(timePd, 300, -1)).toBe(1);
     expect(modulate(timePd, 1200, 0)).toBe(1200);
-    expect(modulate(timePd, 1600, 1)).toBe(DELAY_LENGTH_MAX);
+    expect(modulate(timePd, 1600, 1)).toBe(1600 + DELAY_TIME_MAX - 1);   // (within the stretch: the longest time at the lowest rate, #659)
+    expect(modulate(timePd, 7000, 1)).toBe(DELAY_LENGTH_MAX * 4);
     expect(morphValue(timePd, 300, 1200, 0.5)).toBe(750);
-    expect(engineC).toMatch(/#define DELAY_TIME_TOP \(DELAY_LENGTH_MAX \* ENG_ONE\)/);
+    expect(engineC).toMatch(/#define DELAY_TIME_TOP \(DELAY_REACH_MAX \* ENG_ONE\)/);
   });
 
   it('a time past 700 ms plays on the FM-1; only a morph B side past it is the browser\'s', () => {

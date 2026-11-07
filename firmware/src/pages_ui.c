@@ -134,6 +134,12 @@ static int32_t poly_max(uint32_t f) { return f == 0u || f == ENG_POLY_STACK ? EN
 static const ppage_t *pages_now(void);
 static void caps(char *out, const char *s, uint32_t n, uint32_t max);
 
+/* a Delay's rate step's k (#659): 1, 2 or 4 samples a line sample */
+static int32_t dly_k(uint32_t m)
+{
+    return 1 << clampi((eng_get_param(m, DELAY_P_RATE) + 32768) >> 16, 0, DELAY_NRATE - 1);
+}
+
 /* a Selector's position row spans the positions in use, 1..count (#358: it never offers one that plays nothing): the
  * top of row j of module m, Q16 (else the parameter's own, DEF_TOP) */
 static int32_t row_top(uint32_t m, uint32_t j, const def_t *d)
@@ -141,8 +147,8 @@ static int32_t row_top(uint32_t m, uint32_t j, const def_t *d)
     if (eng_type(m) == T_SELECT && j == SELECT_P_POS)
         return clampi((eng_get_param(m, SELECT_P_COUNT) + 32768) >> 16, 2, (int32_t)(d->pmax[j] >> 16)) << 16;
     if (eng_type(m) == T_DELAY && j == DELAY_P_TIME && eng_get_param(m, DELAY_P_SYNC) < 32768) {   /* a free Delay's time: up to
-                                                     * its length, half of it with ping-pong (modules.ts delayReach) */
-        int32_t l = clampi((eng_get_param(m, DELAY_P_LENGTH) + 32768) >> 16, DELAY_LENGTH_MIN, DELAY_LENGTH_MAX);
+                                                     * its length times its rate's k, half of it with ping-pong (modules.ts delayReach) */
+        int32_t l = clampi((eng_get_param(m, DELAY_P_LENGTH) + 32768) >> 16, DELAY_LENGTH_MIN, DELAY_LENGTH_MAX) * dly_k(m);
         return (eng_get_param(m, DELAY_P_PINGPONG) >= 32768 ? l / 2 : l) << 16;
     }
     return DEF_TOP(d, j);
@@ -671,7 +677,8 @@ static int pages_turn(uint32_t k, int32_t clicks, int fast, int fine, uint32_t *
             *v = clicks > 0 ? (f < *v ? f : *v) : (f > *v ? f : *v);
         }
     } else {
-        int32_t inc = d->pinc[j];
+        int32_t inc = d->pinc[j] * (eng_type(m) == T_DELAY && j == DELAY_P_TIME ? dly_k(m) : 1);   /* (a Delay's time: k times the
+                                                     * click at a lower rate, #659, so the knob spans the longer reach alike) */
         if (fine)                                       /* a fine click: a tenth of a click, never under the editor's step */
             inc = d->pstep[j] > inc / 10 ? d->pstep[j] : inc / 10;
         *v = clampi(eng_get_param(m, j) + clicks * (fast ? 5 : 1) * inc, d->pmin[j], row_top(m, j, d));   /* (past pmax: a stretch) */
@@ -700,7 +707,7 @@ static int pages_lock_turn(const ppage_t *pg, uint32_t k, int32_t cur, int32_t c
     } else if (eng_param_is_log(m, j))
         *v = eng_step_value(m, j, cur, clicks * (fast ? 5 : 1), 655);
     else
-        *v = clampi(cur + clicks * (fast ? 5 : 1) * d->pinc[j], d->pmin[j], row_top(m, j, d));
+        *v = clampi(cur + clicks * (fast ? 5 : 1) * d->pinc[j] * (eng_type(m) == T_DELAY && j == DELAY_P_TIME ? dly_k(m) : 1), d->pmin[j], row_top(m, j, d));
     return 0;
 }
 
@@ -818,7 +825,7 @@ static void value_parts(const def_t *d, uint32_t j, int32_t q16, char *num, char
 }
 
 /* the value a row plays, where a switch of its module stretches it (the editor's card shows the same): the ADSR's long
- * (decay and release x 2.4), the Delay's swell (feedback x 198 / 95) and the LFO's free rate in its slow / fast range
+ * (decay and release x 2.4), the Delay's swell (feedback x 198 / 95), its length at a lower rate (x 2, x 4) and the LFO's free rate in its slow / fast range
  * (/ 25, x 2: modules.ts lfoRateText); the bar keeps the knob's range */
 static int32_t stretched(uint32_t m, uint32_t j, int32_t v)
 {
@@ -831,6 +838,8 @@ static int32_t stretched(uint32_t m, uint32_t j, int32_t v)
         return (int32_t)(((int64_t)v * ADSR_LONG_Q16) >> 16);
     if (t == T_DELAY && j == DELAY_P_FB && eng_get_param(m, DELAY_P_SWELL) >= 32768)
         return (int32_t)((int64_t)v * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
+    if (t == T_DELAY && j == DELAY_P_LENGTH)            /* the time the line holds at its rate (#659) */
+        return v * dly_k(m);
     return v;
 }
 
