@@ -1164,7 +1164,9 @@
     "res": 0.1,
     "drive": 1,
     "cvamt": 4,
-    "track": 0
+    "track": 0,
+    "diode": 0,
+    "stsat": 0
    },
    "att": [
     1,
@@ -1391,7 +1393,9 @@
     "res": 0.1,
     "drive": 1,
     "cvamt": 4,
-    "track": 0
+    "track": 0,
+    "diode": 0,
+    "stsat": 0
    },
    "att": [
     1,

@@ -323,7 +323,7 @@ const built = define('Expander S XL', (b: Def) => {
     b.wire(...ALL.sync, sync, 'p1');
     // the VCF: its input mixer is the oscillators' VCAs; cutoff moved by its source (envelope 2 or the LFO) and the
     // keyboard's VCF knob
-    const flt = add('flt', 'filter', 4, 0, { cutoff: Math.round(1100 * Math.pow(2, f.bright / 12)), res: 0.35, cvamt: 2 });
+    const flt = add('flt', 'filter', 4, 0, { cutoff: Math.round(1100 * Math.pow(2, f.bright / 12)), res: 0.35, cvamt: 2, drive: 1 }); // drive: the SEM's filter saturates gently (#670)
     b.wire(lv1, 'out', flt, 'in');
     b.wire(lv2, 'out', flt, 'in');
     b.wire(...ALL.cutoff, flt, 'cv');

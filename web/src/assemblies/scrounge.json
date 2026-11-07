@@ -721,7 +721,8 @@
         "cvamt": 2,
         "track": 0,
         "morph": 0,
-        "osc": 0
+        "osc": 0,
+        "drive": 0
       },
       "att": [
         1,
@@ -1101,7 +1102,9 @@
         "res": 0.7,
         "drive": 2,
         "cvamt": 4,
-        "track": 0
+        "track": 0,
+        "diode": 0,
+        "stsat": 0
       },
       "att": [
         1,

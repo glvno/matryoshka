@@ -324,7 +324,9 @@
         "res": 0.2,
         "drive": 1,
         "cvamt": 3.5,
-        "track": 0
+        "track": 0,
+        "diode": 0,
+        "stsat": 1
       },
       "att": [
         1,

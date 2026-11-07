@@ -53,6 +53,9 @@ describe('preset names and the FM-1 budget (#452)', () => {
 
   it('another device\'s name goes along while it fits, else it is left out (as the FM-1 does)', () => {
     const p = FM1_PRESETS['<7PH']();
+    // its Silver Box's diode mode (#671) puts it in format 51, whose counted records leave it room: the Moog mode keeps
+    // it in its older format, near the FM-1's bytes
+    for (const m of p.modules) if (m.type === 'ladder') m.params.diode = 0;
     const drum = p.assemblies!.find((x) => !instIsEngine(p, x) && devicesOf(p, DEFS).some((d) => d.asm === x.id))!;
     expect(layout(p).base.bytes).toBeGreaterThan(DEVICE.bytes - 'SNAPPY'.length);   // (in the format it is written in: #667)
     const before = encodePatch(p).length;

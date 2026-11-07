@@ -97,7 +97,7 @@ preset: Sync Lead
   s = 0.3
   r = 0.3 s
   portamento = 0.1
-  vca level = 3.26
+  vca level = 3.21
   gain = 0
 
 # The LFO clocks noise into the sample and hold, which steps the filter and nudges the pitch; the AR repeats with the LFO while a key is held.
@@ -124,7 +124,7 @@ preset: S/H Bleeps
   release = 0.15 s
   ar trig = 2
   repeat = 1
-  vca level = 1.42
+  vca level = 1.45
   gain = 0
 
 # The ring modulator on two VCOs an inharmonic 16 semitones apart, the ADSR on the VCA: a metallic bell.
@@ -145,7 +145,7 @@ preset: Ring Bell
   d = 1.2 s
   s = 0
   r = 1.2 s
-  vca level = 2.49
+  vca level = 2.43
   gain = 0
 
 # Both VCOs an octave down into a low, punchy filter on the ADSR.
@@ -169,7 +169,7 @@ preset: Punch Bass
   s = 0.3
   r = 0.2 s
   portamento = 0
-  vca level = 3.93
+  vca level = 3.95
   gain = 0
 
 # LFO vibrato on VCO 1 and pulse width modulation on VCO 2, a little portamento: the lead.

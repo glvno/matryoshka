@@ -231,9 +231,10 @@ enum {
 #define FILTER_P_TRACK 3
 #define FILTER_P_MORPH 4
 #define FILTER_P_OSC 5
+#define FILTER_P_DRIVE 6
 #define FILTER_NIN 5
 #define FILTER_NOUT 9
-#define FILTER_NPAR 6
+#define FILTER_NPAR 7
 #define FILTER_CVBASE 3
 #define FILTER_NDATA 0
 
@@ -575,9 +576,11 @@ enum {
 #define LADDER_P_DRIVE 2
 #define LADDER_P_CVAMT 3
 #define LADDER_P_TRACK 4
+#define LADDER_P_DIODE 5
+#define LADDER_P_STSAT 6
 #define LADDER_NIN 5
 #define LADDER_NOUT 2
-#define LADDER_NPAR 5
+#define LADDER_NPAR 7
 #define LADDER_CVBASE 2
 #define LADDER_NDATA 0
 
@@ -1131,6 +1134,10 @@ static const int32_t RATIO_DETUNE_OCT[7] = {-142, -95, -47, 0, 47, 95, 142};
 #define FILTER_OSC_GAIN_Q24 93952410   /* the damping's growth per unit of res past it, times the band pass squared */
 #define FILTER_OSC_CLIP_Q20 2097152   /* the band-pass state is held to +-this there */
 #define FILTER_OSC_SEED_Q20 1024   /* the band-pass state a filter at rest starts from */
+#define FILTER_DRIVE_KNEE_Q20 1572864   /* the Multimode filter's drive (#670): the soft clip's knee */
+#define FILTER_DRIVE_TOP_Q20 67108864   /* the clip's level drive r |bp| is held to this */
+#define DIODE_IW180_Q24 14036535   /* the Ladder's diode mode (#671): 1 / the loop's -180 degree frequency */
+#define DIODE_KCRIT_Q24 308499448   /* the loop gain that self-oscillates there (res 1) */
 #define RANGE_T_MAX 64   /* the Range module (#526): t within +-this input ranges with clamp off */
 #define SHREG_STAGES 8   /* the Shift register's stages (#438) */
 #define SHREG_PAT_SEED 0x5bd1e995u   /* mixed with the instance seed: its starting pattern */
@@ -1283,16 +1290,16 @@ static const uint8_t VCA_LOG[] = {0};
 static const char *const VCA_UNIT[] = {""};
 static const char *const *const VCA_CH[] = {0};
 static const char *const FILTER_INNAMES[] = {"IN", "CV", "MORPH", "P1", "P2"};
-static const int32_t FILTER_MIN[] = {1310720, 0, 0, 0, 0, 0};
-static const int32_t FILTER_MAX[] = {1048576000, 65536, 262144, 65536, 65536, 65536};
-static const int32_t FILTER_DEF[] = {78643200, 13107, 65536, 0, 0, 0};
-static const int32_t FILTER_INC[] = {10485760, 655, 2621, 65536, 655, 65536};
-static const int32_t FILTER_STEP[] = {65536, 655, 655, 65536, 655, 65536};
-static const uint8_t FILTER_SINCE[] = {0, 0, 0, 0, 0, 47};
-static const char *const FILTER_PN[] = {"CUTOFF", "RES", "CVAMT", "TRACK", "MORPH", "OSC"};
-static const uint8_t FILTER_LOG[] = {2, 0, 0, 0, 0, 0};
-static const char *const FILTER_UNIT[] = {"HZ", "", "OCT", "", "", ""};
-static const char *const *const FILTER_CH[] = {0, 0, 0, ADSR_CH4, 0, ADSR_CH4};
+static const int32_t FILTER_MIN[] = {1310720, 0, 0, 0, 0, 0, 0};
+static const int32_t FILTER_MAX[] = {1048576000, 65536, 262144, 65536, 65536, 65536, 524288};
+static const int32_t FILTER_DEF[] = {78643200, 13107, 65536, 0, 0, 0, 0};
+static const int32_t FILTER_INC[] = {10485760, 655, 2621, 65536, 655, 65536, 5243};
+static const int32_t FILTER_STEP[] = {65536, 655, 655, 65536, 655, 65536, 655};
+static const uint8_t FILTER_SINCE[] = {0, 0, 0, 0, 0, 47, 51};
+static const char *const FILTER_PN[] = {"CUTOFF", "RES", "CVAMT", "TRACK", "MORPH", "OSC", "DRIVE"};
+static const uint8_t FILTER_LOG[] = {2, 0, 0, 0, 0, 0, 0};
+static const char *const FILTER_UNIT[] = {"HZ", "", "OCT", "", "", "", ""};
+static const char *const *const FILTER_CH[] = {0, 0, 0, ADSR_CH4, 0, ADSR_CH4, 0};
 static const char *const MIXER_INNAMES[] = {"IN1", "IN2", "IN3", "IN4", "P1", "P2"};
 static const int32_t MIXER_MIN[] = {0, 0, 0, 0};
 static const int32_t MIXER_MAX[] = {65536, 65536, 65536, 65536};
@@ -1509,15 +1516,16 @@ static const uint8_t CRUSH_LOG[] = {0, 0, 0};
 static const char *const CRUSH_UNIT[] = {"", "", ""};
 static const char *const *const CRUSH_CH[] = {0, 0, ADSR_CH4};
 static const char *const LADDER_INNAMES[] = {"IN", "CV", "P1", "P2", "FM"};
-static const int32_t LADDER_MIN[] = {1310720, 0, 65536, 0, 0};
-static const int32_t LADDER_MAX[] = {1048576000, 65536, 524288, 262144, 65536};
-static const int32_t LADDER_DEF[] = {78643200, 13107, 65536, 65536, 0};
-static const int32_t LADDER_INC[] = {10485760, 655, 4588, 2621, 65536};
-static const int32_t LADDER_STEP[] = {65536, 655, 655, 655, 65536};
-static const char *const LADDER_PN[] = {"CUTOFF", "RES", "DRIVE", "CVAMT", "TRACK"};
-static const uint8_t LADDER_LOG[] = {2, 0, 1, 0, 0};
-static const char *const LADDER_UNIT[] = {"HZ", "", "", "OCT", ""};
-static const char *const *const LADDER_CH[] = {0, 0, 0, 0, ADSR_CH4};
+static const int32_t LADDER_MIN[] = {1310720, 0, 65536, 0, 0, 0, 0};
+static const int32_t LADDER_MAX[] = {1048576000, 65536, 524288, 262144, 65536, 65536, 65536};
+static const int32_t LADDER_DEF[] = {78643200, 13107, 65536, 65536, 0, 0, 0};
+static const int32_t LADDER_INC[] = {10485760, 655, 4588, 2621, 65536, 65536, 65536};
+static const int32_t LADDER_STEP[] = {65536, 655, 655, 655, 65536, 65536, 65536};
+static const uint8_t LADDER_SINCE[] = {0, 0, 0, 0, 0, 51, 51};
+static const char *const LADDER_PN[] = {"CUTOFF", "RES", "DRIVE", "CVAMT", "TRACK", "DIODE", "STSAT"};
+static const uint8_t LADDER_LOG[] = {2, 0, 1, 0, 0, 0, 0};
+static const char *const LADDER_UNIT[] = {"HZ", "", "", "OCT", "", "", ""};
+static const char *const *const LADDER_CH[] = {0, 0, 0, 0, ADSR_CH4, ADSR_CH4, ADSR_CH4};
 static const char *const DYN_INNAMES[] = {"IN", "SIDE", "P1", "P2"};
 static const int32_t DYN_MIN[] = {-2621440, 65536, 66, 655, 0};
 static const int32_t DYN_MAX[] = {0, 1310720, 13107, 65536, 1572864};
@@ -1802,7 +1810,7 @@ static const def_t DEFS[N_TYPES] = {
     {VOWEL_NIN, VOWEL_NOUT, VOWEL_NPAR, 2, VOWEL_CVBASE, 0, VOWEL_NDATA, 1, VOWEL_MIN, VOWEL_MAX, VOWEL_DEF, VOWEL_INC, "FORMANT FILTER", VOWEL_PN, VOWEL_INNAMES, VOWEL_LOG, VOWEL_UNIT, VOWEL_CH, 0, 0, VOWEL_STEP},   /* vowel */
     {PHASER_NIN, PHASER_NOUT, PHASER_NPAR, 0, PHASER_CVBASE, 0, PHASER_NDATA, 1, PHASER_MIN, PHASER_MAX, PHASER_DEF, PHASER_INC, "PHASER", PHASER_PN, PHASER_INNAMES, PHASER_LOG, PHASER_UNIT, PHASER_CH, 0, 0, PHASER_STEP},   /* phaser */
     {CRUSH_NIN, CRUSH_NOUT, CRUSH_NPAR, 0, CRUSH_CVBASE, 0, CRUSH_NDATA, 1, CRUSH_MIN, CRUSH_MAX, CRUSH_DEF, CRUSH_INC, "BITCRUSHER", CRUSH_PN, CRUSH_INNAMES, CRUSH_LOG, CRUSH_UNIT, CRUSH_CH, 0, 0, CRUSH_STEP},   /* crush */
-    {LADDER_NIN, LADDER_NOUT, LADDER_NPAR, 2, LADDER_CVBASE, 0, LADDER_NDATA, 3, LADDER_MIN, LADDER_MAX, LADDER_DEF, LADDER_INC, "LADDER", LADDER_PN, LADDER_INNAMES, LADDER_LOG, LADDER_UNIT, LADDER_CH, 0, 0, LADDER_STEP},   /* ladder */
+    {LADDER_NIN, LADDER_NOUT, LADDER_NPAR, 2, LADDER_CVBASE, 0, LADDER_NDATA, 3, LADDER_MIN, LADDER_MAX, LADDER_DEF, LADDER_INC, "LADDER", LADDER_PN, LADDER_INNAMES, LADDER_LOG, LADDER_UNIT, LADDER_CH, 0, LADDER_SINCE, LADDER_STEP},   /* ladder */
     {DYN_NIN, DYN_NOUT, DYN_NPAR, 0, DYN_CVBASE, 0, DYN_NDATA, 1, DYN_MIN, DYN_MAX, DYN_DEF, DYN_INC, "COMPRESSOR", DYN_PN, DYN_INNAMES, DYN_LOG, DYN_UNIT, DYN_CH, 0, 0, DYN_STEP},   /* dyn */
     {MATH_NIN, MATH_NOUT, MATH_NPAR, 0, MATH_CVBASE, -1, MATH_NDATA, 128, MATH_MIN, MATH_MAX, MATH_DEF, MATH_INC, "MATH", MATH_PN, MATH_INNAMES, MATH_LOG, MATH_UNIT, MATH_CH, 0, 0, MATH_STEP},   /* math */
     {LOGIC_NIN, LOGIC_NOUT, LOGIC_NPAR, 0, LOGIC_CVBASE, -1, LOGIC_NDATA, 0, LOGIC_MIN, LOGIC_MAX, LOGIC_DEF, LOGIC_INC, "LOGIC", LOGIC_PN, LOGIC_INNAMES, LOGIC_LOG, LOGIC_UNIT, LOGIC_CH, 0, 0, LOGIC_STEP},   /* logic */

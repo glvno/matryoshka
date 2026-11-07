@@ -344,7 +344,9 @@
     "res": 0.2,
     "drive": 1,
     "cvamt": 3.5,
-    "track": 0
+    "track": 0,
+    "diode": 0,
+    "stsat": 1
    },
    "att": [
     1,
@@ -457,7 +459,7 @@
    "x": 2640,
    "y": 20,
    "params": {
-    "level": 0.66
+    "level": 0.69
    }
   },
   {

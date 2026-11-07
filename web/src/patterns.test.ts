@@ -94,7 +94,9 @@ describe('patterns and songs: the binary (format 48)', () => {
       // switch on a cable, #681)
       const dev = deviceView(p, true).patch;
       const cabled = dev.cables.some((c) => VOICING_CABLE_INPUTS.includes(c.to.port) && dev.modules.find((m) => m.id === c.to.module)?.type === 'part');
-      if (layout(p).base.bytes <= DEVICE.bytes && !cabled) expect(b[1], name).toBeLessThan(VERSION);
+      // (or 51 for a parameter appended in format 51 set off its default: the filters' drive, diode and stsat, #670..#672)
+      const uses51 = dev.modules.some((m) => DEFS[m.type].params.some((q) => q.since === VERSION && (m.params[q.name] ?? q.default) !== q.default));
+      if (layout(p).base.bytes <= DEVICE.bytes && !cabled && !uses51) expect(b[1], name).toBeLessThan(VERSION);
       expect(b[7] & (FLAG_PATTERNS >> 8), name).toBe(0);
     }
   });

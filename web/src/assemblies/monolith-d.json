@@ -851,7 +851,9 @@
         "res": 0.3,
         "drive": 1.4,
         "cvamt": 1,
-        "track": 0
+        "track": 0,
+        "diode": 0,
+        "stsat": 1
       },
       "att": [
         1,
@@ -928,7 +930,7 @@
       "x": 1920,
       "y": 0,
       "params": {
-        "gain": 0.44
+        "gain": 0.47
       },
       "att": [
         1,

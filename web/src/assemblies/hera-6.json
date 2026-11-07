@@ -246,7 +246,9 @@
         "res": 0.15,
         "drive": 1,
         "cvamt": 2.2,
-        "track": 1
+        "track": 1,
+        "diode": 0,
+        "stsat": 1
       },
       "att": [
         1,
@@ -300,7 +302,7 @@
       "x": 1280,
       "y": 0,
       "params": {
-        "gain": 1
+        "gain": 1.01
       },
       "att": [
         1,
@@ -328,7 +330,8 @@
         "cvamt": 1,
         "track": 0,
         "morph": 0,
-        "osc": 0
+        "osc": 0,
+        "drive": 0
       },
       "att": [
         1,

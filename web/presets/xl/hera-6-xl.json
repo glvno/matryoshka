@@ -267,7 +267,8 @@
     "cvamt": 1,
     "track": 0,
     "morph": 0,
-    "osc": 0
+    "osc": 0,
+    "drive": 1
    },
    "att": [
     1,
@@ -321,7 +322,7 @@
    "x": 1300,
    "y": 60,
    "params": {
-    "gain": 1
+    "gain": 1.01
    },
    "att": [
     1,
@@ -349,7 +350,8 @@
     "cvamt": 1,
     "track": 0,
     "morph": 0,
-    "osc": 0
+    "osc": 0,
+    "drive": 0
    },
    "att": [
     1,
@@ -1405,7 +1407,8 @@
     "cvamt": 1,
     "track": 0,
     "morph": 0,
-    "osc": 0
+    "osc": 0,
+    "drive": 0
    },
    "att": [
     1,

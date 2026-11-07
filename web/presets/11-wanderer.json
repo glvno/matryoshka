@@ -1082,7 +1082,9 @@
     "res": 0.4,
     "drive": 1,
     "cvamt": 4,
-    "track": 0
+    "track": 0,
+    "diode": 0,
+    "stsat": 1
    },
    "att": [
     1,
@@ -1112,7 +1114,8 @@
     "cvamt": 1,
     "track": 0,
     "morph": 0,
-    "osc": 0
+    "osc": 0,
+    "drive": 0
    },
    "att": [
     1,
@@ -1172,7 +1175,7 @@
    "x": 2900,
    "y": 1740,
    "params": {
-    "gain": 0.96,
+    "gain": 0.94,
     "offset": 0
    },
    "att": [
@@ -1419,7 +1422,7 @@
    "x": 3920,
    "y": 20,
    "params": {
-    "level": 0.58
+    "level": 0.61
    }
   },
   {

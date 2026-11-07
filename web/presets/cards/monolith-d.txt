@@ -78,7 +78,7 @@ preset: Fat Bass
   contours / decay (2) = 0.7
   contours / sustain (2) = 0.9
   decay on = 2
-  volume = 0.5
+  volume = 0.56
 
 # Three detuned 8' waves, glide on, the filter open with some emphasis: the singing lead.
 preset: Glide Lead
@@ -133,7 +133,7 @@ preset: Square Lead
   contours / decay (2) = 0.8
   contours / sustain (2) = 1
   decay on = 2
-  volume = 0.32
+  volume = 0.34
 
 # Pink noise alone through a slow, resonant filter sweep: wind and surf.
 preset: Pink Wind
@@ -177,4 +177,4 @@ preset: Soft Flute
   contours / decay (2) = 0.75
   contours / sustain (2) = 0.9
   decay on = 2
-  volume = 0.33
+  volume = 0.36

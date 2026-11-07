@@ -33,7 +33,7 @@ preset: Rubber Square
   env mod = 2
   decay = 0.45 s
   accent = 1
-  volume = 0.74
+  volume = 0.76
 
 preset: Deep Sub 303
   waveform = 1
@@ -42,7 +42,7 @@ preset: Deep Sub 303
   env mod = 1.2
   decay = 0.6 s
   accent = 0.5
-  volume = 0.92
+  volume = 0.96
 
 preset: Short Zap
   waveform = 2

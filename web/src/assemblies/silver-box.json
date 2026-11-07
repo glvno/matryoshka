@@ -278,7 +278,9 @@
         "res": 0,
         "drive": 1,
         "cvamt": 1,
-        "track": 0
+        "track": 0,
+        "diode": 1,
+        "stsat": 0
       },
       "att": [
         1,

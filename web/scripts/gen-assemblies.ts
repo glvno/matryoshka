@@ -824,7 +824,7 @@ asm('Oracle V', 'Voices', (b) => {
   const polyEnv = b.add('scale', 3, 1, { gain: 0, offset: 0 });
   const sync = b.add('scale', 3, 2, { gain: 0, offset: 0 });
   const fenv = b.add('adsr', 4, 1, { a: 0.01, d: 0.6, s: 0.35, r: 0.4 });
-  const flt = b.add('ladder', 5, 0, { cutoff: 600, res: 0.2, cvamt: 3.5 });
+  const flt = b.add('ladder', 5, 0, { cutoff: 600, res: 0.2, cvamt: 3.5, stsat: 1 }); // stsat: the CEM3320 saturates in every stage (#672)
   const aenv = b.add('adsr', 5, 1, { a: 0.01, d: 0.5, s: 0.8, r: 0.4 });
   const vca = b.add('vca', 6, 0, { gain: 0.6 });
   // scopes on the card: the filter envelope against the filter, the voices summed, the LFO against oscillator A
@@ -976,7 +976,7 @@ asm('Monolith D', 'Voices', (b) => {
   };
   const [fenv, fDecay] = contour(5, { a: 0.005, d: 0.45, s: 0.35 });
   const amount = b.add('scale', 6, 1, { gain: 3, offset: 0 });
-  const flt = b.add('ladder', 5, 0, { cutoff: 700, res: 0.3, cvamt: 1, track: 0, drive: 1.4 });
+  const flt = b.add('ladder', 5, 0, { cutoff: 700, res: 0.3, cvamt: 1, track: 0, drive: 1.4, stsat: 1 }); // stsat: the Moog ladder's transistor pairs saturate in every stage (#672)
   const [aenv, aDecay] = contour(7, { a: 0.004, d: 0.3, s: 0.85 });
   const vca = b.add('vca', 6, 0, { gain: 0.7 });
   const a440 = b.add('osc', 7, 3, { wave: 0, coarse: 9, level: 0.25 });
@@ -1107,7 +1107,7 @@ asm('Silver Box', 'Voices', (b) => {
   const accent = b.add('scale', 3, 2, { gain: 1, offset: 0 });
   const sweep = b.add('glide', 4, 2, { time: 0.02 }, { p1: 'time', att: [Math.round((glideUnit(0.68) - glideUnit(0.02)) * 1000) / 1000, 1] });
   const res = b.add('macro', 4, 1, { value: 0.75 });
-  const flt = b.add('ladder', 4, 0, { cutoff: 260, res: 0, cvamt: 1, drive: 1 }, { p1: 'res' });
+  const flt = b.add('ladder', 4, 0, { cutoff: 260, res: 0, cvamt: 1, drive: 1, diode: 1 }, { p1: 'res' }); // diode: the TB-303's diode ladder (#671)
   const aenv = b.add('adsr', 5, 1, { a: 0.002, d: 2.5, s: 0, r: 0.02 });
   // (twice the level it had, the accent's share as well, #448: the volume row after it, a Mixer's 0..1, then has the room
   // to bring the quiet presets to the loudness rule)
@@ -1176,7 +1176,7 @@ asm('Hera 6', 'Voices', (b) => {
   const part = b.add('alloc', 1, 3, { voices: 6 });
   const osc = b.add('osc', 2, 0, { wave: 2, level: 0.55, pw: 0.5 }, { p1: 'fine', p2: 'pw' });
   const sub = b.add('osc', 2, 1, { wave: 3, coarse: -12, level: 0.25 }, { p1: 'fine' });
-  const flt = b.add('ladder', 3, 0, { cutoff: 1400, res: 0.15, cvamt: 2.2, track: 1 });
+  const flt = b.add('ladder', 3, 0, { cutoff: 1400, res: 0.15, cvamt: 2.2, track: 1, stsat: 1 }); // stsat: the IR3109 saturates in every stage (#672)
   const env = b.add('adsr', 3, 1, { a: 0.01, d: 0.8, s: 0.6, r: 0.5 });
   const vca = b.add('vca', 4, 0, { gain: 1 });
   const hpf = b.add('filter', 5, 0, { cutoff: 20, res: 0 });
@@ -1500,8 +1500,9 @@ asm('Sallen 20', 'Voices', (b) => {
   const ring = b.add('vca', 4, 2, { gain: 1 });
   const v2 = b.add('xfade', 4, 1, { mix: 0 });
   const mix = b.add('mixer', 5, 0, { l1: 0.5, l2: 0, l3: 0, l4: 0 });
-  const hpf = b.add('filter', 6, 0, { cutoff: 60, res: 0.2, cvamt: 1, osc: 1 }); // osc: both MS-20 filters self-oscillate at full PEAK (Stinchcombe)
-  const lpf = b.add('filter', 7, 0, { cutoff: 1600, res: 0.45, cvamt: 1, osc: 1 });
+  // osc: both MS-20 filters self-oscillate at full PEAK (Stinchcombe); drive: their diodes clip inside the resonance loop (#670)
+  const hpf = b.add('filter', 6, 0, { cutoff: 60, res: 0.2, cvamt: 1, osc: 1, drive: 3 });
+  const lpf = b.add('filter', 7, 0, { cutoff: 1600, res: 0.45, cvamt: 1, osc: 1, drive: 3 });
   const vca = b.add('vca', 8, 0, { gain: 0.75 });
   const delay = b.add('pulse', 1, 3, { time: 0.001 });
   const eg1Gate = b.add('math', 2, 3, { ka: 1, kb: 1, off: 0 });
@@ -1681,7 +1682,7 @@ asm('Expander S', 'Voices', (b) => {
   const part = b.add('alloc', 0, 2, { voices: 4 });
   const o1 = b.add('osc', 1, 0, { wave: 2, level: 0.5 }, { p1: 'fine' });
   const o2 = b.add('osc', 1, 1, { wave: 3, level: 0.4, pw: 0.4, fine: 5 }, { p1: 'fine' });
-  const flt = b.add('filter', 2, 0, { cutoff: 1100, res: 0.35 }, { p1: 'cutoff' });
+  const flt = b.add('filter', 2, 0, { cutoff: 1100, res: 0.35, drive: 1 }, { p1: 'cutoff' }); // drive: the SEM's state-variable filter saturates gently (#670)
   const amt = b.add('scale', 2, 2, { gain: 0.25, offset: 0 });
   const mode = b.add('xfade', 3, 0, { mix: 0 });
   const env1 = b.add('adsr', 2, 1, { a: 0.01, d: 0.6, s: 0.4, r: 0.6 });
@@ -2084,7 +2085,7 @@ asm('Wanderer', 'Voices', (b) => {
   const m2 = b.add('select', 7, 3, { count: 2, pos: 1 });
   const m3 = b.add('select', 7, 4, { count: 2, pos: 1 });
   const fmix = b.add('mixer', 8, 2, { l1: 0.25, l2: 0, l3: 0.6, l4: 0 });
-  const flt = b.add('ladder', 8, 0, { cutoff: 900, res: 0.4, cvamt: 4, track: 0 });
+  const flt = b.add('ladder', 8, 0, { cutoff: 900, res: 0.4, cvamt: 4, track: 0, stsat: 1 }); // stsat: the ARP 4075 saturates in every stage (#672)
   const hpf = b.add('filter', 9, 0, { cutoff: 40, res: 0 });
   const vcaSel = b.add('select', 9, 2, { count: 2, pos: 1 });
   const vcaAmt = b.add('scale', 9, 3, { gain: 1, offset: 0 });
@@ -2317,7 +2318,7 @@ asm('Briefcase 3', 'Voices', (b) => {
   const ring = b.add('vca', 2, 1, { gain: 0.3 });
   b.wire(o1r, 'out', ring, 'in');
   b.wire(o2s, 'out', ring, 'cv');
-  const flt = b.add('ladder', 2, 0, { cutoff: 2140, res: 0.55, cvamt: 4, track: 0 });
+  const flt = b.add('ladder', 2, 0, { cutoff: 2140, res: 0.55, cvamt: 4, track: 0, diode: 1 }); // diode: the VCS3's diode ladder (#671)
   for (const s of [o1s, o1r, o2s, ring, nz]) b.wire(s, 'out', flt, 'in');
   const fLvl = b.add('mixer', 3, 0, { l1: 1, l2: 0, l3: 0, l4: 0 });
   b.wire(flt, 'lp24', fLvl, 'in1');
@@ -2543,7 +2544,7 @@ asm('Io 4', 'Voices', (b) => {
   const osc = b.add('osc', 3, 0, { wave: 2, level: 0.6, pw: 0.5 }, { p1: 'wave', p2: 'pw', att: [1, -1] });
   const sub = b.add('osc', 3, 0.5, { wave: 3, level: 0, coarse: -12 }, { p1: 'level', att: [0.5, 1] });
   const waveVca = b.add('vca', 3.5, 0, { gain: 1 });
-  const flt = b.add('ladder', 4, 0, { cutoff: 1800, res: 0.25, cvamt: 2, track: 0 }, { p2: 'cutoff', att: [1, 1 / Math.log2(800)] }); // p2: 1 octave a unit
+  const flt = b.add('ladder', 4, 0, { cutoff: 1800, res: 0.25, cvamt: 2, track: 0, stsat: 1 }, { p2: 'cutoff', att: [1, 1 / Math.log2(800)] }); // p2: 1 octave a unit; stsat: the IR3109 saturates in every stage (#672)
   const envF = b.add('adsr', 4, 1, { a: 0.02, d: 0.6, s: 0.55, r: 0.6 });
   const polarity = b.add('scale', 4.5, 1, { gain: 1, offset: 0 }, { p1: 'gain' });
   const kybd = b.add('scale', 4.5, 0.5, { gain: 0, offset: 0 }, { p1: 'gain' });
@@ -2798,7 +2799,7 @@ asm('Vernon 100', 'Voices', (b) => {
   b.wire(w3, 'out', inMix, 'in2');
   b.wire(w4, 'out', inMix, 'in3');
   b.wire(nz, 'out', inMix, 'in4');
-  const flt = b.add('filter', 9, 0, { cutoff: 1100, res: 0.35, cvamt: 1, track: 0 });
+  const flt = b.add('filter', 9, 0, { cutoff: 1100, res: 0.35, cvamt: 1, track: 0, drive: 1 }); // drive: the ElectroComp's state-variable filter saturates gently (#670)
   b.wire(inMix, 'out', flt, 'in');
   const mode = b.add('select', 10, 0, { count: 4, pos: 1, fade: 5 });
   for (const [j, port] of ['lp12', 'bp', 'hp', 'notch'].entries()) b.wire(flt, port, mode, `in${j + 1}`);

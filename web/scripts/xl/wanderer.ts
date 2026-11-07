@@ -92,7 +92,7 @@ const built = define('Wanderer XL', (b) => {
   const m2 = b.add('select', 7, 3, { count: 2, pos: 1 });
   const m3 = b.add('select', 7, 4, { count: 2, pos: 1 });
   const fmix = b.add('mixer', 8, 2, { l1: 0.25, l2: 0, l3: 0.6, l4: 0 });
-  const flt = b.add('ladder', 8, 0, { cutoff: 900, res: 0.4, cvamt: 4, track: 0 });
+  const flt = b.add('ladder', 8, 0, { cutoff: 900, res: 0.4, cvamt: 4, track: 0, stsat: 1 }); // stsat: the ARP 4075 (#672)
   const hpf = b.add('filter', 9, 0, { cutoff: 40, res: 0 });
   const vcaSel = b.add('select', 9, 2, { count: 2, pos: 1 });
   const vcaAmt = b.add('scale', 9, 3, { gain: 1, offset: 0 });

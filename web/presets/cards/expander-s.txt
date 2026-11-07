@@ -64,7 +64,7 @@ preset: SEM Brass
   envelopes / r (2) = 0.3 s
   lfo rate = 5.5 Hz
   vibrato = 0.05
-  level = 0.48
+  level = 0.47
 
 preset: SEM Bass
   voices = 1
@@ -88,7 +88,7 @@ preset: SEM Bass
   envelopes / d (2) = 0.3 s
   envelopes / s (2) = 0.6
   envelopes / r (2) = 0.15 s
-  level = 0.92
+  level = 0.9
 
 preset: Notch Strings
   voices = 6
@@ -112,7 +112,7 @@ preset: Notch Strings
   envelopes / r (2) = 1.8 s
   lfo rate = 5.5 Hz
   vibrato = 0.03
-  level = 1.01
+  level = 0.99
 
 preset: Highpass Pluck
   width = 0.6
@@ -135,7 +135,7 @@ preset: Highpass Pluck
   envelopes / d (2) = 0.4 s
   envelopes / s (2) = 0.2
   envelopes / r (2) = 0.3 s
-  level = 1.98
+  level = 1.99
 
 preset: Unison Lead
   unison = on
@@ -161,4 +161,4 @@ preset: Unison Lead
   envelopes / r (2) = 0.3 s
   lfo rate = 6 Hz
   vibrato = 0.06
-  level = 0.55
+  level = 0.54
