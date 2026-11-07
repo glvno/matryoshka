@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Connect FM-1 among several FM-1s (#698): the list's lines and which one is offered or taken without asking.
 import { describe, expect, it } from 'vitest';
-import { firmwareText, fm1Text, offeredFm1, rememberedFm1 } from './choose-fm1';
+import { firmwareText, fm1Text, offeredFm1, playNote, rememberedFm1 } from './choose-fm1';
 import type { Info } from './protocol';
 
 const info = (firmware?: Info['firmware']): Info => ({ version: 1, maxModules: 64, maxCables: 255, flashOk: true, patchLoaded: true, delays: 1, features: 0, midiOut: null, firmware });
@@ -24,5 +24,14 @@ describe('choose-fm1', () => {
     expect(offeredFm1(found, null)).toBe(1);
     expect(offeredFm1(found, 'rig')).toBe(0);
     expect(offeredFm1([fm1('x', true)], null)).toBe(0);
+  });
+  it('plays its note now and releases it by the page\'s timer, with no Web MIDI timestamp on either (#698)', () => {
+    const sent: unknown[][] = [];
+    const timers: [() => void, number][] = [];
+    playNote({ send: (...a: unknown[]) => void sent.push(a) } as never, (f, ms) => timers.push([f, ms]));
+    expect(sent).toEqual([[[0x90, 60, 100]]]);
+    expect(timers.map(([, ms]) => ms)).toEqual([400]);
+    timers[0][0]();
+    expect(sent).toEqual([[[0x90, 60, 100]], [[0x80, 60, 0]]]);
   });
 });

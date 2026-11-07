@@ -46,6 +46,16 @@ export function keepChoice(id: string): void {
   }
 }
 
+/** Play a note: middle C on `out` now, its release 400 ms later by the page's timer. Neither carries a Web MIDI
+ *  timestamp. With the release sent ahead with a timestamp, Play a note sounded only after dozens of seconds on real
+ *  FM-1s (the owner's two-device test of #698), while the editor link, which never sends ahead, stayed prompt. The
+ *  emulator's virtual port heard it after 156 ms, so the delay is on the USB path, where a timestamped message is
+ *  scheduled; sending nothing ahead takes it out of play */
+export function playNote(out: Pick<MIDIOutput, 'send'>, later: (f: () => void, ms: number) => unknown = (f, ms) => setTimeout(f, ms)): void {
+  out.send([0x90, 60, 100]);
+  later(() => out.send([0x80, 60, 0]), 400);
+}
+
 /** ask which FM-1 to connect; null on Cancel. `dlg` is index.html's #choose-fm1. Play a note sends middle C to the one
  *  selected, so two FM-1s on the same firmware can be told apart by ear */
 export function chooseFm1(dlg: HTMLDialogElement, found: readonly FoundFm1[], kept: string | null): Promise<FoundFm1 | null> {
@@ -59,9 +69,7 @@ export function chooseFm1(dlg: HTMLDialogElement, found: readonly FoundFm1[], ke
   dlg.querySelector<HTMLButtonElement>('#choose-fm1-play')!.onclick = (e) => {
     e.preventDefault();
     const out = found[Number(sel.value)]?.out;
-    if (!out) return;
-    out.send([0x90, 60, 100]);
-    out.send([0x80, 60, 0], performance.now() + 400);
+    if (out) playNote(out);
   };
   dlg.returnValue = '';
   return new Promise((done) => {
