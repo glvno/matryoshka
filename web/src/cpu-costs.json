@@ -36551,10 +36551,18 @@
    "cv": 278
   },
   "delay": {
-   "run": 7778,
-   "cv": 284,
-   "glide": 15503,
+   "run": 7820,
+   "cv": 292,
+   "glide": 15508,
    "dims": [
+    {
+     "param": "rate",
+     "values": [
+      0,
+      1,
+      2
+     ]
+    },
     {
      "param": "swell",
      "values": [
@@ -36574,14 +36582,30 @@
     }
    ],
    "grid": [
-    7778,
-    9714,
-    10853,
-    12789,
-    13028,
-    14964,
-    20963,
-    22899
+    7820,
+    9756,
+    11153,
+    13089,
+    13196,
+    15132,
+    21389,
+    23325,
+    23945,
+    25881,
+    28042,
+    29978,
+    26310,
+    28246,
+    32647,
+    34583,
+    22790,
+    24726,
+    26057,
+    27993,
+    24035,
+    25971,
+    28422,
+    30358
    ]
   },
   "reverb": {
@@ -48489,11 +48513,11 @@
   },
   {
    "name": "8 Lire",
-   "cycles": 253667
+   "cycles": 253998
   },
   {
    "name": "Elvira 2",
-   "cycles": 223221
+   "cycles": 223271
   },
   {
    "name": "Scrounge",
@@ -48505,7 +48529,7 @@
   },
   {
    "name": "Perun 4",
-   "cycles": 345480
+   "cycles": 346454
   },
   {
    "name": "808 Kit",
@@ -48521,7 +48545,7 @@
   },
   {
    "name": "Spokes 6",
-   "cycles": 394738
+   "cycles": 394788
   },
   {
    "name": "Cassia 1",
@@ -48549,15 +48573,15 @@
   },
   {
    "name": "Acid, 4 parts",
-   "cycles": 329523
+   "cycles": 329573
   },
   {
    "name": "Acid, morph",
-   "cycles": 97964
+   "cycles": 98014
   },
   {
    "name": "assembly 8 Lire",
-   "cycles": 236426
+   "cycles": 236757
   },
   {
    "name": "assembly adsr operator",
@@ -48629,15 +48653,15 @@
   },
   {
    "name": "assembly ducking delay",
-   "cycles": 29615
+   "cycles": 29665
   },
   {
    "name": "assembly echo",
-   "cycles": 134061
+   "cycles": 134111
   },
   {
    "name": "assembly Elvira 2",
-   "cycles": 203247
+   "cycles": 203297
   },
   {
    "name": "assembly envelope filter",
@@ -48729,7 +48753,7 @@
   },
   {
    "name": "assembly Perun 4",
-   "cycles": 324620
+   "cycles": 325594
   },
   {
    "name": "assembly pluck",
@@ -48785,7 +48809,7 @@
   },
   {
    "name": "assembly Spokes 6",
-   "cycles": 344010
+   "cycles": 344060
   },
   {
    "name": "assembly stack voice",
@@ -48813,7 +48837,7 @@
   },
   {
    "name": "assembly time smear",
-   "cycles": 50904
+   "cycles": 50954
   },
   {
    "name": "assembly tom",

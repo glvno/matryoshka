@@ -38,7 +38,7 @@
 #define GRAIN_SPRAY (ENG_SR / 4u)   /* spray scatters a grain's start by up to this many samples (0.25 s) */
 #define RV_LEN 8074u                /* the eight FDN lines (5740), two input allpasses (570) and the 40 ms pre-delay (1764), int16 Q13 */
 #define DELAY_LEN 30944u            /* the line of a 700 ms length (dly_samples), every Delay's before the length row (D-375) */
-#define DELAY_TIME_TOP (DELAY_LENGTH_MAX * ENG_ONE)   /* ms: what a Delay's time reaches past the knob's 700 (modules.ts browserMax), kept under modulation; its line limits it as it plays */
+#define DELAY_TIME_TOP (DELAY_REACH_MAX * ENG_ONE)   /* ms: what a Delay's time reaches past the knob's 700 (modules.ts browserMax: the longest length at the lowest rate), kept under modulation; its line limits it as it plays */
 #define STR_LEN 1104u               /* ceil(ENG_SR / 40) + 1: the lowest string is 40 Hz, as the reference */
 #define CH_LEN 927u                 /* ceil(ENG_SR * 0.021): 12 ms +- 8 ms of sweep */
 #define MAX_HELD 128
@@ -399,7 +399,7 @@ typedef struct {
                                                     * modes' radii and normalised gains for kdec kdamp / kbr, ok: which are worked out */
         struct { int32_t a[8], b[8], ia; uint32_t phase; } fs;   /* the Hilbert chains (w1 w2 per section), chain A's delayed sample, the quadrature oscillator */
         struct { struct grain_line *ln; uint32_t w, acc, seed; uint8_t prev; } gr;   /* acc: grains per sample, Q24 */
-        struct { int16_t *buf; int64_t cur; uint32_t len, w, t, seen, beat; int32_t rate; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev; } dly;   /* len: its line's samples, from its length (dly_samples); cur 64 bits (a long line is more samples than Q16 holds in 32) */   /* t, ring, seen, beat: the clock tempo; cur, rate: the read position's distance behind w (samples Q16, 0 = not yet set) and its glide (dly_glide) */
+        struct { int16_t *buf; int64_t cur; uint32_t len, w, t, seen, beat; int32_t rate; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev, rk, ph; } dly;   /* len: its line's samples, from its length (dly_samples); cur 64 bits (a long line is more samples than Q16 holds in 32) */   /* t, ring, seen, beat: the clock tempo; cur, rate: the read position's distance behind w (samples Q16, 0 = not yet set) and its glide (dly_glide); rk, ph: a lower rate (#659, dly_slow): the rate step's k the line holds (0 none yet), the sample within a line sample */
         struct { int16_t *buf; uint16_t li[8], ai[2], pi; int32_t lp[8]; uint32_t ph[2]; } rev;   /* the FDN lines' write indices, the diffusers', the pre-delay's; damping states; modulation phases */
         struct { int32_t v; uint32_t t; int32_t rk[4], inc[4], k[4]; uint32_t len[4]; uint8_t stage, prev, ok; } env;  /* Q30, like the ADSR; t: samples
                                                     * in the segment; rk, inc, k, len, ok: segments 1 2 3 and release, as m_adsr */
@@ -5455,6 +5455,91 @@ static void dly_glide(inst_t *it, const esig_t *in, esig_t *out, esig_t *outr, u
     it->s.dly.rate = rate;
 }
 
+/* the Delay at a lower rate (modules.ts delaySlow, #659: RATE 22k / 11k, k = 1 << sh samples a line sample): the input
+ * through a 4-pole low pass (DELAY_AA, two sections in direct form I, states Q24 in the DELAY_TAIL samples after the line,
+ * which is `len` samples), every k-th sample of it with the feedback written to the line; every sample reads the line
+ * between two of its samples (linear) at the time's distance behind the write head (cur, samples Q16), so the time keeps
+ * its sample resolution. A moving time glides as in dly_glide. Plain, swelling and ping-pong in one loop. */
+static void __attribute__((noinline)) dly_slow(inst_t *it, const esig_t *in, esig_t *out, esig_t *outr, uint32_t n, int64_t tq, int32_t fb, int32_t mix, int pp, int swell, uint32_t sh, uint32_t len)
+{
+    const uint32_t k = 1u << sh, H = len / 2u, nl = pp ? H : len;
+    const int32_t sub = (int32_t)(65536u >> sh);      /* a sample in line samples, Q16 */
+    int16_t *buf = it->s.dly.buf, *bb = buf + H;
+    int32_t *lp = (int32_t *)(void *)(buf + len);   /* x1 x2 y1 y2 of each section, Q24 (len is even: 4-byte aligned) */
+    const int32_t *c = DELAY_AA[sh - 1u];
+    int moving = it->s.dly.cur != tq || it->s.dly.rate;   /* (a flag: the 64-bit compare every sample cost more) */
+    int32_t x1 = lp[0], x2 = lp[1], u1 = lp[2], u2 = lp[3], v1 = lp[4], v2 = lp[5], y1 = lp[6], y2 = lp[7];
+    uint32_t w = it->s.dly.w, ph = it->s.dly.ph, i;
+    int32_t dry = ENG_ONE - mix, rate = it->s.dly.rate, rdi, rdf;
+    int64_t cur = it->s.dly.cur, lo = (int64_t)k << 16, hi = ((int64_t)(nl - 1u) << sh) << 16, rd;
+    if (swell)
+        fb = (int32_t)((int64_t)fb * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
+    if (w >= nl)
+        w = 0;
+    rd = (cur + (int64_t)k - 1) >> sh;              /* the distance in line samples, rounded up (Q16) */
+    rdi = (int32_t)(rd >> 16);
+    rdf = (int32_t)(rd & 0xffff);
+    for (i = 0; i < n; i++) {
+        int32_t fr, ea, eb = 0, x, u, y, t, i0, i1;
+        if (moving) {
+            int64_t diff = tq - cur, cc;
+            int32_t step = (int32_t)(diff >> DELAY_GLIDE_SHIFT);
+            rate += clampi(clampi(step, -DELAY_GLIDE_MAX, DELAY_GLIDE_MAX) - rate, -DELAY_GLIDE_ACC, DELAY_GLIDE_ACC);
+            if (diff > -(1 << DELAY_GLIDE_SHIFT) && diff < 1 << DELAY_GLIDE_SHIFT && rate > -DELAY_GLIDE_ACC && rate < DELAY_GLIDE_ACC) {
+                cur = tq;
+                rate = 0;
+                moving = 0;
+            } else {
+                cc = cur + rate;
+                cur = cc < lo ? lo : cc > hi ? hi : cc;
+            }
+            rd = (cur + (int64_t)k - 1) >> sh;
+            rdi = (int32_t)(rd >> 16);
+            rdf = (int32_t)(rd & 0xffff);
+        }
+        /* line sample w is written at its last sample (ph = k - 1) and stands for that sample's time: the read is at
+         * w + ((ph - k + 1) - cur) / k line samples (floor), split into a whole part and a fraction */
+        t = ((int32_t)ph - (int32_t)k + 1) * sub - rdf;
+        i0 = (int32_t)w - rdi + (t >> 16);
+        if (i0 < 0)
+            i0 += (int32_t)nl;
+        i1 = i0 + 1 == (int32_t)nl ? 0 : i0 + 1;
+        fr = (t & 0xffff) >> 1;                       /* Q15 */
+        ea = (int32_t)buf[i0] * 8 + ((((int32_t)buf[i1] - buf[i0]) * fr) >> 12);
+        if (pp)
+            eb = (int32_t)bb[i0] * 8 + ((((int32_t)bb[i1] - bb[i0]) * fr) >> 12);
+        x = clampi(in[i], -32 * ENG_ONE, 32 * ENG_ONE) << 8;   /* Q24 (+-32: -64 Q16 looks like a ROM address to tools/build.py) */
+        u = (int32_t)(((int64_t)c[0] * (x + 2 * x1 + x2) - (int64_t)c[1] * u1 - (int64_t)c[2] * u2 + (1 << 27)) >> 28);
+        x2 = x1; x1 = x; u2 = u1; u1 = u;
+        y = (int32_t)(((int64_t)c[3] * (u + 2 * v1 + v2) - (int64_t)c[4] * y1 - (int64_t)c[5] * y2 + (1 << 27)) >> 28);
+        v2 = v1; v1 = u; y2 = y1; y1 = y;
+        if (ph == k - 1u) {
+            int32_t y16 = (y + 128) >> 8, v;
+            if (pp) {
+                v = mul16(ea, fb);
+                bb[w] = dly_pack(swell ? dly_soft(v) : v);
+                v = y16 + mul16(eb, fb);
+            } else
+                v = y16 + mul16(ea, fb);
+            buf[w] = dly_pack(swell ? dly_soft(v) : v);
+            ph = 0;
+            if (++w == nl)
+                w = 0;
+        } else
+            ph++;
+        {
+            int32_t dr = mul16(in[i], dry);
+            out[i] = dr + mul16(ea, mix);
+            outr[i] = pp ? dr + mul16(eb, mix) : out[i];
+        }
+    }
+    lp[0] = x1; lp[1] = x2; lp[2] = u1; lp[3] = u2; lp[4] = v1; lp[5] = v2; lp[6] = y1; lp[7] = y2;
+    it->s.dly.w = w;
+    it->s.dly.ph = (uint8_t)ph;
+    it->s.dly.cur = cur;
+    it->s.dly.rate = rate;
+}
+
 /* free or synced time (see modules.ts); ping-pong splits the buffer in two halves, A (input, left) and B (right), see
  * modules.ts. note: a synced length of its own (DELAY_NOTE_NUM / DEN) in place of the time knob's; swell: the feedback
  * x 198 / 95 and the loop through dly_soft (the loops below, apart, so the plain one stays as it was) */
@@ -5467,9 +5552,22 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
     int32_t fb = EF(it, DELAY_P_FB), mix = EF(it, DELAY_P_MIX), dry = ENG_ONE - mix;
     int pp = EF(it, DELAY_P_PINGPONG) >= 32768, swell = EF(it, DELAY_P_SWELL) >= 32768;
     int32_t note = clampi((EF(it, DELAY_P_NOTE) + 32768) >> 16, 0, DELAY_NNOTE - 1);
-    /* its line (L samples, from its length; ping-pong two halves of H): the time, free or synced, plays up to it */
-    const uint32_t L = it->s.dly.len, H = L / 2u;
-    int64_t smp, top = pp ? (int64_t)H - 1 : (int64_t)L - 1;
+    /* its rate (#659): step sh keeps every (1 << sh)-th sample (dly_slow), the line DELAY_TAIL samples shorter for the low
+     * pass's state; a new rate empties the line and the read starts where the time is */
+    const uint32_t sh = (uint32_t)clampi((EF(it, DELAY_P_RATE) + 32768) >> 16, 0, DELAY_NRATE - 1);
+    /* its line (L samples, from its length; ping-pong two halves of H): the time, free or synced, plays up to it (times k) */
+    const uint32_t L = sh ? it->s.dly.len - DELAY_TAIL : it->s.dly.len, H = L / 2u;
+    int64_t smp, top = ((pp ? (int64_t)H : (int64_t)L) - 1) << sh;
+    if (it->s.dly.rk != 1u << sh) {
+        if (it->s.dly.rk) {
+            for (i = 0; i < it->s.dly.len; i++)
+                buf[i] = 0;
+            w = it->s.dly.w = it->s.dly.ph = 0;
+            it->s.dly.cur = 0;
+            it->s.dly.rate = 0;
+        }
+        it->s.dly.rk = (uint8_t)(1u << sh);
+    }
     if (nd->conn & (1u << DELAY_I_CLK)) {   /* tempo: the time of the last 24 clock pulses, smoothed */
         const esig_t *clk = it->in[DELAY_I_CLK];
         for (i = 0; i < n; i++) {
@@ -5495,9 +5593,14 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
         smp = ((int64_t)DELAY_DIV_NUM[div] * it->s.dly.beat * 2 + DELAY_DIV_DEN[div]) / ((int64_t)DELAY_DIV_DEN[div] * 2);
     } else
         smp = ((int64_t)EF(it, DELAY_P_TIME) * ENG_SR + (int64_t)500 * 65536) / (1000 * 65536);   /* round(t_ms / 1000 * sr) */
-    d = (uint32_t)(smp < 1 ? 1 : smp > top ? top : smp);
+    d = (uint32_t)(smp < (1 << sh) ? (1 << sh) : smp > top ? top : smp);
     if (it->s.dly.cur == 0 || it->s.dly.cur > top << 16)
         it->s.dly.cur = it->s.dly.cur == 0 ? (int64_t)d << 16 : top << 16;
+    if (sh) {
+        it->s.dly.w = w;
+        dly_slow(it, in, out, outr, n, (int64_t)d << 16, fb, mix, pp, swell, sh, L);
+        return;
+    }
     if (it->s.dly.cur != (int64_t)d << 16 || it->s.dly.rate) {     /* the time moved: glide there (#484), the plain loops below once it has arrived */
         dly_glide(it, in, out, outr, n, (int64_t)d << 16, fb, mix, pp, swell);
         return;

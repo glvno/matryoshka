@@ -182,7 +182,8 @@
     "pingpong": 0,
     "note": 0,
     "swell": 0,
-    "length": 700
+    "length": 700,
+    "rate": 0
    },
    "att": [
     1,
