@@ -44,6 +44,8 @@ describe('Sallen 20 ESP on the FM-1', () => {
   it('OFF / OFF plays exactly as the patch without the ESP routing', () => {
     const p = FM1_PRESETS['Sallen 20']();
     const q = FM1_PRESETS['Sallen 20']();
+    // (the analog shape off: each oscillator's flaws follow its place in the patch, which removing modules moves, #673)
+    for (const x of [p, q]) for (const m of x.modules) if (m.type === 'osc') m.params.analog = 0;
     const a = card(q);
     const routing = a.params.filter((r) => r.label === 'signal in' || r.label === 'esp route').map((r) => r.module);
     const route = routing[1];
