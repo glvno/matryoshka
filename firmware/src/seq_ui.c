@@ -61,7 +61,8 @@
  *                   tracks record, from the transport's start or, running already, from the next bar line, so recording
  *                   begins on a bar (seq_cin_poll). The bar counts the beats (COUNT-IN 3; two bars: 1.3), REC's LED
  *                   blinks on them, the keys sound as ever and nothing is recorded; REC again meanwhile: off, nothing
- *                   recorded. No click: the FM-1 has no metronome voice.
+ *                   recorded. A click on each beat (each bar's first higher), play once's, on the analog output only
+ *                   (D-803, D-820: eng_count_in).
  *
  * Step record (#532, the owner's design of 2026-11-01 and 2026-11-02, D-804; a drum grid and the roll alike): REC tapped
  * with the transport stopped starts it on the first step of the page shown (1, 17 ...); REC held + a white key on that
@@ -107,6 +108,16 @@ static uint32_t seq_cin_at;             /* ... the clock's ticks when REC was pr
 static uint32_t seq_cin_end;            /* ... ticks since the transport's start at which recording begins */
 static uint8_t seq_cin_shown;           /* ... the beat the bar shows (0.. over the bars, 0xFF none yet) */
 static uint8_t seq_cin_lit;             /* ... REC's LED (on for the first half of each beat) */
+static uint8_t seq_cin_asked;           /* ... asked for (its bars) or ended (0) with its click: counts up, the bars in
+                                         * seq_cin_click (fm1_ui.c tells the page, whose engine plays the click) */
+static uint8_t seq_cin_click;
+/* REC's count-in click (D-803): the engine's, on the analog output only (D-820), on the bars seq_cin_poll counts */
+static void seq_cin_engine(uint32_t bars)
+{
+    eng_count_in(seq_cin_at, bars);
+    seq_cin_click = (uint8_t)bars;
+    seq_cin_asked++;
+}
 static uint8_t seq_thru_note[27];       /* a black key held on a drum track's page (#368): its note + 1 (0 none), sounding through */
 static uint8_t seq_thru_mod[27];        /* ... the track it sounds through, let go there */
 static uint8_t seq_row;                 /* the grid's selected row: a Drum map's row, or the roll's (0 the top: its highest pitch) */
@@ -1087,6 +1098,8 @@ static void seq_rec_sync(void)
 static void seq_rec_off(void)
 {
     seq_rec = 0;
+    if (seq_cin)                                 /* (REC off in the count-in: its click ends too) */
+        seq_cin_engine(0u);
     seq_cin = 0;
     seq_rec_sync();
     ent_keys = 0;
@@ -1169,6 +1182,7 @@ static void seq_rec_press(void)
         seq_cin_at = eng_ticks();
         seq_cin_shown = 0xFF;
         seq_cin_lit = 1;
+        seq_cin_engine(seq_cin_bars);            /* (a click on each beat, D-803) */
         ui_msg("COUNT-IN", 4000);
     } else
         seq_rec_msg();

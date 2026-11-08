@@ -260,6 +260,9 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
         if (m1_cur[1] < ENG_COUNTED || eng_rec_grow(m1_cur, &m1_cur_len, M1_PATCH_MAX, mod, par + 1u))
             return;
     }
+    if (eng_b_keep(m1_cur, &m1_cur_len, M1_PATCH_MAX, mod, par))   /* (a module with a B side whose B set leaves this
+                                                              * parameter out: its B value goes in first, D-1005) */
+        return;
     m1_put32(at + eng_rec_head(m1_cur[1]) + 4u * par, v);
     m1_edited = 1;
 }
@@ -287,7 +290,13 @@ static void m1_patch_att(uint32_t mod, uint32_t input, int32_t v)
     uint32_t at = m1_record(mod);
     if (!at || input >= 2u || DEFS[M1_TYPE(m1_cur[at])].cvbase < 0)
         return;
-    m1_put32(at + eng_rec_head(m1_cur[1]) + 4u * eng_rec_npar(m1_cur, at) + 4u * input, v);
+    if (m1_cur[1] >= ENG_COUNTED)                            /* (format 51: written out whole first, eng_rec_matrix) */
+        at = eng_rec_matrix(m1_cur, &m1_cur_len, M1_PATCH_MAX, mod);
+    else
+        at = at + eng_rec_head(m1_cur[1]) + 4u * eng_rec_npar(m1_cur, at);
+    if (!at)
+        return;
+    m1_put32(at + 4u * input, v);
     m1_edited = 1;
 }
 
@@ -415,7 +424,7 @@ static int m1_valid(const uint8_t *p, uint32_t len)
     uint32_t at = eng_records_at(p, len);
     if (!at || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION) || p[3] > POLY_MAX_GROUPS)
         return 0;
-    if ((p[7] & ~(ENG_FLAG_EXTRAS | ENG_FLAG_MORPH_MODULES | ENG_FLAG_PATTERNS | ENG_FLAG_LOCKS)) || ((p[7] & ENG_FLAG_MORPH_MODULES) && (p[1] < 36u || !(p[6] & 1u))) || ((p[7] & ENG_FLAG_PATTERNS) && p[1] < 48u) || ((p[7] & ENG_FLAG_LOCKS) && p[1] < 49u) || (p[1] < 34u && p[7]) || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
+    if (!eng_flags_ok(p))
         return 0;
     if (p[2] > ENG_MAX_MODULES || ((uint32_t)p[4] | (uint32_t)p[5] << 8) > ENG_MAX_CABLES)
         return 0;
@@ -563,7 +572,7 @@ static int m1_preset_name(uint32_t dev, const char *name)
     for (k = 0; k < dev; k++) {
         at += 6u + m1_cur[at + 5u];
         at += 1u + 2u * m1_cur[at];
-        at += 1u + m1_cur[at];
+        at += 1u + ((m1_cur[at] & ENG_MEMBER_RUN) ? 1u : m1_cur[at]);
     }
     while (name[n] && n < 12u)                      /* (the editor's NAME_MAX) */
         n++;

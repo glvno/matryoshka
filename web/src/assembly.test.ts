@@ -332,17 +332,15 @@ describe('assemblies', () => {
     expect(def.modules.find(m => m.type === 'vca')!.range).toEqual(amp.range);
   });
 
-  it('saves to a definition with local ids and no knob assignments, and inserts it with fresh ids', () => {
+  it('saves to a definition with local ids, and inserts it with fresh ids', () => {
     const { p, kb, osc, env, vca, out } = voice();
     const a = makeAssembly(p, [osc, env, vca], 'operator');
     exposePort(a, 'in', osc, 'pm');
     promote(a, osc, 'coarse');
     a.params[0].label = 'ratio';
-    p.modules.find((m) => m.id === osc)!.map!.k1 = ['coarse'];
     p.modules.find((m) => m.id === osc)!.params.coarse = 12;
     const def = validateAssemblyDef(JSON.parse(JSON.stringify(toDef(p, a))), DEFS);
     expect(def.modules.map((m) => m.id)).toEqual([1, 2, 3]);
-    expect(def.modules[0].map!.k1).toEqual([]);
     expect(def.modules[0].map!.p1).toEqual(['wave']); // p1 / p2 are kept
     expect(Math.min(...def.modules.map((m) => m.x))).toBe(0);
     expect(def.cables).toHaveLength(2); // osc->vca, env->vca; the outside ones are not part of it
@@ -430,7 +428,7 @@ describe('assemblies', () => {
       '8 Lire', 'adsr operator', 'Algo Four', 'auto pan', 'barber pole', 'basic poly', 'boom kick', 'bowed glass', 'bowed string', 'Briefcase 3', 'Canvas', 'Cassia 1', 'clap', 'clock', 'cloud', 'cowbell', 'drift poly', 'drum kit', 'ducking delay', 'echo', 'Elvira 2', 'envelope filter', 'Expander S', 'filter voice', 'fm pair', 'gamelan', 'gated reverb', 'glass bell', 'hats', 'Hera 6', 'hihat', 'Io 4', 'kalimba', 'kick', 'marimba', 'Meridian 8', 'mono lead', 'Monolith D', 'noise voice', 'octave fuzz', 'operator', 'Oracle V', 'overdrive', 'Perun 4', 'pluck', 'rain', 'random melody', 'resonator bank', 'reverse pad', 'rim', 'Sallen 20', 'Scrounge', 'shimmer', 'sidechain pump', 'Silver Box', 'slicer', 'snare', 'Spokes 6', 'stack voice', 'stutter', 'sub bass', 'supersaw stack', 'tabla', 'talking filter', 'time smear', 'tom', 'Vernon 100', 'Verona Drum 1', 'vibrato', 'voice', 'vowel voice', 'Wanderer', 'wavetable pad',
     ]);
     for (const d of FACTORY) {
-      expect(d.modules.every((m) => m.map === undefined || ['k1', 'k2', 'k3', 'k4'].every((k) => m.map![k as 'k1'].length === 0)), d.name).toBe(true);
+      expect(d.modules.every((m) => m.map === undefined || Object.keys(m.map).every((k) => k === 'p1' || k === 'p2')), d.name).toBe(true);   // (no knob columns: D-1001)
       expect(d.inputs.length + d.outputs.length, d.name).toBeGreaterThan(0);
       expect(d.params.length, d.name).toBeGreaterThan(0);
       expect(new Set(d.inputs.map((r) => r.label)).size, d.name).toBe(d.inputs.length); // no duplicate jack labels: the gates are merged

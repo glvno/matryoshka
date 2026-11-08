@@ -137,6 +137,10 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   the editor). After the count-in the bar says `PLAY ONCE` and the FM-1's Start reaches the editor; half a pass in it
   still runs, and after the pass it stops by itself (its Stop reaches the editor). SEQ held + PLAY again, then PLAY a beat
   later, must end it with nothing started.
+- **REC's count-in (`recCountIn`, [D-803](ledger/steps.md#D-803)):** on Init (an empty track, no key held), GLO > PANEL >
+  COUNT-IN set to 1 BAR, REC from a stop must start the transport, say `COUNT-IN` and click on each beat (as play once's
+  check reads them); once it records, a second bar must be silent. PLAY stops it and COUNT-IN goes back to OFF. The
+  emulator plays the analog output (USB audio is not emulated), where the click is.
 - **When:** every pull request that changes firmware runs `emu:smoke` and `emu:scenarios` on its own CI build before it
   merges ([D-120](ledger/releases.md#D-120)).
 

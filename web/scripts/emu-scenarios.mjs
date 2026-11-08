@@ -1186,6 +1186,47 @@ async function main() {
       await check('play once: PLAY in the count-in ends it, nothing starts', !(await T()).deviceRunning && !(await emu.text('PLAY ONCE')));
       await emu.snap('play-once');
     },
+    async recCountIn() {   // D-803 (amended 2026-11-07): REC's count-in clicks on each beat, as play once's; none once it records
+      await check('rec count-in: Init opens, synced', await openSynced('Init'));
+      /** GLO > PANEL's COUNT-IN row (K3) a step right or left, then GLO back to the device page */
+      const countIn = async (d) => {
+        await emu.tap(B.glo);
+        for (let i = 0; i < 6 && !(await emu.text('COUNT-IN')); i++) {
+          await emu.turn(ENC.algo, 1);
+          await emu.elapse(300);
+        }
+        await emu.turn(ENC.k3, d);
+        await emu.elapse(400);
+        const ok = await emu.text(d > 0 ? '1 BAR' : 'OFF');
+        await emu.tap(B.glo);
+        await emu.waitOwnPage(3000);
+        return ok;
+      };
+      await check('rec count-in: GLO > PANEL > COUNT-IN 1 BAR', await countIn(1));
+      await emu.key(B.rec, true);                   // (REC acts on its release: the windows from there, so beat 1 is in them)
+      await emu.elapse(80);
+      await emu.key(B.rec, false);
+      const win = await emu.windows(48, 25);       // (Init's track is empty and no key is held: only the click is heard)
+      const counting = await emu.text('COUNT-IN');
+      const onsets = win.filter((w, i) => w[1] > LOUD && (i === 0 || win[i - 1][1] <= LOUD)).map((w) => w[0]);
+      const beat = onsets.length >= 3 ? (onsets[onsets.length - 1] - onsets[1]) / (onsets.length - 2) : onsets.length === 2 ? onsets[1] - onsets[0] : 0;
+      console.log(`  rec count-in: the count-in's peaks per 25 ms: ${prof(win)}`);
+      await check('rec count-in: REC, stopped: the transport starts and the bar counts in (COUNT-IN)', counting);
+      // beat 1 within 300 ms of REC's release (the panel's scan and a main loop pass), then the bar's other beats: all four
+      // in the 1.2 s, or three when the fourth falls past it (the 25 ms windows round the onsets either way)
+      await loudCheck('rec count-in: a click on each beat of the count-in from beat 1, a beat apart', Math.max(...win.map((w) => w[1])),
+        beat >= 200 && onsets[0] <= 300 && (onsets.length === 4 || (onsets.length === 3 && onsets[0] + 3 * beat > 1150))
+          && onsets.slice(1).every((t, i) => Math.abs(t - onsets[i] - beat) <= 40),
+        `click onsets at ${onsets.join(' ')} ms (a beat ${beat} ms)`);
+      await until(async () => !(await emu.text('COUNT-IN')), 5000);
+      await emu.elapse(Math.max(beat, 300));
+      const after = await emu.windows(40, 25);
+      await check('rec count-in: once it records, no click (a second bar heard silent)', Math.max(...after.map((w) => w[1])) <= LOUD, `peaks ${prof(after)}`);
+      await emu.tap(B.play);                        // (PLAY stops the transport and the recording)
+      await emu.elapse(300);
+      await check('rec count-in: COUNT-IN OFF again', await countIn(-1));
+      await emu.snap('rec-count-in');
+    },
     async tieRoll() {   // the piano roll (#241) keeps its tie: Silver Box's PATTERN, pattern 1 (empty)
       await check('tie roll: Silver Box opens, synced', await openSynced('Silver Box'));
       await check('tie roll: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));

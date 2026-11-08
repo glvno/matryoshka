@@ -30,7 +30,7 @@ const sourceName = (p: Patch, c: Cable): string => {
 
 /**
  * Routing controls live with their destination: what modulates this parameter (each source with its depth or range),
- * the module's own inputs routed to it, and the FM-1 knobs that turn it. The saved matrix remains compatible with the FM-1.
+ * and the module's own inputs routed to it. The saved matrix remains compatible with the FM-1.
  */
 export function parameterMenu(m: ModuleInst, def: ModuleDef, pd: ParamDef, ev: Events, open: boolean, onToggle: (open: boolean) => void): HTMLElement {
   const menu = document.createElement('details');
@@ -54,7 +54,7 @@ export function parameterMenu(m: ModuleInst, def: ModuleDef, pd: ParamDef, ev: E
   const label = longName(def.type, pd.name);
   const summary = document.createElement('summary');
   summary.textContent = '⋮';
-  summary.title = `${def.label} ${label}: modulation and knob assignments`;
+  summary.title = `${def.label} ${label}: modulation`;
   summary.setAttribute('aria-label', summary.title);
   const content = document.createElement('div');
   content.className = 'routing-controls';
@@ -200,27 +200,6 @@ export function parameterMenu(m: ModuleInst, def: ModuleDef, pd: ParamDef, ev: E
     content.append(row);
   }
 
-  // the FM-1's SELECT page: which hardware knobs turn this parameter
-  if (def.paramInputs) {
-    const knobs = document.createElement('fieldset');
-    const legend = document.createElement('legend'); legend.textContent = 'FM-1 knobs';
-    knobs.append(legend);
-    for (const source of ['k1', 'k2', 'k3', 'k4'] as const) {
-      const row = document.createElement('label');
-      const box = document.createElement('input');
-      box.type = 'checkbox';
-      box.checked = !!m.map?.[source].includes(pd.name);
-      box.setAttribute('aria-label', `${def.label}: FM-1 knob ${source.toUpperCase()} turns ${label}`);
-      box.onchange = () => ev.change(() => {
-        const list = m.map![source].filter((name) => name !== pd.name);
-        if (box.checked) list.push(pd.name);
-        m.map![source] = list;
-      });
-      row.append(box, source.toUpperCase());
-      knobs.append(row);
-    }
-    content.append(knobs);
-  }
   menu.append(summary, content);
   return menu;
 }
