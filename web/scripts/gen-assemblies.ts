@@ -3218,28 +3218,58 @@ asm('Vernon 100', 'Voices', (b) => {
 /** the touch plates' Drum map: the eight rows on the white keys F3..F4, repeated over the keybed (PLATE_KEYS) */
 const plates = (b: B): number => b.add('drummap', 0, 0, { ...Object.fromEntries(PLATE_KEYS[1].map((n, r) => [`n${r + 1}`, n])), repeat: 1 });
 
-// 8 Lire, after the SOMA Laboratory Lyra-8 (#182; the panel as we remember it, not checked against SOMA's manual): eight
+// 8 Lire, after the SOMA Laboratory Lyra-8 (its user manual v2.1, 2020, as 8 Lire XL follows it; #182, #658): eight
 // voices, no keyboard. A Drum map turns the keys into eight gates, one per touch plate (F3..F4 as the drum kits' rows,
 // repeated over the keybed in blocks of eight white keys, a black key playing the white key's below: PLATE_KEYS); each
 // voice keeps its own tuning and plays a triangle through a VCA on its own envelope (attack / release for the FAST / SLOW
-// switch). Voices come in pairs (1-2, 3-4, 5-6, 7-8): a pair shares a waveshaper (SHARP) and a
-// modulation depth (MOD, into both voices' pitch); pairs come in quads (1-4, 5-8): a quad shares HOLD (a Macro, 0..1, into its
-// voices' VCAs, so they drone with nothing held) and its modulation bus, a mix of the other quad, the Hyper LFO and the
-// total feedback (the delay's output). The Hyper LFO: two square LFOs combined, AND crossfaded into OR, into the bus and
-// the delay time. The drive, then the delay (the FM-1 holds one Delay: the Lyra's two lines are its ping-pong taps, the
-// engine's l / r). Cross-quad and feedback modulation run one block late (the cables close loops).
+// switch). Voices come in pairs (1-2, 3-4, 5-6, 7-8): a pair shares a waveshaper (SHARP), its FM source switch (`source`:
+// FM, OFF, LFO) and its modulation depth (MOD, into both voices' pitch); groups (1-4, 5-8) share HOLD (a Macro, 0..1, into
+// its voices' VCAs, so they drone with nothing held). The FM a pair takes is another pair's two voices: 1-2 from 3-4 and
+// 3-4 from 1-2, 5-6 from 7-8 and 7-8 from 5-6; with the structure switch (`34>56 78>12`) on, 1-2 from 7-8 and 5-6 from
+// 3-4, one loop through all eight. LFO is the Hyper LFO, or with TOTAL FB on the output. The Hyper LFO: two triangles,
+// LINK putting FREQ A on FREQ B's rate (a tenth of its travel, as 8 Lire XL), their squares AND (multiplied) or OR (added)
+// into the pairs' LFO; the delay's TRIANGLE / SQUARE is the triangles' sum or the AND. The MOD DELAY: two lines (TIME 1,
+// TIME 2), each moved by MOD 1 / MOD 2 from the LFO or its own level (SELF / LFO: one row, both lines), feeding each other
+// through a soft clip by FB (the Lyra's one FB, its cross feedback), MIX of the dry voices and the lines. The DISTORTION:
+// DRIVE, MIX of clean and driven, VOL. Cables that close a loop (FM between pairs, TOTAL FB, the lines' cross feedback)
+// run one block late. Left out on the FM-1 (8 Lire XL has them): per-voice vibrato, plate pressure, FAST's other effects
+// than the release, the group PITCH rows, the crosstalk, the rear jacks.
+/** 8 Lire's rows that set both delay lines (their line 2 modules, set by the builder) and its switches' position names */
+const lireAlso = { how: 0, cross: 0 };
+const LIRE_NAMES: Record<string, string[]> = {
+  source: ['FM', 'OFF', 'LFO'], '34>56 78>12': ['OFF', 'ON'], 'total fb': ['OFF', 'ON'], 'and / or': ['AND', 'OR'], link: ['OFF', 'ON'],
+  'self / lfo': ['LFO', 'SELF'], 'tri / square': ['TRIANGLE', 'SQUARE'],
+};
 asm('8 Lire', 'Voices', (b) => {
   const map = plates(b);
   b.module(map).names = Array.from({ length: 8 }, (_, r) => `VOICE ${r + 1}`);   // (the rows are the voices, not drums)
-  const lfoA = b.add('lfo', 0, 1, { wave: 3, rate: 0.7, depth: 1 });
-  const lfoB = b.add('lfo', 0, 2, { wave: 3, rate: 1.9, depth: 1 });
-  const logic = b.add('logic', 0, 3, {});
-  const hyper = b.add('xfade', 0, 4, { mix: 0 });
-  const toDelay = b.add('scale', 0, 5, { gain: 0, offset: 0 });
-  // (the delay, then MOD, before the voices: the cable loops then take their block of delay on the modulation cables (the
-  // other quad and the delay's output into a bus), not on a voice's audio, which would start a block late with a step
-  // when a patch loads with HOLD up, #515)
-  const dly = b.add('delay', 10, 0, { time: 330, fb: 0.45, mix: 0.35, pingpong: 1 }, { p1: 'time' });
+  const offOn = (col: number, row: number, p: Record<string, number> = {}): number => b.add('select', col, row, { count: 2, pos: 1, ...p });
+  // the Hyper LFO
+  const lfoA = b.add('lfo', 0, 1, { wave: 1, rate: 0.7, depth: 1 });
+  const lfoB = b.add('lfo', 0, 2, { wave: 1, rate: 1.9, depth: 1 }, { p1: 'rate', att: [0.1, 1] });
+  const link = offOn(0, 1.5);
+  const logic = b.add('logic', 0, 3, { thresh: 0.05 });
+  const sum = b.add('mixer', 0, 4, { l1: 0.5, l2: 0.5, l3: 0, l4: 0 });
+  const hyper = offOn(0, 5);                                      // AND, OR
+  const triSum = b.add('mixer', 0, 6, { l1: 0.5, l2: 0.5, l3: 0, l4: 0 });
+  const dlyLfo = offOn(0, 7);                                     // TRIANGLE, SQUARE
+  const lfoCv = offOn(0, 8);                                      // TOTAL FB: OFF (the Hyper LFO), ON (the output)
+  const structure = offOn(0, 9, { v1: 0, v2: 1 });               // 34>56 78>12: OFF, ON
+  // (the delay lines, then the pairs' FM, before the voices: the cable loops then take their block of delay on the
+  // modulation cables, not on a voice's audio, which would start a block late with a step when a patch loads with HOLD
+  // up, #515)
+  const lines = [330, 470].map((time, k) => {
+    const d = b.add('delay', 11, 2 * k, { time, fb: 0, mix: 1 }, { p1: 'time' });
+    const cross = b.add('scale', 12, 2 * k, { gain: 0.45, offset: 0 });
+    const clip = b.add('shape', 12, 2 * k + 1, { drive: 1, mode: 0, level: 1 });
+    const self = b.add('math', 13, 2 * k, { ka: 1, kb: 0, off: 0 });
+    const how = offOn(13, 2 * k + 1);                             // LFO, SELF
+    const depth = b.add('scale', 14, 2 * k, { gain: 0, offset: 0 });
+    return { d, cross, clip, self, how, depth };
+  });
+  const fmFrom = [[1, 3], [0], [3, 1], [2]]; // 1-2 <- 3-4 (on: 7-8), 3-4 <- 1-2, 5-6 <- 7-8 (on: 3-4), 7-8 <- 5-6
+  const fmPick = fmFrom.map((from, p) => (from.length === 2 ? b.add('xfade', 2 + 2 * p, 5, { mix: 0 }) : 0));
+  const source = [0, 1, 2, 3].map((p) => b.add('select', 2 + 2 * p, 6, { count: 3, pos: 1 })); // FM, OFF, LFO
   const mod = [0, 1, 2, 3].map((p) => b.add('scale', 2 + 2 * p, 3, { gain: 0, offset: 0 }));
   //               coarse  fine attack release
   const tunes: [number, number, number, number][] = [
@@ -3255,8 +3285,7 @@ asm('8 Lire', 'Voices', (b) => {
     b.wire(map, `g${i + 1}`, env, 'gate');
     return { osc, env, vca };
   });
-  const sharp = [0, 1, 2, 3].map((p) => b.add('shape', 1 + 2 * p, 3, { drive: 2, mode: 0, level: 0.7 }));
-  const bus = [0, 1].map((q) => b.add('mixer', 1 + 4 * q, 4, { l1: 1, l2: 0, l3: 0, l4: 0 }));
+  const sharp = [0, 1, 2, 3].map((p) => b.add('shape', 1 + 2 * p, 3.5, { drive: 2, mode: 0, level: 0.7 }));
   const hold = [0, 1].map((q) => b.add('macro', 2 + 4 * q, 4, { value: 0 })); // (a Macro: 0..1, so an FM-1 click is 0.01)
   // HOLD reaches the VCAs through a Slew limiter (30 ms): a patch or preset loaded with HOLD up fades its drone in instead of
   // starting it with a step, a click (#515)
@@ -3266,33 +3295,68 @@ asm('8 Lire', 'Voices', (b) => {
     return g;
   });
   const mix = b.add('mixer', 9, 0, { l1: 0.7, l2: 0.7, l3: 0.7, l4: 0.7 });
-  const drive = b.add('shape', 9, 1, { drive: 1.5, mode: 0, level: 0.7 });
-  const scope = b.add('scope', 10, 1, { time: 16 });
+  const wet = b.add('mixer', 15, 0, { l1: 0.7, l2: 0.7, l3: 0, l4: 0 });
+  const dlyMix = b.add('xfade', 15, 1, { mix: 0.35 });
+  const drive = b.add('shape', 16, 0, { drive: 1.5, mode: 0, level: 1 });
+  const distMix = b.add('xfade', 16, 1, { mix: 1 });
+  const vol = b.add('mixer', 17, 0, { l1: 0.7, l2: 0, l3: 0, l4: 0 }); // VOL (a Mixer: its out is audio, an engine's output)
+  const scope = b.add('scope', 17, 1, { time: 16 });
+  // the voices: SHARP per pair, MOD into both voices' pitch, HOLD per group
   voices.forEach((v, i) => {
-    const p = Math.floor(i / 2);
+    const p = i >> 1;
     b.wire(v.vca, 'out', sharp[p], 'in');
     b.wire(mod[p], 'out', v.osc, 'pitch');
-    b.wire(holdIn[Math.floor(i / 4)], 'out', v.vca, 'cv');
+    b.wire(holdIn[i >> 2], 'out', v.vca, 'cv');
   });
-  sharp.forEach((s, p) => {
-    b.wire(s, 'out', mix, `in${p + 1}`);
-    b.wire(s, 'out', bus[p < 2 ? 1 : 0], 'in1'); // the other quad
-    b.wire(bus[Math.floor(p / 2)], 'out', mod[p], 'in');
+  sharp.forEach((s, p) => b.wire(s, 'out', mix, `in${p + 1}`));
+  // a pair's FM: another pair's sharp (its two voices), the source switch, MOD
+  fmFrom.forEach((from, p) => {
+    if (from.length === 2) {
+      b.wire(sharp[from[0]], 'out', fmPick[p], 'a');
+      b.wire(sharp[from[1]], 'out', fmPick[p], 'b');
+      b.wire(structure, 'out', fmPick[p], 'pos');
+      b.wire(fmPick[p], 'out', source[p], 'in1');
+    } else b.wire(sharp[from[0]], 'out', source[p], 'in1');
+    b.wire(lfoCv, 'out', source[p], 'in3');
+    b.wire(source[p], 'out', mod[p], 'in');
   });
+  // the Hyper LFO
+  b.wire(lfoA, 'out', link, 'in2');
+  b.wire(link, 'out', lfoB, 'p1');
   b.wire(lfoA, 'out', logic, 'a');
   b.wire(lfoB, 'out', logic, 'b');
-  b.wire(logic, 'and', hyper, 'a');
-  b.wire(logic, 'or', hyper, 'b');
-  b.wire(hyper, 'out', toDelay, 'in');
-  b.wire(toDelay, 'out', dly, 'p1');
-  for (const q of bus) {
-    b.wire(hyper, 'out', q, 'in2');
-    b.wire(dly, 'out', q, 'in3');
-  }
-  b.wire(mix, 'out', drive, 'in');
-  b.wire(drive, 'out', dly, 'in');
-  b.wire(dly, 'out', scope, 'a');
-  b.wire(dly, 'r', scope, 'b');
+  b.wire(logic, 'and', sum, 'in1');
+  b.wire(logic, 'or', sum, 'in2');
+  b.wire(logic, 'and', hyper, 'in1');
+  b.wire(sum, 'out', hyper, 'in2');
+  b.wire(lfoA, 'out', triSum, 'in1');
+  b.wire(lfoB, 'out', triSum, 'in2');
+  b.wire(triSum, 'out', dlyLfo, 'in1');
+  b.wire(logic, 'and', dlyLfo, 'in2');
+  b.wire(hyper, 'out', lfoCv, 'in1');
+  b.wire(vol, 'out', lfoCv, 'in2'); // TOTAL FB
+  // the MOD DELAY: each line fed the voices and the other line (FB, through a soft clip), its time moved by MOD n from
+  // the LFO or its own level
+  lines.forEach((l, k) => {
+    b.wire(mix, 'out', l.d, 'in');
+    b.wire(l.d, 'out', l.cross, 'in');
+    b.wire(l.cross, 'out', l.clip, 'in');
+    b.wire(l.clip, 'out', lines[1 - k].d, 'in');
+    b.wire(l.d, 'out', l.self, 'a');
+    b.wire(dlyLfo, 'out', l.how, 'in1');
+    b.wire(l.self, 'abs', l.how, 'in2');
+    b.wire(l.how, 'out', l.depth, 'in');
+    b.wire(l.depth, 'out', l.d, 'p1');
+    b.wire(l.d, 'out', wet, `in${k + 1}`);
+  });
+  b.wire(mix, 'out', dlyMix, 'a');
+  b.wire(wet, 'out', dlyMix, 'b');
+  // the DISTORTION
+  b.wire(dlyMix, 'out', drive, 'in');
+  b.wire(dlyMix, 'out', distMix, 'a');
+  b.wire(drive, 'out', distMix, 'b');
+  b.wire(distMix, 'out', vol, 'in1');
+  b.wire(vol, 'out', scope, 'a');
   voices.forEach((v, i) => b.nest(`voice ${i + 1}`, 1 + i, 0, [v.osc, v.env, v.vca]));
   voices.forEach((v) => {
     b.nestInput('gate', v.env, 'gate');
@@ -3301,26 +3365,31 @@ asm('8 Lire', 'Voices', (b) => {
     b.nestOutput('out', v.vca, 'out');
   });
   b.input('keys', map, 'keys');
-  b.output('l', dly, 'out');
-  b.output('r', dly, 'r');
-  for (const [q, name, other] of [[0, '1-4', '5-8'], [1, '5-8', '1-4']] as const) {
+  b.output('out', vol, 'out');
+  // the card: the Lyra-8's controls, named as its panel names them
+  for (const [q, name] of [[0, '1-4'], [1, '5-8']] as const) {
     b.param('hold', hold[q], 'value', { col: q === 0 ? undefined : true, head: name });
-    b.param(`from ${other}`, bus[q], 'l1');
-    b.param('from lfo', bus[q], 'l2');
-    b.param('from fb', bus[q], 'l3');
+    for (const p of [2 * q, 2 * q + 1]) b.param(`source ${2 * p + 1}-${2 * p + 2}`, source[p], 'pos');
     for (const p of [2 * q, 2 * q + 1]) b.param(`mod ${2 * p + 1}-${2 * p + 2}`, mod[p], 'gain', p === 2 * q ? { group: true } : {});
     for (const p of [2 * q, 2 * q + 1]) b.param(`sharp ${2 * p + 1}-${2 * p + 2}`, sharp[p], 'drive');
   }
-  b.param('rate a', lfoA, 'rate', { col: true, head: 'hyper lfo' });
-  b.param('rate b', lfoB, 'rate');
-  b.param('and / or', hyper, 'mix');
-  b.param('lfo → delay', toDelay, 'gain');
-  b.param('time', dly, 'time', { head: 'delay' });
-  b.param('feedback', dly, 'fb');
-  b.param('mix', dly, 'mix');
-  b.param('ping-pong', dly, 'pingpong');
-  b.param('drive', drive, 'drive', { head: 'out' });
-  b.param('vol', drive, 'level');
+  b.param('34>56 78>12', structure, 'pos', { head: 'all voices' });
+  b.param('total fb', lfoCv, 'pos');
+  b.param('freq a', lfoA, 'rate', { col: true, head: 'hyper lfo' });
+  b.param('freq b', lfoB, 'rate');
+  b.param('and / or', hyper, 'pos');
+  b.param('link', link, 'pos');
+  b.param('time 1', lines[0].d, 'time', { head: 'mod delay' });
+  b.param('time 2', lines[1].d, 'time');
+  b.param('mod 1', lines[0].depth, 'gain');
+  b.param('mod 2', lines[1].depth, 'gain');
+  b.param('self / lfo', lines[0].how, 'pos', { group: true });
+  b.param('tri / square', dlyLfo, 'pos');
+  b.param('fb', lines[0].cross, 'gain');
+  b.param('mix', dlyMix, 'mix');
+  b.param('drive', drive, 'drive', { head: 'distortion' });
+  b.param('mix', distMix, 'mix');
+  b.param('vol', vol, 'l1');
   voices.forEach((v, i) => {
     b.param('tune', v.osc, 'coarse', { head: `voice ${i + 1}`, ...(i % 4 === 0 ? { col: true } : {}) });
     b.param('fine', v.osc, 'fine');
@@ -3328,7 +3397,19 @@ asm('8 Lire', 'Voices', (b) => {
     b.param('release', v.env, 'r');
   });
   b.param('out', scope, 'view', { col: true });
+  lireAlso.how = lines[1].how;
+  lireAlso.cross = lines[1].cross;
 });
+// one SELF / LFO and one FB for both lines: the row moves line 2's too (#357, a row's `also`); OFF / ON and the like named
+{
+  const d = defs.find((x) => x.name === '8 Lire')!;
+  for (const r of d.params) {
+    if (r.label === 'self / lfo') r.also = [{ module: lireAlso.how, param: 'pos' }];
+    if (r.label === 'fb') r.also = [{ module: lireAlso.cross, param: 'gain' }];
+    const names = LIRE_NAMES[r.label.replace(/ \d-\d$/, '')];
+    if (names && d.modules[r.module - 1].type === 'select') r.names = names;
+  }
+}
 
 // Elvira 2, after the neutral labs Elmyra 2 (its manual v2.4): four voices, each a wavetable oscillator (PG's four pages
 // = `bank`, WAVE = `pos`, TUNE) through its MOD program (here the SRR one, a Bitcrusher's rate: clean at the left) into a
