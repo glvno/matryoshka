@@ -1854,6 +1854,14 @@ namePositions('Sallen 20', {
 // 12 dB state-variable filter whose `mode` sweeps low pass, notch (halfway: low pass plus high pass) and high pass,
 // envelope 1 into the cutoff (through a parameter input, so per block: the filter stays cheap), envelope 2 on the level, and the card's own place in the stereo field (`width`: each
 // voice panned by its index, as the Four Voice's pan pots). Once: an LFO into the oscillators' fine tune (`vibrato`).
+// The SEM's controls its FM-1 version had cut (#658), as the SEM's reference manual names them (Expander S XL has them per
+// SEM): each VCO's MODULATION as two rows, `fm` (its frequency) and `pwm` (its pulse width), from its source switch `src`
+// (ENV: VCO 1 the amp envelope, VCO 2 the filter envelope, as on the SEM; or the LFO); VCO 2's `sync` to VCO 1; the
+// filter's `bp` switch (the band-pass output in place of the low pass .. high pass mode) and the VCF MODULATION source
+// `vcf src` (the filter envelope or the LFO, by `env 1 amt`); `vca on` (the VCA held open: a drone). The Four Voice's
+// keyboard: `portamento` (its time; 0.001 off), `octave` (-2 .. +2) and master `tune` (semitones), and the Voicing's
+// `assign` mode (rotate = CONT, lowest, reuse = REASSIGN, reset = R/C). Not here: the keyboard split (two Voicings,
+// each half its own voices), and the SEM's ADS envelopes (decay doubling as release): the envelopes keep their own release.
 asm('Expander S', 'Voices', (b) => {
   const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 5, depth: 1 });
   const vib = b.add('scale', 0, 1, { gain: 0, offset: 0 });
@@ -1869,22 +1877,59 @@ asm('Expander S', 'Voices', (b) => {
   const width = b.add('scale', 4, 1, { gain: 0.4, offset: 0 });
   const pan = b.add('pan', 5, 0, { pan: 0 });
   const scope = b.add('scope', 6, 0, { time: 16 });
-  b.nest('voice', 1, 3, [o1, o2, flt, amt, mode, env1, env2, vca, width, pan], {
+  // (1.11, #658) the SEM's modulation, sync, band pass, drone; the keyboard's portamento, octave, tune
+  const offOn = (col: number, row: number, pos: number, p: Record<string, number> = {}): number => b.add('select', col, row, { count: 2, pos, ...p });
+  const src1 = offOn(7, 0, 1), src2 = offOn(7, 1, 1);         // ENV, LFO
+  const fm1 = b.add('scale', 8, 0, { gain: 0, offset: 0 }), pwm1 = b.add('scale', 9, 0, { gain: 0, offset: 0 });
+  const fm2 = b.add('scale', 8, 1, { gain: 0, offset: 0 }), pwm2 = b.add('scale', 9, 1, { gain: 0, offset: 0 });
+  const sync = offOn(7, 2, 1);                                  // OFF, ON
+  const bp = offOn(8, 2, 1);                                    // OFF, ON: the mode, or the band pass
+  const vcfSrc = offOn(9, 2, 1);                                // ENV, LFO
+  const vcaOn = offOn(7, 3, 1, { v2: 1 });                      // OFF: the amp envelope; ON: held open
+  const porta = b.add('glide', 8, 3, { time: 0.001 });
+  const octave = b.add('select', 9, 3, { count: 5, pos: 3, v1: -2, v2: -1, v3: 0, v4: 1, v5: 2 });
+  const tune = b.add('const', 10, 3, { value: 0 });             // master tune, semitones
+  const tuneOct = b.add('scale', 10, 2, { gain: 1 / 12, offset: 0 }, { p1: 'offset', att: [1 / 8, 1] }); // (+ octave on p1: offset's range is 8)
+  b.module(o1).map!.p2 = ['pw'];
+  b.module(o2).map!.p2 = ['pw'];
+  b.nest('voice', 1, 3, [o1, o2, flt, amt, mode, env1, env2, vca, width, pan, src1, src2, fm1, pwm1, fm2, pwm2, sync, bp, vcfSrc, vcaOn, porta], {
     flaws: [{ detune: 3, drift: 25, bright: 1, env: 3, level: 100 }, { detune: -4, drift: 30, bright: -1, env: -4, level: 96 }, { detune: 2, drift: 20, bright: 0, env: 5, level: 100 }, { detune: -2, drift: 25, bright: 2, env: -3, level: 97 }],
   });
-  b.wire(part, 'pitch', o1, 'pitch');
-  b.wire(part, 'pitch', o2, 'pitch');
+  b.wire(part, 'pitch', porta, 'in');
+  b.wire(tune, 'out', tuneOct, 'in');
+  b.wire(octave, 'out', tuneOct, 'p1');
+  b.wire(tuneOct, 'out', porta, 'in');
+  b.wire(porta, 'out', o1, 'pitch');
+  b.wire(porta, 'out', o2, 'pitch');
   b.wire(part, 'gate', env1, 'gate');
   b.wire(part, 'gate', env2, 'gate');
   b.wire(part, 'index', width, 'in');
   b.wire(o1, 'out', flt, 'in');
   b.wire(o2, 'out', flt, 'in');
-  b.wire(env1, 'env', amt, 'in');
+  b.wire(env1, 'env', vcfSrc, 'in1');
+  b.wire(lfo, 'out', vcfSrc, 'in2');
+  b.wire(vcfSrc, 'out', amt, 'in');
   b.wire(amt, 'out', flt, 'p1');
   b.wire(flt, 'lp12', mode, 'a');
   b.wire(flt, 'hp', mode, 'b');
-  b.wire(mode, 'out', vca, 'in');
-  b.wire(env2, 'env', vca, 'cv');
+  b.wire(mode, 'out', bp, 'in1');
+  b.wire(flt, 'bp', bp, 'in2');
+  b.wire(bp, 'out', vca, 'in');
+  b.wire(env2, 'env', vcaOn, 'in1');
+  b.wire(vcaOn, 'out', vca, 'cv');
+  // each VCO's modulation: its source into its frequency (octaves) and its pulse width; VCO 2 synced to VCO 1
+  b.wire(env2, 'env', src1, 'in1');
+  b.wire(env1, 'env', src2, 'in1');
+  b.wire(lfo, 'out', src1, 'in2');
+  b.wire(lfo, 'out', src2, 'in2');
+  for (const [s, f, w, o] of [[src1, fm1, pwm1, o1], [src2, fm2, pwm2, o2]] as const) {
+    b.wire(s, 'out', f, 'in');
+    b.wire(s, 'out', w, 'in');
+    b.wire(f, 'out', o, 'pitch');
+    b.wire(w, 'out', o, 'p2');
+  }
+  b.wire(o1, 'out', sync, 'in2');
+  b.wire(sync, 'out', o2, 'sync');
   b.wire(vca, 'out', pan, 'in');
   b.wire(width, 'out', pan, 'pos');
   b.wire(lfo, 'out', vib, 'in');
@@ -1892,7 +1937,8 @@ asm('Expander S', 'Voices', (b) => {
   b.wire(vib, 'out', o2, 'p1');
   b.wire(vca, 'out', scope, 'a');
   b.input('keys', part, 'keys');
-  b.nestInput('pitch', o1, 'pitch', [o2, 'pitch']);
+  b.nestInput('pitch', porta, 'in');
+  b.nestInput('lfo', src1, 'in2', [src2, 'in2'], [vcfSrc, 'in2']);
   b.nestInput('gate', env1, 'gate', [env2, 'gate']);
   b.nestInput('index', width, 'in');
   b.nestInput('vibrato', o1, 'p1', [o2, 'p1']);
@@ -1901,27 +1947,46 @@ asm('Expander S', 'Voices', (b) => {
   b.nestOutput('out', vca, 'out');
   b.param('voices', part, 'voices', { head: 'voice' });
   b.param('unison', part, 'unison');
+  b.param('assign', part, 'assign');
   b.param('width', width, 'gain');
+  b.param('portamento', porta, 'time');
+  b.param('octave', octave, 'pos');
+  b.param('tune', tune, 'value');
   b.param('vco 1 wave', o1, 'wave', { head: 'oscillators' });
   b.param('vco 1 pw', o1, 'pw');
+  b.param('vco 1 fm', fm1, 'gain');
+  b.param('vco 1 pwm', pwm1, 'gain');
+  b.param('vco 1 src', src1, 'pos');
   b.param('vco 2 wave', o2, 'wave', { group: true });
   b.param('vco 2 pw', o2, 'pw');
   b.param('vco 2 freq', o2, 'coarse');
   b.param('vco 2 fine', o2, 'fine');
+  b.param('vco 2 fm', fm2, 'gain');
+  b.param('vco 2 pwm', pwm2, 'gain');
+  b.param('vco 2 src', src2, 'pos');
+  b.param('sync', sync, 'pos');
   b.param('vco 1', o1, 'level', { group: true });
   b.param('vco 2', o2, 'level');
   b.param('cutoff', flt, 'cutoff', { col: true, head: 'filter' });
   b.param('resonance', flt, 'res');
   b.param('mode', mode, 'mix');
+  b.param('bp', bp, 'pos');
   b.param('env 1 amt', amt, 'gain');
+  b.param('vcf src', vcfSrc, 'pos');
   b.param('env 1', env1, 'view', { head: 'envelopes' });
   for (const q of ['a', 'd', 's', 'r']) b.param(q, env1, q);
   b.param('env 2', env2, 'view', { col: true });
   for (const q of ['a', 'd', 's', 'r']) b.param(q, env2, q);
   b.param('lfo rate', lfo, 'rate', { head: 'lfo' });
   b.param('vibrato', vib, 'gain');
-  b.param('level', vca, 'gain', { head: 'output' }); // the level row (#448): each voice's VCA, set by gen-presets for loudness
+  b.param('vca on', vcaOn, 'pos', { head: 'output' });
+  b.param('level', vca, 'gain'); // the level row (#448): each voice's VCA, set by gen-presets for loudness
   b.param('out', scope, 'view');
+});
+
+namePositions('Expander S', {
+  'vco 1 src': ['ENV', 'LFO'], 'vco 2 src': ['ENV', 'LFO'], 'vcf src': ['ENV', 'LFO'], sync: ['OFF', 'ON'], bp: ['OFF', 'ON'], 'vca on': ['OFF', 'ON'],
+  octave: ['-2 OCT', '-1 OCT', '0', '+1 OCT', '+2 OCT'],
 });
 
 // Algo Four, a four-operator FM polysynth after the Yamaha DX100 (its Owner's Manual: chapter IV "The Voice Parameters"):
@@ -1953,6 +2018,7 @@ const ALGO_PATHS: [number, number, number[]][] = [
   [3, 0, [5, 6, 7, 8]],
   [4, 0, [8]],
 ];
+
 asm('Algo Four', 'Voices', (b) => {
   const part = b.add('alloc', 0, 2, { voices: 8, stack: 1 });
   const op: number[] = [];
