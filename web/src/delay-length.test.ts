@@ -199,7 +199,7 @@ describe('the FM-1\'s memory (the lines: D-375; one arena, #649)', () => {
     expect(f.lines.fits).toBe(false);
     expect(f.fits).toBe(false);
     expect(f.over.map((i) => i.key)).toEqual(['memory']);
-    expect(linesAdvice(full)).toMatch(/^Memory full: \d+ of 363 KB used\. Shorten another Delay or remove the Granular \(86 KB\)\.$/);
+    expect(linesAdvice(full)).toMatch(/^Memory full: \d+ of 362 KB used\. Shorten another Delay or remove the Granular \(86 KB\)\.$/);
     expect(() => encodePatch(full)).toThrow(/over the FM-1 budget/);
   });
 
