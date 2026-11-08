@@ -5584,6 +5584,9 @@ static void m_vca(const node_t *nd, inst_t *it, uint32_t n)
             out[i] = mul16(mul16(in[i], cv[i]), g);
 }
 
+#define LAD_SAT_KNEE (3 << 19)      /* 1.5 in Q20: the saturator's knee */
+#define LAD_SAT_CUBE 2485513        /* 1 / 6.75 in Q24 */
+
 typedef struct {
     int32_t g, a1, a2, a3;
 } svf_coef_t;
@@ -5624,8 +5627,19 @@ static int32_t filter_over(const inst_t *it)   /* how far res is past FILTER_OSC
     return EF(it, FILTER_P_OSC) >= 32768 && res > FILTER_OSC_FROM_Q16 ? res - FILTER_OSC_FROM_Q16 : 0;
 }
 
-/* osc: a constant at each call (m_filter), so the ordinary filter carries none of the self-oscillation's work */
-HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc)
+/* the damping the drive adds (#670, modules.ts filterDriveLoss), Q24, for a = drive r |bp| (Q20, held to
+ * FILTER_DRIVE_TOP): 1 - sat(a) / a, that is a^2 / 6.75 below the knee and 1 - 1 / a above it */
+HOT int32_t filter_drive_loss(int32_t a)
+{
+    if (a >= FILTER_DRIVE_KNEE_Q20)
+        return (1 << 24) - recip24(a << 4);
+    return mulq(mulq(a, a, 20), LAD_SAT_CUBE, 20);
+}
+
+/* osc, drv: constants at each call (m_filter), so the ordinary filter carries none of the self-oscillation's or the
+ * drive's work. drv (#670, drive above 0 and res above 0): the damping grows by r (1 - sat(a) / a), a = drive r |bp|,
+ * so stage 1 is solved per sample, as with osc. */
+HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv)
 {
     const esig_t *in = it->in[FILTER_I_IN], *cv = it->in[FILTER_I_CV], *mo = it->in[FILTER_I_MORPH];
     esig_t *lp = it->out[FILTER_O_LP12], *bp = it->out[FILTER_O_BP], *hp = it->out[FILTER_O_HP];
@@ -5637,6 +5651,7 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc)
     int32_t over = osc ? filter_over(it) : 0;   /* Q16 */
     int32_t k24 = (2 << 24) - mulq(res, 33218888, 16) - mulq(over, FILTER_OSC_K_Q24, 16);   /* 2 - 1.98 res (- the fall) */
     int32_t gam = mulq(over, FILTER_OSC_GAIN_Q24, 16), gc = 0, ke = k24;                    /* Q24; gc: the current g, ke: the damping */
+    int32_t r24 = mulq(res, 33218888, 16), dr = drv ? mulq(EF(it, FILTER_P_DRIVE), r24, 24) : 0;   /* 1.98 res Q24; drive r Q16 */
     int32_t cvamt = EF(it, FILTER_P_CVAMT), ic1 = it->s.flt.ic1, ic2 = it->s.flt.ic2, jc1 = it->s.flt.jc1, jc2 = it->s.flt.jc2;
     int32_t morph = EF(it, FILTER_P_MORPH), tr = EF(it, FILTER_P_TRACK) >= 32768 ? IT_PV(nd, it)->pitch : 0;
     uint32_t base = hz_turns((uint32_t)EF(it, FILTER_P_CUTOFF)), i;
@@ -5670,14 +5685,19 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc)
         if (osc) {                                   /* the damping k + gam b^2 */
             int32_t b = clampi(ic1, -FILTER_OSC_CLIP_Q20, FILTER_OSC_CLIP_Q20);
             ke = k24 + mulr(gam, mulr(b, b, 20), 20);
-            svf_stage(&c, gc, ke);
         }
+        if (drv) {                                   /* plus r (1 - sat(a) / a), a = drive r |bp| */
+            int64_t a = ((int64_t)(ic1 < 0 ? -ic1 : ic1) * dr) >> 16;
+            ke = (osc ? ke : k24) + mulr(r24, filter_drive_loss(a > FILTER_DRIVE_TOP_Q20 ? FILTER_DRIVE_TOP_Q20 : (int32_t)a), 24);
+        }
+        if (osc || drv)
+            svf_stage(&c, gc, ke);
         v3 = v0 - ic2;
         v1 = mulr(c.a1, ic1, 24) + mulr(c.a2, v3, 24);
         v2 = ic2 + mulr(c.a2, ic1, 24) + mulr(c.a3, v3, 24);
         ic1 = clampi(2 * v1 - ic1, -(1 << 30), 1 << 30);
         ic2 = clampi(2 * v2 - ic2, -(1 << 30), 1 << 30);
-        kv1 = mulr(v1, osc ? ke : k24, 24);
+        kv1 = mulr(v1, osc || drv ? ke : k24, 24);
         h = v0 - kv1 - v2;
         lp[i] = (v2 + 8) >> 4;
         bp[i] = (v1 + 8) >> 4;
@@ -5709,21 +5729,48 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc)
 
 static void m_filter(const node_t *nd, inst_t *it, uint32_t n)
 {
-    if (filter_over(it))
-        filter_run(nd, it, n, 1);
+    int drv = EF(it, FILTER_P_DRIVE) > 0 && EF(it, FILTER_P_RES) > 0;   /* without resonance the drive has nothing to clip */
+    if (filter_over(it)) {
+        if (drv)
+            filter_run(nd, it, n, 1, 1);
+        else
+            filter_run(nd, it, n, 1, 0);
+    } else if (drv)
+        filter_run(nd, it, n, 0, 1);
     else
-        filter_run(nd, it, n, 0);
+        filter_run(nd, it, n, 0, 0);
 }
-
-#define LAD_SAT_KNEE (3 << 19)      /* 1.5 in Q20: the saturator's knee */
-#define LAD_SAT_CUBE 2485513        /* 1 / 6.75 in Q24 */
 
 /* Ladder filter with drive (modules.ts `ladder`): four TPT one-poles (G = g / (1 + g), Q24) in a loop with k = 4 res.
  * The loop is solved linearly per sample (y4 = F (G^4 x + S), S the states' share, F = 1 / (1 + k G^4)), the loop input
  * u = sat(drive x - k y4) then runs through the stages; sat is v - v^3 / 6.75 up to |v| = 1.5, +-1 beyond. The
  * ordinary cutoff comes once per block from the mean of cv, cvamt and key tracking. With fm connected the coefficients
  * also follow each change in its samples. States Q20, products rounded; the saturator bounds the states, so no clamps. */
-HOT void ladder_run(const node_t *nd, inst_t *it, uint32_t n, int audio)
+HOT int32_t lad_sat(int32_t u)   /* the saturator: v - v^3 / 6.75 up to |v| = 1.5, +-1 beyond (Q20) */
+{
+    if (u >= LAD_SAT_KNEE)
+        return 1 << 20;
+    if (u <= -LAD_SAT_KNEE)
+        return -(1 << 20);
+    return u - mulq(mulq(mulq(u, u, 20), u, 20), LAD_SAT_CUBE, 24);
+}
+
+/* the same saturator at a stage's input (stsat), in 32-bit products: the cubic from u in Q14 (|u| < 1.5 there, so u^2
+ * Q28 and the rest fit), within 2^-14 of lad_sat and about half its cycles (three per sample) */
+HOT int32_t lad_sat_st(int32_t u)
+{
+    int32_t q, c;
+    if (u >= LAD_SAT_KNEE)
+        return 1 << 20;
+    if (u <= -LAD_SAT_KNEE)
+        return -(1 << 20);
+    q = u >> 6;                                 /* Q14 */
+    c = (((q * q) >> 14) * (LAD_SAT_CUBE >> 8)) >> 16;   /* u^2 / 6.75, Q14 */
+    return u - ((c * q) >> 8);
+}
+
+/* stsat (#672, a constant at each call): the saturator at the input of stages 2, 3 and 4 too */
+HOT void ladder_run(const node_t *nd, inst_t *it, uint32_t n, int audio, int stsat)
 {
     const esig_t *in = it->in[LADDER_I_IN], *cv = it->in[LADDER_I_CV], *fm = it->in[LADDER_I_FM];
     esig_t *lp24 = it->out[LADDER_O_LP24], *lp12 = it->out[LADDER_O_LP12];
@@ -5759,17 +5806,17 @@ HOT void ladder_run(const node_t *nd, inst_t *it, uint32_t n, int audio)
             S = mulr(G3, s0, 24) + mulr(G2, s1, 24) + mulr(G, s2, 24) + s3;
             S = mulr(S, hG, 24);
             y4 = mulr(F, mulr(G4, x20, 24) + S, 24);
-            u = mulq(x20, drive, 16) - mulq(k24, y4, 24);
-            if (u >= LAD_SAT_KNEE)
-                u = 1 << 20;
-            else if (u <= -LAD_SAT_KNEE)
-                u = -(1 << 20);
-            else
-                u -= mulq(mulq(mulq(u, u, 20), u, 20), LAD_SAT_CUBE, 24);
+            u = lad_sat(mulq(x20, drive, 16) - mulq(k24, y4, 24));
             v = mulr(G, u - s0, 24); u = v + s0; s0 = u + v;
+            if (stsat)
+                u = lad_sat_st(u);
             v = mulr(G, u - s1, 24); u = v + s1; s1 = u + v;
             y2 = u;
+            if (stsat)
+                u = lad_sat_st(u);
             v = mulr(G, u - s2, 24); u = v + s2; s2 = u + v;
+            if (stsat)
+                u = lad_sat_st(u);
             v = mulr(G, u - s3, 24); u = v + s3; s3 = u + v;
             lp24[i] = (u + 8) >> 4;
             lp12[i] = (y2 + 8) >> 4;
@@ -5782,13 +5829,86 @@ HOT void ladder_run(const node_t *nd, inst_t *it, uint32_t n, int audio)
 #undef LADDER_COEFF
 }
 
+#define DIODE_RINC_MAX 1288490189u   /* 0.3 of a cycle per sample: the diode mode's cutoff is held under it */
+
+/* The Ladder's diode mode (#671, modules.ts diodeLadder): the linearised diode ladder, four coupled stages
+ * (I + g M) y = z + g e1 u with M tri-diagonal [2 -1; -1 2 -1; -1 2 -1; -1 1], g = tan(pi fc / sr) / DIODE_W180,
+ * trapezoidal. The tri-diagonal elimination's factors (pivot reciprocals iu0..iu3, multipliers m1..m3, Q24) come once
+ * per block, or at each change of fm when it is connected, as in the Moog mode; the loop is solved linearly (y4 =
+ * p3 + b3 u), then u = sat((drive x - k p3) F), F = 1 / (1 + k b3), k = DIODE_KCRIT res. The outputs times the makeup
+ * mk = (1 + k) / (1 + 4 res) (Q24, once per block): the Moog mode's passband. States Q20 (the Moog mode's s). */
+static void diode_run(const node_t *nd, inst_t *it, uint32_t n, int audio)
+{
+    const esig_t *in = it->in[LADDER_I_IN], *cv = it->in[LADDER_I_CV], *fm = it->in[LADDER_I_FM];
+    esig_t *lp24 = it->out[LADDER_O_LP24], *lp12 = it->out[LADDER_O_LP12];
+    int32_t *s = it->s.lad.s;
+    int32_t drive = EF(it, LADDER_P_DRIVE), cvamt = EF(it, LADDER_P_CVAMT);
+    int32_t k24 = mulq(EF(it, LADDER_P_RES), DIODE_KCRIT_Q24, 16);
+    int32_t mk = mulq((1 << 24) + k24, recip24((1 << 24) + (EF(it, LADDER_P_RES) << 10)), 24);   /* Q24 */
+    int32_t x = EF(it, LADDER_P_TRACK) >= 32768 ? IT_PV(nd, it)->pitch : 0;
+    uint32_t base = hz_turns((uint32_t)EF(it, LADDER_P_CUTOFF)), i;
+    int32_t g = 0, m1 = 0, m2 = 0, m3 = 0, iu0 = 0, iu1 = 0, iu2 = 0, iu3 = 0, F = 0;
+    int32_t s0 = s[0], s1 = s[1], s2 = s[2], s3 = s[3];
+    if (nd->conn & (1u << LADDER_I_CV)) {
+        int64_t sum = 0;
+        for (i = 0; i < n; i++)
+            sum += cv[i];
+        x += mul16(block_mean(sum, n), cvamt);
+    }
+    for (i = 0; i < n; i++) {
+        int32_t x20 = in[i] << 4, p3, u, e0, e1, e2, e3, y0, y1, y2, y3;
+        if (i == 0 || (audio && fm[i] != fm[i - 1])) {
+            int32_t oct = x + (audio ? mul16(fm[i], cvamt) : 0), b3;
+            uint32_t r = oct ? exp2_scale(base, oct) : base;
+            g = mulq(svf_g(r > DIODE_RINC_MAX ? DIODE_RINC_MAX : r), DIODE_IW180_Q24, 24);
+            iu0 = recip24((1 << 24) + 2 * g);
+            m1 = mulq(g, iu0, 24);
+            iu1 = recip24((1 << 24) + 2 * g - mulq(g, m1, 24));
+            m2 = mulq(g, iu1, 24);
+            iu2 = recip24((1 << 24) + 2 * g - mulq(g, m2, 24));
+            m3 = mulq(g, iu2, 24);
+            iu3 = recip24((1 << 24) + g - mulq(g, m3, 24));
+            b3 = mulq(mulq(mulq(mulq(g, m1, 24), m2, 24), m3, 24), iu3, 24);
+            F = recip24((1 << 24) + mulq(k24, b3, 24));
+        }
+        p3 = mulr(s3 + mulr(m3, s2 + mulr(m2, s1 + mulr(m1, s0, 24), 24), 24), iu3, 24);
+        u = lad_sat(mulq(mulq(x20, drive, 16) - mulq(k24, p3, 24), F, 24));
+        e0 = s0 + mulr(g, u, 24);
+        e1 = s1 + mulr(m1, e0, 24);
+        e2 = s2 + mulr(m2, e1, 24);
+        e3 = s3 + mulr(m3, e2, 24);
+        y3 = mulr(e3, iu3, 24);
+        y2 = mulr(e2 + mulr(g, y3, 24), iu2, 24);
+        y1 = mulr(e1 + mulr(g, y2, 24), iu1, 24);
+        y0 = mulr(e0 + mulr(g, y1, 24), iu0, 24);
+        s0 = 2 * y0 - s0;
+        s1 = 2 * y1 - s1;
+        s2 = 2 * y2 - s2;
+        s3 = 2 * y3 - s3;
+        lp24[i] = mulr(y3, mk, 28);
+        lp12[i] = mulr(y1, mk, 28);
+    }
+    s[0] = s0;
+    s[1] = s1;
+    s[2] = s2;
+    s[3] = s3;
+}
+
 static void m_ladder(const node_t *nd, inst_t *it, uint32_t n)
 {
-    /* Constant arguments remove all audio-rate checks from the ordinary filter loop. */
-    if (nd->conn & (1u << LADDER_I_FM))
-        ladder_run(nd, it, n, 1);
+    /* Constant arguments remove all audio-rate checks (and the stages' saturators) from the ordinary filter loop. */
+    int audio = (nd->conn & (1u << LADDER_I_FM)) != 0;
+    if (EF(it, LADDER_P_DIODE) >= 32768)
+        diode_run(nd, it, n, audio);
+    else if (EF(it, LADDER_P_STSAT) >= 32768) {
+        if (audio)
+            ladder_run(nd, it, n, 1, 1);
+        else
+            ladder_run(nd, it, n, 0, 1);
+    } else if (audio)
+        ladder_run(nd, it, n, 1, 0);
     else
-        ladder_run(nd, it, n, 0);
+        ladder_run(nd, it, n, 0, 0);
 }
 
 #define DB_TO_LOG2 10885            /* 1 / 6.0206 in Q16: dB -> octaves (log2) */

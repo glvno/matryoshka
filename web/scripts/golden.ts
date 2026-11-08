@@ -1499,6 +1499,102 @@ kit('ladder', (add, wire) => {
   wire(lad, 'lp12', mix, 'in2');
   wire(mix, 'out', out, 'l');
 });
+// #670 the Multimode filter's drive: a saw swept through it at mid and high resonance, quiet and loud, every output; the
+// drive with osc on (Sallen 20's filters); its extremes (drive 8, and a drive with res 0, which plays as off)
+for (const [name, level, res, drive, osc] of [['filter-drive', 0.8, 0.82, 3, 0], ['filter-drive-quiet', 0.05, 0.82, 3, 0], ['filter-drive-max', 1, 0.6, 8, 0],
+  ['filter-drive-osc', 0.5, 0.97, 3, 1], ['filter-drive-nores', 0.8, 0, 8, 0]] as const) {
+  kit(name, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const osc = add('osc', 0, 0, { wave: 2, level });
+    const lfo = add('lfo', 0, 0, { wave: 0, rate: 0.9, depth: 1 });
+    const flt = add('filter', 0, 0, { cutoff: 500, res, cvamt: 2, osc, drive, morph: 0.3 });
+    const mix = add('mixer', 0, 0, { l1: 0.4, l2: 0.3, l3: 0.3, l4: 0.2 });
+    const out = add('output', 0, 0, { level: 0.5 });
+    wire(kb, 'pitch', osc, 'pitch');
+    wire(osc, 'out', flt, 'in');
+    wire(lfo, 'out', flt, 'cv');
+    wire(flt, 'lp12', mix, 'in1');
+    wire(flt, 'mix', mix, 'in2');
+    wire(flt, 'hp6', mix, 'in3');
+    wire(flt, 'peak', mix, 'in4');
+    wire(mix, 'out', out, 'l');
+  });
+}
+// #671 the Ladder's diode mode: a saw through it swept by an LFO at no, mid and high resonance; the audio-rate cutoff
+// input; driven hard; and at full resonance with a short click into it (the edge of self-oscillation: it rings)
+for (const res of [0, 0.5, 0.9]) {
+  kit(`ladder-diode-${res}`, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const osc = add('osc', 0, 0, { wave: 2, level: 0.8 });
+    const lfo = add('lfo', 0, 0, { wave: 1, rate: 2, depth: 0.6 });
+    const lad = add('ladder', 0, 0, { cutoff: 700, res, drive: 1, cvamt: 2, track: 1, diode: 1 });
+    const mix = add('mixer', 0, 0, { l1: 1, l2: 0.6 });
+    const out = add('output', 0, 0);
+    wire(kb, 'pitch', osc, 'pitch');
+    wire(osc, 'out', lad, 'in');
+    wire(lfo, 'out', lad, 'cv');
+    wire(lad, 'lp24', mix, 'in1');
+    wire(lad, 'lp12', mix, 'in2');
+    wire(mix, 'out', out, 'l');
+  });
+}
+kit('ladder-diode-drive', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const osc = add('osc', 0, 0, { wave: 3, level: 1 });
+  const lad = add('ladder', 0, 0, { cutoff: 3000, res: 0.7, drive: 8, cvamt: 1, diode: 1 });
+  const out = add('output', 0, 0);
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(osc, 'out', lad, 'in');
+  wire(lad, 'lp24', out, 'l');
+});
+kit('ladder-diode-fm', (add, wire) => {
+  const input = add('osc', 0, 0, { wave: 2, level: 0.4 });
+  const fm = add('osc', 0, 0, { wave: 0, coarse: 17, level: 0.6 });
+  const cv = add('const', 0, 0, { value: 0.15 });
+  const lad = add('ladder', 0, 0, { cutoff: 800, cvamt: 3, res: 0.5, diode: 1 });
+  const out = add('output', 0, 0, { level: 1 });
+  wire(input, 'out', lad, 'in');
+  wire(fm, 'out', lad, 'fm');
+  wire(cv, 'out', lad, 'cv');
+  wire(lad, 'lp24', out, 'l');
+  wire(lad, 'lp12', out, 'r');
+});
+kit('ladder-diode-self', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const env = add('adsr', 0, 0, { a: 0.001, d: 0.004, s: 0, r: 0.004 });
+  const lad = add('ladder', 0, 0, { cutoff: 440, res: 1, drive: 1, diode: 1 });
+  const out = add('output', 0, 0, { level: 1 });
+  wire(kb, 'gate', env, 'gate');
+  wire(env, 'env', lad, 'in');
+  wire(lad, 'lp24', out, 'l');
+  wire(lad, 'lp12', out, 'r');
+});
+// #672 the Ladder's saturator at every stage: pushed (drive 3.5, emphasis 0.55, Monolith D's A/B) and at its extremes
+for (const [name, drive, res] of [['ladder-stsat', 3.5, 0.55], ['ladder-stsat-max', 8, 1], ['ladder-stsat-clean', 1, 0.2]] as const) {
+  kit(name, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const osc = add('osc', 0, 0, { wave: 2, level: 0.8 });
+    const lfo = add('lfo', 0, 0, { wave: 1, rate: 2, depth: 0.6 });
+    const lad = add('ladder', 0, 0, { cutoff: 600, res, drive, cvamt: 2, track: 1, stsat: 1 });
+    const mix = add('mixer', 0, 0, { l1: 0.5, l2: 0.3 });
+    const out = add('output', 0, 0);
+    wire(kb, 'pitch', osc, 'pitch');
+    wire(osc, 'out', lad, 'in');
+    wire(lfo, 'out', lad, 'cv');
+    wire(lad, 'lp24', mix, 'in1');
+    wire(lad, 'lp12', mix, 'in2');
+    wire(mix, 'out', out, 'l');
+  });
+}
+kit('ladder-stsat-fm', (add, wire) => {
+  const input = add('osc', 0, 0, { wave: 2, level: 0.9 });
+  const fm = add('osc', 0, 0, { wave: 0, coarse: 17, level: 0.6 });
+  const lad = add('ladder', 0, 0, { cutoff: 800, cvamt: 3, res: 0.6, drive: 4, stsat: 1 });
+  const out = add('output', 0, 0, { level: 1 });
+  wire(input, 'out', lad, 'in');
+  wire(fm, 'out', lad, 'fm');
+  wire(lad, 'lp24', out, 'l');
+});
 kit('ladder-audio-fm', (add, wire) => {
   const input = add('osc', 0, 0, { wave: 2, level: .4 });
   const fm = add('osc', 0, 0, { wave: 0, coarse: 17, level: .6 });
