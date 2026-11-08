@@ -47,7 +47,7 @@ import { longName, moduleKeywords, moduleName } from './labels';
 import { DeckControls } from './deck';
 import { releaseFocusAfterPointer } from './focus';
 import { DEFS } from './modules';
-import { newPatch, trackLabel, validatePatch, type Patch, type SideKey } from './patch';
+import { addModule, newPatch, trackLabel, validatePatch, type Patch, type SideKey } from './patch';
 import { diffCount, diffLines, diffPatches } from './diff';
 import { loadLibrary, summary } from './assemblies';
 import type { AssemblyDef } from './assembly';
@@ -425,7 +425,7 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
     if (from === 'device') armsReported = true;
     mark(true);                              // (not sent back: the FM-1 has it; an undo step no more than the editor's own ARM)
     armsApplying = from === 'device';
-    try { editor.setArmed(armedFromMask(editor.patch, e.lo, e.hi)); } finally { mark(false); armsApplying = false; }
+    try { editor.setArmed(armedFromMask(editor.patch, e.words)); } finally { mark(false); armsApplying = false; }
     return;
   }
   if (e.kind === 'pattern' || e.kind === 'song') {   // PRESET on the SEQ page, the SONG page (#375): the editor follows
@@ -480,7 +480,7 @@ async function sendPatch(): Promise<boolean> {
       const at = editor.focus && binaryPage(editor.patch, editor.focus.device, editor.focus.page);
       if (at) device.focus(at[0], at[1]);   // the FM-1 opens on the page the knobs edit here
       // (a patch loaded disarms the FM-1: the editor's armed set again, #191)
-      if (editor.armedSet.size) device.arms(...armMask(editor.patch, editor.armedSet));
+      if (editor.armedSet.size) device.arms(armMask(editor.patch, editor.armedSet));
     } while (dirty);
   } catch (e) {
     devStatus(`${(e as Error).message}`);
@@ -745,9 +745,9 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
   },
   // REC held + a black key on the emulated FM-1 (#139): the editor arms the same track, so the keys the page plays (the
   // emulator's MIDI out) go through it as they do on the device
-  arms: (lo, hi) => {
+  arms: (words) => {
     if (armsReported && mirror.following) return emuArm();   // (the FM-1 itself says what is armed: its tab follows the editor)
-    editor.setArmed(armedFromMask(editor.patch, lo, hi));
+    editor.setArmed(armedFromMask(editor.patch, words));
   },
   key: (k, down) => {                        // a pill key: the note at the emulated octave, through the sink (it sounds, and the emulator hears it)
     if (down) {
@@ -886,7 +886,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     host.send({ t: 'arm', devices: armed });
     // the editor's own arming reaches a Live FM-1 that takes it (ARMS, #191): it routes its panel's keys and the editor's
     // notes by the same set. What the FM-1 reported (ARMS_NOW) is not sent back
-    if (!fromDevice && live() && !uploading) device.arms(...armMask(editor.patch, editor.armedSet));
+    if (!fromDevice && live() && !uploading) device.arms(armMask(editor.patch, editor.armedSet));
     if (!armsApplying) emuArm();
     armPlays = plays;
     armThrough = through;
@@ -1224,8 +1224,9 @@ function showBudget(): void {
   const lineLines = (): HTMLElement[] => {
     const lb = b.lines;
     const top = budgetLine('Memory', lb.fits ? lb.used / lb.max : Math.max(1.01, lb.used / lb.max), `${kb(lb.used)} / ${kb(lb.max)} KB`,
-      lb.fits ? 'The FM-1\'s memory for a patch: its module copies (one per voice in a poly assembly), signal buffers, parameter values, and the lines of the Delays, reverbs, choruses, strings, combs and the Granular. A Delay takes its length; ping-pong: half per side' : linesAdvice(editor.patch));
+      lb.fits ? 'The FM-1\'s memory for a patch: its modules, their copies (one per voice in a poly assembly), signal buffers, parameter values, and the lines of the Delays, reverbs, choruses, strings, combs and the Granular. A Delay takes its length; ping-pong: half per side' : linesAdvice(editor.patch));
     const parts: { name: string; bytes: number; hint: string; id?: number }[] = [
+      { name: `Modules ×${lb.nodes}`, bytes: lb.nodesBytes, hint: 'Each module\'s settings and connections' },
       { name: `Module copies ×${lb.pool.instances}`, bytes: lb.copiesBytes, hint: 'One per module, one per voice in a poly assembly' },
       { name: `Signal buffers ×${lb.pool.buffers}`, bytes: lb.buffersBytes, hint: 'One per connected output (per voice), one per input that sums cables' },
       { name: `Parameter values ×${lb.pool.params}`, bytes: lb.paramsBytes, hint: 'Each module\'s values (twice with a morph B side), and each copy\'s' },
@@ -1929,7 +1930,7 @@ function emuRealign(): void {
 }
 /** the emulated FM-1 arms the editor's armed track (#139), so its REC records into it */
 function emuArm(): void {
-  emu.ui?.armMask(...armMask(editor.patch, editor.armedSet));
+  emu.ui?.armMask(armMask(editor.patch, editor.armedSet));
 }
 function queueEmu(): void {
   if (!emu.ui) return;
@@ -2781,6 +2782,22 @@ if (import.meta.env.DEV) {
       loadNamed(p, { from: o.from });
       return true;
     },
+    /** a patch opened as `open` opens it, with `n` VCAs in a chain to the Output (silent: nothing opens them) placed before
+     *  its modules, so they sit past index n - 1 in the binary (#721: arming past 63) */
+    openPadded: (name: string, n: number): boolean => {
+      const o = openableGroups().flatMap((g) => g.items).find((x) => x.name === name);
+      if (!o) return false;
+      const p = o.load();
+      const out = p.modules.find((m) => m.type === 'output');
+      if (!out) return false;
+      const ids = Array.from({ length: n }, (_, k) => addModule(p, DEFS.vca, -400 - 40 * (k % 8), 40 * Math.floor(k / 8)).id);
+      ids.forEach((id, k) => p.cables.push({ from: { module: id, port: 'out' }, to: k + 1 < n ? { module: ids[k + 1], port: 'in' } : { module: out.id, port: 'l' } }));
+      p.modules = [...p.modules.filter((m) => ids.includes(m.id)), ...p.modules.filter((m) => !ids.includes(m.id))];
+      loadNamed(p, { from: o.from });
+      return true;
+    },
+    /** the patch's module count as the FM-1 gets it (the device form) */
+    deviceModules: (): number => deviceView(editor.patch, true).patch.modules.length,
     state: () => ({
       connected: device.connected, live: liveOn, fits: fitsDevice, sandbox: sandboxOn(), chip: fm1State(), following: mirror.following,
       playing: editor.playing, deviceRunning: device.running, octave: noteKeys.octave(), focus: editor.focus, patch: editor.patch.name,

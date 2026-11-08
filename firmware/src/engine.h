@@ -29,6 +29,80 @@
                                        * are one run, u8 first follows, the count is the low 7 bits */
 #define ENG_PATCH_COMPAT_VERSION 31   /* (a format 31 patch reads the same; 31..34 with the parameter counts of their format) */
 #define ENG_MAX_PARTS 8               /* parts of a poly group (notes it plays at once) */
+/* the modules of a patch (#721, D-256): the binary's count is a byte; 128 keeps every module index under 0x80 (E.main is
+ * an int8_t, a Drum map's keys source 2 + an index a byte) and a module set four words. A node takes ENG_NODE_BYTES of
+ * the arena (#649), so a patch pays for its own modules */
+#define ENG_MAX_MODULES 128u
+/* a set of modules (the armed ones, #191; what arming a device arms): bit m & 31 of w[m >> 5] = module m. The link carries
+ * it as ENG_MSET_WORDS u32 LE (ARMS / ARMS_NOW, feature bit 21; older firmware and editors: the first two) */
+#define ENG_MSET_WORDS (ENG_MAX_MODULES / 32u)
+typedef struct { uint32_t w[ENG_MSET_WORDS]; } eng_mset_t;
+static inline eng_mset_t mset_none(void) { eng_mset_t s = {{0}}; return s; }
+static inline eng_mset_t mset_one(uint32_t m)   /* {m}, empty past ENG_MAX_MODULES */
+{
+    eng_mset_t s = {{0}};
+    if (m < ENG_MAX_MODULES)
+        s.w[m >> 5] = 1u << (m & 31u);
+    return s;
+}
+static inline int mset_has(eng_mset_t s, uint32_t m) { return m < ENG_MAX_MODULES && (s.w[m >> 5] >> (m & 31u) & 1u); }
+static inline int mset_any(eng_mset_t s)
+{
+    uint32_t i, a = 0;
+    for (i = 0; i < ENG_MSET_WORDS; i++)
+        a |= s.w[i];
+    return a != 0u;
+}
+static inline int mset_eq(eng_mset_t a, eng_mset_t b)
+{
+    uint32_t i;
+    for (i = 0; i < ENG_MSET_WORDS; i++)
+        if (a.w[i] != b.w[i])
+            return 0;
+    return 1;
+}
+static inline eng_mset_t mset_or(eng_mset_t a, eng_mset_t b)
+{
+    uint32_t i;
+    for (i = 0; i < ENG_MSET_WORDS; i++)
+        a.w[i] |= b.w[i];
+    return a;
+}
+static inline eng_mset_t mset_and(eng_mset_t a, eng_mset_t b)
+{
+    uint32_t i;
+    for (i = 0; i < ENG_MSET_WORDS; i++)
+        a.w[i] &= b.w[i];
+    return a;
+}
+static inline eng_mset_t mset_minus(eng_mset_t a, eng_mset_t b)   /* a without b */
+{
+    uint32_t i;
+    for (i = 0; i < ENG_MSET_WORDS; i++)
+        a.w[i] &= ~b.w[i];
+    return a;
+}
+static inline eng_mset_t mset_flip(eng_mset_t s, uint32_t m)      /* m in or out */
+{
+    if (m < ENG_MAX_MODULES)
+        s.w[m >> 5] ^= 1u << (m & 31u);
+    return s;
+}
+/* from n u32 LE words (the link; the rest 0), into ENG_MSET_WORDS of them (4 * ENG_MSET_WORDS bytes) */
+static inline eng_mset_t mset_read(const uint8_t *p, uint32_t n)
+{
+    eng_mset_t s = {{0}};
+    uint32_t i;
+    for (i = 0; i < n && i < ENG_MSET_WORDS; i++)
+        s.w[i] = (uint32_t)p[4u * i] | (uint32_t)p[4u * i + 1u] << 8 | (uint32_t)p[4u * i + 2u] << 16 | (uint32_t)p[4u * i + 3u] << 24;
+    return s;
+}
+static inline void mset_write(eng_mset_t s, uint8_t *p)
+{
+    uint32_t i;
+    for (i = 0; i < 4u * ENG_MSET_WORDS; i++)
+        p[i] = (uint8_t)(s.w[i >> 2] >> (8u * (i & 3u)));
+}
 #define ENG_GROUP_REC (8u + 5u * ENG_MAX_PARTS)   /* a poly group record: parts (low nibble; high nibble unison count), assign, legato (bit 7: unison, bit 6: shared), priority (bit 7: no stealing), five flaw bytes per part, the note source, MIDI channel, lowest and highest key (patchbin.ts GROUP_REC) */
 
 /* Validate the group settings without accepting new flags in older formats. */
@@ -572,13 +646,13 @@ void eng_arm(int module);
 int eng_armed(void);
 /* arm a set of modules (#191; engine.ts arm / arm.ts armView): while the mask is not 0 Main's keys go only to the key
  * listeners among them (a group's Part or cards, a Drum map, an Arpeggiator, a Steps track, cabled from Main or not for a
- * track) and to nothing else (not the shared keyboard); 0: the cables decide. eng_arm(module) is the one-track form. */
-void eng_arm_mask(uint64_t mask);
-uint64_t eng_arm_mask_get(void);
+ * track) and to nothing else (not the shared keyboard); empty: the cables decide. eng_arm(module) is the one-track form. */
+void eng_arm_mask(eng_mset_t mask);
+eng_mset_t eng_arm_mask_get(void);
 /* what arming module m arms (#395; arm.ts armedWith), as a mask: m itself when it hears Main's keys armed (a Steps track,
  * a Part or card of a group that takes the keys, a Drum map on the keys, an Arpeggiator); when its keys come through a
- * key source (a group's or a Drum map's Arpeggiator or track), that source, and the track an Arpeggiator plays; 0 none */
-uint64_t eng_arms(uint32_t m);
+ * key source (a group's or a Drum map's Arpeggiator or track), that source, and the track an Arpeggiator plays; none: empty */
+eng_mset_t eng_arms(uint32_t m);
 /* module m hears Main's keys now (the armed set's, else by its cables): a Steps track, an Arpeggiator or a Drum map on the
  * keys, a member of a group the keys play; 0 not (the environment marks the devices the cables reach WIRED, #582) */
 int eng_hears_keys(uint32_t m);

@@ -27,6 +27,8 @@ const COARSE_TO_RATIO = Array.from({ length: 61 }, (_, k) => {
 const FINE_TO_DETUNE = Array.from({ length: 9 }, (_, k) => Math.max(0, Math.min(6, Math.round((k - 4) / (2.6 / 3)) + 3)));
 /** Oracle V's structure in 1.11 (#658) */
 const ORACLE_1_11 = '6282b61f';
+/** 8 Lire's structure in 1.11 (#658) */
+const LIRE_1_11 = '0a40769f';
 
 /** the positions 1..8 of an eight-way Selector from a number 0..7 */
 const ONE_UP = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -185,6 +187,41 @@ export const HAND_MAPS: HandMap[] = [
       'scale#36.gain': { from: 'ladder#9.track' }, 'macro#45.value': { from: 'scale#3.gain' },
       'select#29.pos': { table: ['osc#7.wave'], lo: [0], n: [6], v: [1, 1, 1, 2, 1, 1] },
       'select#31.pos': { table: ['osc#7.wave'], lo: [0], n: [6], v: [2, 2, 2, 1, 2, 2] },
+    },
+  },
+
+  // ---- 1.11, issue #658: 8 Lire follows the Lyra-8's manual (8 Lire XL's build): each pair's FM source switch (FM, OFF,
+  // LFO) where each group had a bus of levels (the other group, the LFO, the delay's output), the structure switch, TOTAL
+  // FB and LINK, two delay lines (TIME 1 / 2, MOD 1 / 2, SELF / LFO, TRIANGLE / SQUARE, FB, MIX), the distortion's MIX
+  // and VOL. A pair's source is LFO when its group's bus took the LFO or the delay's output, else FM; TOTAL FB is on when
+  // group 1-4 took the delay's output. The delay's time is TIME 1 and its LFO depth both MODs; its feedback is FB; VOL
+  // takes the old output level; AND / OR from the old crossfade (0 AND, 1 OR).
+  {
+    engine: '8 Lire', from: '24f65535', to: LIRE_1_11, why: 'issue #658: the Lyra-8 manual\'s switches, two delay lines, distortion mix',
+    rows: {
+      ...Object.fromEntries(Array.from({ length: 8 }, (_, i) => [
+        [`osc#${34 + 3 * i}.coarse`, { from: `osc#${12 + 3 * i}.coarse` }], [`osc#${34 + 3 * i}.fine`, { from: `osc#${12 + 3 * i}.fine` }],
+        [`adsr#${35 + 3 * i}.a`, { from: `adsr#${13 + 3 * i}.a` }], [`adsr#${35 + 3 * i}.r`, { from: `adsr#${13 + 3 * i}.r` }],
+      ]).flat()),
+      'macro#62.value': { from: 'macro#42.value' },
+      'macro#63.value': { from: 'macro#43.value' },
+      ...Object.fromEntries([0, 1, 2, 3].flatMap((p) => [[`scale#${30 + p}.gain`, { from: `scale#${8 + p}.gain` }], [`shape#${58 + p}.drive`, { from: `shape#${36 + p}.drive` }]])),
+      ...Object.fromEntries([0, 1, 2, 3].map((p) => {
+        const bus = p < 2 ? 'mixer#40' : 'mixer#41';
+        return [`select#${26 + p}.pos`, { table: [`${bus}.l2`, `${bus}.l3`], lo: [0, 0], n: [2, 2], v: [1, 3, 3, 3] }];
+      })),
+      'select#10.pos': { table: ['mixer#40.l3'], lo: [0], n: [2], v: [1, 2] },
+      'lfo#2.rate': { from: 'lfo#2.rate' },
+      'lfo#3.rate': { from: 'lfo#3.rate' },
+      'select#7.pos': { table: ['xfade#5.mix'], lo: [0], n: [2], v: [1, 2] },
+      'delay#12.time': { from: 'delay#7.time' },
+      'scale#13.gain+scale#19.gain': { from: 'delay#7.fb' },
+      'xfade#68.mix': { from: 'delay#7.mix' },
+      'scale#17.gain': { from: 'scale#6.gain' },
+      'scale#23.gain': { from: 'scale#6.gain' },
+      'shape#69.drive': { from: 'shape#47.drive' },
+      'mixer#71.l1': { from: 'shape#47.level' },
+      'scope#72.view': { from: 'scope#48.view' },
     },
   },
 ];

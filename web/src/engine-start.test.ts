@@ -16,7 +16,7 @@ describe('"Start with an engine" (#160)', () => {
     const by = (n: string) => tiles.find((t) => t.name === n)!;
     expect(by('Hera 5').stereo).toBe(true);
     expect(by('Oracle V').stereo).toBe(false);
-    expect(by('8 Lire').stereo).toBe(true); // the delay's ping-pong taps
+    expect(by('8 Lire').stereo).toBe(false); // mono, as the Lyra-8 (its two delay lines sum, #658)
     expect(by('Scrounge').stereo).toBe(true); // the A and B outputs
     expect(by('Meridian 8').stereo).toBe(true); // the odd and even outputs
     expect(by('Perun 4').stereo).toBe(false); // mono, as the original

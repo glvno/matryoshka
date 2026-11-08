@@ -68,7 +68,7 @@ static uint32_t help_state_sig(void)
  * (the roll); the patch has tracks; the menu's tab is GUIDE / a page of settings / SYSTEM */
 static int hc_dev_presets(void) { pages_ensure(); return pg_cur_dev < pg_ndev && dp_list(pg_cur_dev) > 0u; }
 static int hc_dev_store(void) { pages_ensure(); return pg_cur_dev < pg_ndev && pg_dev[pg_cur_dev].structure != 0u; }
-static int hc_dev_keys(void) { pages_ensure(); return pg_cur_dev < pg_ndev && env_listeners(pg_cur_dev) != 0u; }
+static int hc_dev_keys(void) { pages_ensure(); return pg_cur_dev < pg_ndev && mset_any(env_listeners(pg_cur_dev)); }
 static int hc_list(void) { return pg_list_btn >= 0; }
 static int hc_long_track(void) { int mod = seq_module(); return page == PAGE_SEQ && mod >= 0 && seq_len(mod) > 16; }
 static int hc_roll(void) { return seq_module() >= 0 && seq_map() < 0; }
