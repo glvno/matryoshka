@@ -308,14 +308,17 @@ def check(img, syms, dis, rts):
         errors.append(f".c1_text reaches the flash: {(c1_fixed + c1_xip)[:3]}")
     else:
         notes.append(f".c1_text: {len(c1_ins)} insns, {c1_jobs} call through a register (the job), no flash address")
+    fn = "?"
     for ln in dis.splitlines():     # nothing may call or load an address in the chip ROM
         mm = LINE.match(ln)
+        if not mm and ln.rstrip().endswith(":") and not re.search(r"[<\s]\.", " " + ln):
+            fn = ln.strip()[:60]
         if not mm:
             continue
         for v in re.findall(r"= (-?\d+) <|call -?\d+ <[^:>]*: ([0-9a-f]+) >", mm.group(3)):
             val = (int(v[0]) & 0xFFFFFFFF) if v[0] else int(v[1], 16) & 0xFFFFFFFF
             if 0xFFC00000 <= val < 0xFFD00000:
-                errors.append(f"reference to ROM address {val:#010x}")
+                errors.append(f"reference to ROM address {val:#010x} in {fn}: {mm.group(3).strip()[:100]}")
     if len(img) > APP_SLOT:
         errors.append(f"image {len(img)} B exceeds the app slot")
 
