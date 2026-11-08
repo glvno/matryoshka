@@ -2,8 +2,9 @@
 // Algo Four XL: the Yamaha DX100 in full, after the Yamaha DX100 Owner's Manual (chapter III "The Function Mode", chapter
 // IV "The Voice Parameters", the specifications and the voice data tables 5-1 / 5-2; a copy:
 // homepages.abdn.ac.uk/d.j.benson/pages/dx7/manuals/dx100-man.pdf). The FM-1 version (gen-assemblies.ts,
-// Algo Four) plays three voices, gives the two modulators ADSRs, keeps operator 4's feedback at 0 and wires one algorithm
-// (5: 2 into 1, 4 into 3).
+// Algo Four) plays eight voices with the eight algorithms and the ratio table (#658), but gives the two modulators
+// ADSRs, keeps operator 4's feedback at 0, has an `index` row per modulated operator and leaves out the LFO, velocity,
+// scaling and performance controls.
 //
 // The card (docs/ledger/patches-and-presets.md D-347): one row per parameter of the DX100, named as its LCD names it
 // (lowercase), switches as named choices:
