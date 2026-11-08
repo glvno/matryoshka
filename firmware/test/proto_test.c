@@ -312,6 +312,101 @@ static int old_format(int n, char **argv)
     return 0;
 }
 
+/* proto_test --grow NEW.m1p ... (tools/golden.sh, the counted golden kits): the FM-1's edits of its copy of a format 51
+ * binary (D-1000, D-1004, D-1005). Every parameter of every module and both attenuverters of every module with parameter
+ * inputs are set through m1_patch_param / m1_patch_att, as a knob, a preset or the editor's PARAM / ATT set them: a record
+ * that leaves the parameter out grows (eng_rec_grow, its B bitmap too), a module with a B side whose B set leaves it out
+ * gets its old A value as its B value first (eng_b_keep), a record at its matrix template is written out whole
+ * (eng_rec_matrix). The edited binary must be valid and render bit-identically to the original with the same edits set
+ * in the running engine (eng_set_param, eng_set_att: the B side stays where it was). An edit with no room left in the
+ * binary changes neither. */
+static int grow_test(int n, char **argv)
+{
+    static int32_t a_l[128 * 40], a_r[128 * 40], b_l[128 * 40], b_r[128 * 40];
+    static uint32_t emod[2048], epar[2048];
+    static int32_t eval[2048];
+    int k, edits = 0, atts = 0, lost = 0, bset = 0;
+    for (k = 0; k < n; k++) {
+        long nb;
+        uint8_t *o = slurp(argv[k], &nb);
+        uint32_t m, j, ne = 0, i, was;
+        if (o[1] < ENG_COUNTED) {
+            free(o);
+            continue;
+        }
+        CHECK(m1_valid(o, (uint32_t)nb) && eng_load(o, (uint32_t)nb) == 0);
+        m1_set_current(o, (uint32_t)nb);
+        bset += (o[6] & 1u) != 0u;
+        for (m = 0; m < o[2]; m++) {
+            uint32_t at = m1_record(m);
+            const def_t *d;
+            CHECK(at);
+            d = &DEFS[m1_cur[at] & 0x7Fu];
+            for (j = 0; j < d->npar; j++) {
+                int32_t v = d->pmin[j] + (d->pmax[j] - d->pmin[j]) / 2;
+                if (DEF_FIXED(m1_cur[at] & 0x7Fu, j) || eng_tempo_row(m, j))
+                    continue;
+                if (d->pchoice && d->pchoice[j])
+                    v &= ~0xFFFF;
+                was = m1_cur_len;
+                m1_patch_param(m, j, v);
+                at = m1_record(m);
+                if (j >= eng_rec_npar(m1_cur, at) || rd32(m1_cur + at + 2u + 4u * j) != v) {
+                    CHECK(m1_cur_len == was);         /* (no room: nothing changed) */
+                    lost++;
+                    continue;
+                }
+                CHECK(ne < 2048u);
+                emod[ne] = m, epar[ne] = j, eval[ne++] = v;
+                edits++;
+            }
+            if (d->cvbase >= 0)
+                for (j = 0; j < 2u; j++) {
+                    int32_t v = j ? -ENG_ONE / 3 : ENG_ONE / 2;
+                    uint32_t b;
+                    was = m1_cur_len;
+                    m1_patch_att(m, j, v);
+                    at = m1_record(m);
+                    b = eng_rec_block(m1_cur, at);
+                    if ((m1_cur[at + 1u] & ENG_REC_TEMPLATE) || m1_cur[b] != ENG_PRES_ALL) {
+                        CHECK(m1_cur_len == was);
+                        lost++;
+                        continue;
+                    }
+                    CHECK(rd32(m1_cur + b + 1u + 4u * j) == v);
+                    CHECK(ne < 2048u);
+                    emod[ne] = m, epar[ne] = 0x100u | j, eval[ne++] = v;
+                    atts++;
+                }
+        }
+        CHECK(m1_valid(m1_cur, m1_cur_len));
+        CHECK(eng_load(o, (uint32_t)nb) == 0);
+        for (i = 0; i < ne; i++) {
+            if (epar[i] & 0x100u)
+                eng_set_att(emod[i], epar[i] & 1u, eval[i]);
+            else
+                eng_set_param(emod[i], epar[i], eval[i]);
+        }
+        E.tick_acc = E.ticks = 0;
+        E.idle_blk = 0;
+        run(a_l, a_r);
+        eng_all_notes_off();
+        CHECK(eng_load(m1_cur, m1_cur_len) == 0);
+        E.tick_acc = E.ticks = 0;
+        E.idle_blk = 0;
+        run(b_l, b_r);
+        eng_all_notes_off();
+        if (memcmp(a_l, b_l, sizeof a_l) || memcmp(a_r, b_r, sizeof a_r)) {
+            fprintf(stderr, "FAIL %s: the edited binary renders differently from the edits in the engine\n", argv[k]);
+            return 1;
+        }
+        free(o);
+    }
+    printf("grow ok: %d counted binaries (%d with a morph B set), %d parameter and %d attenuverter edits written in place and rendering the same, %d without room\n",
+           n, bset, edits, atts, lost);
+    return 0;
+}
+
 /* a frame to m1_handle: cmd and its payload, 7-bit packed */
 static int send_frame(uint32_t cmd, const uint8_t *pl, uint32_t n)
 {
@@ -604,6 +699,8 @@ int main(int argc, char **argv)
 {
     if (argc >= 2 && !strcmp(argv[1], "--old"))
         return old_format(argc - 2, argv + 2);
+    if (argc >= 2 && !strcmp(argv[1], "--grow"))
+        return grow_test(argc - 2, argv + 2);
     long np, ns, i, at = 0;
     uint8_t *patch, *syx;
     static int32_t a_l[128 * 40], a_r[128 * 40], b_l[128 * 40], b_r[128 * 40];
@@ -670,7 +767,11 @@ int main(int argc, char **argv)
     /* the stored copy carries the live parameter */
     {
         uint32_t at2 = m1_record(mod) + eng_rec_head(m1_cur[1]) + 4u * par;
-        uint32_t at3 = m1_record(amod) + eng_rec_head(m1_cur[1]) + 4u * eng_rec_npar(m1_cur, m1_record(amod)) + 4u * ain;
+        uint32_t at3 = eng_rec_block(m1_cur, m1_record(amod)) + 4u * ain;
+        if (m1_cur[1] >= ENG_COUNTED) {                       /* (format 51: written out whole by the edit, eng_rec_matrix) */
+            CHECK(!(m1_cur[m1_record(amod) + 1u] & ENG_REC_TEMPLATE) && m1_cur[at3 - 4u * ain] == ENG_PRES_ALL);
+            at3++;
+        }
         CHECK((int32_t)((uint32_t)m1_cur[at2] | (uint32_t)m1_cur[at2 + 1] << 8 | (uint32_t)m1_cur[at2 + 2] << 16 | (uint32_t)m1_cur[at2 + 3] << 24) == val);
         CHECK((int32_t)((uint32_t)m1_cur[at3] | (uint32_t)m1_cur[at3 + 1] << 8 | (uint32_t)m1_cur[at3 + 2] << 16 | (uint32_t)m1_cur[at3 + 3] << 24) == aval);
     }

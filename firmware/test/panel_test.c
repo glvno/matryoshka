@@ -105,6 +105,8 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
         return;
     if (par >= eng_rec_npar(pv_bin, at) && (pv_bin[1] < ENG_COUNTED || eng_rec_grow(pv_bin, &pv_len, sizeof pv_bin, mod, par + 1u)))
         return;
+    if (eng_b_keep(pv_bin, &pv_len, sizeof pv_bin, mod, par))
+        return;
     at += eng_rec_head(pv_bin[1]) + 4u * par;
     pv_bin[at] = (uint8_t)v;
     pv_bin[at + 1u] = (uint8_t)(v >> 8);

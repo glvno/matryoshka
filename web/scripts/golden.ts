@@ -9,6 +9,7 @@ import { cpuEstimate } from '../src/cpu';
 import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, sandboxFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
 import { make, FM1_PRESETS, XL_PRESETS, type Build } from '../src/presets';
+import { oracleMorph } from '../src/test-morph';
 import { addModule, connect, defaultParams, emptyPatch, fixMatrix, newPatch, paramUnit, setMorphTarget, SOURCES, stepByte, type Patch, type PolyCfg } from '../src/patch';
 import { migrateSteps, overdub, STEPS_MAX, type StepNote } from '../src/track';
 import { insertAssembly, makeAssembly } from '../src/assembly';
@@ -148,6 +149,9 @@ for (const shape of [0, .25, .5, .75, 1]) for (const back of [0, 1]) {
   });
 }
 for (const [n, p] of Object.entries(FM1_PRESETS)) tests[n] = p();
+// D-1004: Oracle V with a morph B side on its filter and envelopes (every module has a B side, as the editor makes one;
+// format 51 writes only the B values off A): played half way
+tests['oracle-morph'] = oracleMorph();
 // #649: XLs the FM-1's one memory arena holds (Hera 6 XL: 151 module copies, past the 128 of the fixed pools before it;
 // Wanderer XL: it fits with format 51, #667)
 for (const n of ['Hera 6 XL', 'Wanderer XL']) tests[n] = XL_PRESETS[n]();
@@ -2420,6 +2424,48 @@ kit('morph-unassigned', (add, wire) => {
   const vca = tests['morph-unassigned'].modules.find((m) => m.type === 'vca')!;
   vca.paramsB = { ...vca.params, gain: 0.8 };
 }
+// D-1000: format 51 writes a module's attenuverters and p1 / p2 masks only where they are off their template (a presence
+// byte and those items): one off att1 and p2, one off att2 only, one off p1 only, one at the template
+kit('matrix-presence', (add, wire) => {
+  const main = add('fm1', 0, 0);
+  const lfo = add('lfo', 0, 0, { rate: 3, depth: 1 });
+  const ramp = add('lfo', 0, 0, { wave: 1, rate: 0.7, depth: 1 });
+  const osc = add('osc', 0, 0, { wave: 1, level: 0.8 });
+  const filter = add('filter', 0, 0, { cutoff: 900, res: 0.4 });
+  const vca = add('vca', 0, 0, { gain: 0.7 });
+  const out = add('output', 0, 0, { level: 0.9 });
+  wire(main, 'pitch', osc, 'pitch');
+  wire(osc, 'out', filter, 'in');
+  wire(filter, 'lp24', vca, 'in');
+  wire(vca, 'out', out, 'l');
+  wire(main, 'gate', vca, 'cv');
+  wire(lfo, 'out', osc, 'p1');
+  wire(ramp, 'out', osc, 'p2');
+  wire(lfo, 'out', filter, 'p2');
+  wire(ramp, 'out', vca, 'p1');
+});
+{
+  const [osc, filter, vca] = ['osc', 'filter', 'vca'].map((t) => tests['matrix-presence'].modules.find((m) => m.type === t)!);
+  osc.att = [0.25, -1];
+  osc.map!.p2 = ['pw', 'fine'];
+  filter.att = [1, -0.4];
+  vca.map!.p1 = [];
+}
+// D-1002: a cable from an output past the 16th (Main's sustain) keeps every cable of the patch at 4 bytes in format 51
+kit('cables-wide', (add, wire) => {
+  const main = add('fm1', 0, 0);
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.8 });
+  const offset = add('const', 0, 0, { value: 0.6 });
+  const mix = add('mixer', 0, 0);
+  const vca = add('vca', 0, 0, { gain: 0.5 });
+  const out = add('output', 0, 0, { level: 0.9 });
+  wire(main, 'pitch', osc, 'pitch');
+  wire(osc, 'out', vca, 'in');
+  wire(main, 'sustain', mix, 'in1');
+  wire(offset, 'out', mix, 'in2');
+  wire(mix, 'out', vca, 'cv');
+  wire(vca, 'out', out, 'l');
+});
 kit('crush-color', (add, wire) => {
   const nz = add('noise', 0, 0, { level: 0.6, color: 0.6 });
   const cr = add('crush', 0, 0, { bits: 6, rate: 5 });
@@ -3488,7 +3534,7 @@ for (const [name, patch] of Object.entries(tests))
 // written with counted records whatever their size: the C engine must give the parameters a record leaves out their
 // defaults, on both morph sides
 const counted = new Set<string>();
-for (const name of [...Object.keys(FM1_PRESETS), 'morph', 'morph-unassigned', 'fixed-links', 'side-input-fanout']) {
+for (const name of [...Object.keys(FM1_PRESETS), 'morph', 'morph-unassigned', 'fixed-links', 'side-input-fanout', 'oracle-morph', 'matrix-presence', 'cables-wide']) {
   if (!tests[name] || bins[name]) continue;
   const twin = `${name} counted`;
   tests[twin] = structuredClone(tests[name]);

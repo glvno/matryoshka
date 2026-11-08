@@ -17,6 +17,7 @@ gcc -O1 -Wall -Wextra -Wno-unused-parameter -Wno-unused-result $CF -o build/idle
 fail=0
 build/idle_test build/golden/idle-stagger.m1p build/golden/idle-stagger.ev || fail=1
 build/proto_test build/golden/acid.m1p build/golden/proto.syx $(cat build/golden/proto.args) build/golden/proto-slot.syx build/golden/steps-kit.m1p build/golden/proto-sandbox.syx build/golden/steps-patterns.m1p build/golden/steps-song.m1p build/golden/steps-locks.m1p || fail=1
+build/proto_test --grow build/golden/*-counted.m1p || fail=1   # (the FM-1's edits of a format 51 copy: grown in place, D-1005)
 for p in build/golden/*.m1p; do
   n="${p%.m1p}"
   par=""; [ -f "$n.par" ] && par="$n.par"
