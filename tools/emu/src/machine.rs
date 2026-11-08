@@ -27,6 +27,158 @@ pub struct Machine {
     pub audio: Vec<i16>,
 }
 
+/// fm1-soc's `run_dual` (cpu0 in slices, cpu1 after each with as many instructions as cycles passed) with its own
+/// `run_cpu1`: fm1-soc's takes cpu1 for idle, and gives up the rest of its slice, whenever it is back at the pc, registers
+/// and stack pointer it started the slice with. A loop that keeps its state in memory looks the same: Env 8's sample
+/// loop on a held step keeps its sample index on the stack, so with a lane job of Cassia 1 on cpu1 (#271) cpu1 lost most
+/// of its time, cpu0 waited for the job in `fm1_cpu1_wait` and the audio interrupt climbed from about 1,150 to 2,900 us
+/// about 2 s after 8 keys went down (from #744 on, whose larger `process` spilled that index; the release-1.11 batch,
+/// 2026-11-08). Here the slice ends early only when cpu1 also wrote nothing since it started: a polling loop (our
+/// `fm1_c1_main`'s idle loop, the stock firmware's job loop) only reads.
+fn run_dual(
+    cpu1: &mut Option<Cpu>,
+    soc: &mut Soc,
+    n: u32,
+    jit_on: bool,
+    mut run0: impl FnMut(&mut Soc, u32) -> Result<(), String>,
+) -> Result<(), String> {
+    let mut done = 0;
+    while cpu1.is_none() {
+        *cpu1 = machine::released_cpu1(soc, RAM_SIZE).map(|mut c| {
+            c.jit_on = jit_on;
+            c
+        });
+        if cpu1.is_some() || done >= n {
+            break;
+        }
+        let k = (n - done).min(4096);
+        soc.periph.room_cap = k as u64;
+        run0(soc, k)?;
+        done += k;
+    }
+    let Some(c1) = cpu1.as_mut() else { return Ok(()) };
+    soc.periph.room_cap = machine::SLICE as u64;
+    while done < n {
+        let k = (n - done).min(machine::SLICE);
+        let c0 = soc.periph.cycles;
+        if soc.core_paused(0) {
+            soc.advance(k as u64); // held by cpu1 (C0_CON bit 2): time runs on
+        } else {
+            run0(soc, k)?;
+        }
+        done += k;
+        let dt = soc.periph.cycles - c0;
+        run_cpu1(c1, soc, dt)?;
+    }
+    Ok(())
+}
+
+/// fm1-soc's `Core1Bus`, counting cpu1's writes (`run_cpu1`)
+struct Core1Writes<'a> {
+    bus: machine::Core1Bus<'a>,
+    writes: u64,
+}
+impl Bus for Core1Writes<'_> {
+    fn read8(&mut self, a: u32) -> u8 {
+        self.bus.read8(a)
+    }
+    fn read16(&mut self, a: u32) -> u16 {
+        self.bus.read16(a)
+    }
+    fn read32(&mut self, a: u32) -> u32 {
+        self.bus.read32(a)
+    }
+    fn write8(&mut self, a: u32, v: u8) {
+        self.writes += 1;
+        self.bus.write8(a, v)
+    }
+    fn write16(&mut self, a: u32, v: u16) {
+        self.writes += 1;
+        self.bus.write16(a, v)
+    }
+    fn write32(&mut self, a: u32, v: u32) {
+        self.writes += 1;
+        self.bus.write32(a, v)
+    }
+    fn tick(&mut self) -> bool {
+        self.bus.tick()
+    }
+    fn irq_pending(&self) -> bool {
+        self.bus.irq_pending()
+    }
+    fn jit_mem(&mut self) -> Option<fm1_core::JitMem> {
+        // (the JIT's inline stores would pass the count by: with M1EMU_JIT, cpu1 never ends a slice early, it only runs slower)
+        self.writes += 1;
+        self.bus.jit_mem()
+    }
+    fn code_writes(&self) -> Option<u64> {
+        self.bus.code_writes()
+    }
+    fn code_mark(&mut self, lo: u32, hi: u32) {
+        self.bus.code_mark(lo, hi)
+    }
+    fn tick_room(&self) -> u64 {
+        self.bus.tick_room()
+    }
+    fn add_ticks(&mut self, n: u64) {
+        self.bus.add_ticks(n)
+    }
+    fn hw_lock(&mut self, core: u32, set: bool) -> bool {
+        self.bus.hw_lock(core, set)
+    }
+    fn irq_window(&mut self) {
+        self.bus.irq_window()
+    }
+    fn next_tick_due(&self) -> bool {
+        self.bus.next_tick_due()
+    }
+    fn idle(&mut self, core: u32) {
+        self.bus.idle(core)
+    }
+}
+
+/// fm1-soc's `run_cpu1` (up to `cycles` instructions: interrupts from its own bank, then single steps while it looks for
+/// the way back to where it started, then stretches of 256), ending early only at the start's pc, registers and stack
+/// pointer with no write since the start (`run_dual`)
+fn run_cpu1(c1: &mut Cpu, soc: &mut Soc, cycles: u64) -> Result<(), String> {
+    if soc.core_paused(1) {
+        return Ok(());
+    }
+    let probe = (c1.pc, c1.regs, c1.sp);
+    let mut left = cycles.min(1 << 20);
+    let mut probing = 512u64;
+    let mut writes = 0u64;
+    while left > 0 {
+        if soc.periph.any_pending() {
+            if let Some((irq, prio)) = soc.pending_irq_for(1) {
+                if c1.irq_ready(prio) {
+                    let handler = soc.read32(fm1_soc::VEC_BASE + 4 * irq as u32);
+                    c1.interrupt(handler, prio);
+                }
+            }
+        }
+        let chunk = if probing > 0 { 1 } else { left.min(256) };
+        let mut bus = Core1Writes { bus: machine::Core1Bus { soc: &mut *soc, budget: chunk.max(64) + 1 }, writes: 0 };
+        let k = match c1.run_fast(&mut bus, chunk as u32) {
+            Ok((0, _)) => {
+                if let Err(e) = c1.step(&mut bus) {
+                    return Err(format!("cpu1: {e:?} at pc {:#010x}", c1.pc));
+                }
+                1
+            }
+            Ok((k, _)) => k as u64,
+            Err(e) => return Err(format!("cpu1: {e:?} at pc {:#010x}", c1.pc)),
+        };
+        writes += bus.writes;
+        left = left.saturating_sub(k);
+        probing = probing.saturating_sub(k);
+        if writes == 0 && c1.pc == probe.0 && c1.sp == probe.2 && c1.regs == probe.1 {
+            break; // polling with nothing to do
+        }
+    }
+    Ok(())
+}
+
 /// The XIP window for an app.bin: the 0x120 bytes in front of it (fm1-live's `--bin` takes this).
 pub fn xip_of(app: &[u8]) -> Vec<u8> {
     let mut xip = vec![0u8; XIP_PAD];
@@ -79,7 +231,7 @@ impl Machine {
         while self.ms() < ms {
             let jit = self.cpu.jit_on;
             let Machine { cpu, cpu1, soc, pending_tick, .. } = self;
-            machine::run_dual(cpu1, soc, 100_000, RAM_SIZE, jit, |soc, k| machine::run_blocks(cpu, soc, k, pending_tick))?;
+            run_dual(cpu1, soc, 100_000, jit, |soc, k| machine::run_blocks(cpu, soc, k, pending_tick))?;
             // the hold (#271): fm1-emu pauses a core only by the stock firmware's C1_CON bit 2 pulse; our firmware (X0X's
             // and Melodee's hold) sets bit 1 and clears bit 3. Bit 3 clear stops core 1 here; a later start (0x10008 bit
             // 3 again) boots it from its entry word, as the chip does. Checked between stretches of 100,000 instructions.
