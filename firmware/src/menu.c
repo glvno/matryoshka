@@ -3,7 +3,7 @@
 /* The settings menu, after ui.c, pages_ui.c and sandbox_ui.c, before main.c:
  *
  * MENU (GLO; GLO again or HOME closes it; #395; its controls: web/src/controls.ts, #553): the FM-1's settings in tabs (MIDI: MIDI CHANNEL, CLOCK IN, MIDI OUT, CLOCK OUT). ALGO steps the tabs: MIDI, PANEL and SYSTEM
- * are pages of settings on K1..K4 (SYSTEM: UPDATE MODE, FACTORY RESET, QUICK START, OUTPUT; its second page: EDITOR, USB LEVEL, 3.5MM OUT), drawn as a device page (pages_ui.c menu_tab_page; the knobs go through panel.c as on
+ * are pages of settings on K1..K4 (SYSTEM: UPDATE MODE, FACTORY RESET, QUICK START, OUTPUT; its second page: EDITOR, 3.5MM OUT), drawn as a device page (pages_ui.c menu_tab_page; the knobs go through panel.c as on
  * a device page); INFO lists readings (drawn here) and GUIDE is a text SELECT scrolls (the ideas, D-248). The values are applied at once
  * and saved with the state (SAVE: main.c save bits; SAVE in the menu closes it). UPDATE MODE and FACTORY RESET (SYSTEM)
  * take a hold: a turn to the right arms the row for MENU_ARM_MS, GLO held 2 s then does it (menu_fire, from panel.c), so
@@ -27,7 +27,7 @@ static void defaults_now(void);
 
 static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "KNOB ACCEL", "COUNT-IN", "MIDI CHANNEL", "CLOCK IN", "MIDI OUT",
                                               "VERSION", "CPU", "CPU PEAK", "BANK SLOTS", "BATTERY", "UPDATE MODE", "FACTORY RESET",
-                                              "QUICK START", "TEMPO", "CLOCK OUT", "OUTPUT", "PROCESSOR", "EDITOR", "USB LEVEL", "3.5MM OUT"};
+                                              "QUICK START", "TEMPO", "CLOCK OUT", "OUTPUT", "PROCESSOR", "EDITOR", "3.5MM OUT"};
 #define INFO_N 6u
 static const uint8_t INFO_ROWS[INFO_N] = {MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_CORES};   /* the INFO tab's list, top down */
 #define MENU_ARM_MS 5000u                               /* an armed SYSTEM row waits this long for GLO's hold */
@@ -42,17 +42,6 @@ static uint32_t info_pos(uint32_t row)          /* a reading's place in the INFO
     while (k < INFO_N && INFO_ROWS[k] != row)
         k++;
     return k;
-}
-
-/* a level setting's value (out_level.h): KNOB, or the fixed level, "-12 DB", "0 DB" */
-static char *lvl_text(char *p, uint32_t v)
-{
-    if (!v || v >= LVL_N)
-        return put(p, "KNOB");
-    if (LVL_DB[v])
-        *p++ = '-';
-    fmt_int(p, LVL_DB[v]);
-    return put(p + str_len(p), " DB");
 }
 
 static void menu_value(uint32_t row, char *out)
@@ -108,7 +97,6 @@ static void menu_value(uint32_t row, char *out)
     case MR_QUICK: p = put(p, ONOFF[cfg.quick]); break;
     case MR_OUTPUT: p = put(p, out_mono == 2u ? "MONO L" : out_mono ? "MONO" : "STEREO"); break;
     case MR_EDITOR: p = put(p, cfg.editor_ignore ? "IGNORE" : "ALLOW"); break;
-    case MR_USBLVL: p = lvl_text(p, usb_level); break;
     case MR_OUT35: p = put(p, ONOFF[!out_off]); break;
     case MR_VERSION: p = put(p, FELUCCA_VERSION); break;
     case MR_CORES: p = put(p, cores_up == 2 ? "2 CORES" : "1 CORE"); break;   /* (#271: main.c c1_poll) */
@@ -304,11 +292,6 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
             editor_info_due = 1;                        /* (main.c editor_poll: INFO, once the editor said HELLO) */
         }
         break;
-    case MR_USBLVL: {                                   /* KNOB, -24 DB .. 0 DB (#600, out_level.h): what goes to the computer */
-        int32_t v = (int32_t)usb_level + d;
-        usb_level = (uint8_t)(v < 0 ? 0 : v > (int32_t)LVL_N - 1 ? (int32_t)LVL_N - 1 : v);
-        break;
-    }
     case MR_OUT35: out_off = (uint8_t)!up; break;      /* ON, OFF (#631, D-925): the speaker and the jack; USB audio plays on */
     case MR_TEMPO:                                      /* GLOBAL, PATCH (D-907): kept 5 s later, without SAVE */
         if ((uint32_t)up != gt_patch) {
