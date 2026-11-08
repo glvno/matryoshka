@@ -458,8 +458,14 @@ export function morphValue(pd: ParamDef, a: number, b: number, t: number): numbe
   return paramValue(pd, paramUnit(pd, a) + (paramUnit(pd, b) - paramUnit(pd, a)) * t);
 }
 
-/** the FM-1's module limit per patch (ENG_MAX_MODULES): the budget meter counts against it, the editor does not stop at it */
-export const MAX_MODULES = 64;
+/** the FM-1's module limit per patch (engine.h ENG_MAX_MODULES): the budget meter counts against it, the editor does not
+ * stop at it. 128 since 1.11 (#721, D-256); firmware before it takes 64 (MODULES_1_10) */
+export const MAX_MODULES = 128;
+/** the module limit of firmware before 1.11: a patch with more is written in FORMAT_1_11 (patchbin.ts formatOf), so an FM-1
+ * with older firmware is told to update */
+export const MODULES_1_10 = 64;
+/** the words of an armed set (arm.ts armMask; engine.h ENG_MSET_WORDS): 32 modules each */
+export const ARM_WORDS = MAX_MODULES / 32;
 
 /**
  * How a poly group plays (poly.ts polyGroups / deviceView; the engines' and the binary's form): the settings of the Voice

@@ -156,15 +156,25 @@ describe('sandbox mode on the wire', () => {
     expect(editorSkips(null, false)).toBe(false);
   });
 
-  it('ARMS (#191): the editor\'s armed set as proto.c reads it (lo u32 LE, then hi), feature bit 20', async () => {
-    const { armsFrame, FEATURE_ARMS } = await import('./protocol');
-    const p = parse(armsFrame(0x80000005, 0x00000101))!;
+  it('ARMS (#191): the editor\'s armed set as proto.c reads it (u32 LE words), feature bit 20; four words with bit 21 (#721)', async () => {
+    const { armsFrame, FEATURE_ARMS, FEATURE_WIDE_ARMS, parseArmsNow } = await import('./protocol');
+    const p = parse(armsFrame([0x80000005, 0x00000101]))!;
     expect(p.cmd).toBe(0x39);
     expect(p.payload).toEqual([5, 0, 0, 0x80, 1, 1, 0, 0]);
-    expect(parse(armsFrame(0, 0))!.payload).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(parse(armsFrame([0, 0]))!.payload).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(parse(armsFrame([5, 0, 1, 0x80000000]))!.payload).toEqual([5, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0x80]);
     expect(FEATURE_ARMS).toBe(1 << 20);
+    expect(FEATURE_WIDE_ARMS).toBe(1 << 21);
     const info = parseInfo(parse(frame(CMD.info, [1, 64, 255, 1, 8, 246, 255, 31, 51, 0, 0, 0, 31]))!)!;
     expect(info.features & FEATURE_ARMS).toBeTruthy();
+    expect(info.features & FEATURE_WIDE_ARMS).toBeFalsy();
+    const wide = parseInfo(parse(frame(CMD.info, [1, 128, 255, 1, 8, 246, 255, 31, 51, 0, 0, 0, 63]))!)!;
+    expect(wide.features & FEATURE_WIDE_ARMS).toBeTruthy();
+    expect(wide.maxModules).toBe(128);
+    // ARMS_NOW: two words from older firmware (the rest 0), four since #721, too short: nothing
+    expect(parseArmsNow([5, 0, 0, 0x80, 1, 1, 0, 0])).toEqual([0x80000005, 0x101, 0, 0]);
+    expect(parseArmsNow([5, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0x80])).toEqual([5, 0, 1, 0x80000000]);
+    expect(parseArmsNow([5, 0, 0, 0, 0, 0, 0])).toBeNull();
   });
 
   it('INFO: the firmware version in bytes 9..11 (#216)', () => {

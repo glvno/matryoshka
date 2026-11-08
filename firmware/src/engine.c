@@ -25,7 +25,7 @@
  * fit does not load (-4 lines, -6 buffers, -7 instances, -8 parameter values): NO ROOM on the panel. The counts below are
  * sanity caps. Keep DEVICE and ARENA in web/src/patchbin.ts, the HELLO reply (proto.c) and the MEMORY lines of manual.c
  * in step. */
-#define ENG_MAX_MODULES 64          /* (the module list, `order`, `outputs` are uint8 indices; the binary header byte 2) */
+/* ENG_MAX_MODULES (engine.h): the module list, `order`, `outputs` are uint8 indices; the binary header byte 2 */
 #define ENG_MAX_RANGES 48           /* macro ranges (patch.ts ModuleInst.range) */
 #define ENG_MAX_CABLES 255           /* (the HELLO reply carries it in a byte) */
 #define MAX_SUM 160                 /* summed inputs (an input of an instance with two or more sources) */
@@ -671,7 +671,7 @@ typedef struct {
     uint8_t order[ENG_MAX_MODULES], outputs[ENG_MAX_MODULES];
     uint8_t from_m[ENG_MAX_CABLES], from_p[ENG_MAX_CABLES], to_m[ENG_MAX_CABLES], to_p[ENG_MAX_CABLES];
     uint16_t ncab, nbuf;
-    node_t node[ENG_MAX_MODULES];
+    node_t *node;                    /* the modules, nmod of them in the arena's top (#721, arena_nodes); node_none until a load */
     sum_t sum[MAX_SUM];
     const esig_t *sum_src[MAX_SRC];
     uint16_t sum_w[MAX_SRC];                 /* 0: the source adds as it is, else its Q16 weight (para_w) */
@@ -708,8 +708,9 @@ typedef struct {
     uint8_t nkev;                    /* keys out of the Steps tracks this block: node index, key (bit 7: on), velocity */
     uint8_t kev[ENG_KEV][3];
     uint8_t arm;                     /* the armed Steps module + 1 (#139; engine.ts arm), 0 none: the first armed track (REC's) */
-    uint64_t armm;                   /* the armed modules (#191, eng_arm_mask): while not 0 only they hear Main's keys */
-    uint32_t armg;                   /* bit g: poly group g hears Main's keys while armm is not 0 */
+    eng_mset_t armm;                 /* the armed modules (#191, eng_arm_mask): while any is (armany) only they hear Main's keys */
+    uint8_t armany;
+    uint32_t armg;                   /* bit g: poly group g hears Main's keys while a module is armed */
     uint16_t trk_rec;                /* bit t: track t records what is played through it (eng_steps_rec) */
     volatile uint16_t thru_kill;     /* bit t: track t lets go of the keys played through it (at its next block) */
     uint8_t nthru;                   /* keys in taken from the ring for this block (m_steps reads its own) */
@@ -826,17 +827,26 @@ typedef char eng_inst_bytes_check[sizeof(inst_t) == ENG_INST_BYTES ? 1 : -1];   
 #define LINE_BYTES(n) (((uint32_t)(n) + 3u) & ~3u)
 #define LINE_ARENA (LINE_BYTES(2u * DELAY_LEN) + 8u * LINE_BYTES(2u * STR_LEN) + LINE_BYTES(sizeof(grain_line_t)))   /* 167,980 B */
 #define LINE_LOW (LINE_BYTES(2u * RV_LEN) + LINE_BYTES(2u * CH_LEN) + 8192u)                                        /* 26,196 B */
-#define ENG_ARENA (LINE_ARENA + 255u * ENG_BUF_BYTES + 129u * ENG_INST_BYTES + 1536u * 4u)                       /* 338,740 B */
-#define ENG_ARENA_HOST (ENG_ARENA + (ENG_MAX_INST + 1u) * (sizeof(inst_t) > ENG_INST_BYTES ? (uint32_t)sizeof(inst_t) - ENG_INST_BYTES : 0u))
+/* the modules (node_t, ENG_NODE_BYTES each on the FM-1) come from the arena's top too (#721): it is bigger by the 64
+ * nodes the fixed table held before, so a patch of up to 64 modules has at least the room it had */
+#define ENG_NODE_BYTES 92u
+#if defined(M1_FW_MAJOR) && !defined(__wasm__)
+typedef char eng_node_bytes_check[sizeof(node_t) == ENG_NODE_BYTES ? 1 : -1];   /* (patchbin.ts NODE_BYTES follows it) */
+#endif
+#define ENG_ARENA (LINE_ARENA + 255u * ENG_BUF_BYTES + 129u * ENG_INST_BYTES + 1536u * 4u + 64u * ENG_NODE_BYTES)   /* 344,628 B */
+#define ENG_ARENA_HOST (ENG_ARENA + (ENG_MAX_INST + 1u) * (sizeof(inst_t) > ENG_INST_BYTES ? (uint32_t)sizeof(inst_t) - ENG_INST_BYTES : 0u) \
+                        + (sizeof(node_t) > ENG_NODE_BYTES ? ENG_MAX_MODULES * ((uint32_t)sizeof(node_t) - ENG_NODE_BYTES) + 8u : 0u))
 static uint32_t eng_arena[ENG_ARENA_HOST / 4u] ENG_POOL __attribute__((aligned(8)));
 #define inst_pool ((inst_t *)eng_arena)           /* (the copies start the arena: a fixed address, as the old array's) */
-static uint32_t ar_lo, ar_hi, ar_ninst;      /* bytes taken from the bottom and from the top; copies taken (the spare too) */
+static uint32_t ar_lo, ar_hi, ar_ninst, ar_nnode, ar_npad;   /* bytes taken from the bottom and from the top; copies taken (the
+                                                              * spare too); nodes taken, and the bytes their alignment took */
 static uint32_t line_low[LINE_LOW / 4u] ENG_LOWRAM;
 static uint32_t arena_size = ENG_ARENA;     /* (a test may make it smaller, to reach a patch that does not fit) */
 /* the arena's bytes still free, counted as on the FM-1 (a copy as ENG_INST_BYTES) */
 static uint32_t arena_free(void)
 {
-    uint32_t used = ar_lo - ar_ninst * (uint32_t)sizeof(inst_t) + ar_ninst * ENG_INST_BYTES + ar_hi;
+    uint32_t used = ar_lo - ar_ninst * (uint32_t)sizeof(inst_t) + ar_ninst * ENG_INST_BYTES
+                  + ar_hi - ar_nnode * (uint32_t)sizeof(node_t) - ar_npad + ar_nnode * ENG_NODE_BYTES;
     return used < arena_size ? arena_size - used : 0u;
 }
 /* n bytes from the bottom (a multiple of 4), 0 if they do not fit */
@@ -861,6 +871,23 @@ static int arena_inst(uint32_t count)
     for (j = 0; j < count * sizeof(inst_t); j++)
         z[j] = 0;
     return (int)i0;
+}
+/* n zeroed nodes from the arena's top, before anything else is taken from there (eng_load); 0 if they do not fit */
+static node_t *arena_nodes(uint32_t n)
+{
+    uintptr_t top = (uintptr_t)eng_arena + ENG_ARENA_HOST, q;
+    uint32_t j;
+    uint8_t *z;
+    if (ar_hi || n * ENG_NODE_BYTES > arena_free())
+        return 0;
+    q = (top - n * (uint32_t)sizeof(node_t)) & ~(uintptr_t)(__alignof__(node_t) - 1u);
+    ar_npad = (uint32_t)(top - q) - n * (uint32_t)sizeof(node_t);   /* (0 on the FM-1: the arena's size is a multiple of 4) */
+    ar_hi = (uint32_t)(top - q);
+    ar_nnode = n;
+    z = (uint8_t *)q;
+    for (j = 0; j < n * sizeof(node_t); j++)
+        z[j] = 0;
+    return (node_t *)q;
 }
 /* a Delay's line, samples, from its length (Q16 ms, rounded to whole ms, 10..1900): the length's samples rounded up to an
  * even count (ping-pong halves it) and 60 more, so a time of the whole length fits; 700 ms: DELAY_LEN (modules.ts
@@ -922,6 +949,7 @@ static void *line_at(uint8_t reg, uint32_t at, uint32_t bytes)   /* zeroed */
  * Not MAX_PAR per node and instance: most types have far fewer (patchbin.ts, the editor's budget, counts the same). */
 static uint32_t par_used;                   /* values taken (host_test checks the editor's count) */
 static int32_t par_spare[2u * MAX_PAR];     /* what a node or instance points at before it is loaded (eng_get_param after a failed load) */
+static node_t node_none ENG_POOL;           /* E.node before a load has taken the patch's (its nmod is 0 then; in the pool, not the RAM region) */
 
 static int32_t *par_take(uint32_t n)        /* n zeroed values, 0 if they do not fit */
 {
@@ -1589,7 +1617,8 @@ int eng_load(const uint8_t *p, uint32_t len)
         E.song_n[i] = 0;
     E.nkev = 0;
     E.arm = 0;
-    E.armm = 0;                                  /* (another patch disarms: #191) */
+    E.armm = mset_none();                        /* (another patch disarms: #191) */
+    E.armany = 0;
     E.armg = 0;
     E.trk_rec = E.thru_kill = 0;
     E.nthru = E.nrin = 0;
@@ -1602,25 +1631,34 @@ int eng_load(const uint8_t *p, uint32_t len)
     E.grp[0].hi = 127u;
     E.grp[0].mode = 0xFFu;
     groups_reset();
-    ar_lo = ar_hi = ar_ninst = 0;                /* the arena: the old patch's memory is free again */
+    ar_lo = ar_hi = ar_ninst = ar_nnode = ar_npad = 0;   /* the arena: the old patch's memory is free again */
     par_used = 0;
     (void)arena_inst(1u);                        /* the spare (inst_pool[0]): every node's until it has its own */
     inst_pool[0].eff = par_spare;
-    for (i = 0; i < ENG_MAX_MODULES; i++) {
-        E.node[i].par = par_spare;
-        E.node[i].inst0 = 0;
-        E.node[i].ninst = 1;
-    }
+    E.nmod = 0;                                  /* (no modules until this patch's are taken, below) */
+    node_none.par = par_spare;
+    node_none.ninst = 1;
+    E.node = &node_none;
     if (len < 8u || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION))
         return -1;
     if (!eng_flags_ok(p))
         return -1;
     for (i = 0; i < ENG_PANEL_BUTTONS; i++)      /* (before eng_buttons below: no Toggle of the last patch acts on this one) */
         E.btn_kind[i] = (uint8_t)ENG_BTN_GATE, E.btn_n[i] = 0;
-    E.nmod = p[2];
     ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
-    if (E.nmod > ENG_MAX_MODULES || ncab > ENG_MAX_CABLES)
+    if (p[2] > ENG_MAX_MODULES || ncab > ENG_MAX_CABLES)
         return -2;
+    if (p[2]) {                                  /* the modules, from the arena's top (#721): each the spare's until it loads */
+        node_t *nd = arena_nodes(p[2]);
+        if (!nd)
+            return -7;
+        E.node = nd;
+        for (i = 0; i < p[2]; i++) {
+            nd[i].par = par_spare;
+            nd[i].ninst = 1;
+        }
+    }
+    E.nmod = p[2];
     if (p[3] > ENG_MAX_GROUPS)
         return -1;
     at = eng_records_at(p, len);                 /* the poly groups: their settings, then each module's group */
@@ -2958,7 +2996,7 @@ static int arp_latched(const arp_t *a) { return E.node[a->node].par[ARP_P_LATCH]
 
 /* A bypassed Arpeggiator hands the keys it hears straight on (engine.ts effSrc / passesMain): its groups and Drum maps
  * play them as its own source's (Main's keys, or the track cabled into it). arp_hears_main: it takes Main's keys now */
-static int arp_hears_main(uint32_t m) { return !E.node[m].ksrc && (!E.armm || (E.armm >> m & 1u)); }
+static int arp_hears_main(uint32_t m) { return !E.node[m].ksrc && (!E.armany || mset_has(E.armm, m)); }
 static int arp_thru(uint32_t m) { return m < E.nmod && E.node[m].type == T_ARP && E.node[m].bypass; }
 /* where group g's notes come from now (grp_t src coding: 0 the keys, 1 + a node); 0xFF nothing */
 static uint32_t grp_src(uint32_t g)
@@ -3129,7 +3167,7 @@ static void dm_keys(uint32_t src, uint32_t kv, uint32_t vel)
         inst_t *it;
         uint32_t rows = 0, other = 0;
         int rep;
-        if (nd->type != T_DRUMMAP || dm_src(nd) != src || (src == 1u && nd->ksrc == 1u && E.armm && !(E.armm >> i & 1u)))   /* (#191: armed ones only) */
+        if (nd->type != T_DRUMMAP || dm_src(nd) != src || (src == 1u && nd->ksrc == 1u && E.armany && !mset_has(E.armm, i)))   /* (#191: armed ones only) */
             continue;
         it = &inst_pool[nd->inst0];
         rep = round_q16(nd->par[DRUMMAP_P_REPEAT]) >= 1;
@@ -3331,21 +3369,21 @@ static void thru_put(uint32_t module, uint32_t kv, uint32_t vel)
 /* the keys (engine.ts noteOn / noteOff, arm.ts armView): with modules armed (#191) only the armed listeners take them (a
  * track armed plays them through, cabled from Main or not); otherwise the groups that take them, the shared keyboard,
  * the Arpeggiators, the Drum maps and the tracks a cable from Main's keys feeds */
-#define ARMED(m) (E.armm >> (m) & 1u)
-static int hears_grp(uint32_t g) { return !E.armm || (g && (E.armg >> g & 1u)); }
-static int hears_trk(uint32_t m) { return E.armm ? ARMED(m) : E.node[m].ksrc != 0u; }
+#define ARMED(m) mset_has(E.armm, (m))
+static int hears_grp(uint32_t g) { return !E.armany || (g && (E.armg >> g & 1u)); }
+static int hears_trk(uint32_t m) { return E.armany ? ARMED(m) : E.node[m].ksrc != 0u; }
 /* module m hears Main's keys now, armed or by its cables (engine.h; the environment's WIRED, #582): a Steps track, an
  * Arpeggiator or a Drum map on the keys, a member of a group the keys play */
 int eng_hears_keys(uint32_t m)
 {
     const node_t *nd;
-    if (!E.loaded || m >= E.nmod || m >= 64u)
+    if (!E.loaded || m >= E.nmod)
         return 0;
     nd = &E.node[m];
     switch (nd->type) {
     case T_STEPS: return hears_trk(m);
     case T_ARP: return arp_hears_main(m);
-    case T_DRUMMAP: return nd->ksrc == 1u && (!E.armm || ARMED(m));
+    case T_DRUMMAP: return nd->ksrc == 1u && (!E.armany || ARMED(m));
     default: return nd->grp && !E.grp[nd->grp].src && hears_grp(nd->grp);
     }
 }
@@ -3440,16 +3478,19 @@ static void arp_switched(uint32_t m)
 }
 
 /* Arm a set of modules (#191, engine.h). The keys held when the routing changes go quiet. Not saved; another patch disarms. */
-void eng_arm_mask(uint64_t mask)
+void eng_arm_mask(eng_mset_t mask)
 {
     uint32_t m;
     if (!E.loaded)
         return;
-    mask &= E.nmod >= 64u ? ~(uint64_t)0 : (((uint64_t)1 << E.nmod) - 1u);
-    if (mask == E.armm)
+    for (m = 0; m < ENG_MAX_MODULES; m++)        /* (only the patch's modules) */
+        if (m >= E.nmod && mset_has(mask, m))
+            mask = mset_flip(mask, m);
+    if (mset_eq(mask, E.armm))
         return;
     keys_off();                                  /* (the old set's listeners let go, its tracks' notes played through too) */
     E.armm = mask;
+    E.armany = (uint8_t)mset_any(mask);
     E.armg = 0;
     E.arm = 0;
     for (m = 0; m < E.nmod; m++) {
@@ -3461,37 +3502,37 @@ void eng_arm_mask(uint64_t mask)
             E.arm = (uint8_t)(m + 1u);
     }
 }
-uint64_t eng_arm_mask_get(void) { return E.loaded ? E.armm : 0; }
+eng_mset_t eng_arm_mask_get(void) { return E.loaded ? E.armm : mset_none(); }
 
 /* the one-track form (#139; engine.ts arm(number); -1 none) */
 void eng_arm(int module)
 {
-    eng_arm_mask(module >= 0 && (uint32_t)module < E.nmod && E.node[module].type == T_STEPS ? (uint64_t)1 << module : 0u);
+    eng_arm_mask(module >= 0 && (uint32_t)module < E.nmod && E.node[module].type == T_STEPS ? mset_one((uint32_t)module) : mset_none());
 }
 
 /* a key source n (an Arpeggiator or a Steps track) and the track an Arpeggiator plays, as a mask */
-static uint64_t key_chain(uint32_t n)
+static eng_mset_t key_chain(uint32_t n)
 {
-    uint64_t b;
-    if (n >= 64u)
-        return 0;
-    b = (uint64_t)1 << n;
-    if (E.node[n].type == T_ARP && E.node[n].ksrc >= 2u && E.node[n].ksrc - 2u < 64u)
-        b |= (uint64_t)1 << (E.node[n].ksrc - 2u);
+    eng_mset_t b;
+    if (n >= E.nmod)
+        return mset_none();
+    b = mset_one(n);
+    if (E.node[n].type == T_ARP && E.node[n].ksrc >= 2u && E.node[n].ksrc - 2u < E.nmod)
+        b = mset_flip(b, E.node[n].ksrc - 2u);
     return b;
 }
 
-uint64_t eng_arms(uint32_t m)
+eng_mset_t eng_arms(uint32_t m)
 {
     const node_t *nd;
-    if (!E.loaded || m >= E.nmod || m >= 64u)
-        return 0;
+    if (!E.loaded || m >= E.nmod)
+        return mset_none();
     nd = &E.node[m];
     switch (nd->type) {
-    case T_STEPS: return (uint64_t)1 << m;
+    case T_STEPS: return mset_one(m);
     case T_ARP: return key_chain(m);
-    case T_DRUMMAP: return nd->ksrc == 1u ? (uint64_t)1 << m : nd->ksrc >= 2u ? key_chain(nd->ksrc - 2u) : 0u;
-    default: return !nd->grp ? 0u : E.grp[nd->grp].src ? key_chain(E.grp[nd->grp].src - 1u) : (uint64_t)1 << m;
+    case T_DRUMMAP: return nd->ksrc == 1u ? mset_one(m) : nd->ksrc >= 2u ? key_chain(nd->ksrc - 2u) : mset_none();
+    default: return !nd->grp ? mset_none() : E.grp[nd->grp].src ? key_chain(E.grp[nd->grp].src - 1u) : mset_one(m);
     }
 }
 int eng_armed(void) { return E.loaded && E.arm ? (int)E.arm - 1 : -1; }   /* (the first armed track: REC records into it) */
@@ -3506,7 +3547,7 @@ int eng_keys_drummap(void)
     int map = -1;
     if (!E.loaded)
         return -1;
-    if (!E.armm && E.main >= 0) {
+    if (!E.armany && E.main >= 0) {
         esig_t *const *o = inst_pool[E.node[E.main].inst0].out;
         if (!IS_DUMMY(o[FM1_O_PITCH]) || !IS_DUMMY(o[FM1_O_GATE]) || !IS_DUMMY(o[FM1_O_VEL]))
             return -1;
@@ -3519,7 +3560,7 @@ int eng_keys_drummap(void)
             return -1;
     for (m = 0; m < E.nmod; m++) {
         int d = -1;
-        if (E.node[m].type == T_DRUMMAP && E.node[m].ksrc == 1u && (!E.armm || ARMED(m)))
+        if (E.node[m].type == T_DRUMMAP && E.node[m].ksrc == 1u && (!E.armany || ARMED(m)))
             d = (int)m;
         else if (E.node[m].type == T_STEPS && hears_trk(m) && (d = eng_steps_drummap(m)) < 0)
             return -1;

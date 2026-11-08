@@ -15,7 +15,7 @@ typedef struct {
     uint32_t page, sr_on, sr_k, run, once, rec, saved, stepped, dev, devpage, menu_tab, man_top, updates, cfg_sum, out_off;
     int32_t octave, tempo, list_btn, list_step;
     uint32_t params, mutes, trk, row, roll_lo, seq_pg, pattern, lpg, locks;
-    uint64_t arms;                                      /* (all 64 modules: a big patch's tracks sit above 31) */
+    eng_mset_t arms;                                    /* (all 128 modules: a big patch's tracks sit above 31, #721) */
     int32_t notes_n;
     uint32_t notes_sum, acc_n, len_sum, vel_sum, chance_sum, pitch_sum;
     uint32_t song_sel, song_cur, song_len, song_sum, song, clear_at, del_at, msg_sum;
@@ -116,7 +116,7 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_TEMPO: return a->tempo != b->tempo || (sb_on && a->msg_sum != b->msg_sum);   /* (sandbox: the editor's) */
     case CE_PATCH: return a->stepped != b->stepped;
     case CE_STORE: return a->msg_sum != b->msg_sum;     /* (dp_store says what it stored) */
-    case CE_ARM: return a->arms != b->arms;
+    case CE_ARM: return !mset_eq(a->arms, b->arms);
     case CE_MUTE: return a->mutes != b->mutes;
     case CE_FOCUS: return a->dev != b->dev;
     case CE_DEVICE_PAGE: return a->devpage != b->devpage;
@@ -184,7 +184,7 @@ static void ct_focus_assembly(void)
     uint32_t d;
     pages_ensure();
     for (d = 0; d < pg_ndev; d++)
-        if (pg_dev[d].structure && dp_list(d) > 0u && env_listeners(d)) {
+        if (pg_dev[d].structure && dp_list(d) > 0u && m64(env_listeners(d))) {
             pages_focus(d, 0);
             return;
         }

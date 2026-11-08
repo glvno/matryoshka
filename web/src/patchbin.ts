@@ -97,7 +97,7 @@
 
 import { DEFS, delayLine, DELAY_LENGTH_DEFAULT, DRUM_ROWS, drumRowName, PANEL_BUTTONS } from './modules';
 import { KIND_CODE, kindOf, mainOf, switches, toggleEngaged, toggleTargets } from './buttons';
-import { defaultMap, EDITOR_ONLY, flawOf, hasMorph, isBipolar, MAX_MODULES, MAX_PARTS, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef, type Patch } from './patch';
+import { defaultMap, EDITOR_ONLY, flawOf, hasMorph, isBipolar, MAX_MODULES, MAX_PARTS, MODULES_1_10, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef, type Patch } from './patch';
 import { isShortNote, noteWord, shortWord, type StepNote } from './track';
 import { lockPlan, PATCH_LOCKS_MAX } from './locks';
 import { deviceView, keysInto, MAX_POLY, type DeviceGroup, VOICING_CABLE_INPUTS } from './poly';
@@ -194,8 +194,9 @@ export function storedParams(m: ModuleInst, v: number, morph: boolean, keep = 0)
 }
 /** what a patch uses of FORMAT_1_11 besides its parameters (`dev`: its device form): a cable into a Part's assign or
  * unison input (#681; firmware before 1.11 refuses a cable into a port it does not know); a VOICES row with a top (polyTop:
- * firmware before 1.11 reads no extras on a poly row) */
+ * firmware before 1.11 reads no extras on a poly row); more than 64 modules (#721: firmware before 1.11 takes 64) */
 function uses111(source: Patch, dev: Patch): boolean {
+  if (dev.modules.length > MODULES_1_10) return true;
   const parts = new Set(dev.modules.filter((m) => m.type === 'part').map((m) => m.id));
   if (dev.cables.some((c) => parts.has(c.to.module) && VOICING_CABLE_INPUTS.includes(c.to.port))) return true;
   if (!(source.assemblies ?? []).some((a) => a.params.some((r) => r.top !== undefined))) return false;
@@ -422,7 +423,7 @@ export const cables3 = (p: Patch, v: number): boolean => v >= COUNTED && p.cable
   return DEFS[from.type].outputs.findIndex((o) => o.name === c.from.port) < 16 && DEFS[to.type].inputs.findIndex((i) => i.name === c.to.port) < 16;
 });
 /** bit 7 of the device extras' member count (format 51, D-1003): the members are one unbroken run, u8 first follows and
- * the count is the low 7 bits (a patch has at most 64 modules) */
+ * the count is the low 7 bits (a device has at most 127 members: a patch has at most 128 modules, #721, and Main is never one) */
 export const MEMBER_RUN = 0x80;
 export const FLAG_BUTTONS = 64;
 export const FLAG_NAMES = 128;
@@ -948,15 +949,19 @@ export const delayBytes = (ms: number): number => lineBytes(2 * delayLine(ms));
 /** bytes of one module copy (engine.c inst_t, ENG_INST_BYTES), one signal buffer (ENG_BUF_BYTES: 128 samples of 4 bytes) and
  * one parameter value in the FM-1's memory */
 export const INST_BYTES = 264, BUF_BYTES = 512, PAR_BYTES = 4;
+/** bytes of one module in the FM-1's memory (engine.c node_t, ENG_NODE_BYTES): its settings and connections, taken from the
+ * arena per module since #721 (the fixed table of 64 they had before is part of the arena now) */
+export const NODE_BYTES = 92;
 /**
  * The FM-1's memory a patch takes (#649, engine.c eng_arena, ENG_ARENA): one arena divided when the patch loads, as big
  * as the fixed pools it replaced (128 copies, 255 buffers, 1536 values, and the line area of a 700 ms delay line, 8 string
- * lines and a granular line, D-375, and the spare copy: every patch that fitted before fits). Module copies (and the spare copy the FM-1 keeps), signal buffers and parameter
- * values take their bytes first; the lines go into what is left or into `LINE_LOW`, the area in the RAM below the RAM
+ * lines and a granular line, D-375, and the spare copy: every patch that fitted before fits), and since #721 the table of
+ * 64 modules (NODE_BYTES each) it took over: a patch's modules come from it. Modules, module copies (and the spare copy the
+ * FM-1 keeps), signal buffers and parameter values take their bytes first; the lines go into what is left or into `LINE_LOW`, the area in the RAM below the RAM
  * region (.lowram, D-373: what the reverb and chorus lines took there and 8 KiB more). A line goes whole into one area
  * (linePlace).
  */
-export const ARENA = delayBytes(DELAY_LENGTH_DEFAULT) + 8 * LINES.string + LINES.grain + 255 * BUF_BYTES + 129 * INST_BYTES + 1536 * PAR_BYTES;
+export const ARENA = delayBytes(DELAY_LENGTH_DEFAULT) + 8 * LINES.string + LINES.grain + 255 * BUF_BYTES + 129 * INST_BYTES + 1536 * PAR_BYTES + 64 * NODE_BYTES;
 export const LINE_LOW = LINES.reverb + LINES.chorus + 8192;
 /** the FM-1's limits (firmware/src/engine.c: ENG_MAX_MODULES, ENG_MAX_CABLES, POLY_MAX_GROUPS, POLY_MAX_PARTS, ENG_MAX_ARPS,
  * ENG_MAX_TRACKS, ENG_MAX_NOTES; proto.c M1_PATCH_MAX). `memory`: the arena and the low line area, bytes (memoryBudget):
@@ -975,7 +980,7 @@ export interface BudgetItem { key: BudgetKey | 'cpu' | 'browser'; label: string;
 
 /** kilobytes, one decimal under 10 KB, else whole */
 export const kb = (bytes: number): string => (bytes < 10240 ? (bytes / 1024).toFixed(1) : String(Math.round(bytes / 1024)));
-/** a budget line over its limit in words: "CPU 130 %", "Memory 400 of 356 KB", "70 modules of 64" */
+/** a budget line over its limit in words: "CPU 130 %", "Memory 400 of 362 KB", "130 modules of 128" */
 export const overText = (i: BudgetItem): string => (i.key === 'cpu' ? `CPU ${i.used} %` : i.key === 'browser' ? i.label
   : i.key === 'memory' ? `Memory ${kb(i.used)} of ${kb(i.max)} KB${i.used <= i.max ? ' (the lines do not fit what is left)' : ''}` : `${i.used} ${i.label} of ${i.max}`);
 
@@ -1015,7 +1020,9 @@ export interface PoolUse { instances: number; buffers: number; params: number }
 /** the memory a patch takes on the FM-1 (#649): each line-type module's lines, the module copies, signal buffers and
  * parameter values; `used` the total bytes of the arena and the low line area, `max` theirs, and whether the lines fit
  * what the others leave (`fits`, linePlace) */
-export interface LineBudget { modules: LineUse[]; pool: PoolUse; used: number; max: number; fits: boolean; lines: number; copiesBytes: number; buffersBytes: number; paramsBytes: number }
+export interface LineBudget { modules: LineUse[]; pool: PoolUse; used: number; max: number; fits: boolean; lines: number; copiesBytes: number; buffersBytes: number; paramsBytes: number;
+  /** the modules (#721): how many, their bytes (NODE_BYTES each) */
+  nodes: number; nodesBytes: number }
 /** the copies of each module of a device form: the parts of its poly group, else one */
 function copiesOf(groups: DeviceGroup[]): (id: number) => number {
   const copies = new Map<number, number>();
@@ -1068,9 +1075,10 @@ function linesOf(p: Patch, ninst: (id: number) => number, pool: PoolUse): LineBu
   }
   const lines = sizes.reduce((a, b) => a + b, 0);
   const copiesBytes = (pool.instances + 1) * INST_BYTES, buffersBytes = pool.buffers * BUF_BYTES, paramsBytes = pool.params * PAR_BYTES;
-  const taken = copiesBytes + buffersBytes + paramsBytes;
+  const nodes = p.modules.length, nodesBytes = nodes * NODE_BYTES;
+  const taken = copiesBytes + buffersBytes + paramsBytes + nodesBytes;
   const fits = taken <= ARENA && sizes.length <= MAX_LINES && linePlace(sizes, ARENA - taken) !== null;
-  return { modules, pool, used: taken + lines, max: DEVICE.memory, fits, lines, copiesBytes, buffersBytes, paramsBytes };
+  return { modules, pool, used: taken + lines, max: DEVICE.memory, fits, lines, copiesBytes, buffersBytes, paramsBytes, nodes, nodesBytes };
 }
 /** the most lines a patch can have (engine.c ENG_MAX_LINES) */
 export const MAX_LINES = 128;
@@ -1100,7 +1108,7 @@ export function delayRoom(source: Patch, id: number): number {
 /**
  * What to say when a patch does not fit the FM-1's memory (or a length stops at what is left): the memory used, and what
  * takes the most of it besides `except` (a module id: the one being changed), so the user knows what to shorten or remove.
- * "Memory full: 350 of 356 KB used. Shorten the other Delay or remove the Granular (86 KB)." When the module copies take
+ * "Memory full: 350 of 362 KB used. Shorten the other Delay or remove the Granular (86 KB)." When the module copies take
  * more than any line, fewer voices come first.
  */
 export function linesAdvice(source: Patch, except?: number): string {

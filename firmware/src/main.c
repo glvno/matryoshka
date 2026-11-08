@@ -671,7 +671,7 @@ static int preset_load(uint32_t n)
     screen_patch();                             /* (while PRESET's last name shows: in place, #170) */
     if (patches_up) {
         m1_slot_now(n, label_buf);                  /* the editor follows the slot (#65) */
-        m1_arms_now(0u, 0u);                        /* (a patch loads wired: #191) */
+        m1_arms_now(mset_none());                   /* (a patch loads wired: #191) */
     }
     return 0;
 }
@@ -1294,11 +1294,11 @@ static void m1_focus(uint32_t dev, uint32_t pg)
 static void m1_ui_changed(void) { ui_dirty = 2; }    /* proto.c: the editor bypassed a module: title and picture */
 /* ARMS from the editor (proto.c, #191): its armed set becomes the FM-1's, so the panel's keys and the editor's notes play
  * the same devices; REC records into it from now on (seq_rec_sync). Not reported back (no ARMS_NOW) */
-static void m1_arms(uint32_t lo, uint32_t hi)
+static void m1_arms(eng_mset_t mask)
 {
-    if (((uint64_t)hi << 32 | lo) == eng_arm_mask_get())
+    if (mset_eq(mask, eng_arm_mask_get()))
         return;
-    eng_arm_mask((uint64_t)hi << 32 | lo);
+    eng_arm_mask(mask);
     seq_rec_sync();
     ui_dirty = ui_dirty ? ui_dirty : 1;
 }

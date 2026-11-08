@@ -1821,6 +1821,37 @@ async function main() {
       await emu.tap(B.env, 120);
       await emu.waitOwnPage(3000);
     },
+    // #721 (the owner, 2026-11-07: "let's raise the module cap to fit the canvas"): a patch of more than 64 modules plays on
+    // the FM-1, and arming reaches past module 63 both ways: Silver Box with 64 silent VCAs before its modules (85 in all),
+    // SEL on the FM-1 arms its device (ARMS_NOW's four words: the editor shows it), the editor's own arming reaches the FM-1
+    // (ARMS's four words, feature bit 21) and a white key plays the instrument through it
+    async armWide() {
+      await check('arm wide: Silver Box with 64 modules before its own opens, synced',
+        await openSynced('Silver Box', (n) => page.evaluate((x) => window.__m1test.openPadded(x, 64), n)));
+      const mods = await page.evaluate(() => window.__m1test.deviceModules());
+      await check('arm wide: the FM-1 plays a patch of more than 64 modules', mods > 64, `${mods} modules`);
+      await emu.elapse(1300);
+      await emu.tap(B.scl);
+      await check('arm wide: SEL arms the device in focus (its modules past index 63)', await emu.waitText('ARMED', 1500));
+      const armed = (await until(async () => { const a = (await T()).armed; return a.length ? a : null; }, 2000)) ?? [];
+      await check('arm wide: the editor shows what the FM-1 armed (ARMS_NOW past module 63)', armed.length > 0, armed.join(' '));
+      await emu.elapse(1300);
+      await page.evaluate(() => window.__m1test.arm([]));
+      await check('arm wide: disarmed in the editor: the FM-1 disarms too, KEYS WIRED', await emu.waitText('KEYS WIRED', 3000));
+      await emu.elapse(1300);
+      await page.evaluate((k) => window.__m1test.arm(k), armed);
+      await check('arm wide: armed in the editor: the FM-1 arms the same (its footer says ARM)', armed.length > 0 && (await emu.waitText('ARM ', 3000)));
+      const m = await emu.mark();
+      await emu.key(WHITE[7], true);
+      await emu.elapse(300);
+      await emu.key(WHITE[7], false);
+      const pk = await emu.peak(m);
+      await loudCheck('arm wide: armed past module 63, a white key plays the instrument', pk, pk > LOUD, `peak ${pk}`);
+      await check('arm wide: the editor\'s set stays as it set it', JSON.stringify((await T()).armed) === JSON.stringify(armed));
+      await page.evaluate(() => window.__m1test.arm([]));
+      await emu.waitText('KEYS WIRED', 3000);
+      await emu.elapse(1000);
+    },
     // #504: under Live a SELECT or ALGO turn on the FM-1 reaches the editor twice, as FOCUS_NOW and as the mirror's MIDI;
     // the editor's focus must end on the FM-1's device and page, never one further
     async focusTurns() {
