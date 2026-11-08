@@ -129,6 +129,12 @@
   },
   {
    "name": "<7PH",
+   "len": 2325,
+   "fnv": "b13133fa",
+   "version": 51
+  },
+  {
+   "name": "<7PH",
    "len": 3639,
    "fnv": "cb833d15",
    "version": 51
@@ -1503,6 +1509,12 @@
   },
   {
    "name": "BRIEFCASE 3",
+   "len": 2527,
+   "fnv": "54219d81",
+   "version": 51
+  },
+  {
+   "name": "BRIEFCASE 3",
    "len": 3755,
    "fnv": "c59738a8",
    "version": 51
@@ -2783,6 +2795,12 @@
    "name": "EXPANDER S",
    "len": 2106,
    "fnv": "3730185e",
+   "version": 51
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1540,
+   "fnv": "42d15c29",
    "version": 51
   },
   {
@@ -4845,6 +4863,12 @@
   },
   {
    "name": "MONOLITH D",
+   "len": 2148,
+   "fnv": "06a21f28",
+   "version": 51
+  },
+  {
+   "name": "MONOLITH D",
    "len": 2834,
    "fnv": "1f2cee84",
    "version": 51
@@ -5249,6 +5273,12 @@
    "name": "ORACLE V",
    "len": 1236,
    "fnv": "db01a302",
+   "version": 51
+  },
+  {
+   "name": "ORACLE V",
+   "len": 2294,
+   "fnv": "e6ca4254",
    "version": 51
   },
   {
@@ -6315,6 +6345,12 @@
   },
   {
    "name": "SALLEN 20",
+   "len": 1914,
+   "fnv": "908e0d5e",
+   "version": 51
+  },
+  {
+   "name": "SALLEN 20",
    "len": 2856,
    "fnv": "f3924c39",
    "version": 51
@@ -6750,6 +6786,12 @@
    "len": 1150,
    "fnv": "8d1994bc",
    "version": 48
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 913,
+   "fnv": "0291d45a",
+   "version": 51
   },
   {
    "name": "SILVER BOX",

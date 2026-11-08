@@ -252,9 +252,10 @@ P.push('};', '');
   const bin = encodePatch(fallbackPatch());
   P.push(`#define FALLBACK_NAME "${FALLBACK_NAME}"`, `static const uint8_t FALLBACK_PATCH[${bin.length}] = {${Array.from(bin).join(',')}};`, '');
 }
-/** factory patches renamed when another took their slot (upper case, as the FM-1 names them): Hera 5 took Hera 6's (owner
- * ruling 2026-11-07, "Hera 5 replaces Hera 6") */
-const RENAMED: Record<string, string> = { 'HERA 6': 'HERA 5' };
+/** factory patches renamed when another took their slot (upper case, as the FM-1 names them): Hera 4 took Hera 6's (owner
+ * ruling 2026-11-07, "Hera 5 replaces Hera 6", and D-873: Hera 4 when the FM-1 cannot keep up with five, as on the test
+ * rig 2026-11-08). A HERA 5 slot (a bank that ran a 1.11 test build) is Hera 4's too */
+const RENAMED: Record<string, string> = { 'HERA 6': 'HERA 4', 'HERA 5': 'HERA 4' };
 { // the factory patches earlier firmwares wrote (scripts/legacy-factory.ts): an untouched slot holding one is rewritten with
   // today's patch of that name after an update that changed the factory set or the format (main.c bank_upgrade); `now`
   // is its index in PRESET_LIST

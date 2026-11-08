@@ -1588,7 +1588,8 @@
      "module": 4,
      "param": "voices",
      "label": "voices",
-     "head": "voice"
+     "head": "voice",
+     "top": 6
     },
     {
      "module": 4,

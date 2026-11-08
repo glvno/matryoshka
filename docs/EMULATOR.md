@@ -256,7 +256,7 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
     second track (ARM DRUMS +1) and starts nothing. PLAY held shows TEMPO n: TURN PRESET, and turning PRESET then
     starts nothing.
   - `checkDualCore` (steps 8.1, 8.2 and 8.4, [D-380](ledger/engine.md#D-380)): INFO's PROCESSOR row reads 2 CORES. Io 4,
-    Hera 5 and Cassia 1 each play 8 held keys with nothing shed, no overload (DIAG pages 119 and 127) and no dropout in
+    Hera 4 and Cassia 1 each play 8 held keys with nothing shed, no overload (DIAG pages 119 and 127) and no dropout in
     the recording. On the rig, the INFO tab's CPU row must read under 80 % with the keys held. Monolith D and Simple FM
     sound.
 - **The test patches** are built in `web/scripts/check-fixtures.mjs` from the check page's descriptions. Each run keeps

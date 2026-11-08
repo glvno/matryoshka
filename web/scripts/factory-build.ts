@@ -10,6 +10,7 @@ import { allModules, assembliesOf, insertAssembly, parentOf, type AssemblyDef, t
 import { LEVEL_ROWS, cases, gainFor, levelRows, measure, peakBound, scaledRow, type Case, type LevelRow, type Loudness } from '../src/levels';
 import { cardRows, formatValue } from '../src/preset-cards';
 import { deviceBudget } from '../src/patchbin';
+import { CPU_VOICE_TOP } from '../src/cpu';
 import { allocatorOf, setPoly } from '../src/poly';
 import { Engine } from '../src/engine';
 import { HEADROOM, peakOfPlay, plays } from '../src/headroom';
@@ -180,9 +181,10 @@ export function withPlayers(src: Patch, what: Player): Patch {
 }
 /**
  * The FM-1's VOICES rows capped at what its CPU holds (owner's ruling of 2026-11-07, D-870): on each card row of a Voice
- * allocator's voices, `top` is the most voices with which the patch still fits the FM-1's budget (deviceBudget: the CPU
- * estimate at most 100 %, the factory patches' own bar), when that is fewer than MAX_PARTS; else no top. The patch keeps
- * its own voices. The editor and the browser engine do not read the top.
+ * allocator's voices, `top` is the most voices with which the patch still fits the FM-1's budget (deviceBudget) with the
+ * CPU estimate at most CPU_VOICE_TOP (90 %: the margin under the overload guard, owner in chat 2026-11-08, "recs"), when
+ * that is fewer than MAX_PARTS; else no top. The patch keeps its own voices. The editor and the browser engine do not read
+ * the top.
  */
 export function voiceTops(p: Patch): Patch {
   for (const a of assembliesOf(p))
@@ -194,7 +196,8 @@ export function voiceTops(p: Patch): Patch {
       for (; top > 1; top--) {
         const q = structuredClone(p);
         q.modules.find((x) => x.id === m.id)!.params.voices = top;
-        if (deviceBudget(q).fits) break;
+        const b = deviceBudget(q);
+        if (b.fits && b.cpu.use <= CPU_VOICE_TOP) break;
       }
       if (top < MAX_PARTS) r.top = Math.max(top, Math.round(m.params.voices ?? 1));
     }
@@ -208,7 +211,9 @@ export function players(p: Patch, browser = false): Patch {
   if (DRUMS.has(p.name)) return p;
   // Io 4's four voices shed on the rig with PATTERN, despite the model saying it fits. Keep its existing player set.
   // Measurement: docs/measurements/2026-10-26-io-4-player-budget.json. An XL still gets both above.
-  const attempts: Player[] = p.name === 'Io 4' ? ['arp'] : ['both', 'arp'];
+  // Algo Four's eight voices ran at 86 % on the rig without PATTERN (2026-11-08): it keeps the Arpeggiator alone, so its
+  // estimate stays under the VOICES rows' 90 % (CPU_VOICE_TOP, D-870)
+  const attempts: Player[] = p.name === 'Io 4' || p.name === 'Algo Four' ? ['arp'] : ['both', 'arp'];
   for (const what of attempts) {
     const q = validatePatch(withPlayers(p, what), DEFS);
     if (deviceBudget(q).fits) return q;

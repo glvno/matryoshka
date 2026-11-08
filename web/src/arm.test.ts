@@ -89,7 +89,7 @@ describe('arming as a set (#190)', () => {
 
   it('goes to the FM-1 as a mask of the armed devices\' modules, and comes back from one (#191)', () => {
     const p = newPatch(DEFS);
-    const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Hera 5')!, 0, 0);
+    const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Hera 4')!, 0, 0);
     const b = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Oracle V')!, 0, 900);
     wireEngine(p, a);
     wireEngine(p, b);
@@ -143,8 +143,8 @@ describe('an instrument armed through its key sources (#395)', () => {
 describe('what the editor draws for the arm (#418): everything the arm routes, nothing else', () => {
   const ends = (c: { from: { module: number; port: string }; to: { module: number; port: string } }): string => `${c.from.module}:${c.from.port}>${c.to.module}:${c.to.port}`;
   const heraChain = (): { p: Patch; a: string; steps: number; arp: number; cables: string[] } => {
-    const p = FM1_PRESETS['Hera 5']();
-    const a = `a${assembliesOf(p).find((x) => x.label === 'Hera 5')!.id}`;
+    const p = FM1_PRESETS['Hera 4']();
+    const a = `a${assembliesOf(p).find((x) => x.label === 'Hera 4')!.id}`;
     const main = p.modules.find((m) => m.type === 'fm1')!.id;
     const steps = p.modules.find((m) => m.type === 'steps')!.id, arp = p.modules.find((m) => m.type === 'arp')!.id;
     // the factory chain: Main's keys into the track, the track's into the Arpeggiator, its into the instrument

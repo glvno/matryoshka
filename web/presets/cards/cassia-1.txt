@@ -199,7 +199,7 @@ preset: PD Bass
   dca 1 / r4 = 0.1 s
   dca 1 / l4 = 0
   dca 1 / end = 4
-  vol = 0.66
+  vol = 0.59
 
 preset: PD Brass
   # synth brass: both lines play line 1's saw (1+1'), line 2 eight cents sharp, a pitch blip at
@@ -273,7 +273,7 @@ preset: Glass Bell
   dca 2 / l3 = 0
   dca 2 / sus = off
   dca 2 / end = 3
-  vol = 0.49
+  vol = 0.68
 
 preset: Reso Pad
   # a pad: line 2's resonance wave (Init's reso 1) swept up four octaves by a two-second DCW
@@ -317,7 +317,7 @@ preset: Reso Pad
   dca 2 / l3 = 0
   dca 2 / sus = 2
   dca 2 / end = 3
-  vol = 0.37
+  vol = 0.33
 
 preset: Tine Piano
   # an electric piano: line 1 a square that velocity opens and the DCW closes fast; line 2 an
@@ -360,4 +360,4 @@ preset: Tine Piano
   dca 2 / l3 = 0
   dca 2 / sus = off
   dca 2 / end = 3
-  vol = 0.54
+  vol = 0.57

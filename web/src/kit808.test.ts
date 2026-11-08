@@ -62,13 +62,11 @@ const differ = (a: Float32Array, b: Float32Array): number => {
 describe('808 Kit (the FM-1 version)', () => {
   const kit = (): Patch => FM1_PRESETS['808 Kit']();
 
-  it('has the TR-808\'s knobs for its ten voices, named as its panel names them, and nothing else on its card', () => {
+  it('has the TR-808\'s knobs for its eight voices, named as its panel names them, and nothing else on its card', () => {
     expect(rowsOf(kit())).toEqual([
       'bass drum: level', 'tone', 'decay',
       'snare drum: level', 'tone', 'snappy',
       'low tom: level', 'tuning',
-      'mid tom: level', 'tuning',
-      'hi tom: level', 'tuning',
       'rim shot: level',
       'hand clap: level',
       'cow bell: level',

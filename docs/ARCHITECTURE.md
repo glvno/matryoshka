@@ -78,86 +78,108 @@ Conclusions: the core has no FPU (float links against `libcompiler-rt.a` soft fl
 The editor estimates how much of the 2901 us audio interrupt a patch needs (`web/src/cpu.ts`, `cpuEstimate`; the status line's CPU bar; over 100 % counts as over the FM-1 budget like a memory limit, `deviceBudget` in patchbin.ts). It is a model: cycles counted on a stand-in core, calibrated on whole factory patches measured on the FM-1; nothing was measured per module on the device.
 
 - **Counting.** `tools/cpu/build.sh` builds `firmware/src/engine.c` for rv32im (clang + ld.lld, `-Os` as tools/build.py) with `tools/cpu/prof.c` as the driver; `tools/cpu/rv32.mjs` is a small RV32IM interpreter (cycles = 1 per instruction, +1 load, +2 taken branch / jump, +32 division) that reads the `ENG_PROF` hooks in `render_voice` (compiled out in the firmware) and attributes each module's input sums, parameter inputs (`apply_cv`) and processing. The FM-1's core is not RISC-V; the model only has to get the ratios right.
-- **Scale (calibrated 2026-10-20).** `us = cycles / 233.4 + 23` per block, of 2901 us (`cyclesPerUs`, `fixedUs` in cpu-costs.json, frozen constants in cpu-costs.ts `SURVEY`, not re-fitted on each run). The 17 factory patches were measured on the FM-1 (`docs/measurements/cpu-survey-2026-10-20.json`, CI run 39541520839 on `device-diag`: the longest audio interrupt at rest and with 1 / 4 / 8 notes held over USB MIDI); against the estimate at the old scale a least-squares fit gives device % = 1.041 x estimate % + 0.8, so 243 / 1.041 cycles per us plus 0.8 % of the block (23 us) that the counted engine leaves out: the rest of the interrupt (key scan, USB poll), whatever the patch. The old scale is still counted as a cross-check (cpu-costs.json `calibration`): the M1-0.2 engine (b907693) running its 303 Acid with a note held peaks at 84,600 cycles per block, which took 12 % (peak) of the interrupt on the FM-1 = 243 cycles per us; the bench kernels above (4x MAC 9 us, SVF 8 us) give 258 and 243. `cpu.test.ts` holds every factory patch within -4 / +6 points of its survey peak; after large engine changes a new survey replaces the file and the constants.
-- **Two cores (#271, calibrated 2026-11-05, [D-380](ledger/engine.md#D-380)).** The FM-1 renders the odd parts of every poly group of two or more parts on its second core, in each block where an odd and an even part both play (else core 0 renders them all, [D-391](ledger/engine.md#D-391)), so the estimate is core 0's: `us = cycles / 233.4 + 23 + 24 - 0.85 × split / 233.4`, where `split` is the modelled cycles of those odd parts (`cpuEstimate().split`; `oneCoreUs` keeps the one-core figure). 24 us is what the second core costs core 0, the median over the factory patches that do not split, against release-1.10 before #271 (from −31 to +80 us). 0.85 is under the least-squares 1.00, so the estimate never promises more room than the split gave on the rig (`cores` in cpu-costs.json, cpu-costs.ts `CORES`; the surveys in [the second core's measurements](measurements/2026-11-05-rig-second-core.md)). A second core given up by its fallback leaves core 0 at the one-core figure, which the overload guard handles by shedding parts.
+- **Scale and engine factors (calibrated 2026-11-08 on the test rig).** `us = cycles / 206.5 + 244` per block, of 2901 us, where each module of a factory engine counts its cycles times that engine's factor (`cyclesPerUs`, `fixedUs` and `rig.engines` in cpu-costs.json, frozen constants in cpu-costs.ts `SURVEY` and `RIG`, not re-fitted on each run). `web/scripts/cpu-rig-fit.ts` works them out from the rig's survey of every factory patch on release 1.11 ([the measurements](measurements/2026-11-08-rig-release-1.11.md): the longest audio interrupt at rest and with 1 / 4 / 8 keys held, the transport stopped and running). A patch's figure is its steady peak: the median of a phase's samples after the first, the most over its phases. A phase where the overload guard dropped parts counts at the voices that were left, and a muted phase not at all. The 808 Kit and Verona Drum 1, muted on that build and back to their 1.10 layout since ([D-879](ledger/patches-and-presets.md#D-879), [D-880](ledger/patches-and-presets.md#D-880)), take their figure from the survey of 2026-11-05 times 1.132, the median rise of the patches that did not change between the two surveys. The scale is a least-squares fit on the patches without an engine of their own (Init, Simple FM, Plucked String, the 909 Kit, `<7PH`): rig us = 1.130 x the estimate at the scale before (233.4 cycles per us + 23 us, fitted to the FM-1's survey of 2026-10-20) + 218 us. Each factory engine's factor (0.72 for Algo Four to 1.19 for Silver Box) is then the smallest that makes the estimate read at least the rig's figure for every voice count its patch played. The counted engine misses what the FM-1 spends beyond its instructions (its caches and memory, the hardware's own timing), and that differs from engine to engine. A module outside a factory engine counts at the scale alone. The old scale is still counted as a cross-check (cpu-costs.json `calibration`): the M1-0.2 engine (b907693) running its 303 Acid with a note held peaks at 84,600 cycles per block, which took 12 % (peak) of the interrupt on the FM-1 = 243 cycles per us; the bench kernels above (4x MAC 9 us, SVF 8 us) give 258 and 243. `cpu.test.ts` holds every factory patch the rig measured within -3 / +5 points of its figure; after large engine or firmware changes a new survey replaces the files and the constants.
+- **Two cores (#271, calibrated 2026-11-05, [D-380](ledger/engine.md#D-380)).** The FM-1 renders the odd parts of every poly group of two or more parts on its second core, in each block where an odd and an even part both play (else core 0 renders them all, [D-391](ledger/engine.md#D-391)), so the estimate is core 0's: `us = cycles / 206.5 + 244 + 27 - 0.85 × split / 206.5`, where `split` is the modelled cycles of those odd parts (`cpuEstimate().split`; `oneCoreUs` keeps the one-core figure). 27 us is what the second core costs core 0 (24 us at the scale before), the median over the factory patches that do not split, against release-1.10 before #271 (from −31 to +80 us). 0.85 is under the least-squares 1.00, so the estimate never promises more room than the split gave on the rig (`cores` in cpu-costs.json, cpu-costs.ts `CORES`; the surveys in [the second core's measurements](measurements/2026-11-05-rig-second-core.md)). A second core given up by its fallback leaves core 0 at the one-core figure, which the overload guard handles by shedding parts.
 - **Table.** `cd web && npm run cpu-costs` (`web/scripts/cpu-costs.ts`, about a minute on a 14-core Mac on a worker pool, `tools/cpu/pool.mjs`) writes `web/src/cpu-costs.json`: per module type the cost with defaults plus a grid over what changes it, found by trying every setting alone and with every input patched (choices, small integers, a number stepping above its minimum = a mode such as the oscillator's FM, numbers as interpolated points such as `coarse`, patched inputs, patched outputs); shared costs (summing, a parameter input and each parameter it moves, morph, bypass, per module, per block, per Output). Pitch inputs are fed C5 while counting (a square or saw oscillator costs up to twice as much higher up); inputs are fed by an oscillator and by a held gate, the worse counts. Rerun it after changing the engine. The counts follow the compiler: the table is made with the clang in `tools/cpu/clang-version`, and `tools/cpu/build.sh` warns when another version counts. CI does not rebuild it: commit the table after an engine change ([D-383](ledger/engine.md#D-383)).
 - **Checks.** Every factory patch and factory assembly (in a new patch, its outputs into the Output and Main's keys / pitch / gate / velocity into its inputs, so it is heard and played) is counted whole, holding one note per voice of its largest poly group (idle voices are skipped, below; the estimate is the worst case, every voice playing), and its peak includes the note-on block; `cpu.test.ts` holds the model to those counts (never more than 5 % low, at most 15 % high). Exempt from the upper bound (`looseModel` in cpu-checks.ts): grain and compressor (their cost depends on what they are fed; the table holds the worst case, a slowly triggered grain module reads up to 3x high), a filter cut-off moved by an LFO, an LFO whose rate is patched (a knob may turn it up to where the pitch it modulates moves every sample), an envelope or glide into a pitch (charged as moving all block; it settles sooner).
-- **Factory patches against the device** (the survey's peak of rest / 1 / 4 / 8 notes against `cpuEstimate`; `cd web && npx vite-node scripts/cpu-table.ts` prints both tables here). The estimate is the worst case, every voice playing; on the device a poly patch costs about the same at rest (every part renders). Hera 6 and Algo Four were probably clipped by the overload guard as it was in that survey (a part shed after two halves over 85 %, no flag), so their device figures are lower bounds. At most 3.0 points low (Algo Four) and 5.5 high (Oracle V). `CPU_WARN` stays at 80 %: Algo Four and Oracle V show amber.
+- **Factory patches against the test rig** (`cd web && npx vite-node scripts/cpu-rig-fit.ts` prints this table and the constants): the rig's steady peak against the estimate at the scale before (233.4 cycles per us + 23 us, no factors) and after. The estimate is the worst case, every voice playing; a row with fewer voices than the patch has comes from a phase where the overload guard dropped parts, and one with more from a phase with fewer keys than voices (an idle voice costs little). Every factory patch the rig measured reads within -3 / +5 points of it (`cpu.test.ts`). `CPU_WARN` stays at 80 %. A VOICES row stops at the most voices whose estimate is at most 90 % (`CPU_VOICE_TOP`, [D-870](ledger/patches-and-presets.md#D-870)).
 
-  | patch | device peak % | estimate % | difference |
-  |---|---:|---:|---:|
-  | Oracle V | 75.2 | 80.7 | +5.5 |
-  | Init | 9.5 | 9.7 | +0.2 |
-  | Simple FM | 15.7 | 15.2 | -0.5 |
-  | Plucked String | 32.1 | 31.6 | -0.5 |
-  | Monolith D | 21.7 | 22.1 | +0.4 |
-  | Silver Box | 14.3 | 15.4 | +1.1 |
-  | Hera 6 | 76.0 | 73.2 | -2.8 |
-  | Sallen 20 | 27.8 | 28.6 | +0.8 |
-  | Expander S | 58.3 | 55.6 | -2.7 |
-  | Algo Four | 85.6 | 82.6 | -3.0 |
-  | Canvas | 24.2 | 23.5 | -0.8 |
-  | Wanderer | 31.8 | 30.1 | -1.6 |
-  | Briefcase 3 | 38.7 | 39.1 | +0.4 |
-  | Io 4 | 44.4 | 43.4 | -1.0 |
-  | Vernon 100 | 24.1 | 23.1 | -0.9 |
-  | 808 Kit | 51.6 | 54.5 | +2.9 |
-  | 909 Kit | 33.5 | 35.8 | +2.3 |
+  | patch | voices | rig | before | after |
+  |---|---:|---:|---:|---:|
+  | 8 Lire | 1 | 79.8 % | 76.4 % | 80.3 % |
+  | 808 Kit | 1 | 91.0 % (1.10 x rise) | 73.0 % | 91.6 % |
+  | 909 Kit | 1 | 58.7 % | 49.1 % | 63.0 % |
+  | <7PH | 1 | 85.5 % | 65.9 % | 85.2 % |
+  | Algo Four | 8 | 86.2 % | 96.5 % | 87.0 % |
+  | Basic Poly | 4 | 30.7 % | 22.0 % | 30.8 % |
+  | Briefcase 3 | 1 | 91.1 % | 87.0 % | 91.1 % |
+  | Canvas | 1 | 91.9 % | 79.9 % | 92.7 % |
+  | Cassia 1 | 2 | 63.6 % | 50.4 % | 64.0 % |
+  | Cassia 1 | 4 | 92.8 % | 87.1 % | 105.1 % |
+  | Drift Poly | 4 | 40.0 % | 31.4 % | 40.0 % |
+  | Elvira 2 | 1 | 49.3 % | 34.1 % | 49.5 % |
+  | Expander S | 4 | 59.0 % | 52.0 % | 59.3 % |
+  | Hera 4 | 3 | 85.5 % | 82.8 % | 85.5 % |
+  | Hera 4 | 4 | 85.8 % | 86.7 % | 89.2 % |
+  | Hera 4 | 5 | 84.9 % | 109.3 % | 110.2 % |
+  | Init | 1 | 23.0 % | 11.6 % | 20.6 % |
+  | Io 4 | 4 | 65.7 % | 63.3 % | 66.2 % |
+  | Meridian 8 | 1 | 71.1 % | 59.6 % | 71.3 % |
+  | Mono Lead | 1 | 27.1 % | 15.6 % | 27.2 % |
+  | Monolith D | 1 | 47.7 % | 36.5 % | 48.0 % |
+  | Oracle V | 4 | 79.2 % | 73.4 % | 79.4 % |
+  | Oracle V | 5 | 98.1 % | 98.0 % | 103.1 % |
+  | Perun 4 | 1 | 74.8 % | 55.2 % | 75.0 % |
+  | Plucked String | 4 | 30.4 % | 22.5 % | 32.9 % |
+  | Sallen 20 | 1 | 63.4 % | 46.7 % | 63.6 % |
+  | Scrounge | 1 | 79.5 % | 64.5 % | 79.8 % |
+  | Silver Box | 1 | 36.0 % | 22.2 % | 36.2 % |
+  | Simple FM | 1 | 23.9 % | 13.6 % | 22.8 % |
+  | Spokes 6 | 1 | 83.9 % | 65.8 % | 84.4 % |
+  | Supersaw Stack | 4 | 38.9 % | 31.3 % | 39.1 % |
+  | Vernon 100 | 1 | 63.4 % | 58.6 % | 63.5 % |
+  | Verona Drum 1 | 1 | 91.9 % (1.10 x rise) | 71.4 % | 92.0 % |
+  | Wanderer | 1 | 62.8 % | 43.0 % | 62.9 % |
 
 - **USB audio is not modelled.** The survey was taken without the USB audio stream (it came later); streaming adds about 2 points (Algo Four 86 -> 88 %). The estimate leaves it out.
-- **Per module (model figures at default settings, calibrated on whole patches; not measured per module on the device).** `run + cv` of cpu-costs.json plus the per-module render cost (`node`, 129 cycles), at the calibrated scale; one instance, nothing patched, pitch at C5. The fixed costs come on top once per patch: the block (4161 cycles) and the 23 us, about 1.4 % together, plus 3743 cycles (0.6 %) per Output. Settings, patched inputs and outputs change most of these (the grid in cpu-costs.json; the oscillator's FM mode or unison, a filter's moving cut-off), and each part of a poly assembly counts again.
+- **Per module (model figures at default settings, calibrated on whole patches; not measured per module on the device).** `run + cv` of cpu-costs.json plus the per-module render cost (`node`, 209 cycles), at the calibrated scale (without a factory engine's factor); one instance, nothing patched, pitch at C5. The fixed costs come on top once per patch: the block (4312 cycles) and the 244 us, about 9.1 % together, plus 3745 cycles (0.6 %) per Output. Settings, patched inputs and outputs change most of these (the grid in cpu-costs.json; the oscillator's FM mode or unison, a filter's moving cut-off), and each part of a poly assembly counts again.
 
   | module | type | cycles | us | % of the block |
   |---|---|---:|---:|---:|
-  | Reverb | `reverb` | 118382 | 507 | 17.5 |
-  | Freq shifter | `shift` | 43506 | 186 | 6.4 |
-  | Resonator | `modal` | 39748 | 170 | 5.9 |
-  | Formant filter | `vowel` | 35517 | 152 | 5.2 |
-  | Granular | `grain` | 30941 | 133 | 4.6 |
-  | Multimode filter | `filter` | 29819 | 128 | 4.4 |
-  | Chorus | `chorus` | 25026 | 107 | 3.7 |
-  | Quantizer | `quant` | 23642 | 101 | 3.5 |
-  | Ladder | `ladder` | 23285 | 100 | 3.4 |
-  | Wavetable | `wavetable` | 21510 | 92 | 3.2 |
-  | Phaser | `phaser` | 17017 | 73 | 2.5 |
-  | String | `string` | 16101 | 69 | 2.4 |
-  | Comb filter | `comb` | 13709 | 59 | 2.0 |
-  | Steps | `steps` | 13612 | 58 | 2.0 |
-  | Sequencer | `seq` | 11094 | 48 | 1.6 |
-  | Env L/R | `env` | 10676 | 46 | 1.6 |
-  | Pan | `pan` | 9470 | 41 | 1.4 |
-  | Waveshaper | `shape` | 9438 | 40 | 1.4 |
-  | Oscillator | `osc` | 8658 | 37 | 1.3 |
-  | Compressor | `dyn` | 8546 | 37 | 1.3 |
-  | Delay | `delay` | 8284 | 35 | 1.2 |
-  | Math | `math` | 7511 | 32 | 1.1 |
-  | ADSR | `adsr` | 6509 | 28 | 1.0 |
-  | Mixer 4 | `mixer` | 6188 | 27 | 0.9 |
-  | Range | `range` | 6141 | 26 | 0.9 |
-  | Clock divider | `clkdiv` | 6030 | 26 | 0.9 |
-  | LFO | `lfo` | 5641 | 24 | 0.8 |
-  | Crossfader | `xfade` | 5007 | 21 | 0.7 |
-  | Slew limiter | `glide` | 4788 | 21 | 0.7 |
-  | Comparator | `comp` | 4415 | 19 | 0.7 |
-  | Logic | `logic` | 4219 | 18 | 0.6 |
-  | Noise | `noise` | 3792 | 16 | 0.6 |
-  | Bitcrusher | `crush` | 3783 | 16 | 0.6 |
-  | VCA | `vca` | 3317 | 14 | 0.5 |
-  | Pulse | `pulse` | 2930 | 13 | 0.4 |
-  | S&H | `sh` | 2690 | 12 | 0.4 |
-  | Selector | `select` | 2494 | 11 | 0.4 |
-  | Attenuverter | `scale` | 2491 | 11 | 0.4 |
-  | Drum map | `drummap` | 1740 | 7 | 0.3 |
-  | Random | `random` | 1326 | 6 | 0.2 |
-  | Matrix (one output read, no pin in use) | `matrix` | 1030 | 4 | 0.2 |
-  | Main | `fm1` | 1251 | 5 | 0.2 |
-  | Shift register (unclocked) | `shreg` | 989 | 4 | 0.1 |
-  | Offset | `const` | 906 | 4 | 0.1 |
-  | Macro | `macro` | 906 | 4 | 0.1 |
-  | Arpeggiator | `arp` | 888 | 4 | 0.1 |
-  | Part (engine) | `part` | 854 | 4 | 0.1 |
-  | Output | `output` | 537 | 2 | 0.1 |
-  | Voicing | `alloc` | 129 | 1 | 0.0 |
+  | Reverb | `reverb` | 116205 | 563 | 19.4 |
+  | Freq shifter | `shift` | 42942 | 208 | 7.2 |
+  | Formant filter | `vowel` | 35208 | 170 | 5.9 |
+  | Resonator | `modal` | 34884 | 169 | 5.8 |
+  | Granular | `grain` | 30152 | 146 | 5.0 |
+  | Multimode filter | `filter` | 26245 | 127 | 4.4 |
+  | Chorus | `chorus` | 24375 | 118 | 4.1 |
+  | Quantizer | `quant` | 23442 | 114 | 3.9 |
+  | Ladder | `ladder` | 23224 | 112 | 3.9 |
+  | Phaser | `phaser` | 16565 | 80 | 2.8 |
+  | String | `string` | 15778 | 76 | 2.6 |
+  | Steps | `steps` | 14387 | 70 | 2.4 |
+  | Comb filter | `comb` | 13285 | 64 | 2.2 |
+  | Wavetable | `wavetable` | 11589 | 56 | 1.9 |
+  | Rate Env | `rateenv` | 11505 | 56 | 1.9 |
+  | Sequencer | `seq` | 10174 | 49 | 1.7 |
+  | Pan | `pan` | 9308 | 45 | 1.6 |
+  | PD Osc | `pd` | 9134 | 44 | 1.5 |
+  | Waveshaper | `shape` | 8912 | 43 | 1.5 |
+  | Env 8 | `env8` | 7108 | 34 | 1.2 |
+  | Delay | `delay` | 7099 | 34 | 1.2 |
+  | Compressor | `dyn` | 6906 | 33 | 1.2 |
+  | Env L/R | `env` | 6316 | 31 | 1.1 |
+  | Range | `range` | 6211 | 30 | 1.0 |
+  | Clock divider | `clkdiv` | 5884 | 28 | 1.0 |
+  | Mixer 4 | `mixer` | 5658 | 27 | 0.9 |
+  | Oscillator | `osc` | 5324 | 26 | 0.9 |
+  | LFO | `lfo` | 5256 | 25 | 0.9 |
+  | Crossfader | `xfade` | 4837 | 23 | 0.8 |
+  | Comparator | `comp` | 4464 | 22 | 0.7 |
+  | Slew limiter | `glide` | 4046 | 20 | 0.7 |
+  | ADSR | `adsr` | 3821 | 19 | 0.6 |
+  | Bitcrusher | `crush` | 3641 | 18 | 0.6 |
+  | Noise | `noise` | 3613 | 17 | 0.6 |
+  | Math | `math` | 3584 | 17 | 0.6 |
+  | Pulse | `pulse` | 2795 | 14 | 0.5 |
+  | Logic | `logic` | 2587 | 13 | 0.4 |
+  | S&H | `sh` | 2530 | 12 | 0.4 |
+  | Selector | `select` | 1189 | 6 | 0.2 |
+  | Drum map | `drummap` | 1188 | 6 | 0.2 |
+  | Random | `random` | 1164 | 6 | 0.2 |
+  | Main | `fm1` | 1130 | 5 | 0.2 |
+  | Matrix | `matrix` | 1117 | 5 | 0.2 |
+  | Shift register | `shreg` | 1044 | 5 | 0.2 |
+  | Follower | `esp` | 960 | 5 | 0.2 |
+  | Part | `part` | 920 | 4 | 0.2 |
+  | Arpeggiator | `arp` | 903 | 4 | 0.2 |
+  | Ratio | `ratio` | 824 | 4 | 0.1 |
+  | Attenuverter | `scale` | 816 | 4 | 0.1 |
+  | VCA | `vca` | 810 | 4 | 0.1 |
+  | Offset | `const` | 768 | 4 | 0.1 |
+  | Macro | `macro` | 768 | 4 | 0.1 |
+  | Output | `output` | 384 | 2 | 0.1 |
+  | Voicing | `alloc` | 209 | 1 | 0.0 |
 - **Later, with a second FM-1:** a build that times the `ENG_PROF` stages with `fm1_ticks` and reports them over SysEx can replace the counts with measured microseconds (`CpuTable.source`, `cyclesPerUs` = 1).
 
 - **Oscillator increments** (#461, [D-356](ledger/engine.md#D-356)): the oscillators (Oscillator, Wavetable, phase distortion) work out their phase increment (`exp2_scale`) exactly at every 8th sample of a block (`INC_SPAN`) and follow a straight line in between, in both engines (`inc_span` / `INC_LOOP` in engine.c, `incRamp` in modules.ts). The line in a span runs toward the increment at the next span's first sample (the block's last sample for the last span). Only these anchor samples count: a pitch that is the same at both ends of a span gives that span the exact increment, so a pitch that holds still sounds exactly as before. A vibrato costs one exp2 per 8 samples instead of one per sample; against working it out every sample, the largest change a 20 Hz, half-octave vibrato makes in any bin of the spectrum is 66 dB below the strongest partial (golden kits `vibrato-osc`, `vibrato-wt-pd`; `vibrato-steps` jumps the pitch mid-block). A pitch from Main or a Part holds still for a block, so it costs less than one that moves. The table's `moving` (cycles per block and unison copy, measured with an LFO added to the pitch) is charged by `cpuEstimate` when the pitch may change about every sample (`keepsMoving` = `slope` ≥ 0.5 Q16 steps per sample: oscillators, noise, envelopes, glides, Random walks anywhere upstream; an LFO by its rate x depth unless something is patched into it; a free sample-and-hold LFO steps once a cycle and is not charged; a Scale multiplies its input's slope by its gain).
@@ -183,7 +205,7 @@ Profiled with `cd web && npm run cpu-hot` (the counted peak of every check, `--s
 
 - **Reverb module**: was Freeverb-style (four damped combs into two allpasses, 12 KB); now the FDN described under "Reverb (FDN)" below, same ports plus `pre` and `mod`.
 - **Logarithmic parameters**: `ParamDef.log` (the filter cutoff): parameter inputs, the editor slider and the knobs move it in octaves, so a fraction of the range is a fraction of the octaves (`modulate` in `patch.ts`, `eng_step_param` and the log2 / exp2 tables in `engine.c`).
-- **Factory patches** (`web/presets/NN-name.json`, written by `web/scripts/gen-presets.ts` from the factory assemblies; run `gen-assemblies.ts` first, then `npm run export-defs`). Since 2026-10-18 they are all our own: Oracle V, three simple ones (Init, Simple FM, Plucked String), instruments built after famous architectures (Monolith D: Minimoog Model D; Silver Box: TB-303; Hera 5: Juno-106, five voices (Hera 6 XL plays six); Sallen 20: MS-20; Expander S: Oberheim SEM / Four Voice; Algo Four: 4-op DX / TX; Canvas: Buchla Music Easel; Wanderer: ARP Odyssey; Briefcase 3: EMS VCS3; Io 4: Roland Jupiter-4; Vernon 100: EML ElectroComp 100; 8 Lire: SOMA Lyra-8, eight fixed-tuned voices on a Drum map's rows, #182; Elvira 2: neutral labs Elmyra 2; Scrounge: neutral labs Scrooge, a drum engine with its pattern on a Steps track; Meridian 8: Landscape NOON, the same way; Perun 4: Erica Synths PERKONS HD-01, the same way; Spokes 6: Elektron Model:Cycles, six FM tracks, its drums on a DRUMS track and its two melodic voices on the pitch and gate of a TONE and a CHORD track, [D-346](ledger/patches-and-presets.md#D-346); Cassia 1: Casio CZ-1, two lines of a PD Osc each, every envelope an Env 8; it was Cassia 1 XL until it fit, and it still leaves parts of the CZ-1 out (two voices, one pitch envelope for both lines), [D-348](ledger/patches-and-presets.md#D-348)), the 808 Kit, the 909 Kit (kept as its file) and <7PH (built from the 909 Kit: its DRUMS track and kit, plus the Silver Box on its own PATTERN track, a 16-step acid line in B flat minor at 124 BPM; Main's keys into PATTERN only, so they play the bass and reach the kit when DRUMS is armed; the bass on the kit mixer's in4), then Spokes 6 and Cassia 1, then Basic Poly, Drift Poly, Mono Lead and Supersaw Stack (slots 25..28: the simple engines that have a preset card, each its factory assembly as made with Main's keys into it, so that their presets can be reached on the FM-1, [D-853](ledger/patches-and-presets.md#D-853); new factory patches go last, [D-334](ledger/patches-and-presets.md#D-334)), then Verona Drum 1 (slot 29: the Vermona DRM1 MKIV drum machine, seven of its eight channels with every knob of each and a PAN each, on a PATTERN track; Verona Drum 1 XL has all eight, [D-862](ledger/patches-and-presets.md#D-862), [D-863](ledger/patches-and-presets.md#D-863)). Each instrument is a factory assembly built like the original's panel (columns, headings, envelope displays, a scope), the patch plugs Main's keys (or pitch / gate) and mod wheel into it. **Knobs:** see [D-313](ledger/patches-and-presets.md#D-313). The Output's level and each engine preset's **level row** come from a loudness render: one key at about −18 LUFS, a 4-key chord at most −15, the drums on their pattern ([D-860](ledger/patches-and-presets.md#D-860), [D-861](ledger/patches-and-presets.md#D-861)). Nothing clips: not the patch, nor any factory preset of its engines, with as many keys held as it has voices (at most 8), its Drum map's keys or its patterns running ([D-854](ledger/patches-and-presets.md#D-854)). Every one of these must fit the FM-1 (the generator refuses one that does not; an **XL** is the browser's full version, below); knobs on per-voice modules cost CPU per voice (a pin is ~3.4 k cycles per copy), and a knob that could switch a module into a costlier mode (an oscillator's feedback) is avoided. **Voices** (2026-10-18, after the speed-ups and idle voices of "Where the cycles go"; Cassia 1 since 2026-10-26: 2, set by the owner, about 62 % estimated with its players (88 % at 3): two PD Osc and five Env 8 per voice): Oracle V plays its 5 voices (81 % counted, 83 % estimated; at 4 it was 65 %), Hera 5 5 (the Juno-106's whole panel: about 110 % estimated, past 100 % by owner ruling until the rig measures it; Hera 6, the cut-down six-voice version it replaced, was 77 % counted, 77 % estimated), Expander S, Io 4 and Plucked String 4, Algo Four 8 (since 1.11, the DX100's count with its eight algorithms: 97 % estimated, [D-740](ledger/fidelity.md#D-740)), Wanderer and Vernon 100 2; Oracle V's memory budget is 63 %.
+- **Factory patches** (`web/presets/NN-name.json`, written by `web/scripts/gen-presets.ts` from the factory assemblies; run `gen-assemblies.ts` first, then `npm run export-defs`). Since 2026-10-18 they are all our own: Oracle V, three simple ones (Init, Simple FM, Plucked String), instruments built after famous architectures (Monolith D: Minimoog Model D; Silver Box: TB-303; Hera 4: Juno-106, four voices (Hera 6 XL plays six); Sallen 20: MS-20; Expander S: Oberheim SEM / Four Voice; Algo Four: 4-op DX / TX; Canvas: Buchla Music Easel; Wanderer: ARP Odyssey; Briefcase 3: EMS VCS3; Io 4: Roland Jupiter-4; Vernon 100: EML ElectroComp 100; 8 Lire: SOMA Lyra-8, eight fixed-tuned voices on a Drum map's rows, #182; Elvira 2: neutral labs Elmyra 2; Scrounge: neutral labs Scrooge, a drum engine with its pattern on a Steps track; Meridian 8: Landscape NOON, the same way; Perun 4: Erica Synths PERKONS HD-01, the same way; Spokes 6: Elektron Model:Cycles, six FM tracks, its drums on a DRUMS track and its two melodic voices on the pitch and gate of a TONE and a CHORD track, [D-346](ledger/patches-and-presets.md#D-346); Cassia 1: Casio CZ-1, two lines of a PD Osc each, every envelope an Env 8; it was Cassia 1 XL until it fit, and it still leaves parts of the CZ-1 out (two voices, one pitch envelope for both lines), [D-348](ledger/patches-and-presets.md#D-348)), the 808 Kit, the 909 Kit (kept as its file) and <7PH (built from the 909 Kit: its DRUMS track and kit, plus the Silver Box on its own PATTERN track, a 16-step acid line in B flat minor at 124 BPM; Main's keys into PATTERN only, so they play the bass and reach the kit when DRUMS is armed; the bass on the kit mixer's in4), then Spokes 6 and Cassia 1, then Basic Poly, Drift Poly, Mono Lead and Supersaw Stack (slots 25..28: the simple engines that have a preset card, each its factory assembly as made with Main's keys into it, so that their presets can be reached on the FM-1, [D-853](ledger/patches-and-presets.md#D-853); new factory patches go last, [D-334](ledger/patches-and-presets.md#D-334)), then Verona Drum 1 (slot 29: the Vermona DRM1 MKIV drum machine, seven of its eight channels with every knob of each and a PAN each, on a PATTERN track; Verona Drum 1 XL has all eight, [D-862](ledger/patches-and-presets.md#D-862), [D-863](ledger/patches-and-presets.md#D-863)). Each instrument is a factory assembly built like the original's panel (columns, headings, envelope displays, a scope), the patch plugs Main's keys (or pitch / gate) and mod wheel into it. **Knobs:** see [D-313](ledger/patches-and-presets.md#D-313). The Output's level and each engine preset's **level row** come from a loudness render: one key at about −18 LUFS, a 4-key chord at most −15, the drums on their pattern ([D-860](ledger/patches-and-presets.md#D-860), [D-861](ledger/patches-and-presets.md#D-861)). Nothing clips: not the patch, nor any factory preset of its engines, with as many keys held as it has voices (at most 8), its Drum map's keys or its patterns running ([D-854](ledger/patches-and-presets.md#D-854)). Every one of these must fit the FM-1 (the generator refuses one that does not; an **XL** is the browser's full version, below); knobs on per-voice modules cost CPU per voice (a pin is ~3.4 k cycles per copy), and a knob that could switch a module into a costlier mode (an oscillator's feedback) is avoided. **Voices** (2026-11-08, the test rig's survey of release 1.11 and the CPU model refitted on it, [D-870](ledger/patches-and-presets.md#D-870)): Oracle V plays 4 (79 % estimated, the rig 79 %; at 5 the overload guard dropped one), Hera 4 4 (the Juno-106's whole panel: 89 % estimated, the rig 86 %; at 5, as Hera 5, the guard dropped one or two), Cassia 1 2 (64 %, the rig 64 %; at 3 or 4 the guard dropped voices, and 3 costs core 0 what 4 does: two PD Osc and five Env 8 per voice), Expander S, Io 4 and Plucked String 4, Algo Four 8 (the DX100's count with its eight algorithms: 87 %, the rig 86 %, [D-740](ledger/fidelity.md#D-740)), Wanderer and Vernon 100 2.
 - **XLs** ([D-338](ledger/patches-and-presets.md#D-338)): the full browser version of a factory patch that was cut down to fit the FM-1, named after it with " XL" ("Algo Four XL"). Each is one file, `web/scripts/xl/<slug>.ts`, exporting `xl` (`Xl` in `web/scripts/xl/xl.ts`: `base`, the FM-1 version's name, and `build(fm1)`, which gets a fresh copy of the FM-1 version to start from), and one line in `web/scripts/xl/index.ts`. `npx vite-node scripts/gen-xl.ts` (after `gen-presets.ts`) writes them to `web/presets/xl/<slug>.json` and logs each one's budget: the FM-1's budget does not bind an XL, so one over it is a sandbox patch, and one that fits is allowed. The shared helpers of both generators (`around`, `level`, `players`, ...) are in `web/scripts/factory-build.ts`. An XL that needs an assembly of its own (8 Lire XL, Elvira 2 XL, Meridian 8 XL, Algo Four XL, Perun 4 XL, Spokes 6 XL, Expander S XL, Verona Drum 1 XL) builds it with `web/scripts/xl/def.ts` (Verona Drum 1 XL from the same channel builders as its FM-1 version, `web/scripts/verona-voices.ts`): a definition that lives only in the XL, never on the assembly shelves, with Macro pins that turn several parameters at once (one switch of the original), nested racks of voice cards (`nest`'s `poly`), and a level matched to the FM-1 version's loudness (`matchLevel`). The 909 Kit XL changes a copy of the FM-1 version's patch: new voice assemblies from `def.ts` in place of its perc card. An XL that extends its FM-1 version's assembly (Oracle V XL, Hera 6 XL, Briefcase 3 XL) edits a copy of it with `web/scripts/xl/asm-edit.ts` (`edit`: modules added, cables moved, a module changed to another type with the same ports, card rows rebound or added after the FM-1 version's pages; `aroundDef` puts it in a patch). `web/src/presets.ts` keeps them apart: `FM1_PRESETS` is the FM-1's factory patches (`web/presets/*.json`, slot order), `XL_PRESETS` the XLs, and `PRESETS` the browser's list, each XL right after its FM-1 version (`withXls`). Everything that reaches the FM-1 reads `FM1_PRESETS` only: `export-defs` (`presets.h`, so also the legacy factory fingerprints and the emulated PRESET), the bank (`bank.ts`), the golden kits, the CPU survey checks and the emulator level script. Every XL matches its original but for the gaps its header lists ([D-347](ledger/patches-and-presets.md#D-347)); one over the share link limit is shared as a stored link.
 
 ## Polyphony: Voice allocators and poly assemblies (format 20; allocators 2026-10-17)

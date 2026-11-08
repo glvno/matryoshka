@@ -7,6 +7,8 @@ import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, EDITOR_ONLY } from './patch';
 import { FM1_PRESETS } from './presets';
 import { withParts } from './test-poly';
+import { deviceView } from './poly';
+import type { Patch } from './patch';
 import { acid, twoOpFM } from './test-patches';
 
 describe('CPU estimate', () => {
@@ -94,46 +96,43 @@ describe('CPU estimate', () => {
     expect(reverb).toBeLessThan(0.3);
   });
 });
-
-// The factory patches measured on the FM-1 (the longest audio interrupt at rest and with 1 / 4 / 8 notes held, in us of the
-// half buffer), which the scale was fitted to (cpu-costs.ts, SURVEY). A new survey replaces the file after large engine
-// changes; until then a change that moves a patch out of the band means the model and the device disagree.
-describe('CPU estimate against the device survey (docs/measurements/cpu-survey-2026-10-20.json)', () => {
-  type Reading = { name: string; idle_us: number; n1_us: number; n4_us: number; n8_us: number; budget_us: number };
-  const survey = JSON.parse(readFileSync(new URL('../../docs/measurements/cpu-survey-2026-10-20.json', import.meta.url), 'utf8')) as Reading[];
-  const byName = new Map(Object.keys(FM1_PRESETS).map((n) => [n.toLowerCase(), n]));
-  // patches changed since the survey (not measured as they are now): re-measure on the device, then drop them here
-  // 808 Kit: re-measured 2026-10-21 after #141: the device reads 81 %, the model 74 % (out of the band): #178. Oracle V:
-  // the melodic patches gained an Arpeggiator and PATTERN (D-336, #243; 2 to 4 points of estimate each), which takes Oracle V
-  // past the band's top (est 84 %, the survey 75 %)
-  // 909 Kit: rows 3 and 5..8 got their voices (the survey measured its first three only; est 59 %)
-  // Hera 6, Expander S, Algo Four: the engine's overhead cut (#289) took about 8 % off every patch's count, which puts these
-  // three under the band's bottom; the survey measured the engine before it (re-measure: #289's device step)
-  // Monolith D, Sallen 20: rebuilt after their originals' panels (#303: switches as Selectors, each filter source on its own
-  // amount, the MS-20's EG 1 delay, EG 2 hold and patch panel), est 35 % and 42 % against the survey's 22 % and 28 %
-  const changed = new Set(['808 kit', 'oracle v', '909 kit', 'hera 6', 'expander s', 'algo four', 'monolith d', 'sallen 20']);
-  // Wanderer: rebuilt duophonic with the Odyssey's whole modulation section (#303; est 37 %, the survey's two-voice one 32 %)
-  changed.add('wanderer');
-  // Io 4, Vernon 100: rebuilt after the Jupiter-4's and the ElectroComp 100's panels (#303; est about 97 % and 60 %)
-  changed.add('io 4');
-  changed.add('vernon 100');
-  // Canvas and Briefcase 3: rebuilt after the Music Easel's and the VCS3's panels (#303; est 76 % and 89 %)
-  changed.add('canvas');
-  changed.add('briefcase 3');
-  // Silver Box: the Ladder's diode mode (#671; est 21 % against the survey's 14 %, which had the Moog mode)
-  changed.add('silver box');
-  // patches added since the survey (#182, Elvira 2, Scrounge, Meridian 8, Perun 4, <7PH, Spokes 6, Cassia 1, the four simple
-  // engines of #413, Verona Drum 1): measure them on the device, then add them to the survey file
-  const unmeasured = new Set(['8 lire', 'elvira 2', 'scrounge', 'meridian 8', 'perun 4', '<7ph', 'spokes 6', 'cassia 1', 'basic poly', 'drift poly', 'mono lead', 'supersaw stack', 'verona drum 1']);
-  it('covers every factory patch', () => expect(survey.length + unmeasured.size).toBe(Object.keys(FM1_PRESETS).length));
-  for (const r of survey)
-    it.skipIf(changed.has(r.name.toLowerCase()))(`is within -4 / +6 points of the device: ${r.name}`, () => {
-      const name = byName.get(r.name.toLowerCase());
-      if (!name) throw new Error(`the survey's ${r.name} is not a factory patch`);
-      const device = (100 * Math.max(r.idle_us, r.n1_us, r.n4_us, r.n8_us)) / r.budget_us;
-      const est = 100 * cpuEstimate(FM1_PRESETS[name](), CPU, 1).use;   // (that survey ran on one core)
-      expect(est).toBeGreaterThanOrEqual(device - 4);
-      expect(est).toBeLessThanOrEqual(device + 6);
+// The factory patches on the test rig (docs/measurements/2026-11-08-rig-release-1.11.md: the longest audio interrupt at
+// rest and with 1 / 4 / 8 keys held, the transport stopped and running), which the scale and the engines' factors were fitted
+// to (scripts/cpu-rig-fit.ts, frozen in cpu-costs.ts SURVEY and RIG). The estimate is each patch's worst case, every voice
+// playing; the rig's figure is its steady peak (the median of a phase's samples after the first, the most over the phases).
+// A patch whose overload guard dropped parts counts at the voices it kept; one the guard muted is left out. A new survey
+// after large engine or firmware changes replaces the files and the fit.
+describe('CPU estimate against the test rig (docs/measurements/cpu-survey-2026-11-08-rig-release-1.11-head*.json)', () => {
+  type Reading = { name: string } & Record<string, number[] | number>;
+  const read = (f: string) => JSON.parse(readFileSync(new URL(`../../docs/measurements/${f}`, import.meta.url), 'utf8')) as Reading[];
+  const files = [read('cpu-survey-2026-11-08-rig-release-1.11-head.json'), read('cpu-survey-2026-11-08-rig-release-1.11-head-run.json')];
+  const median = (v: number[]): number => [...v].sort((a, b) => a - b)[(v.length - 1) >> 1];
+  const voicesOf = (p: Patch): number => Math.max(1, ...deviceView(p, true).groups.map((g) => g.cfg.parts));
+  // renamed since the survey; played there with more voices than today (the guard dropped the rest); changed since (808 Kit,
+  // Verona Drum 1: muted there, back to their 1.10 layout, D-879, D-880)
+  const RENAMED: Record<string, string> = { 'Hera 5': 'Hera 4' };
+  const SURVEYED: Record<string, number> = { 'Hera 4': 5, 'Oracle V': 5, 'Cassia 1': 4 };
+  const CHANGED = new Set(['808 Kit', 'Verona Drum 1']);
+  /** the rig's steady peak (us) of each factory patch at its own voices */
+  const rig = new Map<string, number>();
+  for (const f of files)
+    for (const r of f) {
+      const name = RENAMED[r.name] ?? r.name;
+      if (!FM1_PRESETS[name] || CHANGED.has(name)) continue;
+      const own = voicesOf(FM1_PRESETS[name]());
+      for (const ph of ['n0', 'n1', 'n4', 'n8']) {
+        const samples = r[`${ph}_samples`] as number[];
+        if (r[`${ph}_ovl`] || samples.length < 2 || (SURVEYED[name] ?? own) - Number(r[`${ph}_shed`]) !== own) continue;
+        rig.set(name, Math.max(rig.get(name) ?? 0, median(samples.slice(1))));
+      }
+    }
+  it('has a figure for every factory patch the rig measured as it is today', () => expect(rig.size).toBe(Object.keys(FM1_PRESETS).length - CHANGED.size));
+  for (const name of Object.keys(FM1_PRESETS))
+    it.skipIf(!rig.has(name))(`reads within -3 / +5 points of the rig: ${name}`, () => {
+      const device = (100 * rig.get(name)!) / CPU.blockUs;
+      const est = 100 * cpuEstimate(FM1_PRESETS[name]()).use;
+      expect(est).toBeGreaterThanOrEqual(device - 3);
+      expect(est).toBeLessThanOrEqual(device + 5);
     });
 });
 
@@ -153,7 +152,7 @@ describe('CPU estimate with two cores (docs/measurements/cpu-survey-2026-11-05-r
   // Expander S: the SEM's modulation, sync, band pass, drone and the keyboard's portamento (#658)
   // Cassia 1: four voices with the CZ-1 functions of #658, where the survey measured two
   // Io 4: its factory patch now has the Ladder's stage saturation (#672), regenerated with its named switches
-  // Hera 5, Wanderer: other instruments in their slots (Hera 6 XL's panel at five voices, Wanderer XL)
+  // Hera 4, Wanderer: other instruments in their slots (Hera 6 XL's panel at four voices, Wanderer XL)
   const changedSince = new Set(['algo four', 'oracle v', 'expander s', 'cassia 1', 'io 4', 'hera 5', 'wanderer']);
   for (const name of Object.keys(FM1_PRESETS)) {
     const s = split.get(name.toLowerCase()), o = one.get(name.toLowerCase());

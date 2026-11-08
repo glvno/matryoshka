@@ -125,7 +125,7 @@
    "x": 340,
    "y": 1180,
    "params": {
-    "voices": 5,
+    "voices": 4,
     "assign": 0,
     "legato": 0,
     "priority": 0,
@@ -3025,7 +3025,7 @@
      "param": "voices",
      "label": "voices",
      "head": "voice",
-     "top": 5
+     "top": 4
     },
     {
      "module": 6,

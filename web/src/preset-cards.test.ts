@@ -11,7 +11,7 @@ import { defRowOrder, defStructure } from './structure';
 
 const ENGINES = FACTORY.filter((d) => defIsEngine(d));
 const EFFECTS = FACTORY.filter((d) => d.category === 'Effects' && !defIsEngine(d));
-/** the card tests' engine: the FM-1's Hera 6 as it was before Hera 5 took its slot (Hera 6 XL is built on it), with no card
+/** the card tests' engine: the FM-1's Hera 6 as it was before Hera 4 took its slot (Hera 6 XL is built on it), with no card
  * of its own any more, so its presets are the rule-made ones */
 const HERA = HERA_6 as unknown as AssemblyDef;
 /** where a row (by its key) sits in a preset's values */
@@ -129,7 +129,7 @@ describe('preset cards (#413)', () => {
       expect(shippedPresets(d!).map((p) => p.name)).toEqual(r.presets.map((p) => p.name));
       expect(cardOf(d!)?.presets.length).toBe(r.presets.length);
     }
-    expect(presetsOfDef(ENGINES.find((d) => d.name === 'Hera 5')!).map((p) => p.name)).toEqual(['Init', 'Brass', 'Strings', 'Bass', 'Organ', 'Glass Pad']);
+    expect(presetsOfDef(ENGINES.find((d) => d.name === 'Hera 4')!).map((p) => p.name)).toEqual(['Init', 'Brass', 'Strings', 'Bass', 'Organ', 'Glass Pad']);
   });
 
   it('an effect ships its card\'s presets (on the FM-1 too) and no rule-made ones without a card (#661)', () => {

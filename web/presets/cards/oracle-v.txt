@@ -173,7 +173,7 @@ preset: Poly-Mod Bell
   osc B = 1.5
   wheel mod / freq A = 0
   freq B = 0
-  volume = 0.68
+  volume = 0.83
 
 # All five voices in unison: a pulse and a saw an octave down through a snappy low filter.
 preset: Unison Bass
@@ -200,4 +200,4 @@ preset: Unison Bass
   amp / r = 0.2 s
   wheel mod / freq A = 0
   freq B = 0
-  volume = 0.47
+  volume = 0.57

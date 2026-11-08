@@ -902,7 +902,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.key(REC, false);
     m.run_for(1300)?;
     t.screen(&m, "arm: REC's release after arming records nothing, the bar says ARM", "DRUMS ARM");
-    t.screen(&m, "arm: the track's line says ARMED (#179)", "TRACK 1/2  ARMED");   // (the 808 Kit: DRUMS and DRUMS 2, the toms, D-877)
+    t.screen(&m, "arm: the track's line says ARMED (#179)", "TRACK 1/1  ARMED");
     let mk = m.mark();
     m.tap(REC, 120, 600)?;                   // stopped, on the SEQ page: REC starts step record (D-548, D-804)
     t.screen(&m, "rec: REC, stopped, on the SEQ page: step record on step 1", "STEP 1/16  DRUMS ARM");
@@ -936,7 +936,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.tap(PLAY, 120, 300)?;
     m.tap(SEQ, 120, 1300)?;
     t.screen(&m, "seq: SEQ opens the grid again", "ALGO track");
-    t.screen(&m, "arm: the track line says ARMED, the ALGO and clear hints after it (#395, #450)", "TRACK 1/2  ARMED  ALGO track  SEQ+REC clear");
+    t.screen(&m, "arm: the track line says ARMED, the ALGO and clear hints after it (#395, #450)", "TRACK 1/1  ARMED  ALGO track  SEQ+REC clear");
     m.key(SEQ, true);                        // SEQ held + REC: the track's clear asks; REC again within 3 s clears it (#231)
     m.run_for(200)?;
     m.tap(REC, 120, 300)?;

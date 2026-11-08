@@ -12,7 +12,7 @@ import { XL_SUFFIX } from '../../src/presets';
 export interface Xl {
   /** the FM-1 version's name (a factory patch in web/presets): the XL is named after it, "<base> XL" */
   base: string;
-  /** the XL's name where it is not "<base> XL" (Hera 6 XL, of Hera 5: src/presets.ts xlBase knows it) */
+  /** the XL's name where it is not "<base> XL" (Hera 6 XL, of Hera 4: src/presets.ts xlBase knows it) */
   name?: string;
   /** the XL, from a fresh copy of its FM-1 version (start from it, or ignore it and build anew: factory-build.ts) */
   build(fm1: Patch): Patch;
