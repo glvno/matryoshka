@@ -291,10 +291,15 @@ def check(img, syms, dis, rts):
         errors.append(f"image starts with {img[:4].hex()}, not the entry stub")
     rt, c1 = rts
     rt_calls = [ln for ln in rt.splitlines() if re.search(r"\bcall\b", ln)]
+    # (#656) nor an address in the XIP window: a constant or a jump table the compiler put in .rodata would be read there
+    rt_xip = [mm.group(3) for mm in map(LINE.match, rt.splitlines()) if mm
+              for v in re.findall(r"(?<![\w.])(-?\d+)\b", mm.group(3)) if 0x02000000 <= int(v) & 0xFFFFFFFF < 0x02100000]
     if rt_calls:                    # RAM code runs with the flash off: no calls into XIP
         errors.append(f".ram_text contains calls: {rt_calls[:3]}")
+    elif rt_xip:
+        errors.append(f".ram_text reaches the flash: {rt_xip[:3]}")
     else:
-        notes.append(f".ram_text: {len([ln for ln in rt.splitlines() if LINE.match(ln)])} insns, no calls")
+        notes.append(f".ram_text: {len([ln for ln in rt.splitlines() if LINE.match(ln)])} insns, no calls, no flash address")
     # .c1_text (#271): the second core waits in it while core 0 may have the flash off. Its one way out to the flash is
     # the job it was handed (a call through a register); no call to a fixed address, no address in the XIP window
     c1_ins = [mm.group(3) for mm in map(LINE.match, c1.splitlines()) if mm]

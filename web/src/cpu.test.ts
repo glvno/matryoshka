@@ -120,6 +120,8 @@ describe('CPU estimate against the device survey (docs/measurements/cpu-survey-2
   // Canvas and Briefcase 3: rebuilt after the Music Easel's and the VCS3's panels (#303; est 76 % and 89 %)
   changed.add('canvas');
   changed.add('briefcase 3');
+  // Silver Box: the Ladder's diode mode (#671; est 21 % against the survey's 14 %, which had the Moog mode)
+  changed.add('silver box');
   // patches added since the survey (#182, Elvira 2, Scrounge, Meridian 8, Perun 4, <7PH, Spokes 6, Cassia 1, the four simple
   // engines of #413, Verona Drum 1): measure them on the device, then add them to the survey file
   const unmeasured = new Set(['8 lire', 'elvira 2', 'scrounge', 'meridian 8', 'perun 4', '<7ph', 'spokes 6', 'cassia 1', 'basic poly', 'drift poly', 'mono lead', 'supersaw stack', 'verona drum 1']);
@@ -147,8 +149,9 @@ describe('CPU estimate with two cores (docs/measurements/cpu-survey-2026-11-05-r
   it('has the second core in the table', () => expect(CPU.cores?.idleUs).toBeGreaterThan(0));
   // patches changed since the split survey (not measured as they are now): re-measure on the rig, then drop them here.
   // Algo Four: eight voices and the DX100's eight algorithms (#658), where the survey measured three voices and one
+  // Oracle V: the Prophet-5's functions its FM-1 version had cut (#658), where the survey measured the 1.10 voice
   // Expander S: the SEM's modulation, sync, band pass, drone and the keyboard's portamento (#658)
-  const changedSince = new Set(['algo four', 'expander s']);
+  const changedSince = new Set(['algo four', 'oracle v', 'expander s']);
   for (const name of Object.keys(FM1_PRESETS)) {
     const s = split.get(name.toLowerCase()), o = one.get(name.toLowerCase());
     if (!s || !o || changedSince.has(name.toLowerCase())) continue;
