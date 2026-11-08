@@ -92,7 +92,7 @@ describe('counted records (#667, format 51)', () => {
     const differ = ORACLE_B.reduce((n, [, , v]) => n + Object.keys(v).length, 0);
     // (the B side: the module mask, a bitmap per module with a B side, the 8 values off A; 187 bytes before D-1004)
     expect(encodePatch(p, false, true).length - encodePatch(plain, false, true).length).toBe(Math.ceil(dev.modules.length / 8) + bitmaps + 4 * differ);
-    expect(l.size - lp.size).toBeLessThan(64);   // (50 when measured, 52 with the analog oscillators of #745; 187 before D-1004)
+    expect(l.size - lp.size).toBeLessThan(128);   // (50 when measured, 52 with the analog oscillators of #745, 98 with Oracle V's 64 modules of #658: the module mask and a bitmap per module; 187 before D-1004)
     const room = morphRoom(dev, COUNTED, fm1Edits(p, dev, deviceSection(p, dev)), l.keep);
     expect(room).toBeGreaterThan(0);
     expect(l.counted - l.size - room).toBe(lp.counted - lp.size);   // (the budget counts the room, besides the preset names' room)

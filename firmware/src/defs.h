@@ -232,9 +232,10 @@ enum {
 #define FILTER_P_TRACK 3
 #define FILTER_P_MORPH 4
 #define FILTER_P_OSC 5
+#define FILTER_P_DRIVE 6
 #define FILTER_NIN 5
 #define FILTER_NOUT 9
-#define FILTER_NPAR 6
+#define FILTER_NPAR 7
 #define FILTER_CVBASE 3
 #define FILTER_NDATA 0
 
@@ -577,9 +578,11 @@ enum {
 #define LADDER_P_DRIVE 2
 #define LADDER_P_CVAMT 3
 #define LADDER_P_TRACK 4
+#define LADDER_P_DIODE 5
+#define LADDER_P_STSAT 6
 #define LADDER_NIN 5
 #define LADDER_NOUT 2
-#define LADDER_NPAR 5
+#define LADDER_NPAR 7
 #define LADDER_CVBASE 2
 #define LADDER_NDATA 0
 
@@ -1088,12 +1091,12 @@ enum {
 #define DELAY_CLK_PPQN 24
 #define DELAY_SYNC_TOP 520   /* ms: the synced note lengths spread over 1..this (modules.ts) */
 #define DELAY_LENGTH_MIN 10   /* ms: the Delay's length row (modules.ts; engine.c dly_samples sizes its line) */
-#define DELAY_LENGTH_MAX 1900
-#define DELAY_REACH_MAX 7600   /* ms: the longest time, the longest length at the lowest rate (#659) */
+#define DELAY_LENGTH_MAX 3800
+#define DELAY_REACH_MAX 15200   /* ms: the longest time, the longest length at the lowest rate (#659) */
 #define DELAY_NRATE 3   /* the Delay's rate row (#659): step r keeps every (1 << r)-th sample */
 #define DELAY_TAIL 48   /* samples at the line end with a lower rate or Tape on: the filters' state (modules.ts) */
-/* the low pass in front of a lower rate's line (modules.ts delayAaCoefs at DEVICE_SR), per rate step 1..: two sections, b0 a1 a2 Q28 */
-static const int32_t DELAY_AA[DELAY_NRATE - 1][6] = {{49366084, -88308736, 17337617, 67995108, -121633346, 125178320}, {16612181, -281481305, 79494572, 20926246, -354580001, 169849529}};
+/* the low pass in front of a lower rate's line (modules.ts delayAaCoefs at DEVICE_SR), per rate step 1..: two sections, b0 a1 a2 Q30 (engine.c dly_aa) */
+static const int32_t DELAY_AA[DELAY_NRATE - 1][6] = {{197464337, -353234944, 69350466, 271980430, -486533384, 500713280}, {66448722, -1125925222, 317978288, 83704984, -1418320004, 679398114}};
 /* Tape (#660): the loop's one-pole low pass and high pass per rate step (Q24, at a line written every 1 << r samples), the
  * wow and flutter increments (u32 turns a sample) and depths at the wow row's top (1/256 samples), the heads (bit j: head
  * j + 1 at j + 1 times the time) and 1 / n of n heads (Q16) */
@@ -1133,6 +1136,10 @@ static const int32_t RATIO_DETUNE_OCT[7] = {-142, -95, -47, 0, 47, 95, 142};
 #define FILTER_OSC_GAIN_Q24 93952410   /* the damping's growth per unit of res past it, times the band pass squared */
 #define FILTER_OSC_CLIP_Q20 2097152   /* the band-pass state is held to +-this there */
 #define FILTER_OSC_SEED_Q20 1024   /* the band-pass state a filter at rest starts from */
+#define FILTER_DRIVE_KNEE_Q20 1572864   /* the Multimode filter's drive (#670): the soft clip's knee */
+#define FILTER_DRIVE_TOP_Q20 67108864   /* the clip's level drive r |bp| is held to this */
+#define DIODE_IW180_Q24 14036535   /* the Ladder's diode mode (#671): 1 / the loop's -180 degree frequency */
+#define DIODE_KCRIT_Q24 308499448   /* the loop gain that self-oscillates there (res 1) */
 /* the Oscillator's analog shape (#673, modules.ts analogShape) at analog 1, Q16: the saw's curve, the reset's dip, the
  * tolerance of each, the triangle's peak offset, the pulse width offset; the dip's length in samples at DEVICE_SR (Q16) */
 #define ANALOG_CURVE_Q16 22938
@@ -1295,16 +1302,16 @@ static const uint8_t VCA_LOG[] = {0};
 static const char *const VCA_UNIT[] = {""};
 static const char *const *const VCA_CH[] = {0};
 static const char *const FILTER_INNAMES[] = {"IN", "CV", "MORPH", "P1", "P2"};
-static const int32_t FILTER_MIN[] = {1310720, 0, 0, 0, 0, 0};
-static const int32_t FILTER_MAX[] = {1048576000, 65536, 262144, 65536, 65536, 65536};
-static const int32_t FILTER_DEF[] = {78643200, 13107, 65536, 0, 0, 0};
-static const int32_t FILTER_INC[] = {10485760, 655, 2621, 65536, 655, 65536};
-static const int32_t FILTER_STEP[] = {65536, 655, 655, 65536, 655, 65536};
-static const uint8_t FILTER_SINCE[] = {0, 0, 0, 0, 0, 47};
-static const char *const FILTER_PN[] = {"CUTOFF", "RES", "CVAMT", "TRACK", "MORPH", "OSC"};
-static const uint8_t FILTER_LOG[] = {2, 0, 0, 0, 0, 0};
-static const char *const FILTER_UNIT[] = {"HZ", "", "OCT", "", "", ""};
-static const char *const *const FILTER_CH[] = {0, 0, 0, ADSR_CH4, 0, ADSR_CH4};
+static const int32_t FILTER_MIN[] = {1310720, 0, 0, 0, 0, 0, 0};
+static const int32_t FILTER_MAX[] = {1048576000, 65536, 262144, 65536, 65536, 65536, 524288};
+static const int32_t FILTER_DEF[] = {78643200, 13107, 65536, 0, 0, 0, 0};
+static const int32_t FILTER_INC[] = {10485760, 655, 2621, 65536, 655, 65536, 5243};
+static const int32_t FILTER_STEP[] = {65536, 655, 655, 65536, 655, 65536, 655};
+static const uint8_t FILTER_SINCE[] = {0, 0, 0, 0, 0, 47, 51};
+static const char *const FILTER_PN[] = {"CUTOFF", "RES", "CVAMT", "TRACK", "MORPH", "OSC", "DRIVE"};
+static const uint8_t FILTER_LOG[] = {2, 0, 0, 0, 0, 0, 0};
+static const char *const FILTER_UNIT[] = {"HZ", "", "OCT", "", "", "", ""};
+static const char *const *const FILTER_CH[] = {0, 0, 0, ADSR_CH4, 0, ADSR_CH4, 0};
 static const char *const MIXER_INNAMES[] = {"IN1", "IN2", "IN3", "IN4", "P1", "P2"};
 static const int32_t MIXER_MIN[] = {0, 0, 0, 0};
 static const int32_t MIXER_MAX[] = {65536, 65536, 65536, 65536};
@@ -1317,9 +1324,9 @@ static const char *const MIXER_UNIT[] = {"", "", "", ""};
 static const char *const *const MIXER_CH[] = {0, 0, 0, 0};
 static const char *const DELAY_INNAMES[] = {"IN", "CLK", "P1", "P2"};
 static const int32_t DELAY_MIN[] = {65536, 0, 0, 0, 0, 0, 0, 655360, 0, 0, 0, 0};
-static const int32_t DELAY_MAX[] = {45875200, 62259, 65536, 65536, 65536, 327680, 65536, 124518400, 131072, 65536, 65536, 393216};
+static const int32_t DELAY_MAX[] = {45875200, 62259, 65536, 65536, 65536, 327680, 65536, 249036800, 131072, 65536, 65536, 393216};
 static const int32_t DELAY_DEF[] = {16384000, 26214, 19661, 0, 0, 0, 0, 45875200, 0, 0, 19661, 0};
-static const int32_t DELAY_INC[] = {458752, 655, 655, 65536, 65536, 65536, 65536, 1310720, 65536, 65536, 655, 65536};
+static const int32_t DELAY_INC[] = {458752, 655, 655, 65536, 65536, 65536, 65536, 2621440, 65536, 65536, 655, 65536};
 static const int32_t DELAY_STEP[] = {65536, 655, 655, 65536, 65536, 65536, 65536, 655360, 65536, 65536, 655, 65536};
 static const uint8_t DELAY_SINCE[] = {0, 0, 0, 0, 0, 35, 35, 50, 51, 51, 51, 51};
 static const char *const DELAY_PN[] = {"TIME", "FB", "MIX", "SYNC", "PINGPONG", "NOTE", "SWELL", "LENGTH", "RATE", "TAPE", "WOW", "HEADS"};
@@ -1522,15 +1529,16 @@ static const uint8_t CRUSH_LOG[] = {0, 0, 0};
 static const char *const CRUSH_UNIT[] = {"", "", ""};
 static const char *const *const CRUSH_CH[] = {0, 0, ADSR_CH4};
 static const char *const LADDER_INNAMES[] = {"IN", "CV", "P1", "P2", "FM"};
-static const int32_t LADDER_MIN[] = {1310720, 0, 65536, 0, 0};
-static const int32_t LADDER_MAX[] = {1048576000, 65536, 524288, 262144, 65536};
-static const int32_t LADDER_DEF[] = {78643200, 13107, 65536, 65536, 0};
-static const int32_t LADDER_INC[] = {10485760, 655, 4588, 2621, 65536};
-static const int32_t LADDER_STEP[] = {65536, 655, 655, 655, 65536};
-static const char *const LADDER_PN[] = {"CUTOFF", "RES", "DRIVE", "CVAMT", "TRACK"};
-static const uint8_t LADDER_LOG[] = {2, 0, 1, 0, 0};
-static const char *const LADDER_UNIT[] = {"HZ", "", "", "OCT", ""};
-static const char *const *const LADDER_CH[] = {0, 0, 0, 0, ADSR_CH4};
+static const int32_t LADDER_MIN[] = {1310720, 0, 65536, 0, 0, 0, 0};
+static const int32_t LADDER_MAX[] = {1048576000, 65536, 524288, 262144, 65536, 65536, 65536};
+static const int32_t LADDER_DEF[] = {78643200, 13107, 65536, 65536, 0, 0, 0};
+static const int32_t LADDER_INC[] = {10485760, 655, 4588, 2621, 65536, 65536, 65536};
+static const int32_t LADDER_STEP[] = {65536, 655, 655, 655, 65536, 65536, 65536};
+static const uint8_t LADDER_SINCE[] = {0, 0, 0, 0, 0, 51, 51};
+static const char *const LADDER_PN[] = {"CUTOFF", "RES", "DRIVE", "CVAMT", "TRACK", "DIODE", "STSAT"};
+static const uint8_t LADDER_LOG[] = {2, 0, 1, 0, 0, 0, 0};
+static const char *const LADDER_UNIT[] = {"HZ", "", "", "OCT", "", "", ""};
+static const char *const *const LADDER_CH[] = {0, 0, 0, 0, ADSR_CH4, ADSR_CH4, ADSR_CH4};
 static const char *const DYN_INNAMES[] = {"IN", "SIDE", "P1", "P2"};
 static const int32_t DYN_MIN[] = {-2621440, 65536, 66, 655, 0};
 static const int32_t DYN_MAX[] = {0, 1310720, 13107, 65536, 1572864};
@@ -1815,7 +1823,7 @@ static const def_t DEFS[N_TYPES] = {
     {VOWEL_NIN, VOWEL_NOUT, VOWEL_NPAR, 2, VOWEL_CVBASE, 0, VOWEL_NDATA, 1, VOWEL_MIN, VOWEL_MAX, VOWEL_DEF, VOWEL_INC, "FORMANT FILTER", VOWEL_PN, VOWEL_INNAMES, VOWEL_LOG, VOWEL_UNIT, VOWEL_CH, 0, 0, VOWEL_STEP},   /* vowel */
     {PHASER_NIN, PHASER_NOUT, PHASER_NPAR, 0, PHASER_CVBASE, 0, PHASER_NDATA, 1, PHASER_MIN, PHASER_MAX, PHASER_DEF, PHASER_INC, "PHASER", PHASER_PN, PHASER_INNAMES, PHASER_LOG, PHASER_UNIT, PHASER_CH, 0, 0, PHASER_STEP},   /* phaser */
     {CRUSH_NIN, CRUSH_NOUT, CRUSH_NPAR, 0, CRUSH_CVBASE, 0, CRUSH_NDATA, 1, CRUSH_MIN, CRUSH_MAX, CRUSH_DEF, CRUSH_INC, "BITCRUSHER", CRUSH_PN, CRUSH_INNAMES, CRUSH_LOG, CRUSH_UNIT, CRUSH_CH, 0, 0, CRUSH_STEP},   /* crush */
-    {LADDER_NIN, LADDER_NOUT, LADDER_NPAR, 2, LADDER_CVBASE, 0, LADDER_NDATA, 3, LADDER_MIN, LADDER_MAX, LADDER_DEF, LADDER_INC, "LADDER", LADDER_PN, LADDER_INNAMES, LADDER_LOG, LADDER_UNIT, LADDER_CH, 0, 0, LADDER_STEP},   /* ladder */
+    {LADDER_NIN, LADDER_NOUT, LADDER_NPAR, 2, LADDER_CVBASE, 0, LADDER_NDATA, 3, LADDER_MIN, LADDER_MAX, LADDER_DEF, LADDER_INC, "LADDER", LADDER_PN, LADDER_INNAMES, LADDER_LOG, LADDER_UNIT, LADDER_CH, 0, LADDER_SINCE, LADDER_STEP},   /* ladder */
     {DYN_NIN, DYN_NOUT, DYN_NPAR, 0, DYN_CVBASE, 0, DYN_NDATA, 1, DYN_MIN, DYN_MAX, DYN_DEF, DYN_INC, "COMPRESSOR", DYN_PN, DYN_INNAMES, DYN_LOG, DYN_UNIT, DYN_CH, 0, 0, DYN_STEP},   /* dyn */
     {MATH_NIN, MATH_NOUT, MATH_NPAR, 0, MATH_CVBASE, -1, MATH_NDATA, 128, MATH_MIN, MATH_MAX, MATH_DEF, MATH_INC, "MATH", MATH_PN, MATH_INNAMES, MATH_LOG, MATH_UNIT, MATH_CH, 0, 0, MATH_STEP},   /* math */
     {LOGIC_NIN, LOGIC_NOUT, LOGIC_NPAR, 0, LOGIC_CVBASE, -1, LOGIC_NDATA, 0, LOGIC_MIN, LOGIC_MAX, LOGIC_DEF, LOGIC_INC, "LOGIC", LOGIC_PN, LOGIC_INNAMES, LOGIC_LOG, LOGIC_UNIT, LOGIC_CH, 0, 0, LOGIC_STEP},   /* logic */

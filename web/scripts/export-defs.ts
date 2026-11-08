@@ -3,7 +3,7 @@
 // patches as binary), firmware/src/controls.h and the README's list of controls (the FM-1's controls, src/controls.ts).
 // Run from web/:  npx vite-node scripts/export-defs.ts
 import { readFileSync, writeFileSync } from 'node:fs';
-import { ADSR_LONG, ANALOG_CURVE, ANALOG_DIP, ANALOG_DIP_S, ANALOG_PWO, ANALOG_SKEW, ANALOG_TOL, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_LENGTH_MAX, DELAY_REACH_MAX, DELAY_RATES, DELAY_TAIL, delayAaCoefs, DEVICE_SR, DELAY_TAPE_LP, DELAY_TAPE_HP, delayTapePole, DELAY_WOW_HZ, DELAY_FLUTTER_HZ, DELAY_WOW_MS, DELAY_FLUTTER_MS, turnInc, delayDepth8, DELAY_HEADS, DELAY_HEAD_MASK, DELAY_HEAD_GAIN, DELAY_LENGTH_MIN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY, ONCE_BAR, CLICK_MS, CLICK_LEVEL_Q16, CLICK_HZ, CLICK_ACCENT_HZ } from '../src/modules';
+import { ADSR_LONG, ANALOG_CURVE, ANALOG_DIP, ANALOG_DIP_S, ANALOG_PWO, ANALOG_SKEW, ANALOG_TOL, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, FILTER_DRIVE_KNEE, FILTER_DRIVE_TOP, DIODE_W180, DIODE_KCRIT, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_LENGTH_MAX, DELAY_REACH_MAX, DELAY_RATES, DELAY_TAIL, delayAaCoefs, DEVICE_SR, DELAY_TAPE_LP, DELAY_TAPE_HP, delayTapePole, DELAY_WOW_HZ, DELAY_FLUTTER_HZ, DELAY_WOW_MS, DELAY_FLUTTER_MS, turnInc, delayDepth8, DELAY_HEADS, DELAY_HEAD_MASK, DELAY_HEAD_GAIN, DELAY_LENGTH_MIN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY, ONCE_BAR, CLICK_MS, CLICK_LEVEL_Q16, CLICK_HZ, CLICK_ACCENT_HZ } from '../src/modules';
 import { encodePatch, TYPE_ORDER, toQ16, VERSION } from '../src/patchbin';
 import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK_NAME_MAX } from '../src/patch';
 import { ACCENT_VEL, TRACK_NOTES_MAX } from '../src/track';
@@ -52,8 +52,8 @@ w(`#define DELAY_LENGTH_MAX ${DELAY_LENGTH_MAX}`);
 w(`#define DELAY_REACH_MAX ${DELAY_REACH_MAX}   /* ms: the longest time, the longest length at the lowest rate (#659) */`);
 w(`#define DELAY_NRATE ${DELAY_RATES.length}   /* the Delay's rate row (#659): step r keeps every (1 << r)-th sample */`);
 w(`#define DELAY_TAIL ${DELAY_TAIL}   /* samples at the line end with a lower rate or Tape on: the filters' state (modules.ts) */`);
-w(`/* the low pass in front of a lower rate's line (modules.ts delayAaCoefs at DEVICE_SR), per rate step 1..: two sections, b0 a1 a2 Q28 */`);
-w(`static const int32_t DELAY_AA[DELAY_NRATE - 1][6] = {${[2, 4].map((k) => `{${delayAaCoefs(DEVICE_SR, k).flat().map((c) => Math.round(c * 2 ** 28)).join(', ')}}`).join(', ')}};`);
+w(`/* the low pass in front of a lower rate's line (modules.ts delayAaCoefs at DEVICE_SR), per rate step 1..: two sections, b0 a1 a2 Q30 (engine.c dly_aa) */`);
+w(`static const int32_t DELAY_AA[DELAY_NRATE - 1][6] = {${[2, 4].map((k) => `{${delayAaCoefs(DEVICE_SR, k).flat().map((c) => Math.round(c * 2 ** 30)).join(', ')}}`).join(', ')}};`);
 w(`/* Tape (#660): the loop's one-pole low pass and high pass per rate step (Q24, at a line written every 1 << r samples), the
  * wow and flutter increments (u32 turns a sample) and depths at the wow row's top (1/256 samples), the heads (bit j: head
  * j + 1 at j + 1 times the time) and 1 / n of n heads (Q16) */`);
@@ -93,6 +93,10 @@ w(`#define FILTER_OSC_K_Q24 ${Math.round(FILTER_OSC_K * (1 << 24))}   /* the dam
 w(`#define FILTER_OSC_GAIN_Q24 ${Math.round(FILTER_OSC_GAIN * (1 << 24))}   /* the damping's growth per unit of res past it, times the band pass squared */`);
 w(`#define FILTER_OSC_CLIP_Q20 ${FILTER_OSC_CLIP * (1 << 20)}   /* the band-pass state is held to +-this there */`);
 w(`#define FILTER_OSC_SEED_Q20 ${Math.round(FILTER_OSC_SEED * (1 << 20))}   /* the band-pass state a filter at rest starts from */`);
+w(`#define FILTER_DRIVE_KNEE_Q20 ${FILTER_DRIVE_KNEE * (1 << 20)}   /* the Multimode filter's drive (#670): the soft clip's knee */`);
+w(`#define FILTER_DRIVE_TOP_Q20 ${FILTER_DRIVE_TOP * (1 << 20)}   /* the clip's level drive r |bp| is held to this */`);
+w(`#define DIODE_IW180_Q24 ${Math.round((1 << 24) / DIODE_W180)}   /* the Ladder's diode mode (#671): 1 / the loop's -180 degree frequency */`);
+w(`#define DIODE_KCRIT_Q24 ${Math.round(DIODE_KCRIT * (1 << 24))}   /* the loop gain that self-oscillates there (res 1) */`);
 w(`/* the Oscillator's analog shape (#673, modules.ts analogShape) at analog 1, Q16: the saw's curve, the reset's dip, the
  * tolerance of each, the triangle's peak offset, the pulse width offset; the dip's length in samples at DEVICE_SR (Q16) */`);
 w(`#define ANALOG_CURVE_Q16 ${Math.round(ANALOG_CURVE * 65536)}`);

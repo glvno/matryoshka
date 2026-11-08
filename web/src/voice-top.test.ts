@@ -22,20 +22,24 @@ const rowBytes = (bin: Uint8Array): number[] | undefined => {
 };
 
 describe("the FM-1's VOICES row top", () => {
-  it('Cassia 1 stops at the most voices whose CPU estimate fits the FM-1 (six)', () => {
+  it('Cassia 1 stops at the most voices whose CPU estimate fits the FM-1 (four, with the CZ-1 functions of #658)', () => {
     const p = FM1_PRESETS['Cassia 1']();
     const r = voicesRow(p)!;
-    expect(r.top).toBe(6);
-    expect(deviceBudget(withVoices(p, 6)).fits).toBe(true);
-    expect(deviceBudget(withVoices(p, 7)).fits).toBe(false);
-    expect(deviceBudget(withVoices(p, 7)).over.map((o) => o.key)).toEqual(['cpu']);
+    expect(r.top).toBe(4);
+    expect(deviceBudget(withVoices(p, 4)).fits).toBe(true);
+    expect(deviceBudget(withVoices(p, 5)).fits).toBe(false);
+    expect(deviceBudget(withVoices(p, 5)).over.map((o) => o.key)).toEqual(['cpu']);
+  });
+
+  it('Oracle V stops at six: five voices with the Prophet-5\'s functions back (#658)', () => {
+    expect(voicesRow(FM1_PRESETS['Oracle V']())!.top).toBe(6);
   });
 
   it('no other factory patch has a top: each fits the FM-1 with eight voices', () => {
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
       const p = make();
       const r = voicesRow(p);
-      if (!r || name === 'Cassia 1') continue;
+      if (!r || name === 'Cassia 1' || name === 'Oracle V') continue;   // (Oracle V: its five voices, #658's functions)
       expect(r.top, name).toBeUndefined();
       expect(deviceBudget(withVoices(p, MAX_PARTS)).fits, name).toBe(true);
     }
@@ -47,7 +51,7 @@ describe("the FM-1's VOICES row top", () => {
     const bin = encodePatch(p, true);
     const got = rowBytes(bin)!;
     expect(got[0]).toBe(POLY_ROW | ROW_MORE);
-    expect(got[got.length - 1]).toBe(6);
+    expect(got[got.length - 1]).toBe(4);
     delete voicesRow(p)!.top;
     const plain = rowBytes(encodePatch(p, true))!;
     expect(plain[0]).toBe(POLY_ROW);

@@ -574,7 +574,12 @@ export const DELAY_SYNC_TOP = 520;
  * before the row. The FM-1 sizes the line when the patch loads (engine.c dly_samples): no input, macro range, morph,
  * P-lock or knob moves the length while the patch plays (ParamDef.fixed) */
 export const DELAY_LENGTH_MIN = 10;
-export const DELAY_LENGTH_MAX = 1900;
+/** the longest length: what one Delay's line can take of the FM-1's memory arena (#649) in a patch of a Main, the Delay and
+ * an Output: 3.8 s, a line of 335,420 bytes of the arena's 338,740 (patchbin.ts ARENA). Every other module, line and voice
+ * takes from the same arena, and the editor's length row stops at what is left (delayRoom). A length past
+ * DELAY_LENGTH_GREW needs format 51 (1.10's longest was 1.9 s). */
+export const DELAY_LENGTH_MAX = 3800;
+export const DELAY_LENGTH_GREW = 1900;
 export const DELAY_LENGTH_DEFAULT = 700;
 /** the longest time a Delay plays, ms: the longest length at the lowest rate (#659: RATE 11k holds four times its length) */
 export const DELAY_REACH_MAX = DELAY_LENGTH_MAX * 4;
@@ -969,6 +974,16 @@ export const FILTER_OSC_K = 1.19;
 export const FILTER_OSC_GAIN = 5.6;
 export const FILTER_OSC_CLIP = 2;
 export const FILTER_OSC_SEED = 1 / 1024;
+/** the Multimode filter's drive (#670, its `drive` parameter above 0): the resonance feedback r bp (r = 1.98 res) passes
+ * the Ladder's soft clip sat(v) = v - v^3 / 6.75 (+-1 from |v| = 1.5) at drive times the signal's level, read from the
+ * band-pass state as the self-oscillation reads it. What the clip takes off the feedback comes back as damping: the
+ * damping k grows by r (1 - sat(a) / a), a = drive r |bp| held to FILTER_DRIVE_TOP (r a^2 / 6.75 below the knee, no
+ * division there). The outputs stay at the input's scale, so a quiet signal plays as with drive off and a loud one has
+ * its resonance squashed. engine.c reads these from defs.h. */
+export const FILTER_DRIVE_KNEE = 1.5;
+export const FILTER_DRIVE_TOP = 64;
+/** the damping the drive adds for a = drive r |bp| (already held to FILTER_DRIVE_TOP), per unit of r: 1 - sat(a) / a */
+export const filterDriveLoss = (a: number): number => (a >= FILTER_DRIVE_KNEE ? 1 - 1 / a : (a * a) / 6.75);
 
 /** state variable filter, two stages: stage 1 (12 dB) gives lp12 / bp / hp (and hp6, a resonant 6 dB high pass, appended), stage 2 takes lp12 and adds the other 12 dB (lp24) */
 const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }> = {
@@ -984,6 +999,8 @@ const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }>
       param('track', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
       param('morph', 0, 1, 0, { step: 0.01, input: 'morph', rest: (p, cv) => (p.morph ?? 0) + cv }),
       param('osc', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 47 }),
+      // #670: the drive into a soft clip inside the resonance loop; 0 = off (a linear filter, as before 1.11)
+      param('drive', 0, 8, 0, { step: 0.01, since: 51 }),
     ],
   },
   init: () => ({ ic1: 0, ic2: 0, jc1: 0, jc2: 0 }),
@@ -997,6 +1014,9 @@ const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }>
     const k0 = 2 - 1.98 * res - FILTER_OSC_K * over, gam = FILTER_OSC_GAIN * over;
     let k = k0;
     if (over > 0 && s.ic1 === 0 && s.ic2 === 0) s.ic1 = FILTER_OSC_SEED;
+    // drive (#670): a = drive r |bp|, the clip's level; a filter without resonance (r = 0) has nothing to clip
+    const r = 1.98 * res, dr = (c.p.drive ?? 0) * r;
+    const drv = dr > 0;
     const k2 = Math.SQRT2; // stage 2 is damped (Q 0.7): the resonance peak comes from stage 1 alone
     const tr = (c.p.track ?? 0) >= 0.5 ? c.voice.pitch : 0; // keyboard tracking: the cutoff follows the played pitch 1 octave per octave (C4 = the cutoff as set)
     let fc = c.p.cutoff ?? 1000, m = c.p.morph ?? 0;
@@ -1007,6 +1027,7 @@ const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }>
         const b = Math.min(FILTER_OSC_CLIP, Math.max(-FILTER_OSC_CLIP, s.ic1));
         k = k0 + gam * b * b;
       }
+      if (drv) k = (over > 0 ? k : k0) + r * filterDriveLoss(Math.min(FILTER_DRIVE_TOP, dr * Math.abs(s.ic1)));
       const a1 = 1 / (1 + g * (g + k));
       const a2 = g * a1;
       const a3 = g * a2;
@@ -1067,11 +1088,17 @@ const ladder: ModuleImpl<{ s: Float64Array }> = {
       param('drive', 1, 8, 1, { step: 0.01, log: true }),
       param('cvamt', 0, 4, 1, { unit: 'oct', step: 0.01 }),
       param('track', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
+      // #671: the diode ladder (diodeLadder); off = the Moog ladder, as before 1.11
+      param('diode', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 51 }),
+      // #672: the soft clip at the input of stages 2, 3 and 4 too, not only at the loop's input; off = as before 1.11
+      param('stsat', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 51 }),
     ],
   },
   init: () => ({ s: new Float64Array(4) }),
   process(c, st) {
+    if ((c.p.diode ?? 0) >= 0.5) return diodeLadder(c, st.s);
     const s = st.s;
+    const stsat = (c.p.stsat ?? 0) >= 0.5;
     const audio = !!c.connected.fm;
     let cvm = 0;
     for (let i = 0; i < c.n; i++) cvm += c.inp.cv[i];
@@ -1097,6 +1124,7 @@ const ladder: ModuleImpl<{ s: Float64Array }> = {
       u = u >= 1.5 ? 1 : u <= -1.5 ? -1 : u - (u * u * u) / 6.75;
       let y2 = 0;
       for (let j = 0; j < 4; j++) {
+        if (stsat && j > 0) u = u >= 1.5 ? 1 : u <= -1.5 ? -1 : u - (u * u * u) / 6.75;
         const v = G * (u - s[j]);
         u = v + s[j];
         s[j] = u + v;
@@ -1107,6 +1135,67 @@ const ladder: ModuleImpl<{ s: Float64Array }> = {
     }
   },
 };
+
+/** the diode ladder's loop: the frequency (in units of the stage frequency w) where its phase reaches -180 degrees, and
+ * the loop gain that self-oscillates there (1 / |H| at that frequency). engine.c reads them from defs.h. */
+export const DIODE_W180 = 1.1952534;
+export const DIODE_KCRIT = 18.388;
+
+/**
+ * The Ladder's diode mode (#671, `diode` on): the linearised diode ladder of the Roland TB-303 and the EMS VCS3, four
+ * coupled stages with a capacitor between neighbouring nodes: y' = w (-M y + e1 u), M tri-diagonal [2 -1; -1 2 -1;
+ * -1 2 -1; -1 1] (characteristic polynomial s^4 + 7 s^3 + 15 s^2 + 10 s + 1: unequal poles, about 14 dB per octave around
+ * the cutoff, 18 an octave higher, 24 far above). Its phase reaches -180 degrees at w DIODE_W180, where the loop gain
+ * DIODE_KCRIT self-oscillates: k = DIODE_KCRIT res, so res 1 is the edge, as 4 res is in the Moog mode. `cutoff` is the
+ * resonance frequency, as in the Moog mode. Trapezoidal (zero-delay) integration: each sample solves (I + g M) y = z +
+ * g e1 u, g = tan(pi fc / sr) / DIODE_W180 (fc held to 0.3 sr), by the tri-diagonal (Thomas) elimination whose factors
+ * come once per block (and at each change of the audio-rate input fm, as in the Moog mode): pivots c0..c3, their
+ * reciprocals iu, the multipliers m_i = g iu_(i-1). The loop is solved linearly (y4 = p3 + b3 u, p3 the states' share, b3
+ * the loop input's), then the loop input u = sat((drive x - k p3) / (1 + k b3)) runs through the stages. No high pass in
+ * the feedback: the loop's passband falls by 1 / (1 + k) with res, the diode ladder's bass loss, deeper than the Moog
+ * mode's 1 / (1 + 4 res). The outputs make up the difference (DIODE_MAKEUP, after the loop, so the saturation is as
+ * heard): their passband sits where the Moog mode's does at the same res, so the switch keeps a patch's level. Outputs:
+ * lp24 (stage 4) and lp12 (stage 2). The four states are the Moog mode's (`s`). `stsat` does not apply here.
+ */
+export const diodeMakeup = (res: number): number => (1 + DIODE_KCRIT * res) / (1 + 4 * res);
+interface DiodeCoef { g: number; m1: number; m2: number; m3: number; iu0: number; iu1: number; iu2: number; iu3: number; b3: number }
+function diodeCoef(fc: number, sr: number): DiodeCoef {
+  const g = Math.tan((Math.PI * Math.min(fc, sr * 0.3)) / sr) / DIODE_W180;
+  const iu0 = 1 / (1 + 2 * g), m1 = g * iu0;
+  const iu1 = 1 / (1 + 2 * g - g * m1), m2 = g * iu1;
+  const iu2 = 1 / (1 + 2 * g - g * m2), m3 = g * iu2;
+  const iu3 = 1 / (1 + g - g * m3);
+  return { g, m1, m2, m3, iu0, iu1, iu2, iu3, b3: g * m1 * m2 * m3 * iu3 };
+}
+function diodeLadder(c: Ctx, z: Float64Array): void {
+  const audio = !!c.connected.fm;
+  let cvm = 0;
+  for (let i = 0; i < c.n; i++) cvm += c.inp.cv[i];
+  cvm /= c.n;
+  const tr = (c.p.track ?? 0) >= 0.5 ? c.voice.pitch : 0;
+  const k = DIODE_KCRIT * (c.p.res ?? 0), drive = c.p.drive ?? 1, mk = diodeMakeup(c.p.res ?? 0);
+  let d: DiodeCoef = diodeCoef(1000, c.sr), F = 0;
+  for (let i = 0; i < c.n; i++) {
+    if (i === 0 || (audio && c.inp.fm[i] !== c.inp.fm[i - 1])) {
+      const cv = cvm + (audio ? c.inp.fm[i] : 0);
+      const fc = Math.min((c.p.cutoff ?? 1000) * Math.pow(2, cv * (c.p.cvamt ?? 1) + tr), c.sr * 0.45);
+      if (c.display) c.display.cutoff = fc;
+      d = diodeCoef(fc, c.sr);
+      F = 1 / (1 + k * d.b3);
+    }
+    const p3 = (z[3] + d.m3 * (z[2] + d.m2 * (z[1] + d.m1 * z[0]))) * d.iu3;
+    let u = (drive * c.inp.in[i] - k * p3) * F;
+    u = u >= 1.5 ? 1 : u <= -1.5 ? -1 : u - (u * u * u) / 6.75;
+    const e0 = z[0] + d.g * u, e1 = z[1] + d.m1 * e0, e2 = z[2] + d.m2 * e1, e3 = z[3] + d.m3 * e2;
+    const y3 = e3 * d.iu3, y2 = (e2 + d.g * y3) * d.iu2, y1 = (e1 + d.g * y2) * d.iu1, y0 = (e0 + d.g * y1) * d.iu0;
+    z[0] = 2 * y0 - z[0];
+    z[1] = 2 * y1 - z[1];
+    z[2] = 2 * y2 - z[2];
+    z[3] = 2 * y3 - z[3];
+    c.out.lp24[i] = y3 * mk;
+    c.out.lp12[i] = y1 * mk;
+  }
+}
 
 /** 20 log10(x) = DB_PER_OCT log2(x) */
 const DB_PER_OCT = 6.0205999;
@@ -1534,6 +1623,9 @@ interface DelayState {
   wph: number;
   fph: number;
   m: number;
+  /** after a new rate (delayChange): the samples its echoes still play at the new speed before the read point glides to
+   * the time (engine.c keeps it in rate, past DLY_HOLD) */
+  hold: number;
 }
 
 /** the glide: the rate heads for 1 / 2^DELAY_GLIDE_SHIFT of the distance a sample (1024 samples, 23 ms), at most
@@ -1613,7 +1705,7 @@ function delaySlow(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, p
     const ea = buf[i0] + (buf[i1] - buf[i0]) * f;
     const x = c.inp.in[i];
     // the low pass in front of the line: two sections (direct form I), every sample
-    const xs = Math.max(-32, Math.min(32, x));
+    const xs = Math.max(-4, Math.min(4, x)); // (the line holds +-4)
     const u = b0 * (xs + 2 * lp[0] + lp[1]) - a1 * lp[2] - a2 * lp[3];
     lp[1] = lp[0]; lp[0] = xs; lp[3] = lp[2]; lp[2] = u;
     const y = c0 * (u + 2 * lp[4] + lp[5]) - d1 * lp[6] - d2 * lp[7];
@@ -1687,7 +1779,7 @@ function delayTape(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, p
     const x = c.inp.in[i];
     let y = x;
     if (k > 1) {
-      const xs = Math.max(-32, Math.min(32, x));
+      const xs = Math.max(-4, Math.min(4, x)); // (the line holds +-4)
       const u = b0 * (xs + 2 * lp[0] + lp[1]) - a1 * lp[2] - a2 * lp[3];
       lp[1] = lp[0]; lp[0] = xs; lp[3] = lp[2]; lp[2] = u;
       y = c0 * (u + 2 * lp[4] + lp[5]) - d1 * lp[6] - d2 * lp[7];
@@ -1714,6 +1806,79 @@ function delayTape(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, p
   s.m = m0 + step * c.n;
 }
 
+/** a ring of lo samples at b[base..] (w its next write) as a ring of ln (delayChange): every sample keeps its distance
+ * behind the write head; a shorter ring drops its oldest samples, a longer one gets silence older than all of them. The
+ * new w (engine.c dly_ring) */
+function delayRing(b: Float32Array, base: number, lo: number, ln: number, w: number): number {
+  if (ln < lo) {
+    if (w > ln) {
+      b.copyWithin(base, base + w - ln, base + w);
+      return 0;
+    }
+    b.copyWithin(base + w, base + w + lo - ln, base + lo);
+    return w === ln ? 0 : w;
+  }
+  if (ln > lo) {
+    b.copyWithin(base + w + ln - lo, base + w, base + lo);
+    b.fill(0, base + w, base + w + ln - lo);
+  }
+  return w;
+}
+
+/**
+ * A new rate or Tape on / off (#659, #660; engine.c dly_change): the line keeps what it holds. When the line gives its last
+ * DELAY_TAIL samples to the filters' state (a lower rate or Tape) or takes them back, its ring (each ping-pong side its
+ * half) drops its oldest samples or gets that much silence older than them, so every echo keeps its place (delayRing), and
+ * the new state starts from silence. A lower rate's low pass coming from 44k starts settled on the input x0 (no step into
+ * the line). A new rate is a tape changing speed: the read point stays on the same line sample while the line moves past
+ * it at the new rate, so the echoes in it play on pitched by the ratio of the rates (down an octave from 44k to 22k), and
+ * the read point stands (s.hold) until they have played, k / k_old times the time (s.cur, in samples, becomes k / k_old
+ * times as many). Then it glides to the time as for a turned time knob.
+ */
+function delayChange(s: DelayState, k: number, tape: boolean, pp: boolean, x0: number): void {
+  const buf = s.buf, len = buf.length, ko = s.rk;
+  const lo = ko > 1 || s.tp ? len - DELAY_TAIL : len, ln = k > 1 || tape ? len - DELAY_TAIL : len;
+  if (lo !== ln) {
+    let w = s.w;
+    if (!pp) w = delayRing(buf, 0, lo, ln, w < lo ? w : 0);
+    else {
+      const ho = lo / 2, hn = ln / 2;
+      if (w >= ho) w = 0;
+      if (hn < ho) {
+        // A shorter first (it reads up to ho), then B shorter, then B down to hn
+        const wa = delayRing(buf, 0, ho, hn, w);
+        delayRing(buf, ho, ho, hn, w);
+        buf.copyWithin(hn, ho, ho + hn);
+        w = wa;
+      } else {
+        // B up to hn first, then B longer, then A longer (it writes up to hn)
+        buf.copyWithin(hn, ho, 2 * ho);
+        delayRing(buf, hn, ho, hn, w);
+        w = delayRing(buf, 0, ho, hn, w);
+      }
+    }
+    s.w = w;
+  }
+  if (ln < lo) {
+    s.lp.fill(0);
+    s.tl.fill(0);
+    s.wph = s.fph = s.m = 0;
+  } else if (tape && !s.tp) {
+    s.tl.fill(0);
+    s.wph = s.fph = s.m = 0;
+  }
+  if (ko === k) return;
+  if (ko === 1) s.lp.fill(Math.max(-4, Math.min(4, x0)));
+  // the read point w - (k - 1 - ph + cur) / k line samples stays, with ph 0 from here
+  const cur = Math.floor((((ko - 1 - s.ph) * 65536 + s.cur) * k) / ko) - (k - 1) * 65536;
+  s.cur = Math.max(k * 65536, cur);
+  s.ph = 0;
+  // the line samples behind the read point are the old rate's: they play at the new speed until the read point reaches
+  // where the change was, k - 1 + cur samples (counted in whole blocks); then the glide starts
+  s.rate = 0;
+  s.hold = Math.floor(s.cur / 65536) + k - 1;
+}
+
 /**
  * Delay. free: `time` in ms; sync: `time` picks a note length (DELAY_DIVS) at the tempo of the `clk` input (the Main module's
  * clock; 120 bpm until 24 pulses have come in). The tempo is the time of the last 24 pulses, smoothed. Its line holds
@@ -1726,7 +1891,8 @@ function delayTape(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, p
  * 1.98) and the loop through a soft clip (delayClip), so a feedback past 1 swells to about full level and holds there.
  * A new time (a turned knob, a cable into `time`) is not a jump: the read position glides there (delayGlide, #484).
  * `rate` (#659): 44k keeps every sample; 22k and 11k low-pass the input and keep every 2nd or 4th sample, so the same line
- * holds two or four times its length (delaySlow; the length row shows that time). A new rate empties the line.
+ * holds two or four times its length (delaySlow; the length row shows that time). A new rate keeps the echoes, pitched as
+ * a tape changing speed (delayChange).
  */
 const delay: ModuleImpl<DelayState> = {
   def: {
@@ -1742,48 +1908,35 @@ const delay: ModuleImpl<DelayState> = {
       param('pingpong', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
       param('note', 0, DELAY_NOTES.length - 1, 0, { step: 1, choices: DELAY_NOTES.map((d) => d.name), since: 35 }),
       param('swell', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 35 }),
-      param('length', DELAY_LENGTH_MIN, DELAY_LENGTH_MAX, DELAY_LENGTH_DEFAULT, { unit: 'ms', step: 10, since: 50, fixed: true, altText: { when: 'rate', text: (v, p) => `${Math.round(v) * delayRateK(p.rate ?? 0)} ms` } }),
+      param('length', DELAY_LENGTH_MIN, DELAY_LENGTH_MAX, DELAY_LENGTH_DEFAULT, { unit: 'ms', step: 10, since: 50, grew: { since: 51, from: DELAY_LENGTH_GREW }, fixed: true, altText: { when: 'rate', text: (v, p) => `${Math.round(v) * delayRateK(p.rate ?? 0)} ms` } }),
       param('rate', 0, DELAY_RATES.length - 1, 0, { step: 1, choices: DELAY_RATES, since: 51 }),
       param('tape', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 51 }),
       param('wow', 0, 1, 0.3, { step: 0.01, since: 51 }),
       param('heads', 0, DELAY_HEADS.length - 1, 0, { step: 1, choices: DELAY_HEADS, since: 51 }),
     ],
   },
-  init: (sr) => ({ buf: new Float32Array(0), w: 0, cur: 0, rate: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2), rk: 0, ph: 0, lp: new Float64Array(8), tp: false, tl: new Float64Array(4), wph: 0, fph: 0, m: 0 }),
+  init: (sr) => ({ buf: new Float32Array(0), w: 0, cur: 0, rate: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2), rk: 0, ph: 0, lp: new Float64Array(8), tp: false, tl: new Float64Array(4), wph: 0, fph: 0, m: 0, hold: 0 }),
   process(c, s) {
     // the line its length holds (at this sample rate); a new length (an edit) starts an empty line, as the FM-1's load does
     const want = Math.round((c.sr * delayLine(c.p.length ?? DELAY_LENGTH_DEFAULT)) / DEVICE_SR);
     if (s.buf.length !== want) {
       s.buf = new Float32Array(want);
-      s.w = s.cur = s.rate = s.rk = s.ph = s.wph = s.fph = s.m = 0;
+      s.w = s.cur = s.rate = s.rk = s.ph = s.wph = s.fph = s.m = s.hold = 0;
       s.tp = false;
       s.lp.fill(0);
       s.tl.fill(0);
     }
-    // the rate (#659): a new one empties the line (its samples stand for another time) and starts the read where the time is
+    // the rate (#659) and Tape (#660): a new one keeps the echoes (delayChange: a new rate is a tape changing speed)
     const k = delayRateK(c.p.rate ?? 0);
     const tape = (c.p.tape ?? 0) >= 0.5;
-    if (s.rk !== k) {
-      if (s.rk) {
-        s.buf.fill(0);
-        s.lp.fill(0);
-        s.tl.fill(0);
-        s.w = s.ph = s.cur = s.rate = s.wph = s.fph = s.m = 0;
-      }
+    const pp = (c.p.pingpong ?? 0) >= 0.5;
+    if (s.rk !== k || s.tp !== tape) {
+      if (s.rk) delayChange(s, k, tape, pp, c.inp.in[0]);
       s.rk = k;
-      s.tp = tape;
-    }
-    // Tape on or off (#660) keeps the line: only its tail changes role (Tape's state, or line again), so it is zeroed (at a
-    // lower rate the rate's filter keeps its words)
-    if (s.tp !== tape) {
-      s.buf.fill(0, s.buf.length - DELAY_TAIL + (k > 1 ? 16 : 0));
-      s.tl.fill(0);
-      s.wph = s.fph = s.m = 0;
       s.tp = tape;
     }
     const len = k > 1 || tape ? s.buf.length - DELAY_TAIL : s.buf.length;
     const half = Math.floor(len / 2);
-    const pp = (c.p.pingpong ?? 0) >= 0.5;
     if (c.connected.clk) {
       for (let i = 0; i < c.n; i++) {
         s.t++;
@@ -1817,17 +1970,20 @@ const delay: ModuleImpl<DelayState> = {
     const top = ((pp ? half : len) - 1) * k;
     const d = Math.max(k, Math.min(top, samples));
     if (s.cur === 0 || s.cur > top * 65536) s.cur = s.cur === 0 ? d * 65536 : top * 65536;
+    // after a new rate the read point stands while the old rate's echoes play (s.hold, whole blocks), then glides
+    const held = s.hold > 0, tq = held ? s.cur : d * 65536;
+    s.hold = s.hold > c.n ? s.hold - c.n : 0;
     if (tape) {
       if (s.w >= (pp ? half : len)) s.w = 0;
-      delayTape(c, s, d * 65536, fb, mix, pp, k, len, c.p.wow ?? 0, DELAY_HEAD_MASK[Math.max(0, Math.min(DELAY_HEADS.length - 1, Math.round(c.p.heads ?? 0)))]);
+      delayTape(c, s, tq, fb, mix, pp, k, len, c.p.wow ?? 0, DELAY_HEAD_MASK[Math.max(0, Math.min(DELAY_HEADS.length - 1, Math.round(c.p.heads ?? 0)))]);
       return;
     }
     if (k > 1) {
-      delaySlow(c, s, d * 65536, fb, mix, pp, clip, k, len);
+      delaySlow(c, s, tq, fb, mix, pp, clip, k, len);
       return;
     }
-    if (s.cur !== d * 65536 || s.rate) {
-      delayGlide(c, s, d * 65536, fb, mix, pp, clip);
+    if (held || s.cur !== tq || s.rate) {
+      delayGlide(c, s, tq, fb, mix, pp, clip);
       return;
     }
     if (!pp) {

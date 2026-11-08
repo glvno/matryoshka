@@ -129,7 +129,7 @@ export const xl: Xl = {
       e.wire(VIB, 'out', dcoMod, 'in');
       // ---- the filter: the Multimode, cutoff per sample, 1 octave per unit of its cv; each source by its own amount. The
       // polarity switch: a Selector between the envelope's amount and the same inverted
-      e.retype(LADDER, 'filter', { cutoff: 1400, res: 0.15, cvamt: 1, track: 0 });
+      e.retype(LADDER, 'filter', { cutoff: 1400, res: 0.15, cvamt: 1, track: 0, drive: 1 }); // drive: the IR3109 saturates; the Multimode has no stages to saturate, so its resonance loop does (#672)
       e.unwire(ENV, 'env', LADDER, 'cv');
       const envAmt = e.add('scale', 3, 1.5, { gain: 2.2, offset: 0 });
       const polarity = e.add('scale', 3.5, 1.5, { gain: 1, offset: 0 });

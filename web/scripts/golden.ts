@@ -1499,6 +1499,102 @@ kit('ladder', (add, wire) => {
   wire(lad, 'lp12', mix, 'in2');
   wire(mix, 'out', out, 'l');
 });
+// #670 the Multimode filter's drive: a saw swept through it at mid and high resonance, quiet and loud, every output; the
+// drive with osc on (Sallen 20's filters); its extremes (drive 8, and a drive with res 0, which plays as off)
+for (const [name, level, res, drive, osc] of [['filter-drive', 0.8, 0.82, 3, 0], ['filter-drive-quiet', 0.05, 0.82, 3, 0], ['filter-drive-max', 1, 0.6, 8, 0],
+  ['filter-drive-osc', 0.5, 0.97, 3, 1], ['filter-drive-nores', 0.8, 0, 8, 0]] as const) {
+  kit(name, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const osc = add('osc', 0, 0, { wave: 2, level });
+    const lfo = add('lfo', 0, 0, { wave: 0, rate: 0.9, depth: 1 });
+    const flt = add('filter', 0, 0, { cutoff: 500, res, cvamt: 2, osc, drive, morph: 0.3 });
+    const mix = add('mixer', 0, 0, { l1: 0.4, l2: 0.3, l3: 0.3, l4: 0.2 });
+    const out = add('output', 0, 0, { level: 0.5 });
+    wire(kb, 'pitch', osc, 'pitch');
+    wire(osc, 'out', flt, 'in');
+    wire(lfo, 'out', flt, 'cv');
+    wire(flt, 'lp12', mix, 'in1');
+    wire(flt, 'mix', mix, 'in2');
+    wire(flt, 'hp6', mix, 'in3');
+    wire(flt, 'peak', mix, 'in4');
+    wire(mix, 'out', out, 'l');
+  });
+}
+// #671 the Ladder's diode mode: a saw through it swept by an LFO at no, mid and high resonance; the audio-rate cutoff
+// input; driven hard; and at full resonance with a short click into it (the edge of self-oscillation: it rings)
+for (const res of [0, 0.5, 0.9]) {
+  kit(`ladder-diode-${res}`, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const osc = add('osc', 0, 0, { wave: 2, level: 0.8 });
+    const lfo = add('lfo', 0, 0, { wave: 1, rate: 2, depth: 0.6 });
+    const lad = add('ladder', 0, 0, { cutoff: 700, res, drive: 1, cvamt: 2, track: 1, diode: 1 });
+    const mix = add('mixer', 0, 0, { l1: 1, l2: 0.6 });
+    const out = add('output', 0, 0);
+    wire(kb, 'pitch', osc, 'pitch');
+    wire(osc, 'out', lad, 'in');
+    wire(lfo, 'out', lad, 'cv');
+    wire(lad, 'lp24', mix, 'in1');
+    wire(lad, 'lp12', mix, 'in2');
+    wire(mix, 'out', out, 'l');
+  });
+}
+kit('ladder-diode-drive', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const osc = add('osc', 0, 0, { wave: 3, level: 1 });
+  const lad = add('ladder', 0, 0, { cutoff: 3000, res: 0.7, drive: 8, cvamt: 1, diode: 1 });
+  const out = add('output', 0, 0);
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(osc, 'out', lad, 'in');
+  wire(lad, 'lp24', out, 'l');
+});
+kit('ladder-diode-fm', (add, wire) => {
+  const input = add('osc', 0, 0, { wave: 2, level: 0.4 });
+  const fm = add('osc', 0, 0, { wave: 0, coarse: 17, level: 0.6 });
+  const cv = add('const', 0, 0, { value: 0.15 });
+  const lad = add('ladder', 0, 0, { cutoff: 800, cvamt: 3, res: 0.5, diode: 1 });
+  const out = add('output', 0, 0, { level: 1 });
+  wire(input, 'out', lad, 'in');
+  wire(fm, 'out', lad, 'fm');
+  wire(cv, 'out', lad, 'cv');
+  wire(lad, 'lp24', out, 'l');
+  wire(lad, 'lp12', out, 'r');
+});
+kit('ladder-diode-self', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const env = add('adsr', 0, 0, { a: 0.001, d: 0.004, s: 0, r: 0.004 });
+  const lad = add('ladder', 0, 0, { cutoff: 440, res: 1, drive: 1, diode: 1 });
+  const out = add('output', 0, 0, { level: 1 });
+  wire(kb, 'gate', env, 'gate');
+  wire(env, 'env', lad, 'in');
+  wire(lad, 'lp24', out, 'l');
+  wire(lad, 'lp12', out, 'r');
+});
+// #672 the Ladder's saturator at every stage: pushed (drive 3.5, emphasis 0.55, Monolith D's A/B) and at its extremes
+for (const [name, drive, res] of [['ladder-stsat', 3.5, 0.55], ['ladder-stsat-max', 8, 1], ['ladder-stsat-clean', 1, 0.2]] as const) {
+  kit(name, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const osc = add('osc', 0, 0, { wave: 2, level: 0.8 });
+    const lfo = add('lfo', 0, 0, { wave: 1, rate: 2, depth: 0.6 });
+    const lad = add('ladder', 0, 0, { cutoff: 600, res, drive, cvamt: 2, track: 1, stsat: 1 });
+    const mix = add('mixer', 0, 0, { l1: 0.5, l2: 0.3 });
+    const out = add('output', 0, 0);
+    wire(kb, 'pitch', osc, 'pitch');
+    wire(osc, 'out', lad, 'in');
+    wire(lfo, 'out', lad, 'cv');
+    wire(lad, 'lp24', mix, 'in1');
+    wire(lad, 'lp12', mix, 'in2');
+    wire(mix, 'out', out, 'l');
+  });
+}
+kit('ladder-stsat-fm', (add, wire) => {
+  const input = add('osc', 0, 0, { wave: 2, level: 0.9 });
+  const fm = add('osc', 0, 0, { wave: 0, coarse: 17, level: 0.6 });
+  const lad = add('ladder', 0, 0, { cutoff: 800, cvamt: 3, res: 0.6, drive: 4, stsat: 1 });
+  const out = add('output', 0, 0, { level: 1 });
+  wire(input, 'out', lad, 'in');
+  wire(fm, 'out', lad, 'fm');
+  wire(lad, 'lp24', out, 'l');
+});
 kit('ladder-audio-fm', (add, wire) => {
   const input = add('osc', 0, 0, { wave: 2, level: .4 });
   const fm = add('osc', 0, 0, { wave: 0, coarse: 17, level: .6 });
@@ -1571,16 +1667,17 @@ delayKit('delay-length-short-pingpong', { time: 90, pingpong: 1, length: 150 });
 delayKit('delay-length-1900', { time: 1890, fb: 0.5, length: 1900 });
 for (const n of ['delay-long', 'delay-long-sync', 'delay-long-pingpong', 'delay-1600', 'delay-1600-pingpong', 'delay-length-1900']) ends[n] = 128 * 1400;
 // the rate row (#659): 22k and 11k hold two and four times the length (a time past the length), ping-pong, synced, the
-// swell, the longest (7.6 s), a time that glides (a square LFO on its pin) and a rate that changes while it plays (it
-// empties the line)
+// swell, the longest (15.1 s), a time that glides (a square LFO on its pin) and a rate that changes while it plays (the
+// echoes play on at the new speed, then glide back to the time), with ping-pong, with Tape, between all three rates; a
+// loud saw and noise at 22k and 11k (the low pass in front of the line)
 delayKit('delay-rate-22k', { time: 1300, fb: 0.5, length: 700, rate: 1 });
 delayKit('delay-rate-11k', { time: 2700, fb: 0.5, length: 700, rate: 2 });
 delayKit('delay-rate-22k-pingpong', { time: 450, pingpong: 1, length: 500, rate: 1 });
 delayKit('delay-rate-11k-sync', { sync: 1, time: 416, length: 300, rate: 2 });
 delayKit('delay-rate-11k-swell', { time: 330, fb: 0.8, swell: 1, length: 200, rate: 2 });
-delayKit('delay-rate-max', { time: 7590, fb: 0.3, length: 1900, rate: 2 });
+delayKit('delay-rate-max', { time: 15070, fb: 0.3, length: 3770, rate: 2 });   // (3770 ms: the longest this kit's arena holds)
 for (const n of ['delay-rate-22k', 'delay-rate-11k', 'delay-rate-22k-pingpong']) ends[n] = 128 * 1400;
-ends['delay-rate-max'] = 128 * 2700;
+ends['delay-rate-max'] = 128 * 5300;
 const delayModKit = (name: string, params: Record<string, number>, param: string, lfoRate: number, depth: number): void =>
   kit(name, (add, wire) => {
     const kb = add('fm1', 0, 0);
@@ -1602,7 +1699,30 @@ const delayModKit = (name: string, params: Record<string, number>, param: string
 delayModKit('delay-rate-glide', { time: 400, length: 700, rate: 1 }, 'time', 2.3, 0.3);
 delayModKit('delay-rate-glide-pingpong', { time: 300, length: 700, rate: 2, pingpong: 1 }, 'time', 1.7, 0.25);
 delayModKit('delay-rate-switch', { time: 180, length: 400, rate: 0 }, 'rate', 1.3, 0.5);
-for (const n of ['delay-rate-glide', 'delay-rate-glide-pingpong', 'delay-rate-switch']) ends[n] = 128 * 700;
+delayModKit('delay-rate-switch-pingpong', { time: 150, length: 500, rate: 0, pingpong: 1 }, 'rate', 1.1, 0.5);
+delayModKit('delay-rate-switch-11k', { time: 230, length: 300, rate: 1, fb: 0.7 }, 'rate', 0.9, 1);
+delayModKit('delay-rate-switch-tape', { time: 170, length: 400, rate: 0, tape: 1, heads: 3 }, 'rate', 1.2, 0.5);
+for (const n of ['delay-rate-glide', 'delay-rate-glide-pingpong', 'delay-rate-switch', 'delay-rate-switch-pingpong', 'delay-rate-switch-11k', 'delay-rate-switch-tape']) ends[n] = 128 * 700;
+// the longest length at 44k (#649: what one Delay can take of the arena); a saw and noise at full level into 22k and 11k
+delayKit('delay-length-max', { time: 3760, fb: 0.4, length: 3770 });
+ends['delay-length-max'] = 128 * 1500;
+const delayLoudKit = (name: string, params: Record<string, number>): void =>
+  kit(name, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const osc = add('osc', 0, 0, { wave: 1, level: 1 });
+    const noise = add('noise', 0, 0, { level: 0.6 });
+    const mix = add('mixer', 0, 0, { l1: 1, l2: 1 });
+    const dly = add('delay', 0, 0, { fb: 0.5, mix: 1, ...params });
+    const out = add('output', 0, 0);
+    wire(kb, 'pitch', osc, 'pitch');
+    wire(osc, 'out', mix, 'in1');
+    wire(noise, 'out', mix, 'in2');
+    wire(mix, 'out', dly, 'in');
+    wire(dly, 'out', out, 'l');
+    wire(dly, 'r', out, 'r');
+  });
+delayLoudKit('delay-rate-loud-22k', { time: 300, length: 300, rate: 1 });
+delayLoudKit('delay-rate-loud-11k', { time: 500, length: 200, rate: 2, pingpong: 1 });
 // Tape (#660): the loop's filters and saturation, wow and flutter (none, some, the most), ping-pong, swell, a lower rate,
 // every HEADS choice (heads past the line clamp to it), Tape switched on and off while it plays (a pin), the wow moved
 delayKit('delay-tape', { time: 220, fb: 0.7, tape: 1, wow: 0.3 });
@@ -1622,9 +1742,10 @@ delayKit('delay-tape-heads-clamp', { time: 400, fb: 0.5, tape: 1, heads: 6, leng
 for (const n of ['delay-tape-22k', 'delay-tape-11k-pingpong', 'delay-tape-heads-clamp']) ends[n] = 128 * 900;
 delayModKit('delay-tape-switch', { time: 160, length: 500, tape: 0, wow: 0.5 }, 'tape', 1.1, 0.5);
 delayModKit('delay-tape-switch-22k', { time: 300, length: 500, tape: 0, rate: 1, heads: 3 }, 'tape', 0.9, 0.5);
+delayModKit('delay-tape-switch-pingpong', { time: 140, length: 400, tape: 0, pingpong: 1 }, 'tape', 1.3, 0.5);
 delayModKit('delay-tape-glide', { time: 300, length: 700, tape: 1, heads: 3 }, 'time', 2.1, 0.2);
 delayModKit('delay-tape-wowmod', { time: 200, length: 500, tape: 1, wow: 0.2 }, 'wow', 3.3, 0.4);
-for (const n of ['delay-tape-switch', 'delay-tape-switch-22k', 'delay-tape-glide', 'delay-tape-wowmod']) ends[n] = 128 * 700;
+for (const n of ['delay-tape-switch', 'delay-tape-switch-22k', 'delay-tape-switch-pingpong', 'delay-tape-glide', 'delay-tape-wowmod']) ends[n] = 128 * 700;
 // several Delays in one patch (the effect memory, D-375): three of different lengths in a chain, the last ping-pong
 kit('delays-three', (add, wire) => {
   const kb = add('fm1', 0, 0);

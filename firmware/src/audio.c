@@ -29,6 +29,8 @@ static volatile uint32_t eng_us_last, eng_us_max, eng_halves;
  * the FM-1 makes by itself waits for SND_REST_MS of silence (tempo_glo.h gt_quiet, #651), since it stops the sound */
 #define SND_FLOOR 32                                /* Q16: -66 dB */
 static volatile uint32_t snd_heard_ms;
+static volatile uint8_t st_busy;                   /* a store write runs (storage_hw.c st_op, #656): its steps can hold a half
+                                                    * back, which the overload guard must not take for the patch's load */
 static int32_t eng_l[HALF_FRAMES], eng_r[HALF_FRAMES];
 #if FELUCCA_UAC
 /* USB audio out (usb.c, included after this file): the ring's fill is sampled as a half starts, then the half's I2S words
@@ -152,7 +154,7 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         ovl_t_prev = t0;
         if (all / FM1_TICKS_PER_US < ovl_us_min)
             ovl_us_min = all / FM1_TICKS_PER_US;
-        if (eng_run && ovl_guard_step(&ovl_g, all, OVL_HALF_TICKS, late))
+        if (eng_run && !st_busy && ovl_guard_step(&ovl_g, all, OVL_HALF_TICKS, late))
             shed_req = 1;
         eng_us_last = all / FM1_TICKS_PER_US;
         if (eng_us_last > eng_us_max)
