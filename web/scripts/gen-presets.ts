@@ -30,6 +30,7 @@ const presets: (() => Patch)[] = [];
 presets.push(() => {
   const x = around('Oracle V', 'Oracle V');
   x.set('voices', 5);
+  plugIn(x.p, x.main.id, 'at', x.a, 'at'); // aftertouch (channel pressure) to the filter and the LFO amount (#658)
   level(x.p, { chord: true });
   return x.p;
 });

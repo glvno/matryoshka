@@ -7,21 +7,34 @@
 # voice
 #   voices = 4                         1..16
 #   unison = off                       off, on, share
+#   assign = rotate                    rotate, lowest, reuse, reset
 #   width = 0.4                        -4..4
+#   portamento = 0.001 s               0.001..5 s
+#   octave = 0                         -2 OCT, -1 OCT, 0, +1 OCT, +2 OCT
+#   tune = 0                           -4..4
 # oscillators
 #   vco 1 wave = saw                   sine, triangle, saw, square, sharktooth, reverse saw
 #   vco 1 pw = 0.5                     0.05..0.95
+#   vco 1 fm = 0                       -4..4
+#   vco 1 pwm = 0                      -4..4
+#   vco 1 src = ENV                    ENV, LFO
 #   vco 2 wave = square                sine, triangle, saw, square, sharktooth, reverse saw
 #   vco 2 pw = 0.4                     0.05..0.95
 #   vco 2 freq = 0 st                  -48..48 st
 #   vco 2 fine = 5 ct                  -100..100 ct
+#   vco 2 fm = 0                       -4..4
+#   vco 2 pwm = 0                      -4..4
+#   vco 2 src = ENV                    ENV, LFO
+#   sync = OFF                         OFF, ON
 #   vco 1 = 0.5                        0..1
 #   vco 2 = 0.4                        0..1
 # filter
 #   cutoff = 1100 Hz                   20..16000 Hz
 #   resonance = 0.35                   0..1
 #   mode = 0                           0..1
+#   bp = OFF                           OFF, ON
 #   env 1 amt = 0.25                   -4..4
+#   vcf src = ENV                      ENV, LFO
 # envelopes
 #   env 1: a screen, not a value
 #   envelopes / a (1) = 0.01 s         0.001..5 s
@@ -37,8 +50,10 @@
 #   lfo rate = 5 Hz                    0.02..40 Hz
 #   vibrato = 0                        -4..4
 # output
+#   vca on = OFF                       OFF, ON
 #   level = 0.41                       0..2
 #   out: a screen, not a value
+
 
 # Drafts of 2026-10-29 after the Oberheim SEM, not yet listened to on the FM-1 (#413).
 engine: Expander S
@@ -112,7 +127,7 @@ preset: Notch Strings
   envelopes / r (2) = 1.8 s
   lfo rate = 5.5 Hz
   vibrato = 0.03
-  level = 1.01
+  level = 1.02
 
 preset: Highpass Pluck
   width = 0.6

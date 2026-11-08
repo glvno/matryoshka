@@ -149,7 +149,9 @@ describe('CPU estimate with two cores (docs/measurements/cpu-survey-2026-11-05-r
   it('has the second core in the table', () => expect(CPU.cores?.idleUs).toBeGreaterThan(0));
   // patches changed since the split survey (not measured as they are now): re-measure on the rig, then drop them here.
   // Algo Four: eight voices and the DX100's eight algorithms (#658), where the survey measured three voices and one
-  const changedSince = new Set(['algo four']);
+  // Oracle V: the Prophet-5's functions its FM-1 version had cut (#658), where the survey measured the 1.10 voice
+  // Expander S: the SEM's modulation, sync, band pass, drone and the keyboard's portamento (#658)
+  const changedSince = new Set(['algo four', 'oracle v', 'expander s']);
   for (const name of Object.keys(FM1_PRESETS)) {
     const s = split.get(name.toLowerCase()), o = one.get(name.toLowerCase());
     if (!s || !o || changedSince.has(name.toLowerCase())) continue;
