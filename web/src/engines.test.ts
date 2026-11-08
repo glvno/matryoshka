@@ -19,7 +19,7 @@ beforeEach(() => {
 });
 
 const ENGINES = [
-  '8 Lire', 'Algo Four', 'basic poly', 'Briefcase 3', 'Canvas', 'Cassia 1', 'drift poly', 'drum kit', 'Elvira 2', 'Expander S', 'Hera 6', 'Io 4', 'Meridian 8', 'mono lead', 'Monolith D',
+  '8 Lire', 'Algo Four', 'basic poly', 'Briefcase 3', 'Canvas', 'Cassia 1', 'drift poly', 'drum kit', 'Elvira 2', 'Expander S', 'Hera 5', 'Io 4', 'Meridian 8', 'mono lead', 'Monolith D',
   'Oracle V', 'Perun 4', 'Sallen 20', 'Scrounge', 'Silver Box', 'Spokes 6', 'supersaw stack', 'Vernon 100', 'Verona Drum 1', 'Wanderer',
 ];
 const named = (name: string): AssemblyDef => FACTORY.find((d) => d.name === name)!;
@@ -48,7 +48,7 @@ describe('engines (#159)', () => {
     expect(defIsEngine(arp)).toBe(false);
     arp.cables.push({ from: { module: 1, port: 'keys' }, to: { module: 3, port: 'keys' } });
     expect(defIsEngine(arp)).toBe(true);
-    expect(['Hera 6', 'Io 4', 'Expander S', 'supersaw stack'].every((n) => defIsStereo(named(n)))).toBe(true);
+    expect(['Hera 5', 'Io 4', 'Expander S', 'supersaw stack'].every((n) => defIsStereo(named(n)))).toBe(true);
     expect(defIsStereo(named('Oracle V'))).toBe(false);
   });
 
@@ -69,15 +69,15 @@ describe('engines (#159)', () => {
 
   it('come up when the palette is asked for "engine"', () => {
     const cmd = (label: string, tags: string[]): Command => ({ kind: 'assembly', label, tags, run: () => {} });
-    const list = [cmd('Hera 6', ['assembly', 'engine', 'Engines']), cmd('pluck', ['assembly', 'Voices']), { kind: 'command', label: 'New patch', run: () => {} }];
-    expect(searchCommands(list, 'engine').map((c) => c.label)).toEqual(['Hera 6']);
-    expect(searchCommands(list, 'engines').map((c) => c.label)).toEqual(['Hera 6']);
+    const list = [cmd('Hera 5', ['assembly', 'engine', 'Engines']), cmd('pluck', ['assembly', 'Voices']), { kind: 'command', label: 'New patch', run: () => {} }];
+    expect(searchCommands(list, 'engine').map((c) => c.label)).toEqual(['Hera 5']);
+    expect(searchCommands(list, 'engines').map((c) => c.label)).toEqual(['Hera 5']);
   });
 
   it('come wired: keys from Main, audio into a free Output', () => {
     const p = newPatch(DEFS);
     expect(feedsOutput(p)).toBe(false);
-    const a = insertAssembly(p, DEFS, named('Hera 6'), 0, 400);
+    const a = insertAssembly(p, DEFS, named('Hera 5'), 0, 400);
     expect(instIsEngine(p, a)).toBe(true);
     const w = wireEngine(p, a);
     expect(w).toEqual({ keys: true, out: 2 });
@@ -85,14 +85,15 @@ describe('engines (#159)', () => {
     const out = p.modules.find((m) => m.type === 'output')!;
     expect(p.cables.some((c) => c.from.module === main.id && c.from.port === 'keys')).toBe(true);
     expect(p.cables.filter((c) => c.to.module === out.id).map((c) => c.to.port).sort()).toEqual(['l', 'r']);
-    expect(wiredText('Hera 6', w)).toContain('Output (l, r)');
+    expect(wiredText('Hera 5', w)).toContain('Output (l, r)');
 
     // a second engine: the Output is fed, so only its keys are cabled; Main's keys feed both allocators
     const b = insertAssembly(p, DEFS, named('Oracle V'), 0, 900);
     const before = p.cables.filter((c) => c.to.module === out.id).length;
+    const keysBefore = p.cables.filter((c) => c.from.module === main.id && c.from.port === 'keys').length;   // (Hera 5's: its voices' Voicing and its LFO delay's)
     expect(wireEngine(p, b)).toEqual({ keys: true, out: 0 });
     expect(p.cables.filter((c) => c.to.module === out.id).length).toBe(before);
-    expect(p.cables.filter((c) => c.from.module === main.id && c.from.port === 'keys').length).toBe(2);
+    expect(p.cables.filter((c) => c.from.module === main.id && c.from.port === 'keys').length).toBe(keysBefore + 1);
   });
 
   it('a mono engine goes into l; a non-engine is not wired', () => {
@@ -113,6 +114,6 @@ describe('engines (#159)', () => {
     const o = osc.outputs[0];
     connect(p, DEFS, { module: o.module, port: o.port }, { module: p.modules.find((m) => m.type === 'output')!.id, port: 'r' });
     expect(feedsOutput(p)).toBe(true);
-    expect(wireEngine(p, insertAssembly(p, DEFS, named('Hera 6'), 0, 900)).out).toBe(0);
+    expect(wireEngine(p, insertAssembly(p, DEFS, named('Hera 5'), 0, 900)).out).toBe(0);
   });
 });

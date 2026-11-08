@@ -89,7 +89,7 @@ describe('arming as a set (#190)', () => {
 
   it('goes to the FM-1 as a mask of the armed devices\' modules, and comes back from one (#191)', () => {
     const p = newPatch(DEFS);
-    const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Hera 6')!, 0, 0);
+    const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Hera 5')!, 0, 0);
     const b = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Oracle V')!, 0, 900);
     wireEngine(p, a);
     wireEngine(p, b);
@@ -143,13 +143,13 @@ describe('an instrument armed through its key sources (#395)', () => {
 describe('what the editor draws for the arm (#418): everything the arm routes, nothing else', () => {
   const ends = (c: { from: { module: number; port: string }; to: { module: number; port: string } }): string => `${c.from.module}:${c.from.port}>${c.to.module}:${c.to.port}`;
   const heraChain = (): { p: Patch; a: string; steps: number; arp: number; cables: string[] } => {
-    const p = FM1_PRESETS['Hera 6']();
-    const a = `a${assembliesOf(p).find((x) => x.label === 'Hera 6')!.id}`;
+    const p = FM1_PRESETS['Hera 5']();
+    const a = `a${assembliesOf(p).find((x) => x.label === 'Hera 5')!.id}`;
     const main = p.modules.find((m) => m.type === 'fm1')!.id;
     const steps = p.modules.find((m) => m.type === 'steps')!.id, arp = p.modules.find((m) => m.type === 'arp')!.id;
     // the factory chain: Main's keys into the track, the track's into the Arpeggiator, its into the instrument
     const chain = p.cables.filter((c) => (c.from.module === main && c.from.port === 'keys') || (c.from.module === steps && c.from.port === 'keys') || (c.from.module === arp && c.from.port === 'keys'));
-    expect(chain.map((c) => c.from.module).sort()).toEqual([main, steps, arp].sort());
+    expect([...new Set(chain.map((c) => c.from.module))].sort()).toEqual([main, steps, arp].sort());   // (the Arpeggiator's keys reach the voices' Voicing and the LFO delay's)
     return { p, a, steps, arp, cables: chain.map(ends).sort() };
   };
 
@@ -173,13 +173,15 @@ describe('what the editor draws for the arm (#418): everything the arm routes, n
   it("from the FM-1's masks: SEL on the instrument's page names its key sources and draws the instrument armed; the SEQ page names the track alone", () => {
     const { p, a, steps, arp, cables } = heraChain();
     const index = new Map(deviceView(p, true).patch.modules.map((m, i) => [m.id, i]));
-    const bit = (id: number): number => 1 << index.get(id)!;
+    // (the mask's two words: modules 0..31, 32..63)
+    const bit = (id: number): [number, number] => { const i = index.get(id)!; return i < 32 ? [(1 << i) >>> 0, 0] : [0, (1 << (i - 32)) >>> 0]; };
+    const or = (a: [number, number], b: [number, number]): [number, number] => [(a[0] | b[0]) >>> 0, (a[1] | b[1]) >>> 0];
     // engine.c eng_arms: an instrument fed by an Arpeggiator arms as the Arpeggiator and the track it plays, not its own modules
-    const sel = armedFromMask(p, bit(steps) | bit(arp), 0);
+    const sel = armedFromMask(p, ...or(bit(steps), bit(arp)));
     expect(sel).toEqual([a]);
     expect(armDrawing(p, sel)).toEqual(armDrawing(p, [a]));
     // the SEQ page (D-545) arms the track it shows
-    const seq = armedFromMask(p, bit(steps), 0);
+    const seq = armedFromMask(p, ...bit(steps));
     expect(seq).toEqual([`m${steps}`]);
     expect(armDrawing(p, seq).live.map(ends).sort()).toEqual(cables);
     // and the editor's own mask comes back as what was armed

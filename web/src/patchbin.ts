@@ -104,7 +104,7 @@ import { deviceView, keysInto, MAX_POLY, type DeviceGroup, VOICING_CABLE_INPUTS 
 import { devicesOf, NAME_MAX, type Device, type PageRow } from './pages';
 import { allModules, assemblyById, ROW_NAMES_MAX } from './assembly';
 import { structureAndRows } from './structure';
-import { cpuEstimate, type CpuEstimate } from './cpu';
+import { CPU_RIG_PENDING, cpuEstimate, type CpuEstimate } from './cpu';
 import { instIsEngine } from './engines';
 import { engineUnreached } from './arm';
 
@@ -1200,7 +1200,7 @@ export function deviceBudget(source: Patch): Budget {
   const fullest = counted.reduce<BudgetItem | undefined>((a, i) => (!a || i.used / i.max > a.used / a.max ? i : a), undefined);
   const memory = fullest ? fullest.used / fullest.max : 0;
   const cpu = cpuEstimate(source);
-  if (cpu.use > 1) over.push({ key: 'cpu', label: 'CPU (estimate)', used: Math.round(cpu.use * 100), max: 100 });
+  if (cpu.use > (CPU_RIG_PENDING[source.name] ?? 1)) over.push({ key: 'cpu', label: 'CPU (estimate)', used: Math.round(cpu.use * 100), max: 100 });
   for (const label of browserOnly(source)) over.push({ key: 'browser', label, used: 1, max: 0 });
   return { buffers, instances, params, fits: !over.length, items, over, memory, fullest, cpu, use: Math.max(memory, cpu.use), lines };
 }

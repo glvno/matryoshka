@@ -32,7 +32,7 @@ it('Voicing pulses for a middle key press and never for a key release', () => {
   e.noteOff(67); check(false);
 });
 
-it.each(['Wanderer', 'Wanderer XL'])('%s retriggers its keyboard gate on presses only', async (name) => {
+it.each(['Wanderer'])('%s retriggers its keyboard gate on presses only', async (name) => {
   const { PRESETS } = await import('./presets');
   const p = PRESETS[name]();
   // Select the actual factory gate circuit driven by the low-priority Voicing's key-press output.

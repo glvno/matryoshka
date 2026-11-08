@@ -14,7 +14,7 @@ describe('"Start with an engine" (#160)', () => {
     expect(tiles.map((t) => t.name)).toEqual(FACTORY.filter((d) => defIsEngine(d)).map((d) => d.name));
     expect(tiles).toHaveLength(25);
     const by = (n: string) => tiles.find((t) => t.name === n)!;
-    expect(by('Hera 6').stereo).toBe(true);
+    expect(by('Hera 5').stereo).toBe(true);
     expect(by('Oracle V').stereo).toBe(false);
     expect(by('8 Lire').stereo).toBe(true); // the delay's ping-pong taps
     expect(by('Scrounge').stereo).toBe(true); // the A and B outputs
@@ -36,7 +36,7 @@ describe('"Start with an engine" (#160)', () => {
     expect(by('Oracle V')).toBe('Prophet-5 type shit');
     expect(by('Monolith D')).toBe('Minimoog Model D type shit');
     expect(by('Silver Box')).toBe('TB-303 type shit');
-    expect(by('Hera 6')).toBe('Juno-106 type shit');
+    expect(by('Hera 5')).toBe('Juno-106 type shit');
     expect(by('Sallen 20')).toBe('MS-20 type shit');
     expect(by('Expander S')).toBe('Oberheim SEM type shit');
     expect(by('Algo Four')).toBe('DX100 type shit');

@@ -2,7 +2,7 @@
 // The owner's device check of release 1.10 as scenarios: every step of it that needs no ears, no hands and no power switch,
 // run by scripts/emu-scenarios.mjs after its own scenarios, on the emulator (npm run emu:scenarios) and on the test rig
 // (npm run device:scenarios). What stays with the owner: the analog output by ear (OUTPUT in headphones, MONO L into a
-// recorder), playing Io 4 / Hera 6 / Cassia 1 by hand to judge their feel, and every step across a power cycle.
+// recorder), playing Io 4 / Hera 5 / Cassia 1 by hand to judge their feel, and every step across a power cycle.
 //
 // Each scenario names the check's section and steps it covers ("1.1" = section 1, step 1 of the 40-step page). The test
 // patches are built in check-fixtures.mjs and kept in the editor's Your patches, as the owner keeps them. What the FM-1
@@ -953,7 +953,7 @@ export function checkScenarios(h) {
         return v ? Number(v.s.slice(0, -1)) : null;
       };
       const CHORDS = [0, 4, 7, 11, 12, 16, 19, 23].map((n) => 14 + n);   // two 4-note chords, F3 and F4 major sevenths
-      for (const name of ['Io 4', 'Hera 6', 'Cassia 1']) {
+      for (const name of ['Io 4', 'Hera 5', 'Cassia 1']) {
         await opens(name, `8.${name === 'Io 4' ? 2 : 4} dual core: ${name} opens, synced`);
         await menuTab('PROCESSOR');
         await emu.diagWords(119);                       // (zeroes the guard's windows)

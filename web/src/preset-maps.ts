@@ -134,4 +134,57 @@ export const HAND_MAPS: HandMap[] = [
       'select#49.pos': { table: ['lfo#1.wave'], lo: [0], n: [6], v: [1, 1, 1, 2, 1, 1] },
     },
   },
+  // ---- 1.11: Wanderer XL took Wanderer's slot (D-348): each VCO plays its saw and its pulse at once, the mixer's wave
+  // switches pick one, and the rows moved to other modules. A row keeps its value where it is the same control; a VCO's
+  // wave (sine, triangle, saw, square, sharktooth, reverse saw) becomes its switch (square: SQUARE, the others: SAW); the
+  // noise colour (0 white, 1 pink) its WHITE / PINK switch. Coarse (semitones before, octaves now) and fine (cents before)
+  // start at Init: the new rows are no whole numbers of the old ones.
+  {
+    engine: 'Wanderer', from: '2700d0b6', to: '9133c74f', why: 'Wanderer XL took the slot (D-348): two oscillators a VCO',
+    rows: {
+      'select#10.pos': { from: 'select#9.pos' }, 'math#14.ka': { from: 'math#12.ka' },
+      'select#12.pos': { from: 'select#10.pos' }, 'math#14.kb': { from: 'math#12.kb' },
+      'select#13.pos': { from: 'select#11.pos' }, 'osc#18.pw': { from: 'osc#15.pw' },
+      'scale#16.gain': { from: 'scale#14.gain' }, 'select#15.pos': { from: 'select#13.pos' },
+      'select#25.pos': { from: 'select#21.pos' }, 'math#22.ka': { from: 'math#18.ka' },
+      'select#20.pos': { from: 'select#16.pos' }, 'math#22.kb': { from: 'math#18.kb' },
+      'select#21.pos': { from: 'select#17.pos' }, 'osc#27.pw': { from: 'osc#22.pw' },
+      'scale#24.gain': { from: 'scale#20.gain' }, 'select#23.pos': { from: 'select#19.pos' },
+      'lfo#8.rate': { from: 'lfo#8.rate' }, 'math#32.ka': { from: 'math#25.ka' }, 'math#32.kb': { from: 'math#25.kb' },
+      'select#31.pos': { from: 'select#24.pos' }, 'select#33.pos': { from: 'select#26.pos' },
+      'glide#35.time': { from: 'glide#28.time' }, 'macro#4.value': { from: 'macro#4.value' },
+      'mixer#41.l1': { from: 'mixer#31.l1' }, 'mixer#41.l2': { from: 'mixer#31.l2' },
+      'mixer#41.l3': { from: 'mixer#31.l3' }, 'select#40.pos': { from: 'select#30.pos' },
+      'ladder#46.cutoff': { from: 'ladder#36.cutoff' }, 'ladder#46.res': { from: 'ladder#36.res' },
+      'mixer#45.l1': { from: 'mixer#35.l1' }, 'select#42.pos': { from: 'select#32.pos' },
+      'mixer#45.l2': { from: 'mixer#35.l2' }, 'select#43.pos': { from: 'select#33.pos' },
+      'mixer#45.l3': { from: 'mixer#35.l3' }, 'select#44.pos': { from: 'select#34.pos' },
+      'filter#47.cutoff': { from: 'filter#37.cutoff' }, 'select#48.pos': { from: 'select#38.pos' },
+      'scale#49.gain': { from: 'scale#39.gain' }, 'scale#49.offset': { from: 'scale#39.offset' },
+      'adsr#52.view': { from: 'adsr#42.view' }, 'adsr#52.a': { from: 'adsr#42.a' }, 'adsr#52.r': { from: 'adsr#42.r' },
+      'select#55.pos': { from: 'select#46.pos' }, 'adsr#51.view': { from: 'adsr#41.view' },
+      'adsr#51.a': { from: 'adsr#41.a' }, 'adsr#51.d': { from: 'adsr#41.d' }, 'adsr#51.s': { from: 'adsr#41.s' },
+      'adsr#51.r': { from: 'adsr#41.r' }, 'select#54.pos': { from: 'select#45.pos' },
+      'select#53.pos': { from: 'select#44.pos' }, 'scope#56.view': { from: 'scope#47.view' },
+      'select#38.pos': { table: ['osc#15.wave'], lo: [0], n: [6], v: [1, 1, 1, 2, 1, 1] },
+      'select#39.pos': { table: ['osc#22.wave'], lo: [0], n: [6], v: [1, 1, 1, 2, 1, 1] },
+      'select#29.pos': { table: ['noise#23.color'], lo: [0], n: [2], v: [1, 2] },
+    },
+  },
+
+  // ---- 1.11: Hera 5 took Hera 6's slot with Hera 6 XL's Juno-106 panel at five voices (owner ruling 2026-11-07). The
+  // Ladder became a Multimode filter (cutoff and resonance keep their values), the filter's envelope amount and key follow
+  // moved to their own rows, the PWM depth to the PWM slider; the DCO's wave (sine, triangle, saw, square, sharktooth,
+  // reverse saw) became its PULSE and SAW switches (square: pulse only; the others: saw only). The envelope's times keep
+  // their numbers on the ADSR's long range, so they run 2.4 times longer. The chorus switch, the HPF's four positions and
+  // the rest start at Init.
+  {
+    engine: 'Hera 5', from: '7ec3be68', to: '24fe2e10', why: 'Hera 5 took the slot (owner ruling 2026-11-07): the Juno-106 panel',
+    rows: {
+      'filter#9.cutoff': { from: 'ladder#9.cutoff' }, 'filter#9.res': { from: 'ladder#9.res' }, 'scale#32.gain': { from: 'ladder#9.cvamt' },
+      'scale#36.gain': { from: 'ladder#9.track' }, 'macro#45.value': { from: 'scale#3.gain' },
+      'select#29.pos': { table: ['osc#7.wave'], lo: [0], n: [6], v: [1, 1, 1, 2, 1, 1] },
+      'select#31.pos': { table: ['osc#7.wave'], lo: [0], n: [6], v: [2, 2, 2, 1, 2, 2] },
+    },
+  },
 ];
