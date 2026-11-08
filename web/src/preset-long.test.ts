@@ -14,13 +14,13 @@ const cassia = (): Patch => FM1_PRESETS['Cassia 1']();
 const card = (p: Patch) => p.assemblies!.find((a) => instIsEngine(p, a) && a.params.some((r) => r.label === 'wave 2'))!;
 
 describe('presets longer than 88 values (#485)', () => {
-  it('a Cassia 1 preset is 119 values, and PRESET_PUT carries them all', () => {
+  it('a Cassia 1 preset is 153 values, and PRESET_PUT carries them all', () => {
     const p = cassia();
     const pr = presetsOf(p, card(p)).find((x) => x.name === 'PD Bass')!;
-    expect(pr.values.length).toBe(119);
+    expect(pr.values.length).toBe(153);
     const put = parse(presetPutFrame(pr.structure, pr.name, pr.values))!;
     expect(put.cmd).toBe(CMD.presetPut);
-    expect(put.payload[20]).toBe(119);
+    expect(put.payload[20]).toBe(153);
     const back = parsePresetData({ cmd: CMD.presetData, payload: put.payload })!;
     expect(back.values!.map((v) => Math.round(v * 65536))).toEqual(pr.values.map((v) => Math.round(v * 65536)));
     expect(() => presetPutFrame(pr.structure, pr.name, new Array(177).fill(0))).toThrow();
@@ -41,7 +41,7 @@ describe('presets longer than 88 values (#485)', () => {
     expect(link.presetFits(177)).toBe(false);
   });
 
-  it('a preset stored with 88 of its 119 values loads those rows in order; the other 31 keep theirs', () => {
+  it('a preset stored with 88 of its 153 values loads those rows in order; the other 65 keep theirs', () => {
     const p = cassia();
     const a = card(p);
     const list = presetsOf(p, a);
@@ -49,7 +49,7 @@ describe('presets longer than 88 values (#485)', () => {
     applyPreset(p, a, list.find((x) => x.name === 'PD Bass')!);
     const before = currentValues(p, a);
     const short = { ...full, name: 'OLD BELL', values: full.values.slice(0, 88) };
-    expect(shortBy(p, a, short)).toBe(31);
+    expect(shortBy(p, a, short)).toBe(65);
     expect(shortBy(p, a, full)).toBe(0);
     expect(applyPreset(p, a, short)).toBe(true);
     const now = currentValues(p, a);

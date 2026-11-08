@@ -5,7 +5,7 @@
 # The level row (voice / vol) gen-presets sets in every preset, by loudness (#448): leave it to it.
 #
 # voice
-#   voices = 2                         1..16
+#   voices = 4                         1..16
 #   line = 4                           1..4
 #   vol = 0.5                          0..1
 # vibrato
@@ -13,6 +13,12 @@
 #   rate = 5.5 Hz                      0.02..40 Hz
 #   vibrato / depth = 0                -4..4
 #   delay = 0.6 s                      0.001..5 s
+#   mod vib = 0                        -4..4
+# keys
+#   glide = 0.001 s                    0.001..5 s
+#   bend = 0.1667                      -4..4
+#   octave = 0                         -1, 0, +1
+#   chorus = 0.5                       0..1
 # dco env
 #   dco env: a screen, not a value
 #   dco env / r1 = 0.05 s              0.001..10 s
@@ -34,10 +40,40 @@
 #   dco env / sus = 2                  off, 1, 2, 3, 4, 5, 6, 7, 8
 #   dco env / end = 3                  1..8
 #   dco env / depth = 1                -4..4
+# dco env 2
+#   dco env 2: a screen, not a value
+#   dco env 2 / r1 = 0.05 s            0.001..10 s
+#   dco env 2 / l1 = 0                 0..1
+#   dco env 2 / r2 = 0.3 s             0.001..10 s
+#   dco env 2 / l2 = 0                 0..1
+#   dco env 2 / r3 = 0.5 s             0.001..10 s
+#   dco env 2 / l3 = 0                 0..1
+#   dco env 2 / r4 = 0.2 s             0.001..10 s
+#   dco env 2 / l4 = 0                 0..1
+#   dco env 2 / r5 = 0.2 s             0.001..10 s
+#   dco env 2 / l5 = 0                 0..1
+#   dco env 2 / r6 = 0.2 s             0.001..10 s
+#   dco env 2 / l6 = 0                 0..1
+#   dco env 2 / r7 = 0.2 s             0.001..10 s
+#   dco env 2 / l7 = 0                 0..1
+#   dco env 2 / r8 = 0.2 s             0.001..10 s
+#   dco env 2 / l8 = 0                 0..1
+#   dco env 2 / sus = 2                off, 1, 2, 3, 4, 5, 6, 7, 8
+#   dco env 2 / end = 3                1..8
+#   depth 2 = 1                        -4..4
 # touch
 #   dcw kf = -0.15                     -4..4
 #   dca kf = -0.1                      -4..4
 #   vel dcw = 0                        -4..4
+#   vel dca = 1                        -4..4
+#   vel dco = 0                        -4..4
+#   dcw kf 2 = -0.15                   -4..4
+#   dca kf 2 = -0.1                    -4..4
+#   vel dcw 2 = 0                      -4..4
+#   vel dca 2 = 1                      -4..4
+#   vel dco 2 = 0                      -4..4
+#   level 1 = 1                        -4..4
+#   level 2 = 1                        -4..4
 #   at dcw = 0                         -4..4
 #   at dca = 0                         -4..4
 #   at vib = 0                         -4..4
@@ -163,7 +199,7 @@ preset: PD Bass
   dca 1 / r4 = 0.1 s
   dca 1 / l4 = 0
   dca 1 / end = 4
-  vol = 0.61
+  vol = 0.66
 
 preset: PD Brass
   # synth brass: both lines play line 1's saw (1+1'), line 2 eight cents sharp, a pitch blip at
@@ -196,7 +232,7 @@ preset: PD Brass
   dca 1 / r4 = 0.3 s
   dca 1 / l4 = 0
   dca 1 / end = 4
-  vol = 0.41
+  vol = 0.4
 
 preset: Glass Bell
   # a bell: line 2 (a square, 29 semitones up) rings against line 1's double sine, both DCWs
@@ -237,7 +273,7 @@ preset: Glass Bell
   dca 2 / l3 = 0
   dca 2 / sus = off
   dca 2 / end = 3
-  vol = 0.65
+  vol = 0.49
 
 preset: Reso Pad
   # a pad: line 2's resonance wave (Init's reso 1) swept up four octaves by a two-second DCW
@@ -281,7 +317,7 @@ preset: Reso Pad
   dca 2 / l3 = 0
   dca 2 / sus = 2
   dca 2 / end = 3
-  vol = 0.33
+  vol = 0.37
 
 preset: Tine Piano
   # an electric piano: line 1 a square that velocity opens and the DCW closes fast; line 2 an
@@ -324,4 +360,4 @@ preset: Tine Piano
   dca 2 / l3 = 0
   dca 2 / sus = off
   dca 2 / end = 3
-  vol = 0.61
+  vol = 0.54

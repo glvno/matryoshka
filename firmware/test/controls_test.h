@@ -14,7 +14,8 @@
 typedef struct {
     uint32_t page, sr_on, sr_k, run, once, rec, saved, stepped, dev, devpage, menu_tab, man_top, updates, cfg_sum;
     int32_t octave, tempo, list_btn, list_step;
-    uint32_t params, arms, mutes, trk, row, roll_lo, seq_pg, pattern, lpg, locks;
+    uint32_t params, mutes, trk, row, roll_lo, seq_pg, pattern, lpg, locks;
+    eng_mset_t arms;                                    /* (all 128 modules: a big patch's tracks sit above 31, #721) */
     int32_t notes_n;
     uint32_t notes_sum, acc_n, len_sum, vel_sum, chance_sum, pitch_sum;
     uint32_t song_sel, song_cur, song_len, song_sum, song, clear_at, del_at, msg_sum;
@@ -57,7 +58,7 @@ static void ct_take(ct_snap_t *s)
     s->octave = octave;
     s->tempo = (panel >= 0 ? eng_get_param((uint32_t)panel, FM1_P_TEMPO) : 0) + (int32_t)eng_tempo_global_get();
     s->params = ct_params();
-    s->arms = (uint32_t)m64(eng_arm_mask_get());
+    s->arms = eng_arm_mask_get();
     for (i = 0; (int)i < eng_steps_count(); i++)
         s->mutes |= (uint32_t)(eng_steps_muted((uint32_t)eng_steps_module(i)) != 0) << i;
     s->trk = seq_trk;
@@ -114,7 +115,7 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_TEMPO: return a->tempo != b->tempo || (sb_on && a->msg_sum != b->msg_sum);   /* (sandbox: the editor's) */
     case CE_PATCH: return a->stepped != b->stepped;
     case CE_STORE: return a->msg_sum != b->msg_sum;     /* (dp_store says what it stored) */
-    case CE_ARM: return a->arms != b->arms;
+    case CE_ARM: return !mset_eq(a->arms, b->arms);
     case CE_MUTE: return a->mutes != b->mutes;
     case CE_FOCUS: return a->dev != b->dev;
     case CE_DEVICE_PAGE: return a->devpage != b->devpage;

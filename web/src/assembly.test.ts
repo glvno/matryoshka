@@ -926,14 +926,14 @@ describe('assembly card columns and headings', () => {
     expect(e.params[6].span).toBe(16);
   });
 
-  it('the factory Oracle V has three sectioned columns and its output scope across the foot', () => {
+  it('the factory Oracle V has sectioned columns and its output scope across the foot', () => {
     const d = FACTORY.find((x) => x.name === 'Oracle V')!;
-    expect(paramColumns(d.params).map((c) => c.length)).toEqual([14, 10, 11]);
-    expect(plan(d.params)).toMatch(/^\{0-3 0:.* 1:.* 2:.* OUT\}$/);
+    expect(paramColumns(d.params).map((c) => c.length)).toEqual([10, 17, 10, 5, 4, 17]);
+    expect(plan(d.params)).toMatch(/^0:voices .* \{1-4 1:saw .* 2:cutoff .* 3:amp env .* OUT\} 4:.* 5:.*$/);
     // the drum kit's knobs in two columns
     const kit = FACTORY.find((x) => x.name === 'drum kit')!;
     expect(plan(kit.params)).toMatch(/^0:kick tune .* 1:.*$/);
-    expect(d.params.filter((r) => r.head).map((r) => r.head)).toEqual(['voice', 'osc A', 'osc B', 'mixer', 'filter', 'amp', 'mod']);
+    expect(d.params.filter((r) => r.head).map((r) => r.head)).toEqual(['voice', 'osc A', 'osc B', 'mixer', 'filter', 'amp', 'velocity · aftertouch', 'poly mod', 'lfo', 'wheel mod']);
   });
 });
 

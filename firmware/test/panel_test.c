@@ -533,8 +533,8 @@ int main(void)
     check("old-format edits cannot add new allocation settings", poly_row_set(mod, ENG_POLY_STEAL, 0) == -1 && poly_row_set(mod, ENG_POLY_ASSIGN, 3) == -1 && pv_bin[9] == 0 && pv_bin[11] == 0);
     {                                                   /* a VOICES row stops at what the CPU holds (format 51: the
                                                          * row's top, gen-presets voiceTops); one without a top offers 8 */
-        static const char *const NAME[2] = {"CASSIA 1", "ORACLE V"};
-        static const int32_t WANT[2] = {6, ENG_MAX_PARTS};
+        static const char *const NAME[2] = {"CASSIA 1", "HERA 6"};
+        static const int32_t WANT[2] = {4, ENG_MAX_PARTS};
         uint32_t t, d, g, k;
         for (t = 0; t < 2u; t++) {
             int found = 0, ok = 0;
@@ -554,20 +554,20 @@ int main(void)
                                  && pages_turn(k, -1, 0, 0, &m, &par, &v) == 1 && v == WANT[t] - 1;
                         }
             printf("      (%s: VOICES top %d)\n", NAME[t], (int)WANT[t]);
-            check(t ? "Oracle V's VOICES row (no top) reaches all eight voices" : "Cassia 1's VOICES row stops at six voices, a turn up there stays", found && ok);
+            check(t ? "Hera 6's VOICES row (no top) reaches all eight voices" : "Cassia 1's VOICES row stops at four voices, a turn up there stays", found && ok);
         }
     }
     fm1_ms = 10000;
     host_ps_init();
-    if (load("CASSIA 1") == 0) {                        /* #485: Cassia 1's 119 rows stored whole; one of 88 loads what it has */
+    if (load("CASSIA 1") == 0) {                        /* #485: Cassia 1's 153 rows stored whole; one of 88 loads what it has */
         uint32_t d, i, n, st, nv, rows;
         int at, same = 1, kept = 1;
         static int32_t full[PS_MAXV], init[PS_MAXV], one[PS_MAXV];
         char nm[17];
         pages_ensure();
-        for (d = 0; d < pg_ndev && pg_dev[d].nrows != 119u; d++)
+        for (d = 0; d < pg_ndev && pg_dev[d].nrows != 153u; d++)
             ;
-        check("(Cassia 1's device: 119 rows)", d < pg_ndev);
+        check("(Cassia 1's device: 153 rows)", d < pg_ndev);
         if (d < pg_ndev) {
             rows = pg_dev[d].nrows;
             (void)dp_list(d);
@@ -584,7 +584,7 @@ int main(void)
                 same = 0;
             for (i = 0; same && i < rows; i++)
                 same = ps_vbuf[i] == full[i];
-            check("ENV held + SAVE on Cassia 1: all 119 rows stored, in two slots", nv == rows && same && ps_count(PS_LIVE) == 2u);
+            check("ENV held + SAVE on Cassia 1: all 153 rows stored, in two slots", nv == rows && same && ps_count(PS_LIVE) == 2u);
             (void)dp_load(d, 0);                        /* (Init's values, then a preset of 88 as 1.8.1 stored them) */
             nv = dp_values(d);
             for (i = 0; i < nv; i++)
