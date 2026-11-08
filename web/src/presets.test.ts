@@ -150,9 +150,9 @@ describe('factory <7PH (a groove box): the 909 Kit\'s drums and a Silver Box on 
 // Io 4 (the Jupiter-4's panel) gets the arpeggiator alone: with PATTERN it shed voices on the rig (factory-build.ts
 // players). Briefcase 3 is out of modules. Wanderer and Vernon 100 have room for PATTERN since format 51 (#667)
 const NO_PLAYERS = ['808 Kit', '909 Kit', '<7PH', 'Spokes 6', 'Verona Drum 1'];
-const PAST_WARNING: string[] = ['Algo Four', 'Briefcase 3', 'Cassia 1'];   // (Io 4: under it since its parts split across both cores, #271)
+const PAST_WARNING: string[] = ['Oracle V', 'Algo Four', 'Briefcase 3', 'Cassia 1'];   // (Io 4: under it since its parts split across both cores, #271)
 /** the most a patch past the warning estimates */
-const PAST_MAX: Record<string, number> = { 'Io 4': 1, 'Briefcase 3': 0.9, 'Algo Four': 1, 'Cassia 1': 0.9 };   // (Cassia 1: four voices with the CZ-1 functions of #658)
+const PAST_MAX: Record<string, number> = { 'Io 4': 1, 'Briefcase 3': 0.9, 'Algo Four': 1, 'Oracle V': 0.99, 'Cassia 1': 0.9 };   // (Oracle V: the Prophet-5's cut functions back, #658, with its analog oscillators and the Ladder's stage saturation; Cassia 1: four voices with the CZ-1 functions of #658)
 const ARP_ONLY = ['Io 4', 'Briefcase 3', 'Algo Four'];   // (Wanderer and Vernon 100 have room for PATTERN since format 51, #667;
 // Algo Four's eight voices and eight algorithms, #658, estimate 97 % without it and over 100 % with it)
 const PLAYED = Object.keys(FM1_PRESETS).filter((n) => !NO_PLAYERS.includes(n));

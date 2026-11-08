@@ -530,7 +530,7 @@ int main(void)
     check("old-format edits cannot add new allocation settings", poly_row_set(mod, ENG_POLY_STEAL, 0) == -1 && poly_row_set(mod, ENG_POLY_ASSIGN, 3) == -1 && pv_bin[9] == 0 && pv_bin[11] == 0);
     {                                                   /* a VOICES row stops at what the CPU holds (format 51: the
                                                          * row's top, gen-presets voiceTops); one without a top offers 8 */
-        static const char *const NAME[2] = {"CASSIA 1", "ORACLE V"};
+        static const char *const NAME[2] = {"CASSIA 1", "HERA 6"};
         static const int32_t WANT[2] = {4, ENG_MAX_PARTS};
         uint32_t t, d, g, k;
         for (t = 0; t < 2u; t++) {
@@ -551,7 +551,7 @@ int main(void)
                                  && pages_turn(k, -1, 0, 0, &m, &par, &v) == 1 && v == WANT[t] - 1;
                         }
             printf("      (%s: VOICES top %d)\n", NAME[t], (int)WANT[t]);
-            check(t ? "Oracle V's VOICES row (no top) reaches all eight voices" : "Cassia 1's VOICES row stops at four voices, a turn up there stays", found && ok);
+            check(t ? "Hera 6's VOICES row (no top) reaches all eight voices" : "Cassia 1's VOICES row stops at four voices, a turn up there stays", found && ok);
         }
     }
     fm1_ms = 10000;

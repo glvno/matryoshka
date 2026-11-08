@@ -31,11 +31,15 @@ describe("the FM-1's VOICES row top", () => {
     expect(deviceBudget(withVoices(p, 5)).over.map((o) => o.key)).toEqual(['cpu']);
   });
 
+  it('Oracle V stops at six: five voices with the Prophet-5\'s functions back (#658)', () => {
+    expect(voicesRow(FM1_PRESETS['Oracle V']())!.top).toBe(6);
+  });
+
   it('no other factory patch has a top: each fits the FM-1 with eight voices', () => {
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
       const p = make();
       const r = voicesRow(p);
-      if (!r || name === 'Cassia 1') continue;
+      if (!r || name === 'Cassia 1' || name === 'Oracle V') continue;   // (Oracle V: its five voices, #658's functions)
       expect(r.top, name).toBeUndefined();
       expect(deviceBudget(withVoices(p, MAX_PARTS)).fits, name).toBe(true);
     }

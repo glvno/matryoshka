@@ -71,10 +71,10 @@ describe('the patch card', () => {
     expect(l.detail).toBe('full');
     const box = l.boxes.find((b) => b.label === 'ORACLE V')!;
     expect(box.blurb).toBe('Prophet-5 type shit');
-    expect(box.pages!.map((pg) => pg.title)).toEqual(['voice', 'osc A', 'osc B', 'mixer', 'filter 1/2', 'filter 2/2', 'amp', 'mod 1/2', 'mod 2/2']);
+    expect(box.pages!.map((pg) => pg.title)).toEqual(['voice 1/3', 'voice 2/3', 'voice 3/3', 'osc A', 'osc B 1/2', 'osc B 2/2', 'mixer', 'filter 1/2', 'filter 2/2', 'amp', 'velocity · aftertouch', 'poly mod 1/2']);
     const row = (title: string, label: string) => box.pages!.find((pg) => pg.title === title)!.rows.find((r) => r.label === label)!;
-    expect(row('voice', 'voices').value).toBe('5');
-    expect(row('osc A', 'wave').value).toBe('saw');
+    expect(row('voice 1/3', 'voices').value).toBe('5');
+    expect(row('osc A', 'saw').value).toBe('ON');
     expect(row('filter 1/2', 'cutoff').value).toMatch(/Hz$/);
   });
 
