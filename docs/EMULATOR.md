@@ -327,6 +327,19 @@ stderr on `quit` (so `emu:scenarios` shows it). See "Memory map since #273" in [
   guard and MENU > UPDATE MODE cannot be checked.
 - **Timing**: one instruction per cycle at 240 MHz, no cache or flash wait states. The CPU figure in the top bar
   (303 Acid 11-12 %, the device measured 12 % at M1-0.2) is a rough guide only; the window at 120 MHz shows twice it.
+  The test rig runs the same patches about twice as long as the emulator does, and a change in code or memory layout
+  can make every patch slower on the device while the emulator's figures stay the same: the release-1.11 batch cost
+  80 to 270 µs more a half on the rig (`docs/measurements/2026-11-08-rig-release-1.11.md`), and the emulator measured
+  Init, Simple FM, Mono Lead and the 909 Kit within 1 % of 1.10.0. Only the rig measures such a change.
+- **The second core** runs after each slice of 1,024 instructions of the first, for as many instructions as cycles
+  passed. `m1emu` ends its turn early when it is back where the turn started (the same program counter, registers and
+  stack pointer) and has written nothing since: its idle loop, which only reads its mailbox (`tools/emu/src/machine.rs`
+  `run_cpu1`).
+  fm1-emu's own runner ends it on the first condition alone. A loop that keeps its state in memory then looks idle too:
+  Env 8's sample loop keeps its sample index on the stack, so on builds from #744 on the second core lost most of its
+  time on Cassia 1's lane jobs, the first core waited for them, and the audio interrupt climbed from about 1,150 to
+  2,900 µs two seconds after 8 keys went down (the factory Cassia 1 on release-1.11 at #744, 2026-11-08). That climb was the emulator's alone: on
+  the device the second core runs on its own clock.
 - **fm1-emu's AArch64 JIT** (macOS only) renders our engine wrong at `7ca5b96`: most factory patches came out 20 to
   50 dB too quiet, differently from run to run, while the interpreter matches the web engine within a few percent
   (Square Lead's envelope sample for sample). `m1emu` and `npm run emu` therefore use the interpreter (about 0.75x
