@@ -3062,9 +3062,12 @@ export interface StepsState {
   seed: number;
   /** muted (the device's SEQ page, the editor's card; never saved): no new notes */
   mute: boolean;
-  /** play once (#632, Engine.playOnce): 0 not, 1 its passes played (it goes on silent), n >= 2: n - 1 pass ends to go
-   * (the start counts as one; stepsTurn counts) */
+  /** play once (#632, Engine.playOnce): 0 not, 1 its passes played (it loops on until the last track's end), n >= 2:
+   * n - 1 pass ends to go (the start counts as one; stepsTurn counts) */
   once: number;
+  /** play once (D-820, the engine sets it each block): the sample of this block on which the last track still playing its
+   * passes ends them (-1 not in this block); from there a track whose passes are played plays no note more */
+  onceAt: number;
   /** the transport as the last block saw it, the clk / reset inputs' last samples */
   run: boolean;
   c1: number;
@@ -3122,7 +3125,7 @@ export function stepsGo(s: StepsState, p: number): void {
 /** the end of a pass (engine.c steps_turn): in a song, the next entry's pattern and shift (after the last, the first
  * again); else a queued pattern */
 function stepsTurn(s: StepsState): void {
-  if (s.once > 1) s.once--; // (play once, #632: at 1 its passes are played, fire plays no more)
+  if (s.once > 1) s.once--; // (play once, #632: at 1 its passes are played; it loops on until the last track ends, D-820)
   const song = s.song.song > 0 ? s.song.songs[s.song.song - 1] : undefined;
   if (song?.length) {
     s.songPos = s.songPos + 1 >= song.length ? 0 : s.songPos + 1;
@@ -3138,6 +3141,33 @@ function stepsTurn(s: StepsState): void {
 }
 
 const stepCycle = (len: number, dir: number): number => dir === 2 && len > 1 ? 2 * (len - 1) : len;
+
+/** play once (D-820; engine.c steps_turn_at, the same): the sample of this block on which a Steps track's pass ends
+ * (stepsTurn), -1 none; from where it stands before the block (s, its parameters p), its clock's steps counted as process
+ * will count them (the start, a step half a tick on, the block's ticks: run, tick, ticks as Voice has them); a reset edge
+ * is not foreseen */
+export function stepsTurnAt(s: StepsState, p: Readonly<Record<string, number>>, run: boolean, tick: number, ticks: number, n: number): number {
+  if (!run) return -1;
+  if (!s.run) return 0; // (the start: its first step, a pass's start, on sample 0)
+  const x = s.pat > 0 ? s.pats[s.pat] : null;
+  const len = Math.min(STEPS_MAX, Math.max(1, x?.len ?? Math.round(p.len ?? 16)));
+  const ht = STEPS_RATE_HT[Math.min(STEPS_RATE_HT.length - 1, Math.max(0, x?.rate ?? Math.round(p.rate ?? 4)))];
+  const dir = Math.max(0, Math.min(3, Math.round(p.dir ?? 0)));
+  let need = s.pos < 0 ? 1 : stepCycle(len, dir) - s.visit, count = s.count, half = s.half; // (steps to the pass's end)
+  if (half > 0 && half - 1 < n && (tick < 0 || half - 1 <= tick)) {
+    if (--need === 0) return half - 1;
+    half = 0;
+  }
+  if (tick >= 0) {
+    if (half > 0 && --need === 0) return tick;
+    for (let t = 0; t < ticks; t++)
+      if ((count += 2) >= ht) {
+        count = 0;
+        if (--need === 0) return tick;
+      }
+  }
+  return -1;
+}
 
 /** Preview the next visited step without consuming it, also used by live recording. */
 function nextStep(s: StepsState, len: number, dir: number): { visit: number; pos: number; loop: number } {
@@ -3188,7 +3218,7 @@ const steps: ModuleImpl<StepsState> = {
     ],
     data: TRACK_NAME_MAX,
   },
-  init: () => ({ notes: [], pats: [{ notes: [] }], pat: 0, queued: -1, songPos: -1, shift: 0, drum: false, song: { song: 0, songs: [] }, pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, once: 0, run: false, c1: 0, r1: 0, count: 0, pos: -1, visit: 0, loop: 0, half: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], thru: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
+  init: () => ({ notes: [], pats: [{ notes: [] }], pat: 0, queued: -1, songPos: -1, shift: 0, drum: false, song: { song: 0, songs: [] }, pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, once: 0, onceAt: -1, run: false, c1: 0, r1: 0, count: 0, pos: -1, visit: 0, loop: 0, half: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], thru: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
   seed(s, seed) {
     s.seed = seed;
   },
@@ -3231,7 +3261,7 @@ const steps: ModuleImpl<StepsState> = {
           else if (lives(x)) x.cnt = hold(1);
           else x.cnt = hold(x.left = 0);
         }
-      if (s.mute || s.once === 1) return; // (play once: its passes played, no note more, #632)
+      if (s.mute || (s.once === 1 && s.onceAt >= 0 && i >= s.onceAt)) return; // (play once: its passes played, it loops on until the last track's end, then no note more: D-820)
       const was = s.snd.some((x) => x.cnt > 0);
       let j = 0, any = false;
       for (const n of s.notes) {

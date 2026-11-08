@@ -160,6 +160,11 @@ export class AudioHost {
     this.send({ t: 'once' });
   }
 
+  /** REC's count-in click (D-803, Engine.countIn): `bars` bars of clicks from the transport's start or the next bar line; 0 none */
+  countIn(bars: number): void {
+    this.send({ t: 'cin', bars });
+  }
+
   /** the global tempo (D-907, tempo.ts): every patch plays at it, null: each its own; kept for when the worklet starts */
   private tempoOn: number | null = null;
   tempo(bpm: number | null): void {
