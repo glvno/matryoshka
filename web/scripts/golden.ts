@@ -232,6 +232,23 @@ for (const [k, [andOr, depth]] of [[2, 1.5], [1, 0.6]].entries()) {
   events[name] = [[128 * 40, 'on', 53], [128 * 200, 'off', 53]];
   ends[name] = 128 * 500;
 }
+// 8 Lire's FAST, PITCH and VIBRATO (#658): FAST on one pair (its release short), group 5-8 an octave up, the voices'
+// vibrato LFOs on, keys on a voice of each group, released under the vibrato
+{
+  const name = 'lire-fast-pitch-vibrato';
+  const p = FM1_PRESETS['8 Lire']();
+  const card = p.assemblies!.find((a) => a.params.some((r) => r.label === 'vibrato'))!;
+  const set = (label: string, v: number, k = 0): void => {
+    const row = card.params.filter((r) => r.label === label)[k];
+    p.modules.find((m) => m.id === row.module)!.params[row.param] = v;
+  };
+  set('fast 1-2', 2);
+  set('pitch', 1, 1);
+  set('vibrato', 2);
+  tests[name] = p;
+  events[name] = [[128 * 10, 'on', 53], [128 * 10, 'on', 60], [128 * 150, 'off', 53], [128 * 150, 'off', 60]];
+  ends[name] = 128 * 300;
+}
 for (const [cc, port] of [[2, 'breath'], [64, 'sustain'], [65, 'foot']] as const) {
   const name = `main-${port}`;
   tests[name] = make(name, (add, wire) => {
