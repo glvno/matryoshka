@@ -64,12 +64,14 @@ static void menu_value(uint32_t row, char *out)
     case MR_ACCEL: p = put(p, ONOFF[cfg.accel]); break;
     case MR_CIN: p = put(p, cfg.count_in == 0 ? "OFF" : cfg.count_in == 1 ? "1 BAR" : "2 BARS"); break;
     case MR_TEMPO: {                             /* GLOBAL or PATCH, and the tempo now as the footer shows it (#582);
-                                                  * under MIDI clock (the footer: MIDI) the setting alone: GLOBAL MIDI
-                                                  * would not fit the row's 10 characters */
+                                                  * under MIDI clock (the footer: MIDI) EXT in its place, as GLOBAL EXT
+                                                  * (D-907: GLOBAL MIDI would not fit the row's 10 characters) */
         int m = eng_find(T_FM1);
         p = put(p, gt_patch ? "PATCH" : "GLOBAL");
-        if (!eng_clock_is_external()) {
-            *p++ = ' ';
+        *p++ = ' ';
+        if (eng_clock_is_external()) {
+            p = put(p, "EXT");
+        } else {
             fmt_int(p, m >= 0 ? (eng_get_param((uint32_t)m, FM1_P_TEMPO) + 32768) >> 16 : 120);
             p += str_len(p);
         }
