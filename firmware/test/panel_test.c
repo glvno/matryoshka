@@ -533,7 +533,7 @@ int main(void)
     check("old-format edits cannot add new allocation settings", poly_row_set(mod, ENG_POLY_STEAL, 0) == -1 && poly_row_set(mod, ENG_POLY_ASSIGN, 3) == -1 && pv_bin[9] == 0 && pv_bin[11] == 0);
     {                                                   /* a VOICES row stops at what the CPU holds (format 51: the
                                                          * row's top, gen-presets voiceTops); one without a top offers 8 */
-        static const char *const NAME[2] = {"CASSIA 1", "HERA 6"};
+        static const char *const NAME[2] = {"CASSIA 1", "EXPANDER S"};
         static const int32_t WANT[2] = {4, ENG_MAX_PARTS};
         uint32_t t, d, g, k;
         for (t = 0; t < 2u; t++) {
@@ -554,7 +554,7 @@ int main(void)
                                  && pages_turn(k, -1, 0, 0, &m, &par, &v) == 1 && v == WANT[t] - 1;
                         }
             printf("      (%s: VOICES top %d)\n", NAME[t], (int)WANT[t]);
-            check(t ? "Hera 6's VOICES row (no top) reaches all eight voices" : "Cassia 1's VOICES row stops at four voices, a turn up there stays", found && ok);
+            check(t ? "Expander S's VOICES row (no top) reaches all eight voices" : "Cassia 1's VOICES row stops at four voices, a turn up there stays", found && ok);
         }
     }
     fm1_ms = 10000;
@@ -1248,7 +1248,7 @@ int main(void)
             enc(2, -3);
         }
         later(1500);
-        enc(0, 2);                                          /* (past DRUMS 2 and its Drum map, the mid and high toms, D-874) */
+        enc(0, 2);                                          /* (past DRUMS 2 and its Drum map, the mid and high toms, D-877) */
         later(1500);
         tap(3);                                             /* the 808 kit card: its keys come from the Drum maps, not Main */
         check("SEL on a row that takes no keys: NOTHING HERE TAKES KEYS, nothing armed, the page stays",
@@ -2454,7 +2454,7 @@ int main(void)
         later(1500);
         E.node[drums].ksrc = 0;                             /* (Main's keys off DRUMS: plain notes, each key its own on MIDI out) */
         if (eng_steps_module(1) >= 0)
-            E.node[eng_steps_module(1)].ksrc = 0;           /* (and off DRUMS 2, the toms' track, D-874) */
+            E.node[eng_steps_module(1)].ksrc = 0;           /* (and off DRUMS 2, the toms' track, D-877) */
         mlen = 0;
         m0 = mlen;
         kq_edge(9, 1);                                      /* D4 pressed and let go within one pass */
@@ -2612,7 +2612,7 @@ int main(void)
         check("unmuted and disarmed: the page as it was", !eng_steps_muted((uint32_t)drums) && eng_armed() < 0
               && !memcmp(base, fb, sizeof base));
         r0 = seq_row;
-        held_key(BTN_REC, 5);                               /* A#3: black key 3, no track 3 (DRUMS 2 is track 2, D-874) */
+        held_key(BTN_REC, 5);                               /* A#3: black key 3, no track 3 (DRUMS 2 is track 2, D-877) */
         check("REC held + a black key past the tracks: NO TRACK 3, nothing armed, REC off, the row stays",
               eng_armed() < 0 && seq_rec == 0 && bar_shows("NO TRACK 3", C_FG) && seq_row == r0);
         later(1500);

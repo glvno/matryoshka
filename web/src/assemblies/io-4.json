@@ -2216,7 +2216,11 @@
     {
       "module": 22,
       "param": "pos",
-      "label": "sub"
+      "label": "sub",
+      "names": [
+        "OFF",
+        "ON"
+      ]
     },
     {
       "module": 14,
@@ -2257,7 +2261,11 @@
     {
       "module": 26,
       "param": "pos",
-      "label": "noise"
+      "label": "noise",
+      "names": [
+        "OFF",
+        "ON"
+      ]
     },
     {
       "module": 49,
@@ -2464,7 +2472,11 @@
     {
       "module": 5,
       "param": "pos",
-      "label": "switch"
+      "label": "switch",
+      "names": [
+        "OFF",
+        "ON"
+      ]
     },
     {
       "module": 3,
@@ -2495,12 +2507,20 @@
     {
       "module": 6,
       "param": "pos",
-      "label": "hold"
+      "label": "hold",
+      "names": [
+        "OFF",
+        "ON"
+      ]
     },
     {
       "module": 51,
       "param": "pos",
-      "label": "ensemble"
+      "label": "ensemble",
+      "names": [
+        "OFF",
+        "ON"
+      ]
     },
     {
       "module": 52,

@@ -1,0 +1,132 @@
+# Hera 5: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# lfo
+#   rate = 3 Hz                        0.02..40 Hz
+#   delay time = 0.001 s               0.001..5 s
+# dco
+#   range = 8'                         16', 8', 4'
+#   dco / lfo = 0                      -4..4
+#   pwm = 0.3                          0..1
+#   pwm mode = LFO                     LFO, MAN
+#   pulse = OFF                        OFF, ON
+#   saw = ON                           OFF, ON
+#   sub = 0.25                         0..1
+#   noise = 0                          0..1
+# hpf
+#   hpf / freq = 1                     0, 1, 2, 3
+# vcf
+#   vcf / freq = 1400 Hz               20..16000 Hz
+#   res = 0.15                         0..1
+#   polarity = POSITIVE                POSITIVE, NEGATIVE
+#   env = 2.2                          -4..4
+#   vcf / lfo = 0                      -4..4
+#   kybd = 1                           -4..4
+# vca
+#   mode = ENV                         ENV, GATE
+#   level = 1                          0..2
+# env
+#   a = 0.01 s                         0.001..5 s
+#   d = 0.3333 s                       0.001..5 s
+#   s = 0.6                            0..1
+#   r = 0.2083 s                       0.001..8 s
+# chorus
+#   chorus = I                         OFF, I, II
+# bender
+#   dco = 0.1667                       -4..4
+#   vcf = 0                            -4..4
+#   bender / lfo = 0.04                -4..4
+# portamento
+#   portamento = 0.2 s                 0.001..5 s
+#   porta switch = OFF                 OFF, ON
+# keys
+#   assign mode = POLY 1               POLY 1, POLY 2, UNISON
+#   key transpose = 0                  -4..4
+#   tune = 0                           -4..4
+
+# Hera 6's presets (drafts of 2026-10-29 after the Juno-6's patch sheets, #413) on the Juno-106's panel. The decay and
+# release rows are the ADSR's long range: a value plays 2.4 times as long (d = 0.208 s is 0.5 s).
+
+engine: Hera 5
+
+preset: Brass
+  pwm = 0
+  vcf / freq = 900 Hz
+  res = 0.1
+  env = 2.8
+  a = 0.06 s
+  d = 0.208 s
+  s = 0.55
+  r = 0.104 s
+  chorus = I
+  level = 1.05
+
+preset: Strings
+  rate = 0.8 Hz
+  pwm = 0.6
+  pulse = ON
+  saw = OFF
+  sub = 0.2
+  hpf / freq = 1
+  vcf / freq = 2200 Hz
+  res = 0.05
+  env = 1
+  a = 0.7 s
+  d = 0.417 s
+  s = 0.8
+  r = 0.583 s
+  chorus = II
+  level = 0.73
+
+preset: Bass
+  pwm = 0
+  pulse = ON
+  saw = OFF
+  sub = 0.6
+  vcf / freq = 450 Hz
+  res = 0.2
+  env = 2.4
+  a = 0.003 s
+  d = 0.125 s
+  s = 0.15
+  r = 0.062 s
+  chorus = OFF
+  level = 0.67
+
+preset: Organ
+  pwm = 0
+  pulse = ON
+  saw = OFF
+  sub = 0.5
+  vcf / freq = 7000 Hz
+  res = 0
+  env = 0
+  a = 0.004 s
+  d = 0.042 s
+  s = 1
+  r = 0.021 s
+  chorus = II
+  level = 0.38
+
+preset: Glass Pad
+  # A thin, bright pulse swept slowly by the LFO: glassy.
+  rate = 0.15 Hz
+  pwm = 0.8
+  pwm mode = MAN
+  vcf / lfo = 0.5
+  pulse = ON
+  saw = OFF
+  sub = 0
+  noise = 0.05
+  hpf / freq = 2
+  vcf / freq = 4000 Hz
+  res = 0.35
+  env = 0.8
+  a = 2 s
+  d = 0.833 s
+  s = 0.8
+  r = 1.25 s
+  chorus = II
+  level = 0.81

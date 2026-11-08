@@ -1110,7 +1110,8 @@
     "cvamt": 1,
     "track": 0,
     "morph": 0,
-    "osc": 0
+    "osc": 0,
+    "drive": 1
    },
    "att": [
     1,
@@ -2588,7 +2589,14 @@
      "module": 18,
      "param": "pos",
      "label": "color",
-     "head": "oscillator 1"
+     "head": "oscillator 1",
+     "names": [
+      "FALL RAMP",
+      "RAMP",
+      "TRIANGLE",
+      "SQUARE",
+      "PULSE"
+     ]
     },
     {
      "module": 22,
@@ -2598,7 +2606,11 @@
     {
      "module": 20,
      "param": "pos",
-     "label": "hi/lo"
+     "label": "hi/lo",
+     "names": [
+      "HI",
+      "LO"
+     ]
     },
     {
      "module": 22,
@@ -2608,7 +2620,12 @@
     {
      "module": 21,
      "param": "pos",
-     "label": "control mode"
+     "label": "control mode",
+     "names": [
+      "OSC 4/EXT",
+      "ENV 1",
+      "KB"
+     ]
     },
     {
      "module": 27,
@@ -2642,12 +2659,21 @@
      "param": "pos",
      "label": "control mode",
      "col": true,
-     "head": "oscillator 2"
+     "head": "oscillator 2",
+     "names": [
+      "KB1",
+      "KB1+MIX"
+     ]
     },
     {
      "module": 35,
      "param": "pos",
-     "label": "octave"
+     "label": "octave",
+     "names": [
+      "-1",
+      "0",
+      "+1"
+     ]
     },
     {
      "module": 36,
@@ -2663,12 +2689,22 @@
      "module": 37,
      "param": "pos",
      "label": "control mode",
-     "head": "oscillator 3"
+     "head": "oscillator 3",
+     "names": [
+      "KB2",
+      "KB2+MIX",
+      "MIX"
+     ]
     },
     {
      "module": 38,
      "param": "pos",
-     "label": "octave"
+     "label": "octave",
+     "names": [
+      "-1",
+      "0",
+      "+1"
+     ]
     },
     {
      "module": 39,
@@ -2684,12 +2720,23 @@
      "module": 40,
      "param": "pos",
      "label": "control mode",
-     "head": "oscillator 4"
+     "head": "oscillator 4",
+     "names": [
+      "OSC 3",
+      "MAN",
+      "MIX"
+     ]
     },
     {
      "module": 41,
      "param": "pos",
-     "label": "octave"
+     "label": "octave",
+     "names": [
+      "LO",
+      "-1",
+      "0",
+      "+1"
+     ]
     },
     {
      "module": 42,
@@ -2727,7 +2774,12 @@
      "module": 48,
      "param": "pos",
      "label": "cut octave",
-     "head": "filter"
+     "head": "filter",
+     "names": [
+      "-1",
+      "0",
+      "+1"
+     ]
     },
     {
      "module": 46,
@@ -2742,7 +2794,13 @@
     {
      "module": 47,
      "param": "pos",
-     "label": "mode"
+     "label": "mode",
+     "names": [
+      "LP",
+      "BP",
+      "HP",
+      "BR"
+     ]
     },
     {
      "module": 49,
@@ -2758,7 +2816,11 @@
     {
      "module": 55,
      "param": "pos",
-     "label": "kb1/kb2"
+     "label": "kb1/kb2",
+     "names": [
+      "KB1",
+      "KB2"
+     ]
     },
     {
      "module": 11,
@@ -2806,13 +2868,21 @@
     {
      "module": 10,
      "param": "pos",
-     "label": "sus on/off"
+     "label": "sus on/off",
+     "names": [
+      "ON",
+      "OFF"
+     ]
     },
     {
      "module": 56,
      "param": "pos",
      "label": "env 1/env 2",
-     "head": "amp shaper"
+     "head": "amp shaper",
+     "names": [
+      "ENV 1",
+      "ENV 2"
+     ]
     },
     {
      "module": 58,

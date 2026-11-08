@@ -26,8 +26,10 @@ export function make(name: string, build: Build): Patch {
 
 /** an XL's name: its FM-1 version's name and " XL" ("Algo Four XL") */
 export const XL_SUFFIX = ' XL';
-/** the FM-1 version an XL is named after ("Algo Four XL" -> "Algo Four"); undefined: not an XL's name */
-export const xlBase = (name: string): string | undefined => (name.endsWith(XL_SUFFIX) ? name.slice(0, -XL_SUFFIX.length) : undefined);
+/** an XL named after its original's voice count, not after its FM-1 version: Hera 6 XL is Hera 5's (D-348) */
+const XL_FM1: Record<string, string> = { 'Hera 6 XL': 'Hera 5' };
+/** the FM-1 version of an XL ("Algo Four XL" -> "Algo Four"); undefined: not an XL's name */
+export const xlBase = (name: string): string | undefined => XL_FM1[name] ?? (name.endsWith(XL_SUFFIX) ? name.slice(0, -XL_SUFFIX.length) : undefined);
 
 const load = (raw: unknown): Patch => validatePatch(structuredClone(raw), DEFS);
 
