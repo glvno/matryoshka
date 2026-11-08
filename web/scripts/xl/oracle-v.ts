@@ -192,7 +192,7 @@ export const xl: Xl = {
       e.retype(FILTER, 'filter', { cutoff: 600, res: 0.2, cvamt: 1, track: 0 });
       e.m(FILTER).map!.p1 = ['cutoff'];
       e.m(FILTER).map!.p2 = ['res'];
-      ladder = per('ladder', 4.5, 0.5, { cutoff: 600, res: 0.2, drive: 1, cvamt: 1, track: 0 }, { p1: 'cutoff', p2: 'res' });
+      ladder = per('ladder', 4.5, 0.5, { cutoff: 600, res: 0.2, drive: 1, cvamt: 1, track: 0, stsat: 1 }, { p1: 'cutoff', p2: 'res' }); // stsat: the CEM3320 (#672)
       const cutM = e.add('macro', 5, 5, { value: cutoffUnit(600) });
       const resM = e.add('macro', 5, 5.5, { value: 0.2 });
       for (const f of [FILTER, ladder]) {

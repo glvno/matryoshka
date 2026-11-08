@@ -59,6 +59,8 @@ export const RULES: Rule[] = [
   { type: 'seq', params: ['dir'], reads: ['len'], live: (c) => c.p('len') >= 2, why: 'A one-step sequence has no direction.' },
   { type: 'quant', params: ['root'], reads: ['scale'], live: (c) => c.p('scale') !== 0, why: 'The chromatic scale has every note: a root changes nothing.' },
   ...['filter', 'ladder', 'shift'].map((type): Rule => ({ type, params: ['cvamt'], reads: [], live: (c) => c.cabled('cv'), why: 'Patch the cv input to use its amount.' })),
+  { type: 'filter', params: ['drive'], reads: ['res'], live: (c) => c.p('res') > 0, why: 'The drive clips the resonance: without resonance it has nothing to clip.' },
+  { type: 'ladder', params: ['stsat'], reads: ['diode'], live: (c) => c.p('diode') < 0.5, why: 'Stage saturation is for the Moog ladder: the diode mode has none.' },
   { type: 'string', params: ['burst'], reads: [], live: (c) => c.cabled('gate'), why: 'A burst fires on a gate: patch the gate input.' },
 ];
 
