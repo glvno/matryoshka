@@ -602,7 +602,7 @@ export function checkScenarios(h) {
       const sel = await until(async () => (await T()).selected.includes(shortId), 2000);
       await check('4.4 delays: a click on SHORT\'s line selects its card', !!sel, `selected ${JSON.stringify((await T()).selected)}, SHORT is ${shortId}`);
       await page().keyboard.press('Escape');
-      // drag SHORT's length row to its top: it stops at 700 ms and says why; the FM-1 loads the patch again
+      // drag SHORT's length row to its top: it stops at what the memory leaves and says why; the FM-1 loads the patch again
       await page().evaluate(() => window.__sent.splice(0));
       // (a card the page shows over the canvas, the tutorial's offer, would take the drag)
       await page().evaluate(() => {
@@ -624,9 +624,10 @@ export function checkScenarios(h) {
       await shot('check-delays-drag');
       const toast = await until(() => page().evaluate(() => { const t = document.querySelector('.toast span')?.textContent ?? ''; return /^Memory full/.test(t) ? t : ''; }), 1000);
       const len = (await paramsOf('SHORT')).length;
-      // (#649: the memory holds both lines at their longest, 1200 and 1900 ms: the row reaches its top, no note)
-      await check('4.5 delays: SHORT\'s length dragged to its top reaches 1900 ms (the memory holds it), no memory note',
-        len === 1900 && !toast, `length ${len}; "${toast ?? ''}"; under the pointer: ${pointed}`);
+      // (#649: one memory; the longest length is 3800 ms, what one Delay can take of it alone, #734: beside LONG's 1200 ms
+      // the row stops past the old 1900 ms top, at what is left, and the note says so)
+      await check('4.5 delays: SHORT\'s length dragged to its top stops at what the memory leaves (past 1900 ms), and the note says so',
+        len > 1900 && len < 3800 && new RegExp(`^Memory full: .*This Delay stops at ${len} ms\\.$`).test(toast ?? ''), `length ${len}; "${toast ?? ''}"; under the pointer: ${pointed}`);
       const up = await until(async () => {
         const x = await T();
         return x.status === 'patch on the FM-1' && x.chip === 'synced' && (await page().evaluate(() => window.__sent.some((f) => f[1] === 0x10 || f[1] === 0x11))) ? x : null;
