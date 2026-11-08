@@ -34,7 +34,6 @@ export class Ed {
     const m: ModuleInst = { id: this.def.modules.length + 1, type, x: Math.round(col * GX), y: Math.round(r * GY), params: { ...defaultParams(def), ...p } };
     if (def.paramInputs) {
       const map = defaultMap(def) as Record<Source, string[]>;
-      map.k1 = map.k2 = map.k3 = map.k4 = [];
       if (o.p1) map.p1 = [o.p1];
       if (o.p2) map.p2 = [o.p2];
       m.att = [1, 1];

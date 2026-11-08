@@ -61,7 +61,6 @@ export function define(name: string, f: (b: Def) => void): Built {
       const m: ModuleInst = { id: modules.length + 1, type, x: col * GX, y: row * GY, params: { ...defaultParams(def), ...p } };
       if (def.paramInputs) {
         const map = defaultMap(def) as Record<Source, string[]>;
-        map.k1 = map.k2 = map.k3 = map.k4 = [];
         m.att = [1, 1];
         m.map = map;
       }

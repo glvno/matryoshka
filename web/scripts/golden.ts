@@ -9,6 +9,7 @@ import { cpuEstimate } from '../src/cpu';
 import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, sandboxFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
 import { make, FM1_PRESETS, XL_PRESETS, type Build } from '../src/presets';
+import { oracleMorph } from '../src/test-morph';
 import { addModule, connect, defaultParams, emptyPatch, fixMatrix, newPatch, paramUnit, setMorphTarget, SOURCES, stepByte, type Patch, type PolyCfg } from '../src/patch';
 import { migrateSteps, overdub, STEPS_MAX, type StepNote } from '../src/track';
 import { insertAssembly, makeAssembly } from '../src/assembly';
@@ -25,7 +26,7 @@ mkdirSync(OUT, { recursive: true });
  * (absent: 1; rec: 1 on, 0 off; cc: controller value 0..127; thon / thoff: the note played into that track's keys in, at
  * velocity 100 / let go: engine.ts thru, engine.c eng_steps_thru, #368)]; take: the notes recorded so far go into their
  * tracks (the editor's overdub, the panel's) */
-type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'once' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'rec' | 'take' | 'cc' | 'pat' | 'song' | 'thon' | 'thoff', number, number?];
+type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'once' | 'cin' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'rec' | 'take' | 'cc' | 'pat' | 'song' | 'thon' | 'thoff', number, number?];
 const EVENTS: Ev[] = [
   [0, 'on', 60],
   [128 * 40, 'on', 67],
@@ -148,6 +149,9 @@ for (const shape of [0, .25, .5, .75, 1]) for (const back of [0, 1]) {
   });
 }
 for (const [n, p] of Object.entries(FM1_PRESETS)) tests[n] = p();
+// D-1004: Oracle V with a morph B side on its filter and envelopes (every module has a B side, as the editor makes one;
+// format 51 writes only the B values off A): played half way
+tests['oracle-morph'] = oracleMorph();
 // #649: XLs the FM-1's one memory arena holds (Hera 6 XL: 151 module copies, past the 128 of the fixed pools before it;
 // Wanderer XL: it fits with format 51, #667)
 for (const n of ['Hera 6 XL', 'Wanderer XL']) tests[n] = XL_PRESETS[n]();
@@ -2420,6 +2424,48 @@ kit('morph-unassigned', (add, wire) => {
   const vca = tests['morph-unassigned'].modules.find((m) => m.type === 'vca')!;
   vca.paramsB = { ...vca.params, gain: 0.8 };
 }
+// D-1000: format 51 writes a module's attenuverters and p1 / p2 masks only where they are off their template (a presence
+// byte and those items): one off att1 and p2, one off att2 only, one off p1 only, one at the template
+kit('matrix-presence', (add, wire) => {
+  const main = add('fm1', 0, 0);
+  const lfo = add('lfo', 0, 0, { rate: 3, depth: 1 });
+  const ramp = add('lfo', 0, 0, { wave: 1, rate: 0.7, depth: 1 });
+  const osc = add('osc', 0, 0, { wave: 1, level: 0.8 });
+  const filter = add('filter', 0, 0, { cutoff: 900, res: 0.4 });
+  const vca = add('vca', 0, 0, { gain: 0.7 });
+  const out = add('output', 0, 0, { level: 0.9 });
+  wire(main, 'pitch', osc, 'pitch');
+  wire(osc, 'out', filter, 'in');
+  wire(filter, 'lp24', vca, 'in');
+  wire(vca, 'out', out, 'l');
+  wire(main, 'gate', vca, 'cv');
+  wire(lfo, 'out', osc, 'p1');
+  wire(ramp, 'out', osc, 'p2');
+  wire(lfo, 'out', filter, 'p2');
+  wire(ramp, 'out', vca, 'p1');
+});
+{
+  const [osc, filter, vca] = ['osc', 'filter', 'vca'].map((t) => tests['matrix-presence'].modules.find((m) => m.type === t)!);
+  osc.att = [0.25, -1];
+  osc.map!.p2 = ['pw', 'fine'];
+  filter.att = [1, -0.4];
+  vca.map!.p1 = [];
+}
+// D-1002: a cable from an output past the 16th (Main's sustain) keeps every cable of the patch at 4 bytes in format 51
+kit('cables-wide', (add, wire) => {
+  const main = add('fm1', 0, 0);
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.8 });
+  const offset = add('const', 0, 0, { value: 0.6 });
+  const mix = add('mixer', 0, 0);
+  const vca = add('vca', 0, 0, { gain: 0.5 });
+  const out = add('output', 0, 0, { level: 0.9 });
+  wire(main, 'pitch', osc, 'pitch');
+  wire(osc, 'out', vca, 'in');
+  wire(main, 'sustain', mix, 'in1');
+  wire(offset, 'out', mix, 'in2');
+  wire(mix, 'out', vca, 'cv');
+  wire(vca, 'out', out, 'l');
+});
 kit('crush-color', (add, wire) => {
   const nz = add('noise', 0, 0, { level: 0.6, color: 0.6 });
   const cr = add('crush', 0, 0, { bits: 6, rate: 5 });
@@ -3310,14 +3356,31 @@ tests['steps-song'] = make('steps-song', (add, wire) => {
 }
 
 // play once (#632): a bar counted in with a click on each beat (beat 1 higher), then each track plays its pattern once,
-// the shorter ones then silent until the longest ends and the transport stops by itself; again, and PLAY in the count-in
-// (it ends play once and the transport runs on), then a stop. A song: its entries once each
+// the shorter ones looping on until the longest ends and the transport stops by itself (D-820); again, and PLAY in the
+// count-in (it ends play once and the transport runs on), then a stop. A song: its entries once each. Loop: the shorter
+// tracks' loops start again on the very tick the longest ends (8 and 4 steps of 1/16 against 16), and play nothing there
 tests['play-once'] = structuredClone(tests['steps-kit']);
 events['play-once'] = [[128 * 5, 'once', 0], [128 * 1300, 'once', 0], [128 * 1600, 'run', 0], [128 * 1800, 'stop', 0]];
 ends['play-once'] = 128 * 1850;
 tests['play-once-song'] = structuredClone(tests['steps-song']);
 events['play-once-song'] = [[128 * 5, 'once', 0], [128 * 700, 'pat', 1], [128 * 720, 'song', 0], [128 * 740, 'once', 0]];
 ends['play-once-song'] = 128 * 1300;
+tests['play-once-loop'] = structuredClone(tests['steps-kit']);
+{
+  const st = tests['play-once-loop'].modules.filter((m) => m.type === 'steps');
+  Object.assign(st[1].params, { len: 8, swing: 50 });
+  Object.assign(st[2].params, { len: 4, rate: 4 });
+  st[2].notes = pattern([0, 1, 2, 3], [0]);
+}
+events['play-once-loop'] = [[128 * 5, 'once', 0]];
+ends['play-once-loop'] = 128 * 1400;
+// REC's count-in click (D-803, the FM-1's REC with COUNT-IN on): from a stop, two bars of clicks from the transport's start
+// (each bar's beat 1 higher); running, one bar from the next bar line; asked for and then REC off (0 bars) before the bar
+// line: none; asked for and then stopped: none at the next start
+tests['rec-count-in'] = structuredClone(tests['steps-kit']);
+events['rec-count-in'] = [[128 * 5, 'run', 0], [128 * 5, 'cin', 2], [128 * 1300, 'cin', 1], [128 * 2500, 'cin', 1], [128 * 2600, 'cin', 0],
+  [128 * 2700, 'cin', 2], [128 * 2720, 'stop', 0], [128 * 2760, 'run', 0]];
+ends['rec-count-in'] = 128 * 3000;
 
 // arming as a set (#191): two Voicing modules on Main's keys (A's gate left, B's right) and a Drum map on them (its first
 // row's gate added right); armed: only the armed ones hear Main, several at once; none: the cables again
@@ -3471,7 +3534,7 @@ for (const [name, patch] of Object.entries(tests))
 // written with counted records whatever their size: the C engine must give the parameters a record leaves out their
 // defaults, on both morph sides
 const counted = new Set<string>();
-for (const name of [...Object.keys(FM1_PRESETS), 'morph', 'morph-unassigned', 'fixed-links', 'side-input-fanout']) {
+for (const name of [...Object.keys(FM1_PRESETS), 'morph', 'morph-unassigned', 'fixed-links', 'side-input-fanout', 'oracle-morph', 'matrix-presence', 'cables-wide']) {
   if (!tests[name] || bins[name]) continue;
   const twin = `${name} counted`;
   tests[twin] = structuredClone(tests[name]);
@@ -3519,6 +3582,7 @@ for (const [name, patch] of Object.entries(tests)) {
     else if (kind === 'ext' || kind === 'int') e.clockExternal(kind === 'ext');
     else if (kind === 'tick') e.clockTick();
     else if (kind === 'once') e.playOnce();
+    else if (kind === 'cin') e.countIn(note);
     else e.transport(kind === 'run');
   }
   seg(END);
@@ -3535,7 +3599,7 @@ for (const [name, patch] of Object.entries(tests)) {
   // must take exactly (host_test checks): the FM-1's memory is counted from them (#649)
   if (!bins[name]) { const b = deviceBudget(patch); writeFileSync(new URL(`${f}.par`, OUT), `${b.params} ${b.buffers} ${b.instances}\n`); }
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
-  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' || k === 'arms' || k === 'pat' || k === 'song' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' || k === 'thon' || k === 'thoff' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
+  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' || k === 'arms' || k === 'pat' || k === 'song' || k === 'cin' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' || k === 'thon' || k === 'thoff' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }
 // protocol test input: upload of the acid kit, then a cutoff change on its filter
 {

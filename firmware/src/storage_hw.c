@@ -3,7 +3,7 @@
 /* The firmware side of storage.c (FELUCCA_FLASH): flash reads in short IRQ-off windows so the
  * audio keeps up, erases and writes only inside the storage areas, the audio buffer silenced
  * first. The host tests (storage_test.c) provide their own st_* on a simulated NOR. */
-static uint8_t flash_ok;                 /* JEDEC id matched at boot (persist_boot) */
+static uint8_t flash_ok;                 /* a known JEDEC id at boot (FL_JEDEC_OK) */
 static int st_read(uint32_t off, void *dst, uint32_t n)   /* 256-byte IRQ-off windows: audio keeps up */
 {
     uint8_t *d = dst;
