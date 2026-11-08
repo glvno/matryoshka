@@ -1467,6 +1467,12 @@
   },
   {
    "name": "BRIEFCASE 3",
+   "len": 3753,
+   "fnv": "00474ad8",
+   "version": 51
+  },
+  {
+   "name": "BRIEFCASE 3",
    "len": 3755,
    "fnv": "c59738a8",
    "version": 51
@@ -1700,6 +1706,12 @@
    "version": 51
   },
   {
+   "name": "CANVAS",
+   "len": 2092,
+   "fnv": "a9589104",
+   "version": 51
+  },
+  {
    "name": "CASSIA 1",
    "len": 1627,
    "fnv": "55aec3e4",
@@ -1835,6 +1847,12 @@
    "name": "CASSIA 1",
    "len": 3722,
    "fnv": "2a55e408",
+   "version": 51
+  },
+  {
+   "name": "CASSIA 1",
+   "len": 3199,
+   "fnv": "362f13ac",
    "version": 51
   },
   {

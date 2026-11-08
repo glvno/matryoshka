@@ -26,7 +26,7 @@ mkdirSync(OUT, { recursive: true });
  * (absent: 1; rec: 1 on, 0 off; cc: controller value 0..127; thon / thoff: the note played into that track's keys in, at
  * velocity 100 / let go: engine.ts thru, engine.c eng_steps_thru, #368)]; take: the notes recorded so far go into their
  * tracks (the editor's overdub, the panel's) */
-type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'once' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'rec' | 'take' | 'cc' | 'pat' | 'song' | 'thon' | 'thoff', number, number?];
+type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'once' | 'cin' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'rec' | 'take' | 'cc' | 'pat' | 'song' | 'thon' | 'thoff', number, number?];
 const EVENTS: Ev[] = [
   [0, 'on', 60],
   [128 * 40, 'on', 67],
@@ -278,6 +278,55 @@ const polyAsm = (p: Patch, ids: number[], cfg: Partial<PolyCfg>): void => {
   p.cables.push({ from: { module: main.id, port: 'keys' }, to: { module: alloc.id, port: 'keys' } });
   makeAssembly(p, ids, `poly ${ids.join(' ')}`).poly = cfg.flaws ? { flaws: cfg.flaws } : {};
 };
+// The Oscillator's analog shape (#673): every wave at analog 1 and the saw at 0.4, plain (left) and through a VCA (right);
+// unison with sync; the FM path (pm, feedback); a high saw (E7, the band-limiting); four parts, each its own tolerances
+for (const [wave, analog] of [[1, 1], [2, 1], [2, 0.4], [3, 1], [4, 1], [5, 1]]) {
+  kit(`osc-analog-${wave}-${analog}`, (add, wire) => {
+    const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.5 });
+    const o = add('osc', 0, 0, { wave, analog, pw: 0.3, level: 0.8 });
+    const env = add('adsr', 0, 0, { a: 0.005, d: 0.3, s: 0.5, r: 0.3 }), vca = add('vca', 0, 0);
+    wire(kb, 'pitch', o, 'pitch'); wire(o, 'out', out, 'l');
+    wire(kb, 'gate', env, 'gate'); wire(o, 'out', vca, 'in'); wire(env, 'env', vca, 'cv'); wire(vca, 'out', out, 'r');
+  });
+}
+kit('osc-analog-unison-sync', (add, wire) => {
+  const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.5 });
+  const o = add('osc', 0, 0, { wave: 2, analog: 1, unison: 3, detune: 15, coarse: 7, level: 0.8 });
+  const m = add('osc', 0, 0, { wave: 3, analog: 0.7, level: 1 });
+  wire(kb, 'pitch', o, 'pitch'); wire(kb, 'pitch', m, 'pitch'); wire(m, 'out', o, 'sync');
+  wire(o, 'out', out, 'l'); wire(m, 'out', out, 'r');
+});
+kit('osc-analog-fm', (add, wire) => {
+  const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.5 });
+  const mod = add('osc', 0, 0, { wave: 0, coarse: 12, level: 0.3 });
+  const o = add('osc', 0, 0, { wave: 2, analog: 1, pm: 1, level: 0.8 });
+  const f = add('osc', 0, 0, { wave: 4, analog: 1, fb: 0.2, level: 0.8 });
+  for (const x of [mod, o, f]) wire(kb, 'pitch', x, 'pitch');
+  wire(mod, 'out', o, 'pm'); wire(o, 'out', out, 'l'); wire(f, 'out', out, 'r');
+});
+kit('osc-analog-high', (add, wire) => {
+  const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.5 });
+  const o = add('osc', 0, 0, { wave: 2, analog: 1, level: 0.8 }), q = add('osc', 0, 0, { wave: 4, analog: 1, level: 0.8 });
+  wire(kb, 'pitch', o, 'pitch'); wire(kb, 'pitch', q, 'pitch'); wire(o, 'out', out, 'l'); wire(q, 'out', out, 'r');
+});
+events['osc-analog-high'] = [[0, 'on', 100], [128 * 60, 'on', 88], [128 * 120, 'off', 88]];
+// the top of the range: 0.19 to 0.45 of a turn a sample (C8 and above, coarse +24), where the dip's span wraps
+kit('osc-analog-top', (add, wire) => {
+  const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.5 });
+  const o = add('osc', 0, 0, { wave: 2, analog: 1, coarse: 24, level: 0.8 }), q = add('osc', 0, 0, { wave: 5, analog: 1, coarse: 12, level: 0.8 });
+  wire(kb, 'pitch', o, 'pitch'); wire(kb, 'pitch', q, 'pitch'); wire(o, 'out', out, 'l'); wire(q, 'out', out, 'r');
+});
+events['osc-analog-top'] = [[0, 'on', 96], [128 * 40, 'on', 108], [128 * 80, 'on', 120], [128 * 120, 'off', 120]];
+kit('osc-analog-parts', (add, wire) => {
+  const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.3 });
+  const o = add('osc', 0, 0, { wave: 2, analog: 1, level: 0.6 }), q = add('osc', 0, 0, { wave: 3, analog: 1, pw: 0.5, level: 0.4 });
+  const t = add('osc', 0, 0, { wave: 1, analog: 1, coarse: -12, level: 0.5 });
+  const env = add('adsr', 0, 0, { a: 0.005, d: 0.3, s: 0.6, r: 0.2 }), vca = add('vca', 0, 0);
+  const mix = add('mixer', 0, 0, { l1: 0.5, l2: 0.5, l3: 0.5 });
+  for (const x of [o, q, t]) wire(kb, 'pitch', x, 'pitch');
+  wire(o, 'out', mix, 'in1'); wire(q, 'out', mix, 'in2'); wire(t, 'out', mix, 'in3');
+  wire(mix, 'out', vca, 'in'); wire(kb, 'gate', env, 'gate'); wire(env, 'env', vca, 'cv'); wire(vca, 'out', out, 'l');
+}, 4);
 kit('random-held', (add, wire) => {
   const clock = add('lfo', 0, 0, { wave: 3, rate: 13, depth: 1 });
   const out = add('output', 0, 0);
@@ -3307,14 +3356,31 @@ tests['steps-song'] = make('steps-song', (add, wire) => {
 }
 
 // play once (#632): a bar counted in with a click on each beat (beat 1 higher), then each track plays its pattern once,
-// the shorter ones then silent until the longest ends and the transport stops by itself; again, and PLAY in the count-in
-// (it ends play once and the transport runs on), then a stop. A song: its entries once each
+// the shorter ones looping on until the longest ends and the transport stops by itself (D-820); again, and PLAY in the
+// count-in (it ends play once and the transport runs on), then a stop. A song: its entries once each. Loop: the shorter
+// tracks' loops start again on the very tick the longest ends (8 and 4 steps of 1/16 against 16), and play nothing there
 tests['play-once'] = structuredClone(tests['steps-kit']);
 events['play-once'] = [[128 * 5, 'once', 0], [128 * 1300, 'once', 0], [128 * 1600, 'run', 0], [128 * 1800, 'stop', 0]];
 ends['play-once'] = 128 * 1850;
 tests['play-once-song'] = structuredClone(tests['steps-song']);
 events['play-once-song'] = [[128 * 5, 'once', 0], [128 * 700, 'pat', 1], [128 * 720, 'song', 0], [128 * 740, 'once', 0]];
 ends['play-once-song'] = 128 * 1300;
+tests['play-once-loop'] = structuredClone(tests['steps-kit']);
+{
+  const st = tests['play-once-loop'].modules.filter((m) => m.type === 'steps');
+  Object.assign(st[1].params, { len: 8, swing: 50 });
+  Object.assign(st[2].params, { len: 4, rate: 4 });
+  st[2].notes = pattern([0, 1, 2, 3], [0]);
+}
+events['play-once-loop'] = [[128 * 5, 'once', 0]];
+ends['play-once-loop'] = 128 * 1400;
+// REC's count-in click (D-803, the FM-1's REC with COUNT-IN on): from a stop, two bars of clicks from the transport's start
+// (each bar's beat 1 higher); running, one bar from the next bar line; asked for and then REC off (0 bars) before the bar
+// line: none; asked for and then stopped: none at the next start
+tests['rec-count-in'] = structuredClone(tests['steps-kit']);
+events['rec-count-in'] = [[128 * 5, 'run', 0], [128 * 5, 'cin', 2], [128 * 1300, 'cin', 1], [128 * 2500, 'cin', 1], [128 * 2600, 'cin', 0],
+  [128 * 2700, 'cin', 2], [128 * 2720, 'stop', 0], [128 * 2760, 'run', 0]];
+ends['rec-count-in'] = 128 * 3000;
 
 // arming as a set (#191): two Voicing modules on Main's keys (A's gate left, B's right) and a Drum map on them (its first
 // row's gate added right); armed: only the armed ones hear Main, several at once; none: the cables again
@@ -3516,6 +3582,7 @@ for (const [name, patch] of Object.entries(tests)) {
     else if (kind === 'ext' || kind === 'int') e.clockExternal(kind === 'ext');
     else if (kind === 'tick') e.clockTick();
     else if (kind === 'once') e.playOnce();
+    else if (kind === 'cin') e.countIn(note);
     else e.transport(kind === 'run');
   }
   seg(END);
@@ -3532,7 +3599,7 @@ for (const [name, patch] of Object.entries(tests)) {
   // must take exactly (host_test checks): the FM-1's memory is counted from them (#649)
   if (!bins[name]) { const b = deviceBudget(patch); writeFileSync(new URL(`${f}.par`, OUT), `${b.params} ${b.buffers} ${b.instances}\n`); }
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
-  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' || k === 'arms' || k === 'pat' || k === 'song' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' || k === 'thon' || k === 'thoff' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
+  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' || k === 'arms' || k === 'pat' || k === 'song' || k === 'cin' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' || k === 'thon' || k === 'thoff' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }
 // protocol test input: upload of the acid kit, then a cutoff change on its filter
 {

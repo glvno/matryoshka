@@ -112,7 +112,7 @@ preset: Growl Bass
   decay = 0.35 s
   sustain = 0.5
   eg 2 / release = 0.15 s
-  volume = 0.36
+  volume = 0.35
 
 # VCO 2's RING position (VCO 1 times VCO 2) at an inharmonic interval, a percussive EG 2: a metal bell.
 preset: Ring Mod Bell
@@ -179,4 +179,4 @@ preset: ESP Warble
   high cut = 600 Hz
   threshold = 0.1
   esp route = 2
-  volume = 0.45
+  volume = 0.46

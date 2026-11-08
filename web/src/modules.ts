@@ -137,6 +137,7 @@ function polyBlep(t: number, dt: number): number {
   return 0;
 }
 
+const waveIdeal = (kind: number, phase: number, dt: number, pw: number): number => wave(kind, phase, dt, pw);
 function wave(kind: number, phase: number, dt: number, pw = 0.5): number {
   switch (kind) {
     case 0:
@@ -155,6 +156,85 @@ function wave(kind: number, phase: number, dt: number, pw = 0.5): number {
       v -= polyBlep((phase + 1 - pw) % 1, dt);
       return v;
     }
+  }
+}
+
+/**
+ * The Oscillator's analog wave shape (#673, format 51): `analog` 0..1 scales the flaws of an analog VCO, 0 (the default) the
+ * ideal waves above. Saw: the ramp charges like a capacitor from a slightly soft current source,
+ * r = (1 - e^(-c phase)) / (1 - e^(-c)) with c = ANALOG_CURVE x analog, its mean taken out (AC coupled); at the reset the
+ * wave dips ANALOG_DIP below its bottom for ANALOG_DIP_S. Band-limited: polyBLEP on both steps of the reset and the dip,
+ * polyBLAMP on the ramp's corner at the reset (its slope changes by 2c). Triangle: the peak moves off centre (naive, as the
+ * ideal triangle). Square: the pulse width moves. Sharktooth and reverse saw: from the curved saw (and the skewed triangle).
+ * Sine: unchanged. Each part has its own fixed tolerances (its instance seed, engine.ts instSeed): the curve and the dip
+ * +-ANALOG_TOL of theirs, the triangle's peak up to ANALOG_SKEW of a cycle, the pulse width up to ANALOG_PWO. engine.c
+ * osc_ana the same in fixed point (the curve from a table, SAWC_T).
+ */
+export const ANALOG_CURVE = 0.35;
+export const ANALOG_DIP = 0.12;
+export const ANALOG_DIP_S = 25e-6;
+export const ANALOG_TOL = 0.3;
+export const ANALOG_SKEW = 0.03;
+export const ANALOG_PWO = 0.015;
+/** a part's four tolerances (curve, dip, triangle peak, pulse width), -1..1 from its instance seed (engine.c init_state) */
+export const analogTol = (seed: number): number[] => [1, 2, 3, 4].map((j) => q15(hash32((seed ^ Math.imul(j, 0x85ebca6b)) >>> 0)) / 32768);
+interface AnalogShape {
+  /** the curve, its normalisation 1 / (1 - e^-c), the mean of 2 r - 1 */
+  c: number;
+  e: number;
+  mean: number;
+  /** the dip (of the full swing 2), the dip's length in samples, the triangle's peak (phase), the pulse width's offset */
+  h: number;
+  w: number;
+  peak: number;
+  pwo: number;
+}
+function analogShape(amt: number, tol: number[], sr: number): AnalogShape {
+  const c = Math.max(1e-4, ANALOG_CURVE * amt * (1 + ANALOG_TOL * tol[0]));
+  const e = 1 / (1 - Math.exp(-c));
+  return { c, e, mean: 2 * (e - 1 / c) - 1, h: ANALOG_DIP * amt * (1 + ANALOG_TOL * tol[1]), w: ANALOG_DIP_S * sr,
+    peak: 0.5 + ANALOG_SKEW * amt * tol[2], pwo: ANALOG_PWO * amt * tol[3] };
+}
+/** poly-BLAMP residual: the corner of a ramp whose slope changes by 1 per cycle at phase 0, scaled by dt */
+function polyBlamp(t: number, dt: number): number {
+  if (t < dt) {
+    const x = 1 - t / dt;
+    return (x * x * x) / 6;
+  }
+  if (t > 1 - dt) {
+    const x = 1 - (1 - t) / dt;
+    return (x * x * x) / 6;
+  }
+  return 0;
+}
+function analogSaw(phase: number, dt: number, a: AnalogShape): number {
+  let v = 2 * (1 - Math.exp(-a.c * phase)) * a.e - 1 - a.mean;
+  v -= (1 + a.h / 2) * polyBlep(phase, dt);
+  v += 2 * a.c * dt * polyBlamp(phase, dt);
+  const w = Math.min(0.25, a.w * dt); // the dip's length in phase
+  if (phase < w) v -= a.h;
+  v += (a.h / 2) * polyBlep((phase - w + 1) % 1, dt);
+  return v;
+}
+function analogTri(phase: number, a: AnalogShape): number {
+  const p = a.peak;
+  return phase < p ? -1 + (2 * phase) / p : 1 - (2 * (phase - p)) / (1 - p);
+}
+/** the analog wave (kind as wave()) */
+function waveAnalog(kind: number, phase: number, dt: number, pw: number, a: AnalogShape): number {
+  switch (kind) {
+    case 0:
+      return Math.sin(2 * Math.PI * phase);
+    case 1:
+      return analogTri(phase, a);
+    case 2:
+      return analogSaw(phase, dt, a);
+    case 4:
+      return (analogTri(phase, a) + analogSaw(phase, dt, a)) / 2;
+    case 5:
+      return -analogSaw(phase, dt, a);
+    default:
+      return wave(3, phase, dt, Math.min(0.95, Math.max(0.05, pw + a.pwo)));
   }
 }
 
@@ -292,6 +372,8 @@ interface OscState {
   ph: number[];
   /** the summed phase modulation of a block (oscPm), radians */
   pmc: Float32Array;
+  /** this part's analog tolerances (analogTol) */
+  tol: number[];
 }
 
 /** unison voice j of n: its detune in octaves, spread symmetrically from -detune to +detune cents */
@@ -369,10 +451,20 @@ const osc: ModuleImpl<OscState> = {
       param('stack', 0, 4, 0, { step: 1, choices: STACK_NAMES }),
       param('pm2', 0, 8, 0, { ...PM_INDEX, since: 49 }),
       param('pm3', 0, 8, 0, { ...PM_INDEX, since: 49 }),
+      param('analog', 0, 1, 0, { step: 0.01, since: 51 }),
     ],
   },
-  init: () => ({ phase: 0, s1: 0, y1: 0, y2: 0, pm1: 0, xb: 0, ap: [0, 0, 0, 0, 0, 0, 0, 0], ph: [0, 0, 0, 0], pmc: new Float32Array(0) }),
+  init: () => ({ phase: 0, s1: 0, y1: 0, y2: 0, pm1: 0, xb: 0, ap: [0, 0, 0, 0, 0, 0, 0, 0], ph: [0, 0, 0, 0], pmc: new Float32Array(0), tol: [0, 0, 0, 0] }),
+  seed(s, seed) {
+    s.tol = analogTol(seed);
+  },
   process(c, s) {
+    const amt = Math.min(1, c.p.analog ?? 0);
+    // the analog shape (#673): its waves in place of wave(); in FM mode at the doubled rate (the dip as long in time)
+    const an = amt > 0 ? analogShape(amt, s.tol, c.sr) : undefined;
+    const anFm = an && { ...an, w: an.w * 2 };
+    const wave = an ? (k: number, ph: number, dt: number, pw: number): number => waveAnalog(k, ph, dt, pw, an) : waveIdeal;
+    const waveFm = anFm ? (k: number, ph: number, dt: number, pw: number): number => waveAnalog(k, ph, dt, pw, anFm) : waveIdeal;
     const { pitch, sync } = c.inp;
     const pw = Math.min(0.95, Math.max(0.05, c.p.pw ?? 0.5));
     const base = (c.p.coarse ?? 0) / 12 + (c.p.fine ?? 0) / 1200;
@@ -436,7 +528,7 @@ const osc: ModuleImpl<OscState> = {
         if (s.phase >= 1) s.phase -= 1;
         let ph = s.phase + (idx * (sub ? pmNow : pmMid) + fb * FB_RAD * (s.y1 + s.y2) * 0.5) * K;
         ph -= Math.floor(ph);
-        const y = wave(kind, ph, dt, pw);
+        const y = waveFm(kind, ph, dt, pw);
         s.y2 = s.y1;
         s.y1 = y;
         if (sub) {
@@ -2898,9 +2990,12 @@ export interface StepsState {
   seed: number;
   /** muted (the device's SEQ page, the editor's card; never saved): no new notes */
   mute: boolean;
-  /** play once (#632, Engine.playOnce): 0 not, 1 its passes played (it goes on silent), n >= 2: n - 1 pass ends to go
-   * (the start counts as one; stepsTurn counts) */
+  /** play once (#632, Engine.playOnce): 0 not, 1 its passes played (it loops on until the last track's end), n >= 2:
+   * n - 1 pass ends to go (the start counts as one; stepsTurn counts) */
   once: number;
+  /** play once (D-820, the engine sets it each block): the sample of this block on which the last track still playing its
+   * passes ends them (-1 not in this block); from there a track whose passes are played plays no note more */
+  onceAt: number;
   /** the transport as the last block saw it, the clk / reset inputs' last samples */
   run: boolean;
   c1: number;
@@ -2958,7 +3053,7 @@ export function stepsGo(s: StepsState, p: number): void {
 /** the end of a pass (engine.c steps_turn): in a song, the next entry's pattern and shift (after the last, the first
  * again); else a queued pattern */
 function stepsTurn(s: StepsState): void {
-  if (s.once > 1) s.once--; // (play once, #632: at 1 its passes are played, fire plays no more)
+  if (s.once > 1) s.once--; // (play once, #632: at 1 its passes are played; it loops on until the last track ends, D-820)
   const song = s.song.song > 0 ? s.song.songs[s.song.song - 1] : undefined;
   if (song?.length) {
     s.songPos = s.songPos + 1 >= song.length ? 0 : s.songPos + 1;
@@ -2974,6 +3069,33 @@ function stepsTurn(s: StepsState): void {
 }
 
 const stepCycle = (len: number, dir: number): number => dir === 2 && len > 1 ? 2 * (len - 1) : len;
+
+/** play once (D-820; engine.c steps_turn_at, the same): the sample of this block on which a Steps track's pass ends
+ * (stepsTurn), -1 none; from where it stands before the block (s, its parameters p), its clock's steps counted as process
+ * will count them (the start, a step half a tick on, the block's ticks: run, tick, ticks as Voice has them); a reset edge
+ * is not foreseen */
+export function stepsTurnAt(s: StepsState, p: Readonly<Record<string, number>>, run: boolean, tick: number, ticks: number, n: number): number {
+  if (!run) return -1;
+  if (!s.run) return 0; // (the start: its first step, a pass's start, on sample 0)
+  const x = s.pat > 0 ? s.pats[s.pat] : null;
+  const len = Math.min(STEPS_MAX, Math.max(1, x?.len ?? Math.round(p.len ?? 16)));
+  const ht = STEPS_RATE_HT[Math.min(STEPS_RATE_HT.length - 1, Math.max(0, x?.rate ?? Math.round(p.rate ?? 4)))];
+  const dir = Math.max(0, Math.min(3, Math.round(p.dir ?? 0)));
+  let need = s.pos < 0 ? 1 : stepCycle(len, dir) - s.visit, count = s.count, half = s.half; // (steps to the pass's end)
+  if (half > 0 && half - 1 < n && (tick < 0 || half - 1 <= tick)) {
+    if (--need === 0) return half - 1;
+    half = 0;
+  }
+  if (tick >= 0) {
+    if (half > 0 && --need === 0) return tick;
+    for (let t = 0; t < ticks; t++)
+      if ((count += 2) >= ht) {
+        count = 0;
+        if (--need === 0) return tick;
+      }
+  }
+  return -1;
+}
 
 /** Preview the next visited step without consuming it, also used by live recording. */
 function nextStep(s: StepsState, len: number, dir: number): { visit: number; pos: number; loop: number } {
@@ -3024,7 +3146,7 @@ const steps: ModuleImpl<StepsState> = {
     ],
     data: TRACK_NAME_MAX,
   },
-  init: () => ({ notes: [], pats: [{ notes: [] }], pat: 0, queued: -1, songPos: -1, shift: 0, drum: false, song: { song: 0, songs: [] }, pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, once: 0, run: false, c1: 0, r1: 0, count: 0, pos: -1, visit: 0, loop: 0, half: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], thru: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
+  init: () => ({ notes: [], pats: [{ notes: [] }], pat: 0, queued: -1, songPos: -1, shift: 0, drum: false, song: { song: 0, songs: [] }, pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, once: 0, onceAt: -1, run: false, c1: 0, r1: 0, count: 0, pos: -1, visit: 0, loop: 0, half: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], thru: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
   seed(s, seed) {
     s.seed = seed;
   },
@@ -3067,7 +3189,7 @@ const steps: ModuleImpl<StepsState> = {
           else if (lives(x)) x.cnt = hold(1);
           else x.cnt = hold(x.left = 0);
         }
-      if (s.mute || s.once === 1) return; // (play once: its passes played, no note more, #632)
+      if (s.mute || (s.once === 1 && s.onceAt >= 0 && i >= s.onceAt)) return; // (play once: its passes played, it loops on until the last track's end, then no note more: D-820)
       const was = s.snd.some((x) => x.cnt > 0);
       let j = 0, any = false;
       for (const n of s.notes) {

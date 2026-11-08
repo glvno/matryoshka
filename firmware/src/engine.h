@@ -451,14 +451,21 @@ void eng_clock_external(int on);
 void eng_transport(int on);
 int eng_transport_running(void);
 /* Play once (#632; engine.ts playOnce): the transport stops, one bar of four beats is counted in on the clock with a click
- * on each beat (added to the output, on both sides), then the transport starts and each Steps track the clock steps
- * plays its pattern once, or the song's entries once each; when all are done the transport stops by itself (its edges
- * then come out of eng_clock_out as 2 / -2). eng_transport ends it where it is. eng_once_state: 0 not, 1 counting in,
+ * on each beat (not in eng_render's output: eng_click_mix adds it, D-820), then the transport starts and each Steps track
+ * the clock steps plays its pattern once, or the song's entries once each; a shorter track loops on until the longest
+ * ends; then the transport stops by itself (its edges then come out of eng_clock_out as 2 / -2). eng_transport ends it where it is. eng_once_state: 0 not, 1 counting in,
  * 2 playing */
 #define ENG_PLAY_ONCE
 void eng_play_once(void);
 int eng_once_state(void);
 uint32_t eng_once_beat(void);          /* the count-in's beat, 0..3 (0 until it counts) */
+/* REC's count-in click (D-803; engine.ts countIn): a click on each beat of `bars` bars from the transport's start or, running
+ * already at `at` (eng_ticks then), from the next bar line, as seq_ui.c counts them; 0 bars: none. A stop ends it */
+#define ENG_COUNT_IN
+void eng_count_in(uint32_t at, uint32_t bars);
+/* the count-in's click (both count-ins) of the last eng_render, added to (left, right) of its length, each side held to
+ * full scale; nonzero when any sounded. It keeps four clicks a render (a render of a block or a few, as the FM-1's). The analog output only: audio.c adds it after USB audio took the half (D-820) */
+int eng_click_mix(int32_t *left, int32_t *right, uint32_t total);
 /* the patch buttons (bit i = button i of ENG_PANEL_BUTTONS): held or switched on; the Main module's button outputs */
 void eng_buttons(uint32_t mask);
 /* what button b does (ENG_BTN_*), and a Toggle's modules (their count; *list points at their indices) */
