@@ -974,6 +974,16 @@ export const FILTER_OSC_K = 1.19;
 export const FILTER_OSC_GAIN = 5.6;
 export const FILTER_OSC_CLIP = 2;
 export const FILTER_OSC_SEED = 1 / 1024;
+/** the Multimode filter's drive (#670, its `drive` parameter above 0): the resonance feedback r bp (r = 1.98 res) passes
+ * the Ladder's soft clip sat(v) = v - v^3 / 6.75 (+-1 from |v| = 1.5) at drive times the signal's level, read from the
+ * band-pass state as the self-oscillation reads it. What the clip takes off the feedback comes back as damping: the
+ * damping k grows by r (1 - sat(a) / a), a = drive r |bp| held to FILTER_DRIVE_TOP (r a^2 / 6.75 below the knee, no
+ * division there). The outputs stay at the input's scale, so a quiet signal plays as with drive off and a loud one has
+ * its resonance squashed. engine.c reads these from defs.h. */
+export const FILTER_DRIVE_KNEE = 1.5;
+export const FILTER_DRIVE_TOP = 64;
+/** the damping the drive adds for a = drive r |bp| (already held to FILTER_DRIVE_TOP), per unit of r: 1 - sat(a) / a */
+export const filterDriveLoss = (a: number): number => (a >= FILTER_DRIVE_KNEE ? 1 - 1 / a : (a * a) / 6.75);
 
 /** state variable filter, two stages: stage 1 (12 dB) gives lp12 / bp / hp (and hp6, a resonant 6 dB high pass, appended), stage 2 takes lp12 and adds the other 12 dB (lp24) */
 const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }> = {
@@ -989,6 +999,8 @@ const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }>
       param('track', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
       param('morph', 0, 1, 0, { step: 0.01, input: 'morph', rest: (p, cv) => (p.morph ?? 0) + cv }),
       param('osc', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 47 }),
+      // #670: the drive into a soft clip inside the resonance loop; 0 = off (a linear filter, as before 1.11)
+      param('drive', 0, 8, 0, { step: 0.01, since: 51 }),
     ],
   },
   init: () => ({ ic1: 0, ic2: 0, jc1: 0, jc2: 0 }),
@@ -1002,6 +1014,9 @@ const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }>
     const k0 = 2 - 1.98 * res - FILTER_OSC_K * over, gam = FILTER_OSC_GAIN * over;
     let k = k0;
     if (over > 0 && s.ic1 === 0 && s.ic2 === 0) s.ic1 = FILTER_OSC_SEED;
+    // drive (#670): a = drive r |bp|, the clip's level; a filter without resonance (r = 0) has nothing to clip
+    const r = 1.98 * res, dr = (c.p.drive ?? 0) * r;
+    const drv = dr > 0;
     const k2 = Math.SQRT2; // stage 2 is damped (Q 0.7): the resonance peak comes from stage 1 alone
     const tr = (c.p.track ?? 0) >= 0.5 ? c.voice.pitch : 0; // keyboard tracking: the cutoff follows the played pitch 1 octave per octave (C4 = the cutoff as set)
     let fc = c.p.cutoff ?? 1000, m = c.p.morph ?? 0;
@@ -1012,6 +1027,7 @@ const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }>
         const b = Math.min(FILTER_OSC_CLIP, Math.max(-FILTER_OSC_CLIP, s.ic1));
         k = k0 + gam * b * b;
       }
+      if (drv) k = (over > 0 ? k : k0) + r * filterDriveLoss(Math.min(FILTER_DRIVE_TOP, dr * Math.abs(s.ic1)));
       const a1 = 1 / (1 + g * (g + k));
       const a2 = g * a1;
       const a3 = g * a2;
@@ -1072,11 +1088,17 @@ const ladder: ModuleImpl<{ s: Float64Array }> = {
       param('drive', 1, 8, 1, { step: 0.01, log: true }),
       param('cvamt', 0, 4, 1, { unit: 'oct', step: 0.01 }),
       param('track', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
+      // #671: the diode ladder (diodeLadder); off = the Moog ladder, as before 1.11
+      param('diode', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 51 }),
+      // #672: the soft clip at the input of stages 2, 3 and 4 too, not only at the loop's input; off = as before 1.11
+      param('stsat', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 51 }),
     ],
   },
   init: () => ({ s: new Float64Array(4) }),
   process(c, st) {
+    if ((c.p.diode ?? 0) >= 0.5) return diodeLadder(c, st.s);
     const s = st.s;
+    const stsat = (c.p.stsat ?? 0) >= 0.5;
     const audio = !!c.connected.fm;
     let cvm = 0;
     for (let i = 0; i < c.n; i++) cvm += c.inp.cv[i];
@@ -1102,6 +1124,7 @@ const ladder: ModuleImpl<{ s: Float64Array }> = {
       u = u >= 1.5 ? 1 : u <= -1.5 ? -1 : u - (u * u * u) / 6.75;
       let y2 = 0;
       for (let j = 0; j < 4; j++) {
+        if (stsat && j > 0) u = u >= 1.5 ? 1 : u <= -1.5 ? -1 : u - (u * u * u) / 6.75;
         const v = G * (u - s[j]);
         u = v + s[j];
         s[j] = u + v;
@@ -1112,6 +1135,67 @@ const ladder: ModuleImpl<{ s: Float64Array }> = {
     }
   },
 };
+
+/** the diode ladder's loop: the frequency (in units of the stage frequency w) where its phase reaches -180 degrees, and
+ * the loop gain that self-oscillates there (1 / |H| at that frequency). engine.c reads them from defs.h. */
+export const DIODE_W180 = 1.1952534;
+export const DIODE_KCRIT = 18.388;
+
+/**
+ * The Ladder's diode mode (#671, `diode` on): the linearised diode ladder of the Roland TB-303 and the EMS VCS3, four
+ * coupled stages with a capacitor between neighbouring nodes: y' = w (-M y + e1 u), M tri-diagonal [2 -1; -1 2 -1;
+ * -1 2 -1; -1 1] (characteristic polynomial s^4 + 7 s^3 + 15 s^2 + 10 s + 1: unequal poles, about 14 dB per octave around
+ * the cutoff, 18 an octave higher, 24 far above). Its phase reaches -180 degrees at w DIODE_W180, where the loop gain
+ * DIODE_KCRIT self-oscillates: k = DIODE_KCRIT res, so res 1 is the edge, as 4 res is in the Moog mode. `cutoff` is the
+ * resonance frequency, as in the Moog mode. Trapezoidal (zero-delay) integration: each sample solves (I + g M) y = z +
+ * g e1 u, g = tan(pi fc / sr) / DIODE_W180 (fc held to 0.3 sr), by the tri-diagonal (Thomas) elimination whose factors
+ * come once per block (and at each change of the audio-rate input fm, as in the Moog mode): pivots c0..c3, their
+ * reciprocals iu, the multipliers m_i = g iu_(i-1). The loop is solved linearly (y4 = p3 + b3 u, p3 the states' share, b3
+ * the loop input's), then the loop input u = sat((drive x - k p3) / (1 + k b3)) runs through the stages. No high pass in
+ * the feedback: the loop's passband falls by 1 / (1 + k) with res, the diode ladder's bass loss, deeper than the Moog
+ * mode's 1 / (1 + 4 res). The outputs make up the difference (DIODE_MAKEUP, after the loop, so the saturation is as
+ * heard): their passband sits where the Moog mode's does at the same res, so the switch keeps a patch's level. Outputs:
+ * lp24 (stage 4) and lp12 (stage 2). The four states are the Moog mode's (`s`). `stsat` does not apply here.
+ */
+export const diodeMakeup = (res: number): number => (1 + DIODE_KCRIT * res) / (1 + 4 * res);
+interface DiodeCoef { g: number; m1: number; m2: number; m3: number; iu0: number; iu1: number; iu2: number; iu3: number; b3: number }
+function diodeCoef(fc: number, sr: number): DiodeCoef {
+  const g = Math.tan((Math.PI * Math.min(fc, sr * 0.3)) / sr) / DIODE_W180;
+  const iu0 = 1 / (1 + 2 * g), m1 = g * iu0;
+  const iu1 = 1 / (1 + 2 * g - g * m1), m2 = g * iu1;
+  const iu2 = 1 / (1 + 2 * g - g * m2), m3 = g * iu2;
+  const iu3 = 1 / (1 + g - g * m3);
+  return { g, m1, m2, m3, iu0, iu1, iu2, iu3, b3: g * m1 * m2 * m3 * iu3 };
+}
+function diodeLadder(c: Ctx, z: Float64Array): void {
+  const audio = !!c.connected.fm;
+  let cvm = 0;
+  for (let i = 0; i < c.n; i++) cvm += c.inp.cv[i];
+  cvm /= c.n;
+  const tr = (c.p.track ?? 0) >= 0.5 ? c.voice.pitch : 0;
+  const k = DIODE_KCRIT * (c.p.res ?? 0), drive = c.p.drive ?? 1, mk = diodeMakeup(c.p.res ?? 0);
+  let d: DiodeCoef = diodeCoef(1000, c.sr), F = 0;
+  for (let i = 0; i < c.n; i++) {
+    if (i === 0 || (audio && c.inp.fm[i] !== c.inp.fm[i - 1])) {
+      const cv = cvm + (audio ? c.inp.fm[i] : 0);
+      const fc = Math.min((c.p.cutoff ?? 1000) * Math.pow(2, cv * (c.p.cvamt ?? 1) + tr), c.sr * 0.45);
+      if (c.display) c.display.cutoff = fc;
+      d = diodeCoef(fc, c.sr);
+      F = 1 / (1 + k * d.b3);
+    }
+    const p3 = (z[3] + d.m3 * (z[2] + d.m2 * (z[1] + d.m1 * z[0]))) * d.iu3;
+    let u = (drive * c.inp.in[i] - k * p3) * F;
+    u = u >= 1.5 ? 1 : u <= -1.5 ? -1 : u - (u * u * u) / 6.75;
+    const e0 = z[0] + d.g * u, e1 = z[1] + d.m1 * e0, e2 = z[2] + d.m2 * e1, e3 = z[3] + d.m3 * e2;
+    const y3 = e3 * d.iu3, y2 = (e2 + d.g * y3) * d.iu2, y1 = (e1 + d.g * y2) * d.iu1, y0 = (e0 + d.g * y1) * d.iu0;
+    z[0] = 2 * y0 - z[0];
+    z[1] = 2 * y1 - z[1];
+    z[2] = 2 * y2 - z[2];
+    z[3] = 2 * y3 - z[3];
+    c.out.lp24[i] = y3 * mk;
+    c.out.lp12[i] = y1 * mk;
+  }
+}
 
 /** 20 log10(x) = DB_PER_OCT log2(x) */
 const DB_PER_OCT = 6.0205999;

@@ -369,7 +369,8 @@
         "cvamt": 1,
         "track": 0,
         "morph": 0,
-        "osc": 1
+        "osc": 1,
+        "drive": 3
       },
       "att": [
         1,
@@ -395,7 +396,8 @@
         "cvamt": 1,
         "track": 0,
         "morph": 0,
-        "osc": 1
+        "osc": 1,
+        "drive": 3
       },
       "att": [
         1,
