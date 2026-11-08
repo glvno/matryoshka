@@ -213,7 +213,7 @@ static void nudge_suite(void)
             {
                 uint64_t grp = 0;                       /* (a poly engine: its modules keep their group, D-905) */
                 for (k = 0; k < pg_dev[d].nmem; k++)
-                    grp |= eng_arms(pg_dev[d].mem[k]);
+                    grp |= eng_arms(pg_mem(d, k));
                 tap(BTN_SEL);
                 check(grp ? "SEL on a poly engine no keys cable reaches: NO KEYS REACH THIS DEVICE (D-905), the armed set kept"
                           : "SEL on a mono engine no keys cable reaches: NO KEYS REACH THIS DEVICE (#215), the armed set kept",
@@ -262,7 +262,7 @@ static void nudge_suite(void)
             check("  the engine carries the mark and keeps its track (ENG_KEYS_UNREACHED_TRACK, D-295)", pg_dev[d].unreached
                   && tr < pg_ndev && pg_dev[tr].module >= 0 && eng_type((uint32_t)pg_dev[tr].module) == T_STEPS);
             for (k = 0; k < pg_dev[d].nmem; k++)
-                grp |= eng_arms(pg_dev[d].mem[k]);
+                grp |= eng_arms(pg_mem(d, k));
             check("  (a poly engine: its modules keep their group)", grp != 0u);
             pages_focus(d, 0);
             loop();

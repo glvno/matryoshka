@@ -391,8 +391,8 @@ static void play_toggle(void)                       /* PLAY: the transport (the 
 }
 
 
-/* SEQ held + PLAY (#632, the owner's ruling of 2026-11-04 on issue #632, the control Proposed in D-TBD): play once. Stopped:
- * one bar is counted in with a click on each beat (the engine's, heard on both outputs), then the pattern or the song
+/* SEQ held + PLAY (#632, the owner's rulings of 2026-11-04 and 2026-11-07, D-820): play once. Stopped:
+ * one bar is counted in with a click on each beat (the engine's, on the analog output only, D-820), then the pattern or the song
  * plays once and the transport stops by itself (eng_play_once); a whole take into a recorder without touching the
  * transport. Running, or counting in: it stops, as PLAY. Step record ends first (as SEQ ends it, D-808) */
 static void play_once_press(void)

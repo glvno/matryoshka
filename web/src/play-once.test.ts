@@ -85,15 +85,29 @@ describe('play once (#632)', () => {
     expect(e.onceState).toBe(0);
   });
 
-  it('a shorter track plays its pass once, then nothing until the longest has played its own', () => {
+  it('a shorter track loops on until the longest has played its pass (D-820)', () => {
     const { p } = rig([{ len: 16, at: [] }, { len: 6, at: [0] }]);
     const e = new Engine(SR);
     e.load(p);
     e.playOnce();
     const { l, running } = run(e, 96000 * 3);
-    expect(rises(l)).toHaveLength(1);
+    expect(rises(l)).toHaveLength(3);   // (steps 1, 7 and 13 of the 16)
     expect(running.filter((x) => x).length * 128).toBeGreaterThanOrEqual(96000 - 256);
   });
+
+  for (const first of [true, false])
+    it(`a shorter track whose loop starts again where the longest ends plays no note there (${first ? 'it' : 'the longest'} first in the patch)`, () => {
+      const t = [{ len: 8, at: [0] }, { len: 16, at: [] }];
+      const { p } = rig(first ? t : [t[1], t[0]]);
+      const e = new Engine(SR);
+      e.load(p);
+      e.playOnce();
+      const { l } = run(e, 96000 * 3);
+      const r = rises(l);
+      expect(r).toHaveLength(2);   // (steps 1 and 9, not step 1 again where the pass ends)
+      expect(r[1] - r[0]).toBeGreaterThan(48000 - 256);
+      expect(e.transportRunning).toBe(false);
+    });
 
   it('a song plays its entries once each', () => {
     const { p, st, main } = rig([{ len: 4, at: [0] }]);
@@ -135,5 +149,38 @@ describe('play once (#632)', () => {
     e.playOnce();
     run(e, 96000 * 2 + 1000);
     expect(e.transportRunning).toBe(false);
+  });
+});
+
+describe("REC's count-in click (D-803)", () => {
+  it('from a stop: a click on each beat of the bars from the transport\'s start, beat 1 higher, then none', () => {
+    const { p } = rig([{ len: 16, at: [] }]);
+    const e = new Engine(SR);
+    e.load(p);
+    e.transport(true);
+    e.countIn(2);
+    const { l } = run(e, 96000 * 3);
+    expect(clicks(l, l.length)).toEqual([0, 23999, 47999, 71999, 95999, 119999, 143999, 167999]);
+    const flips = (from: number): number => [...l.subarray(from, from + 200).keys()].filter((i) => i > 0 && Math.sign(l[from + i]) !== Math.sign(l[from + i - 1])).length;
+    expect(flips(95999)).toBeGreaterThan(1.8 * flips(119999));   // (bar 2's beat 1 higher too)
+  });
+
+  it('running: from the next bar line; REC off (0 bars) or a stop ends it', () => {
+    const { p } = rig([{ len: 16, at: [] }]);
+    const e = new Engine(SR);
+    e.load(p);
+    e.transport(true);
+    run(e, 30080);
+    e.countIn(1);
+    const a = run(e, 96000 * 2);
+    expect(clicks(a.l, a.l.length).map((x) => x + 30080)).toEqual([95999, 119999, 143999, 167999]);
+    e.countIn(1);
+    run(e, 64000);   // (to just before the next bar line, 288000)
+    e.countIn(0);
+    expect(clicks(run(e, 96000 * 2).l, 96000 * 2)).toEqual([]);
+    e.countIn(2);
+    e.transport(false);
+    e.transport(true);
+    expect(clicks(run(e, 96000).l, 96000)).toEqual([]);
   });
 });

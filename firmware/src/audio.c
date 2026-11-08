@@ -121,11 +121,18 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
 #if FELUCCA_UAC
         uac_tap(o, HALF_FRAMES);
 #endif
-        if (eng_run && uq != knob && !out_off) {        /* USB LEVEL fixed (#600): the analog output again, at MASTER's level */
-            int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)knob * patch_gain) >> 16);
-            for (i = 0; i < HALF_FRAMES; i++) {
-                o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
-                o[2u * i + 1u] = ((eng_r[i] * m) >> 12) << 6;
+        {
+            int clk = eng_run && eng_click_mix(eng_l, eng_r, HALF_FRAMES);   /* a count-in's click (play once's, REC's):
+                                                                              * the analog output only, not USB audio (D-820) */
+            if (clk)
+                snd_heard_ms = fm1_ms;
+            if (eng_run && (uq != knob || clk) && !out_off) {   /* USB LEVEL fixed (#600), or the click: the analog output
+                                                         * again, at MASTER's level (3.5MM OUT OFF: silenced below anyway) */
+                int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)knob * patch_gain) >> 16);
+                for (i = 0; i < HALF_FRAMES; i++) {
+                    o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
+                    o[2u * i + 1u] = ((eng_r[i] * m) >> 12) << 6;
+                }
             }
         }
         if (out_mono)                                   /* (after USB audio took the half in stereo; never louder than a side) */
