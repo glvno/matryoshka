@@ -27,6 +27,18 @@ static void isr_alnk0(void) {}
 static int eng_shed(void) { return 1; }
 static int32_t sig_l[128], sig_r[128];
 static void eng_render(int32_t *l, int32_t *r, uint32_t n) { memcpy(l, sig_l, n * 4u); memcpy(r, sig_r, n * 4u); }
+static int click_on;                                    /* a count-in's click this half (engine.c eng_click_mix: analog only) */
+static int eng_click_mix(int32_t *l, int32_t *r, uint32_t n)
+{
+    uint32_t i;
+    if (!click_on)
+        return 0;
+    for (i = 0; i < n; i++) {
+        l[i] += 16384;
+        r[i] += 16384;
+    }
+    return 1;
+}
 #include "../src/audio.c"
 static int32_t usb[256];
 static void uac_render_start(void) {}
@@ -102,7 +114,15 @@ int main(void)
     CHECK(bad_usb == 0u, "USB audio: the same words with 3.5MM OUT ON and OFF, at MASTER's level, stereo (%u of %u differ)", bad_usb, 2u * n);
     master_q12 = 2048;
     out_mono = 0;
+    click_on = 1;                                       /* the count-in's click: the analog output only, and OFF silences it */
+    out_off = 0;
+    fm1_alnk0_irq();
+    usb_words(wusb, 2048);
+    CHECK(memcmp(usb, wusb, sizeof wusb) == 0 && memcmp(abuf, wusb, sizeof wusb) != 0, "the click: on the analog output, not in USB audio");
     out_off = 1;
+    fm1_alnk0_irq();
+    CHECK(silent(abuf) && memcmp(usb, wusb, sizeof wusb) == 0, "3.5MM OUT OFF: the click silenced too, USB audio as before");
+    click_on = 0;
     snd_muted = 1;                                      /* sandbox mode: both silent, as before */
     fm1_alnk0_irq();
     CHECK(silent(abuf) && silent(usb), "sandbox mode's mute: both silent");

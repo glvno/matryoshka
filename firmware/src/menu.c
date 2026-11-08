@@ -52,7 +52,18 @@ static void menu_value(uint32_t row, char *out)
     case MR_LEDS: p = put(p, cfg.leds == 0 ? "OFF" : cfg.leds == 1 ? "DIM LOW" : "DIM HIGH"); break;
     case MR_ACCEL: p = put(p, ONOFF[cfg.accel]); break;
     case MR_CIN: p = put(p, cfg.count_in == 0 ? "OFF" : cfg.count_in == 1 ? "1 BAR" : "2 BARS"); break;
-    case MR_TEMPO: p = put(p, gt_patch ? "PATCH" : "GLOBAL"); break;
+    case MR_TEMPO: {                             /* GLOBAL or PATCH, and the tempo now as the footer shows it (#582);
+                                                  * under MIDI clock (the footer: MIDI) the setting alone: GLOBAL MIDI
+                                                  * would not fit the row's 10 characters */
+        int m = eng_find(T_FM1);
+        p = put(p, gt_patch ? "PATCH" : "GLOBAL");
+        if (!eng_clock_is_external()) {
+            *p++ = ' ';
+            fmt_int(p, m >= 0 ? (eng_get_param((uint32_t)m, FM1_P_TEMPO) + 32768) >> 16 : 120);
+            p += str_len(p);
+        }
+        break;
+    }
     case MR_CPU:
         fmt_int(p, (int32_t)cpu_pct);
         p += str_len(p);

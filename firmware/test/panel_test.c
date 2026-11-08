@@ -105,6 +105,8 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
         return;
     if (par >= eng_rec_npar(pv_bin, at) && (pv_bin[1] < ENG_COUNTED || eng_rec_grow(pv_bin, &pv_len, sizeof pv_bin, mod, par + 1u)))
         return;
+    if (eng_b_keep(pv_bin, &pv_len, sizeof pv_bin, mod, par))
+        return;
     at += eng_rec_head(pv_bin[1]) + 4u * par;
     pv_bin[at] = (uint8_t)v;
     pv_bin[at + 1u] = (uint8_t)(v >> 8);
@@ -3178,6 +3180,45 @@ int main(void)
             check("  REC once more: a new count-in", seq_rec && seq_cin);
             tap(BTN_PLAY);
             check("  PLAY during the count-in: all stopped, nothing recorded", !seq_rec && !seq_cin && !eng_transport_running() && !E.trk_rec);
+            {                                               /* (D-803 amended 2026-11-07: REC's count-in clicks as play
+                                                             * once's, on the analog output only) */
+                uint32_t on = 0, onsets = 0, hi = 0, first = 0xFFFFFFFFu;
+                blocks(1);                                  /* (the engine takes the stop) */
+                cfg.count_in = 2;
+                tap(BTN_REC);                               /* stopped: the transport starts, two bars from its start */
+                for (guard = 0; seq_cin && guard < 100000u; guard++) {
+                    int32_t c[128], d[128];
+                    uint32_t j;
+                    int32_t rt;
+                    eng_render(l, r, 128);
+                    rt = eng_run_ticks();
+                    for (j = 0; j < 128u; j++)
+                        c[j] = l[j], d[j] = r[j];
+                    if (eng_click_mix(c, d, 128)) {
+                        for (j = 0; j < 128u; j++) {
+                            uint32_t a = (uint32_t)(c[j] - l[j] < 0 ? l[j] - c[j] : c[j] - l[j]);
+                            hi = a > hi ? a : hi;
+                        }
+                        if (!on) {
+                            onsets++;
+                            first = first == 0xFFFFFFFFu ? (uint32_t)rt : first;
+                        }
+                        on = 1;
+                    } else
+                        on = 0;
+                    loop();
+                }
+                check("COUNT-IN 2 BARS: REC's count-in clicks on each beat, 8 from the transport's start, a quarter of full scale, on the analog output only",
+                      onsets == 8u && first <= 1u && hi >= 16000u && hi <= 16400u);
+                printf("      (REC's count-in: %u clicks, the first %u ticks after the start)\n", (unsigned)onsets, (unsigned)first);
+                blocks(12);
+                {
+                    int32_t c[128], d[128];
+                    eng_render(c, d, 128);
+                    check("  after the count-in: no click, REC records", !eng_click_mix(c, d, 128) && seq_rec && !seq_cin);
+                }
+                tap(BTN_REC);                               /* (REC off) */
+            }
             cfg.count_in = 0;
             tap(BTN_REC);
             check("COUNT-IN OFF: REC records at once", seq_rec && !seq_cin && (E.trk_rec >> E.node[drums].trk & 1u) && !strcmp(msg_text, "REC DRUMS"));
@@ -3191,7 +3232,7 @@ int main(void)
     {                                                       /* play once (#632): SEQ held + PLAY counts in a bar with a click,
                                                              * plays the pattern once and stops by itself */
         static int32_t l[128], r[128];
-        uint32_t guard, i, beats = 0, peak = 0, t0, run_ticks;
+        uint32_t guard, i, beats = 0, peak = 0, raw = 0, t0, run_ticks;
         int m0;
         (void)load("808 KIT");
         page_show(0);
@@ -3211,6 +3252,9 @@ int main(void)
         check("  PLAY's and SEQ's releases do nothing of their own: still counting in, the page stays", eng_once_state() == 1 && page == 0u);
         for (guard = 0; eng_once_state() == 1 && guard < 4000u; guard++) {
             eng_render(l, r, 128);
+            for (i = 0; i < 128u; i++)                      /* (eng_render's: what USB audio takes) */
+                raw = (uint32_t)(l[i] < 0 ? -l[i] : l[i]) > raw ? (uint32_t)(l[i] < 0 ? -l[i] : l[i]) : raw;
+            eng_click_mix(l, r, 128);                       /* (the analog output's, audio.c) */
             for (i = 0; i < 128u; i++)
                 peak = (uint32_t)(l[i] < 0 ? -l[i] : l[i]) > peak ? (uint32_t)(l[i] < 0 ? -l[i] : l[i]) : peak;
             fm1_ms += 3;
@@ -3218,7 +3262,7 @@ int main(void)
             if (!strncmp(msg_text, "COUNT-IN ", 9) && msg_text[9] >= '1' && msg_text[9] <= '4')
                 beats |= 1u << (msg_text[9] - '1');
         }
-        check("  the count-in's click is on the output (a quarter of full scale)", peak >= 16000u && peak <= 16400u);
+        check("  the count-in's click is on the analog output (a quarter of full scale), not on USB audio (D-820)", peak >= 16000u && peak <= 16400u && raw == 0u);
         check("  the bar counts the beats, COUNT-IN 1 to COUNT-IN 4", beats == 15u);
         t0 = eng_ticks();
         check("  after the bar: the transport runs, the bar says PLAY ONCE", eng_once_state() == 2 && eng_transport_running() && !strcmp(msg_text, "PLAY ONCE"));
@@ -4791,10 +4835,10 @@ int main(void)
         menu_tab = MT_PANEL;
         ui_dirty = 2;
         loop();
-        check("the menu's PANEL tab: TEMPO on K4, GLOBAL", pages_now()->nrows == 4u && pages_now()->par[3] == MR_TEMPO && on_screen("TEMPO") && on_screen("GLOBAL"));
+        check("the menu's PANEL tab: TEMPO on K4, GLOBAL and the tempo (#582)", pages_now()->nrows == 4u && pages_now()->par[3] == MR_TEMPO && on_screen("TEMPO") && on_screen("GLOBAL 126"));
         told = host_tempo_told;
         enc(5, 1);                                          /* K4: PATCH */
-        check("K4: PATCH, the editor told", gt_patch == 1u && on_screen("PATCH") && host_tempo_told == told + 1u && gt_due);
+        check("K4: PATCH and the patch's own tempo, the editor told", gt_patch == 1u && on_screen("PATCH 124") && host_tempo_told == told + 1u && gt_due);
         main_m = eng_find(T_FM1);
         check("PATCH: the running patch plays its own tempo again (124)", ((eng_get_param((uint32_t)main_m, FM1_P_TEMPO) + 32768) >> 16) == 124 && !eng_tempo_row((uint32_t)main_m, FM1_P_TEMPO));
         (void)load_at(other);
@@ -4809,7 +4853,12 @@ int main(void)
         check("  a tempo past 255 round trips (byte 7 bit 0)", gt_patch == 1u && gt_bpm == 300u);
         enc(5, -1);                                         /* K4: GLOBAL again */
         check("K4 back: GLOBAL at 300", gt_patch == 0u && eng_tempo_global_get() == 300u
-              && ((eng_get_param((uint32_t)main_m, FM1_P_TEMPO) + 32768) >> 16) == 300);
+              && ((eng_get_param((uint32_t)main_m, FM1_P_TEMPO) + 32768) >> 16) == 300 && on_screen("GLOBAL 300"));
+        eng_clock_external(1);
+        ui_dirty = 2;
+        loop();
+        check("  under MIDI clock the row says GLOBAL alone (the footer says MIDI)", on_screen("GLOBAL") && !on_screen("GLOBAL 300"));
+        eng_clock_external(0);
         gt_patch = 1;                                       /* (as the tests before: each patch its own) */
         gt_apply();
         page_show(0);

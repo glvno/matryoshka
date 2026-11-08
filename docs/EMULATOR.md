@@ -137,6 +137,10 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   the editor). After the count-in the bar says `PLAY ONCE` and the FM-1's Start reaches the editor; half a pass in it
   still runs, and after the pass it stops by itself (its Stop reaches the editor). SEQ held + PLAY again, then PLAY a beat
   later, must end it with nothing started.
+- **REC's count-in (`recCountIn`, [D-803](ledger/steps.md#D-803)):** on Init (an empty track, no key held), GLO > PANEL >
+  COUNT-IN set to 1 BAR, REC from a stop must start the transport, say `COUNT-IN` and click on each beat (as play once's
+  check reads them); once it records, a second bar must be silent. PLAY stops it and COUNT-IN goes back to OFF. The
+  emulator plays the analog output (USB audio is not emulated), where the click is.
 - **When:** every pull request that changes firmware runs `emu:smoke` and `emu:scenarios` on its own CI build before it
   merges ([D-120](ledger/releases.md#D-120)).
 
@@ -297,11 +301,17 @@ device page of factory patch 0; silence, a panel key, silence after the release;
 HOME held (the menu), HOME; the PRESET encoder; TRS MIDI program change and notes, then every factory patch in turn
 (name shown, sound, its peak against the web engine's, from `web/scripts/emu-levels.ts`, within 6 dB as a warning);
 SAVE, the flash kept, a restart (STATE RESTORED and the state back); a patch bank written straight into the flash
-(three slots and one with a bad CRC; PRESET and program change step through the three and wrap); the safety steps
+(three slots and one with a bad CRC; PRESET and program change step through the three and wrap); the first boot's
+factory bank on both flash chips the FM-1 ships with (the Puya P25Q80H and the UC25HQ80, #739), and NO FLASH ID with
+nothing written on any other chip; the safety steps
 (shedding and OVERLOAD, safe mode, update mode); the patch buttons and the SEQ page on the 808 Kit; a Delay
 with its line in each of the two line areas (#273, #651: 700 ms and 290 ms, plain and ping-pong; every 128-frame block of
 each echo against the same block of the note, at exactly the Delay's time); no register
 fm1-emu does not model besides P33. Snapshots of each step, a WAV and the levels table go to `build/emu/`.
+
+**The flash chip.** The emulated flash answers the Puya's JEDEC ID (85 60 14) unless `M1EMU_JEDEC` names another one
+as six hex digits (`M1EMU_JEDEC=B36014` for the UC25HQ80, #739). Every machine of `m1emu` and `emu:scenarios` then
+boots with that chip.
 
 **Stack depth (#273).** `m1emu` fills 0x01C60000..0x01C7C000 with the word 0x5AC3A55C before the first instruction (the
 firmware paints its stacks with the same word since #273, so a build from before is measured too). At the end, `smoke`
