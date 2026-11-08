@@ -6258,14 +6258,23 @@ uint32_t delay_div(int32_t time_q16)
     return (uint32_t)(i < 0 ? 0 : i > DELAY_NDIV - 1 ? DELAY_NDIV - 1 : i);
 }
 
-/* the swelling delay's soft clip (modules.ts delayClip): x - 4/27 x^3, flat at +-1 from |x| = 1.5 */
+/* (a b) >> 32: one multiply-high. mul16(a, b) is mulh32(a << 8, b << 8) exactly while a and b fit 24 bits, and
+ * mulh32(e << 13, g << 3) while e fits 19 bits (a line sample read between two: |e| <= 2^18) */
+HOT int32_t mulh32(int32_t a, int32_t b) { return (int32_t)(((int64_t)a * b) >> 32); }
+#define MUL_E(e, g) mulh32((e) * 8192, (g) * 8)   /* mul16(e, g), e a line read (|e| <= 2^18), |g| < 2^28 */
+
+/* the swelling delay's soft clip (modules.ts delayClip): x - 4/27 x^3, flat at +-1 from |x| = 1.5. Under 1.5 (2^17 Q16)
+ * the products are multiply-highs (mul16 exactly: x x >> 16 < 2^18, s x >> 16 < 221,182, whose 9709 times fits 32 bits) */
 static inline int32_t dly_soft(int32_t x)
 {
+    int32_t s, t;
     if (x >= 98304)
         return ENG_ONE;
     if (x <= -98304)
         return -ENG_ONE;
-    return x - mul16(mul16(mul16(x, x), x), 9709);       /* 4/27 Q16 */
+    s = mulh32(x * 256, x * 256);
+    t = mulh32(s * 256, x * 256);
+    return x - ((t * 9709) >> 16);                       /* 4/27 Q16 */
 }
 
 /* the delay's glide (modules.ts delayGlide, #484): while the read position's distance behind the write head (cur, samples
@@ -6277,7 +6286,8 @@ static inline int32_t dly_soft(int32_t x)
 #define DELAY_GLIDE_SHIFT 10             /* 1024 samples: 23 ms */
 #define DELAY_GLIDE_MAX 32768            /* half a sample a sample, Q16 */
 #define DELAY_GLIDE_ACC 128              /* the rate's change a sample: 0 to DELAY_GLIDE_MAX in 256 samples (6 ms) */
-static void dly_glide(inst_t *it, const esig_t *in, esig_t *out, esig_t *outr, uint32_t n, int64_t tq, int32_t fb, int32_t mix, int pp, int swell)
+#define DLY_HOLD 0x40000000             /* rate past it: a new rate's hold, the samples left past it (dly_change) */
+static void __attribute__((noinline)) dly_glide(inst_t *it, const esig_t *in, esig_t *out, esig_t *outr, uint32_t n, int64_t tq, int32_t fb, int32_t mix, int pp, int swell)
 {
     int16_t *buf = it->s.dly.buf, *bb = buf + it->s.dly.len / 2u;
     uint32_t len = pp ? it->s.dly.len / 2u : it->s.dly.len, w = it->s.dly.w, i;
@@ -6308,16 +6318,16 @@ static void dly_glide(inst_t *it, const esig_t *in, esig_t *out, esig_t *outr, u
         ea = (int32_t)buf[i0] * 8 + ((((int32_t)buf[i1] - buf[i0]) * fr) >> 12);
         if (pp) {
             int32_t eb = (int32_t)bb[i0] * 8 + ((((int32_t)bb[i1] - bb[i0]) * fr) >> 12), dr = mul16(in[i], dry);
-            x = mul16(ea, fb);
+            x = MUL_E(ea, fb);
             bb[w] = dly_pack(swell ? dly_soft(x) : x);
-            x = in[i] + mul16(eb, fb);
+            x = in[i] + MUL_E(eb, fb);
             buf[w] = dly_pack(swell ? dly_soft(x) : x);
-            out[i] = dr + mul16(ea, mix);
-            outr[i] = dr + mul16(eb, mix);
+            out[i] = dr + MUL_E(ea, mix);
+            outr[i] = dr + MUL_E(eb, mix);
         } else {
-            x = in[i] + mul16(ea, fb);
+            x = in[i] + MUL_E(ea, fb);
             buf[w] = dly_pack(swell ? dly_soft(x) : x);
-            out[i] = mul16(in[i], dry) + mul16(ea, mix);
+            out[i] = mul16(in[i], dry) + MUL_E(ea, mix);
             outr[i] = out[i];
         }
         if (++w == len)
@@ -6328,23 +6338,93 @@ static void dly_glide(inst_t *it, const esig_t *in, esig_t *out, esig_t *outr, u
     it->s.dly.rate = rate;
 }
 
+/* a lower rate's low pass over a block (modules.ts delaySlow): two sections in direct form I, lp their state (x1 x2 u1 u2
+ * v1 v2 y1 y2, Q26; the second section's input is the first's output, so v1 v2 are always u1 u2 and only stored), c their
+ * coefficients (DELAY_AA, Q30). Each product is one multiply-high (Q24), so a section loses the lowest two bits of Q26 to
+ * its three roundings: about -140 dB. The input is clamped to +-4, what the line holds. ys gets the filtered input (Q16)
+ * at each sample the line is written (ph = k - 1, counting from ph). A pass of its own, so the line's loop keeps its
+ * registers. */
+static void dly_aa(int32_t *lp, const int32_t *c, const esig_t *in, uint32_t n, uint32_t ph, uint32_t k, int32_t *ys)
+{
+    const int32_t c0 = c[0], c1 = c[1], c2 = c[2], c3 = c[3], c4 = c[4], c5 = c[5];
+    int32_t x1 = lp[0], x2 = lp[1], u1 = lp[2], u2 = lp[3], y1 = lp[6], y2 = lp[7];
+    uint32_t i;
+    for (i = 0; i < n; i++) {
+        int32_t x = clampi(in[i], -4 * ENG_ONE, 4 * ENG_ONE) * 1024, u, y;   /* Q26 */
+        u = (mulh32(c0, x + 2 * x1 + x2) - mulh32(c1, u1) - mulh32(c2, u2)) * 4;
+        y = (mulh32(c3, u + 2 * u1 + u2) - mulh32(c4, y1) - mulh32(c5, y2)) * 4;
+        x2 = x1; x1 = x; u2 = u1; u1 = u; y2 = y1; y1 = y;
+        if (ph == k - 1u) {
+            *ys++ = (y + 512) >> 10;
+            ph = 0;
+        } else
+            ph++;
+    }
+    lp[0] = x1; lp[1] = x2; lp[2] = lp[4] = u1; lp[3] = lp[5] = u2; lp[6] = y1; lp[7] = y2;
+}
+
+/* dly_pack of dly_soft: within +-1, so the clamp never acts */
+#define DLY_PACK_SOFT(x) ((int16_t)((dly_soft(x) + 4) >> 3))
+
+/* dly_slow's loop while the time stands (rdi, rdf: its distance in line samples, Q16, rounded up), for pp and swell known
+ * at the call, so that each case keeps its state in registers */
+HOT void slow_fast(const int pp, const int swell, int16_t *buf, uint32_t nl, uint32_t sh, uint32_t *wp, uint32_t *php,
+                   int32_t rdi, int32_t rdf, const esig_t *in, const int32_t *yp, esig_t *out, esig_t *outr, uint32_t n,
+                   int32_t fb, int32_t mix)
+{
+    int16_t *bb = buf + nl;
+    const uint32_t k1 = (1u << sh) - 1u;
+    const int32_t sub = (int32_t)(65536u >> sh), dry = ENG_ONE - mix;
+    uint32_t w = *wp, ph = *php, i;
+    for (i = 0; i < n; i++) {
+        int32_t t = ((int32_t)ph - (int32_t)k1) * sub - rdf, i0 = (int32_t)w - rdi + (t >> 16), i1, fr, ea, eb = 0;
+        if (i0 < 0)
+            i0 += (int32_t)nl;
+        i1 = i0 + 1 == (int32_t)nl ? 0 : i0 + 1;
+        fr = (t & 0xffff) >> 1;                       /* Q15 */
+        ea = (int32_t)buf[i0] * 8 + ((((int32_t)buf[i1] - buf[i0]) * fr) >> 12);
+        if (pp)
+            eb = (int32_t)bb[i0] * 8 + ((((int32_t)bb[i1] - bb[i0]) * fr) >> 12);
+        if (ph == k1) {
+            int32_t v;
+            if (pp) {
+                v = MUL_E(ea, fb);
+                bb[w] = swell ? DLY_PACK_SOFT(v) : dly_pack(v);
+                v = *yp++ + MUL_E(eb, fb);
+            } else
+                v = *yp++ + MUL_E(ea, fb);
+            buf[w] = swell ? DLY_PACK_SOFT(v) : dly_pack(v);
+            ph = 0;
+            if (++w == nl)
+                w = 0;
+        } else
+            ph++;
+        {
+            int32_t dr = mul16(in[i], dry);
+            out[i] = dr + MUL_E(ea, mix);
+            outr[i] = pp ? dr + MUL_E(eb, mix) : out[i];
+        }
+    }
+    *wp = w;
+    *php = ph;
+}
+
 /* the Delay at a lower rate (modules.ts delaySlow, #659: RATE 22k / 11k, k = 1 << sh samples a line sample): the input
- * through a 4-pole low pass (DELAY_AA, two sections in direct form I, states Q24 in the DELAY_TAIL samples after the line,
- * which is `len` samples), every k-th sample of it with the feedback written to the line; every sample reads the line
- * between two of its samples (linear) at the time's distance behind the write head (cur, samples Q16), so the time keeps
- * its sample resolution. A moving time glides as in dly_glide. Plain, swelling and ping-pong in one loop. */
+ * through a 4-pole low pass (dly_aa, its state in the DELAY_TAIL samples after the line, which is `len` samples), every
+ * k-th sample of it with the feedback written to the line; every sample reads the line between two of its samples
+ * (linear) at the time's distance behind the write head (cur, samples Q16), so the time keeps its sample resolution. A
+ * moving time glides as in dly_glide. Plain, swelling and ping-pong in one loop. */
 static void __attribute__((noinline)) dly_slow(inst_t *it, const esig_t *in, esig_t *out, esig_t *outr, uint32_t n, int64_t tq, int32_t fb, int32_t mix, int pp, int swell, uint32_t sh, uint32_t len)
 {
     const uint32_t k = 1u << sh, H = len / 2u, nl = pp ? H : len;
     const int32_t sub = (int32_t)(65536u >> sh);      /* a sample in line samples, Q16 */
     int16_t *buf = it->s.dly.buf, *bb = buf + H;
-    int32_t *lp = (int32_t *)(void *)(buf + len);   /* x1 x2 y1 y2 of each section, Q24 (len is even: 4-byte aligned) */
-    const int32_t *c = DELAY_AA[sh - 1u];
+    int32_t ys[ENG_BLOCK / 2u], *yp = ys;           /* the filtered input at the line's writes (k >= 2: at most n / 2) */
     int moving = it->s.dly.cur != tq || it->s.dly.rate;   /* (a flag: the 64-bit compare every sample cost more) */
-    int32_t x1 = lp[0], x2 = lp[1], u1 = lp[2], u2 = lp[3], v1 = lp[4], v2 = lp[5], y1 = lp[6], y2 = lp[7];
     uint32_t w = it->s.dly.w, ph = it->s.dly.ph, i;
     int32_t dry = ENG_ONE - mix, rate = it->s.dly.rate, rdi, rdf;
     int64_t cur = it->s.dly.cur, lo = (int64_t)k << 16, hi = ((int64_t)(nl - 1u) << sh) << 16, rd;
+    dly_aa((int32_t *)(void *)(buf + len), DELAY_AA[sh - 1u], in, n, ph, k, ys);   /* (len is even: 4-byte aligned) */
     if (swell)
         fb = (int32_t)((int64_t)fb * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
     if (w >= nl)
@@ -6352,8 +6432,18 @@ static void __attribute__((noinline)) dly_slow(inst_t *it, const esig_t *in, esi
     rd = (cur + (int64_t)k - 1) >> sh;              /* the distance in line samples, rounded up (Q16) */
     rdi = (int32_t)(rd >> 16);
     rdf = (int32_t)(rd & 0xffff);
+    if (!moving) {
+        if (pp) {
+            if (swell) slow_fast(1, 1, buf, nl, sh, &w, &ph, rdi, rdf, in, ys, out, outr, n, fb, mix);
+            else slow_fast(1, 0, buf, nl, sh, &w, &ph, rdi, rdf, in, ys, out, outr, n, fb, mix);
+        } else {
+            if (swell) slow_fast(0, 1, buf, nl, sh, &w, &ph, rdi, rdf, in, ys, out, outr, n, fb, mix);
+            else slow_fast(0, 0, buf, nl, sh, &w, &ph, rdi, rdf, in, ys, out, outr, n, fb, mix);
+        }
+        n = 0;
+    }
     for (i = 0; i < n; i++) {
-        int32_t fr, ea, eb = 0, x, u, y, t, i0, i1;
+        int32_t fr, ea, eb = 0, t, i0, i1;
         if (moving) {
             int64_t diff = tq - cur, cc;
             int32_t step = (int32_t)(diff >> DELAY_GLIDE_SHIFT);
@@ -6381,19 +6471,14 @@ static void __attribute__((noinline)) dly_slow(inst_t *it, const esig_t *in, esi
         ea = (int32_t)buf[i0] * 8 + ((((int32_t)buf[i1] - buf[i0]) * fr) >> 12);
         if (pp)
             eb = (int32_t)bb[i0] * 8 + ((((int32_t)bb[i1] - bb[i0]) * fr) >> 12);
-        x = clampi(in[i], -32 * ENG_ONE, 32 * ENG_ONE) << 8;   /* Q24 (+-32: -64 Q16 looks like a ROM address to tools/build.py) */
-        u = (int32_t)(((int64_t)c[0] * (x + 2 * x1 + x2) - (int64_t)c[1] * u1 - (int64_t)c[2] * u2 + (1 << 27)) >> 28);
-        x2 = x1; x1 = x; u2 = u1; u1 = u;
-        y = (int32_t)(((int64_t)c[3] * (u + 2 * v1 + v2) - (int64_t)c[4] * y1 - (int64_t)c[5] * y2 + (1 << 27)) >> 28);
-        v2 = v1; v1 = u; y2 = y1; y1 = y;
         if (ph == k - 1u) {
-            int32_t y16 = (y + 128) >> 8, v;
+            int32_t v;
             if (pp) {
-                v = mul16(ea, fb);
+                v = MUL_E(ea, fb);
                 bb[w] = dly_pack(swell ? dly_soft(v) : v);
-                v = y16 + mul16(eb, fb);
+                v = *yp++ + MUL_E(eb, fb);
             } else
-                v = y16 + mul16(ea, fb);
+                v = *yp++ + MUL_E(ea, fb);
             buf[w] = dly_pack(swell ? dly_soft(v) : v);
             ph = 0;
             if (++w == nl)
@@ -6402,11 +6487,10 @@ static void __attribute__((noinline)) dly_slow(inst_t *it, const esig_t *in, esi
             ph++;
         {
             int32_t dr = mul16(in[i], dry);
-            out[i] = dr + mul16(ea, mix);
-            outr[i] = pp ? dr + mul16(eb, mix) : out[i];
+            out[i] = dr + MUL_E(ea, mix);
+            outr[i] = pp ? dr + MUL_E(eb, mix) : out[i];
         }
     }
-    lp[0] = x1; lp[1] = x2; lp[2] = u1; lp[3] = u2; lp[4] = v1; lp[5] = v2; lp[6] = y1; lp[7] = y2;
     it->s.dly.w = w;
     it->s.dly.ph = (uint8_t)ph;
     it->s.dly.cur = cur;
@@ -6415,11 +6499,11 @@ static void __attribute__((noinline)) dly_slow(inst_t *it, const esig_t *in, esi
 
 /* Tape's loop (modules.ts delayTape): the echo e times fb through a one-pole low pass (*l) and a high pass (the low
  * pass's output less a slower low pass of it, *h); Q24 states, Q16 in and out */
-static inline int32_t tape_loop(int32_t *l, int32_t *h, int32_t e, int32_t fb, int32_t pl, int32_t phq)
+static inline int32_t tape_loop(int32_t *l, int32_t *h, int32_t e, int32_t fb, uint32_t pl, uint32_t phq)
 {
-    int32_t v = clampi(mul16(e, fb), -32 * ENG_ONE, 32 * ENG_ONE) << 8;
-    *l += (int32_t)(((int64_t)pl * (v - *l)) >> 24);
-    *h += (int32_t)(((int64_t)phq * (*l - *h)) >> 24);
+    int32_t v = clampi(MUL_E(e, fb), -32 * ENG_ONE, 32 * ENG_ONE) << 8;
+    *l += (int32_t)(((int64_t)(v - *l) * (int64_t)pl) >> 32);       /* (pl, phq: the Q24 poles x 256, unsigned: a */
+    *h += (int32_t)(((int64_t)(*l - *h) * (int64_t)phq) >> 32);      /* multiply-high, (x pole) >> 24 exactly) */
     return (*l - *h + 128) >> 8;
 }
 
@@ -6427,21 +6511,94 @@ static inline int32_t tape_loop(int32_t *l, int32_t *h, int32_t e, int32_t fb, i
  * j + 1 times the time, clamped to the line) read the line between two samples at their distance plus the wow and flutter
  * offset (two sines, worked out per block and ramped across it in whole steps), and sound together at 1 / n each. The
  * feedback runs through a one-pole low pass and high pass (DELAY_TAPE_LPQ / HPQ, Q24) and, with the input (through the
- * rate's low pass at a lower rate), through dly_soft into the line. Distances in 1/256 samples (32 bits). The state in the
- * line's tail: the rate's low pass in words 0..7, Tape's loop filters (A low, A high, B low, B high), the wow and flutter
- * phases and the last offset in 8..14. */
+ * rate's low pass, dly_aa, at a lower rate), through dly_soft into the line. Distances in 1/256 samples (32 bits). The
+ * state in the line's tail: the rate's low pass in words 0..7, Tape's loop filters (A low, A high, B low, B high), the wow
+ * and flutter phases and the last offset in 8..14.
+ * While the time stands and every head stays inside the line for the whole block (the usual case), each head's read point
+ * moves by the same amount every sample: q, the distance of the write head's time ahead of the head's in 1/256 samples
+ * (modulo the line), steps by 256 less the offset's step, and the read is at q / k. That is the same sample and fraction
+ * the general loop works out (floor((W - d) / k) = W / k - ceil(d / k), W a multiple of k), without its multiply and clamp
+ * per head. */
+
+/* dly_tape's loop while the time stands and its heads stay inside the line (see there), for pp and nh known at the call,
+ * so that each case keeps its state in registers: q the heads' points (1/256 samples, modulo M) and their steps, st the loop
+ * filters (A low, A high, B low, B high), ys the input to write */
+HOT void tape_fast(const int pp, const int nh, int16_t *buf, uint32_t nl, uint32_t sh, uint32_t *wp, uint32_t *php,
+                   int32_t *q, int32_t M, int32_t g, const esig_t *in, const int32_t *yp, esig_t *out,
+                   esig_t *outr, uint32_t n, int32_t fb, int32_t mix, uint32_t pl, uint32_t phq, int32_t *st)
+{
+    int16_t *bb = buf + nl;
+    const uint32_t k1 = (1u << sh) - 1u;
+    const int32_t dry = ENG_ONE - mix;
+    uint32_t w = *wp, ph = *php, i;
+    int32_t q0 = q[0], q1 = nh > 1 ? q[1] : 0, q2 = nh > 2 ? q[2] : 0, lA = st[0], hA = st[1], lB = st[2], hB = st[3];
+    const int32_t inc0 = q[3], inc1 = nh > 1 ? q[4] : 0, inc2 = nh > 2 ? q[5] : 0;
+    for (i = 0; i < n; i++) {
+        int32_t ea, eb = 0, pos, i0, i1, fr;
+#define TAPE_HEAD(qj, incj, first)                                                                          \
+        pos = (qj) >> sh;                                                                                   \
+        i0 = pos >> 8;                                                                                      \
+        i1 = i0 + 1 == (int32_t)nl ? 0 : i0 + 1;                                                            \
+        fr = pos & 255;                                                                                     \
+        ea = (first ? 0 : ea) + (int32_t)buf[i0] * 8 + ((((int32_t)buf[i1] - buf[i0]) * fr) >> 5);           \
+        if (pp)                                                                                             \
+            eb = (first ? 0 : eb) + (int32_t)bb[i0] * 8 + ((((int32_t)bb[i1] - bb[i0]) * fr) >> 5);         \
+        qj += incj;                                                                                         \
+        if (qj >= M)                                                                                        \
+            qj -= M;
+        TAPE_HEAD(q0, inc0, 1)
+        if (nh > 1) {
+            TAPE_HEAD(q1, inc1, 0)
+        }
+        if (nh > 2) {
+            TAPE_HEAD(q2, inc2, 0)
+        }
+#undef TAPE_HEAD
+        if (nh > 1) {
+            ea = mul16(ea, g);
+            if (pp)
+                eb = mul16(eb, g);
+        }
+        if (ph == k1) {
+            if (pp) {
+                bb[w] = DLY_PACK_SOFT(tape_loop(&lB, &hB, ea, fb, pl, phq));
+                buf[w] = DLY_PACK_SOFT(*yp + tape_loop(&lA, &hA, eb, fb, pl, phq));
+            } else
+                buf[w] = DLY_PACK_SOFT(*yp + tape_loop(&lA, &hA, ea, fb, pl, phq));
+            yp++;
+            ph = 0;
+            if (++w == nl)
+                w = 0;
+        } else
+            ph++;
+        {
+            int32_t dr = mul16(in[i], dry);
+            out[i] = dr + MUL_E(ea, mix);
+            outr[i] = pp ? dr + MUL_E(eb, mix) : out[i];
+        }
+    }
+    st[0] = lA; st[1] = hA; st[2] = lB; st[3] = hB;
+    *wp = w;
+    *php = ph;
+}
+
 static void __attribute__((noinline)) dly_tape(inst_t *it, const esig_t *in, esig_t *out, esig_t *outr, uint32_t n, int64_t tq, int32_t fb, int32_t mix, int pp, int swell, uint32_t sh, uint32_t len, int32_t wow, uint32_t mask)
 {
     const uint32_t k = 1u << sh, H = len / 2u, nl = pp ? H : len;
     const int32_t sub = (int32_t)(256u >> sh), lo8 = (int32_t)k << 8, hi8 = (int32_t)(((nl - 1u) << sh) << 8);
     int16_t *buf = it->s.dly.buf, *bb = buf + H;
     int32_t *tl = (int32_t *)(void *)(buf + len);
-    const int32_t *c = sh ? DELAY_AA[sh - 1u] : 0, pl = DELAY_TAPE_LPQ[sh], phq = DELAY_TAPE_HPQ[sh];
+    const uint32_t pl = (uint32_t)DELAY_TAPE_LPQ[sh] << 8, phq = (uint32_t)DELAY_TAPE_HPQ[sh] << 8;
     int32_t hj[3], nh = 0, g, lA = tl[8], hA = tl[9], lB = tl[10], hB = tl[11];
+    int32_t ys[ENG_BLOCK / 2u], *yp = ys;           /* the input at the line's writes (through the rate's low pass) */
     int moving = it->s.dly.cur != tq || it->s.dly.rate;
     uint32_t w = it->s.dly.w, ph = it->s.dly.ph, i, wph, fph;
     int32_t dry = ENG_ONE - mix, rate = it->s.dly.rate, m0 = tl[14], m1, step, cur8;
     int64_t cur = it->s.dly.cur, lo = (int64_t)k << 16, hi = ((int64_t)(nl - 1u) << sh) << 16;
+    if (sh)
+        dly_aa(tl, DELAY_AA[sh - 1u], in, n, ph, k, ys);
+    else
+        yp = (int32_t *)in;                         /* (read only) */
     if (swell)
         fb = (int32_t)((int64_t)fb * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
     if (w >= nl)
@@ -6457,8 +6614,42 @@ static void __attribute__((noinline)) dly_tape(inst_t *it, const esig_t *in, esi
         if (mask & (1u << (i - 1u)))
             hj[nh++] = (int32_t)i;
     g = DELAY_HEAD_GAIN[nh];
+    if (!moving && step > -256 && step < 256) {
+        int32_t q[6], j;                            /* q[j]: head j's point, q[3 + j] its step */
+        const int32_t M = (int32_t)((nl << sh) << 8);
+        const int32_t W = ((int32_t)(w << sh) + (int32_t)ph - (int32_t)k + 1) << 8;   /* the write head's time, 1/256 samples */
+        for (j = 0; j < nh; j++) {
+            int32_t d0 = hj[j] * cur8 + m0 + step, d1 = hj[j] * cur8 + m0 + step * (int32_t)n;
+            q[3 + j] = 256 - step;
+            if (d0 > hi8 && d1 > hi8) {             /* past the line's end the whole block: it plays at the end */
+                d0 = hi8;
+                q[3 + j] = 256;
+            } else if (d0 < lo8 && d1 < lo8) {
+                d0 = lo8;
+                q[3 + j] = 256;
+            } else if (d0 < lo8 || d0 > hi8 || d1 < lo8 || d1 > hi8)
+                break;
+            q[j] = W - d0;
+            if (q[j] < 0)
+                q[j] += M;
+        }
+        if (j == nh) {
+            int32_t st[4] = {lA, hA, lB, hB};
+            if (pp) {
+                if (nh == 1) tape_fast(1, 1, buf, nl, sh, &w, &ph, q, M, g, in, yp, out, outr, n, fb, mix, pl, phq, st);
+                else if (nh == 2) tape_fast(1, 2, buf, nl, sh, &w, &ph, q, M, g, in, yp, out, outr, n, fb, mix, pl, phq, st);
+                else tape_fast(1, 3, buf, nl, sh, &w, &ph, q, M, g, in, yp, out, outr, n, fb, mix, pl, phq, st);
+            } else {
+                if (nh == 1) tape_fast(0, 1, buf, nl, sh, &w, &ph, q, M, g, in, yp, out, outr, n, fb, mix, pl, phq, st);
+                else if (nh == 2) tape_fast(0, 2, buf, nl, sh, &w, &ph, q, M, g, in, yp, out, outr, n, fb, mix, pl, phq, st);
+                else tape_fast(0, 3, buf, nl, sh, &w, &ph, q, M, g, in, yp, out, outr, n, fb, mix, pl, phq, st);
+            }
+            lA = st[0]; hA = st[1]; lB = st[2]; hB = st[3];
+            goto done;
+        }
+    }
     for (i = 0; i < n; i++) {
-        int32_t ea = 0, eb = 0, y, m = m0 + step * (int32_t)(i + 1u), base = ((int32_t)ph - (int32_t)k + 1) * sub, j;
+        int32_t ea = 0, eb = 0, m = m0 + step * (int32_t)(i + 1u), base = ((int32_t)ph - (int32_t)k + 1) * sub, j;
         if (moving) {
             int64_t diff = tq - cur, cc;
             int32_t st = (int32_t)(diff >> DELAY_GLIDE_SHIFT);
@@ -6490,21 +6681,13 @@ static void __attribute__((noinline)) dly_tape(inst_t *it, const esig_t *in, esi
             ea = mul16(ea, g);
             eb = mul16(eb, g);
         }
-        y = in[i];
-        if (sh) {
-            int32_t x = clampi(in[i], -32 * ENG_ONE, 32 * ENG_ONE) << 8, u;   /* Q24 */
-            u = (int32_t)(((int64_t)c[0] * (x + 2 * tl[0] + tl[1]) - (int64_t)c[1] * tl[2] - (int64_t)c[2] * tl[3] + (1 << 27)) >> 28);
-            tl[1] = tl[0]; tl[0] = x; tl[3] = tl[2]; tl[2] = u;
-            y = (int32_t)(((int64_t)c[3] * (u + 2 * tl[4] + tl[5]) - (int64_t)c[4] * tl[6] - (int64_t)c[5] * tl[7] + (1 << 27)) >> 28);
-            tl[5] = tl[4]; tl[4] = u; tl[7] = tl[6]; tl[6] = y;
-            y = (y + 128) >> 8;
-        }
         if (ph == k - 1u) {
             if (pp) {
-                bb[w] = dly_pack(dly_soft(tape_loop(&lB, &hB, ea, fb, pl, phq)));
-                buf[w] = dly_pack(dly_soft(y + tape_loop(&lA, &hA, eb, fb, pl, phq)));
+                bb[w] = DLY_PACK_SOFT((tape_loop(&lB, &hB, ea, fb, pl, phq)));
+                buf[w] = DLY_PACK_SOFT((*yp + tape_loop(&lA, &hA, eb, fb, pl, phq)));
             } else
-                buf[w] = dly_pack(dly_soft(y + tape_loop(&lA, &hA, ea, fb, pl, phq)));
+                buf[w] = DLY_PACK_SOFT((*yp + tape_loop(&lA, &hA, ea, fb, pl, phq)));
+            yp++;
             ph = 0;
             if (++w == nl)
                 w = 0;
@@ -6512,16 +6695,102 @@ static void __attribute__((noinline)) dly_tape(inst_t *it, const esig_t *in, esi
             ph++;
         {
             int32_t dr = mul16(in[i], dry);
-            out[i] = dr + mul16(ea, mix);
-            outr[i] = pp ? dr + mul16(eb, mix) : out[i];
+            out[i] = dr + MUL_E(ea, mix);
+            outr[i] = pp ? dr + MUL_E(eb, mix) : out[i];
         }
     }
+done:
     tl[8] = lA; tl[9] = hA; tl[10] = lB; tl[11] = hB;
     tl[14] = m0 + step * (int32_t)n;
     it->s.dly.w = w;
     it->s.dly.ph = (uint8_t)ph;
     it->s.dly.cur = cur;
     it->s.dly.rate = rate;
+}
+
+/* a ring of lo samples at b (w its next write) as a ring of ln (dly_change): every sample keeps its distance behind the
+ * write head; a shorter ring drops its oldest samples, a longer one gets silence older than all of them. The new w. */
+static uint32_t dly_ring(int16_t *b, uint32_t lo, uint32_t ln, uint32_t w)
+{
+    uint32_t i;
+    if (ln < lo) {
+        if (w > ln) {                               /* the oldest are w..lo-1 and 0..w-ln-1: the rest moves down to 0 */
+            for (i = 0; i < ln; i++)
+                b[i] = b[i + w - ln];
+            return 0;
+        }
+        for (i = w; i < ln; i++)                    /* the oldest are w..w+lo-ln-1 */
+            b[i] = b[i + lo - ln];
+        return w == ln ? 0 : w;
+    }
+    if (ln > lo) {
+        for (i = lo; i-- > w;)
+            b[i + ln - lo] = b[i];
+        for (i = w; i < w + ln - lo; i++)
+            b[i] = 0;
+    }
+    return w;
+}
+
+/* a new rate or Tape on / off (#659, #660; modules.ts delayChange): the line keeps what it holds. When the line gives its
+ * last DELAY_TAIL samples to the filters' state (a lower rate or Tape) or takes them back, its ring (each ping-pong side
+ * its half) drops its oldest samples or gets that much silence older than them, so every echo keeps its place (dly_ring),
+ * and a new tail starts from silence. A lower rate's low pass coming from 44k starts settled on the input x0 (no step
+ * into the line); Tape's state starts from silence. A new rate is a tape changing speed: the read point stays on the same
+ * line sample, the line now moving past it at the new rate, so the echoes in it play on pitched by the ratio of the rates,
+ * and the read point glides from there to the time (dly_glide: cur in samples, now k_new / k_old times as many). */
+static void __attribute__((noinline)) dly_change(inst_t *it, uint32_t sh, int tape, int pp, int32_t x0)
+{
+    int16_t *buf = it->s.dly.buf;
+    const uint32_t len = it->s.dly.len, ko = it->s.dly.rk, kn = 1u << sh;
+    const uint32_t lo = ko > 1u || it->s.dly.tp ? len - DELAY_TAIL : len, ln = sh || tape ? len - DELAY_TAIL : len;
+    int32_t *tl = (int32_t *)(void *)(buf + len - DELAY_TAIL);
+    uint32_t w = it->s.dly.w, w2, i;
+    if (lo != ln) {
+        if (!pp)
+            w = dly_ring(buf, lo, ln, w < lo ? w : 0u);
+        else {
+            const uint32_t ho = lo / 2u, hn = ln / 2u;
+            if (w >= ho)
+                w = 0;
+            if (hn < ho) {                         /* A shorter first (it reads up to ho), B shorter, B down to hn */
+                w2 = dly_ring(buf, ho, hn, w);
+                dly_ring(buf + ho, ho, hn, w);
+                for (i = 0; i < hn; i++)
+                    buf[hn + i] = buf[ho + i];
+            } else {                               /* B up to hn first, B longer, A longer (it writes up to hn) */
+                for (i = ho; i-- > 0;)
+                    buf[hn + i] = buf[ho + i];
+                dly_ring(buf + hn, ho, hn, w);
+                w2 = dly_ring(buf, ho, hn, w);
+            }
+            w = w2;
+        }
+        it->s.dly.w = w;
+    }
+    if (ln < lo)
+        for (i = 0; i < DELAY_TAIL / 2u; i++)
+            tl[i] = 0;
+    else if (tape && !it->s.dly.tp)
+        for (i = 8; i < DELAY_TAIL / 2u; i++)
+            tl[i] = 0;
+    if (ko == kn)
+        return;
+    if (ko == 1u) {
+        int32_t x = clampi(x0, -4 * ENG_ONE, 4 * ENG_ONE) * 1024;   /* (dly_aa: Q26) */
+        for (i = 0; i < 8u; i++)
+            tl[i] = x;
+    }
+    {   /* the read point w - (k - 1 - ph + cur) / k line samples stays, with ph 0 from here */
+        int64_t a = ((int64_t)(ko - 1u - it->s.dly.ph) << 16) + it->s.dly.cur, c;
+        uint32_t so = ko == 4u ? 2u : ko == 2u ? 1u : 0u;
+        c = ((a << sh) >> so) - ((int64_t)(kn - 1u) << 16);
+        it->s.dly.cur = c < (int64_t)kn << 16 ? (int64_t)kn << 16 : c;
+        it->s.dly.ph = 0;
+        /* the line samples behind the read point are the old rate's: they play at the new speed until the read point
+         * reaches where the change was, kn - 1 + cur samples (counted in whole blocks), then the glide starts */
+        it->s.dly.rate = DLY_HOLD + (int32_t)((it->s.dly.cur >> 16) + kn - 1u);
+    }
 }
 
 /* free or synced time (see modules.ts); ping-pong splits the buffer in two halves, A (input, left) and B (right), see
@@ -6532,34 +6801,29 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
     const esig_t *in = it->in[DELAY_I_IN];
     esig_t *out = it->out[DELAY_O_OUT], *outr = it->out[DELAY_O_R];
     int16_t *buf = it->s.dly.buf;
-    uint32_t w = it->s.dly.w, i, d;
+    uint32_t w, i, d;
     int32_t fb = EF(it, DELAY_P_FB), mix = EF(it, DELAY_P_MIX), dry = ENG_ONE - mix;
     int pp = EF(it, DELAY_P_PINGPONG) >= 32768, swell = EF(it, DELAY_P_SWELL) >= 32768;
     int32_t note = clampi((EF(it, DELAY_P_NOTE) + 32768) >> 16, 0, DELAY_NNOTE - 1);
-    /* its rate (#659): step sh keeps every (1 << sh)-th sample (dly_slow), the line DELAY_TAIL samples shorter for the low
-     * pass's state; a new rate empties the line and the read starts where the time is */
+    /* its rate (#659): step sh keeps every (1 << sh)-th sample (dly_slow); Tape (#660): dly_tape. Either takes the line's
+     * last DELAY_TAIL samples for the filters' state; a new rate or Tape on / off keeps the echoes (dly_change) */
     const uint32_t sh = (uint32_t)clampi((EF(it, DELAY_P_RATE) + 32768) >> 16, 0, DELAY_NRATE - 1);
-    const int tape = EF(it, DELAY_P_TAPE) >= 32768;   /* Tape (#660): dly_tape, the line DELAY_TAIL samples shorter too */
+    const int tape = EF(it, DELAY_P_TAPE) >= 32768;
     /* its line (L samples, from its length; ping-pong two halves of H): the time, free or synced, plays up to it (times k) */
     const uint32_t L = sh || tape ? it->s.dly.len - DELAY_TAIL : it->s.dly.len, H = L / 2u;
-    int64_t smp, top = ((pp ? (int64_t)H : (int64_t)L) - 1) << sh;
-    if (it->s.dly.rk != 1u << sh) {
-        if (it->s.dly.rk) {
-            for (i = 0; i < it->s.dly.len; i++)
-                buf[i] = 0;
-            w = it->s.dly.w = it->s.dly.ph = 0;
-            it->s.dly.cur = 0;
-            it->s.dly.rate = 0;
-        }
+    int64_t smp, top = ((pp ? (int64_t)H : (int64_t)L) - 1) << sh, tq;
+    uint32_t hold = 0;
+    if (it->s.dly.rk != 1u << sh || it->s.dly.tp != (uint8_t)tape) {
+        if (it->s.dly.rk)
+            dly_change(it, sh, tape, pp, in[0]);
         it->s.dly.rk = (uint8_t)(1u << sh);
         it->s.dly.tp = (uint8_t)tape;
     }
-    if (it->s.dly.tp != (uint8_t)tape) {   /* Tape on or off keeps the line: its tail changes role (Tape's state, or line
-                                              * again) and is zeroed; at a lower rate the rate's low pass keeps words 0..7 */
-        for (i = it->s.dly.len - DELAY_TAIL + (sh ? 16u : 0u); i < it->s.dly.len; i++)
-            buf[i] = 0;
-        it->s.dly.tp = (uint8_t)tape;
+    if (it->s.dly.rate >= DLY_HOLD) {   /* a new rate's echoes still play at its speed (dly_change): the read point stands */
+        hold = (uint32_t)(it->s.dly.rate - DLY_HOLD);
+        it->s.dly.rate = 0;
     }
+    w = it->s.dly.w;
     if (nd->conn & (1u << DELAY_I_CLK)) {   /* tempo: the time of the last 24 clock pulses, smoothed */
         const esig_t *clk = it->in[DELAY_I_CLK];
         for (i = 0; i < n; i++) {
@@ -6588,20 +6852,21 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
     d = (uint32_t)(smp < (1 << sh) ? (1 << sh) : smp > top ? top : smp);
     if (it->s.dly.cur == 0 || it->s.dly.cur > top << 16)
         it->s.dly.cur = it->s.dly.cur == 0 ? (int64_t)d << 16 : top << 16;
+    tq = hold ? it->s.dly.cur : (int64_t)d << 16;
     if (tape) {
         it->s.dly.w = w;
-        dly_tape(it, in, out, outr, n, (int64_t)d << 16, fb, mix, pp, swell, sh, L, EF(it, DELAY_P_WOW),
+        dly_tape(it, in, out, outr, n, tq, fb, mix, pp, swell, sh, L, EF(it, DELAY_P_WOW),
                  DELAY_HEAD_MASK[clampi((EF(it, DELAY_P_HEADS) + 32768) >> 16, 0, DELAY_NHEADS - 1)]);
-        return;
+        goto held;
     }
     if (sh) {
         it->s.dly.w = w;
-        dly_slow(it, in, out, outr, n, (int64_t)d << 16, fb, mix, pp, swell, sh, L);
-        return;
+        dly_slow(it, in, out, outr, n, tq, fb, mix, pp, swell, sh, L);
+        goto held;
     }
-    if (it->s.dly.cur != (int64_t)d << 16 || it->s.dly.rate) {     /* the time moved: glide there (#484), the plain loops below once it has arrived */
-        dly_glide(it, in, out, outr, n, (int64_t)d << 16, fb, mix, pp, swell);
-        return;
+    if (hold || it->s.dly.cur != tq || it->s.dly.rate) {     /* the time moved: glide there (#484), the plain loops below once it has arrived */
+        dly_glide(it, in, out, outr, n, tq, fb, mix, pp, swell);
+        goto held;
     }
     if (swell) {
         fb = (int32_t)((int64_t)fb * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
@@ -6612,13 +6877,13 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
             int32_t ea = (int32_t)buf[rp] * 8, dr = mul16(in[i], dry);
             if (pp) {
                 int32_t eb = (int32_t)buf[H + rp] * 8;
-                buf[H + w] = dly_pack(dly_soft(mul16(ea, fb)));
-                buf[w] = dly_pack(dly_soft(in[i] + mul16(eb, fb)));
-                out[i] = dr + mul16(ea, mix);
-                outr[i] = dr + mul16(eb, mix);
+                buf[H + w] = dly_pack(dly_soft(MUL_E(ea, fb)));
+                buf[w] = dly_pack(dly_soft(in[i] + MUL_E(eb, fb)));
+                out[i] = dr + MUL_E(ea, mix);
+                outr[i] = dr + MUL_E(eb, mix);
             } else {
-                buf[w] = dly_pack(dly_soft(in[i] + mul16(ea, fb)));
-                out[i] = dr + mul16(ea, mix);
+                buf[w] = dly_pack(dly_soft(in[i] + MUL_E(ea, fb)));
+                out[i] = dr + MUL_E(ea, mix);
                 outr[i] = out[i];
             }
             if (++w == len)
@@ -6628,10 +6893,10 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
         for (i = 0; i < n; i++) {
             uint32_t rp = w >= d ? w - d : w + L - d;
             int32_t r = (int32_t)buf[rp] * 8;
-            buf[w] = dly_pack(in[i] + mul16(r, fb));
+            buf[w] = dly_pack(in[i] + MUL_E(r, fb));
             if (++w == L)
                 w = 0;
-            out[i] = mul16(in[i], dry) + mul16(r, mix);
+            out[i] = mul16(in[i], dry) + MUL_E(r, mix);
             outr[i] = out[i];
         }
     } else {
@@ -6641,15 +6906,18 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
         for (i = 0; i < n; i++) {
             uint32_t rp = w >= d ? w - d : w + H - d;
             int32_t ea = (int32_t)buf[rp] * 8, eb = (int32_t)bb[rp] * 8, dr = mul16(in[i], dry);
-            bb[w] = dly_pack(mul16(ea, fb));
-            buf[w] = dly_pack(in[i] + mul16(eb, fb));
+            bb[w] = dly_pack(MUL_E(ea, fb));
+            buf[w] = dly_pack(in[i] + MUL_E(eb, fb));
             if (++w == H)
                 w = 0;
-            out[i] = dr + mul16(ea, mix);
-            outr[i] = dr + mul16(eb, mix);
+            out[i] = dr + MUL_E(ea, mix);
+            outr[i] = dr + MUL_E(eb, mix);
         }
     }
     it->s.dly.w = w;
+held:
+    if (hold)
+        it->s.dly.rate = hold > n ? DLY_HOLD + (int32_t)(hold - n) : 0;
 }
 
 /* ---- reverb: the same Freeverb-style network as modules.ts, in Q16 with int16 (Q13) delay memory */
@@ -8031,7 +8299,10 @@ static void m_range(const node_t *nd, inst_t *it, uint32_t n)
     int32_t lo = EF(it, RANGE_P_INLO), span = EF(it, RANGE_P_INHI) - lo;
     int32_t olo = EF(it, RANGE_P_OUTLO), ospan = EF(it, RANGE_P_OUTHI) - olo;
     int32_t c = clampi(EF(it, RANGE_P_CURVE), -ENG_ONE, ENG_ONE);
-    int32_t tlo = EF(it, RANGE_P_CLAMP) >= ENG_ONE / 2 ? 0 : -RANGE_T_MAX * ENG_ONE, thi = tlo ? RANGE_T_MAX * ENG_ONE : ENG_ONE;
+    const int32_t clamp = EF(it, RANGE_P_CLAMP) >= ENG_ONE / 2;
+    /* tlo 0 or -RANGE_T_MAX Q16 as a shift of clamp - 1: written as a constant it is 0xFFC00000, which build.py rejects as
+     * a chip ROM address */
+    const int32_t thi = clamp ? ENG_ONE : RANGE_T_MAX * ENG_ONE, tlo = (clamp - 1) * (RANGE_T_MAX * ENG_ONE);
     int64_t inv = span ? ((int64_t)1 << 32) / span : 0;
     uint32_t i;
     for (i = 0; i < n; i++) {

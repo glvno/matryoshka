@@ -574,7 +574,12 @@ export const DELAY_SYNC_TOP = 520;
  * before the row. The FM-1 sizes the line when the patch loads (engine.c dly_samples): no input, macro range, morph,
  * P-lock or knob moves the length while the patch plays (ParamDef.fixed) */
 export const DELAY_LENGTH_MIN = 10;
-export const DELAY_LENGTH_MAX = 1900;
+/** the longest length: what one Delay's line can take of the FM-1's memory arena (#649) in a patch of a Main, the Delay and
+ * an Output: 3.8 s, a line of 335,420 bytes of the arena's 338,740 (patchbin.ts ARENA). Every other module, line and voice
+ * takes from the same arena, and the editor's length row stops at what is left (delayRoom). A length past
+ * DELAY_LENGTH_GREW needs format 51 (1.10's longest was 1.9 s). */
+export const DELAY_LENGTH_MAX = 3800;
+export const DELAY_LENGTH_GREW = 1900;
 export const DELAY_LENGTH_DEFAULT = 700;
 /** the longest time a Delay plays, ms: the longest length at the lowest rate (#659: RATE 11k holds four times its length) */
 export const DELAY_REACH_MAX = DELAY_LENGTH_MAX * 4;
@@ -1618,6 +1623,9 @@ interface DelayState {
   wph: number;
   fph: number;
   m: number;
+  /** after a new rate (delayChange): the samples its echoes still play at the new speed before the read point glides to
+   * the time (engine.c keeps it in rate, past DLY_HOLD) */
+  hold: number;
 }
 
 /** the glide: the rate heads for 1 / 2^DELAY_GLIDE_SHIFT of the distance a sample (1024 samples, 23 ms), at most
@@ -1697,7 +1705,7 @@ function delaySlow(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, p
     const ea = buf[i0] + (buf[i1] - buf[i0]) * f;
     const x = c.inp.in[i];
     // the low pass in front of the line: two sections (direct form I), every sample
-    const xs = Math.max(-32, Math.min(32, x));
+    const xs = Math.max(-4, Math.min(4, x)); // (the line holds +-4)
     const u = b0 * (xs + 2 * lp[0] + lp[1]) - a1 * lp[2] - a2 * lp[3];
     lp[1] = lp[0]; lp[0] = xs; lp[3] = lp[2]; lp[2] = u;
     const y = c0 * (u + 2 * lp[4] + lp[5]) - d1 * lp[6] - d2 * lp[7];
@@ -1771,7 +1779,7 @@ function delayTape(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, p
     const x = c.inp.in[i];
     let y = x;
     if (k > 1) {
-      const xs = Math.max(-32, Math.min(32, x));
+      const xs = Math.max(-4, Math.min(4, x)); // (the line holds +-4)
       const u = b0 * (xs + 2 * lp[0] + lp[1]) - a1 * lp[2] - a2 * lp[3];
       lp[1] = lp[0]; lp[0] = xs; lp[3] = lp[2]; lp[2] = u;
       y = c0 * (u + 2 * lp[4] + lp[5]) - d1 * lp[6] - d2 * lp[7];
@@ -1798,6 +1806,79 @@ function delayTape(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, p
   s.m = m0 + step * c.n;
 }
 
+/** a ring of lo samples at b[base..] (w its next write) as a ring of ln (delayChange): every sample keeps its distance
+ * behind the write head; a shorter ring drops its oldest samples, a longer one gets silence older than all of them. The
+ * new w (engine.c dly_ring) */
+function delayRing(b: Float32Array, base: number, lo: number, ln: number, w: number): number {
+  if (ln < lo) {
+    if (w > ln) {
+      b.copyWithin(base, base + w - ln, base + w);
+      return 0;
+    }
+    b.copyWithin(base + w, base + w + lo - ln, base + lo);
+    return w === ln ? 0 : w;
+  }
+  if (ln > lo) {
+    b.copyWithin(base + w + ln - lo, base + w, base + lo);
+    b.fill(0, base + w, base + w + ln - lo);
+  }
+  return w;
+}
+
+/**
+ * A new rate or Tape on / off (#659, #660; engine.c dly_change): the line keeps what it holds. When the line gives its last
+ * DELAY_TAIL samples to the filters' state (a lower rate or Tape) or takes them back, its ring (each ping-pong side its
+ * half) drops its oldest samples or gets that much silence older than them, so every echo keeps its place (delayRing), and
+ * the new state starts from silence. A lower rate's low pass coming from 44k starts settled on the input x0 (no step into
+ * the line). A new rate is a tape changing speed: the read point stays on the same line sample while the line moves past
+ * it at the new rate, so the echoes in it play on pitched by the ratio of the rates (down an octave from 44k to 22k), and
+ * the read point stands (s.hold) until they have played, k / k_old times the time (s.cur, in samples, becomes k / k_old
+ * times as many). Then it glides to the time as for a turned time knob.
+ */
+function delayChange(s: DelayState, k: number, tape: boolean, pp: boolean, x0: number): void {
+  const buf = s.buf, len = buf.length, ko = s.rk;
+  const lo = ko > 1 || s.tp ? len - DELAY_TAIL : len, ln = k > 1 || tape ? len - DELAY_TAIL : len;
+  if (lo !== ln) {
+    let w = s.w;
+    if (!pp) w = delayRing(buf, 0, lo, ln, w < lo ? w : 0);
+    else {
+      const ho = lo / 2, hn = ln / 2;
+      if (w >= ho) w = 0;
+      if (hn < ho) {
+        // A shorter first (it reads up to ho), then B shorter, then B down to hn
+        const wa = delayRing(buf, 0, ho, hn, w);
+        delayRing(buf, ho, ho, hn, w);
+        buf.copyWithin(hn, ho, ho + hn);
+        w = wa;
+      } else {
+        // B up to hn first, then B longer, then A longer (it writes up to hn)
+        buf.copyWithin(hn, ho, 2 * ho);
+        delayRing(buf, hn, ho, hn, w);
+        w = delayRing(buf, 0, ho, hn, w);
+      }
+    }
+    s.w = w;
+  }
+  if (ln < lo) {
+    s.lp.fill(0);
+    s.tl.fill(0);
+    s.wph = s.fph = s.m = 0;
+  } else if (tape && !s.tp) {
+    s.tl.fill(0);
+    s.wph = s.fph = s.m = 0;
+  }
+  if (ko === k) return;
+  if (ko === 1) s.lp.fill(Math.max(-4, Math.min(4, x0)));
+  // the read point w - (k - 1 - ph + cur) / k line samples stays, with ph 0 from here
+  const cur = Math.floor((((ko - 1 - s.ph) * 65536 + s.cur) * k) / ko) - (k - 1) * 65536;
+  s.cur = Math.max(k * 65536, cur);
+  s.ph = 0;
+  // the line samples behind the read point are the old rate's: they play at the new speed until the read point reaches
+  // where the change was, k - 1 + cur samples (counted in whole blocks); then the glide starts
+  s.rate = 0;
+  s.hold = Math.floor(s.cur / 65536) + k - 1;
+}
+
 /**
  * Delay. free: `time` in ms; sync: `time` picks a note length (DELAY_DIVS) at the tempo of the `clk` input (the Main module's
  * clock; 120 bpm until 24 pulses have come in). The tempo is the time of the last 24 pulses, smoothed. Its line holds
@@ -1810,7 +1891,8 @@ function delayTape(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, p
  * 1.98) and the loop through a soft clip (delayClip), so a feedback past 1 swells to about full level and holds there.
  * A new time (a turned knob, a cable into `time`) is not a jump: the read position glides there (delayGlide, #484).
  * `rate` (#659): 44k keeps every sample; 22k and 11k low-pass the input and keep every 2nd or 4th sample, so the same line
- * holds two or four times its length (delaySlow; the length row shows that time). A new rate empties the line.
+ * holds two or four times its length (delaySlow; the length row shows that time). A new rate keeps the echoes, pitched as
+ * a tape changing speed (delayChange).
  */
 const delay: ModuleImpl<DelayState> = {
   def: {
@@ -1826,48 +1908,35 @@ const delay: ModuleImpl<DelayState> = {
       param('pingpong', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
       param('note', 0, DELAY_NOTES.length - 1, 0, { step: 1, choices: DELAY_NOTES.map((d) => d.name), since: 35 }),
       param('swell', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 35 }),
-      param('length', DELAY_LENGTH_MIN, DELAY_LENGTH_MAX, DELAY_LENGTH_DEFAULT, { unit: 'ms', step: 10, since: 50, fixed: true, altText: { when: 'rate', text: (v, p) => `${Math.round(v) * delayRateK(p.rate ?? 0)} ms` } }),
+      param('length', DELAY_LENGTH_MIN, DELAY_LENGTH_MAX, DELAY_LENGTH_DEFAULT, { unit: 'ms', step: 10, since: 50, grew: { since: 51, from: DELAY_LENGTH_GREW }, fixed: true, altText: { when: 'rate', text: (v, p) => `${Math.round(v) * delayRateK(p.rate ?? 0)} ms` } }),
       param('rate', 0, DELAY_RATES.length - 1, 0, { step: 1, choices: DELAY_RATES, since: 51 }),
       param('tape', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 51 }),
       param('wow', 0, 1, 0.3, { step: 0.01, since: 51 }),
       param('heads', 0, DELAY_HEADS.length - 1, 0, { step: 1, choices: DELAY_HEADS, since: 51 }),
     ],
   },
-  init: (sr) => ({ buf: new Float32Array(0), w: 0, cur: 0, rate: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2), rk: 0, ph: 0, lp: new Float64Array(8), tp: false, tl: new Float64Array(4), wph: 0, fph: 0, m: 0 }),
+  init: (sr) => ({ buf: new Float32Array(0), w: 0, cur: 0, rate: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2), rk: 0, ph: 0, lp: new Float64Array(8), tp: false, tl: new Float64Array(4), wph: 0, fph: 0, m: 0, hold: 0 }),
   process(c, s) {
     // the line its length holds (at this sample rate); a new length (an edit) starts an empty line, as the FM-1's load does
     const want = Math.round((c.sr * delayLine(c.p.length ?? DELAY_LENGTH_DEFAULT)) / DEVICE_SR);
     if (s.buf.length !== want) {
       s.buf = new Float32Array(want);
-      s.w = s.cur = s.rate = s.rk = s.ph = s.wph = s.fph = s.m = 0;
+      s.w = s.cur = s.rate = s.rk = s.ph = s.wph = s.fph = s.m = s.hold = 0;
       s.tp = false;
       s.lp.fill(0);
       s.tl.fill(0);
     }
-    // the rate (#659): a new one empties the line (its samples stand for another time) and starts the read where the time is
+    // the rate (#659) and Tape (#660): a new one keeps the echoes (delayChange: a new rate is a tape changing speed)
     const k = delayRateK(c.p.rate ?? 0);
     const tape = (c.p.tape ?? 0) >= 0.5;
-    if (s.rk !== k) {
-      if (s.rk) {
-        s.buf.fill(0);
-        s.lp.fill(0);
-        s.tl.fill(0);
-        s.w = s.ph = s.cur = s.rate = s.wph = s.fph = s.m = 0;
-      }
+    const pp = (c.p.pingpong ?? 0) >= 0.5;
+    if (s.rk !== k || s.tp !== tape) {
+      if (s.rk) delayChange(s, k, tape, pp, c.inp.in[0]);
       s.rk = k;
-      s.tp = tape;
-    }
-    // Tape on or off (#660) keeps the line: only its tail changes role (Tape's state, or line again), so it is zeroed (at a
-    // lower rate the rate's filter keeps its words)
-    if (s.tp !== tape) {
-      s.buf.fill(0, s.buf.length - DELAY_TAIL + (k > 1 ? 16 : 0));
-      s.tl.fill(0);
-      s.wph = s.fph = s.m = 0;
       s.tp = tape;
     }
     const len = k > 1 || tape ? s.buf.length - DELAY_TAIL : s.buf.length;
     const half = Math.floor(len / 2);
-    const pp = (c.p.pingpong ?? 0) >= 0.5;
     if (c.connected.clk) {
       for (let i = 0; i < c.n; i++) {
         s.t++;
@@ -1901,17 +1970,20 @@ const delay: ModuleImpl<DelayState> = {
     const top = ((pp ? half : len) - 1) * k;
     const d = Math.max(k, Math.min(top, samples));
     if (s.cur === 0 || s.cur > top * 65536) s.cur = s.cur === 0 ? d * 65536 : top * 65536;
+    // after a new rate the read point stands while the old rate's echoes play (s.hold, whole blocks), then glides
+    const held = s.hold > 0, tq = held ? s.cur : d * 65536;
+    s.hold = s.hold > c.n ? s.hold - c.n : 0;
     if (tape) {
       if (s.w >= (pp ? half : len)) s.w = 0;
-      delayTape(c, s, d * 65536, fb, mix, pp, k, len, c.p.wow ?? 0, DELAY_HEAD_MASK[Math.max(0, Math.min(DELAY_HEADS.length - 1, Math.round(c.p.heads ?? 0)))]);
+      delayTape(c, s, tq, fb, mix, pp, k, len, c.p.wow ?? 0, DELAY_HEAD_MASK[Math.max(0, Math.min(DELAY_HEADS.length - 1, Math.round(c.p.heads ?? 0)))]);
       return;
     }
     if (k > 1) {
-      delaySlow(c, s, d * 65536, fb, mix, pp, clip, k, len);
+      delaySlow(c, s, tq, fb, mix, pp, clip, k, len);
       return;
     }
-    if (s.cur !== d * 65536 || s.rate) {
-      delayGlide(c, s, d * 65536, fb, mix, pp, clip);
+    if (held || s.cur !== tq || s.rate) {
+      delayGlide(c, s, tq, fb, mix, pp, clip);
       return;
     }
     if (!pp) {
