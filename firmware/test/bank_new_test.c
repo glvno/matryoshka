@@ -36,7 +36,10 @@ int main(void)
     uint32_t set191 = 0xb9a4a8u, old = 0u;                  /* 1.9.1's set; 0: 1.6.0 and older */
     uint64_t has29 = first(29);
     printf("bank_new: a new factory patch after an update (#630)\n");
-    check("(Verona Drum 1 is factory index 29, 1.9.1's set had the 29 before it)", v == 29 && bn_new(set191) == (uint64_t)1 << 29);
+    /* (Hera 5 took Hera 6's slot, 6: new by name to every released set; main.c bank_upgrade renames an untouched HERA 6
+     * slot to HERA 5 first, so it is placed only where the owner changed theirs) */
+    check("(Verona Drum 1 is factory index 29, 1.9.1's set had the 29 before it but Hera 5, 6)", v == 29 && find("HERA 5") == 6
+          && bn_new(set191) == ((uint64_t)1 << 29 | (uint64_t)1 << 6));
     check("today's set: nothing new", bn_new(FACTORY_SET_ID) == 0);
 
     bn_plan(set191, has29, has29, 64, &p);
@@ -47,6 +50,9 @@ int main(void)
     check("own slot taken (a user patch in 29): the first empty slot, 30 (the FM-1's 31), 29 untouched", p.placed == 1 && p.slot[v] == 30);
     check("  the bar: NEW: 31. VERONA DRUM 1", bn_msg(&p, msg) && !strcmp(msg, "NEW: 31. VERONA DRUM 1"));
 
+    bn_plan(set191, has29, has29 & ~((uint64_t)1 << 6), 64, &p);
+    check("a changed HERA 6 slot (no slot named HERA 5): Verona Drum 1 into its own 29, Hera 5 into the first empty, 30",
+          p.placed == 2 && p.slot[v] == 29 && p.slot[6] == 30);
     bn_plan(set191, ~(uint64_t)0, has29, 64, &p);
     check("bank full: skipped, nothing written", p.placed == 0 && p.skipped == 1 && p.slot[v] == BN_NONE);
     check("  the bar: NO FREE SLOT FOR NEW PATCH", bn_msg(&p, msg) && !strcmp(msg, "NO FREE SLOT FOR NEW PATCH"));
