@@ -30,7 +30,7 @@
 
 - **Play once with a count-in (FM-1):** SEQ held + PLAY counts in one bar with a click on each beat, plays the pattern (or the song) once, then stops by itself, so a whole take goes into a recorder without touching the transport. A shorter track keeps looping until the longest has played its pass. The click is heard on the speaker and the jacks only, not on USB audio. SEQ held + PLAY again, or PLAY, stops it.
 - **REC's count-in clicks (FM-1):** with GLO › PANEL › COUNT-IN on, REC's count-in plays the same click on each beat, on the speaker and the jacks only.
-- **The tempo in the menu (FM-1):** GLO › PANEL › TEMPO shows the tempo beside GLOBAL or PATCH, as `GLOBAL 120`.
+- **The tempo in the menu (FM-1):** GLO › PANEL › TEMPO shows the tempo beside GLOBAL or PATCH, as `GLOBAL 120`, or `GLOBAL EXT` while MIDI clock sets it.
 - **Arming in the editor reaches the FM-1:** with Live on, arming a device in the editor arms it on the FM-1 too, so the FM-1's keys and the editor's play the same devices, and REC on the FM-1 records into them. Needs this firmware; with older firmware the editor's arming stays in the editor.
 
 ## 1.10.0 — 2026-11-06
