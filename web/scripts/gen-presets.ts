@@ -620,12 +620,13 @@ after.push(() => {
   return p;
 });
 
-// Cassia 1 (after the Casio CZ-1): two voices on the FM-1 (owner, 2026-10-26), Main's aftertouch into its `at`, and the
+// Cassia 1 (after the Casio CZ-1): four voices on the FM-1 (owner, 2026-11-07, #658), Main's aftertouch into its `at`, bend into `bend`, and the
 // players (D-336) as every melodic patch
 after.push(() => {
   const x = around('Cassia 1', 'Cassia 1');
   plugIn(x.p, x.main.id, 'at', x.a, 'at');
-  x.set('voices', 2);
+  plugIn(x.p, x.main.id, 'bend', x.a, 'bend'); // the bend range (#658)
+  x.set('voices', 4); // its CPU cap (owner, 2026-11-07, #658)
   level(x.p, { chord: true });
   return players(validatePatch(structuredClone(x.p), DEFS));
 });

@@ -73,7 +73,7 @@ describe('the FM-1\'s copy (presets.h, test/pmig_cases.h)', () => {
     expect(readFileSync(new URL('../../firmware/test/pmig_cases.h', import.meta.url), 'utf8')).toBe(want);
   });
   it('the tables stay small', () => {
-    expect(migrationTables(PRESET_MIGRATIONS).bytes).toBeLessThan(2048);
+    expect(migrationTables(PRESET_MIGRATIONS).bytes).toBeLessThan(3072);   // (2,240 with the #658 engines: each earlier Cassia 1 structure moves onto its 153 rows)
   });
 });
 
@@ -121,7 +121,7 @@ describe('a 1.9.0 preset on today\'s factory patch (#627 done-when)', () => {
           const j = before.findIndex((x) => x[0] === r[0]);
           expect(mine!.values[k], `${engine} ${r[0]} "${r[1]}"`).toBe(j >= 0 ? old[j] : init[k]);
         });
-        expect(now.length - before.length, engine).toBe(1);
+        expect(now.length - before.length, engine).toBe(engine === 'Cassia 1' ? 35 : 1);   // (Cassia 1: the CZ-1 rows of #658)
       }
       expect(applyPreset(p, a, mine!)).toBe(true);
       expect(currentValues(p, a)).toEqual(mine!.values);
