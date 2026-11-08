@@ -102,7 +102,7 @@ preset: Sync Lead
   filt env = 2.5
   wheel mod / freq A = 0.1
   freq B = 0.1
-  volume = 0.7
+  volume = 0.69
 
 # Two detuned saws, a slow filter attack: the brass swell.
 preset: Poly Brass
@@ -123,7 +123,7 @@ preset: Poly Brass
   amp / r = 0.35 s
   wheel mod / freq A = 0.08
   freq B = 0.08
-  volume = 0.48
+  volume = 0.47
 
 # Slow saws with light vibrato and long envelopes.
 preset: Vintage Strings
@@ -146,7 +146,7 @@ preset: Vintage Strings
   lfo rate = 5.5 Hz
   wheel mod / freq A = 0.2
   freq B = 0.2
-  volume = 0.42
+  volume = 0.43
 
 # Poly-mod FM: osc B's triangle, a 12th up, into osc A's frequency; through an open filter with a percussive decay.
 preset: Poly-Mod Bell
@@ -173,7 +173,7 @@ preset: Poly-Mod Bell
   osc B = 1.5
   wheel mod / freq A = 0
   freq B = 0
-  volume = 0.74
+  volume = 0.65
 
 # All five voices in unison: a pulse and a saw an octave down through a snappy low filter.
 preset: Unison Bass
@@ -200,4 +200,4 @@ preset: Unison Bass
   amp / r = 0.2 s
   wheel mod / freq A = 0
   freq B = 0
-  volume = 0.48
+  volume = 0.47

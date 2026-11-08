@@ -249,8 +249,8 @@ const built = define('Expander S XL', (b: Def) => {
     b.wire(drift, 'out', wander, 'p1');
     b.pin(wander, 'p1', 'gain', [0.5, 0.5 + 20 / 1200 / 8]);
     // the oscillators (each through a VCA, its mixer knob), the LFO
-    const o1 = add('o1', 'osc', 1, 0, { wave: 2, level: 1, fine: f.detune });
-    const o2 = add('o2', 'osc', 1, 1, { wave: 3, level: 1, pw: 0.4, fine: 5 + f.detune });
+    const o1 = add('o1', 'osc', 1, 0, { wave: 2, level: 1, fine: f.detune, analog: 1 });
+    const o2 = add('o2', 'osc', 1, 1, { wave: 3, level: 1, pw: 0.4, fine: 5 + f.detune, analog: 1 });
     const lv1 = add('lv1', 'vca', 1.5, 0, { gain: 0.5 });
     const lv2 = add('lv2', 'vca', 1.5, 1, { gain: 0.4 });
     const lfo = add('lfo', 'lfo', 1, 2, { wave: 0, rate: 5, depth: 1 });

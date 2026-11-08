@@ -43,7 +43,7 @@ import { players, level, plugIn } from '../factory-build';
 import type { Xl } from './xl';
 import { aroundDef, edit } from './asm-edit';
 import type { AssemblyDef } from '../../src/assembly';
-// the FM-1 version as release 1.10 shipped it, which this XL was written against: the FM-1 version gained most of the XL's
+// the FM-1 version as it was before #658, which this XL was written against: the FM-1 version gained most of the XL's
 // functions in 1.11 (#658) with other modules, and this XL is to be retired once the FM-1 version is checked on the rig
 import BASE from './oracle-v-base.json';
 
@@ -161,7 +161,7 @@ export const xl: Xl = {
       // its pitch, so both oscillators follow them.
       const fm1Fine = e.m(OSC_B).params.fine ?? 0;
       Object.assign(e.m(OSC_B).params, { wave: 2, level: 1, coarse: 0, fine: 0 });
-      const tri = per('osc', 2, 2, { wave: 1, level: 1 });
+      const tri = per('osc', 2, 2, { wave: 1, level: 1, analog: 1 });
       e.wire(busB, 'out', tri, 'pitch');
       const bFreq = e.add('const', 0, 1, { value: 0 });
       const bFreqQ = e.add('quant', 0.5, 1, { scale: 0, root: 0 });

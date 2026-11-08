@@ -81,6 +81,7 @@ const HINTS: Record<string, string> = {
   'osc.pm': `${PM_HINT('pm')} The index input, when patched, multiplies all three.`,
   'osc.pm2': `${PM_HINT('pm2')} The index input, when patched, multiplies all three.`,
   'osc.pm3': `${PM_HINT('pm3')} The index input, when patched, multiplies all three.`,
+  'osc.analog': 'The flaws of an analog oscillator, 0 = none (ideal waves). The saw\'s ramp curves a little and dips below its bottom for 25 µs at each reset; the triangle\'s peak and the pulse width sit a little off centre. Each voice has its own fixed amount of each flaw. The sine has none.',
   'wavetable.pm': PM_HINT('pm'),
   'pd.pm': PM_HINT('pm'),
   'delay.length': 'The most time this Delay holds, set here in the editor (the FM-1 shows it). Its time plays up to it; ping-pong: half per side, as both sides share the line. It takes 8.6 KB of the FM-1\'s memory per 100 ms at rate 44k. At 22k the same memory holds 200 ms, at 11k 400 ms, and this row shows that longer time.',

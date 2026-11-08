@@ -152,7 +152,7 @@ describe('factory <7PH (a groove box): the 909 Kit\'s drums and a Silver Box on 
 const NO_PLAYERS = ['808 Kit', '909 Kit', '<7PH', 'Spokes 6', 'Verona Drum 1'];
 const PAST_WARNING: string[] = ['Oracle V', 'Briefcase 3'];   // (Io 4: under it since its parts split across both cores, #271)
 /** the most a patch past the warning estimates */
-const PAST_MAX: Record<string, number> = { 'Io 4': 1, 'Briefcase 3': 0.9, 'Oracle V': 0.95 };   // (Oracle V: the Prophet-5's cut functions back, #658)
+const PAST_MAX: Record<string, number> = { 'Io 4': 1, 'Briefcase 3': 0.9, 'Oracle V': 0.97 };   // (Oracle V: the Prophet-5's cut functions back, #658, with its analog oscillators)
 const ARP_ONLY = ['Io 4', 'Briefcase 3'];   // (Wanderer and Vernon 100 have room for PATTERN since format 51, #667)
 const PLAYED = Object.keys(FM1_PRESETS).filter((n) => !NO_PLAYERS.includes(n));
 /** the Arpeggiator alone, no PATTERN (D-336's fallback): Io 4 (the rig), Briefcase 3 (64 of 64 modules) */
