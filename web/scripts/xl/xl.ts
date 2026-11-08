@@ -12,6 +12,8 @@ import { XL_SUFFIX } from '../../src/presets';
 export interface Xl {
   /** the FM-1 version's name (a factory patch in web/presets): the XL is named after it, "<base> XL" */
   base: string;
+  /** the XL's name where it is not "<base> XL" (Hera 6 XL, of Hera 5: src/presets.ts xlBase knows it) */
+  name?: string;
   /** the XL, from a fresh copy of its FM-1 version (start from it, or ignore it and build anew: factory-build.ts) */
   build(fm1: Patch): Patch;
 }
@@ -32,7 +34,7 @@ export function buildXls(xls: Xl[], fm1: Record<string, () => Patch>): BuiltXl[]
   return xls.map((x) => {
     const from = fm1[x.base];
     if (!from) throw new Error(`XL of "${x.base}": there is no FM-1 factory patch of that name`);
-    const name = x.base + XL_SUFFIX;
+    const name = x.name ?? x.base + XL_SUFFIX;
     if (seen.has(name)) throw new Error(`two XLs named "${name}"`);
     seen.add(name);
     const patch = validatePatch(structuredClone({ ...x.build(from()), name }), DEFS);

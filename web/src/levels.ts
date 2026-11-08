@@ -45,7 +45,7 @@ export const LEVEL_ROWS: Record<string, string[]> = {
   'drum kit': ['drums / level'],
   'Elvira 2': ['ouch / vol'],
   'Expander S': ['output / level'],
-  'Hera 6': ['env / vca'],
+  'Hera 5': ['vca / level'],
   'Io 4': ['vca / level'],
   'Meridian 8': ['out / main'],
   'mono lead': ['level'],

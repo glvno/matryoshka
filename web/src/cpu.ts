@@ -101,6 +101,10 @@ export const CPU: CpuTable = TABLE as CpuTable;
 
 /** above this the estimate warns: the table is an estimate, not a measurement */
 export const CPU_WARN = 0.8;
+/** factory patches the owner ships past 100 % of the estimate until the test rig measures them, by name, each with the
+ * most its estimate may reach before the budget calls it over: Hera 5, about 110 % (owner ruling 2026-11-07; over on the
+ * rig, it becomes Hera 4). The CPU meter still shows the estimate; a patch of that name gets the same room */
+export const CPU_RIG_PENDING: Record<string, number> = { 'Hera 5': 1.12 };
 
 export interface CpuModule {
   id: number;

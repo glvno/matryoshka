@@ -83,7 +83,7 @@ preset: Ensemble Pad
   vca / d = 1 s
   vca / s = 1
   vca / r = 1.5 s
-  level = 0.43
+  level = 0.46
   lfo / rate = 2.5 Hz
   ensemble = 2
 
@@ -104,7 +104,7 @@ preset: Arp Pluck
   vca / d = 0.3 s
   vca / s = 0
   vca / r = 0.3 s
-  level = 0.66
+  level = 0.71
   trigger / rate = 8 Hz
   ensemble = 1
 
@@ -125,7 +125,7 @@ preset: Unison Lead
   vca / d = 0.4 s
   vca / s = 0.9
   vca / r = 0.3 s
-  level = 0.27
+  level = 0.28
   lfo / rate = 4.5 Hz
   delay time = 0.4 s
   portamento = 0.12 s

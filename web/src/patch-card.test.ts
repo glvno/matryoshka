@@ -138,7 +138,7 @@ describe('the patch card', () => {
     expect(fitLine(init)).toMatch(/^Plays on the FM-1 · \d+ %$/);
     const demo = patchFacts(demoPatch(), DEFS);
     expect(fitLine(demo)).toMatch(/^Sandbox/);
-    expect(patchFacts(PRESETS['Hera 6'](), DEFS).engines.length).toBeLessThanOrEqual(1);
+    expect(patchFacts(PRESETS['Hera 5'](), DEFS).engines.length).toBeLessThanOrEqual(1);
   });
 
   it('uses the dark theme\'s token values from tokens.css', () => {

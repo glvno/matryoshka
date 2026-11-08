@@ -108,10 +108,14 @@ function silverDemo(p: Patch): Patch {
   return validatePatch(p, DEFS);
 }
 
+// Hera 5 (Hera 6's slot): the Juno-106's panel at five voices (scripts/xl/hera-6.ts junoDef, gen-assemblies.ts HERA_VOICES).
+// The bender lever and the hold pedal (MIDI CC 64) as Hera 6 XL plays them
 presets.push(() => {
-  const x = around('Hera 6', 'Hera 6');
-  x.set('voices', 6); // all six (they fit since the engine speed-ups, branch cpu-opt)
+  const x = around('Hera 5', 'Hera 5');
+  plugIn(x.p, x.main.id, 'bend', x.a, 'bend');
+  plugIn(x.p, x.main.id, 'sustain', x.a, 'hold'); // MIDI CC 64: 0..63 up, 64..127 down
   level(x.p, { chord: true });
+  x.p.notes = 'Juno-106 panel, five voices (the original has six; Hera 6 XL plays six in the browser). MIDI CC 64 is the hold pedal; Output sets volume. Poly 2 steals when all voices are busy. HPF 2/3 and chorus II settings are approximated by ear. Patch shift, tape, memory and the MIDI function switch are hardware or storage, not reproduced.';
   return x.p;
 });
 

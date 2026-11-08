@@ -27,10 +27,10 @@ const old = show('v1.1.0');
 const beforeHeadroom = show('c503791'); // (main just before #437 lowered Drift Poly's mixer; the format did not change)
 
 describe('earlier factory patches (the bank after an update)', () => {
-  it.skipIf(!old)('every factory patch release 1.1.0 wrote is known, as today\'s patch of the same name', () => {
+  it.skipIf(!old)('every factory patch release 1.1.0 wrote is known, as today\'s patch of the same name (Hera 6 as Hera 5, which took its slot)', () => {
     for (const p of parse(old)) {
       const hit = table.find((t) => t.fnv === fnv32(p.bytes) && t.len === p.bytes.length);
-      expect(hit && names[hit.now], p.name).toBe(p.name);
+      expect(hit && names[hit.now], p.name).toBe(p.name === 'HERA 6' ? 'HERA 5' : p.name);
     }
   });
   it.skipIf(!beforeHeadroom)('a factory patch changed within one format is known, as today\'s of the same name', () => {
@@ -46,6 +46,11 @@ describe('earlier factory patches (the bank after an update)', () => {
     let h = parse(now).reduce((h, p) => [...new TextEncoder().encode(p.name), 0, ...p.bytes].reduce((h, x) => Math.imul(h ^ x, 0x01000193) >>> 0, h), 0x811c9dc5);
     if (Object.keys(PRESET_MIGRATIONS).length) h = [...new TextEncoder().encode(JSON.stringify(PRESET_MIGRATIONS))].reduce((h, x) => Math.imul(h ^ x, 0x01000193) >>> 0, h);
     expect(id).toBe(h & 0xffffff || 1);
+  });
+  it('an untouched HERA 6 slot is rewritten as Hera 5, under its name (FACTORY_RENAMED: Hera 5 took its slot)', () => {
+    const renamed = [...now.matchAll(/\{"([^"]*)", (\d+)\},/g)].map((m) => ({ was: m[1], now: names[Number(m[2])] }));
+    expect(renamed).toEqual([{ was: 'HERA 6', now: 'HERA 5' }]);
+    expect(names.indexOf('HERA 5')).toBe(6);   // (Hera 6's slot)
   });
   it('an edited copy is not', () => {
     const p = parse(now)[0].bytes.slice();
@@ -77,7 +82,7 @@ describe('released factory sets (a new factory patch after an update)', () => {
       names.forEach((n, i) => { if (had.has(n)) expect((row!.has >> BigInt(i)) & 1n, `${t} ${n}`).toBe(1n); });
     }
   });
-  it('1.9.1\'s bank gets Verona Drum 1 and nothing else', () => {
+  it('1.9.1\'s bank gets Verona Drum 1 and nothing else (it had Hera 6, so it has Hera 5, which took its slot)', () => {
     const row = rows.find((r) => r.set === 0xb9a4a8)!;
     const missing = names.filter((_, i) => !((row.has >> BigInt(i)) & 1n));
     expect(missing).toEqual(['VERONA DRUM 1']);

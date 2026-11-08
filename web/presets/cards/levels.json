@@ -30,8 +30,8 @@
  "Expander S": {
   "output / level": 0.41
  },
- "Hera 6": {
-  "env / vca": 1
+ "Hera 5": {
+  "vca / level": 1
  },
  "Io 4": {
   "vca / level": 0.56
@@ -75,7 +75,7 @@
   "master / master": 0.61
  },
  "Wanderer": {
-  "filters · vca / vca level": 0.96,
+  "filters · vca / vca level": 0.94,
   "filters · vca / gain": 0
  }
 }

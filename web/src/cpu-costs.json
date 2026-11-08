@@ -41724,8 +41724,8 @@
    "cycles": 126690
   },
   {
-   "name": "Hera 6",
-   "cycles": 442713
+   "name": "Hera 5",
+   "cycles": 933343
   },
   {
    "name": "Sallen 20",
@@ -41745,7 +41745,7 @@
   },
   {
    "name": "Wanderer",
-   "cycles": 221006
+   "cycles": 268611
   },
   {
    "name": "Briefcase 3",
@@ -41753,11 +41753,11 @@
   },
   {
    "name": "Io 4",
-   "cycles": 518707
+   "cycles": 539189
   },
   {
    "name": "Vernon 100",
-   "cycles": 329652
+   "cycles": 338388
   },
   {
    "name": "8 Lire",
@@ -41944,8 +41944,8 @@
    "cycles": 115388
   },
   {
-   "name": "assembly Hera 6",
-   "cycles": 445593
+   "name": "assembly Hera 5",
+   "cycles": 892579
   },
   {
    "name": "assembly hihat",
@@ -41953,7 +41953,7 @@
   },
   {
    "name": "assembly Io 4",
-   "cycles": 537143
+   "cycles": 536084
   },
   {
    "name": "assembly kalimba",
@@ -42093,7 +42093,7 @@
   },
   {
    "name": "assembly Vernon 100",
-   "cycles": 315908
+   "cycles": 316576
   },
   {
    "name": "assembly Verona Drum 1",
@@ -42113,7 +42113,7 @@
   },
   {
    "name": "assembly Wanderer",
-   "cycles": 200189
+   "cycles": 241578
   },
   {
    "name": "assembly wavetable pad",
