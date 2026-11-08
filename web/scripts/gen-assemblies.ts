@@ -69,7 +69,6 @@ function build(name: string, category: string, f: (b: B) => void, poly?: PolyCar
       if (!def) throw new Error(`${name}: no module type ${type}`);
       for (const k of Object.keys(p)) if (!def.params.some((q) => q.name === k)) throw new Error(`${name}: ${type} has no parameter ${k}`);
       const map = defaultMap(def) as Record<Source, string[]>;
-      map.k1 = map.k2 = map.k3 = map.k4 = [];
       if (o.p1) map.p1 = [o.p1];
       if (o.p2) map.p2 = [o.p2];
       const m: ModuleInst = { id: modules.length + 1, type, x: col * GX, y: row * GY, params: { ...defaultParams(def), ...p } };
