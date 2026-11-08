@@ -877,23 +877,25 @@ int main(void)
         for (int i = 0; i < 8; i++)
             enc(3, -1);
         check("  back to KNOB", usb_level == 0u && on_screen("KNOB"));
-        check("K3 on SYSTEM 2/2: OUT LEVEL, KNOB as made (#631)", pages_now()->par[2] == MR_OUTLVL && out_level == 0u && on_screen("OUT LEVEL"));
-        enc(4, 1);
-        check("  a turn right: -24 DB, USB LEVEL stays KNOB", out_level == 1u && usb_level == 0u && on_screen("-24 DB"));
-        for (int i = 0; i < 8; i++)
-            enc(4, 1);
-        check("  0 DB at most", out_level == 7u && on_screen("0 DB"));
+        check("K3 on SYSTEM 2/2: 3.5MM OUT, ON as made, no mark in the footer (#631)", pages_now()->par[2] == MR_OUT35 && !out_off
+              && on_screen("3.5MM OUT") && on_screen("ON") && px(OFF_FX + 2u, BATT_FY + 2u) != P_WARN);
+        enc(4, -1);
+        check("  K3 left: OFF, the red mark left of the battery (SCREEN: 3.5MM OFF); USB LEVEL untouched", out_off == 1u && usb_level == 0u
+              && on_screen("OFF") && px(OFF_FX + 2u, BATT_FY + 2u) == P_WARN && on_screen("3.5MM OFF") && px(OFF_FX + 3u, BATT_FY + 2u) != P_WARN);
+        enc(4, -1);
+        check("  stays OFF", out_off == 1u);
         {
             uint8_t leds = cfg.leds, ign = cfg.editor_ignore;
             cfg_defaults();
-            check("  FACTORY RESET's defaults: KNOB", out_level == 0u);
+            check("  FACTORY RESET's defaults: ON", out_off == 0u);
             cfg.leds = leds;
             cfg.editor_ignore = ign;
-            out_level = 7;
+            out_off = 1;
         }
-        for (int i = 0; i < 8; i++)
-            enc(4, -1);
-        check("  back to KNOB", out_level == 0u);
+        enc(4, 1);
+        ui_full = 1;
+        loop();
+        check("  K3 right: ON again, the mark gone", out_off == 0u && on_screen("ON") && px(OFF_FX + 2u, BATT_FY + 2u) != P_WARN && !on_screen("3.5MM OFF"));
         enc(1, -1);
         check("ALGO back: SYSTEM 1/2", menu_tab == MT_SYSTEM && !menu_sys2 && pages_now()->par[3] == MR_OUTPUT && on_screen("SYSTEM 1/2"));
         enc(1, 1);
@@ -4775,6 +4777,7 @@ int main(void)
         }
     }
     help_suite();
+    out35_suite();
     {                                                       /* the global tempo (D-907, tempo_glo.h) */
         uint8_t rec[16], old[16];
         uint32_t k, other = N_PRESETS, r, told, t0;

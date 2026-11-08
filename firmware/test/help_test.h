@@ -309,3 +309,83 @@ static void help_suite(void)
     check("FACTORY RESET's defaults: the quick start on again", cfg.quick == 1u);
     tap(BTN_HOME);
 }
+
+/* HOME + OCT- + OCT+ held 2 s (#631, D-925): GLO > SYSTEM > 3.5MM OUT on / off from any page, never the sheet's pair */
+static void b_down(uint32_t id) { panel_held |= 1u << id; panel_edges(1u << id, 0); loop(); }
+static void b_up(uint32_t id) { panel_held &= ~(1u << id); panel_edges(0, 1u << id); loop(); }
+static void out35_suite(void)
+{
+    uint32_t pg0, dev0;
+    int oct0;
+    check("(ORACLE V for 3.5MM OUT's hold)", load("ORACLE V") == 0);
+    pv_gen++;
+    trail_n = 0;
+    page_show(0);
+    screen_patch();
+    pages_ensure();
+    pages_focus(pages_home(), 0);
+    pages_page(1);                                      /* (HOME's release would go to the first page) */
+    out_off = 0;
+    later(2000);
+    pg0 = pg_cur_page;
+    dev0 = pg_cur_dev;
+    oct0 = octave;
+    b_down(BTN_HOME);
+    b_down(BTN_OCT_DOWN);
+    b_down(BTN_OCT_UP);
+    check("HOME held, then OCT- + OCT+: no controls sheet", !help_on && !out_off);
+    later(1500);
+    check("  1.5 s: nothing yet", !out_off);
+    b_up(BTN_OCT_UP);
+    b_up(BTN_OCT_DOWN);
+    b_up(BTN_HOME);
+    check("  let go before 2 s: still ON; HOME's release went nowhere, the octave unchanged", !out_off && pg_cur_page == pg0
+          && pg_cur_dev == dev0 && octave == oct0 && page == 0u);
+    later(2000);
+    b_down(BTN_HOME);
+    b_down(BTN_OCT_DOWN);
+    b_down(BTN_OCT_UP);
+    later(1000);
+    later(1100);
+    check("  held 2 s: 3.5MM OUT OFF, said in the top bar, the mark in the footer", out_off == 1u && !strcmp(msg_text, "3.5MM OUT OFF")
+          && px(OFF_FX + 2u, BATT_FY + 2u) == P_WARN && on_screen("3.5MM OFF"));
+    later(3000);
+    check("  held on: no second turn", out_off == 1u);
+    b_up(BTN_HOME);
+    b_up(BTN_OCT_DOWN);
+    b_up(BTN_OCT_UP);
+    check("  let go: HOME's release went nowhere, the octave unchanged", pg_cur_page == pg0 && octave == oct0 && !help_on);
+    later(2500);
+    b_down(BTN_OCT_DOWN);                               /* the pair first: the sheet, then HOME */
+    b_down(BTN_OCT_UP);
+    check("OCT- + OCT+ first: the controls sheet, as always", help_on == HELP_SHEET);
+    b_down(BTN_HOME);
+    later(2100);
+    check("  then HOME held with them 2 s: 3.5MM OUT ON, the sheet closes for the top bar's message", out_off == 0u && !help_on
+          && !strcmp(msg_text, "3.5MM OUT ON") && px(OFF_FX + 2u, BATT_FY + 2u) != P_WARN);
+    b_up(BTN_HOME);
+    b_up(BTN_OCT_DOWN);
+    b_up(BTN_OCT_UP);
+    check("  let go: nothing more (no sheet, the same page)", !help_on && out_off == 0u && pg_cur_page == pg0 && octave == oct0);
+    b_down(BTN_HOME);                                   /* HOME and one OCT: not the hold */
+    b_down(BTN_OCT_UP);
+    later(2100);
+    b_up(BTN_OCT_UP);
+    b_up(BTN_HOME);
+    check("HOME + OCT+ alone held 2 s: nothing", out_off == 0u);
+    octave = oct0;
+    leds_octave();
+    tap(BTN_GLO);                                       /* the menu too: the hold works there, HOME does not close it */
+    b_down(BTN_HOME);
+    b_down(BTN_OCT_DOWN);
+    b_down(BTN_OCT_UP);
+    later(2100);
+    b_up(BTN_OCT_UP);
+    b_up(BTN_OCT_DOWN);
+    b_up(BTN_HOME);
+    check("in the menu: OFF, and the menu stays", out_off == 1u && page == PAGE_MENU);
+    out_off = 0;
+    tap(BTN_HOME);
+    later(2500);
+    mlen = 0;                                           /* (the MIDI log: room for what follows) */
+}

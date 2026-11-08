@@ -534,8 +534,8 @@ static int slot_used(uint32_t s) { return s < M1_SLOTS && (bank_mask >> s & 1u);
  * MONO L, a record from before reads as STEREO; bit 4: EDITOR, #702: 0 ALLOW, 1 IGNORE, a record from before reads as
  * ALLOW; bits 5..7: USB LEVEL, #600: 0 KNOB, 1..7 a fixed level, out_level.h, a record from before reads as KNOB), the
  * global tempo's low byte (byte 5,
- * D-907; was CPU in the bar), clock in (bit 0; bit 1: CLOCK OUT off, #473, read alike; bits 2..4: OUT LEVEL, #631, as USB
- * LEVEL's, a record from before reads as KNOB), TEMPO and the tempo's bit 8 (byte 7, tempo_glo.h; was program change),
+ * D-907; was CPU in the bar), clock in (bit 0; bit 1: CLOCK OUT off, #473, read alike; bit 2: 3.5MM OUT off, #631, a
+ * record from before reads as ON), TEMPO and the tempo's bit 8 (byte 7, tempo_glo.h; was program change),
  * MIDI channel, MIDI out, the bank's format, the selected module, REC's count-in (byte 12, #414: a record without
  * it, SET_MIN bytes, reads as OFF), the factory set the bank's untouched factory slots hold (bytes 13..15, #441: a
  * record without them reads as unknown). The version stays 1, so an older firmware reads the longer record too; it
@@ -555,8 +555,8 @@ static void settings_pack(uint8_t *d)
     d[2] = (uint8_t)(octave + 8);
     d[3] = cfg.leds;
     d[4] = (uint8_t)(cfg.accel | (cfg.quick ? 0u : 2u) | (uint8_t)(out_mono << 2) | (cfg.editor_ignore ? 16u : 0u) | (uint8_t)(usb_level << 5));   /* (bits 2..3: OUTPUT, #612; bit 4: EDITOR, #702; bits 5..7: USB LEVEL, #600) */
-    d[6] = (uint8_t)(co_set_byte(cfg.clock_in, cfg.clock_out) | (uint8_t)(out_level << 2));   /* (bit 1: CLOCK OUT off, #473:
-                                                * clock_out.h; bits 2..4: OUT LEVEL, #631) */
+    d[6] = (uint8_t)(co_set_byte(cfg.clock_in, cfg.clock_out) | (out_off ? 4u : 0u));   /* (bit 1: CLOCK OUT off, #473:
+                                                * clock_out.h; bit 2: 3.5MM OUT off, #631) */
     gt_pack(d);                                 /* bytes 5 and 7: the global tempo and TEMPO (D-907) */
     d[8] = cfg.ch;
     d[9] = cfg.midi_out;                        /* (was the mixer's level before #60: values over 1 read as on) */
@@ -583,7 +583,7 @@ static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint3
     usb_level = (uint8_t)(d[4] >> 5);               /* (a record from before reads as KNOB) */
     cfg.clock_in = d[6] & 1u;
     cfg.clock_out = co_set_clock_out(d[6]);     /* (a record from before reads as ON) */
-    out_level = (uint8_t)(d[6] >> 2 & 7u);      /* (a record from before reads as KNOB) */
+    out_off = (uint8_t)(d[6] >> 2 & 1u);        /* (a record from before reads as ON) */
     gt_unpack(d, len);                          /* bytes 5 and 7 (CPU in the bar and program change before): the global tempo */
     cfg.ch = d[8] > 16u ? 0u : d[8];
     cfg.midi_out = d[9] == 0u ? 0u : 1u;

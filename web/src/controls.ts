@@ -32,14 +32,15 @@ export type Part =
   | { key: 'white' | 'black' | 'any' | 'keys' | 'chord'; n?: number };   // a white key, a black key (n: black key n), any
                                                         // key, the keys played, keys pressed together
 /** what is done: `do` while `hold` is held. Several parts in `do` are alternatives (either one), or with `join: 'list'`
- * a list of buttons that all do the same. `how`: tap (a short press), held (kept down while the keys play), hold 2 s.
+ * a list of buttons that all do the same, or with `join: 'together'` buttons all pressed together. `how`: tap (a short
+ * press), held (kept down while the keys play), hold 2 s.
  * `where`: where on the screen it applies ("on END"). `first`: a button pressed and let go before (ENV then SEL: SEL on
  * the page ENV opens) */
 export interface Gesture {
   first?: Button;
   hold?: Button | 'step';
   do: Part[];
-  join?: 'or' | 'list';
+  join?: 'or' | 'list' | 'together';
   how?: 'tap' | 'held' | 'hold 2 s';
   where?: string;
 }
@@ -54,7 +55,7 @@ export const EFFECTS = [
   'take', 'take_accent', 'drone',
   'entry', 'entry_pattern', 'add_entry', 'dup_entry', 'transpose', 'song_play', 'song', 'delete_entry', 'back_steps',
   'tab', 'scroll', 'set', 'save_close', 'run_row',
-  'editor',
+  'editor', 'analog_out',
 ] as const;
 export type Effect = (typeof EFFECTS)[number];
 
@@ -125,7 +126,7 @@ export const CONTROLS: ControlRow[] = [
   { id: 'home', gesture: { do: [B('HOME')] }, does: 'back', everywhere: at(5, but('sandbox')), effect: 'back',
     help: 'back one step, on release: on a device page to its device’s first page, then to the patch’s home page (its first device); out of the SEQ, SONG and environment pages, back where you were. Held alone it does nothing' },
   { id: 'glo', gesture: { do: [B('GLO')] }, does: 'settings', everywhere: at(50, but('menu')), effect: 'menu',
-    help: 'the settings menu, in tabs: MIDI (MIDI channel, clock in, MIDI out, clock out), PANEL (LEDs, knob acceleration, count-in with a click on each beat, TEMPO: GLOBAL or PATCH, with the tempo playing, or EXT while MIDI clock sets it), SYSTEM (update mode, factory reset, quick start, OUTPUT: STEREO, MONO, the sum of both sides on both, for headphones or a stereo input, or MONO L, the sum on the left only and the right silent, for one mono cable into a recorder; ALGO again for its second page, EDITOR: ALLOW, or IGNORE, so the editor and its Install panel leave this FM-1 alone, and USB LEVEL: KNOB, what goes to the computer at the volume knob’s level, or a fixed level from -24 DB to 0 DB (the knob at its top) that the knob does not change, and OUT LEVEL: the same for the speaker and the jack, a fixed level for recording into a recorder at the same level every take), INFO (version, CPU, bank slots, battery) and GUIDE (the ideas behind the FM-1)' },
+    help: 'the settings menu, in tabs: MIDI (MIDI channel, clock in, MIDI out, clock out), PANEL (LEDs, knob acceleration, count-in with a click on each beat, TEMPO: GLOBAL or PATCH, with the tempo playing, or EXT while MIDI clock sets it), SYSTEM (update mode, factory reset, quick start, OUTPUT: STEREO, MONO, the sum of both sides on both, for headphones or a stereo input, or MONO L, the sum on the left only and the right silent, for one mono cable into a recorder; ALGO again for its second page, EDITOR: ALLOW, or IGNORE, so the editor and its Install panel leave this FM-1 alone, and USB LEVEL: KNOB, what goes to the computer at the volume knob’s level, or a fixed level from -24 DB to 0 DB (the knob at its top) that the knob does not change, and 3.5MM OUT: ON, or OFF, the speaker and the headphone jack silent while USB audio plays on), INFO (version, CPU, bank slots, battery) and GUIDE (the ideas behind the FM-1)' },
   { id: 'env', gesture: { do: [B('ENV')] }, does: 'environment', everywhere: at(60, but('env', 'sandbox')), effect: 'env',
     help: 'the environment: every device from Main to the Output, each Steps track followed by what it plays (from the menu too)' },
   { id: 'seq', gesture: { do: [B('SEQ')] }, does: 'steps page', everywhere: at(70, but(...SEQ_STATES, 'sandbox')), effect: 'seq',
@@ -146,6 +147,8 @@ export const CONTROLS: ControlRow[] = [
     help: 'black key n: mutes track n, or unmutes it (any page)' },
   { id: 'play-once', gesture: { hold: 'SEQ', do: [B('PLAY')] }, does: 'count in, play once', when: 'tracks', everywhere: at(135, but('sandbox')), effect: 'play_once',
     help: 'play once, for recording a whole take into a recorder: stopped, one bar is counted in with a click on each beat (on the speaker and the jacks, not on USB audio), then the pattern or the song plays once and the transport stops by itself. Running or counting in: it stops, as PLAY' },
+  { id: 'out-35mm', gesture: { do: [B('HOME'), B('OCT-'), B('OCT+')], join: 'together', how: 'hold 2 s' }, does: '3.5mm', plain: '3.5MM OUT on / off', everywhere: at(140, ALL), effect: 'analog_out',
+    help: 'GLO › SYSTEM › 3.5MM OUT on or off. OFF silences the speaker and the headphone jack, so they stay quiet while a computer records the FM-1 over USB audio, which plays on at USB LEVEL; a red speaker with an X shows left of the battery while it is off. The three held together for 2 s; the screen then says 3.5MM OUT OFF or 3.5MM OUT ON. SAVE keeps it, as the other settings' },
 
   // ---- DEVICE: a device page
   { id: 'list-home', gesture: { do: [B('HOME')] }, does: "leave {list}'s pages", when: 'list', sheet: { device: 10 }, effect: 'list_back',
@@ -286,6 +289,7 @@ const STRIP: Record<string, string | ({ _: string } & Partial<Record<HelpState, 
   store: { _: "save this device's values as a preset", env: "save this row's device as a preset" },
   arm: 'arm or disarm track n for the keys', mute: 'mute or unmute track n',
   'play-once': 'count in a bar, play the pattern or song once, stop',
+  'out-35mm': 'turn the speaker and headphone jack off or on (USB audio plays on)',
   // a device page
   'list-home': "leave {list}'s pages, back where you were", 'list-pages': "flip through {list}'s pages",
   adjust: 'turn the four values on this page', fine: 'turn a value in its smallest steps',
@@ -397,10 +401,10 @@ export function gestureSpec(g: Gesture): string {
   };
   const out: string[] = [];
   if (g.first) out.push(`k:${g.first}`, 't:then');
-  if (g.how === 'hold 2 s') out.push('t:hold');
+  if (g.how === 'hold 2 s' && g.join !== 'together') out.push('t:hold');   // (buttons together: joined by "+", then 2 s)
   if (g.hold === 'step') out.push('t:hold step +');
   else if (g.hold) out.push(`k:${g.hold}`, 't:+');
-  out.push(g.do.map(part).join(g.join === 'list' ? '|' : '|t:/|'));
+  out.push(g.do.map(part).join(g.join === 'list' ? '|' : g.join === 'together' ? '|t:+|' : '|t:/|'));
   if (g.how === 'tap') out.push('t:tap');
   if (g.how === 'held') out.push('t:held');
   if (g.how === 'hold 2 s') out.push('t:2 s');
@@ -466,7 +470,7 @@ export function gestureText(g: Gesture): string {
       default: return 'keys together';
     }
   };
-  let t = g.do.map(part).join(g.join === 'list' ? ', ' : ' / ');
+  let t = g.do.map(part).join(g.join === 'list' ? ', ' : g.join === 'together' ? ' + ' : ' / ');
   if (g.how === 'tap') t += ' tapped';
   if (g.how === 'held') t += ' held + the keys';
   if (g.how === 'hold 2 s') t += ' held 2 s';
@@ -508,7 +512,7 @@ export function fixedDoes(b: Button): string {
   const mine = (p: Part): boolean => 'button' in p && p.button === b;
   return CONTROLS.filter((r) => r.gesture.join !== 'list' && (r.gesture.first === b || r.gesture.hold === b || r.gesture.do.some(mine))).map((r) => {
     const g = r.gesture;
-    const how = g.first === b ? `then ${gestureText({ ...g, first: undefined })}: ` : g.first ? `after ${g.first}: ` : g.hold === b ? `held + ${gestureText({ ...g, hold: undefined })}: ` : g.how === 'hold 2 s' ? 'held 2 s: '
+    const how = g.first === b ? `then ${gestureText({ ...g, first: undefined })}: ` : g.first ? `after ${g.first}: ` : g.hold === b ? `held + ${gestureText({ ...g, hold: undefined })}: ` : g.join === 'together' ? `${gestureText(g)}: ` : g.how === 'hold 2 s' ? 'held 2 s: '
       : g.how === 'tap' ? 'tapped: ' : g.hold ? `with ${g.hold === 'step' ? 'a held step' : `${g.hold} held`}: ` : '';
     const where = Object.keys(r.sheet ?? {}).map((s) => HELP_STATE_NAME[s as HelpState].toLowerCase());
     return `${how}${plainDoes(r)}${where.length ? ` (${where.join(', ')})` : ''}`;

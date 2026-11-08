@@ -21,10 +21,10 @@ static volatile uint8_t usb_level;                 /* GLO > SYSTEM > USB LEVEL (
                                                     * the analog output; 1..7 a fixed level MASTER does not change
                                                     * (out_level.h), so the speaker can be turned down and the computer
                                                     * still records. Saved with the settings (main.c) */
-static volatile uint8_t out_level;                 /* GLO > SYSTEM > OUT LEVEL (#631): 0 KNOB, the analog output (speaker,
-                                                    * headphone or line jack) at MASTER's level; 1..7 a fixed level MASTER
-                                                    * does not change (out_level.h), so every take into a recorder has the
-                                                    * same level. Saved with the settings (main.c) */
+static volatile uint8_t out_off;                   /* GLO > SYSTEM > 3.5MM OUT (#631, D-925): 1 OFF, the speaker and the
+                                                    * headphone jack silent while USB audio plays on (at USB LEVEL); 0 ON,
+                                                    * as before. Saved with the settings (main.c); HOME + OCT- + OCT+ held
+                                                    * 2 s turns it over too (panel.c out_combo) */
 #include "out_level.h"
 /* the device test mode's meter (TEST_PEAK, #291): before the MASTER pot (as at its default, so a script does not depend
  * on where the knob is), after mute */
@@ -95,8 +95,7 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
                 eng_overload = 1;
             }
         }
-        uint32_t knob = master_q12, aq = lvl_q12(out_level, knob), uq = aq;   /* (read once: the main loop moves it) the
-                                                                                 * analog output's level (#631) */
+        uint32_t knob = master_q12, uq = knob;          /* (read once: the main loop moves it) */
 #if FELUCCA_UAC
         uq = lvl_q12(usb_level, knob);                  /* USB audio's level (#600): MASTER's at KNOB */
 #endif
@@ -129,9 +128,9 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
                                                                               * the analog output only, not USB audio (D-820) */
             if (clk)
                 snd_heard_ms = fm1_ms;
-            if (eng_run && (uq != aq || clk)) {         /* USB LEVEL (#600) and OUT LEVEL (#631) differ, or the click: the
-                                                         * analog output again, at its own level */
-                int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)aq * patch_gain) >> 16);
+            if (eng_run && (uq != knob || clk) && !out_off) {   /* USB LEVEL fixed (#600), or the click: the analog output
+                                                         * again, at MASTER's level (3.5MM OUT OFF: silenced below anyway) */
+                int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)knob * patch_gain) >> 16);
                 for (i = 0; i < HALF_FRAMES; i++) {
                     o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
                     o[2u * i + 1u] = ((eng_r[i] * m) >> 12) << 6;
@@ -144,6 +143,11 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
                 o[2u * i] = s;
                 o[2u * i + 1u] = out_mono == 2u ? 0 : s;
             }
+        if (out_off)                                    /* 3.5MM OUT OFF (#631): nothing from the speaker or the jack. Last, so
+                                                         * whatever the analog output alone gets is silenced too; USB audio took
+                                                         * the half above */
+            for (i = 0; i < HALF_WORDS; i++)
+                o[i] = 0;
         fm1_audio_ack_half();
         all = fm1_ticks() - t0;                         /* includes the key scan and USB poll nested in the ISR */
         late = fm1_audio_free_half() != half;           /* the hardware already plays the half just written */
