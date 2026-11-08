@@ -46,9 +46,11 @@ describe('Briefcase 3 (the VCS3)', () => {
     const p = FM1_PRESETS['Briefcase 3']();
     const pitchOf = (q: Patch, note: number): number => {
       const x = play(q, [note], SR / 4);
-      let ups = 0;
-      for (let i = 1; i < x.length; i++) if (x[i - 1] <= 0 && x[i] > 0) ups++;
-      return ups;
+      // (cycles per sample between the first and the last upward crossing: since #738 gave Briefcase 3 room for
+      // PATTERN, the keys reach the engine through it a little later, which a plain count over the window misses)
+      let ups = 0, first = -1, last = -1;
+      for (let i = 1; i < x.length; i++) if (x[i - 1] <= 0 && x[i] > 0) { ups++; if (first < 0) first = i; last = i; }
+      return ups > 1 ? (ups - 1) / (last - first) : 0;
     };
     // oscillator 1's sine alone, straight through
     for (const l of ['ramp', 'square', 'triangle']) for (let k = 0; k < 3; k++) if (row(p, l, k)) set(p, l, 0, k);

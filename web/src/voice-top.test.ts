@@ -31,8 +31,8 @@ describe("the FM-1's VOICES row top", () => {
     expect(deviceBudget(withVoices(p, 5)).over.map((o) => o.key)).toEqual(['cpu']);
   });
 
-  it('Oracle V stops at six: five voices with the Prophet-5\'s functions back (#658)', () => {
-    expect(voicesRow(FM1_PRESETS['Oracle V']())!.top).toBe(6);
+  it('Oracle V stops at five: five voices with the Prophet-5\'s functions back (#658) and the Ladder\'s stage saturation (#744)', () => {
+    expect(voicesRow(FM1_PRESETS['Oracle V']())!.top).toBe(5);
   });
 
   it('no other factory patch has a top: each fits the FM-1 with eight voices', () => {

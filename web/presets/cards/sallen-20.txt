@@ -87,7 +87,7 @@ preset: Acid Scream
   sustain = 0.15
   eg 2 / release = 0.2 s
   frequency = 6 Hz
-  volume = 0.67
+  volume = 0.96
 
 # A 16' pulse and saw with the resonant high pass peaking on each note: the high-pass growl the MS-20 is known for.
 preset: Growl Bass
@@ -112,7 +112,7 @@ preset: Growl Bass
   decay = 0.35 s
   sustain = 0.5
   eg 2 / release = 0.15 s
-  volume = 0.35
+  volume = 0.68
 
 # VCO 2's RING position (VCO 1 times VCO 2) at an inharmonic interval, a percussive EG 2: a metal bell.
 preset: Ring Mod Bell
@@ -133,7 +133,7 @@ preset: Ring Mod Bell
   decay = 1.8 s
   sustain = 0
   eg 2 / release = 1.5 s
-  volume = 0.73
+  volume = 0.72
 
 # VCO 1's NOISE position through both resonant filters, the MG sweeping them slowly: wind and surf.
 preset: Noise Sweep
@@ -155,7 +155,7 @@ preset: Noise Sweep
   eg 2 / release = 2.5 s
   frequency = 0.15 Hz
   waveform = 0.5
-  volume = 0.51
+  volume = 0.66
 
 # The ESP hears the white noise through a narrow band and its F-V output drives VCO 2: a random warble on top of VCO 1.
 preset: ESP Warble
@@ -179,4 +179,4 @@ preset: ESP Warble
   high cut = 600 Hz
   threshold = 0.1
   esp route = 2
-  volume = 0.46
+  volume = 0.48
