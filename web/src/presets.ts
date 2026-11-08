@@ -26,8 +26,8 @@ export function make(name: string, build: Build): Patch {
 
 /** an XL's name: its FM-1 version's name and " XL" ("Algo Four XL") */
 export const XL_SUFFIX = ' XL';
-/** an XL named after its original's voice count, not after its FM-1 version: Hera 6 XL is Hera 5's (D-348) */
-const XL_FM1: Record<string, string> = { 'Hera 6 XL': 'Hera 5' };
+/** an XL named after its original's voice count, not after its FM-1 version: Hera 6 XL is Hera 4's (D-348) */
+const XL_FM1: Record<string, string> = { 'Hera 6 XL': 'Hera 4' };
 /** the FM-1 version of an XL ("Algo Four XL" -> "Algo Four"); undefined: not an XL's name */
 export const xlBase = (name: string): string | undefined => XL_FM1[name] ?? (name.endsWith(XL_SUFFIX) ? name.slice(0, -XL_SUFFIX.length) : undefined);
 

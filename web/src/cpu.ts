@@ -2,9 +2,11 @@
 // The FM-1's CPU load of a patch (core 0's: the second core takes a split poly group's odd parts, #271), estimated from a
 // table of costs (cpu-costs.json). The table comes from counting the
 // fixed-point engine's instructions on an rv32im model (tools/cpu, `npm run cpu-costs`), calibrated on the factory patches
-// measured on the device (a scale plus a fixed time per block); a table measured on the FM-1 itself can replace it (`source`). Every figure here is an estimate.
+// measured on the test rig (a scale plus a fixed time per block, and a factor for each factory engine: `rig`); a table
+// measured on the FM-1 itself can replace it (`source`). Every figure here is an estimate.
 import TABLE from './cpu-costs.json';
 import { DEFS, LFO_RANGE_K, MATRIX_N, matrixPin, STACKS, TRACK_POLY } from './modules';
+import { allModules, assembliesOf, parentOf } from './assembly';
 import { flawOf, hasMorph, type ModuleInst, type Patch } from './patch';
 import { deviceView } from './poly';
 
@@ -95,32 +97,38 @@ export interface CpuTable {
   checks: { name: string; cycles: number }[];
   /** how the scale was found */
   calibration: Record<string, number | string>;
+  /** the test rig's survey of the factory patches (scripts/cpu-costs.ts RIG): per factory engine (a top-level assembly of
+   * that name), the factor on its modules' cycles that makes the estimate read what the rig measured for its factory patch
+   * (its steady peak; the scale and the fixed time per block are fitted on every patch together) */
+  rig?: { engines: Record<string, number>; survey: string };
 }
 
 export const CPU: CpuTable = TABLE as CpuTable;
 
 /** above this the estimate warns: the table is an estimate, not a measurement */
 export const CPU_WARN = 0.8;
-/** factory patches the owner ships past 100 % of the estimate until the test rig measures them, by name, each with the
- * most its estimate may reach before the budget calls it over: Hera 5, about 110 % (owner ruling 2026-11-07; over on the
- * rig, it becomes Hera 4). The CPU meter still shows the estimate; a patch of that name gets the same room */
-export const CPU_RIG_PENDING: Record<string, number> = { 'Hera 5': 1.12 };
+/** the most a factory patch's VOICES top lets its estimate reach (D-870, scripts/factory-build.ts voiceTops): the estimate
+ * reads the rig's steady peak, and the overload guard drops a voice when its mean passes 90 % of the half buffer
+ * (D-362); the mean runs a few points under the peak, which leaves that much for note starts and the transport */
+export const CPU_VOICE_TOP = 0.9;
 
 export interface CpuModule {
   id: number;
   type: string;
   /** instances: the parts of its poly assembly */
   copies: number;
+  /** its cycles, with its factory engine's rig factor (CpuTable.rig) */
   cycles: number;
 }
 
 export interface CpuEstimate {
   /** the estimate with one core (core 1 held: update mode, or given up by its fallback) */
   oneCoreUs: number;
-  /** every module's cycles, as one core renders them */
+  /** every module's cycles, as one core renders them, as counted (without the rig's factors: the emulator's count,
+   * cpu.test.ts) */
   cycles: number;
   /** the cycles the second core takes off core 0 (#271, engine.c render_split): in a poly group of 2 or more parts, the
-   * odd parts of each module but a Steps */
+   * odd parts of each module but a Steps (with the rig's factors) */
   split: number;
   /** the poly groups whose parts are split (each hands work over and waits for it) */
   splitGroups: number;
@@ -236,7 +244,13 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
   groups.forEach((g, i) => g.modules.forEach((id) => (groupOf.set(id, i), copies.set(id, g.cfg.parts))));
   const ninst = (id: number): number => copies.get(id) ?? 1;
   const morph = hasMorph(p);
-  let total = table.block, split = 0;
+  // the rig's factor of each module of a factory engine (CpuTable.rig), by its id (deviceView keeps the source's ids)
+  const factor = new Map<number, number>();
+  for (const a of assembliesOf(source)) {
+    const k = table.rig?.engines[a.name];
+    if (k !== undefined && !parentOf(source, a.id)) for (const id of allModules(source, a)) factor.set(id, k);
+  }
+  let total = table.block, split = 0, counted = table.block;
   const splitGroups = new Set<number>();
   const modules: CpuModule[] = [];
   for (const m of p.modules) {
@@ -301,8 +315,10 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
     }
     if (t.glide && !m.bypass && moved.has('time')) one += t.glide;
     if (t.thru && m.type === 'steps' && inputs.has('keys')) one += t.thru * Math.min(TRACK_POLY, Math.max(1, ...groups.map((g) => g.cfg.parts)));
-    if (m.type === 'output') total += table.output;
+    if (m.type === 'output') (total += table.output), (counted += table.output);
     const k = ninst(m.id);
+    counted += one * k;
+    one *= factor.get(m.id) ?? 1;
     if (group && k >= 2 && m.type !== 'steps') {
       split += one * Math.floor(k / 2);
       splitGroups.add(groupOf.get(m.id)!);
@@ -314,5 +330,5 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
   const oneCoreUs = total / table.cyclesPerUs + table.fixedUs;
   const c = table.cores;
   const us = cores === 2 && c ? oneCoreUs + c.idleUs - (c.splitEff * split) / table.cyclesPerUs : oneCoreUs;
-  return { cycles: total, split, splitGroups: splitGroups.size, oneCoreUs, us, use: us / table.blockUs, modules };
+  return { cycles: counted, split, splitGroups: splitGroups.size, oneCoreUs, us, use: us / table.blockUs, modules };
 }

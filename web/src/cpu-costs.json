@@ -1,11 +1,41 @@
 {
- "source": "estimate: the fixed-point engine counted on an rv32im model (tools/cpu), calibrated on 17 factory patches measured on the FM-1 (2026-10-20)",
- "cyclesPerUs": 233.4,
- "fixedUs": 23,
+ "source": "estimate: the fixed-point engine counted on an rv32im model (tools/cpu), calibrated on the factory patches measured on the test rig (2026-11-08)",
+ "cyclesPerUs": 206.5,
+ "fixedUs": 244,
  "cores": {
-  "idleUs": 24,
+  "idleUs": 27,
   "splitEff": 0.85,
   "survey": "docs/measurements/cpu-survey-2026-11-05-rig-release-1.10-head.json (CI run 42096997058) against -rig-merged-split.json (CI run 42093061899)"
+ },
+ "rig": {
+  "engines": {
+   "8 Lire": 0.83,
+   "808 kit": 1.02,
+   "Algo Four": 0.72,
+   "basic poly": 0.9,
+   "Briefcase 3": 0.84,
+   "Canvas": 0.94,
+   "Cassia 1": 0.99,
+   "drift poly": 0.89,
+   "Elvira 2": 1.11,
+   "Expander S": 0.86,
+   "Hera 4": 0.82,
+   "Io 4": 0.81,
+   "Meridian 8": 0.94,
+   "mono lead": 1.18,
+   "Monolith D": 0.98,
+   "Oracle V": 0.85,
+   "Perun 4": 1.09,
+   "Sallen 20": 1.07,
+   "Scrounge": 0.99,
+   "Silver Box": 1.19,
+   "Spokes 6": 1.04,
+   "supersaw stack": 0.86,
+   "Vernon 100": 0.83,
+   "Verona Drum 1": 1.05,
+   "Wanderer": 1.16
+  },
+  "survey": "docs/measurements/cpu-survey-2026-11-08-rig-release-1.11-head.json and -head-run.json (CI run 42462440721), with -2026-11-05-rig-merged-split.json (CI run 42093061899) for the patches changed since"
  },
  "blockUs": 2901,
  "note": 72,
@@ -41701,7 +41731,7 @@
  "checks": [
   {
    "name": "Oracle V",
-   "cycles": 889275
+   "cycles": 729013
   },
   {
    "name": "Init",
@@ -41724,8 +41754,8 @@
    "cycles": 136194
   },
   {
-   "name": "Hera 5",
-   "cycles": 924245
+   "name": "Hera 4",
+   "cycles": 783047
   },
   {
    "name": "Sallen 20",
@@ -41781,7 +41811,7 @@
   },
   {
    "name": "808 Kit",
-   "cycles": 571478
+   "cycles": 444222
   },
   {
    "name": "909 Kit",
@@ -41797,7 +41827,7 @@
   },
   {
    "name": "Cassia 1",
-   "cycles": 892818
+   "cycles": 492359
   },
   {
    "name": "Basic Poly",
@@ -41817,7 +41847,7 @@
   },
   {
    "name": "Verona Drum 1",
-   "cycles": 545174
+   "cycles": 424421
   },
   {
    "name": "Acid, 4 parts",
@@ -41873,7 +41903,7 @@
   },
   {
    "name": "assembly Cassia 1",
-   "cycles": 861012
+   "cycles": 467352
   },
   {
    "name": "assembly clap",
@@ -41944,8 +41974,8 @@
    "cycles": 115232
   },
   {
-   "name": "assembly Hera 5",
-   "cycles": 883440
+   "name": "assembly Hera 4",
+   "cycles": 746207
   },
   {
    "name": "assembly hihat",
@@ -41993,7 +42023,7 @@
   },
   {
    "name": "assembly Oracle V",
-   "cycles": 848148
+   "cycles": 692921
   },
   {
    "name": "assembly overdrive",
@@ -42097,7 +42127,7 @@
   },
   {
    "name": "assembly Verona Drum 1",
-   "cycles": 531553
+   "cycles": 409213
   },
   {
    "name": "assembly vibrato",
@@ -42121,9 +42151,9 @@
   }
  ],
  "calibration": {
-  "method": "a scale and a fixed time per block, fitted to the factory patches measured on the FM-1 (survey, fit)",
-  "survey": "docs/measurements/cpu-survey-2026-10-20.json, CI run 39541520839 (device-diag)",
-  "fit": "device % = 1.041 x estimate + 0.8, 17 patches, peak of rest / 1 / 4 / 8 notes",
+  "method": "a scale and a fixed time per block, and a factor per factory engine (rig), fitted to the factory patches measured on the test rig (survey, fit)",
+  "survey": "docs/measurements/cpu-survey-2026-11-08-rig-release-1.11-head.json and -head-run.json (CI run 42462440721), with -2026-11-05-rig-merged-split.json (CI run 42093061899) for the patches changed since",
+  "fit": "rig us = 1.130 x estimate before + 218 us (the 5 patches without an engine of their own: Init, Simple FM, Plucked String, 909 Kit, <7PH), so 233.4 / 1.130 cycles per us plus 1.130 x 23 + 218 us a block; the second core's idle cost 1.130 x 24 us",
   "acidM102CyclesPerUs": 243,
   "acidM102Note": "303 Acid of M1-0.2 (b907693), one note held, peak cycles per block = 12 % of 2901 us (the ISR peak measured on the FM-1): the scale before the survey",
   "acidM102Cycles": 84584,

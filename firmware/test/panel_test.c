@@ -533,10 +533,13 @@ int main(void)
     check("old-format edits cannot add new allocation settings", poly_row_set(mod, ENG_POLY_STEAL, 0) == -1 && poly_row_set(mod, ENG_POLY_ASSIGN, 3) == -1 && pv_bin[9] == 0 && pv_bin[11] == 0);
     {                                                   /* a VOICES row stops at what the CPU holds (format 51: the
                                                          * row's top, gen-presets voiceTops); one without a top offers 8 */
-        static const char *const NAME[2] = {"CASSIA 1", "EXPANDER S"};
-        static const int32_t WANT[2] = {4, ENG_MAX_PARTS};
+        static const char *const NAME[3] = {"CASSIA 1", "EXPANDER S", "BASIC POLY"};
+        static const int32_t WANT[3] = {2, 6, ENG_MAX_PARTS};
+        static const char *const SAYS[3] = {"Cassia 1's VOICES row stops at two voices, a turn up there stays",
+                                            "Expander S's VOICES row stops at six voices, a turn up there stays",
+                                            "Basic Poly's VOICES row (no top) reaches all eight voices"};
         uint32_t t, d, g, k;
-        for (t = 0; t < 2u; t++) {
+        for (t = 0; t < 3u; t++) {
             int found = 0, ok = 0;
             check(NAME[t], load(NAME[t]) == 0);
             pages_ensure();
@@ -554,7 +557,7 @@ int main(void)
                                  && pages_turn(k, -1, 0, 0, &m, &par, &v) == 1 && v == WANT[t] - 1;
                         }
             printf("      (%s: VOICES top %d)\n", NAME[t], (int)WANT[t]);
-            check(t ? "Expander S's VOICES row (no top) reaches all eight voices" : "Cassia 1's VOICES row stops at four voices, a turn up there stays", found && ok);
+            check(SAYS[t], found && ok);
         }
     }
     fm1_ms = 10000;
@@ -1248,11 +1251,9 @@ int main(void)
             enc(2, -3);
         }
         later(1500);
-        enc(0, 2);                                          /* (past DRUMS 2 and its Drum map, the mid and high toms, D-877) */
-        later(1500);
-        tap(3);                                             /* the 808 kit card: its keys come from the Drum maps, not Main */
+        tap(3);                                             /* the 808 kit card: its keys come from the Drum map, not Main */
         check("SEL on a row that takes no keys: NOTHING HERE TAKES KEYS, nothing armed, the page stays",
-              page == PAGE_ENV && pg_cur_dev == d0 + 3u && m64(eng_arm_mask_get()) == 0u && !strcmp(msg_text, "NOTHING HERE TAKES KEYS"));
+              page == PAGE_ENV && pg_cur_dev == d0 + 1u && m64(eng_arm_mask_get()) == 0u && !strcmp(msg_text, "NOTHING HERE TAKES KEYS"));
         tap(4);
         check("ENV again: back where it came from", page == 0 && trail_n == n0);
         pages_focus(1, 0);                                  /* SEL on a row (#395): DRUMS armed, then disarmed */
@@ -2453,8 +2454,6 @@ int main(void)
             tap(BTN_PLAY);
         later(1500);
         E.node[drums].ksrc = 0;                             /* (Main's keys off DRUMS: plain notes, each key its own on MIDI out) */
-        if (eng_steps_module(1) >= 0)
-            E.node[eng_steps_module(1)].ksrc = 0;           /* (and off DRUMS 2, the toms' track, D-877) */
         mlen = 0;
         m0 = mlen;
         kq_edge(9, 1);                                      /* D4 pressed and let go within one pass */
@@ -2612,9 +2611,9 @@ int main(void)
         check("unmuted and disarmed: the page as it was", !eng_steps_muted((uint32_t)drums) && eng_armed() < 0
               && !memcmp(base, fb, sizeof base));
         r0 = seq_row;
-        held_key(BTN_REC, 5);                               /* A#3: black key 3, no track 3 (DRUMS 2 is track 2, D-877) */
-        check("REC held + a black key past the tracks: NO TRACK 3, nothing armed, REC off, the row stays",
-              eng_armed() < 0 && seq_rec == 0 && bar_shows("NO TRACK 3", C_FG) && seq_row == r0);
+        held_key(BTN_REC, 3);                               /* G#3: black key 2, no track 2 */
+        check("REC held + a black key past the tracks: NO TRACK 2, nothing armed, REC off, the row stays",
+              eng_armed() < 0 && seq_rec == 0 && bar_shows("NO TRACK 2", C_FG) && seq_row == r0);
         later(1500);
         panel_held |= 1u << BTN_REC;                        /* REC's press and the key in the same pass (the key read first) */
         panel_keys(1u << 1);

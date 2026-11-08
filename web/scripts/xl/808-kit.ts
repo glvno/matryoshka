@@ -2,13 +2,13 @@
 // 808 Kit XL: the 808 Kit with every instrument, knob and switch of the Roland TR-808, after its owner's manual
 // (archive.org "synthmanual-roland-tr-808-owners-manual": "Control Descriptions", "Specifications"). The FM-1 version
 // (web/presets/NN-808-kit.json, gen-presets.ts) plays eight of the eleven voices, its rows accent their own drum by
-// velocity, and its card "808 kit" has the TR-808's knobs for those ten. Its drums, its two tracks and their Drum maps
-// stay as they are here.
+// velocity, and its card "808 kit" has the TR-808's knobs for those eight. Its drums, DRUMS track and Drum map stay as
+// they are here.
 // The TR-808 has eleven voices, sixteen sounds: bass drum (LEVEL TONE DECAY), snare drum (LEVEL TONE SNAPPY), low / mid /
 // high tom (LEVEL TUNING; a switch makes each a low / mid / high conga), rim shot (LEVEL; switched: claves), hand clap
 // (LEVEL; switched: maracas), cow bell (LEVEL), cymbal (LEVEL TONE DECAY), open hihat (LEVEL DECAY), closed hihat (LEVEL;
 // it cuts the open one), ACCENT (its own row of steps; LEVEL), and PRE-SCALE (3, 4, 6 or 8 steps a beat).
-// Two tracks, each with its Drum map, both on PLAY (the FM-1 version's, rows 3 and 4 of DRUMS 2 added):
+// Two tracks, each with its Drum map, both on PLAY:
 //   DRUMS (the FM-1 version's rows and keys): BD SD CP/MA CH OH LT/LC RS/CL CB
 //   DRUMS 2: MT/MC HT/HC CY AC, on the white keys G4 A4 B4 C5
 // Main's keys go into both, so the keyboard plays every row. The card "808 kit" holds everything, one heading per
@@ -26,8 +26,7 @@
 //   pre-scale: a Selector into both tracks' rate, its positions named 1/8T 1/16 1/16T 1/32 (3, 4, 6, 8 steps a beat; the
 //     manual gives the divisions, not which panel position is which, so the order is by division).
 // New voices (stand-ins for the TR-808's circuits, which the manual does not describe; the tunings are estimates):
-//   mid and high tom (the FM-1 version's): the factory tom as the low tom, higher; the congas: the same, higher still,
-//   shorter, with less drop
+//   mid and high tom: the factory tom as the low tom, higher; the congas: the same, higher still, shorter, with less drop
 //   claves: a sine at about 2.5 kHz with a 35 ms decay; maracas: high-passed noise with a 30 ms decay
 // Not here:
 // - The rhythm memory, which needs Steps features the engines lack (issue #351): 12 BASIC RHYTHMs with A / B variations
@@ -144,7 +143,7 @@ export const xl: Xl = {
     const drumsTrack = p.modules.find((m) => m.type === 'steps' && m.name === 'DRUMS')!;
     const out = p.modules.find((m) => m.type === 'output')!;
     const mixA = mod(p, p.cables.find((c) => c.to.module === out.id)!.from.module);
-    const [mixB, mixC] = p.cables.filter((c) => c.to.module === mixA.id && c.to.port === 'in4').map((c) => mod(p, c.from.module));
+    const mixB = mod(p, p.cables.find((c) => c.to.module === mixA.id && c.to.port === 'in4')!.from.module);
     const at = { x: card.x, y: card.y + 1800 };
     /** put new modules / top-level assemblies into the card */
     const join = (...ids: number[]): void => { card.modules.push(...ids); };
@@ -155,11 +154,15 @@ export const xl: Xl = {
       join(m.id);
       return m;
     };
-    // ---- DRUMS 2 and its Drum map (the FM-1 version's mid and high toms): the cymbal and the accent join them
-    const t2 = p.modules.find((m) => m.type === 'steps' && m.name === 'DRUMS 2')!;
-    const map2 = mod(p, p.cables.find((c) => c.from.module === t2.id && c.from.port === 'keys')!.to.module);
+    // ---- DRUMS 2 and its Drum map, below DRUMS; Main's keys play it too
+    const t2 = addModule(p, DEFS.steps, drumsTrack.x, drumsTrack.y + 300);
+    t2.name = 'DRUMS 2';
+    t2.notes = [];
+    const map2 = addModule(p, DEFS.drummap, map1.x, map1.y + 300);
     map2.names = MAP2.map(([n]) => n);
     MAP2.forEach(([, note], r) => (map2.params[`n${r + 1}`] = note));
+    wire(p, main.id, 'keys', t2.id, 'keys');
+    wire(p, t2.id, 'keys', map2.id, 'keys');
     // ---- pre-scale: a Selector of four rates into both tracks' rate (its values: the rates' unit positions, 1/8T 1/16
     // 1/16T 1/32 of the seven 1/4 .. 1/32; the range 0..1 reads them as they are)
     const preScale = add('select', 0, 0, { count: 4, pos: 2, fade: 0, v1: 3 / 6, v2: 4 / 6, v3: 5 / 6, v4: 1 });
@@ -199,7 +202,7 @@ export const xl: Xl = {
     /** the FM-1 version's strike VCAs (tom, rim) take the row's velocity on their cv: now the held level, at twice the gain
      * over 1.27 (a plain step plays as before) */
     const restrike = (held: ModuleInst, a: AssemblyInst): void => {
-      for (const c of p.cables.filter((x) => [map1.id, map2.id].includes(x.from.module) && /^v\d$/.test(x.from.port) && x.to.port === 'cv' && allModules(p, a).includes(x.to.module))) {
+      for (const c of p.cables.filter((x) => x.from.module === map1.id && /^v\d$/.test(x.from.port) && x.to.port === 'cv' && allModules(p, a).includes(x.to.module))) {
         c.from = { module: held.id, port: 'out' };
         const m = mod(p, c.to.module);
         m.params.gain = (m.params.gain / FM1_ACCENT) * 2;
@@ -224,7 +227,8 @@ export const xl: Xl = {
     wire(p, metal.outputs[0].module, metal.outputs[0].port, hatsSrc.id, 'in1');
     hh.inputs.push({ module: hatsSrc.id, port: 'in1', label: 'metal' });
     // ---- the new voices and the switches: each lane's held level into its voices' level, a Selector picking one of a pair
-    mixC.params.l3 = 0.9;   // (the cymbal's channel: the toms' are the FM-1 version's)
+    const mixC = add('mixer', 9, 0, { l1: 0.45, l2: 0.45, l3: 0.9, l4: 0 });
+    wire(p, mixC.id, 'out', mixA.id, 'in4');
     const tomDef = FACTORY.find((d) => d.name === 'tom')!;
     /** a factory tom at its settings, its modal body's pitch on a TUNING macro (+-7 semitones), its hit on the held level */
     const tom = (label: string, coarse: number, o: { decay: number; drop: number }, tuning: ModuleInst, held: ModuleInst, x: number): AssemblyInst => {
@@ -251,7 +255,7 @@ export const xl: Xl = {
       const sel = add('select', x, 1, { count: 2, pos: 1, fade: 2 });
       for (const [v, port] of [[a, 'in1'], [b, 'in2']] as const) {
         const o = v.outputs.find((r) => r.label === 'out')!;
-        p.cables = p.cables.filter((c) => !(c.from.module === o.module && c.from.port === o.port && [mixA.id, mixB.id, mixC.id].includes(c.to.module)));
+        p.cables = p.cables.filter((c) => !(c.from.module === o.module && c.from.port === o.port && [mixA.id, mixB.id].includes(c.to.module)));
         wire(p, o.module, o.port, sel.id, port);
       }
       return sel;
@@ -260,27 +264,32 @@ export const xl: Xl = {
       plugIn(p, gate[0], gate[1], v, 'gate');
       plugIn(p, held.id, 'out', v, 'level');
     };
-    // the toms and congas: low (DRUMS row 6), mid and high (DRUMS 2 rows 1, 2), the FM-1 version's toms
-    const toms: { lane: [number, string]; tom: AssemblyInst; head: string; level: [ModuleInst, string] }[] = [
-      { lane: gateOf(map1, 6), tom: child('low tom'), head: 'low tom', level: [mixB, 'l2'] },
-      { lane: gateOf(map2, 1), tom: child('mid tom'), head: 'mid tom', level: [mixC, 'l1'] },
-      { lane: gateOf(map2, 2), tom: child('hi tom'), head: 'hi tom', level: [mixC, 'l2'] },
+    // the toms and congas: low (DRUMS row 6, the FM-1 version's tom), mid and high (DRUMS 2 rows 1, 2)
+    const lt = child('low tom');
+    const ltBody = allModules(p, lt).map((id) => mod(p, id)).find((m) => m.type === 'modal')!;
+    const toms: { lane: [number, string]; tom?: AssemblyInst; coarse: number; head: string; level: [ModuleInst, string] }[] = [
+      { lane: gateOf(map1, 6), tom: lt, coarse: ltBody.params.coarse, head: 'low tom', level: [mixB, 'l2'] },
+      { lane: gateOf(map2, 1), coarse: ltBody.params.coarse + 5, head: 'mid tom', level: [mixC, 'l1'] },
+      { lane: gateOf(map2, 2), coarse: ltBody.params.coarse + 10, head: 'hi tom', level: [mixC, 'l2'] },
     ];
     const tomRows: Row[] = [];
     toms.forEach((t, i) => {
       const held = hold(t.lane);
       const tuning = add('macro', 3 + i, 2, { value: 0.5 });
-      const body = t.tom;
-      // the FM-1 version's tom: its TUNING row becomes the pair's macro
-      const tBody = allModules(p, body).map((id) => mod(p, id)).find((m) => m.type === 'modal')!;
-      const coarse = tBody.params.coarse;
-      const C = rowDef(DEFS.modal, 'coarse')!;
-      tBody.map = { ...tBody.map!, p1: ['coarse'] };
-      tBody.range = { p1: { coarse: [paramUnit(C, coarse - 7), paramUnit(C, coarse + 7)] } };
-      wire(p, tuning.id, 'out', tBody.id, 'p1');
-      restrike(held, body);
-      body.params = [];
-      const conga = tom(t.head.replace('tom', 'conga'), coarse + 9, { decay: 0.25, drop: 0.2 }, tuning, held, 3 * i + 1);
+      let body = t.tom;
+      if (body) {
+        // the FM-1 version's tom: its TUNING row becomes the pair's macro
+        const C = rowDef(DEFS.modal, 'coarse')!;
+        ltBody.map = { ...ltBody.map!, p1: ['coarse'] };
+        ltBody.range = { p1: { coarse: [paramUnit(C, t.coarse - 7), paramUnit(C, t.coarse + 7)] } };
+        wire(p, tuning.id, 'out', ltBody.id, 'p1');
+        restrike(held, lt);
+        body.params = [];
+      } else {
+        body = tom(t.head, t.coarse, { decay: 0.5 - 0.05 * i, drop: 0.6 }, tuning, held, 3 * i);
+        for (const g of [body.inputs.find((r) => r.label === 'gate')!]) for (const x of [g, ...(g.also ?? [])]) wire(p, t.lane[0], t.lane[1], x.module, x.port);
+      }
+      const conga = tom(t.head.replace('tom', 'conga'), t.coarse + 9, { decay: 0.25, drop: 0.2 }, tuning, held, 3 * i + 1);
       for (const g of [conga.inputs.find((r) => r.label === 'gate')!]) for (const x of [g, ...(g.also ?? [])]) wire(p, t.lane[0], t.lane[1], x.module, x.port);
       const sel = switchOf(body, conga, 3 * i + 2);
       wire(p, sel.id, 'out', t.level[0].id, t.level[1].replace('l', 'in'));

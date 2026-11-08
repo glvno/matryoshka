@@ -14,14 +14,14 @@ describe('"Start with an engine" (#160)', () => {
     expect(tiles.map((t) => t.name)).toEqual(FACTORY.filter((d) => defIsEngine(d)).map((d) => d.name));
     expect(tiles).toHaveLength(25);
     const by = (n: string) => tiles.find((t) => t.name === n)!;
-    expect(by('Hera 5').stereo).toBe(true);
+    expect(by('Hera 4').stereo).toBe(true);
     expect(by('Oracle V').stereo).toBe(false);
     expect(by('8 Lire').stereo).toBe(false); // mono, as the Lyra-8 (its two delay lines sum, #658)
     expect(by('Scrounge').stereo).toBe(true); // the A and B outputs
     expect(by('Meridian 8').stereo).toBe(true); // the odd and even outputs
     expect(by('Perun 4').stereo).toBe(false); // mono, as the original
     expect(by('Spokes 6').stereo).toBe(false); // mono on the FM-1 (the XL has the pan)
-    expect(by('Verona Drum 1').stereo).toBe(true); // a PAN per channel (1.11)
+    expect(by('Verona Drum 1').stereo).toBe(false); // mono on the FM-1 (the XL has the pan)
     for (const t of tiles) {
       expect(t.line.length, t.name).toBeGreaterThan(0);
       if (t.cpu !== null) expect(t.cpu, t.name).toBeGreaterThan(0);
@@ -36,7 +36,7 @@ describe('"Start with an engine" (#160)', () => {
     expect(by('Oracle V')).toBe('Prophet-5 type shit');
     expect(by('Monolith D')).toBe('Minimoog Model D type shit');
     expect(by('Silver Box')).toBe('TB-303 type shit');
-    expect(by('Hera 5')).toBe('Juno-106 type shit');
+    expect(by('Hera 4')).toBe('Juno-106 type shit');
     expect(by('Sallen 20')).toBe('MS-20 type shit');
     expect(by('Expander S')).toBe('Oberheim SEM type shit');
     expect(by('Algo Four')).toBe('DX100 type shit');

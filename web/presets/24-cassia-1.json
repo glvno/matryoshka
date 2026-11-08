@@ -31,7 +31,7 @@
    "x": 20,
    "y": 2300,
    "params": {
-    "voices": 4,
+    "voices": 2,
     "assign": 0,
     "legato": 0,
     "priority": 0,
@@ -1432,7 +1432,7 @@
    "x": 4240,
    "y": 20,
    "params": {
-    "level": 0.66
+    "level": 0.95
    }
   },
   {
@@ -3515,7 +3515,7 @@
      "param": "voices",
      "label": "voices",
      "head": "voice",
-     "top": 4
+     "top": 2
     },
     {
      "module": 10,

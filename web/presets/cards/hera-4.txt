@@ -1,4 +1,4 @@
-# Hera 5: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# Hera 4: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
@@ -49,7 +49,7 @@
 # Hera 6's presets (drafts of 2026-10-29 after the Juno-6's patch sheets, #413) on the Juno-106's panel. The decay and
 # release rows are the ADSR's long range: a value plays 2.4 times as long (d = 0.208 s is 0.5 s).
 
-engine: Hera 5
+engine: Hera 4
 
 preset: Brass
   pwm = 0
@@ -61,7 +61,7 @@ preset: Brass
   s = 0.55
   r = 0.104 s
   chorus = I
-  level = 1.05
+  level = 1.13
 
 preset: Strings
   rate = 0.8 Hz
@@ -93,7 +93,7 @@ preset: Bass
   s = 0.15
   r = 0.062 s
   chorus = OFF
-  level = 0.67
+  level = 0.84
 
 preset: Organ
   pwm = 0
@@ -129,4 +129,4 @@ preset: Glass Pad
   s = 0.8
   r = 1.25 s
   chorus = II
-  level = 0.81
+  level = 0.92

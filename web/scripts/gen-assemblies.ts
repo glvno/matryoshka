@@ -805,7 +805,7 @@ asm('basic poly', 'Voices', (b) => {
 }, {});
 
 // Oracle V, a five-voice analog polysynth after the Sequential Prophet-5 (Rev 4; Sequential's Prophet-5 User's Guide 1.3,
-// chapter 2): the keyboard's keys go into the Voice allocator (the Z80), which plays five voice cards. A card: oscillator A
+// chapter 2): the keyboard's keys go into the Voice allocator (the Z80), which plays four voice cards on the FM-1 (the Prophet-5 has five). A card: oscillator A
 // (saw and pulse, each on or off, both at once; pulse width; sync to B) and oscillator B (saw, triangle and pulse at once;
 // frequency, fine, pulse width; LO FREQ, keyboard on / off), the mixer (A, B, noise), the 24 dB ladder with its own ADSR
 // and keyboard tracking, the amp ADSR, glide. The pulses and B's triangle are made from each oscillator's saw, as Oracle V
@@ -827,7 +827,7 @@ asm('Oracle V', 'Voices', (b) => {
   const wheel = b.add('vca', 0, 1);
   const wFreqA = b.add('scale', 0, 2, { gain: 0.24, offset: 0 });
   const nz = b.add('noise', 1, 0, { level: 1 });
-  const part = b.add('alloc', 1, 2, { voices: 5 });
+  const part = b.add('alloc', 1, 2, { voices: 4 });
   const gl = b.add('glide', 2, 1, { time: 0.001 });
   const oscB = b.add('osc', 2, 0, { wave: 2, level: 1, fine: 7, analog: 1 }, { p1: 'fine' });
   const oscA = b.add('osc', 3, 0, { wave: 2, level: 1, analog: 1 }, { p1: 'fine' });
@@ -1334,12 +1334,13 @@ asm('Silver Box', 'Voices', (b) => {
 });
 namePositions('Silver Box', { waveform: ['SAW', 'SQUARE'] });
 
-// Hera 5, the Roland Juno-106 with five voices (the original has six): Hera 6 XL's whole panel (scripts/xl/hera-6.ts,
+// Hera 4, the Roland Juno-106 with four voices (the original has six): Hera 6 XL's whole panel (scripts/xl/hera-6.ts,
 // `junoDef`, which says how each control is built), in Hera 6's old factory slot. Owner ruling 2026-11-07: "Let's ship a
-// Hera 5 -- the five-voice version, and a Hera 6 XL for exact parity", and "Hera 5 replaces Hera 6". The CPU estimate is
-// about 106 % at five voices: the rig measures it, and if the FM-1 cannot keep up, HERA_VOICES becomes 4 (Hera 4).
-/** Hera 5's voices: the one number to change for Hera 4 (its name follows it) */
-const HERA_VOICES = 5;
+// Hera 5 -- the five-voice version, and a Hera 6 XL for exact parity", and "Hera 5 replaces Hera 6"; if the FM-1 could not
+// keep up, Hera 4 (D-873). The test rig could not keep up with five (the overload guard dropped voices, 2026-11-08), so it
+// plays four: the owner in chat 2026-11-08, "recs".
+/** Hera 4's voices: the one number to change (its name follows it) */
+const HERA_VOICES = 4;
 {
   const d = junoDef(HERA_VOICES, `Hera ${HERA_VOICES}`);
   // (laid out on the grid in the order the modules were added, eight a row: the XL's edits sit between the grid's places)
@@ -1387,7 +1388,7 @@ const CZ_STEPS = (s: [number, number][], sus: number, end: number): Record<strin
 /** Cassia 1's chorus at Init (#658, the owner's feature parity by default: the CZ-1's chorus on) */
 const CASSIA_CHORUS = 0.5;
 asm('Cassia 1', 'Voices', (b) => {
-  const part = b.add('alloc', 0, 4, { voices: 4 });
+  const part = b.add('alloc', 0, 4, { voices: 2 });
   const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 5.5, depth: 1 / 12 });
   const vibS = b.add('scale', 0, 0.5, { gain: 0, offset: 0 }); // the vibrato's depth in semitones (negative: the CZ's saw down)
   const nz = b.add('noise', 0, 1, { level: 1, color: 0 });
@@ -4212,53 +4213,43 @@ asm('Spokes 6', 'Drums', (b) => {
 });
 
 // Verona Drum 1, after the Vermona DRM1 MKIV (#613; its user manual, "The instrument channels", pages 11 to 18). The FM-1
-// version: seven of its eight instrument channels, each with every knob of its panel and its own signal flow
-// (scripts/verona-voices.ts): KICK, DRUM 1, DRUM 2, MULTI, SNARE, HI HAT 1, CLAP, and each channel's PAN and VOLUME. A Drum
-// map row per channel on the white keys from F3, the hi-hat on two (OPEN, and CLOSED with its fixed short decay, as the
-// original's two MIDI notes per hi-hat); a row's velocity is the channel's level, as the DRM1's MIDI velocity. DRUM 2 (a
-// second DRUM 1, as on the original) plays row 8, so the rows before it keep their keys. The channels share one white
-// noise source; each channel's PAN places it between the two output VCAs, and MASTER (a Macro) is their level. DRUM 2 and
-// PAN joined in 1.11 (the owner, 2026-11-07: "808 toms + Verona DRUM 2 + PAN"). Left out to fit the FM-1 (Verona Drum 1
-// XL has them, scripts/xl/verona-drum-1.ts): HI HAT 2 (the same as HI HAT 1), the clap's NOISE COLOR, the hi-hat's TRIG
-// switch (its two rows play open and closed), MULTI's PITCH 2 / PITCH 3 off position (here they are the oscillators'
-// coarse tune), the kick's own noise envelope (its noise lasts as long as TIME), and the snare's second noise VCA (NOISE
-// and REVERB are its envelopes' levels, 0..1).
+// version: six of its eight instrument channels, each with every knob of its panel and its own signal flow
+// (scripts/verona-voices.ts): KICK, DRUM 1, MULTI, SNARE, HI HAT 1, CLAP, and each channel's VOLUME. A Drum map row per
+// channel on the white keys from F3, the hi-hat on two (OPEN, and CLOSED with its fixed short decay, as the original's
+// two MIDI notes per hi-hat); a row's velocity is the channel's level, as the DRM1's MIDI velocity. The channels share
+// one white noise source; MASTER is the level of the mixer they all go into. Left out to fit the FM-1 (Verona Drum 1 XL has
+// them, scripts/xl/verona-drum-1.ts): DRUM 2 and HI HAT 2 (each the same as its pair), PAN, the clap's NOISE COLOR, the
+// hi-hat's TRIG switch (its two rows play open and closed), MULTI's PITCH 2 / PITCH 3 off position (here they are the
+// oscillators' coarse tune), the kick's own noise envelope (its noise lasts as long as TIME), and the snare's second noise
+// VCA (NOISE and REVERB are its envelopes' levels, 0..1).
 asm('Verona Drum 1', 'Drums', (b) => {
   const map = b.add('drummap', 0, 0, Object.fromEntries(PLATE_KEYS[1].map((n, r) => [`n${r + 1}`, n])));
-  b.module(map).names = ['KICK', 'DRUM 1', 'MULTI', 'SNARE', 'HH OPEN', 'HH CLOSE', 'CLAP', 'DRUM 2'];
+  b.module(map).names = ['KICK', 'DRUM 1', 'MULTI', 'SNARE', 'HH OPEN', 'HH CLOSE', 'CLAP', 'ROW 8'];
   const noise = sharedNoise(b, 0, 1);
-  // MASTER: the level of the two output VCAs that every channel's PAN feeds
-  const master = b.add('macro', 8, 0, { value: 0.7 });   // (MASTER is the level row, #448; where the mixer was, so every module keeps its id)
-  //            name   voice  Drum map row (the hi-hat's open row; its closed row is 6)  pan (Verona Drum 1 XL's)
-  const channels: [string, Voice, number, number][] = [
-    ['kick', kick(b, 1, noise, { lean: true }), 1, 0],
-    ['drum 1', drum(b, 2, { coarse: -17, decay: 0.35 }), 2, -0.35],
-    ['multi', multi(b, 3, { lean: true }), 3, 0.25],
-    ['snare', snare(b, 4, noise, { lean: true }), 4, 0],
-    ['hi hat', hihat(b, 5, noise), 5, -0.2],
-    ['clap', clap(b, 6, noise, { color: false }), 7, 0.1],
+  // MASTER: every channel into the mixer's first input, its level the overall volume
+  const mix = b.add('mixer', 7, 0, { l1: 0.7, l2: 0, l3: 0, l4: 0 });   // (MASTER is the level row, #448)
+  const channels: [string, Voice][] = [
+    ['kick', kick(b, 1, noise, { lean: true })],
+    ['drum 1', drum(b, 2, { coarse: -17, decay: 0.35 })],
+    ['multi', multi(b, 3, { lean: true })],
+    ['snare', snare(b, 4, noise, { lean: true })],
+    ['hi hat', hihat(b, 5, noise)],
+    ['clap', clap(b, 6, noise, { color: false })],
   ];
-  channels.splice(2, 0, ['drum 2', drum(b, 7, { coarse: -7, decay: 0.25 }), 8, 0.35]);   // (made last: the others keep their ids)
-  const outL = b.add('vca', 8, 1, { gain: 1 });
-  const outR = b.add('vca', 8, 2, { gain: 1 });
-  b.wire(master, 'out', outL, 'cv');
-  b.wire(master, 'out', outR, 'cv');
-  const pans = new Map<string, number>();
-  channels.forEach(([name, v, r, at], i) => {
+  /** each channel's Drum map row (the hi-hat's open row; its closed row is 6) */
+  const rows = [1, 2, 3, 4, 5, 7];
+  channels.forEach(([name, v], i) => {
+    const r = rows[i];
     for (const [m, port] of v.gate) b.wire(map, `g${r}`, m, port);
     b.wire(map, `v${r}`, v.vel[0], v.vel[1]);
     if (v.closed) {
       for (const [m, port] of v.closed) b.wire(map, 'g6', m, port);
       b.wire(map, 'v6', v.closedVel![0], v.closedVel![1]);
     }
-    const pan = b.add('pan', 1 + i, 6, { pan: at });
-    b.wire(v.out[0], v.out[1], pan, 'in');
-    b.wire(pan, 'l', outL, 'in');
-    b.wire(pan, 'r', outR, 'in');
-    pans.set(name, pan);
-    b.nest(name, 1 + i, 0, [...v.members, pan]);
+    b.wire(v.out[0], v.out[1], mix, 'in1');
+    b.nest(name, 1 + i, 0, v.members);
   });
-  channels.forEach(([name, v]) => {
+  channels.forEach(([, v]) => {
     const [first, ...also] = v.gate;
     b.nestInput('gate', first[0], first[1], ...also);
     if (v.closed) {
@@ -4266,18 +4257,15 @@ asm('Verona Drum 1', 'Drums', (b) => {
       b.nestInput('closed', c0[0], c0[1], ...cAlso);
     }
     b.nestInput('velocity', v.vel[0], v.vel[1]);
-    b.nestOutput('l', pans.get(name)!, 'l');
-    b.nestOutput('r', pans.get(name)!, 'r');
+    b.nestOutput('out', v.out[0], v.out[1]);
   });
   b.input('keys', map, 'keys');
-  b.output('l', outL, 'out');
-  b.output('r', outR, 'out');
+  b.output('out', mix, 'out');
   channels.forEach(([name, v]) => {
     v.rows.forEach(([label, m, param], k) => b.param(label, m, param, k === 0 ? { head: name, col: true } : {}));
-    b.param('pan', pans.get(name)!, 'pan');
     b.param('volume', v.out[0], 'gain');
   });
-  b.param('master', master, 'value', { head: 'master', col: true });
+  b.param('master', mix, 'l1', { head: 'master', col: true });
 });
 
 // an LFO through a Scale: vibrato (into a pitch input), tremolo (into a VCA's cv with an offset), a filter sweep

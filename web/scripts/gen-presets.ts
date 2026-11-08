@@ -26,10 +26,11 @@ const KIT_NOTES = [53, 55, 57, 59, 60, 62, 64, 65];
 
 const presets: (() => Patch)[] = [];
 
-// Oracle V: the factory assembly at its five voices (they fit since the engine speed-ups, branch cpu-opt)
+// Oracle V: the factory assembly at four voices: with five, the test rig's overload guard dropped one (2026-11-08; the
+// owner in chat, "recs")
 presets.push(() => {
   const x = around('Oracle V', 'Oracle V');
-  x.set('voices', 5);
+  x.set('voices', 4);
   plugIn(x.p, x.main.id, 'at', x.a, 'at'); // aftertouch (channel pressure) to the filter and the LFO amount (#658)
   level(x.p, { chord: true });
   return x.p;
@@ -108,14 +109,14 @@ function silverDemo(p: Patch): Patch {
   return validatePatch(p, DEFS);
 }
 
-// Hera 5 (Hera 6's slot): the Juno-106's panel at five voices (scripts/xl/hera-6.ts junoDef, gen-assemblies.ts HERA_VOICES).
+// Hera 4 (Hera 6's slot): the Juno-106's panel at four voices (scripts/xl/hera-6.ts junoDef, gen-assemblies.ts HERA_VOICES).
 // The bender lever and the hold pedal (MIDI CC 64) as Hera 6 XL plays them
 presets.push(() => {
-  const x = around('Hera 5', 'Hera 5');
+  const x = around('Hera 4', 'Hera 4');
   plugIn(x.p, x.main.id, 'bend', x.a, 'bend');
   plugIn(x.p, x.main.id, 'sustain', x.a, 'hold'); // MIDI CC 64: 0..63 up, 64..127 down
   level(x.p, { chord: true });
-  x.p.notes = 'Juno-106 panel, five voices (the original has six; Hera 6 XL plays six in the browser). MIDI CC 64 is the hold pedal; Output sets volume. Poly 2 steals when all voices are busy. HPF 2/3 and chorus II settings are approximated by ear. Patch shift, tape, memory and the MIDI function switch are hardware or storage, not reproduced.';
+  x.p.notes = 'Juno-106 panel, four voices (the original has six; Hera 6 XL plays six in the browser). MIDI CC 64 is the hold pedal; Output sets volume. Poly 2 steals when all voices are busy. HPF 2/3 and chorus II settings are approximated by ear. Patch shift, tape, memory and the MIDI function switch are hardware or storage, not reproduced.';
   return x.p;
 });
 
@@ -282,15 +283,12 @@ presets.push(() => {
 // 808 Kit (after the Roland TR-808, its owner's manual: "Control Descriptions", "Specifications"): a drum machine on the
 // transport (PLAY starts it, the Main module's tempo sets it). One DRUMS track (#138) into a Drum map whose rows play the
 // factory drum assemblies: 1 bass drum (boom kick), 2 snare drum, 3 hand clap, 4 closed and 5 open hihat (one hats
-// assembly), 6 low tom, 7 rim shot, 8 cow bell. A second track, DRUMS 2, plays the mid and high toms from a Drum map of
-// its own (rows 1 and 2, on G4 and A4, as the 808 Kit XL's). Main's keys go into both tracks (#141), so the keys play the
-// drums unarmed; the rows sit on the white keys from F3 (the FM-1's lowest key at octave 0: F3 G3 A3 B3 C4 D4 E4 F4, then
-// G4 A4), the editor opens at octave -1 (f g h j k l ...).
+// assembly), 6 low tom, 7 rim shot, 8 cow bell. Main's keys go into DRUMS (#141), so the keys play the drums unarmed;
+// the rows sit on the white keys from F3 (the FM-1's lowest key at octave 0: F3 G3 A3 B3 C4 D4 E4 F4), the editor opens
+// at octave -1 (f g h j k l ...).
 // One card, "808 kit", holds the drums and the two mixers, with the TR-808's knobs only, one heading per instrument in the
-// panel's order, named as the panel names them: bass drum (level, tone, decay), snare drum (level, tone, snappy), low,
-// mid and hi tom (level, tuning), rim shot, hand clap, cow bell (level), open hihat (level, decay), closed hihat (level).
-// The mid and high toms are the factory tom as the low tom, 5 and 10 semitones higher and a little shorter (stand-ins for
-// the TR-808's circuits, as in the 808 Kit XL; the owner chose them for 1.11 on 2026-11-07: "808 toms"). The drums' own
+// panel's order, named as the panel names them: bass drum (level, tone, decay), snare drum (level, tone, snappy), low tom
+// (level, tuning), rim shot, hand clap, cow bell (level), open hihat (level, decay), closed hihat (level). The drums' own
 // rows that the TR-808 lacks (tune, drop, snap, flam, stick ...) keep their values but leave the card.
 // - Bass drum TONE: a low pass after the kick, on a 1 ms click (the trigger's pulse, which the TR-808's bass drum lets
 //   through): it sets how bright the attack is.
@@ -303,7 +301,7 @@ presets.push(() => {
 //   drum by its velocity (X in the patterns, 127: 1.27 times a plain step): the Drum map's ninth row and a hold per drum
 //   do not fit. Each drum's velocity sets the gain of a VCA inside it through a macro range (as the 909 Kit's, D-337);
 //   the tom and the rim strike through a VCA on it. So no drum needs a velocity VCA after it.
-// Left out, to fit the FM-1 (the 808 Kit XL has them): the cymbal, the congas, claves and maracas
+// Left out, to fit the FM-1 (the 808 Kit XL has them): the mid and high toms, the cymbal, the congas, claves and maracas
 // on the switches, the ACCENT row and ACCENT LEVEL. Missing from the Steps tracks (#351): the patterns' A / B variations,
 // the intro / fill-ins and AUTO FILL IN, and the rhythm tracks (song mode).
 /** a row's velocity 127 plays its drum this much louder than a plain step */
@@ -318,20 +316,11 @@ presets.push(() => {
   wire(p, st.id, 'keys', map.id, 'keys');
   const main = p.modules.find((m) => m.type === 'fm1')!;
   wire(p, main.id, 'keys', st.id, 'keys');
-  // DRUMS 2: the mid and high toms on G4 and A4 (its other rows unused)
-  const st2 = addModule(p, DEFS.steps, 380, 320);
-  st2.name = 'DRUMS 2';
-  const map2 = addModule(p, DEFS.drummap, 800, 320);
-  [67, 69, 0, 0, 0, 0, 0, 0].forEach((n, r) => (map2.params[`n${r + 1}`] = n));
-  wire(p, main.id, 'keys', st2.id, 'keys');
-  wire(p, st2.id, 'keys', map2.id, 'keys');
-  const mixA = addModule(p, DEFS.mixer, 4200, 20);
+  const mixA = addModule(p, DEFS.mixer, 3360, 20);
   Object.assign(mixA.params, { l1: 0.8, l2: 0.5, l3: 0.5, l4: 1 });
-  const mixB = addModule(p, DEFS.mixer, 4200, 600);
+  const mixB = addModule(p, DEFS.mixer, 3360, 600);
   Object.assign(mixB.params, { l1: 1, l2: 0.45, l3: 0.35, l4: 0.3 });
-  const mixC = addModule(p, DEFS.mixer, 4200, 1180);
-  Object.assign(mixC.params, { l1: 0.45, l2: 0.45, l3: 0, l4: 0 });
-  const out = addModule(p, DEFS.output, 4540, 20);
+  const out = addModule(p, DEFS.output, 3700, 20);
   /** a factory drum at column i, its modules by their ids in the definition */
   const drum = (name: string, i: number, label: string): { a: AssemblyInst; m: (local: number) => ModuleInst } => {
     const def = FACTORY.find((d) => d.name === name);
@@ -411,7 +400,7 @@ presets.push(() => {
   Object.assign(hh.m(12).params, { l1: 0.5, l2: 0.5 });   // (CLOSED and OPEN HIHAT LEVEL: set from a render below)
   /** the tom's and the rim's strike: a VCA on the row's velocity in place of the Scale (`hit`) between the pulse and the
    * body, as loud on a plain step (a macro range on so small a gain would not survive the FM-1's 256 range steps) */
-  const strike = (d: typeof bd, r: number, from = map): void => {
+  const strike = (d: typeof bd, r: number): void => {
     const hit = d.m(2);
     const vca = addModule(p, DEFS.vca, hit.x, hit.y);
     vca.params.gain = Math.round(hit.params.gain * ACCENT_808 * 10000) / 10000;
@@ -421,29 +410,17 @@ presets.push(() => {
     }
     removeModule(p, hit.id);
     d.a.modules = d.a.modules.map((id) => (id === hit.id ? vca.id : id));
-    wire(p, from.id, `v${r}`, vca.id, 'cv');
+    wire(p, map.id, `v${r}`, vca.id, 'cv');
     d.a.inputs.push({ module: vca.id, port: 'cv', label: 'vel' });
   };
   const lt = drum('tom', 4, 'low tom');
   strike(lt, 6);
-  /** the mid and high toms: the low tom higher and shorter (the 808 Kit XL's) */
-  const higher = (i: number, label: string, up: number, decay: number): typeof bd => {
-    const t = drum('tom', i, label);
-    t.m(3).params.coarse = lt.m(3).params.coarse + up;
-    t.m(3).params.decay = decay;
-    t.m(5).params.gain = 0.6;   // (the pitch drop)
-    return t;
-  };
-  const mt = higher(7, 'mid tom', 5, 0.45);
-  strike(mt, 1, map2);
-  const ht = higher(8, 'hi tom', 10, 0.4);
-  strike(ht, 2, map2);
   const rs = drum('rim', 5, 'rim shot');
   strike(rs, 7);
   const cb = drum('cowbell', 6, 'cow bell');
   velocity(cb.a, 8, [cb.m(6), 'gain']);
-  //                       drum  map row  pattern (X: an accent)  mixer  (DRUMS 2's Drum map)
-  const drums: [typeof bd, number, string, number, string, ModuleInst?][] = [
+  //                       drum  map row  pattern (X: an accent)  mixer
+  const drums: [typeof bd, number, string, number, string][] = [
     [bd, 1, 'X...x...x.x.....', mixA.id, 'in1'],
     [sd, 2, '....X.......X..x', mixA.id, 'in2'],
     [cp, 3, '............X...', mixA.id, 'in3'],
@@ -452,21 +429,16 @@ presets.push(() => {
     [lt, 6, '................', mixB.id, 'in2'],
     [rs, 7, '................', mixB.id, 'in3'],
     [cb, 8, '..........x.....', mixB.id, 'in4'],
-    [mt, 1, '................', mixC.id, 'in1', map2],
-    [ht, 2, '................', mixC.id, 'in2', map2],
   ];
   const notes: StepNote[] = [];
-  for (const [d, r, steps, to, port, m2] of drums) {
-    const from = m2 ?? map;
-    const key = Math.round(from.params[`n${r}`]);
-    if (!m2) for (const n of patternNotes(steps) ?? []) notes.push({ ...n, note: key });
-    plugIn(p, from.id, `g${r}`, d.a, r === 5 && !m2 ? 'open' : 'gate');
+  for (const [d, r, steps, to, port] of drums) {
+    const key = Math.round(map.params[`n${r}`]);
+    for (const n of patternNotes(steps) ?? []) notes.push({ ...n, note: key });
+    plugIn(p, map.id, `g${r}`, d.a, r === 5 ? 'open' : 'gate');
     if (to >= 0) plugOut(p, d.a, 'out', to, port);
   }
   st.notes = fixNotes(notes);
-  st2.notes = [];
   wire(p, mixB.id, 'out', mixA.id, 'in4');
-  wire(p, mixC.id, 'out', mixA.id, 'in4');
   wire(p, mixA.id, 'out', out.id, 'l');
   wire(p, mixA.id, 'out', out.id, 'r');
   // the hats' two levels: each hat about as loud as the 808 Kit's two hihat assemblies were (their peaks at the Output's
@@ -482,14 +454,12 @@ presets.push(() => {
     hh.m(12).params[lv] = Math.round(Math.min(1, want / Math.max(got, 1e-6)) * 100) / 100;
   }
   // the card: one "808 kit" around the drums and the mixers, the TR-808's knobs in its panel's order
-  const card = makeAssembly(p, [mixA.id, mixB.id, mixC.id], '808 kit', drums.map(([d]) => d.a.id).filter((id, i, all) => all.indexOf(id) === i));
+  const card = makeAssembly(p, [mixA.id, mixB.id], '808 kit', drums.map(([d]) => d.a.id).filter((id, i, all) => all.indexOf(id) === i));
   Object.assign(card, { x: 380, y: 600 });   // (under the track, where the drums are)
   const rows: [string, string, ModuleInst, string][] = [
     ['bass drum', 'level', mixA, 'l1'], ['', 'tone', bdTone, 'cutoff'], ['', 'decay', bd.m(4), 'r3'],
     ['snare drum', 'level', mixA, 'l2'], ['', 'tone', sdTone, 'mix'], ['', 'snappy', sd.m(8), 'l1'],
     ['low tom', 'level', mixB, 'l2'], ['', 'tuning', lt.m(3), 'coarse'],
-    ['mid tom', 'level', mixC, 'l1'], ['', 'tuning', mt.m(3), 'coarse'],
-    ['hi tom', 'level', mixC, 'l2'], ['', 'tuning', ht.m(3), 'coarse'],
     ['rim shot', 'level', mixB, 'l3'],
     ['hand clap', 'level', mixA, 'l3'],
     ['cow bell', 'level', mixB, 'l4'],
@@ -660,13 +630,14 @@ after.push(() => {
   return p;
 });
 
-// Cassia 1 (after the Casio CZ-1): four voices on the FM-1 (owner, 2026-11-07, #658), Main's aftertouch into its `at`, bend into `bend`, and the
+// Cassia 1 (after the Casio CZ-1): two voices on the FM-1 (with three or four, the test rig's overload guard dropped voices,
+// 2026-11-08; the owner in chat, "recs"), Main's aftertouch into its `at`, bend into `bend`, and the
 // players (D-336) as every melodic patch
 after.push(() => {
   const x = around('Cassia 1', 'Cassia 1');
   plugIn(x.p, x.main.id, 'at', x.a, 'at');
   plugIn(x.p, x.main.id, 'bend', x.a, 'bend'); // the bend range (#658)
-  x.set('voices', 4); // its CPU cap (owner, 2026-11-07, #658)
+  x.set('voices', 2); // its CPU cap (the test rig, 2026-11-08)
   level(x.p, { chord: true });
   return players(validatePatch(structuredClone(x.p), DEFS));
 });
@@ -685,10 +656,13 @@ for (const [name, asm, chord] of [['Basic Poly', 'basic poly', true], ['Drift Po
 
 // Verona Drum 1 (after the Vermona DRM1 MKIV, #613): a drum engine on the transport as every factory kit (D-330): Main's keys
 // into PATTERN, PATTERN's keys into the engine's Drum map. A 16-step pattern (X an accent): closed hats on every eighth, an
-// open hat on the last offbeat, the snare and clap on two and four, the two drums and the multi in the gaps. After the last
+// open hat on the last offbeat, the snare and clap on two and four, the drum and the multi in the gaps. After the last
 // factory patch (D-334); a drum engine gets no Arpeggiator (as Spokes 6).
 after.push(() => {
-  const x = around('Verona Drum 1', 'Verona Drum 1');   // (stereo: each channel's PAN, 1.11)
+  const x = around('Verona Drum 1', 'Verona Drum 1');
+  // the Output's l only (its r then plays the l, as in every engine): one cable fewer for the FM-1's patch bytes
+  const out = x.p.modules.find((m) => m.type === 'output')!;
+  x.p.cables = x.p.cables.filter((c) => !(c.to.module === out.id && c.to.port === 'r'));
   sequenced(x, 'PATTERN', {
     1: 'X...x...X...x.x.',
     2: '..........x...x.',
@@ -697,7 +671,6 @@ after.push(() => {
     5: '..............x.',
     6: 'x.x.x.x.x.x.x...',
     7: '....x.......x..x',
-    8: '.............x..',
   });
   return x.p;
 });

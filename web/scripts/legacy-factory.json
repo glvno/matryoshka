@@ -129,6 +129,12 @@
   },
   {
    "name": "<7PH",
+   "len": 2325,
+   "fnv": "b13133fa",
+   "version": 51
+  },
+  {
+   "name": "<7PH",
    "len": 3639,
    "fnv": "cb833d15",
    "version": 51
@@ -1503,6 +1509,12 @@
   },
   {
    "name": "BRIEFCASE 3",
+   "len": 2527,
+   "fnv": "54219d81",
+   "version": 51
+  },
+  {
+   "name": "BRIEFCASE 3",
    "len": 3755,
    "fnv": "c59738a8",
    "version": 51
@@ -1901,6 +1913,12 @@
    "name": "CASSIA 1",
    "len": 3199,
    "fnv": "362f13ac",
+   "version": 51
+  },
+  {
+   "name": "CASSIA 1",
+   "len": 3199,
+   "fnv": "5f9671b4",
    "version": 51
   },
   {
@@ -2781,8 +2799,20 @@
   },
   {
    "name": "EXPANDER S",
+   "len": 1541,
+   "fnv": "2f6460a3",
+   "version": 51
+  },
+  {
+   "name": "EXPANDER S",
    "len": 2106,
    "fnv": "3730185e",
+   "version": 51
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1540,
+   "fnv": "42d15c29",
    "version": 51
   },
   {
@@ -3324,6 +3354,12 @@
    "len": 397,
    "fnv": "1a575aed",
    "version": 8
+  },
+  {
+   "name": "HERA 4",
+   "len": 1851,
+   "fnv": "07791515",
+   "version": 51
   },
   {
    "name": "HERA 5",
@@ -4845,6 +4881,12 @@
   },
   {
    "name": "MONOLITH D",
+   "len": 2148,
+   "fnv": "06a21f28",
+   "version": 51
+  },
+  {
+   "name": "MONOLITH D",
    "len": 2834,
    "fnv": "1f2cee84",
    "version": 51
@@ -5217,6 +5259,12 @@
   },
   {
    "name": "ORACLE V",
+   "len": 2294,
+   "fnv": "0485d95a",
+   "version": 51
+  },
+  {
+   "name": "ORACLE V",
    "len": 2286,
    "fnv": "3713737a",
    "version": 51
@@ -5249,6 +5297,12 @@
    "name": "ORACLE V",
    "len": 1236,
    "fnv": "db01a302",
+   "version": 51
+  },
+  {
+   "name": "ORACLE V",
+   "len": 2294,
+   "fnv": "e6ca4254",
    "version": 51
   },
   {
@@ -6315,6 +6369,12 @@
   },
   {
    "name": "SALLEN 20",
+   "len": 1914,
+   "fnv": "908e0d5e",
+   "version": 51
+  },
+  {
+   "name": "SALLEN 20",
    "len": 2856,
    "fnv": "f3924c39",
    "version": 51
@@ -6750,6 +6810,12 @@
    "len": 1150,
    "fnv": "8d1994bc",
    "version": 48
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 913,
+   "fnv": "0291d45a",
+   "version": 51
   },
   {
    "name": "SILVER BOX",
@@ -8339,6 +8405,12 @@
    "name": "VERONA DRUM 1",
    "len": 3817,
    "fnv": "98f22058",
+   "version": 46
+  },
+  {
+   "name": "VERONA DRUM 1",
+   "len": 3817,
+   "fnv": "f78dab19",
    "version": 46
   },
   {

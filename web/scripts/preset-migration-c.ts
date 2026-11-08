@@ -113,7 +113,7 @@ export function casesHeader(cases: MigrationCase[]): string {
 
 /** the cases every check uses: a 1.9.0 preset of Cassia 1, basic poly and Oracle V (#627's done-when), one stored before
  * 1.8.2 (Cassia 1, 88 values), and the hand-written maps (Cassia 1 before #430, 8 Lire before D-852, Io 4 before #681,
- * Algo Four before #658, Canvas before D-348 with its lines, Verona Drum 1 before DRUM 2 and PAN) */
+ * Algo Four before #658, Canvas before D-348 with its lines) */
 export const CASE_PICKS = [
   { name: 'MY CASSIA', from: '2b89b424' },
   { name: 'MY POLY', from: '77fdb539' },
@@ -124,5 +124,4 @@ export const CASE_PICKS = [
   { name: 'MY IO 4', from: 'bcfb20df' },
   { name: 'MY ALGO', from: '666a5214' },
   { name: 'MY CANVAS', from: '5ae3f8ec' },
-  { name: 'MY VERONA', from: 'db9de761' },
 ];

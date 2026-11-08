@@ -1,6 +1,6 @@
 {
  "version": 2,
- "name": "Hera 5",
+ "name": "Hera 4",
  "modules": [
   {
    "id": 1,
@@ -150,7 +150,7 @@
    "x": 1620,
    "y": 60,
    "params": {
-    "voices": 5,
+    "voices": 4,
     "assign": 0,
     "legato": 0,
     "priority": 0,
@@ -400,7 +400,7 @@
    "x": 2260,
    "y": 620,
    "params": {
-    "gain": -0.5527864045000421,
+    "gain": -0.5,
     "offset": 1
    },
    "att": [
@@ -2538,13 +2538,6 @@
       "bright": 1,
       "env": -2,
       "level": 97
-     },
-     {
-      "detune": 0,
-      "drift": 0,
-      "bright": -2,
-      "env": 1,
-      "level": 99
      }
     ]
    }
@@ -2552,8 +2545,8 @@
   {
    "v": 1,
    "id": 2,
-   "name": "Hera 5",
-   "label": "Hera 5",
+   "name": "Hera 4",
+   "label": "Hera 4",
    "x": 20,
    "y": 60,
    "open": false,
@@ -2877,5 +2870,5 @@
    ]
   }
  ],
- "notes": "Juno-106 panel, five voices (the original has six; Hera 6 XL plays six in the browser). MIDI CC 64 is the hold pedal; Output sets volume. Poly 2 steals when all voices are busy. HPF 2/3 and chorus II settings are approximated by ear. Patch shift, tape, memory and the MIDI function switch are hardware or storage, not reproduced."
+ "notes": "Juno-106 panel, four voices (the original has six; Hera 6 XL plays six in the browser). MIDI CC 64 is the hold pedal; Output sets volume. Poly 2 steals when all voices are busy. HPF 2/3 and chorus II settings are approximated by ear. Patch shift, tape, memory and the MIDI function switch are hardware or storage, not reproduced."
 }

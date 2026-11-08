@@ -40,7 +40,7 @@ describe('factory presets (#193)', () => {
 
   it('load on an inserted engine; read-only; storing over one makes a new one', () => {
     const p = newPatch(DEFS);
-    const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Hera 5')!, 0, 0);
+    const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Hera 4')!, 0, 0);
     const list = presetsOf(p, a);
     expect(list.map((x) => x.name).slice(0, 2)).toEqual(['Init', 'Brass']); // its card (presets/cards/hera-6.txt)
     expect(applyPreset(p, a, list[1])).toBe(true);

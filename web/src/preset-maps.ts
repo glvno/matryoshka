@@ -176,14 +176,14 @@ export const HAND_MAPS: HandMap[] = [
     },
   },
 
-  // ---- 1.11: Hera 5 took Hera 6's slot with Hera 6 XL's Juno-106 panel at five voices (owner ruling 2026-11-07). The
+  // ---- 1.11: Hera 4 took Hera 6's slot with Hera 6 XL's Juno-106 panel at five voices (owner ruling 2026-11-07). The
   // Ladder became a Multimode filter (cutoff and resonance keep their values), the filter's envelope amount and key follow
   // moved to their own rows, the PWM depth to the PWM slider; the DCO's wave (sine, triangle, saw, square, sharktooth,
   // reverse saw) became its PULSE and SAW switches (square: pulse only; the others: saw only). The envelope's times keep
   // their numbers on the ADSR's long range, so they run 2.4 times longer. The chorus switch, the HPF's four positions and
   // the rest start at Init.
   {
-    engine: 'Hera 5', from: '7ec3be68', to: '24fe2e10', why: 'Hera 5 took the slot (owner ruling 2026-11-07): the Juno-106 panel',
+    engine: 'Hera 4', from: '7ec3be68', to: '24fe2e10', why: 'Hera 4 took the slot (owner ruling 2026-11-07): the Juno-106 panel',
     rows: {
       'filter#9.cutoff': { from: 'ladder#9.cutoff' }, 'filter#9.res': { from: 'ladder#9.res' }, 'scale#32.gain': { from: 'ladder#9.cvamt' },
       'scale#36.gain': { from: 'ladder#9.track' }, 'macro#45.value': { from: 'scale#3.gain' },
@@ -239,12 +239,5 @@ export const HAND_MAPS: HandMap[] = [
       'macro#59.value': { line: 'osc#19.fine', mul: [1 / 600], add: [0.5], min: 0, max: 1 },
       'macro#61.value': { line: 'osc#26.fine', mul: [1 / 600], add: [0.5], min: 0, max: 1 },
     },
-  },
-  // ---- 1.11: Verona Drum 1 gets DRUM 2 and a PAN per channel (the owner, 2026-11-07: "808 toms + Verona DRUM 2 + PAN").
-  // MASTER was the level of the mixer every channel went into and is now a Macro on the two output VCAs: the same level
-  // at the same value. DRUM 2 and the PAN rows are new and take Init's values.
-  {
-    engine: 'Verona Drum 1', from: 'db9de761', to: '1aaff8fe', why: '1.11: DRUM 2 and PAN; MASTER on the output VCAs (same value)',
-    rows: { 'macro#3.value': { from: 'mixer#3.l1' } },
   },
 ];

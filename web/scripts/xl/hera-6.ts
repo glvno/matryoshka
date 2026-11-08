@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Hera 6 XL: the Juno-106 as its owner's manual describes it, with its six voices. Hera 5, the FM-1's factory patch in
-// Hera 6's old slot, is the same instrument with five voices (owner ruling 2026-11-07: "Let's ship a Hera 5 -- the
+// Hera 6 XL: the Juno-106 as its owner's manual describes it, with its six voices. Hera 4, the FM-1's factory patch in
+// Hera 6's old slot, is the same instrument with four voices (owner ruling 2026-11-07: "Let's ship a Hera 5 -- the
 // five-voice version, and a Hera 6 XL for exact parity"): gen-assemblies.ts builds it with `junoDef(HERA_VOICES)`. Both
 // are built on the FM-1's Hera 6 as it was before (hera-6-base.json), which had to cut these controls. Source: Roland Juno-106 Owner's Manual (the panel drawing on page 3; DCO p. 16, HPF and VCF p. 18, VCA and
 // ENV p. 20, LFO p. 21, Keyboard and Assign Mode p. 22, Controller p. 23, Key Transpose and Remote Control p. 24, Chorus
@@ -46,7 +46,7 @@
 // - The PEDAL HOLD jack: Main's sustain output (MIDI CC 64) is the pedal: a voice whose key is let go keeps its gate while it is down
 //   and its envelope still sounds (a voice that decayed to silence is let go, as on the original).
 // Not on the card, and why:
-// - Construction, kept at its values in the patch: the voice count (six, as the original; five in Hera 5), the chorus modules' settings,
+// - Construction, kept at its values in the patch: the voice count (six, as the original; four in Hera 4), the chorus modules' settings,
 //   the bass boost's level, the hold's threshold (the pedal plays it).
 // - VOLUME: the Output module's level, outside the card.
 // - Poly 2 with six keys down takes over a voice (the original then plays no more keys). Its assign control still needs to select
@@ -54,14 +54,14 @@
 // - The patch shift pedal jack, the tape interface, the memory and the MIDI function switch: hardware and storage, no part
 //   of the sound (the editor keeps the patches).
 // Over the FM-1's CPU estimate at six voices (109 % on 2026-11-07): three oscillators per voice whose pitch moves every
-// sample (portamento, the LFO) and the per-sample filter. So it stays an XL beside Hera 5 (D-348 as amended).
+// sample (portamento, the LFO) and the per-sample filter. So it stays an XL beside Hera 4 (D-348 as amended).
 import { level, players, plugIn } from '../factory-build';
 import type { Xl } from './xl';
 import { aroundDef, edit, type Ed, type RowOpts } from './asm-edit';
 import { ADSR_LONG, BEND_OCT, DEFS } from '../../src/modules';
 import { paramUnit } from '../../src/patch';
 import type { AssemblyDef } from '../../src/assembly';
-// the FM-1's Hera 6 as it was before Hera 5 took its slot (its src/assemblies/hera-6.json), which both are built on
+// the FM-1's Hera 6 as it was before Hera 4 took its slot (its src/assemblies/hera-6.json), which both are built on
 import BASE from './hera-6-base.json';
 
 // the base's local module ids (hera-6-base.json)
@@ -80,7 +80,7 @@ function named(e: Ed, label: string, module: number, names: string[], o: RowOpts
   if (also.length) r.also = also.map((m) => ({ module: m, param: 'pos' }));
 }
 
-/** the Juno-106 with `voices` voices, as an assembly named `name`: Hera 6 XL's (six) and Hera 5's (five, HERA_VOICES in
+/** the Juno-106 with `voices` voices, as an assembly named `name`: Hera 6 XL's (six) and Hera 4's (four, HERA_VOICES in
  * gen-assemblies.ts). Its UNISON plays the voices' sum at 1 / sqrt(voices), so that it does not clip (#681), and the voice
  * cards keep the first `voices` of the base's flaws. */
 export function junoDef(voices: number, name: string): AssemblyDef {
@@ -283,7 +283,7 @@ export function junoDef(voices: number, name: string): AssemblyDef {
 }
 
 export const xl: Xl = {
-  base: 'Hera 5',
+  base: 'Hera 4',
   name: 'Hera 6 XL',
   build: () => {
     const x = aroundDef('Hera 6', junoDef(6, 'Hera 6'));

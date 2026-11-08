@@ -27,16 +27,16 @@ const NOTE = 72; // C5
 
 const BLOCK_US = 2901; // 128 frames at 44118 Hz (DEVICE_SR)
 const OLD_PEAK = 0.12; // 303 Acid on M1-0.2: 11 % typical, 12 % peak of the half buffer (ISR time incl. key scan and USB)
-/** The scale, frozen (not fitted on each run: a faster engine would bend it against an old survey). The 17 factory patches
- * measured on the FM-1 (docs/measurements/cpu-survey-2026-10-20.json) against the estimate at the old scale (243 cycles / us
- * from the 303 Acid alone): device % = 1.041 x estimate % + 0.8. So 243 / 1.041 cycles per us, plus 0.8 % of the block the
- * engine does not count (the rest of the audio interrupt: key scan, USB poll). A new survey after large engine changes
- * replaces both. */
+/** The scale, frozen (not fitted on each run: a faster engine would bend it against an old survey). Fitted by
+ * scripts/cpu-rig-fit.ts to the test rig's survey of every factory patch on the firmware of release 1.11
+ * (docs/measurements/2026-11-08-rig-release-1.11.md): least squares of the rig's steady peak on the estimate at the scale
+ * before (233.4 cycles / us + 23 us, fitted to the FM-1's survey of 2026-10-20). A new survey after large engine or
+ * firmware changes replaces it (run cpu-rig-fit.ts, then npm run cpu-costs). */
 const SURVEY = {
-  cyclesPerUs: 233.4,
-  fixedUs: 23,
-  survey: 'docs/measurements/cpu-survey-2026-10-20.json, CI run 39541520839 (device-diag)',
-  fit: 'device % = 1.041 x estimate + 0.8, 17 patches, peak of rest / 1 / 4 / 8 notes',
+  cyclesPerUs: 206.5,
+  fixedUs: 244,
+  survey: 'docs/measurements/cpu-survey-2026-11-08-rig-release-1.11-head.json and -head-run.json (CI run 42462440721), with -2026-11-05-rig-merged-split.json (CI run 42093061899) for the patches changed since',
+  fit: 'rig us = 1.130 x estimate before + 218 us (the 5 patches without an engine of their own: Init, Simple FM, Plucked String, 909 Kit, <7PH), so 233.4 / 1.130 cycles per us plus 1.130 x 23 + 218 us a block; the second core\'s idle cost 1.130 x 24 us',
 };
 /** The second core (#271), fitted to the test rig's surveys of every factory patch (docs/measurements/2026-11-05-rig-second-
  * core.md) against release-1.10's head before #271 (the one-core firmware): what the second core costs core 0 is the median,
@@ -45,9 +45,23 @@ const SURVEY = {
  * is taken, so the estimate stays under each poly patch's measured saving (within its noise) and never promises more room
  * than the FM-1 has. */
 const CORES = {
-  idleUs: 24,
+  idleUs: 27,   // (24 us at the scale before, cpu-rig-fit.ts)
   splitEff: 0.85,
   survey: 'docs/measurements/cpu-survey-2026-11-05-rig-release-1.10-head.json (CI run 42096997058) against -rig-merged-split.json (CI run 42093061899)',
+};
+/** Each factory engine's factor on its modules' cycles (src/cpu.ts CpuTable.rig), fitted by scripts/cpu-rig-fit.ts to the
+ * same surveys as SURVEY: the smallest that makes the estimate read at least the rig's steady peak for every voice count
+ * its factory patch played on the rig. The counted engine misses what the FM-1 spends beyond its instructions (its caches
+ * and memory, the hardware's own timing), and that differs from engine to engine: the factors run from 0.72 to 1.19. */
+const RIG = {
+  engines: {
+    '8 Lire': 0.83, '808 kit': 1.02, 'Algo Four': 0.72, 'basic poly': 0.9, 'Briefcase 3': 0.84, 'Canvas': 0.94,
+    'Cassia 1': 0.99, 'drift poly': 0.89, 'Elvira 2': 1.11, 'Expander S': 0.86, 'Hera 4': 0.82, 'Io 4': 0.81,
+    'Meridian 8': 0.94, 'mono lead': 1.18, 'Monolith D': 0.98, 'Oracle V': 0.85, 'Perun 4': 1.09, 'Sallen 20': 1.07,
+    'Scrounge': 0.99, 'Silver Box': 1.19, 'Spokes 6': 1.04, 'supersaw stack': 0.86, 'Vernon 100': 0.83,
+    'Verona Drum 1': 1.05, 'Wanderer': 1.16,
+  } as Record<string, number>,
+  survey: SURVEY.survey,
 };
 const BLOCKS = 24;
 const SKIP = 3; // blocks before the maximum is taken for a module kit (the first notes, envelopes starting)
@@ -459,7 +473,7 @@ async function calibration(): Promise<CpuTable['calibration']> {
   const oldPeak = peak(old.blocks.map((b) => b.total));
   const kernel = bench.blocks.map((b) => b.total / 16);
   return {
-    method: 'a scale and a fixed time per block, fitted to the factory patches measured on the FM-1 (survey, fit)',
+    method: 'a scale and a fixed time per block, and a factor per factory engine (rig), fitted to the factory patches measured on the test rig (survey, fit)',
     survey: SURVEY.survey,
     fit: SURVEY.fit,
     acidM102CyclesPerUs: Math.round(oldPeak / (OLD_PEAK * BLOCK_US)),
@@ -488,10 +502,11 @@ types.steps.thru = thru;
 console.log(`steps thru ${thru} per key`);
 const { cyclesPerUs, fixedUs } = SURVEY;
 const table: CpuTable = {
-  source: 'estimate: the fixed-point engine counted on an rv32im model (tools/cpu), calibrated on 17 factory patches measured on the FM-1 (2026-10-20)',
+  source: 'estimate: the fixed-point engine counted on an rv32im model (tools/cpu), calibrated on the factory patches measured on the test rig (2026-11-08)',
   cyclesPerUs,
   fixedUs,
   cores: CORES,
+  rig: RIG,
   blockUs: BLOCK_US,
   note: NOTE,
   ...loop,

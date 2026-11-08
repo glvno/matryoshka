@@ -1722,18 +1722,14 @@ async function main() {
       await check('arming: SEL on a device fed through a track arms it with the track, the bar names both (#582)', await emu.waitText('DRUM MAP + DRUMS ARMED', 1500));
       await check('arming: the editor shows the set the FM-1 armed (ARMS_NOW, #191)', !!(await until(async () => (await T()).armed.length > 0, 2000)));
       await emu.elapse(1300);
-      await emu.turn(ENC.select, 3);                // past DRUMS 2 and its Drum map (the mid and high toms, D-877) to the kit's
-      await emu.elapse(300);                        // card: its voices take no keys
+      await emu.turn(ENC.select, 1);                // the next device, an instrument of the kit: its voices take no keys
+      await emu.elapse(300);
       await emu.tap(B.scl);
       await check('arming: SEL on a device that takes no keys says so', await emu.waitText('NOTHING HERE TAKES KEYS', 1500));
-      await emu.turn(ENC.select, -3);
+      await emu.turn(ENC.select, -1);
       await emu.elapse(1300);
       await emu.tap(B.seq, 120);
-      // (the SEQ page opens on the track it showed last: after the 808 scenarios before this one, that can be DRUMS 2, the
-      // toms' track since D-877; ALGO back to DRUMS, which the page then arms)
-      await emu.waitText('ALGO track', 3000);
-      for (let i = 0; i < 2 && (await emu.text('DRUMS 2')); i++) { await emu.turn(ENC.algo, -1); await emu.elapse(300); }
-      await check('arming: the SEQ page arms the track it shows', (await emu.waitText('DRUMS ARM', 3000)) && !(await emu.text('DRUMS 2')));
+      await check('arming: the SEQ page arms the track it shows', await emu.waitText('DRUMS ARM', 3000));
       await emu.tap(B.seq, 120);
       await check('arming: back on the device page, the footer names the armed track', await emu.waitText('ARM DRUMS', 3000));
       const m = await emu.mark();                   // armed: black key 1 plays the kick through DRUMS

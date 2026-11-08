@@ -1,7 +1,7 @@
 {
   "format": "matryoshka-assembly",
   "version": 1,
-  "name": "Hera 5",
+  "name": "Hera 4",
   "category": "Voices",
   "blurb": "Juno-106 type shit",
   "modules": [
@@ -130,7 +130,7 @@
       "x": 1600,
       "y": 0,
       "params": {
-        "voices": 5,
+        "voices": 4,
         "assign": 0,
         "legato": 0,
         "priority": 0,
@@ -380,7 +380,7 @@
       "x": 2240,
       "y": 560,
       "params": {
-        "gain": -0.5527864045000421,
+        "gain": -0.5,
         "offset": 1
       },
       "att": [
@@ -2617,13 +2617,6 @@
             "bright": 1,
             "env": -2,
             "level": 97
-          },
-          {
-            "detune": 0,
-            "drift": 0,
-            "bright": -2,
-            "env": 1,
-            "level": 99
           }
         ]
       }

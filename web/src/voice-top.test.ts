@@ -3,6 +3,7 @@
 // allocator's voices, set by gen-presets (scripts/factory-build.ts voiceTops) and carried in the binary (format 51).
 import { describe, expect, it } from 'vitest';
 import { assembliesOf } from './assembly';
+import { CPU_VOICE_TOP } from './cpu';
 import { deviceBudget, encodePatch, FORMAT_1_11, formatOf, POLY_ROW, ROW_MORE } from './patchbin';
 import { FM1_PRESETS } from './presets';
 import { MAX_PARTS, type Patch } from './patch';
@@ -21,27 +22,28 @@ const rowBytes = (bin: Uint8Array): number[] | undefined => {
   return undefined;
 };
 
+/** the factory patches whose VOICES row has a top (D-870 as amended 2026-11-08: the CPU model recalibrated on the test
+ * rig, the top the most voices whose estimate stays at CPU_VOICE_TOP or under) */
+const TOPS: Record<string, number> = { 'Oracle V': 4, 'Expander S': 6, 'Cassia 1': 2 };
+
 describe("the FM-1's VOICES row top", () => {
-  it('Cassia 1 stops at the most voices whose CPU estimate fits the FM-1 (four, with the CZ-1 functions of #658)', () => {
-    const p = FM1_PRESETS['Cassia 1']();
-    const r = voicesRow(p)!;
-    expect(r.top).toBe(4);
-    expect(deviceBudget(withVoices(p, 4)).fits).toBe(true);
-    expect(deviceBudget(withVoices(p, 5)).fits).toBe(false);
-    expect(deviceBudget(withVoices(p, 5)).over.map((o) => o.key)).toEqual(['cpu']);
-  });
+  for (const [name, top] of Object.entries(TOPS))
+    it(`${name} stops at ${top}, the most voices whose CPU estimate stays at ${100 * CPU_VOICE_TOP} % or under`, () => {
+      const p = FM1_PRESETS[name]();
+      expect(voicesRow(p)!.top).toBe(top);
+      const b = deviceBudget(withVoices(p, top));
+      expect(b.fits && b.cpu.use <= CPU_VOICE_TOP).toBe(true);
+      expect(deviceBudget(withVoices(p, top + 1)).cpu.use).toBeGreaterThan(CPU_VOICE_TOP);
+    });
 
-  it('Oracle V stops at five: five voices with the Prophet-5\'s functions back (#658) and the Ladder\'s stage saturation (#744)', () => {
-    expect(voicesRow(FM1_PRESETS['Oracle V']())!.top).toBe(5);
-  });
-
-  it('no other factory patch has a top: each fits the FM-1 with eight voices', () => {
+  it('no other factory patch has a top: each stays under the bar with eight voices', () => {
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
       const p = make();
       const r = voicesRow(p);
-      if (!r || name === 'Cassia 1' || name === 'Oracle V') continue;   // (Oracle V: its five voices, #658's functions)
+      if (!r || name in TOPS) continue;
       expect(r.top, name).toBeUndefined();
-      expect(deviceBudget(withVoices(p, MAX_PARTS)).fits, name).toBe(true);
+      const b = deviceBudget(withVoices(p, MAX_PARTS));
+      expect(b.fits && b.cpu.use <= CPU_VOICE_TOP, name).toBe(true);
     }
   });
 
@@ -51,7 +53,7 @@ describe("the FM-1's VOICES row top", () => {
     const bin = encodePatch(p, true);
     const got = rowBytes(bin)!;
     expect(got[0]).toBe(POLY_ROW | ROW_MORE);
-    expect(got[got.length - 1]).toBe(4);
+    expect(got[got.length - 1]).toBe(TOPS['Cassia 1']);
     delete voicesRow(p)!.top;
     const plain = rowBytes(encodePatch(p, true))!;
     expect(plain[0]).toBe(POLY_ROW);
