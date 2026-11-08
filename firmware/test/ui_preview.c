@@ -8,7 +8,7 @@
  * an older editor's page, BATT=0..3 or 4 (USB) the battery's level, HELP=quick the quick
  * start or HELP=sheet the controls sheet over the page (HELP_TAB=1 its EVERYWHERE tab, HELP_TOP=n scrolled n rows); on the SEQ page
  * STEPS_LEN=n the track's length, HELD=k step k held, ARM=1 the track armed (#450); PAGE 11 the SONG page; MSG=text a message in the bar;
- * ENVPAGE=1 the environment page; PATCHFILE=path plays that patch binary instead of the preset (PRESET_INDEX still names a slot)
+ * ENVPAGE=1 the environment page; EXTCLK=1 MIDI clock sets the tempo; PATCHFILE=path plays that patch binary instead of the preset (PRESET_INDEX still names a slot)
  * tools/ui_preview.sh converts the image to PNG. With UI_PREVIEW_LIB defined it is only the host's stand-ins and the UI
  * (host_ui.h; panel_test.c includes it so). */
 #include <stdint.h>
@@ -133,6 +133,8 @@ int main(int argc, char **argv)
     patch_label = PRESET_LIST[p].name;
     if (getenv("MIDIOUT"))
         cfg.midi_out = (uint8_t)atoi(getenv("MIDIOUT"));
+    if (getenv("EXTCLK"))                                   /* MIDI clock sets the tempo (the menu's TEMPO row: GLOBAL EXT) */
+        eng_clock_external(1);
     if (getenv("OUT35"))                                    /* OUT35=0: GLO > SYSTEM > 3.5MM OUT OFF, its mark in the footer (#631) */
         out_off = (uint8_t)!atoi(getenv("OUT35"));
     if (getenv("SANDBOX")) {                                /* sandbox mode: the card, or (2) a page of the editor's, (3) an
