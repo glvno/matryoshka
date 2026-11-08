@@ -6,6 +6,12 @@
 - **Granular follows the keyboard:** a new `pitch` input takes the same pitch signal as an oscillator, so the Main module's pitch output plays the grains in tune (C4 = the recording's own pitch). Before, a pin from the pitch output on the `pitch` slider moved 4 semitones per key, and in the browser most notes landed a semitone flat.
 - **Two FM-1s on one computer:** while the editor is connected to one FM-1, notes and Start / Stop from another FM-1 no longer play or move anything in the editor.
 
+## 1.10.1 — 2026-11-08
+
+### FM-1
+
+- **Newer FM-1s:** units with the UC25HQ80 flash chip (sold since autumn 2026) can store patches and install updates. Before, they showed NO FLASH ID: NO UPDATES (#739).
+
 ## 1.10.0 — 2026-11-06
 
 ### FM-1

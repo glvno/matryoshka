@@ -1424,7 +1424,7 @@ static void host_poll(void)
 
 static void fm1_main(int update)                    /* update: the boot guard saw two failed boots */
 {
-    flash_ok = FL_FAR(fl_jedec_ram)() == 0x856014u;     /* the expected 1 MiB part, else no OTA staging */
+    flash_ok = FL_JEDEC_OK(FL_FAR(fl_jedec_ram)());     /* a known 1 MiB part (fm1_flash_id.h), else no store, no OTA staging */
     if (flash_ok)
         ota_boot_cleanup();                             /* staging area left by an update */
     lcd_init();
