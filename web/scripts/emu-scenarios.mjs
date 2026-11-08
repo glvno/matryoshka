@@ -2002,6 +2002,11 @@ async function main() {
         return emu.text('SYSTEM 2/2');
       };
       const row = await editorRow();
+      const was = (await emu.text('IGNORE')) ? 'IGNORE' : 'ALLOW';   // (left as found at the end; nothing here SAVEs it)
+      if (was === 'IGNORE') {
+        await emu.tap(B.glo);
+        return skip('editor ignore: the editor leaves an FM-1 at IGNORE alone', 'EDITOR was IGNORE already: left as it was');
+      }
       await emu.turn(ENC.k1, 1);
       await emu.elapse(400);
       await check('editor ignore: GLO > SYSTEM 2/2, K1 right: EDITOR IGNORE', row && (await emu.text('IGNORE')) && (await emu.text('SYSTEM 2/2')));
@@ -2022,7 +2027,7 @@ async function main() {
       await editorRow();
       await emu.turn(ENC.k1, -1);
       await emu.elapse(400);
-      await check('editor ignore: K1 left: EDITOR ALLOW', await emu.text('ALLOW'));
+      await check('editor ignore: K1 left: EDITOR ALLOW, as it was before the scenario', (await emu.text('ALLOW')) && was === 'ALLOW', `was ${was}`);
       await emu.tap(B.glo);
       await emu.waitOwnPage(3000);
       await connect();

@@ -21,7 +21,7 @@ static int32_t patch_gain;                 /* audio.c: the mixer level */
 static volatile uint8_t snd_muted;         /* audio.c: sandbox mode muted the FM-1 */
 static volatile uint8_t out_mono;          /* audio.c: GLO > SYSTEM > OUTPUT: 0 STEREO, 1 MONO, 2 MONO L (#612) */
 static volatile uint8_t usb_level;         /* audio.c: GLO > SYSTEM > USB LEVEL: 0 KNOB, 1..7 fixed (#600) */
-static volatile uint8_t out_level;         /* audio.c: GLO > SYSTEM > OUT LEVEL: 0 KNOB, 1..7 fixed (#631) */
+static volatile uint8_t out_off;           /* audio.c: GLO > SYSTEM > 3.5MM OUT: 1 OFF, the speaker and the jack silent (#631) */
 #include "../src/out_level.h"
 static uint8_t m1_edited;                  /* proto.c: the running patch was edited */
 #define M1_SLOTS 64u
