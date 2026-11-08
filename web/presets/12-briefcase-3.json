@@ -20,7 +20,7 @@
     },
     "targets": {
      "arp": {
-      "module": 65
+      "module": 66
      }
     }
    }
@@ -164,7 +164,7 @@
     "stack": 0,
     "pm2": 0,
     "pm3": 0,
-    "analog": 0
+    "analog": 1
    },
    "att": [
     1,
@@ -198,7 +198,7 @@
     "stack": 0,
     "pm2": 0,
     "pm3": 0,
-    "analog": 0
+    "analog": 1
    },
    "att": [
     1,
@@ -232,7 +232,7 @@
     "stack": 0,
     "pm2": 0,
     "pm3": 0,
-    "analog": 0
+    "analog": 1
    },
    "att": [
     1,
@@ -386,7 +386,9 @@
     "res": 0.55,
     "drive": 1,
     "cvamt": 4,
-    "track": 0
+    "track": 0,
+    "diode": 1,
+    "stsat": 0
    },
    "att": [
     1,
@@ -659,7 +661,8 @@
     "cvamt": 1,
     "track": 0,
     "morph": 0.15,
-    "osc": 0
+    "osc": 0,
+    "drive": 0
    },
    "att": [
     1,
@@ -726,7 +729,8 @@
     "cvamt": 1,
     "track": 0,
     "morph": 0.15,
-    "osc": 0
+    "osc": 0,
+    "drive": 0
    },
    "att": [
     1,
@@ -1532,6 +1536,32 @@
   },
   {
    "id": 65,
+   "type": "steps",
+   "x": 20,
+   "y": 3160,
+   "params": {
+    "len": 16,
+    "rate": 4,
+    "swing": 50,
+    "gate": 0.25,
+    "dir": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "len"
+    ],
+    "p2": [
+     "rate"
+    ]
+   },
+   "name": "PATTERN"
+  },
+  {
+   "id": 66,
    "type": "arp",
    "x": 5840,
    "y": 3160,
@@ -3378,7 +3408,17 @@
   },
   {
    "from": {
+    "module": 1,
+    "port": "keys"
+   },
+   "to": {
     "module": 65,
+    "port": "keys"
+   }
+  },
+  {
+   "from": {
+    "module": 66,
     "port": "keys"
    },
    "to": {
@@ -3388,11 +3428,11 @@
   },
   {
    "from": {
-    "module": 1,
+    "module": 65,
     "port": "keys"
    },
    "to": {
-    "module": 65,
+    "module": 66,
     "port": "keys"
    }
   }

@@ -148,15 +148,15 @@ describe('factory <7PH (a groove box): the 909 Kit\'s drums and a Silver Box on 
 // voice. The drum patches get neither. Oracle V and Algo Four ran past the CPU estimate's warning with them (accepted);
 // since the engine's overhead cut (#289) they estimate under it (about 78 % and 80 %). Cassia 1 uses two voices.
 // Io 4 (the Jupiter-4's panel) gets the arpeggiator alone: with PATTERN it shed voices on the rig (factory-build.ts
-// players). Briefcase 3 is out of modules. Wanderer and Vernon 100 have room for PATTERN since format 51 (#667)
+// players). Wanderer and Vernon 100 have room for PATTERN since format 51 (#667), Briefcase 3 since the 128-module cap (#738)
 const NO_PLAYERS = ['808 Kit', '909 Kit', '<7PH', 'Spokes 6', 'Verona Drum 1'];
-const PAST_WARNING: string[] = ['Oracle V', 'Hera 5', 'Algo Four', 'Canvas', 'Briefcase 3', 'Cassia 1'];   // (Io 4: under it since its parts split across both cores, #271)
+const PAST_WARNING: string[] = ['Oracle V', 'Hera 5', 'Algo Four', 'Briefcase 3', 'Cassia 1'];   // (Io 4: under it since its parts split across both cores, #271; Canvas: 79.9 % with the 1.11 cpu-costs table)
 /** the most a patch past the warning estimates */
 const PAST_MAX: Record<string, number> = { ...CPU_RIG_PENDING, 'Io 4': 1, 'Canvas': 0.85, 'Briefcase 3': 0.9, 'Algo Four': 1, 'Oracle V': 0.99, 'Cassia 1': 0.9 };   // (Oracle V: the Prophet-5's cut functions back, #658, with its analog oscillators and the Ladder's stage saturation; Cassia 1: four voices with the CZ-1 functions of #658; Hera 5: past 100 % until the rig measures it, cpu.ts CPU_RIG_PENDING; Canvas: Canvas XL's design, D-348, 80.0 %)
-const ARP_ONLY = ['Io 4', 'Briefcase 3', 'Algo Four'];   // (Wanderer and Vernon 100 have room for PATTERN since format 51, #667;
+const ARP_ONLY = ['Io 4', 'Algo Four'];   // (Wanderer and Vernon 100 have room for PATTERN since format 51, #667, Briefcase 3 since #738;
 // Algo Four's eight voices and eight algorithms, #658, estimate 97 % without it and over 100 % with it)
 const PLAYED = Object.keys(FM1_PRESETS).filter((n) => !NO_PLAYERS.includes(n));
-/** the Arpeggiator alone, no PATTERN (D-336's fallback): Io 4 (the rig), Briefcase 3 (64 of 64 modules), Algo Four (CPU) */
+/** the Arpeggiator alone, no PATTERN (D-336's fallback): Io 4 (the rig), Algo Four (CPU) */
 
 /** patterns that were there before (their notes stay); the others' PATTERN is empty */
 const OWN_PATTERN = ['Scrounge', 'Meridian 8', 'Perun 4'];
