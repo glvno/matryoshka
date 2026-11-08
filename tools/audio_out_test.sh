@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
 # Host test of the audio ISR's two outputs (firmware/src/audio.c, firmware/test/audio_out_test.c): USB audio and the analog
-# output under GLO > SYSTEM's USB LEVEL, OUTPUT and 3.5MM OUT (#631); with 3.5MM OUT ON the analog output is bit for bit
+# output under MASTER, GLO > SYSTEM's OUTPUT and 3.5MM OUT (#631); with 3.5MM OUT ON the analog output is bit for bit
 # what it was before the setting.
 #   tools/audio_out_test.sh
 set -e

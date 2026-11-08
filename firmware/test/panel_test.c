@@ -838,7 +838,7 @@ int main(void)
         check("  and back to STEREO", !out_mono && on_screen("STEREO"));
         check("  the header says SYSTEM 1/2 (#702)", on_screen("SYSTEM 1/2"));
         enc(1, 1);
-        check("ALGO again: SYSTEM's second page, EDITOR on K1 (#702)", menu_tab == MT_SYSTEM && menu_sys2 && menu_page() && pages_now()->nrows == 3u
+        check("ALGO again: SYSTEM's second page, EDITOR on K1 (#702)", menu_tab == MT_SYSTEM && menu_sys2 && menu_page() && pages_now()->nrows == 2u
               && pages_now()->par[0] == MR_EDITOR && on_screen("SYSTEM 2/2") && on_screen("EDITOR") && on_screen("ALLOW"));
         check("  no armed-row line in the controls sheet's conditions there", !hc_menu_system());
         enc(2, 1);
@@ -856,33 +856,12 @@ int main(void)
         enc(2, 4);
         enc(2, -1);
         check("  any turn steps once: ALLOW again", cfg.editor_ignore == 0u);
-        check("K2 on SYSTEM 2/2: USB LEVEL, KNOB as made (#600)", pages_now()->par[1] == MR_USBLVL && usb_level == 0u && on_screen("USB LEVEL") && on_screen("KNOB"));
-        enc(3, 1);
-        check("  a turn right: -24 DB, the quietest fixed level first", usb_level == 1u && on_screen("-24 DB"));
-        enc(3, 1);
-        enc(3, 1);
-        check("  then -18 DB, -12 DB", usb_level == 3u && on_screen("-12 DB"));
-        for (int i = 0; i < 6; i++)
-            enc(3, 1);
-        check("  0 DB at most (the knob at its top)", usb_level == 7u && on_screen("0 DB") && !on_screen("-0 DB"));
-        check("  its level: the knob's top, 4088; -12 DB a quarter of it; KNOB the knob's", lvl_q12(7, 100) == 4088u && lvl_q12(3, 100) == 1027u && lvl_q12(0, 100) == 100u);
-        {
-            uint8_t leds = cfg.leds, ign = cfg.editor_ignore;
-            cfg_defaults();
-            check("  FACTORY RESET's defaults: KNOB", usb_level == 0u);
-            cfg.leds = leds;
-            cfg.editor_ignore = ign;
-            usb_level = 7;
-        }
-        for (int i = 0; i < 8; i++)
-            enc(3, -1);
-        check("  back to KNOB", usb_level == 0u && on_screen("KNOB"));
-        check("K3 on SYSTEM 2/2: 3.5MM OUT, ON as made, no mark in the footer (#631)", pages_now()->par[2] == MR_OUT35 && !out_off
+        check("K2 on SYSTEM 2/2: 3.5MM OUT, ON as made, no mark in the footer (#631, #600 gone)", pages_now()->par[1] == MR_OUT35 && !on_screen("USB LEVEL") && !out_off
               && on_screen("3.5MM OUT") && on_screen("ON") && px(OFF_FX + 2u, BATT_FY + 2u) != P_WARN);
-        enc(4, -1);
-        check("  K3 left: OFF, the red mark left of the battery (SCREEN: 3.5MM OFF); USB LEVEL untouched", out_off == 1u && usb_level == 0u
+        enc(3, -1);
+        check("  K2 left: OFF, the red mark left of the battery (SCREEN: 3.5MM OFF)", out_off == 1u
               && on_screen("OFF") && px(OFF_FX + 2u, BATT_FY + 2u) == P_WARN && on_screen("3.5MM OFF") && px(OFF_FX + 3u, BATT_FY + 2u) != P_WARN);
-        enc(4, -1);
+        enc(3, -1);
         check("  stays OFF", out_off == 1u);
         {
             uint8_t leds = cfg.leds, ign = cfg.editor_ignore;
@@ -892,10 +871,10 @@ int main(void)
             cfg.editor_ignore = ign;
             out_off = 1;
         }
-        enc(4, 1);
+        enc(3, 1);
         ui_full = 1;
         loop();
-        check("  K3 right: ON again, the mark gone", out_off == 0u && on_screen("ON") && px(OFF_FX + 2u, BATT_FY + 2u) != P_WARN && !on_screen("3.5MM OFF"));
+        check("  K2 right: ON again, the mark gone", out_off == 0u && on_screen("ON") && px(OFF_FX + 2u, BATT_FY + 2u) != P_WARN && !on_screen("3.5MM OFF"));
         enc(1, -1);
         check("ALGO back: SYSTEM 1/2", menu_tab == MT_SYSTEM && !menu_sys2 && pages_now()->par[3] == MR_OUTPUT && on_screen("SYSTEM 1/2"));
         enc(1, 1);

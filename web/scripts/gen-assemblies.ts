@@ -2602,13 +2602,13 @@ asm('Briefcase 3', 'Voices', (b) => {
   const part = b.add('alloc', 0, 3, { voices: 1 });
   // ---- the oscillators: each output its own Oscillator on its column's pitch (one phase: the same pitch, the same start)
   const o1s = b.add('osc', 1, 0, { wave: 0, level: 0.6 });
-  // (the analog shape on the two that sound as made: 32 bytes an oscillator, and the Arpeggiator needs the rest, #673;
-  // Briefcase 3 XL has it on all five)
+  // (the analog shape on every oscillator but the sine, as in Briefcase 3 XL, #673: the smaller format 51 records, #736,
+  // leave room for it beside the Arpeggiator)
   const o1r = b.add('osc', 1, 1, { wave: 2, level: 0.5, analog: 1 });
   const o2s = b.add('osc', 1, 2, { wave: 3, level: 0.35, pw: 0.5, analog: 1 });
-  const o2t = b.add('osc', 1, 3, { wave: 1, level: 0 });
-  const o3s = b.add('osc', 1, 4, { wave: 3, level: 0, pw: 0.5, coarse: -48 });
-  const o3t = b.add('osc', 1, 5, { wave: 1, level: 1, coarse: -48 });
+  const o2t = b.add('osc', 1, 3, { wave: 1, level: 0, analog: 1 });
+  const o3s = b.add('osc', 1, 4, { wave: 3, level: 0, pw: 0.5, coarse: -48, analog: 1 });
+  const o3t = b.add('osc', 1, 5, { wave: 1, level: 1, coarse: -48, analog: 1 });
   const fI = b.add('scale', 0, 0, { gain: 4, offset: 0 });
   const fJ = b.add('scale', 0, 1, { gain: 4, offset: 0.59 });
   const fK = b.add('scale', 0, 2, { gain: 5, offset: -4 });
