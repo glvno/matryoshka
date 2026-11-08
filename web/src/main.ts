@@ -729,6 +729,11 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
     host.playOnce();
     if (editor.playing) (editor.playing = false), clockOut.transport(false), syncPlayBtn();
   },
+  // REC's count-in on the emulated FM-1 (D-803): the browser engine clicks on its beats (following a connected FM-1, its own
+  // click plays there)
+  cin: (bars) => {
+    if (!mirror.following) host.countIn(bars);
+  },
   track: (m, notes, pat) => fm1Event({ kind: 'track', module: m, notes, pat }, 'emu'),
   locks: (m, pat, locks) => fm1Event({ kind: 'locks', module: m, pat, locks }, 'emu'),
   pattern: (p, song) => fm1Event({ kind: 'pattern', pattern: p, song }, 'emu'),

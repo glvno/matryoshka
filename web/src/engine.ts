@@ -8,7 +8,7 @@
 // held). A module reading another group's per-part output gets the sum over those parts; a per-part module reading a
 // shared output gets that one buffer.
 
-import { CLICK_ACCENT_HZ, CLICK_HZ, CLICK_MS, clickSample, ONCE_BAR, type DrumMapState, dropRows, stepsGo, stepsPattern, type StepsSong, driftSeed, ENVELOPE_TYPES, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, voicingSetting, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
+import { CLICK_ACCENT_HZ, CLICK_HZ, CLICK_MS, clickSample, ONCE_BAR, type DrumMapState, dropRows, stepsGo, stepsTurnAt, stepsPattern, type StepsSong, driftSeed, ENVELOPE_TYPES, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, voicingSetting, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
 import { defaultMap, FLAW_TARGETS, flawOf, MAX_PARTS, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, rangeShare, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
 import { ALLOC, deviceView, keysInto, VOICING_CABLE_INPUTS } from './poly';
 import { armView, type DeviceKey } from './arm';
@@ -205,6 +205,18 @@ export class Engine {
   private cinFirst = false;
   private clickK = -1;
   private clickHalf = 1;
+  /** the click of this render (both count-ins), added after the patch is held to full scale (engine.c eng_click_mix: on
+   * the FM-1 the analog output's only, D-820; the browser has the one output) */
+  private clickBuf = new Float32Array(0);
+  /** REC's count-in click (D-803, countIn; engine.c eng_count_in): the request (the ticks then, the bars), taken once the
+   * transport runs; then the bar it starts on and the one it ends on, in ticks from the transport's start */
+  private cinReq: { at: number; bars: number } | null = null;
+  private cinOn = false;
+  private cinFrom = 0;
+  private cinEnd = 0;
+  /** the transport as the last block had it, and the ticks when it last started (engine.c E.run_ticks) */
+  private ran = false;
+  private runTicks = 0;
   /** the FM-1's patch buttons (bit i = PANEL_BUTTONS[i]): held, or switched on */
   private buttons = 0;
   /** per patch button: the modules a Toggle bypasses (buttons.ts toggleTargets), null for the other kinds; and whether it switches */
@@ -1019,6 +1031,14 @@ export class Engine {
     if (this.once) this.onceEnd();
     if (on && !this.running) this.tickAcc = 0;
     this.running = on;
+    if (!on) this.countIn(0); // (a stop ends REC's count-in click, asked for or counting)
+  }
+
+  /** REC's count-in click (D-803; engine.c eng_count_in, the same): a click on each beat of `bars` bars from the transport's
+   * start or, running already at `at` (the clock's ticks then), from the next bar line, as the FM-1's REC counts them
+   * (seq_ui.c seq_cin_poll); 0 bars: none. The editor's own REC has no count-in: the FM-1 tab asks for it */
+  countIn(bars: number, at = this.ticks): void {
+    this.cinReq = { at: at >>> 0, bars };
   }
 
   /** play once (#632; engine.c eng_play_once, the same): the transport stops, a bar of four beats is counted in on the
@@ -1291,10 +1311,17 @@ export class Engine {
     const total = left.length;
     left.fill(0);
     right.fill(0);
+    if (this.clickBuf.length < total) this.clickBuf = new Float32Array(total);
+    const click = this.clickBuf;
+    click.fill(0, 0, total);
+    let clicked = false;
     const all = [this.kb, ...this.groups];
     for (let off = 0; off < total; off += BLOCK) {
       const n = Math.min(BLOCK, total - off);
       if (this.once === 1 && this.cin >= ONCE_BAR) this.onceStart();
+      const start = this.running && !this.ran, was = this.ticks; // (REC's count-in: the ticks before this block's)
+      if (start) this.runTicks = this.ticks;
+      this.ran = this.running;
       // the clock: MIDI ticks while external, else the global tempo or the Main module's (bpm x 24 ticks a minute, in whole
       // bpm as the firmware does)
       const bpm = Math.min(TEMPO_MAX, Math.max(TEMPO_MIN, Math.round(this.tempoGlobal ?? this.main?.params.tempo ?? TEMPO_DEFAULT)));
@@ -1336,6 +1363,24 @@ export class Engine {
           if (this.cin < ONCE_BAR && Math.floor(this.cin / PPQN) > Math.floor(before / PPQN)) clickAt = Math.max(0, tick);
         }
       }
+      // REC's count-in (D-803, as the FM-1's REC counts the bars): a click on each beat from the bar it starts on, beat 1 higher
+      if (!this.running) this.cinOn = false;
+      else {
+        const r0 = (was - this.runTicks) >>> 0, r1 = (this.ticks - this.runTicks) >>> 0;
+        if (this.cinReq) { // (asked for: taken once the transport runs)
+          const at = (this.cinReq.at - this.runTicks) | 0;
+          this.cinOn = this.cinReq.bars !== 0;
+          this.cinFrom = at > 0 ? Math.ceil(at / ONCE_BAR) * ONCE_BAR : 0;
+          this.cinEnd = this.cinFrom + this.cinReq.bars * ONCE_BAR;
+          this.cinReq = null;
+        }
+        if (this.cinOn) {
+          if (start && this.cinFrom === 0) (clickAt = 0), (accent = true); // (beat 1 on the start's first sample)
+          for (let r = r0 + 1; r <= r1; r++)
+            if (r >= this.cinFrom && r < this.cinEnd && r % PPQN === 0) (clickAt = Math.max(0, tick)), (accent = (r - this.cinFrom) % ONCE_BAR === 0);
+          if (r1 >= this.cinEnd) this.cinOn = false;
+        }
+      }
       this.trackKeys();
       for (const a of this.arps)
         if (!a.node.bypass) // (bypassed it plays nothing of its own: the keys it hears went straight on)
@@ -1370,6 +1415,18 @@ export class Engine {
           x.foot = this.ctl.foot;
         }
       }
+      // play once (D-820): where the last track still playing its passes ends them in this block (-1 not here); a shorter
+      // track loops on until then (engine.c steps_once_at, the same)
+      let onceAt = -1;
+      if (this.once === 2)
+        for (const node of this.tracks) {
+          const st = node.inst[0].state as StepsState;
+          if (st.once < 2) continue;
+          const a = st.once === 2 ? stepsTurnAt(st, node.inst[0].eff, this.running, this.running ? tick : -1, nt, n) : -1;
+          if (a < 0) { onceAt = -1; break; }
+          onceAt = Math.max(onceAt, a);
+        }
+      for (const node of this.tracks) (node.inst[0].state as StepsState).onceAt = onceAt;
       // idle parts (partQuiet): woken by a note, else run every IDLE_CHECK-th block, each part in its own (staggered, #434)
       this.groups.forEach((g, gi) =>
         g.parts.forEach((x, v) => {
@@ -1418,14 +1475,13 @@ export class Engine {
         this.onceEnd(); // (every track played its passes: the transport stops, from the next block)
         this.running = false;
       }
-      if (clickAt >= 0 || this.clickK >= 0) { // the count-in's click, on both sides (engine.c the same)
+      if (clickAt >= 0 || this.clickK >= 0) { // the count-in's click, on both sides (engine.c eng_click_mix the same)
         const len = Math.floor((this.sampleRate * CLICK_MS) / 1000);
+        clicked = true;
         for (let i = 0; i < n; i++) {
           if (i === clickAt) (this.clickK = 0), (this.clickHalf = Math.max(1, Math.floor(this.sampleRate / (2 * (accent ? CLICK_ACCENT_HZ : CLICK_HZ)))));
           if (this.clickK < 0) continue;
-          const v = clickSample(this.clickK, len, this.clickHalf);
-          left[off + i] += v;
-          right[off + i] += v;
+          click[off + i] = clickSample(this.clickK, len, this.clickHalf);
           if (++this.clickK >= len) this.clickK = -1;
         }
       }
@@ -1434,6 +1490,11 @@ export class Engine {
       left[i] = Number.isFinite(left[i]) ? Math.max(-1, Math.min(1, left[i])) : 0;
       right[i] = Number.isFinite(right[i]) ? Math.max(-1, Math.min(1, right[i])) : 0;
     }
+    if (clicked) // (after the patch is held to full scale, as the FM-1 adds it to its analog output: D-820)
+      for (let i = 0; i < total; i++) {
+        left[i] = Math.max(-1, Math.min(1, left[i] + click[i]));
+        right[i] = Math.max(-1, Math.min(1, right[i] + click[i]));
+      }
   }
 }
 

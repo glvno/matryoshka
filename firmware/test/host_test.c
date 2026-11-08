@@ -99,7 +99,7 @@ int main(int argc, char **argv)
             }
             else if (!strcmp(kind, "rec") || !strcmp(kind, "cc") || !strcmp(kind, "thon") || !strcmp(kind, "thoff"))
                 fscanf(ev, "%u %u", &note, &vel);
-            else if (!strcmp(kind, "pat") || !strcmp(kind, "song"))
+            else if (!strcmp(kind, "pat") || !strcmp(kind, "song") || !strcmp(kind, "cin"))
                 fscanf(ev, "%u", &note);
         }
         rewind(ev);
@@ -112,7 +112,15 @@ int main(int argc, char **argv)
     r = malloc((size_t)total * 4);
     while (fscanf(ev, "%ld %15s", &frame, kind) == 2) {
         if (frame > pos) {
+#ifdef ENG_COUNT_IN /* (the count-in's click: the analog output's, as engine.ts plays it, D-820; eng_click_mix keeps a
+                     * few clicks a render: renders of a block, as the FM-1's, which split the frames as one render does) */
+            for (; pos < frame; pos += frame - pos < 128 ? frame - pos : 128) {
+                eng_render(l + pos, r + pos, (uint32_t)(frame - pos < 128 ? frame - pos : 128));
+                eng_click_mix(l + pos, r + pos, (uint32_t)(frame - pos < 128 ? frame - pos : 128));
+            }
+#else
             eng_render(l + pos, r + pos, (uint32_t)(frame - pos));
+#endif
             pos = frame;
         }
         if (!strcmp(kind, "on")) {
@@ -129,6 +137,11 @@ int main(int argc, char **argv)
         } else if (!strcmp(kind, "once")) {      /* (#632) play once with its count-in */
 #ifdef ENG_PLAY_ONCE /* engine_exact.sh also builds this harness with older engine headers */
             eng_play_once();
+#endif
+        } else if (!strcmp(kind, "cin")) {       /* (D-803) REC's count-in click: n bars */
+            fscanf(ev, "%u", &note);
+#ifdef ENG_COUNT_IN
+            eng_count_in(eng_ticks(), note);
 #endif
         } else if (!strcmp(kind, "ext") || !strcmp(kind, "int")) {
             eng_clock_external(!strcmp(kind, "ext"));
