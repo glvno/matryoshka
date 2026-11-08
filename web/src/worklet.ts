@@ -21,6 +21,7 @@ export type HostMsg =
   | { t: 'transport'; on: boolean }
   /** play once (#632, Engine.playOnce): a bar counted in with a click, the pattern or song once, then it stops */
   | { t: 'once' }
+  | { t: 'cin'; bars: number }
   /** the global tempo (D-907), null: each patch its own */
   | { t: 'tempo'; bpm: number | null }
   | { t: 'button'; i: number; on: boolean }
@@ -110,6 +111,7 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'unenvwatch') this.envs.delete(m.key);
         else if (m.t === 'transport') this.engine.transport(m.on);
         else if (m.t === 'once') this.engine.playOnce();
+        else if (m.t === 'cin') this.engine.countIn(m.bars);
         else if (m.t === 'tempo') this.engine.tempoGlobal = m.bpm;
         else if (m.t === 'button') this.engine.setButton(m.i, m.on);
         else if (m.t === 'track') this.engine.setTrack(m.id, m.notes, m.pat);
