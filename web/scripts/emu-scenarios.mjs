@@ -597,6 +597,10 @@ async function main() {
   let page = watch(await context.newPage());
   const T = () => page.evaluate(() => window.__m1test.state());
   const open = (name) => page.evaluate((n) => window.__m1test.open(n), name);
+  /** 8 Lire with its MOD DELAY's mix at 0 (D-748: two lines, mono, 0.35 at Init): a held plate summed with its own echoes 330
+   *  and 470 ms on rises and falls by a quarter as each arrives in or out of phase (the browser engine renders the same; dry
+   *  it is flat), so the checks of a voice that holds hear the voice, not the delay */
+  const openDry = (name) => page.evaluate((n) => window.__m1test.openRows(n, [['mix', 0]]), name);
   const patchJson = () => page.evaluate(() => window.__m1test.patchJson());
   /** the editor's tempo (bpm): the global one, else the patch's FM-1 module's */
   const tempo = async () => {
@@ -745,8 +749,8 @@ async function main() {
    *  at the same place; LFO + step 1 (its own step, nothing before it) makes it a drone, heard holding, and again one step
    *  (#384); tied again and cut by a plain white key on step 3. `sustains`: the row's voice holds
    *  while its gate is up (8 Lire's plates), else a one-shot whose sound must not change (the 808 Kit) */
-  async function drumTie(tag, name, row, sustains) {
-    await check(`${tag}: ${name} opens, synced`, await openSynced(name));
+  async function drumTie(tag, name, row, sustains, opener = open) {
+    await check(`${tag}: ${name} opens, synced`, await openSynced(name, opener));
     await check(`${tag}: the SEQ page, the track cleared`, await seqCleared(), fmt(await trackNotes()));
     await emu.tap(BLACK[row]);
     await emu.elapse(200);
@@ -1070,7 +1074,7 @@ async function main() {
       if (held >= 0) await emu.key(held, false);
       await emu.tap(B.play);   // stop
     },
-    async tieLire() { await drumTie('tie lire', '8 Lire', 0, true); },
+    async tieLire() { await drumTie('tie lire', '8 Lire', 0, true, openDry); },
     async tieElvira() { await drumTie('tie elvira', 'Elvira 2', 0, true); },
     async tie808() {
       await drumTie('tie 808', '808 Kit', 0, false);
@@ -1084,7 +1088,7 @@ async function main() {
       }
     },
     async drumHold() {   // #368 (the owner, 2026-10-28): a black key on a drum track's grid sounds while held; REC running records it
-      await check('hold: 8 Lire opens, synced', await openSynced('8 Lire'));
+      await check('hold: 8 Lire opens (its delay dry), synced', await openSynced('8 Lire', openDry));
       await check('hold: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
       // stopped: row 1's plate while black key 1 is held (about 600 ms), then let go
       await emu.windows(4, 25);                     // (quiet first)
@@ -1250,7 +1254,7 @@ async function main() {
     // held for as long as the pattern plays, the row's other notes gone; again an ordinary one-step note. On 8 Lire's grid,
     // three hits on row 1 (steps 2, 5, 9); heard holding over a pass and its loop point
     async rowDrone() {
-      await check('row drone: 8 Lire opens, synced', await openSynced('8 Lire'));
+      await check('row drone: 8 Lire opens (its delay dry), synced', await openSynced('8 Lire', openDry));
       await check('row drone: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
       await emu.tap(BLACK[0]);
       for (const k of [1, 4, 8]) await emu.tap(WHITE[k]);
@@ -1718,11 +1722,11 @@ async function main() {
       await check('arming: SEL on a device fed through a track arms it with the track, the bar names both (#582)', await emu.waitText('DRUM MAP + DRUMS ARMED', 1500));
       await check('arming: the editor shows the set the FM-1 armed (ARMS_NOW, #191)', !!(await until(async () => (await T()).armed.length > 0, 2000)));
       await emu.elapse(1300);
-      await emu.turn(ENC.select, 1);                // the next device, an instrument of the kit: its voices take no keys
-      await emu.elapse(300);
+      await emu.turn(ENC.select, 3);                // past DRUMS 2 and its Drum map (the mid and high toms, D-877) to the kit's
+      await emu.elapse(300);                        // card: its voices take no keys
       await emu.tap(B.scl);
       await check('arming: SEL on a device that takes no keys says so', await emu.waitText('NOTHING HERE TAKES KEYS', 1500));
-      await emu.turn(ENC.select, -1);
+      await emu.turn(ENC.select, -3);
       await emu.elapse(1300);
       await emu.tap(B.seq, 120);
       await check('arming: the SEQ page arms the track it shows', await emu.waitText('DRUMS ARM', 3000));
@@ -1897,7 +1901,7 @@ async function main() {
       await check('device preset: the first PRESET turn left loads the last of its list, not INIT', shown && !(await emu.text('PRESET INIT')));
       await emu.elapse(1200);
     },
-    // #485: a Cassia 1 preset (119 rows) stored on the FM-1 holds all its rows: sent from the editor (two store slots on
+    // #485: a Cassia 1 preset (153 rows since #755, D-747) stored on the FM-1 holds all its rows: sent from the editor (two store slots on
     // firmware with feature bit 17), read back whole, and loaded on the FM-1 with PRESET: every row reaches the editor.
     // Glass Bell differs from Init in 11 of the 31 rows past 88, which an 88-value store left at Init's
     async longPreset() {
@@ -1905,13 +1909,13 @@ async function main() {
       await check('long preset: Cassia 1 opens, synced', await openSynced('Cassia 1'));
       await emu.elapse(300);
       const n = await page.evaluate((nm) => window.__m1test.presetOnFm1('Cassia 1', 'Glass Bell', nm), NAME);
-      await check('long preset: Glass Bell stored on the FM-1 and read back whole, 119 values', n === 119, `read back ${n}`);
+      await check('long preset: Glass Bell stored on the FM-1 and read back whole, 153 values', n === 153, `read back ${n}`);
       await check('long preset: Cassia 1 opens again, on Init', await openSynced('Cassia 1'));
       const init = await page.evaluate(() => window.__m1test.presetNow('Cassia 1'));
       await emu.turn(ENC.preset, -1);
       await check('long preset: PRESET left loads it on the FM-1', await emu.waitText(`PRESET ${NAME}`, 2000));
       const now = await until(async () => { const x = await page.evaluate(() => window.__m1test.presetNow('Cassia 1')); return x && x.name === 'Glass Bell' && x.off === 0 ? x : null; }, 4000);
-      await check('long preset: all 119 rows reach the editor as Glass Bell\'s (none left at Init\'s)', !!now && init?.name === 'Init',
+      await check('long preset: all 153 rows reach the editor as Glass Bell\'s (none left at Init\'s)', !!now && init?.name === 'Init',
         `before ${JSON.stringify(init)}, now ${JSON.stringify(await page.evaluate(() => window.__m1test.presetNow('Cassia 1')))}`);
       await emu.snap('long-preset');
       await emu.elapse(1200);

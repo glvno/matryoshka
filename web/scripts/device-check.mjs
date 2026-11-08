@@ -584,8 +584,8 @@ export function checkScenarios(h) {
       }), 2000) ?? [];
       const mem = lines.find((x) => /^Memory\d/.test(x)) ?? '';
       const under = lines.slice(lines.indexOf(mem) + 1, lines.indexOf(mem) + 6);
-      await check('4.4 delays: the FM-1 budget: Memory of 356 KB, LONG its largest share, a line for SHORT under it',
-        /^Memory\d+ \/ 356 KB$/.test(mem) && /^Delay LONG/.test(under[0] ?? '') && under.some((x) => /^Delay SHORT/.test(x)), [mem, ...under].join(' | '));
+      await check('4.4 delays: the FM-1 budget: Memory of 362 KB (the module table in it since D-390), LONG its largest share, a line for SHORT under it',
+        /^Memory\d+ \/ 362 KB$/.test(mem) && /^Delay LONG/.test(under[0] ?? '') && under.some((x) => /^Delay SHORT/.test(x)), [mem, ...under].join(' | '));
       const shortId = JSON.parse(await patchJson()).modules.find((m) => m.name === 'SHORT')?.id;
       await page().evaluate(() => [...document.querySelectorAll('#budget .budget-item.pick')].find((e) => /Delay SHORT/.test(e.textContent))?.click());
       const sel = await until(async () => (await T()).selected.includes(shortId), 2000);

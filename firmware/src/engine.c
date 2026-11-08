@@ -9032,6 +9032,20 @@ static int lane_splits(const node_t *nd)
 {
     return nd->grp && cur_g_parts(nd) >= 2u && nd->ninst >= 2u && nd->type != T_STEPS;
 }
+/* does each lane of a segment of group `nd->grp` have a part that runs this block (not skipped as idle)? Else core 0
+ * renders the segment alone: one lane awake (an idle part's check, a single note) gains nothing from the second core.
+ * Handed to it anyway, Cassia 1's idle-check blocks took 3 to 4.6 ms in the emulator with two to four parts, against
+ * 0.85 ms on one core: halves came out late and the overload guard shed three of its four voices right after a load,
+ * with no key held (the 1.11 batch run). The lanes render exactly as one core would, so the sound is the same */
+static int lanes_awake(const node_t *nd)
+{
+    const grp_t *g = &E.grp[nd->grp];
+    uint32_t v, m = 0;
+    for (v = 0; v < g->parts && m != 3u; v++)
+        if (!E.pv[g->pv0 + v].skip)
+            m |= 1u << (v & 1u);
+    return m == 3u;
+}
 
 static void render_split(uint32_t n)
 {
@@ -9048,7 +9062,7 @@ static void render_split(uint32_t n)
         lane_job.k0 = k;
         lane_job.k1 = e;
         lane_job.n = n;
-        if (eng_lane_run(lane1_job, 0u)) {
+        if (lanes_awake(nd) && eng_lane_run(lane1_job, 0u)) {
             render_mods(k, e, n, 0u, 2u);
             if (eng_lane_wait() != 0)
                 render_mods(k, e, n, 1u, 2u);           /* the second core was given up: lane 1 here */
