@@ -26,6 +26,8 @@ WASM_IMPORT("transport") void js_transport(uint32_t run);
 /* SEQ held + PLAY began play once (#632): the page's engine counts in and plays once itself, with the click (the
  * transport's starts and stops play once makes here are not told: the page's own come from its engine) */
 WASM_IMPORT("once") void js_once(void);
+/* REC's count-in began (bars) or ended early (0) (D-803): the page's engine clicks on its beats, as play once's */
+WASM_IMPORT("cin") void js_cin(uint32_t bars);
 /* the SEQ page edited a track (its notes as they are now: n words at `at` in memory, track.ts noteWord, of the pattern it
  * plays, 0-based), muted a track: module = its index in the binary */
 WASM_IMPORT("track") void js_track(uint32_t mod, const uint32_t *at, uint32_t n, uint32_t pat);
@@ -301,7 +303,7 @@ WASM_EXPORT("fm1w_button") void fm1w_button(uint32_t id, uint32_t down)
 {
     if (id >= 32u)
         return;
-    static uint8_t once_told;
+    static uint8_t once_told, cin_told;
     if (down) {
         panel_held |= 1u << id;
         panel_edges(1u << id, 0);
@@ -312,6 +314,10 @@ WASM_EXPORT("fm1w_button") void fm1w_button(uint32_t id, uint32_t down)
     if (play_once_asked != once_told) {         /* (#632: SEQ held + PLAY) */
         once_told = play_once_asked;
         js_once();
+    }
+    if (seq_cin_asked != cin_told) {            /* (D-803: REC's count-in, its click) */
+        cin_told = seq_cin_asked;
+        js_cin(seq_cin_click);
     }
     panel_draw();
 }

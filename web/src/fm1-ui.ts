@@ -24,6 +24,8 @@ export interface Fm1Events {
   /** SEQ held + PLAY began play once (#632): the page's engine counts in and plays once itself (the emulated engine's
    * own starts and stops of it are not told) */
   once?(): void;
+  /** REC's count-in began (its bars) or ended early (0) (D-803): the page's engine clicks on its beats, as play once's */
+  cin?(bars: number): void;
   /** the SEQ page: a track's notes as they are after an edit there (of pattern `pat`, 0-based: the one it plays), a track
    * muted (module = its index in the binary) */
   track?(module: number, notes: StepNote[], pat: number): void;
@@ -95,6 +97,7 @@ export class Fm1Ui {
       midi: (s: number, a: number, b: number) => ev.midi?.(s, a, b),
       transport: (r: number) => ev.transport?.(r !== 0),
       once: () => ev.once?.(),
+      cin: (bars: number) => ev.cin?.(bars),
       track: (m: number, at: number, n: number, pat: number) => ev.track?.(m, memory ? [...new Uint32Array(memory.buffer, at, n)].map(wordNote) : [], pat ?? 0),
       locks: (m: number, pat: number, at: number, n: number) => ev.locks?.(m, pat, memory ? Array.from({ length: n }, (_, j) => {
         const b = new Uint8Array(memory!.buffer, at + 7 * j, 7);
