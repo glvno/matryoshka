@@ -184,7 +184,7 @@ static void nudge_suite(void)
         tap(BTN_HOME);
     }
 
-    check("(the engine-unreached fixture: Monolith D and Hera 6, no keys cable into either)",
+    check("(the engine-unreached fixture: Monolith D and basic poly, no keys cable into either)",
           load_fixture("build/panel-fixtures/engine-unreached.m1p") == 0);
     patch_label = "ENGINE UNREACHED";
     pv_gen++;

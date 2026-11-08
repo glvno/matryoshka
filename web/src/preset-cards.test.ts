@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { FACTORY } from './assemblies';
-import { toDef } from './assembly';
+import { toDef, type AssemblyDef } from './assembly';
+import HERA_6 from '../scripts/xl/hera-6-base.json';
 import { defIsEngine, instIsEngine } from './engines';
 import { CARDS, cardOf, factoryPresets, presetsByRules, presetsOfDef, shippedPresets, xlEnginePresets, xlPresetsOfDef } from './factory-presets';
 import { cardRows, cardSlug, cardTemplate, formatCard, formatPreset, parseCard, projectPresets } from './preset-cards';
@@ -10,7 +11,9 @@ import { defRowOrder, defStructure } from './structure';
 
 const ENGINES = FACTORY.filter((d) => defIsEngine(d));
 const EFFECTS = FACTORY.filter((d) => d.category === 'Effects' && !defIsEngine(d));
-const HERA = ENGINES.find((d) => d.name === 'Hera 6')!;
+/** the card tests' engine: the FM-1's Hera 6 as it was before Hera 5 took its slot (Hera 6 XL is built on it), with no card
+ * of its own any more, so its presets are the rule-made ones */
+const HERA = HERA_6 as unknown as AssemblyDef;
 /** where a row (by its key) sits in a preset's values */
 const at = (def: typeof HERA, key: string): number => {
   const r = cardRows(def).find((x) => x.key === key)!;
@@ -126,7 +129,7 @@ describe('preset cards (#413)', () => {
       expect(shippedPresets(d!).map((p) => p.name)).toEqual(r.presets.map((p) => p.name));
       expect(cardOf(d!)?.presets.length).toBe(r.presets.length);
     }
-    expect(presetsOfDef(HERA).map((p) => p.name)).toEqual(['Init', 'Brass', 'Strings', 'Bass', 'Organ', 'Glass Pad']);
+    expect(presetsOfDef(ENGINES.find((d) => d.name === 'Hera 5')!).map((p) => p.name)).toEqual(['Init', 'Brass', 'Strings', 'Bass', 'Organ', 'Glass Pad']);
   });
 
   it('an effect ships its card\'s presets (on the FM-1 too) and no rule-made ones without a card (#661)', () => {

@@ -152,7 +152,9 @@ describe('CPU estimate with two cores (docs/measurements/cpu-survey-2026-11-05-r
   // Oracle V: the Prophet-5's functions its FM-1 version had cut (#658), where the survey measured the 1.10 voice
   // Expander S: the SEM's modulation, sync, band pass, drone and the keyboard's portamento (#658)
   // Cassia 1: four voices with the CZ-1 functions of #658, where the survey measured two
-  const changedSince = new Set(['algo four', 'oracle v', 'expander s', 'cassia 1']);
+  // Io 4: its factory patch now has the Ladder's stage saturation (#672), regenerated with its named switches
+  // Hera 5, Wanderer: other instruments in their slots (Hera 6 XL's panel at five voices, Wanderer XL)
+  const changedSince = new Set(['algo four', 'oracle v', 'expander s', 'cassia 1', 'io 4', 'hera 5', 'wanderer']);
   for (const name of Object.keys(FM1_PRESETS)) {
     const s = split.get(name.toLowerCase()), o = one.get(name.toLowerCase());
     if (!s || !o || changedSince.has(name.toLowerCase())) continue;

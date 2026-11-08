@@ -61,8 +61,8 @@ describe('structure (#192)', () => {
 describe('presets (#192)', () => {
   it('store on one copy, load on another (one structure), and the patch remembers the name', () => {
     const p = newPatch(DEFS);
-    const a = insertAssembly(p, DEFS, named('Hera 6'), 0, 0);
-    const b = insertAssembly(p, DEFS, named('Hera 6'), 900, 0);
+    const a = insertAssembly(p, DEFS, named('Hera 5'), 0, 0);
+    const b = insertAssembly(p, DEFS, named('Hera 5'), 900, 0);
     const r = a.params.find((x) => DEFS[p.modules.find((m) => m.id === x.module)!.type].params.find((d) => d.name === x.param)?.max)!;
     const m = p.modules.find((x) => x.id === r.module)!;
     const pd = DEFS[m.type].params.find((d) => d.name === r.param)!;
@@ -86,7 +86,7 @@ describe('presets (#192)', () => {
 
   it('does not load into another structure', () => {
     const p = newPatch(DEFS);
-    const a = insertAssembly(p, DEFS, named('Hera 6'), 0, 0);
+    const a = insertAssembly(p, DEFS, named('Hera 5'), 0, 0);
     const o = insertAssembly(p, DEFS, named('Oracle V'), 900, 0);
     storePreset(p, a, 'x');
     expect(presetsOf(p, o)).toEqual([]);
@@ -95,7 +95,7 @@ describe('presets (#192)', () => {
 
   it('overwrite, rename, delete, step; factory ones are read-only and storing over one makes a new one', () => {
     const p = newPatch(DEFS);
-    const a = insertAssembly(p, DEFS, named('Hera 6'), 0, 0);
+    const a = insertAssembly(p, DEFS, named('Hera 5'), 0, 0);
     const s = structureOf(p, a);
     setFactoryPresets([{ structure: s, name: 'Init', values: currentValues(p, a) }]);
     expect(storePreset(p, a, 'Init')).toBe('Init 2');
@@ -117,7 +117,7 @@ describe('presets (#192)', () => {
 
   it('an assembly that remembers no preset stands on the first one whose values it has (#432), else before the first', () => {
     const p = newPatch(DEFS);
-    const a = insertAssembly(p, DEFS, named('Hera 6'), 0, 0);
+    const a = insertAssembly(p, DEFS, named('Hera 5'), 0, 0);
     const s = structureOf(p, a);
     const init = currentValues(p, a);
     const other = init.map((x, i) => (i === 0 ? x + 1 : x));
@@ -134,7 +134,7 @@ describe('presets (#192)', () => {
 
   it('a new preset\'s default name: the one it is based on and the next free number, as the FM-1 names it', () => {
     const p = newPatch(DEFS);
-    const a = insertAssembly(p, DEFS, named('Hera 6'), 0, 0);
+    const a = insertAssembly(p, DEFS, named('Hera 5'), 0, 0);
     setFactoryPresets([{ structure: structureOf(p, a), name: 'Init', values: currentValues(p, a) }, { structure: structureOf(p, a), name: 'Bright', values: currentValues(p, a) }]);
     expect(nextPresetName(p, a)).toBe('Init 2');                 // none remembered: the first of its list
     a.preset = 'Bright';
@@ -146,7 +146,7 @@ describe('presets (#192)', () => {
 
   it('names are one name in any case: the FM-1\'s capitals meet the editor\'s spelling', () => {
     const p = newPatch(DEFS);
-    const a = insertAssembly(p, DEFS, named('Hera 6'), 0, 0);
+    const a = insertAssembly(p, DEFS, named('Hera 5'), 0, 0);
     const s = structureOf(p, a);
     setFactoryPresets([{ structure: s, name: 'Init', values: currentValues(p, a) }]);
     expect(addUserPreset(s, 'INIT 2', currentValues(p, a))).toBe('Init 2');        // a new one from the FM-1: the editor's style
@@ -163,7 +163,7 @@ describe('presets (#192)', () => {
 
   it('export and import the library', () => {
     const p = newPatch(DEFS);
-    const a = insertAssembly(p, DEFS, named('Hera 6'), 0, 0);
+    const a = insertAssembly(p, DEFS, named('Hera 5'), 0, 0);
     storePreset(p, a, 'One');
     const file = JSON.parse(JSON.stringify(exportPresets()));
     mem.clear();

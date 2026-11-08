@@ -252,6 +252,9 @@ P.push('};', '');
   const bin = encodePatch(fallbackPatch());
   P.push(`#define FALLBACK_NAME "${FALLBACK_NAME}"`, `static const uint8_t FALLBACK_PATCH[${bin.length}] = {${Array.from(bin).join(',')}};`, '');
 }
+/** factory patches renamed when another took their slot (upper case, as the FM-1 names them): Hera 5 took Hera 6's (owner
+ * ruling 2026-11-07, "Hera 5 replaces Hera 6") */
+const RENAMED: Record<string, string> = { 'HERA 6': 'HERA 5' };
 { // the factory patches earlier firmwares wrote (scripts/legacy-factory.ts): an untouched slot holding one is rewritten with
   // today's patch of that name after an update that changed the factory set or the format (main.c bank_upgrade); `now`
   // is its index in PRESET_LIST
@@ -260,11 +263,20 @@ P.push('};', '');
   // (one that is byte for byte one of today's patches, of any name, is left out: a slot holding today's bytes is never
   // rewritten, and a patch that uses nothing newer is written in an older format, patchbin.ts WRITE_FLOOR, so an older
   // presets.h can hold today's bytes)
-  const rows = legacy.filter((x) => now.has(x.name) && !todays.has(`${x.fnv}/${x.len}`)).sort((a, b) => parseInt(a.fnv, 16) - parseInt(b.fnv, 16) || a.len - b.len);
+  // (a factory patch that took a renamed one's slot rewrites it too, under its own name: FACTORY_RENAMED)
+  const nameNow = (n: string): string => RENAMED[n] ?? n;
+  const rows = legacy.map((x) => ({ ...x, name: nameNow(x.name), was: x.name })).filter((x) => now.has(x.name) && !todays.has(`${x.fnv}/${x.len}`)).sort((a, b) => parseInt(a.fnv, 16) - parseInt(b.fnv, 16) || a.len - b.len);
   P.push('/* the factory patches earlier firmwares wrote (web/scripts/legacy-factory.json): FNV-1a of the bytes, length, today\'s', '   patch of that name (PRESET_LIST index); sorted by fnv */');
   P.push(`#define N_LEGACY_FACTORY ${rows.length}`);
   P.push('static const struct { uint32_t fnv; uint16_t len; uint8_t now; } LEGACY_FACTORY[N_LEGACY_FACTORY] = {');
   for (let i = 0; i < rows.length; i += 4) P.push('    ' + rows.slice(i, i + 4).map((x) => `{0x${x.fnv}u, ${x.len}, ${now.get(x.name)}}`).join(', ') + ',');
+  P.push('};', '');
+  const renamed = Object.entries(RENAMED).filter(([, to]) => now.has(to));
+  P.push('/* the factory patches that took a renamed one\'s slot: an untouched slot of the old name is rewritten under the new one', '   (main.c bank_upgrade), so a bank does not get it twice (bank_add finds it by name) */');
+  P.push(`#define N_FACTORY_RENAMED ${renamed.length}`);
+  P.push(`static const struct { const char *was; uint8_t now; } FACTORY_RENAMED[${Math.max(1, renamed.length)}] = {`);
+  for (const [was, to] of renamed) P.push(`    {"${was}", ${now.get(to)}},`);
+  if (!renamed.length) P.push('    {"", 0xFFu},');
   P.push('};', '');
 }
 { // the factory sets released firmwares wrote (scripts/legacy-factory.ts): after an update, a factory patch the bank's set
@@ -275,7 +287,10 @@ P.push('};', '');
   P.push(`#define N_RELEASED_SETS ${sets.length}`);
   P.push('static const struct { uint32_t set; uint64_t has; } RELEASED_SETS[N_RELEASED_SETS] = {');
   for (const s of sets) {
-    const has = presetNames.reduce((m, n, i) => (s.names.includes(n.toUpperCase()) ? m | (1n << BigInt(i)) : m), 0n);
+    // (a set that had a renamed factory patch has the one that took its slot: bank_upgrade rewrites an untouched slot of it,
+    // and a changed or deleted one is the owner's choice, so bank_add adds nothing)
+    const had = (n: string): boolean => s.names.includes(n) || Object.entries(RENAMED).some(([was, to]) => to === n && s.names.includes(was));
+    const has = presetNames.reduce((m, n, i) => (had(n.toUpperCase()) ? m | (1n << BigInt(i)) : m), 0n);
     P.push(`    {0x${s.set}u, 0x${has.toString(16)}ull},   /* ${s.tags[0]}${s.tags.length > 1 ? ' .. ' + s.tags[s.tags.length - 1] : ''} */`);
   }
   P.push('};', '');

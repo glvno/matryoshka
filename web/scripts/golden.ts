@@ -152,9 +152,9 @@ for (const [n, p] of Object.entries(FM1_PRESETS)) tests[n] = p();
 // D-1004: Oracle V with a morph B side on its filter and envelopes (every module has a B side, as the editor makes one;
 // format 51 writes only the B values off A): played half way
 tests['oracle-morph'] = oracleMorph();
-// #649: XLs the FM-1's one memory arena holds (Hera 6 XL: 151 module copies, past the 128 of the fixed pools before it;
-// Wanderer XL: it fits with format 51, #667)
-for (const n of ['Hera 6 XL', 'Wanderer XL']) tests[n] = XL_PRESETS[n]();
+// #649: an XL the FM-1's one memory arena holds (Hera 6 XL: 151 module copies, past the 128 of the fixed pools before it;
+// Wanderer XL fitted too and took Wanderer's factory slot, D-348)
+for (const n of ['Hera 6 XL']) tests[n] = XL_PRESETS[n]();
 events['Wanderer'] = [[0, 'on', 60], [128 * 20, 'on', 72], [128 * 40, 'on', 67], [128 * 60, 'off', 72], [128 * 80, 'off', 60], [128 * 100, 'off', 67]];
 // Mono Lead: its notes one after another. A note over a held one lengthens its glide to 166 ms (the allocator's legato output on
 // the Glide's time), and a gliding pitch leaves a small phase offset between the engines (within a cent, nothing at rest),
@@ -3634,11 +3634,11 @@ if (process.argv.includes('--panel-fixtures')) {
     writeFileSync(new URL('arm-unreached.m1p', out), encodePatch(p, true));
   }
   {
-    // an engine no keys cable reaches (#215, D-905): Monolith D (mono: its Voicing leaves the device form) and Hera 6 (poly:
+    // an engine no keys cable reaches (#215, D-905): Monolith D (mono: its Voicing leaves the device form) and basic poly (poly:
     // its group stays, so SEL arms it), on the Output's left and right, Main's keys cables gone. The device extras mark both
     const p = newPatch(DEFS);
     const output = p.modules.find((m) => m.type === 'output')!;
-    for (const [name, y] of [['Monolith D', 0], ['Hera 6', 900]] as const) {
+    for (const [name, y] of [['Monolith D', 0], ['basic poly', 900]] as const) {
       const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === name)!, 300, y);
       wireEngine(p, a);
       if (y) connect(p, DEFS, { module: a.outputs[0].module, port: a.outputs[0].port }, { module: output.id, port: 'r' });

@@ -823,11 +823,11 @@ static uint32_t fnv32(const uint8_t *p, uint32_t n)
 
 /* after an update: every slot that is byte for byte a factory patch an earlier firmware wrote (presets.h LEGACY_FACTORY,
  * so untouched since the factory bank or FACTORY RESET), in any format, gets today's patch of that name; the slot keeps
- * its name, anything edited and saved stays as it is, and a slot holding one of today's patches is not in the table.
+ * its name (a renamed factory patch's, presets.h FACTORY_RENAMED, takes the new one's), anything edited and saved stays as it is, and a slot holding one of today's patches is not in the table.
  * Once per factory set and format (bank_set, bank_fmt). Returns how many slots were rewritten */
 static uint32_t bank_upgrade(void)
 {
-    uint32_t s, k, len, h, n = 0;
+    uint32_t s, k, r, i, len, h, n = 0;
     char name[M1_NAME + 1];
     boot_step("FACTORY PATCHES");
     for (s = 0; s < M1_SLOTS; s++) {
@@ -842,7 +842,20 @@ static uint32_t bank_upgrade(void)
         for (k = 0; k < N_LEGACY_FACTORY; k++)
             if (LEGACY_FACTORY[k].fnv == h && LEGACY_FACTORY[k].len == len)
                 break;
-        if (k < N_LEGACY_FACTORY && store_write(s, name, PRESET_LIST[LEGACY_FACTORY[k].now].data, PRESET_LIST[LEGACY_FACTORY[k].now].len) == 0)
+        if (k >= N_LEGACY_FACTORY)
+            continue;
+        for (r = 0; r < N_FACTORY_RENAMED; r++) {      /* a renamed factory patch's slot takes the new one's name */
+            const char *was = FACTORY_RENAMED[r].was, *to = PRESET_LIST[FACTORY_RENAMED[r].now].name;
+            for (i = 0; i < M1_NAME && was[i] && name[i] == was[i]; i++)
+                ;
+            if (FACTORY_RENAMED[r].now != LEGACY_FACTORY[k].now || was[i] || (i < M1_NAME && name[i]))
+                continue;
+            for (i = 0; i < M1_NAME; i++)
+                name[i] = 0;
+            for (i = 0; i < M1_NAME && to[i]; i++)
+                name[i] = to[i];
+        }
+        if (store_write(s, name, PRESET_LIST[LEGACY_FACTORY[k].now].data, PRESET_LIST[LEGACY_FACTORY[k].now].len) == 0)
             n++;
     }
     bank_fmt = ENG_PATCH_VERSION;

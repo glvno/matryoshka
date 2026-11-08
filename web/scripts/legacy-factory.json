@@ -135,6 +135,12 @@
   },
   {
    "name": "<7PH",
+   "len": 2309,
+   "fnv": "d38ce6ef",
+   "version": 51
+  },
+  {
+   "name": "<7PH",
    "len": 3615,
    "fnv": "e7f013cd",
    "version": 51
@@ -426,6 +432,12 @@
    "len": 3304,
    "fnv": "dd27cf81",
    "version": 46
+  },
+  {
+   "name": "8 LIRE",
+   "len": 2536,
+   "fnv": "7c18b5cd",
+   "version": 51
   },
   {
    "name": "808 KIT",
@@ -1107,6 +1119,12 @@
   },
   {
    "name": "ALGO FOUR",
+   "len": 1430,
+   "fnv": "6a151ef4",
+   "version": 51
+  },
+  {
+   "name": "ALGO FOUR",
    "len": 1250,
    "fnv": "739803b2",
    "version": 51
@@ -1479,6 +1497,12 @@
   },
   {
    "name": "BRIEFCASE 3",
+   "len": 2375,
+   "fnv": "ef099012",
+   "version": 51
+  },
+  {
+   "name": "BRIEFCASE 3",
    "len": 3811,
    "fnv": "fc581f29",
    "version": 51
@@ -1709,6 +1733,12 @@
    "name": "CANVAS",
    "len": 2092,
    "fnv": "a9589104",
+   "version": 51
+  },
+  {
+   "name": "CANVAS",
+   "len": 2156,
+   "fnv": "fb168bde",
    "version": 51
   },
   {
@@ -2733,6 +2763,12 @@
   },
   {
    "name": "EXPANDER S",
+   "len": 2106,
+   "fnv": "3730185e",
+   "version": 51
+  },
+  {
+   "name": "EXPANDER S",
    "len": 1205,
    "fnv": "74bae75f",
    "version": 51
@@ -2741,6 +2777,18 @@
    "name": "EXPANDER S",
    "len": 1249,
    "fnv": "b60bb13c",
+   "version": 51
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1520,
+   "fnv": "b612a770",
+   "version": 51
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 947,
+   "fnv": "c6ae6e2d",
    "version": 51
   },
   {
@@ -4011,6 +4059,12 @@
   },
   {
    "name": "IO 4",
+   "len": 2214,
+   "fnv": "0ea021b5",
+   "version": 51
+  },
+  {
+   "name": "IO 4",
    "len": 3324,
    "fnv": "74cc0b9f",
    "version": 51
@@ -4767,6 +4821,12 @@
   },
   {
    "name": "MONOLITH D",
+   "len": 2132,
+   "fnv": "4ab74db2",
+   "version": 51
+  },
+  {
+   "name": "MONOLITH D",
    "len": 2754,
    "fnv": "72d0c53c",
    "version": 51
@@ -5127,6 +5187,12 @@
   },
   {
    "name": "ORACLE V",
+   "len": 2286,
+   "fnv": "3713737a",
+   "version": 51
+  },
+  {
+   "name": "ORACLE V",
    "len": 1292,
    "fnv": "40eae73b",
    "version": 51
@@ -5135,6 +5201,18 @@
    "name": "ORACLE V",
    "len": 3517,
    "fnv": "52096ae1",
+   "version": 51
+  },
+  {
+   "name": "ORACLE V",
+   "len": 3581,
+   "fnv": "9a5ab1e7",
+   "version": 51
+  },
+  {
+   "name": "ORACLE V",
+   "len": 949,
+   "fnv": "a23131b2",
    "version": 51
   },
   {
@@ -6201,6 +6279,12 @@
   },
   {
    "name": "SALLEN 20",
+   "len": 1906,
+   "fnv": "6fa9fd3a",
+   "version": 51
+  },
+  {
+   "name": "SALLEN 20",
    "len": 2856,
    "fnv": "f3924c39",
    "version": 51
@@ -6641,6 +6725,12 @@
    "name": "SILVER BOX",
    "len": 1257,
    "fnv": "6baec04e",
+   "version": 51
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 897,
+   "fnv": "85c47ed1",
    "version": 51
   },
   {
@@ -8151,6 +8241,12 @@
   },
   {
    "name": "VERNON 100",
+   "len": 2190,
+   "fnv": "653db86e",
+   "version": 51
+  },
+  {
+   "name": "VERNON 100",
    "len": 3415,
    "fnv": "905ae523",
    "version": 51
@@ -8537,6 +8633,12 @@
    "name": "WANDERER",
    "len": 3239,
    "fnv": "17698a9d",
+   "version": 51
+  },
+  {
+   "name": "WANDERER",
+   "len": 2192,
+   "fnv": "346ecf9b",
    "version": 51
   },
   {
