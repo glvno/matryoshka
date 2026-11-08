@@ -282,6 +282,7 @@ static uint32_t batt_us;                        /* the last battery read's time,
  * before their render ended), then since the last read of this page the longest run of halves over 85 %, the longest
  * gap between two audio ISRs (us) and the shortest ISR (us), then parts shed since the last patch load and the guard's
  * mean ISR time (us) */
+static void settings_store(void);
 static uint32_t m1_diag(uint32_t page, uint8_t *out)
 {
     const uint8_t *b = (const uint8_t *)&diag_prev;
@@ -467,6 +468,26 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
         return sizeof v;
     }
+    if (page == 128u || page == 129u) {         /* #656: the store's flash writes (storage_hw.c st_stat: erases, programs, the
+                                                 * longest stretch with the interrupts off, the longest erase and program, the
+                                                 * steps the interrupts ran in, writes without steps, suspends not taken; us);
+                                                 * 129 first writes the settings record (a test: it does not wait for silence
+                                                 * as D-921's does) */
+        uint32_t v[8];
+        if (page == 129u)
+            settings_store();
+        v[0] = st_stat.erases;
+        v[1] = st_stat.progs;
+        v[2] = st_stat.off_max;
+        v[3] = st_stat.erase_max;
+        v[4] = st_stat.prog_max;
+        v[5] = st_stat.steps;
+        v[6] = st_stat.unserved;
+        v[7] = st_stat.sus_fail;
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
     if (page == 127u) {
         uint32_t v[8];
         v[0] = cpu_pct;
@@ -573,16 +594,13 @@ static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint3
     return 0;
 }
 
-/* a store write: the erase and program windows have the IRQs off, so no audio meanwhile */
+/* a store write: the sound goes on (storage_hw.c st_op runs the flash's erases and programs in steps the audio
+ * interrupt renders between, #656) */
 static int store_write(uint32_t id, const char *name, const uint8_t *p, uint32_t len)
 {
-    int rc;
     if (!flash_ok)
         return -1;
-    eng_run = 0;
-    rc = sl_write(id, name, p, len);
-    eng_resume();
-    return rc;
+    return sl_write(id, name, p, len);
 }
 
 /* the settings record alone, now (panel.c: HOME + SAVE on the quick start turns it off for good, D-247; the global
@@ -702,9 +720,7 @@ static int m1_preset_put(uint32_t structure, const char *name, const int32_t *va
     int rc;
     if (!flash_ok)
         return -1;
-    eng_run = 0;
     rc = ps_put(structure, name, vals, n);
-    eng_resume();
     return rc;
 }
 static int m1_preset_del(uint32_t structure, const char *name)
@@ -712,9 +728,7 @@ static int m1_preset_del(uint32_t structure, const char *name)
     int rc;
     if (!flash_ok)
         return -1;
-    eng_run = 0;
     rc = ps_del(structure, name);
-    eng_resume();
     if (!rc)
         dp_deleted(structure, name);             /* (a device set to it drops the name: pages_ui.c) */
     return rc;
@@ -729,9 +743,7 @@ static int m1_slot_erase(uint32_t slot)
     int rc;
     if (!flash_ok)
         return -1;
-    eng_run = 0;
     rc = sl_erase(slot);
-    eng_resume();
     return rc;
 }
 static int m1_slot_info(uint32_t slot, char *name, uint32_t *len)
@@ -1455,7 +1467,8 @@ static void host_poll(void)
 
 static void fm1_main(int update)                    /* update: the boot guard saw two failed boots */
 {
-    flash_ok = FL_JEDEC_OK(FL_FAR(fl_jedec_ram)());     /* a known 1 MiB part (fm1_flash_id.h), else no store, no OTA staging */
+    st_jedec = FL_FAR(fl_jedec_ram)();
+    flash_ok = FL_JEDEC_OK(st_jedec);                   /* a known 1 MiB part (fm1_flash_id.h), else no store, no OTA staging */
     if (flash_ok)
         ota_boot_cleanup();                             /* staging area left by an update */
     lcd_init();
@@ -1474,6 +1487,8 @@ static void fm1_main(int update)                    /* update: the boot guard sa
     fm1_timer5_start(isr_timer5, 4);
     fm1_guard_lock_top();
     fm1_irq_enable_all();
+    st_serve = st_jedec == ST_STEP_JEDEC;               /* store writes run in steps the interrupts get between (#656), on
+                                                         * the chip whose suspend is known (#739: others write as before) */
     fm1_delay_ms(30);                                   /* the key scan has run: OCT- + OCT+ can be read */
 #if FELUCCA_UAC
     if (update || (fm1_in.buttons & 3u) == 3u)          /* update mode: decided before the first attach, so the */

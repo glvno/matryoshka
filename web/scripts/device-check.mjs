@@ -15,7 +15,7 @@ import { FIXTURES, NOTE, oldPatch } from './check-fixtures.mjs';
 
 /** the scenarios' names, in the order they run (scripts/emu-scenarios.mjs lists them for --only and --list) */
 export const CHECK_SCENARIOS = ['checkOutput', 'checkVerona', 'checkRowDrone', 'checkLiveDrone', 'checkDelays', 'checkNoKeys', 'checkStore',
-  'checkOldPattern', 'checkTeach', 'checkDualCore', 'checkUsbLevel', 'checkOutLevel'];
+  'checkOldPattern', 'checkTeach', 'checkDualCore', 'checkUsbLevel', 'checkOutLevel', 'checkFlashWrite'];
 
 /** `h`: what emu-scenarios.mjs's scenarios use (the target, the editor's page, the checks) */
 export function checkScenarios(h) {
@@ -837,6 +837,66 @@ export function checkScenarios(h) {
       } finally {
         for (const k of [B.rec, B.play]) await emu.key(k, false);
         if ((await T()).deviceRunning) await emu.tap(B.play);
+        await live(true);
+      }
+    },
+
+    // ---- flash writes keep the sound (#656): a held note through each kind of write the store makes
+    async checkFlashWrite() {
+      if (!(await live(false))) return check('flash write: Live off in the editor (Stop syncing)', false);
+      try {
+        const found = await presetTo('BASIC POLY');
+        if (!found) return skip('flash write: a held note through each write', 'no slot of the bank holds BASIC POLY');
+        const kinds = [
+          // the settings record, as the global tempo's write makes it 5 s after a change (D-907); DIAG 129 writes it now,
+          // since that write waits for 2 s of silence (D-921) and a held note would hold it back
+          ['the settings record (DIAG 129)', async () => { await emu.diag(129); }],
+          // SAVE on the FM-1: the running factory patch, unedited, back into its slot, then the settings record (DIAG 128's
+          // count of erases and programs says it wrote)
+          ['SAVE', async () => { await emu.tap(B.save); await emu.elapse(1500); }],
+          // a device preset stored over the link (the rig's structure, its own name: it replaces itself each run)
+          ['a preset store', async () => { await emu.rp.evaluate(() => window.__rig.presetPut('FLASH TEST', [1, 2, 3, 4])); }],
+        ];
+        const [, , , , , s0] = await emu.diagWords(128).catch(() => []);
+        for (const [what, write] of kinds) {
+          const e0 = await emu.diagWords(128).then((d) => d[0] + d[1], () => 0);
+          await emu.key(C4, true);
+          await emu.elapse(600);
+          const a = await recorded(`flash-${what.replace(/\W+/g, '-')}`, async () => {
+            await emu.elapse(400);
+            await write();
+            await emu.elapse(600);
+          });
+          await emu.key(C4, false);
+          await emu.elapse(400);
+          const gaps = a.why ? [] : dropouts(a);
+          // and the halves (128 frames) far under the note's usual level: a write that held the audio back can leave a
+          // repeated or partly written buffer rather than zeros
+          let dips = 0, worst = 1;
+          if (!a.why) {
+            const n = Math.round(a.rate * 128 / 44118), lv = [];
+            for (let i = 0; i + n <= a.l.length; i += n) lv.push(Math.max(rmsOf(a.l, i, i + n), rmsOf(a.r, i, i + n)));
+            const med = [...lv].sort((x, y) => x - y)[lv.length >> 1] || 0;
+            for (const v of lv) {
+              if (v < 0.3 * med) dips++;
+              if (med) worst = Math.min(worst, v / med);
+            }
+          }
+          const e1 = await emu.diagWords(128).then((d) => d[0] + d[1], () => 0);
+          await check(`flash write: ${what} wrote the flash (DIAG 128)`, e1 > e0, `erases + programs ${e0} -> ${e1}`);
+          const loud = a.why ? 0 : Math.max(rmsOf(a.l), rmsOf(a.r));
+          // (a gap of one USB packet, 1 ms, comes about 0.4 s after SAVE on the rig with or without #656: issue #729; the
+          // flash write's own gaps were 6 to 11 ms)
+          const long = gaps.filter((g) => g[1] > 1.5);
+          await heard(`flash write: ${what} with C4 held on Basic Poly: no dropout over 1.5 ms in the recording`, a, loud > FLOOR && long.length === 0 && dips === 0,
+            `RMS ${db(loud)} dB, ${gaps.length} dropouts${gaps.length ? ` (${gaps.slice(0, 4).map((g) => `${g[1]} ms at ${g[0]}`).join(', ')}; ${r2(gaps.reduce((t, g) => t + g[1], 0))} ms in all)` : ''}, ${dips} halves under 30 % of the note's level (lowest ${r2(worst * 100)} %)`);
+        }
+        const st = await emu.diagWords(128).catch(() => null);
+        console.log(`  DIAG 128 (erases, programs, longest off us, longest erase us, longest program us, steps, unserved, suspends not taken): ${JSON.stringify(st)}`);
+        if (st && REAL) await check('flash write: the chip took every suspend, and every write ran in steps (DIAG 128)', st[7] === 0 && st[5] > (s0 ?? 0) && st[6] === 0,
+          `steps ${st[5]}, unserved ${st[6]}, suspends not taken ${st[7]}, longest off ${st[2]} us`);
+      } finally {
+        await emu.key(C4, false);
         await live(true);
       }
     },
