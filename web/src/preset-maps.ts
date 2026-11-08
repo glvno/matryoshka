@@ -5,6 +5,7 @@
 // leaves an earlier row out needs an entry here: a map, or `none` (the presets of that structure stay as they are). The
 // tests fail until it has one. Rows are named as in src/preset-lineage.json: type#id.param, in the structure they belong
 // to. A row of the newer structure not named here is matched automatically, or takes the Init value.
+import { RATIOS } from './modules';
 
 /** how one row of the newer structure gets its value: from one earlier row as it is; from one or two earlier rows read as
  * whole numbers through a table (the value at place (a - lo[0]) * n[1] + (b - lo[1]), each held inside its n places);
@@ -13,6 +14,17 @@ export type HandRow = 'init' | { from: string } | { table: string[]; lo: number[
 export type HandMap =
   | { engine: string; from: string; to: string; why: string; rows: Record<string, HandRow> }
   | { engine: string; from: string; to: string; none: string };
+
+/** Algo Four (#658): an oscillator's coarse (semitones, from -12: lower lands on 0.50) to the Ratio position nearest to it
+ * (log distance), and its fine (cents, -4..4: beyond lands on the end) to the nearest DETUNE position (2.6 / 3 cents each) */
+const COARSE_LO = -12;
+const COARSE_TO_RATIO = Array.from({ length: 61 }, (_, k) => {
+  const want = Math.log2(2 ** ((COARSE_LO + k) / 12));
+  // 45 st is operator 4's Init, which had a fine of +70 cents with it: 14.00, as Init is now
+  if (COARSE_LO + k === 45) return RATIOS.indexOf(14);
+  return RATIOS.reduce((best, r, i) => (Math.abs(Math.log2(r) - want) < Math.abs(Math.log2(RATIOS[best]) - want) ? i : best), 0);
+});
+const FINE_TO_DETUNE = Array.from({ length: 9 }, (_, k) => Math.max(0, Math.min(6, Math.round((k - 4) / (2.6 / 3)) + 3)));
 
 /** the positions 1..8 of an eight-way Selector from a number 0..7 */
 const ONE_UP = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -67,6 +79,25 @@ export const HAND_MAPS: HandMap[] = [
     engine: 'Io 4', from: 'bcfb20df', to: '908f8d0d', why: 'issue #681: the assign and unison rows became one key assign switch',
     rows: {
       'select#55.pos': { table: ['alloc#1.assign', 'alloc#1.unison'], lo: [0, 0], n: [4, 3], v: [1, 3, 4, 2, 3, 4, 1, 3, 4, 1, 3, 4] },
+    },
+  },
+
+  // ---- 1.11, issue #658: Algo Four plays the DX100's eight algorithms with eight voices, an operator's pitch is a Ratio
+  // (the DX100's 64 frequency ratios and seven DETUNE positions) where it was the oscillator's coarse (semitones) and fine
+  // (cents), and one volume row after the voices takes the two stack mix rows' place. A coarse value lands on the ratio
+  // nearest to it (below 0.50: 0.50; 45, Init's, on 14.00); a fine value on the DETUNE position nearest to it (0.87 cents a position; beyond
+  // +-2.6 cents: +-3). The volume takes stack 1→2 mix's value. The index rows of operators 1 and 3 keep theirs.
+  {
+    engine: 'Algo Four', from: '666a5214', to: '2e17ed93', why: 'issue #658: algorithms, the DX100 ratio table, one volume row',
+    rows: {
+      'osc#2.pm': { from: 'osc#2.pm' },
+      'osc#10.pm': { from: 'osc#8.pm' },
+      'osc#14.fb': { from: 'osc#11.fb' },
+      'mixer#25.l1': { from: 'mixer#14.l1' },
+      ...Object.fromEntries(([['ratio#5', 'osc#2'], ['ratio#9', 'osc#5'], ['ratio#13', 'osc#8'], ['ratio#17', 'osc#11']] as const).flatMap(([to, from]) => [
+        [`${to}.ratio`, { table: [`${from}.coarse`], lo: [COARSE_LO], n: [COARSE_TO_RATIO.length], v: COARSE_TO_RATIO }],
+        [`${to}.detune`, { table: [`${from}.fine`], lo: [-4], n: [9], v: FINE_TO_DETUNE }],
+      ])),
     },
   },
 ];
