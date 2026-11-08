@@ -74,7 +74,8 @@ export const todaysEngines = (): Map<string, AssemblyDef> => {
 };
 
 /** a step from one structure to the next: for each of the newer's rows, how it gets its value from the older's */
-type StepOp = { k: 'copy'; i: number } | { k: 'init' } | { k: 'table'; rows: number[]; lo: number[]; n: number[]; v: number[] };
+type StepOp = { k: 'copy'; i: number } | { k: 'init' } | { k: 'table'; rows: number[]; lo: number[]; n: number[]; v: number[] }
+  | { k: 'line'; x: number; key?: number; lo: number; mul: number[]; add: number[]; min: number; max: number };
 export interface Step { ops: StepOp[]; dropped: string[]; how: 'auto' | 'hand' | 'none'; why?: string }
 
 const parseTarget = (t: string): { type: string; id: number; param: string } => {
@@ -153,7 +154,11 @@ export function stepOf(engine: string, older: LineageEntry, newer: LineageEntry,
       if (k < 0) throw new Error(`preset-maps.ts: ${engine} ${newer.structure} has no row ${t}`);
       if (how === 'init') ops[k] = { k: 'init' };
       else if ('from' in how) ops[k] = { k: 'copy', i: oldAt(how.from) };
-      else {
+      else if ('line' in how) {
+        if (!how.mul.length || how.mul.length !== how.add.length || (how.key === undefined && how.mul.length !== 1)) throw new Error(`preset-maps.ts: ${engine} ${t}: a line's sizes`);
+        const q = (v: number): number => Math.round(v * 65536);   // (Q16, as the FM-1 computes it)
+        ops[k] = { k: 'line', x: oldAt(how.line), ...(how.key !== undefined ? { key: oldAt(how.key) } : {}), lo: how.lo ?? 0, mul: how.mul.map(q), add: how.add.map(q), min: q(how.min), max: q(how.max) };
+      } else {
         const size = how.n.reduce((x, y) => x * y, 1);
         if (how.table.length !== how.lo.length || how.table.length !== how.n.length || how.v.length !== size || how.table.length > 2) throw new Error(`preset-maps.ts: ${engine} ${t}: a table's sizes`);
         ops[k] = { k: 'table', rows: how.table.map(oldAt), lo: how.lo, n: how.n, v: how.v };
@@ -161,7 +166,11 @@ export function stepOf(engine: string, older: LineageEntry, newer: LineageEntry,
     }
   }
   const read = new Set<number>();
-  for (const op of ops) if (op.k === 'copy') read.add(op.i); else if (op.k === 'table') op.rows.forEach((i) => read.add(i));
+  for (const op of ops) {
+    if (op.k === 'copy') read.add(op.i);
+    else if (op.k === 'table') op.rows.forEach((i) => read.add(i));
+    else if (op.k === 'line') [op.x, ...(op.key !== undefined ? [op.key] : [])].forEach((i) => read.add(i));
+  }
   const dropped = older.rows.filter((_, i) => !read.has(i)).map((r) => `${r[0]} "${r[1]}"`);
   if (!hand && dropped.length) return null;
   return { ops, dropped, how: hand ? 'hand' : 'auto', why: hand && 'why' in hand ? hand.why : undefined };
@@ -174,7 +183,11 @@ function compose(first: StepOp[], then: StepOp[]): StepOp[] | null {
   for (const op of then) {
     if (op.k === 'init') out.push(op);
     else if (op.k === 'copy') out.push(first[op.i]);
-    else {
+    else if (op.k === 'line') {
+      const x = first[op.x], key = op.key !== undefined ? first[op.key] : undefined;
+      if (x.k !== 'copy' || (key && key.k !== 'copy')) return null;
+      out.push({ ...op, x: x.i, ...(key && key.k === 'copy' ? { key: key.i } : {}) });
+    } else {
       const rows = op.rows.map((i) => first[i]);
       if (rows.some((r) => r.k !== 'copy')) return null;
       out.push({ ...op, rows: rows.map((r) => (r as { i: number }).i) });
@@ -212,7 +225,9 @@ export function migrationsOf(lineage: Lineage, hands: HandMap[] = HAND_MAPS): { 
       if (migrations[list[i].structure]) throw new Error(`the structure ${list[i].structure} is in two engines' lineage`);
       migrations[list[i].structure] = {
         engine, to: today.structure, n: list[i].rows.length,
-        rows: ops.map((op): MigrationOp => (op.k === 'copy' ? op.i : op.k === 'init' ? -1 : { rows: op.rows, lo: op.lo, n: op.n, v: op.v })),
+        rows: ops.map((op): MigrationOp => (op.k === 'copy' ? op.i : op.k === 'init' ? -1 : op.k === 'line'
+          ? { x: op.x, ...(op.key !== undefined ? { key: op.key, lo: op.lo } : {}), mul: op.mul, add: op.add, min: op.min, max: op.max }
+          : { rows: op.rows, lo: op.lo, n: op.n, v: op.v })),
       };
     }
   }

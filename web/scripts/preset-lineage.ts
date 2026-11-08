@@ -66,7 +66,7 @@ if (args.includes('--report') || args[0] === '--seed') for (const s of steps) {
   if (s.step.how === 'none') continue;
   s.step.ops.forEach((op, k) => {
     const to = `${b.rows[k][0]} "${b.rows[k][1]}"`;
-    const from = op.k === 'copy' ? `${a.rows[op.i][0]} "${a.rows[op.i][1]}"` : op.k === 'init' ? 'Init' : `table of ${op.rows.map((i) => a.rows[i][0]).join(', ')}`;
+    const from = op.k === 'copy' ? `${a.rows[op.i][0]} "${a.rows[op.i][1]}"` : op.k === 'init' ? 'Init' : op.k === 'line' ? `line of ${[op.x, ...(op.key !== undefined ? [op.key] : [])].map((i) => a.rows[i][0]).join(', ')}` : `table of ${op.rows.map((i) => a.rows[i][0]).join(', ')}`;
     if (op.k !== 'copy' || a.rows[op.i][0] !== b.rows[k][0] || a.rows[op.i][1] !== b.rows[k][1]) console.log(`  ${to} <- ${from}`);
   });
   if (s.step.dropped.length) console.log(`  dropped: ${s.step.dropped.join(', ')}`);
