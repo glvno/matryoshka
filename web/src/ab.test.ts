@@ -95,7 +95,7 @@ describe('A/B flip plan (#103)', () => {
   });
 
   const reloads: [string, (b: Patch) => void][] = [
-    ['a parameter route (map)', (b) => { routed(b).map = { p1: [DEFS[routed(b).type].params[0].name], p2: [], k1: [], k2: [], k3: [], k4: [] }; }],
+    ['a parameter route (map)', (b) => { routed(b).map = { p1: [DEFS[routed(b).type].params[0].name], p2: [] }; }],
     ['an input route (inputMap)', (b) => { routed(b).inputMap = { x: [DEFS[routed(b).type].params[0].name] }; }],
     ['the morph B side (paramsB)', (b) => { withParams(b).paramsB = { [DEFS[withParams(b).type].params[0].name]: 0.5 }; }],
     ['a Steps track name', (b) => { steps(b).name = 'LEAD'; }],

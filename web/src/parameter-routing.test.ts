@@ -21,11 +21,9 @@ describe('slider jack routing', () => {
     target.range = { p1: { cutoff: [.1, .9], res: [.2, .8] } };
     connect(p, DEFS, from, { module: target.id, port: 'p1' });
     const cables = structuredClone(p.cables);
-    const knobs = [...target.map!.k1];
     setParameterInput(target, 'p1', 'res', false);
     expect(target.map!.p1).toEqual(['cutoff']);
     expect(target.range!.p1).toEqual({ cutoff: [.1, .9] });
-    expect(target.map!.k1).toEqual(knobs);
     expect(p.cables).toEqual(cables);
     setParameterInput(target, 'p1', 'res', true);
     setParameterInput(target, 'p1', 'res', true);
@@ -148,7 +146,7 @@ describe('slider jack routing', () => {
     expect(JSON.stringify(p)).toBe(before);
   });
 
-  it('preserves macro ranges and knob assignments while patching an existing destination', () => {
+  it('preserves macro ranges and the matrix while patching an existing destination', () => {
     const { p, target, from } = setup();
     target.range = { p2: { res: [.8, .2] } };
     const map = structuredClone(target.map);
