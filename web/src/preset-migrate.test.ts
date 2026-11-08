@@ -113,11 +113,16 @@ describe('a 1.9.0 preset on today\'s factory patch (#627 done-when)', () => {
       // each old row's value is on the row of the same module and parameter today; the new row has Init's value
       const before = entry(from).rows, now = entry(m.to).rows;
       const init = initOf(m.to)!;
-      now.forEach((r, k) => {
-        const j = before.findIndex((x) => x[0] === r[0]);
-        expect(mine!.values[k], `${engine} ${r[0]} "${r[1]}"`).toBe(j >= 0 ? old[j] : init[k]);
-      });
-      expect(now.length - before.length, engine).toBe(1);
+      if (engine === 'Oracle V') {
+        // (rebuilt in 1.11 with the Prophet-5's cut functions, #658: a hand map moves its rows, preset-maps.ts)
+        expect(mine!.values).toEqual(migrateValues(m, old, init));
+      } else {
+        now.forEach((r, k) => {
+          const j = before.findIndex((x) => x[0] === r[0]);
+          expect(mine!.values[k], `${engine} ${r[0]} "${r[1]}"`).toBe(j >= 0 ? old[j] : init[k]);
+        });
+        expect(now.length - before.length, engine).toBe(1);
+      }
       expect(applyPreset(p, a, mine!)).toBe(true);
       expect(currentValues(p, a)).toEqual(mine!.values);
       const [l, rr] = renderPlay(ways(p, engine, 4)[0], 0.5);
@@ -129,6 +134,25 @@ describe('a 1.9.0 preset on today\'s factory patch (#627 done-when)', () => {
 });
 
 describe('moving presets (D-865)', () => {
+  it('Oracle V before #658: the waves land on the Prophet-5\'s wave switches, the levels on the mixer', () => {
+    const m = PRESET_MIGRATIONS['7a7a26f6'];
+    const old = entry('7a7a26f6').rows, now = entry(m.to).rows;
+    const at = (rows: typeof old, id: string): number => rows.findIndex((r) => r[0] === id);
+    const vals = old.map(() => 0.3);
+    vals[at(old, 'osc#8.wave')] = 3;      // A: square
+    vals[at(old, 'osc#7.wave')] = 0;      // B: sine
+    vals[at(old, 'lfo#1.wave')] = 3;      // LFO: square
+    vals[at(old, 'osc#8.level')] = 0.61;
+    vals[at(old, 'ladder#12.cvamt')] = 2.5;
+    const out = migrateValues(m, vals, initOf(m.to)!);
+    const get = (id: string): number => out[at(now, id)];
+    expect([get('select#24.pos'), get('select#25.pos')]).toEqual([1, 2]);                       // A: saw OFF, pulse ON
+    expect([get('select#28.pos'), get('select#29.pos'), get('select#30.pos')]).toEqual([1, 2, 1]); // B: tri ON
+    expect([get('select#47.pos'), get('select#48.pos'), get('select#49.pos')]).toEqual([1, 1, 2]); // LFO: square ON
+    expect(get('mixer#31.l1')).toBe(0.61);    // A level
+    expect(get('scale#40.gain')).toBe(2.5);   // env amt
+  });
+
   it('a preset with fewer values than its rows (Cassia 1 stored on an FM-1 before 1.8.2): the rest take Init', () => {
     const old = earlierPreset('2b89b424').slice(0, 88);
     const m = PRESET_MIGRATIONS['2b89b424'];

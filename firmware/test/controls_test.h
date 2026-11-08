@@ -14,7 +14,8 @@
 typedef struct {
     uint32_t page, sr_on, sr_k, run, once, rec, saved, stepped, dev, devpage, menu_tab, man_top, updates, cfg_sum;
     int32_t octave, tempo, list_btn, list_step;
-    uint32_t params, arms, mutes, trk, row, roll_lo, seq_pg, pattern, lpg, locks;
+    uint32_t params, mutes, trk, row, roll_lo, seq_pg, pattern, lpg, locks;
+    uint64_t arms;                                      /* (all 64 modules: a big patch's tracks sit above 31) */
     int32_t notes_n;
     uint32_t notes_sum, acc_n, len_sum, vel_sum, chance_sum, pitch_sum;
     uint32_t song_sel, song_cur, song_len, song_sum, song, clear_at, del_at, msg_sum;
@@ -57,7 +58,7 @@ static void ct_take(ct_snap_t *s)
     s->octave = octave;
     s->tempo = (panel >= 0 ? eng_get_param((uint32_t)panel, FM1_P_TEMPO) : 0) + (int32_t)eng_tempo_global_get();
     s->params = ct_params();
-    s->arms = (uint32_t)eng_arm_mask_get();
+    s->arms = eng_arm_mask_get();
     for (i = 0; (int)i < eng_steps_count(); i++)
         s->mutes |= (uint32_t)(eng_steps_muted((uint32_t)eng_steps_module(i)) != 0) << i;
     s->trk = seq_trk;
