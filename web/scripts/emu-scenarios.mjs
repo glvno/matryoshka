@@ -15,8 +15,10 @@
 // drives the registered rig (scripts/rig.mjs) over the editor link: its panel (TEST_KEY / TEST_TURN), its screen as text
 // (TEST_SCREEN) and its output's peak (TEST_PEAK). The page sees only the rig's ports; another FM-1 connected is asked
 // HELLO and PRESET_GET (to tell it from the rig) and nothing else. --install RUN first installs that firmware CI run on
-// the rig, after the gate of D-120 (emu:smoke and these scenarios in the emulator, on that run's builds) passed, and only
-// when the rig is the one FM-1 connected (the installer takes the first FM-1 it finds). --gate boot: after the boot check
+// the rig, after the gate of D-120 (emu:smoke and these scenarios in the emulator, on that run's builds) passed, through
+// fm1_install.py --rig: only on the FM-1 at the rig's USB location, and only when its mark reads back there (#698), so
+// another FM-1 may stay connected. A rig registered before #698 (no location kept) still has to be the one FM-1
+// connected. The rig's USB audio is recorded by that location too (tools/fm1_rec.swift). --gate boot: after the boot check
 // (emu:boot, about 30 s) instead, for the owner's iteration checks on the rig (D-123); merges and releases still take the
 // full gate. Which gate a build passed goes to build/device/scenarios/install.json. --via-emu: the device path against
 // the emulator (m1emu serve), to check the runner itself without a rig. --port NAME: the rig's page looks only at that
@@ -30,7 +32,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { boot, download, downloadEmuMidi, smoke, smokeState, venvPython } from './branch-firmware.mjs';
-import { DEV_ENV, fm1Label, loadRig, pickRig, rigPage, survey } from './rig-link.mjs';
+import { DEV_ENV, audioLocation, fm1Label, loadRig, pickRig, rigAtLocation, rigPage, survey } from './rig-link.mjs';
 import { parseWav, startCapture } from './audio-capture.mjs';
 import { CHECK_SCENARIOS, checkScenarios } from './device-check.mjs';
 
@@ -224,13 +226,14 @@ class Target {
 class RigTarget extends Target {
   constructor(page) { super(); this.page = page; this.rp = page; }
   diag(n) { return this.page.evaluate((x) => window.__rig.diag(x), n); }
-  /** a recording of what the FM-1 plays: its USB audio on this Mac (audio-capture.mjs), when the rig is the one FM-1
-   *  connected (`audioWhy` says why not, else); { stop() } or { why } */
+  /** a recording of what the FM-1 plays: its USB audio on this Mac (audio-capture.mjs), the input at the rig's USB
+   *  location (`audioInput`; by its name while the rig is the one FM-1 connected); `audioWhy` says why there is none.
+   *  { stop() } or { why } */
   async record(name) {
     if (this.audioWhy) return { why: this.audioWhy };
     // (USB audio is taken after MASTER: with the knob all the way down it is silent, and the volume never fails a check, D-125)
     if ((await this.page.evaluate(() => window.__rig.peak())).masterDown) return { why: 'MASTER down (the USB audio comes after it)' };
-    return startCapture(join(OUT, `${name}.wav`));
+    return startCapture(join(OUT, `${name}.wav`), this.audioInput);
   }
   press(id, hold) { return this.page.evaluate(([i, h]) => window.__rig.tap(i, h), [id, hold]); }
   down(id, down) { return this.page.evaluate(([i, d]) => window.__rig.key(i, d), [id, down]); }
@@ -430,9 +433,11 @@ async function launch(url) {
   return { browser, context };
 }
 
-/** --install RUN: that firmware CI run onto the rig, once the gate passed on its builds and the rig is the one FM-1
- *  connected (fm1_install.py takes the first FM-1 that answers). The gate (`--gate`): full = emu:smoke and these
- *  scenarios on the run's builds (D-120); boot = the boot check, emu:boot (D-123: the rig only, for iteration checks) */
+/** --install RUN: that firmware CI run onto the rig, once the gate passed on its builds: fm1_install.py --rig, which sees
+ *  only the ports at the rig's USB location and installs only when the rig's mark reads back there (#698); a rig
+ *  registered without its location must be the one FM-1 connected, as before (the installer then takes the first FM-1
+ *  that answers). The gate (`--gate`): full = emu:smoke and these scenarios on the run's builds (D-120); boot = the boot
+ *  check, emu:boot (D-123: the rig only, for iteration checks) */
 async function installOnRig(run, url) {
   console.log(`-- install: firmware CI run ${run} on the rig (gate: ${GATE === 'boot' ? 'the boot check, emu:boot' : 'emu:smoke and emu:scenarios'})`);
   const dir = await download(run);
@@ -459,17 +464,21 @@ async function installOnRig(run, url) {
   if (!PY) throw new Error(NO_VENV);
   const emuPorts = () => spawnSync(PY, ['-c', 'import mido; print(sum("(emu " in n for n in mido.get_input_names()))'], { encoding: 'utf8' }).stdout.trim();
   for (let t = Date.now(); emuPorts() !== '0' && Date.now() - t < 15000; ) await sleep(500);
+  const pinned = !!loadRig()?.usbLocation;
   const { browser, context } = await launch(url);
   try {
     const s = await survey(await rigPage(context, url));
     if (!s.rig) throw new Error('the registered rig is not connected: nothing installed');
-    if (s.ports !== 1 || s.pairs.length !== 1) throw new Error(`${s.ports} FM-1 ports are connected: the rig must be the only FM-1 for an install (unplug the other): nothing installed`);
+    if (!pinned && (s.ports !== 1 || s.pairs.length !== 1))
+      throw new Error(`${s.ports} FM-1 ports are connected and the rig's USB location is not recorded: the rig must be the only FM-1 for an install (unplug the other, or register the rig again with it alone to record its location): nothing installed`);
+    if (pinned && s.pairs.length > 1) console.log(`  ${s.pairs.length - 1} other FM-1${s.pairs.length === 2 ? '' : 's'} connected: the installer sees only the rig's USB location (${loadRig().usbLocation})`);
   } finally {
     await browser.close();
   }
   console.log(`installing ${join(dir, 'matryoshka.fwsc')} on the rig`);
-  if (spawnSync(PY, [join(ROOT, 'tools/fm1_install.py'), join(dir, 'matryoshka.fwsc'), '--yes'], { cwd: ROOT, stdio: 'inherit' }).status !== 0)
-    throw new Error('fm1_install.py failed (the rig stays in update mode until an install finishes: run it again)');
+  const how = pinned ? ['--rig'] : [];
+  if (spawnSync(PY, [join(ROOT, 'tools/fm1_install.py'), join(dir, 'matryoshka.fwsc'), '--yes', ...how], { cwd: ROOT, stdio: 'inherit' }).status !== 0)
+    throw new Error(`fm1_install.py failed (if the rig is in update mode, it stays there until an install finishes: tools/fm1_install.py ${join(dir, 'matryoshka.fwsc')}${pinned ? ` --location ${loadRig().usbLocation}` : ''})`);
   await sleep(4000);   // (its restart)
   const gate = GATE === 'boot' ? 'boot (emu:boot, D-123: the rig only)' : 'full (emu:smoke and emu:scenarios, D-120)';
   writeFileSync(join(OUT, 'install.json'), JSON.stringify({ run: String(run), gate: GATE, at: new Date().toISOString() }, null, 1));
@@ -519,7 +528,7 @@ async function main() {
   const { browser, context } = await launch(url);
   process.on('exit', () => { try { browser.process()?.kill(); } catch { /* gone */ } });
   let emu = emuProc;
-  let rigAudioWhy = '';
+  let rigAudioWhy = '', rigAudioIn = 'Matryoshka';
   if (DEVICE) {
     if (!REAL || opt('--port')) await context.addInitScript(FILTER_MIDI, { name: REAL ? opt('--port') : PORT_NAME });
     const rp = await rigPage(context, url);
@@ -530,8 +539,13 @@ async function main() {
       console.log(`rig: ${fm1Label(pair)};${s.pairs.length - 1} other FM-1${s.pairs.length === 2 ? '' : 's'} left alone`);
       masterMatters = !((pair.info?.features ?? 0) & 1024);   // (protocol.ts FEATURE_PEAK_PRE)
       await context.addInitScript(FILTER_MIDI, { ids: [pair.inId, pair.outId], except: '/__rig' });
-      // (the rig's USB audio is recorded by its input's name, so only while it is the one FM-1 connected)
-      rigAudioWhy = s.pairs.length === 1 && s.ports === 1 ? '' : `${s.pairs.length} FM-1s connected: which audio input is the rig's is not known`;
+      // the rig's USB audio: the input at its USB location when the mark reads back there (#698); else by its name, which
+      // only works while it is the one FM-1 connected (D-140)
+      const alone = s.pairs.length === 1 && s.ports === 1;
+      const at = rigAtLocation();
+      rigAudioIn = at.ok ? `usb-location:${audioLocation(at.location)}` : 'Matryoshka';
+      rigAudioWhy = at.ok || alone ? '' : `${s.pairs.length} FM-1s connected and ${at.why}: which audio input is the rig's is not known`;
+      if (!at.ok && loadRig()?.usbLocation) console.log(`  note: ${at.why}`);
     } else {
       [pair] = await rp.evaluate(() => window.__rig.pairs());
       if (!pair) throw new Error('the emulated FM-1 did not answer on its port');
@@ -539,6 +553,7 @@ async function main() {
     }
     emu = new RigTarget(rp);
     emu.audioWhy = REAL ? rigAudioWhy : 'the emulator through the device test mode has no USB audio';
+    emu.audioInput = rigAudioIn;
     // a known start: the device page (the owner's rig was once left on HOME held's SYSTEM page, and every check failed)
     if (!(await emu.home())) { const h = await emu.screen(); throw new Error(`the FM-1 did not come back to its device page with HOME (screen page ${h.page}${h.booting ? ', still booting' : ''}): bring it there by hand and run again`); }
     // the keys' octave back to 0: the footer's "= OCT =" is how the checks know a device page, and pitches count from it

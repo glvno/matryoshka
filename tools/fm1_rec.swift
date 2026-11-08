@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// fm1_rec NAME OUT.wav: record the CoreAudio input device NAME (the FM-1's USB audio: "Matryoshka") with AVAudioEngine at
-// the device's own rate into a 16-bit WAV, until a line arrives on stdin (or stdin closes). It prints "rec RATE CHANNELS"
+// fm1_rec INPUT OUT.wav: record a CoreAudio input device with AVAudioEngine at the device's own rate into a 16-bit WAV,
+// until a line arrives on stdin (or stdin closes). INPUT is the device's name (the FM-1's USB audio: "Matryoshka"), or
+// usb-location:HEX, the USB audio input at that USB location (#698: two FM-1s carry the same name; the FM-1 has no USB
+// serial number, so macOS's id for its input holds the location: AppleUSBAudioEngine:<maker>:<product>:1130000:1,2). It prints "rec RATE CHANNELS"
 // once the first buffer came, and at the end "frames N seconds S". web/scripts/audio-capture.mjs builds and runs it for the
 // device check's scenarios: ffmpeg's avfoundation input delivered about a third of the FM-1's buffers (9.2 s of a 30 s
 // capture on 2026-11-06), where this records them all (44049 frames a second over 30 s).
@@ -8,7 +10,17 @@ import AVFoundation
 import CoreAudio
 
 let args = CommandLine.arguments
-guard args.count == 3 else { FileHandle.standardError.write("usage: fm1_rec NAME OUT.wav\n".data(using: .utf8)!); exit(2) }
+guard args.count == 3 else { FileHandle.standardError.write("usage: fm1_rec NAME|usb-location:HEX OUT.wav\n".data(using: .utf8)!); exit(2) }
+let byLocation: String? = args[1].hasPrefix("usb-location:")
+    ? String(args[1].dropFirst(13).lowercased().replacingOccurrences(of: "0x", with: "").drop(while: { $0 == "0" })) : nil
+/// "AppleUSBAudioEngine:Focusrite:Scarlett 2i2 USB:2120000:1,2": the field before the interfaces is the USB location (in
+/// hex, as here) for a device without a serial number, else that serial; another form of id matches nothing
+func usbLocation(ofUID uid: String) -> String? {
+    let f = uid.split(separator: ":", omittingEmptySubsequences: false)
+    guard f.count >= 5, f[0] == "AppleUSBAudioEngine" else { return nil }
+    let loc = f[f.count - 2].lowercased()
+    return loc.allSatisfy({ $0.isHexDigit }) ? String(loc.drop(while: { $0 == "0" })) : nil
+}
 var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
 var size: UInt32 = 0
 AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size)
@@ -23,9 +35,18 @@ for id in ids {
     var ia = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams, mScope: kAudioObjectPropertyScopeInput, mElement: kAudioObjectPropertyElementMain)
     var isz: UInt32 = 0
     AudioObjectGetPropertyDataSize(id, &ia, 0, nil, &isz)
-    if (name?.takeRetainedValue() as String?) == args[1] && isz > 0 { found.append(id) }
+    let devName = name?.takeRetainedValue() as String?
+    guard isz > 0 else { continue }
+    if let want = byLocation {
+        var ua = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyDeviceUID, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var uid: Unmanaged<CFString>?
+        var us = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        AudioObjectGetPropertyData(id, &ua, 0, nil, &us, &uid)
+        if let u = uid?.takeRetainedValue() as String?, usbLocation(ofUID: u) == want { found.append(id) }
+    } else if devName == args[1] { found.append(id) }
 }
-guard found.count == 1 else { print(found.isEmpty ? "error no input named \(args[1])" : "error \(found.count) inputs named \(args[1])"); exit(1) }
+let what = byLocation.map { "at USB location \($0)" } ?? "named \(args[1])"
+guard found.count == 1 else { print(found.isEmpty ? "error no input \(what)" : "error \(found.count) inputs \(what)"); exit(1) }
 let engine = AVAudioEngine()
 let input = engine.inputNode
 var dev = found[0]

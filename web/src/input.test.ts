@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { attachKeyboard, attachMidi, followOctave, isFm1In } from './input';
+import { attachKeyboard, attachMidi, followOctave, isFm1In, otherFm1 } from './input';
 
 // Exercise the installed event handlers without an audio device or a DOM dependency.
 class Control extends EventTarget {
@@ -140,6 +140,15 @@ describe('isFm1In', () => {
     expect(isFm1In({ id: 'x', name: 'USB MIDI Device' }, 'y')).toBe(false);
     for (const name of ['Matryoshka FM-1', 'FM-1 (emu)', 'Felucca', 'FM1']) expect(isFm1In({ id: 'x', name }, null)).toBe(true);
     for (const name of ['ota-FM-1_700', 'Felucca Update', 'IAC Driver Bus 1', 'Modular Thing']) expect(isFm1In({ id: 'x', name }, null)).toBe(false);
+  });
+});
+
+describe('otherFm1 (#698)', () => {
+  it('skips an FM-1 other than the linked one, and nothing while none is linked', () => {
+    expect(otherFm1({ id: 'rig', name: 'Matryoshka' }, 'mine')).toBe(true);
+    expect(otherFm1({ id: 'mine', name: 'Matryoshka' }, 'mine')).toBe(false);
+    expect(otherFm1({ id: 'k', name: 'KeyStep 37' }, 'mine')).toBe(false);   // (a keyboard still plays)
+    expect(otherFm1({ id: 'rig', name: 'Matryoshka' }, null)).toBe(false);
   });
 });
 

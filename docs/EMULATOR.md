@@ -150,13 +150,21 @@ link as `m1emu serve` drives the emulator:
   bit 9 says the firmware has them. For 10 s after a test key or turn, the panel refuses UPDATE MODE and FACTORY RESET.
 - **The rig** ([D-122](ledger/releases.md#D-122)): the owner's second FM-1, kept on the Mac. `npm run rig -- register`,
   with the rig the only FM-1 connected, writes a hidden preset (`RIG_STRUCTURE`, values at random) and keeps the values
-  in `~/.config/matryoshka/rig.json`; the Library does not list that preset. `npm run rig -- check` names the rig among
-  the connected FM-1s.
+  in `~/.config/matryoshka/rig.json`; the Library does not list that preset. It also keeps the rig's USB location there
+  (issue #698): the number macOS gives the USB socket the rig is plugged into, hub ports included. Moved to another
+  socket, the rig is registered again (alone; the mark stays). `npm run rig -- check` names the rig among the connected
+  FM-1s and says whether the FM-1 at the rig's USB location carries the mark. `tools/fm1_usb.py list` prints each USB
+  MIDI device's location.
 - **`cd web && npm run device:scenarios [-- --install RUN [--gate boot]] [--only NAME,..] [--headed]`:** the scenarios of
   `emu-scenarios.mjs` on the rig. The rig's page (`/__rig` on the dev server, `web/dev/rig-client.ts`) finds the FM-1s,
   asks each its INFO and the mark (nothing else), and drives only the rig; the editor's page sees only the rig's ports.
   `--install RUN` first installs that firmware CI run on the rig ([D-123](ledger/releases.md#D-123)): after `emu:smoke`
-  and `emu:scenarios` passed on that run's builds, and only when the rig is the one FM-1 connected. A build whose
+  and `emu:scenarios` passed on that run's builds, through `tools/fm1_install.py --rig`. That installer sees only the
+  MIDI ports at the rig's USB location, reads the mark there before it sends anything, and refuses when the FM-1 there
+  is not the rig (exit code 9). Another FM-1 may stay connected: nothing reaches it (issue #698). `--rig --dry-run` runs
+  the same checks and says what it would install where, sending only the identity handshake and the mark's read. A rig registered before
+  #698, with no location kept, must still be the one FM-1 connected. A rig left in update mode is finished by hand,
+  `tools/fm1_install.py PACKAGE --location 0x01130000`, never by a script. A build whose
   `scenarios.passed` holds its sha256 is not run through `emu:scenarios` again, as `smoke.passed` skips `emu:smoke`. With `--gate boot`,
   for the owner's iteration checks, after the boot check (`emu:boot` on the run's two builds, about 30 s) instead; a
   merge or a release still needs the full checks. Each gate's result is kept next to the download
@@ -167,6 +175,14 @@ link as `m1emu serve` drives the emulator:
   the device page (the menu, GLO, SEQ or a preset list left up), and stops with a message if it never does. The volume
   never stops a run ([D-125](ledger/releases.md#D-125)): on a rig whose firmware reads its peak after MASTER (no INFO
   feature bit 10), a check that hears nothing is skipped as "MASTER down"; skips are counted apart and are no failure.
+- **The owner's own FM-1 beside the rig (issue #698).** The rig's scripts may run while the owner plays their own FM-1
+  in Chrome on the site. The rig's page asks the other FM-1 only HELLO and PRESET_GET, and the installer and the
+  recorder go by the rig's USB location. While the editor is connected to one FM-1, it plays nothing from another
+  FM-1's MIDI, so the rig's test keys and its PLAY do not reach the owner's page. The editor's Connect still takes the
+  first FM-1 that answers, which can be the rig. A rig install restarts the rig twice on USB (into update mode and back),
+  but not macOS's MIDI service (`MIDIServer` ran on through the rig install of 2026-11-06). In the two-device test of
+  2026-11-06, Chrome still heard the owner's FM-1 after a rig install. Never restart `MIDIServer`
+  (`killall MIDIServer`) while the owner plays: Chrome then hears no MIDI until it is quit and opened again.
 - **`cd web && npm run rig:bench [-- --patch NAME] [--rounds N]`:** the LCD's draw times on the rig, with the rig the
   only FM-1 connected (it refuses otherwise, before sending anything but INFO and the mark's read). It zeroes the times,
   pages with ALGO and SELECT, turns K1..K4, opens and closes GLO and steps PRESET on and back, then prints the last and
@@ -238,8 +254,10 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
   what its description says and fits the FM-1.
 - **How they hear the FM-1.** Besides TEST_PEAK and the screen's texts (TEST_SCREEN), these scenarios record what the
   FM-1 plays (`web/scripts/audio-capture.mjs`). On the emulator the recording is its I2S output, from `m1emu serve`'s
-  `wav`. On the rig it is the FM-1's USB audio, recorded on the Mac from the input named "Matryoshka" by
-  `tools/fm1_rec.swift`. That small recorder uses Apple's AVAudioEngine and is built into `build/` the first time it is
+  `wav`. On the rig it is the FM-1's USB audio, recorded on the Mac by `tools/fm1_rec.swift` from the input at the rig's
+  USB location: the FM-1 has no USB serial number, so macOS's id for its audio input holds that location
+  (`AppleUSBAudioEngine:brighght studio:Matryoshka:1130000:1,2`). Without a location kept, it takes the input named
+  "Matryoshka", which only works while the rig is the one FM-1 connected. That small recorder uses Apple's AVAudioEngine and is built into `build/` the first time it is
   needed, with `swiftc` from Xcode's command line tools. ffmpeg's avfoundation input is not used: on 2026-11-06 it kept
   only 9.2 s of a 30 s capture of the rig and joined the pieces with no gap, while AVAudioEngine kept every sample. On
   the emulator the run opens the rig's page on the emulator's MIDI port
@@ -247,7 +265,8 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
 - **What the rig's recording cannot show.** The FM-1 takes its USB audio before GLO > SYSTEM > OUTPUT mixes the sides
   and after MASTER (`firmware/src/audio.c`). So the MONO and MONO L checks hear the emulator only, and on the rig they
   are skipped. A check that needs the recording is also skipped, not failed, when there is none: the recorder cannot be built,
-  MASTER is all the way down, or a second FM-1 is connected, so which audio input is the rig's is not known. It is also
+  MASTER is all the way down, or a second FM-1 is connected and the FM-1 at the rig's USB location does not carry the
+  mark (or no location is kept), so which audio input is the rig's is not known. It is also
   skipped when MASTER is so far down that the recording's loudest sample is more than 26 dB under what TEST_PEAK heard.
   TEST_PEAK reads as if MASTER sat at its default, so such a recording is lost in the USB audio's own noise. Skips are
   counted apart, as for MASTER down ([D-125](ledger/releases.md#D-125)).

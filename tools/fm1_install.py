@@ -18,6 +18,13 @@ the FM-1 restarts and the installed identity is checked.
   fm1_install.py --info [--port NAME] [--save-head FILE]
                                       (--info also names the FM-1's boot code: V15's, Official Open's or another;
                                       --save-head writes it, flash 0x0000-0x3FFF, to FILE; Matryoshka 1.7 and later)
+  fm1_install.py PACKAGE.fwsc --location HEX   (macOS: only the FM-1 at that USB location, #698: the tool does not see
+                                      any other port; tools/fm1_usb.py list names the locations)
+  fm1_install.py PACKAGE.fwsc --rig   (the test rig, D-122 / D-123: its USB location and mark from
+                                      ~/.config/matryoshka/rig.json; installs only when the FM-1 at that location runs
+                                      and carries the mark. A rig left in update mode is finished by hand with --location)
+  fm1_install.py PACKAGE.fwsc --dry-run [--rig | --location HEX]   (every check, then what would be installed where;
+                                      only the identity handshake and, with --rig, the mark's read go to the FM-1)
 
 If the FM-1 is still in update mode (an earlier install was cut off), the
 install finishes the write, when that loader may write this package. Needs mido with python-rtmidi.
@@ -27,7 +34,8 @@ Exit codes: 0 done, 1 cancelled or other error, 2 bad arguments or package,
 loader / no restart), 6 wrong model, or another identity after the install,
 7 the FM-1 waits in an update loader that must not write this package (an
 M-VAVE loader only gets M-VAVE's packages, and only the one it was writing; a
-Felucca-type one everything else), 8 the FM-1's boot code is not the one in this M-VAVE package (nothing was sent).
+Felucca-type one everything else), 8 the FM-1's boot code is not the one in this M-VAVE package (nothing was sent),
+9 --rig: the FM-1 at the rig's USB location is not the rig (no mark, another mark, or in update mode; nothing was sent).
 
 M-VAVE's loader also writes the small piece of software at the start of the FM-1's memory
 that starts it when switched on (its boot code, flash 0x0000-0x3FFF), from its package, and
@@ -41,6 +49,7 @@ install is finished only with the same package (--sure: you know which one it wa
 import argparse
 import base64
 import hashlib
+import json
 import os
 import queue
 import re
@@ -75,7 +84,7 @@ DELAY = {"open": 0.3, "start": 2.0, "reply": 0.01, "loader": 3.0, "reboot": 3.0,
 
 EXIT = {"usage": 2, "badpkg": 2, "notfound": 3, "model": 6, "lost": 4, "stopped": 4, "badreq": 4,
         "phase": 4, "noloader": 5, "noreturn": 5, "mismatch": 6, "otherloader": 7, "wrongtarget": 7, "whichtarget": 7,
-        "bootcode": 8}
+        "bootcode": 8, "notrig": 9}
 
 
 class InstallError(Exception):
@@ -788,7 +797,58 @@ class Progress:
             self.line = False
 
 
+RIG_FILE = os.environ.get("MATRYOSHKA_RIG_FILE") or os.path.join(os.path.expanduser("~"), ".config", "matryoshka", "rig.json")
+
+
+def load_rig(path=None):
+    """the registered test rig (web/scripts/rig.mjs register): {values, usbLocation} with the location an int"""
+    path = path or RIG_FILE
+    try:
+        with open(path) as f:
+            r = json.load(f)
+    except (OSError, ValueError):
+        raise InstallError("usage", f"no test rig registered ({path}): connect the rig alone and run npm run rig -- register")
+    if not isinstance(r.get("values"), list) or len(r["values"]) != 4:
+        raise InstallError("usage", f"{path} holds no rig mark: npm run rig -- register")
+    if not r.get("usbLocation"):
+        raise InstallError("usage", f"the rig's USB location is not recorded in {path}: connect the rig alone and run "
+                                    "npm run rig -- register again (it keeps the mark and adds the location)")
+    r["usbLocation"] = int(str(r["usbLocation"]), 16)
+    return r
+
+
+def check_rig(dev, rig, read_mark, loc_text):
+    """--rig: the FM-1 found at the rig's location is the rig: it runs (an update loader cannot show the mark) and its
+    mark reads back as the one the Mac keeps. Else nothing is sent"""
+    if dev.id.loader:
+        dev.link.close()
+        raise InstallError("notrig", f"the FM-1 at the rig's USB location {loc_text} waits in update mode ({dev.id.text}), "
+                                     "so its mark cannot be read: nothing was sent. If it is the rig, finish the install by "
+                                     f"hand: tools/fm1_install.py PACKAGE --location {loc_text}")
+    got = read_mark(dev.link)
+    want = rig["values"]
+    if not got or len(got) != len(want) or any(round(x) != round(y) for x, y in zip(got, want)):
+        dev.link.close()
+        what = "does not answer the editor's PRESET_GET" if got is None else "carries no rig mark" if not got else "carries another mark"
+        raise InstallError("notrig", f"the FM-1 at the rig's USB location {loc_text} {what}: it is not the registered "
+                                     "rig, nothing was sent (another FM-1 in the rig's socket? register the rig again)")
+
+
 def run(a, backend, out, ask):
+    rig = None
+    if a.rig:
+        rig = load_rig()
+        a.location = f"{rig['usbLocation']:#010x}"
+    if a.location and backend is None:
+        import fm1_usb
+        try:
+            backend = fm1_usb.LocatedBackend(fm1_usb.parse_location(a.location))
+        except ValueError as e:
+            raise InstallError("usage", str(e))
+        except (OSError, ImportError) as e:
+            raise InstallError("usage", f"--location: {e}")
+    if backend is None:
+        backend = MidoBackend()
     up = Updater(backend, a.port)
     if a.info:
         dev = up.find()
@@ -817,7 +877,21 @@ def run(a, backend, out, ask):
     print(f"package: {product}  ({a.package})", file=out)
     dev = up.find()
     if not dev:
+        if a.location:
+            raise InstallError("notfound", f"no FM-1 answered at USB location {a.location}"
+                                           f"{' (the test rig)' if rig else ''}: nothing was sent")
         raise not_found(up)
+    if rig:
+        import fm1_usb
+        check_rig(dev, rig, fm1_usb.read_mark, a.location)
+        print(f"the test rig: its mark reads back at USB location {a.location}", file=out)
+    if a.dry_run:
+        dev.link.close()
+        where = f" at USB location {a.location}" if a.location else ""
+        what = "finish the write of" if dev.id.loader else "install"
+        print(f"dry run: would {what} {product} on {dev.id.text} ({dev.name}){where}; nothing was sent that changes the FM-1",
+              file=out)
+        return 0
     print(f"device:  {dev.id.text}  ({dev.name})" + ("  in update mode: the write will be finished" if dev.id.loader else ""),
           file=out)
     if not a.yes and not ask("Install? Do not unplug the FM-1 while writing. [y/N] "):
@@ -845,7 +919,12 @@ def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty):
     ap.add_argument("--info", action="store_true", help="print the identity of the connected FM-1")
     ap.add_argument("--save-head", metavar="FILE", help="with --info: write the FM-1's boot code (0x0000-0x3FFF) to FILE")
     ap.add_argument("--port", metavar="NAME", help="MIDI port to use (part of its name)")
+    ap.add_argument("--location", metavar="HEX", help="macOS: only the FM-1 at this USB location (tools/fm1_usb.py list)")
+    ap.add_argument("--rig", action="store_true", help="the registered test rig only: its USB location and mark from "
+                                                       "~/.config/matryoshka/rig.json (npm run rig -- register)")
     ap.add_argument("--yes", action="store_true", help="do not ask for confirmation")
+    ap.add_argument("--dry-run", action="store_true", help="run every check (location, mark, package) and say what would "
+                                                           "be installed where, then stop: nothing that changes the FM-1 is sent")
     ap.add_argument("--force", action="store_true", help="install a package without the Felucca loader marker")
     ap.add_argument("--sure", action="store_true", help="finish a cut-off install in M-VAVE's loader with this package "
                                                         "although it is not recorded which one it was writing")
@@ -854,13 +933,13 @@ def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty):
         ap.error("give a PACKAGE.fwsc or --info")
     if a.save_head and not a.info:
         ap.error("--save-head goes with --info")
+    if a.rig and a.location:
+        ap.error("--rig takes the rig's own location: give one of --rig and --location")
     try:
-        if backend is None:
-            try:
-                backend = MidoBackend()
-            except ImportError:
-                raise InstallError("usage", "needs mido and python-rtmidi (pip install mido python-rtmidi)")
-        return run(a, backend, out, ask)
+        try:
+            return run(a, backend, out, ask)
+        except ImportError:
+            raise InstallError("usage", "needs mido and python-rtmidi (pip install mido python-rtmidi)")
     except InstallError as e:
         print(f"error: {e}", file=sys.stderr)
         return EXIT.get(e.code, 1)
