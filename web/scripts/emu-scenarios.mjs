@@ -1729,7 +1729,11 @@ async function main() {
       await emu.turn(ENC.select, -3);
       await emu.elapse(1300);
       await emu.tap(B.seq, 120);
-      await check('arming: the SEQ page arms the track it shows', await emu.waitText('DRUMS ARM', 3000));
+      // (the SEQ page opens on the track it showed last: after the 808 scenarios before this one, that can be DRUMS 2, the
+      // toms' track since D-877; ALGO back to DRUMS, which the page then arms)
+      await emu.waitText('ALGO track', 3000);
+      for (let i = 0; i < 2 && (await emu.text('DRUMS 2')); i++) { await emu.turn(ENC.algo, -1); await emu.elapse(300); }
+      await check('arming: the SEQ page arms the track it shows', (await emu.waitText('DRUMS ARM', 3000)) && !(await emu.text('DRUMS 2')));
       await emu.tap(B.seq, 120);
       await check('arming: back on the device page, the footer names the armed track', await emu.waitText('ARM DRUMS', 3000));
       const m = await emu.mark();                   // armed: black key 1 plays the kick through DRUMS
