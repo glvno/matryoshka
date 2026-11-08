@@ -133,6 +133,11 @@ const rig = {
     const ack = r ? parseAck(r.p) : null;
     if (!ack || ack.status !== 0) throw new Error(`the FM-1 did not store the mark (status ${ack?.status ?? 'no answer'})`);
   },
+  /** #656: store a preset of RIG_STRUCTURE under `name` (not the mark's: a test's own, replaced each time) */
+  presetPut: (name: string, values: number[]): Promise<void> => {
+    if (name === RIG_PRESET) throw new Error('that is the rig\'s mark');
+    return acked(presetPutFrame(RIG_STRUCTURE, name, values), CMD.presetPut, 1);
+  },
   key: (id: number, down: boolean): Promise<void> => acked(testKeyFrame(id, down), CMD.testKey),   // (held or not: safe to send again)
   async tap(id: number, hold = 80): Promise<void> {
     await rig.key(id, true);
