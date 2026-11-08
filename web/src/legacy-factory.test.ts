@@ -82,9 +82,9 @@ describe('released factory sets (a new factory patch after an update)', () => {
       names.forEach((n, i) => { if (had.has(n)) expect((row!.has >> BigInt(i)) & 1n, `${t} ${n}`).toBe(1n); });
     }
   });
-  it('1.9.1\'s bank gets Verona Drum 1 and Hera 5 and nothing else (Hera 5 only where no slot holds it: bank_upgrade renames an untouched HERA 6 slot first)', () => {
+  it('1.9.1\'s bank gets Verona Drum 1 and nothing else (it had Hera 6, so it has Hera 5, which took its slot)', () => {
     const row = rows.find((r) => r.set === 0xb9a4a8)!;
     const missing = names.filter((_, i) => !((row.has >> BigInt(i)) & 1n));
-    expect(missing).toEqual(['HERA 5', 'VERONA DRUM 1']);
+    expect(missing).toEqual(['VERONA DRUM 1']);
   });
 });

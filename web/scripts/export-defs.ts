@@ -287,7 +287,10 @@ const RENAMED: Record<string, string> = { 'HERA 6': 'HERA 5' };
   P.push(`#define N_RELEASED_SETS ${sets.length}`);
   P.push('static const struct { uint32_t set; uint64_t has; } RELEASED_SETS[N_RELEASED_SETS] = {');
   for (const s of sets) {
-    const has = presetNames.reduce((m, n, i) => (s.names.includes(n.toUpperCase()) ? m | (1n << BigInt(i)) : m), 0n);
+    // (a set that had a renamed factory patch has the one that took its slot: bank_upgrade rewrites an untouched slot of it,
+    // and a changed or deleted one is the owner's choice, so bank_add adds nothing)
+    const had = (n: string): boolean => s.names.includes(n) || Object.entries(RENAMED).some(([was, to]) => to === n && s.names.includes(was));
+    const has = presetNames.reduce((m, n, i) => (had(n.toUpperCase()) ? m | (1n << BigInt(i)) : m), 0n);
     P.push(`    {0x${s.set}u, 0x${has.toString(16)}ull},   /* ${s.tags[0]}${s.tags.length > 1 ? ' .. ' + s.tags[s.tags.length - 1] : ''} */`);
   }
   P.push('};', '');
