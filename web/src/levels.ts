@@ -35,7 +35,7 @@ export const PEAK_SECS = 3;
  * rows that set its whole output's level. Two rows (two output channels, or the two halves of an output mixer) move
  * together, by the same factor. A row in dB (a compressor's makeup gain) moves by the same number of dB. */
 export const LEVEL_ROWS: Record<string, string[]> = {
-  '8 Lire': ['out / vol'],
+  '8 Lire': ['distortion / vol'],
   'Algo Four': ['voice / volume'],
   'basic poly': ['level'],
   'Briefcase 3': ['reverb / level'],

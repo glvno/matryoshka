@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
-import { addModule, connect, emptyPatch, MODULES_1_10, validatePatch, type ModuleInst, type Patch } from './patch';
+import { addModule, connect, emptyPatch, validatePatch, type ModuleInst, type Patch } from './patch';
 import { DEVICE, deviceBudget, encodedSize, encodePatch, FLAG_NOTES, FLAG_PATTERNS, formatOf, layout, patternRecord, VERSION } from './patchbin';
 import { deviceView, VOICING_CABLE_INPUTS } from './poly';
 import { FM1_PRESETS } from './presets';
@@ -97,7 +97,7 @@ describe('patterns and songs: the binary (format 48)', () => {
       const cabled = dev.cables.some((c) => VOICING_CABLE_INPUTS.includes(c.to.port) && dev.modules.find((m) => m.id === c.to.module)?.type === 'part');
       const top = (p.assemblies ?? []).some((a) => a.params.some((r) => r.top !== undefined));
       const appended = dev.modules.some((m) => DEFS[m.type].params.some((q) => q.since === VERSION && (m.params[q.name] ?? q.default) !== q.default));
-      const many = dev.modules.length > MODULES_1_10;   // (more than 64 modules, #721: the 808 Kit with its mid and high toms)
+      const many = dev.modules.length > 64;   // (more than 64 modules: 51, #721; 8 Lire's Lyra-8 controls, #658)
       if (layout(p).base.bytes <= DEVICE.bytes && !cabled && !top && !appended && !many) expect(b[1], name).toBeLessThan(VERSION);
       expect(b[7] & (FLAG_PATTERNS >> 8), name).toBe(0);
     }

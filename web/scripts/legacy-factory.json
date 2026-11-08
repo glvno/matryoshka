@@ -680,6 +680,12 @@
    "version": 46
   },
   {
+   "name": "808 KIT",
+   "len": 2312,
+   "fnv": "53ad3979",
+   "version": 51
+  },
+  {
    "name": "909 KIT",
    "len": 1345,
    "fnv": "61929948",
@@ -1716,6 +1722,12 @@
    "len": 3779,
    "fnv": "e3df32b0",
    "version": 46
+  },
+  {
+   "name": "CANVAS",
+   "len": 3807,
+   "fnv": "21f8f423",
+   "version": 51
   },
   {
    "name": "CANVAS",
@@ -8322,6 +8334,12 @@
    "len": 3817,
    "fnv": "98f22058",
    "version": 46
+  },
+  {
+   "name": "VERONA DRUM 1",
+   "len": 2893,
+   "fnv": "c24478af",
+   "version": 51
   },
   {
    "name": "VIBRATO LEAD",
