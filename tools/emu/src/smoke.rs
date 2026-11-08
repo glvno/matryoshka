@@ -466,10 +466,12 @@ fn crc16(data: &[u8]) -> u16 {
 /// The preset store (firmware/src/presetstore.c): 7 sectors from 0x99000, 10 slots of 384 bytes each; a slot is a 32-byte
 /// header (magic "PRS1", or "PRS2" for a record's second slot, sequence number, structure, value count, CRC-16, name) and
 /// up to 88 Q16 values. A preset of more takes two slots of one sector. Written into `sec`'s first slots.
-fn preset_record(f: &mut [u8], sec: usize, seq: u32, structure: u32, name: &str, vals: &[i32]) {
+/// (`at`: the store's slot of the record, 0..69 (ten a sector, below the bank at 0xA0000); a tail goes into the next slot)
+fn preset_record(f: &mut [u8], at: usize, seq: u32, structure: u32, name: &str, vals: &[i32]) {
     let bytes = |v: &[i32]| v.iter().flat_map(|x| x.to_le_bytes()).collect::<Vec<u8>>();
+    let (sec, base) = (at / 10, at % 10);
     let slot = |f: &mut [u8], k: usize, magic: u32, n: usize, crc: u16, v: &[i32]| {
-        let at = 0x99000 + sec * 0x1000 + k * 384;
+        let at = 0x99000 + sec * 0x1000 + (base + k) * 384;
         let mut h = Vec::new();
         h.extend_from_slice(&magic.to_le_bytes());
         h.extend_from_slice(&seq.to_le_bytes());
@@ -542,8 +544,9 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
     // user presets stored for earlier structures of factory engines (D-865): a 1.9.0 Cassia 1, basic poly and Oracle V, a
     // Cassia 1 of 88 values (stored before 1.8.2), a Cassia 1 from before #430, an 8 Lire from before D-852
     let cases = pm_cases();
+    // (three cases a sector, two slots each: the store's seven sectors hold more cases than seven)
     for (c, k) in cases.iter().zip(0..) {
-        preset_record(&mut flash, k, 100 + k as u32, c.from, &c.name, &c.old);
+        preset_record(&mut flash, (k / 3) * 10 + (k % 3) * 2, 100 + k as u32, c.from, &c.name, &c.old);
     }
     let mut m = Machine::boot(app, Some(&flash));
     quick_start(&mut m, 9000)?;
