@@ -212,8 +212,9 @@ export function players(p: Patch, browser = false): Patch {
   // Io 4's four voices shed on the rig with PATTERN, despite the model saying it fits. Keep its existing player set.
   // Measurement: docs/measurements/2026-10-26-io-4-player-budget.json. An XL still gets both above.
   // Algo Four's eight voices ran at 86 % on the rig without PATTERN (2026-11-08): it keeps the Arpeggiator alone, so its
-  // estimate stays under the VOICES rows' 90 % (CPU_VOICE_TOP, D-870)
-  const attempts: Player[] = p.name === 'Io 4' || p.name === 'Algo Four' ? ['arp'] : ['both', 'arp'];
+  // estimate stays under the VOICES rows' 90 % (CPU_VOICE_TOP, D-870). Canvas with PATTERN was muted by the overload guard
+  // on the rig with eight keys held and the transport running (PR #775's build, 2026-11-08): the Arpeggiator alone
+  const attempts: Player[] = ['Io 4', 'Algo Four', 'Canvas'].includes(p.name) ? ['arp'] : ['both', 'arp'];
   for (const what of attempts) {
     const q = validatePatch(withPlayers(p, what), DEFS);
     if (deviceBudget(q).fits) return q;

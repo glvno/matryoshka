@@ -1917,6 +1917,12 @@
   },
   {
    "name": "CASSIA 1",
+   "len": 3199,
+   "fnv": "5f9671b4",
+   "version": 51
+  },
+  {
+   "name": "CASSIA 1",
    "len": 2669,
    "fnv": "e365d87f",
    "version": 51
@@ -2793,6 +2799,12 @@
   },
   {
    "name": "EXPANDER S",
+   "len": 1541,
+   "fnv": "2f6460a3",
+   "version": 51
+  },
+  {
+   "name": "EXPANDER S",
    "len": 2106,
    "fnv": "3730185e",
    "version": 51
@@ -3342,6 +3354,12 @@
    "len": 397,
    "fnv": "1a575aed",
    "version": 8
+  },
+  {
+   "name": "HERA 4",
+   "len": 1851,
+   "fnv": "07791515",
+   "version": 51
   },
   {
    "name": "HERA 5",
@@ -5238,6 +5256,12 @@
    "len": 1318,
    "fnv": "e2ca20d0",
    "version": 46
+  },
+  {
+   "name": "ORACLE V",
+   "len": 2294,
+   "fnv": "0485d95a",
+   "version": 51
   },
   {
    "name": "ORACLE V",
@@ -8381,6 +8405,12 @@
    "name": "VERONA DRUM 1",
    "len": 3817,
    "fnv": "98f22058",
+   "version": 46
+  },
+  {
+   "name": "VERONA DRUM 1",
+   "len": 3817,
+   "fnv": "f78dab19",
    "version": 46
   },
   {

@@ -93,7 +93,7 @@ The editor estimates how much of the 2901 us audio interrupt a patch needs (`web
   | Algo Four | 8 | 86.2 % | 96.5 % | 87.0 % |
   | Basic Poly | 4 | 30.7 % | 22.0 % | 30.8 % |
   | Briefcase 3 | 1 | 91.1 % | 87.0 % | 91.1 % |
-  | Canvas | 1 | 91.9 % | 79.9 % | 92.7 % |
+  | Canvas | 1 | 91.9 % (with PATTERN) | 79.9 % | 92.7 % (90.0 % without PATTERN, as it ships) |
   | Cassia 1 | 2 | 63.6 % | 50.4 % | 64.0 % |
   | Cassia 1 | 4 | 92.8 % | 87.1 % | 105.1 % |
   | Drift Poly | 4 | 40.0 % | 31.4 % | 40.0 % |

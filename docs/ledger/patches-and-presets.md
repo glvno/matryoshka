@@ -89,4 +89,4 @@ The **factory patches** are Matryoshka's own, generated from the **factory assem
 
 ## Not yet settled
 
-- Canvas on the FM-1 ([D-876](patches-and-presets.md#D-876)): on the test rig it ran at about 92 % of the audio time, and the overload guard ([D-362](engine.md#D-362)) muted it with eight keys held. It has no VOICES row to lower, so it needs a lighter design or its 1.10 one. Issue #375 lists it.
+- Canvas on the FM-1 ([D-876](patches-and-presets.md#D-876)): on the test rig it ran at about 88 to 92 % of the audio time, and the overload guard ([D-362](engine.md#D-362)) muted it with eight keys held (once with the transport stopped, on the 1.11 batch, and once with it running, on PR #775's build). It has no VOICES row to lower. It now keeps the Arpeggiator without a PATTERN track, about 2.7 points less in the model; whether that is enough waits for the rig, and if not, it needs a lighter design or its 1.10 one. Issue #375 lists it.
