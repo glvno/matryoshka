@@ -36,7 +36,7 @@ export const PEAK_SECS = 3;
  * together, by the same factor. A row in dB (a compressor's makeup gain) moves by the same number of dB. */
 export const LEVEL_ROWS: Record<string, string[]> = {
   '8 Lire': ['out / vol'],
-  'Algo Four': ['voice / stack 1→2 mix', 'voice / stack 3→4 mix'],
+  'Algo Four': ['voice / volume'],
   'basic poly': ['level'],
   'Briefcase 3': ['reverb / level'],
   Canvas: ['output / chan a', 'output / chan b'],
