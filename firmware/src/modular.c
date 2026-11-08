@@ -39,6 +39,7 @@
 #include "fm1_audio.h"
 #include "fm1_adc.h"
 #include "fm1_flash.h"
+#include "fm1_flash_step.h"                     /* the store's writes in steps the interrupts run between (#656) */
 #include "fm1_lcd_hw.h"
 #define RING_PUBLISH() __asm__ volatile("" ::: "memory")
 
