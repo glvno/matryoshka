@@ -30,7 +30,7 @@ const FINE_TO_DETUNE = Array.from({ length: 9 }, (_, k) => Math.max(0, Math.min(
 /** Oracle V's structure in 1.11 (#658) */
 const ORACLE_1_11 = '6282b61f';
 /** 8 Lire's structure in 1.11 (#658) */
-const LIRE_1_11 = '0a40769f';
+const LIRE_1_11 = '0935c0fa';
 
 /** the positions 1..8 of an eight-way Selector from a number 0..7 */
 const ONE_UP = [1, 2, 3, 4, 5, 6, 7, 8];

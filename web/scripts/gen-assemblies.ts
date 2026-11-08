@@ -3333,13 +3333,14 @@ const plates = (b: B): number => b.add('drummap', 0, 0, { ...Object.fromEntries(
 // TIME 2), each moved by MOD 1 / MOD 2 from the LFO or its own level (SELF / LFO: one row, both lines), feeding each other
 // through a soft clip by FB (the Lyra's one FB, its cross feedback), MIX of the dry voices and the lines. The DISTORTION:
 // DRIVE, MIX of clean and driven, VOL. Cables that close a loop (FM between pairs, TOTAL FB, the lines' cross feedback)
-// run one block late. Left out on the FM-1 (8 Lire XL has them): per-voice vibrato, plate pressure, FAST's other effects
-// than the release, the group PITCH rows, the crosstalk, the rear jacks.
+// run one block late. FAST (the release), PITCH per group and VIBRATO (a sine LFO per voice) come last. Left out on the
+// FM-1 (8 Lire XL has them): plate pressure, FAST's other effects
+// than the release, the crosstalk, the rear jacks.
 /** 8 Lire's rows that set both delay lines (their line 2 modules, set by the builder) and its switches' position names */
 const lireAlso = { how: 0, cross: 0 };
 const LIRE_NAMES: Record<string, string[]> = {
   source: ['FM', 'OFF', 'LFO'], '34>56 78>12': ['OFF', 'ON'], 'total fb': ['OFF', 'ON'], 'and / or': ['AND', 'OR'], link: ['OFF', 'ON'],
-  'self / lfo': ['LFO', 'SELF'], 'tri / square': ['TRIANGLE', 'SQUARE'],
+  'self / lfo': ['LFO', 'SELF'], 'tri / square': ['TRIANGLE', 'SQUARE'], fast: ['OFF', 'FAST'], vibrato: ['OFF', 'ON'],
 };
 asm('8 Lire', 'Voices', (b) => {
   const map = plates(b);
@@ -3467,15 +3468,35 @@ asm('8 Lire', 'Voices', (b) => {
   });
   b.input('keys', map, 'keys');
   b.output('out', vol, 'out');
+  // (1.11, #658, added after the modules above so their numbers stay) the Lyra-8's FAST per pair (down: the release short,
+  // 0.35 of its range, as 8 Lire XL), PITCH per group (octaves into its four voices) and VIBRATO (each voice its own sine
+  // LFO, at eight rates, its depth a quarter tone when VIBRATO is on)
+  const fast = [0, 1, 2, 3].map((p) => offOn(1 + 2 * p, 8, { v1: 0, v2: 1 }));   // OFF (slow), FAST
+  const pitch = [0, 1].map((q) => b.add('const', 2 + 4 * q, 8.5, { value: 0 }));
+  const vibrato = offOn(0, 10, { v1: 0, v2: 1 });
+  const VIB_RATES = [5.1, 5.6, 4.7, 6.1, 5.3, 4.9, 5.8, 6.4];
+  voices.forEach((v, i) => {
+    const env = b.module(v.env);
+    env.map!.p2 = ['r'];
+    env.att = [env.att?.[0] ?? 1, -0.35];
+    b.wire(fast[i >> 1], 'out', v.env, 'p2');
+    b.wire(pitch[i >> 2], 'out', v.osc, 'pitch');
+    const vlfo = b.add('lfo', 1 + i, 9, { wave: 0, rate: VIB_RATES[i], depth: 0 }, { p1: 'depth', att: [0.02, 1] });
+    b.wire(vibrato, 'out', vlfo, 'p1');
+    b.wire(vlfo, 'out', v.osc, 'pitch');
+  });
   // the card: the Lyra-8's controls, named as its panel names them
   for (const [q, name] of [[0, '1-4'], [1, '5-8']] as const) {
     b.param('hold', hold[q], 'value', { col: q === 0 ? undefined : true, head: name });
     for (const p of [2 * q, 2 * q + 1]) b.param(`source ${2 * p + 1}-${2 * p + 2}`, source[p], 'pos');
     for (const p of [2 * q, 2 * q + 1]) b.param(`mod ${2 * p + 1}-${2 * p + 2}`, mod[p], 'gain', p === 2 * q ? { group: true } : {});
     for (const p of [2 * q, 2 * q + 1]) b.param(`sharp ${2 * p + 1}-${2 * p + 2}`, sharp[p], 'drive');
+    for (const p of [2 * q, 2 * q + 1]) b.param(`fast ${2 * p + 1}-${2 * p + 2}`, fast[p], 'pos', p === 2 * q ? { group: true } : {});
+    b.param('pitch', pitch[q], 'value');
   }
   b.param('34>56 78>12', structure, 'pos', { head: 'all voices' });
   b.param('total fb', lfoCv, 'pos');
+  b.param('vibrato', vibrato, 'pos');
   b.param('freq a', lfoA, 'rate', { col: true, head: 'hyper lfo' });
   b.param('freq b', lfoB, 'rate');
   b.param('and / or', hyper, 'pos');
