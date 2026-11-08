@@ -144,7 +144,7 @@ describe('engine', () => {
     }
     const osc = addModule(emptyPatch(), DEFS.osc, 0, 0);
     expect(osc.map!.p1).toEqual(['wave']);
-    expect(osc.map!.k4).toEqual(['fine']);
+    expect(Object.keys(osc.map!)).toEqual(['p1', 'p2']);   // (the knob columns k1..k4 are gone: D-1001)
   });
 
   it('a parameter input moves the parameters the matrix assigns it to, scaled and inverted by its attenuverter', () => {
