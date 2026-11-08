@@ -12,6 +12,9 @@
 #   mod 3-4 = 0                        -4..4
 #   sharp 1-2 = 2                      1..32
 #   sharp 3-4 = 2                      1..32
+#   fast 1-2 = OFF                     OFF, FAST
+#   fast 3-4 = OFF                     OFF, FAST
+#   1-4 / pitch = 0                    -4..4
 # 5-8
 #   5-8 / hold = 0                     0..1
 #   source 5-6 = FM                    FM, OFF, LFO
@@ -20,9 +23,13 @@
 #   mod 7-8 = 0                        -4..4
 #   sharp 5-6 = 2                      1..32
 #   sharp 7-8 = 2                      1..32
+#   fast 5-6 = OFF                     OFF, FAST
+#   fast 7-8 = OFF                     OFF, FAST
+#   5-8 / pitch = 0                    -4..4
 # all voices
 #   34>56 78>12 = OFF                  OFF, ON
 #   total fb = OFF                     OFF, ON
+#   vibrato = OFF                      OFF, ON
 # hyper lfo
 #   freq a = 0.7 Hz                    0.02..40 Hz
 #   freq b = 1.9 Hz                    0.02..40 Hz
@@ -40,7 +47,7 @@
 # distortion
 #   drive = 1.5                        1..32
 #   distortion / mix = 1               0..1
-#   vol = 0.7                          0..1
+#   vol = 0.69                         0..1
 # voice 1
 #   voice 1 / tune = -22 st            -48..48 st
 #   voice 1 / fine = 0 ct              -100..100 ct
@@ -90,7 +97,8 @@ engine: 8 Lire
 # other pair of its group), OFF, or LFO (the hyper LFO, or the output with "total fb" on).
 
 preset: Lyre Chord
-# Gentle, played from the keys: a C major stack across three octaves, slow swells, light delay on both lines.
+# Gentle, played from the keys: a C major stack across three octaves, slow swells, VIBRATO on, light delay on both lines.
+vibrato = ON
 voice 1 / tune = -24 st
 voice 1 / attack = 0.3 s
 voice 1 / release = 2.5 s
@@ -128,7 +136,7 @@ time 2 = 596 ms
 fb = 0.4
 mod delay / mix = 0.3
 drive = 1.2
-  vol = 0.62
+  vol = 0.63
 
 preset: Eight Drone
 # Self-running: both holds up on low fifths and octaves with slow beating, a touch of cross FM and a slow hyper LFO wandering the delay.
@@ -206,6 +214,8 @@ mod delay / mix = 0.4
 
 preset: Trill Delay
 # Rhythmic: voices 1-4 drone a low bed while keys 5-8 are short notes whose pitch is trilled by the hyper LFO (AND of two rates) into a tight delay.
+fast 5-6 = FAST
+fast 7-8 = FAST
 1-4 / hold = 0.7
 voice 1 / tune = -24 st
 voice 2 / tune = -17 st
