@@ -2782,6 +2782,21 @@ if (import.meta.env.DEV) {
       loadNamed(p, { from: o.from });
       return true;
     },
+    /** a patch opened as `open` opens it, with card rows set first: each [label, value] sets the first row of that label on
+     *  any card (8 Lire's `mix`, its MOD DELAY's, at 0: the voices heard without their echoes) */
+    openRows: (name: string, rows: [string, number][]): boolean => {
+      const o = openableGroups().flatMap((g) => g.items).find((x) => x.name === name);
+      if (!o) return false;
+      const p = o.load();
+      for (const [label, value] of rows) {
+        const r = (p.assemblies ?? []).flatMap((a) => a.params ?? []).find((x) => x.label === label);
+        const m = r && p.modules.find((x) => x.id === r.module);
+        if (!r || !m) return false;
+        m.params[r.param] = value;
+      }
+      loadNamed(p, { from: o.from });
+      return true;
+    },
     /** a patch opened as `open` opens it, with `n` VCAs in a chain to the Output (silent: nothing opens them) placed before
      *  its modules, so they sit past index n - 1 in the binary (#721: arming past 63) */
     openPadded: (name: string, n: number): boolean => {
