@@ -1088,12 +1088,12 @@ enum {
 #define DELAY_CLK_PPQN 24
 #define DELAY_SYNC_TOP 520   /* ms: the synced note lengths spread over 1..this (modules.ts) */
 #define DELAY_LENGTH_MIN 10   /* ms: the Delay's length row (modules.ts; engine.c dly_samples sizes its line) */
-#define DELAY_LENGTH_MAX 1900
-#define DELAY_REACH_MAX 7600   /* ms: the longest time, the longest length at the lowest rate (#659) */
+#define DELAY_LENGTH_MAX 3800
+#define DELAY_REACH_MAX 15200   /* ms: the longest time, the longest length at the lowest rate (#659) */
 #define DELAY_NRATE 3   /* the Delay's rate row (#659): step r keeps every (1 << r)-th sample */
 #define DELAY_TAIL 48   /* samples at the line end with a lower rate or Tape on: the filters' state (modules.ts) */
-/* the low pass in front of a lower rate's line (modules.ts delayAaCoefs at DEVICE_SR), per rate step 1..: two sections, b0 a1 a2 Q28 */
-static const int32_t DELAY_AA[DELAY_NRATE - 1][6] = {{49366084, -88308736, 17337617, 67995108, -121633346, 125178320}, {16612181, -281481305, 79494572, 20926246, -354580001, 169849529}};
+/* the low pass in front of a lower rate's line (modules.ts delayAaCoefs at DEVICE_SR), per rate step 1..: two sections, b0 a1 a2 Q30 (engine.c dly_aa) */
+static const int32_t DELAY_AA[DELAY_NRATE - 1][6] = {{197464337, -353234944, 69350466, 271980430, -486533384, 500713280}, {66448722, -1125925222, 317978288, 83704984, -1418320004, 679398114}};
 /* Tape (#660): the loop's one-pole low pass and high pass per rate step (Q24, at a line written every 1 << r samples), the
  * wow and flutter increments (u32 turns a sample) and depths at the wow row's top (1/256 samples), the heads (bit j: head
  * j + 1 at j + 1 times the time) and 1 / n of n heads (Q16) */
@@ -1317,9 +1317,9 @@ static const char *const MIXER_UNIT[] = {"", "", "", ""};
 static const char *const *const MIXER_CH[] = {0, 0, 0, 0};
 static const char *const DELAY_INNAMES[] = {"IN", "CLK", "P1", "P2"};
 static const int32_t DELAY_MIN[] = {65536, 0, 0, 0, 0, 0, 0, 655360, 0, 0, 0, 0};
-static const int32_t DELAY_MAX[] = {45875200, 62259, 65536, 65536, 65536, 327680, 65536, 124518400, 131072, 65536, 65536, 393216};
+static const int32_t DELAY_MAX[] = {45875200, 62259, 65536, 65536, 65536, 327680, 65536, 249036800, 131072, 65536, 65536, 393216};
 static const int32_t DELAY_DEF[] = {16384000, 26214, 19661, 0, 0, 0, 0, 45875200, 0, 0, 19661, 0};
-static const int32_t DELAY_INC[] = {458752, 655, 655, 65536, 65536, 65536, 65536, 1310720, 65536, 65536, 655, 65536};
+static const int32_t DELAY_INC[] = {458752, 655, 655, 65536, 65536, 65536, 65536, 2621440, 65536, 65536, 655, 65536};
 static const int32_t DELAY_STEP[] = {65536, 655, 655, 65536, 65536, 65536, 65536, 655360, 65536, 65536, 655, 65536};
 static const uint8_t DELAY_SINCE[] = {0, 0, 0, 0, 0, 35, 35, 50, 51, 51, 51, 51};
 static const char *const DELAY_PN[] = {"TIME", "FB", "MIX", "SYNC", "PINGPONG", "NOTE", "SWELL", "LENGTH", "RATE", "TAPE", "WOW", "HEADS"};
