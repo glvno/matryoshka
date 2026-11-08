@@ -10,7 +10,7 @@ import MIGRATIONS from './preset-migrations.json';
 /** how one of today's rows gets its value: a number is the earlier preset's row of that index (kept as it was); -1 the
  * engine's Init value (a new row, or one the earlier preset lacks); a table reads one or two earlier rows as whole numbers
  * (rounded, then held inside lo .. lo + n - 1) and gives the value at that place (a Selector's position, say) */
-export type MigrationOp = number | MigrationTable;
+export type MigrationOp = number | MigrationTable | MigrationLine;
 export interface MigrationTable {
   /** the earlier rows read (one or two) */
   rows: number[];
@@ -20,6 +20,18 @@ export interface MigrationTable {
   n: number[];
   /** the values, the first row's place times the second's count plus the second's place */
   v: number[];
+}
+/** a line: one earlier row x times mul plus add, held inside min .. max, in Q16 (65536 is 1) and computed in Q16, as the
+ * FM-1 does (presetmig.c), so both give the same value. `key`: an earlier row read as a whole number picks the line
+ * (place key - lo, held inside the lines) */
+export interface MigrationLine {
+  x: number;
+  key?: number;
+  lo?: number;
+  mul: number[];
+  add: number[];
+  min: number;
+  max: number;
 }
 export interface Migration {
   /** the factory engine */
@@ -40,6 +52,14 @@ export function migrateValues(m: Migration, values: number[], init: number[]): n
   const at = (i: number): number | undefined => (i >= 0 && i < values.length ? values[i] : undefined);
   return m.rows.map((op, k) => {
     if (typeof op === 'number') return at(op) ?? init[k];
+    if ('x' in op) {
+      const x = at(op.x);
+      const key = op.key === undefined ? 0 : at(op.key);
+      if (x === undefined || key === undefined) return init[k];
+      const i = op.key === undefined ? 0 : Math.min(op.mul.length - 1, Math.max(0, Math.round(key) - (op.lo ?? 0)));
+      const q = Math.floor((Math.round(x * 65536) * op.mul[i]) / 65536) + op.add[i];
+      return Math.min(op.max, Math.max(op.min, q)) / 65536;
+    }
     let idx = 0;
     for (let j = 0; j < op.rows.length; j++) {
       const v = at(op.rows[j]);

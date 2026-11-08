@@ -1248,9 +1248,11 @@ int main(void)
             enc(2, -3);
         }
         later(1500);
-        tap(3);                                             /* the 808 kit card: its keys come from the Drum map, not Main */
+        enc(0, 2);                                          /* (past DRUMS 2 and its Drum map, the mid and high toms, D-877) */
+        later(1500);
+        tap(3);                                             /* the 808 kit card: its keys come from the Drum maps, not Main */
         check("SEL on a row that takes no keys: NOTHING HERE TAKES KEYS, nothing armed, the page stays",
-              page == PAGE_ENV && pg_cur_dev == d0 + 1u && m64(eng_arm_mask_get()) == 0u && !strcmp(msg_text, "NOTHING HERE TAKES KEYS"));
+              page == PAGE_ENV && pg_cur_dev == d0 + 3u && m64(eng_arm_mask_get()) == 0u && !strcmp(msg_text, "NOTHING HERE TAKES KEYS"));
         tap(4);
         check("ENV again: back where it came from", page == 0 && trail_n == n0);
         pages_focus(1, 0);                                  /* SEL on a row (#395): DRUMS armed, then disarmed */
@@ -2451,6 +2453,8 @@ int main(void)
             tap(BTN_PLAY);
         later(1500);
         E.node[drums].ksrc = 0;                             /* (Main's keys off DRUMS: plain notes, each key its own on MIDI out) */
+        if (eng_steps_module(1) >= 0)
+            E.node[eng_steps_module(1)].ksrc = 0;           /* (and off DRUMS 2, the toms' track, D-877) */
         mlen = 0;
         m0 = mlen;
         kq_edge(9, 1);                                      /* D4 pressed and let go within one pass */
@@ -2608,9 +2612,9 @@ int main(void)
         check("unmuted and disarmed: the page as it was", !eng_steps_muted((uint32_t)drums) && eng_armed() < 0
               && !memcmp(base, fb, sizeof base));
         r0 = seq_row;
-        held_key(BTN_REC, 3);                               /* G#3: black key 2, no track 2 */
-        check("REC held + a black key past the tracks: NO TRACK 2, nothing armed, REC off, the row stays",
-              eng_armed() < 0 && seq_rec == 0 && bar_shows("NO TRACK 2", C_FG) && seq_row == r0);
+        held_key(BTN_REC, 5);                               /* A#3: black key 3, no track 3 (DRUMS 2 is track 2, D-877) */
+        check("REC held + a black key past the tracks: NO TRACK 3, nothing armed, REC off, the row stays",
+              eng_armed() < 0 && seq_rec == 0 && bar_shows("NO TRACK 3", C_FG) && seq_row == r0);
         later(1500);
         panel_held |= 1u << BTN_REC;                        /* REC's press and the key in the same pass (the key read first) */
         panel_keys(1u << 1);

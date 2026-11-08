@@ -9,8 +9,10 @@ import { RATIOS } from './modules';
 
 /** how one row of the newer structure gets its value: from one earlier row as it is; from one or two earlier rows read as
  * whole numbers through a table (the value at place (a - lo[0]) * n[1] + (b - lo[1]), each held inside its n places);
- * or the engine's Init value */
-export type HandRow = 'init' | { from: string } | { table: string[]; lo: number[]; n: number[]; v: number[] };
+ * from one earlier row through a line, x * mul + add, held inside min .. max (`key`: a second earlier row read as a whole
+ * number picks the line, place key - lo held inside the lines; without it there is one line); or the engine's Init value */
+export type HandRow = 'init' | { from: string } | { table: string[]; lo: number[]; n: number[]; v: number[] }
+  | { line: string; key?: string; lo?: number; mul: number[]; add: number[]; min: number; max: number };
 export type HandMap =
   | { engine: string; from: string; to: string; why: string; rows: Record<string, HandRow> }
   | { engine: string; from: string; to: string; none: string };
@@ -223,5 +225,26 @@ export const HAND_MAPS: HandMap[] = [
       'mixer#71.l1': { from: 'shape#47.level' },
       'scope#72.view': { from: 'scope#48.view' },
     },
+  },
+  // ---- 1.11, D-348: Canvas is Canvas XL's design (the owner, 2026-11-07: "Canvas XL replaces Canvas in its factory slot →
+  // Yes"). The mod osc's frequency was the Oscillator's coarse (semitones above the keys; - high played as + hi, low five
+  // octaves down) and is now a 0..1 dial over each range: + hi 5 x dial - 2.25 octaves, - high 2.75 - 5 x dial, low
+  // 8 x dial - 10.25. The value lands where it plays the same pitch (held inside 0..1). Both fine tunes were the
+  // Oscillators' fine (cents) and are now half an octave on a 0..1 knob, 0.5 in tune. The patch field's inputs start as the
+  // fixed patch was wired, so every other row keeps its value.
+  {
+    engine: 'Canvas', from: '5ae3f8ec', to: '24a7a8f1', why: 'D-348: Canvas XL\'s frequency dial and half-octave fine tunes',
+    rows: {
+      'macro#55.value': { line: 'osc#19.coarse', key: 'select#18.pos', lo: 1, mul: [-1 / 60, 1 / 60, 1 / 96], add: [0.55, 0.45, 0.65625], min: 0, max: 1 },
+      'macro#59.value': { line: 'osc#19.fine', mul: [1 / 600], add: [0.5], min: 0, max: 1 },
+      'macro#61.value': { line: 'osc#26.fine', mul: [1 / 600], add: [0.5], min: 0, max: 1 },
+    },
+  },
+  // ---- 1.11: Verona Drum 1 gets DRUM 2 and a PAN per channel (the owner, 2026-11-07: "808 toms + Verona DRUM 2 + PAN").
+  // MASTER was the level of the mixer every channel went into and is now a Macro on the two output VCAs: the same level
+  // at the same value. DRUM 2 and the PAN rows are new and take Init's values.
+  {
+    engine: 'Verona Drum 1', from: 'db9de761', to: '1aaff8fe', why: '1.11: DRUM 2 and PAN; MASTER on the output VCAs (same value)',
+    rows: { 'macro#3.value': { from: 'mixer#3.l1' } },
   },
 ];

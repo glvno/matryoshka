@@ -440,6 +440,12 @@
    "version": 51
   },
   {
+   "name": "8 LIRE",
+   "len": 3146,
+   "fnv": "d5c6f6bc",
+   "version": 51
+  },
+  {
    "name": "808 KIT",
    "len": 1543,
    "fnv": "222d5611",
@@ -678,6 +684,12 @@
    "len": 3230,
    "fnv": "cc8c7679",
    "version": 46
+  },
+  {
+   "name": "808 KIT",
+   "len": 2312,
+   "fnv": "53ad3979",
+   "version": 51
   },
   {
    "name": "909 KIT",
@@ -1716,6 +1728,12 @@
    "len": 3779,
    "fnv": "e3df32b0",
    "version": 46
+  },
+  {
+   "name": "CANVAS",
+   "len": 3807,
+   "fnv": "21f8f423",
+   "version": 51
   },
   {
    "name": "CANVAS",
@@ -3308,6 +3326,12 @@
    "version": 8
   },
   {
+   "name": "HERA 5",
+   "len": 1851,
+   "fnv": "90c711d0",
+   "version": 51
+  },
+  {
    "name": "HERA 6",
    "len": 658,
    "fnv": "8f7c0ae3",
@@ -4079,6 +4103,12 @@
    "name": "IO 4",
    "len": 3304,
    "fnv": "a236629f",
+   "version": 51
+  },
+  {
+   "name": "IO 4",
+   "len": 2271,
+   "fnv": "a4912f7c",
    "version": 51
   },
   {
@@ -8265,6 +8295,12 @@
   },
   {
    "name": "VERNON 100",
+   "len": 2416,
+   "fnv": "ddc5ea0f",
+   "version": 51
+  },
+  {
+   "name": "VERNON 100",
    "len": 2158,
    "fnv": "ef7f0430",
    "version": 51
@@ -8304,6 +8340,12 @@
    "len": 3817,
    "fnv": "98f22058",
    "version": 46
+  },
+  {
+   "name": "VERONA DRUM 1",
+   "len": 2893,
+   "fnv": "c24478af",
+   "version": 51
   },
   {
    "name": "VIBRATO LEAD",
@@ -8651,6 +8693,12 @@
    "name": "WANDERER",
    "len": 2128,
    "fnv": "5b86f097",
+   "version": 51
+  },
+  {
+   "name": "WANDERER",
+   "len": 2555,
+   "fnv": "97c158d6",
    "version": 51
   },
   {

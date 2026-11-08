@@ -91,7 +91,7 @@ describe('patterns and songs: the binary (format 48)', () => {
       expect(patternRecord(p, deviceView(p, true).patch), name).toEqual([]);
       const b = encodePatch(p, true);
       // (or counted records, format 51, when its old format is over the FM-1's bytes: #667; or 51 for a key assign
-      // switch on a cable, #681, a VOICES row with a top, or a parameter appended in 51 set off its default: the Slew
+      // switch on a cable, #681, a VOICES row with a top, more than 64 modules, #721, or a parameter appended in 51 set off its default: the Slew
       // limiter's fall, #669; the filters' drive, diode and stsat, #670..#672)
       const dev = deviceView(p, true).patch;
       const cabled = dev.cables.some((c) => VOICING_CABLE_INPUTS.includes(c.to.port) && dev.modules.find((m) => m.id === c.to.module)?.type === 'part');

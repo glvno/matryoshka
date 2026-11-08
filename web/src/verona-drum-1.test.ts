@@ -73,21 +73,21 @@ function playHeld(p: Patch, evs: [number, number, boolean][], ms: number, from =
 
 describe('Verona Drum 1 (#613)', () => {
   const fm1 = (): Patch => FM1_PRESETS['Verona Drum 1']();
-  it('fits the FM-1 and is its last factory patch, with six channels of the original\'s knobs, VOLUME each, and MASTER', () => {
+  it('fits the FM-1 and is its last factory patch, with seven channels of the original\'s knobs, PAN and VOLUME each, and MASTER', () => {
     expect(Object.keys(FM1_PRESETS).at(-1)).toBe('Verona Drum 1');
     expect(deviceBudget(fm1()).fits).toBe(true);
     const s = sections(fm1(), 'Verona Drum 1');
-    expect([...s.keys()]).toEqual(['kick', 'drum 1', 'multi', 'snare', 'hi hat', 'clap', 'master']);
-    const want: Record<string, string[]> = { kick: KNOBS.kick, 'drum 1': KNOBS.drum, multi: KNOBS.multi, snare: KNOBS.snare, 'hi hat': KNOBS.hat, clap: KNOBS.clap.filter((k) => k !== 'noise color') };
-    for (const [head, knobs] of Object.entries(want)) expect(s.get(head), head).toEqual([...knobs, 'volume']);
+    expect([...s.keys()]).toEqual(['kick', 'drum 1', 'drum 2', 'multi', 'snare', 'hi hat', 'clap', 'master']);
+    const want: Record<string, string[]> = { kick: KNOBS.kick, 'drum 1': KNOBS.drum, 'drum 2': KNOBS.drum, multi: KNOBS.multi, snare: KNOBS.snare, 'hi hat': KNOBS.hat, clap: KNOBS.clap.filter((k) => k !== 'noise color') };
+    for (const [head, knobs] of Object.entries(want)) expect(s.get(head), head).toEqual([...knobs, 'pan', 'volume']);
     expect(s.get('master')).toEqual(['master']);
   });
 
   it('names its Drum map rows after the channels, and each row sounds', () => {
     const p = fm1();
     const map = p.modules.find((m) => m.type === 'drummap')!;
-    expect(map.names).toEqual(['KICK', 'DRUM 1', 'MULTI', 'SNARE', 'HH OPEN', 'HH CLOSE', 'CLAP', 'ROW 8']);
-    for (let r = 1; r <= 7; r++) expect(play(p, [[0, map.params[`n${r}`]]], 200), map.names![r - 1]).toBeGreaterThan(0.01);
+    expect(map.names).toEqual(['KICK', 'DRUM 1', 'MULTI', 'SNARE', 'HH OPEN', 'HH CLOSE', 'CLAP', 'DRUM 2']);
+    for (let r = 1; r <= 8; r++) expect(play(p, [[0, map.params[`n${r}`]]], 200), map.names![r - 1]).toBeGreaterThan(0.01);
   });
 
   it('plays a 16-step pattern on a Steps track named PATTERN between Main\'s keys and the engine (D-330)', () => {

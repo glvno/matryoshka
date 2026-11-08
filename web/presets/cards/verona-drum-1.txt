@@ -11,16 +11,28 @@
 #   kick / wave = 1.4                  1..32
 #   kick / noise = 0.25                0..2
 #   kick / attack = 0.5                0..1
+#   kick / pan = 0                     -1..1
 #   kick / volume = 1.27               0..2
 # drum 1
 #   drum 1 / decay = 0.35 s            0.001..10 s
 #   drum 1 / pitch = -17 st            -48..48 st
 #   drum 1 / bend = 0.5                -4..4
 #   drum 1 / attack = 0.3              0..1
-#   fm int = 0                         -4..4
-#   fm freq = -24 st                   -48..48 st
+#   drum 1 / fm int = 0                -4..4
+#   drum 1 / fm freq = -24 st          -48..48 st
 #   drum 1 / wave = 1.2                1..32
+#   drum 1 / pan = -0.35               -1..1
 #   drum 1 / volume = 1.27             0..2
+# drum 2
+#   drum 2 / decay = 0.25 s            0.001..10 s
+#   drum 2 / pitch = -7 st             -48..48 st
+#   drum 2 / bend = 0.5                -4..4
+#   drum 2 / attack = 0.3              0..1
+#   drum 2 / fm int = 0                -4..4
+#   drum 2 / fm freq = -24 st          -48..48 st
+#   drum 2 / wave = 1.2                1..32
+#   drum 2 / pan = 0.35                -1..1
+#   drum 2 / volume = 1.27             0..2
 # multi
 #   multi / decay = 0.22 s             0.001..10 s
 #   multi / pitch = 0                  -4..4
@@ -29,15 +41,17 @@
 #   pitch 2 = 12 st                    -48..48 st
 #   pitch 3 = 12 st                    -48..48 st
 #   highpass = 250 Hz                  20..16000 Hz
+#   multi / pan = 0.25                 -1..1
 #   multi / volume = 1.27              0..2
 # snare
 #   snare / decay rev = 0.35 s         0.001..10 s
-#   snare / reverb = 0.12              0..2
+#   snare / reverb = 0.12              0..1
 #   decay noise = 0.16 s               0.001..10 s
-#   snare / noise = 0.55               0..2
+#   snare / noise = 0.55               0..1
 #   snare / attack = 1                 0..1
 #   snare / resonance = 0.88           0..1
 #   snare / filter = 240 Hz            20..16000 Hz
+#   snare / pan = 0                    -1..1
 #   snare / volume = 1.27              0..2
 # hi hat
 #   hi hat / decay = 0.35 s            0.001..10 s
@@ -47,6 +61,7 @@
 #   hi hat / resonance = 0.25          0..1
 #   mix = 0.5                          0..1
 #   hi hat / pitch = 30 st             -48..48 st
+#   hi hat / pan = -0.2                -1..1
 #   hi hat / volume = 1.27             0..2
 # clap
 #   clap / decay rev = 0.2 s           0.001..10 s
@@ -55,6 +70,7 @@
 #   clap / noise = 0.6                 0..2
 #   clap / resonance = 0.45            0..1
 #   clap / filter = 2200 Hz            20..16000 Hz
+#   clap / pan = 0.1                   -1..1
 #   clap / volume = 1.27               0..2
 # master
 #   master = 0.61                      0..1
@@ -63,7 +79,8 @@
 # FM-1 (#613). The rows follow the original's knobs: see web/scripts/verona-voices.ts for what each does here.
 # bend: 0 none, up a falling sweep, below 0 a rising one (the kick's only falls). time: the kick's pitch sweep (and,
 # on the FM-1, its noise burst). wave: 1 a sine, up to an overdriven square. clap: the claps' rate, so their number
-# (below about 22 Hz one clap). The hi-hat plays open on HH OPEN and closed on HH CLOSE.
+# (below about 22 Hz one clap). The hi-hat plays open on HH OPEN and closed on HH CLOSE. DRUM 2 (1.11) plays the last row
+# (F4); pan: -1 left, 1 right.
 engine: Verona Drum 1
 
 preset: Dance Floor
@@ -78,7 +95,9 @@ hi hat / filter = 11000
 mix = 0.35
 clap / reverb = 0.6
 clap = 45
-  master = 0.59
+drum 2 / pitch = -5
+drum 2 / decay = 0.2
+  master = 0.58
 
 preset: Trouser Flap
 # DECAY at its longest for a long, low boom (the manual: Trap, drum and bass, dubstep); the bend kept low
@@ -92,7 +111,10 @@ kick / attack = 0.3
 snare / decay rev = 0.6
 snare / reverb = 0.25
 hi hat / decay = 0.5
-  master = 0.62
+drum 2 / pitch = -12
+drum 2 / decay = 0.5
+drum 2 / bend = 0.3
+  master = 0.58
 
 preset: Beat Box 78
 # the snare with RESONANCE backed off, as a preset rhythm box from about 1978; a short kick, a thin hat, the multi a
@@ -112,7 +134,10 @@ mix = 0.2
 hi hat / bend = 0.5
 multi / decay = 0.12
 highpass = 500
-  master = 0.6
+drum 2 / pitch = -2
+drum 2 / decay = 0.15
+drum 2 / bend = 0.8
+  master = 0.51
 
 preset: Clave and Conga
 # the manual's tip: the snare with FILTER and RESONANCE open and no noise is a clave; drum 1 a conga, the multi a bongo
@@ -130,13 +155,17 @@ pitch 3 = -2
 multi / decay = 0.09
 highpass = 900
 hi hat / decay = 0.12
-  master = 0.97
+drum 2 / pitch = 0
+drum 2 / decay = 0.2
+drum 2 / bend = 0.1
+drum 2 / attack = 0.6
+  master = 0.69
 
 preset: Metal Works
 # FM in the audio range on drum 1 (atonal, metallic), the multi's three squares spread for a bell, hats bending up
 drum 1 / pitch = 2
 drum 1 / fm int = 1.5
-fm freq = 9
+drum 1 / fm freq = 9
 drum 1 / decay = 0.6
 drum 1 / bend = -0.3
 drum 1 / wave = 3
@@ -149,4 +178,9 @@ hi hat / bend = -1.5
 hi hat / resonance = 0.6
 hi hat / pitch = 34
 hi hat / decay = 0.8
-  master = 0.9
+drum 2 / pitch = 7
+drum 2 / fm int = 1
+drum 2 / fm freq = 14
+drum 2 / decay = 0.4
+drum 2 / wave = 2.5
+  master = 0.61

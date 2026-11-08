@@ -263,7 +263,7 @@ describe('binary patch format', () => {
   it('encodes every preset with the documented layout', () => {
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
       const b = encodePatch(make());
-      const { patch: p, groups } = deviceView(make()); // what the device gets: the allocator as a Part per poly group
+      const { patch: p, groups } = deviceView(make(), true); // what the device gets: the allocator as a Part per poly group, compiled
       const g = groups.length;
       const dv = new DataView(b.buffer);
       expect(b[0], name).toBe(0xa1);

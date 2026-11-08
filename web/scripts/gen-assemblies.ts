@@ -2075,51 +2075,76 @@ asm('Algo Four', 'Voices', (b) => {
 namePositions('Algo Four', { 'poly/mono': ['POLY', 'MONO'] });
 
 // Canvas, after Buchla's Music Easel (the 208 Stored Program Sound Source and the 218 keyboard), one voice, its card the
-// Easel's panel section by section (Allen Strange, "Programming and Metaprogramming in the Electro-Organism", the Easel's
-// manual). The Easel's patch field (any control output into any control input by banana cords) does not fit the FM-1 as
-// switchable routes; here it is a fixed patch: the sequencer into the complex oscillator's pitch, the envelope into the
-// modulation index and both gate levels, the random voltage into the timbre, each through its processing control (`... proc`).
-// Every other connection is the panel's own: the keyboard (through the portamento) into both oscillators by their keyboard
-// switches; the trigger select switches choosing keyboard, pulser or sequencer triggers; the modulation
+// Easel's panel section by section (Allen Strange, "Programming and Metaprogramming in the Electro-Organism: An Operating
+// Directive for the Music Easel", Buchla, 2nd edition 2013 for the 208e / 218e, "identical to the original 1973 version" but
+// for minor changes). It was Canvas XL's design until it fitted the FM-1 (D-348; the owner, 2026-11-07: "Canvas XL replaces
+// Canvas in its factory slot → Yes"), so there is no XL beside it.
+// Every connection outside the patch field is the panel's own: the keyboard (through the portamento) into both oscillators
+// by their keyboard switches; the trigger select switches choosing keyboard, pulser or sequencer triggers; the modulation
 // switch; gate 2's source; the output mix.
-// - Keyboard: `portamento` (a linear slew). The 218's arpeggiator is the patch's Arpeggiator (its own page, ARP). Its
-//   preset voltage source and add to main switch are Canvas XL's only: they are played from touch plates the FM-1 has
-//   not got, and their 210 bytes are what the players need to fit. Pressure is not patched.
-// - Pulser: `trigger` (1 keyboard, 2 self, 3 sequencer), `mode` (1 triggered, 2 off, 3 once: once needs a button and does
-//   nothing here), `period`. Its trigger comes at the end of the period: an Env L/R rises over the period (one shot) and a
-//   Logic reads its end. Self mode retriggers it from its own end (128 samples later: the engines run in blocks). It
-//   starts once a key has woken the voice (the engines leave a voice no key has played idle), then keeps itself running.
-//   Its ramp output reaches nothing in the fixed patch, so it is Canvas XL's.
-// - Sequential voltage source: `trigger` (1 keyboard, 2 pulser, 3 off), `stages` (1..3: 3, 4 or 5 stages), `voltage 1..5`
-//   (0..1), `pulse 1..5` (the pulse sequence: a stage's trigger is sent unless its row is at -1). Two Sequencers on one
-//   clock: the voltages, and the pulses (a step at -1 is a rest: no gate). `stages` sets both lengths through their pins.
-// - Envelope generator: `trigger` (1 keyboard, 2 pulser, 3 sequencer), `mode` (1 sustained, 2 transient, 3 off),
-//   `attack`, `sustain`, `decay`. An Env L/R: it rises over the attack (linear), holds for the sustain, then: sustained, it
-//   holds while the trigger does; transient (one shot), it decays at once. Its decay is exponential (the Easel's is linear).
-// - Random voltage: `trigger` (1 keyboard, 2 pulser, 3 sequencer): noise sampled by the trigger.
-// - Modulation oscillator: `keyboard` (1 on, 2 off), `range` (1 -high, 2 +hi, 3 low: five octaves down; -high plays as
-//   +hi: its reversed dial is not here), `frequency` (semitones), `fine tune` (a semitone either way: the Easel's spans
-//   half an octave), `waveshape` (triangle, saw or square; the Oscillator's sine is not the Easel's), `modulation` (1 bal. ext: needs the preamp, silent here; 2 f.m. osc; 3 a.m. osc), `index`.
-//   Frequency modulation is phase modulation; amplitude modulation multiplies the complex oscillator by 1 + index x mod osc.
-// - Complex oscillator: `keyboard`, `polarity` (1 -, 2 +: the sign of the pitch processing), `pitch` (semitones), `fine
-//   tune`, `timbre wave` (the timbre switch: triangle, saw or square), `timbre mix` (the timbre pot: sine to that
-//   wave), `timbre` (the timbre offset: the wave folder's drive). One phase for both waves: two Oscillators on one pitch.
-// - Dual lopass gate: per gate `mode` (1 lopass, 2 combination, 3 vca), `level` and its processing; gate 2's `source` (1
-//   preamp: needs audio input, silent here; 2 mod osc; 3 gate 1). Each gate: a slew (the vactrol: opening in 10 ms,
-//   closing in 350 ms, #669) into a 12 dB low pass (a Ladder's) whose cutoff follows the level (20 Hz closed, 15 kHz open)
-//   and a VCA: lopass leaves the VCA open, vca the filter.
+// - The patch field: each control input takes one banana cord from one of the control outputs, through its processing
+//   control. Each input is a Selector (`... in`): main, pressure, sequencer, envelope, pulser (its ramp), random, mod cv
+//   (the modulation oscillator), or PATCH (a cord into the assembly input). The inputs: pitch (with the polarity switch),
+//   frequency (the modulation oscillator's, by `freq proc`), index, timbre, level 1, level 2, period (`period proc`: a
+//   voltage shortens the period, as the manual says), portamento (`porta proc`: a voltage shortens the glide) and the
+//   inverter's input (the inverter: 1 minus its input, the manual's 10 V minus it). PATCH with no cord is unpatched. It
+//   starts patched as the Easel's classic patch: the sequencer into the pitch, the envelope into the index and both gate
+//   levels, the random voltage into the timbre.
+// - All control outputs are assembly ports, including four independently sampled random voltages, the inverter and the
+//   preset voltage. Patch any output into any field input, then select PATCH on that input's row.
+// - Keyboard: `portamento` (a linear slew). The 218's arpeggiator is the patch's Arpeggiator (its own page, ARP). The
+//   preset voltage source (`plate`: which of the four touch plates is held, the plates being hardware; `preset 1..4` its
+//   pots, 0..1) is added to MAIN by `add to main` (1 octaves: the FM-1's octave buttons, 2 preset, 3 none); pressure
+//   (Main's aftertouch) is a patch-field source.
+// - Pulser: `trigger` (keyboard, self, sequencer), `mode` (triggered, off, once: the spring-loaded position that fires it
+//   by hand is the FX button), `period`. Its trigger comes at the end of the period: an Env L/R rises over the period (one
+//   shot) and a Logic reads its end. Self mode retriggers it from its own end (128 samples later: the engines run in
+//   blocks). It starts once a key has woken the voice (the engines leave a voice no key has played idle), then keeps itself
+//   running. Its ramp: the period's rise turned upside down, 0 between cycles.
+// - Sequential voltage source: `trigger` (keyboard, pulser, off), `stages` (3, 4 or 5 stages), `voltage 1..5` (0..1),
+//   `pulse 1..5` (the pulse sequence: a stage's trigger is sent unless its row is at -1). Two Sequencers on one clock: the
+//   voltages, and the pulses (a step at -1 is a rest: no gate). `stages` sets both lengths through their pins.
+// - Envelope generator: `trigger` (keyboard, pulser, sequencer), `mode` (sustained, transient, off), `attack`, `sustain`,
+//   `decay`. An Env L/R: it rises over the attack (linear), holds for the sustain, then: sustained, it holds while the
+//   trigger does; transient (one shot), it decays at once. Its decay is exponential (the Easel's is linear).
+// - Random voltage: `trigger` (keyboard, pulser, sequencer): noise sampled by the trigger.
+// - Modulation oscillator: `keyboard` (on, off), `range` (- high, + hi, low), `frequency` (a 0..1 dial over each range as
+//   the panel marks it: + hi 55 to 1760 Hz, - high the same reversed (1760 Hz at 0), low 0.22 to 55 Hz, the Easel's starts
+//   at 0.17; the Oscillator four octaves down, the low range a further four by its Selector value), `fine tune` (half an
+//   octave, 0.5 in tune), `waveshape` (triangle, saw or square; the Oscillator's sine is not the Easel's), `modulation`
+//   (bal. ext: needs the preamp, silent here; f.m. osc; a.m. osc), `index`. Frequency modulation is phase modulation;
+//   amplitude modulation multiplies the complex oscillator by 1 + index x mod osc.
+// - Complex oscillator: `keyboard`, `polarity` (-, +: the sign of the pitch processing), `pitch` (semitones), `fine tune`
+//   (half an octave, as the mod osc's), `timbre wave` (the timbre switch: triangle, saw or square), `timbre mix` (the
+//   timbre pot: sine to that wave), `timbre` (the timbre offset: the wave folder's drive). One phase for both waves: two
+//   Oscillators on one pitch.
+// - Dual lopass gate: per gate `mode` (lopass, combination, vca), `level` and its processing; gate 2's `source` (preamp:
+//   needs audio input, silent here; mod osc; gate 1). Each gate: a slew (the vactrol: opening in 10 ms, closing in 350 ms,
+//   #669) into a 12 dB low pass (a Ladder's) whose cutoff follows the level (20 Hz closed, 15 kHz open) and a VCA: lopass
+//   leaves the VCA open, vca the filter.
 // - Output: `chan a` (gate 1), `chan b` (gate 2, 180 degrees out of phase), `reverb` (our reverb, mono).
-// Not here (the FM-1): the patch field and the inverter (Canvas XL's), the preamp / envelope detector (audio input); the
-// trim pots. The switches are numbered: their names would cost about 280 of the 65 bytes left (#358's names are Canvas XL's).
+// - The switches are rows of named choices, as the panel names them (a Selector's positions, #358).
+// Not here, and why:
+// - Needing a module, or a new ability of one, in both engines: the preamp and envelope detector, the modulation switch's
+//   bal. ext and gate 2's preamp source (audio input, #351 "Audio input", #274); the envelope generator's linear decay
+//   (Env L/R falls exponentially, #689).
+// - Rows that read as numbers where the panel has switches: the pulse sequence (`pulse 1..5`: -1 off, anything else on; a
+//   Sequencer's step at -1 is a rest, and #358 names a Selector's positions only) and the two wave switches (`waveshape`,
+//   `timbre wave`: the Oscillator's waves, whose sine the Easel's switches have not got).
+// - Unsure: whether the 208's left and right outputs split the channels; here both carry the mix.
+// - Hardware and storage: the touch plates themselves, the monitor and master volume, the trim pots, the program card
+//   and the local / remote / both CONTROL switch (the editor keeps the patches).
+/** Canvas's switches' position names, by module (set after the build: two rows share a label) */
+const CANVAS_NAMES = new Map<number, string[]>();
 asm('Canvas', 'Voices', (b) => {
-  // ---- keyboard: MAIN = the keys through the portamento
+  // ---- keyboard: MAIN = the keys through the portamento (a voltage on its pin shortens the glide: porta proc)
   const part = b.add('alloc', 0, 0, { voices: 1 });
-  const porta = b.add('glide', 1, 0, { time: 0.001, curve: 1 });
+  const porta = b.add('glide', 1, 0, { time: 0.001, curve: 1 }, { p1: 'time', att: [-1, 1] });
   b.wire(part, 'pitch', porta, 'in');
-  // ---- pulser
+  // ---- pulser (a voltage on its pin shortens the period: period proc)
   const pTrig = b.add('select', 2, 0, { count: 3, pos: 2 });
   const pMode = b.add('select', 2, 1, { count: 3, pos: 1 });
-  const pEnv = b.add('env', 3, 0, { l1: 1, r1: 0.33, l2: 0, r2: 0.001, l3: 0, r3: 0.001, l4: 0, r4: 0.001, shot: 1 });
+  const pEnv = b.add('env', 3, 0, { l1: 1, r1: 0.33, l2: 0, r2: 0.001, l3: 0, r3: 0.001, l4: 0, r4: 0.001, shot: 1 }, { p1: 'r1', att: [-1, 1] });
   const pEnd = b.add('logic', 3, 1, { thresh: 0.05 });
   b.wire(part, 'gate', pTrig, 'in1');
   b.wire(pEnd, 'not', pTrig, 'in2');
@@ -2158,10 +2183,11 @@ asm('Canvas', 'Voices', (b) => {
   b.wire(seqP, 'gate', rTrig, 'in3');
   b.wire(nz, 'out', rnd, 'in');
   b.wire(rTrig, 'out', rnd, 'clock');
-  // ---- modulation oscillator, and the modulation switch (gate 3: a.m., which moves the a.m. selector to its index)
+  // ---- modulation oscillator (four octaves down: the range's dial adds to it), and the modulation switch (gate 3: a.m.,
+  // which moves the a.m. selector to its index)
   const mKbd = b.add('select', 11, 0, { count: 2, pos: 1 });
-  const mRange = b.add('select', 11, 1, { count: 3, pos: 2, v1: 0, v2: 0, v3: -5 });
-  const mosc = b.add('osc', 12, 0, { wave: 1, level: 1, coarse: 7, analog: 1 });
+  const mRange = b.add('select', 11, 1, { count: 3, pos: 2, v1: 4, v2: 4, v3: -4 });
+  const mosc = b.add('osc', 12, 0, { wave: 1, level: 1, coarse: -48, fine: 0, analog: 1 });
   const idx = b.add('scale', 12, 1, { gain: 1, offset: 0 }, { p1: 'gain', att: [0.25, 1] });
   const modSel = b.add('select', 13, 0, { count: 3, pos: 2 });
   const amDepth = b.add('math', 13, 1, { ka: 1, kb: 1, off: 0 });
@@ -2184,7 +2210,6 @@ asm('Canvas', 'Voices', (b) => {
   const iProc = b.add('scale', 12, 2, { gain: 0, offset: 0 });
   const am = b.add('vca', 17, 0, { gain: 1 });
   b.wire(porta, 'out', cKbd, 'in1');
-  b.wire(seq, 'out', pProc, 'in');
   b.wire(pPol, 'out', pProc, 'cv');
   for (const o of [posc, tw]) {
     b.wire(cKbd, 'out', o, 'pitch');
@@ -2194,14 +2219,13 @@ asm('Canvas', 'Voices', (b) => {
   b.wire(posc, 'out', tMix, 'a');
   b.wire(tw, 'out', tMix, 'b');
   b.wire(tMix, 'out', fold, 'in');
-  b.wire(rnd, 'out', tProc, 'in');
   b.wire(tProc, 'out', fold, 'p1');
-  b.wire(env, 'env', iProc, 'in');
   b.wire(iProc, 'out', idx, 'p1');
   b.wire(fold, 'out', am, 'in');
   b.wire(amDepth, 'mul', am, 'cv');
-  // ---- dual lopass gate: per gate the level (offset + processing of the envelope) through the vactrol slew into a low
-  // pass (20 Hz x 2^(9.6 x level)) and a VCA; the mode switch opens one or the other (lopass: the VCA open; vca: the filter)
+  // ---- dual lopass gate: per gate the level (offset + processing of its patch-field input) through the vactrol slew into
+  // a low pass (20 Hz x 2^(9.6 x level)) and a VCA; the mode switch opens one or the other (lopass: the VCA open; vca: the
+  // filter)
   const gate = (col: number, ...inputs: [number, string][]) => {
     const lvl = b.add('scale', col, 2, { gain: 0.75, offset: 0 });
     const vac = b.add('glide', col, 3, { time: 0.01, curve: 0, fall: 0.35 });
@@ -2210,7 +2234,6 @@ asm('Canvas', 'Voices', (b) => {
     const aSel = b.add('math', col + 2, 2, { ka: 1, kb: 1, off: 0 });
     const lpg = b.add('ladder', col + 2, 0, { cutoff: 20, res: 0.1, cvamt: 4 });
     const vca = b.add('vca', col + 3, 0, { gain: 1 });
-    b.wire(env, 'env', lvl, 'in');
     b.wire(lvl, 'out', vac, 'in');
     b.wire(vac, 'out', cut, 'in');
     b.wire(cut, 'out', fSel, 'in1');
@@ -2239,7 +2262,81 @@ asm('Canvas', 'Voices', (b) => {
   b.wire(rev, 'out', scope, 'a');
   b.input('keys', part, 'keys');
   b.output('out', rev, 'out');
-  // ---- the card: the Easel's panel, left to right as the 208 lays it out, the 218 keyboard last
+  // ---- keyboard: the preset voltages added to MAIN; pressure (Main's aftertouch) as a source
+  const preset = b.add('select', 0, 5, { count: 4, pos: 1, v1: 0, v2: 0.25, v3: 0.5, v4: 1 });
+  const addMain = b.add('select', 1, 5, { count: 3, pos: 3 });
+  b.wire(preset, 'out', addMain, 'in2');
+  b.wire(addMain, 'out', porta, 'in');
+  const pressure = b.add('scale', 2, 5, { gain: 1, offset: 0 });
+  b.input('pressure', pressure, 'in');
+  // ---- the pulser's once: the FX button; its ramp (the period's rise turned upside down, 0 between cycles)
+  b.input('once', pMode, 'in3');
+  const pRamp = b.add('math', 3, 5, { ka: -1, kb: 1, off: 1 });
+  b.wire(pEnv, 'env', pRamp, 'a');
+  b.wire(pEnd, 'or', pRamp, 'b');
+  // ---- the modulation oscillator's frequency dial over each range: per range a Math (a = b = the dial), off + (ka + kb) x
+  // dial, plus the Selector's value and the Oscillator's -4: - high 1760..55 Hz, + hi 55..1760 Hz, low 0.22..55 Hz
+  const dial = b.add('macro', 4, 5, { value: 0.5667 });   // (+ hi, 7 semitones above the keys)
+  ([[-4, 2.75, -1], [4, -2.25, 1], [4, -2.25, 4]] as const).forEach(([ka, off, kb], i) => {
+    const m = b.add('math', 5 + i, 5, { ka, kb, off });
+    b.wire(dial, 'out', m, 'a');
+    b.wire(dial, 'out', m, 'b');
+    b.wire(m, 'add', mRange, `in${i + 1}`);
+  });
+  // ---- fine tune, half an octave, on both oscillators
+  const fine = (col: number, oscs: number[]): number => {
+    const knob = b.add('macro', col, 7, { value: 0.5 });
+    const span = b.add('scale', col, 8, { gain: 0.5, offset: -0.25 });
+    b.wire(knob, 'out', span, 'in');
+    for (const o of oscs) b.wire(span, 'out', o, 'pitch');
+    return knob;
+  };
+  const mFine = fine(8, [mosc]);
+  const cFine = fine(9, [posc, tw]);   // (the timbre wave on the same pitch)
+  // ---- the patch field: the sources, the inverter, then one Selector per input
+  const inv = b.add('scale', 10, 5, { gain: -1, offset: 1 });
+  const sources: [number, string][] = [[porta, 'out'], [pressure, 'out'], [seq, 'out'], [env, 'env'], [pRamp, 'mul'], [rnd, 'out'], [mosc, 'out']];
+  const randoms: [number, string][] = [];
+  for (let i = 0; i < 3; i++) {
+    const sample = b.add('random', 15 + i, 5);
+    b.wire(rTrig, 'out', sample, 'clock');
+    randoms.push([sample, 'held']);
+  }
+  ['main', 'pressure', 'sequencer', 'envelope', 'pulser', 'random 1', 'mod cv'].forEach((label, i) => b.output(label, ...sources[i]));
+  randoms.forEach(([m, port], i) => b.output(`random ${i + 2}`, m, port));
+  b.output('inverter', inv, 'out');
+  b.output('preset', preset, 'out');
+  const jack = (row: number, pos: number, to: [number, string][]): number => {
+    const s = b.add('select', row, 6, { count: 8, pos });
+    sources.forEach(([m, port], i) => b.wire(m, port, s, `in${i + 1}`));
+    for (const [m, port] of to) b.wire(s, 'out', m, port);
+    return s;
+  };
+  // (each input set as the Easel's classic patch: the sequencer into the pitch, the envelope into the index and both gate
+  // levels, the random voltage into the timbre)
+  const pitchIn = jack(0, 3, [[pProc, 'in']]);
+  const fProc = b.add('scale', 11, 5, { gain: 0, offset: 0 });
+  b.wire(fProc, 'out', mosc, 'pitch');
+  const freqIn = jack(1, 7, [[fProc, 'in']]);
+  const indexIn = jack(2, 4, [[iProc, 'in']]);
+  const timbreIn = jack(3, 6, [[tProc, 'in']]);
+  const level1In = jack(4, 4, [[g1.lvl, 'in']]);
+  const level2In = jack(5, 4, [[g2.lvl, 'in']]);
+  // period and portamento: a voltage shortens them (pins on the times: a full-swing source at processing 1 moves the time
+  // over its whole range)
+  const perProc = b.add('scale', 12, 5, { gain: 0, offset: 0 });
+  b.wire(perProc, 'out', pEnv, 'p1');
+  const periodIn = jack(6, 1, [[perProc, 'in']]);
+  const portaProc = b.add('scale', 13, 5, { gain: 0, offset: 0 });
+  b.wire(portaProc, 'out', porta, 'p1');
+  const portaIn = jack(7, 2, [[portaProc, 'in']]);
+  const invIn = b.add('select', 14, 5, { count: 8, pos: 4 });
+  sources.forEach(([m, port], i) => b.wire(m, port, invIn, `in${i + 1}`));
+  b.wire(invIn, 'out', inv, 'in');
+  const field: [string, number][] = [['pitch in', pitchIn], ['freq in', freqIn], ['index in', indexIn], ['timbre in', timbreIn], ['level 1 in', level1In], ['level 2 in', level2In], ['period in', periodIn], ['porta in', portaIn], ['inverter in', invIn]];
+  // (the eighth choice takes a real cord, so every output, all four randoms and the preset voltage too, reaches every input)
+  for (const [label, s] of field) b.input(label, s, 'in8');
+  // ---- the card: the Easel's panel, left to right as the 208 lays it out, the 218 keyboard, then the patch field
   b.param('trigger', sTrig, 'pos', { head: 'sequencer' });
   b.param('stages', stages, 'pos');
   for (const n of [1, 2, 3, 4, 5]) b.param(`voltage ${n}`, seq, `s${n}`);
@@ -2253,19 +2350,21 @@ asm('Canvas', 'Voices', (b) => {
   b.param('trigger', pTrig, 'pos', { head: 'pulser' });
   b.param('mode', pMode, 'pos');
   b.param('period', pEnv, 'r1');
+  b.param('period proc', perProc, 'gain');
   b.param('trigger', rTrig, 'pos', { head: 'random' });
   b.param('keyboard', mKbd, 'pos', { col: true, head: 'mod osc' });
   b.param('range', mRange, 'pos');
-  b.param('frequency', mosc, 'coarse');
-  b.param('fine tune', mosc, 'fine');
+  b.param('frequency', dial, 'value');
+  b.param('fine tune', mFine, 'value');
   b.param('waveshape', mosc, 'wave', { group: true });
   b.param('modulation', modSel, 'pos');
+  b.param('freq proc', fProc, 'gain');
   b.param('index', idx, 'gain');
   b.param('index proc', iProc, 'gain');
   b.param('keyboard', cKbd, 'pos', { col: true, head: 'complex osc' });
   b.param('polarity', pPol, 'pos');
   b.param('pitch', posc, 'coarse');
-  b.param('fine tune', posc, 'fine');
+  b.param('fine tune', cFine, 'value');
   b.param('pitch proc', pProc, 'gain', { group: true });
   b.param('timbre wave', tw, 'wave');
   b.param('timbre mix', tMix, 'mix');
@@ -2282,8 +2381,24 @@ asm('Canvas', 'Voices', (b) => {
   b.param('chan b', mix, 'kb');
   b.param('reverb', rev, 'mix');
   b.param('portamento', porta, 'time', { col: true, head: 'keyboard' });
+  b.param('porta proc', portaProc, 'gain');
+  b.param('add to main', addMain, 'pos');
+  b.param('plate', preset, 'pos');
+  for (const n of [1, 2, 3, 4]) b.param(`preset ${n}`, preset, `v${n}`);
+  field.forEach(([label, s], i) => b.param(label, s, 'pos', i === 0 ? { col: true, head: 'patch field' } : {}));
   b.param('out', scope, 'view');
+  // ---- the switches as the panel names their positions
+  const SOURCES = ['main', 'pressure', 'sequencer', 'envelope', 'pulser', 'random 1', 'mod cv', 'patch'];
+  ([
+    [sTrig, ['keyboard', 'pulser', 'off']], [stages, ['3', '4', '5']], [eTrig, ['keyboard', 'pulser', 'sequencer']],
+    [eMode, ['sustained', 'transient', 'off']], [pTrig, ['keyboard', 'self', 'sequencer']], [pMode, ['triggered', 'off', 'once']],
+    [rTrig, ['keyboard', 'pulser', 'sequencer']], [mKbd, ['on', 'off']], [mRange, ['- high', '+ hi', 'low']],
+    [modSel, ['bal. ext', 'f.m. osc', 'a.m. osc']], [cKbd, ['on', 'off']], [pPol, ['-', '+']], [g1.fSel, ['lopass', 'combination', 'vca']],
+    [g2.fSel, ['lopass', 'combination', 'vca']], [src2, ['preamp', 'mod osc', 'gate 1']], [addMain, ['octaves', 'preset', 'none']],
+    [preset, ['1', '2', '3', '4']], ...field.map(([, s]): [number, string[]] => [s, SOURCES]),
+  ] as [number, string[]][]).forEach(([m, names]) => CANVAS_NAMES.set(m, names));
 });
+for (const r of defs.find((d) => d.name === 'Canvas')!.params) if (r.param === 'pos' && CANVAS_NAMES.has(r.module)) r.names = CANVAS_NAMES.get(r.module);
 
 // Wanderer, the ARP Odyssey (Rev 3, the 24 dB filter) whole. It was Wanderer XL until the smaller patch records (#736)
 // made it fit the FM-1; it took Wanderer's factory slot (D-348). Sources: ARP's ODYSSEY Owner's Manual (second edition,
@@ -4097,43 +4212,53 @@ asm('Spokes 6', 'Drums', (b) => {
 });
 
 // Verona Drum 1, after the Vermona DRM1 MKIV (#613; its user manual, "The instrument channels", pages 11 to 18). The FM-1
-// version: six of its eight instrument channels, each with every knob of its panel and its own signal flow
-// (scripts/verona-voices.ts): KICK, DRUM 1, MULTI, SNARE, HI HAT 1, CLAP, and each channel's VOLUME. A Drum map row per
-// channel on the white keys from F3, the hi-hat on two (OPEN, and CLOSED with its fixed short decay, as the original's
-// two MIDI notes per hi-hat); a row's velocity is the channel's level, as the DRM1's MIDI velocity. The channels share
-// one white noise source; MASTER is the level of the mixer they all go into. Left out to fit the FM-1 (Verona Drum 1 XL has
-// them, scripts/xl/verona-drum-1.ts): DRUM 2 and HI HAT 2 (each the same as its pair), PAN, the clap's NOISE COLOR, the
-// hi-hat's TRIG switch (its two rows play open and closed), MULTI's PITCH 2 / PITCH 3 off position (here they are the
-// oscillators' coarse tune), the kick's own noise envelope (its noise lasts as long as TIME), and the snare's second noise
-// VCA (NOISE and REVERB are its envelopes' levels, 0..1).
+// version: seven of its eight instrument channels, each with every knob of its panel and its own signal flow
+// (scripts/verona-voices.ts): KICK, DRUM 1, DRUM 2, MULTI, SNARE, HI HAT 1, CLAP, and each channel's PAN and VOLUME. A Drum
+// map row per channel on the white keys from F3, the hi-hat on two (OPEN, and CLOSED with its fixed short decay, as the
+// original's two MIDI notes per hi-hat); a row's velocity is the channel's level, as the DRM1's MIDI velocity. DRUM 2 (a
+// second DRUM 1, as on the original) plays row 8, so the rows before it keep their keys. The channels share one white
+// noise source; each channel's PAN places it between the two output VCAs, and MASTER (a Macro) is their level. DRUM 2 and
+// PAN joined in 1.11 (the owner, 2026-11-07: "808 toms + Verona DRUM 2 + PAN"). Left out to fit the FM-1 (Verona Drum 1
+// XL has them, scripts/xl/verona-drum-1.ts): HI HAT 2 (the same as HI HAT 1), the clap's NOISE COLOR, the hi-hat's TRIG
+// switch (its two rows play open and closed), MULTI's PITCH 2 / PITCH 3 off position (here they are the oscillators'
+// coarse tune), the kick's own noise envelope (its noise lasts as long as TIME), and the snare's second noise VCA (NOISE
+// and REVERB are its envelopes' levels, 0..1).
 asm('Verona Drum 1', 'Drums', (b) => {
   const map = b.add('drummap', 0, 0, Object.fromEntries(PLATE_KEYS[1].map((n, r) => [`n${r + 1}`, n])));
-  b.module(map).names = ['KICK', 'DRUM 1', 'MULTI', 'SNARE', 'HH OPEN', 'HH CLOSE', 'CLAP', 'ROW 8'];
+  b.module(map).names = ['KICK', 'DRUM 1', 'MULTI', 'SNARE', 'HH OPEN', 'HH CLOSE', 'CLAP', 'DRUM 2'];
   const noise = sharedNoise(b, 0, 1);
-  // MASTER: every channel into the mixer's first input, its level the overall volume
-  const mix = b.add('mixer', 7, 0, { l1: 0.7, l2: 0, l3: 0, l4: 0 });   // (MASTER is the level row, #448)
-  const channels: [string, Voice][] = [
-    ['kick', kick(b, 1, noise, { lean: true })],
-    ['drum 1', drum(b, 2, { coarse: -17, decay: 0.35 })],
-    ['multi', multi(b, 3, { lean: true })],
-    ['snare', snare(b, 4, noise, { lean: true })],
-    ['hi hat', hihat(b, 5, noise)],
-    ['clap', clap(b, 6, noise, { color: false })],
+  // MASTER: the level of the two output VCAs that every channel's PAN feeds
+  const master = b.add('macro', 8, 0, { value: 0.7 });   // (MASTER is the level row, #448; where the mixer was, so every module keeps its id)
+  //            name   voice  Drum map row (the hi-hat's open row; its closed row is 6)  pan (Verona Drum 1 XL's)
+  const channels: [string, Voice, number, number][] = [
+    ['kick', kick(b, 1, noise, { lean: true }), 1, 0],
+    ['drum 1', drum(b, 2, { coarse: -17, decay: 0.35 }), 2, -0.35],
+    ['multi', multi(b, 3, { lean: true }), 3, 0.25],
+    ['snare', snare(b, 4, noise, { lean: true }), 4, 0],
+    ['hi hat', hihat(b, 5, noise), 5, -0.2],
+    ['clap', clap(b, 6, noise, { color: false }), 7, 0.1],
   ];
-  /** each channel's Drum map row (the hi-hat's open row; its closed row is 6) */
-  const rows = [1, 2, 3, 4, 5, 7];
-  channels.forEach(([name, v], i) => {
-    const r = rows[i];
+  channels.splice(2, 0, ['drum 2', drum(b, 7, { coarse: -7, decay: 0.25 }), 8, 0.35]);   // (made last: the others keep their ids)
+  const outL = b.add('vca', 8, 1, { gain: 1 });
+  const outR = b.add('vca', 8, 2, { gain: 1 });
+  b.wire(master, 'out', outL, 'cv');
+  b.wire(master, 'out', outR, 'cv');
+  const pans = new Map<string, number>();
+  channels.forEach(([name, v, r, at], i) => {
     for (const [m, port] of v.gate) b.wire(map, `g${r}`, m, port);
     b.wire(map, `v${r}`, v.vel[0], v.vel[1]);
     if (v.closed) {
       for (const [m, port] of v.closed) b.wire(map, 'g6', m, port);
       b.wire(map, 'v6', v.closedVel![0], v.closedVel![1]);
     }
-    b.wire(v.out[0], v.out[1], mix, 'in1');
-    b.nest(name, 1 + i, 0, v.members);
+    const pan = b.add('pan', 1 + i, 6, { pan: at });
+    b.wire(v.out[0], v.out[1], pan, 'in');
+    b.wire(pan, 'l', outL, 'in');
+    b.wire(pan, 'r', outR, 'in');
+    pans.set(name, pan);
+    b.nest(name, 1 + i, 0, [...v.members, pan]);
   });
-  channels.forEach(([, v]) => {
+  channels.forEach(([name, v]) => {
     const [first, ...also] = v.gate;
     b.nestInput('gate', first[0], first[1], ...also);
     if (v.closed) {
@@ -4141,15 +4266,18 @@ asm('Verona Drum 1', 'Drums', (b) => {
       b.nestInput('closed', c0[0], c0[1], ...cAlso);
     }
     b.nestInput('velocity', v.vel[0], v.vel[1]);
-    b.nestOutput('out', v.out[0], v.out[1]);
+    b.nestOutput('l', pans.get(name)!, 'l');
+    b.nestOutput('r', pans.get(name)!, 'r');
   });
   b.input('keys', map, 'keys');
-  b.output('out', mix, 'out');
+  b.output('l', outL, 'out');
+  b.output('r', outR, 'out');
   channels.forEach(([name, v]) => {
     v.rows.forEach(([label, m, param], k) => b.param(label, m, param, k === 0 ? { head: name, col: true } : {}));
+    b.param('pan', pans.get(name)!, 'pan');
     b.param('volume', v.out[0], 'gain');
   });
-  b.param('master', mix, 'l1', { head: 'master', col: true });
+  b.param('master', master, 'value', { head: 'master', col: true });
 });
 
 // an LFO through a Scale: vibrato (into a pitch input), tremolo (into a VCA's cv with an offset), a filter sweep

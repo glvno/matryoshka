@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Canvas (the Buchla Music Easel) and Briefcase 3 (the EMS VCS3), on the FM-1 and as XLs (issue #303): their cards follow
 // the originals' panels, Briefcase 3's pins are named as the VCS3's manual names them (column, then row), the Easel's
-// pulser triggers its envelope by itself, and Canvas XL's patch field moves a cord.
+// pulser triggers its envelope by itself, and Canvas's patch field (Canvas XL's until D-348 put it in the factory slot) moves a cord.
 import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { FM1_PRESETS, XL_PRESETS } from './presets';
@@ -96,8 +96,8 @@ describe('Briefcase 3 (the VCS3)', () => {
 });
 
 describe('Canvas (the Music Easel)', () => {
-  it('Canvas XL exposes four independent random voltages and accepts a patch cord from each', () => {
-    const p = XL_PRESETS['Canvas XL']();
+  it('exposes four independent random voltages and accepts a patch cord from each', () => {
+    const p = FM1_PRESETS.Canvas();
     const a = card(p);
     const sources = [1, 2, 3, 4].map((n) => a.outputs.find((r) => r.label === `random ${n}`));
     expect(sources.every(Boolean)).toBe(true);
@@ -123,7 +123,7 @@ describe('Canvas (the Music Easel)', () => {
 
   it('on the FM-1: the card is the panel, section by section', () => {
     const heads = card(FM1_PRESETS.Canvas()).params.filter((r) => r.head).map((r) => r.head);
-    expect(heads).toEqual(['sequencer', 'envelope', 'pulser', 'random', 'mod osc', 'complex osc', 'lopass gate', 'output', 'keyboard']);
+    expect(heads).toEqual(['sequencer', 'envelope', 'pulser', 'random', 'mod osc', 'complex osc', 'lopass gate', 'output', 'keyboard', 'patch field']);
   });
 
   it('the pulser on self triggers the envelope by itself: bursts at its period while a key is held', () => {
@@ -144,8 +144,9 @@ describe('Canvas (the Music Easel)', () => {
     expect(bursts).toBeLessThanOrEqual(11);
   });
 
-  it('Canvas XL: the switches have the panel\'s names, and the patch field moves a cord', () => {
-    const p = XL_PRESETS['Canvas XL']();
+  it('the switches have the panel\'s names, and the patch field moves a cord', () => {
+    const p = FM1_PRESETS.Canvas();
+    expect(XL_PRESETS['Canvas XL']).toBeUndefined();   // (D-348: no XL beside it)
     expect(row(p, 'mode', 0).names).toEqual(['sustained', 'transient', 'off']);
     expect(row(p, 'range').names).toEqual(['- high', '+ hi', 'low']);
     const jacks = card(p).params.filter((r) => r.label.endsWith(' in'));
