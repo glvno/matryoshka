@@ -26,10 +26,10 @@
                                            the mean period, the deviation of each period and of each tick from a straight
                                            grid, and the link's refused sends over that time, DIAG page 117; BPM: at that
                                            global tempo (TEMPO, set back after); run: with the transport running)
-  tools/m1_link.py usblog [arm|wrap]      (#535: the USB setup log, DIAG pages 40..107: every control transfer a host started
+  tools/m1_link.py usblog [arm|wrap]      (#535: the USB setup log, DIAG pages 40..71 and 104..107: every control transfer a host started
                                            since boot (or since `arm`) and the firmware's answer, bus resets, suspends, the
                                            address taking effect; kept while the FM-1 stays powered, so a failed host's log
-                                           can be read on another. arm: keep the next 128 entries (a one-shot capture), wrap:
+                                           can be read on another. arm: keep the next 64 entries (a one-shot capture), wrap:
                                            the newest again)
   tools/m1_link.py diag [DIS]             (what the last reset left: its cause, the crash record, where a stalled main loop
                                            was; DIS = the build's matryoshka.dis (CI artifact matryoshka-elf) names the functions)

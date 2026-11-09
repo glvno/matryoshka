@@ -160,6 +160,12 @@ static RAMFN uint32_t fl_jedec_ram(void)                 /* FL_JEDEC_OK: 0x85601
     return id;
 }
 
+/* FL_STATUS_RAM 0 leaves fl_status_ram out: nothing in the app calls it, and its 364 B of .ram_text are room the app
+ * needs (modular.c, #725). The update loader keeps it, so its binary stays as shipped. */
+#ifndef FL_STATUS_RAM
+#define FL_STATUS_RAM 1
+#endif
+#if FL_STATUS_RAM
 static RAMFN uint32_t fl_status_ram(void)                /* SR1 | SR2 << 8 */
 {
     fl_saved_t s; uint32_t v;
@@ -168,6 +174,7 @@ static RAMFN uint32_t fl_status_ram(void)                /* SR1 | SR2 << 8 */
     fl_exit(&s);
     return v;
 }
+#endif
 
 static RAMFN int fl_erase4k_ram(uint32_t off, uint32_t *took_us)
 {
