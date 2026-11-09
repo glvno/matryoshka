@@ -21,20 +21,10 @@ import { FM1_PRESETS } from '../src/presets';
 import { deviceView } from '../src/poly';
 
 const ROOT = new URL('../../', import.meta.url).pathname;
-/** the surveys of today's firmware: the factory set, the transport stopped, then running (but Cassia 1, which went back
- * to four voices after them: its own survey, last); the factory patches as they were before #775 cut them (Oracle V and
- * Hera at five voices), played at those voices on today's firmware, as targets at more voices for today's patches (`at`;
- * `only` / `skip`: the patches taken from a file, or left out) */
+/** The combined development build: every factory patch, transport stopped and running. */
 const NOW: { file: string; at?: Record<string, number>; only?: string[]; skip?: string[] }[] = [
-  { file: 'docs/measurements/cpu-survey-2026-11-08-rig-speed-pass.json', skip: ['Cassia 1'] },
-  { file: 'docs/measurements/cpu-survey-2026-11-08-rig-speed-pass-run.json', skip: ['Cassia 1'] },
-  ...['', '-run'].map((r) => ({
-    file: `docs/measurements/cpu-survey-2026-11-08-rig-speed-pass-before-cuts${r}.json`,
-    at: { 'Hera 4': 5, 'Oracle V': 5 },
-    only: ['Hera 4', 'Oracle V'],
-  })),
-  { file: 'docs/measurements/cpu-survey-2026-11-08-rig-speed-pass-cassia-1.json' },
-  { file: 'docs/measurements/cpu-survey-2026-11-08-rig-speed-pass-cassia-1-run.json' },
+  { file: 'docs/measurements/cpu-survey-2026-11-09-rig-integration.json' },
+  { file: 'docs/measurements/cpu-survey-2026-11-09-rig-integration-run.json' },
 ];
 /** the survey of the firmware before (release-1.10 with the second core) and the commit its factory patches are from */
 const BEFORE = { file: 'docs/measurements/cpu-survey-2026-11-05-rig-merged-split.json', commit: 'e3235d64' };

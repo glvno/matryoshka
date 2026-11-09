@@ -1,0 +1,119 @@
+{
+  "date": "2026-11-09",
+  "firmware_commit": "774e1ddc9815188c2df1f04b4606b3734171ec3a",
+  "ci_run": 42673451565,
+  "builds": {
+    "default": {
+      "sidecar": {
+        "version": "v1.11.1-DEV",
+        "product": "FM-1_7000000",
+        "size": 610609,
+        "sha256": "2c88aa502c45094765483e74d78e780e087a4fd409e7adc29e21bab138cdaaad",
+        "build": {
+          "ENG_AOT": 0,
+          "ENG_RAMCODE": 0,
+          "ENG_BUF_REUSE": 1,
+          "FELUCCA_SPEED": "-O2"
+        }
+      },
+      "bin_sha256": "c8fda5f5c0d6b807b6bd58b59f4350a5ef519945cc670d3722352d9da6975af8",
+      "bin_size": 554524
+    },
+    "size": {
+      "sidecar": {
+        "version": "v1.11.1-DEV",
+        "product": "FM-1_7000000",
+        "size": 610609,
+        "sha256": "629f3c84606c199b82b0896d22135d5fc7320f471f0339f853c0f117f94d169f",
+        "build": {
+          "ENG_AOT": 0,
+          "ENG_RAMCODE": 0,
+          "ENG_BUF_REUSE": 1,
+          "FELUCCA_SPEED": "0"
+        }
+      },
+      "bin_sha256": "6c146b76dfbefe429a197ee705df1d6dbd56e1f1af977ce1fa6a0b7cf8cc3063",
+      "bin_size": 539184,
+      "pool_bytes": 409084,
+      "pool_capacity": 417792,
+      "ram_code_bytes": 0,
+      "ram_after_code_free": 15408
+    },
+    "aot": {
+      "sidecar": {
+        "version": "v1.11.1-DEV",
+        "product": "FM-1_7000000",
+        "size": 610609,
+        "sha256": "cfb38055c770002b35d9fd58a3bb5c4eab210b3a98d909612fb2ee17cf337f76",
+        "build": {
+          "ENG_AOT": 1,
+          "ENG_RAMCODE": 0,
+          "ENG_BUF_REUSE": 1,
+          "FELUCCA_SPEED": "0"
+        }
+      },
+      "bin_sha256": "d3e7414ba81c5454f4682fbbd73ce11832096759f08ff7cec39fa2e6ec36af8d",
+      "bin_size": 559416,
+      "pool_bytes": 409084,
+      "pool_capacity": 417792,
+      "ram_code_bytes": 0,
+      "ram_after_code_free": 15408
+    },
+    "ram": {
+      "sidecar": {
+        "version": "v1.11.1-DEV",
+        "product": "FM-1_7000000",
+        "size": 610609,
+        "sha256": "3ee951a136b426021e6f7ab31a67ed395e150512fafaec802eb7a2036ba65f61",
+        "build": {
+          "ENG_AOT": 0,
+          "ENG_RAMCODE": 1,
+          "ENG_BUF_REUSE": 1,
+          "FELUCCA_SPEED": "0"
+        }
+      },
+      "bin_sha256": "8634390d636eaddd7f7f1fef2f456b63d5ae4f8fa17b388e2d004a3de486088c",
+      "bin_size": 539184,
+      "pool_bytes": 409084,
+      "pool_capacity": 417792,
+      "ram_code_bytes": 15168,
+      "ram_after_code_free": 240
+    },
+    "aot-ram": {
+      "sidecar": {
+        "version": "v1.11.1-DEV",
+        "product": "FM-1_7000000",
+        "size": 610609,
+        "sha256": "6702e52398072cd27861f38161e8322eab5b806487e66e4ab166e13ead3e93ee",
+        "build": {
+          "ENG_AOT": 1,
+          "ENG_RAMCODE": 1,
+          "ENG_BUF_REUSE": 1,
+          "FELUCCA_SPEED": "0"
+        }
+      },
+      "bin_sha256": "dae918880cca900b5d4a1e830dbc3a7ebc12bae29db4bbff1e7a261331e2c9b8",
+      "bin_size": 559416,
+      "pool_bytes": 409084,
+      "pool_capacity": 417792,
+      "ram_code_bytes": 15168,
+      "ram_after_code_free": 240
+    }
+  },
+  "release": {
+    "run": 42675906172,
+    "commit": "a9ea1246f573a12f91b49d3f3c5e8492bd5f4021",
+    "sidecar": {
+      "version": "v1.12.0",
+      "product": "FM-1_7011200",
+      "size": 610609,
+      "sha256": "ab14bc3ecbfd263bea2e6eb1d5f2386282fd74a9a863dfac5b244dd6e37dea7b",
+      "build": {
+        "ENG_AOT": 0,
+        "ENG_RAMCODE": 0,
+        "ENG_BUF_REUSE": 1,
+        "FELUCCA_SPEED": "-O2"
+      }
+    }
+  }
+}

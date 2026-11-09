@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.12.0 — 2026-11-09
+
 ### Editor and FM-1
 
 - **Live edits stay in step with the FM-1:** a value change that changes the compiled module layout sends the whole patch before further edits. Arming, muting and focus changes wait for an upload to finish. The Harmonizer releases held keys correctly after its split moves, and extended chords follow every inversion step correctly.
@@ -10,11 +12,11 @@
 ### FM-1
 
 - **The supply as M-VAVE's own firmware sets it:** at power-on the FM-1 raises its core supply from 1.26 V to 1.38 V and another internal supply from 1.40 V to 1.60 V, in the stock firmware's order, as Melodee does, before the second core starts (#735). If that setup fails, the FM-1 starts on one core. The CPU clock is not changed. `tools/m1_link.py cpuclock` shows the levels.
-- **The sound engine compiled for speed:** the code the audio interrupt runs (the render, every module, the mix, USB audio's copy) is built at -O2, the rest of the firmware for size as before. The firmware grows 531,088 → 546,236 B of the 581,564 B its slot holds (CI build, #798).
+- **The sound engine compiled for speed:** the code the audio interrupt runs (the render, every module, the mix, USB audio's copy) is built at -O2, the rest of the firmware for size as before. In the standalone #798 comparison, the image grew 531,088 → 546,236 B of its 581,564 B slot (CI measurement). On the rig, the combined batch against 1.11.1 took Verona Drum 1 from 85 % to 81 % and the 808 Kit from 83 % to 80 %, while Oracle V rose from 74 % to 78 % and Init from 21 % to 25 %. These are steady peaks across stopped and running playback at the existing voice counts ([measurements](docs/measurements/2026-11-09-rig-integration.md)). The editor's CPU estimate is recalibrated on all 30 factory patches.
 - **The FM-1 plays what the editor plays when a patch holds modules no one hears:** the editor still leaves them out of what it sends, but no longer the ones before a Random module, a Steps track, a Shift register or an oscillator with analog, which take their randomness from their place in the patch. A P-lock on a module no one hears stays in the patch after you edit the track's locks on the FM-1, and an edit made while a patch goes to the FM-1 waits for it. Canvas sends four fewer modules: 3,759 → 3,730 bytes (the editor's count, #801).
 - **Less memory touched per block, the same sound:** a patch's signal buffers are shared once nothing reads them any more. Oracle V renders through 63 buffers instead of 232 (116 KB → 32 KB), Algo Four 224 → 103, Cassia 1 227 → 92, all 30 factory patches 2,435 → 916 (host count, #800). Every patch that loaded still loads, and nothing more does yet.
 - **Oracle V CPU experiment (off by default, #808):** with `ENG_AOT=1`, the FM-1 runs the Oracle V assembly from code made ahead of time instead of on its interpreter, bit for bit the same output. On the CPU model its peak falls from 128 % to 97 % (the factory patch). Not yet measured on the test rig.
-- **Room for code that runs from RAM:** the RAM after the effect memory's second line area had 96 B left; now 1,484 B (CI build, #725). The USB setup log (`tools/m1_link.py usblog`) keeps the last 64 USB requests and bus events, not 128, and an unused part of the flash driver is left out of the app.
+- **Room for code that runs from RAM:** the #725 CI comparison increased free space after the effect memory's second line area from 96 to 1,484 B. The USB setup log (`tools/m1_link.py usblog`) keeps the last 64 USB requests and bus events, not 128, and an unused part of the flash driver is left out of the app.
 - **A key pressed right after SEL arms a device plays.** A key in the same 3 ms as the arm was cut with the keys the old set held. The naive-owner simulator found it on `<7PH`, with DRUMS and PATTERN armed: key 1 was silent (#748).
 
 ## 1.11.1 — 2026-11-08
