@@ -4,6 +4,7 @@
 
 ### FM-1
 
+- **The sound engine compiled for speed:** the code the audio interrupt runs (the render, every module, the mix, USB audio's copy) is built at -O2, the rest of the firmware for size as before. The firmware grows 531,088 → 546,236 B of the 581,564 B its slot holds (CI build, #798).
 - **Room for code that runs from RAM:** the RAM after the effect memory's second line area had 96 B left; now 1,484 B (CI build, #725). The USB setup log (`tools/m1_link.py usblog`) keeps the last 64 USB requests and bus events, not 128, and an unused part of the flash driver is left out of the app.
 
 ## 1.11.1 — 2026-11-08
