@@ -41,6 +41,8 @@
 #define FL_STATUS_RAM 0                         /* (no caller here: its .ram_text is room for other RAM code, #725) */
 #include "fm1_flash.h"
 #include "fm1_flash_step.h"                     /* the store's writes in steps the interrupts run between (#656) */
+#include "fm1_clock.h"                          /* the CPU clock and the rails, read only (#735, DIAG page 131) */
+#include "fm1_power.h"                          /* the stock V15 supply setup at boot (#735, Melodee's; main.c fm1_cstart) */
 #include "fm1_lcd_hw.h"
 #define RING_PUBLISH() __asm__ volatile("" ::: "memory")
 

@@ -4,6 +4,7 @@
 
 ### FM-1
 
+- **The supply as M-VAVE's own firmware sets it:** at power-on the FM-1 raises its core supply from 1.26 V to 1.38 V and another internal supply from 1.40 V to 1.60 V, in the stock firmware's order, as Melodee does, before the second core starts (#735). If that setup fails, the FM-1 starts on one core. The CPU clock is not changed. `tools/m1_link.py cpuclock` shows the levels.
 - **Room for code that runs from RAM:** the RAM after the effect memory's second line area had 96 B left; now 1,484 B (CI build, #725). The USB setup log (`tools/m1_link.py usblog`) keeps the last 64 USB requests and bus events, not 128, and an unused part of the flash driver is left out of the app.
 - **A key pressed right after SEL arms a device plays.** A key in the same 3 ms as the arm was cut with the keys the old set held. The naive-owner simulator found it on `<7PH`, with DRUMS and PATTERN armed: key 1 was silent (#748).
 

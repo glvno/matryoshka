@@ -1,9 +1,11 @@
 //! One emulated FM-1 running our app.bin: fm1-emu's cpu0 + SoC (+ cpu1 once released, until held), the
 //! front panel driven at the current emulated time, the audio and the LCD read back.
-//! The run loop is fm1-live's (`fm1_soc::machine::run_dual` over `run_blocks`).
+//! The run loop is fm1-live's (`fm1_soc::machine::run_dual` over `run_blocks`), with P33 modelled for cpu0 (p33.rs).
 
 use fm1_core::{Bus, Cpu};
-use fm1_soc::{machine, Action, Soc, RAM_BASE};
+use fm1_soc::{machine, Action, Soc, RAM_BASE, VEC_BASE};
+
+use crate::p33::{Cpu0Bus, P33};
 
 pub const RAM_SIZE: usize = 1 << 20;
 /// app.bin offset 0 runs from here (firmware/app.ld); the XIP window starts 0x120 before it.
@@ -23,6 +25,8 @@ pub struct Machine {
     pub cpu1: Option<Cpu>,
     pub soc: Soc,
     pending_tick: bool,
+    /// P33's power and analog registers (p33.rs)
+    pub p33: P33,
     /// every audio sample so far (interleaved stereo, 16 bit)
     pub audio: Vec<i16>,
 }
@@ -70,6 +74,48 @@ fn run_dual(
         let dt = soc.periph.cycles - c0;
         run_cpu1(c1, soc, dt)?;
     }
+    Ok(())
+}
+
+/// fm1-soc's `run_blocks` (cpu0's block loop: interrupts between blocks, the SoC serviced when a tick is due), with
+/// cpu0 on [`Cpu0Bus`]: P33 modelled (p33.rs)
+fn run_blocks(cpu: &mut Cpu, soc: &mut Soc, p33: &mut P33, n: u32, pending_tick: &mut bool) -> Result<(), String> {
+    let mut done = 0u32;
+    let mut ticked = std::mem::take(pending_tick);
+    while done < n {
+        if ticked || soc.periph.tick() {
+            soc.advance(0);
+        }
+        ticked = false;
+        soc.periph.in_isr = !cpu.irq_levels.is_empty();
+        if soc.periph.any_pending() {
+            if let Some((irq, prio)) = soc.pending_irq() {
+                if cpu.irq_ready(prio) {
+                    let handler = soc.read32(VEC_BASE + 4 * irq as u32);
+                    cpu.interrupt(handler, prio);
+                }
+            }
+        }
+        let mut bus = Cpu0Bus { soc: &mut *soc, p33: &mut *p33 };
+        match cpu.run_fast(&mut bus, n - done) {
+            Ok((0, _)) => {
+                if let Err(e) = cpu.step(&mut bus) {
+                    return Err(format!("{e:?} at pc {:#010x}", cpu.pc));
+                }
+                done += 1;
+            }
+            Ok((k, due)) => {
+                done += k;
+                ticked = due;
+            }
+            Err(e) => return Err(format!("{e:?} at pc {:#010x}", cpu.pc)),
+        }
+        if soc.cpu1_release {
+            break; // core 1 starts now (run_dual)
+        }
+    }
+    // the next instruction's tick may already have happened: carry it
+    *pending_tick = ticked;
     Ok(())
 }
 
@@ -219,7 +265,7 @@ impl Machine {
             a += 4;
         }
         cpu.regs[0] = params;
-        Machine { cpu, cpu1: None, soc, pending_tick: false, audio: Vec::new() }
+        Machine { cpu, cpu1: None, soc, pending_tick: false, p33: P33::new(), audio: Vec::new() }
     }
 
     pub fn ms(&self) -> u64 {
@@ -230,8 +276,8 @@ impl Machine {
     pub fn run_to(&mut self, ms: u64) -> Result<(), String> {
         while self.ms() < ms {
             let jit = self.cpu.jit_on;
-            let Machine { cpu, cpu1, soc, pending_tick, .. } = self;
-            run_dual(cpu1, soc, 100_000, jit, |soc, k| machine::run_blocks(cpu, soc, k, pending_tick))?;
+            let Machine { cpu, cpu1, soc, pending_tick, p33, .. } = self;
+            run_dual(cpu1, soc, 100_000, jit, |soc, k| run_blocks(cpu, soc, p33, k, pending_tick))?;
             // the hold (#271): fm1-emu pauses a core only by the stock firmware's C1_CON bit 2 pulse; our firmware (X0X's
             // and Melodee's hold) sets bit 1 and clears bit 3. Bit 3 clear stops core 1 here; a later start (0x10008 bit
             // 3 again) boots it from its entry word, as the chip does. Checked between stretches of 100,000 instructions.
