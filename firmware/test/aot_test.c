@@ -14,7 +14,7 @@
 static int eng_lane_run(void (*fn)(uint32_t), uint32_t arg);
 static uint32_t fused_hits[2];
 #define AOT_FUSED_HIT(c) (fused_hits[(c)->v & 1u]++)
-static uint32_t pair_hits;
+static uint32_t pair_hits, lost_pair_hits;
 #define AOT_PAIR_HIT() (pair_hits++)
 #define ENG_AOT 1
 #include "../src/engine.c"
@@ -34,14 +34,24 @@ static int eng_lane_run(void (*fn)(uint32_t), uint32_t arg)
         fprintf(stderr, "lane accounting group %u, expected %u\n", (unsigned)arg, (unsigned)group);
         exit(1);
     }
-    return test_lane_run(fn, arg);
+#if ENG_AOT_PAIR
+    if (fn == aot_pair_worker && !lost_pair_hits && getenv("AOT_LOST_PAIR")) {
+        if (lh_mode < 0) lh_init();
+        lh_lost = lh_jobs; /* Lose this paired job, not an earlier polyphonic job. */
+    }
+#endif
+    int accepted = test_lane_run(fn, arg);
+#if ENG_AOT_PAIR
+    if (fn == aot_pair_worker && accepted && lh_skip) lost_pair_hits++;
+#endif
+    return accepted;
 }
 
 #define BLOCKS 700u
 #define MAXOUT (BLOCKS * 256u)
 
 static int32_t outl[2][MAXOUT], outr[2][MAXOUT];
-static uint64_t fused_total, pair_total;
+static uint64_t fused_total, pair_total, lost_pair_total;
 
 static uint32_t rnd(uint32_t *s) { *s = *s * 1664525u + 1013904223u; return *s >> 8; }
 
@@ -117,7 +127,7 @@ static uint32_t run_fresh(const uint8_t *p, uint32_t len, int w, int *bound, int
 {
     int fd[2];
     pid_t pid;
-    uint32_t hdr[4] = {0, 0, 0, 0};
+    uint32_t hdr[5] = {0, 0, 0, 0, 0};
     if (pipe(fd))
         return 0;
     if (!(pid = fork())) {
@@ -127,6 +137,7 @@ static uint32_t run_fresh(const uint8_t *p, uint32_t len, int w, int *bound, int
         hdr[1] = (uint32_t)bd;
         hdr[2] = fused_hits[0] + fused_hits[1];
         hdr[3] = pair_hits;
+        hdr[4] = lost_pair_hits;
         if (write(fd[1], hdr, sizeof hdr) < 0 || write(fd[1], outl[w], hdr[0] * 4u) < 0 || write(fd[1], outr[w], hdr[0] * 4u) < 0)
             _exit(1);
         _exit(0);
@@ -142,6 +153,7 @@ static uint32_t run_fresh(const uint8_t *p, uint32_t len, int w, int *bound, int
     *bound = (int)hdr[1];
     fused_total += hdr[2];
     pair_total += hdr[3];
+    lost_pair_total += hdr[4];
     return hdr[0];
 }
 
@@ -201,6 +213,8 @@ X(0) X(1) X(2) X(3) X(4) X(5) X(6) X(7) X(8) X(9) X(10) X(11) X(12) X(13) X(14) 
 #endif
     if (getenv("AOT_REQUIRE_PAIR") && !pair_total) { puts("aot: paired path was never exercised"); fail = 1; }
     printf("aot: paired jobs executed %llu times\n", (unsigned long long)pair_total);
+    if (getenv("AOT_LOST_PAIR") && !lost_pair_total) { puts("aot: no paired job was lost"); fail = 1; }
+    printf("aot: lost paired jobs recovered %llu times\n", (unsigned long long)lost_pair_total);
     printf(fail ? "aot: outputs differ\n" : "aot: every output bit-identical with and without the compiled assemblies\n");
     return fail;
 }

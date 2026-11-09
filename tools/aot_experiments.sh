@@ -31,7 +31,7 @@ for flags in '1 0 0' '0 1 0' '1 1 0' '0 1 1' '1 1 1'; do
             AOT_TRANSPORT=1 AOT_REQUIRE_PAIR=1 HOST_CORES=$mode HOST_CHAOS=40 \
               build/aot_test --files-only build/aot-capacity/oracle-2-ordered-four-tracks.m1p >> "$log"
         done
-        AOT_TRANSPORT=1 AOT_REQUIRE_PAIR=1 HOST_CORES=2 HOST_LOST=5 \
+        AOT_TRANSPORT=1 AOT_REQUIRE_PAIR=1 AOT_LOST_PAIR=1 HOST_CORES=2 \
           build/aot_test --files-only build/aot-capacity/oracle-2-ordered-four-tracks.m1p >> "$log"
     fi
     # The original ordering deliberately falls back for the two drums spanning a Steps barrier.
