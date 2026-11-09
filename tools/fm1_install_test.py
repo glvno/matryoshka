@@ -396,7 +396,9 @@ OWNER, RIG = 0x01100000, 0x01130000
 MARK = [26492, 12530, 1078, 17828]
 
 
-class RigPin(unittest.TestCase):
+class RigFakes:
+    """two FM-1s by USB location, a rig file, the installer's install stubbed: what RigPin and M1LinkRig share"""
+
     def setUp(self):
         self.old = dict(fi.DELAY)
         fi.DELAY.update(hs=0.05)
@@ -428,6 +430,8 @@ class RigPin(unittest.TestCase):
         code = fi.main([OURS, "--rig", "--yes", *extra], backend=self.backend(usb), out=buf)
         return code, buf.getvalue()
 
+
+class RigPin(RigFakes, unittest.TestCase):
     def test_only_the_ports_at_the_location_are_seen(self):
         usb = self.usb((OWNER, "FM-1_7011000", None), (RIG, "FM-1_7000000", MARK))
         be = self.backend(usb)
@@ -513,6 +517,67 @@ class RigPin(unittest.TestCase):
         self.assertIsNone(fm1_usb.parse_preset_data(identity_packet("FM-1_7000000")))
         self.assertEqual(fm1_usb.parse_location("1130000"), RIG)
         self.assertEqual(fm1_usb.location_text(RIG), "0x01130000")
+
+
+try:
+    import mido  # noqa: F401  (tools/m1_link.py needs it; build/venv has it, CI's Python may not)
+    import m1_link
+except (ImportError, SystemExit):
+    m1_link = None
+
+
+@unittest.skipUnless(m1_link, "needs mido (build/venv/bin/python)")
+class M1LinkRig(RigFakes, unittest.TestCase):
+    """#771: tools/m1_link.py (and the rig scripts on it) reach the rig by its USB location and mark, never the owner's
+    FM-1 of the same name"""
+
+    def setUp(self):
+        super().setUp()
+        self.old_m1, m1_link.RIG_FILE = m1_link.RIG_FILE, self.rig_file
+
+    def tearDown(self):
+        m1_link.RIG_FILE = self.old_m1
+        super().tearDown()
+
+    def rig_link(self, usb):
+        return m1_link.rig_link(backend=lambda loc: self.backend(usb, loc))
+
+    def test_the_rig_beside_the_owners_fm1(self):
+        """the owner's FM-1 first in CoreMIDI's order, the same name: only the rig hears anything"""
+        usb = self.usb((OWNER, "FM-1_7011000", None), (RIG, "FM-1_7000000", MARK))
+        link = self.rig_link(usb)
+        link.out.send(m1_link.frame(fm1_usb.C_PRESET_GET, list(fm1_usb.RIG_STRUCTURE.to_bytes(4, "little")
+                                                              + fm1_usb.RIG_PRESET.encode().ljust(16, b"\0"))))
+        got = [m for m in link.inp.iter_pending() if m.type == "sysex"]
+        self.assertTrue(got, "the rig's answer comes back through the link")
+        self.assertFalse([p for loc, p in usb.sent if loc != RIG])
+
+    def test_another_mark_or_none_is_refused_and_nothing_else_sent(self):
+        for mark in (None, [1, 2, 3, 4]):
+            usb = self.usb((OWNER, "FM-1_7011000", MARK), (RIG, "FM-1_7011000", mark))
+            with self.assertRaises(SystemExit) as e:
+                self.rig_link(usb)
+            self.assertIn("0x01130000", str(e.exception.code))
+            self.assertFalse([p for loc, p in usb.sent if loc != RIG])
+            self.assertTrue(all(p[4] == fm1_usb.C_PRESET_GET for loc, p in usb.sent), "only the mark's read")
+
+    def test_without_a_recorded_location_it_refuses(self):
+        with open(self.rig_file, "w") as f:
+            json.dump({"values": MARK}, f)
+        usb = self.usb((RIG, "FM-1_7000000", MARK))
+        with self.assertRaises(SystemExit):
+            self.rig_link(usb)
+        self.assertFalse(usb.sent)
+
+    def test_by_name_refuses_two_fm1s(self):
+        old = m1_link.fm1s_connected
+        m1_link.fm1s_connected = lambda: 2
+        try:
+            with self.assertRaises(SystemExit) as e:
+                m1_link.Link()
+            self.assertIn("--rig", str(e.exception.code))
+        finally:
+            m1_link.fm1s_connected = old
 
 
 if __name__ == "__main__":

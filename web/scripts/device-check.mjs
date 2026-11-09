@@ -928,7 +928,8 @@ export function checkScenarios(h) {
           `RMS ${db(loud)} dB, ${gaps.length} dropouts${gaps.length ? ` (${gaps.slice(0, 4).map((g) => `${g[1]} ms at ${g[0]}`).join(', ')})` : ''}`);
         await check(`${step} dual core: ${name}, 8 keys held: nothing shed, no overload (DIAG 119 / 127)`, shed === 0 && d127[3] === 0 && d127[7] === 0,
           `shed ${shed}, overload ${d127[3]}, late halves ${late1 - late0} of ${half1 - half0}`);
-        if (REAL) await check(`${step} dual core: ${name}, 8 keys held: the INFO tab's CPU row well under 80 %`, cpu !== null && cpu < 80, `CPU ${cpu} %`);
+        // (the bar the factory patches' voice tops are set by: the CPU estimate at most 90 %, D-870)
+        if (REAL) await check(`${step} dual core: ${name}, 8 keys held: the INFO tab's CPU row at most 90 % (D-870)`, cpu !== null && cpu <= 90, `CPU ${cpu} %`);
         else console.log(`  ${name}: the CPU row read ${cpu} % with 8 keys held (the emulator's timing is no measure: the rig checks it)${cpu === null ? `; the screen: ${cpuWhy}` : ''}`);
       }
       for (const name of ['Monolith D', 'Simple FM']) {

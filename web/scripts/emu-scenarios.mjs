@@ -11,18 +11,21 @@
 // Results, LCD snapshots and page screenshots go to build/emu/scenarios/. Exit code 1 when a check fails.
 //
 // The same scenarios on the test rig, a real FM-1 (the device test mode, #291; npm run device:scenarios):
-//   npm run device:scenarios [-- --install RUN [--gate boot]] [--only NAME,..] [--headed]
+//   npm run device:scenarios [-- --install RUN [--gate full]] [--only NAME,..] [--headed]
 // drives the registered rig (scripts/rig.mjs) over the editor link: its panel (TEST_KEY / TEST_TURN), its screen as text
 // (TEST_SCREEN) and its output's peak (TEST_PEAK). The page sees only the rig's ports; another FM-1 connected is asked
 // HELLO and PRESET_GET (to tell it from the rig) and nothing else. --install RUN first installs that firmware CI run on
-// the rig, after the gate of D-120 (emu:smoke and these scenarios in the emulator, on that run's builds) passed, through
+// the rig, after its gate (below) passed on that run's builds, through
 // fm1_install.py --rig: only on the FM-1 at the rig's USB location, and only when its mark reads back there (#698), so
 // another FM-1 may stay connected. A rig registered before #698 (no location kept) still has to be the one FM-1
-// connected. The rig's USB audio is recorded by that location too (tools/fm1_rec.swift). --gate boot: after the boot check
-// (emu:boot, about 30 s) instead, for the owner's iteration checks on the rig (D-123); merges and releases still take the
-// full gate. Which gate a build passed goes to build/device/scenarios/install.json. --via-emu: the device path against
-// the emulator (m1emu serve), to check the runner itself without a rig. --port NAME: the rig's page looks only at that
-// MIDI port (an emulator serving as a registered rig, to check the rig's path). Results go to build/device/scenarios/.
+// connected. The rig's USB audio is recorded by that location too (tools/fm1_rec.swift). The gate is the boot check
+// (emu:boot, about 30 s, D-123), as the rig's iteration checks and batch runs take it (D-141); --gate full takes D-120's
+// (emu:smoke and these scenarios) instead. Merges and releases take the full gate whatever the rig ran. A release run's
+// package installs as a CI build's does (#783). Which gate a build passed goes to build/device/scenarios/install.json.
+// Before the scenarios a rig gets MIDI OUT and CLOCK OUT on and COUNT-IN OFF (#779), whatever a run before left.
+// --via-emu: the device path against the emulator (m1emu serve), to check the runner itself without a rig. --port NAME:
+// the rig's page looks only at that MIDI port (an emulator serving as a registered rig, to check the rig's path).
+// Results go to build/device/scenarios/.
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -46,7 +49,7 @@ const DEVICE = flag('--device') || flag('--via-emu');   // the device test mode'
 const REAL = flag('--device') && !flag('--via-emu');    // a real FM-1: the registered rig
 const OUT = join(ROOT, DEVICE ? 'build/device/scenarios' : 'build/emu/scenarios');
 const only = opt('--only')?.split(',');
-const GATE = opt('--gate') ?? 'full';   // --install's gate: full (D-120) or boot (the boot check, the rig only: D-123)
+const GATE = opt('--gate') ?? 'boot';   // --install's gate: boot (the boot check, the rig only: D-123, D-141) or full (D-120)
 /** the scenarios' names, read from this file (so --list and a wrong --only answer before anything starts) */
 const SCENARIOS = (() => {
   const src = readFileSync(fileURLToPath(import.meta.url), 'utf8');
@@ -436,8 +439,8 @@ async function launch(url) {
 /** --install RUN: that firmware CI run onto the rig, once the gate passed on its builds: fm1_install.py --rig, which sees
  *  only the ports at the rig's USB location and installs only when the rig's mark reads back there (#698); a rig
  *  registered without its location must be the one FM-1 connected, as before (the installer then takes the first FM-1
- *  that answers). The gate (`--gate`): full = emu:smoke and these scenarios on the run's builds (D-120); boot = the boot
- *  check, emu:boot (D-123: the rig only, for iteration checks) */
+ *  that answers). The gate (`--gate`): boot (the default) = the boot check, emu:boot (D-123: the rig only; D-141: its
+ *  batch runs); full = emu:smoke and these scenarios on the run's builds (D-120) */
 async function installOnRig(run, url) {
   console.log(`-- install: firmware CI run ${run} on the rig (gate: ${GATE === 'boot' ? 'the boot check, emu:boot' : 'emu:smoke and emu:scenarios'})`);
   const dir = await download(run);
@@ -586,6 +589,10 @@ async function main() {
     await emu.tap(B.home);
     await emu.elapse(300);
   }
+  // #779: the settings the checks count on, whatever a run before left. A failed run once left the rig with MIDI OUT off
+  // and COUNT-IN at 1 BAR, both saved, and every later run failed its clock, sandbox and live-take checks. The emulator
+  // starts from its defaults each run
+  if (DEVICE) await settingsFixture();
   /** the editor's page: its errors, and a load after its first (a reload drops the link to the FM-1: say when) */
   const watch = (p) => {
     let loaded = 0;
@@ -638,6 +645,76 @@ async function main() {
     const x = await T();
     return x.loads > n && x.uploadedLoad === x.loads && !x.sandbox && x.live && x.chip === 'synced' && x.status === 'patch on the FM-1' ? x : null;
   }, 10000);
+  /** GLO's settings menu (D-240), opened from a device page and stepped with ALGO to the tab that has the row `row` (MIDI:
+   *  CLOCK OUT, PANEL: COUNT-IN, SYSTEM 1/2: QUICK START, SYSTEM 2/2: 3.5MM OUT); whether it got there. A caller turns a
+   *  knob only after this said yes (#779: K3 turned on the wrong tab switched MIDI OUT off on the rig) */
+  async function menuTo(row) {
+    await emu.tap(B.glo);
+    if (!(await emu.waitText('ALGO tab', 3000))) return false;   // (the menu's hint line: the menu is open)
+    for (let i = 0; i < 6; i++) {                               // (six tabs and pages: MIDI, PANEL, SYSTEM 1/2 and 2/2, INFO, GUIDE)
+      if (await emu.waitText(row, 600 / SLACK)) return true;    // (a probe: not stretched by SLACK)
+      await emu.turn(ENC.algo, 1);
+    }
+    return emu.waitText(row, 1000);
+  }
+  /** GLO again: from the menu back to the device page */
+  async function menuClose() {
+    await emu.tap(B.glo);
+    return emu.waitOwnPage(3000);
+  }
+  /** the value beside the settings row `name` on the tab shown: the text right of the name, on its line (TEST_SCREEN's
+   *  boxes); null when there is no such row, undefined when the screen has no boxes (the emulator without a rig page,
+   *  whose `text` reads pixels) */
+  async function rowValue(name) {
+    let sc;
+    try { sc = await emu.screen(); } catch { return undefined; }
+    const label = sc.texts.find((t) => t.s === name);
+    if (!label) return null;
+    const mid = label.y + label.h / 2;
+    return sc.texts.find((t) => t !== label && t.x > label.x + label.w && t.y <= mid && mid <= t.y + t.h)?.s ?? null;
+  }
+  /** GLO > PANEL > COUNT-IN set to `bars` (0 OFF, 1, 2): K3 two steps left first, which reaches OFF from any value (menu.c
+   *  menu_turn clamps it), then `bars` right, then back to the device page. Its value after (OFF, 1 BAR, 2 BARS), or null
+   *  when the PANEL tab never showed (then nothing was turned) */
+  async function setCountIn(bars) {
+    if (!(await menuTo('COUNT-IN'))) {
+      await menuClose();
+      return null;
+    }
+    await emu.turn(ENC.k3, -2);
+    await emu.elapse(300);
+    if (bars) {
+      await emu.turn(ENC.k3, bars);
+      await emu.elapse(300);
+    }
+    const want = ['OFF', '1 BAR', '2 BARS'][bars];
+    const v = (await rowValue('COUNT-IN')) ?? ((await emu.text(want)) ? want : '?');   // (pixels: the value wanted is on the tab)
+    await menuClose();
+    return v;
+  }
+  /** the run's known start on a rig (#779): MIDI OUT and CLOCK OUT on, COUNT-IN OFF. A turn right sets an ON / OFF row ON
+   *  whatever it was (menu.c menu_turn), and COUNT-IN goes as setCountIn says; a row is turned only once its tab shows.
+   *  What it changed is printed, so a run that inherited a setting says so */
+  async function settingsFixture() {
+    const changed = [];
+    let ok = await menuTo('CLOCK OUT');
+    if (ok) {
+      for (const [k, name] of [[ENC.k3, 'MIDI OUT'], [ENC.k4, 'CLOCK OUT']]) {
+        const was = await rowValue(name);
+        await emu.turn(k, 1);
+        await emu.elapse(300);
+        const now = await rowValue(name);
+        if (was && was !== 'ON') changed.push(`${name} ${was} -> ${now}`);
+        ok &&= now === undefined || now === 'ON';
+      }
+    }
+    await menuClose();
+    const cin = await setCountIn(0);
+    ok &&= cin === 'OFF';
+    if (changed.length) console.log(`  note: a run before left ${changed.join(', ')}: set back`);
+    await check('setup: GLO > MIDI > MIDI OUT and CLOCK OUT on, GLO > PANEL > COUNT-IN OFF (#779)', ok,
+      ok ? '' : `the menu's tabs did not show as expected (COUNT-IN ${cin ?? 'not found'}): bring the FM-1 to its device page and run again`);
+  }
   /** a patch opened in the editor and on the FM-1 (synced), the FM-1 on its device page */
   async function openSynced(name, opener = open) {
     const n = (await T()).loads;
@@ -812,6 +889,10 @@ async function main() {
     await until(async () => (await T()).sandbox, 4000);
     await emu.waitSandboxPage(4000);
   }
+
+  /** why a check of the count-in's click cannot be made here: the click goes to the analog output only (D-820), after
+   *  TEST_PEAK and USB audio took the block (audio.c), so the device path never hears it; the emulator's peak is its I2S */
+  const CLICK_UNHEARD = DEVICE ? 'the click goes to the analog output only (D-820), after TEST_PEAK and USB audio took the sound (audio.c): emu:scenarios hears it on the I2S, the owner by ear' : '';
 
   const scenarios = {
     async connect() {
@@ -1112,6 +1193,10 @@ async function main() {
       await emu.tap(B.play);
       await emu.elapse(300);
       await check('hold: PLAY in step record: step record ends (a live take: the note below records)', !(await emu.text('STEP 1')));
+      // (#779: with GLO > PANEL > COUNT-IN on, the take records from a bar later and the held key below records nothing)
+      const cin = await emu.text('COUNT-IN');
+      await check('hold: the live take records at once (no COUNT-IN on the bar)', !cin,
+        cin ? 'the bar shows COUNT-IN: GLO > PANEL > COUNT-IN is not OFF, so the take records from a bar later (a run before left it set?)' : '');
       await emu.elapse(400);
       // #557: the FM-1 records the time it saw the key held, in whole steps from the step the note landed on (engine.c
       // steps_thru / steps_thru_off: round((held + o) / step), o the snap to the nearest step, under half a step either
@@ -1149,7 +1234,7 @@ async function main() {
       await check('play once: the 808 Kit opens, synced', await openSynced('808 Kit'));
       await emu.key(B.seq, true);
       await emu.elapse(100);
-      const t0 = await emu.ms();
+      const t0 = await emu.now();                  // (#751: the FM-1's clock, the emulator's or the wall clock on a rig)
       await emu.key(B.play, true);
       const win = await emu.windows(48, 25);       // (the count-in's first 1.2 s: the 808 Kit is silent, so only the click)
       const counting = await emu.text('COUNT-IN');
@@ -1158,17 +1243,22 @@ async function main() {
       const st = await T();
       const onsets = win.filter((w, i) => w[1] > LOUD && (i === 0 || win[i - 1][1] <= LOUD)).map((w) => w[0]);
       // (a beat from the onsets after the first: the first click falls inside the first window, so it reads up to 25 ms late)
-      const beat = onsets.length >= 3 ? (onsets[onsets.length - 1] - onsets[1]) / (onsets.length - 2) : onsets.length === 2 ? onsets[1] - onsets[0] : 0, bar = 4 * beat;
+      // (the device path hears no click: there a beat is the tempo's)
+      const heard = onsets.length >= 3 ? (onsets[onsets.length - 1] - onsets[1]) / (onsets.length - 2) : onsets.length === 2 ? onsets[1] - onsets[0] : 0;
+      const beat = CLICK_UNHEARD ? 60000 / ((await tempo()) ?? 120) : heard, bar = 4 * beat;
       console.log(`  play once: the count-in's peaks per 25 ms: ${prof(win)}`);
       await check('play once: SEQ held + PLAY, stopped: the bar counts in (COUNT-IN n)', counting);
       if (bar > 1300)
         await check('play once: the transport stays stopped during the count-in (no Start reached the editor)', !st.deviceRunning && !st.playing,
           `FM-1 ${st.deviceRunning ? 'running' : 'stopped'}, editor ${st.playing ? 'playing' : 'stopped'}`);
-      await loudCheck('play once: a click on each beat of the count-in, a beat apart', Math.max(...win.map((w) => w[1])),
-        beat >= 200 && onsets.length === Math.min(4, Math.floor(1200 / beat) + 1) && onsets.slice(1).every((t, i) => Math.abs(t - onsets[i] - beat) <= 40),
+      if (CLICK_UNHEARD) await skip('play once: a click on each beat of the count-in, a beat apart', CLICK_UNHEARD);
+      else await loudCheck('play once: a click on each beat of the count-in, a beat apart', Math.max(...win.map((w) => w[1])),
+        // (all four in the 1.2 s, or three when the fourth falls past it: the windows round the onsets by up to 25 ms, so a
+        // fourth click near 1200 ms reads either way; a beat of 400 ms put it at 1200 in one run and 1225 in the next)
+        beat >= 200 && (onsets.length === 4 || (onsets.length === 3 && onsets[0] + 3 * beat > 1150)) && onsets.slice(1).every((t, i) => Math.abs(t - onsets[i] - beat) <= 40),
         `click onsets at ${onsets.join(' ')} ms (a beat ${beat} ms)`);
       const seen = await emu.waitText('PLAY ONCE', 5000);
-      const t1 = await emu.ms();
+      const t1 = await emu.now();
       await check('play once: then it plays (PLAY ONCE), not before a bar from the press', seen && t1 - t0 >= bar - 100,
         `PLAY ONCE seen ${t1 - t0} ms after the press, a bar is ${bar} ms`);
       const ran = await until(async () => (await T()).deviceRunning, 3000);
@@ -1192,43 +1282,40 @@ async function main() {
     },
     async recCountIn() {   // D-803 (amended 2026-11-07): REC's count-in clicks on each beat, as play once's; none once it records
       await check('rec count-in: Init opens, synced', await openSynced('Init'));
-      /** GLO > PANEL's COUNT-IN row (K3) a step right or left, then GLO back to the device page */
-      const countIn = async (d) => {
-        await emu.tap(B.glo);
-        for (let i = 0; i < 6 && !(await emu.text('COUNT-IN')); i++) {
-          await emu.turn(ENC.algo, 1);
-          await emu.elapse(300);
-        }
-        await emu.turn(ENC.k3, d);
-        await emu.elapse(400);
-        const ok = await emu.text(d > 0 ? '1 BAR' : 'OFF');
-        await emu.tap(B.glo);
-        await emu.waitOwnPage(3000);
-        return ok;
-      };
-      await check('rec count-in: GLO > PANEL > COUNT-IN 1 BAR', await countIn(1));
-      await emu.key(B.rec, true);                   // (REC acts on its release: the windows from there, so beat 1 is in them)
-      await emu.elapse(80);
-      await emu.key(B.rec, false);
-      const win = await emu.windows(48, 25);       // (Init's track is empty and no key is held: only the click is heard)
-      const counting = await emu.text('COUNT-IN');
-      const onsets = win.filter((w, i) => w[1] > LOUD && (i === 0 || win[i - 1][1] <= LOUD)).map((w) => w[0]);
-      const beat = onsets.length >= 3 ? (onsets[onsets.length - 1] - onsets[1]) / (onsets.length - 2) : onsets.length === 2 ? onsets[1] - onsets[0] : 0;
-      console.log(`  rec count-in: the count-in's peaks per 25 ms: ${prof(win)}`);
-      await check('rec count-in: REC, stopped: the transport starts and the bar counts in (COUNT-IN)', counting);
-      // beat 1 within 300 ms of REC's release (the panel's scan and a main loop pass), then the bar's other beats: all four
-      // in the 1.2 s, or three when the fourth falls past it (the 25 ms windows round the onsets either way)
-      await loudCheck('rec count-in: a click on each beat of the count-in from beat 1, a beat apart', Math.max(...win.map((w) => w[1])),
-        beat >= 200 && onsets[0] <= 300 && (onsets.length === 4 || (onsets.length === 3 && onsets[0] + 3 * beat > 1150))
-          && onsets.slice(1).every((t, i) => Math.abs(t - onsets[i] - beat) <= 40),
-        `click onsets at ${onsets.join(' ')} ms (a beat ${beat} ms)`);
-      await until(async () => !(await emu.text('COUNT-IN')), 5000);
-      await emu.elapse(Math.max(beat, 300));
-      const after = await emu.windows(40, 25);
-      await check('rec count-in: once it records, no click (a second bar heard silent)', Math.max(...after.map((w) => w[1])) <= LOUD, `peaks ${prof(after)}`);
-      await emu.tap(B.play);                        // (PLAY stops the transport and the recording)
-      await emu.elapse(300);
-      await check('rec count-in: COUNT-IN OFF again', await countIn(-1));
+      const set = await setCountIn(1);
+      await check('rec count-in: GLO > PANEL > COUNT-IN 1 BAR', set === '1 BAR', `COUNT-IN ${set ?? 'not found on the menu\'s tabs (nothing turned)'}`);
+      if (set !== '1 BAR') {                        // (nothing to count in: COUNT-IN back to OFF if it was turned at all)
+        if (set) await setCountIn(0);
+        return;
+      }
+      try {
+        await emu.key(B.rec, true);                   // (REC acts on its release: the windows from there, so beat 1 is in them)
+        await emu.elapse(80);
+        await emu.key(B.rec, false);
+        const win = await emu.windows(48, 25);       // (Init's track is empty and no key is held: only the click is heard)
+        const counting = await emu.text('COUNT-IN');
+        const onsets = win.filter((w, i) => w[1] > LOUD && (i === 0 || win[i - 1][1] <= LOUD)).map((w) => w[0]);
+        const beat = onsets.length >= 3 ? (onsets[onsets.length - 1] - onsets[1]) / (onsets.length - 2) : onsets.length === 2 ? onsets[1] - onsets[0] : 0;
+        console.log(`  rec count-in: the count-in's peaks per 25 ms: ${prof(win)}`);
+        await check('rec count-in: REC, stopped: the transport starts and the bar counts in (COUNT-IN)', counting);
+        // beat 1 within 300 ms of REC's release (the panel's scan and a main loop pass), then the bar's other beats: all four
+        // in the 1.2 s, or three when the fourth falls past it (the 25 ms windows round the onsets either way)
+        if (CLICK_UNHEARD) await skip('rec count-in: a click on each beat of the count-in from beat 1, a beat apart', CLICK_UNHEARD);
+        else await loudCheck('rec count-in: a click on each beat of the count-in from beat 1, a beat apart', Math.max(...win.map((w) => w[1])),
+          beat >= 200 && onsets[0] <= 300 && (onsets.length === 4 || (onsets.length === 3 && onsets[0] + 3 * beat > 1150))
+            && onsets.slice(1).every((t, i) => Math.abs(t - onsets[i] - beat) <= 40),
+          `click onsets at ${onsets.join(' ')} ms (a beat ${beat} ms)`);
+        await until(async () => !(await emu.text('COUNT-IN')), 5000);
+        await emu.elapse(Math.max(beat, 300));
+        const after = await emu.windows(40, 25);
+        if (CLICK_UNHEARD) await skip('rec count-in: once it records, no click (a second bar heard silent)', CLICK_UNHEARD);
+        else await check('rec count-in: once it records, no click (a second bar heard silent)', Math.max(...after.map((w) => w[1])) <= LOUD, `peaks ${prof(after)}`);
+        await emu.tap(B.play);                        // (PLAY stops the transport and the recording)
+        await emu.elapse(300);
+      } finally {                                   // (#779: never left at 1 BAR, which a later live take would inherit)
+        const off = await setCountIn(0);
+        await check('rec count-in: COUNT-IN OFF again', off === 'OFF', `COUNT-IN ${off ?? 'not found on the menu\'s tabs (nothing turned)'}`);
+      }
       await emu.snap('rec-count-in');
     },
     async tieRoll() {   // the piano roll (#241) keeps its tie: Silver Box's PATTERN, pattern 1 (empty)

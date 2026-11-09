@@ -83,6 +83,10 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   `build/emu/scenarios/`; about five minutes. A run of every scenario that passes writes `scenarios.passed` (the
   build's sha256) beside the build: in `build/flash/RUN/` for a build in its `emu-midi/` folder, else in the build's own
   folder; a failed run removes it.
+- **Don't change the checkout while its scenarios run (issue #754):** the test scripts' dev servers watch no files
+  (`MATRYOSHKA_NO_WATCH`, set in `web/scripts/rig-link.mjs`), so a commit, merge or regenerated file no longer reloads
+  the editor's page mid-run. Before that, a reload dropped the link to the FM-1 and failed about 13 checks. A page that
+  still loads again says so in the run's output. Run a second set of scenarios from another checkout instead.
 - **Waits (#588):** the emulated FM-1 runs at about 0.75x the wall clock and falls further behind under load, so no
   check waits a fixed wall-clock time for the FM-1. A tap waits for the key's release on the emulator's clock, a pause
   after a press is emulated time (`elapse`, `wait`), and a wait for the screen is one `until` in emulated ms. A wait for
@@ -133,14 +137,18 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   place a step on the row that black key picked. PLAY stops the transport and the recording.
 - **Play once (`playOnce`, issue #632, [D-820](ledger/steps.md#D-820)):** on the 808 Kit, SEQ held + PLAY must count in
   with a click on each beat (the peak in 25 ms windows over the first 1.2 s: one onset a beat, a beat apart, the beat
-  read from the first two), the bar must say `COUNT-IN`, and the transport must stay stopped meanwhile (no Start reaches
+  read from the first two; on the rig the click check is skipped, below), the bar must say `COUNT-IN`, and the transport must stay stopped meanwhile (no Start reaches
   the editor). After the count-in the bar says `PLAY ONCE` and the FM-1's Start reaches the editor; half a pass in it
   still runs, and after the pass it stops by itself (its Stop reaches the editor). SEQ held + PLAY again, then PLAY a beat
   later, must end it with nothing started.
 - **REC's count-in (`recCountIn`, [D-803](ledger/steps.md#D-803)):** on Init (an empty track, no key held), GLO > PANEL >
   COUNT-IN set to 1 BAR, REC from a stop must start the transport, say `COUNT-IN` and click on each beat (as play once's
-  check reads them); once it records, a second bar must be silent. PLAY stops it and COUNT-IN goes back to OFF. The
-  emulator plays the analog output (USB audio is not emulated), where the click is.
+  check reads them); once it records, a second bar must be silent. PLAY stops it and COUNT-IN goes back to OFF, also when
+  a check failed halfway (issue #779). A knob is turned only once its row shows on the menu: two left put COUNT-IN at OFF
+  from any value, then one right at 1 BAR. The emulator plays the analog output (USB audio is not emulated), where the
+  click is. The device test mode's peak (TEST_PEAK) and USB audio are taken before the click is mixed in
+  (`firmware/src/audio.c`), so on the rig and with `--via-emu` the click checks are skipped, and the bar's length comes
+  from the tempo.
 - **When:** every pull request that changes firmware runs `emu:smoke` and `emu:scenarios` on its own CI build before it
   merges ([D-120](ledger/releases.md#D-120)).
 
@@ -165,24 +173,29 @@ link as `m1emu serve` drives the emulator:
   socket, the rig is registered again (alone; the mark stays). `npm run rig -- check` names the rig among the connected
   FM-1s and says whether the FM-1 at the rig's USB location carries the mark. `tools/fm1_usb.py list` prints each USB
   MIDI device's location.
-- **`cd web && npm run device:scenarios [-- --install RUN [--gate boot]] [--only NAME,..] [--headed]`:** the scenarios of
+- **`cd web && npm run device:scenarios [-- --install RUN [--gate full]] [--only NAME,..] [--headed]`:** the scenarios of
   `emu-scenarios.mjs` on the rig. The rig's page (`/__rig` on the dev server, `web/dev/rig-client.ts`) finds the FM-1s,
   asks each its INFO and the mark (nothing else), and drives only the rig; the editor's page sees only the rig's ports.
-  `--install RUN` first installs that firmware CI run on the rig ([D-123](ledger/releases.md#D-123)): after `emu:smoke`
-  and `emu:scenarios` passed on that run's builds, through `tools/fm1_install.py --rig`. That installer sees only the
+  `--install RUN` first installs that firmware CI run on the rig ([D-123](ledger/releases.md#D-123)): after the boot
+  check passed on that run's builds (`--gate full`: after `emu:smoke` and `emu:scenarios`), through `tools/fm1_install.py --rig`. That installer sees only the
   MIDI ports at the rig's USB location, reads the mark there before it sends anything, and refuses when the FM-1 there
   is not the rig (exit code 9). Another FM-1 may stay connected: nothing reaches it (issue #698). `--rig --dry-run` runs
   the same checks and says what it would install where, sending only the identity handshake and the mark's read. A rig registered before
   #698, with no location kept, must still be the one FM-1 connected. A rig left in update mode is finished by hand,
   `tools/fm1_install.py PACKAGE --location 0x01130000`, never by a script. A build whose
-  `scenarios.passed` holds its sha256 is not run through `emu:scenarios` again, as `smoke.passed` skips `emu:smoke`. With `--gate boot`,
-  for the owner's iteration checks, after the boot check (`emu:boot` on the run's two builds, about 30 s) instead; a
-  merge or a release still needs the full checks. Each gate's result is kept next to the download
+  `scenarios.passed` holds its sha256 is not run through `emu:scenarios` again, as `smoke.passed` skips `emu:smoke`. The
+  boot check (`emu:boot` on the run's two builds, about 30 s) is the default since issue #783: the owner's iteration
+  checks and the batch runs of [D-141](ledger/releases.md#D-141) take it. A merge or a release still needs the full
+  checks. RUN may be a run of `release.yml`: its package installs as a CI build's does. Its `M1_EMU_MIDI=1` build for the
+  boot check is that run's `matryoshka-emu-midi` artifact, or, for a release run from before issue #783, the one of the
+  firmware CI run of the same commit (named in `emu-midi/from-run`). Each gate's result is kept next to the download
   (`build/flash/RUN/smoke.passed`, `boot.passed`, `.failed`, `.log`), and `build/device/scenarios/install.json` and the
   run's last lines say which gate the installed build passed. The Install panel of the dev server and `npm run flash`
   install on any FM-1, so they keep `emu:smoke` ([D-171](ledger/firmware-install.md#D-171)). Results and the
   screen as text go to `build/device/scenarios/`. Before the scenarios the runner taps HOME until the screen reports
-  the device page (the menu, GLO, SEQ or a preset list left up), and stops with a message if it never does. The volume
+  the device page (the menu, GLO, SEQ or a preset list left up), and stops with a message if it never does. Then it
+  sets the settings the checks count on (issue #779): GLO > MIDI > MIDI OUT and CLOCK OUT on, GLO > PANEL > COUNT-IN
+  OFF, each turned only once its row shows, and prints what a run before had left changed. The volume
   never stops a run ([D-125](ledger/releases.md#D-125)): on a rig whose firmware reads its peak after MASTER (no INFO
   feature bit 10), a check that hears nothing is skipped as "MASTER down"; skips are counted apart and are no failure.
 - **The owner's own FM-1 beside the rig (issue #698).** The rig's scripts may run while the owner plays their own FM-1
