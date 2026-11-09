@@ -31,6 +31,14 @@
                                            address taking effect; kept while the FM-1 stays powered, so a failed host's log
                                            can be read on another. arm: keep the next 64 entries (a one-shot capture), wrap:
                                            the newest again)
+  tools/m1_link.py blocktime [SECONDS] [--notes N] [--patch NAME] [--json FILE]
+                                          (#802, #803, DIAG pages 132..139: what an audio block's time is made of, over
+                                           SECONDS (default 3): each part of the audio interrupt, the voices, TIMER5's
+                                           interrupts, the second core's busy and idle time and its hand-offs, mean and
+                                           most per block; --patch: a factory patch (firmware/src/presets.h) uploaded live
+                                           first; --notes: hold the first N of the rig survey's 8 notes (C4 E4 G4 B4 C5 E5
+                                           G5 B5) from 1 s before the window to its end; --json: the raw values too. Reads
+                                           only, except that page 139 holds the main loop 5 ms)
   tools/m1_link.py diag [DIS]             (what the last reset left: its cause, the crash record, where a stalled main loop
                                            was; DIS = the build's matryoshka.dis (CI artifact matryoshka-elf) names the functions)
 Every command takes --rig (the test rig: the FM-1 at its registered USB location, checked by its mark) or --location HEX
@@ -469,6 +477,8 @@ def main():
             ents[k] = data[40 + slot // 2][16 * (slot % 2):16 * (slot % 2) + 16]
         st2 = words(page(104))
         print_usblog(st, ct, ents, first, last, st2[0] != n)
+    elif a[0] == "blocktime":
+        blocktime(link, a[1:])
     elif a[0] == "diag":
         raw = []
         for page in range(32):
@@ -479,6 +489,132 @@ def main():
         print_diag(raw, a[1] if len(a) > 1 else None)
     else:
         sys.exit(__doc__)
+
+
+BT_NOTES = [60, 64, 67, 71, 72, 76, 79, 83]           # (tools/rig_cpu_survey.py NOTES)
+# firmware/src/blk_time.h BT_ENTRY .. BT_C1_IDLE, in that order (DIAG pages 133..137, four a page)
+BT_SPANS = [
+    ("entry", "ISR start to the half chosen (pending, ack, free half)"),
+    ("pre", "USB audio's render start, the guard's shed"),
+    ("eng_pre", "engine before the voices (clock, arps, flaws, idle checks)"),
+    ("voices", "the voices: render_split, every module (both cores)"),
+    ("eng_post", "engine after the voices (idle detection, triggers, group cables)"),
+    ("eng_out", "the Output modules' sum and the clamp"),
+    ("mix", "MASTER to the I2S words, loudness check, test meter"),
+    ("clk", "MIDI clock out"),
+    ("uac", "USB audio's tap (the half into its ring)"),
+    ("tail", "click, mono fold, 3.5MM OUT, the half's ack"),
+    ("guard", "the overload guard and its counters"),
+    ("isr", "the whole audio ISR (C), start to end"),
+    ("t5_in", "TIMER5 interrupts nested in the audio ISR (inside the spans above)"),
+    ("t5_out", "TIMER5 interrupts outside the audio ISR"),
+    ("self", "this measurement's own accounting (bt_block)"),
+    ("hand", "core 0 handing segments to core 1"),
+    ("wait", "core 0 waiting for core 1"),
+    ("c0_busy", "core 0 in the voices, less its waits"),
+    ("c1_busy", "core 1 in its jobs"),
+    ("c1_idle", "core 1 waiting for work while the voices render"),
+]
+
+
+def blocktime(link, a):
+    """DIAG pages 132..139 (main.c m1_diag, firmware/src/blk_time.h): one window of SECONDS, optionally on a factory patch
+    with notes held"""
+    import json
+    def opt(name, conv, default):
+        if name in a:
+            k = a.index(name)
+            if k + 1 >= len(a):
+                sys.exit(f"{name} needs a value")
+            v = conv(a[k + 1])
+            del a[k:k + 2]
+            return v
+        return default
+    notes, patch, out = opt("--notes", int, 0), opt("--patch", str, None), opt("--json", str, None)
+    secs = float(a[0]) if a else 3.0
+    if not 0 <= notes <= len(BT_NOTES):
+        sys.exit(f"--notes takes 0..{len(BT_NOTES)}")
+    words = lambda p: [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range((len(p) - 1) // 4)]
+    page = lambda n: words(link.ask(frame(0x2B, [n]), (0x4B, n)))
+    if len(page(132)) < 8:
+        sys.exit("no block-time pages (a firmware from before #802 / #803)")
+    if patch:
+        ps = factory_presets()
+        hit = [d for n, d in ps if n.lower() == patch.lower()] or [d for n, d in ps if n.lower().startswith(patch.lower())]
+        if len(hit) != 1:
+            sys.exit(f"--patch {patch!r}: {'no' if not hit else 'more than one'} factory patch of that name; "
+                     f"names: {', '.join(n for n, _ in ps)}")
+        upload_chunks(link, hit[0])
+        c = crc16(hit[0])
+        link.ack(frame(0x11, [len(hit[0]) & 0xFF, len(hit[0]) >> 8, c & 0xFF, c >> 8]), 0x11, wait=3.0)
+        time.sleep(0.5)
+    held = BT_NOTES[:notes]
+    try:
+        for k in held:
+            link.out.send(mido.Message("note_on", note=k, velocity=100))
+        time.sleep(1.0 if held else 0.1)
+        page(132)                                      # the window starts here
+        time.sleep(secs)
+        w = page(132)
+        spans = []
+        for pg in range(133, 138):
+            x = page(pg)
+            spans += [(x[2 * i], x[2 * i + 1]) for i in range(4)]
+        j = page(138)
+        sp = page(139)
+    finally:
+        for k in held:
+            link.out.send(mido.Message("note_off", note=k))
+    print_blocktime(w, spans, j, sp, patch, held)
+    if out:
+        with open(out, "w") as f:
+            json.dump({"patch": patch, "notes": held, "seconds": secs, "page132": w, "page138": j, "page139": sp,
+                       "spans_ns": {BT_SPANS[i][0]: {"mean": m, "max": x} for i, (m, x) in enumerate(spans[:len(BT_SPANS)])}},
+                      f, indent=1)
+        print(f"raw values: {out}")
+
+
+def print_blocktime(w, spans, j, sp, patch, held):
+    """main.c m1_diag pages 132..139"""
+    us = lambda ns: f"{ns / 1000:8.1f}"
+    f = w[7]
+    blocks = w[0]
+    print(f"{patch or 'the running patch'}, {len(held)} notes held; window {w[2]} ms: {blocks} halves counted, "
+          f"{w[1]} with the engine stopped{'; THE WINDOW FILLED (read sooner)' if f >> 3 & 1 else ''}")
+    print(f"{'2 cores' if f & 1 else '1 core'}, split {'OFF' if f >> 1 & 1 else 'on'}, "
+          f"USB audio {'streaming' if f >> 2 & 1 else 'not streaming'}")
+    if not blocks:
+        print("no halves rendered in the window")
+        return
+    print(f"{'per half (us)':68} {'mean':>8} {'most':>8}")
+    for i, (name, what) in enumerate(BT_SPANS):
+        if name == "isr":
+            parts = sum(m for m, _ in spans[:11])
+            print(f"  {'(the eleven spans above, summed)':66} {us(parts)}")
+        if name == "hand":
+            print("the second core:")
+        m, x = spans[i]
+        print(f"  {what:66} {us(m)} {us(x)}")
+    fixed = spans[11][0] - spans[3][0]
+    print(f"  the audio ISR less the voices (the fixed part, TIMER5 nested included): {fixed / 1000:.1f} us mean")
+    jobs = w[3]
+    print(f"jobs {jobs} ({jobs / blocks:.2f} a half, at most {f >> 8 & 0xFF}), hand-offs not taken {w[6]}, "
+          f"waits that gave core 1 up {f >> 16}")
+    if jobs:
+        print(f"  awake parts per job: core 0 {w[4] / jobs:.2f}, core 1 {w[5] / jobs:.2f} (in all, core 0 {w[4]}, core 1 {w[5]})")
+        print(f"  a job on core 1: mean {j[6] / 1000:.1f} us, most {j[7] / 1000:.1f} us; its hand-off (core 0 starting it to "
+              f"core 1 starting it): mean {j[0] / 1000:.2f} us, most {j[1] / 1000:.2f} us")
+    print(f"TIMER5: {j[4]} interrupts nested in the audio ISR, {j[5]} outside it ({(j[4] + j[5]) / blocks:.1f} a half); "
+          f"each (its C body) mean {j[2] / 1000:.2f} us, most {j[3] / 1000:.2f} us")
+    reads, step, nint, tot, body, nbody, naud, smax = sp
+    print(f"page 139 (5 ms of back-to-back TIMER4 reads): {reads} reads, the shortest step {step} ns (about one mark's "
+          f"cost); {nint} interrupts outside the audio ISR took {tot / 1000:.1f} us in all, their C bodies "
+          f"{body / 1000:.1f} us ({nbody} counted); {naud} audio ISRs skipped; the longest {smax / 1000:.2f} us")
+    if nint and nint == nbody:
+        print(f"  entry + exit per interrupt (the assembly wrapper, the jump, the caches after it): "
+              f"{(tot - body - nint * step) / nint / 1000:.2f} us")
+    elif nint:
+        print(f"  (steps {nint} vs TIMER5 bodies {nbody}: another interrupt or a nesting in the spin; no per-interrupt figure)")
 
 
 UT_NAMES = ["whole screen", "top bar / header", "knob click (its bars)", "page reached (SELECT / ALGO / PRESET)",

@@ -9020,6 +9020,11 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
 #ifndef ENG_PROF
 #define ENG_PROF(stage, node, part) ((void)0)
 #endif
+/* The device's block timing (#802, #803; modular.c, blk_time.h): a timestamp before the voices (0), after them (1) and
+ * before the Output modules' sum (2). Compiled out unless ENG_TMARK is defined. */
+#ifndef ENG_TMARK
+#define ENG_TMARK(at) ((void)0)
+#endif
 
 #define cur_g_parts(nd) ((uint32_t)E.grp[(nd)->grp].parts)
 
@@ -9432,7 +9437,9 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             }
         }
         E.idle_blk = (uint8_t)((E.idle_blk + 1u) % IDLE_CHECK);
+        ENG_TMARK(0);
         render_split(n);
+        ENG_TMARK(1);
         if (n == ENG_BLOCK)
             for (k = 1; k <= E.ngrp; k++) {             /* a released part that has gone quiet goes idle (part_quiet) */
                 const grp_t *g = &E.grp[k];
@@ -9452,6 +9459,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             E.pv[k].key_trig = 0;
         }
         group_cables();                                 /* (#681: after the triggers, so a regroup's restart is the next block's) */
+        ENG_TMARK(2);
         for (k = 0; k < E.nout; k++) {
             const node_t *o = &E.node[E.outputs[k]];
             const inst_t *it = &inst_pool[o->inst0];

@@ -203,6 +203,7 @@ void fm1_timer5_irq(uint32_t *f)                /* f: the saved r0..r3, reti, re
     }
     if (sub == 10u)
         sub = 0;
+    bt_t5(t0);                                  /* (blk_time.h: its time, read only) */
 }
 extern void isr_timer5(void);
 
@@ -281,8 +282,82 @@ static uint32_t batt_us;                        /* the last battery read's time,
  * page 119 the overload guard (audio.c, #458): halves rendered, halves over 85 %, late halves (the hardware played them
  * before their render ended), then since the last read of this page the longest run of halves over 85 %, the longest
  * gap between two audio ISRs (us) and the shortest ISR (us), then parts shed since the last patch load and the guard's
- * mean ISR time (us) */
+ * mean ISR time (us);
+ * pages 132..139 what an audio block's time is made of (#802, #803; blk_time.h; m1_link.py blocktime), read only. Page
+ * 132 takes the window since its last read (and starts the next); 133..138 report that window, 139 measures the
+ * interrupts' entry and exit:
+ *   132: halves counted, halves with the engine stopped, the window (ms), jobs the second core took, the awake parts of
+ *        the segments handed over on core 0's lane and on core 1's, hand-offs not taken, flags (bit 0 two cores, 1 the
+ *        split off, 2 USB audio feeding, 3 the window full, bits 8..15 the most jobs in one block, 16..31 waits that
+ *        gave the second core up)
+ *   133..137: four spans each (blk_time.h BT_ENTRY .. BT_C1_IDLE, in that order), each the mean per half and the most
+ *        in one half, in ns
+ *   138: a job's hand-off (core 0 starting it to the second core starting it), mean and most, ns; TIMER5's interrupt
+ *        (its C body), mean and most, ns; its interrupts nested in the audio ISR and outside it; the second core's job,
+ *        mean and most, ns
+ *   139: (core 0 reads TIMER4 back to back for 5 ms, the interrupts on: the main loop stops that long) the reads, the
+ *        shortest step between two (ns), the steps longer than 1 us with no audio ISR in them (TIMER5's interrupts),
+ *        their total (ns), TIMER5's C bodies over the same time (ns) and their count, the audio ISRs that fell in it, the
+ *        longest of those steps (ns) */
 static void settings_store(void);
+static bt_acc_t bt_last;                        /* the window DIAG page 132 took (pages 133..138 report it) */
+static uint32_t bt_t5_in_n0, bt_t5_out_n0;      /* TIMER5's counts when the running window began */
+
+static uint32_t bt_ns(uint32_t sum, uint32_t n)        /* ticks (24 MHz) in total over n, in ns each */
+{
+    return n ? (uint32_t)((uint64_t)sum * 125u / (3u * (uint64_t)n)) : 0u;
+}
+
+static void bt_take(void)                       /* DIAG 132: the running window into bt_last, and a new one */
+{
+    uint32_t in, out, i, k = fm1__lock();
+    bt_last = bt;
+    in = bt_t5_in_n;
+    out = bt_t5_out_n;
+    for (i = 0; i < sizeof bt / 4u; i++)
+        ((uint32_t *)&bt)[i] = 0;
+    fm1__unlock(k);
+    bt_last.t5_in = in - bt_t5_in_n0;
+    bt_last.t5_out = out - bt_t5_out_n0;
+    bt_t5_in_n0 = in;
+    bt_t5_out_n0 = out;
+    bt.ms0 = fm1_ms;
+}
+
+static void bt_spin(uint32_t *v)                /* DIAG 139: TIMER4 back to back for 5 ms, the interrupts on */
+{
+    uint32_t t0 = fm1_ticks(), prev = t0, t, d, h = eng_halves, b0 = bt_t5_out_ticks, n0 = bt_t5_out_n, b1, n1;
+    uint32_t reads = 0, dmin = 0xFFFFFFFFu, nint = 0, sint = 0, dmax = 0, naud = 0;
+    do {
+        t = fm1_ticks();
+        d = t - prev;
+        prev = t;
+        reads++;
+        if (d > FM1_TICKS_PER_US) {
+            if (eng_halves != h) {              /* the audio ISR (and what nested in it): not counted */
+                h = eng_halves;
+                naud++;
+            } else {
+                nint++;
+                sint += d;
+                if (d > dmax)
+                    dmax = d;
+            }
+        } else if (d < dmin)
+            dmin = d;
+    } while (t - t0 < 5000u * FM1_TICKS_PER_US);
+    b1 = bt_t5_out_ticks;
+    n1 = bt_t5_out_n;
+    v[0] = reads;
+    v[1] = bt_ns(dmin, 1u);
+    v[2] = nint;
+    v[3] = bt_ns(sint, 1u);
+    v[4] = bt_ns(b1 - b0, 1u);
+    v[5] = n1 - n0;
+    v[6] = naud;
+    v[7] = bt_ns(dmax, 1u);
+}
+
 static uint32_t m1_diag(uint32_t page, uint8_t *out)
 {
     const uint8_t *b = (const uint8_t *)&diag_prev;
@@ -484,6 +559,45 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
         v[5] = st_stat.steps;
         v[6] = st_stat.unserved;
         v[7] = st_stat.sus_fail;
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
+    if (page >= 132u && page <= 139u) {         /* #802, #803: the block's time (blk_time.h) */
+        uint32_t v[8], k;
+        const bt_acc_t *w = &bt_last;
+        if (page == 132u) {
+            uint32_t ms = fm1_ms;
+            bt_take();
+            v[0] = w->blocks;
+            v[1] = w->stopped;
+            v[2] = ms - w->ms0;
+            v[3] = w->jobs;
+            v[4] = w->parts[0];
+            v[5] = w->parts[1];
+            v[6] = w->refused;
+            v[7] = (uint32_t)fm1_c1_on | (uint32_t)lanes_off << 1 | (uint32_t)(w->blocks >= BT_BLOCKS_MAX) << 3 |
+                   (w->jobs_max > 255u ? 255u : w->jobs_max) << 8 | (w->gave_up > 65535u ? 65535u : w->gave_up) << 16;
+#if FELUCCA_UAC
+            v[7] |= (uint32_t)uac.feed << 2;
+#endif
+        } else if (page <= 137u) {
+            for (k = 0; k < 4u; k++) {
+                uint32_t q = 4u * (page - 133u) + k;
+                v[2u * k] = q < BT_N ? bt_ns(w->sum[q], w->blocks) : 0u;
+                v[2u * k + 1u] = q < BT_N ? bt_ns(w->max[q], 1u) : 0u;
+            }
+        } else if (page == 138u) {
+            v[0] = bt_ns(w->lat_sum, w->jobs);
+            v[1] = bt_ns(w->lat_max, 1u);
+            v[2] = bt_ns(w->sum[BT_T5_IN] + w->sum[BT_T5_OUT], w->t5_in + w->t5_out);
+            v[3] = bt_ns(w->t5_max, 1u);
+            v[4] = w->t5_in;
+            v[5] = w->t5_out;
+            v[6] = bt_ns(w->sum[BT_C1_BUSY], w->jobs);
+            v[7] = bt_ns(w->job_max, 1u);
+        } else
+            bt_spin(v);
         for (i = 0; i < sizeof v; i++)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
         return sizeof v;
