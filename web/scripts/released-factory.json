@@ -128,6 +128,44 @@
    ]
   },
   {
+   "set": "626f70",
+   "tags": [
+    "v1.11.1"
+   ],
+   "names": [
+    "ORACLE V",
+    "INIT",
+    "SIMPLE FM",
+    "PLUCKED STRING",
+    "MONOLITH D",
+    "SILVER BOX",
+    "HERA 4",
+    "SALLEN 20",
+    "EXPANDER S",
+    "ALGO FOUR",
+    "CANVAS",
+    "WANDERER",
+    "BRIEFCASE 3",
+    "IO 4",
+    "VERNON 100",
+    "8 LIRE",
+    "ELVIRA 2",
+    "SCROUNGE",
+    "MERIDIAN 8",
+    "PERUN 4",
+    "808 KIT",
+    "909 KIT",
+    "<7PH",
+    "SPOKES 6",
+    "CASSIA 1",
+    "BASIC POLY",
+    "DRIFT POLY",
+    "MONO LEAD",
+    "SUPERSAW STACK",
+    "VERONA DRUM 1"
+   ]
+  },
+  {
    "set": "7ba90f",
    "tags": [
     "v1.10.0",
