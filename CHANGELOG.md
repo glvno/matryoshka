@@ -4,6 +4,7 @@
 
 ### FM-1
 
+- **Less memory touched per block, the same sound:** a patch's signal buffers are shared once nothing reads them any more. Oracle V renders through 63 buffers instead of 232 (116 KB → 32 KB), Algo Four 224 → 103, Cassia 1 227 → 92, all 30 factory patches 2,435 → 916 (host count, #800). Every patch that loaded still loads, and nothing more does yet.
 - **Room for code that runs from RAM:** the RAM after the effect memory's second line area had 96 B left; now 1,484 B (CI build, #725). The USB setup log (`tools/m1_link.py usblog`) keeps the last 64 USB requests and bus events, not 128, and an unused part of the flash driver is left out of the app.
 
 ## 1.11.1 — 2026-11-08
