@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 54
+#define N_TYPES 55
 enum {
     T_FM1,
     T_OSC,
@@ -59,6 +59,7 @@ enum {
     T_COMP,
     T_RANGE,
     T_MATRIX,
+    T_HARM,
 };
 
 /* fm1: Main */
@@ -1087,6 +1088,21 @@ enum {
 #define MATRIX_CVBASE 4
 #define MATRIX_NDATA 0
 
+/* harm: Harmonizer */
+#define HARM_I_KEYS 0
+#define HARM_O_KEYS 0
+#define HARM_P_TYPE 0
+#define HARM_P_SUS 1
+#define HARM_P_EXT 2
+#define HARM_P_VOICING 3
+#define HARM_P_LOCK 4
+#define HARM_P_SPLIT 5
+#define HARM_NIN 1
+#define HARM_NOUT 1
+#define HARM_NPAR 6
+#define HARM_CVBASE -1
+#define HARM_NDATA 0
+
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 #define DELAY_SYNC_TOP 520   /* ms: the synced note lengths spread over 1..this (modules.ts) */
@@ -1792,6 +1808,19 @@ static const char *const MATRIX_PN[] = {"I1O1", "I2O1", "I3O1", "I4O1", "I1O2", 
 static const uint8_t MATRIX_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static const char *const MATRIX_UNIT[] = {"", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""};
 static const char *const *const MATRIX_CH[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static const char *const HARM_INNAMES[] = {"KEYS"};
+static const int32_t HARM_MIN[] = {0, 0, 0, -524288, 0, 458752};
+static const int32_t HARM_MAX[] = {196608, 196608, 196608, 524288, 65536, 8323072};
+static const int32_t HARM_DEF[] = {0, 0, 0, 0, 0, 3932160};
+static const int32_t HARM_INC[] = {65536, 65536, 65536, 65536, 65536, 65536};
+static const int32_t HARM_STEP[] = {65536, 65536, 65536, 65536, 65536, 65536};
+static const char *const HARM_PN[] = {"TYPE", "SUS", "EXT", "VOICING", "LOCK", "SPLIT"};
+static const uint8_t HARM_LOG[] = {0, 0, 0, 0, 0, 0};
+static const char *const HARM_UNIT[] = {"", "", "", "", "", ""};
+static const char *const HARM_CH0[] = {"NONE", "MAJ", "MIN", "DIM", 0};
+static const char *const HARM_CH1[] = {"NONE", "SUS2", "SUS4", "SUS2+4", 0};
+static const char *const HARM_CH2[] = {"NONE", "7", "9", "7+9", 0};
+static const char *const *const HARM_CH[] = {HARM_CH0, HARM_CH1, HARM_CH2, 0, ADSR_CH4, ALLOC_CH6};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH, 0, 0, FM1_STEP},   /* fm1 */
@@ -1848,4 +1877,5 @@ static const def_t DEFS[N_TYPES] = {
     {COMP_NIN, COMP_NOUT, COMP_NPAR, 0, COMP_CVBASE, -1, COMP_NDATA, 0, COMP_MIN, COMP_MAX, COMP_DEF, COMP_INC, "COMPARATOR", COMP_PN, COMP_INNAMES, COMP_LOG, COMP_UNIT, COMP_CH, 0, 0, COMP_STEP},   /* comp */
     {RANGE_NIN, RANGE_NOUT, RANGE_NPAR, 0, RANGE_CVBASE, 0, RANGE_NDATA, 0, RANGE_MIN, RANGE_MAX, RANGE_DEF, RANGE_INC, "RANGE", RANGE_PN, RANGE_INNAMES, RANGE_LOG, RANGE_UNIT, RANGE_CH, 0, 0, RANGE_STEP},   /* range */
     {MATRIX_NIN, MATRIX_NOUT, MATRIX_NPAR, 0, MATRIX_CVBASE, -1, MATRIX_NDATA, 15, MATRIX_MIN, MATRIX_MAX, MATRIX_DEF, MATRIX_INC, "MATRIX", MATRIX_PN, MATRIX_INNAMES, MATRIX_LOG, MATRIX_UNIT, MATRIX_CH, 0, 0, MATRIX_STEP},   /* matrix */
+    {HARM_NIN, HARM_NOUT, HARM_NPAR, 0, HARM_CVBASE, -1, HARM_NDATA, 0, HARM_MIN, HARM_MAX, HARM_DEF, HARM_INC, "HARMONIZER", HARM_PN, HARM_INNAMES, HARM_LOG, HARM_UNIT, HARM_CH, 0, 0, HARM_STEP},   /* harm */
 };

@@ -26,8 +26,8 @@ function block(inp: Record<string, number[]>, p: Record<string, number>, used?: 
 
 describe('Matrix (#525)', () => {
   it('is appended after the Range, with four inputs, four outputs and sixteen pins at 0', () => {
-    expect(TYPE_ORDER[TYPE_ORDER.length - 1]).toBe('matrix');
-    expect(TYPE_ORDER[TYPE_ORDER.length - 2]).toBe('range');
+    expect(TYPE_ORDER[TYPE_ORDER.indexOf('matrix') - 1]).toBe('range');
+    expect(TYPE_ORDER[TYPE_ORDER.indexOf('matrix') + 1]).toBe('harm');   // (the Harmonizer came with format 52)
     expect(DEFS.matrix.inputs.map((i) => i.name)).toEqual(['in1', 'in2', 'in3', 'in4', 'p1', 'p2']);
     expect(DEFS.matrix.outputs.map((o) => o.name)).toEqual(['out1', 'out2', 'out3', 'out4']);
     expect(DEFS.matrix.params).toHaveLength(MATRIX_N * MATRIX_N);

@@ -115,25 +115,33 @@ export function arpFeed(p: Patch, arp: ModuleInst): ModuleInst | null {
   return from && (from.type === 'fm1' || from.type === 'steps') ? from : null;
 }
 
-/** where an allocator's keys come from: the Main module, a Steps track (#133), or an Arpeggiator that the Main module's
- * keys or a Steps track feed; null: none */
+/** what feeds a Harmonizer's keys in (#598): the Main module's keys, else null (a Steps track into it plays nothing yet) */
+export function harmFeed(p: Patch, harm: ModuleInst): ModuleInst | null {
+  const c = p.cables.find((x) => x.to.module === harm.id && x.to.port === 'keys' && x.from.port === 'keys');
+  const from = c && p.modules.find((m) => m.id === c.from.module);
+  return from && from.type === 'fm1' ? from : null;
+}
+
+/** where an allocator's keys come from: the Main module, a Steps track (#133), an Arpeggiator that the Main module's
+ * keys or a Steps track feed, or a Harmonizer that the Main module's keys feed (#598); null: none */
 export function keySource(p: Patch, alloc: ModuleInst): ModuleInst | null {
   const cable = p.cables.find((c) => c.to.module === alloc.id && c.to.port === 'keys');
   const from = cable && p.modules.find((m) => m.id === cable.from.module);
   if (!from) return null;
   if (from.type === 'fm1' || from.type === 'steps') return from;
   if (from.type === 'arp' && arpFeed(p, from)) return from;
+  if (from.type === 'harm' && harmFeed(p, from)) return from;
   return null;
 }
 
 /** does an allocator take keys: from a Main module's keys output, directly or through an Arpeggiator */
 export const keyed = (p: Patch, alloc: ModuleInst): boolean => keySource(p, alloc) !== null;
 
-/** the Arpeggiator or Steps module that plays an allocator, or null (the keys come straight from the Main module, or not
- * at all) */
+/** the Arpeggiator, Steps module or Harmonizer that plays an allocator, or null (the keys come straight from the Main
+ * module, or not at all) */
 export function arpOf(p: Patch, alloc: ModuleInst): ModuleInst | null {
   const s = keySource(p, alloc);
-  return s?.type === 'arp' || s?.type === 'steps' ? s : null;
+  return s?.type === 'arp' || s?.type === 'steps' || s?.type === 'harm' ? s : null;
 }
 
 /** where a Drum map's keys come from (#137): the Main module, a Steps track (its keys out) or an Arpeggiator that Main or
@@ -187,7 +195,7 @@ export interface DeviceGroup {
   key: string;
   cfg: PolyCfg;
   modules: Set<number>;
-  /** the Arpeggiator or Steps module (id) whose notes the group plays; absent: the keys */
+  /** the Arpeggiator, Steps module or Harmonizer (id) whose notes the group plays; absent: the keys */
   src?: number;
 }
 
@@ -215,7 +223,7 @@ export function deviceView(source: Patch, compile = false): { patch: Patch; grou
   // an Arpeggiator's keys into a Drum map, which keeps the arpeggiator live (device-compile.ts). No signal flows on them
   const typeOf = (id: number): string | undefined => p.modules.find((m) => m.id === id)?.type;
   const kept = (c: Cable, t: string | undefined): boolean => c.to.port === 'keys' && ((t === 'fm1' && typeOf(c.to.module) === 'steps') || (t === 'steps' && typeOf(c.to.module) === 'arp') || (t === 'arp' && typeOf(c.to.module) === 'drummap'));
-  const keysFrom = (c: Cable): boolean => { const t = typeOf(c.from.module); return (t === 'fm1' || t === 'arp' || t === 'steps') && c.from.port === 'keys' && !kept(c, t); };
+  const keysFrom = (c: Cable): boolean => { const t = typeOf(c.from.module); return (t === 'fm1' || t === 'arp' || t === 'steps' || t === 'harm') && c.from.port === 'keys' && !kept(c, t); };
   let cables: Cable[] = p.cables.filter((c) => !keysFrom(c));
   let next = p.modules.reduce((m, x) => Math.max(m, x.id), 0) + 1;
   const partAt = (alloc: ModuleInst, id: number): ModuleInst => ({ id, type: 'part', x: alloc.x, y: alloc.y, params: {} });

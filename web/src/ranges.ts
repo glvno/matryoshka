@@ -143,6 +143,7 @@ export const OUTPUT_RANGES: Record<string, Record<string, Range>> = {
   alloc: VOICE,
   scope: {},
   arp: { keys: 'keys, for a Voicing (on a scope: 1 while its note plays)' },
+  harm: { keys: 'keys, for a Voicing (its chords; on a scope: nothing)' },
   steps: {
     trig: `${GATE} (high for each step's note)`,
     pitch: `${PITCH}, plus the transpose input`,

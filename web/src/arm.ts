@@ -63,10 +63,12 @@ export function noKeysReach(p: Patch, key: DeviceKey): boolean {
   return !!a && !parentOf(p, a.id) && engineUnreached(p, a);
 }
 
-/** a device that can be armed: it has a keys input, is not an Arpeggiator alone (#395: it is armed with what it plays) and
- * is not an engine no keys cable reaches (noKeysReach) */
+/** the key sources that are never armed alone (#395): an Arpeggiator, a Harmonizer (#598); each is armed with what it plays */
+const KEY_SOURCES = new Set(['arp', 'harm']);
+/** a device that can be armed: it has a keys input, is not an Arpeggiator or a Harmonizer alone (KEY_SOURCES) and is not
+ * an engine no keys cable reaches (noKeysReach) */
 export const armable = (p: Patch, key: DeviceKey, defs: Record<string, ModuleDef> = DEFS): boolean =>
-  !(key[0] === 'm' && p.modules.find((m) => m.id === Number(key.slice(1)))?.type === 'arp') && keysTargets(p, key, defs).length > 0 && !noKeysReach(p, key);
+  !(key[0] === 'm' && KEY_SOURCES.has(p.modules.find((m) => m.id === Number(key.slice(1)))?.type ?? '')) && keysTargets(p, key, defs).length > 0 && !noKeysReach(p, key);
 
 /** the key sources a keys input is fed through, back to Main (#395): the modules whose keys output cables into it, and theirs */
 function feeders(p: Patch, t: { module: number; port: string }, defs: Record<string, ModuleDef>, out: Set<number>): void {
@@ -186,7 +188,7 @@ export function armMask(p: Patch, armed: Iterable<DeviceKey>, defs: Record<strin
 }
 
 /** the reverse: the devices whose modules a mask from the FM-1 names, less the ones armed only as another's key source.
- * An Arpeggiator in the mask stands for the devices its keys play (#418): the FM-1 arms an instrument as its key sources
+ * An Arpeggiator (a Harmonizer the same) in the mask stands for the devices its keys play (#418): the FM-1 arms an instrument as its key sources
  * (engine.c eng_arms names the track and the Arpeggiator in front of it, not its own modules), so the instrument is what
  * was armed */
 export function armedFromMask(p: Patch, words: readonly number[], defs: Record<string, ModuleDef> = DEFS): DeviceKey[] {
@@ -197,7 +199,7 @@ export function armedFromMask(p: Patch, words: readonly number[], defs: Record<s
     if (!on || !p.modules.some((x) => x.id === m.id)) return;
     keys.add(deviceOfModule(p, m.id));
     const type = p.modules.find((x) => x.id === m.id)?.type ?? '';
-    if (type === 'arp')
+    if (KEY_SOURCES.has(type))
       for (const c of p.cables)
         if (c.from.module === m.id && defs[type]?.outputs.find((o) => o.name === c.from.port)?.kind === 'keys') keys.add(deviceOfModule(p, c.to.module));
   });

@@ -130,8 +130,8 @@ function kit(type: string, cfg: KitCfg = {}): { p: Patch; m: ModuleInst } {
       connect(p, DEFS, { module: src.id, port: 'out' }, { module: m.id, port: name });
     }
   }
-  if (type === 'arp') {
-    // an Arpeggiator is heard through the group it plays (its keys cables are gone on the device, device-compile.ts keeps
+  if (type === 'arp' || type === 'harm') {
+    // an Arpeggiator (a Harmonizer the same) is heard through the group it plays (its keys cables are gone on the device, device-compile.ts keeps
     // a group's Arpeggiator): Main keys -> it -> an allocator whose gate reaches the Output
     const alloc = addModule(p, DEFS.alloc, 600, 0);
     connect(p, DEFS, { module: main.id, port: 'keys' }, { module: m.id, port: 'keys' });
