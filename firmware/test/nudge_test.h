@@ -3,7 +3,8 @@
 /* #450, part of panel_test.c (its helpers): the nudges (D-249). A control that cannot act where it is pressed says why in
  * the header, in at most 26 characters: a patch button with no job, PRESET with an empty bank, OCT on a SEQ page of 16
  * steps or fewer, SEL on a device whose keys input no cable reaches (#215), SAVE / REC / SEQ / ENV / SEL in sandbox mode,
- * and MIDI OUT off in sandbox mode. ENV in the settings menu opens the environment. Each nudge ends with the screen as a
+ * and MIDI OUT off in sandbox mode. ENV in the settings menu opens the environment. Then teach_suite (#748): the tempo's
+ * hints, and <7PH's keys with DRUMS, then DRUMS and PATTERN armed. Each nudge ends with the screen as a
  * whole redraw leaves it, and a key edge never draws one (D-228). NUDGE_SNAP=dir writes the screens as PPMs. */
 
 /* the header shows nudge s now, whole, in at most 26 characters */
@@ -39,6 +40,173 @@ static void nudge_snap(const char *name)
         return;
     snprintf(path, sizeof path, "%s/2026-11-01-nudge-%s.ppm", d, name);
     snap_to(path);
+}
+
+/* the loudest sample of the next n blocks */
+static int32_t peak_blocks(uint32_t n)
+{
+    static int32_t l[128], r[128];
+    int32_t top = 0;
+    uint32_t i;
+    while (n--) {
+        eng_render(l, r, 128);
+        for (i = 0; i < 128u; i++) {
+            int32_t a = l[i] < 0 ? -l[i] : l[i], c = r[i] < 0 ? -r[i] : r[i];
+            top = a > top ? a : top;
+            top = c > top ? c : top;
+        }
+    }
+    return top;
+}
+
+/* the loudest sample while key n is held 40 blocks (about 0.12 s); then the key let go and 400 blocks for its tail */
+static int32_t key_peak(uint32_t n)
+{
+    int32_t top;
+    panel_keys(1u << n);
+    loop();
+    top = peak_blocks(40u);
+    panel_keys(0);
+    loop();
+    blocks(400);
+    return top;
+}
+
+/* the environment's cursor onto the first device whose SEL arms module mod (env_listeners); 0 when none does */
+static int env_onto(int mod)
+{
+    uint32_t d;
+    pages_ensure();
+    for (d = 0; d < pg_ndev; d++)
+        if (mod >= 0 && mset_has(env_listeners(d), (uint32_t)mod))
+            break;
+    while (d < pg_ndev && pg_cur_dev != d) {
+        uint32_t was = pg_cur_dev;
+        enc(0, pg_cur_dev < d ? 1 : -1);
+        if (pg_cur_dev == was)
+            break;
+    }
+    return d < pg_ndev && pg_cur_dev == d;
+}
+
+/* #582 / #748: what the naive-owner runs found hard. PLAY held alone shows the tempo and how to change it (D-920). On <7PH
+ * a white key with DRUMS and PATTERN both armed plays PATTERN's Silver Box; with DRUMS armed alone it plays nothing and
+ * says where the drums are (D-249) */
+static void teach_suite(void)
+{
+    int panel, drums, pat;
+    int32_t bpm0, idle, p;
+    char want[96];
+
+    check("(<7PH: DRUMS into its Drum map, PATTERN into the Silver Box)", load("<7PH") == 0 && eng_steps_count() == 2
+          && eng_steps_drummap((uint32_t)eng_steps_module(0)) >= 0 && eng_steps_drummap((uint32_t)eng_steps_module(1)) < 0);
+    pv_gen++;
+    trail_n = 0;
+    page_show(0);
+    screen_patch();
+    later(2000);
+    if (eng_transport_running())
+        tap(BTN_PLAY);
+    eng_arm_mask(s64(0));
+    loop();
+    panel = eng_find(T_FM1);
+    drums = eng_steps_module(0);
+    pat = eng_steps_module(1);
+    check("(Main, stopped, on the device page)", panel >= 0 && !eng_transport_running() && page == 0u);
+    bpm0 = (eng_get_param((uint32_t)panel, FM1_P_TEMPO) + 32768) >> 16;
+    eng_set_param((uint32_t)panel, FM1_P_TEMPO, 97 << 16);
+    ui_full = 1;                                        /* (the footer shows the tempo: drawn whole with it) */
+    loop();
+
+    help_open(HELP_QUICK);                              /* the quick start lists it (D-247) */
+    loop();
+    check("the quick start: a PLAY + PRESET tempo row", help_on == HELP_QUICK && on_screen("PLAY") && on_screen("tempo"));
+    tap(BTN_HOME);
+    check("  HOME closes it", !help_on && page == 0u);
+    later(NUDGE_MS + 100u);
+
+    panel_held |= 1u << BTN_PLAY;                       /* PLAY held alone: the hint after 0.6 s, not before */
+    panel_edges(1u << BTN_PLAY, 0);
+    later(PLAY_HINT_MS - 100u);
+    check("PLAY held 0.5 s: no hint yet", !strstr(msg_text, "TURN PRESET"));
+    later(200u);
+    check("PLAY held 0.7 s: TEMPO 97: TURN PRESET in the header (D-920)", nudged("TEMPO 97: TURN PRESET"));
+    nudge_snap("play-held");
+    check("  the hint ends: the screen as a whole redraw", nudge_ends_whole());
+    panel_held &= ~(1u << BTN_PLAY);
+    panel_edges(0, 1u << BTN_PLAY);
+    loop();
+    check("  PLAY let go: the transport starts, as PLAY does", eng_transport_running());
+    tap(BTN_PLAY);
+    blocks(400);
+    later(NUDGE_MS + 100u);
+    panel_held |= 1u << BTN_PLAY;                       /* PRESET turned within the 0.6 s: the tempo, never the hint */
+    panel_edges(1u << BTN_PLAY, 0);
+    later(200u);
+    enc(6, 1);
+    later(PLAY_HINT_MS);
+    check("PLAY held + PRESET before 0.6 s: the tempo a click up, no hint after it",
+          ((eng_get_param((uint32_t)panel, FM1_P_TEMPO) + 32768) >> 16) == 98 && !strstr(msg_text, "TURN PRESET"));
+    panel_held &= ~(1u << BTN_PLAY);
+    panel_edges(0, 1u << BTN_PLAY);
+    loop();
+    check("  PLAY let go: the transport stays stopped", !eng_transport_running());
+    eng_set_param((uint32_t)panel, FM1_P_TEMPO, bpm0 << 16);
+    m1_patch_param((uint32_t)panel, FM1_P_TEMPO, bpm0 << 16);
+    later(NUDGE_MS + 100u);
+    tap(BTN_PLAY);                                      /* a tap: no hint */
+    check("a PLAY tap: no hint", !strstr(msg_text, "TURN PRESET"));
+    tap(BTN_PLAY);
+    blocks(800);
+    later(NUDGE_MS + 100u);
+
+    idle = peak_blocks(40u);
+    printf("      (<7PH idle: peak %d)\n", (int)idle);
+    p = key_peak(0u);
+    snprintf(want, sizeof want, "nothing armed (WIRED): key 1 (F3) plays the bass (D-333) (peak %d)", (int)p);
+    check(want, p > 1000 && p > 16 * idle);
+
+    tap(BTN_ENV);                                       /* the environment: SEL adds a device to the armed set (D-235) */
+    check("ENV, SEL on DRUMS' device: DRUMS alone armed", page == PAGE_ENV && env_onto(drums)
+          && (tap(BTN_SEL), m64(eng_arm_mask_get()) == (uint64_t)1 << drums));
+    tap(BTN_HOME);
+    later(NUDGE_MS + 100u);
+    check("  the keys reach the Drum map only", page == 0u && eng_keys_drummap() >= 0);
+    p = key_peak(0u);
+    loop();
+    snprintf(want, sizeof want, "DRUMS armed: key 1 (F3, white) plays nothing (peak %d), the header says DRUMS: BLACK KEYS 1-8", (int)p);
+    check(want, p <= idle && nudged("DRUMS: BLACK KEYS 1-8"));
+    check("  the nudge ends: the screen as a whole redraw", nudge_ends_whole());
+    p = key_peak(1u);
+    check("  black key 1 (F#3) plays the Drum map's first row", p > 1000 && p > 16 * idle);
+
+    tap(BTN_ENV);
+    check("ENV, SEL on PATTERN's device: DRUMS and PATTERN both armed", page == PAGE_ENV && env_onto(pat)
+          && (tap(BTN_SEL), m64(eng_arm_mask_get()) == ((uint64_t)1 << drums | (uint64_t)1 << pat)));
+    tap(BTN_HOME);
+    later(DRUM_WHITE_MS + 100u);
+    check("  the keys play notes: a track into no Drum map hears them (eng_keys_drummap none)", page == 0u && eng_keys_drummap() < 0);
+    msg_text[0] = 0;
+    msg_until = 0;
+    p = key_peak(0u);
+    loop();
+    snprintf(want, sizeof want, "DRUMS and PATTERN armed: key 1 (F3) plays PATTERN's Silver Box (peak %d), no nudge", (int)p);
+    check(want, p > 1000 && p > 16 * idle && !strstr(msg_text, "BLACK KEYS"));
+    panel_keys(1u);                                     /* a key held through an arm change still goes quiet (keys_off) */
+    loop();
+    blocks(40);
+    eng_arm_mask(s64((uint64_t)1 << drums));
+    blocks(600);
+    p = peak_blocks(40u);
+    panel_keys(0);
+    loop();
+    blocks(400);
+    snprintf(want, sizeof want, "  F3 held, then DRUMS alone armed: the bass the key held goes quiet (peak %d after 1.7 s)", (int)p);
+    check(want, p <= 16 * idle + 64);
+
+    eng_arm_mask(s64(0));
+    loop();
+    later(NUDGE_MS + 100u);
 }
 
 static void nudge_suite(void)
@@ -347,4 +515,6 @@ static void nudge_suite(void)
     loop();
     cfg.midi_out = 1;
     later(NUDGE_MS + 100u);
+
+    teach_suite();
 }

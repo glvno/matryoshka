@@ -637,6 +637,10 @@ typedef struct { uint8_t trk, pat, at, row; int32_t v; } lock_t;
 #define ENG_THRU 32u
 static uint8_t thru_ring[ENG_THRU][3];
 static volatile uint8_t thru_head, thru_tail;
+/* where in the ring track t's thru_kill came (thru_head then, #748): the keys put in before it go quiet with the ones
+ * sounding, the keys put in after it play (engine.ts thruOff: its note-offs join the track's keys in order). A key pressed
+ * right after SEL armed its device, before the next block, was cut with the old set's keys */
+static volatile uint8_t thru_kill_at[ENG_MAX_TRACKS];
 /* live recording (#135, #139): the notes being recorded (track, note, the step they landed on, velocity, samples since
  * that step began, negative before it) and the recorded ones for the main loop (eng_steps_take: module, note word) */
 #define ENG_RIN 16u
@@ -714,6 +718,7 @@ typedef struct {
     uint16_t trk_rec;                /* bit t: track t records what is played through it (eng_steps_rec) */
     volatile uint16_t thru_kill;     /* bit t: track t lets go of the keys played through it (at its next block) */
     uint8_t nthru;                   /* keys in taken from the ring for this block (m_steps reads its own) */
+    uint8_t blk_q0;                  /* the ring position of blk_thru[0] (for thru_kill_at) */
     uint8_t blk_thru[ENG_THRU][3];
     uint8_t nrin;
     rin_t rin[ENG_RIN];
@@ -3448,8 +3453,10 @@ static void keys_off(void)
     for (g = 0; g < E.nmod; g++)
         if (E.node[g].type == T_DRUMMAP && dm_src(&E.node[g]) == 1u)
             dm_drop(&inst_pool[E.node[g].inst0]);
-        else if (E.node[g].type == T_STEPS && (E.node[g].ksrc || ARMED(g)))
+        else if (E.node[g].type == T_STEPS && (E.node[g].ksrc || ARMED(g))) {
+            thru_kill_at[E.node[g].trk] = thru_head;   /* (the place first, then the bit: the interrupt reads them so) */
             E.thru_kill |= (uint16_t)(1u << E.node[g].trk);
+        }
 }
 
 /* an Arpeggiator was switched (bypassed, or back; engine.ts arpSwitched): what it played lets go, its groups' parts and its
@@ -4584,6 +4591,8 @@ void eng_all_notes_off(void)
     for (i = 0; i < E.nmod; i++)
         if (E.node[i].type == T_DRUMMAP)
             dm_drop(&inst_pool[E.node[i].inst0]);
+    for (i = 0; i < ENG_MAX_TRACKS; i++)
+        thru_kill_at[i] = thru_head;
     E.thru_kill = 0xFFFFu;                       /* the keys played through the tracks end too */
 }
 
@@ -7905,9 +7914,28 @@ static void steps_thru(const node_t *nd, inst_t *it, int32_t len, int ext, int32
     uint32_t t = nd->trk, node = (uint32_t)(nd - E.node), e;
     int32_t semis = (int32_t)(((int64_t)tr * 12 + 32768) >> 16);
     int live = (E.trk_rec >> t & 1u) && it->s.stp.pos >= 0 && it->s.stp.slen > 0 && (ext || E.running);
-    for (e = 0; e < E.nthru; e++) {
-        uint32_t note = E.blk_thru[e][1] & 0x7Fu, vel = E.blk_thru[e][2];
+    uint32_t kill = E.nthru + 1u;                /* (none) */
+    if (E.thru_kill >> t & 1u) {                 /* the routing changed: at its place among this block's keys (#748); one
+                                                  * before this block (a track that did not run then) at the start */
+        int32_t at = (int8_t)(uint8_t)(thru_kill_at[t] - E.blk_q0);
+        kill = at < 0 ? 0u : (uint32_t)at > E.nthru ? E.nthru : (uint32_t)at;
+    }
+    for (e = 0; e <= E.nthru; e++) {
+        uint32_t note, vel;
         int was;
+        if (e == kill) {                         /* the keys played through it so far go quiet */
+            uint32_t j;
+            E.thru_kill &= (uint16_t)~(1u << t);
+            for (j = 0; j < E.trk_nsnd[t];)
+                if (E.trk_snd[t][j].thru)
+                    steps_thru_off(t, node, it, E.trk_snd[t][j].thru - 1u);
+                else
+                    j++;
+        }
+        if (e == E.nthru)
+            break;
+        note = E.blk_thru[e][1] & 0x7Fu;
+        vel = E.blk_thru[e][2];
         if (E.blk_thru[e][0] != node)
             continue;
         steps_thru_off(t, node, it, note);
@@ -7931,15 +7959,6 @@ static void steps_thru(const node_t *nd, inst_t *it, int32_t len, int ext, int32
         it->s.stp.vel = (int32_t)((vel << 16) / 127u);
         E.trk_last[t] = (uint8_t)note;
         it->s.stp.gap = (uint8_t)was;
-    }
-    if (E.thru_kill >> t & 1u) {                 /* the routing changed: the keys played through it go quiet */
-        uint32_t j;
-        E.thru_kill &= (uint16_t)~(1u << t);
-        for (j = 0; j < E.trk_nsnd[t];)
-            if (E.trk_snd[t][j].thru)
-                steps_thru_off(t, node, it, E.trk_snd[t][j].thru - 1u);
-            else
-                j++;
     }
 }
 
@@ -9407,6 +9426,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             steps_keys();
             {                                    /* the keys played into tracks since the last block (eng_note_on) */
                 uint8_t q = thru_tail;
+                E.blk_q0 = q;
                 for (E.nthru = 0; q != thru_head && E.nthru < ENG_THRU; q++, E.nthru++) {
                     E.blk_thru[E.nthru][0] = thru_ring[q % ENG_THRU][0];
                     E.blk_thru[E.nthru][1] = thru_ring[q % ENG_THRU][1];
