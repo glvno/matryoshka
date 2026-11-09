@@ -923,6 +923,64 @@ async function main() {
       await loudCheck('connect: the FM-1 plays Init from a key', p, p > LOUD, `peak ${p}`);
       await emu.snap('connect');
     },
+    async liveCompile() {
+      const fixture = await page.evaluate(async () => {
+        const { newPatch, addModule, connect } = await import('/src/patch.ts');
+        const { DEFS } = await import('/src/modules.ts');
+        const { makeAssembly } = await import('/src/assembly.ts');
+        const p = newPatch(DEFS);
+        p.name = 'T112 LIVE COMPILE';
+        const main = p.modules.find((m) => m.type === 'fm1'), out = p.modules.find((m) => m.type === 'output');
+        addModule(p, DEFS.lfo, 0, 0);
+        const osc = addModule(p, DEFS.osc, 200, 0);
+        connect(p, DEFS, { module: main.id, port: 'pitch' }, { module: osc.id, port: 'pitch' });
+        connect(p, DEFS, { module: osc.id, port: 'out' }, { module: out.id, port: 'l' });
+        makeAssembly(p, [osc.id], 'voice');
+        window.__m1test.save(JSON.stringify(p));
+        return { name: p.name, id: osc.id };
+      });
+      await check('live compile: fixture opens, synced', !!(await openSynced(fixture.name)));
+      await check('live compile: unused LFO starts omitted', (await page.evaluate(() => window.__m1test.deviceModules())) === 3);
+      const immediate = await page.evaluate((id) => {
+        window.__sent.splice(0);
+        window.__m1test.param(id, 'analog', 1);
+        return window.__sent.slice();
+      }, fixture.id);
+      await check('live compile: layout-changing value sends no stale PARAM', !immediate.some((x) => x[1] === 0x20));
+      await until(async () => { const s = await T(); return !s.uploadPending && s.status === 'patch on the FM-1'; }, 15000);
+      const uploaded = await page.evaluate(() => window.__sent.slice());
+      await check('live compile: changed layout uploads before live values', uploaded.some((x) => x[1] === 0x11)
+        && !uploaded.some((x) => x[1] === 0x20) && (await page.evaluate(() => window.__m1test.deviceModules())) === 4);
+      await page.evaluate((id) => {
+        window.__sent.splice(0);
+        window.__m1test.param(id, 'level', 0.5);
+      }, fixture.id);
+      await until(() => page.evaluate(() => window.__sent.some((x) => x[1] === 0x20)), 2000);
+      const ordinary = await page.evaluate(() => window.__sent.slice());
+      await check('live compile: next ordinary value uses the installed index', ordinary.some((x) => x[1] === 0x20 && x[3][0] === 3));
+
+      const load = (await T()).loads;
+      const queued = await page.evaluate(() => {
+        window.__sent.splice(0);
+        window.__m1test.openPadded('Silver Box', 4);
+        const p = JSON.parse(window.__m1test.patchJson()), track = p.modules.find((m) => m.type === 'steps');
+        window.__m1test.arm([`m${track.id}`]);
+        window.__m1test.mute(track.id, true);
+        return window.__sent.slice();
+      });
+      await check('live compile: queued upload holds arms, mute and focus', !queued.some((x) => [0x39, 0x27, 0x29].includes(x[1])));
+      await sentAfter(load);
+      await until(async () => !(await T()).uploadPending, 15000);
+      const final = await page.evaluate(() => window.__sent.slice());
+      const commit = final.findLastIndex((x) => x[1] === 0x11);
+      await check('live compile: arms and mute follow the final upload', commit >= 0
+        && final.some((x, i) => i > commit && x[1] === 0x39) && final.some((x, i) => i > commit && x[1] === 0x27)
+        && !final.some((x, i) => i < commit && [0x39, 0x27, 0x29].includes(x[1])));
+      await page.evaluate(() => {
+        const track = JSON.parse(window.__m1test.patchJson()).modules.find((m) => m.type === 'steps');
+        window.__m1test.mute(track.id, false);
+      });
+    },
     async clock() {   // #473: the FM-1 sends MIDI clock all the time, at its tempo; GLO > MIDI > CLOCK OUT (K4) turns it off
       const ticks = async (ms) => {
         await page.evaluate(() => { window.__clockLog = []; });

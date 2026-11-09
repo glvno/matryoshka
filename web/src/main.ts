@@ -520,6 +520,13 @@ function indexedLiveReady(): boolean {
   queueUpload();
   return false;
 }
+function muteTrack(id: number, on: boolean): void {
+  host.send({ t: 'mute', id, on });
+  if (live()) {
+    if (indexedLiveReady()) device.mute(editor.patch, id, on);
+    else pendingMutes.set(id, on);
+  }
+}
 // ---- Live sync is the default on connect (#171): a patch that fits is offered (Sync / Not now), Not now holds for the visit
 const SYNC_DECLINED = 'matryoshka.sync-declined';
 const syncDeclined = (): boolean => {
@@ -926,13 +933,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     host.mute(false);
     host.send({ t: 'thru', id, note, vel });
   },
-  onMute(id, on) {
-    host.send({ t: 'mute', id, on });
-    if (live()) {
-      if (indexedLiveReady()) device.mute(editor.patch, id, on);
-      else pendingMutes.set(id, on);
-    }
-  },
+  onMute: muteTrack,
   onBypass(id, on) {
     if (fromDevice) uploadGate.forget();
     host.send({ t: 'bypass', id, on });
@@ -2850,10 +2851,13 @@ if (import.meta.env.DEV) {
       focusName: editor.devices.find((d) => d.key === editor.focus?.device)?.name ?? '',
       syncAsk: syncAsk.open, status: $('dev-status').textContent, armed: [...editor.armedSet],
       loads: loadsSeen, uploadedLoad, selected: [...editor.selected], slot: deviceSlot?.slot ?? -1,
+      uploadPending: linkBusy(),
     }),
     patchJson: (): string => JSON.stringify(editor.patch),
     /** the editor's armed set, as its ARM buttons set it (device keys, editor.armedSet) (#191) */
     arm: (keys: string[]): void => editor.setArmed(keys),
+    param: (id: number, name: string, value: number): void => editor.setParam(id, name, value),
+    mute: muteTrack,
     /** a device's first page into focus, by name (Main's knobs; with Live on, the FM-1 follows) */
     focus: (name: string): boolean => {
       const d = editor.devices.find((x) => x.name === name);
