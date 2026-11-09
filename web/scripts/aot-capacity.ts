@@ -90,7 +90,7 @@ for (const voices of [1, 2, 4]) {
   for (const o of d.outputs) wire(p, o.module, o.port, sink.id, 'r');
   save(p, `oracle-${voices}-drum-kit`);
 }
-for (const voices of [1, 2, 4]) {
+for (const voices of [1, 2, 3, 4]) {
   const p = oracle(voices);
   const sink = rightSide(p);
   const t = addModule(p, DEFS.steps, 20, 3000);
@@ -106,7 +106,7 @@ for (const voices of [1, 2, 4]) {
   }
   save(p, `oracle-${voices}-three-drums`);
 }
-for (const voices of [2, 4]) {
+for (const voices of [2, 3, 4]) {
   const p = oracle(voices);
   const sink = rightSide(p);
   for (const [i, name] of ['boom kick', 'snare', 'hihat'].entries()) {
