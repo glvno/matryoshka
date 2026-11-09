@@ -306,11 +306,12 @@ static const struct { const char *was; uint8_t now; } FACTORY_RENAMED[2] = {
 
 /* the factory sets released firmwares wrote (web/scripts/released-factory.json): the set id (0: a firmware from before
    the id, 1.6.0 and older) and which of today's patches it had by name (bit n: PRESET_LIST[n]) */
-#define N_RELEASED_SETS 6
+#define N_RELEASED_SETS 7
 static const struct { uint32_t set; uint64_t has; } RELEASED_SETS[N_RELEASED_SETS] = {
     {0x000000u, 0x1ffffffull},   /* v1.0.0 .. v1.6.0 */
     {0x09c6ebu, 0x1fffffffull},   /* v1.7.0 .. v1.8.1 */
     {0x5a8dc0u, 0x3fffffffull},   /* v1.11.0 */
+    {0x626f70u, 0x3fffffffull},   /* v1.11.1 */
     {0x7ba90fu, 0x3fffffffull},   /* v1.10.0 .. v1.10.1 */
     {0xb9a4a8u, 0x1fffffffull},   /* v1.9.1 */
     {0xec32dbu, 0x1fffffffull},   /* v1.8.2 .. v1.9.0 */
