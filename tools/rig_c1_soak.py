@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
-# Run with build/venv/bin/python; only with the registered rig the ONLY FM-1 connected (npm run rig -- check).
+# Run with build/venv/bin/python. It drives only the registered rig: the FM-1 at its USB location, once its mark reads back there
+# (#771); another FM-1 may stay connected.
 # usage: rig_c1_soak.py OUT.json [--seconds N] [--program P]
 # The second core's soak (#271): factory patch P (program change, default 0 Oracle V), then for N seconds (default 600)
 # a new 4-note chord every 2 s over USB MIDI, and every 30 s the second core's page (DIAG 114: on, self-tests passed /
@@ -29,7 +30,7 @@ ap.add_argument("output")
 ap.add_argument("--seconds", type=int, default=600)
 ap.add_argument("--program", type=int, default=0)
 a = ap.parse_args()
-link = M.Link()
+link = M.rig_link()   # (#771: the rig by its USB location and mark)
 start = cores(link)
 print("start", start, flush=True)
 link.out.send(mido.Message("program_change", program=a.program))

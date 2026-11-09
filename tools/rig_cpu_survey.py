@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
-# Run with build/venv/bin/python; only with the registered rig the ONLY FM-1 connected (npm run rig -- check).
+# Run with build/venv/bin/python. It drives only the registered rig: the FM-1 at its USB location, once its mark reads back there
+# (#771); another FM-1 may stay connected.
 # usage: rig_cpu_survey.py PRESETS_H|DIR OUT.json [name,name,...] [--hold SECONDS] [--run]   (DIR: NAME.bin patches)
 # For each factory patch in PRESETS_H: upload it (live), then the longest audio ISR (DIAG page 127) at rest and with
 # 1 / 4 / 8 notes held over USB MIDI, 2 s each, sampled every 0.5 s; on firmware with DIAG page 119 (#458) also the
@@ -78,7 +79,7 @@ filt = args.names.split(',') if args.names else None
 unknown = set(filt or []) - {name for name, _ in ps}
 if not ps or unknown:
     parser.error("no patches found" if not ps else "unknown patch names: " + ", ".join(sorted(unknown)))
-link = M.Link()
+link = M.rig_link()   # (#771: the rig by its USB location and mark; another FM-1 may stay connected)
 res = []
 for slot, (name, data) in enumerate(ps):
     if filt and name not in filt:

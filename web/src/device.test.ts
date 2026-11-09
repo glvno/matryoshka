@@ -330,6 +330,11 @@ describe('DeviceLink.connect', () => {
     const err = await withMidi([], [], () => new DeviceLink().connect(), refused).catch((e: Error) => e);
     expect((err as Error).message).toMatch(/blocks SysEx for this site/);
   });
+  it('a request with no port open rejects, not a TypeError on null (#754)', async () => {
+    const err = await new DeviceLink().hello().catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toBe('the FM-1 is not connected');
+  });
 });
 
 describe('notFound / sysexRefused', () => {

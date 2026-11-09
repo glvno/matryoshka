@@ -1,6 +1,6 @@
 // scratch: cursor entry + paging with the sequencer running; ack latency per key (a hung main loop answers late)
 import { chromium } from 'playwright-core';
-import { rigPage, startEditor, survey } from './rig-link.mjs';
+import { pickRig, rigPage, startEditor } from './rig-link.mjs';
 const PATCH = process.argv[2] ?? 'ELVIRA 2';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const u32 = (b) => Array.from({ length: Math.floor(b.length / 4) }, (_, i) => (b[4 * i] | b[4 * i + 1] << 8 | b[4 * i + 2] << 16 | b[4 * i + 3] << 24) >>> 0);
@@ -10,8 +10,7 @@ try {
   const ctx = await browser.newContext();
   await ctx.grantPermissions(['midi', 'midi-sysex'], { origin: new URL(editor.url).origin });
   const page = await rigPage(ctx, editor.url);
-  const s = await survey(page);
-  await page.evaluate((x) => window.__rig.pick(x), s.rig);
+  await pickRig(page);   // (#771: the FM-1 with the rig's mark, or a refusal)
   const ev = (f, a) => page.evaluate(([f, a]) => window.__rig[f](...a), [f, a]);
   const shows = async (t) => (await ev('screen', [])).texts.some((x) => x.s.includes(t));
   for (let i = 0; i < 6 && (await ev('screen', [])).page !== 0; i++) { await ev('tap', [8]); await sleep(300); }

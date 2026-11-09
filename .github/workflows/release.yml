@@ -2,7 +2,8 @@ name: release
 # Builds a release package by hand (Actions > release > Run workflow, or gh workflow run release.yml -f version=1.8.0):
 # tools/build.py --release <version> (identity FM-1_7MMmmpp, e.g. FM-1_7010800; version string vX.Y.Z), the same checks and host tests as
 # firmware.yml, and uploads release-<version>/ with the build log. It does not tag or publish: see "Releasing" in
-# docs/ARCHITECTURE.md.
+# docs/ARCHITECTURE.md. It also uploads the M1_EMU_MIDI=1 build of the same sources (matryoshka-emu-midi), for the boot check of the
+# release bytes before they go on the test rig (#783).
 on:
   workflow_dispatch:
     inputs:
@@ -62,4 +63,19 @@ jobs:
         with:
           name: matryoshka-release-${{ inputs.version }}
           path: build/release-${{ inputs.version }}/
+          if-no-files-found: error
+      # after the package's upload, so this build cannot touch it (tools/build.py writes release-<version>/ only with --release)
+      - name: the emulator bridge's build of the same sources (M1_EMU_MIDI=1, never installed; the boot check of the release bytes, docs/EMULATOR.md, #783)
+        run: |
+          export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
+          M1_EMU_MIDI=1 python3 tools/build.py 2>&1 | tee build/build-emu.log
+          test "${PIPESTATUS[0]}" -eq 0
+          if grep -E "warning:" build/build-emu.log | grep -v "SDK .* differs"; then echo "::error::compiler warnings (M1_EMU_MIDI=1)"; exit 1; fi
+          mkdir -p build/emu-midi
+          cp build/matryoshka.bin build/emu-midi/matryoshka-emu.bin
+          cp build/matryoshka.elf build/emu-midi/matryoshka-emu.elf
+      - uses: actions/upload-artifact@v4
+        with:
+          name: matryoshka-emu-midi
+          path: build/emu-midi/
           if-no-files-found: error
