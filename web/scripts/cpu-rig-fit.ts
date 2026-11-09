@@ -21,8 +21,21 @@ import { FM1_PRESETS } from '../src/presets';
 import { deviceView } from '../src/poly';
 
 const ROOT = new URL('../../', import.meta.url).pathname;
-/** the surveys of today's firmware: the transport stopped, then running */
-const NOW = ['docs/measurements/cpu-survey-2026-11-08-rig-release-1.11-head.json', 'docs/measurements/cpu-survey-2026-11-08-rig-release-1.11-head-run.json'];
+/** the surveys of today's firmware: the factory set, the transport stopped, then running (but Cassia 1, which went back
+ * to four voices after them: its own survey, last); the factory patches as they were before #775 cut them (Oracle V and
+ * Hera at five voices), played at those voices on today's firmware, as targets at more voices for today's patches (`at`;
+ * `only` / `skip`: the patches taken from a file, or left out) */
+const NOW: { file: string; at?: Record<string, number>; only?: string[]; skip?: string[] }[] = [
+  { file: 'docs/measurements/cpu-survey-2026-11-08-rig-speed-pass.json', skip: ['Cassia 1'] },
+  { file: 'docs/measurements/cpu-survey-2026-11-08-rig-speed-pass-run.json', skip: ['Cassia 1'] },
+  ...['', '-run'].map((r) => ({
+    file: `docs/measurements/cpu-survey-2026-11-08-rig-speed-pass-before-cuts${r}.json`,
+    at: { 'Hera 4': 5, 'Oracle V': 5 },
+    only: ['Hera 4', 'Oracle V'],
+  })),
+  { file: 'docs/measurements/cpu-survey-2026-11-08-rig-speed-pass-cassia-1.json' },
+  { file: 'docs/measurements/cpu-survey-2026-11-08-rig-speed-pass-cassia-1-run.json' },
+];
 /** the survey of the firmware before (release-1.10 with the second core) and the commit its factory patches are from */
 const BEFORE = { file: 'docs/measurements/cpu-survey-2026-11-05-rig-merged-split.json', commit: 'e3235d64' };
 /** factory patches renamed since a survey: the survey's name, today's */
@@ -45,12 +58,13 @@ const base: CpuTable = { ...CPU, cyclesPerUs: BASE.cyclesPerUs, fixedUs: BASE.fi
 const before = (p: Patch): number => cpuEstimate(p, base).us;
 
 /** a survey's targets: patch name -> voices -> steady peak (us) */
-function targets(files: string[], voices: (name: string) => number | undefined): Map<string, Map<number, number>> {
+function targets(files: { file: string; at?: Record<string, number>; only?: string[]; skip?: string[] }[], voices: (name: string) => number | undefined): Map<string, Map<number, number>> {
   const out = new Map<string, Map<number, number>>();
   for (const f of files)
-    for (const r of read(f)) {
+    for (const r of read(f.file)) {
       const name = RENAMED[r.name] ?? r.name;
-      const n = voices(name);
+      if ((f.only && !f.only.includes(name)) || f.skip?.includes(name)) continue;
+      const n = f.at?.[name] ?? voices(name);
       if (n === undefined) continue;
       for (const ph of PHASES) {
         const s = r[`${ph}_samples`] as number[] | undefined;
@@ -64,13 +78,11 @@ function targets(files: string[], voices: (name: string) => number | undefined):
   return out;
 }
 
-// today's patches; the survey's own voices (Hera 4 played as Hera 5, five voices, until the guard dropped some)
-const SURVEYED_VOICES: Record<string, number> = { 'Hera 4': 5, 'Oracle V': 5, 'Cassia 1': 4 };
+// today's patches at their own voices
 const today = new Map(Object.entries(FM1_PRESETS).map(([n, f]) => [n, f()]));
-const now = targets(NOW, (n) => (today.has(n) ? SURVEYED_VOICES[n] ?? voicesOf(today.get(n)!) : undefined));
-// patches whose structure changed since today's survey and that it could not measure (muted): none of their targets
-// is today's patch (808 Kit, Verona Drum 1: back to their 1.10 layout)
-const CHANGED = new Set(['808 Kit', 'Verona Drum 1']);
+const now = targets(NOW, (n) => (today.has(n) ? voicesOf(today.get(n)!) : undefined));
+// patches whose structure changed since today's survey and that it could not measure (none since #781's survey)
+const CHANGED = new Set<string>([]);
 for (const n of CHANGED) now.delete(n);
 
 // the survey of the firmware before, its own patches
@@ -80,7 +92,7 @@ for (const f of git('ls-tree', '--name-only', BEFORE.commit, 'web/presets/').spl
   const p = validatePatch(JSON.parse(git('show', `${BEFORE.commit}:${f}`)), DEFS);
   old.set(p.name, p);
 }
-const then = targets([BEFORE.file], (n) => (old.has(n) ? voicesOf(old.get(n)!) : undefined));
+const then = targets([{ file: BEFORE.file }], (n) => (old.has(n) ? voicesOf(old.get(n)!) : undefined));
 const rises: number[] = [];
 for (const [n, t] of now) {
   const p = today.get(n)!, q = old.get(n);

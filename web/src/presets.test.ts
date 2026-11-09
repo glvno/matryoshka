@@ -146,11 +146,11 @@ describe('factory <7PH (a groove box): the 909 Kit\'s drums and a Silver Box on 
 // the owner, 2026-10-23 (docs/ledger/patches-and-presets.md D-336): every melodic factory patch that can afford them has an
 // Arpeggiator on ARP, bypassed, and a 16-step PATTERN track feeding it: Main's keys -> PATTERN -> the arpeggiator -> the
 // voice. The drum patches get neither. Oracle V and Algo Four ran past the CPU estimate's warning with them (accepted);
-// since the engine's overhead cut (#289) they estimate under it (about 78 % and 80 %). Cassia 1 uses two voices.
+// since the engine's overhead cut (#289) they estimate under it (about 78 % and 80 %). Cassia 1 uses four voices.
 // Io 4 (the Jupiter-4's panel) gets the arpeggiator alone: with PATTERN it shed voices on the rig (factory-build.ts
 // players). Wanderer and Vernon 100 have room for PATTERN since format 51 (#667), Briefcase 3 since the 128-module cap (#738)
 const NO_PLAYERS = ['808 Kit', '909 Kit', '<7PH', 'Spokes 6', 'Verona Drum 1'];
-const PAST_WARNING: string[] = ['Hera 4', 'Algo Four', 'Canvas', 'Briefcase 3', '8 Lire'];   // (the CPU model refitted on the test rig, 2026-11-08: each estimate reads its rig figure)
+const PAST_WARNING: string[] = ['Hera 4', 'Canvas'];   // (the CPU model refitted on the test rig after the speed pass of #781: each estimate reads its rig figure)
 /** the most a patch past the warning estimates (its rig figure and a point) */
 const PAST_MAX: Record<string, number> = { 'Hera 4': 0.9, 'Algo Four': 0.9, 'Canvas': 0.91, 'Briefcase 3': 0.92, '8 Lire': 0.82 };   // (Canvas: 92 % on the rig, muted there with eight keys held: patches-and-presets.md, Not yet settled)
 const ARP_ONLY = ['Io 4', 'Algo Four', 'Canvas'];   // (Wanderer and Vernon 100 have room for PATTERN since format 51, #667, Briefcase 3 since #738;

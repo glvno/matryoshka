@@ -1,8 +1,8 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
-# Is the C engine's output unchanged? Renders every golden kit (build/golden, made by tools/golden.sh) with the engine
-# of git revision BASE and with the working tree's, and compares the two outputs sample for sample (for optimizations
-# that must not change a single bit).
+# Is the C engine's output unchanged? Renders every golden kit (build/golden, made by tools/golden.sh) and every factory
+# patch (firmware/test/exact_factory.c) with the engine of git revision BASE and with the working tree's, and compares the
+# two outputs sample for sample (for optimizations that must not change a single bit).
 #   tools/engine_exact.sh [BASE]        (default HEAD)
 set -e
 cd "$(dirname "$0")/.."
@@ -36,5 +36,15 @@ for b in fm-2op simple-fm poly-feedback poly-shared part-flaws side-input-fanout
         echo "DIFFERS $b transitions"; fail=1
     fi
 done
-[ $fail = 0 ] && echo "all $n kits and transition checks bit-identical to $BASE"
+# Every factory patch, the working tree's set for both engines (#781: the kits hold none of them).
+cp firmware/src/presets.h "$T/base/src/presets.h"
+cp firmware/test/exact_factory.c "$T/base/test/"
+gcc -O1 -w -o "$T/base_factory" "$T/base/test/exact_factory.c" -lm -lpthread
+gcc -O1 -w -o "$T/new_factory" firmware/test/exact_factory.c -lm -lpthread
+"$T/base_factory" > "$T/out/factory.base"
+"$T/new_factory" > "$T/out/factory.new"
+if ! cmp -s "$T/out/factory.base" "$T/out/factory.new"; then
+    diff "$T/out/factory.base" "$T/out/factory.new" | sed -n 's/^> /DIFFERS factory patch /p'; fail=1
+fi
+[ $fail = 0 ] && echo "all $n kits, the transition checks and the $(wc -l < "$T/out/factory.new" | tr -d ' ') factory patches bit-identical to $BASE"
 exit $fail

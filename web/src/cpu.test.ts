@@ -96,23 +96,28 @@ describe('CPU estimate', () => {
     expect(reverb).toBeLessThan(0.3);
   });
 });
-// The factory patches on the test rig (docs/measurements/2026-11-08-rig-release-1.11.md: the longest audio interrupt at
+// The factory patches on the test rig (docs/measurements/2026-11-08-rig-speed-pass.md: the longest audio interrupt at
 // rest and with 1 / 4 / 8 keys held, the transport stopped and running), which the scale and the engines' factors were fitted
 // to (scripts/cpu-rig-fit.ts, frozen in cpu-costs.ts SURVEY and RIG). The estimate is each patch's worst case, every voice
 // playing; the rig's figure is its steady peak (the median of a phase's samples after the first, the most over the phases).
 // A patch whose overload guard dropped parts counts at the voices it kept; one the guard muted is left out. A new survey
 // after large engine or firmware changes replaces the files and the fit.
-describe('CPU estimate against the test rig (docs/measurements/cpu-survey-2026-11-08-rig-release-1.11-head*.json)', () => {
+describe('CPU estimate against the test rig (docs/measurements/cpu-survey-2026-11-08-rig-speed-pass*.json)', () => {
   type Reading = { name: string } & Record<string, number[] | number>;
   const read = (f: string) => JSON.parse(readFileSync(new URL(`../../docs/measurements/${f}`, import.meta.url), 'utf8')) as Reading[];
-  const files = [read('cpu-survey-2026-11-08-rig-release-1.11-head.json'), read('cpu-survey-2026-11-08-rig-release-1.11-head-run.json')];
+  // Cassia 1 went back to four voices after the factory set's survey: its own survey of the four-voice patch
+  const own = (f: Reading[]) => f.filter((r) => r.name === 'Cassia 1');
+  const rest = (f: Reading[]) => f.filter((r) => r.name !== 'Cassia 1');
+  const files = [
+    rest(read('cpu-survey-2026-11-08-rig-speed-pass.json')), rest(read('cpu-survey-2026-11-08-rig-speed-pass-run.json')),
+    own(read('cpu-survey-2026-11-08-rig-speed-pass-cassia-1.json')), own(read('cpu-survey-2026-11-08-rig-speed-pass-cassia-1-run.json')),
+  ];
   const median = (v: number[]): number => [...v].sort((a, b) => a - b)[(v.length - 1) >> 1];
   const voicesOf = (p: Patch): number => Math.max(1, ...deviceView(p, true).groups.map((g) => g.cfg.parts));
-  // renamed since the survey; played there with more voices than today (the guard dropped the rest); changed since (808 Kit,
-  // Verona Drum 1: muted there, back to their 1.10 layout, D-879, D-880)
-  const RENAMED: Record<string, string> = { 'Hera 5': 'Hera 4' };
-  const SURVEYED: Record<string, number> = { 'Hera 4': 5, 'Oracle V': 5, 'Cassia 1': 4 };
-  const CHANGED = new Set(['808 Kit', 'Verona Drum 1']);
+  // renamed since the survey; played there with more voices than today; changed since (none)
+  const RENAMED: Record<string, string> = {};
+  const SURVEYED: Record<string, number> = {};
+  const CHANGED = new Set<string>([]);
   /** the rig's steady peak (us) of each factory patch at its own voices */
   const rig = new Map<string, number>();
   for (const f of files)
