@@ -24,7 +24,7 @@ const rowBytes = (bin: Uint8Array): number[] | undefined => {
 
 /** the factory patches whose VOICES row has a top (D-870 as amended 2026-11-08: the CPU model recalibrated on the test
  * rig, the top the most voices whose estimate stays at CPU_VOICE_TOP or under) */
-const TOPS: Record<string, number> = { 'Oracle V': 4, 'Expander S': 6, 'Cassia 1': 2 };
+const TOPS: Record<string, number> = { 'Oracle V': 4, 'Expander S': 6, 'Cassia 1': 4 };
 
 describe("the FM-1's VOICES row top", () => {
   for (const [name, top] of Object.entries(TOPS))

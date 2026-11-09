@@ -630,14 +630,13 @@ after.push(() => {
   return p;
 });
 
-// Cassia 1 (after the Casio CZ-1): two voices on the FM-1 (with three or four, the test rig's overload guard dropped voices,
-// 2026-11-08; the owner in chat, "recs"), Main's aftertouch into its `at`, bend into `bend`, and the
-// players (D-336) as every melodic patch
+// Cassia 1 (after the Casio CZ-1): four voices on the FM-1 (two in 1.11.0, when the test rig's overload guard dropped voices
+// with three or four; back to four after the speed pass of #781, 77 % on the rig), Main's aftertouch into its `at`, bend
+// into `bend`, and the players (D-336) as every melodic patch
 after.push(() => {
   const x = around('Cassia 1', 'Cassia 1');
   plugIn(x.p, x.main.id, 'at', x.a, 'at');
   plugIn(x.p, x.main.id, 'bend', x.a, 'bend'); // the bend range (#658)
-  x.set('voices', 2); // its CPU cap (the test rig, 2026-11-08)
   level(x.p, { chord: true });
   return players(validatePatch(structuredClone(x.p), DEFS));
 });
