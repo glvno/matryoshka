@@ -5678,7 +5678,8 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv)
             lcv = cv[i];
             g = svf_g(exp2_scale(base, mul16(lcv, cvamt)));
             gc = g;
-            svf_stage(&c, g, k24);
+            if (!osc && !drv)                        /* (with osc or drive stage 1 is solved again below, every sample) */
+                svf_stage(&c, g, k24);
             if (st2)
                 svf_stage(&d, g, SQRT2_24);
         }
