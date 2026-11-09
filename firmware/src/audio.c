@@ -24,6 +24,7 @@ static volatile uint8_t out_off;                   /* GLO > SYSTEM > 3.5MM OUT (
 /* the device test mode's meter (TEST_PEAK, #291): before the MASTER pot (as at its default, so a script does not depend
  * on where the knob is), after mute */
 #include "test_peak.h"
+#include "blk_time.h"                              /* the block's time, measured (#802, #803: DIAG pages 132..139) */
 static volatile uint32_t eng_us_last, eng_us_max, eng_halves;
 /* fm1_ms of the last half the patch was heard in (a sample of either side past SND_FLOOR, before MASTER): a flash write
  * the FM-1 makes by itself waits for SND_REST_MS of silence (tempo_glo.h gt_quiet, #651), since it stops the sound */
@@ -73,11 +74,15 @@ static void eng_overload_clear(void)
 
 void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) */
 {
+    uint32_t t_in = fm1_ticks();                /* (blk_time.h: the marks bt_m, read only) */
     uint8_t p = fm1_audio_pending();
     fm1_audio_ack_aux(p);
     if (p & FM1_AUDIO_HALF) {
         uint32_t half = fm1_audio_free_half(), i, t0 = fm1_ticks(), all, late;
         int32_t *o = &abuf[half * HALF_WORDS];
+        bt_in_audio = 1;
+        bt_m[BT_M_IN] = t_in;
+        bt_m[BT_M_T0] = t0;
 #if FELUCCA_UAC
         uac_render_start();
 #endif
@@ -90,9 +95,11 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
                 eng_overload = 1;
             }
         }
+        bt_m[BT_M_REND0] = bt_eng[0] = bt_eng[1] = bt_eng[2] = fm1_ticks();   /* (no patch: the engine marks none) */
         if (eng_run) {
             uint32_t loud = 0;
             eng_render(eng_l, eng_r, HALF_FRAMES);
+            bt_m[BT_M_REND1] = fm1_ticks();
             int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)master_q12 * patch_gain) >> 16);
             for (i = 0; i < HALF_FRAMES; i++) {         /* Q16 (+-1.0) * MASTER -> 24 bit in the low bits, -6 dBFS ceiling */
                 o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
@@ -109,10 +116,13 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
             for (i = 0; i < HALF_WORDS; i++)
                 o[i] = 0;
         }
+        bt_m[BT_M_MIX1] = fm1_ticks();
         clk_out_block(t0, eng_run);
+        bt_m[BT_M_CLK1] = fm1_ticks();
 #if FELUCCA_UAC
         uac_tap(o, HALF_FRAMES);
 #endif
+        bt_m[BT_M_TAP1] = fm1_ticks();
         {
             int clk = eng_run && eng_click_mix(eng_l, eng_r, HALF_FRAMES);   /* a count-in's click (play once's, REC's):
                                                                               * the analog output only, not USB audio (D-820) */
@@ -139,7 +149,8 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
             for (i = 0; i < HALF_WORDS; i++)
                 o[i] = 0;
         fm1_audio_ack_half();
-        all = fm1_ticks() - t0;                         /* includes the key scan and USB poll nested in the ISR */
+        bt_m[BT_M_ACK1] = fm1_ticks();
+        all = bt_m[BT_M_ACK1] - t0;                     /* includes the key scan and USB poll nested in the ISR */
         late = fm1_audio_free_half() != half;           /* the hardware already plays the half just written */
         ovl_late += late;
         if (all > OVL_TICKS) {
@@ -160,6 +171,7 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         if (eng_us_last > eng_us_max)
             eng_us_max = eng_us_last;
         eng_halves++;
+        bt_block(eng_run);
     }
 }
 extern void isr_alnk0(void);
