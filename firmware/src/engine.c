@@ -6322,9 +6322,43 @@ static void m_mixer(const node_t *nd, inst_t *it, uint32_t n)
     const esig_t *a = it->in[MIXER_I_IN1], *b = it->in[MIXER_I_IN2], *c = it->in[MIXER_I_IN3], *d = it->in[MIXER_I_IN4];
     esig_t *out = it->out[0];
     int32_t la = EF(it, MIXER_P_L1), lb = EF(it, MIXER_P_L2), lc = EF(it, MIXER_P_L3), ld = EF(it, MIXER_P_L4);
-    uint32_t i;
-    for (i = 0; i < n; i++)
-        out[i] = mul16(a[i], la) + mul16(b[i], lb) + mul16(c[i], lc) + mul16(d[i], ld);
+    const esig_t *x[4];
+    int32_t l[4];
+    uint32_t i, k = 0;
+    /* only the inputs that add something: an unplugged one reads the zero buffer, a level of 0 adds 0 (#781) */
+#define MIXER_TAKE(p, lv) if ((p) != zero_buf && (lv)) { x[k] = (p); l[k] = (lv); k++; }
+    MIXER_TAKE(a, la)
+    MIXER_TAKE(b, lb)
+    MIXER_TAKE(c, lc)
+    MIXER_TAKE(d, ld)
+#undef MIXER_TAKE
+    (void)nd;
+    switch (k) {
+    case 0:
+        fill(out, 0, n);
+        break;
+    case 1:
+        for (i = 0; i < n; i++)
+            out[i] = mul16(x[0][i], l[0]);
+        break;
+    case 2: {
+        const esig_t *x0 = x[0], *x1 = x[1];
+        const int32_t l0 = l[0], l1 = l[1];
+        for (i = 0; i < n; i++)
+            out[i] = mul16(x0[i], l0) + mul16(x1[i], l1);
+        break;
+    }
+    case 3: {
+        const esig_t *x0 = x[0], *x1 = x[1], *x2 = x[2];
+        const int32_t l0 = l[0], l1 = l[1], l2 = l[2];
+        for (i = 0; i < n; i++)
+            out[i] = mul16(x0[i], l0) + mul16(x1[i], l1) + mul16(x2[i], l2);
+        break;
+    }
+    default:
+        for (i = 0; i < n; i++)
+            out[i] = mul16(a[i], la) + mul16(b[i], lb) + mul16(c[i], lc) + mul16(d[i], ld);
+    }
 }
 
 
