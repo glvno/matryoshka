@@ -26,7 +26,7 @@ export async function openDeviceSettings(dialog: HTMLDialogElement, device: Sett
       try {
         const saved = await device.deviceSettings({ name: name.value, returnLevel: Number(level.value) });
         name.value = saved.name; level.value = String(saved.returnLevel);
-        status.textContent = 'Saved. Restart the FM-1 to apply its name. USB return level is ready now.';
+        status.textContent = 'Saved. Reconnect USB or restart the FM-1 to apply its name. USB return level is ready now.';
       } catch (err) { status.textContent = err instanceof Error ? err.message : String(err); }
       finally { busy(false); }
     };

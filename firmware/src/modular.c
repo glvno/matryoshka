@@ -98,6 +98,9 @@ static void bt_parts(uint32_t group)       /* the awake parts of the segment jus
 }
 #include "presets.h"
 #define FELUCCA_DEVICE_IDENTITY 1
+#define DI_LOCK() fm1__lock()
+#define DI_UNLOCK(k) fm1__unlock(k)
+#define DEVICE_IDENTITY_COMMIT() di_usb_commit()
 #include "device_identity.h"
 #include "audio.c"
 #define UR_MEM ENG_LOWRAM

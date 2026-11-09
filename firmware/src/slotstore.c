@@ -162,6 +162,9 @@ static int sl_write(uint32_t id, const char *name, const uint8_t *p, uint32_t le
         rc = -1;
     if (rc)
         return rc;                               /* the old record (if any) is untouched */
+#ifdef DEVICE_IDENTITY_COMMIT
+    if (id == SL_SETTINGS) DEVICE_IDENTITY_COMMIT();
+#endif
     old = sl_sec[id];
     sl_sec[id] = (uint8_t)s;
     sl_live[s] = 1;

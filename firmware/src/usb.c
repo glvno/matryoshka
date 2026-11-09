@@ -599,9 +599,23 @@ static const uint8_t STR2[] = {22, 3, 'M', 0, 'a', 0, 't', 0, 'r', 0, 'y', 0, 'o
 #endif
 
 #if FELUCCA_DEVICE_IDENTITY
-/* Snapshot at boot: changing the saved name never changes descriptors on
- * an attached bus. Replug/restart applies it. Serial comes from flash UID. */
-static char di_usb_name[17];
+/* Only successfully committed names enter the next enumeration snapshot.
+ * TIMER5 cannot see a half-copy from the main loop. Serial is read-only. */
+static char di_usb_name[17], di_usb_saved_name[17];
+#ifndef DI_LOCK
+#define DI_LOCK() 0u
+#define DI_UNLOCK(k) ((void)(k))
+#endif
+static void di_usb_commit(void)
+{
+    uint32_t key=DI_LOCK();
+    for (uint32_t i=0;i<17;i++) di_usb_saved_name[i]=di_name[i];
+    DI_UNLOCK(key);
+}
+static void di_usb_snapshot(void)
+{
+    for (uint32_t i=0;i<17;i++) di_usb_name[i]=di_usb_saved_name[i];
+}
 static uint8_t di_desc[68] UR_DMA_MEM;
 static int di_usb_serial_ok(void)
 {
@@ -1871,6 +1885,9 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
         UL_EV(UL_RESET, 0, sie_rd(S_POWER), usb.config, ul.addr);   /* POWER, the configuration and address it ends */
         ul.addr = 0;
         ul.cur = 0;
+#endif
+#if FELUCCA_DEVICE_IDENTITY
+        di_usb_snapshot();
 #endif
         usb.resets++;
         sie_wr(S_FADDR, 0);

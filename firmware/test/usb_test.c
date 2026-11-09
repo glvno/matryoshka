@@ -351,7 +351,12 @@ static void test_return_driver(void)
 #endif
 #if FELUCCA_DEVICE_IDENTITY
     const uint8_t *d; uint16_t n;
-    strcpy(di_usb_name,"STAGE");
+    strcpy(di_name,"STAGE"); di_usb_commit(); di_usb_snapshot();
+    strcpy(di_name,"DESK"); di_usb_commit();
+    CHECK(!strcmp(di_usb_name,"STAGE"), "saving name does not alter attached descriptors");
+    di_usb_snapshot();
+    CHECK(!strcmp(di_usb_name,"DESK"), "new enumeration applies committed name");
+    strcpy(di_name,"STAGE"); di_usb_commit(); di_usb_snapshot();
     for(unsigned i=0;i<16;i++) di_serial[i]=(uint8_t)(i+1);
     usb_uac_on=1;
     CHECK(get_desc(0x100,&d,&n) && d[16]==3, "application reports physical serial descriptor");
@@ -360,7 +365,7 @@ static void test_return_driver(void)
     usb_uac_on=0;
     CHECK(get_desc(0x100,&d,&n) && d[16]==0, "update mode remains serial-free");
     CHECK(get_desc(0x302,&d,&n) && n==22, "update-mode product stays fixed");
-    usb_uac_on=1; di_usb_name[0]=0; memset(di_serial,0,sizeof di_serial);
+    usb_uac_on=1; memset(di_name,0,sizeof di_name); di_usb_commit(); di_usb_snapshot(); memset(di_serial,0,sizeof di_serial);
 #endif
 }
 

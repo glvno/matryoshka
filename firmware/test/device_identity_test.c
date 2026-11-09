@@ -21,6 +21,11 @@ static uint16_t m1_crc16(const uint8_t *p,uint32_t n) {
 }
 static void fm1_wdt_feed(void) {}
 #include "../src/slotstore.c"
+#define SET_LEN 16u
+static uint8_t flash_ok=1, boot_safe, patches_up=1, ui_dirty;
+static void settings_pack(uint8_t *p) { memset(p,0,16); p[0]=1; }
+static int store_write(uint32_t id,const char *name,const uint8_t *p,uint32_t n) { return sl_write(id,name,p,n); }
+#include "../src/device_settings.c"
 int main(void) {
     uint8_t p[20]={0}, payload[16]={1,2,3}, read[16]; uint32_t n;
     memset(flash,255,sizeof flash); sl_scan();
@@ -45,5 +50,18 @@ int main(void) {
     for(unsigned i=0;i<16;i++) di_serial[i]=(uint8_t)(i+1);
     sl_clear_all(); /* physical serial is outside the erased settings */
     for(unsigned i=0;i<16;i++) assert(di_serial[i]==i+1);
+    memcpy(flash,saved,sizeof flash); sl_scan();
+    uint8_t request[17]={ 'R','I','G' }, reply[34]; request[16]=40;
+    memcpy(saved,flash,sizeof flash); boot_safe=1;
+    assert(m1_device_settings(request,17,reply)==34 && reply[0]==6);
+    assert(!memcmp(flash,saved,sizeof flash)); /* safe mode must never touch an unscanned bank */
+    boot_safe=0; patches_up=0;
+    assert(m1_device_settings(request,17,reply)==34 && reply[0]==6 && !memcmp(flash,saved,sizeof flash));
+    patches_up=1; cut=0;
+    char before[17]; memcpy(before,di_name,17); uint8_t old_level=di_level;
+    assert(m1_device_settings(request,17,reply)==34 && reply[0]==6 && !memcmp(di_name,before,17) && di_level==old_level);
+    cut=-1;
+    assert(m1_device_settings(request,17,reply)==34 && reply[0]==0 && !strcmp(di_name,"RIG") && di_level==40);
+    assert(!sl_head(SL_SETTINGS,&h,1) && di_unpack((uint8_t*)h.name) && !strcmp(di_name,"RIG"));
     puts("Device identity: legacy payload, CRC, atomic header persistence and reset passed");
 }

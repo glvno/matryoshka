@@ -1,8 +1,8 @@
-import { openDeviceSettings } from "./device-settings";
 // SPDX-License-Identifier: GPL-3.0-only
 // first of all: at the pages.dev address with no data, site-move.ts sends the visitor on to matryoshka.lol and stops
 // everything else; then migrate.ts notes which storage keys the page found before anything here writes one
 import './site-move';
+import { openDeviceSettings } from './device-settings';
 import { renderFm1Help } from './controls-help';
 import { ControlsStrip, stripPatch, type StripPatch } from './controls-strip';
 import { addUserPreset, currentValues, exportPresets, importPresets, migrateUserPresets, presetsOf } from './device-presets';

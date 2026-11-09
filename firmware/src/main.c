@@ -776,31 +776,9 @@ static void settings_store(void)
 
 static uint8_t patches_up;                      /* patch_boot has run (host_poll may reload the current patch) */
 
-/* DEVICE_SETTINGS: empty reads; 17 bytes set name[16] and return percent.
- * Reply status, name[16], percent, physical serial[16]. Save before replying. */
-static int m1_device_settings(const uint8_t *p, uint32_t n, uint8_t *out)
-{
-    uint8_t status=0;
-    if (n) {
-        if (n!=17 || p[16]>100 || !di_valid_name(p)) status=1;
-        else if (!flash_ok || !patches_up) status=6;
-        else {
-            char old[17]; uint8_t level=di_level, set[SET_LEN];
-            for (uint32_t i=0;i<17;i++) old[i]=di_name[i];
-            for (uint32_t i=0;i<16;i++) di_name[i]=(char)p[i];
-            di_name[16]=0; di_level=p[16]; settings_pack(set);
-            if (store_write(SL_SETTINGS,0,set,SET_LEN)) {
-                for (uint32_t i=0;i<17;i++) di_name[i]=old[i];
-                di_level=level; status=6;
-            }
-            ui_dirty=1;
-        }
-    }
-    out[0]=status;
-    for (uint32_t i=0;i<16;i++) { out[1+i]=(uint8_t)di_name[i]; out[18+i]=di_serial[i]; }
-    out[17]=di_level;
-    return 34;
-}
+static uint8_t boot_safe;
+#include "device_settings.c"
+
 /* Read only the settings header before USB attaches. No bank migration,
  * writes or erases here; update mode skips this path altogether. */
 static void device_identity_boot(void)
@@ -819,7 +797,8 @@ static void device_identity_boot(void)
             (void)di_unpack((const uint8_t *)h.name);
         }
     }
-    for (uint32_t i=0;i<17;i++) di_usb_name[i]=di_name[i];
+    di_usb_commit();
+    di_usb_snapshot();
 }
 
 /* TEMPO from the editor (proto.c, D-907) */
@@ -1121,7 +1100,6 @@ static uint32_t presets_upgrade(void)
 
 /* safe mode: SAVE held while the loading screen is up, or the previous boot did not get through (bootguard): nothing is
  * read from the flash (the bank stays: a normal boot opens it again) */
-static uint8_t boot_safe;
 
 /* safe mode's patch, and the last resort when a slot does not load: the fallback compiled into the firmware (presets.h
  * FALLBACK_PATCH, web/src/fallback.ts) */

@@ -3,7 +3,7 @@
 ## Unreleased
 
 - **USB playback through your FM-1:** hear a phone or computer through the headphone output while recording the synth over the same USB cable. USB RETURN sets playback volume independently of MASTER; playback stays out of the recording.
-- **Name your FM-1:** save a name from FM-1 & MIDI → Name & USB playback, then restart to show it in MIDI and audio apps. A serial from the flash chip distinguishes units and survives factory reset.
+- **Name your FM-1:** save a name from FM-1 & MIDI → Name & USB playback, then reconnect USB to show it in MIDI and audio apps. A serial from the flash chip distinguishes units and survives factory reset.
 
 - **Oracle V CPU experiment (off by default, #808):** generated member functions keep their temporary storage out of one large stack frame, fixing the second-core startup stack overflow. A focused emulator check now watches the actual stack pointer while the compiled code runs on core 1. No added instrument capacity or hardware speed-up is claimed.
 
