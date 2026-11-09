@@ -7,6 +7,10 @@
 //! bits 1..0 the address's top), the address's low byte, then the data (a dummy byte for a read). Bit 8 picks the RTC
 //! domain, never modelled. Busy (bit 1) never reads set: no transfer times out.
 //!
+//! Every P33 access still goes to fm1-soc too, which logs it as unmodelled (smoke and boot filter P33 out of that list);
+//! its log keeps the newest 16,384 accesses at most, so the P33 traffic of the watchdog's feeds pushes older entries out,
+//! as it did before this model.
+//!
 //! Only the ten registers the supply setup touches keep their values ([`MODELLED`]); every other address reads 0, as
 //! before (the reset reason, the watchdog). They start at the boot loader's levels as the test rig read them (#735).
 
@@ -98,10 +102,11 @@ impl Bus for Cpu0Bus<'_> {
     }
     #[inline(always)]
     fn read32(&mut self, a: u32) -> u32 {
+        let v = <Soc as Bus>::read32(self.soc, a); // (P33's too: fm1-soc logs it, as before)
         match a {
             CON => self.p33.con,
             DAT => self.p33.dat,
-            _ => <Soc as Bus>::read32(self.soc, a),
+            _ => v,
         }
     }
     #[inline(always)]
@@ -114,10 +119,11 @@ impl Bus for Cpu0Bus<'_> {
     }
     #[inline(always)]
     fn write32(&mut self, a: u32, v: u32) {
+        <Soc as Bus>::write32(self.soc, a, v); // (P33's too: fm1-soc logs it and keeps nothing, as before)
         match a {
             CON => self.p33.write_con(v),
             DAT => self.p33.dat = v & 0xff,
-            _ => <Soc as Bus>::write32(self.soc, a, v),
+            _ => {}
         }
     }
     fn tick(&mut self) -> bool {
