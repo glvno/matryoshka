@@ -4,6 +4,7 @@
 
 ### FM-1
 
+- **Room for code that runs from RAM:** the RAM after the effect memory's second line area had 96 B left; now 1,484 B (CI build, #725). The USB setup log (`tools/m1_link.py usblog`) keeps the last 64 USB requests and bus events, not 128, and an unused part of the flash driver is left out of the app.
 - **A key pressed right after SEL arms a device plays.** A key in the same 3 ms as the arm was cut with the keys the old set held. The naive-owner simulator found it on `<7PH`, with DRUMS and PATTERN armed: key 1 was silent (#748).
 
 ## 1.11.1 — 2026-11-08

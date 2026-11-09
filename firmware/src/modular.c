@@ -38,6 +38,7 @@
 #include "fm1_timer.h"
 #include "fm1_audio.h"
 #include "fm1_adc.h"
+#define FL_STATUS_RAM 0                         /* (no caller here: its .ram_text is room for other RAM code, #725) */
 #include "fm1_flash.h"
 #include "fm1_flash_step.h"                     /* the store's writes in steps the interrupts run between (#656) */
 #include "fm1_lcd_hw.h"
@@ -67,7 +68,7 @@ static int eng_lane_wait(void) { return fm1_cpu1_wait(); }   /* -1: given up (he
 #include "engine.c"
 #include "presets.h"
 #include "audio.c"
-#define USB_LOG_MEM ENG_LOWRAM      /* usb.c: the USB setup log (#535), 2 KiB */
+#define USB_LOG_MEM ENG_LOWRAM      /* usb.c: the USB setup log (#535), 1,092 B (#725) */
 #include "usb.c"
 #include "midi_uart.c"
 #include "storage_hw.c"
