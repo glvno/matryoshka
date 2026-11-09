@@ -8,6 +8,10 @@ import { DEFS } from './modules';
 import { addModule, newPatch, type ModuleInst } from './patch';
 
 vi.hoisted(() => {
+  // the page's clock as it is just after the page opens (#577): the double-click's "put back what the gesture moved"
+  // must not take a time near 0 for a recent slider input. A steady clock also keeps the cases off the worker's load.
+  let now = 0;
+  performance.now = () => (now += 1);
   const g = globalThis as unknown as Record<string, unknown>;
   g.ResizeObserver ??= class { observe(): void {} unobserve(): void {} disconnect(): void {} };
   if (!(document as unknown as { fonts?: unknown }).fonts) Object.defineProperty(document, 'fonts', { value: { addEventListener() {}, ready: Promise.resolve() } });

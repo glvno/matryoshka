@@ -58,14 +58,27 @@ int main(int argc, char **argv)
         fprintf(stderr, "eng_load failed (%d)\n", rc);
         return 1;
     }
-#ifdef ENG_PAR_WORDS                    /* (tools/engine_exact.sh builds this file against an older engine too) */
+#if defined(ENG_PAR_WORDS) || defined(ENG_ARENA)   /* (tools/engine_exact.sh builds this file against an older engine too) */
     if (argc > 4) {
         FILE *pf = fopen(argv[4], "r");
-        unsigned want = 0;
-        if (pf && fscanf(pf, "%u", &want) == 1 && want != par_used) {
+        unsigned want = 0, bufs = 0, insts = 0, nodes = 0;
+        int n = pf ? fscanf(pf, "%u %u %u %u", &want, &bufs, &insts, &nodes) : 0;
+        if (n >= 1 && want != par_used) {
             printf("parameter values: eng_load took %u, the editor's budget counts %u\n", (unsigned)par_used, want);
             return 1;
         }
+        if (n == 3 && (bufs != E.nbuf || insts != E.ninst)) {   /* (#649: the memory is counted from them) */
+            printf("signal buffers / module copies: eng_load took %u / %u, the editor's budget counts %u / %u\n", (unsigned)E.nbuf, (unsigned)E.ninst, bufs, insts);
+            return 1;
+        }
+#ifdef ENG_NODE_BYTES
+        if (n == 4 && (nodes != ar_nnode || nodes != E.nmod)) {   /* (#721: the modules come from the arena too) */
+            printf("modules: eng_load took %u from the arena, the editor's budget counts %u\n", (unsigned)ar_nnode, nodes);
+            return 1;
+        }
+#else
+        (void)nodes;
+#endif
         if (pf)
             fclose(pf);
     }
@@ -94,7 +107,7 @@ int main(int argc, char **argv)
             }
             else if (!strcmp(kind, "rec") || !strcmp(kind, "cc") || !strcmp(kind, "thon") || !strcmp(kind, "thoff"))
                 fscanf(ev, "%u %u", &note, &vel);
-            else if (!strcmp(kind, "pat") || !strcmp(kind, "song"))
+            else if (!strcmp(kind, "pat") || !strcmp(kind, "song") || !strcmp(kind, "cin"))
                 fscanf(ev, "%u", &note);
         }
         rewind(ev);
@@ -107,7 +120,15 @@ int main(int argc, char **argv)
     r = malloc((size_t)total * 4);
     while (fscanf(ev, "%ld %15s", &frame, kind) == 2) {
         if (frame > pos) {
+#ifdef ENG_COUNT_IN /* (the count-in's click: the analog output's, as engine.ts plays it, D-820; eng_click_mix keeps a
+                     * few clicks a render: renders of a block, as the FM-1's, which split the frames as one render does) */
+            for (; pos < frame; pos += frame - pos < 128 ? frame - pos : 128) {
+                eng_render(l + pos, r + pos, (uint32_t)(frame - pos < 128 ? frame - pos : 128));
+                eng_click_mix(l + pos, r + pos, (uint32_t)(frame - pos < 128 ? frame - pos : 128));
+            }
+#else
             eng_render(l + pos, r + pos, (uint32_t)(frame - pos));
+#endif
             pos = frame;
         }
         if (!strcmp(kind, "on")) {
@@ -121,6 +142,15 @@ int main(int argc, char **argv)
             eng_buttons(!strcmp(kind, "bon") ? eng_buttons_get() | 1u << note : eng_buttons_get() & ~(1u << note));
         } else if (!strcmp(kind, "run") || !strcmp(kind, "stop")) {
             eng_transport(!strcmp(kind, "run"));
+        } else if (!strcmp(kind, "once")) {      /* (#632) play once with its count-in */
+#ifdef ENG_PLAY_ONCE /* engine_exact.sh also builds this harness with older engine headers */
+            eng_play_once();
+#endif
+        } else if (!strcmp(kind, "cin")) {       /* (D-803) REC's count-in click: n bars */
+            fscanf(ev, "%u", &note);
+#ifdef ENG_COUNT_IN
+            eng_count_in(eng_ticks(), note);
+#endif
         } else if (!strcmp(kind, "ext") || !strcmp(kind, "int")) {
             eng_clock_external(!strcmp(kind, "ext"));
         } else if (!strcmp(kind, "tick")) {
@@ -128,10 +158,32 @@ int main(int argc, char **argv)
         } else if (!strcmp(kind, "arm")) {      /* (#139) arming, live recording, the recorded notes into their tracks */
             fscanf(ev, "%d", &arm);
             eng_arm(arm);
-        } else if (!strcmp(kind, "arms")) {     /* (#191) a set: a mask of module indices */
+        } else if (!strcmp(kind, "arms")) {     /* (#191) a set: a mask of module indices (0..63) */
             unsigned long long m;
             fscanf(ev, "%llu", &m);
+#ifdef ENG_MSET_WORDS                           /* (#721: a set of up to 128; engine_exact.sh builds older engines too) */
+            {
+                eng_mset_t s = mset_none();
+                s.w[0] = (uint32_t)m;
+                s.w[1] = (uint32_t)(m >> 32);
+                eng_arm_mask(s);
+            }
+#else
             eng_arm_mask((uint64_t)m);
+#endif
+        } else if (!strcmp(kind, "armx")) {     /* (#721) a set of two module indices, any of 0..127 (-1: none) */
+            int a, b;
+            fscanf(ev, "%d %d", &a, &b);
+#ifdef ENG_MSET_WORDS
+            {
+                eng_mset_t s = mset_none();
+                if (a >= 0)
+                    s = mset_flip(s, (uint32_t)a);
+                if (b >= 0 && b != a)
+                    s = mset_flip(s, (uint32_t)b);
+                eng_arm_mask(s);
+            }
+#endif
         } else if (!strcmp(kind, "cc")) {
             fscanf(ev, "%u %u", &note, &vel);
 #ifdef FM1_O_BREATH /* engine_exact.sh also builds this harness with older engine headers */

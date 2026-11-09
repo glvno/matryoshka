@@ -27,6 +27,9 @@ static uint8_t knob_touched, button_touched;  /* the knob (1..6) / patch button 
 #define FIXED_BTNS ((1u << BTN_GLO_IDX) | (1u << BTN_SEL_IDX) | (1u << BTN_ENV_IDX))
 static uint8_t play_turned;                   /* PRESET turned the tempo while PLAY was held: its release does not start / stop */
 static uint8_t play_hinted;                   /* PLAY held alone a moment: the bar said where the tempo is (#582) */
+static uint8_t play_auto;                     /* leds_play is told of a start or stop play once made itself (#632; the editor's
+                                               * FM-1 tab plays its own play once, fm1_ui.c) */
+static uint8_t play_once_asked;               /* SEQ held + PLAY started play once: counts up (fm1_ui.c tells the page) */
 static uint32_t play_down_ms;                 /* fm1_ms of PLAY's press */
 #define PLAY_HINT_MS 600u
 static uint8_t home_turned;                   /* PRESET turned the patch, or K1..K4 turned fine, while HOME was held: its release does
@@ -374,8 +377,10 @@ static void play_toggle(void)                       /* PLAY: the transport (the 
                                                      * record makes it a live take: REC records (the owner, 2026-11-02,
                                                      * D-804; seq_rec_press ends step record) */
 {
-    int run = !eng_transport_running(), take = run && sr_on;
-    midi_send_rt(run ? 0xFAu : 0xFCu);              /* (asked first: main.c sends it with the render that starts or stops) */
+    int was = eng_transport_running(), run = !was && eng_once_state() != 1, take = run && sr_on;   /* (in play once's count-in:
+                                                     * it stops, #632) */
+    if (run || was)
+        midi_send_rt(run ? 0xFAu : 0xFCu);          /* (asked first: main.c sends it with the render that starts or stops) */
     eng_transport(run);
     if (!eng_transport_running() && seq_rec)
         seq_rec_off();
@@ -385,6 +390,28 @@ static void play_toggle(void)                       /* PLAY: the transport (the 
     ui_dirty = ui_dirty ? ui_dirty : 1;
 }
 
+
+/* SEQ held + PLAY (#632, the owner's rulings of 2026-11-04 and 2026-11-07, D-820): play once. Stopped:
+ * one bar is counted in with a click on each beat (the engine's, on the analog output only, D-820), then the pattern or the song
+ * plays once and the transport stops by itself (eng_play_once); a whole take into a recorder without touching the
+ * transport. Running, or counting in: it stops, as PLAY. Step record ends first (as SEQ ends it, D-808) */
+static void play_once_press(void)
+{
+    if (eng_transport_running() || eng_once_state()) {
+        play_toggle();
+        return;
+    }
+    if (!eng_steps_count()) {
+        ui_msg("NO STEPS MODULE", NUDGE_MS);
+        return;
+    }
+    sr_stop();
+    eng_play_once();
+    play_once_asked++;
+    ui_msg("COUNT-IN 1", 4000);                     /* (panel_status names each beat) */
+    leds_play();
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+}
 
 /* a turn of `clicks` on knob slot `s` (0 the tempo, 1 a step's value, 2..5 K1..K4) is a fast one: KNOB ACCEL on, within
  * 80 ms of the slot's last click and the same way as it. A reversal is always a single step, so a turn right and then
@@ -827,8 +854,46 @@ static void help_edges(uint32_t p, uint32_t rel, int pair)
     panel_release_quiet(rel & ~(1u << BTN_HOME));
 }
 
+/* HOME + OCT- + OCT+ held 2 s, on any page (#631, D-925): GLO > SYSTEM > 3.5MM OUT on / off, and a toast says which.
+ * Three buttons for 2 s, so it is not hit by chance. With HOME down first the OCT pair does not open the controls sheet
+ * (panel_edges); with a card open (the pair first) the card closes as it turns over. HOME's release then goes nowhere,
+ * and the OCTs' do nothing (oct_used). Returns rel without HOME's release when that is the case */
+#define OUT_BTNS (OCT_BTNS | 1u << BTN_HOME)
+#define OUT_HOLD_MS 2000u
+static uint32_t out_t0;                             /* fm1_ms | 1 as the three were all down (bit 1: turned over); 0: not all down */
+static uint8_t out_home;                            /* the three were all down since HOME's press */
+static uint32_t out_combo(uint32_t p, uint32_t rel)
+{
+    if (p & (1u << BTN_HOME))
+        out_home = 0;
+    if ((panel_held & OUT_BTNS) != OUT_BTNS) {
+        out_t0 = 0;
+    } else if (!out_t0) {
+        out_t0 = (fm1_ms | 1u) & ~2u;
+        out_home = 1;
+    } else if (!(out_t0 & 2u) && fm1_ms - (out_t0 & ~3u) >= OUT_HOLD_MS) {
+        const char *m;
+        out_t0 |= 2u;
+        out_off = (uint8_t)!out_off;
+        m = out_off ? "3.5MM OUT OFF" : "3.5MM OUT ON";
+        if (help_on) {                              /* (the toast in the bar once the card has gone) */
+            help_msg = m;
+            help_msg_ms = 2000;
+            help_close();
+        } else {
+            ui_msg(m, 2000);
+        }
+        ui_dirty = ui_dirty ? ui_dirty : 1;         /* (the footer's mark) */
+    }
+    if (out_home && (rel & (1u << BTN_HOME))) {
+        out_home = 0;
+        rel &= ~(1u << BTN_HOME);
+    }
+    return rel;
+}
+
 /* buttons pressed (p) and let go (rel) since the last call, matrix ids as bits; call it often, also with no edges: a
- * GLO held in the menu does its armed row after 2 s */
+ * GLO held in the menu does its armed row after 2 s, HOME + OCT- + OCT+ turns 3.5MM OUT over after 2 s */
 static void panel_edges(uint32_t p, uint32_t rel)
 {
     uint32_t oct_rel;
@@ -836,7 +901,7 @@ static void panel_edges(uint32_t p, uint32_t rel)
     if (p & OCT_BTNS) {                             /* an OCT down while the other is (or both at once): the pair (D-245) */
         if ((panel_held & OCT_BTNS) == OCT_BTNS) {
             oct_used = (uint8_t)OCT_BTNS;
-            pair = 1;
+            pair = !(panel_held >> BTN_HOME & 1u);  /* (HOME held: 3.5MM OUT's hold instead, out_combo) */
         } else
             oct_used &= (uint8_t)~(p & OCT_BTNS);
     }
@@ -859,6 +924,7 @@ static void panel_edges(uint32_t p, uint32_t rel)
         }
         midi_btn_sent = (midi_btn_sent | po) & ~rel;
     }
+    rel = out_combo(p, rel);
     if (help_on || pair) {                          /* a card shows, or the pair opens the sheet */
         help_edges(p, rel, pair);
         return;
@@ -1015,6 +1081,13 @@ static void panel_edges(uint32_t p, uint32_t rel)
         sr_stop();                                  /* HOME in step record: it ends, the page stays (#532, D-808) */
     else if ((rel & (1u << BTN_HOME)) && !home_turned)
         home_tap();
+    if ((p & (1u << BTN_PLAY)) && (panel_held >> BTN_SEQ & 1u) && !sb_on) {   /* SEQ held + PLAY (#632): play once, on the
+                                                     * press; neither SEQ's release nor PLAY's then does its own */
+        seq_held_used = 1;
+        p &= ~(1u << BTN_PLAY);
+        play_turned = play_hinted = 1;
+        play_once_press();
+    }
     if (p & (1u << BTN_PLAY)) {                     /* PLAY acts on release, unless PRESET turned the tempo meanwhile */
         play_turned = 0;
         play_hinted = 0;
@@ -1041,6 +1114,34 @@ static void panel_status(void)
         sb_mout_due = 0;
         if (sb_on && !cfg.midi_out && !help_on)
             sb_mout_nudge();
+    }
+    {                                               /* play once (#632): the transport as the engine starts and stops it (the
+                                                     * PLAY LED, the editor's FM-1 tab); the count-in's beats in the bar */
+        static int8_t run_seen = -1;
+        static uint8_t beat_seen = 0xFFu;
+        int run = eng_transport_running(), st = eng_once_state();
+        if (run != run_seen) {
+            run_seen = (int8_t)run;
+            play_auto = 1;
+            leds_play();
+            play_auto = 0;
+            ui_dirty = ui_dirty ? ui_dirty : 1;
+        }
+        if (st == 1 && !help_on) {
+            uint32_t b = eng_once_beat();
+            if (b != beat_seen && b < 4u) {
+                char m[] = "COUNT-IN 1";
+                m[9] = (char)('1' + b);
+                ui_msg(m, 4000);
+            }
+            beat_seen = (uint8_t)b;
+        } else if (beat_seen != 0xFFu) {         /* the count-in is over: playing once, or it ended (PLAY) */
+            if (st == 2)
+                ui_msg("PLAY ONCE", 1500);
+            else
+                ui_msg_clear();
+            beat_seen = 0xFFu;
+        }
     }
     if (!(panel_held >> BTN_PLAY & 1u))             /* (up: no hint until the next press's edge, panel_edges, sets its time;
                                                      * knobs_poll can see a press before buttons_poll takes its edge) */
@@ -1207,8 +1308,10 @@ static void panel_align(const uint8_t *g)
         seq_select(g[5]);
     if (want == 0u && (g[3] != pg_cur_dev || g[4] != pg_cur_page) && pages_focus(g[3], g[4]))
         ui_dirty = 2;
-    if (want == PAGE_MENU)
-        menu_tab = g[6];
+    if (want == PAGE_MENU) {
+        menu_tab = (uint8_t)(g[6] & 127u);
+        menu_sys2 = (uint8_t)(g[6] >> 7);                   /* (SYSTEM's second page, #702) */
+    }
     if (want != page) {
         if (want == PAGE_SONG)
             song_prep();

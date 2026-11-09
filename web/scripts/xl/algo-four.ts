@@ -2,8 +2,9 @@
 // Algo Four XL: the Yamaha DX100 in full, after the Yamaha DX100 Owner's Manual (chapter III "The Function Mode", chapter
 // IV "The Voice Parameters", the specifications and the voice data tables 5-1 / 5-2; a copy:
 // homepages.abdn.ac.uk/d.j.benson/pages/dx7/manuals/dx100-man.pdf). The FM-1 version (gen-assemblies.ts,
-// Algo Four) plays three voices, gives the two modulators ADSRs, keeps operator 4's feedback at 0 and wires one algorithm
-// (5: 2 into 1, 4 into 3).
+// Algo Four) plays eight voices with the eight algorithms and the ratio table (#658), but gives the two modulators
+// ADSRs, keeps operator 4's feedback at 0, has an `index` row per modulated operator and leaves out the LFO, velocity,
+// scaling and performance controls.
 //
 // The card (docs/ledger/patches-and-presets.md D-347): one row per parameter of the DX100, named as its LCD names it
 // (lowercase), switches as named choices:
@@ -17,7 +18,8 @@
 //                pitch, mw ampli, bc pitch, bc ampli, bc p bias, bc e bias, transpose, m.tune
 // PB MODE offers LOW, HIGH and KON.
 // How each is built:
-// - POLY/MONO: the Voicing's voice count (8 = POLY, "up to 8 notes"; 1 = MONO).
+// - POLY/MONO: a Selector whose MONO gate turns the Voicing's unison on by a cable (#681), with a unison stack of one
+//   voice: POLY plays up to 8 notes, MONO one voice, the last key held.
 // - ALGORITHM 1..8: a Selector's position. Its value table puts the position on its out, which moves each voice's four
 //   route Selectors to the same position: one in front of the phase input of each of operators 1, 2 and 3 and one for
 //   what is heard. Input k of each takes what algorithm k sends there, cables summed:
@@ -62,8 +64,6 @@
 //   on the DX100), and output displays. Ratio playback uses the manual's rounded multipliers; detune spacing is linear.
 // - Rate Env follows the original rate architecture and Yamaha chip envelope-clock rules, not identical DAC character.
 //   Its maximum attack works when changed live too; the original register-write glitch is not reproduced.
-// - POLY/MONO is a number (8 or 1), not a switch: a Selector cannot set a Voicing's voice count (D-635 keeps a Voicing's
-//   settings off a shared row). Named choices need that in both engines.
 // Too big for the FM-1. The browser version keeps all eight voices; deviceBudget reports its current limits.
 // The cassette interface, the voice memories, VOICE NAME and the MIDI functions are the browser's patches and presets. The
 // DX100 has no chorus, pitch EG or foot volume (its voice data marks them "not used").
@@ -73,7 +73,7 @@ import { around, define, matchLevel, type Def } from './def';
 import { setCopies } from '../../src/assembly';
 import type { Xl } from './xl';
 
-const NOTES = "DX100 panel; one OP picker selects all fourteen operator controls. POLY/MONO is voice count (8/1): Selectors cannot set it. LFO SPEED covers 0.0008–55 Hz. AR/D1R/D2R use 0..31 rates: zero stops the stage; D2R zero holds D1L. D1L/RR use 0..15. Rate scaling uses 0..3. PB MODE selects LOW/HIGH/KON. Breath uses CC 2; foot uses CC 64. Ratio has the original 64 choices; detune has -3..+3 positions (up to 2.6 cents). Bend uses octaves. Cartridge, MIDI settings and stored patch memory are hardware/storage, not reproduced.";
+const NOTES = "DX100 panel; one OP picker selects all fourteen operator controls. LFO SPEED covers 0.0008–55 Hz. AR/D1R/D2R use 0..31 rates: zero stops the stage; D2R zero holds D1L. D1L/RR use 0..15. Rate scaling uses 0..3. PB MODE selects LOW/HIGH/KON. Breath uses CC 2; foot uses CC 64. Ratio has the original 64 choices; detune has -3..+3 positions (up to 2.6 cents). Bend uses octaves. Cartridge, MIDI settings and stored patch memory are hardware/storage, not reproduced.";
 
 
 /** each path's algorithms (1..8): the route Selectors' input k takes the path when algorithm k lists it */
@@ -95,7 +95,7 @@ const NAMES = new Map<number, string[]>();
 const COPIES: { at: number; rows: number; head: string; col: boolean }[] = [];
 
 const built = define('Algo Four XL', (b) => {
-  const part = b.add('alloc', 0, 2, { voices: 8 });
+  const part = b.add('alloc', 0, 2, { voices: 8, stack: 1 });
 
   // ---- shared: the algorithm (a Selector's position, 1..8). Its value table puts the position on its out as 0..1, which
   // moves each voice's four route Selectors to the same position.
@@ -297,6 +297,9 @@ const built = define('Algo Four XL', (b) => {
     poly: { flaws: Array.from({ length: 8 }, () => ({ detune: 0, drift: 0, bright: 0, env: 0, level: 100 })) },
   });
 
+  // POLY / MONO (#681): the MONO gate turns the Voicing's unison on, one voice stacked
+  const polyMono = b.add('select', 0, 2.5, { count: 2, pos: 1 });
+  b.wire(polyMono, 'g2', part, 'unison');
   b.input('keys', part, 'keys');
   b.input('wheel', wheelP, 'in', [wheelA, 'in']);
   b.input('breath', breathP, 'in', [breathA, 'in'], [breathLess, 'in'], [bias, 'in']);
@@ -344,7 +347,7 @@ const built = define('Algo Four XL', (b) => {
     named('ams', ameOn[i], ['OFF', 'ON']);
   }
   COPIES.push({ at: operatorAt, rows: 14, head: 'operator', col: true });
-  param('poly/mono', part, 'voices', { col: true, head: 'performance' });
+  named('poly/mono', polyMono, ['POLY', 'MONO'], { col: true, head: 'performance' });
   param('p bend range', bend, 'ka');
   named('pb mode', bendMode, ['LOW', 'HIGH', 'KON']);
   named('porta mode', fingered, ['FULL TIME', 'FINGERED']);

@@ -85,6 +85,9 @@ static void save_state(void) { saved++; }
 static int settings_stored;                         /* the settings record written alone (HOME + SAVE on the quick start) */
 static void settings_store(void) { settings_stored++; }
 #include "../src/poly_edit.h"
+/* a set of modules as one number, its first 64, and back (#721: most patches here have fewer; the ones past 63: mset_*) */
+static uint64_t m64(eng_mset_t s) { return (uint64_t)s.w[1] << 32 | s.w[0]; }
+static eng_mset_t s64(uint64_t v) { eng_mset_t s = mset_none(); s.w[0] = (uint32_t)v; s.w[1] = (uint32_t)(v >> 32); return s; }
 static int poly_row_set(uint32_t mod, uint32_t field, int32_t v)
 {
     return poly_patch_set(pv_bin, pv_len, mod, field, v, eng_load);
@@ -97,13 +100,17 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
     if (!at || mod >= pv_bin[2])
         return;
     for (i = 0; i < mod; i++) {
-        if (at >= pv_len || (pv_bin[at] & 0x7Fu) >= N_TYPES)
+        if (!eng_rec_ok(pv_bin, pv_len, at))
             return;
-        at += eng_record_size(&DEFS[pv_bin[at] & 0x7Fu], pv_bin[1]);
+        at += eng_rec_size(pv_bin, at);
     }
-    if (at >= pv_len || (pv_bin[at] & 0x7Fu) >= N_TYPES || par >= eng_npar(&DEFS[pv_bin[at] & 0x7Fu], pv_bin[1]) || DEF_FIXED(pv_bin[at] & 0x7Fu, par))
+    if (!eng_rec_ok(pv_bin, pv_len, at) || par >= eng_npar(&DEFS[pv_bin[at] & 0x7Fu], pv_bin[1]) || DEF_FIXED(pv_bin[at] & 0x7Fu, par))
         return;
-    at += 1u + 4u * par;
+    if (par >= eng_rec_npar(pv_bin, at) && (pv_bin[1] < ENG_COUNTED || eng_rec_grow(pv_bin, &pv_len, sizeof pv_bin, mod, par + 1u)))
+        return;
+    if (eng_b_keep(pv_bin, &pv_len, sizeof pv_bin, mod, par))
+        return;
+    at += eng_rec_head(pv_bin[1]) + 4u * par;
     pv_bin[at] = (uint8_t)v;
     pv_bin[at + 1u] = (uint8_t)(v >> 8);
     pv_bin[at + 2u] = (uint8_t)(v >> 16);
@@ -466,6 +473,7 @@ int main(void)
         ;
     poly_row_set(mod, 0, 4);
     check("Cassia accepts four voices in memory", eng_poly_get(0, 0) == 4);
+    arena_size = ENG_ARENA - arena_free();   /* (#649: the arena holds Cassia's eight voices; made as small as four take) */
     poly_row_set(mod, 0, 5);
     check("a rejected fifth voice restores the engine and patch", eng_poly_get(0, 0) == 4 && pv_bin[8] == 4);
     poly_row_set(mod, 0, 2);
@@ -481,6 +489,7 @@ int main(void)
     check("unison count row spans all hardware voices", poly_max(ENG_POLY_STACK) == ENG_MAX_PARTS);
     check("poly count edits preserve the unison count", poly_row_set(mod, ENG_POLY_PARTS, 4) == 0 && pv_bin[8] == 0x14u);
     check("rejected poly edit restores both counts", poly_row_set(mod, ENG_POLY_PARTS, 5) != 0 && pv_bin[8] == 0x14u && eng_poly_get(0, ENG_POLY_STACK) == 1 && eng_poly_get(0, ENG_POLY_PARTS) == 4);
+    arena_size = ENG_ARENA;
     check("unison count survives reloading", eng_load(pv_bin, pv_len) == 0 && eng_poly_get(0, ENG_POLY_STACK) == 1);
     check("unison can use one of four voices", poly_row_set(mod, ENG_POLY_UNISON, 1) == 0 && eng_poly_get(0, ENG_POLY_UNISON) == 1);
     group_on(&E.grp[1], 60, ENG_ONE); /* Cassia receives keys through its Arpeggiator. */
@@ -522,17 +531,46 @@ int main(void)
     pv_bin[11] = 0;
     check("format 36 keeps ordinary allocation", eng_load(pv_bin, pv_len) == 0 && eng_poly_get(0, ENG_POLY_STEAL) == 1);
     check("old-format edits cannot add new allocation settings", poly_row_set(mod, ENG_POLY_STEAL, 0) == -1 && poly_row_set(mod, ENG_POLY_ASSIGN, 3) == -1 && pv_bin[9] == 0 && pv_bin[11] == 0);
+    {                                                   /* a VOICES row stops at what the CPU holds (format 51: the
+                                                         * row's top, gen-presets voiceTops); one without a top offers 8 */
+        static const char *const NAME[3] = {"CASSIA 1", "EXPANDER S", "BASIC POLY"};
+        static const int32_t WANT[3] = {2, 6, ENG_MAX_PARTS};
+        static const char *const SAYS[3] = {"Cassia 1's VOICES row stops at two voices, a turn up there stays",
+                                            "Expander S's VOICES row stops at six voices, a turn up there stays",
+                                            "Basic Poly's VOICES row (no top) reaches all eight voices"};
+        uint32_t t, d, g, k;
+        for (t = 0; t < 3u; t++) {
+            int found = 0, ok = 0;
+            check(NAME[t], load(NAME[t]) == 0);
+            pages_ensure();
+            for (d = 0; d < pg_ndev && !found; d++)
+                for (g = pg_dev[d].pg0; g < (uint32_t)pg_dev[d].pg0 + pg_dev[d].npg && !found; g++)
+                    for (k = 0; k < pg_page[g].nrows && !found; k++)
+                        if (pg_page[g].par[k] == POLY_ROW) {
+                            uint32_t m, par;
+                            int32_t v = 0;
+                            found = 1;
+                            pg_cur_dev = d;
+                            pg_cur_page = g - pg_dev[d].pg0;
+                            ok = poly_top(&pg_page[g], k) == WANT[t] && poly_row_set(pg_page[g].mod[k], 0, WANT[t]) == 0
+                                 && pages_turn(k, 1, 0, 0, &m, &par, &v) == 1 && v == WANT[t]
+                                 && pages_turn(k, -1, 0, 0, &m, &par, &v) == 1 && v == WANT[t] - 1;
+                        }
+            printf("      (%s: VOICES top %d)\n", NAME[t], (int)WANT[t]);
+            check(SAYS[t], found && ok);
+        }
+    }
     fm1_ms = 10000;
     host_ps_init();
-    if (load("CASSIA 1") == 0) {                        /* #485: Cassia 1's 119 rows stored whole; one of 88 loads what it has */
+    if (load("CASSIA 1") == 0) {                        /* #485: Cassia 1's 153 rows stored whole; one of 88 loads what it has */
         uint32_t d, i, n, st, nv, rows;
         int at, same = 1, kept = 1;
         static int32_t full[PS_MAXV], init[PS_MAXV], one[PS_MAXV];
         char nm[17];
         pages_ensure();
-        for (d = 0; d < pg_ndev && pg_dev[d].nrows != 119u; d++)
+        for (d = 0; d < pg_ndev && pg_dev[d].nrows != 153u; d++)
             ;
-        check("(Cassia 1's device: 119 rows)", d < pg_ndev);
+        check("(Cassia 1's device: 153 rows)", d < pg_ndev);
         if (d < pg_ndev) {
             rows = pg_dev[d].nrows;
             (void)dp_list(d);
@@ -549,7 +587,7 @@ int main(void)
                 same = 0;
             for (i = 0; same && i < rows; i++)
                 same = ps_vbuf[i] == full[i];
-            check("ENV held + SAVE on Cassia 1: all 119 rows stored, in two slots", nv == rows && same && ps_count(PS_LIVE) == 2u);
+            check("ENV held + SAVE on Cassia 1: all 153 rows stored, in two slots", nv == rows && same && ps_count(PS_LIVE) == 2u);
             (void)dp_load(d, 0);                        /* (Init's values, then a preset of 88 as 1.8.1 stored them) */
             nv = dp_values(d);
             for (i = 0; i < nv; i++)
@@ -804,6 +842,48 @@ int main(void)
         check("  back to MONO", out_mono == 1u && !on_screen("MONO L"));
         enc(5, -1);
         check("  and back to STEREO", !out_mono && on_screen("STEREO"));
+        check("  the header says SYSTEM 1/2 (#702)", on_screen("SYSTEM 1/2"));
+        enc(1, 1);
+        check("ALGO again: SYSTEM's second page, EDITOR on K1 (#702)", menu_tab == MT_SYSTEM && menu_sys2 && menu_page() && pages_now()->nrows == 2u
+              && pages_now()->par[0] == MR_EDITOR && on_screen("SYSTEM 2/2") && on_screen("EDITOR") && on_screen("ALLOW"));
+        check("  no armed-row line in the controls sheet's conditions there", !hc_menu_system());
+        enc(2, 1);
+        check("K1 right: EDITOR IGNORE", cfg.editor_ignore == 1u && on_screen("IGNORE"));
+        check("  an INFO is due for the editor (main.c editor_poll)", editor_info_due == 1u);
+        {
+            uint8_t leds = cfg.leds;
+            cfg_defaults();
+            check("  FACTORY RESET's defaults: ALLOW", cfg.editor_ignore == 0u);
+            cfg.editor_ignore = 1;
+            cfg.leds = leds;
+        }
+        enc(2, -1);
+        check("K1 left: EDITOR ALLOW", cfg.editor_ignore == 0u && on_screen("ALLOW"));
+        enc(2, 4);
+        enc(2, -1);
+        check("  any turn steps once: ALLOW again", cfg.editor_ignore == 0u);
+        check("K2 on SYSTEM 2/2: 3.5MM OUT, ON as made, no mark in the footer (#631, #600 gone)", pages_now()->par[1] == MR_OUT35 && !on_screen("USB LEVEL") && !out_off
+              && on_screen("3.5MM OUT") && on_screen("ON") && px(OFF_FX + 2u, BATT_FY + 2u) != P_WARN);
+        enc(3, -1);
+        check("  K2 left: OFF, the red mark left of the battery (SCREEN: 3.5MM OFF)", out_off == 1u
+              && on_screen("OFF") && px(OFF_FX + 2u, BATT_FY + 2u) == P_WARN && on_screen("3.5MM OFF") && px(OFF_FX + 3u, BATT_FY + 2u) != P_WARN);
+        enc(3, -1);
+        check("  stays OFF", out_off == 1u);
+        {
+            uint8_t leds = cfg.leds, ign = cfg.editor_ignore;
+            cfg_defaults();
+            check("  FACTORY RESET's defaults: ON", out_off == 0u);
+            cfg.leds = leds;
+            cfg.editor_ignore = ign;
+            out_off = 1;
+        }
+        enc(3, 1);
+        ui_full = 1;
+        loop();
+        check("  K2 right: ON again, the mark gone", out_off == 0u && on_screen("ON") && px(OFF_FX + 2u, BATT_FY + 2u) != P_WARN && !on_screen("3.5MM OFF"));
+        enc(1, -1);
+        check("ALGO back: SYSTEM 1/2", menu_tab == MT_SYSTEM && !menu_sys2 && pages_now()->par[3] == MR_OUTPUT && on_screen("SYSTEM 1/2"));
+        enc(1, 1);
         enc(1, 1);
         check("ALGO again: INFO, a list, not a page", menu_tab == MT_INFO && !menu_page() && on_screen("BANK SLOTS") && on_screen("VERSION"));
         check("  its top bar is the plain bar with the patch's name, not the coral header's top", on_screen(patch_label));
@@ -1085,43 +1165,43 @@ int main(void)
                                                              * steps (#196) and arms it */
         uint64_t drums = (uint64_t)1 << eng_steps_module(0);
         foot_t f;
-        check("a patch loads WIRED: nothing armed, the footer: the patch, then KEYS WIRED", eng_arm_mask_get() == 0u
+        check("a patch loads WIRED: nothing armed, the footer: the patch, then KEYS WIRED", m64(eng_arm_mask_get()) == 0u
               && (foot_layout(&f), !strcmp(f.a, "808 KIT") && !strcmp(f.w, "KEYS WIRED")));
         pages_focus(1, 0);                                  /* DRUMS */
         loop();
         check("the track's device page: LEN RATE SWING GATE", pages_now()->nrows == 4u && pages_focus_track() == 0);
         tap(3);
-        check("SEL there: that track armed, no page opened", page == 0 && eng_arm_mask_get() == drums && !strcmp(msg_text, "DRUMS ARMED"));
+        check("SEL there: that track armed, no page opened", page == 0 && m64(eng_arm_mask_get()) == drums && !strcmp(msg_text, "DRUMS ARMED"));
         check("  the footer: ARM DRUMS", (foot_layout(&f), !strcmp(f.a, "ARM DRUMS") && !f.w[0]));
         later(1500);
         tap(3);
-        check("SEL again: a toggle, disarmed, the keys WIRED (#395)", page == 0 && eng_arm_mask_get() == 0u && !strcmp(msg_text, "KEYS WIRED"));
+        check("SEL again: a toggle, disarmed, the keys WIRED (#395)", page == 0 && m64(eng_arm_mask_get()) == 0u && !strcmp(msg_text, "KEYS WIRED"));
         later(1500);
         tap(3);
-        check("SEL a third time: armed again", eng_arm_mask_get() == drums && !strcmp(msg_text, "DRUMS ARMED"));
+        check("SEL a third time: armed again", m64(eng_arm_mask_get()) == drums && !strcmp(msg_text, "DRUMS ARMED"));
         {                                               /* armed with another (a bit of the set): SEL takes it out, the other stays */
             uint64_t other = (uint64_t)1 << (eng_steps_module(0) ? 0u : 1u);
-            eng_arm_mask(drums | other);
+            eng_arm_mask(s64(drums | other));
             later(1500);
             tap(3);
-            check("SEL on a device armed with another: taken out, the other stays", eng_arm_mask_get() == other
+            check("SEL on a device armed with another: taken out, the other stays", m64(eng_arm_mask_get()) == other
                   && !strcmp(msg_text, "DRUMS DISARMED"));
-            eng_arm_mask(drums);
+            eng_arm_mask(s64(drums));
         }
         pages_focus(0, 0);                                  /* Main: no keys input */
         loop();
         later(1500);
         tap(3);
-        check("SEL on Main: NOTHING HERE TAKES KEYS, the armed set as it was", page == 0 && eng_arm_mask_get() == drums
+        check("SEL on Main: NOTHING HERE TAKES KEYS, the armed set as it was", page == 0 && m64(eng_arm_mask_get()) == drums
               && !strcmp(msg_text, "NOTHING HERE TAKES KEYS"));
-        eng_arm_mask(0);
+        eng_arm_mask(s64(0));
         pages_focus(1, 0);
         loop();
         tap(BTN_SEQ);
-        check("SEQ on the track's page: the SEQ page on that track, armed", page == PAGE_SEQ && seq_trk == 0 && eng_arm_mask_get() == drums);
+        check("SEQ on the track's page: the SEQ page on that track, armed", page == PAGE_SEQ && seq_trk == 0 && m64(eng_arm_mask_get()) == drums);
         tap(BTN_HOME);
-        check("HOME: back to the track's page, still armed", page == 0 && pg_cur_dev == 1 && eng_arm_mask_get() == drums);
-        eng_arm_mask(0);
+        check("HOME: back to the track's page, still armed", page == 0 && pg_cur_dev == 1 && m64(eng_arm_mask_get()) == drums);
+        eng_arm_mask(s64(0));
         pages_focus(2, 0);
         later(1500);
         loop();
@@ -1173,7 +1253,7 @@ int main(void)
         later(1500);
         tap(3);                                             /* the 808 kit card: its keys come from the Drum map, not Main */
         check("SEL on a row that takes no keys: NOTHING HERE TAKES KEYS, nothing armed, the page stays",
-              page == PAGE_ENV && pg_cur_dev == d0 + 1u && eng_arm_mask_get() == 0u && !strcmp(msg_text, "NOTHING HERE TAKES KEYS"));
+              page == PAGE_ENV && pg_cur_dev == d0 + 1u && m64(eng_arm_mask_get()) == 0u && !strcmp(msg_text, "NOTHING HERE TAKES KEYS"));
         tap(4);
         check("ENV again: back where it came from", page == 0 && trail_n == n0);
         pages_focus(1, 0);                                  /* SEL on a row (#395): DRUMS armed, then disarmed */
@@ -1183,20 +1263,20 @@ int main(void)
         check("SEL on the environment's track row: armed (the set), no recording, the page stays", eng_armed() == eng_steps_module(0)
               && seq_rec == 0 && page == PAGE_ENV && !strcmp(msg_text, "DRUMS ARMED"));
         tap(BTN_REC);
-        check("REC on the environment (#395): records the armed track, arms nothing, the page stays", eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(0)
+        check("REC on the environment (#395): records the armed track, arms nothing, the page stays", m64(eng_arm_mask_get()) == (uint64_t)1 << eng_steps_module(0)
               && seq_rec && eng_transport_running() && (E.trk_rec >> E.node[eng_steps_module(0)].trk & 1u) && page == PAGE_ENV && !rec_held_used);
         tap(BTN_PLAY);
         check("  PLAY: REC and the transport stopped", !seq_rec && !eng_transport_running() && !E.trk_rec);
         pages_focus(2, 0);                                  /* the Drum map: its keys come through the track (#395) */
         tap(3);
         check("SEL on the Drum map's row, its track armed: armed through it, so taken out with it, the keys WIRED",
-              eng_arm_mask_get() == 0u && !strcmp(msg_text, "KEYS WIRED"));
+              m64(eng_arm_mask_get()) == 0u && !strcmp(msg_text, "KEYS WIRED"));
         tap(3);
-        check("SEL there again: the track it plays through armed; the bar names both (#582)", eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(0)
+        check("SEL there again: the track it plays through armed; the bar names both (#582)", m64(eng_arm_mask_get()) == (uint64_t)1 << eng_steps_module(0)
               && !strcmp(msg_text, "DRUM MAP + DRUMS ARMED"));
         pages_focus(1, 0);
         tap(3);
-        check("SEL again on the track: disarmed, the keys WIRED (the bar says so)", eng_arm_mask_get() == 0u && eng_armed() < 0
+        check("SEL again on the track: disarmed, the keys WIRED (the bar says so)", m64(eng_arm_mask_get()) == 0u && eng_armed() < 0
               && !strcmp(msg_text, "KEYS WIRED"));
         {
             char s1[16], s2[16], s0[16];
@@ -1205,11 +1285,11 @@ int main(void)
             env_status(2, s2);
             check("  nothing armed: the track's and the Drum map's rows say WIRED (the keys reach them by cable, #582), Main's its tempo",
                   !strcmp(s1, "WIRED") && !strcmp(s2, "WIRED") && strstr(s0, "BPM") != 0);
-            seq_arm_set((uint64_t)1 << eng_steps_module(0));
+            seq_arm_set(s64((uint64_t)1 << eng_steps_module(0)));
             env_status(1, s1);
             env_status(2, s2);
             check("  armed: ARMED on both, no WIRED", !strcmp(s1, "ARMED") && !strcmp(s2, "ARMED"));
-            seq_arm_set(0);
+            seq_arm_set(s64(0));
             loop();
         }
         tap(4);
@@ -1415,7 +1495,7 @@ int main(void)
             loop();
             printf("      (the bar: \"%s\")\n", msg_text);
             {
-                uint64_t a = eng_arm_mask_get();
+                uint64_t a = m64(eng_arm_mask_get());
                 uint32_t m, trk = 0, arp = 0;
                 for (m = 0; m < 64u; m++)
                     if (a >> m & 1u) {
@@ -1424,9 +1504,9 @@ int main(void)
                     }
                 check("SEL on an instrument's page: no preset list; armed with the track and the Arpeggiator its keys come "
                       "through (#395), not NOTHING HERE TAKES KEYS",
-                      page == 0 && a && a == env_listeners(d) && strstr(msg_text, " ARMED") != 0 && trk == 1u && arp == 1u);
+                      page == 0 && a && a == m64(env_listeners(d)) && strstr(msg_text, " ARMED") != 0 && trk == 1u && arp == 1u);
             }
-            eng_arm_mask(0);
+            eng_arm_mask(s64(0));
             {                                           /* an Arpeggiator alone is not a device to arm (#395) */
                 uint32_t e, d0 = pg_cur_dev, g0 = pg_cur_page;
                 for (e = 0; e < pg_ndev && !(pg_dev[e].module >= 0 && eng_type((uint32_t)pg_dev[e].module) == T_ARP); e++)
@@ -1438,7 +1518,7 @@ int main(void)
                     tap(3);
                     loop();
                     check("SEL on an Arpeggiator's page: nothing armed, NOTHING HERE TAKES KEYS",
-                          eng_arm_mask_get() == 0u && !strcmp(msg_text, "NOTHING HERE TAKES KEYS"));
+                          m64(eng_arm_mask_get()) == 0u && !strcmp(msg_text, "NOTHING HERE TAKES KEYS"));
                     (void)pages_focus(d0, g0);
                     later(1500);
                 }
@@ -2201,8 +2281,8 @@ int main(void)
         tap(BTN_HOME);
 
         base = (uint32_t)(53 + 12 * octave);
-        check("the SEQ page armed the track it showed (#395)", eng_arm_mask_get() == (uint64_t)1 << pat);
-        eng_arm_mask(0);                                    /* (WIRED again, for REC held + a black key) */
+        check("the SEQ page armed the track it showed (#395)", m64(eng_arm_mask_get()) == (uint64_t)1 << pat);
+        eng_arm_mask(s64(0));                                    /* (WIRED again, for REC held + a black key) */
         panel_held |= 1u << BTN_REC;                        /* REC held + black key 2 (G#3): PATTERN armed, no recording */
         panel_edges(1u << BTN_REC, 0);
         panel_keys(1u << 3);
@@ -2278,7 +2358,7 @@ int main(void)
         {
             int t0 = eng_steps_module(0);
             check("  ALGO while recording: the track shown is armed and records, the other not, REC goes on", seq_rec && seq_trk == 0u
-                  && eng_arm_mask_get() == (uint64_t)1 << t0 && (E.trk_rec >> E.node[t0].trk & 1u) && !(E.trk_rec >> E.node[pat].trk & 1u));
+                  && m64(eng_arm_mask_get()) == (uint64_t)1 << t0 && (E.trk_rec >> E.node[t0].trk & 1u) && !(E.trk_rec >> E.node[pat].trk & 1u));
         }
         enc(1, 1);
         loop();
@@ -2320,7 +2400,7 @@ int main(void)
         tap(BTN_PLAY);                                      /* (running: on the SEQ page REC stopped is step record, D-548) */
         tap(BTN_REC);
         check("REC with nothing armed: it still runs, the bar says so, nothing records", seq_rec && eng_transport_running()
-              && eng_arm_mask_get() == 0u && !E.trk_rec && !seq_kbd() && page == PAGE_SEQ && !strcmp(msg_text, "REC: NO TRACK ARMED"));
+              && m64(eng_arm_mask_get()) == 0u && !E.trk_rec && !seq_kbd() && page == PAGE_SEQ && !strcmp(msg_text, "REC: NO TRACK ARMED"));
         panel_held |= 1u << BTN_REC;                        /* REC held + black key 2 while recording: PATTERN armed, it records */
         panel_edges(1u << BTN_REC, 0);
         panel_keys(1u << 3);
@@ -2496,7 +2576,7 @@ int main(void)
         if (eng_transport_running())
             tap(BTN_PLAY);
         tap(BTN_SEQ);
-        eng_arm_mask(0);                                    /* (the page armed DRUMS, #395: WIRED again, as REC held + its key
+        eng_arm_mask(s64(0));                                    /* (the page armed DRUMS, #395: WIRED again, as REC held + its key
                                                              * leaves it) */
         header_draw();
         ui_dirty = 2;
@@ -2570,7 +2650,7 @@ int main(void)
 
         E.node[map].ksrc = 0;                               /* the Drum map off DRUMS: a melodic track, its roll (#241) */
         tap(BTN_SEQ);
-        eng_arm_mask(0);                                    /* (WIRED again: the page armed it) */
+        eng_arm_mask(s64(0));                                    /* (WIRED again: the page armed it) */
         header_draw();
         ui_dirty = 2;
         later(1500);
@@ -3106,6 +3186,45 @@ int main(void)
             check("  REC once more: a new count-in", seq_rec && seq_cin);
             tap(BTN_PLAY);
             check("  PLAY during the count-in: all stopped, nothing recorded", !seq_rec && !seq_cin && !eng_transport_running() && !E.trk_rec);
+            {                                               /* (D-803 amended 2026-11-07: REC's count-in clicks as play
+                                                             * once's, on the analog output only) */
+                uint32_t on = 0, onsets = 0, hi = 0, first = 0xFFFFFFFFu;
+                blocks(1);                                  /* (the engine takes the stop) */
+                cfg.count_in = 2;
+                tap(BTN_REC);                               /* stopped: the transport starts, two bars from its start */
+                for (guard = 0; seq_cin && guard < 100000u; guard++) {
+                    int32_t c[128], d[128];
+                    uint32_t j;
+                    int32_t rt;
+                    eng_render(l, r, 128);
+                    rt = eng_run_ticks();
+                    for (j = 0; j < 128u; j++)
+                        c[j] = l[j], d[j] = r[j];
+                    if (eng_click_mix(c, d, 128)) {
+                        for (j = 0; j < 128u; j++) {
+                            uint32_t a = (uint32_t)(c[j] - l[j] < 0 ? l[j] - c[j] : c[j] - l[j]);
+                            hi = a > hi ? a : hi;
+                        }
+                        if (!on) {
+                            onsets++;
+                            first = first == 0xFFFFFFFFu ? (uint32_t)rt : first;
+                        }
+                        on = 1;
+                    } else
+                        on = 0;
+                    loop();
+                }
+                check("COUNT-IN 2 BARS: REC's count-in clicks on each beat, 8 from the transport's start, a quarter of full scale, on the analog output only",
+                      onsets == 8u && first <= 1u && hi >= 16000u && hi <= 16400u);
+                printf("      (REC's count-in: %u clicks, the first %u ticks after the start)\n", (unsigned)onsets, (unsigned)first);
+                blocks(12);
+                {
+                    int32_t c[128], d[128];
+                    eng_render(c, d, 128);
+                    check("  after the count-in: no click, REC records", !eng_click_mix(c, d, 128) && seq_rec && !seq_cin);
+                }
+                tap(BTN_REC);                               /* (REC off) */
+            }
             cfg.count_in = 0;
             tap(BTN_REC);
             check("COUNT-IN OFF: REC records at once", seq_rec && !seq_cin && (E.trk_rec >> E.node[drums].trk & 1u) && !strcmp(msg_text, "REC DRUMS"));
@@ -3115,6 +3234,73 @@ int main(void)
         check("(disarmed, stopped)", eng_armed() < 0 && !eng_transport_running() && seq_rec == 0u);
         while (page != 0u && trail_n)
             tap(BTN_HOME);
+    }
+    {                                                       /* play once (#632): SEQ held + PLAY counts in a bar with a click,
+                                                             * plays the pattern once and stops by itself */
+        static int32_t l[128], r[128];
+        uint32_t guard, i, beats = 0, peak = 0, raw = 0, t0, run_ticks;
+        int m0;
+        (void)load("808 KIT");
+        page_show(0);
+        loop();
+        m0 = mlen;
+        panel_held |= 1u << BTN_SEQ;
+        panel_edges(1u << BTN_SEQ, 0);
+        panel_held |= 1u << BTN_PLAY;
+        panel_edges(1u << BTN_PLAY, 0);
+        check("SEQ held + PLAY, stopped: play once counts in (COUNT-IN 1), the transport stays stopped, no Start yet",
+              eng_once_state() == 1 && !eng_transport_running() && !strcmp(msg_text, "COUNT-IN 1") && !sent(m0, 0xFAu, 0xFFu, 0xFFu));
+        panel_held &= ~(1u << BTN_PLAY);
+        panel_edges(0, 1u << BTN_PLAY);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        loop();
+        check("  PLAY's and SEQ's releases do nothing of their own: still counting in, the page stays", eng_once_state() == 1 && page == 0u);
+        for (guard = 0; eng_once_state() == 1 && guard < 4000u; guard++) {
+            eng_render(l, r, 128);
+            for (i = 0; i < 128u; i++)                      /* (eng_render's: what USB audio takes) */
+                raw = (uint32_t)(l[i] < 0 ? -l[i] : l[i]) > raw ? (uint32_t)(l[i] < 0 ? -l[i] : l[i]) : raw;
+            eng_click_mix(l, r, 128);                       /* (the analog output's, audio.c) */
+            for (i = 0; i < 128u; i++)
+                peak = (uint32_t)(l[i] < 0 ? -l[i] : l[i]) > peak ? (uint32_t)(l[i] < 0 ? -l[i] : l[i]) : peak;
+            fm1_ms += 3;
+            loop();
+            if (!strncmp(msg_text, "COUNT-IN ", 9) && msg_text[9] >= '1' && msg_text[9] <= '4')
+                beats |= 1u << (msg_text[9] - '1');
+        }
+        check("  the count-in's click is on the analog output (a quarter of full scale), not on USB audio (D-820)", peak >= 16000u && peak <= 16400u && raw == 0u);
+        check("  the bar counts the beats, COUNT-IN 1 to COUNT-IN 4", beats == 15u);
+        t0 = eng_ticks();
+        check("  after the bar: the transport runs, the bar says PLAY ONCE", eng_once_state() == 2 && eng_transport_running() && !strcmp(msg_text, "PLAY ONCE"));
+        for (guard = 0; eng_transport_running() && guard < 4000u; guard++) {
+            eng_render(l, r, 128);
+            loop();
+        }
+        run_ticks = eng_ticks() - t0;
+        printf("      (the 808 Kit's pattern played once in %u ticks)\n", (unsigned)run_ticks);
+        check("  the pattern played once, then the transport stopped by itself", !eng_transport_running() && eng_once_state() == 0
+              && run_ticks >= 90u && run_ticks <= 100u);
+        panel_held |= 1u << BTN_SEQ;
+        panel_edges(1u << BTN_SEQ, 0);
+        tap(BTN_PLAY);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        blocks(100);
+        loop();
+        m0 = mlen;
+        tap(BTN_PLAY);
+        blocks(2);
+        loop();
+        check("PLAY during the count-in: play once ends, all stopped, no Stop sent (nothing had started)", eng_once_state() == 0
+              && !eng_transport_running() && !sent(m0, 0xFCu, 0xFFu, 0xFFu));
+        tap(BTN_PLAY);
+        check("(PLAY: running)", eng_transport_running());
+        panel_held |= 1u << BTN_SEQ;
+        panel_edges(1u << BTN_SEQ, 0);
+        tap(BTN_PLAY);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        check("SEQ held + PLAY while running: it stops, as PLAY", !eng_transport_running() && eng_once_state() == 0 && page == 0u);
     }
     {                                                       /* #170, the owner's design (2026-10-24): PRESET grows the footer
                                                              * into a toast (the slot, the name, the filled slots), the new
@@ -4132,22 +4318,22 @@ int main(void)
         loop();
         drums = eng_steps_module(0);
         pat = eng_steps_module(1);
-        check("(<7PH loads with nothing armed: WIRED)", drums >= 0 && pat >= 0 && eng_arm_mask_get() == 0u);
+        check("(<7PH loads with nothing armed: WIRED)", drums >= 0 && pat >= 0 && m64(eng_arm_mask_get()) == 0u);
         seq_trk = 0;
         tap(BTN_SEQ);
-        check("SEQ: the page arms the track it shows", page == PAGE_SEQ && seq_trk == 0u && eng_arm_mask_get() == (uint64_t)1 << drums);
+        check("SEQ: the page arms the track it shows", page == PAGE_SEQ && seq_trk == 0u && m64(eng_arm_mask_get()) == (uint64_t)1 << drums);
         check("  its track line: ARMED, then the ALGO and clear hints where they fit (#450)", strstr(seq_grid_text[1], "  ARMED  ALGO track  SEQ+REC clear") != 0);
         enc(1, 1);
-        check("ALGO there: the track it shows now armed, the one before disarmed", seq_trk == 1u && eng_arm_mask_get() == (uint64_t)1 << pat);
+        check("ALGO there: the track it shows now armed, the one before disarmed", seq_trk == 1u && m64(eng_arm_mask_get()) == (uint64_t)1 << pat);
         later(1500);
         check("  its bar: PATTERN ARM", bar_roll("PATTERN ARM", "P01", C_ACC));
         (void)load("<7PH");                                  /* another patch while the page shows (the editor's Send) */
         pv_gen++;
         loop();
         check("another patch while the SEQ page shows: the track it shows armed again", page == PAGE_SEQ
-              && eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(seq_trk));
+              && m64(eng_arm_mask_get()) == (uint64_t)1 << eng_steps_module(seq_trk));
         tap(BTN_SEQ);
-        eng_arm_mask(0);
+        eng_arm_mask(s64(0));
         pages_ensure();
         for (d = 0; d < pg_ndev; d++) {
             if (pg_dev[d].module == drums)
@@ -4164,15 +4350,34 @@ int main(void)
         loop();
         tap(3);
         check("SEL on two environment rows: both armed (a layer)", page == PAGE_ENV && pg_cur_dev == (uint32_t)dp
-              && eng_arm_mask_get() == ((uint64_t)1 << drums | (uint64_t)1 << pat) && env_armed((uint32_t)dd) && env_armed((uint32_t)dp));
+              && m64(eng_arm_mask_get()) == ((uint64_t)1 << drums | (uint64_t)1 << pat) && env_armed((uint32_t)dd) && env_armed((uint32_t)dp));
+        {                                                   /* #191: a key with two armed reaches both, as engine.ts plays a set */
+            static int32_t l2[128], r2[128];
+            uint32_t hd = 0, hp = 0;
+            th = thru_head;
+            panel_keys(1u << 7);                            /* C4 */
+            eng_render(l2, r2, 128);
+            {
+                uint8_t h;
+                for (h = th; h != thru_head; h++) {
+                    hd |= thru_ring[h % ENG_THRU][0] == (uint8_t)drums && (thru_ring[h % ENG_THRU][1] & 0x80u);
+                    hp |= thru_ring[h % ENG_THRU][0] == (uint8_t)pat && (thru_ring[h % ENG_THRU][1] & 0x80u);
+                }
+            }
+            panel_keys(0);
+            eng_render(l2, r2, 128);
+            loop();
+            printf("      (two armed, a key: DRUMS %s, PATTERN %s)\n", hd ? "heard" : "-", hp ? "heard" : "-");
+            check("  a key with both armed plays through both tracks (#191)", hd && hp);
+        }
         pages_select(dd - dp);
         loop();
         tap(3);
-        check("SEL on the first again: only the second stays armed", eng_arm_mask_get() == (uint64_t)1 << pat && !strcmp(msg_text, "DRUMS DISARMED"));
+        check("SEL on the first again: only the second stays armed", m64(eng_arm_mask_get()) == (uint64_t)1 << pat && !strcmp(msg_text, "DRUMS DISARMED"));
         pages_select(dp - dd);
         loop();
         tap(3);
-        check("SEL on the last one armed: nothing armed, the keys WIRED", eng_arm_mask_get() == 0u && !strcmp(msg_text, "KEYS WIRED"));
+        check("SEL on the last one armed: nothing armed, the keys WIRED", m64(eng_arm_mask_get()) == 0u && !strcmp(msg_text, "KEYS WIRED"));
         tap(4);
         later(1500);
         printf("      (the footer: \"%s\" \"%s\")\n", (foot_layout(&f), f.a), f.w);
@@ -4186,10 +4391,10 @@ int main(void)
         pages_focus((uint32_t)dd, 0);
         loop();
         tap(3);
-        check("SEL on another track's page while recording: that track armed alone and recording, REC goes on", eng_arm_mask_get() == (uint64_t)1 << drums
+        check("SEL on another track's page while recording: that track armed alone and recording, REC goes on", m64(eng_arm_mask_get()) == (uint64_t)1 << drums
               && seq_rec && !(E.trk_rec >> E.node[pat].trk & 1u) && (E.trk_rec >> E.node[drums].trk & 1u));
         tap(BTN_PLAY);
-        eng_arm_mask(0);
+        eng_arm_mask(s64(0));
         later(1500);
     }
 
@@ -4557,6 +4762,7 @@ int main(void)
         }
     }
     help_suite();
+    out35_suite();
     {                                                       /* the global tempo (D-907, tempo_glo.h) */
         uint8_t rec[16], old[16];
         uint32_t k, other = N_PRESETS, r, told, t0;
@@ -4601,6 +4807,9 @@ int main(void)
         check("  not written while the transport runs", !(r & 2u) && gt_due);
         check("  quiet: stopped and nothing heard for 2 s, not while a note or an echo may still sound (#651)",
               gt_quiet(t0 + 5000u, 0, t0 + 3000u) && !gt_quiet(t0 + 4999u, 0, t0 + 3000u) && !gt_quiet(t0 + 9000u, 1, t0));
+        /* the audio interrupt set heard a tick after the now the main loop read (PR #707's smoke): not quiet */
+        check("a sound heard a tick after the main loop's clock is not quiet (no flash write into it)",
+              !gt_quiet(t0 + 5000u, 0, t0 + 5001u) && !gt_quiet(t0 + 5000u, 0, t0 + 5000u) && !gt_quiet(0u, 0, 1u));
         tap(BTN_PLAY);
         r = gt_poll(t0 + GT_SAVE_MS - 2u, 1);
         check("  not written before 5 s have passed", !(r & 2u));
@@ -4632,10 +4841,10 @@ int main(void)
         menu_tab = MT_PANEL;
         ui_dirty = 2;
         loop();
-        check("the menu's PANEL tab: TEMPO on K4, GLOBAL", pages_now()->nrows == 4u && pages_now()->par[3] == MR_TEMPO && on_screen("TEMPO") && on_screen("GLOBAL"));
+        check("the menu's PANEL tab: TEMPO on K4, GLOBAL and the tempo (#582)", pages_now()->nrows == 4u && pages_now()->par[3] == MR_TEMPO && on_screen("TEMPO") && on_screen("GLOBAL 126"));
         told = host_tempo_told;
         enc(5, 1);                                          /* K4: PATCH */
-        check("K4: PATCH, the editor told", gt_patch == 1u && on_screen("PATCH") && host_tempo_told == told + 1u && gt_due);
+        check("K4: PATCH and the patch's own tempo, the editor told", gt_patch == 1u && on_screen("PATCH 124") && host_tempo_told == told + 1u && gt_due);
         main_m = eng_find(T_FM1);
         check("PATCH: the running patch plays its own tempo again (124)", ((eng_get_param((uint32_t)main_m, FM1_P_TEMPO) + 32768) >> 16) == 124 && !eng_tempo_row((uint32_t)main_m, FM1_P_TEMPO));
         (void)load_at(other);
@@ -4650,9 +4859,52 @@ int main(void)
         check("  a tempo past 255 round trips (byte 7 bit 0)", gt_patch == 1u && gt_bpm == 300u);
         enc(5, -1);                                         /* K4: GLOBAL again */
         check("K4 back: GLOBAL at 300", gt_patch == 0u && eng_tempo_global_get() == 300u
-              && ((eng_get_param((uint32_t)main_m, FM1_P_TEMPO) + 32768) >> 16) == 300);
+              && ((eng_get_param((uint32_t)main_m, FM1_P_TEMPO) + 32768) >> 16) == 300 && on_screen("GLOBAL 300"));
+        eng_clock_external(1);
+        ui_dirty = 2;
+        loop();
+        check("  under MIDI clock the row says GLOBAL alone (the footer says MIDI)", on_screen("GLOBAL") && !on_screen("GLOBAL 300"));
+        eng_clock_external(0);
         gt_patch = 1;                                       /* (as the tests before: each patch its own) */
         gt_apply();
+        page_show(0);
+    }
+    {   /* more than 64 modules (#721, D-256: the FM-1 takes 128): golden.ts's arm-many fixture, 70 modules, the Drum map
+         * last (index 69), two Voicings on Main's keys before it. SEL on the Drum map arms it alone (the Voicings no longer
+         * hear Main's keys), again disarms it; the editor's wide ARMS form arms a set across the module set's words */
+        uint32_t d, seen = 0;
+        int rc = load_fixture("build/panel-fixtures/arm-many.m1p"), dm = eng_find(T_DRUMMAP), part = eng_find(T_PART);
+        check("arm-many: the fixture loads, more than 64 modules, the Drum map past 63",
+              rc == 0 && eng_nmodules() > 64 && dm >= 64 && part >= 0);
+        patch_label = "ARM MANY";
+        pv_gen++;
+        page_show(0);
+        screen_patch();
+        later(2000);
+        pages_ensure();
+        for (d = 0; d < pg_ndev && rc == 0; d++) {
+            if (pg_dev[d].module != dm)
+                continue;
+            eng_arm_mask(mset_none());
+            check("arm-many: the Drum map's device arms module 69", mset_eq(env_listeners(d), mset_one((uint32_t)dm)));
+            pages_focus(d, 0);
+            loop();
+            later(1500);
+            tap(BTN_SEL);
+            check("arm-many: SEL on it arms it alone, the bar says so", mset_eq(eng_arm_mask_get(), mset_one((uint32_t)dm))
+                  && eng_hears_keys((uint32_t)dm) && !eng_hears_keys((uint32_t)part) && strstr(msg_text, " ARMED"));
+            tap(BTN_SEL);
+            check("  SEL again: disarmed, the keys WIRED (the cables: all hear them)", !mset_any(eng_arm_mask_get())
+                  && !strcmp(msg_text, "KEYS WIRED") && eng_hears_keys((uint32_t)dm) && eng_hears_keys((uint32_t)part));
+            eng_arm_mask(mset_or(mset_one(0u), mset_one((uint32_t)dm)));   /* (the editor's wide ARMS: words 0 and 2) */
+            check("  a set across the words (Main and the Drum map): both bits kept, the Drum map hears the keys",
+                  mset_has(eng_arm_mask_get(), 0u) && mset_has(eng_arm_mask_get(), (uint32_t)dm) && eng_hears_keys((uint32_t)dm)
+                  && !eng_hears_keys((uint32_t)part));
+            eng_arm_mask(mset_one(ENG_MAX_MODULES - 1u));
+            check("  a module the patch has not got: not armed", !mset_any(eng_arm_mask_get()));
+            seen++;
+        }
+        check("arm-many: its Drum map seen as a device", seen == 1u);
         page_show(0);
     }
     nudge_suite();

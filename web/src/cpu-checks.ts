@@ -43,9 +43,9 @@ export function cpuChecks(note: number): { name: string; patch: Patch; notes: nu
 /** modules whose cost depends on what they are fed (grains alive, a compressor working): the table holds their worst case */
 export const BUSY_TYPES = new Set(['grain', 'dyn']);
 
-/** checks the model may overestimate by more than usual: a busy module (above), or a filter whose cutoff an LFO moves (the
- * model charges a cutoff that moves every sample; a slow LFO changes the Q16 value only every few samples, and the filter
- * works out its coefficients only then) */
+/** checks the model may overestimate by more than usual: a busy module (above), or a filter whose cutoff an LFO or a
+ * Follower moves (the model charges a cutoff that moves every sample; a slow LFO changes the Q16 value only every few
+ * samples, and the filter works out its coefficients only then) */
 export function looseModel(p: Patch): boolean {
   if (p.modules.some((m) => BUSY_TYPES.has(m.type))) return true;
   // an envelope or a glide into an oscillator's pitch (a drum's sweep, portamento): the model charges every sample as
@@ -60,5 +60,13 @@ export function looseModel(p: Patch): boolean {
   if (p.cables.some((c) => c.to.port === 'pitch' && fromEnv(c.from.module))) return true;
   // an LFO whose rate a knob or another signal sets: the model charges it at its fastest (a pitch it moves every sample)
   if (p.modules.some((m) => m.type === 'lfo' && Math.round(m.params.wave ?? 0) !== 4 && p.cables.some((c) => c.to.module === m.id))) return true;
-  return p.cables.some((c) => c.to.port === 'cv' && p.modules.find((m) => m.id === c.to.module)?.type === 'filter' && p.modules.find((m) => m.id === c.from.module)?.type === 'lfo');
+  // a filter's cutoff an LFO or a Follower's envelope moves, directly or through other modules (the envelope filter, #661:
+  // unfed in the check, so it stands still; its envelope reaches the cutoff through the sweep row's Selector)
+  const fromMover = (id: number, seen = new Set<number>()): boolean => {
+    if (seen.has(id)) return false;
+    seen.add(id);
+    if (['lfo', 'esp'].includes(byId.get(id)?.type ?? '')) return true;
+    return p.cables.some((c) => c.to.module === id && fromMover(c.from.module, seen));
+  };
+  return p.cables.some((c) => c.to.port === 'cv' && byId.get(c.to.module)?.type === 'filter' && fromMover(c.from.module));
 }

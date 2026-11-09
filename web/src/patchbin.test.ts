@@ -8,7 +8,7 @@ import { devicesOf, NAME_MAX } from './pages';
 import { assemblyById, makeAssembly } from './assembly';
 import { instIsEngine } from './engines';
 import { engineBytes } from './test-bin';
-import { buttonRecord, deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION, formatOf, paramsAt, SECTION_FORMATS, WRITE_FLOOR } from './patchbin';
+import { buttonRecord, deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_CABLES3, POLY_ROW, rowParam, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION, formatOf, paramsAt, SECTION_FORMATS, WRITE_FLOOR, COUNTED, layout, moduleRecordSize } from './patchbin';
 import { FM1_PRESETS } from './presets';
 import { deviceView, polyGroups } from './poly';
 import { polyCfg, withParts } from './test-poly';
@@ -16,9 +16,11 @@ import { subtractiveSaw, wobble } from './test-patches';
 import { structureOf } from './structure';
 import { allModules } from './assembly';
 /** how many device-form modules a device is made of (the extras' member list) */
-const extrasMembers = (src: Patch, dev: Patch, d: { asm?: number; module?: number }): number => {
-  const ids = new Set(dev.modules.map((m) => m.id));
-  return (d.asm !== undefined ? allModules(src, src.assemblies!.find((x) => x.id === d.asm)!) : [d.module!]).filter((id) => ids.has(id)).length;
+const extrasMembers = (src: Patch, dev: Patch, d: { asm?: number; module?: number }, v = COUNTED - 1): number => {
+  const index = new Map(dev.modules.map((m, i) => [m.id, i]));
+  const at = (d.asm !== undefined ? allModules(src, src.assemblies!.find((x) => x.id === d.asm)!) : [d.module!]).filter((id) => index.has(id)).map((id) => index.get(id)!);
+  // (format 51, D-1003: one unbroken run of three or more is its first and its count)
+  return v >= COUNTED && at.length > 2 && at.every((x, i) => x === at[0] + i) ? 1 : at.length;
 };
 
 /** the side-input routes section: a count, then per route its module and input bytes and its parameter mask (patchbin.ts routesOf) */
@@ -56,6 +58,9 @@ describe('binary patch format', () => {
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
       const p = make();
       if (polyGroups(p).length) continue; // a poly assembly is not only layout: its cards run once per voice
+      // (a patch written with counted records keeps the parameters its device rows name, #667: they differ without the
+      // overlay's devices, so the comparison holds for the patches an older format holds)
+      if (formatOf(p) >= COUNTED) continue;
       const flat = { ...p, assemblies: undefined };
       delete flat.assemblies;
       expect(engineBytes(p), name).toEqual(engineBytes(flat));
@@ -113,7 +118,7 @@ describe('binary patch format', () => {
 
   it('marks the parameters appended since format 34 (`since`), which the FM-1 reads an older binary without', () => {
     // format 34's types and their parameter counts where they grew (firmware/src/defs.h at v1.4.1)
-    const v34: Record<string, number> = { osc: 11, lfo: 6, adsr: 4, delay: 5, reverb: 5, pulse: 1, drummap: 8, alloc: 8, steps: 4, filter: 5 };
+    const v34: Record<string, number> = { osc: 11, lfo: 6, adsr: 4, delay: 5, reverb: 5, pulse: 1, drummap: 8, alloc: 8, steps: 4, filter: 5, ladder: 5, glide: 2 };
     const nTypes34 = TYPE_ORDER.indexOf('pd'); // pd, env8, select came with format 35
     expect(TYPE_ORDER.slice(nTypes34)).toEqual(['pd', 'env8', 'select', 'rateenv', 'ratio', 'esp', 'shreg', 'comp', 'range', 'matrix']); // Rate Env in 42, Ratio in 43, Follower in 46, Shift register, Comparator, Range and Matrix in 49
     for (const t of TYPE_ORDER.slice(0, nTypes34)) {
@@ -139,7 +144,6 @@ describe('binary patch format', () => {
     const before = encodePatch(p);
     connectParameter(p, DEFS, { module: lfo.id, port: 'out' }, e.id, 'sus');
     connectParameter(p, DEFS, { module: lfo.id, port: 'out' }, e.id, 'end'); // the same source: the same pin
-    e.map!.k4 = ['r8', 'end'];
     connect(p, DEFS, { module: kb.id, port: 'gate' }, { module: e.id, port: 'gate' });
     setInputRoute(e, DEFS.env8, 'gate', 'sus', true);
     validatePatch(p, DEFS);
@@ -152,7 +156,7 @@ describe('binary patch format', () => {
     const masks = rec + 1 + 4 * 18 + 8;
     const bit = (name: string): number => 2 ** DEFS.env8.params.findIndex((q) => q.name === name);
     expect(dv.getUint32(masks, true)).toBe(bit('sus') + bit('end')); // p1
-    expect(dv.getUint32(masks + 5 * 4, true)).toBe(bit('r8') + bit('end')); // k4
+    expect(dv.getUint32(masks + 5 * 4, true)).toBe(0); // k4: the knob columns are gone (D-1001), an older format writes them empty
     // the route: module, input, u32 mask, right after the cables
     const routes = rec + recordSize('env8') + recordSize('output') + 4 * p.cables.length;
     expect(b[6] & FLAG_INPUT_MAP).toBe(FLAG_INPUT_MAP);
@@ -259,7 +263,7 @@ describe('binary patch format', () => {
   it('encodes every preset with the documented layout', () => {
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
       const b = encodePatch(make());
-      const { patch: p, groups } = deviceView(make()); // what the device gets: the allocator as a Part per poly group
+      const { patch: p, groups } = deviceView(make(), true); // what the device gets: the allocator as a Part per poly group, compiled
       const g = groups.length;
       const dv = new DataView(b.buffer);
       expect(b[0], name).toBe(0xa1);
@@ -269,12 +273,21 @@ describe('binary patch format', () => {
       expect(dv.getUint16(4, true), name).toBe(p.cables.length);
       const devs = deviceSection(make(), p);
       const txt = (t: string): number => 1 + deviceText(t).length;
+      // (format 51, D-1003: a page name equal to its device's and a row label equal to its parameter's name are empty)
+      const v51 = b[1] >= COUNTED;
+      const pageTxt = (pg: { name: string }, d: { name: string }): number => (v51 && deviceText(pg.name) === deviceText(d.name) ? 1 : txt(pg.name));
+      const labelTxt = (r: { module: number; param: string; label: string }): number => {
+        const m = p.modules.find((x) => x.id === r.module)!;
+        return v51 && !(rowParam(m.type, r.param) & POLY_ROW) && deviceText(r.label).toUpperCase() === r.param.toUpperCase() ? 1 : txt(r.label);
+      };
       // a row's extras (#357, #358): u8 count and 2 bytes per further parameter, u8 count and a text per position name
-      const more = (r: { also?: unknown[]; names?: string[] }): number => (r.also?.length || r.names?.length ? 2 + 2 * (r.also?.length ?? 0) + (r.names ?? []).reduce((k, s) => k + txt(s), 0) : 0);
-      const pages = devs.length ? 1 + devs.reduce((n, d) => n + (d.module !== undefined ? 2 : 2 + txt(d.name) + d.pages.reduce((k, pg) => k + txt(pg.name) + 4 + pg.rows.reduce((j, r) => j + 2 + txt(r.label) + more(r), 0), 0)), 0)
-        + 1 + devs.reduce((n, d) => n + 8 + deviceText((d.asm !== undefined ? make().assemblies?.find((x) => x.id === d.asm)?.preset : '') ?? '').length + 2 * (d.asm !== undefined ? make().assemblies!.find((x) => x.id === d.asm)!.params.length : 0) + extrasMembers(make(), p, d), 0) : 0; // and the extras
+      // (a poly row's extras: u8 its top, a VOICES row with one: format 51)
+      const more = (r: { param: string; also?: unknown[]; names?: string[]; top?: number }): number => (r.top !== undefined && r.param === 'voices' ? 1 : r.also?.length || r.names?.length ? 2 + 2 * (r.also?.length ?? 0) + (r.names ?? []).reduce((k, s) => k + txt(s), 0) : 0);
+      const pages = devs.length ? 1 + devs.reduce((n, d) => n + (d.module !== undefined ? 2 : 2 + txt(d.name) + d.pages.reduce((k, pg) => k + pageTxt(pg, d) + 4 + pg.rows.reduce((j, r) => j + 2 + labelTxt(r) + more(r), 0), 0)), 0)
+        + 1 + devs.reduce((n, d) => n + 8 + deviceText((d.asm !== undefined ? make().assemblies?.find((x) => x.id === d.asm)?.preset : '') ?? '').length + 2 * (d.asm !== undefined ? make().assemblies!.find((x) => x.id === d.asm)!.params.length : 0) + extrasMembers(make(), p, d, b[1]), 0) : 0; // and the extras
       const valued = p.modules.filter((m) => m.type === 'steps' && m.notes?.length);
-      const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + PANEL_BYTES + p.modules.reduce((s, m) => s + 1 + 4 * paramsAt(m.type, b[1]).length + (DEFS[m.type].paramInputs ? 8 + 6 * maskBytes(m.type) : 0) + (DEFS[m.type].data ?? 0), 0) + 4 * p.cables.length
+      const keep = layout(make()).keep;   // (counted records, #667: a record's size follows its values and the rows kept)
+      const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + PANEL_BYTES + p.modules.reduce((s, m) => s + (b[1] >= COUNTED ? moduleRecordSize(m, b[1], false, keep.get(m.id)) : 1 + 4 * paramsAt(m.type, b[1]).length + (DEFS[m.type].paramInputs ? 8 + 6 * maskBytes(m.type) : 0) + (DEFS[m.type].data ?? 0)), 0) + (b[7] & (FLAG_CABLES3 >> 8) ? 3 : 4) * p.cables.length
         + (valued.length ? 1 + valued.reduce((n, m) => n + 2 + 4 * m.notes!.length, 0) : 0) + pages + buttonRecord(make(), p).length
         + (drumMaps(p).length ? 1 + drumMaps(p).length * (1 + 8 * 8) : 0)
         + (rangeList(p).length ? 1 + 5 * rangeList(p).length : 0) // the macro ranges (the 909 Kit's velocity VCAs)
@@ -300,7 +313,7 @@ describe('binary patch format', () => {
   });
 
   it('counts parameter values as eng_load takes them: per module its type\'s, twice with a morph B side, plus per copy', () => {
-    const used = (q: Patch): number => deviceBudget(q).items.find((i) => i.key === 'params')!.used;
+    const used = (q: Patch): number => deviceBudget(q).params;
     const mono = subtractiveSaw();
     const npar = mono.modules.reduce((n, m) => n + DEFS[m.type].params.length, 0);
     expect(used(mono)).toBe(2 * npar); // one copy each
@@ -350,7 +363,7 @@ describe('binary patch format', () => {
     const att = osc + 1 + 4 * paramsAt('osc', b[1]).length; // osc: att1, att2, then the masks p1 p2 k1 k2 k3 k4
     expect(dv.getInt32(att, true)).toBe(65536);
     expect(dv.getInt32(att + 4, true)).toBe(65536);
-    expect(Array.from(b.slice(att + 8, att + 20))).toEqual([1, 0, 2, 0, 1, 0, 2, 0, 4, 0, 8, 0]); // the default matrix, u16 LE
+    expect(Array.from(b.slice(att + 8, att + 20))).toEqual([1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0]); // the default matrix, u16 LE; the knob columns empty (D-1001)
     const cab = 8 + PANEL_BYTES + p.modules.reduce((n, m) => n + recordSize(m.type, b[1]), 0);
     expect([b[cab], b[cab + 1], b[cab + 2], b[cab + 3]]).toEqual([0, DEFS.fm1.outputs.findIndex((o) => o.name === 'pitch'), 1, DEFS.osc.inputs.findIndex((i) => i.name === 'pitch')]);
   });
@@ -359,7 +372,7 @@ describe('binary patch format', () => {
     const p = subtractiveSaw();
     const b = deviceBudget(p);
     expect(b.items.map((i) => i.key)).toEqual(Object.keys(DEVICE));
-    expect(b.items.find((i) => i.key === 'bytes')!.used).toBe(encodePatch(p).length);
+    expect(b.items.find((i) => i.key === 'bytes')!.used).toBe(Math.min(encodePatch(p).length, encodePatch(p, false, true).length));   // (the smaller form, #667)
     expect(b.use).toBeGreaterThan(0);
     expect(b.use).toBeLessThanOrEqual(1);
     const out = p.modules.find((m) => m.type === 'output')!;
@@ -371,9 +384,9 @@ describe('binary patch format', () => {
     const two = subtractiveSaw();
     const out2 = two.modules.find((m) => m.type === 'output')!;
     for (let i = 0; i < 2; i++) connect(two, DEFS, { module: addModule(two, DEFS.reverb, 0, 0).id, port: 'out' }, { module: out2.id, port: 'l' });
-    expect(deviceBudget(two).fits).toBe(true);   // (two reverbs: the effect memory holds them, D-375)
-    for (let i = 0; i < 12; i++) connect(two, DEFS, { module: addModule(two, DEFS.reverb, 0, 0).id, port: 'out' }, { module: out2.id, port: 'l' });
-    expect(deviceBudget(two).over.map((i) => i.key)).toContain('lines');
+    expect(deviceBudget(two).fits).toBe(true);   // (two reverbs: the memory holds them, D-375)
+    for (let i = 0; i < 30; i++) connect(two, DEFS, { module: addModule(two, DEFS.reverb, 0, 0).id, port: 'out' }, { module: out2.id, port: 'l' });
+    expect(deviceBudget(two).over.map((i) => i.key)).toContain('memory');
   });
 });
 
@@ -390,13 +403,14 @@ describe('the budget\'s memory reading', () => {
 describe('the budget counts what the FM-1 receives', () => {
   // the button record (non-gate panel buttons) went uncounted: a patch could pass the budget and still be over M1_PATCH_MAX
   // (plus the room kept for each engine device's preset name, #452: NAME_MAX less the name it has)
-  it('patch bytes equal the encoded size for every factory patch, plus the room kept for engine preset names', () => {
+  it('patch bytes equal the encoded size (the smaller form) for every factory patch, plus the room kept for engine preset names', () => {
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
       const p = make();
       const used = deviceBudget(p).items.find((i) => i.key === 'bytes')!.used;
       const engines = devicesOf(p, DEFS).filter((d) => d.asm !== undefined && instIsEngine(p, assemblyById(p, d.asm)!));
       const kept = engines.reduce((n, d) => n + NAME_MAX - deviceText(assemblyById(p, d.asm!)!.preset ?? '').length, 0);
-      expect(used, name).toBe(encodePatch(p).length + kept);
+      // (the smaller of the two forms: the lowest older format's, or counted records, #667)
+      expect(used, name).toBe(Math.min(encodePatch(p).length, encodePatch(p, false, true).length) + kept);
     }
   });
 });

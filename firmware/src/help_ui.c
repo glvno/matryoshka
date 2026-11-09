@@ -59,7 +59,7 @@ static uint32_t help_state_sig(void)
 {
     int mod = page == PAGE_SEQ ? seq_module() : -1;
     uint32_t s = help_state(), len = mod >= 0 ? (uint32_t)seq_len(mod) > 16u : 0u;
-    return s | (uint32_t)(pg_cur_dev & 63u) << 4 | (uint32_t)(pg_list_btn >= 0) << 10 | (uint32_t)menu_tab << 11
+    return s | (uint32_t)(pg_cur_dev & 63u) << 4 | (uint32_t)(pg_list_btn >= 0) << 10 | (uint32_t)(menu_sys2 && menu_tab == MT_SYSTEM ? 7u : menu_tab) << 11
          | (uint32_t)(seq_trk & 15u) << 14 | len << 18 | (uint32_t)(eng_steps_count() > 0) << 19 | (pages_gen() & 0xFFFu) << 20;
 }
 
@@ -68,14 +68,14 @@ static uint32_t help_state_sig(void)
  * (the roll); the patch has tracks; the menu's tab is GUIDE / a page of settings / SYSTEM */
 static int hc_dev_presets(void) { pages_ensure(); return pg_cur_dev < pg_ndev && dp_list(pg_cur_dev) > 0u; }
 static int hc_dev_store(void) { pages_ensure(); return pg_cur_dev < pg_ndev && pg_dev[pg_cur_dev].structure != 0u; }
-static int hc_dev_keys(void) { pages_ensure(); return pg_cur_dev < pg_ndev && env_listeners(pg_cur_dev) != 0u; }
+static int hc_dev_keys(void) { pages_ensure(); return pg_cur_dev < pg_ndev && mset_any(env_listeners(pg_cur_dev)); }
 static int hc_list(void) { return pg_list_btn >= 0; }
 static int hc_long_track(void) { int mod = seq_module(); return page == PAGE_SEQ && mod >= 0 && seq_len(mod) > 16; }
 static int hc_roll(void) { return seq_module() >= 0 && seq_map() < 0; }
 static int hc_tracks(void) { return eng_steps_count() > 0; }
 static int hc_menu_guide(void) { return menu_tab == MT_GUIDE; }
 static int hc_menu_page(void) { return menu_page() != 0; }
-static int hc_menu_system(void) { return menu_tab == MT_SYSTEM; }
+static int hc_menu_system(void) { return menu_tab == MT_SYSTEM && !menu_sys2; }   /* (its first page: UPDATE MODE, FACTORY RESET) */
 
 /* the rows of the patch buttons with a job in the loaded patch (FX, LFO, EDIT, ARP; SEL, ENV and GLO are fixed): the
  * button by its own name, then its job: a Toggle "name on/off", a Page button "name pages", a Gate with a cable from its
@@ -479,7 +479,7 @@ static void guide_state(uint8_t *p, int conds)
     p[3] = (uint8_t)pg_cur_dev;
     p[4] = (uint8_t)pg_cur_page;
     p[5] = seq_trk;
-    p[6] = menu_tab;
+    p[6] = (uint8_t)(menu_tab | (menu_sys2 && menu_tab == MT_SYSTEM ? 128u : 0u));   /* (bit 7: SYSTEM's second page, #702) */
     p[7] = (uint8_t)panel_held;
     p[8] = (uint8_t)((panel_held >> 8) & 0x3Fu);
     p[9] = (uint8_t)hc;

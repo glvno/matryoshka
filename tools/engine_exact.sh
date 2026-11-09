@@ -19,7 +19,8 @@ gcc -O1 -w -o "$T/exact_test" firmware/test/exact_test.c -lm
 fail=0 n=0
 for p in build/golden/*.m1p; do
   k="${p%.m1p}"; b="$(basename "$k")"
-  HOST_TEST_DUMP="$T/out/$b.base" "$T/base_test" "$p" "$k.ev" "$k.f32" > /dev/null || true
+  if ! HOST_TEST_DUMP="$T/out/$b.base" "$T/base_test" "$p" "$k.ev" "$k.f32" 2>&1 > /dev/null | grep -q "eng_load failed"; then :
+  else echo "new  $b (BASE does not load it: nothing to compare)"; continue; fi
   HOST_TEST_DUMP="$T/out/$b.new" "$T/new_test" "$p" "$k.ev" "$k.f32" > /dev/null || true
   n=$((n + 1))
   if ! cmp -s "$T/out/$b.base" "$T/out/$b.new"; then echo "DIFFERS $b"; fail=1; fi

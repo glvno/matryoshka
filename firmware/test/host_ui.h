@@ -20,12 +20,13 @@ static uint8_t eng_overload;               /* audio.c: the overload guard muted 
 static int32_t patch_gain;                 /* audio.c: the mixer level */
 static volatile uint8_t snd_muted;         /* audio.c: sandbox mode muted the FM-1 */
 static volatile uint8_t out_mono;          /* audio.c: GLO > SYSTEM > OUTPUT: 0 STEREO, 1 MONO, 2 MONO L (#612) */
+static volatile uint8_t out_off;           /* audio.c: GLO > SYSTEM > 3.5MM OUT: 1 OFF, the speaker and the jack silent (#631) */
 static uint8_t m1_edited;                  /* proto.c: the running patch was edited */
 #define M1_SLOTS 64u
 static uint64_t bank_mask = 0x3FFFu;     /* slotstore.c: the occupied slots (the preview: the factory patches) */
 static uint8_t pv_bin[4096];               /* the previewed patch (proto.c's m1_cur) */
 static uint32_t pv_len;
-#define FELUCCA_VERSION "v1.10.1-DEV"
+#define FELUCCA_VERSION "v1.11.0-DEV"
 #define FM1_TICKS_PER_US 24u
 
 /* lcd.c's two line buffers (#377) and their rule: on the device the DMA reads the one just sent until the next transfer
@@ -251,11 +252,9 @@ static struct { uint32_t buttons; } fm1_in;
 static void m1_track_name(uint32_t mod, char *out)     /* (proto.c's, on the previewed binary) */
 {
     uint32_t at = eng_records_at(pv_bin, pv_len), i;
-    for (i = 0; i < mod; i++) {
-        const def_t *d = &DEFS[pv_bin[at] & 0x7Fu];
-        at += eng_record_size(d, pv_bin[1]);
-    }
-    at += eng_record_size(&DEFS[T_STEPS], pv_bin[1]) - DEFS[T_STEPS].ndata;
+    for (i = 0; i < mod; i++)
+        at += eng_rec_size(pv_bin, at);
+    at += eng_rec_size(pv_bin, at) - DEFS[T_STEPS].ndata;
     for (i = 0; i < TRACK_NAME_MAX && pv_bin[at + i]; i++)
         out[i] = (char)pv_bin[at + i];
     out[i] = 0;
@@ -268,7 +267,7 @@ static int m1_drum_name(uint32_t map, uint32_t r, char *out) { return eng_drum_n
 static uint32_t host_track_told;                    /* (panel_test.c: TRACK_NOW sent) */
 static void m1_track_now(uint32_t mod) { (void)mod; host_track_told++; }
 static void m1_mute_now(uint32_t mod, int on) { (void)mod; (void)on; }
-static void m1_arms_now(uint32_t lo, uint32_t hi) { (void)lo; (void)hi; }
+static void m1_arms_now(eng_mset_t mask) { (void)mask; }
 static uint32_t host_pattern_told, host_song_told;   /* (panel_test.c: PATTERN_NOW / SONG_NOW sent) */
 static void m1_pattern_now(void) { host_pattern_told++; }
 static void m1_song_now(uint32_t s) { (void)s; host_song_told++; }

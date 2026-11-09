@@ -17,11 +17,11 @@ const GENERIC: Record<string, string> = {
 const BY_TYPE: Record<string, Record<string, string>> = {
   fm1: { breath: 'breath (CC 2)', sustain: 'sustain (CC 64)', foot: 'foot switch (CC 65)' },
   adsr: { a: 'attack', d: 'decay', s: 'sustain', r: 'release', long: 'long times' },
-  ladder: { fm: 'audio-rate cutoff' },
+  ladder: { fm: 'audio-rate cutoff', stsat: 'stage saturation' },
   osc: { pm2: 'phase modulation 2', pm3: 'phase modulation 3', index: 'pm index' },
   filter: { hp6: 'high pass 6' },
   lfo: { phase: 'start phase', range: 'rate range', mult: 'sync speed', shape: 'shape (0..1)', pulse: 'pulse' },
-  delay: { note: 'note length' },
+  delay: { note: 'note length', wow: 'wow / flutter' },
   pulse: { inf: 'infinite' },
   mixer: { l1: 'level 1', l2: 'level 2', l3: 'level 3', l4: 'level 4' },
   env: { l1: 'level 1', r1: 'rate 1', l2: 'level 2', r2: 'rate 2', l3: 'level 3', r3: 'rate 3', l4: 'level 4', r4: 'rate 4', shot: 'one-shot' },
@@ -81,10 +81,19 @@ const HINTS: Record<string, string> = {
   'osc.pm': `${PM_HINT('pm')} The index input, when patched, multiplies all three.`,
   'osc.pm2': `${PM_HINT('pm2')} The index input, when patched, multiplies all three.`,
   'osc.pm3': `${PM_HINT('pm3')} The index input, when patched, multiplies all three.`,
+  'osc.analog': 'The flaws of an analog oscillator, 0 = none (ideal waves). The saw\'s ramp curves a little and dips below its bottom for 25 µs at each reset; the triangle\'s peak and the pulse width sit a little off centre. Each voice has its own fixed amount of each flaw. The sine has none.',
   'wavetable.pm': PM_HINT('pm'),
   'pd.pm': PM_HINT('pm'),
-  'delay.length': 'The most time this Delay holds, set here in the editor (the FM-1 shows it). Its time plays up to it; ping-pong: half per side, as both sides share the line. It takes 8.6 KB of the FM-1\'s effect memory per 100 ms.',
+  'delay.length': 'The most time this Delay holds, set here in the editor (the FM-1 shows it). Its time plays up to it; ping-pong: half per side, as both sides share the line. It takes 8.6 KB of the FM-1\'s memory per 100 ms at rate 44k. At 22k the same memory holds 200 ms, at 11k 400 ms, and this row shows that longer time.',
+  'delay.tape': 'Tape: echoes like a tape echo. Each repeat loses some highs and lows, the loop saturates softly instead of running away, and the wow / flutter row wobbles the echoes. The heads row picks up to three playback heads. Off: the plain Delay, exactly as without Tape.',
+  'delay.wow': 'With Tape on: how much the tape wobbles. A slow wow (0.6 Hz) and a fast flutter (6.7 Hz) move the echo\'s time, at most 1 ms and 0.1 ms either way, so its pitch bends a little.',
+  'delay.heads': 'With Tape on: which playback heads sound. Head 1 plays at the time, head 2 at twice it, head 3 at three times it, all from the same memory. Several heads share the level: each plays at a half or a third. A head past the Delay\'s length plays at its end.',
+  'delay.rate': 'The rate this Delay keeps its sound at. 44k keeps every sample: full quality. 22k keeps every second sample: twice the time in the same memory, and only frequencies up to about 9 kHz. 11k keeps every fourth sample: four times the time, up to about 4.4 kHz. So echoes at a lower rate sound darker. The length row shows the time at this rate (at most 3.8 s, 7.6 s, 15.2 s, in a small patch). A new rate while it plays is a tape changing speed: the echoes already in it play on, lower at a lower rate and higher at a higher one, then the echo glides back to the time.',
+  'glide.fall': 'The time a falling input takes. A rising input moves at the time row, a falling one at this: a vactrol (a lopass gate\'s light and photocell) opens quickly and closes slowly. 0: falling takes the time row too.',
   'delay.pingpong': 'Ping-pong: half per side. Both sides share the Delay\'s line, so each echoes up to half its length.',
+  'filter.drive': 'Drive: how hard the signal pushes the resonance. Above 0, the resonance passes a soft clip inside the filter, as in a Korg MS-20: a quiet signal plays as before, a loud one has its resonance squashed and roughened. More drive clips at a lower level. It does nothing without resonance. 0: off, the clean filter, exactly as before.',
+  'ladder.diode': 'Diode: the diode ladder of the Roland TB-303 and the EMS VCS3 instead of the Moog ladder. Its four stages load each other, so it falls more gently near the cutoff (about 18 dB per octave) and the cutoff is where its resonance peaks. Its level follows the resonance as the Moog ladder\'s does, so switching it keeps the patch\'s level. Stage saturation does not apply in this mode.',
+  'ladder.stsat': 'Stage saturation: the soft clip at the input of every stage, not only where the signal enters the loop, as in a Moog ladder\'s transistor pairs. A driven filter growls more; a quiet one plays as before. Off: exactly as before.',
 };
 export const paramHint = (type: string, name: string): string | undefined => HINTS[`${type}.${name}`];
 
@@ -128,7 +137,7 @@ const FORMER: Record<string, string> = {
 /** other words a module is searched by (#513): what it does, in the words someone looking for it would type */
 const ALIASES: Record<string, string> = {
   filter: 'multimode vcf svf state variable low pass high pass band pass notch peak all pass lp hp bp',
-  ladder: 'filter vcf moog low pass lp',
+  ladder: 'filter vcf moog diode tb-303 low pass lp',
   vowel: 'filter', comb: 'filter',
   shreg: 'turing machine rungler bits random loop pattern sequence',
   comp: 'compare schmitt trigger threshold gate',

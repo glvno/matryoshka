@@ -115,6 +115,6 @@ describe('Multimode self-oscillation (osc)', () => {
     expect(filters.length).toBe(2);
     expect(filters.every((m) => m.params.osc === 1)).toBe(true);
     expect(p.assemblies!.some((a) => a.params.some((r) => r.param === 'osc'))).toBe(false);
-    expect(encodePatch(p)[1]).toBe(47);
+    expect(encodePatch(p)[1]).toBe(51); // (format 51: its filters' drive, #670, and its oscillators' analog shape, #673)
   });
 });

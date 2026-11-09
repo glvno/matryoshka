@@ -20,6 +20,8 @@
  *   static int  m1_preset_del(uint32_t structure, const char *name);   0 = ok, -1 none
  *   static void m1_sandbox(const sb_page_t *s);                 SANDBOX: the editor's page while its patch is a sandbox patch
  *   static int  m1_midi_out(void);                              MENU > MIDI OUT is on (INFO says so, with feature bit 8)
+ *   static int  m1_editor_ignore(void);                         GLO > SYSTEM > EDITOR is at IGNORE (INFO says so, with feature
+ *                                                               bit 19; the firmware refuses nothing, #702)
  *   static int  m1_test_key(uint32_t id, int down);             the device test mode (#291): a panel key held / let go as if
  *                                                               by a hand (ids as the HAL's: 0..13 buttons, 14..40 the keys); 0 = ok
  *   static int  m1_test_turn(uint32_t enc, int32_t clicks);     an encoder turned (0 SELECT, 1 ALGO, 2..5 K1..K4, 6 PRESET); 0 = ok
@@ -28,6 +30,8 @@
  *                                                               text k (x, y, w, h, n, n characters); the bytes written, 0 = none
  *   static void m1_tempo(uint32_t patch, uint32_t bpm);         TEMPO: the editor set GLO > PANEL > TEMPO (0 GLOBAL, 1 PATCH) and the
  *                                                               global tempo (D-907, tempo_glo.h gt_set)
+ *   static void m1_arms(eng_mset_t mask);                       ARMS: the editor's armed set (#191, feature bit 20), a set of
+ *                                                               the modules (0..127 with feature bit 21, #721); no ARMS_NOW back
  *   static uint32_t m1_test_peak(void);                         the output's peak (16 bit, before MASTER) since the last call, bit
  *                                                               16 the engine runs, 17 the sound is muted (sandbox mode), 18 MASTER
  *                                                               is all the way down
@@ -39,11 +43,13 @@
 #define M1_PATCH_MAX 3840u                                   /* a bank slot is one 4 KB sector: 256 B of header, the patch */
 #define M1_VERSION 1
 
-enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_PRESETS = 0x2D, C_PRESET_GET = 0x2E, C_PRESET_PUT = 0x2F, C_PRESET_DEL = 0x30, C_SANDBOX = 0x31, C_TEST_KEY = 0x32, C_TEST_TURN = 0x33, C_TEST_SCREEN = 0x34, C_TEST_PEAK = 0x35, C_PATTERN = 0x36, C_SONG = 0x37, C_TEMPO = 0x38, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B, R_PRESET = 0x4C, R_PRESET_DATA = 0x4D, R_PRESET_STORED = 0x4E, R_SCREEN = 0x50, R_PEAK = 0x51, R_PATTERN_NOW = 0x52, R_SONG_NOW = 0x53, R_ARMS_NOW = 0x54, R_TEMPO_NOW = 0x55, R_LOCKS_NOW = 0x56, R_KEYS_NOW = 0x57, R_GUIDE_NOW = 0x58 };
+enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_PRESETS = 0x2D, C_PRESET_GET = 0x2E, C_PRESET_PUT = 0x2F, C_PRESET_DEL = 0x30, C_SANDBOX = 0x31, C_TEST_KEY = 0x32, C_TEST_TURN = 0x33, C_TEST_SCREEN = 0x34, C_TEST_PEAK = 0x35, C_PATTERN = 0x36, C_SONG = 0x37, C_TEMPO = 0x38, C_ARMS = 0x39, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B, R_PRESET = 0x4C, R_PRESET_DATA = 0x4D, R_PRESET_STORED = 0x4E, R_SCREEN = 0x50, R_PEAK = 0x51, R_PATTERN_NOW = 0x52, R_SONG_NOW = 0x53, R_ARMS_NOW = 0x54, R_TEMPO_NOW = 0x55, R_LOCKS_NOW = 0x56, R_KEYS_NOW = 0x57, R_GUIDE_NOW = 0x58 };
 #define M1_FEATURES 246u                                     /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW, bit 6 = LIVE, bit 7 = the presets (#195) (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
 #define M1_FEATURES2 255u                                     /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down, bit 11 = reads format 35, bit 12 = reads format 36, bit 13 = reads format 37, bit 14 = reads format 38, bit 15 = reads format 39 (legacy editor compatibility; INFO bytes 7..8 report the readable range) */
-#define M1_FEATURES3 7u                                       /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485), bit 18 = KEYS_NOW and GUIDE_NOW (the panel's keys and state, #549) */
+#define M1_FEATURES3 63u                                      /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485), bit 18 = KEYS_NOW and GUIDE_NOW (the panel's keys and state, #549), bit 19 = INFO's flags bit 3 says GLO > SYSTEM > EDITOR (#702), bit 20 = ARMS, the editor's armed set (#191), bit 21 = ARMS and ARMS_NOW carry ENG_MSET_WORDS words, modules 0..127 (#721; INFO byte 1 says 128) */
 #define M1_INFO_MIDI_OUT 4u                                  /* INFO byte 3 (flags) bit 2: MENU > MIDI OUT is on (with feature bit 8) */
+#define M1_INFO_EDITOR_IGNORE 8u                             /* INFO byte 3 (flags) bit 3: GLO > SYSTEM > EDITOR is at IGNORE, the
+                                                              * editor leaves this FM-1 alone (with feature bit 19, #702) */
 #define M1_PNAME 16u                                         /* a preset's name (presetstore.c PS_NAME) */
 #define M1_PVALS 176u                                        /* a preset's values at most (presetstore.c PS_MAXV; 88 before feature bit 17) */
 #define M1_SLOTS 64u                                         /* the bank (slotstore.c) */
@@ -129,7 +135,8 @@ static void m1_slot_now(uint32_t slot, const char *name)
 #define M1_FW_PATCH 0
 #endif
 
-/* INFO: the answer to HELLO, and unasked when MENU > MIDI OUT changed under the editor's Live (live.c). Bytes 9..11 (#216):
+/* INFO: the answer to HELLO, and unasked when MENU > MIDI OUT changed under the editor's Live (live.c) or GLO > SYSTEM >
+ * EDITOR changed after a HELLO (menu.c, #702). Bytes 9..11 (#216):
  * the firmware's major, minor and patch, as in its identity FM-1_7MMmmpp; older firmware ends at byte 8. Byte 12: feature
  * bits 16..23 (bit 16 TEMPO / TEMPO_NOW, D-907) */
 static void m1_info(void)
@@ -138,7 +145,8 @@ static void m1_info(void)
     p[0] = M1_VERSION;
     p[1] = ENG_MAX_MODULES;
     p[2] = ENG_MAX_CABLES;
-    p[3] = (uint8_t)((m1_flash_ok() ? 1u : 0u) | (m1_cur_len ? 2u : 0u) | (m1_midi_out() ? M1_INFO_MIDI_OUT : 0u));
+    p[3] = (uint8_t)((m1_flash_ok() ? 1u : 0u) | (m1_cur_len ? 2u : 0u) | (m1_midi_out() ? M1_INFO_MIDI_OUT : 0u)
+                     | (m1_editor_ignore() ? M1_INFO_EDITOR_IGNORE : 0u));
     p[4] = 255u;                                             /* (was the delay count: any number since 1.10, the effect memory holds their lines) */
     p[5] = M1_FEATURES;
     p[6] = M1_FEATURES2;
@@ -205,8 +213,9 @@ static void m1_set_current(const uint8_t *p, uint32_t len)
     for (i = 0; i < len; i++)
         m1_cur[i] = p[i];
     m1_cur_len = len;
-    (void)eng_upgrade(m1_cur, &m1_cur_len, M1_PATCH_MAX);   /* an older format's patch in today's (SAVE keeps edits of the
-                                                         * parameters added since); one that would not fit stays as it is */
+    (void)eng_upgrade(m1_cur, &m1_cur_len, M1_PATCH_MAX);   /* an older format's patch with counted records (an edit of a
+                                                         * parameter it leaves out grows its record: m1_patch_param);
+                                                         * one that would not fit stays as it is */
     m1_edited = 0;
     m1_gen++;
 }
@@ -221,13 +230,11 @@ static uint32_t m1_record(uint32_t mod)
     if (!at || mod >= m1_cur[2])
         return 0;
     for (i = 0; i < mod; i++) {
-        const def_t *d;
-        if (at >= m1_cur_len || M1_TYPE(m1_cur[at]) >= N_TYPES)
+        if (!eng_rec_ok(m1_cur, m1_cur_len, at))
             return 0;
-        d = &DEFS[M1_TYPE(m1_cur[at])];
-        at += eng_record_size(d, m1_cur[1]);
+        at += eng_rec_size(m1_cur, at);
     }
-    return at < m1_cur_len && M1_TYPE(m1_cur[at]) < N_TYPES ? at : 0;
+    return eng_rec_ok(m1_cur, m1_cur_len, at) ? at : 0;
 }
 
 static void m1_put32(uint32_t at, int32_t v)
@@ -244,13 +251,19 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
     uint32_t at = m1_record(mod);
     if (eng_tempo_row(mod, par))                             /* the global tempo moved, not the patch's own (D-907) */
         return;
-    if (!at || par >= eng_npar(&DEFS[M1_TYPE(m1_cur[at])], m1_cur[1]))   /* (an older format's record without it: m1_set_current
-                                                                         * upgrades the binary, unless it would not fit) */
-        return;
-    if (DEF_FIXED(M1_TYPE(m1_cur[at]), par))                 /* (a row set when the patch loads, a Delay's length: only a new
+    if (!at || DEF_FIXED(M1_TYPE(m1_cur[at]), par))          /* (a row set when the patch loads, a Delay's length: only a new
                                                               * patch from the editor changes it, so a stored patch always fits) */
         return;
-    m1_put32(at + 1u + 4u * par, v);
+    if (par >= eng_rec_npar(m1_cur, at)) {                   /* a counted record that leaves it out (at its default) grows to
+                                                              * hold it; an older format's record without it: m1_set_current
+                                                              * upgrades the binary, unless it would not fit */
+        if (m1_cur[1] < ENG_COUNTED || eng_rec_grow(m1_cur, &m1_cur_len, M1_PATCH_MAX, mod, par + 1u))
+            return;
+    }
+    if (eng_b_keep(m1_cur, &m1_cur_len, M1_PATCH_MAX, mod, par))   /* (a module with a B side whose B set leaves this
+                                                              * parameter out: its B value goes in first, D-1005) */
+        return;
+    m1_put32(at + eng_rec_head(m1_cur[1]) + 4u * par, v);
     m1_edited = 1;
 }
 
@@ -277,7 +290,13 @@ static void m1_patch_att(uint32_t mod, uint32_t input, int32_t v)
     uint32_t at = m1_record(mod);
     if (!at || input >= 2u || DEFS[M1_TYPE(m1_cur[at])].cvbase < 0)
         return;
-    m1_put32(at + 1u + 4u * eng_npar(&DEFS[M1_TYPE(m1_cur[at])], m1_cur[1]) + 4u * input, v);
+    if (m1_cur[1] >= ENG_COUNTED)                            /* (format 51: written out whole first, eng_rec_matrix) */
+        at = eng_rec_matrix(m1_cur, &m1_cur_len, M1_PATCH_MAX, mod);
+    else
+        at = at + eng_rec_head(m1_cur[1]) + 4u * eng_rec_npar(m1_cur, at);
+    if (!at)
+        return;
+    m1_put32(at + 4u * input, v);
     m1_edited = 1;
 }
 
@@ -289,7 +308,7 @@ static uint32_t m1_track_at(uint32_t mod)
     if (!at || M1_TYPE(m1_cur[at]) != T_STEPS)
         return 0;
     d = &DEFS[T_STEPS];
-    at += eng_record_size(d, m1_cur[1]) - d->ndata;
+    at += eng_rec_size(m1_cur, at) - d->ndata;
     return at + TRACK_NAME_MAX <= m1_cur_len ? at : 0;
 }
 
@@ -322,16 +341,13 @@ static void m1_patch_stepval(uint32_t mod, uint32_t k, uint32_t note, uint32_t v
 /* a track's notes changed in the engine (#139: cursor entry's chord, a live take): into the running binary */
 static void m1_patch_notes(uint32_t mod) { m1_patch_track(mod); }
 /* unasked: the armed set after it changed on the panel (#191: SEL, REC held + a black key, the SEQ page, a slot loaded
- * wired): the module mask in two u32 LE (engine.c eng_arm_mask_get; the editor's armedFromMask) */
-static void m1_arms_now(uint32_t lo, uint32_t hi)
+ * wired): the module set in ENG_MSET_WORDS u32 LE (engine.c eng_arm_mask_get; the editor's armedFromMask). An editor before
+ * feature bit 21 (#721) reads the first two, modules 0..63: all a patch it sends has */
+static void m1_arms_now(eng_mset_t mask)
 {
-    uint8_t p[8];
-    uint32_t i;
-    for (i = 0; i < 4u; i++) {
-        p[i] = (uint8_t)(lo >> (8u * i));
-        p[4u + i] = (uint8_t)(hi >> (8u * i));
-    }
-    m1_reply(R_ARMS_NOW, p, 8);
+    uint8_t p[4u * ENG_MSET_WORDS];
+    mset_write(mask, p);
+    m1_reply(R_ARMS_NOW, p, sizeof p);
 }
 
 /* unasked: a track's notes after an edit on the panel (the editor follows): module, n, n u32 LE */
@@ -408,7 +424,7 @@ static int m1_valid(const uint8_t *p, uint32_t len)
     uint32_t at = eng_records_at(p, len);
     if (!at || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION) || p[3] > POLY_MAX_GROUPS)
         return 0;
-    if ((p[7] & ~(ENG_FLAG_EXTRAS | ENG_FLAG_MORPH_MODULES | ENG_FLAG_PATTERNS | ENG_FLAG_LOCKS)) || ((p[7] & ENG_FLAG_MORPH_MODULES) && (p[1] < 36u || !(p[6] & 1u))) || ((p[7] & ENG_FLAG_PATTERNS) && p[1] < 48u) || ((p[7] & ENG_FLAG_LOCKS) && p[1] < 49u) || (p[1] < 34u && p[7]) || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
+    if (!eng_flags_ok(p))
         return 0;
     if (p[2] > ENG_MAX_MODULES || ((uint32_t)p[4] | (uint32_t)p[5] << 8) > ENG_MAX_CABLES)
         return 0;
@@ -556,7 +572,7 @@ static int m1_preset_name(uint32_t dev, const char *name)
     for (k = 0; k < dev; k++) {
         at += 6u + m1_cur[at + 5u];
         at += 1u + 2u * m1_cur[at];
-        at += 1u + m1_cur[at];
+        at += 1u + ((m1_cur[at] & ENG_MEMBER_RUN) ? 1u : m1_cur[at]);
     }
     while (name[n] && n < 12u)                      /* (the editor's NAME_MAX) */
         n++;
@@ -777,6 +793,10 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         m1_tempo_now();
         m1_heard = 1;                                        /* (the editor is there: GUIDE_NOW, KEYS_NOW; main.c guide_poll) */
         m1_guide_due = 1;
+        break;
+    case C_ARMS:                                             /* u32 LE words (#191): the editor's armed set, as the FM-1's own; */
+        if (len >= 8u)                                       /* 2 from an editor before feature bit 21, else ENG_MSET_WORDS (#721) */
+            m1_arms(mset_read(d, len / 4u));
         break;
     case C_TEMPO:                                            /* mode u8, bpm u16 (0: the global tempo stays) */
         if (len >= 3u) {

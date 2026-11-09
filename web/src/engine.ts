@@ -8,9 +8,9 @@
 // held). A module reading another group's per-part output gets the sum over those parts; a per-part module reading a
 // shared output gets that one buffer.
 
-import { type DrumMapState, dropRows, stepsGo, stepsPattern, type StepsSong, driftSeed, ENVELOPE_TYPES, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
+import { CLICK_ACCENT_HZ, CLICK_HZ, CLICK_MS, clickSample, ONCE_BAR, type DrumMapState, dropRows, stepsGo, stepsTurnAt, stepsPattern, type StepsSong, driftSeed, ENVELOPE_TYPES, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, voicingSetting, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
 import { defaultMap, FLAW_TARGETS, flawOf, MAX_PARTS, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, rangeShare, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
-import { ALLOC, deviceView, keysInto } from './poly';
+import { ALLOC, deviceView, keysInto, VOICING_CABLE_INPUTS } from './poly';
 import { armView, type DeviceKey } from './arm';
 import { kindOf, switches, toggleTargets } from './buttons';
 import { fixNotes, PATTERNS_MAX, SONGS_MAX, type SongEntry, type StepNote } from './track';
@@ -129,7 +129,13 @@ interface Group {
   down: number[];
   /** where its notes come from: -1 the keys (Main), else the id of the Arpeggiator or Steps module that feeds its allocator */
   src: number;
+  /** its Voicing's assign and unison (0 off, 1 on, 2 share) as the patch sets them; cfg holds them as they play, moved by
+   * `cv`, what the cables into its Part's assign and unison inputs carried at the end of the last block (#681) */
+  base: [number, number];
+  cv: [number, number];
 }
+/** a group's unison setting as one number: 0 off, 1 on, 2 share (engine.c grp_t unison) */
+const unisonOf = (cfg: PolyCfg): number => (cfg.unisonShare ? 2 : cfg.unison ? 1 : 0);
 
 /** an Arpeggiator module as it runs: its note logic (arpeggiator.ts) and the groups it plays. `feed`: the Steps track
  * cabled into its keys in (its id: it plays that track's notes, not Main's keys), -1 Main's keys. Bypassed it hands the
@@ -156,6 +162,7 @@ const KEYBOARD: PolyCfg = { parts: 1, assign: 0, legato: 0, priority: 0 };
 /** g: the poly group's index (its parts' drift seeds), -1 for the shared keyboard */
 const newGroup = (key: string, cfg: PolyCfg, g: number): Group => ({
   key, cfg: { ...cfg }, parts: Array.from({ length: cfg.parts }, (_, i) => newVoice(i, cfg.parts, driftSeed(g + 1, i))), held: [], rot: 0, down: [0, 0, 0, 0], src: -1,
+  base: [cfg.assign, unisonOf(cfg)], cv: [0, 0],
 });
 /** the tempo without a Main module */
 const TEMPO_DEFAULT = 120;
@@ -171,6 +178,8 @@ export class Engine {
   private kb: Group = newGroup('kb', KEYBOARD, -1);
   /** the poly assemblies' allocators, in polyGroups order */
   private groups: Group[] = [];
+  /** the Part modules a cable moves the assign or unison of (#681), in group order (voicingCables) */
+  private modeParts: Node[] = [];
   private stamp = 0;
   /** the patch as loaded (an allocator's setting changes the groups: setParam reloads it) */
   private src: Patch | null = null;
@@ -189,6 +198,25 @@ export class Engine {
   private extSince = 0;
   private extLen = 0;
   private running = false;
+  /** play once (#632, playOnce): 0 not, 1 counting in, 2 playing; ticks counted into the count-in, its first block to
+   * come (beat 1's click on its first sample); the click sounding: its sample (-1 none) and half period in samples */
+  private once = 0;
+  private cin = 0;
+  private cinFirst = false;
+  private clickK = -1;
+  private clickHalf = 1;
+  /** the click of this render (both count-ins), added after the patch is held to full scale (engine.c eng_click_mix: on
+   * the FM-1 the analog output's only, D-820; the browser has the one output) */
+  private clickBuf = new Float32Array(0);
+  /** REC's count-in click (D-803, countIn; engine.c eng_count_in): the request (the ticks then, the bars), taken once the
+   * transport runs; then the bar it starts on and the one it ends on, in ticks from the transport's start */
+  private cinReq: { at: number; bars: number } | null = null;
+  private cinOn = false;
+  private cinFrom = 0;
+  private cinEnd = 0;
+  /** the transport as the last block had it, and the ticks when it last started (engine.c E.run_ticks) */
+  private ran = false;
+  private runTicks = 0;
   /** the FM-1's patch buttons (bit i = PANEL_BUTTONS[i]): held, or switched on */
   private buttons = 0;
   /** per patch button: the modules a Toggle bypasses (buttons.ts toggleTargets), null for the other kinds; and whether it switches */
@@ -241,17 +269,26 @@ export class Engine {
     source = armView(source, this.armedKeys); // the armed devices hear Main's keys, the others not (#190); unchanged while none is
     const { patch, groups: pg } = deviceView(source, compile);
     const oldGroups = new Map(this.groups.map((g) => [g.key, g]));
+    const groupOf = new Map<number, number>();
+    pg.forEach((x, i) => x.modules.forEach((id) => groupOf.set(id, i)));
+    // the groups whose Part has a cable into its assign or unison input (#681): they keep what it carried
+    const typeOf = new Map(patch.modules.map((m) => [m.id, m.type]));
+    const cabled = new Set(patch.cables.filter((c) => typeOf.get(c.to.module) === 'part' && VOICING_CABLE_INPUTS.includes(c.to.port)).map((c) => groupOf.get(c.to.module) ?? -1));
     this.groups = pg.map((x, i) => {
-      const g = oldGroups.get(x.key) ?? newGroup(x.key, x.cfg, i);
-      const stackChanged = g.cfg.unisonParts !== x.cfg.unisonParts || (g.cfg.unison && x.cfg.unison && g.cfg.unisonShare !== x.cfg.unisonShare);
+      const old = oldGroups.get(x.key);
+      const g = old ?? newGroup(x.key, x.cfg, i);
+      const was = { ...g.cfg };
       g.cfg = { ...x.cfg };
-      if (stackChanged && g.cfg.unison) this.monoUpdate(g);
+      g.base = [x.cfg.assign, unisonOf(x.cfg)];
+      if (!cabled.has(i)) g.cv = [0, 0];
+      this.voicingSet(g);
+      // a change of unison mode regroups the parts (unisonSwitch); a new unison count while in unison takes the held keys again
+      if (old && unisonOf(was) !== unisonOf(g.cfg)) this.unisonSwitch(g, unisonOf(was));
+      else if (old && g.cfg.unison && was.unisonParts !== g.cfg.unisonParts) this.monoUpdate(g);
       g.src = x.src ?? -1;
       for (const v of g.parts) v.idle = false; // the patch changed: every part runs and is judged again
       return g;
     });
-    const groupOf = new Map<number, number>();
-    pg.forEach((x, i) => x.modules.forEach((id) => groupOf.set(id, i)));
     const next = new Map<number, Node>();
     const mainSeq = source.modules.find((m) => m.type === 'fm1')?.seq;
     this.song.song = mainSeq?.song ?? 0;
@@ -324,6 +361,7 @@ export class Engine {
     const { order } = processingOrder(patch);
     this.order = order.map((id) => next.get(id)!);
     this.outputs = this.order.filter((n) => n.type === 'output');
+    this.modeParts = this.order.filter((n) => n.type === 'part' && n.group >= 0 && VOICING_CABLE_INPUTS.some((port) => n.connected[port])).sort((a, b) => a.group - b.group);
     this.main = this.order.find((n) => n.type === 'fm1') ?? null;
     this.hasB = this.order.some((n) => n.paramsB);
     const mainInst = patch.modules.find((m) => m.type === 'fm1');   // the switched-on buttons the patch was saved with
@@ -987,10 +1025,49 @@ export class Engine {
     this.extLen = 0;
   }
 
-  /** the transport (PLAY, MIDI Start / Stop): the Main module's run output, and its clock output pulses only while it runs */
+  /** the transport (PLAY, MIDI Start / Stop): the Main module's run output, and its clock output pulses only while it runs.
+   * It ends play once (#632) where it is: on, the transport runs on as if PLAY had started it */
   transport(on: boolean): void {
+    if (this.once) this.onceEnd();
     if (on && !this.running) this.tickAcc = 0;
     this.running = on;
+    if (!on) this.countIn(0); // (a stop ends REC's count-in click, asked for or counting)
+  }
+
+  /** REC's count-in click (D-803; engine.c eng_count_in, the same): a click on each beat of `bars` bars from the transport's
+   * start or, running already at `at` (the clock's ticks then), from the next bar line, as the FM-1's REC counts them
+   * (seq_ui.c seq_cin_poll); 0 bars: none. The editor's own REC has no count-in: the FM-1 tab asks for it */
+  countIn(bars: number, at = this.ticks): void {
+    this.cinReq = { at: at >>> 0, bars };
+  }
+
+  /** play once (#632; engine.c eng_play_once, the same): the transport stops, a bar of four beats is counted in on the
+   * clock with a click on each beat (CLICK_*: beat 1 higher), from the next block's first sample; then the transport
+   * starts and each Steps track the clock steps plays its pattern once, or the song's entries once each, and plays no
+   * step after; when every such track is done the transport stops by itself */
+  playOnce(): void {
+    this.running = false;
+    for (const node of this.tracks) (node.inst[0].state as StepsState).once = 0;
+    this.once = 1;
+    this.cin = 0;
+    this.cinFirst = true;
+    this.tickAcc = 0;
+  }
+  /** play once: 0 not, 1 counting in, 2 playing */
+  get onceState(): number {
+    return this.once;
+  }
+  private onceEnd(): void {
+    this.once = 0;
+    for (const node of this.tracks) (node.inst[0].state as StepsState).once = 0;
+  }
+  /** play once's count-in is over: the transport starts, each track the clock steps counts its passes */
+  private onceStart(): void {
+    this.once = 2;
+    this.running = true;
+    this.tickAcc = 0;
+    const song = this.song.song > 0 ? this.song.songs[this.song.song - 1]?.length ?? 0 : 0;
+    for (const node of this.tracks) (node.inst[0].state as StepsState).once = node.connected.clk ? 0 : (song || 1) + 2;
   }
 
   /** a patch button (PANEL_BUTTONS index) held or switched: the host does the switching, the engine keeps the state */
@@ -1054,6 +1131,56 @@ export class Engine {
         x.keyTrig = false;
       }
     }
+  }
+
+  /** a group's assign and unison as they play: the patch's, moved by its cables (modules.ts voicingSetting) */
+  private voicingSet(g: Group): void {
+    const a = voicingSetting(g.base[0], g.cv[0], 3), u = voicingSetting(g.base[1], g.cv[1], 2);
+    if (a !== g.cfg.assign) g.cfg.assign = a;
+    if (u !== unisonOf(g.cfg)) {
+      g.cfg.unison = u > 0;
+      g.cfg.unisonShare = u === 2;
+    }
+  }
+
+  /**
+   * The end of a block (#681): what the cables into each Part's assign and unison inputs carry, their first sample (summed
+   * as the Part's input would be), sets its group's assign and unison for the keys of the next block (engine.c
+   * group_cables).
+   */
+  private voicingCables(): void {
+    for (const node of this.modeParts) {
+      const g = this.groups[node.group];
+      const cv: [number, number] = [0, 0];
+      for (const s of node.sources) {
+        const k = VOICING_CABLE_INPUTS.indexOf(s.port);
+        if (k < 0) continue;
+        const fg = s.from.group;
+        if (fg >= 0 && fg !== node.group) for (const inst of s.from.inst) cv[k] += s.w === 1 ? inst.out[s.fromPort][0] : inst.out[s.fromPort][0] * s.w;
+        else cv[k] += s.from.inst[0].out[s.fromPort][0];
+      }
+      g.cv = cv;
+      const was = unisonOf(g.cfg);
+      this.voicingSet(g);
+      if (unisonOf(g.cfg) !== was) this.unisonSwitch(g, was);
+    }
+  }
+
+  /**
+   * A group's unison mode changed from `from` (0 off, 1 on, 2 share). Into unison: the notes its parts play, oldest first,
+   * become the held keys, and the parts take them as unison does. Out of it: the parts keep their notes until their keys
+   * are let go, and new keys are handed out polyphonically. Between on and share: the held keys again. One part: nothing
+   * changes (it plays the held keys either way). (engine.c unison_switch)
+   */
+  private unisonSwitch(g: Group, from: number): void {
+    if (g.parts.length === 1) return;
+    if (!from) {
+      g.held = [];
+      for (const x of g.parts.filter((p) => p.on).sort((a, b) => a.onStamp - b.onStamp))
+        if (!g.held.some((h) => h.note === x.note)) g.held.push({ note: x.note, vel: x.velocity });
+      this.monoUpdate(g);
+    } else if (!unisonOf(g.cfg)) g.held = [];
+    else this.monoUpdate(g);
   }
 
   /**
@@ -1184,9 +1311,17 @@ export class Engine {
     const total = left.length;
     left.fill(0);
     right.fill(0);
+    if (this.clickBuf.length < total) this.clickBuf = new Float32Array(total);
+    const click = this.clickBuf;
+    click.fill(0, 0, total);
+    let clicked = false;
     const all = [this.kb, ...this.groups];
     for (let off = 0; off < total; off += BLOCK) {
       const n = Math.min(BLOCK, total - off);
+      if (this.once === 1 && this.cin >= ONCE_BAR) this.onceStart();
+      const start = this.running && !this.ran, was = this.ticks; // (REC's count-in: the ticks before this block's)
+      if (start) this.runTicks = this.ticks;
+      this.ran = this.running;
       // the clock: MIDI ticks while external, else the global tempo or the Main module's (bpm x 24 ticks a minute, in whole
       // bpm as the firmware does)
       const bpm = Math.min(TEMPO_MAX, Math.max(TEMPO_MIN, Math.round(this.tempoGlobal ?? this.main?.params.tempo ?? TEMPO_DEFAULT)));
@@ -1218,6 +1353,34 @@ export class Engine {
         }
       }
       const clock = seen && this.running; // the Main module's clock output: one pulse per block that saw a tick while running
+      // play once's count-in (#632): beat 1's click on this block's first sample, then one on each 24th tick
+      let clickAt = -1, accent = false;
+      if (this.once === 1) {
+        if (this.cinFirst) (clickAt = 0), (accent = true), (this.cinFirst = false);
+        else if (seen) {
+          const before = this.cin;
+          this.cin += nt;
+          if (this.cin < ONCE_BAR && Math.floor(this.cin / PPQN) > Math.floor(before / PPQN)) clickAt = Math.max(0, tick);
+        }
+      }
+      // REC's count-in (D-803, as the FM-1's REC counts the bars): a click on each beat from the bar it starts on, beat 1 higher
+      if (!this.running) this.cinOn = false;
+      else {
+        const r0 = (was - this.runTicks) >>> 0, r1 = (this.ticks - this.runTicks) >>> 0;
+        if (this.cinReq) { // (asked for: taken once the transport runs)
+          const at = (this.cinReq.at - this.runTicks) | 0;
+          this.cinOn = this.cinReq.bars !== 0;
+          this.cinFrom = at > 0 ? Math.ceil(at / ONCE_BAR) * ONCE_BAR : 0;
+          this.cinEnd = this.cinFrom + this.cinReq.bars * ONCE_BAR;
+          this.cinReq = null;
+        }
+        if (this.cinOn) {
+          if (start && this.cinFrom === 0) (clickAt = 0), (accent = true); // (beat 1 on the start's first sample)
+          for (let r = r0 + 1; r <= r1; r++)
+            if (r >= this.cinFrom && r < this.cinEnd && r % PPQN === 0) (clickAt = Math.max(0, tick)), (accent = (r - this.cinFrom) % ONCE_BAR === 0);
+          if (r1 >= this.cinEnd) this.cinOn = false;
+        }
+      }
       this.trackKeys();
       for (const a of this.arps)
         if (!a.node.bypass) // (bypassed it plays nothing of its own: the keys it hears went straight on)
@@ -1252,6 +1415,18 @@ export class Engine {
           x.foot = this.ctl.foot;
         }
       }
+      // play once (D-820): where the last track still playing its passes ends them in this block (-1 not here); a shorter
+      // track loops on until then (engine.c steps_once_at, the same)
+      let onceAt = -1;
+      if (this.once === 2)
+        for (const node of this.tracks) {
+          const st = node.inst[0].state as StepsState;
+          if (st.once < 2) continue;
+          const a = st.once === 2 ? stepsTurnAt(st, node.inst[0].eff, this.running, this.running ? tick : -1, nt, n) : -1;
+          if (a < 0) { onceAt = -1; break; }
+          onceAt = Math.max(onceAt, a);
+        }
+      for (const node of this.tracks) (node.inst[0].state as StepsState).onceAt = onceAt;
       // idle parts (partQuiet): woken by a note, else run every IDLE_CHECK-th block, each part in its own (staggered, #434)
       this.groups.forEach((g, gi) =>
         g.parts.forEach((x, v) => {
@@ -1285,6 +1460,7 @@ export class Engine {
           }),
         );
       for (const g of all) for (const x of g.parts) { x.retrig = false; x.keyTrig = false; }
+      if (this.modeParts.length) this.voicingCables();
       for (const o of this.outputs) {
         const inst = o.inst[0];
         const lvl = inst.eff.level ?? 1;
@@ -1295,11 +1471,30 @@ export class Engine {
           right[off + i] += r[i] * lvl;
         }
       }
+      if (this.once === 2 && !this.tracks.some((t) => (t.inst[0].state as StepsState).once >= 2)) {
+        this.onceEnd(); // (every track played its passes: the transport stops, from the next block)
+        this.running = false;
+      }
+      if (clickAt >= 0 || this.clickK >= 0) { // the count-in's click, on both sides (engine.c eng_click_mix the same)
+        const len = Math.floor((this.sampleRate * CLICK_MS) / 1000);
+        clicked = true;
+        for (let i = 0; i < n; i++) {
+          if (i === clickAt) (this.clickK = 0), (this.clickHalf = Math.max(1, Math.floor(this.sampleRate / (2 * (accent ? CLICK_ACCENT_HZ : CLICK_HZ)))));
+          if (this.clickK < 0) continue;
+          click[off + i] = clickSample(this.clickK, len, this.clickHalf);
+          if (++this.clickK >= len) this.clickK = -1;
+        }
+      }
     }
     for (let i = 0; i < total; i++) {
       left[i] = Number.isFinite(left[i]) ? Math.max(-1, Math.min(1, left[i])) : 0;
       right[i] = Number.isFinite(right[i]) ? Math.max(-1, Math.min(1, right[i])) : 0;
     }
+    if (clicked) // (after the patch is held to full scale, as the FM-1 adds it to its analog output: D-820)
+      for (let i = 0; i < total; i++) {
+        left[i] = Math.max(-1, Math.min(1, left[i] + click[i]));
+        right[i] = Math.max(-1, Math.min(1, right[i] + click[i]));
+      }
   }
 }
 

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Factory presets (#193): every factory engine ships with presets, read-only (device-presets.ts). "Init" is the engine as
-// it comes. An engine with a card file (web/presets/cards/<slug>.txt, preset-cards.ts, #413) ships the presets written
-// there, in their order. The others get the same engine with a few card rows moved by a rule that reads parameter names
-// only (a filter's cutoff, an envelope's times, an effect's mix), so a rule that finds nothing to move makes no preset.
+// Factory presets (#193): every factory engine ships with presets, read-only (device-presets.ts); a factory effect with a
+// card does too (#661). "Init" is the engine as it comes. An engine with a card file (web/presets/cards/<slug>.txt,
+// preset-cards.ts, #413) ships the presets written there, in their order. The other engines get the same engine with a
+// few card rows moved by a rule that reads parameter names only (a filter's cutoff, an envelope's times, an effect's mix),
+// so a rule that finds nothing to move makes no preset.
 // The FM-1 gets the same list in ROM (export-defs, #194). The XL patches' engines get the same variations, made from the
 // engine as the XL ships it (a card's presets are carried over only onto an XL whose rows are its FM-1 version's under
 // the same names, which the XLs built as their originals' whole panels are not); they stay in the browser, as the XLs do.
@@ -119,8 +120,16 @@ const once = <T>(f: () => T): (() => T) => {
   return () => (done ? v! : ((done = true), (v = f())));
 };
 
-/** every factory engine's presets (the FM-1's ROM list) */
-export const factoryPresets = once((): Preset[] => FACTORY.filter((d) => defIsEngine(d)).flatMap((d) => presetsOfDef(d)));
+/** a factory assembly that ships presets: every engine, and an effect with a card (#661: an effect gets no rule-made ones) */
+export const hasFactoryPresets = (def: AssemblyDef): boolean => defIsEngine(def) || CARDS[cardSlug(def.name)] !== undefined;
+
+/** every factory engine's presets, then the factory effects' with a card (the FM-1's ROM list) */
+export const factoryPresets = once((): Preset[] => FACTORY.flatMap((d) => shippedPresets(d)));
+
+/** the presets a factory assembly ships: an engine's (presetsOfDef), an effect's card's, else none */
+export function shippedPresets(def: AssemblyDef): Preset[] {
+  return defIsEngine(def) ? presetsOfDef(def) : cardOf(def)?.presets ?? [];
+}
 
 /** an XL engine's presets: its FM-1 version's card (the FM-1 engine of the same name, or the name without " XL") carried
  * onto its rows when every row the card sets is there under the same name, else the XL rules */

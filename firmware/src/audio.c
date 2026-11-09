@@ -17,6 +17,10 @@ static volatile uint8_t out_mono;                  /* GLO > SYSTEM > OUTPUT (#61
                                                     * both sides of the analog output; 2 MONO L, the sum on the left side
                                                     * (the tip) and the right silent, so a mono (TS) plug has nothing to
                                                     * short. USB audio stays stereo. Saved with the settings (main.c) */
+static volatile uint8_t out_off;                   /* GLO > SYSTEM > 3.5MM OUT (#631, D-925): 1 OFF, the speaker and the
+                                                    * headphone jack silent while USB audio plays on at MASTER's level; 0 ON,
+                                                    * as before. Saved with the settings (main.c); HOME + OCT- + OCT+ held
+                                                    * 2 s turns it over too (panel.c out_combo) */
 /* the device test mode's meter (TEST_PEAK, #291): before the MASTER pot (as at its default, so a script does not depend
  * on where the knob is), after mute */
 #include "test_peak.h"
@@ -25,6 +29,8 @@ static volatile uint32_t eng_us_last, eng_us_max, eng_halves;
  * the FM-1 makes by itself waits for SND_REST_MS of silence (tempo_glo.h gt_quiet, #651), since it stops the sound */
 #define SND_FLOOR 32                                /* Q16: -66 dB */
 static volatile uint32_t snd_heard_ms;
+static volatile uint8_t st_busy;                   /* a store write runs (storage_hw.c st_op, #656): its steps can hold a half
+                                                    * back, which the overload guard must not take for the patch's load */
 static int32_t eng_l[HALF_FRAMES], eng_r[HALF_FRAMES];
 #if FELUCCA_UAC
 /* USB audio out (usb.c, included after this file): the ring's fill is sampled as a half starts, then the half's I2S words
@@ -107,12 +113,31 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
 #if FELUCCA_UAC
         uac_tap(o, HALF_FRAMES);
 #endif
+        {
+            int clk = eng_run && eng_click_mix(eng_l, eng_r, HALF_FRAMES);   /* a count-in's click (play once's, REC's):
+                                                                              * the analog output only, not USB audio (D-820) */
+            if (clk)
+                snd_heard_ms = fm1_ms;
+            if (clk && !out_off) {                      /* the click: the analog output again, at MASTER's level (3.5MM OUT
+                                                         * OFF: silenced below anyway) */
+                int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)master_q12 * patch_gain) >> 16);
+                for (i = 0; i < HALF_FRAMES; i++) {
+                    o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
+                    o[2u * i + 1u] = ((eng_r[i] * m) >> 12) << 6;
+                }
+            }
+        }
         if (out_mono)                                   /* (after USB audio took the half in stereo; never louder than a side) */
             for (i = 0; i < HALF_FRAMES; i++) {         /* MONO: the sum on both sides; MONO L: on the left (tip), the right silent */
                 int32_t s = (o[2u * i] + o[2u * i + 1u]) >> 1;
                 o[2u * i] = s;
                 o[2u * i + 1u] = out_mono == 2u ? 0 : s;
             }
+        if (out_off)                                    /* 3.5MM OUT OFF (#631): nothing from the speaker or the jack. Last, so
+                                                         * whatever the analog output alone gets is silenced too; USB audio took
+                                                         * the half above */
+            for (i = 0; i < HALF_WORDS; i++)
+                o[i] = 0;
         fm1_audio_ack_half();
         all = fm1_ticks() - t0;                         /* includes the key scan and USB poll nested in the ISR */
         late = fm1_audio_free_half() != half;           /* the hardware already plays the half just written */
@@ -129,7 +154,7 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         ovl_t_prev = t0;
         if (all / FM1_TICKS_PER_US < ovl_us_min)
             ovl_us_min = all / FM1_TICKS_PER_US;
-        if (eng_run && ovl_guard_step(&ovl_g, all, OVL_HALF_TICKS, late))
+        if (eng_run && !st_busy && ovl_guard_step(&ovl_g, all, OVL_HALF_TICKS, late))
             shed_req = 1;
         eng_us_last = all / FM1_TICKS_PER_US;
         if (eng_us_last > eng_us_max)

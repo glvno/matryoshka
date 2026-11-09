@@ -6,13 +6,16 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { DEFS, delayLine, delayReach, DELAY_LENGTH_DEFAULT, DELAY_LENGTH_MAX, DELAY_SYNC_TOP, DELAY_TIME_MAX, DEVICE_SR, rowRange } from './modules';
 import { addModule, connect, emptyPatch, modulate, morphValue, topOf, validatePatch, type Patch } from './patch';
-import { browserOnly, delayBytes, delayRoom, deviceBudget, encodePatch, formatOf, LINE_AREAS, lineBudget, linePlace, LINES, linesAdvice, toQ16 } from './patchbin';
+import { ARENA, NODE_BYTES, browserOnly, delayBytes, delayRoom, deviceBudget, encodePatch, formatOf, LINE_LOW, lineBudget, linePlace, LINES, linesAdvice, toQ16 } from './patchbin';
+/** the line area the FM-1 had in its pool before the arena (#649): a 700 ms delay line, 8 string lines and a granular line */
+const OLD_POOL = 167980;
 import { Engine } from './engine';
 
 const SR = 44100;
 const timePd = DEFS.delay.params.find((q) => q.name === 'time')!;
 const lengthPd = DEFS.delay.params.find((q) => q.name === 'length')!;
 const engineC = readFileSync(new URL('../../firmware/src/engine.c', import.meta.url), 'utf8');
+const engineH = readFileSync(new URL('../../firmware/src/engine.h', import.meta.url), 'utf8');
 
 /** a constant 1 into a Delay (mix 1, no feedback) into the Output: silent until the echo arrives */
 function delayPatch(params: Record<string, number>): Patch {
@@ -64,7 +67,7 @@ describe('the Delay\'s length row', () => {
   it('is a row of format 50 set when the patch loads; an older Delay reads 700 ms, the line it had', () => {
     expect(lengthPd).toMatchObject({ min: 10, max: DELAY_LENGTH_MAX, default: DELAY_LENGTH_DEFAULT, since: 50, fixed: true, unit: 'ms' });
     expect(DELAY_LENGTH_DEFAULT).toBe(700);
-    expect(DEFS.delay.params.at(-1)).toBe(lengthPd);
+    expect(DEFS.delay.params.indexOf(lengthPd)).toBe(7);   // (the rate row, #659, and Tape's rows, #660, after it)
     expect(delayLine(700)).toBe(30944);   // engine.c DELAY_LEN, every Delay's line before the row
     for (const ms of [10, 11, 120, 333, 700, 1001, 1900]) {
       expect(delayLine(ms) % 2).toBe(0);
@@ -109,13 +112,14 @@ describe('the Delay\'s length row', () => {
   });
 
   it('modulation and morph past 700 ms stay in the stretch; within the range they are as before', () => {
-    expect(topOf(timePd)).toBe(DELAY_LENGTH_MAX);
+    expect(topOf(timePd)).toBe(DELAY_LENGTH_MAX * 4);   // (the longest length at the lowest rate, #659)
     expect(modulate(timePd, 300, 1)).toBe(DELAY_TIME_MAX);
     expect(modulate(timePd, 300, -1)).toBe(1);
     expect(modulate(timePd, 1200, 0)).toBe(1200);
-    expect(modulate(timePd, 1600, 1)).toBe(DELAY_LENGTH_MAX);
+    expect(modulate(timePd, 1600, 1)).toBe(1600 + DELAY_TIME_MAX - 1);   // (within the stretch: the longest time at the lowest rate, #659)
+    expect(modulate(timePd, DELAY_LENGTH_MAX * 4 - 300, 1)).toBe(DELAY_LENGTH_MAX * 4);
     expect(morphValue(timePd, 300, 1200, 0.5)).toBe(750);
-    expect(engineC).toMatch(/#define DELAY_TIME_TOP \(DELAY_LENGTH_MAX \* ENG_ONE\)/);
+    expect(engineC).toMatch(/#define DELAY_TIME_TOP \(DELAY_REACH_MAX \* ENG_ONE\)/);
   });
 
   it('a time past 700 ms plays on the FM-1; only a morph B side past it is the browser\'s', () => {
@@ -147,34 +151,47 @@ describe('the Delay\'s length row', () => {
   });
 });
 
-describe('the effect memory', () => {
+describe('the FM-1\'s memory (the lines: D-375; one arena, #649)', () => {
   it('has the firmware\'s two line areas and line sizes (engine.c)', () => {
     expect(engineC).toMatch(/#define STR_LEN 1104u/);
     expect(engineC).toMatch(/#define GRAIN_LEN 44118u/);
     expect(engineC).toMatch(/#define RV_LEN 8074u/);
     expect(engineC).toMatch(/#define CH_LEN 927u/);
     expect(engineC).toMatch(/#define LINE_LOW \(LINE_BYTES\(2u \* RV_LEN\) \+ LINE_BYTES\(2u \* CH_LEN\) \+ 8192u\)/);
-    expect(LINE_AREAS.pool).toBe(167980);
-    expect(LINE_AREAS.low).toBe(26196);
+    expect(delayBytes(700) + 8 * LINES.string + LINES.grain).toBe(OLD_POOL);
+    expect(LINE_LOW).toBe(26196);
+    expect(ARENA).toBe(OLD_POOL + 255 * 512 + 129 * 264 + 1536 * 4 + 64 * NODE_BYTES);
+    expect(engineC).toMatch(/#define ENG_ARENA \(LINE_ARENA \+ 255u \* ENG_BUF_BYTES \+ 129u \* ENG_INST_BYTES \+ 1536u \* 4u \+ 64u \* ENG_NODE_BYTES\)/);
+    expect(engineC).toMatch(new RegExp(`#define ENG_NODE_BYTES ${NODE_BYTES}u`));
     expect(LINES).toEqual({ string: 2208, grain: 88428, reverb: 16148, chorus: 1856 });
     expect(delayBytes(700)).toBe(61888);
-    expect(delayBytes(DELAY_LENGTH_MAX)).toBeLessThanOrEqual(LINE_AREAS.pool);
+    // the longest length is what one Delay's line can take of the arena beside a Main and an Output (#649): 10 ms more
+    // would not fit even there
+    expect(delayBytes(DELAY_LENGTH_MAX)).toBeLessThanOrEqual(ARENA);
+    const one = linesPatch([['delay']]);
+    const b = lineBudget(one);
+    expect(DELAY_LENGTH_MAX).toBe(3800);
+    expect(delayBytes(DELAY_LENGTH_MAX) + b.copiesBytes + b.buffersBytes + b.paramsBytes + b.nodesBytes).toBeLessThanOrEqual(ARENA);
+    const lengthBytes = (ms: number): number => 2 * (2 * Math.floor((ms * DEVICE_SR + 1999) / 2000) + 60);   // (delayBytes stops at the longest)
+    expect(lengthBytes(DELAY_LENGTH_MAX)).toBe(delayBytes(DELAY_LENGTH_MAX));
+    // (measured against the arena without the 64 modules' share it took over in #721: the longest length was set there)
+    expect(lengthBytes(DELAY_LENGTH_MAX + 20) + b.copiesBytes + b.buffersBytes + b.paramsBytes).toBeGreaterThan(ARENA - 64 * NODE_BYTES);
   });
 
   it('holds every patch the FM-1 played before (a 700 ms Delay, 8 strings, a Granular, a reverb, a chorus, any subset)', () => {
     for (let d = 0; d <= 1; d++) for (let s = 0; s <= 8; s++) for (let g = 0; g <= 1; g++) for (let r = 0; r <= 1; r++) for (let c = 0; c <= 1; c++) {
       const sizes = [...Array(d).fill(delayBytes(700)), ...Array(s).fill(LINES.string), ...Array(g).fill(LINES.grain), ...Array(r).fill(LINES.reverb), ...Array(c).fill(LINES.chorus)];
-      expect(linePlace(sizes), `${d} ${s} ${g} ${r} ${c}`).not.toBeNull();
+      expect(linePlace(sizes, OLD_POOL), `${d} ${s} ${g} ${r} ${c}`).not.toBeNull();   // (what the arena leaves a patch within the old pools)
     }
   });
 
   it('places the largest first, each into the area with the least room that holds it', () => {
-    expect(linePlace([LINES.grain, delayBytes(700), LINES.reverb, LINES.chorus])).toEqual([1, 1, 1, 0]);
-    expect(linePlace([LINES.reverb, LINES.reverb])).toEqual([0, 1]);
-    expect(linePlace([LINE_AREAS.pool + 4])).toBeNull();
+    expect(linePlace([LINES.grain, delayBytes(700), LINES.reverb, LINES.chorus], OLD_POOL)).toEqual([1, 1, 1, 0]);
+    expect(linePlace([LINES.reverb, LINES.reverb], OLD_POOL)).toEqual([0, 1]);
+    expect(linePlace([OLD_POOL + 4], OLD_POOL)).toBeNull();
     // within the total but not in the two areas: a 1.75 s Delay fills most of the pool's, two reverbs do not fit the low one
-    expect(delayBytes(1750) + 2 * LINES.reverb).toBeLessThan(LINE_AREAS.low + LINE_AREAS.pool);
-    expect(linePlace([delayBytes(1750), LINES.reverb, LINES.reverb])).toBeNull();
+    expect(delayBytes(1750) + 2 * LINES.reverb).toBeLessThan(LINE_LOW + OLD_POOL);
+    expect(linePlace([delayBytes(1750), LINES.reverb, LINES.reverb], OLD_POOL)).toBeNull();
   });
 
   it('any number of Delays, reverbs and choruses while their lines fit; over it the patch is a sandbox patch, and says why', () => {
@@ -182,28 +199,62 @@ describe('the effect memory', () => {
     const b = deviceBudget(three);
     expect(b.lines.fits).toBe(true);
     expect(b.fits).toBe(true);
-    expect(b.lines.used).toBe(delayBytes(500) + delayBytes(300) + delayBytes(900) + 2 * LINES.reverb + 2 * LINES.chorus);
-    expect(b.items.find((i) => i.key === 'lines')).toMatchObject({ label: 'effect memory', max: LINE_AREAS.low + LINE_AREAS.pool });
+    expect(b.lines.lines).toBe(delayBytes(500) + delayBytes(300) + delayBytes(900) + 2 * LINES.reverb + 2 * LINES.chorus);
+    expect(b.lines.used).toBe(b.lines.lines + b.lines.copiesBytes + b.lines.buffersBytes + b.lines.paramsBytes + b.lines.nodesBytes);
+    expect(b.lines.nodesBytes).toBe(three.modules.length * NODE_BYTES);
+    expect(b.items.find((i) => i.key === 'memory')).toMatchObject({ label: 'memory', max: ARENA + LINE_LOW });
     expect(() => encodePatch(three)).not.toThrow();
-    const full = linesPatch([['delay', { length: 1000 }], ['delay', { length: 1000 }], ['grain']]);
+    const full = linesPatch([['delay', { length: 1900 }], ['delay', { length: 1900 }], ['delay', { length: 1900 }], ['grain']]);
     const f = deviceBudget(full);
     expect(f.lines.fits).toBe(false);
     expect(f.fits).toBe(false);
-    expect(f.over.map((i) => i.key)).toEqual(['lines']);
-    expect(linesAdvice(full)).toMatch(/^Effect memory full: \d+ of 190 KB used\. Shorten another Delay or remove the Granular \(86 KB\)\.$/);
+    expect(f.over.map((i) => i.key)).toEqual(['memory']);
+    expect(linesAdvice(full)).toMatch(/^Memory full: \d+ of 362 KB used\. Shorten another Delay or remove the Granular \(86 KB\)\.$/);
     expect(() => encodePatch(full)).toThrow(/over the FM-1 budget/);
   });
 
   it('a Delay\'s length stops at what the memory has left besides the other lines (the editor\'s length row)', () => {
-    const p = linesPatch([['grain'], ['delay', { length: 200 }], ['reverb']]);
-    const id = p.modules.find((m) => m.type === 'delay')!.id;
+    const p = linesPatch([['grain'], ['grain'], ['delay', { length: 1500 }], ['delay', { length: 200 }], ['reverb']]);
+    const id = p.modules.find((m) => m.type === 'delay' && m.params.length === 200)!.id;
     const room = delayRoom(p, id);
     expect(room % 10).toBe(0);
+    expect(room).toBeGreaterThan(0);
+    expect(room).toBeLessThan(DELAY_LENGTH_MAX);
     p.modules.find((m) => m.id === id)!.params.length = room;
     expect(lineBudget(p).fits).toBe(true);
     p.modules.find((m) => m.id === id)!.params.length = room + 10;
     expect(lineBudget(p).fits).toBe(false);
     const one = linesPatch([['delay']]);
     expect(delayRoom(one, one.modules.find((m) => m.type === 'delay')!.id)).toBe(DELAY_LENGTH_MAX);
+  });
+
+  it('a length past 1.9 s (1.10\'s longest) is format 51; up to it the patch keeps its older format', () => {
+    const p = linesPatch([['delay', { length: 1900 }]]);
+    expect(formatOf(p)).toBeLessThan(51);
+    p.modules.find((m) => m.type === 'delay')!.params.length = 1910;
+    expect(formatOf(p)).toBe(51);
+    expect(DEFS.delay.params.find((q) => q.name === 'length')!.grew).toEqual({ since: 51, from: 1900 });
+  });
+});
+
+describe('the FM-1\'s module limit (#721: 128, D-256)', () => {
+  it('a patch of more than 64 modules fits the module count, its modules take the memory, and it is written in format 51', async () => {
+    const { DEVICE, FORMAT_1_11 } = await import('./patchbin');
+    const { MAX_MODULES, MODULES_1_10 } = await import('./patch');
+    expect(DEVICE.modules).toBe(128);
+    expect(MAX_MODULES).toBe(128);
+    expect(MODULES_1_10).toBe(64);
+    expect(engineH).toMatch(/#define ENG_MAX_MODULES 128u/);
+    const p = linesPatch([]);
+    const out = p.modules.find((m) => m.type === 'output')!;
+    const chain = Array.from({ length: 70 }, (_, k) => addModule(p, DEFS.mixer, 800, 40 * k).id);
+    chain.forEach((id, k) => p.cables.push({ from: { module: id, port: 'out' }, to: k + 1 < chain.length ? { module: chain[k + 1], port: 'in1' } : { module: out.id, port: 'l' } }));
+    const b = deviceBudget(p);
+    expect(b.items.find((i) => i.key === 'modules')).toMatchObject({ max: 128 });
+    expect(b.over.map((i) => i.key)).not.toContain('modules');
+    expect(b.lines.nodes).toBeGreaterThan(64);
+    expect(b.lines.nodesBytes).toBe(b.lines.nodes * NODE_BYTES);
+    expect(formatOf(p)).toBe(FORMAT_1_11);
+    expect(encodePatch(p)[2]).toBe(b.lines.nodes);
   });
 });

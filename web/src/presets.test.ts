@@ -147,16 +147,16 @@ describe('factory <7PH (a groove box): the 909 Kit\'s drums and a Silver Box on 
 // Arpeggiator on ARP, bypassed, and a 16-step PATTERN track feeding it: Main's keys -> PATTERN -> the arpeggiator -> the
 // voice. The drum patches get neither. Oracle V and Algo Four ran past the CPU estimate's warning with them (accepted);
 // since the engine's overhead cut (#289) they estimate under it (about 78 % and 80 %). Cassia 1 uses two voices.
-// Io 4 (the Jupiter-4's panel) and Vernon
-// 100 (the ElectroComp 100's) get the arpeggiator alone: with PATTERN, Io 4 passes the CPU estimate's 100 % (it is about
-// 97 % without it) and Vernon 100 the patch bytes
+// Io 4 (the Jupiter-4's panel) gets the arpeggiator alone: with PATTERN it shed voices on the rig (factory-build.ts
+// players). Wanderer and Vernon 100 have room for PATTERN since format 51 (#667), Briefcase 3 since the 128-module cap (#738)
 const NO_PLAYERS = ['808 Kit', '909 Kit', '<7PH', 'Spokes 6', 'Verona Drum 1'];
-const PAST_WARNING: string[] = ['Briefcase 3'];   // (Io 4: under it since its parts split across both cores, #271)
-/** the most a patch past the warning estimates */
-const PAST_MAX: Record<string, number> = { 'Io 4': 1, 'Briefcase 3': 0.9 };
-const ARP_ONLY = ['Io 4', 'Vernon 100', 'Wanderer', 'Briefcase 3'];
+const PAST_WARNING: string[] = ['Hera 4', 'Algo Four', 'Canvas', 'Briefcase 3', '8 Lire'];   // (the CPU model refitted on the test rig, 2026-11-08: each estimate reads its rig figure)
+/** the most a patch past the warning estimates (its rig figure and a point) */
+const PAST_MAX: Record<string, number> = { 'Hera 4': 0.9, 'Algo Four': 0.9, 'Canvas': 0.91, 'Briefcase 3': 0.92, '8 Lire': 0.82 };   // (Canvas: 92 % on the rig, muted there with eight keys held: patches-and-presets.md, Not yet settled)
+const ARP_ONLY = ['Io 4', 'Algo Four', 'Canvas'];   // (Wanderer and Vernon 100 have room for PATTERN since format 51, #667, Briefcase 3 since #738;
+// Algo Four's eight voices and eight algorithms, #658, estimate 97 % without it and over 100 % with it)
 const PLAYED = Object.keys(FM1_PRESETS).filter((n) => !NO_PLAYERS.includes(n));
-/** the Arpeggiator alone, no PATTERN (D-336's fallback): Wanderer's switch names (#358) fill the patch bytes PATTERN needs */
+/** the Arpeggiator alone, no PATTERN (D-336's fallback): Io 4 (the rig), Algo Four (CPU) */
 
 /** patterns that were there before (their notes stay); the others' PATTERN is empty */
 const OWN_PATTERN = ['Scrounge', 'Meridian 8', 'Perun 4'];

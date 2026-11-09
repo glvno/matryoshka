@@ -76,7 +76,7 @@ const B = { octDown: 0, octUp: 1, fx: 2, scl: 3, env: 4, lfo: 5, edit: 6, glo: 7
 const C4 = 14 + 7;
 const BLACK = [15, 17, 19, 22, 24, 27, 29, 31];   // F#3 .. A#4's black keys: a drum grid's rows 1..8
 const WHITE = [14, 16, 18, 20, 21, 23, 25, 26, 28, 30, 32, 33, 35, 37, 38, 40];   // F3 .. G5's white keys: steps 1..16 on the grid
-const ENC = { select: 0, algo: 1, k1: 2, k4: 5, preset: 6 };
+const ENC = { select: 0, algo: 1, k1: 2, k2: 3, k3: 4, k4: 5, preset: 6 };
 const QUIET = 64;
 const LOUD = 1000;
 /** how many times its usual time a wait for a condition may take before it counts as failed (#588: a busy machine, a
@@ -531,6 +531,8 @@ async function main() {
   let rigAudioWhy = '', rigAudioIn = 'Matryoshka';
   if (DEVICE) {
     if (!REAL || opt('--port')) await context.addInitScript(FILTER_MIDI, { name: REAL ? opt('--port') : PORT_NAME });
+    // the test tools' page: the editor connects to the rig though it is set to ignore the editor (#702, protocol.ts rigTools)
+    await context.addInitScript(() => { window.__m1RigTools = true; });
     const rp = await rigPage(context, url);
     let pair;
     if (REAL) {
@@ -595,6 +597,10 @@ async function main() {
   let page = watch(await context.newPage());
   const T = () => page.evaluate(() => window.__m1test.state());
   const open = (name) => page.evaluate((n) => window.__m1test.open(n), name);
+  /** 8 Lire with its MOD DELAY's mix at 0 (D-748: two lines, mono, 0.35 at Init): a held plate summed with its own echoes 330
+   *  and 470 ms on rises and falls by a quarter as each arrives in or out of phase (the browser engine renders the same; dry
+   *  it is flat), so the checks of a voice that holds hear the voice, not the delay */
+  const openDry = (name) => page.evaluate((n) => window.__m1test.openRows(n, [['mix', 0]]), name);
   const patchJson = () => page.evaluate(() => window.__m1test.patchJson());
   /** the editor's tempo (bpm): the global one, else the patch's FM-1 module's */
   const tempo = async () => {
@@ -743,8 +749,8 @@ async function main() {
    *  at the same place; LFO + step 1 (its own step, nothing before it) makes it a drone, heard holding, and again one step
    *  (#384); tied again and cut by a plain white key on step 3. `sustains`: the row's voice holds
    *  while its gate is up (8 Lire's plates), else a one-shot whose sound must not change (the 808 Kit) */
-  async function drumTie(tag, name, row, sustains) {
-    await check(`${tag}: ${name} opens, synced`, await openSynced(name));
+  async function drumTie(tag, name, row, sustains, opener = open) {
+    await check(`${tag}: ${name} opens, synced`, await openSynced(name, opener));
     await check(`${tag}: the SEQ page, the track cleared`, await seqCleared(), fmt(await trackNotes()));
     await emu.tap(BLACK[row]);
     await emu.elapse(200);
@@ -1068,7 +1074,7 @@ async function main() {
       if (held >= 0) await emu.key(held, false);
       await emu.tap(B.play);   // stop
     },
-    async tieLire() { await drumTie('tie lire', '8 Lire', 0, true); },
+    async tieLire() { await drumTie('tie lire', '8 Lire', 0, true, openDry); },
     async tieElvira() { await drumTie('tie elvira', 'Elvira 2', 0, true); },
     async tie808() {
       await drumTie('tie 808', '808 Kit', 0, false);
@@ -1082,7 +1088,7 @@ async function main() {
       }
     },
     async drumHold() {   // #368 (the owner, 2026-10-28): a black key on a drum track's grid sounds while held; REC running records it
-      await check('hold: 8 Lire opens, synced', await openSynced('8 Lire'));
+      await check('hold: 8 Lire opens (its delay dry), synced', await openSynced('8 Lire', openDry));
       await check('hold: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
       // stopped: row 1's plate while black key 1 is held (about 600 ms), then let go
       await emu.windows(4, 25);                     // (quiet first)
@@ -1139,6 +1145,92 @@ async function main() {
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
     },
+    async playOnce() {   // #632 (D-820): SEQ held + PLAY counts in a bar with a click, plays the pattern once, stops by itself
+      await check('play once: the 808 Kit opens, synced', await openSynced('808 Kit'));
+      await emu.key(B.seq, true);
+      await emu.elapse(100);
+      const t0 = await emu.ms();
+      await emu.key(B.play, true);
+      const win = await emu.windows(48, 25);       // (the count-in's first 1.2 s: the 808 Kit is silent, so only the click)
+      const counting = await emu.text('COUNT-IN');
+      await emu.key(B.play, false);
+      await emu.key(B.seq, false);
+      const st = await T();
+      const onsets = win.filter((w, i) => w[1] > LOUD && (i === 0 || win[i - 1][1] <= LOUD)).map((w) => w[0]);
+      // (a beat from the onsets after the first: the first click falls inside the first window, so it reads up to 25 ms late)
+      const beat = onsets.length >= 3 ? (onsets[onsets.length - 1] - onsets[1]) / (onsets.length - 2) : onsets.length === 2 ? onsets[1] - onsets[0] : 0, bar = 4 * beat;
+      console.log(`  play once: the count-in's peaks per 25 ms: ${prof(win)}`);
+      await check('play once: SEQ held + PLAY, stopped: the bar counts in (COUNT-IN n)', counting);
+      if (bar > 1300)
+        await check('play once: the transport stays stopped during the count-in (no Start reached the editor)', !st.deviceRunning && !st.playing,
+          `FM-1 ${st.deviceRunning ? 'running' : 'stopped'}, editor ${st.playing ? 'playing' : 'stopped'}`);
+      await loudCheck('play once: a click on each beat of the count-in, a beat apart', Math.max(...win.map((w) => w[1])),
+        beat >= 200 && onsets.length === Math.min(4, Math.floor(1200 / beat) + 1) && onsets.slice(1).every((t, i) => Math.abs(t - onsets[i] - beat) <= 40),
+        `click onsets at ${onsets.join(' ')} ms (a beat ${beat} ms)`);
+      const seen = await emu.waitText('PLAY ONCE', 5000);
+      const t1 = await emu.ms();
+      await check('play once: then it plays (PLAY ONCE), not before a bar from the press', seen && t1 - t0 >= bar - 100,
+        `PLAY ONCE seen ${t1 - t0} ms after the press, a bar is ${bar} ms`);
+      const ran = await until(async () => (await T()).deviceRunning, 3000);
+      await check('play once: the FM-1\'s Start reaches the editor after the count-in', !!ran);
+      await emu.elapse(bar * 0.5);
+      await check('play once: still playing half a pass in', (await T()).deviceRunning);
+      await emu.elapse(bar * 0.8);
+      const stopped = await until(async () => !(await T()).deviceRunning && !(await T()).playing, 3000);
+      await check('play once: after the pass the FM-1 stops by itself (its Stop reaches the editor)', !!stopped,
+        `FM-1 ${(await T()).deviceRunning ? 'running' : 'stopped'}`);
+      // PLAY in the count-in: it ends there, nothing starts
+      await emu.key(B.seq, true);
+      await emu.elapse(100);
+      await emu.tap(B.play);
+      await emu.key(B.seq, false);
+      await emu.elapse(Math.max(beat, 200));
+      await emu.tap(B.play);
+      await emu.elapse(Math.max(bar, 1000) * 1.5);
+      await check('play once: PLAY in the count-in ends it, nothing starts', !(await T()).deviceRunning && !(await emu.text('PLAY ONCE')));
+      await emu.snap('play-once');
+    },
+    async recCountIn() {   // D-803 (amended 2026-11-07): REC's count-in clicks on each beat, as play once's; none once it records
+      await check('rec count-in: Init opens, synced', await openSynced('Init'));
+      /** GLO > PANEL's COUNT-IN row (K3) a step right or left, then GLO back to the device page */
+      const countIn = async (d) => {
+        await emu.tap(B.glo);
+        for (let i = 0; i < 6 && !(await emu.text('COUNT-IN')); i++) {
+          await emu.turn(ENC.algo, 1);
+          await emu.elapse(300);
+        }
+        await emu.turn(ENC.k3, d);
+        await emu.elapse(400);
+        const ok = await emu.text(d > 0 ? '1 BAR' : 'OFF');
+        await emu.tap(B.glo);
+        await emu.waitOwnPage(3000);
+        return ok;
+      };
+      await check('rec count-in: GLO > PANEL > COUNT-IN 1 BAR', await countIn(1));
+      await emu.key(B.rec, true);                   // (REC acts on its release: the windows from there, so beat 1 is in them)
+      await emu.elapse(80);
+      await emu.key(B.rec, false);
+      const win = await emu.windows(48, 25);       // (Init's track is empty and no key is held: only the click is heard)
+      const counting = await emu.text('COUNT-IN');
+      const onsets = win.filter((w, i) => w[1] > LOUD && (i === 0 || win[i - 1][1] <= LOUD)).map((w) => w[0]);
+      const beat = onsets.length >= 3 ? (onsets[onsets.length - 1] - onsets[1]) / (onsets.length - 2) : onsets.length === 2 ? onsets[1] - onsets[0] : 0;
+      console.log(`  rec count-in: the count-in's peaks per 25 ms: ${prof(win)}`);
+      await check('rec count-in: REC, stopped: the transport starts and the bar counts in (COUNT-IN)', counting);
+      // beat 1 within 300 ms of REC's release (the panel's scan and a main loop pass), then the bar's other beats: all four
+      // in the 1.2 s, or three when the fourth falls past it (the 25 ms windows round the onsets either way)
+      await loudCheck('rec count-in: a click on each beat of the count-in from beat 1, a beat apart', Math.max(...win.map((w) => w[1])),
+        beat >= 200 && onsets[0] <= 300 && (onsets.length === 4 || (onsets.length === 3 && onsets[0] + 3 * beat > 1150))
+          && onsets.slice(1).every((t, i) => Math.abs(t - onsets[i] - beat) <= 40),
+        `click onsets at ${onsets.join(' ')} ms (a beat ${beat} ms)`);
+      await until(async () => !(await emu.text('COUNT-IN')), 5000);
+      await emu.elapse(Math.max(beat, 300));
+      const after = await emu.windows(40, 25);
+      await check('rec count-in: once it records, no click (a second bar heard silent)', Math.max(...after.map((w) => w[1])) <= LOUD, `peaks ${prof(after)}`);
+      await emu.tap(B.play);                        // (PLAY stops the transport and the recording)
+      await emu.elapse(300);
+      await check('rec count-in: COUNT-IN OFF again', await countIn(-1));
+      await emu.snap('rec-count-in');
+    },
     async tieRoll() {   // the piano roll (#241) keeps its tie: Silver Box's PATTERN, pattern 1 (empty)
       await check('tie roll: Silver Box opens, synced', await openSynced('Silver Box'));
       await check('tie roll: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
@@ -1162,7 +1254,7 @@ async function main() {
     // held for as long as the pattern plays, the row's other notes gone; again an ordinary one-step note. On 8 Lire's grid,
     // three hits on row 1 (steps 2, 5, 9); heard holding over a pass and its loop point
     async rowDrone() {
-      await check('row drone: 8 Lire opens, synced', await openSynced('8 Lire'));
+      await check('row drone: 8 Lire opens (its delay dry), synced', await openSynced('8 Lire', openDry));
       await check('row drone: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
       await emu.tap(BLACK[0]);
       for (const k of [1, 4, 8]) await emu.tap(WHITE[k]);
@@ -1665,18 +1757,36 @@ async function main() {
       await emu.snap('arming-env');
       await emu.tap(B.env, 120);
       await emu.waitOwnPage(3000);
-      // an instrument whose keys come through its track and Arpeggiator (every factory instrument; the owner, 2026-10-28):
-      // SEL on its first page arms it, and the keys play it; the Arpeggiator alone takes no keys
-      await check('arming: Vernon 100 opens, synced', await openSynced('Vernon 100'));
+      // #191 (D-821): the editor's own arming reaches the FM-1 (ARMS, feature bit 20), and the FM-1 plays by it
+      const drums = (await until(async () => { const a = (await T()).armed; return a.length ? a : null; }, 2000)) ?? [];
+      await page.evaluate(() => window.__m1test.arm([]));
+      await check('arming: disarmed in the editor: the FM-1 disarms too, KEYS WIRED (ARMS, #191)', await emu.waitText('KEYS WIRED', 3000));
+      await emu.elapse(1300);
+      await page.evaluate((k) => window.__m1test.arm(k), drums);
+      await check('arming: DRUMS armed in the editor: the FM-1 arms it, its footer says ARM DRUMS (#191)', drums.length > 0 && (await emu.waitText('ARM DRUMS', 3000)), `editor's set ${drums.join(' ')}`);
+      const ka = await emu.mark();
+      await emu.key(BLACK[0], true);
+      await emu.elapse(300);
+      await emu.key(BLACK[0], false);
+      const kp = await emu.peak(ka);
+      await loudCheck('arming: armed from the editor, black key 1 plays the kick through DRUMS', kp, kp > LOUD, `peak ${kp}`);
+      await check('arming: the editor\'s set stays as it set it (the FM-1 sends nothing back)', JSON.stringify((await T()).armed) === JSON.stringify(drums));
+      await page.evaluate(() => window.__m1test.arm([]));
+      await emu.waitText('KEYS WIRED', 3000);
+      await emu.elapse(1000);
+      // an instrument whose keys come through its Arpeggiator alone (Io 4: no PATTERN track, the rig shed voices with it; Vernon
+      // 100 has its track since format 51, #667): SEL on its first page arms it, and the keys play it; the Arpeggiator alone
+      // takes no keys
+      await check('arming: Io 4 opens, synced', await openSynced('Io 4'));
       await emu.tap(B.scl);
-      await check('arming: SEL on Vernon 100\'s first page arms it', await emu.waitText('VERNON 100 ARMED', 1500));
+      await check('arming: SEL on Io 4\'s first page arms it', await emu.waitText('IO 4 ARMED', 1500));
       await emu.elapse(1300);
       const v = await emu.mark();
       await emu.key(WHITE[7], true);
       await emu.elapse(300);
       await emu.key(WHITE[7], false);
       const vp = await emu.peak(v);
-      await loudCheck('arming: Vernon 100 armed, a white key plays it', vp, vp > LOUD, `peak ${vp}`);
+      await loudCheck('arming: Io 4 armed, a white key plays it', vp, vp > LOUD, `peak ${vp}`);
       await emu.elapse(1000);
       await emu.tap(B.scl);                         // SEL is a toggle (D-239): armed, it takes it out
       await check('arming: SEL again on its page disarms it, the keys WIRED', await emu.waitText('KEYS WIRED', 1500));
@@ -1714,6 +1824,37 @@ async function main() {
       await emu.snap('arming-unreached-poly');
       await emu.tap(B.env, 120);
       await emu.waitOwnPage(3000);
+    },
+    // #721 (the owner, 2026-11-07: "let's raise the module cap to fit the canvas"): a patch of more than 64 modules plays on
+    // the FM-1, and arming reaches past module 63 both ways: Silver Box with 64 silent VCAs before its modules (85 in all),
+    // SEL on the FM-1 arms its device (ARMS_NOW's four words: the editor shows it), the editor's own arming reaches the FM-1
+    // (ARMS's four words, feature bit 21) and a white key plays the instrument through it
+    async armWide() {
+      await check('arm wide: Silver Box with 64 modules before its own opens, synced',
+        await openSynced('Silver Box', (n) => page.evaluate((x) => window.__m1test.openPadded(x, 64), n)));
+      const mods = await page.evaluate(() => window.__m1test.deviceModules());
+      await check('arm wide: the FM-1 plays a patch of more than 64 modules', mods > 64, `${mods} modules`);
+      await emu.elapse(1300);
+      await emu.tap(B.scl);
+      await check('arm wide: SEL arms the device in focus (its modules past index 63)', await emu.waitText('ARMED', 1500));
+      const armed = (await until(async () => { const a = (await T()).armed; return a.length ? a : null; }, 2000)) ?? [];
+      await check('arm wide: the editor shows what the FM-1 armed (ARMS_NOW past module 63)', armed.length > 0, armed.join(' '));
+      await emu.elapse(1300);
+      await page.evaluate(() => window.__m1test.arm([]));
+      await check('arm wide: disarmed in the editor: the FM-1 disarms too, KEYS WIRED', await emu.waitText('KEYS WIRED', 3000));
+      await emu.elapse(1300);
+      await page.evaluate((k) => window.__m1test.arm(k), armed);
+      await check('arm wide: armed in the editor: the FM-1 arms the same (its footer says ARM)', armed.length > 0 && (await emu.waitText('ARM ', 3000)));
+      const m = await emu.mark();
+      await emu.key(WHITE[7], true);
+      await emu.elapse(300);
+      await emu.key(WHITE[7], false);
+      const pk = await emu.peak(m);
+      await loudCheck('arm wide: armed past module 63, a white key plays the instrument', pk, pk > LOUD, `peak ${pk}`);
+      await check('arm wide: the editor\'s set stays as it set it', JSON.stringify((await T()).armed) === JSON.stringify(armed));
+      await page.evaluate(() => window.__m1test.arm([]));
+      await emu.waitText('KEYS WIRED', 3000);
+      await emu.elapse(1000);
     },
     // #504: under Live a SELECT or ALGO turn on the FM-1 reaches the editor twice, as FOCUS_NOW and as the mirror's MIDI;
     // the editor's focus must end on the FM-1's device and page, never one further
@@ -1760,7 +1901,7 @@ async function main() {
       await check('device preset: the first PRESET turn left loads the last of its list, not INIT', shown && !(await emu.text('PRESET INIT')));
       await emu.elapse(1200);
     },
-    // #485: a Cassia 1 preset (119 rows) stored on the FM-1 holds all its rows: sent from the editor (two store slots on
+    // #485: a Cassia 1 preset (153 rows since #755, D-747) stored on the FM-1 holds all its rows: sent from the editor (two store slots on
     // firmware with feature bit 17), read back whole, and loaded on the FM-1 with PRESET: every row reaches the editor.
     // Glass Bell differs from Init in 11 of the 31 rows past 88, which an 88-value store left at Init's
     async longPreset() {
@@ -1768,13 +1909,13 @@ async function main() {
       await check('long preset: Cassia 1 opens, synced', await openSynced('Cassia 1'));
       await emu.elapse(300);
       const n = await page.evaluate((nm) => window.__m1test.presetOnFm1('Cassia 1', 'Glass Bell', nm), NAME);
-      await check('long preset: Glass Bell stored on the FM-1 and read back whole, 119 values', n === 119, `read back ${n}`);
+      await check('long preset: Glass Bell stored on the FM-1 and read back whole, 153 values', n === 153, `read back ${n}`);
       await check('long preset: Cassia 1 opens again, on Init', await openSynced('Cassia 1'));
       const init = await page.evaluate(() => window.__m1test.presetNow('Cassia 1'));
       await emu.turn(ENC.preset, -1);
       await check('long preset: PRESET left loads it on the FM-1', await emu.waitText(`PRESET ${NAME}`, 2000));
       const now = await until(async () => { const x = await page.evaluate(() => window.__m1test.presetNow('Cassia 1')); return x && x.name === 'Glass Bell' && x.off === 0 ? x : null; }, 4000);
-      await check('long preset: all 119 rows reach the editor as Glass Bell\'s (none left at Init\'s)', !!now && init?.name === 'Init',
+      await check('long preset: all 153 rows reach the editor as Glass Bell\'s (none left at Init\'s)', !!now && init?.name === 'Init',
         `before ${JSON.stringify(init)}, now ${JSON.stringify(await page.evaluate(() => window.__m1test.presetNow('Cassia 1')))}`);
       await emu.snap('long-preset');
       await emu.elapse(1200);
@@ -1851,6 +1992,53 @@ async function main() {
       await shot('store-slot');
       await page.keyboard.press('Escape');
       await check('store slot: Cancel closes it', !!(await until(() => page.evaluate(() => !document.querySelector('#store-slot[open]')), 2000)));
+    },
+    async editorIgnore() {   // #702: GLO > SYSTEM > EDITOR at IGNORE: the editor lets go, Connect skips the FM-1 and says why
+      // (the rig tools' page connects to an FM-1 at IGNORE all the same: the test rig is set so, D-123)
+      if (DEVICE) return skip('editor ignore: the editor leaves an FM-1 at IGNORE alone', 'the test tools\' page connects to it by design (#702)');
+      /** GLO > SYSTEM's second page (ALGO steps MIDI, PANEL, SYSTEM 1/2, SYSTEM 2/2) */
+      const editorRow = async () => {
+        await emu.tap(B.glo);
+        for (let i = 0; i < 6 && !(await emu.text('SYSTEM 2/2')); i++) {   // (not 'EDITOR': the footer may say FROM EDITOR)
+          await emu.turn(ENC.algo, 1);
+          await emu.elapse(300);
+        }
+        return emu.text('SYSTEM 2/2');
+      };
+      const row = await editorRow();
+      const was = (await emu.text('IGNORE')) ? 'IGNORE' : 'ALLOW';   // (left as found at the end; nothing here SAVEs it)
+      if (was === 'IGNORE') {
+        await emu.tap(B.glo);
+        return skip('editor ignore: the editor leaves an FM-1 at IGNORE alone', 'EDITOR was IGNORE already: left as it was');
+      }
+      await emu.turn(ENC.k1, 1);
+      await emu.elapse(400);
+      await check('editor ignore: GLO > SYSTEM 2/2, K1 right: EDITOR IGNORE', row && (await emu.text('IGNORE')) && (await emu.text('SYSTEM 2/2')));
+      await emu.snap('editor-ignore');
+      const gone = await until(async () => { const x = await T(); return !x.connected ? x : null; }, 4000);
+      await check('editor ignore: set while linked, the editor lets go of the FM-1 and says why', !!gone && /set to ignore the editor/.test(gone.status ?? ''), (gone ?? (await T())).status ?? '');
+      await emu.tap(B.glo);
+      await emu.waitOwnPage(3000);
+      const sent = await page.evaluate(() => (window.__sent ?? []).length);
+      await connect();
+      // (the attempt holds the port while it waits for HELLO's answer: its end is the status line's message)
+      const s = (await until(async () => { const x = await T(); return !x.connected && /leaves it alone/.test(x.status ?? '') ? x : null; }, 8000)) ?? (await T());
+      const after = await page.evaluate((n) => (window.__sent ?? []).slice(n).map((x) => x[1]), sent);
+      await check('editor ignore: Connect does not link to it', !s.connected && s.chip === 'not connected', `connected ${s.connected}, chip ${s.chip}`);
+      await check('editor ignore: it says which FM-1 is set to ignore the editor and how to undo it', /set to ignore the editor/.test(s.status ?? '') && /EDITOR to ALLOW/.test(s.status ?? ''), s.status ?? '');
+      await check('editor ignore: nothing but HELLO went to it', after.length > 0 && after.every((c) => c === 0x01), after.join(' '));
+      await shot('editor-ignore');
+      await editorRow();
+      await emu.turn(ENC.k1, -1);
+      await emu.elapse(400);
+      await check('editor ignore: K1 left: EDITOR ALLOW, as it was before the scenario', (await emu.text('ALLOW')) && was === 'ALLOW', `was ${was}`);
+      await emu.tap(B.glo);
+      await emu.waitOwnPage(3000);
+      await connect();
+      const back = (await until(async () => { const x = await T(); return x.live ? x : null; })) ?? (await T());
+      await check('editor ignore: at ALLOW, Connect links and syncs again', back.connected && back.live && back.chip === 'synced', `chip ${back.chip}`);
+      // (a Connect click while still linked opens FM-1 & MIDI: closed, so the next scenarios' clicks reach the page)
+      await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach((d) => d.close()));
     },
   };
   // the owner's device check of the release, as scenarios (device-check.mjs, the checks that need no ears, hands or power

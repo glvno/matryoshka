@@ -3,7 +3,7 @@
 // patches as binary), firmware/src/controls.h and the README's list of controls (the FM-1's controls, src/controls.ts).
 // Run from web/:  npx vite-node scripts/export-defs.ts
 import { readFileSync, writeFileSync } from 'node:fs';
-import { ADSR_LONG, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_LENGTH_MAX, DELAY_LENGTH_MIN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY } from '../src/modules';
+import { ADSR_LONG, ANALOG_CURVE, ANALOG_DIP, ANALOG_DIP_S, ANALOG_PWO, ANALOG_SKEW, ANALOG_TOL, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, FILTER_DRIVE_KNEE, FILTER_DRIVE_TOP, DIODE_W180, DIODE_KCRIT, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_LENGTH_MAX, DELAY_REACH_MAX, DELAY_RATES, DELAY_TAIL, delayAaCoefs, DEVICE_SR, DELAY_TAPE_LP, DELAY_TAPE_HP, delayTapePole, DELAY_WOW_HZ, DELAY_FLUTTER_HZ, DELAY_WOW_MS, DELAY_FLUTTER_MS, turnInc, delayDepth8, DELAY_HEADS, DELAY_HEAD_MASK, DELAY_HEAD_GAIN, DELAY_LENGTH_MIN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY, ONCE_BAR, CLICK_MS, CLICK_LEVEL_Q16, CLICK_HZ, CLICK_ACCENT_HZ } from '../src/modules';
 import { encodePatch, TYPE_ORDER, toQ16, VERSION } from '../src/patchbin';
 import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK_NAME_MAX } from '../src/patch';
 import { ACCENT_VEL, TRACK_NOTES_MAX } from '../src/track';
@@ -49,6 +49,23 @@ w(`#define DELAY_CLK_PPQN ${DELAY_CLK_PPQN}`);
 w(`#define DELAY_SYNC_TOP ${DELAY_SYNC_TOP}   /* ms: the synced note lengths spread over 1..this (modules.ts) */`);
 w(`#define DELAY_LENGTH_MIN ${DELAY_LENGTH_MIN}   /* ms: the Delay's length row (modules.ts; engine.c dly_samples sizes its line) */`);
 w(`#define DELAY_LENGTH_MAX ${DELAY_LENGTH_MAX}`);
+w(`#define DELAY_REACH_MAX ${DELAY_REACH_MAX}   /* ms: the longest time, the longest length at the lowest rate (#659) */`);
+w(`#define DELAY_NRATE ${DELAY_RATES.length}   /* the Delay's rate row (#659): step r keeps every (1 << r)-th sample */`);
+w(`#define DELAY_TAIL ${DELAY_TAIL}   /* samples at the line end with a lower rate or Tape on: the filters' state (modules.ts) */`);
+w(`/* the low pass in front of a lower rate's line (modules.ts delayAaCoefs at DEVICE_SR), per rate step 1..: two sections, b0 a1 a2 Q30 (engine.c dly_aa) */`);
+w(`static const int32_t DELAY_AA[DELAY_NRATE - 1][6] = {${[2, 4].map((k) => `{${delayAaCoefs(DEVICE_SR, k).flat().map((c) => Math.round(c * 2 ** 30)).join(', ')}}`).join(', ')}};`);
+w(`/* Tape (#660): the loop's one-pole low pass and high pass per rate step (Q24, at a line written every 1 << r samples), the
+ * wow and flutter increments (u32 turns a sample) and depths at the wow row's top (1/256 samples), the heads (bit j: head
+ * j + 1 at j + 1 times the time) and 1 / n of n heads (Q16) */`);
+w(`static const int32_t DELAY_TAPE_LPQ[DELAY_NRATE] = {${[1, 2, 4].map((k) => Math.round(delayTapePole(DELAY_TAPE_LP, DEVICE_SR, k) * 2 ** 24)).join(', ')}};`);
+w(`static const int32_t DELAY_TAPE_HPQ[DELAY_NRATE] = {${[1, 2, 4].map((k) => Math.round(delayTapePole(DELAY_TAPE_HP, DEVICE_SR, k) * 2 ** 24)).join(', ')}};`);
+w(`#define DELAY_WOW_INC ${turnInc(DELAY_WOW_HZ, DEVICE_SR)}u`);
+w(`#define DELAY_FLUTTER_INC ${turnInc(DELAY_FLUTTER_HZ, DEVICE_SR)}u`);
+w(`#define DELAY_WOW_D8 ${delayDepth8(DELAY_WOW_MS, DEVICE_SR)}`);
+w(`#define DELAY_FLUTTER_D8 ${delayDepth8(DELAY_FLUTTER_MS, DEVICE_SR)}`);
+w(`#define DELAY_NHEADS ${DELAY_HEADS.length}`);
+w(`static const uint8_t DELAY_HEAD_MASK[DELAY_NHEADS] = {${DELAY_HEAD_MASK.join(', ')}};`);
+w(`static const int32_t DELAY_HEAD_GAIN[4] = {${DELAY_HEAD_GAIN.join(', ')}};`);
 w(`static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {${DELAY_DIVS.map((d) => d.num).join(', ')}};`);
 w(`static const uint8_t DELAY_DIV_DEN[DELAY_NDIV] = {${DELAY_DIVS.map((d) => d.den).join(', ')}};`);
 w(`static const char *const DELAY_DIV_NAME[DELAY_NDIV] = {${DELAY_DIVS.map((d) => `"${d.name}"`).join(', ')}};`);
@@ -76,6 +93,20 @@ w(`#define FILTER_OSC_K_Q24 ${Math.round(FILTER_OSC_K * (1 << 24))}   /* the dam
 w(`#define FILTER_OSC_GAIN_Q24 ${Math.round(FILTER_OSC_GAIN * (1 << 24))}   /* the damping's growth per unit of res past it, times the band pass squared */`);
 w(`#define FILTER_OSC_CLIP_Q20 ${FILTER_OSC_CLIP * (1 << 20)}   /* the band-pass state is held to +-this there */`);
 w(`#define FILTER_OSC_SEED_Q20 ${Math.round(FILTER_OSC_SEED * (1 << 20))}   /* the band-pass state a filter at rest starts from */`);
+w(`#define FILTER_DRIVE_KNEE_Q20 ${FILTER_DRIVE_KNEE * (1 << 20)}   /* the Multimode filter's drive (#670): the soft clip's knee */`);
+w(`#define FILTER_DRIVE_TOP_Q20 ${FILTER_DRIVE_TOP * (1 << 20)}   /* the clip's level drive r |bp| is held to this */`);
+w(`#define DIODE_IW180_Q24 ${Math.round((1 << 24) / DIODE_W180)}   /* the Ladder's diode mode (#671): 1 / the loop's -180 degree frequency */`);
+w(`#define DIODE_KCRIT_Q24 ${Math.round(DIODE_KCRIT * (1 << 24))}   /* the loop gain that self-oscillates there (res 1) */`);
+w(`/* the Oscillator's analog shape (#673, modules.ts analogShape) at analog 1, Q16: the saw's curve, the reset's dip, the
+ * tolerance of each, the triangle's peak offset, the pulse width offset; the dip's length in samples at DEVICE_SR (Q16) */`);
+w(`#define ANALOG_CURVE_Q16 ${Math.round(ANALOG_CURVE * 65536)}`);
+w(`#define ANALOG_DIP_Q16 ${Math.round(ANALOG_DIP * 65536)}`);
+w(`#define ANALOG_TOL_Q16 ${Math.round(ANALOG_TOL * 65536)}`);
+w(`#define ANALOG_SKEW_Q16 ${Math.round(ANALOG_SKEW * 65536)}`);
+w(`#define ANALOG_PWO_Q16 ${Math.round(ANALOG_PWO * 65536)}`);
+w(`#define ANALOG_DIP_SAMPLES_Q16 ${Math.round(ANALOG_DIP_S * DEVICE_SR * 65536)}`);
+w(`/* the saw's curve: (1 - e^-x) / x at x = i / 256 (0 .. 0.5), Q30 (engine.c ana_saw) */`);
+w(`static const int32_t ANALOG_SAWC_T[129] = {${Array.from({ length: 129 }, (_, i) => { const x = i / 256; return Math.round((x ? -Math.expm1(-x) / x : 1) * 2 ** 30); }).join(', ')}};`);
 w(`#define RANGE_T_MAX ${RANGE_T_MAX}   /* the Range module (#526): t within +-this input ranges with clamp off */`);
 w(`#define SHREG_STAGES ${SHREG_STAGES}   /* the Shift register's stages (#438) */`);
 w(`#define SHREG_PAT_SEED 0x${SHREG_PAT_SEED.toString(16)}u   /* mixed with the instance seed: its starting pattern */`);
@@ -89,6 +120,11 @@ w(`#define TRACK_STEPS ${STEPS_MAX}        /* a Steps track's most steps (track.
 w(`#define TRACK_NAME_MAX ${TRACK_NAME_MAX}`);
 w(`#define TRACK_NOTES_MAX ${TRACK_NOTES_MAX}   /* notes per track (the notes section, flag bit 4; track.ts noteWord) */`);
 w(`#define TRACK_POLY ${TRACK_POLY}          /* notes a track sounds at once (modules.ts) */`);
+w(`#define ONCE_BAR ${ONCE_BAR}u          /* play once (#632): the count-in's bar in clock ticks (modules.ts) */`);
+w(`#define CLICK_MS ${CLICK_MS}u           /* ... its click on each beat: ms to nothing, level (Q16), Hz on beats 2..4 and on beat 1 */`);
+w(`#define CLICK_LEVEL_Q16 ${CLICK_LEVEL_Q16}`);
+w(`#define CLICK_HZ ${CLICK_HZ}u`);
+w(`#define CLICK_ACCENT_HZ ${CLICK_ACCENT_HZ}u`);
 w(`#define STEP_NOTE ${STEP_NOTE}           /* a new step's note and velocity (track.ts), an accent's velocity */`);
 w(`#define STEP_VEL ${STEP_VEL}`);
 w(`#define ACCENT_VEL ${ACCENT_VEL}`);
@@ -216,6 +252,10 @@ P.push('};', '');
   const bin = encodePatch(fallbackPatch());
   P.push(`#define FALLBACK_NAME "${FALLBACK_NAME}"`, `static const uint8_t FALLBACK_PATCH[${bin.length}] = {${Array.from(bin).join(',')}};`, '');
 }
+/** factory patches renamed when another took their slot (upper case, as the FM-1 names them): Hera 4 took Hera 6's (owner
+ * ruling 2026-11-07, "Hera 5 replaces Hera 6", and D-873: Hera 4 when the FM-1 cannot keep up with five, as on the test
+ * rig 2026-11-08). A HERA 5 slot (a bank that ran a 1.11 test build) is Hera 4's too */
+const RENAMED: Record<string, string> = { 'HERA 6': 'HERA 4', 'HERA 5': 'HERA 4' };
 { // the factory patches earlier firmwares wrote (scripts/legacy-factory.ts): an untouched slot holding one is rewritten with
   // today's patch of that name after an update that changed the factory set or the format (main.c bank_upgrade); `now`
   // is its index in PRESET_LIST
@@ -224,11 +264,20 @@ P.push('};', '');
   // (one that is byte for byte one of today's patches, of any name, is left out: a slot holding today's bytes is never
   // rewritten, and a patch that uses nothing newer is written in an older format, patchbin.ts WRITE_FLOOR, so an older
   // presets.h can hold today's bytes)
-  const rows = legacy.filter((x) => now.has(x.name) && !todays.has(`${x.fnv}/${x.len}`)).sort((a, b) => parseInt(a.fnv, 16) - parseInt(b.fnv, 16) || a.len - b.len);
+  // (a factory patch that took a renamed one's slot rewrites it too, under its own name: FACTORY_RENAMED)
+  const nameNow = (n: string): string => RENAMED[n] ?? n;
+  const rows = legacy.map((x) => ({ ...x, name: nameNow(x.name), was: x.name })).filter((x) => now.has(x.name) && !todays.has(`${x.fnv}/${x.len}`)).sort((a, b) => parseInt(a.fnv, 16) - parseInt(b.fnv, 16) || a.len - b.len);
   P.push('/* the factory patches earlier firmwares wrote (web/scripts/legacy-factory.json): FNV-1a of the bytes, length, today\'s', '   patch of that name (PRESET_LIST index); sorted by fnv */');
   P.push(`#define N_LEGACY_FACTORY ${rows.length}`);
   P.push('static const struct { uint32_t fnv; uint16_t len; uint8_t now; } LEGACY_FACTORY[N_LEGACY_FACTORY] = {');
   for (let i = 0; i < rows.length; i += 4) P.push('    ' + rows.slice(i, i + 4).map((x) => `{0x${x.fnv}u, ${x.len}, ${now.get(x.name)}}`).join(', ') + ',');
+  P.push('};', '');
+  const renamed = Object.entries(RENAMED).filter(([, to]) => now.has(to));
+  P.push('/* the factory patches that took a renamed one\'s slot: an untouched slot of the old name is rewritten under the new one', '   (main.c bank_upgrade), so a bank does not get it twice (bank_add finds it by name) */');
+  P.push(`#define N_FACTORY_RENAMED ${renamed.length}`);
+  P.push(`static const struct { const char *was; uint8_t now; } FACTORY_RENAMED[${Math.max(1, renamed.length)}] = {`);
+  for (const [was, to] of renamed) P.push(`    {"${was}", ${now.get(to)}},`);
+  if (!renamed.length) P.push('    {"", 0xFFu},');
   P.push('};', '');
 }
 { // the factory sets released firmwares wrote (scripts/legacy-factory.ts): after an update, a factory patch the bank's set
@@ -239,7 +288,10 @@ P.push('};', '');
   P.push(`#define N_RELEASED_SETS ${sets.length}`);
   P.push('static const struct { uint32_t set; uint64_t has; } RELEASED_SETS[N_RELEASED_SETS] = {');
   for (const s of sets) {
-    const has = presetNames.reduce((m, n, i) => (s.names.includes(n.toUpperCase()) ? m | (1n << BigInt(i)) : m), 0n);
+    // (a set that had a renamed factory patch has the one that took its slot: bank_upgrade rewrites an untouched slot of it,
+    // and a changed or deleted one is the owner's choice, so bank_add adds nothing)
+    const had = (n: string): boolean => s.names.includes(n) || Object.entries(RENAMED).some(([was, to]) => to === n && s.names.includes(was));
+    const has = presetNames.reduce((m, n, i) => (had(n.toUpperCase()) ? m | (1n << BigInt(i)) : m), 0n);
     P.push(`    {0x${s.set}u, 0x${has.toString(16)}ull},   /* ${s.tags[0]}${s.tags.length > 1 ? ' .. ' + s.tags[s.tags.length - 1] : ''} */`);
   }
   P.push('};', '');

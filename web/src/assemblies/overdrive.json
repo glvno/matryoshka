@@ -1,0 +1,191 @@
+{
+  "format": "matryoshka-assembly",
+  "version": 1,
+  "name": "overdrive",
+  "category": "Effects",
+  "modules": [
+    {
+      "id": 1,
+      "type": "dyn",
+      "x": 0,
+      "y": 0,
+      "params": {
+        "thresh": -24,
+        "ratio": 4,
+        "attack": 0.005,
+        "release": 0.15,
+        "gain": 6
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "thresh"
+        ],
+        "p2": [
+          "ratio"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "type": "filter",
+      "x": 320,
+      "y": 0,
+      "params": {
+        "cutoff": 120,
+        "res": 0,
+        "cvamt": 1,
+        "track": 0,
+        "morph": 0,
+        "osc": 0,
+        "drive": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "cutoff"
+        ],
+        "p2": [
+          "res"
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "type": "shape",
+      "x": 640,
+      "y": 0,
+      "params": {
+        "drive": 6,
+        "mode": 0,
+        "level": 0.5,
+        "os": 0,
+        "sym": 0.1,
+        "stages": 1
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "drive"
+        ],
+        "p2": [
+          "mode"
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "type": "filter",
+      "x": 960,
+      "y": 0,
+      "params": {
+        "cutoff": 3000,
+        "res": 0,
+        "cvamt": 1,
+        "track": 0,
+        "morph": 0,
+        "osc": 0,
+        "drive": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "cutoff"
+        ],
+        "p2": [
+          "res"
+        ]
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": {
+        "module": 1,
+        "port": "out"
+      },
+      "to": {
+        "module": 2,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 2,
+        "port": "hp"
+      },
+      "to": {
+        "module": 3,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 3,
+        "port": "out"
+      },
+      "to": {
+        "module": 4,
+        "port": "in"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "module": 1,
+      "port": "in",
+      "label": "in"
+    }
+  ],
+  "outputs": [
+    {
+      "module": 4,
+      "port": "lp12",
+      "label": "out"
+    }
+  ],
+  "params": [
+    {
+      "module": 3,
+      "param": "drive",
+      "label": "drive"
+    },
+    {
+      "module": 4,
+      "param": "cutoff",
+      "label": "tone"
+    },
+    {
+      "module": 3,
+      "param": "mode",
+      "label": "shape"
+    },
+    {
+      "module": 1,
+      "param": "ratio",
+      "label": "sustain"
+    },
+    {
+      "module": 2,
+      "param": "cutoff",
+      "label": "low cut"
+    },
+    {
+      "module": 3,
+      "param": "level",
+      "label": "level"
+    }
+  ]
+}

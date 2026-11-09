@@ -154,15 +154,15 @@ static void nudge_suite(void)
             pages_focus(d, 0);
             loop();
             later(1500);
-            arm0 = eng_arm_mask_get();
+            arm0 = m64(eng_arm_mask_get());
             tap(BTN_SEL);
             if (t == T_MIXER) {
                 check("SEL on a device with no keys input: NOTHING HERE TAKES KEYS (D-235), the armed set kept",
-                      nudged("NOTHING HERE TAKES KEYS") && eng_arm_mask_get() == arm0);
+                      nudged("NOTHING HERE TAKES KEYS") && m64(eng_arm_mask_get()) == arm0);
                 none++;
             } else {
                 check("SEL on a Drum map no keys cable reaches: NO KEYS REACH THIS DEVICE (#215), the armed set kept",
-                      !env_listeners(d) && nudged("NO KEYS REACH THIS DEVICE") && eng_arm_mask_get() == arm0);
+                      !m64(env_listeners(d)) && nudged("NO KEYS REACH THIS DEVICE") && m64(eng_arm_mask_get()) == arm0);
                 nudge_snap("no-keys");
                 check("  the nudge ends: the screen as a whole redraw", nudge_ends_whole());
                 reach++;
@@ -184,7 +184,7 @@ static void nudge_suite(void)
         tap(BTN_HOME);
     }
 
-    check("(the engine-unreached fixture: Monolith D and Hera 6, no keys cable into either)",
+    check("(the engine-unreached fixture: Monolith D and basic poly, no keys cable into either)",
           load_fixture("build/panel-fixtures/engine-unreached.m1p") == 0);
     patch_label = "ENGINE UNREACHED";
     pv_gen++;
@@ -209,15 +209,15 @@ static void nudge_suite(void)
             pages_focus(d, 0);
             loop();
             later(1500);
-            arm0 = eng_arm_mask_get();
+            arm0 = m64(eng_arm_mask_get());
             {
                 uint64_t grp = 0;                       /* (a poly engine: its modules keep their group, D-905) */
                 for (k = 0; k < pg_dev[d].nmem; k++)
-                    grp |= eng_arms(pg_dev[d].mem[k]);
+                    grp |= m64(eng_arms(pg_mem(d, k)));
                 tap(BTN_SEL);
                 check(grp ? "SEL on a poly engine no keys cable reaches: NO KEYS REACH THIS DEVICE (D-905), the armed set kept"
                           : "SEL on a mono engine no keys cable reaches: NO KEYS REACH THIS DEVICE (#215), the armed set kept",
-                      !env_listeners(d) && !env_armed(d) && nudged("NO KEYS REACH THIS DEVICE") && eng_arm_mask_get() == arm0);
+                      !m64(env_listeners(d)) && !env_armed(d) && nudged("NO KEYS REACH THIS DEVICE") && m64(eng_arm_mask_get()) == arm0);
                 if (grp) {
                     poly++;
                 } else {
@@ -234,11 +234,11 @@ static void nudge_suite(void)
                 continue;
             for (k = 0; k < PG_DEVS && pg_cur_dev != d; k++)
                 enc(0, pg_cur_dev < d ? 1 : -1);
-            arm0 = eng_arm_mask_get();
+            arm0 = m64(eng_arm_mask_get());
             later(1500);
             tap(BTN_SEL);
             check("  on its environment row too, the armed set kept", page == PAGE_ENV && pg_cur_dev == d
-                  && nudged("NO KEYS REACH THIS DEVICE") && eng_arm_mask_get() == arm0);
+                  && nudged("NO KEYS REACH THIS DEVICE") && m64(eng_arm_mask_get()) == arm0);
         }
         tap(BTN_HOME);
     }
@@ -262,15 +262,15 @@ static void nudge_suite(void)
             check("  the engine carries the mark and keeps its track (ENG_KEYS_UNREACHED_TRACK, D-295)", pg_dev[d].unreached
                   && tr < pg_ndev && pg_dev[tr].module >= 0 && eng_type((uint32_t)pg_dev[tr].module) == T_STEPS);
             for (k = 0; k < pg_dev[d].nmem; k++)
-                grp |= eng_arms(pg_dev[d].mem[k]);
+                grp |= m64(eng_arms(pg_mem(d, k)));
             check("  (a poly engine: its modules keep their group)", grp != 0u);
             pages_focus(d, 0);
             loop();
             later(1500);
-            arm0 = eng_arm_mask_get();
+            arm0 = m64(eng_arm_mask_get());
             tap(BTN_SEL);
             check("SEL on a poly engine a track drives through other cables: NO KEYS REACH THIS DEVICE (#633), the armed set kept",
-                  !env_listeners(d) && !env_armed(d) && nudged("NO KEYS REACH THIS DEVICE") && eng_arm_mask_get() == arm0);
+                  !m64(env_listeners(d)) && !env_armed(d) && nudged("NO KEYS REACH THIS DEVICE") && m64(eng_arm_mask_get()) == arm0);
             seen++;
         }
         check("  (the engine seen)", seen == 1u);

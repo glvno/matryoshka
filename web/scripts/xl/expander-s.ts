@@ -249,8 +249,8 @@ const built = define('Expander S XL', (b: Def) => {
     b.wire(drift, 'out', wander, 'p1');
     b.pin(wander, 'p1', 'gain', [0.5, 0.5 + 20 / 1200 / 8]);
     // the oscillators (each through a VCA, its mixer knob), the LFO
-    const o1 = add('o1', 'osc', 1, 0, { wave: 2, level: 1, fine: f.detune });
-    const o2 = add('o2', 'osc', 1, 1, { wave: 3, level: 1, pw: 0.4, fine: 5 + f.detune });
+    const o1 = add('o1', 'osc', 1, 0, { wave: 2, level: 1, fine: f.detune, analog: 1 });
+    const o2 = add('o2', 'osc', 1, 1, { wave: 3, level: 1, pw: 0.4, fine: 5 + f.detune, analog: 1 });
     const lv1 = add('lv1', 'vca', 1.5, 0, { gain: 0.5 });
     const lv2 = add('lv2', 'vca', 1.5, 1, { gain: 0.4 });
     const lfo = add('lfo', 'lfo', 1, 2, { wave: 0, rate: 5, depth: 1 });
@@ -323,7 +323,7 @@ const built = define('Expander S XL', (b: Def) => {
     b.wire(...ALL.sync, sync, 'p1');
     // the VCF: its input mixer is the oscillators' VCAs; cutoff moved by its source (envelope 2 or the LFO) and the
     // keyboard's VCF knob
-    const flt = add('flt', 'filter', 4, 0, { cutoff: Math.round(1100 * Math.pow(2, f.bright / 12)), res: 0.35, cvamt: 2 });
+    const flt = add('flt', 'filter', 4, 0, { cutoff: Math.round(1100 * Math.pow(2, f.bright / 12)), res: 0.35, cvamt: 2, drive: 1 }); // drive: the SEM's filter saturates gently (#670)
     b.wire(lv1, 'out', flt, 'in');
     b.wire(lv2, 'out', flt, 'in');
     b.wire(...ALL.cutoff, flt, 'cv');

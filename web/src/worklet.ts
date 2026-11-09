@@ -19,6 +19,9 @@ export type HostMsg =
   | { t: 'bypass'; id: number; on: boolean }
   | { t: 'range'; id: number; index: number; name: string; range: Range | null }
   | { t: 'transport'; on: boolean }
+  /** play once (#632, Engine.playOnce): a bar counted in with a click, the pattern or song once, then it stops */
+  | { t: 'once' }
+  | { t: 'cin'; bars: number }
   /** the global tempo (D-907), null: each patch its own */
   | { t: 'tempo'; bpm: number | null }
   | { t: 'button'; i: number; on: boolean }
@@ -77,6 +80,8 @@ class ModularProcessor extends AudioWorkletProcessor {
   private envs = new Map<string, number>();
   /** the Steps modules' places as last sent (the editor's grids draw the playhead), blocks since */
   private stepsSent = '';
+  /** the transport as last told to the page (play once starts and stops it of itself) */
+  private runSent = false;
   private stepsBlocks = 0;
   constructor() {
     super();
@@ -105,6 +110,8 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'envwatch') this.envs.set(m.key, m.id);
         else if (m.t === 'unenvwatch') this.envs.delete(m.key);
         else if (m.t === 'transport') this.engine.transport(m.on);
+        else if (m.t === 'once') this.engine.playOnce();
+        else if (m.t === 'cin') this.engine.countIn(m.bars);
         else if (m.t === 'tempo') this.engine.tempoGlobal = m.bpm;
         else if (m.t === 'button') this.engine.setButton(m.i, m.on);
         else if (m.t === 'track') this.engine.setTrack(m.id, m.notes, m.pat);
@@ -180,6 +187,10 @@ class ModularProcessor extends AudioWorkletProcessor {
       if (this.views.size) this.feedViews(out[0].length);
       if (this.views.size || this.envs.size) this.sendDisplays();
       if (this.watched.size) this.feedWatch(out[0].length);
+      if (this.engine.transportRunning !== this.runSent) {
+        this.runSent = this.engine.transportRunning;
+        this.port.postMessage({ run: this.runSent });   // (the page follows play once's start and stop, #632)
+      }
       const took = this.engine.takeRecorded();
       if (took.length) this.port.postMessage({ recorded: took });   // live recording on a Steps track (#135)
       if (++this.stepsBlocks >= DISPLAY_EVERY / 2) {   // the Steps modules' playheads, about 60 times a second when they move

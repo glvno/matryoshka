@@ -89,18 +89,18 @@ describe('arming as a set (#190)', () => {
 
   it('goes to the FM-1 as a mask of the armed devices\' modules, and comes back from one (#191)', () => {
     const p = newPatch(DEFS);
-    const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Hera 6')!, 0, 0);
+    const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Hera 4')!, 0, 0);
     const b = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Oracle V')!, 0, 900);
     wireEngine(p, a);
     wireEngine(p, b);
     const out = p.modules.find((m) => m.type === 'output')!;
     connect(p, DEFS, { module: b.outputs[0].module, port: b.outputs[0].port }, { module: out.id, port: 'r' }); // (both reach the Output: the FM-1 drops what does not)
-    const [lo, hi] = armMask(p, [`a${b.id}`]);
-    expect(lo || hi).toBeTruthy();
-    expect(armedFromMask(p, lo, hi)).toEqual([`a${b.id}`]);
+    const words = armMask(p, [`a${b.id}`]);
+    expect(words.some((w) => w)).toBeTruthy();
+    expect(armedFromMask(p, words)).toEqual([`a${b.id}`]);
     const both = armMask(p, [`a${a.id}`, `a${b.id}`]);
-    expect(armedFromMask(p, ...both).sort()).toEqual([`a${a.id}`, `a${b.id}`].sort());
-    expect(armMask(p, [])).toEqual([0, 0]);
+    expect(armedFromMask(p, both).sort()).toEqual([`a${a.id}`, `a${b.id}`].sort());
+    expect(armMask(p, [])).toEqual([0, 0, 0, 0]);
   });
 });
 
@@ -122,7 +122,7 @@ describe('an instrument armed through its key sources (#395)', () => {
         expect(mutedCables(p, [`a${a.id}`]).filter((c) => on.includes(`m${c.to.module}`)), name).toEqual([]);
         for (const v of virtualCables(p, [`a${a.id}`]))
           expect(p.cables.some((c) => c.to.module === v.to.module && c.to.port === v.to.port), name).toBe(false);
-        expect(armedFromMask(p, ...armMask(p, [`a${a.id}`])), name).toEqual([`a${a.id}`]);
+        expect(armedFromMask(p, armMask(p, [`a${a.id}`])), name).toEqual([`a${a.id}`]);
       }
     }
   });
@@ -143,13 +143,13 @@ describe('an instrument armed through its key sources (#395)', () => {
 describe('what the editor draws for the arm (#418): everything the arm routes, nothing else', () => {
   const ends = (c: { from: { module: number; port: string }; to: { module: number; port: string } }): string => `${c.from.module}:${c.from.port}>${c.to.module}:${c.to.port}`;
   const heraChain = (): { p: Patch; a: string; steps: number; arp: number; cables: string[] } => {
-    const p = FM1_PRESETS['Hera 6']();
-    const a = `a${assembliesOf(p).find((x) => x.label === 'Hera 6')!.id}`;
+    const p = FM1_PRESETS['Hera 4']();
+    const a = `a${assembliesOf(p).find((x) => x.label === 'Hera 4')!.id}`;
     const main = p.modules.find((m) => m.type === 'fm1')!.id;
     const steps = p.modules.find((m) => m.type === 'steps')!.id, arp = p.modules.find((m) => m.type === 'arp')!.id;
     // the factory chain: Main's keys into the track, the track's into the Arpeggiator, its into the instrument
     const chain = p.cables.filter((c) => (c.from.module === main && c.from.port === 'keys') || (c.from.module === steps && c.from.port === 'keys') || (c.from.module === arp && c.from.port === 'keys'));
-    expect(chain.map((c) => c.from.module).sort()).toEqual([main, steps, arp].sort());
+    expect([...new Set(chain.map((c) => c.from.module))].sort()).toEqual([main, steps, arp].sort());   // (the Arpeggiator's keys reach the voices' Voicing and the LFO delay's)
     return { p, a, steps, arp, cables: chain.map(ends).sort() };
   };
 
@@ -173,17 +173,18 @@ describe('what the editor draws for the arm (#418): everything the arm routes, n
   it("from the FM-1's masks: SEL on the instrument's page names its key sources and draws the instrument armed; the SEQ page names the track alone", () => {
     const { p, a, steps, arp, cables } = heraChain();
     const index = new Map(deviceView(p, true).patch.modules.map((m, i) => [m.id, i]));
-    const bit = (id: number): number => 1 << index.get(id)!;
+    // (the mask's words: modules 0..31, 32..63, ..)
+    const bit = (...ids: number[]): number[] => { const w = [0, 0, 0, 0]; for (const id of ids) { const i = index.get(id)!; w[i >> 5] = (w[i >> 5] | (1 << (i & 31))) >>> 0; } return w; };
     // engine.c eng_arms: an instrument fed by an Arpeggiator arms as the Arpeggiator and the track it plays, not its own modules
-    const sel = armedFromMask(p, bit(steps) | bit(arp), 0);
+    const sel = armedFromMask(p, bit(steps, arp));
     expect(sel).toEqual([a]);
     expect(armDrawing(p, sel)).toEqual(armDrawing(p, [a]));
     // the SEQ page (D-545) arms the track it shows
-    const seq = armedFromMask(p, bit(steps), 0);
+    const seq = armedFromMask(p, bit(steps));
     expect(seq).toEqual([`m${steps}`]);
     expect(armDrawing(p, seq).live.map(ends).sort()).toEqual(cables);
     // and the editor's own mask comes back as what was armed
-    expect(armedFromMask(p, ...armMask(p, [a]))).toEqual([a]);
+    expect(armedFromMask(p, armMask(p, [a]))).toEqual([a]);
   });
 
   it('a device no cable feeds gets a virtual cable into its keys jack, and the cable into the other device is muted', () => {
@@ -207,10 +208,10 @@ describe('what the editor draws for the arm (#418): everything the arm routes, n
 describe('an engine no keys cable reaches is not armed (D-905, D-818)', () => {
   const ENGINES = FACTORY.filter((d) => defIsEngine(d));
   /** the engine's modules in the device form, as the mask SEL on its page would arm without the mark (engine.c eng_arms) */
-  const ownMask = (p: Patch, ids: number[]): [number, number] => {
-    let lo = 0;
-    deviceView(p, true).patch.modules.forEach((m, i) => { if (ids.includes(m.id) && i < 32) lo |= 1 << i; });
-    return [lo >>> 0, 0];
+  const ownMask = (p: Patch, ids: number[]): number[] => {
+    const w = [0, 0, 0, 0];
+    deviceView(p, true).patch.modules.forEach((m, i) => { if (ids.includes(m.id)) w[i >> 5] |= 1 << (i & 31); });
+    return w.map((x) => x >>> 0);
   };
 
   it('every factory engine, poly and mono: armable with Main\'s keys cabled in, not without', () => {
@@ -233,7 +234,7 @@ describe('an engine no keys cable reaches is not armed (D-905, D-818)', () => {
       expect(virtualCables(p, [key]), def.name).toEqual([]);
       expect(armView(p, [key]), def.name).toBe(p);
       // (a mask naming its modules, as older firmware sends for a poly engine, arms nothing in the editor either)
-      expect(armedFromMask(p, ...ownMask(p, a.modules)), def.name).toEqual([]);
+      expect(armedFromMask(p, ownMask(p, a.modules)), def.name).toEqual([]);
     }
     expect(poly, 'a poly engine among them').toBeGreaterThan(0);
   });
@@ -246,7 +247,7 @@ describe('an engine no keys cable reaches is not armed (D-905, D-818)', () => {
     const key = `a${a.id}`;
     expect(noKeysReach(p, key)).toBe(true);
     expect(armable(p, key)).toBe(false);
-    expect(armedFromMask(p, ...ownMask(p, a.modules))).toEqual([]);
+    expect(armedFromMask(p, ownMask(p, a.modules))).toEqual([]);
     expect(armDrawing(p, [key]).virtual).toEqual([]);
   });
 
@@ -266,7 +267,7 @@ describe('an engine no keys cable reaches is not armed (D-905, D-818)', () => {
     expect(noKeysReach(p, `a${a.id}`)).toBe(true);
     expect(armable(p, `a${a.id}`)).toBe(false);
     expect(armableDevices(p)).not.toContain(`a${a.id}`);
-    expect(armedFromMask(p, ...ownMask(p, a.modules))).toEqual([]);
+    expect(armedFromMask(p, ownMask(p, a.modules))).toEqual([]);
     // (Main's keys into the track and the track's keys into the engine: reached, armed with the track)
     const main2 = p.modules.find((m) => m.type === 'fm1')!;
     connect(p, DEFS, { module: main2.id, port: 'keys' }, { module: t.id, port: 'keys' });
@@ -274,5 +275,37 @@ describe('an engine no keys cable reaches is not armed (D-905, D-818)', () => {
     connect(p, DEFS, { module: t.id, port: 'keys' }, { module: keysIn.module, port: keysIn.port });
     expect(noKeysReach(p, `a${a.id}`)).toBe(false);
     expect(armable(p, `a${a.id}`)).toBe(true);
+  });
+});
+
+describe('more than 64 modules (#721: the FM-1 takes 128)', () => {
+  // Main's keys into a Drum map placed after 70 mixers in a chain to the Output: its index is past 63
+  const many = (): { p: Patch; dm: number } => {
+    const p = newPatch(DEFS);
+    const out = p.modules.find((m) => m.type === 'output')!;
+    const main = p.modules.find((m) => m.type === 'fm1')!;
+    let prev = -1;
+    for (let k = 0; k < 70; k++) {
+      const m = addModule(p, DEFS.mixer, 800, 40 * k);
+      if (prev >= 0) connect(p, DEFS, { module: prev, port: 'out' }, { module: m.id, port: 'in1' });
+      prev = m.id;
+    }
+    connect(p, DEFS, { module: prev, port: 'out' }, { module: out.id, port: 'l' });
+    const dm = addModule(p, DEFS.drummap, 200, 600);
+    connect(p, DEFS, { module: main.id, port: 'keys' }, { module: dm.id, port: 'keys' });
+    connect(p, DEFS, { module: dm.id, port: 'g1' }, { module: out.id, port: 'r' });
+    return { p, dm: dm.id };
+  };
+
+  it('a module past index 63 goes into the mask\'s third word and comes back', () => {
+    const { p, dm } = many();
+    const i = deviceView(p, true).patch.modules.findIndex((m) => m.id === dm);
+    expect(i).toBeGreaterThan(63);
+    const words = armMask(p, [`m${dm}`]);
+    expect(words).toHaveLength(4);
+    expect(words[i >> 5]).toBe((1 << (i & 31)) >>> 0);
+    expect(words.filter((w, k) => k !== i >> 5 && w)).toEqual([]);
+    expect(armedFromMask(p, words)).toEqual([`m${dm}`]);
+    expect(armedFromMask(p, words.slice(0, 2))).toEqual([]);   // (two words, as older firmware sends: modules 0..63)
   });
 });

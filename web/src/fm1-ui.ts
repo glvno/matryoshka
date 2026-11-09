@@ -21,6 +21,11 @@ export interface Fm1Events {
   midi?(status: number, d1: number, d2: number): void;
   /** PLAY started / stopped the transport */
   transport?(run: boolean): void;
+  /** SEQ held + PLAY began play once (#632): the page's engine counts in and plays once itself (the emulated engine's
+   * own starts and stops of it are not told) */
+  once?(): void;
+  /** REC's count-in began (its bars) or ended early (0) (D-803): the page's engine clicks on its beats, as play once's */
+  cin?(bars: number): void;
   /** the SEQ page: a track's notes as they are after an edit there (of pattern `pat`, 0-based: the one it plays), a track
    * muted (module = its index in the binary) */
   track?(module: number, notes: StepNote[], pat: number): void;
@@ -32,8 +37,8 @@ export interface Fm1Events {
   song?(s: number, entries: SongEntry[]): void;
   mute?(module: number, on: boolean): void;
   /** the FM-1 armed or disarmed (#139, #191, #395: REC held + a black key, SEL, the SEQ page): the armed modules, by
-   * their index in the binary, as a mask in two halves */
-  arms?(lo: number, hi: number): void;
+   * their index in the binary, as a mask in ARM_WORDS words (#721) */
+  arms?(words: number[]): void;
   /** GLO > PANEL > TEMPO or the global tempo changed on the emulated FM-1 (its menu, PLAY held + PRESET, Main's tempo row
    * while global; D-907): global, and the global tempo (0: not known yet) */
   tempo?(global: boolean, bpm: number): void;
@@ -68,7 +73,7 @@ interface Exports {
   fm1w_transport(run: number): void;
   fm1w_play_turned(): void;
   fm1w_mute(module: number, on: number): void;
-  fm1w_arm_mask(lo: number, hi: number): void;
+  fm1w_arm_mask(w0: number, w1: number, w2: number, w3: number): void;
   /** (absent from a wasm built before D-907) */
   fm1w_tempo?(patch: number, bpm: number): void;
   fm1w_focus_dev(): number; fm1w_focus_page(): number; fm1w_octave(): number;
@@ -91,6 +96,8 @@ export class Fm1Ui {
       save: () => ev.save?.(),
       midi: (s: number, a: number, b: number) => ev.midi?.(s, a, b),
       transport: (r: number) => ev.transport?.(r !== 0),
+      once: () => ev.once?.(),
+      cin: (bars: number) => ev.cin?.(bars),
       track: (m: number, at: number, n: number, pat: number) => ev.track?.(m, memory ? [...new Uint32Array(memory.buffer, at, n)].map(wordNote) : [], pat ?? 0),
       locks: (m: number, pat: number, at: number, n: number) => ev.locks?.(m, pat, memory ? Array.from({ length: n }, (_, j) => {
         const b = new Uint8Array(memory!.buffer, at + 7 * j, 7);
@@ -102,7 +109,7 @@ export class Fm1Ui {
         return { pat: b[0], shift: (b[1] << 24) >> 24 };
       }) : []),
       mute: (m: number, on: number) => ev.mute?.(m, on !== 0),
-      arms: (lo: number, hi: number) => ev.arms?.(lo >>> 0, hi >>> 0),
+      arms: (w0: number, w1: number, w2: number, w3: number) => ev.arms?.([w0 >>> 0, w1 >>> 0, w2 >>> 0, w3 >>> 0]),
       tempo: (patch: number, bpm: number) => ev.tempo?.(patch === 0, bpm),
     };
     const { instance } = await WebAssembly.instantiate(bytes, { fm1: env });
@@ -142,8 +149,8 @@ export class Fm1Ui {
   mute(module: number, on: boolean): void { this.x.fm1w_mute(module, on ? 1 : 0); }
   /** the page's TEMPO setting and global tempo (D-907): the emulated FM-1 plays and shows them */
   tempo(global: boolean, bpm: number): void { this.x.fm1w_tempo?.(global ? 0 : 1, Math.round(bpm)); }
-  /** the editor's armed devices (#191): their modules as a mask (arm.ts armMask) */
-  armMask(lo: number, hi: number): void { this.x.fm1w_arm_mask(lo >>> 0, hi >>> 0); }
+  /** the editor's armed devices (#191): their modules as a mask (arm.ts armMask, ARM_WORDS words, #721) */
+  armMask(words: readonly number[]): void { this.x.fm1w_arm_mask(words[0] >>> 0, (words[1] ?? 0) >>> 0, (words[2] ?? 0) >>> 0, (words[3] ?? 0) >>> 0); }
 
   /** the buttons held (bit: matrix id), as the panel logic took them; null from a wasm built before #549 */
   get held(): number | null { return this.x.fm1w_held ? this.x.fm1w_held() : null; }

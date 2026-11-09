@@ -3,7 +3,8 @@
  * boot after an update (main.c, with bank_upgrade), each preset in the store (presetstore.c) whose structure is an earlier
  * one of a factory engine is rewritten for today's structure under the same name. presets.h PMIG_LIST says which structures
  * move and how (web/src/preset-migrations.json, as the editor does it: web/src/preset-migrate.ts): for each of today's rows
- * an earlier row kept as it is, a table that reads one or two earlier rows as whole numbers (Selector positions), or the
+ * an earlier row kept as it is, a table that reads one or two earlier rows as whole numbers (Selector positions), a line
+ * (an earlier row times a factor plus an offset, in Q16, picked by an earlier row read as a whole number), or the
  * engine's Init value (FPRESET_LIST: a new row, or one a shorter preset lacks). A preset whose name a factory preset of
  * today's structure has, or with more values than the earlier structure has rows, stays as it is.
  *
@@ -44,15 +45,33 @@ static int pm_factory_name(uint32_t structure, const char *name)
 /* a Q16 value as a whole number (round half up, as the editor's Math.round) */
 static int32_t pm_whole(int32_t v) { return (v >> 16) + ((v >> 15) & 1); }
 
+/* a line's value: x times mul plus add (Q16, x * mul floored as the editor's Math.floor), held inside min .. max */
+static int32_t pm_line(uint32_t l, const int32_t *old, uint32_t n, int32_t init)
+{
+    const int32_t *v = PMIG_LV + PMIG_LINE[l].v;
+    const uint32_t x = PMIG_LINE[l].x, key = PMIG_LINE[l].key;
+    int32_t i = 0, q;
+    if (x >= n || (key != 0xFFu && key >= n))
+        return init;
+    if (key != 0xFFu) {
+        i = pm_whole(old[key]) - PMIG_LINE[l].lo;
+        i = i < 0 ? 0 : i >= (int32_t)PMIG_LINE[l].n ? (int32_t)PMIG_LINE[l].n - 1 : i;
+    }
+    q = (int32_t)(((int64_t)old[x] * v[2 + 2 * i]) >> 16) + v[3 + 2 * i];
+    return q < v[0] ? v[0] : q > v[1] ? v[1] : q;
+}
+
 /* migration m's values of today's rows from an earlier preset's n values (old) into out; init: today's Init values */
 static void pm_apply(uint32_t m, const int32_t *old, uint32_t n, const int32_t *init, int32_t *out)
 {
-    uint32_t k, tab = PMIG_LIST[m].tab;
+    uint32_t k, tab = PMIG_LIST[m].tab, line = PMIG_LIST[m].line;
     const uint8_t *op = PMIG_OPS + PMIG_LIST[m].ops;
     for (k = 0; k < PMIG_LIST[m].nnew; k++) {
         uint32_t o = op[k];
         if (o == 0xFFu)
             out[k] = init[k];
+        else if (o == 0xFDu)
+            out[k] = pm_line(line++, old, n, init[k]);
         else if (o != 0xFEu)
             out[k] = o < n ? old[o] : init[k];
         else {

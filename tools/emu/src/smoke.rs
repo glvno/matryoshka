@@ -7,7 +7,7 @@
 //! 2. sound: silent without keys, a note on a panel key, silent again after the release
 //! 3. pages: GLO (the menu, again: back), PLAY twice, HOME (on the patch's home page: nothing, the page stays), SELECT /
 //!    ALGO (the header shows where they went, no toast; back again: as it was), ALGO then HOME (the device's first page),
-//!    SELECT then HOME (the patch's home page, #391), GLO (the menu's MIDI tab), ALGO (its INFO tab), HOME (back out of
+//!    SELECT then HOME (the patch's home page, #391), GLO (the menu's MIDI tab), ALGO four times (its INFO tab), HOME (back out of
 //!    it), HOME held (nothing, #395)
 //! 4. PRESET encoder: alone, the focused device's preset (#395); HOME held, forward, forward, back
 //!    then K1..K4 on Elvira 2's drone row: a fast click only after one the same way, HOME held a fine click (#340)
@@ -20,7 +20,8 @@
 //!    start); HOME + SAVE turns the quick start off for good (the next power-on has none); the menu's GUIDE tab (D-248)
 //!    and ENV from it (the environment, HOME back to the tab, D-249); OCT- +
 //!    OCT+ held at power-on and MENU > SYSTEM > UPDATE MODE (K1, then GLO held) = update mode (no engine)
-//!    then the bank's power-loss rules and the first boot's factory bank; an update that changed a factory patch but not
+//!    then the bank's power-loss rules and the first boot's factory bank (also on a UC25HQ80 flash chip; an unknown chip is
+//!    left alone, #739); an update that changed a factory patch but not
 //!    the format (#441): the untouched slot gets today's patch, an edited one and today's stay, once; a factory patch
 //!    new since the bank's factory set goes into its own slot, else the first empty one, said once (#630)
 //! 9. the patch buttons (held / switched) and the SEQ page on the 808 Kit: a step, a track, PLAY, a mute, REC
@@ -388,6 +389,39 @@ fn store(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8
     m.midi(&[0xC0, last as u8], 500)?;
     t.screen(&m, "store: the last factory slot", &presets[last].0);
     *emulated += m.ms();
+    flash_chips(app, t, emulated, presets)
+}
+
+/// The flash chips (#739): a UC25HQ80 (JEDEC B3 60 14) stores as the Puya does (the first boot writes the factory bank, a
+/// restart reads it back); an unknown chip is left alone (NO FLASH ID, nothing written).
+fn flash_chips(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
+    let mut m = Machine::boot_jedec(app, None, Some(0xB3_6014));
+    quick_start(&mut m, 9000)?;
+    let written = wait_text(&mut m, "FACTORY BANK WRITTEN", 1000)?;
+    t.check("flash chips: a UC25HQ80 takes the first boot's factory bank (#739)", written, String::new());
+    t.check("flash chips: a UC25HQ80 is a known chip", !font::on_screen(m.lcd(), "NO FLASH ID"), String::new());
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    m.run_for(500)?;
+    let f = m.flash();
+    t.check("flash chips: the UC25HQ80's bank holds factory slot 0", bank_record(&f, 0).map(|r| r.1) == Some(presets[0].1.clone()), String::new());
+    *emulated += m.ms();
+    let mut m = Machine::boot_jedec(app, Some(&f), Some(0xB3_6014));
+    quick_start(&mut m, 9000)?;
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    m.run_for(500)?;
+    t.check("flash chips: a UC25HQ80 reads its bank back after a restart", !font::on_screen(m.lcd(), "FACTORY BANK WRITTEN"), String::new());
+    let last = presets.len() - 1;
+    m.midi(&[0xC0, last as u8], 500)?;
+    t.screen(&m, "flash chips: the UC25HQ80's last factory slot", &presets[last].0);
+    *emulated += m.ms();
+
+    let mut m = Machine::boot_jedec(app, None, Some(0xEF_4014));   // a Winbond W25Q80: not a known chip
+    quick_start(&mut m, 9000)?;                                      // (the boot message waits for the quick start to close)
+    let shown = wait_text(&mut m, "NO FLASH ID", 3000)?;
+    t.check("flash chips: an unknown chip says NO FLASH ID (#72)", shown, String::new());
+    m.run_for(500)?;
+    t.check("flash chips: nothing written to an unknown chip", m.flash().iter().all(|&b| b == 0xff), String::new());
+    *emulated += m.ms();
     Ok(())
 }
 
@@ -432,10 +466,12 @@ fn crc16(data: &[u8]) -> u16 {
 /// The preset store (firmware/src/presetstore.c): 7 sectors from 0x99000, 10 slots of 384 bytes each; a slot is a 32-byte
 /// header (magic "PRS1", or "PRS2" for a record's second slot, sequence number, structure, value count, CRC-16, name) and
 /// up to 88 Q16 values. A preset of more takes two slots of one sector. Written into `sec`'s first slots.
-fn preset_record(f: &mut [u8], sec: usize, seq: u32, structure: u32, name: &str, vals: &[i32]) {
+/// (`at`: the store's slot of the record, 0..69 (ten a sector, below the bank at 0xA0000); a tail goes into the next slot)
+fn preset_record(f: &mut [u8], at: usize, seq: u32, structure: u32, name: &str, vals: &[i32]) {
     let bytes = |v: &[i32]| v.iter().flat_map(|x| x.to_le_bytes()).collect::<Vec<u8>>();
+    let (sec, base) = (at / 10, at % 10);
     let slot = |f: &mut [u8], k: usize, magic: u32, n: usize, crc: u16, v: &[i32]| {
-        let at = 0x99000 + sec * 0x1000 + k * 384;
+        let at = 0x99000 + sec * 0x1000 + (base + k) * 384;
         let mut h = Vec::new();
         h.extend_from_slice(&magic.to_le_bytes());
         h.extend_from_slice(&seq.to_le_bytes());
@@ -508,8 +544,9 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
     // user presets stored for earlier structures of factory engines (D-865): a 1.9.0 Cassia 1, basic poly and Oracle V, a
     // Cassia 1 of 88 values (stored before 1.8.2), a Cassia 1 from before #430, an 8 Lire from before D-852
     let cases = pm_cases();
+    // (three cases a sector, two slots each: the store's seven sectors hold more cases than seven)
     for (c, k) in cases.iter().zip(0..) {
-        preset_record(&mut flash, k, 100 + k as u32, c.from, &c.name, &c.old);
+        preset_record(&mut flash, (k / 3) * 10 + (k % 3) * 2, 100 + k as u32, c.from, &c.name, &c.old);
     }
     let mut m = Machine::boot(app, Some(&flash));
     quick_start(&mut m, 9000)?;
@@ -1096,6 +1133,10 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     m.turn(ALGO, 1, 400)?;
     m.turn(ALGO, 1, 400)?;
     t.screen(&m, "menu: SYSTEM > QUICK START, off (D-240)", "QUICK START");
+    t.screen(&m, "  its header: SYSTEM 1/2 (#702)", "SYSTEM 1/2");
+    m.turn(ALGO, 1, 400)?;
+    t.screen(&m, "menu: ALGO again, SYSTEM's second page (#702)", "SYSTEM 2/2");
+    t.screen(&m, "  its EDITOR row, ALLOW as made", "ALLOW");
     m.turn(ALGO, 1, 400)?;
     t.screen(&m, "menu: the INFO tab", "VERSION");
     t.screen(&m, "menu: the bank's slots", &format!("{} OF 64", presets.len()));
@@ -1109,7 +1150,9 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     t.screen(&m, "  HOME: back to the menu's GUIDE tab", "PRESS OCT- + OCT+");
     m.turn(ALGO, -1, 400)?;
     m.turn(ALGO, -1, 400)?;
-    t.screen(&m, "menu: the SYSTEM tab", "SYSTEM");
+    t.screen(&m, "menu: back from GUIDE: INFO, then SYSTEM's second page", "SYSTEM 2/2");
+    m.turn(ALGO, -1, 400)?;
+    t.screen(&m, "menu: the SYSTEM tab's first page", "SYSTEM 1/2");
     m.turn(K1, 1, 400)?;
     m.tap(GLO, 2200, 800)?;
     t.screen(&m, "menu: K1 arms UPDATE MODE, GLO held 2 s enters update mode", "FROM THE MENU");
@@ -1327,8 +1370,8 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     t.screen(&m, "  (the next patch)", &presets[1].0);
     patch_turn(&mut m, -1, 500)?;
     t.screen(&m, "  (and back, so step 4 starts from patch 1)", &presets[0].0);
-    m.turn(ALGO, 3, 400)?;
-    t.screen(&m, "ALGO three times: the INFO tab", "VERSION");
+    m.turn(ALGO, 4, 400)?;
+    t.screen(&m, "ALGO four times (SYSTEM has two pages, #702): the INFO tab", "VERSION");
     m.tap(HOME, 120, 400)?;
     t.screen(&m, "HOME tapped: back out of the menu", DEVICE_PAGE);
     m.tap(HOME, 1000, 400)?;

@@ -1,10 +1,9 @@
 {
  "8 Lire": {
-  "out / vol": 0.7
+  "distortion / vol": 0.69
  },
  "Algo Four": {
-  "voice / stack 1→2 mix": 0.7,
-  "voice / stack 3→4 mix": 0.7
+  "voice / volume": 0.34
  },
  "basic poly": {
   "level": 0.62
@@ -13,7 +12,7 @@
   "reverb / level": 0.67
  },
  "Canvas": {
-  "output / chan a": 1.76,
+  "output / chan a": 1.8,
   "output / chan b": 0
  },
  "Cassia 1": {
@@ -31,8 +30,8 @@
  "Expander S": {
   "output / level": 0.41
  },
- "Hera 6": {
-  "env / vca": 1
+ "Hera 4": {
+  "vca / level": 1
  },
  "Io 4": {
   "vca / level": 0.56
@@ -44,7 +43,7 @@
   "level": 1.19
  },
  "Monolith D": {
-  "output / volume": 0.44
+  "output / volume": 0.47
  },
  "Oracle V": {
   "mixer / volume": 0.6
@@ -73,10 +72,10 @@
   "output mixer / osc 3/ext": 0
  },
  "Verona Drum 1": {
-  "master / master": 0.61
+  "master / master": 0.58
  },
  "Wanderer": {
-  "filters · vca / vca level": 0.96,
+  "filters · vca / vca level": 0.94,
   "filters · vca / gain": 0
  }
 }

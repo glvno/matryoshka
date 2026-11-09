@@ -13,10 +13,10 @@ import { CPU, CPU_WARN } from './cpu';
 import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
-import { chipState, DeviceLink, deviceIndex, liveSync, sandboxChip, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, type ChipState, type DeviceEvent } from './device';
+import { chipState, DeviceLink, deviceIndex, IGNORED_NOW, liveSync, sandboxChip, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, type ChipState, type DeviceEvent } from './device';
 import { SITE_URL } from './site';
 import { sandboxKey, sandboxPage, sandboxStep, sandboxTempoTurn } from './sandbox-mode';
-import { LIVE_MS, panelOffBy, slotLabel, type PanelState, type SlotInfo } from './protocol';
+import { editorSkips, LIVE_MS, panelOffBy, slotLabel, type PanelState, type SlotInfo } from './protocol';
 import { chooseSlot } from './store-slot';
 import { Fm1View } from './fm1-view';
 import { EmuKeys } from './emu-keys';
@@ -47,7 +47,7 @@ import { longName, moduleKeywords, moduleName } from './labels';
 import { DeckControls } from './deck';
 import { releaseFocusAfterPointer } from './focus';
 import { DEFS } from './modules';
-import { newPatch, trackLabel, validatePatch, type Patch, type SideKey } from './patch';
+import { addModule, newPatch, trackLabel, validatePatch, type Patch, type SideKey } from './patch';
 import { diffCount, diffLines, diffPatches } from './diff';
 import { loadLibrary, summary } from './assemblies';
 import type { AssemblyDef } from './assembly';
@@ -67,7 +67,7 @@ import { inlineWordmarks } from './brand';
 import { clipText, parseClip, type Clip } from './clipboard';
 import { isGlobalTempo, patchTempo, readTempo, tempo, TEMPO_KEY, tempoNow } from './tempo';
 import { addableModules, assemblyShelves, openableByValue, openableGroups } from './catalog';
-import { binaryPage, deviceBudget, editorPage, encodePatch, kb, linesAdvice, overText, POLY_ROW, POLY_ROW_PARAMS, toQ16 } from './patchbin';
+import { binaryPage, deviceBudget, editorPage, encodePatch, kb, linesAdvice, overText, POLY_ROW, POLY_ROW_PARAMS, SANITY_CAPS, toQ16 } from './patchbin';
 import { UploadGate } from './upload-gate';
 import { ALLOC, deviceView } from './poly';
 import { AboutCard } from './about';
@@ -328,7 +328,14 @@ function alignSoon(): void {
   if (fm1Panel && panelReported()) panelAlign.soon();
 }
 device.onEvent = (e) => {
-  if (e.kind === 'info') return syncChip();   // (MENU > MIDI OUT changed: the chip says so in sandbox mode)
+  if (e.kind === 'info') {
+    if (editorSkips(device.info)) {   // (#702: set to ignore the editor while linked: the editor lets go of it, and of its panel)
+      const port = device.input;
+      device.release();
+      if (mirror.following && mirror.follows(port)) unfollowFm1(IGNORED_NOW);
+    }
+    return syncChip();   // (MENU > MIDI OUT changed: the chip says so in sandbox mode)
+  }
   if (e.kind === 'keys') {   // a key edge the FM-1's panel took (#549): through the copy too, as the FM-1 took it
     if (!panelReported()) return;
     void emu.ready().then(() => {
@@ -418,7 +425,7 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
     if (from === 'device') armsReported = true;
     mark(true);                              // (not sent back: the FM-1 has it; an undo step no more than the editor's own ARM)
     armsApplying = from === 'device';
-    try { editor.setArmed(armedFromMask(editor.patch, e.lo, e.hi)); } finally { mark(false); armsApplying = false; }
+    try { editor.setArmed(armedFromMask(editor.patch, e.words)); } finally { mark(false); armsApplying = false; }
     return;
   }
   if (e.kind === 'pattern' || e.kind === 'song') {   // PRESET on the SEQ page, the SONG page (#375): the editor follows
@@ -472,6 +479,8 @@ async function sendPatch(): Promise<boolean> {
       devStatus('patch on the FM-1');
       const at = editor.focus && binaryPage(editor.patch, editor.focus.device, editor.focus.page);
       if (at) device.focus(at[0], at[1]);   // the FM-1 opens on the page the knobs edit here
+      // (a patch loaded disarms the FM-1: the editor's armed set again, #191)
+      if (editor.armedSet.size) device.arms(armMask(editor.patch, editor.armedSet));
     } while (dirty);
   } catch (e) {
     devStatus(`${(e as Error).message}`);
@@ -601,9 +610,9 @@ const sink = {
     hands.track(msg);
     if (msg.t === 'on') tutorial.noteOn();
     if (live() && !fromDevice) {   // (what the FM-1 played itself is not sent back)
-      // (the keys of a device armed in the editor stay here: the FM-1 does not take the editor's arm yet, #139 / #191;
-      // a set the FM-1 armed itself hears them there, D-802)
-      if (!editor.armedSet.size || armFromDevice) device.note(msg as { t: string; note?: number; vel?: number });
+      // (the keys of a device armed in the editor stay here unless the FM-1 takes the editor's arm (ARMS, #191); a set the
+      // FM-1 armed itself hears them there, D-802)
+      if (!editor.armedSet.size || armFromDevice || device.takesArms) device.note(msg as { t: string; note?: number; vel?: number });
       if (msg.t === 'bend') device.bend(msg.v);
       else if (msg.t === 'cc') device.cc(msg.n, msg.v);
     }
@@ -667,6 +676,18 @@ const envs = new EnvScreens((msg) => host.send(msg), () => host.running && !host
 host.onEnv = (key, states) => envs.receive(key, states);
 host.onSteps = (view, pats) => editor.showSteps(view, pats);
 host.onRecorded = (took) => editor.recorded(took);
+// the engine started or stopped its transport itself: play once (#632) after its count-in and at its end. The editor's
+// transport, its MIDI clock out and the emulated FM-1 follow (an echo of the editor's own transport is no news)
+host.onRun = (on) => {
+  if (on === editor.playing) return;
+  if (on) host.mute(false);
+  editor.playing = on;
+  if (liveSync.transports(device.connected, liveOn) && !fromDevice) device.transport(on);
+  clockOut.transport(on);
+  emu.ui?.transport(on);
+  syncPlayBtn();
+  showArmed();
+};
 /** the sidebar's sliders whose thumbs are jacks (cable slack, zoom): see sideSlider below; filled once the editor exists */
 const sides = new Map<SideKey, SideSlider>();
 /** the zoom slider's setting (the user's zoom; a source adds to it) */
@@ -701,6 +722,18 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
     fromEmu = true;
     try { setPlaying(run); } finally { fromEmu = false; }
   },
+  // SEQ held + PLAY on the emulated FM-1 (#632): the browser engine plays once, with the count-in's click (following a
+  // connected FM-1, its own play once plays and its Start / Stop drive the editor's transport)
+  once: () => {
+    if (mirror.following) return;
+    host.playOnce();
+    if (editor.playing) (editor.playing = false), clockOut.transport(false), syncPlayBtn();
+  },
+  // REC's count-in on the emulated FM-1 (D-803): the browser engine clicks on its beats (following a connected FM-1, its own
+  // click plays there)
+  cin: (bars) => {
+    if (!mirror.following) host.countIn(bars);
+  },
   track: (m, notes, pat) => fm1Event({ kind: 'track', module: m, notes, pat }, 'emu'),
   locks: (m, pat, locks) => fm1Event({ kind: 'locks', module: m, pat, locks }, 'emu'),
   pattern: (p, song) => fm1Event({ kind: 'pattern', pattern: p, song }, 'emu'),
@@ -712,9 +745,9 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
   },
   // REC held + a black key on the emulated FM-1 (#139): the editor arms the same track, so the keys the page plays (the
   // emulator's MIDI out) go through it as they do on the device
-  arms: (lo, hi) => {
+  arms: (words) => {
     if (armsReported && mirror.following) return emuArm();   // (the FM-1 itself says what is armed: its tab follows the editor)
-    editor.setArmed(armedFromMask(editor.patch, lo, hi));
+    editor.setArmed(armedFromMask(editor.patch, words));
   },
   key: (k, down) => {                        // a pill key: the note at the emulated octave, through the sink (it sounds, and the emulator hears it)
     if (down) {
@@ -851,6 +884,9 @@ const editor = new Editor($('canvas'), firstPatch, {
   onArm(armed, plays, through) {
     armFromDevice = fromDevice && armed.length > 0;
     host.send({ t: 'arm', devices: armed });
+    // the editor's own arming reaches a Live FM-1 that takes it (ARMS, #191): it routes its panel's keys and the editor's
+    // notes by the same set. What the FM-1 reported (ARMS_NOW) is not sent back
+    if (!fromDevice && live() && !uploading) device.arms(armMask(editor.patch, editor.armedSet));
     if (!armsApplying) emuArm();
     armPlays = plays;
     armThrough = through;
@@ -1183,23 +1219,34 @@ function showBudget(): void {
     line.addEventListener('click', () => editor.reveal(mod.id));
     return line;
   });
-  // the effect memory: the total, then each line-type module's share (a click selects it), largest first
+  // the memory (#649): the total, then what takes it, largest first: the module copies, signal buffers and parameter
+  // values, and each line-type module's lines (a click selects it)
   const lineLines = (): HTMLElement[] => {
     const lb = b.lines;
-    const top = budgetLine('Effect memory', lb.fits ? lb.used / lb.max : Math.max(1.01, lb.used / lb.max), `${kb(lb.used)} / ${kb(lb.max)} KB`,
-      lb.fits ? 'The lines of the Delays, reverbs, choruses, strings, combs and the Granular, in the FM-1\'s two line areas. A Delay takes its length; ping-pong: half per side' : linesAdvice(editor.patch));
-    return [top, ...[...lb.modules].sort((x, y) => y.bytes - x.bytes).map((u) => {
-      const mod = editor.patch.modules.find((x) => x.id === u.id);
-      const name = moduleName(u.type, DEFS[u.type].label) + (mod?.name ? ` ${mod.name}` : '') + (u.copies > 1 ? ` ×${u.copies}` : '');
-      const line = budgetLine(`\u2003${name}`, u.bytes / lb.max, `${kb(u.bytes)} KB`, 'Select it', false);
-      line.classList.add('pick');
-      if (mod) line.addEventListener('click', () => editor.reveal(mod.id));
+    const top = budgetLine('Memory', lb.fits ? lb.used / lb.max : Math.max(1.01, lb.used / lb.max), `${kb(lb.used)} / ${kb(lb.max)} KB`,
+      lb.fits ? 'The FM-1\'s memory for a patch: its modules, their copies (one per voice in a poly assembly), signal buffers, parameter values, and the lines of the Delays, reverbs, choruses, strings, combs and the Granular. A Delay takes its length; ping-pong: half per side' : linesAdvice(editor.patch));
+    const parts: { name: string; bytes: number; hint: string; id?: number }[] = [
+      { name: `Modules ×${lb.nodes}`, bytes: lb.nodesBytes, hint: 'Each module\'s settings and connections' },
+      { name: `Module copies ×${lb.pool.instances}`, bytes: lb.copiesBytes, hint: 'One per module, one per voice in a poly assembly' },
+      { name: `Signal buffers ×${lb.pool.buffers}`, bytes: lb.buffersBytes, hint: 'One per connected output (per voice), one per input that sums cables' },
+      { name: `Parameter values ×${lb.pool.params}`, bytes: lb.paramsBytes, hint: 'Each module\'s values (twice with a morph B side), and each copy\'s' },
+      ...lb.modules.map((u) => {
+        const mod = editor.patch.modules.find((x) => x.id === u.id);
+        return { name: moduleName(u.type, DEFS[u.type].label) + (mod?.name ? ` ${mod.name}` : '') + (u.copies > 1 ? ` ×${u.copies}` : ''), bytes: u.bytes, hint: 'Select it', id: mod?.id };
+      }),
+    ];
+    return [top, ...parts.filter((x) => x.bytes > 0).sort((x, y) => y.bytes - x.bytes).map((u) => {
+      const line = budgetLine(`\u2003${u.name}`, u.bytes / lb.max, `${kb(u.bytes)} KB`, u.hint, false);
+      if (u.id !== undefined) {
+        line.classList.add('pick');
+        line.addEventListener('click', () => editor.reveal(u.id!));
+      }
       return line;
     })];
   };
   list.replaceChildren(
     head('Memory'),
-    ...b.items.filter((i) => i.used > 0).flatMap((i) => (i.key === 'lines' ? lineLines() : [budgetLine(i.label, i.used / i.max, `${i.used} / ${i.max}`, '', i.max > 1)])),
+    ...b.items.filter((i) => i.used > 0 && (!SANITY_CAPS.has(i.key) || i.used > i.max)).flatMap((i) => (i.key === 'memory' ? lineLines() : [budgetLine(i.label, i.used / i.max, `${i.used} / ${i.max}`, '', i.max > 1)])),
     head('CPU, estimated'),
     ...costly,
     // #271: the FM-1's second core takes the odd parts of each poly group; the figure above is core 0's
@@ -1846,7 +1893,7 @@ function emuLoad(): void {
   // a patch over the budget still loads here (the emulator has the firmware's tables, not its timing): a notice says so
   // and the view stays usable; past the tables themselves the firmware refuses it and the last patch stays
   const b = deviceBudget(editor.patch);
-  const over = b.over.map((i) => i.key === 'cpu' || i.key === 'browser' ? overText(i) : i.key === 'lines' ? linesAdvice(editor.patch) : `${i.used} ${i.label} (the FM-1 holds ${i.max})`).join(', ');
+  const over = b.over.map((i) => i.key === 'cpu' || i.key === 'browser' ? overText(i) : i.key === 'memory' ? linesAdvice(editor.patch) : `${i.used} ${i.label} (the FM-1 holds ${i.max})`).join(', ');
   let err = 0;
   try {
     err = ui.load(encodePatch(editor.patch, true), editor.patch.name.toUpperCase(), { fresh: emuFresh });
@@ -1883,7 +1930,7 @@ function emuRealign(): void {
 }
 /** the emulated FM-1 arms the editor's armed track (#139), so its REC records into it */
 function emuArm(): void {
-  emu.ui?.armMask(...armMask(editor.patch, editor.armedSet));
+  emu.ui?.armMask(armMask(editor.patch, editor.armedSet));
 }
 function queueEmu(): void {
   if (!emu.ui) return;
@@ -2735,6 +2782,37 @@ if (import.meta.env.DEV) {
       loadNamed(p, { from: o.from });
       return true;
     },
+    /** a patch opened as `open` opens it, with card rows set first: each [label, value] sets the first row of that label on
+     *  any card (8 Lire's `mix`, its MOD DELAY's, at 0: the voices heard without their echoes) */
+    openRows: (name: string, rows: [string, number][]): boolean => {
+      const o = openableGroups().flatMap((g) => g.items).find((x) => x.name === name);
+      if (!o) return false;
+      const p = o.load();
+      for (const [label, value] of rows) {
+        const r = (p.assemblies ?? []).flatMap((a) => a.params ?? []).find((x) => x.label === label);
+        const m = r && p.modules.find((x) => x.id === r.module);
+        if (!r || !m) return false;
+        m.params[r.param] = value;
+      }
+      loadNamed(p, { from: o.from });
+      return true;
+    },
+    /** a patch opened as `open` opens it, with `n` VCAs in a chain to the Output (silent: nothing opens them) placed before
+     *  its modules, so they sit past index n - 1 in the binary (#721: arming past 63) */
+    openPadded: (name: string, n: number): boolean => {
+      const o = openableGroups().flatMap((g) => g.items).find((x) => x.name === name);
+      if (!o) return false;
+      const p = o.load();
+      const out = p.modules.find((m) => m.type === 'output');
+      if (!out) return false;
+      const ids = Array.from({ length: n }, (_, k) => addModule(p, DEFS.vca, -400 - 40 * (k % 8), 40 * Math.floor(k / 8)).id);
+      ids.forEach((id, k) => p.cables.push({ from: { module: id, port: 'out' }, to: k + 1 < n ? { module: ids[k + 1], port: 'in' } : { module: out.id, port: 'l' } }));
+      p.modules = [...p.modules.filter((m) => ids.includes(m.id)), ...p.modules.filter((m) => !ids.includes(m.id))];
+      loadNamed(p, { from: o.from });
+      return true;
+    },
+    /** the patch's module count as the FM-1 gets it (the device form) */
+    deviceModules: (): number => deviceView(editor.patch, true).patch.modules.length,
     state: () => ({
       connected: device.connected, live: liveOn, fits: fitsDevice, sandbox: sandboxOn(), chip: fm1State(), following: mirror.following,
       playing: editor.playing, deviceRunning: device.running, octave: noteKeys.octave(), focus: editor.focus, patch: editor.patch.name,
@@ -2743,6 +2821,8 @@ if (import.meta.env.DEV) {
       loads: loadsSeen, uploadedLoad, selected: [...editor.selected], slot: deviceSlot?.slot ?? -1,
     }),
     patchJson: (): string => JSON.stringify(editor.patch),
+    /** the editor's armed set, as its ARM buttons set it (device keys, editor.armedSet) (#191) */
+    arm: (keys: string[]): void => editor.setArmed(keys),
     /** a device's first page into focus, by name (Main's knobs; with Live on, the FM-1 follows) */
     focus: (name: string): boolean => {
       const d = editor.devices.find((x) => x.name === name);

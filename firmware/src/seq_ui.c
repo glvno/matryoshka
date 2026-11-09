@@ -61,7 +61,8 @@
  *                   tracks record, from the transport's start or, running already, from the next bar line, so recording
  *                   begins on a bar (seq_cin_poll). The bar counts the beats (COUNT-IN 3; two bars: 1.3), REC's LED
  *                   blinks on them, the keys sound as ever and nothing is recorded; REC again meanwhile: off, nothing
- *                   recorded. No click: the FM-1 has no metronome voice.
+ *                   recorded. A click on each beat (each bar's first higher), play once's, on the analog output only
+ *                   (D-803, D-820: eng_count_in).
  *
  * Step record (#532, the owner's design of 2026-11-01 and 2026-11-02, D-804; a drum grid and the roll alike): REC tapped
  * with the transport stopped starts it on the first step of the page shown (1, 17 ...); REC held + a white key on that
@@ -107,6 +108,16 @@ static uint32_t seq_cin_at;             /* ... the clock's ticks when REC was pr
 static uint32_t seq_cin_end;            /* ... ticks since the transport's start at which recording begins */
 static uint8_t seq_cin_shown;           /* ... the beat the bar shows (0.. over the bars, 0xFF none yet) */
 static uint8_t seq_cin_lit;             /* ... REC's LED (on for the first half of each beat) */
+static uint8_t seq_cin_asked;           /* ... asked for (its bars) or ended (0) with its click: counts up, the bars in
+                                         * seq_cin_click (fm1_ui.c tells the page, whose engine plays the click) */
+static uint8_t seq_cin_click;
+/* REC's count-in click (D-803): the engine's, on the analog output only (D-820), on the bars seq_cin_poll counts */
+static void seq_cin_engine(uint32_t bars)
+{
+    eng_count_in(seq_cin_at, bars);
+    seq_cin_click = (uint8_t)bars;
+    seq_cin_asked++;
+}
 static uint8_t seq_thru_note[27];       /* a black key held on a drum track's page (#368): its note + 1 (0 none), sounding through */
 static uint8_t seq_thru_mod[27];        /* ... the track it sounds through, let go there */
 static uint8_t seq_row;                 /* the grid's selected row: a Drum map's row, or the roll's (0 the top: its highest pitch) */
@@ -200,7 +211,7 @@ static int seq_armed_trk(void)
     return -1;
 }
 /* a module is in the armed set (#191) */
-static int seq_mod_armed(int mod) { return mod >= 0 && (eng_arm_mask_get() >> mod & 1u); }
+static int seq_mod_armed(int mod) { return mod >= 0 && mset_has(eng_arm_mask_get(), (uint32_t)mod); }
 /* REC's LED: lit while REC is on, blinking on the beats of the count-in */
 static int seq_rec_lit(void) { return seq_rec && (seq_cin != 2u || seq_cin_lit); }
 /* the SEQ bar's mark: bit 0 the track shown armed (ARM / REC), bit 1 REC on (the bar red) */
@@ -1087,6 +1098,8 @@ static void seq_rec_sync(void)
 static void seq_rec_off(void)
 {
     seq_rec = 0;
+    if (seq_cin)                                 /* (REC off in the count-in: its click ends too) */
+        seq_cin_engine(0u);
     seq_cin = 0;
     seq_rec_sync();
     ent_keys = 0;
@@ -1095,12 +1108,12 @@ static void seq_rec_off(void)
 
 /* the armed set becomes `mask` (#395: SEL on a device page or an environment row, the SEQ page's track), the editor's FM-1
  * tab told; while REC is on, the tracks armed now record and the others stop (seq_rec_sync) */
-static void seq_arm_set(uint64_t mask)
+static void seq_arm_set(eng_mset_t mask)
 {
-    if (mask == eng_arm_mask_get())
+    if (mset_eq(mask, eng_arm_mask_get()))
         return;
     eng_arm_mask(mask);
-    m1_arms_now((uint32_t)eng_arm_mask_get(), (uint32_t)(eng_arm_mask_get() >> 32));
+    m1_arms_now(eng_arm_mask_get());
     seq_rec_sync();
     seq_track_redraw();
 }
@@ -1123,9 +1136,9 @@ static void seq_arm_shown(int opening)
     mod = seq_module();
     seq_armed_gen = pages_gen();
     if (mod >= 0) {
-        uint64_t was = eng_arm_mask_get();
-        seq_arm_set((uint64_t)1 << mod);
-        if (eng_arm_mask_get() != was)          /* (#582: the page changed the arming, which stays after it: seq_leave says so) */
+        eng_mset_t was = eng_arm_mask_get();
+        seq_arm_set(mset_one((uint32_t)mod));
+        if (!mset_eq(eng_arm_mask_get(), was))          /* (#582: the page changed the arming, which stays after it: seq_leave says so) */
             seq_page_armed = (uint8_t)(seq_trk + 1u);
     }
 }
@@ -1169,6 +1182,7 @@ static void seq_rec_press(void)
         seq_cin_at = eng_ticks();
         seq_cin_shown = 0xFF;
         seq_cin_lit = 1;
+        seq_cin_engine(seq_cin_bars);            /* (a click on each beat, D-803) */
         ui_msg("COUNT-IN", 4000);
     } else
         seq_rec_msg();
@@ -1263,11 +1277,11 @@ static void seq_arm_key(uint32_t n)
     if (seq_no_track(b))
         return;
     mod = eng_steps_module((uint32_t)b);
-    eng_arm_mask(eng_arm_mask_get() ^ (uint64_t)1 << mod);   /* (#191: one of the armed set, the others stay) */
-    m1_arms_now((uint32_t)eng_arm_mask_get(), (uint32_t)(eng_arm_mask_get() >> 32));
+    eng_arm_mask(mset_flip(eng_arm_mask_get(), (uint32_t)mod));   /* (#191: one of the armed set, the others stay) */
+    m1_arms_now(eng_arm_mask_get());
     seq_rec_sync();                              /* (REC on: it records from now on, or no longer: #395) */
     seq_name((uint32_t)b, name);
-    put(put(m, name), (eng_arm_mask_get() >> mod & 1u) ? " ARMED" : " DISARMED")[0] = 0;
+    put(put(m, name), mset_has(eng_arm_mask_get(), (uint32_t)mod) ? " ARMED" : " DISARMED")[0] = 0;
     ui_msg(m, 1200);
     seq_track_redraw();
 }

@@ -36,6 +36,11 @@
 //                                                    Format 48
 //   38 TEMPO    mode u8 (0 global, 1 patch), bpm u16 (0: the global tempo stays)   GLO > PANEL > TEMPO and the global
 //                                                    tempo (D-907, tempo.ts); no reply. Feature bit 16
+//   39 ARMS     ARM_WORDS u32 (2 before feature bit 21)   the editor's armed set (#191), a mask over the module indices of
+//                                                    the patch it sent (arm.ts armMask; word k: modules 32k..32k+31): the FM-1
+//                                                    arms the same, so its panel's keys and the editor's notes play the same
+//                                                    devices; no reply, no ARMS_NOW back. Feature bit 20; the four words of
+//                                                    modules 0..127: feature bit 21 (#721), older firmware reads the first two
 //   29 FOCUS    device u8, page u8                   show this device page (indices into the binary's device pages section,
 //                                                    pages.ts) and put it on K1..K4; no reply. Feature bit 4.
 //   2C LIVE     [paused u8]                          every LIVE_MS while the editor's Live is on: the FM-1 plays the
@@ -80,10 +85,11 @@
 //   52 PATTERN_NOW  pattern u8, song u8               unasked: the patch's pattern / song as the FM-1 chose them (PRESET on
 //                                                    the SEQ page, the SONG page's K4 / ALGO)
 //   53 SONG_NOW  song u8, n u8, n (pattern u8, shift i8)   unasked: a song's entries after an edit on the SONG page
-//   54 ARMS_NOW  lo u32, hi u32                      unasked: the armed set after it changed on the FM-1 (#191: SEL, REC held
-//                                                    + a black key, the SEQ page; a slot loaded from the panel sends 0, wired):
-//                                                    a mask over the module indices of the patch the FM-1 plays (arm.ts
-//                                                    armedFromMask). The editor follows; older firmware never sends it
+//   54 ARMS_NOW  ARM_WORDS u32 (2 before feature bit 21)   unasked: the armed set after it changed on the FM-1 (#191: SEL,
+//                                                    REC held + a black key, the SEQ page; a slot loaded from the panel sends 0,
+//                                                    wired): a mask over the module indices of the patch the FM-1 plays (arm.ts
+//                                                    armedFromMask). The editor follows (an editor before #721 reads the first
+//                                                    two words); older firmware never sends it
 //   55 TEMPO_NOW  mode u8 (0 global, 1 patch), bpm u16 (0: not known yet)   after INFO (the answer to HELLO), and unasked
 //                                                    when the FM-1 changed the setting or the global tempo (its menu, PLAY
 //                                                    held + PRESET, Main's tempo row while global). Feature bit 16
@@ -108,22 +114,23 @@
 //   51 PEAK     peak u16 (16 bit, before MASTER: as at its default), flags u8 (bit0 the engine runs, bit1 the sound is muted:
 //               sandbox mode, bit2 MASTER is all the way down)
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded, bit2 MENU > MIDI OUT on: with
-//               feature bit 8), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
+//               feature bit 8, bit3 GLO > SYSTEM > EDITOR at IGNORE: with feature bit 19, #702), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
 //               bit5 TRACK / TRACK_NOW, bit6 LIVE, bit7 presets], [features 8..15: bit8 sandbox mode, bit9 the device
 //               test mode, bit10 TEST_PEAK reads before MASTER, bits11..15 read patch formats35..39],
 //               [minimum readable patch format, maximum readable patch format], [firmware major, minor, patch:
 //               0.0.0 a dev or CI build; #216, absent from firmware before 1.8],
 //               [features 16..23: bit16 TEMPO / TEMPO_NOW, bit17 a preset carries up to 176 values, bit18 KEYS_NOW /
-//               GUIDE_NOW]. Also unasked
-//               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8)
+//               GUIDE_NOW, bit19 flags bit3 says EDITOR, bit20 ARMS, bit21 ARMS wide]. Also unasked
+//               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8), and when EDITOR changed after
+//               a HELLO (feature bit 19)
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
 
-import type { Range } from './patch';
+import { ARM_WORDS, type Range } from './patch';
 import { noteWord, PATTERNS_MAX, SHIFT_MAX, SONG_LEN_MAX, SONGS_MAX, TRACK_NOTES_MAX, wordNote, type SongEntry, type StepNote } from './track';
 
 export const PREFIX = [0x7d, 0x4d, 0x31];
-export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, sandbox: 0x31, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e, testKey: 0x32, testTurn: 0x33, testScreen: 0x34, testPeak: 0x35, screen: 0x50, peak: 0x51, pattern: 0x36, song: 0x37, patternNow: 0x52, songNow: 0x53, armsNow: 0x54, tempo: 0x38, tempoNow: 0x55, locksNow: 0x56, keysNow: 0x57, guideNow: 0x58 } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
+export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, sandbox: 0x31, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e, testKey: 0x32, testTurn: 0x33, testScreen: 0x34, testPeak: 0x35, screen: 0x50, peak: 0x51, pattern: 0x36, song: 0x37, patternNow: 0x52, songNow: 0x53, armsNow: 0x54, arms: 0x39, tempo: 0x38, tempoNow: 0x55, locksNow: 0x56, keysNow: 0x57, guideNow: 0x58 } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
 export const PROTO_VERSION = 1;
 export const CHUNK_BYTES = 384;
 export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store', 'the preset store is full', 'no such preset'];
@@ -282,6 +289,16 @@ export const tempoFrame = (global: boolean, bpm: number): Uint8Array => {
   const b = Math.max(0, Math.min(0xffff, Math.round(bpm)));
   return frame(CMD.tempo, [global ? 0 : 1, b & 0xff, b >> 8]);
 };
+/** ARMS (#191): the editor's armed set as a module mask (arm.ts armMask), its words as u32 LE (two for firmware before
+ * feature bit 21: modules 0..63; ARM_WORDS since, #721) */
+export const armsFrame = (words: readonly number[]): Uint8Array =>
+  frame(CMD.arms, words.flatMap((w) => [w, w >>> 8, w >>> 16, w >>> 24].map((b) => b & 0xff)));
+/** an ARMS_NOW payload: its u32 LE words, ARM_WORDS of them (older firmware sends two: the rest 0); null when too short */
+export const parseArmsNow = (payload: number[]): number[] | null => {
+  if (payload.length < 8) return null;
+  const n = payload.length >= 4 * ARM_WORDS ? ARM_WORDS : 2;
+  return Array.from({ length: ARM_WORDS }, (_, k) => (k < n ? (payload[4 * k] | (payload[4 * k + 1] << 8) | (payload[4 * k + 2] << 16) | (payload[4 * k + 3] << 24)) >>> 0 : 0));
+};
 /** a TEMPO_NOW payload: the FM-1's setting and global tempo (bpm 0: not known yet) */
 export const parseTempoNow = (payload: number[]): { global: boolean; bpm: number } | null =>
   payload.length >= 3 ? { global: payload[0] === 0, bpm: payload[1] | (payload[2] << 8) } : null;
@@ -308,6 +325,9 @@ export interface Info {
   patchFormats?: { min: number; max: number };
   /** MENU > MIDI OUT is on (the FM-1's panel reaches the editor); null: the firmware does not say (no feature bit 8) */
   midiOut: boolean | null;
+  /** GLO > SYSTEM > EDITOR is at IGNORE (#702): the editor leaves this FM-1 alone. Firmware without the setting (no feature
+   *  bit 19) counts as ALLOW */
+  editorIgnored?: boolean;
   /** the firmware's version (INFO bytes 9..11, #216; 0.0.0 a dev or CI build); absent from firmware before 1.8, whose
    *  identity (FM-1_7XY) gives major and minor */
   firmware?: { major: number; minor: number; patch: number };
@@ -327,6 +347,16 @@ export const FEATURE_LONG_PRESETS = 1 << 17;
 /** INFO feature bit 18 (#549): the FM-1 reports the key edges its panel takes (KEYS_NOW) and its panel's state (GUIDE_NOW),
  * so the editor's copy of the panel logic stays in step; older firmware sends neither */
 export const FEATURE_PANEL_REPORT = 1 << 18;
+/** INFO feature bit 19 (#702): INFO's flags bit 3 says GLO > SYSTEM > EDITOR (set: IGNORE) */
+export const FEATURE_EDITOR_SETTING = 1 << 19;
+/** INFO feature bit 20 (#191): ARMS, the editor's armed set as the FM-1's; older firmware keeps its own */
+export const FEATURE_ARMS = 1 << 20;
+/** INFO feature bit 21 (#721): ARMS and ARMS_NOW carry ARM_WORDS words, modules 0..127 (INFO's module limit says 128);
+ * older firmware takes and sends two, modules 0..63 */
+export const FEATURE_WIDE_ARMS = 1 << 21;
+
+/** INFO's flags bit 3: EDITOR at IGNORE (with feature bit 19) */
+const INFO_EDITOR_IGNORE = 8;
 /** a preset's values at most over the link: with feature bit 17, and before it */
 export const PRESET_VALUES_MAX = 176;
 export const PRESET_VALUES_OLD = 88;
@@ -335,9 +365,16 @@ export function parseInfo(p: Parsed): Info | null {
   const features = (p.payload[5] ?? 0) | ((p.payload[6] ?? 0) << 8) | ((p.payload[12] ?? 0) << 16);
   return { version: p.payload[0], maxModules: p.payload[1], maxCables: p.payload[2], flashOk: !!(p.payload[3] & 1), patchLoaded: !!(p.payload[3] & 2), delays: p.payload[4], features,
     midiOut: features & FEATURE_SANDBOX ? !!(p.payload[3] & 4) : null,
+    editorIgnored: !!(features & FEATURE_EDITOR_SETTING) && !!(p.payload[3] & INFO_EDITOR_IGNORE),
     ...(p.payload.length >= 9 ? { patchFormats: { min: p.payload[7], max: p.payload[8] } } : {}),
     ...(p.payload.length >= 12 ? { firmware: { major: p.payload[9], minor: p.payload[10], patch: p.payload[11] } } : {}) };
 }
+/** the test tools drive the editor's own page against the test rig, which is set to IGNORE so the site leaves it alone
+ *  (#702): their page (scripts/emu-scenarios.mjs --device) sets this before it loads. Nothing else does */
+export const rigTools = (): boolean => (globalThis as { __m1RigTools?: unknown }).__m1RigTools === true;
+/** an FM-1 the editor and its Install panel skip (#702): it answered HELLO with GLO > SYSTEM > EDITOR at IGNORE, and this
+ *  is not the test tools' page */
+export const editorSkips = (info: Info | null, rig = rigTools()): boolean => !!info?.editorIgnored && !rig;
 export const parseAck = (p: Parsed): Ack | null => (p.cmd === CMD.ack && p.payload.length >= 4 ? { cmd: p.payload[0], seq: p.payload[1], status: p.payload[2], aux: p.payload[3] } : null);
 
 // ---- presets (#195): the FM-1's user presets, by structure (structure.ts, 8 hex digits) and name

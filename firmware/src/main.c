@@ -239,6 +239,7 @@ static void fm1_fault(const fm1_crash_t *c)
 
 /* proto.c hooks */
 static int m1_flash_ok(void) { return flash_ok; }
+static int m1_editor_ignore(void) { return cfg.editor_ignore; }   /* proto.c INFO: GLO > SYSTEM > EDITOR at IGNORE (#702) */
 static int m1_midi_out(void) { return cfg.midi_out; }   /* proto.c INFO: MENU > MIDI OUT (sandbox mode needs it) */
 static void m1_send(const uint8_t *f, uint32_t n) { (void)ota_wire_send(f, n); }
 static int m1_apply(const uint8_t *patch, uint32_t len)
@@ -281,6 +282,7 @@ static uint32_t batt_us;                        /* the last battery read's time,
  * before their render ended), then since the last read of this page the longest run of halves over 85 %, the longest
  * gap between two audio ISRs (us) and the shortest ISR (us), then parts shed since the last patch load and the guard's
  * mean ISR time (us) */
+static void settings_store(void);
 static uint32_t m1_diag(uint32_t page, uint8_t *out)
 {
     const uint8_t *b = (const uint8_t *)&diag_prev;
@@ -466,6 +468,26 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
         return sizeof v;
     }
+    if (page == 128u || page == 129u) {         /* #656: the store's flash writes (storage_hw.c st_stat: erases, programs, the
+                                                 * longest stretch with the interrupts off, the longest erase and program, the
+                                                 * steps the interrupts ran in, writes without steps, suspends not taken; us);
+                                                 * 129 first writes the settings record (a test: it does not wait for silence
+                                                 * as D-921's does) */
+        uint32_t v[8];
+        if (page == 129u)
+            settings_store();
+        v[0] = st_stat.erases;
+        v[1] = st_stat.progs;
+        v[2] = st_stat.off_max;
+        v[3] = st_stat.erase_max;
+        v[4] = st_stat.prog_max;
+        v[5] = st_stat.steps;
+        v[6] = st_stat.unserved;
+        v[7] = st_stat.sus_fail;
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
     if (page == 127u) {
         uint32_t v[8];
         v[0] = cpu_pct;
@@ -509,8 +531,11 @@ static int slot_used(uint32_t s) { return s < M1_SLOTS && (bank_mask >> s & 1u);
 
 /* the settings record: version, slot, octave + 8, LED mode, knob accel (bit 0; bit 1: the quick start off, D-247: a record
  * from before reads as on, and an older firmware reads the accel as before; bits 2..3: OUTPUT, #612: 0 STEREO, 1 MONO, 2
- * MONO L, a record from before reads as STEREO), the global tempo's low byte (byte 5,
- * D-907; was CPU in the bar), clock in (bit 0; bit 1: CLOCK OUT off, #473, read alike), TEMPO and the tempo's bit 8 (byte 7, tempo_glo.h; was program change),
+ * MONO L, a record from before reads as STEREO; bit 4: EDITOR, #702: 0 ALLOW, 1 IGNORE, a record from before reads as
+ * ALLOW; bits 5..7 unused: a development build wrote USB LEVEL there, #600, never released, and they are not read), the
+ * global tempo's low byte (byte 5,
+ * D-907; was CPU in the bar), clock in (bit 0; bit 1: CLOCK OUT off, #473, read alike; bit 2: 3.5MM OUT off, #631, a
+ * record from before reads as ON), TEMPO and the tempo's bit 8 (byte 7, tempo_glo.h; was program change),
  * MIDI channel, MIDI out, the bank's format, the selected module, REC's count-in (byte 12, #414: a record without
  * it, SET_MIN bytes, reads as OFF), the factory set the bank's untouched factory slots hold (bytes 13..15, #441: a
  * record without them reads as unknown). The version stays 1, so an older firmware reads the longer record too; it
@@ -529,8 +554,9 @@ static void settings_pack(uint8_t *d)
     d[1] = (uint8_t)cur_preset;
     d[2] = (uint8_t)(octave + 8);
     d[3] = cfg.leds;
-    d[4] = (uint8_t)(cfg.accel | (cfg.quick ? 0u : 2u) | (uint8_t)(out_mono << 2));   /* (bits 2..3: OUTPUT, #612) */
-    d[6] = co_set_byte(cfg.clock_in, cfg.clock_out);   /* (bit 1: CLOCK OUT off, #473: clock_out.h) */
+    d[4] = (uint8_t)(cfg.accel | (cfg.quick ? 0u : 2u) | (uint8_t)(out_mono << 2) | (cfg.editor_ignore ? 16u : 0u));   /* (bits 2..3: OUTPUT, #612; bit 4: EDITOR, #702) */
+    d[6] = (uint8_t)(co_set_byte(cfg.clock_in, cfg.clock_out) | (out_off ? 4u : 0u));   /* (bit 1: CLOCK OUT off, #473:
+                                                * clock_out.h; bit 2: 3.5MM OUT off, #631) */
     gt_pack(d);                                 /* bytes 5 and 7: the global tempo and TEMPO (D-907) */
     d[8] = cfg.ch;
     d[9] = cfg.midi_out;                        /* (was the mixer's level before #60: values over 1 read as on) */
@@ -553,8 +579,10 @@ static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint3
     out_mono = (uint8_t)(d[4] >> 2 & 3u);       /* (a record from before reads as STEREO) */
     if (out_mono > 2u)
         out_mono = 0;
+    cfg.editor_ignore = (uint8_t)(d[4] >> 4 & 1u);  /* (a record from before reads as ALLOW) */
     cfg.clock_in = d[6] & 1u;
     cfg.clock_out = co_set_clock_out(d[6]);     /* (a record from before reads as ON) */
+    out_off = (uint8_t)(d[6] >> 2 & 1u);        /* (a record from before reads as ON) */
     gt_unpack(d, len);                          /* bytes 5 and 7 (CPU in the bar and program change before): the global tempo */
     cfg.ch = d[8] > 16u ? 0u : d[8];
     cfg.midi_out = d[9] == 0u ? 0u : 1u;
@@ -565,16 +593,13 @@ static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint3
     return 0;
 }
 
-/* a store write: the erase and program windows have the IRQs off, so no audio meanwhile */
+/* a store write: the sound goes on (storage_hw.c st_op runs the flash's erases and programs in steps the audio
+ * interrupt renders between, #656) */
 static int store_write(uint32_t id, const char *name, const uint8_t *p, uint32_t len)
 {
-    int rc;
     if (!flash_ok)
         return -1;
-    eng_run = 0;
-    rc = sl_write(id, name, p, len);
-    eng_resume();
-    return rc;
+    return sl_write(id, name, p, len);
 }
 
 /* the settings record alone, now (panel.c: HOME + SAVE on the quick start turns it off for good, D-247; the global
@@ -646,7 +671,7 @@ static int preset_load(uint32_t n)
     screen_patch();                             /* (while PRESET's last name shows: in place, #170) */
     if (patches_up) {
         m1_slot_now(n, label_buf);                  /* the editor follows the slot (#65) */
-        m1_arms_now(0u, 0u);                        /* (a patch loads wired: #191) */
+        m1_arms_now(mset_none());                   /* (a patch loads wired: #191) */
     }
     return 0;
 }
@@ -694,9 +719,7 @@ static int m1_preset_put(uint32_t structure, const char *name, const int32_t *va
     int rc;
     if (!flash_ok)
         return -1;
-    eng_run = 0;
     rc = ps_put(structure, name, vals, n);
-    eng_resume();
     return rc;
 }
 static int m1_preset_del(uint32_t structure, const char *name)
@@ -704,9 +727,7 @@ static int m1_preset_del(uint32_t structure, const char *name)
     int rc;
     if (!flash_ok)
         return -1;
-    eng_run = 0;
     rc = ps_del(structure, name);
-    eng_resume();
     if (!rc)
         dp_deleted(structure, name);             /* (a device set to it drops the name: pages_ui.c) */
     return rc;
@@ -721,9 +742,7 @@ static int m1_slot_erase(uint32_t slot)
     int rc;
     if (!flash_ok)
         return -1;
-    eng_run = 0;
     rc = sl_erase(slot);
-    eng_resume();
     return rc;
 }
 static int m1_slot_info(uint32_t slot, char *name, uint32_t *len)
@@ -804,11 +823,11 @@ static uint32_t fnv32(const uint8_t *p, uint32_t n)
 
 /* after an update: every slot that is byte for byte a factory patch an earlier firmware wrote (presets.h LEGACY_FACTORY,
  * so untouched since the factory bank or FACTORY RESET), in any format, gets today's patch of that name; the slot keeps
- * its name, anything edited and saved stays as it is, and a slot holding one of today's patches is not in the table.
+ * its name (a renamed factory patch's, presets.h FACTORY_RENAMED, takes the new one's), anything edited and saved stays as it is, and a slot holding one of today's patches is not in the table.
  * Once per factory set and format (bank_set, bank_fmt). Returns how many slots were rewritten */
 static uint32_t bank_upgrade(void)
 {
-    uint32_t s, k, len, h, n = 0;
+    uint32_t s, k, r, i, len, h, n = 0;
     char name[M1_NAME + 1];
     boot_step("FACTORY PATCHES");
     for (s = 0; s < M1_SLOTS; s++) {
@@ -823,7 +842,20 @@ static uint32_t bank_upgrade(void)
         for (k = 0; k < N_LEGACY_FACTORY; k++)
             if (LEGACY_FACTORY[k].fnv == h && LEGACY_FACTORY[k].len == len)
                 break;
-        if (k < N_LEGACY_FACTORY && store_write(s, name, PRESET_LIST[LEGACY_FACTORY[k].now].data, PRESET_LIST[LEGACY_FACTORY[k].now].len) == 0)
+        if (k >= N_LEGACY_FACTORY)
+            continue;
+        for (r = 0; r < N_FACTORY_RENAMED; r++) {      /* a renamed factory patch's slot takes the new one's name */
+            const char *was = FACTORY_RENAMED[r].was, *to = PRESET_LIST[FACTORY_RENAMED[r].now].name;
+            for (i = 0; i < M1_NAME && was[i] && name[i] == was[i]; i++)
+                ;
+            if (FACTORY_RENAMED[r].now != LEGACY_FACTORY[k].now || was[i] || (i < M1_NAME && name[i]))
+                continue;
+            for (i = 0; i < M1_NAME; i++)
+                name[i] = 0;
+            for (i = 0; i < M1_NAME && to[i]; i++)
+                name[i] = to[i];
+        }
+        if (store_write(s, name, PRESET_LIST[LEGACY_FACTORY[k].now].data, PRESET_LIST[LEGACY_FACTORY[k].now].len) == 0)
             n++;
     }
     bank_fmt = ENG_PATCH_VERSION;
@@ -976,7 +1008,10 @@ static void defaults_now(void)
  * rested 5 s, the transport is stopped and nothing was heard for 2 s (a flash write stops the sound for a moment, #651) */
 static void tempo_poll(void)
 {
-    uint32_t r = gt_poll(fm1_ms, gt_quiet(fm1_ms, eng_transport_running(), snd_heard_ms));
+    uint32_t heard = snd_heard_ms;                   /* (read before the clock: the audio interrupt only moves it forward,
+                                                      * to the clock it reads, so heard <= now; gt_quiet is signed too) */
+    uint32_t now = fm1_ms;
+    uint32_t r = gt_poll(now, gt_quiet(now, eng_transport_running(), heard));
     if (r & 1u)
         m1_tempo_now();
     if ((r & 2u) && flash_ok && !boot_safe)
@@ -1125,6 +1160,16 @@ static void keys_report(void)
     for (; kq_r != kq_w; kq_r++)
         m1_keys_report(kq_key[kq_r % KQ] & 31u, (kq_key[kq_r % KQ] & 0x80u) != 0, kq_keys[kq_r % KQ], kq_held[kq_r % KQ]);
 }
+/* GLO > SYSTEM > EDITOR changed (#702): an editor that said HELLO hears it in an INFO nobody asked for, and at IGNORE lets go */
+static void editor_poll(void)
+{
+    if (!editor_info_due)
+        return;
+    editor_info_due = 0;
+    if (m1_heard)
+        m1_info();
+}
+
 /* GUIDE_NOW: the panel's state (help_ui.c guide_state) after HELLO and whenever it changed, its conditions asked again
  * only then (they read the preset store), so a pass with nothing new costs a compare */
 static void guide_poll(void)
@@ -1260,6 +1305,16 @@ static void m1_focus(uint32_t dev, uint32_t pg)
         ui_dirty = 2;
 }
 static void m1_ui_changed(void) { ui_dirty = 2; }    /* proto.c: the editor bypassed a module: title and picture */
+/* ARMS from the editor (proto.c, #191): its armed set becomes the FM-1's, so the panel's keys and the editor's notes play
+ * the same devices; REC records into it from now on (seq_rec_sync). Not reported back (no ARMS_NOW) */
+static void m1_arms(eng_mset_t mask)
+{
+    if (mset_eq(mask, eng_arm_mask_get()))
+        return;
+    eng_arm_mask(mask);
+    seq_rec_sync();
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+}
 static void m1_ui_rows(void) { ui_dirty = ui_dirty ? ui_dirty : 1; }   /* proto.c: the editor moved a parameter (Live) */
 
 /* The device test mode (#291): a script on the Mac drives the panel over the editor link and reads the screen and the
@@ -1424,7 +1479,8 @@ static void host_poll(void)
 
 static void fm1_main(int update)                    /* update: the boot guard saw two failed boots */
 {
-    flash_ok = FL_JEDEC_OK(FL_FAR(fl_jedec_ram)());     /* a known 1 MiB part (fm1_flash_id.h), else no store, no OTA staging */
+    st_jedec = FL_FAR(fl_jedec_ram)();
+    flash_ok = FL_JEDEC_OK(st_jedec);                   /* a known 1 MiB part (fm1_flash_id.h), else no store, no OTA staging */
     if (flash_ok)
         ota_boot_cleanup();                             /* staging area left by an update */
     lcd_init();
@@ -1443,6 +1499,8 @@ static void fm1_main(int update)                    /* update: the boot guard sa
     fm1_timer5_start(isr_timer5, 4);
     fm1_guard_lock_top();
     fm1_irq_enable_all();
+    st_serve = st_jedec == ST_STEP_JEDEC;               /* store writes run in steps the interrupts get between (#656), on
+                                                         * the chip whose suspend is known (#739: others write as before) */
     fm1_delay_ms(30);                                   /* the key scan has run: OCT- + OCT+ can be read */
 #if FELUCCA_UAC
     if (update || (fm1_in.buttons & 3u) == 3u)          /* update mode: decided before the first attach, so the */
@@ -1467,7 +1525,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
     boot_safe = (uint8_t)((fm1_in.buttons >> BTN_SAVE & 1u) || bootguard.failed >= 1u);   /* SAVE held, or the last boot failed */
     patch_boot();
     patches_up = 1;
-    if (!flash_ok) {                                    /* another flash chip than the one OTA knows: say so (#72) */
+    if (!flash_ok) {                                    /* a flash chip the firmware does not know: say so (#72) */
         boot_msg = "NO FLASH ID: NO UPDATES";
         boot_msg_ms = 8000;
     }
@@ -1524,6 +1582,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         panel_draw();
         keys_report();                                  /* (the edges taken during the redraw: keys_yield) */
         guide_poll();
+        editor_poll();
         cpu_poll();
         c1_poll();
         host_poll();

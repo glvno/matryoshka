@@ -3,7 +3,7 @@
 /* The settings menu, after ui.c, pages_ui.c and sandbox_ui.c, before main.c:
  *
  * MENU (GLO; GLO again or HOME closes it; #395; its controls: web/src/controls.ts, #553): the FM-1's settings in tabs (MIDI: MIDI CHANNEL, CLOCK IN, MIDI OUT, CLOCK OUT). ALGO steps the tabs: MIDI, PANEL and SYSTEM
- * are pages of settings on K1..K4 (SYSTEM: UPDATE MODE, FACTORY RESET, QUICK START), drawn as a device page (pages_ui.c menu_tab_page; the knobs go through panel.c as on
+ * are pages of settings on K1..K4 (SYSTEM: UPDATE MODE, FACTORY RESET, QUICK START, OUTPUT; its second page: EDITOR, 3.5MM OUT), drawn as a device page (pages_ui.c menu_tab_page; the knobs go through panel.c as on
  * a device page); INFO lists readings (drawn here) and GUIDE is a text SELECT scrolls (the ideas, D-248). The values are applied at once
  * and saved with the state (SAVE: main.c save bits; SAVE in the menu closes it). UPDATE MODE and FACTORY RESET (SYSTEM)
  * take a hold: a turn to the right arms the row for MENU_ARM_MS, GLO held 2 s then does it (menu_fire, from panel.c), so
@@ -27,7 +27,7 @@ static void defaults_now(void);
 
 static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "KNOB ACCEL", "COUNT-IN", "MIDI CHANNEL", "CLOCK IN", "MIDI OUT",
                                               "VERSION", "CPU", "CPU PEAK", "BANK SLOTS", "BATTERY", "UPDATE MODE", "FACTORY RESET",
-                                              "QUICK START", "TEMPO", "CLOCK OUT", "OUTPUT", "PROCESSOR"};
+                                              "QUICK START", "TEMPO", "CLOCK OUT", "OUTPUT", "PROCESSOR", "EDITOR", "3.5MM OUT"};
 #define INFO_N 6u
 static const uint8_t INFO_ROWS[INFO_N] = {MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_CORES};   /* the INFO tab's list, top down */
 #define MENU_ARM_MS 5000u                               /* an armed SYSTEM row waits this long for GLO's hold */
@@ -52,7 +52,20 @@ static void menu_value(uint32_t row, char *out)
     case MR_LEDS: p = put(p, cfg.leds == 0 ? "OFF" : cfg.leds == 1 ? "DIM LOW" : "DIM HIGH"); break;
     case MR_ACCEL: p = put(p, ONOFF[cfg.accel]); break;
     case MR_CIN: p = put(p, cfg.count_in == 0 ? "OFF" : cfg.count_in == 1 ? "1 BAR" : "2 BARS"); break;
-    case MR_TEMPO: p = put(p, gt_patch ? "PATCH" : "GLOBAL"); break;
+    case MR_TEMPO: {                             /* GLOBAL or PATCH, and the tempo now as the footer shows it (#582);
+                                                  * under MIDI clock (the footer: MIDI) EXT in its place, as GLOBAL EXT
+                                                  * (D-907: GLOBAL MIDI would not fit the row's 10 characters) */
+        int m = eng_find(T_FM1);
+        p = put(p, gt_patch ? "PATCH" : "GLOBAL");
+        *p++ = ' ';
+        if (eng_clock_is_external()) {
+            p = put(p, "EXT");
+        } else {
+            fmt_int(p, m >= 0 ? (eng_get_param((uint32_t)m, FM1_P_TEMPO) + 32768) >> 16 : 120);
+            p += str_len(p);
+        }
+        break;
+    }
     case MR_CPU:
         fmt_int(p, (int32_t)cpu_pct);
         p += str_len(p);
@@ -83,6 +96,8 @@ static void menu_value(uint32_t row, char *out)
     case MR_CLKOUT: p = put(p, ONOFF[cfg.clock_out]); break;
     case MR_QUICK: p = put(p, ONOFF[cfg.quick]); break;
     case MR_OUTPUT: p = put(p, out_mono == 2u ? "MONO L" : out_mono ? "MONO" : "STEREO"); break;
+    case MR_EDITOR: p = put(p, cfg.editor_ignore ? "IGNORE" : "ALLOW"); break;
+    case MR_OUT35: p = put(p, ONOFF[!out_off]); break;
     case MR_VERSION: p = put(p, FELUCCA_VERSION); break;
     case MR_CORES: p = put(p, cores_up == 2 ? "2 CORES" : "1 CORE"); break;   /* (#271: main.c c1_poll) */
     case MR_BATT: {                              /* the smoothed reading (0..1023) and the bars it gives (ui.c ui_battery) */
@@ -214,6 +229,7 @@ static void menu_draw(int full)
 static void menu_open(void)             /* GLO (panel.c): the menu on MIDI, nothing armed (#395) */
 {
     menu_tab = MT_MIDI;
+    menu_sys2 = 0;
     menu_armed = MR_COUNT;
     update_arm = 0;
 }
@@ -269,6 +285,14 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
         out_mono = (uint8_t)(v < 0 ? 0 : v > 2 ? 2 : v);
         break;
     }
+    case MR_EDITOR:                                     /* ALLOW, IGNORE (#702): a linked editor hears it at once (INFO's
+                                                         * flags) and lets go; the firmware itself refuses nothing */
+        if ((uint32_t)up != cfg.editor_ignore) {
+            cfg.editor_ignore = (uint8_t)up;
+            editor_info_due = 1;                        /* (main.c editor_poll: INFO, once the editor said HELLO) */
+        }
+        break;
+    case MR_OUT35: out_off = (uint8_t)!up; break;      /* ON, OFF (#631, D-925): the speaker and the jack; USB audio plays on */
     case MR_TEMPO:                                      /* GLOBAL, PATCH (D-907): kept 5 s later, without SAVE */
         if ((uint32_t)up != gt_patch) {
             gt_set((uint32_t)up, 0u, fm1_ms);
@@ -294,9 +318,15 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
     ui_dirty = 1;
 }
 
-static void menu_tab_go(int32_t s)                      /* ALGO: the next / previous tab, drawn whole (another layout) */
+static void menu_tab_go(int32_t s)                      /* ALGO: the next / previous tab, drawn whole (another layout); SYSTEM
+                                                         * takes two steps, its pages 1/2 and 2/2 (#702) */
 {
-    menu_tab = (uint8_t)((menu_tab + (s > 0 ? 1u : MT_COUNT - 1u)) % MT_COUNT);
+    if (menu_tab == MT_SYSTEM && (s > 0) != (menu_sys2 != 0)) {
+        menu_sys2 = (uint8_t)(s > 0);
+    } else {
+        menu_tab = (uint8_t)((menu_tab + (s > 0 ? 1u : MT_COUNT - 1u)) % MT_COUNT);
+        menu_sys2 = (uint8_t)(menu_tab == MT_SYSTEM && s < 0);
+    }
     menu_armed = MR_COUNT;
     update_arm = 0;
     ui_dirty = 2;

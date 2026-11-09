@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { BUTTON_ID, CONDITIONS, CONTROLS, fixedDoes, gestureSpec, gestureText, HELP_STATES, HINTS, hintText, rowSpec, sheetRows, stateRows } from './controls';
+import { BUTTON_ID, CONDITIONS, CONTROLS, fixedDoes, type Gesture, gestureSpec, gestureText, HELP_STATES, HINTS, hintText, rowSpec, sheetRows, stateRows } from './controls';
 import { fm1HelpGroups } from './controls-help';
 import { FIXED_DOES } from './modules';
 import { BUTTONS } from './fm1-ui';
@@ -21,6 +21,9 @@ describe('the controls table (#553)', () => {
     expect(gestureSpec({ hold: 'step', do: [{ knobs: '2' }] })).toBe('t:hold step +|c:2');
     expect(gestureSpec({ do: [{ knobs: '1' }], where: 'on END' })).toBe('c:1|t:on END');
     expect(gestureSpec({ do: [{ key: 'black', n: 10 }] })).toBe('b:10');
+    const together: Gesture = { do: [{ button: 'HOME' }, { button: 'OCT-' }, { button: 'OCT+' }], join: 'together', how: 'hold 2 s' };
+    expect(gestureSpec(together)).toBe('k:HOME|t:+|k:OCT-|t:+|k:OCT+|t:2 s');   // (#631: held together, 2 s)
+    expect(gestureText(together)).toBe('HOME + OCT- + OCT+ held 2 s');
   });
   it('uses every condition, and a state never lists the same words twice', () => {
     for (const c of CONDITIONS) expect(CONTROLS.some((r) => r.when?.replace('!', '') === c), c).toBe(true);

@@ -1,0 +1,325 @@
+{
+  "format": "matryoshka-assembly",
+  "version": 1,
+  "name": "envelope filter",
+  "category": "Effects",
+  "modules": [
+    {
+      "id": 1,
+      "type": "esp",
+      "x": 0,
+      "y": 560,
+      "params": {
+        "level": 2,
+        "lowcut": 40,
+        "highcut": 2000,
+        "cvadj": 0,
+        "thresh": 0.1
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "level"
+        ],
+        "p2": [
+          "lowcut"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "type": "scale",
+      "x": 320,
+      "y": 560,
+      "params": {
+        "gain": -1,
+        "offset": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "gain"
+        ],
+        "p2": [
+          "offset"
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "type": "select",
+      "x": 640,
+      "y": 560,
+      "params": {
+        "pos": 1,
+        "count": 2,
+        "fade": 0,
+        "v1": 0,
+        "v2": 0,
+        "v3": 0,
+        "v4": 0,
+        "v5": 0,
+        "v6": 0,
+        "v7": 0,
+        "v8": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "pos"
+        ],
+        "p2": [
+          "count"
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "type": "filter",
+      "x": 0,
+      "y": 0,
+      "params": {
+        "cutoff": 250,
+        "res": 0.7,
+        "cvamt": 3,
+        "track": 0,
+        "morph": 0,
+        "osc": 0,
+        "drive": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "cutoff"
+        ],
+        "p2": [
+          "res"
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "type": "select",
+      "x": 320,
+      "y": 0,
+      "params": {
+        "pos": 2,
+        "count": 4,
+        "fade": 5,
+        "v1": 0,
+        "v2": 0,
+        "v3": 0,
+        "v4": 0,
+        "v5": 0,
+        "v6": 0,
+        "v7": 0,
+        "v8": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "pos"
+        ],
+        "p2": [
+          "count"
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "type": "scale",
+      "x": 640,
+      "y": 0,
+      "params": {
+        "gain": 0.6,
+        "offset": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "gain"
+        ],
+        "p2": [
+          "offset"
+        ]
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": {
+        "module": 1,
+        "port": "env"
+      },
+      "to": {
+        "module": 3,
+        "port": "in1"
+      }
+    },
+    {
+      "from": {
+        "module": 1,
+        "port": "env"
+      },
+      "to": {
+        "module": 2,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 2,
+        "port": "out"
+      },
+      "to": {
+        "module": 3,
+        "port": "in2"
+      }
+    },
+    {
+      "from": {
+        "module": 3,
+        "port": "out"
+      },
+      "to": {
+        "module": 4,
+        "port": "cv"
+      }
+    },
+    {
+      "from": {
+        "module": 4,
+        "port": "lp24"
+      },
+      "to": {
+        "module": 5,
+        "port": "in1"
+      }
+    },
+    {
+      "from": {
+        "module": 4,
+        "port": "lp12"
+      },
+      "to": {
+        "module": 5,
+        "port": "in2"
+      }
+    },
+    {
+      "from": {
+        "module": 4,
+        "port": "bp"
+      },
+      "to": {
+        "module": 5,
+        "port": "in3"
+      }
+    },
+    {
+      "from": {
+        "module": 4,
+        "port": "hp"
+      },
+      "to": {
+        "module": 5,
+        "port": "in4"
+      }
+    },
+    {
+      "from": {
+        "module": 5,
+        "port": "out"
+      },
+      "to": {
+        "module": 6,
+        "port": "in"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "module": 4,
+      "port": "in",
+      "label": "in",
+      "also": [
+        {
+          "module": 1,
+          "port": "in"
+        }
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "module": 6,
+      "port": "out",
+      "label": "out"
+    }
+  ],
+  "params": [
+    {
+      "module": 1,
+      "param": "level",
+      "label": "sensitivity"
+    },
+    {
+      "module": 4,
+      "param": "cutoff",
+      "label": "cutoff"
+    },
+    {
+      "module": 4,
+      "param": "cvamt",
+      "label": "range"
+    },
+    {
+      "module": 4,
+      "param": "res",
+      "label": "res"
+    },
+    {
+      "module": 5,
+      "param": "pos",
+      "label": "mode",
+      "names": [
+        "LP24",
+        "LP12",
+        "BP",
+        "HP"
+      ]
+    },
+    {
+      "module": 3,
+      "param": "pos",
+      "label": "sweep",
+      "names": [
+        "UP",
+        "DOWN"
+      ]
+    },
+    {
+      "module": 6,
+      "param": "gain",
+      "label": "level"
+    }
+  ]
+}

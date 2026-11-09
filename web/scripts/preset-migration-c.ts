@@ -7,7 +7,8 @@ import { toQ16 } from '../src/patchbin';
 import { migrateValues, type Migration } from '../src/preset-migrate';
 import type { Lineage } from './lineage-lib';
 
-/** an op byte: 0..PM_LAST copies that earlier row */
+/** an op byte: 0..0xFC copies that earlier row */
+const PM_LINE = 0xfd;
 const PM_TABLE = 0xfe;
 const PM_INIT = 0xff;
 
@@ -16,13 +17,22 @@ export function migrationTables(migrations: Record<string, Migration>): { lines:
   const ops: number[] = [];
   const tabs: { rows: number[]; lo: number[]; n: number[]; v: number }[] = [];
   const tv: number[] = [];
+  const lines: { x: number; key: number; n: number; lo: number; v: number }[] = [];
+  const lv: number[] = [];
   const list: string[] = [];
   for (const [from, m] of Object.entries(migrations)) {
     if (m.n > 0xfd || m.rows.length > 0xff) throw new Error(`a migration of ${m.engine} with ${m.n} -> ${m.rows.length} rows`);
-    list.push(`    {0x${from}u, 0x${m.to}u, ${ops.length}, ${tabs.length}, ${m.n}, ${m.rows.length}},   /* ${m.engine} */`);
+    list.push(`    {0x${from}u, 0x${m.to}u, ${ops.length}, ${tabs.length}, ${lines.length}, ${m.n}, ${m.rows.length}},   /* ${m.engine} */`);
     for (const op of m.rows) {
-      if (typeof op === 'number') ops.push(op < 0 ? PM_INIT : op);
-      else {
+      if (typeof op === 'number') {
+        if (op > 0xfc) throw new Error(`a migration of ${m.engine} copies row ${op}`);
+        ops.push(op < 0 ? PM_INIT : op);
+      } else if ('x' in op) {
+        if ((op.lo ?? 0) < -128 || (op.lo ?? 0) > 127 || op.mul.length > 0xff) throw new Error(`a line of ${m.engine}`);
+        ops.push(PM_LINE);
+        lines.push({ x: op.x, key: op.key ?? 0xff, n: op.mul.length, lo: op.lo ?? 0, v: lv.length });
+        lv.push(op.min, op.max, ...op.mul.flatMap((k, i) => [k, op.add[i]]));
+      } else {
         if (op.v.some((x) => !Number.isInteger(x) || x < -128 || x > 127)) throw new Error(`a table value of ${m.engine} is not a small whole number`);
         ops.push(PM_TABLE);
         tabs.push({ rows: op.rows, lo: op.lo, n: op.n, v: tv.length });
@@ -30,25 +40,32 @@ export function migrationTables(migrations: Record<string, Migration>): { lines:
       }
     }
   }
-  const lines = [
+  const out = [
     '/* user presets of earlier structures of the factory engines move to today\'s at the first boot after an update (web/src/',
-    '   preset-migrations.json, D-865, presetmig.c). PMIG_LIST: the earlier structure, today\'s, its first op and table, the earlier',
-    '   row count, today\'s; PMIG_OPS: one byte for each of today\'s rows, an earlier row to copy (0..0xFD), 0xFE the next table,',
-    '   0xFF the Init value; PMIG_TAB: one or two earlier rows (b 0xFF: one) read as whole numbers, held inside lo .. lo + n - 1,',
-    '   the value at that place in PMIG_TV (a * nb + b) */',
+    '   preset-migrations.json, D-865, presetmig.c). PMIG_LIST: the earlier structure, today\'s, its first op, table and line, the earlier',
+    '   row count, today\'s; PMIG_OPS: one byte for each of today\'s rows, an earlier row to copy (0..0xFC), 0xFD the next line,',
+    '   0xFE the next table, 0xFF the Init value; PMIG_TAB: one or two earlier rows (b 0xFF: one) read as whole numbers, held',
+    '   inside lo .. lo + n - 1, the value at that place in PMIG_TV (a * nb + b); PMIG_LINE: an earlier row x times mul plus add',
+    '   (Q16), held inside min .. max, its n lines picked by the earlier row key read as a whole number (key - lo, held inside',
+    '   them; key 0xFF: one line); PMIG_LV from v: min, max, then mul and add for each line */',
     `#define N_PMIG ${list.length}`,
     `#define N_PMIG_TAB ${tabs.length}`,
+    `#define N_PMIG_LINE ${lines.length}`,
     `static const uint8_t PMIG_OPS[${Math.max(1, ops.length)}] = {${ops.length ? ops.join(',') : '0'}};`,
     `static const int8_t PMIG_TV[${Math.max(1, tv.length)}] = {${tv.length ? tv.join(',') : '0'}};`,
     'static const struct { uint8_t a, b, na, nb; int8_t la, lb; uint16_t v; } PMIG_TAB[N_PMIG_TAB ? N_PMIG_TAB : 1] = {',
     ...(tabs.length ? tabs.map((t) => `    {${t.rows[0]}, ${t.rows[1] ?? 0xff}, ${t.n[0]}, ${t.n[1] ?? 1}, ${t.lo[0]}, ${t.lo[1] ?? 0}, ${t.v}},`) : ['    {0, 0, 0, 0, 0, 0, 0},']),
     '};',
-    'static const struct { uint32_t from, to; uint16_t ops, tab; uint8_t nold, nnew; } PMIG_LIST[N_PMIG ? N_PMIG : 1] = {',
-    ...(list.length ? list : ['    {0, 0, 0, 0, 0, 0},']),
+    `static const int32_t PMIG_LV[${Math.max(1, lv.length)}] = {${lv.length ? lv.join(',') : '0'}};`,
+    'static const struct { uint8_t x, key, n; int8_t lo; uint16_t v; } PMIG_LINE[N_PMIG_LINE ? N_PMIG_LINE : 1] = {',
+    ...(lines.length ? lines.map((l) => `    {${l.x}, ${l.key}, ${l.n}, ${l.lo}, ${l.v}},`) : ['    {0, 0, 0, 0, 0},']),
+    '};',
+    'static const struct { uint32_t from, to; uint16_t ops, tab, line; uint8_t nold, nnew; } PMIG_LIST[N_PMIG ? N_PMIG : 1] = {',
+    ...(list.length ? list : ['    {0, 0, 0, 0, 0, 0, 0},']),
     '};',
     '',
   ];
-  return { lines, bytes: ops.length + tv.length + 8 * tabs.length + 16 * list.length };
+  return { lines: out, bytes: ops.length + tv.length + 8 * tabs.length + 4 * lv.length + 6 * lines.length + 16 * list.length };
 }
 
 /** a value inside a parameter's range for a test preset: distinct from row to row, exact in Q16, never half way between
@@ -95,7 +112,8 @@ export function casesHeader(cases: MigrationCase[]): string {
 }
 
 /** the cases every check uses: a 1.9.0 preset of Cassia 1, basic poly and Oracle V (#627's done-when), one stored before
- * 1.8.2 (Cassia 1, 88 values), and the hand-written maps (Cassia 1 before #430, 8 Lire before D-852) */
+ * 1.8.2 (Cassia 1, 88 values), and the hand-written maps (Cassia 1 before #430, 8 Lire before D-852, Io 4 before #681,
+ * Algo Four before #658, Canvas before D-348 with its lines) */
 export const CASE_PICKS = [
   { name: 'MY CASSIA', from: '2b89b424' },
   { name: 'MY POLY', from: '77fdb539' },
@@ -103,4 +121,7 @@ export const CASE_PICKS = [
   { name: 'SHORT CZ', from: '2b89b424', short: 88 },
   { name: 'OLD CZ', from: '62d178d5' },
   { name: 'OLD LIRE', from: 'd34140e9' },
+  { name: 'MY IO 4', from: 'bcfb20df' },
+  { name: 'MY ALGO', from: '666a5214' },
+  { name: 'MY CANVAS', from: '5ae3f8ec' },
 ];

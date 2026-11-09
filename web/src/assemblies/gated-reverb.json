@@ -1,0 +1,321 @@
+{
+  "format": "matryoshka-assembly",
+  "version": 1,
+  "name": "gated reverb",
+  "category": "Effects",
+  "modules": [
+    {
+      "id": 1,
+      "type": "reverb",
+      "x": 0,
+      "y": 0,
+      "params": {
+        "size": 0.85,
+        "damp": 0.3,
+        "mix": 1,
+        "pre": 0,
+        "mod": 0.2,
+        "freeze": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "size"
+        ],
+        "p2": [
+          "damp"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "type": "vca",
+      "x": 320,
+      "y": 0,
+      "params": {
+        "gain": 0.7
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "gain"
+        ],
+        "p2": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "xfade",
+      "x": 640,
+      "y": 0,
+      "params": {
+        "mix": 0.5
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "mix"
+        ],
+        "p2": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "esp",
+      "x": 0,
+      "y": 560,
+      "params": {
+        "level": 1,
+        "lowcut": 40,
+        "highcut": 2000,
+        "cvadj": 0,
+        "thresh": 0.1
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "level"
+        ],
+        "p2": [
+          "lowcut"
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "type": "comp",
+      "x": 320,
+      "y": 560,
+      "params": {
+        "thresh": 0.1,
+        "hyst": 0.02
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "thresh"
+        ],
+        "p2": [
+          "hyst"
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "type": "pulse",
+      "x": 640,
+      "y": 560,
+      "params": {
+        "time": 0.25,
+        "inf": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "time"
+        ],
+        "p2": []
+      }
+    },
+    {
+      "id": 7,
+      "type": "logic",
+      "x": 960,
+      "y": 560,
+      "params": {
+        "thresh": 0.5
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "thresh"
+        ],
+        "p2": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "adsr",
+      "x": 1280,
+      "y": 560,
+      "params": {
+        "a": 0.001,
+        "d": 0.1,
+        "s": 1,
+        "r": 0.03,
+        "long": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "a"
+        ],
+        "p2": [
+          "d"
+        ]
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": {
+        "module": 4,
+        "port": "env"
+      },
+      "to": {
+        "module": 5,
+        "port": "a"
+      }
+    },
+    {
+      "from": {
+        "module": 5,
+        "port": "trig"
+      },
+      "to": {
+        "module": 6,
+        "port": "trig"
+      }
+    },
+    {
+      "from": {
+        "module": 5,
+        "port": "gt"
+      },
+      "to": {
+        "module": 7,
+        "port": "a"
+      }
+    },
+    {
+      "from": {
+        "module": 6,
+        "port": "out"
+      },
+      "to": {
+        "module": 7,
+        "port": "b"
+      }
+    },
+    {
+      "from": {
+        "module": 7,
+        "port": "or"
+      },
+      "to": {
+        "module": 8,
+        "port": "gate"
+      }
+    },
+    {
+      "from": {
+        "module": 8,
+        "port": "env"
+      },
+      "to": {
+        "module": 2,
+        "port": "cv"
+      }
+    },
+    {
+      "from": {
+        "module": 1,
+        "port": "out"
+      },
+      "to": {
+        "module": 2,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 2,
+        "port": "out"
+      },
+      "to": {
+        "module": 3,
+        "port": "b"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "module": 1,
+      "port": "in",
+      "label": "in",
+      "also": [
+        {
+          "module": 4,
+          "port": "in"
+        },
+        {
+          "module": 3,
+          "port": "a"
+        }
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "module": 3,
+      "port": "out",
+      "label": "out"
+    }
+  ],
+  "params": [
+    {
+      "module": 5,
+      "param": "thresh",
+      "label": "threshold"
+    },
+    {
+      "module": 6,
+      "param": "time",
+      "label": "hold"
+    },
+    {
+      "module": 8,
+      "param": "r",
+      "label": "close"
+    },
+    {
+      "module": 1,
+      "param": "size",
+      "label": "size"
+    },
+    {
+      "module": 1,
+      "param": "damp",
+      "label": "damp"
+    },
+    {
+      "module": 3,
+      "param": "mix",
+      "label": "mix"
+    }
+  ]
+}

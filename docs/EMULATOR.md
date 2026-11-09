@@ -131,6 +131,16 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   held black key must sound its row while held and record nothing. REC alone (no PLAY) must then start the transport
   and record: black key 2 held about 450 ms must land as one note of 3 to 5 steps on its row, and a white key must then
   place a step on the row that black key picked. PLAY stops the transport and the recording.
+- **Play once (`playOnce`, issue #632, [D-820](ledger/steps.md#D-820)):** on the 808 Kit, SEQ held + PLAY must count in
+  with a click on each beat (the peak in 25 ms windows over the first 1.2 s: one onset a beat, a beat apart, the beat
+  read from the first two), the bar must say `COUNT-IN`, and the transport must stay stopped meanwhile (no Start reaches
+  the editor). After the count-in the bar says `PLAY ONCE` and the FM-1's Start reaches the editor; half a pass in it
+  still runs, and after the pass it stops by itself (its Stop reaches the editor). SEQ held + PLAY again, then PLAY a beat
+  later, must end it with nothing started.
+- **REC's count-in (`recCountIn`, [D-803](ledger/steps.md#D-803)):** on Init (an empty track, no key held), GLO > PANEL >
+  COUNT-IN set to 1 BAR, REC from a stop must start the transport, say `COUNT-IN` and click on each beat (as play once's
+  check reads them); once it records, a second bar must be silent. PLAY stops it and COUNT-IN goes back to OFF. The
+  emulator plays the analog output (USB audio is not emulated), where the click is.
 - **When:** every pull request that changes firmware runs `emu:smoke` and `emu:scenarios` on its own CI build before it
   merges ([D-120](ledger/releases.md#D-120)).
 
@@ -246,7 +256,7 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
     second track (ARM DRUMS +1) and starts nothing. PLAY held shows TEMPO n: TURN PRESET, and turning PRESET then
     starts nothing.
   - `checkDualCore` (steps 8.1, 8.2 and 8.4, [D-380](ledger/engine.md#D-380)): INFO's PROCESSOR row reads 2 CORES. Io 4,
-    Hera 6 and Cassia 1 each play 8 held keys with nothing shed, no overload (DIAG pages 119 and 127) and no dropout in
+    Hera 4 and Cassia 1 each play 8 held keys with nothing shed, no overload (DIAG pages 119 and 127) and no dropout in
     the recording. On the rig, the INFO tab's CPU row must read under 80 % with the keys held. Monolith D and Simple FM
     sound.
 - **The test patches** are built in `web/scripts/check-fixtures.mjs` from the check page's descriptions. Each run keeps
@@ -263,7 +273,8 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
   the emulator the run opens the rig's page on the emulator's MIDI port
   before the editor's page, for the screen's texts and the DIAG pages.
 - **What the rig's recording cannot show.** The FM-1 takes its USB audio before GLO > SYSTEM > OUTPUT mixes the sides
-  and after MASTER (`firmware/src/audio.c`). So the MONO and MONO L checks hear the emulator only, and on the rig they
+  and after MASTER (`firmware/src/audio.c`). GLO > SYSTEM > 3.5MM OUT
+  silences the analog output only, so the rig's recording must stay as it was when it is OFF. So the MONO and MONO L checks hear the emulator only, and on the rig they
   are skipped. A check that needs the recording is also skipped, not failed, when there is none: the recorder cannot be built,
   MASTER is all the way down, or a second FM-1 is connected and the FM-1 at the rig's USB location does not carry the
   mark (or no location is kept), so which audio input is the rig's is not known. It is also
@@ -290,11 +301,17 @@ device page of factory patch 0; silence, a panel key, silence after the release;
 HOME held (the menu), HOME; the PRESET encoder; TRS MIDI program change and notes, then every factory patch in turn
 (name shown, sound, its peak against the web engine's, from `web/scripts/emu-levels.ts`, within 6 dB as a warning);
 SAVE, the flash kept, a restart (STATE RESTORED and the state back); a patch bank written straight into the flash
-(three slots and one with a bad CRC; PRESET and program change step through the three and wrap); the safety steps
+(three slots and one with a bad CRC; PRESET and program change step through the three and wrap); the first boot's
+factory bank on both flash chips the FM-1 ships with (the Puya P25Q80H and the UC25HQ80, #739), and NO FLASH ID with
+nothing written on any other chip; the safety steps
 (shedding and OVERLOAD, safe mode, update mode); the patch buttons and the SEQ page on the 808 Kit; a Delay
 with its line in each of the two line areas (#273, #651: 700 ms and 290 ms, plain and ping-pong; every 128-frame block of
 each echo against the same block of the note, at exactly the Delay's time); no register
 fm1-emu does not model besides P33. Snapshots of each step, a WAV and the levels table go to `build/emu/`.
+
+**The flash chip.** The emulated flash answers the Puya's JEDEC ID (85 60 14) unless `M1EMU_JEDEC` names another one
+as six hex digits (`M1EMU_JEDEC=B36014` for the UC25HQ80, #739). Every machine of `m1emu` and `emu:scenarios` then
+boots with that chip.
 
 **Stack depth (#273).** `m1emu` fills 0x01C60000..0x01C7C000 with the word 0x5AC3A55C before the first instruction (the
 firmware paints its stacks with the same word since #273, so a build from before is measured too). At the end, `smoke`
@@ -310,6 +327,19 @@ stderr on `quit` (so `emu:scenarios` shows it). See "Memory map since #273" in [
   guard and MENU > UPDATE MODE cannot be checked.
 - **Timing**: one instruction per cycle at 240 MHz, no cache or flash wait states. The CPU figure in the top bar
   (303 Acid 11-12 %, the device measured 12 % at M1-0.2) is a rough guide only; the window at 120 MHz shows twice it.
+  The test rig runs the same patches about twice as long as the emulator does, and a change in code or memory layout
+  can make every patch slower on the device while the emulator's figures stay the same: the release-1.11 batch cost
+  80 to 270 µs more a half on the rig (`docs/measurements/2026-11-08-rig-release-1.11.md`), and the emulator measured
+  Init, Simple FM, Mono Lead and the 909 Kit within 1 % of 1.10.0. Only the rig measures such a change.
+- **The second core** runs after each slice of 1,024 instructions of the first, for as many instructions as cycles
+  passed. `m1emu` ends its turn early when it is back where the turn started (the same program counter, registers and
+  stack pointer) and has written nothing since: its idle loop, which only reads its mailbox (`tools/emu/src/machine.rs`
+  `run_cpu1`).
+  fm1-emu's own runner ends it on the first condition alone. A loop that keeps its state in memory then looks idle too:
+  Env 8's sample loop keeps its sample index on the stack, so on builds from #744 on the second core lost most of its
+  time on Cassia 1's lane jobs, the first core waited for them, and the audio interrupt climbed from about 1,150 to
+  2,900 µs two seconds after 8 keys went down (the factory Cassia 1 on release-1.11 at #744, 2026-11-08). That climb was the emulator's alone: on
+  the device the second core runs on its own clock.
 - **fm1-emu's AArch64 JIT** (macOS only) renders our engine wrong at `7ca5b96`: most factory patches came out 20 to
   50 dB too quiet, differently from run to run, while the interpreter matches the web engine within a few percent
   (Square Lead's envelope sample for sample). `m1emu` and `npm run emu` therefore use the interpreter (about 0.75x

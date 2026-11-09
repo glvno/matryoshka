@@ -9,7 +9,7 @@
 import { allModules, assembliesOf, assemblyById, parentOf, targetsOf, type AssemblyInst } from './assembly';
 import { instIsEngine } from './engines';
 import { DEFS } from './modules';
-import type { Cable, ModuleDef, Patch } from './patch';
+import { ARM_WORDS, type Cable, type ModuleDef, type Patch } from './patch';
 import { deviceView, keyed, keysInto } from './poly';
 
 /** a device's key, as pages.ts names devices: `a<id>` an assembly, `m<id>` a module */
@@ -170,32 +170,30 @@ export function armView(p: Patch, armed: Iterable<DeviceKey>, defs: Record<strin
 }
 
 /** the armed devices as the FM-1 takes them (#191, engine.c eng_arm_mask): a mask of their modules' indices in the device
- * form, as two 32-bit halves */
-export function armMask(p: Patch, armed: Iterable<DeviceKey>, defs: Record<string, ModuleDef> = DEFS): [number, number] {
+ * form, as ARM_WORDS 32-bit words (word k: modules 32k..32k+31; the FM-1's 128, #721) */
+export function armMask(p: Patch, armed: Iterable<DeviceKey>, defs: Record<string, ModuleDef> = DEFS): number[] {
   const index = new Map(deviceView(p, true).patch.modules.map((m, i) => [m.id, i]));
-  let lo = 0, hi = 0;
+  const words = new Array<number>(ARM_WORDS).fill(0);
   for (const k of armedWith(p, armed, defs)) {
     const id = Number(k.slice(1));
     const a = k[0] === 'a' ? assemblyById(p, id) : undefined;
     for (const m of a ? allModules(p, a) : [id]) {
       const i = index.get(m);
-      if (i === undefined) continue;
-      if (i < 32) lo |= 1 << i;
-      else if (i < 64) hi |= 1 << (i - 32);
+      if (i !== undefined && i < 32 * ARM_WORDS) words[i >> 5] |= 1 << (i & 31);
     }
   }
-  return [lo >>> 0, hi >>> 0];
+  return words.map((w) => w >>> 0);
 }
 
 /** the reverse: the devices whose modules a mask from the FM-1 names, less the ones armed only as another's key source.
  * An Arpeggiator in the mask stands for the devices its keys play (#418): the FM-1 arms an instrument as its key sources
  * (engine.c eng_arms names the track and the Arpeggiator in front of it, not its own modules), so the instrument is what
  * was armed */
-export function armedFromMask(p: Patch, lo: number, hi: number, defs: Record<string, ModuleDef> = DEFS): DeviceKey[] {
+export function armedFromMask(p: Patch, words: readonly number[], defs: Record<string, ModuleDef> = DEFS): DeviceKey[] {
   const mods = deviceView(p, true).patch.modules;
   const keys = new Set<DeviceKey>();
   mods.forEach((m, i) => {
-    const on = i < 32 ? (lo >>> i) & 1 : i < 64 ? (hi >>> (i - 32)) & 1 : 0;
+    const on = ((words[i >> 5] ?? 0) >>> (i & 31)) & 1;
     if (!on || !p.modules.some((x) => x.id === m.id)) return;
     keys.add(deviceOfModule(p, m.id));
     const type = p.modules.find((x) => x.id === m.id)?.type ?? '';

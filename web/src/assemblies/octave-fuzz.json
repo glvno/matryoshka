@@ -1,0 +1,321 @@
+{
+  "format": "matryoshka-assembly",
+  "version": 1,
+  "name": "octave fuzz",
+  "category": "Effects",
+  "modules": [
+    {
+      "id": 1,
+      "type": "shape",
+      "x": 0,
+      "y": 0,
+      "params": {
+        "drive": 12,
+        "mode": 1,
+        "level": 0.5,
+        "os": 0,
+        "sym": 0,
+        "stages": 1
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "drive"
+        ],
+        "p2": [
+          "mode"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "type": "mixer",
+      "x": 320,
+      "y": 0,
+      "params": {
+        "l1": 0.45,
+        "l2": 0.45,
+        "l3": 0,
+        "l4": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "l1"
+        ],
+        "p2": [
+          "l2"
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "type": "filter",
+      "x": 640,
+      "y": 0,
+      "params": {
+        "cutoff": 2500,
+        "res": 0,
+        "cvamt": 1,
+        "track": 0,
+        "morph": 0,
+        "osc": 0,
+        "drive": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "cutoff"
+        ],
+        "p2": [
+          "res"
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "type": "esp",
+      "x": 0,
+      "y": 560,
+      "params": {
+        "level": 1,
+        "lowcut": 60,
+        "highcut": 600,
+        "cvadj": 0,
+        "thresh": 0.1
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "level"
+        ],
+        "p2": [
+          "lowcut"
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "type": "comp",
+      "x": 320,
+      "y": 560,
+      "params": {
+        "thresh": 0,
+        "hyst": 0.01
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "thresh"
+        ],
+        "p2": [
+          "hyst"
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "type": "clkdiv",
+      "x": 640,
+      "y": 560,
+      "params": {
+        "div": 2
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "div"
+        ],
+        "p2": []
+      }
+    },
+    {
+      "id": 7,
+      "type": "scale",
+      "x": 960,
+      "y": 560,
+      "params": {
+        "gain": 2,
+        "offset": -0.5
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "gain"
+        ],
+        "p2": [
+          "offset"
+        ]
+      }
+    },
+    {
+      "id": 8,
+      "type": "vca",
+      "x": 960,
+      "y": 0,
+      "params": {
+        "gain": 1
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "gain"
+        ],
+        "p2": []
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": {
+        "module": 4,
+        "port": "bp"
+      },
+      "to": {
+        "module": 5,
+        "port": "a"
+      }
+    },
+    {
+      "from": {
+        "module": 5,
+        "port": "gt"
+      },
+      "to": {
+        "module": 6,
+        "port": "clock"
+      }
+    },
+    {
+      "from": {
+        "module": 6,
+        "port": "out"
+      },
+      "to": {
+        "module": 7,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 7,
+        "port": "out"
+      },
+      "to": {
+        "module": 8,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 4,
+        "port": "env"
+      },
+      "to": {
+        "module": 8,
+        "port": "cv"
+      }
+    },
+    {
+      "from": {
+        "module": 1,
+        "port": "out"
+      },
+      "to": {
+        "module": 2,
+        "port": "in1"
+      }
+    },
+    {
+      "from": {
+        "module": 8,
+        "port": "out"
+      },
+      "to": {
+        "module": 2,
+        "port": "in2"
+      }
+    },
+    {
+      "from": {
+        "module": 2,
+        "port": "out"
+      },
+      "to": {
+        "module": 3,
+        "port": "in"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "module": 1,
+      "port": "in",
+      "label": "in",
+      "also": [
+        {
+          "module": 4,
+          "port": "in"
+        }
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "module": 3,
+      "port": "lp12",
+      "label": "out"
+    }
+  ],
+  "params": [
+    {
+      "module": 1,
+      "param": "drive",
+      "label": "drive"
+    },
+    {
+      "module": 2,
+      "param": "l1",
+      "label": "fuzz"
+    },
+    {
+      "module": 2,
+      "param": "l2",
+      "label": "octave"
+    },
+    {
+      "module": 3,
+      "param": "cutoff",
+      "label": "tone"
+    },
+    {
+      "module": 4,
+      "param": "highcut",
+      "label": "tracking"
+    }
+  ]
+}

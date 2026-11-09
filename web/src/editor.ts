@@ -559,7 +559,7 @@ export class Editor {
     if (note) showToast(note, 6000);
   }
 
-  /** a new line-type module (patchbin.ts LINE_TYPES) and the FM-1's effect memory: a Delay takes the length that is left
+  /** a new line-type module (patchbin.ts LINE_TYPES) and the FM-1's memory: a Delay takes the length that is left
    * when its default does not fit; what to say when the memory is full ('' while it fits) */
   private lineNote(m: ModuleInst): string {
     if (!LINE_TYPES.includes(m.type)) return '';
@@ -567,7 +567,7 @@ export class Editor {
       const room = delayRoom(this.patch, m.id);
       if (room) {
         m.params.length = room;
-        return `This Delay's length is ${room} ms: the rest of the effect memory is taken. Its length row sets it.`;
+        return `This Delay's length is ${room} ms: the rest of the FM-1's memory is taken. Its length row sets it.`;
       }
     }
     return lineBudget(this.patch).fits ? '' : `${linesAdvice(this.patch, m.id)} Until then this is a sandbox patch: it plays here, not on the FM-1.`;
@@ -2222,7 +2222,7 @@ export class Editor {
     input.onkeyup = input.onblur = () => { editing = false; };
     // the value before the latest gesture began: a double-click's first press moves the thumb, typing puts it back
     let gestureFrom = m.params[pd.name];
-    let lastInput = 0;
+    let lastInput = -Infinity;   // (no input yet: performance.now() starts at 0 when the page opens, #577)
     input.oninput = () => {
       // a pinch took over from the finger on the slider (touchGestures put the value back): the thumb stays
       if (this.pinching) {
@@ -2242,7 +2242,7 @@ export class Editor {
     };
     /** set the base value `v` from the bar (the thumb at `at`, in slider units) */
     const apply = (v: number, at: number): void => {
-      const capped = this.lengthCap(m, pd.name, v);   // (a Delay's length: up to what the effect memory has left)
+      const capped = this.lengthCap(m, pd.name, v);   // (a Delay's length: up to what the FM-1's memory has left)
       if (capped !== v) {
         v = capped;
         at = posOf(v) + offset;
@@ -6170,7 +6170,7 @@ export class Editor {
   }
 
   /** set a parameter from outside the cards (the deck's knobs): as a slider would, the card follows on its next refresh */
-  /** a Delay's length stops at what the FM-1's effect memory has left besides the patch's other lines (patchbin.ts
+  /** a Delay's length stops at what the FM-1's memory has left besides the patch's other lines (patchbin.ts
    * delayRoom), and a note says so and what takes the memory; any other value: `v`. A patch whose lines are already past
    * the memory is a sandbox patch, with no FM-1 limits: its lengths go to the row's end */
   private lengthCap(m: ModuleInst, name: string, v: number): number {

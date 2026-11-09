@@ -1,0 +1,162 @@
+{
+  "format": "matryoshka-assembly",
+  "version": 1,
+  "name": "ducking delay",
+  "category": "Effects",
+  "modules": [
+    {
+      "id": 1,
+      "type": "delay",
+      "x": 0,
+      "y": 0,
+      "params": {
+        "time": 375,
+        "fb": 0.45,
+        "mix": 1,
+        "sync": 0,
+        "pingpong": 0,
+        "note": 0,
+        "swell": 0,
+        "length": 700,
+        "rate": 0,
+        "tape": 0,
+        "wow": 0.3,
+        "heads": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "time"
+        ],
+        "p2": [
+          "fb"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "type": "dyn",
+      "x": 320,
+      "y": 0,
+      "params": {
+        "thresh": -36,
+        "ratio": 20,
+        "attack": 0.005,
+        "release": 0.3,
+        "gain": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "thresh"
+        ],
+        "p2": [
+          "ratio"
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "type": "xfade",
+      "x": 640,
+      "y": 0,
+      "params": {
+        "mix": 0.4
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "mix"
+        ],
+        "p2": []
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": {
+        "module": 1,
+        "port": "out"
+      },
+      "to": {
+        "module": 2,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 2,
+        "port": "out"
+      },
+      "to": {
+        "module": 3,
+        "port": "b"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "module": 1,
+      "port": "in",
+      "label": "in",
+      "also": [
+        {
+          "module": 2,
+          "port": "side"
+        },
+        {
+          "module": 3,
+          "port": "a"
+        }
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "module": 3,
+      "port": "out",
+      "label": "out"
+    }
+  ],
+  "params": [
+    {
+      "module": 1,
+      "param": "time",
+      "label": "time"
+    },
+    {
+      "module": 1,
+      "param": "fb",
+      "label": "feedback"
+    },
+    {
+      "module": 3,
+      "param": "mix",
+      "label": "mix"
+    },
+    {
+      "module": 2,
+      "param": "ratio",
+      "label": "duck"
+    },
+    {
+      "module": 2,
+      "param": "thresh",
+      "label": "threshold"
+    },
+    {
+      "module": 2,
+      "param": "release",
+      "label": "release"
+    }
+  ]
+}

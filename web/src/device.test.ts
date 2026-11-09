@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Connecting the FM-1 syncs by default (#171): the decision on connect and the chip's state; Live over the budget (#200).
 import { describe, expect, it } from 'vitest';
-import { chipState, DeviceLink, linkCandidates, type LinkCandidate, liveSync, notFound, sysexRefused, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, transportOf } from './device';
+import { chipState, DeviceLink, IGNORED_NOW, ignoredFound, linkCandidates, type LinkCandidate, liveSync, notFound, sysexRefused, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, transportOf } from './device';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, removeModule } from './patch';
 import { deviceBudget, encodePatch, VERSION } from './patchbin';
@@ -80,12 +80,12 @@ describe('Live over the FM-1 budget (#200)', () => {
     expect(fits0).toBe(true);
     expect(said(true, true, fits0)).toEqual([]);                 // Live, the patch fits: plain LIVE, edits sent
     expect(liveSync.syncs(true, true, fits0)).toBe(true);
-    const reverbs = [0, 1].map(() => {
+    const reverbs = [0, 1, 2, 3].map(() => {
       const r = addModule(p, DEFS.grain, 0, 0);
       connect(p, DEFS, { module: r.id, port: 'out' }, { module: out.id, port: 'l' });
       return r.id;
     });
-    const fits1 = deviceBudget(p).fits;                          // two Granulars: over the effect memory
+    const fits1 = deviceBudget(p).fits;                          // four Granulars: over the memory
     expect(fits1).toBe(false);
     expect(liveSync.pausesNow(true, true, fits0, fits1)).toBe(true); // the FM-1 is told at once
     expect(said(true, true, fits1)).toEqual([1]);                // and every LIVE_MS after: paused, PRESET still held
@@ -93,7 +93,8 @@ describe('Live over the FM-1 budget (#200)', () => {
     expect(chipState(true, true, fits1)).toBe('sandbox controller');   // sandbox mode: the FM-1 drives the browser's patch
     expect(liveSync.sandbox(true, true, fits1)).toBe(true);
     expect(liveSync.pausesNow(true, true, fits1, fits1)).toBe(false); // still over: no second at-once LIVE
-    removeModule(p, reverbs[1]);
+    removeModule(p, reverbs[3]);
+    removeModule(p, reverbs[2]);
     const fits2 = deviceBudget(p).fits;                          // back under
     expect(fits2).toBe(true);
     expect(liveSync.pausesNow(true, true, fits1, fits2)).toBe(false);
@@ -199,10 +200,12 @@ const port = (id: string, name: string, o: { manufacturer?: string; state?: stri
   return p;
 };
 /** an output that answers HELLO on `inp`, as Matryoshka does */
-const answering = (out: FakePort, inp: FakePort): void => {
+/** an FM-1 on these ports: INFO to HELLO; `ignore`: GLO > SYSTEM > EDITOR at IGNORE (flags bit 3, feature bit 19, #702) */
+const answering = (out: FakePort, inp: FakePort, ignore = false): void => {
   out.send = (d) => {
     out.sent.push(d);
-    if (parse(d)?.cmd === CMD.hello) setTimeout(() => inp.onmidimessage?.({ data: frame(CMD.info, [1, 64, 255, 3, 1, 0, 1, 48, 48]) }), 5);
+    const info = ignore ? [1, 64, 255, 3 | 8, 1, 0, 1, 48, 48, 0, 0, 0, 8] : [1, 64, 255, 3, 1, 0, 1, 48, 48];
+    if (parse(d)?.cmd === CMD.hello) setTimeout(() => inp.onmidimessage?.({ data: frame(CMD.info, info) }), 5);
   };
 };
 const pairNames = (cs: LinkCandidate[]): [string, boolean][] => cs.map((c) => [c.inp.name ?? '', c.named]);
@@ -269,6 +272,52 @@ describe('DeviceLink.connect', () => {
     await withMidi([other.i, fm1.i], [other.o, fm1.o], () => link.connect());
     expect(link.input).toBe(fm1.i);
     expect(other.o.sent.length).toBe(0);
+  });
+  it('skips an FM-1 set to ignore the editor and takes the next one (#702)', async () => {
+    const ign = { i: port('a', 'Matryoshka'), o: port('A', 'Matryoshka') };
+    const fm1 = { i: port('b', 'FM-1'), o: port('B', 'FM-1') };
+    answering(ign.o, ign.i, true);
+    answering(fm1.o, fm1.i);
+    const link = new DeviceLink();
+    await withMidi([ign.i, fm1.i], [ign.o, fm1.o], () => link.connect());
+    expect(link.input).toBe(fm1.i);
+    expect(ign.o.sent.length).toBe(1);            // (HELLO only: nothing else goes to it)
+    expect(ign.i.onmidimessage).toBeNull();
+  });
+  it('says which FM-1 is set to ignore the editor and how to undo it, never a silent "not found" (#702)', async () => {
+    const ign = { i: port('a', 'Matryoshka'), o: port('A', 'Matryoshka') };
+    answering(ign.o, ign.i, true);
+    const link = new DeviceLink();
+    const err = await withMidi([ign.i], [ign.o], () => link.connect()).catch((e: Error) => e);
+    expect((err as Error).message).toBe(ignoredFound(1));
+    expect(ignoredFound(1)).toBe('An FM-1 is set to ignore the editor, so it leaves it alone: on it, GLO \u203a SYSTEM \u203a EDITOR to ALLOW, then connect again');
+    expect(ignoredFound(2)).toMatch(/^2 FM-1s are set to ignore the editor/);
+    expect(link.connected).toBe(false);
+  });
+  it('the test tools\' page connects to it all the same (the rig is set to IGNORE, #702)', async () => {
+    const ign = { i: port('a', 'Matryoshka'), o: port('A', 'Matryoshka') };
+    answering(ign.o, ign.i, true);
+    const link = new DeviceLink();
+    (globalThis as { __m1RigTools?: boolean }).__m1RigTools = true;
+    try {
+      const info = await withMidi([ign.i], [ign.o], () => link.connect());
+      expect(info.editorIgnored).toBe(true);
+      expect(link.connected).toBe(true);
+    } finally {
+      delete (globalThis as { __m1RigTools?: boolean }).__m1RigTools;
+    }
+  });
+  it('lets go of the linked FM-1 when it is set to ignore the editor (#702)', async () => {
+    const fm1 = { i: port('b', 'FM-1'), o: port('B', 'FM-1') };
+    answering(fm1.o, fm1.i);
+    const link = new DeviceLink();
+    const said: string[] = [];
+    link.onStatus = (m) => said.push(m);
+    await withMidi([fm1.i], [fm1.o], () => link.connect());
+    link.release();
+    expect(link.connected).toBe(false);
+    expect(fm1.i.onmidimessage).toBeNull();
+    expect(said).toEqual([IGNORED_NOW]);
   });
   it('lists the ports it saw when nothing answers', async () => {
     const link = new DeviceLink();

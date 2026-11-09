@@ -8,7 +8,7 @@
 #define FELUCCA_ID "FM-1_7000000"  /* package identity (build.py: the .fwsc marker string): FM-1_7MMmmpp, 7000000 dev / CI */
 #endif
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "v1.10.1-DEV"
+#define FELUCCA_VERSION "v1.11.0-DEV"
 #endif
 #define FELUCCA_FLASH 1
 #define FELUCCA_OTA 1
@@ -39,6 +39,7 @@
 #include "fm1_audio.h"
 #include "fm1_adc.h"
 #include "fm1_flash.h"
+#include "fm1_flash_step.h"                     /* the store's writes in steps the interrupts run between (#656) */
 #include "fm1_lcd_hw.h"
 #define RING_PUBLISH() __asm__ volatile("" ::: "memory")
 
@@ -86,6 +87,7 @@ static void m1_transport(int run);                             /* main.c: the ed
 static void m1_focus(uint32_t dev, uint32_t pg);               /* main.c: the editor's FOCUS command (a device page) */
 static void m1_live(uint32_t paused);                          /* live.c: the editor's LIVE command (it drives the FM-1; paused: its patch is a sandbox patch) */
 static int m1_midi_out(void);                                  /* main.c: MENU > MIDI OUT (INFO says it) */
+static int m1_editor_ignore(void);                             /* main.c: GLO > SYSTEM > EDITOR at IGNORE (INFO says it, #702) */
 #include "sandbox_msg.h"
 static void m1_sandbox(const sb_page_t *s);                    /* sandbox_ui.c: the editor's page in sandbox mode */
 static int m1_test_key(uint32_t id, int down);                 /* main.c: the device test mode (#291) */
@@ -93,6 +95,7 @@ static int m1_test_turn(uint32_t enc, int32_t clicks);
 static uint32_t m1_test_screen(uint32_t k, uint8_t *out);
 static uint32_t m1_test_peak(void);
 static void m1_tempo(uint32_t patch, uint32_t bpm);           /* main.c: the editor set the global tempo (D-907) */
+static void m1_arms(eng_mset_t mask);                         /* main.c: the editor's armed set (#191) */
 #include "tempo_glo.h"            /* the global tempo (D-907): proto.c, menu.c, main.c */
 #include "proto.c"
 #include "slotstore.c"

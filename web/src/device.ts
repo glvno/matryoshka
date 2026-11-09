@@ -9,7 +9,7 @@ import { deviceView } from './poly';
 /** a module's index on the FM-1: its place in the patch's device form (poly.ts deviceView: editor-only modules such as
  * the Scope are not there, so the editor's order is not the device's); -1 when the device does not have it */
 export const deviceIndex = (patch: Patch, moduleId: number): number => deviceView(patch, true).patch.modules.findIndex((m) => m.id === moduleId);
-import { FEATURE_LONG_PRESETS, FEATURE_PANEL_REPORT, parseKeysNow, parseGuideNow, type KeysNow, type PanelState, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, parseLocksNow, type RawLock, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { armsFrame, parseArmsNow, FEATURE_WIDE_ARMS, editorSkips, FEATURE_ARMS, FEATURE_LONG_PRESETS, FEATURE_PANEL_REPORT, parseKeysNow, parseGuideNow, type KeysNow, type PanelState, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, parseLocksNow, type RawLock, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 
 /** what connecting the FM-1 does with Live sync (#171): `sync` turns it on without asking, `ask` offers Sync / Not now,
  *  `off` leaves it off (Not now was chosen in this visit) */
@@ -137,6 +137,14 @@ export function notFound(inputs: Iterable<MIDIPort>, outputs: Iterable<MIDIPort>
     : `FM-1 not found (${seen}). Is it connected by USB and switched on?`;
 }
 
+/** Connect FM-1's message when every FM-1 that answered is set to ignore the editor (GLO > SYSTEM > EDITOR at IGNORE,
+ *  #702): never a silent "no FM-1 found", and how to undo it */
+export function ignoredFound(n: number): string {
+  return `${n === 1 ? 'An FM-1 is' : `${n} FM-1s are`} set to ignore the editor, so it leaves ${n === 1 ? 'it' : 'them'} alone: on ${n === 1 ? 'it' : 'one'}, GLO \u203a SYSTEM \u203a EDITOR to ALLOW, then connect again`;
+}
+/** the FM-1 the editor is linked to was set to ignore the editor (an INFO nobody asked for, #702): the editor lets go */
+export const IGNORED_NOW = 'The FM-1 was set to ignore the editor, so the editor let go of it: on it, GLO \u203a SYSTEM \u203a EDITOR to ALLOW, then connect again';
+
 /** Connect FM-1's message when the browser would not open Web MIDI with SysEx */
 export function sysexRefused(e: unknown): string {
   const name = (e as { name?: string } | null)?.name;
@@ -160,8 +168,9 @@ export type DeviceEvent =
   | { kind: 'pattern'; pattern: number; song: number }
   | { kind: 'song'; song: number; entries: SongEntry[] }
   | { kind: 'mute'; module: number; on: boolean }
-  /** the armed set after it changed on the FM-1 (ARMS_NOW, #191): a mask over the module indices of the patch it plays */
-  | { kind: 'arms'; lo: number; hi: number }
+  /** the armed set after it changed on the FM-1 (ARMS_NOW, #191): a mask over the module indices of the patch it plays,
+   *  ARM_WORDS words (#721) */
+  | { kind: 'arms'; words: number[] }
   | { kind: 'param'; module: number; param: number; value: number }
   | { kind: 'focus'; device: number; page: number }
   /** a preset stored on the FM-1 (#195, ENV held + SAVE) */
@@ -220,16 +229,33 @@ export class DeviceLink {
     const inputs = [...access.inputs.values()], outputs = [...access.outputs.values()];
     // the ports named like an FM-1 first; then, as macOS may show it under another name (#187), every other in / out pair
     const pairs = linkCandidates(inputs, outputs);
+    let ignored = 0;   // FM-1s set to ignore the editor (#702): skipped, and said
     for (const c of pairs) {
       this.attach(c.inp, c.out);
       try {
-        return await this.hello(c.named ? TRIES : 1);
+        const info = await this.hello(c.named ? TRIES : 1);
+        if (!editorSkips(info)) return info;
+        ignored++;
       } catch {
-        c.inp.onmidimessage = null;
-        this.out = this.inp = null;
+        /* no answer: the next pair */
       }
+      this.detach();
     }
-    throw new Error(notFound(inputs, outputs, pairs.length > 0));
+    throw new Error(ignored ? ignoredFound(ignored) : notFound(inputs, outputs, pairs.length > 0));
+  }
+
+  /** let go of the ports (an FM-1 set to ignore the editor, #702): nothing more is sent or heard */
+  private detach(): void {
+    if (this.inp) this.inp.onmidimessage = null;
+    this.out = this.inp = null;
+    this.info = null;
+    this.running = false;
+  }
+
+  /** the linked FM-1 was set to ignore the editor (an INFO nobody asked for, #702): let go of it, and say so */
+  release(): void {
+    this.detach();
+    this.onStatus(IGNORED_NOW);
   }
 
   /** listen on `inp` and send to `out`: the link's ports from now on */
@@ -264,10 +290,8 @@ export class DeviceLink {
       const tn = p?.cmd === CMD.tempoNow ? parseTempoNow(p.payload) : null;
       if (tn) return this.onEvent({ kind: 'tempo', ...tn });
       if (p?.cmd === CMD.muteNow && p.payload.length >= 2) return this.onEvent({ kind: 'mute', module: p.payload[0], on: !!p.payload[1] });
-      if (p?.cmd === CMD.armsNow && p.payload.length >= 8) {
-        const v = new DataView(Uint8Array.from(p.payload.slice(0, 8)).buffer);
-        return this.onEvent({ kind: 'arms', lo: v.getUint32(0, true), hi: v.getUint32(4, true) });
-      }
+      const an = p?.cmd === CMD.armsNow ? parseArmsNow(p.payload) : null;
+      if (an) return this.onEvent({ kind: 'arms', words: an });
       if (p?.cmd === CMD.paramNow && p.payload.length >= 6) {
         const v = new DataView(Uint8Array.from(p.payload.slice(2, 6)).buffer).getInt32(0, true) / 65536;
         return this.onEvent({ kind: 'param', module: p.payload[0], param: p.payload[1], value: v });
@@ -352,6 +376,17 @@ export class DeviceLink {
   /** the firmware reports its panel's key edges and state (KEYS_NOW / GUIDE_NOW, INFO feature bit 18, #549) */
   get reportsPanel(): boolean {
     return !!(this.info && this.info.features & FEATURE_PANEL_REPORT);
+  }
+
+  /** the firmware takes the editor's armed set (ARMS, INFO feature bit 20, #191) */
+  get takesArms(): boolean {
+    return !!(this.info && this.info.features & FEATURE_ARMS);
+  }
+
+  /** the editor's armed set (arm.ts armMask), to firmware that takes it: the FM-1 arms the same devices. Firmware before
+   *  feature bit 21 takes the first two words (modules 0..63: all a patch it plays has, #721) */
+  arms(words: readonly number[]): void {
+    if (this.connected && this.takesArms) this.out!.send(armsFrame(this.info!.features & FEATURE_WIDE_ARMS ? words : words.slice(0, 2)));
   }
 
   /** GLO > PANEL > TEMPO and the global tempo (bpm 0: leave it), to firmware that shares them */

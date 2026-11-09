@@ -78,7 +78,7 @@ hi hat / filter = 11000
 mix = 0.35
 clap / reverb = 0.6
 clap = 45
-  master = 0.59
+  master = 0.57
 
 preset: Trouser Flap
 # DECAY at its longest for a long, low boom (the manual: Trap, drum and bass, dubstep); the bend kept low
@@ -92,7 +92,7 @@ kick / attack = 0.3
 snare / decay rev = 0.6
 snare / reverb = 0.25
 hi hat / decay = 0.5
-  master = 0.62
+  master = 0.59
 
 preset: Beat Box 78
 # the snare with RESONANCE backed off, as a preset rhythm box from about 1978; a short kick, a thin hat, the multi a
@@ -112,7 +112,7 @@ mix = 0.2
 hi hat / bend = 0.5
 multi / decay = 0.12
 highpass = 500
-  master = 0.6
+  master = 0.58
 
 preset: Clave and Conga
 # the manual's tip: the snare with FILTER and RESONANCE open and no noise is a clave; drum 1 a conga, the multi a bongo
@@ -130,7 +130,7 @@ pitch 3 = -2
 multi / decay = 0.09
 highpass = 900
 hi hat / decay = 0.12
-  master = 0.97
+  master = 0.93
 
 preset: Metal Works
 # FM in the audio range on drum 1 (atonal, metallic), the multi's three squares spread for a bell, hats bending up
@@ -149,4 +149,4 @@ hi hat / bend = -1.5
 hi hat / resonance = 0.6
 hi hat / pitch = 34
 hi hat / decay = 0.8
-  master = 0.9
+  master = 0.87

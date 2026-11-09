@@ -2,12 +2,11 @@
 # "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
 # A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
-# The level rows (filters · vca / vca level, filters · vca / gain) gen-presets sets in every preset, by loudness (#448): leave them to it.
 #
 # vco 1
 #   kybd = audio                       audio, lf
-#   vco 1 / coarse = 0 st              -48..48 st
-#   vco 1 / fine = 0 ct                -100..100 ct
+#   vco 1 / coarse = 0                 -4..4
+#   vco 1 / fine = 0                   -4..4
 #   vco 1 / fm 1 = 0                   -4..4
 #   vco 1 / fm 1 src = sine            sine, square
 #   vco 1 / fm 2 = 0                   -4..4
@@ -16,8 +15,8 @@
 #   vco 1 / pwm = 0                    -4..4
 #   vco 1 / pwm src = lfo              lfo, adsr
 # vco 2
-#   vco 2 / coarse = 12 st             -48..48 st
-#   vco 2 / fine = 4 ct                -100..100 ct
+#   vco 2 / coarse = 1                 -4..4
+#   vco 2 / fine = 0.0033              -4..4
 #   sync = off                         off, on
 #   vco 2 / fm 1 = 0                   -4..4
 #   vco 2 / fm 1 src = sine            sine, s/h mix
@@ -29,6 +28,7 @@
 # lfo · s/h
 #   lfo freq = 6 Hz                    0.02..40 Hz
 #   s/h 1 = 0                          -4..4
+#   s/h 1 src = saw                    saw, square
 #   s/h 2 = 1                          -4..4
 #   s/h 2 src = noise                  noise, vco 2
 #   s/h trig = lfo                     lfo, kybd
@@ -36,12 +36,12 @@
 #   portamento = 0                     0..1
 # mixer
 #   vco 1 = 0.45                       0..1
-#   vco 1 wave = saw                   sine, triangle, saw, square, sharktooth, reverse saw
+#   vco 1 wave = saw                   saw, square
 #   vco 2 = 0.35                       0..1
-#   vco 2 wave = square                sine, triangle, saw, square, sharktooth, reverse saw
+#   vco 2 wave = square                saw, square
 #   noise/ring = 0                     0..1
 #   n/r src = noise                    noise, ring
-#   noise = 0                          0..1
+#   noise = white                      white, pink
 # filters · vca
 #   vcf freq = 900 Hz                  20..16000 Hz
 #   resonance = 0.4                    0..1
@@ -72,6 +72,7 @@
 # Drafts of 2026-10-29 after the ARP Odyssey, not yet listened to on the FM-1 (#413).
 engine: Wanderer
 
+# Coarse is in octaves, fine in octaves (0.01 is 12 cents).
 # Switches: kybd 1 keyboard, 2 LF. vco 1 fm 1 src 1 LFO sine, 2 LFO square; vco 2 fm 1 src 1 LFO sine, 2 S/H mixer;
 # fm 2 src 1 S/H (lagged), 2 ADSR; pwm src 1 LFO sine, 2 ADSR. sync 2 = on. s/h 2 src 1 noise, 2 VCO 2 square;
 # s/h trig 1 LFO, 2 keyboard. n/r src 1 noise, 2 ring. mod 1 src 1 kybd CV, 2 S/H mixer; mod 2 src 1 S/H (lagged), 2 LFO sine;
@@ -79,8 +80,8 @@ engine: Wanderer
 
 # VCO 2 synced to VCO 1 and swept a fifth up and back by the ADSR: the sync lead.
 preset: Sync Lead
-  vco 2 / coarse = 7 st
-  vco 2 / fine = 0 ct
+  vco 2 / coarse = 0.5833
+  vco 2 / fine = 0
   sync = 2
   vco 2 / fm 2 = 1.5
   vco 2 / fm 2 src = 2
@@ -97,7 +98,7 @@ preset: Sync Lead
   s = 0.3
   r = 0.3 s
   portamento = 0.1
-  vca level = 3.27
+  vca level = 2.93
   gain = 0
 
 # The LFO clocks noise into the sample and hold, which steps the filter and nudges the pitch; the AR repeats with the LFO while a key is held.
@@ -124,13 +125,13 @@ preset: S/H Bleeps
   release = 0.15 s
   ar trig = 2
   repeat = 1
-  vca level = 1.42
+  vca level = 1.45
   gain = 0
 
 # The ring modulator on two VCOs an inharmonic 16 semitones apart, the ADSR on the VCA: a metallic bell.
 preset: Ring Bell
-  vco 2 / coarse = 16 st
-  vco 2 / fine = 30 ct
+  vco 2 / coarse = 1.3333
+  vco 2 / fine = 0.025
   vco 1 = 0.15
   vco 2 = 0.1
   vco 2 wave = square
@@ -145,14 +146,14 @@ preset: Ring Bell
   d = 1.2 s
   s = 0
   r = 1.2 s
-  vca level = 2.5
+  vca level = 1.48
   gain = 0
 
 # Both VCOs an octave down into a low, punchy filter on the ADSR.
 preset: Punch Bass
-  vco 1 / coarse = -12 st
-  vco 2 / coarse = -12 st
-  vco 2 / fine = 6 ct
+  vco 1 / coarse = -1
+  vco 2 / coarse = -1
+  vco 2 / fine = 0.005
   vco 2 / pulse width = 0.5
   vco 1 = 0.5
   vco 1 wave = saw
@@ -169,15 +170,15 @@ preset: Punch Bass
   s = 0.3
   r = 0.2 s
   portamento = 0
-  vca level = 3.93
+  vca level = 3.98
   gain = 0
 
 # LFO vibrato on VCO 1 and pulse width modulation on VCO 2, a little portamento: the lead.
 preset: PWM Lead
   vco 1 / fm 1 = 0.04
   vco 1 / fm 1 src = 1
-  vco 2 / coarse = 0 st
-  vco 2 / fine = 8 ct
+  vco 2 / coarse = 0
+  vco 2 / fine = 0.0067
   vco 2 / pwm = 0.3
   vco 2 / pwm src = 1
   lfo freq = 5.5 Hz
@@ -195,5 +196,5 @@ preset: PWM Lead
   s = 0.7
   r = 0.3 s
   portamento = 0.15
-  vca level = 1.03
+  vca level = 1.02
   gain = 0

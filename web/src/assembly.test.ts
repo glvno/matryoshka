@@ -332,17 +332,15 @@ describe('assemblies', () => {
     expect(def.modules.find(m => m.type === 'vca')!.range).toEqual(amp.range);
   });
 
-  it('saves to a definition with local ids and no knob assignments, and inserts it with fresh ids', () => {
+  it('saves to a definition with local ids, and inserts it with fresh ids', () => {
     const { p, kb, osc, env, vca, out } = voice();
     const a = makeAssembly(p, [osc, env, vca], 'operator');
     exposePort(a, 'in', osc, 'pm');
     promote(a, osc, 'coarse');
     a.params[0].label = 'ratio';
-    p.modules.find((m) => m.id === osc)!.map!.k1 = ['coarse'];
     p.modules.find((m) => m.id === osc)!.params.coarse = 12;
     const def = validateAssemblyDef(JSON.parse(JSON.stringify(toDef(p, a))), DEFS);
     expect(def.modules.map((m) => m.id)).toEqual([1, 2, 3]);
-    expect(def.modules[0].map!.k1).toEqual([]);
     expect(def.modules[0].map!.p1).toEqual(['wave']); // p1 / p2 are kept
     expect(Math.min(...def.modules.map((m) => m.x))).toBe(0);
     expect(def.cables).toHaveLength(2); // osc->vca, env->vca; the outside ones are not part of it
@@ -371,12 +369,12 @@ describe('assemblies', () => {
     const def = FACTORY.find((d) => d.name === 'voice')!;
     const p = emptyPatch();
     const out = addModule(p, DEFS.output, 0, 0);
-    for (let i = 0; i < 13; i++) {
+    for (let i = 0; i < 26; i++) {
       const a = insertAssembly(p, DEFS, def, 0, 0);
       const o = a.outputs.find((r) => r.label === 'out')!;
       connect(p, DEFS, { module: o.module, port: o.port }, { module: out.id, port: 'l' }); // wired: unwired modules are never sent (device-compile.ts)
     }
-    expect(p.modules).toHaveLength(66);
+    expect(p.modules).toHaveLength(131);   // (past the FM-1's 128, #721)
     expect(deviceBudget(p).over.map((i) => i.key)).toContain('modules');
   });
 
@@ -427,10 +425,10 @@ describe('assemblies', () => {
 
   it('ships factory assemblies that load, insert and play', () => {
     expect(FACTORY.map((d) => d.name)).toEqual([
-      '8 Lire', 'adsr operator', 'Algo Four', 'auto pan', 'barber pole', 'basic poly', 'boom kick', 'bowed glass', 'bowed string', 'Briefcase 3', 'Canvas', 'Cassia 1', 'clap', 'clock', 'cloud', 'cowbell', 'drift poly', 'drum kit', 'echo', 'Elvira 2', 'Expander S', 'filter voice', 'fm pair', 'gamelan', 'glass bell', 'hats', 'Hera 6', 'hihat', 'Io 4', 'kalimba', 'kick', 'marimba', 'Meridian 8', 'mono lead', 'Monolith D', 'noise voice', 'operator', 'Oracle V', 'Perun 4', 'pluck', 'rain', 'random melody', 'resonator bank', 'reverse pad', 'rim', 'Sallen 20', 'Scrounge', 'shimmer', 'sidechain pump', 'Silver Box', 'slicer', 'snare', 'Spokes 6', 'stack voice', 'stutter', 'sub bass', 'supersaw stack', 'tabla', 'talking filter', 'time smear', 'tom', 'Vernon 100', 'Verona Drum 1', 'vibrato', 'voice', 'vowel voice', 'Wanderer', 'wavetable pad',
+      '8 Lire', 'adsr operator', 'Algo Four', 'auto pan', 'barber pole', 'basic poly', 'boom kick', 'bowed glass', 'bowed string', 'Briefcase 3', 'Canvas', 'Cassia 1', 'clap', 'clock', 'cloud', 'cowbell', 'drift poly', 'drum kit', 'ducking delay', 'echo', 'Elvira 2', 'envelope filter', 'Expander S', 'filter voice', 'fm pair', 'gamelan', 'gated reverb', 'glass bell', 'hats', 'Hera 4', 'hihat', 'Io 4', 'kalimba', 'kick', 'marimba', 'Meridian 8', 'mono lead', 'Monolith D', 'noise voice', 'octave fuzz', 'operator', 'Oracle V', 'overdrive', 'Perun 4', 'pluck', 'rain', 'random melody', 'resonator bank', 'reverse pad', 'rim', 'Sallen 20', 'Scrounge', 'shimmer', 'sidechain pump', 'Silver Box', 'slicer', 'snare', 'Spokes 6', 'stack voice', 'stutter', 'sub bass', 'supersaw stack', 'tabla', 'talking filter', 'time smear', 'tom', 'Vernon 100', 'Verona Drum 1', 'vibrato', 'voice', 'vowel voice', 'Wanderer', 'wavetable pad',
     ]);
     for (const d of FACTORY) {
-      expect(d.modules.every((m) => m.map === undefined || ['k1', 'k2', 'k3', 'k4'].every((k) => m.map![k as 'k1'].length === 0)), d.name).toBe(true);
+      expect(d.modules.every((m) => m.map === undefined || Object.keys(m.map).every((k) => k === 'p1' || k === 'p2')), d.name).toBe(true);   // (no knob columns: D-1001)
       expect(d.inputs.length + d.outputs.length, d.name).toBeGreaterThan(0);
       expect(d.params.length, d.name).toBeGreaterThan(0);
       expect(new Set(d.inputs.map((r) => r.label)).size, d.name).toBe(d.inputs.length); // no duplicate jack labels: the gates are merged
@@ -928,14 +926,14 @@ describe('assembly card columns and headings', () => {
     expect(e.params[6].span).toBe(16);
   });
 
-  it('the factory Oracle V has three sectioned columns and its output scope across the foot', () => {
+  it('the factory Oracle V has sectioned columns and its output scope across the foot', () => {
     const d = FACTORY.find((x) => x.name === 'Oracle V')!;
-    expect(paramColumns(d.params).map((c) => c.length)).toEqual([14, 10, 11]);
-    expect(plan(d.params)).toMatch(/^\{0-3 0:.* 1:.* 2:.* OUT\}$/);
+    expect(paramColumns(d.params).map((c) => c.length)).toEqual([10, 17, 10, 5, 4, 17]);
+    expect(plan(d.params)).toMatch(/^0:voices .* \{1-4 1:saw .* 2:cutoff .* 3:amp env .* OUT\} 4:.* 5:.*$/);
     // the drum kit's knobs in two columns
     const kit = FACTORY.find((x) => x.name === 'drum kit')!;
     expect(plan(kit.params)).toMatch(/^0:kick tune .* 1:.*$/);
-    expect(d.params.filter((r) => r.head).map((r) => r.head)).toEqual(['voice', 'osc A', 'osc B', 'mixer', 'filter', 'amp', 'mod']);
+    expect(d.params.filter((r) => r.head).map((r) => r.head)).toEqual(['voice', 'osc A', 'osc B', 'mixer', 'filter', 'amp', 'velocity · aftertouch', 'poly mod', 'lfo', 'wheel mod']);
   });
 });
 

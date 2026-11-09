@@ -137,6 +137,7 @@ function polyBlep(t: number, dt: number): number {
   return 0;
 }
 
+const waveIdeal = (kind: number, phase: number, dt: number, pw: number): number => wave(kind, phase, dt, pw);
 function wave(kind: number, phase: number, dt: number, pw = 0.5): number {
   switch (kind) {
     case 0:
@@ -155,6 +156,85 @@ function wave(kind: number, phase: number, dt: number, pw = 0.5): number {
       v -= polyBlep((phase + 1 - pw) % 1, dt);
       return v;
     }
+  }
+}
+
+/**
+ * The Oscillator's analog wave shape (#673, format 51): `analog` 0..1 scales the flaws of an analog VCO, 0 (the default) the
+ * ideal waves above. Saw: the ramp charges like a capacitor from a slightly soft current source,
+ * r = (1 - e^(-c phase)) / (1 - e^(-c)) with c = ANALOG_CURVE x analog, its mean taken out (AC coupled); at the reset the
+ * wave dips ANALOG_DIP below its bottom for ANALOG_DIP_S. Band-limited: polyBLEP on both steps of the reset and the dip,
+ * polyBLAMP on the ramp's corner at the reset (its slope changes by 2c). Triangle: the peak moves off centre (naive, as the
+ * ideal triangle). Square: the pulse width moves. Sharktooth and reverse saw: from the curved saw (and the skewed triangle).
+ * Sine: unchanged. Each part has its own fixed tolerances (its instance seed, engine.ts instSeed): the curve and the dip
+ * +-ANALOG_TOL of theirs, the triangle's peak up to ANALOG_SKEW of a cycle, the pulse width up to ANALOG_PWO. engine.c
+ * osc_ana the same in fixed point (the curve from a table, SAWC_T).
+ */
+export const ANALOG_CURVE = 0.35;
+export const ANALOG_DIP = 0.12;
+export const ANALOG_DIP_S = 25e-6;
+export const ANALOG_TOL = 0.3;
+export const ANALOG_SKEW = 0.03;
+export const ANALOG_PWO = 0.015;
+/** a part's four tolerances (curve, dip, triangle peak, pulse width), -1..1 from its instance seed (engine.c init_state) */
+export const analogTol = (seed: number): number[] => [1, 2, 3, 4].map((j) => q15(hash32((seed ^ Math.imul(j, 0x85ebca6b)) >>> 0)) / 32768);
+interface AnalogShape {
+  /** the curve, its normalisation 1 / (1 - e^-c), the mean of 2 r - 1 */
+  c: number;
+  e: number;
+  mean: number;
+  /** the dip (of the full swing 2), the dip's length in samples, the triangle's peak (phase), the pulse width's offset */
+  h: number;
+  w: number;
+  peak: number;
+  pwo: number;
+}
+function analogShape(amt: number, tol: number[], sr: number): AnalogShape {
+  const c = Math.max(1e-4, ANALOG_CURVE * amt * (1 + ANALOG_TOL * tol[0]));
+  const e = 1 / (1 - Math.exp(-c));
+  return { c, e, mean: 2 * (e - 1 / c) - 1, h: ANALOG_DIP * amt * (1 + ANALOG_TOL * tol[1]), w: ANALOG_DIP_S * sr,
+    peak: 0.5 + ANALOG_SKEW * amt * tol[2], pwo: ANALOG_PWO * amt * tol[3] };
+}
+/** poly-BLAMP residual: the corner of a ramp whose slope changes by 1 per cycle at phase 0, scaled by dt */
+function polyBlamp(t: number, dt: number): number {
+  if (t < dt) {
+    const x = 1 - t / dt;
+    return (x * x * x) / 6;
+  }
+  if (t > 1 - dt) {
+    const x = 1 - (1 - t) / dt;
+    return (x * x * x) / 6;
+  }
+  return 0;
+}
+function analogSaw(phase: number, dt: number, a: AnalogShape): number {
+  let v = 2 * (1 - Math.exp(-a.c * phase)) * a.e - 1 - a.mean;
+  v -= (1 + a.h / 2) * polyBlep(phase, dt);
+  v += 2 * a.c * dt * polyBlamp(phase, dt);
+  const w = Math.min(0.25, a.w * dt); // the dip's length in phase
+  if (phase < w) v -= a.h;
+  v += (a.h / 2) * polyBlep((phase - w + 1) % 1, dt);
+  return v;
+}
+function analogTri(phase: number, a: AnalogShape): number {
+  const p = a.peak;
+  return phase < p ? -1 + (2 * phase) / p : 1 - (2 * (phase - p)) / (1 - p);
+}
+/** the analog wave (kind as wave()) */
+function waveAnalog(kind: number, phase: number, dt: number, pw: number, a: AnalogShape): number {
+  switch (kind) {
+    case 0:
+      return Math.sin(2 * Math.PI * phase);
+    case 1:
+      return analogTri(phase, a);
+    case 2:
+      return analogSaw(phase, dt, a);
+    case 4:
+      return (analogTri(phase, a) + analogSaw(phase, dt, a)) / 2;
+    case 5:
+      return -analogSaw(phase, dt, a);
+    default:
+      return wave(3, phase, dt, Math.min(0.95, Math.max(0.05, pw + a.pwo)));
   }
 }
 
@@ -214,6 +294,13 @@ export const PRIORITIES = ['last', 'low', 'high'];
 /** how a poly assembly hands notes to its parts (engine.ts allocate): the next part in turn, the lowest-numbered free
  * part, or a free part whose last note was the key (else the one free the longest) */
 export const ASSIGN_MODES = ['rotate', 'lowest', 'reuse', 'reset'];
+/**
+ * A Voicing's `assign` or `unison` with a signal on its input of that name (#681): the input moves the setting by whole
+ * choices, one a unit, rounded to the nearest (a gate steps it once; a Selector's values pick a choice), within the
+ * setting's choices (assign 0..3, unison 0 off, 1 on, 2 share). Both engines read the input's first sample once a block,
+ * after the block, so the next block's keys are handed out that way (engine.ts voicingCables, engine.c group_cables).
+ */
+export const voicingSetting = (base: number, cv: number, top: number): number => Math.min(top, Math.max(0, Math.round(base) + Math.floor(cv + 0.5)));
 
 /** the FM-1 panel's buttons a patch owns (#57 decision 4), gate outputs of the Main module; the device keeps PRESET, PLAY,
  * SAVE, HOME and OCT- / OCT+. The knobs K1..K4 are no signals: they edit the rows of the device page in focus (pages.ts),
@@ -285,6 +372,8 @@ interface OscState {
   ph: number[];
   /** the summed phase modulation of a block (oscPm), radians */
   pmc: Float32Array;
+  /** this part's analog tolerances (analogTol) */
+  tol: number[];
 }
 
 /** unison voice j of n: its detune in octaves, spread symmetrically from -detune to +detune cents */
@@ -362,10 +451,20 @@ const osc: ModuleImpl<OscState> = {
       param('stack', 0, 4, 0, { step: 1, choices: STACK_NAMES }),
       param('pm2', 0, 8, 0, { ...PM_INDEX, since: 49 }),
       param('pm3', 0, 8, 0, { ...PM_INDEX, since: 49 }),
+      param('analog', 0, 1, 0, { step: 0.01, since: 51 }),
     ],
   },
-  init: () => ({ phase: 0, s1: 0, y1: 0, y2: 0, pm1: 0, xb: 0, ap: [0, 0, 0, 0, 0, 0, 0, 0], ph: [0, 0, 0, 0], pmc: new Float32Array(0) }),
+  init: () => ({ phase: 0, s1: 0, y1: 0, y2: 0, pm1: 0, xb: 0, ap: [0, 0, 0, 0, 0, 0, 0, 0], ph: [0, 0, 0, 0], pmc: new Float32Array(0), tol: [0, 0, 0, 0] }),
+  seed(s, seed) {
+    s.tol = analogTol(seed);
+  },
   process(c, s) {
+    const amt = Math.min(1, c.p.analog ?? 0);
+    // the analog shape (#673): its waves in place of wave(); in FM mode at the doubled rate (the dip as long in time)
+    const an = amt > 0 ? analogShape(amt, s.tol, c.sr) : undefined;
+    const anFm = an && { ...an, w: an.w * 2 };
+    const wave = an ? (k: number, ph: number, dt: number, pw: number): number => waveAnalog(k, ph, dt, pw, an) : waveIdeal;
+    const waveFm = anFm ? (k: number, ph: number, dt: number, pw: number): number => waveAnalog(k, ph, dt, pw, anFm) : waveIdeal;
     const { pitch, sync } = c.inp;
     const pw = Math.min(0.95, Math.max(0.05, c.p.pw ?? 0.5));
     const base = (c.p.coarse ?? 0) / 12 + (c.p.fine ?? 0) / 1200;
@@ -429,7 +528,7 @@ const osc: ModuleImpl<OscState> = {
         if (s.phase >= 1) s.phase -= 1;
         let ph = s.phase + (idx * (sub ? pmNow : pmMid) + fb * FB_RAD * (s.y1 + s.y2) * 0.5) * K;
         ph -= Math.floor(ph);
-        const y = wave(kind, ph, dt, pw);
+        const y = waveFm(kind, ph, dt, pw);
         s.y2 = s.y1;
         s.y1 = y;
         if (sub) {
@@ -462,9 +561,9 @@ export const DELAY_DIVS: { name: string; num: number; den: number }[] = [
 export const DELAY_CLK_PPQN = 24;
 
 /** the delay's time knob, ms: modulation and macro ranges span DELAY_TIME_MIN..DELAY_TIME_MAX (the FM-1's range before
- * the length row); its base reaches DELAY_LENGTH_MAX (ParamDef.browserMax: on the A side the FM-1 plays it too, a morph
- * B side past DELAY_TIME_MAX is the browser's, patchbin.ts browserOnly). The time plays up to the Delay's length (half of
- * it with ping-pong): delayReach */
+ * the length row); its base reaches DELAY_REACH_MAX (ParamDef.browserMax: on the A side the FM-1 plays it too, a morph
+ * B side past DELAY_TIME_MAX is the browser's, patchbin.ts browserOnly). The time plays up to the Delay's length times its
+ * rate's k (half of it with ping-pong): delayReach */
 export const DELAY_TIME_MIN = 1;
 export const DELAY_TIME_MAX = 700;
 /** synced, the time knob's note lengths stay spread over DELAY_TIME_MIN..DELAY_SYNC_TOP ms (the FM-1's range before #273), so a
@@ -475,8 +574,15 @@ export const DELAY_SYNC_TOP = 520;
  * before the row. The FM-1 sizes the line when the patch loads (engine.c dly_samples): no input, macro range, morph,
  * P-lock or knob moves the length while the patch plays (ParamDef.fixed) */
 export const DELAY_LENGTH_MIN = 10;
-export const DELAY_LENGTH_MAX = 1900;
+/** the longest length: what one Delay's line can take of the FM-1's memory arena (#649) in a patch of a Main, the Delay and
+ * an Output: 3.8 s, a line of 335,420 bytes of the arena's 338,740 (patchbin.ts ARENA). Every other module, line and voice
+ * takes from the same arena, and the editor's length row stops at what is left (delayRoom). A length past
+ * DELAY_LENGTH_GREW needs format 51 (1.10's longest was 1.9 s). */
+export const DELAY_LENGTH_MAX = 3800;
+export const DELAY_LENGTH_GREW = 1900;
 export const DELAY_LENGTH_DEFAULT = 700;
+/** the longest time a Delay plays, ms: the longest length at the lowest rate (#659: RATE 11k holds four times its length) */
+export const DELAY_REACH_MAX = DELAY_LENGTH_MAX * 4;
 /** a length's line, samples at DEVICE_SR: its samples rounded up to an even count (ping-pong halves it) and 60 more, so a
  * time of the whole length still fits (700 ms: 30944, the line every Delay had before the length row; engine.c
  * dly_samples) */
@@ -513,6 +619,49 @@ export const DELAY_SWELL_NUM = 198;
 export const DELAY_SWELL_DEN = 95;
 /** the soft clip in the swelling delay's loop: x - 4/27 x^3, flat at +-1 from |x| = 1.5 (engine.c dly_soft the same) */
 export const delayClip = (x: number): number => (x >= 1.5 ? 1 : x <= -1.5 ? -1 : x - (4 / 27) * x * x * x);
+
+/** the Delay's `rate` (#659, format 51): the rate its line holds the sound at, the FM-1's own (44.1 kHz) and a half and a
+ * quarter of it. The same line then holds two or four times as much time, and keeps frequencies up to a half or a quarter
+ * as high. Appended to, never reordered (a patch stores the index). */
+export const DELAY_RATES = ['44k', '22k', '11k'];
+/** the samples a line sample stands for at rate step r (DELAY_RATES): 1, 2, 4 */
+export const delayRateK = (r: number): number => 1 << Math.max(0, Math.min(DELAY_RATES.length - 1, Math.round(r)));
+/** the samples at a line's end that hold its filters' state at a lower rate or with Tape on (engine.c the same words: the
+ * rate's low pass in words 0..7, Tape's in 8..14): the line is that much shorter there */
+export const DELAY_TAIL = 48;
+/** the low pass in front of a lower rate's line: 4-pole Butterworth (two sections of these Q), its corner 0.4 of the line's
+ * rate (8.8 kHz at 22k, 4.4 kHz at 11k), in Hz at DEVICE_SR so the browser filters alike */
+export const DELAY_AA_Q = [0.5411961, 1.3065630];
+export const DELAY_AA_CORNER = 0.4;
+/** a section's coefficients at sample rate sr for rate step k (2 or 4): b0 (b1 = 2 b0, b2 = b0), a1, a2 */
+export const delayAaCoefs = (sr: number, k: number): number[][] =>
+  DELAY_AA_Q.map((q) => {
+    const kk = Math.tan((Math.PI * DELAY_AA_CORNER * DEVICE_SR) / (k * sr)), n = 1 / (1 + kk / q + kk * kk);
+    return [kk * kk * n, 2 * (kk * kk - 1) * n, (1 - kk / q + kk * kk) * n];
+  });
+
+/** Tape (#660): the gentle low pass and high pass in the feedback loop (one pole each, Hz), so each repeat loses some
+ * highs and lows; the loop runs through delayClip */
+export const DELAY_TAPE_LP = 4000;
+export const DELAY_TAPE_HP = 80;
+/** a one-pole's coefficient for a corner of `hz` at a line written every k samples at sample rate sr */
+export const delayTapePole = (hz: number, sr: number, k: number): number => 1 - Math.exp((-2 * Math.PI * hz * k) / sr);
+/** Tape's wow and flutter: two sines in the read position, their rates (Hz) and their depths at the `wow` row's top (ms
+ * either way of the time) */
+export const DELAY_WOW_HZ = 0.6;
+export const DELAY_FLUTTER_HZ = 6.7;
+export const DELAY_WOW_MS = 1;
+export const DELAY_FLUTTER_MS = 0.1;
+/** an accumulator's increment for `hz`, u32 turns a sample (engine.c the same, from defs.h at DEVICE_SR) */
+export const turnInc = (hz: number, sr: number): number => Math.round((hz * 2 ** 32) / sr);
+/** a depth in ms as 1/256 samples at sr */
+export const delayDepth8 = (ms: number, sr: number): number => Math.round((ms / 1000) * sr * 256);
+/** Tape's playback heads (#660): at 1x, 2x and 3x the time; the HEADS row picks these (bit j: head j + 1). Appended to,
+ * never reordered. The heads sound together at 1 / n each, into the output and the feedback. */
+export const DELAY_HEADS = ['1', '2', '3', '1+2', '1+3', '2+3', '1+2+3'];
+export const DELAY_HEAD_MASK = [1, 2, 4, 3, 5, 6, 7];
+/** 1 / n of the heads sounding, Q16 (engine.c the same table) */
+export const DELAY_HEAD_GAIN = [0, 65536, 32768, 21845];
 
 /** the top of the LFO's wide range, Hz (55 before #518) */
 export const LFO_WIDE_MAX = 80;
@@ -825,6 +974,16 @@ export const FILTER_OSC_K = 1.19;
 export const FILTER_OSC_GAIN = 5.6;
 export const FILTER_OSC_CLIP = 2;
 export const FILTER_OSC_SEED = 1 / 1024;
+/** the Multimode filter's drive (#670, its `drive` parameter above 0): the resonance feedback r bp (r = 1.98 res) passes
+ * the Ladder's soft clip sat(v) = v - v^3 / 6.75 (+-1 from |v| = 1.5) at drive times the signal's level, read from the
+ * band-pass state as the self-oscillation reads it. What the clip takes off the feedback comes back as damping: the
+ * damping k grows by r (1 - sat(a) / a), a = drive r |bp| held to FILTER_DRIVE_TOP (r a^2 / 6.75 below the knee, no
+ * division there). The outputs stay at the input's scale, so a quiet signal plays as with drive off and a loud one has
+ * its resonance squashed. engine.c reads these from defs.h. */
+export const FILTER_DRIVE_KNEE = 1.5;
+export const FILTER_DRIVE_TOP = 64;
+/** the damping the drive adds for a = drive r |bp| (already held to FILTER_DRIVE_TOP), per unit of r: 1 - sat(a) / a */
+export const filterDriveLoss = (a: number): number => (a >= FILTER_DRIVE_KNEE ? 1 - 1 / a : (a * a) / 6.75);
 
 /** state variable filter, two stages: stage 1 (12 dB) gives lp12 / bp / hp (and hp6, a resonant 6 dB high pass, appended), stage 2 takes lp12 and adds the other 12 dB (lp24) */
 const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }> = {
@@ -840,6 +999,8 @@ const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }>
       param('track', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
       param('morph', 0, 1, 0, { step: 0.01, input: 'morph', rest: (p, cv) => (p.morph ?? 0) + cv }),
       param('osc', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 47 }),
+      // #670: the drive into a soft clip inside the resonance loop; 0 = off (a linear filter, as before 1.11)
+      param('drive', 0, 8, 0, { step: 0.01, since: 51 }),
     ],
   },
   init: () => ({ ic1: 0, ic2: 0, jc1: 0, jc2: 0 }),
@@ -853,6 +1014,9 @@ const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }>
     const k0 = 2 - 1.98 * res - FILTER_OSC_K * over, gam = FILTER_OSC_GAIN * over;
     let k = k0;
     if (over > 0 && s.ic1 === 0 && s.ic2 === 0) s.ic1 = FILTER_OSC_SEED;
+    // drive (#670): a = drive r |bp|, the clip's level; a filter without resonance (r = 0) has nothing to clip
+    const r = 1.98 * res, dr = (c.p.drive ?? 0) * r;
+    const drv = dr > 0;
     const k2 = Math.SQRT2; // stage 2 is damped (Q 0.7): the resonance peak comes from stage 1 alone
     const tr = (c.p.track ?? 0) >= 0.5 ? c.voice.pitch : 0; // keyboard tracking: the cutoff follows the played pitch 1 octave per octave (C4 = the cutoff as set)
     let fc = c.p.cutoff ?? 1000, m = c.p.morph ?? 0;
@@ -863,6 +1027,7 @@ const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }>
         const b = Math.min(FILTER_OSC_CLIP, Math.max(-FILTER_OSC_CLIP, s.ic1));
         k = k0 + gam * b * b;
       }
+      if (drv) k = (over > 0 ? k : k0) + r * filterDriveLoss(Math.min(FILTER_DRIVE_TOP, dr * Math.abs(s.ic1)));
       const a1 = 1 / (1 + g * (g + k));
       const a2 = g * a1;
       const a3 = g * a2;
@@ -923,11 +1088,17 @@ const ladder: ModuleImpl<{ s: Float64Array }> = {
       param('drive', 1, 8, 1, { step: 0.01, log: true }),
       param('cvamt', 0, 4, 1, { unit: 'oct', step: 0.01 }),
       param('track', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
+      // #671: the diode ladder (diodeLadder); off = the Moog ladder, as before 1.11
+      param('diode', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 51 }),
+      // #672: the soft clip at the input of stages 2, 3 and 4 too, not only at the loop's input; off = as before 1.11
+      param('stsat', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 51 }),
     ],
   },
   init: () => ({ s: new Float64Array(4) }),
   process(c, st) {
+    if ((c.p.diode ?? 0) >= 0.5) return diodeLadder(c, st.s);
     const s = st.s;
+    const stsat = (c.p.stsat ?? 0) >= 0.5;
     const audio = !!c.connected.fm;
     let cvm = 0;
     for (let i = 0; i < c.n; i++) cvm += c.inp.cv[i];
@@ -953,6 +1124,7 @@ const ladder: ModuleImpl<{ s: Float64Array }> = {
       u = u >= 1.5 ? 1 : u <= -1.5 ? -1 : u - (u * u * u) / 6.75;
       let y2 = 0;
       for (let j = 0; j < 4; j++) {
+        if (stsat && j > 0) u = u >= 1.5 ? 1 : u <= -1.5 ? -1 : u - (u * u * u) / 6.75;
         const v = G * (u - s[j]);
         u = v + s[j];
         s[j] = u + v;
@@ -963,6 +1135,67 @@ const ladder: ModuleImpl<{ s: Float64Array }> = {
     }
   },
 };
+
+/** the diode ladder's loop: the frequency (in units of the stage frequency w) where its phase reaches -180 degrees, and
+ * the loop gain that self-oscillates there (1 / |H| at that frequency). engine.c reads them from defs.h. */
+export const DIODE_W180 = 1.1952534;
+export const DIODE_KCRIT = 18.388;
+
+/**
+ * The Ladder's diode mode (#671, `diode` on): the linearised diode ladder of the Roland TB-303 and the EMS VCS3, four
+ * coupled stages with a capacitor between neighbouring nodes: y' = w (-M y + e1 u), M tri-diagonal [2 -1; -1 2 -1;
+ * -1 2 -1; -1 1] (characteristic polynomial s^4 + 7 s^3 + 15 s^2 + 10 s + 1: unequal poles, about 14 dB per octave around
+ * the cutoff, 18 an octave higher, 24 far above). Its phase reaches -180 degrees at w DIODE_W180, where the loop gain
+ * DIODE_KCRIT self-oscillates: k = DIODE_KCRIT res, so res 1 is the edge, as 4 res is in the Moog mode. `cutoff` is the
+ * resonance frequency, as in the Moog mode. Trapezoidal (zero-delay) integration: each sample solves (I + g M) y = z +
+ * g e1 u, g = tan(pi fc / sr) / DIODE_W180 (fc held to 0.3 sr), by the tri-diagonal (Thomas) elimination whose factors
+ * come once per block (and at each change of the audio-rate input fm, as in the Moog mode): pivots c0..c3, their
+ * reciprocals iu, the multipliers m_i = g iu_(i-1). The loop is solved linearly (y4 = p3 + b3 u, p3 the states' share, b3
+ * the loop input's), then the loop input u = sat((drive x - k p3) / (1 + k b3)) runs through the stages. No high pass in
+ * the feedback: the loop's passband falls by 1 / (1 + k) with res, the diode ladder's bass loss, deeper than the Moog
+ * mode's 1 / (1 + 4 res). The outputs make up the difference (DIODE_MAKEUP, after the loop, so the saturation is as
+ * heard): their passband sits where the Moog mode's does at the same res, so the switch keeps a patch's level. Outputs:
+ * lp24 (stage 4) and lp12 (stage 2). The four states are the Moog mode's (`s`). `stsat` does not apply here.
+ */
+export const diodeMakeup = (res: number): number => (1 + DIODE_KCRIT * res) / (1 + 4 * res);
+interface DiodeCoef { g: number; m1: number; m2: number; m3: number; iu0: number; iu1: number; iu2: number; iu3: number; b3: number }
+function diodeCoef(fc: number, sr: number): DiodeCoef {
+  const g = Math.tan((Math.PI * Math.min(fc, sr * 0.3)) / sr) / DIODE_W180;
+  const iu0 = 1 / (1 + 2 * g), m1 = g * iu0;
+  const iu1 = 1 / (1 + 2 * g - g * m1), m2 = g * iu1;
+  const iu2 = 1 / (1 + 2 * g - g * m2), m3 = g * iu2;
+  const iu3 = 1 / (1 + g - g * m3);
+  return { g, m1, m2, m3, iu0, iu1, iu2, iu3, b3: g * m1 * m2 * m3 * iu3 };
+}
+function diodeLadder(c: Ctx, z: Float64Array): void {
+  const audio = !!c.connected.fm;
+  let cvm = 0;
+  for (let i = 0; i < c.n; i++) cvm += c.inp.cv[i];
+  cvm /= c.n;
+  const tr = (c.p.track ?? 0) >= 0.5 ? c.voice.pitch : 0;
+  const k = DIODE_KCRIT * (c.p.res ?? 0), drive = c.p.drive ?? 1, mk = diodeMakeup(c.p.res ?? 0);
+  let d: DiodeCoef = diodeCoef(1000, c.sr), F = 0;
+  for (let i = 0; i < c.n; i++) {
+    if (i === 0 || (audio && c.inp.fm[i] !== c.inp.fm[i - 1])) {
+      const cv = cvm + (audio ? c.inp.fm[i] : 0);
+      const fc = Math.min((c.p.cutoff ?? 1000) * Math.pow(2, cv * (c.p.cvamt ?? 1) + tr), c.sr * 0.45);
+      if (c.display) c.display.cutoff = fc;
+      d = diodeCoef(fc, c.sr);
+      F = 1 / (1 + k * d.b3);
+    }
+    const p3 = (z[3] + d.m3 * (z[2] + d.m2 * (z[1] + d.m1 * z[0]))) * d.iu3;
+    let u = (drive * c.inp.in[i] - k * p3) * F;
+    u = u >= 1.5 ? 1 : u <= -1.5 ? -1 : u - (u * u * u) / 6.75;
+    const e0 = z[0] + d.g * u, e1 = z[1] + d.m1 * e0, e2 = z[2] + d.m2 * e1, e3 = z[3] + d.m3 * e2;
+    const y3 = e3 * d.iu3, y2 = (e2 + d.g * y3) * d.iu2, y1 = (e1 + d.g * y2) * d.iu1, y0 = (e0 + d.g * y1) * d.iu0;
+    z[0] = 2 * y0 - z[0];
+    z[1] = 2 * y1 - z[1];
+    z[2] = 2 * y2 - z[2];
+    z[3] = 2 * y3 - z[3];
+    c.out.lp24[i] = y3 * mk;
+    c.out.lp12[i] = y1 * mk;
+  }
+}
 
 /** 20 log10(x) = DB_PER_OCT log2(x) */
 const DB_PER_OCT = 6.0205999;
@@ -1378,6 +1611,21 @@ interface DelayState {
   seen: number;
   prev: boolean;
   beat: number;
+  /** a lower rate (#659): the step's k the line holds (0: none yet), the sample within a line sample, the low pass's state
+   * (two sections: x1 x2 y1 y2) */
+  rk: number;
+  ph: number;
+  lp: Float64Array;
+  /** Tape (#660): on (the last block's), the loop filters' states (A side, B side: low pass, high pass's low pass), the
+   * wow and flutter phases (u32 turns) and the read offset they gave last (1/256 samples) */
+  tp: boolean;
+  tl: Float64Array;
+  wph: number;
+  fph: number;
+  m: number;
+  /** after a new rate (delayChange): the samples its echoes still play at the new speed before the read point glides to
+   * the time (engine.c keeps it in rate, past DLY_HOLD) */
+  hold: number;
 }
 
 /** the glide: the rate heads for 1 / 2^DELAY_GLIDE_SHIFT of the distance a sample (1024 samples, 23 ms), at most
@@ -1428,6 +1676,210 @@ function delayGlide(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, 
 }
 
 /**
+ * The Delay at a lower rate (#659: RATE 22k or 11k, k = 2 or 4 samples a line sample). The input goes through a 4-pole low
+ * pass (delayAaCoefs) and every k-th sample of it, with the feedback, is written to the line (`len` line samples, the
+ * filter's state in the DELAY_TAIL samples after them, as on the FM-1). Every sample reads the line between two of its
+ * samples (linear), at the time's distance behind the write head in samples (s.cur, x 65536), so the time keeps its
+ * sample resolution and the echo is smooth between line samples. The time glides as delayGlide's does, sample by sample.
+ * Plain, swelling and ping-pong in one loop.
+ */
+function delaySlow(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, pp: boolean, clip: (x: number) => number, k: number, len: number): void {
+  const buf = s.buf, half = Math.floor(len / 2), n = pp ? half : len, top = (n - 1) * k * 65536;
+  const o = c.out.out, r = c.out.r, lp = s.lp;
+  const [[b0, a1, a2], [c0, d1, d2]] = delayAaCoefs(c.sr, k);
+  const clampi = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
+  if (s.w >= n) s.w = 0;
+  for (let i = 0; i < c.n; i++) {
+    if (s.cur !== tq || s.rate) {
+      const diff = tq - s.cur;
+      s.rate += clampi(clampi(Math.floor(diff / (1 << DELAY_GLIDE_SHIFT)), -DELAY_GLIDE_MAX, DELAY_GLIDE_MAX) - s.rate, -DELAY_GLIDE_ACC, DELAY_GLIDE_ACC);
+      if (diff > -(1 << DELAY_GLIDE_SHIFT) && diff < 1 << DELAY_GLIDE_SHIFT && s.rate > -DELAY_GLIDE_ACC && s.rate < DELAY_GLIDE_ACC) {
+        s.cur = tq;
+        s.rate = 0;
+      } else s.cur = clampi(s.cur + s.rate, k * 65536, top);
+    }
+    // the line sample s.w is written at the block's last sample (s.ph = k - 1): it stands for that sample's time
+    let pos = s.w * 65536 + Math.floor(((s.ph - k + 1) * 65536 - s.cur) / k);
+    if (pos < 0) pos += n * 65536;
+    const i0 = Math.floor(pos / 65536), i1 = i0 + 1 === n ? 0 : i0 + 1, f = (pos - i0 * 65536) / 65536;
+    const ea = buf[i0] + (buf[i1] - buf[i0]) * f;
+    const x = c.inp.in[i];
+    // the low pass in front of the line: two sections (direct form I), every sample
+    const xs = Math.max(-4, Math.min(4, x)); // (the line holds +-4)
+    const u = b0 * (xs + 2 * lp[0] + lp[1]) - a1 * lp[2] - a2 * lp[3];
+    lp[1] = lp[0]; lp[0] = xs; lp[3] = lp[2]; lp[2] = u;
+    const y = c0 * (u + 2 * lp[4] + lp[5]) - d1 * lp[6] - d2 * lp[7];
+    lp[5] = lp[4]; lp[4] = u; lp[7] = lp[6]; lp[6] = y;
+    if (pp) {
+      const eb = buf[half + i0] + (buf[half + i1] - buf[half + i0]) * f;
+      if (s.ph === k - 1) {
+        buf[half + s.w] = clip(ea * fb);
+        buf[s.w] = clip(y + eb * fb);
+      }
+      o[i] = x * (1 - mix) + ea * mix;
+      r[i] = x * (1 - mix) + eb * mix;
+    } else {
+      if (s.ph === k - 1) buf[s.w] = clip(y + ea * fb);
+      o[i] = x * (1 - mix) + ea * mix;
+      r[i] = o[i];
+    }
+    if (++s.ph === k) {
+      s.ph = 0;
+      s.w = s.w + 1 === n ? 0 : s.w + 1;
+    }
+  }
+}
+
+/**
+ * The Delay with Tape on (#660), at any rate (k = 1, 2, 4): the heads (bit j of `mask`: head j + 1 at j + 1 times the
+ * time, clamped to the line) read the line between two of its samples at their distance plus the wow and flutter offset
+ * (two sines, `wow` their depth, worked out per block and ramped across it), and sound together at 1 / n each. The
+ * feedback goes through a one-pole low pass and high pass (DELAY_TAPE_LP / HP) and, with the input (through the rate's
+ * low pass at a lower rate), through delayClip into the line. Distances in 1/256 samples. Plain and ping-pong, swell too.
+ */
+function delayTape(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, pp: boolean, k: number, len: number, wow: number, mask: number): void {
+  const buf = s.buf, half = Math.floor(len / 2), nl = pp ? half : len, top = (nl - 1) * k * 65536, lo8 = k * 256, hi8 = (nl - 1) * k * 256;
+  const o = c.out.out, r = c.out.r, lp = s.lp, tl = s.tl;
+  const [[b0, a1, a2], [c0, d1, d2]] = k > 1 ? delayAaCoefs(c.sr, k) : [[0, 0, 0], [0, 0, 0]];
+  const pl = delayTapePole(DELAY_TAPE_LP, c.sr, k), ph_ = delayTapePole(DELAY_TAPE_HP, c.sr, k);
+  const clampi = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
+  const heads = [1, 2, 3].filter((j) => mask & (1 << (j - 1)));
+  const g = DELAY_HEAD_GAIN[heads.length] / 65536;
+  // the wow and flutter offset at the block's end, ramped from the last one in whole steps (as the FM-1)
+  s.wph = (s.wph + turnInc(DELAY_WOW_HZ, c.sr) * c.n) % 2 ** 32;
+  s.fph = (s.fph + turnInc(DELAY_FLUTTER_HZ, c.sr) * c.n) % 2 ** 32;
+  const sinq = (ph: number): number => Math.round(Math.sin((2 * Math.PI * ph) / 2 ** 32) * 65536);
+  const wq = Math.round(Math.max(0, Math.min(1, wow)) * 65536);
+  const m1 = Math.floor((Math.floor((delayDepth8(DELAY_WOW_MS, c.sr) * sinq(s.wph) + delayDepth8(DELAY_FLUTTER_MS, c.sr) * sinq(s.fph)) / 65536) * wq) / 65536);
+  const m0 = s.m, step = Math.trunc((m1 - m0) / c.n);
+  const read = (side: number, d8: number): number => {
+    const rd = Math.floor((clampi(d8, lo8, hi8) + k - 1) / k);
+    let pos = s.w * 256 + (s.ph - k + 1) * (256 / k) - rd;
+    if (pos < 0) pos += nl * 256;
+    const i0 = Math.floor(pos / 256), i1 = i0 + 1 === nl ? 0 : i0 + 1, f = (pos - i0 * 256) / 256;
+    return buf[side + i0] + (buf[side + i1] - buf[side + i0]) * f;
+  };
+  for (let i = 0; i < c.n; i++) {
+    if (s.cur !== tq || s.rate) {
+      const diff = tq - s.cur;
+      s.rate += clampi(clampi(Math.floor(diff / (1 << DELAY_GLIDE_SHIFT)), -DELAY_GLIDE_MAX, DELAY_GLIDE_MAX) - s.rate, -DELAY_GLIDE_ACC, DELAY_GLIDE_ACC);
+      if (diff > -(1 << DELAY_GLIDE_SHIFT) && diff < 1 << DELAY_GLIDE_SHIFT && s.rate > -DELAY_GLIDE_ACC && s.rate < DELAY_GLIDE_ACC) {
+        s.cur = tq;
+        s.rate = 0;
+      } else s.cur = clampi(s.cur + s.rate, k * 65536, top);
+    }
+    const cur8 = Math.floor(s.cur / 256), m = m0 + step * (i + 1);
+    let ea = 0, eb = 0;
+    for (const j of heads) {
+      ea += read(0, j * cur8 + m);
+      if (pp) eb += read(half, j * cur8 + m);
+    }
+    ea *= g;
+    eb *= g;
+    const x = c.inp.in[i];
+    let y = x;
+    if (k > 1) {
+      const xs = Math.max(-4, Math.min(4, x)); // (the line holds +-4)
+      const u = b0 * (xs + 2 * lp[0] + lp[1]) - a1 * lp[2] - a2 * lp[3];
+      lp[1] = lp[0]; lp[0] = xs; lp[3] = lp[2]; lp[2] = u;
+      y = c0 * (u + 2 * lp[4] + lp[5]) - d1 * lp[6] - d2 * lp[7];
+      lp[5] = lp[4]; lp[4] = u; lp[7] = lp[6]; lp[6] = y;
+    }
+    if (s.ph === k - 1) {
+      // the loop: low pass, then high pass (the low pass's output less a slower low pass of it), per side
+      const loop = (e: number, at: number): number => {
+        const v = Math.max(-32, Math.min(32, e * fb));
+        tl[at] += pl * (v - tl[at]);
+        tl[at + 1] += ph_ * (tl[at] - tl[at + 1]);
+        return tl[at] - tl[at + 1];
+      };
+      if (pp) {
+        buf[half + s.w] = delayClip(loop(ea, 2));
+        buf[s.w] = delayClip(y + loop(eb, 0));
+      } else buf[s.w] = delayClip(y + loop(ea, 0));
+      s.ph = 0;
+      s.w = s.w + 1 === nl ? 0 : s.w + 1;
+    } else s.ph++;
+    o[i] = x * (1 - mix) + ea * mix;
+    r[i] = pp ? x * (1 - mix) + eb * mix : o[i];
+  }
+  s.m = m0 + step * c.n;
+}
+
+/** a ring of lo samples at b[base..] (w its next write) as a ring of ln (delayChange): every sample keeps its distance
+ * behind the write head; a shorter ring drops its oldest samples, a longer one gets silence older than all of them. The
+ * new w (engine.c dly_ring) */
+function delayRing(b: Float32Array, base: number, lo: number, ln: number, w: number): number {
+  if (ln < lo) {
+    if (w > ln) {
+      b.copyWithin(base, base + w - ln, base + w);
+      return 0;
+    }
+    b.copyWithin(base + w, base + w + lo - ln, base + lo);
+    return w === ln ? 0 : w;
+  }
+  if (ln > lo) {
+    b.copyWithin(base + w + ln - lo, base + w, base + lo);
+    b.fill(0, base + w, base + w + ln - lo);
+  }
+  return w;
+}
+
+/**
+ * A new rate or Tape on / off (#659, #660; engine.c dly_change): the line keeps what it holds. When the line gives its last
+ * DELAY_TAIL samples to the filters' state (a lower rate or Tape) or takes them back, its ring (each ping-pong side its
+ * half) drops its oldest samples or gets that much silence older than them, so every echo keeps its place (delayRing), and
+ * the new state starts from silence. A lower rate's low pass coming from 44k starts settled on the input x0 (no step into
+ * the line). A new rate is a tape changing speed: the read point stays on the same line sample while the line moves past
+ * it at the new rate, so the echoes in it play on pitched by the ratio of the rates (down an octave from 44k to 22k), and
+ * the read point stands (s.hold) until they have played, k / k_old times the time (s.cur, in samples, becomes k / k_old
+ * times as many). Then it glides to the time as for a turned time knob.
+ */
+function delayChange(s: DelayState, k: number, tape: boolean, pp: boolean, x0: number): void {
+  const buf = s.buf, len = buf.length, ko = s.rk;
+  const lo = ko > 1 || s.tp ? len - DELAY_TAIL : len, ln = k > 1 || tape ? len - DELAY_TAIL : len;
+  if (lo !== ln) {
+    let w = s.w;
+    if (!pp) w = delayRing(buf, 0, lo, ln, w < lo ? w : 0);
+    else {
+      const ho = lo / 2, hn = ln / 2;
+      if (w >= ho) w = 0;
+      if (hn < ho) {
+        // A shorter first (it reads up to ho), then B shorter, then B down to hn
+        const wa = delayRing(buf, 0, ho, hn, w);
+        delayRing(buf, ho, ho, hn, w);
+        buf.copyWithin(hn, ho, ho + hn);
+        w = wa;
+      } else {
+        // B up to hn first, then B longer, then A longer (it writes up to hn)
+        buf.copyWithin(hn, ho, 2 * ho);
+        delayRing(buf, hn, ho, hn, w);
+        w = delayRing(buf, 0, ho, hn, w);
+      }
+    }
+    s.w = w;
+  }
+  if (ln < lo) {
+    s.lp.fill(0);
+    s.tl.fill(0);
+    s.wph = s.fph = s.m = 0;
+  } else if (tape && !s.tp) {
+    s.tl.fill(0);
+    s.wph = s.fph = s.m = 0;
+  }
+  if (ko === k) return;
+  if (ko === 1) s.lp.fill(Math.max(-4, Math.min(4, x0)));
+  // the read point w - (k - 1 - ph + cur) / k line samples stays, with ph 0 from here
+  const cur = Math.floor((((ko - 1 - s.ph) * 65536 + s.cur) * k) / ko) - (k - 1) * 65536;
+  s.cur = Math.max(k * 65536, cur);
+  s.ph = 0;
+  // the line samples behind the read point are the old rate's: they play at the new speed until the read point reaches
+  // where the change was, k - 1 + cur samples (counted in whole blocks); then the glide starts
+  s.rate = 0;
+  s.hold = Math.floor(s.cur / 65536) + k - 1;
+}
+
+/**
  * Delay. free: `time` in ms; sync: `time` picks a note length (DELAY_DIVS) at the tempo of the `clk` input (the Main module's
  * clock; 120 bpm until 24 pulses have come in). The tempo is the time of the last 24 pulses, smoothed. Its line holds
  * `length` (delayLine; set when the patch loads, ParamDef.fixed): the time, free or synced, plays up to it. Ping-pong
@@ -1438,6 +1890,9 @@ function delayGlide(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, 
  * `note` (synced): one of DELAY_NOTES in place of the time knob's length. `swell`: the feedback x 198 / 95 (0.95 reads
  * 1.98) and the loop through a soft clip (delayClip), so a feedback past 1 swells to about full level and holds there.
  * A new time (a turned knob, a cable into `time`) is not a jump: the read position glides there (delayGlide, #484).
+ * `rate` (#659): 44k keeps every sample; 22k and 11k low-pass the input and keep every 2nd or 4th sample, so the same line
+ * holds two or four times its length (delaySlow; the length row shows that time). A new rate keeps the echoes, pitched as
+ * a tape changing speed (delayChange).
  */
 const delay: ModuleImpl<DelayState> = {
   def: {
@@ -1446,27 +1901,42 @@ const delay: ModuleImpl<DelayState> = {
     inputs: [audio('in'), gate('clk')],
     outputs: [audio('out'), audio('r')],
     params: [
-      param('time', DELAY_TIME_MIN, DELAY_TIME_MAX, 250, { unit: 'ms', step: 1, browserMax: DELAY_LENGTH_MAX, grew: { since: 50, from: DELAY_TIME_MAX }, altText: { when: 'sync', text: (v) => DELAY_DIVS[delayDivIndex(v, DELAY_TIME_MIN, DELAY_SYNC_TOP)].name } }),
+      param('time', DELAY_TIME_MIN, DELAY_TIME_MAX, 250, { unit: 'ms', step: 1, browserMax: DELAY_REACH_MAX, grew: { since: 50, from: DELAY_TIME_MAX }, altText: { when: 'sync', text: (v) => DELAY_DIVS[delayDivIndex(v, DELAY_TIME_MIN, DELAY_SYNC_TOP)].name } }),
       param('fb', 0, 0.95, 0.4, { step: 0.01, altText: { when: 'swell', text: (v) => ((v * DELAY_SWELL_NUM) / DELAY_SWELL_DEN).toFixed(2) } }),
       param('mix', 0, 1, 0.3, { step: 0.01 }),
       param('sync', 0, 1, 0, { step: 1, choices: ['free', 'sync'], toggle: true }),
       param('pingpong', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
       param('note', 0, DELAY_NOTES.length - 1, 0, { step: 1, choices: DELAY_NOTES.map((d) => d.name), since: 35 }),
       param('swell', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 35 }),
-      param('length', DELAY_LENGTH_MIN, DELAY_LENGTH_MAX, DELAY_LENGTH_DEFAULT, { unit: 'ms', step: 10, since: 50, fixed: true }),
+      param('length', DELAY_LENGTH_MIN, DELAY_LENGTH_MAX, DELAY_LENGTH_DEFAULT, { unit: 'ms', step: 10, since: 50, grew: { since: 51, from: DELAY_LENGTH_GREW }, fixed: true, altText: { when: 'rate', text: (v, p) => `${Math.round(v) * delayRateK(p.rate ?? 0)} ms` } }),
+      param('rate', 0, DELAY_RATES.length - 1, 0, { step: 1, choices: DELAY_RATES, since: 51 }),
+      param('tape', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 51 }),
+      param('wow', 0, 1, 0.3, { step: 0.01, since: 51 }),
+      param('heads', 0, DELAY_HEADS.length - 1, 0, { step: 1, choices: DELAY_HEADS, since: 51 }),
     ],
   },
-  init: (sr) => ({ buf: new Float32Array(0), w: 0, cur: 0, rate: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2) }),
+  init: (sr) => ({ buf: new Float32Array(0), w: 0, cur: 0, rate: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2), rk: 0, ph: 0, lp: new Float64Array(8), tp: false, tl: new Float64Array(4), wph: 0, fph: 0, m: 0, hold: 0 }),
   process(c, s) {
     // the line its length holds (at this sample rate); a new length (an edit) starts an empty line, as the FM-1's load does
     const want = Math.round((c.sr * delayLine(c.p.length ?? DELAY_LENGTH_DEFAULT)) / DEVICE_SR);
     if (s.buf.length !== want) {
       s.buf = new Float32Array(want);
-      s.w = s.cur = s.rate = 0;
+      s.w = s.cur = s.rate = s.rk = s.ph = s.wph = s.fph = s.m = s.hold = 0;
+      s.tp = false;
+      s.lp.fill(0);
+      s.tl.fill(0);
     }
-    const len = s.buf.length;
-    const half = Math.floor(len / 2);
+    // the rate (#659) and Tape (#660): a new one keeps the echoes (delayChange: a new rate is a tape changing speed)
+    const k = delayRateK(c.p.rate ?? 0);
+    const tape = (c.p.tape ?? 0) >= 0.5;
     const pp = (c.p.pingpong ?? 0) >= 0.5;
+    if (s.rk !== k || s.tp !== tape) {
+      if (s.rk) delayChange(s, k, tape, pp, c.inp.in[0]);
+      s.rk = k;
+      s.tp = tape;
+    }
+    const len = k > 1 || tape ? s.buf.length - DELAY_TAIL : s.buf.length;
+    const half = Math.floor(len / 2);
     if (c.connected.clk) {
       for (let i = 0; i < c.n; i++) {
         s.t++;
@@ -1492,16 +1962,28 @@ const delay: ModuleImpl<DelayState> = {
     const swell = (c.p.swell ?? 0) >= 0.5;
     const fb = ((c.p.fb ?? 0) * (swell ? DELAY_SWELL_NUM : 1)) / (swell ? DELAY_SWELL_DEN : 1);
     // swell: the loop through a soft clip (it holds a feedback past 1 at about full level instead of running away)
-    const clip = swell ? delayClip : (x: number): number => x;
+    const clip = swell || tape ? delayClip : (x: number): number => x;
     const mix = c.p.mix ?? 0;
     const o = c.out.out;
     const r = c.out.r;
     // the read position glides to a new time (delayGlide), then the plain loops below read at whole samples
-    const d = pp ? Math.max(1, Math.min(half - 1, samples)) : Math.max(1, Math.min(len - 1, samples));
-    const top = (pp ? half : len) - 1;
+    const top = ((pp ? half : len) - 1) * k;
+    const d = Math.max(k, Math.min(top, samples));
     if (s.cur === 0 || s.cur > top * 65536) s.cur = s.cur === 0 ? d * 65536 : top * 65536;
-    if (s.cur !== d * 65536 || s.rate) {
-      delayGlide(c, s, d * 65536, fb, mix, pp, clip);
+    // after a new rate the read point stands while the old rate's echoes play (s.hold, whole blocks), then glides
+    const held = s.hold > 0, tq = held ? s.cur : d * 65536;
+    s.hold = s.hold > c.n ? s.hold - c.n : 0;
+    if (tape) {
+      if (s.w >= (pp ? half : len)) s.w = 0;
+      delayTape(c, s, tq, fb, mix, pp, k, len, c.p.wow ?? 0, DELAY_HEAD_MASK[Math.max(0, Math.min(DELAY_HEADS.length - 1, Math.round(c.p.heads ?? 0)))]);
+      return;
+    }
+    if (k > 1) {
+      delaySlow(c, s, tq, fb, mix, pp, clip, k, len);
+      return;
+    }
+    if (held || s.cur !== tq || s.rate) {
+      delayGlide(c, s, tq, fb, mix, pp, clip);
       return;
     }
     if (!pp) {
@@ -1674,7 +2156,9 @@ export const GLIDE_CURVES = ['exp', 'lin'];
 
 /**
  * portamento, or a slew on any control. exp: a one-pole glide that reaches 99 % of a step in `time`, whatever its size;
- * lin: a constant rate of one unit (an octave of pitch) per `time`, so a bigger step takes longer
+ * lin: a constant rate of one unit (an octave of pitch) per `time`, so a bigger step takes longer. `fall` (#669, format
+ * 51): a falling input moves at its own time, a rising one at `time` (a vactrol opens quickly and closes slowly); 0, the
+ * default, falls at `time` too
  */
 const glide: ModuleImpl<{ y: number }> = {
   def: {
@@ -1682,20 +2166,35 @@ const glide: ModuleImpl<{ y: number }> = {
     label: 'Slew limiter',
     inputs: [control('in')],
     outputs: [control('out')],
-    params: [param('time', 0.001, 5, 0.1, { unit: 's', step: 0.001, log: true }), param('curve', 0, 1, 0, { step: 1, choices: GLIDE_CURVES })],
+    params: [
+      param('time', 0.001, 5, 0.1, { unit: 's', step: 0.001, log: true }),
+      param('curve', 0, 1, 0, { step: 1, choices: GLIDE_CURVES }),
+      param('fall', 0, 5, 0, { unit: 's', step: 0.001, since: 51 }),
+    ],
   },
   init: () => ({ y: 0 }),
   process(c, s) {
+    const fall = c.p.fall ?? 0;
     if (Math.round(c.p.curve ?? 0) === 1) {
       const step = 1 / Math.max((c.p.time ?? 0.1) * c.sr, 1);
+      const down = fall > 0 ? 1 / Math.max(fall * c.sr, 1) : step;
       for (let i = 0; i < c.n; i++) {
         const d = c.inp.in[i] - s.y;
-        s.y += d > step ? step : d < -step ? -step : d;
+        s.y += d > step ? step : d < -down ? -down : d;
         c.out.out[i] = s.y;
       }
       return;
     }
     const k = 1 - Math.exp(-4.6 / Math.max((c.p.time ?? 0.1) * c.sr, 1));
+    if (fall > 0) {
+      const kd = 1 - Math.exp(-4.6 / Math.max(fall * c.sr, 1));
+      for (let i = 0; i < c.n; i++) {
+        const d = c.inp.in[i] - s.y;
+        s.y += (d >= 0 ? k : kd) * d;
+        c.out.out[i] = s.y;
+      }
+      return;
+    }
     for (let i = 0; i < c.n; i++) {
       s.y += k * (c.inp.in[i] - s.y);
       c.out.out[i] = s.y;
@@ -2462,12 +2961,13 @@ const crush: ModuleImpl<{ held: number; cnt: number } & OsState> = {
  * do not hold it any more: old ones get an allocator instead). A poly assembly's own keyboard: the note its part plays (pitch with the bend and the part's detune / drift flaw, gate, velocity), the part's place among
  * the parts (index -1 first .. 1 last, 0 with one part), whether the note began over a held one (legato) and its pitch
  * step from the previous note in octaves (jump; the first from C4). Outside a poly assembly it is the shared keyboard.
+ * Its `assign` and `unison` inputs are its Voicing's (the engine reads them for the group: engine.ts voicingCables).
  */
 const part: ModuleImpl<null> = {
   def: {
     type: 'part',
     label: 'Part',
-    inputs: [],
+    inputs: [control('assign'), control('unison')],
     outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump'), gate('trig'), gate('low'), gate('high'), gate('unison')],
     params: [],
   },
@@ -2545,20 +3045,21 @@ export const NOTE_NAMES = Array.from({ length: 128 }, (_, n) => `${PITCH_CLASSES
  * output is per voice: into a poly assembly voice i reaches copy i (the voice cards), into a module that runs once the
  * voices sum. The poly assemblies it feeds run once per voice. The engines run it in its Part form (poly.ts deviceView).
  * channel / low / high: it takes only the keys of that MIDI channel (all = the device's) between those notes (a split or
- * a layer per channel); an Arpeggiator's notes are judged by the range only.
+ * a layer per channel); an Arpeggiator's notes are judged by the range only. The `assign` and `unison` inputs move those
+ * settings by a cable (voicingSetting, #681: one Selector row can be a polysynth's whole key assign switch).
  */
 const alloc: ModuleImpl<null> = {
   def: {
     type: 'alloc',
     label: 'Voicing',
-    inputs: [keys('keys')],
+    inputs: [keys('keys'), control('assign'), control('unison')],
     outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump'), gate('trig'), gate('low'), gate('high'), gate('unison')],
     params: [
       param('voices', 1, 16, 4, { step: 1 }),
-      param('assign', 0, 2, 0, { step: 1, choices: ASSIGN_MODES, top: 3 }),
+      param('assign', 0, 2, 0, { step: 1, choices: ASSIGN_MODES, top: 3, input: 'assign', rest: (p, cv) => voicingSetting(p.assign ?? 0, cv, 3) }),
       param('legato', 0, 2, 0, { step: 1, choices: LEGATO_MODES }),
       param('priority', 0, 2, 0, { step: 1, choices: PRIORITIES }),
-      param('unison', 0, 1, 0, { step: 1, choices: UNISON_ASSIGN, top: 2 }),
+      param('unison', 0, 1, 0, { step: 1, choices: UNISON_ASSIGN, top: 2, input: 'unison', rest: (p, cv) => voicingSetting(p.unison ?? 0, cv, 2) }),
       param('channel', 0, 16, 0, { step: 1, choices: KEY_CHANNELS }),
       param('low', 0, 127, 0, { step: 1, choices: NOTE_NAMES }),
       param('high', 0, 127, 127, { step: 1, choices: NOTE_NAMES }),
@@ -2604,6 +3105,19 @@ export interface StepsSound { key: number; left: number; cnt: number; thru?: num
 export const SND_WRAP = 0x80;
 /** how many notes a Steps track sounds at once (a further note ends the oldest) */
 export const TRACK_POLY = 8;
+/** play once (#632, Engine.playOnce; engine.c eng_play_once): the count-in's bar in clock ticks (four beats of 24), and
+ * its click on each beat: a square wave that falls to nothing in CLICK_MS, at CLICK_LEVEL (Q16 of full scale), CLICK_HZ
+ * on beats 2..4 and CLICK_ACCENT_HZ on beat 1 */
+export const ONCE_BAR = 96;
+export const CLICK_MS = 25;
+export const CLICK_LEVEL_Q16 = 16384;
+export const CLICK_HZ = 1000;
+export const CLICK_ACCENT_HZ = 2000;
+/** the click's sample k of len (half: samples a half period), as engine.c click_sample: exact in both engines */
+export function clickSample(k: number, len: number, half: number): number {
+  const a = Math.trunc((CLICK_LEVEL_Q16 * (len - k)) / len);
+  return (Math.floor(k / half) & 1 ? -a : a) / 65536;
+}
 
 /** a track's pattern as the engine holds it (track.ts Pattern; pattern 1 has no length or rate of its own) */
 export interface StepsPattern { notes: StepNote[]; len?: number; rate?: number; locks?: StepLock[] }
@@ -2632,6 +3146,12 @@ export interface StepsState {
   seed: number;
   /** muted (the device's SEQ page, the editor's card; never saved): no new notes */
   mute: boolean;
+  /** play once (#632, Engine.playOnce): 0 not, 1 its passes played (it loops on until the last track's end), n >= 2:
+   * n - 1 pass ends to go (the start counts as one; stepsTurn counts) */
+  once: number;
+  /** play once (D-820, the engine sets it each block): the sample of this block on which the last track still playing its
+   * passes ends them (-1 not in this block); from there a track whose passes are played plays no note more */
+  onceAt: number;
   /** the transport as the last block saw it, the clk / reset inputs' last samples */
   run: boolean;
   c1: number;
@@ -2689,6 +3209,7 @@ export function stepsGo(s: StepsState, p: number): void {
 /** the end of a pass (engine.c steps_turn): in a song, the next entry's pattern and shift (after the last, the first
  * again); else a queued pattern */
 function stepsTurn(s: StepsState): void {
+  if (s.once > 1) s.once--; // (play once, #632: at 1 its passes are played; it loops on until the last track ends, D-820)
   const song = s.song.song > 0 ? s.song.songs[s.song.song - 1] : undefined;
   if (song?.length) {
     s.songPos = s.songPos + 1 >= song.length ? 0 : s.songPos + 1;
@@ -2704,6 +3225,33 @@ function stepsTurn(s: StepsState): void {
 }
 
 const stepCycle = (len: number, dir: number): number => dir === 2 && len > 1 ? 2 * (len - 1) : len;
+
+/** play once (D-820; engine.c steps_turn_at, the same): the sample of this block on which a Steps track's pass ends
+ * (stepsTurn), -1 none; from where it stands before the block (s, its parameters p), its clock's steps counted as process
+ * will count them (the start, a step half a tick on, the block's ticks: run, tick, ticks as Voice has them); a reset edge
+ * is not foreseen */
+export function stepsTurnAt(s: StepsState, p: Readonly<Record<string, number>>, run: boolean, tick: number, ticks: number, n: number): number {
+  if (!run) return -1;
+  if (!s.run) return 0; // (the start: its first step, a pass's start, on sample 0)
+  const x = s.pat > 0 ? s.pats[s.pat] : null;
+  const len = Math.min(STEPS_MAX, Math.max(1, x?.len ?? Math.round(p.len ?? 16)));
+  const ht = STEPS_RATE_HT[Math.min(STEPS_RATE_HT.length - 1, Math.max(0, x?.rate ?? Math.round(p.rate ?? 4)))];
+  const dir = Math.max(0, Math.min(3, Math.round(p.dir ?? 0)));
+  let need = s.pos < 0 ? 1 : stepCycle(len, dir) - s.visit, count = s.count, half = s.half; // (steps to the pass's end)
+  if (half > 0 && half - 1 < n && (tick < 0 || half - 1 <= tick)) {
+    if (--need === 0) return half - 1;
+    half = 0;
+  }
+  if (tick >= 0) {
+    if (half > 0 && --need === 0) return tick;
+    for (let t = 0; t < ticks; t++)
+      if ((count += 2) >= ht) {
+        count = 0;
+        if (--need === 0) return tick;
+      }
+  }
+  return -1;
+}
 
 /** Preview the next visited step without consuming it, also used by live recording. */
 function nextStep(s: StepsState, len: number, dir: number): { visit: number; pos: number; loop: number } {
@@ -2754,7 +3302,7 @@ const steps: ModuleImpl<StepsState> = {
     ],
     data: TRACK_NAME_MAX,
   },
-  init: () => ({ notes: [], pats: [{ notes: [] }], pat: 0, queued: -1, songPos: -1, shift: 0, drum: false, song: { song: 0, songs: [] }, pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, run: false, c1: 0, r1: 0, count: 0, pos: -1, visit: 0, loop: 0, half: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], thru: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
+  init: () => ({ notes: [], pats: [{ notes: [] }], pat: 0, queued: -1, songPos: -1, shift: 0, drum: false, song: { song: 0, songs: [] }, pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, once: 0, onceAt: -1, run: false, c1: 0, r1: 0, count: 0, pos: -1, visit: 0, loop: 0, half: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], thru: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
   seed(s, seed) {
     s.seed = seed;
   },
@@ -2797,7 +3345,7 @@ const steps: ModuleImpl<StepsState> = {
           else if (lives(x)) x.cnt = hold(1);
           else x.cnt = hold(x.left = 0);
         }
-      if (s.mute) return;
+      if (s.mute || (s.once === 1 && s.onceAt >= 0 && i >= s.onceAt)) return; // (play once: its passes played, it loops on until the last track's end, then no note more: D-820)
       const was = s.snd.some((x) => x.cnt > 0);
       let j = 0, any = false;
       for (const n of s.notes) {
@@ -3181,10 +3729,10 @@ export function rowRange(type: string, params: Record<string, number>, pd: Param
   if (type !== 'select' || pd.name !== 'pos') return pd;
   return { ...pd, max: selectCount(params), top: undefined, browserMax: undefined };
 }
-/** the longest free time a Delay plays, whole ms: its length, half of it with ping-pong (each side has half the line; the
- * FM-1: pages_ui.c row_top) */
+/** the longest free time a Delay plays, whole ms: its length times its rate's k (#659: twice at 22k, four times at 11k),
+ * half of it with ping-pong (each side has half the line; the FM-1: pages_ui.c row_top) */
 export const delayReach = (params: Record<string, number>): number => {
-  const l = Math.min(DELAY_LENGTH_MAX, Math.max(DELAY_LENGTH_MIN, Math.round(params.length ?? DELAY_LENGTH_DEFAULT)));
+  const l = Math.min(DELAY_LENGTH_MAX, Math.max(DELAY_LENGTH_MIN, Math.round(params.length ?? DELAY_LENGTH_DEFAULT))) * delayRateK(params.rate ?? 0);
   return Math.max(DELAY_TIME_MIN, (params.pingpong ?? 0) >= 0.5 ? Math.floor(l / 2) : l);
 };
 /** what a Selector's crossfade moves its weights by each sample (Q16, as the firmware: an integer increment, so both engines
@@ -3734,7 +4282,7 @@ const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, de
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an
- * attenuverter (-1..1), and a matrix that says which parameters p1, p2 and the knobs k1..k4 control. A parameter's
+ * attenuverter (-1..1), and a matrix that says which parameters p1 and p2 control. A parameter's
  * effective value is its base + (block mean of p1 x att1 + block mean of p2 x att2, for the inputs that control it) x
  * (max - min), clamped.
  */

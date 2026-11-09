@@ -2,7 +2,7 @@
 // The owner's device check of release 1.10 as scenarios: every step of it that needs no ears, no hands and no power switch,
 // run by scripts/emu-scenarios.mjs after its own scenarios, on the emulator (npm run emu:scenarios) and on the test rig
 // (npm run device:scenarios). What stays with the owner: the analog output by ear (OUTPUT in headphones, MONO L into a
-// recorder), playing Io 4 / Hera 6 / Cassia 1 by hand to judge their feel, and every step across a power cycle.
+// recorder), playing Io 4 / Hera 4 / Cassia 1 by hand to judge their feel, and every step across a power cycle.
 //
 // Each scenario names the check's section and steps it covers ("1.1" = section 1, step 1 of the 40-step page). The test
 // patches are built in check-fixtures.mjs and kept in the editor's Your patches, as the owner keeps them. What the FM-1
@@ -15,7 +15,7 @@ import { FIXTURES, NOTE, oldPatch } from './check-fixtures.mjs';
 
 /** the scenarios' names, in the order they run (scripts/emu-scenarios.mjs lists them for --only and --list) */
 export const CHECK_SCENARIOS = ['checkOutput', 'checkVerona', 'checkRowDrone', 'checkLiveDrone', 'checkDelays', 'checkNoKeys', 'checkStore',
-  'checkOldPattern', 'checkTeach', 'checkDualCore'];
+  'checkOldPattern', 'checkTeach', 'checkDualCore', 'check35mmOut', 'checkFlashWrite'];
 
 /** `h`: what emu-scenarios.mjs's scenarios use (the target, the editor's page, the checks) */
 export function checkScenarios(h) {
@@ -194,6 +194,79 @@ export function checkScenarios(h) {
 
   return {
     // ---- 1. OUTPUT: STEREO, MONO, MONO L (D-918, D-919), steps 1.1..1.5
+    // ---- 3.5MM OUT (#631, D-925): the speaker and the jack off, USB audio at MASTER's level. By the row (K2 on GLO > SYSTEM 2/2) and by
+    // HOME + OCT- + OCT+ held 2 s; the footer's mark (SCREEN reads it as 3.5MM OFF). The emulator's recording is its I2S
+    // output (the analog side): OFF must be silent there. The rig's recording is its USB audio: OFF must leave it as it
+    // was, and the speaker is the owner's ears. The setting ends as the scenario found it (nothing here SAVEs it)
+    async check35mmOut() {
+      const K2 = ENC.k2;
+      /** the row's value: ON or OFF, beside its name */
+      const valueOf = async () => {
+        const t = (await emu.screen()).texts;
+        const y = t.find((x) => x.s === '3.5MM OUT')?.y;
+        return t.find((x) => Math.abs(x.y - (y ?? -99)) <= 14 && /^(ON|OFF)$/.test(x.s))?.s;
+      };
+      const setTo = async (want) => {
+        for (let i = 0; i < 2 && (await valueOf()) !== want; i++) {
+          await emu.turn(K2, want === 'ON' ? 1 : -1);
+          await emu.elapse(300);
+        }
+        return valueOf();
+      };
+      /** HOME, OCT- and OCT+ down together for 2.3 s; `during` runs while they are still held (the top bar's message) */
+      const hold3 = async (during) => {
+        for (const b of [B.home, B.octDown, B.octUp]) await emu.key(b, true);
+        await emu.elapse(2300);
+        const r = await during();
+        for (const b of [B.octUp, B.octDown, B.home]) await emu.key(b, false);
+        await emu.elapse(400);
+        return r;
+      };
+      /** the footer's mark: an icon, so it is read from SCREEN's texts (`3.5MM OFF`), not the emulator's pixels */
+      const mark = async () => (await emu.texts()).includes('3.5MM OFF');
+      const held = (tag) => recorded(`out-35mm-${tag}`, async () => { await emu.key(C4, true); await emu.elapse(700); await emu.key(C4, false); await emu.elapse(200); });
+      const level = (a) => (a.why ? 0 : rmsOf(a.l) + rmsOf(a.r));
+      let was;
+      try {
+        await check('3.5mm out: T110 MONO L R opens, synced', !!(await fixture(FIXTURES.monoLR)));
+        await check('3.5mm out: GLO > SYSTEM 2/2, its second row 3.5MM OUT reads ON or OFF', !!(await menuTab('3.5MM OUT')) && !!(was = await valueOf()), `${was}`);
+        await check('3.5mm out: K2 right: ON, no mark', (await setTo('ON')) === 'ON' && !(await mark()), `${await valueOf()}`);
+        await menuClose();
+        const on = await held('on');
+        await menuTab('3.5MM OUT');
+        await check('3.5mm out: K2 left: OFF, the footer\'s mark (3.5MM OFF)', (await setTo('OFF')) === 'OFF' && (await mark()), `${await valueOf()}`);
+        await menuClose();
+        await check('3.5mm out: the mark on the device page too', await mark());
+        const off = await held('off');
+        if (!REAL) {
+          await heard('3.5mm out: ON: the analog output (the I2S) plays', on, level(on) > FLOOR, `${db(level(on))} dB`);
+          await heard('3.5mm out: OFF: the analog output is silent', off, top2(off) === 0, `peak ${db(top2(off))} dB`);
+          await skip('3.5mm out: OFF leaves USB audio as it was', 'the emulator has no USB audio: tools/audio_out_test.sh and the rig\'s recording prove it');
+        } else {
+          const k = level(on), f = level(off);
+          await heard('3.5mm out: OFF leaves USB audio at its level (the rig\'s recording, within 0.3 dB)', off, k > FLOOR && Math.abs(20 * Math.log10(f / k)) <= 0.3, `ON ${db(k)} dB, OFF ${db(f)} dB`);
+          await skip('3.5mm out: OFF silences the speaker and the jack', 'the rig records USB audio, not the analog output: the owner\'s ears prove it');
+        }
+        const p0 = (await emu.screen()).page, octOf = async () => (await emu.texts()).find((t) => /OCT/.test(t)), oct0 = await octOf();
+        const toastOn = await hold3(async () => (await emu.text('3.5MM OUT ON')) && !(await mark()));
+        await check('3.5mm out: HOME + OCT- + OCT+ held 2 s: ON, the top bar says 3.5MM OUT ON, the mark goes', toastOn);
+        await check('3.5mm out: let go: no controls sheet, HOME went nowhere, the octave as it was', !(await emu.text('EVERYWHERE')) && (await emu.screen()).page === p0
+          && (await octOf()) === oct0, `page ${(await emu.screen()).page}, ${await octOf()} (was ${oct0})`);
+        const back = await held('combo-on');
+        if (!REAL) await heard('3.5mm out: ON by the hold: the analog output plays again', back, level(back) > FLOOR, `${db(level(back))} dB`);
+        const toastOff = await hold3(async () => (await emu.text('3.5MM OUT OFF')) && (await mark()));
+        await check('3.5mm out: held 2 s again: OFF, the top bar says 3.5MM OUT OFF, the mark shows', toastOff);
+        await emu.elapse(2000);                           // (the message gone: menuTab looks for the row's name)
+        await menuTab('3.5MM OUT');
+        await check('3.5mm out: the row reads OFF', (await valueOf()) === 'OFF', `${await valueOf()}`);
+        await menuClose();
+      } finally {
+        const want = was ?? 'ON';
+        if (await menuTab('3.5MM OUT')) await setTo(want);
+        await check(`3.5mm out: as the scenario found it (${want})`, (await valueOf()) === want, `${await valueOf()}`);
+        await menuClose();
+      }
+    },
     async checkOutput() {
       try {
         await check('1.1 output: T110 MONO L R opens, synced', !!(await fixture(FIXTURES.monoLR)));
@@ -503,22 +576,22 @@ export function checkScenarios(h) {
       await emu.elapse(800);
       const t = (await paramsOf('LONG')).time;
       await check('4.3 delays: ALGO to LONG 1/2, K1 (TIME) right: it stops at 1200 (its length)', pg && t === 1200 && (await emu.text('1200')), `its page 1 (TIME, FB ..) ${pg}, time ${t}; ${(await emu.texts()).slice(0, 6).join(' | ')}`);
-      // the budget's effect memory lines
+      // the budget's memory lines (#649: one memory, what takes the most of it under it)
       await page().click('#budget summary');
       const lines = await until(() => page().evaluate(() => {
         const items = [...document.querySelectorAll('#budget .budget-item')].map((e) => e.textContent.replace(/\s+/g, ' ').trim());
-        return items.some((x) => x.startsWith('Effect memory')) ? items : null;
+        return items.some((x) => /^Memory\d/.test(x)) ? items : null;
       }), 2000) ?? [];
-      const mem = lines.find((x) => x.startsWith('Effect memory')) ?? '';
-      const under = lines.slice(lines.indexOf(mem) + 1, lines.indexOf(mem) + 3);
-      await check('4.4 delays: the FM-1 budget: Effect memory 129 / 190 KB, a line under it for LONG and one for SHORT',
-        mem === 'Effect memory129 / 190 KB' && under.some((x) => /^Delay LONG/.test(x)) && under.some((x) => /^Delay SHORT/.test(x)), [mem, ...under].join(' | '));
+      const mem = lines.find((x) => /^Memory\d/.test(x)) ?? '';
+      const under = lines.slice(lines.indexOf(mem) + 1, lines.indexOf(mem) + 6);
+      await check('4.4 delays: the FM-1 budget: Memory of 362 KB (the module table in it since D-390), LONG its largest share, a line for SHORT under it',
+        /^Memory\d+ \/ 362 KB$/.test(mem) && /^Delay LONG/.test(under[0] ?? '') && under.some((x) => /^Delay SHORT/.test(x)), [mem, ...under].join(' | '));
       const shortId = JSON.parse(await patchJson()).modules.find((m) => m.name === 'SHORT')?.id;
       await page().evaluate(() => [...document.querySelectorAll('#budget .budget-item.pick')].find((e) => /Delay SHORT/.test(e.textContent))?.click());
       const sel = await until(async () => (await T()).selected.includes(shortId), 2000);
       await check('4.4 delays: a click on SHORT\'s line selects its card', !!sel, `selected ${JSON.stringify((await T()).selected)}, SHORT is ${shortId}`);
       await page().keyboard.press('Escape');
-      // drag SHORT's length row to its top: it stops at 700 ms and says why; the FM-1 loads the patch again
+      // drag SHORT's length row to its top: it stops at what the memory leaves and says why; the FM-1 loads the patch again
       await page().evaluate(() => window.__sent.splice(0));
       // (a card the page shows over the canvas, the tutorial's offer, would take the drag)
       await page().evaluate(() => {
@@ -538,10 +611,12 @@ export function checkScenarios(h) {
       // (the drag must reach the row: what is under the pointer is said when it did not)
       const pointed = box ? await page().evaluate(([x, y]) => { const e = document.elementFromPoint(x, y); return e ? `${e.tagName.toLowerCase()}.${[...e.classList].join('.')}` : 'nothing'; }, [box.x + box.width / 2, box.y + box.height / 2]) : 'no row';
       await shot('check-delays-drag');
-      const toast = await until(() => page().evaluate(() => { const t = document.querySelector('.toast span')?.textContent ?? ''; return /^Effect memory/.test(t) ? t : ''; }), 2000);
+      const toast = await until(() => page().evaluate(() => { const t = document.querySelector('.toast span')?.textContent ?? ''; return /^Memory full/.test(t) ? t : ''; }), 1000);
       const len = (await paramsOf('SHORT')).length;
-      await check('4.5 delays: SHORT\'s length dragged to its top stops at 700 ms, a note says the memory is full and why',
-        len === 700 && /^Effect memory full: \d+ of 190 KB used\. Shorten the other Delay\. This Delay stops at 700 ms\.$/.test(toast), `length ${len}; "${toast}"; under the pointer: ${pointed}`);
+      // (#649: one memory; the longest length is 3800 ms, what one Delay can take of it alone, #734: beside LONG's 1200 ms
+      // the row stops past the old 1900 ms top, at what is left, and the note says so)
+      await check('4.5 delays: SHORT\'s length dragged to its top stops at what the memory leaves (past 1900 ms), and the note says so',
+        len > 1900 && len < 3800 && new RegExp(`^Memory full: .*This Delay stops at ${len} ms\\.$`).test(toast ?? ''), `length ${len}; "${toast ?? ''}"; under the pointer: ${pointed}`);
       const up = await until(async () => {
         const x = await T();
         return x.status === 'patch on the FM-1' && x.chip === 'synced' && (await page().evaluate(() => window.__sent.some((f) => f[1] === 0x10 || f[1] === 0x11))) ? x : null;
@@ -755,6 +830,66 @@ export function checkScenarios(h) {
       }
     },
 
+    // ---- flash writes keep the sound (#656): a held note through each kind of write the store makes
+    async checkFlashWrite() {
+      if (!(await live(false))) return check('flash write: Live off in the editor (Stop syncing)', false);
+      try {
+        const found = await presetTo('BASIC POLY');
+        if (!found) return skip('flash write: a held note through each write', 'no slot of the bank holds BASIC POLY');
+        const kinds = [
+          // the settings record, as the global tempo's write makes it 5 s after a change (D-907); DIAG 129 writes it now,
+          // since that write waits for 2 s of silence (D-921) and a held note would hold it back
+          ['the settings record (DIAG 129)', async () => { await emu.diag(129); }],
+          // SAVE on the FM-1: the running factory patch, unedited, back into its slot, then the settings record (DIAG 128's
+          // count of erases and programs says it wrote)
+          ['SAVE', async () => { await emu.tap(B.save); await emu.elapse(1500); }],
+          // a device preset stored over the link (the rig's structure, its own name: it replaces itself each run)
+          ['a preset store', async () => { await emu.rp.evaluate(() => window.__rig.presetPut('FLASH TEST', [1, 2, 3, 4])); }],
+        ];
+        const [, , , , , s0] = await emu.diagWords(128).catch(() => []);
+        for (const [what, write] of kinds) {
+          const e0 = await emu.diagWords(128).then((d) => d[0] + d[1], () => 0);
+          await emu.key(C4, true);
+          await emu.elapse(600);
+          const a = await recorded(`flash-${what.replace(/\W+/g, '-')}`, async () => {
+            await emu.elapse(400);
+            await write();
+            await emu.elapse(600);
+          });
+          await emu.key(C4, false);
+          await emu.elapse(400);
+          const gaps = a.why ? [] : dropouts(a);
+          // and the halves (128 frames) far under the note's usual level: a write that held the audio back can leave a
+          // repeated or partly written buffer rather than zeros
+          let dips = 0, worst = 1;
+          if (!a.why) {
+            const n = Math.round(a.rate * 128 / 44118), lv = [];
+            for (let i = 0; i + n <= a.l.length; i += n) lv.push(Math.max(rmsOf(a.l, i, i + n), rmsOf(a.r, i, i + n)));
+            const med = [...lv].sort((x, y) => x - y)[lv.length >> 1] || 0;
+            for (const v of lv) {
+              if (v < 0.3 * med) dips++;
+              if (med) worst = Math.min(worst, v / med);
+            }
+          }
+          const e1 = await emu.diagWords(128).then((d) => d[0] + d[1], () => 0);
+          await check(`flash write: ${what} wrote the flash (DIAG 128)`, e1 > e0, `erases + programs ${e0} -> ${e1}`);
+          const loud = a.why ? 0 : Math.max(rmsOf(a.l), rmsOf(a.r));
+          // (a gap of one USB packet, 1 ms, comes about 0.4 s after SAVE on the rig with or without #656: issue #729; the
+          // flash write's own gaps were 6 to 11 ms)
+          const long = gaps.filter((g) => g[1] > 1.5);
+          await heard(`flash write: ${what} with C4 held on Basic Poly: no dropout over 1.5 ms in the recording`, a, loud > FLOOR && long.length === 0 && dips === 0,
+            `RMS ${db(loud)} dB, ${gaps.length} dropouts${gaps.length ? ` (${gaps.slice(0, 4).map((g) => `${g[1]} ms at ${g[0]}`).join(', ')}; ${r2(gaps.reduce((t, g) => t + g[1], 0))} ms in all)` : ''}, ${dips} halves under 30 % of the note's level (lowest ${r2(worst * 100)} %)`);
+        }
+        const st = await emu.diagWords(128).catch(() => null);
+        console.log(`  DIAG 128 (erases, programs, longest off us, longest erase us, longest program us, steps, unserved, suspends not taken): ${JSON.stringify(st)}`);
+        if (st && REAL) await check('flash write: the chip took every suspend, and every write ran in steps (DIAG 128)', st[7] === 0 && st[5] > (s0 ?? 0) && st[6] === 0,
+          `steps ${st[5]}, unserved ${st[6]}, suspends not taken ${st[7]}, longest off ${st[2]} us`);
+      } finally {
+        await emu.key(C4, false);
+        await live(true);
+      }
+    },
+
     // ---- 8. dual core (#271, D-380), steps 8.1, 8.2, 8.4 (playing them by hand for a minute and the boot are the owner's)
     async checkDualCore() {
       await check('8.1 dual core: GLO, ALGO to INFO: PROCESSOR reads 2 CORES', (await menuTab('PROCESSOR')) && (await emu.shows('2 CORES')), (await emu.texts()).filter((t) => /CORE/.test(t)).join(' '));
@@ -767,7 +902,7 @@ export function checkScenarios(h) {
         return v ? Number(v.s.slice(0, -1)) : null;
       };
       const CHORDS = [0, 4, 7, 11, 12, 16, 19, 23].map((n) => 14 + n);   // two 4-note chords, F3 and F4 major sevenths
-      for (const name of ['Io 4', 'Hera 6', 'Cassia 1']) {
+      for (const name of ['Io 4', 'Hera 4', 'Cassia 1']) {
         await opens(name, `8.${name === 'Io 4' ? 2 : 4} dual core: ${name} opens, synced`);
         await menuTab('PROCESSOR');
         await emu.diagWords(119);                       // (zeroes the guard's windows)

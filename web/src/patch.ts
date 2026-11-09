@@ -17,9 +17,11 @@ export interface PortDef {
   pin?: 1 | 2;
 }
 
-/** What can change a module's parameters: its two parameter inputs and the four FM-1 knobs. */
-export type Source = 'p1' | 'p2' | 'k1' | 'k2' | 'k3' | 'k4';
-export const SOURCES: Source[] = ['p1', 'p2', 'k1', 'k2', 'k3', 'k4'];
+/** What changes a module's parameters through its matrix: its two parameter inputs. (The FM-1 knobs' columns k1..k4 are
+ * gone since format 51: the knobs edit the device page in focus since format 29, so nothing read them; validatePatch drops
+ * them, D-1001.) */
+export type Source = 'p1' | 'p2';
+export const SOURCES: Source[] = ['p1', 'p2'];
 
 export interface ParamDef {
   name: string;
@@ -169,8 +171,8 @@ export interface ModuleInst {
   /** attenuverters of the parameter inputs p1 and p2, -2..2 (DEPTH_MAX; only on modules with paramInputs): the share of the
    * parameter's range an input of 1 moves it by (the editor shows it in the parameter's units, depth.ts) */
   att?: [number, number];
-  /** the matrix: the parameters each source controls. p1 / p2 add (input mean x attenuverter x range) to them, k1..k4 are
-   * the FM-1 knobs, which nudge them while the module is selected on the device (only on modules with paramInputs) */
+  /** the matrix: the parameters each source controls. p1 / p2 add (input mean x attenuverter x range) to them (only on
+   * modules with paramInputs) */
   map?: Record<Source, string[]>;
   /** bypassed: the module does not run; its outputs carry its through input (thruInput) or silence. Not on the panel or the output. */
   bypass?: boolean;
@@ -456,8 +458,14 @@ export function morphValue(pd: ParamDef, a: number, b: number, t: number): numbe
   return paramValue(pd, paramUnit(pd, a) + (paramUnit(pd, b) - paramUnit(pd, a)) * t);
 }
 
-/** the FM-1's module limit per patch (ENG_MAX_MODULES): the budget meter counts against it, the editor does not stop at it */
-export const MAX_MODULES = 64;
+/** the FM-1's module limit per patch (engine.h ENG_MAX_MODULES): the budget meter counts against it, the editor does not
+ * stop at it. 128 since 1.11 (#721, D-256); firmware before it takes 64 (MODULES_1_10) */
+export const MAX_MODULES = 128;
+/** the module limit of firmware before 1.11: a patch with more is written in FORMAT_1_11 (patchbin.ts formatOf), so an FM-1
+ * with older firmware is told to update */
+export const MODULES_1_10 = 64;
+/** the words of an armed set (arm.ts armMask; engine.h ENG_MSET_WORDS): 32 modules each */
+export const ARM_WORDS = MAX_MODULES / 32;
 
 /**
  * How a poly group plays (poly.ts polyGroups / deviceView; the engines' and the binary's form): the settings of the Voice
@@ -637,12 +645,12 @@ export function defaultParams(def: ModuleDef): Record<string, number> {
   return out;
 }
 
-/** the default matrix: p1 and p2 control the first two parameters, knob n the n-th. A parameter appended to its type later
+/** the default matrix: p1 and p2 control the first two parameters. A parameter appended to its type later
  * (`since`) never joins it, so a module whose patch has no matrix routes as it did (a Pulse's p2 stays unrouted, not `inf`) */
 export function defaultMap(def: ModuleDef): Record<Source, string[]> {
   const ps = def.params.filter((q) => q.since === undefined);
   const at = (i: number): string[] => (ps[i] ? [ps[i].name] : []);
-  return { p1: at(0), p2: at(1), k1: at(0), k2: at(1), k3: at(2), k4: at(3) };
+  return { p1: at(0), p2: at(1) };
 }
 
 /** Validate additional side-input destinations. A dedicated input (ParamDef.input) is always linked to its parameter: the

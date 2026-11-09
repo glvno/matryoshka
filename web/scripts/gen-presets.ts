@@ -15,7 +15,7 @@ import { ACCENT_VEL, fixNotes, patternNotes, type StepNote } from '../src/track'
 import { FACTORY } from '../src/assemblies';
 import { allModules, fixAssemblies, insertAssembly, makeAssembly, removeMember, type AssemblyInst } from '../src/assembly';
 import { deviceBudget } from '../src/patchbin';
-import { applyLevels, around, headroom, level, loudness, mod, peakOf, players, plugIn, plugOut, row, setCardLevels, wire, type Inst, type LevelPlan } from './factory-build';
+import { applyLevels, around, headroom, level, loudness, mod, peakOf, players, plugIn, plugOut, row, setCardLevels, voiceTops, wire, type Inst, type LevelPlan } from './factory-build';
 import { cardSlug } from '../src/preset-cards';
 import { peakOfPlay, plays } from '../src/headroom';
 
@@ -26,10 +26,12 @@ const KIT_NOTES = [53, 55, 57, 59, 60, 62, 64, 65];
 
 const presets: (() => Patch)[] = [];
 
-// Oracle V: the factory assembly at its five voices (they fit since the engine speed-ups, branch cpu-opt)
+// Oracle V: the factory assembly at four voices: with five, the test rig's overload guard dropped one (2026-11-08; the
+// owner in chat, "recs")
 presets.push(() => {
   const x = around('Oracle V', 'Oracle V');
-  x.set('voices', 5);
+  x.set('voices', 4);
+  plugIn(x.p, x.main.id, 'at', x.a, 'at'); // aftertouch (channel pressure) to the filter and the LFO amount (#658)
   level(x.p, { chord: true });
   return x.p;
 });
@@ -107,10 +109,14 @@ function silverDemo(p: Patch): Patch {
   return validatePatch(p, DEFS);
 }
 
+// Hera 4 (Hera 6's slot): the Juno-106's panel at four voices (scripts/xl/hera-6.ts junoDef, gen-assemblies.ts HERA_VOICES).
+// The bender lever and the hold pedal (MIDI CC 64) as Hera 6 XL plays them
 presets.push(() => {
-  const x = around('Hera 6', 'Hera 6');
-  x.set('voices', 6); // all six (they fit since the engine speed-ups, branch cpu-opt)
+  const x = around('Hera 4', 'Hera 4');
+  plugIn(x.p, x.main.id, 'bend', x.a, 'bend');
+  plugIn(x.p, x.main.id, 'sustain', x.a, 'hold'); // MIDI CC 64: 0..63 up, 64..127 down
   level(x.p, { chord: true });
+  x.p.notes = 'Juno-106 panel, four voices (the original has six; Hera 6 XL plays six in the browser). MIDI CC 64 is the hold pedal; Output sets volume. Poly 2 steals when all voices are busy. HPF 2/3 and chorus II settings are approximated by ear. Patch shift, tape, memory and the MIDI function switch are hardware or storage, not reproduced.';
   return x.p;
 });
 
@@ -137,8 +143,13 @@ presets.push(() => {
   return x.p;
 });
 
+// Canvas: the Music Easel with its patch field (D-348: Canvas XL's design, now the FM-1's). Main's aftertouch is the
+// pressure source, FX the pulser's once.
 presets.push(() => {
   const x = around('Canvas', 'Canvas');
+  plugIn(x.p, x.main.id, 'at', x.a, 'pressure');
+  plugIn(x.p, x.main.id, 'fx', x.a, 'once');
+  x.p.notes = 'Music Easel patch field with four independent random outputs. Select PATCH to connect any control source to an input. FX fires the pulser. The Arpeggiator has a rate input in Hz. Missing: external audio/preamp/envelope detector and linear decay. Pulse/wave rows use numbers; sine is extra. Plates, trims, program cards and local/remote switching need hardware or storage. Low range starts at 0.22 Hz, not 0.17. Output split remains unverified.';
   level(x.p);
   return x.p;
 });
@@ -619,12 +630,14 @@ after.push(() => {
   return p;
 });
 
-// Cassia 1 (after the Casio CZ-1): two voices on the FM-1 (owner, 2026-10-26), Main's aftertouch into its `at`, and the
+// Cassia 1 (after the Casio CZ-1): two voices on the FM-1 (with three or four, the test rig's overload guard dropped voices,
+// 2026-11-08; the owner in chat, "recs"), Main's aftertouch into its `at`, bend into `bend`, and the
 // players (D-336) as every melodic patch
 after.push(() => {
   const x = around('Cassia 1', 'Cassia 1');
   plugIn(x.p, x.main.id, 'at', x.a, 'at');
-  x.set('voices', 2);
+  plugIn(x.p, x.main.id, 'bend', x.a, 'bend'); // the bend range (#658)
+  x.set('voices', 2); // its CPU cap (the test rig, 2026-11-08)
   level(x.p, { chord: true });
   return players(validatePatch(structuredClone(x.p), DEFS));
 });
@@ -694,8 +707,8 @@ const capped = (p: Patch): Patch => {
   }
   return p;
 };
-const made = presets.map((f) => capped(leveled(reconciled(silverDemo(players(validatePatch(structuredClone(f()), DEFS)))))));
-const later = after.map((f) => capped(leveled(reconciled(validatePatch(structuredClone(f()), DEFS)))));
+const made = presets.map((f) => voiceTops(capped(leveled(reconciled(silverDemo(players(validatePatch(structuredClone(f()), DEFS))))))));
+const later = after.map((f) => voiceTops(capped(leveled(reconciled(validatePatch(structuredClone(f()), DEFS))))));
 // the drum kit engine has no factory patch: it is measured in a stand-in (its Drum map's rows on a pattern, as the 808
 // Kit's) at an Output of 0.5, so its level rows carry its whole level
 {

@@ -43,6 +43,8 @@ export class AudioHost {
   onView: (key: string, chans: ViewData[], sr: number, voices: (ViewData[] | null)[] | null) => void = () => {};
   /** where the Steps modules are (Engine.stepsView), when that changes */
   onSteps: (view: { id: number; pos: number; mute: boolean }[], pats?: PatternView) => void = () => {};
+  /** the transport started or stopped in the engine (play once's own start and stop, #632; also an echo of transport()) */
+  onRun: (on: boolean) => void = () => {};
   /** notes a Steps track recorded live (#135, Engine.takeRecorded) */
   onRecorded: (took: { id: number; loop: number; note: StepNote }[]) => void = () => {};
   /** an envelope display's copies (Engine.envStates) */
@@ -78,6 +80,9 @@ export class AudioHost {
           this.onWatch(ev.data.watch, ev.data.v);
         } else if (Array.isArray(ev.data?.steps)) {
           this.onSteps(ev.data.steps, ev.data.pats);
+        } else if (typeof ev.data?.run === 'boolean') {
+          this.transportOn = ev.data.run;
+          this.onRun(ev.data.run);
         } else if (Array.isArray(ev.data?.recorded)) {
           this.onRecorded(ev.data.recorded);
         } else if (typeof ev.data?.env === 'string') {
@@ -146,6 +151,18 @@ export class AudioHost {
   transport(on: boolean): void {
     this.transportOn = on;
     this.send({ t: 'transport', on });
+  }
+
+  /** play once (#632, Engine.playOnce): the transport stops, a bar is counted in with a click, then the pattern or song
+   * plays once and the transport stops by itself (onRun follows it) */
+  playOnce(): void {
+    this.transportOn = false;
+    this.send({ t: 'once' });
+  }
+
+  /** REC's count-in click (D-803, Engine.countIn): `bars` bars of clicks from the transport's start or the next bar line; 0 none */
+  countIn(bars: number): void {
+    this.send({ t: 'cin', bars });
   }
 
   /** the global tempo (D-907, tempo.ts): every patch plays at it, null: each its own; kept for when the worklet starts */

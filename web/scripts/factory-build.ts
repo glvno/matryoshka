@@ -3,13 +3,14 @@
 // patch around a factory assembly (around), its rows by label (row, Inst.set), cables into and out of an assembly
 // (plugIn, plugOut), the Output's level from a render (level) and the players (an Arpeggiator and a PATTERN track: players).
 import { DEFS } from '../src/modules';
-import { addModule, connect, disconnect, emptyPatch, validatePatch, type Cable, type ModuleInst, type Patch } from '../src/patch';
+import { addModule, connect, disconnect, emptyPatch, MAX_PARTS, validatePatch, type Cable, type ModuleInst, type Patch } from '../src/patch';
 import { setKind, setSwitches, setTarget } from '../src/buttons';
 import { FACTORY } from '../src/assemblies';
 import { allModules, assembliesOf, insertAssembly, parentOf, type AssemblyDef, type AssemblyInst } from '../src/assembly';
 import { LEVEL_ROWS, cases, gainFor, levelRows, measure, peakBound, scaledRow, type Case, type LevelRow, type Loudness } from '../src/levels';
 import { cardRows, formatValue } from '../src/preset-cards';
 import { deviceBudget } from '../src/patchbin';
+import { CPU_VOICE_TOP } from '../src/cpu';
 import { allocatorOf, setPoly } from '../src/poly';
 import { Engine } from '../src/engine';
 import { HEADROOM, peakOfPlay, plays } from '../src/headroom';
@@ -178,6 +179,31 @@ export function withPlayers(src: Patch, what: Player): Patch {
   setSwitches(p, 'arp', true);
   return p;
 }
+/**
+ * The FM-1's VOICES rows capped at what its CPU holds (owner's ruling of 2026-11-07, D-870): on each card row of a Voice
+ * allocator's voices, `top` is the most voices with which the patch still fits the FM-1's budget (deviceBudget) with the
+ * CPU estimate at most CPU_VOICE_TOP (90 %: the margin under the overload guard, owner in chat 2026-11-08, "recs"), when
+ * that is fewer than MAX_PARTS; else no top. The patch keeps its own voices. The editor and the browser engine do not read
+ * the top.
+ */
+export function voiceTops(p: Patch): Patch {
+  for (const a of assembliesOf(p))
+    for (const r of a.params) {
+      const m = p.modules.find((x) => x.id === r.module);
+      if (m?.type !== 'alloc' || r.param !== 'voices') continue;
+      delete r.top;
+      let top = MAX_PARTS;
+      for (; top > 1; top--) {
+        const q = structuredClone(p);
+        q.modules.find((x) => x.id === m.id)!.params.voices = top;
+        const b = deviceBudget(q);
+        if (b.fits && b.cpu.use <= CPU_VOICE_TOP) break;
+      }
+      if (top < MAX_PARTS) r.top = Math.max(top, Math.round(m.params.voices ?? 1));
+    }
+  return p;
+}
+
 /** the most a patch takes: the players that fit the FM-1 (its limits; the CPU estimate's warning is no bar); with
  * `browser` (an XL: it never goes to the FM-1) both, whatever the budget, the drum kits too */
 export function players(p: Patch, browser = false): Patch {
@@ -185,7 +211,10 @@ export function players(p: Patch, browser = false): Patch {
   if (DRUMS.has(p.name)) return p;
   // Io 4's four voices shed on the rig with PATTERN, despite the model saying it fits. Keep its existing player set.
   // Measurement: docs/measurements/2026-10-26-io-4-player-budget.json. An XL still gets both above.
-  const attempts: Player[] = p.name === 'Io 4' ? ['arp'] : ['both', 'arp'];
+  // Algo Four's eight voices ran at 86 % on the rig without PATTERN (2026-11-08): it keeps the Arpeggiator alone, so its
+  // estimate stays under the VOICES rows' 90 % (CPU_VOICE_TOP, D-870). Canvas with PATTERN was muted by the overload guard
+  // on the rig with eight keys held and the transport running (PR #775's build, 2026-11-08): the Arpeggiator alone
+  const attempts: Player[] = ['Io 4', 'Algo Four', 'Canvas'].includes(p.name) ? ['arp'] : ['both', 'arp'];
   for (const what of attempts) {
     const q = validatePatch(withPlayers(p, what), DEFS);
     if (deviceBudget(q).fits) return q;

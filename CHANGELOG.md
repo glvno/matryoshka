@@ -2,9 +2,49 @@
 
 ## Unreleased
 
-- **FM-1: whole numbers look whole.** Rows that move in whole steps (coarse tuning, voices, Env 8 `end`, Selector positions, lengths, bits) show `2`, not `2.00`, as the editor does. Their knob clicks stay on whole steps: Delay time moves 7 ms a click (was 6.99, so 1 ms went to 7.99), the tempo and the LFO's bpm 3 (were 2.8 and 2.6), and Voicing's key range and the Drum map's notes one note (were 1.27).
-- **Granular follows the keyboard:** a new `pitch` input takes the same pitch signal as an oscillator, so the Main module's pitch output plays the grains in tune (C4 = the recording's own pitch). Before, a pin from the pitch output on the `pitch` slider moved 4 semitones per key, and in the browser most notes landed a semitone flat.
-- **Two FM-1s on one computer:** while the editor is connected to one FM-1, notes and Start / Stop from another FM-1 no longer play or move anything in the editor.
+## 1.11.0 — 2026-11-08
+
+A patch that uses something new in 1.11 is saved in format 51, which needs this firmware; an FM-1 with older firmware is told to update. Every other patch keeps the older format.
+
+### FM-1
+
+- **Hera 4 takes Hera 6's slot:** the Juno-106's whole panel (saw and pulse at once, the four-position HPF, chorus I / II, LFO delay, portamento, the hold pedal and more) with four voices, where Hera 6 had a cut-down panel with six. Hera 6 XL still plays all six in the browser. Your Hera 6 presets move to Hera 4.
+- **Wanderer is the whole ARP Odyssey:** Wanderer XL takes Wanderer's slot (each VCO's saw and pulse at once, continuous coarse tuning, the ring modulator and S/H on the pulses), with a PATTERN track. Wanderer XL leaves the list.
+- **Canvas is the whole Music Easel:** Canvas XL takes Canvas's slot (the patch field with a named source for each input, random voltages, pressure, the mod oscillator's dial, every switch named). It keeps the Arpeggiator but has no PATTERN track. Canvas XL leaves the list.
+- **Oracle V plays like a Prophet-5:** both oscillators' waves at once, Poly Mod into frequency, pulse width and filter, Wheel-Mod's five destinations, velocity and aftertouch, unison, the Release switch. Four voices (was five); test rig 79 %.
+- **Algo Four plays like a DX100:** eight voices (was three), all eight algorithms, the DX100's 64 frequency ratios and seven detune positions. Test rig 86 %.
+- **Cassia 1 has more of the CZ-1:** a pitch envelope for line 2, velocity, key follow and level per line, glide, bend range, the mod wheel on vibrato, OCTAVE, and the stereo chorus. Two voices; test rig 64 %.
+- **8 Lire has all 46 of the Lyra-8's controls:** FM source and structure switches, TOTAL FB, LINK, two delay lines, FAST, PITCH and VIBRATO. It is mono now, as the Lyra-8 is. Test rig 80 %.
+- **Expander S gets the SEM's modulation:** FM and PWM from envelope or LFO, sync, band pass, a drone switch, portamento, octave, tune and assign mode. Still four voices.
+- **Wanderer, Vernon 100 and Briefcase 3 get a PATTERN track** in front of the Arpeggiator.
+- **Io 4 and Vernon 100 name every switch position** as on their panels (OFF / ON, COLOR, MODE LP / BP / HP / BR and the rest).
+- **One key assign switch:** Io 4's POLY I / POLY II / UNISON I / UNISON II as one row, as on the Jupiter-4; Hera 4 gets the Juno-106's assign mode and Algo Four the DX100's POLY / MONO.
+- **Filters closer to their originals:** the Multimode filter's drive (an MS-20-style scream in Sallen 20; gentler in Expander S, Vernon 100 and Hera 4), the Ladder's diode mode (Silver Box, Briefcase 3) and stage saturation (Monolith D, Oracle V, Io 4, Wanderer). Off in your own patches.
+- **Analog oscillators:** a new ANALOG row gives an oscillator an analog VCO's small flaws, each voice its own. On in the factory instruments with analog VCOs.
+- **Canvas's lopass gates close slowly:** open in 10 ms and close in 350 ms (both were 40 ms), as the Easel's vactrols do, so plucks ring out. The Slew limiter has a new FALL row for it.
+- **Full parity:** in 1.11, Io 4, Vernon 100, Wanderer, Monolith D, Sallen 20 and Silver Box reach full parity on the FM-1, apart from hardware (#375).
+- **808 Kit and Verona Drum 1 keep their 1.10 layout:** the 808's mid and high toms and Verona's DRUM 2 and PAN are in their XLs only; with them the FM-1 could not keep up.
+- **Longer Delays:** a RATE row (44k, 22k, 11k) trades brightness for time: the longest Delay 1.9 s → 3.8 s at 44k, 7.6 s at 22k, 15.2 s at 11k. Changing RATE while it plays bends the echoes like a tape changing speed.
+- **Tape on the Delay:** a TAPE switch darkens and saturates each repeat, a WOW row wobbles its pitch, and HEADS picks up to three playback heads.
+- **The Delay costs less:** a plain Delay 1.3 % → 1.1 % of the audio time, with ping-pong 1.8 % → 1.4 %, the same sound bit for bit (the editor's CPU model).
+- **Five effect assemblies:** envelope filter, ducking delay, gated reverb, overdrive and octave fuzz, each with four presets.
+- **Granular follows the keyboard:** a new `pitch` input plays the grains in tune (C4 = the recording's own pitch).
+- **Saving no longer cuts the sound:** SAVE 8.7 ms of silence → none, a preset store 11.0 ms → none, the settings record 5.8 ms → none (the test rig's USB audio). FM-1s with the UC25HQ80 flash chip still write as before.
+- **Up to 128 modules a patch** (was 64). A patch takes what it needs from one 362 KB memory instead of separate fixed pools, so a patch without a Granular has room for more voices.
+- **3.5MM OUT ON / OFF:** GLO › SYSTEM › 3.5MM OUT turns the speaker and the headphone jack off while a computer records over USB audio; MASTER still sets the level. Hold HOME + OCT- + OCT+ for 2 s to switch it from any page.
+- **EDITOR ALLOW / IGNORE:** GLO › SYSTEM › EDITOR set to IGNORE keeps the editor from connecting to that FM-1 or installing firmware on it.
+- **Play once with a count-in:** SEQ held + PLAY counts in one bar, plays the pattern or song once, then stops. REC's count-in clicks too (speaker and jacks only, not USB audio).
+- **The tempo in the menu:** GLO › PANEL › TEMPO shows it, as `GLOBAL 120`, or `GLOBAL EXT` on MIDI clock.
+- **Whole numbers look whole:** rows that move in whole steps show `2`, not `2.00`, and their knob clicks stay on whole steps.
+- **Fix:** a settings save no longer cuts a hole in a Delay's echo.
+
+### Editor
+
+- **Arming reaches the FM-1:** with Live on, arming a device in the editor arms it on the FM-1 too (needs this firmware).
+- **The CPU estimate reads the test rig:** refitted to the rig's survey of every factory patch, it now reads within 3 points below and 5 above it, where it read up to 20 points low (Spokes 6 66 % → 84 %, rig 84 %). A VOICES row stops at the most voices that stay at 90 % or under.
+- **Smaller FM-1 patches (format 51):** default values, unchanged input depths and repeated names are left out, and a morph B side stores only what differs from A. The 50 factory, XL and community patches: 527 bytes less each in the first step, then 252,544 → 151,415 bytes in all. Lire + Elvira fits the FM-1 again.
+- **The FM-1 knobs check boxes are gone:** they did nothing since the FM-1 became a patch player.
+- **Two FM-1s on one computer:** notes and Start / Stop from an FM-1 the editor is not connected to no longer play anything in the editor.
 
 ## 1.10.1 — 2026-11-08
 

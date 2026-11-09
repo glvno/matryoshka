@@ -12,9 +12,10 @@
 
 /* what a row's effect is checked on */
 typedef struct {
-    uint32_t page, sr_on, sr_k, run, rec, saved, stepped, dev, devpage, menu_tab, man_top, updates, cfg_sum;
+    uint32_t page, sr_on, sr_k, run, once, rec, saved, stepped, dev, devpage, menu_tab, man_top, updates, cfg_sum, out_off;
     int32_t octave, tempo, list_btn, list_step;
-    uint32_t params, arms, mutes, trk, row, roll_lo, seq_pg, pattern, lpg, locks;
+    uint32_t params, mutes, trk, row, roll_lo, seq_pg, pattern, lpg, locks;
+    eng_mset_t arms;                                    /* (all 128 modules: a big patch's tracks sit above 31, #721) */
     int32_t notes_n;
     uint32_t notes_sum, acc_n, len_sum, vel_sum, chance_sum, pitch_sum;
     uint32_t song_sel, song_cur, song_len, song_sum, song, clear_at, del_at, msg_sum;
@@ -41,6 +42,7 @@ static void ct_take(ct_snap_t *s)
     s->sr_on = sr_on;
     s->sr_k = sr_k;
     s->run = (uint32_t)eng_transport_running();
+    s->once = (uint32_t)eng_once_state();
     s->rec = seq_rec;
     s->saved = (uint32_t)saved;
     s->stepped = (uint32_t)presets_stepped;
@@ -53,10 +55,11 @@ static void ct_take(ct_snap_t *s)
     s->man_top = man_top;
     s->updates = (uint32_t)(host_updates + host_defaults);
     s->cfg_sum = ct_fnv(ct_fnv(ct_fnv(ct_fnv(ct_fnv(ct_fnv(0, cfg.ch), cfg.midi_out), cfg.count_in), cfg.quick), (uint32_t)gt_patch), cfg.clock_in);
+    s->out_off = out_off;
     s->octave = octave;
     s->tempo = (panel >= 0 ? eng_get_param((uint32_t)panel, FM1_P_TEMPO) : 0) + (int32_t)eng_tempo_global_get();
     s->params = ct_params();
-    s->arms = (uint32_t)eng_arm_mask_get();
+    s->arms = eng_arm_mask_get();
     for (i = 0; (int)i < eng_steps_count(); i++)
         s->mutes |= (uint32_t)(eng_steps_muted((uint32_t)eng_steps_module(i)) != 0) << i;
     s->trk = seq_trk;
@@ -102,6 +105,7 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     int same_notes = a->notes_n == b->notes_n;
     switch (e) {
     case CE_TRANSPORT: return a->run != b->run;
+    case CE_PLAY_ONCE: return a->run != b->run || a->once != b->once;   /* (stopped: the count-in; running: a stop) */
     case CE_RECORD: return a->rec != b->rec;
     case CE_SAVE: return a->saved != b->saved;
     case CE_BACK: return moved || (b->sr_on && !a->sr_on);
@@ -112,7 +116,7 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_TEMPO: return a->tempo != b->tempo || (sb_on && a->msg_sum != b->msg_sum);   /* (sandbox: the editor's) */
     case CE_PATCH: return a->stepped != b->stepped;
     case CE_STORE: return a->msg_sum != b->msg_sum;     /* (dp_store says what it stored) */
-    case CE_ARM: return a->arms != b->arms;
+    case CE_ARM: return !mset_eq(a->arms, b->arms);
     case CE_MUTE: return a->mutes != b->mutes;
     case CE_FOCUS: return a->dev != b->dev;
     case CE_DEVICE_PAGE: return a->devpage != b->devpage;
@@ -160,6 +164,8 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_SET: return a->cfg_sum != b->cfg_sum;
     case CE_SAVE_CLOSE: return a->saved != b->saved && a->page != PAGE_MENU;
     case CE_RUN_ROW: return a->updates != b->updates;
+    case CE_ANALOG_OUT: return a->out_off != b->out_off && a->page == b->page && a->sr_on == b->sr_on && a->octave == b->octave && !help_on;   /* (HOME
+                                                         * and the OCTs did nothing of their own, no sheet) */
     case CE_EDITOR: {                                   /* sandbox mode: out as MIDI to the editor, nothing here moved (D-232) */
         int i, cc = 0;
         for (i = b->mlen; i < a->mlen; i++)
@@ -178,7 +184,7 @@ static void ct_focus_assembly(void)
     uint32_t d;
     pages_ensure();
     for (d = 0; d < pg_ndev; d++)
-        if (pg_dev[d].structure && dp_list(d) > 0u && env_listeners(d)) {
+        if (pg_dev[d].structure && dp_list(d) > 0u && m64(env_listeners(d))) {
             pages_focus(d, 0);
             return;
         }
@@ -195,11 +201,12 @@ static void ct_reset(void)
         tap(BTN_HOME);
     if (sr_on)
         sr_stop();
-    if (eng_transport_running())
+    if (eng_transport_running() || eng_once_state())
         tap(BTN_PLAY);
     if (seq_rec)
         seq_rec_off();
     sandbox_set(0);
+    out_off = 0;
     panel_held = 0;
     panel_keys(0);
     for (i = 0; i < 2u; i++)
@@ -501,7 +508,15 @@ static void ct_drive(const ctl_row_t *r, uint32_t alt, int dir)
     }
     if (r->at_end)                                      /* (on END: the SONG page's cursor past the last entry) */
         song_cur = (uint8_t)eng_song_len(song_sel);
-    if (r->hold == CH_STEP) {
+    if (r->all) {                                       /* (buttons together: down in order, held, up in reverse) */
+        uint32_t k;
+        for (k = 0; k < r->all; k++)
+            ct_down(r->alt[k].id);
+        if (r->how == CW_HOLD2S)
+            later(2100);
+        for (k = r->all; k-- > 0;)
+            ct_up(r->alt[k].id);
+    } else if (r->hold == CH_STEP) {
         uint32_t n = ct_white(CT_STEP);
         ct_key(n, 1);
         if (r->effect == CE_LOCK)
