@@ -222,6 +222,18 @@ def ld_regions():
     return regs
 
 
+def llvm_objcopy():
+    """the host's llvm-objcopy (any version: it copies an ELF of a machine it does not know, relocations and all)"""
+    import glob
+    for c in ("llvm-objcopy", *(f"llvm-objcopy-{v}" for v in range(25, 13, -1))):
+        if shutil.which(c):
+            return shutil.which(c)
+    found = sorted(glob.glob("/usr/lib/llvm-*/bin/llvm-objcopy")) + sorted(glob.glob("/opt/homebrew/opt/llvm/bin/llvm-objcopy"))
+    if found:
+        return found[-1]
+    raise SystemExit("build: FAST_TEXT needs llvm-objcopy on the host (apt install llvm, brew install llvm)")
+
+
 def build_app():
     flags = [*CFLAGS, "-Ifirmware/hal", "-Ifirmware/src"]
     for flag in ("FELUCCA_FLASH", "FELUCCA_OTA", "FELUCCA_OTA_DRYRUN", "FELUCCA_OTA_RAMONLY", "FELUCCA_CDC",
@@ -253,9 +265,10 @@ def build_app():
                        check=True)
         tc("cc", *[f for f in flags if not f.startswith(("-I", "-D", "-W"))], "-c",
            OUT / "matryoshka_size.ll", "-o", OUT / "matryoshka.o")
-    if FAST_TEXT:                                       # (spike) see FAST_TEXT
-        tc("common/bin/objcopy", *[a for f in FAST_TEXT for a in ("--rename-section", f".text.{f}=.fast_text.{f}")],
-           OUT / "matryoshka.o")
+    if FAST_TEXT:                                       # (spike) see FAST_TEXT; the toolchain's objcopy cannot rename
+        loc = llvm_objcopy()
+        subprocess.run([loc, *[a for f in FAST_TEXT for a in ("--rename-section", f".text.{f}=.fast_text.{f}")],
+                        OUT / "matryoshka.o"], check=True)
     elf = OUT / "matryoshka.elf"
     tc("pi32v2/bin/ld", "-T", FW / "app.ld", OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o", OUT / "fm1_cpu1.o",
        OUT / "matryoshka.o", str(toolchain() / "pi32v2" / "lib" / "libcompiler-rt.a"), "-o", elf)   # soft float, 64-bit helpers
