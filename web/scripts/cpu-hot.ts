@@ -5,7 +5,9 @@
 //   npm run cpu-hot -- --save F.json          also write those numbers to F.json
 //   npm run cpu-hot -- --compare F.json       and put them beside an earlier --save (before / after an engine change)
 //   npm run cpu-hot -- --hot NAME [--lines N] one check, cycles by function and by source line (inlined code counts where it
-//                                             was written), from a build with debug info (build/cpu/hot.elf, the same code)
+//                                             was written), from a build with debug info (build/cpu/hot.elf, the same code);
+//                                             --aot: with the compiled factory assemblies (#808, firmware/src/aot.c)
+//   CPU_ELF=../build/cpu/aot.elf npm run cpu-hot   the peaks with the compiled factory assemblies (build.sh's aot.elf)
 // Run from web/.
 import { execFileSync, execSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -39,7 +41,7 @@ if (hot) {
   if (!c) throw new Error(`no check ${hot}: ${checks.map((x) => x.name).join(', ')}`);
   const elf = `${ROOT}build/cpu/hot.elf`;
   execSync(
-    `clang --target=riscv32-unknown-elf -march=rv32im -mabi=ilp32 -Os -g -ffunction-sections -fno-builtin -ffreestanding -nostdlib -Wall -Wno-unused-function -fuse-ld=lld -Wl,-T,tools/cpu/link.ld -Ifirmware/src -DNO_PROF -o ${elf} tools/cpu/prof.c`,
+    `clang --target=riscv32-unknown-elf -march=rv32im -mabi=ilp32 -Os -g -ffunction-sections -fno-builtin -ffreestanding -nostdlib -Wall -Wno-unused-function -fuse-ld=lld -Wl,-T,tools/cpu/link.ld -Ifirmware/src -DNO_PROF -DENG_AOT=${process.argv.includes('--aot') ? 1 : 0} -o ${elf} tools/cpu/prof.c`,
     { cwd: ROOT, stdio: 'inherit' },
   );
   const hist = new Float64Array(4 << 20);

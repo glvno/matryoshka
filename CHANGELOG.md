@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 1.12.0 — 2026-11-09
+
+### Editor and FM-1
+
+- **Live edits stay in step with the FM-1:** a value change that changes the compiled module layout sends the whole patch before further edits. Arming, muting and focus changes wait for an upload to finish. The Harmonizer releases held keys correctly after its split moves, and extended chords follow every inversion step correctly.
+- **Harmonizer module:** one key plays a whole chord on that root, after the Telepathic Instruments Orchid. Cable it between Main's keys and a Voicing. Its chord buttons are maj, min, dim, sus2, sus4, 7 and 9, and buttons held together combine (min + 7 + 9 is a minor ninth). On the FM-1 they are its seven lowest keys, at any octave: black keys 1 to 3 pick maj, min or dim, white keys 1 to 4 add sus2, sus4, 7 or 9, and every other key plays a root; the screen names the chord (CHORD: MIN7). From a MIDI keyboard they are the seven keys under the split (F3 to B3 as made). With no button held the card's own chord plays. LOCK keeps the chord so the buttons need not be held; VOICING moves it through its inversions. A patch with a Harmonizer is saved in format 52, which needs this firmware.
+
+### FM-1
+
+- **The supply as M-VAVE's own firmware sets it:** at power-on the FM-1 raises its core supply from 1.26 V to 1.38 V and another internal supply from 1.40 V to 1.60 V, in the stock firmware's order, as Melodee does, before the second core starts (#735). If that setup fails, the FM-1 starts on one core. The CPU clock is not changed. `tools/m1_link.py cpuclock` shows the levels.
+- **The sound engine compiled for speed:** the code the audio interrupt runs (the render, every module, the mix, USB audio's copy) is built at -O2, the rest of the firmware for size as before. In the standalone #798 comparison, the image grew 531,088 → 546,236 B of its 581,564 B slot (CI measurement). On the rig, the combined batch against 1.11.1 took Verona Drum 1 from 85 % to 81 % and the 808 Kit from 83 % to 80 %, while Oracle V rose from 74 % to 78 % and Init from 21 % to 25 %. These are steady peaks across stopped and running playback at the existing voice counts ([measurements](docs/measurements/2026-11-09-rig-integration.md)). The editor's CPU estimate is recalibrated on all 30 factory patches.
+- **The FM-1 plays what the editor plays when a patch holds modules no one hears:** the editor still leaves them out of what it sends, but no longer the ones before a Random module, a Steps track, a Shift register or an oscillator with analog, which take their randomness from their place in the patch. A P-lock on a module no one hears stays in the patch after you edit the track's locks on the FM-1, and an edit made while a patch goes to the FM-1 waits for it. Canvas sends four fewer modules: 3,759 → 3,730 bytes (the editor's count, #801).
+- **Less memory touched per block, the same sound:** a patch's signal buffers are shared once nothing reads them any more. Oracle V renders through 63 buffers instead of 232 (116 KB → 32 KB), Algo Four 224 → 103, Cassia 1 227 → 92, all 30 factory patches 2,435 → 916 (host count, #800). Every patch that loaded still loads, and nothing more does yet.
+- **Oracle V CPU experiment (off by default, #808):** with `ENG_AOT=1`, the FM-1 runs the Oracle V assembly from code made ahead of time instead of on its interpreter, bit for bit the same output. The CPU model predicts a lower peak, but the rig loses its second core when this experiment starts. It remains disabled; no hardware speed-up or added capacity is claimed.
+- **Room for code that runs from RAM:** the #725 CI comparison increased free space after the effect memory's second line area from 96 to 1,484 B. The USB setup log (`tools/m1_link.py usblog`) keeps the last 64 USB requests and bus events, not 128, and an unused part of the flash driver is left out of the app.
+- **A key pressed right after SEL arms a device plays.** A key in the same 3 ms as the arm was cut with the keys the old set held. The naive-owner simulator found it on `<7PH`, with DRUMS and PATTERN armed: key 1 was silent (#748).
+
 ## 1.11.1 — 2026-11-08
 
 The same firmware format as 1.11.0: update the FM-1 and every patch plays as before, only with more room.
@@ -835,21 +852,21 @@ Not released on its own: it ships in 1.3.3.
 
 ### On the literal physical FM-1 device
 
-- Big ol UI overhaul: 
-  - Paging through params is 6x faster. 
-  - Knobs respond 29x faster (lol). 
-  - You no longer need a jeweler's loupe to know your current patch, device, or assembly. 
+- Big ol UI overhaul:
+  - Paging through params is 6x faster.
+  - Knobs respond 29x faster (lol).
+  - You no longer need a jeweler's loupe to know your current patch, device, or assembly.
   - The UX on the FM1 sucked shit before -- sorry about that! I got swept up in patch editor feature creep and briefly forgot what my job was
  - CPU cycles down 8-13% on the FM-1; audio output is bit-identical to output before optimizations
 
 ### In the browser
 
 - **SANDBOX MODE BABY!!!** If a patch is too big for the FM-1, the FM-1 becomes its
-  controller as if it did fit on the device. 
+  controller as if it did fit on the device.
   - I find that starting with something excessive and ambitious, then accommodating constraints later, results in cooler stuff than building reasonably for the jump, and the patch editor now suits that kind of workflow.
 - **XL patches:** Every factory patch modeled after a synth whose architecture was too beefy to fit on the FM-1 now gets a browser-only version that is faithful to the OG architecture.
 - **Community patches!!!** have their own Library section!!! Send me your most depraved patches, sickos!!!
-- **MIDI clock out:** the editor can now keep multiple connected FM-1s in sync. Clock stopgap while I figure out Bluetooth vs GPL friction. I now understand why baudgirl is not FOSS 
+- **MIDI clock out:** the editor can now keep multiple connected FM-1s in sync. Clock stopgap while I figure out Bluetooth vs GPL friction. I now understand why baudgirl is not FOSS
 - **OCT- / OCT+ on the FM-1 move the editor's octave too,** so the on-screen keyboard shows what you play.
 - The FM-1 budget no longer reads a patch with an arpeggiator as half full. Now it reads it as half empty
 

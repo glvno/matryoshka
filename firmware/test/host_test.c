@@ -97,8 +97,10 @@ int main(int argc, char **argv)
                 fscanf(ev, "%u %u %u", &note, &vel, &ch);
             else if (!strcmp(kind, "off"))
                 fscanf(ev, "%u %u", &note, &ch);
-            else if (!strcmp(kind, "bon") || !strcmp(kind, "boff"))
+            else if (!strcmp(kind, "bon") || !strcmp(kind, "boff") || !strcmp(kind, "koff") || !strcmp(kind, "cbon") || !strcmp(kind, "cboff"))
                 fscanf(ev, "%u", &note);
+            else if (!strcmp(kind, "kon"))
+                fscanf(ev, "%u %u", &note, &vel);
             else if (!strcmp(kind, "arm"))
                 fscanf(ev, "%d", &arm);
             else if (!strcmp(kind, "arms")) {
@@ -137,6 +139,26 @@ int main(int argc, char **argv)
         } else if (!strcmp(kind, "off")) {
             fscanf(ev, "%u %u", &note, &ch);
             eng_note_off(note, ch);
+        } else if (!strcmp(kind, "kon") || !strcmp(kind, "koff")) {   /* (#598) a note the Harmonizers take as a root */
+            if (!strcmp(kind, "kon"))
+                fscanf(ev, "%u %u", &note, &vel);
+            else
+                fscanf(ev, "%u", &note);
+#ifdef ENG_HARM /* engine_exact.sh also builds this harness with older engine headers */
+            eng_harm_zone(0);
+#endif
+            if (!strcmp(kind, "kon"))
+                eng_note_on(note, (int32_t)(vel * 65536u / 127u), 1u);
+            else
+                eng_note_off(note, 1u);
+#ifdef ENG_HARM
+            eng_harm_zone(1);
+#endif
+        } else if (!strcmp(kind, "cbon") || !strcmp(kind, "cboff")) {   /* (#598) a chord button */
+            fscanf(ev, "%u", &note);
+#ifdef ENG_HARM
+            eng_chord_button(note, !strcmp(kind, "cbon"));
+#endif
         } else if (!strcmp(kind, "bon") || !strcmp(kind, "boff")) {
             fscanf(ev, "%u", &note);
             eng_buttons(!strcmp(kind, "bon") ? eng_buttons_get() | 1u << note : eng_buttons_get() & ~(1u << note));

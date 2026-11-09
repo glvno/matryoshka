@@ -40,13 +40,19 @@ its disassembly (artifact `matryoshka-elf`) for tracing such faults to a functio
   `emu-midi/matryoshka-emu.bin` next to FIRMWARE, else the CI run's `matryoshka-emu-midi` artifact, else it checks no
   link and says so. The last line is the summary (`boot check: PASS ..` / `FAIL ..`); snapshots go to `build/emu/boot/`.
   It is the test rig's gate while the owner iterates ([D-123](ledger/releases.md#D-123)), not a merge or release gate.
-- **Running them side by side:** `emu:smoke` and `emu:boot` count emulated time, not the wall clock, so several may run
-  at once with no lock. Two smokes on the same build at once gave identical results and byte-identical snapshots, only
-  slower: 474 s against 401 s (2026-11-02). Two runs in one checkout write to the same `build/emu/smoke/` (or
-  `build/emu/boot/`), so run them from different checkouts. `emu:scenarios` may run side by side too, from different
-  checkouts (each writes `build/emu/scenarios/`, `build/emu/bridge/ci/` and the panel WebAssembly in its own), since it
-  waits on conditions and on the emulator's clock (#588, [D-136](ledger/releases.md#D-136), below): two runs side by side passed 10 rounds in a row on the M3 Max, 225 of 225 checks each, 277 to 471 s a round with the load average at 4 to 20 (2026-11-04). `device:scenarios` drives the one rig, so
-  it still runs alone.
+- **Queued gates:** `emu:smoke`, `emu:boot`, and `emu:scenarios` share one slot across checkouts on this Mac.
+  They print when they enter the queue and when their run starts. The operating system releases the slot after a
+  killed runner; no stale lock directory needs deleting. This implements the proposed limit in [D-143](ledger/releases.md#D-143).
+  Development branches run the full gates on their combined head ([D-120](ledger/releases.md#D-120)).
+  Scenario output includes a progress line every 30 seconds. `build/emu/scenarios/run.json` identifies the firmware
+  by its SHA-256 digest. `results.json` is updated after each check, and `progress.json` names the current scenario and
+  unanswered emulator commands. An unanswered command fails after two minutes; a whole scenario fails after ten.
+  A timeout saves a failure report and stops the run. It does not start another scenario beside the unfinished one.
+  Smoke tests have a thirty-minute deadline; boot checks have five minutes. They print elapsed time every thirty seconds
+  and stop their child process group on a timeout or interruption.
+  While a gate runs on macOS, it prevents idle sleep. The display can sleep. Closing the lid can still suspend the Mac
+  and interrupt MIDI uploads; leave the lid open or use a supported closed-display setup.
+  `device:scenarios` still runs alone because there is one test rig. Direct emulator binaries do not join the queue.
 - `cd web && npm run emu [-- FIRMWARE]`: the firmware in fm1-live's window (LCD, keys, buttons, knobs, sound, every
   MIDI input into the TRS jack; fm1-live prints its key map; built once into `tools/emu/live/`).
 - Without FIRMWARE both take `build/matryoshka.bin`, else download the latest firmware artifact of a successful
@@ -266,7 +272,7 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
     `tools/old_format.sh`.
   - `checkTeach` (steps 7.1 to 7.3, [D-247](ledger/device-ui.md#D-247), [D-917](ledger/device-ui.md#D-917)), with Live
     off: PRESET to <7PH says 2 SOUNDS: ENV THEN SEL. REC held shows the ARM: hint, and REC held + a black key arms a
-    second track (ARM DRUMS +1) and starts nothing. PLAY held shows TEMPO n: TURN PRESET, and turning PRESET then
+    second track (ARM DRUMS +1) and starts nothing. With DRUMS and PATTERN both armed, key 1 (F3) plays the bass (#748). PLAY held shows TEMPO n: TURN PRESET, and turning PRESET then
     starts nothing.
   - `checkDualCore` (steps 8.1, 8.2 and 8.4, [D-380](ledger/engine.md#D-380)): INFO's PROCESSOR row reads 2 CORES. Io 4,
     Hera 4 and Cassia 1 each play 8 held keys with nothing shed, no overload (DIAG pages 119 and 127) and no dropout in
@@ -336,8 +342,10 @@ stderr on `quit` (so `emu:scenarios` shows it). See "Memory map since #273" in [
 
 - **USB is not emulated**: the smoke test leaves out the editor's SysEx link and USB MIDI (`emu:scenarios` covers them, above), firmware installs (M-UPGRADE, the loader), recovery and
   the UBOOT SysEx are untested by it. The bank is therefore seeded in the flash image, not uploaded.
-- **P33** (watchdog, reset reason, reboot, UBOOT entry: `firmware/hal/fm1_sys.h`) is not modelled: the boot-loop
-  guard and MENU > UPDATE MODE cannot be checked.
+- **P33** (watchdog, reset reason, reboot, UBOOT entry: `firmware/hal/fm1_sys.h`) is not modelled, except the ten
+  registers of the supply setup at boot (`tools/emu/src/p33.rs`, #735): they start at the boot loader's levels, and the
+  second core starts only when the setup reads them back right. The boot-loop guard and MENU > UPDATE MODE cannot be
+  checked. fm1-live (`npm run emu`'s window) has no such model, so it shows 1 CORE.
 - **Timing**: one instruction per cycle at 240 MHz, no cache or flash wait states. The CPU figure in the top bar
   (303 Acid 11-12 %, the device measured 12 % at M1-0.2) is a rough guide only; the window at 120 MHz shows twice it.
   The test rig runs the same patches about twice as long as the emulator does, and a change in code or memory layout

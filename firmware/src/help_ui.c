@@ -60,12 +60,13 @@ static uint32_t help_state_sig(void)
     int mod = page == PAGE_SEQ ? seq_module() : -1;
     uint32_t s = help_state(), len = mod >= 0 ? (uint32_t)seq_len(mod) > 16u : 0u;
     return s | (uint32_t)(pg_cur_dev & 63u) << 4 | (uint32_t)(pg_list_btn >= 0) << 10 | (uint32_t)(menu_sys2 && menu_tab == MT_SYSTEM ? 7u : menu_tab) << 11
-         | (uint32_t)(seq_trk & 15u) << 14 | len << 18 | (uint32_t)(eng_steps_count() > 0) << 19 | (pages_gen() & 0xFFFu) << 20;
+         | (uint32_t)(seq_trk & 15u) << 14 | len << 18 | (uint32_t)(eng_steps_count() > 0) << 19 | (pages_gen() & 0x7FFu) << 20
+         | (uint32_t)(eng_keys_harm() >= 0) << 31;
 }
 
 /* the rows' conditions (controls.ts CONDITIONS): the device in focus has presets to step / can store one (an assembly) /
  * takes keys (SEL arms it); a Page button's list is on; the SEQ page's track is longer than 16 steps / a melodic track
- * (the roll); the patch has tracks; the menu's tab is GUIDE / a page of settings / SYSTEM */
+ * (the roll); the patch has tracks; the menu's tab is GUIDE / a page of settings / SYSTEM; the keys reach a Harmonizer */
 static int hc_dev_presets(void) { pages_ensure(); return pg_cur_dev < pg_ndev && dp_list(pg_cur_dev) > 0u; }
 static int hc_dev_store(void) { pages_ensure(); return pg_cur_dev < pg_ndev && pg_dev[pg_cur_dev].structure != 0u; }
 static int hc_dev_keys(void) { pages_ensure(); return pg_cur_dev < pg_ndev && mset_any(env_listeners(pg_cur_dev)); }
@@ -76,6 +77,7 @@ static int hc_tracks(void) { return eng_steps_count() > 0; }
 static int hc_menu_guide(void) { return menu_tab == MT_GUIDE; }
 static int hc_menu_page(void) { return menu_page() != 0; }
 static int hc_menu_system(void) { return menu_tab == MT_SYSTEM && !menu_sys2; }   /* (its first page: UPDATE MODE, FACTORY RESET) */
+static int hc_harm(void) { return eng_keys_harm() >= 0; }   /* (the keys reach a Harmonizer: its chord buttons, #598) */
 
 /* the rows of the patch buttons with a job in the loaded patch (FX, LFO, EDIT, ARP; SEL, ENV and GLO are fixed): the
  * button by its own name, then its job: a Toggle "name on/off", a Page button "name pages", a Gate with a cable from its

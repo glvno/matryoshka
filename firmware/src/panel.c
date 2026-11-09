@@ -651,6 +651,9 @@ static uint32_t drum_white_ms;                   /* (when it last said so: once 
 static uint8_t key_eng[27];                      /* the note it played in the engine: key_note, a Drum map row's (eng_keys_drummap), */
 #define KEY_SILENT 0xFFu                         /* or none (a white key on a Drum map) */
 static uint32_t key_sounding;                    /* bit n: key n started a note (not a key pressed on the SEQ page) */
+static uint32_t key_chord;                       /* bit n: key n (0..6) went down as a Harmonizer's chord button (#598) */
+static int8_t chord_due = -1;                    /* a chord button moved: panel_status names the chord of this Harmonizer */
+#define CHORD_KEYS 7u                            /* the seven lowest keys, F3..B3 at OCT 0: the Side layout's buttons */
 static uint8_t seq_held_used;                    /* SEQ is held and a black key muted a track: its release does not switch the page */
 static uint8_t rec_hinted;                       /* REC held alone a moment: the bar named the tracks' black keys (#582) */
 static uint32_t rec_down_ms;                     /* fm1_ms of REC's press */
@@ -708,6 +711,28 @@ static int panel_key(uint32_t n, int down, int quick)
             seq_thru_up(n);                         /* (a black key held on a drum track's page, let go elsewhere: #368) */
         return 1;
     }
+    if (down && n < CHORD_KEYS && !seq_kbd() && !sb_on && eng_keys_harm() >= 0) {   /* the keys reach a Harmonizer (#598):
+                                                     * its Side layout, the lowest keys its chord buttons whatever the octave
+                                                     * (black maj min dim, white sus2 sus4 7 9); MIDI out sends the button's
+                                                     * key under the split, so a Harmonizer the FM-1 plays into does the same */
+        int h = eng_keys_harm();
+        int32_t z = ((eng_get_param((uint32_t)h, HARM_P_SPLIT) + 32768) >> 16) - (int32_t)CHORD_KEYS + (int32_t)n;
+        key_eng[n] = (uint8_t)(z < 0 ? 0 : z > 127 ? 127 : z);
+        key_chord |= bit;
+        key_sounding |= bit;
+        eng_chord_button(n, 1);
+        midi_send(0x90u, key_eng[n], 100u);
+        chord_due = (int8_t)h;
+        return 1;
+    }
+    if (!down && (key_chord & bit)) {
+        key_chord &= ~bit;
+        key_sounding &= ~bit;
+        eng_chord_button(n, 0);
+        midi_send(0x80u, key_eng[n], 0u);
+        chord_due = (int8_t)eng_keys_harm();
+        return 1;
+    }
     if (down) {
         int32_t note = 53 + (int32_t)n + 12 * octave;
         /* into an armed track at the default velocity (FX held on its keyboard, a live take: the accent's), so a take
@@ -724,16 +749,21 @@ static int panel_key(uint32_t n, int down, int quick)
         key_sounding |= bit;
         if (key_eng[n] == KEY_SILENT && map >= 0)
             drum_white_due = 1;                     /* (a key handler: state only, the bar is the loop's, D-228) */
+        eng_harm_zone(0);                           /* (the panel's keys are roots for a Harmonizer, under its split too: the
+                                                     * chord buttons are the keys above) */
         if (key_eng[n] != KEY_SILENT)
             eng_note_on(key_eng[n], vel == 127u ? ENG_ONE : (int32_t)((vel << 16) / 127u), cfg.ch ? cfg.ch : 1u);   /* the panel plays on the device's channel */
+        eng_harm_zone(1);
         if (key_eng[n] != KEY_SILENT)
             midi_send(0x90u, key_eng[n], 100u);
         if (seq_kbd())
             seq_kbd_key(n, 1);
     } else {
         key_sounding &= ~bit;
+        eng_harm_zone(0);
         if (key_eng[n] != KEY_SILENT)
             eng_note_off(key_eng[n], cfg.ch ? cfg.ch : 1u);
+        eng_harm_zone(1);
         if (key_eng[n] != KEY_SILENT)
             midi_send(0x80u, key_eng[n], 0u);
         if (seq_kbd())
@@ -1180,6 +1210,15 @@ static void panel_status(void)
         }
         *q = 0;
         ui_msg(m, 2000);
+    }
+    if (chord_due >= 0) {                           /* a chord button moved (#598): the chord it plays now, or the root alone */
+        char m[32], name[24];
+        eng_harm_name((uint32_t)chord_due, name);
+        chord_due = -1;
+        if (!help_on) {
+            put(put(m, "CHORD: "), name[0] ? name : "SINGLE NOTES")[0] = 0;   /* (at most 26 characters, D-249) */
+            ui_msg(m, NUDGE_MS);
+        }
     }
     if (drum_white_due) {                           /* a white key silent on a Drum map (#582): the drums are on the black keys */
         drum_white_due = 0;

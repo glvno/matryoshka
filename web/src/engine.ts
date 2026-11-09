@@ -16,6 +16,8 @@ import { kindOf, switches, toggleTargets } from './buttons';
 import { fixNotes, PATTERNS_MAX, SONGS_MAX, type SongEntry, type StepNote } from './track';
 import { lockPlan, lockValue } from './locks';
 import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
+import { harmButton, harmClear, harmInit, harmKey, type HarmParams, type HarmState } from './harmonizer';
+import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 export const BLOCK = 128;
 
@@ -148,6 +150,15 @@ interface ArpRun {
   byp: boolean;
 }
 
+/** a Harmonizer module as it runs (#598): its note logic (harmonizer.ts) and the groups it plays (DeviceGroup.src). It
+ * hears Main's keys; bypassed it hands them straight on (`byp`: the bypass it last ran with; a change lets go of what it
+ * played: harmSwitched) */
+interface HarmRun {
+  node: Node;
+  st: HarmState;
+  byp: boolean;
+}
+
 /** idle parts (Engine.partQuiet): an output within this counts as silent (6 in Q16, engine.c IDLE_Q16); every IDLE_CHECK-th
  * block an idle part runs and is checked again, part v of group g in the blocks where (idleBlk + g MAX_PARTS + v) % IDLE_CHECK
  * is 0 (staggered, #434: parts that went idle together do not all run in one block) */
@@ -223,6 +234,10 @@ export class Engine {
   private btnTargets: (number[] | null)[] = [];
   private btnSwitch: boolean[] = [];
   private arps: ArpRun[] = [];
+  private harms: HarmRun[] = [];
+  private harmById = new Map<number, HarmRun>();
+  /** while anything is armed, the Harmonizers that hear Main's keys (a keys cable from Main into theirs); null: all */
+  private harmHears: Set<number> | null = null;
   /** the performance controls (pitch bend -1..1, mod wheel 0..1, channel aftertouch 0..1): one set, every part sees it */
   private ctl = { bend: 0, mod: 0, at: 0, breath: 0, sustain: 0, foot: 0 };
   /** the Main module, and the morph position of the current block (its morph parameter plus the block mean of its morph input, one block late) */
@@ -381,6 +396,13 @@ export class Engine {
     const mainKeysTo = new Set(source.cables.filter((c) => c.from.port === 'keys' && source.modules.find((m) => m.id === c.from.module)?.type === 'fm1').map((c) => c.to.module));
     this.arpHears = this.armedKeys.length ? new Set(this.arps.filter((a) => mainKeysTo.has(a.node.id)).map((a) => a.node.id)) : null;
     this.arpById = new Map(this.arps.map((a) => [a.node.id, a]));
+    const oldHarms = new Map(this.harms.map((h) => [h.node.id, h]));
+    this.harms = this.order.filter((n) => n.type === 'harm').map((node) => {
+      const old = oldHarms.get(node.id);
+      return old ? { ...old, node } : { node, st: harmInit(), byp: node.bypass };
+    });
+    this.harmHears = this.armedKeys.length ? new Set(this.harms.filter((h) => mainKeysTo.has(h.node.id)).map((h) => h.node.id)) : null;
+    this.harmById = new Map(this.harms.map((h) => [h.node.id, h]));
     this.tracks = this.order.filter((n) => n.type === 'steps');
     this.lockRuns = new Map(lockPlan(source, patch).map((t) => [
       next.get(patch.modules[t.track].id)!,
@@ -402,6 +424,56 @@ export class Engine {
     for (const node of this.tracks)
       (node.inst[0].state as StepsState).drum = this.maps.some((x) => x.src === node.id || (x.src >= 0 && this.arpById.get(x.src)?.feed === node.id));
     for (const a of this.arps) if (a.byp !== a.node.bypass) this.arpSwitched(a); // (an edit switched it while the patch reloaded)
+    for (const h of this.harms) if (h.byp !== h.node.bypass) this.harmSwitched(h);
+  }
+
+  /** the Harmonizers that hear Main's keys: all while nothing is armed, else the armed devices' */
+  private keyHarms = (): HarmRun[] => this.harms.filter((h) => !this.harmHears || this.harmHears.has(h.node.id));
+  /** a bypassed Harmonizer that hears Main's keys: its groups play the keys straight, as Main's own */
+  private harmPasses = (src: number): boolean => {
+    const h = this.harmById.get(src);
+    return !!h && h.node.bypass && this.keyHarms().includes(h);
+  };
+  private harmParams(h: HarmRun): HarmParams {
+    const p = h.node.params;
+    return { type: p.type ?? 0, sus: p.sus ?? 0, ext: p.ext ?? 0, voicing: p.voicing ?? 0, lock: p.lock ?? 0, split: p.split ?? 60 };
+  }
+  /** a Harmonizer's note into its groups (an arpeggiator's way: their key range judges it) */
+  private harmOn(h: HarmRun, note: number, vel: number): void {
+    for (const g of this.groups) if (g.src === h.node.id && takesKey(g.cfg, note)) this.groupOn(g, note, vel);
+  }
+  private harmOff(h: HarmRun, note: number): void {
+    for (const g of this.groups) if (g.src === h.node.id) this.groupOff(g, note);
+  }
+  /** a Harmonizer's groups let go of every note (its roots too; its buttons and latch stay) */
+  private harmDrop(h: HarmRun): void {
+    h.st.roots = [];
+    h.st.count.fill(0);
+    for (const g of this.groups) {
+      if (g.src !== h.node.id) continue;
+      g.held = [];
+      g.down.fill(0);
+      for (const x of g.parts) {
+        x.on = false;
+        x.gate = 0;
+        x.retrig = false;
+        x.keyTrig = false;
+      }
+    }
+  }
+  /** a Harmonizer was switched (bypassed, or back): what it played lets go */
+  private harmSwitched(h: HarmRun): void {
+    h.byp = h.node.bypass;
+    this.harmDrop(h);
+  }
+
+  /**
+   * A chord button of the Harmonizers that hear Main's keys pressed or let go (#598; b: harmonizer.ts HARM_BUTTONS): the
+   * FM-1's seven lowest keys while the keys reach one (engine.c eng_chord_button). The keys under a Harmonizer's split do
+   * the same through noteOn.
+   */
+  chordButton(b: number, down: boolean): void {
+    for (const h of this.keyHarms()) if (!h.node.bypass) harmButton(h.st, b, down, this.harmParams(h));
   }
 
   private arpById = new Map<number, ArpRun>();
@@ -715,6 +787,8 @@ export class Engine {
     if (n && n.type !== 'fm1' && n.type !== 'output') n.bypass = on;
     const a = this.arpById.get(id);
     if (a && a.byp !== a.node.bypass) this.arpSwitched(a);
+    const h = this.harmById.get(id);
+    if (h && h.byp !== h.node.bypass) this.harmSwitched(h);
     this.syncToggles();
   }
 
@@ -808,17 +882,20 @@ export class Engine {
   /**
    * A key on MIDI channel `ch` (1..16; the computer keys and the on-screen keyboard play on 1). The groups that take it
    * (takesKey: the allocator's channel and key range; one without a channel listens on `channel`), the shared keyboard
-   * and the Arpeggiators (on `channel`) play it.
+   * and the Arpeggiators (on `channel`) play it. The Harmonizers (on `channel`) take it as a chord button when it is one
+   * of the seven under their split, else as a root; `root`: always as a root (the FM-1's keys, engine.c eng_harm_zone).
    */
-  noteOn(note: number, velocity = 1, ch = 1): void {
-    for (const g of this.keyGroups()) if ((g.src < 0 || this.passesMain(this.arpById.get(g.src))) && takesKey(g.cfg, note, ch, this.channel)) this.groupOn(g, note, velocity);
+  noteOn(note: number, velocity = 1, ch = 1, root = false): void {
+    for (const g of this.keyGroups()) if ((g.src < 0 || this.passesMain(this.arpById.get(g.src)) || this.harmPasses(g.src)) && takesKey(g.cfg, note, ch, this.channel)) this.groupOn(g, note, velocity);
+    if (this.listens(ch)) for (const h of this.keyHarms()) if (!h.node.bypass) harmKey(h.st, note, true, this.harmParams(h), !root, (n) => this.harmOn(h, n, velocity), (n) => this.harmOff(h, n));
     if (this.listens(ch)) for (const a of this.keyArps()) arpKeyOn(a.st, note, velocity, this.arpParams(a));
     if (this.listens(ch)) this.mapKeys(-1, note | 0x80, Math.max(1, Math.min(127, Math.round(velocity * 127))));
     if (this.listens(ch)) for (const t of this.fed) t.thru.push(note | 0x80, Math.max(1, Math.min(127, Math.round(velocity * 127))));
   }
 
-  noteOff(note: number, ch = 1): void {
-    for (const g of this.keyGroups()) if ((g.src < 0 || this.passesMain(this.arpById.get(g.src))) && takesKey(g.cfg, note, ch, this.channel)) this.groupOff(g, note);
+  noteOff(note: number, ch = 1, root = false): void {
+    for (const g of this.keyGroups()) if ((g.src < 0 || this.passesMain(this.arpById.get(g.src)) || this.harmPasses(g.src)) && takesKey(g.cfg, note, ch, this.channel)) this.groupOff(g, note);
+    if (this.listens(ch)) for (const h of this.keyHarms()) if (!h.node.bypass) harmKey(h.st, note, false, this.harmParams(h), !root, () => {}, (n) => this.harmOff(h, n));
     if (this.listens(ch)) for (const a of this.keyArps()) arpKeyOff(a.st, note, this.arpParams(a));
     if (this.listens(ch)) this.mapKeys(-1, note, 0);
     if (this.listens(ch)) for (const t of this.fed) t.thru.push(note, 0);
@@ -914,8 +991,12 @@ export class Engine {
       a.st.cur = -1;
       a.st.running = false;
     }
+    for (const h of this.harms) {
+      this.harmDrop(h);
+      harmClear(h.st);
+    }
     for (const g of [this.kb, ...this.groups]) {
-      if (g.src >= 0 && !this.passesMain(this.arpById.get(g.src))) continue;
+      if (g.src >= 0 && !this.passesMain(this.arpById.get(g.src)) && !this.harmPasses(g.src)) continue;
       g.held = [];
       g.down.fill(0);
       for (const x of g.parts) {
@@ -1116,6 +1197,7 @@ export class Engine {
   allNotesOff(): void {
     for (const node of this.tracks) this.thruOff(node.inst[0].state as StepsState);
     for (const x of this.maps) dropRows(x.st);
+    for (const h of this.harms) harmClear(h.st);
     for (const a of this.arps) {
       arpClear(a.st);
       a.st.cur = -1;

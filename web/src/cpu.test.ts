@@ -96,21 +96,17 @@ describe('CPU estimate', () => {
     expect(reverb).toBeLessThan(0.3);
   });
 });
-// The factory patches on the test rig (docs/measurements/2026-11-08-rig-speed-pass.md: the longest audio interrupt at
+// The factory patches on the test rig (docs/measurements/2026-11-09-rig-integration.md: the longest audio interrupt at
 // rest and with 1 / 4 / 8 keys held, the transport stopped and running), which the scale and the engines' factors were fitted
 // to (scripts/cpu-rig-fit.ts, frozen in cpu-costs.ts SURVEY and RIG). The estimate is each patch's worst case, every voice
 // playing; the rig's figure is its steady peak (the median of a phase's samples after the first, the most over the phases).
 // A patch whose overload guard dropped parts counts at the voices it kept; one the guard muted is left out. A new survey
 // after large engine or firmware changes replaces the files and the fit.
-describe('CPU estimate against the test rig (docs/measurements/cpu-survey-2026-11-08-rig-speed-pass*.json)', () => {
+describe('CPU estimate against the test rig (docs/measurements/cpu-survey-2026-11-09-rig-integration*.json)', () => {
   type Reading = { name: string } & Record<string, number[] | number>;
   const read = (f: string) => JSON.parse(readFileSync(new URL(`../../docs/measurements/${f}`, import.meta.url), 'utf8')) as Reading[];
-  // Cassia 1 went back to four voices after the factory set's survey: its own survey of the four-voice patch
-  const own = (f: Reading[]) => f.filter((r) => r.name === 'Cassia 1');
-  const rest = (f: Reading[]) => f.filter((r) => r.name !== 'Cassia 1');
   const files = [
-    rest(read('cpu-survey-2026-11-08-rig-speed-pass.json')), rest(read('cpu-survey-2026-11-08-rig-speed-pass-run.json')),
-    own(read('cpu-survey-2026-11-08-rig-speed-pass-cassia-1.json')), own(read('cpu-survey-2026-11-08-rig-speed-pass-cassia-1-run.json')),
+    read('cpu-survey-2026-11-09-rig-integration.json'), read('cpu-survey-2026-11-09-rig-integration-run.json'),
   ];
   const median = (v: number[]): number => [...v].sort((a, b) => a - b)[(v.length - 1) >> 1];
   const voicesOf = (p: Patch): number => Math.max(1, ...deviceView(p, true).groups.map((g) => g.cfg.parts));

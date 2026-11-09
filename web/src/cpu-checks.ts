@@ -10,6 +10,7 @@ import { FM1_PRESETS } from './presets';
 import { deviceView } from './poly';
 import { withParts } from './test-poly';
 import { acid } from './test-patches';
+import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 export function cpuChecks(note: number): { name: string; patch: Patch; notes: number[] }[] {
   const chord = [note - 12, note - 5, note, note + 4];

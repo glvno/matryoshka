@@ -3,6 +3,7 @@
 
 import { fixedDoes } from './controls';
 import { ARP_MODES, ARP_RATES } from './arpeggiator';
+import { HARM_EXT, HARM_SUS, HARM_TYPES, HARM_VOICING } from './harmonizer';
 import { DRUM_ROWS, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
 import { isDrone, STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type SongEntry, type StepLock, type StepNote } from './track';
 import WT from './wavetables.json';
@@ -4278,7 +4279,37 @@ const matrix: ModuleImpl<null> = {
   },
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range, matrix];
+/**
+ * Harmonizer (#598): keys in, keys out (between the Main module and a Voicing, as the Arpeggiator sits). One key plays a
+ * whole chord on that root (harmonizer.ts, after the Telepathic Instruments Orchid; the Side layout after CoralFlower's):
+ * the seven keys under `split` are chord buttons (maj min dim on the black ones, sus2 sus4 7 9 on the white ones; held
+ * together they combine), every other key a root. With no button in effect the card's chord plays (type, sus, ext; all
+ * none: the root alone). `lock` latches the buttons pressed together; `voicing` moves the chord through its inversions.
+ * It runs once (SHARED_TYPES); the engine runs its notes, not process(): the keys output shows nothing.
+ */
+const harm: ModuleImpl<null> = {
+  def: {
+    type: 'harm',
+    label: 'Harmonizer',
+    since: 52,
+    inputs: [keys('keys')],
+    outputs: [keys('keys')],
+    params: [
+      param('type', 0, HARM_TYPES.length - 1, 0, { step: 1, choices: HARM_TYPES }),
+      param('sus', 0, HARM_SUS.length - 1, 0, { step: 1, choices: HARM_SUS }),
+      param('ext', 0, HARM_EXT.length - 1, 0, { step: 1, choices: HARM_EXT }),
+      param('voicing', -HARM_VOICING, HARM_VOICING, 0, { step: 1 }),
+      param('lock', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
+      param('split', 0, 127, 60, { step: 1, choices: NOTE_NAMES }),
+    ],
+  },
+  init: () => null,
+  process(c) {
+    c.out.keys.fill(0, 0, c.n);
+  },
+};
+
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range, matrix, harm];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an
@@ -4286,7 +4317,7 @@ const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, de
  * effective value is its base + (block mean of p1 x att1 + block mean of p2 x att2, for the inputs that control it) x
  * (max - min), clamped.
  */
-export const PIN_EXEMPT = new Set(['fm1', 'output', 'alloc', 'scope', 'arp', 'drummap']);
+export const PIN_EXEMPT = new Set(['fm1', 'output', 'alloc', 'scope', 'arp', 'drummap', 'harm']);
 export const PIN_NAMES = ['p1', 'p2'] as const;
 for (const m of ALL)
   if (!PIN_EXEMPT.has(m.def.type) && m.def.params.length) {

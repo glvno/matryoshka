@@ -9,6 +9,7 @@ import { DEFS, LFO_RANGE_K, MATRIX_N, matrixPin, STACKS, TRACK_POLY } from './mo
 import { allModules, assembliesOf, parentOf } from './assembly';
 import { flawOf, hasMorph, type ModuleInst, type Patch } from './patch';
 import { deviceView } from './poly';
+import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 /** what changes a module's cost: a choice / switch / small integer (its measured values, the nearest one counts), a number
  * being above its minimum (the oscillator's FM index turns FM mode on), a number across its range (measured points,

@@ -22,6 +22,7 @@ import { panelLabel, type Patch } from './patch';
 import { deviceSection } from './patchbin';
 import { deviceView } from './poly';
 import type { PanelState } from './protocol';
+import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 /** what the strip needs of the panel's state (GUIDE_NOW, or the Emu copy's same bytes); the device page in focus too,
  * for its knob names */

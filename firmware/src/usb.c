@@ -248,7 +248,7 @@ static volatile uint32_t fm1_ms;                   /* also declared by core.h; p
 #ifndef USB_LOG_MEM
 #define USB_LOG_MEM
 #endif
-#define USB_LOG_N 128u                       /* a power of two; 2 entries a DIAG page */
+#define USB_LOG_N 64u                        /* a power of two; 2 entries a DIAG page (64, not 128: room for RAM code, #725) */
 enum { UL_SETUP = 1, UL_RESET, UL_SUSPEND, UL_RESUME, UL_ADDR, UL_SETUP_END, UL_STALL_SENT, UL_STATUS, UL_START, UL_DEAD,
        UL_FROZEN, UL_FRAME_RUN, UL_DETACH, UL_SWITCH };
 /* a SETUP's outcome (low 3 bits of a), then what happened to the transfer after (flags) */
