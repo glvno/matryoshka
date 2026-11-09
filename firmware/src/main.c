@@ -281,7 +281,9 @@ static uint32_t batt_us;                        /* the last battery read's time,
  * page 119 the overload guard (audio.c, #458): halves rendered, halves over 85 %, late halves (the hardware played them
  * before their render ended), then since the last read of this page the longest run of halves over 85 %, the longest
  * gap between two audio ISRs (us) and the shortest ISR (us), then parts shed since the last patch load and the guard's
- * mean ISR time (us) */
+ * mean ISR time (us);
+ * page 131 the CPU clock and the rails, read only (#735, hal/fm1_clock.h): PLL2_CON1, CLK_CON2, the rail registers,
+ * TIMER4 ticks for 16384 and 49152 dependent adds */
 static void settings_store(void);
 static uint32_t m1_diag(uint32_t page, uint8_t *out)
 {
@@ -484,6 +486,13 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
         v[5] = st_stat.steps;
         v[6] = st_stat.unserved;
         v[7] = st_stat.sus_fail;
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
+    if (page == 131u) {                         /* #735: the clock and the rails, read only (hal/fm1_clock.h fm1_clock_probe) */
+        uint32_t v[8];
+        fm1_clock_probe(v);
         for (i = 0; i < sizeof v; i++)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
         return sizeof v;

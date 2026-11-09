@@ -31,6 +31,8 @@
                                            address taking effect; kept while the FM-1 stays powered, so a failed host's log
                                            can be read on another. arm: keep the next 64 entries (a one-shot capture), wrap:
                                            the newest again)
+  tools/m1_link.py cpuclock               (#735, DIAG page 131: the CPU clock from the PLL's multiplier, the rails' levels and
+                                           dependent adds a microsecond timed on the 24 MHz timer; reads only, writes nothing)
   tools/m1_link.py diag [DIS]             (what the last reset left: its cause, the crash record, where a stalled main loop
                                            was; DIS = the build's matryoshka.dis (CI artifact matryoshka-elf) names the functions)
 Every command takes --rig (the test rig: the FM-1 at its registered USB location, checked by its mark) or --location HEX
@@ -332,6 +334,19 @@ def main():
             if w[3]:
                 print(f"last failed self-test: answer {x[2]:#010x}, wrong bits {x[0]:#010x}"
                       f"{' (never written: the job did not run)' if x[0] == 0xFFFFFFFF else ''}, seed {x[1]:#010x}")
+    elif a[0] == "cpuclock":
+        p = link.ask(frame(0x2B, [131]), (0x4B, 131))
+        if len(p) < 21:
+            sys.exit("no clock page: firmware before #735")
+        w = [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range(6)]
+        mult = (w[0] & 0xFFF) + 2
+        r9, r6, r5 = w[2] & 0xF, (w[2] >> 8) & 7, (w[2] >> 16) & 7
+        print(f"PLL2_CON1 {w[0]:#010x}: multiplier {mult}, VCO {mult * 2} MHz, SYS {mult * 4 // 3} MHz if CLK_CON2 picks 2/3"
+              f" (CLK_CON2 {w[1]:#010x})")
+        print(f"rails: SYSVDD {r9} = {0.93 + 0.03 * r9:.2f} V, VDC14 {r6} = {1.25 + 0.05 * r6:.2f} V, VDDIO {r5} = {2.8 + 0.1 * r5:.1f} V")
+        d = w[4] - w[3]
+        print(f"adds: 16384 in {w[3]} ticks, 49152 in {w[4]} ticks (24 MHz); the difference, 32768 adds in {d} ticks ="
+              f" {32768 * 24 / d:.0f} dependent adds a microsecond" if d > 0 else "adds: no time measured")
     elif a[0] == "uitime":
         if len(a) > 1 and a[1] == "reset":
             link.ask(frame(0x2B, [120]), (0x4B, 120))
