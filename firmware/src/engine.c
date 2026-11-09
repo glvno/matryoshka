@@ -19,9 +19,6 @@
 #ifndef ENG_LOWRAM
 #define ENG_LOWRAM
 #endif
-#ifndef ENG_FAST
-#define ENG_FAST                    /* (device: hot engine code that runs from SRAM, copied there at boot; spike, app.ld .fast_text) */
-#endif
 
 /* The patch: modules, cables, summed inputs; below them the memory: one arena a load divides as the patch needs it
  * (#649, eng_arena: the module copies, the parameter values, the signal buffers and the lines). A patch that does not
@@ -162,7 +159,7 @@ HOT uint32_t exp2_scale_in(uint32_t base, int32_t x)
     return n <= -32 ? 0u : v >> -n;
 }
 
-ENG_FAST static uint32_t exp2_scale(uint32_t base, int32_t x) { return exp2_scale_in(base, x); }
+static uint32_t exp2_scale(uint32_t base, int32_t x) { return exp2_scale_in(base, x); }
 
 /* An oscillator's phase increment along a block (#461): exact at every INC_SPAN-th sample, a straight line in between, so
  * a moving pitch (vibrato) costs one exp2_scale per INC_SPAN samples instead of one per sample. A span's line runs from
@@ -209,7 +206,7 @@ static inline uint32_t inc_span(inc_ramp_t *r, const esig_t *pitch, int32_t off,
         for (uint32_t e_ = INC_END(i), dt_ = inc_span(&(r), pitch, (off), INC_TO(e_)); i < e_; i++, dt_ += (uint32_t)(r).d)
 
 /* sin(2 pi phase), phase u32 turns -> Q16 */
-ENG_FAST static int32_t sin_turn(uint32_t ph)
+static int32_t sin_turn(uint32_t ph)
 {
     uint32_t i = ph >> 22, fr = (ph >> 6) & 0xFFFFu;
     int32_t s0 = SIN_T[i], s1 = SIN_T[i + 1u];
@@ -2651,7 +2648,7 @@ static int32_t morph_unit(const def_t *d, uint32_t j, int32_t v)
     return (int32_t)(((int64_t)(v - lo) << 16) / (hi - lo));
 }
 
-ENG_FAST static int32_t morph_value(const def_t *d, uint32_t j, int32_t u)
+static int32_t morph_value(const def_t *d, uint32_t j, int32_t u)
 {
     int32_t lo = d->pmin[j], hi = d->pmax[j];
     u = clampi(u, 0, ENG_ONE);
@@ -4593,7 +4590,7 @@ void eng_all_notes_off(void)
 #define EF(it, name) ((it)->eff[name])
 
 /* a constant block into an output; nothing for an unconnected one (they all share dummy_out, which nobody reads) */
-ENG_FAST static void fill(esig_t *o, int32_t v, uint32_t n)
+static void fill(esig_t *o, int32_t v, uint32_t n)
 {
     uint32_t i = 0;
     if (IS_DUMMY(o))
@@ -4850,7 +4847,7 @@ static __attribute__((noinline)) void osc_ana(const node_t *nd, inst_t *it, uint
 
 /* m_osc with the analog shape (#673): the same setup (copies, blend, stack; the FM path's interpolation and decimator),
  * then osc_ana, or the FM path with ana_wave. Apart from m_osc so that analog 0 runs m_osc's loops as they were. */
-ENG_FAST static void m_osc(const node_t *nd, inst_t *it, uint32_t n);
+static void m_osc(const node_t *nd, inst_t *it, uint32_t n);
 static __attribute__((noinline)) void m_osc_ana(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *pitch = it->in[OSC_I_PITCH], *pm, *sync = it->in[OSC_I_SYNC];
@@ -4936,7 +4933,7 @@ static __attribute__((noinline)) void m_osc_ana(const node_t *nd, inst_t *it, ui
     it->s.osc.xb = xb;
 }
 
-ENG_FAST static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
+static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *pitch = it->in[OSC_I_PITCH], *pm, *sync = it->in[OSC_I_SYNC];
     esig_t *out = it->out[OSC_O_OUT];
@@ -5451,7 +5448,7 @@ static void m_shape(const node_t *nd, inst_t *it, uint32_t n)
 }
 
 /* 1 - exp(-4.6 / samples) in Q30, samples in Q8 (at least 1) */
-ENG_FAST static int32_t env_rate_q8(uint64_t tsr)
+static int32_t env_rate_q8(uint64_t tsr)
 {
     uint64_t y;
     if (tsr < 256u)
@@ -5632,7 +5629,7 @@ typedef struct {
 } svf_coef_t;
 
 /* the coefficients of one stage for the tan() warped cutoff g */
-ENG_FAST static void svf_stage(svf_coef_t *c, int32_t g, int32_t k24)
+static void svf_stage(svf_coef_t *c, int32_t g, int32_t k24)
 {
     int32_t den = (1 << 24) + mulq(g, g + k24, 24);
     c->g = g;
@@ -5642,7 +5639,7 @@ ENG_FAST static void svf_stage(svf_coef_t *c, int32_t g, int32_t k24)
 }
 
 /* the warped cutoff g = tan(pi fc / sr) for a cutoff given as a phase increment (cutoff / sr in u32 turns) */
-ENG_FAST static int32_t svf_g(uint32_t rinc)
+static int32_t svf_g(uint32_t rinc)
 {
     uint32_t i, fr;
     int32_t t0, t1;
@@ -8812,7 +8809,7 @@ static void m_crush(const node_t *nd, inst_t *it, uint32_t n)
  * added (times the range) to the parameters the matrix assigns that input to; clamped when something was added. */
 /* Instances of one module run consecutively. A shared input buffer cannot change between them; a summed input or
  * per-part output has its own buffer. Reuse only the previous rendered instance's means, including after idle skips. */
-ENG_FAST static int32_t signal_mean(const esig_t *src, uint32_t n)
+static int32_t signal_mean(const esig_t *src, uint32_t n)
 {
     int64_t sum = 0;
     uint32_t i;
@@ -8900,7 +8897,7 @@ static void apply_cv(const node_t *nd, inst_t *it, uint32_t n, const inst_t *pre
 
 /* a part's flaws on its copy's effective parameters (engine.ts applyFlaws): bright x 2^(st / 12) on the filter / ladder
  * cutoff, env x (100 + %) / 100 on the ADSR / envelope times, level x % / 100 on the VCA gain; clamped to the range */
-ENG_FAST static void flaw_scale(const def_t *d, inst_t *it, uint32_t j, int64_t k_q16)
+static void flaw_scale(const def_t *d, inst_t *it, uint32_t j, int64_t k_q16)
 {
     if (k_q16 != ENG_ONE)
         it->eff[j] = clampi((int32_t)(((int64_t)it->eff[j] * k_q16) >> 16), d->pmin[j], d->pmax[j]);

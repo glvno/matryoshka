@@ -1631,7 +1631,7 @@ void fm1_cstart(void)
     for (s = _c1_load, d = _c1_start; d < _c1_end; s++, d++)
         *d = *s;                                /* the second core's waiting loop (fm1_cpu1.h, #271) */
     for (s = _ft_load, d = _ft_start; d < _ft_end; s++, d++)
-        *d = *s;                                /* hot engine code (engine.c ENG_FAST, app.ld .fast_text): before any render */
+        *d = *s;                                /* hot engine code (build.py FAST_TEXT, app.ld .fast_text): before any render */
     fm1_mailbox_clear();
     diag_prev.p3 = p3;                          /* (diag_prev is in .bss: after the clear above) */
     diag_prev.src = src;

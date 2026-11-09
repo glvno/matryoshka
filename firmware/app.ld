@@ -40,7 +40,7 @@ SECTIONS
     .bss (NOLOAD) : { _bss_start = .; *(.bss*) *(.sbss*) *(COMMON) . = ALIGN(4); _bss_end = .; } > RAM
     .pool (NOLOAD) : { _pool_start = .; *(.pool*) . = ALIGN(4); _pool_end = .; } > POOL
     .noinit (NOLOAD) : { *(.noinit*) } > NOINIT
-    /* (spike) hot engine code (engine.c ENG_FAST) in the rest of NOINIT, copied from its load address at every boot
+    /* (spike) hot engine code (tools/build.py FAST_TEXT) in the rest of NOINIT, copied from its load address at every boot
      * (main.c fm1_cstart), so what the boot ROM leaves there does not matter. Within a call's reach (+-4 MiB) of the
      * code in XIP; the RAM below 0x01C80000 - 4 MiB is not. */
     .fast_text : { . = ALIGN(4); _ft_start = .; KEEP(*(.fast_text*)) . = ALIGN(4); _ft_end = .; } > NOINIT AT > XIP

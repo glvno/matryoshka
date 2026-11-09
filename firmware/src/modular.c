@@ -56,7 +56,6 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 #include "font_bc.c"
 #define ENG_POOL __attribute__((section(".pool")))
 #define ENG_LOWRAM __attribute__((section(".lowram")))   /* app.ld: the SRAM below the RAM region (#273) */
-#define ENG_FAST __attribute__((section(".fast_text")))  /* app.ld: hot engine code in the SRAM above the stacks, copied at boot (spike) */
 #define ENG_LANE_HOOKS 1           /* #271: engine.c hands lane 1 of a split segment to the second core (fm1_cpu1.h) */
 static uint8_t lanes_off;                  /* DIAG pages 110 / 111 (tools/m1_link.py cores split off / on): core 0 renders every part (to measure) */
 static int eng_lane_run(void (*fn)(uint32_t), uint32_t arg)

@@ -43,6 +43,12 @@ LOADER_LOAD = 0x01C0A800
 LOADER_NAME = b"usb_hid_ota.bin"    # the file name the SPL looks for
 DOCKER_IMAGE = os.environ.get("JIELI_DOCKER_IMAGE", "debian:bookworm-slim")
 CFLAGS = ["-Os", "-ffunction-sections", "-fno-builtin", "-Wall", "-Wno-unused-function"]
+# (spike) hot engine functions that run from SRAM: their compiled sections (-ffunction-sections: .text.NAME) are renamed
+# .fast_text.NAME in matryoshka.o before the link, so the code is the compiler's own, only placed elsewhere (app.ld .fast_text,
+# in NOINIT, copied there at boot by main.c). Only functions the compiler keeps out of line everywhere: a section attribute in
+# the source would instead stop this compiler inlining across the two sections and change the code.
+FAST_TEXT = ("m_osc", "exp2_scale", "sin_turn", "fill", "svf_g", "svf_stage", "env_rate_q8", "signal_mean", "flaw_scale",
+             "morph_value")
 LINE = re.compile(r"^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2} )+)\s*\t(.*)$")
 
 # SDK files of AC79NN_SDK_V1.2.1_2023-12-13 (the tested version)
@@ -247,6 +253,9 @@ def build_app():
                        check=True)
         tc("cc", *[f for f in flags if not f.startswith(("-I", "-D", "-W"))], "-c",
            OUT / "matryoshka_size.ll", "-o", OUT / "matryoshka.o")
+    if FAST_TEXT:                                       # (spike) see FAST_TEXT
+        tc("common/bin/objcopy", *[a for f in FAST_TEXT for a in ("--rename-section", f".text.{f}=.fast_text.{f}")],
+           OUT / "matryoshka.o")
     elf = OUT / "matryoshka.elf"
     tc("pi32v2/bin/ld", "-T", FW / "app.ld", OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o", OUT / "fm1_cpu1.o",
        OUT / "matryoshka.o", str(toolchain() / "pi32v2" / "lib" / "libcompiler-rt.a"), "-o", elf)   # soft float, 64-bit helpers
@@ -268,7 +277,7 @@ def build_app():
     img = bytearray((OUT / "text.bin").read_bytes())
     # .ram_text, .c1_text (the second core's waiting loop, #271) and .data follow .text at their load addresses; the boot
     # copies them by words (main.c fm1_cstart)
-    # (spike) and .fast_text, the hot engine code in NOINIT (engine.c ENG_FAST), after .data
+    # (spike) and .fast_text, the hot engine code in NOINIT (FAST_TEXT), after .data
     for sect, lname in (("ramtext.bin", "_rt_load"), ("c1text.bin", "_c1_load"), ("data.bin", "_data_load"),
                         ("fasttext.bin", "_ft_load")):
         load = symv(lname)
@@ -348,6 +357,10 @@ def check(img, syms, dis, rts):
     notes.append(f".fast_text {ft} B at {sym('_ft_start'):#x} (NOINIT {ni_org + ni_len - sym('_ft_end')} B free after it)")
     if ft and not ni_org <= sym("_ft_start") <= sym("_ft_end") <= ni_org + ni_len:
         errors.append(".fast_text is not inside NOINIT")
+    placed = {mm.group(2): mm.group(1) for mm in re.finditer(r"^[0-9a-f]+ .*\sF\s+(\S+)\s+[0-9a-f]+\s+(\S+)$", syms, re.M)}
+    off = [f"{f} ({placed.get(f, 'not in the build')})" for f in FAST_TEXT if placed.get(f) != ".fast_text"]
+    if off:                                       # renamed, so out of line: else it was inlined, or is gone
+        errors.append(f"FAST_TEXT functions not in .fast_text: {', '.join(off)}")
     if not sym("_pool_end") <= sym("_c1_ustack") < sym("_c1_sstack_top") <= sym("_guard0"):
         errors.append("app.ld: core 1's stacks are not between the pool and the main stack's guard band")
     if region["RAM"][0] + ram_len != region["POOL"][0]:
