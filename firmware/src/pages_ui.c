@@ -2181,8 +2181,8 @@ static eng_mset_t env_listeners(uint32_t d)
 {
     eng_mset_t mask = mset_none();
     uint32_t k;
-    if (pg_dev[d].unreached || (pg_dev[d].module >= 0 && eng_type((uint32_t)pg_dev[d].module) == T_ARP))
-        return mask;
+    if (pg_dev[d].unreached || (pg_dev[d].module >= 0 && (eng_type((uint32_t)pg_dev[d].module) == T_ARP || eng_type((uint32_t)pg_dev[d].module) == T_HARM)))
+        return mask;                             /* (a Harmonizer alone neither, #598: arm.ts KEY_SOURCES) */
     if (pg_dev[d].mem) {
         for (k = 0; k < pg_dev[d].nmem; k++)
             mask = mset_or(mask, eng_arms(pg_mem(d, k)));

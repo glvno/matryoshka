@@ -426,6 +426,25 @@ static int marks_ok(int mod)
 #include "controls_test.h"                          /* #553: every row of the controls table driven, its effect checked */
 #include "report_test.h"                            /* #549: KEYS_NOW, GUIDE_NOW, panel_align */
 
+/* the notes the groups a Harmonizer plays sound now, low to high (#598) */
+static const char *harm_notes(int h)
+{
+    static char out[64];
+    uint8_t on[128] = {0};
+    uint32_t g, v, k;
+    char *q = out;
+    for (g = 1; g <= E.ngrp; g++)
+        if (E.grp[g].src == (uint32_t)h + 1u)
+            for (v = 0; v < E.grp[g].parts; v++)
+                if (E.pv[E.grp[g].pv0 + v].on)
+                    on[E.pv[E.grp[g].pv0 + v].note & 127u] = 1;
+    for (k = 0; k < 128u; k++)
+        if (on[k])
+            q += sprintf(q, q == out ? "%u" : " %u", (unsigned)k);
+    *q = 0;
+    return out;
+}
+
 int main(void)
 {
     static uint16_t before[240 * 240];
@@ -4065,6 +4084,48 @@ int main(void)
         pv_gen++;
         page = 0;
         trail_n = 0;
+        screen_idle();
+    }
+    {   /* the Harmonizer's Side layout (#598): with the keys on a Harmonizer the seven lowest keys are its chord buttons
+         * (black 1..3 maj min dim, white 1..4 sus2 sus4 7 9) whatever the octave, sent out as their keys under the split;
+         * the other keys are roots, under the split too after an octave shift; the bar names the chord */
+        int h, m0;
+        int8_t oct = octave;
+        sb_on = 0;
+        page = 0;
+        check("Harmonizer fixture loads", load_fixture("build/panel-fixtures/harm-side.m1p") == 0);
+        loop();
+        h = eng_keys_harm();
+        check("the keys reach its Harmonizer", h >= 0 && eng_type((uint32_t)h) == T_HARM && eng_keys_drummap() < 0);
+        octave = 0;
+        mlen = 0;                                           /* (the log holds 256 messages: room for these) */
+        m0 = mlen;
+        msg_text[0] = 0;
+        panel_keys(1u << 1);                                /* F#3: black key 1 = maj */
+        loop();
+        check("black key 1 is maj: no note, its key under the split sent (F#3), the bar says CHORD: MAJ",
+              sent(m0, 0x90u, 54u, 100u) && !strcmp(harm_notes(h), "") && !strcmp(msg_text, "CHORD: MAJ"));
+        panel_keys(1u << 1 | 1u << 7);                      /* + C4 */
+        check("C4 with it: C major", !strcmp(harm_notes(h), "60 64 67") && sent(m0, 0x90u, 60u, 100u));
+        panel_keys(1u << 1 | 1u << 7 | 1u << 4);            /* + A3: white key 3 = 7 */
+        loop();
+        check("white key 3 (7) while C sounds: the bar says CHORD: 7, the chord sounding stays", !strcmp(msg_text, "CHORD: 7")
+              && !strcmp(harm_notes(h), "60 64 67"));
+        panel_keys(1u << 1 | 1u << 4 | 1u << 9);            /* C4 up, D4 down: D7 */
+        check("D4 now: D7", !strcmp(harm_notes(h), "62 66 69 72"));
+        panel_keys(0);
+        check("all up: silent, the buttons' keys let go out", !strcmp(harm_notes(h), "") && sent(m0, 0x80u, 54u, 0u) && sent(m0, 0x80u, 57u, 0u));
+        octave = -1;
+        panel_keys(1u << 3);                                /* G#3: black key 2 = min, at OCT -1 too */
+        panel_keys(1u << 3 | 1u << 12);                     /* F4 at OCT -1: F3, under the split, a root */
+        check("OCT -1: black key 2 is still min, F4 plays F3 minor (a root under the split)", !strcmp(harm_notes(h), "53 56 60"));
+        panel_keys(0);
+        octave = oct;
+        eng_set_bypass((uint32_t)h, 1);
+        check("bypassed: the keys reach no Harmonizer (plain notes)", eng_keys_harm() < 0);
+        (void)load("808 KIT");
+        pv_gen++;
+        page = 0;
         screen_idle();
     }
     {   /* the owner's design (2026-10-24): on every page of every factory patch, reached by SELECT and ALGO (drawn in

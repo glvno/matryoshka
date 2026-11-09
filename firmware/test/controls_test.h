@@ -166,6 +166,12 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_RUN_ROW: return a->updates != b->updates;
     case CE_ANALOG_OUT: return a->out_off != b->out_off && a->page == b->page && a->sr_on == b->sr_on && a->octave == b->octave && !help_on;   /* (HOME
                                                          * and the OCTs did nothing of their own, no sheet) */
+    case CE_CHORD_BUTTON: {                             /* (#598) a chord button: its key under the split out, no note played */
+        int i, btn = 0;
+        for (i = b->mlen; i < a->mlen; i++)
+            btn |= mlog[i][0] == 0x90u && mlog[i][1] >= 53u && mlog[i][1] <= 59u;
+        return btn && eng_keys_harm() >= 0 && !moved;
+    }
     case CE_EDITOR: {                                   /* sandbox mode: out as MIDI to the editor, nothing here moved (D-232) */
         int i, cc = 0;
         for (i = b->mlen; i < a->mlen; i++)
@@ -352,6 +358,18 @@ static int ct_enter(uint32_t s, uint32_t v)
             pages_page(1);
             later(500);
             return 1;
+        }
+        if (v == 3) {                                   /* the keys on a Harmonizer (#598): its chord buttons */
+            ct_reset();
+            if (load_fixture("build/panel-fixtures/harm-side.m1p"))
+                return 0;
+            pv_gen++;
+            page_show(0);
+            screen_patch();
+            pages_ensure();
+            pages_focus(pages_home(), 0);
+            later(2000);
+            return eng_keys_harm() >= 0;
         }
         return 0;
     case HS_ENV:

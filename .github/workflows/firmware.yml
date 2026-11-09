@@ -21,6 +21,7 @@ on:
       - web/scripts/released-factory.json
       - web/scripts/golden.ts
       - web/src/arpeggiator.ts
+      - web/src/harmonizer.ts
       - web/src/assembly.ts
       - web/src/cpu-costs.json
       - web/src/controls.ts

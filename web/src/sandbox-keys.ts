@@ -31,7 +31,7 @@ export function keysDrumMap(p: Patch, armed: Iterable<DeviceKey> = [], defs: Rec
   let map: ModuleInst | null = null;
   for (const m of v.modules) {
     if (!heard.has(m.id)) continue;
-    if (m.type === 'alloc' || m.type === 'arp') return null;
+    if (m.type === 'alloc' || m.type === 'arp' || m.type === 'harm') return null;
     const d = m.type === 'drummap' ? m : m.type === 'steps' ? trackDrumMap(v, m.id) : null;
     if (m.type === 'steps' && !d) return null;
     map ??= d;

@@ -3629,10 +3629,65 @@ events['909 Kit'] = [[0, 'run', 0], ...[53, 55, 57, 59, 60, 62, 64, 65].flatMap(
 events['808 Kit'] = events['909 Kit'];
 
 // The standalone panel runner needs only these encoded patches, not an audio-golden run.
+// the Harmonizer (#598): Main's keys -> a Harmonizer -> a Voicing of six voices in a poly assembly (saw, envelope, VCA);
+// the right side the voices' gates summed (how many notes sound). harm-side: the buttons as the keys under the split
+// (F3..B3: 53 sus2, 54 maj, 55 sus4, 56 min, 57 7, 58 dim, 59 9), held; a root alone, D major, a 7 pressed while a root is
+// held (the next root takes it), G7 and F7 sharing a note, the 7 alone (a major chord under it), C min add9, two roots on
+// the same chord, the quality pressed last winning. harm-lock: Lock on, the split at C3 (buttons F2..B2), voicing -1: a
+// press of maj + 7 latches both, a press of maj alone latches it, again unlatches it (the card's chord: min 7, voicing -1);
+// the FM-1's root keys under the split (kon: a root whatever its note), its chord buttons (cbon), a key past the range;
+// ARP's Toggle bypasses the Harmonizer (the keys go straight to the Voicing) and brings it back
+const harmVoice = (name: string, harm: Record<string, number>): number => {
+  let hid = -1;
+  tests[name] = make(name, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const h = add('harm', 200, 0, harm);
+    hid = h;
+    const al = add('alloc', 400, 0, { voices: 6 });
+    const o = add('osc', 600, 0, { wave: 2, level: 0.35 });
+    const e = add('adsr', 600, 200, { a: 0.003, d: 0.1, s: 0.6, r: 0.04 });
+    const v = add('vca', 800, 0);
+    const out = add('output', 1000, 0, { level: 0.6 });
+    wire(kb, 'keys', h, 'keys');
+    wire(h, 'keys', al, 'keys');
+    wire(al, 'pitch', o, 'pitch');
+    wire(al, 'gate', e, 'gate');
+    wire(o, 'out', v, 'in');
+    wire(e, 'env', v, 'cv');
+    wire(v, 'out', out, 'l');
+    const mr = add('mixer', 1000, 200, { l1: 0.1 });
+    wire(al, 'gate', mr, 'in1');
+    wire(mr, 'out', out, 'r');
+  });
+  const p = tests[name];
+  const ids = p.modules.filter((m) => ['alloc', 'osc', 'adsr', 'vca'].includes(m.type)).map((m) => m.id);
+  makeAssembly(p, ids, 'chord voices').poly = {};
+  return hid;
+};
+harmVoice('harm-side', {});
+events['harm-side'] = [[0, 'on', 60], [128 * 20, 'off', 60],
+  [128 * 30, 'on', 54], [128 * 35, 'on', 62], [128 * 60, 'on', 57], [128 * 80, 'off', 62], [128 * 85, 'on', 67], [128 * 90, 'on', 65],
+  [128 * 120, 'off', 54], [128 * 125, 'off', 67], [128 * 130, 'on', 72], [128 * 150, 'off', 65], [128 * 155, 'off', 72], [128 * 160, 'off', 57],
+  [128 * 170, 'on', 56], [128 * 172, 'on', 59], [128 * 175, 'on', 60], [128 * 180, 'on', 67], [128 * 210, 'off', 60], [128 * 215, 'off', 67],
+  [128 * 220, 'on', 54], [128 * 225, 'on', 64], [128 * 240, 'off', 54], [128 * 241, 'off', 56], [128 * 242, 'off', 59], [128 * 250, 'off', 64],
+  [128 * 255, 'on', 58], [128 * 256, 'on', 55], [128 * 258, 'on', 61], [128 * 280, 'off', 61], [128 * 281, 'off', 58], [128 * 282, 'off', 55]];
+ends['harm-side'] = 128 * 300;
+{
+  const h = harmVoice('harm-lock', { lock: 1, split: 48, voicing: -1, type: 2, ext: 1 });
+  tests['harm-lock'].modules[0].panel = { toggle: ['arp'], kinds: { arp: 'bypass' }, targets: { arp: { module: h } } };
+}
+events['harm-lock'] = [[0, 'on', 42], [128 * 2, 'on', 45], [128 * 4, 'off', 42], [128 * 5, 'off', 45], [128 * 10, 'on', 60], [128 * 40, 'off', 60],
+  [128 * 45, 'on', 42], [128 * 46, 'off', 42], [128 * 50, 'on', 64], [128 * 75, 'off', 64], [128 * 80, 'on', 42], [128 * 81, 'off', 42],
+  [128 * 85, 'on', 62], [128 * 110, 'off', 62], [128 * 115, 'kon', 43], [128 * 140, 'koff', 43], [128 * 145, 'cbon', 5], [128 * 146, 'cbon', 6],
+  [128 * 147, 'cboff', 5], [128 * 148, 'cboff', 6], [128 * 150, 'on', 57], [128 * 175, 'off', 57], [128 * 178, 'on', 125], [128 * 190, 'off', 125],
+  [128 * 195, 'on', 55], [128 * 200, 'bon', 6], [128 * 205, 'on', 43], [128 * 225, 'off', 43], [128 * 226, 'boff', 6], [128 * 230, 'on', 60],
+  [128 * 255, 'off', 60], [128 * 258, 'off', 55]];
+ends['harm-lock'] = 128 * 280;
+
 if (process.argv.includes('--panel-fixtures')) {
   const out = new URL('../../build/panel-fixtures/', import.meta.url);
   mkdirSync(out, { recursive: true });
-  for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns', 'matrix-audio'])
+  for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns', 'matrix-audio', 'harm-side'])
     writeFileSync(new URL(`${name}.m1p`, out), encodePatch(tests[name], true));
   {
     // more than 64 modules (#721): arm-many with the Drum map moved last (index 69, a device past 63) and its chain of
@@ -3708,61 +3763,6 @@ for (const name of ['envelope filter', 'ducking delay', 'gated reverb', 'overdri
   events[key] = [[0, 'on', 48], [128 * 60, 'off', 48], [128 * 160, 'on', 55], [128 * 175, 'off', 55], [128 * 260, 'on', 43], [128 * 280, 'off', 43]];
   ends[key] = 128 * 400;
 }
-
-// the Harmonizer (#598): Main's keys -> a Harmonizer -> a Voicing of six voices in a poly assembly (saw, envelope, VCA);
-// the right side the voices' gates summed (how many notes sound). harm-side: the buttons as the keys under the split
-// (F3..B3: 53 sus2, 54 maj, 55 sus4, 56 min, 57 7, 58 dim, 59 9), held; a root alone, D major, a 7 pressed while a root is
-// held (the next root takes it), G7 and F7 sharing a note, the 7 alone (a major chord under it), C min add9, two roots on
-// the same chord, the quality pressed last winning. harm-lock: Lock on, the split at C3 (buttons F2..B2), voicing -1: a
-// press of maj + 7 latches both, a press of maj alone latches it, again unlatches it (the card's chord: min 7, voicing -1);
-// the FM-1's root keys under the split (kon: a root whatever its note), its chord buttons (cbon), a key past the range;
-// ARP's Toggle bypasses the Harmonizer (the keys go straight to the Voicing) and brings it back
-const harmVoice = (name: string, harm: Record<string, number>): number => {
-  let hid = -1;
-  tests[name] = make(name, (add, wire) => {
-    const kb = add('fm1', 0, 0);
-    const h = add('harm', 200, 0, harm);
-    hid = h;
-    const al = add('alloc', 400, 0, { voices: 6 });
-    const o = add('osc', 600, 0, { wave: 2, level: 0.35 });
-    const e = add('adsr', 600, 200, { a: 0.003, d: 0.1, s: 0.6, r: 0.04 });
-    const v = add('vca', 800, 0);
-    const out = add('output', 1000, 0, { level: 0.6 });
-    wire(kb, 'keys', h, 'keys');
-    wire(h, 'keys', al, 'keys');
-    wire(al, 'pitch', o, 'pitch');
-    wire(al, 'gate', e, 'gate');
-    wire(o, 'out', v, 'in');
-    wire(e, 'env', v, 'cv');
-    wire(v, 'out', out, 'l');
-    const mr = add('mixer', 1000, 200, { l1: 0.1 });
-    wire(al, 'gate', mr, 'in1');
-    wire(mr, 'out', out, 'r');
-  });
-  const p = tests[name];
-  const ids = p.modules.filter((m) => ['alloc', 'osc', 'adsr', 'vca'].includes(m.type)).map((m) => m.id);
-  makeAssembly(p, ids, 'chord voices').poly = {};
-  return hid;
-};
-harmVoice('harm-side', {});
-events['harm-side'] = [[0, 'on', 60], [128 * 20, 'off', 60],
-  [128 * 30, 'on', 54], [128 * 35, 'on', 62], [128 * 60, 'on', 57], [128 * 80, 'off', 62], [128 * 85, 'on', 67], [128 * 90, 'on', 65],
-  [128 * 120, 'off', 54], [128 * 125, 'off', 67], [128 * 130, 'on', 72], [128 * 150, 'off', 65], [128 * 155, 'off', 72], [128 * 160, 'off', 57],
-  [128 * 170, 'on', 56], [128 * 172, 'on', 59], [128 * 175, 'on', 60], [128 * 180, 'on', 67], [128 * 210, 'off', 60], [128 * 215, 'off', 67],
-  [128 * 220, 'on', 54], [128 * 225, 'on', 64], [128 * 240, 'off', 54], [128 * 241, 'off', 56], [128 * 242, 'off', 59], [128 * 250, 'off', 64],
-  [128 * 255, 'on', 58], [128 * 256, 'on', 55], [128 * 258, 'on', 61], [128 * 280, 'off', 61], [128 * 281, 'off', 58], [128 * 282, 'off', 55]];
-ends['harm-side'] = 128 * 300;
-{
-  const h = harmVoice('harm-lock', { lock: 1, split: 48, voicing: -1, type: 2, ext: 1 });
-  tests['harm-lock'].modules[0].panel = { toggle: ['arp'], kinds: { arp: 'bypass' }, targets: { arp: { module: h } } };
-}
-events['harm-lock'] = [[0, 'on', 42], [128 * 2, 'on', 45], [128 * 4, 'off', 42], [128 * 5, 'off', 45], [128 * 10, 'on', 60], [128 * 40, 'off', 60],
-  [128 * 45, 'on', 42], [128 * 46, 'off', 42], [128 * 50, 'on', 64], [128 * 75, 'off', 64], [128 * 80, 'on', 42], [128 * 81, 'off', 42],
-  [128 * 85, 'on', 62], [128 * 110, 'off', 62], [128 * 115, 'kon', 43], [128 * 140, 'koff', 43], [128 * 145, 'cbon', 5], [128 * 146, 'cbon', 6],
-  [128 * 147, 'cboff', 5], [128 * 148, 'cboff', 6], [128 * 150, 'on', 57], [128 * 175, 'off', 57], [128 * 178, 'on', 125], [128 * 190, 'off', 125],
-  [128 * 195, 'on', 55], [128 * 200, 'bon', 6], [128 * 205, 'on', 43], [128 * 225, 'off', 43], [128 * 226, 'boff', 6], [128 * 230, 'on', 60],
-  [128 * 255, 'off', 60], [128 * 258, 'off', 55]];
-ends['harm-lock'] = 128 * 280;
 
 // the factory drum kits play on the transport: their kits start it with the notes
 for (const [name, patch] of Object.entries(tests))
