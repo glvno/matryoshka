@@ -57,6 +57,7 @@ jobs:
         run: |
           tools/golden.sh
           tools/aot_test.sh
+          tools/aot_experiments.sh
           tools/usb_test.sh
           tools/clock_out_test.sh
           tools/peak_test.sh
