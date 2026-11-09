@@ -683,55 +683,73 @@ static asig_t aot0_s1_24(aot_cx_t *c)   /* vca 37.out */
     return c->s[24];
 }
 static const uint8_t aot0_bind0[29] = {0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 42};
+static __attribute__((noinline)) void aot0_member25(aot_cx_t *c)   /* select 25 */
+{
+    aot_prepf(c, 25, 0x0u);
+    if ((c->k[25] = (int8_t)ag_select_k(c->it[25], AU(0))) < 0) {   /* it fades: m_select on its inputs */
+        aot_sel_fade(c, 25, 0x0u, 0);
+    }
+}
+static __attribute__((noinline)) void aot0_member23(aot_cx_t *c)   /* select 23 */
+{
+    aot_prepf(c, 23, 0x0u);
+    if ((c->k[23] = (int8_t)ag_select_k(c->it[23], AU(0))) < 0) {   /* it fades: m_select on its inputs */
+        aot_sel_fade(c, 23, 0x0u, 0);
+    }
+}
+static __attribute__((noinline)) void aot0_member0(aot_cx_t *c)   /* lfo 0 */
+{
+    aot_blk(c, 0, 0x0u, 0x0u, 0);
+}
+static __attribute__((noinline)) void aot0_member12(aot_cx_t *c)   /* select 12 */
+{
+    aot_prepf(c, 12, 0x0u);
+    if ((c->k[12] = (int8_t)ag_select_k(c->it[12], AU(0))) < 0) {   /* it fades: m_select on its inputs */
+        asig_t s[MAX_IN];
+        s[2] = AB(c->it[0]->out[0]);
+        aot_sel_fade(c, 12, 0x4u, s);
+    }
+}
+static __attribute__((noinline)) void aot0_member13(aot_cx_t *c)   /* select 13 */
+{
+    aot_prepf(c, 13, 0x0u);
+    if ((c->k[13] = (int8_t)ag_select_k(c->it[13], AU(0))) < 0) {   /* it fades: m_select on its inputs */
+        asig_t s[MAX_IN];
+        s[2] = aot_add(aot0_s0_9(c), aot0_s0_8(c), (esig_t *)c->it[13]->in[2], c->n);
+        aot_sel_fade(c, 13, 0x4u, s);
+    }
+}
+static __attribute__((noinline)) void aot0_member14(aot_cx_t *c)   /* select 14 */
+{
+    aot_prepf(c, 14, 0x0u);
+    if ((c->k[14] = (int8_t)ag_select_k(c->it[14], AU(0))) < 0) {   /* it fades: m_select on its inputs */
+        asig_t s[MAX_IN];
+        s[2] = aot0_s0_11(c);
+        aot_sel_fade(c, 14, 0x4u, s);
+    }
+}
+static __attribute__((noinline)) void aot0_member3(aot_cx_t *c)   /* noise 3 */
+{
+    aot_blk(c, 3, 0x0u, 0x0u, 0);
+}
+static __attribute__((noinline)) void aot0_member24(aot_cx_t *c)   /* select 24 */
+{
+    aot_prepf(c, 24, 0x0u);
+    if ((c->k[24] = (int8_t)ag_select_k(c->it[24], AU(0))) < 0) {   /* it fades: m_select on its inputs */
+        aot_sel_fade(c, 24, 0x0u, 0);
+    }
+}
 static void aot0_seg0(aot_x_t *x, uint32_t v, uint32_t n)   /* once: const select scale select lfo select math const select math scale select noise xfade const scale vca scale select scale scale scale const scale scale scale scale scale scale */
 {
     aot_cx_t *c = aot_begin(x, v, n, aot0_bind0, 29u, 27u);
-    asig_t s[MAX_IN];
-    {   /* select 25: its position every block */
-        aot_prepf(c, 25, 0x0u);
-        if ((c->k[25] = (int8_t)ag_select_k(c->it[25], AU(0))) < 0) {   /* it fades: m_select on its inputs */
-            aot_sel_fade(c, 25, 0x0u, 0);
-        }
-    }
-    {   /* select 23: its position every block */
-        aot_prepf(c, 23, 0x0u);
-        if ((c->k[23] = (int8_t)ag_select_k(c->it[23], AU(0))) < 0) {   /* it fades: m_select on its inputs */
-            aot_sel_fade(c, 23, 0x0u, 0);
-        }
-    }
-    {   /* lfo 0 */
-        aot_blk(c, 0, 0x0u, 0x0u, 0);
-    }
-    {   /* select 12: its position every block */
-        aot_prepf(c, 12, 0x0u);
-        if ((c->k[12] = (int8_t)ag_select_k(c->it[12], AU(0))) < 0) {   /* it fades: m_select on its inputs */
-            s[2] = AB(c->it[0]->out[0]);
-            aot_sel_fade(c, 12, 0x4u, s);
-        }
-    }
-    {   /* select 13: its position every block */
-        aot_prepf(c, 13, 0x0u);
-        if ((c->k[13] = (int8_t)ag_select_k(c->it[13], AU(0))) < 0) {   /* it fades: m_select on its inputs */
-            s[2] = aot_add(aot0_s0_9(c), aot0_s0_8(c), (esig_t *)c->it[13]->in[2], c->n);
-            aot_sel_fade(c, 13, 0x4u, s);
-        }
-    }
-    {   /* select 14: its position every block */
-        aot_prepf(c, 14, 0x0u);
-        if ((c->k[14] = (int8_t)ag_select_k(c->it[14], AU(0))) < 0) {   /* it fades: m_select on its inputs */
-            s[2] = aot0_s0_11(c);
-            aot_sel_fade(c, 14, 0x4u, s);
-        }
-    }
-    {   /* noise 3 */
-        aot_blk(c, 3, 0x0u, 0x0u, 0);
-    }
-    {   /* select 24: its position every block */
-        aot_prepf(c, 24, 0x0u);
-        if ((c->k[24] = (int8_t)ag_select_k(c->it[24], AU(0))) < 0) {   /* it fades: m_select on its inputs */
-            aot_sel_fade(c, 24, 0x0u, 0);
-        }
-    }
+    aot0_member25(c);
+    aot0_member23(c);
+    aot0_member0(c);
+    aot0_member12(c);
+    aot0_member13(c);
+    aot0_member14(c);
+    aot0_member3(c);
+    aot0_member24(c);
     x->sh[0] = aot_fin(aot0_s0_2(c), c->it[27]->out[0], 2u, n);   /* scale 27.out */
     x->sh[1] = aot_fin(aot0_s0_3(c), c->it[23]->out[0], 2u, n);   /* select 23.out */
     x->sh[2] = aot0_s0_4(c);   /* scale 7.out */
@@ -746,120 +764,172 @@ static void aot0_seg0(aot_x_t *x, uint32_t v, uint32_t n)   /* once: const selec
     x->sh[11] = aot_fin(aot0_s0_26(c), c->it[24]->out[0], 2u, n);   /* select 24.out */
 }
 static const uint8_t aot0_bind1[31] = {4, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59};
+static __attribute__((noinline)) void aot0_member4(aot_cx_t *c)   /* part 4 */
+{
+    aot_blk(c, 4, 0x0u, 0x0u, 0);
+}
+static __attribute__((noinline)) void aot0_member29(aot_cx_t *c)   /* glide 29 */
+{
+    asig_t s[MAX_IN];
+    s[0] = aot_sum((const asig_t[]){AB(c->it[4]->out[0]), c->x->sh[0], aot0_s1_0(c)}, 3u, (esig_t *)c->it[29]->in[0], c->n);
+    aot_blk(c, 29, 0x0u, 0x1u, s);
+}
+static __attribute__((noinline)) void aot0_member58(aot_cx_t *c)   /* select 58 */
+{
+    aot_prepf(c, 58, 0x0u);
+    if ((c->k[58] = (int8_t)ag_select_k(c->it[58], AU(0))) < 0) {   /* it fades: m_select on its inputs */
+        asig_t s[MAX_IN];
+        s[2] = AB(c->it[29]->out[0]);
+        aot_sel_fade(c, 58, 0x4u, s);
+    }
+}
+static __attribute__((noinline)) void aot0_member30(aot_cx_t *c)   /* osc 30 */
+{
+    asig_t s[MAX_IN];
+    s[0] = aot_add(aot0_s1_1(c), c->x->sh[1], (esig_t *)c->it[30]->in[0], c->n);
+    s[3] = c->x->sh[9];
+    aot_blk(c, 30, 0x200u, 0x9u, s);
+}
+static __attribute__((noinline)) void aot0_member34(aot_cx_t *c)   /* adsr 34 */
+{
+    asig_t s[MAX_IN];
+    s[0] = AB(c->it[4]->out[1]);
+    s[2] = c->x->sh[11];
+    aot_blk(c, 34, 0x401u, 0x5u, s);
+}
+static __attribute__((noinline)) void aot0_member44(aot_cx_t *c)   /* select 44 */
+{
+    aot_prepf(c, 44, 0x0u);
+    if ((c->k[44] = (int8_t)ag_select_k(c->it[44], AU(0))) < 0) {   /* it fades: m_select on its inputs */
+        asig_t s[MAX_IN];
+        s[2] = AB(c->it[30]->out[0]);
+        aot_sel_fade(c, 44, 0x4u, s);
+    }
+}
+static __attribute__((noinline)) void aot0_member45(aot_cx_t *c)   /* select 45 */
+{
+    aot_prepf(c, 45, 0x0u);
+    if ((c->k[45] = (int8_t)ag_select_k(c->it[45], AU(0))) < 0) {   /* it fades: m_select on its inputs */
+        asig_t s[MAX_IN];
+        s[2] = aot_add(aot0_s1_4(c), c->x->sh[5], (esig_t *)c->it[45]->in[2], c->n);
+        aot_sel_fade(c, 45, 0x4u, s);
+    }
+}
+static __attribute__((noinline)) void aot0_member46(aot_cx_t *c)   /* select 46 */
+{
+    aot_prepf(c, 46, 0x0u);
+    if ((c->k[46] = (int8_t)ag_select_k(c->it[46], AU(0))) < 0) {   /* it fades: m_select on its inputs */
+        asig_t s[MAX_IN];
+        s[2] = aot_add(aot0_s1_5(c), c->x->sh[3], (esig_t *)c->it[46]->in[2], c->n);
+        aot_sel_fade(c, 46, 0x4u, s);
+    }
+}
+static __attribute__((noinline)) void aot0_member50(aot_cx_t *c)   /* select 50 */
+{
+    aot_prepf(c, 50, 0x0u);
+    if ((c->k[50] = (int8_t)ag_select_k(c->it[50], AU(0))) < 0) {   /* it fades: m_select on its inputs */
+        asig_t s[MAX_IN];
+        s[2] = aot0_s1_20(c);
+        aot_sel_fade(c, 50, 0x4u, s);
+    }
+}
+static __attribute__((noinline)) void aot0_member31(aot_cx_t *c)   /* osc 31 */
+{
+    asig_t s[MAX_IN];
+    s[0] = aot_add(AB(c->it[29]->out[0]), aot0_s1_21(c), (esig_t *)c->it[31]->in[0], c->n);
+    s[2] = aot0_s1_12(c);
+    s[3] = c->x->sh[8];
+    aot_blk(c, 31, 0x300u, 0xdu, s);
+}
+static __attribute__((noinline)) void aot0_member40(aot_cx_t *c)   /* select 40 */
+{
+    aot_prepf(c, 40, 0x0u);
+    if ((c->k[40] = (int8_t)ag_select_k(c->it[40], AU(0))) < 0) {   /* it fades: m_select on its inputs */
+        asig_t s[MAX_IN];
+        s[2] = AB(c->it[31]->out[0]);
+        aot_sel_fade(c, 40, 0x4u, s);
+    }
+}
+static __attribute__((noinline)) void aot0_member51(aot_cx_t *c)   /* select 51 */
+{
+    aot_prepf(c, 51, 0x0u);
+    if ((c->k[51] = (int8_t)ag_select_k(c->it[51], AU(0))) < 0) {   /* it fades: m_select on its inputs */
+        asig_t s[MAX_IN];
+        s[2] = aot0_s1_20(c);
+        aot_sel_fade(c, 51, 0x4u, s);
+    }
+}
+static __attribute__((noinline)) void aot0_member41(aot_cx_t *c)   /* select 41 */
+{
+    aot_prepf(c, 41, 0x0u);
+    if ((c->k[41] = (int8_t)ag_select_k(c->it[41], AU(0))) < 0) {   /* it fades: m_select on its inputs */
+        asig_t s[MAX_IN];
+        s[2] = aot_add(aot0_s1_3(c), c->x->sh[3], (esig_t *)c->it[41]->in[2], c->n);
+        aot_sel_fade(c, 41, 0x4u, s);
+    }
+}
+static __attribute__((noinline)) void aot0_member53(aot_cx_t *c)   /* select 53 */
+{
+    aot_prepf(c, 53, 0x0u);
+    if ((c->k[53] = (int8_t)ag_select_k(c->it[53], AU(0))) < 0) {   /* it fades: m_select on its inputs */
+        asig_t s[MAX_IN];
+        s[2] = AB(c->it[4]->out[2]);
+        aot_sel_fade(c, 53, 0x4u, s);
+    }
+}
+static __attribute__((noinline)) void aot0_member52(aot_cx_t *c)   /* select 52 */
+{
+    aot_prepf(c, 52, 0x0u);
+    if ((c->k[52] = (int8_t)ag_select_k(c->it[52], AU(0))) < 0) {   /* it fades: m_select on its inputs */
+        asig_t s[MAX_IN];
+        s[2] = aot0_s1_20(c);
+        aot_sel_fade(c, 52, 0x4u, s);
+    }
+}
+static __attribute__((noinline)) void aot0_member35(aot_cx_t *c)   /* ladder 35 */
+{
+    asig_t s[MAX_IN];
+    s[0] = aot0_s1_11(c);
+    s[1] = aot_sum((const asig_t[]){aot0_s1_15(c), aot0_s1_23(c), c->x->sh[7]}, 3u, (esig_t *)c->it[35]->in[1], c->n);
+    aot_blk(c, 35, 0x1u, 0x3u, s);
+}
+static __attribute__((noinline)) void aot0_member36(aot_cx_t *c)   /* adsr 36 */
+{
+    asig_t s[MAX_IN];
+    s[0] = AB(c->it[4]->out[1]);
+    s[2] = c->x->sh[11];
+    aot_blk(c, 36, 0x501u, 0x5u, s);
+}
+static __attribute__((noinline)) void aot0_member54(aot_cx_t *c)   /* select 54 */
+{
+    aot_prepf(c, 54, 0x0u);
+    if ((c->k[54] = (int8_t)ag_select_k(c->it[54], AU(0))) < 0) {   /* it fades: m_select on its inputs */
+        asig_t s[MAX_IN];
+        s[2] = AB(c->it[4]->out[2]);
+        aot_sel_fade(c, 54, 0x4u, s);
+    }
+}
 static void aot0_seg1(aot_x_t *x, uint32_t v, uint32_t n)   /* per part: part vca glide select osc scale adsr scale select math select select scale scale select osc select select scale math select mixer select vca scale select ladder adsr select vca vca */
 {
     aot_cx_t *c = aot_begin(x, v, n, aot0_bind1, 31u, 25u);
-    asig_t s[MAX_IN];
-    {   /* part 4 */
-        aot_blk(c, 4, 0x0u, 0x0u, 0);
-    }
-    {   /* glide 29 */
-        s[0] = aot_sum((const asig_t[]){AB(c->it[4]->out[0]), c->x->sh[0], aot0_s1_0(c)}, 3u, (esig_t *)c->it[29]->in[0], c->n);
-        aot_blk(c, 29, 0x0u, 0x1u, s);
-    }
-    {   /* select 58: its position every block */
-        aot_prepf(c, 58, 0x0u);
-        if ((c->k[58] = (int8_t)ag_select_k(c->it[58], AU(0))) < 0) {   /* it fades: m_select on its inputs */
-            s[2] = AB(c->it[29]->out[0]);
-            aot_sel_fade(c, 58, 0x4u, s);
-        }
-    }
-    {   /* osc 30 */
-        s[0] = aot_add(aot0_s1_1(c), c->x->sh[1], (esig_t *)c->it[30]->in[0], c->n);
-        s[3] = c->x->sh[9];
-        aot_blk(c, 30, 0x200u, 0x9u, s);
-    }
-    {   /* adsr 34 */
-        s[0] = AB(c->it[4]->out[1]);
-        s[2] = c->x->sh[11];
-        aot_blk(c, 34, 0x401u, 0x5u, s);
-    }
-    {   /* select 44: its position every block */
-        aot_prepf(c, 44, 0x0u);
-        if ((c->k[44] = (int8_t)ag_select_k(c->it[44], AU(0))) < 0) {   /* it fades: m_select on its inputs */
-            s[2] = AB(c->it[30]->out[0]);
-            aot_sel_fade(c, 44, 0x4u, s);
-        }
-    }
-    {   /* select 45: its position every block */
-        aot_prepf(c, 45, 0x0u);
-        if ((c->k[45] = (int8_t)ag_select_k(c->it[45], AU(0))) < 0) {   /* it fades: m_select on its inputs */
-            s[2] = aot_add(aot0_s1_4(c), c->x->sh[5], (esig_t *)c->it[45]->in[2], c->n);
-            aot_sel_fade(c, 45, 0x4u, s);
-        }
-    }
-    {   /* select 46: its position every block */
-        aot_prepf(c, 46, 0x0u);
-        if ((c->k[46] = (int8_t)ag_select_k(c->it[46], AU(0))) < 0) {   /* it fades: m_select on its inputs */
-            s[2] = aot_add(aot0_s1_5(c), c->x->sh[3], (esig_t *)c->it[46]->in[2], c->n);
-            aot_sel_fade(c, 46, 0x4u, s);
-        }
-    }
-    {   /* select 50: its position every block */
-        aot_prepf(c, 50, 0x0u);
-        if ((c->k[50] = (int8_t)ag_select_k(c->it[50], AU(0))) < 0) {   /* it fades: m_select on its inputs */
-            s[2] = aot0_s1_20(c);
-            aot_sel_fade(c, 50, 0x4u, s);
-        }
-    }
-    {   /* osc 31 */
-        s[0] = aot_add(AB(c->it[29]->out[0]), aot0_s1_21(c), (esig_t *)c->it[31]->in[0], c->n);
-        s[2] = aot0_s1_12(c);
-        s[3] = c->x->sh[8];
-        aot_blk(c, 31, 0x300u, 0xdu, s);
-    }
-    {   /* select 40: its position every block */
-        aot_prepf(c, 40, 0x0u);
-        if ((c->k[40] = (int8_t)ag_select_k(c->it[40], AU(0))) < 0) {   /* it fades: m_select on its inputs */
-            s[2] = AB(c->it[31]->out[0]);
-            aot_sel_fade(c, 40, 0x4u, s);
-        }
-    }
-    {   /* select 51: its position every block */
-        aot_prepf(c, 51, 0x0u);
-        if ((c->k[51] = (int8_t)ag_select_k(c->it[51], AU(0))) < 0) {   /* it fades: m_select on its inputs */
-            s[2] = aot0_s1_20(c);
-            aot_sel_fade(c, 51, 0x4u, s);
-        }
-    }
-    {   /* select 41: its position every block */
-        aot_prepf(c, 41, 0x0u);
-        if ((c->k[41] = (int8_t)ag_select_k(c->it[41], AU(0))) < 0) {   /* it fades: m_select on its inputs */
-            s[2] = aot_add(aot0_s1_3(c), c->x->sh[3], (esig_t *)c->it[41]->in[2], c->n);
-            aot_sel_fade(c, 41, 0x4u, s);
-        }
-    }
-    {   /* select 53: its position every block */
-        aot_prepf(c, 53, 0x0u);
-        if ((c->k[53] = (int8_t)ag_select_k(c->it[53], AU(0))) < 0) {   /* it fades: m_select on its inputs */
-            s[2] = AB(c->it[4]->out[2]);
-            aot_sel_fade(c, 53, 0x4u, s);
-        }
-    }
-    {   /* select 52: its position every block */
-        aot_prepf(c, 52, 0x0u);
-        if ((c->k[52] = (int8_t)ag_select_k(c->it[52], AU(0))) < 0) {   /* it fades: m_select on its inputs */
-            s[2] = aot0_s1_20(c);
-            aot_sel_fade(c, 52, 0x4u, s);
-        }
-    }
-    {   /* ladder 35 */
-        s[0] = aot0_s1_11(c);
-        s[1] = aot_sum((const asig_t[]){aot0_s1_15(c), aot0_s1_23(c), c->x->sh[7]}, 3u, (esig_t *)c->it[35]->in[1], c->n);
-        aot_blk(c, 35, 0x1u, 0x3u, s);
-    }
-    {   /* adsr 36 */
-        s[0] = AB(c->it[4]->out[1]);
-        s[2] = c->x->sh[11];
-        aot_blk(c, 36, 0x501u, 0x5u, s);
-    }
-    {   /* select 54: its position every block */
-        aot_prepf(c, 54, 0x0u);
-        if ((c->k[54] = (int8_t)ag_select_k(c->it[54], AU(0))) < 0) {   /* it fades: m_select on its inputs */
-            s[2] = AB(c->it[4]->out[2]);
-            aot_sel_fade(c, 54, 0x4u, s);
-        }
-    }
+    aot0_member4(c);
+    aot0_member29(c);
+    aot0_member58(c);
+    aot0_member30(c);
+    aot0_member34(c);
+    aot0_member44(c);
+    aot0_member45(c);
+    aot0_member46(c);
+    aot0_member50(c);
+    aot0_member31(c);
+    aot0_member40(c);
+    aot0_member51(c);
+    aot0_member41(c);
+    aot0_member53(c);
+    aot0_member52(c);
+    aot0_member35(c);
+    aot0_member36(c);
+    aot0_member54(c);
     (void)aot_fin(aot0_s1_24(c), c->it[37]->out[0], 1u, n);   /* vca 37.out */
 }
 static const uint8_t aot0_type[60] = {T_LFO, T_VCA, T_SCALE, T_NOISE, T_PART, T_CONST, T_CONST, T_SCALE, T_SCALE, T_MATH, T_MATH, T_SCALE, T_SELECT, T_SELECT, T_SELECT, T_XFADE, T_CONST, T_SCALE, T_SCALE, T_SCALE, T_SCALE, T_SCALE, T_SCALE, T_SELECT, T_SELECT, T_SELECT, T_CONST, T_SCALE, T_SCALE, T_GLIDE, T_OSC, T_OSC, T_SCALE, T_SCALE, T_ADSR, T_LADDER, T_ADSR, T_VCA, T_SCALE, T_MATH, T_SELECT, T_SELECT, T_SCALE, T_MATH, T_SELECT, T_SELECT, T_SELECT, T_MIXER, T_SCALE, T_SCALE, T_SELECT, T_SELECT, T_SELECT, T_SELECT, T_SELECT, T_VCA, T_SCALE, T_VCA, T_SELECT, T_VCA};
