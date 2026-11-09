@@ -263,6 +263,9 @@ static volatile uint32_t fm1_ms;                   /* also declared by core.h; p
 #ifndef USB_LOG_MEM
 #define USB_LOG_MEM
 #endif
+#ifndef USB_LOG_STATE_MEM
+#define USB_LOG_STATE_MEM USB_LOG_MEM
+#endif
 #define USB_LOG_N 16u                        /* 2 entries per DIAG page; the playback ring shares this SRAM. */
 enum { UL_SETUP = 1, UL_RESET, UL_SUSPEND, UL_RESUME, UL_ADDR, UL_SETUP_END, UL_STALL_SENT, UL_STATUS, UL_START, UL_DEAD,
        UL_FROZEN, UL_FRAME_RUN, UL_DETACH, UL_SWITCH };
@@ -288,8 +291,8 @@ static struct {
     uint8_t oneshot;
     uint8_t addr;                            /* the address last written to FADDR */
     uint32_t unknown, stalls, stall_sent, stall_setup, setup_end, status, out_data, sie_timeouts;
-} ul USB_LOG_MEM;
-static usb_ev_t ul_spare USB_LOG_MEM;        /* where an entry goes when the one-shot capture is full */
+} ul USB_LOG_STATE_MEM;
+static usb_ev_t ul_spare USB_LOG_STATE_MEM;        /* where an entry goes when the one-shot capture is full */
 
 static int ul_stored(uint32_t k)             /* entry k is in the ring */
 {

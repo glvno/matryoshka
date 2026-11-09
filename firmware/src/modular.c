@@ -102,6 +102,7 @@ static void bt_parts(uint32_t group)       /* the awake parts of the segment jus
 #include "audio.c"
 #define UR_MEM ENG_LOWRAM
 #define UR_DMA_MEM ENG_POOL
+#define USB_LOG_STATE_MEM ENG_POOL
 #define USB_LOG_MEM ENG_LOWRAM      /* usb.c: the USB setup log (#535), 1,092 B (#725) */
 #include "usb.c"
 #include "midi_uart.c"
