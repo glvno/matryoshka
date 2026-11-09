@@ -20,7 +20,8 @@
 // another FM-1 may stay connected. A rig registered before #698 (no location kept) still has to be the one FM-1
 // connected. The rig's USB audio is recorded by that location too (tools/fm1_rec.swift). The gate is the boot check
 // (emu:boot, about 30 s, D-123), as the rig's iteration checks and batch runs take it (D-141); --gate full takes D-120's
-// (emu:smoke and these scenarios) instead. Merges and releases take the full gate whatever the rig ran. A release run's
+// (emu:smoke and these scenarios) instead. This install gate is separate from D-120's candidate/batch/release checks:
+// full emulator suites run on the combined development head, not each candidate. A release run's
 // package installs as a CI build's does (#783). Which gate a build passed goes to build/device/scenarios/install.json.
 // Before the scenarios a rig gets MIDI OUT and CLOCK OUT on and COUNT-IN OFF (#779), whatever a run before left.
 // --via-emu: the device path against the emulator (m1emu serve), to check the runner itself without a rig. --port NAME:

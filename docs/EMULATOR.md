@@ -23,7 +23,23 @@ now. fm1-core already runs `#` pairs with the second instruction
 seeing the old registers. The firmware CI keeps the ELF and
 its disassembly (artifact `matryoshka-elf`) for tracing such faults to a function.
 
-**Run it locally before any device work.** It is not part of CI (the user's call: too expensive on Actions).
+## Choosing checks
+
+Full emulator checks run locally, outside continuous integration (CI).
+Choose the stage before starting them:
+
+- **A candidate entering a development batch:** run CI and focused tests for the change. The full `emu:smoke` and
+  `emu:scenarios` runs check the combined development-branch head ([D-120](ledger/releases.md#D-120), Decided).
+- **A combined batch:** run the full emulator checks on its combined head. A passing development build does not
+  approve a release. Release builds can reuse qualifying batch results under [D-105](ledger/releases.md#D-105) and
+  [D-120](ledger/releases.md#D-120).
+- **An install on the registered test rig:** the boot check is enough for iteration; `device:scenarios --install RUN`
+  uses it by default ([D-123](ledger/releases.md#D-123), Decided). Which changes need their own hardware check is
+  governed by [D-141](ledger/releases.md#D-141). The dev server's Install panel and `npm run flash` can install on
+  other FM-1s and retain their smoke requirement ([D-171](ledger/firmware-install.md#D-171), Decided).
+
+The full rules, including direct merges into `main` and release-branch work, are in
+[D-120](ledger/releases.md#D-120). Read its current amendments together with the opening rule.
 
 ## Commands
 
@@ -155,8 +171,8 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   click is. The device test mode's peak (TEST_PEAK) and USB audio are taken before the click is mixed in
   (`firmware/src/audio.c`), so on the rig and with `--via-emu` the click checks are skipped, and the bar's length comes
   from the tempo.
-- **When:** every pull request that changes firmware runs `emu:smoke` and `emu:scenarios` on its own CI build before it
-  merges ([D-120](ledger/releases.md#D-120)).
+- **When:** use [Choosing checks](#choosing-checks). Candidates entering a development batch receive focused tests
+  and CI; the full suites run on the combined head ([D-120](ledger/releases.md#D-120)).
 
 Not covered: plugging and unplugging USB, the installer and the update loader, USB audio.
 
@@ -191,8 +207,9 @@ link as `m1emu serve` drives the emulator:
   `tools/fm1_install.py PACKAGE --location 0x01130000`, never by a script. A build whose
   `scenarios.passed` holds its sha256 is not run through `emu:scenarios` again, as `smoke.passed` skips `emu:smoke`. The
   boot check (`emu:boot` on the run's two builds, about 30 s) is the default since issue #783: the owner's iteration
-  checks and the batch runs of [D-141](ledger/releases.md#D-141) take it. A merge or a release still needs the full
-  checks. RUN may be a run of `release.yml`: its package installs as a CI build's does. Its `M1_EMU_MIDI=1` build for the
+  checks and the batch runs of [D-141](ledger/releases.md#D-141) take it. This install gate does not choose the
+  candidate, batch, or release checks; use [Choosing checks](#choosing-checks). RUN may be a run of `release.yml`:
+  its package installs as a CI build's does. Its `M1_EMU_MIDI=1` build for the
   boot check is that run's `matryoshka-emu-midi` artifact, or, for a release run from before issue #783, the one of the
   firmware CI run of the same commit (named in `emu-midi/from-run`). Each gate's result is kept next to the download
   (`build/flash/RUN/smoke.passed`, `boot.passed`, `.failed`, `.log`), and `build/device/scenarios/install.json` and the
