@@ -3,7 +3,7 @@
 /* The settings menu, after ui.c, pages_ui.c and sandbox_ui.c, before main.c:
  *
  * MENU (GLO; GLO again or HOME closes it; #395; its controls: web/src/controls.ts, #553): the FM-1's settings in tabs (MIDI: MIDI CHANNEL, CLOCK IN, MIDI OUT, CLOCK OUT). ALGO steps the tabs: MIDI, PANEL and SYSTEM
- * are pages of settings on K1..K4 (SYSTEM: UPDATE MODE, FACTORY RESET, QUICK START, OUTPUT; its second page: EDITOR, 3.5MM OUT), drawn as a device page (pages_ui.c menu_tab_page; the knobs go through panel.c as on
+ * are pages of settings on K1..K4 (SYSTEM: UPDATE MODE, FACTORY RESET, QUICK START, OUTPUT; its second page: EDITOR, 3.5MM OUT, USB RETURN), drawn as a device page (pages_ui.c menu_tab_page; the knobs go through panel.c as on
  * a device page); INFO lists readings (drawn here) and GUIDE is a text SELECT scrolls (the ideas, D-248). The values are applied at once
  * and saved with the state (SAVE: main.c save bits; SAVE in the menu closes it). UPDATE MODE and FACTORY RESET (SYSTEM)
  * take a hold: a turn to the right arms the row for MENU_ARM_MS, GLO held 2 s then does it (menu_fire, from panel.c), so
