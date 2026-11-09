@@ -8995,6 +8995,16 @@ static void part_silence(uint32_t k, uint32_t v)
 }
 
 
+/* no source of the sum is weighted */
+static int sum_plain(const sum_t *sm)
+{
+    uint32_t q;
+    for (q = 0; q < sm->n; q++)
+        if (E.sum_w[sm->first + q])
+            return 0;
+    return 1;
+}
+
 /* the modules E.order[k0..k1) for one block of n frames: every part v = first, first + step, .. of a module in a poly group,
  * once for a module that runs once (#271: step 2 renders one lane of a split segment, first 0 or 1; step 1 renders all) */
 static void render_mods(uint32_t k0, uint32_t k1, uint32_t n, uint32_t first, uint32_t step)
@@ -9018,6 +9028,32 @@ static void render_mods(uint32_t k0, uint32_t k1, uint32_t n, uint32_t first, ui
                 if (!sm->n) {
                     for (i = 0; i < n; i++)
                         dst[i] = 0;
+                    continue;
+                }
+                if (sm->n >= 3u && sum_plain(sm)) {         /* unweighted (every sum of the factory patches): three or
+                                                             * four sources a pass, dst read and written once a pass (#781) */
+                    const esig_t *const *p = &E.sum_src[sm->first];
+                    const esig_t *a = p[0], *b = p[1], *c = p[2];
+                    if (sm->n >= 4u) {
+                        const esig_t *d = p[3];
+                        for (i = 0; i < n; i++)
+                            dst[i] = a[i] + b[i] + c[i] + d[i];
+                        q = 4;
+                    } else {
+                        for (i = 0; i < n; i++)
+                            dst[i] = a[i] + b[i] + c[i];
+                        q = 3;
+                    }
+                    for (; q + 3u <= sm->n; q += 3u) {
+                        a = p[q], b = p[q + 1u], c = p[q + 2u];
+                        for (i = 0; i < n; i++)
+                            dst[i] += a[i] + b[i] + c[i];
+                    }
+                    for (; q < sm->n; q++) {
+                        a = p[q];
+                        for (i = 0; i < n; i++)
+                            dst[i] += a[i];
+                    }
                     continue;
                 }
                 if (sm->n >= 2) {                           /* the first two sources in one pass, the rest added */
