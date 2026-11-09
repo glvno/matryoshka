@@ -37,13 +37,22 @@ static uint8_t st_serve;                 /* the interrupts are on (fm1_main): a 
  * that ran without steps (before the interrupts were on, a suspend not taken, or longer than ST_SERVE_MAX), suspends the
  * chip did not take */
 static struct { uint32_t erases, progs, off_max, erase_max, prog_max, steps, unserved, sus_fail; } st_stat;
+/* DIAG page 130 (#729): the longest read window (st_read) and the longest write step (st_op: the whole call to
+ * fl_step_ram, the command and its bytes included; DIAG 128's off_max counts from the command's end) with the interrupts
+ * off, in TIMER4 ticks, since that page was last read, with the fm1_ms each ended at; and the fm1_ms the last write ended */
+static struct { uint32_t rd_max, rd_at, step_max, step_at, wr_end; } st_off;
 static int st_read(uint32_t off, void *dst, uint32_t n)   /* 256-byte IRQ-off windows: audio keeps up */
 {
     uint8_t *d = dst;
     while (n) {
-        uint32_t k = n > 256u ? 256u : n, f = irq_save();
+        uint32_t k = n > 256u ? 256u : n, f = irq_save(), t = fm1_ticks();
         int rc = FL_FAR(fl_read_ram)(off, d, k);
+        t = fm1_ticks() - t;
         irq_restore(f);
+        if (t > st_off.rd_max) {
+            st_off.rd_max = t;
+            st_off.rd_at = fm1_ms;
+        }
         if (rc)
             return rc;
         off += k;
@@ -88,9 +97,16 @@ static int st_op(uint32_t op, uint32_t off, const uint8_t *src, uint32_t n)
     if (!b.serve)
         audio_silence();
     for (;;) {
+        uint32_t ts;
         fm1__led_lines(0);                      /* (#236) the LED scan stops with the interrupts: one column would stay lit at
                                                  * full duty, a flash of the panel. Dark rows: the tick lights them again */
+        ts = fm1_ticks();
         FL_FAR(fl_step_ram)(&b);
+        ts = fm1_ticks() - ts;
+        if (ts > st_off.step_max) {
+            st_off.step_max = ts;
+            st_off.step_at = fm1_ms;
+        }
         if (b.state == 2u)
             break;
         irq_restore(f);                         /* the chip is suspended: the interrupts run (the audio renders its half) */
@@ -106,6 +122,7 @@ static int st_op(uint32_t op, uint32_t off, const uint8_t *src, uint32_t n)
     }
     irq_restore(f);
     st_busy = 0;
+    st_off.wr_end = fm1_ms;
     dt = (fm1_ticks() - t0) / FM1_TICKS_PER_US;
     if (b.off_max / FM1_TICKS_PER_US > st_stat.off_max)
         st_stat.off_max = b.off_max / FM1_TICKS_PER_US;
