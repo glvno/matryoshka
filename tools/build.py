@@ -43,6 +43,7 @@ LOADER_LOAD = 0x01C0A800
 LOADER_NAME = b"usb_hid_ota.bin"    # the file name the SPL looks for
 DOCKER_IMAGE = os.environ.get("JIELI_DOCKER_IMAGE", "debian:bookworm-slim")
 CFLAGS = ["-Os", "-ffunction-sections", "-fno-builtin", "-Wall", "-Wno-unused-function"]
+SPEED = "-O2"                       # the app's audio path (#798, tools/size_fns.py); FELUCCA_SPEED=0 builds it at -Os
 LINE = re.compile(r"^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2} )+)\s*\t(.*)$")
 
 # SDK files of AC79NN_SDK_V1.2.1_2023-12-13 (the tested version)
@@ -231,10 +232,13 @@ def build_app():
     flags += [f"-DM1_FW_{k}={v}" for k, v in zip(("MAJOR", "MINOR", "PATCH"), FW_VERSION)]
     if VERSION:
         flags.append(f'-DFELUCCA_VERSION="{VERSION}"')
-    # modular.c goes to LLVM IR without the optimizer, the main-loop functions (UI, stores, editor) are
-    # marked minsize (tools/size_fns.py), then the IR is compiled at -Os. FELUCCA_SIZE=0: -Os everywhere
-    size = os.environ.get("FELUCCA_SIZE") == "1"       # tools/size_fns.py is not part of Matryoshka (yet)
-    cmain = (("cc", *flags, "-S", "-emit-llvm", "-Xclang", "-disable-llvm-optzns", "-c",
+    # #798: the audio path for speed. modular.c goes to LLVM IR at SPEED without the optimizer, tools/size_fns.py marks
+    # every function the audio interrupt cannot reach 'optsize' (what -Os gives each function), then the IR is compiled
+    # at SPEED. FELUCCA_SPEED=0: -Os everywhere, compiled directly (the build before #798)
+    speed = os.environ.get("FELUCCA_SPEED", SPEED)
+    size = speed != "0"
+    sflags = [f for f in flags if f != "-Os"] + [speed] if size else flags
+    cmain = (("cc", *sflags, "-S", "-emit-llvm", "-Xclang", "-disable-llvm-optzns", "-c",
               FW / "src" / "modular.c", "-o", OUT / "matryoshka.ll") if size else
              ("cc", *flags, "-c", FW / "src" / "modular.c", "-o", OUT / "matryoshka.o"))
     tc_all(("cc", "-c", FW / "crt0.S", "-o", OUT / "crt0.o"),
@@ -245,7 +249,7 @@ def build_app():
     if size:
         subprocess.run([sys.executable, SRC / "tools" / "size_fns.py", OUT / "matryoshka.ll", OUT / "matryoshka_size.ll"],
                        check=True)
-        tc("cc", *[f for f in flags if not f.startswith(("-I", "-D", "-W"))], "-c",
+        tc("cc", *[f for f in sflags if not f.startswith(("-I", "-D", "-W"))], "-c",
            OUT / "matryoshka_size.ll", "-o", OUT / "matryoshka.o")
     elf = OUT / "matryoshka.elf"
     tc("pi32v2/bin/ld", "-T", FW / "app.ld", OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o", OUT / "fm1_cpu1.o",
