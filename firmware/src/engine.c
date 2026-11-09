@@ -1601,7 +1601,7 @@ static void pat_layout(void)
         }
 }
 
-static void aot_bind(const uint8_t *p, uint32_t len);   /* aot.c (#808) */
+static void aot_bind(const uint8_t *p, uint32_t len, uint32_t lines);   /* aot.c (#808) */
 int eng_load(const uint8_t *p, uint32_t len)
 {
     uint32_t i, j, c, k, v, at, ncab, n0, nl;
@@ -2284,7 +2284,10 @@ int eng_load(const uint8_t *p, uint32_t len)
     tempo_own = E.main >= 0 ? E.node[E.main].par[FM1_P_TEMPO] : (int32_t)(TEMPO_DEFAULT << 16);
     if (tempo_glo)                               /* the global tempo (D-907): the patch plays at it, its own value kept */
         tempo_apply();
-    aot_bind(p, len);                            /* (#808) */
+    for (k = 0, c = 0; k < nl; k++)              /* (#808: the compiled assemblies' state goes after the lines) */
+        if (line_reg[k])
+            c += line_sz[k];
+    aot_bind(p, len, c);
     return 0;
 }
 

@@ -68,11 +68,18 @@ typedef struct {                     /* one lane's context while a segment rende
     int32_t mc[AOT_MAXCV][MAX_IN];
 } aot_cx_t;
 
-static aot_x_t aot_x[AOT_MAXX];
-static uint8_t aot_nx;
-static uint8_t aot_slot[ENG_MAX_MODULES];    /* per position in E.order: 0, or 1 + the instance it belongs to (bit 7: its first) */
-static uint8_t aot_enabled = 1;              /* 0: the interpreter for every module (aot_compare_test renders both ways) */
-static aot_cx_t aot_cx[2];                   /* (one per lane) */
+/* the state lives in the engine's arena, after the lines (what a load leaves free; RAM has no room for it): */
+typedef struct {
+    aot_cx_t cx[2];                          /* (one per lane) */
+    aot_x_t x[AOT_MAXX];
+    uint8_t slot[ENG_MAX_MODULES];           /* per position in E.order: 0, or 1 + the instance it belongs to (bit 7: its first) */
+} aot_mem_t;
+static aot_mem_t *aot_m;
+#define aot_x (aot_m->x)
+#define aot_cx (aot_m->cx)
+#define aot_slot (aot_m->slot)
+static uint8_t aot_nx;                       /* instances bound by the last load (0: aot_m may be stale) */
+static uint8_t aot_enabled = 1;              /* 0: the interpreter for every module (aot_test.c renders both ways) */
 static struct { aot_x_t *x; uint32_t seg, n; } aot_job;
 
 #define AU(v) ((asig_t){0, (int32_t)(v)})
@@ -555,15 +562,19 @@ static int aot_fits(const aot_tpl_t *t, const uint8_t *mem, uint8_t *loc, uint8_
     return 1;
 }
 
-static void aot_bind(const uint8_t *p, uint32_t len)
+/* lines: the bytes eng_load's lines take of the arena's free room (from ar_lo); without room after them, no compiled assembly */
+static void aot_bind(const uint8_t *p, uint32_t len, uint32_t lines)
 {
-    uint32_t at, cnt, d, i, k;
+    uint32_t at, cnt, d, i, k, off = (ar_lo + lines + 7u) & ~7u;
     uint8_t loc[ENG_MAX_MODULES], pos[ENG_MAX_MODULES], mem[AOT_MAXM];
     aot_nx = 0;
-    for (i = 0; i < ENG_MAX_MODULES; i++)
-        aot_slot[i] = 0;
     if (!AOT_NTPL || !(p[7] & ENG_FLAG_EXTRAS) || !(at = aot_pages_at(p, len)) || !(at = eng_devices_end(p, len, at)) || !eng_extras_end(p, len, at))
         return;
+    if (off - ar_lo + (uint32_t)sizeof(aot_mem_t) > arena_free())
+        return;
+    aot_m = (aot_mem_t *)(void *)((uint8_t *)eng_arena + off);
+    for (i = 0; i < ENG_MAX_MODULES; i++)
+        aot_slot[i] = 0;
     for (i = 0; i < E.norder; i++)
         pos[E.order[i]] = (uint8_t)i;
     cnt = p[at++];
@@ -652,8 +663,8 @@ static int aot_owns(uint32_t k, uint32_t n)
     return x->on;
 }
 
-#define AOT_OWNS(k, n) (aot_slot[k] && aot_owns((k), (n)))
+#define AOT_OWNS(k, n) (aot_nx && aot_slot[k] && aot_owns((k), (n)))
 #else
 #define AOT_OWNS(k, n) 0
-static void aot_bind(const uint8_t *p, uint32_t len) { (void)p; (void)len; }
+static void aot_bind(const uint8_t *p, uint32_t len, uint32_t lines) { (void)p; (void)len; (void)lines; }
 #endif
