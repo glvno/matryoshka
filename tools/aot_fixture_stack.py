@@ -40,14 +40,23 @@ def main():
         parser.error("patch must fit a device slot")
     # slotstore.c: slot 0, sequence 1, header at 0x97000, payload 256 bytes later.
     flash = bytearray(b"\xff" * (1 << 20))
-    header = struct.pack("<IIIII20sII", 0x3253314D, 0, 1, len(patch),
-                         binascii.crc_hqx(patch, 0xffff), b"AOT STACK FIXTURE", 0, 0)
-    flash[0x97000:0x97000 + len(header)] = header
-    flash[0x97100:0x97100 + len(patch)] = patch
+    def record(address, slot, name, data):
+        header = struct.pack("<IIIII20sII", 0x3253314D, slot, 1, len(data),
+                             binascii.crc_hqx(data, 0xffff), name, 0, 0)
+        flash[address:address + len(header)] = header
+        flash[address + 256:address + 256 + len(data)] = data
+    record(0x97000, 0, b"AOT STACK FIXTURE", patch)
+    # Emulator settings only: no quick-start overlay, global tempo 120, analog output on.
+    # Matching checkout, as for BIN/ELF: mark the current factory set to avoid unrelated migration work.
+    root = Path(__file__).resolve().parent.parent
+    fmt = int(re.search(r"#define ENG_PATCH_VERSION (\d+)", (root / "firmware/src/engine.h").read_text())[1])
+    factory = int(re.search(r"#define FACTORY_SET_ID (0x[0-9a-f]+)", (root / "firmware/src/presets.h").read_text())[1], 16)
+    settings = bytes((1, 0, 8, 0, 2, 120, 0, 128, 0, 0, fmt, 0, 0)) + factory.to_bytes(3, "little")
+    record(0x98000, 64, b"", settings)
     floor = symbols["_c1_ustack"] + 256 + args.margin
     env = dict(os.environ, M1EMU_C1_STACK_LOW=f"{floor:x}", M1EMU_C1_WATCH_PC=f"{worker:x}")
-    keys = "2000:HOME,2100:HOME^,2500:PLAY,2600:PLAY^," + ",".join(f"{at}:m90{note:02x}64" for at, notes in
-                                  ((3000, (60, 64, 67, 71)), (7000, (72, 76, 79, 83))) for note in notes)
+    keys = "5000:PLAY,5200:PLAY^," + ",".join(f"{at}:m90{note:02x}64" for at, notes in
+                                  ((6000, (60, 64, 67, 71)), (8000, (72, 76, 79, 83))) for note in notes)
     with tempfile.TemporaryDirectory(prefix="aot-fixture-stack-") as tmp:
         path = Path(tmp) / "flash.bin"
         path.write_bytes(flash)
