@@ -107,6 +107,7 @@ import { structureAndRows } from './structure';
 import { cpuEstimate, type CpuEstimate } from './cpu';
 import { instIsEngine } from './engines';
 import { engineUnreached } from './arm';
+import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 export const TYPE_ORDER: string[] = Object.keys(DEFS).filter((t) => !EDITOR_ONLY.has(t));
 /** bytes of a poly group record: parts, assign, legato, priority, five flaw bytes per part, the note source, the MIDI

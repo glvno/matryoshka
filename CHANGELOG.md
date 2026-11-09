@@ -4,6 +4,7 @@
 
 ### FM-1
 
+- **The FM-1 plays what the editor plays when a patch holds modules no one hears:** the editor still leaves them out of what it sends, but no longer the ones before a Random module, a Steps track, a Shift register or an oscillator with analog, which take their randomness from their place in the patch. A P-lock on a module no one hears stays in the patch after you edit the track's locks on the FM-1, and an edit made while a patch goes to the FM-1 waits for it. Canvas sends four fewer modules: 3,759 → 3,730 bytes (the editor's count, #801).
 - **Room for code that runs from RAM:** the RAM after the effect memory's second line area had 96 B left; now 1,484 B (CI build, #725). The USB setup log (`tools/m1_link.py usblog`) keeps the last 64 USB requests and bus events, not 128, and an unused part of the flash driver is left out of the app.
 
 ## 1.11.1 — 2026-11-08

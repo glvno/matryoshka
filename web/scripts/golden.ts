@@ -356,6 +356,21 @@ kit('random-held', (add, wire) => {
     wire(r, 'held', out, port);
   }
 });
+// the device compile pass (D-361, #801): the C engine plays the binary without the dead modules, this engine plays all of
+// them. The LFO before the oscillator stays (the oscillator's analog tolerances and the Random module's seed come from
+// their indices); the noise, the filter and the second Random after them go
+kit('dead-modules', (add, wire) => {
+  const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.5 });
+  add('lfo', 0, 0, { rate: 3 });
+  const o = add('osc', 0, 0, { wave: 2, analog: 1, level: 0.8 });
+  const env = add('adsr', 0, 0, { a: 0.005, d: 0.3, s: 0.5, r: 0.3 }), vca = add('vca', 0, 0);
+  const clk = add('lfo', 0, 0, { wave: 3, rate: 13, depth: 1 }), rnd = add('random', 0, 0);
+  const noise = add('noise', 0, 0), flt = add('filter', 0, 0);
+  const lost = add('random', 0, 0);
+  wire(kb, 'pitch', o, 'pitch'); wire(kb, 'gate', env, 'gate'); wire(o, 'out', vca, 'in'); wire(env, 'env', vca, 'cv');
+  wire(vca, 'out', out, 'l'); wire(clk, 'out', rnd, 'clock'); wire(rnd, 'held', out, 'r');
+  wire(noise, 'out', flt, 'in'); wire(clk, 'out', lost, 'clock');
+});
 // a saw hard left and a sine an octave up hard right (the 1.10 early check's T110 MONO L R): each side its own signal
 kit('stereo-sides', (add, wire) => {
   const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.5 });

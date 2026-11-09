@@ -16,6 +16,7 @@ import { kindOf, switches, toggleTargets } from './buttons';
 import { fixNotes, PATTERNS_MAX, SONGS_MAX, type SongEntry, type StepNote } from './track';
 import { lockPlan, lockValue } from './locks';
 import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
+import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 export const BLOCK = 128;
 
