@@ -18,4 +18,6 @@ The `oracle-*-ordered-four-tracks` fixtures put sequencers first in stored modul
 
 `tools/build.py` records each switch in the firmware package's JSON sidecar. The firmware workflow builds separate control, fusion, drums, pairing and combined packages with matching emulator images. Before installing one on the registered rig, check its emulator boot, actual stack-pointer limits and core health. Measure deadline misses and voice shedding as well as mean processing time. A mean measured after the overload guard removed voices is not a speed-up.
 
+`tools/aot_fixture_stack.py BIN ELF PATCH --worker pair --margin 128` loads the patch into an emulator-only flash image, starts its sequencers, plays notes and watches the paired worker execute on core 1. It fails if the stack pointer crosses the existing guard plus the requested margin. Use `--worker poly` for the compiled polyphonic worker. This complements the factory Oracle check in `tools/aot_stack.sh`; neither check measures physical timing.
+
 The baseline hardware measurements are in [the capacity report](measurements/2026-11-09-aot-capacity.md). Further measurements and the compact instrument representation are tracked in [issue #808](https://github.com/glvno/matryoshka/issues/808). Instrument replacement and library storage are tracked in [issue #816](https://github.com/glvno/matryoshka/issues/816).
