@@ -50,6 +50,8 @@ its disassembly (artifact `matryoshka-elf`) for tracing such faults to a functio
   A timeout saves a failure report and stops the run. It does not start another scenario beside the unfinished one.
   Smoke tests have a thirty-minute deadline; boot checks have five minutes. They print elapsed time every thirty seconds
   and stop their child process group on a timeout or interruption.
+  While a gate runs on macOS, it prevents idle sleep. The display can sleep. Closing the lid can still suspend the Mac
+  and interrupt MIDI uploads; leave the lid open or use a supported closed-display setup.
   `device:scenarios` still runs alone because there is one test rig. Direct emulator binaries do not join the queue.
 - `cd web && npm run emu [-- FIRMWARE]`: the firmware in fm1-live's window (LCD, keys, buttons, knobs, sound, every
   MIDI input into the TRS jack; fm1-live prints its key map; built once into `tools/emu/live/`).

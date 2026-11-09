@@ -24,7 +24,8 @@ with open(sys.argv[1], 'a+') as lock:
 export async function acquireEmulatorSlot({ path = join(tmpdir(), `matryoshka-emu-${process.getuid()}.lock`), log = console.log } = {}) {
   log('emulator queue: waiting for the shared slot');
   const helper = spawn('python3', ['-c', LOCK, path], { stdio: ['pipe', 'pipe', 'inherit'] });
-  const stop = () => helper.kill();
+  let awake;
+  const stop = () => { helper.kill(); awake?.kill(); };
   process.once('exit', stop);
   try {
     await new Promise((resolve, reject) => {
@@ -34,11 +35,18 @@ export async function acquireEmulatorSlot({ path = join(tmpdir(), `matryoshka-em
     });
   } catch (error) { stop(); process.removeListener('exit', stop); throw error; }
   log('emulator queue: acquired the shared slot');
+  if (process.platform === 'darwin') {
+    // Keep idle sleep from interrupting MIDI and wall-clock deadlines. The display may sleep; closing the lid can
+    // still suspend the Mac. -w also releases the assertion if the runner is killed without running its exit handlers.
+    awake = spawn('/usr/bin/caffeinate', ['-i', '-w', String(process.pid)], { stdio: 'ignore' });
+    awake.once('error', (error) => log(`emulator queue: could not inhibit idle sleep: ${error.message}`));
+  }
   let released = false;
   return () => {
     if (released) return;
     released = true;
     helper.stdin.end();
+    awake?.kill();
     process.removeListener('exit', stop);
   };
 }

@@ -725,8 +725,15 @@ async function main() {
   /** a patch opened in the editor and on the FM-1 (synced), the FM-1 on its device page */
   async function openSynced(name, opener = open) {
     const n = (await T()).loads;
-    if (!(await opener(name))) return false;
+    if (!(await opener(name))) {
+      console.log(`patch open failed: ${name}; editor state: ${JSON.stringify(await T())}`);
+      return false;
+    }
     const s = await sentAfter(n);
+    if (!s) {
+      console.log(`patch upload did not settle: ${name}; editor state: ${JSON.stringify(await T())}`);
+      await shot('sync-failure');
+    }
     return !!s && (await emu.waitOwnPage(6000));
   }
   /** the SEQ page, its selected track cleared (SEQ held + REC, REC again), so the steps measured are the only ones */
