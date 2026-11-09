@@ -338,6 +338,20 @@ prints the runs of that word nobody wrote, over every machine of the run: a stac
 (top minus that = the most it held). `run` prints it for its one machine, `serve` answers `stacks` with it and writes it to
 stderr on `quit` (so `emu:scenarios` shows it). See "Memory map since #273" in [ARCHITECTURE.md](ARCHITECTURE.md).
 
+Stack paint counts bytes written, not all the space a function reserves. The emulator does not enforce core 1's
+hardware stack guard during ordinary runs. Set `M1EMU_C1_STACK_LOW` to a hexadecimal lower bound to check that core
+after every instruction and stop if its user stack crosses the bound. This reports an error rather than simulating
+the chip's exception handler. With the stack check enabled, `M1EMU_C1_WATCH_PC` logs the first time that core executes
+the supplied hexadecimal address in user mode. This proves the checked path ran on that core. These checks do not
+measure hardware timing.
+
+`tools/aot_stack.sh BIN ELF` uses the matching build's `_c1_ustack` symbol plus its 256-byte guard as that bound.
+It boots Oracle V, requires its compiled polyphonic segment to run on core 1, plays four then eight held notes, and requires
+the second core and its self-tests to stay healthy. Use `--interpreter` only for an interpreter control build.
+Build `m1emu` first; `M1EMU` can name another built copy. Run this focused check on compiled-assembly comparison
+builds before their rig install. The failing AOT build from CI run 42673451565 crosses the bound in `process` at
+startup, even though its ordinary boot check passed.
+
 ## What it does not cover
 
 - **USB is not emulated**: the smoke test leaves out the editor's SysEx link and USB MIDI (`emu:scenarios` covers them, above), firmware installs (M-UPGRADE, the loader), recovery and

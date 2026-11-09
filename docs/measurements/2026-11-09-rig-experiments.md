@@ -1,6 +1,6 @@
 # Compiled assemblies and RAM placement on the rig, 2026-11-09
 
-Ahead-of-time (AOT) compilation fails the two-core hardware check. Moving selected functions into RAM works in this limited comparison and saves time on the 808 Kit. Neither experiment is enabled in the normal release package. The combined Oracle V and drum-kit patch overloads on every healthy comparison build, so this test does not establish a usable multi-instrument groovebox.
+The original ahead-of-time (AOT) build fails the two-core hardware check. Its [startup stack fault is diagnosed and fixed in a separate check](2026-11-09-aot-stack.md). Moving selected functions into RAM works in this limited comparison and saves time on the 808 Kit. Neither experiment is enabled in the normal release package. The combined Oracle V and drum-kit patch overloads on every healthy comparison build, so this test does not establish a usable multi-instrument groovebox.
 
 The builds come from firmware CI [42673451565](https://github.com/glvno/matryoshka/actions/runs/42673451565), commit `774e1ddc9815188c2df1f04b4606b3734171ec3a`. [Build hashes and switches](2026-11-09-integration-builds.json) identify the exact packages. [Raw surveys, timing samples and core diagnostics](2026-11-09-rig-experiments.json) include the invalid runs, explicitly marked as invalid.
 
@@ -29,9 +29,9 @@ A warm install after the cold-start failure preserved this crash record:
 - Program counter `0x0201df18`, decoded against that build's ELF as `process+0x20`.
 - Return address `0x0203d752`, decoded as `aot_blk+0x12a`.
 
-The call into the general module processor and the near-full stack make stack exhaustion the leading hypothesis. The record does not prove it: the fault handler stores its supervisor stack pointer, not the interrupted user-stack value, and substitutes the core marker for the hardware exception detail. No guard was weakened and no speculative firmware fix was applied. Host bit-exact tests and emulator boot checks passed, but they do not reproduce the FM-1's second-core stack constraint.
+The [instruction-level regression](2026-11-09-aot-stack.md) reproduces stack exhaustion in these binaries. This hardware record alone cannot prove the cause: the fault handler stores its supervisor stack pointer, not the interrupted user-stack value, and substitutes the core marker for the hardware exception detail. The fault was recorded without changing the guard. Host bit-exact tests and ordinary emulator boot checks pass on these binaries, but those checks do not enforce the FM-1's second-core stack constraint.
 
-There is no valid two-core AOT speed comparison. The CPU model's predicted gain remains a model result. [Issue #808](https://github.com/glvno/matryoshka/issues/808) needs the hardware fault resolved before capacity or groovebox claims can be tested.
+There is no valid two-core AOT speed comparison. The CPU model's predicted gain remains a model result. [Issue #808](https://github.com/glvno/matryoshka/issues/808) tracks the matched performance and capacity checks for the corrected build.
 
 ## Keeping comparisons valid
 

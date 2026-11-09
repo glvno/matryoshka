@@ -193,6 +193,10 @@ fn run_cpu1(c1: &mut Cpu, soc: &mut Soc, cycles: u64) -> Result<(), String> {
     static STACK_LOW: std::sync::OnceLock<Option<u32>> = std::sync::OnceLock::new();
     let stack_low = *STACK_LOW.get_or_init(|| std::env::var("M1EMU_C1_STACK_LOW").ok().map(|s|
         u32::from_str_radix(s.trim_start_matches("0x"), 16).expect("M1EMU_C1_STACK_LOW must be a hexadecimal address")));
+    static WATCH_PC: std::sync::OnceLock<Option<u32>> = std::sync::OnceLock::new();
+    static WATCH_HIT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    let watch_pc = *WATCH_PC.get_or_init(|| std::env::var("M1EMU_C1_WATCH_PC").ok().map(|s|
+        u32::from_str_radix(s.trim_start_matches("0x"), 16).expect("M1EMU_C1_WATCH_PC must be a hexadecimal address")));
     if soc.core_paused(1) {
         return Ok(());
     }
@@ -213,21 +217,26 @@ fn run_cpu1(c1: &mut Cpu, soc: &mut Soc, cycles: u64) -> Result<(), String> {
         let mut bus = Core1Writes { bus: machine::Core1Bus { soc: &mut *soc, budget: chunk.max(64) + 1 }, writes: 0 };
         let k = if let Some(low) = stack_low {
             let pc = c1.pc;
+            if c1.user && watch_pc == Some(pc) && !WATCH_HIT.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                eprintln!("core 1 reached watched pc {pc:#010x}");
+            }
             c1.step(&mut bus).map_err(|e| format!("cpu1: {e:?} at pc {pc:#010x}"))?;
             if c1.user && c1.sp < low {
                 return Err(format!("core 1 stack crossed {low:#010x}: sp {:#010x} at pc {pc:#010x}, return {:#010x}", c1.sp, c1.rets));
             }
             1
-        } else { match c1.run_fast(&mut bus, chunk as u32) {
-            Ok((0, _)) => {
-                if let Err(e) = c1.step(&mut bus) {
-                    return Err(format!("cpu1: {e:?} at pc {:#010x}", c1.pc));
+        } else {
+            match c1.run_fast(&mut bus, chunk as u32) {
+                Ok((0, _)) => {
+                    if let Err(e) = c1.step(&mut bus) {
+                        return Err(format!("cpu1: {e:?} at pc {:#010x}", c1.pc));
+                    }
+                    1
                 }
-                1
+                Ok((k, _)) => k as u64,
+                Err(e) => return Err(format!("cpu1: {e:?} at pc {:#010x}", c1.pc)),
             }
-            Ok((k, _)) => k as u64,
-            Err(e) => return Err(format!("cpu1: {e:?} at pc {:#010x}", c1.pc)),
-        }};
+        };
         writes += bus.writes;
         left = left.saturating_sub(k);
         probing = probing.saturating_sub(k);
