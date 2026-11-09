@@ -250,12 +250,13 @@ def build_app():
     elf = OUT / "matryoshka.elf"
     tc("pi32v2/bin/ld", "-T", FW / "app.ld", OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o", OUT / "fm1_cpu1.o",
        OUT / "matryoshka.o", str(toolchain() / "pi32v2" / "lib" / "libcompiler-rt.a"), "-o", elf)   # soft float, 64-bit helpers
-    for sect in ("text.bin", "data.bin", "ramtext.bin", "c1text.bin"):
+    for sect in ("text.bin", "data.bin", "ramtext.bin", "c1text.bin", "fasttext.bin"):
         (OUT / sect).unlink(missing_ok=True)
     *_, syms, dis, rt, c1 = tc_all(("common/bin/objcopy", "-O", "binary", "-j", ".text", elf, OUT / "text.bin"),
                                    ("common/bin/objcopy", "-O", "binary", "-j", ".data", elf, OUT / "data.bin"),
                                    ("common/bin/objcopy", "-O", "binary", "-j", ".ram_text", elf, OUT / "ramtext.bin"),
                                    ("common/bin/objcopy", "-O", "binary", "-j", ".c1_text", elf, OUT / "c1text.bin"),
+                                   ("common/bin/objcopy", "-O", "binary", "-j", ".fast_text", elf, OUT / "fasttext.bin"),
                                    ("common/bin/objdump", "-t", elf),
                                    ("common/bin/objdump", "-d", elf),
                                    ("common/bin/objdump", "-d", "-j", ".ram_text", elf),
@@ -267,7 +268,9 @@ def build_app():
     img = bytearray((OUT / "text.bin").read_bytes())
     # .ram_text, .c1_text (the second core's waiting loop, #271) and .data follow .text at their load addresses; the boot
     # copies them by words (main.c fm1_cstart)
-    for sect, lname in (("ramtext.bin", "_rt_load"), ("c1text.bin", "_c1_load"), ("data.bin", "_data_load")):
+    # (spike) and .fast_text, the hot engine code in NOINIT (engine.c ENG_FAST), after .data
+    for sect, lname in (("ramtext.bin", "_rt_load"), ("c1text.bin", "_c1_load"), ("data.bin", "_data_load"),
+                        ("fasttext.bin", "_ft_load")):
         load = symv(lname)
         if load % 4:
             raise SystemExit(f"{lname} {load:#x} is not word aligned")
@@ -341,6 +344,10 @@ def check(img, syms, dis, rts):
     c1u, c1s = sym("_c1_ustack_top") - sym("_c1_ustack"), sym("_c1_sstack_top") - sym("_c1_ustack_top")
     notes.append(f".lowram {lowram} B ({lr_free} B free after it, .ram_text and .c1_text); stacks: main {ustack} B, "
                  f"supervisor {sstack} B, core 1 {c1u} + {c1s} B")
+    ft, ni_org, ni_len = sym("_ft_end") - sym("_ft_start"), *region["NOINIT"]
+    notes.append(f".fast_text {ft} B at {sym('_ft_start'):#x} (NOINIT {ni_org + ni_len - sym('_ft_end')} B free after it)")
+    if ft and not ni_org <= sym("_ft_start") <= sym("_ft_end") <= ni_org + ni_len:
+        errors.append(".fast_text is not inside NOINIT")
     if not sym("_pool_end") <= sym("_c1_ustack") < sym("_c1_sstack_top") <= sym("_guard0"):
         errors.append("app.ld: core 1's stacks are not between the pool and the main stack's guard band")
     if region["RAM"][0] + ram_len != region["POOL"][0]:

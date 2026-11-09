@@ -8,6 +8,7 @@
  * (audio.c) keeps the main loop alive. The chip's mask-ROM mode only by its explicit SysEx (chip_boot). */
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
 extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[], _c1_start[], _c1_end[], _c1_load[];
+extern uint32_t _ft_start[], _ft_end[], _ft_load[];
 
 
 /* Diagnostics for the device bring-up (#140), read with tools/m1_link.py diag: what the last run left behind. When the main
@@ -1629,6 +1630,8 @@ void fm1_cstart(void)
         *d = *s;                                /* flash driver code that must run from RAM */
     for (s = _c1_load, d = _c1_start; d < _c1_end; s++, d++)
         *d = *s;                                /* the second core's waiting loop (fm1_cpu1.h, #271) */
+    for (s = _ft_load, d = _ft_start; d < _ft_end; s++, d++)
+        *d = *s;                                /* hot engine code (engine.c ENG_FAST, app.ld .fast_text): before any render */
     fm1_mailbox_clear();
     diag_prev.p3 = p3;                          /* (diag_prev is in .bss: after the clear above) */
     diag_prev.src = src;
