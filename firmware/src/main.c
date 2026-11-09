@@ -186,9 +186,10 @@ static void c1_poll(void)                       /* the main loop */
  * at. TIMER5 nests in the audio interrupt, so only the interrupts off (or its own long run) hold it back, and with it
  * the 2 kHz USB service that queues each USB audio packet */
 static volatile uint32_t t5_gap_max, t5_gap_at;
+#include "usb_poll_clock.h"
 void fm1_timer5_irq(uint32_t *f)                /* f: the saved r0..r3, reti, rets, psr (fm1_isr.S) */
 {
-    static uint32_t sub, last, acc, next;
+    static uint32_t usb_at, last, acc, next;
     uint32_t t0 = fm1_ticks();
     fm1_timer5_ack();
     fm1_input_tick();
@@ -210,13 +211,11 @@ void fm1_timer5_irq(uint32_t *f)                /* f: the saved r0..r3, reti, re
         diag.n++;
         next = fm1_ms + DIAG_EVERY_MS;
     }
-    if (sub++ % 5u == 0u) {
+    if (usb_poll_due(&usb_at, t0)) {
         clk_out_poll(t0);                       /* MIDI clock out: the ticks due now to the USB ring (clock_out.h) */
         usb_poll();                             /* 2 kHz: all USB SIE traffic lives here */
         uart_midi_poll();                       /* the TRS jack's DMA ring (128 bytes = 41 ms) */
     }
-    if (sub == 10u)
-        sub = 0;
     bt_t5(t0);                                  /* (blk_time.h: its time, read only) */
 }
 extern void isr_timer5(void);
