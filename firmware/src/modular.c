@@ -57,6 +57,7 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 #define ENG_POOL __attribute__((section(".pool")))
 #define ENG_LOWRAM __attribute__((section(".lowram")))   /* app.ld: the SRAM below the RAM region (#273) */
 #define ENG_LANE_HOOKS 1           /* #271: engine.c hands lane 1 of a split segment to the second core (fm1_cpu1.h) */
+#define BT_POOL ENG_POOL
 #include "blk_time.h"              /* the block's time, measured (#802, #803: DIAG pages 132..139) */
 #define ENG_TMARK(k) (bt_eng[k] = fm1_ticks())
 static uint8_t lanes_off;                  /* DIAG pages 110 / 111 (tools/m1_link.py cores split off / on): core 0 renders every part (to measure) */

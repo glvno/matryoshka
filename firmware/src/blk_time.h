@@ -13,6 +13,9 @@
  * in TIMER5's interrupt 1 read (it already read the timer at its start). Page 139 measures a read's cost. */
 #pragma once
 #include <stdint.h>
+#ifndef BT_POOL
+#define BT_POOL                 /* modular.c: the pool (.pool, zeroed at boot), as the RAM region has no room to spare */
+#endif
 
 enum {                  /* the spans of one block, in ticks of TIMER4 */
     BT_ENTRY,           /* the ISR's start to the half chosen: the pending flags, their ack, the free half */
@@ -54,19 +57,20 @@ typedef struct {
     uint32_t t5_max;            /* the longest TIMER5 interrupt (its C body) */
     uint32_t ms0;               /* fm1_ms when the window began (main.c) */
 } bt_acc_t;
-static bt_acc_t bt;                             /* the running window (the audio ISR; main.c takes it with the interrupts off) */
-static uint32_t bt_m[BT_M_N];                   /* this half's marks (audio.c) */
-static uint32_t bt_eng[3];                      /* the engine's (modular.c ENG_TMARK): before the voices, after them,
+static bt_acc_t bt BT_POOL;                             /* the running window (the audio ISR; main.c takes it with the interrupts off) */
+static uint32_t bt_m[BT_M_N] BT_POOL;                   /* this half's marks (audio.c) */
+static uint32_t bt_eng[3] BT_POOL;                      /* the engine's (modular.c ENG_TMARK): before the voices, after them,
                                                  * before the Output sum */
-static volatile uint8_t bt_in_audio;            /* the audio ISR runs (TIMER5's interrupt nests in it) */
-static uint32_t bt_hand, bt_wait, bt_c0_jobs, bt_self, bt_t5_in_seen, bt_t5_out_seen;
+static volatile uint8_t bt_in_audio BT_POOL;            /* the audio ISR runs (TIMER5's interrupt nests in it) */
+static uint32_t bt_hand BT_POOL, bt_wait BT_POOL, bt_c0_jobs BT_POOL, bt_self BT_POOL, bt_t5_in_seen BT_POOL,
+    bt_t5_out_seen BT_POOL;
 /* TIMER5's interrupt (main.c), the only writer: since boot, its C bodies' ticks and count, nested and outside */
-static volatile uint32_t bt_t5_in_ticks, bt_t5_in_n, bt_t5_out_ticks, bt_t5_out_n;
+static volatile uint32_t bt_t5_in_ticks BT_POOL, bt_t5_in_n BT_POOL, bt_t5_out_ticks BT_POOL, bt_t5_out_n BT_POOL;
 
 /* the second core's side: its job runs fn (render_split's lane1_job) between two reads of the timer */
-static void (*volatile bt_c1_fn)(uint32_t);
-static volatile uint32_t bt_c1_start, bt_c1_busy;   /* its last job's start; its jobs' ticks this block */
-static uint32_t bt_hand_t, bt_busy0;            /* core 0: when it began handing over the last job; bt_c1_busy then */
+static void (*volatile bt_c1_fn)(uint32_t) BT_POOL;
+static volatile uint32_t bt_c1_start BT_POOL, bt_c1_busy BT_POOL;   /* its last job's start; its jobs' ticks this block */
+static uint32_t bt_hand_t BT_POOL, bt_busy0 BT_POOL;            /* core 0: when it began handing over the last job; bt_c1_busy then */
 static void bt_c1_job(uint32_t arg)             /* (on the second core) */
 {
     uint32_t t0 = fm1_ticks();

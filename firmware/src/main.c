@@ -300,8 +300,8 @@ static uint32_t batt_us;                        /* the last battery read's time,
  *        their total (ns), TIMER5's C bodies over the same time (ns) and their count, the audio ISRs that fell in it, the
  *        longest of those steps (ns) */
 static void settings_store(void);
-static bt_acc_t bt_last;                        /* the window DIAG page 132 took (pages 133..138 report it) */
-static uint32_t bt_t5_in_n0, bt_t5_out_n0;      /* TIMER5's counts when the running window began */
+static bt_acc_t bt_last BT_POOL;                        /* the window DIAG page 132 took (pages 133..138 report it) */
+static uint32_t bt_t5_in_n0 BT_POOL, bt_t5_out_n0 BT_POOL;      /* TIMER5's counts when the running window began */
 
 static uint32_t bt_ns(uint32_t sum, uint32_t n)        /* ticks (24 MHz) in total over n, in ns each */
 {
