@@ -90,6 +90,7 @@ static int eng_lane_wait(void)             /* -1: given up (held, barred): core 
 #include "engine.c"
 static void bt_parts(uint32_t group)       /* the awake parts of the segment just handed over, per lane (render_split: */
 {                                          /* the even parts on core 0, the odd ones on the second core) */
+    if (!group) { bt.parts[0]++; bt.parts[1]++; return; }   /* one compiled mono instrument on each core */
     const grp_t *g = &E.grp[group];
     uint32_t v;
     for (v = 0; v < g->parts; v++)

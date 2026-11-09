@@ -19,6 +19,9 @@
 #ifndef ENG_LOWRAM
 #define ENG_LOWRAM
 #endif
+#ifndef ENG_AOT_PAIR
+#define ENG_AOT_PAIR 0
+#endif
 
 /* The patch: modules, cables, summed inputs; below them the memory: one arena a load divides as the patch needs it
  * (#649, eng_arena: the module copies, the parameter values, the signal buffers and the lines). A patch that does not
@@ -823,7 +826,12 @@ static volatile uint16_t panel_buttons; /* the patch buttons held / switched on 
 #define IT_PV(nd, it) (&E.pv[E.grp[(nd)->grp].pv0 + IT_V(nd, it)])
 /* the lane an instance renders in (#271): the odd parts of a poly group are lane 1, which the second core may render while
  * core 0 renders lane 0; each lane has its own scratch (lane_scr) and its own dummy output */
+#if ENG_AOT && ENG_AOT_PAIR
+static const uint8_t *aot_worker_nodes;
+#define IT_LANE(nd, it) ((nd)->grp ? IT_V(nd, it) & 1u : aot_worker_nodes ? aot_worker_nodes[(nd) - E.node] : 0u)
+#else
 #define IT_LANE(nd, it) ((nd)->grp ? IT_V(nd, it) & 1u : 0u)
+#endif
 /* a granular line: the recording (Q13 like the delay) and the grains reading it (start, read phase from it Q16, rate Q16,
  * window phase and increment (u32 turns, half a turn over the grain), samples left) */
 typedef struct { uint32_t start, rp, rate, wph, winc, left; } grain_t;
@@ -9775,6 +9783,7 @@ static int lanes_awake(const node_t *nd)
 static void render_split(uint32_t n)
 {
     uint32_t k = 0, e;
+    AOT_BLOCK_BEGIN();
     while (k < E.norder) {
         const node_t *nd = &E.node[E.order[k]];
         if (AOT_OWNS(k, n)) {                    /* a compiled assembly's member: its first renders them all */

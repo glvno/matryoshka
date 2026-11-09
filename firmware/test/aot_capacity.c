@@ -33,6 +33,11 @@ int main(int argc, char **argv)
            argv[1], ENG_AOT, n, arena_free(), E.ninst, ar_nnode, E.nbuf, E.nphys);
 #if ENG_AOT
     printf(" compiled_instances=%u aot_state_host_bytes=%zu", aot_nx, sizeof(aot_mem_t));
+#if ENG_AOT_PAIR
+    uint32_t pairs = 0;
+    for (uint32_t i = 0; i < aot_nx; i++) pairs += aot_m->pair[i] != 0;
+    printf(" independent_pairs=%u", pairs);
+#endif
 #endif
     printf(" effect_line_bytes=%u solo_track=%d", effect_bytes, solo);
     eng_transport(1);

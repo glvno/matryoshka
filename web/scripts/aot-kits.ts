@@ -9,7 +9,7 @@ import { insertAssembly } from '../src/assembly';
 import { DEFS } from '../src/modules';
 import { addModule, connect, type Patch } from '../src/patch';
 import { encodePatch } from '../src/patchbin';
-import { aotPatch, AOT_ASSEMBLIES } from './gen-aot';
+import { aotPatch, AOT_ASSEMBLIES, AOT_DRUM_ASSEMBLIES } from './gen-aot';
 
 const OUT = new URL('../../build/aot/', import.meta.url);
 mkdirSync(OUT, { recursive: true });
@@ -23,12 +23,13 @@ const keyed = (p: Patch, a: ReturnType<typeof insertAssembly>): void => {
   const main = p.modules[0].id;
   for (const i of a.inputs) {
     const from = i.port === 'keys' ? 'keys' : (['pitch', 'gate', 'vel', 'mod', 'at'] as const).find((k) => i.port === k || i.label === k);
-    if (from) connect(p, DEFS, { module: main, port: from }, { module: i.module, port: i.port });
+    if (from) for (const target of [i, ...(i.also ?? [])])
+      connect(p, DEFS, { module: main, port: from }, { module: target.module, port: target.port });
   }
 };
 const voices = (p: Patch, n: number): void => { for (const m of p.modules) if (m.type === 'alloc') m.params.voices = n; };
 
-for (const name of AOT_ASSEMBLIES) {
+for (const name of [...AOT_ASSEMBLIES, ...AOT_DRUM_ASSEMBLIES]) {
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   kits[`${slug}-plain`] = aotPatch(name).patch;
   {   // the wheel and aftertouch cabled from Main into the exposed inputs (the factory patch does)
