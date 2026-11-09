@@ -82,6 +82,8 @@ export interface Fm1Notice {
 }
 
 export interface Fm1ViewHost extends Fm1Events {
+  /** Notes ended by a local button gesture, without another key edge. */
+  buttonNotes?(notes: KeyPlay[]): void;
   /** a pill key pressed / let go: key n = F3 + n semitones (the page plays it at the emulated octave) */
   key?(k: number, down: boolean): void;
   /** the MASTER knob, 0..1 */
@@ -469,14 +471,16 @@ export class Fm1View {
     if (this.held.has(id)) return;
     this.held.add(id);
     this.btnEls.get(id)?.classList.add('down');
-    this.ui?.button(id, true);
+    const notes = this.ui?.button(id, true) ?? [];
+    this.host.buttonNotes?.(notes);
   }
   private release(id: number): void {
     this.latched.delete(id);
     const b = this.btnEls.get(id);
     b?.classList.remove('latched', 'down');
     if (!this.held.delete(id)) return;
-    this.ui?.button(id, false);
+    const notes = this.ui?.button(id, false) ?? [];
+    this.host.buttonNotes?.(notes);
   }
 
   private button(body: HTMLElement, label: string, id: number, x: number, y: number, w: number, h: number): void {

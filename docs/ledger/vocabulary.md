@@ -452,7 +452,7 @@ The control for a choice parameter: a notched groove with the jack on the live c
 
 ### SEQ page
 
-The FM-1 screen, opened by SEQ, where a track is an 8 × 16 grid and the white keys are the selected row's steps: on a drum track the rows are the Drum map's, on a melodic track it is a piano roll of 8 pitches, and on both the black keys pick the rows.
+The FM-1 screen, opened by SEQ, showing a track on an 8 × 16 grid. A drum track shows its Drum map rows: black keys pick rows and white keys enter steps. A melodic track shows a piano roll of 8 pitches: its keys play notes, or enter notes in step record.
 
 ### Settings record
 
@@ -516,7 +516,7 @@ Entering notes on the FM-1's SEQ page one step after another, the way a cursor m
 
 ### Step write
 
-Placing steps with the white keys, one key per step: on the FM-1's SEQ page (a drum track's grid or the piano roll) and on the editor's Steps card grid. It works with REC on or off, and while a live take records.
+Placing steps with the white keys, one key per step: on the FM-1's drum grid and on the editor's Steps card grid. It works with REC on or off, and while a live take records.
 
 ### Steps track
 

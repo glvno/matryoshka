@@ -109,7 +109,7 @@ export const heldButtons = (held: number): Button[] => BUTTON_AT.filter((b) => (
 const usesModifier = (r: ControlRow, m: Modifier): boolean =>
   r.gesture.hold === m || (r.gesture.how === 'held' && r.gesture.do.some((p) => 'button' in p && p.button === m));
 
-/** a state whose K1..K4 act only on a held step (the piano roll, the drum grid): every row of it that turns one holds a
+/** a state whose K1..K4 act only on a held step (the drum grid): every row of it that turns one holds a
  * step */
 export function knobsOnlyHeld(s: HelpState): boolean {
   const k = stateRows(s).filter((r) => r.gesture.do.some((d) => 'knobs' in d));
@@ -137,7 +137,7 @@ export function stripView(p: StripInput, patch: StripPatch | null = null): Strip
     const rows = [...own, ...everywhere].filter((r) => usesModifier(r, m));
     if (rows.length) return { ...base, held: m, ...split(rows), everywhere: [], knobs: pageKnobs ?? knobsOf(rows, state) };
   }
-  const knobs = pageKnobs ?? (knobsOnlyHeld(state) ? null : knobsOf(own.filter((r) => !r.gesture.hold), state));
+  const knobs = pageKnobs ?? (state === 'roll' || knobsOnlyHeld(state) ? null : knobsOf(own.filter((r) => !r.gesture.hold), state));
   return { ...base, held: null, ...split(ownAll), everywhere, knobs };
 }
 
