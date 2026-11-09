@@ -20,6 +20,8 @@ on:
       - web/scripts/legacy-factory.json
       - web/scripts/released-factory.json
       - web/scripts/golden.ts
+      - web/scripts/gen-aot.ts
+      - web/scripts/aot-kits.ts
       - web/src/arpeggiator.ts
       - web/src/assembly.ts
       - web/src/cpu-costs.json
@@ -126,7 +128,7 @@ jobs:
         working-directory: web
         run: |
           npm run export-defs
-          git diff --exit-code ../firmware/src/defs.h ../firmware/src/presets.h ../firmware/src/controls.h ../firmware/test/pmig_cases.h ../README.md || { echo "::error::defs.h / presets.h / controls.h / test/pmig_cases.h / the README's controls are stale: run 'npm run export-defs' and commit"; exit 1; }
+          git diff --exit-code ../firmware/src/defs.h ../firmware/src/presets.h ../firmware/src/controls.h ../firmware/src/aot_gen.h ../firmware/test/pmig_cases.h ../README.md || { echo "::error::defs.h / presets.h / controls.h / aot_gen.h / test/pmig_cases.h / the README's controls are stale: run 'npm run export-defs' and commit"; exit 1; }
       - name: build the firmware, no warnings, pool headroom >= 8 KB
         run: |
           export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
@@ -139,6 +141,7 @@ jobs:
         run: |
           export
           tools/golden.sh
+          tools/aot_test.sh
           tools/usb_test.sh
           tools/clock_out_test.sh
           tools/peak_test.sh
@@ -166,6 +169,23 @@ jobs:
           path: |
             build/matryoshka.elf
             build/matryoshka.dis
+          if-no-files-found: error
+      - name: the same build without the compiled factory assemblies (ENG_AOT=0, #808), to measure them on the test rig
+        run: |
+          export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
+          mkdir -p build/aot-on build/noaot
+          cp build/matryoshka.bin build/matryoshka.fwsc build/matryoshka.json build/matryoshka.elf build/aot-on/
+          ENG_AOT=0 python3 tools/build.py 2>&1 | tee build/build-noaot.log
+          test "${PIPESTATUS[0]}" -eq 0
+          if grep -E "warning:" build/build-noaot.log | grep -v "SDK .* differs"; then echo "::error::compiler warnings (ENG_AOT=0)"; exit 1; fi
+          cp build/matryoshka.bin build/matryoshka.fwsc build/matryoshka.json build/noaot/
+          cp build/aot-on/* build/                     # (the default build back for the steps below)
+          grep -E "image [0-9]+ B" build/build.log | sed 's/^/with the compiled assemblies: /'
+          grep -E "image [0-9]+ B" build/build-noaot.log | sed 's/^/without (ENG_AOT=0): /'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: matryoshka-firmware-noaot
+          path: build/noaot/
           if-no-files-found: error
       - name: the emulator bridge's build (M1_EMU_MIDI=1, never installed; docs/EMULATOR.md, #290)
         run: |
