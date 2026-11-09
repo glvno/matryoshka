@@ -63,7 +63,7 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 #include "blk_time.h"              /* the block's time, measured (#802, #803: DIAG pages 132..139) */
 #define ENG_TMARK(k) (bt_eng[k] = fm1_ticks())
 static uint8_t lanes_off;                  /* DIAG pages 110 / 111 (tools/m1_link.py cores split off / on): core 0 renders every part (to measure) */
-static void bt_parts(void);                /* (after engine.c) */
+static void bt_parts(uint32_t group);      /* (after engine.c; the actual segment, interpreted or compiled) */
 static int eng_lane_run(void (*fn)(uint32_t), uint32_t arg)
 {
     uint32_t t = bt_hand_begin();
@@ -74,7 +74,7 @@ static int eng_lane_run(void (*fn)(uint32_t), uint32_t arg)
     }
     bt_handed(t, took);
     if (took)
-        bt_parts();
+        bt_parts(arg);
     return took;
 }
 static int eng_lane_wait(void)             /* -1: given up (held, barred): core 0 renders the lane */
@@ -85,9 +85,9 @@ static int eng_lane_wait(void)             /* -1: given up (held, barred): core 
     return rc;
 }
 #include "engine.c"
-static void bt_parts(void)                 /* the awake parts of the segment just handed over, per lane (render_split: */
+static void bt_parts(uint32_t group)       /* the awake parts of the segment just handed over, per lane (render_split: */
 {                                          /* the even parts on core 0, the odd ones on the second core) */
-    const grp_t *g = &E.grp[E.node[E.order[lane_job.k0]].grp];
+    const grp_t *g = &E.grp[group];
     uint32_t v;
     for (v = 0; v < g->parts; v++)
         if (!E.pv[g->pv0 + v].skip)

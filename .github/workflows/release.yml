@@ -41,7 +41,7 @@ jobs:
         working-directory: web
         run: |
           npm run export-defs
-          git diff --exit-code ../firmware/src/defs.h ../firmware/src/presets.h ../firmware/src/controls.h ../firmware/test/pmig_cases.h ../README.md || { echo "::error::defs.h / presets.h / controls.h / the README's controls are stale: run 'npm run export-defs' and commit"; exit 1; }
+          git diff --exit-code ../firmware/src/defs.h ../firmware/src/presets.h ../firmware/src/controls.h ../firmware/src/aot_gen.h ../firmware/test/pmig_cases.h ../README.md || { echo "::error::generated firmware files are stale: run 'npm run export-defs' and commit"; exit 1; }
       - name: build the release, no warnings, pool headroom >= 8 KB
         env:
           VERSION: ${{ inputs.version }}
@@ -53,12 +53,23 @@ jobs:
           if grep -E "warning:" build/build.log | grep -v "SDK .* differs"; then echo "::error::compiler warnings"; exit 1; fi
           cp build/build.log "build/release-$VERSION/"
           { echo "### Matryoshka $VERSION ($GITHUB_SHA)"; echo '```'; grep -E "image [0-9]+ B|pool [0-9]+ B of|identity" build/build.log; cat "build/release-$VERSION/SHA256SUMS"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-      - name: golden vectors, protocol, USB audio and panel tests
+      - name: the firmware workflow's host checks
         run: |
           tools/golden.sh
+          tools/aot_test.sh
           tools/usb_test.sh
+          tools/clock_out_test.sh
           tools/peak_test.sh
+          tools/audio_out_test.sh
+          tools/frame_test.sh
+          tools/ota_test.sh
+          tools/guard_test.sh
+          tools/power_test.sh
+          python3 tools/fm1_install_test.py
           tools/panel_test.sh
+          tools/preset_test.sh
+          tools/bank_new_test.sh
+          tools/ui_preview.sh build/ui-preview.png 0 1
       - uses: actions/upload-artifact@v4
         with:
           name: matryoshka-release-${{ inputs.version }}

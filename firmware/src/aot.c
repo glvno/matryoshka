@@ -709,7 +709,7 @@ static void aot_run(aot_x_t *x, uint32_t n)
         aot_job.x = x;
         aot_job.seg = s;
         aot_job.n = n;
-        if (lane_splits(lead) && lanes_awake(lead) && eng_lane_run(aot_lane1_job, 0u)) {
+        if (lane_splits(lead) && lanes_awake(lead) && eng_lane_run(aot_lane1_job, lead->grp)) {
             aot_parts(x, s, n, 0u, 2u);
             if (eng_lane_wait() != 0)
                 aot_parts(x, s, n, 1u, 2u);          /* the second core was given up: lane 1 here */

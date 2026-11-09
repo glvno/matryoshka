@@ -8,10 +8,25 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/wait.h>
+#define eng_lane_run test_lane_run
 #include "lanes_host.h"
+#undef eng_lane_run
+static int eng_lane_run(void (*fn)(uint32_t), uint32_t arg);
 #define ENG_AOT 1
 #include "../src/engine.c"
 #include "../src/presets.h"
+
+/* The hardware timing hook counts this group's awake voices. Both render paths must supply their own segment. */
+static int eng_lane_run(void (*fn)(uint32_t), uint32_t arg)
+{
+    uint32_t group = fn == aot_lane1_job ? E.node[aot_job.x->node[aot_job.x->t->seg_lead[aot_job.seg]]].grp
+                                        : E.node[E.order[lane_job.k0]].grp;
+    if (!group || group != arg) {
+        fprintf(stderr, "lane accounting group %u, expected %u\n", (unsigned)arg, (unsigned)group);
+        exit(1);
+    }
+    return test_lane_run(fn, arg);
+}
 
 #define BLOCKS 700u
 #define MAXOUT (BLOCKS * 256u)

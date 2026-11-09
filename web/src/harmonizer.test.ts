@@ -125,6 +125,53 @@ describe('Harmonizer note logic (#598)', () => {
     expect(harmChord(s, 125, P())).toEqual([125]); // (the notes past 127 are left out)
   });
 
+  it.each<[number, number[]]>([
+    [-8, [38, 40, 43, 48]], [-7, [40, 43, 48, 50]], [-6, [43, 48, 50, 52]],
+    [-5, [48, 50, 52, 55]], [-4, [50, 52, 55, 60]], [-3, [52, 55, 60, 62]],
+    [-2, [55, 60, 62, 64]], [-1, [60, 62, 64, 67]], [0, [60, 64, 67, 74]],
+    [1, [64, 67, 72, 74]], [2, [67, 72, 74, 76]], [3, [72, 74, 76, 79]],
+    [4, [74, 76, 79, 84]], [5, [76, 79, 84, 86]], [6, [79, 84, 86, 88]],
+    [7, [84, 86, 88, 91]], [8, [86, 88, 91, 96]],
+  ])('moves the current lowest or highest note at every add9 inversion (%i)', (voicing, notes) => {
+    expect(harmChord(harmInit(), 60, P({ type: 1, ext: 2, voicing }))).toEqual(notes);
+  });
+
+  it('releases a held root after the split moves over it', () => {
+    const s = harmInit(), on: number[] = [], off: number[] = [];
+    const p = P({ type: 1 });
+    harmKey(s, 60, true, p, true, (n) => on.push(n), (n) => off.push(n));
+    p.split = 67;
+    harmKey(s, 60, false, p, true, (n) => on.push(n), (n) => off.push(n));
+    expect(on).toEqual([60, 64, 67]);
+    expect(off).toEqual(on);
+    expect(s.roots).toEqual([]);
+    expect(s.down).toBe(0);
+  });
+
+  it.each([61, 72])('releases the original chord button after the split moves to %i', (split) => {
+    const s = harmInit(), p = P(), notes: number[] = [];
+    const heard = (n: number): void => { notes.push(n); };
+    harmKey(s, 54, true, p, true, heard, heard);
+    expect(s.down).toBe(1 << B('maj'));
+    p.split = split;
+    harmKey(s, 54, false, p, true, heard, heard);
+    expect(s.down).toBe(0);
+    expect(notes).toEqual([]);
+  });
+
+  it('keeps a chord button held until both keys mapped to it have been released', () => {
+    const s = harmInit(), p = P(), notes: number[] = [];
+    const heard = (n: number): void => { notes.push(n); };
+    harmKey(s, 54, true, p, true, heard, heard);
+    p.split = 61;
+    harmKey(s, 55, true, p, true, heard, heard);
+    harmKey(s, 54, false, p, true, heard, heard);
+    expect(s.down).toBe(1 << B('maj'));
+    harmKey(s, 55, false, p, true, heard, heard);
+    expect(s.down).toBe(0);
+    expect(notes).toEqual([]);
+  });
+
   it('sounds a note two held roots share once and ends it with the last of them', () => {
     const p = P({ type: 1, ext: 1 });
     const s = harmInit();

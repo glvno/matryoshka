@@ -40,10 +40,11 @@ const PER_VOICE = new Set(['part', 'random', 'shreg', 'steps', 'fm1', 'output'])
 const TRACKING = new Set(['filter', 'ladder']);
 
 /** does a filter / ladder possibly follow the played pitch (its track switch on, in either morph set, or modulated)? */
-function mayTrack(m: ModuleInst): boolean {
+function mayTrack(m: ModuleInst, shown: () => Shown): boolean {
   if ((m.params.track ?? 0) >= 0.5 || (m.paramsB?.track ?? 0) >= 0.5) return true;
   const mapped = (x: Record<string, string[] | undefined> | undefined): boolean => !!x && Object.values(x).some((l) => l?.includes('track'));
-  return mapped(m.map as Record<string, string[]> | undefined) || mapped(m.inputMap as Record<string, string[]> | undefined) || Object.values(m.range ?? {}).some((r) => !!r && 'track' in r);
+  return mapped(m.map as Record<string, string[]> | undefined) || mapped(m.inputMap as Record<string, string[]> | undefined) || Object.values(m.range ?? {}).some((r) => !!r && 'track' in r)
+    || !!shown().sets.get(m.id)?.has('track');
 }
 
 /** does any part of the group carry a flaw that scales this module type's parameters? */
@@ -121,7 +122,7 @@ export function hoistable(p: Patch, g: CompileGroup, shown?: ShownSource): Set<n
   const eligible = (id: number): boolean => {
     const m = byId.get(id);
     if (!m || PER_VOICE.has(m.type)) return false;
-    if (TRACKING.has(m.type) && mayTrack(m)) return false;
+    if (TRACKING.has(m.type) && mayTrack(m, seen)) return false;
     if (seeded(m, seen)) return false;   // (an oscillator's analog tolerances differ per voice)
     return !flawed(g, m.type);
   };

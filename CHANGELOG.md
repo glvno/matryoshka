@@ -4,6 +4,7 @@
 
 ### Editor and FM-1
 
+- **Live edits stay in step with the FM-1:** a value change that changes the compiled module layout sends the whole patch before further edits. Arming, muting and focus changes wait for an upload to finish. The Harmonizer releases held keys correctly after its split moves, and extended chords follow every inversion step correctly.
 - **Harmonizer module:** one key plays a whole chord on that root, after the Telepathic Instruments Orchid. Cable it between Main's keys and a Voicing. Its chord buttons are maj, min, dim, sus2, sus4, 7 and 9, and buttons held together combine (min + 7 + 9 is a minor ninth). On the FM-1 they are its seven lowest keys, at any octave: black keys 1 to 3 pick maj, min or dim, white keys 1 to 4 add sus2, sus4, 7 or 9, and every other key plays a root; the screen names the chord (CHORD: MIN7). From a MIDI keyboard they are the seven keys under the split (F3 to B3 as made). With no button held the card's own chord plays. LOCK keeps the chord so the buttons need not be held; VOICING moves it through its inversions. A patch with a Harmonizer is saved in format 52, which needs this firmware.
 
 ### FM-1

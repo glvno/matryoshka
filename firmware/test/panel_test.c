@@ -4121,6 +4121,33 @@ int main(void)
         check("OCT -1: black key 2 is still min, F4 plays F3 minor (a root under the split)", !strcmp(harm_notes(h), "53 56 60"));
         panel_keys(0);
         octave = oct;
+        eng_set_param((uint32_t)h, HARM_P_TYPE, ENG_ONE);
+        eng_set_param((uint32_t)h, HARM_P_EXT, 2 * ENG_ONE);
+        {   /* extended chords must move the current lowest/highest note at every inversion */
+            static const int steps[] = {-8, -4, 4, 8};
+            static const char *want[] = {"38 40 43 48", "50 52 55 60", "74 76 79 84", "86 88 91 96"};
+            uint32_t k;
+            for (k = 0; k < 4; k++) {
+                eng_set_param((uint32_t)h, HARM_P_VOICING, steps[k] * ENG_ONE);
+                eng_note_on(60, ENG_ONE, 1);
+                check("add9: repeated inversions move the lowest/highest note", !strcmp(harm_notes(h), want[k]));
+                eng_note_off(60, 1);
+            }
+        }
+        eng_set_param((uint32_t)h, HARM_P_VOICING, 0);
+        eng_set_param((uint32_t)h, HARM_P_EXT, 0);
+        eng_note_on(60, ENG_ONE, 1);
+        eng_set_param((uint32_t)h, HARM_P_SPLIT, 67 * ENG_ONE);
+        eng_note_off(60, 1);
+        check("moving SPLIT over a held root still releases its chord", !strcmp(harm_notes(h), ""));
+        eng_set_param((uint32_t)h, HARM_P_SPLIT, 60 * ENG_ONE);
+        eng_note_on(54, ENG_ONE, 1);
+        eng_set_param((uint32_t)h, HARM_P_SPLIT, 61 * ENG_ONE);
+        eng_note_on(55, ENG_ONE, 1);
+        eng_note_off(54, 1);
+        check("moving SPLIT: the second key still holds the same chord button", E.harm[0].down == (1u << 1));
+        eng_note_off(55, 1);
+        check("moving SPLIT: the last key releases its original chord button", E.harm[0].down == 0);
         eng_set_bypass((uint32_t)h, 1);
         check("bypassed: the keys reach no Harmonizer (plain notes)", eng_keys_harm() < 0);
         (void)load("808 KIT");

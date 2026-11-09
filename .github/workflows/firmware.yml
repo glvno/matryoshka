@@ -202,6 +202,10 @@ jobs:
             test "${PIPESTATUS[0]}" -eq 0
             if grep -E "warning:" "build/variants/$variant/build.log" | grep -v "SDK .* differs"; then exit 1; fi
             cp build/matryoshka.bin build/matryoshka.fwsc build/matryoshka.json build/matryoshka.elf "build/variants/$variant/"
+            M1_EMU_MIDI=1 ENG_AOT=$aot ENG_RAMCODE=$ram FELUCCA_SPEED=0 python3 tools/build.py 2>&1 | tee "build/variants/$variant/bridge.log"
+            test "${PIPESTATUS[0]}" -eq 0
+            if grep -E "warning:" "build/variants/$variant/bridge.log" | grep -v "SDK .* differs"; then exit 1; fi
+            cp build/matryoshka.bin "build/variants/$variant/matryoshka-emu.bin"
           done
       - uses: actions/upload-artifact@v4
         with:

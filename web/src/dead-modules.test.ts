@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { deadModules, hoistable, seeded } from './device-compile';
 import { shownModules } from './device-shown';
-import { deviceIndex } from './device';
+import { deviceIndex, deviceLayoutKey } from './device';
 import { BLOCK, Engine } from './engine';
 import { DEFS } from './modules';
 import { makeAssembly } from './assembly';
@@ -77,6 +77,36 @@ function render(p: Patch, compile: boolean): Float32Array {
 }
 
 describe('dead modules (D-361, #801)', () => {
+  it.each(['filter', 'ladder'])('keeps a %s per voice when the FM-1 can turn on its TRACK row', (type) => {
+    const p = newPatch(DEFS), osc = add(p, 'osc'), filter = add(p, type), vca = add(p, 'vca');
+    wire(p, osc, 'out', filter, 'in');
+    wire(p, filter, 'lp12', vca, 'in');
+    wire(p, mainOf(p), 'gate', vca, 'cv');
+    wire(p, vca, 'out', outOf(p), 'l');
+    const a = makeAssembly(p, [filter.id, vca.id], 'voice');
+    a.params.push({ module: filter.id, param: 'track', label: 'TRACK' });
+    setPoly(p, DEFS, a, true);
+    filter.params.track = 0;
+    const layout = deviceLayoutKey(p);
+    expect(deviceView(p, true).groups[0].modules.has(filter.id)).toBe(true);
+    filter.params.track = 1;
+    expect(deviceLayoutKey(p)).toBe(layout);
+  });
+
+  it('detects a value edit that changes the installed module indices, but allows ordinary live values', () => {
+    const p = newPatch(DEFS);
+    add(p, 'lfo');
+    const osc = voice(p);
+    makeAssembly(p, [osc.id], 'voice');
+    const installed = deviceLayoutKey(p);
+    const oldIndex = deviceIndex(p, osc.id);
+    osc.params.level = 0.5;
+    expect(deviceLayoutKey(p)).toBe(installed);
+    osc.params.analog = 1;
+    expect(deviceIndex(p, osc.id)).toBe(oldIndex + 1);
+    expect(deviceLayoutKey(p)).not.toBe(installed);
+  });
+
   it('drops a chain no one hears, however long, and keeps the editor\'s patch whole', () => {
     const p = newPatch(DEFS);
     voice(p);

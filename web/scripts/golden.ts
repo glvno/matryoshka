@@ -3698,6 +3698,12 @@ events['harm-lock'] = [[0, 'on', 42], [128 * 2, 'on', 45], [128 * 4, 'off', 42],
   [128 * 195, 'on', 55], [128 * 200, 'bon', 6], [128 * 205, 'on', 43], [128 * 225, 'off', 43], [128 * 226, 'boff', 6], [128 * 230, 'on', 60],
   [128 * 255, 'off', 60], [128 * 258, 'off', 55]];
 ends['harm-lock'] = 128 * 280;
+for (const voicing of [-8, -4, 4, 8]) {
+  const name = `harm-add9-inversion-${voicing}`;
+  harmVoice(name, { type: 1, ext: 2, voicing });
+  events[name] = [[0, 'on', 60], [128 * 30, 'off', 60], [128 * 60, 'on', 67], [128 * 90, 'off', 67]];
+  ends[name] = 128 * 120;
+}
 
 if (process.argv.includes('--panel-fixtures')) {
   const out = new URL('../../build/panel-fixtures/', import.meta.url);

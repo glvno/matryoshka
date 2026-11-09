@@ -52,9 +52,11 @@ export interface HarmState {
   roots: { key: number; notes: number[] }[];
   /** per note, how many held roots sound it */
   count: number[];
+  /** MIDI note -> button at press time plus one, or zero (the split can move while a key is held) */
+  buttonKeys: number[];
 }
 
-export const harmInit = (): HarmState => ({ down: 0, gesture: 0, locked: 0, toggle: false, stamp: [0, 0, 0, 0, 0, 0, 0], clock: 0, roots: [], count: Array(128).fill(0) });
+export const harmInit = (): HarmState => ({ down: 0, gesture: 0, locked: 0, toggle: false, stamp: [0, 0, 0, 0, 0, 0, 0], clock: 0, roots: [], count: Array(128).fill(0), buttonKeys: Array(128).fill(0) });
 
 const int = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, Math.round(v)));
 const locks = (p: HarmParams): boolean => int(p.lock, 0, 1) === 1;
@@ -136,8 +138,8 @@ export function harmVoice(tones: number[], voicing: number): number[] {
   const t = [...tones];
   if (t.length < 2) return t;
   const v = int(voicing, -HARM_VOICING, HARM_VOICING);
-  for (let i = 0; i < v; i++) t.push(t.shift()! + 12);
-  for (let i = 0; i < -v; i++) t.unshift(t.pop()! - 12);
+  for (let i = 0; i < v; i++) { t[0] += 12; t.sort((a, b) => a - b); }
+  for (let i = 0; i < -v; i++) { t[t.length - 1] -= 12; t.sort((a, b) => a - b); }
   return t;
 }
 
@@ -165,10 +167,21 @@ export function harmRootOn(s: HarmState, key: number, p: HarmParams, on: (note: 
 /** a key from Main (`zone`: the keys under the split are buttons; the FM-1's keys come without it: its seven lowest keys
  * are the buttons, engine.c eng_chord_button) */
 export function harmKey(s: HarmState, note: number, down: boolean, p: HarmParams, zone: boolean, on: (note: number) => void, off: (note: number) => void): void {
+  if (zone && s.buttonKeys[note]) {
+    const held = s.buttonKeys[note];
+    if (!down) {
+      s.buttonKeys[note] = 0;
+      if (!s.buttonKeys.includes(held)) harmButton(s, held - 1, false, p);
+    }
+    return;
+  }
+  if (!down) { harmRootOff(s, note, off); return; }
   const b = zone ? harmButtonOf(note, p) : -1;
-  if (b >= 0) harmButton(s, b, down, p);
-  else if (down) harmRootOn(s, note, p, on, off);
-  else harmRootOff(s, note, off);
+  if (b >= 0) {
+    harmRootOff(s, note, off);
+    s.buttonKeys[note] = b + 1;
+    harmButton(s, b, true, p);
+  } else harmRootOn(s, note, p, on, off);
 }
 
 /** every root and button let go, the latch cleared (what sounded is the caller's to end) */

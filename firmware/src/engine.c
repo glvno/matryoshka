@@ -680,7 +680,7 @@ typedef struct {
 typedef struct {
     uint8_t node, down, gesture, locked, toggle, nroots;
     uint8_t root[HARM_ROOTS], nnote[HARM_ROOTS], note[HARM_ROOTS][HARM_TONES];
-    uint8_t count[128];
+    uint8_t count[128], button_key[128];          /* MIDI note -> press-time button + 1; zero is not a button */
     uint32_t stamp[HARM_ZONE], clock;
 } harm_t;
 
@@ -3407,15 +3407,15 @@ static uint32_t harm_chord(const harm_t *h, uint32_t root, uint8_t *out)
     uint32_t n = harm_intervals(h, t), i, k = 0;
     for (; n > 1u && v > 0; v--) {
         x = t[0] + 12;
-        for (i = 1; i < n; i++)
+        for (i = 1; i < n && t[i] < x; i++)
             t[i - 1u] = t[i];
-        t[n - 1u] = x;
+        t[i - 1u] = x;
     }
     for (; n > 1u && v < 0; v++) {
         x = t[n - 1u] - 12;
-        for (i = n - 1u; i > 0; i--)
+        for (i = n - 1u; i > 0 && t[i - 1u] > x; i--)
             t[i] = t[i - 1u];
-        t[0] = x;
+        t[i] = x;
     }
     for (i = 1; i < n; i++)                      /* (low to high again: a 9th taken down lands over the root) */
         for (k = i; k > 0 && t[k - 1u] > t[k]; k--) {
@@ -3483,13 +3483,31 @@ static void harm_root_on(harm_t *h, uint32_t key, int32_t vel)
 /* a key from Main: one of the seven under the split a button (not from the FM-1's keys: harm_raw), else a root */
 static void harm_key(harm_t *h, uint32_t note, int32_t vel, int down)
 {
-    int32_t b = (int32_t)note - (harm_par(h, HARM_P_SPLIT, 0, 127) - HARM_ZONE);
-    if (!harm_raw && b >= 0 && b < HARM_ZONE)
-        harm_button(h, (uint32_t)b, down);
-    else if (down)
-        harm_root_on(h, note, vel);
-    else
+    int32_t b;
+    uint32_t i, held;
+    if (note >= 128u)
+        return;
+    if (!harm_raw && (held = h->button_key[note]) != 0u) {
+        if (!down) {
+            h->button_key[note] = 0;
+            for (i = 0; i < 128u && h->button_key[i] != held; i++)
+                ;
+            if (i == 128u)
+                harm_button(h, held - 1u, 0);
+        }
+        return;
+    }
+    if (!down) {
         harm_root_off(h, note);
+        return;
+    }
+    b = (int32_t)note - (harm_par(h, HARM_P_SPLIT, 0, 127) - HARM_ZONE);
+    if (!harm_raw && b >= 0 && b < HARM_ZONE) {
+        harm_root_off(h, note);
+        h->button_key[note] = (uint8_t)(b + 1);
+        harm_button(h, (uint32_t)b, 1);
+    } else
+        harm_root_on(h, note, vel);
 }
 
 /* its groups let go of every note, its roots too (the buttons and the latch stay; engine.ts harmDrop) */
@@ -9773,7 +9791,7 @@ static void render_split(uint32_t n)
         lane_job.k0 = k;
         lane_job.k1 = e;
         lane_job.n = n;
-        if (lanes_awake(nd) && eng_lane_run(lane1_job, 0u)) {
+        if (lanes_awake(nd) && eng_lane_run(lane1_job, nd->grp)) {
             render_mods(k, e, n, 0u, 2u);
             if (eng_lane_wait() != 0)
                 render_mods(k, e, n, 1u, 2u);           /* the second core was given up: lane 1 here */
