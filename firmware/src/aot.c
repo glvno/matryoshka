@@ -164,6 +164,42 @@ static asig_t aot_add(asig_t a, asig_t b, esig_t *dst, uint32_t n)
     return AB(dst);
 }
 
+/* the sum of k signals into dst (the input's summing buffer), in one pass as render_mods sums (the values: its own) */
+static asig_t aot_sum(const asig_t *x, uint32_t k, esig_t *dst, uint32_t n)
+{
+    const esig_t *b[8];
+    int32_t u = 0;
+    uint32_t j, m = 0, i;
+    for (j = 0; j < k; j++)
+        if (!x[j].b)
+            u += x[j].u;
+        else if (m < 8u)
+            b[m++] = x[j].b;
+        else
+            return aot_add(aot_sum(x, j, dst, n), aot_sum(x + j, k - j, dst, n), dst, n);   /* (more than eight buffers) */
+    if (!m)
+        return AU(u);
+    if (m == 1u && !u)
+        return AB(b[0]);
+    if (m == 1u)
+        for (i = 0; i < n; i++)
+            dst[i] = b[0][i] + u;
+    else if (m == 2u)
+        for (i = 0; i < n; i++)
+            dst[i] = b[0][i] + b[1][i] + u;
+    else if (m == 3u)
+        for (i = 0; i < n; i++)
+            dst[i] = b[0][i] + b[1][i] + b[2][i] + u;
+    else {
+        for (i = 0; i < n; i++)
+            dst[i] = b[0][i] + b[1][i] + b[2][i] + b[3][i] + u;
+        for (j = 4; j < m; j++)
+            for (i = 0; i < n; i++)
+                dst[i] += b[j][i];
+    }
+    return AB(dst);
+}
+
 /* ---- the stateless modules (each the same arithmetic as its m_ function, sample for sample) */
 
 static inline asig_t ag_const(const inst_t *it) { return AU(EF(it, 0)); }   /* m_const (and a Macro) */
@@ -296,13 +332,19 @@ static asig_t ag_mixer(inst_t *it, const asig_t *x, uint32_t n)            /* m_
             out[i] = mul16(x0[i], l0) + mul16(x1[i], l1) + u;
         break;
     }
-    default:
-        for (i = 0; i < n; i++) {
-            int32_t y = u;
-            for (j = 0; j < k; j++)
-                y += mul16(b[j][i], l[j]);
-            out[i] = y;
-        }
+    case 3: {
+        const esig_t *x0 = b[0], *x1 = b[1], *x2 = b[2];
+        const int32_t l0 = l[0], l1 = l[1], l2 = l[2];
+        for (i = 0; i < n; i++)
+            out[i] = mul16(x0[i], l0) + mul16(x1[i], l1) + mul16(x2[i], l2) + u;
+        break;
+    }
+    default: {
+        const esig_t *x0 = b[0], *x1 = b[1], *x2 = b[2], *x3 = b[3];
+        const int32_t l0 = l[0], l1 = l[1], l2 = l[2], l3 = l[3];
+        for (i = 0; i < n; i++)
+            out[i] = mul16(x0[i], l0) + mul16(x1[i], l1) + mul16(x2[i], l2) + mul16(x3[i], l3) + u;
+    }
     }
     return AB(out);
 }
@@ -400,13 +442,13 @@ static __attribute__((noinline)) void aot_prep_in(aot_cx_t *c, uint32_t L, uint3
     inst_t *it = c->it[L];
     const esig_t *sv[MAX_IN];
     uint32_t p;
-    for (p = 0; p < MAX_IN; p++)
+    for (p = 0; mask >> p; p++)
         if (mask >> p & 1u) {
             sv[p] = it->in[p];
             it->in[p] = aot_in(s[p], sv[p], c->n);
         }
     aot_prepf(c, L, fl);
-    for (p = 0; p < MAX_IN; p++)
+    for (p = 0; mask >> p; p++)
         if (mask >> p & 1u)
             it->in[p] = sv[p];
 }
@@ -417,14 +459,14 @@ static __attribute__((noinline)) void aot_blk(aot_cx_t *c, uint32_t L, uint32_t 
     inst_t *it = c->it[L];
     const esig_t *sv[MAX_IN];
     uint32_t p;
-    for (p = 0; p < MAX_IN; p++)
+    for (p = 0; mask >> p; p++)
         if (mask >> p & 1u) {
             sv[p] = it->in[p];
             it->in[p] = aot_in(s[p], sv[p], c->n);
         }
     aot_prepf(c, L, fl);
     process(&E.node[c->x->node[L]], it, c->n);
-    for (p = 0; p < MAX_IN; p++)
+    for (p = 0; mask >> p; p++)
         if (mask >> p & 1u)
             it->in[p] = sv[p];
 }
@@ -435,13 +477,13 @@ static __attribute__((noinline)) void aot_sel_fade(aot_cx_t *c, uint32_t L, uint
     inst_t *it = c->it[L];
     const esig_t *sv[MAX_IN];
     uint32_t p;
-    for (p = 0; p < MAX_IN; p++)
+    for (p = 0; mask >> p; p++)
         if (mask >> p & 1u) {
             sv[p] = it->in[p];
             it->in[p] = aot_in(s[p], sv[p], c->n);
         }
     m_select(it, c->n);
-    for (p = 0; p < MAX_IN; p++)
+    for (p = 0; mask >> p; p++)
         if (mask >> p & 1u)
             it->in[p] = sv[p];
 }
@@ -490,6 +532,12 @@ static uint32_t aot_pages_at(const uint8_t *p, uint32_t len)
     return at < len ? at : 0;
 }
 
+/* (host builds with -DAOT_DEBUG print which check of aot_fits a device failed) */
+#ifdef AOT_DEBUG
+#define AOT_WHY(k) (fprintf(stderr, "aot: %s does not fit (check %d)\n", t->name, (k)), 0)
+#else
+#define AOT_WHY(k) 0
+#endif
 /* do the loaded modules mem[0..t->n) play template t exactly? */
 static int aot_fits(const aot_tpl_t *t, const uint8_t *mem, uint8_t *loc, uint8_t *pos)
 {
@@ -500,21 +548,21 @@ static int aot_fits(const aot_tpl_t *t, const uint8_t *mem, uint8_t *loc, uint8_
     for (i = 0; i < t->n; i++) {
         const node_t *nd;
         if (mem[i] >= E.nmod || loc[mem[i]] != 0xFFu)
-            return 0;
+            return AOT_WHY(1);
         nd = &E.node[mem[i]];
         loc[mem[i]] = (uint8_t)i;
         if (nd->type != t->type[i] || nd->disabled_inputs)
-            return 0;
+            return AOT_WHY(2);
         for (q = 0; q < MAX_IN; q++)
             if (nd->input_map[q])
-                return 0;
+                return AOT_WHY(3);
         if (!t->grp[i] != !nd->grp)                          /* runs once / per part as the template's */
-            return 0;
+            return AOT_WHY(4);
         if (t->grp[i]) {                                     /* one poly group per template group, none shared */
             if (!g[t->grp[i]])
                 g[t->grp[i]] = nd->grp;
             if (g[t->grp[i]] != nd->grp)
-                return 0;
+                return AOT_WHY(5);
         }
         if (pos[mem[i]] < first) first = pos[mem[i]];
         if (pos[mem[i]] > last) last = pos[mem[i]];
@@ -523,7 +571,7 @@ static int aot_fits(const aot_tpl_t *t, const uint8_t *mem, uint8_t *loc, uint8_
         if (E.node[i].grp && loc[i] == 0xFFu)
             for (q = 1; q < 8u; q++)
                 if (g[q] == E.node[i].grp)
-                    return 0;
+                    return AOT_WHY(6);
     for (c = 0; c < E.ncab; c++) {
         uint32_t f = loc[E.from_m[c]], to = loc[E.to_m[c]], k;
         if (f == 0xFFu && to == 0xFFu)
@@ -533,7 +581,7 @@ static int aot_fits(const aot_tpl_t *t, const uint8_t *mem, uint8_t *loc, uint8_
                 if (t->cab[k].from == f && t->cab[k].fp == E.from_p[c] && t->cab[k].to == to && t->cab[k].tp == E.to_p[c] && !(seen[k >> 3] >> (k & 7u) & 1u))
                     break;
             if (k == t->ncab || (pos[E.from_m[c]] < pos[E.to_m[c]]) != t->cab[k].fwd)
-                return 0;
+                return AOT_WHY(7);
             seen[k >> 3] |= (uint8_t)(1u << (k & 7u));
             continue;
         }
@@ -543,21 +591,21 @@ static int aot_fits(const aot_tpl_t *t, const uint8_t *mem, uint8_t *loc, uint8_
             for (; *x != 0xFFu && !(x[0] == m && x[1] == pt); x += 2)
                 ;
             if (*x == 0xFFu)
-                return 0;
+                return AOT_WHY(8);
         }
     }
     for (c = 0; c < t->ncab; c++)
         if (!(seen[c >> 3] >> (c & 7u) & 1u))
-            return 0;
+            return AOT_WHY(9);
     for (i = first + 1u; i < last; i++) {                    /* nothing in between is cabled to a member, or a Steps track */
         uint32_t m = E.order[i];
         if (loc[m] != 0xFFu)
             continue;
         if (E.node[m].type == T_STEPS)
-            return 0;
+            return AOT_WHY(10);
         for (c = 0; c < E.ncab; c++)
             if ((E.from_m[c] == m && loc[E.to_m[c]] != 0xFFu) || (E.to_m[c] == m && loc[E.from_m[c]] != 0xFFu))
-                return 0;
+                return AOT_WHY(11);
     }
     return 1;
 }

@@ -149,7 +149,7 @@ static asig_t aot0_s1_2(aot_cx_t *c)   /* scale 38.out */
     if (!c->d[2]) {
         if (!c->prep[38])
             aot_prepf(c, 38, 0x0u);
-        c->s[2] = ag_scale(c->it[38], aot_add(aot_add(c->x->sh[2], aot0_s1_22(c), (esig_t *)c->it[38]->in[0], c->n), c->x->sh[10], (esig_t *)c->it[38]->in[0], c->n), c->n);
+        c->s[2] = ag_scale(c->it[38], aot_sum((const asig_t[]){c->x->sh[2], aot0_s1_22(c), c->x->sh[10]}, 3u, (esig_t *)c->it[38]->in[0], c->n), c->n);
         c->d[2] = 1;
     }
     return c->s[2];
@@ -311,7 +311,7 @@ static asig_t aot0_s1_11(aot_cx_t *c)   /* mixer 47.out */
             aot_prepf(c, 47, 0x0u);
         asig_t x[4];
         x[0] = aot_add(aot0_s1_6(c), aot0_s1_7(c), (esig_t *)c->it[47]->in[0], c->n);
-        x[1] = aot_add(aot_add(aot0_s1_8(c), aot0_s1_9(c), (esig_t *)c->it[47]->in[1], c->n), aot0_s1_10(c), (esig_t *)c->it[47]->in[1], c->n);
+        x[1] = aot_sum((const asig_t[]){aot0_s1_8(c), aot0_s1_9(c), aot0_s1_10(c)}, 3u, (esig_t *)c->it[47]->in[1], c->n);
         x[2] = c->x->sh[6];
         x[3] = AU(0);
         c->s[11] = ag_mixer(c->it[47], x, c->n);
@@ -406,7 +406,7 @@ static asig_t aot0_s1_19(aot_cx_t *c)   /* scale 48.out */
     if (!c->d[19]) {
         if (!c->prep[48])
             aot_prepf(c, 48, 0x0u);
-        c->s[19] = ag_scale(c->it[48], aot_add(aot_add(aot0_s1_8(c), aot0_s1_9(c), (esig_t *)c->it[48]->in[0], c->n), aot0_s1_10(c), (esig_t *)c->it[48]->in[0], c->n), c->n);
+        c->s[19] = ag_scale(c->it[48], aot_sum((const asig_t[]){aot0_s1_8(c), aot0_s1_9(c), aot0_s1_10(c)}, 3u, (esig_t *)c->it[48]->in[0], c->n), c->n);
         c->d[19] = 1;
     }
     return c->s[19];
@@ -552,7 +552,7 @@ static asig_t aot0_s0_15(aot_cx_t *c)   /* xfade 15.out */
     if (!c->d[15]) {
         if (!c->prep[15])
             aot_prepf(c, 15, 0x0u);
-        c->s[15] = ag_xfade(c->it[15], aot_add(aot_add(aot0_s0_12(c), aot0_s0_13(c), (esig_t *)c->it[15]->in[0], c->n), aot0_s0_14(c), (esig_t *)c->it[15]->in[0], c->n), AB(c->it[3]->out[0]), AU(0), c->n);
+        c->s[15] = ag_xfade(c->it[15], aot_sum((const asig_t[]){aot0_s0_12(c), aot0_s0_13(c), aot0_s0_14(c)}, 3u, (esig_t *)c->it[15]->in[0], c->n), AB(c->it[3]->out[0]), AU(0), c->n);
         c->d[15] = 1;
     }
     return c->s[15];
@@ -756,7 +756,7 @@ static void aot0_seg1(aot_x_t *x, uint32_t v, uint32_t n)   /* per part: part vc
     }
     {   /* glide 29 */
         asig_t s[MAX_IN];
-        s[0] = aot_add(aot_add(AB(c->it[4]->out[0]), c->x->sh[0], (esig_t *)c->it[29]->in[0], c->n), aot0_s1_0(c), (esig_t *)c->it[29]->in[0], c->n);
+        s[0] = aot_sum((const asig_t[]){AB(c->it[4]->out[0]), c->x->sh[0], aot0_s1_0(c)}, 3u, (esig_t *)c->it[29]->in[0], c->n);
         aot_blk(c, 29, 0x0u, 0x1u, s);
     }
     {   /* select 58: its position every block */
@@ -861,7 +861,7 @@ static void aot0_seg1(aot_x_t *x, uint32_t v, uint32_t n)   /* per part: part vc
     {   /* ladder 35 */
         asig_t s[MAX_IN];
         s[0] = aot0_s1_11(c);
-        s[1] = aot_add(aot_add(aot0_s1_15(c), aot0_s1_23(c), (esig_t *)c->it[35]->in[1], c->n), c->x->sh[7], (esig_t *)c->it[35]->in[1], c->n);
+        s[1] = aot_sum((const asig_t[]){aot0_s1_15(c), aot0_s1_23(c), c->x->sh[7]}, 3u, (esig_t *)c->it[35]->in[1], c->n);
         aot_blk(c, 35, 0x1u, 0x3u, s);
     }
     {   /* adsr 36 */

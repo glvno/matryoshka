@@ -180,9 +180,9 @@ export function aotAssembly(name: string, k: number): { c: string; members: numb
     if (mode === 'none') return 'AU(0)';
     if (mode === 'generic') return `(${[...genericPrep(m, p, mem[m].seg), `aot_gsum(${it(m)}, ${p}, c->n)`].join(', ')})`;
     const src = into(m, p).map((c) => srcExpr(c.f, c.fp, mem[m].seg, c.fwd));
-    let e = src[0];
-    for (const x of src.slice(1)) e = `aot_add(${e}, ${x}, (esig_t *)${it(m)}->in[${p}], c->n)`;
-    return e;
+    if (src.length === 1) return src[0];
+    if (src.length === 2) return `aot_add(${src[0]}, ${src[1]}, (esig_t *)${it(m)}->in[${p}], c->n)`;
+    return `aot_sum((const asig_t[]){${src.join(', ')}}, ${src.length}u, (esig_t *)${it(m)}->in[${p}], c->n)`;
   };
   const nin = (m: number): number => DEFS[mem[m].type].inputs.length;
   const cvPorts = (m: number): number[] => { const b = cvbase(mem[m].type); return b < 0 ? [] : [b, b + 1].filter((p) => p < nin(m)); };
