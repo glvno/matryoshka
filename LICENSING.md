@@ -27,6 +27,7 @@ Source: <https://github.com/charlesvestal/fm1-x0x> (Charles Vestal, a Felucca fo
 Source: <https://github.com/keremimo/melodee> (Kerem Kilic, Ellic Studio, a Felucca fork) at commit `165d177`. GPL-3.0-only.
 
 - `firmware/hal/fm1_core1_stop.h`: the safe hold of the second core, adapted there from Felucca 1.6.1. Its notice lists what Matryoshka changed. It keeps Melodee's copyright lines, Kerem Kilic and Leo Kuroshita.
+- `firmware/hal/fm1_power.h`: the stock V15 supply setup at power-on, and `firmware/test/power_test.c`, its host test (Melodee's `tests/power_test.c`). Built since issue #735. The notice at the top of each file lists what Matryoshka changed. They keep Melodee's copyright line, Kerem Kilic.
 
 ## JieLi SDK files (Apache-2.0)
 

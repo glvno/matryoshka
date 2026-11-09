@@ -336,8 +336,10 @@ stderr on `quit` (so `emu:scenarios` shows it). See "Memory map since #273" in [
 
 - **USB is not emulated**: the smoke test leaves out the editor's SysEx link and USB MIDI (`emu:scenarios` covers them, above), firmware installs (M-UPGRADE, the loader), recovery and
   the UBOOT SysEx are untested by it. The bank is therefore seeded in the flash image, not uploaded.
-- **P33** (watchdog, reset reason, reboot, UBOOT entry: `firmware/hal/fm1_sys.h`) is not modelled: the boot-loop
-  guard and MENU > UPDATE MODE cannot be checked.
+- **P33** (watchdog, reset reason, reboot, UBOOT entry: `firmware/hal/fm1_sys.h`) is not modelled, except the ten
+  registers of the supply setup at boot (`tools/emu/src/p33.rs`, #735): they start at the boot loader's levels, and the
+  second core starts only when the setup reads them back right. The boot-loop guard and MENU > UPDATE MODE cannot be
+  checked. fm1-live (`npm run emu`'s window) has no such model, so it shows 1 CORE.
 - **Timing**: one instruction per cycle at 240 MHz, no cache or flash wait states. The CPU figure in the top bar
   (303 Acid 11-12 %, the device measured 12 % at M1-0.2) is a rough guide only; the window at 120 MHz shows twice it.
   The test rig runs the same patches about twice as long as the emulator does, and a change in code or memory layout

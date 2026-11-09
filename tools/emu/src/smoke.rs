@@ -29,7 +29,8 @@
 //! 11. STEREO (the 1.10 early check): a saw on the Output's l and a sine on its r come out on their own sides of the I2S
 //! 12. Verona Drum 1's hi-hat (the 1.10 early check): black key 6 (closed) pressed while black key 5 (open) is still down cuts
 //!     the open hat
-//! 13. hardware the emulator does not model: any register besides P33 fails the test
+//! 13. hardware the emulator does not model: any register besides P33 fails the test (P33's supply registers are
+//!     modelled, p33.rs: the menu's 2 CORES needs the supply setup's check to pass, and a check reads the rails after it)
 //!
 //! Snapshots of every step go to OUT (PNG); a WAV of the first run too.
 
@@ -1142,6 +1143,12 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     t.screen(&m, "menu: the bank's slots", &format!("{} OF 64", presets.len()));
     t.screen(&m, "menu: the battery's reading (fm1-emu's ch 3: 640, 3 bars)", "640  3/3");
     t.screen(&m, "menu: the second core runs and passes its self-test (#271)", "2 CORES");
+    let r = m.p33.regs;
+    t.check(
+        "the stock supply setup ran at boot (#735): SYSVDD 15, VDC14 7, VDDIO 4 and 3, DCDC13 on, LDO13 off",
+        r[9] & 15 == 15 && r[6] & 7 == 7 && r[5] & 0x37 == 0x34 && r[0] & 0x0c == 8,
+        format!("P33 0: {:#04x}, 5: {:#04x}, 6: {:#04x}, 9: {:#04x}", r[0], r[5], r[6], r[9]),
+    );
     m.turn(ALGO, 1, 400)?;
     t.screen(&m, "menu: the GUIDE tab (D-248) points at the controls sheet", "PRESS OCT- + OCT+");
     m.tap(ENV, 120, 600)?;

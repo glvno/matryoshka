@@ -32,7 +32,8 @@
                                            can be read on another. arm: keep the next 64 entries (a one-shot capture), wrap:
                                            the newest again)
   tools/m1_link.py cpuclock               (#735, DIAG page 131: the CPU clock from the PLL's multiplier, the rails' levels and
-                                           dependent adds a microsecond timed on the 24 MHz timer; reads only, writes nothing)
+                                           dependent adds a microsecond timed on the 24 MHz timer; reads only, writes nothing;
+                                           then the stock supply setup at boot: its result, and the rails before it)
   tools/m1_link.py diag [DIS]             (what the last reset left: its cause, the crash record, where a stalled main loop
                                            was; DIS = the build's matryoshka.dis (CI artifact matryoshka-elf) names the functions)
 Every command takes --rig (the test rig: the FM-1 at its registered USB location, checked by its mark) or --location HEX
@@ -321,7 +322,8 @@ def main():
         on, gave, barred, skip = w[0] & 0xFF, (w[0] >> 8) & 0xFF, (w[0] >> 16) & 0xFF, (w[0] >> 24) & 0x7F
         why = {0: "", 1: " (wrong job refused)", 2: " (job late)", 3: " (barred: one core until power-off)",
                4: " (wrong self-test answer)"}.get(gave, f" ({gave})")
-        skipped = {1: ", not started: update mode", 2: ", not started: the last boot failed"}.get(skip, "")
+        skipped = {1: ", not started: update mode", 2: ", not started: the last boot failed",
+                   3: ", not started: the supply setup failed (cpuclock)"}.get(skip, "")
         print(f"{'2 CORES' if on else '1 CORE'}{why if gave else ''}{skipped}; barred {'yes' if barred else 'no'}; "
               f"trace {w[1]:#010x}; split {'OFF' if w[0] >> 31 else 'on'}")
         print(f"self-test passed {w[2]}, failed {w[3]}; refused jobs {w[4]}; jobs done {w[7]}; "
@@ -338,15 +340,28 @@ def main():
         p = link.ask(frame(0x2B, [131]), (0x4B, 131))
         if len(p) < 21:
             sys.exit("no clock page: firmware before #735")
-        w = [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range(6)]
+        w = [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range(len(p) // 4)]
         mult = (w[0] & 0xFFF) + 2
-        r9, r6, r5 = w[2] & 0xF, (w[2] >> 8) & 7, (w[2] >> 16) & 7
+
+        def rails(x):
+            r9, r6, r5, r0 = x & 0xF, (x >> 8) & 7, (x >> 16) & 7, (x >> 24) & 0xFF
+            return (f"SYSVDD {r9} = {0.93 + 0.03 * r9:.2f} V, VDC14 {r6} = {1.25 + 0.05 * r6:.2f} V, VDDIO {r5} ="
+                    f" {2.8 + 0.1 * r5:.1f} V, VDDIOW {(x >> 20) & 3}; mode {r0:#04x}"
+                    f" (LDO13 {'on' if r0 & 4 else 'off'}, DCDC13 {'on' if r0 & 8 else 'off'})")
         print(f"PLL2_CON1 {w[0]:#010x}: multiplier {mult}, VCO {mult * 2} MHz, SYS {mult * 4 // 3} MHz if CLK_CON2 picks 2/3"
               f" (CLK_CON2 {w[1]:#010x})")
-        print(f"rails: SYSVDD {r9} = {0.93 + 0.03 * r9:.2f} V, VDC14 {r6} = {1.25 + 0.05 * r6:.2f} V, VDDIO {r5} = {2.8 + 0.1 * r5:.1f} V")
+        print(f"rails now: {rails(w[2])}")
         d = w[4] - w[3]
         print(f"adds: 16384 in {w[3]} ticks, 49152 in {w[4]} ticks (24 MHz); the difference, 32768 adds in {d} ticks ="
               f" {32768 * 24 / d:.0f} dependent adds a microsecond" if d > 0 else "adds: no time measured")
+        if len(w) >= 8 and w[6] & 0xFF:                    # the stock supply setup at boot (hal/fm1_power.h)
+            state, step, lost = w[6] & 0xFF, (w[6] >> 8) & 0xFF, (w[6] >> 16) & 0xFF
+            print("supply setup at boot: " + ("set and checked" if state == 1 else
+                  f"FAILED at {'the check after it' if step == 21 else f'step {step} of 20'}, {lost} P33 timeouts;"
+                  " one core, on the boot loader's levels"))
+            print(f"rails before it: {rails(w[7])}")
+        elif len(w) >= 8:
+            print("supply setup at boot: not run (update mode, or a firmware from before it)")
     elif a[0] == "uitime":
         if len(a) > 1 and a[1] == "reset":
             link.ask(frame(0x2B, [120]), (0x4B, 120))

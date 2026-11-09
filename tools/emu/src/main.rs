@@ -21,6 +21,7 @@
 mod boot;
 mod font;
 mod machine;
+mod p33;
 mod png;
 mod serve;
 mod smoke;
