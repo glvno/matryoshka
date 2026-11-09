@@ -40,13 +40,15 @@ its disassembly (artifact `matryoshka-elf`) for tracing such faults to a functio
   `emu-midi/matryoshka-emu.bin` next to FIRMWARE, else the CI run's `matryoshka-emu-midi` artifact, else it checks no
   link and says so. The last line is the summary (`boot check: PASS ..` / `FAIL ..`); snapshots go to `build/emu/boot/`.
   It is the test rig's gate while the owner iterates ([D-123](ledger/releases.md#D-123)), not a merge or release gate.
-- **Running them side by side:** `emu:smoke` and `emu:boot` count emulated time, not the wall clock, so several may run
-  at once with no lock. Two smokes on the same build at once gave identical results and byte-identical snapshots, only
-  slower: 474 s against 401 s (2026-11-02). Two runs in one checkout write to the same `build/emu/smoke/` (or
-  `build/emu/boot/`), so run them from different checkouts. `emu:scenarios` may run side by side too, from different
-  checkouts (each writes `build/emu/scenarios/`, `build/emu/bridge/ci/` and the panel WebAssembly in its own), since it
-  waits on conditions and on the emulator's clock (#588, [D-136](ledger/releases.md#D-136), below): two runs side by side passed 10 rounds in a row on the M3 Max, 225 of 225 checks each, 277 to 471 s a round with the load average at 4 to 20 (2026-11-04). `device:scenarios` drives the one rig, so
-  it still runs alone.
+- **Queued gates:** `emu:smoke`, `emu:boot`, and `emu:scenarios` share one slot across checkouts on this Mac.
+  They print when they enter the queue and when their run starts. The operating system releases the slot after a
+  killed runner; no stale lock directory needs deleting. This implements the proposed limit in [D-143](ledger/releases.md#D-143).
+  Development branches run the full gates on their combined head ([D-120](ledger/releases.md#D-120)).
+  Scenario output includes a progress line every 30 seconds. `build/emu/scenarios/run.json` identifies the firmware
+  by its SHA-256 digest. `results.json` is updated after each check, and `progress.json` names the current scenario and
+  unanswered emulator commands. An unanswered command fails after two minutes; a whole scenario fails after ten.
+  A timeout saves a failure report and stops the run. It does not start another scenario beside the unfinished one.
+  `device:scenarios` still runs alone because there is one test rig. Direct emulator binaries do not join the queue.
 - `cd web && npm run emu [-- FIRMWARE]`: the firmware in fm1-live's window (LCD, keys, buttons, knobs, sound, every
   MIDI input into the TRS jack; fm1-live prints its key map; built once into `tools/emu/live/`).
 - Without FIRMWARE both take `build/matryoshka.bin`, else download the latest firmware artifact of a successful

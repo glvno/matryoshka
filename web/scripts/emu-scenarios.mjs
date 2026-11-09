@@ -31,13 +31,14 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { basename, dirname, join, resolve } from 'node:path';
-import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { boot, download, downloadEmuMidi, smoke, smokeState, venvPython } from './branch-firmware.mjs';
 import { DEV_ENV, audioLocation, fm1Label, loadRig, pickRig, rigAtLocation, rigPage, survey } from './rig-link.mjs';
 import { parseWav, startCapture } from './audio-capture.mjs';
 import { CHECK_SCENARIOS, checkScenarios } from './device-check.mjs';
+import { EmuChannel } from './emu-channel.mjs';
+import { acquireEmulatorSlot, withDeadline } from './emu-slot.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const REPO = 'glvno/matryoshka';
@@ -101,8 +102,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** child processes (the dev server, m1emu serve): killed however this script ends, so none is left running */
 const children = [];
 const own = (c) => { children.push(c); return c; };
+let testBrowser;
+let ending = false;
 process.on('exit', () => { for (const c of children) try { c.kill(); } catch { /* gone */ } });
-for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(s, () => process.exit(130));
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, async () => {
+  if (ending) return;
+  ending = true;
+  if (existsSync(OUT)) writeFileSync(join(OUT, 'interrupted.json'), JSON.stringify({ signal, at: new Date().toISOString() }));
+  await withDeadline(() => testBrowser?.close() ?? Promise.resolve(), 5000, 'browser shutdown').catch(() => {});
+  process.exit(130);
+});
 
 function firmware() {
   if (given) return resolve(process.cwd(), given);
@@ -272,24 +281,14 @@ class Emu extends Target {
   constructor(bin, fw) {
     super();
     this.proc = own(spawn(bin, ['serve', fw, '--name', PORT_NAME], { cwd: ROOT, stdio: ['pipe', 'pipe', 'inherit'] }));
-    this.waiting = [];
-    this.cutSysex = 0;                            // m1emu's "a SysEx from the FM-1 ended without F7" lines (#378)
-    this.ready = new Promise((res, rej) => {
-      this.proc.on('exit', (c) => rej(new Error(`m1emu exited (${c})`)));
-      createInterface({ input: this.proc.stdout }).on('line', (l) => {
-        if (l.startsWith('# ')) {
-          console.log(`  emu ${l.slice(2)}`);
-          if (l.includes('ended without F7')) this.cutSysex++;
-          if (l.startsWith('# ready')) res();
-          return;
-        }
-        this.waiting.shift()?.(l);
-      });
-    });
+    this.cutSysex = 0;
+    this.channel = new EmuChannel(this.proc, { onComment: (line) => {
+      console.log(`  emu ${line.slice(2)}`);
+      if (line.includes('ended without F7')) this.cutSysex++;
+    } });
+    this.ready = this.channel.ready;
   }
-  cmd(line) {
-    return new Promise((res) => { this.waiting.push(res); this.proc.stdin.write(line + '\n'); });
-  }
+  cmd(line) { return this.channel.cmd(line); }
   press(id, hold) { return this.cmd(`tap ${id} ${hold}`); }
   down(id, down) { return this.cmd(`key ${id} ${down ? 1 : 0}`); }
   turn(enc, clicks) { return this.cmd(`turn ${enc} ${clicks}`); }
@@ -385,6 +384,7 @@ const FILTER_MIDI = (only) => {
 const results = [];
 async function check(name, ok, detail = '') {
   results.push({ name, status: ok ? 'pass' : 'fail', ok, detail });
+  writeFileSync(join(OUT, 'results.json'), JSON.stringify(results, null, 1));
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${detail ? `: ${detail}` : ''}`);
 }
 /** a check that hears the FM-1. It needs MASTER up only on a rig whose TEST_PEAK reads after MASTER (firmware without INFO
@@ -493,10 +493,13 @@ async function main() {
   if (opt('--gate') && !flag('--install')) throw new Error('--gate goes with --install RUN');
   if (flag('--install') && !REAL) throw new Error('--install is for the rig: npm run device:scenarios -- --install RUN');
   if (REAL && !loadRig()) throw new Error('no rig registered: connect the rig alone and run npm run rig -- register');
+  if (!REAL) await acquireEmulatorSlot();
   const fw = REAL ? null : firmware();
   if (fw) console.log(`firmware: ${fw}`);
   rmSync(OUT, { recursive: true, force: true });
   mkdirSync(OUT, { recursive: true });
+  if (fw && !DEVICE && !only) rmSync(scenariosMark(fw), { force: true });
+  writeFileSync(join(OUT, 'run.json'), JSON.stringify({ firmware: fw, sha256: fw ? sha256(fw) : null, scenarios: only ?? 'all', started: new Date().toISOString() }, null, 1));
   const m1emu = REAL ? null : buildEmu();
   // the editor's copy of the panel logic (the FM-1 tab, following the FM-1): built from this checkout, not committed
   if (spawnSync('npm', ['run', '-s', 'fm1-wasm'], { cwd: join(ROOT, 'web'), stdio: 'inherit' }).status !== 0) throw new Error('npm run fm1-wasm failed');
@@ -505,9 +508,13 @@ async function main() {
   let vite;
   if (!url) {
     const port = await freePort();
-    vite = own(spawn('npx', ['vite', '--port', String(port), '--strictPort', '--host', '::1'], { cwd: join(ROOT, 'web'), stdio: ['ignore', 'pipe', 'inherit'], env: DEV_ENV }));
+    vite = own(spawn(process.execPath, [join(ROOT, 'web/node_modules/vite/bin/vite.js'), '--port', String(port), '--strictPort', '--host', '::1'], { cwd: join(ROOT, 'web'), stdio: ['ignore', 'pipe', 'inherit'], env: DEV_ENV }));
     url = `http://[::1]:${port}/`;
-    await new Promise((res) => vite.stdout.on('data', (d) => { if (/ready in|Local:/.test(String(d))) res(); }));
+    await withDeadline(() => new Promise((res, reject) => {
+      vite.on('error', reject);
+      vite.on('exit', (code) => reject(new Error(`vite exited (${code}) before readiness`)));
+      vite.stdout.on('data', (d) => { if (/ready in|Local:/.test(String(d))) res(); });
+    }), 60000, 'dev server startup');
     vite.stdout.on('data', (d) => { for (const l of String(d).split('\n')) if (/reload|optimiz/i.test(l)) console.log(`  note (vite): ${l.trim()}`); });
   }
   console.log(`editor: ${url}`);
@@ -529,7 +536,7 @@ async function main() {
   }
 
   const { browser, context } = await launch(url);
-  process.on('exit', () => { try { browser.process()?.kill(); } catch { /* gone */ } });
+  testBrowser = browser;
   let emu = emuProc;
   let rigAudioWhy = '', rigAudioIn = 'Matryoshka';
   if (DEVICE) {
@@ -2139,20 +2146,32 @@ async function main() {
     for (const [name, run] of Object.entries(scenarios)) {
       if (only && name !== 'connect' && !only.includes(name)) continue;   // (connect opens the editor and syncs: the others need it)
       console.log(`-- ${name}`);
+      const started = Date.now();
+      const progress = () => ({ scenario: name, elapsedMs: Date.now() - started, pending: emuProc?.channel.pending ?? [], at: new Date().toISOString() });
+      const heartbeat = setInterval(() => {
+        const state = progress();
+        writeFileSync(join(OUT, 'progress.json'), JSON.stringify(state, null, 1));
+        console.log(`  ${name}: ${Math.round(state.elapsedMs / 1000)}s; ${state.pending.join(', ') || 'waiting on browser or device'}`);
+      }, 30000);
       try {
-        if (name !== 'connect') await fresh(name);
-        await run();
+        await withDeadline(async () => {
+          if (name !== 'connect') await fresh(name);
+          await run();
+        }, 600000, `scenario ${name}`);
       } catch (e) {
+        writeFileSync(join(OUT, `${name}-failure.json`), JSON.stringify({ ...progress(), error: e.stack }, null, 1));
         await check(`${name}: ran to the end`, false, e.message.split('\n')[0]);
-        await shot(`${name}-error`);
-      }
+        await withDeadline(() => shot(`${name}-error`), 5000, 'failure screenshot').catch(() => {});
+        // A timed-out operation can still be running. Never overlap the next scenario with it.
+        if (e.name === 'DeadlineError' || emuProc?.channel.error) break;
+      } finally { clearInterval(heartbeat); }
     }
   } finally {
     writeFileSync(join(OUT, 'results.json'), JSON.stringify(results, null, 1));
     // the stack paint nobody reached (#273, serve.rs `stacks`): how deep the firmware's stacks went in these scenarios
     if (emuProc instanceof Emu) console.log(`  emu ${await Promise.race([emuProc.cmd('stacks'), new Promise((r) => setTimeout(() => r('stacks: no answer'), 3000))])}`);
     if (!flag('--keep')) {
-      await browser.close().catch(() => {});
+      await withDeadline(() => browser.close(), 5000, 'browser shutdown').catch(() => {});
       emuProc?.quit();
       vite?.kill();
     }
@@ -2169,7 +2188,9 @@ async function main() {
   process.exit(failed.length ? 1 : 0);   // (a skip is no failure)
 }
 
-main().catch((e) => {
+main().catch(async (e) => {
   console.error(e);
+  if (existsSync(OUT)) writeFileSync(join(OUT, 'failure.json'), JSON.stringify({ error: e.stack, at: new Date().toISOString() }, null, 1));
+  await withDeadline(() => testBrowser?.close() ?? Promise.resolve(), 5000, 'browser shutdown').catch(() => {});
   process.exit(2);
 });

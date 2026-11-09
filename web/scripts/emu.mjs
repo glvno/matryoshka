@@ -15,6 +15,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { acquireEmulatorSlot } from './emu-slot.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const EMU = join(ROOT, 'tools/emu');
@@ -65,6 +66,7 @@ function firmware() {
   throw new Error('no firmware: build one (tools/build.py), install gh, or pass a matryoshka.bin / .fwsc');
 }
 
+if (smoke || boot) await acquireEmulatorSlot();
 const fw = firmware();
 console.log(`firmware: ${fw}`);
 mkdirSync(OUT, { recursive: true });
