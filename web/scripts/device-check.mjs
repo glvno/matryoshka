@@ -811,6 +811,11 @@ export function checkScenarios(h) {
         const info = (await emu.texts()).find((t) => /^ARM \w+ \+1$/.test(t)) ?? '';
         await check(`7.2 teach: still holding REC, the black key of the one not armed${first ? '' : ' (PATTERN)'}, then let go: it records nothing (the transport stays stopped), the info line reads ARM .. +1`,
           !!info && !(await running()), `"${info}"; ${(await running()) ? 'running' : 'stopped'}`);
+        if (info) {   // (#748: both armed, the keys reach a track into no Drum map, so a white key plays its note: the bass)
+          await emu.elapse(500);
+          const p = await emu.notePeak(WHITE[0], 400);
+          await loudCheck('7.2 teach: DRUMS and PATTERN armed: key 1 (F3, a white key) plays PATTERN\'s bass (#748)', p, p > LOUD, `peak ${p}`);
+        }
         await emu.elapse(1500);
         await emu.key(B.play, true);
         await emu.elapse(800);

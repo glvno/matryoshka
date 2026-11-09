@@ -145,7 +145,7 @@ static uint32_t count_sounds(uint32_t ms, double *whole)
     pages_ensure();
     for (d = 0; d < pg_ndev; d++) {                     /* an armed instrument whose own track is armed too is that one sound */
         uint32_t tr = pg_dev[d].track;
-        if (!env_listeners(d) || !env_armed(d))
+        if (!mset_any(env_listeners(d)) || !env_armed(d))
             continue;
         n += !(tr < pg_ndev && tr != d && env_armed(tr));
     }

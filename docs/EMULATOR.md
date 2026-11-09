@@ -266,7 +266,7 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
     `tools/old_format.sh`.
   - `checkTeach` (steps 7.1 to 7.3, [D-247](ledger/device-ui.md#D-247), [D-917](ledger/device-ui.md#D-917)), with Live
     off: PRESET to <7PH says 2 SOUNDS: ENV THEN SEL. REC held shows the ARM: hint, and REC held + a black key arms a
-    second track (ARM DRUMS +1) and starts nothing. PLAY held shows TEMPO n: TURN PRESET, and turning PRESET then
+    second track (ARM DRUMS +1) and starts nothing. With DRUMS and PATTERN both armed, key 1 (F3) plays the bass (#748). PLAY held shows TEMPO n: TURN PRESET, and turning PRESET then
     starts nothing.
   - `checkDualCore` (steps 8.1, 8.2 and 8.4, [D-380](ledger/engine.md#D-380)): INFO's PROCESSOR row reads 2 CORES. Io 4,
     Hera 4 and Cassia 1 each play 8 held keys with nothing shed, no overload (DIAG pages 119 and 127) and no dropout in
