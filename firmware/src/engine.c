@@ -689,7 +689,7 @@ typedef struct {
     uint16_t nsrc;
     uint8_t order[ENG_MAX_MODULES], outputs[ENG_MAX_MODULES];
     uint8_t from_m[ENG_MAX_CABLES], from_p[ENG_MAX_CABLES], to_m[ENG_MAX_CABLES], to_p[ENG_MAX_CABLES];
-    uint16_t ncab, nbuf;
+    uint16_t ncab, nbuf, nphys;      /* nbuf: values given a buffer (what the arena counts), nphys: the buffers (#800) */
     node_t *node;                    /* the modules, nmod of them in the arena's top (#721, arena_nodes); node_none until a load */
     sum_t sum[MAX_SUM];
     const esig_t *sum_src[MAX_SRC];
@@ -1008,16 +1008,104 @@ static void visit(uint32_t id, uint8_t *st)
     E.order[E.norder++] = (uint8_t)id;
 }
 
-static esig_t *buf_alloc(void)
+/* Signal buffers by lifetime (#800). A value (a connected output of one copy, or a summed input of one copy) lives from
+ * its writer's place in E.order to its last reader's; a buffer whose value has ended takes a value written later, so a
+ * patch needs far fewer buffers than values. The output is the same, bit for bit: every module writes each of its
+ * connected outputs whole before anything reads them in that block. A value keeps its own buffer (BUF_FOREVER) when it is
+ * read in the next block (a feedback cable; a cable out of its poly group: an idle part's outputs stay silent, part_quiet
+ * reads them after the render) or outside the render (buf_late). The second core (#271): lane 1 of a split segment runs
+ * at the same time as lane 0, so a buffer serves one lane only (the odd parts of a group that may split, else lane 0),
+ * and a value one lane writes and the other reads lives to the end of the segment that reads it. The arena still counts a
+ * buffer per value, as the editor's budget does (patchbin.ts memoryBudget): the same patches load. */
+#define BUF_FOREVER 0x7FFFFFFF
+typedef struct { esig_t *base; uint32_t n, values; } bufs_t;   /* the buffers (in a row from base), the values given one */
+/* may this module's run be split across the cores (lane_splits, before the parts are known: as many as its copies)? */
+static int buf_split(const node_t *nd) { return nd->grp && nd->ninst >= 2u && nd->type != T_STEPS; }
+static uint32_t buf_lane(const node_t *nd, uint32_t v) { return buf_split(nd) ? v & 1u : 0u; }
+/* inputs read outside the module's turn: the Output's after the render, Main's morph and an Arpeggiator's before it, the
+ * Part's assign and unison after it (group_cables) */
+static int buf_late(const node_t *nd) { return nd->type == T_OUTPUT || nd->type == T_FM1 || nd->type == T_ARP || nd->type == T_PART; }
+/* the sources summed into input j of module m (as eng_load wires them: every part of another group's output) */
+static uint32_t buf_nsrc(uint32_t m, uint32_t j)
 {
-    esig_t *b;
-    uint32_t i;
-    if (E.nbuf >= ENG_NBUF || !(b = (esig_t *)arena_lo(ENG_BUF_BYTES)))
+    const node_t *nd = &E.node[m];
+    uint32_t c, n = 0;
+    if ((nd->disabled_inputs & (1u << j)) && !nd->input_map[j])
         return 0;
-    E.nbuf++;
+    for (c = 0; c < E.ncab; c++)
+        if (E.to_m[c] == m && E.to_p[c] == j)
+            n += E.node[E.from_m[c]].grp && E.node[E.from_m[c]].grp != nd->grp ? E.node[E.from_m[c]].ninst : 1u;
+    return n;
+}
+/* the last place output p of copy s of module m (written at place d, by lane `lane`) is read at; BUF_FOREVER (above) */
+static int32_t buf_end(uint32_t m, uint32_t p, uint32_t s, int32_t d, uint32_t lane, const uint8_t *pos, const uint8_t *seg_end)
+{
+    const node_t *f = &E.node[m];
+    int32_t end = d;
+    uint32_t c, w;
+    for (c = 0; c < E.ncab; c++) {
+        uint32_t t = E.to_m[c];
+        const node_t *r = &E.node[t];
+        if (E.from_m[c] != m || E.from_p[c] != p || ((r->disabled_inputs & (1u << E.to_p[c])) && !r->input_map[E.to_p[c]]))
+            continue;                                /* (a disabled input reads zeros) */
+        if ((int32_t)pos[t] <= d || (f->grp && r->grp != f->grp) || buf_late(r))
+            return BUF_FOREVER;
+        for (w = 0; w < r->ninst; w++) {             /* the copies of the reader that read copy s (buf_of) */
+            int32_t at = pos[t];
+            if ((f->ninst > 1u ? w : 0u) != s)
+                continue;
+            if (buf_lane(r, w) != lane && buf_split(r))
+                at = seg_end[at];
+            if (at > end)
+                end = at;
+        }
+    }
+    return end;
+}
+#ifdef ENG_POISON
+/* (host tests, tools/engine_exact.sh: every value's buffer is overwritten with noise at each block's start and after its
+ * last reader has run, so a read outside its life changes the output) */
+static esig_t *poi_buf[ENG_NBUF];
+static int32_t poi_end[ENG_NBUF];
+static uint32_t poi_n, poi_seed = 1u;
+static void poi_fill(esig_t *b)
+{
+    uint32_t i;
     for (i = 0; i < ENG_BLOCK; i++)
-        b[i] = 0;
-    return b;
+        b[i] = (esig_t)(poi_seed = poi_seed * 1664525u + 1013904223u);
+}
+static void poi_after(int32_t k)                     /* k = -1: the block's start, every value */
+{
+    uint32_t i;
+    for (i = 0; i < poi_n; i++)
+        if (poi_end[i] != BUF_FOREVER && (k < 0 || poi_end[i] == k))
+            poi_fill(poi_buf[i]);
+}
+#endif
+/* a buffer for a value written at place def and read up to place end, by lane `lane`; 0 when there is no room */
+static esig_t *buf_take(bufs_t *bs, int32_t def, int32_t end, uint32_t lane)
+{
+    uint32_t b;
+    esig_t *q = 0;
+    if (++bs->values > ENG_NBUF)
+        return 0;
+    if (end != BUF_FOREVER)                          /* (a buffer's first two samples hold its value's end and lane until
+                                                      * eng_load zeroes them) */
+        for (b = 0; b < bs->n && !q; b++)
+            if (bs->base[b * ENG_BLOCK + 1u] == (esig_t)lane && bs->base[b * ENG_BLOCK] < def)
+                q = bs->base + b * ENG_BLOCK;
+    if (!q) {
+        if (!(q = (esig_t *)arena_lo(ENG_BUF_BYTES)))
+            return 0;
+        bs->n++;
+    }
+    q[0] = end;
+    q[1] = (esig_t)lane;
+#ifdef ENG_POISON
+    poi_buf[poi_n] = q;
+    poi_end[poi_n++] = end;
+#endif
+    return q;
 }
 
 static void init_state(const node_t *nd, inst_t *it, uint32_t mod, uint32_t v)
@@ -2193,19 +2281,57 @@ int eng_load(const uint8_t *p, uint32_t len)
             init_state(nd, it, i, k);
         }
     }
-    /* output buffers: one per connected output port and instance, the dummy for the unconnected ports */
+    /* the order the modules run in: each after its sources (a feedback cable reads the block before) */
+    for (i = 0; i < E.nmod; i++)
+        st[i] = 0;
+    E.norder = 0;
+    for (i = 0; i < E.nmod; i++)
+        if (st[i] == 0)
+            visit(i, st);
+    /* the dummy for the unconnected output ports; a buffer for each value, the connected outputs and the summed inputs of
+     * every copy, in the order they are written: a buffer whose value has ended takes the next (buf_take, #800) */
     for (i = 0; i < E.nmod; i++)
         for (k = 0; k < E.node[i].ninst; k++)
             for (j = 0; j < DEFS[E.node[i].type].nout; j++)
                 inst_pool[E.node[i].inst0 + k].out[j] = E.node[i].grp && (k & 1u) ? dummy_out1 : dummy_out;
-    for (c = 0; c < ncab; c++) {
-        node_t *nd = &E.node[E.from_m[c]];
-        uint32_t fp = E.from_p[c];
-        if (!IS_DUMMY(inst_pool[nd->inst0].out[fp]))
-            continue;
-        for (k = 0; k < nd->ninst; k++)
-            if (!(inst_pool[nd->inst0 + k].out[fp] = buf_alloc()))
-                return -6;
+    {
+        uint8_t *pos = member, *seg_end = held;      /* (member and held are not needed past here) */
+        bufs_t bs;
+        bs.base = (esig_t *)((uint8_t *)eng_arena + ar_lo);
+        bs.n = bs.values = 0;
+#ifdef ENG_POISON
+        poi_n = 0;
+#endif
+        for (k = 0; k < E.norder; k++)
+            pos[E.order[k]] = (uint8_t)k;
+        for (k = E.norder; k-- > 0;) {               /* the last place of the run of split-able modules of one group that
+                                                      * place k is in (render_split's segment), k itself outside one */
+            const node_t *nd = &E.node[E.order[k]], *nx = k + 1u < E.norder ? &E.node[E.order[k + 1u]] : 0;
+            seg_end[k] = (uint8_t)(nx && buf_split(nd) && buf_split(nx) && nx->grp == nd->grp ? seg_end[k + 1u] : k);
+        }
+        for (k = 0; k < E.norder; k++) {
+            uint32_t m = E.order[k];
+            node_t *nd = &E.node[m];
+            for (j = 0; j < DEFS[nd->type].nin; j++) {   /* its summed inputs (it->in holds the buffer until they are wired) */
+                int sum = buf_nsrc(m, j) >= 2u;
+                for (v = 0; v < nd->ninst; v++)
+                    if (!(inst_pool[nd->inst0 + v].in[j] = sum ? buf_take(&bs, (int32_t)k, buf_late(nd) ? BUF_FOREVER : (int32_t)k, buf_lane(nd, v)) : zero_buf))
+                        return -6;
+            }
+            for (j = 0; j < DEFS[nd->type].nout; j++) {  /* its connected outputs */
+                for (c = 0; c < ncab && !(E.from_m[c] == m && E.from_p[c] == j); c++)
+                    ;
+                for (v = 0; c < ncab && v < nd->ninst; v++)
+                    if (!(inst_pool[nd->inst0 + v].out[j] = buf_take(&bs, (int32_t)k, buf_end(m, j, v, (int32_t)k, buf_lane(nd, v), pos, seg_end), buf_lane(nd, v))))
+                        return -6;
+            }
+        }
+        if (bs.values > bs.n && !arena_lo((bs.values - bs.n) * ENG_BUF_BYTES))   /* the arena counts every value's buffer */
+            return -6;
+        E.nbuf = (uint16_t)bs.values;
+        E.nphys = (uint16_t)bs.n;
+        for (i = 0; i < bs.n * ENG_BLOCK; i++)
+            bs.base[i] = 0;
     }
     /* inputs of every instance: none -> zeros, one source -> that buffer itself, several -> a summing buffer. An instance
      * reads its own part of an output of its group, the one buffer of a module that runs once, and every part (summed)
@@ -2248,8 +2374,8 @@ int eng_load(const uint8_t *p, uint32_t len)
                     it->in[j] = one;
                     E.nsrc = (uint16_t)first;                /* not summed: the entry is not needed */
                 } else {
-                    esig_t *b = buf_alloc();
-                    if (!b || E.nsum >= MAX_SUM)
+                    esig_t *b = (esig_t *)it->in[j];     /* (its buffer, from above) */
+                    if (E.nsum >= MAX_SUM)
                         return -6;
                     it->in[j] = b;
                     E.sum[E.nsum].dst = b;
@@ -2295,12 +2421,6 @@ int eng_load(const uint8_t *p, uint32_t len)
                 it->s.gr.ln = (grain_line_t *)ln;
         }
     }
-    for (i = 0; i < E.nmod; i++)
-        st[i] = 0;
-    E.norder = 0;
-    for (i = 0; i < E.nmod; i++)
-        if (st[i] == 0)
-            visit(i, st);
     E.nout = 0;
     for (i = 0; i < E.norder; i++)
         if (E.node[E.order[i]].type == T_OUTPUT)
@@ -9577,6 +9697,10 @@ static void render_mods(uint32_t k0, uint32_t k1, uint32_t n, uint32_t first, ui
         }
         if (nd->type == T_STEPS && E.nlt && first == 0u)   /* its P-locks for the step it is on (#524) */
             locks_step(nd, &inst_pool[nd->inst0]);
+#ifdef ENG_POISON
+        if (step == 1u)                                    /* (one core: the values whose last reader this was) */
+            poi_after((int32_t)k);
+#endif
     }
 }
 
@@ -9672,6 +9796,9 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
         uint32_t n = total - off < ENG_BLOCK ? total - off : ENG_BLOCK;
         int32_t click_at = -1, accent = 0;
         ENG_PROF(4, 0, 0);
+#ifdef ENG_POISON
+        poi_after(-1);
+#endif
         if (once_st == 1u && once_cin >= ONCE_BAR) {   /* play once's count-in is over: the transport starts, each track */
             uint32_t s = E.song && E.song_n[E.song - 1u] ? E.song_n[E.song - 1u] : 1u;   /* the clock steps counts */
             once_st = 2;                                                                       /* its passes */
