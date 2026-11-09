@@ -6,8 +6,8 @@ Usage:
   python3 tools/ledger_check.py --fix           anchor new rows, link bare D-### mentions,
                                                 link vocabulary terms, regenerate
                                                 docs/ledger/backlinks.md, then check
-  python3 tools/ledger_check.py --changed BASE  list rows and doc lines that cite files
-                                                changed since BASE (input to the branch audit)
+  python3 tools/ledger_check.py --changed BASE  list affected rows and guidance, including
+                                                passages citing changed decisions
 Options:
   --root DIR    repository root (default: walk up from the current directory until a
                 directory containing docs/ledger/ or .git/ is found)
@@ -293,8 +293,9 @@ def load_ledger(root: Path) -> tuple[Ledger | None, list[Finding]]:
     return Ledger(root, ldir, subjects, rows_by_id, vocab_slugs, vocab_terms, ignore), findings
 
 
-def parse_subject(p: Path) -> tuple[SubjectFile, list[Finding]]:
-    lines = read_lines(p)
+def parse_subject(p: Path, lines: list[str] | None = None) -> tuple[SubjectFile, list[Finding]]:
+    if lines is None:
+        lines = read_lines(p)
     sf = SubjectFile(p, lines)
     f: list[Finding] = []
 
@@ -676,31 +677,106 @@ def run(root: Path, fix: bool) -> tuple[list[Finding], list[str]]:
     return findings, changes
 
 
-def changed_files(root: Path, base: str) -> list[str]:
-    def git(*args: str) -> str:
-        return subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True).stdout.decode()
+def git_output(root: Path, *args: str) -> str:
+    return subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True).stdout.decode()
 
+
+def comparison_base(root: Path, base: str) -> str:
     try:
-        merge_base = git("merge-base", base, "HEAD").strip()
+        return git_output(root, "merge-base", base, "HEAD").strip()
     except subprocess.CalledProcessError:
-        merge_base = base
-    out = git("diff", "--name-only", merge_base)
-    untracked = git("ls-files", "--others", "--exclude-standard")
-    return sorted({l.strip() for l in (out + untracked).splitlines() if l.strip()})
+        return git_output(root, "rev-parse", "--verify", base).strip()
+
+
+def changed_files(root: Path, base: str) -> list[str]:
+    out = git_output(root, "diff", "--name-only", "-z", base)
+    untracked = git_output(root, "ls-files", "--others", "--exclude-standard", "-z")
+    return sorted({path for path in (out + untracked).split("\0") if path})
+
+
+def changed_decisions(ledger: Ledger, base: str) -> set[str]:
+    """Compare rulings by ID, so row moves and date/source edits do not fan out."""
+    before: dict[str, tuple[str, str]] = {}
+    paths = git_output(ledger.root, "ls-tree", "-r", "--name-only", "-z", base, "--", str(LEDGER_DIR))
+    for name in paths.split("\0"):
+        path = Path(name)
+        if path.parent != LEDGER_DIR or path.suffix != ".md" or path.name.lower() in NON_SUBJECT:
+            continue
+        lines = git_output(ledger.root, "show", f"{base}:{name}").splitlines()
+        subject, _ = parse_subject(ledger.root / path, lines)
+        for row in subject.rows:
+            if row.rid:
+                before[row.rid] = (row.decision, row.status)
+    after = {rid: (row.decision, row.status) for rid, row in ledger.rows_by_id.items()}
+    return {rid for rid in before.keys() | after.keys() if before.get(rid) != after.get(rid)}
+
+
+def guidance_passage(lines: list[str], line: int) -> tuple[int, int, str]:
+    """Include a wrapped paragraph or list item, without swallowing adjacent items."""
+    start = end = line - 1
+    def boundary(text: str) -> bool:
+        return text.lstrip().startswith(("#", "|", "```")) or bool(LIST_ITEM_RE.match(text))
+
+    if not lines[start].lstrip().startswith(("#", "|", "```")):
+        while start > 0 and lines[start - 1].strip() and not boundary(lines[start]):
+            if lines[start - 1].lstrip().startswith(("#", "|", "```")):
+                break
+            start -= 1
+        while end + 1 < len(lines) and lines[end + 1].strip() and not boundary(lines[end + 1]):
+            end += 1
+    return start + 1, end + 1, " ".join(text.strip() for text in lines[start:end + 1])
+
+
+def changed_decision_references(ledger: Ledger, changed: set[str]) -> list[str]:
+    """Read live sources with the backlink scanner, not a possibly stale generated index."""
+    if not changed:
+        return []
+    refs: dict[str, list[tuple[Path, int]]] = {}
+    sources: dict[Path, list[str]] = {}
+    for path in repo_files(ledger.root, ledger.ignore):
+        if path == ledger.dir / "backlinks.md":
+            continue
+        lines = read_text_file(path)
+        if lines is None:
+            continue
+        sources[path] = lines
+        if path.suffix.lower() == ".md":
+            scan_mentions(ledger, path, lines, refs, fix=False)
+        else:
+            for number, line in enumerate(lines, 1):
+                for rid in set(ID_RE.findall(line)):
+                    refs.setdefault(f"D-{rid}", []).append((path, number))
+    result: list[str] = []
+    for rid in sorted(changed, key=lambda value: int(value[2:])):
+        passages: set[tuple[str, int, int, str]] = set()
+        for path, number in refs.get(rid, []):
+            lines = sources[path]
+            if path.suffix.lower() == ".md":
+                start, end, excerpt = guidance_passage(lines, number)
+            else:
+                start = end = number
+                excerpt = lines[number - 1].strip()
+            passages.add((rel(ledger.root, path), start, end, excerpt))
+        for path, start, end, excerpt in sorted(passages):
+            span = str(start) if start == end else f"{start}-{end}"
+            result.append(f"REF  {rid}  {path}:{span}  review guidance: {excerpt}")
+    return result
 
 
 def run_changed(root: Path, base: str) -> list[str]:
     ledger, _ = load_ledger(root)
     if ledger is None:
         return []
+    base = comparison_base(root, base)
     changed = changed_files(root, base)
-    lines_out: list[str] = []
+    lines_out: list[str] = changed_decision_references(ledger, changed_decisions(ledger, base))
     for sf in ledger.subjects.values():
         for r in sf.rows:
             if not r.rid:
                 continue
-            # the first token of each code span, if it looks like a path (`tools/x.py --fix` cites tools/x.py)
-            cited = {m.group(0)[1:-1].split()[0] for m in CODE_SPAN_RE.finditer(r.decision + " " + r.source) if m.group(0)[1:-1].strip()}
+            # A whole span may be a path with spaces; the first token also covers `tools/x.py --fix`.
+            spans = {m.group(0)[1:-1].strip() for m in CODE_SPAN_RE.finditer(r.decision + " " + r.source)}
+            cited = {candidate for span in spans if span for candidate in (span, span.split()[0])}
             cited = {c for c in cited if ("/" in c or "." in c) and not c.startswith(("<", "*", "-"))}
             for c in sorted(cited):
                 cc = c.rstrip("/")
@@ -729,7 +805,7 @@ def run_changed(root: Path, base: str) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], add_help=True)
     ap.add_argument("--fix", action="store_true", help="apply fixes, then check")
-    ap.add_argument("--changed", metavar="BASE", help="list rows and doc lines citing files changed since BASE")
+    ap.add_argument("--changed", metavar="BASE", help="list affected rows and guidance passages since BASE")
     ap.add_argument("--root", metavar="DIR", help="repository root")
     args = ap.parse_args(argv)
 
