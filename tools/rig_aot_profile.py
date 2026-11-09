@@ -41,6 +41,7 @@ def main():
     crc = M.crc16(data)
     link.ack(M.frame(0x11, [len(data) & 255, len(data) >> 8, crc & 255, crc >> 8]), 0x11, wait=3)
     guard_before = page(119)
+    result["guard_before"] = guard_before
     try:
         link.out.send(mido.Message("start"))
         for note in result["notes"]:

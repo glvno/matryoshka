@@ -32,7 +32,8 @@ def main():
         words = line.split()
         if len(words) == 3:
             symbols[words[2]] = int(words[0], 16)
-    worker = symbols[{"pair": "aot_pair_worker", "poly": "aot_lane1_job", "oracle": "aot_oracle_voice"}[args.worker]]
+    # The compiler can inline the voice loop; its envelope setup remains an exclusive kernel entry.
+    worker = symbols[{"pair": "aot_pair_worker", "poly": "aot_lane1_job", "oracle": "oracle_env_begin"}[args.worker]]
     names = ("fm1_c1_on", "fm1_c1_gave_up", "c1_pass", "c1_fail", "aot_nx", "transport_on")
     addresses = [symbols[name] for name in names]
     patch = args.patch.read_bytes()
