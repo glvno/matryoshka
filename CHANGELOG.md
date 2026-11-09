@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Oracle V CPU experiment (off by default, #808):** generated member functions keep their temporary storage out of one large stack frame, fixing the second-core startup stack overflow. A focused emulator check now watches the actual stack pointer while the compiled code runs on core 1. No added instrument capacity or hardware speed-up is claimed.
+
 ## 1.12.0 — 2026-11-09
 
 ### Editor and FM-1

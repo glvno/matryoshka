@@ -266,32 +266,37 @@ export function aotAssembly(name: string, k: number): { c: string; members: numb
     for (const m of sg.members) for (const c of cabs) if (c.t === m && (!c.fwd || modeOf(m, c.tp) === 'generic')) used.add(c.f);
     const bind = [...used].sort((a, b) => a - b);
     w(`static const uint8_t ${P}_bind${si}[${bind.length}] = {${bind.join(', ')}};`);
+    // The JieLi compiler keeps separate slots for each member's arrays and signal temporaries. A call boundary
+    // releases them before the next member, and keeps a whole segment's frame off the interpreter's deeper calls.
+    const calls: string[] = [];
+    for (const m of sg.members) {
+      const type = mem[m].type;
+      const body: string[] = [];
+      if (!mem[m].glue) {
+        const { pre, mask } = gather(m, [...Array(nin(m)).keys()]);
+        if (mask) body.push('asig_t s[MAX_IN];');
+        body.push(...pre, `aot_blk(c, ${m}, ${fl(m)}, 0x${mask.toString(16)}u, ${mask ? 's' : '0'});`);
+      } else if (type === 'select') {
+        const { pre, mask } = gather(m, [1, 2, 3, 4, 5, 6, 7, 8].map((j) => inIdx(type, `in${j}`)));
+        body.push(...prep(m));
+        body.push(`if ((c->k[${m}] = (int8_t)ag_select_k(${it(m)}, ${inExpr(m, inIdx(type, 'pos'))})) < 0) {   /* it fades: m_select on its inputs */`);
+        if (mask) body.push('    asig_t s[MAX_IN];');
+        body.push(...pre.map((x) => '    ' + x), `    aot_sel_fade(c, ${m}, 0x${mask.toString(16)}u, ${mask ? 's' : '0'});`, '}');
+      } else if (cabs.some((c) => c.t === m && !c.fwd)) {
+        for (const s of [...sigs.values()].filter((s) => s.m === m)) body.push(`(void)${getter(s)}(c);   /* (it reads a later module's last block: now) */`);
+      }
+      if (!body.length) continue;
+      const fn = `${P}_member${m}`;
+      w(`static __attribute__((noinline)) void ${fn}(aot_cx_t *c)   /* ${type} ${m} */`);
+      w('{');
+      for (const line of body) w('    ' + line);
+      w('}');
+      calls.push(`${fn}(c);`);
+    }
     w(`static void ${P}_seg${si}(aot_x_t *x, uint32_t v, uint32_t n)   /* ${sg.grp ? 'per part' : 'once'}: ${sg.members.map((m) => mem[m].type).join(' ')} */`);
     w('{');
     w(`    aot_cx_t *c = aot_begin(x, v, n, ${P}_bind${si}, ${bind.length}u, ${Math.max(1, segLocal[si])}u);`);
-    for (const m of sg.members) {
-      const type = mem[m].type;
-      if (!mem[m].glue) {
-        const { pre, mask } = gather(m, [...Array(nin(m)).keys()]);
-        w(`    {   /* ${type} ${m} */`);
-        if (mask) w('        asig_t s[MAX_IN];');
-        for (const x of pre) w('        ' + x);
-        w(`        aot_blk(c, ${m}, ${fl(m)}, 0x${mask.toString(16)}u, ${mask ? 's' : '0'});`);
-        w('    }');
-      } else if (type === 'select') {
-        const { pre, mask } = gather(m, [1, 2, 3, 4, 5, 6, 7, 8].map((j) => inIdx(type, `in${j}`)));
-        w(`    {   /* select ${m}: its position every block */`);
-        for (const x of prep(m)) w('        ' + x);
-        w(`        if ((c->k[${m}] = (int8_t)ag_select_k(${it(m)}, ${inExpr(m, inIdx(type, 'pos'))})) < 0) {   /* it fades: m_select on its inputs */`);
-        if (mask) w('            asig_t s[MAX_IN];');
-        for (const x of pre) w('            ' + x);
-        w(`            aot_sel_fade(c, ${m}, 0x${mask.toString(16)}u, ${mask ? 's' : '0'});`);
-        w('        }');
-        w('    }');
-      } else if (cabs.some((c) => c.t === m && !c.fwd)) {
-        for (const s of [...sigs.values()].filter((s) => s.m === m)) w(`    (void)${getter(s)}(c);   /* (it reads a later module's last block: now) */`);
-      }
-    }
+    for (const call of calls) w('    ' + call);
     // the segment's end: what later segments, the outside and the next block read
     for (const s of [...sigs.values()].filter((s) => s.seg === si && s.atEnd)) {
       const glue = mem[s.m].glue;
