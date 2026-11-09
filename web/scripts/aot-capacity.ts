@@ -42,6 +42,12 @@ function oracle(voices: number): Patch {
   p.modules.find((m) => m.type === 'alloc')!.params.voices = voices;
   return p;
 }
+/** Separate the two instruments so a silent second instrument cannot pass the host audio check. */
+function rightSide(p: Patch) {
+  const sink = p.modules.find((m) => m.type === 'output')!;
+  p.cables = p.cables.filter((c) => !(c.to.module === sink.id && c.to.port === 'r'));
+  return sink;
+}
 function save(p: Patch, name: string): void {
   p.name = name;
   p.modules.find((m) => m.type === 'fm1')!.params.tempo = 120;
@@ -51,7 +57,7 @@ function save(p: Patch, name: string): void {
   // Keep oversized fixtures for host capacity analysis, but never send them to hardware.
   writeFileSync(new URL(name + '.m1p', out), bytes);
   writeFileSync(new URL(name + '.json', out), JSON.stringify(p, null, 1) + '\n');
-  report.push({ name, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), budget });
+  report.push({ name, expectedCompiledInstances: name.endsWith('-twice') ? 2 : 1, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), budget });
   console.log(name, bytes.length, 'bytes', 'over:', budget.over.map((x) => `${x.key} ${x.used}/${x.max}`).join(', ') || 'none');
 }
 for (const voices of [1, 2, 4]) {
@@ -61,7 +67,7 @@ for (const voices of [1, 2, 4]) {
   p.cables = p.cables.filter((c) => !(c.from.module === main.id && c.to.module === drums.id));
   const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Oracle V')!, 300, 2500);
   track(p, a, voices, true);
-  const sink = p.modules.find((m) => m.type === 'output')!;
+  const sink = rightSide(p);
   for (const o of a.outputs) wire(p, o.module, o.port, sink.id, 'r');
   save(p, `oracle-${voices}-808`);
 }
@@ -69,7 +75,7 @@ for (const voices of [1, 2]) {
   const p = oracle(voices);
   const second = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Oracle V')!, 300, 2500);
   track(p, second, voices, false);
-  const sink = p.modules.find((m) => m.type === 'output')!;
+  const sink = rightSide(p);
   for (const o of second.outputs) wire(p, o.module, o.port, sink.id, 'r');
   save(p, `oracle-${voices}-twice`);
 }
@@ -80,14 +86,13 @@ for (const voices of [1, 2, 4]) {
   t.name = 'DRUMS';
   t.notes = drumNotes([36, 38, 42]);
   plugIn(p, t.id, 'keys', d, 'keys');
-  const sink = p.modules.find((m) => m.type === 'output')!;
+  const sink = rightSide(p);
   for (const o of d.outputs) wire(p, o.module, o.port, sink.id, 'r');
   save(p, `oracle-${voices}-drum-kit`);
 }
 for (const voices of [1, 2, 4]) {
   const p = oracle(voices);
-  const sink = p.modules.find((m) => m.type === 'output')!;
-  p.cables = p.cables.filter((c) => !(c.to.module === sink.id && c.to.port === 'r'));
+  const sink = rightSide(p);
   const t = addModule(p, DEFS.steps, 20, 3000);
   t.name = 'DRUMS';
   t.notes = drumNotes([53, 55, 59]);
@@ -103,8 +108,7 @@ for (const voices of [1, 2, 4]) {
 }
 for (const voices of [2, 4]) {
   const p = oracle(voices);
-  const sink = p.modules.find((m) => m.type === 'output')!;
-  p.cables = p.cables.filter((c) => !(c.to.module === sink.id && c.to.port === 'r'));
+  const sink = rightSide(p);
   for (const [i, name] of ['boom kick', 'snare', 'hihat'].entries()) {
     const t = addModule(p, DEFS.steps, 20, 3000 + i * 400);
     t.name = ['KICK', 'SNARE', 'HAT'][i];

@@ -13,18 +13,28 @@ int main(int argc, char **argv)
     uint64_t energy[2] = {0, 0};
     FILE *f;
     size_t n;
-    int rc;
-    if (argc != 2 || !(f = fopen(argv[1], "rb"))) return 2;
+    int rc, solo = argc == 4 ? atoi(argv[3]) : -1;
+    uint32_t effect_bytes = 0, track = 0;
+    if ((argc != 3 && argc != 4) || !(f = fopen(argv[1], "rb"))) return 2;
     n = fread(data, 1, sizeof(data), f);
     if (ferror(f) || !feof(f)) { fclose(f); return 2; }
     fclose(f);
     rc = eng_load(data, (uint32_t)n);
     if (rc) { fprintf(stderr, "eng_load failed: %d\n", rc); return 1; }
-    printf("%s AOT=%d bytes=%zu arena_free=%u instances=%u nodes=%u buffers=%u physical=%u",
+    for (uint32_t i = 0; i < E.nmod; i++) {
+        effect_bytes += line_bytes(E.node[i].type, E.node[i].par) * E.node[i].ninst;
+        if (E.node[i].type == T_STEPS) {
+            if (solo >= 0) eng_steps_mute(i, track != (uint32_t)solo);
+            track++;
+        }
+    }
+    if (solo >= 0 && (uint32_t)solo >= track) return 2;
+    printf("%s AOT=%d bytes=%zu arena_before_lines_aot=%u instances=%u nodes=%u buffers=%u physical=%u",
            argv[1], ENG_AOT, n, arena_free(), E.ninst, ar_nnode, E.nbuf, E.nphys);
 #if ENG_AOT
-    printf(" compiled_instances=%u", aot_nx);
+    printf(" compiled_instances=%u aot_state_host_bytes=%zu", aot_nx, sizeof(aot_mem_t));
 #endif
+    printf(" effect_line_bytes=%u solo_track=%d", effect_bytes, solo);
     eng_transport(1);
     for (uint32_t block = 0; block < 44100u * 8u / 128u; block++) {
         eng_render(l, r, 128);
@@ -40,9 +50,9 @@ int main(int argc, char **argv)
     uint32_t active = 0;
     for (uint32_t i = 0; i < aot_nx; i++) active += aot_x[i].on != 0;
     printf(" active_compiled_instances=%u", active);
-    if (!active || active != aot_nx) return 1;
+    if (!active || active != (uint32_t)atoi(argv[2])) return 1;
 #endif
     printf(" peak_L=%u peak_R=%u absolute_sum_L=%llu absolute_sum_R=%llu\n", peak[0], peak[1],
            (unsigned long long)energy[0], (unsigned long long)energy[1]);
-    return peak[0] && peak[1] ? 0 : 1;
+    return (solo >= 0 ? peak[0] || peak[1] : peak[0] && peak[1]) ? 0 : 1;
 }
