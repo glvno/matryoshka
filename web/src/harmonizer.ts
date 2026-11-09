@@ -61,7 +61,7 @@ const locks = (p: HarmParams): boolean => int(p.lock, 0, 1) === 1;
 
 /** the button a note is (0..6), -1 a root */
 export function harmButtonOf(note: number, p: HarmParams): number {
-  const b = note - (int(p.split, HARM_ZONE, 127) - HARM_ZONE);
+  const b = note - (int(p.split, 0, 127) - HARM_ZONE);
   return b >= 0 && b < HARM_ZONE ? b : -1;
 }
 

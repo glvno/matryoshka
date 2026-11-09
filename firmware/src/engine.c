@@ -3346,7 +3346,7 @@ static void harm_root_on(harm_t *h, uint32_t key, int32_t vel)
 /* a key from Main: one of the seven under the split a button (not from the FM-1's keys: harm_raw), else a root */
 static void harm_key(harm_t *h, uint32_t note, int32_t vel, int down)
 {
-    int32_t b = (int32_t)note - (harm_par(h, HARM_P_SPLIT, HARM_ZONE, 127) - HARM_ZONE);
+    int32_t b = (int32_t)note - (harm_par(h, HARM_P_SPLIT, 0, 127) - HARM_ZONE);
     if (!harm_raw && b >= 0 && b < HARM_ZONE)
         harm_button(h, (uint32_t)b, down);
     else if (down)

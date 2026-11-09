@@ -3,7 +3,7 @@
 
 import { fixedDoes } from './controls';
 import { ARP_MODES, ARP_RATES } from './arpeggiator';
-import { HARM_EXT, HARM_SUS, HARM_TYPES, HARM_VOICING, HARM_ZONE } from './harmonizer';
+import { HARM_EXT, HARM_SUS, HARM_TYPES, HARM_VOICING } from './harmonizer';
 import { DRUM_ROWS, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
 import { isDrone, STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type SongEntry, type StepLock, type StepNote } from './track';
 import WT from './wavetables.json';
@@ -4300,7 +4300,7 @@ const harm: ModuleImpl<null> = {
       param('ext', 0, HARM_EXT.length - 1, 0, { step: 1, choices: HARM_EXT }),
       param('voicing', -HARM_VOICING, HARM_VOICING, 0, { step: 1 }),
       param('lock', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
-      param('split', HARM_ZONE, 127, 60, { step: 1, choices: NOTE_NAMES }),
+      param('split', 0, 127, 60, { step: 1, choices: NOTE_NAMES }),
     ],
   },
   init: () => null,
