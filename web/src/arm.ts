@@ -11,6 +11,7 @@ import { instIsEngine } from './engines';
 import { DEFS } from './modules';
 import { ARM_WORDS, type Cable, type ModuleDef, type Patch } from './patch';
 import { deviceView, keyed, keysInto } from './poly';
+import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 /** a device's key, as pages.ts names devices: `a<id>` an assembly, `m<id>` a module */
 export type DeviceKey = string;

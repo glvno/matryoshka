@@ -391,6 +391,8 @@ device.onEvent = (e) => {
 function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
   const mark = (on: boolean): void => { if (from === 'device') fromDevice = on; else fromEmu = on; };
   if (e.kind === 'slot') return;
+  // (by module or device index, while the FM-1 still holds the patch from before an upload: see linkBusy)
+  if (from === 'device' && linkBusy() && ['track', 'mute', 'locks', 'param', 'arms', 'focus'].includes(e.kind)) return;
   // the copy's own edits while it replays an FM-1 that reports its panel (#549): the FM-1 sends its own (TRACK_NOW,
   // LOCKS_NOW, PATTERN_NOW, SONG_NOW, MUTE), under Live; the copy's would be the same edit twice, or one the FM-1's patch
   // did not take
@@ -492,8 +494,12 @@ async function sendPatch(): Promise<boolean> {
 }
 const queueUpload = (): void => {
   clearTimeout(uploadTimer);
-  uploadTimer = window.setTimeout(() => void sendPatch(), 150);
+  uploadTimer = window.setTimeout(() => { uploadTimer = 0; void sendPatch(); }, 150);
 };
+/** an upload is queued or under way: the FM-1 holds the patch from before the change, whose module indices can differ
+ *  from the ones the editor's patch has now (device-compile.ts leaves out what no one hears, D-361), so no live edit goes
+ *  out by module index (the upload carries it) and none that comes in by module index is taken (the upload replaces it) */
+const linkBusy = (): boolean => uploading || uploadTimer !== 0;
 // ---- Live sync is the default on connect (#171): a patch that fits is offered (Sync / Not now), Not now holds for the visit
 const SYNC_DECLINED = 'matryoshka.sync-declined';
 const syncDeclined = (): boolean => {
@@ -813,7 +819,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     host.send({ t: 'att', id, index, value });
     queueEmu();
     queueSave(editor.patch);
-    if (live() && !uploading) { device.att(editor.patch, id, index, value); liveEdited(); }
+    if (live() && !linkBusy()) { device.att(editor.patch, id, index, value); liveEdited(); }
     else if (live()) dirty = true;
   },
   onParam(id, name, value) {
@@ -850,7 +856,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     }
     if (!fromEmu) emuParam(id, name, value);
     if (fromDevice) return;
-    if (live() && !uploading) { device.param(editor.patch, id, name, value); liveEdited(); }
+    if (live() && !linkBusy()) { device.param(editor.patch, id, name, value); liveEdited(); }
     else if (live()) dirty = true;
   },
   onTrack(id, notes, pat) {
@@ -859,7 +865,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     if (!fromEmu) queueEmu();
     queueSave(editor.patch);
     if (fromDevice) return;
-    if (live() && !uploading) { device.track(editor.patch, id, notes, pat); liveEdited(); }
+    if (live() && !linkBusy()) { device.track(editor.patch, id, notes, pat); liveEdited(); }
     else if (live()) dirty = true;
   },
   onPattern(pattern, song) {   // (#375) the patch's pattern / song: each track takes it at the end of its pass
@@ -910,7 +916,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     queueEmu();
     tutorial.bypassed();
     queueSave(editor.patch);
-    if (live() && !uploading) { device.bypass(editor.patch, id, on); liveEdited(); }
+    if (live() && !linkBusy()) { device.bypass(editor.patch, id, on); liveEdited(); }
     else if (live()) dirty = true;
   },
   onRange(id, index, name, range) {
@@ -918,7 +924,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     host.send({ t: 'range', id, index, name, range });
     queueEmu();
     queueSave(editor.patch);
-    if (live() && !uploading) { device.range(editor.patch, id, index, name, range); liveEdited(); }
+    if (live() && !linkBusy()) { device.range(editor.patch, id, index, name, range); liveEdited(); }
     else if (live()) dirty = true;
   },
   onTransport(on) {

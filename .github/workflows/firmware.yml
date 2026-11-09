@@ -27,6 +27,7 @@ on:
       - web/src/controls.ts
       - web/src/cpu.ts
       - web/src/device-compile.ts
+      - web/src/device-shown.ts
       - web/src/engine.ts
       - web/src/fallback.ts
       - web/src/labels.ts

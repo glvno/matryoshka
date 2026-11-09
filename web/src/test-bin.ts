@@ -6,6 +6,7 @@ import { DRUM_ROWS } from './modules';
 import { TRACK_NAME_MAX } from './patch';
 import { deviceView } from './poly';
 import type { Patch } from './patch';
+import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 export function engineBytes(p: Patch): number[] {
   const b = Array.from(encodePatch(p));

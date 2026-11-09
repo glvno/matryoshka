@@ -12,7 +12,7 @@
 // group it drives (each group allocates the same notes the same way). migrateParts converts patches from before
 // allocators (a Part module inside each poly assembly, the voice settings on the assembly); migrateVoicing the ones from
 // before poly assemblies (Patch.voices, the Main module's voicing, the oscillator's drift).
-import { compileDevice } from './device-compile';
+import { compileDevice, DEVICE_COMPILE, SHOWN } from './device-compile';
 import {
   allModules,
   assembliesOf,
@@ -268,7 +268,7 @@ export function deviceView(source: Patch, compile = false): { patch: Patch; grou
     });
   }
   const view = { patch: { ...p, modules, cables, assemblies: undefined }, groups: out };
-  return compile ? compileDevice(view.patch, view.groups) : view;
+  return compile ? compileDevice(view.patch, view.groups, DEVICE_COMPILE.on && SHOWN.of ? () => SHOWN.of!(source) : null) : view;
 }
 
 /** the poly assembly above `a` (not `a` itself), if any */

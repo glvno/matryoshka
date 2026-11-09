@@ -17,6 +17,7 @@ import { fixNotes, PATTERNS_MAX, SONGS_MAX, type SongEntry, type StepNote } from
 import { lockPlan, lockValue } from './locks';
 import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
 import { harmButton, harmClear, harmInit, harmKey, type HarmParams, type HarmState } from './harmonizer';
+import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 export const BLOCK = 128;
 
