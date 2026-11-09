@@ -1,3 +1,4 @@
+import { openDeviceSettings } from "./device-settings";
 // SPDX-License-Identifier: GPL-3.0-only
 // first of all: at the pages.dev address with no data, site-move.ts sends the visitor on to matryoshka.lol and stops
 // everything else; then migrate.ts notes which storage keys the page found before anything here writes one
@@ -2262,6 +2263,7 @@ $<HTMLSelectElement>('mirror-fw').onchange = () => {
   const v = $<HTMLSelectElement>('mirror-fw').value;
   if (mirror.following) void followFm1((v || undefined) as Firmware | undefined);
 };
+$('dev-settings').onclick = () => void openDeviceSettings($<HTMLDialogElement>('device-settings'), device);
 $('dev-send').onclick = () => void sendPatch();
 /** the open patch into slot n of the FM-1's bank, under its name (the device does not switch to it) */
 async function storeToSlot(): Promise<void> {

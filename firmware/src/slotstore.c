@@ -58,6 +58,9 @@ static int sl_check(uint32_t i, sl_hdr_t *h, int check)
     } else if (h->magic != SL_MAGIC || h->id > SL_SETTINGS) {
         return -1;
     }
+#if FELUCCA_DEVICE_IDENTITY
+    if (h->id == SL_SETTINGS && !di_record_valid((const uint8_t *)h->name)) return -1;
+#endif
     if (h->len < 1u || h->len > M1_PATCH_MAX)
         return -1;
     if (check && (st_read(a + SL_PAYLOAD, sl_buf, h->len) || m1_crc16(sl_buf, h->len) != h->crc))
@@ -147,6 +150,9 @@ static int sl_write(uint32_t id, const char *name, const uint8_t *p, uint32_t le
     for (i = 0; i < M1_NAME; i++)
         h.name[i] = name ? name[i] : 0;
     h.rsv[0] = h.rsv[1] = 0;
+#if FELUCCA_DEVICE_IDENTITY
+    if (id == SL_SETTINGS) di_pack((uint8_t *)h.name);
+#endif
     rc = st_erase(sl_sector_addr(s));
     if (!rc)
         rc = st_prog(sl_sector_addr(s) + SL_PAYLOAD, p, len);

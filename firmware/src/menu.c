@@ -27,9 +27,9 @@ static void defaults_now(void);
 
 static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "KNOB ACCEL", "COUNT-IN", "MIDI CHANNEL", "CLOCK IN", "MIDI OUT",
                                               "VERSION", "CPU", "CPU PEAK", "BANK SLOTS", "BATTERY", "UPDATE MODE", "FACTORY RESET",
-                                              "QUICK START", "TEMPO", "CLOCK OUT", "OUTPUT", "PROCESSOR", "EDITOR", "3.5MM OUT"};
-#define INFO_N 6u
-static const uint8_t INFO_ROWS[INFO_N] = {MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_CORES};   /* the INFO tab's list, top down */
+                                              "QUICK START", "TEMPO", "CLOCK OUT", "OUTPUT", "PROCESSOR", "EDITOR", "3.5MM OUT", "USB RETURN", "NAME"};
+#define INFO_N 7u
+static const uint8_t INFO_ROWS[INFO_N] = {MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_CORES, MR_DEVICE_NAME};   /* the INFO tab's list, top down */
 #define MENU_ARM_MS 5000u                               /* an armed SYSTEM row waits this long for GLO's hold */
 
 static uint32_t cpu_peak;                       /* the highest CPU % since boot */
@@ -98,6 +98,8 @@ static void menu_value(uint32_t row, char *out)
     case MR_OUTPUT: p = put(p, out_mono == 2u ? "MONO L" : out_mono ? "MONO" : "STEREO"); break;
     case MR_EDITOR: p = put(p, cfg.editor_ignore ? "IGNORE" : "ALLOW"); break;
     case MR_OUT35: p = put(p, ONOFF[!out_off]); break;
+    case MR_USB_RETURN: fmt_int(p, di_level); p += str_len(p); *p++='%'; break;
+    case MR_DEVICE_NAME: p=put(p, di_name[0] ? di_name : "Matryoshka"); break;
     case MR_VERSION: p = put(p, FELUCCA_VERSION); break;
     case MR_CORES: p = put(p, cores_up == 2 ? "2 CORES" : "1 CORE"); break;   /* (#271: main.c c1_poll) */
     case MR_BATT: {                              /* the smoothed reading (0..1023) and the bars it gives (ui.c ui_battery) */
@@ -141,7 +143,7 @@ static void menu_value_draw(uint32_t row)
     if (k >= INFO_N || page != PAGE_MENU || menu_tab != MT_INFO)
         return;
     menu_value(row, val);
-    text_bc(&FONT_M, 150, y + MENU_TXT, val, C_FG, C_BG, 78, TA_RIGHT);
+    text_bc(&FONT_M, row == MR_DEVICE_NAME ? 65 : 150, y + MENU_TXT, val, C_FG, C_BG, row == MR_DEVICE_NAME ? 163 : 78, TA_RIGHT);
 }
 
 static void menu_row_draw(uint32_t row)         /* an INFO row: the name and its value (nothing is selected there) */
@@ -292,6 +294,7 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
             editor_info_due = 1;                        /* (main.c editor_poll: INFO, once the editor said HELLO) */
         }
         break;
+    case MR_USB_RETURN: { int32_t v=(int32_t)di_level+d; di_level=(uint8_t)(v<0 ? 0 : v>100 ? 100 : v); break; }
     case MR_OUT35: out_off = (uint8_t)!up; break;      /* ON, OFF (#631, D-925): the speaker and the jack; USB audio plays on */
     case MR_TEMPO:                                      /* GLOBAL, PATCH (D-907): kept 5 s later, without SAVE */
         if ((uint32_t)up != gt_patch) {

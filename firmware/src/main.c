@@ -774,6 +774,54 @@ static void settings_store(void)
     (void)store_write(SL_SETTINGS, 0, set, SET_LEN);
 }
 
+static uint8_t patches_up;                      /* patch_boot has run (host_poll may reload the current patch) */
+
+/* DEVICE_SETTINGS: empty reads; 17 bytes set name[16] and return percent.
+ * Reply status, name[16], percent, physical serial[16]. Save before replying. */
+static int m1_device_settings(const uint8_t *p, uint32_t n, uint8_t *out)
+{
+    uint8_t status=0;
+    if (n) {
+        if (n!=17 || p[16]>100 || !di_valid_name(p)) status=1;
+        else if (!flash_ok || !patches_up) status=6;
+        else {
+            char old[17]; uint8_t level=di_level, set[SET_LEN];
+            for (uint32_t i=0;i<17;i++) old[i]=di_name[i];
+            for (uint32_t i=0;i<16;i++) di_name[i]=(char)p[i];
+            di_name[16]=0; di_level=p[16]; settings_pack(set);
+            if (store_write(SL_SETTINGS,0,set,SET_LEN)) {
+                for (uint32_t i=0;i<17;i++) di_name[i]=old[i];
+                di_level=level; status=6;
+            }
+            ui_dirty=1;
+        }
+    }
+    out[0]=status;
+    for (uint32_t i=0;i<16;i++) { out[1+i]=(uint8_t)di_name[i]; out[18+i]=di_serial[i]; }
+    out[17]=di_level;
+    return 34;
+}
+/* Read only the settings header before USB attaches. No bank migration,
+ * writes or erases here; update mode skips this path altogether. */
+static void device_identity_boot(void)
+{
+    sl_hdr_t h; uint32_t seq=0;
+    uint8_t data[16];
+    for (uint32_t i=0;i<16;i++) di_serial[i]=fl_uid[i];
+    if (flash_ok) for (uint32_t i=0;i<SL_NSEC;i++) {
+        uint32_t a=sl_sector_addr(i);
+        if (!st_read(a,&h,sizeof h) && h.magic==SL_MAGIC && h.id==SL_SETTINGS && h.seq>=seq && di_record_valid((const uint8_t *)h.name) &&
+            h.len>=SET_MIN && h.len<=SET_LEN && !st_read(a+SL_PAYLOAD,data,h.len) && m1_crc16(data,h.len)==h.crc) {
+            seq=h.seq;
+            /* A newer legacy record clears older metadata, too. */
+            for (uint32_t k=0;k<17;k++) di_name[k]=0;
+            di_level=50;
+            (void)di_unpack((const uint8_t *)h.name);
+        }
+    }
+    for (uint32_t i=0;i<17;i++) di_usb_name[i]=di_name[i];
+}
+
 /* TEMPO from the editor (proto.c, D-907) */
 static void m1_tempo(uint32_t patch, uint32_t bpm)
 {
@@ -814,7 +862,6 @@ static int m1_store(const uint8_t *patch, uint32_t len)        /* SAVE, the edit
 }
 
 static void fallback_boot(void);
-static uint8_t patches_up;                      /* patch_boot has run (host_poll may reload the current patch) */
 
 /* slot n into the engine; an empty slot or one that does not load: the fallback patch. 0 = the slot's patch runs */
 static int preset_load(uint32_t n)
@@ -1149,6 +1196,8 @@ static void defaults_now(void)
     eng_all_notes_off();
     eng_transport(0);
     cfg_defaults();
+    for (uint32_t i=0;i<17;i++) di_name[i]=0;
+    di_level=50;
     octave = 0;
     gt_patch = 0;                                /* TEMPO: GLOBAL, at the tempo of the patch loaded next */
     gt_bpm = 0;
@@ -1669,6 +1718,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
     if (update || (fm1_in.buttons & 3u) == 3u)          /* update mode: decided before the first attach, so the */
         usb_uac_switch(0);                              /* host only ever sees the MIDI-only device (usb.c) */
 #endif
+    if (UAC_ON) device_identity_boot();
     boot_step("USB");
     usb_start();                                        /* (usb_poll in TIMER5 waits for usb.up, as with usb_retry) */
     if (update)
