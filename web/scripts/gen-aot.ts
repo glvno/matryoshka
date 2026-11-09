@@ -269,21 +269,24 @@ export function aotAssembly(name: string, k: number): { c: string; members: numb
     w(`static void ${P}_seg${si}(aot_x_t *x, uint32_t v, uint32_t n)   /* ${sg.grp ? 'per part' : 'once'}: ${sg.members.map((m) => mem[m].type).join(' ')} */`);
     w('{');
     w(`    aot_cx_t *c = aot_begin(x, v, n, ${P}_bind${si}, ${bind.length}u, ${Math.max(1, segLocal[si])}u);`);
+    // Each call finishes before the next member starts. The JieLi compiler gives separate block-local arrays
+    // separate stack slots, so explicitly reuse one. Getters retain their own scratch for recursive input evaluation.
+    const inputs = new Map(sg.members.filter((m) => !mem[m].glue || mem[m].type === 'select').map((m) =>
+      [m, gather(m, !mem[m].glue ? [...Array(nin(m)).keys()] : [1, 2, 3, 4, 5, 6, 7, 8].map((j) => inIdx('select', `in${j}`)))]));
+    if ([...inputs.values()].some(({ mask }) => mask)) w('    asig_t s[MAX_IN];');
     for (const m of sg.members) {
       const type = mem[m].type;
       if (!mem[m].glue) {
-        const { pre, mask } = gather(m, [...Array(nin(m)).keys()]);
+        const { pre, mask } = inputs.get(m)!;
         w(`    {   /* ${type} ${m} */`);
-        if (mask) w('        asig_t s[MAX_IN];');
         for (const x of pre) w('        ' + x);
         w(`        aot_blk(c, ${m}, ${fl(m)}, 0x${mask.toString(16)}u, ${mask ? 's' : '0'});`);
         w('    }');
       } else if (type === 'select') {
-        const { pre, mask } = gather(m, [1, 2, 3, 4, 5, 6, 7, 8].map((j) => inIdx(type, `in${j}`)));
+        const { pre, mask } = inputs.get(m)!;
         w(`    {   /* select ${m}: its position every block */`);
         for (const x of prep(m)) w('        ' + x);
         w(`        if ((c->k[${m}] = (int8_t)ag_select_k(${it(m)}, ${inExpr(m, inIdx(type, 'pos'))})) < 0) {   /* it fades: m_select on its inputs */`);
-        if (mask) w('            asig_t s[MAX_IN];');
         for (const x of pre) w('            ' + x);
         w(`            aot_sel_fade(c, ${m}, 0x${mask.toString(16)}u, ${mask ? 's' : '0'});`);
         w('        }');
