@@ -19,6 +19,8 @@ import { structureOf } from '../src/structure';
 
 /** the factory assemblies the firmware runs compiled */
 export const AOT_ASSEMBLIES = ['Oracle V'];
+/** Separate experiment: the reduced groovebox kit. The full 808 Kit is not compiled. */
+export const AOT_DRUM_ASSEMBLIES = ['boom kick', 'snare', 'hihat'];
 
 /** the module types the routines inline (aot.c ag_*): stateless, one output sample from the input samples at that index */
 const GLUE = new Set(['const', 'macro', 'scale', 'vca', 'math', 'select', 'mixer', 'xfade']);
@@ -38,7 +40,8 @@ export function aotPatch(name: string): { patch: Patch; asm: AssemblyInst } {
   const main = patch.modules[0].id;
   for (const i of a.inputs) {
     const from = i.port === 'keys' ? 'keys' : (['pitch', 'gate', 'vel'] as const).find((k) => i.port === k || i.label === k);
-    if (from) connect(patch, DEFS, { module: main, port: from }, { module: i.module, port: i.port });
+    if (from) for (const target of [i, ...(i.also ?? [])])
+      connect(patch, DEFS, { module: main, port: from }, { module: target.module, port: target.port });
   }
   return { patch, asm: a };
 }
@@ -214,15 +217,92 @@ export function aotAssembly(name: string, k: number): { c: string; members: numb
     return ['{', '    asig_t s[MAX_IN];', ...pre.map((x) => '    ' + x), `    aot_prep_in(c, ${m}, ${fl(m)}, 0x${mask.toString(16)}u, s);`, '}'];
   };
 
+  // Prototype: fuse single-reader arithmetic chains. Stateful modules and selectors remain block boundaries;
+  // in particular, a Ladder's cutoff reads the mean of a whole envelope block, not its current sample.
+  // No intermediate output is omitted if another reader, a later segment, or an exposed port needs it.
+  const absorbed = new Set<number>();
+  const fused = (root: Sig): string[] | undefined => {
+    const types = new Set(['scale', 'vca', 'math', 'mixer']);
+    const safe = (m: number): boolean => mem[m].glue && types.has(mem[m].type)
+      && !cvPorts(m).some((p) => modeOf(m, p) !== 'none') && !cabs.some((c) => c.t === m && !c.fwd);
+    if (!safe(root.m)) return;
+    const nodes: { m: number; p: number; inputs: string[] }[] = [];
+    const leaves: string[] = [];
+    const seen = new Set<number>();
+    const visit = (m: number, p: number): string => {
+      seen.add(m);
+      const type = mem[m].type;
+      const ports = type === 'scale' ? ['in'] : type === 'vca' ? ['in', 'cv'] : type === 'math' ? ['a', 'b'] : ['in1', 'in2', 'in3', 'in4'];
+      const inputs = ports.map((port) => {
+        const ip = inIdx(type, port), cs = into(m, ip), c = cs[0];
+        const out = c && sigs.get(key(c.f, c.fp));
+        if (cs.length === 1 && modeOf(m, ip) === 'sigs' && c.fwd && mem[c.f].seg === root.seg
+            && safe(c.f) && !seen.has(c.f)
+            && !out?.atEnd && !exposedOut(c.f, c.fp) && cabs.filter((e) => e.f === c.f).length === 1)
+          return visit(c.f, c.fp);
+        const index = leaves.length;
+        leaves.push(inExpr(m, ip));
+        return `af_read(x${index}, i)`;
+      });
+      nodes.push({ m, p, inputs });
+      return `y${m}`;
+    };
+    const result = visit(root.m, root.p);
+    if (nodes.length < 2) return;
+    for (const { m } of nodes) if (m !== root.m) absorbed.add(m);
+    const pre: string[] = [];
+    // Preparation may read other getters. Keep it outside the sample loop, as in the ordinary compiled path.
+    for (const { m } of [...nodes].reverse()) pre.push(`if (!c->prep[${m}]) {`, ...prep(m).map((s) => '    ' + s), '}');
+    leaves.forEach((x, i) => pre.push(`asig_t x${i} = ${x};`));
+    const loop: string[] = [];
+    for (const { m, p, inputs: x } of nodes) {
+      const ef = (p: string): string => `EF(${it(m)}, ${up(mem[m].type)}_P_${p})`;
+      let y: string;
+      switch (mem[m].type) {
+        case 'scale':
+          pre.push(`int32_t g${m} = ${ef('GAIN')}, o${m} = ${ef('OFFSET')};`);
+          y = `mul16(${x[0]}, g${m}) + o${m}`;
+          break;
+        case 'vca':
+          pre.push(`int32_t g${m} = ${ef('GAIN')};`);
+          y = `mul16(mul16(${x[0]}, ${x[1]}), g${m})`;
+          break;
+        case 'math':
+          pre.push(`int32_t ka${m} = ${ef('KA')}, kb${m} = ${ef('KB')}, o${m} = ${ef('OFF')};`);
+          y = `math_y(${p}, mul16(${x[0]}, ka${m}) + o${m}, mul16(${x[1]}, kb${m}))`;
+          break;
+        default:
+          pre.push(...x.map((_, i) => `int32_t l${m}_${i} = ${ef(`L${i + 1}`)};`));
+          y = x.map((v, i) => `mul16(${v}, l${m}_${i})`).join(' + ');
+      }
+      loop.push(`int32_t y${m} = ${y};`);
+    }
+    return ['AOT_FUSED_HIT(c);', ...pre,
+      `uint32_t i, count = ${leaves.map((_, i) => `x${i}.b`).join(' || ')} ? c->n : 1u;`,
+      'int32_t result = 0;',
+      'for (i = 0; i < count; i++) {', ...loop.map((s) => '    ' + s),
+      `    result = ${result};`,
+      `    if (count != 1u) ${it(root.m)}->out[${root.p}][i] = result;`, '}',
+      `c->s[${root.local}] = count == 1u ? AU(result) : AB(${it(root.m)}->out[${root.p}]);`];
+  };
+
   w(`/* ${name}: ${N} members, ${cabs.length} cables, ${segs.length} segments (${segs.map((s) => `${s.grp ? 'per part' : 'once'} ${s.members.length}`).join(', ')}); signals ${segLocal.join(' + ')}, ${shared} handed on, ${cvSlot.size} members with parameter inputs */`);
   const all = [...sigs.values()].filter((s) => mem[s.m].glue);
-  for (const s of all) w(`static asig_t ${getter(s)}(aot_cx_t *c);`);
+  const fusions = new Map(all.map((s) => [s, fused(s)]));
+  // The unfused build still calls these getters; fusion may remove their only caller.
+  for (const s of all) w(`static ${absorbed.has(s.m) ? '__attribute__((unused)) ' : ''}asig_t ${getter(s)}(aot_cx_t *c);`);
   // the getters
   for (const s of all) {
     const m = s.m, type = mem[m].type;
     w(`static asig_t ${getter(s)}(aot_cx_t *c)   /* ${type} ${m}.${DEFS[type].outputs[s.p].name} */`);
     w('{');
     w(`    if (!c->d[${s.local}]) {`);
+    const fusion = fusions.get(s);
+    if (fusion) {
+      w('#if ENG_AOT_FUSE');
+      for (const line of fusion) w('        ' + line);
+      w('#else');
+    }
     const body: string[] = [];
     if (type !== 'select') {
       const pr = prep(m);
@@ -255,6 +335,7 @@ export function aotAssembly(name: string, k: number): { c: string; members: numb
     }
     for (const b of body) w('        ' + b);
     w(`        c->s[${s.local}] = ${op};`);
+    if (fusion) w('#endif');
     w(`        c->d[${s.local}] = 1;`);
     w('    }');
     w(`    return c->s[${s.local}];`);
@@ -330,8 +411,14 @@ export function aotHeader(): string {
   ];
   const parts = AOT_ASSEMBLIES.map((n, k) => aotAssembly(n, k));
   for (const p of parts) out.push(p.c, '');
-  out.push(`#define AOT_NTPL ${parts.length}u`);
-  out.push(`static const aot_tpl_t *const AOT_TPL[${Math.max(1, parts.length)}] = {${parts.map((_, k) => `&aot${k}`).join(', ') || '0'}};`);
+  out.push('#if ENG_AOT_DRUMS');
+  for (const [i, name] of AOT_DRUM_ASSEMBLIES.entries()) out.push(aotAssembly(name, parts.length + i).c, '');
+  out.push('#endif');
+  out.push('static const aot_tpl_t *const AOT_TPL[] = {');
+  out.push(...parts.map((_, k) => `    &aot${k},`));
+  out.push('#if ENG_AOT_DRUMS');
+  out.push(...AOT_DRUM_ASSEMBLIES.map((_, k) => `    &aot${parts.length + k},`));
+  out.push('#endif', '};', '#define AOT_NTPL (sizeof AOT_TPL / sizeof AOT_TPL[0])');
   void TYPE_ORDER;
   return out.join('\n') + '\n';
 }

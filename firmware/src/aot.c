@@ -26,6 +26,16 @@
 
 #if ENG_AOT
 
+#ifndef ENG_AOT_FUSE
+#define ENG_AOT_FUSE 0
+#endif
+#ifndef ENG_AOT_DRUMS
+#define ENG_AOT_DRUMS 0
+#endif
+#ifndef AOT_FUSED_HIT
+#define AOT_FUSED_HIT(c) ((void)0)
+#endif
+
 typedef struct { const esig_t *b; int32_t u; } asig_t;   /* a signal: a buffer, or (b 0) the value of every sample */
 
 #define AOT_MAXM 64u          /* members of a compiled assembly (gen-aot.ts checks these limits) */
@@ -73,6 +83,9 @@ typedef struct {
     aot_cx_t cx[2];                          /* (one per lane) */
     aot_x_t x[AOT_MAXX];
     uint8_t slot[ENG_MAX_MODULES];           /* per position in E.order: 0, or 1 + the instance it belongs to (bit 7: its first) */
+#if ENG_AOT_PAIR
+    uint8_t pair[AOT_MAXX], done, worker[ENG_MAX_MODULES];
+#endif
 } aot_mem_t;
 static aot_mem_t *aot_m;
 #define aot_x (aot_m->x)
@@ -84,6 +97,9 @@ static struct { aot_x_t *x; uint32_t seg, n; } aot_job;
 
 #define AU(v) ((asig_t){0, (int32_t)(v)})
 static inline asig_t AB(const esig_t *b) { asig_t s; s.b = b; s.u = 0; return s; }
+#if ENG_AOT_FUSE
+static inline int32_t af_read(asig_t s, uint32_t i) { return s.b ? s.b[i] : s.u; }
+#endif
 
 /* the context of member L for part v of this segment */
 #define AOT_IT(c, L) ((c)->it[L])
@@ -634,6 +650,9 @@ static int aot_fits(const aot_tpl_t *t, const uint8_t *mem, uint8_t *loc, uint8_
 }
 
 /* lines: the bytes eng_load's lines take of the arena's free room (from ar_lo); without room after them, no compiled assembly */
+#if ENG_AOT_PAIR
+static void aot_pair_bind(void);
+#endif
 static void aot_bind(const uint8_t *p, uint32_t len, uint32_t lines)
 {
     uint32_t at, cnt, d, i, k, off = (ar_lo + lines + 7u) & ~7u;
@@ -677,6 +696,9 @@ static void aot_bind(const uint8_t *p, uint32_t len, uint32_t lines)
             aot_nx++;
         }
     }
+#if ENG_AOT_PAIR
+    aot_pair_bind();
+#endif
 }
 
 /* ---- rendering */
@@ -718,16 +740,34 @@ static void aot_run(aot_x_t *x, uint32_t n)
     }
 }
 
+static int aot_can_run(const aot_x_t *x)
+{
+    uint32_t i;
+    if (!aot_enabled) return 0;
+    for (i = 0; i < x->t->n; i++)
+        if (E.node[x->node[i]].bypass) return 0;
+    return 1;
+}
+
+#if ENG_AOT_PAIR
+#include "aot_pair.c"
+#define AOT_BLOCK_BEGIN() do { if (aot_nx) aot_m->done = 0; } while (0)
+#else
+#define AOT_BLOCK_BEGIN() ((void)0)
+#endif
+
 /* render_split at position k of E.order: 1 when a compiled instance renders that module (its first runs them all) */
 static int aot_owns(uint32_t k, uint32_t n)
 {
     aot_x_t *x = &aot_x[(aot_slot[k] & 0x7Fu) - 1u];
     if (aot_slot[k] & 0x80u) {
-        uint32_t i;
-        x->on = aot_enabled;
-        for (i = 0; x->on && i < x->t->n; i++)       /* a member bypassed: the interpreter, this block */
-            if (E.node[x->node[i]].bypass)
-                x->on = 0;
+        #if ENG_AOT_PAIR
+        if (aot_m->done & (1u << (x - aot_x))) return x->on;
+        #endif
+        x->on = (uint8_t)aot_can_run(x);
+        #if ENG_AOT_PAIR
+        if (x->on && aot_pair_run(x, n)) return 1;
+        #endif
         if (x->on)
             aot_run(x, n);
     }
@@ -737,6 +777,7 @@ static int aot_owns(uint32_t k, uint32_t n)
 #define AOT_OWNS(k, n) (aot_nx && aot_slot[k] && aot_owns((k), (n)))
 #else
 #define AOT_OWNS(k, n) 0
+#define AOT_BLOCK_BEGIN() ((void)0)
 static int aot_buffer_guard(const uint8_t *p, uint32_t len) { (void)p; (void)len; return 0; }
 static void aot_bind(const uint8_t *p, uint32_t len, uint32_t lines) { (void)p; (void)len; (void)lines; }
 #endif

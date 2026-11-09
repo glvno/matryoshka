@@ -185,7 +185,7 @@ def ldr_wrap(image):
 def build_loader():
     LDR.mkdir(parents=True, exist_ok=True)
     src = FW / "loader"
-    for switch in ("ENG_AOT", "ENG_RAMCODE", "ENG_BUF_REUSE"):
+    for switch in ("ENG_AOT", "ENG_AOT_FUSE", "ENG_AOT_DRUMS", "ENG_AOT_PAIR", "ENG_RAMCODE", "ENG_BUF_REUSE"):
         if os.environ.get(switch, "0") not in ("0", "1"):
             raise SystemExit(f"{switch} must be 0 or 1")
     flags = [*CFLAGS, "-Ifirmware/hal", "-Ifirmware/src"]
@@ -239,14 +239,14 @@ def llvm_objcopy():
 
 
 def build_app():
-    for switch in ("ENG_AOT", "ENG_RAMCODE", "ENG_BUF_REUSE"):
+    for switch in ("ENG_AOT", "ENG_AOT_FUSE", "ENG_AOT_DRUMS", "ENG_AOT_PAIR", "ENG_RAMCODE", "ENG_BUF_REUSE"):
         if os.environ.get(switch, "0") not in ("0", "1"):
             raise SystemExit(f"{switch} must be 0 or 1")
     flags = [*CFLAGS, "-Ifirmware/hal", "-Ifirmware/src"]
     for flag in ("FELUCCA_FLASH", "FELUCCA_OTA", "FELUCCA_OTA_DRYRUN", "FELUCCA_OTA_RAMONLY", "FELUCCA_CDC",
                  "FELUCCA_UAC", "FELUCCA_UAC_TONE", "FELUCCA_UAC_48K", "FELUCCA_ICONS", "FELUCCA_SLICE", "FELUCCA_FM4",
                  "FELUCCA_CDC_DEFAULT", "FELUCCA_UAC_AS_FIRST", "FELUCCA_UAC_MIDI_LAST", "FELUCCA_USB_HS", "M1_EMU_MIDI",
-                 "ENG_AOT", "ENG_BUF_REUSE"):   # ENG_AOT=0: no compiled factory assemblies (#808, firmware/src/aot.c), the interpreter alone
+                 "ENG_AOT", "ENG_AOT_FUSE", "ENG_AOT_DRUMS", "ENG_AOT_PAIR", "ENG_BUF_REUSE"):   # ENG_AOT=0: no compiled factory assemblies (#808, firmware/src/aot.c), the interpreter alone
         v = os.environ.get(flag)    # unset: the default in firmware/src/modular.c
         if v in ("0", "1"):
             flags.append(f"-D{flag}={v}")
@@ -477,6 +477,9 @@ def main():
     side = json.dumps({"version": version, "product": PRODUCT, "size": len(pkg), "sha256": hashlib.sha256(pkg).hexdigest(),
                        "build": {"ENG_AOT": int(os.environ.get("ENG_AOT", "0")),
                                  "ENG_RAMCODE": int(os.environ.get("ENG_RAMCODE", "0")),
+                                 "ENG_AOT_FUSE": int(os.environ.get("ENG_AOT_FUSE", "0")),
+                                 "ENG_AOT_DRUMS": int(os.environ.get("ENG_AOT_DRUMS", "0")),
+                                 "ENG_AOT_PAIR": int(os.environ.get("ENG_AOT_PAIR", "0")),
                                  "ENG_BUF_REUSE": int(os.environ.get("ENG_BUF_REUSE", "1")),
                                  "FELUCCA_SPEED": os.environ.get("FELUCCA_SPEED", SPEED)}})
     (OUT / name).with_suffix(".json").write_text(side)

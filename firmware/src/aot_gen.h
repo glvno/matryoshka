@@ -9,7 +9,7 @@ static asig_t aot0_s1_0(aot_cx_t *c);
 static asig_t aot0_s1_1(aot_cx_t *c);
 static asig_t aot0_s0_3(aot_cx_t *c);
 static asig_t aot0_s0_4(aot_cx_t *c);
-static asig_t aot0_s1_2(aot_cx_t *c);
+static __attribute__((unused)) asig_t aot0_s1_2(aot_cx_t *c);
 static asig_t aot0_s1_3(aot_cx_t *c);
 static asig_t aot0_s0_5(aot_cx_t *c);
 static asig_t aot0_s0_6(aot_cx_t *c);
@@ -25,10 +25,10 @@ static asig_t aot0_s1_10(aot_cx_t *c);
 static asig_t aot0_s1_11(aot_cx_t *c);
 static asig_t aot0_s1_12(aot_cx_t *c);
 static asig_t aot0_s1_13(aot_cx_t *c);
-static asig_t aot0_s1_14(aot_cx_t *c);
+static __attribute__((unused)) asig_t aot0_s1_14(aot_cx_t *c);
 static asig_t aot0_s1_15(aot_cx_t *c);
 static asig_t aot0_s1_16(aot_cx_t *c);
-static asig_t aot0_s1_17(aot_cx_t *c);
+static __attribute__((unused)) asig_t aot0_s1_17(aot_cx_t *c);
 static asig_t aot0_s1_18(aot_cx_t *c);
 static asig_t aot0_s1_19(aot_cx_t *c);
 static asig_t aot0_s1_20(aot_cx_t *c);
@@ -36,7 +36,7 @@ static asig_t aot0_s1_21(aot_cx_t *c);
 static asig_t aot0_s1_22(aot_cx_t *c);
 static asig_t aot0_s1_23(aot_cx_t *c);
 static asig_t aot0_s0_9(aot_cx_t *c);
-static asig_t aot0_s0_10(aot_cx_t *c);
+static __attribute__((unused)) asig_t aot0_s0_10(aot_cx_t *c);
 static asig_t aot0_s0_11(aot_cx_t *c);
 static asig_t aot0_s0_12(aot_cx_t *c);
 static asig_t aot0_s0_13(aot_cx_t *c);
@@ -157,9 +157,32 @@ static asig_t aot0_s1_2(aot_cx_t *c)   /* scale 38.out */
 static asig_t aot0_s1_3(aot_cx_t *c)   /* math 39.cmp */
 {
     if (!c->d[3]) {
+#if ENG_AOT_FUSE
+        AOT_FUSED_HIT(c);
+        if (!c->prep[39]) {
+            aot_prepf(c, 39, 0x0u);
+        }
+        if (!c->prep[38]) {
+            aot_prepf(c, 38, 0x0u);
+        }
+        asig_t x0 = AB(c->it[31]->out[0]);
+        asig_t x1 = aot_sum((const asig_t[]){c->x->sh[2], aot0_s1_22(c), c->x->sh[10]}, 3u, (esig_t *)c->it[38]->in[0], c->n);
+        int32_t g38 = EF(c->it[38], SCALE_P_GAIN), o38 = EF(c->it[38], SCALE_P_OFFSET);
+        int32_t ka39 = EF(c->it[39], MATH_P_KA), kb39 = EF(c->it[39], MATH_P_KB), o39 = EF(c->it[39], MATH_P_OFF);
+        uint32_t i, count = x0.b || x1.b ? c->n : 1u;
+        int32_t result = 0;
+        for (i = 0; i < count; i++) {
+            int32_t y38 = mul16(af_read(x1, i), g38) + o38;
+            int32_t y39 = math_y(6, mul16(af_read(x0, i), ka39) + o39, mul16(y38, kb39));
+            result = y39;
+            if (count != 1u) c->it[39]->out[6][i] = result;
+        }
+        c->s[3] = count == 1u ? AU(result) : AB(c->it[39]->out[6]);
+#else
         if (!c->prep[39])
             aot_prepf(c, 39, 0x0u);
         c->s[3] = ag_math(c->it[39], AB(c->it[31]->out[0]), aot0_s1_2(c), 6, c->n);
+#endif
         c->d[3] = 1;
     }
     return c->s[3];
@@ -358,9 +381,32 @@ static asig_t aot0_s1_14(aot_cx_t *c)   /* vca 55.out */
 static asig_t aot0_s1_15(aot_cx_t *c)   /* scale 56.out */
 {
     if (!c->d[15]) {
+#if ENG_AOT_FUSE
+        AOT_FUSED_HIT(c);
+        if (!c->prep[56]) {
+            aot_prepf(c, 56, 0x0u);
+        }
+        if (!c->prep[55]) {
+            aot_prepf(c, 55, 0x1u);
+        }
+        asig_t x0 = AB(c->it[34]->out[0]);
+        asig_t x1 = aot0_s1_13(c);
+        int32_t g55 = EF(c->it[55], VCA_P_GAIN);
+        int32_t g56 = EF(c->it[56], SCALE_P_GAIN), o56 = EF(c->it[56], SCALE_P_OFFSET);
+        uint32_t i, count = x0.b || x1.b ? c->n : 1u;
+        int32_t result = 0;
+        for (i = 0; i < count; i++) {
+            int32_t y55 = mul16(mul16(af_read(x0, i), af_read(x1, i)), g55);
+            int32_t y56 = mul16(y55, g56) + o56;
+            result = y56;
+            if (count != 1u) c->it[56]->out[0][i] = result;
+        }
+        c->s[15] = count == 1u ? AU(result) : AB(c->it[56]->out[0]);
+#else
         if (!c->prep[56])
             aot_prepf(c, 56, 0x0u);
         c->s[15] = ag_scale(c->it[56], aot0_s1_14(c), c->n);
+#endif
         c->d[15] = 1;
     }
     return c->s[15];
@@ -492,9 +538,32 @@ static asig_t aot0_s0_10(aot_cx_t *c)   /* math 10.cmp */
 static asig_t aot0_s0_11(aot_cx_t *c)   /* scale 11.out */
 {
     if (!c->d[11]) {
+#if ENG_AOT_FUSE
+        AOT_FUSED_HIT(c);
+        if (!c->prep[11]) {
+            aot_prepf(c, 11, 0x0u);
+        }
+        if (!c->prep[10]) {
+            aot_prepf(c, 10, 0x0u);
+        }
+        asig_t x0 = AB(c->it[0]->out[0]);
+        asig_t x1 = AU(0);
+        int32_t ka10 = EF(c->it[10], MATH_P_KA), kb10 = EF(c->it[10], MATH_P_KB), o10 = EF(c->it[10], MATH_P_OFF);
+        int32_t g11 = EF(c->it[11], SCALE_P_GAIN), o11 = EF(c->it[11], SCALE_P_OFFSET);
+        uint32_t i, count = x0.b || x1.b ? c->n : 1u;
+        int32_t result = 0;
+        for (i = 0; i < count; i++) {
+            int32_t y10 = math_y(6, mul16(af_read(x0, i), ka10) + o10, mul16(af_read(x1, i), kb10));
+            int32_t y11 = mul16(y10, g11) + o11;
+            result = y11;
+            if (count != 1u) c->it[11]->out[0][i] = result;
+        }
+        c->s[11] = count == 1u ? AU(result) : AB(c->it[11]->out[0]);
+#else
         if (!c->prep[11])
             aot_prepf(c, 11, 0x0u);
         c->s[11] = ag_scale(c->it[11], aot0_s0_10(c), c->n);
+#endif
         c->d[11] = 1;
     }
     return c->s[11];
@@ -675,9 +744,33 @@ static asig_t aot0_s0_26(aot_cx_t *c)   /* select 24.out */
 static asig_t aot0_s1_24(aot_cx_t *c)   /* vca 37.out */
 {
     if (!c->d[24]) {
+#if ENG_AOT_FUSE
+        AOT_FUSED_HIT(c);
+        if (!c->prep[37]) {
+            aot_prepf(c, 37, 0x1u);
+        }
+        if (!c->prep[57]) {
+            aot_prepf(c, 57, 0x1u);
+        }
+        asig_t x0 = AB(c->it[35]->out[0]);
+        asig_t x1 = AB(c->it[36]->out[0]);
+        asig_t x2 = aot0_s1_16(c);
+        int32_t g57 = EF(c->it[57], VCA_P_GAIN);
+        int32_t g37 = EF(c->it[37], VCA_P_GAIN);
+        uint32_t i, count = x0.b || x1.b || x2.b ? c->n : 1u;
+        int32_t result = 0;
+        for (i = 0; i < count; i++) {
+            int32_t y57 = mul16(mul16(af_read(x1, i), af_read(x2, i)), g57);
+            int32_t y37 = mul16(mul16(af_read(x0, i), y57), g37);
+            result = y37;
+            if (count != 1u) c->it[37]->out[0][i] = result;
+        }
+        c->s[24] = count == 1u ? AU(result) : AB(c->it[37]->out[0]);
+#else
         if (!c->prep[37])
             aot_prepf(c, 37, 0x1u);
         c->s[24] = ag_vca(c->it[37], AB(c->it[35]->out[0]), aot0_s1_17(c), c->n);
+#endif
         c->d[24] = 1;
     }
     return c->s[24];
@@ -942,5 +1035,237 @@ static const uint8_t aot0_seg_lead[2] = {26, 4};
 static const aot_seg_fn aot0_seg[2] = {aot0_seg0, aot0_seg1};
 static const aot_tpl_t aot0 = {0x6282b61fu, 60, 86, 2, aot0_type, aot0_grp, aot0_cab, aot0_xin, aot0_xout, aot0_seg_grp, aot0_seg_lead, aot0_seg, "Oracle V"};
 
-#define AOT_NTPL 1u
-static const aot_tpl_t *const AOT_TPL[1] = {&aot0};
+#if ENG_AOT_DRUMS
+/* boom kick: 5 members, 4 cables, 1 segments (once 5); signals 2, 0 handed on, 0 members with parameter inputs */
+static asig_t aot1_s0_0(aot_cx_t *c);
+static asig_t aot1_s0_1(aot_cx_t *c);
+static asig_t aot1_s0_0(aot_cx_t *c)   /* scale 2.out */
+{
+    if (!c->d[0]) {
+        if (!c->prep[2])
+            aot_prepf(c, 2, 0x0u);
+        c->s[0] = ag_scale(c->it[2], AB(c->it[1]->out[0]), c->n);
+        c->d[0] = 1;
+    }
+    return c->s[0];
+}
+static asig_t aot1_s0_1(aot_cx_t *c)   /* vca 4.out */
+{
+    if (!c->d[1]) {
+        if (!c->prep[4])
+            aot_prepf(c, 4, 0x0u);
+        c->s[1] = ag_vca(c->it[4], AB(c->it[0]->out[0]), AB(c->it[3]->out[0]), c->n);
+        c->d[1] = 1;
+    }
+    return c->s[1];
+}
+static const uint8_t aot1_bind0[5] = {0, 1, 2, 3, 4};
+static __attribute__((noinline)) void aot1_member1(aot_cx_t *c)   /* env 1 */
+{
+    (void)(aot_gsum(c->it[1], 0, c->n));
+    aot_blk(c, 1, 0x0u, 0x0u, 0);
+}
+static __attribute__((noinline)) void aot1_member0(aot_cx_t *c)   /* osc 0 */
+{
+    asig_t s[MAX_IN];
+    s[0] = aot1_s0_0(c);
+    aot_blk(c, 0, 0x0u, 0x1u, s);
+}
+static __attribute__((noinline)) void aot1_member3(aot_cx_t *c)   /* env 3 */
+{
+    (void)(aot_gsum(c->it[3], 0, c->n));
+    aot_blk(c, 3, 0x0u, 0x0u, 0);
+}
+static void aot1_seg0(aot_x_t *x, uint32_t v, uint32_t n)   /* once: env scale osc env vca */
+{
+    aot_cx_t *c = aot_begin(x, v, n, aot1_bind0, 5u, 2u);
+    aot1_member1(c);
+    aot1_member0(c);
+    aot1_member3(c);
+    (void)aot_fin(aot1_s0_1(c), c->it[4]->out[0], 1u, n);   /* vca 4.out */
+}
+static const uint8_t aot1_type[5] = {T_OSC, T_ENV, T_SCALE, T_ENV, T_VCA};
+static const uint8_t aot1_grp[5] = {0, 0, 0, 0, 0};
+static const aot_cab_t aot1_cab[4] = {{1, 0, 2, 0, 1}, {2, 0, 0, 0, 1}, {0, 0, 4, 0, 1}, {3, 0, 4, 1, 1}};
+static const uint8_t aot1_xin[] = {3, 0, 1, 0, 255};
+static const uint8_t aot1_xout[] = {4, 0, 255};
+static const uint8_t aot1_seg_grp[1] = {0};
+static const uint8_t aot1_seg_lead[1] = {1};
+static const aot_seg_fn aot1_seg[1] = {aot1_seg0};
+static const aot_tpl_t aot1 = {0x0e547709u, 5, 4, 1, aot1_type, aot1_grp, aot1_cab, aot1_xin, aot1_xout, aot1_seg_grp, aot1_seg_lead, aot1_seg, "boom kick"};
+
+/* snare: 8 members, 7 cables, 1 segments (once 8); signals 3, 0 handed on, 0 members with parameter inputs */
+static __attribute__((unused)) asig_t aot2_s0_0(aot_cx_t *c);
+static __attribute__((unused)) asig_t aot2_s0_1(aot_cx_t *c);
+static asig_t aot2_s0_2(aot_cx_t *c);
+static asig_t aot2_s0_0(aot_cx_t *c)   /* vca 2.out */
+{
+    if (!c->d[0]) {
+        if (!c->prep[2])
+            aot_prepf(c, 2, 0x0u);
+        c->s[0] = ag_vca(c->it[2], AB(c->it[1]->out[3]), AB(c->it[3]->out[0]), c->n);
+        c->d[0] = 1;
+    }
+    return c->s[0];
+}
+static asig_t aot2_s0_1(aot_cx_t *c)   /* vca 5.out */
+{
+    if (!c->d[1]) {
+        if (!c->prep[5])
+            aot_prepf(c, 5, 0x0u);
+        c->s[1] = ag_vca(c->it[5], AB(c->it[4]->out[0]), AB(c->it[6]->out[0]), c->n);
+        c->d[1] = 1;
+    }
+    return c->s[1];
+}
+static asig_t aot2_s0_2(aot_cx_t *c)   /* mixer 7.out */
+{
+    if (!c->d[2]) {
+#if ENG_AOT_FUSE
+        AOT_FUSED_HIT(c);
+        if (!c->prep[7]) {
+            aot_prepf(c, 7, 0x0u);
+        }
+        if (!c->prep[5]) {
+            aot_prepf(c, 5, 0x0u);
+        }
+        if (!c->prep[2]) {
+            aot_prepf(c, 2, 0x0u);
+        }
+        asig_t x0 = AB(c->it[1]->out[3]);
+        asig_t x1 = AB(c->it[3]->out[0]);
+        asig_t x2 = AB(c->it[4]->out[0]);
+        asig_t x3 = AB(c->it[6]->out[0]);
+        asig_t x4 = AU(0);
+        asig_t x5 = AU(0);
+        int32_t g2 = EF(c->it[2], VCA_P_GAIN);
+        int32_t g5 = EF(c->it[5], VCA_P_GAIN);
+        int32_t l7_0 = EF(c->it[7], MIXER_P_L1);
+        int32_t l7_1 = EF(c->it[7], MIXER_P_L2);
+        int32_t l7_2 = EF(c->it[7], MIXER_P_L3);
+        int32_t l7_3 = EF(c->it[7], MIXER_P_L4);
+        uint32_t i, count = x0.b || x1.b || x2.b || x3.b || x4.b || x5.b ? c->n : 1u;
+        int32_t result = 0;
+        for (i = 0; i < count; i++) {
+            int32_t y2 = mul16(mul16(af_read(x0, i), af_read(x1, i)), g2);
+            int32_t y5 = mul16(mul16(af_read(x2, i), af_read(x3, i)), g5);
+            int32_t y7 = mul16(y2, l7_0) + mul16(y5, l7_1) + mul16(af_read(x4, i), l7_2) + mul16(af_read(x5, i), l7_3);
+            result = y7;
+            if (count != 1u) c->it[7]->out[0][i] = result;
+        }
+        c->s[2] = count == 1u ? AU(result) : AB(c->it[7]->out[0]);
+#else
+        if (!c->prep[7])
+            aot_prepf(c, 7, 0x0u);
+        asig_t x[4];
+        x[0] = aot2_s0_0(c);
+        x[1] = aot2_s0_1(c);
+        x[2] = AU(0);
+        x[3] = AU(0);
+        c->s[2] = ag_mixer(c->it[7], x, c->n);
+#endif
+        c->d[2] = 1;
+    }
+    return c->s[2];
+}
+static const uint8_t aot2_bind0[8] = {0, 1, 2, 3, 4, 5, 6, 7};
+static __attribute__((noinline)) void aot2_member0(aot_cx_t *c)   /* noise 0 */
+{
+    aot_blk(c, 0, 0x0u, 0x0u, 0);
+}
+static __attribute__((noinline)) void aot2_member1(aot_cx_t *c)   /* filter 1 */
+{
+    asig_t s[MAX_IN];
+    s[0] = AB(c->it[0]->out[0]);
+    aot_blk(c, 1, 0x0u, 0x1u, s);
+}
+static __attribute__((noinline)) void aot2_member3(aot_cx_t *c)   /* env 3 */
+{
+    (void)(aot_gsum(c->it[3], 0, c->n));
+    aot_blk(c, 3, 0x0u, 0x0u, 0);
+}
+static __attribute__((noinline)) void aot2_member4(aot_cx_t *c)   /* osc 4 */
+{
+    aot_blk(c, 4, 0x0u, 0x0u, 0);
+}
+static __attribute__((noinline)) void aot2_member6(aot_cx_t *c)   /* env 6 */
+{
+    (void)(aot_gsum(c->it[6], 0, c->n));
+    aot_blk(c, 6, 0x0u, 0x0u, 0);
+}
+static void aot2_seg0(aot_x_t *x, uint32_t v, uint32_t n)   /* once: noise filter env vca osc env vca mixer */
+{
+    aot_cx_t *c = aot_begin(x, v, n, aot2_bind0, 8u, 3u);
+    aot2_member0(c);
+    aot2_member1(c);
+    aot2_member3(c);
+    aot2_member4(c);
+    aot2_member6(c);
+    (void)aot_fin(aot2_s0_2(c), c->it[7]->out[0], 1u, n);   /* mixer 7.out */
+}
+static const uint8_t aot2_type[8] = {T_NOISE, T_FILTER, T_VCA, T_ENV, T_OSC, T_VCA, T_ENV, T_MIXER};
+static const uint8_t aot2_grp[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+static const aot_cab_t aot2_cab[7] = {{0, 0, 1, 0, 1}, {1, 3, 2, 0, 1}, {3, 0, 2, 1, 1}, {4, 0, 5, 0, 1}, {6, 0, 5, 1, 1}, {2, 0, 7, 0, 1}, {5, 0, 7, 1, 1}};
+static const uint8_t aot2_xin[] = {3, 0, 6, 0, 255};
+static const uint8_t aot2_xout[] = {7, 0, 255};
+static const uint8_t aot2_seg_grp[1] = {0};
+static const uint8_t aot2_seg_lead[1] = {0};
+static const aot_seg_fn aot2_seg[1] = {aot2_seg0};
+static const aot_tpl_t aot2 = {0x75bba339u, 8, 7, 1, aot2_type, aot2_grp, aot2_cab, aot2_xin, aot2_xout, aot2_seg_grp, aot2_seg_lead, aot2_seg, "snare"};
+
+/* hihat: 4 members, 3 cables, 1 segments (once 4); signals 1, 0 handed on, 0 members with parameter inputs */
+static asig_t aot3_s0_0(aot_cx_t *c);
+static asig_t aot3_s0_0(aot_cx_t *c)   /* vca 2.out */
+{
+    if (!c->d[0]) {
+        if (!c->prep[2])
+            aot_prepf(c, 2, 0x0u);
+        c->s[0] = ag_vca(c->it[2], AB(c->it[1]->out[3]), AB(c->it[3]->out[0]), c->n);
+        c->d[0] = 1;
+    }
+    return c->s[0];
+}
+static const uint8_t aot3_bind0[4] = {0, 1, 2, 3};
+static __attribute__((noinline)) void aot3_member0(aot_cx_t *c)   /* noise 0 */
+{
+    aot_blk(c, 0, 0x0u, 0x0u, 0);
+}
+static __attribute__((noinline)) void aot3_member1(aot_cx_t *c)   /* filter 1 */
+{
+    asig_t s[MAX_IN];
+    s[0] = AB(c->it[0]->out[0]);
+    aot_blk(c, 1, 0x0u, 0x1u, s);
+}
+static __attribute__((noinline)) void aot3_member3(aot_cx_t *c)   /* env 3 */
+{
+    (void)(aot_gsum(c->it[3], 0, c->n));
+    aot_blk(c, 3, 0x0u, 0x0u, 0);
+}
+static void aot3_seg0(aot_x_t *x, uint32_t v, uint32_t n)   /* once: noise filter env vca */
+{
+    aot_cx_t *c = aot_begin(x, v, n, aot3_bind0, 4u, 1u);
+    aot3_member0(c);
+    aot3_member1(c);
+    aot3_member3(c);
+    (void)aot_fin(aot3_s0_0(c), c->it[2]->out[0], 1u, n);   /* vca 2.out */
+}
+static const uint8_t aot3_type[4] = {T_NOISE, T_FILTER, T_VCA, T_ENV};
+static const uint8_t aot3_grp[4] = {0, 0, 0, 0};
+static const aot_cab_t aot3_cab[3] = {{0, 0, 1, 0, 1}, {1, 3, 2, 0, 1}, {3, 0, 2, 1, 1}};
+static const uint8_t aot3_xin[] = {3, 0, 255};
+static const uint8_t aot3_xout[] = {2, 0, 255};
+static const uint8_t aot3_seg_grp[1] = {0};
+static const uint8_t aot3_seg_lead[1] = {0};
+static const aot_seg_fn aot3_seg[1] = {aot3_seg0};
+static const aot_tpl_t aot3 = {0x06ebd747u, 4, 3, 1, aot3_type, aot3_grp, aot3_cab, aot3_xin, aot3_xout, aot3_seg_grp, aot3_seg_lead, aot3_seg, "hihat"};
+
+#endif
+static const aot_tpl_t *const AOT_TPL[] = {
+    &aot0,
+#if ENG_AOT_DRUMS
+    &aot1,
+    &aot2,
+    &aot3,
+#endif
+};
+#define AOT_NTPL (sizeof AOT_TPL / sizeof AOT_TPL[0])

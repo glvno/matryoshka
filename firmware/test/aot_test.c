@@ -4,7 +4,7 @@
  * same played and turned events both ways, each from a fresh process (fork: the engine keeps state across loads): notes (chords, single keys, releases), the performance controls, every
  * parameter of every module set to values across its range, a member bypassed for a while, blocks of odd lengths; then
  * Selectors switched with and without a fade, Scale and VCA gains at 0, 1/2 and 1.
- *   aot_test [-q] [patch.m1p ...]      exit 1 when any output differs; prints which patches ran compiled */
+ *   aot_test [-q | --files-only] [patch.m1p ...]      exit 1 when any output differs; prints which patches ran compiled */
 #include <stdio.h>
 #include <string.h>
 #include <sys/wait.h>
@@ -12,6 +12,10 @@
 #include "lanes_host.h"
 #undef eng_lane_run
 static int eng_lane_run(void (*fn)(uint32_t), uint32_t arg);
+static uint32_t fused_hits[2];
+#define AOT_FUSED_HIT(c) (fused_hits[(c)->v & 1u]++)
+static uint32_t pair_hits;
+#define AOT_PAIR_HIT() (pair_hits++)
 #define ENG_AOT 1
 #include "../src/engine.c"
 #include "../src/presets.h"
@@ -21,7 +25,12 @@ static int eng_lane_run(void (*fn)(uint32_t), uint32_t arg)
 {
     uint32_t group = fn == aot_lane1_job ? E.node[aot_job.x->node[aot_job.x->t->seg_lead[aot_job.seg]]].grp
                                         : E.node[E.order[lane_job.k0]].grp;
-    if (!group || group != arg) {
+#if ENG_AOT_PAIR
+    if (fn == aot_pair_worker) group = 0;
+    else
+#endif
+    if (!group) { fprintf(stderr, "poly lane job has no group\n"); exit(1); }
+    if (group != arg) {
         fprintf(stderr, "lane accounting group %u, expected %u\n", (unsigned)arg, (unsigned)group);
         exit(1);
     }
@@ -32,6 +41,7 @@ static int eng_lane_run(void (*fn)(uint32_t), uint32_t arg)
 #define MAXOUT (BLOCKS * 256u)
 
 static int32_t outl[2][MAXOUT], outr[2][MAXOUT];
+static uint64_t fused_total, pair_total;
 
 static uint32_t rnd(uint32_t *s) { *s = *s * 1664525u + 1013904223u; return *s >> 8; }
 
@@ -44,6 +54,7 @@ static uint32_t run(const uint8_t *p, uint32_t len, int w, int *bound, int fuzz)
     if (eng_load(p, len))
         return 0;
     *bound = aot_nx;
+    if (getenv("AOT_TRANSPORT")) eng_transport(1);
     for (b = 0; b < BLOCKS; b++) {
         uint32_t n = SIZES[b % 5u];
         if (b == 2)
@@ -106,7 +117,7 @@ static uint32_t run_fresh(const uint8_t *p, uint32_t len, int w, int *bound, int
 {
     int fd[2];
     pid_t pid;
-    uint32_t hdr[2] = {0, 0};
+    uint32_t hdr[4] = {0, 0, 0, 0};
     if (pipe(fd))
         return 0;
     if (!(pid = fork())) {
@@ -114,6 +125,8 @@ static uint32_t run_fresh(const uint8_t *p, uint32_t len, int w, int *bound, int
         close(fd[0]);
         hdr[0] = run(p, len, w, &bd, fuzz);
         hdr[1] = (uint32_t)bd;
+        hdr[2] = fused_hits[0] + fused_hits[1];
+        hdr[3] = pair_hits;
         if (write(fd[1], hdr, sizeof hdr) < 0 || write(fd[1], outl[w], hdr[0] * 4u) < 0 || write(fd[1], outr[w], hdr[0] * 4u) < 0)
             _exit(1);
         _exit(0);
@@ -127,6 +140,8 @@ static uint32_t run_fresh(const uint8_t *p, uint32_t len, int w, int *bound, int
     }
     waitpid(pid, 0, 0);
     *bound = (int)hdr[1];
+    fused_total += hdr[2];
+    pair_total += hdr[3];
     return hdr[0];
 }
 
@@ -160,9 +175,11 @@ int main(int argc, char **argv)
 #define X(k) { PRESET_##k, sizeof PRESET_##k },
 X(0) X(1) X(2) X(3) X(4) X(5) X(6) X(7) X(8) X(9) X(10) X(11) X(12) X(13) X(14) X(15) X(16) X(17) X(18) X(19) X(20) X(21) X(22) X(23) X(24) X(25) X(26) X(27) X(28) X(29)
     };
-    int quiet = argc > 1 && !strcmp(argv[1], "-q"), fail = 0, a, f;
+    int files_only = argc > 1 && !strcmp(argv[1], "--files-only");
+    int quiet = files_only || (argc > 1 && !strcmp(argv[1], "-q")), fail = 0, a, f;
     unsigned t;
-    for (f = 0; f < 3; f++)
+    if (files_only && argc < 3) return 2;
+    for (f = 0; !files_only && f < 3; f++)
         for (t = 0; t < sizeof T / sizeof T[0]; t++) {
             char name[32];
             snprintf(name, sizeof name, "factory %u", t);
@@ -178,6 +195,12 @@ X(0) X(1) X(2) X(3) X(4) X(5) X(6) X(7) X(8) X(9) X(10) X(11) X(12) X(13) X(14) 
         for (f = 0; f < 3; f++)
             fail |= compare(base, file_buf, (uint32_t)n, quiet, f);
     }
+#if ENG_AOT_FUSE
+    if (!fused_total) { puts("aot: fused path was never exercised"); fail = 1; }
+    printf("aot: fused chains executed %llu times\n", (unsigned long long)fused_total);
+#endif
+    if (getenv("AOT_REQUIRE_PAIR") && !pair_total) { puts("aot: paired path was never exercised"); fail = 1; }
+    printf("aot: paired jobs executed %llu times\n", (unsigned long long)pair_total);
     printf(fail ? "aot: outputs differ\n" : "aot: every output bit-identical with and without the compiled assemblies\n");
     return fail;
 }
