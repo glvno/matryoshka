@@ -37,7 +37,9 @@ export default defineConfig(({ command }) => ({
   build: { target: 'es2022', rollupOptions: { input: { main: fileURLToPath(new URL('./index.html', import.meta.url)), changelog: fileURLToPath(new URL('./changelog.html', import.meta.url)) } } },
   // stored share links (functions/, src/share-store.ts) in dev: `npm run api` serves them on 8788 (else storing fails and
   // the share sheet falls back to a link without the layout)
-  server: { proxy: { '/api': 'http://localhost:8788' } },
+  // the test scripts' dev servers (scripts/rig-link.mjs DEV_ENV) watch no files: a commit or a regenerated file in the
+  // checkout mid-run would reload the editor's page and drop its link to the FM-1 (#754)
+  server: { proxy: { '/api': 'http://localhost:8788' }, ...(process.env.MATRYOSHKA_NO_WATCH ? { watch: null } : {}) },
   // dev/demo is its own project (the Remotion demo video, its own node_modules)
   // testTimeout: a few tests take 3-6 s alone (the XLs, the flasher's real waits, the demo); 30 s keeps them passing
   // when golden / emulator runs share the machine (the 5 s default timed them out under load)

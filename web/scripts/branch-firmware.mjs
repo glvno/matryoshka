@@ -4,9 +4,9 @@
 // or the emulator gets no firmware run of its own); never an older firmware. Downloaded to build/flash/<run>, smoke
 // tested there once (emu:smoke, its result kept next to it). Used by `npm run flash` and the dev server's Flash tab
 // (dev/branch-firmware.ts), which install on any FM-1 and so take only emu:smoke, and by `npm run device:scenarios --
-// --install RUN`, the test rig's install, which may take the boot check instead (--gate boot, D-123).
+// --install RUN`, the test rig's install, which takes the boot check (D-123; --gate full for emu:smoke and the scenarios).
 import { execFile, spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, createWriteStream } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, createWriteStream } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -53,26 +53,59 @@ export async function findBuild() {
   return { id: String(hit.databaseId), headSha: hit.headSha, sha, branch, same: hit.headSha === sha, dirty };
 }
 
-/** a firmware CI run's matryoshka-firmware artifact in build/flash/<run> (downloaded once); its folder */
+/** a firmware CI run's matryoshka-firmware artifact in build/flash/<run> (downloaded once); its folder. A run of release.yml
+ *  has the release package instead (matryoshka-release-X.Y.Z, #783): its package, sidecar and app are copied to the names a
+ *  CI build has (matryoshka.fwsc, .json, .bin), so the gates and the installer take release bytes as they take a CI build */
 export async function download(id) {
   const dir = join(ROOT, 'build/flash', String(id));
   if (existsSync(join(dir, 'matryoshka.fwsc')) && existsSync(join(dir, 'matryoshka.json'))) return dir;
   rmSync(dir, { recursive: true, force: true }); // gh run download refuses to overwrite
   mkdirSync(dir, { recursive: true });
   const r = await run('gh', ['run', 'download', String(id), '-R', REPO, '-n', 'matryoshka-firmware', '-D', dir]);
-  if (r.code !== 0 || !existsSync(join(dir, 'matryoshka.fwsc'))) throw new Error(`firmware CI run ${id}: its matryoshka-firmware artifact could not be downloaded`);
-  return dir;
+  if (r.code === 0 && existsSync(join(dir, 'matryoshka.fwsc'))) return dir;
+  const names = await run('gh', ['api', `repos/${REPO}/actions/runs/${id}/artifacts`, '--jq', '.artifacts[].name']);
+  const rel = names.out.split('\n').find((n) => /^matryoshka-release-\d/.test(n));
+  if (rel) {
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    const v = rel.slice('matryoshka-release-'.length);
+    const got = await run('gh', ['run', 'download', String(id), '-R', REPO, '-n', rel, '-D', dir]);
+    const [pkg, side, app] = [`matryoshka-${v}.fwsc`, `matryoshka-${v}.json`, `matryoshka-${v}-app.bin`].map((f) => join(dir, f));
+    if (got.code === 0 && existsSync(pkg) && existsSync(side)) {
+      copyFileSync(pkg, join(dir, 'matryoshka.fwsc'));
+      copyFileSync(side, join(dir, 'matryoshka.json'));
+      if (existsSync(app)) copyFileSync(app, join(dir, 'matryoshka.bin'));
+      console.log(`run ${id} is release ${v}: its package, as built (${rel})`);
+      return dir;
+    }
+  }
+  throw new Error(`firmware CI run ${id}: neither its matryoshka-firmware artifact nor a release package could be downloaded`);
 }
 
 /** a run's matryoshka-emu-midi artifact (the M1_EMU_MIDI=1 build of the same commit) in <dir>/emu-midi (downloaded
- * once); its matryoshka-emu.bin, or null when the run has none */
+ * once); its matryoshka-emu.bin, or null when there is none. A release run from before #783 has none: then the one of the
+ * firmware CI run of the same commit, the same sources */
 export async function downloadEmuMidi(id, dir) {
   const emuDir = join(dir, 'emu-midi');
   const bin = join(emuDir, 'matryoshka-emu.bin');
   if (existsSync(bin)) return bin;
-  mkdirSync(emuDir, { recursive: true });
-  await run('gh', ['run', 'download', String(id), '-R', REPO, '-n', 'matryoshka-emu-midi', '-D', emuDir]);
-  return existsSync(bin) ? bin : null;
+  const fetch = async (from) => {
+    rmSync(emuDir, { recursive: true, force: true });
+    mkdirSync(emuDir, { recursive: true });
+    await run('gh', ['run', 'download', String(from), '-R', REPO, '-n', 'matryoshka-emu-midi', '-D', emuDir]);
+    return existsSync(bin);
+  };
+  if (await fetch(id)) return bin;
+  const sha = (await run('gh', ['run', 'view', String(id), '-R', REPO, '--json', 'headSha', '--jq', '.headSha'])).out;
+  const ci = sha ? (await run('gh', ['run', 'list', '-R', REPO, '--workflow', 'firmware', '--commit', sha, '--status', 'success', '-L', '1',
+    '--json', 'databaseId', '--jq', '.[0].databaseId'])).out : '';
+  if (ci && ci !== String(id) && (await fetch(ci))) {
+    writeFileSync(join(emuDir, 'from-run'), `${ci}\n`);
+    console.log(`run ${id} has no matryoshka-emu-midi artifact: the one of firmware CI run ${ci} (the same commit, ${sha.slice(0, 7)})`);
+    return bin;
+  }
+  rmSync(emuDir, { recursive: true, force: true }); // (an empty folder would read as a failed download later)
+  return null;
 }
 
 /** A gate's state on a downloaded build: 'passed', 'failed', 'running' or 'none'. `gate`: 'smoke' (emu:smoke, the full

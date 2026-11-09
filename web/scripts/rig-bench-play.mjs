@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The LCD's draw times on the test rig (#291; the owner's benchmark, 2026-10-24). Run from web/:
 //   npm run rig:bench [-- --patch NAME] [--rounds N]
-// With the registered rig the ONLY FM-1 connected (as `npm run rig -- check` shows it), over the device test mode: back
+// On the registered rig (its mark, `npm run rig -- check`; another FM-1 may stay connected), over the device test mode: back
 // to the device page, PRESET to the patch NAME (default: the one it is on), the draw times zeroed (DIAG page 120), then
 // ALGO through the device's pages, SELECT through the devices and back, K1..K4 a few clicks each way, GLO open and
 // closed (the device page drawn whole) and PRESET one on and back, N rounds; then the times the firmware kept (DIAG pages
@@ -9,7 +9,7 @@
 // A firmware without the draw times answers short: the script says so. The same script on two builds (main before a
 // change and the change) compares them.
 import { chromium } from 'playwright-core';
-import { fm1Label, rigPage, startEditor, survey } from './rig-link.mjs';
+import { fm1Label, pickRig, rigPage, startEditor } from './rig-link.mjs';
 
 const args = process.argv.slice(2);
 const opt = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
@@ -29,11 +29,7 @@ try {
   const context = await browser.newContext();
   await context.grantPermissions(['midi', 'midi-sysex'], { origin: new URL(editor.url).origin });
   const page = await rigPage(context, editor.url);
-  const s = await survey(page);
-  if (!s.rig || s.ports !== 1 || s.pairs.length !== 1)
-    throw new Error(`the rig must be the only FM-1 connected (npm run rig -- check): ${s.ports} FM-1 port(s), ${s.pairs.length} answered,`
-      + ` ${s.rig ? 'the rig among them' : 'none of them the registered rig'}; nothing was driven`);
-  await page.evaluate((x) => window.__rig.pick(x), s.rig);
+  const s = await pickRig(page);   // (#771: the FM-1 with the rig's mark; another FM-1 may stay connected, it is not driven)
   const rig = {
     turn: (e, c) => page.evaluate(([a, b]) => window.__rig.turn(a, b), [e, c]),
     tap: (id, hold = 80) => page.evaluate(([a, b]) => window.__rig.tap(a, b), [id, hold]),

@@ -33,8 +33,12 @@
                                            the newest again)
   tools/m1_link.py diag [DIS]             (what the last reset left: its cause, the crash record, where a stalled main loop
                                            was; DIS = the build's matryoshka.dis (CI artifact matryoshka-elf) names the functions)
-Needs mido and python-rtmidi (the Nix dev shell has them).
+Every command takes --rig (the test rig: the FM-1 at its registered USB location, checked by its mark) or --location HEX
+(the FM-1 in that USB socket, tools/fm1_usb.py list). Without either it takes the FM-1 by its port name, and refuses
+while more than one FM-1 is connected, since they share the name (#771).
+Needs mido and python-rtmidi (build/venv has them).
 """
+import collections
 import os
 import re
 import sys
@@ -89,8 +93,62 @@ def frame(cmd, payload=()):
     return mido.Message("sysex", data=PREFIX + [cmd] + pack7(list(payload)))
 
 
+class _RtOut:
+    """a python-rtmidi output port with mido's send(Message)"""
+
+    def __init__(self, port):
+        self.port = port
+
+    def send(self, msg):
+        self.port.send_message(msg.bytes())
+
+
+class _RtIn:
+    """a python-rtmidi input port with mido's iter_pending(): every message, SysEx included (clock and active sensing
+    dropped, as the protocol's answers are what the tools wait for)"""
+
+    def __init__(self, port):
+        self.port, self.q = port, collections.deque()
+        port.ignore_types(sysex=False, timing=True, active_sense=True)
+        port.set_callback(lambda ev, _data=None: self.q.append(ev[0]))
+
+    def iter_pending(self):
+        while self.q:
+            yield mido.Message.from_bytes(self.q.popleft())
+
+
+def fm1s_connected():
+    """how many USB MIDI devices that look like an FM-1 are online (tools/fm1_usb.py); 0 when that cannot be told (not
+    macOS, no python-rtmidi)"""
+    try:
+        import fm1_usb
+        return sum(1 for d in fm1_usb.usb_devices() if fm1_usb.fm1_like(d))
+    except (OSError, ImportError):
+        return 0
+
+
 class Link:
-    def __init__(self):
+    """the editor protocol over one FM-1's MIDI ports. `location` (a USB location, tools/fm1_usb.py list): the ports of the
+    device in that USB socket only, opened by index, so another FM-1 of the same name is never reached (#771). Without it,
+    the first port named like an FM-1, and only while one FM-1 is connected: two carry the same port name, so the name
+    alone could pick either. `backend`: a stand-in fm1_usb.LocatedBackend (the tests)"""
+
+    def __init__(self, location=None, backend=None):
+        if location is not None:
+            import fm1_usb
+            be = backend or fm1_usb.LocatedBackend(location)
+            ins, outs = be.input_names(), be.output_names()
+            if not ins or not outs:
+                sys.exit(f"no MIDI ports at USB location {fm1_usb.location_text(location)}")
+            i = ins[0]
+            o = i if i in outs else outs[0]
+            midi_in, midi_out = be.open_ports(i, o)
+            self.inp, self.out = _RtIn(midi_in), _RtOut(midi_out)
+            return
+        n = fm1s_connected()
+        if n > 1:
+            sys.exit(f"{n} FM-1s are connected and their ports share one name: pass --location HEX (tools/fm1_usb.py list) "
+                     "or --rig, or unplug the others")
         pick = lambda names: next((n for n in names if "Felucca" in n or "Matryoshka" in n or "Modular" in n or "FM-1" in n), None)
         o, i = pick(mido.get_output_names()), pick(mido.get_input_names())
         if not o or not i:
@@ -118,6 +176,46 @@ class Link:
             sys.exit(f"FM-1: {STATUS[p[2]] if p[2] < len(STATUS) else p[2]} (aux {p[3]})")
 
 
+RIG_FILE = os.environ.get("MATRYOSHKA_RIG_FILE") or os.path.expanduser("~/.config/matryoshka/rig.json")
+
+
+def rig_link(backend=None):
+    """a Link to the test rig (web/scripts/rig-link.mjs): the FM-1 at the rig's registered USB location, and only when the
+    rig's mark reads back there; else it exits having sent nothing but the mark's read (PRESET_GET). Another FM-1 may stay
+    connected (#771). `backend(location)`: a stand-in fm1_usb.LocatedBackend (the tests)"""
+    import json
+    import fm1_usb
+    try:
+        with open(RIG_FILE) as f:
+            rig = json.load(f)
+    except (OSError, ValueError):
+        sys.exit(f"no rig registered ({RIG_FILE}): connect the rig alone and run npm run rig -- register")
+    if not rig.get("usbLocation"):
+        sys.exit("the rig's USB location is not recorded: npm run rig -- register again, with the rig alone (it keeps the mark)")
+    loc = fm1_usb.parse_location(rig["usbLocation"])
+    mark = fm1_usb.mark_at(loc, backend(loc) if backend else None)
+    if not fm1_usb.same_mark(mark, rig.get("values")):
+        what = "no running Matryoshka answers there" if mark is None else "the FM-1 there carries another mark" if mark else "the FM-1 there has no rig mark"
+        sys.exit(f"at the rig's USB location {fm1_usb.location_text(loc)} {what}: nothing sent")
+    return Link(loc, backend(loc) if backend else None)
+
+
+def link_from_args(a):
+    """--rig or --location HEX taken out of the argument list `a` (in place): the Link they name, else Link()"""
+    if "--rig" in a:
+        a.remove("--rig")
+        return rig_link()
+    if "--location" in a:
+        k = a.index("--location")
+        if k + 1 >= len(a):
+            sys.exit("--location needs a USB location (tools/fm1_usb.py list)")
+        import fm1_usb
+        loc = fm1_usb.parse_location(a[k + 1])
+        del a[k:k + 2]
+        return Link(loc)
+    return Link()
+
+
 def upload_chunks(link, data):
     for seq, off in enumerate(range(0, len(data), 384)):
         part = data[off:off + 384]
@@ -139,7 +237,9 @@ def main():
     a = sys.argv[1:]
     if not a:
         sys.exit(__doc__)
-    link = Link()
+    link = link_from_args(a)
+    if not a:
+        sys.exit(__doc__)
     if a[0] == "info":
         p = link.ask(frame(0x01), (0x41,))
         print(f"protocol {p[0]}, max modules {p[1]}, max cables {p[2]}, flash {'ok' if p[3] & 1 else 'no'}, "

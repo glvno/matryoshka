@@ -285,7 +285,8 @@ class LocatedBackend:
             raise OSError("the MIDI ports changed while one was opened")
         return port
 
-    def open(self, in_name, out_name):
+    def open_ports(self, in_name, out_name):
+        """the python-rtmidi ports (in, out) of these names at this location (tools/m1_link.py Link wraps them as mido's)"""
         midi_in = self._open("in", in_name)
         try:
             midi_out = self._open("out", out_name)
@@ -293,6 +294,10 @@ class LocatedBackend:
             midi_in.close_port()
             raise
         time.sleep(self.delay)   # CoreMIDI may drop a message sent just after opening
+        return midi_in, midi_out
+
+    def open(self, in_name, out_name):
+        midi_in, midi_out = self.open_ports(in_name, out_name)
         return RtLink(self, in_name, midi_in, midi_out)
 
 

@@ -16,8 +16,9 @@ import { venvPython } from './branch-firmware.mjs';
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 /** a test script's dev server: it serves the bundled firmware package, so the page's first firmware request does not start the
  *  Flash tab's own emu:smoke of this branch's CI build (dev/branch-firmware.ts), a second emulator beside the run that made
- *  its timing checks flaky (#521). Nothing here installs through the Flash tab (--install runs fm1_install.py itself). */
-export const DEV_ENV = { ...process.env, MATRYOSHKA_BUNDLED_FIRMWARE: '1' };
+ *  its timing checks flaky (#521). Nothing here installs through the Flash tab (--install runs fm1_install.py itself). It
+ *  watches no files (vite.config.ts): a change to the checkout mid-run no longer reloads the editor's page (#754) */
+export const DEV_ENV = { ...process.env, MATRYOSHKA_BUNDLED_FIRMWARE: '1', MATRYOSHKA_NO_WATCH: '1' };
 export const RIG_FILE = process.env.MATRYOSHKA_RIG_FILE ?? join(homedir(), '.config/matryoshka/rig.json');
 
 /** an FM-1 as the scripts print it: the firmware's version from INFO (protocol.ts Info.firmware; 0.0.0 a dev or CI build,

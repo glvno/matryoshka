@@ -319,6 +319,8 @@ export class DeviceLink {
     return new Promise((resolve, reject) => {
       let tries = 0;
       const attempt = (): void => {
+        // (the link closed meanwhile, as when the page reloads under a request: a rejection, not a TypeError on null, #754)
+        if (!this.out) return reject(new Error('the FM-1 is not connected'));
         tries++;
         const t = window.setTimeout(() => {
           this.waiter = null;
