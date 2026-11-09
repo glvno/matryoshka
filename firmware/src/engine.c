@@ -7141,6 +7141,32 @@ static void m_env(const node_t *nd, inst_t *it, uint32_t n)
             tt = 0;
         }
         prev = g;
+        if (stage == 0 || stage == 4) {           /* resting or holding: one level until the gate changes (#781) */
+            int32_t o;
+            v = lv[stage];
+            o = v >> 14;
+            out[i] = o;
+            while (i + 1u < n && (gate[i + 1u] > 32768) == g)
+                out[++i] = o;
+            continue;
+        } else {                                  /* inside a segment: run it until the gate changes or the sample that
+                                                   * ends it, which takes the steps below */
+            const int32_t t = lv[stage], d = inc[stage], kk = k[stage];
+            const uint32_t ln = len[stage];
+            int ran = 0;
+            while (v < t ? v + d < t : tt + 1u < ln) {
+                tt++;
+                v += v < t ? d : mulq(t - v, kk, 30);
+                out[i] = v >> 14;
+                if (i + 1u >= n || (gate[i + 1u] > 32768) != g) {
+                    ran = 1;
+                    break;
+                }
+                i++;
+            }
+            if (ran)
+                continue;
+        }
         for (guard = 0; guard < 4u; guard++) {
             int32_t t;
             if (stage == 0 || stage == 4) {
@@ -7190,16 +7216,27 @@ static void m_env8(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *gate = it->in[ENV8_I_GATE];
     esig_t *out = it->out[0];
+    const int32_t *eff = it->eff;
     int32_t v = it->s.env8.v;
     uint32_t tt = it->s.env8.t, i;
-    uint32_t end = (uint32_t)clampi((EF(it, ENV8_P_END) + 32768) >> 16, 1, 8);
-    uint32_t hs = (uint32_t)clampi((EF(it, ENV8_P_SUS) + 32768) >> 16, 0, 8);
+    uint32_t end = (uint32_t)clampi((eff[ENV8_P_END] + 32768) >> 16, 1, 8);
+    uint32_t hs = (uint32_t)clampi((eff[ENV8_P_SUS] + 32768) >> 16, 0, 8);
     uint8_t stage = it->s.env8.stage, prev = it->s.env8.prev;
+    int32_t inc, k, lrest, lhold;
+    uint32_t len, cst;
     (void)nd;
     if (hs > end)
         hs = 0;
-    if (it->s.env8.cst && it->s.env8.rk != EF(it, ENV8_P_R1 + 2u * (it->s.env8.cst - 1u)))
+    if (it->s.env8.cst && it->s.env8.rk != eff[ENV8_P_R1 + 2u * (it->s.env8.cst - 1u)])
         it->s.env8.cst = 0;                       /* the cached step's rate moved */
+    /* the cached step's rates and the resting / holding levels in locals: out[] might alias it->s, so the compiler would
+     * read them again every sample (#781) */
+    cst = it->s.env8.cst;
+    inc = it->s.env8.inc;
+    k = it->s.env8.k;
+    len = it->s.env8.len;
+    lrest = eff[ENV8_P_L1 + 2u * (end - 1u)] << 14;
+    lhold = hs ? eff[ENV8_P_L1 + 2u * (hs - 1u)] << 14 : 0;
     for (i = 0; i < n; i++) {
         uint8_t g = gate[i] > 32768 ? 1 : 0;
         uint32_t guard;
@@ -7211,35 +7248,68 @@ static void m_env8(const node_t *nd, inst_t *it, uint32_t n)
             tt = 0;
         }
         prev = g;
+        if (stage == ENV8_HOLD && !hs)
+            stage = 0;                            /* the sustain was switched off while holding: rest */
+        if (stage == 0 || stage == ENV8_HOLD) {   /* resting or holding: one level until the gate changes */
+            int32_t o;
+            v = stage ? lhold : lrest;
+            o = v >> 14;
+            out[i] = o;
+            while (i + 1u < n && (gate[i + 1u] > 32768) == g)
+                out[++i] = o;
+            continue;
+        }
+        if (stage <= end && stage == cst) {       /* inside a step with its rates cached: run it until the gate changes or
+                                                   * the sample that ends it, which takes the steps below */
+            const int32_t t = eff[ENV8_P_L1 + 2u * (stage - 1u)] << 14;
+            int ran = 0;
+            while (v < t ? v + inc < t : tt + 1u < len) {
+                tt++;
+                v += v < t ? inc : mulq(t - v, k, 30);
+                out[i] = v >> 14;
+                if (i + 1u >= n || (gate[i + 1u] > 32768) != g) {
+                    ran = 1;
+                    break;
+                }
+                i++;
+            }
+            if (ran)
+                continue;
+        }
         for (guard = 0; guard < 10u; guard++) {
             int32_t t;
             uint32_t st = stage;
             if (st == 0) {
-                v = EF(it, ENV8_P_L1 + 2u * (end - 1u)) << 14;
+                v = lrest;
                 break;
             }
             if (st == ENV8_HOLD) {
                 if (hs) {
-                    v = EF(it, ENV8_P_L1 + 2u * (hs - 1u)) << 14;
+                    v = lhold;
                     break;
                 }
-                stage = 0;                        /* the sustain was switched off while holding: rest */
+                stage = 0;
                 continue;
             }
             if (st > end) {
                 stage = 0;                        /* the end was moved before this step */
                 continue;
             }
-            if (it->s.env8.cst != st)
+            if (cst != st) {
                 env8_rates(it, st);
-            t = EF(it, ENV8_P_L1 + 2u * (st - 1u)) << 14;
+                cst = st;
+                inc = it->s.env8.inc;
+                k = it->s.env8.k;
+                len = it->s.env8.len;
+            }
+            t = eff[ENV8_P_L1 + 2u * (st - 1u)] << 14;
             tt++;
             if (v < t) {
-                v += it->s.env8.inc;
+                v += inc;
                 if (v < t)
                     break;
-            } else if (tt < it->s.env8.len) {
-                v += mulq(t - v, it->s.env8.k, 30);
+            } else if (tt < len) {
+                v += mulq(t - v, k, 30);
                 break;
             }
             v = t;
