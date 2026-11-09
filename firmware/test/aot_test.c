@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/wait.h>
 #include "lanes_host.h"
+#define ENG_AOT 1
 #include "../src/engine.c"
 #include "../src/presets.h"
 
@@ -123,7 +124,7 @@ static int compare(const char *name, const uint8_t *p, uint32_t len, int quiet, 
     uint32_t n0 = run_fresh(p, len, 0, &b0, fuzz), n1 = run_fresh(p, len, 1, &b1, fuzz), i;
     if (!n0 || n0 != n1) {
         printf("%-28s load failed\n", name);
-        return 0;
+        return 1;
     }
     for (i = 0; i < n0; i++)
         if (outl[0][i] != outl[1][i] || outr[0][i] != outr[1][i]) {

@@ -173,23 +173,6 @@ jobs:
             build/matryoshka.elf
             build/matryoshka.dis
           if-no-files-found: error
-      - name: the same build without the compiled factory assemblies (ENG_AOT=0, #808), to measure them on the test rig
-        run: |
-          export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
-          mkdir -p build/aot-on build/noaot
-          cp build/matryoshka.bin build/matryoshka.fwsc build/matryoshka.json build/matryoshka.elf build/aot-on/
-          ENG_AOT=0 python3 tools/build.py 2>&1 | tee build/build-noaot.log
-          test "${PIPESTATUS[0]}" -eq 0
-          if grep -E "warning:" build/build-noaot.log | grep -v "SDK .* differs"; then echo "::error::compiler warnings (ENG_AOT=0)"; exit 1; fi
-          cp build/matryoshka.bin build/matryoshka.fwsc build/matryoshka.json build/noaot/
-          cp build/aot-on/* build/                     # (the default build back for the steps below)
-          grep -E "image [0-9]+ B" build/build.log | sed 's/^/with the compiled assemblies: /'
-          grep -E "image [0-9]+ B" build/build-noaot.log | sed 's/^/without (ENG_AOT=0): /'
-      - uses: actions/upload-artifact@v4
-        with:
-          name: matryoshka-firmware-noaot
-          path: build/noaot/
-          if-no-files-found: error
       - name: the emulator bridge's build (M1_EMU_MIDI=1, never installed; docs/EMULATOR.md, #290)
         run: |
           export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
@@ -204,4 +187,24 @@ jobs:
         with:
           name: matryoshka-emu-midi
           path: build/emu-midi/
+          if-no-files-found: error
+
+      - name: comparison builds for the development experiments
+        run: |
+          sudo apt-get install -y --no-install-recommends llvm
+          export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
+          # Each experiment uses the same size-optimized baseline. The normal build above uses -O2 on the audio path.
+          for variant in size aot ram aot-ram; do
+            aot=0; ram=0
+            case "$variant" in aot) aot=1;; ram) ram=1;; aot-ram) aot=1; ram=1;; esac
+            mkdir -p "build/variants/$variant"
+            ENG_AOT=$aot ENG_RAMCODE=$ram FELUCCA_SPEED=0 python3 tools/build.py 2>&1 | tee "build/variants/$variant/build.log"
+            test "${PIPESTATUS[0]}" -eq 0
+            if grep -E "warning:" "build/variants/$variant/build.log" | grep -v "SDK .* differs"; then exit 1; fi
+            cp build/matryoshka.bin build/matryoshka.fwsc build/matryoshka.json build/matryoshka.elf "build/variants/$variant/"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: matryoshka-experiments
+          path: build/variants/
           if-no-files-found: error

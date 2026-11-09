@@ -16,7 +16,8 @@ if (!isMainThread) {
 }
 
 /** a pool over the ELF files `elfs` (name -> path) */
-export function pool(elfs, size = availableParallelism()) {
+export function pool(elfs, size = Number(process.env.CPU_WORKERS ?? availableParallelism())) {
+  if (!Number.isInteger(size) || size < 1) throw new Error('CPU_WORKERS must be a positive integer');
   const workers = Array.from({ length: size }, () => new Worker(new URL(import.meta.url), { workerData: elfs }));
   const waiting = new Map();
   const idle = [...workers];

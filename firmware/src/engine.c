@@ -1017,8 +1017,11 @@ static void visit(uint32_t id, uint8_t *st)
  * at the same time as lane 0, so a buffer serves one lane only (the odd parts of a group that may split, else lane 0),
  * and a value one lane writes and the other reads lives to the end of the segment that reads it. The arena still counts a
  * buffer per value, as the editor's budget does (patchbin.ts memoryBudget): the same patches load. */
+#ifndef ENG_BUF_REUSE
+#define ENG_BUF_REUSE 1
+#endif
 #define BUF_FOREVER 0x7FFFFFFF
-typedef struct { esig_t *base; uint32_t n, values; } bufs_t;   /* the buffers (in a row from base), the values given one */
+typedef struct { esig_t *base; uint32_t n, values; int keep; } bufs_t;   /* the buffers (in a row from base), the values given one */
 /* may this module's run be split across the cores (lane_splits, before the parts are known: as many as its copies)? */
 static int buf_split(const node_t *nd) { return nd->grp && nd->ninst >= 2u && nd->type != T_STEPS; }
 static uint32_t buf_lane(const node_t *nd, uint32_t v) { return buf_split(nd) ? v & 1u : 0u; }
@@ -1087,6 +1090,8 @@ static esig_t *buf_take(bufs_t *bs, int32_t def, int32_t end, uint32_t lane)
 {
     uint32_t b;
     esig_t *q = 0;
+    if (bs->keep)
+        end = BUF_FOREVER;
     if (++bs->values > ENG_NBUF)
         return 0;
     if (end != BUF_FOREVER)                          /* (a buffer's first two samples hold its value's end and lane until
@@ -1706,6 +1711,7 @@ static void pat_layout(void)
         }
 }
 
+static int aot_buffer_guard(const uint8_t *p, uint32_t len);
 static void aot_bind(const uint8_t *p, uint32_t len, uint32_t lines);   /* aot.c (#808) */
 int eng_load(const uint8_t *p, uint32_t len)
 {
@@ -2300,6 +2306,7 @@ int eng_load(const uint8_t *p, uint32_t len)
         bufs_t bs;
         bs.base = (esig_t *)((uint8_t *)eng_arena + ar_lo);
         bs.n = bs.values = 0;
+        bs.keep = !ENG_BUF_REUSE || aot_buffer_guard(p, len);
 #ifdef ENG_POISON
         poi_n = 0;
 #endif

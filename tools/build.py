@@ -49,7 +49,7 @@ SPEED = "-O2"                       # the app's audio path (#798, tools/size_fns
 # in NOINIT, copied there at boot by main.c). Only functions the compiler keeps out of line everywhere: a section attribute in
 # the source would instead stop this compiler inlining across the two sections and change the code.
 FAST_TEXT = ("m_osc", "exp2_scale", "sin_turn", "fill", "svf_g", "svf_stage", "env_rate_q8", "signal_mean", "flaw_scale",
-             "morph_value")
+             "morph_value") if os.environ.get("ENG_RAMCODE", "0") == "1" else ()
 LINE = re.compile(r"^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2} )+)\s*\t(.*)$")
 
 # SDK files of AC79NN_SDK_V1.2.1_2023-12-13 (the tested version)
@@ -185,6 +185,9 @@ def ldr_wrap(image):
 def build_loader():
     LDR.mkdir(parents=True, exist_ok=True)
     src = FW / "loader"
+    for switch in ("ENG_AOT", "ENG_RAMCODE", "ENG_BUF_REUSE"):
+        if os.environ.get(switch, "0") not in ("0", "1"):
+            raise SystemExit(f"{switch} must be 0 or 1")
     flags = [*CFLAGS, "-Ifirmware/hal", "-Ifirmware/src"]
     tc_all(("cc", "-c", src / "crt0_ldr.S", "-o", LDR / "crt0_ldr.o"),
            ("cc", *flags, "-c", src / "loader.c", "-o", LDR / "loader.o"))
@@ -236,11 +239,14 @@ def llvm_objcopy():
 
 
 def build_app():
+    for switch in ("ENG_AOT", "ENG_RAMCODE", "ENG_BUF_REUSE"):
+        if os.environ.get(switch, "0") not in ("0", "1"):
+            raise SystemExit(f"{switch} must be 0 or 1")
     flags = [*CFLAGS, "-Ifirmware/hal", "-Ifirmware/src"]
     for flag in ("FELUCCA_FLASH", "FELUCCA_OTA", "FELUCCA_OTA_DRYRUN", "FELUCCA_OTA_RAMONLY", "FELUCCA_CDC",
                  "FELUCCA_UAC", "FELUCCA_UAC_TONE", "FELUCCA_UAC_48K", "FELUCCA_ICONS", "FELUCCA_SLICE", "FELUCCA_FM4",
                  "FELUCCA_CDC_DEFAULT", "FELUCCA_UAC_AS_FIRST", "FELUCCA_UAC_MIDI_LAST", "FELUCCA_USB_HS", "M1_EMU_MIDI",
-                 "ENG_AOT"):   # ENG_AOT=0: no compiled factory assemblies (#808, firmware/src/aot.c), the interpreter alone
+                 "ENG_AOT", "ENG_BUF_REUSE"):   # ENG_AOT=0: no compiled factory assemblies (#808, firmware/src/aot.c), the interpreter alone
         v = os.environ.get(flag)    # unset: the default in firmware/src/modular.c
         if v in ("0", "1"):
             flags.append(f"-D{flag}={v}")
@@ -468,7 +474,11 @@ def main():
     (OUT / name).write_bytes(pkg)
     # the package's image is encrypted: its version goes in a sidecar for web/scripts/sync-firmware.mjs (x.fwsc -> x.json)
     version = VERSION or re.search(r'#define FELUCCA_VERSION "([^"]+)"', (FW / "src" / "modular.c").read_text())[1]
-    side = json.dumps({"version": version, "product": PRODUCT, "size": len(pkg), "sha256": hashlib.sha256(pkg).hexdigest()})
+    side = json.dumps({"version": version, "product": PRODUCT, "size": len(pkg), "sha256": hashlib.sha256(pkg).hexdigest(),
+                       "build": {"ENG_AOT": int(os.environ.get("ENG_AOT", "0")),
+                                 "ENG_RAMCODE": int(os.environ.get("ENG_RAMCODE", "0")),
+                                 "ENG_BUF_REUSE": int(os.environ.get("ENG_BUF_REUSE", "1")),
+                                 "FELUCCA_SPEED": os.environ.get("FELUCCA_SPEED", SPEED)}})
     (OUT / name).with_suffix(".json").write_text(side)
     att = SRC / "assets" / "samples-cc0" / "ATTRIBUTION.txt"
     if att.exists():

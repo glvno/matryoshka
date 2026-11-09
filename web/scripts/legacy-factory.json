@@ -1749,6 +1749,12 @@
   },
   {
    "name": "CANVAS",
+   "len": 3730,
+   "fnv": "295b83cf",
+   "version": 51
+  },
+  {
+   "name": "CANVAS",
    "len": 3252,
    "fnv": "335e7a3f",
    "version": 51

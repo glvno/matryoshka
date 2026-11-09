@@ -21,7 +21,7 @@
  * block. */
 
 #ifndef ENG_AOT
-#define ENG_AOT 1
+#define ENG_AOT 0
 #endif
 
 #if ENG_AOT
@@ -532,6 +532,29 @@ static uint32_t aot_pages_at(const uint8_t *p, uint32_t len)
     return at < len ? at : 0;
 }
 
+/* Before signal buffers are allocated: compiled segments may defer a read past its place in E.order. Keep every
+ * buffer in a patch with a candidate template private, including on blocks that fall back to the interpreter. A
+ * fingerprint match is conservative: a later aot_fits rejection just leaves this patch without buffer reuse. */
+static int aot_buffer_guard(const uint8_t *p, uint32_t len)
+{
+    uint32_t at, cnt, d, k;
+    if (!AOT_NTPL || !(p[7] & ENG_FLAG_EXTRAS) || !(at = aot_pages_at(p, len)) ||
+        !(at = eng_devices_end(p, len, at)) || !eng_extras_end(p, len, at))
+        return 0;
+    cnt = p[at++];
+    for (d = 0; d < cnt; d++) {
+        uint32_t st = (uint32_t)p[at + 1u] | (uint32_t)p[at + 2u] << 8 |
+                      (uint32_t)p[at + 3u] << 16 | (uint32_t)p[at + 4u] << 24;
+        for (k = 0; st && k < AOT_NTPL; k++)
+            if (AOT_TPL[k]->structure == st)
+                return 1;
+        at += 6u + p[at + 5u];
+        at += 1u + 2u * p[at];
+        at += 1u + ((p[at] & ENG_MEMBER_RUN) ? 1u : p[at]);
+    }
+    return 0;
+}
+
 /* (host builds with -DAOT_DEBUG print which check of aot_fits a device failed) */
 #ifdef AOT_DEBUG
 #define AOT_WHY(k) (fprintf(stderr, "aot: %s does not fit (check %d)\n", t->name, (k)), 0)
@@ -714,5 +737,6 @@ static int aot_owns(uint32_t k, uint32_t n)
 #define AOT_OWNS(k, n) (aot_nx && aot_slot[k] && aot_owns((k), (n)))
 #else
 #define AOT_OWNS(k, n) 0
+static int aot_buffer_guard(const uint8_t *p, uint32_t len) { (void)p; (void)len; return 0; }
 static void aot_bind(const uint8_t *p, uint32_t len, uint32_t lines) { (void)p; (void)len; (void)lines; }
 #endif

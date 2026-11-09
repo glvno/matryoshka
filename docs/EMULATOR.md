@@ -48,6 +48,8 @@ its disassembly (artifact `matryoshka-elf`) for tracing such faults to a functio
   by its SHA-256 digest. `results.json` is updated after each check, and `progress.json` names the current scenario and
   unanswered emulator commands. An unanswered command fails after two minutes; a whole scenario fails after ten.
   A timeout saves a failure report and stops the run. It does not start another scenario beside the unfinished one.
+  Smoke tests have a thirty-minute deadline; boot checks have five minutes. They print elapsed time every thirty seconds
+  and stop their child process group on a timeout or interruption.
   `device:scenarios` still runs alone because there is one test rig. Direct emulator binaries do not join the queue.
 - `cd web && npm run emu [-- FIRMWARE]`: the firmware in fm1-live's window (LCD, keys, buttons, knobs, sound, every
   MIDI input into the TRS jack; fm1-live prints its key map; built once into `tools/emu/live/`).
