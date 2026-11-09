@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### FM-1
+
+- **Room for code that runs from RAM:** the RAM after the effect memory's second line area had 96 B left; now 1,484 B (CI build, #725). The USB setup log (`tools/m1_link.py usblog`) keeps the last 64 USB requests and bus events, not 128, and an unused part of the flash driver is left out of the app.
+
 ## 1.11.1 — 2026-11-08
 
 The same firmware format as 1.11.0: update the FM-1 and every patch plays as before, only with more room.
