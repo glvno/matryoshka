@@ -6106,22 +6106,28 @@ static void m_math(const node_t *nd, inst_t *it, uint32_t n)      /* modules.ts 
     const esig_t *ia = it->in[MATH_I_A], *ib = it->in[MATH_I_B];
     esig_t **o = it->out;
     int32_t ka = EF(it, MATH_P_KA), kb = EF(it, MATH_P_KB), off = EF(it, MATH_P_OFF);
-    uint32_t i;
-    int only = only_output(it, MATH_NOUT);
-    if (only >= 0) {
-        esig_t *dst = o[only];
+    uint32_t i, k, used = 0;
+    for (k = 0; k < MATH_NOUT; k++)
+        if (!IS_DUMMY(o[k]))
+            used += o[k] == ia || o[k] == ib ? 8u : 1u;   /* (an output fed back into an input: one pass, as below) */
+    if (used <= 3u) {                            /* up to three outputs in use: a pass for each, the rest write nothing (#781) */
+        for (k = 0; k < MATH_NOUT; k++) {
+            esig_t *dst = o[k];
+            if (IS_DUMMY(dst))
+                continue;
 #define MATH_ONE(Y) for (i = 0; i < n; i++) { int32_t a = mul16(ia[i], ka) + off, b = mul16(ib[i], kb); (void)b; dst[i] = (Y); }
-        switch (only) {
-        case MATH_O_ADD: MATH_ONE(a + b) break;
-        case MATH_O_SUB: MATH_ONE(a - b) break;
-        case MATH_O_MUL: MATH_ONE(mul16(a, b)) break;
-        case MATH_O_MIN: MATH_ONE(a < b ? a : b) break;
-        case MATH_O_MAX: MATH_ONE(a > b ? a : b) break;
-        case MATH_O_ABS: MATH_ONE(a < 0 ? -a : a) break;
-        case MATH_O_CMP: MATH_ONE(a > b ? ENG_ONE : 0) break;
-        case MATH_O_XOR: MATH_ONE(bit_xor(a, b)) break;
-        }
+            switch (k) {
+            case MATH_O_ADD: MATH_ONE(a + b) break;
+            case MATH_O_SUB: MATH_ONE(a - b) break;
+            case MATH_O_MUL: MATH_ONE(mul16(a, b)) break;
+            case MATH_O_MIN: MATH_ONE(a < b ? a : b) break;
+            case MATH_O_MAX: MATH_ONE(a > b ? a : b) break;
+            case MATH_O_ABS: MATH_ONE(a < 0 ? -a : a) break;
+            case MATH_O_CMP: MATH_ONE(a > b ? ENG_ONE : 0) break;
+            case MATH_O_XOR: MATH_ONE(bit_xor(a, b)) break;
+            }
 #undef MATH_ONE
+        }
         return;
     }
     for (i = 0; i < n; i++) {
