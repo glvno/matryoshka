@@ -32,6 +32,9 @@
 #ifndef ENG_AOT_DRUMS
 #define ENG_AOT_DRUMS 0
 #endif
+#ifndef ENG_AOT_ORACLE
+#define ENG_AOT_ORACLE 0
+#endif
 #ifndef AOT_FUSED_HIT
 #define AOT_FUSED_HIT(c) ((void)0)
 #endif
@@ -97,7 +100,7 @@ static struct { aot_x_t *x; uint32_t seg, n; } aot_job;
 
 #define AU(v) ((asig_t){0, (int32_t)(v)})
 static inline asig_t AB(const esig_t *b) { asig_t s; s.b = b; s.u = 0; return s; }
-#if ENG_AOT_FUSE
+#if ENG_AOT_FUSE || ENG_AOT_ORACLE
 static inline int32_t af_read(asig_t s, uint32_t i) { return s.b ? s.b[i] : s.u; }
 #endif
 
@@ -530,6 +533,9 @@ static asig_t aot_fin(asig_t s, esig_t *out, uint32_t mode, uint32_t n)
     return s;
 }
 
+#if ENG_AOT_ORACLE
+#include "aot_oracle.h"
+#endif
 #include "aot_gen.h"
 
 /* ---- binding (eng_load) */

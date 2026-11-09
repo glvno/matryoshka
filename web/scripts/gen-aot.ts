@@ -9,6 +9,7 @@
 // The template comes from the assembly in a plain patch, as the CPU checks build it (cpu-checks.ts): its device form
 // (deviceView: dead modules gone, hoisted modules run once), its members in the device extras' order (patchbin.ts
 // extrasRecord), its cables, and the ports the assembly exposes (only there may a patch cable it from outside).
+import { createHash } from 'node:crypto';
 import { FACTORY } from '../src/assemblies';
 import { allModules, insertAssembly, type AssemblyInst } from '../src/assembly';
 import { DEFS } from '../src/modules';
@@ -287,6 +288,17 @@ export function aotAssembly(name: string, k: number): { c: string; members: numb
   };
 
   w(`/* ${name}: ${N} members, ${cabs.length} cables, ${segs.length} segments (${segs.map((s) => `${s.grp ? 'per part' : 'once'} ${s.members.length}`).join(', ')}); signals ${segLocal.join(' + ')}, ${shared} handed on, ${cvSlot.size} members with parameter inputs */`);
+  if (name === 'Oracle V') {
+    const controls = asm.params.flatMap((p) => {
+      const d = index.get(p.module), m = d === undefined ? undefined : local.get(d);
+      if (m === undefined) return [];
+      const j = DEFS[mem[m].type].params.findIndex((q) => q.name === p.param);
+      return j < 0 ? [] : [`{${m}, ${j}}`];
+    });
+    w('#ifdef AOT_TEST_CONTROLS');
+    w(`static const uint8_t aot0_controls[][2] = {${controls.join(', ')}};`);
+    w('#endif');
+  }
   const all = [...sigs.values()].filter((s) => mem[s.m].glue);
   const fusions = new Map(all.map((s) => [s, fused(s)]));
   // The unfused build still calls these getters; fusion may remove their only caller.
@@ -377,6 +389,11 @@ export function aotAssembly(name: string, k: number): { c: string; members: numb
     w(`static void ${P}_seg${si}(aot_x_t *x, uint32_t v, uint32_t n)   /* ${sg.grp ? 'per part' : 'once'}: ${sg.members.map((m) => mem[m].type).join(' ')} */`);
     w('{');
     w(`    aot_cx_t *c = aot_begin(x, v, n, ${P}_bind${si}, ${bind.length}u, ${Math.max(1, segLocal[si])}u);`);
+    if (name === 'Oracle V') {
+      w('#if ENG_AOT_ORACLE');
+      w(`    if (aot_oracle_${si === 0 ? 'shared' : 'voice'}(c)) return;`);
+      w('#endif');
+    }
     for (const call of calls) w('    ' + call);
     // the segment's end: what later segments, the outside and the next block read
     for (const s of [...sigs.values()].filter((s) => s.seg === si && s.atEnd)) {
@@ -398,6 +415,14 @@ export function aotAssembly(name: string, k: number): { c: string; members: numb
   w(`static const uint8_t ${P}_seg_lead[${segs.length}] = {${segs.map((s) => s.members[0]).join(', ')}};`);
   w(`static const aot_seg_fn ${P}_seg[${segs.length}] = {${segs.map((_, i) => `${P}_seg${i}`).join(', ')}};`);
   const structure = parseInt(structureOf(patch, asm), 16) >>> 0;
+  if (name === 'Oracle V') {
+    // The handwritten kernel addresses members and shared signals directly. Any layout change needs review.
+    const layout = JSON.stringify({ types: mem.map((m) => [m.type, m.grp]), cabs, xin, xout, segs,
+      shared: [...sigs.values()].filter((s) => s.shared >= 0).map((s) => [s.m, s.p, s.shared]) });
+    const digest = createHash('sha256').update(layout).digest('hex');
+    if (structure !== 0x6282b61f || digest !== 'c26cf63e51ad4419cf9b5ac3342e73b3da806867be503d5d056616a1c84137f7')
+      throw new Error(`Oracle kernel layout changed (${structure.toString(16)}, ${digest}); review aot_oracle.h before regenerating`);
+  }
   w(`static const aot_tpl_t ${P} = {0x${structure.toString(16).padStart(8, '0')}u, ${N}, ${cabs.length}, ${segs.length}, ${P}_type, ${P}_grp, ${P}_cab, ${P}_xin, ${P}_xout, ${P}_seg_grp, ${P}_seg_lead, ${P}_seg, ${JSON.stringify(name)}};`);
   return { c: L.join('\n'), members: N, segments: segs.length, structure };
 }

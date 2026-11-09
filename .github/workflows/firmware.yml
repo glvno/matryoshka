@@ -147,6 +147,7 @@ jobs:
           tools/golden.sh
           tools/aot_test.sh
           tools/aot_experiments.sh
+          tools/aot_oracle.sh
           tools/usb_test.sh
           tools/clock_out_test.sh
           tools/peak_test.sh
@@ -197,15 +198,15 @@ jobs:
           sudo apt-get install -y --no-install-recommends llvm
           export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
           # Each experiment uses the same size-optimized baseline. The normal build above uses -O2 on the audio path.
-          for variant in size aot ram aot-ram aot-fuse aot-drums aot-fuse-drums aot-pair aot-fuse-drums-pair; do
-            aot=0; ram=0; fuse=0; drums=0; pair=0
-            case "$variant" in aot) aot=1;; ram) ram=1;; aot-ram) aot=1; ram=1;; aot-fuse) aot=1; fuse=1;; aot-drums) aot=1; drums=1;; aot-fuse-drums) aot=1; fuse=1; drums=1;; aot-pair) aot=1; drums=1; pair=1;; aot-fuse-drums-pair) aot=1; fuse=1; drums=1; pair=1;; esac
+          for variant in size aot ram aot-ram aot-fuse aot-drums aot-fuse-drums aot-pair aot-fuse-drums-pair aot-oracle; do
+            aot=0; ram=0; fuse=0; drums=0; pair=0; oracle=0
+            case "$variant" in aot-oracle) aot=1; oracle=1;; aot) aot=1;; ram) ram=1;; aot-ram) aot=1; ram=1;; aot-fuse) aot=1; fuse=1;; aot-drums) aot=1; drums=1;; aot-fuse-drums) aot=1; fuse=1; drums=1;; aot-pair) aot=1; drums=1; pair=1;; aot-fuse-drums-pair) aot=1; fuse=1; drums=1; pair=1;; esac
             mkdir -p "build/variants/$variant"
-            ENG_AOT=$aot ENG_AOT_FUSE=$fuse ENG_AOT_DRUMS=$drums ENG_AOT_PAIR=$pair ENG_RAMCODE=$ram FELUCCA_SPEED=0 python3 tools/build.py 2>&1 | tee "build/variants/$variant/build.log"
+            ENG_AOT=$aot ENG_AOT_FUSE=$fuse ENG_AOT_DRUMS=$drums ENG_AOT_PAIR=$pair ENG_AOT_ORACLE=$oracle ENG_RAMCODE=$ram FELUCCA_SPEED=0 python3 tools/build.py 2>&1 | tee "build/variants/$variant/build.log"
             test "${PIPESTATUS[0]}" -eq 0
             if grep -E "warning:" "build/variants/$variant/build.log" | grep -v "SDK .* differs"; then exit 1; fi
             cp build/matryoshka.bin build/matryoshka.fwsc build/matryoshka.json build/matryoshka.elf "build/variants/$variant/"
-            M1_EMU_MIDI=1 ENG_AOT=$aot ENG_AOT_FUSE=$fuse ENG_AOT_DRUMS=$drums ENG_AOT_PAIR=$pair ENG_RAMCODE=$ram FELUCCA_SPEED=0 python3 tools/build.py 2>&1 | tee "build/variants/$variant/bridge.log"
+            M1_EMU_MIDI=1 ENG_AOT=$aot ENG_AOT_FUSE=$fuse ENG_AOT_DRUMS=$drums ENG_AOT_PAIR=$pair ENG_AOT_ORACLE=$oracle ENG_RAMCODE=$ram FELUCCA_SPEED=0 python3 tools/build.py 2>&1 | tee "build/variants/$variant/bridge.log"
             test "${PIPESTATUS[0]}" -eq 0
             if grep -E "warning:" "build/variants/$variant/bridge.log" | grep -v "SDK .* differs"; then exit 1; fi
             cp build/matryoshka.bin "build/variants/$variant/matryoshka-emu.bin"

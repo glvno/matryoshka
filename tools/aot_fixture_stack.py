@@ -20,7 +20,7 @@ def main():
     parser.add_argument("bin", type=Path)
     parser.add_argument("elf", type=Path)
     parser.add_argument("patch", type=Path)
-    parser.add_argument("--worker", choices=("poly", "pair"), default="poly")
+    parser.add_argument("--worker", choices=("poly", "pair", "oracle"), default="poly")
     parser.add_argument("--margin", type=int, default=0, help="extra bytes kept above the existing 256-byte guard")
     args = parser.parse_args()
     if args.margin < 0:
@@ -32,7 +32,7 @@ def main():
         words = line.split()
         if len(words) == 3:
             symbols[words[2]] = int(words[0], 16)
-    worker = symbols["aot_pair_worker" if args.worker == "pair" else "aot_lane1_job"]
+    worker = symbols[{"pair": "aot_pair_worker", "poly": "aot_lane1_job", "oracle": "aot_oracle_voice"}[args.worker]]
     names = ("fm1_c1_on", "fm1_c1_gave_up", "c1_pass", "c1_fail", "aot_nx", "transport_on")
     addresses = [symbols[name] for name in names]
     patch = args.patch.read_bytes()

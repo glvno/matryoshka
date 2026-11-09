@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 (cd web && npx vite-node scripts/aot-kits.ts)
 mkdir -p build
 gcc -O1 -Wall -Wextra -Wno-unused-parameter -Wno-unused-result -DENG_AOT_FUSE=${ENG_AOT_FUSE:-0} \
-  -DENG_AOT_DRUMS=${ENG_AOT_DRUMS:-0} -DENG_AOT_PAIR=${ENG_AOT_PAIR:-0} -o build/aot_test firmware/test/aot_test.c -lm -lpthread
+  -DENG_AOT_DRUMS=${ENG_AOT_DRUMS:-0} -DENG_AOT_PAIR=${ENG_AOT_PAIR:-0} -DENG_AOT_ORACLE=${ENG_AOT_ORACLE:-0} -o build/aot_test firmware/test/aot_test.c -lm -lpthread
 fail=0
 for c in 0 1 2; do
   HOST_CORES=$c build/aot_test build/aot/*.m1p > build/aot_test.$c.txt || fail=1
