@@ -849,6 +849,9 @@ export function checkScenarios(h) {
         const [, , , , , s0] = await emu.diagWords(128).catch(() => []);
         for (const [what, write] of kinds) {
           const e0 = await emu.diagWords(128).then((d) => d[0] + d[1], () => 0);
+          // (#729: DIAG 130 zeroed by this read, and the USB audio counters before the write)
+          await emu.diagWords(130).catch(() => null);
+          const u0 = await emu.diagWords(126).catch(() => null);
           await emu.key(C4, true);
           await emu.elapse(600);
           const a = await recorded(`flash-${what.replace(/\W+/g, '-')}`, async () => {
@@ -872,6 +875,9 @@ export function checkScenarios(h) {
             }
           }
           const e1 = await emu.diagWords(128).then((d) => d[0] + d[1], () => 0);
+          const g = await emu.diagWords(130).catch(() => null), u1 = await emu.diagWords(126).catch(() => null);
+          if (g) console.log(`  ${what}: DIAG 130 (#729): TIMER5's longest wait ${g[0]} us (at ${g[1]} ms), the store's longest read window ${g[2]} us (at ${g[3]} ms) and write step ${g[4]} us (at ${g[5]} ms) with the interrupts off, the last write ended at ${g[6]} ms, now ${g[7]} ms`
+            + (u0 && u1 ? `; USB audio underruns +${u1[0] - u0[0]}, missed packets +${u1[2] - u0[2]}` : ''));
           await check(`flash write: ${what} wrote the flash (DIAG 128)`, e1 > e0, `erases + programs ${e0} -> ${e1}`);
           const loud = a.why ? 0 : Math.max(rmsOf(a.l), rmsOf(a.r));
           // (a gap of one USB packet, 1 ms, comes about 0.4 s after SAVE on the rig with or without #656: issue #729; the

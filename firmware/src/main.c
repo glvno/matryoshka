@@ -176,12 +176,20 @@ static void c1_poll(void)                       /* the main loop */
     }
 }
 
+/* #729: TIMER5's longest wait between two entries (TIMER4 ticks) since DIAG page 130 was read, and the fm1_ms it ended
+ * at. TIMER5 nests in the audio interrupt, so only the interrupts off (or its own long run) hold it back, and with it
+ * the 2 kHz USB service that queues each USB audio packet */
+static volatile uint32_t t5_gap_max, t5_gap_at;
 void fm1_timer5_irq(uint32_t *f)                /* f: the saved r0..r3, reti, rets, psr (fm1_isr.S) */
 {
     static uint32_t sub, last, acc, next;
     uint32_t t0 = fm1_ticks();
     fm1_timer5_ack();
     fm1_input_tick();
+    if (t0 - last > t5_gap_max) {
+        t5_gap_max = t0 - last;
+        t5_gap_at = fm1_ms;
+    }
     acc += t0 - last;                           /* milliseconds from the 24 MHz TIMER4 */
     last = t0;
     while (acc >= 1000u * FM1_TICKS_PER_US) {
@@ -484,6 +492,28 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
         v[5] = st_stat.steps;
         v[6] = st_stat.unserved;
         v[7] = st_stat.sus_fail;
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
+    if (page == 130u) {                         /* #729: what held the interrupts off since this page was last read (zeroed
+                                                 * by the read): TIMER5's longest wait between two entries (us) and the
+                                                 * fm1_ms it ended at; the store's longest read window and write step with
+                                                 * the interrupts off (us, storage_hw.c st_off) and the fm1_ms each ended
+                                                 * at; the fm1_ms the last store write ended; fm1_ms now */
+        uint32_t v[8];
+        fm1_irq_off();
+        v[0] = t5_gap_max / FM1_TICKS_PER_US;
+        v[1] = t5_gap_at;
+        v[2] = st_off.rd_max / FM1_TICKS_PER_US;
+        v[3] = st_off.rd_at;
+        v[4] = st_off.step_max / FM1_TICKS_PER_US;
+        v[5] = st_off.step_at;
+        v[6] = st_off.wr_end;
+        v[7] = fm1_ms;
+        t5_gap_max = 0;
+        st_off.rd_max = st_off.step_max = 0;
+        fm1_irq_on();
         for (i = 0; i < sizeof v; i++)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
         return sizeof v;
