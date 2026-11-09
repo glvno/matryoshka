@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### FM-1
+
+- **A key pressed right after SEL arms a device plays.** A key in the same 3 ms as the arm was cut with the keys the old set held. The naive-owner simulator found it on `<7PH`, with DRUMS and PATTERN armed: key 1 was silent (#748).
+
 ## 1.11.1 — 2026-11-08
 
 The same firmware format as 1.11.0: update the FM-1 and every patch plays as before, only with more room.
