@@ -5511,36 +5511,73 @@ static void m_adsr(const node_t *nd, inst_t *it, uint32_t n)
         else if (!g && stage && stage != 4 && hold[i] <= 32768)
             stage = 4;
         prev = g;
+        /* Each stage runs on until it ends or the next sample's gate (or hold) would change it, without the per-sample
+         * edge checks (#781). ADSR_KEEP(j): sample j changes nothing in an attack, decay or sustain. */
+#define ADSR_KEEP(j) ((gate[j] > 32768) == g && (g || hold[j] > 32768))
         switch (stage) {
+        case 0: {                                 /* resting: until the gate rises */
+            const int32_t o = v >> 14;
+            out[i] = o;
+            while (i + 1u < n && (gate[i + 1u] > 32768) == g)
+                out[++i] = o;
+            break;
+        }
         case 1:
-            v += ainc;
-            if (v >= (1 << 30)) {
-                v = 1 << 30;
-                stage = 2;
+            for (;;) {
+                v += ainc;
+                if (v >= (1 << 30)) {
+                    v = 1 << 30;
+                    stage = 2;
+                    out[i] = v >> 14;
+                    break;
+                }
+                out[i] = v >> 14;
+                if (i + 1u >= n || !ADSR_KEEP(i + 1u))
+                    break;
+                i++;
             }
             break;
-        case 2: {
-            int32_t d = sus - v;
-            v += mulq(d, ad, 30);
-            d = sus - v;
-            if ((d < 0 ? -d : d) < 107374)
-                stage = 3;
+        case 2:
+            for (;;) {
+                int32_t d;
+                v += mulq(sus - v, ad, 30);
+                d = sus - v;
+                out[i] = v >> 14;
+                if ((d < 0 ? -d : d) < 107374) {
+                    stage = 3;
+                    break;
+                }
+                if (i + 1u >= n || !ADSR_KEEP(i + 1u))
+                    break;
+                i++;
+            }
             break;
-        }
-        case 3:
+        case 3: {                                 /* sustaining */
+            const int32_t o = sus >> 14;
             v = sus;
+            out[i] = o;
+            while (i + 1u < n && ADSR_KEEP(i + 1u))
+                out[++i] = o;
             break;
-        case 4: {                    /* (at least one step: past about 11 s the product rounds to 0 above the end level) */
-            int32_t dv = mulq(v, ar, 30);
-            v -= dv > 0 ? dv : 1;
-            if (v < 107374) {
-                v = 0;
-                stage = 0;
+        }
+        case 4:                                   /* (at least one step: past about 11 s the product rounds to 0 above the end level) */
+            for (;;) {
+                int32_t dv = mulq(v, ar, 30);
+                v -= dv > 0 ? dv : 1;
+                if (v < 107374) {
+                    v = 0;
+                    stage = 0;
+                    out[i] = 0;
+                    break;
+                }
+                out[i] = v >> 14;
+                if (i + 1u >= n || (gate[i + 1u] > 32768) != g)
+                    break;
+                i++;
             }
             break;
         }
-        }
-        out[i] = v >> 14;
+#undef ADSR_KEEP
     }
     it->s.adsr.v = v;
     it->s.adsr.stage = stage;
@@ -5678,7 +5715,8 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv)
             lcv = cv[i];
             g = svf_g(exp2_scale(base, mul16(lcv, cvamt)));
             gc = g;
-            svf_stage(&c, g, k24);
+            if (!osc && !drv)                        /* (with osc or drive stage 1 is solved again below, every sample) */
+                svf_stage(&c, g, k24);
             if (st2)
                 svf_stage(&d, g, SQRT2_24);
         }
@@ -6068,22 +6106,28 @@ static void m_math(const node_t *nd, inst_t *it, uint32_t n)      /* modules.ts 
     const esig_t *ia = it->in[MATH_I_A], *ib = it->in[MATH_I_B];
     esig_t **o = it->out;
     int32_t ka = EF(it, MATH_P_KA), kb = EF(it, MATH_P_KB), off = EF(it, MATH_P_OFF);
-    uint32_t i;
-    int only = only_output(it, MATH_NOUT);
-    if (only >= 0) {
-        esig_t *dst = o[only];
+    uint32_t i, k, used = 0;
+    for (k = 0; k < MATH_NOUT; k++)
+        if (!IS_DUMMY(o[k]))
+            used += o[k] == ia || o[k] == ib ? 8u : 1u;   /* (an output fed back into an input: one pass, as below) */
+    if (used <= 3u) {                            /* up to three outputs in use: a pass for each, the rest write nothing (#781) */
+        for (k = 0; k < MATH_NOUT; k++) {
+            esig_t *dst = o[k];
+            if (IS_DUMMY(dst))
+                continue;
 #define MATH_ONE(Y) for (i = 0; i < n; i++) { int32_t a = mul16(ia[i], ka) + off, b = mul16(ib[i], kb); (void)b; dst[i] = (Y); }
-        switch (only) {
-        case MATH_O_ADD: MATH_ONE(a + b) break;
-        case MATH_O_SUB: MATH_ONE(a - b) break;
-        case MATH_O_MUL: MATH_ONE(mul16(a, b)) break;
-        case MATH_O_MIN: MATH_ONE(a < b ? a : b) break;
-        case MATH_O_MAX: MATH_ONE(a > b ? a : b) break;
-        case MATH_O_ABS: MATH_ONE(a < 0 ? -a : a) break;
-        case MATH_O_CMP: MATH_ONE(a > b ? ENG_ONE : 0) break;
-        case MATH_O_XOR: MATH_ONE(bit_xor(a, b)) break;
-        }
+            switch (k) {
+            case MATH_O_ADD: MATH_ONE(a + b) break;
+            case MATH_O_SUB: MATH_ONE(a - b) break;
+            case MATH_O_MUL: MATH_ONE(mul16(a, b)) break;
+            case MATH_O_MIN: MATH_ONE(a < b ? a : b) break;
+            case MATH_O_MAX: MATH_ONE(a > b ? a : b) break;
+            case MATH_O_ABS: MATH_ONE(a < 0 ? -a : a) break;
+            case MATH_O_CMP: MATH_ONE(a > b ? ENG_ONE : 0) break;
+            case MATH_O_XOR: MATH_ONE(bit_xor(a, b)) break;
+            }
 #undef MATH_ONE
+        }
         return;
     }
     for (i = 0; i < n; i++) {
@@ -6284,9 +6328,43 @@ static void m_mixer(const node_t *nd, inst_t *it, uint32_t n)
     const esig_t *a = it->in[MIXER_I_IN1], *b = it->in[MIXER_I_IN2], *c = it->in[MIXER_I_IN3], *d = it->in[MIXER_I_IN4];
     esig_t *out = it->out[0];
     int32_t la = EF(it, MIXER_P_L1), lb = EF(it, MIXER_P_L2), lc = EF(it, MIXER_P_L3), ld = EF(it, MIXER_P_L4);
-    uint32_t i;
-    for (i = 0; i < n; i++)
-        out[i] = mul16(a[i], la) + mul16(b[i], lb) + mul16(c[i], lc) + mul16(d[i], ld);
+    const esig_t *x[4];
+    int32_t l[4];
+    uint32_t i, k = 0;
+    /* only the inputs that add something: an unplugged one reads the zero buffer, a level of 0 adds 0 (#781) */
+#define MIXER_TAKE(p, lv) if ((p) != zero_buf && (lv)) { x[k] = (p); l[k] = (lv); k++; }
+    MIXER_TAKE(a, la)
+    MIXER_TAKE(b, lb)
+    MIXER_TAKE(c, lc)
+    MIXER_TAKE(d, ld)
+#undef MIXER_TAKE
+    (void)nd;
+    switch (k) {
+    case 0:
+        fill(out, 0, n);
+        break;
+    case 1:
+        for (i = 0; i < n; i++)
+            out[i] = mul16(x[0][i], l[0]);
+        break;
+    case 2: {
+        const esig_t *x0 = x[0], *x1 = x[1];
+        const int32_t l0 = l[0], l1 = l[1];
+        for (i = 0; i < n; i++)
+            out[i] = mul16(x0[i], l0) + mul16(x1[i], l1);
+        break;
+    }
+    case 3: {
+        const esig_t *x0 = x[0], *x1 = x[1], *x2 = x[2];
+        const int32_t l0 = l[0], l1 = l[1], l2 = l[2];
+        for (i = 0; i < n; i++)
+            out[i] = mul16(x0[i], l0) + mul16(x1[i], l1) + mul16(x2[i], l2);
+        break;
+    }
+    default:
+        for (i = 0; i < n; i++)
+            out[i] = mul16(a[i], la) + mul16(b[i], lb) + mul16(c[i], lc) + mul16(d[i], ld);
+    }
 }
 
 
@@ -7141,6 +7219,32 @@ static void m_env(const node_t *nd, inst_t *it, uint32_t n)
             tt = 0;
         }
         prev = g;
+        if (stage == 0 || stage == 4) {           /* resting or holding: one level until the gate changes (#781) */
+            int32_t o;
+            v = lv[stage];
+            o = v >> 14;
+            out[i] = o;
+            while (i + 1u < n && (gate[i + 1u] > 32768) == g)
+                out[++i] = o;
+            continue;
+        } else {                                  /* inside a segment: run it until the gate changes or the sample that
+                                                   * ends it, which takes the steps below */
+            const int32_t t = lv[stage], d = inc[stage], kk = k[stage];
+            const uint32_t ln = len[stage];
+            int ran = 0;
+            while (v < t ? v + d < t : tt + 1u < ln) {
+                tt++;
+                v += v < t ? d : mulq(t - v, kk, 30);
+                out[i] = v >> 14;
+                if (i + 1u >= n || (gate[i + 1u] > 32768) != g) {
+                    ran = 1;
+                    break;
+                }
+                i++;
+            }
+            if (ran)
+                continue;
+        }
         for (guard = 0; guard < 4u; guard++) {
             int32_t t;
             if (stage == 0 || stage == 4) {
@@ -7190,16 +7294,27 @@ static void m_env8(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *gate = it->in[ENV8_I_GATE];
     esig_t *out = it->out[0];
+    const int32_t *eff = it->eff;
     int32_t v = it->s.env8.v;
     uint32_t tt = it->s.env8.t, i;
-    uint32_t end = (uint32_t)clampi((EF(it, ENV8_P_END) + 32768) >> 16, 1, 8);
-    uint32_t hs = (uint32_t)clampi((EF(it, ENV8_P_SUS) + 32768) >> 16, 0, 8);
+    uint32_t end = (uint32_t)clampi((eff[ENV8_P_END] + 32768) >> 16, 1, 8);
+    uint32_t hs = (uint32_t)clampi((eff[ENV8_P_SUS] + 32768) >> 16, 0, 8);
     uint8_t stage = it->s.env8.stage, prev = it->s.env8.prev;
+    int32_t inc, k, lrest, lhold;
+    uint32_t len, cst;
     (void)nd;
     if (hs > end)
         hs = 0;
-    if (it->s.env8.cst && it->s.env8.rk != EF(it, ENV8_P_R1 + 2u * (it->s.env8.cst - 1u)))
+    if (it->s.env8.cst && it->s.env8.rk != eff[ENV8_P_R1 + 2u * (it->s.env8.cst - 1u)])
         it->s.env8.cst = 0;                       /* the cached step's rate moved */
+    /* the cached step's rates and the resting / holding levels in locals: out[] might alias it->s, so the compiler would
+     * read them again every sample (#781) */
+    cst = it->s.env8.cst;
+    inc = it->s.env8.inc;
+    k = it->s.env8.k;
+    len = it->s.env8.len;
+    lrest = eff[ENV8_P_L1 + 2u * (end - 1u)] << 14;
+    lhold = hs ? eff[ENV8_P_L1 + 2u * (hs - 1u)] << 14 : 0;
     for (i = 0; i < n; i++) {
         uint8_t g = gate[i] > 32768 ? 1 : 0;
         uint32_t guard;
@@ -7211,35 +7326,68 @@ static void m_env8(const node_t *nd, inst_t *it, uint32_t n)
             tt = 0;
         }
         prev = g;
+        if (stage == ENV8_HOLD && !hs)
+            stage = 0;                            /* the sustain was switched off while holding: rest */
+        if (stage == 0 || stage == ENV8_HOLD) {   /* resting or holding: one level until the gate changes */
+            int32_t o;
+            v = stage ? lhold : lrest;
+            o = v >> 14;
+            out[i] = o;
+            while (i + 1u < n && (gate[i + 1u] > 32768) == g)
+                out[++i] = o;
+            continue;
+        }
+        if (stage <= end && stage == cst) {       /* inside a step with its rates cached: run it until the gate changes or
+                                                   * the sample that ends it, which takes the steps below */
+            const int32_t t = eff[ENV8_P_L1 + 2u * (stage - 1u)] << 14;
+            int ran = 0;
+            while (v < t ? v + inc < t : tt + 1u < len) {
+                tt++;
+                v += v < t ? inc : mulq(t - v, k, 30);
+                out[i] = v >> 14;
+                if (i + 1u >= n || (gate[i + 1u] > 32768) != g) {
+                    ran = 1;
+                    break;
+                }
+                i++;
+            }
+            if (ran)
+                continue;
+        }
         for (guard = 0; guard < 10u; guard++) {
             int32_t t;
             uint32_t st = stage;
             if (st == 0) {
-                v = EF(it, ENV8_P_L1 + 2u * (end - 1u)) << 14;
+                v = lrest;
                 break;
             }
             if (st == ENV8_HOLD) {
                 if (hs) {
-                    v = EF(it, ENV8_P_L1 + 2u * (hs - 1u)) << 14;
+                    v = lhold;
                     break;
                 }
-                stage = 0;                        /* the sustain was switched off while holding: rest */
+                stage = 0;
                 continue;
             }
             if (st > end) {
                 stage = 0;                        /* the end was moved before this step */
                 continue;
             }
-            if (it->s.env8.cst != st)
+            if (cst != st) {
                 env8_rates(it, st);
-            t = EF(it, ENV8_P_L1 + 2u * (st - 1u)) << 14;
+                cst = st;
+                inc = it->s.env8.inc;
+                k = it->s.env8.k;
+                len = it->s.env8.len;
+            }
+            t = eff[ENV8_P_L1 + 2u * (st - 1u)] << 14;
             tt++;
             if (v < t) {
-                v += it->s.env8.inc;
+                v += inc;
                 if (v < t)
                     break;
-            } else if (tt < it->s.env8.len) {
-                v += mulq(t - v, it->s.env8.k, 30);
+            } else if (tt < len) {
+                v += mulq(t - v, k, 30);
                 break;
             }
             v = t;
@@ -8925,6 +9073,16 @@ static void part_silence(uint32_t k, uint32_t v)
 }
 
 
+/* no source of the sum is weighted */
+static int sum_plain(const sum_t *sm)
+{
+    uint32_t q;
+    for (q = 0; q < sm->n; q++)
+        if (E.sum_w[sm->first + q])
+            return 0;
+    return 1;
+}
+
 /* the modules E.order[k0..k1) for one block of n frames: every part v = first, first + step, .. of a module in a poly group,
  * once for a module that runs once (#271: step 2 renders one lane of a split segment, first 0 or 1; step 1 renders all) */
 static void render_mods(uint32_t k0, uint32_t k1, uint32_t n, uint32_t first, uint32_t step)
@@ -8948,6 +9106,32 @@ static void render_mods(uint32_t k0, uint32_t k1, uint32_t n, uint32_t first, ui
                 if (!sm->n) {
                     for (i = 0; i < n; i++)
                         dst[i] = 0;
+                    continue;
+                }
+                if (sm->n >= 3u && sum_plain(sm)) {         /* unweighted (every sum of the factory patches): three or
+                                                             * four sources a pass, dst read and written once a pass (#781) */
+                    const esig_t *const *p = &E.sum_src[sm->first];
+                    const esig_t *a = p[0], *b = p[1], *c = p[2];
+                    if (sm->n >= 4u) {
+                        const esig_t *d = p[3];
+                        for (i = 0; i < n; i++)
+                            dst[i] = a[i] + b[i] + c[i] + d[i];
+                        q = 4;
+                    } else {
+                        for (i = 0; i < n; i++)
+                            dst[i] = a[i] + b[i] + c[i];
+                        q = 3;
+                    }
+                    for (; q + 3u <= sm->n; q += 3u) {
+                        a = p[q], b = p[q + 1u], c = p[q + 2u];
+                        for (i = 0; i < n; i++)
+                            dst[i] += a[i] + b[i] + c[i];
+                    }
+                    for (; q < sm->n; q++) {
+                        a = p[q];
+                        for (i = 0; i < n; i++)
+                            dst[i] += a[i];
+                    }
                     continue;
                 }
                 if (sm->n >= 2) {                           /* the first two sources in one pass, the rest added */

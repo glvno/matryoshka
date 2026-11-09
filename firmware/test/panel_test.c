@@ -534,8 +534,8 @@ int main(void)
     {                                                   /* a VOICES row stops at what the CPU holds (format 51: the
                                                          * row's top, gen-presets voiceTops); one without a top offers 8 */
         static const char *const NAME[3] = {"CASSIA 1", "EXPANDER S", "BASIC POLY"};
-        static const int32_t WANT[3] = {2, 6, ENG_MAX_PARTS};
-        static const char *const SAYS[3] = {"Cassia 1's VOICES row stops at two voices, a turn up there stays",
+        static const int32_t WANT[3] = {4, 6, ENG_MAX_PARTS};
+        static const char *const SAYS[3] = {"Cassia 1's VOICES row stops at four voices, a turn up there stays",
                                             "Expander S's VOICES row stops at six voices, a turn up there stays",
                                             "Basic Poly's VOICES row (no top) reaches all eight voices"};
         uint32_t t, d, g, k;

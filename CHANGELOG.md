@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### FM-1
+
+- **A faster engine, the same sound:** the envelopes, input sums, filter, Mixer and Math do less work for the same output, bit for bit. On the test rig, the steady peak of a busy patch fell: Briefcase 3 91 % → 76 %, Algo Four 87 % → 77 %, Verona Drum 1 83 % → 78 %, the 808 Kit 82 % → 79 %, Oracle V 78 % → 74 %.
+- **Cassia 1 plays four voices again** (two in 1.11.0): 77 % on the test rig with all four, nothing dropped.
+
 ## 1.11.0 — 2026-11-08
 
 A patch that uses something new in 1.11 is saved in format 51, which needs this firmware; an FM-1 with older firmware is told to update. Every other patch keeps the older format.

@@ -1388,7 +1388,7 @@ const CZ_STEPS = (s: [number, number][], sus: number, end: number): Record<strin
 /** Cassia 1's chorus at Init (#658, the owner's feature parity by default: the CZ-1's chorus on) */
 const CASSIA_CHORUS = 0.5;
 asm('Cassia 1', 'Voices', (b) => {
-  const part = b.add('alloc', 0, 4, { voices: 2 });
+  const part = b.add('alloc', 0, 4, { voices: 4 });
   const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 5.5, depth: 1 / 12 });
   const vibS = b.add('scale', 0, 0.5, { gain: 0, offset: 0 }); // the vibrato's depth in semitones (negative: the CZ's saw down)
   const nz = b.add('noise', 0, 1, { level: 1, color: 0 });
