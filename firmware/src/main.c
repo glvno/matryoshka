@@ -8,6 +8,7 @@
  * (audio.c) keeps the main loop alive. The chip's mask-ROM mode only by its explicit SysEx (chip_boot). */
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
 extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[], _c1_start[], _c1_end[], _c1_load[];
+extern uint32_t _ft_start[], _ft_end[], _ft_load[];
 
 
 /* Diagnostics for the device bring-up (#140), read with tools/m1_link.py diag: what the last run left behind. When the main
@@ -69,7 +70,8 @@ static uint32_t stack_deepest(char *lo, char *top)     /* the most bytes the sta
 
 /* #271: the second core (hal/fm1_cpu1.h, X0X's). Started at power-on before the audio and the timers, the only start that
  * works on the device (X0X's, Melodee's and Felucca's finding), and after the boot guard's update-mode check: not in update
- * mode, not after a failed boot, not when barred (fm1_c1_bar in .noinit: one core until power-off). It renders the odd
+ * mode, not after a failed boot, not when barred (fm1_c1_bar in .noinit: one core until power-off), not when the stock
+ * supply setup failed (hal/fm1_power.h, #735: Melodee's rule). It renders the odd
  * parts of each poly segment (engine.c render_split, from the audio interrupt). Every C1_TEST_MS the main loop also
  * hands it the self-test (c1_sum: SIN_T read from the flash, the seed from the mailbox, the
  * answer written to RAM) and checks the answer against its own. A wrong answer, a job it refuses (a misread check
@@ -81,7 +83,7 @@ static uint32_t stack_deepest(char *lo, char *top)     /* the most bytes the sta
 static uint32_t c1_test_ms = C1_TEST_MS;        /* DIAG 108 (a stress test, until 109 or a restart): every 1 ms, and the
                                                  * hand-off's race window widened to 100 us (fm1_c1_race_ticks) */
 #define C1_WRONG 4u                             /* fm1_c1_gave_up: its answer was wrong (1 refused a job, 2 late, 3 barred) */
-enum { C1_TRIED, C1_SKIP_UPDATE, C1_SKIP_FAILED };
+enum { C1_TRIED, C1_SKIP_UPDATE, C1_SKIP_FAILED, C1_SKIP_POWER };
 static volatile uint32_t c1_out;                /* the self-test's answer, written by core 1 */
 static uint32_t c1_pass, c1_fail, c1_wait_max, c1_last;
 static uint32_t c1_bad_xor, c1_bad_seed, c1_bad_out;   /* the wrong answer of the last failed self-test (DIAG page 115) */
@@ -150,6 +152,10 @@ static void c1_boot(int update)                 /* fm1_main, before the audio an
         c1_skip = update ? C1_SKIP_UPDATE : C1_SKIP_FAILED;
         return;
     }
+    if (fm1_power_state != FM1_POWER_OK) {      /* the supply setup failed: one core, the registers as it left them (#735) */
+        c1_skip = C1_SKIP_POWER;
+        return;
+    }
     locked = fm1_guard_top_locked();            /* (not yet at boot: left so) */
     if (locked)
         fm1_guard_unlock_top();                 /* its entry word is in the protected top of RAM */
@@ -176,12 +182,20 @@ static void c1_poll(void)                       /* the main loop */
     }
 }
 
+/* #729: TIMER5's longest wait between two entries (TIMER4 ticks) since DIAG page 130 was read, and the fm1_ms it ended
+ * at. TIMER5 nests in the audio interrupt, so only the interrupts off (or its own long run) hold it back, and with it
+ * the 2 kHz USB service that queues each USB audio packet */
+static volatile uint32_t t5_gap_max, t5_gap_at;
 void fm1_timer5_irq(uint32_t *f)                /* f: the saved r0..r3, reti, rets, psr (fm1_isr.S) */
 {
     static uint32_t sub, last, acc, next;
     uint32_t t0 = fm1_ticks();
     fm1_timer5_ack();
     fm1_input_tick();
+    if (t0 - last > t5_gap_max) {
+        t5_gap_max = t0 - last;
+        t5_gap_at = fm1_ms;
+    }
     acc += t0 - last;                           /* milliseconds from the 24 MHz TIMER4 */
     last = t0;
     while (acc >= 1000u * FM1_TICKS_PER_US) {
@@ -203,6 +217,7 @@ void fm1_timer5_irq(uint32_t *f)                /* f: the saved r0..r3, reti, re
     }
     if (sub == 10u)
         sub = 0;
+    bt_t5(t0);                                  /* (blk_time.h: its time, read only) */
 }
 extern void isr_timer5(void);
 
@@ -281,8 +296,86 @@ static uint32_t batt_us;                        /* the last battery read's time,
  * page 119 the overload guard (audio.c, #458): halves rendered, halves over 85 %, late halves (the hardware played them
  * before their render ended), then since the last read of this page the longest run of halves over 85 %, the longest
  * gap between two audio ISRs (us) and the shortest ISR (us), then parts shed since the last patch load and the guard's
- * mean ISR time (us) */
+ * mean ISR time (us);
+ * page 131 the CPU clock and the rails, read only (#735, hal/fm1_clock.h): PLL2_CON1, CLK_CON2, the rail registers
+ * (CON9 | CON6 << 8 | CON5 << 16 | CON0 << 24), TIMER4 ticks for 16384 and 49152 dependent adds, then the stock supply
+ * setup at boot (hal/fm1_power.h fm1_power_report: 0 not run (update mode), 1 set and checked, 2 failed | the step it
+ * stopped at << 8 | P33 timeouts << 16) and the rail registers as the boot loader left them (fm1_power_before) ;
+ * pages 132..139 what an audio block's time is made of (#802, #803; blk_time.h; m1_link.py blocktime), read only. Page
+ * 132 takes the window since its last read (and starts the next); 133..138 report that window, 139 measures the
+ * interrupts' entry and exit:
+ *   132: halves counted, halves with the engine stopped, the window (ms), jobs the second core took, the awake parts of
+ *        the segments handed over on core 0's lane and on core 1's, hand-offs not taken, flags (bit 0 two cores, 1 the
+ *        split off, 2 USB audio feeding, 3 the window full, bits 8..15 the most jobs in one block, 16..31 waits that
+ *        gave the second core up)
+ *   133..137: four spans each (blk_time.h BT_ENTRY .. BT_C1_IDLE, in that order), each the mean per half and the most
+ *        in one half, in ns
+ *   138: a job's hand-off (core 0 starting it to the second core starting it), mean and most, ns; TIMER5's interrupt
+ *        (its C body), mean and most, ns; its interrupts nested in the audio ISR and outside it; the second core's job,
+ *        mean and most, ns
+ *   139: (core 0 reads TIMER4 back to back for 5 ms, the interrupts on: the main loop stops that long) the reads, the
+ *        shortest step between two (ns), the steps longer than 1 us with no audio ISR in them (TIMER5's interrupts),
+ *        their total (ns), TIMER5's C bodies over the same time (ns) and their count, the audio ISRs that fell in it, the
+ *        longest of those steps (ns) */
 static void settings_store(void);
+static bt_acc_t bt_last BT_POOL;                        /* the window DIAG page 132 took (pages 133..138 report it) */
+static uint32_t bt_t5_in_n0 BT_POOL, bt_t5_out_n0 BT_POOL;      /* TIMER5's counts when the running window began */
+
+static uint32_t bt_ns(uint32_t sum, uint32_t n)        /* ticks (24 MHz) in total over n, in ns each */
+{
+    return n ? (uint32_t)((uint64_t)sum * 125u / (3u * (uint64_t)n)) : 0u;
+}
+
+static void bt_take(void)                       /* DIAG 132: the running window into bt_last, and a new one */
+{
+    uint32_t in, out, i, k = fm1__lock();
+    bt_last = bt;
+    in = bt_t5_in_n;
+    out = bt_t5_out_n;
+    for (i = 0; i < sizeof bt / 4u; i++)
+        ((uint32_t *)&bt)[i] = 0;
+    fm1__unlock(k);
+    bt_last.t5_in = in - bt_t5_in_n0;
+    bt_last.t5_out = out - bt_t5_out_n0;
+    bt_t5_in_n0 = in;
+    bt_t5_out_n0 = out;
+    bt.ms0 = fm1_ms;
+}
+
+static void bt_spin(uint32_t *v)                /* DIAG 139: TIMER4 back to back for 5 ms, the interrupts on */
+{
+    uint32_t t0 = fm1_ticks(), prev = t0, t, d, h = eng_halves, b0 = bt_t5_out_ticks, n0 = bt_t5_out_n, b1, n1;
+    uint32_t reads = 0, dmin = 0xFFFFFFFFu, nint = 0, sint = 0, dmax = 0, naud = 0;
+    do {
+        t = fm1_ticks();
+        d = t - prev;
+        prev = t;
+        reads++;
+        if (d > FM1_TICKS_PER_US) {
+            if (eng_halves != h) {              /* the audio ISR (and what nested in it): not counted */
+                h = eng_halves;
+                naud++;
+            } else {
+                nint++;
+                sint += d;
+                if (d > dmax)
+                    dmax = d;
+            }
+        } else if (d < dmin)
+            dmin = d;
+    } while (t - t0 < 5000u * FM1_TICKS_PER_US);
+    b1 = bt_t5_out_ticks;
+    n1 = bt_t5_out_n;
+    v[0] = reads;
+    v[1] = bt_ns(dmin, 1u);
+    v[2] = nint;
+    v[3] = bt_ns(sint, 1u);
+    v[4] = bt_ns(b1 - b0, 1u);
+    v[5] = n1 - n0;
+    v[6] = naud;
+    v[7] = bt_ns(dmax, 1u);
+}
+
 static uint32_t m1_diag(uint32_t page, uint8_t *out)
 {
     const uint8_t *b = (const uint8_t *)&diag_prev;
@@ -484,6 +577,76 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
         v[5] = st_stat.steps;
         v[6] = st_stat.unserved;
         v[7] = st_stat.sus_fail;
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
+    if (page == 131u) {                         /* #735: the clock and the rails, read only (hal/fm1_clock.h fm1_clock_probe) */
+        uint32_t v[8];
+        fm1_clock_probe(v);
+        v[6] = fm1_power_report();
+        v[7] = fm1_power_before;
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
+    if (page == 130u) {                         /* #729: what held the interrupts off since this page was last read (zeroed
+                                                 * by the read): TIMER5's longest wait between two entries (us) and the
+                                                 * fm1_ms it ended at; the store's longest read window and write step with
+                                                 * the interrupts off (us, storage_hw.c st_off) and the fm1_ms each ended
+                                                 * at; the fm1_ms the last store write ended; fm1_ms now */
+        uint32_t v[8];
+        fm1_irq_off();
+        v[0] = t5_gap_max / FM1_TICKS_PER_US;
+        v[1] = t5_gap_at;
+        v[2] = st_off.rd_max / FM1_TICKS_PER_US;
+        v[3] = st_off.rd_at;
+        v[4] = st_off.step_max / FM1_TICKS_PER_US;
+        v[5] = st_off.step_at;
+        v[6] = st_off.wr_end;
+        v[7] = fm1_ms;
+        t5_gap_max = 0;
+        st_off.rd_max = st_off.step_max = 0;
+        fm1_irq_on();
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
+    if (page >= 132u && page <= 139u) {         /* #802, #803: the block's time (blk_time.h) */
+        uint32_t v[8], k;
+        const bt_acc_t *w = &bt_last;
+        if (page == 132u) {
+            uint32_t ms = fm1_ms;
+            bt_take();
+            v[0] = w->blocks;
+            v[1] = w->stopped;
+            v[2] = ms - w->ms0;
+            v[3] = w->jobs;
+            v[4] = w->parts[0];
+            v[5] = w->parts[1];
+            v[6] = w->refused;
+            v[7] = (uint32_t)fm1_c1_on | (uint32_t)lanes_off << 1 | (uint32_t)(w->blocks >= BT_BLOCKS_MAX) << 3 |
+                   (w->jobs_max > 255u ? 255u : w->jobs_max) << 8 | (w->gave_up > 65535u ? 65535u : w->gave_up) << 16;
+#if FELUCCA_UAC
+            v[7] |= (uint32_t)uac.feed << 2;
+#endif
+        } else if (page <= 137u) {
+            for (k = 0; k < 4u; k++) {
+                uint32_t q = 4u * (page - 133u) + k;
+                v[2u * k] = q < BT_N ? bt_ns(w->sum[q], w->blocks) : 0u;
+                v[2u * k + 1u] = q < BT_N ? bt_ns(w->max[q], 1u) : 0u;
+            }
+        } else if (page == 138u) {
+            v[0] = bt_ns(w->lat_sum, w->jobs);
+            v[1] = bt_ns(w->lat_max, 1u);
+            v[2] = bt_ns(w->sum[BT_T5_IN] + w->sum[BT_T5_OUT], w->t5_in + w->t5_out);
+            v[3] = bt_ns(w->t5_max, 1u);
+            v[4] = w->t5_in;
+            v[5] = w->t5_out;
+            v[6] = bt_ns(w->sum[BT_C1_BUSY], w->jobs);
+            v[7] = bt_ns(w->job_max, 1u);
+        } else
+            bt_spin(v);
         for (i = 0; i < sizeof v; i++)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
         return sizeof v;
@@ -1629,7 +1792,13 @@ void fm1_cstart(void)
         *d = *s;                                /* flash driver code that must run from RAM */
     for (s = _c1_load, d = _c1_start; d < _c1_end; s++, d++)
         *d = *s;                                /* the second core's waiting loop (fm1_cpu1.h, #271) */
+    for (s = _ft_load, d = _ft_start; d < _ft_end; s++, d++)
+        *d = *s;                                /* hot engine code (build.py FAST_TEXT, app.ld .fast_text): before any render */
     fm1_mailbox_clear();
+    if (!update)                                /* the stock V15 supply setup (#735, Melodee's): interrupts off, the second
+                                                 * core held, the RAM set up, before the peripherals. Update mode keeps the
+                                                 * boot loader's levels: it is the way back if the setup were what failed */
+        fm1_power_boot();
     diag_prev.p3 = p3;                          /* (diag_prev is in .bss: after the clear above) */
     diag_prev.src = src;
     diag_prev.wdt = wdt;

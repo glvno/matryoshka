@@ -13,7 +13,7 @@ import { CPU, CPU_WARN } from './cpu';
 import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
-import { chipState, DeviceLink, deviceIndex, IGNORED_NOW, liveSync, sandboxChip, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, type ChipState, type DeviceEvent } from './device';
+import { chipState, DeviceLink, deviceIndex, deviceLayoutKey, IGNORED_NOW, liveSync, sandboxChip, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, type ChipState, type DeviceEvent } from './device';
 import { SITE_URL } from './site';
 import { sandboxKey, sandboxPage, sandboxStep, sandboxTempoTurn } from './sandbox-mode';
 import { editorSkips, LIVE_MS, panelOffBy, slotLabel, type PanelState, type SlotInfo } from './protocol';
@@ -197,6 +197,8 @@ let uploadedLoad = -1;
 /** the encoded patch the FM-1 holds under Live: a structural change that leaves it the same (a comment, the layout) sends
  *  nothing (upload-gate.ts) */
 const uploadGate = new UploadGate();
+let installedLayout: string | null = null;
+const pendingMutes = new Map<number, boolean>();
 /** after edits that went out live, the gate learns the bytes the FM-1 now holds once they stop for a moment (encoding a
  *  big patch takes a few ms: not on every knob event) */
 const GATE_MS = 250;
@@ -391,6 +393,8 @@ device.onEvent = (e) => {
 function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
   const mark = (on: boolean): void => { if (from === 'device') fromDevice = on; else fromEmu = on; };
   if (e.kind === 'slot') return;
+  // (by module or device index, while the FM-1 still holds the patch from before an upload: see linkBusy)
+  if (from === 'device' && linkBusy() && ['track', 'mute', 'locks', 'param', 'arms', 'focus'].includes(e.kind)) return;
   // the copy's own edits while it replays an FM-1 that reports its panel (#549): the FM-1 sends its own (TRACK_NOW,
   // LOCKS_NOW, PATTERN_NOW, SONG_NOW, MUTE), under Live; the copy's would be the same edit twice, or one the FM-1's patch
   // did not take
@@ -470,17 +474,23 @@ async function sendPatch(): Promise<boolean> {
       devStatus('sending patch…');
       const load = loadsSeen;
       const bin = encodePatch(editor.patch);
+      const layout = deviceLayoutKey(editor.patch);
       uploadGate.forget();
+      installedLayout = null;
       await device.upload(editor.patch, bin);
       uploadGate.took(bin);
+      installedLayout = layout;
       onEditorPatch = true;
       baseline = JSON.stringify(editor.patch);
       uploadedLoad = load;
       devStatus('patch on the FM-1');
+      if (dirty) continue;   // the next upload must finish before sending indices from the changed patch
       const at = editor.focus && binaryPage(editor.patch, editor.focus.device, editor.focus.page);
       if (at) device.focus(at[0], at[1]);   // the FM-1 opens on the page the knobs edit here
       // (a patch loaded disarms the FM-1: the editor's armed set again, #191)
       if (editor.armedSet.size) device.arms(armMask(editor.patch, editor.armedSet));
+      for (const [id, on] of pendingMutes) device.mute(editor.patch, id, on);
+      pendingMutes.clear();
     } while (dirty);
   } catch (e) {
     devStatus(`${(e as Error).message}`);
@@ -492,8 +502,31 @@ async function sendPatch(): Promise<boolean> {
 }
 const queueUpload = (): void => {
   clearTimeout(uploadTimer);
-  uploadTimer = window.setTimeout(() => void sendPatch(), 150);
+  uploadTimer = 0;
+  if (uploading) { dirty = true; return; }
+  uploadTimer = window.setTimeout(() => { uploadTimer = 0; void sendPatch(); }, 150);
 };
+/** an upload is queued or under way: the FM-1 holds the patch from before the change, whose module indices can differ
+ *  from the ones the editor's patch has now (device-compile.ts leaves out what no one hears, D-361), so no live edit goes
+ *  out by module index (the upload carries it) and none that comes in by module index is taken (the upload replaces it) */
+const linkBusy = (): boolean => uploading || uploadTimer !== 0;
+/** Parameter edits can change which modules survive compilation or run once per voice. Never send their new indices
+ * to the old installed layout; the whole patch carries the value and the new layout together. */
+function indexedLiveReady(): boolean {
+  if (linkBusy()) return false;
+  if (installedLayout === deviceLayoutKey(editor.patch)) return true;
+  showBudget();
+  queueEmu();
+  queueUpload();
+  return false;
+}
+function muteTrack(id: number, on: boolean): void {
+  host.send({ t: 'mute', id, on });
+  if (live()) {
+    if (indexedLiveReady()) device.mute(editor.patch, id, on);
+    else pendingMutes.set(id, on);
+  }
+}
 // ---- Live sync is the default on connect (#171): a patch that fits is offered (Sync / Not now), Not now holds for the visit
 const SYNC_DECLINED = 'matryoshka.sync-declined';
 const syncDeclined = (): boolean => {
@@ -813,7 +846,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     host.send({ t: 'att', id, index, value });
     queueEmu();
     queueSave(editor.patch);
-    if (live() && !uploading) { device.att(editor.patch, id, index, value); liveEdited(); }
+    if (live() && indexedLiveReady()) { device.att(editor.patch, id, index, value); liveEdited(); }
     else if (live()) dirty = true;
   },
   onParam(id, name, value) {
@@ -850,7 +883,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     }
     if (!fromEmu) emuParam(id, name, value);
     if (fromDevice) return;
-    if (live() && !uploading) { device.param(editor.patch, id, name, value); liveEdited(); }
+    if (live() && indexedLiveReady()) { device.param(editor.patch, id, name, value); liveEdited(); }
     else if (live()) dirty = true;
   },
   onTrack(id, notes, pat) {
@@ -859,7 +892,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     if (!fromEmu) queueEmu();
     queueSave(editor.patch);
     if (fromDevice) return;
-    if (live() && !uploading) { device.track(editor.patch, id, notes, pat); liveEdited(); }
+    if (live() && indexedLiveReady()) { device.track(editor.patch, id, notes, pat); liveEdited(); }
     else if (live()) dirty = true;
   },
   onPattern(pattern, song) {   // (#375) the patch's pattern / song: each track takes it at the end of its pass
@@ -886,7 +919,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     host.send({ t: 'arm', devices: armed });
     // the editor's own arming reaches a Live FM-1 that takes it (ARMS, #191): it routes its panel's keys and the editor's
     // notes by the same set. What the FM-1 reported (ARMS_NOW) is not sent back
-    if (!fromDevice && live() && !uploading) device.arms(armMask(editor.patch, editor.armedSet));
+    if (!fromDevice && live() && indexedLiveReady()) device.arms(armMask(editor.patch, editor.armedSet));
     if (!armsApplying) emuArm();
     armPlays = plays;
     armThrough = through;
@@ -900,17 +933,14 @@ const editor = new Editor($('canvas'), firstPatch, {
     host.mute(false);
     host.send({ t: 'thru', id, note, vel });
   },
-  onMute(id, on) {
-    host.send({ t: 'mute', id, on });
-    if (live() && !uploading) device.mute(editor.patch, id, on);
-  },
+  onMute: muteTrack,
   onBypass(id, on) {
     if (fromDevice) uploadGate.forget();
     host.send({ t: 'bypass', id, on });
     queueEmu();
     tutorial.bypassed();
     queueSave(editor.patch);
-    if (live() && !uploading) { device.bypass(editor.patch, id, on); liveEdited(); }
+    if (live() && indexedLiveReady()) { device.bypass(editor.patch, id, on); liveEdited(); }
     else if (live()) dirty = true;
   },
   onRange(id, index, name, range) {
@@ -918,7 +948,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     host.send({ t: 'range', id, index, name, range });
     queueEmu();
     queueSave(editor.patch);
-    if (live() && !uploading) { device.range(editor.patch, id, index, name, range); liveEdited(); }
+    if (live() && indexedLiveReady()) { device.range(editor.patch, id, index, name, range); liveEdited(); }
     else if (live()) dirty = true;
   },
   onTransport(on) {
@@ -926,7 +956,7 @@ const editor = new Editor($('canvas'), firstPatch, {
   },
   onFocus(key, page) {
     const at = live() || emu.ui ? binaryPage(editor.patch, key, page) : null;
-    if (at && live()) device.focus(at[0], at[1]);
+    if (at && live() && indexedLiveReady()) device.focus(at[0], at[1]);
     if (at && !fromEmu) emu.ui?.focus(at[0], at[1]);
   },
   onButton(i, on) {
@@ -961,6 +991,8 @@ const editor = new Editor($('canvas'), firstPatch, {
     loadsSeen++;
     emuFresh = true;
     uploadGate.forget();   // (a patch opened always goes to the FM-1 whole: its mutes, arms and pattern start afresh too)
+    installedLayout = null;
+    pendingMutes.clear();
     noteKeys.set(p.octave ?? 0); // a patch opens in the octave it was last played in
   },
   onHistory(kind) {
@@ -2819,10 +2851,13 @@ if (import.meta.env.DEV) {
       focusName: editor.devices.find((d) => d.key === editor.focus?.device)?.name ?? '',
       syncAsk: syncAsk.open, status: $('dev-status').textContent, armed: [...editor.armedSet],
       loads: loadsSeen, uploadedLoad, selected: [...editor.selected], slot: deviceSlot?.slot ?? -1,
+      uploadPending: linkBusy(),
     }),
     patchJson: (): string => JSON.stringify(editor.patch),
     /** the editor's armed set, as its ARM buttons set it (device keys, editor.armedSet) (#191) */
     arm: (keys: string[]): void => editor.setArmed(keys),
+    param: (id: number, name: string, value: number): void => editor.setParam(id, name, value),
+    mute: muteTrack,
     /** a device's first page into focus, by name (Main's knobs; with Live on, the FM-1 follows) */
     focus: (name: string): boolean => {
       const d = editor.devices.find((x) => x.name === name);

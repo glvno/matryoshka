@@ -43,6 +43,13 @@ LOADER_LOAD = 0x01C0A800
 LOADER_NAME = b"usb_hid_ota.bin"    # the file name the SPL looks for
 DOCKER_IMAGE = os.environ.get("JIELI_DOCKER_IMAGE", "debian:bookworm-slim")
 CFLAGS = ["-Os", "-ffunction-sections", "-fno-builtin", "-Wall", "-Wno-unused-function"]
+SPEED = "-O2"                       # the app's audio path (#798, tools/size_fns.py); FELUCCA_SPEED=0 builds it at -Os
+# (spike) hot engine functions that run from SRAM: their compiled sections (-ffunction-sections: .text.NAME) are renamed
+# .fast_text.NAME in matryoshka.o before the link, so the code is the compiler's own, only placed elsewhere (app.ld .fast_text,
+# in NOINIT, copied there at boot by main.c). Only functions the compiler keeps out of line everywhere: a section attribute in
+# the source would instead stop this compiler inlining across the two sections and change the code.
+FAST_TEXT = ("m_osc", "exp2_scale", "sin_turn", "fill", "svf_g", "svf_stage", "env_rate_q8", "signal_mean", "flaw_scale",
+             "morph_value") if os.environ.get("ENG_RAMCODE", "0") == "1" else ()
 LINE = re.compile(r"^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2} )+)\s*\t(.*)$")
 
 # SDK files of AC79NN_SDK_V1.2.1_2023-12-13 (the tested version)
@@ -178,6 +185,9 @@ def ldr_wrap(image):
 def build_loader():
     LDR.mkdir(parents=True, exist_ok=True)
     src = FW / "loader"
+    for switch in ("ENG_AOT", "ENG_RAMCODE", "ENG_BUF_REUSE"):
+        if os.environ.get(switch, "0") not in ("0", "1"):
+            raise SystemExit(f"{switch} must be 0 or 1")
     flags = [*CFLAGS, "-Ifirmware/hal", "-Ifirmware/src"]
     tc_all(("cc", "-c", src / "crt0_ldr.S", "-o", LDR / "crt0_ldr.o"),
            ("cc", *flags, "-c", src / "loader.c", "-o", LDR / "loader.o"))
@@ -216,11 +226,27 @@ def ld_regions():
     return regs
 
 
+def llvm_objcopy():
+    """the host's llvm-objcopy (any version: it copies an ELF of a machine it does not know, relocations and all)"""
+    import glob
+    for c in ("llvm-objcopy", *(f"llvm-objcopy-{v}" for v in range(25, 13, -1))):
+        if shutil.which(c):
+            return shutil.which(c)
+    found = sorted(glob.glob("/usr/lib/llvm-*/bin/llvm-objcopy")) + sorted(glob.glob("/opt/homebrew/opt/llvm/bin/llvm-objcopy"))
+    if found:
+        return found[-1]
+    raise SystemExit("build: FAST_TEXT needs llvm-objcopy on the host (apt install llvm, brew install llvm)")
+
+
 def build_app():
+    for switch in ("ENG_AOT", "ENG_RAMCODE", "ENG_BUF_REUSE"):
+        if os.environ.get(switch, "0") not in ("0", "1"):
+            raise SystemExit(f"{switch} must be 0 or 1")
     flags = [*CFLAGS, "-Ifirmware/hal", "-Ifirmware/src"]
     for flag in ("FELUCCA_FLASH", "FELUCCA_OTA", "FELUCCA_OTA_DRYRUN", "FELUCCA_OTA_RAMONLY", "FELUCCA_CDC",
                  "FELUCCA_UAC", "FELUCCA_UAC_TONE", "FELUCCA_UAC_48K", "FELUCCA_ICONS", "FELUCCA_SLICE", "FELUCCA_FM4",
-                 "FELUCCA_CDC_DEFAULT", "FELUCCA_UAC_AS_FIRST", "FELUCCA_UAC_MIDI_LAST", "FELUCCA_USB_HS", "M1_EMU_MIDI"):
+                 "FELUCCA_CDC_DEFAULT", "FELUCCA_UAC_AS_FIRST", "FELUCCA_UAC_MIDI_LAST", "FELUCCA_USB_HS", "M1_EMU_MIDI",
+                 "ENG_AOT", "ENG_BUF_REUSE"):   # ENG_AOT=0: no compiled factory assemblies (#808, firmware/src/aot.c), the interpreter alone
         v = os.environ.get(flag)    # unset: the default in firmware/src/modular.c
         if v in ("0", "1"):
             flags.append(f"-D{flag}={v}")
@@ -231,10 +257,13 @@ def build_app():
     flags += [f"-DM1_FW_{k}={v}" for k, v in zip(("MAJOR", "MINOR", "PATCH"), FW_VERSION)]
     if VERSION:
         flags.append(f'-DFELUCCA_VERSION="{VERSION}"')
-    # modular.c goes to LLVM IR without the optimizer, the main-loop functions (UI, stores, editor) are
-    # marked minsize (tools/size_fns.py), then the IR is compiled at -Os. FELUCCA_SIZE=0: -Os everywhere
-    size = os.environ.get("FELUCCA_SIZE") == "1"       # tools/size_fns.py is not part of Matryoshka (yet)
-    cmain = (("cc", *flags, "-S", "-emit-llvm", "-Xclang", "-disable-llvm-optzns", "-c",
+    # #798: the audio path for speed. modular.c goes to LLVM IR at SPEED without the optimizer, tools/size_fns.py marks
+    # every function the audio interrupt cannot reach 'optsize' (what -Os gives each function), then the IR is compiled
+    # at SPEED. FELUCCA_SPEED=0: -Os everywhere, compiled directly (the build before #798)
+    speed = os.environ.get("FELUCCA_SPEED", SPEED)
+    size = speed != "0"
+    sflags = [f for f in flags if f != "-Os"] + [speed] if size else flags
+    cmain = (("cc", *sflags, "-S", "-emit-llvm", "-Xclang", "-disable-llvm-optzns", "-c",
               FW / "src" / "modular.c", "-o", OUT / "matryoshka.ll") if size else
              ("cc", *flags, "-c", FW / "src" / "modular.c", "-o", OUT / "matryoshka.o"))
     tc_all(("cc", "-c", FW / "crt0.S", "-o", OUT / "crt0.o"),
@@ -245,17 +274,22 @@ def build_app():
     if size:
         subprocess.run([sys.executable, SRC / "tools" / "size_fns.py", OUT / "matryoshka.ll", OUT / "matryoshka_size.ll"],
                        check=True)
-        tc("cc", *[f for f in flags if not f.startswith(("-I", "-D", "-W"))], "-c",
+        tc("cc", *[f for f in sflags if not f.startswith(("-I", "-D", "-W"))], "-c",
            OUT / "matryoshka_size.ll", "-o", OUT / "matryoshka.o")
+    if FAST_TEXT:                                       # (spike) see FAST_TEXT; the toolchain's objcopy cannot rename
+        loc = llvm_objcopy()
+        subprocess.run([loc, *[a for f in FAST_TEXT for a in ("--rename-section", f".text.{f}=.fast_text.{f}")],
+                        OUT / "matryoshka.o"], check=True)
     elf = OUT / "matryoshka.elf"
     tc("pi32v2/bin/ld", "-T", FW / "app.ld", OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o", OUT / "fm1_cpu1.o",
        OUT / "matryoshka.o", str(toolchain() / "pi32v2" / "lib" / "libcompiler-rt.a"), "-o", elf)   # soft float, 64-bit helpers
-    for sect in ("text.bin", "data.bin", "ramtext.bin", "c1text.bin"):
+    for sect in ("text.bin", "data.bin", "ramtext.bin", "c1text.bin", "fasttext.bin"):
         (OUT / sect).unlink(missing_ok=True)
     *_, syms, dis, rt, c1 = tc_all(("common/bin/objcopy", "-O", "binary", "-j", ".text", elf, OUT / "text.bin"),
                                    ("common/bin/objcopy", "-O", "binary", "-j", ".data", elf, OUT / "data.bin"),
                                    ("common/bin/objcopy", "-O", "binary", "-j", ".ram_text", elf, OUT / "ramtext.bin"),
                                    ("common/bin/objcopy", "-O", "binary", "-j", ".c1_text", elf, OUT / "c1text.bin"),
+                                   ("common/bin/objcopy", "-O", "binary", "-j", ".fast_text", elf, OUT / "fasttext.bin"),
                                    ("common/bin/objdump", "-t", elf),
                                    ("common/bin/objdump", "-d", elf),
                                    ("common/bin/objdump", "-d", "-j", ".ram_text", elf),
@@ -267,7 +301,9 @@ def build_app():
     img = bytearray((OUT / "text.bin").read_bytes())
     # .ram_text, .c1_text (the second core's waiting loop, #271) and .data follow .text at their load addresses; the boot
     # copies them by words (main.c fm1_cstart)
-    for sect, lname in (("ramtext.bin", "_rt_load"), ("c1text.bin", "_c1_load"), ("data.bin", "_data_load")):
+    # (spike) and .fast_text, the hot engine code in NOINIT (FAST_TEXT), after .data
+    for sect, lname in (("ramtext.bin", "_rt_load"), ("c1text.bin", "_c1_load"), ("data.bin", "_data_load"),
+                        ("fasttext.bin", "_ft_load")):
         load = symv(lname)
         if load % 4:
             raise SystemExit(f"{lname} {load:#x} is not word aligned")
@@ -341,6 +377,14 @@ def check(img, syms, dis, rts):
     c1u, c1s = sym("_c1_ustack_top") - sym("_c1_ustack"), sym("_c1_sstack_top") - sym("_c1_ustack_top")
     notes.append(f".lowram {lowram} B ({lr_free} B free after it, .ram_text and .c1_text); stacks: main {ustack} B, "
                  f"supervisor {sstack} B, core 1 {c1u} + {c1s} B")
+    ft, ni_org, ni_len = sym("_ft_end") - sym("_ft_start"), *region["NOINIT"]
+    notes.append(f".fast_text {ft} B at {sym('_ft_start'):#x} (NOINIT {ni_org + ni_len - sym('_ft_end')} B free after it)")
+    if ft and not ni_org <= sym("_ft_start") <= sym("_ft_end") <= ni_org + ni_len:
+        errors.append(".fast_text is not inside NOINIT")
+    placed = {mm.group(2): mm.group(1) for mm in re.finditer(r"^[0-9a-f]+ .*\sF\s+(\S+)\s+[0-9a-f]+\s+(\S+)$", syms, re.M)}
+    off = [f"{f} ({placed.get(f, 'not in the build')})" for f in FAST_TEXT if placed.get(f) != ".fast_text"]
+    if off:                                       # renamed, so out of line: else it was inlined, or is gone
+        errors.append(f"FAST_TEXT functions not in .fast_text: {', '.join(off)}")
     if not sym("_pool_end") <= sym("_c1_ustack") < sym("_c1_sstack_top") <= sym("_guard0"):
         errors.append("app.ld: core 1's stacks are not between the pool and the main stack's guard band")
     if region["RAM"][0] + ram_len != region["POOL"][0]:
@@ -430,7 +474,11 @@ def main():
     (OUT / name).write_bytes(pkg)
     # the package's image is encrypted: its version goes in a sidecar for web/scripts/sync-firmware.mjs (x.fwsc -> x.json)
     version = VERSION or re.search(r'#define FELUCCA_VERSION "([^"]+)"', (FW / "src" / "modular.c").read_text())[1]
-    side = json.dumps({"version": version, "product": PRODUCT, "size": len(pkg), "sha256": hashlib.sha256(pkg).hexdigest()})
+    side = json.dumps({"version": version, "product": PRODUCT, "size": len(pkg), "sha256": hashlib.sha256(pkg).hexdigest(),
+                       "build": {"ENG_AOT": int(os.environ.get("ENG_AOT", "0")),
+                                 "ENG_RAMCODE": int(os.environ.get("ENG_RAMCODE", "0")),
+                                 "ENG_BUF_REUSE": int(os.environ.get("ENG_BUF_REUSE", "1")),
+                                 "FELUCCA_SPEED": os.environ.get("FELUCCA_SPEED", SPEED)}})
     (OUT / name).with_suffix(".json").write_text(side)
     att = SRC / "assets" / "samples-cc0" / "ATTRIBUTION.txt"
     if att.exists():

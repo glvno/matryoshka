@@ -178,6 +178,13 @@ export function checkScenarios(h) {
   }
   /** the bank's first empty slot (0-based), -1 when every slot is used */
   const firstEmpty = async () => (await page().evaluate(() => window.__m1test.slots())).findIndex((s) => !s.used);
+  /** Use this checkout's factory bytes: a bank may contain an edited patch with the same name. */
+  const storeFactory = (slot, name) => page().evaluate(async ([n, key]) => {
+    const { FM1_PRESETS } = await import('/src/presets.ts');
+    const { encodePatch } = await import('/src/patchbin.ts');
+    const patch = FM1_PRESETS[key]();
+    await window.__m1test.storeBin(n, patch.name, Array.from(encodePatch(patch)));
+  }, [slot, name]);
 
   /** a drone heard holding: the level of `note`'s pitch in 200 ms windows of a recording (Goertzel; 200 ms tell it from a
    *  note two semitones away), from the first window at 80 % of its loudest: the lowest of the rest and the biggest rise
@@ -770,6 +777,8 @@ export function checkScenarios(h) {
 
     // ---- 7. the FM-1 teaches itself (#582, D-247, D-917), steps 7.1..7.3, with Live off as on the page
     async checkTeach() {
+      const slot = await firstEmpty();
+      if (slot < 0) return skip('7 teach: factory patch fixture', 'the FM-1\'s bank has no empty slot');
       const running = async () => (await T()).deviceRunning;   // (the FM-1's MIDI Start / Stop, which the editor hears with Live off too)
       /** REC held alone a moment: the bar's ARM: hint; then, REC still held, the black key `pick(hint)` chooses (a black key
        *  with REC held arms, and REC's release then starts nothing: REC let go alone would start recording) */
@@ -785,15 +794,12 @@ export function checkScenarios(h) {
       };
       const parse = (hint) => /^ARM: 1 DRUMS(\*?) 2 PATTERN(\*?)$/.exec(hint);
       try {
+        await storeFactory(slot, '<7PH');
         await check('7 teach: Live off', await live(false));
         await emu.elapse(1000);
         // PRESET a click at a time: the message shows once <7PH has loaded
-        let at = false, said = false;
-        for (let i = 0; i < 65 && !at; i++) {
-          await presetPatch(1);
-          at = await emu.waitFor(async () => (await emu.texts()).some((t) => /<7PH/.test(t)), 600);
-          if (at) said = await emu.waitText('2 SOUNDS: ENV THEN SEL', 1500);
-        }
+        const at = await presetTo('<7PH', slot);
+        const said = at && await emu.waitText('2 SOUNDS: ENV THEN SEL', 1500);
         await check('7.1 teach: HOME held + PRESET to <7PH: the bar says 2 SOUNDS: ENV THEN SEL', at && said, (await emu.texts()).slice(0, 3).join(' | '));
         await emu.elapse(2200);
         // (a patch PRESET loads has nothing armed: the first hint marks none, and black key 1 arms DRUMS first, so the next
@@ -831,16 +837,20 @@ export function checkScenarios(h) {
       } finally {
         for (const k of [B.rec, B.play]) await emu.key(k, false);
         if ((await T()).deviceRunning) await emu.tap(B.play);
+        await page().evaluate((n) => window.__m1test.eraseSlot(n), slot);
         await live(true);
       }
     },
 
     // ---- flash writes keep the sound (#656): a held note through each kind of write the store makes
     async checkFlashWrite() {
-      if (!(await live(false))) return check('flash write: Live off in the editor (Stop syncing)', false);
+      const slot = await firstEmpty();
+      if (slot < 0) return skip('flash write: factory patch fixture', 'the FM-1\'s bank has no empty slot');
       try {
-        const found = await presetTo('BASIC POLY');
-        if (!found) return skip('flash write: a held note through each write', 'no slot of the bank holds BASIC POLY');
+        await storeFactory(slot, 'Basic Poly');
+        if (!(await live(false))) return check('flash write: Live off in the editor (Stop syncing)', false);
+        const found = await presetTo('BASIC POLY', slot);
+        if (!found) return check('flash write: the factory fixture loads from its slot', false);
         const kinds = [
           // the settings record, as the global tempo's write makes it 5 s after a change (D-907); DIAG 129 writes it now,
           // since that write waits for 2 s of silence (D-921) and a held note would hold it back
@@ -854,6 +864,9 @@ export function checkScenarios(h) {
         const [, , , , , s0] = await emu.diagWords(128).catch(() => []);
         for (const [what, write] of kinds) {
           const e0 = await emu.diagWords(128).then((d) => d[0] + d[1], () => 0);
+          // (#729: DIAG 130 zeroed by this read, and the USB audio counters before the write)
+          await emu.diagWords(130).catch(() => null);
+          const u0 = await emu.diagWords(126).catch(() => null);
           await emu.key(C4, true);
           await emu.elapse(600);
           const a = await recorded(`flash-${what.replace(/\W+/g, '-')}`, async () => {
@@ -877,6 +890,9 @@ export function checkScenarios(h) {
             }
           }
           const e1 = await emu.diagWords(128).then((d) => d[0] + d[1], () => 0);
+          const g = await emu.diagWords(130).catch(() => null), u1 = await emu.diagWords(126).catch(() => null);
+          if (g) console.log(`  ${what}: DIAG 130 (#729): TIMER5's longest wait ${g[0]} us (at ${g[1]} ms), the store's longest read window ${g[2]} us (at ${g[3]} ms) and write step ${g[4]} us (at ${g[5]} ms) with the interrupts off, the last write ended at ${g[6]} ms, now ${g[7]} ms`
+            + (u0 && u1 ? `; USB audio underruns +${u1[0] - u0[0]}, missed packets +${u1[2] - u0[2]}` : ''));
           await check(`flash write: ${what} wrote the flash (DIAG 128)`, e1 > e0, `erases + programs ${e0} -> ${e1}`);
           const loud = a.why ? 0 : Math.max(rmsOf(a.l), rmsOf(a.r));
           // (a gap of one USB packet, 1 ms, comes about 0.4 s after SAVE on the rig with or without #656: issue #729; the
@@ -891,6 +907,7 @@ export function checkScenarios(h) {
           `steps ${st[5]}, unserved ${st[6]}, suspends not taken ${st[7]}, longest off ${st[2]} us`);
       } finally {
         await emu.key(C4, false);
+        await page().evaluate((n) => window.__m1test.eraseSlot(n), slot);
         await live(true);
       }
     },

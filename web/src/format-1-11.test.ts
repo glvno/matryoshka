@@ -23,7 +23,8 @@ const rd32 = (b: Uint8Array, at: number): number => new DataView(b.buffer, b.byt
 
 describe('counted records (#667, format 51)', () => {
   it('is the 1.11 format', () => {
-    expect([VERSION, FORMAT_1_11, COUNTED]).toEqual([51, 51, 51]);
+    expect([FORMAT_1_11, COUNTED]).toEqual([51, 51]);
+    expect(VERSION).toBeGreaterThanOrEqual(51);   // (1.12 moved on: format-1-12.test.ts)
   });
 
   it('keeps a record\'s parameters up to the last one off its default, on either morph side, and at least `keep`', () => {

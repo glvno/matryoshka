@@ -28,15 +28,15 @@ const NOTE = 72; // C5
 const BLOCK_US = 2901; // 128 frames at 44118 Hz (DEVICE_SR)
 const OLD_PEAK = 0.12; // 303 Acid on M1-0.2: 11 % typical, 12 % peak of the half buffer (ISR time incl. key scan and USB)
 /** The scale, frozen (not fitted on each run: a faster engine would bend it against an old survey). Fitted by
- * scripts/cpu-rig-fit.ts to the test rig's survey of every factory patch on the firmware of #781's speed pass
- * (docs/measurements/2026-11-08-rig-speed-pass.md): least squares of the rig's steady peak on the estimate at the scale
+ * scripts/cpu-rig-fit.ts to the test rig's survey of every factory patch on the combined 1.12 development firmware
+ * (docs/measurements/2026-11-09-rig-integration.md): least squares of the rig's steady peak on the estimate at the scale
  * before (233.4 cycles / us + 23 us, fitted to the FM-1's survey of 2026-10-20). A new survey after large engine or
  * firmware changes replaces it (run cpu-rig-fit.ts, then npm run cpu-costs). */
 const SURVEY = {
-  cyclesPerUs: 188.4,
-  fixedUs: 221,
-  survey: 'docs/measurements/cpu-survey-2026-11-08-rig-speed-pass.json and -run.json (CI run 42562725002), Cassia 1 from -speed-pass-cassia-1.json and -run.json (at four voices), with -speed-pass-before-cuts.json and -run.json (the same firmware: Oracle V and Hera at five voices)',
-  fit: 'rig us = 1.239 x estimate before + 192 us (the 5 patches without an engine of their own: Init, Simple FM, Plucked String, 909 Kit, <7PH), so 233.4 / 1.239 cycles per us plus 1.239 x 23 + 192 us a block; the second core\'s idle cost 1.239 x 24 us',
+  cyclesPerUs: 195.8,
+  fixedUs: 270,
+  survey: 'docs/measurements/cpu-survey-2026-11-09-rig-integration.json and -run.json (CI run 42673451565, default switches, all 30 factory patches)',
+  fit: 'rig us = 1.192 x estimate before + 242 us (the 5 patches without an engine of their own: Init, Simple FM, Plucked String, 909 Kit, <7PH), so 233.4 / 1.192 cycles per us plus 1.192 x 23 + 242 us a block; the second core idle cost 1.192 x 24 us',
 };
 /** The second core (#271), fitted to the test rig's surveys of every factory patch (docs/measurements/2026-11-05-rig-second-
  * core.md) against release-1.10's head before #271 (the one-core firmware): what the second core costs core 0 is the median,
@@ -45,21 +45,23 @@ const SURVEY = {
  * is taken, so the estimate stays under each poly patch's measured saving (within its noise) and never promises more room
  * than the FM-1 has. */
 const CORES = {
-  idleUs: 30,   // (24 us at the scale before, cpu-rig-fit.ts)
+  idleUs: 29,   // (24 us at the scale before, cpu-rig-fit.ts)
   splitEff: 0.85,
   survey: 'docs/measurements/cpu-survey-2026-11-05-rig-release-1.10-head.json (CI run 42096997058) against -rig-merged-split.json (CI run 42093061899)',
 };
 /** Each factory engine's factor on its modules' cycles (src/cpu.ts CpuTable.rig), fitted by scripts/cpu-rig-fit.ts to the
  * same surveys as SURVEY: the smallest that makes the estimate read at least the rig's steady peak for every voice count
  * its factory patch played on the rig. The counted engine misses what the FM-1 spends beyond its instructions (its caches
- * and memory, the hardware's own timing), and that differs from engine to engine: the factors run from 0.66 to 1.17. */
+ * and memory, the hardware's own timing), and that differs from engine to engine: the factors run from 0.64 to 1.28. */
 const RIG = {
   engines: {
-    '8 Lire': 0.78, '808 kit': 0.94, 'Algo Four': 0.66, 'basic poly': 0.83, 'Briefcase 3': 0.91, 'Canvas': 0.82,
-    'Cassia 1': 0.74, 'drift poly': 0.84, 'Elvira 2': 1.06, 'Expander S': 0.8, 'Hera 4': 0.74, 'Io 4': 0.75,
-    'Meridian 8': 0.86, 'mono lead': 1.14, 'Monolith D': 0.9, 'Oracle V': 0.77, 'Perun 4': 1.02, 'Sallen 20': 1.03,
-    'Scrounge': 0.97, 'Silver Box': 1.17, 'Spokes 6': 0.99, 'supersaw stack': 0.8, 'Vernon 100': 0.74,
-    'Verona Drum 1': 1, 'Wanderer': 1.09,
+    '8 Lire': 0.78, '808 kit': 0.91, 'Algo Four': 0.64, 'Briefcase 3': 0.95,
+    'Canvas': 0.86, 'Cassia 1': 0.74, 'Elvira 2': 1.12, 'Expander S': 0.84,
+    'Hera 4': 0.75, 'Io 4': 0.82, 'Meridian 8': 0.89, 'Monolith D': 0.95,
+    'Oracle V': 0.82, 'Perun 4': 1.04, 'Sallen 20': 1.09, 'Scrounge': 0.92,
+    'Silver Box': 1.27, 'Spokes 6': 1.01, 'Vernon 100': 0.78, 'Verona Drum 1': 0.96,
+    'Wanderer': 1.16, 'basic poly': 0.92, 'drift poly': 0.92, 'mono lead': 1.28,
+    'supersaw stack': 0.88,
   } as Record<string, number>,
   survey: SURVEY.survey,
 };
@@ -130,8 +132,8 @@ function kit(type: string, cfg: KitCfg = {}): { p: Patch; m: ModuleInst } {
       connect(p, DEFS, { module: src.id, port: 'out' }, { module: m.id, port: name });
     }
   }
-  if (type === 'arp') {
-    // an Arpeggiator is heard through the group it plays (its keys cables are gone on the device, device-compile.ts keeps
+  if (type === 'arp' || type === 'harm') {
+    // an Arpeggiator (a Harmonizer the same) is heard through the group it plays (its keys cables are gone on the device, device-compile.ts keeps
     // a group's Arpeggiator): Main keys -> it -> an allocator whose gate reaches the Output
     const alloc = addModule(p, DEFS.alloc, 600, 0);
     connect(p, DEFS, { module: main.id, port: 'keys' }, { module: m.id, port: 'keys' });
@@ -502,7 +504,7 @@ types.steps.thru = thru;
 console.log(`steps thru ${thru} per key`);
 const { cyclesPerUs, fixedUs } = SURVEY;
 const table: CpuTable = {
-  source: 'estimate: the fixed-point engine counted on an rv32im model (tools/cpu), calibrated on the factory patches measured on the test rig (2026-11-08)',
+  source: 'estimate: the fixed-point engine counted on an rv32im model (tools/cpu), calibrated on the factory patches measured on the test rig (2026-11-09)',
   cyclesPerUs,
   fixedUs,
   cores: CORES,

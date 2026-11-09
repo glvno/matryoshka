@@ -137,7 +137,7 @@ describe('engine', () => {
   it('every module but fm1 and output has the two parameter inputs and a matrix', () => {
     for (const d of Object.values(DEFS)) {
       const has = d.inputs.filter((i) => i.pin).map((i) => i.name);
-      if (['fm1', 'output', 'alloc', 'scope', 'arp', 'drummap'].includes(d.type) || !d.params.length) expect(has, d.type).toEqual([]); // nothing to modulate (the Part); the allocator's and the arpeggiator's settings are structure (the engine runs them before the modules); the Scope's are its display; a Drum map's notes are its map
+      if (['fm1', 'output', 'alloc', 'scope', 'arp', 'drummap', 'harm'].includes(d.type) || !d.params.length) expect(has, d.type).toEqual([]); // nothing to modulate (the Part); the allocator's and the arpeggiator's settings are structure (the engine runs them before the modules); the Scope's are its display; a Drum map's notes are its map; a Harmonizer's chord is taken when a key goes down
       else expect(has, d.type).toEqual(['p1', 'p2']);
       const m = addModule(emptyPatch(), d, 0, 0);
       expect(!!m.map, d.type).toBe(!!d.paramInputs);

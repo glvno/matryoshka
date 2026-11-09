@@ -8,7 +8,7 @@
 #define FELUCCA_ID "FM-1_7000000"  /* package identity (build.py: the .fwsc marker string): FM-1_7MMmmpp, 7000000 dev / CI */
 #endif
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "v1.11.1-DEV"
+#define FELUCCA_VERSION "v1.12.0-DEV"
 #endif
 #define FELUCCA_FLASH 1
 #define FELUCCA_OTA 1
@@ -41,6 +41,8 @@
 #define FL_STATUS_RAM 0                         /* (no caller here: its .ram_text is room for other RAM code, #725) */
 #include "fm1_flash.h"
 #include "fm1_flash_step.h"                     /* the store's writes in steps the interrupts run between (#656) */
+#include "fm1_clock.h"                          /* the CPU clock and the rails, read only (#735, DIAG page 131) */
+#include "fm1_power.h"                          /* the stock V15 supply setup at boot (#735, Melodee's; main.c fm1_cstart) */
 #include "fm1_lcd_hw.h"
 #define RING_PUBLISH() __asm__ volatile("" ::: "memory")
 
@@ -57,15 +59,40 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 #define ENG_POOL __attribute__((section(".pool")))
 #define ENG_LOWRAM __attribute__((section(".lowram")))   /* app.ld: the SRAM below the RAM region (#273) */
 #define ENG_LANE_HOOKS 1           /* #271: engine.c hands lane 1 of a split segment to the second core (fm1_cpu1.h) */
+#define BT_POOL ENG_POOL
+#include "blk_time.h"              /* the block's time, measured (#802, #803: DIAG pages 132..139) */
+#define ENG_TMARK(k) (bt_eng[k] = fm1_ticks())
 static uint8_t lanes_off;                  /* DIAG pages 110 / 111 (tools/m1_link.py cores split off / on): core 0 renders every part (to measure) */
+static void bt_parts(uint32_t group);      /* (after engine.c; the actual segment, interpreted or compiled) */
 static int eng_lane_run(void (*fn)(uint32_t), uint32_t arg)
 {
-    if (lanes_off || (fm1_cpu1_busy() && fm1_cpu1_wait() != 0))   /* the main loop's self-test first, if this interrupt */
-        return 0;                                                   /* came between its hand-off and its wait */
-    return fm1_cpu1_run(fn, arg);
+    uint32_t t = bt_hand_begin();
+    int took = 0;
+    if (!(lanes_off || (fm1_cpu1_busy() && fm1_cpu1_wait() != 0))) {   /* the main loop's self-test first, if this */
+        bt_c1_fn = fn;                                                  /* interrupt came between its hand-off and its */
+        took = fm1_cpu1_run(bt_c1_job, arg);                            /* wait; fn runs inside bt_c1_job (timed) */
+    }
+    bt_handed(t, took);
+    if (took)
+        bt_parts(arg);
+    return took;
 }
-static int eng_lane_wait(void) { return fm1_cpu1_wait(); }   /* -1: given up (held, barred): core 0 renders the lane */
+static int eng_lane_wait(void)             /* -1: given up (held, barred): core 0 renders the lane */
+{
+    uint32_t t = fm1_ticks();
+    int rc = fm1_cpu1_wait();
+    bt_waited(t, rc);
+    return rc;
+}
 #include "engine.c"
+static void bt_parts(uint32_t group)       /* the awake parts of the segment just handed over, per lane (render_split: */
+{                                          /* the even parts on core 0, the odd ones on the second core) */
+    const grp_t *g = &E.grp[group];
+    uint32_t v;
+    for (v = 0; v < g->parts; v++)
+        if (!E.pv[g->pv0 + v].skip)
+            bt.parts[v & 1u]++;
+}
 #include "presets.h"
 #include "audio.c"
 #define USB_LOG_MEM ENG_LOWRAM      /* usb.c: the USB setup log (#535), 1,092 B (#725) */

@@ -15,6 +15,8 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { acquireEmulatorSlot } from './emu-slot.mjs';
+import { runEmulatorProcess } from './emu-process.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const EMU = join(ROOT, 'tools/emu');
@@ -65,10 +67,11 @@ function firmware() {
   throw new Error('no firmware: build one (tools/build.py), install gh, or pass a matryoshka.bin / .fwsc');
 }
 
+if (smoke || boot) await acquireEmulatorSlot();
 const fw = firmware();
 console.log(`firmware: ${fw}`);
 mkdirSync(OUT, { recursive: true });
-if (smoke) process.exit(run('sh', [join(ROOT, 'tools/emu_smoke.sh'), fw]));
+if (smoke) process.exit(await runEmulatorProcess('sh', [join(ROOT, 'tools/emu_smoke.sh'), fw], { cwd: ROOT }));
 
 // fm1-emu's decoder misses long forward test-and-branch jumps; tools/emu/isa_fix.sh patches its fm1-isa crate
 const isa = execFileSync(join(ROOT, 'tools/emu/isa_fix.sh'), { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }).trim();
@@ -89,7 +92,7 @@ if (boot) {
   console.log(link ? `link build: ${link}` : 'link build: none (no M1_EMU_MIDI=1 build found: HELLO / INFO and the update handshake are not checked; pass --link)');
   const out = join(OUT, 'boot');
   rmSync(out, { recursive: true, force: true });
-  process.exit(run(join(EMU, 'target/release/m1emu'), ['boot', fw, ...(link ? ['--link', link] : []), '--out', out]));
+  process.exit(await runEmulatorProcess(join(EMU, 'target/release/m1emu'), ['boot', fw, ...(link ? ['--link', link] : []), '--out', out], { cwd: ROOT, timeoutMs: 300000 }));
 }
 const live = join(EMU, 'live/bin', process.platform === 'win32' ? 'fm1-live.exe' : 'fm1-live');
 // (built from a patched copy of fm1-emu, tools/emu/live_build.sh: a cargo patch does not reach it. Builds made before

@@ -1,0 +1,4061 @@
+{
+  "date": "2026-11-09",
+  "ci_run": 42673451565,
+  "firmware_commit": "774e1ddc9815188c2df1f04b4606b3734171ec3a",
+  "fixtures": {
+    "Oracle V": {
+      "bytes": 2294,
+      "sha256": "24d07958ba991ec2486ff26076e4d58e48f2cbdc31b95399365660ac5239b5f7"
+    },
+    "808 Kit": {
+      "bytes": 3230,
+      "sha256": "5b6908c1aaad3aafcb15c9d826f56d16c2425f319f98a430777ed8ad865c9880"
+    },
+    "Oracle V + drums": {
+      "bytes": 3772,
+      "sha256": "20d6ea1abb5d7a81f45053f6166e77662463b7063534da32b2315011dac3cb7a"
+    }
+  },
+  "variants": {
+    "default": {
+      "qualification": "two cores",
+      "surveys": {
+        "stopped": [
+          {
+            "slot": 0,
+            "name": "808 Kit",
+            "transport": false,
+            "hold_seconds": 2.0,
+            "n0_us": 2254,
+            "n0_samples": [
+              2254,
+              2089,
+              2084,
+              2068
+            ],
+            "n0_mean_us": [
+              2007,
+              2008,
+              2001,
+              2005
+            ],
+            "n0_late": 0,
+            "n0_ovl": 0,
+            "n0_shed": 0,
+            "n1_us": 2236,
+            "n1_samples": [
+              2236,
+              2132,
+              2099,
+              2089
+            ],
+            "n1_mean_us": [
+              2032,
+              2030,
+              2036,
+              2035
+            ],
+            "n1_late": 0,
+            "n1_ovl": 0,
+            "n1_shed": 0,
+            "n4_us": 2215,
+            "n4_samples": [
+              2215,
+              2189,
+              2157,
+              2144
+            ],
+            "n4_mean_us": [
+              2075,
+              2079,
+              2076,
+              2075
+            ],
+            "n4_late": 0,
+            "n4_ovl": 0,
+            "n4_shed": 0,
+            "n8_us": 2227,
+            "n8_samples": [
+              2227,
+              2197,
+              2183
+            ],
+            "n8_mean_us": [
+              2126,
+              2122,
+              2126
+            ],
+            "n8_late": 0,
+            "n8_ovl": 0,
+            "n8_shed": 0,
+            "budget_us": 2902
+          },
+          {
+            "slot": 1,
+            "name": "Oracle V + drums",
+            "transport": false,
+            "hold_seconds": 2.0,
+            "n0_us": 4054,
+            "n0_samples": [
+              4054,
+              31,
+              31,
+              31
+            ],
+            "n0_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n0_late": 1,
+            "n0_ovl": 1,
+            "n0_shed": 3,
+            "n1_us": 4085,
+            "n1_samples": [
+              4085,
+              31,
+              32,
+              32
+            ],
+            "n1_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n1_late": 2,
+            "n1_ovl": 1,
+            "n1_shed": 3,
+            "n4_us": 4124,
+            "n4_samples": [
+              4124,
+              31,
+              31,
+              29
+            ],
+            "n4_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n4_late": 1,
+            "n4_ovl": 1,
+            "n4_shed": 3,
+            "n8_us": 4120,
+            "n8_samples": [
+              4120,
+              30,
+              31,
+              30
+            ],
+            "n8_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n8_late": 1,
+            "n8_ovl": 1,
+            "n8_shed": 3,
+            "budget_us": 2902
+          },
+          {
+            "slot": 2,
+            "name": "Oracle V",
+            "transport": false,
+            "hold_seconds": 2.0,
+            "n0_us": 2366,
+            "n0_samples": [
+              2366,
+              1581,
+              1597,
+              1512
+            ],
+            "n0_mean_us": [
+              649,
+              1005,
+              640,
+              954
+            ],
+            "n0_late": 0,
+            "n0_ovl": 0,
+            "n0_shed": 0,
+            "n1_us": 2310,
+            "n1_samples": [
+              2310,
+              2129,
+              2105,
+              2089
+            ],
+            "n1_mean_us": [
+              1497,
+              1502,
+              1465,
+              1472
+            ],
+            "n1_late": 0,
+            "n1_ovl": 0,
+            "n1_shed": 0,
+            "n4_us": 2380,
+            "n4_samples": [
+              2380,
+              2173,
+              2167,
+              2167
+            ],
+            "n4_mean_us": [
+              2087,
+              2036,
+              2030,
+              2041
+            ],
+            "n4_late": 0,
+            "n4_ovl": 0,
+            "n4_shed": 0,
+            "n8_us": 2351,
+            "n8_samples": [
+              2351,
+              2237,
+              2234,
+              2231
+            ],
+            "n8_mean_us": [
+              2141,
+              2124,
+              2101,
+              2105
+            ],
+            "n8_late": 0,
+            "n8_ovl": 0,
+            "n8_shed": 0,
+            "budget_us": 2902
+          }
+        ],
+        "running": [
+          {
+            "slot": 0,
+            "name": "808 Kit",
+            "transport": true,
+            "hold_seconds": 2.0,
+            "n0_us": 2363,
+            "n0_samples": [
+              2295,
+              2301,
+              2363,
+              2363
+            ],
+            "n0_mean_us": [
+              2081,
+              2112,
+              2120,
+              2120
+            ],
+            "n0_late": 0,
+            "n0_ovl": 0,
+            "n0_shed": 0,
+            "n1_us": 2319,
+            "n1_samples": [
+              2319,
+              2276,
+              2295,
+              2295
+            ],
+            "n1_mean_us": [
+              2120,
+              2130,
+              2131,
+              2134
+            ],
+            "n1_late": 0,
+            "n1_ovl": 0,
+            "n1_shed": 0,
+            "n4_us": 2377,
+            "n4_samples": [
+              2377,
+              2377,
+              2340,
+              2340
+            ],
+            "n4_mean_us": [
+              2145,
+              2123,
+              2168,
+              2132
+            ],
+            "n4_late": 0,
+            "n4_ovl": 0,
+            "n4_shed": 0,
+            "n8_us": 2368,
+            "n8_samples": [
+              2368,
+              2307,
+              2350,
+              2326
+            ],
+            "n8_mean_us": [
+              2161,
+              2213,
+              2175,
+              2172
+            ],
+            "n8_late": 0,
+            "n8_ovl": 0,
+            "n8_shed": 0,
+            "budget_us": 2902
+          },
+          {
+            "slot": 1,
+            "name": "Oracle V + drums",
+            "transport": true,
+            "hold_seconds": 2.0,
+            "n0_us": 4090,
+            "n0_samples": [
+              4090,
+              31,
+              30,
+              31
+            ],
+            "n0_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n0_late": 2,
+            "n0_ovl": 1,
+            "n0_shed": 3,
+            "n1_us": 4106,
+            "n1_samples": [
+              4106,
+              29,
+              31,
+              29
+            ],
+            "n1_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n1_late": 1,
+            "n1_ovl": 1,
+            "n1_shed": 3,
+            "n4_us": 4101,
+            "n4_samples": [
+              4101,
+              32,
+              30,
+              31
+            ],
+            "n4_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n4_late": 1,
+            "n4_ovl": 1,
+            "n4_shed": 3,
+            "n8_us": 4105,
+            "n8_samples": [
+              4105,
+              30,
+              31,
+              34
+            ],
+            "n8_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n8_late": 1,
+            "n8_ovl": 1,
+            "n8_shed": 3,
+            "budget_us": 2902
+          },
+          {
+            "slot": 2,
+            "name": "Oracle V",
+            "transport": true,
+            "hold_seconds": 2.0,
+            "n0_us": 2375,
+            "n0_samples": [
+              2375,
+              1568,
+              1587,
+              1591
+            ],
+            "n0_mean_us": [
+              922,
+              680,
+              847,
+              658
+            ],
+            "n0_late": 0,
+            "n0_ovl": 0,
+            "n0_shed": 0,
+            "n1_us": 2341,
+            "n1_samples": [
+              2341,
+              2115,
+              2109,
+              2095
+            ],
+            "n1_mean_us": [
+              1482,
+              1570,
+              1475,
+              1549
+            ],
+            "n1_late": 0,
+            "n1_ovl": 0,
+            "n1_shed": 0,
+            "n4_us": 2382,
+            "n4_samples": [
+              2382,
+              2202,
+              2202,
+              2180
+            ],
+            "n4_mean_us": [
+              2076,
+              2064,
+              2043,
+              2044
+            ],
+            "n4_late": 0,
+            "n4_ovl": 0,
+            "n4_shed": 0,
+            "n8_us": 2347,
+            "n8_samples": [
+              2347,
+              2257,
+              2258,
+              2248
+            ],
+            "n8_mean_us": [
+              2128,
+              2126,
+              2101,
+              2095
+            ],
+            "n8_late": 0,
+            "n8_ovl": 0,
+            "n8_shed": 0,
+            "budget_us": 2902
+          }
+        ]
+      },
+      "core_checks": {
+        "cores-default.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 8103, failed 0; refused jobs 0; jobs done 211706; core 1 stack 2172 B used; longest wait 2393 us since the last read\n"
+      },
+      "block_times": {
+        "blocktime-default-808 Kit.json": {
+          "patch": "808 Kit",
+          "notes": [
+            60,
+            64,
+            67,
+            71
+          ],
+          "seconds": 3.0,
+          "page132": [
+            1069,
+            0,
+            3102,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "page138": [
+            0,
+            0,
+            9337,
+            34000,
+            22278,
+            8687,
+            0,
+            0
+          ],
+          "page139": [
+            10750,
+            83,
+            10,
+            84750,
+            78833,
+            9,
+            2,
+            12958
+          ],
+          "spans_ns": {
+            "entry": {
+              "mean": 958,
+              "max": 14166
+            },
+            "pre": {
+              "mean": 4814,
+              "max": 17875
+            },
+            "eng_pre": {
+              "mean": 34105,
+              "max": 50541
+            },
+            "voices": {
+              "mean": 1967542,
+              "max": 2049083
+            },
+            "eng_post": {
+              "mean": 5115,
+              "max": 19750
+            },
+            "eng_out": {
+              "mean": 32611,
+              "max": 48208
+            },
+            "mix": {
+              "mean": 22755,
+              "max": 35583
+            },
+            "clk": {
+              "mean": 1609,
+              "max": 15541
+            },
+            "uac": {
+              "mean": 865,
+              "max": 14875
+            },
+            "tail": {
+              "mean": 10543,
+              "max": 24666
+            },
+            "guard": {
+              "mean": 5241,
+              "max": 18416
+            },
+            "isr": {
+              "mean": 2086162,
+              "max": 2174833
+            },
+            "t5_in": {
+              "mean": 196607,
+              "max": 220250
+            },
+            "t5_out": {
+              "mean": 73875,
+              "max": 98375
+            },
+            "self": {
+              "mean": 9548,
+              "max": 24000
+            },
+            "hand": {
+              "mean": 0,
+              "max": 0
+            },
+            "wait": {
+              "mean": 0,
+              "max": 0
+            },
+            "c0_busy": {
+              "mean": 1967542,
+              "max": 2049083
+            },
+            "c1_busy": {
+              "mean": 0,
+              "max": 0
+            },
+            "c1_idle": {
+              "mean": 1967542,
+              "max": 2049083
+            }
+          }
+        },
+        "blocktime-default-Oracle V.json": {
+          "patch": "Oracle V",
+          "notes": [
+            60,
+            64,
+            67,
+            71
+          ],
+          "seconds": 3.0,
+          "page132": [
+            1037,
+            0,
+            3009,
+            9333,
+            18666,
+            18666,
+            0,
+            2305
+          ],
+          "page138": [
+            832,
+            18500,
+            9444,
+            31208,
+            21375,
+            8661,
+            137473,
+            353583
+          ],
+          "page139": [
+            17270,
+            83,
+            18,
+            160958,
+            150208,
+            16,
+            2,
+            13125
+          ],
+          "spans_ns": {
+            "entry": {
+              "mean": 811,
+              "max": 13250
+            },
+            "pre": {
+              "mean": 5240,
+              "max": 20750
+            },
+            "eng_pre": {
+              "mean": 43717,
+              "max": 61208
+            },
+            "voices": {
+              "mean": 1920102,
+              "max": 2022166
+            },
+            "eng_post": {
+              "mean": 8044,
+              "max": 21833
+            },
+            "eng_out": {
+              "mean": 31593,
+              "max": 45375
+            },
+            "mix": {
+              "mean": 26048,
+              "max": 40791
+            },
+            "clk": {
+              "mean": 4658,
+              "max": 18750
+            },
+            "uac": {
+              "mean": 1565,
+              "max": 17083
+            },
+            "tail": {
+              "mean": 10799,
+              "max": 28500
+            },
+            "guard": {
+              "mean": 3157,
+              "max": 16375
+            },
+            "isr": {
+              "mean": 2055742,
+              "max": 2180083
+            },
+            "t5_in": {
+              "mean": 196817,
+              "max": 221166
+            },
+            "t5_out": {
+              "mean": 76727,
+              "max": 96291
+            },
+            "self": {
+              "mean": 6622,
+              "max": 20791
+            },
+            "hand": {
+              "mean": 4735,
+              "max": 21250
+            },
+            "wait": {
+              "mean": 7184,
+              "max": 44791
+            },
+            "c0_busy": {
+              "mean": 1912918,
+              "max": 2014458
+            },
+            "c1_busy": {
+              "mean": 1237259,
+              "max": 1284750
+            },
+            "c1_idle": {
+              "mean": 682842,
+              "max": 761708
+            }
+          }
+        },
+        "blocktime-default-mixed.json": {
+          "patch": null,
+          "notes": [
+            60,
+            64,
+            67,
+            71
+          ],
+          "seconds": 3.0,
+          "page132": [
+            0,
+            1068,
+            3100,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "page138": [
+            0,
+            0,
+            0,
+            16208,
+            167,
+            30773,
+            0,
+            0
+          ],
+          "page139": [
+            54692,
+            83,
+            51,
+            412041,
+            384791,
+            50,
+            2,
+            13041
+          ],
+          "spans_ns": {
+            "entry": {
+              "mean": 0,
+              "max": 0
+            },
+            "pre": {
+              "mean": 0,
+              "max": 0
+            },
+            "eng_pre": {
+              "mean": 0,
+              "max": 0
+            },
+            "voices": {
+              "mean": 0,
+              "max": 0
+            },
+            "eng_post": {
+              "mean": 0,
+              "max": 0
+            },
+            "eng_out": {
+              "mean": 0,
+              "max": 0
+            },
+            "mix": {
+              "mean": 0,
+              "max": 0
+            },
+            "clk": {
+              "mean": 0,
+              "max": 0
+            },
+            "uac": {
+              "mean": 0,
+              "max": 0
+            },
+            "tail": {
+              "mean": 0,
+              "max": 0
+            },
+            "guard": {
+              "mean": 0,
+              "max": 0
+            },
+            "isr": {
+              "mean": 0,
+              "max": 0
+            },
+            "t5_in": {
+              "mean": 0,
+              "max": 0
+            },
+            "t5_out": {
+              "mean": 0,
+              "max": 0
+            },
+            "self": {
+              "mean": 0,
+              "max": 0
+            },
+            "hand": {
+              "mean": 0,
+              "max": 0
+            },
+            "wait": {
+              "mean": 0,
+              "max": 0
+            },
+            "c0_busy": {
+              "mean": 0,
+              "max": 0
+            },
+            "c1_busy": {
+              "mean": 0,
+              "max": 0
+            },
+            "c1_idle": {
+              "mean": 0,
+              "max": 0
+            }
+          }
+        }
+      }
+    },
+    "size": {
+      "qualification": "two cores",
+      "surveys": {
+        "stopped": [
+          {
+            "slot": 0,
+            "name": "808 Kit",
+            "transport": false,
+            "hold_seconds": 2.0,
+            "n0_us": 2482,
+            "n0_samples": [
+              2482,
+              2119,
+              2127,
+              2119
+            ],
+            "n0_mean_us": [
+              2037,
+              2023,
+              2043,
+              2055
+            ],
+            "n0_late": 0,
+            "n0_ovl": 0,
+            "n0_shed": 0,
+            "n1_us": 2300,
+            "n1_samples": [
+              2300,
+              2175,
+              2161,
+              2161
+            ],
+            "n1_mean_us": [
+              2101,
+              2097,
+              2090,
+              2104
+            ],
+            "n1_late": 0,
+            "n1_ovl": 0,
+            "n1_shed": 0,
+            "n4_us": 2295,
+            "n4_samples": [
+              2295,
+              2212,
+              2198,
+              2202
+            ],
+            "n4_mean_us": [
+              2123,
+              2128,
+              2121,
+              2129
+            ],
+            "n4_late": 0,
+            "n4_ovl": 0,
+            "n4_shed": 0,
+            "n8_us": 2289,
+            "n8_samples": [
+              2289,
+              2243,
+              2213,
+              2239
+            ],
+            "n8_mean_us": [
+              2171,
+              2133,
+              2144,
+              2153
+            ],
+            "n8_late": 0,
+            "n8_ovl": 0,
+            "n8_shed": 0,
+            "budget_us": 2902
+          },
+          {
+            "slot": 1,
+            "name": "Oracle V + drums",
+            "transport": false,
+            "hold_seconds": 2.0,
+            "n0_us": 4070,
+            "n0_samples": [
+              4070,
+              27,
+              26,
+              26
+            ],
+            "n0_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n0_late": 4,
+            "n0_ovl": 1,
+            "n0_shed": 3,
+            "n1_us": 4133,
+            "n1_samples": [
+              4133,
+              26,
+              27,
+              26
+            ],
+            "n1_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n1_late": 4,
+            "n1_ovl": 1,
+            "n1_shed": 3,
+            "n4_us": 4114,
+            "n4_samples": [
+              4114,
+              26,
+              26,
+              26
+            ],
+            "n4_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n4_late": 2,
+            "n4_ovl": 1,
+            "n4_shed": 3,
+            "n8_us": 4129,
+            "n8_samples": [
+              4129,
+              26,
+              26,
+              26
+            ],
+            "n8_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n8_late": 3,
+            "n8_ovl": 1,
+            "n8_shed": 3,
+            "budget_us": 2902
+          },
+          {
+            "slot": 2,
+            "name": "Oracle V",
+            "transport": false,
+            "hold_seconds": 2.0,
+            "n0_us": 2349,
+            "n0_samples": [
+              2349,
+              1437,
+              1478,
+              1430
+            ],
+            "n0_mean_us": [
+              583,
+              924,
+              591,
+              596
+            ],
+            "n0_late": 0,
+            "n0_ovl": 0,
+            "n0_shed": 0,
+            "n1_us": 2295,
+            "n1_samples": [
+              2295,
+              2060,
+              2060,
+              2069
+            ],
+            "n1_mean_us": [
+              1449,
+              1406,
+              1425,
+              1409
+            ],
+            "n1_late": 0,
+            "n1_ovl": 0,
+            "n1_shed": 0,
+            "n4_us": 2333,
+            "n4_samples": [
+              2333,
+              2096,
+              2096,
+              2084
+            ],
+            "n4_mean_us": [
+              2021,
+              1999,
+              1998,
+              1989
+            ],
+            "n4_late": 0,
+            "n4_ovl": 0,
+            "n4_shed": 0,
+            "n8_us": 2333,
+            "n8_samples": [
+              2333,
+              2154,
+              2133,
+              2122
+            ],
+            "n8_mean_us": [
+              2072,
+              2039,
+              2034,
+              2038
+            ],
+            "n8_late": 0,
+            "n8_ovl": 0,
+            "n8_shed": 0,
+            "budget_us": 2902
+          }
+        ],
+        "running": [
+          {
+            "slot": 0,
+            "name": "808 Kit",
+            "transport": true,
+            "hold_seconds": 2.0,
+            "n0_us": 2325,
+            "n0_samples": [
+              2324,
+              2270,
+              2325,
+              2325
+            ],
+            "n0_mean_us": [
+              2117,
+              2170,
+              2148,
+              2121
+            ],
+            "n0_late": 0,
+            "n0_ovl": 0,
+            "n0_shed": 0,
+            "n1_us": 2383,
+            "n1_samples": [
+              2383,
+              2326,
+              2356,
+              2303
+            ],
+            "n1_mean_us": [
+              2164,
+              2176,
+              2156,
+              2166
+            ],
+            "n1_late": 0,
+            "n1_ovl": 0,
+            "n1_shed": 0,
+            "n4_us": 2437,
+            "n4_samples": [
+              2437,
+              2349,
+              2385,
+              2385
+            ],
+            "n4_mean_us": [
+              2216,
+              2202,
+              2205,
+              2177
+            ],
+            "n4_late": 0,
+            "n4_ovl": 0,
+            "n4_shed": 0,
+            "n8_us": 2479,
+            "n8_samples": [
+              2479,
+              2346,
+              2379,
+              2378
+            ],
+            "n8_mean_us": [
+              2213,
+              2207,
+              2255,
+              2275
+            ],
+            "n8_late": 0,
+            "n8_ovl": 0,
+            "n8_shed": 0,
+            "budget_us": 2902
+          },
+          {
+            "slot": 1,
+            "name": "Oracle V + drums",
+            "transport": true,
+            "hold_seconds": 2.0,
+            "n0_us": 4080,
+            "n0_samples": [
+              4080,
+              26,
+              26,
+              26
+            ],
+            "n0_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n0_late": 2,
+            "n0_ovl": 1,
+            "n0_shed": 3,
+            "n1_us": 4164,
+            "n1_samples": [
+              4164,
+              26,
+              26,
+              27
+            ],
+            "n1_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n1_late": 4,
+            "n1_ovl": 1,
+            "n1_shed": 3,
+            "n4_us": 4118,
+            "n4_samples": [
+              4118,
+              26,
+              26,
+              29
+            ],
+            "n4_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n4_late": 2,
+            "n4_ovl": 1,
+            "n4_shed": 3,
+            "n8_us": 4094,
+            "n8_samples": [
+              4094,
+              24,
+              26,
+              26
+            ],
+            "n8_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n8_late": 4,
+            "n8_ovl": 1,
+            "n8_shed": 3,
+            "budget_us": 2902
+          },
+          {
+            "slot": 2,
+            "name": "Oracle V",
+            "transport": true,
+            "hold_seconds": 2.0,
+            "n0_us": 2313,
+            "n0_samples": [
+              2313,
+              1454,
+              1437,
+              1538
+            ],
+            "n0_mean_us": [
+              583,
+              648,
+              673,
+              621
+            ],
+            "n0_late": 0,
+            "n0_ovl": 0,
+            "n0_shed": 0,
+            "n1_us": 2332,
+            "n1_samples": [
+              2332,
+              2045,
+              2162,
+              2162
+            ],
+            "n1_mean_us": [
+              1407,
+              1476,
+              1432,
+              1426
+            ],
+            "n1_late": 0,
+            "n1_ovl": 0,
+            "n1_shed": 0,
+            "n4_us": 2329,
+            "n4_samples": [
+              2329,
+              2160,
+              2126,
+              2136
+            ],
+            "n4_mean_us": [
+              2017,
+              1992,
+              2003,
+              1993
+            ],
+            "n4_late": 0,
+            "n4_ovl": 0,
+            "n4_shed": 0,
+            "n8_us": 2338,
+            "n8_samples": [
+              2338,
+              2182,
+              2182,
+              2168
+            ],
+            "n8_mean_us": [
+              2065,
+              2057,
+              2046,
+              2052
+            ],
+            "n8_late": 0,
+            "n8_ovl": 0,
+            "n8_shed": 0,
+            "budget_us": 2902
+          }
+        ]
+      },
+      "core_checks": {
+        "cores-size.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 849, failed 0; refused jobs 0; jobs done 54590; core 1 stack 2556 B used; longest wait 2154 us since the last read\n"
+      },
+      "block_times": {
+        "blocktime-size-808 Kit.json": {
+          "patch": "808 Kit",
+          "notes": [
+            60,
+            64,
+            67,
+            71
+          ],
+          "seconds": 3.0,
+          "page132": [
+            1078,
+            0,
+            3128,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "page138": [
+            0,
+            0,
+            9685,
+            28375,
+            22778,
+            8446,
+            0,
+            0
+          ],
+          "page139": [
+            17180,
+            83,
+            16,
+            137791,
+            128875,
+            15,
+            2,
+            13041
+          ],
+          "spans_ns": {
+            "entry": {
+              "mean": 1510,
+              "max": 14166
+            },
+            "pre": {
+              "mean": 4339,
+              "max": 21750
+            },
+            "eng_pre": {
+              "mean": 19421,
+              "max": 39166
+            },
+            "voices": {
+              "mean": 2028614,
+              "max": 2100125
+            },
+            "eng_post": {
+              "mean": 2875,
+              "max": 15541
+            },
+            "eng_out": {
+              "mean": 26379,
+              "max": 41291
+            },
+            "mix": {
+              "mean": 14653,
+              "max": 31208
+            },
+            "clk": {
+              "mean": 5057,
+              "max": 21666
+            },
+            "uac": {
+              "mean": 3010,
+              "max": 15875
+            },
+            "tail": {
+              "mean": 11892,
+              "max": 28041
+            },
+            "guard": {
+              "mean": 692,
+              "max": 11375
+            },
+            "isr": {
+              "mean": 2118446,
+              "max": 2206000
+            },
+            "t5_in": {
+              "mean": 204033,
+              "max": 230041
+            },
+            "t5_out": {
+              "mean": 76494,
+              "max": 87500
+            },
+            "self": {
+              "mean": 3806,
+              "max": 18541
+            },
+            "hand": {
+              "mean": 0,
+              "max": 0
+            },
+            "wait": {
+              "mean": 0,
+              "max": 0
+            },
+            "c0_busy": {
+              "mean": 2028614,
+              "max": 2100125
+            },
+            "c1_busy": {
+              "mean": 0,
+              "max": 0
+            },
+            "c1_idle": {
+              "mean": 2028614,
+              "max": 2100125
+            }
+          }
+        },
+        "blocktime-size-Oracle V.json": {
+          "patch": "Oracle V",
+          "notes": [
+            60,
+            64,
+            67,
+            71
+          ],
+          "seconds": 3.0,
+          "page132": [
+            1074,
+            0,
+            3116,
+            9666,
+            19332,
+            19332,
+            0,
+            2305
+          ],
+          "page138": [
+            774,
+            15333,
+            9557,
+            32166,
+            21403,
+            9705,
+            134184,
+            346250
+          ],
+          "page139": [
+            16071,
+            83,
+            17,
+            129500,
+            118666,
+            15,
+            2,
+            13041
+          ],
+          "spans_ns": {
+            "entry": {
+              "mean": 190,
+              "max": 11000
+            },
+            "pre": {
+              "mean": 1795,
+              "max": 14916
+            },
+            "eng_pre": {
+              "mean": 42310,
+              "max": 60583
+            },
+            "voices": {
+              "mean": 1876617,
+              "max": 1975791
+            },
+            "eng_post": {
+              "mean": 4676,
+              "max": 17083
+            },
+            "eng_out": {
+              "mean": 23308,
+              "max": 36000
+            },
+            "mix": {
+              "mean": 14035,
+              "max": 28000
+            },
+            "clk": {
+              "mean": 7736,
+              "max": 22416
+            },
+            "uac": {
+              "mean": 571,
+              "max": 14708
+            },
+            "tail": {
+              "mean": 16756,
+              "max": 31000
+            },
+            "guard": {
+              "mean": 2466,
+              "max": 16000
+            },
+            "isr": {
+              "mean": 1990464,
+              "max": 2108000
+            },
+            "t5_in": {
+              "mean": 192333,
+              "max": 221750
+            },
+            "t5_out": {
+              "mean": 84486,
+              "max": 103708
+            },
+            "self": {
+              "mean": 5353,
+              "max": 21416
+            },
+            "hand": {
+              "mean": 5725,
+              "max": 23833
+            },
+            "wait": {
+              "mean": 6457,
+              "max": 30958
+            },
+            "c0_busy": {
+              "mean": 1870159,
+              "max": 1966000
+            },
+            "c1_busy": {
+              "mean": 1207659,
+              "max": 1243708
+            },
+            "c1_idle": {
+              "mean": 668957,
+              "max": 746250
+            }
+          }
+        },
+        "blocktime-size-mixed.json": {
+          "patch": null,
+          "notes": [
+            60,
+            64,
+            67,
+            71
+          ],
+          "seconds": 3.0,
+          "page132": [
+            0,
+            1080,
+            3134,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "page138": [
+            0,
+            0,
+            0,
+            20500,
+            151,
+            31144,
+            0,
+            0
+          ],
+          "page139": [
+            54558,
+            83,
+            51,
+            424250,
+            397375,
+            50,
+            2,
+            13000
+          ],
+          "spans_ns": {
+            "entry": {
+              "mean": 0,
+              "max": 0
+            },
+            "pre": {
+              "mean": 0,
+              "max": 0
+            },
+            "eng_pre": {
+              "mean": 0,
+              "max": 0
+            },
+            "voices": {
+              "mean": 0,
+              "max": 0
+            },
+            "eng_post": {
+              "mean": 0,
+              "max": 0
+            },
+            "eng_out": {
+              "mean": 0,
+              "max": 0
+            },
+            "mix": {
+              "mean": 0,
+              "max": 0
+            },
+            "clk": {
+              "mean": 0,
+              "max": 0
+            },
+            "uac": {
+              "mean": 0,
+              "max": 0
+            },
+            "tail": {
+              "mean": 0,
+              "max": 0
+            },
+            "guard": {
+              "mean": 0,
+              "max": 0
+            },
+            "isr": {
+              "mean": 0,
+              "max": 0
+            },
+            "t5_in": {
+              "mean": 0,
+              "max": 0
+            },
+            "t5_out": {
+              "mean": 0,
+              "max": 0
+            },
+            "self": {
+              "mean": 0,
+              "max": 0
+            },
+            "hand": {
+              "mean": 0,
+              "max": 0
+            },
+            "wait": {
+              "mean": 0,
+              "max": 0
+            },
+            "c0_busy": {
+              "mean": 0,
+              "max": 0
+            },
+            "c1_busy": {
+              "mean": 0,
+              "max": 0
+            },
+            "c1_idle": {
+              "mean": 0,
+              "max": 0
+            }
+          }
+        }
+      }
+    },
+    "aot": {
+      "qualification": "INVALID: second core faulted",
+      "surveys": {
+        "stopped": [
+          {
+            "slot": 0,
+            "name": "808 Kit",
+            "transport": false,
+            "hold_seconds": 2.0,
+            "n0_us": 11333,
+            "n0_samples": [
+              11333,
+              2080,
+              2080,
+              2094
+            ],
+            "n0_mean_us": [
+              2015,
+              1993,
+              2014,
+              2010
+            ],
+            "n0_late": 0,
+            "n0_ovl": 0,
+            "n0_shed": 0,
+            "n1_us": 2324,
+            "n1_samples": [
+              2324,
+              2140,
+              2125,
+              2127
+            ],
+            "n1_mean_us": [
+              2060,
+              2065,
+              2056,
+              2061
+            ],
+            "n1_late": 0,
+            "n1_ovl": 0,
+            "n1_shed": 0,
+            "n4_us": 2288,
+            "n4_samples": [
+              2288,
+              2172,
+              2166,
+              2169
+            ],
+            "n4_mean_us": [
+              2110,
+              2086,
+              2093,
+              2091
+            ],
+            "n4_late": 0,
+            "n4_ovl": 0,
+            "n4_shed": 0,
+            "n8_us": 2322,
+            "n8_samples": [
+              2322,
+              2215,
+              2205,
+              2200
+            ],
+            "n8_mean_us": [
+              2131,
+              2134,
+              2129,
+              2130
+            ],
+            "n8_late": 0,
+            "n8_ovl": 0,
+            "n8_shed": 0,
+            "budget_us": 2902
+          },
+          {
+            "slot": 1,
+            "name": "Oracle V + drums",
+            "transport": false,
+            "hold_seconds": 2.0,
+            "n0_us": 5002,
+            "n0_samples": [
+              5002,
+              29,
+              29,
+              28
+            ],
+            "n0_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n0_late": 3,
+            "n0_ovl": 1,
+            "n0_shed": 3,
+            "n1_us": 4974,
+            "n1_samples": [
+              4974,
+              27,
+              27,
+              29
+            ],
+            "n1_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n1_late": 4,
+            "n1_ovl": 1,
+            "n1_shed": 3,
+            "n4_us": 4993,
+            "n4_samples": [
+              4993,
+              27,
+              27,
+              26
+            ],
+            "n4_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n4_late": 2,
+            "n4_ovl": 1,
+            "n4_shed": 3,
+            "n8_us": 4965,
+            "n8_samples": [
+              4965,
+              26,
+              27,
+              26
+            ],
+            "n8_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n8_late": 2,
+            "n8_ovl": 1,
+            "n8_shed": 3,
+            "budget_us": 2902
+          },
+          {
+            "slot": 2,
+            "name": "Oracle V",
+            "transport": false,
+            "hold_seconds": 2.0,
+            "n0_us": 3236,
+            "n0_samples": [
+              3236,
+              1546,
+              1508,
+              1480
+            ],
+            "n0_mean_us": [
+              567,
+              569,
+              918,
+              601
+            ],
+            "n0_late": 0,
+            "n0_ovl": 0,
+            "n0_shed": 0,
+            "n1_us": 3205,
+            "n1_samples": [
+              3205,
+              2018,
+              2029,
+              2007
+            ],
+            "n1_mean_us": [
+              1577,
+              1447,
+              1595,
+              1437
+            ],
+            "n1_late": 0,
+            "n1_ovl": 0,
+            "n1_shed": 0,
+            "n4_us": 3218,
+            "n4_samples": [
+              3218,
+              2550,
+              2546,
+              2537
+            ],
+            "n4_mean_us": [
+              2462,
+              2425,
+              2429,
+              2423
+            ],
+            "n4_late": 3,
+            "n4_ovl": 0,
+            "n4_shed": 1,
+            "n8_us": 3179,
+            "n8_samples": [
+              3179,
+              2608,
+              2600,
+              2575
+            ],
+            "n8_mean_us": [
+              2500,
+              2499,
+              2485,
+              2477
+            ],
+            "n8_late": 3,
+            "n8_ovl": 0,
+            "n8_shed": 1,
+            "budget_us": 2902
+          }
+        ],
+        "running": [
+          {
+            "slot": 0,
+            "name": "808 Kit",
+            "transport": true,
+            "hold_seconds": 2.0,
+            "n0_us": 2575,
+            "n0_samples": [
+              2575,
+              2281,
+              2288,
+              2275
+            ],
+            "n0_mean_us": [
+              2084,
+              2116,
+              2140,
+              2105
+            ],
+            "n0_late": 0,
+            "n0_ovl": 0,
+            "n0_shed": 0,
+            "n1_us": 2447,
+            "n1_samples": [
+              2447,
+              2337,
+              2391,
+              2355
+            ],
+            "n1_mean_us": [
+              2141,
+              2161,
+              2135,
+              2163
+            ],
+            "n1_late": 0,
+            "n1_ovl": 0,
+            "n1_shed": 0,
+            "n4_us": 2420,
+            "n4_samples": [
+              2394,
+              2355,
+              2420,
+              2420
+            ],
+            "n4_mean_us": [
+              2182,
+              2132,
+              2183,
+              2221
+            ],
+            "n4_late": 0,
+            "n4_ovl": 0,
+            "n4_shed": 0,
+            "n8_us": 2428,
+            "n8_samples": [
+              2428,
+              2327,
+              2425,
+              2394
+            ],
+            "n8_mean_us": [
+              2186,
+              2211,
+              2189,
+              2160
+            ],
+            "n8_late": 0,
+            "n8_ovl": 0,
+            "n8_shed": 0,
+            "budget_us": 2902
+          },
+          {
+            "slot": 1,
+            "name": "Oracle V + drums",
+            "transport": true,
+            "hold_seconds": 2.0,
+            "n0_us": 4988,
+            "n0_samples": [
+              4988,
+              27,
+              27,
+              27
+            ],
+            "n0_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n0_late": 3,
+            "n0_ovl": 1,
+            "n0_shed": 3,
+            "n1_us": 4967,
+            "n1_samples": [
+              4967,
+              27,
+              29,
+              29
+            ],
+            "n1_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n1_late": 4,
+            "n1_ovl": 1,
+            "n1_shed": 3,
+            "n4_us": 4959,
+            "n4_samples": [
+              4959,
+              24,
+              27,
+              27
+            ],
+            "n4_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n4_late": 4,
+            "n4_ovl": 1,
+            "n4_shed": 3,
+            "n8_us": 4981,
+            "n8_samples": [
+              4981,
+              26,
+              28
+            ],
+            "n8_mean_us": [
+              2283,
+              2283,
+              2283
+            ],
+            "n8_late": 4,
+            "n8_ovl": 1,
+            "n8_shed": 3,
+            "budget_us": 2902
+          },
+          {
+            "slot": 2,
+            "name": "Oracle V",
+            "transport": true,
+            "hold_seconds": 2.0,
+            "n0_us": 3197,
+            "n0_samples": [
+              3197,
+              1545,
+              1565,
+              1589
+            ],
+            "n0_mean_us": [
+              598,
+              578,
+              852,
+              702
+            ],
+            "n0_late": 0,
+            "n0_ovl": 0,
+            "n0_shed": 0,
+            "n1_us": 3094,
+            "n1_samples": [
+              3094,
+              2079,
+              2079,
+              2121
+            ],
+            "n1_mean_us": [
+              1568,
+              1489,
+              1456,
+              1567
+            ],
+            "n1_late": 0,
+            "n1_ovl": 0,
+            "n1_shed": 0,
+            "n4_us": 3218,
+            "n4_samples": [
+              3218,
+              2578,
+              2508,
+              2506
+            ],
+            "n4_mean_us": [
+              2457,
+              2413,
+              2410,
+              2411
+            ],
+            "n4_late": 3,
+            "n4_ovl": 0,
+            "n4_shed": 1,
+            "n8_us": 3196,
+            "n8_samples": [
+              3196,
+              2605,
+              2604,
+              2596
+            ],
+            "n8_mean_us": [
+              2507,
+              2484,
+              2459,
+              2477
+            ],
+            "n8_late": 3,
+            "n8_ovl": 0,
+            "n8_shed": 1,
+            "budget_us": 2902
+          }
+        ]
+      },
+      "core_checks": {
+        "cores-aot.txt": "1 CORE (job late); barred yes; trace 0xc1000002; split on\nself-test passed 1, failed 0; refused jobs 0; jobs done 1; core 1 stack 3304 B used; longest wait 17 us since the last read\n"
+      },
+      "block_times": {
+        "blocktime-aot-808 Kit.json": {
+          "patch": "808 Kit",
+          "notes": [
+            60,
+            64,
+            67,
+            71
+          ],
+          "seconds": 3.0,
+          "page132": [
+            1092,
+            0,
+            3168,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "page138": [
+            0,
+            0,
+            9300,
+            35750,
+            22724,
+            8905,
+            0,
+            0
+          ],
+          "page139": [
+            17222,
+            83,
+            19,
+            165125,
+            153875,
+            17,
+            2,
+            12916
+          ],
+          "spans_ns": {
+            "entry": {
+              "mean": 1249,
+              "max": 12250
+            },
+            "pre": {
+              "mean": 2736,
+              "max": 17416
+            },
+            "eng_pre": {
+              "mean": 21495,
+              "max": 38416
+            },
+            "voices": {
+              "mean": 1996076,
+              "max": 2068458
+            },
+            "eng_post": {
+              "mean": 1844,
+              "max": 15958
+            },
+            "eng_out": {
+              "mean": 24956,
+              "max": 37958
+            },
+            "mix": {
+              "mean": 13808,
+              "max": 26750
+            },
+            "clk": {
+              "mean": 4837,
+              "max": 19916
+            },
+            "uac": {
+              "mean": 1599,
+              "max": 17250
+            },
+            "tail": {
+              "mean": 12194,
+              "max": 26208
+            },
+            "guard": {
+              "mean": 3911,
+              "max": 16750
+            },
+            "isr": {
+              "mean": 2084712,
+              "max": 2168083
+            },
+            "t5_in": {
+              "mean": 195965,
+              "max": 233250
+            },
+            "t5_out": {
+              "mean": 73423,
+              "max": 94458
+            },
+            "self": {
+              "mean": 9180,
+              "max": 22958
+            },
+            "hand": {
+              "mean": 0,
+              "max": 0
+            },
+            "wait": {
+              "mean": 0,
+              "max": 0
+            },
+            "c0_busy": {
+              "mean": 1996076,
+              "max": 2068458
+            },
+            "c1_busy": {
+              "mean": 0,
+              "max": 0
+            },
+            "c1_idle": {
+              "mean": 1996076,
+              "max": 2068458
+            }
+          }
+        },
+        "blocktime-aot-Oracle V.json": {
+          "patch": "Oracle V",
+          "notes": [
+            60,
+            64,
+            67,
+            71
+          ],
+          "seconds": 3.0,
+          "page132": [
+            1088,
+            0,
+            3156,
+            0,
+            0,
+            0,
+            1088,
+            0
+          ],
+          "page138": [
+            0,
+            0,
+            9835,
+            31208,
+            26394,
+            5122,
+            0,
+            0
+          ],
+          "page139": [
+            9208,
+            83,
+            9,
+            78125,
+            72750,
+            8,
+            2,
+            13000
+          ],
+          "spans_ns": {
+            "entry": {
+              "mean": 1251,
+              "max": 15166
+            },
+            "pre": {
+              "mean": 5182,
+              "max": 18583
+            },
+            "eng_pre": {
+              "mean": 52512,
+              "max": 67708
+            },
+            "voices": {
+              "mean": 2275232,
+              "max": 2389083
+            },
+            "eng_post": {
+              "mean": 9471,
+              "max": 28125
+            },
+            "eng_out": {
+              "mean": 30467,
+              "max": 47916
+            },
+            "mix": {
+              "mean": 13297,
+              "max": 32083
+            },
+            "clk": {
+              "mean": 6418,
+              "max": 24291
+            },
+            "uac": {
+              "mean": 3266,
+              "max": 20333
+            },
+            "tail": {
+              "mean": 13634,
+              "max": 29791
+            },
+            "guard": {
+              "mean": 5204,
+              "max": 25208
+            },
+            "isr": {
+              "mean": 2415938,
+              "max": 2538750
+            },
+            "t5_in": {
+              "mean": 241106,
+              "max": 275791
+            },
+            "t5_out": {
+              "mean": 43786,
+              "max": 60458
+            },
+            "self": {
+              "mean": 16867,
+              "max": 38958
+            },
+            "hand": {
+              "mean": 259,
+              "max": 16125
+            },
+            "wait": {
+              "mean": 0,
+              "max": 0
+            },
+            "c0_busy": {
+              "mean": 2275232,
+              "max": 2389083
+            },
+            "c1_busy": {
+              "mean": 0,
+              "max": 0
+            },
+            "c1_idle": {
+              "mean": 2275232,
+              "max": 2389083
+            }
+          }
+        },
+        "blocktime-aot-mixed.json": {
+          "patch": null,
+          "notes": [
+            60,
+            64,
+            67,
+            71
+          ],
+          "seconds": 3.0,
+          "page132": [
+            0,
+            1042,
+            3023,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "page138": [
+            0,
+            0,
+            0,
+            18541,
+            151,
+            30029,
+            0,
+            0
+          ],
+          "page139": [
+            54537,
+            83,
+            49,
+            408083,
+            381958,
+            48,
+            2,
+            13041
+          ],
+          "spans_ns": {
+            "entry": {
+              "mean": 0,
+              "max": 0
+            },
+            "pre": {
+              "mean": 0,
+              "max": 0
+            },
+            "eng_pre": {
+              "mean": 0,
+              "max": 0
+            },
+            "voices": {
+              "mean": 0,
+              "max": 0
+            },
+            "eng_post": {
+              "mean": 0,
+              "max": 0
+            },
+            "eng_out": {
+              "mean": 0,
+              "max": 0
+            },
+            "mix": {
+              "mean": 0,
+              "max": 0
+            },
+            "clk": {
+              "mean": 0,
+              "max": 0
+            },
+            "uac": {
+              "mean": 0,
+              "max": 0
+            },
+            "tail": {
+              "mean": 0,
+              "max": 0
+            },
+            "guard": {
+              "mean": 0,
+              "max": 0
+            },
+            "isr": {
+              "mean": 0,
+              "max": 0
+            },
+            "t5_in": {
+              "mean": 0,
+              "max": 0
+            },
+            "t5_out": {
+              "mean": 0,
+              "max": 0
+            },
+            "self": {
+              "mean": 0,
+              "max": 0
+            },
+            "hand": {
+              "mean": 0,
+              "max": 0
+            },
+            "wait": {
+              "mean": 0,
+              "max": 0
+            },
+            "c0_busy": {
+              "mean": 0,
+              "max": 0
+            },
+            "c1_busy": {
+              "mean": 0,
+              "max": 0
+            },
+            "c1_idle": {
+              "mean": 0,
+              "max": 0
+            }
+          }
+        }
+      }
+    },
+    "ram": {
+      "qualification": "INVALID: inherited bar from AOT",
+      "surveys": {
+        "stopped": [
+          {
+            "slot": 0,
+            "name": "808 Kit",
+            "transport": false,
+            "hold_seconds": 2.0,
+            "n0_us": 2294,
+            "n0_samples": [
+              2294,
+              2033,
+              1998
+            ],
+            "n0_mean_us": [
+              1912,
+              1913,
+              1921
+            ],
+            "n0_late": 0,
+            "n0_ovl": 0,
+            "n0_shed": 0,
+            "n1_us": 2152,
+            "n1_samples": [
+              2152,
+              2058,
+              2037
+            ],
+            "n1_mean_us": [
+              1951,
+              1973,
+              1953
+            ],
+            "n1_late": 0,
+            "n1_ovl": 0,
+            "n1_shed": 0,
+            "n4_us": 2131,
+            "n4_samples": [
+              2131,
+              2085,
+              2082,
+              2083
+            ],
+            "n4_mean_us": [
+              2007,
+              1989,
+              2009,
+              2002
+            ],
+            "n4_late": 0,
+            "n4_ovl": 0,
+            "n4_shed": 0,
+            "n8_us": 2146,
+            "n8_samples": [
+              2146,
+              2128,
+              2100,
+              2103
+            ],
+            "n8_mean_us": [
+              2055,
+              2040,
+              2018,
+              2025
+            ],
+            "n8_late": 0,
+            "n8_ovl": 0,
+            "n8_shed": 0,
+            "budget_us": 2902
+          },
+          {
+            "slot": 1,
+            "name": "Oracle V + drums",
+            "transport": false,
+            "hold_seconds": 2.0,
+            "n0_us": 5114,
+            "n0_samples": [
+              5114,
+              2935,
+              26,
+              26
+            ],
+            "n0_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n0_late": 8,
+            "n0_ovl": 1,
+            "n0_shed": 3,
+            "n1_us": 5120,
+            "n1_samples": [
+              5120,
+              26,
+              26,
+              24
+            ],
+            "n1_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n1_late": 5,
+            "n1_ovl": 1,
+            "n1_shed": 3,
+            "n4_us": 5098,
+            "n4_samples": [
+              5098,
+              26,
+              26,
+              26
+            ],
+            "n4_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n4_late": 7,
+            "n4_ovl": 1,
+            "n4_shed": 3,
+            "n8_us": 5135,
+            "n8_samples": [
+              5135,
+              26,
+              26
+            ],
+            "n8_mean_us": [
+              2283,
+              2283,
+              2283
+            ],
+            "n8_late": 8,
+            "n8_ovl": 1,
+            "n8_shed": 3,
+            "budget_us": 2902
+          },
+          {
+            "slot": 2,
+            "name": "Oracle V",
+            "transport": false,
+            "hold_seconds": 2.0,
+            "n0_us": 3481,
+            "n0_samples": [
+              3481,
+              1435,
+              1470,
+              1413
+            ],
+            "n0_mean_us": [
+              567,
+              583,
+              569,
+              768
+            ],
+            "n0_late": 0,
+            "n0_ovl": 0,
+            "n0_shed": 0,
+            "n1_us": 3479,
+            "n1_samples": [
+              3479,
+              2025,
+              2073,
+              2007
+            ],
+            "n1_mean_us": [
+              1450,
+              1493,
+              1506,
+              1371
+            ],
+            "n1_late": 0,
+            "n1_ovl": 0,
+            "n1_shed": 0,
+            "n4_us": 3499,
+            "n4_samples": [
+              3499,
+              2685,
+              2658
+            ],
+            "n4_mean_us": [
+              2569,
+              2537,
+              2530
+            ],
+            "n4_late": 3,
+            "n4_ovl": 0,
+            "n4_shed": 1,
+            "n8_us": 3465,
+            "n8_samples": [
+              3465,
+              2161,
+              2122
+            ],
+            "n8_mean_us": [
+              2031,
+              2014,
+              2016
+            ],
+            "n8_late": 3,
+            "n8_ovl": 0,
+            "n8_shed": 2,
+            "budget_us": 2902
+          }
+        ],
+        "running": [
+          {
+            "slot": 0,
+            "name": "808 Kit",
+            "transport": true,
+            "hold_seconds": 2.0,
+            "n0_us": 2245,
+            "n0_samples": [
+              2245,
+              2192,
+              2187,
+              2194
+            ],
+            "n0_mean_us": [
+              1991,
+              2038,
+              2056,
+              2082
+            ],
+            "n0_late": 0,
+            "n0_ovl": 0,
+            "n0_shed": 0,
+            "n1_us": 2222,
+            "n1_samples": [
+              2222,
+              2186,
+              2214,
+              2214
+            ],
+            "n1_mean_us": [
+              2038,
+              2017,
+              2026,
+              2061
+            ],
+            "n1_late": 0,
+            "n1_ovl": 0,
+            "n1_shed": 0,
+            "n4_us": 2316,
+            "n4_samples": [
+              2316,
+              2247,
+              2273,
+              2277
+            ],
+            "n4_mean_us": [
+              2103,
+              2060,
+              2076,
+              2046
+            ],
+            "n4_late": 0,
+            "n4_ovl": 0,
+            "n4_shed": 0,
+            "n8_us": 2359,
+            "n8_samples": [
+              2359,
+              2213,
+              2280,
+              2280
+            ],
+            "n8_mean_us": [
+              2108,
+              2048,
+              2103,
+              2079
+            ],
+            "n8_late": 0,
+            "n8_ovl": 0,
+            "n8_shed": 0,
+            "budget_us": 2902
+          },
+          {
+            "slot": 1,
+            "name": "Oracle V + drums",
+            "transport": true,
+            "hold_seconds": 2.0,
+            "n0_us": 5135,
+            "n0_samples": [
+              5135,
+              3422,
+              24,
+              26
+            ],
+            "n0_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n0_late": 8,
+            "n0_ovl": 1,
+            "n0_shed": 3,
+            "n1_us": 5107,
+            "n1_samples": [
+              5107,
+              26,
+              26,
+              26
+            ],
+            "n1_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n1_late": 5,
+            "n1_ovl": 1,
+            "n1_shed": 3,
+            "n4_us": 5130,
+            "n4_samples": [
+              5130,
+              26,
+              26,
+              26
+            ],
+            "n4_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n4_late": 6,
+            "n4_ovl": 1,
+            "n4_shed": 3,
+            "n8_us": 5130,
+            "n8_samples": [
+              5130,
+              26,
+              26,
+              26
+            ],
+            "n8_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n8_late": 5,
+            "n8_ovl": 1,
+            "n8_shed": 3,
+            "budget_us": 2902
+          },
+          {
+            "slot": 2,
+            "name": "Oracle V",
+            "transport": true,
+            "hold_seconds": 2.0,
+            "n0_us": 3488,
+            "n0_samples": [
+              3488,
+              1469,
+              1489,
+              1460
+            ],
+            "n0_mean_us": [
+              581,
+              767,
+              637,
+              723
+            ],
+            "n0_late": 0,
+            "n0_ovl": 0,
+            "n0_shed": 0,
+            "n1_us": 3464,
+            "n1_samples": [
+              3464,
+              2063,
+              2093,
+              2144
+            ],
+            "n1_mean_us": [
+              1395,
+              1396,
+              1371,
+              1394
+            ],
+            "n1_late": 0,
+            "n1_ovl": 0,
+            "n1_shed": 0,
+            "n4_us": 3488,
+            "n4_samples": [
+              3488,
+              2675,
+              2675,
+              2646
+            ],
+            "n4_mean_us": [
+              2554,
+              2530,
+              2530,
+              2523
+            ],
+            "n4_late": 3,
+            "n4_ovl": 0,
+            "n4_shed": 1,
+            "n8_us": 3490,
+            "n8_samples": [
+              3490,
+              2184,
+              2184,
+              2179
+            ],
+            "n8_mean_us": [
+              2018,
+              2015,
+              2002,
+              2008
+            ],
+            "n8_late": 3,
+            "n8_ovl": 0,
+            "n8_shed": 2,
+            "budget_us": 2902
+          }
+        ]
+      },
+      "core_checks": {
+        "cores-ram.txt": "1 CORE (barred: one core until power-off); barred yes; trace 0x00000000; split on\nself-test passed 0, failed 0; refused jobs 0; jobs done 0; core 1 stack 3304 B used; longest wait 0 us since the last read\n"
+      },
+      "block_times": {
+        "blocktime-ram-808 Kit.json": {
+          "patch": "808 Kit",
+          "notes": [
+            60,
+            64,
+            67,
+            71
+          ],
+          "seconds": 3.0,
+          "page132": [
+            1076,
+            0,
+            3122,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "page138": [
+            0,
+            0,
+            9628,
+            21583,
+            21407,
+            9759,
+            0,
+            0
+          ],
+          "page139": [
+            19102,
+            83,
+            18,
+            175083,
+            165041,
+            17,
+            2,
+            13083
+          ],
+          "spans_ns": {
+            "entry": {
+              "mean": 694,
+              "max": 14250
+            },
+            "pre": {
+              "mean": 2204,
+              "max": 15333
+            },
+            "eng_pre": {
+              "mean": 15901,
+              "max": 30666
+            },
+            "voices": {
+              "mean": 1922834,
+              "max": 1983333
+            },
+            "eng_post": {
+              "mean": 2755,
+              "max": 16166
+            },
+            "eng_out": {
+              "mean": 24912,
+              "max": 40333
+            },
+            "mix": {
+              "mean": 12904,
+              "max": 28000
+            },
+            "clk": {
+              "mean": 968,
+              "max": 11750
+            },
+            "uac": {
+              "mean": 475,
+              "max": 15916
+            },
+            "tail": {
+              "mean": 10920,
+              "max": 24708
+            },
+            "guard": {
+              "mean": 1530,
+              "max": 13916
+            },
+            "isr": {
+              "mean": 1996100,
+              "max": 2079291
+            },
+            "t5_in": {
+              "mean": 191387,
+              "max": 210875
+            },
+            "t5_out": {
+              "mean": 87486,
+              "max": 102791
+            },
+            "self": {
+              "mean": 3983,
+              "max": 17791
+            },
+            "hand": {
+              "mean": 0,
+              "max": 0
+            },
+            "wait": {
+              "mean": 0,
+              "max": 0
+            },
+            "c0_busy": {
+              "mean": 1922834,
+              "max": 1983333
+            },
+            "c1_busy": {
+              "mean": 0,
+              "max": 0
+            },
+            "c1_idle": {
+              "mean": 1922834,
+              "max": 1983333
+            }
+          }
+        },
+        "blocktime-ram-Oracle V.json": {
+          "patch": "Oracle V",
+          "notes": [
+            60,
+            64,
+            67,
+            71
+          ],
+          "seconds": 3.0,
+          "page132": [
+            1062,
+            0,
+            3081,
+            0,
+            0,
+            0,
+            9558,
+            0
+          ],
+          "page138": [
+            0,
+            0,
+            9771,
+            34333,
+            26887,
+            3876,
+            0,
+            0
+          ],
+          "page139": [
+            6971,
+            83,
+            7,
+            66791,
+            62541,
+            7,
+            2,
+            11500
+          ],
+          "spans_ns": {
+            "entry": {
+              "mean": 230,
+              "max": 13083
+            },
+            "pre": {
+              "mean": 1440,
+              "max": 17375
+            },
+            "eng_pre": {
+              "mean": 41442,
+              "max": 60916
+            },
+            "voices": {
+              "mean": 2425897,
+              "max": 2541250
+            },
+            "eng_post": {
+              "mean": 2980,
+              "max": 16958
+            },
+            "eng_out": {
+              "mean": 24692,
+              "max": 38666
+            },
+            "mix": {
+              "mean": 13225,
+              "max": 26916
+            },
+            "clk": {
+              "mean": 2863,
+              "max": 17708
+            },
+            "uac": {
+              "mean": 382,
+              "max": 13291
+            },
+            "tail": {
+              "mean": 12893,
+              "max": 27416
+            },
+            "guard": {
+              "mean": 5176,
+              "max": 17958
+            },
+            "isr": {
+              "mean": 2531227,
+              "max": 2673250
+            },
+            "t5_in": {
+              "mean": 247418,
+              "max": 279000
+            },
+            "t5_out": {
+              "mean": 35639,
+              "max": 52250
+            },
+            "self": {
+              "mean": 7527,
+              "max": 22416
+            },
+            "hand": {
+              "mean": 1614,
+              "max": 16458
+            },
+            "wait": {
+              "mean": 0,
+              "max": 0
+            },
+            "c0_busy": {
+              "mean": 2425897,
+              "max": 2541250
+            },
+            "c1_busy": {
+              "mean": 0,
+              "max": 0
+            },
+            "c1_idle": {
+              "mean": 2425897,
+              "max": 2541250
+            }
+          }
+        },
+        "blocktime-ram-mixed.json": {
+          "patch": null,
+          "notes": [
+            60,
+            64,
+            67,
+            71
+          ],
+          "seconds": 3.0,
+          "page132": [
+            0,
+            1068,
+            3098,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "page138": [
+            0,
+            0,
+            0,
+            18250,
+            147,
+            30783,
+            0,
+            0
+          ],
+          "page139": [
+            54602,
+            83,
+            49,
+            401791,
+            375583,
+            48,
+            2,
+            13083
+          ],
+          "spans_ns": {
+            "entry": {
+              "mean": 0,
+              "max": 0
+            },
+            "pre": {
+              "mean": 0,
+              "max": 0
+            },
+            "eng_pre": {
+              "mean": 0,
+              "max": 0
+            },
+            "voices": {
+              "mean": 0,
+              "max": 0
+            },
+            "eng_post": {
+              "mean": 0,
+              "max": 0
+            },
+            "eng_out": {
+              "mean": 0,
+              "max": 0
+            },
+            "mix": {
+              "mean": 0,
+              "max": 0
+            },
+            "clk": {
+              "mean": 0,
+              "max": 0
+            },
+            "uac": {
+              "mean": 0,
+              "max": 0
+            },
+            "tail": {
+              "mean": 0,
+              "max": 0
+            },
+            "guard": {
+              "mean": 0,
+              "max": 0
+            },
+            "isr": {
+              "mean": 0,
+              "max": 0
+            },
+            "t5_in": {
+              "mean": 0,
+              "max": 0
+            },
+            "t5_out": {
+              "mean": 0,
+              "max": 0
+            },
+            "self": {
+              "mean": 0,
+              "max": 0
+            },
+            "hand": {
+              "mean": 0,
+              "max": 0
+            },
+            "wait": {
+              "mean": 0,
+              "max": 0
+            },
+            "c0_busy": {
+              "mean": 0,
+              "max": 0
+            },
+            "c1_busy": {
+              "mean": 0,
+              "max": 0
+            },
+            "c1_idle": {
+              "mean": 0,
+              "max": 0
+            }
+          }
+        }
+      }
+    },
+    "ram-clean": {
+      "qualification": "two cores after full power cycle",
+      "surveys": {
+        "stopped": [
+          {
+            "slot": 2,
+            "name": "Oracle V",
+            "transport": false,
+            "hold_seconds": 2.0,
+            "n0_us": 2362,
+            "n0_samples": [
+              2362,
+              1485,
+              1485,
+              1438
+            ],
+            "n0_mean_us": [
+              585,
+              617,
+              568,
+              792
+            ],
+            "n0_late": 0,
+            "n0_ovl": 0,
+            "n0_shed": 0,
+            "n1_us": 2234,
+            "n1_samples": [
+              2234,
+              2015,
+              2002,
+              2071
+            ],
+            "n1_mean_us": [
+              1428,
+              1414,
+              1408,
+              1373
+            ],
+            "n1_late": 0,
+            "n1_ovl": 0,
+            "n1_shed": 0,
+            "n4_us": 2275,
+            "n4_samples": [
+              2275,
+              2079,
+              2078,
+              2077
+            ],
+            "n4_mean_us": [
+              1982,
+              1958,
+              1961,
+              1946
+            ],
+            "n4_late": 0,
+            "n4_ovl": 0,
+            "n4_shed": 0,
+            "n8_us": 2294,
+            "n8_samples": [
+              2294,
+              2163,
+              2118
+            ],
+            "n8_mean_us": [
+              2024,
+              2006,
+              2020
+            ],
+            "n8_late": 0,
+            "n8_ovl": 0,
+            "n8_shed": 0,
+            "budget_us": 2902
+          },
+          {
+            "slot": 0,
+            "name": "808 Kit",
+            "transport": false,
+            "hold_seconds": 2.0,
+            "n0_us": 2212,
+            "n0_samples": [
+              2212,
+              2005,
+              1992,
+              2011
+            ],
+            "n0_mean_us": [
+              1947,
+              1950,
+              1944,
+              1949
+            ],
+            "n0_late": 0,
+            "n0_ovl": 0,
+            "n0_shed": 0,
+            "n1_us": 2153,
+            "n1_samples": [
+              2153,
+              2060,
+              2055,
+              2052
+            ],
+            "n1_mean_us": [
+              1988,
+              1987,
+              1955,
+              1982
+            ],
+            "n1_late": 0,
+            "n1_ovl": 0,
+            "n1_shed": 0,
+            "n4_us": 2163,
+            "n4_samples": [
+              2163,
+              2109,
+              2095,
+              2082
+            ],
+            "n4_mean_us": [
+              2034,
+              2004,
+              2010,
+              1987
+            ],
+            "n4_late": 0,
+            "n4_ovl": 0,
+            "n4_shed": 0,
+            "n8_us": 2143,
+            "n8_samples": [
+              2143,
+              2143,
+              2112,
+              2105
+            ],
+            "n8_mean_us": [
+              2037,
+              2056,
+              2021,
+              2020
+            ],
+            "n8_late": 0,
+            "n8_ovl": 0,
+            "n8_shed": 0,
+            "budget_us": 2902
+          },
+          {
+            "slot": 1,
+            "name": "Oracle V + drums",
+            "transport": false,
+            "hold_seconds": 2.0,
+            "n0_us": 3977,
+            "n0_samples": [
+              3977,
+              27,
+              26
+            ],
+            "n0_mean_us": [
+              2283,
+              2283,
+              2283
+            ],
+            "n0_late": 7,
+            "n0_ovl": 1,
+            "n0_shed": 3,
+            "n1_us": 4004,
+            "n1_samples": [
+              4004,
+              26,
+              26
+            ],
+            "n1_mean_us": [
+              2283,
+              2283,
+              2283
+            ],
+            "n1_late": 5,
+            "n1_ovl": 1,
+            "n1_shed": 3,
+            "n4_us": 4005,
+            "n4_samples": [
+              4005,
+              27,
+              26,
+              26
+            ],
+            "n4_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n4_late": 5,
+            "n4_ovl": 1,
+            "n4_shed": 3,
+            "n8_us": 4007,
+            "n8_samples": [
+              4007,
+              26,
+              26,
+              27
+            ],
+            "n8_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n8_late": 4,
+            "n8_ovl": 1,
+            "n8_shed": 3,
+            "budget_us": 2902
+          }
+        ],
+        "running": [
+          {
+            "slot": 2,
+            "name": "Oracle V",
+            "transport": true,
+            "hold_seconds": 2.0,
+            "n0_us": 2312,
+            "n0_samples": [
+              2312,
+              1518,
+              1518,
+              1444
+            ],
+            "n0_mean_us": [
+              613,
+              648,
+              588,
+              571
+            ],
+            "n0_late": 0,
+            "n0_ovl": 0,
+            "n0_shed": 0,
+            "n1_us": 2321,
+            "n1_samples": [
+              2321,
+              2023,
+              1996,
+              2130
+            ],
+            "n1_mean_us": [
+              1372,
+              1446,
+              1386,
+              1384
+            ],
+            "n1_late": 0,
+            "n1_ovl": 0,
+            "n1_shed": 0,
+            "n4_us": 2321,
+            "n4_samples": [
+              2321,
+              2146,
+              2122,
+              2117
+            ],
+            "n4_mean_us": [
+              1971,
+              1967,
+              1963,
+              1940
+            ],
+            "n4_late": 0,
+            "n4_ovl": 0,
+            "n4_shed": 0,
+            "n8_us": 2300,
+            "n8_samples": [
+              2300,
+              2203,
+              2184,
+              2184
+            ],
+            "n8_mean_us": [
+              2057,
+              1999,
+              1994,
+              2003
+            ],
+            "n8_late": 0,
+            "n8_ovl": 0,
+            "n8_shed": 0,
+            "budget_us": 2902
+          },
+          {
+            "slot": 0,
+            "name": "808 Kit",
+            "transport": true,
+            "hold_seconds": 2.0,
+            "n0_us": 2291,
+            "n0_samples": [
+              2215,
+              2149,
+              2291
+            ],
+            "n0_mean_us": [
+              2020,
+              2031,
+              2104
+            ],
+            "n0_late": 0,
+            "n0_ovl": 0,
+            "n0_shed": 0,
+            "n1_us": 2331,
+            "n1_samples": [
+              2331,
+              2270,
+              2281,
+              2281
+            ],
+            "n1_mean_us": [
+              2090,
+              2037,
+              2064,
+              2005
+            ],
+            "n1_late": 0,
+            "n1_ovl": 0,
+            "n1_shed": 0,
+            "n4_us": 2338,
+            "n4_samples": [
+              2313,
+              2238,
+              2338,
+              2292
+            ],
+            "n4_mean_us": [
+              2097,
+              2071,
+              2126,
+              2076
+            ],
+            "n4_late": 0,
+            "n4_ovl": 0,
+            "n4_shed": 0,
+            "n8_us": 2302,
+            "n8_samples": [
+              2299,
+              2263,
+              2302,
+              2284
+            ],
+            "n8_mean_us": [
+              2107,
+              2127,
+              2159,
+              2149
+            ],
+            "n8_late": 0,
+            "n8_ovl": 0,
+            "n8_shed": 0,
+            "budget_us": 2902
+          },
+          {
+            "slot": 1,
+            "name": "Oracle V + drums",
+            "transport": true,
+            "hold_seconds": 2.0,
+            "n0_us": 3906,
+            "n0_samples": [
+              3906,
+              2921,
+              26,
+              26
+            ],
+            "n0_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n0_late": 7,
+            "n0_ovl": 1,
+            "n0_shed": 3,
+            "n1_us": 3994,
+            "n1_samples": [
+              3994,
+              26,
+              26,
+              26
+            ],
+            "n1_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n1_late": 5,
+            "n1_ovl": 1,
+            "n1_shed": 3,
+            "n4_us": 4045,
+            "n4_samples": [
+              4045,
+              26,
+              28,
+              26
+            ],
+            "n4_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n4_late": 5,
+            "n4_ovl": 1,
+            "n4_shed": 3,
+            "n8_us": 4137,
+            "n8_samples": [
+              4137,
+              24,
+              26,
+              27
+            ],
+            "n8_mean_us": [
+              2283,
+              2283,
+              2283,
+              2283
+            ],
+            "n8_late": 5,
+            "n8_ovl": 1,
+            "n8_shed": 3,
+            "budget_us": 2902
+          }
+        ]
+      },
+      "core_checks": {
+        "cores-ram-clean-808 Kitafter-blocktime.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 1448, failed 0; refused jobs 0; jobs done 54276; core 1 stack 2556 B used; longest wait 22 us since the last read\n",
+        "cores-ram-clean-808 Kitbefore-blocktime.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 1375, failed 0; refused jobs 0; jobs done 54203; core 1 stack 2556 B used; longest wait 15 us since the last read\n",
+        "cores-ram-clean-Oracle Vafter-blocktime.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 1365, failed 0; refused jobs 0; jobs done 54193; core 1 stack 2556 B used; longest wait 20 us since the last read\n",
+        "cores-ram-clean-Oracle Vbefore-blocktime.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 1293, failed 0; refused jobs 0; jobs done 38452; core 1 stack 2556 B used; longest wait 11 us since the last read\n",
+        "cores-ram-clean-end.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 1536, failed 0; refused jobs 0; jobs done 54374; core 1 stack 2556 B used; longest wait 16 us since the last read\n",
+        "cores-ram-clean-mixed-before-blocktime.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 1470, failed 0; refused jobs 0; jobs done 54308; core 1 stack 2556 B used; longest wait 14 us since the last read\n",
+        "cores-ram-clean-ram-clean-0after.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 593, failed 0; refused jobs 0; jobs done 18089; core 1 stack 2556 B used; longest wait 24 us since the last read\n",
+        "cores-ram-clean-ram-clean-0before.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 468, failed 0; refused jobs 0; jobs done 477; core 1 stack 2556 B used; longest wait 25 us since the last read\n",
+        "cores-ram-clean-ram-clean-1after.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 737, failed 0; refused jobs 0; jobs done 18233; core 1 stack 2556 B used; longest wait 1974 us since the last read\n",
+        "cores-ram-clean-ram-clean-1before.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 604, failed 0; refused jobs 0; jobs done 18100; core 1 stack 2556 B used; longest wait 24 us since the last read\n",
+        "cores-ram-clean-ram-clean-2after.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 866, failed 0; refused jobs 0; jobs done 18542; core 1 stack 2556 B used; longest wait 17 us since the last read\n",
+        "cores-ram-clean-ram-clean-2before.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 747, failed 0; refused jobs 0; jobs done 18243; core 1 stack 2556 B used; longest wait 15 us since the last read\n",
+        "cores-ram-clean-ram-clean-run-0after.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 1003, failed 0; refused jobs 0; jobs done 37912; core 1 stack 2556 B used; longest wait 23 us since the last read\n",
+        "cores-ram-clean-ram-clean-run-0before.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 876, failed 0; refused jobs 0; jobs done 18552; core 1 stack 2556 B used; longest wait 11 us since the last read\n",
+        "cores-ram-clean-ram-clean-run-1after.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 1138, failed 0; refused jobs 0; jobs done 38047; core 1 stack 2556 B used; longest wait 26 us since the last read\n",
+        "cores-ram-clean-ram-clean-run-1before.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 1014, failed 0; refused jobs 0; jobs done 37923; core 1 stack 2556 B used; longest wait 15 us since the last read\n",
+        "cores-ram-clean-ram-clean-run-2after.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 1283, failed 0; refused jobs 0; jobs done 38442; core 1 stack 2556 B used; longest wait 19 us since the last read\n",
+        "cores-ram-clean-ram-clean-run-2before.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 1149, failed 0; refused jobs 0; jobs done 38058; core 1 stack 2556 B used; longest wait 19 us since the last read\n",
+        "cores-ram-clean-start.txt": "2 CORES; barred no; trace 0xc1000002; split on\nself-test passed 457, failed 0; refused jobs 0; jobs done 466; core 1 stack 2556 B used; longest wait 1397 us since the last read\n"
+      },
+      "block_times": {
+        "blocktime-ram-clean-808 Kit.json": {
+          "patch": "808 Kit",
+          "notes": [
+            60,
+            64,
+            67,
+            71
+          ],
+          "seconds": 3.0,
+          "page132": [
+            1085,
+            0,
+            3147,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "page138": [
+            0,
+            0,
+            9224,
+            22791,
+            21722,
+            9703,
+            0,
+            0
+          ],
+          "page139": [
+            18939,
+            83,
+            18,
+            168208,
+            158166,
+            17,
+            2,
+            13583
+          ],
+          "spans_ns": {
+            "entry": {
+              "mean": 670,
+              "max": 12291
+            },
+            "pre": {
+              "mean": 2531,
+              "max": 15958
+            },
+            "eng_pre": {
+              "mean": 15847,
+              "max": 31833
+            },
+            "voices": {
+              "mean": 1931095,
+              "max": 2000708
+            },
+            "eng_post": {
+              "mean": 2662,
+              "max": 15541
+            },
+            "eng_out": {
+              "mean": 24771,
+              "max": 38875
+            },
+            "mix": {
+              "mean": 12897,
+              "max": 26416
+            },
+            "clk": {
+              "mean": 1101,
+              "max": 16125
+            },
+            "uac": {
+              "mean": 459,
+              "max": 12666
+            },
+            "tail": {
+              "mean": 11232,
+              "max": 26833
+            },
+            "guard": {
+              "mean": 1716,
+              "max": 13625
+            },
+            "isr": {
+              "mean": 2004987,
+              "max": 2091666
+            },
+            "t5_in": {
+              "mean": 184448,
+              "max": 217416
+            },
+            "t5_out": {
+              "mean": 82732,
+              "max": 95916
+            },
+            "self": {
+              "mean": 3930,
+              "max": 16125
+            },
+            "hand": {
+              "mean": 0,
+              "max": 0
+            },
+            "wait": {
+              "mean": 0,
+              "max": 0
+            },
+            "c0_busy": {
+              "mean": 1931095,
+              "max": 2000708
+            },
+            "c1_busy": {
+              "mean": 0,
+              "max": 0
+            },
+            "c1_idle": {
+              "mean": 1931095,
+              "max": 2000708
+            }
+          }
+        },
+        "blocktime-ram-clean-Oracle V.json": {
+          "patch": "Oracle V",
+          "notes": [
+            60,
+            64,
+            67,
+            71
+          ],
+          "seconds": 3.0,
+          "page132": [
+            1075,
+            0,
+            3119,
+            9675,
+            19350,
+            19350,
+            0,
+            2305
+          ],
+          "page138": [
+            759,
+            17375,
+            9620,
+            34416,
+            20968,
+            10170,
+            132641,
+            344041
+          ],
+          "page139": [
+            16452,
+            83,
+            18,
+            161875,
+            160791,
+            17,
+            2,
+            13583
+          ],
+          "spans_ns": {
+            "entry": {
+              "mean": 208,
+              "max": 10958
+            },
+            "pre": {
+              "mean": 1113,
+              "max": 13416
+            },
+            "eng_pre": {
+              "mean": 40881,
+              "max": 59625
+            },
+            "voices": {
+              "mean": 1846646,
+              "max": 1946916
+            },
+            "eng_post": {
+              "mean": 3488,
+              "max": 18291
+            },
+            "eng_out": {
+              "mean": 23987,
+              "max": 41541
+            },
+            "mix": {
+              "mean": 13054,
+              "max": 26750
+            },
+            "clk": {
+              "mean": 3210,
+              "max": 19333
+            },
+            "uac": {
+              "mean": 498,
+              "max": 13416
+            },
+            "tail": {
+              "mean": 12942,
+              "max": 28500
+            },
+            "guard": {
+              "mean": 5181,
+              "max": 18500
+            },
+            "isr": {
+              "mean": 1951214,
+              "max": 2073541
+            },
+            "t5_in": {
+              "mean": 188252,
+              "max": 229833
+            },
+            "t5_out": {
+              "mean": 90404,
+              "max": 106958
+            },
+            "self": {
+              "mean": 7415,
+              "max": 21458
+            },
+            "hand": {
+              "mean": 2731,
+              "max": 19583
+            },
+            "wait": {
+              "mean": 7419,
+              "max": 38291
+            },
+            "c0_busy": {
+              "mean": 1839227,
+              "max": 1939625
+            },
+            "c1_busy": {
+              "mean": 1193775,
+              "max": 1242916
+            },
+            "c1_idle": {
+              "mean": 652871,
+              "max": 724708
+            }
+          }
+        },
+        "blocktime-ram-clean-mixed.json": {
+          "patch": null,
+          "notes": [
+            60,
+            64,
+            67,
+            71
+          ],
+          "seconds": 3.0,
+          "page132": [
+            0,
+            1084,
+            3144,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "page138": [
+            0,
+            0,
+            0,
+            18166,
+            151,
+            31238,
+            0,
+            0
+          ],
+          "page139": [
+            54572,
+            83,
+            51,
+            428041,
+            400583,
+            50,
+            2,
+            13083
+          ],
+          "spans_ns": {
+            "entry": {
+              "mean": 0,
+              "max": 0
+            },
+            "pre": {
+              "mean": 0,
+              "max": 0
+            },
+            "eng_pre": {
+              "mean": 0,
+              "max": 0
+            },
+            "voices": {
+              "mean": 0,
+              "max": 0
+            },
+            "eng_post": {
+              "mean": 0,
+              "max": 0
+            },
+            "eng_out": {
+              "mean": 0,
+              "max": 0
+            },
+            "mix": {
+              "mean": 0,
+              "max": 0
+            },
+            "clk": {
+              "mean": 0,
+              "max": 0
+            },
+            "uac": {
+              "mean": 0,
+              "max": 0
+            },
+            "tail": {
+              "mean": 0,
+              "max": 0
+            },
+            "guard": {
+              "mean": 0,
+              "max": 0
+            },
+            "isr": {
+              "mean": 0,
+              "max": 0
+            },
+            "t5_in": {
+              "mean": 0,
+              "max": 0
+            },
+            "t5_out": {
+              "mean": 0,
+              "max": 0
+            },
+            "self": {
+              "mean": 0,
+              "max": 0
+            },
+            "hand": {
+              "mean": 0,
+              "max": 0
+            },
+            "wait": {
+              "mean": 0,
+              "max": 0
+            },
+            "c0_busy": {
+              "mean": 0,
+              "max": 0
+            },
+            "c1_busy": {
+              "mean": 0,
+              "max": 0
+            },
+            "c1_idle": {
+              "mean": 0,
+              "max": 0
+            }
+          }
+        }
+      }
+    },
+    "aot-ram": {
+      "qualification": "INVALID: second core faulted after full power cycle",
+      "diagnostics": {
+        "aot-ram-cold-cores.txt": "1 CORE (job late); barred yes; trace 0xc1000002; split on\nself-test passed 1, failed 0; refused jobs 0; jobs done 1; core 1 stack 3304 B used; longest wait 17 us since the last read\n",
+        "aot-ram-cold-diag.txt": "last reset: P3_RST_SRC 0x01 (power-on), RST_SRC 0x1, WDT_CON 0x0c\nstall: none recorded\ncrash: none recorded\n",
+        "aot-ram-fault-after-warm-install.txt": "last reset: P3_RST_SRC 0x01 (power-on), RST_SRC 0x20, WDT_CON 0x0c\nstall: the main loop's last pass at 90912 ms, 10 samples (every 250 ms from 1.5 s on):\n  pc 0x0200765a   rets 0x020076a6\n  pc 0x0200765a   rets 0x020076b2\n  pc 0x02007662   rets 0x020076b2\n  pc 0x020076b2   rets 0x020076b2\n  pc 0x020076b2   rets 0x020076b2\n  pc 0x0200765c   rets 0x020076b2\n  pc 0x0200765a   rets 0x020076a6\n  pc 0x0200765a   rets 0x020076a6\n  pc 0x0200765a   rets 0x020076a6\n  pc 0x020076ac   rets 0x020076ac\ncrash #1: vector 1, pc 0x0201df18, rets 0x0203d752, sp 0x1c74ffc, uptime 1756 ms, emu 0xc1 dbg 0x0\n  last branches (ETM): 0xf8daf70a, 0x0722a0b3, 0xaa5aa5e5, 0xd2cad6b2\n"
+      },
+      "decoded_fault": {
+        "pc": "0x0201df18",
+        "pc_symbol": "process+0x20",
+        "return": "0x0203d752",
+        "return_symbol": "aot_blk+0x12a"
+      }
+    }
+  }
+}

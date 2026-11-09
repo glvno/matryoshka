@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Writes firmware/src/defs.h (module definitions for the C engine), firmware/src/presets.h (the factory
-// patches as binary), firmware/src/controls.h and the README's list of controls (the FM-1's controls, src/controls.ts).
+// patches as binary), firmware/src/controls.h and the README's list of controls (the FM-1's controls, src/controls.ts),
+// firmware/src/aot_gen.h (the factory assemblies the FM-1 runs compiled, scripts/gen-aot.ts).
 // Run from web/:  npx vite-node scripts/export-defs.ts
 import { readFileSync, writeFileSync } from 'node:fs';
 import { ADSR_LONG, ANALOG_CURVE, ANALOG_DIP, ANALOG_DIP_S, ANALOG_PWO, ANALOG_SKEW, ANALOG_TOL, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, FILTER_DRIVE_KNEE, FILTER_DRIVE_TOP, DIODE_W180, DIODE_KCRIT, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_LENGTH_MAX, DELAY_REACH_MAX, DELAY_RATES, DELAY_TAIL, delayAaCoefs, DEVICE_SR, DELAY_TAPE_LP, DELAY_TAPE_HP, delayTapePole, DELAY_WOW_HZ, DELAY_FLUTTER_HZ, DELAY_WOW_MS, DELAY_FLUTTER_MS, turnInc, delayDepth8, DELAY_HEADS, DELAY_HEAD_MASK, DELAY_HEAD_GAIN, DELAY_LENGTH_MIN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY, ONCE_BAR, CLICK_MS, CLICK_LEVEL_Q16, CLICK_HZ, CLICK_ACCENT_HZ } from '../src/modules';
@@ -15,6 +16,7 @@ import { controlsHeader, readmeWithControls } from './controls-h';
 import { PRESET_MIGRATIONS } from '../src/preset-migrate';
 import { readLineage } from './lineage-lib';
 import { CASE_PICKS, casesHeader, migrationCases, migrationTables } from './preset-migration-c';
+import { aotHeader } from './gen-aot';
 const FACTORY_PRESETS = factoryPresets();
 
 const up = (s: string): string => s.toUpperCase().replace(/[^A-Z0-9]/g, '_');
@@ -317,4 +319,5 @@ writeFileSync(new URL('../../firmware/src/controls.h', import.meta.url), control
   const readme = new URL('../../README.md', import.meta.url);
   writeFileSync(readme, readmeWithControls(readFileSync(readme, 'utf8')));
 }
-console.log(`wrote defs.h, presets.h (preset migrations: ${MIG.bytes} bytes), controls.h, the README's controls, test/pmig_cases.h`);
+writeFileSync(new URL('../../firmware/src/aot_gen.h', import.meta.url), aotHeader());   // the compiled factory assemblies (#808)
+console.log(`wrote defs.h, presets.h (preset migrations: ${MIG.bytes} bytes), controls.h, the README's controls, test/pmig_cases.h, aot_gen.h`);

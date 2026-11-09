@@ -36,7 +36,7 @@
 #define FM1_EMU_USP_L (*(volatile uint32_t *)0x1EEF0E4u)
 
 extern char _guard0[], _ustack_lo[], _guard1[], _sstack_lo[], _sstack_top[], _etext[];
-extern uint32_t _rt_start[], _c1_end[];   /* the RAM code: .ram_text, then .c1_text (app.ld) */
+extern uint32_t _rt_start[], _c1_end[], _ft_start[], _ft_end[];   /* the RAM code: .ram_text, then .c1_text; .fast_text in NOINIT (app.ld) */
 
 enum { FM1_GUARD_STACK = 1, FM1_GUARD_WRITE = 2, FM1_GUARD_BUS = 4, FM1_GUARD_PC = 8 };
 
@@ -76,8 +76,12 @@ static void fm1_guard_enable(uint32_t which)
     if (which & FM1_GUARD_PC) {
         FM1_PC_LIMIT0_L = 0x02000120u;
         FM1_PC_LIMIT0_H = (uint32_t)(uintptr_t)_etext;
-        {   /* RAM code (.ram_text and the second core's .c1_text); with none, repeat the XIP window */
+        {   /* RAM code (.ram_text and the second core's .c1_text, and up to the end of .fast_text, the hot engine code at
+             * the top of the SRAM: one window, so it spans the RAM in between); with none, repeat the XIP window */
             volatile uint32_t rs = (uint32_t)(uintptr_t)_rt_start, re = (uint32_t)(uintptr_t)_c1_end;
+            volatile uint32_t fs = (uint32_t)(uintptr_t)_ft_start, fe = (uint32_t)(uintptr_t)_ft_end;
+            if (fe > fs && fe > re)
+                re = fe;
             FM1_PC_LIMIT1_L = re > rs ? rs : 0x02000120u;
             FM1_PC_LIMIT1_H = re > rs ? re - 1u : (uint32_t)(uintptr_t)_etext;
         }

@@ -46,6 +46,11 @@
 #define CH_LEN 927u                 /* ceil(ENG_SR * 0.021): 12 ms +- 8 ms of sweep */
 #define MAX_HELD 128
 #define ENG_MAX_ARPS 2               /* Arpeggiator modules of a patch (a third does not load) */
+#define ENG_MAX_HARMS 2              /* Harmonizer modules of a patch (#598; a third does not load) */
+#define HARM_ZONE 7                  /* the keys under a Harmonizer's split that are its chord buttons (harmonizer.ts HARM_ZONE) */
+#define HARM_ROOTS 10                /* roots a Harmonizer holds at once (a further one is not played) */
+#define HARM_TONES 8                 /* notes of one chord at most (root, 2nd, 3rd, 4th, 5th, 7th, 9th) */
+#define HARM_VOICING 8               /* the voicing's reach, inversions up or down */
 #define ENG_MAX_TRACKS 16            /* Steps modules of a patch (their notes live in E.trk_note) */
 #define ENG_MAX_NOTES 1536           /* the notes of all Steps tracks of a patch, every pattern (patchbin.ts DEVICE.notes) */
 #define ENG_KEV 64                   /* Steps keys out (note on / off) one block holds; more are dropped */
@@ -669,12 +674,22 @@ typedef struct {
     uint32_t pos, since, interval, next, seed, rate_phase;
 } arp_t;
 
+/* a Harmonizer module as it runs (web/src/harmonizer.ts, the same steps, #598): the chord buttons down, Lock's press under
+ * way, latched set and toggle, the buttons' press order (the quality pressed last wins), the roots held (oldest first)
+ * with the notes each started, and per note how many held roots sound it */
+typedef struct {
+    uint8_t node, down, gesture, locked, toggle, nroots;
+    uint8_t root[HARM_ROOTS], nnote[HARM_ROOTS], note[HARM_ROOTS][HARM_TONES];
+    uint8_t count[128], button_key[128];          /* MIDI note -> press-time button + 1; zero is not a button */
+    uint32_t stamp[HARM_ZONE], clock;
+} harm_t;
+
 typedef struct {
     uint8_t loaded, nmod, nsum, norder, nout, ngrp, ninst;   /* ngrp: the poly groups, E.grp[1..ngrp] */
     uint16_t nsrc;
     uint8_t order[ENG_MAX_MODULES], outputs[ENG_MAX_MODULES];
     uint8_t from_m[ENG_MAX_CABLES], from_p[ENG_MAX_CABLES], to_m[ENG_MAX_CABLES], to_p[ENG_MAX_CABLES];
-    uint16_t ncab, nbuf;
+    uint16_t ncab, nbuf, nphys;      /* nbuf: values given a buffer (what the arena counts), nphys: the buffers (#800) */
     node_t *node;                    /* the modules, nmod of them in the arena's top (#721, arena_nodes); node_none until a load */
     sum_t sum[MAX_SUM];
     const esig_t *sum_src[MAX_SRC];
@@ -725,6 +740,8 @@ typedef struct {
     uint8_t running;                 /* the transport as this block saw it */
     uint8_t narp;
     arp_t arp[ENG_MAX_ARPS];
+    uint8_t nharm;
+    harm_t harm[ENG_MAX_HARMS];
     int32_t ctl[ENG_NCTL];           /* pitch bend, mod wheel, aftertouch (engine.h ENG_CTL_*), Q16 */
     uint8_t has_b;                   /* the patch carries a morph B set (PARB) */
     uint8_t nranges;
@@ -991,16 +1008,109 @@ static void visit(uint32_t id, uint8_t *st)
     E.order[E.norder++] = (uint8_t)id;
 }
 
-static esig_t *buf_alloc(void)
+/* Signal buffers by lifetime (#800). A value (a connected output of one copy, or a summed input of one copy) lives from
+ * its writer's place in E.order to its last reader's; a buffer whose value has ended takes a value written later, so a
+ * patch needs far fewer buffers than values. The output is the same, bit for bit: every module writes each of its
+ * connected outputs whole before anything reads them in that block. A value keeps its own buffer (BUF_FOREVER) when it is
+ * read in the next block (a feedback cable; a cable out of its poly group: an idle part's outputs stay silent, part_quiet
+ * reads them after the render) or outside the render (buf_late). The second core (#271): lane 1 of a split segment runs
+ * at the same time as lane 0, so a buffer serves one lane only (the odd parts of a group that may split, else lane 0),
+ * and a value one lane writes and the other reads lives to the end of the segment that reads it. The arena still counts a
+ * buffer per value, as the editor's budget does (patchbin.ts memoryBudget): the same patches load. */
+#ifndef ENG_BUF_REUSE
+#define ENG_BUF_REUSE 1
+#endif
+#define BUF_FOREVER 0x7FFFFFFF
+typedef struct { esig_t *base; uint32_t n, values; int keep; } bufs_t;   /* the buffers (in a row from base), the values given one */
+/* may this module's run be split across the cores (lane_splits, before the parts are known: as many as its copies)? */
+static int buf_split(const node_t *nd) { return nd->grp && nd->ninst >= 2u && nd->type != T_STEPS; }
+static uint32_t buf_lane(const node_t *nd, uint32_t v) { return buf_split(nd) ? v & 1u : 0u; }
+/* inputs read outside the module's turn: the Output's after the render, Main's morph and an Arpeggiator's before it, the
+ * Part's assign and unison after it (group_cables) */
+static int buf_late(const node_t *nd) { return nd->type == T_OUTPUT || nd->type == T_FM1 || nd->type == T_ARP || nd->type == T_PART; }
+/* the sources summed into input j of module m (as eng_load wires them: every part of another group's output) */
+static uint32_t buf_nsrc(uint32_t m, uint32_t j)
 {
-    esig_t *b;
-    uint32_t i;
-    if (E.nbuf >= ENG_NBUF || !(b = (esig_t *)arena_lo(ENG_BUF_BYTES)))
+    const node_t *nd = &E.node[m];
+    uint32_t c, n = 0;
+    if ((nd->disabled_inputs & (1u << j)) && !nd->input_map[j])
         return 0;
-    E.nbuf++;
+    for (c = 0; c < E.ncab; c++)
+        if (E.to_m[c] == m && E.to_p[c] == j)
+            n += E.node[E.from_m[c]].grp && E.node[E.from_m[c]].grp != nd->grp ? E.node[E.from_m[c]].ninst : 1u;
+    return n;
+}
+/* the last place output p of copy s of module m (written at place d, by lane `lane`) is read at; BUF_FOREVER (above) */
+static int32_t buf_end(uint32_t m, uint32_t p, uint32_t s, int32_t d, uint32_t lane, const uint8_t *pos, const uint8_t *seg_end)
+{
+    const node_t *f = &E.node[m];
+    int32_t end = d;
+    uint32_t c, w;
+    for (c = 0; c < E.ncab; c++) {
+        uint32_t t = E.to_m[c];
+        const node_t *r = &E.node[t];
+        if (E.from_m[c] != m || E.from_p[c] != p || ((r->disabled_inputs & (1u << E.to_p[c])) && !r->input_map[E.to_p[c]]))
+            continue;                                /* (a disabled input reads zeros) */
+        if ((int32_t)pos[t] <= d || (f->grp && r->grp != f->grp) || buf_late(r))
+            return BUF_FOREVER;
+        for (w = 0; w < r->ninst; w++) {             /* the copies of the reader that read copy s (buf_of) */
+            int32_t at = pos[t];
+            if ((f->ninst > 1u ? w : 0u) != s)
+                continue;
+            if (buf_lane(r, w) != lane && buf_split(r))
+                at = seg_end[at];
+            if (at > end)
+                end = at;
+        }
+    }
+    return end;
+}
+#ifdef ENG_POISON
+/* (host tests, tools/engine_exact.sh: every value's buffer is overwritten with noise at each block's start and after its
+ * last reader has run, so a read outside its life changes the output) */
+static esig_t *poi_buf[ENG_NBUF];
+static int32_t poi_end[ENG_NBUF];
+static uint32_t poi_n, poi_seed = 1u;
+static void poi_fill(esig_t *b)
+{
+    uint32_t i;
     for (i = 0; i < ENG_BLOCK; i++)
-        b[i] = 0;
-    return b;
+        b[i] = (esig_t)(poi_seed = poi_seed * 1664525u + 1013904223u);
+}
+static void poi_after(int32_t k)                     /* k = -1: the block's start, every value */
+{
+    uint32_t i;
+    for (i = 0; i < poi_n; i++)
+        if (poi_end[i] != BUF_FOREVER && (k < 0 || poi_end[i] == k))
+            poi_fill(poi_buf[i]);
+}
+#endif
+/* a buffer for a value written at place def and read up to place end, by lane `lane`; 0 when there is no room */
+static esig_t *buf_take(bufs_t *bs, int32_t def, int32_t end, uint32_t lane)
+{
+    uint32_t b;
+    esig_t *q = 0;
+    if (bs->keep)
+        end = BUF_FOREVER;
+    if (++bs->values > ENG_NBUF)
+        return 0;
+    if (end != BUF_FOREVER)                          /* (a buffer's first two samples hold its value's end and lane until
+                                                      * eng_load zeroes them) */
+        for (b = 0; b < bs->n && !q; b++)
+            if (bs->base[b * ENG_BLOCK + 1u] == (esig_t)lane && bs->base[b * ENG_BLOCK] < def)
+                q = bs->base + b * ENG_BLOCK;
+    if (!q) {
+        if (!(q = (esig_t *)arena_lo(ENG_BUF_BYTES)))
+            return 0;
+        bs->n++;
+    }
+    q[0] = end;
+    q[1] = (esig_t)lane;
+#ifdef ENG_POISON
+    poi_buf[poi_n] = q;
+    poi_end[poi_n++] = end;
+#endif
+    return q;
 }
 
 static void init_state(const node_t *nd, inst_t *it, uint32_t mod, uint32_t v)
@@ -1601,6 +1711,8 @@ static void pat_layout(void)
         }
 }
 
+static int aot_buffer_guard(const uint8_t *p, uint32_t len);
+static void aot_bind(const uint8_t *p, uint32_t len, uint32_t lines);   /* aot.c (#808) */
 int eng_load(const uint8_t *p, uint32_t len)
 {
     uint32_t i, j, c, k, v, at, ncab, n0, nl;
@@ -1615,6 +1727,7 @@ int eng_load(const uint8_t *p, uint32_t len)
     E.clk_seen = clk_ticks;
     E.clk_pulse = 0;
     E.narp = 0;
+    E.nharm = 0;
     E.ntrk = 0;
     E.nnotes = 0;
     E.pat_sel = E.song = 0;
@@ -1793,7 +1906,7 @@ int eng_load(const uint8_t *p, uint32_t len)
         nd->ksrc = nd->type == T_DRUMMAP ? p[at] : 0u;   /* (checked once every module is read) */
         at += d->ndata;
         /* the memories of delay, reverb, chorus, granular and the output exist once (patch.ts SHARED_TYPES) */
-        nd->grp = nd->type == T_DELAY || nd->type == T_REVERB || nd->type == T_CHORUS || nd->type == T_GRAIN || nd->type == T_OUTPUT || nd->type == T_ARP || nd->type == T_STEPS || nd->type == T_DRUMMAP ? 0u : member[i];
+        nd->grp = nd->type == T_DELAY || nd->type == T_REVERB || nd->type == T_CHORUS || nd->type == T_GRAIN || nd->type == T_OUTPUT || nd->type == T_ARP || nd->type == T_STEPS || nd->type == T_DRUMMAP || nd->type == T_HARM ? 0u : member[i];
         {                                        /* its copies, from the arena's bottom (the spare until then) */
             int i0 = arena_inst(E.grp[nd->grp].parts);
             if (i0 < 0) {
@@ -1820,9 +1933,20 @@ int eng_load(const uint8_t *p, uint32_t len)
             a->seed = 0x2545F491u;
             E.narp++;
         }
+        if (nd->type == T_HARM) {                /* a Harmonizer: its notes go out as the keys come (harm_key) */
+            harm_t *h = &E.harm[E.nharm];
+            uint8_t *hz = (uint8_t *)h;
+            if (E.nharm >= ENG_MAX_HARMS)
+                return -2;
+            for (j = 0; j < sizeof *h; j++)
+                hz[j] = 0;
+            h->node = (uint8_t)i;
+            E.nharm++;
+        }
     }
-    for (i = 1; i <= E.ngrp; i++)                /* a group's note source must be an arpeggiator or a Steps module of the patch */
-        if (E.grp[i].src && (E.grp[i].src > E.nmod || (E.node[E.grp[i].src - 1u].type != T_ARP && E.node[E.grp[i].src - 1u].type != T_STEPS)))
+    for (i = 1; i <= E.ngrp; i++)                /* a group's note source must be an arpeggiator, a Steps module or a Harmonizer of the patch */
+        if (E.grp[i].src && (E.grp[i].src > E.nmod || (E.node[E.grp[i].src - 1u].type != T_ARP && E.node[E.grp[i].src - 1u].type != T_STEPS
+                                                       && E.node[E.grp[i].src - 1u].type != T_HARM)))
             return -3;
     for (i = 0; i < E.nmod; i++)                 /* a Drum map's keys: the keys, or a Steps module or an Arpeggiator of the patch */
         if (E.node[i].ksrc >= 2u && (E.node[i].ksrc - 2u >= E.nmod || (E.node[E.node[i].ksrc - 2u].type != T_STEPS && E.node[E.node[i].ksrc - 2u].type != T_ARP)))
@@ -2164,19 +2288,58 @@ int eng_load(const uint8_t *p, uint32_t len)
             init_state(nd, it, i, k);
         }
     }
-    /* output buffers: one per connected output port and instance, the dummy for the unconnected ports */
+    /* the order the modules run in: each after its sources (a feedback cable reads the block before) */
+    for (i = 0; i < E.nmod; i++)
+        st[i] = 0;
+    E.norder = 0;
+    for (i = 0; i < E.nmod; i++)
+        if (st[i] == 0)
+            visit(i, st);
+    /* the dummy for the unconnected output ports; a buffer for each value, the connected outputs and the summed inputs of
+     * every copy, in the order they are written: a buffer whose value has ended takes the next (buf_take, #800) */
     for (i = 0; i < E.nmod; i++)
         for (k = 0; k < E.node[i].ninst; k++)
             for (j = 0; j < DEFS[E.node[i].type].nout; j++)
                 inst_pool[E.node[i].inst0 + k].out[j] = E.node[i].grp && (k & 1u) ? dummy_out1 : dummy_out;
-    for (c = 0; c < ncab; c++) {
-        node_t *nd = &E.node[E.from_m[c]];
-        uint32_t fp = E.from_p[c];
-        if (!IS_DUMMY(inst_pool[nd->inst0].out[fp]))
-            continue;
-        for (k = 0; k < nd->ninst; k++)
-            if (!(inst_pool[nd->inst0 + k].out[fp] = buf_alloc()))
-                return -6;
+    {
+        uint8_t *pos = member, *seg_end = held;      /* (member and held are not needed past here) */
+        bufs_t bs;
+        bs.base = (esig_t *)((uint8_t *)eng_arena + ar_lo);
+        bs.n = bs.values = 0;
+        bs.keep = !ENG_BUF_REUSE || aot_buffer_guard(p, len);
+#ifdef ENG_POISON
+        poi_n = 0;
+#endif
+        for (k = 0; k < E.norder; k++)
+            pos[E.order[k]] = (uint8_t)k;
+        for (k = E.norder; k-- > 0;) {               /* the last place of the run of split-able modules of one group that
+                                                      * place k is in (render_split's segment), k itself outside one */
+            const node_t *nd = &E.node[E.order[k]], *nx = k + 1u < E.norder ? &E.node[E.order[k + 1u]] : 0;
+            seg_end[k] = (uint8_t)(nx && buf_split(nd) && buf_split(nx) && nx->grp == nd->grp ? seg_end[k + 1u] : k);
+        }
+        for (k = 0; k < E.norder; k++) {
+            uint32_t m = E.order[k];
+            node_t *nd = &E.node[m];
+            for (j = 0; j < DEFS[nd->type].nin; j++) {   /* its summed inputs (it->in holds the buffer until they are wired) */
+                int sum = buf_nsrc(m, j) >= 2u;
+                for (v = 0; v < nd->ninst; v++)
+                    if (!(inst_pool[nd->inst0 + v].in[j] = sum ? buf_take(&bs, (int32_t)k, buf_late(nd) ? BUF_FOREVER : (int32_t)k, buf_lane(nd, v)) : zero_buf))
+                        return -6;
+            }
+            for (j = 0; j < DEFS[nd->type].nout; j++) {  /* its connected outputs */
+                for (c = 0; c < ncab && !(E.from_m[c] == m && E.from_p[c] == j); c++)
+                    ;
+                for (v = 0; c < ncab && v < nd->ninst; v++)
+                    if (!(inst_pool[nd->inst0 + v].out[j] = buf_take(&bs, (int32_t)k, buf_end(m, j, v, (int32_t)k, buf_lane(nd, v), pos, seg_end), buf_lane(nd, v))))
+                        return -6;
+            }
+        }
+        if (bs.values > bs.n && !arena_lo((bs.values - bs.n) * ENG_BUF_BYTES))   /* the arena counts every value's buffer */
+            return -6;
+        E.nbuf = (uint16_t)bs.values;
+        E.nphys = (uint16_t)bs.n;
+        for (i = 0; i < bs.n * ENG_BLOCK; i++)
+            bs.base[i] = 0;
     }
     /* inputs of every instance: none -> zeros, one source -> that buffer itself, several -> a summing buffer. An instance
      * reads its own part of an output of its group, the one buffer of a module that runs once, and every part (summed)
@@ -2219,8 +2382,8 @@ int eng_load(const uint8_t *p, uint32_t len)
                     it->in[j] = one;
                     E.nsrc = (uint16_t)first;                /* not summed: the entry is not needed */
                 } else {
-                    esig_t *b = buf_alloc();
-                    if (!b || E.nsum >= MAX_SUM)
+                    esig_t *b = (esig_t *)it->in[j];     /* (its buffer, from above) */
+                    if (E.nsum >= MAX_SUM)
                         return -6;
                     it->in[j] = b;
                     E.sum[E.nsum].dst = b;
@@ -2266,12 +2429,6 @@ int eng_load(const uint8_t *p, uint32_t len)
                 it->s.gr.ln = (grain_line_t *)ln;
         }
     }
-    for (i = 0; i < E.nmod; i++)
-        st[i] = 0;
-    E.norder = 0;
-    for (i = 0; i < E.nmod; i++)
-        if (st[i] == 0)
-            visit(i, st);
     E.nout = 0;
     for (i = 0; i < E.norder; i++)
         if (E.node[E.order[i]].type == T_OUTPUT)
@@ -2283,6 +2440,10 @@ int eng_load(const uint8_t *p, uint32_t len)
     tempo_own = E.main >= 0 ? E.node[E.main].par[FM1_P_TEMPO] : (int32_t)(TEMPO_DEFAULT << 16);
     if (tempo_glo)                               /* the global tempo (D-907): the patch plays at it, its own value kept */
         tempo_apply();
+    for (k = 0, c = 0; k < nl; k++)              /* (#808: the compiled assemblies' state goes after the lines) */
+        if (line_reg[k])
+            c += line_sz[k];
+    aot_bind(p, len, c);
     return 0;
 }
 
@@ -2390,6 +2551,7 @@ static void toggles_sync(void)
 }
 
 static void arp_switched(uint32_t m);
+static void harm_switched(uint32_t m);
 void eng_set_bypass(uint32_t module, int on)
 {
     if (module < E.nmod && E.node[module].type != T_FM1 && E.node[module].type != T_OUTPUT) {
@@ -2397,6 +2559,8 @@ void eng_set_bypass(uint32_t module, int on)
         E.node[module].bypass = (uint8_t)(on != 0);
         if (E.node[module].type == T_ARP && was != E.node[module].bypass)
             arp_switched(module);
+        if (E.node[module].type == T_HARM && was != E.node[module].bypass)
+            harm_switched(module);
     }
     toggles_sync();
 }
@@ -2487,7 +2651,7 @@ static void ramp_tick(void)
 /* the base values with the P-locks on node nd (#524, engine.ts applyCv: a lock in place of the normal value): a copy of
  * par with each locked parameter at its lock, clamped to its range (to its top: a stretch), or par when none locks it */
 static int32_t lock_buf[2][MAX_PAR];                  /* (one per lane, #271) */
-static const int32_t *lock_base(const node_t *nd, const int32_t *par, uint32_t npar, uint32_t lane)
+HOT const int32_t *lock_base(const node_t *nd, const int32_t *par, uint32_t npar, uint32_t lane)
 {
     const def_t *d = &DEFS[nd->type];
     uint32_t r, k, j, any = 0, m = (uint32_t)(nd - E.node);
@@ -2536,7 +2700,7 @@ static void locks_step(const node_t *nd, const inst_t *it)
 int eng_locks_count(void) { return E.loaded ? E.nlk : 0; }
 
 /* the base values apply_cv works from: the node's, or a copy with its pending ramps added */
-static const int32_t *ramp_base(const node_t *nd, const int32_t *par, uint32_t npar, uint32_t lane)
+HOT const int32_t *ramp_base(const node_t *nd, const int32_t *par, uint32_t npar, uint32_t lane)
 {
     uint32_t k, j, any = 0;
     int32_t m = (int32_t)(nd - E.node);
@@ -2667,7 +2831,7 @@ static int32_t morph_value(const def_t *d, uint32_t j, int32_t u)
 /* a parameter at morph position t between its value and its B side (patch.ts morphValue): a choice or switch snaps at
  * 0.5, the rest moves in morph_unit space; with either side past pmax (a stretch: `over`, the B side (PARB) is B - pmin
  * in 1/2048) linearly between the values */
-static int32_t morph_of(const def_t *d, uint32_t j, int32_t a, uint32_t ub, int32_t t, int over)
+HOT int32_t morph_of(const def_t *d, uint32_t j, int32_t a, uint32_t ub, int32_t t, int over)
 {
     int32_t ua;
     if (over || (d->ptop && a > d->pmax[j])) {
@@ -3003,10 +3167,16 @@ static int arp_latched(const arp_t *a) { return E.node[a->node].par[ARP_P_LATCH]
  * play them as its own source's (Main's keys, or the track cabled into it). arp_hears_main: it takes Main's keys now */
 static int arp_hears_main(uint32_t m) { return !E.node[m].ksrc && (!E.armany || mset_has(E.armm, m)); }
 static int arp_thru(uint32_t m) { return m < E.nmod && E.node[m].type == T_ARP && E.node[m].bypass; }
+/* a Harmonizer hears Main's keys (engine.ts keyHarms): always while nothing is armed, else when armed; bypassed it hands
+ * them straight on (harmPasses) */
+static int harm_hears_main(uint32_t m) { return !E.armany || mset_has(E.armm, m); }
+static int harm_thru(uint32_t m) { return m < E.nmod && E.node[m].type == T_HARM && E.node[m].bypass; }
 /* where group g's notes come from now (grp_t src coding: 0 the keys, 1 + a node); 0xFF nothing */
 static uint32_t grp_src(uint32_t g)
 {
     uint32_t s = E.grp[g].src, a;
+    if (s && harm_thru(s - 1u))
+        return harm_hears_main(s - 1u) ? 0u : 0xFFu;
     if (!s || !arp_thru(s - 1u))
         return s;
     a = s - 1u;
@@ -3134,6 +3304,327 @@ static void arp_emit_off(const arp_t *a, uint32_t note)
     for (g = 1; g <= E.ngrp; g++)
         if (E.grp[g].src == a->node + 1u)
             group_off(&E.grp[g], note);
+}
+
+/* ------------------------------------------------------------------ harmonizer (web/src/harmonizer.ts, #598) */
+
+static uint8_t harm_raw;                         /* the keys come as roots whatever their note (the FM-1's keys: eng_harm_zone) */
+
+static int32_t harm_par(const harm_t *h, uint32_t p, int32_t lo, int32_t hi) { return clampi(round_q16(E.node[h->node].par[p]), lo, hi); }
+static int harm_locks(const harm_t *h) { return harm_par(h, HARM_P_LOCK, 0, 1) == 1; }
+/* the buttons in effect: those held (Lock: of the press under way), else the latched ones (Lock on) */
+static uint32_t harm_buttons(const harm_t *h) { return harm_locks(h) ? (h->down ? h->gesture : h->locked) : h->down; }
+
+/* a chord button pressed or let go (harmonizer.ts harmButton) */
+static void harm_button(harm_t *h, uint32_t b, int down)
+{
+    uint8_t bit = (uint8_t)(1u << b);
+    if (b >= HARM_ZONE)
+        return;
+    if (down) {
+        if (h->down & bit)
+            return;
+        h->stamp[b] = ++h->clock;
+        if (!h->down) {
+            h->gesture = bit;
+            h->toggle = h->locked == bit;
+        } else {
+            h->gesture |= bit;
+            h->toggle = 0;
+        }
+        h->down |= bit;
+    } else {
+        if (!(h->down & bit))
+            return;
+        h->down &= (uint8_t)~bit;
+        if (!h->down && harm_locks(h))
+            h->locked = h->toggle ? 0u : h->gesture;
+        if (!h->down) {
+            h->gesture = 0;
+            h->toggle = 0;
+        }
+    }
+}
+
+/* the chord as intervals over the root, low to high, before the voicing (harmonizer.ts harmIntervals): from the buttons in
+ * effect (bit 0 sus2, 1 maj, 2 sus4, 3 min, 4 7, 5 dim, 6 9; the quality pressed last wins), else the card's. Its count */
+static uint32_t harm_intervals(const harm_t *h, int32_t *t)
+{
+    uint32_t bits = harm_buttons(h), n = 0, i, j, at = 0;
+    int32_t type = 0, sus2, sus4, sev, nine, x;
+    if (bits) {
+        for (i = 0; i < 3u; i++)
+            if ((bits >> (2u * i + 1u) & 1u) && h->stamp[2u * i + 1u] > at) {
+                at = h->stamp[2u * i + 1u];
+                type = (int32_t)i + 1;
+            }
+        sus2 = (int32_t)(bits & 1u);
+        sus4 = (int32_t)(bits >> 2 & 1u);
+        sev = (int32_t)(bits >> 4 & 1u);
+        nine = (int32_t)(bits >> 6 & 1u);
+    } else {
+        int32_t su = harm_par(h, HARM_P_SUS, 0, 3), ex = harm_par(h, HARM_P_EXT, 0, 3);
+        type = harm_par(h, HARM_P_TYPE, 0, 3);
+        sus2 = su & 1;
+        sus4 = su >> 1 & 1;
+        sev = ex & 1;
+        nine = ex >> 1 & 1;
+    }
+    t[n++] = 0;
+    if (!type && !sus2 && !sus4 && !sev && !nine)
+        return n;
+    if (type == 2 || type == 3) {                /* the quality's third and fifth; without one a sus chord (no third), else */
+        t[n++] = 3;                              /* a major one under the 7th / 9th */
+        t[n++] = type == 3 ? 6 : 7;
+    } else if (type == 1 || !(sus2 || sus4)) {
+        t[n++] = 4;
+        t[n++] = 7;
+    } else {
+        t[n++] = 7;
+    }
+    if (sus2)
+        t[n++] = 2;
+    if (sus4)
+        t[n++] = 5;
+    if (sev)
+        t[n++] = 10;
+    if (nine)
+        t[n++] = 14;
+    for (i = 1; i < n; i++)                      /* (insertion sort, low to high) */
+        for (j = i; j > 0 && t[j - 1] > t[j]; j--) {
+            x = t[j];
+            t[j] = t[j - 1];
+            t[j - 1] = x;
+        }
+    return n;
+}
+
+/* the notes root plays now, low to high, inside 0..127 (harmonizer.ts harmChord): the voicing's steps up take the lowest
+ * note an octave up, its steps down the highest an octave down (a chord only, not the root alone). Their count */
+static uint32_t harm_chord(const harm_t *h, uint32_t root, uint8_t *out)
+{
+    int32_t t[HARM_TONES], v = harm_par(h, HARM_P_VOICING, -HARM_VOICING, HARM_VOICING), x;
+    uint32_t n = harm_intervals(h, t), i, k = 0;
+    for (; n > 1u && v > 0; v--) {
+        x = t[0] + 12;
+        for (i = 1; i < n && t[i] < x; i++)
+            t[i - 1u] = t[i];
+        t[i - 1u] = x;
+    }
+    for (; n > 1u && v < 0; v++) {
+        x = t[n - 1u] - 12;
+        for (i = n - 1u; i > 0 && t[i - 1u] > x; i--)
+            t[i] = t[i - 1u];
+        t[i] = x;
+    }
+    for (i = 1; i < n; i++)                      /* (low to high again: a 9th taken down lands over the root) */
+        for (k = i; k > 0 && t[k - 1u] > t[k]; k--) {
+            x = t[k];
+            t[k] = t[k - 1u];
+            t[k - 1u] = x;
+        }
+    k = 0;
+    for (i = 0; i < n; i++)
+        if ((x = (int32_t)root + t[i]) >= 0 && x <= 127)
+            out[k++] = (uint8_t)x;
+    return k;
+}
+
+/* a note of its into the groups it plays (an arpeggiator's way: their key range judges it) */
+static void harm_emit_on(const harm_t *h, uint32_t note, int32_t vel)
+{
+    uint32_t g;
+    for (g = 1; g <= E.ngrp; g++)
+        if (E.grp[g].src == h->node + 1u && note >= E.grp[g].lo && note <= E.grp[g].hi)
+            group_on(&E.grp[g], note, vel);
+}
+static void harm_emit_off(const harm_t *h, uint32_t note)
+{
+    uint32_t g;
+    for (g = 1; g <= E.ngrp; g++)
+        if (E.grp[g].src == h->node + 1u)
+            group_off(&E.grp[g], note);
+}
+
+/* a root let go: the notes no other held root sounds end */
+static void harm_root_off(harm_t *h, uint32_t key)
+{
+    uint32_t i, j;
+    for (i = 0; i < h->nroots && h->root[i] != key; i++)
+        ;
+    if (i >= h->nroots)
+        return;
+    for (j = 0; j < h->nnote[i]; j++)
+        if (h->count[h->note[i][j]] && --h->count[h->note[i][j]] == 0u)
+            harm_emit_off(h, h->note[i][j]);
+    for (h->nroots--; i < h->nroots; i++) {
+        h->root[i] = h->root[i + 1u];
+        h->nnote[i] = h->nnote[i + 1u];
+        for (j = 0; j < HARM_TONES; j++)
+            h->note[i][j] = h->note[i + 1u][j];
+    }
+}
+
+/* a root pressed: its chord's notes no held root sounds yet start; one already held plays again */
+static void harm_root_on(harm_t *h, uint32_t key, int32_t vel)
+{
+    uint32_t i, j;
+    harm_root_off(h, key);
+    if (h->nroots >= HARM_ROOTS)
+        return;
+    i = h->nroots++;
+    h->root[i] = (uint8_t)key;
+    h->nnote[i] = (uint8_t)harm_chord(h, key, h->note[i]);
+    for (j = 0; j < h->nnote[i]; j++)
+        if (h->count[h->note[i][j]]++ == 0u)
+            harm_emit_on(h, h->note[i][j], vel);
+}
+
+/* a key from Main: one of the seven under the split a button (not from the FM-1's keys: harm_raw), else a root */
+static void harm_key(harm_t *h, uint32_t note, int32_t vel, int down)
+{
+    int32_t b;
+    uint32_t i, held;
+    if (note >= 128u)
+        return;
+    if (!harm_raw && (held = h->button_key[note]) != 0u) {
+        if (!down) {
+            h->button_key[note] = 0;
+            for (i = 0; i < 128u && h->button_key[i] != held; i++)
+                ;
+            if (i == 128u)
+                harm_button(h, held - 1u, 0);
+        }
+        return;
+    }
+    if (!down) {
+        harm_root_off(h, note);
+        return;
+    }
+    b = (int32_t)note - (harm_par(h, HARM_P_SPLIT, 0, 127) - HARM_ZONE);
+    if (!harm_raw && b >= 0 && b < HARM_ZONE) {
+        harm_root_off(h, note);
+        h->button_key[note] = (uint8_t)(b + 1);
+        harm_button(h, (uint32_t)b, 1);
+    } else
+        harm_root_on(h, note, vel);
+}
+
+/* its groups let go of every note, its roots too (the buttons and the latch stay; engine.ts harmDrop) */
+static void harm_drop(harm_t *h)
+{
+    uint32_t g, v;
+    h->nroots = 0;
+    for (v = 0; v < 128u; v++)
+        h->count[v] = 0;
+    for (g = 1; g <= E.ngrp; g++) {
+        if (E.grp[g].src != h->node + 1u)
+            continue;
+        E.grp[g].nheld = 0;
+        E.grp[g].down[0] = E.grp[g].down[1] = E.grp[g].down[2] = E.grp[g].down[3] = 0;
+        for (v = 0; v < E.grp[g].parts; v++) {
+            E.pv[E.grp[g].pv0 + v].on = 0;
+            E.pv[E.grp[g].pv0 + v].gate = 0;
+            E.pv[E.grp[g].pv0 + v].retrig = 0;
+            E.pv[E.grp[g].pv0 + v].key_trig = 0;
+        }
+    }
+}
+/* everything let go, the latch too (harmonizer.ts harmClear) */
+static void harm_clear(harm_t *h)
+{
+    uint8_t node = h->node, *hz = (uint8_t *)h;
+    uint32_t j;
+    for (j = 0; j < sizeof *h; j++)
+        hz[j] = 0;
+    h->node = node;
+}
+static void harm_switched(uint32_t m)
+{
+    uint32_t k;
+    for (k = 0; k < E.nharm; k++)
+        if (E.harm[k].node == m)
+            harm_drop(&E.harm[k]);
+}
+
+void eng_harm_zone(int on) { harm_raw = (uint8_t)!on; }
+
+void eng_chord_button(uint32_t b, int down)
+{
+    uint32_t k;
+    if (!E.loaded)
+        return;
+    for (k = 0; k < E.nharm; k++)
+        if (harm_hears_main(E.harm[k].node) && !E.node[E.harm[k].node].bypass)
+            harm_button(&E.harm[k], b, down);
+}
+
+/* the Harmonizer the keys reach (engine.h): one that hears Main's keys, is not bypassed and plays a group; -1 none */
+int eng_keys_harm(void)
+{
+    uint32_t k, g;
+    if (!E.loaded)
+        return -1;
+    for (k = 0; k < E.nharm; k++) {
+        uint32_t m = E.harm[k].node;
+        if (!harm_hears_main(m) || E.node[m].bypass)
+            continue;
+        for (g = 1; g <= E.ngrp; g++)
+            if (E.grp[g].src == m + 1u)
+                return (int)m;
+    }
+    return -1;
+}
+
+/* the chord harmonizer m plays now, by name (harmonizer.ts harmName: MIN7, MAJ ADD2, 7 SUS4..., "" the root alone). The 7
+ * button's seventh is the minor one: beside maj it reads 7 (a dominant seventh), beside dim MIN7B5; 9 with 7 is a ninth
+ * chord, without it ADD9; a 2nd or 4th beside a third is ADD2 / ADD4, without one SUS2 / SUS4 */
+static char *harm_put(char *q, const char *out, const char *w)
+{
+    if (q != out)
+        *q++ = ' ';
+    while (*w)
+        *q++ = *w++;
+    return q;
+}
+void eng_harm_name(uint32_t m, char *out)
+{
+    static const char *const Q[4] = {"", "MAJ", "MIN", "DIM"};
+    int32_t t[HARM_TONES];
+    uint32_t k, n, i, has = 0, q3;
+    char *q = out, ext[8];
+    *out = 0;
+    for (k = 0; k < E.nharm && E.harm[k].node != m; k++)
+        ;
+    if (!E.loaded || k >= E.nharm || (n = harm_intervals(&E.harm[k], t)) < 2u)
+        return;
+    for (i = 0; i < n; i++)
+        has |= 1u << t[i];
+    q3 = (has >> 3 & 1u) && (has >> 6 & 1u) ? 3u : has >> 3 & 1u ? 2u : has >> 4 & 1u ? 1u : 0u;
+    if (has >> 10 & 1u) {
+        char *e = ext;
+        if (q3 >= 2u) {
+            *e++ = 'M';
+            *e++ = 'I';
+            *e++ = 'N';
+        }
+        *e++ = has >> 14 & 1u ? '9' : '7';
+        if (q3 == 3u) {
+            *e++ = 'B';
+            *e++ = '5';
+        }
+        *e = 0;
+        q = harm_put(q, out, ext);
+    } else if (q3) {
+        q = harm_put(q, out, Q[q3]);
+    }
+    if (has >> 2 & 1u)
+        q = harm_put(q, out, q3 ? "ADD2" : "SUS2");
+    if (has >> 5 & 1u)
+        q = harm_put(q, out, q3 ? "ADD4" : "SUS4");
+    if ((has >> 14 & 1u) && !(has >> 10 & 1u))
+        q = harm_put(q, out, "ADD9");
+    *q = 0;
 }
 
 /* a Drum map lets go of every row at once (engine.ts dropRows): the keys it held too */
@@ -3388,6 +3879,7 @@ int eng_hears_keys(uint32_t m)
     switch (nd->type) {
     case T_STEPS: return hears_trk(m);
     case T_ARP: return arp_hears_main(m);
+    case T_HARM: return harm_hears_main(m);
     case T_DRUMMAP: return nd->ksrc == 1u && (!E.armany || ARMED(m));
     default: return nd->grp && !E.grp[nd->grp].src && hears_grp(nd->grp);
     }
@@ -3399,6 +3891,9 @@ void eng_note_on(uint32_t note, int32_t vel_q16, uint32_t ch)
         if ((E.grp[g].src ? grp_src(g) == 0u : hears_grp(g)) && takes_key(&E.grp[g], note, ch))
             group_on(&E.grp[g], note, vel_q16);
     if (!dev_ch || dev_ch == ch) {
+        for (g = 0; g < E.nharm; g++)            /* (the Harmonizers' chords at once, before the arpeggiators: engine.ts noteOn) */
+            if (harm_hears_main(E.harm[g].node) && !E.node[E.harm[g].node].bypass)
+                harm_key(&E.harm[g], note, vel_q16, 1);
         for (g = 0; g < E.narp; g++)
             if (arp_hears_main(E.arp[g].node))
                 arp_note_on(&E.arp[g], note, vel_q16);
@@ -3416,6 +3911,9 @@ void eng_note_off(uint32_t note, uint32_t ch)
         if ((E.grp[g].src ? grp_src(g) == 0u : hears_grp(g)) && takes_key(&E.grp[g], note, ch))
             group_off(&E.grp[g], note);
     if (!dev_ch || dev_ch == ch) {
+        for (g = 0; g < E.nharm; g++)
+            if (harm_hears_main(E.harm[g].node) && !E.node[E.harm[g].node].bypass)
+                harm_key(&E.harm[g], note, 0, 0);
         for (g = 0; g < E.narp; g++)
             if (arp_hears_main(E.arp[g].node))
                 arp_note_off(&E.arp[g], note);
@@ -3435,6 +3933,10 @@ static void keys_off(void)
         E.arp[g].n = 0;
         E.arp[g].cur = -1;
         E.arp[g].running = 0;
+    }
+    for (g = 0; g < E.nharm; g++) {              /* (the Harmonizers' groups, their buttons and latch too) */
+        harm_drop(&E.harm[g]);
+        harm_clear(&E.harm[g]);
     }
     for (g = 0; g <= E.ngrp; g++) {
         if (E.grp[g].src && grp_src(g) != 0u)
@@ -3538,6 +4040,7 @@ eng_mset_t eng_arms(uint32_t m)
     switch (nd->type) {
     case T_STEPS: return mset_one(m);
     case T_ARP: return key_chain(m);
+    case T_HARM: return mset_one(m);
     case T_DRUMMAP: return nd->ksrc == 1u ? mset_one(m) : nd->ksrc >= 2u ? key_chain(nd->ksrc - 2u) : mset_none();
     default: return !nd->grp ? mset_none() : E.grp[nd->grp].src ? key_chain(E.grp[nd->grp].src - 1u) : mset_one(m);
     }
@@ -3564,6 +4067,9 @@ int eng_keys_drummap(void)
             return -1;
     for (g = 0; g < E.narp; g++)
         if (arp_hears_main(E.arp[g].node))   /* (one a track feeds hears the track: the track decides, below) */
+            return -1;
+    for (g = 0; g < E.nharm; g++)            /* (a Harmonizer plays the keys as notes) */
+        if (harm_hears_main(E.harm[g].node))
             return -1;
     for (m = 0; m < E.nmod; m++) {
         int d = -1;
@@ -3627,6 +4133,8 @@ void eng_buttons(uint32_t mask)
                     E.node[m].bypass = (uint8_t)(panel_buttons >> b & 1u);
                     if (E.node[m].type == T_ARP && was != E.node[m].bypass)
                         arp_switched(m);
+                    if (E.node[m].type == T_HARM && was != E.node[m].bypass)
+                        harm_switched(m);
                 }
             }
     toggles_sync();
@@ -4576,6 +5084,8 @@ void eng_all_notes_off(void)
         E.arp[i].cur = -1;
         E.arp[i].running = 0;
     }
+    for (i = 0; i < E.nharm; i++)
+        harm_clear(&E.harm[i]);
     for (i = 0; i <= E.ngrp; i++) {
         E.grp[i].nheld = 0;
         E.grp[i].down[0] = E.grp[i].down[1] = E.grp[i].down[2] = E.grp[i].down[3] = 0;
@@ -8837,7 +9347,7 @@ static int32_t signal_mean(const esig_t *src, uint32_t n)
     return block_mean(sum, n);
 }
 
-static void apply_cv(const node_t *nd, inst_t *it, uint32_t n, const inst_t *prev, int32_t *means)
+HOT void apply_cv(const node_t *nd, inst_t *it, uint32_t n, const inst_t *prev, int32_t *means)   /* (inlined: render_mods and aot.c aot_cv call it) */
 {
     const def_t *d = &DEFS[nd->type];
     int32_t mean[2] = {0, 0}, extra[MAX_IN];   /* extra[s] is read only where input_map[s] set it (no memset per call) */
@@ -8921,7 +9431,7 @@ static void flaw_scale(const def_t *d, inst_t *it, uint32_t j, int64_t k_q16)
     if (k_q16 != ENG_ONE)
         it->eff[j] = clampi((int32_t)(((int64_t)it->eff[j] * k_q16) >> 16), d->pmin[j], d->pmax[j]);
 }
-static void apply_flaws(const node_t *nd, inst_t *it)
+HOT void apply_flaws(const node_t *nd, inst_t *it)
 {
     const def_t *d = &DEFS[nd->type];
     const grp_t *g = IT_G(nd);
@@ -8981,6 +9491,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_FM1: m_fm1(nd, it, n); break;
     case T_PART: m_part(nd, it, n); break;
     case T_ARP: m_arp(nd, it, n); break;
+    case T_HARM: fill(it->out[HARM_O_KEYS], 0, n); break;
     case T_RANDOM: m_random(nd, it, n); break;
     case T_OSC: if (EF(it, OSC_P_ANALOG) > 0) m_osc_ana(nd, it, n); else m_osc(nd, it, n); break;   /* (#673) */
     case T_LFO: m_lfo(nd, it, n); break;
@@ -9038,6 +9549,11 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
  * inputs, 2 before it runs, 3 after; 4 at the start of a block, 5 at its end. Compiled out unless ENG_PROF is defined. */
 #ifndef ENG_PROF
 #define ENG_PROF(stage, node, part) ((void)0)
+#endif
+/* The device's block timing (#802, #803; modular.c, blk_time.h): a timestamp before the voices (0), after them (1) and
+ * before the Output modules' sum (2). Compiled out unless ENG_TMARK is defined. */
+#ifndef ENG_TMARK
+#define ENG_TMARK(at) ((void)0)
 #endif
 
 #define cur_g_parts(nd) ((uint32_t)E.grp[(nd)->grp].parts)
@@ -9211,6 +9727,10 @@ static void render_mods(uint32_t k0, uint32_t k1, uint32_t n, uint32_t first, ui
         }
         if (nd->type == T_STEPS && E.nlt && first == 0u)   /* its P-locks for the step it is on (#524) */
             locks_step(nd, &inst_pool[nd->inst0]);
+#ifdef ENG_POISON
+        if (step == 1u)                                    /* (one core: the values whose last reader this was) */
+            poi_after((int32_t)k);
+#endif
     }
 }
 
@@ -9250,11 +9770,17 @@ static int lanes_awake(const node_t *nd)
     return m == 3u;
 }
 
+#include "aot.c"                                 /* factory assemblies compiled ahead of time (#808): AOT_OWNS, aot_bind */
+
 static void render_split(uint32_t n)
 {
     uint32_t k = 0, e;
     while (k < E.norder) {
         const node_t *nd = &E.node[E.order[k]];
+        if (AOT_OWNS(k, n)) {                    /* a compiled assembly's member: its first renders them all */
+            k++;
+            continue;
+        }
         if (!lane_splits(nd)) {
             render_mods(k, k + 1u, n, 0u, 1u);
             k++;
@@ -9265,7 +9791,7 @@ static void render_split(uint32_t n)
         lane_job.k0 = k;
         lane_job.k1 = e;
         lane_job.n = n;
-        if (lanes_awake(nd) && eng_lane_run(lane1_job, 0u)) {
+        if (lanes_awake(nd) && eng_lane_run(lane1_job, nd->grp)) {
             render_mods(k, e, n, 0u, 2u);
             if (eng_lane_wait() != 0)
                 render_mods(k, e, n, 1u, 2u);           /* the second core was given up: lane 1 here */
@@ -9306,6 +9832,9 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
         uint32_t n = total - off < ENG_BLOCK ? total - off : ENG_BLOCK;
         int32_t click_at = -1, accent = 0;
         ENG_PROF(4, 0, 0);
+#ifdef ENG_POISON
+        poi_after(-1);
+#endif
         if (once_st == 1u && once_cin >= ONCE_BAR) {   /* play once's count-in is over: the transport starts, each track */
             uint32_t s = E.song && E.song_n[E.song - 1u] ? E.song_n[E.song - 1u] : 1u;   /* the clock steps counts */
             once_st = 2;                                                                       /* its passes */
@@ -9452,7 +9981,9 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             }
         }
         E.idle_blk = (uint8_t)((E.idle_blk + 1u) % IDLE_CHECK);
+        ENG_TMARK(0);
         render_split(n);
+        ENG_TMARK(1);
         if (n == ENG_BLOCK)
             for (k = 1; k <= E.ngrp; k++) {             /* a released part that has gone quiet goes idle (part_quiet) */
                 const grp_t *g = &E.grp[k];
@@ -9472,6 +10003,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             E.pv[k].key_trig = 0;
         }
         group_cables();                                 /* (#681: after the triggers, so a regroup's restart is the next block's) */
+        ENG_TMARK(2);
         for (k = 0; k < E.nout; k++) {
             const node_t *o = &E.node[E.outputs[k]];
             const inst_t *it = &inst_pool[o->inst0];
