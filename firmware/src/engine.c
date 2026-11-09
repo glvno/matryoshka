@@ -5511,36 +5511,73 @@ static void m_adsr(const node_t *nd, inst_t *it, uint32_t n)
         else if (!g && stage && stage != 4 && hold[i] <= 32768)
             stage = 4;
         prev = g;
+        /* Each stage runs on until it ends or the next sample's gate (or hold) would change it, without the per-sample
+         * edge checks (#781). ADSR_KEEP(j): sample j changes nothing in an attack, decay or sustain. */
+#define ADSR_KEEP(j) ((gate[j] > 32768) == g && (g || hold[j] > 32768))
         switch (stage) {
+        case 0: {                                 /* resting: until the gate rises */
+            const int32_t o = v >> 14;
+            out[i] = o;
+            while (i + 1u < n && (gate[i + 1u] > 32768) == g)
+                out[++i] = o;
+            break;
+        }
         case 1:
-            v += ainc;
-            if (v >= (1 << 30)) {
-                v = 1 << 30;
-                stage = 2;
+            for (;;) {
+                v += ainc;
+                if (v >= (1 << 30)) {
+                    v = 1 << 30;
+                    stage = 2;
+                    out[i] = v >> 14;
+                    break;
+                }
+                out[i] = v >> 14;
+                if (i + 1u >= n || !ADSR_KEEP(i + 1u))
+                    break;
+                i++;
             }
             break;
-        case 2: {
-            int32_t d = sus - v;
-            v += mulq(d, ad, 30);
-            d = sus - v;
-            if ((d < 0 ? -d : d) < 107374)
-                stage = 3;
+        case 2:
+            for (;;) {
+                int32_t d;
+                v += mulq(sus - v, ad, 30);
+                d = sus - v;
+                out[i] = v >> 14;
+                if ((d < 0 ? -d : d) < 107374) {
+                    stage = 3;
+                    break;
+                }
+                if (i + 1u >= n || !ADSR_KEEP(i + 1u))
+                    break;
+                i++;
+            }
             break;
-        }
-        case 3:
+        case 3: {                                 /* sustaining */
+            const int32_t o = sus >> 14;
             v = sus;
+            out[i] = o;
+            while (i + 1u < n && ADSR_KEEP(i + 1u))
+                out[++i] = o;
             break;
-        case 4: {                    /* (at least one step: past about 11 s the product rounds to 0 above the end level) */
-            int32_t dv = mulq(v, ar, 30);
-            v -= dv > 0 ? dv : 1;
-            if (v < 107374) {
-                v = 0;
-                stage = 0;
+        }
+        case 4:                                   /* (at least one step: past about 11 s the product rounds to 0 above the end level) */
+            for (;;) {
+                int32_t dv = mulq(v, ar, 30);
+                v -= dv > 0 ? dv : 1;
+                if (v < 107374) {
+                    v = 0;
+                    stage = 0;
+                    out[i] = 0;
+                    break;
+                }
+                out[i] = v >> 14;
+                if (i + 1u >= n || (gate[i + 1u] > 32768) != g)
+                    break;
+                i++;
             }
             break;
         }
-        }
-        out[i] = v >> 14;
+#undef ADSR_KEEP
     }
     it->s.adsr.v = v;
     it->s.adsr.stage = stage;
