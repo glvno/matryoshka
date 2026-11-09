@@ -563,6 +563,9 @@ export function panelOffBy(copy: PanelState, fm1: PanelState): string[] {
   if (fm1.page === 8 && copy.track !== fm1.track) off.push('track');
   if (fm1.page === 5 && copy.menuTab !== fm1.menuTab) off.push('menu tab');
   if (copy.stepRecord !== fm1.stepRecord || (fm1.stepRecord && copy.cursor !== fm1.cursor)) off.push('step record');
+  // Conditions 12/13 report piano-roll note preview; older firmware sends neither.
+  const preview = (1 << 12) | (1 << 13);
+  if ((fm1.conditions & preview) && (copy.conditions & preview) !== (fm1.conditions & preview)) off.push('note preview');
   if (copy.sheet !== fm1.sheet || (fm1.sheet && (copy.everywhere !== fm1.everywhere || copy.sheetRow !== fm1.sheetRow))) off.push('sheet');
   if (copy.held !== fm1.held) off.push('held');
   if (copy.octave !== fm1.octave) off.push('octave');

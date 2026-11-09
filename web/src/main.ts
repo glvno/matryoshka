@@ -742,6 +742,9 @@ const MASTER_KEY = 'matryoshka.fm1-master';
 const emuMaster = ((): number => { try { const v = Number(localStorage.getItem(MASTER_KEY)); return localStorage.getItem(MASTER_KEY) !== null && v >= 0 && v <= 1 ? v : 1; } catch { return 1; } })();
 let emuLevel = emuMaster;
 const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`, {
+  buttonNotes: (notes) => {
+    if (!mirror.following) for (const p of notes) sink.play(p.on ? { t: 'on', note: p.note, vel: p.vel / 65536 } : { t: 'off', note: p.note });
+  },
   focus: (d, g) => fm1Event({ kind: 'focus', device: d, page: g }, 'emu'),
   param: (m, p, v) => fm1Event({ kind: 'param', module: m, param: p, value: v / 65536 }, 'emu'),
   preset: (d) => stepOpenList(d),
