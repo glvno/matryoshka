@@ -24,7 +24,7 @@ MEMORY
     RAMTEXT (rwx): ORIGIN = 0x01C00000, LENGTH = 0x7F00
     RAM    (rwx) : ORIGIN = 0x01C08000, LENGTH = 24K
     POOL   (rw)  : ORIGIN = 0x01C0E000, LENGTH = 0x66000
-    NOINIT (rw)  : ORIGIN = 0x01C7C000, LENGTH = 0x3D50
+    NOINIT (rwx) : ORIGIN = 0x01C7C000, LENGTH = 0x3D50
 }
 SECTIONS
 {
@@ -40,6 +40,11 @@ SECTIONS
     .bss (NOLOAD) : { _bss_start = .; *(.bss*) *(.sbss*) *(COMMON) . = ALIGN(4); _bss_end = .; } > RAM
     .pool (NOLOAD) : { _pool_start = .; *(.pool*) . = ALIGN(4); _pool_end = .; } > POOL
     .noinit (NOLOAD) : { *(.noinit*) } > NOINIT
+    /* (spike) hot engine code (tools/build.py FAST_TEXT) in the rest of NOINIT, copied from its load address at every boot
+     * (main.c fm1_cstart), so what the boot ROM leaves there does not matter. Within a call's reach (+-4 MiB) of the
+     * code in XIP; the RAM below 0x01C80000 - 4 MiB is not. */
+    .fast_text : { . = ALIGN(4); _ft_start = .; KEEP(*(.fast_text*)) . = ALIGN(4); _ft_end = .; } > NOINIT AT > XIP
+    _ft_load = LOADADDR(.fast_text);
     _c1_ustack = 0x01C74000; _c1_ustack_top = 0x01C74E00; _c1_sstack_top = 0x01C75000;
     _guard0 = 0x01C75000; _ustack_lo = 0x01C75100; _ustack_top = 0x01C7A000;
     _guard1 = 0x01C7A000; _sstack_lo = 0x01C7A100; _sstack_top = 0x01C7C000;
