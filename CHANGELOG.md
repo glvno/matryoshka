@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 1.11.1 — 2026-11-08
+
+The same firmware format as 1.11.0: update the FM-1 and every patch plays as before, only with more room.
+
 ### FM-1
 
 - **A faster engine, the same sound:** the envelopes, input sums, filter, Mixer and Math do less work for the same output, bit for bit. On the test rig, the steady peak of a busy patch fell: Briefcase 3 91 % → 76 %, Algo Four 87 % → 77 %, Verona Drum 1 83 % → 78 %, the 808 Kit 82 % → 79 %, Oracle V 78 % → 74 %.
