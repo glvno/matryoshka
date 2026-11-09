@@ -74,6 +74,10 @@ A box of free text on the editor's canvas, like a Max comment. It has no ports, 
 
 Patches other people submitted, from the curated `community.json`, shown in Library > Community. A user adds the ones they want, and only those appear in Your patches and the palette.
 
+### Compiled assembly
+
+A factory assembly the FM-1 runs from C code made ahead of time (`firmware/src/aot_gen.h`), not on the engine's interpreter. It sounds the same, bit for bit, and takes less CPU. The FM-1 runs an assembly this way only when the patch holds it unchanged.
+
 ### Controls sheet
 
 The FM-1's list of the controls that work in its current state, drawn as a card over the dimmed screen. Pressing OCT- and OCT+ together opens it ([D-245](device-ui.md#D-245)).

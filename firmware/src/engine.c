@@ -1706,6 +1706,7 @@ static void pat_layout(void)
         }
 }
 
+static void aot_bind(const uint8_t *p, uint32_t len, uint32_t lines);   /* aot.c (#808) */
 int eng_load(const uint8_t *p, uint32_t len)
 {
     uint32_t i, j, c, k, v, at, ncab, n0, nl;
@@ -2432,6 +2433,10 @@ int eng_load(const uint8_t *p, uint32_t len)
     tempo_own = E.main >= 0 ? E.node[E.main].par[FM1_P_TEMPO] : (int32_t)(TEMPO_DEFAULT << 16);
     if (tempo_glo)                               /* the global tempo (D-907): the patch plays at it, its own value kept */
         tempo_apply();
+    for (k = 0, c = 0; k < nl; k++)              /* (#808: the compiled assemblies' state goes after the lines) */
+        if (line_reg[k])
+            c += line_sz[k];
+    aot_bind(p, len, c);
     return 0;
 }
 
@@ -2639,7 +2644,7 @@ static void ramp_tick(void)
 /* the base values with the P-locks on node nd (#524, engine.ts applyCv: a lock in place of the normal value): a copy of
  * par with each locked parameter at its lock, clamped to its range (to its top: a stretch), or par when none locks it */
 static int32_t lock_buf[2][MAX_PAR];                  /* (one per lane, #271) */
-static const int32_t *lock_base(const node_t *nd, const int32_t *par, uint32_t npar, uint32_t lane)
+HOT const int32_t *lock_base(const node_t *nd, const int32_t *par, uint32_t npar, uint32_t lane)
 {
     const def_t *d = &DEFS[nd->type];
     uint32_t r, k, j, any = 0, m = (uint32_t)(nd - E.node);
@@ -2688,7 +2693,7 @@ static void locks_step(const node_t *nd, const inst_t *it)
 int eng_locks_count(void) { return E.loaded ? E.nlk : 0; }
 
 /* the base values apply_cv works from: the node's, or a copy with its pending ramps added */
-static const int32_t *ramp_base(const node_t *nd, const int32_t *par, uint32_t npar, uint32_t lane)
+HOT const int32_t *ramp_base(const node_t *nd, const int32_t *par, uint32_t npar, uint32_t lane)
 {
     uint32_t k, j, any = 0;
     int32_t m = (int32_t)(nd - E.node);
@@ -2819,7 +2824,7 @@ static int32_t morph_value(const def_t *d, uint32_t j, int32_t u)
 /* a parameter at morph position t between its value and its B side (patch.ts morphValue): a choice or switch snaps at
  * 0.5, the rest moves in morph_unit space; with either side past pmax (a stretch: `over`, the B side (PARB) is B - pmin
  * in 1/2048) linearly between the values */
-static int32_t morph_of(const def_t *d, uint32_t j, int32_t a, uint32_t ub, int32_t t, int over)
+HOT int32_t morph_of(const def_t *d, uint32_t j, int32_t a, uint32_t ub, int32_t t, int over)
 {
     int32_t ua;
     if (over || (d->ptop && a > d->pmax[j])) {
@@ -9317,7 +9322,7 @@ static int32_t signal_mean(const esig_t *src, uint32_t n)
     return block_mean(sum, n);
 }
 
-static void apply_cv(const node_t *nd, inst_t *it, uint32_t n, const inst_t *prev, int32_t *means)
+HOT void apply_cv(const node_t *nd, inst_t *it, uint32_t n, const inst_t *prev, int32_t *means)   /* (inlined: render_mods and aot.c aot_cv call it) */
 {
     const def_t *d = &DEFS[nd->type];
     int32_t mean[2] = {0, 0}, extra[MAX_IN];   /* extra[s] is read only where input_map[s] set it (no memset per call) */
@@ -9401,7 +9406,7 @@ static void flaw_scale(const def_t *d, inst_t *it, uint32_t j, int64_t k_q16)
     if (k_q16 != ENG_ONE)
         it->eff[j] = clampi((int32_t)(((int64_t)it->eff[j] * k_q16) >> 16), d->pmin[j], d->pmax[j]);
 }
-static void apply_flaws(const node_t *nd, inst_t *it)
+HOT void apply_flaws(const node_t *nd, inst_t *it)
 {
     const def_t *d = &DEFS[nd->type];
     const grp_t *g = IT_G(nd);
@@ -9740,11 +9745,17 @@ static int lanes_awake(const node_t *nd)
     return m == 3u;
 }
 
+#include "aot.c"                                 /* factory assemblies compiled ahead of time (#808): AOT_OWNS, aot_bind */
+
 static void render_split(uint32_t n)
 {
     uint32_t k = 0, e;
     while (k < E.norder) {
         const node_t *nd = &E.node[E.order[k]];
+        if (AOT_OWNS(k, n)) {                    /* a compiled assembly's member: its first renders them all */
+            k++;
+            continue;
+        }
         if (!lane_splits(nd)) {
             render_mods(k, k + 1u, n, 0u, 1u);
             k++;
