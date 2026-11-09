@@ -651,6 +651,17 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
         return sizeof v;
     }
+#if FELUCCA_UAC_RETURN
+    if (page == 143u) {                       /* USB return: stream flags, positions, losses, fill servo, level, epoch */
+        uint32_t v[8], key=fm1__lock();
+        v[0]=(uint32_t)ur_alt | (uint32_t)ur_playing<<8;
+        v[1]=ur_w; v[2]=ur_r; v[3]=ur_underruns; v[4]=ur_overruns;
+        v[5]=(uint32_t)ur_fill_q8; v[6]=di_level; v[7]=ur_epoch;
+        fm1__unlock(key);
+        for (i=0;i<sizeof v;i++) out[i]=(uint8_t)(v[i/4]>>(8*(i%4)));
+        return sizeof v;
+    }
+#endif
     if (page == 127u) {
         uint32_t v[8];
         v[0] = cpu_pct;
