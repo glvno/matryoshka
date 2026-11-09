@@ -55,12 +55,12 @@ export const EFFECTS = [
   'take', 'take_accent', 'drone',
   'entry', 'entry_pattern', 'add_entry', 'dup_entry', 'transpose', 'song_play', 'song', 'delete_entry', 'back_steps',
   'tab', 'scroll', 'set', 'save_close', 'run_row',
-  'editor', 'analog_out',
+  'editor', 'analog_out', 'chord_button',
 ] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 /** the conditions a row can show under (help_ui.c hc_<name>); '!name': when it is false */
-export const CONDITIONS = ['list', 'dev_presets', 'dev_store', 'dev_keys', 'long_track', 'tracks', 'menu_guide', 'menu_page', 'menu_system', 'roll'] as const;
+export const CONDITIONS = ['list', 'dev_presets', 'dev_store', 'dev_keys', 'long_track', 'tracks', 'menu_guide', 'menu_page', 'menu_system', 'roll', 'harm'] as const;
 export type Condition = (typeof CONDITIONS)[number];
 
 export interface ControlRow {
@@ -168,6 +168,11 @@ export const CONTROLS: ControlRow[] = [
     help: 'arms the device on screen, so the keys play it, and disarms the others; on a device already armed it takes it out. A device with no keys input says NOTHING HERE TAKES KEYS, one whose keys input no cable reaches NO KEYS REACH THIS DEVICE. Nothing armed: Main’s cables decide what the keys play (KEYS WIRED)' },
   { id: 'arm-several', gesture: { first: 'ENV', do: [B('SEL')] }, does: 'arm several', when: 'dev_keys', sheet: { device: 55 }, effect: 'arm',
     help: 'on the environment page (ENV), SEL adds the row’s device to the armed devices or drops it, so the keys play several at once (a layer or a split)' },
+  // (the keys reach a Harmonizer, #598: its Side layout, the seven lowest keys its chord buttons)
+  { id: 'chord-quality', gesture: { do: [BLACK] }, does: '1-3 maj min dim', plain: 'chord buttons maj, min, dim', when: 'harm', sheet: { device: 24 }, effect: 'chord_button',
+    help: 'with the keys on a Harmonizer: black keys 1..3 are its chord buttons maj, min and dim, at any octave (held with others, the one pressed last wins); every key from C up plays that chord on its root. With no button held (and none latched) a key plays the card’s chord, or itself' },
+  { id: 'chord-add', gesture: { do: [WHITE] }, does: '1-4 sus2 sus4 7 9', plain: 'chord buttons sus2, sus4, 7, 9', when: 'harm', sheet: { device: 26 }, effect: 'chord_button',
+    help: 'with the keys on a Harmonizer: white keys 1..4 add to the chord: sus2 and sus4 (beside maj, min or dim an added 2nd or 4th), 7 (the minor seventh) and 9; pressed together the buttons combine. Its LOCK row on: the buttons pressed together stay latched until the next press (the same button alone again lets go)' },
 
   // ---- ENVIRONMENT: one row per device
   { id: 'env-rows', gesture: { do: [E('SELECT')] }, does: 'device row', sheet: { env: 10 }, effect: 'focus' },
@@ -296,6 +301,7 @@ const STRIP: Record<string, string | ({ _: string } & Partial<Record<HelpState, 
   'arm-device': 'play only this device from the keys (again: stop)',
   'arm-several': 'open the environment to arm several devices at once (a layer)', 'device-pages': "flip through this device's pages",
   'device-presets': "load this device's presets as you turn", devices: 'move to the next or previous device in the patch',
+  'chord-quality': 'hold to play maj, min or dim chords from one key', 'chord-add': 'hold to add sus2, sus4, a 7th or a 9th to the chord',
   // the environment
   'env-rows': 'move up and down the device list', 'env-arm': "play this row's device from the keys (several at once: layer)",
   'env-presets': "load presets for this row's device", 'env-presets-algo': "load presets for this row's device",
@@ -453,7 +459,7 @@ export const HELP_STATE_TITLE: Record<HelpState, string> = {
 export const CONDITION_TEXT: Record<Condition, string> = {
   list: 'while a Page button’s list shows', dev_presets: 'a device with presets', dev_store: 'an assembly', dev_keys: 'a device that takes keys',
   long_track: 'a track of more than 16 steps', tracks: 'a patch with Steps tracks', menu_guide: 'the GUIDE tab', menu_page: 'the MIDI, PANEL and SYSTEM tabs',
-  menu_system: 'the SYSTEM tab', roll: 'a melodic track',
+  menu_system: 'the SYSTEM tab', roll: 'a melodic track', harm: 'the keys on a Harmonizer: the seven lowest keys',
 };
 
 /** a gesture in words: "HOME held + PRESET", "a held step + K2", "OCT- / OCT+" */

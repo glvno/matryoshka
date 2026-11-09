@@ -54,6 +54,10 @@ A parameter an assembly promotes to its collapsed card; the card rows are what t
 
 The parameters an assembly promotes to its collapsed card; they are what the FM-1 player can change.
 
+### Chord button
+
+One of a [Harmonizer](#harmonizer)'s seven buttons that pick the chord its keys play: maj, min and dim pick the chord's kind, and sus2, sus4, 7 and 9 add notes to it. On the FM-1 they are its seven lowest keys ([Side layout](#side-layout)); from a MIDI keyboard they are the seven keys under the Harmonizer's split.
+
 ### Collapse
 
 Folding an expanded assembly back into one card. Also called closed in the model.
@@ -210,6 +214,10 @@ The GUIDE tab of the FM-1's settings menu: a text that explains Matryoshka's ide
 
 A copy of a repository that goes its own way for good: it takes no regular updates from the original and sends none back.
 
+### Harmonizer
+
+A module between the keys and an engine that plays a whole chord from one key, with that key as the chord's root, after the Telepathic Instruments Orchid. Its [chord buttons](#chord-button) pick the chord.
+
 ### ID block
 
 The range of `D-###` numbers a subject file owns, declared under its title. A file that fills its block gets a second one. The ID alone tells you which file a row lives in.
@@ -228,7 +236,7 @@ The editor's firmware install page, shown as a panel over the main area and clos
 
 ### Key source
 
-What feeds an engine its keys from outside it: Main (the panel keys and MIDI), a Steps track, an Arpeggiator. Never part of an engine. Avoid: driver, controller.
+What feeds an engine its keys from outside it: Main (the panel keys and MIDI), a Steps track, an Arpeggiator, a Harmonizer. Never part of an engine. Avoid: driver, controller.
 
 ### Keys in
 
@@ -457,6 +465,10 @@ The dialog that shares a patch: link, card image, Post to Reddit, file.
 ### Shedding
 
 The FM-1's overload response: dropping the highest part of the busiest poly group.
+
+### Side layout
+
+How the FM-1's keys work while they reach a [Harmonizer](#harmonizer), after CoralFlower's layout of the same name: the seven lowest keys are its [chord buttons](#chord-button) at any octave, and every other key plays a root. Black keys 1 to 3 are maj, min and dim; white keys 1 to 4 are sus2, sus4, 7 and 9.
 
 ### Sidecar
 
