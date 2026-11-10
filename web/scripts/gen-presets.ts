@@ -703,7 +703,6 @@ const leveled = (p: Patch): Patch => {
     const init = presetPattern(structureOf(p, a), 'Init');
     if (init) { a.preset = 'Init'; seedPresetPattern(p, a, init.id); }
   }
-  if (p.name === '<7PH') return p; // shared kit defaults are normalized on the standalone kit; headroom checks the whole mix.
   console.log(`levels: measuring ${p.name}`);
   const plan = loudness(p);
   applyLevels(plan);

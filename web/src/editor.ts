@@ -27,7 +27,8 @@ import { choiceName, formatValue, longName, moduleName, moduleTag, moduleTitle, 
 import { outputRange } from './ranges';
 import { picker } from './picker';
 import { selector } from './selector';
-import { ALLOC, copiesOf, makeRoom, polyGroups, polyOfModule, setPoly, trackDrumMap, trackTargets } from './poly';
+import type { OriginUpdate } from './pattern-origin';
+import { ALLOC, deviceView, copiesOf, makeRoom, polyGroups, polyOfModule, setPoly, trackDrumMap, trackTargets } from './poly';
 import { dragControl } from './deck';
 import { isPin, PinsInUse, removeRoute } from './parameter-routing';
 import {
@@ -1240,29 +1241,31 @@ export class Editor {
     this.refreshStrips();
   }
 
-  /** a track edited on the FM-1's SEQ page (its notes as they are now, of pattern `pat`): into the patch and the grid, an
-   * undo step like an edit here (an undo sends the patch back to the FM-1, so a change made there must be in the history) */
   clearPatternOrigins(): void {
     if (!this.patch.modules.some((m) => m.type === 'steps' && m.factoryPatterns)) return;
-    this.touch();
-    invalidatePresetPatterns(this.patch);
-    this.ev.onLayout(this.patch);
+    this.originsFromDevice({ kind: 'reset' });
   }
 
-  originFromDevice(id: number, pattern: number, identity: number, clear = false): void {
-    const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
-    if (!m || pattern < 0 || pattern >= 64) return;
+  originsFromDevice(update: OriginUpdate, replay = false): boolean {
+    if (replay) return true;
+    const view = deviceView(this.patch, true).patch;
+    const records = update.kind === 'snapshot' ? update.records : update.kind === 'change' ? [update.record] : [];
+    const valid = records.every((r) => view.modules[r.module]?.type === 'steps' && r.pattern >= 0 && r.pattern < 64);
     this.touch();
-    if (clear) delete m.factoryPatterns;
-    else {
+    if (update.kind !== 'change' || !valid) invalidatePresetPatterns(this.patch);
+    if (valid) for (const r of records) {
+      const m = this.patch.modules.find((x) => x.id === view.modules[r.module].id)!;
       const ids = (m.factoryPatterns ??= { version: 1, ids: [] }).ids;
-      ids[pattern] = identity ? (identity >>> 0).toString(16).padStart(8, '0') : null;
+      ids[r.pattern] = r.identity ? (r.identity >>> 0).toString(16).padStart(8, '0') : null;
       while (ids.length && !ids.at(-1)) ids.pop();
       if (!ids.length) delete m.factoryPatterns;
     }
-    this.ev.onLayout(this.patch);
+    this.ev.onStructure(this.patch);
+    return valid;
   }
 
+  /** a track edited on the FM-1's SEQ page (its notes as they are now, of pattern `pat`): into the patch and the grid, an
+   * undo step like an edit here (an undo sends the patch back to the FM-1, so a change made there must be in the history) */
   trackFromDevice(id: number, notes: StepNote[] | undefined, pat = 0): void {
     const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
     if (!m) return;

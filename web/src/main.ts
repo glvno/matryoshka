@@ -289,7 +289,7 @@ async function offerInstall(): Promise<void> {
 syncChip();
 device.onStatus = (msg) => {
   devStatus(msg);
-  if (!device.connected) { editor.clearPatternOrigins(); installedLayout = null; libraryDeviceChanged(); }   // (it went away)
+  if (!device.connected) { clearDevicePatternOrigins(); installedLayout = null; libraryDeviceChanged(); }   // (it went away)
 };
 // the FM-1 on its own (#65): while Live is on, its knobs and patch buttons move the editor's, and the status line follows its slot
 let fromDevice = false;
@@ -361,7 +361,7 @@ device.onEvent = (e) => {
     return;
   }
   if (e.kind === 'slot') {
-    editor.clearPatternOrigins();
+    clearDevicePatternOrigins();
     installedLayout = null;
     if (!device.hasLive) onEditorPatch = false;   // (an FM-1 that takes LIVE loads no slot under Live: this is SAVE or a boot)
     deviceSlot = { slot: e.slot, name: e.name };
@@ -394,21 +394,21 @@ device.onEvent = (e) => {
   if (!live()) return;
   fm1Event(e, 'device');
 };
+function clearDevicePatternOrigins(): void {
+  const was = fromDevice;
+  fromDevice = true;
+  try { editor.clearPatternOrigins(); } finally { fromDevice = was; }
+}
 /** what an FM-1 did on its panel, the real one over USB or the emulated one: the editor follows */
 function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
   const mark = (on: boolean): void => { if (from === 'device') fromDevice = on; else fromEmu = on; };
   if (e.kind === 'slot') return;
   if (e.kind === 'origins') {
     if (from === 'device' && (linkBusy() || installedLayout !== deviceLayoutKey(editor.patch))) return;
-    const view = deviceView(editor.patch, true).patch, update = e.update;
-    const records = update.kind === 'snapshot' ? update.records : update.kind === 'change' ? [update.record] : [];
-    const valid = records.every((r) => view.modules[r.module]?.type === 'steps');
-    if (!valid && from === 'device') device.invalidateOrigins();
+    const replay = from === 'emu' && fromDevice && panelReported();
     mark(true);
     try {
-      if (update.kind !== 'change' || !valid)
-        for (const m of editor.patch.modules) if (m.type === 'steps') editor.originFromDevice(m.id, 0, 0, true);
-      if (valid) for (const r of records) editor.originFromDevice(view.modules[r.module].id, r.pattern, r.identity);
+      if (!editor.originsFromDevice(e.update, replay) && from === 'device') device.invalidateOrigins();
     } finally { mark(false); }
     return;
   }
@@ -2170,7 +2170,7 @@ try {
 
 // FM-1 link: FM-1 & MIDI's Connect and the Connect FM-1 button over the canvas
 async function connectFm1(): Promise<void> {
-  if (device.connected) editor.clearPatternOrigins();
+  if (device.connected) clearDevicePatternOrigins();
   installedLayout = null;
   try {
     const info = await device.connect();
