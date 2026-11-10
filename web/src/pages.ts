@@ -259,7 +259,9 @@ export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
     const from = new Set([...keyReach(p, t.module!)].filter(id => ['steps', 'harm', 'arp'].includes(p.modules.find(m => m.id === id)?.type ?? '')));
     const driven = reading.filter((d) => !placed.has(d) && !d.kind && (drums.get(d) !== undefined
       ? drums.get(d)!.length === 1 && drums.get(d)![0] === t.module
-      : p.cables.some((c) => from.has(c.from.module) && deviceOf.get(c.to.module) === d)));
+      : p.cables.some((c) => from.has(c.from.module) && deviceOf.get(c.to.module) === d &&
+        (d.asm === undefined || (c.from.port === 'keys' && c.to.port === 'keys') ||
+          (c.from.port === 'gate' && defs[p.modules.find((m) => m.id === c.to.module)?.type ?? '']?.inputs.some((port) => port.name === c.to.port && port.kind === 'gate'))))));
     for (const d of driven) {
       d.track = t.module;
       out.push(d);

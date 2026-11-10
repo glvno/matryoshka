@@ -288,7 +288,7 @@ async function offerInstall(): Promise<void> {
 syncChip();
 device.onStatus = (msg) => {
   devStatus(msg);
-  if (!device.connected) { installedLayout = null; libraryDeviceChanged(); }   // (it went away)
+  if (!device.connected) { editor.clearPatternOrigins(); installedLayout = null; libraryDeviceChanged(); }   // (it went away)
 };
 // the FM-1 on its own (#65): while Live is on, its knobs and patch buttons move the editor's, and the status line follows its slot
 let fromDevice = false;
@@ -360,6 +360,7 @@ device.onEvent = (e) => {
     return;
   }
   if (e.kind === 'slot') {
+    editor.clearPatternOrigins();
     installedLayout = null;
     if (!device.hasLive) onEditorPatch = false;   // (an FM-1 that takes LIVE loads no slot under Live: this is SAVE or a boot)
     deviceSlot = { slot: e.slot, name: e.name };
@@ -2168,6 +2169,7 @@ try {
 
 // FM-1 link: FM-1 & MIDI's Connect and the Connect FM-1 button over the canvas
 async function connectFm1(): Promise<void> {
+  if (device.connected) editor.clearPatternOrigins();
   installedLayout = null;
   try {
     const info = await device.connect();

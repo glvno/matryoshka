@@ -7,7 +7,7 @@ import { devicesOf } from './pages';
 import { DEFS } from './modules';
 import { addModule, validatePatch } from './patch';
 import { noteWord } from './track';
-import { presetPattern, seedPresetPattern } from './preset-patterns';
+import { invalidatePresetPatterns, presetPattern, seedPresetPattern } from './preset-patterns';
 import { PRESET_PATTERNS, patternRevision, setPresetPatterns } from './preset-pattern-data';
 factoryPresets();
 function fixture(name = 'Spokes 6') {
@@ -141,4 +141,26 @@ it('preserves an ambiguous actual 808 route and ignores unrelated control wiring
   applyPreset(p, a, presets[1]);
   expect(t.notes!.map(noteWord)).toEqual(presetPattern(presets[1].structure, presets[1].name)!.notes);
   expect(other.notes).toBeUndefined();
+});
+
+it('preserves SAVE then physical USER then browser factory selection after ownership invalidation', () => {
+  const { p, a, t, presets } = fixture('808 Kit');
+  const original = structuredClone(t.notes);
+  invalidatePresetPatterns(p); // SLOT_NOW from SAVE; later device clear cannot be mapped until a new snapshot
+  expect(t.factoryPatterns).toBeUndefined();
+  const reload = validatePatch(JSON.parse(JSON.stringify(p)), DEFS);
+  applyPreset(reload, reload.assemblies!.find((x) => x.id === a.id)!, presets[1]);
+  expect(reload.modules.find((m) => m.id === t.id)!.notes).toEqual(original);
+  expect(p.modules.find((m) => m.id === t.id)!.notes).toEqual(original);
+});
+it('preserves a disconnected 808 default with only a Steps velocity cable into oscillator pitch', () => {
+  const { p, a, t, presets } = fixture('808 Kit');
+  const map = p.modules.find((m) => m.type === 'drummap')!;
+  p.cables = p.cables.filter((c) => !(c.from.module === map.id && /^g[1-8]$/.test(c.from.port)));
+  const osc = p.modules.find((m) => m.type === 'osc')!;
+  p.cables.push({ from: { module: t.id, port: 'vel' }, to: { module: osc.id, port: 'pitch' } });
+  const notes = structuredClone(t.notes);
+  expect(devicesOf(p, DEFS).find((d) => d.asm === a.id)!.track).toBeUndefined();
+  applyPreset(p, a, presets[1]);
+  expect(t.notes).toEqual(notes);
 });
