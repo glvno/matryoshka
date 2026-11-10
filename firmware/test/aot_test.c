@@ -4,7 +4,7 @@
  * same played and turned events both ways, each from a fresh process (fork: the engine keeps state across loads): notes (chords, single keys, releases), the performance controls, every
  * parameter of every module set to values across its range, a member bypassed for a while, blocks of odd lengths; then
  * Selectors switched with and without a fade, Scale and VCA gains at 0, 1/2 and 1.
- *   aot_test [-q] [patch.m1p ...]      exit 1 when any output differs; prints which patches ran compiled */
+ *   aot_test [-q | --files-only] [patch.m1p ...]      exit 1 when any output differs; prints which patches ran compiled */
 #include <stdio.h>
 #include <string.h>
 #include <sys/wait.h>
@@ -12,7 +12,15 @@
 #include "lanes_host.h"
 #undef eng_lane_run
 static int eng_lane_run(void (*fn)(uint32_t), uint32_t arg);
+static uint32_t fused_hits[2];
+#define AOT_FUSED_HIT(c) (fused_hits[(c)->v & 1u]++)
+static uint32_t pair_hits, lost_pair_hits;
+static uint32_t oracle_hits[2], oracle_fallbacks[2];
+#define AOT_ORACLE_HIT(c) (oracle_hits[(c)->v & 1u]++)
+#define AOT_ORACLE_FALLBACK(c) (oracle_fallbacks[(c)->v & 1u]++)
+#define AOT_PAIR_HIT() (pair_hits++)
 #define ENG_AOT 1
+#define AOT_TEST_CONTROLS 1
 #include "../src/engine.c"
 #include "../src/presets.h"
 
@@ -21,17 +29,34 @@ static int eng_lane_run(void (*fn)(uint32_t), uint32_t arg)
 {
     uint32_t group = fn == aot_lane1_job ? E.node[aot_job.x->node[aot_job.x->t->seg_lead[aot_job.seg]]].grp
                                         : E.node[E.order[lane_job.k0]].grp;
-    if (!group || group != arg) {
+#if ENG_AOT_PAIR
+    if (fn == aot_pair_worker) group = 0;
+    else
+#endif
+    if (!group) { fprintf(stderr, "poly lane job has no group\n"); exit(1); }
+    if (group != arg) {
         fprintf(stderr, "lane accounting group %u, expected %u\n", (unsigned)arg, (unsigned)group);
         exit(1);
     }
-    return test_lane_run(fn, arg);
+#if ENG_AOT_PAIR
+    if (fn == aot_pair_worker && !lost_pair_hits && getenv("AOT_LOST_PAIR")) {
+        if (lh_mode < 0) lh_init();
+        lh_lost = lh_jobs; /* Lose this paired job, not an earlier polyphonic job. */
+    }
+#endif
+    int accepted = test_lane_run(fn, arg);
+#if ENG_AOT_PAIR
+    if (fn == aot_pair_worker && accepted && lh_skip) lost_pair_hits++;
+#endif
+    return accepted;
 }
 
 #define BLOCKS 700u
 #define MAXOUT (BLOCKS * 256u)
 
 static int32_t outl[2][MAXOUT], outr[2][MAXOUT];
+static uint64_t fused_total, pair_total, lost_pair_total;
+static uint64_t oracle_total, oracle_fallback_total;
 
 static uint32_t rnd(uint32_t *s) { *s = *s * 1664525u + 1013904223u; return *s >> 8; }
 
@@ -44,6 +69,7 @@ static uint32_t run(const uint8_t *p, uint32_t len, int w, int *bound, int fuzz)
     if (eng_load(p, len))
         return 0;
     *bound = aot_nx;
+    if (getenv("AOT_TRANSPORT")) eng_transport(1);
     for (b = 0; b < BLOCKS; b++) {
         uint32_t n = SIZES[b % 5u];
         if (b == 2)
@@ -59,7 +85,26 @@ static uint32_t run(const uint8_t *p, uint32_t len, int w, int *bound, int fuzz)
         }
         if (b % 13u == 0u)
             eng_ctl(rnd(&s) % 3u, (int32_t)(rnd(&s) % 65536u) - (b % 26u ? 0 : 32768));
-        if (fuzz && b > 20u && b % 5u == 0u && eng_nmodules() > 0) {   /* a parameter anywhere, across its range */
+        if (getenv("AOT_ORACLE_FADE") && aot_nx) {
+            /* Setting FADE to zero does not cancel an already-running selector fade. */
+            static const uint8_t selectors[] = {12, 40};
+            for (unsigned j = 0; j < sizeof selectors; j++) {
+                uint32_t m = aot_x[0].node[selectors[j]];
+                if (b == 30u) eng_set_param(m, SELECT_P_FADE, 1000 << 16);
+                if (b == 31u) eng_set_param(m, SELECT_P_POS, 2 << 16);
+                if (b == 32u) eng_set_param(m, SELECT_P_FADE, 0);
+                if (b == 40u) eng_set_param(m, SELECT_P_POS, 1 << 16);
+            }
+        }
+        if (getenv("AOT_ORACLE_CONTROLS") && b > 20u && b % 5u == 0u && aot_nx) {
+            uint32_t row = ((b - 25u) / 5u) % (sizeof aot0_controls / sizeof aot0_controls[0]);
+            uint32_t m = aot_x[0].node[aot0_controls[row][0]], j = aot0_controls[row][1];
+            const def_t *d = &DEFS[eng_type(m)];
+            int64_t lo = d->pmin[j], hi = d->pmax[j];
+            /* Each run visits every public row at its minimum, midpoint or maximum. */
+            eng_set_param(m, j, (int32_t)(lo + fuzz * (hi - lo) / 2));
+        }
+        if (fuzz && !getenv("AOT_ORACLE_CONTROLS") && b > 20u && b % 5u == 0u && eng_nmodules() > 0) {   /* a parameter anywhere, across its range */
             uint32_t m = rnd(&s) % (uint32_t)eng_nmodules();
             const def_t *d = &DEFS[eng_type(m)];
             if (d->npar && eng_type(m) != T_FM1 && eng_type(m) != T_OUTPUT) {
@@ -70,7 +115,7 @@ static uint32_t run(const uint8_t *p, uint32_t len, int w, int *bound, int fuzz)
                     eng_set_param(m, j, v);
             }
         }
-        if (fuzz == 2 && b > 20u && b % 3u == 0u && eng_nmodules() > 0) {   /* switches: a Selector's position and fade, a
+        if (fuzz == 2 && !getenv("AOT_ORACLE_CONTROLS") && b > 20u && b % 3u == 0u && eng_nmodules() > 0) {   /* switches: a Selector's position and fade, a
                                                                           * Scale's or VCA's gain at 0 or 1 */
             uint32_t m = rnd(&s) % (uint32_t)eng_nmodules();
             if (eng_type(m) == T_SELECT) {
@@ -84,7 +129,7 @@ static uint32_t run(const uint8_t *p, uint32_t len, int w, int *bound, int fuzz)
             eng_set_bypass(bypassed, 0);
             bypassed = 0xFFFFFFFFu;
         }
-        if (fuzz && b % 97u == 50u && bypassed == 0xFFFFFFFFu && eng_nmodules() > 0) {   /* a module off for a while */
+        if (fuzz && !getenv("AOT_ORACLE_CONTROLS") && b % 97u == 50u && bypassed == 0xFFFFFFFFu && eng_nmodules() > 0) {   /* a module off for a while */
             bypassed = rnd(&s) % (uint32_t)eng_nmodules();
             if (eng_type(bypassed) == T_FM1 || eng_type(bypassed) == T_OUTPUT)
                 bypassed = 0xFFFFFFFFu;
@@ -106,7 +151,7 @@ static uint32_t run_fresh(const uint8_t *p, uint32_t len, int w, int *bound, int
 {
     int fd[2];
     pid_t pid;
-    uint32_t hdr[2] = {0, 0};
+    uint32_t hdr[7] = {0};
     if (pipe(fd))
         return 0;
     if (!(pid = fork())) {
@@ -114,6 +159,11 @@ static uint32_t run_fresh(const uint8_t *p, uint32_t len, int w, int *bound, int
         close(fd[0]);
         hdr[0] = run(p, len, w, &bd, fuzz);
         hdr[1] = (uint32_t)bd;
+        hdr[2] = fused_hits[0] + fused_hits[1];
+        hdr[3] = pair_hits;
+        hdr[4] = lost_pair_hits;
+        hdr[5] = oracle_hits[0] + oracle_hits[1];
+        hdr[6] = oracle_fallbacks[0] + oracle_fallbacks[1];
         if (write(fd[1], hdr, sizeof hdr) < 0 || write(fd[1], outl[w], hdr[0] * 4u) < 0 || write(fd[1], outr[w], hdr[0] * 4u) < 0)
             _exit(1);
         _exit(0);
@@ -127,6 +177,11 @@ static uint32_t run_fresh(const uint8_t *p, uint32_t len, int w, int *bound, int
     }
     waitpid(pid, 0, 0);
     *bound = (int)hdr[1];
+    fused_total += hdr[2];
+    pair_total += hdr[3];
+    lost_pair_total += hdr[4];
+    oracle_total += hdr[5];
+    oracle_fallback_total += hdr[6];
     return hdr[0];
 }
 
@@ -160,9 +215,11 @@ int main(int argc, char **argv)
 #define X(k) { PRESET_##k, sizeof PRESET_##k },
 X(0) X(1) X(2) X(3) X(4) X(5) X(6) X(7) X(8) X(9) X(10) X(11) X(12) X(13) X(14) X(15) X(16) X(17) X(18) X(19) X(20) X(21) X(22) X(23) X(24) X(25) X(26) X(27) X(28) X(29)
     };
-    int quiet = argc > 1 && !strcmp(argv[1], "-q"), fail = 0, a, f;
+    int files_only = argc > 1 && !strcmp(argv[1], "--files-only");
+    int quiet = files_only || (argc > 1 && !strcmp(argv[1], "-q")), fail = 0, a, f;
     unsigned t;
-    for (f = 0; f < 3; f++)
+    if (files_only && argc < 3) return 2;
+    for (f = 0; !files_only && f < 3; f++)
         for (t = 0; t < sizeof T / sizeof T[0]; t++) {
             char name[32];
             snprintf(name, sizeof name, "factory %u", t);
@@ -178,6 +235,20 @@ X(0) X(1) X(2) X(3) X(4) X(5) X(6) X(7) X(8) X(9) X(10) X(11) X(12) X(13) X(14) 
         for (f = 0; f < 3; f++)
             fail |= compare(base, file_buf, (uint32_t)n, quiet, f);
     }
+#if ENG_AOT_FUSE
+    if (!fused_total) { puts("aot: fused path was never exercised"); fail = 1; }
+    printf("aot: fused chains executed %llu times\n", (unsigned long long)fused_total);
+#endif
+    if (getenv("AOT_REQUIRE_PAIR") && !pair_total) { puts("aot: paired path was never exercised"); fail = 1; }
+    printf("aot: paired jobs executed %llu times\n", (unsigned long long)pair_total);
+    if (getenv("AOT_LOST_PAIR") && !lost_pair_total) { puts("aot: no paired job was lost"); fail = 1; }
+    printf("aot: lost paired jobs recovered %llu times\n", (unsigned long long)lost_pair_total);
+    if (getenv("AOT_REQUIRE_ORACLE") && !oracle_total) { puts("aot: integrated Oracle was never exercised"); fail = 1; }
+    if (getenv("AOT_ORACLE_CONTROLS") && (!oracle_total || oracle_fallback_total)) {
+        puts("aot: Oracle control sweep did not stay on the integrated path"); fail = 1;
+    }
+    printf("aot: integrated Oracle voices %llu, fallback voices %llu\n", (unsigned long long)oracle_total,
+           (unsigned long long)oracle_fallback_total);
     printf(fail ? "aot: outputs differ\n" : "aot: every output bit-identical with and without the compiled assemblies\n");
     return fail;
 }

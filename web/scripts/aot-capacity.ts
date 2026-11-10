@@ -52,6 +52,11 @@ function save(p: Patch, name: string): void {
   p.name = name;
   p.modules.find((m) => m.type === 'fm1')!.params.tempo = 120;
   p.modules.find((m) => m.type === 'output')!.params.level = 0.3;
+  if (name.includes('-ordered-')) {
+    // The engine visits modules in stored order and then follows input cables. Put sequencers before
+    // the output sink too: otherwise its drum inputs pull noise/filter members ahead of their Steps source.
+    p.modules = [...p.modules.filter((m) => m.type === 'steps'), ...p.modules.filter((m) => m.type !== 'steps')];
+  }
   const budget = deviceBudget(p);
   const bytes = encodePatch(p, true);
   // Keep oversized fixtures for host capacity analysis, but never send them to hardware.
@@ -106,18 +111,24 @@ for (const voices of [1, 2, 3, 4]) {
   }
   save(p, `oracle-${voices}-three-drums`);
 }
-for (const voices of [2, 3, 4]) {
+for (const ordered of [false, true]) for (const voices of [2, 3, 4]) {
   const p = oracle(voices);
   const sink = rightSide(p);
-  for (const [i, name] of ['boom kick', 'snare', 'hihat'].entries()) {
+  const makeTrack = (i: number) => {
     const t = addModule(p, DEFS.steps, 20, 3000 + i * 400);
     t.name = ['KICK', 'SNARE', 'HAT'][i];
     const beats = [[0, 4, 8, 12], [4, 12], [0, 2, 4, 6, 8, 10, 12, 14]][i];
     t.notes = fixNotes(beats.map((at) => ({ at, note: 60, len: 1, vel: 100 })));
+    return t;
+  };
+  // Comparison fixture: all sequencers precede the drums, so no Steps barrier divides an assembly's members.
+  const tracks = ordered ? [0, 1, 2].map(makeTrack) : [];
+  for (const [i, name] of ['boom kick', 'snare', 'hihat'].entries()) {
+    const t = tracks[i] ?? makeTrack(i);
     const d = insertAssembly(p, DEFS, FACTORY.find((a) => a.name === name)!, 300, 3000 + i * 400);
     plugIn(p, t.id, 'trig', d, 'gate');
     for (const o of d.outputs) wire(p, o.module, o.port, sink.id, 'r');
   }
-  save(p, `oracle-${voices}-four-tracks`);
+  save(p, `oracle-${voices}-${ordered ? 'ordered-' : ''}four-tracks`);
 }
 writeFileSync(new URL('manifest.json', out), JSON.stringify(report, null, 1) + '\n');
