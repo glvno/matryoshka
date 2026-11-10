@@ -26,6 +26,7 @@
 #ifndef FELUCCA_UAC_TONE
 #define FELUCCA_UAC_TONE 0
 #endif
+#define FELUCCA_UAC_RETURN (FELUCCA_UAC && !FELUCCA_CDC)
 #define UAC_IN_SHIFT 8           /* the I2S words carry 24 bit in the low bits (audio.c): >> 8 for the 16-bit stream */
 
 #include <stdint.h>
@@ -38,6 +39,8 @@
 #include "fm1_timer.h"
 #include "fm1_audio.h"
 #include "fm1_adc.h"
+#define FL_READ_UID 1
+#define FL_UID_MEM __attribute__((section(".pool")))
 #define FL_STATUS_RAM 0                         /* (no caller here: its .ram_text is room for other RAM code, #725) */
 #include "fm1_flash.h"
 #include "fm1_flash_step.h"                     /* the store's writes in steps the interrupts run between (#656) */
@@ -94,13 +97,22 @@ static void bt_parts(uint32_t group)       /* the awake parts of the segment jus
             bt.parts[v & 1u]++;
 }
 #include "presets.h"
+#define FELUCCA_DEVICE_IDENTITY 1
+#define DI_LOCK() fm1__lock()
+#define DI_UNLOCK(k) fm1__unlock(k)
+#define DEVICE_IDENTITY_COMMIT() di_usb_commit()
+#include "device_identity.h"
 #include "audio.c"
+#define UR_MEM ENG_LOWRAM
+#define UR_DMA_MEM ENG_POOL
+#define USB_LOG_STATE_MEM ENG_POOL
 #define USB_LOG_MEM ENG_LOWRAM      /* usb.c: the USB setup log (#535), 1,092 B (#725) */
 #include "usb.c"
 #include "midi_uart.c"
 #include "storage_hw.c"
 #include "ota.c"
 #include "ota_hw.c"
+static int m1_device_settings(const uint8_t *p, uint32_t n, uint8_t *out);
 static int m1_apply(const uint8_t *patch, uint32_t len);       /* main.c: the hooks proto.c needs */
 static int m1_store(const uint8_t *patch, uint32_t len);
 static int m1_flash_ok(void);

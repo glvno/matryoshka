@@ -38,6 +38,9 @@ static int32_t eng_l[HALF_FRAMES], eng_r[HALF_FRAMES];
  * (24 bit in the low bits; silence while the engine is stopped) go to the ring, >> 8 to 16 bit */
 static void uac_render_start(void);
 static void uac_tap(const int32_t *out, uint32_t n);
+#if FELUCCA_UAC_RETURN
+static int uac_play_mix(int32_t *out, uint32_t n);
+#endif
 #endif
 static void clk_out_block(uint32_t t0, int rendered);   /* MIDI clock out (clock_out.h, #473): the render's ticks, timed */
 
@@ -137,6 +140,9 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
                 }
             }
         }
+#if FELUCCA_UAC_RETURN
+        if (uac_play_mix(o, HALF_FRAMES) && !out_off) snd_heard_ms = fm1_ms;
+#endif
         if (out_mono)                                   /* (after USB audio took the half in stereo; never louder than a side) */
             for (i = 0; i < HALF_FRAMES; i++) {         /* MONO: the sum on both sides; MONO L: on the left (tip), the right silent */
                 int32_t s = (o[2u * i] + o[2u * i + 1u]) >> 1;
