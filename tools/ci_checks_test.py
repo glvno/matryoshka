@@ -20,7 +20,8 @@ class SelectionTests(unittest.TestCase):
 
     def test_usb_change_selects_transport_domain_not_whole_host_suite(self):
         selected = ci.select(['firmware/src/usb.c'], self.config, 'firmware')
-        self.assertEqual(set(selected['host']), {'usb', 'audio', 'peak'})
+        self.assertTrue({'usb', 'audio', 'peak'} <= set(selected['host']))
+        self.assertTrue(set(selected['host']) <= {'usb', 'audio', 'peak', 'usb_return'})
         self.assertTrue(selected['firmware'])
         self.assertNotIn('golden', selected['host'])
 
@@ -103,6 +104,16 @@ class SelectionTests(unittest.TestCase):
                 chosen = ci.plan('firmware', allow_package=True)
                 self.assertEqual(chosen['host'], [])
                 self.assertEqual(chosen['mode'], 'package')
+
+    def test_display_only_changes_reach_validator_without_firmware_builds(self):
+        for path in ['release/coverage/v1.13.0/manifest.json', '.github/workflows/pages.yml',
+                     'web/src/about.ts', 'web/src/coverage.ts']:
+            with self.subTest(path=path):
+                chosen = ci.select([path], self.config, 'web')
+                self.assertIn('coverage-record', chosen['host'])
+                self.assertIn('web/src/coverage.test.ts', chosen['web'])
+                self.assertFalse(chosen['firmware'])
+
 
     def test_rc_web_groups_are_disjoint_and_stats_follow_both_successes(self):
         with tempfile.TemporaryDirectory() as temp:

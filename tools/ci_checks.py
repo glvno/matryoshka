@@ -72,7 +72,8 @@ def select(paths, config, area, root=ROOT):
     firmware = any(matches(p, config['firmware_paths']) for p in paths)
     for path in paths:
         relevant = (matches(path, config['firmware_paths']) if area == 'firmware'
-                    else path.startswith(('web/', 'firmware/')) or path.startswith('tools/ci_checks')
+                    else path.startswith(('web/', 'firmware/', 'release/coverage/'))
+                    or path.startswith(('tools/ci_checks', 'tools/coverage_record'))
                     or path.startswith('.github/workflows/'))
         if not relevant:
             explanations[path] = ['outside this CI area']
@@ -196,6 +197,7 @@ def main():
         if os.environ.get('GITHUB_OUTPUT'):
             with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
                 out.write('firmware=' + str(chosen['firmware']).lower() + '\n')
+                out.write('coverage_record=' + str('coverage-record' in chosen['host']).lower() + '\n')
         if os.environ.get('GITHUB_STEP_SUMMARY'):
             with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
                 out.write('### Check scope: ' + chosen['mode'] + '\n\nCommit: `' + chosen['commit']

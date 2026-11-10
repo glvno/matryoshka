@@ -37,8 +37,13 @@ jobs:
         working-directory: .
         run: python3 tools/ci_checks_test.py
       - name: Plan targeted checks or frozen-candidate qualification
+        id: checks
         working-directory: .
         run: python3 tools/ci_checks.py plan --area web
+      - name: Validate coverage records and preparation behavior
+        if: steps.checks.outputs.coverage_record == 'true'
+        working-directory: .
+        run: python3 tools/coverage_record_test.py
       - uses: actions/setup-node@v7
         with:
           node-version: 24

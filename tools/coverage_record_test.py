@@ -34,6 +34,17 @@ class CoverageRecords(unittest.TestCase):
         self.git('add', 'source.ts')
         self.git('commit', '-m', message)
 
+    def test_every_durable_record_is_valid_and_names_its_directory(self):
+        records = coverage.ROOT / coverage.RECORDS
+        for record in sorted(records.iterdir()):
+            if not record.is_dir():
+                continue
+            with self.subTest(record=record.name):
+                coverage.version(record.name)
+                _, _, manifest = coverage.read_bundle(record)
+                self.assertEqual(manifest['targetRelease'], record.name)
+
+
     def test_current_record_installs_and_is_durable(self):
         coverage.prepare(self.root, self.bundle, 'v1.13.0', 'HEAD')
         before = coverage.fingerprint(self.root, 'HEAD')
