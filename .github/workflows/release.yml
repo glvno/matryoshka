@@ -1,94 +1,46 @@
-name: release
-# Builds a release package by hand (Actions > release > Run workflow, or gh workflow run release.yml -f version=1.8.0):
-# tools/build.py --release <version> (identity FM-1_7MMmmpp, e.g. FM-1_7010800; version string vX.Y.Z), the same checks and host tests as
-# firmware.yml, and uploads release-<version>/ with the build log. It does not tag or publish: see "Releasing" in
-# docs/ARCHITECTURE.md. It also uploads the M1_EMU_MIDI=1 build of the same sources (matryoshka-emu-midi), for the boot check of the
-# release bytes before they go on the test rig (#783).
+# Disposable diagnosis branch only. This is a compiler probe, not a release workflow.
+name: Oracle compiler probe
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: "X.Y.Z or X.Y.Z-suffix, each 0..99 (e.g. 1.8.0, 1.8.0-rc1)"
-        required: true
-
+permissions:
+  contents: read
 jobs:
-  release:
+  probe:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
         with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - run: npm ci
-        working-directory: web
-      - name: JieLi toolchain and AC79 SDK (cached)
+          fetch-depth: 0
+      - name: pin the measured source, preserving only the probe script
+        run: |
+          cp .github/probes/cache_params.py /tmp/cache_params.py
+          git checkout --detach 6b43f9b60ed7005a01377fef0c774d20e041e659
+      - uses: actions/cache@v5
         id: jieli
-        uses: actions/cache@v5
         with:
           path: ~/.jieli
           key: jieli-AC79NN_SDK_V1.2.1_2023-12-13-toolchain-v1
-      - name: fetch the toolchain and the three SDK files
-        if: steps.jieli.outputs.cache-hit != 'true'
-        run: |
-          tools/get_toolchain.sh
-          git clone --filter=blob:none --no-checkout --depth 1 --branch AC79NN_SDK_V1.2.1_2023-12-13 \
-            https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git ~/.jieli/ac79-sdk
-          git -C ~/.jieli/ac79-sdk sparse-checkout set cpu/wl82/tools
-          git -C ~/.jieli/ac79-sdk checkout
-      - name: the generated headers are current
-        working-directory: web
-        run: |
-          npm run export-defs
-          git diff --exit-code ../firmware/src/defs.h ../firmware/src/presets.h ../firmware/src/controls.h ../firmware/src/aot_gen.h ../firmware/test/pmig_cases.h ../README.md || { echo "::error::generated firmware files are stale: run 'npm run export-defs' and commit"; exit 1; }
-      - name: build the release, no warnings, pool headroom >= 8 KB
-        env:
-          VERSION: ${{ inputs.version }}
+      - name: require the matching toolchain cache
+        run: test '${{ steps.jieli.outputs.cache-hit }}' = true
+      - name: compile the measured images and one parameter-snapshot probe
         run: |
           export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
-          mkdir -p build
-          python3 tools/build.py --release "$VERSION" 2>&1 | tee build/build.log
-          test "${PIPESTATUS[0]}" -eq 0
-          if grep -E "warning:" build/build.log | grep -v "SDK .* differs"; then echo "::error::compiler warnings"; exit 1; fi
-          cp build/build.log "build/release-$VERSION/"
-          { echo "### Matryoshka $VERSION ($GITHUB_SHA)"; echo '```'; grep -E "image [0-9]+ B|pool [0-9]+ B of|identity" build/build.log; cat "build/release-$VERSION/SHA256SUMS"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-      - name: the firmware workflow's host checks
-        run: |
-          tools/golden.sh
-          tools/aot_test.sh
-          tools/aot_experiments.sh
-          tools/aot_oracle.sh
-          tools/usb_test.sh
-          tools/clock_out_test.sh
-          tools/peak_test.sh
-          tools/audio_out_test.sh
-          tools/frame_test.sh
-          tools/ota_test.sh
-          tools/guard_test.sh
-          tools/power_test.sh
-          python3 tools/fm1_install_test.py
-          tools/panel_test.sh
-          tools/preset_test.sh
-          tools/bank_new_test.sh
-          tools/ui_preview.sh build/ui-preview.png 0 1
+          export ENG_AOT=1 ENG_AOT_FUSE=0 ENG_AOT_DRUMS=0 ENG_AOT_PAIR=0 ENG_RAMCODE=0 FELUCCA_SPEED=0
+          mkdir -p build/probe
+          cp firmware/src/aot_oracle.h /tmp/original-oracle.h
+          for variant in control integrated cached; do
+            export ENG_AOT_ORACLE=1
+            if [ "$variant" = control ]; then export ENG_AOT_ORACLE=0; fi
+            if [ "$variant" = cached ]; then python3 /tmp/cache_params.py firmware/src/aot_oracle.h; fi
+            mkdir -p "build/probe/$variant"
+            python3 tools/build.py > "build/probe/$variant/build.log" 2>&1
+            cp build/matryoshka.bin build/matryoshka.elf build/matryoshka.dis build/matryoshka.json firmware/src/aot_oracle.h "build/probe/$variant/"
+          done
+          echo '283dba2bf142ec7ce08e69d910ef0e61f680aab421e7be3c00d55292889906fe  build/probe/control/matryoshka.bin' | sha256sum -c -
+          echo '86be7005131e69664d80d132f8a0db4dfa729dad41fcac9a5949567c440b4f92  build/probe/integrated/matryoshka.bin' | sha256sum -c -
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: matryoshka-release-${{ inputs.version }}
-          path: build/release-${{ inputs.version }}/
-          if-no-files-found: error
-      # after the package's upload, so this build cannot touch it (tools/build.py writes release-<version>/ only with --release)
-      - name: the emulator bridge's build of the same sources (M1_EMU_MIDI=1, never installed; the boot check of the release bytes, docs/EMULATOR.md, #783)
-        run: |
-          export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
-          M1_EMU_MIDI=1 python3 tools/build.py 2>&1 | tee build/build-emu.log
-          test "${PIPESTATUS[0]}" -eq 0
-          if grep -E "warning:" build/build-emu.log | grep -v "SDK .* differs"; then echo "::error::compiler warnings (M1_EMU_MIDI=1)"; exit 1; fi
-          mkdir -p build/emu-midi
-          cp build/matryoshka.bin build/emu-midi/matryoshka-emu.bin
-          cp build/matryoshka.elf build/emu-midi/matryoshka-emu.elf
-      - uses: actions/upload-artifact@v4
-        with:
-          name: matryoshka-emu-midi
-          path: build/emu-midi/
+          name: oracle-codegen-probe
+          path: build/probe/
           if-no-files-found: error
