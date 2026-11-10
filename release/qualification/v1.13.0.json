@@ -1,0 +1,195 @@
+{
+  "schema": 1,
+  "version": "1.13.0",
+  "firmware_product": "FM-1_7011300",
+  "source_commit": "9288042280538826d71ba6b921177a27a1c08c08",
+  "source_tree": "8122ccd2c56963f7a252871e4d3c5c2f94d315dd",
+  "status": "approved for publication; automated qualification passed and manual checks unverified",
+  "release_approval": {
+    "status": "approved",
+    "by": "repository owner",
+    "date": "2026-11-10",
+    "instruction": "Go ahead and publish",
+    "scope": "One-off authorization to publish v1.13.0 with the unreported manual checks left unverified. This is release approval, not evidence that those checks were performed."
+  },
+  "build_manifest_sha256": "6c64b3e3da942466983fe5497858d9e065ede534b848ec585809b136bfff043f",
+  "artifacts": {
+    "package": {
+      "name": "matryoshka-1.13.0.fwsc",
+      "size": 610609,
+      "sha256": "5d52951efcc1d44ca530a2ad777dafb44d8323d50dedf45a10034b4bb6975d31"
+    },
+    "normal": {
+      "name": "matryoshka-1.13.0-app.bin",
+      "size": 562572,
+      "sha256": "ae4028a727fb7c52eb352631b27d820c69c4c7b2a61b211fb1febd485c63c222"
+    },
+    "normal_elf": {
+      "name": "matryoshka-1.13.0-app.elf",
+      "size": 625364,
+      "sha256": "5dcff44b5b0edd8e2bc684c2194597d75ea4007dacbe94b939839cba92539847"
+    },
+    "normal_sidecar": {
+      "name": "matryoshka-1.13.0.json",
+      "size": 411,
+      "sha256": "08a41cebbfa1265c83b98392eaccd042a1a908d50cfd6c0a23177936f102c3bb"
+    },
+    "bridge": {
+      "name": "matryoshka-emu.bin",
+      "size": 559644,
+      "sha256": "025d5e830927ebd4c01d8814cd2bae8295f0dd4b73b5e7f870c164631cf2de24"
+    },
+    "bridge_elf": {
+      "name": "matryoshka-emu.elf",
+      "size": 621232,
+      "sha256": "9b351e78a5312eb7d7ed7cad56a4b48505fc8309df04f3716290d265cccdaa5d"
+    },
+    "bridge_sidecar": {
+      "name": "matryoshka-emu.json",
+      "size": 411,
+      "sha256": "ec9f96647a2d7a61197539efd7ab270a71c224315dc74834439ce568b965bb26"
+    }
+  },
+  "ci_runs": {
+    "release": 42754716252,
+    "web": 42754723485
+  },
+  "full_host": "PASS in release run, one execution",
+  "full_web": {
+    "instrumented": {
+      "files_passed": 187,
+      "tests_passed": 1897,
+      "tests_skipped": 2
+    },
+    "uninstrumented_loudness": {
+      "files_passed": 4,
+      "tests_passed": 4
+    },
+    "run_success": true
+  },
+  "full_smoke": {
+    "checks": 333,
+    "failed": 0,
+    "level_warnings": 0,
+    "seconds": 943.1,
+    "exit_code": 0
+  },
+  "full_scenarios": {
+    "passed": 392,
+    "failed": 0,
+    "skipped": [
+      {
+        "name": "3.5mm out: OFF leaves USB audio as it was",
+        "status": "skip",
+        "ok": true,
+        "skipped": true,
+        "reason": "the emulator has no USB audio: tools/audio_out_test.sh and the rig's recording prove it"
+      }
+    ],
+    "seconds": 1315.41,
+    "exit_code": 0
+  },
+  "hardware": {
+    "full_device_suite": {
+      "passed": 380,
+      "failed": 0,
+      "skipped": 8,
+      "skips": [
+        {
+          "name": "play once: a click on each beat of the count-in, a beat apart",
+          "reason": "the click goes to the analog output only (D-820), after TEST_PEAK and USB audio took the sound (audio.c): emu:scenarios hears it on the I2S, the owner by ear"
+        },
+        {
+          "name": "rec count-in: a click on each beat of the count-in from beat 1, a beat apart",
+          "reason": "the click goes to the analog output only (D-820), after TEST_PEAK and USB audio took the sound (audio.c): emu:scenarios hears it on the I2S, the owner by ear"
+        },
+        {
+          "name": "rec count-in: once it records, no click (a second bar heard silent)",
+          "reason": "the click goes to the analog output only (D-820), after TEST_PEAK and USB audio took the sound (audio.c): emu:scenarios hears it on the I2S, the owner by ear"
+        },
+        {
+          "name": "editor ignore: the editor leaves an FM-1 at IGNORE alone",
+          "reason": "the test tools' page connects to it by design (#702)"
+        },
+        {
+          "name": "3.5mm out: OFF silences the speaker and the jack",
+          "reason": "the rig records USB audio, not the analog output: the owner's ears prove it"
+        },
+        {
+          "name": "1.2 output: MONO, both sounds on both sides, each a bit quieter",
+          "reason": "the rig's USB audio is taken before OUTPUT's mix (audio.c): the emulator's I2S proves it, the owner hears it"
+        },
+        {
+          "name": "1.3 output: MONO L, both sounds on the left, the right silent",
+          "reason": "the rig's USB audio is taken before OUTPUT's mix (audio.c): the emulator's I2S proves it, the owner hears it"
+        },
+        {
+          "name": "1.5 output: MONO, Meridian 8 as loud as in STEREO",
+          "reason": "the rig's USB audio is taken before OUTPUT's mix (audio.c): the emulator's I2S proves it"
+        }
+      ]
+    },
+    "usb": {
+      "stable_seconds": 30,
+      "settings_saves": 10,
+      "active_return_errors_delta": 0,
+      "active_capture_errors_delta": 0,
+      "shutdown_errors_delta": 0,
+      "recording_stats": {
+        "channels": 2,
+        "rate": 44100,
+        "seconds": 45.3,
+        "peak": 0,
+        "rms": 0.0
+      },
+      "initial_counters_were_not_zero": true
+    },
+    "usb_measurement_limit": "The captured recording was silent. Counter deltas and recording exclusion do not establish analog playback audibility; that owner check remains pending.",
+    "editor_settings": "Name and USB-return level saved through the editor UI, reopened, and restored successfully.",
+    "cleanup_before_owner_fixture": {
+      "original_preset_payloads_restored": 2,
+      "menu_settings_restored": true,
+      "stopped_clean_patch_verified": true,
+      "slot_metadata_records_unchanged": 64,
+      "bank_payload_scope": "The 64 slot metadata records matched; this is not a byte-for-byte comparison of every bank patch payload."
+    },
+    "owner_fixture": "The temporary name and USB-return level were restored to their original blank name and level 50 after verifying both still matched the test fixture. No nonmatching user values were encountered or overwritten.",
+    "final_cleanup": {
+      "at": "2026-11-10T06:05:09.109718+00:00",
+      "restored_matching_fields": [
+        "name",
+        "return_level"
+      ],
+      "preserved_current_patch": true,
+      "clients_closed": true,
+      "reservation_released_by_orchestrator": true,
+      "manual_checks": "not reported; not marked passed",
+      "no_patch_menu_transport_firmware_install_or_reboot_commands": true,
+      "settings_writes": "Limited to restoring the two fields that still matched the temporary test fixture."
+    }
+  },
+  "owner_checks": {
+    "status": "unverified; results not reported",
+    "checks": [
+      "headphones: analog output modes/mute and count-in; backing playback audible while excluded from recording",
+      "piano and Harmonizer playing feel/release/stuck notes",
+      "physical USB reconnect and power-cycle: name/level persistence and fresh host labels",
+      "iPhone13 Camera Adapter Reel requested use case or explicit owner limitation decision"
+    ]
+  },
+  "limitations": [
+    "Fresh blank-name endpoints have name/displayName Matryoshka; IOKit product/serial correct. Custom-name physical re-enumeration and host cache cause remain unverified.",
+    "Two-device identity behavior has not been measured."
+  ],
+  "private_evidence": {
+    "id": "v1.13.0-rig-owner-handoff",
+    "archive_sha256": "481ed99760ab899c559aa6a7ce5f30c4eb507272787c07957fcc774fc3eca4fb",
+    "contents": "Raw device logs, identifiers, recordings and screenshots retained privately; not included in public release metadata.",
+    "final_cleanup": {
+      "id": "v1.13.0-publication-cleanup",
+      "archive_sha256": "cf7110e0dfd719a2fe39a1bb440e5452c59be80601f7d1d7b9f2620279374974",
+      "report_sha256": "9900a5fbf98f54da08476ec8b54ec449a5976e6618c1d036ffceb36b1e5fffbe",
+      "names_report_sha256": "61beab30e0dcfea2454e5fae668b65f04bf6ee5c39d0d7b8afc44b113aa254e5"
+    }
+  }
+}

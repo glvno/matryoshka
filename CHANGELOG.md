@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 1.13.0 — 2026-11-09
+## 1.13.0 — 2026-11-10
 
 - Harmonizer chords can feed Arpeggiator and Steps. Cable order chooses root recording or editable chord notes, including step recording with Side chord buttons. ARP inserts after harmony; unsupported keys routes show an explanation. These routes require firmware supporting patch format 53.
 - **USB playback through your FM-1:** hear computer audio through the headphone output while recording the synth over the same USB cable. USB RETURN sets playback volume independently of MASTER; playback stays out of the recording.
