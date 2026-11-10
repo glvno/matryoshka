@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Fixed pan positions take less CPU on the FM-1 without changing the output samples.
+- Verona Drum 1 has PAN on each of its six channels. Saved presets keep their control values and start with centered PAN.
 
 ## 1.13.0 — 2026-11-10
 

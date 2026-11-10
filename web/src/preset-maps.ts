@@ -36,6 +36,11 @@ const LIRE_1_11 = '0935c0fa';
 const ONE_UP = [1, 2, 3, 4, 5, 6, 7, 8];
 
 export const HAND_MAPS: HandMap[] = [
+  {
+    engine: 'Verona Drum 1', from: 'db9de761', to: '7bd94d43',
+    why: 'issue #782: MASTER controls both stereo output amplifiers at the same value; PAN starts centered',
+    rows: { 'macro#3.value': { from: 'mixer#3.l1' } },
+  },
   // ---- 1.5.0 (#430's predecessors): the FM-1 instruments rebuilt at parity with their originals. Their 1.2 .. 1.4
   // structures had other modules and rows altogether: no map.
   ...([

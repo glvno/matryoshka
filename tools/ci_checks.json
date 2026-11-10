@@ -81,7 +81,7 @@
     "coverage-record": ["python3", "tools/coverage_record_test.py"],
     "release-build": ["python3", "tools/build_test.py"]
   },
-  "full_host": ["golden", "aot", "usb", "usb_return", "clock", "peak", "audio", "frame", "ota", "guard", "power", "installer", "panel", "preset", "bank", "ui"],
+  "full_host": ["pan", "golden", "aot", "usb", "usb_return", "clock", "peak", "audio", "frame", "ota", "guard", "power", "installer", "panel", "preset", "bank", "ui"],
   "optional_host": {"usb_return": "firmware/src/usb_return.h"},
   "rules": [
     {"name": "Pan arithmetic", "paths": ["firmware/src/engine.c", "firmware/test/pan_exact_test.c", "tools/pan_test.sh"], "host": ["pan"], "web": []},

@@ -6,6 +6,12 @@ import { Engine } from './engine';
 import { instIsEngine } from './engines';
 import type { Patch } from './patch';
 import { deviceBudget } from './patchbin';
+import { CPU_VOICE_TOP } from './cpu';
+import { applyPreset } from './device-presets';
+import { factoryPresets } from './factory-presets';
+import { PRESET_MIGRATIONS, migrateValues } from './preset-migrate';
+import { structureOf } from './structure';
+import { readLineage } from '../scripts/lineage-lib';
 import { FM1_PRESETS, XL_PRESETS } from './presets';
 
 const SR = 44118;
@@ -73,13 +79,14 @@ function playHeld(p: Patch, evs: [number, number, boolean][], ms: number, from =
 
 describe('Verona Drum 1 (#613)', () => {
   const fm1 = (): Patch => FM1_PRESETS['Verona Drum 1']();
-  it('fits the FM-1 and is its last factory patch, with six channels of the original\'s knobs, VOLUME each, and MASTER', () => {
+  it('fits the FM-1 and is its last factory patch, with six channels of the original\'s knobs, PAN and VOLUME each, and MASTER', () => {
     expect(Object.keys(FM1_PRESETS).at(-1)).toBe('Verona Drum 1');
     expect(deviceBudget(fm1()).fits).toBe(true);
+    expect(deviceBudget(fm1()).cpu.use).toBeLessThanOrEqual(CPU_VOICE_TOP);
     const s = sections(fm1(), 'Verona Drum 1');
     expect([...s.keys()]).toEqual(['kick', 'drum 1', 'multi', 'snare', 'hi hat', 'clap', 'master']);
     const want: Record<string, string[]> = { kick: KNOBS.kick, 'drum 1': KNOBS.drum, multi: KNOBS.multi, snare: KNOBS.snare, 'hi hat': KNOBS.hat, clap: KNOBS.clap.filter((k) => k !== 'noise color') };
-    for (const [head, knobs] of Object.entries(want)) expect(s.get(head), head).toEqual([...knobs, 'volume']);
+    for (const [head, knobs] of Object.entries(want)) expect(s.get(head), head).toEqual([...knobs, 'pan', 'volume']);
     expect(s.get('master')).toEqual(['master']);
   });
 
@@ -97,6 +104,54 @@ describe('Verona Drum 1 (#613)', () => {
     expect(st.params.len ?? 16).toBe(16);
     expect(st.notes!.length).toBeGreaterThan(16);
     expect(p.modules.some((m) => m.type === 'arp')).toBe(false);
+  });
+
+  it('pans each channel left, center and right, with MASTER scaling both outputs', () => {
+    const p = fm1();
+    const a = p.assemblies!.find((x) => x.name === 'Verona Drum 1')!;
+    const pans = a.params.filter((r) => r.label === 'pan');
+    const master = a.params.find((r) => r.label === 'master')!;
+    const map = p.modules.find((m) => m.type === 'drummap')!;
+    const levels = (row: number, pan: number, gain: number): number[] => {
+      pans.forEach((r, i) => { p.modules.find((m) => m.id === r.module)!.params[r.param] = i === [0, 1, 2, 3, 4, 4, 5][row - 1] ? pan : 0; });
+      p.modules.find((m) => m.id === master.module)!.params[master.param] = gain;
+      const e = new Engine(SR);
+      e.load(p);
+      e.noteOn(map.params[`n${row}`], 100);
+      const l = new Float32Array(8192), r = new Float32Array(8192);
+      e.render(l, r);
+      return [l, r].map((x) => Math.sqrt(x.reduce((sum, v) => sum + v * v, 0) / x.length));
+    };
+    expect(pans).toHaveLength(6);
+    for (const row of [1, 2, 3, 4, 5, 6, 7]) {
+      const left = levels(row, -1, 0.4), right = levels(row, 1, 0.4);
+      const center = levels(row, 0, 0.4), half = levels(row, 0, 0.2);
+      expect(left[0], `row ${row}`).toBeGreaterThan(0.001);
+      expect(left[1]).toBeLessThan(1e-8);
+      expect(right[0]).toBeLessThan(1e-8);
+      expect(right[1]).toBeCloseTo(left[0], 6);
+      expect(center[0]).toBeCloseTo(center[1], 6);
+      expect(center[0]).toBeCloseTo(left[0] / Math.SQRT2, 6);
+      for (let c = 0; c < 2; c++) expect(half[c]).toBeCloseTo(center[c] / 2, 6);
+    }
+  });
+
+  it('keeps every saved mono control value and centers the six new pans when migrating a preset', () => {
+    const p = fm1();
+    const a = p.assemblies!.find((x) => x.name === 'Verona Drum 1')!;
+    const from = 'db9de761';
+    const migration = PRESET_MIGRATIONS[from];
+    const before = readLineage().engines['Verona Drum 1'].find((x) => x.structure === from)!;
+    const init = factoryPresets().find((x) => x.structure === structureOf(p, a) && x.name === 'Init')!;
+    const old = before.rows.map((_, i) => (i + 1) / 100);
+    const values = migrateValues(migration, old, init.values);
+    expect(migration.to).toBe(init.structure);
+    expect(migration.rows.filter((r) => r === -1)).toHaveLength(6);
+    expect(new Set(migration.rows.filter((r) => typeof r === 'number' && r >= 0)).size).toBe(old.length);
+    migration.rows.forEach((r, i) => expect(values[i]).toBe(r === -1 ? 0 : old[r as number]));
+    applyPreset(p, a, { structure: init.structure, name: 'Migrated', values });
+    const master = a.params.find((r) => r.label === 'master')!;
+    expect(p.modules.find((m) => m.id === master.module)!.params[master.param]).toBe(old[before.rows.findIndex((r) => r[1] === 'master')]);
   });
 
   it('a closed hit cuts the open hi-hat ringing, and dies in its fixed short time', () => {
