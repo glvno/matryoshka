@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Explicit transfer of the user presets available to this patch's FM-1 devices (#829).
+// Explicit transfer of saved presets matching this patch's assemblies (#829).
 import { PRESET_NEEDS_UPDATE, type DeviceLink } from './device';
 import { userPresets, type Preset } from './device-presets';
 import { DEFS } from './modules';
