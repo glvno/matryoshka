@@ -4,7 +4,7 @@ This is the design proposal for an instrument interface over Matryoshka's existi
 
 ## Problem and intended experience
 
-A player should be able to find synthesis, effects, arpeggiation, harmony and sequencing controls without tracing every cable. A patch author should remain free to reorder, nest, share, remove or replace those pieces. Factory patches demonstrate convenient arrangements; their arrangements do not define which patches are valid. Providing all these abilities around factory engines remains a product goal subject to each patch's FM-1 budget.
+A player should be able to find synthesis, effects, arpeggiation, harmony and sequencing controls without tracing every cable. A patch author should remain free to reorder, nest, share, remove or replace those pieces where their contracts allow it. Factory patches demonstrate convenient arrangements; their arrangements do not define which patches are valid. Providing all these abilities around factory engines remains a product goal subject to each patch's FM-1 budget.
 
 An assembly's capabilities describe what the interface can safely do with it. They do not prescribe its implementation or assign it one exclusive category. The graph remains the source of routing and execution behavior. The instrument interface presents that graph; opening it does not rewrite the graph.
 
@@ -30,6 +30,8 @@ Each contract needs a version, required observations, optional control bindings,
 | Pattern playback | Pattern selection, transport behavior and stored-note ownership | That every performance assembly contains patterns |
 
 An assembly can satisfy several contracts. A parent and its child can both qualify. Effects and Performance can be presentation groupings over these smaller abilities rather than exclusive assembly types.
+
+Matching port kinds alone do not establish a meaningful composition. Harmony establishes a chord voicing; the Arpeggiator sequences its notes. The reverse route is intentionally prohibited by [D-783](ledger/modules.md#D-783), Decided, and is not an expansion goal. Performance contracts need to describe the note relationships and timing an operation requires, not just declare keys input and output. Modular freedom preserves these behavioral requirements.
 
 ## Recognition and author declarations
 
@@ -71,8 +73,8 @@ Only optimize a recognized implementation when equivalence is proven. Otherwise 
 2. **Extract engine recognition behind a capability query.** Keep current results and insertion behavior. Existing factory and user cases, nested engines, merged inputs and cycles retain their results. No new capability metadata is required.
 3. **Prove one effects contract in the editor.** Use factory echo and a custom two-filter assembly. Identify their audio paths and prototype explicit bypass mappings. Both remain editable. Breaking a requirement removes only the relevant convenience. No bypass or memory-saving claim follows merely from audio-processing recognition.
 4. **Prove the corresponding firmware controls.** Use the same accepted and rejected cases. Resolve bounded descriptions at load, check targets after device compilation, and preserve the generic execution path. Before any format change, settle versioning, unknown metadata and older-firmware behavior.
-5. **Build a graph-derived instrument view.** Show nesting, sharing, missing capabilities and selected instances. Reorder and remove processors without hidden rewiring. Verify save/load and undo preserve the graph; toggling views changes no stored sound state.
-6. **Add performance contracts one at a time.** Start with note processing. Then add clock and pattern behavior using arp, harmony and Steps. Check note release, sustained notes, transport stop, bypass, arming, fan-out, deletion and both processor orders.
+5. **Build a graph-derived instrument view.** Show nesting, sharing, missing capabilities and selected instances. Allow valid reordering and removal without hidden rewiring. Verify save/load and undo preserve the graph; toggling views changes no stored sound state.
+6. **Add performance contracts one at a time.** Start with note processing. Then add clock and pattern behavior using arp, harmony and Steps. Check note release, sustained notes, transport stop, bypass, arming, fan-out, deletion and permitted processor orders. Preserve rejection of arp into harmony as a behavioral constraint.
 7. **Add coordinated sound selection.** Settle its ownership and storage questions before coding. Verify the agreed preserved state and reject incompatible presets without partial application.
 8. **Measure and optimize.** Compare cheap mono, expensive polyphonic, drum and shared-effects patches. Establish actual device costs for absent/bypassed/active states. Record any supported fast path and its fallback; do not silently lower polyphony to make a demonstration fit.
 
@@ -86,6 +88,6 @@ These are dependent implementation slices, not completed features or release com
 - How are nested qualifying assemblies presented without duplicate or misleading controls?
 - Which facts are checked on the firmware, and how does metadata survive old-editor round trips?
 - How are multiple preset selections coordinated, and do send amounts belong to the sound or the mix?
-- Which processor combinations and reorderings should be supported beyond [D-783](ledger/modules.md#D-783), Decided? The current rule rejects arp into harmony. Expanding it needs an explicit ruling change and new behavior.
+- How should performance contracts express the note relationships and timing requirements behind the permitted routes in [D-783](ledger/modules.md#D-783), Decided?
 
 The initial examples make these questions reviewable. They do not assert that unimplemented contracts or unsupported note routes already work.
