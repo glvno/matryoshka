@@ -3699,6 +3699,22 @@ for (const chain of [['harm', 'arp'], ['harm', 'steps'], ['steps', 'harm'], ['ha
   ends[name] = 128 * 100;
 }
 {
+  const name = 'route-branch-snapshot';
+  const p = tests[name] = structuredClone(tests['route-steps-harm']);
+  const steps = p.modules.find(m => m.type === 'steps')!, out = p.modules.find(m => m.type === 'output')!;
+  const h = addModule(p, DEFS.harm, 0, 0); h.params.type = 2;
+  const a = addModule(p, DEFS.alloc, 0, 0); a.params.voices = 6;
+  const o = addModule(p, DEFS.osc, 0, 0); Object.assign(o.params, { wave:2,level:.35 });
+  const e = addModule(p, DEFS.adsr, 0, 0); Object.assign(e.params, { a:.003,d:.1,s:.6,r:.04 });
+  const v = addModule(p, DEFS.vca, 0, 0);
+  p.cables = p.cables.filter(c => c.to.module !== out.id || c.to.port !== 'r');
+  for (const [from, port, to, input] of [[steps.id,'keys',h.id,'keys'], [h.id,'keys',a.id,'keys'], [a.id,'pitch',o.id,'pitch'], [a.id,'gate',e.id,'gate'], [o.id,'out',v.id,'in'], [e.id,'env',v.id,'cv'], [v.id,'out',out.id,'r']] as const)
+    connect(p, DEFS, {module:from,port}, {module:to,port:input});
+  makeAssembly(p, [a.id,o.id,e.id,v.id], 'minor voices').poly = {};
+  events[name] = [[0,'kon',60], [128*50,'koff',60]];
+  ends[name] = 128*100;
+}
+{
   const name = 'route-dense-steps';
   const p = tests[name] = structuredClone(tests['route-steps-harm']);
   p.modules.find(m => m.type === 'harm')!.params.type = 0;
@@ -3737,7 +3753,7 @@ for (const voicing of [-8, -4, 4, 8]) {
 if (process.argv.includes('--panel-fixtures')) {
   const out = new URL('../../build/panel-fixtures/', import.meta.url);
   mkdirSync(out, { recursive: true });
-  for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns', 'matrix-audio', 'harm-side', 'route-harm-steps', 'route-steps-harm', 'route-harm-arp', 'route-steps-harm-arp', 'route-harm-steps-arp', 'route-dense-steps', 'route-root-snapshot'])
+  for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns', 'matrix-audio', 'harm-side', 'route-harm-steps', 'route-steps-harm', 'route-harm-arp', 'route-steps-harm-arp', 'route-harm-steps-arp', 'route-dense-steps', 'route-root-snapshot', 'route-branch-snapshot'])
     writeFileSync(new URL(`${name}.m1p`, out), encodePatch(tests[name], true));
   {
     // more than 64 modules (#721): arm-many with the Drum map moved last (index 69, a device past 63) and its chain of

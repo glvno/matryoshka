@@ -1078,7 +1078,7 @@ export function lineBudget(source: Patch): LineBudget {
   const { patch: p, groups } = deviceView(source, true);
   return linesOf(p, copiesOf(groups), poolUse(p, groups));
 }
-export const KEY_ROUTING_BYTES = 7016;
+export const KEY_ROUTING_BYTES = 8040;
 function linesOf(p: Patch, ninst: (id: number) => number, pool: PoolUse): LineBudget {
   const modules: LineUse[] = [];
   const sizes: number[] = [];

@@ -550,7 +550,7 @@ export class Engine {
       else arpKeyOff(a.st, note, this.arpParams(a));
     }
     for (const h of this.harms) if (this.effSrc(h.feed) === src && !h.node.bypass)
-      harmKey(h.st, note, !!vel, this.harmParams(h), false, n => this.harmOn(h, n, vel), n => this.harmOff(h, n), notes => this.harmRoom(h, notes), snapshot);
+      harmKey(h.st, note, !!vel, this.harmParams(h), false, n => this.harmOn(h, n, vel), n => this.harmOff(h, n), notes => this.harmRoom(h, notes), (snapshot >>> (16 * this.harms.indexOf(h))) & 0xffff);
     for (const t of this.tracks) {
       const from = this.src && keyFeed(this.src, t);
       if (from && this.effSrc(from.id) === src) this.thru(t.id, note, Math.round(vel * 127));
@@ -1056,8 +1056,14 @@ export class Engine {
       held.add(note);
     } else if (!held.delete(note)) return;
     this.thruHeld.set(id, held);
-    const h = this.trackHarmony(id);
-    s.thruSnapshot.push(vel > 0 && h && this.src && keyReach(this.src, id).has(h.node.id) ? harmSnapshot(h.st, this.harmParams(h)) : 0);
+    let snapshot = 0;
+    if (vel > 0 && this.src) {
+      const downstream = keyReach(this.src, id);
+      this.harms.forEach((h, i) => {
+        if (!h.node.bypass && downstream.has(h.node.id)) snapshot |= harmSnapshot(h.st, this.harmParams(h)) << (16 * i);
+      });
+    }
+    s.thruSnapshot.push(snapshot);
     s.thru.push(vel > 0 ? (note & 0x7f) | 0x80 : note & 0x7f, vel > 0 ? Math.max(1, Math.min(127, Math.round(vel))) : 0);
   }
 

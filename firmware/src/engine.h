@@ -12,6 +12,7 @@ typedef struct {
     uint8_t note[128], vel[128], at[128], end[128], hold[128];
     uint8_t of[27][8], count[27], audition[27][8], audition_count[27];
 } eng_step_entry_t;
+uint32_t eng_generation(void); /* changes before every load, including a failed load */
 eng_step_entry_t *eng_steps_entry_memory(void); /* NULL for legacy routes */
 
 #define ENG_SR 44118u          /* the FM-1's I2S rate (M-VAVE fm1_open, FM1_AUDIO_HARDWARE_RATE); was 44100 until 1.1 */

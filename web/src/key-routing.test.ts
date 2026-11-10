@@ -58,6 +58,21 @@ describe('cable-order harmony', () => {
     expect(notes).toContain(63); expect(notes).not.toContain(64);
     e.noteOff(60); blocks(e); expect(e.voiceNotes().filter(v => v.on)).toEqual([]);
   });
+  it('keeps each downstream Harmonizer snapshot when a Steps output branches', () => {
+    const { p, get } = fixture(['steps', 'harm']);
+    const h = addModule(p, DEFS.harm, 0, 0); h.params.type = 2;
+    const a = addModule(p, DEFS.alloc, 0, 0); a.params.voices = 8;
+    const o = addModule(p, DEFS.osc, 0, 0);
+    const e = addModule(p, DEFS.adsr, 0, 0);
+    const v = addModule(p, DEFS.vca, 0, 0);
+    for (const [from, port, to, input] of [[get('steps').id,'keys',h.id,'keys'], [h.id,'keys',a.id,'keys'], [a.id,'pitch',o.id,'pitch'], [a.id,'gate',e.id,'gate'], [o.id,'out',v.id,'in'], [e.id,'env',v.id,'cv'], [v.id,'out',get('output').id,'r']] as const)
+      expect(connect(p, DEFS, {module:from,port}, {module:to,port:input})).toBe(true);
+    for (const compiled of [false, true]) {
+      const engine = new Engine(48000); engine.load(p, compiled); engine.noteOn(60); blocks(engine);
+      expect(engine['harms'].map(h => h.st.roots.flatMap(r => r.notes))).toEqual([[60,64,67], [60,63,67]]);
+      engine.noteOff(60); blocks(engine); expect(engine['harms'].every(h => h.st.roots.length === 0)).toBe(true);
+    }
+  });
   it('dense simultaneous notes on three tracks cannot strand harmony roots', () => {
     const { p, get } = fixture(['steps','harm']);
     get('harm').params.type = 0;

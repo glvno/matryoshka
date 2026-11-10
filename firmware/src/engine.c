@@ -641,7 +641,7 @@ typedef struct { uint8_t trk, pat, at, row; int32_t v; } lock_t;
  * outside the interrupt): module index, the note (bit 7: on), velocity */
 #define ENG_THRU (key_memory ? 128u : 32u)
 static uint8_t thru_legacy[32][3];
-static uint16_t steps_emit_snapshot;
+static uint32_t steps_emit_snapshot;
 static uint8_t chained_keys;
 static volatile uint16_t thru_head, thru_tail;
 static uint32_t thru_reserved;
@@ -663,11 +663,13 @@ typedef struct {
     uint32_t down[ENG_MAX_TRACKS][4], took[256][2];
     rin_t rin[128];
     uint8_t thru[128][3], block[128][3], events[256][3];
-    uint16_t thru_snapshot[128], block_snapshot[128], event_snapshot[256];
+    uint32_t thru_snapshot[128], block_snapshot[128], event_snapshot[256];
     eng_step_entry_t entry;
 } key_memory_t;
-typedef char key_memory_size_check[sizeof(key_memory_t) == 7016u ? 1 : -1];
+typedef char key_memory_size_check[sizeof(key_memory_t) == 8040u ? 1 : -1];
 static key_memory_t *key_memory;
+static uint32_t load_generation;
+uint32_t eng_generation(void) { return load_generation; }
 #define thru_ring (key_memory ? key_memory->thru : thru_legacy)
 #define took_ring (key_memory ? key_memory->took : took_legacy)
 #define thru_down (key_memory->down)
@@ -1741,6 +1743,7 @@ int eng_load(const uint8_t *p, uint32_t len)
                                                                  * stack, 1 KB: not the RAM region's, which the interrupts need) */
     uint8_t line_reg[ENG_MAX_LINES];
     E.loaded = 0;
+    load_generation++;
     key_memory = 0;
     E.kev = E.kev_legacy; E.blk_thru = E.blk_legacy; E.rin = E.rin_legacy;
     E.stamp = 0;
@@ -3617,7 +3620,7 @@ static void processor_keys(uint32_t src, uint32_t note, int32_t vel, uint32_t sn
         m = E.harm[i].node;
         feed = E.node[m].ksrc;
         if (!E.node[m].bypass && feed >= 2u && key_src(feed - 1u) == src + 1u) {
-            if (vel) harm_root_on_snapshot(&E.harm[i], note, vel, snapshot);
+            if (vel) harm_root_on_snapshot(&E.harm[i], note, vel, (snapshot >> (16u * i)) & 0xFFFFu);
             else harm_root_off(&E.harm[i], note);
         }
     }
@@ -4026,7 +4029,7 @@ static void thru_put(uint32_t module, uint32_t kv, uint32_t vel)
     if (key_memory) key_memory->thru_snapshot[h % ENG_THRU] = 0;
     if (key_memory && (kv & 128u)) for (uint32_t i = 0; i < E.nharm; i++)
         if (!E.node[E.harm[i].node].bypass && key_after(E.harm[i].node, module)) {
-            key_memory->thru_snapshot[h % ENG_THRU] = (uint16_t)harm_snapshot(&E.harm[i]); break;
+            key_memory->thru_snapshot[h % ENG_THRU] |= harm_snapshot(&E.harm[i]) << (16u * i);
         }
     thru_head = (uint16_t)(h + 1u);
 }

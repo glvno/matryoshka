@@ -675,6 +675,7 @@ static void m1_keys_now(uint32_t n, int down);
  * taken. */
 static int panel_key(uint32_t n, int down, int quick)
 {
+    (void)sr_guard();
     uint32_t bit = 1u << n;
     if (n >= 27u || !(keys_now & bit) == !down)
         return 1;

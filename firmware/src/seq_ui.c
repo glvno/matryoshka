@@ -133,6 +133,12 @@ static void seq_aud_add(uint32_t n, uint32_t note)
     else seq_thru_note[n] = (uint8_t)(note + 1u);
 }               /* each held key's note in the chord */
 static void sr_stop(void);
+/* A load can run during MIDI dispatch, before seq_poll. Never read a previous gesture from the new patch's storage. */
+static int sr_guard(void)
+{
+    if (sr_on && sr_gen != eng_generation()) { sr_stop(); return 0; }
+    return 1;
+}
 
 /* note key n (0 = F3) -> its white key's step on the page (0..15) or its black key's number (0..10: a row on the SEQ
  * page, a track with SEQ or REC held), else -1 */
@@ -665,6 +671,7 @@ static int sr_pitch(int map, uint32_t n)
  * and the editor (TRACK_NOW) */
 static int sr_put(int mod, uint32_t from, uint32_t to, int chord)
 {
+    if (!sr_guard()) return 0;
     uint32_t w[TRACK_NOTES_MAX];
     uint32_t i, m = 0, len = (uint32_t)seq_len(mod);
     for (i = 0; i < seq_held_n; i++) {
@@ -680,8 +687,10 @@ static int sr_put(int mod, uint32_t from, uint32_t to, int chord)
         uint32_t end = sr_hold[i] ? sr_k : sr_end[i];
         w[m++] = sr_at[i] | (end - sr_at[i]) << 6 | (uint32_t)sr_note[i] << 12 | (uint32_t)sr_vel[i] << 19;
     }
-    if (!eng_steps_set_notes((uint32_t)mod, w, m))
-        seq_msg_due = "TRACK FULL: 128 NOTES";
+    if (!eng_steps_set_notes((uint32_t)mod, w, m)) {
+        seq_msg_due = "PATCH NOTE MEMORY FULL";
+        return 0;
+    }
     seq_sync(mod);
     ui_dirty = ui_dirty ? ui_dirty : 1;
     return 1;
@@ -721,7 +730,7 @@ static void sr_start(int k, int key)
     sr_n = 0;
     sr_skip = key >= 0 ? 1u << key : 0u;
     sr_trk = seq_trk;
-    sr_gen = pages_gen();
+    sr_gen = eng_generation();
     seq_held = -1;
     sr_move(mod, 0);                             /* (the view shows the cursor's 16 steps) */
     ui_dirty = ui_dirty ? ui_dirty : 1;
@@ -746,6 +755,7 @@ static void sr_stop(void)
  * D-531): the chord is written as it is, the held keys' releases then do nothing, the cursor wraps (D-807) */
 static void sr_lfo(void)
 {
+    if (!sr_guard()) return;
     int mod = seq_module();
     uint32_t i;
     if (mod < 0)
@@ -777,6 +787,7 @@ static void sr_lfo(void)
 /* K4 in step record: the cursor, nothing written (not while a chord is held: its notes started where it was) */
 static void sr_knob(int32_t clicks)
 {
+    if (!sr_guard()) return;
     int mod = seq_module();
     if (mod >= 0 && !sr_keys && clicks)
         sr_move(mod, clicks);
@@ -786,6 +797,7 @@ static void sr_knob(int32_t clicks)
  * the last release writes the chord and moves the cursor on. Black key 10 (no chord held): back one step, cleared */
 static void sr_key(uint32_t n, int down)
 {
+    if (!sr_guard()) return;
     int mod = seq_module(), p;
     uint32_t bit = 1u << n, i;
     if (sr_skip & bit) {
@@ -869,6 +881,7 @@ static void sr_key(uint32_t n, int down)
 /* Toggling preview does not write, move the cursor, or change the held chord. */
 static void sr_preview_toggle(void)
 {
+    if (!sr_guard()) return;
     uint32_t n;
     sr_preview = !sr_preview;
     if (!sr_preview)
@@ -2271,7 +2284,7 @@ static void seq_poll(void)
     }
     if (seq_armed_gen != pages_gen())            /* another patch while the page shows: its track armed (#395) */
         seq_arm_shown(0);
-    if (sr_on && (sr_gen != pages_gen() || sr_trk != seq_trk || seq_module() < 0))
+    if (sr_on && (sr_gen != eng_generation() || sr_trk != seq_trk || seq_module() < 0))
         sr_stop();                               /* (another patch, track: step record ends, D-808) */
     if (sr_on && (int32_t)sr_k >= seq_len(seq_module())) {
         sr_k = 0;                                /* (the pattern got shorter under the cursor) */

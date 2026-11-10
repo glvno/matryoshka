@@ -3804,6 +3804,12 @@ int main(void)
         blocks(150);
         check("dense pattern releases every harmony root", E.harm[0].nroots == 0u);
         eng_transport(0);
+        check("branched snapshot fixture loads", !load_fixture("build/panel-fixtures/route-branch-snapshot.m1p"));
+        eng_note_on(60, ENG_ONE, 1); blocks(4);
+        check("each branch keeps its own chord snapshot", E.nharm == 2u && E.harm[0].count[64] && !E.harm[0].count[63]
+              && E.harm[1].count[63] && !E.harm[1].count[64]);
+        eng_note_off(60, 1); blocks(4);
+        check("both snapshot branches release", !E.harm[0].nroots && !E.harm[1].nroots);
         check("snapshot fixture loads", !load_fixture("build/panel-fixtures/route-root-snapshot.m1p"));
         eng_midi_channel(0); eng_chord_button(3, 1); eng_note_on(60, ENG_ONE, 1); eng_chord_button(3, 0); blocks(4);
         check("live root keeps its minor chord through Steps delay", E.harm[0].count[63] && !E.harm[0].count[64]);
@@ -3829,6 +3835,33 @@ int main(void)
             if (!order) check("printed minor chord remains editable pitches", sr_len_at(mod, 0, 63) == 1 && sr_len_at(mod, 0, 67) == 1 && sr_len_at(mod, 0, 64) == 0);
             check("all audition notes released", seq_aud_count(K_C4) == 0);
             sr_stop();
+        }
+        panel_keys(0); sr_held = 0; sr_stop();
+        check("full-note-pool fixture loads", !load_fixture(fixtures[0]));
+        pv_gen++; pages_ensure(); seq_select(0); page = 0; page_set(PAGE_SEQ); later(1500);
+        int full_mod = eng_steps_module(0); sr_empty(full_mod);
+        uint32_t full_notes[128];
+        for (uint32_t n = 0; n < 128u; n++) full_notes[n] = NW(0, 1, n, 100, 0);
+        for (uint32_t p = 1; p <= 12u; p++) check("fill another pattern", eng_pattern_set_notes((uint32_t)full_mod, p, full_notes, 128));
+        sr_start(0, -1); sr_down(K_C4); sr_up(K_C4);
+        check("global note pool full does not advance or partly capture", sr_k == 0u && sr_notes(full_mod) == 0 && E.nnotes == ENG_MAX_NOTES);
+        check("global note pool full explains rejected capture", !strcmp(msg_text, "PATCH NOTE MEMORY FULL") || (seq_msg_due && !strcmp(seq_msg_due, "PATCH NOTE MEMORY FULL")));
+        sr_stop();
+        /* A patch replacement can arrive before the next seq_poll and before the held key releases. */
+        for (uint32_t bad = 0; bad < 2u; bad++) {
+            panel_keys(0); sr_held = 0; sr_stop();
+            check("reload entry fixture loads", !load_fixture(fixtures[0]));
+            pv_gen++; pages_ensure(); seq_select(0); page = 0; page_set(PAGE_SEQ); later(1500);
+            sr_start(0, -1); sr_down(K_C4);
+            /* More than the legacy entry storage: many successive notes during a tied gesture. */
+            for (uint32_t k = 0; k < 12u; k++) { sr_lfo(); sr_down(K_C4 + 2); sr_up(K_C4 + 2); }
+            check("held gesture exceeds legacy entry capacity", sr_n > 27u);
+            if (bad) { const uint8_t invalid[1] = {0}; check("failed load resets entry storage", eng_load(invalid, 1) < 0); }
+            else check("legacy patch replaces chained entry storage", !load_fixture("build/panel-fixtures/steps-patterns.m1p"));
+            /* No pages generation update or loop in between: the engine load itself invalidates the entry. */
+            sr_key(K_C4, 0);
+            check("stale entry never reads replacement storage", !sr_on && !sr_n && !sr_keys);
+            sr_held = 0; panel_keys(0);
         }
         sr_preview = 1; page = 0; (void)load("808 KIT"); pv_gen++; screen_idle();
     }
