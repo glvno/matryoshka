@@ -15,7 +15,7 @@ jobs:
         run: |
           cp .github/probes/cache_params.py /tmp/cache_params.py
           cp .github/probes/cache_context.py /tmp/cache_context.py
-          cp .github/probes/split_filter.py /tmp/split_filter.py
+          cp .github/probes/shortcuts.py /tmp/shortcuts.py
           git checkout --detach 6b43f9b60ed7005a01377fef0c774d20e041e659
       - uses: actions/cache@v5
         id: jieli
@@ -24,24 +24,31 @@ jobs:
           key: jieli-AC79NN_SDK_V1.2.1_2023-12-13-toolchain-v1
       - name: require the matching toolchain cache
         run: test '${{ steps.jieli.outputs.cache-hit }}' = true
-      - name: compile the measured images and one parameter-snapshot probe
+      - name: compile matched controls and isolated shortcut probes
         run: |
           export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
           export ENG_AOT=1 ENG_AOT_FUSE=0 ENG_AOT_DRUMS=0 ENG_AOT_PAIR=0 ENG_RAMCODE=0 FELUCCA_SPEED=0
           mkdir -p build/probe
           cp firmware/src/aot_oracle.h /tmp/original-oracle.h
-          for variant in control integrated cached context split; do
+          for variant in control integrated context zero unity constant combined; do
+            cp /tmp/original-oracle.h firmware/src/aot_oracle.h
             export ENG_AOT_ORACLE=1
             if [ "$variant" = control ]; then export ENG_AOT_ORACLE=0; fi
-            if [ "$variant" = cached ]; then python3 /tmp/cache_params.py firmware/src/aot_oracle.h; fi
-            if [ "$variant" = context ]; then python3 /tmp/cache_context.py firmware/src/aot_oracle.h; fi
-            if [ "$variant" = split ]; then python3 /tmp/split_filter.py firmware/src/aot_oracle.h; fi
+            case "$variant" in
+              context|zero|unity|constant|combined)
+                python3 /tmp/cache_params.py firmware/src/aot_oracle.h
+                python3 /tmp/cache_context.py firmware/src/aot_oracle.h ;;
+            esac
+            case "$variant" in
+              zero|unity|constant|combined) python3 /tmp/shortcuts.py firmware/src/aot_oracle.h "$variant" ;;
+            esac
             mkdir -p "build/probe/$variant"
             python3 tools/build.py > "build/probe/$variant/build.log" 2>&1
             cp build/matryoshka.bin build/matryoshka.elf build/matryoshka.dis build/matryoshka.json firmware/src/aot_oracle.h "build/probe/$variant/"
           done
           echo '283dba2bf142ec7ce08e69d910ef0e61f680aab421e7be3c00d55292889906fe  build/probe/control/matryoshka.bin' | sha256sum -c -
           echo '86be7005131e69664d80d132f8a0db4dfa729dad41fcac9a5949567c440b4f92  build/probe/integrated/matryoshka.bin' | sha256sum -c -
+          echo 'e1ac1d10d7fda2d5d3ce86a3492a8611b758dda7b55d63ab5aacbd0eff1a77bb  build/probe/context/matryoshka.bin' | sha256sum -c -
       - uses: actions/upload-artifact@v4
         if: always()
         with:
