@@ -117,6 +117,18 @@ it('reports partial transfer on full store instead of claiming success', async (
   await expect(sendPatchPresets(patch, device, () => true)).rejects.toThrow('1 of 2 presets sent. FM-1: full');
 });
 
+it('rejects an empty FM-1 name before sending any of the surrounding valid presets', async () => {
+  const { patch, device } = fixture();
+  storePreset(patch, patch.assemblies![0], '日本語');
+  storePreset(patch, patch.assemblies![0], 'Second');
+  const before = JSON.stringify(userPresets());
+
+  await expect(sendPatchPresets(patch, device, () => true)).rejects.toThrow(/日本語.*Rename/);
+  expect(device.listPresets).not.toHaveBeenCalled();
+  expect(device.putPreset).not.toHaveBeenCalled();
+  expect(JSON.stringify(userPresets())).toBe(before);
+});
+
 it('does not silently transfer on an unsupported or disconnected FM-1', async () => {
   const { patch, device } = fixture();
   device.connected = false;

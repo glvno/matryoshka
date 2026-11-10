@@ -28,6 +28,7 @@ export async function sendPatchPresets(patch: Patch, device: PresetPeer, confirm
   const seen = new Set<string>();
   for (const p of presets) {
     if (!device.presetFits(p.values.length)) throw new Error(`${p.name}: ${PRESET_NEEDS_UPDATE}`);
+    if (!devicePresetName(p.name)) throw new Error(`“${p.name}” has no characters the FM-1 can store. Rename it in Library > Presets before sending.`);
     if (seen.has(key(p))) throw new Error(`Two presets become “${devicePresetName(p.name)}” on the FM-1. Rename one in Library > Presets before sending.`);
     seen.add(key(p));
   }
