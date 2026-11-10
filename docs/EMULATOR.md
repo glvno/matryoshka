@@ -31,7 +31,7 @@ Choose commands using the canonical stage rules:
 - **Agent branches → `main` → frozen candidate:** [D-145](ledger/releases.md#D-145) defines branch roles;
   [D-144](ledger/releases.md#D-144) defines targeted checks and review before the freeze.
 - **Frozen release candidate and fixes:** [D-144](ledger/releases.md#D-144) defines the full run and affected revalidation;
-  [D-105](ledger/releases.md#D-105) governs reuse for release packages.
+  [D-146](ledger/releases.md#D-146) governs the final artifacts carried through qualification and publication.
 - **Registered test rig:** [D-123](ledger/releases.md#D-123) governs installation; [D-141](ledger/releases.md#D-141)
   governs targeted hardware checks and candidate qualification. Other FM-1 installers follow [D-171](ledger/firmware-install.md#D-171).
 
@@ -46,10 +46,12 @@ A missing or stale plan fails the required `build` check. Main pushes still run 
 reliable record for reusing a previous pull request's results. Coverage display records follow
 [D-147](ledger/releases.md#D-147); deployment does not run tests.
 
-The release workflow rebuilds versioned firmware. Package-only mode establishes no test qualification.
-Local pass markers do not automatically establish source-equivalent release qualification: smoke and boot markers
-use timestamps, while scenario markers check the emulator-bridge hash. Reusing results under
-[D-105](ledger/releases.md#D-105) does not mean that a development package can be relabeled as final release bytes.
+The final-artifact process is decided in [D-146](ledger/releases.md#D-146), but publication checks are not yet automated.
+The release workflow builds versioned firmware; package-only mode establishes no test qualification.
+Local smoke and boot markers use timestamps, while scenario markers check the emulator-bridge hash.
+They do not prove that the package being published is the qualified final artifact.
+Evidence from a candidate frozen as a DEV build remains evidence about that build; it cannot make those bytes
+a final-version package. Resolving that transition requires a release plan, not a relabel or an automatic test rerun.
 
 ## Preparing the coverage display
 
