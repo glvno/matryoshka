@@ -76,7 +76,7 @@
     "bank": ["tools/bank_new_test.sh"],
     "ui": ["tools/ui_preview.sh", "build/ui-preview.png", "0", "1"],
     "selector": ["python3", "tools/ci_checks_test.py"],
-    "usb_return": ["tools/usb_return_test.sh"]
+    "usb_return": ["sh", "tools/usb_return_test.sh"]
   },
   "full_host": ["golden", "aot", "usb", "usb_return", "clock", "peak", "audio", "frame", "ota", "guard", "power", "installer", "panel", "preset", "bank", "ui"],
   "optional_host": {"usb_return": "firmware/src/usb_return.h"},

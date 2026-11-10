@@ -104,6 +104,20 @@ class SelectionTests(unittest.TestCase):
                 self.assertEqual(chosen['host'], [])
                 self.assertEqual(chosen['mode'], 'package')
 
+    def test_new_usb_runner_need_not_have_executable_bit(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'tools').mkdir()
+            runner = root / 'tools/usb_return_test.sh'
+            runner.write_text('echo checked > checked.txt\n')
+            runner.chmod(0o644)  # The integrated USB-return runner has this Git mode.
+            plan = root / 'plan.json'
+            plan.write_text(json.dumps({'commit': 'a'*40, 'mode': 'targeted', 'host': ['usb_return']}))
+            with patch.object(ci, 'ROOT', root), patch.object(ci, 'git', return_value='a'*40):
+                ci.execute(plan, 'firmware')
+            self.assertEqual((root / 'checked.txt').read_text(), 'checked\n')
+
+
     def test_targeted_runner_passes_only_selected_files(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / 'plan.json'
