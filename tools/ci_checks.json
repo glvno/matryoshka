@@ -14,6 +14,8 @@
     "web/scripts/golden.ts",
     "web/scripts/gen-aot.ts",
     "web/scripts/aot-kits.ts",
+    "web/scripts/buffer-budget.ts",
+    "web/src/signal-buffers.ts",
     "web/src/arpeggiator.ts",
     "web/src/harmonizer.ts",
     "web/src/assembly.ts",
@@ -61,6 +63,7 @@
   ],
   "host_commands": {
     "golden": ["tools/golden.sh"],
+    "buffer-budget": ["python3", "tools/buffer_budget.py"],
     "aot": ["tools/aot_test.sh"],
     "usb": ["tools/usb_test.sh"],
     "clock": ["tools/clock_out_test.sh"],
@@ -83,6 +86,7 @@
   "full_host": ["golden", "aot", "usb", "usb_return", "clock", "peak", "audio", "frame", "ota", "guard", "power", "installer", "panel", "preset", "bank", "ui"],
   "optional_host": {"usb_return": "firmware/src/usb_return.h"},
   "rules": [
+    {"name": "Signal buffer accounting", "paths": ["firmware/test/buffer_budget.c", "tools/buffer_budget.py", "web/scripts/buffer-budget.ts", "web/src/signal-buffers.ts", "firmware/src/engine.c", "firmware/src/aot*", "firmware/src/defs.h", "firmware/test/lanes_host.h", "web/src/modules.ts", "web/src/poly.ts", "web/src/device-compile.ts", "web/src/patchbin.ts", "web/scripts/gen-aot.ts"], "host": ["buffer-budget"], "web": []},
     {"name": "Release artifact preparation", "paths": ["tools/build.py", "tools/build_test.py", "tools/release_manifest.py", ".github/workflows/release.yml"], "host": ["release-build"], "web": []},
     {"name": "CI selection and workflows", "paths": ["tools/ci_checks*", "tools/ci_test_plan.json", ".github/workflows/firmware.yml", ".github/workflows/web.yml", ".github/workflows/release.yml"], "host": ["selector"], "web": []},
     {"name": "USB and audio transport", "paths": ["firmware/src/usb.c", "firmware/src/audio.c", "firmware/src/midi_queue.h", "firmware/hal/*usb*", "firmware/hal/*audio*"], "host": ["usb", "audio", "peak", "usb_return"], "web": ["web/src/audio.test.ts"]},
