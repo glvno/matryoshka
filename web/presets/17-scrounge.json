@@ -3056,15 +3056,14 @@
      "col": true
     }
    ],
+   "preset": "Init",
    "children": [
     1,
     2,
     3,
     4,
     5
-   ],
-   "preset": "Init",
-   "factoryPattern": "0b933c24"
+   ]
   }
  ],
  "octave": -1

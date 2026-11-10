@@ -47,7 +47,7 @@ In an isolated Python environment containing NumPy, SciPy, Matplotlib and SoundF
 python scripts/preset-spectrograms.py /absolute/path/to/auditions
 ```
 
-The page links each sound to its waveform, frequency spectrum and spectrogram. The spectrogram shows frequency over time; sustained horizontal bands reveal harmonics or resonances, and broad vertical energy often marks an attack. Inspect every retained sound as well as every new candidate. Listen to the raw and matched versions when listening is available. Record “rendered” or “visually inspected” when that is all that happened.
+The page links each sound to its waveform, frequency spectrum and spectrogram. The spectrogram shows frequency over time; sustained horizontal bands reveal harmonics or resonances, and broad vertical energy often marks an attack. Inspect every retained sound as well as every new candidate ([D-883](ledger/patches-and-presets.md#D-883), Decided). Listen to the raw and matched versions when listening is available. Record “rendered” or “visually inspected” when that is all that happened.
 
 For harsh drones, separate intentional noise and saturation from final clipping. Compare the same phrase before and after. Inspect sustained high bands, broadband energy and changes in the feedback tail. A reduction in high-frequency energy can support a change, but does not by itself prove that the sound is more useful or that aliasing is absent.
 
@@ -67,6 +67,6 @@ Use this rubric for each bank, and leave listening judgments open until somebody
 
 Keep a dated audition package outside git. Include a manifest, hashes of the actual rendered patches and WAVs, source links, baseline comparisons and concise listening prompts. Identify the source commit and any uncommitted changes honestly. Do not relabel an earlier render as having been made from a later commit. Generated summaries carry the date, source files and the 24-hour staleness notice required by [D-013](ledger/process.md#D-013).
 
-Run focused tests for changed selection, persistence, format and generation behavior, and the required build safeguards. A browser render is not a device recording; a C host check is not a hardware check. Follow the current development and candidate validation stages in [D-144](ledger/releases.md#D-144). The complete candidate bank goes to owner listening review before aesthetic acceptance is claimed.
+Run focused tests for changed selection, persistence, format and generation behavior, and the required build safeguards. A browser render is not a device recording; a C host check is not a hardware check. Follow the current development and candidate validation stages in [D-144](ledger/releases.md#D-144). Complete every scoped bank before owner listening review; aesthetic acceptance requires that listening ([D-883](ledger/patches-and-presets.md#D-883), Decided).
 
 [Factory sound roles](PRESET-BANKS.md) applies the role and reference part of this rubric to each scoped bank. The dated audition package carries the measured findings and the listening questions.

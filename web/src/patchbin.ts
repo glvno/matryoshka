@@ -130,7 +130,7 @@ export const WRITE_FLOOR = 46;
 /** the formats past WRITE_FLOOR that only add something the encoder writes when the patch uses it (format 48: the patterns
  * and songs, flag bit 10; format 50: a note word's bit 31, NOTE_WRAP; format 51: counted records, when the patch would not
  * fit otherwise, COUNTED); every other format past WRITE_FLOOR appends parameters (ParamDef.since) */
-export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module', 53: 'chained Harmonizer keys routes' };
+export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module', 53: 'chained Harmonizer keys routes', 54: 'factory pattern origins' };
 /** the flag (u16 at offset 6) of the P-locks section (format 49, #524) */
 export const FLAG_LOCKS = 2048;
 

@@ -2264,14 +2264,13 @@
      "col": true
     }
    ],
+   "preset": "Init",
    "children": [
     1,
     2,
     3,
     4
-   ],
-   "preset": "Init",
-   "factoryPattern": "902b607f"
+   ]
   }
  ],
  "octave": -1
