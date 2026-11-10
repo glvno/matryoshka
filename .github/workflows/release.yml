@@ -15,6 +15,7 @@ jobs:
         run: |
           cp .github/probes/cache_params.py /tmp/cache_params.py
           cp .github/probes/cache_context.py /tmp/cache_context.py
+          cp .github/probes/split_filter.py /tmp/split_filter.py
           git checkout --detach 6b43f9b60ed7005a01377fef0c774d20e041e659
       - uses: actions/cache@v5
         id: jieli
@@ -29,11 +30,12 @@ jobs:
           export ENG_AOT=1 ENG_AOT_FUSE=0 ENG_AOT_DRUMS=0 ENG_AOT_PAIR=0 ENG_RAMCODE=0 FELUCCA_SPEED=0
           mkdir -p build/probe
           cp firmware/src/aot_oracle.h /tmp/original-oracle.h
-          for variant in control integrated cached context; do
+          for variant in control integrated cached context split; do
             export ENG_AOT_ORACLE=1
             if [ "$variant" = control ]; then export ENG_AOT_ORACLE=0; fi
             if [ "$variant" = cached ]; then python3 /tmp/cache_params.py firmware/src/aot_oracle.h; fi
             if [ "$variant" = context ]; then python3 /tmp/cache_context.py firmware/src/aot_oracle.h; fi
+            if [ "$variant" = split ]; then python3 /tmp/split_filter.py firmware/src/aot_oracle.h; fi
             mkdir -p "build/probe/$variant"
             python3 tools/build.py > "build/probe/$variant/build.log" 2>&1
             cp build/matryoshka.bin build/matryoshka.elf build/matryoshka.dis build/matryoshka.json firmware/src/aot_oracle.h "build/probe/$variant/"
