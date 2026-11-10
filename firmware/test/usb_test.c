@@ -27,6 +27,8 @@
 static uint32_t sie_index, sie_rd_reg, sie_rd_val;
 static uint32_t csr0_in;                 /* what a read of CSR0 (index 0) returns */
 static uint32_t count0_in;               /* COUNT0 */
+static uint32_t rxcsr2, rxcount2, feedback_sent;
+static uint32_t sim_ep4_tokens;         /* emulate host IN tokens in the flash-yield deadline test */
 static uint32_t txcsr1_ep4;              /* TXCSR1 of EP4: bit 0 = a packet is still queued */
 static uint32_t rxcsr1_ep1, rxcount_ep1; /* EP1 OUT: bit 0 = a packet waits (RxPktRdy), its length */
 static int csr0_last = -1;               /* the last value written to CSR0 */
@@ -53,6 +55,8 @@ static uint32_t sim_regs(uint32_t r)
         return csr0_in;
     if (r == 22u && sie_index == 0u)
         return count0_in;
+    if (r == 20u && sie_index == 2u) return rxcsr2;
+    if (r == 22u && sie_index == 2u) return rxcount2;
     if (r == 17u && sie_index == 4u)
         return txcsr1_ep4;
     if (r == 20u && sie_index == 1u)
@@ -76,6 +80,8 @@ static void fm1_usb_sie_wr_start(uint32_t r, uint32_t v)
         faddr_last = v;
     if (r == 1u)
         power_last = (int)v;
+    if (r == 20u && sie_index == 2u) rxcsr2 = 0;
+    if (r == 17u && sie_index == 4u && sim_ep4_tokens) txcsr1_ep4 = v;
     if (r == 17u && sie_index == 0u)
         csr0_last = (int)v;
     if (r == 20u && sie_index == 1u)
@@ -100,7 +106,9 @@ static void fm1_usb_ep0_send(void *p, uint32_t n)
         memcpy(ep0_sent + ep0_sent_n, p, n);
     ep0_sent_n += n;
 }
-static void fm1_usb_ep_send(uint32_t ep, void *p, uint32_t n) { (void)ep; (void)p; (void)n; }
+static void fm1_usb_ep_send(uint32_t ep, void *p, uint32_t n) {
+    if (ep==3 && n==3) { uint8_t *b=p; feedback_sent=b[0] | (uint32_t)b[1]<<8 | (uint32_t)b[2]<<16; }
+}
 static void fm1_usb_ep4_txbuf(void *p) { (void)p; }
 static void fm1_usb_ep4_send(void *p, uint32_t n)
 {
@@ -117,7 +125,12 @@ static void fm1_delay_ms(uint32_t ms) { (void)ms; }
 #ifndef FELUCCA_OTA
 #define FELUCCA_OTA 0
 #endif
+#if FELUCCA_DEVICE_IDENTITY
+#include "../src/device_identity.h"
+#endif
 #include "../src/usb.c"
+#define FM1_TICKS_PER_US 24u
+#include "../src/usb_poll_clock.h"
 #if FELUCCA_OTA
 /* a send that waits for room calls ota_idle in a loop while the TIMER5 ISR moves the clock and, with a host that reads,
  * ep1_tx hands queued packets to it: here each call is one millisecond, the host taking a packet every host_every ms */
@@ -151,6 +164,7 @@ static uint32_t le16(const uint8_t *p) { return p[0] | (uint32_t)p[1] << 8; }
 /* walk one configuration descriptor; uac: the audio streaming interface must be there */
 static void walk_config(const char *what, const uint8_t *c, uint32_t len, int uac, int cdc)
 {
+    uint32_t duplex = uac && FELUCCA_UAC_RETURN;
     uint32_t off, nif = c[4], seen_if = 0, i;
     int cur_if = -1, cur_alt = -1, cur_cls = -1, cur_sub = -1, eps_want = 0, eps_got = 0;
     uint32_t ep_addrs = 0, iads = 0, rates = 0, as_seen = 0;
@@ -219,6 +233,12 @@ static void walk_config(const char *what, const uint8_t *c, uint32_t len, int ua
                 CHECK(le16(d + 4) >= 46u * 4u && le16(d + 4) <= 1023u, "%s: EP4 wMaxPacketSize %u", what, le16(d + 4));
                 CHECK(d[6] == 1u, "%s: EP4 bInterval %u", what, d[6]);
             }
+            if (duplex && d[2]==2) {
+                CHECK(bl==9 && d[3]==5 && le16(d+4)==180 && d[6]==1 && d[8]==0x83, "playback: async stereo endpoint with feedback reference");
+            }
+            if (duplex && d[2]==0x83) {
+                CHECK(bl==9 && d[3]==0x11 && le16(d+4)==3 && d[6]==1 && d[7]==4, "feedback: full-speed three-byte 10.14 endpoint");
+            }
             if (ms_off)
                 ms_sum += bl;
             break;
@@ -255,7 +275,7 @@ static void walk_config(const char *what, const uint8_t *c, uint32_t len, int ua
                 CHECK((d[8] | d[9] << 8 | d[10] << 16) == 44100, "%s: rate %u", what, d[8] | d[9] << 8 | d[10] << 16);
                 rates++;
             } else if (cur_cls == 1 && cur_sub == 2 && d[2] == 1u) {   /* AS general */
-                CHECK(d[3] == 2u, "%s: AS general links terminal %u (the USB streaming output is 2)", what, d[3]);
+                CHECK(d[3] == (duplex && cur_if == 2 ? 3u : 2u), "%s: AS general links terminal %u (the USB streaming output is 2)", what, d[3]);
             }
             break;
         default:
@@ -270,7 +290,7 @@ static void walk_config(const char *what, const uint8_t *c, uint32_t len, int ua
     CHECK(seen_if == nif, "%s: bNumInterfaces %u, interfaces %u", what, nif, seen_if);
     CHECK(ac_off != 0 || c[9 + (c[10] == 0x0B ? 8 : 0) + 1] == 4, "%s: no audio control", what);
     CHECK(ac_total == ac_cs_sum, "%s: AC header wTotalLength %u, class descriptors %u", what, ac_total, ac_cs_sum);
-    CHECK(ac_ncoll == (uac ? 2u : 1u), "%s: AC collection has %u interfaces", what, ac_ncoll);
+    CHECK(ac_ncoll == (uac ? 2u + duplex : 1u), "%s: AC collection has %u interfaces", what, ac_ncoll);
     {
         /* the audio function from its audio control interface a: with the audio input a, a + 1 audio streaming,
          * a + 2 MIDI streaming (MIDI last: macOS 13-15 and iPadOS show no audio, on the iPad no MIDI, while MIDI is
@@ -284,12 +304,12 @@ static void walk_config(const char *what, const uint8_t *c, uint32_t len, int ua
             }
         CHECK(a >= 0 && a + (uac ? 2 : 1) < 16, "%s: an audio control interface", what);
         if (a >= 0 && a + 2 < 16) {
-            int ms = a + (uac ? 2 : 1);
+            int ms = a + (uac ? 2 + (int)duplex : 1);
             if (uac) {
-                CHECK(sub_of[a + 1] == 2 && sub_of[a + 2] == 3,
+                CHECK(sub_of[a + 1] == 2 && sub_of[ms] == 3 && (!duplex || sub_of[a+2] == 2),
                       "%s: interfaces %d.. audio control, audio streaming, MIDI streaming (subclasses 1 %d %d)", what, a,
                       sub_of[a + 1], sub_of[a + 2]);
-                CHECK(ac_ncoll == 2u && ac_coll[0] == a + 1 && ac_coll[1] == a + 2,
+                CHECK(ac_ncoll == 2u + duplex && ac_coll[0] == a + 1 && ac_coll[1] == a + 2 && (!duplex || ac_coll[2] == a+3),
                       "%s: the AC collection {%d, %d}, not {%u, %u}", what, a + 1, a + 2, ac_coll[0], ac_coll[1]);
                 CHECK(ep_if[4 + 16] == a + 1, "%s: EP 0x84 in interface %d, not %d", what, ep_if[4 + 16], a + 1);
             } else {
@@ -300,9 +320,57 @@ static void walk_config(const char *what, const uint8_t *c, uint32_t len, int ua
                   ep_if[1], ep_if[1 + 16], ms);
         }
     }
-    CHECK(as_seen == (uac ? 1u : 0u), "%s: %u audio streaming alt 1 settings", what, as_seen);
-    CHECK(rates == (uac ? 1u : 0u), "%s: %u format descriptors", what, rates);
+    CHECK(as_seen == (uac ? 1u + duplex : 0u), "%s: %u audio streaming alt 1 settings", what, as_seen);
+    CHECK(rates == (uac ? 1u + duplex : 0u), "%s: %u format descriptors", what, rates);
     CHECK(iads == (cdc ? 2u : 0u), "%s: %u IADs", what, iads);
+}
+
+static int setup(uint8_t bm, uint8_t req, uint16_t val, uint16_t idx, uint16_t len);
+static void test_return_driver(void)
+{
+#if FELUCCA_UAC_RETURN
+    int32_t out[256]={0};
+    usb.up=usb.config=usb_uac_on=1; usb.suspended=0;
+    CHECK(setup(1,11,1,2,0)==0x48 && ur_alt==1, "playback alternate setting starts independently");
+    CHECK(setup(0x81,10,0,2,1)==0x0a && ep0_sent[0]==1, "GET_INTERFACE reports playback alt");
+    uac_play_mix(out,128);
+    for (unsigned packet=0;packet<8;packet++) {
+        for(unsigned i=0;i<180;i+=4) { ur_rx[i]=1; ur_rx[i+1]=0; ur_rx[i+2]=2; ur_rx[i+3]=0; }
+        rxcsr2=1; rxcount2=180; ur_service();
+        CHECK(rxcsr2==0, "USB playback DMA packet released");
+    }
+    CHECK(feedback_sent >= UR_NOMINAL-8192 && feedback_sent <= UR_NOMINAL+8192, "10.14 feedback packet sent");
+    uac_play_mix(out,128);
+    CHECK(out[0]==128 && out[1]==256, "USB playback reaches stereo analog mix at default 50 percent");
+    uint32_t before=ur_w;
+    rxcsr2=5; rxcount2=180; ur_service();
+    CHECK(ur_w==before && !rxcsr2, "USB receive error discarded and released");
+    usb.suspended=1; ur_service();
+    memset(out,0,sizeof out); uac_play_mix(out,128);
+    CHECK(out[0]==0 && ur_alt==1, "suspend silences playback while retaining alternate setting");
+    usb.suspended=0; ur_service(); uac_play_mix(out,128);
+    CHECK(!ur_playing, "resume reprimes without stale audio");
+    CHECK(setup(1,11,0,2,0)==0x48 && !ur_alt, "playback stop");
+    CHECK(setup(1,11,2,2,0)==0x60, "invalid playback alternate setting stalls");
+#endif
+#if FELUCCA_DEVICE_IDENTITY
+    const uint8_t *d; uint16_t n;
+    strcpy(di_name,"STAGE"); di_usb_commit(); di_usb_snapshot();
+    strcpy(di_name,"DESK"); di_usb_commit();
+    CHECK(!strcmp(di_usb_name,"STAGE"), "saving name does not alter attached descriptors");
+    di_usb_snapshot();
+    CHECK(!strcmp(di_usb_name,"DESK"), "new enumeration applies committed name");
+    strcpy(di_name,"STAGE"); di_usb_commit(); di_usb_snapshot();
+    for(unsigned i=0;i<16;i++) di_serial[i]=(uint8_t)(i+1);
+    usb_uac_on=1;
+    CHECK(get_desc(0x100,&d,&n) && d[16]==3, "application reports physical serial descriptor");
+    CHECK(get_desc(0x302,&d,&n) && n==34 && d[24]=='S' && d[32]=='E', "named product retains Matryoshka prefix");
+    CHECK(get_desc(0x303,&d,&n) && n==66 && d[2]=='0' && d[4]=='1' && d[64]=='0', "full 128-bit serial as UTF16 hex");
+    usb_uac_on=0;
+    CHECK(get_desc(0x100,&d,&n) && d[16]==0, "update mode remains serial-free");
+    CHECK(get_desc(0x302,&d,&n) && n==22, "update-mode product stays fixed");
+    usb_uac_on=1; memset(di_name,0,sizeof di_name); di_usb_commit(); di_usb_snapshot(); memset(di_serial,0,sizeof di_serial);
+#endif
 }
 
 static void test_descriptors(void)
@@ -311,8 +379,8 @@ static void test_descriptors(void)
     uint16_t l;
     usb_uac_on = 1;
     CHECK(get_desc(0x0100, &d, &l) && l == 18u && d[0] == 18u && d[1] == 1u, "device descriptor");
-    CHECK(d[12] == BCD_LO(USB_CDC_ON) && d[13] == 3u, "bcdDevice %02X%02X", d[13], d[12]);
-    CHECK(d[12] == (USB_CDC_ON ? 0x91u + 2u * FELUCCA_USB_LAYOUT : 0x90u), "bcdDevice 3.90 (+CDC): %02X", d[12]);
+    CHECK(d[12] == (FELUCCA_UAC_RETURN ? 0 : BCD_LO(USB_CDC_ON)) && d[13] == (FELUCCA_UAC_RETURN ? 4 : 3), "bcdDevice %02X%02X", d[13], d[12]);
+    CHECK(d[12] == (FELUCCA_UAC_RETURN ? 0 : USB_CDC_ON ? 0x91u + 2u * FELUCCA_USB_LAYOUT : 0x90u), "bcdDevice 3.90 (+CDC): %02X", d[12]);
     CHECK(get_desc(0x0200, &d, &l), "configuration descriptor");
     walk_config("audio + MIDI", d, l, 1, USB_CDC_ON);
 #if FELUCCA_CDC
@@ -504,11 +572,11 @@ static void test_usb_log(void)
         const uint8_t *d;
         uint16_t l;
         get_desc(0x0200, &d, &l);
-        CHECK(setup(0x80, 6, 0x0200, 0, 255) == 0x02, "log: configuration, first packet");
+        CHECK(setup(0x80, 6, 0x0200, 0, 512) == 0x02, "log: configuration, first packet");
         for (i = 0; i < 8u && usb.e0_tx; i++)
             ep0_irq(0);
         k += 3u;
-        CHECK(is_setup(ev(k), 0x80, 6, 0x0200, 255) && (ev(k)->a & 7u) == UO_IN && ev(k)->n == l && (ev(k)->a & UF_LAST) &&
+        CHECK(is_setup(ev(k), 0x80, 6, 0x0200, 512) && (ev(k)->a & 7u) == UO_IN && ev(k)->n == l && (ev(k)->a & UF_LAST) &&
                   !(ev(k)->a & UF_ZLP) && i == (l - 1u) / 64u,
               "log: configuration %u bytes in %u packets (n %u a %02X)", l, i + 1u, ev(k)->n, ev(k)->a);
     }
@@ -545,7 +613,7 @@ static void test_usb_log(void)
     k++;
     /* the host abandons a transfer (SetupEnd) */
     n0 = ul.setup_end;
-    CHECK(setup(0x80, 6, 0x0200, 0, 255) == 0x02, "log: a configuration transfer starts");
+    CHECK(setup(0x80, 6, 0x0200, 0, 512) == 0x02, "log: a configuration transfer starts");
     ep0_irq(0x10);
     CHECK((ev(k)->a & UF_ABORT) && ev(k)->n == 64u && ev(k + 1u)->kind == UL_SETUP_END && ul.setup_end == n0 + 1u &&
               usb.e0_tx == 0u,
@@ -936,6 +1004,55 @@ static void test_cut_sysex(void)
 #endif
 
 /* ------------------------------------------------------------------ the stream --- */
+/* Capture can run out of queued packets even when every TIMER5 entry gap is
+ * below 1 ms: its ordinary 500 us deadline can skip an entry between two
+ * uneven flash pauses. Exercise the real service and controller UnderRun bit
+ * at every host-frame phase, independently of the PCM ring (silent packets). */
+static void test_capture_flash_yield(void)
+{
+    sim_ep4_tokens = 1;
+    for (uint32_t request = 0; request < 2; request++) {
+        uint32_t affected = 0, lost_total = 0, counted_total = 0, worst = 0;
+        for (uint32_t phase = 0; phase < 1000; phase++) {
+            memset(&uac, 0, sizeof uac);
+            usb.up = usb.config = uac.alt = 1;
+            txcsr1_ep4 = 0;
+            uint32_t at = 0, now = 0, next_token = 1000 + phase, previous = 0, lost = 0;
+            uac_service();
+            for (uint32_t i = 0; i < 500; i++) {
+                int flash = i >= 200 && i < 300;
+                now += flash ? (i & 1u ? 580u : 470u) : 100u;
+                while (next_token <= now) {
+                    if (txcsr1_ep4 & 1u) txcsr1_ep4 &= ~1u;
+                    else { txcsr1_ep4 |= 4u; lost++; }
+                    next_token += 1000;
+                }
+                if (request && flash) usb_poll_request(&at, now * FM1_TICKS_PER_US);
+                if (usb_poll_due(&at, now * FM1_TICKS_PER_US)) {
+                    uint32_t gap = now - previous;
+                    if (gap > worst) worst = gap;
+                    previous = now;
+                    uac_service();
+                }
+            }
+            affected += lost != 0;
+            lost_total += lost;
+            counted_total += uac.missed;
+        }
+        printf("  flash yield request %u: %u/1000 phases miss, %u lost IN requests, %u counted, longest poll gap %u us\n",
+               request, affected, lost_total, counted_total, worst);
+        if (request)
+            CHECK(!affected && !lost_total && !counted_total && worst <= 580u,
+                  "each flash yield services capture before its next 1 ms IN request");
+        else
+            CHECK(affected && lost_total && counted_total && worst > 1000u,
+                  "fixture reproduces capture starvation without flash-yield request");
+    }
+    sim_ep4_tokens = txcsr1_ep4 = ep4_sent_n = 0;
+    memset(&uac, 0, sizeof uac);
+    usb.up = usb.config = 0;
+}
+
 static uint32_t rng = 12345u;
 static uint32_t rnd(uint32_t n)
 {
@@ -1073,6 +1190,8 @@ int main(int argc, char **argv)
     return 2;
 #else
     test_descriptors();
+    test_return_driver();
+    test_capture_flash_yield();
     test_power();
     test_ep0();
 #if USB_LOG

@@ -110,7 +110,7 @@ int main(int argc, char **argv)
                                                      * its 16 steps */
             sr_on = 1;
             sr_trk = seq_trk;
-            sr_gen = pages_gen();
+            sr_gen = eng_generation();
             sr_k = (uint8_t)(atoi(getenv("STEPREC")) - 1);
             seq_pg = (uint8_t)(sr_k / 16u);
         }

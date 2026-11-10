@@ -1,3 +1,4 @@
+import { addModule, connect } from './patch';
 // SPDX-License-Identifier: GPL-3.0-only
 // The FM-1's UI as WebAssembly (fm1-ui.ts, firmware/wasm/fm1_ui.c) against the host preview of the same firmware
 // (tools/ui_preview.sh): the same patch and page must give the same framebuffer, and the panel must drive it.
@@ -73,9 +74,9 @@ describe('the FM-1 UI as WebAssembly', () => {
 
   it('a track muted on the FM-1 it follows blinks its black key; SEQ held there does not switch the page on its release', async () => {
     const ui = await Fm1Ui.create(bytes);
-    const patch = FM1_PRESETS['Oracle V']();
+    const patch = FM1_PRESETS['808 Kit']();
     const track = deviceView(patch, true).patch.modules.findIndex((m) => m.type === 'steps');
-    expect(ui.load(encodePatch(patch), 'ORACLE V')).toBe(0);
+    expect(ui.load(encodePatch(patch), '808 KIT')).toBe(0);
     ui.tick(1000);
     const home = ui.page;
     ui.button(BUTTONS.seq, true);   // (the FM-1's SEQ held, mirrored; its black key mutes the track there: MUTE_NOW)
@@ -134,8 +135,78 @@ describe('the FM-1 UI as WebAssembly', () => {
     tap(BUTTONS.rec, 2400);                       // REC again: it ends
     ui.keys(G4);
     ui.keys(0);
-    expect(notes.length).toBe(4);                 // (a white key then switches the selected row's step, not G4)
+    expect(notes.length).toBe(3);                 // playing after step record leaves the pattern unchanged
   }, 30_000);
+  it.each([true, false])('captures a Side chord after Harmonizer with preview %s', async preview => {
+    const patch = FM1_PRESETS['Silver Box']();
+    const main = patch.modules.find(m => m.type === 'fm1')!;
+    const track = patch.modules.find(m => m.type === 'steps')!;
+    delete track.notes;
+    const h = addModule(patch, DEFS.harm, 0, 0);
+    h.params.type = 1;
+    patch.cables = patch.cables.filter(c => !(c.to.module === track.id && c.to.port === 'keys'));
+    expect(connect(patch, DEFS, { module: main.id, port: 'keys' }, { module: h.id, port: 'keys' })).toBe(true);
+    expect(connect(patch, DEFS, { module: h.id, port: 'keys' }, { module: track.id, port: 'keys' })).toBe(true);
+    let notes: { at: number; note: number }[] = [];
+    const ui = await Fm1Ui.create(bytes, { track: (_id, n) => { notes = n; } });
+    expect(ui.load(encodePatch(patch), 'HARM CAPTURE')).toBe(0); ui.tick(1000);
+    let time = 1000;
+    const button = (id: number, down: boolean) => { ui.tick(time += 60); return ui.button(id, down); };
+    const tap = (id: number) => { button(id, true); button(id, false); };
+    tap(BUTTONS.seq); tap(BUTTONS.rec);
+    if (!preview) { button(BUTTONS.scl, true); tap(BUTTONS.fx); button(BUTTONS.scl, false); }
+    const control = ui.keys(1 << 3);
+    expect(control).toEqual([expect.objectContaining({ kind: 3, note: 3, on: true })]);
+    const played = ui.keys((1 << 3) | (1 << 7));
+    expect(played.filter(p => p.on).map(p => p.note)).toEqual(preview ? [60,63,67] : []);
+    expect(played.every(p => p.kind === 1)).toBe(true); // direct track audition, never harmonized twice
+    ui.keys(1 << 7); expect(notes).toEqual([]); // a control release never commits
+    ui.keys(0);
+    expect(notes.map(n => [n.at,n.note])).toEqual([[0,60],[0,63],[0,67]]);
+  });
+
+  it('piano keys play outside recording; step preview can be silent and recover a missed toggle', async () => {
+    let notes: { at: number; len: number; note: number; vel: number }[] = [];
+    const patch = FM1_PRESETS['Silver Box']();
+    const ui = await Fm1Ui.create(bytes, { track: (_m, n) => { notes = n; } });
+    const copy = await Fm1Ui.create(bytes);
+    for (const u of [ui, copy]) { expect(u.load(encodePatch(patch), 'SILVER BOX')).toBe(0); u.tick(1000); }
+    let time = 1000;
+    const button = (id: number, down: boolean) => { ui.tick(time += 60); return ui.button(id, down); };
+    const tap = (id: number) => { button(id, true); button(id, false); };
+    tap(BUTTONS.seq);
+    for (let key = 0; key < 27; key++) {
+      expect(ui.keys(1 << key)).toEqual([{ note: 53 + key, vel: Math.floor(100 * 65536 / 127), on: true }]);
+      expect(ui.keys(0)).toEqual([{ note: 53 + key, vel: 0, on: false }]);
+    }
+    expect(notes).toEqual([]);
+    tap(BUTTONS.rec);
+    expect(ui.guide()!.stepRecord).toBe(true);
+    expect(ui.keys(1 << 7).some(p => p.note === 60 && p.on)).toBe(true);
+    button(BUTTONS.scl, true);
+    expect(button(BUTTONS.fx, true)).toEqual([expect.objectContaining({ note: 60, vel: 0, on: false, kind: 1 })]);
+    button(BUTTONS.fx, false);
+    button(BUTTONS.scl, false);
+    expect(ui.keys(0)).toEqual([]);
+    expect(notes).toEqual([{ at: 0, len: 1, note: 60, vel: 100 }]);
+    expect(ui.keys((1 << 11) | (1 << 14))).toEqual([]);
+    expect(ui.keys(0)).toEqual([]);
+    expect(notes).toEqual([{ at: 0, len: 1, note: 60, vel: 100 }, { at: 1, len: 1, note: 64, vel: 100 }, { at: 1, len: 1, note: 67, vel: 100 }]);
+    expect(panelOffBy(copy.guide()!, ui.guide()!)).toContain('note preview');
+    copy.align(ui.guide()!);
+    expect(panelOffBy(copy.guide()!, ui.guide()!)).toEqual([]);
+    expect(copy.keys(1 << 9)).toEqual([]);
+    copy.keys(0);
+    button(BUTTONS.scl, true); tap(BUTTONS.fx); button(BUTTONS.scl, false);
+    expect(ui.keys(1 << 9).some(p => p.note === 62 && p.on)).toBe(true);
+    ui.keys(0);
+    tap(BUTTONS.rec);
+    expect(ui.guide()!.stepRecord).toBe(false);
+    const recorded = [...notes];
+    ui.keys(1 << 4); ui.keys(0);
+    expect(notes).toEqual(recorded);
+  }, 30_000);
+
   it('#549: a copy that replays the FM-1\'s buttons and keys stays where the FM-1 is; one that gets no keys is put back by its state', async () => {
     // the FM-1 (every input) and two copies of its panel logic following it: one given the buttons and the reported keys
     // (KEYS_NOW), one the buttons only (older firmware: the SEQ page's keys send no MIDI)
@@ -178,10 +249,10 @@ describe('the FM-1 UI as WebAssembly', () => {
     expect(fm1.guide()!.raw).toEqual(keyed.guide()!.raw);
   }, 30_000);
 
-  it('P-locks (#524): a held step + ALGO + K1 locks the device\'s first row on it; the editor gets the locks', async () => {
+  it('P-locks (#524) on drums: a held step + ALGO + K1 locks the device\'s first row on it; the editor gets the locks', async () => {
     let got: { module: number; pat: number; locks: { at: number; module: number; param: number; value: number }[] } | null = null;
     const ui = await Fm1Ui.create(bytes, { locks: (module, pat, locks) => { got = { module, pat, locks }; } });
-    expect(ui.load(encodePatch(FM1_PRESETS['Silver Box']()), 'SILVER BOX')).toBe(0);
+    expect(ui.load(encodePatch(FM1_PRESETS['808 Kit']()), '808 KIT')).toBe(0);
     ui.tick(1000);
     const tap = (id: number, at: number): void => { ui.tick(at); ui.button(id, true); ui.tick(at + 50); ui.button(id, false); ui.tick(at + 100); };
     tap(BUTTONS.seq, 1200);                       // the SEQ page: PATTERN's roll

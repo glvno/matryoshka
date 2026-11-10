@@ -81,7 +81,7 @@ static void steprec_suite(void)
 {
     int pat, drums, map;
     uint32_t told, y, cx, cy;
-    uint8_t th0;
+    uint16_t th0;
     while (page != 0u && trail_n)
         tap(BTN_HOME);
     if (eng_transport_running())
@@ -210,6 +210,7 @@ static void steprec_suite(void)
               && sr_notes(pat) == before && sr_k == k0);
         check("  drawn in place = drawn whole", sr_whole_same());
         oct_pair();
+        enc(0, 1);
         check("  the step record sheet on the roll: SEL + any key jumps to a pitch; every row fits", help_on && help_state() == HS_STEP
               && on_screen("jump to pitch") && sheet_fits());
         tap(BTN_HOME);
@@ -266,7 +267,7 @@ static void steprec_suite(void)
     oct_pair();
     check("OCT- + OCT+: the controls sheet says STEP RECORD", help_on && help_state() == HS_STEP && on_screen("STEP RECORD")
           && on_screen("one chord"));
-    check("  every row fits the card", sheet_fits() && help_rows(0, (const char **)sr_rows) <= HC_VIS + 2u);
+    check("  every row fits the card", sheet_fits() && help_rows(0, (const char **)sr_rows) <= HC_VIS + 3u);
     tap(BTN_HOME);
     check("  HOME closes the sheet; step record goes on", !help_on && sr_on && page == PAGE_SEQ);
 
@@ -286,17 +287,21 @@ static void steprec_suite(void)
         int32_t len = seq_len(pat);
         eng_set_param((uint32_t)pat, STEPS_P_LEN, 32 << 16);
         loop();
-        tap(BTN_OCT_UP);
+        tap(BTN_REC);
+        enc(5, 16);
+        tap(BTN_HOME);
         tap(BTN_REC);
         check("REC with steps 17-32 shown: step record on step 17", seq_pg == 1u && sr_on && sr_k == 16u && !eng_transport_running());
         enc(5, 20);
         tap(BTN_HOME);
         check("  (K4 to step 5 (wrapped), HOME: step record ends; the view on steps 1-16)", !sr_on && sr_k == 4u && seq_pg == 0u);
-        tap(BTN_OCT_UP);
+        tap(BTN_REC);
+        enc(5, 16);
+        tap(BTN_HOME);
         tap(BTN_REC);
         check("  REC again on steps 17-32: step 17, not the cursor's last step (5)", sr_on && sr_k == 16u && seq_pg == 1u);
+        enc(5, -16);
         tap(BTN_HOME);
-        tap(BTN_OCT_DOWN);
         eng_set_param((uint32_t)pat, STEPS_P_LEN, len << 16);
         loop();
     }
@@ -340,6 +345,46 @@ static void steprec_suite(void)
     tap(BTN_ENV);
     check("another page: step record ends", !sr_on && page == PAGE_ENV);
     tap(BTN_ENV);
+
+    /* Piano-roll entry preview: a held chord stops sounding, but still writes and ties normally. */
+    if (page != PAGE_SEQ)
+        page_set(PAGE_SEQ);
+    seq_select(1);
+    sr_empty(pat);
+    sr_begin(0);
+    check("step preview starts enabled", sr_preview);
+    sr_down(K_C4);
+    check("preview on: the held entry note sounds", seq_aud_count(K_C4) == 1u && seq_aud_note(K_C4, 0) == 60u);
+    panel_held |= 1u << BTN_SEL;
+    panel_edges(1u << BTN_SEL, 0);
+    tap(BTN_ACC);
+    panel_held &= ~(1u << BTN_SEL);
+    panel_edges(0, 1u << BTN_SEL);
+    loop();
+    check("SEL + FX silences preview without moving or writing", !sr_preview && sr_on && sr_k == 0u && sr_keys
+          && !seq_thru_note[K_C4] && !sr_notes(pat) && page == PAGE_SEQ && !strcmp(msg_text, "NOTE PREVIEW OFF"));
+    tap(BTN_LFO);
+    sr_up(K_C4);
+    check("silenced held note still writes its tie", sr_len_at(pat, 0, 60) == 2u && sr_k == 2u);
+    th0 = thru_head;
+    sr_down(K_E4);
+    sr_down(K_G4);
+    sr_up(K_E4);
+    sr_up(K_G4);
+    check("silent preview writes a chord without any sound event", thru_head == th0 && sr_len_at(pat, 2, 64) == 1u
+          && sr_len_at(pat, 2, 67) == 1u && sr_k == 3u && !strcmp(seq_grid_text[2], HINT_STEP_SILENT));
+    panel_held |= 1u << BTN_SEL;
+    panel_edges(1u << BTN_SEL, 0);
+    tap(BTN_ACC);
+    panel_held &= ~(1u << BTN_SEL);
+    panel_edges(0, 1u << BTN_SEL);
+    loop();
+    th0 = thru_head;
+    sr_tap_key(K_D4);
+    check("preview enabled again: new notes sound and write", sr_preview && thru_heard(th0, (uint32_t)pat, 62u)
+          && sr_len_at(pat, 3, 62) == 1u && sr_k == 4u && page == PAGE_SEQ);
+    tap(BTN_REC);
+    sr_preview = 0;                                      /* the preference must not silence drum entry */
 
     /* a drum grid: the live take's rule (D-805) */
     while (page != 0u && trail_n)
@@ -406,4 +451,5 @@ static void steprec_suite(void)
     tap(BTN_SEQ);
     later(1500);
     sr_held = 0;
+    sr_preview = 1;
 }

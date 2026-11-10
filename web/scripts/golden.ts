@@ -3679,6 +3679,51 @@ const harmVoice = (name: string, harm: Record<string, number>): number => {
   makeAssembly(p, ids, 'chord voices').poly = {};
   return hid;
 };
+// Cable-order harmony: live roots, recorded playback below the split, then releases.
+for (const chain of [['harm', 'arp'], ['harm', 'steps'], ['steps', 'harm'], ['harm', 'steps', 'arp'], ['steps', 'harm', 'arp']]) {
+  const name = `route-${chain.join('-')}`;
+  harmVoice(name, { type: 1 });
+  const p = tests[name], main = p.modules.find(m => m.type === 'fm1')!, h = p.modules.find(m => m.type === 'harm')!, al = p.modules.find(m => m.type === 'alloc')!;
+  p.cables = p.cables.filter(c => c.from.port !== 'keys');
+  const path = [main, ...chain.map(type => type === 'harm' ? h : addModule(p, DEFS[type], 0, 0)), al];
+  for (let i = 0; i + 1 < path.length; i++) connect(p, DEFS, { module: path[i].id, port: 'keys' }, { module: path[i + 1].id, port: 'keys' });
+  const track = p.modules.find(m => m.type === 'steps');
+  if (track) track.notes = [{ at: 0, len: 1, note: 55, vel: 100 }, { at: 2, len: 1, note: 60, vel: 100 }];
+  events[name] = [[0, 'on', 60], [128 * 50, 'off', 60], [128 * 60, 'on', 65], [128 * 100, 'off', 65]];
+  ends[name] = 128 * 200;
+}
+{
+  const name = 'route-root-snapshot';
+  tests[name] = structuredClone(tests['route-steps-harm']);
+  events[name] = [[0, 'cbon', 3], [0, 'kon', 60], [0, 'cboff', 3], [128 * 50, 'koff', 60]];
+  ends[name] = 128 * 100;
+}
+{
+  const name = 'route-branch-snapshot';
+  const p = tests[name] = structuredClone(tests['route-steps-harm']);
+  const steps = p.modules.find(m => m.type === 'steps')!, out = p.modules.find(m => m.type === 'output')!;
+  const h = addModule(p, DEFS.harm, 0, 0); h.params.type = 2;
+  const a = addModule(p, DEFS.alloc, 0, 0); a.params.voices = 6;
+  const o = addModule(p, DEFS.osc, 0, 0); Object.assign(o.params, { wave:2,level:.35 });
+  const e = addModule(p, DEFS.adsr, 0, 0); Object.assign(e.params, { a:.003,d:.1,s:.6,r:.04 });
+  const v = addModule(p, DEFS.vca, 0, 0);
+  p.cables = p.cables.filter(c => c.to.module !== out.id || c.to.port !== 'r');
+  for (const [from, port, to, input] of [[steps.id,'keys',h.id,'keys'], [h.id,'keys',a.id,'keys'], [a.id,'pitch',o.id,'pitch'], [a.id,'gate',e.id,'gate'], [o.id,'out',v.id,'in'], [e.id,'env',v.id,'cv'], [v.id,'out',out.id,'r']] as const)
+    connect(p, DEFS, {module:from,port}, {module:to,port:input});
+  makeAssembly(p, [a.id,o.id,e.id,v.id], 'minor voices').poly = {};
+  events[name] = [[0,'kon',60], [128*50,'koff',60]];
+  ends[name] = 128*100;
+}
+{
+  const name = 'route-dense-steps';
+  const p = tests[name] = structuredClone(tests['route-steps-harm']);
+  p.modules.find(m => m.type === 'harm')!.params.type = 0;
+  const extra = [addModule(p, DEFS.steps, 0, 0), addModule(p, DEFS.steps, 0, 0)];
+  p.modules = [...extra, ...p.modules.filter(m => !extra.includes(m))];
+  for (const t of p.modules.filter(m => m.type === 'steps')) t.notes = Array.from({ length: 128 }, (_, note) => ({ at: 0, len: 1, note, vel: 100 }));
+  events[name] = [[0, 'run', 0]];
+  ends[name] = 128 * 200;
+}
 harmVoice('harm-side', {});
 events['harm-side'] = [[0, 'on', 60], [128 * 20, 'off', 60],
   [128 * 30, 'on', 54], [128 * 35, 'on', 62], [128 * 60, 'on', 57], [128 * 80, 'off', 62], [128 * 85, 'on', 67], [128 * 90, 'on', 65],
@@ -3708,7 +3753,7 @@ for (const voicing of [-8, -4, 4, 8]) {
 if (process.argv.includes('--panel-fixtures')) {
   const out = new URL('../../build/panel-fixtures/', import.meta.url);
   mkdirSync(out, { recursive: true });
-  for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns', 'matrix-audio', 'harm-side'])
+  for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns', 'matrix-audio', 'harm-side', 'route-harm-steps', 'route-steps-harm', 'route-harm-arp', 'route-steps-harm-arp', 'route-harm-steps-arp', 'route-dense-steps', 'route-root-snapshot', 'route-branch-snapshot'])
     writeFileSync(new URL(`${name}.m1p`, out), encodePatch(tests[name], true));
   {
     // more than 64 modules (#721): arm-many with the Drum map moved last (index 69, a device past 63) and its chain of

@@ -106,28 +106,42 @@ static void m1_patch_bypass(uint32_t mod, int on) { (void)mod; (void)on; }   /* 
 /* what the panel's keys play (#467): the note panel.c gives the engine (a key's own, a Drum map row's for black keys
  * 1..8 by D-520, none for a silent key) also goes to the page, whose browser engine is the one that sounds. Only
  * panel.c's calls are redirected: the engine's own (steps, MIDI) stay as they are */
-WASM_IMPORT("note") void js_note(uint32_t note, int32_t vel_q16, uint32_t on);
+WASM_IMPORT("note") void js_note(uint32_t note, int32_t vel_q16, uint32_t on, uint32_t kind, uint32_t target);
 static void ui_note_on(uint32_t note, int32_t vel_q16, uint32_t ch)
 {
     eng_note_on(note, vel_q16, ch);
-    js_note(note, vel_q16, 1u);
+    js_note(note, vel_q16, 1u, 0u, 0u);
 }
 static void ui_note_off(uint32_t note, uint32_t ch)
 {
     eng_note_off(note, ch);
-    js_note(note, 0, 0u);
+    js_note(note, 0, 0u, 0u, 0u);
 }
 /* ... and what the SEQ page sounds through a track while a key is held (a drum grid's black key, #368; step record's
  * keys, #532): the same note to the page, as the panel's keys reach the armed track there */
 static void host_steps_thru(uint32_t module, uint32_t note, uint32_t vel)
 {
     eng_steps_thru(module, note, vel);
-    js_note(note, vel ? (int32_t)(vel >= 127u ? 65536u : (vel << 16) / 127u) : 0, vel != 0u);
+    js_note(note, vel ? (int32_t)(vel >= 127u ? 65536u : (vel << 16) / 127u) : 0, vel != 0u, 1u, module);
 }
+static void ui_chord_button(uint32_t b, int down)
+{
+    eng_chord_button(b, down);
+    js_note(b, 0, (uint32_t)down, 2u, 0u);
+}
+static void ui_steps_chord_button(uint32_t track, uint32_t b, int down)
+{
+    eng_steps_chord_button(track, b, down);
+    js_note(b, 0, (uint32_t)down, 3u, track);
+}
+#define eng_steps_chord_button ui_steps_chord_button
+#define eng_chord_button ui_chord_button
 #define eng_note_on ui_note_on
 #define eng_note_off ui_note_off
 #define PANEL_ALIGN                             /* (panel_align: following an FM-1, its GUIDE_NOW puts the copy back in line) */
 #include "../src/panel.c"
+#undef eng_steps_chord_button
+#undef eng_chord_button
 #undef eng_note_on
 #undef eng_note_off
 

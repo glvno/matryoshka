@@ -3,9 +3,9 @@
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
 """Build Matryoshka: the app, the update loader and an installable .fwsc package.
 
-  tools/build.py [--release X.Y.Z[-suffix]]
+  tools/build.py [--release X.Y.Z[-suffix]] [--out-dir build/variant]
 
-Outputs in build/: matryoshka.bin (app), loader/ota.bin (update loader),
+Outputs in build/ (or --out-dir, within build/): matryoshka.bin (app), loader/ota.bin (update loader),
 matryoshka.fwsc (package) and matryoshka.json (its version, identity, size and sha256). A release build
 (--release X.Y.Z) writes matryoshka-X.Y.Z.fwsc / .json and a folder release-X.Y.Z/ with those, the app, SHA256SUMS, the sample attribution and the licence files.
 Identity: FM-1_7MMmmpp (7, then major, minor and patch as two digits each: 1.8.0 = FM-1_7010800); dev and CI builds
@@ -43,6 +43,10 @@ LOADER_LOAD = 0x01C0A800
 LOADER_NAME = b"usb_hid_ota.bin"    # the file name the SPL looks for
 DOCKER_IMAGE = os.environ.get("JIELI_DOCKER_IMAGE", "debian:bookworm-slim")
 CFLAGS = ["-Os", "-ffunction-sections", "-fno-builtin", "-Wall", "-Wno-unused-function"]
+APP_SWITCHES = ("FELUCCA_FLASH", "FELUCCA_OTA", "FELUCCA_OTA_DRYRUN", "FELUCCA_OTA_RAMONLY", "FELUCCA_CDC",
+                "FELUCCA_UAC", "FELUCCA_UAC_TONE", "FELUCCA_UAC_48K", "FELUCCA_ICONS", "FELUCCA_SLICE", "FELUCCA_FM4",
+                "FELUCCA_CDC_DEFAULT", "FELUCCA_UAC_AS_FIRST", "FELUCCA_UAC_MIDI_LAST", "FELUCCA_USB_HS", "M1_EMU_MIDI",
+                "ENG_AOT", "ENG_BUF_REUSE")
 SPEED = "-O2"                       # the app's audio path (#798, tools/size_fns.py); FELUCCA_SPEED=0 builds it at -Os
 # (spike) hot engine functions that run from SRAM: their compiled sections (-ffunction-sections: .text.NAME) are renamed
 # .fast_text.NAME in matryoshka.o before the link, so the code is the compiler's own, only placed elsewhere (app.ld .fast_text,
@@ -243,10 +247,7 @@ def build_app():
         if os.environ.get(switch, "0") not in ("0", "1"):
             raise SystemExit(f"{switch} must be 0 or 1")
     flags = [*CFLAGS, "-Ifirmware/hal", "-Ifirmware/src"]
-    for flag in ("FELUCCA_FLASH", "FELUCCA_OTA", "FELUCCA_OTA_DRYRUN", "FELUCCA_OTA_RAMONLY", "FELUCCA_CDC",
-                 "FELUCCA_UAC", "FELUCCA_UAC_TONE", "FELUCCA_UAC_48K", "FELUCCA_ICONS", "FELUCCA_SLICE", "FELUCCA_FM4",
-                 "FELUCCA_CDC_DEFAULT", "FELUCCA_UAC_AS_FIRST", "FELUCCA_UAC_MIDI_LAST", "FELUCCA_USB_HS", "M1_EMU_MIDI",
-                 "ENG_AOT", "ENG_BUF_REUSE"):   # ENG_AOT=0: no compiled factory assemblies (#808, firmware/src/aot.c), the interpreter alone
+    for flag in APP_SWITCHES:      # unset: defaults in the pinned firmware source
         v = os.environ.get(flag)    # unset: the default in firmware/src/modular.c
         if v in ("0", "1"):
             flags.append(f"-D{flag}={v}")
@@ -441,11 +442,23 @@ def mmio_check():
 
 
 def main():
-    global PRODUCT, VERSION, FW_VERSION
+    global PRODUCT, VERSION, FW_VERSION, OUT, GEN, LDR
     ap = argparse.ArgumentParser()
     ap.add_argument("--release", metavar="X.Y.Z", help="release build: identity FM-1_7MMmmpp, version string vX.Y.Z")
     ap.add_argument("--sdk", type=Path, help="JieLi AC79 SDK checkout (default: $AC79_SDK)")
+    ap.add_argument("--out-dir", type=Path, help="new, empty output directory within build/ (default: build/)")
     a = ap.parse_args()
+    OUT = (SRC / (a.out_dir or Path("build"))).resolve()
+    if not OUT.is_relative_to((SRC / "build").resolve()):
+        ap.error("--out-dir must be within the repository's build/ directory")
+    if a.out_dir and (any(p.name.startswith("release-") for p in OUT.relative_to(SRC / "build").parents)
+                      or OUT.name.startswith("release-")):
+        ap.error("--out-dir cannot be a release artifact directory or inside one")
+    if a.out_dir and OUT.exists() and any(OUT.iterdir()):
+        ap.error("--out-dir must be empty; choose a new build directory")
+    if a.release and (OUT / f"release-{a.release}").exists():
+        ap.error("release artifacts already exist; choose a new --out-dir instead of replacing them")
+    GEN, LDR = OUT / "gen", OUT / "loader"
     name = "matryoshka.fwsc"
     check_identity(PRODUCT)
     if a.release:                   # two digits each for major, minor and patch (#216); VERSION: MENU > SYSTEM, the splash
@@ -475,10 +488,16 @@ def main():
     # the package's image is encrypted: its version goes in a sidecar for web/scripts/sync-firmware.mjs (x.fwsc -> x.json)
     version = VERSION or re.search(r'#define FELUCCA_VERSION "([^"]+)"', (FW / "src" / "modular.c").read_text())[1]
     side = json.dumps({"version": version, "product": PRODUCT, "size": len(pkg), "sha256": hashlib.sha256(pkg).hexdigest(),
+                       "app_sha256": hashlib.sha256(img).hexdigest(),
                        "build": {"ENG_AOT": int(os.environ.get("ENG_AOT", "0")),
                                  "ENG_RAMCODE": int(os.environ.get("ENG_RAMCODE", "0")),
                                  "ENG_BUF_REUSE": int(os.environ.get("ENG_BUF_REUSE", "1")),
-                                 "FELUCCA_SPEED": os.environ.get("FELUCCA_SPEED", SPEED)}})
+                                 "FELUCCA_SPEED": os.environ.get("FELUCCA_SPEED", SPEED),
+                                 # Missing overrides use defaults in the recorded source commit.
+                                 "defines": {k: os.environ[k] for k in APP_SWITCHES
+                                             if os.environ.get(k) in ("0", "1")},
+                                 "FELUCCA_USB_LAYOUT": os.environ.get("FELUCCA_USB_LAYOUT")
+                                     if os.environ.get("FELUCCA_USB_LAYOUT") in ("0", "1", "2", "3") else None}})
     (OUT / name).with_suffix(".json").write_text(side)
     att = SRC / "assets" / "samples-cc0" / "ATTRIBUTION.txt"
     if att.exists():
@@ -488,7 +507,6 @@ def main():
     print(f"package  {OUT / name}  {len(pkg)} B, identity {PRODUCT}")
     if a.release:                   # what a release carries: the package, the app and every licence they need
         rel = OUT / f"release-{a.release}"
-        shutil.rmtree(rel, ignore_errors=True)
         (rel / "LICENSES").mkdir(parents=True)
         app = f"matryoshka-{a.release}-app.bin"
         (rel / name).write_bytes(pkg)

@@ -46,8 +46,10 @@ export type HostMsg =
   /** an envelope display: its copies' stage and level (Engine.envStates), sent about 30 times a second */
   | { t: 'envwatch'; key: string; id: number }
   | { t: 'unenvwatch'; key: string }
-  | { t: 'on'; note: number; vel: number; ch?: number }
-  | { t: 'off'; note: number; ch?: number }
+  | { t: 'on'; note: number; vel: number; ch?: number; root?: boolean }
+  | { t: 'off'; note: number; ch?: number; root?: boolean }
+  | { t: 'entry'; id: number; token: number; note: number; vel: number; down: boolean; ch?: number; root?: boolean }
+  | { t: 'chord'; button: number; down: boolean; track?: number }
   | { t: 'clock' }
   | { t: 'clockrun'; on: boolean }
   | { t: 'bend'; v: number }
@@ -122,8 +124,16 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'arm') this.engine.arm(m.devices);
         else if (m.t === 'rec') this.engine.setRec(m.id, m.on);
         else if (m.t === 'thru') this.engine.thru(m.id, m.note, m.vel);
-        else if (m.t === 'on') this.engine.noteOn(m.note, m.vel, m.ch);
-        else if (m.t === 'off') this.engine.noteOff(m.note, m.ch);
+        else if (m.t === 'entry') {
+          const notes = this.engine.entryNotes(m.id, m.note, m.down, m.root);
+          this.port.postMessage({ entry: { ...m, notes } });
+          if (!notes.length) return;
+          if (m.down) this.engine.noteOn(m.note, m.vel, m.ch, m.root);
+          else this.engine.noteOff(m.note, m.ch, m.root);
+        }
+        else if (m.t === 'chord') this.engine.chordButton(m.button, m.down, m.track);
+        else if (m.t === 'on') this.engine.noteOn(m.note, m.vel, m.ch, m.root);
+        else if (m.t === 'off') this.engine.noteOff(m.note, m.ch, m.root);
         else if (m.t === 'clock') {                   // MIDI clock: it drives the clock while it comes in
           if (this.sinceClock > CLOCK_GONE) this.engine.clockExternal(true);
           this.sinceClock = 0;

@@ -149,6 +149,9 @@ RAMINL int fl_wait_ready(uint32_t max_us, uint32_t *took_us)
 
 /* ---- entry points: IRQs OFF, args/buffers in RAM ---- */
 
+#if FL_READ_UID
+static uint8_t fl_uid[16] FL_UID_MEM;
+#endif
 static RAMFN uint32_t fl_jedec_ram(void)                 /* FL_JEDEC_OK: 0x856014 or 0xB36014 */
 {
     fl_saved_t s; uint32_t id;
@@ -156,6 +159,16 @@ static RAMFN uint32_t fl_jedec_ram(void)                 /* FL_JEDEC_OK: 0x85601
     fl_cs(0); fl_tx(0x9F);
     id = (uint32_t)fl_rx() << 16; id |= (uint32_t)fl_rx() << 8; id |= fl_rx();
     fl_cs(1);
+#if FL_READ_UID
+    /* Puya P25Q80H section 10.41 / UCUN UC25HQ80: RUID 4B,
+     * four dummy bytes, 128-bit factory ID. Never program the ID. */
+    if (FL_JEDEC_OK(id)) {
+        fl_cs(0); fl_tx(0x4b);
+        for (uint32_t i=0;i<4;i++) fl_tx(0);
+        for (uint32_t i=0;i<16;i++) fl_uid[i]=fl_rx();
+        fl_cs(1);
+    }
+#endif
     fl_exit(&s);
     return id;
 }

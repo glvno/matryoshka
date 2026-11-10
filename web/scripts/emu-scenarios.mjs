@@ -1391,22 +1391,22 @@ async function main() {
       }
       await emu.snap('rec-count-in');
     },
-    async tieRoll() {   // the piano roll (#241) keeps its tie: Silver Box's PATTERN, pattern 1 (empty)
+    async tieRoll() {   // piano-roll ties are entered through step record
       await check('tie roll: Silver Box opens, synced', await openSynced('Silver Box'));
       await check('tie roll: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
-      await emu.tap(WHITE[0]);
-      let ns = await notesUntil((x) => x.length === 1);
-      const note = ns[0]?.note;
-      await check('tie roll: a note on step 1', ns.length === 1 && ns[0].at === 0 && ns[0].len === 1, fmt(ns));
-      await lfoKeys([3]);
-      ns = await notesUntil((x) => noteAt(x, 0, note)?.len === 4);
-      await check('tie roll: LFO + step 4: tied through it in one press (4 steps)', noteAt(ns, 0, note)?.len === 4 && ns.length === 1, fmt(ns));
-      await untie('tie roll', note);
-      await droneTie('tie roll', note, false);
+      await emu.tap(B.rec);
+      await check('tie roll: step record starts', await emu.waitText('STEP 1', 2000));
+      await emu.key(WHITE[0], true);
+      for (let i = 0; i < 3; i++) await emu.tap(B.lfo);
+      await emu.key(WHITE[0], false);
+      let ns = await notesUntil((x) => x.length === 1 && x[0].len === 4);
+      await check('tie roll: held note tied for four steps', ns.length === 1 && ns[0].at === 0 && ns[0].len === 4, fmt(ns));
+      await emu.tap(B.rec);
       await lfoKeys([3]);
       await emu.tap(WHITE[2]);
-      ns = await notesUntil((x) => noteAt(x, 2, note) !== undefined);
-      await check('tie roll: a plain white key on a tied step: the tie cut, a note there', noteAt(ns, 0, note)?.len === 2 && noteAt(ns, 2, note)?.len === 1, fmt(ns));
+      await emu.elapse(400);
+      ns = await trackNotes();
+      await check('tie roll: outside step record keys do not cut or toggle the tie', ns.length === 1 && ns[0].at === 0 && ns[0].len === 4, fmt(ns));
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
     },
@@ -1549,16 +1549,16 @@ async function main() {
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
     },
-    // D-809 (the owner, 2026-11-02): SELECT pages the piano roll 8 pitches at a time (fixed pages, the bar names them) and
-    // SEL held + SELECT moves it a pitch, its release then opening no SONG page; the selected row stays on its screen row,
-    // so a white key writes 8 pitches lower after a page down and one higher after a fine step up. Silver Box's PATTERN
+    // SELECT pages the view without changing what the piano keys play or writing notes.
     async rollPaging() {
       await check('roll paging: Silver Box opens, synced', await openSynced('Silver Box'));
       await check('roll paging: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
       const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
       const nm = (n) => `${NAMES[n % 12]}${Math.floor(n / 12) - 1}`;
       const range = (lo) => `${nm(lo)}-${nm(lo + 7)}`;
-      await emu.tap(WHITE[0]);                      // the selected row's pitch on step 1
+      await emu.tap(B.rec);
+      await emu.tap(WHITE[0]);                      // one recorded note identifies the keys' octave
+      await emu.tap(B.rec);
       let ns = await notesUntil((x) => x.length === 1);
       const p0 = ns[0]?.note ?? 60, lo0 = Math.floor(p0 / 8) * 8;
       await check('roll paging: the bar names the fixed page of 8 pitches the selected row is on', ns.length === 1
@@ -1566,8 +1566,9 @@ async function main() {
       await emu.turn(ENC.select, 1);
       await check('roll paging: SELECT: a page of 8 pitches down', await emu.waitText(range(lo0 - 8), 2000), range(lo0 - 8));
       await emu.tap(WHITE[1]);
-      ns = await notesUntil((x) => x.length === 2);
-      await check('roll paging: the selected row stays on its screen row: a white key writes 8 pitches lower', noteAt(ns, 1)?.note === p0 - 8, fmt(ns));
+      await emu.elapse(300);
+      ns = await trackNotes();
+      await check('roll paging: playing after a page move writes nothing', ns.length === 1 && ns[0].note === p0, fmt(ns));
       await emu.key(B.scl, true);
       await emu.elapse(150);
       await emu.turn(ENC.select, -1);
@@ -1577,8 +1578,9 @@ async function main() {
       await check('roll paging: SEL held + SELECT: a pitch up, SEL\'s release opens no SONG page', (await emu.waitText(range(lo0 - 7), 2000))
         && !(await emu.text('SONG 1')) && (await emu.text('ALGO track')), range(lo0 - 7));
       await emu.tap(WHITE[2]);
-      ns = await notesUntil((x) => x.length === 3);
-      await check('roll paging: then a white key writes a pitch higher', noteAt(ns, 2)?.note === p0 - 7, fmt(ns));
+      await emu.elapse(300);
+      ns = await trackNotes();
+      await check('roll paging: playing after a fine move writes nothing', ns.length === 1 && ns[0].note === p0, fmt(ns));
       await emu.turn(ENC.select, -1);
       await check('roll paging: SELECT after it: a page up, the pitch offset kept', await emu.waitText(range(lo0 + 1), 2000), range(lo0 + 1));
       await emu.snap('roll-paging');
@@ -1671,17 +1673,13 @@ async function main() {
       await check('roll pen (#549): the next REC: step record (STEP 1), not a live take, the transport stopped', (await emu.waitText('STEP 1', 2000)) && t.ok, t.why);
       await emu.tap(B.home);
       await check('roll pen: HOME ends step record', await emu.waitText('ALGO track', 2000));
-      await emu.key(WHITE[1], true);                // step 2 held (its press switches nothing: the release would)
-      await emu.elapse(300);
-      await emu.turn(ENC.k1, 12);                   // + K1: the selected row's pitch put there, 12 semitones up: off the page
-      await emu.elapse(400);
-      ns = await notesUntil((x) => noteAt(x, 1)?.note !== undefined && x.length === 2);
-      const p = noteAt(ns, 1)?.note;
-      await check('roll pen: a held step + K1 an octave up: the view on the fixed page that holds its pitch', p !== undefined
-        && (await emu.waitText(pageOf(p), 2000)) && octs.some((o) => p === 54 + 12 * o + 12), `${fmt(ns)}, ${p === undefined ? '-' : pageOf(p)}`);
+      const before = fmt(await trackNotes());
+      await emu.key(WHITE[1], true);
+      await emu.turn(ENC.k1, 12);
       await emu.key(WHITE[1], false);
-      await emu.elapse(200);
-      await emu.snap('roll-pen-k1');
+      await emu.elapse(300);
+      await check('roll pen: a held playing key does not become a step edit', fmt(await trackNotes()) === before);
+      await emu.snap('roll-pen-playing');
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
       // #549: REC held + a black key on a device page arms (the copy sees REC tapped, which there would start the
@@ -1822,52 +1820,20 @@ async function main() {
       await check('deaf: no message from the FM-1 went out without its F7 (#378)', emu.cutSysex === 0, `${emu.cutSysex} cut off`);
       await emu.snap('deaf-after');
     },
-    // #387 (the owner, 2026-10-28): on the piano roll the black keys pick the rows on screen, black key 1 the bottom one,
-    // not the tracks. Spokes 6's TONE (the owner's report: ALGO to TONE lit black key 2, to CHORD black key 3), read back
-    // through the link (TRACK_NOW: the editor's copy of the tracks) and heard through the peak
+    // Piano-roll black and white keys play without editing, including black keys beyond the old eight rows.
     async rollBlack() {
-      const KEY = [1, 3, 5, 8, 10, 13, 15, 17, 20, 22, 25].map((n) => 14 + n);   // the black keys, F#3 up
-      const tracks = async () => Object.fromEntries(JSON.parse(await patchJson()).modules.filter((m) => m.type === 'steps').map((m) => [m.name, m.notes]));
-      const fmt = (ns) => (ns ?? []).map((n) => `${n.note}@${n.at}x${n.len}`).join(' ') || 'none';
-      const added = (was, now) => (now ?? []).filter((n) => !(was ?? []).some((o) => o.at === n.at && o.note === n.note));
-      const n0 = (await T()).loads;
-      await check('roll black: Spokes 6 opens', await open('Spokes 6'));
-      const s = await sentAfter(n0);
-      await check('roll black: synced, the device page', !!s && (await emu.waitOwnPage(6000)), `chip ${(await T()).chip}, ${(await T()).status}`);
-      await emu.tap(B.seq, 120);
-      await check('roll black: SEQ opens the drum grid', await emu.waitText('ALGO track', 3000));
-      let tone = false;
-      for (let i = 0; i < 3 && !tone; i++) {        // ALGO a track a click, to TONE (the 2nd of 3)
-        await emu.turn(ENC.algo, 1);
-        tone = await emu.waitText('TONE ARM', 1500);
+      await check('roll keys: Silver Box opens, synced', await openSynced('Silver Box'));
+      await check('roll keys: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
+      for (const key of [0, 1, 17, 20, 22, 25, 26]) {
+        const m = await emu.mark();
+        await emu.key(14 + key, true);
+        await emu.elapse(300);
+        const peak = await emu.peak(m);
+        await emu.key(14 + key, false);
+        await emu.elapse(300);
+        await loudCheck(`roll keys: key ${key} plays`, peak, peak > LOUD, `peak ${peak}`);
       }
-      await check('roll black: ALGO: the TONE track\'s roll', tone);
-      const t0 = await tracks();
-      const m = await emu.mark();                   // black key 1 held, stopped: its row (the bottom pitch) heard
-      await emu.key(KEY[0], true);
-      await emu.elapse(400);
-      const p = await emu.peak(m);
-      await emu.key(KEY[0], false);
-      await emu.elapse(300);
-      await loudCheck('roll black: stopped, black key 1 sounds its row', p, p > LOUD, `peak ${p}`);
-      await check('roll black: black key 1 keeps the TONE track (it picked a track before)', (await emu.text('TONE ARM')) && !(await emu.text('CHORD')));
-      await emu.tap(WHITE[13]);                     // a white key: a note on step 14 at black key 1's row
-      const t1 = await until(async () => { const x = await tracks(); return added(t0.TONE, x.TONE).length === 1 ? x : null; }, 3000) ?? (await tracks());
-      const low = added(t0.TONE, t1.TONE)[0];
-      await check('roll black: then a white key writes on TONE, not on another track', !!low && low.at === 13 && fmt(t1.CHORD) === fmt(t0.CHORD) && fmt(t1.DRUMS) === fmt(t0.DRUMS), fmt(added(t0.TONE, t1.TONE)));
-      await emu.tap(KEY[7]);                        // black key 8: the top row, 7 semitones up
-      await emu.tap(WHITE[14]);
-      // (the step's note at the top row switched: added, or taken away when the pattern had it there: D-809's pages)
-      const switched = (was, now) => [...added(was, now), ...added(now, was)];
-      const t2 = await until(async () => { const x = await tracks(); return switched(t1.TONE, x.TONE).length === 1 ? x : null; }, 3000) ?? (await tracks());
-      const high = switched(t1.TONE, t2.TONE)[0];
-      await check('roll black: black key 8 is the top row: 7 semitones over black key 1\'s', !!low && !!high && high.at === 14 && high.note === low.note + 7, `${fmt([low])} then ${fmt([high])}`);
-      await emu.tap(KEY[8]);                        // black key 9: nothing (8 rows), still TONE, still the top row
-      await emu.tap(WHITE[14]);                     // (the top row's note on step 15 off again)
-      await emu.tap(KEY[0]);
-      await emu.tap(WHITE[13]);                     // (and the bottom row's on step 14)
-      const t3 = await until(async () => { const x = await tracks(); return fmt(x.TONE) === fmt(t0.TONE) ? x : null; }, 3000) ?? (await tracks());
-      await check('roll black: black key 9 changes nothing; both notes off again (the track as it was)', fmt(t3.TONE) === fmt(t0.TONE) && (await emu.text('TONE ARM')), fmt(added(t0.TONE, t3.TONE)));
+      await check('roll keys: playing leaves the pattern empty', (await trackNotes()).length === 0);
       await emu.snap('roll-black');
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);

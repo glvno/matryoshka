@@ -186,9 +186,15 @@ static void c1_poll(void)                       /* the main loop */
  * at. TIMER5 nests in the audio interrupt, so only the interrupts off (or its own long run) hold it back, and with it
  * the 2 kHz USB service that queues each USB audio packet */
 static volatile uint32_t t5_gap_max, t5_gap_at;
+#include "usb_poll_clock.h"
+static volatile uint32_t usb_at;                /* TIMER5 owns it except the IRQ-off flash-step request */
+static void usb_poll_after_flash(void)
+{
+    usb_poll_request(&usb_at, fm1_ticks());
+}
 void fm1_timer5_irq(uint32_t *f)                /* f: the saved r0..r3, reti, rets, psr (fm1_isr.S) */
 {
-    static uint32_t sub, last, acc, next;
+    static uint32_t last, acc, next;
     uint32_t t0 = fm1_ticks();
     fm1_timer5_ack();
     fm1_input_tick();
@@ -210,13 +216,11 @@ void fm1_timer5_irq(uint32_t *f)                /* f: the saved r0..r3, reti, re
         diag.n++;
         next = fm1_ms + DIAG_EVERY_MS;
     }
-    if (sub++ % 5u == 0u) {
+    if (usb_poll_due(&usb_at, t0)) {
         clk_out_poll(t0);                       /* MIDI clock out: the ticks due now to the USB ring (clock_out.h) */
         usb_poll();                             /* 2 kHz: all USB SIE traffic lives here */
         uart_midi_poll();                       /* the TRS jack's DMA ring (128 bytes = 41 ms) */
     }
-    if (sub == 10u)
-        sub = 0;
     bt_t5(t0);                                  /* (blk_time.h: its time, read only) */
 }
 extern void isr_timer5(void);
@@ -651,6 +655,17 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
         return sizeof v;
     }
+#if FELUCCA_UAC_RETURN
+    if (page == 143u) {                       /* USB return: stream flags, positions, losses, fill servo, level, epoch */
+        uint32_t v[8], key=fm1__lock();
+        v[0]=(uint32_t)ur_alt | (uint32_t)ur_playing<<8;
+        v[1]=ur_w; v[2]=ur_r; v[3]=ur_underruns; v[4]=ur_overruns;
+        v[5]=(uint32_t)ur_fill_q8; v[6]=di_level; v[7]=ur_epoch;
+        fm1__unlock(key);
+        for (i=0;i<sizeof v;i++) out[i]=(uint8_t)(v[i/4]>>(8*(i%4)));
+        return sizeof v;
+    }
+#endif
     if (page == 127u) {
         uint32_t v[8];
         v[0] = cpu_pct;
@@ -774,6 +789,33 @@ static void settings_store(void)
     (void)store_write(SL_SETTINGS, 0, set, SET_LEN);
 }
 
+static uint8_t patches_up;                      /* patch_boot has run (host_poll may reload the current patch) */
+
+static uint8_t boot_safe;
+#include "device_settings.c"
+
+/* Read only the settings header before USB attaches. No bank migration,
+ * writes or erases here; update mode skips this path altogether. */
+static void device_identity_boot(void)
+{
+    sl_hdr_t h; uint32_t seq=0;
+    uint8_t data[16];
+    for (uint32_t i=0;i<16;i++) di_serial[i]=fl_uid[i];
+    if (flash_ok) for (uint32_t i=0;i<SL_NSEC;i++) {
+        uint32_t a=sl_sector_addr(i);
+        if (!st_read(a,&h,sizeof h) && h.magic==SL_MAGIC && h.id==SL_SETTINGS && h.seq>=seq && di_record_valid((const uint8_t *)h.name) &&
+            h.len>=SET_MIN && h.len<=SET_LEN && !st_read(a+SL_PAYLOAD,data,h.len) && m1_crc16(data,h.len)==h.crc) {
+            seq=h.seq;
+            /* A newer legacy record clears older metadata, too. */
+            for (uint32_t k=0;k<17;k++) di_name[k]=0;
+            di_level=50;
+            (void)di_unpack((const uint8_t *)h.name);
+        }
+    }
+    di_usb_commit();
+    di_usb_snapshot();
+}
+
 /* TEMPO from the editor (proto.c, D-907) */
 static void m1_tempo(uint32_t patch, uint32_t bpm)
 {
@@ -814,7 +856,6 @@ static int m1_store(const uint8_t *patch, uint32_t len)        /* SAVE, the edit
 }
 
 static void fallback_boot(void);
-static uint8_t patches_up;                      /* patch_boot has run (host_poll may reload the current patch) */
 
 /* slot n into the engine; an empty slot or one that does not load: the fallback patch. 0 = the slot's patch runs */
 static int preset_load(uint32_t n)
@@ -1074,7 +1115,6 @@ static uint32_t presets_upgrade(void)
 
 /* safe mode: SAVE held while the loading screen is up, or the previous boot did not get through (bootguard): nothing is
  * read from the flash (the bank stays: a normal boot opens it again) */
-static uint8_t boot_safe;
 
 /* safe mode's patch, and the last resort when a slot does not load: the fallback compiled into the firmware (presets.h
  * FALLBACK_PATCH, web/src/fallback.ts) */
@@ -1149,6 +1189,8 @@ static void defaults_now(void)
     eng_all_notes_off();
     eng_transport(0);
     cfg_defaults();
+    for (uint32_t i=0;i<17;i++) di_name[i]=0;
+    di_level=50;
     octave = 0;
     gt_patch = 0;                                /* TEMPO: GLOBAL, at the tempo of the patch loaded next */
     gt_bpm = 0;
@@ -1669,6 +1711,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
     if (update || (fm1_in.buttons & 3u) == 3u)          /* update mode: decided before the first attach, so the */
         usb_uac_switch(0);                              /* host only ever sees the MIDI-only device (usb.c) */
 #endif
+    if (UAC_ON) device_identity_boot();
     boot_step("USB");
     usb_start();                                        /* (usb_poll in TIMER5 waits for usb.up, as with usb_retry) */
     if (update)

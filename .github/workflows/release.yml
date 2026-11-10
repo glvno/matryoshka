@@ -23,6 +23,13 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      # Both variants use the same production options; only the bridge transport differs.
+      ENG_AOT: '0'
+      ENG_RAMCODE: '0'
+      ENG_BUF_REUSE: '1'
+      FELUCCA_SPEED: '-O2'
+      M1_EMU_MIDI: '0'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -65,25 +72,36 @@ jobs:
           test "${PIPESTATUS[0]}" -eq 0
           if grep -E "warning:" build/build.log | grep -v "SDK .* differs"; then echo "::error::compiler warnings"; exit 1; fi
           cp build/build.log "build/release-$VERSION/"
+          cp build/matryoshka.elf "build/release-$VERSION/matryoshka-$VERSION-app.elf"
           { echo "### Matryoshka $VERSION ($(git rev-parse HEAD))"; echo '```'; grep -E "image [0-9]+ B|pool [0-9]+ B of|identity" build/build.log; cat "build/release-$VERSION/SHA256SUMS"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: Full host checks only for explicit candidate qualification
         if: inputs.mode == 'rc'
         run: python3 tools/ci_checks.py run --area firmware
+      - name: Versioned emulator bridge in isolated outputs (never installed)
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
+          M1_EMU_MIDI=1 python3 tools/build.py --release "$VERSION" --out-dir build/bridge 2>&1 | tee build/build-emu.log
+          test "${PIPESTATUS[0]}" -eq 0
+          if grep -E "warning:" build/build-emu.log | grep -v "SDK .* differs"; then echo "::error::compiler warnings (M1_EMU_MIDI=1)"; exit 1; fi
+          mkdir -p build/emu-midi
+          cp build/bridge/matryoshka.bin build/emu-midi/matryoshka-emu.bin
+          cp build/bridge/matryoshka.elf build/emu-midi/matryoshka-emu.elf
+          cp "build/bridge/matryoshka-$VERSION.json" build/emu-midi/matryoshka-emu.json
+          cp build/build-emu.log build/emu-midi/
+      - name: Bind source, version, build options and exact artifacts (not qualification)
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
+          python3 tools/release_manifest.py --version "$VERSION" --normal "build/release-$VERSION" --bridge build/emu-midi
+          cp "build/release-$VERSION/build-manifest.json" build/emu-midi/
       - uses: actions/upload-artifact@v4
         with:
           name: matryoshka-release-${{ inputs.version }}
           path: build/release-${{ inputs.version }}/
           if-no-files-found: error
-      # after the package's upload, so this build cannot touch it (tools/build.py writes release-<version>/ only with --release)
-      - name: the emulator bridge's build of the same sources (M1_EMU_MIDI=1, never installed; the boot check of the release bytes, docs/EMULATOR.md, #783)
-        run: |
-          export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
-          M1_EMU_MIDI=1 python3 tools/build.py 2>&1 | tee build/build-emu.log
-          test "${PIPESTATUS[0]}" -eq 0
-          if grep -E "warning:" build/build-emu.log | grep -v "SDK .* differs"; then echo "::error::compiler warnings (M1_EMU_MIDI=1)"; exit 1; fi
-          mkdir -p build/emu-midi
-          cp build/matryoshka.bin build/emu-midi/matryoshka-emu.bin
-          cp build/matryoshka.elf build/emu-midi/matryoshka-emu.elf
       - uses: actions/upload-artifact@v4
         with:
           name: matryoshka-emu-midi

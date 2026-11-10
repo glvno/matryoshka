@@ -1,0 +1,14 @@
+{
+  "tools/fm1_rec.swift": {
+    "sha256": "c717e52956a758f198d2305a05ebdd1537de575f5e37d206fa6cf5fc55fb18a2",
+    "plan": "Review native device selection by registered USB location and physical serial; reject missing/ambiguous devices rather than choosing by display name. Run the recorder --test-identity focused self-check without opening audio. These exact recorder bytes match hardware-tested source 064f6ef16631b010fa2c7d2e237f31c5d719e062 from PR #826: the author recorded 45.400 seconds of stereo 44100 Hz duplex capture, including 30 seconds stable playback and ten settings saves with no active capture/return errors; one shutdown-only return underrun is retained. This historical development evidence does not qualify the combined final artifacts. Final RC checks must repeat location/serial selection and active duplex capture on the versioned candidate under the rig owner\u2019s grant. iPhone/Reel, physical replug/power-cycle, two-device naming and connected-editor persistence remain separate unclaimed acceptance checks."
+  },
+  "tools/emu/src/main.rs": {
+    "sha256": "6f4e5e5b01bad07be82ebf2cd59fe08042300fd1c65f23f5c6b0cfec11318843",
+    "plan": "Review the test-only piano smoke correction from 9a71ad4d against the new playable-roll key behavior. These exact harness bytes passed the focused piano smoke selection, 27/27 checks, against unchanged frozen DEV candidate 0fe53aa9; no runtime feature source changed. Preserve the original four obsolete assertion failures as historical results. Do not repeat full smoke during integration. Run full smoke once on the future versioned final release candidate under D-144; this plan is review input, not automated qualification."
+  },
+  "tools/emu/src/smoke.rs": {
+    "sha256": "dc5c4ec2f6947c97e04c79d37ca314094e2b646fbac0b7eda448ca1dec5072fd",
+    "plan": "Review the test-only piano smoke correction from 9a71ad4d against the new playable-roll key behavior. These exact harness bytes passed the focused piano smoke selection, 27/27 checks, against unchanged frozen DEV candidate 0fe53aa9; no runtime feature source changed. Preserve the original four obsolete assertion failures as historical results. Do not repeat full smoke during integration. Run full smoke once on the future versioned final release candidate under D-144; this plan is review input, not automated qualification."
+  }
+}

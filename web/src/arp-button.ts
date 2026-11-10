@@ -40,6 +40,16 @@ export interface ArpChoice {
 /** the keys cables out of a module */
 const keysOut = (p: Patch, id: number): Cable[] => p.cables.filter((c) => c.from.module === id && c.from.port === 'keys');
 
+/** Insert after note generation/recording, so ARP receives the chord and never feeds a track. */
+function straightKeys(p: Patch, id: number, seen = new Set<number>()): Cable[] {
+  if (seen.has(id)) return [];
+  seen.add(id);
+  return keysOut(p, id).flatMap(c => {
+    const type = p.modules.find(m => m.id === c.to.module)?.type;
+    return type === 'arp' ? [] : type === 'harm' || type === 'steps' ? straightKeys(p, c.to.module, seen) : [c];
+  });
+}
+
 /** a name for what a keys cable plays: the assembly its allocator sits in (the instrument), the poly assembly it drives,
  * or its type */
 export function keysTargetName(p: Patch, id: number): string {
@@ -70,12 +80,13 @@ function through(p: Patch, arp: ModuleInst, cables: Cable[]): void {
 /** a new Arpeggiator fed by Main's keys, taking over `cables` (keys cables out of Main) */
 function insertFor(p: Patch, cables: Cable[]): ModuleInst | null {
   const main = mainOf(p);
-  if (!main) return null;
+  if (!main || new Set(cables.map(c => c.from.module)).size > 1) return null;
+  const feed = cables[0]?.from.module ?? main.id;
   const near = cables.map((c) => p.modules.find((m) => m.id === c.to.module)!).filter(Boolean);
   const at = spotNear(p, near.length ? near : [main]);
   const arp = addModule(p, DEFS.arp, at.x, at.y);
   through(p, arp, cables);
-  connect(p, DEFS, { module: main.id, port: 'keys' }, { module: arp.id, port: 'keys' });
+  connect(p, DEFS, { module: feed, port: 'keys' }, { module: arp.id, port: 'keys' });
   return arp;
 }
 
@@ -84,7 +95,7 @@ function insertFor(p: Patch, cables: Cable[]): ModuleInst | null {
 export function insertArpeggiator(p: Patch): ModuleInst | null {
   const main = mainOf(p);
   if (!main) return null;
-  const arp = insertFor(p, keysOut(p, main.id).filter((c) => p.modules.find((m) => m.id === c.to.module)?.type !== 'arp'));
+  const arp = insertFor(p, straightKeys(p, main.id));
   return arp && putOnArp(p, arp);
 }
 
@@ -97,7 +108,7 @@ export function arpChoices(p: Patch): ArpChoice[] {
   const main = mainOf(p);
   if (!main) return [];
   const arps = arpsOf(p);
-  const straight = keysOut(p, main.id).filter((c) => p.modules.find((m) => m.id === c.to.module)?.type !== 'arp');
+  const straight = straightKeys(p, main.id);
   const names = straight.map((c) => keysTargetName(p, c.to.module));
   const out: ArpChoice[] = [];
   const index = (arp: ModuleInst): string => arps.length > 1 ? `Arp ${arps.indexOf(arp) + 1}` : 'the Arpeggiator';
@@ -111,7 +122,7 @@ export function arpChoices(p: Patch): ArpChoice[] {
   }
   const room = arps.length < DEVICE.arps;
   const fresh = (cables: Cable[], label: string, sub: string): ArpChoice => ({
-    label, sub, cables, disabled: !room,
+    label, sub: new Set(cables.map(c => c.from.module)).size > 1 ? 'These instruments have different note sources. Choose one below.' : sub, cables, disabled: !room || new Set(cables.map(c => c.from.module)).size > 1,
     apply: (q) => { const a = insertFor(q, cables); return a && putOnArp(q, a); },
     done: cables.length ? 'Arpeggiator added and put on ARP' : 'Arpeggiator added: patch its keys output into a voice allocator',
   });
@@ -123,7 +134,7 @@ export function arpChoices(p: Patch): ArpChoice[] {
     straight.forEach((c, i) => out.push(fresh([c], `New arpeggiator for ${names[i]} only`,
       room ? `${list(names.filter((_, j) => j !== i))} keep${straight.length > 2 ? '' : 's'} playing the keys straight` : full)));
   } else if (!room) out.push(fresh([], 'New arpeggiator', full));
-  if (straight.length) for (const arp of arps) out.push({
+  if (straight.length) for (const arp of arps.filter(a => straight.every(c => p.cables.some(x => x.to.module === a.id && x.to.port === 'keys' && x.from.module === c.from.module)))) out.push({
     label: `${index(arp)[0].toUpperCase()}${index(arp).slice(1)} plays ${list(names)} too`, sub: `routes ${list(names)} through it, and puts it on ARP`,
     cables: straight,
     apply: (q) => {
