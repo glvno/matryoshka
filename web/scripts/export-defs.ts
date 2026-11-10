@@ -307,6 +307,9 @@ const RENAMED: Record<string, string> = { 'HERA 6': 'HERA 4', 'HERA 5': 'HERA 4'
   FACTORY_PRESETS.forEach((p, i) => P.push(`    {0x${p.structure}u, "${p.name.toUpperCase().replace(/[^ -~]/g, '').replace(/"/g, '')}", ${p.values.length}, FPV_${i}},`));
   P.push('};', '');
 }
+P.push('/* Gate-port kinds for pattern authorization, independent of environment grouping. */');
+for (const [name, ports] of [['IN', 'inputs'], ['OUT', 'outputs']] as const)
+  P.push(`static const uint32_t PRESET_GATE_${name}[N_TYPES] = {${TYPE_ORDER.map((t) => DEFS[t][ports].reduce((bits, p, i) => bits + (p.kind === 'gate' ? 2 ** i : 0), 0) + 'u').join(',')}};`);
 P.push('/* Separate factory drum demonstration patterns (#833), packed note words. */');
 P.push('typedef struct { uint32_t identity; uint32_t structure; const char *name; const uint32_t *notes; uint16_t n; uint8_t len, rate, swing, dir; int32_t gate; } preset_pattern_t;');
 patternDefaults.forEach((p, i) => P.push(`static const uint32_t FPN_${i}[] = {${p.notes.map((w) => `${w}u`).join(',')}};`));

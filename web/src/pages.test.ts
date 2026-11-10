@@ -4,12 +4,30 @@ import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, rowDef, validatePatch } from './patch';
 import { makeAssembly, fixAssemblies, keepParams, promote, setColumnBreak, setHeading } from './assembly';
 import { layoutOf, moveRows, moveSection, setLayout, type KnobOf, type Layout } from './arrange';
-import { devicesOf, findRow, fixFocus, homeDevice, groupStarts, LABEL_MAX, pageLabel, pageTitle } from './pages';
+import { devicesOf, patternDriver, findRow, fixFocus, homeDevice, groupStarts, LABEL_MAX, pageLabel, pageTitle } from './pages';
 import { PRESETS } from './presets';
 import { demoPatch } from './demo';
 import { encodePatch } from './patchbin';
 
 describe('device pages', () => {
+  it('control-only Steps grouping survives for poly engines without granting pattern permission', () => {
+    const p = emptyPatch();
+    const track = addModule(p, DEFS.steps, 0, 0);
+    const alloc = addModule(p, DEFS.alloc, 300, 0);
+    const filter = addModule(p, DEFS.filter, 600, 0);
+    const a = makeAssembly(p, [alloc.id, filter.id], 'poly control');
+    promote(a, filter.id, 'cutoff');
+    connect(p, DEFS, { module: track.id, port: 'pitch' }, { module: filter.id, port: 'p1' });
+    expect(devicesOf(p, DEFS).find((d) => d.asm === a.id)!.track).toBe(track.id);
+    expect(patternDriver(p, a, DEFS)).toBeUndefined();
+  });
+  it('808 keeps its direct Drum map before the indirectly triggered kit', () => {
+    const p = PRESETS['808 Kit']();
+    const ds = devicesOf(p, DEFS);
+    expect(ds.slice(0, 4).map((d) => d.asm !== undefined ? 'kit' : p.modules.find((m) => m.id === d.module)!.type))
+      .toEqual(['fm1', 'steps', 'drummap', 'kit']);
+  });
+
   it('a plain module is a device of its parameters, four to a page; scopes are none', () => {
     const p = emptyPatch();
     addModule(p, DEFS.scope, 600, 400);

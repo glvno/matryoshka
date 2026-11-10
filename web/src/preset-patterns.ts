@@ -3,7 +3,7 @@
 import type { AssemblyInst } from './assembly';
 import { DEFS } from './modules';
 import { deviceBudget, DEVICE } from './patchbin';
-import { devicesOf } from './pages';
+import { patternDriver } from './pages';
 import type { Patch, ModuleInst } from './patch';
 import { noteWord, patternLocks, patternOf, wordNote } from './track';
 
@@ -17,7 +17,7 @@ export function invalidatePresetPatterns(p: Patch): void {
 
 /** Only one unambiguous driving track may own the selected default. */
 function target(p: Patch, a: AssemblyInst): { track: ModuleInst; selected: number } | undefined {
-  const id = devicesOf(p, DEFS).find((d) => d.asm === a.id)?.track;
+  const id = patternDriver(p, a, DEFS);
   const track = p.modules.find((m) => m.id === id && m.type === 'steps');
   const selected = p.modules.find((m) => m.type === 'fm1')?.seq?.pattern ?? 0;
   return track ? { track, selected } : undefined;
