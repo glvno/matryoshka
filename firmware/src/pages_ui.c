@@ -2592,6 +2592,7 @@ static int dp_pattern_module(uint32_t d)
     eng_mset_t sources = mset_none(), maps = mset_none();
     uint32_t k, i, f, fp, t, tp, has_map = 0;
     int found = -1;
+    pages_ensure();
     /* Keys into poly members, or gate cables into this device. eng_arms follows only bounded key-source chains. */
     for (k = 0; k < pg_dev[d].nmem; k++) {
         uint32_t member = pg_mem(d, k);

@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import { seedPresetPattern } from '../src/preset-patterns';
 // Writes the factory patches (web/presets/NN-name.json, NN = the slot, the order the firmware compiles them in) from
 // the factory assemblies (src/assemblies, made by gen-assemblies.ts: run that first). Each patch: the Main module, the
 // assembly (or a few modules), Main's keys / mod wheel into it, its outputs into the Output, and the Output's level set
@@ -16,20 +15,21 @@ import { ACCENT_VEL, fixNotes, patternNotes, type StepNote } from '../src/track'
 import { FACTORY } from '../src/assemblies';
 import { allModules, fixAssemblies, insertAssembly, makeAssembly, removeMember, type AssemblyInst } from '../src/assembly';
 import { deviceBudget } from '../src/patchbin';
-import { applyLevels, around, headroom, level, loudness, mod, peakOf, players, plugIn, plugOut, row, setCardLevels, voiceTops, wire, type Inst, type LevelPlan } from './factory-build';
+import { applyLevels, around, headroom, level, loudness, mod, peakOf, players, plugIn, plugOut, row, seedFactoryPatterns, setCardLevels, sharedPresetLevels, voiceTops, wire, type Inst, type LevelPlan } from './factory-build';
 import { buildPresetPatterns } from './preset-pattern-build';
-import { presetPattern, setPresetPatterns } from '../src/preset-pattern-data';
+import { setPresetPatterns } from '../src/preset-pattern-data';
 import { factoryPresetDefs } from '../src/factory-presets';
 import { kitCard } from './kit-card';
-import { structureOf } from '../src/structure';
 import { cardSlug } from '../src/preset-cards';
 import { peakOfPlay, plays } from '../src/headroom';
+import { LOUDNESS_TOLERANCE } from '../src/levels';
 
 const patternDefaults = buildPresetPatterns();
 setPresetPatterns(patternDefaults);
 writeFileSync(new URL('../src/preset-patterns.json', import.meta.url), JSON.stringify(patternDefaults, null, 1) + '\n');
 
 const scope = new Set((process.env.PRESET_SCOPE ?? '').split(',').filter(Boolean));
+if (scope.has('909 Kit') || scope.has('<7PH')) { scope.add('909 Kit'); scope.add('<7PH'); }
 const selected = (p: Patch): boolean => !scope.size || scope.has(p.name);
 const DIR = new URL('../presets/', import.meta.url);
 const KEEP = '909-kit.json'; // ours, kept as written
@@ -518,7 +518,7 @@ const after: (() => Patch)[] = [];
 // slide (a note starts on the next step: the voice glides) or a tie (the next step rests).
 const GROOVE_TEMPO = 124;
 /** the bass's level in the kit's mixer (in4) */
-const GROOVE_BASS = 0.7;
+const GROOVE_BASS = 1;
 const BASS: [number, number, number, boolean][] = [
   // step, note (the Silver Box plays an octave down: 46 = B flat 1), length in steps, accent
   [0, 46, 1, true],
@@ -699,12 +699,10 @@ const reconciled = (p: Patch): Patch => (fixAssemblies(p, DEFS), p);
 // level rows, presets/cards/levels.json, and its presets' on the card)
 const plans: LevelPlan[] = [];
 const leveled = (p: Patch): Patch => {
-  for (const a of p.assemblies ?? []) {
-    const init = presetPattern(structureOf(p, a), 'Init');
-    if (init) { a.preset = 'Init'; seedPresetPattern(p, a, init.id); }
-  }
+  seedFactoryPatterns(p);
   console.log(`levels: measuring ${p.name}`);
-  const plan = loudness(p);
+  if (p.name === '<7PH') return sharedPresetLevels(p, plans.find((plan) => plan.engine === '909 kit')!, keptFinal);
+  const plan = loudness(p, p.name === '909 Kit' ? { output: 1, hold: LOUDNESS_TOLERANCE } : {});
   applyLevels(plan);
   plans.push(plan);
   return p;
@@ -733,7 +731,7 @@ const later = after.map((f) => { const p = f(); return selected(p) ? voiceTops(c
 if (!scope.size || scope.has('drum kit')) {
   const x = around('drum kit', 'drum kit');
   sequenced(x, 'PATTERN', { 1: 'X...x...x.x.....', 2: '....X.......X..x', 3: '............X...', 4: 'x.X.x.X.x.X.x.X.', 6: '......x.......x.', 8: '..........x.....' });
-  const p = reconciled(validatePatch(structuredClone(x.p), DEFS));
+  const p = seedFactoryPatterns(reconciled(validatePatch(structuredClone(x.p), DEFS)));
   p.modules.find((m) => m.type === 'output')!.params.level = 0.5;
   const plan = loudness(p, { output: 0.5 });
   applyLevels(plan);

@@ -186,7 +186,14 @@ static void host_ps_init(void)
         host_ps_flash[i] = 0xFFu;
     ps_scan();
 }
-static int m1_preset_name(uint32_t dev, const char *name) { (void)dev; (void)name; m1_edited = 1; return 0; }   /* (the preview keeps no patch) */
+static int m1_preset_name(uint32_t dev, const char *name)
+{
+#ifdef HOST_DEFAULT_PATTERN_IMPL
+    return host_preset_name(pv_bin, &pv_len, dev, name);
+#else
+    (void)dev; (void)name; m1_edited = 1; return 0;
+#endif
+}
 static uint32_t host_preset_stored;         /* presets stored on the panel (#194) */
 static void m1_preset_stored(uint32_t structure, const char *name) { (void)structure; (void)name; host_preset_stored++; }
 #include "../src/font5x7.c"

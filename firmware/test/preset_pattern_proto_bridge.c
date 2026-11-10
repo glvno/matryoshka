@@ -21,6 +21,14 @@ uint32_t host_eng_routes_end(const uint8_t *p, uint32_t len, uint32_t at);
 #define main unused_proto_main
 #include "proto_test.c"
 #undef main
+int host_preset_name(uint8_t *bin, uint32_t *len, uint32_t dev, const char *name)
+{
+    int result;
+    m1_set_current(bin, *len);
+    result = m1_preset_name(dev, name);
+    memcpy(bin, m1_cur, m1_cur_len); *len = m1_cur_len;
+    return result;
+}
 int host_default_pattern(uint8_t *bin, uint32_t *len, uint32_t mod, uint32_t pattern,
                          const uint32_t *words, uint32_t n, uint32_t identity)
 {

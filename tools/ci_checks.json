@@ -86,9 +86,10 @@
     "coverage-record": ["python3", "tools/coverage_record_test.py"],
     "release-build": ["python3", "tools/build_test.py"]
   },
-  "full_host": ["golden", "aot", "usb", "usb_return", "clock", "peak", "audio", "frame", "ota", "guard", "power", "installer", "panel", "preset", "bank", "ui"],
+  "full_host": ["golden", "aot", "usb", "usb_return", "clock", "peak", "audio", "frame", "ota", "guard", "power", "installer", "panel", "preset", "preset-pattern", "bank", "ui"],
   "optional_host": {"usb_return": "firmware/src/usb_return.h"},
   "rules": [
+    {"name": "Shared kit calibration", "paths": ["web/scripts/gen-presets.ts", "web/scripts/factory-build.ts", "web/src/levels.ts", "web/presets/21-909-kit.json", "web/presets/22-7ph.json", "web/presets/cards/909-kit.txt", "web/presets/cards/drum-kit.txt"], "host": [], "web": ["web/src/shared-levels.test.ts"]},
     {"name": "Factory pattern provenance", "paths": ["web/src/preset-pattern*", "web/src/pattern-origin*", "web/src/preset-origin-format.test.ts", "web/scripts/preset-pattern-build.ts", "web/scripts/gen-preset-patterns.ts", "web/scripts/kit-card.ts", "firmware/src/preset_pattern.h", "firmware/test/preset_pattern*", "tools/preset_pattern_test.sh"], "host": ["preset-pattern"], "web": ["web/src/preset-patterns.test.ts", "web/src/pattern-origin.test.ts", "web/src/preset-origin-format.test.ts", "web/src/kit-card.test.ts", "web/src/editor-origins.test.ts"]},
     {"name": "Factory build and card validation", "paths": ["web/scripts/factory-build.ts", "web/scripts/presets.ts"], "host": [], "web": ["web/src/factory-presets.test.ts", "web/src/preset-cards.test.ts", "web/src/kit-card.test.ts"]},
     {"name": "Preset audition measurements", "paths": ["web/src/headroom.ts", "web/scripts/preset-auditions.ts", "web/scripts/audition-render.ts", "web/scripts/audition-arrangements.ts", "web/scripts/preset-effects-auditions.ts", "web/scripts/preset-review-page.py", "web/scripts/preset-peak-repro.ts", "web/scripts/preset-spectrograms.py"], "host": [], "web": [], "manual": "Review the exact measurement source and bounded phrase evidence recorded in tools/ci_test_plan.json; renders do not establish owner listening or hardware qualification."},

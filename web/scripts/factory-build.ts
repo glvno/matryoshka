@@ -7,7 +7,7 @@ import { addModule, connect, disconnect, emptyPatch, MAX_PARTS, validatePatch, t
 import { setKind, setSwitches, setTarget } from '../src/buttons';
 import { FACTORY } from '../src/assemblies';
 import { allModules, assembliesOf, insertAssembly, parentOf, type AssemblyDef, type AssemblyInst } from '../src/assembly';
-import { LEVEL_ROWS, cases, gainFor, levelRows, measure, peakBound, scaledRow, type Case, type LevelRow, type Loudness } from '../src/levels';
+import { LEVEL_ROWS, LOUDNESS_TOLERANCE, cases, gainFor, levelRows, measure, peakBound, scaledRow, type Case, type LevelRow, type Loudness } from '../src/levels';
 import { cardRows, formatValue } from '../src/preset-cards';
 import { deviceBudget } from '../src/patchbin';
 import { CPU_VOICE_TOP } from '../src/cpu';
@@ -15,7 +15,8 @@ import { allocatorOf, setPoly } from '../src/poly';
 import { Engine } from '../src/engine';
 import { HEADROOM, peakOfPlay, plays } from '../src/headroom';
 import { factoryPresetDefs, factoryPresets } from '../src/factory-presets'; // (the engines' factory presets, which headroom plays)
-import { defStructureAndOrder } from '../src/structure';
+import { defStructureAndOrder, structureOf } from '../src/structure';
+import { presetPattern, seedPresetPattern } from '../src/preset-patterns';
 
 export type Ref = { module: number; param: string };
 /** a row of an assembly card by label; a label that repeats (a d s r) by the section after the row `after` */
@@ -243,9 +244,53 @@ export interface LevelPlan {
 
 const dbOf = (k: number): number => 20 * Math.log10(k);
 
+export function seedFactoryPatterns(p: Patch): Patch {
+  for (const a of p.assemblies ?? []) {
+    const init = presetPattern(structureOf(p, a), 'Init');
+    if (init) { a.preset = 'Init'; seedPresetPattern(p, a, init.id); }
+  }
+  return p;
+}
+
+export function sharedPresetLevels(p: Patch, plan: LevelPlan, reference: Patch): Patch {
+  const engine = p.assemblies!.find((a) => a.name === plan.engine)!;
+  for (const r of levelRows(p, engine)) mod(p, r.module).params[r.param] = plan.init[r.key];
+  const out = p.modules.find((m) => m.type === 'output')!;
+  const outputBefore = out.params.level;
+  const sounds = cases(p);
+  const measurements = sounds.map((c) => ({ preset: c.preset, m: measure(c.patch) }));
+  const targets = measurements.map(({ m }) => out.params.level * gainFor(m));
+  const tolerance = 10 ** (LOUDNESS_TOLERANCE / 20);
+  const lo = Math.max(0.01, ...targets.map((v) => v / tolerance));
+  const hi = Math.min(1, ...targets.map((v) => v * tolerance), ...measurements.map(({ m }) => out.params.level * HEADROOM / m.peak));
+  const lowStep = Math.ceil((lo - 1e-9) * 100) / 100;
+  const highStep = Math.floor((hi + 1e-9) * 100) / 100;
+  if (lowStep > 1) throw new Error(`${p.name}: shared ${plan.engine} levels need a different bass balance`);
+  out.params.level = Math.max(lowStep, Math.min(highStep, Math.round(targets[0] * 100) / 100));
+  sounds.forEach((c, i) => {
+    const peak = measurements[i].m.peak * out.params.level / outputBefore;
+    if (peak <= HEADROOM) return;
+    const values = Object.fromEntries(levelRows(c.patch, c.engine!).map((r) => [r.key, scaledRow(r, mod(c.patch, r.module).params[r.param], HEADROOM / peak, true)]));
+    if (c.preset === 'Init') plan.init = values;
+    else plan.presets[c.preset] = values;
+  });
+  applyLevels(plan);
+  for (const patch of [reference, p]) {
+    const a = patch.assemblies!.find((a) => a.name === plan.engine)!;
+    for (const r of levelRows(patch, a)) mod(patch, r.module).params[r.param] = plan.init[r.key];
+    for (const c of cases(patch)) {
+      const m = measure(c.patch);
+      if (m.peak > HEADROOM || Math.abs(dbOf(gainFor(m))) > LOUDNESS_TOLERANCE)
+        throw new Error(`${patch.name} / ${c.preset}: joint levels miss the loudness or peak limit`);
+    }
+  }
+  return p;
+}
+
 /** set a patch's Output and its engine's level rows at Init by the rule; returns the plan (the presets' rows to write on
  * the engine's card). `output` fixes the Output (an engine without a factory patch of its own, measured in a stand-in) */
-export function loudness(p: Patch, o: { output?: number } = {}): LevelPlan {
+export function loudness(p: Patch, o: { output?: number; hold?: number } = {}): LevelPlan {
+  const hold = o.hold ?? LEVEL_HOLD;
   const out = p.modules.find((m) => m.type === 'output')!;
   const o0 = out.params.level;
   const list = cases(p);
@@ -255,7 +300,7 @@ export function loudness(p: Patch, o: { output?: number } = {}): LevelPlan {
   const engine = list.length > 1 && list[0].engine && LEVEL_ROWS[list[0].engine.name ?? ''] ? list[0].engine : null;
   if (!engine) {
     const g = gainFor(measured[0].m);
-    if (o.output === undefined && Math.abs(dbOf(g)) > LEVEL_HOLD) out.params.level = Math.max(0.01, Math.min(1, (peakBound(measured[0].m) ? Math.floor : Math.round)(o0 * g * 100) / 100));
+    if (o.output === undefined && Math.abs(dbOf(g)) > hold) out.params.level = Math.max(0.01, Math.min(1, (peakBound(measured[0].m) ? Math.floor : Math.round)(o0 * g * 100) / 100));
     return { engine: null, init: {}, presets: {}, measured };
   }
   if (list[0].preset !== 'Init') throw new Error(`${p.name}: its engine is at ${list[0].preset}, not Init`);
@@ -287,7 +332,7 @@ export function loudness(p: Patch, o: { output?: number } = {}): LevelPlan {
   if (o.output === undefined) {
     const lo = o0 * Math.max(...list.map((_, i) => gainOf(i) / room[i].up));
     const hi = Math.min(1, o0 * Math.min(...list.map((_, i) => gainOf(i) / room[i].dn)));
-    const pref = Math.abs(dbOf(gInit)) <= LEVEL_HOLD ? o0 : o0 * gInit;
+    const pref = Math.abs(dbOf(gInit)) <= hold ? o0 : o0 * gInit;
     output = Math.min(1, Math.max(lo, Math.min(hi, pref)));
     output = Math.max(0.01, Math.min(1, (output === lo ? Math.ceil : Math.round)(output * 100 - 1e-6) / 100));
     if (Math.abs(dbOf(output / o0)) < 1e-9) output = o0;
@@ -296,7 +341,7 @@ export function loudness(p: Patch, o: { output?: number } = {}): LevelPlan {
   const valuesFor = (i: number): number[] => {
     const v = valuesIn(list[i]);
     const k = (gainOf(i) * o0) / output;
-    if (Math.abs(dbOf(gainOf(i))) <= LEVEL_HOLD && Math.abs(dbOf(o0 / output)) < 1e-9) return v;
+    if (Math.abs(dbOf(gainOf(i))) <= hold && Math.abs(dbOf(o0 / output)) < 1e-9) return v;
     return rows.map((r, j) => scaledRow(r, v[j], k, bound(i)));
   };
   const keyed = (v: number[]): Record<string, number> => Object.fromEntries(rows.map((r, j) => [r.key, v[j]]));

@@ -67,6 +67,15 @@ class SelectionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'explicit base'):
             ci.event_scope('workflow_dispatch', {'inputs': {'mode': 'targeted'}}, sha)
 
+    def test_release_candidate_includes_preset_pattern_checks(self):
+        sha = 'a' * 40
+        with tempfile.TemporaryDirectory() as temp:
+            event = Path(temp) / 'event.json'
+            event.write_text(json.dumps({'inputs': {'mode': 'rc', 'rc_sha': sha}}))
+            with patch.dict(os.environ, {'GITHUB_EVENT_NAME': 'workflow_dispatch', 'GITHUB_EVENT_PATH': str(event)}), patch.object(ci, 'git', return_value=sha):
+                chosen = ci.plan('firmware')
+        self.assertIn('preset-pattern', chosen['host'])
+
     def test_manual_plan_is_bound_to_changed_bytes_and_visible_as_review(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
