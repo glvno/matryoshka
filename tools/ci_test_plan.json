@@ -36,11 +36,11 @@
     "plan": "Render all six Spokes presets; verify distinct tone/chord phrases, Boom Bap chord silence and saved-patch notes. This helper is used only by audition generation. Existing sound-selection tests must continue to preserve melodic tracks and edited drum patterns."
   },
   "web/scripts/preset-effects-auditions.ts": {
-    "sha256": "de0600ca91f09933ad42502a344b4e389b05774637f6f7ec723be9ea97d269db",
-    "plan": "Render Fat Bass, Glide Lead, Rhea Plucked Bass and Pink Wind, dry and effected, with identical synth settings, notes and Output level per pair. Verify saved patches load, their budgets fit, and chorus remains stereo. Inspect all eight plots; effects remain whole-patch experiments, not factory sound-selector entries or hardware qualification."
+    "sha256": "2eef77969882bf655b8352d7a82e7ce397674aa14df4216acfc851a2d33cb1db",
+    "plan": "Render seven dry/effected Monolith pairs with identical synth controls, notes and Output levels. Verify all fourteen saved patch hashes, finite samples, raw peaks at or below 0.88 and existing resource budgets. Inspect every plot. Verify the final chorus preserves stereo. Auditions remain complete patch experiments; no factory selector or hardware qualification is claimed."
   },
   "web/scripts/preset-review-page.py": {
-    "sha256": "0e3c2434bbbdad389dca2ac72c3a8993f31f3425b781e79e7573f1ad0fe40802",
+    "sha256": "59f671c5366a96e49eb6a0b117b2f70ad7464f141ecd0866321e8b3c197023f9",
     "plan": "Generate the phone listening page from manifests; verify all local audio/image/patch links, bank navigation, narrow layout and playback switching. Confirm clear before/after, raw/matched and dry/effected labels; retain source date/commit and scope limits. A review page is not owner aesthetic acceptance."
   }
 }

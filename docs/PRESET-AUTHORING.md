@@ -77,6 +77,6 @@ Run focused tests for changed selection, persistence, format and generation beha
 
 ## Compare added effects
 
-Run `npx vite-node scripts/preset-effects-auditions.ts /absolute/path/to/effects` for four Monolith D experiments: soft drive, tape echo, a small room and a wider moving space. Each has a dry partner with the same synth controls, notes and Output level. The level-matched files use constant gain; the raw files retain the actual level change.
+Run `npx vite-node scripts/preset-effects-auditions.ts /absolute/path/to/effects` for seven Monolith D combinations: driven bass rooms, warm plucked bass, a singing tape lead, a wide slap lead, airy flute, a velvet horn ensemble and drifting noise. Each uses two or three effects chosen for its musical role. A tone filter also softens Fat Bass’s drive. Each has a dry partner with the same synth controls, notes and Output level. The level-matched files use constant gain; the raw files retain the actual level change.
 
 These are complete saved patches with added effect modules, not additions to the factory sound selector. Import a saved patch to play it or edit its effect controls. Each patch must fit the editor’s existing FM-1 budget. This estimate does not qualify device playback. Wider adoption remains a listening and hardware decision.
