@@ -2,7 +2,7 @@
 
 Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (`web/`, Vite + TS) with its own engine, and FM-1 firmware (`firmware/`) that plays the same patches. Owner and decider: michael glaviano (morgulbrut is the upstream Modular-1 author). Read first: `README.md`, `docs/ARCHITECTURE.md` (the design, formats, numbers), `LICENSING.md`; open work is in GitHub issues.
 
-**`docs/ledger/`** holds every decision as a row (see "Decisions" at the end of this file). Search it before changing an area; this file only keeps what applies everywhere. Before scheduling firmware checks, read the current [validation stages](docs/EMULATOR.md#choosing-checks): candidate integration, combined batch validation, and rig installation have different requirements.
+**`docs/ledger/`** holds every decision as a row (see "Decisions" at the end of this file). Search it before changing an area; this file only keeps what applies everywhere. Before scheduling firmware checks, read the current [validation stages](docs/EMULATOR.md#choosing-checks): firmware candidates reach `main` through a development batch ([D-120](docs/ledger/releases.md#D-120)); rig installation has its own requirements ([D-123](docs/ledger/releases.md#D-123)).
 
 ## Decisions made with the user
 

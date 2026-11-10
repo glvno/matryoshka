@@ -25,21 +25,21 @@ its disassembly (artifact `matryoshka-elf`) for tracing such faults to a functio
 
 ## Choosing checks
 
-Full emulator checks run locally, outside continuous integration (CI).
+Full emulator checks run locally, outside continuous integration (CI) ([D-101](ledger/releases.md#D-101), Decided).
 Choose the stage before starting them:
 
-- **A candidate entering a development batch:** run CI and focused tests for the change. The full `emu:smoke` and
-  `emu:scenarios` runs check the combined development-branch head ([D-120](ledger/releases.md#D-120), Decided).
-- **A combined batch:** run the full emulator checks on its combined head. A passing development build does not
-  approve a release. Release builds can reuse qualifying batch results under [D-105](ledger/releases.md#D-105) and
+- **A firmware candidate:** add it to the next development batch and run CI and focused tests for the change
+  ([D-120](ledger/releases.md#D-120), Decided).
+- **A combined batch:** run `emu:smoke` and `emu:scenarios` on its combined head before it reaches `main`
+  ([D-120](ledger/releases.md#D-120), Decided). A passing development build does not approve a release. Release builds can reuse qualifying batch results under [D-105](ledger/releases.md#D-105) and
   [D-120](ledger/releases.md#D-120).
 - **An install on the registered test rig:** the boot check is enough for iteration; `device:scenarios --install RUN`
   uses it by default ([D-123](ledger/releases.md#D-123), Decided). Which changes need their own hardware check is
   governed by [D-141](ledger/releases.md#D-141). The dev server's Install panel and `npm run flash` can install on
   other FM-1s and retain their smoke requirement ([D-171](ledger/firmware-install.md#D-171), Decided).
 
-The full rules, including direct merges into `main` and release-branch work, are in
-[D-120](ledger/releases.md#D-120). Read its current amendments together with the opening rule.
+The complete batch workflow, including release-branch work and generated files, is in
+[D-120](ledger/releases.md#D-120).
 
 ## Commands
 
@@ -171,8 +171,7 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   click is. The device test mode's peak (TEST_PEAK) and USB audio are taken before the click is mixed in
   (`firmware/src/audio.c`), so on the rig and with `--via-emu` the click checks are skipped, and the bar's length comes
   from the tempo.
-- **When:** use [Choosing checks](#choosing-checks). Candidates entering a development batch receive focused tests
-  and CI; the full suites run on the combined head ([D-120](ledger/releases.md#D-120)).
+- **When:** use [Choosing checks](#choosing-checks) for the batch workflow in [D-120](ledger/releases.md#D-120).
 
 Not covered: plugging and unplugging USB, the installer and the update loader, USB audio.
 
