@@ -1599,7 +1599,13 @@
      "note": 64,
      "vel": 100
     }
-   ]
+   ],
+   "factoryPatterns": {
+    "version": 1,
+    "ids": [
+     "d61acf96"
+    ]
+   }
   }
  ],
  "cables": [
@@ -3436,7 +3442,9 @@
     4,
     5,
     6
-   ]
+   ],
+   "preset": "Init",
+   "factoryPattern": "22622bfa"
   }
  ],
  "octave": -1

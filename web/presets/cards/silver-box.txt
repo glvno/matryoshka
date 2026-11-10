@@ -14,7 +14,7 @@
 #   accent = 1                         -4..4
 #   volume = 1                         0..1
 
-# Drafts of 2026-10-29 after the Roland TB-303, not yet listened to on the FM-1 (#413).
+# Drafts of 2026-10-29 after the Roland TB-303 (#413).
 engine: Silver Box
 
 preset: Acid Squelch

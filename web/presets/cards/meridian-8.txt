@@ -52,7 +52,7 @@
 #   main = 0.81                        0..1
 #   out: a screen, not a value
 
-# Drafts of 2026-10-29 after the Soma / Sonicware NOON, not yet listened to on the FM-1 (#413).
+# Drafts of 2026-10-29 after the Soma / Sonicware NOON (#413).
 engine: Meridian 8
 
 preset: Deep Techno
@@ -75,7 +75,7 @@ crumble = 6
 8 bacid / pitch = -31
 acid = 0.85
 1-2 = -1.5
-  main = 0.83
+  main = 0.88
 
 preset: Broken Beat
 # glitchy and off-kilter: a bright dot, a rising dual (ping below zero), a bar-like sys, a crumbled cympath,
@@ -99,7 +99,7 @@ vowel = 2.5
 acid = 0.6
 3-4 = 2
 6-7 = 1.5
-  main = 0.95
+  main = 0.98
 
 preset: Lo-fi Hip Hop
 # soft and dull: a muffled dot, a lazy dual, low everything, a sandy cympath, quiet bacid
@@ -123,7 +123,7 @@ vowel = 1
 8 bacid / pitch = -29
 acid = 0.4
 8 bacid / vol = 0.7
-  main = 1
+  main = 0.9
 
 preset: Industrial
 # harsh: an open, high dot, a hard pinging dual, a metal bar sys, a squashed plast, a shredded cympath,
@@ -148,7 +148,7 @@ vowel = 3.5
 acid = 1
 4-5 = 1.5
 8-1 = 2
-  main = 0.57
+  main = 0.49
 
 preset: Tonal Percs
 # a soft melodic set: a higher dot, a gentle dual, a hollow sys at pitch, a tuned plast, a clean cympath,
@@ -177,4 +177,4 @@ vowel = 4
 8 bacid / pitch = -17
 acid = 0.2
 8 bacid / vol = 0.6
-  main = 0.94
+  main = 0.82

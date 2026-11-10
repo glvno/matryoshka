@@ -19,7 +19,7 @@
 #   hats level = 0.35                  0..1
 #   level = 0.67                       0..1
 
-# Drafts of 2026-10-29 after a simple one-drum-per-key kit, not yet listened to on the FM-1 (#413).
+# Drafts of 2026-10-29 after a simple one-drum-per-key kit (#413).
 engine: drum kit
 
 preset: Boom Bap

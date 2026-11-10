@@ -195,6 +195,29 @@ static const uint8_t *m1_panel(void) { uint32_t at = eng_panel_at(pv_bin, pv_len
 #define BATT_START 900                     /* the battery (ui.c): full, no USB host (fm1_open's simulator has 900 too) */
 #include "../src/sandbox_msg.h"
 #include "../src/ui.c"
+static uint32_t m1_pattern_origin(uint32_t mod, uint32_t pattern)
+{
+    uint32_t at = eng_origin_record(pv_bin, pv_len, mod, pattern);
+    return at ? (uint32_t)pv_bin[at + 2u] | (uint32_t)pv_bin[at + 3u] << 8 | (uint32_t)pv_bin[at + 4u] << 16 | (uint32_t)pv_bin[at + 5u] << 24 : 0;
+}
+#ifndef HOST_ORIGIN_HOOK
+#define host_origin_notify(mod, pattern, identity) ((void)0)
+#define host_pattern_notify(mod, pattern, words, n) ((void)0)
+#endif
+static void host_set_origin(uint32_t mod, uint32_t pattern, uint32_t identity)
+{
+    uint32_t at = eng_origin_record(pv_bin, pv_len, mod, pattern), k;
+    if (at) for (k = 0; k < 4u; k++) pv_bin[at + 2u + k] = (uint8_t)(identity >> (8u * k));
+    host_origin_notify(mod, pattern, identity);
+}
+static void m1_clear_origin(uint32_t mod, uint32_t pattern) { host_set_origin(mod, pattern, 0); }
+static int m1_default_pattern(uint32_t mod, uint32_t pattern, const uint32_t *words, uint32_t n, uint32_t identity)
+{
+    if (!eng_origin_record(pv_bin, pv_len, mod, pattern) || !eng_pattern_set_notes(mod, pattern, words, n)) return 0;
+    host_pattern_notify(mod, pattern, words, n);
+    host_set_origin(mod, pattern, identity);
+    return 1;
+} /* preview SAVE uses the editor's mirrored notes; real device persistence is covered through proto.c */
 #include "../src/pages_ui.c"
 #include "../src/sandbox_ui.c"
 static const uint8_t *pages_src(uint32_t *len) { *len = pv_len; return pv_bin; }

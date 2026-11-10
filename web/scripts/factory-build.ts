@@ -14,7 +14,7 @@ import { CPU_VOICE_TOP } from '../src/cpu';
 import { allocatorOf, setPoly } from '../src/poly';
 import { Engine } from '../src/engine';
 import { HEADROOM, peakOfPlay, plays } from '../src/headroom';
-import { factoryPresets } from '../src/factory-presets'; // (the engines' factory presets, which headroom plays)
+import { factoryPresetDefs, factoryPresets } from '../src/factory-presets'; // (the engines' factory presets, which headroom plays)
 import { defStructureAndOrder } from '../src/structure';
 
 export type Ref = { module: number; param: string };
@@ -346,7 +346,7 @@ export function setCardLevels(text: string, def: AssemblyDef, preset: string, va
  * after) plays the presets at their new levels; the files (levels.json, the cards) are written at the end */
 export function applyLevels(plan: LevelPlan): void {
   if (!plan.engine) return;
-  const def = FACTORY.find((d) => d.name === plan.engine)!;
+  const def = factoryPresetDefs().find((d) => d.name === plan.engine)!;
   const rows = cardRows(def);
   const { structure, order } = defStructureAndOrder(def);
   const at = (key: string): { i: number; pos: number } => {

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Factory drum sounds carry distinct default patterns. Selecting another factory sound changes only an untouched factory pattern; saved user patterns stay in place. Factory sound banks add practical melodic and kit choices, reduce harsh drone settings, and correct final-output peaks in the audition phrases.
+
 ## 1.13.0 — 2026-11-10
 
 - Harmonizer chords can feed Arpeggiator and Steps. Cable order chooses root recording or editable chord notes, including step recording with Side chord buttons. ARP inserts after harmony; unsupported keys routes show an explanation. These routes require firmware supporting patch format 53.

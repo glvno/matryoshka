@@ -56,7 +56,7 @@
 #   master = 2 dB                      0..24 dB
 #   out: a screen, not a value
 
-# Drafts of 2026-10-29 after the Erica Synths Perkons HD-01, not yet listened to on the FM-1 (#413).
+# Drafts of 2026-10-29 after the Erica Synths Perkons HD-01 (#413).
 engine: Perun 4
 
 # voice 1 is the kick: param 1 is the pitch sweep amount, param 2 saturates it before the filter.
@@ -130,7 +130,7 @@ voice 4 / send = 0.1
 time = 150
 feedback = 0.2
 comp = -10
-  master = 0 dB
+  master = 0.5 dB
 
 preset: Distorted EBM
 # everything driven hard: a saturated mid-length kick, a digital snare, a growling low-passed hat,
@@ -205,7 +205,7 @@ feedback = 0.7
 lfo → time = 0.3
 lfo rate = 0.08
 comp = -16
-  master = 3.5 dB
+  master = 4.5 dB
 
 preset: Clicky Minimal
 # tiny sounds: a very short clicking kick with a big sweep, a short eml snare, a high-passed tick hat,

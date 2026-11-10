@@ -254,7 +254,7 @@ mod delay / mix = 0.5
   vol = 0.44
 
 preset: Feedback Howl
-# Harsh and self-running: both holds up, pairs 1-2 and 5-6 FM-ed by the output (total fb), 3-4 and 7-8 by their neighbours, hard sharp and drive, a fast hyper LFO shaking the delay time.
+# Intentional abrasive texture, with gentler sharp/drive and slower delay excursions: both holds up, pairs 1-2 and 5-6 FM-ed by the output (total fb), 3-4 and 7-8 by their neighbours, reduced sharp and drive, restrained hyper LFO movement in the delay time.
 1-4 / hold = 1
 5-8 / hold = 1
 voice 1 / tune = -19 st
@@ -276,18 +276,18 @@ mod 1-2 = 2.5
 mod 3-4 = -2
 mod 5-6 = 2
 mod 7-8 = -3
-sharp 1-2 = 12
-sharp 3-4 = 8
-sharp 5-6 = 12
-sharp 7-8 = 8
+sharp 1-2 = 5
+sharp 3-4 = 3
+sharp 5-6 = 5
+sharp 7-8 = 3
 freq a = 5 Hz
 freq b = 7.3 Hz
 and / or = OR
-mod 1 = 1.5
-mod 2 = 1.5
+mod 1 = 0.3
+mod 2 = 0.3
 time 1 = 250 ms
 time 2 = 355 ms
-fb = 0.8
+fb = 0.6
 mod delay / mix = 0.5
-drive = 4
-  vol = 0.25
+drive = 1.8
+  vol = 0.3
