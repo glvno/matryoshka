@@ -14,7 +14,7 @@ export function deviceLayoutKey(patch: Patch): string {
   const view = deviceView(patch, true);
   return JSON.stringify([view.patch.modules.map((m) => [m.id, m.type]), view.groups.map((g) => [g.key, [...g.modules], g.src])]);
 }
-import { armsFrame, parseArmsNow, FEATURE_WIDE_ARMS, editorSkips, FEATURE_ARMS, FEATURE_LONG_PRESETS, FEATURE_PANEL_REPORT, parseKeysNow, parseGuideNow, type KeysNow, type PanelState, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, parseLocksNow, type RawLock, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { FEATURE_DEVICE_SETTINGS, deviceSettingsFrame, parseDeviceSettings, type DeviceSettings, armsFrame, parseArmsNow, FEATURE_WIDE_ARMS, editorSkips, FEATURE_ARMS, FEATURE_LONG_PRESETS, FEATURE_PANEL_REPORT, parseKeysNow, parseGuideNow, type KeysNow, type PanelState, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, parseLocksNow, type RawLock, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 /** what connecting the FM-1 does with Live sync (#171): `sync` turns it on without asking, `ask` offers Sync / Not now,
@@ -448,6 +448,15 @@ export class DeviceLink {
     const out: SlotInfo[] = [];
     for (let s = 0; s < SLOTS; s++) out.push(await this.readSlot(s));
     return out;
+  }
+
+  get takesDeviceSettings(): boolean { return !!(this.info && this.info.features & FEATURE_DEVICE_SETTINGS); }
+
+  deviceSettings(settings?: Pick<DeviceSettings, 'name' | 'returnLevel'>): Promise<DeviceSettings> {
+    return this.serial(async () => {
+      if (!this.connected || !this.takesDeviceSettings) throw new Error('Connect an FM-1 with firmware that supports device names and USB playback.');
+      return parseDeviceSettings(await this.request(deviceSettingsFrame(settings), (x) => x?.cmd === CMD.deviceSettingsReply));
+    });
   }
 
   store(): Promise<void> {

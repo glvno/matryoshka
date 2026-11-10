@@ -284,9 +284,10 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
 - **How they hear the FM-1.** Besides TEST_PEAK and the screen's texts (TEST_SCREEN), these scenarios record what the
   FM-1 plays (`web/scripts/audio-capture.mjs`). On the emulator the recording is its I2S output, from `m1emu serve`'s
   `wav`. On the rig it is the FM-1's USB audio, recorded on the Mac by `tools/fm1_rec.swift` from the input at the rig's
-  USB location: the FM-1 has no USB serial number, so macOS's id for its audio input holds that location
-  (`AppleUSBAudioEngine:brighght studio:Matryoshka:1130000:1,2`). Without a location kept, it takes the input named
-  "Matryoshka", which only works while the rig is the one FM-1 connected. That small recorder uses Apple's AVAudioEngine and is built into `build/` the first time it is
+  USB location. The recorder looks up that physical USB device through IOKit and matches its audio input by the
+  factory serial when present. Firmware without a USB serial is matched by the location in macOS's audio identifier
+  (`AppleUSBAudioEngine:brighght studio:Matryoshka:1130000:1,2`). An absent or ambiguous match is refused.
+  Without a location kept, the recorder requires exactly one input with the requested name. That small recorder uses Apple's AVAudioEngine and is built into `build/` the first time it is
   needed, with `swiftc` from Xcode's command line tools. ffmpeg's avfoundation input is not used: on 2026-11-06 it kept
   only 9.2 s of a 30 s capture of the rig and joined the pieces with no gap, while AVAudioEngine kept every sample. On
   the emulator the run opens the rig's page on the emulator's MIDI port

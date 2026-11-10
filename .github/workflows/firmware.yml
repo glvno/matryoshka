@@ -146,6 +146,7 @@ jobs:
           tools/golden.sh
           tools/aot_test.sh
           tools/usb_test.sh
+          sh tools/usb_return_test.sh
           tools/clock_out_test.sh
           tools/peak_test.sh
           tools/audio_out_test.sh

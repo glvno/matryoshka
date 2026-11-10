@@ -863,7 +863,7 @@ int main(void)
         check("  and back to STEREO", !out_mono && on_screen("STEREO"));
         check("  the header says SYSTEM 1/2 (#702)", on_screen("SYSTEM 1/2"));
         enc(1, 1);
-        check("ALGO again: SYSTEM's second page, EDITOR on K1 (#702)", menu_tab == MT_SYSTEM && menu_sys2 && menu_page() && pages_now()->nrows == 2u
+        check("ALGO again: SYSTEM's second page, EDITOR on K1 (#702)", menu_tab == MT_SYSTEM && menu_sys2 && menu_page() && pages_now()->nrows == 3u
               && pages_now()->par[0] == MR_EDITOR && on_screen("SYSTEM 2/2") && on_screen("EDITOR") && on_screen("ALLOW"));
         check("  no armed-row line in the controls sheet's conditions there", !hc_menu_system());
         enc(2, 1);
