@@ -46,6 +46,10 @@ The editor's readout of how much of the FM-1's resources a patch uses; it turns 
 
 What a configurable patch button does in a patch: Nothing, Gate, Toggle (bypasses a module or assembly; `bypass` in code) or Page (a list of device pages).
 
+### Capability
+
+An ability an assembly exposes through a checkable contract, such as processing audio or playing patterns. In the capability design, an assembly can satisfy several contracts or none; they do not prescribe its place in the patch.
+
 ### Card row
 
 A parameter an assembly promotes to its collapsed card; the card rows are what the FM-1 player and presets change.
