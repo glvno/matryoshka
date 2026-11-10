@@ -453,6 +453,12 @@
   },
   {
    "name": "8 LIRE",
+   "len": 3146,
+   "fnv": "19d4ed12",
+   "version": 51
+  },
+  {
+   "name": "8 LIRE",
    "len": 2536,
    "fnv": "7c18b5cd",
    "version": 51
@@ -719,6 +725,12 @@
    "name": "808 KIT",
    "len": 1864,
    "fnv": "864953a0",
+   "version": 54
+  },
+  {
+   "name": "808 KIT",
+   "len": 1864,
+   "fnv": "d19124d3",
    "version": 54
   },
   {
@@ -4586,6 +4598,12 @@
    "version": 54
   },
   {
+   "name": "MERIDIAN 8",
+   "len": 1763,
+   "fnv": "ddb4134a",
+   "version": 54
+  },
+  {
    "name": "METAL",
    "len": 186,
    "fnv": "9a40869a",
@@ -5616,6 +5634,12 @@
    "len": 2807,
    "fnv": "d939ef7c",
    "version": 46
+  },
+  {
+   "name": "PERUN 4",
+   "len": 1810,
+   "fnv": "4a1f1096",
+   "version": 54
   },
   {
    "name": "PERUN 4",

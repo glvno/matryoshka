@@ -2,6 +2,7 @@
 /* Run only the #833 preset selection slice against the actual panel implementation. */
 #include <stdint.h>
 #define HOST_DEFAULT_PATTERN_IMPL
+int host_preset_name(uint8_t *, uint32_t *, uint32_t, const char *);
 int host_default_pattern(uint8_t *, uint32_t *, uint32_t, uint32_t, const uint32_t *, uint32_t, uint32_t);
 #define main unused_panel_main
 #include "panel_test.c"
@@ -69,6 +70,7 @@ int main(void)
               memcpy(expected, pr_at, (size_t)want * sizeof(int32_t));
               check("actual dp_load factory selection", !dp_load(d, target));
               check("real protocol resized saved notes", pv_len != bytes);
+              pages_ensure();
               for (k = 0; k < rows && k < (uint32_t)want; k++)
                   check("all sound rows applied after resize", dp_row_value(d, k) == expected[k]);
               check("resized binary reloads", !eng_load(pv_bin, pv_len));
@@ -92,6 +94,36 @@ int main(void)
         }
     }
     check("all three kit wrappers exercised", kits == 3);
+    for (i = 0; i < N_PRESETS; i++) {
+        if (strcmp(PRESET_LIST[i].name, "SPOKES 6")) continue;
+        check("load Spokes save fixture", !load_at(i)); pv_gen++; pages_ensure();
+        host_ps_init();
+        for (d = 0; d < pg_ndev; d++) {
+            int mod = dp_pattern_module(d), n;
+            const uint32_t *words;
+            uint32_t k, saved[128], bytes;
+            if (mod < 0 || !m1_pattern_origin((uint32_t)mod, 0)) continue;
+            for (k = 0; k < dp_list(d); k++) {
+                char name[17];
+                if (dp_entry(pr_list[k], name) >= 0 && !strcmp(name, "LO-FI HOUSE")) break;
+            }
+            check("select LO-FI HOUSE", !dp_load(d, k));
+            check("factory selection retains origin after name resize", !!m1_pattern_origin((uint32_t)mod, 0));
+            n = eng_pattern_notes((uint32_t)mod, 0, &words); memcpy(saved, words, (size_t)n * 4);
+            bytes = pv_len;
+            dp_store(d);
+            check("physical preset save grows the real binary name", pv_len > bytes);
+            check("physical preset save clears origin", !m1_pattern_origin((uint32_t)mod, 0));
+            check("saved Spokes binary reloads", !eng_load(pv_bin, pv_len)); pv_gen++; pages_ensure();
+            check("origin stays cleared after reload", !m1_pattern_origin((uint32_t)mod, 0));
+            check("select factory after physical preset save", !dp_load(d, 0));
+            check("saved user pattern survives factory selection", eng_pattern_notes((uint32_t)mod, 0, &words) == n && !memcmp(saved, words, (size_t)n * 4));
+            break;
+        }
+        check("Spokes save owner found", d < pg_ndev);
+        break;
+    }
+    check("Spokes save fixture found", i < N_PRESETS);
     printf("focused preset panel: %u kits, %s\n", kits, failed ? "FAILED" : "passed");
     return failed != 0;
 }
