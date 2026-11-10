@@ -73,6 +73,7 @@ def main():
               f"{fixture['recoverableBytes']} B potentially recoverable", flush=True)
     (OUT / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
     assert any(x['runs']['compiled-0'].get('compiledGuard') for x in report), 'No compiled candidate covered'
+    assert any(x['runs']['compiled-2'].get('compiledRendered') and x['runs']['compiled-2'].get('laneJobs') for x in report), 'No concurrent compiled execution covered'
     assert any(x['runs']['baseline-2'].get('laneJobs', 0) for x in report), 'No concurrent-core work covered'
     print(f'{len(report)} fixtures: allocation parity and exact audio across separate/shared/recovered/poisoned buffers and host lanes.')
     print('CPU is an editor estimate only. No emulator, device timing, owner listening, or capacity approval.')

@@ -12,7 +12,7 @@ int main(int argc, char **argv)
     int32_t left[ENG_BLOCK], right[ENG_BLOCK];
     const uint32_t notes[] = {60, 64, 67, 71, 72, 76, 79, 83};
     uint64_t hash = 1469598103934665603ull;
-    uint32_t peak = 0;
+    uint32_t peak = 0, compiled_rendered = 0;
     FILE *f;
     if (argc != 2 || !(f = fopen(argv[1], "rb"))) return 2;
     size_t n = fread(data, 1, sizeof data, f);
@@ -31,6 +31,9 @@ int main(int argc, char **argv)
         if (b == 120 || b == 370) for (uint32_t k = 0; k < 8; k++) eng_note_off(notes[k], 1);
         uint32_t frames = b % 19 == 0 ? 17 : ENG_BLOCK;
         eng_render(left, right, frames);
+#if ENG_AOT
+        for (uint32_t x = 0; x < aot_nx; x++) compiled_rendered |= aot_x[x].on;
+#endif
         for (uint32_t k = 0; k < frames; k++) {
             hash = (hash ^ (uint32_t)left[k]) * 1099511628211ull;
             hash = (hash ^ (uint32_t)right[k]) * 1099511628211ull;
@@ -39,6 +42,6 @@ int main(int argc, char **argv)
             if (c > peak) peak = c;
         }
     }
-    printf(",\"audioHash\":\"%016llx\",\"peak\":%u,\"laneJobs\":%ld}\n", (unsigned long long)hash, peak, lh_jobs);
+    printf(",\"audioHash\":\"%016llx\",\"peak\":%u,\"laneJobs\":%ld,\"compiledRendered\":%u}\n", (unsigned long long)hash, peak, lh_jobs, compiled_rendered);
     return 0;
 }
