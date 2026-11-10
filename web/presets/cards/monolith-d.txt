@@ -202,3 +202,30 @@ preset: Muted Horn
   contours / sustain (2) = 0.8
   decay on = 2
   volume = 0.54
+
+# Moog Sound Charts, Tom Rhea, printed page 6: Bass Viol, Plucked.
+# Single 32-foot triangle/saw, 300 ms filter decay, 700 ms loudness decay, no sustain in loudness.
+# Original -3 cutoff dial has no Hz calibration; 120 Hz is the explicit approximation, not a measured hardware match.
+preset: Rhea Plucked Bass
+  glide on = OFF
+  mod mix = 0
+  osc mod = OFF
+  osc 1 range = 32'
+  osc 1 wave = TRI/SAW
+  osc 1 = 0.8
+  osc 2 = 0
+  osc 3 = 0
+  noise = 0
+  cutoff = 120 Hz
+  emphasis = 0.4
+  contour = 4
+  kbd control = 1+2
+  filter mod = OFF
+  contours / attack (1) = 0.001 s
+  contours / decay (1) = 0.669686
+  contours / sustain (1) = 0.4
+  contours / attack (2) = 0.001 s
+  contours / decay (2) = 0.769166
+  contours / sustain (2) = 0
+  decay on = ON
+  volume = 1.86

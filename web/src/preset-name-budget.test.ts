@@ -9,7 +9,7 @@ import { applyPreset, presetsOf } from './device-presets';
 import { instIsEngine } from './engines';
 import { DEFS } from './modules';
 import { devicesOf, NAME_MAX } from './pages';
-import { DEVICE, deviceBudget, deviceText, encodePatch, layout } from './patchbin';
+import { DEVICE, deviceBudget, deviceText, encodePatch, layout, presetNames } from './patchbin';
 import { FM1_PRESETS } from './presets';
 import type { Patch } from './patch';
 
@@ -23,7 +23,6 @@ describe('preset names and the FM-1 budget (#452)', () => {
     const bad: string[] = [];
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
       const p = make();
-      const before = bytes(p);
       for (const ai of asmDevices(p)) {
         for (const preset of presetsOf(p, p.assemblies![ai])) {
           const q = structuredClone(p);
@@ -32,8 +31,12 @@ describe('preset names and the FM-1 budget (#452)', () => {
           const over = deviceBudget(q).over.filter((i) => i.key !== 'cpu');
           if (over.length) bad.push(`${name} at ${preset.name}: ${over.map((i) => `${i.label} ${i.used} of ${i.max}`).join(', ')}`);
           else if (!holds(encodePatch(q, true), deviceText(preset.name))) bad.push(`${name} at ${preset.name}: the name is not in the binary`);
-          // an engine's name was counted already: the budget's bytes stay as they were
-          if (instIsEngine(q, q.assemblies![ai]) && bytes(q) !== before) bad.push(`${name} at ${preset.name}: patch bytes ${before} -> ${bytes(q)}`);
+          // The sound may switch an untouched pattern of another length. Name reservation itself stays constant.
+          if (instIsEngine(q, q.assemblies![ai])) {
+            const withoutName = structuredClone(q);
+            delete withoutName.assemblies![ai].preset;
+            if (bytes(q) !== bytes(withoutName)) bad.push(`${name} at ${preset.name}: name exceeded its reservation`);
+          }
         }
       }
     }
@@ -53,17 +56,16 @@ describe('preset names and the FM-1 budget (#452)', () => {
 
   it('another device\'s name goes along while it fits, else it is left out (as the FM-1 does)', () => {
     const p = FM1_PRESETS['<7PH']();
-    for (const m of p.modules) if (m.type === 'osc') m.params.analog = 0; // (in its older format, nearly full: analog moves it to format 51's counted records, #673)
-    // (and its Silver Box's diode mode, #671, the same)
-    for (const m of p.modules) if (m.type === 'ladder') m.params.diode = 0;
-    const drum = p.assemblies!.find((x) => !instIsEngine(p, x) && devicesOf(p, DEFS).some((d) => d.asm === x.id))!;
-    expect(layout(p).base.bytes).toBeGreaterThan(DEVICE.bytes - 'SNAPPY'.length);   // (in the format it is written in: #667)
-    const before = encodePatch(p).length;
+    const devs = devicesOf(p, DEFS);
+    const drum = p.assemblies!.find((x) => !instIsEngine(p, x) && devs.some((d) => d.asm === x.id))!;
+    for (const a of p.assemblies!) if (!instIsEngine(p, a)) delete a.preset;
+    const view = layout(p), index = view.devs.findIndex((d) => d.asm === drum.id);
     drum.preset = 'SNAPPY';
-    expect(deviceBudget(p).fits).toBe(true);
-    const bin = encodePatch(p);
-    expect(holds(bin, 'SNAPPY')).toBe(false);
-    expect(bin.length).toBe(before);
+    // Reserve a synthetic tail to isolate the exact boundary from evolving factory structures and formats.
+    const namesWithRoom = (room: number) => presetNames(p, view.p, view.groups, view.devs,
+      view.kinds.length + DEVICE.bytes - view.need - room, view.v, view.keep).names;
+    expect(namesWithRoom(5)[index]).toBe('');
+    expect(namesWithRoom(6)[index]).toBe('SNAPPY');
     // with room: written
     const q = FM1_PRESETS['909 Kit']();
     const kick = q.assemblies!.find((x) => devicesOf(q, DEFS).some((d) => d.asm === x.id))!;
