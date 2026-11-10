@@ -82,6 +82,22 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.pick.outputs.tag }}
+      # Use this workflow revision's trusted coverage helper/records even for a legacy release tag.
+      - name: Coverage preparation tools and durable records
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .coverage-records
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /tools/coverage_record.py
+            /release/coverage/
+      - name: Validate and install the prepared coverage display
+        working-directory: .
+        env:
+          COVERAGE_RELEASE: ${{ needs.pick.outputs.tag }}
+        run: python3 .coverage-records/tools/coverage_record.py --repo . install --records .coverage-records/release/coverage --release "$COVERAGE_RELEASE" --output web/public/coverage.json
       # the changelog page reads main's CHANGELOG.md, so a wording fix reaches the site without a release (D-112)
       - name: CHANGELOG.md from main
         working-directory: .
@@ -99,10 +115,7 @@ jobs:
         run: |
           sudo apt-get install -y --no-install-recommends clang lld
           npm run fm1-wasm
-      # the tests, with coverage: public/coverage.json is the About card's Test coverage figures. The loudness tests
-      # (levels-*.test.ts, #448) render every factory sound and pass their 120 s limit only without coverage's
-      # instrumentation, so they are left out here; the web workflow runs them on every pull request.
-      - run: npx vitest run --testTimeout=60000 --coverage --coverage.reporter=json-summary --coverage.reporter=text-summary --coverage.include='src/**' --exclude 'src/levels-*.test.ts' && npx vite-node scripts/coverage-stats.ts
+      # D-147: coverage was copied from the prepared record above; deployment runs no tests.
       # the About card's AI usage figures: WakaTime summaries of the projects in web/ai-projects.json, fetched with the
       # WAKATIME_API_KEY repository secret; a failed fetch keeps the last good file from the cache (the card shows its date)
       - name: the last good AI usage figures

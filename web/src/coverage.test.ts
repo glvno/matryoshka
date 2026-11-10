@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { CORE, INTERFACE, groupCoverage, isCoverageStats } from './coverage';
+import { CORE, INTERFACE, coverageMeasurement, groupCoverage, isCoverageStats } from './coverage';
 
 describe('test coverage figures', () => {
   it('groups the files and weighs them by lines', () => {
@@ -20,4 +20,16 @@ describe('test coverage figures', () => {
     for (const f of [...CORE, ...INTERFACE]) expect(existsSync(new URL(f, import.meta.url)), f).toBe(true);
     expect(CORE.filter((f) => INTERFACE.includes(f))).toEqual([]);
   });
+
+  it('identifies historical figures without implying a new measurement', () => {
+    const stats = groupCoverage({}, '2026-11-09');
+    const historical = { ...stats, measurement: { label: 'v1.12.0', historical: true } };
+    expect(isCoverageStats(historical)).toBe(true);
+    expect(coverageMeasurement(historical)).toBe('Last measured on v1.12.0');
+    expect(coverageMeasurement(stats)).toBe('Vitest measurement');
+    expect(isCoverageStats({ ...historical, measurement: { label: '', historical: true } })).toBe(false);
+    expect(isCoverageStats({ ...stats, core: { pct: Infinity, lines: 1 } })).toBe(false);
+    expect(isCoverageStats({ ...stats, core: { pct: 101, lines: 1 } })).toBe(false);
+  });
+
 });

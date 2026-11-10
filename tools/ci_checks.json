@@ -76,7 +76,8 @@
     "bank": ["tools/bank_new_test.sh"],
     "ui": ["tools/ui_preview.sh", "build/ui-preview.png", "0", "1"],
     "selector": ["python3", "tools/ci_checks_test.py"],
-    "usb_return": ["sh", "tools/usb_return_test.sh"]
+    "usb_return": ["sh", "tools/usb_return_test.sh"],
+    "coverage-record": ["python3", "tools/coverage_record_test.py"]
   },
   "full_host": ["golden", "aot", "usb", "usb_return", "clock", "peak", "audio", "frame", "ota", "guard", "power", "installer", "panel", "preset", "bank", "ui"],
   "optional_host": {"usb_return": "firmware/src/usb_return.h"},
@@ -118,7 +119,8 @@
     {"name": "Editor rendering and FM-1 mirror", "paths": ["web/src/editor.ts", "web/src/fm1-view.ts"], "host": [], "web": ["web/src/panel-align.test.ts", "web/src/factory-reconciled.test.ts", "web/src/emu-keys.test.ts"]},
     {"name": "Piano step-grid editing", "paths": ["web/src/step-grid.ts"], "host": [], "web": ["web/src/step-grid-entry.test.ts", "web/src/step-grid-locks.test.ts"]},
     {"name": "Scenario fixtures and runner helpers", "paths": ["web/scripts/device-check.mjs", "web/scripts/emu-scenarios.mjs"], "host": [], "web": ["web/src/check-fixtures.test.ts", "web/scripts/emu-channel.test.mjs", "web/scripts/emu-process.test.mjs"]},
+    {"name": "Coverage display preparation", "paths": ["tools/coverage_record*", "web/src/coverage.ts", "web/src/about.ts", "web/scripts/coverage-stats.ts", ".github/workflows/pages.yml", "release/coverage/**"], "host": ["coverage-record"], "web": ["web/src/coverage.test.ts"]},
     {"name": "Native USB audio capture", "paths": ["tools/fm1_rec.swift"], "host": [], "web": [], "manual": "Requires a focused recorder test plan: native capture behavior has no CI regression runner. Add a reviewed plan for these exact changed bytes in tools/ci_test_plan.json."}
   ],
-  "non_runtime": ["docs/**", "*.md", "LICENSE*", "LICENSES/**", ".gitignore", ".gitattributes", ".github/ISSUE_TEMPLATE/**", ".github/PULL_REQUEST_TEMPLATE*", "web/public/brand/**", "web/public/*.png", "web/public/*.svg", "web/public/*.ico", "web/public/*.txt", "web/public/ai-stats.json", "web/public/coverage.json"]
+  "non_runtime": ["release/coverage/**", "docs/**", "*.md", "LICENSE*", "LICENSES/**", ".gitignore", ".gitattributes", ".github/ISSUE_TEMPLATE/**", ".github/PULL_REQUEST_TEMPLATE*", "web/public/brand/**", "web/public/*.png", "web/public/*.svg", "web/public/*.ico", "web/public/*.txt", "web/public/ai-stats.json", "web/public/coverage.json"]
  }

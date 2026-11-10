@@ -159,7 +159,18 @@ def execute(plan_path, area):
             print('host check:', check, flush=True)
             subprocess.run(config['host_commands'][check], cwd=ROOT, check=True)
     elif chosen['mode'] == 'rc':
-        subprocess.run(['npm', 'test'], cwd=ROOT / 'web', check=True)
+        # Disjoint groups: coverage does not instrument the slow loudness renders.
+        # Every web test runs once, and stats are produced only if both groups pass.
+        subprocess.run(['npx', '--no-install', 'vitest', 'run', '--testTimeout=60000', '--coverage',
+                        '--coverage.reporter=json-summary', '--coverage.reporter=text-summary',
+                        '--coverage.include=src/**', '--exclude', 'src/levels-*.test.ts'],
+                       cwd=ROOT / 'web', check=True)
+        levels = sorted((ROOT / 'web/src').glob('levels-*.test.ts'))
+        if not levels:
+            raise ValueError('Expected the uninstrumented loudness test group; no coverage bundle will be produced.')
+        subprocess.run(['npx', '--no-install', 'vitest', 'run',
+                        *[str(p.relative_to(ROOT / 'web')) for p in levels]], cwd=ROOT / 'web', check=True)
+        subprocess.run(['npx', '--no-install', 'vite-node', 'scripts/coverage-stats.ts'], cwd=ROOT / 'web', check=True)
     elif chosen['web']:
         subprocess.run(['npx', '--no-install', 'vitest', 'run',
                         *[str(Path(p).relative_to('web')) for p in chosen['web']]], cwd=ROOT / 'web', check=True)

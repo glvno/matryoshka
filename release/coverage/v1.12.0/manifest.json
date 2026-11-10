@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "reportSha256": "d4a85fc5d10ffb33c11b55594b99d81b7444a309a66070841a662f0915ef8044",
+  "measuredAt": "2026-11-09",
+  "measuredCommit": null,
+  "sourceFingerprint": null,
+  "sourceUrl": "https://matryoshka.lol/coverage.json",
+  "measurementLabel": "v1.12.0",
+  "targetRelease": "v1.12.0",
+  "display": "historical",
+  "qualification": "display-only",
+  "legacySnapshot": true,
+  "capturedAt": "2026-11-10T02:32:08Z",
+  "observedRelease": {
+    "version": "v1.12.0",
+    "tagCommit": "bacb5dd146af195d72b554cf2c33dff8c8a38bb6",
+    "identitySourceUrl": "https://matryoshka.lol/firmware/matryoshka.json",
+    "identitySnapshotSha256": "8b014e6c4007147b88513feee31834c3ac471ce890f02bd40d0da98913d25d4d"
+  },
+  "note": "Published historical display snapshot. Original coverage test-run provenance is unavailable; this is not RC or firmware qualification."
+}

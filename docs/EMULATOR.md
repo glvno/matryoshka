@@ -43,13 +43,40 @@ remain separate ([D-100](ledger/releases.md#D-100), [D-116](ledger/releases.md#D
 An unmapped change fails planning. Native recorder changes need a concrete manual test/review plan in
 `tools/ci_test_plan.json`, tied to the changed file's hash. CI reports it as review input, never an automated pass.
 A missing or stale plan fails the required `build` check. Main pushes still run targeted checks because CI has no
-reliable record for reusing a previous pull request's results. Deployment still runs broad coverage tests to produce
-the About card's figures; reusing qualified coverage remains open in [the release ledger](ledger/releases.md#not-yet-settled).
+reliable record for reusing a previous pull request's results. Coverage display records follow
+[D-147](ledger/releases.md#D-147); deployment does not run tests.
 
 The release workflow rebuilds versioned firmware. Package-only mode establishes no test qualification.
 Local pass markers do not automatically establish source-equivalent release qualification: smoke and boot markers
 use timestamps, while scenario markers check the emulator-bridge hash. Reusing results under
 [D-105](ledger/releases.md#D-105) does not mean that a development package can be relabeled as final release bytes.
+
+## Preparing the coverage display
+
+Use [D-147](ledger/releases.md#D-147) when preparing a release's About figures. A successful RC web workflow uploads
+`coverage-<commit>` with `coverage.json` and `manifest.json`. After downloading that bundle, retain it in the repository:
+
+```sh
+python3 tools/coverage_record.py prepare --bundle build/coverage-record --release vX.Y.Z --ref CANDIDATE_COMMIT
+```
+
+Commit the resulting `release/coverage/vX.Y.Z/` before tagging. The stored bytes survive Actions artifact expiry.
+The source fingerprint includes tracked tests, dependencies, configuration and build inputs. It excludes `docs/`,
+root Markdown guidance, agent guidance directories (`.agents/`, `.claude/`, `.codex/`), and `release/coverage/`.
+A version or source change can therefore invalidate a current measurement. The helper never starts another test run.
+
+For the transition from the already-tested candidate that has no coverage report, explicitly retain the published
+v1.12.0 measurement:
+
+```sh
+python3 tools/coverage_record.py prepare --bundle release/coverage/v1.12.0 --release vX.Y.Z --historical
+```
+
+This keeps the original date and the label “Last measured on v1.12.0”; it is display history, not qualification.
+The seed records the published URL, capture time and report hash. Its original test-run provenance is unknown.
+Legacy v1.12.0 builds retain their original date display; newer About cards also show the measurement release.
+A deployment reads only the explicitly prepared record for its version. Missing records fail with the preparation
+command; deployment neither downloads arbitrary reports nor reruns tests.
 
 ## Commands
 
