@@ -704,8 +704,8 @@ static const struct { uint32_t structure; const char *name; uint32_t n; const in
 };
 
 /* Gate-port kinds for pattern authorization, independent of environment grouping. */
-static const uint32_t PRESET_GATE_IN[N_TYPES] = {0u,4u,3u,0u,0u,0u,9u,0u,0u,0u,2u,0u,0u,0u,0u,1u,2u,4u,0u,3u,3u,2u,0u,1u,0u,0u,0u,0u,0u,0u,0u,0u,3u,2u,0u,0u,0u,0u,4u,0u,2u,3u,0u,0u,8u,1u,0u,5u,0u,0u,7u,0u,0u,0u,0u};
-static const uint32_t PRESET_GATE_OUT[N_TYPES] = {65290u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,2u,15u,0u,0u,1u,0u,0u,0u,0u,0u,0u,0u,64u,15u,0u,0u,0u,0u,978u,0u,978u,0u,1u,0u,21845u,0u,0u,510u,0u,0u,16u,767u,7u,0u,0u,0u};
+static const uint32_t PRESET_GATE_IN[] = {0u,4u,3u,0u,0u,0u,9u,0u,0u,0u,2u,0u,0u,0u,0u,1u,2u,4u,0u,3u,3u,2u,0u,1u,0u,0u,0u,0u,0u,0u,0u,0u,3u,2u,0u,0u,0u,0u,4u,0u,2u,3u,0u,0u,8u,1u,0u,5u,0u,0u,7u,0u,0u,0u,0u};
+static const uint32_t PRESET_GATE_OUT[] = {65290u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,2u,15u,0u,0u,1u,0u,0u,0u,0u,0u,0u,0u,64u,15u,0u,0u,0u,0u,978u,0u,978u,0u,1u,0u,21845u,0u,0u,510u,0u,0u,16u,767u,7u,0u,0u,0u};
 /* Separate factory drum demonstration patterns (#833), packed note words. */
 typedef struct { uint32_t identity; uint32_t structure; const char *name; const uint32_t *notes; uint16_t n; uint8_t len, rate, swing, dir; int32_t gate; } preset_pattern_t;
 static const uint32_t FPN_0[] = {66801664u,52674560u,66838528u,52654082u,52674563u,66818052u,52690948u,52645894u,52654086u,52674566u,52670471u,52682760u,52674569u,66801674u,52654090u,52674571u,52654092u,66818060u,52645901u,52670477u,52654094u,52674574u,52690958u,52654095u,52662287u};
