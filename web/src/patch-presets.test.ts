@@ -5,7 +5,7 @@ import { FACTORY } from './assemblies';
 import { insertAssembly, makeAssembly, promote } from './assembly';
 import { setFactoryPresets, storePreset, userPresets } from './device-presets';
 import { DEFS } from './modules';
-import { newPatch, validatePatch } from './patch';
+import { addModule, newPatch, validatePatch } from './patch';
 import { patchPresets, sendPatchPresets } from './patch-presets';
 import type { DevicePresetEntry } from './protocol';
 
@@ -46,6 +46,43 @@ it('transfers distinct parent and nested child presets once each after save/load
   expect(parent.children).toContain(child.id);
   expect(await sendPatchPresets(saved, device, () => true)).toContain('2 presets sent');
   expect(device.putPreset.mock.calls).toEqual(selected.map((p) => [p.structure, p.name, p.values]));
+});
+
+it.each([
+  { type: 'delay', param: 'time', value: 375 },
+  { type: 'vca', param: 'gain', value: 0.4 },
+])('transfers a $type assembly preset without a generator or keys input', async ({ type, param, value }) => {
+  const { device } = fixture();
+  const patch = newPatch(DEFS);
+  const module = addModule(patch, DEFS[type], 0, 0);
+  const assembly = makeAssembly(patch, [module.id], 'My processor');
+  promote(assembly, module.id, param, patch);
+  module.params[param] = value;
+  storePreset(patch, assembly, 'My setting');
+  const saved = validatePatch(JSON.parse(JSON.stringify(patch)), DEFS);
+
+  expect(patchPresets(saved).map((p) => [p.name, p.values])).toEqual([['My setting', [value]]]);
+  expect(await sendPatchPresets(saved, device, () => true)).toContain('1 preset sent');
+  expect(device.putPreset).toHaveBeenCalledExactlyOnceWith(expect.any(String), 'My setting', [value]);
+
+  // Adding another card row changes the structure, even though the assembly keeps its name.
+  const copy = saved.assemblies![0];
+  const added = addModule(saved, DEFS.delay, 300, 0);
+  copy.modules.push(added.id);
+  promote(copy, added.id, 'fb', saved);
+  device.putPreset.mockClear();
+  expect(await sendPatchPresets(saved, device, () => true)).toContain('no saved user presets');
+  expect(device.putPreset).not.toHaveBeenCalled();
+});
+
+it('leaves factory-only preset lists on the FM-1 without reading or writing its store', async () => {
+  const { patch, device } = fixture();
+  setFactoryPresets([userPresets()[0]]);
+  localStorage.clear();
+
+  expect(await sendPatchPresets(patch, device, () => true)).toContain('Factory presets are already on the FM-1');
+  expect(device.listPresets).not.toHaveBeenCalled();
+  expect(device.putPreset).not.toHaveBeenCalled();
 });
 
 it('confirms case-insensitive FM-1 name collisions before sending anything; cancel preserves both stores', async () => {
