@@ -46,7 +46,7 @@ export interface Fm1Events {
 
 /** a note the panel's keys started or let go in the engine (panel.c panel_key): a key's own note at the octave, or a row
  * of the Drum map the keys reach (D-520: black keys 1..8 play rows 1..8); velocity Q16 (0 on a release) */
-export interface KeyPlay { note: number; vel: number; on: boolean }
+export interface KeyPlay { note: number; vel: number; on: boolean; kind?: number; target?: number }
 
 /** bits of lit buttons (matrix ids) and keys (key n = F3 + n) */
 export interface Lights {
@@ -89,7 +89,7 @@ export class Fm1Ui {
     let memory: WebAssembly.Memory | null = null;
     const played: KeyPlay[] = [];
     const env = {
-      note: (n: number, v: number, on: number) => { played.push({ note: n, vel: v, on: on !== 0 }); },
+      note: (n: number, v: number, on: number, kind: number, target: number) => { played.push({ note: n, vel: v, on: on !== 0, ...(kind ? { kind, target } : {}) }); },
       focus: (d: number, g: number) => ev.focus?.(d, g),
       param: (m: number, p: number, v: number) => ev.param?.(m, p, v),
       preset: (d: number) => ev.preset?.(d),
@@ -131,7 +131,12 @@ export class Fm1Ui {
   /** the clock, ms since start (call every animation frame) */
   tick(ms: number): void { this.x.fm1w_tick(ms >>> 0); }
   encoder(n: number, clicks: number): void { this.x.fm1w_encoder(n, clicks | 0); }
-  button(id: number, down: boolean): void { this.x.fm1w_button(id, down ? 1 : 0); }
+  /** Button gestures can end auditioned notes, such as switching step-record preview off. */
+  button(id: number, down: boolean): KeyPlay[] {
+    this.played.length = 0;
+    this.x.fm1w_button(id, down ? 1 : 0);
+    return this.played.splice(0);
+  }
   /** the 27 keys held now, bit 0 = F3. Returns what the keys that changed played, as the FM-1 plays them (#467): the
    * page sounds these, not the keys' own notes */
   keys(bits: number): KeyPlay[] {

@@ -431,52 +431,27 @@ export function checkScenarios(h) {
       await shot('check-verona-xl');
     },
 
-    // ---- 3. row drones (D-819), steps 3.1..3.4
+    // ---- 3. piano-roll playing leaves grid notes alone (D-823). Drum row drones are covered by rowDrone.
     async checkRowDrone() {
-      await check('3.1 row drone: T110 DRONE opens, synced', !!(await fixture(FIXTURES.drone)));
+      await check('3.1 piano keys: T110 DRONE opens, synced', !!(await fixture(FIXTURES.drone)));
       await emu.tap(B.seq, 120);
-      await check('3.1 row drone: SEQ: the roll on the page C3-G3', (await emu.waitText('ALGO track', 3000)) && (await emu.waitText('C3-G3', 2000)));
-      await emu.tap(BLACK[4]);                       // black key 5: row E3
-      await emu.elapse(300);
-      await emu.key(B.lfo, true);
-      await emu.elapse(150);
-      await emu.tap(B.fx);
-      const said = await emu.waitText('DRONE', 1500);
-      await emu.key(B.lfo, false);
-      await emu.elapse(300);
-      let ns = await notesUntil((x) => noteAt(x, 4, NOTE.E3)?.wrap === true);
-      await check('3.2 row drone: LFO held + FX: DRONE; E3 left only on step 5, a drone; step 11\'s E3 gone; the other rows as they were',
-        said && noteAt(ns, 4, NOTE.E3)?.wrap === true && noteAt(ns, 4, NOTE.E3)?.len === 64 && !noteAt(ns, 10, NOTE.E3)
-        && noteAt(ns, 0, NOTE.C3)?.len === 16 && !!noteAt(ns, 8, NOTE.G3) && !!noteAt(ns, 12, NOTE.D3) && ns.length === 4, fmt(ns));
-      await emu.snap('check-row-drone');
-      await emu.tap(B.play);
-      await emu.elapse(200);
-      const a = await recorded('row-drone', () => emu.elapse(4600));
-      await emu.tap(B.play);
-      await emu.elapse(500);
-      const d = a.why ? null : droneHeld(a, NOTE.E3);
-      if (d) console.log(`  E3's level per 200 ms (x1000): ${d.windows}`);
-      await heard('3.2 row drone: PLAY: E3 holds over the loop, no new attack at its end (E3\'s level keeps 70 %, no rise over 1.3x)', a,
-        !!d && d.top > FLOOR && d.kept >= 0.7 && d.rise <= 1.3, d ? `E3 ${db(d.top)} dB, kept ${d.kept}, biggest rise ${d.rise}x` : '');
-      await emu.key(B.lfo, true);
-      await emu.elapse(150);
-      await emu.tap(B.fx);
-      const off = await emu.waitText('DRONE OFF', 1500);
-      await emu.key(B.lfo, false);
-      await emu.elapse(300);
-      ns = await notesUntil((x) => noteAt(x, 4, NOTE.E3)?.len === 1);
-      await check('3.3 row drone: LFO held + FX again: DRONE OFF, E3 one step on step 5, step 11\'s E3 does not come back',
-        off && noteAt(ns, 4, NOTE.E3)?.len === 1 && !noteAt(ns, 4, NOTE.E3)?.wrap && !noteAt(ns, 10, NOTE.E3) && ns.length === 4, fmt(ns));
-      await emu.tap(BLACK[1]);                       // black key 2: row C#3, empty
-      await emu.elapse(300);
-      await emu.key(B.lfo, true);
-      await emu.elapse(150);
-      await emu.tap(B.fx);
-      const none = await emu.waitText('NOTHING TO DRONE', 1500);
-      await emu.key(B.lfo, false);
-      await emu.elapse(300);
-      ns = await trackNotes();
-      await check('3.4 row drone: an empty row (C#3), LFO held + FX: NOTHING TO DRONE, nothing changes', none && ns.length === 4, fmt(ns));
+      await check('3.1 piano keys: SEQ opens the piano roll', await emu.waitText('ALGO track', 3000));
+      const before = await trackNotes();
+      for (const key of [BLACK[4], WHITE[4]]) {
+        const peak = await emu.notePeak(key, 300);
+        await loudCheck('3.2 piano keys: a key sounds without editing the pattern', peak, peak > LOUD, `key ${key}, peak ${peak}`);
+      }
+      for (const [held, tapped] of [[B.lfo, B.fx], [B.fx, B.lfo]]) {
+        await emu.key(held, true);
+        await emu.elapse(150);
+        await emu.tap(tapped);
+        await emu.key(held, false);
+        await emu.elapse(300);
+        const ns = await trackNotes();
+        await check('3.3 piano keys: LFO + FX in either order leaves the pattern unchanged',
+          JSON.stringify(ns) === JSON.stringify(before), fmt(ns));
+      }
+      await emu.snap('check-piano-no-row-drone');
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
     },

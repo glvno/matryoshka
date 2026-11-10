@@ -20,6 +20,7 @@
  * zeroed so the hardware does not loop it. Each run between a resume and the next suspend lasts at least ST_RUN_MIN:
  * the datasheet asks for 100 us so that an erase makes progress. The update path (ota_hw.c, the loader) keeps the
  * plain driver in hal/fm1_flash.h. */
+static void usb_poll_after_flash(void);        /* main.c: request TIMER5 service; called only with IRQs off */
 static uint8_t flash_ok;                 /* a known JEDEC id at boot (FL_JEDEC_OK) */
 #define ST_RUN_MIN (150u * FM1_TICKS_PER_US)    /* the least a resumed erase or program runs before the next suspend */
 #define ST_RUN_MAX (450u * FM1_TICKS_PER_US)    /* ... and the most, so the 2 kHz USB poll (TIMER5) is not held back long */
@@ -107,6 +108,12 @@ static int st_op(uint32_t op, uint32_t off, const uint8_t *src, uint32_t n)
             st_off.step_max = ts;
             st_off.step_at = fm1_ms;
         }
+        /* Flash is readable again. Do not let the ordinary USB deadline skip
+         * this yield: another flash step could then delay capture past 1 ms.
+         * The request is made with IRQs off, including on the final step;
+         * only TIMER5 touches the USB controller after irq_restore. */
+        if (st_serve)
+            usb_poll_after_flash();
         if (b.state == 2u)
             break;
         irq_restore(f);                         /* the chip is suspended: the interrupts run (the audio renders its half) */

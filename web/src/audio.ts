@@ -47,6 +47,7 @@ export class AudioHost {
   onRun: (on: boolean) => void = () => {};
   /** notes a Steps track recorded live (#135, Engine.takeRecorded) */
   onRecorded: (took: { id: number; loop: number; note: StepNote }[]) => void = () => {};
+  onEntry: (e: { id: number; token: number; note: number; notes: number[]; vel: number; down: boolean }) => void = () => {};
   /** an envelope display's copies (Engine.envStates) */
   onEnv: (key: string, states: { stage: number; v: number; newest: boolean }[] | null) => void = () => {};
 
@@ -83,6 +84,8 @@ export class AudioHost {
         } else if (typeof ev.data?.run === 'boolean') {
           this.transportOn = ev.data.run;
           this.onRun(ev.data.run);
+        } else if (ev.data?.entry) {
+          this.onEntry(ev.data.entry);
         } else if (Array.isArray(ev.data?.recorded)) {
           this.onRecorded(ev.data.recorded);
         } else if (typeof ev.data?.env === 'string') {

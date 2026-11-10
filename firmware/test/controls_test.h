@@ -12,7 +12,7 @@
 
 /* what a row's effect is checked on */
 typedef struct {
-    uint32_t page, sr_on, sr_k, run, once, rec, saved, stepped, dev, devpage, menu_tab, man_top, updates, cfg_sum, out_off;
+    uint32_t page, sr_on, sr_k, preview, run, once, rec, saved, stepped, dev, devpage, menu_tab, man_top, updates, cfg_sum, out_off;
     int32_t octave, tempo, list_btn, list_step;
     uint32_t params, mutes, trk, row, roll_lo, seq_pg, pattern, lpg, locks;
     eng_mset_t arms;                                    /* (all 128 modules: a big patch's tracks sit above 31, #721) */
@@ -40,6 +40,7 @@ static void ct_take(ct_snap_t *s)
     memset(s, 0, sizeof *s);
     s->page = page;
     s->sr_on = sr_on;
+    s->preview = sr_preview;
     s->sr_k = sr_k;
     s->run = (uint32_t)eng_transport_running();
     s->once = (uint32_t)eng_once_state();
@@ -132,7 +133,7 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_JUMP: return a->roll_lo != b->roll_lo;
     case CE_TRACK: return a->trk != b->trk;
     case CE_PATTERN: return a->pattern != b->pattern;
-    case CE_ACCENT: case CE_TAKE_ACCENT: return a->acc_n != b->acc_n;
+    case CE_ACCENT: return a->acc_n != b->acc_n;
     case CE_TIE: return a->len_sum != b->len_sum;
     case CE_DRONE: return a->notes_sum != b->notes_sum || a->msg_sum != b->msg_sum;   /* (an empty row: NOTHING TO DRONE) */
     case CE_STEP_RECORD: return a->sr_on && !b->sr_on;
@@ -151,6 +152,9 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_BACK_CLEAR: return a->sr_k != b->sr_k && a->notes_n <= b->notes_n;
     case CE_LIVE: return a->run && !b->run;
     case CE_END: return b->sr_on && !a->sr_on;
+    case CE_PREVIEW: return a->preview != b->preview && a->sr_on && a->sr_k == b->sr_k && a->notes_sum == b->notes_sum;
+    case CE_PLAY_NOTES: return a->notes_sum == b->notes_sum && sent(b->mlen, 0x90u | cfg.ch, 79u + 12u * octave, STEP_VEL);
+    case CE_TAKE_ACCENT: return a->acc_n != b->acc_n || sent(b->mlen, 0x90u | cfg.ch, 57u + 12u * octave, ACCENT_VEL);
     case CE_TAKE: return a->notes_sum != b->notes_sum;
     case CE_ENTRY: return a->song_cur != b->song_cur;
     case CE_ENTRY_PATTERN: case CE_TRANSPOSE: return a->song_len == b->song_len && a->song_sum != b->song_sum;
@@ -170,7 +174,7 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
         int i, btn = 0;
         for (i = b->mlen; i < a->mlen; i++)
             btn |= mlog[i][0] == 0x90u && mlog[i][1] >= 53u && mlog[i][1] <= 59u;
-        return btn && eng_keys_harm() >= 0 && !moved;
+        return btn && (sr_on ? eng_steps_harm((uint32_t)ct_mod) : eng_keys_harm()) >= 0 && !moved;
     }
     case CE_EDITOR: {                                   /* sandbox mode: out as MIDI to the editor, nothing here moved (D-232) */
         int i, cc = 0;
@@ -226,6 +230,7 @@ static void ct_reset(void)
     mlen = 0;
     cfg.midi_out = 1;
     cfg.count_in = 0;
+    sr_preview = 1;
     pg_list_btn = -1;
     song_sel = 0;
     song_cur = 0;
@@ -339,6 +344,14 @@ static void ct_sandbox(void)
 /* the FM-1 in state s, variant v (0..): 0 when there is no such variant */
 static int ct_enter(uint32_t s, uint32_t v)
 {
+    if ((s == HS_ROLL && v == 2u) || (s == HS_STEP && v == 3u)) {
+        ct_reset();
+        if (load_fixture("build/panel-fixtures/route-harm-steps.m1p")) return 0;
+        pv_gen++; pages_ensure(); page = 0;
+        ct_seq(0, 0, 1);
+        if (s == HS_STEP) { tap(BTN_REC); later(100); }
+        return s == HS_STEP ? sr_on : page == PAGE_SEQ;
+    }
     switch (s) {
     case HS_DEVICE:
         if (v == 0) {                                   /* ORACLE V: an assembly with presets and keys, its second page */
@@ -427,9 +440,10 @@ static int ct_enter(uint32_t s, uint32_t v)
         ct_sandbox();
         return sb_on;
     case HS_STEP:
-        if (v > 1 || ct_load(v ? "808 KIT" : "<7PH"))
+        if (v > 2 || ct_load(v == 1 ? "808 KIT" : "<7PH"))
             return 0;
-        ct_seq(v ? 0u : 1u, 0, 1);
+        ct_seq(v == 1 ? 0u : 1u, 0, 1);
+        sr_preview = v != 2;
         tap(BTN_REC);
         later(100);
         return sr_on;

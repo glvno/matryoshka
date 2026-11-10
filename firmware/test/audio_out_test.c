@@ -14,6 +14,7 @@
 #include <string.h>
 
 #define FELUCCA_UAC 1
+#define FELUCCA_UAC_RETURN 1
 #define FM1_AUDIO_HALF 1u
 #define FM1_TICKS_PER_US 1u
 static volatile uint32_t fm1_ms;
@@ -41,6 +42,11 @@ static int eng_click_mix(int32_t *l, int32_t *r, uint32_t n)
 }
 #include "../src/audio.c"
 static int32_t usb[256];
+static int return_on;
+static int uac_play_mix(int32_t *out, uint32_t n) {
+    if(return_on) for(uint32_t i=0;i<n;i++) { out[2*i]+=1024; out[2*i+1]-=2048; }
+    return return_on;
+}
 static void uac_render_start(void) {}
 static void uac_tap(const int32_t *out, uint32_t n) { memcpy(usb, out, n * 2u * 4u); }
 static void clk_out_block(uint32_t t0, int rendered) { (void)t0; (void)rendered; }
@@ -131,6 +137,16 @@ int main(void)
     out_off = 0;
     fm1_alnk0_irq();
     CHECK(silent(abuf) && silent(usb), "the engine stopped: both silent");
+    return_on=1; eng_run=1; master_q12=2048; out_mono=0; out_off=0; click_on=1;
+    fm1_alnk0_irq(); usb_words(wusb,2048);
+    CHECK(!memcmp(usb,wusb,sizeof wusb), "phone playback and count-in stay out of USB recording");
+    int32_t with_return[256]; memcpy(with_return,abuf,sizeof abuf/2);
+    return_on=0; fm1_alnk0_irq();
+    CHECK(with_return[0]==abuf[0]+1024 && with_return[1]==abuf[1]-2048, "return mixed after count-in rewrite, stereo");
+    return_on=1; out_off=1; fm1_alnk0_irq();
+    CHECK(silent(abuf), "analog OFF silences USB return too");
+    eng_run=0; out_off=0; out_mono=2; fm1_alnk0_irq();
+    CHECK(abuf[0]==-512 && abuf[1]==0 && silent(usb), "return works with engine stopped, and follows analog MONO L");
     printf(fails ? "audio out test FAILED\n" : "audio out test passed\n");
     return fails != 0;
 }

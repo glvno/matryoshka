@@ -1,7 +1,9 @@
+import { recordTarget, recordInput } from './step-grid';
 // SPDX-License-Identifier: GPL-3.0-only
 // first of all: at the pages.dev address with no data, site-move.ts sends the visitor on to matryoshka.lol and stops
 // everything else; then migrate.ts notes which storage keys the page found before anything here writes one
 import './site-move';
+import { openDeviceSettings } from './device-settings';
 import { renderFm1Help } from './controls-help';
 import { ControlsStrip, stripPatch, type StripPatch } from './controls-strip';
 import { addUserPreset, currentValues, exportPresets, importPresets, migrateUserPresets, presetsOf } from './device-presets';
@@ -19,7 +21,7 @@ import { sandboxKey, sandboxPage, sandboxStep, sandboxTempoTurn } from './sandbo
 import { editorSkips, LIVE_MS, panelOffBy, slotLabel, type PanelState, type SlotInfo } from './protocol';
 import { chooseSlot } from './store-slot';
 import { Fm1View } from './fm1-view';
-import { EmuKeys } from './emu-keys';
+import { panelPlay, EmuKeys } from './emu-keys';
 import { SandboxKeys } from './sandbox-keys';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { ScopeScreens } from './scope-view';
@@ -59,7 +61,7 @@ import { chipEl, sandboxCardDue, sandboxWords, showSandboxCard, type Chip } from
 import { ShareSheet } from './share-sheet';
 import { fileStem, savePatchCard } from './patch-card';
 import { starterPatch } from './starter';
-import { recordKey, recordNote, recordOff } from './step-grid';
+import { recordKey, recordOff } from './step-grid';
 import { Tutorial } from './tutorial/tutorial';
 import { synthLink } from './tutorial/link';
 import { factoryShape, PRESETS, shapeOf } from './presets';
@@ -635,10 +637,10 @@ const sink = {
     if (msg.t === 'on') host.mute(false);
     // a Steps card's cursor entry (#127, #135: a chord when the first key is let go); it sounds too. Running, the engine
     // records instead (live overdub)
-    if (msg.t === 'on' && currentTab === 'patch' && !editor.playing) recordNote(msg.note, msg.vel);
-    if (msg.t === 'off' && currentTab === 'patch') recordOff(msg.note);
+    const entry = currentTab === 'patch' && !editor.playing ? recordTarget() : null;
     if (msg.t === 'on' || msg.t === 'off') editor.rollHeld(msg.note, msg.t === 'on');   // (the roll's keys light, the #136 follow-up)
-    host.send(msg);
+    if (entry && (msg.t === 'on' || msg.t === 'off')) host.send({ t: 'entry', ...entry, note: msg.note, vel: msg.t === 'on' ? msg.vel : 0, down: msg.t === 'on', ch: msg.ch, root: msg.root });
+    else host.send(msg);
     piano.track(msg);
     hands.track(msg);
     if (msg.t === 'on') tutorial.noteOn();
@@ -708,6 +710,7 @@ const envs = new EnvScreens((msg) => host.send(msg), () => host.running && !host
 });
 host.onEnv = (key, states) => envs.receive(key, states);
 host.onSteps = (view, pats) => editor.showSteps(view, pats);
+host.onEntry = recordInput;
 host.onRecorded = (took) => editor.recorded(took);
 // the engine started or stopped its transport itself: play once (#632) after its count-in and at its end. The editor's
 // transport, its MIDI clock out and the emulated FM-1 follow (an echo of the editor's own transport is no news)
@@ -742,6 +745,9 @@ const MASTER_KEY = 'matryoshka.fm1-master';
 const emuMaster = ((): number => { try { const v = Number(localStorage.getItem(MASTER_KEY)); return localStorage.getItem(MASTER_KEY) !== null && v >= 0 && v <= 1 ? v : 1; } catch { return 1; } })();
 let emuLevel = emuMaster;
 const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`, {
+  buttonNotes: (notes) => {
+    if (!mirror.following) for (const p of notes) sink.play(panelPlay(p, index => deviceView(editor.patch, true).patch.modules[index]?.id ?? -1));
+  },
   focus: (d, g) => fm1Event({ kind: 'focus', device: d, page: g }, 'emu'),
   param: (m, p, v) => fm1Event({ kind: 'param', module: m, param: p, value: v / 65536 }, 'emu'),
   preset: (d) => stepOpenList(d),
@@ -819,7 +825,7 @@ let emuFresh = true;
 let emuLoaded = '';
 let emuTimer = 0;
 /** the editor's notes as the emulated FM-1's keys while its view shows (emu-keys.ts) */
-const emuKeys = new EmuKeys(emu);
+const emuKeys = new EmuKeys(emu, index => deviceView(editor.patch, true).patch.modules[index]?.id ?? -1);
 const firstPatch = loadSaved() ?? starterPatch();
 // the user's presets stored for an earlier structure of a factory engine move to today's (D-865), before any list shows them
 {
@@ -2262,6 +2268,7 @@ $<HTMLSelectElement>('mirror-fw').onchange = () => {
   const v = $<HTMLSelectElement>('mirror-fw').value;
   if (mirror.following) void followFm1((v || undefined) as Firmware | undefined);
 };
+$('dev-settings').onclick = () => void openDeviceSettings($<HTMLDialogElement>('device-settings'), device);
 $('dev-send').onclick = () => void sendPatch();
 /** the open patch into slot n of the FM-1's bank, under its name (the device does not switch to it) */
 async function storeToSlot(): Promise<void> {

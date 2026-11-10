@@ -1,3 +1,4 @@
+import { keyRouteError } from './key-routing';
 // SPDX-License-Identifier: GPL-3.0-only
 import type { AssemblyInst } from './assembly';
 import { migratePatchParts, migrateVoicing } from './poly';
@@ -723,6 +724,7 @@ export function connect(p: Patch, defs: Record<string, ModuleDef>, from: Endpoin
   if (!defs[mt.type]?.inputs.some((i) => i.name === to.port)) return false;
   if (p.cables.some((c) => sameEnd(c.from, from) && sameEnd(c.to, to))) return false;
   if (!kindsFit(defs, mf.type, from.port, mt.type, to.port)) return false;
+  if (from.port === 'keys' && keyRouteError(p, { from, to })) return false;
   p.cables.push({ from: { ...from }, to: { ...to } });
   return true;
 }
@@ -881,6 +883,8 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
     if (!defs[mt.type].inputs.some((i) => i.name === c.to.port)) throw new Error(`no input "${c.to.port}" on ${mt.type}`);
   }
   p.cables = p.cables.filter((c) => kindsFit(defs, byId.get(c.from.module)!.type, c.from.port, byId.get(c.to.module)!.type, c.to.port));
+  const routingError = keyRouteError(p as Patch);
+  if (routingError) throw new Error(routingError);
   {   // a Toggle's target that is gone: the button keeps its kind, without a target
     const main = p.modules.find((m) => m.type === 'fm1');
     const t = main?.panel?.targets;

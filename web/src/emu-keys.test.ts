@@ -54,8 +54,8 @@ describe('the Emulator view plays the keys as the FM-1 does (#467)', () => {
         let differs = 0;
         for (let b = 0; b < 8; b++) {
           const note = base + BLACK[b];
-          expect(keys.route(on(note), true), `${name} octave ${oct} black key ${b + 1}`).toEqual([{ t: 'on', note: rows[b], vel: 0.8 }]);
-          expect(keys.route(off(note), true)).toEqual([off(rows[b])]);
+          expect(keys.route(on(note), true), `${name} octave ${oct} black key ${b + 1}`).toEqual([{ t: 'on', note: rows[b], vel: 0.8, root: true }]);
+          expect(keys.route(off(note), true)).toEqual([{ ...off(rows[b]), root: true }]);
           // (the key's own note, as the browser engine played it before: the repeat's row, often another one)
           if (!(drumRowsOf(rows, note) >> b & 1)) differs++;
         }
@@ -71,8 +71,8 @@ describe('the Emulator view plays the keys as the FM-1 does (#467)', () => {
   it('a white key plays its own note on a repeating Drum map; a key off the keybed and other messages pass as they are', async () => {
     const { keys, ui } = await panelOn('8 Lire');
     const white = 53 + 12 * ui.octave;   // F3
-    expect(keys.route(on(white), true)).toEqual([on(white)]);
-    expect(keys.route(off(white), true)).toEqual([off(white)]);
+    expect(keys.route(on(white), true)).toEqual([{ ...on(white), root: true }]);
+    expect(keys.route(off(white), true)).toEqual([{ ...off(white), root: true }]);
     const below = white - 1;
     expect(keys.route(on(below), true)).toEqual([on(below)]);
     expect(keys.route(off(below), true)).toEqual([off(below)]);

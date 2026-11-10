@@ -81,7 +81,8 @@ describe('arming as a set (#190)', () => {
   it('arming reroutes only Main: a Steps track keeps its cable into what it drives', () => {
     const { p, a, b } = rig();
     const st = addModule(p, DEFS.steps, 0, 0);
-    connect(p, DEFS, { module: st.id, port: 'keys' }, { module: a.id, port: 'keys' });
+    p.cables = p.cables.filter(c => !(c.to.module === a.id && c.to.port === 'keys'));
+    expect(connect(p, DEFS, { module: st.id, port: 'keys' }, { module: a.id, port: 'keys' })).toBe(true);
     const v = armView(p, [`m${b.id}`]);
     expect(v.cables.some((c) => c.from.module === st.id && c.to.module === a.id)).toBe(true);
     expect(v.cables.some((c) => c.to.module === a.id && c.from.module !== st.id)).toBe(false); // Main's cable into A muted

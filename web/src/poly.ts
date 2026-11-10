@@ -1,3 +1,4 @@
+import { keyFeed, keyReach, chainedHarmonizer } from './key-routing';
 // SPDX-License-Identifier: GPL-3.0-only
 // Polyphony the way a polysynth does it: a Voice allocator module (the CPU) takes the keys held on its `keys` input
 // (Main's keys, the keyboard's ribbon cable) and hands them to its voices; its outputs are per voice. A poly assembly is a
@@ -108,19 +109,18 @@ export const maxParts = (p: Patch): number => Math.max(1, ...p.modules.filter((m
 /** a poly assembly that no allocator feeds: it runs once */
 export const unfed = (p: Patch, a: AssemblyInst): boolean => !!a.poly && !polyAncestor(p, a) && !allocatorOf(p, a);
 
-/** what feeds an Arpeggiator's keys in: the Main module or a Steps track (its keys out), else null */
-export function arpFeed(p: Patch, arp: ModuleInst): ModuleInst | null {
-  const c = p.cables.find((x) => x.to.module === arp.id && x.to.port === 'keys' && x.from.port === 'keys');
-  const from = c && p.modules.find((m) => m.id === c.from.module);
-  return from && (from.type === 'fm1' || from.type === 'steps') ? from : null;
+/** Immediate keys source of either note processor. */
+function processorFeed(p: Patch, m: ModuleInst): ModuleInst | null {
+  const first = keyFeed(p, m);
+  let n = first;
+  for (let i = 0; n && i < 3; i++) {
+    if (n.type === 'fm1' || n.type === 'steps') return first;
+    n = keyFeed(p, n);
+  }
+  return null;
 }
-
-/** what feeds a Harmonizer's keys in (#598): the Main module's keys, else null (a Steps track into it plays nothing yet) */
-export function harmFeed(p: Patch, harm: ModuleInst): ModuleInst | null {
-  const c = p.cables.find((x) => x.to.module === harm.id && x.to.port === 'keys' && x.from.port === 'keys');
-  const from = c && p.modules.find((m) => m.id === c.from.module);
-  return from && from.type === 'fm1' ? from : null;
-}
+export const arpFeed = processorFeed;
+export const harmFeed = processorFeed;
 
 /** where an allocator's keys come from: the Main module, a Steps track (#133), an Arpeggiator that the Main module's
  * keys or a Steps track feed, or a Harmonizer that the Main module's keys feed (#598); null: none */
@@ -157,10 +157,8 @@ export function keysInto(p: Patch, m: ModuleInst): ModuleInst | null {
  *  several, the first in the FM-1's module order, as the firmware picks it (engine.c eng_steps_drummap), so the roll and
  *  the FM-1's SEQ page name the same rows */
 export function trackDrumMap(p: Patch, steps: number): ModuleInst | null {
-  const type = (id: number): string | undefined => p.modules.find((q) => q.id === id)?.type;
-  const fed = (map: number, from: number): boolean => p.cables.some((c) => c.from.module === from && c.from.port === 'keys' && c.to.module === map && c.to.port === 'keys');
-  const arps = p.cables.filter((c) => c.from.module === steps && c.from.port === 'keys' && c.to.port === 'keys' && type(c.to.module) === 'arp').map((c) => c.to.module);
-  const plays = (m: ModuleInst): boolean => m.type === 'drummap' && (fed(m.id, steps) || arps.some((a) => fed(m.id, a)));
+  const reach = keyReach(p, steps);
+  const plays = (m: ModuleInst): boolean => m.type === 'drummap' && reach.has(m.id);
   const id = deviceView(p, true).patch.modules.find(plays)?.id;
   return (id !== undefined && p.modules.find((q) => q.id === id)) || p.modules.find(plays) || null;
 }
@@ -177,7 +175,7 @@ export function trackTargets(p: Patch, steps: number, label: (m: ModuleInst) => 
   const top = (id: number): AssemblyInst | undefined => { const a = assemblyOf(p, id); return a && outer(a); };
   const groups = polyGroups(p);
   // (through an Arpeggiator the track feeds: what the arpeggiator plays)
-  const via = new Set(p.cables.filter((c) => c.from.module === steps && c.from.port === 'keys' && c.to.port === 'keys' && p.modules.find((x) => x.id === c.to.module)?.type === 'arp').map((c) => c.to.module));
+  const via = new Set([...keyReach(p, steps)].filter(id => ['harm', 'arp'].includes(p.modules.find(m => m.id === id)?.type ?? '')));
   for (const c of p.cables) {
     if (c.from.module !== steps && !(via.has(c.from.module) && c.from.port === 'keys')) continue;
     const m = p.modules.find((x) => x.id === c.to.module);
@@ -222,7 +220,7 @@ export function deviceView(source: Patch, compile = false): { patch: Patch; grou
   // track; a track's keys into an Arpeggiator's keys in, which tells it the arpeggiator plays the track (engine.c ksrc);
   // an Arpeggiator's keys into a Drum map, which keeps the arpeggiator live (device-compile.ts). No signal flows on them
   const typeOf = (id: number): string | undefined => p.modules.find((m) => m.id === id)?.type;
-  const kept = (c: Cable, t: string | undefined): boolean => c.to.port === 'keys' && ((t === 'fm1' && typeOf(c.to.module) === 'steps') || (t === 'steps' && typeOf(c.to.module) === 'arp') || (t === 'arp' && typeOf(c.to.module) === 'drummap'));
+  const kept = (c: Cable, t: string | undefined): boolean => c.to.port === 'keys' && ((t === 'fm1' && (typeOf(c.to.module) === 'steps' || (chainedHarmonizer(p) && ['harm', 'arp'].includes(typeOf(c.to.module) ?? '')))) || (t === 'steps' && ['arp', 'harm'].includes(typeOf(c.to.module) ?? '')) || (t === 'harm' && ['steps', 'arp'].includes(typeOf(c.to.module) ?? '')) || (t === 'arp' && typeOf(c.to.module) === 'drummap'));
   const keysFrom = (c: Cable): boolean => { const t = typeOf(c.from.module); return (t === 'fm1' || t === 'arp' || t === 'steps' || t === 'harm') && c.from.port === 'keys' && !kept(c, t); };
   let cables: Cable[] = p.cables.filter((c) => !keysFrom(c));
   let next = p.modules.reduce((m, x) => Math.max(m, x.id), 0) + 1;

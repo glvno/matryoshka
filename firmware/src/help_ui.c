@@ -60,8 +60,8 @@ static uint32_t help_state_sig(void)
     int mod = page == PAGE_SEQ ? seq_module() : -1;
     uint32_t s = help_state(), len = mod >= 0 ? (uint32_t)seq_len(mod) > 16u : 0u;
     return s | (uint32_t)(pg_cur_dev & 63u) << 4 | (uint32_t)(pg_list_btn >= 0) << 10 | (uint32_t)(menu_sys2 && menu_tab == MT_SYSTEM ? 7u : menu_tab) << 11
-         | (uint32_t)(seq_trk & 15u) << 14 | len << 18 | (uint32_t)(eng_steps_count() > 0) << 19 | (pages_gen() & 0x7FFu) << 20
-         | (uint32_t)(eng_keys_harm() >= 0) << 31;
+         | (uint32_t)(seq_trk & 15u) << 14 | len << 18 | (uint32_t)(eng_steps_count() > 0) << 19 | (pages_gen() & 0x3FFu) << 20
+         | (uint32_t)(!sr_preview) << 30 | (uint32_t)(eng_keys_harm() >= 0) << 31;
 }
 
 /* the rows' conditions (controls.ts CONDITIONS): the device in focus has presets to step / can store one (an assembly) /
@@ -73,11 +73,13 @@ static int hc_dev_keys(void) { pages_ensure(); return pg_cur_dev < pg_ndev && ms
 static int hc_list(void) { return pg_list_btn >= 0; }
 static int hc_long_track(void) { int mod = seq_module(); return page == PAGE_SEQ && mod >= 0 && seq_len(mod) > 16; }
 static int hc_roll(void) { return seq_module() >= 0 && seq_map() < 0; }
+static int hc_roll_preview(void) { return hc_roll() && sr_preview; }
+static int hc_roll_silent(void) { return hc_roll() && !sr_preview; }
 static int hc_tracks(void) { return eng_steps_count() > 0; }
 static int hc_menu_guide(void) { return menu_tab == MT_GUIDE; }
 static int hc_menu_page(void) { return menu_page() != 0; }
 static int hc_menu_system(void) { return menu_tab == MT_SYSTEM && !menu_sys2; }   /* (its first page: UPDATE MODE, FACTORY RESET) */
-static int hc_harm(void) { return eng_keys_harm() >= 0; }   /* (the keys reach a Harmonizer: its chord buttons, #598) */
+static int hc_harm(void) { return (sr_on ? eng_steps_harm((uint32_t)seq_module()) : eng_keys_harm()) >= 0; }   /* (the keys reach a Harmonizer: its chord buttons, #598) */
 
 /* the rows of the patch buttons with a job in the loaded patch (FX, LFO, EDIT, ARP; SEL, ENV and GLO are fixed): the
  * button by its own name, then its job: a Toggle "name on/off", a Page button "name pages", a Gate with a cable from its

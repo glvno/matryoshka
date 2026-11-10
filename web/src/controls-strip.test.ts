@@ -71,11 +71,11 @@ describe('the controls strip is made from the controls table (#554, controls.ts)
     expect(v.everywhere).toEqual([]);
   });
 
-  it('a held step: its pitch, velocity, chance and locks, with K1..K4 named after them', () => {
-    const v = stripView(at('roll', { stepHeld: true }));
+  it('a held drum step: velocity, chance and locks, with K1..K4 named after them', () => {
+    const v = stripView(at('drum', { stepHeld: true }));
     expect(v.held).toBe('step');
-    expect(ids(v.rows)).toEqual(['held-pitch', 'held-velocity', 'held-chance', 'lock-pages', 'lock-rows']);
-    expect(v.knobs).toEqual(['pitch', 'velocity', 'chance', 'p-lock rows']);
+    expect(ids(v.rows)).toEqual(['held-velocity', 'held-chance-select', 'lock-pages', 'lock-rows']);
+    expect(v.knobs).toEqual(['p-lock rows', 'velocity', 'p-lock rows', 'p-lock rows']);
   });
 
   it('a held button with EVERYWHERE rows (PLAY: tempo), and one with nothing held + it (the state\'s own rows)', () => {
@@ -95,19 +95,20 @@ describe('the controls strip is made from the controls table (#554, controls.ts)
   });
 
   it('changing an order number in CONTROLS changes the strip\'s order, with no other change', () => {
-    const before = ids(stripView(at('step')).rows);
+    const all = () => { const v = stripView(at('step')); return ids([...v.rows, ...v.more]); };
+    const before = all();
     const cursor = CONTROLS.find((r) => r.id === 'sr-cursor')!;
     const was = cursor.sheet!.step!;
     try {
       cursor.sheet!.step = 1;
-      const after = ids(stripView(at('step')).rows);
+      const after = all();
       expect(after[0]).toBe('sr-cursor');
       expect(after).not.toEqual(before);
       expect([...after].sort()).toEqual([...before].sort());
     } finally {
       cursor.sheet!.step = was;
     }
-    expect(ids(stripView(at('step')).rows)).toEqual(before);
+    expect(all()).toEqual(before);
   });
 
   it('a long state: the sheet\'s first 8 rows, the rest behind "+N more" (the patch buttons count, as on the sheet)', () => {
@@ -147,12 +148,12 @@ describe('the controls strip is made from the controls table (#554, controls.ts)
     expect(stripView(at('env', { device: d, devicePage: pg }), sp).knobs, 'elsewhere: the table').toEqual(Array(4).fill('device pg.1 params'));
   });
 
-  it('the piano roll and the drum grid: no K1..K4 until a step is held, then what each does with it', () => {
-    expect(['roll', 'drum'].filter((s) => knobsOnlyHeld(s as HelpState))).toEqual(['roll', 'drum']);
-    expect(HELP_STATES.filter(knobsOnlyHeld)).toEqual(['drum', 'roll']);
+  it('the piano roll has no step knobs; a held drum step has its editing knobs', () => {
+    expect(['roll', 'drum'].filter((s) => knobsOnlyHeld(s as HelpState))).toEqual(['drum']);
+    expect(HELP_STATES.filter(knobsOnlyHeld)).toEqual(['drum']);
     expect(stripView(at('roll')).knobs).toBeNull();
     expect(stripView(at('drum')).knobs).toBeNull();
-    expect(stripView(at('roll', { stepHeld: true })).knobs).toEqual(['pitch', 'velocity', 'chance', 'p-lock rows']);
+    expect(stripView(at('roll', { stepHeld: true })).knobs).toBeNull();
     expect(stripView(at('drum', { stepHeld: true })).knobs).toEqual(['p-lock rows', 'velocity', 'p-lock rows', 'p-lock rows']);
     expect(stripView(at('step')).knobs, 'step record: K4 the cursor, no step to hold').toEqual(['', '', '', 'move cursor']);
   });
@@ -190,7 +191,8 @@ describe('ControlsStrip draws chips as the FM-1\'s sheet does', () => {
     const words = (s: ControlsStrip, id: string): string | null | undefined => s.el.querySelector(`[data-row="${id}"] .cs-does`)?.textContent;
     const s = new ControlsStrip();
     s.draw(at('roll'), 'emu');
-    expect(words(s, 'step')).toBe('turn the selected pitch on or off at that step');
+    expect(words(s, 'roll-keys')).toBe('play each key’s own note without changing the pattern');
+    expect(words(s, 'step')).toBeUndefined();
     expect(words(s, 'step-record-there')).toBe('step record starting from that step');
     expect(words(s, 'home'), 'EVERYWHERE too').toBe('go back one step');
     s.draw(at('drum'), 'emu');
@@ -198,13 +200,13 @@ describe('ControlsStrip draws chips as the FM-1\'s sheet does', () => {
     s.draw(at('device', { conditions: cond('list') }), 'emu');
     expect(words(s, 'list-home'), '{list}: the Page button').toBe("leave the Page button's pages, back where you were");
     // a row without them: its words off the sheet (plain), then the sheet's
-    const row = CONTROLS.find((r) => r.id === 'step')!;
+    const row = CONTROLS.find((r) => r.id === 'roll-keys')!;
     const was = row.strip;
     try {
       delete row.strip;
       s.draw(at('roll', { held: 1 }), 'emu');
       s.draw(at('roll'), 'emu');
-      expect(words(s, 'step')).toBe(row.plain);
+      expect(words(s, 'roll-keys')).toBe(row.does);
     } finally { row.strip = was; }
     localStorage.removeItem(MORE_KEY);
   });
@@ -241,7 +243,7 @@ describe('ControlsStrip draws chips as the FM-1\'s sheet does', () => {
     expect(s.el.querySelector('.cs-more'), 'a state that fits: no toggle').toBeNull();
   });
 
-  it('the K1..K4 column: hidden on the piano roll until a step is held, the page\'s names on a device page', () => {
+  it('the K1..K4 column: hidden on the piano roll, the page\'s names on a device page', () => {
     const { p, osc } = rig();
     const sp = stripPatch(p);
     const s = new ControlsStrip();
@@ -249,7 +251,7 @@ describe('ControlsStrip draws chips as the FM-1\'s sheet does', () => {
     expect(s.el.querySelector('.cs-kmap')).toBeNull();
     expect(s.el.classList.contains('no-kmap')).toBe(true);
     s.draw(at('roll', { stepHeld: true }), 'emu', sp);
-    expect([...s.el.querySelectorAll('.cs-kmap > div')].map((k) => k.lastChild!.textContent)).toEqual(['pitch', 'velocity', 'chance', 'p-lock rows']);
+    expect(s.el.querySelector('.cs-kmap')).toBeNull();
     const [d, pg] = binaryPage(p, `m${osc}`, 0)!;
     s.draw(at('device', { device: d, devicePage: pg }), 'emu', sp);
     expect(s.el.classList.contains('no-kmap')).toBe(false);

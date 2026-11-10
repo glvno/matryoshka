@@ -52,7 +52,7 @@ export const EFFECTS = [
   'step', 'row', 'roll_view', 'roll_pitch', 'jump', 'track', 'pattern', 'accent', 'tie', 'step_record', 'step_record_at',
   'velocity', 'chance', 'pitch', 'lock_page', 'lock', 'song_page', 'clear', 'steps_page', 'keys_octave',
   'write', 'chord', 'rest', 'cursor', 'back_clear', 'live', 'end',
-  'take', 'take_accent', 'drone',
+  'take', 'take_accent', 'drone', 'play_notes', 'preview',
   'entry', 'entry_pattern', 'add_entry', 'dup_entry', 'transpose', 'song_play', 'song', 'delete_entry', 'back_steps',
   'tab', 'scroll', 'set', 'save_close', 'run_row',
   'editor', 'analog_out', 'chord_button',
@@ -60,7 +60,7 @@ export const EFFECTS = [
 export type Effect = (typeof EFFECTS)[number];
 
 /** the conditions a row can show under (help_ui.c hc_<name>); '!name': when it is false */
-export const CONDITIONS = ['list', 'dev_presets', 'dev_store', 'dev_keys', 'long_track', 'tracks', 'menu_guide', 'menu_page', 'menu_system', 'roll', 'harm'] as const;
+export const CONDITIONS = ['list', 'dev_presets', 'dev_store', 'dev_keys', 'long_track', 'tracks', 'menu_guide', 'menu_page', 'menu_system', 'roll', 'harm', 'roll_preview', 'roll_silent'] as const;
 export type Condition = (typeof CONDITIONS)[number];
 
 export interface ControlRow {
@@ -126,14 +126,14 @@ export const CONTROLS: ControlRow[] = [
   { id: 'home', gesture: { do: [B('HOME')] }, does: 'back', everywhere: at(5, but('sandbox')), effect: 'back',
     help: 'back one step, on release: on a device page to its device’s first page, then to the patch’s home page (its first device); out of the SEQ, SONG and environment pages, back where you were. Held alone it does nothing' },
   { id: 'glo', gesture: { do: [B('GLO')] }, does: 'settings', everywhere: at(50, but('menu')), effect: 'menu',
-    help: 'the settings menu, in tabs: MIDI (MIDI channel, clock in, MIDI out, clock out), PANEL (LEDs, knob acceleration, count-in with a click on each beat, TEMPO: GLOBAL or PATCH, with the tempo playing, or EXT while MIDI clock sets it), SYSTEM (update mode, factory reset, quick start, OUTPUT: STEREO, MONO, the sum of both sides on both, for headphones or a stereo input, or MONO L, the sum on the left only and the right silent, for one mono cable into a recorder; ALGO again for its second page, EDITOR: ALLOW, or IGNORE, so the editor and its Install panel leave this FM-1 alone, and 3.5MM OUT: ON, or OFF, the speaker and the headphone jack silent while USB audio plays on), INFO (version, CPU, bank slots, battery) and GUIDE (the ideas behind the FM-1)' },
+    help: 'the settings menu, in tabs: MIDI (MIDI channel, clock in, MIDI out, clock out), PANEL (LEDs, knob acceleration, count-in with a click on each beat, TEMPO: GLOBAL or PATCH, with the tempo playing, or EXT while MIDI clock sets it), SYSTEM (update mode, factory reset, quick start, OUTPUT: STEREO, MONO, the sum of both sides on both, for headphones or a stereo input, or MONO L, the sum on the left only and the right silent, for one mono cable into a recorder; ALGO again for its second page, EDITOR: ALLOW, or IGNORE, so the editor and its Install panel leave this FM-1 alone, and 3.5MM OUT: ON, or OFF, the speaker and the headphone jack silent while USB audio plays on, and USB RETURN: the level of playback from a phone or computer in your headphones, separate from MASTER; SAVE keeps it), INFO (version, CPU, bank slots, battery, device name) and GUIDE (the ideas behind the FM-1)' },
   { id: 'env', gesture: { do: [B('ENV')] }, does: 'environment', everywhere: at(60, but('env', 'sandbox')), effect: 'env',
     help: 'the environment: every device from Main to the Output, each Steps track followed by what it plays (from the menu too)' },
   { id: 'seq', gesture: { do: [B('SEQ')] }, does: 'steps page', everywhere: at(70, but(...SEQ_STATES, 'sandbox')), effect: 'seq',
     help: 'the SEQ page: from a Steps track’s device page that track, else the track shown last' },
   { id: 'seq-back', gesture: { do: [B('SEQ')] }, does: 'back', everywhere: at(70, ['drum', 'roll', 'live', 'song']), listed: false, effect: 'back', hint: 'SEQ back',
     help: 'out of the SEQ or SONG page, back where you were' },
-  { id: 'octave', gesture: { do: [B('OCT-'), B('OCT+')] }, does: 'octave', sheet: { step: 90 }, everywhere: at(80, but('drum', 'roll', 'menu', 'step')), effect: 'octave', hint: 'OCT octave',
+  { id: 'octave', gesture: { do: [B('OCT-'), B('OCT+')] }, does: 'octave', sheet: { step: 90 }, everywhere: at(80, but('drum', 'menu', 'step')), effect: 'octave', hint: 'OCT octave',
     help: 'the keys’ octave, up to three either way, on release: pressing both opens the controls sheet and changes neither' },
   { id: 'tempo', gesture: { hold: 'PLAY', do: [E('PRESET')] }, does: 'tempo', everywhere: at(90, ALL), effect: 'tempo',
     help: 'the tempo, 1 bpm a click (the global one while TEMPO is GLOBAL; in sandbox mode the browser’s); PLAY’s release then neither starts nor stops' },
@@ -169,9 +169,9 @@ export const CONTROLS: ControlRow[] = [
   { id: 'arm-several', gesture: { first: 'ENV', do: [B('SEL')] }, does: 'arm several', when: 'dev_keys', sheet: { device: 55 }, effect: 'arm',
     help: 'on the environment page (ENV), SEL adds the row’s device to the armed devices or drops it, so the keys play several at once (a layer or a split)' },
   // (the keys reach a Harmonizer, #598: its Side layout, the seven lowest keys its chord buttons)
-  { id: 'chord-quality', gesture: { do: [BLACK] }, does: '1-3 maj min dim', plain: 'chord buttons maj, min, dim', when: 'harm', sheet: { device: 24 }, effect: 'chord_button',
+  { id: 'chord-quality', gesture: { do: [BLACK] }, does: '1-3 maj min dim', plain: 'chord buttons maj, min, dim', when: 'harm', sheet: { device: 24, roll: 24, step: 24 }, effect: 'chord_button',
     help: 'with the keys on a Harmonizer: black keys 1..3 are its chord buttons maj, min and dim, at any octave (held with others, the one pressed last wins); every key from C up plays that chord on its root. With no button held (and none latched) a key plays the card’s chord, or itself' },
-  { id: 'chord-add', gesture: { do: [WHITE] }, does: '1-4 sus2 sus4 7 9', plain: 'chord buttons sus2, sus4, 7, 9', when: 'harm', sheet: { device: 26 }, effect: 'chord_button',
+  { id: 'chord-add', gesture: { do: [WHITE] }, does: '1-4 sus2 sus4 7 9', plain: 'chord buttons sus2, sus4, 7, 9', when: 'harm', sheet: { device: 26, roll: 26, step: 26 }, effect: 'chord_button',
     help: 'with the keys on a Harmonizer: white keys 1..4 add to the chord: sus2 and sus4 (beside maj, min or dim an added 2nd or 4th), 7 (the minor seventh) and 9; pressed together the buttons combine. Its LOCK row on: the buttons pressed together stay latched until the next press (the same button alone again lets go)' },
 
   // ---- ENVIRONMENT: one row per device
@@ -183,41 +183,41 @@ export const CONTROLS: ControlRow[] = [
     help: 'the row’s device into the armed devices or out (several at once: a layer or a split)' },
 
   // ---- the SEQ page: a drum grid (DRUM STEPS) and a melodic track's piano roll (PIANO ROLL)
-  { id: 'step', gesture: { do: [WHITE] }, does: 'toggle rowstep n', plain: 'step on / off', sheet: { drum: 20, roll: 40 }, effect: 'step', hint: 'WHITE step',
-    help: 'the selected row’s hit or pitch on that step' },
-  { id: 'row-key', gesture: { do: [BLACK] }, does: 'select note row 1-8', doesIn: { drum: 'pick a row' }, sheet: { drum: 10, roll: 30 }, effect: 'row', hint: 'BLACK row',
-    help: 'black keys 1..8: the rows (on the roll the 8 pitches shown, black key 1 the bottom one); a drum row sounds while held, and while REC records it records the hit into the nearest step' },
+  { id: 'roll-keys', gesture: { do: [ANY_KEY] }, does: 'play notes', sheet: { roll: 30 }, effect: 'play_notes', hint: 'KEYS play',
+    strip: 'play each key’s own note without changing the pattern',
+    help: 'keys play their own pitch, except the seven Side chord buttons on a Harmonizer path; outside step record, notes are recorded only while REC and the transport run' },
+  { id: 'step', gesture: { do: [WHITE] }, does: 'toggle rowstep n', plain: 'step on / off', sheet: { drum: 20 }, effect: 'step', hint: 'WHITE step',
+    help: 'the selected drum row’s hit on that step' },
+  { id: 'row-key', gesture: { do: [BLACK] }, does: 'pick a row', sheet: { drum: 10 }, effect: 'row', hint: 'BLACK row',
+    help: 'black keys 1..8 pick the drum rows and sound them while held; while REC records, the hit goes into the nearest step' },
   { id: 'row-select', gesture: { do: [E('SELECT')] }, does: 'pick a row', sheet: { drum: 130 }, listed: false, effect: 'row', hint: 'SELECT row',
     help: 'the row, silently' },
   { id: 'roll-view', gesture: { do: [E('SELECT')] }, does: 'next 8-pitch page', sheet: { roll: 70, live: 30 }, effect: 'roll_view', hint: 'SELECT view',
     help: 'the next or previous 8 pitches; the bar names the pitches shown' },
   { id: 'roll-pitch', gesture: { hold: 'SEL', do: [E('SELECT')] }, does: 'shift page up/down', plain: 'the view a pitch up / down', sheet: { roll: 80 }, effect: 'roll_pitch' },
-  { id: 'pen', gesture: { hold: 'SEL', do: [ANY_KEY] }, does: 'jump to pitch', when: 'roll', sheet: { roll: 90, step: 80 }, effect: 'jump', hint: 'SEL+KEY pen',
-    help: 'the view jumps to that key’s pitch, which is selected and sounds; in step record nothing is written' },
-  { id: 'steps-page', gesture: { do: [B('OCT-'), B('OCT+')] }, does: 'next/prev 16 steps', when: 'long_track', sheet: { drum: 90, roll: 160 }, effect: 'steps_page', hint: 'OCT 17+',
+  { id: 'pen', gesture: { hold: 'SEL', do: [ANY_KEY] }, does: 'jump to pitch', when: 'roll', sheet: { roll: 90, step: 80 }, effect: 'jump', hint: 'SEL+KEY view',
+    help: 'the view jumps to that key’s pitch; in step record this writes nothing and sounds only when note preview is on' },
+  { id: 'steps-page', gesture: { do: [B('OCT-'), B('OCT+')] }, does: 'next/prev 16 steps', when: 'long_track', sheet: { drum: 90 }, effect: 'steps_page', hint: 'OCT 17+',
     help: 'a track of more than 16 steps: the next or previous 16' },
   { id: 'track', gesture: { do: [E('ALGO')] }, does: 'track', sheet: { drum: 140, roll: 180, live: 40 }, effect: 'track', hint: 'ALGO track',
     help: 'the track shown, which the page arms' },
   { id: 'pattern', gesture: { do: [E('PRESET')] }, does: 'pattern', sheet: { drum: 60, roll: 190, live: 50 }, effect: 'pattern',
     help: 'the patch’s pattern, 1..64: running, each track takes it at the end of its pass; stopped, at once. A track without that pattern plays its first' },
-  { id: 'accent', gesture: { hold: 'FX', do: [WHITE] }, does: 'accent', sheet: { drum: 30, roll: 100 }, effect: 'accent', hint: 'FX acc' },
-  { id: 'tie', gesture: { hold: 'LFO', do: [WHITE] }, does: 'tie', sheet: { drum: 100, roll: 50 }, effect: 'tie',
+  { id: 'accent', gesture: { hold: 'FX', do: [WHITE] }, does: 'accent', sheet: { drum: 30 }, effect: 'accent', hint: 'FX acc' },
+  { id: 'tie', gesture: { hold: 'LFO', do: [WHITE] }, does: 'tie', sheet: { drum: 100 }, effect: 'tie',
     help: 'the note held on through that step (again: untie). With no note of the row before that step, the tie wraps round the loop: the row’s last note goes on across the loop’s end to it, and on the note’s own step it becomes a drone that never starts again (again: one step)' },
-  { id: 'row-drone', gesture: { hold: 'LFO', do: [B('FX')] }, does: 'row drone', sheet: { drum: 105, roll: 195 }, effect: 'drone',
+  { id: 'row-drone', gesture: { hold: 'LFO', do: [B('FX')] }, does: 'row drone', sheet: { drum: 105 }, effect: 'drone',
     help: 'the selected row as one drone: its first note holds for as long as the pattern plays, and the row’s other notes go (again: one step; an empty row says NOTHING TO DRONE). Not in step record, where LFO is the rest / tie' },
   { id: 'step-record', gesture: { do: [B('REC')] }, does: 'toggle step record', sheet: { drum: 40, roll: 10 }, effect: 'step_record',
     help: 'stopped: step record from the first step shown; running, REC records as everywhere' },
   { id: 'step-record-there', gesture: { hold: 'REC', do: [WHITE] }, does: '^ but at step n/16', doesIn: { drum: '^ but at step N/16' }, plain: 'step record from that step', sheet: { drum: 50, roll: 20 }, effect: 'step_record_at',
     help: 'step record from that step (running too; during a live take it ends the take)' },
-  { id: 'held-pitch', gesture: { hold: 'step', do: [K('1')] }, does: 'pitch', sheet: { roll: 110 }, effect: 'pitch', hint: 'K1 note' },
-  { id: 'held-velocity', gesture: { hold: 'step', do: [K('2')] }, does: 'velocity', sheet: { drum: 110, roll: 120 }, effect: 'velocity', hint: 'K2 vel' },
+  { id: 'held-velocity', gesture: { hold: 'step', do: [K('2')] }, does: 'velocity', sheet: { drum: 110 }, effect: 'velocity', hint: 'K2 vel' },
   { id: 'held-chance-select', gesture: { hold: 'step', do: [E('SELECT')] }, does: 'chance', sheet: { drum: 120 }, effect: 'chance', hint: 'SELECT chance' },
-  { id: 'held-chance', gesture: { hold: 'step', do: [K('3')] }, does: 'chance', sheet: { roll: 130 }, effect: 'chance', hint: 'K3 chance' },
-  { id: 'lock-pages', gesture: { hold: 'step', do: [E('ALGO')] }, does: 'p-lock pages', sheet: { drum: 150, roll: 140 }, effect: 'lock_page', hint: 'ALGO lock',
+  { id: 'lock-pages', gesture: { hold: 'step', do: [E('ALGO')] }, does: 'p-lock pages', sheet: { drum: 150 }, effect: 'lock_page', hint: 'ALGO lock',
     help: 'P-locks: pages through the device the track plays (its first stop is the step’s note, velocity and chance)' },
-  { id: 'lock-rows', gesture: { hold: 'step', do: [K('1234')] }, does: 'p-lock rows', sheet: { drum: 160, roll: 150 }, effect: 'lock', hint: 'K1-K4 lock',
+  { id: 'lock-rows', gesture: { hold: 'step', do: [K('1234')] }, does: 'p-lock rows', sheet: { drum: 160 }, effect: 'lock', hint: 'K1-K4 lock',
     help: 'on a lock page: that page’s rows locked on the held step; turned back to the row’s normal value, the lock goes' },
-  { id: 'keys-octave', gesture: { hold: 'FX', do: [B('OCT')] }, does: "keys' octave", sheet: { roll: 170 }, effect: 'keys_octave' },
   { id: 'song-page', gesture: { do: [B('SEL')], how: 'tap' }, does: 'structure song', sheet: { drum: 70, roll: 60 }, effect: 'song_page', hint: 'SEL song',
     help: 'the SONG page (not after SEL held as the pen)' },
   { id: 'clear', gesture: { hold: 'SEQ', do: [B('REC')] }, does: 'clear track', sheet: { drum: 80, roll: 200 }, effect: 'clear', hint: 'SEQ+REC clear',
@@ -225,7 +225,13 @@ export const CONTROLS: ControlRow[] = [
 
   // ---- STEP RECORD (#532, D-804)
   { id: 'sr-keys', gesture: { do: [{ key: 'keys' }] }, does: 'play, let go: write', sheet: { step: 20 }, effect: 'write', hint: 'KEYS note',
-    help: 'a note or a chord: letting go of the last key writes it on the cursor’s step and moves on one (on a drum grid black keys 1..8 write their rows)' },
+    help: 'a note or a chord: Side buttons on a Harmonizer path shape the next root without entering notes; letting go of the last note key writes it on the cursor’s step and moves on one (on a drum grid black keys 1..8 write their rows)' },
+  { id: 'sr-preview-off', gesture: { hold: 'SEL', do: [B('FX')] }, does: 'preview off', when: 'roll_preview', sheet: { step: 35 }, effect: 'preview',
+    strip: 'hear or silence notes as you enter them',
+    help: 'piano roll only: toggle hearing notes during step record; starts on at power-on. SILENT means notes are still written but do not sound until playback' },
+  { id: 'sr-preview-on', gesture: { hold: 'SEL', do: [B('FX')] }, does: 'preview on', when: 'roll_silent', sheet: { step: 35 }, effect: 'preview',
+    strip: 'hear or silence notes as you enter them',
+    help: 'piano roll only: toggle hearing notes during step record; starts on at power-on. SILENT means notes are still written but do not sound until playback' },
   { id: 'sr-chord', gesture: { do: [{ key: 'chord' }] }, does: 'one chord', sheet: { step: 30 }, effect: 'chord' },
   { id: 'sr-rest', gesture: { do: [B('LFO')] }, does: 'rest, keys held: tie', sheet: { step: 40 }, effect: 'rest', hint: 'LFO rest/tie' },
   { id: 'sr-accent', gesture: { do: [B('FX')], how: 'held' }, does: 'accent', sheet: { step: 50 }, effect: 'accent', hint: 'FX acc' },
@@ -240,7 +246,7 @@ export const CONTROLS: ControlRow[] = [
   // ---- LIVE TAKE: REC records the armed melodic track while the transport runs, on its SEQ page
   { id: 'take', gesture: { do: [{ key: 'keys' }] }, does: 'record notes', sheet: { live: 10 }, effect: 'take', hint: 'KEYS record',
     help: 'all 27 keys play the track and record their own pitch into the nearest step' },
-  { id: 'take-accent', gesture: { do: [B('FX')], how: 'held' }, does: 'accented notes', sheet: { live: 20 }, effect: 'take_accent', hint: 'FX acc' },
+  { id: 'take-accent', gesture: { do: [B('FX')], how: 'held' }, does: 'accented notes', sheet: { roll: 100, live: 20 }, effect: 'take_accent', hint: 'FX acc' },
 
   // ---- SONG (#375, D-541)
   { id: 'song-entry', gesture: { do: [E('SELECT')] }, does: 'pick entry', sheet: { song: 20 }, effect: 'entry', hint: 'SELECT entry',
@@ -355,16 +361,15 @@ export const HINTS: HintLine[] = [
   // the SEQ page's line under the grid (seq_ui.c seq_grid_draw)
   // (#582 p7: LFO's two jobs apart, the tie with a key held; K4's move left to the sheet for the room)
   { id: 'step_record', items: ['sr-keys', { row: 'sr-rest', text: 'LFO rest  KEY+LFO tie' }, 'sr-end'], width: 228 },
+  { id: 'step_silent', items: [{ row: 'sr-keys', text: 'SILENT' }, { row: 'sr-rest', text: 'LFO rest  KEY+LFO tie' }, 'sr-end'], width: 228 },
   { id: 'live', items: ['take', 'roll-view', 'octave', 'take-accent'], width: 228 },
   { id: 'held_lock', lead: 'HELD:', items: [{ row: 'lock-rows', text: 'K1-K4 lock  back to value: off' }, { row: 'lock-pages', text: 'ALGO' }], width: 228 },
   { id: 'held_drum', lead: 'HELD:', items: ['held-velocity', 'held-chance-select', 'lock-pages'], width: 228 },
-  { id: 'held_roll', lead: 'HELD:', items: ['held-pitch', 'held-velocity', 'held-chance', 'lock-pages'], width: 228 },
   { id: 'drum_rec_long', items: [{ row: 'row-key', text: 'BLACK rec' }, 'row-select', 'step', 'steps-page'], width: 228 },
   { id: 'drum_rec', items: [{ row: 'row-key', text: 'BLACK rec' }, 'row-select', 'step', 'accent'], width: 228 },
   { id: 'drum_long', items: [{ row: ['row-key', 'row-select'], text: 'BLACK/SELECT row' }, 'step', 'accent', 'steps-page'], width: 228 },
   { id: 'drum', items: ['row-key', 'step', 'accent', 'song-page'], width: 228 },
-  { id: 'roll_long', items: ['row-key', 'pen', 'step', 'steps-page'], width: 228 },
-  { id: 'roll', items: ['row-key', 'pen', 'step', 'song-page'], width: 228 },
+  { id: 'roll', items: ['roll-keys', 'roll-view', 'octave', 'song-page'], width: 228 },
   { id: 'no_track', items: ['seq-back'], width: 224 },
   // the SONG page's two lines (seq_ui.c song_draw)
   { id: 'song_1', items: ['song-entry', 'song-pattern', 'song-shift', 'song-dup'], width: 224 },
@@ -460,6 +465,7 @@ export const CONDITION_TEXT: Record<Condition, string> = {
   list: 'while a Page button’s list shows', dev_presets: 'a device with presets', dev_store: 'an assembly', dev_keys: 'a device that takes keys',
   long_track: 'a track of more than 16 steps', tracks: 'a patch with Steps tracks', menu_guide: 'the GUIDE tab', menu_page: 'the MIDI, PANEL and SYSTEM tabs',
   menu_system: 'the SYSTEM tab', roll: 'a melodic track', harm: 'the keys on a Harmonizer: the seven lowest keys',
+  roll_preview: 'a melodic track with note preview on', roll_silent: 'a melodic track with note preview off',
 };
 
 /** a gesture in words: "HOME held + PRESET", "a held step + K2", "OCT- / OCT+" */

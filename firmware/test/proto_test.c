@@ -28,6 +28,7 @@ static int m1_store(const uint8_t *p, uint32_t n)
     stored++;
     return 0;
 }
+static int m1_device_settings(const uint8_t *p, uint32_t n, uint8_t *out) { (void)p; (void)n; out[0]=6; return 1; }
 static int m1_flash_ok(void) { return 1; }
 static void m1_ui_changed(void) {}
 static void m1_ui_rows(void) {}

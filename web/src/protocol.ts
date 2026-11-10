@@ -130,7 +130,7 @@ import { ARM_WORDS, type Range } from './patch';
 import { noteWord, PATTERNS_MAX, SHIFT_MAX, SONG_LEN_MAX, SONGS_MAX, TRACK_NOTES_MAX, wordNote, type SongEntry, type StepNote } from './track';
 
 export const PREFIX = [0x7d, 0x4d, 0x31];
-export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, sandbox: 0x31, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e, testKey: 0x32, testTurn: 0x33, testScreen: 0x34, testPeak: 0x35, screen: 0x50, peak: 0x51, pattern: 0x36, song: 0x37, patternNow: 0x52, songNow: 0x53, armsNow: 0x54, arms: 0x39, tempo: 0x38, tempoNow: 0x55, locksNow: 0x56, keysNow: 0x57, guideNow: 0x58 } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
+export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, sandbox: 0x31, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e, testKey: 0x32, testTurn: 0x33, testScreen: 0x34, testPeak: 0x35, screen: 0x50, peak: 0x51, pattern: 0x36, song: 0x37, patternNow: 0x52, songNow: 0x53, armsNow: 0x54, arms: 0x39, tempo: 0x38, tempoNow: 0x55, locksNow: 0x56, keysNow: 0x57, guideNow: 0x58, deviceSettings: 0x3a, deviceSettingsReply: 0x59 } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
 export const PROTO_VERSION = 1;
 export const CHUNK_BYTES = 384;
 export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store', 'the preset store is full', 'no such preset'];
@@ -563,8 +563,32 @@ export function panelOffBy(copy: PanelState, fm1: PanelState): string[] {
   if (fm1.page === 8 && copy.track !== fm1.track) off.push('track');
   if (fm1.page === 5 && copy.menuTab !== fm1.menuTab) off.push('menu tab');
   if (copy.stepRecord !== fm1.stepRecord || (fm1.stepRecord && copy.cursor !== fm1.cursor)) off.push('step record');
+  // Conditions 12/13 report piano-roll note preview; older firmware sends neither.
+  const preview = (1 << 12) | (1 << 13);
+  if ((fm1.conditions & preview) && (copy.conditions & preview) !== (fm1.conditions & preview)) off.push('note preview');
   if (copy.sheet !== fm1.sheet || (fm1.sheet && (copy.everywhere !== fm1.everywhere || copy.sheetRow !== fm1.sheetRow))) off.push('sheet');
   if (copy.held !== fm1.held) off.push('held');
   if (copy.octave !== fm1.octave) off.push('octave');
   return off;
+}
+/** DEVICE_SETTINGS (feature bit 22): empty reads; name[16], level u8 writes.
+ * Reply: status u8, name[16], level u8, physical serial[16]. */
+export const FEATURE_DEVICE_SETTINGS = 1 << 22;
+export interface DeviceSettings { name: string; returnLevel: number; serial: string }
+export function deviceSettingsFrame(settings?: Pick<DeviceSettings, 'name' | 'returnLevel'>): Uint8Array {
+  if (!settings) return frame(CMD.deviceSettings);
+  const name = settings.name.trim();
+  if (name.length > 16 || !/^[\x20-\x7e]*$/.test(name)) throw new Error('Use up to 16 letters, numbers, spaces or punctuation from an English keyboard.');
+  if (!Number.isInteger(settings.returnLevel) || settings.returnLevel < 0 || settings.returnLevel > 100) throw new Error('USB return level must be between 0 and 100%.');
+  const bytes = new Uint8Array(17);
+  for (let i = 0; i < name.length; i++) bytes[i] = name.charCodeAt(i);
+  bytes[16] = settings.returnLevel;
+  return frame(CMD.deviceSettings, bytes);
+}
+export function parseDeviceSettings(p: Parsed | null): DeviceSettings {
+  if (p?.cmd !== CMD.deviceSettingsReply || p.payload.length !== 34) throw new Error('The FM-1 sent an incomplete settings reply.');
+  if (p.payload[0]) throw new Error(p.payload[0] === 1 ? 'The FM-1 could not use those settings.' : 'The FM-1 could not save its settings. Try again after it finishes starting.');
+  const nameBytes = p.payload.slice(1, 17);
+  if (nameBytes.some((v) => v !== 0 && (v < 32 || v > 126)) || p.payload[17] > 100) throw new Error('The FM-1 sent invalid settings.');
+  return { name: String.fromCharCode(...nameBytes).replace(/\0.*$/, ''), returnLevel: p.payload[17], serial: p.payload.slice(18).map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase() };
 }
