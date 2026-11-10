@@ -1,6 +1,6 @@
 {
  "8 Lire": {
-  "distortion / vol": 0.69
+  "distortion / vol": 0.65
  },
  "Algo Four": {
   "voice / volume": 0.34
@@ -37,7 +37,7 @@
   "vca / level": 0.56
  },
  "Meridian 8": {
-  "out / main": 0.68
+  "out / main": 0.66
  },
  "mono lead": {
   "level": 1.19

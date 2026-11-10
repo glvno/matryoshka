@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Factory sound revisions soften 8 Lire’s Pair FM Bells and Feedback Howl, give Spokes more contrasting chord roles, and reduce prominent tonal percussion. The 909 and Perun demonstration grooves use their actual hat and snare lanes.
+
 - Factory drum sounds carry distinct default patterns. Selecting another factory sound changes only an untouched factory pattern; saved user patterns stay in place. Factory sound banks add practical melodic and kit choices, reduce harsh drone settings, and correct final-output peaks in the audition phrases.
 
 ## 1.13.0 — 2026-11-10

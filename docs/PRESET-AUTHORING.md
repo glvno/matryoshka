@@ -18,6 +18,10 @@ Edit `web/presets/cards/<instrument>.txt`. Use existing card-row names and units
 
 A drum sound also needs its own intentional groove. Author the notes in `web/presets/patterns/defaults.json`: each row names a MIDI note, `X` is a strong hit, `x` a softer hit and `.` a rest. Use timing and instrumentation to demonstrate the sound. Avoid a renamed copy of another groove. Init may preserve the original packed notes. `web/scripts/preset-pattern-build.ts` validates the names, creates packed notes and rejects duplicate patterns within a bank.
 
+Use each kit’s actual Drum map when choosing notes: the same note can play a hat in one kit and a tom in another. Main grooves leave space for the kick, snare and hats. Tonal percussion is an occasional accent unless it is the sound’s stated role.
+
+Spokes listening arrangements live in `web/scripts/audition-arrangements.ts`. They are saved in the audition patches. Sound selection does not replace the musician’s tone or chord tracks.
+
 Sound cards do not contain patterns. A separate table associates each factory sound with a default pattern and a content revision. The track remembers which default it owns. Selection replaces the pattern only when the old identity is known and its notes, settings and locks still match. A user preset, an unknown identity or an edit preserves the notes. This also protects unrelated tracks, tempo and transport. See [D-882](ledger/patches-and-presets.md#D-882).
 
 The saved identity travels separately from the readable preset name. Patches using it require format 54 and firmware reporting support. Older patches keep their older format. The editor rejects an unsupported upload before sending patch bytes. Device snapshots must be complete and belong to the current patch before their module indices can authorize replacement; SAVE or another patch boundary clears that reliance. See [D-1009](ledger/patch-format.md#D-1009).
@@ -70,3 +74,9 @@ Keep a dated audition package outside git. Include a manifest, hashes of the act
 Run focused tests for changed selection, persistence, format and generation behavior, and the required build safeguards. A browser render is not a device recording; a C host check is not a hardware check. Follow the current development and candidate validation stages in [D-144](ledger/releases.md#D-144). Complete every scoped bank before owner listening review; aesthetic acceptance requires that listening ([D-883](ledger/patches-and-presets.md#D-883), Decided).
 
 [Factory sound roles](PRESET-BANKS.md) applies the role and reference part of this rubric to each scoped bank. The dated audition package carries the measured findings and the listening questions.
+
+## Compare added effects
+
+Run `npx vite-node scripts/preset-effects-auditions.ts /absolute/path/to/effects` for four Monolith D experiments: soft drive, tape echo, a small room and a wider moving space. Each has a dry partner with the same synth controls, notes and Output level. The level-matched files use constant gain; the raw files retain the actual level change.
+
+These are complete saved patches with added effect modules, not additions to the factory sound selector. Import a saved patch to play it or edit its effect controls. Each patch must fit the editor’s existing FM-1 budget. This estimate does not qualify device playback. Wider adoption remains a listening and hardware decision.
