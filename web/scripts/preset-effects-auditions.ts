@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Four saved-patch experiments, each paired with its unchanged dry sound and phrase.
+// Seven composed effects treatments, each paired with its unchanged dry sound and phrase.
 // Run: vite-node scripts/preset-effects-auditions.ts OUT_DIR
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -18,15 +18,33 @@ import { renderAudition, auditionWav } from './audition-render';
 
 type Effect = { type: 'shape' | 'filter' | 'delay' | 'reverb' | 'chorus'; params: Record<string, number>; label: string };
 const studies: { preset: string; treatment: string; effects: Effect[] }[] = [
-  { preset: 'Fat Bass', treatment: 'Warm drive', effects: [
+  { preset: 'Fat Bass', treatment: 'Driven room', effects: [
     { type: 'shape', label: 'Soft drive', params: { drive: 1.5, mode: 0, level: 0.8 } },
     { type: 'filter', label: 'Drive tone', params: { cutoff: 4200, res: 0 } },
+    { type: 'reverb', label: 'Bass room', params: { size: 0.18, damp: 0.78, mix: 0.08, pre: 5, mod: 0 } },
   ] },
-  { preset: 'Glide Lead', treatment: 'Tape echo', effects: [
-    { type: 'delay', label: 'Tape echo', params: { time: 280, length: 500, fb: 0.28, mix: 0.22, tape: 1, wow: 0.08 } },
+  { preset: 'Rhea Plucked Bass', treatment: 'Warm wood', effects: [
+    { type: 'shape', label: 'Gentle drive', params: { drive: 1.12, mode: 0, level: 0.86 } },
+    { type: 'reverb', label: 'Close room', params: { size: 0.22, damp: 0.72, mix: 0.1, pre: 8, mod: 0.05 } },
   ] },
-  { preset: 'Rhea Plucked Bass', treatment: 'Small room', effects: [
-    { type: 'reverb', label: 'Small room', params: { size: 0.25, damp: 0.65, mix: 0.14, pre: 8, mod: 0.1 } },
+  { preset: 'Glide Lead', treatment: 'Singing tape', effects: [
+    { type: 'shape', label: 'Lead warmth', params: { drive: 1.15, mode: 0, level: 0.88 } },
+    { type: 'delay', label: 'Tape echo', params: { time: 280, length: 500, fb: 0.3, mix: 0.22, tape: 1, wow: 0.08 } },
+    { type: 'reverb', label: 'Lead space', params: { size: 0.42, damp: 0.62, mix: 0.12, pre: 14, mod: 0.1 } },
+  ] },
+  { preset: 'Square Lead', treatment: 'Wide slap', effects: [
+    { type: 'delay', label: 'Slap echo', params: { time: 120, length: 500, fb: 0.16, mix: 0.17, tape: 1, wow: 0.03 } },
+    { type: 'reverb', label: 'Short room', params: { size: 0.28, damp: 0.65, mix: 0.09, pre: 10, mod: 0.05 } },
+    { type: 'chorus', label: 'Lead width', params: { rate: 0.09, depth: 0.12, mix: 0.15 } },
+  ] },
+  { preset: 'Soft Flute', treatment: 'Air ensemble', effects: [
+    { type: 'reverb', label: 'Soft hall', params: { size: 0.55, damp: 0.6, mix: 0.2, pre: 18, mod: 0.12 } },
+    { type: 'chorus', label: 'Slow ensemble', params: { rate: 0.13, depth: 0.14, mix: 0.18 } },
+  ] },
+  { preset: 'Muted Horn', treatment: 'Velvet ensemble', effects: [
+    { type: 'shape', label: 'Horn warmth', params: { drive: 1.2, mode: 0, level: 0.83 } },
+    { type: 'reverb', label: 'Horn room', params: { size: 0.34, damp: 0.68, mix: 0.14, pre: 12, mod: 0.08 } },
+    { type: 'chorus', label: 'Brass ensemble', params: { rate: 0.22, depth: 0.18, mix: 0.18 } },
   ] },
   { preset: 'Pink Wind', treatment: 'Drifting space', effects: [
     { type: 'delay', label: 'Drifting echo', params: { time: 360, length: 500, fb: 0.42, mix: 0.3, tape: 1, wow: 0.15 } },
@@ -84,6 +102,7 @@ for (const study of studies) {
       if (!Number.isFinite(sample)) throw new Error(`${p.name}: nonfinite output`);
       peak = Math.max(peak, Math.abs(sample));
     }
+    if (peak > 0.88) throw new Error(`${p.name}: raw phrase peak ${peak} exceeds 0.88`);
     const loudness = integratedLoudness(channels[0], channels[1], DEVICE_SR);
     const matchedGain = Number.isFinite(loudness) ? Math.min(10 ** ((-23 - loudness) / 20), peak ? 0.88 / peak : 1) : 1;
     const id = `monolith-fx--${study.preset.toLowerCase().replace(/[^a-z0-9]+/g, '-')}--${wet ? 'effected' : 'dry'}`;

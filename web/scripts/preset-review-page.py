@@ -52,9 +52,9 @@ body += ['<h2 id="spokes">Spokes: six different arrangements</h2>',
 for entry in entries:
     if entry['instrument'] == 'Spokes 6':
         body.append(f'<article><h3>{esc(entry["preset"])}</h3>{sound(entry)}</article>')
-body += ['<h2 id="effects">Monolith D: dry / effects</h2>',
-         '<p>Each pair plays the same synth settings and notes. Start with the level-matched versions, then use Raw to hear the actual change in level. The added effects are saved in the downloadable patch, with their own editable controls.</p>',
-         '<p>These four experiments fit the current FM-1 budget estimate. They are separate patches for comparison; they have not been added to the factory preset selector.</p>']
+body += ['<h2 id="effects">Monolith D: composed effects</h2>',
+         '<p>Basses combine drive with a close room; leads combine echo and reverb; flute and horn add ensemble width and space. Pink Wind keeps its moving echo, reverb and chorus. Each pair plays the same synth settings and notes. Start with the level-matched versions, then use Raw to hear the actual change in level. The added effects are saved in the downloadable patch, with their own editable controls.</p>',
+         '<p>These seven combinations fit the current FM-1 budget estimate. They are separate patches for comparison; they have not been added to the factory preset selector.</p>']
 for index in range(0, len(effects), 2):
     dry, wet = effects[index:index + 2]
     body.append(f'<article><h3>{esc(dry["device"])} — {esc(wet["treatment"])}</h3><div class="pair"><div>{sound(dry, args.effects + "/")}</div><div>{sound(wet, args.effects + "/")}</div></div></article>')
