@@ -28,7 +28,7 @@ import { ScopeScreens } from './scope-view';
 import { EnvScreens } from './env-view';
 import { addToBank, bankPatches, buildPatchesSection, type LibrarySection as LibraryPane } from './bank';
 import { buildPresetsSection } from './library-presets';
-import { sendPatchPresets } from './patch-presets';
+import { bindPatchPresetTransfer } from './patch-presets';
 import { buildCommunitySection } from './library-community';
 import { isSaved, onSavedChange, putBackSaved, removeSaved, restoreSaved, savedPatches, savePatch as keepPatch, unsavedChanges } from './saved';
 import { showAction, showToast, showUndo } from './toast';
@@ -2271,19 +2271,7 @@ $<HTMLSelectElement>('mirror-fw').onchange = () => {
 };
 $('dev-settings').onclick = () => void openDeviceSettings($<HTMLDialogElement>('device-settings'), device);
 $('dev-send').onclick = () => void sendPatch();
-$('dev-presets').onclick = async () => {
-  const button = $<HTMLButtonElement>('dev-presets');
-  button.disabled = true;
-  devStatus('Sending this patch’s saved presets…');
-  try {
-    devStatus(await sendPatchPresets(editor.patch, device, (message) => window.confirm(message)));
-    libraryDeviceChanged();
-  } catch (e) {
-    devStatus((e as Error).message);
-  } finally {
-    button.disabled = !device.connected;
-  }
-};
+bindPatchPresetTransfer($<HTMLButtonElement>('dev-presets'), () => editor.patch, device, devStatus, libraryDeviceChanged);
 /** the open patch into slot n of the FM-1's bank, under its name (the device does not switch to it) */
 async function storeToSlot(): Promise<void> {
   if (!device.connected) return devStatus('connect the FM-1 first (FM-1 & MIDI)');

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Send saved assembly presets with a patch:** FM-1 & MIDI now offers “Send this patch’s presets” beside Send patch. It transfers the user presets for the patch’s devices, asks before replacing FM-1 copies, and reports incomplete transfers. Sending the patch itself still preserves its sound without copying preset lists.
+- **Send saved assembly presets with a patch:** FM-1 & MIDI now offers “Send this patch’s presets” beside Send patch. It transfers saved assembly presets, including nested ones, asks before replacing FM-1 copies, and refreshes Library even after incomplete transfers. PRESET selects presets for matching device pages; nested assemblies have no separate page in that patch. Sending the patch itself still preserves its sound without copying preset lists.
 
 ## 1.13.0 — 2026-11-10
 

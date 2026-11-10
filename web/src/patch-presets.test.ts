@@ -44,7 +44,7 @@ it('transfers distinct parent and nested child presets once each after save/load
   expect(selected.map((p) => p.name)).toEqual(['My Stack', 'Whole Stack']);
   expect(new Set(selected.map((p) => p.structure)).size).toBe(2);
   expect(parent.children).toContain(child.id);
-  expect(await sendPatchPresets(saved, device, () => true)).toContain('2 presets sent');
+  expect(await sendPatchPresets(saved, device, () => true)).toBe('2 presets sent to the FM-1’s preset store. PRESET selects presets for matching device pages. Nested assemblies have no separate device page in this patch.');
   expect(device.putPreset.mock.calls).toEqual(selected.map((p) => [p.structure, p.name, p.values]));
 });
 

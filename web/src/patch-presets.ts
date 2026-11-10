@@ -43,5 +43,20 @@ export async function sendPatchPresets(patch: Patch, device: PresetPeer, confirm
   } catch (e) {
     throw new Error(`${sent} of ${presets.length} presets sent. ${(e as Error).message}. Open Library > Presets to check the FM-1’s copies.`);
   }
-  return `${sent} preset${sent === 1 ? '' : 's'} sent. PRESET on the FM-1 can now select them on this patch’s devices.`;
+  return `${sent} preset${sent === 1 ? '' : 's'} sent to the FM-1’s preset store. PRESET selects presets for matching device pages. Nested assemblies have no separate device page in this patch.`;
+}
+
+export function bindPatchPresetTransfer(button: HTMLButtonElement, patch: () => Patch, device: PresetPeer, status: (message: string) => void, deviceChanged: () => void): void {
+  button.onclick = async () => {
+    button.disabled = true;
+    status('Sending this patch’s saved presets…');
+    try {
+      status(await sendPatchPresets(patch(), device, (message) => window.confirm(message)));
+    } catch (e) {
+      status((e as Error).message);
+    } finally {
+      button.disabled = !device.connected;
+      deviceChanged();
+    }
+  };
 }
