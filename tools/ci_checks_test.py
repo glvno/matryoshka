@@ -47,7 +47,8 @@ class SelectionTests(unittest.TestCase):
                      '.github/workflows/web.yml', '.github/workflows/release.yml']:
             with self.subTest(path=path):
                 chosen = ci.select([path], self.config, 'firmware')
-                self.assertEqual(chosen['host'], ['selector'])
+                self.assertEqual(chosen['host'], ['release-build', 'selector']
+                                 if path == '.github/workflows/release.yml' else ['selector'])
         chosen = ci.select(['docs/EMULATOR.md', 'README.md'], self.config, 'firmware')
         self.assertFalse(chosen['firmware'])
         self.assertEqual(chosen['host'], [])
