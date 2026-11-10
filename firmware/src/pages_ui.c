@@ -2620,7 +2620,10 @@ static int dp_load(uint32_t d, uint32_t k)
     uint32_t i;
     if (d >= pg_ndev || k >= dp_list(d) || (n = dp_entry(pr_list[k], nm)) < 0)
         return -1;
-    if (!(pr_list[k] & PR_USER)) dp_pattern(d, nm);
+    if (!(pr_list[k] & PR_USER)) {
+        dp_pattern(d, nm);
+        pages_ensure(); /* Notes precede page metadata; growth or shrink can move every row pointer. */
+    }
     else dp_clear_origin(d);
     dp_short = (uint32_t)n < pg_dev[d].nrows;
     for (i = 0; i < (uint32_t)n && i < pg_dev[d].nrows; i++) {

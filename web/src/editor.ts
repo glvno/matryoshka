@@ -1,5 +1,6 @@
 import { keyRouteError } from './key-routing';
 // SPDX-License-Identifier: GPL-3.0-only
+import { invalidatePresetPatterns } from './preset-patterns';
 // Patch editor: module cards on a canvas, SVG cables, drag-to-connect, a selection, assemblies and undo.
 import { resizeHandle } from './resize-handle';
 import { FINE, parseValue, stepOf, stepToward, wholeSteps } from './value-input';
@@ -1241,6 +1242,13 @@ export class Editor {
 
   /** a track edited on the FM-1's SEQ page (its notes as they are now, of pattern `pat`): into the patch and the grid, an
    * undo step like an edit here (an undo sends the patch back to the FM-1, so a change made there must be in the history) */
+  clearPatternOrigins(): void {
+    if (!this.patch.modules.some((m) => m.type === 'steps' && m.factoryPatterns)) return;
+    this.touch();
+    invalidatePresetPatterns(this.patch);
+    this.ev.onLayout(this.patch);
+  }
+
   originFromDevice(id: number, pattern: number, identity: number, clear = false): void {
     const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
     if (!m || pattern < 0 || pattern >= 64) return;

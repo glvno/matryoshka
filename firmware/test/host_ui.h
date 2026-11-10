@@ -213,10 +213,14 @@ static void host_set_origin(uint32_t mod, uint32_t pattern, uint32_t identity)
 static void m1_clear_origin(uint32_t mod, uint32_t pattern) { host_set_origin(mod, pattern, 0); }
 static int m1_default_pattern(uint32_t mod, uint32_t pattern, const uint32_t *words, uint32_t n, uint32_t identity)
 {
+#ifdef HOST_DEFAULT_PATTERN_IMPL
+    return host_default_pattern(pv_bin, &pv_len, mod, pattern, words, n, identity);
+#else
     if (!eng_origin_record(pv_bin, pv_len, mod, pattern) || !eng_pattern_set_notes(mod, pattern, words, n)) return 0;
     host_pattern_notify(mod, pattern, words, n);
     host_set_origin(mod, pattern, identity);
     return 1;
+#endif
 } /* preview SAVE uses the editor's mirrored notes; real device persistence is covered through proto.c */
 #include "../src/pages_ui.c"
 #include "../src/sandbox_ui.c"

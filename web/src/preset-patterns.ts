@@ -10,6 +10,11 @@ import { noteWord, patternLocks, patternOf, wordNote } from './track';
 export { presetPattern } from './preset-pattern-data';
 import { presetPattern, presetPatternById } from './preset-pattern-data';
 
+/** A device patch boundary invalidates replacement permission, never the user's notes or settings. */
+export function invalidatePresetPatterns(p: Patch): void {
+  for (const m of p.modules) if (m.type === 'steps') delete m.factoryPatterns;
+}
+
 /** Only one unambiguous driving track may own the selected default. */
 function target(p: Patch, a: AssemblyInst): { track: ModuleInst; selected: number } | undefined {
   const id = devicesOf(p, DEFS).find((d) => d.asm === a.id)?.track;

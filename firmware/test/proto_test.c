@@ -7,7 +7,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef PROTO_TEST_EXTERNAL_ENGINE
+#include "../src/engine.h"
+#else
 #include "../src/engine.c"
+#endif
 
 static int applied, stored;
 static int slot_writes, slot_erases;
@@ -187,6 +191,8 @@ static int arms_calls;
 static eng_mset_t arms_last;                                  /* (what the link carried, before the engine keeps the patch's) */
 static void m1_arms(eng_mset_t mask) { arms_calls++; arms_last = mask; eng_arm_mask(mask); }   /* (main.c's, #191) */
 #include "../src/proto.c"
+
+#ifndef PROTO_TEST_EXTERNAL_ENGINE
 
 static uint8_t *slurp(const char *path, long *n)
 {
@@ -1233,3 +1239,5 @@ int main(int argc, char **argv)
     printf("proto ok: %u acks, %ld patch bytes, render identical\n", acks_ok, np);
     return 0;
 }
+
+#endif /* PROTO_TEST_EXTERNAL_ENGINE */

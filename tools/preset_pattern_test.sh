@@ -6,6 +6,10 @@ cd "$(dirname "$0")/.."
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT HUP INT TERM
 for test in preset_pattern_test preset_pattern_panel_test; do
-    cc -O1 -w -o "$T/$test" "firmware/test/$test.c" -lm
+    if [ "$test" = preset_pattern_panel_test ]; then
+        cc -O1 -w -o "$T/$test" "firmware/test/$test.c" firmware/test/preset_pattern_proto_bridge.c -lm
+    else
+        cc -O1 -w -o "$T/$test" "firmware/test/$test.c" -lm
+    fi
     "$T/$test"
 done
