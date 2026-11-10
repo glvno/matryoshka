@@ -3107,6 +3107,7 @@
      "col": true
     }
    ],
+   "preset": "Init",
    "children": [
     1,
     2,
@@ -3114,9 +3115,7 @@
     4,
     5,
     6
-   ],
-   "preset": "Init",
-   "factoryPattern": "6b453dde"
+   ]
   }
  ],
  "octave": -1

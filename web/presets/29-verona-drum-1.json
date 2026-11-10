@@ -3435,6 +3435,7 @@
      "head": "master"
     }
    ],
+   "preset": "Init",
    "children": [
     1,
     2,
@@ -3442,9 +3443,7 @@
     4,
     5,
     6
-   ],
-   "preset": "Init",
-   "factoryPattern": "22622bfa"
+   ]
   }
  ],
  "octave": -1

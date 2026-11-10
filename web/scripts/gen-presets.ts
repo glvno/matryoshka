@@ -751,11 +751,11 @@ for (const f of readdirSync(DIR)) if (!scope.size && f.endsWith('.json')) unlink
 const write = (p: Patch, i: number): void => {
   if (!selected(p)) return;
   const b = deviceBudget(p);
-  writeFileSync(new URL(`${String(i).padStart(2, '0')}-${slug(p.name)}.json`, DIR), JSON.stringify(p, null, 1) + '\n');
+  writeFileSync(new URL(`${String(i).padStart(2, '0')}-${slug(p.name)}.json`, DIR), JSON.stringify(reconciled(p), null, 1) + '\n');
   console.log(`${String(i).padStart(2, '0')} ${p.name.padEnd(16)} cpu ${(b.cpu.use * 100).toFixed(0)} %  memory ${(b.memory * 100).toFixed(0)} %  level ${p.modules.find((m) => m.type === 'output')!.params.level}`);
 };
 made.forEach(write);
-if (selected(keptFinal)) writeFileSync(new URL(`${String(made.length).padStart(2, '0')}-${KEEP}`, DIR), JSON.stringify(keptFinal, null, 1) + '\n');
+if (selected(keptFinal)) writeFileSync(new URL(`${String(made.length).padStart(2, '0')}-${KEEP}`, DIR), JSON.stringify(reconciled(keptFinal), null, 1) + '\n');
 console.log(`${made.length} 909 Kit (kept)`);
 later.forEach((p, i) => write(p, made.length + 1 + i));
 
