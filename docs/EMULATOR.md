@@ -35,12 +35,20 @@ Choose commands using the canonical stage rules:
 - **Registered test rig:** [D-123](ledger/releases.md#D-123) governs installation; [D-141](ledger/releases.md#D-141)
   governs targeted hardware checks and candidate qualification. Other FM-1 installers follow [D-171](ledger/firmware-install.md#D-171).
 
-The full suites are `emu:smoke` and `emu:scenarios` without `--only`. For a focused scenario, see the named-scenario
-command below. Required build checks are separate ([D-100](ledger/releases.md#D-100), [D-116](ledger/releases.md#D-116)).
-The current firmware and release workflows also run broad host checks, and web CI and deployment run broad web tests.
-Their test selection has not yet been aligned with [D-144](ledger/releases.md#D-144). Local pass markers do not automatically establish source-equivalent release
-qualification: smoke and boot markers use timestamps, while scenario markers check the emulator-bridge hash.
-The release workflow rebuilds versioned firmware. Reusing qualification under
+The full emulator suites are `emu:smoke` and `emu:scenarios` without `--only`. For a focused scenario, see the
+named-scenario command below. Host and web CI use the changed-domain plan in `tools/ci_checks.json`
+([D-102](ledger/releases.md#D-102)). Explicit RC dispatches require the exact frozen commit. Required build checks
+remain separate ([D-100](ledger/releases.md#D-100), [D-116](ledger/releases.md#D-116)).
+
+An unmapped change fails planning. Native recorder changes need a concrete manual test/review plan in
+`tools/ci_test_plan.json`, tied to the changed file's hash. CI reports it as review input, never an automated pass.
+A missing or stale plan fails the required `build` check. Main pushes still run targeted checks because CI has no
+reliable record for reusing a previous pull request's results. Deployment still runs broad coverage tests to produce
+the About card's figures; reusing qualified coverage remains open in [the release ledger](ledger/releases.md#not-yet-settled).
+
+The release workflow rebuilds versioned firmware. Package-only mode establishes no test qualification.
+Local pass markers do not automatically establish source-equivalent release qualification: smoke and boot markers
+use timestamps, while scenario markers check the emulator-bridge hash. Reusing results under
 [D-105](ledger/releases.md#D-105) does not mean that a development package can be relabeled as final release bytes.
 
 ## Commands

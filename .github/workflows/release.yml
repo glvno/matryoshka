@@ -1,4 +1,5 @@
 name: release
+# Package/result reuse: D-105. Explicit candidate qualification: D-144.
 # Builds a release package by hand (Actions > release > Run workflow, or gh workflow run release.yml -f version=1.8.0):
 # tools/build.py --release <version> (identity FM-1_7MMmmpp, e.g. FM-1_7010800; version string vX.Y.Z), the build safeguards of
 # firmware.yml, and uploads release-<version>/ with the build log. Full host checks require explicit rc mode. It does not tag or publish: see "Releasing" in

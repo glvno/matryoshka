@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""Select CI checks by changed domain; full suites require an explicit frozen RC.
+"""Select CI checks by changed domain under D-102 and D-144.
 
 An uncovered path fails with a test-plan request. Add a reviewed rule to
 ci_checks.json instead of falling back to the whole suite or skipping it.

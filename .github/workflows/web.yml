@@ -1,4 +1,5 @@
 name: web
+# Event/cancellation rules: D-102. Targeted and frozen-candidate test scope: D-144.
 on:
   push:
     branches: [main]

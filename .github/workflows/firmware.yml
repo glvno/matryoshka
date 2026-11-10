@@ -1,5 +1,5 @@
 name: firmware
-# Required build safeguards remain on targeted changes. Full host suites require an explicit frozen RC.
+# Build safeguards: D-100. Event/cancellation rules: D-102. Test scope: D-144.
 # The reviewed path/test plan is tools/ci_checks.json; no workflow parses its own YAML.
 on:
   push:
