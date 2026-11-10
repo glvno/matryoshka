@@ -1,3 +1,4 @@
+import { addModule, connect } from './patch';
 // SPDX-License-Identifier: GPL-3.0-only
 // The FM-1's UI as WebAssembly (fm1-ui.ts, firmware/wasm/fm1_ui.c) against the host preview of the same firmware
 // (tools/ui_preview.sh): the same patch and page must give the same framebuffer, and the panel must drive it.
@@ -136,6 +137,34 @@ describe('the FM-1 UI as WebAssembly', () => {
     ui.keys(0);
     expect(notes.length).toBe(3);                 // playing after step record leaves the pattern unchanged
   }, 30_000);
+  it.each([true, false])('captures a Side chord after Harmonizer with preview %s', async preview => {
+    const patch = FM1_PRESETS['Silver Box']();
+    const main = patch.modules.find(m => m.type === 'fm1')!;
+    const track = patch.modules.find(m => m.type === 'steps')!;
+    delete track.notes;
+    const h = addModule(patch, DEFS.harm, 0, 0);
+    h.params.type = 1;
+    patch.cables = patch.cables.filter(c => !(c.to.module === track.id && c.to.port === 'keys'));
+    expect(connect(patch, DEFS, { module: main.id, port: 'keys' }, { module: h.id, port: 'keys' })).toBe(true);
+    expect(connect(patch, DEFS, { module: h.id, port: 'keys' }, { module: track.id, port: 'keys' })).toBe(true);
+    let notes: { at: number; note: number }[] = [];
+    const ui = await Fm1Ui.create(bytes, { track: (_id, n) => { notes = n; } });
+    expect(ui.load(encodePatch(patch), 'HARM CAPTURE')).toBe(0); ui.tick(1000);
+    let time = 1000;
+    const button = (id: number, down: boolean) => { ui.tick(time += 60); return ui.button(id, down); };
+    const tap = (id: number) => { button(id, true); button(id, false); };
+    tap(BUTTONS.seq); tap(BUTTONS.rec);
+    if (!preview) { button(BUTTONS.scl, true); tap(BUTTONS.fx); button(BUTTONS.scl, false); }
+    const control = ui.keys(1 << 3);
+    expect(control).toEqual([expect.objectContaining({ kind: 3, note: 3, on: true })]);
+    const played = ui.keys((1 << 3) | (1 << 7));
+    expect(played.filter(p => p.on).map(p => p.note)).toEqual(preview ? [60,63,67] : []);
+    expect(played.every(p => p.kind === 1)).toBe(true); // direct track audition, never harmonized twice
+    ui.keys(1 << 7); expect(notes).toEqual([]); // a control release never commits
+    ui.keys(0);
+    expect(notes.map(n => [n.at,n.note])).toEqual([[0,60],[0,63],[0,67]]);
+  });
+
   it('piano keys play outside recording; step preview can be silent and recover a missed toggle', async () => {
     let notes: { at: number; len: number; note: number; vel: number }[] = [];
     const patch = FM1_PRESETS['Silver Box']();
@@ -155,7 +184,7 @@ describe('the FM-1 UI as WebAssembly', () => {
     expect(ui.guide()!.stepRecord).toBe(true);
     expect(ui.keys(1 << 7).some(p => p.note === 60 && p.on)).toBe(true);
     button(BUTTONS.scl, true);
-    expect(button(BUTTONS.fx, true)).toEqual([{ note: 60, vel: 0, on: false }]);
+    expect(button(BUTTONS.fx, true)).toEqual([expect.objectContaining({ note: 60, vel: 0, on: false, kind: 1 })]);
     button(BUTTONS.fx, false);
     button(BUTTONS.scl, false);
     expect(ui.keys(0)).toEqual([]);

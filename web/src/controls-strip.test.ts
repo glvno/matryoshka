@@ -95,19 +95,20 @@ describe('the controls strip is made from the controls table (#554, controls.ts)
   });
 
   it('changing an order number in CONTROLS changes the strip\'s order, with no other change', () => {
-    const before = ids(stripView(at('step')).rows);
+    const all = () => { const v = stripView(at('step')); return ids([...v.rows, ...v.more]); };
+    const before = all();
     const cursor = CONTROLS.find((r) => r.id === 'sr-cursor')!;
     const was = cursor.sheet!.step!;
     try {
       cursor.sheet!.step = 1;
-      const after = ids(stripView(at('step')).rows);
+      const after = all();
       expect(after[0]).toBe('sr-cursor');
       expect(after).not.toEqual(before);
       expect([...after].sort()).toEqual([...before].sort());
     } finally {
       cursor.sheet!.step = was;
     }
-    expect(ids(stripView(at('step')).rows)).toEqual(before);
+    expect(all()).toEqual(before);
   });
 
   it('a long state: the sheet\'s first 8 rows, the rest behind "+N more" (the patch buttons count, as on the sheet)', () => {

@@ -79,7 +79,7 @@ static int hc_tracks(void) { return eng_steps_count() > 0; }
 static int hc_menu_guide(void) { return menu_tab == MT_GUIDE; }
 static int hc_menu_page(void) { return menu_page() != 0; }
 static int hc_menu_system(void) { return menu_tab == MT_SYSTEM && !menu_sys2; }   /* (its first page: UPDATE MODE, FACTORY RESET) */
-static int hc_harm(void) { return eng_keys_harm() >= 0; }   /* (the keys reach a Harmonizer: its chord buttons, #598) */
+static int hc_harm(void) { return (sr_on ? eng_steps_harm((uint32_t)seq_module()) : eng_keys_harm()) >= 0; }   /* (the keys reach a Harmonizer: its chord buttons, #598) */
 
 /* the rows of the patch buttons with a job in the loaded patch (FX, LFO, EDIT, ARP; SEL, ENV and GLO are fixed): the
  * button by its own name, then its job: a Toggle "name on/off", a Page button "name pages", a Gate with a cable from its

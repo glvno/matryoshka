@@ -23,7 +23,7 @@
 // value, to edit from there).
 import { NOTE_NAMES } from './modules';
 import { STEPS_MAX, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef } from './patch';
-import { isDrone, locksAt, setChord, setLock, setStep, setStepValue, STEP_NOTE, STEP_VEL, stepView, type StepLock, type StepNote, type StepView } from './track';
+import { chordFits, isDrone, locksAt, setChord, setLock, setStep, setStepValue, STEP_NOTE, STEP_VEL, stepView, type StepLock, type StepNote, type StepView } from './track';
 
 /** a row of the track's device a step can lock (#524): its module's parameter, its label ("filter cutoff"), its definition
  * and its normal value now */
@@ -68,11 +68,18 @@ type Lane = 'steps' | 'note' | 'vel';
 
 /** the grid in cursor entry (#127, #135): its module, the cursor, and what the newest grid of that module does with a note
  * played, a note let go or a key */
-let entry: { id: number; k: number; note(note: number, vel: number): void; off(note: number): void; key(key: string): boolean; stop(): void } | null = null;
+let entry: { id: number; k: number; note(note: number, vel: number, pitches?: number[]): void; off(note: number): void; key(key: string): boolean; stop(): void } | null = null;
+let entryGeneration = 0;
+export const recordTarget = (): { id: number; token: number } | null => entry ? { id: entry.id, token: entryGeneration } : null;
+export function recordInput(e: { id: number; token: number; note: number; notes: number[]; vel: number; down: boolean }): void {
+  if (!entry || entry.id !== e.id || e.token !== entryGeneration || !e.notes.length) return;
+  if (e.down) recordNote(e.note, e.vel, e.notes);
+  else recordOff(e.note);
+}
 /** a note played while a grid is in cursor entry: it joins the chord for the cursor's step; false when none is */
-export function recordNote(note: number, vel: number): boolean {
+export function recordNote(note: number, vel: number, pitches?: number[]): boolean {
   if (!entry) return false;
-  entry.note(note, vel);
+  entry.note(note, vel, pitches);
   return true;
 }
 /** a note let go while a grid is in cursor entry: the first let go writes the chord */
@@ -83,6 +90,7 @@ export function recordOff(note: number): void {
 export const recordKey = (key: string): boolean => !!entry?.key(key);
 /** stop cursor entry (another patch loaded, REC off) */
 export function stopEntry(): void {
+  entryGeneration++;
   const a = entry;
   entry = null;
   a?.stop();
@@ -520,14 +528,17 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
     entry = {
       id: m.id,
       k: Math.min(k, len() - 1),
-      note: (note, vel) => {
+      note: (note, vel, pitches = [note]) => {
         if (!down.size) chord = new Map();
         down.add(note);
-        chord.set(note, Math.max(1, Math.min(127, Math.round(vel * 127))));
+        for (const n of pitches) chord.set(n, Math.max(1, Math.min(127, Math.round(vel * 127))));
       },
       off: (note) => {
         if (!down.delete(note) || !chord.size) return;
         const at = entry!.k;
+        if (!chordFits(m.notes, at, [...chord.keys()].map(note => ({ note })), lenOf(m))) {
+          chord.clear(); readout.textContent = 'Track full: 128 notes'; return;
+        }
         ops.notes(setChord(m.notes, at, [...chord].map(([n, v]) => ({ note: n, vel: v })), lenOf(m)));
         chord = new Map(); // (the keys still down were in it; a key played now starts the next chord)
         paintAll();

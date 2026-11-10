@@ -30,6 +30,7 @@ on:
       - web/src/cpu.ts
       - web/src/device-compile.ts
       - web/src/device-shown.ts
+      - web/src/key-routing.ts
       - web/src/engine.ts
       - web/src/fallback.ts
       - web/src/labels.ts

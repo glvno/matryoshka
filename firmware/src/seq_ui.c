@@ -82,7 +82,7 @@ static uint8_t seq_shown_lo = 0xFEu;    /* ... and the roll's pitches (its lowes
  * step as its key goes down and ends on the cursor's step when let go (a tie moved the cursor meanwhile). Each write lays
  * the chord over the track's notes as they were when its first key went down (seq_held_notes: no step is held meanwhile) */
 #define SR_BACK 22u                     /* black key 10 (D#5): back one step, that step cleared */
-#define SR_NOTES 27u
+#define SR_NOTES (eng_steps_entry_memory() ? 128u : 27u)
 static uint8_t sr_on;                   /* step record runs */
 static uint8_t sr_k;                    /* the cursor: a step of the pattern */
 static uint8_t sr_from;                 /* the step the chord's first note started on */
@@ -93,9 +93,52 @@ static uint32_t sr_keys;                /* the keys of the chord held now (bit n
 static uint32_t sr_skip;                /* keys held as it started (REC's white key) or past a tie at the end: their
                                          * release is nobody's */
 static uint8_t sr_n;                    /* the chord's notes: pitch, velocity, first and last step, keys holding it */
-static uint8_t sr_note[SR_NOTES], sr_vel[SR_NOTES], sr_at[SR_NOTES], sr_end[SR_NOTES], sr_hold[SR_NOTES];
-static uint8_t sr_of[27];               /* each held key's note in the chord */
+static uint8_t sr_legacy_note[27], sr_legacy_vel[27], sr_legacy_at[27], sr_legacy_end[27], sr_legacy_hold[27];
+static uint8_t sr_legacy_of[27];
+#define SR_FIELD(field) (eng_steps_entry_memory() ? eng_steps_entry_memory()->field : sr_legacy_##field)
+#define sr_note SR_FIELD(note)
+#define sr_vel SR_FIELD(vel)
+#define sr_at SR_FIELD(at)
+#define sr_end SR_FIELD(end)
+#define sr_hold SR_FIELD(hold)
+static uint32_t sr_key_count(uint32_t n)
+{
+    eng_step_entry_t *e = eng_steps_entry_memory();
+    return e ? e->count[n] : 1u;
+}
+static void sr_key_count_set(uint32_t n, uint32_t count)
+{
+    eng_step_entry_t *e = eng_steps_entry_memory();
+    if (e) e->count[n] = (uint8_t)count;
+}
+static uint8_t *sr_index(uint32_t n, uint32_t j)
+{
+    eng_step_entry_t *e = eng_steps_entry_memory();
+    return e ? &e->of[n][j] : &sr_legacy_of[n];
+}
+static uint32_t seq_aud_count(uint32_t n)
+{
+    eng_step_entry_t *e = eng_steps_entry_memory();
+    return e ? e->audition_count[n] : seq_thru_note[n] != 0u;
+}
+static uint32_t seq_aud_note(uint32_t n, uint32_t j)
+{
+    eng_step_entry_t *e = eng_steps_entry_memory();
+    return e ? e->audition[n][j] : seq_thru_note[n] - 1u;
+}
+static void seq_aud_add(uint32_t n, uint32_t note)
+{
+    eng_step_entry_t *e = eng_steps_entry_memory();
+    if (e) e->audition[n][e->audition_count[n]++] = (uint8_t)note;
+    else seq_thru_note[n] = (uint8_t)(note + 1u);
+}               /* each held key's note in the chord */
 static void sr_stop(void);
+/* A load can run during MIDI dispatch, before seq_poll. Never read a previous gesture from the new patch's storage. */
+static int sr_guard(void)
+{
+    if (sr_on && sr_gen != eng_generation()) { sr_stop(); return 0; }
+    return 1;
+}
 
 /* note key n (0 = F3) -> its white key's step on the page (0..15) or its black key's number (0..10: a row on the SEQ
  * page, a track with SEQ or REC held), else -1 */
@@ -589,6 +632,18 @@ static void seq_pen(int mod, uint32_t n)
 /* a black key let go that sounded through a drum track (#368): its note ends (recording: it is recorded now) */
 static void seq_thru_up(uint32_t n)
 {
+    if (n < 27u) {
+        for (uint32_t j = 0; j < seq_aud_count(n); j++) {
+            uint32_t note = seq_aud_note(n, j), held = 0;
+            for (uint32_t k = 0; k < 27u; k++) if (k != n)
+                for (uint32_t z = 0; z < seq_aud_count(k); z++)
+                    if (seq_thru_mod[k] == seq_thru_mod[n] && seq_aud_note(k, z) == note) held = 1;
+            if (!held) eng_steps_thru(seq_thru_mod[n], note, 0);
+        }
+        eng_step_entry_t *e = eng_steps_entry_memory();
+        if (e) e->audition_count[n] = 0;
+        else seq_thru_note[n] = 0;
+    }
     if (n < 27u && seq_thru_note[n]) {
         eng_steps_thru(seq_thru_mod[n], seq_thru_note[n] - 1u, 0);
         seq_thru_note[n] = 0;
@@ -614,8 +669,9 @@ static int sr_pitch(int map, uint32_t n)
  * before `from` and sounding into it ending before it (a tie through a written step is cut, as a plain white key cuts it,
  * D-531), plus the chord's notes (with chord: a note still held ends on the cursor's step). Into the engine, the patch
  * and the editor (TRACK_NOW) */
-static void sr_put(int mod, uint32_t from, uint32_t to, int chord)
+static int sr_put(int mod, uint32_t from, uint32_t to, int chord)
 {
+    if (!sr_guard()) return 0;
     uint32_t w[TRACK_NOTES_MAX];
     uint32_t i, m = 0, len = (uint32_t)seq_len(mod);
     for (i = 0; i < seq_held_n; i++) {
@@ -626,14 +682,18 @@ static void sr_put(int mod, uint32_t from, uint32_t to, int chord)
             x = eng_note_cut_before(x, from, len);
         w[m++] = x;
     }
-    for (i = 0; chord && i < sr_n && m < TRACK_NOTES_MAX; i++) {
+    if (chord && m + sr_n > TRACK_NOTES_MAX) { ui_msg("TRACK FULL: 128 NOTES", 1500); return 0; }
+    for (i = 0; chord && i < sr_n; i++) {
         uint32_t end = sr_hold[i] ? sr_k : sr_end[i];
         w[m++] = sr_at[i] | (end - sr_at[i]) << 6 | (uint32_t)sr_note[i] << 12 | (uint32_t)sr_vel[i] << 19;
     }
-    if (!eng_steps_set_notes((uint32_t)mod, w, m))
-        seq_msg_due = "TRACK FULL: 128 NOTES";
+    if (!eng_steps_set_notes((uint32_t)mod, w, m)) {
+        seq_msg_due = "PATCH NOTE MEMORY FULL";
+        return 0;
+    }
     seq_sync(mod);
     ui_dirty = ui_dirty ? ui_dirty : 1;
+    return 1;
 }
 
 /* step k made a rest: its notes go, a note sounding into it ends before it */
@@ -670,7 +730,7 @@ static void sr_start(int k, int key)
     sr_n = 0;
     sr_skip = key >= 0 ? 1u << key : 0u;
     sr_trk = seq_trk;
-    sr_gen = pages_gen();
+    sr_gen = eng_generation();
     seq_held = -1;
     sr_move(mod, 0);                             /* (the view shows the cursor's 16 steps) */
     ui_dirty = ui_dirty ? ui_dirty : 1;
@@ -695,6 +755,7 @@ static void sr_stop(void)
  * D-531): the chord is written as it is, the held keys' releases then do nothing, the cursor wraps (D-807) */
 static void sr_lfo(void)
 {
+    if (!sr_guard()) return;
     int mod = seq_module();
     uint32_t i;
     if (mod < 0)
@@ -726,6 +787,7 @@ static void sr_lfo(void)
 /* K4 in step record: the cursor, nothing written (not while a chord is held: its notes started where it was) */
 static void sr_knob(int32_t clicks)
 {
+    if (!sr_guard()) return;
     int mod = seq_module();
     if (mod >= 0 && !sr_keys && clicks)
         sr_move(mod, clicks);
@@ -735,6 +797,7 @@ static void sr_knob(int32_t clicks)
  * the last release writes the chord and moves the cursor on. Black key 10 (no chord held): back one step, cleared */
 static void sr_key(uint32_t n, int down)
 {
+    if (!sr_guard()) return;
     int mod = seq_module(), p;
     uint32_t bit = 1u << n, i;
     if (sr_skip & bit) {
@@ -760,13 +823,15 @@ static void sr_key(uint32_t n, int down)
         }
         sr_keys &= ~bit;
         seq_thru_up(n);
-        i = sr_of[n];
-        if (i < sr_n && sr_hold[i] && !--sr_hold[i])
-            sr_end[i] = sr_k;
+        for (uint32_t j = 0; j < sr_key_count(n); j++) {
+            i = *sr_index(n, j);
+            if (i < sr_n && sr_hold[i] && !--sr_hold[i]) sr_end[i] = sr_k;
+        }
+        sr_key_count_set(n, 0);
         if (!sr_keys) {                          /* the last key let go: the chord written, the cursor on one */
-            sr_put(mod, sr_from, sr_k, 1);
+            int wrote = sr_put(mod, sr_from, sr_k, 1);
             sr_n = 0;
-            sr_move(mod, 1);
+            if (wrote) sr_move(mod, 1);
         }
         return;
     }
@@ -782,31 +847,41 @@ static void sr_key(uint32_t n, int down)
         sr_from = sr_k;
         seq_held_keep(mod);
     }
-    for (i = 0; i < sr_n && !(sr_note[i] == (uint8_t)p && sr_at[i] == sr_k); i++)
-        ;
-    if (i == sr_n) {
-        if (sr_n >= SR_NOTES)
-            return;
-        sr_note[i] = (uint8_t)p;
-        sr_at[i] = sr_k;
-        sr_hold[i] = 0;
-        sr_n++;
+    uint8_t notes[8];
+    uint32_t count = eng_steps_input_notes((uint32_t)mod, (uint32_t)p, notes), need = 0, j;
+    /* Accept the whole gesture or none; never silently record half a chord. */
+    for (j = 0; j < count; j++) {
+        for (i = 0; i < sr_n && !(sr_note[i] == notes[j] && sr_at[i] == sr_k); i++);
+        if (i == sr_n) need++;
     }
-    sr_vel[i] = (panel_held >> BTN_ACC & 1u) ? ACCENT_VEL : STEP_VEL;
-    sr_hold[i]++;
-    sr_of[n] = (uint8_t)i;
-    sr_keys |= bit;
+    if (sr_n + need > SR_NOTES) { ui_msg("CHORD FULL", 1500); return; }
     seq_thru_up(n);
-    if (seq_map() >= 0 || sr_preview) {
-        seq_thru_mod[n] = (uint8_t)mod;
-        seq_thru_note[n] = (uint8_t)(p + 1);
-        eng_steps_thru((uint32_t)mod, (uint32_t)p, sr_vel[i]);
+    sr_key_count_set(n, count);
+    seq_thru_mod[n] = (uint8_t)mod;
+    for (j = 0; j < count; j++) {
+        for (i = 0; i < sr_n && !(sr_note[i] == notes[j] && sr_at[i] == sr_k); i++);
+        if (i == sr_n) {
+            sr_note[i] = notes[j]; sr_at[i] = sr_k; sr_hold[i] = 0; sr_n++;
+        }
+        sr_vel[i] = (panel_held >> BTN_ACC & 1u) ? ACCENT_VEL : STEP_VEL;
+        sr_hold[i]++;
+        *sr_index(n, j) = (uint8_t)i;
+        if (seq_map() >= 0 || sr_preview) {
+            uint32_t held = 0;
+            for (uint32_t k = 0; k < 27u; k++)
+                for (uint32_t z = 0; z < seq_aud_count(k); z++)
+                    if (seq_thru_mod[k] == (uint8_t)mod && seq_aud_note(k, z) == notes[j]) held = 1;
+            if (!held) eng_steps_thru((uint32_t)mod, notes[j], sr_vel[i]);
+            seq_aud_add(n, notes[j]);
+        }
     }
+    sr_keys |= bit;
 }
 
 /* Toggling preview does not write, move the cursor, or change the held chord. */
 static void sr_preview_toggle(void)
 {
+    if (!sr_guard()) return;
     uint32_t n;
     sr_preview = !sr_preview;
     if (!sr_preview)
@@ -1070,7 +1145,7 @@ static void seq_arm_shown(int opening)
     seq_armed_gen = pages_gen();
     if (mod >= 0) {
         eng_mset_t was = eng_arm_mask_get();
-        seq_arm_set(mset_one((uint32_t)mod));
+        seq_arm_set(eng_arms((uint32_t)mod));
         if (!mset_eq(eng_arm_mask_get(), was))          /* (#582: the page changed the arming, which stays after it: seq_leave says so) */
             seq_page_armed = (uint8_t)(seq_trk + 1u);
     }
@@ -1210,7 +1285,14 @@ static void seq_arm_key(uint32_t n)
     if (seq_no_track(b))
         return;
     mod = eng_steps_module((uint32_t)b);
-    eng_arm_mask(mset_flip(eng_arm_mask_get(), (uint32_t)mod));   /* (#191: one of the armed set, the others stay) */
+    eng_mset_t mask = eng_arm_mask_get(), chain = eng_arms((uint32_t)mod);
+    if (mset_has(mask, (uint32_t)mod)) {
+        mask = mset_minus(mask, chain);
+        /* Shared upstream processors still belong to the other armed devices. */
+        for (uint32_t m = 0; m < (uint32_t)eng_nmodules(); m++)
+            if (mset_has(mask, m)) mask = mset_or(mask, eng_arms(m));
+    } else mask = mset_or(mask, chain);
+    eng_arm_mask(mask);
     m1_arms_now(eng_arm_mask_get());
     seq_rec_sync();                              /* (REC on: it records from now on, or no longer: #395) */
     seq_name((uint32_t)b, name);
@@ -2202,7 +2284,7 @@ static void seq_poll(void)
     }
     if (seq_armed_gen != pages_gen())            /* another patch while the page shows: its track armed (#395) */
         seq_arm_shown(0);
-    if (sr_on && (sr_gen != pages_gen() || sr_trk != seq_trk || seq_module() < 0))
+    if (sr_on && (sr_gen != eng_generation() || sr_trk != seq_trk || seq_module() < 0))
         sr_stop();                               /* (another patch, track: step record ends, D-808) */
     if (sr_on && (int32_t)sr_k >= seq_len(seq_module())) {
         sr_k = 0;                                /* (the pattern got shorter under the cursor) */

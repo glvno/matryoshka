@@ -7,6 +7,14 @@
 import type { KeyPlay } from './fm1-ui';
 import type { HostMsg } from './worklet';
 
+/** UI note destinations are explicit: printed chord tones go straight into their track, never through harmony twice. */
+export function panelPlay(p: KeyPlay, moduleId: (index: number) => number, velocity = p.vel / 65536): HostMsg {
+  if (p.kind === 3) return { t: 'chord', button: p.note, down: p.on, track: moduleId(p.target!) };
+  if (p.kind === 2) return { t: 'chord', button: p.note, down: p.on };
+  if (p.kind === 1) return { t: 'thru', id: moduleId(p.target!), note: p.note, vel: p.on ? Math.round(p.vel * 127 / 65536) : 0 };
+  return p.on ? { t: 'on', note: p.note, vel: velocity, root: true } : { t: 'off', note: p.note, root: true };
+}
+
 /** the 27 keys from F3 (MIDI 53) at the panel's octave held now, as bits (bit 0 = F3); notes off the keybed are left out */
 export function keyBits(notes: Iterable<number>, octave: number): number {
   let bits = 0;
@@ -37,7 +45,7 @@ export class EmuKeys {
   /** the panel's keys pressed through the firmware UI: their release sounds what it lets go */
   private panel = new Set<number>();
 
-  constructor(private emu: EmuPanel) {}
+  constructor(private emu: EmuPanel, private moduleId: (index: number) => number = n => n) {}
 
   /** a message on its way to the browser engine; `fromPanel`: one of the panel's keys (not MIDI). Returns what to play
    * in its place: the message itself, what the firmware UI played for a panel key (the row of a Drum map, a key's own
@@ -56,7 +64,7 @@ export class EmuKeys {
     if (msg.t === 'on' ? fromPanel && onKeybed : this.panel.has(note)) {
       if (msg.t === 'on') this.panel.add(note);
       else this.panel.delete(note);
-      return played.map((p): HostMsg => p.on && msg.t === 'on' ? { t: 'on', note: p.note, vel: msg.vel } : { t: 'off', note: p.note });
+      return played.map(p => panelPlay(p, this.moduleId, msg.t === 'on' ? msg.vel : 0));
     }
     if (msg.t === 'on' && ui.page === PAGE_SEQ) { this.swallowed.add(note); return []; }
     if (msg.t === 'off' && this.swallowed.delete(note)) return [];

@@ -1,3 +1,4 @@
+import { keyReach } from './key-routing';
 // SPDX-License-Identifier: GPL-3.0-only
 // Devices and their pages: what the FM-1 lets you play with K1..K4, and what Main's knobs in the editor's dock turn.
 //
@@ -243,7 +244,7 @@ export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
     out.push(t);
     placed.add(t);
     // (a cable from it, or from an Arpeggiator it plays through)
-    const from = new Set([t.module, ...p.cables.filter((c) => c.from.module === t.module && p.modules.find((m) => m.id === c.to.module)?.type === 'arp').map((c) => c.to.module)]);
+    const from = new Set([...keyReach(p, t.module!)].filter(id => ['steps', 'harm', 'arp'].includes(p.modules.find(m => m.id === id)?.type ?? '')));
     const driven = reading.filter((d) => !placed.has(d) && !d.kind && p.cables.some((c) => from.has(c.from.module) && deviceOf.get(c.to.module) === d));
     for (const d of driven) {
       d.track = t.module;

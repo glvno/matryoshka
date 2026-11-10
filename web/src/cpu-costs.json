@@ -39,7 +39,7 @@
  },
  "blockUs": 2901,
  "note": 72,
- "block": 4318,
+ "block": 4343,
  "node": 213,
  "output": 3745,
  "sum": {
@@ -32560,7 +32560,7 @@
    "cv": 0
   },
   "arp": {
-   "run": 505,
+   "run": 507,
    "cv": 185,
    "dims": [
     {
@@ -32593,150 +32593,150 @@
     }
    ],
    "grid": [
-    505,
-    210,
-    210,
-    210,
-    210,
-    505,
-    210,
-    210,
-    210,
-    210,
-    505,
-    210,
-    210,
-    210,
-    210,
-    505,
-    505,
-    210,
-    210,
-    210,
-    505,
-    505,
-    210,
-    210,
-    210,
-    505,
-    505,
-    505,
-    505,
-    210,
-    914,
-    914,
-    914,
-    914,
-    1203,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2522,
-    2521,
-    2521,
-    2521,
-    2521,
-    2521,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2886,
-    2886,
-    2886,
-    2886,
-    2886,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2887,
-    2886,
-    2886,
-    2886,
-    2886,
-    2886
+    507,
+    212,
+    212,
+    212,
+    212,
+    507,
+    212,
+    212,
+    212,
+    212,
+    507,
+    212,
+    212,
+    212,
+    212,
+    507,
+    507,
+    212,
+    212,
+    212,
+    507,
+    507,
+    212,
+    212,
+    212,
+    507,
+    507,
+    507,
+    507,
+    212,
+    909,
+    909,
+    909,
+    909,
+    1199,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2518,
+    2517,
+    2517,
+    2517,
+    2517,
+    2517,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2881,
+    2881,
+    2881,
+    2881,
+    2881,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2882,
+    2881,
+    2881,
+    2881,
+    2881,
+    2881
    ]
   },
   "steps": {
-   "run": 13900,
+   "run": 13902,
    "cv": 278,
    "dims": [
     {
@@ -32747,10 +32747,10 @@
     }
    ],
    "grid": [
-    13900,
-    14540,
-    15691,
-    16331
+    13902,
+    14542,
+    15949,
+    16589
    ],
    "thru": 2080
   },
@@ -44184,423 +44184,423 @@
  "checks": [
   {
    "name": "Oracle V",
-   "cycles": 675673
+   "cycles": 680177
   },
   {
    "name": "Init",
-   "cycles": 68238
+   "cycles": 68505
   },
   {
    "name": "Simple FM",
-   "cycles": 76007
+   "cycles": 76214
   },
   {
    "name": "Plucked String",
-   "cycles": 216969
+   "cycles": 218017
   },
   {
    "name": "Monolith D",
-   "cycles": 196304
+   "cycles": 196330
   },
   {
    "name": "Silver Box",
-   "cycles": 128457
+   "cycles": 128947
   },
   {
    "name": "Hera 4",
-   "cycles": 753448
+   "cycles": 757687
   },
   {
    "name": "Sallen 20",
-   "cycles": 284477
+   "cycles": 285372
   },
   {
    "name": "Expander S",
-   "cycles": 518048
+   "cycles": 520556
   },
   {
    "name": "Algo Four",
-   "cycles": 960572
+   "cycles": 960618
   },
   {
    "name": "Canvas",
-   "cycles": 469755
+   "cycles": 469779
   },
   {
    "name": "Wanderer",
-   "cycles": 257271
+   "cycles": 258349
   },
   {
    "name": "Briefcase 3",
-   "cycles": 386192
+   "cycles": 387183
   },
   {
    "name": "Io 4",
-   "cycles": 517203
+   "cycles": 517247
   },
   {
    "name": "Vernon 100",
-   "cycles": 316033
+   "cycles": 317141
   },
   {
    "name": "8 Lire",
-   "cycles": 407805
+   "cycles": 409337
   },
   {
    "name": "Elvira 2",
-   "cycles": 214377
+   "cycles": 215084
   },
   {
    "name": "Scrounge",
-   "cycles": 341541
+   "cycles": 342490
   },
   {
    "name": "Meridian 8",
-   "cycles": 332659
+   "cycles": 333608
   },
   {
    "name": "Perun 4",
-   "cycles": 323327
+   "cycles": 324111
   },
   {
    "name": "808 Kit",
-   "cycles": 396232
+   "cycles": 397249
   },
   {
    "name": "909 Kit",
-   "cycles": 235971
+   "cycles": 236853
   },
   {
    "name": "<7PH",
-   "cycles": 341732
+   "cycles": 342834
   },
   {
    "name": "Spokes 6",
-   "cycles": 365440
+   "cycles": 366378
   },
   {
    "name": "Cassia 1",
-   "cycles": 733198
+   "cycles": 737466
   },
   {
    "name": "Basic Poly",
-   "cycles": 201659
+   "cycles": 202829
   },
   {
    "name": "Drift Poly",
-   "cycles": 302869
+   "cycles": 304344
   },
   {
    "name": "Mono Lead",
-   "cycles": 89786
+   "cycles": 90116
   },
   {
    "name": "Supersaw Stack",
-   "cycles": 314970
+   "cycles": 316262
   },
   {
    "name": "Verona Drum 1",
-   "cycles": 365059
+   "cycles": 365084
   },
   {
    "name": "Acid, 4 parts",
-   "cycles": 316876
+   "cycles": 316910
   },
   {
    "name": "Acid, morph",
-   "cycles": 94363
+   "cycles": 94388
   },
   {
    "name": "assembly 8 Lire",
-   "cycles": 388982
+   "cycles": 389005
   },
   {
    "name": "assembly adsr operator",
-   "cycles": 22575
+   "cycles": 22600
   },
   {
    "name": "assembly Algo Four",
-   "cycles": 960101
+   "cycles": 960149
   },
   {
    "name": "assembly auto pan",
-   "cycles": 24194
+   "cycles": 24219
   },
   {
    "name": "assembly barber pole",
-   "cycles": 63212
+   "cycles": 63237
   },
   {
    "name": "assembly basic poly",
-   "cycles": 174831
+   "cycles": 174863
   },
   {
    "name": "assembly boom kick",
-   "cycles": 27637
+   "cycles": 27662
   },
   {
    "name": "assembly bowed glass",
-   "cycles": 99912
+   "cycles": 99937
   },
   {
    "name": "assembly bowed string",
-   "cycles": 61161
+   "cycles": 61186
   },
   {
    "name": "assembly Briefcase 3",
-   "cycles": 369428
+   "cycles": 369451
   },
   {
    "name": "assembly Canvas",
-   "cycles": 492393
+   "cycles": 492418
   },
   {
    "name": "assembly Cassia 1",
-   "cycles": 701356
+   "cycles": 701425
   },
   {
    "name": "assembly clap",
-   "cycles": 47920
+   "cycles": 47945
   },
   {
    "name": "assembly clock",
-   "cycles": 31831
+   "cycles": 31856
   },
   {
    "name": "assembly cloud",
-   "cycles": 39728
+   "cycles": 39753
   },
   {
    "name": "assembly cowbell",
-   "cycles": 53984
+   "cycles": 54009
   },
   {
    "name": "assembly drift poly",
-   "cycles": 276704
+   "cycles": 276740
   },
   {
    "name": "assembly drum kit",
-   "cycles": 368760
+   "cycles": 368783
   },
   {
    "name": "assembly ducking delay",
-   "cycles": 28420
+   "cycles": 28445
   },
   {
    "name": "assembly echo",
-   "cycles": 132880
+   "cycles": 132905
   },
   {
    "name": "assembly Elvira 2",
-   "cycles": 195054
+   "cycles": 195079
   },
   {
    "name": "assembly envelope filter",
-   "cycles": 46452
+   "cycles": 46477
   },
   {
    "name": "assembly Expander S",
-   "cycles": 491589
+   "cycles": 491640
   },
   {
    "name": "assembly filter voice",
-   "cycles": 37765
+   "cycles": 37790
   },
   {
    "name": "assembly fm pair",
-   "cycles": 54143
+   "cycles": 54166
   },
   {
    "name": "assembly gamelan",
-   "cycles": 95987
+   "cycles": 96010
   },
   {
    "name": "assembly gated reverb",
-   "cycles": 147340
+   "cycles": 147365
   },
   {
    "name": "assembly glass bell",
-   "cycles": 93127
+   "cycles": 93152
   },
   {
    "name": "assembly hats",
-   "cycles": 103625
+   "cycles": 103648
   },
   {
    "name": "assembly Hera 4",
-   "cycles": 717252
+   "cycles": 717302
   },
   {
    "name": "assembly hihat",
-   "cycles": 36538
+   "cycles": 36561
   },
   {
    "name": "assembly Io 4",
-   "cycles": 513061
+   "cycles": 513106
   },
   {
    "name": "assembly kalimba",
-   "cycles": 63484
+   "cycles": 63509
   },
   {
    "name": "assembly kick",
-   "cycles": 48737
+   "cycles": 48762
   },
   {
    "name": "assembly marimba",
-   "cycles": 98504
+   "cycles": 98529
   },
   {
    "name": "assembly Meridian 8",
-   "cycles": 321452
+   "cycles": 321475
   },
   {
    "name": "assembly mono lead",
-   "cycles": 72938
+   "cycles": 72969
   },
   {
    "name": "assembly Monolith D",
-   "cycles": 165829
+   "cycles": 165857
   },
   {
    "name": "assembly noise voice",
-   "cycles": 35396
+   "cycles": 35421
   },
   {
    "name": "assembly octave fuzz",
-   "cycles": 50755
+   "cycles": 50780
   },
   {
    "name": "assembly operator",
-   "cycles": 23039
+   "cycles": 23064
   },
   {
    "name": "assembly Oracle V",
-   "cycles": 642245
+   "cycles": 642311
   },
   {
    "name": "assembly overdrive",
-   "cycles": 55111
+   "cycles": 55136
   },
   {
    "name": "assembly Perun 4",
-   "cycles": 303350
+   "cycles": 303375
   },
   {
    "name": "assembly pluck",
-   "cycles": 52802
+   "cycles": 52825
   },
   {
    "name": "assembly rain",
-   "cycles": 81839
+   "cycles": 81862
   },
   {
    "name": "assembly random melody",
-   "cycles": 46263
+   "cycles": 46288
   },
   {
    "name": "assembly resonator bank",
-   "cycles": 119116
+   "cycles": 119141
   },
   {
    "name": "assembly reverse pad",
-   "cycles": 36322
+   "cycles": 36347
   },
   {
    "name": "assembly rim",
-   "cycles": 63143
+   "cycles": 63168
   },
   {
    "name": "assembly Sallen 20",
-   "cycles": 286450
+   "cycles": 286476
   },
   {
    "name": "assembly Scrounge",
-   "cycles": 323453
+   "cycles": 323478
   },
   {
    "name": "assembly shimmer",
-   "cycles": 150298
+   "cycles": 150323
   },
   {
    "name": "assembly sidechain pump",
-   "cycles": 42398
+   "cycles": 42423
   },
   {
    "name": "assembly Silver Box",
-   "cycles": 110180
+   "cycles": 110203
   },
   {
    "name": "assembly slicer",
-   "cycles": 59422
+   "cycles": 59447
   },
   {
    "name": "assembly snare",
-   "cycles": 49800
+   "cycles": 49823
   },
   {
    "name": "assembly Spokes 6",
-   "cycles": 316942
+   "cycles": 316967
   },
   {
    "name": "assembly stack voice",
-   "cycles": 46695
+   "cycles": 46718
   },
   {
    "name": "assembly stutter",
-   "cycles": 69362
+   "cycles": 69387
   },
   {
    "name": "assembly sub bass",
-   "cycles": 58413
+   "cycles": 58436
   },
   {
    "name": "assembly supersaw stack",
-   "cycles": 289237
+   "cycles": 289270
   },
   {
    "name": "assembly tabla",
-   "cycles": 67243
+   "cycles": 67268
   },
   {
    "name": "assembly talking filter",
-   "cycles": 53978
+   "cycles": 54003
   },
   {
    "name": "assembly time smear",
-   "cycles": 49649
+   "cycles": 49674
   },
   {
    "name": "assembly tom",
-   "cycles": 54776
+   "cycles": 54801
   },
   {
    "name": "assembly Vernon 100",
-   "cycles": 295248
+   "cycles": 295276
   },
   {
    "name": "assembly Verona Drum 1",
-   "cycles": 350070
+   "cycles": 350093
   },
   {
    "name": "assembly vibrato",
-   "cycles": 17108
+   "cycles": 17133
   },
   {
    "name": "assembly voice",
-   "cycles": 79856
+   "cycles": 79881
   },
   {
    "name": "assembly vowel voice",
-   "cycles": 64063
+   "cycles": 64087
   },
   {
    "name": "assembly Wanderer",
-   "cycles": 230492
+   "cycles": 230520
   },
   {
    "name": "assembly wavetable pad",
-   "cycles": 59733
+   "cycles": 59758
   }
  ],
  "calibration": {

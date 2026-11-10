@@ -174,7 +174,7 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
         int i, btn = 0;
         for (i = b->mlen; i < a->mlen; i++)
             btn |= mlog[i][0] == 0x90u && mlog[i][1] >= 53u && mlog[i][1] <= 59u;
-        return btn && eng_keys_harm() >= 0 && !moved;
+        return btn && (sr_on ? eng_steps_harm((uint32_t)ct_mod) : eng_keys_harm()) >= 0 && !moved;
     }
     case CE_EDITOR: {                                   /* sandbox mode: out as MIDI to the editor, nothing here moved (D-232) */
         int i, cc = 0;
@@ -344,6 +344,14 @@ static void ct_sandbox(void)
 /* the FM-1 in state s, variant v (0..): 0 when there is no such variant */
 static int ct_enter(uint32_t s, uint32_t v)
 {
+    if ((s == HS_ROLL && v == 2u) || (s == HS_STEP && v == 3u)) {
+        ct_reset();
+        if (load_fixture("build/panel-fixtures/route-harm-steps.m1p")) return 0;
+        pv_gen++; pages_ensure(); page = 0;
+        ct_seq(0, 0, 1);
+        if (s == HS_STEP) { tap(BTN_REC); later(100); }
+        return s == HS_STEP ? sr_on : page == PAGE_SEQ;
+    }
     switch (s) {
     case HS_DEVICE:
         if (v == 0) {                                   /* ORACLE V: an assembly with presets and keys, its second page */
