@@ -1,9 +1,10 @@
+import { recoveredLines } from '../src/test-buffer-budget';
 // SPDX-License-Identifier: GPL-3.0-only
 // Offline #824 accounting. Emits fixtures and model counts; no device connection or factory writes.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { FM1_PRESETS, make } from '../src/presets';
-import { ARENA, deviceBudget, encodePatch, lineBudget, linePlace, poolUse } from '../src/patchbin';
+import { ARENA, BUF_BYTES, deviceBudget, encodePatch, lineBudget, linePlace, poolUse } from '../src/patchbin';
 import { deviceView } from '../src/poly';
 import { signalBuffers } from '../src/signal-buffers';
 import { withParts } from '../src/test-poly';
@@ -60,30 +61,27 @@ for (const input of ['assign', 'unison']) {
 }
 // A deliberately long, cheap signal chain leaves little simultaneous work but many logical values.
 // Four effect lines exercise the actual placement limit, independently of the CPU estimate.
-fixtures.push(['recovered-lines', make('recovered lines', (add, wire) => {
-  const main = add('fm1', 0, 0), osc = add('osc', 0, 0, { level: .1 }), out = add('output', 0, 0);
-  wire(main, 'pitch', osc, 'pitch');
-  let previous = osc;
-  for (let i = 0; i < 80; i++) {
-    const m = add('scale', 0, 0, { gain: 1 }); wire(previous, 'out', m, 'in'); previous = m;
-  }
-  for (let i = 0; i < 4; i++) {
-    const m = add('delay', 0, 0, { length: 850, time: 20, mix: .1 }); wire(previous, 'out', m, 'in'); previous = m;
-  }
-  wire(previous, 'out', out, 'l'); wire(previous, 'out', out, 'r');
-})]);
+fixtures.push(['recovered-lines', recoveredLines()]);
 const report = fixtures.map(([name, p], i) => {
   const { patch, groups } = deviceView(p, true);
   const count = signalBuffers(patch, groups), separate = signalBuffers(patch, groups, true);
-  const pool = poolUse(patch, groups), memory = lineBudget(p), budget = deviceBudget(p);
+  const pool = poolUse(patch, groups), memory = lineBudget(p), budget = deviceBudget(p), shared = deviceBudget(p, 1);
   if (count.values !== pool.buffers || separate.physical !== pool.buffers) throw new Error(`${name}: logical count differs`);
+  if (shared.lines.pool.physicalBuffers !== count.physical || shared.lines.used !== memory.used - (count.values - count.physical) * BUF_BYTES || shared.cpu.use !== budget.cpu.use)
+    throw new Error(`${name}: runtime editor budget differs from allocation proof`);
   const bin = encodePatch(p, true), file = `${String(i).padStart(2, '0')}.m1p`;
   writeFileSync(new URL(file, out), bin);
   return { name, file, bytes: bin.length, sha256: createHash('sha256').update(bin).digest('hex'), ...count,
-    recoverableBytes: (count.values - count.physical) * 512,
-    arenaBeforeLines: 344628 - (memory.used - memory.lines),
+    recoverableBytes: (count.values - count.physical) * BUF_BYTES,
+    lineArenaBytes: (() => {
+      const sizes = memory.modules.flatMap((m) => Array(m.copies).fill(m.bytes / m.copies));
+      const placement = linePlace(sizes, ARENA - (memory.used - memory.lines));
+      return placement ? sizes.reduce((n, bytes, i) => n + (placement[i] ? bytes : 0), 0) : null;
+    })(),
+    arenaBeforeLines: ARENA - (memory.used - memory.lines),
+    sharedArenaBeforeLines: ARENA - (shared.lines.used - shared.lines.lines),
     sharedLinesFit: linePlace(memory.modules.flatMap((m) => Array(m.copies).fill(m.bytes / m.copies)),
-      ARENA - (memory.used - memory.lines) + (count.values - count.physical) * 512) !== null,
+      ARENA - (memory.used - memory.lines) + (count.values - count.physical) * BUF_BYTES) !== null,
     memoryBytes: memory.used, cpuEstimate: budget.cpu.use, over: budget.over.map((x) => x.key) };
 });
 writeFileSync(new URL('expected.json', out), JSON.stringify(report, null, 2) + '\n');

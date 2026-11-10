@@ -138,10 +138,10 @@ static void m1_slot_now(uint32_t slot, const char *name)
 /* INFO: the answer to HELLO, and unasked when MENU > MIDI OUT changed under the editor's Live (live.c) or GLO > SYSTEM >
  * EDITOR changed after a HELLO (menu.c, #702). Bytes 9..11 (#216):
  * the firmware's major, minor and patch, as in its identity FM-1_7MMmmpp; older firmware ends at byte 8. Byte 12: feature
- * bits 16..23 (bit 16 TEMPO / TEMPO_NOW, D-907) */
+ * bits 16..23 (bit 16 TEMPO / TEMPO_NOW, D-907). Byte 13: signal-buffer allocation rule (#824). */
 static void m1_info(void)
 {
-    uint8_t p[13];
+    uint8_t p[14];
     p[0] = M1_VERSION;
     p[1] = ENG_MAX_MODULES;
     p[2] = ENG_MAX_CABLES;
@@ -156,6 +156,7 @@ static void m1_info(void)
     p[10] = M1_FW_MINOR;
     p[11] = M1_FW_PATCH;
     p[12] = M1_FEATURES3;
+    p[13] = ENG_BUFFER_ALLOCATION;
     m1_reply(R_INFO, p, sizeof p);
 }
 

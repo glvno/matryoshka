@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+import type { BufferAllocation } from './signal-buffers';
 // Library > Patches (#218): two columns. "In this browser" lists Your patches (saved.ts): each has → (into the FM-1
 // column), Rename and Delete (at once, with Undo); a sandbox patch (over the FM-1's budget, patchbin.ts deviceBudget) is
 // marked SANDBOX and has no working →. The community patches added in Library > Community (community.ts) are listed there
@@ -39,11 +40,11 @@ const STORE_OVER = 'matryoshka.bank-over';
 /** whether a patch fits the FM-1, remembered by its content (a patch's budget takes a while to work out, and the Library
  *  rows ask again on every change) */
 const fitsKnown = new Map<string, boolean>();
-const fits = (p: Patch): boolean => {
-  const key = JSON.stringify(p);
+const fits = (p: Patch, allocation: BufferAllocation = 0): boolean => {
+  const key = allocation + JSON.stringify(p);
   let ok = fitsKnown.get(key);
   if (ok === undefined) {
-    ok = deviceBudget(p).fits;
+    ok = deviceBudget(p, allocation).fits;
     if (fitsKnown.size >= 256) fitsKnown.clear();
     fitsKnown.set(key, ok);
   }
@@ -166,7 +167,7 @@ export function bankMatches(have: SlotInfo[], copy: { name: string; length: numb
 /** the binary's length (a patch that cannot be encoded: -1, which no slot has) */
 const binLength = (p: Patch): number => {
   try {
-    return encodePatch(p).length;
+    return encodePatch(p, true).length;
   } catch {
     return -1;
   }
@@ -354,7 +355,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
         disabled: !ok || busy || waiting, onclick: () => toFm1(name, patch(), false) });
     mineEl.replaceChildren(
       ...(total ? [...mine.map((e) => {
-        const ok = fits(e.patch);
+        const ok = fits(e.patch, device.bufferAllocation);
         return el('div', { class: 'bank-row' },
           el('span', { class: 'grow', textContent: e.name }),
           ...(ok ? [] : [sandbox()]),
@@ -369,7 +370,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
         );
       }), ...added.map((c) => {
         const name = c.entry.title;
-        const ok = fits(c.patch);
+        const ok = fits(c.patch, device.bufferAllocation);
         return el('div', { class: 'bank-row' },
           el('span', { class: 'grow' }, name, el('span', { class: 'muted', textContent: ` · ${c.entry.author}` })),
           ...(ok ? [] : [sandbox()]),

@@ -96,7 +96,7 @@ describe('what the editor offers (#84)', () => {
     for (const own of ['Object.values(DEFS)', 'FACTORY', 'loadLibrary()', 'patchCandidates', 'PRESETS', 'savedPatches']) expect(palette).not.toContain(own);
     expect(palette).toContain('addableModules(DEFS)');
     expect(palette).toContain('assemblyShelves()');
-    expect(palette).toContain('openableGroups()');
+    expect(palette).toContain('openableGroups(device.bufferAllocation)');
     const browser = readFileSync(new URL('./browser.ts', import.meta.url), 'utf8');
     expect(browser).toContain('assemblyShelves()');
     expect(browser).not.toContain('FACTORY');

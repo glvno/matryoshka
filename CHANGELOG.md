@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Patches can use memory recovered by sharing signal buffers. In the [host allocation check](tools/buffer_budget.py), one patch uses 1,536 bytes of signal storage instead of 44,032, recovering 42,496 bytes for its effect lines. The editor follows the connected firmware's reported rule; older firmware and offline budgets stay conservative. Voice and CPU limits are unchanged. This change is host-tested; emulator and device checks are still pending.
+
+
 ## 1.13.0 — 2026-11-10
 
 - Harmonizer chords can feed Arpeggiator and Steps. Cable order chooses root recording or editable chord notes, including step recording with Side chord buttons. ARP inserts after harmony; unsupported keys routes show an explanation. These routes require firmware supporting patch format 53.

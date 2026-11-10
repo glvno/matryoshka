@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+import { bufferAllocation, type BufferAllocation } from './signal-buffers';
 // The FM-1 as a Web MIDI SysEx peer: patch upload, store, live parameters (wire format: protocol.ts).
 import { DEFS } from './modules';
 import type { Patch, Range } from './patch';
@@ -211,8 +212,11 @@ export class DeviceLink {
   onEvent: (e: DeviceEvent) => void = () => {};
 
   get connected(): boolean {
-    return !!this.out && this.out.state === 'connected';
+    return !!this.out && !!this.inp && this.out.state === 'connected' && this.inp.state === 'connected';
   }
+
+  /** Capability belongs to this connection; unknown/absent/disconnected is conservative. */
+  get bufferAllocation(): BufferAllocation { return this.connected ? bufferAllocation(this.info?.bufferAllocation) : 0; }
 
   /** the MIDI input the link listens on (the panel follower listens there too, whatever the port is named) */
   get input(): MIDIInput | null {
@@ -220,9 +224,8 @@ export class DeviceLink {
   }
 
   async connect(): Promise<Info> {
+    this.detach(); // reconnect never inherits the previous device capability
     if (!navigator.requestMIDIAccess) throw new Error('Web MIDI is not available in this browser (use Chrome or Edge)');
-    if (this.inp) this.inp.onmidimessage = null; // a reconnect: let go of the old port
-    this.out = this.inp = null;
     let access: MIDIAccess;
     try {
       access = await navigator.requestMIDIAccess({ sysex: true });
@@ -230,7 +233,7 @@ export class DeviceLink {
       throw new Error(sysexRefused(e));
     }
     access.onstatechange = () => {
-      if (this.out && this.out.state !== 'connected') this.onStatus('FM-1 disconnected');
+      if (this.out && !this.connected) { this.info = null; this.onStatus('FM-1 disconnected'); }
     };
     const inputs = [...access.inputs.values()], outputs = [...access.outputs.values()];
     // the ports named like an FM-1 first; then, as macOS may show it under another name (#187), every other in / out pair
@@ -266,6 +269,7 @@ export class DeviceLink {
 
   /** listen on `inp` and send to `out`: the link's ports from now on */
   private attach(inp: MIDIInput, out: MIDIOutput): void {
+    this.info = null;
     this.out = out;
     this.inp = inp;
     this.running = false;
@@ -348,6 +352,7 @@ export class DeviceLink {
 
   /** HELLO, asked up to `tries` times */
   async hello(tries = TRIES): Promise<Info> {
+    this.info = null;
     const p = await this.request(helloFrame(), (x) => x?.cmd === CMD.info, ACK_TIMEOUT, tries);
     this.info = parseInfo(p);
     if (!this.info) throw new Error('unexpected answer to HELLO');
@@ -363,8 +368,12 @@ export class DeviceLink {
 
   /** Upload and switch to the patch (`bin`: it encoded already). Calls are serialised. */
   upload(patch: Patch, encoded?: Uint8Array): Promise<void> {
+    const submitted = structuredClone(patch), bytes = encoded?.slice();
     const run = async (): Promise<void> => {
-      const bin = encoded ?? encodePatch(patch);
+      // Recheck inside the serial queue: the device may have changed after a caller encoded it.
+      const checked = encodePatch(submitted, false, false, this.bufferAllocation);
+      if (bytes && !sameBinary(bytes, checked)) throw new Error('Patch changed before upload: send it again');
+      const bin = bytes ?? checked;
       await this.sendChunks(bin);
       await this.ackFor(commitFrame(bin), CMD.commit);
     };
@@ -416,7 +425,12 @@ export class DeviceLink {
 
   /** Put a patch into patch slot 0..31 of the FM-1's bank (flash); it is not loaded. */
   uploadSlot(slot: number, name: string, patch: Patch): Promise<void> {
-    return this.uploadSlotBin(slot, name, encodePatch(patch));
+    const submitted = structuredClone(patch);
+    return this.serial(async () => {
+      const bin = encodePatch(submitted, false, false, this.bufferAllocation);
+      await this.sendChunks(bin);
+      await this.ackFor(slotFrame(slot, name, bin), CMD.slot, slot, FLASH_TIMEOUT);
+    });
   }
 
   /** a patch binary as it is into slot 0..63 (`uploadSlot`'s second half; the scenarios store a binary of an older format

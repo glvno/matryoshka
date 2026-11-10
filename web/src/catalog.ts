@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+import type { BufferAllocation } from './signal-buffers';
 // What the editor offers to add or open, in one place: the command palette, the assembly browser and the Open picker all
 // read these lists, so anything hidden or retired in one is gone from the others too (glvno/matryoshka#84).
 import type { AssemblyDef } from './assembly';
@@ -45,29 +46,29 @@ export interface Openable {
 
 /** a factory patch's chip: the factory patches do not change while the page is open, so each is worked out once */
 const factoryChips = new Map<string, Chip>();
-const factoryChip = (name: string): Chip => {
-  let c = factoryChips.get(name);
-  if (!c) factoryChips.set(name, (c = chipOf(PRESETS[name]())));
+const factoryChip = (name: string, allocation: BufferAllocation): Chip => {
+  let c = factoryChips.get(allocation + name);
+  if (!c) factoryChips.set(allocation + name, (c = chipOf(PRESETS[name](), allocation)));
   return c;
 };
 
 /** the Open picker's two groups: Your patches (saved ones newest first, then the community patches added in Library >
  *  Community, community.ts, with their authors) and the factory patches, each XL right under its FM-1 version. The
  *  tutorial's patches open from the course, and community patches show only once added. */
-export function openableGroups(): { label: string; items: Openable[] }[] {
+export function openableGroups(allocation: BufferAllocation = 0): { label: string; items: Openable[] }[] {
   const mine = savedPatches();
   const saved = new Set(mine.map((e) => e.name));
   return [
     {
       label: 'Your patches',
       items: [
-        ...mine.map((e) => ({ value: `saved:${e.name}`, name: e.name, from: e.name, load: () => JSON.parse(JSON.stringify(e.patch)) as Patch, chip: () => chipOf(e.patch) })),
+        ...mine.map((e) => ({ value: `saved:${e.name}`, name: e.name, from: e.name, load: () => JSON.parse(JSON.stringify(e.patch)) as Patch, chip: () => chipOf(e.patch, allocation) })),
         ...addedCommunity()
           .filter((c) => !saved.has(c.entry.title))
-          .map((c) => ({ value: `community:${c.entry.title}`, name: c.entry.title, author: c.entry.author, load: () => openCommunity(c), chip: () => chipOfEntry(c) })),
+          .map((c) => ({ value: `community:${c.entry.title}`, name: c.entry.title, author: c.entry.author, load: () => openCommunity(c), chip: () => chipOfEntry(c, allocation) })),
       ],
     },
-    { label: 'Factory patches', items: pairXl(Object.keys(PRESETS)).map(({ name, xl }) => ({ value: name, name, xl, load: PRESETS[name], chip: () => factoryChip(name) })) },
+    { label: 'Factory patches', items: pairXl(Object.keys(PRESETS)).map(({ name, xl }) => ({ value: name, name, xl, load: PRESETS[name], chip: () => factoryChip(name, allocation) })) },
   ].filter((g) => g.items.length);
 }
 

@@ -1,3 +1,4 @@
+import type { BufferAllocation } from './signal-buffers';
 import { keyRouteError } from './key-routing';
 // SPDX-License-Identifier: GPL-3.0-only
 // Patch editor: module cards on a canvas, SVG cables, drag-to-connect, a selection, assemblies and undo.
@@ -281,6 +282,8 @@ const LONG_PRESS_MS = 500;
 const DOCK_SHORT: Record<string, string> = { vel: 'vel', at: 'aft' };
 
 export class Editor {
+  /** Refreshed from the active device; offline editing uses conservative memory admission. */
+  bufferAllocation: BufferAllocation = 0;
   patch: Patch;
   /** the selected modules (shift-click or a rubber band); "Make assembly" groups them, dragging one moves all */
   readonly selected = new Set<number>();
@@ -564,14 +567,14 @@ export class Editor {
    * when its default does not fit; what to say when the memory is full ('' while it fits) */
   private lineNote(m: ModuleInst): string {
     if (!LINE_TYPES.includes(m.type)) return '';
-    if (m.type === 'delay' && !lineBudget(this.patch).fits) {
-      const room = delayRoom(this.patch, m.id);
+    if (m.type === 'delay' && !lineBudget(this.patch, this.bufferAllocation).fits) {
+      const room = delayRoom(this.patch, m.id, this.bufferAllocation);
       if (room) {
         m.params.length = room;
         return `This Delay's length is ${room} ms: the rest of the FM-1's memory is taken. Its length row sets it.`;
       }
     }
-    return lineBudget(this.patch).fits ? '' : `${linesAdvice(this.patch, m.id)} Until then this is a sandbox patch: it plays here, not on the FM-1.`;
+    return lineBudget(this.patch, this.bufferAllocation).fits ? '' : `${linesAdvice(this.patch, m.id, this.bufferAllocation)} Until then this is a sandbox patch: it plays here, not on the FM-1.`;
   }
 
   /** put a saved assembly into the patch; an engine comes wired to Main's keys and, while nothing feeds it, the Output (one undo step) */
@@ -6176,10 +6179,10 @@ export class Editor {
    * the memory is a sandbox patch, with no FM-1 limits: its lengths go to the row's end */
   private lengthCap(m: ModuleInst, name: string, v: number): number {
     const was = m.params.length ?? DEFS.delay.params.find((q) => q.name === 'length')!.default;
-    if (m.type !== 'delay' || name !== 'length' || v <= was || !lineBudget(this.patch).fits) return v;
-    const cap = Math.max(was, delayRoom(this.patch, m.id));
+    if (m.type !== 'delay' || name !== 'length' || v <= was || !lineBudget(this.patch, this.bufferAllocation).fits) return v;
+    const cap = Math.max(was, delayRoom(this.patch, m.id, this.bufferAllocation));
     if (v <= cap) return v;
-    showToast(`${linesAdvice(this.patch, m.id)} This Delay stops at ${cap} ms.`, 6000);
+    showToast(`${linesAdvice(this.patch, m.id, this.bufferAllocation)} This Delay stops at ${cap} ms.`, 6000);
     return cap;
   }
 

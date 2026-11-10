@@ -1,5 +1,5 @@
-import { recordTarget, recordInput } from './step-grid';
 // SPDX-License-Identifier: GPL-3.0-only
+import { recordTarget, recordInput } from './step-grid';
 // first of all: at the pages.dev address with no data, site-move.ts sends the visitor on to matryoshka.lol and stops
 // everything else; then migrate.ts notes which storage keys the page found before anything here writes one
 import './site-move';
@@ -212,13 +212,13 @@ function liveEdited(): void {
   clearTimeout(gateTimer);
   gateTimer = window.setTimeout(() => {
     if (!live()) return uploadGate.forget();
-    try { uploadGate.refresh(encodePatch(editor.patch)); } catch { uploadGate.forget(); }
+    try { uploadGate.refresh(encodePatch(editor.patch, false, false, device.bufferAllocation)); } catch { uploadGate.forget(); }
   }, GATE_MS);
 }
 /** a structural change under Live: the patch goes to the FM-1 again only when its encoded bytes changed */
 function structureChanged(): void {
   let bin: Uint8Array | null = null;
-  try { bin = encodePatch(editor.patch); } catch { /* over the budget: sendPatch says so */ }
+  try { bin = encodePatch(editor.patch, false, false, device.bufferAllocation); } catch { /* over the budget: sendPatch says so */ }
   if (bin && onEditorPatch && !uploadGate.needs(bin)) return;
   uploadGate.forget();   // (until the upload: the FM-1 holds the old bytes)
   queueUpload();
@@ -288,7 +288,7 @@ async function offerInstall(): Promise<void> {
 syncChip();
 device.onStatus = (msg) => {
   devStatus(msg);
-  if (!device.connected) libraryDeviceChanged();   // (it went away)
+  if (!device.connected) { showBudget(); libraryDeviceChanged(); } // capability expires with the connection
 };
 // the FM-1 on its own (#65): while Live is on, its knobs and patch buttons move the editor's, and the status line follows its slot
 let fromDevice = false;
@@ -338,7 +338,9 @@ device.onEvent = (e) => {
       device.release();
       if (mirror.following && mirror.follows(port)) unfollowFm1(IGNORED_NOW);
     }
-    return syncChip();   // (MENU > MIDI OUT changed: the chip says so in sandbox mode)
+    showBudget();
+    libraryDeviceChanged();
+    return syncChip();   // INFO also refreshes the memory rule for this device
   }
   if (e.kind === 'keys') {   // a key edge the FM-1's panel took (#549): through the copy too, as the FM-1 took it
     if (!panelReported()) return;
@@ -475,7 +477,7 @@ async function sendPatch(): Promise<boolean> {
       dirty = false;
       devStatus('sending patch…');
       const load = loadsSeen;
-      const bin = encodePatch(editor.patch);
+      const bin = encodePatch(editor.patch, false, false, device.bufferAllocation);
       const layout = deviceLayoutKey(editor.patch);
       uploadGate.forget();
       installedLayout = null;
@@ -584,7 +586,7 @@ function offerSync(asked = false): void {
     if (fitsDevice) void sendPatch();
     return syncChip();
   }
-  const d = syncOnConnect({ fits: fitsDevice, declined: !asked && syncDeclined(), editorBin: fitsDevice ? encodePatch(editor.patch) : new Uint8Array(), deviceBin: null });
+  const d = syncOnConnect({ fits: fitsDevice, declined: !asked && syncDeclined(), editorBin: fitsDevice ? encodePatch(editor.patch, false, false, device.bufferAllocation) : new Uint8Array(), deviceBin: null });
   if (d === 'sync') return setLive(true);
   if (d === 'ask' && !syncAsk.open) {
     const name = editor.patch.name.trim() || 'Untitled';
@@ -1088,7 +1090,7 @@ const fillPicker = (): void => {
   chipsDue = [];
   presetSel.replaceChildren(
     new Option('Open a patch…', ''),
-    ...openableGroups().map(({ label, items }) => {
+    ...openableGroups(device.bufferAllocation).map(({ label, items }) => {
       const g = document.createElement('optgroup');
       g.label = label;
       g.append(...items.map((o) => {
@@ -1227,7 +1229,10 @@ function budgetLine(name: string, frac: number, figure: string, title = '', warn
 }
 
 function showBudget(): void {
-  const b = deviceBudget(editor.patch);
+  const allocationChanged = editor.bufferAllocation !== device.bufferAllocation;
+  editor.bufferAllocation = device.bufferAllocation;
+  if (allocationChanged) fillPicker();
+  const b = deviceBudget(editor.patch, device.bufferAllocation);
   const was = fitsDevice;
   fitsDevice = b.fits;
   syncChip();
@@ -1262,11 +1267,11 @@ function showBudget(): void {
   const lineLines = (): HTMLElement[] => {
     const lb = b.lines;
     const top = budgetLine('Memory', lb.fits ? lb.used / lb.max : Math.max(1.01, lb.used / lb.max), `${kb(lb.used)} / ${kb(lb.max)} KB`,
-      lb.fits ? 'The FM-1\'s memory for a patch: its modules, their copies (one per voice in a poly assembly), signal buffers, parameter values, and the lines of the Delays, reverbs, choruses, strings, combs and the Granular. A Delay takes its length; ping-pong: half per side' : linesAdvice(editor.patch));
+      lb.fits ? 'The FM-1\'s memory for a patch: its modules, their copies (one per voice in a poly assembly), signal buffers, parameter values, and the lines of the Delays, reverbs, choruses, strings, combs and the Granular. A Delay takes its length; ping-pong: half per side' : linesAdvice(editor.patch, undefined, device.bufferAllocation));
     const parts: { name: string; bytes: number; hint: string; id?: number }[] = [
       { name: `Modules ×${lb.nodes}`, bytes: lb.nodesBytes, hint: 'Each module\'s settings and connections' },
       { name: `Module copies ×${lb.pool.instances}`, bytes: lb.copiesBytes, hint: 'One per module, one per voice in a poly assembly' },
-      { name: `Signal buffers ×${lb.pool.buffers}`, bytes: lb.buffersBytes, hint: 'One per connected output (per voice), one per input that sums cables' },
+      { name: `Signal buffers ×${lb.pool.physicalBuffers ?? lb.pool.buffers}`, bytes: lb.buffersBytes, hint: lb.pool.physicalBuffers !== undefined ? 'Storage is reused after the last reader. Feedback and values read outside rendering keep their own storage.' : 'One per connected output (per voice), one per input that sums cables' },
       { name: `Parameter values ×${lb.pool.params}`, bytes: lb.paramsBytes, hint: 'Each module\'s values (twice with a morph B side), and each copy\'s' },
       ...lb.modules.map((u) => {
         const mod = editor.patch.modules.find((x) => x.id === u.id);
@@ -1449,7 +1454,7 @@ const commands = (): Command[] => {
     // the same lists as + Add module, the assembly browser and the Open picker (catalog.ts)
     ...addableModules(DEFS).map((m) => ({ kind: 'add module', tags: ['module'], label: m.name, keywords: moduleKeywords(m.type, m.def.label), run: () => editor.add(m.type) })),
     ...assemblyShelves().filter((a, i, all) => all.findIndex((b) => b.def === a.def) === i).map((a) => assembly(a.def, a.shelf)), // the drum kit once
-    ...openableGroups().flatMap((g) => g.items.map((o) => ({ kind: 'load patch', label: o.author ? `${o.name} · ${o.author}` : o.name, detail: g.label, run: () => loadNamed(o.load(), { from: o.from }) }))),
+    ...openableGroups(device.bufferAllocation).flatMap((g) => g.items.map((o) => ({ kind: 'load patch', label: o.author ? `${o.name} · ${o.author}` : o.name, detail: g.label, run: () => loadNamed(o.load(), { from: o.from }) }))),
   ];
 };
 /**
@@ -1930,8 +1935,8 @@ function emuLoad(): void {
   if (!ui) return;
   // a patch over the budget still loads here (the emulator has the firmware's tables, not its timing): a notice says so
   // and the view stays usable; past the tables themselves the firmware refuses it and the last patch stays
-  const b = deviceBudget(editor.patch);
-  const over = b.over.map((i) => i.key === 'cpu' || i.key === 'browser' ? overText(i) : i.key === 'memory' ? linesAdvice(editor.patch) : `${i.used} ${i.label} (the FM-1 holds ${i.max})`).join(', ');
+  const b = deviceBudget(editor.patch, device.bufferAllocation);
+  const over = b.over.map((i) => i.key === 'cpu' || i.key === 'browser' ? overText(i) : i.key === 'memory' ? linesAdvice(editor.patch, undefined, device.bufferAllocation) : `${i.used} ${i.label} (the FM-1 holds ${i.max})`).join(', ');
   let err = 0;
   try {
     err = ui.load(encodePatch(editor.patch, true), editor.patch.name.toUpperCase(), { fresh: emuFresh });
@@ -1987,7 +1992,7 @@ function emuParam(id: number, name: string, value: number): void {
  *  over sandbox patches as the FM-1's PRESET does: they never go into its bank */
 function stepOpenList(d: number): void {
   if (!d) return;
-  const list = openableGroups().flatMap((g) => g.items).filter((o) => o.chip().fits);
+  const list = openableGroups(device.bufferAllocation).flatMap((g) => g.items).filter((o) => o.chip().fits);
   if (!list.length) return;
   const i = list.findIndex((o) => o.name === editor.patch.name);
   const next = list[(((i < 0 ? (d > 0 ? -1 : 0) : i) + d) % list.length + list.length) % list.length];
@@ -2151,6 +2156,7 @@ try {
 async function connectFm1(): Promise<void> {
   try {
     const info = await device.connect();
+    showBudget();
     devStatus(`FM-1 connected (protocol ${info.version}, up to ${info.maxModules} modules, flash ${info.flashOk ? 'ok' : 'not available'})`);
     for (const id of ['dev-send', 'dev-store']) $<HTMLInputElement>(id).disabled = false;
     $('dev-btn').textContent = 'Reconnect';
@@ -2161,6 +2167,8 @@ async function connectFm1(): Promise<void> {
     libraryDeviceChanged();
     if (syncsWith(device.info)) void offerFirmwareUpdate();   // (else sayUpdate has offered the update already)
   } catch (e) {
+    showBudget();
+    libraryDeviceChanged();
     devStatus((e as Error).message);
   }
 }
@@ -2722,7 +2730,7 @@ try {
 // Library > Patches list those, once decoded)
 libraryPanes.patches = buildPatchesSection($('lib-patches'), device, { remove: deleteSaved });
 if (addedTitles().length) void loadCommunity().then(() => { fillPicker(); libraryPanes.patches?.refresh(); });
-libraryPanes.community = buildCommunitySection($('lib-community'), { status: (msg) => { status.textContent = msg; } });
+libraryPanes.community = buildCommunitySection($('lib-community'), { status: (msg) => { status.textContent = msg; } }, () => device.bufferAllocation);
 libraryPanes.presets = buildPresetsSection($('lib-presets'), device, { changed: () => editor.rebuild() });
 refreshAssemblies = buildAssembliesSection($('lib-assemblies'), {
   status(msg) {
@@ -2808,13 +2816,13 @@ if (import.meta.env.DEV) {
   (window as unknown as { __m1test?: unknown }).__m1test = {
     inputs: (): unknown[] => inputs.splice(0),
     open: (name: string): boolean => {
-      const o = openableGroups().flatMap((g) => g.items).find((x) => x.name === name);
+      const o = openableGroups(device.bufferAllocation).flatMap((g) => g.items).find((x) => x.name === name);
       if (o) loadNamed(o.load(), { from: o.from });
       return !!o;
     },
     /** a patch opened as `open` opens it, with every keys cable gone: its instruments no keys cable reaches (#215) */
     openUnkeyed: (name: string): boolean => {
-      const o = openableGroups().flatMap((g) => g.items).find((x) => x.name === name);
+      const o = openableGroups(device.bufferAllocation).flatMap((g) => g.items).find((x) => x.name === name);
       if (!o) return false;
       const p = o.load();
       p.cables = p.cables.filter((c) => c.from.port !== 'keys');
@@ -2824,7 +2832,7 @@ if (import.meta.env.DEV) {
     /** a patch opened as `open` opens it, with card rows set first: each [label, value] sets the first row of that label on
      *  any card (8 Lire's `mix`, its MOD DELAY's, at 0: the voices heard without their echoes) */
     openRows: (name: string, rows: [string, number][]): boolean => {
-      const o = openableGroups().flatMap((g) => g.items).find((x) => x.name === name);
+      const o = openableGroups(device.bufferAllocation).flatMap((g) => g.items).find((x) => x.name === name);
       if (!o) return false;
       const p = o.load();
       for (const [label, value] of rows) {
@@ -2839,7 +2847,7 @@ if (import.meta.env.DEV) {
     /** a patch opened as `open` opens it, with `n` VCAs in a chain to the Output (silent: nothing opens them) placed before
      *  its modules, so they sit past index n - 1 in the binary (#721: arming past 63) */
     openPadded: (name: string, n: number): boolean => {
-      const o = openableGroups().flatMap((g) => g.items).find((x) => x.name === name);
+      const o = openableGroups(device.bufferAllocation).flatMap((g) => g.items).find((x) => x.name === name);
       if (!o) return false;
       const p = o.load();
       const out = p.modules.find((m) => m.type === 'output');
@@ -2853,7 +2861,7 @@ if (import.meta.env.DEV) {
     /** the patch's module count as the FM-1 gets it (the device form) */
     deviceModules: (): number => deviceView(editor.patch, true).patch.modules.length,
     state: () => ({
-      connected: device.connected, live: liveOn, fits: fitsDevice, sandbox: sandboxOn(), chip: fm1State(), following: mirror.following,
+      connected: device.connected, bufferAllocation: device.bufferAllocation, live: liveOn, fits: fitsDevice, sandbox: sandboxOn(), chip: fm1State(), following: mirror.following,
       playing: editor.playing, deviceRunning: device.running, octave: noteKeys.octave(), focus: editor.focus, patch: editor.patch.name,
       focusName: editor.devices.find((d) => d.key === editor.focus?.device)?.name ?? '',
       syncAsk: syncAsk.open, status: $('dev-status').textContent, armed: [...editor.armedSet],
@@ -2913,7 +2921,7 @@ if (import.meta.env.DEV) {
     // owner keeps them; the Open picker's chip of one (FM-1 · NN % or SANDBOX)
     save: (json: string): boolean => keepPatch(validatePatch(JSON.parse(json), DEFS)).ok,
     unsave: (name: string): boolean => !!removeSaved(name),
-    chip: (name: string): string | null => openableGroups().flatMap((g) => g.items).find((x) => x.name === name)?.chip().text ?? null,
+    chip: (name: string): string | null => openableGroups(device.bufferAllocation).flatMap((g) => g.items).find((x) => x.name === name)?.chip().text ?? null,
     // the FM-1's bank: its slots (SLOT_INFO), a slot emptied, a binary stored as it is (an older format's, as a bank an earlier
     // firmware wrote holds)
     slots: async (): Promise<SlotInfo[]> => device.readBank(),

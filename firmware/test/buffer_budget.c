@@ -22,8 +22,21 @@ int main(int argc, char **argv)
     if (rc) { fprintf(stderr, "eng_load %s failed: %d\n", argv[1], rc); return 1; }
     printf("{\"values\":%u,\"physical\":%u,\"arenaBeforeLines\":%u,\"compiledGuard\":%d",
            E.nbuf, E.nphys, arena_free(), aot_buffer_guard(data, (uint32_t)n));
+    printf(",\"allocationRule\":%u", ENG_BUFFER_ALLOCATION);
 #if ENG_AOT
-    printf(",\"compiledInstances\":%u", aot_nx);
+    uint32_t sizes[ENG_MAX_LINES], offsets[ENG_MAX_LINES], count = 0, lines = 0;
+    uint8_t regions[ENG_MAX_LINES];
+    for (uint32_t m = 0; m < E.nmod; m++) {
+        uint32_t bytes = line_bytes(E.node[m].type, E.node[m].par);
+        for (uint32_t v = 0; bytes && v < E.node[m].ninst; v++) sizes[count++] = bytes;
+    }
+    if (line_place(sizes, count, regions, offsets)) return 3;
+    for (uint32_t i = 0; i < count; i++) if (regions[i]) lines += sizes[i];
+    uint32_t scratch = aot_m ? (uint32_t)sizeof(aot_mem_t) : 0;
+    uint32_t offset = aot_m ? (uint32_t)((uint8_t *)aot_m - ((uint8_t *)eng_arena + ar_lo)) : 0;
+    uint32_t alignment = (8u - ((ar_lo + lines) & 7u)) & 7u;
+    printf(",\"compiledInstances\":%u,\"lineArenaBytes\":%u,\"compiledScratchBytes\":%u,\"compiledScratchOffset\":%u,\"compiledAlignmentBytes\":%u",
+           aot_nx, lines, scratch, offset, alignment);
 #endif
     /* Chord, stealing, release, idle/wake, partial blocks, and another chord. */
     for (uint32_t b = 0; b < 400; b++) {

@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """#824 offline allocation proof. Never writes production engine code or touches hardware.
 
-The recovered variant removes only the existing reservation for unused physical buffers
-from a build-directory copy of engine.c. It is an experiment, not a firmware artifact.
+The separate-buffer reference alone gets an extra 64 KiB in a build-directory copy
+of engine.c, so newly admitted patches have an independent non-sharing audio oracle.
+Production memory constants and files are never changed by this runner.
 """
 import json
 import os
@@ -21,23 +22,28 @@ def run(args, **kwargs):
 def main():
     run(['npx', 'vite-node', 'scripts/buffer-budget.ts'], cwd=ROOT / 'web')
     source = (ROOT / 'firmware/src/engine.c').read_text()
-    reservation = 'if (bs.values > bs.n && !arena_lo((bs.values - bs.n) * ENG_BUF_BYTES))'
-    if source.count(reservation) != 1:
-        raise RuntimeError('Allocator changed: review the recovered experiment before running it')
-    recovered = OUT / 'recovered-src'
-    recovered.mkdir(exist_ok=True)
-    (recovered / 'engine.c').write_text(source.replace(reservation, 'if (0) /* #824 host experiment: charge physical buffers only */'))
+    arena = '#define ENG_ARENA ('
+    if source.count(arena) != 1:
+        raise RuntimeError('Arena definition changed: review the test-only reference')
+    reference = OUT / 'reference-src'
+    reference.mkdir(exist_ok=True)
+    (reference / 'engine.c').write_text(source.replace(arena, '#define ENG_ARENA (65536u + '))
     variants = {
-        'baseline': [],
+        'baseline': ['-DENG_BUF_ACCOUNTING=0'],
         'separate': ['-DENG_BUF_REUSE=0'],
-        'poison': ['-DENG_POISON'],
-        'recovered': ['-I' + str(recovered)],
-        'recovered-poison': ['-I' + str(recovered), '-DENG_POISON'],
+        'poison': ['-DENG_BUF_ACCOUNTING=0', '-DENG_POISON'],
+        'recovered': [],
+        'recovered-poison': ['-DENG_POISON'],
         'compiled': ['-DENG_AOT=1'],
+        'reference': ['-I' + str(reference), '-DENG_BUF_REUSE=0'],
     }
     for name, flags in variants.items():
         run(['cc', '-O1', '-w', *flags, '-Ifirmware/src', 'firmware/test/buffer_budget.c',
              '-lm', '-lpthread', '-o', str(OUT / ('check-' + name))])
+    for name, flags in [('default', []), ('legacy', ['-DENG_BUF_ACCOUNTING=0']), ('separate', ['-DENG_BUF_REUSE=0']), ('compiled', ['-DENG_AOT=1'])]:
+        executable = OUT / ('info-' + name)
+        run(['cc', '-O1', '-w', *flags, 'firmware/test/proto_test.c', '-lm', '-o', str(executable)])
+        run([str(executable), '--allocation'])
     fixtures = json.loads((OUT / 'expected.json').read_text())
     report = []
     for fixture in fixtures:
@@ -48,18 +54,25 @@ def main():
                 env = dict(os.environ, HOST_CORES=str(cores), HOST_CHAOS='15')
                 got = subprocess.run([str(OUT / ('check-' + variant)), str(OUT / fixture['file'])],
                                      env=env, capture_output=True, text=True)
-                if fixture['name'] == 'recovered-lines' and not variant.startswith('recovered'):
+                if fixture['name'] == 'recovered-lines' and not variant.startswith('recovered') and variant != 'reference':
                     assert got.returncode == 1 and 'failed: -4' in got.stderr, (name, got.stdout, got.stderr)
                     runs[name] = {'loadError': -4}
                     continue
                 assert got.returncode == 0, (fixture['name'], name, got.stderr)
                 result = json.loads(got.stdout)
-                expected_physical = fixture['values'] if variant == 'separate' or result['compiledGuard'] else fixture['physical']
+                expected_physical = fixture['values'] if variant in ('separate', 'reference') or result['compiledGuard'] else fixture['physical']
                 assert result['values'] == fixture['values'], (fixture['name'], name, 'values')
                 assert result['physical'] == expected_physical, (fixture['name'], name, 'physical', result, fixture)
-                if variant != 'compiled':  # compiled state is allocated after the lines
-                    free = fixture['arenaBeforeLines'] + (fixture['recoverableBytes'] if variant.startswith('recovered') else 0)
-                    assert result['arenaBeforeLines'] == free, (fixture['name'], name, 'arena', result, free)
+                free = fixture['sharedArenaBeforeLines'] if variant.startswith('recovered') else fixture['arenaBeforeLines']
+                if variant == 'reference':
+                    free += 65536
+                assert result['arenaBeforeLines'] == free, (fixture['name'], name, 'arena', result, free)
+                if variant == 'compiled':
+                    assert result['lineArenaBytes'] == fixture['lineArenaBytes'], (fixture['name'], name, 'lines')
+                    assert result['compiledScratchOffset'] + result['compiledScratchBytes'] <= free, (fixture['name'], name, 'compiled scratch')
+                    if result['compiledScratchBytes']:
+                        assert result['compiledScratchOffset'] == result['lineArenaBytes'] + result['compiledAlignmentBytes'], (fixture['name'], name, 'compiled placement')
+                assert result['allocationRule'] == (1 if variant.startswith('recovered') else 0), (fixture['name'], name, 'rule')
                 runs[name] = result
         if fixture['name'] == 'compiled-fallback':
             assert runs['compiled-0']['compiledGuard'] == 1 and runs['compiled-0']['compiledInstances'] == 0, runs

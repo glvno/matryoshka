@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+import type { BufferAllocation } from './signal-buffers';
 // Sandbox patches: a patch over the FM-1's budget (patchbin.ts deviceBudget) plays in the browser with no limits. It is
 // first-class, never an error: its colour is gold (--sandbox in style.css), red stays for real failures, and the word is SANDBOX. Here:
 // the chip every patch list shows (FM-1 · NN % or SANDBOX, worked out from the patch when shown, never stored), the
@@ -21,13 +22,13 @@ export const chipOfBudget = (b: Pick<Budget, 'fits' | 'use'>): Chip =>
 const known = new Map<string, Chip>();
 
 /** a patch's chip (a patch that cannot be counted is a sandbox patch) */
-export function chipOf(p: Patch): Chip {
-  const key = JSON.stringify(p);
+export function chipOf(p: Patch, allocation: BufferAllocation = 0): Chip {
+  const key = allocation + JSON.stringify(p);
   const had = known.get(key);
   if (had) return { ...had };
   let c: Chip;
   try {
-    c = chipOfBudget(deviceBudget(p));
+    c = chipOfBudget(deviceBudget(p, allocation));
   } catch {
     c = { fits: false, text: 'SANDBOX' };
   }

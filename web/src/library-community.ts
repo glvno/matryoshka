@@ -4,6 +4,7 @@
 // (FM-1 · NN % or SANDBOX, sandbox.ts) and Add / Added ✓. Add puts the entry into Your patches, linked to the bundled entry
 // until the user saves it as their own; Added ✓ takes it out again. Filters: ALL, FM-1, SANDBOX, ADDED. Like the rest of
 // the Library it opens nothing: an added patch opens from the Open picker or the palette.
+import type { BufferAllocation } from './signal-buffers';
 import type { LibrarySection } from './bank';
 import {
   addCommunity, addedTitles, ageOf, chipOfEntry, familiesOf, ISSUE_FORM, isAdded, LICENCE, LICENCE_URL, loadCommunity, notesOf, onAddedChange,
@@ -25,10 +26,10 @@ export type CommunityFilter = 'all' | 'fm1' | 'sandbox' | 'added';
 const FILTERS: [CommunityFilter, string][] = [['all', 'ALL'], ['fm1', 'FM-1'], ['sandbox', 'SANDBOX'], ['added', 'ADDED']];
 
 /** whether a version row shows under a filter */
-export function passes(c: CommunityPatch, f: CommunityFilter, added: string[] = addedTitles()): boolean {
+export function passes(c: CommunityPatch, f: CommunityFilter, added: string[] = addedTitles(), allocation: BufferAllocation = 0): boolean {
   if (f === 'added') return added.includes(c.entry.title);
   if (f === 'all') return true;
-  return chipOfEntry(c).fits === (f === 'fm1');
+  return chipOfEntry(c, allocation).fits === (f === 'fm1');
 }
 
 export interface CommunityEvents {
@@ -37,7 +38,7 @@ export interface CommunityEvents {
 }
 
 /** Library > Community, built into `root` (it reads nothing from the FM-1) */
-export function buildCommunitySection(root: HTMLElement, ev: CommunityEvents): LibrarySection {
+export function buildCommunitySection(root: HTMLElement, ev: CommunityEvents, allocation: () => BufferAllocation = () => 0): LibrarySection {
   let list: CommunityPatch[] | null = null;
   let filter: CommunityFilter = 'all';
   const grid = el('div', { class: 'comm-grid' });
@@ -62,7 +63,7 @@ export function buildCommunitySection(root: HTMLElement, ev: CommunityEvents): L
       el('span', { class: 'grow', textContent: c.entry.title }),
       ...(c.entry.author !== base.entry.author ? [el('span', { class: 'muted', textContent: c.entry.author })] : []),
       ...(c.entry.source !== base.entry.source ? [el('a', { href: c.entry.source, target: '_blank', rel: 'noopener', textContent: 'Source ↗' })] : []),
-      chipEl(chipOfEntry(c)),
+      chipEl(chipOfEntry(c, allocation())),
       el('button', {
         type: 'button',
         class: added ? 'comm-add added' : 'comm-add',
@@ -95,7 +96,7 @@ export function buildCommunitySection(root: HTMLElement, ev: CommunityEvents): L
     }
     const added = addedTitles();
     const cards = familiesOf(list)
-      .map((f) => ({ name: f.name, members: f.members.filter((c) => passes(c, filter, added)) }))
+      .map((f) => ({ name: f.name, members: f.members.filter((c) => passes(c, filter, added, allocation())) }))
       .filter((f) => f.members.length)
       .map((f) => card(f.members, f.name));
     grid.replaceChildren(...(cards.length ? cards : [el('p', { class: 'muted', textContent: filter === 'added' ? 'None added yet. Add puts a patch into Your patches.' : filter === 'all' ? 'No community patch here yet.' : 'None of the community patches is one of these.' })]));
@@ -121,5 +122,5 @@ export function buildCommunitySection(root: HTMLElement, ev: CommunityEvents): L
     if (list) refresh();
     else void loadCommunity().then((l) => { list = l; refresh(); });
   };
-  return { refresh, enter, deviceChanged() { /* no FM-1 column */ } };
+  return { refresh, enter, deviceChanged(shown) { if (shown) refresh(); } };
 }

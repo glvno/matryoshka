@@ -3,8 +3,12 @@ import { DEFS } from './modules';
 import type { Patch } from './patch';
 import type { DeviceGroup } from './poly';
 
-/** Offline accounting of engine.c's lifetime allocator. Input must be deviceView(source, true).
- * This does not change the editor's admission budget. `separate` models ENG_BUF_REUSE=0 or a compiled candidate. */
+/** Unknown rules and disconnected devices always use separate charging. */
+export type BufferAllocation = 0 | 1;
+export const bufferAllocation = (rule?: number): BufferAllocation => rule === 1 ? 1 : 0;
+
+/** Accounting of engine.c's lifetime allocator. Input must be deviceView(source, true).
+ * `separate` models ENG_BUF_REUSE=0 or a compiled candidate. Current encoders never emit legacy disabled-input masks. */
 export function signalBuffers(p: Patch, groups: DeviceGroup[], separate = false): { values: number; physical: number } {
   const index = new Map(p.modules.map((m, i) => [m.id, i]));
   const group = p.modules.map((m) => groups.findIndex((g) => g.modules.has(m.id)));

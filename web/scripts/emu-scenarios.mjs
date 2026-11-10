@@ -924,6 +924,26 @@ async function main() {
       await loudCheck('connect: the FM-1 plays Init from a key', p, p > LOUD, `peak ${p}`);
       await emu.snap('connect');
     },
+    async signalBuffers() {
+      const fixture = await page.evaluate(async () => {
+        const { recoveredLines } = await import('/src/test-buffer-budget.ts');
+        const { deviceBudget } = await import('/src/patchbin.ts');
+        const patch = recoveredLines(), legacy = deviceBudget(patch), shared = deviceBudget(patch, 1);
+        window.__m1test.save(JSON.stringify(patch));
+        return { name: patch.name, legacyFits: legacy.fits, sharedFits: shared.fits,
+          recovered: legacy.lines.used - shared.lines.used, cpuEstimate: shared.cpu.use };
+      });
+      await check('signal buffers: legacy memory rejects, physical memory fits', !fixture.legacyFits && fixture.sharedFits && fixture.recovered === 42496,
+        JSON.stringify(fixture));
+      await check('signal buffers: connected firmware explicitly advertises rule 1', (await T()).bufferAllocation === 1);
+      await check('signal buffers: recovered-memory patch opens and uploads', await openSynced(fixture.name));
+      const state = await T();
+      await check('signal buffers: editor budget and upload agree', state.fits && !state.sandbox && state.chip === 'synced', JSON.stringify(state));
+      const peak = await emu.notePeak();
+      await loudCheck('signal buffers: newly admitted patch renders nonzero audio', peak, peak > 0, `peak ${peak}; CPU estimate ${fixture.cpuEstimate}, not device timing`);
+      await emu.snap('signal-buffers');
+      await openSynced('Init');
+    },
     async liveCompile() {
       const fixture = await page.evaluate(async () => {
         const { newPatch, addModule, connect } = await import('/src/patch.ts');
