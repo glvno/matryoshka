@@ -5,7 +5,7 @@
  * Keep the scheduled phase through ordinary entry jitter. If a whole extra
  * period was missed, serve once and rebase: lost USB packets cannot be
  * recovered by a burst of catch-up polls. */
-static int usb_poll_due(uint32_t *at, uint32_t now)
+static int usb_poll_due(volatile uint32_t *at, uint32_t now)
 {
     const uint32_t period = 500u * FM1_TICKS_PER_US;
     uint32_t elapsed = now - *at;
@@ -13,4 +13,12 @@ static int usb_poll_due(uint32_t *at, uint32_t now)
         return 0;
     *at = elapsed < 2u * period ? *at + period : now;
     return 1;
+}
+
+/* Caller has interrupts off and flash readable again. The next TIMER5 entry
+ * must service USB even if its normal deadline has not arrived. Repeated
+ * requests coalesce; no main-loop access to the USB controller is needed. */
+static void usb_poll_request(volatile uint32_t *at, uint32_t now)
+{
+    *at = now - 500u * FM1_TICKS_PER_US;
 }

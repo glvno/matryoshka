@@ -187,9 +187,14 @@ static void c1_poll(void)                       /* the main loop */
  * the 2 kHz USB service that queues each USB audio packet */
 static volatile uint32_t t5_gap_max, t5_gap_at;
 #include "usb_poll_clock.h"
+static volatile uint32_t usb_at;                /* TIMER5 owns it except the IRQ-off flash-step request */
+static void usb_poll_after_flash(void)
+{
+    usb_poll_request(&usb_at, fm1_ticks());
+}
 void fm1_timer5_irq(uint32_t *f)                /* f: the saved r0..r3, reti, rets, psr (fm1_isr.S) */
 {
-    static uint32_t usb_at, last, acc, next;
+    static uint32_t last, acc, next;
     uint32_t t0 = fm1_ticks();
     fm1_timer5_ack();
     fm1_input_tick();

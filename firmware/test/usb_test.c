@@ -28,6 +28,7 @@ static uint32_t sie_index, sie_rd_reg, sie_rd_val;
 static uint32_t csr0_in;                 /* what a read of CSR0 (index 0) returns */
 static uint32_t count0_in;               /* COUNT0 */
 static uint32_t rxcsr2, rxcount2, feedback_sent;
+static uint32_t sim_ep4_tokens;         /* emulate host IN tokens in the flash-yield deadline test */
 static uint32_t txcsr1_ep4;              /* TXCSR1 of EP4: bit 0 = a packet is still queued */
 static uint32_t rxcsr1_ep1, rxcount_ep1; /* EP1 OUT: bit 0 = a packet waits (RxPktRdy), its length */
 static int csr0_last = -1;               /* the last value written to CSR0 */
@@ -80,6 +81,7 @@ static void fm1_usb_sie_wr_start(uint32_t r, uint32_t v)
     if (r == 1u)
         power_last = (int)v;
     if (r == 20u && sie_index == 2u) rxcsr2 = 0;
+    if (r == 17u && sie_index == 4u && sim_ep4_tokens) txcsr1_ep4 = v;
     if (r == 17u && sie_index == 0u)
         csr0_last = (int)v;
     if (r == 20u && sie_index == 1u)
@@ -127,6 +129,8 @@ static void fm1_delay_ms(uint32_t ms) { (void)ms; }
 #include "../src/device_identity.h"
 #endif
 #include "../src/usb.c"
+#define FM1_TICKS_PER_US 24u
+#include "../src/usb_poll_clock.h"
 #if FELUCCA_OTA
 /* a send that waits for room calls ota_idle in a loop while the TIMER5 ISR moves the clock and, with a host that reads,
  * ep1_tx hands queued packets to it: here each call is one millisecond, the host taking a packet every host_every ms */
@@ -1000,6 +1004,55 @@ static void test_cut_sysex(void)
 #endif
 
 /* ------------------------------------------------------------------ the stream --- */
+/* Capture can run out of queued packets even when every TIMER5 entry gap is
+ * below 1 ms: its ordinary 500 us deadline can skip an entry between two
+ * uneven flash pauses. Exercise the real service and controller UnderRun bit
+ * at every host-frame phase, independently of the PCM ring (silent packets). */
+static void test_capture_flash_yield(void)
+{
+    sim_ep4_tokens = 1;
+    for (uint32_t request = 0; request < 2; request++) {
+        uint32_t affected = 0, lost_total = 0, counted_total = 0, worst = 0;
+        for (uint32_t phase = 0; phase < 1000; phase++) {
+            memset(&uac, 0, sizeof uac);
+            usb.up = usb.config = uac.alt = 1;
+            txcsr1_ep4 = 0;
+            uint32_t at = 0, now = 0, next_token = 1000 + phase, previous = 0, lost = 0;
+            uac_service();
+            for (uint32_t i = 0; i < 500; i++) {
+                int flash = i >= 200 && i < 300;
+                now += flash ? (i & 1u ? 580u : 470u) : 100u;
+                while (next_token <= now) {
+                    if (txcsr1_ep4 & 1u) txcsr1_ep4 &= ~1u;
+                    else { txcsr1_ep4 |= 4u; lost++; }
+                    next_token += 1000;
+                }
+                if (request && flash) usb_poll_request(&at, now * FM1_TICKS_PER_US);
+                if (usb_poll_due(&at, now * FM1_TICKS_PER_US)) {
+                    uint32_t gap = now - previous;
+                    if (gap > worst) worst = gap;
+                    previous = now;
+                    uac_service();
+                }
+            }
+            affected += lost != 0;
+            lost_total += lost;
+            counted_total += uac.missed;
+        }
+        printf("  flash yield request %u: %u/1000 phases miss, %u lost IN requests, %u counted, longest poll gap %u us\n",
+               request, affected, lost_total, counted_total, worst);
+        if (request)
+            CHECK(!affected && !lost_total && !counted_total && worst <= 580u,
+                  "each flash yield services capture before its next 1 ms IN request");
+        else
+            CHECK(affected && lost_total && counted_total && worst > 1000u,
+                  "fixture reproduces capture starvation without flash-yield request");
+    }
+    sim_ep4_tokens = txcsr1_ep4 = ep4_sent_n = 0;
+    memset(&uac, 0, sizeof uac);
+    usb.up = usb.config = 0;
+}
+
 static uint32_t rng = 12345u;
 static uint32_t rnd(uint32_t n)
 {
@@ -1138,6 +1191,7 @@ int main(int argc, char **argv)
 #else
     test_descriptors();
     test_return_driver();
+    test_capture_flash_yield();
     test_power();
     test_ep0();
 #if USB_LOG

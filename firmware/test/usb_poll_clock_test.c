@@ -67,5 +67,22 @@ int main(void)
     delayed = at + 0x80000000u;
     assert(usb_poll_due(&at, delayed));
     assert(!usb_poll_due(&at, delayed));
-    puts("USB poll clock: normal cadence, coalesced IRQs, delayed service and timer wrap passed");
+    /* A short flash step requests service before the ordinary deadline.
+     * Repeated requests while IRQs are masked must survive as one poll. */
+    at = 100000u;
+    usb_poll_request(&at, 100100u);
+    usb_poll_request(&at, 100101u);
+    assert(usb_poll_due(&at, 100102u));
+    assert(!usb_poll_due(&at, 100102u));
+    assert(!usb_poll_due(&at, 112100u));
+    assert(usb_poll_due(&at, 112101u));
+    /* Request arithmetic can underflow, and its delivery can cross wrap. */
+    usb_poll_request(&at, 0u);
+    assert(usb_poll_due(&at, 0u));
+    assert(!usb_poll_due(&at, 0u));
+    usb_poll_request(&at, UINT32_MAX - 100u);
+    assert(usb_poll_due(&at, 99u));
+    assert(!usb_poll_due(&at, 99u));
+    assert(usb_poll_due(&at, 11899u));
+    puts("USB poll clock: normal cadence, coalesced IRQs, delayed service, timer wrap and flash requests passed");
 }
