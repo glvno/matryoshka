@@ -8,13 +8,14 @@ from pathlib import Path
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('directory', type=Path)
-parser.add_argument('--effects', default='../listening-2-effects')
+parser.add_argument('--effects', default='../listening-3-effects')
 parser.add_argument('--before', default='../final-1')
 args = parser.parse_args()
 root = args.directory
 manifest = json.loads((root / 'manifest.json').read_text())
 entries = manifest['entries']
-effects = json.loads((root / args.effects / 'manifest.json').read_text())['entries']
+effects_manifest = json.loads((root / args.effects / 'manifest.json').read_text())
+effects = effects_manifest['entries']
 esc = html.escape
 
 
@@ -74,8 +75,8 @@ for i, bank in enumerate(banks):
     body.append('</details>')
 body += ['<h2>Files and measurements</h2>',
          '<p>Each sound plot shows its waveform, frequency balance and spectrogram. Downloads are complete patches. Raw and matched audio contain the same performance; no extra demo limiter was applied.</p>',
-         f'<p><a href="manifest.json">Render manifest</a> · <a href="analysis.json">Measurements</a> · <a href="SHA256SUMS">File hashes</a> · <a href="{esc(args.before)}/2026-11-10-preset-review.html">First listening round</a></p>',
-         f'<small>Generated ad hoc {esc(manifest["date"][:10])} from repository commit {esc(manifest["commit"])}; not maintained; stale after 24 hours. Sources: web/presets/cards, web/presets/patterns/defaults.json, web/scripts/audition-arrangements.ts, web/scripts/preset-effects-auditions.ts and web/src/engine.ts. The manifests identify each render’s source, including retained earlier renders.</small>',
+         f'<p><a href="{esc(args.effects)}/manifest.json">Effects manifest</a> · <a href="manifest.json">Bank render manifest</a> · <a href="analysis.json">Measurements</a> · <a href="SHA256SUMS">File hashes</a> · <a href="{esc(args.before)}/2026-11-10-preset-review.html">First listening round</a></p>',
+         f'<small>Generated ad hoc {esc(manifest["date"][:10])} from repository commit {esc(manifest["commit"])}; not maintained; stale after 24 hours. Sources: web/presets/cards, web/presets/patterns/defaults.json, web/scripts/audition-arrangements.ts, web/scripts/preset-effects-auditions.ts and web/src/engine.ts. Effects source: {esc(effects_manifest["commit"])}. The manifests identify each render’s source, including retained earlier renders.</small>',
          '</main><script>document.addEventListener("play", e => {if(e.target.tagName === "AUDIO") document.querySelectorAll("audio").forEach(a => {if(a !== e.target) a.pause()})}, true);function jump(){const node=document.getElementById(location.hash.slice(1));if(node && node.tagName === "DETAILS"){node.open=true;node.scrollIntoView({block:"start"})}}window.addEventListener("hashchange",jump);jump();</script></body></html>']
 (root / '2026-11-10-preset-review.html').write_text('\n'.join(body))
 print(f'{len(entries)} bank sounds + {len(effects)} dry/effected files')
