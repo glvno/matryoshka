@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed pan positions take less CPU on the FM-1 without changing the output samples.
+
 ## 1.13.0 — 2026-11-10
 
 - Harmonizer chords can feed Arpeggiator and Steps. Cable order chooses root recording or editable chord notes, including step recording with Side chord buttons. ARP inserts after harmony; unsupported keys routes show an explanation. These routes require firmware supporting patch format 53.

@@ -31525,8 +31525,17 @@
    "cv": 207
   },
   "pan": {
-   "run": 8884,
-   "cv": 212
+   "run": 2921,
+   "cv": 212,
+   "dims": [
+    {
+     "input": "pos"
+    }
+   ],
+   "grid": [
+    2921,
+    8897
+   ]
   },
   "xfade": {
    "run": 4400,
@@ -44216,7 +44225,7 @@
   },
   {
    "name": "Expander S",
-   "cycles": 520556
+   "cycles": 520608
   },
   {
    "name": "Algo Four",
@@ -44252,7 +44261,7 @@
   },
   {
    "name": "Scrounge",
-   "cycles": 342490
+   "cycles": 312675
   },
   {
    "name": "Meridian 8",
@@ -44296,7 +44305,7 @@
   },
   {
    "name": "Supersaw Stack",
-   "cycles": 316262
+   "cycles": 316314
   },
   {
    "name": "Verona Drum 1",
@@ -44324,7 +44333,7 @@
   },
   {
    "name": "assembly auto pan",
-   "cycles": 24219
+   "cycles": 24232
   },
   {
    "name": "assembly barber pole",
@@ -44400,7 +44409,7 @@
   },
   {
    "name": "assembly Expander S",
-   "cycles": 491640
+   "cycles": 491692
   },
   {
    "name": "assembly filter voice",
@@ -44516,7 +44525,7 @@
   },
   {
    "name": "assembly Scrounge",
-   "cycles": 323478
+   "cycles": 293663
   },
   {
    "name": "assembly shimmer",
@@ -44556,7 +44565,7 @@
   },
   {
    "name": "assembly supersaw stack",
-   "cycles": 289270
+   "cycles": 289322
   },
   {
    "name": "assembly tabla",
