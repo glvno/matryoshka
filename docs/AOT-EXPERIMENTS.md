@@ -28,3 +28,5 @@ The baseline hardware measurements are in [the capacity report](measurements/202
 The [integrated Oracle comparison](measurements/2026-11-09-integrated-oracle.md) records three repeated physical timing windows. The kernel is slower and reduces the passing voice count; the report separates this measured result from unproven explanations of the machine-code cost.
 
 The [Oracle emitted-code diagnosis](measurements/2026-11-09-oracle-codegen.md) confirms avoidable repeated parameter and signal-pointer reads. Offline snapshots remove most of the excess instructions, but remain more expensive than ordinary AOT. These candidates remain isolated from the development branch and have no physical speed qualification.
+
+The [Oracle shortcut probes](measurements/2026-11-09-oracle-shortcuts.md) isolate zero/unity gains and graph-constant signals. Constants reduce instructions, but per-sample gain branches add more control flow and stack traffic than they save. The best candidate still exceeds ordinary AOT; it remains disabled and has no device-speed qualification.
