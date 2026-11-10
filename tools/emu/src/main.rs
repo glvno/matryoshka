@@ -3,6 +3,8 @@
 //!   m1emu smoke BIN [--out DIR] [--levels FILE] [--strict]
 //!       the scripted smoke test (smoke.rs); exit code 1 on any failed check (with --strict also on a
 //!       level warning); FILE = web/scripts/emu-levels.ts's output, the reference level per factory patch
+//!   m1emu roll BIN [--out DIR]
+//!       the focused piano-roll checks from smoke.rs on normal firmware; not a full-smoke gate
 //!   m1emu boot BIN [--link EMU_BIN] [--out DIR]
 //!       the boot check (boot.rs, about 20 s emulated): boot, screen, sound, update mode; with EMU_BIN (the same
 //!       commit's M1_EMU_MIDI=1 build) also HELLO / INFO and the update handshake; exit code 1 on any failed check
@@ -30,7 +32,7 @@ use machine::Machine;
 use std::process::ExitCode;
 
 fn usage() -> ExitCode {
-    eprintln!("usage: m1emu smoke BIN [--out DIR] [--levels FILE] [--strict]\n       m1emu boot BIN [--link EMU_BIN] [--out DIR]\n       m1emu run BIN [--ms N] [--keys SCRIPT] [--snap MS,..] [--wav FILE] [--flash-in F] [--flash-out F] [--text S]\n       m1emu serve BIN [--flash-in F] [--name NAME]");
+    eprintln!("usage: m1emu smoke BIN [--out DIR] [--levels FILE] [--strict]\n       m1emu roll BIN [--out DIR]\n       m1emu boot BIN [--link EMU_BIN] [--out DIR]\n       m1emu run BIN [--ms N] [--keys SCRIPT] [--snap MS,..] [--wav FILE] [--flash-in F] [--flash-out F] [--text S]\n       m1emu serve BIN [--flash-in F] [--name NAME]");
     ExitCode::from(2)
 }
 
@@ -54,6 +56,7 @@ fn main() -> ExitCode {
             let levels = opt(&a, "--levels").map(|p| std::fs::read_to_string(p).unwrap_or_else(|e| panic!("{p}: {e}")));
             smoke::run(&app, out, levels.as_deref(), a.iter().any(|x| x == "--strict"))
         }
+        "roll" => smoke::roll_probe(&app, opt(&a, "--out").unwrap_or("build/emu/roll")),
         "boot" => {
             let link = match opt(&a, "--link").map(std::fs::read).transpose() {
                 Ok(l) => l,
