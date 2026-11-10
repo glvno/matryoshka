@@ -8517,7 +8517,7 @@ static void steps_key(uint32_t node, uint32_t key, uint32_t vel)
 {
     /* Notes which start and end before delivery never sound. Cancel that pair, preserving prior offs and retriggers.
      * This bounds output to the old and final sounding sets (2 * TRACK_POLY per track). */
-    if (!(key & 128u)) for (uint32_t j = E.nkev; j > 0u; j--) {
+    if (key_memory && !(key & 128u)) for (uint32_t j = E.nkev; j > 0u; j--) {
         uint32_t k = j - 1u;
         if (E.kev[k][0] != node || (E.kev[k][1] & 127u) != key) continue;
         if (E.kev[k][1] & 128u) {

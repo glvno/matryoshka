@@ -3178,11 +3178,12 @@ export interface StepsState {
   /** keys out: the notes started (key | 0x80, velocity 1..127) and ended (key, 0) this block, in order; the engine hands
    * them to the poly groups the track plays at the start of the next block */
   ev: number[];
-  evSnapshot: number[];
+  coalesce: boolean;
+  evSnapshot: (ReadonlyMap<number, number> | undefined)[];
   /** keys in while the track is armed (#134; editor only, the engine's noteOn / noteOff put them here): played notes
    * (note | 0x80, velocity 1..127) and let go (note, 0), passed through at the start of the next block */
   thru: number[];
-  thruSnapshot: number[];
+  thruSnapshot: (ReadonlyMap<number, number> | undefined)[];
   /** live recording (#135; editor only, Engine.setRec): the played notes become notes of the track while it runs */
   rec: boolean;
   /** samples since the last step began and a step's length then (where a played note lands: the nearest step) */
@@ -3305,7 +3306,7 @@ const steps: ModuleImpl<StepsState> = {
     ],
     data: TRACK_NAME_MAX,
   },
-  init: () => ({ notes: [], pats: [{ notes: [] }], pat: 0, queued: -1, songPos: -1, shift: 0, drum: false, song: { song: 0, songs: [] }, pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, once: 0, onceAt: -1, run: false, c1: 0, r1: 0, count: 0, pos: -1, visit: 0, loop: 0, half: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], evSnapshot: [], thru: [], thruSnapshot: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
+  init: () => ({ notes: [], pats: [{ notes: [] }], pat: 0, queued: -1, songPos: -1, shift: 0, drum: false, song: { song: 0, songs: [] }, pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, once: 0, onceAt: -1, run: false, c1: 0, r1: 0, count: 0, pos: -1, visit: 0, loop: 0, half: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], coalesce: false, evSnapshot: [], thru: [], thruSnapshot: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
   seed(s, seed) {
     s.seed = seed;
   },
@@ -3330,8 +3331,8 @@ const steps: ModuleImpl<StepsState> = {
     const gate = q16(c.p.gate ?? 0.25);
     const ext = !!c.connected.clk;
     const { clk, reset, transpose } = c.inp;
-    const emit = (key: number, vel: number, snapshot = 0): void => {
-      if (!(key & 128)) for (let j = s.ev.length - 2; j >= 0; j -= 2) {
+    const emit = (key: number, vel: number, snapshot?: ReadonlyMap<number, number>): void => {
+      if (s.coalesce && !(key & 128)) for (let j = s.ev.length - 2; j >= 0; j -= 2) {
         if ((s.ev[j] & 127) !== key) continue;
         if (s.ev[j] & 128) { s.ev.splice(j, 2); s.evSnapshot.splice(j / 2, 1); return; }
         break;
@@ -3408,7 +3409,7 @@ const steps: ModuleImpl<StepsState> = {
         if (same >= 0) end(same);
         if (s.snd.length >= TRACK_POLY) end(0);
         s.snd.push({ key, left: 0, cnt: 1, thru: note });
-        emit(key | 0x80, s.thru[e + 1], s.thruSnapshot[e / 2] ?? 0);
+        emit(key | 0x80, s.thru[e + 1], s.thruSnapshot[e / 2]);
         s.pitch = stepPitch(note);
         s.vel = s.thru[e + 1] / 127;
         s.gap = was;

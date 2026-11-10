@@ -1,4 +1,4 @@
-import { keyFeed, keyReach, keyRouteError } from './key-routing';
+import { chainedHarmonizer, keyFeed, keyReach, keyRouteError } from './key-routing';
 // SPDX-License-Identifier: GPL-3.0-only
 // Block-based patch engine. Pure TypeScript with no DOM or Web Audio dependency, so it runs in
 // an AudioWorklet, in tests, and (as the reference) next to the firmware port.
@@ -411,6 +411,7 @@ export class Engine {
     this.harmHears = this.armedKeys.length ? new Set(this.harms.filter((h) => mainKeysTo.has(h.node.id)).map((h) => h.node.id)) : null;
     this.harmById = new Map(this.harms.map((h) => [h.node.id, h]));
     this.tracks = this.order.filter((n) => n.type === 'steps');
+    for (const t of this.tracks) (t.inst[0].state as StepsState).coalesce = chainedHarmonizer(source);
     for (const id of this.thruHeld.keys()) if (!this.tracks.some(n => n.id === id)) this.thruHeld.delete(id);
     this.lockRuns = new Map(lockPlan(source, patch).map((t) => [
       next.get(patch.modules[t.track].id)!,
@@ -544,13 +545,13 @@ export class Engine {
   }
 
   /** Pass a generated note to the next processor. Generated pitches are always roots, never split-zone controls. */
-  private processorKeys(src: number, note: number, vel: number, snapshot = 0): void {
+  private processorKeys(src: number, note: number, vel: number, snapshot?: ReadonlyMap<number, number>): void {
     for (const a of this.arps) if (this.effSrc(a.feed) === src) {
       if (vel) arpKeyOn(a.st, note, vel, this.arpParams(a));
       else arpKeyOff(a.st, note, this.arpParams(a));
     }
     for (const h of this.harms) if (this.effSrc(h.feed) === src && !h.node.bypass)
-      harmKey(h.st, note, !!vel, this.harmParams(h), false, n => this.harmOn(h, n, vel), n => this.harmOff(h, n), notes => this.harmRoom(h, notes), (snapshot >>> (16 * this.harms.indexOf(h))) & 0xffff);
+      harmKey(h.st, note, !!vel, this.harmParams(h), false, n => this.harmOn(h, n, vel), n => this.harmOff(h, n), notes => this.harmRoom(h, notes), snapshot?.get(h.node.id) ?? 0);
     for (const t of this.tracks) {
       const from = this.src && keyFeed(this.src, t);
       if (from && this.effSrc(from.id) === src) this.thru(t.id, note, Math.round(vel * 127));
@@ -615,7 +616,7 @@ export class Engine {
       for (let i = 0; i < st.ev.length; i += 2) {
         this.mapKeys(node.id, st.ev[i], st.ev[i + 1]);
         const key = st.ev[i] & 0x7f;
-        this.processorKeys(node.id, key, st.ev[i] & 0x80 ? st.ev[i + 1] / 127 : 0, st.evSnapshot[i / 2] ?? 0);
+        this.processorKeys(node.id, key, st.ev[i] & 0x80 ? st.ev[i + 1] / 127 : 0, st.evSnapshot[i / 2]);
         gs.forEach((g, gi) => {
           if (!(st.ev[i] & 0x80)) {
             const was = g.parts.map((x) => x.on);
@@ -1056,11 +1057,11 @@ export class Engine {
       held.add(note);
     } else if (!held.delete(note)) return;
     this.thruHeld.set(id, held);
-    let snapshot = 0;
+    const snapshot = new Map<number, number>();
     if (vel > 0 && this.src) {
       const downstream = keyReach(this.src, id);
-      this.harms.forEach((h, i) => {
-        if (!h.node.bypass && downstream.has(h.node.id)) snapshot |= harmSnapshot(h.st, this.harmParams(h)) << (16 * i);
+      this.harms.forEach(h => {
+        if (!h.node.bypass && downstream.has(h.node.id)) snapshot.set(h.node.id, harmSnapshot(h.st, this.harmParams(h)));
       });
     }
     s.thruSnapshot.push(snapshot);
