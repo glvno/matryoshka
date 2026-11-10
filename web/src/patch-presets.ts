@@ -3,17 +3,16 @@
 import { PRESET_NEEDS_UPDATE, type DeviceLink } from './device';
 import { userPresets, type Preset } from './device-presets';
 import { DEFS } from './modules';
-import { devicesOf } from './pages';
+import { assemblyPages } from './pages';
 import type { Patch } from './patch';
 import { devicePresetName } from './protocol';
 import { structureOf } from './structure';
 
-/** Only devices exposed on the FM-1; repeated copies share one preset list. */
+/** Assemblies with card pages, including nested ones; repeated copies share one preset list. */
 export function patchPresets(patch: Patch): Preset[] {
-  const structures = new Set(devicesOf(patch, DEFS).flatMap((d) => {
-    const a = patch.assemblies?.find((a) => a.id === d.asm);
-    return a ? [structureOf(patch, a)] : [];
-  }));
+  const structures = new Set((patch.assemblies ?? [])
+    .filter((a) => assemblyPages(patch, a, DEFS).length > 0)
+    .map((a) => structureOf(patch, a)));
   return userPresets().filter((p) => structures.has(p.structure));
 }
 

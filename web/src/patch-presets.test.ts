@@ -2,7 +2,7 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it, vi } from 'vitest';
 import { FACTORY } from './assemblies';
-import { insertAssembly } from './assembly';
+import { insertAssembly, makeAssembly, promote } from './assembly';
 import { setFactoryPresets, storePreset, userPresets } from './device-presets';
 import { DEFS } from './modules';
 import { newPatch, validatePatch } from './patch';
@@ -31,6 +31,21 @@ it('sends only user presets for this patch’s devices, once per structure, afte
   expect(result).toContain('1 preset sent');
   expect(device.putPreset).toHaveBeenCalledExactlyOnceWith(userPresets()[0].structure, 'My Stack', userPresets()[0].values);
   expect(confirm).not.toHaveBeenCalled();
+});
+
+it('transfers distinct parent and nested child presets once each after save/load', async () => {
+  const { patch, device } = fixture();
+  const child = patch.assemblies![0];
+  const parent = makeAssembly(patch, [], 'Two stacks', patch.assemblies!.map((a) => a.id));
+  promote(parent, child.params[0].module, child.params[0].param, patch);
+  storePreset(patch, parent, 'Whole Stack');
+  const saved = validatePatch(JSON.parse(JSON.stringify(patch)), DEFS);
+  const selected = patchPresets(saved);
+  expect(selected.map((p) => p.name)).toEqual(['My Stack', 'Whole Stack']);
+  expect(new Set(selected.map((p) => p.structure)).size).toBe(2);
+  expect(parent.children).toContain(child.id);
+  expect(await sendPatchPresets(saved, device, () => true)).toContain('2 presets sent');
+  expect(device.putPreset.mock.calls).toEqual(selected.map((p) => [p.structure, p.name, p.values]));
 });
 
 it('confirms case-insensitive FM-1 name collisions before sending anything; cancel preserves both stores', async () => {
