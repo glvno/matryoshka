@@ -41,11 +41,15 @@ static struct { uint32_t erases, progs, off_max, erase_max, prog_max, steps, uns
  * fl_step_ram, the command and its bytes included; DIAG 128's off_max counts from the command's end) with the interrupts
  * off, in TIMER4 ticks, since that page was last read, with the fm1_ms each ended at; and the fm1_ms the last write ended */
 static struct { uint32_t rd_max, rd_at, step_max, step_at, wr_end; } st_off;
-static int st_read(uint32_t off, void *dst, uint32_t n)   /* 256-byte IRQ-off windows: audio keeps up */
+/* #729: the store reads and programs at most ST_CHUNK bytes with the interrupts off at a time (a power of two, a divisor
+ * of the 256-byte page): every byte is a polled SPI transfer, and the 2 kHz USB service (TIMER5) must queue each USB
+ * audio packet within about a millisecond */
+#define ST_CHUNK 64u
+static int st_read(uint32_t off, void *dst, uint32_t n)   /* ST_CHUNK-byte IRQ-off windows: audio keeps up */
 {
     uint8_t *d = dst;
     while (n) {
-        uint32_t k = n > 256u ? 256u : n, f = irq_save(), t = fm1_ticks();
+        uint32_t k = n > ST_CHUNK ? ST_CHUNK : n, f = irq_save(), t = fm1_ticks();
         int rc = FL_FAR(fl_read_ram)(off, d, k);
         t = fm1_ticks() - t;
         irq_restore(f);
@@ -147,16 +151,16 @@ static int st_erase(uint32_t off)
     return st_op(0x20u, off, 0, 0x1000u);
 }
 /* the program reads its source with the read path off: a source in the flash (.rodata: a factory patch, presetstore's zero
- * word) hangs the CPU on a cache miss (a preset delete froze the FM-1), so every write goes through a RAM copy, a page at
- * a time */
+ * word) hangs the CPU on a cache miss (a preset delete froze the FM-1), so every write goes through a RAM copy, ST_CHUNK
+ * bytes at a time (each its own page program) */
 static int st_prog(uint32_t off, const void *src, uint32_t n)
 {
-    static uint8_t bounce[256];
+    static uint8_t bounce[ST_CHUNK];
     const uint8_t *s = src;
     if (!FL_STORE_OK(off, n))                   /* only inside the storage areas */
         return -8;
     while (n) {
-        uint32_t k = 256u - (off & 0xFFu), i;
+        uint32_t k = ST_CHUNK - (off & (ST_CHUNK - 1u)), i;   /* (inside one page: ST_CHUNK divides it) */
         int rc;
         if (k > n)
             k = n;
