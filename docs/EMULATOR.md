@@ -28,7 +28,8 @@ its disassembly (artifact `matryoshka-elf`) for tracing such faults to a functio
 Full emulator checks run locally, outside continuous integration (CI) ([D-101](ledger/releases.md#D-101), Decided).
 Choose commands using the canonical stage rules:
 
-- **Agent work and shared integration:** [D-144](ledger/releases.md#D-144) defines the targeted checks and review before a candidate is frozen.
+- **Agent branches → `main` → frozen candidate:** [D-145](ledger/releases.md#D-145) defines branch roles;
+  [D-144](ledger/releases.md#D-144) defines targeted checks and review before the freeze.
 - **Frozen release candidate and fixes:** [D-144](ledger/releases.md#D-144) defines the full run and affected revalidation;
   [D-105](ledger/releases.md#D-105) governs reuse for release packages.
 - **Registered test rig:** [D-123](ledger/releases.md#D-123) governs installation; [D-141](ledger/releases.md#D-141)
