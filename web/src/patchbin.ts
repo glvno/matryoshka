@@ -129,7 +129,7 @@ export const WRITE_FLOOR = 46;
 /** the formats past WRITE_FLOOR that only add something the encoder writes when the patch uses it (format 48: the patterns
  * and songs, flag bit 10; format 50: a note word's bit 31, NOTE_WRAP; format 51: counted records, when the patch would not
  * fit otherwise, COUNTED); every other format past WRITE_FLOOR appends parameters (ParamDef.since) */
-export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module' };
+export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module', 53: 'chained Harmonizer keys routes' };
 /** the flag (u16 at offset 6) of the P-locks section (format 49, #524) */
 export const FLAG_LOCKS = 2048;
 
@@ -1037,7 +1037,7 @@ export interface PoolUse { instances: number; buffers: number; params: number }
  * what the others leave (`fits`, linePlace) */
 export interface LineBudget { modules: LineUse[]; pool: PoolUse; used: number; max: number; fits: boolean; lines: number; copiesBytes: number; buffersBytes: number; paramsBytes: number;
   /** the modules (#721): how many, their bytes (NODE_BYTES each) */
-  nodes: number; nodesBytes: number }
+  nodes: number; nodesBytes: number; keyBytes: number }
 /** the copies of each module of a device form: the parts of its poly group, else one */
 function copiesOf(groups: DeviceGroup[]): (id: number) => number {
   const copies = new Map<number, number>();
@@ -1078,6 +1078,7 @@ export function lineBudget(source: Patch): LineBudget {
   const { patch: p, groups } = deviceView(source, true);
   return linesOf(p, copiesOf(groups), poolUse(p, groups));
 }
+export const KEY_ROUTING_BYTES = 7016;
 function linesOf(p: Patch, ninst: (id: number) => number, pool: PoolUse): LineBudget {
   const modules: LineUse[] = [];
   const sizes: number[] = [];
@@ -1091,9 +1092,11 @@ function linesOf(p: Patch, ninst: (id: number) => number, pool: PoolUse): LineBu
   const lines = sizes.reduce((a, b) => a + b, 0);
   const copiesBytes = (pool.instances + 1) * INST_BYTES, buffersBytes = pool.buffers * BUF_BYTES, paramsBytes = pool.params * PAR_BYTES;
   const nodes = p.modules.length, nodesBytes = nodes * NODE_BYTES;
-  const taken = copiesBytes + buffersBytes + paramsBytes + nodesBytes;
+  // engine.c key_memory_t: bounded queues and transient chord/entry state, allocated only by chained routes.
+  const keyBytes = chainedHarmonizer(p) && p.modules.some(m => m.type === 'steps') ? KEY_ROUTING_BYTES : 0;
+  const taken = copiesBytes + buffersBytes + paramsBytes + nodesBytes + keyBytes;
   const fits = taken <= ARENA && sizes.length <= MAX_LINES && linePlace(sizes, ARENA - taken) !== null;
-  return { modules, pool, used: taken + lines, max: DEVICE.memory, fits, lines, copiesBytes, buffersBytes, paramsBytes, nodes, nodesBytes };
+  return { modules, pool, used: taken + lines, max: DEVICE.memory, fits, lines, copiesBytes, buffersBytes, paramsBytes, nodes, nodesBytes, keyBytes };
 }
 /** the most lines a patch can have (engine.c ENG_MAX_LINES) */
 export const MAX_LINES = 128;

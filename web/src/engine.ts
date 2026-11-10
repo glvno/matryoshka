@@ -17,7 +17,7 @@ import { kindOf, switches, toggleTargets } from './buttons';
 import { fixNotes, PATTERNS_MAX, SONGS_MAX, type SongEntry, type StepNote } from './track';
 import { lockPlan, lockValue } from './locks';
 import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
-import { harmButton, harmButtonOf, harmChord, harmClear, harmInit, harmKey, type HarmParams, type HarmState } from './harmonizer';
+import { harmButton, harmButtonOf, harmChord, harmSnapshot, harmClear, harmInit, harmKey, type HarmParams, type HarmState } from './harmonizer';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 export const BLOCK = 128;
@@ -460,10 +460,12 @@ export class Engine {
   /** a Harmonizer's note into its groups (an arpeggiator's way: their key range judges it) */
   private harmOn(h: HarmRun, note: number, vel: number): void {
     this.processorKeys(h.node.id, note, vel);
+    this.mapKeys(h.node.id, note | 128, Math.round(vel * 127));
     for (const g of this.groups) if (this.effSrc(g.src) === h.node.id && takesKey(g.cfg, note)) this.groupOn(g, note, vel);
   }
   private harmOff(h: HarmRun, note: number): void {
     this.processorKeys(h.node.id, note, 0);
+    this.mapKeys(h.node.id, note, 0);
     for (const g of this.groups) if (this.effSrc(g.src) === h.node.id) this.groupOff(g, note);
   }
   /** a Harmonizer's groups let go of every note (its roots too; its buttons and latch stay) */
@@ -542,13 +544,13 @@ export class Engine {
   }
 
   /** Pass a generated note to the next processor. Generated pitches are always roots, never split-zone controls. */
-  private processorKeys(src: number, note: number, vel: number): void {
+  private processorKeys(src: number, note: number, vel: number, snapshot = 0): void {
     for (const a of this.arps) if (this.effSrc(a.feed) === src) {
       if (vel) arpKeyOn(a.st, note, vel, this.arpParams(a));
       else arpKeyOff(a.st, note, this.arpParams(a));
     }
     for (const h of this.harms) if (this.effSrc(h.feed) === src && !h.node.bypass)
-      harmKey(h.st, note, !!vel, this.harmParams(h), false, n => this.harmOn(h, n, vel), n => this.harmOff(h, n), notes => this.harmRoom(h, notes));
+      harmKey(h.st, note, !!vel, this.harmParams(h), false, n => this.harmOn(h, n, vel), n => this.harmOff(h, n), notes => this.harmRoom(h, notes), snapshot);
     for (const t of this.tracks) {
       const from = this.src && keyFeed(this.src, t);
       if (from && this.effSrc(from.id) === src) this.thru(t.id, note, Math.round(vel * 127));
@@ -613,7 +615,7 @@ export class Engine {
       for (let i = 0; i < st.ev.length; i += 2) {
         this.mapKeys(node.id, st.ev[i], st.ev[i + 1]);
         const key = st.ev[i] & 0x7f;
-        this.processorKeys(node.id, key, st.ev[i] & 0x80 ? st.ev[i + 1] / 127 : 0);
+        this.processorKeys(node.id, key, st.ev[i] & 0x80 ? st.ev[i + 1] / 127 : 0, st.evSnapshot[i / 2] ?? 0);
         gs.forEach((g, gi) => {
           if (!(st.ev[i] & 0x80)) {
             const was = g.parts.map((x) => x.on);
@@ -630,6 +632,7 @@ export class Engine {
         });
       }
       st.ev.length = 0;
+      st.evSnapshot.length = 0;
     }
   }
 
@@ -1053,6 +1056,8 @@ export class Engine {
       held.add(note);
     } else if (!held.delete(note)) return;
     this.thruHeld.set(id, held);
+    const h = this.trackHarmony(id);
+    s.thruSnapshot.push(vel > 0 && h && this.src && keyReach(this.src, id).has(h.node.id) ? harmSnapshot(h.st, this.harmParams(h)) : 0);
     s.thru.push(vel > 0 ? (note & 0x7f) | 0x80 : note & 0x7f, vel > 0 ? Math.max(1, Math.min(127, Math.round(vel))) : 0);
   }
 

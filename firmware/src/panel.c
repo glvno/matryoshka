@@ -651,7 +651,7 @@ static uint32_t drum_white_ms;                   /* (when it last said so: once 
 static uint8_t key_eng[27];                      /* the note it played in the engine: key_note, a Drum map row's (eng_keys_drummap), */
 #define KEY_SILENT 0xFFu                         /* or none (a white key on a Drum map) */
 static uint32_t key_sounding;                    /* bit n: key n started a note (not a key pressed on the SEQ page) */
-static uint8_t key_chord_track[27];
+static uint8_t key_chord_track[7];     /* only Side chord buttons can own a recording track */
 static uint32_t key_chord;                       /* bit n: key n (0..6) went down as a Harmonizer's chord button (#598) */
 static int8_t chord_due = -1;                    /* a chord button moved: panel_status names the chord of this Harmonizer */
 #define CHORD_KEYS 7u                            /* the seven lowest keys, F3..B3 at OCT 0: the Side layout's buttons */

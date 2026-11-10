@@ -53,7 +53,7 @@
 #define HARM_VOICING 8               /* the voicing's reach, inversions up or down */
 #define ENG_MAX_TRACKS 16            /* Steps modules of a patch (their notes live in E.trk_note) */
 #define ENG_MAX_NOTES 1536           /* the notes of all Steps tracks of a patch, every pattern (patchbin.ts DEVICE.notes) */
-#define ENG_KEV 512                   /* Steps keys out (note on / off) one block holds; more are dropped */
+#define ENG_KEV (key_memory ? 256u : 64u)                   /* at most an old and new eight-note set for each of sixteen tracks */
 #define ARP_HELD 16                  /* keys an arpeggiator holds (arpeggiator.ts ARP_HELD) */
 #define ARP_LIST (ARP_HELD * 4u)     /* its notes over four octaves */
 #define TEMPO_DEFAULT 120u           /* without a Main module */
@@ -639,11 +639,11 @@ typedef struct { uint8_t trk, pat, at, row; int32_t v; } lock_t;
 /* keys in (#139; engine.ts arm / thru): the keys played into a track (the armed one, or one a cable from Main's keys
  * feeds) wait in a ring the main loop fills and the audio side empties at the start of a block (eng_note_on runs
  * outside the interrupt): module index, the note (bit 7: on), velocity */
-#define ENG_THRU 128u
-static uint8_t thru_ring[ENG_THRU][3];
+#define ENG_THRU (key_memory ? 128u : 32u)
+static uint8_t thru_legacy[32][3];
+static uint16_t steps_emit_snapshot;
 static uint8_t chained_keys;
 static volatile uint16_t thru_head, thru_tail;
-static uint32_t thru_down[ENG_MAX_TRACKS][4];
 static uint32_t thru_reserved;
 /* where in the ring track t's thru_kill came (thru_head then, #748): the keys put in before it go quiet with the ones
  * sounding, the keys put in after it play (engine.ts thruOff: its note-offs join the track's keys in order). A key pressed
@@ -651,11 +651,28 @@ static uint32_t thru_reserved;
 static volatile uint16_t thru_kill_at[ENG_MAX_TRACKS];
 /* live recording (#135, #139): the notes being recorded (track, note, the step they landed on, velocity, samples since
  * that step began, negative before it) and the recorded ones for the main loop (eng_steps_take: module, note word) */
-#define ENG_RIN 128u
+#define ENG_RIN (key_memory ? 128u : 16u)
 typedef struct { uint8_t trk, note, at, vel; int32_t t; } rin_t;
-#define ENG_TOOK 256u
-static uint32_t took_ring[ENG_TOOK][2];
+#define ENG_TOOK (key_memory ? 256u : 32u)
+static uint32_t took_legacy[32][2];
 static volatile uint16_t took_head, took_tail;
+
+/* Chained routing pays for its own queues and gesture snapshots in the patch arena. Legacy patches retain their
+ * fixed buffers and arena allowance. Keep this byte count in patchbin.ts KEY_ROUTING_BYTES. */
+typedef struct {
+    uint32_t down[ENG_MAX_TRACKS][4], took[256][2];
+    rin_t rin[128];
+    uint8_t thru[128][3], block[128][3], events[256][3];
+    uint16_t thru_snapshot[128], block_snapshot[128], event_snapshot[256];
+    eng_step_entry_t entry;
+} key_memory_t;
+typedef char key_memory_size_check[sizeof(key_memory_t) == 7016u ? 1 : -1];
+static key_memory_t *key_memory;
+#define thru_ring (key_memory ? key_memory->thru : thru_legacy)
+#define took_ring (key_memory ? key_memory->took : took_legacy)
+#define thru_down (key_memory->down)
+eng_step_entry_t *eng_steps_entry_memory(void) { return key_memory ? &key_memory->entry : 0; }
+
 
 /* a Steps note (track.ts noteWord): bits 0..5 the start step, 6..11 the length - 1, 12..18 the note, 19..25 the velocity,
  * 26..30 the chance code (100 - chance) / 5 */
@@ -728,7 +745,7 @@ typedef struct {
     uint8_t trk_nsnd[ENG_MAX_TRACKS];
     uint8_t trk_last[ENG_MAX_TRACKS];    /* the last note a track started (a hit from the panel plays it) */
     uint16_t nkev;                    /* keys out of the Steps tracks this block: node index, key (bit 7: on), velocity */
-    uint8_t kev[ENG_KEV][3];
+    uint8_t kev_legacy[64][3], (*kev)[3];
     uint8_t arm;                     /* the armed Steps module + 1 (#139; engine.ts arm), 0 none: the first armed track (REC's) */
     eng_mset_t armm;                 /* the armed modules (#191, eng_arm_mask): while any is (armany) only they hear Main's keys */
     uint8_t armany;
@@ -737,9 +754,9 @@ typedef struct {
     volatile uint16_t thru_kill;     /* bit t: track t lets go of the keys played through it (at its next block) */
     uint16_t nthru;                   /* keys in taken from the ring for this block (m_steps reads its own) */
     uint16_t blk_q0;                  /* the ring position of blk_thru[0] (for thru_kill_at) */
-    uint8_t blk_thru[ENG_THRU][3];
+    uint8_t blk_legacy[32][3], (*blk_thru)[3];
     uint8_t nrin;
-    rin_t rin[ENG_RIN];
+    rin_t rin_legacy[16], *rin;
     uint8_t running;                 /* the transport as this block saw it */
     uint8_t narp;
     arp_t arp[ENG_MAX_ARPS];
@@ -1724,6 +1741,8 @@ int eng_load(const uint8_t *p, uint32_t len)
                                                                  * stack, 1 KB: not the RAM region's, which the interrupts need) */
     uint8_t line_reg[ENG_MAX_LINES];
     E.loaded = 0;
+    key_memory = 0;
+    E.kev = E.kev_legacy; E.blk_thru = E.blk_legacy; E.rin = E.rin_legacy;
     E.stamp = 0;
     for (i = 0; i < ENG_KNOBS; i++)              /* (a knob ramp of the patch before: gone) */
         ramp[i].left = 0;
@@ -1746,7 +1765,7 @@ int eng_load(const uint8_t *p, uint32_t len)
     thru_tail = thru_head;                       /* (keys still waiting were for the last patch) */
     took_tail = took_head;
     thru_reserved = 0;
-    for (uint32_t tr = 0; tr < ENG_MAX_TRACKS; tr++) for (uint32_t w = 0; w < 4u; w++) thru_down[tr][w] = 0;
+    if (key_memory) for (uint32_t tr = 0; tr < ENG_MAX_TRACKS; tr++) for (uint32_t w = 0; w < 4u; w++) thru_down[tr][w] = 0;
     E.ngrp = 0;
     E.grp[0].parts = 1;                          /* the shared keyboard: one part, legato auto, last note */
     E.grp[0].assign = E.grp[0].legato = E.grp[0].priority = 0;
@@ -1999,6 +2018,14 @@ int eng_load(const uint8_t *p, uint32_t len)
         }
         if (E.node[tm].type == T_PART && E.node[tm].grp)  /* a cable into a Part's assign or unison input (#681) */
             E.grp[E.node[tm].grp].mode = tm;
+    }
+    if (chained_keys && E.ntrk) {
+        uint32_t bytes = (sizeof(key_memory_t) + 3u) & ~3u;
+        if (bytes > arena_free()) return -8;
+        ar_hi += bytes;
+        key_memory = (key_memory_t *)((uint8_t *)eng_arena + ENG_ARENA_HOST - ar_hi);
+        for (i = 0; i < bytes; i++) ((uint8_t *)key_memory)[i] = 0;
+        E.kev = key_memory->events; E.blk_thru = key_memory->block; E.rin = key_memory->rin;
     }
     /* A bounded path has one of each processor; reject cycles before any note can recurse. */
     for (i = 0; i < E.nmod; i++) {
@@ -3220,7 +3247,7 @@ static uint32_t key_src(uint32_t s)
 }
 static uint32_t grp_src(uint32_t g) { return key_src(E.grp[g].src); }
 static uint32_t dm_src(const node_t *nd) { return nd->ksrc < 2u ? nd->ksrc : key_src(nd->ksrc - 1u) + 1u; }
-static void processor_keys(uint32_t src, uint32_t note, int32_t vel);
+static void processor_keys(uint32_t src, uint32_t note, int32_t vel, uint32_t snapshot);
 static void thru_put(uint32_t module, uint32_t kv, uint32_t vel);
 static void dm_keys(uint32_t src, uint32_t kv, uint32_t vel);
 
@@ -3426,12 +3453,26 @@ static uint32_t harm_intervals(const harm_t *h, int32_t *t)
     return n;
 }
 
+static const uint8_t HARM_INTERVALS[9] = {0, 2, 3, 4, 5, 6, 7, 10, 14};
+static uint32_t harm_snapshot(const harm_t *h)
+{
+    int32_t tones[HARM_TONES];
+    uint32_t n = harm_intervals(h, tones), bits = 0x8000u | (uint32_t)(harm_par(h, HARM_P_VOICING, -8, 8) + 8) << 9;
+    for (uint32_t i = 0; i < n; i++) for (uint32_t j = 0; j < 9u; j++) if (tones[i] == HARM_INTERVALS[j]) bits |= 1u << j;
+    return bits;
+}
+
 /* the notes root plays now, low to high, inside 0..127 (harmonizer.ts harmChord): the voicing's steps up take the lowest
  * note an octave up, its steps down the highest an octave down (a chord only, not the root alone). Their count */
-static uint32_t harm_chord(const harm_t *h, uint32_t root, uint8_t *out)
+static uint32_t harm_chord_snapshot(const harm_t *h, uint32_t root, uint8_t *out, uint32_t snapshot)
 {
     int32_t t[HARM_TONES], v = harm_par(h, HARM_P_VOICING, -HARM_VOICING, HARM_VOICING), x;
     uint32_t n = harm_intervals(h, t), i, k = 0;
+    if (snapshot) {
+        n = 0;
+        for (i = 0; i < 9u; i++) if (snapshot >> i & 1u) t[n++] = HARM_INTERVALS[i];
+        v = (int32_t)(snapshot >> 9 & 31u) - 8;
+    }
     for (; n > 1u && v > 0; v--) {
         x = t[0] + 12;
         for (i = 1; i < n && t[i] < x; i++)
@@ -3457,11 +3498,14 @@ static uint32_t harm_chord(const harm_t *h, uint32_t root, uint8_t *out)
     return k;
 }
 
+static uint32_t harm_chord(const harm_t *h, uint32_t root, uint8_t *out) { return harm_chord_snapshot(h, root, out, 0); }
+
 /* a note of its into the groups it plays (an arpeggiator's way: their key range judges it) */
 static void harm_emit_on(const harm_t *h, uint32_t note, int32_t vel)
 {
     uint32_t g;
-    processor_keys(h->node, note, vel);
+    processor_keys(h->node, note, vel, 0);
+    dm_keys(h->node + 2u, note | 128u, (uint32_t)(((int64_t)vel * 127 + 32768) >> 16));
     for (g = 1; g <= E.ngrp; g++)
         if (grp_src(g) == h->node + 1u && note >= E.grp[g].lo && note <= E.grp[g].hi)
             group_on(&E.grp[g], note, vel);
@@ -3469,7 +3513,8 @@ static void harm_emit_on(const harm_t *h, uint32_t note, int32_t vel)
 static void harm_emit_off(const harm_t *h, uint32_t note)
 {
     uint32_t g;
-    processor_keys(h->node, note, 0);
+    processor_keys(h->node, note, 0, 0);
+    dm_keys(h->node + 2u, note, 0);
     for (g = 1; g <= E.ngrp; g++)
         if (grp_src(g) == h->node + 1u)
             group_off(&E.grp[g], note);
@@ -3506,14 +3551,14 @@ static int harm_room(const harm_t *h, const uint8_t *notes, uint32_t n)
 }
 
 /* a root pressed: its chord's notes no held root sounds yet start; one already held plays again */
-static void harm_root_on(harm_t *h, uint32_t key, int32_t vel)
+static void harm_root_on_snapshot(harm_t *h, uint32_t key, int32_t vel, uint32_t snapshot)
 {
     uint32_t i, j;
     harm_root_off(h, key);
     if (h->nroots >= HARM_ROOTS)
         return;
     uint8_t notes[HARM_TONES];
-    uint32_t n = harm_chord(h, key, notes);
+    uint32_t n = harm_chord_snapshot(h, key, notes, snapshot);
     if (!harm_room(h, notes, n)) return;
     i = h->nroots++;
     h->root[i] = (uint8_t)key;
@@ -3523,6 +3568,8 @@ static void harm_root_on(harm_t *h, uint32_t key, int32_t vel)
         if (h->count[h->note[i][j]]++ == 0u)
             harm_emit_on(h, h->note[i][j], vel);
 }
+
+static void harm_root_on(harm_t *h, uint32_t key, int32_t vel) { harm_root_on_snapshot(h, key, vel, 0); }
 
 /* a key from Main: one of the seven under the split a button (not from the FM-1's keys: harm_raw), else a root */
 static void harm_key(harm_t *h, uint32_t note, int32_t vel, int down)
@@ -3555,7 +3602,7 @@ static void harm_key(harm_t *h, uint32_t note, int32_t vel, int down)
 }
 
 /* The editor permits one of each processor in an acyclic path. Output pitches never become chord controls. */
-static void processor_keys(uint32_t src, uint32_t note, int32_t vel)
+static void processor_keys(uint32_t src, uint32_t note, int32_t vel, uint32_t snapshot)
 {
     uint32_t i, m, feed;
     for (i = 0; i < E.narp; i++) {
@@ -3570,7 +3617,7 @@ static void processor_keys(uint32_t src, uint32_t note, int32_t vel)
         m = E.harm[i].node;
         feed = E.node[m].ksrc;
         if (!E.node[m].bypass && feed >= 2u && key_src(feed - 1u) == src + 1u) {
-            if (vel) harm_root_on(&E.harm[i], note, vel);
+            if (vel) harm_root_on_snapshot(&E.harm[i], note, vel, snapshot);
             else harm_root_off(&E.harm[i], note);
         }
     }
@@ -3830,7 +3877,7 @@ static void steps_keys(void)
         if (!e || node != E.kev[e - 1u][0])
             for (g = 0; g <= E.ngrp; g++)
                 freed[g] = 0;
-        processor_keys(node, key, E.kev[e][1] & 0x80u ? (int32_t)(((uint32_t)E.kev[e][2] << 16) / 127u) : 0);
+        processor_keys(node, key, E.kev[e][1] & 0x80u ? (int32_t)(((uint32_t)E.kev[e][2] << 16) / 127u) : 0, (key_memory ? key_memory->event_snapshot[e] : 0u));
         for (g = 1; g <= E.ngrp; g++) {
             grp_t *gr = &E.grp[g];
             if (grp_src(g) != node + 1u)
@@ -3959,19 +4006,28 @@ static int takes_key(const grp_t *g, uint32_t note, uint32_t ch)
 static void thru_put(uint32_t module, uint32_t kv, uint32_t vel)
 {
     uint16_t h = thru_head;
-    uint32_t t = E.node[module].trk, note = kv & 127u, bit = 1u << (note & 31u);
-    uint32_t held = (thru_down[t][note >> 5] & bit) != 0u;
-    if (kv & 128u) {
-        if ((uint16_t)(h - thru_tail) + thru_reserved + (held ? 1u : 2u) > ENG_THRU) return;
-        if (!held) { thru_down[t][note >> 5] |= bit; thru_reserved++; }
+    if (!key_memory) {
+        if ((uint16_t)(h - thru_tail) >= ENG_THRU) return;
     } else {
-        if (!held) return;
-        thru_down[t][note >> 5] &= ~bit;
-        thru_reserved--;
+        uint32_t t = E.node[module].trk, note = kv & 127u, bit = 1u << (note & 31u);
+        uint32_t held = (thru_down[t][note >> 5] & bit) != 0u;
+        if (kv & 128u) {
+            if ((uint16_t)(h - thru_tail) + thru_reserved + (held ? 1u : 2u) > ENG_THRU) return;
+            if (!held) { thru_down[t][note >> 5] |= bit; thru_reserved++; }
+        } else {
+            if (!held) return;
+            thru_down[t][note >> 5] &= ~bit;
+            thru_reserved--;
+        }
     }
     thru_ring[h % ENG_THRU][0] = (uint8_t)module;
     thru_ring[h % ENG_THRU][1] = (uint8_t)kv;
     thru_ring[h % ENG_THRU][2] = (uint8_t)vel;
+    if (key_memory) key_memory->thru_snapshot[h % ENG_THRU] = 0;
+    if (key_memory && (kv & 128u)) for (uint32_t i = 0; i < E.nharm; i++)
+        if (!E.node[E.harm[i].node].bypass && key_after(E.harm[i].node, module)) {
+            key_memory->thru_snapshot[h % ENG_THRU] = (uint16_t)harm_snapshot(&E.harm[i]); break;
+        }
     thru_head = (uint16_t)(h + 1u);
 }
 
@@ -4084,7 +4140,7 @@ static void keys_off(void)
         if (E.node[g].type == T_DRUMMAP && dm_src(&E.node[g]) == 1u)
             dm_drop(&inst_pool[E.node[g].inst0]);
         else if (E.node[g].type == T_STEPS && (E.node[g].ksrc || ARMED(g))) {
-            for (uint32_t w = 0; w < 4u; w++) {
+            if (key_memory) for (uint32_t w = 0; w < 4u; w++) {
                 uint32_t bits = thru_down[E.node[g].trk][w];
                 while (bits) { bits &= bits - 1u; thru_reserved--; }
                 thru_down[E.node[g].trk][w] = 0;
@@ -4151,7 +4207,7 @@ eng_mset_t eng_arm_mask_get(void) { return E.loaded ? E.armm : mset_none(); }
 /* the one-track form (#139; engine.ts arm(number); -1 none) */
 void eng_arm(int module)
 {
-    eng_arm_mask(module >= 0 && (uint32_t)module < E.nmod && E.node[module].type == T_STEPS ? mset_one((uint32_t)module) : mset_none());
+    eng_arm_mask(module >= 0 && (uint32_t)module < E.nmod && E.node[module].type == T_STEPS ? eng_arms((uint32_t)module) : mset_none());
 }
 
 /* a key source n (an Arpeggiator or a Steps track) and the track an Arpeggiator plays, as a mask */
@@ -5240,7 +5296,7 @@ void eng_all_notes_off(void)
     for (i = 0; i < ENG_MAX_TRACKS; i++)
         thru_kill_at[i] = thru_head;
     thru_reserved = 0;
-    for (uint32_t tr = 0; tr < ENG_MAX_TRACKS; tr++) for (uint32_t w = 0; w < 4u; w++) thru_down[tr][w] = 0;
+    if (key_memory) for (uint32_t tr = 0; tr < ENG_MAX_TRACKS; tr++) for (uint32_t w = 0; w < 4u; w++) thru_down[tr][w] = 0;
     E.thru_kill = 0xFFFFu;                       /* the keys played through the tracks end too */
 }
 
@@ -8456,11 +8512,25 @@ static int steps_plays(uint32_t seed, uint32_t loop, uint32_t k, uint32_t j, uin
  * block (steps_keys) */
 static void steps_key(uint32_t node, uint32_t key, uint32_t vel)
 {
-    if (E.nkev >= ENG_KEV)
-        return;
+    /* Notes which start and end before delivery never sound. Cancel that pair, preserving prior offs and retriggers.
+     * This bounds output to the old and final sounding sets (2 * TRACK_POLY per track). */
+    if (!(key & 128u)) for (uint32_t j = E.nkev; j > 0u; j--) {
+        uint32_t k = j - 1u;
+        if (E.kev[k][0] != node || (E.kev[k][1] & 127u) != key) continue;
+        if (E.kev[k][1] & 128u) {
+            for (; k + 1u < E.nkev; k++) {
+                for (uint32_t b = 0; b < 3u; b++) E.kev[k][b] = E.kev[k + 1u][b];
+                if (key_memory) key_memory->event_snapshot[k] = key_memory->event_snapshot[k + 1u];
+            }
+            E.nkev--; return;
+        }
+        break;
+    }
+    if (E.nkev >= ENG_KEV) return; /* unreachable under the sounding-set bound */
     E.kev[E.nkev][0] = (uint8_t)node;
     E.kev[E.nkev][1] = (uint8_t)key;
     E.kev[E.nkev][2] = (uint8_t)vel;
+    if (key_memory) key_memory->event_snapshot[E.nkev] = key & 128u ? steps_emit_snapshot : 0;
     E.nkev++;
 }
 
@@ -8601,7 +8671,9 @@ static void steps_thru(const node_t *nd, inst_t *it, int32_t len, int ext, int32
             x->t = next ? ago - sl : ago;
         }
         was = steps_sounding(t);
+        steps_emit_snapshot = key_memory ? key_memory->block_snapshot[e] : 0;
         steps_start(t, node, (uint32_t)clampi((int32_t)note + semis, 0, 127), vel, 0, 1);
+        steps_emit_snapshot = 0;
         E.trk_snd[t][E.trk_nsnd[t] - 1u].thru = (uint8_t)(note + 1u);
         it->s.stp.pitch = steps_pitch(note);
         it->s.stp.vel = (int32_t)((vel << 16) / 127u);
@@ -10090,6 +10162,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                 E.blk_q0 = q;
                 for (E.nthru = 0; q != thru_head && E.nthru < ENG_THRU; q++, E.nthru++) {
                     E.blk_thru[E.nthru][0] = thru_ring[q % ENG_THRU][0];
+                    if (key_memory) key_memory->block_snapshot[E.nthru] = key_memory->thru_snapshot[q % ENG_THRU];
                     E.blk_thru[E.nthru][1] = thru_ring[q % ENG_THRU][1];
                     E.blk_thru[E.nthru][2] = thru_ring[q % ENG_THRU][2];
                 }

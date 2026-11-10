@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch } from './patch';
-import { encodePatch, formatOf } from './patchbin';
+import { encodePatch, formatOf, lineBudget, KEY_ROUTING_BYTES } from './patchbin';
 import { keyRouteError } from './key-routing';
 import { insertArpeggiator } from './arp-button';
 
@@ -24,6 +24,14 @@ function blocks(e: Engine, count = 8): number {
 }
 
 describe('cable-order harmony', () => {
+  it('charges bounded routing scratch only to patches with new routes and Steps', () => {
+    for (const chain of [['harm'], ['steps'], ['harm', 'arp']]) expect(lineBudget(fixture(chain).p).keyBytes).toBe(0);
+    for (const chain of [['harm', 'steps'], ['steps', 'harm'], ['steps', 'harm', 'arp']]) {
+      const b = lineBudget(fixture(chain).p);
+      expect(b.keyBytes).toBe(KEY_ROUTING_BYTES);
+      expect(b.used).toBe(b.copiesBytes + b.buffersBytes + b.paramsBytes + b.nodesBytes + b.keyBytes + b.lines);
+    }
+  });
   it.each([['harm','arp'], ['harm','steps'], ['steps','harm'], ['harm','steps','arp'], ['steps','harm','arp']])('plays %j in both compiler modes', (...chain) => {
     const { p } = fixture(chain);
     for (const compiled of [false, true]) { const e = new Engine(48000); e.load(p, compiled); e.noteOn(60); expect(blocks(e, 30)).toBeGreaterThan(.001); e.noteOff(60); blocks(e, 60); }
@@ -42,6 +50,23 @@ describe('cable-order harmony', () => {
     const { p, get } = fixture(['harm']); const a = insertArpeggiator(p)!;
     expect(p.cables.some(c => c.from.module === get('harm').id && c.to.module === a.id)).toBe(true);
     expect(keyRouteError(p)).toBe(null);
+  });
+  it('snapshots a live root before Steps even when the chord button changes before rendering', () => {
+    const { p } = fixture(['steps','harm']); const e = new Engine(48000); e.load(p);
+    e.chordButton(3, true); e.noteOn(60); e.chordButton(3, false); blocks(e);
+    const notes = e.voiceNotes().filter(v => v.on).map(v => v.note);
+    expect(notes).toContain(63); expect(notes).not.toContain(64);
+    e.noteOff(60); blocks(e); expect(e.voiceNotes().filter(v => v.on)).toEqual([]);
+  });
+  it('dense simultaneous notes on three tracks cannot strand harmony roots', () => {
+    const { p, get } = fixture(['steps','harm']);
+    get('harm').params.type = 0;
+    const extra = [addModule(p, DEFS.steps, 0, 0), addModule(p, DEFS.steps, 0, 0)];
+    p.modules = [...extra, ...p.modules.filter(m => !extra.includes(m))];
+    for (const t of [get('steps'), ...extra]) t.notes = Array.from({length:128}, (_, note) => ({ at:0,len:1,note,vel:100 }));
+    const e = new Engine(48000); e.load(p); e.transport(true); blocks(e, 4);
+    expect(e.voiceNotes().filter(v => v.on).map(v => v.note)).toEqual([120,121,122,123,124,125,126,127]);
+    blocks(e, 150); expect(e.voiceNotes().filter(v => v.on)).toEqual([]);
   });
   it('accepts or rejects a complete chord at the input queue boundary and reserves releases', () => {
     const { p, get } = fixture(['harm','steps']);

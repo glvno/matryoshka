@@ -169,9 +169,9 @@ export const CONTROLS: ControlRow[] = [
   { id: 'arm-several', gesture: { first: 'ENV', do: [B('SEL')] }, does: 'arm several', when: 'dev_keys', sheet: { device: 55 }, effect: 'arm',
     help: 'on the environment page (ENV), SEL adds the row’s device to the armed devices or drops it, so the keys play several at once (a layer or a split)' },
   // (the keys reach a Harmonizer, #598: its Side layout, the seven lowest keys its chord buttons)
-  { id: 'chord-quality', gesture: { do: [BLACK] }, does: '1-3 maj min dim', plain: 'chord buttons maj, min, dim', when: 'harm', sheet: { device: 24 }, effect: 'chord_button',
+  { id: 'chord-quality', gesture: { do: [BLACK] }, does: '1-3 maj min dim', plain: 'chord buttons maj, min, dim', when: 'harm', sheet: { device: 24, roll: 24, step: 24 }, effect: 'chord_button',
     help: 'with the keys on a Harmonizer: black keys 1..3 are its chord buttons maj, min and dim, at any octave (held with others, the one pressed last wins); every key from C up plays that chord on its root. With no button held (and none latched) a key plays the card’s chord, or itself' },
-  { id: 'chord-add', gesture: { do: [WHITE] }, does: '1-4 sus2 sus4 7 9', plain: 'chord buttons sus2, sus4, 7, 9', when: 'harm', sheet: { device: 26 }, effect: 'chord_button',
+  { id: 'chord-add', gesture: { do: [WHITE] }, does: '1-4 sus2 sus4 7 9', plain: 'chord buttons sus2, sus4, 7, 9', when: 'harm', sheet: { device: 26, roll: 26, step: 26 }, effect: 'chord_button',
     help: 'with the keys on a Harmonizer: white keys 1..4 add to the chord: sus2 and sus4 (beside maj, min or dim an added 2nd or 4th), 7 (the minor seventh) and 9; pressed together the buttons combine. Its LOCK row on: the buttons pressed together stay latched until the next press (the same button alone again lets go)' },
 
   // ---- ENVIRONMENT: one row per device
@@ -185,7 +185,7 @@ export const CONTROLS: ControlRow[] = [
   // ---- the SEQ page: a drum grid (DRUM STEPS) and a melodic track's piano roll (PIANO ROLL)
   { id: 'roll-keys', gesture: { do: [ANY_KEY] }, does: 'play notes', sheet: { roll: 30 }, effect: 'play_notes', hint: 'KEYS play',
     strip: 'play each key’s own note without changing the pattern',
-    help: 'all 27 keys play their own pitch; outside step record, notes are recorded only while REC and the transport run' },
+    help: 'keys play their own pitch, except the seven Side chord buttons on a Harmonizer path; outside step record, notes are recorded only while REC and the transport run' },
   { id: 'step', gesture: { do: [WHITE] }, does: 'toggle rowstep n', plain: 'step on / off', sheet: { drum: 20 }, effect: 'step', hint: 'WHITE step',
     help: 'the selected drum row’s hit on that step' },
   { id: 'row-key', gesture: { do: [BLACK] }, does: 'pick a row', sheet: { drum: 10 }, effect: 'row', hint: 'BLACK row',
@@ -225,7 +225,7 @@ export const CONTROLS: ControlRow[] = [
 
   // ---- STEP RECORD (#532, D-804)
   { id: 'sr-keys', gesture: { do: [{ key: 'keys' }] }, does: 'play, let go: write', sheet: { step: 20 }, effect: 'write', hint: 'KEYS note',
-    help: 'a note or a chord: letting go of the last key writes it on the cursor’s step and moves on one (on a drum grid black keys 1..8 write their rows)' },
+    help: 'a note or a chord: Side buttons on a Harmonizer path shape the next root without entering notes; letting go of the last note key writes it on the cursor’s step and moves on one (on a drum grid black keys 1..8 write their rows)' },
   { id: 'sr-preview-off', gesture: { hold: 'SEL', do: [B('FX')] }, does: 'preview off', when: 'roll_preview', sheet: { step: 35 }, effect: 'preview',
     strip: 'hear or silence notes as you enter them',
     help: 'piano roll only: toggle hearing notes during step record; starts on at power-on. SILENT means notes are still written but do not sound until playback' },

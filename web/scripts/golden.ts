@@ -3692,6 +3692,22 @@ for (const chain of [['harm', 'arp'], ['harm', 'steps'], ['steps', 'harm'], ['ha
   events[name] = [[0, 'on', 60], [128 * 50, 'off', 60], [128 * 60, 'on', 65], [128 * 100, 'off', 65]];
   ends[name] = 128 * 200;
 }
+{
+  const name = 'route-root-snapshot';
+  tests[name] = structuredClone(tests['route-steps-harm']);
+  events[name] = [[0, 'cbon', 3], [0, 'kon', 60], [0, 'cboff', 3], [128 * 50, 'koff', 60]];
+  ends[name] = 128 * 100;
+}
+{
+  const name = 'route-dense-steps';
+  const p = tests[name] = structuredClone(tests['route-steps-harm']);
+  p.modules.find(m => m.type === 'harm')!.params.type = 0;
+  const extra = [addModule(p, DEFS.steps, 0, 0), addModule(p, DEFS.steps, 0, 0)];
+  p.modules = [...extra, ...p.modules.filter(m => !extra.includes(m))];
+  for (const t of p.modules.filter(m => m.type === 'steps')) t.notes = Array.from({ length: 128 }, (_, note) => ({ at: 0, len: 1, note, vel: 100 }));
+  events[name] = [[0, 'run', 0]];
+  ends[name] = 128 * 200;
+}
 harmVoice('harm-side', {});
 events['harm-side'] = [[0, 'on', 60], [128 * 20, 'off', 60],
   [128 * 30, 'on', 54], [128 * 35, 'on', 62], [128 * 60, 'on', 57], [128 * 80, 'off', 62], [128 * 85, 'on', 67], [128 * 90, 'on', 65],
@@ -3721,7 +3737,7 @@ for (const voicing of [-8, -4, 4, 8]) {
 if (process.argv.includes('--panel-fixtures')) {
   const out = new URL('../../build/panel-fixtures/', import.meta.url);
   mkdirSync(out, { recursive: true });
-  for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns', 'matrix-audio', 'harm-side', 'route-harm-steps', 'route-steps-harm', 'route-harm-arp', 'route-steps-harm-arp', 'route-harm-steps-arp'])
+  for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns', 'matrix-audio', 'harm-side', 'route-harm-steps', 'route-steps-harm', 'route-harm-arp', 'route-steps-harm-arp', 'route-harm-steps-arp', 'route-dense-steps', 'route-root-snapshot'])
     writeFileSync(new URL(`${name}.m1p`, out), encodePatch(tests[name], true));
   {
     // more than 64 modules (#721): arm-many with the Drum map moved last (index 69, a device past 63) and its chain of

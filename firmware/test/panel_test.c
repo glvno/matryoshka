@@ -3795,6 +3795,21 @@ int main(void)
         page = 0;
         screen_idle();
     }
+    {   /* Dense sequencer output keeps only events that can sound, with all releases preserved. */
+        check("dense Steps fixture loads", !load_fixture("build/panel-fixtures/route-dense-steps.m1p"));
+        eng_transport(1); blocks(4);
+        uint32_t valid = E.harm[0].nroots == 8u;
+        for (uint32_t i = 0; i < E.harm[0].nroots; i++) valid &= E.harm[0].root[i] >= 120u;
+        check("all tracks deliver their final sounding roots", valid);
+        blocks(150);
+        check("dense pattern releases every harmony root", E.harm[0].nroots == 0u);
+        eng_transport(0);
+        check("snapshot fixture loads", !load_fixture("build/panel-fixtures/route-root-snapshot.m1p"));
+        eng_midi_channel(0); eng_chord_button(3, 1); eng_note_on(60, ENG_ONE, 1); eng_chord_button(3, 0); blocks(4);
+        check("live root keeps its minor chord through Steps delay", E.harm[0].count[63] && !E.harm[0].count[64]);
+        eng_note_off(60, 1); blocks(4);
+        check("snapshot root releases", E.harm[0].nroots == 0u);
+    }
     {   /* Approved cable-order capture and Side controls while step recording. */
         const char *fixtures[] = {"build/panel-fixtures/route-harm-steps.m1p", "build/panel-fixtures/route-steps-harm.m1p"};
         for (uint32_t order = 0; order < 2u; order++) for (uint32_t preview = 0; preview < 2u; preview++) {
@@ -3812,7 +3827,7 @@ int main(void)
             sr_up(K_C4);
             check("root release commits once, preview independent", sr_k == 1 && sr_notes(mod) == (order ? 1 : 3) && sr_len_at(mod, 0, 60) == 1);
             if (!order) check("printed minor chord remains editable pitches", sr_len_at(mod, 0, 63) == 1 && sr_len_at(mod, 0, 67) == 1 && sr_len_at(mod, 0, 64) == 0);
-            check("all audition notes released", seq_thru_count[K_C4] == 0);
+            check("all audition notes released", seq_aud_count(K_C4) == 0);
             sr_stop();
         }
         sr_preview = 1; page = 0; (void)load("808 KIT"); pv_gen++; screen_idle();
