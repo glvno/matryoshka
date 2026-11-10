@@ -53,3 +53,5 @@ The integrated image passes the matching 19-check emulator boot gate, the factor
 The kernel adds 9,040 flash bytes with no static RAM, pool or low-RAM allocation. Worker stack sizes are unchanged. Public controls and exact sound are preserved, but the default-off kernel remains an experiment. Physical cold-start, listening and long-playback qualification were not performed.
 
 The rig was restored to published 1.12.0 (`FM-1_7011200`), using package SHA256 `ab14bc3ecbfd263bea2e6eb1d5f2386282fd74a9a863dfac5b244dd6e37dea7b`. The identity, two healthy cores and analog output enabled were checked after restoration. All hardware commands stopped before release to the orchestrator.
+
+The subsequent [emitted-code diagnosis](2026-11-09-oracle-codegen.md) isolates repeated parameter and signal-pointer reads with controlled offline compiler probes. It preserves these physical measurements and does not claim a hardware speed-up.
