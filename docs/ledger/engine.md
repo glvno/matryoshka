@@ -62,7 +62,7 @@ There are two audio engines: the TypeScript **reference engine** in the browser 
 - Which factory assemblies to compile ([D-397](engine.md#D-397)). In the CPU model, Oracle V's code is 12.4 kB. The AOT comparison image in CI run 42673451565 leaves 22,148 B of its flash slot ([build measurements](../measurements/2026-11-09-integration-builds.json)) — issue #808
 - Whether a compiled assembly should be a table that the runtime walks instead of C code. A table would take about 1 kB per assembly, and the FM-1 could even build one at load for any patch — issue #808
 - How the editor's CPU estimate, the VOICES tops ([D-870](patches-and-presets.md#D-870)) and the budget meter count a compiled assembly, and what they show when an edit sends it back to the interpreter — issue #808
-- Whether to accept the proposed amendment to [D-396](#D-396) and the allocation contract in [D-399](#D-399). The implementation has host evidence. Emulator and test-rig evidence for a patch using recovered memory remains required before issue #824 is complete.
+- Whether to accept the proposed amendment to [D-396](#D-396) and the allocation contract in [D-399](#D-399). Acceptance requires matching audio and focused emulator and test-rig checks for a patch using recovered memory — issue #824.
 - How a future allocation rule identifies the compiled templates and their memory needs. Rule 0 in [D-399](#D-399) keeps compiled-assembly builds conservative, including candidates that later fall back to the interpreter — issue #824
 - How the render is split across the FM-1's two cores (the voices of a poly group first) — issue #271
 - Whether the FM-1 tab plays the C engine (wasm) in the AudioWorklet, and whether it replaces the browser engine there — issue #111
