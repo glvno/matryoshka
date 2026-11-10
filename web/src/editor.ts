@@ -1241,6 +1241,20 @@ export class Editor {
 
   /** a track edited on the FM-1's SEQ page (its notes as they are now, of pattern `pat`): into the patch and the grid, an
    * undo step like an edit here (an undo sends the patch back to the FM-1, so a change made there must be in the history) */
+  originFromDevice(id: number, pattern: number, identity: number, clear = false): void {
+    const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
+    if (!m || pattern < 0 || pattern >= 64) return;
+    this.touch();
+    if (clear) delete m.factoryPatterns;
+    else {
+      const ids = (m.factoryPatterns ??= { version: 1, ids: [] }).ids;
+      ids[pattern] = identity ? (identity >>> 0).toString(16).padStart(8, '0') : null;
+      while (ids.length && !ids.at(-1)) ids.pop();
+      if (!ids.length) delete m.factoryPatterns;
+    }
+    this.ev.onLayout(this.patch);
+  }
+
   trackFromDevice(id: number, notes: StepNote[] | undefined, pat = 0): void {
     const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
     if (!m) return;

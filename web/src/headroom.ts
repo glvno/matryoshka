@@ -7,7 +7,7 @@
 import { applyPreset, currentValues, presetsOf } from './device-presets';
 import { Engine } from './engine';
 import { instIsEngine } from './engines';
-import { allModules } from './assembly';
+import { allModules, parentOf } from './assembly';
 import { DEVICE_SR } from './modules';
 import type { Patch } from './patch';
 
@@ -25,6 +25,9 @@ export interface Play {
   run: boolean;
   /** the pattern selected (0 = pattern 1) while it runs */
   pattern?: number;
+  /** Longer safety audition for the scoped factory banks (#833). */
+  phrase?: boolean;
+  seconds?: number;
 }
 
 export const voicesIn = (p: Patch, ids: number[]): number => {
@@ -43,6 +46,9 @@ export function patterns(p: Patch): number[] {
   return [...out].sort((a, b) => a - b);
 }
 
+const MELODIC_AUDITION = new Set(['Io 4', 'Monolith D', 'Sallen 20', 'Silver Box', 'Vernon 100', 'Wanderer']);
+const DRUM_AUDITION = new Set(['Scrounge', 'Meridian 8', 'Perun 4', 'Spokes 6', 'Verona Drum 1', '808 Kit', '909 Kit', '<7PH', 'drum kit']);
+
 export function ways(p: Patch, what: string, voices: number): Play[] {
   const n = Math.min(8, voices);
   const out: Play[] = [{ label: `${what}, ${n} keys`, patch: p, notes: CHORD.slice(0, n), run: false }];
@@ -50,7 +56,8 @@ export function ways(p: Patch, what: string, voices: number): Play[] {
     const keys = [...new Set(Array.from({ length: 8 }, (_, r) => Math.round(dm.params[`n${r + 1}`] as number)))];
     out.push({ label: `${what}, its Drum map's keys`, patch: p, notes: keys, run: false });
   }
-  for (const k of patterns(p)) out.push({ label: `${what}, running pattern ${k + 1}`, patch: p, notes: [], run: true, pattern: k });
+  for (const k of patterns(p)) out.push({ label: `${what}, running pattern ${k + 1}`, patch: p, notes: [], run: true, pattern: k, ...(DRUM_AUDITION.has(p.name) ? { seconds: 16 } : {}) });
+  if (MELODIC_AUDITION.has(p.name)) out.push({ label: `${what}, register and phrase`, patch: p, notes: [], run: false, phrase: true, seconds: 16 });
   return out;
 }
 
@@ -58,13 +65,13 @@ export function ways(p: Patch, what: string, voices: number): Play[] {
  * one it is at already) */
 export function plays(p: Patch): Play[] {
   const out = ways(p, 'patch', voicesIn(p, p.modules.map((m) => m.id)));
-  const engines = (p.assemblies ?? []).filter((a) => instIsEngine(p, a));
+  const engines = (p.assemblies ?? []).filter((a) => !parentOf(p, a.id) && (instIsEngine(p, a) || a.name === '808 kit' || a.name === '909 kit'));
   engines.forEach((a0, ei) => {
     for (const preset of presetsOf(p, a0)) {
       const now = currentValues(p, a0);
       if (now.length === preset.values.length && now.every((v, i) => Math.abs(v - preset.values[i]) < 1e-6)) continue; // (the patch as it is)
       const q = structuredClone(p);
-      const a = (q.assemblies ?? []).filter((x) => instIsEngine(q, x))[ei];
+      const a = (q.assemblies ?? []).filter((x) => !parentOf(q, x.id) && (instIsEngine(q, x) || x.name === '808 kit' || x.name === '909 kit'))[ei];
       if (!applyPreset(q, a, preset)) continue;
       out.push(...ways(q, `${a.name ?? 'engine'} ${preset.name}`, voicesIn(q, allModules(q, a))));
     }
@@ -74,6 +81,7 @@ export function plays(p: Patch): Play[] {
 
 /** a play rendered for `secs` at `sr`: its left and right channels */
 export function renderPlay(w: Play, secs: number, sr = DEVICE_SR): [Float32Array, Float32Array] {
+  secs = Math.max(secs, w.seconds ?? 0);
   const e = new Engine(sr);
   e.load(w.patch);
   if (w.pattern) e.setPattern(w.pattern);
@@ -81,7 +89,24 @@ export function renderPlay(w: Play, secs: number, sr = DEVICE_SR): [Float32Array
   for (const k of w.notes) e.noteOn(k, 1);
   const l = new Float32Array(Math.round(sr * secs));
   const r = new Float32Array(l.length);
-  e.render(l, r);
+  if (w.phrase) {
+    const events: { at: number; note: number; on: boolean; vel: number }[] = [];
+    const hit = (at: number, duration: number, note: number, vel = 100 / 127): void => {
+      events.push({ at, note, on: true, vel }, { at: at + duration, note, on: false, vel });
+    };
+    hit(0, 2, 36); hit(3, 2, 60); hit(6, 1, 84, 0.5);
+    [48, 55, 60, 63, 67, 70, 67, 63].forEach((note, i) => hit(8 + i * 0.35, 0.25, note, i % 2 ? 0.55 : 1));
+    [48, 55, 60].forEach((note) => hit(12, 1, note));
+    events.sort((a, b) => a.at - b.at || Number(a.on) - Number(b.on));
+    let next = 0;
+    for (let offset = 0; offset < l.length; offset += 128) {
+      while (next < events.length && events[next].at * sr <= offset) {
+        const ev = events[next++];
+        if (ev.on) e.noteOn(ev.note, ev.vel); else e.noteOff(ev.note);
+      }
+      e.render(l.subarray(offset, offset + 128), r.subarray(offset, offset + 128));
+    }
+  } else e.render(l, r);
   return [l, r];
 }
 

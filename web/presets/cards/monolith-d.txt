@@ -48,7 +48,7 @@
 #   volume = 0.44                      0..2
 #   a-440 = OFF                        OFF, ON
 
-# Drafts of 2026-10-29 after the Minimoog Model D, not yet listened to on the FM-1 (#413).
+# Drafts of 2026-10-29 after the Minimoog Model D (#413).
 engine: Monolith D
 
 # Ranges: 1 LO, 2 32', 3 16', 4 8', 5 4', 6 2'. Waves: 1 triangle, 2 tri/saw (osc 3: reverse saw), 3 saw, 4 square, 5 wide rect, 6 narrow rect.
@@ -178,3 +178,27 @@ preset: Soft Flute
   contours / sustain (2) = 0.9
   decay on = 2
   volume = 0.36
+
+# Two close saws open a restrained filter together: rounded horn attacks with a steady body.
+preset: Muted Horn
+  glide on = 1
+  osc 1 range = 4
+  osc 1 wave = 3
+  osc 2 range = 4
+  osc 2 wave = 3
+  osc 2 fine = 3 ct
+  osc 1 = 0.5
+  osc 2 = 0.35
+  osc 3 = 0
+  cutoff = 650 Hz
+  emphasis = 0.15
+  contour = 1.5
+  kbd control = 4
+  contours / attack (1) = 0.08 s
+  contours / decay (1) = 0.45
+  contours / sustain (1) = 0.55
+  contours / attack (2) = 0.06 s
+  contours / decay (2) = 0.5
+  contours / sustain (2) = 0.8
+  decay on = 2
+  volume = 0.54

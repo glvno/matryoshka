@@ -7,6 +7,7 @@
 import { tiedTo, type AssemblyInst } from './assembly';
 import { DEFS } from './modules';
 import { topOf, type Patch } from './patch';
+import { applyPresetPattern, clearPresetPattern } from './preset-patterns';
 import { migrationRank, movePreset } from './preset-migrate';
 import { rowOrder, structureOf } from './structure';
 
@@ -128,6 +129,8 @@ export function applyPreset(p: Patch, a: AssemblyInst, preset: Preset): boolean 
   if (preset.structure !== structureOf(p, a)) return false;
   const rows = rowOrder(p, a);
   if (preset.values.length > rows.length) return false;
+  if (preset.factory) applyPresetPattern(p, a, preset.structure, preset.name);
+  else clearPresetPattern(p, a);
   rows.slice(0, preset.values.length).forEach((r, i) => {
     for (const t of tiedTo(p, r.module, r.param)) {
       const m = p.modules.find((x) => x.id === t.module);
@@ -171,6 +174,7 @@ export function storePreset(p: Patch, a: AssemblyInst, name: string): string {
   list.push({ structure, name: n, values: currentValues(p, a) });
   writeUser(list);
   a.preset = n;
+  clearPresetPattern(p, a);
   return n;
 }
 

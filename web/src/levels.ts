@@ -7,7 +7,7 @@
 // body (a bell, a pluck) reaches only what the cap allows. Each engine's level rows (LEVEL_ROWS, after any drive) carry
 // its presets' levels; the patch's Output carries its Init's. scripts/factory-build.ts `loudness` sets both;
 // levels-*.test.ts keeps them so.
-import { allModules, toDef, type AssemblyInst } from './assembly';
+import { allModules, parentOf, toDef, type AssemblyInst } from './assembly';
 import { applyPreset, currentValues, presetsOf } from './device-presets';
 import { instIsEngine } from './engines';
 import { HEADROOM, patterns, peakOfPlay, renderPlay, voicesIn, ways, type Play } from './headroom';
@@ -52,6 +52,8 @@ export const LEVEL_ROWS: Record<string, string[]> = {
   'Monolith D': ['output / volume'],
   'Oracle V': ['mixer / volume'],
   'Perun 4': ['master / master'],
+  '808 kit': ['bass drum / level', 'snare drum / level', 'low tom / level', 'rim shot / level', 'hand clap / level', 'cow bell / level', 'open hihat / level', 'closed hihat / level'],
+  '909 kit': ['mix / kick', 'mix / snare', 'mix / hats and perc'],
   'Sallen 20': ['output / volume'],
   Scrounge: ['out / vol a', 'out / vol b'],
   'Silver Box': ['tone / volume'],
@@ -177,14 +179,14 @@ export interface Case {
 
 /** a factory patch's sounds: the patch as it is, then its engine at each factory preset but the one it is at */
 export function cases(p: Patch): Case[] {
-  const engines = (p.assemblies ?? []).filter((a) => instIsEngine(p, a));
+  const engines = (p.assemblies ?? []).filter((a) => !parentOf(p, a.id) && (instIsEngine(p, a) || a.name === '808 kit' || a.name === '909 kit'));
   const out: Case[] = [{ preset: engines[0]?.preset ?? 'Init', patch: p, engine: engines[0] ?? null }];
   engines.forEach((a0, ei) => {
     for (const preset of presetsOf(p, a0)) {
       const now = currentValues(p, a0);
       if (now.length === preset.values.length && now.every((v, i) => Math.abs(v - preset.values[i]) < 1e-6)) continue;
       const q = structuredClone(p);
-      const a = (q.assemblies ?? []).filter((x) => instIsEngine(q, x))[ei];
+      const a = (q.assemblies ?? []).filter((x) => !parentOf(q, x.id) && (instIsEngine(q, x) || x.name === '808 kit' || x.name === '909 kit'))[ei];
       if (applyPreset(q, a, preset)) out.push({ preset: preset.name, patch: q, engine: a });
     }
   });

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+import { seedPresetPattern } from '../src/preset-patterns';
 // Writes the factory patches (web/presets/NN-name.json, NN = the slot, the order the firmware compiles them in) from
 // the factory assemblies (src/assemblies, made by gen-assemblies.ts: run that first). Each patch: the Main module, the
 // assembly (or a few modules), Main's keys / mod wheel into it, its outputs into the Output, and the Output's level set
@@ -16,9 +17,20 @@ import { FACTORY } from '../src/assemblies';
 import { allModules, fixAssemblies, insertAssembly, makeAssembly, removeMember, type AssemblyInst } from '../src/assembly';
 import { deviceBudget } from '../src/patchbin';
 import { applyLevels, around, headroom, level, loudness, mod, peakOf, players, plugIn, plugOut, row, setCardLevels, voiceTops, wire, type Inst, type LevelPlan } from './factory-build';
+import { buildPresetPatterns } from './preset-pattern-build';
+import { presetPattern, setPresetPatterns } from '../src/preset-pattern-data';
+import { factoryPresetDefs } from '../src/factory-presets';
+import { kitCard } from './kit-card';
+import { structureOf } from '../src/structure';
 import { cardSlug } from '../src/preset-cards';
 import { peakOfPlay, plays } from '../src/headroom';
 
+const patternDefaults = buildPresetPatterns();
+setPresetPatterns(patternDefaults);
+writeFileSync(new URL('../src/preset-patterns.json', import.meta.url), JSON.stringify(patternDefaults, null, 1) + '\n');
+
+const scope = new Set((process.env.PRESET_SCOPE ?? '').split(',').filter(Boolean));
+const selected = (p: Patch): boolean => !scope.size || scope.has(p.name);
 const DIR = new URL('../presets/', import.meta.url);
 const KEEP = '909-kit.json'; // ours, kept as written
 /** the drum kits' Drum map rows (#141): the white keys from F3, the FM-1's lowest key at octave 0 */
@@ -494,7 +506,9 @@ function keptReconciled(json: string): string {
   });
   return JSON.stringify(raw, null, 1) + '\n';
 }
-const keptJson = keptReconciled(readFileSync(new URL(kept, DIR), 'utf8'));
+const keptPatch = validatePatch(JSON.parse(keptReconciled(readFileSync(new URL(kept, DIR), 'utf8'))), DEFS);
+kitCard(keptPatch);
+const keptJson = JSON.stringify(keptPatch, null, 1) + '\n';
 const after: (() => Patch)[] = [];
 
 // <7PH: a groove-box test patch, the 909 Kit's drums with a Silver Box on its own track, PLAY starts both at one
@@ -685,6 +699,12 @@ const reconciled = (p: Patch): Patch => (fixAssemblies(p, DEFS), p);
 // level rows, presets/cards/levels.json, and its presets' on the card)
 const plans: LevelPlan[] = [];
 const leveled = (p: Patch): Patch => {
+  for (const a of p.assemblies ?? []) {
+    const init = presetPattern(structureOf(p, a), 'Init');
+    if (init) { a.preset = 'Init'; seedPresetPattern(p, a, init.id); }
+  }
+  if (p.name === '<7PH') return p; // shared kit defaults are normalized on the standalone kit; headroom checks the whole mix.
+  console.log(`levels: measuring ${p.name}`);
   const plan = loudness(p);
   applyLevels(plan);
   plans.push(plan);
@@ -706,11 +726,12 @@ const capped = (p: Patch): Patch => {
   }
   return p;
 };
-const made = presets.map((f) => voiceTops(capped(leveled(reconciled(silverDemo(players(validatePatch(structuredClone(f()), DEFS))))))));
-const later = after.map((f) => voiceTops(capped(leveled(reconciled(validatePatch(structuredClone(f()), DEFS))))));
+const made = presets.map((f) => { const p = f(); return selected(p) ? voiceTops(capped(leveled(reconciled(silverDemo(players(validatePatch(structuredClone(p), DEFS))))))) : p; });
+const keptFinal = selected(keptPatch) ? voiceTops(capped(leveled(reconciled(keptPatch)))) : keptPatch;
+const later = after.map((f) => { const p = f(); return selected(p) ? voiceTops(capped(leveled(reconciled(validatePatch(structuredClone(p), DEFS))))) : p; });
 // the drum kit engine has no factory patch: it is measured in a stand-in (its Drum map's rows on a pattern, as the 808
 // Kit's) at an Output of 0.5, so its level rows carry its whole level
-{
+if (!scope.size || scope.has('drum kit')) {
   const x = around('drum kit', 'drum kit');
   sequenced(x, 'PATTERN', { 1: 'X...x...x.x.....', 2: '....X.......X..x', 3: '............X...', 4: 'x.X.x.X.x.X.x.X.', 6: '......x.......x.', 8: '..........x.....' });
   const p = reconciled(validatePatch(structuredClone(x.p), DEFS));
@@ -719,21 +740,22 @@ const later = after.map((f) => voiceTops(capped(leveled(reconciled(validatePatch
   applyLevels(plan);
   plans.push(plan);
 }
-for (const p of [...made, ...later]) {
+for (const p of [...made, keptFinal, ...later].filter(selected)) {
   const b = deviceBudget(p);
   if (!b.fits) {
     console.log(p.name, (b.cpu.use * 100).toFixed(0), '%', JSON.stringify(b.cpu.modules.slice(0, 8).map((m) => [m.type, m.copies, Math.round(m.cycles)])));
     throw new Error(`${p.name} does not fit the FM-1: ${b.over.map((o) => o.key).join(', ')}`);
   }
 }
-for (const f of readdirSync(DIR)) if (f.endsWith('.json')) unlinkSync(new URL(f, DIR));
+for (const f of readdirSync(DIR)) if (!scope.size && f.endsWith('.json')) unlinkSync(new URL(f, DIR));
 const write = (p: Patch, i: number): void => {
+  if (!selected(p)) return;
   const b = deviceBudget(p);
   writeFileSync(new URL(`${String(i).padStart(2, '0')}-${slug(p.name)}.json`, DIR), JSON.stringify(p, null, 1) + '\n');
   console.log(`${String(i).padStart(2, '0')} ${p.name.padEnd(16)} cpu ${(b.cpu.use * 100).toFixed(0)} %  memory ${(b.memory * 100).toFixed(0)} %  level ${p.modules.find((m) => m.type === 'output')!.params.level}`);
 };
 made.forEach(write);
-writeFileSync(new URL(`${String(made.length).padStart(2, '0')}-${KEEP}`, DIR), keptJson);
+if (selected(keptFinal)) writeFileSync(new URL(`${String(made.length).padStart(2, '0')}-${KEEP}`, DIR), JSON.stringify(keptFinal, null, 1) + '\n');
 console.log(`${made.length} 909 Kit (kept)`);
 later.forEach((p, i) => write(p, made.length + 1 + i));
 
@@ -746,8 +768,8 @@ const levels = JSON.parse(levelsBefore) as Record<string, Record<string, number>
 let moved = 0;
 for (const plan of plans) {
   if (!plan.engine) continue;
-  levels[plan.engine] = plan.init;
-  const def = FACTORY.find((d) => d.name === plan.engine)!;
+  if (plan.engine !== '808 kit' && plan.engine !== '909 kit') levels[plan.engine] = plan.init;
+  const def = factoryPresetDefs().find((d) => d.name === plan.engine)!;
   const file = new URL(`cards/${cardSlug(def.name)}.txt`, DIR);
   const was = readFileSync(file, 'utf8');
   let text = was;

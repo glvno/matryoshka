@@ -1,0 +1,50 @@
+# Whole-kit sounds: existing 808 drum circuits and fourteen panel rows, with distinct default grooves.
+engine: 808 kit
+
+preset: Electro Snap
+# Short kick and bright snare, leaving space for syncopated closed hats.
+bass drum / tone = 1800
+bass drum / decay = 0.18
+snare drum / tone = 0.7
+snare drum / snappy = 0.8
+open hihat / decay = 0.12
+  bass drum / level = 0.63
+  snare drum / level = 0.39
+  low tom / level = 0.35
+  rim shot / level = 0.27
+  hand clap / level = 0.39
+  cow bell / level = 0.23
+  open hihat / level = 0.52
+  closed hihat / level = 0.77
+
+preset: Deep Machine
+# A long low kick under restrained snare and hats.
+bass drum / tone = 600
+bass drum / decay = 0.7
+snare drum / snappy = 0.35
+open hihat / decay = 0.3
+low tom / tuning = -7
+  bass drum / level = 0.8
+  snare drum / level = 0.5
+  low tom / level = 0.45
+  rim shot / level = 0.35
+  hand clap / level = 0.5
+  cow bell / level = 0.3
+  open hihat / level = 0.67
+  closed hihat / level = 0.99
+
+preset: Dry Latin
+# Short kick and open hat frame rim, tom and cowbell responses.
+bass drum / decay = 0.12
+snare drum / tone = 0.3
+snare drum / snappy = 0.25
+open hihat / decay = 0.08
+low tom / tuning = 5
+  bass drum / level = 0.8
+  snare drum / level = 0.5
+  low tom / level = 0.45
+  rim shot / level = 0.35
+  hand clap / level = 0.5
+  cow bell / level = 0.3
+  open hihat / level = 0.67
+  closed hihat / level = 0.98

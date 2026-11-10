@@ -59,8 +59,8 @@
 # master
 #   master = 0.61                      0..1
 
-# Drafts of 2026-11-04 after the Vermona DRM1 MKIV's manual (its sound tips for each channel), not yet listened to on the
-# FM-1 (#613). The rows follow the original's knobs: see web/scripts/verona-voices.ts for what each does here.
+# Sounds follow the Vermona DRM1 MKIV manual's channel recipes. These are model studies, not measured hardware matches.
+# The rows follow the original's knobs: see web/scripts/verona-voices.ts for what each does here.
 # bend: 0 none, up a falling sweep, below 0 a rising one (the kick's only falls). time: the kick's pitch sweep (and,
 # on the FM-1, its noise burst). wave: 1 a sine, up to an overdriven square. clap: the claps' rate, so their number
 # (below about 22 Hz one clap). The hi-hat plays open on HH OPEN and closed on HH CLOSE.
@@ -130,7 +130,7 @@ pitch 3 = -2
 multi / decay = 0.09
 highpass = 900
 hi hat / decay = 0.12
-  master = 0.93
+  master = 0.97
 
 preset: Metal Works
 # FM in the audio range on drum 1 (atonal, metallic), the multi's three squares spread for a bell, hats bending up
@@ -149,4 +149,4 @@ hi hat / bend = -1.5
 hi hat / resonance = 0.6
 hi hat / pitch = 34
 hi hat / decay = 0.8
-  master = 0.87
+  master = 0.92

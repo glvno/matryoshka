@@ -63,7 +63,7 @@
 #   vol b = 0.7                        0..1
 #   out: a screen, not a value
 
-# Drafts of 2026-10-29 after the Scrooge lo-fi drum machine, not yet listened to on the FM-1 (#413).
+# Drafts of 2026-10-29 after the Scrooge lo-fi drum machine (#413).
 engine: Scrounge
 
 # voice 1 is the boom kick (boom: pitch sweep amount), voice 2 the crushed high hit (grit: crush rate),
@@ -93,8 +93,8 @@ voice 5 / pitch = -20
 squelch = 0.5
 voice 5 / gate = 0.2
 melt = 0.3
-  vol a = 0.64
-  vol b = 0.64
+  vol a = 0.74
+  vol b = 0.74
 
 preset: Crunch Techno
 # hard and split: the kick and tom on output A, the hits on B; a fast chop over everything, the tom follows x
@@ -125,8 +125,8 @@ voice 5 / x = 0.5
 chop = 16
 chop depth = 0.35
 melt = 0.15
-  vol a = 1
-  vol b = 0.94
+  vol a = 0.9
+  vol b = 0.84
 
 preset: Broken Glitch
 # broken: a rising kick (boom below zero), a long shredded hit, a swelling hat, a wild growl, a hard squelch;
@@ -189,8 +189,8 @@ x slew = 0.3
 chop = 0.5
 chop depth = 0.2
 melt = 0.2
-  vol a = 0.64
-  vol b = 0.64
+  vol a = 0.81
+  vol b = 0.81
 
 preset: Clean Electro
 # the machine without its dirt: no grit, no melt, no chop; a punchy kick, a short tom, tight hits
@@ -216,5 +216,5 @@ voice 5 / gate = 0.15
 voice 5 / vol = 0.7
 melt = 0
 chop depth = 0
-  vol a = 0.76
-  vol b = 0.76
+  vol a = 0.71
+  vol b = 0.71

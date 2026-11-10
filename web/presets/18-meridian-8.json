@@ -148,7 +148,7 @@
    "x": 2900,
    "y": 1180,
    "params": {
-    "value": 0.81
+    "value": 0.68
    },
    "att": [
     1,
@@ -1168,7 +1168,7 @@
    "x": 3600,
    "y": 20,
    "params": {
-    "level": 0.31
+    "level": 0.37
    }
   },
   {
@@ -1341,7 +1341,13 @@
      "note": 59,
      "vel": 100
     }
-   ]
+   ],
+   "factoryPatterns": {
+    "version": 1,
+    "ids": [
+     "ce607f59"
+    ]
+   }
   },
   {
    "id": 52,
@@ -3119,7 +3125,9 @@
     6,
     7,
     8
-   ]
+   ],
+   "preset": "Init",
+   "factoryPattern": "eca31a3e"
   }
  ],
  "octave": -1

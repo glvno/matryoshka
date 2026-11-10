@@ -82,6 +82,10 @@ static void m1_arms_now(eng_mset_t s) { js_arms(s.w[0], s.w[1], s.w[2], s.w[3]);
  * page's setting follows (D-907; as the device link's TEMPO_NOW). patch: 0 GLOBAL, 1 PATCH */
 WASM_IMPORT("tempo") void js_tempo(uint32_t patch, uint32_t bpm);
 static void m1_tempo_now(void);
+WASM_IMPORT("origin") void js_origin(uint32_t mod, uint32_t pattern, uint32_t identity);
+#define HOST_ORIGIN_HOOK
+#define host_origin_notify(mod, pattern, identity) js_origin(mod, pattern, identity)
+#define host_pattern_notify(mod, pattern, words, n) js_track(mod, words, n, pattern)
 #define HOST_TEMPO_HOOK
 #define HOST_STEP_HOOKS
 #define HOST_LED_HOOKS

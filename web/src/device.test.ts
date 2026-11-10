@@ -252,6 +252,34 @@ describe('DeviceLink.connect', () => {
       g.window = savedWin;
     }
   };
+  it.each(['slot', 'upload'])('discards old patch snapshot indices at the %s boundary', async (boundary) => {
+    const inp = port('i', 'FM-1'), out = port('o', 'FM-1');
+    answering(out, inp);
+    const link = new DeviceLink();
+    await withMidi([inp], [out], () => link.connect());
+    link.info!.features |= 1 << 23;
+    const updates: unknown[] = [];
+    link.onEvent = (e) => { if (e.kind === 'origins') updates.push(e.update); };
+    const origin = (module: number, pattern: number, identity: number): void => {
+      const data = new Uint8Array(6); data[0] = module; data[1] = pattern;
+      new DataView(data.buffer).setUint32(2, identity, true);
+      inp.onmidimessage?.({ data: frame(CMD.originNow, data) });
+    };
+    origin(255, 0, 1); origin(2, 0, 123);
+    let queued: Promise<void> | undefined;
+    if (boundary === 'slot') inp.onmidimessage?.({ data: frame(CMD.slotNow, [1]) });
+    else {
+      const patch = newPatch(DEFS), track = addModule(patch, DEFS.steps, 0, 0);
+      track.factoryPatterns = { version: 1, ids: ['12345678'] };
+      queued = link.upload(patch); // invalidates synchronously, even before the serial task starts
+    }
+    origin(255, 1, 1); // same count, but the indices belong to the previous patch
+    origin(255, 0, 1); origin(2, 0, 123); origin(255, 1, 1);
+    link.reconcileOrigins();
+    expect(updates.every((u) => JSON.stringify(u) === JSON.stringify({ kind: 'reset' }))).toBe(true);
+    if (queued) await expect(queued).rejects.toThrow(/Update the FM-1/);
+    link.release();
+  });
   it('finds an FM-1 that macOS shows under a name no FM-1 has, by asking each pair HELLO', async () => {
     const other = { i: port('k', 'Launchkey MIDI'), o: port('K', 'Launchkey MIDI') };
     const fm1 = { i: port('u', 'USB MIDI Device'), o: port('U', 'USB MIDI Device') };

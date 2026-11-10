@@ -1401,7 +1401,13 @@
      "note": 57,
      "vel": 100
     }
-   ]
+   ],
+   "factoryPatterns": {
+    "version": 1,
+    "ids": [
+     "12fe980f"
+    ]
+   }
   },
   {
    "id": 52,
@@ -3108,7 +3114,9 @@
     4,
     5,
     6
-   ]
+   ],
+   "preset": "Init",
+   "factoryPattern": "6b453dde"
   }
  ],
  "octave": -1

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Golden vectors for the firmware engine: for each test patch, the binary patch (.m1p), the note events (.ev) and the
 // reference output of web/src/engine.ts (.f32, float32 stereo interleaved) at the FM-1's rate (DEVICE_SR, 44118 Hz), written to build/golden/.
+// GOLDEN_ONLY=NAME renders one named vector for targeted development checks.
 // Run from web/:  npx vite-node scripts/golden.ts   (tools/golden.sh does this and runs the C comparison)
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { Engine } from '../src/engine';
@@ -3830,6 +3831,12 @@ for (const name of ['envelope filter', 'ducking delay', 'gated reverb', 'overdri
   ends[key] = 128 * 400;
 }
 
+// Format 54 metadata cannot change the notes or audio. Unknown identities remain readable.
+tests['factory-origin'] = structuredClone(tests['steps-kit']);
+tests['factory-origin'].modules.find((m) => m.type === 'steps')!.factoryPatterns = { version: 1, ids: ['12345678'] };
+events['factory-origin'] = events['steps-kit'];
+ends['factory-origin'] = ends['steps-kit'];
+
 // the factory drum kits play on the transport: their kits start it with the notes
 for (const [name, patch] of Object.entries(tests))
   if (!events[name] && patch.modules.some((m) => m.type === 'steps')) events[name] = [[0, 'run', 0], ...EVENTS];
@@ -3848,6 +3855,7 @@ for (const name of [...Object.keys(FM1_PRESETS), 'morph', 'morph-unassigned', 'f
 }
 
 for (const [name, patch] of Object.entries(tests)) {
+  if (process.env.GOLDEN_ONLY && name !== process.env.GOLDEN_ONLY) continue;
   const e = new Engine(SR);
   e.load(patch);
   const END = ends[name] ?? END_DEFAULT;
@@ -3934,4 +3942,4 @@ writeFileSync(new URL('proto-sandbox.syx', OUT), sandboxFrame({
     { label: 'Wave', value: 'SAW', unit: '', pos: 0, steps: 4 }, null],
   place: { devices: 5, device: 2, groups: 3, group: 1, pages: 2, page: 0 }, tempo: 300, unsaved: true, armed: 0x80000005,
 }));
-console.log(`golden vectors for ${Object.keys(tests).length} patches in build/golden/`);
+console.log(process.env.GOLDEN_ONLY ? `golden vector for ${process.env.GOLDEN_ONLY} in build/golden/` : `golden vectors for ${Object.keys(tests).length} patches in build/golden/`);

@@ -66,7 +66,7 @@
 #   master = 0.81                      0..1
 #   out: a screen, not a value
 
-# Drafts of 2026-10-29 after the Elektron Model:Cycles, not yet listened to on the FM-1 (#413).
+# Drafts of 2026-10-29 after the Elektron Model:Cycles (#413).
 engine: Spokes 6
 
 # kick and perc: color is the FM amount, shape the modulator's tune, sweep the pitch envelope amount, contour its decay.
@@ -115,7 +115,7 @@ preset: Tight Techno
 time = 375
 feedback = 0.5
 dist = 2
-  master = 0.71
+  master = 0.72
 
 preset: Boom Bap
 # a dusty, rounded kit: a longer softer kick, a thick dark snare, a dull metal, a woody perc, a low chord
@@ -158,7 +158,7 @@ preset: Boom Bap
 time = 280
 feedback = 0.25
 dist = 3
-  master = 0.5
+  master = 0.53
 
 preset: Industrial
 # harsh FM: a long roaring kick, a noisy long snare, a ringing resonant metal, a falling perc, a long chord through a long delay, heavy distortion
@@ -248,7 +248,7 @@ preset: FM Melodic
 6 chord / contour = 0.01
 6 chord / delay = 0.4
 feedback = 0.55
-  master = 0.73
+  master = 0.78
 
 preset: Lo-fi House
 # warm and a bit dirty: a soft deep kick, a mid snare, a dull metal, a soft perc, a muted chord, mild distortion
@@ -291,4 +291,4 @@ preset: Lo-fi House
 time = 330
 feedback = 0.35
 dist = 4
-  master = 0.43
+  master = 0.44
