@@ -5,6 +5,8 @@
 - **USB playback through your FM-1:** hear a phone or computer through the headphone output while recording the synth over the same USB cable. USB RETURN sets playback volume independently of MASTER; playback stays out of the recording.
 - **Name your FM-1:** save a name from FM-1 & MIDI → Name & USB playback, then reconnect USB to show it in MIDI and audio apps. A serial from the flash chip distinguishes units and survives factory reset.
 
+- **Piano-roll keys play notes:** outside step record, all 27 FM-1 keys play their own pitches. Stopped REC still starts step record. Drum and other eight-row instruments keep their step input.
+- **Silent step recording:** during piano-roll step record, hold SEL and press FX to turn note preview off or on. The screen says SILENT when entry is quiet; notes are still written normally.
 - **Oracle V CPU experiment (off by default, #808):** generated member functions keep their temporary storage out of one large stack frame, fixing the second-core startup stack overflow. A focused emulator check now watches the actual stack pointer while the compiled code runs on core 1. No added instrument capacity or hardware speed-up is claimed.
 
 ## 1.12.0 — 2026-11-09

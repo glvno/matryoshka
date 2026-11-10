@@ -703,9 +703,9 @@ static int panel_key(uint32_t n, int down, int quick)
         rec_held_used = 1;
         return 1;
     }
-    if (!(key_sounding & bit) && ((page == PAGE_SEQ && !seq_kbd() && !help_on) || !down)) {   /* the SEQ page: steps and tracks
+    if (!(key_sounding & bit) && ((page == PAGE_SEQ && !seq_play_keys() && !help_on) || !down)) {   /* the SEQ page: steps and tracks
                                                      * (under a card the keys play: D-245) */
-        if (page == PAGE_SEQ && !seq_kbd())
+        if (page == PAGE_SEQ && !seq_play_keys())
             seq_key(n, down);
         else
             seq_thru_up(n);                         /* (a black key held on a drum track's page, let go elsewhere: #368) */
@@ -737,8 +737,13 @@ static int panel_key(uint32_t n, int down, int quick)
         int32_t note = 53 + (int32_t)n + 12 * octave;
         /* into an armed track at the default velocity (FX held on its keyboard, a live take: the accent's), so a take
          * records what a step entered would be; else at full velocity as always */
-        uint32_t vel = eng_armed() < 0 ? 127u : seq_kbd() && (panel_held >> BTN_ACC & 1u) ? ACCENT_VEL : STEP_VEL;
-        int map = seq_kbd() || sb_on ? -1 : eng_keys_drummap(), b = seq_black(n);   /* (sandbox mode: the plain notes) */
+        uint32_t vel = eng_armed() < 0 ? 127u : seq_play_keys() && (panel_held >> BTN_ACC & 1u) ? ACCENT_VEL : STEP_VEL;
+        int map = seq_play_keys() || sb_on ? -1 : eng_keys_drummap(), b = seq_black(n);   /* (sandbox mode: the plain notes) */
+        if (seq_play_keys() && (panel_held >> BTN_SEL & 1u)) {
+            seq_pen_ms = fm1_ms | 1u;
+            seq_roll_show(clampi(note, 0, 127), 0);
+            ui_dirty = ui_dirty ? ui_dirty : 1;
+        }
         key_note[n] = (uint8_t)(note < 0 ? 0 : note > 127 ? 127 : note);
         /* the keys reach a Drum map (the owner, 2026-10-23): black keys 1..8 play its rows 1..8 at any octave, as on the
          * SEQ page, the white keys nothing, or their own note when the map repeats its rows (#184: the repeat picks the
@@ -755,8 +760,8 @@ static int panel_key(uint32_t n, int down, int quick)
             eng_note_on(key_eng[n], vel == 127u ? ENG_ONE : (int32_t)((vel << 16) / 127u), cfg.ch ? cfg.ch : 1u);   /* the panel plays on the device's channel */
         eng_harm_zone(1);
         if (key_eng[n] != KEY_SILENT)
-            midi_send(0x90u, key_eng[n], 100u);
-        if (seq_kbd())
+            midi_send(0x90u, key_eng[n], seq_play_keys() ? vel : 100u);
+        if (seq_play_keys())
             seq_kbd_key(n, 1);
     } else {
         key_sounding &= ~bit;
@@ -766,8 +771,7 @@ static int panel_key(uint32_t n, int down, int quick)
         eng_harm_zone(1);
         if (key_eng[n] != KEY_SILENT)
             midi_send(0x80u, key_eng[n], 0u);
-        if (seq_kbd())
-            seq_kbd_key(n, 0);
+        seq_kbd_key(n, 0);
     }
     return 1;
 }
@@ -983,11 +987,12 @@ static void panel_edges(uint32_t p, uint32_t rel)
     }
     if (page == PAGE_MENU)                          /* the menu: OCT- / OCT+ do nothing there (#395) */
         oct_rel = 0;
-    if (page == PAGE_SEQ && !sr_on && (((p >> BTN_LFO & 1u) && (panel_held >> BTN_ACC & 1u))
+    if (page == PAGE_SEQ && sr_on && seq_map() < 0 && (p >> BTN_ACC & 1u) && (panel_held >> BTN_SEL & 1u))
+        sr_preview_toggle();
+    if (page == PAGE_SEQ && seq_map() >= 0 && !sr_on && (((p >> BTN_LFO & 1u) && (panel_held >> BTN_ACC & 1u))
                                        || ((p >> BTN_ACC & 1u) && (panel_held >> BTN_LFO & 1u))))
         seq_row_drone();                            /* LFO + FX, outside step record: the selected row a drone (#384, D-819) */
-    if (page == PAGE_SEQ && seq_kbd()) {            /* the armed track's keyboard (a live take): OCT the octave, FX and LFO are the
-                                                     * page's */
+    if (page == PAGE_SEQ && seq_play_keys()) {            /* the piano keyboard: OCT changes octave; FX and LFO belong to this page */
         p &= ~((1u << BTN_ACC) | (1u << BTN_LFO));
     } else if (page == PAGE_SEQ) {                  /* the SEQ page: OCT- / OCT+ page through a long track (the roll with FX held:
                                                      * the keys' octave, the pen's), FX the accent key, LFO the tie (#368:
@@ -1359,6 +1364,11 @@ static void panel_align(const uint8_t *g)
         if (want != 0u)
             trail_push();
         page_show(want);
+    }
+    if ((g[9] | (uint32_t)g[10] << 8) & ((1u << HC_ROLL_PREVIEW) | (1u << HC_ROLL_SILENT))) {
+        int preview = !((g[9] | (uint32_t)g[10] << 8) & (1u << HC_ROLL_SILENT));
+        if (sr_preview != preview)
+            sr_preview_toggle();
     }
     if (sr && page == PAGE_SEQ && (!sr_on || sr_k != g[13]))
         sr_start(g[13], -1);

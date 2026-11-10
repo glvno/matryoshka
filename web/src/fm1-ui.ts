@@ -131,7 +131,12 @@ export class Fm1Ui {
   /** the clock, ms since start (call every animation frame) */
   tick(ms: number): void { this.x.fm1w_tick(ms >>> 0); }
   encoder(n: number, clicks: number): void { this.x.fm1w_encoder(n, clicks | 0); }
-  button(id: number, down: boolean): void { this.x.fm1w_button(id, down ? 1 : 0); }
+  /** Button gestures can end auditioned notes, such as switching step-record preview off. */
+  button(id: number, down: boolean): KeyPlay[] {
+    this.played.length = 0;
+    this.x.fm1w_button(id, down ? 1 : 0);
+    return this.played.splice(0);
+  }
   /** the 27 keys held now, bit 0 = F3. Returns what the keys that changed played, as the FM-1 plays them (#467): the
    * page sounds these, not the keys' own notes */
   keys(bits: number): KeyPlay[] {

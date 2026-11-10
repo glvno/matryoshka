@@ -1,91 +1,20 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
-/* The SEQ page (#83), after menu.c and before main.c: the patch's Steps tracks, each on an 8 x 16 grid (seq_grid_draw):
- * a drum track's Drum map rows, a melodic track's piano roll (#241). The page's 16 steps run across, OCT- / OCT+ page
- * through a track longer than 16 steps (17-32 ...).
+/* The SEQ page shows the track's drum grid or piano roll. Drum grids use black keys for rows and white keys for
+ * steps, with FX accents, LFO ties and held-step knob edits. Piano-roll keys play their own pitches outside step
+ * record (seq_play_keys); REC plus a running transport records a live take (seq_kbd). OCT changes the keys' octave.
+ * SELECT moves the roll's pitch view by eight pitches; SEL + SELECT by one. SEL + a key moves the view to its pitch.
  *
- *   SEQ             opens / closes the page; held + a black key: mute / unmute that track (from any page, not saved);
- *                   held + REC (here): clear the selected track, asked first (REC again within 3 s: seq_clear_press)
- *   ALGO            steps through the tracks and arms the one shown (#395; while REC is on it records from then on)
- *   SELECT          a drum track: the selected row, a row a click (clamped at the first and the last); with a white key
- *                   held: that step's chance. The roll: its view, 8 pitches a click (the selected row stays on its
- *                   screen row); SEL held + SELECT: a pitch a click (D-809)
- *   white keys      the 16 steps of the page: the selected row's note on the step on / off when the key is let go
- *                   (the owner's 1.9.0 device check, 2026-11-03), unless the step was used while held: then nothing is
- *                   switched. A held white key + K2: its velocity; + SELECT (a drum track) or K3 (the roll; the owner,
- *                   2026-10-24): the note's chance, 100 % .. 5 % in steps of 5; on the roll + K1: its pitch (a semitone a
- *                   click, past the step's other notes; the selected row follows it); ALGO / K1..K4 its locks (below).
- *                   Such a turn on an empty step puts the selected row's note there (a lock puts none). Any knob turned
- *                   with the step held uses it. FX held first: the accent on / off at the press, as before (a turn then
- *                   undoes it: the track's notes as they were, the note there). A second white key pressed while one is
- *                   held switches the first one's step then, as if it had been let go.
- *   REC             stopped: step record on / off (below, D-804); running: recording on / off, as on every page (#395,
- *                   below); it acts on its release. Held + a white key: step record from that step
- *   PRESET          the patch's pattern (#375, D-541): running, each track takes it at the end of its pass (the bar shows
- *                   P03>P04 until then); stopped, at once. The bar shows the pattern (and the song while one plays)
- *   SEL tapped      (pressed and let go with no key): the SONG page (below)
+ * REC tapped while stopped starts step record on the first visible step; REC + a white key starts on that step.
+ * Keys held together make a chord; the last release writes it and moves the cursor. LFO rests or ties held notes,
+ * FX accents, K4 moves the cursor, and black key 10 clears the previous step. REC, HOME and SEQ end step record;
+ * PLAY turns it into a live take. SEL + FX toggles piano-roll preview without changing what is written. Preview starts
+ * on at power-on. The drum grid keeps sounding its entered notes regardless of the piano-roll preview choice.
  *
- * A drum track (its keys out into a Drum map; the #139 follow-up, the owner's grid of 2026-10-23): the rows are the map's
- * rows. Black keys 1..8 sound their row while held and pick it, REC on or off, running or stopped; while REC records the
- * track they are also recorded into the nearest step (#395). SELECT moves the row silently. Off this page the keys play
- * a Drum map the same way (panel.c panel_key). LFO held + a white key ties the selected row's hit through that step as on the roll (below; #368: a Drum
- * map's row stays up while its note sounds, so a tie holds a Lire plate or an Elvira voice), drawn the same way.
- *
- * A melodic track (the owner, 2026-10-23, #241): the piano roll, 8 chromatic pitches of the track's range (C-1..G9, MIDI 0..127)
- * top to bottom, labelled C4, C#4 ..., the C rows tinted. A chord is several cells in one column; a note longer than a
- * step runs on in dim cells joined to its first. A dim triangle over (under) a step: a note sounds there above (below)
- * the 8 rows shown. The view shows fixed pages of 8 pitches (C3-G3: the lowest a multiple of 8; the bar names them,
- * D-809) unless SEL held + SELECT moved it a pitch at a time. It opens on the page of the track's median pitch (an empty
- * track: C of the keys' octave).
- *   black keys      1..8 pick the 8 rows on screen, black key 1 the bottom row (the lowest pitch shown), so they
- *                   follow the window as it scrolls; stopped, the row sounds (#387, the owner, 2026-10-28; ALGO picks
- *                   the track). While REC records the track all 27 keys are its keyboard instead (seq_kbd, below)
- *   SEL held + a key  the pen: the selected row jumps to that key's pitch (the keys' octave; off screen, the view shows
- *                   the fixed page it is on) and it sounds. FX held + OCT- / OCT+: the keys' octave (the pen's)
- *   LFO held + a white key  the selected row's last note starting before that step ends on it (a note of its own
- *                   there joins it); on a step inside a note: it ends there, on its last step: one step again
- *
- * Arming and recording (#139; #395, the owner 2026-10-28):
- *   REC held + a black key (any page): that track into the armed set, again: out of it. While a track is armed the keys
- *                   (and MIDI notes) play through it to what it plays (engine.c eng_arm); the device pages' info line says
- *                   ARM and its name, the SEQ page ARM in the bar and ARMED on the track's line (#179). Black key n is track
- *                   n here also on the SEQ page, where the keys alone pick rows; a key past the tracks says NO TRACK n.
- *   REC (any page)  global: stopped, it starts the transport (as PLAY does, MIDI Start out) and records (on the SEQ page:
- *                   step record instead, D-548); running, it records; again, recording ends and the transport goes on. PLAY (any stop) ends both. It never changes
- *                   the page. What records is the armed set's Steps tracks (seq_rec_sync, every pass: a track armed while
- *                   REC is on records from then on); the engine lays what is played through them onto the nearest step
- *                   (eng_steps_rec), over the notes there. No Steps track armed: REC still runs, the bar says
- *                   REC: NO TRACK ARMED. On the SEQ page a drum grid's black keys record as above; on a melodic track's
- *                   roll all 27 keys are its keyboard (seq_kbd) and OCT- / OCT+ the octave.
- *   Count-in (#414) MENU > PANEL > COUNT-IN (OFF, 1 BAR, 2 BARS; off as made): REC waits that many bars before the
- *                   tracks record, from the transport's start or, running already, from the next bar line, so recording
- *                   begins on a bar (seq_cin_poll). The bar counts the beats (COUNT-IN 3; two bars: 1.3), REC's LED
- *                   blinks on them, the keys sound as ever and nothing is recorded; REC again meanwhile: off, nothing
- *                   recorded. A click on each beat (each bar's first higher), play once's, on the analog output only
- *                   (D-803, D-820: eng_count_in).
- *
- * Step record (#532, the owner's design of 2026-11-01 and 2026-11-02, D-804; a drum grid and the roll alike): REC tapped
- * with the transport stopped starts it on the first step of the page shown (1, 17 ...); REC held + a white key on that
- * step, stopped or running (that key writes and sounds nothing; while a live take records, the take ends first). The bar
- * says STEP n, the cursor's column is tinted, with a sky tick under it, REC's LED is lit and the view pages to the
- * cursor's 16 steps (D-806). Stopped or running (the cursor is not the playhead):
- *   keys            play their pitch through the track as they sound (the roll: the key's own at the keys' octave; a drum
- *                   grid: the live take's rule, black keys 1..8 its rows, the white keys nothing unless the map repeats
- *                   its rows, D-805), held together one chord; the last let go writes the cursor's step (what it held goes)
- *                   and the cursor moves on one. Velocity 100, FX held at the press 127; a note one step long. On the
-                   roll SEL held + any key is the pen (above): nothing written, the cursor stays
- *   LFO             no key held: a rest (the step cleared) and on one; keys held: those still held go on through the next
- *                   step and the cursor moves there (those let go keep their length), a key pressed meanwhile starts on
- *                   the cursor's step. Not past the pattern's end: there the held notes end and the cursor wraps (D-807)
- *   K4              the cursor, a step a click, nothing written; black key 10: back one step and that step cleared
- *   OCT- / OCT+     the keys' octave (D-806). The cursor wraps from the last step to step 1
- *   REC / HOME / SEQ  step record ends, the page stays; so do ALGO, another page or patch (D-808)
- *   PLAY            stopped: the transport starts and step record becomes a live take (REC records, D-804)
- *
- * Key LEDs: the selected row's notes on the page bright, the step playing at the mid level (dark on a step that is on),
- * the selected row's black key bright (blinking: the track muted) and rows with notes dim (a drum track's and the
- * roll's alike, #387); the roll's keyboard (a live take): the keys held bright, every C dim. The top bar
- * shows the track's name (STEPS n without one). Edits go into the running patch (SAVE keeps them) and to the editor. */
+ * ALGO picks the track, PRESET the pattern, SEL tapped the song page. REC + a black key arms a track and SEQ + a
+ * black key mutes it. The controls table (web/src/controls.ts) defines the sheet, editor help and hint text.
+ * The grid draws only changed cells, names, markers and playhead columns. Edits reach the running patch and editor.
+ */
 
 #include "controls.h"                             /* the controls table (web/src/controls.ts, #553): the hint lines */
 
@@ -157,6 +86,7 @@ static uint8_t seq_shown_lo = 0xFEu;    /* ... and the roll's pitches (its lowes
 static uint8_t sr_on;                   /* step record runs */
 static uint8_t sr_k;                    /* the cursor: a step of the pattern */
 static uint8_t sr_from;                 /* the step the chord's first note started on */
+static uint8_t sr_preview = 1;          /* audition piano-roll entry; SEL + FX toggles during step record */
 static uint8_t sr_trk;                  /* the track it runs on, and the patch then (another one ends it) */
 static uint32_t sr_gen;
 static uint32_t sr_keys;                /* the keys of the chord held now (bit n: key n) */
@@ -216,8 +146,13 @@ static int seq_mod_armed(int mod) { return mod >= 0 && mset_has(eng_arm_mask_get
 static int seq_rec_lit(void) { return seq_rec && (seq_cin != 2u || seq_cin_lit); }
 /* the SEQ bar's mark: bit 0 the track shown armed (ARM / REC), bit 1 REC on (the bar red) */
 static uint8_t seq_bar_mark(void) { return (uint8_t)(seq_mod_armed(seq_module()) | (seq_rec ? 2 : 0)); }
-/* the keys are the shown melodic track's keyboard: REC records it (it is armed) on this page, a live take; a drum track's
- * grid keeps its black keys as rows (seq_key, recorded there too) */
+/* Piano-roll keys play notes outside step record, regardless of REC, transport or arming. */
+static int seq_play_keys(void)
+{
+    return page == PAGE_SEQ && !sr_on && seq_module() >= 0 && seq_map() < 0;
+}
+
+/* A live take is reported separately from ordinary piano-roll playing. */
 static int seq_kbd(void)
 {
     return seq_rec && page == PAGE_SEQ && seq_mod_armed(seq_module()) && seq_map() < 0 && eng_transport_running();
@@ -363,7 +298,7 @@ static int seq_step_has(int mod, uint32_t k, uint32_t note)
 static void seq_leds(void)
 {
     int mod = seq_module(), pos = mod >= 0 ? eng_steps_pos((uint32_t)mod) : -1;
-    int blink = (fm1_ms / 200u) & 1u, kbd = seq_kbd(), map = seq_map();
+    int blink = (fm1_ms / 200u) & 1u, kbd = seq_play_keys(), map = seq_map();
     uint32_t n, rows = 0, rn = mod >= 0 ? seq_grid_note(map, seq_row) : 0u;
     if (mod >= 0) {                              /* the rows with notes, bit b: black key b's row (the roll's: 7 - b) */
         const uint32_t *ws;
@@ -647,7 +582,8 @@ static void seq_pen(int mod, uint32_t n)
     int32_t note = clampi(53 + (int32_t)n + 12 * octave, 0, 127);
     seq_pen_ms = fm1_ms | 1u;
     seq_roll_show(note, 0);
-    (void)eng_steps_hit_note((uint32_t)mod, (uint32_t)note, 0, 0);
+    if (!sr_on || sr_preview)
+        (void)eng_steps_hit_note((uint32_t)mod, (uint32_t)note, 0, 0);
 }
 
 /* a black key let go that sounded through a drum track (#368): its note ends (recording: it is recorded now) */
@@ -860,17 +796,29 @@ static void sr_key(uint32_t n, int down)
     sr_hold[i]++;
     sr_of[n] = (uint8_t)i;
     sr_keys |= bit;
-    seq_thru_up(n);                              /* it sounds through the track while held (as a drum grid's black key) */
-    seq_thru_mod[n] = (uint8_t)mod;
-    seq_thru_note[n] = (uint8_t)(p + 1);
-    eng_steps_thru((uint32_t)mod, (uint32_t)p, sr_vel[i]);
+    seq_thru_up(n);
+    if (seq_map() >= 0 || sr_preview) {
+        seq_thru_mod[n] = (uint8_t)mod;
+        seq_thru_note[n] = (uint8_t)(p + 1);
+        eng_steps_thru((uint32_t)mod, (uint32_t)p, sr_vel[i]);
+    }
 }
 
-/* a key on the SEQ page (n: note key 0..26). Drum track (the #139 follow-up): black keys 1..8 the Drum map's rows (heard
- * while held, and picked; while REC records the track, into the nearest step too: #395), white keys that row's hit on the
- * page's steps (FX held: an accent; LFO held: its tie, #368). The roll (#241): black keys 1..8 its rows on screen from the
- * bottom (#387; stopped: heard), SEL + a key the pen, white keys the selected pitch's notes (FX held: an accent; LFO
- * held: its tie). While REC records the roll its keys are the track's keyboard (seq_kbd: panel.c plays them, not here) */
+/* Toggling preview does not write, move the cursor, or change the held chord. */
+static void sr_preview_toggle(void)
+{
+    uint32_t n;
+    sr_preview = !sr_preview;
+    if (!sr_preview)
+        for (n = 0; n < 27u; n++)
+            if (sr_keys >> n & 1u)
+                seq_thru_up(n);
+    seq_pen_ms = fm1_ms | 1u;                     /* SEL's release must not open SONG */
+    ui_msg(sr_preview ? "NOTE PREVIEW ON" : "NOTE PREVIEW OFF", 1500);
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+}
+
+/* Step-record keys, or drum-grid rows and steps. Piano-roll playing is handled by panel_key. */
 static void seq_key(uint32_t n, int down)
 {
     int w = seq_white(n), b = seq_black(n), mod = seq_module(), map = seq_map();
@@ -885,6 +833,8 @@ static void seq_key(uint32_t n, int down)
         sr_key(n, down);
         return;
     }
+    if (map < 0)
+        return;                                  /* melodic keys belong to panel_key outside step record */
     if (!down) {
         if (w >= 0 && seq_held == seq_pg * 16 + w) {
             seq_held_tap_done(mod);              /* (a tap: its step switched now; a step used while held: nothing) */
@@ -896,24 +846,7 @@ static void seq_key(uint32_t n, int down)
     }
     if (mod < 0)
         return;
-    if (map < 0) {
-        seq_roll_aim(mod);
-        if (panel_held >> BTN_PEN & 1u) {
-            seq_pen(mod, n);
-            ui_dirty = ui_dirty ? ui_dirty : 1;
-            return;
-        }
-    }
     if (b >= 0) {
-        if (map < 0) {                           /* the roll (#387): black keys 1..8 the rows on screen, the lowest */
-            if (b >= 8)                          /* pitch first; the row picked, heard while stopped */
-                return;
-            seq_row = (uint8_t)(7 - b);
-            if (!eng_transport_running())
-                (void)eng_steps_hit_note((uint32_t)mod, seq_grid_note(-1, seq_row), 0, 0);
-            ui_dirty = ui_dirty ? ui_dirty : 1;
-            return;
-        }
         if (b >= (int)ENG_DRUM_ROWS)
             return;
         /* the row's note sounds through the track while the key is held (#368, the owner 2026-10-28: running or stopped)
@@ -1888,19 +1821,19 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
     /* the hint line (FONT_S, at most 228 px: export-defs checks it), in the controls table's words (controls.ts HINTS,
      * #553): a step held, its knobs; a track of more than 16 steps, OCT's pages (#490); else SEL's SONG page */
     if (sr_on)
-        hint = HINT_STEP_RECORD;
-    else if (seq_kbd())
-        hint = HINT_LIVE;
+        hint = map < 0 && !sr_preview ? HINT_STEP_SILENT : HINT_STEP_RECORD;
+    else if (seq_play_keys())
+        hint = seq_kbd() ? HINT_LIVE : HINT_ROLL;
     else if (seq_held >= 0 && seq_lock_page())
         hint = HINT_HELD_LOCK;
     else if (seq_held >= 0)
-        hint = map >= 0 ? HINT_HELD_DRUM : HINT_HELD_ROLL;
+        hint = HINT_HELD_DRUM;
     else if (map >= 0 && seq_rec && seq_mod_armed(mod))
         hint = len > 16 ? HINT_DRUM_REC_LONG : HINT_DRUM_REC;
     else if (map >= 0)
         hint = len > 16 ? HINT_DRUM_LONG : HINT_DRUM;
     else
-        hint = len > 16 ? HINT_ROLL_LONG : HINT_ROLL;
+        hint = HINT_ROLL;
     seq_grid_line(2, 222, hint, C_HINT, 228);
     seq_grid_ok = 1;
 }
