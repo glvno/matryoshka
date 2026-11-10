@@ -1,12 +1,27 @@
 name: web
+# Event/cancellation rules: D-102. Targeted and frozen-candidate test scope: D-144.
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'targeted tests or the full web suite for a frozen release candidate'
+        type: choice
+        options: [targeted, rc]
+        default: targeted
+      base:
+        description: 'comparison commit/ref (required for targeted dispatch)'
+        type: string
+      rc_sha:
+        description: 'exact frozen 40-character commit (required for rc mode)'
+        type: string
 
 # a newer run for the same branch / PR replaces an older one still running
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ inputs.mode == 'rc' && format('rc-{0}', inputs.rc_sha) || github.ref }}
+  cancel-in-progress: ${{ inputs.mode != 'rc' }}
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -15,6 +30,20 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.rc_sha || github.sha }}
+      - name: Test the CI selector
+        working-directory: .
+        run: python3 tools/ci_checks_test.py
+      - name: Plan targeted checks or frozen-candidate qualification
+        id: checks
+        working-directory: .
+        run: python3 tools/ci_checks.py plan --area web
+      - name: Validate coverage records and preparation behavior
+        if: steps.checks.outputs.coverage_record == 'true'
+        working-directory: .
+        run: python3 tools/coverage_record_test.py
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -32,5 +61,21 @@ jobs:
         run: |
           sudo apt-get install -y --no-install-recommends clang lld
           npm run fm1-wasm
-      - run: npm test
+      - name: Web tests selected for this scope
+        working-directory: .
+        run: python3 tools/ci_checks.py run --area web
       - run: npm run build
+      # D-147: retain display measurements only after both disjoint test groups and the build pass.
+      - name: Seal coverage display record after the full RC web job succeeds
+        if: inputs.mode == 'rc'
+        working-directory: .
+        env:
+          COVERAGE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python3 tools/coverage_record.py produce --stats web/public/coverage.json --output build/coverage-record --run-url "$COVERAGE_RUN_URL"
+      - name: Retain RC coverage for explicit release preparation
+        if: inputs.mode == 'rc'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ inputs.rc_sha }}
+          path: build/coverage-record/
+          if-no-files-found: error

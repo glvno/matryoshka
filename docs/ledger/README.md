@@ -68,16 +68,18 @@ Five columns: `ID | Decision | Status | Date | Source`. ([D-004](process.md#D-00
 
 ## Citing rows
 
+For instructions that prescribe project policy, use [D-014](process.md#D-014). The rule applies to guidance for both agents and people, including `AGENTS.md`, `CLAUDE.md`, and the root README.
+
 In documents, every mention of a `D-###` is a link to its row: `[D-093](docs/ledger/edit-pipeline.md#D-093)`. Mentions inside code spans stay bare. Cite with the status: `([D-093](docs/ledger/edit-pipeline.md#D-093), Decided)`.
 
 In a reply to a person, do the opposite of what the documents do: give each cited ID a short parenthetical summary of the ruling *and* the link, because a chat is ephemeral and cannot drift the way a restated rule in a document can.
 
 ## Before a pull request: the staleness check
 
-Before opening a pull request that touches files outside `docs/ledger/`:
+Before opening any pull request:
 
-1. `python3 tools/ledger_check.py --changed origin/main` lists every row and every doc line that cites a file you changed.
-2. For each, read the row and the diff and classify it: **still true**; **stale** (the ruling stands, a fact in it changed — amend); or **contradicted** (the branch does what the row says not to, or the reverse — follow the disagreement rule above).
+1. Run `python3 tools/ledger_check.py --changed origin/main`. `ROW` entries show decisions citing changed files. `DOC` entries show row citations in changed guidance. `REF` entries show current passages citing a changed decision or status, for the review in [D-015](process.md#D-015). Added and removed IDs count as changes. Date or source corrections, row moves, and regenerated backlinks alone do not trigger `REF` entries.
+2. For each, read the row, the cited passage, and the diff and classify it: **still true**; **stale** (the ruling stands, a fact in it changed — amend); or **contradicted** (the branch does what the row says not to, or the reverse — follow the disagreement rule above).
 3. Read your diff for choices that pass "What gets a row" and have no row. Add them, `Decided` if you are the decider, `Proposed` if not.
 4. Anything decision-shaped in your pull-request description or commit messages that is not a row becomes one. Discussion belongs in the ledger, not in pull-request comments.
 5. `python3 tools/ledger_check.py --fix`, then commit what it changed. The ledger edits ride in the same pull request as the code. ([D-009](process.md#D-009))
@@ -89,8 +91,10 @@ Before opening a pull request that touches files outside `docs/ledger/`:
 ```sh
 python3 tools/ledger_check.py            # check; exit 1 on any finding
 python3 tools/ledger_check.py --fix      # anchor rows, link mentions, regenerate backlinks, then check
-python3 tools/ledger_check.py --changed origin/main   # rows and doc lines citing files this branch changed
+python3 tools/ledger_check.py --changed origin/main   # affected rows and guidance passages for review
 ```
+
+The checker validates links and generates backlinks. It does not decide whether an instruction prescribes policy or agrees with the row it cites; those remain review duties under [D-014](process.md#D-014) and [D-015](process.md#D-015).
 
 Files the checker should not scan (generated docs, vendored text) are listed one glob per line in `docs/ledger/.checkignore`.
 

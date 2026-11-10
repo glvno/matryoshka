@@ -1,6 +1,6 @@
 // The About card's Test coverage figures. `npm run coverage` runs the tests with V8 coverage, then scripts/coverage-stats.ts
-// groups the per-file line counts with `groupCoverage` and writes public/coverage.json (git-ignored; the Pages workflow makes it
-// on every deploy). Files in neither group (tutorial logic, presets, small helpers) are not in either figure.
+// groups the per-file line counts with `groupCoverage`. Release preparation retains the measured display record;
+// deployment validates and copies it without running tests. Files in neither group are absent from both figures.
 
 /** the sound engine, modules, patch model, binary format, assemblies, polyphony, arpeggiator, CPU estimate, protocol */
 export const CORE = ['engine.ts', 'modules.ts', 'patch.ts', 'parameter-routing.ts', 'patchbin.ts', 'assembly.ts', 'poly.ts', 'arpeggiator.ts', 'cpu.ts', 'protocol.ts'];
@@ -12,7 +12,10 @@ export const INTERFACE = ['editor.ts', 'main.ts', 'tutorial/tutorial.ts', 'bank.
 
 export interface Group { pct: number; lines: number }
 /** what the build writes to public/coverage.json */
-export interface CoverageStats { asOf: string; core: Group; interface: Group }
+export interface CoverageStats {
+  asOf: string; core: Group; interface: Group;
+  measurement?: { label: string; historical: boolean };
+}
 
 /** a line of Vitest's json-summary: file path → line counts */
 export type Summary = Record<string, { lines: { total: number; covered: number } }>;
@@ -33,5 +36,15 @@ export function groupCoverage(summary: Summary, asOf: string): CoverageStats {
 
 export function isCoverageStats(x: unknown): x is CoverageStats {
   const s = x as CoverageStats;
-  return !!s && typeof s.asOf === 'string' && typeof s.core?.pct === 'number' && typeof s.interface?.pct === 'number';
+  const validGroup = (g: Group | undefined): boolean => !!g && Number.isFinite(g.pct) && g.pct >= 0 && g.pct <= 100
+    && Number.isInteger(g.lines) && g.lines >= 0;
+  return !!s && typeof s.asOf === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.asOf)
+    && validGroup(s.core) && validGroup(s.interface)
+    && (s.measurement === undefined || (typeof s.measurement?.label === 'string'
+      && s.measurement.label.length > 0 && typeof s.measurement.historical === 'boolean'));
+}
+
+/** Plain provenance wording for the About card; callers escape it as ordinary text. */
+export function coverageMeasurement(stats: CoverageStats): string {
+  return stats.measurement ? `Last measured on ${stats.measurement.label}` : 'Vitest measurement';
 }

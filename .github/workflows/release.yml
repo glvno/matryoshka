@@ -1,7 +1,8 @@
 name: release
+# Publication/owner checks: D-105. Candidate qualification: D-144. Final artifacts: D-146.
 # Builds a release package by hand (Actions > release > Run workflow, or gh workflow run release.yml -f version=1.8.0):
-# tools/build.py --release <version> (identity FM-1_7MMmmpp, e.g. FM-1_7010800; version string vX.Y.Z), the same checks and host tests as
-# firmware.yml, and uploads release-<version>/ with the build log. It does not tag or publish: see "Releasing" in
+# tools/build.py --release <version> (identity FM-1_7MMmmpp, e.g. FM-1_7010800; version string vX.Y.Z), the build safeguards of
+# firmware.yml, and uploads release-<version>/ with the build log. Full host checks require explicit rc mode. It does not tag or publish: see "Releasing" in
 # docs/ARCHITECTURE.md. It also uploads the M1_EMU_MIDI=1 build of the same sources (matryoshka-emu-midi), for the boot check of the
 # release bytes before they go on the test rig (#783).
 on:
@@ -10,12 +11,24 @@ on:
       version:
         description: "X.Y.Z or X.Y.Z-suffix, each 0..99 (e.g. 1.8.0, 1.8.0-rc1)"
         required: true
+      mode:
+        description: 'package builds only; rc explicitly runs full host checks on the frozen source'
+        type: choice
+        options: [package, rc]
+        default: package
+      rc_sha:
+        description: 'exact frozen 40-character commit (required for rc mode)'
+        type: string
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.rc_sha || github.sha }}
+      - name: Record package-only scope or explicit frozen-candidate host checks
+        run: python3 tools/ci_checks.py plan --area firmware --allow-package
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -52,24 +65,10 @@ jobs:
           test "${PIPESTATUS[0]}" -eq 0
           if grep -E "warning:" build/build.log | grep -v "SDK .* differs"; then echo "::error::compiler warnings"; exit 1; fi
           cp build/build.log "build/release-$VERSION/"
-          { echo "### Matryoshka $VERSION ($GITHUB_SHA)"; echo '```'; grep -E "image [0-9]+ B|pool [0-9]+ B of|identity" build/build.log; cat "build/release-$VERSION/SHA256SUMS"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-      - name: the firmware workflow's host checks
-        run: |
-          tools/golden.sh
-          tools/aot_test.sh
-          tools/usb_test.sh
-          tools/clock_out_test.sh
-          tools/peak_test.sh
-          tools/audio_out_test.sh
-          tools/frame_test.sh
-          tools/ota_test.sh
-          tools/guard_test.sh
-          tools/power_test.sh
-          python3 tools/fm1_install_test.py
-          tools/panel_test.sh
-          tools/preset_test.sh
-          tools/bank_new_test.sh
-          tools/ui_preview.sh build/ui-preview.png 0 1
+          { echo "### Matryoshka $VERSION ($(git rev-parse HEAD))"; echo '```'; grep -E "image [0-9]+ B|pool [0-9]+ B of|identity" build/build.log; cat "build/release-$VERSION/SHA256SUMS"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Full host checks only for explicit candidate qualification
+        if: inputs.mode == 'rc'
+        run: python3 tools/ci_checks.py run --area firmware
       - uses: actions/upload-artifact@v4
         with:
           name: matryoshka-release-${{ inputs.version }}

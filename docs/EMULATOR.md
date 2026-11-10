@@ -23,7 +23,62 @@ now. fm1-core already runs `#` pairs with the second instruction
 seeing the old registers. The firmware CI keeps the ELF and
 its disassembly (artifact `matryoshka-elf`) for tracing such faults to a function.
 
-**Run it locally before any device work.** It is not part of CI (the user's call: too expensive on Actions).
+## Choosing checks
+
+Full emulator checks run locally, outside continuous integration (CI) ([D-101](ledger/releases.md#D-101), Decided).
+Choose commands using the canonical stage rules:
+
+- **Agent branches → `main` → frozen candidate:** [D-145](ledger/releases.md#D-145) defines branch roles;
+  [D-144](ledger/releases.md#D-144) defines targeted checks and review before the freeze.
+- **Frozen release candidate and fixes:** [D-144](ledger/releases.md#D-144) defines the full run and affected revalidation;
+  [D-146](ledger/releases.md#D-146) governs the final artifacts carried through qualification and publication.
+- **Registered test rig:** [D-123](ledger/releases.md#D-123) governs installation; [D-141](ledger/releases.md#D-141)
+  governs targeted hardware checks and candidate qualification. Other FM-1 installers follow [D-171](ledger/firmware-install.md#D-171).
+
+The full emulator suites are `emu:smoke` and `emu:scenarios` without `--only`. For a focused scenario, see the
+named-scenario command below. Host and web CI use the changed-domain plan in `tools/ci_checks.json`
+([D-102](ledger/releases.md#D-102)). Explicit RC dispatches require the exact frozen commit. Required build checks
+remain separate ([D-100](ledger/releases.md#D-100), [D-116](ledger/releases.md#D-116)).
+
+An unmapped change fails planning. Native recorder changes need a concrete manual test/review plan in
+`tools/ci_test_plan.json`, tied to the changed file's hash. CI reports it as review input, never an automated pass.
+A missing or stale plan fails the required `build` check. Main pushes still run targeted checks because CI has no
+reliable record for reusing a previous pull request's results. Coverage display records follow
+[D-147](ledger/releases.md#D-147); deployment does not run tests.
+
+The final-artifact process is decided in [D-146](ledger/releases.md#D-146), but publication checks are not yet automated.
+The release workflow builds versioned firmware; package-only mode establishes no test qualification.
+Local smoke and boot markers use timestamps, while scenario markers check the emulator-bridge hash.
+They do not prove that the package being published is the qualified final artifact.
+Evidence from a candidate frozen as a DEV build remains evidence about that build; it cannot make those bytes
+a final-version package. Resolving that transition requires a release plan, not a relabel or an automatic test rerun.
+
+## Preparing the coverage display
+
+Use [D-147](ledger/releases.md#D-147) when preparing a release's About figures. A successful RC web workflow uploads
+`coverage-<commit>` with `coverage.json` and `manifest.json`. After downloading that bundle, retain it in the repository:
+
+```sh
+python3 tools/coverage_record.py prepare --bundle build/coverage-record --release vX.Y.Z --ref CANDIDATE_COMMIT
+```
+
+Commit the resulting `release/coverage/vX.Y.Z/` before tagging. The stored bytes survive Actions artifact expiry.
+The source fingerprint includes tracked tests, dependencies, configuration and build inputs. It excludes `docs/`,
+root Markdown guidance, agent guidance directories (`.agents/`, `.claude/`, `.codex/`), and `release/coverage/`.
+A version or source change can therefore invalidate a current measurement. The helper never starts another test run.
+
+For the transition from the already-tested candidate that has no coverage report, explicitly retain the published
+v1.12.0 measurement:
+
+```sh
+python3 tools/coverage_record.py prepare --bundle release/coverage/v1.12.0 --release vX.Y.Z --historical
+```
+
+This keeps the original date and the label “Last measured on v1.12.0”; it is display history, not qualification.
+The seed records the published URL, capture time and report hash. Its original test-run provenance is unknown.
+Legacy v1.12.0 builds retain their original date display; newer About cards also show the measurement release.
+A deployment reads only the explicitly prepared record for its version. Missing records fail with the preparation
+command; deployment neither downloads arbitrary reports nor reruns tests.
 
 ## Commands
 
@@ -43,7 +98,7 @@ its disassembly (artifact `matryoshka-elf`) for tracing such faults to a functio
 - **Queued gates:** `emu:smoke`, `emu:boot`, and `emu:scenarios` share one slot across checkouts on this Mac.
   They print when they enter the queue and when their run starts. The operating system releases the slot after a
   killed runner; no stale lock directory needs deleting. This implements the proposed limit in [D-143](ledger/releases.md#D-143).
-  Development branches run the full gates on their combined head ([D-120](ledger/releases.md#D-120)).
+  Choose when to run them using [D-144](ledger/releases.md#D-144).
   Scenario output includes a progress line every 30 seconds. `build/emu/scenarios/run.json` identifies the firmware
   by its SHA-256 digest. `results.json` is updated after each check, and `progress.json` names the current scenario and
   unanswered emulator commands. An unanswered command fails after two minutes; a whole scenario fails after ten.
@@ -155,8 +210,7 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   click is. The device test mode's peak (TEST_PEAK) and USB audio are taken before the click is mixed in
   (`firmware/src/audio.c`), so on the rig and with `--via-emu` the click checks are skipped, and the bar's length comes
   from the tempo.
-- **When:** every pull request that changes firmware runs `emu:smoke` and `emu:scenarios` on its own CI build before it
-  merges ([D-120](ledger/releases.md#D-120)).
+- **When:** use [Choosing checks](#choosing-checks) for the qualification stages in [D-144](ledger/releases.md#D-144).
 
 Not covered: plugging and unplugging USB, the installer and the update loader, USB audio.
 
@@ -191,8 +245,9 @@ link as `m1emu serve` drives the emulator:
   `tools/fm1_install.py PACKAGE --location 0x01130000`, never by a script. A build whose
   `scenarios.passed` holds its sha256 is not run through `emu:scenarios` again, as `smoke.passed` skips `emu:smoke`. The
   boot check (`emu:boot` on the run's two builds, about 30 s) is the default since issue #783: the owner's iteration
-  checks and the batch runs of [D-141](ledger/releases.md#D-141) take it. A merge or a release still needs the full
-  checks. RUN may be a run of `release.yml`: its package installs as a CI build's does. Its `M1_EMU_MIDI=1` build for the
+  checks and the candidate runs of [D-141](ledger/releases.md#D-141) take it. This install gate does not choose the
+  integration, candidate, or release checks; use [Choosing checks](#choosing-checks). RUN may be a run of `release.yml`:
+  its package installs as a CI build's does. Its `M1_EMU_MIDI=1` build for the
   boot check is that run's `matryoshka-emu-midi` artifact, or, for a release run from before issue #783, the one of the
   firmware CI run of the same commit (named in `emu-midi/from-run`). Each gate's result is kept next to the download
   (`build/flash/RUN/smoke.passed`, `boot.passed`, `.failed`, `.log`), and `build/device/scenarios/install.json` and the
@@ -231,7 +286,7 @@ link as `m1emu serve` drives the emulator:
 
 The owner's device check of release 1.10 had 40 steps. Every step that needs no ears, no hands and no power switch is
 now a scenario in `web/scripts/device-check.mjs`. These scenarios run after the others, in `emu:scenarios` and in
-`device:scenarios`. They must pass on the rig before a release candidate. The owner's own check is then only what they
+`device:scenarios`. Their release-candidate qualification follows [D-139](ledger/releases.md#D-139) and [D-141](ledger/releases.md#D-141). The owner's own check is then only what they
 leave out: the analog output heard in headphones and recorded over a mono cable, each instrument played by hand to judge
 its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)). A check that needs a recording it cannot trust is skipped, not failed ([D-140](ledger/releases.md#D-140)).
 

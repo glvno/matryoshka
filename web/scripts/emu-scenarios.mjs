@@ -19,8 +19,9 @@
 // fm1_install.py --rig: only on the FM-1 at the rig's USB location, and only when its mark reads back there (#698), so
 // another FM-1 may stay connected. A rig registered before #698 (no location kept) still has to be the one FM-1
 // connected. The rig's USB audio is recorded by that location too (tools/fm1_rec.swift). The gate is the boot check
-// (emu:boot, about 30 s, D-123), as the rig's iteration checks and batch runs take it (D-141); --gate full takes D-120's
-// (emu:smoke and these scenarios) instead. Merges and releases take the full gate whatever the rig ran. A release run's
+// (emu:boot, about 30 s, D-123), as the rig's iteration checks and candidate runs take it (D-141); --gate full takes D-144's
+// (emu:smoke and these scenarios) instead. This install gate is separate from D-144's qualification stages;
+// consult that row before selecting targeted checks or a full release-candidate run. A release run's
 // package installs as a CI build's does (#783). Which gate a build passed goes to build/device/scenarios/install.json.
 // Before the scenarios a rig gets MIDI OUT and CLOCK OUT on and COUNT-IN OFF (#779), whatever a run before left.
 // --via-emu: the device path against the emulator (m1emu serve), to check the runner itself without a rig. --port NAME:
@@ -50,7 +51,7 @@ const DEVICE = flag('--device') || flag('--via-emu');   // the device test mode'
 const REAL = flag('--device') && !flag('--via-emu');    // a real FM-1: the registered rig
 const OUT = join(ROOT, DEVICE ? 'build/device/scenarios' : 'build/emu/scenarios');
 const only = opt('--only')?.split(',');
-const GATE = opt('--gate') ?? 'boot';   // --install's gate: boot (the boot check, the rig only: D-123, D-141) or full (D-120)
+const GATE = opt('--gate') ?? 'boot';   // --install's gate: boot (the boot check, the rig only: D-123, D-141) or full (D-144)
 /** the scenarios' names, read from this file (so --list and a wrong --only answer before anything starts) */
 const SCENARIOS = (() => {
   const src = readFileSync(fileURLToPath(import.meta.url), 'utf8');
@@ -440,7 +441,7 @@ async function launch(url) {
  *  only the ports at the rig's USB location and installs only when the rig's mark reads back there (#698); a rig
  *  registered without its location must be the one FM-1 connected, as before (the installer then takes the first FM-1
  *  that answers). The gate (`--gate`): boot (the default) = the boot check, emu:boot (D-123: the rig only; D-141: its
- *  batch runs); full = emu:smoke and these scenarios on the run's builds (D-120) */
+ *  candidate runs); full = emu:smoke and these scenarios on the run's builds (D-144) */
 async function installOnRig(run, url) {
   console.log(`-- install: firmware CI run ${run} on the rig (gate: ${GATE === 'boot' ? 'the boot check, emu:boot' : 'emu:smoke and emu:scenarios'})`);
   const dir = await download(run);
@@ -483,7 +484,7 @@ async function installOnRig(run, url) {
   if (spawnSync(PY, [join(ROOT, 'tools/fm1_install.py'), join(dir, 'matryoshka.fwsc'), '--yes', ...how], { cwd: ROOT, stdio: 'inherit' }).status !== 0)
     throw new Error(`fm1_install.py failed (if the rig is in update mode, it stays there until an install finishes: tools/fm1_install.py ${join(dir, 'matryoshka.fwsc')}${pinned ? ` --location ${loadRig().usbLocation}` : ''})`);
   await sleep(4000);   // (its restart)
-  const gate = GATE === 'boot' ? 'boot (emu:boot, D-123: the rig only)' : 'full (emu:smoke and emu:scenarios, D-120)';
+  const gate = GATE === 'boot' ? 'boot (emu:boot, D-123: the rig only)' : 'full (emu:smoke and emu:scenarios, D-144)';
   writeFileSync(join(OUT, 'install.json'), JSON.stringify({ run: String(run), gate: GATE, at: new Date().toISOString() }, null, 1));
   console.log(`installed run ${run} on the rig; the gate it passed: ${gate}`);
   return gate;

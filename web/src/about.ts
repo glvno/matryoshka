@@ -6,7 +6,7 @@
 import COPY from './about-copy.json';
 import { isAiPrompts, type AiPrompts } from './ai-prompts';
 import { formatDay, formatHours, formatUsd, isAiStats, modelName, modelShares, totalCost, type AiStats } from './ai-stats';
-import { isCoverageStats, type CoverageStats } from './coverage';
+import { coverageMeasurement, isCoverageStats, type CoverageStats } from './coverage';
 import { versionLabel } from './version';
 import { notesUrl } from './whats-new';
 import { inlineWordmarks, logoHtml } from './brand';
@@ -82,7 +82,7 @@ const pctText = (pct: number): string => `${Math.round(pct)} %`;
 function coverage(c: CoverageStats | null): string {
   const core = figure('Core', c ? pctText(c.core.pct) : '—', '(audio processing, modules, patch model, binary format, assemblies, polyphony, arpeggiator, CPU estimate, protocol)');
   const ui = figure('Browser interface', c ? pctText(c.interface.pct) : '—', '(lgtm lmao)');
-  const src = c ? `<p class="ai-source">Source: Vitest as of ${formatDay(c.asOf)}</p>` : '<p class="ai-source">The figures appear after the next deploy runs the tests.</p>';
+  const src = c ? `<p class="ai-source"><strong>${esc(coverageMeasurement(c))}</strong> · ${formatDay(c.asOf)}</p>` : '<p class="ai-source">Coverage figures have not been prepared for this release.</p>';
   return `<div class="ai-figs two">${core}${ui}</div>${src}`;
 }
 
