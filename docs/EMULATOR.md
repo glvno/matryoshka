@@ -26,20 +26,21 @@ its disassembly (artifact `matryoshka-elf`) for tracing such faults to a functio
 ## Choosing checks
 
 Full emulator checks run locally, outside continuous integration (CI) ([D-101](ledger/releases.md#D-101), Decided).
-Choose the stage before starting them:
+Choose commands using the canonical stage rules:
 
-- **A firmware candidate:** add it to the next development batch and run CI and focused tests for the change
-  ([D-120](ledger/releases.md#D-120), Decided).
-- **A combined batch:** run `emu:smoke` and `emu:scenarios` on its combined head before it reaches `main`
-  ([D-120](ledger/releases.md#D-120), Decided). A passing development build does not approve a release. Release builds can reuse qualifying batch results under [D-105](ledger/releases.md#D-105) and
-  [D-120](ledger/releases.md#D-120).
-- **An install on the registered test rig:** the boot check is enough for iteration; `device:scenarios --install RUN`
-  uses it by default ([D-123](ledger/releases.md#D-123), Decided). Which changes need their own hardware check is
-  governed by [D-141](ledger/releases.md#D-141). The dev server's Install panel and `npm run flash` can install on
-  other FM-1s and retain their smoke requirement ([D-171](ledger/firmware-install.md#D-171), Decided).
+- **Agent work and shared integration:** [D-144](ledger/releases.md#D-144) defines the targeted checks and review before a candidate is frozen.
+- **Frozen release candidate and fixes:** [D-144](ledger/releases.md#D-144) defines the full run and affected revalidation;
+  [D-105](ledger/releases.md#D-105) governs reuse for release packages.
+- **Registered test rig:** [D-123](ledger/releases.md#D-123) governs installation; [D-141](ledger/releases.md#D-141)
+  governs targeted hardware checks and candidate qualification. Other FM-1 installers follow [D-171](ledger/firmware-install.md#D-171).
 
-The complete batch workflow, including release-branch work and generated files, is in
-[D-120](ledger/releases.md#D-120).
+The full suites are `emu:smoke` and `emu:scenarios` without `--only`. For a focused scenario, see the named-scenario
+command below. Required build checks are separate ([D-100](ledger/releases.md#D-100), [D-116](ledger/releases.md#D-116)).
+The current firmware and release workflows also run broad host checks, and web CI and deployment run broad web tests.
+Their test selection has not yet been aligned with [D-144](ledger/releases.md#D-144). Local pass markers do not automatically establish source-equivalent release
+qualification: smoke and boot markers use timestamps, while scenario markers check the emulator-bridge hash.
+The release workflow rebuilds versioned firmware. Reusing qualification under
+[D-105](ledger/releases.md#D-105) does not mean that a development package can be relabeled as final release bytes.
 
 ## Commands
 
@@ -59,7 +60,7 @@ The complete batch workflow, including release-branch work and generated files, 
 - **Queued gates:** `emu:smoke`, `emu:boot`, and `emu:scenarios` share one slot across checkouts on this Mac.
   They print when they enter the queue and when their run starts. The operating system releases the slot after a
   killed runner; no stale lock directory needs deleting. This implements the proposed limit in [D-143](ledger/releases.md#D-143).
-  Development branches run the full gates on their combined head ([D-120](ledger/releases.md#D-120)).
+  Choose when to run them using [D-144](ledger/releases.md#D-144).
   Scenario output includes a progress line every 30 seconds. `build/emu/scenarios/run.json` identifies the firmware
   by its SHA-256 digest. `results.json` is updated after each check, and `progress.json` names the current scenario and
   unanswered emulator commands. An unanswered command fails after two minutes; a whole scenario fails after ten.
@@ -171,7 +172,7 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   click is. The device test mode's peak (TEST_PEAK) and USB audio are taken before the click is mixed in
   (`firmware/src/audio.c`), so on the rig and with `--via-emu` the click checks are skipped, and the bar's length comes
   from the tempo.
-- **When:** use [Choosing checks](#choosing-checks) for the batch workflow in [D-120](ledger/releases.md#D-120).
+- **When:** use [Choosing checks](#choosing-checks) for the qualification stages in [D-144](ledger/releases.md#D-144).
 
 Not covered: plugging and unplugging USB, the installer and the update loader, USB audio.
 
@@ -206,8 +207,8 @@ link as `m1emu serve` drives the emulator:
   `tools/fm1_install.py PACKAGE --location 0x01130000`, never by a script. A build whose
   `scenarios.passed` holds its sha256 is not run through `emu:scenarios` again, as `smoke.passed` skips `emu:smoke`. The
   boot check (`emu:boot` on the run's two builds, about 30 s) is the default since issue #783: the owner's iteration
-  checks and the batch runs of [D-141](ledger/releases.md#D-141) take it. This install gate does not choose the
-  candidate, batch, or release checks; use [Choosing checks](#choosing-checks). RUN may be a run of `release.yml`:
+  checks and the candidate runs of [D-141](ledger/releases.md#D-141) take it. This install gate does not choose the
+  integration, candidate, or release checks; use [Choosing checks](#choosing-checks). RUN may be a run of `release.yml`:
   its package installs as a CI build's does. Its `M1_EMU_MIDI=1` build for the
   boot check is that run's `matryoshka-emu-midi` artifact, or, for a release run from before issue #783, the one of the
   firmware CI run of the same commit (named in `emu-midi/from-run`). Each gate's result is kept next to the download
@@ -247,7 +248,7 @@ link as `m1emu serve` drives the emulator:
 
 The owner's device check of release 1.10 had 40 steps. Every step that needs no ears, no hands and no power switch is
 now a scenario in `web/scripts/device-check.mjs`. These scenarios run after the others, in `emu:scenarios` and in
-`device:scenarios`. They must pass on the rig before a release candidate. The owner's own check is then only what they
+`device:scenarios`. Their release-candidate qualification follows [D-139](ledger/releases.md#D-139) and [D-141](ledger/releases.md#D-141). The owner's own check is then only what they
 leave out: the analog output heard in headphones and recorded over a mono cable, each instrument played by hand to judge
 its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)). A check that needs a recording it cannot trust is skipped, not failed ([D-140](ledger/releases.md#D-140)).
 
