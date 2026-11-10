@@ -1,0 +1,11 @@
+.capability-inspector { position: fixed; z-index: 120; right: 12px; top: 70px; width: min(410px, calc(100vw - 24px)); max-height: calc(100dvh - 90px); overflow: auto; padding: 16px; box-sizing: border-box; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 30px var(--shadow); font: 13px/1.5 system-ui, sans-serif; }
+.capability-inspector[hidden] { display: none; }
+.capability-inspector header { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 650; }
+.capability-inspector label { display: grid; gap: 4px; }
+.capability-inspector select { max-width: 100%; min-width: 0; margin: 4px 0; }
+.capability-inspector ul { padding-left: 20px; overflow-wrap: anywhere; }
+.capability-inspector h3, .capability-inspector h4 { margin-bottom: 6px; }
+.capability-inspector small { display: block; }
+.capability-inspector .capability-examples { display: flex; gap: 6px; align-items: center; margin-top: 12px; }
+.capability-inspector .capability-examples select { flex: 1; }
+.capability-inspector :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

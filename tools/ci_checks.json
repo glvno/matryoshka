@@ -44,6 +44,7 @@
     "web/src/buttons.ts",
     "web/src/device-presets.ts",
     "web/src/engines.ts",
+    "web/src/assembly-capabilities.ts",
     "web/src/factory-presets.ts",
     "web/src/preset-cards.ts",
     "web/src/knob-migrate.ts",
@@ -83,6 +84,8 @@
   "full_host": ["golden", "aot", "usb", "usb_return", "clock", "peak", "audio", "frame", "ota", "guard", "power", "installer", "panel", "preset", "bank", "ui"],
   "optional_host": {"usb_return": "firmware/src/usb_return.h"},
   "rules": [
+    {"name": "Assembly capability recognition feeds engine classification and factory export", "paths": ["web/src/assembly-capabilities.ts"], "host": ["preset", "golden"], "web": ["web/src/assembly-capabilities.test.ts", "web/src/engines.test.ts", "web/src/assembly.test.ts", "web/src/device-presets.test.ts"]},
+    {"name": "Experimental capability inspector observes editor state and previews bypass", "paths": ["web/src/capability-inspector.ts", "web/src/capability-inspector.css"], "host": [], "web": ["web/src/capability-inspector.test.ts", "web/src/assembly-capabilities.test.ts", "web/src/editor-focus.test.ts"]},
     {"name": "Capability example generator uses assembly engine recognition and keys routing", "paths": ["web/scripts/capability-examples.ts"], "host": [], "web": ["web/src/engines.test.ts", "web/src/key-routing.test.ts"]},
     {"name": "Release artifact preparation", "paths": ["tools/build.py", "tools/build_test.py", "tools/release_manifest.py", ".github/workflows/release.yml"], "host": ["release-build"], "web": []},
     {"name": "CI selection and workflows", "paths": ["tools/ci_checks*", "tools/ci_test_plan.json", ".github/workflows/firmware.yml", ".github/workflows/web.yml", ".github/workflows/release.yml"], "host": ["selector"], "web": []},
