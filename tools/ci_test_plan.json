@@ -40,7 +40,7 @@
     "plan": "Render seven dry/effected Monolith pairs with identical synth controls, notes and Output levels. Verify all fourteen saved patch hashes, finite samples, raw peaks at or below 0.88 and existing resource budgets. Inspect every plot. Verify the final chorus preserves stereo. Auditions remain complete patch experiments; no factory selector or hardware qualification is claimed."
   },
   "web/scripts/preset-review-page.py": {
-    "sha256": "59f671c5366a96e49eb6a0b117b2f70ad7464f141ecd0866321e8b3c197023f9",
+    "sha256": "52919f28b246c07cd40e280bed0a2e288bc809203f1d3a2fdc5788e8d120ced1",
     "plan": "Generate the phone listening page from manifests; verify all local audio/image/patch links, bank navigation, narrow layout and playback switching. Confirm clear before/after, raw/matched and dry/effected labels; retain source date/commit and scope limits. A review page is not owner aesthetic acceptance."
   }
 }
