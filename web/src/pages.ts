@@ -261,7 +261,8 @@ export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
       ? drums.get(d)!.length === 1 && drums.get(d)![0] === t.module
       : p.cables.some((c) => from.has(c.from.module) && deviceOf.get(c.to.module) === d &&
         (d.asm === undefined || (c.from.port === 'keys' && c.to.port === 'keys') ||
-          (c.from.port === 'gate' && defs[p.modules.find((m) => m.id === c.to.module)?.type ?? '']?.inputs.some((port) => port.name === c.to.port && port.kind === 'gate'))))));
+          (defs[p.modules.find((m) => m.id === c.from.module)?.type ?? '']?.outputs.some((port) => port.name === c.from.port && port.kind === 'gate') &&
+            defs[p.modules.find((m) => m.id === c.to.module)?.type ?? '']?.inputs.some((port) => port.name === c.to.port && port.kind === 'gate'))))));
     for (const d of driven) {
       d.track = t.module;
       out.push(d);

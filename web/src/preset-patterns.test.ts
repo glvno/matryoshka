@@ -164,3 +164,14 @@ it('preserves a disconnected 808 default with only a Steps velocity cable into o
   applyPreset(p, a, presets[1]);
   expect(t.notes).toEqual(notes);
 });
+
+it('recognizes the Steps trig output by its gate kind for a directly triggered kit envelope', () => {
+  const { p, a, t, presets } = fixture('808 Kit');
+  const map = p.modules.find((m) => m.type === 'drummap')!;
+  const trigger = p.cables.find((c) => c.from.module === map.id && /^g[1-8]$/.test(c.from.port))!.to;
+  p.cables = p.cables.filter((c) => !(c.from.module === map.id && /^g[1-8]$/.test(c.from.port)));
+  p.cables.push({ from: { module: t.id, port: 'trig' }, to: trigger });
+  expect(devicesOf(p, DEFS).find((d) => d.asm === a.id)!.track).toBe(t.id);
+  applyPreset(p, a, presets[1]);
+  expect(t.notes!.map(noteWord)).toEqual(presetPattern(presets[1].structure, presets[1].name)!.notes);
+});
