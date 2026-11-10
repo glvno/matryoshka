@@ -87,16 +87,16 @@ Oscillator sync, sample-and-hold movement and ring modulation give distinct role
 
 ## 8 Lire
 
-Pair interaction, sharpness and delay feedback are central to the Lyra-inspired instrument. Reduce the extreme Feedback Howl settings while retaining it as the abrasive endpoint. A self-holding voice can keep sounding after note release. The SOMA manual describes behavior, not numerical parity for this implementation. [Reference](https://somasynths.com/wp-content/uploads/2020/11/LYRA-8_manual_Eng_V2_1.pdf).
+Pair interaction, sharpness and delay feedback are central to the Lyra-inspired instrument. Pair FM Bells uses shallow cross-modulation and rounded waves. Feedback Howl uses slower, shallower feedback movement and lower tuning. A self-holding voice can keep sounding after note release. The SOMA manual describes behavior, not numerical parity for this implementation. [Reference](https://somasynths.com/wp-content/uploads/2020/11/LYRA-8_manual_Eng_V2_1.pdf).
 
 | Preset | Intended use |
 |---|---|
 | Init | Open drone starting point for pair interaction. |
 | Lyre Chord | Held chord with beating and gradual movement. |
 | Eight Drone | Dense multi-voice drone bed. |
-| Pair FM Bells | Interacting pairs for ringing, inharmonic tones. |
+| Pair FM Bells | Soft struck pairs with restrained modulation and octave/fifth tuning. |
 | Trill Delay | Pulsing repeated texture driven by delay motion. |
-| Feedback Howl | Intentional abrasive transition, with reduced sharpness, delay modulation, drive and feedback. |
+| Feedback Howl | Low feedback drone with slowly moving pair interaction. |
 
 ## Elvira 2
 
@@ -152,15 +152,15 @@ The four voices cover both sharp attacks and sustained low tails. Keep Distorted
 
 ## Spokes 6
 
-Keep the six synthesis roles distinct, especially melodic FM percussion versus noisy Industrial. The Model:Cycles manual supplies the reference vocabulary. Patterns demonstrate the sound without changing global tempo. [Reference](https://www.elektron.se/wp-content/uploads/2024/10/Model-Cycles-User-Manual_ENG_OS1.13_241030.pdf).
+Keep the six synthesis roles distinct. The audition patches give each sound its own tone and chord phrases, including a silent chord part in Boom Bap. Loading a sound preset preserves the musician’s existing melodic tracks. The Model:Cycles manual supplies the reference vocabulary. Patterns demonstrate the sound without changing global tempo. [Reference](https://www.elektron.se/wp-content/uploads/2024/10/Model-Cycles-User-Manual_ENG_OS1.13_241030.pdf).
 
 | Preset | Intended use |
 |---|---|
 | Init | Balanced six-voice electronic groove. |
 | Tight Techno | Compact repeated attacks with little empty space. |
-| Boom Bap | Backbeat and ghost-note contrast. |
+| Boom Bap | Backbeat, a low tone line and no chord part. |
 | Industrial | Bright noisy percussion for a deliberate abrasive role. |
-| FM Melodic | Pitched metallic interplay. |
+| FM Melodic | Mallet-like melody with occasional open fifths. |
 | Lo-fi House | Regular dance pulse with restrained softer hits. |
 
 ## Verona Drum 1

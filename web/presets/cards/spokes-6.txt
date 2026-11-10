@@ -76,7 +76,7 @@ engine: Spokes 6
 # chord: color is the stack, shape the detune, sweep the filter cutoff, contour the attack.
 
 preset: Tight Techno
-# short and hard: a clicky kick with a big sweep, a snappy white snare, a short bright metal, tight perc, a delayed chord stab
+# Short single-note stabs over a kick/snare/hat groove; occasional quiet percussion.
 1 kick / pitch = -2.5
 1 kick / decay = 0.3
 1 kick / color = 0.6
@@ -102,23 +102,24 @@ preset: Tight Techno
 4 perc / shape = 7
 4 perc / sweep = 0.5
 4 perc / contour = 0.05
-4 perc / volume = 0.5
+4 perc / volume = 0.22
 5 tone / decay = 0.15
 5 tone / shape = 2.5
 5 tone / volume = 0.3
 5 tone / delay = 0.4
-6 chord / decay = 0.3
-6 chord / color = +oct
+6 chord / decay = 0.16
+6 chord / color = off
 6 chord / sweep = 1200
-6 chord / volume = 0.5
-6 chord / delay = 0.4
+6 chord / volume = 0.28
+6 chord / delay = 0.2
 time = 375
 feedback = 0.5
 dist = 2
-  master = 0.72
+  master = 0.75
+6 chord / shape = 0
 
 preset: Boom Bap
-# a dusty, rounded kit: a longer softer kick, a thick dark snare, a dull metal, a woody perc, a low chord
+# A rounded backbeat with a low tone line; the chord part is silent.
 1 kick / pitch = -2.75
 1 kick / decay = 0.6
 1 kick / color = 1.2
@@ -149,19 +150,20 @@ preset: Boom Bap
 5 tone / color = 7
 5 tone / shape = 1
 5 tone / sweep = 0.2
-5 tone / volume = 0.4
+5 tone / volume = 0.28
 6 chord / decay = 0.5
 6 chord / color = -oct
 6 chord / sweep = 900
 6 chord / contour = 0.02
-6 chord / volume = 0.5
+6 chord / volume = 0
 time = 280
 feedback = 0.25
 dist = 3
-  master = 0.53
+  master = 0.58
+4 perc / volume = 0.2
 
 preset: Industrial
-# harsh FM: a long roaring kick, a noisy long snare, a ringing resonant metal, a falling perc, a long chord through a long delay, heavy distortion
+# Noisy drums with short low stabs and sparse metallic punctuation.
 1 kick / pitch = -2
 1 kick / decay = 0.5
 1 kick / color = 3
@@ -196,20 +198,21 @@ preset: Industrial
 5 tone / sweep = 0.6
 5 tone / volume = 0.4
 5 tone / delay = 0.4
-6 chord / decay = 1.2
-6 chord / color = +oct+5th
-6 chord / shape = 1
+6 chord / decay = 0.25
+6 chord / color = off
+6 chord / shape = -12
 6 chord / sweep = 4000
 6 chord / contour = 0.1
-6 chord / volume = 0.5
+6 chord / volume = 0.2
 6 chord / delay = 0.4
 time = 500
 feedback = 0.6
 dist = 10
-  master = 0.26
+  master = 0.27
+4 perc / volume = 0.25
 
 preset: FM Melodic
-# played melodically: a clean kick, a dry snare, a bell-like metal, a mallet perc, a long tone and a big open chord, both delayed
+# A mallet-like tone melody over occasional open-fifth chord tones.
 1 kick / pitch = -2
 1 kick / decay = 0.35
 1 kick / color = 0.2
@@ -241,17 +244,19 @@ preset: FM Melodic
 5 tone / contour = 0.5
 5 tone / volume = 0.55
 5 tone / delay = 0.4
-6 chord / decay = 1.5
-6 chord / color = +oct+5th
-6 chord / shape = 7
+6 chord / decay = 0.9
+6 chord / color = +5th
+6 chord / shape = 0
 6 chord / sweep = 3000
 6 chord / contour = 0.01
 6 chord / delay = 0.4
 feedback = 0.55
-  master = 0.78
+  master = 0.83
+6 chord / volume = 0.3
+4 perc / volume = 0.3
 
 preset: Lo-fi House
-# warm and a bit dirty: a soft deep kick, a mid snare, a dull metal, a soft perc, a muted chord, mild distortion
+# Short octave-and-fifth stabs with a syncopated bass part and soft percussion.
 1 kick / pitch = -2.5
 1 kick / decay = 0.5
 1 kick / color = 0.8
@@ -277,18 +282,20 @@ preset: Lo-fi House
 4 perc / decay = 0.2
 4 perc / color = 2
 4 perc / sweep = 0.3
-4 perc / volume = 0.5
+4 perc / volume = 0.2
 5 tone / decay = 0.3
 5 tone / shape = 1
 5 tone / sweep = 0.3
 5 tone / volume = 0.3
 5 tone / delay = 0.3
-6 chord / decay = 0.6
+6 chord / decay = 0.4
 6 chord / sweep = 1500
 6 chord / contour = 0.05
-6 chord / volume = 0.6
+6 chord / volume = 0.35
 6 chord / delay = 0.3
 time = 330
 feedback = 0.35
 dist = 4
-  master = 0.44
+  master = 0.45
+6 chord / color = +oct
+6 chord / shape = 7
