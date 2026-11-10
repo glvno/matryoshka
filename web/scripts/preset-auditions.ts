@@ -77,7 +77,11 @@ function wav(ch: Float32Array[], gain = 1): Buffer {
   for (let i = 0; i < ch[0].length; i++) { b.writeFloatLE(ch[0][i] * gain, 44 + i * 8); b.writeFloatLE(ch[1][i] * gain, 48 + i * 8); }
   return b;
 }
-interface Entry { id: string; instrument: string; device: string; preset: string; kind: string; peak: number; loudness: number; matchedGain: number; budget: { fits: boolean; bytes: number; cpu: number; memory: number } }
+const sourceSnapshot = {
+  commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+  workingTreeDiffSha256: createHash('sha256').update(execFileSync('git', ['diff', 'HEAD'], { maxBuffer: 64 << 20 })).digest('hex'),
+};
+interface Entry { provenance?: typeof sourceSnapshot & { patchSha256: string }; id: string; instrument: string; device: string; preset: string; kind: string; peak: number; loudness: number; matchedGain: number; budget: { fits: boolean; bytes: number; cpu: number; memory: number } }
 const entries: Entry[] = process.argv.includes('--only') && existsSync(resolve(out, 'manifest.json'))
   ? JSON.parse(readFileSync(resolve(out, 'manifest.json'), 'utf8')).entries.filter((e: { instrument: string }) => e.instrument !== only) : [];
 for (const name of names) {
@@ -119,9 +123,10 @@ for (const name of names) {
     writeFileSync(resolve(out, `${id}--matched.wav`), wav(ch, gain));
     writeFileSync(resolve(out, `${id}.json`), JSON.stringify(p));
     entries.push({ id, instrument: name, device: variant.device, preset: variant.preset.name, kind, peak, loudness, matchedGain: gain,
+      provenance: { ...sourceSnapshot, patchSha256: createHash('sha256').update(JSON.stringify(p)).digest('hex') },
       budget: ((b) => ({ fits: b.fits, bytes: b.items.find((i) => i.key === 'bytes')!.used, cpu: b.cpu.use, memory: b.memory }))(deviceBudget(p)) });
     console.log(`${id}: ${loudness.toFixed(1)} LUFS, peak ${peak.toFixed(4)}`);
-    writeFileSync(resolve(out, 'manifest.json'), JSON.stringify({ date: new Date().toISOString(), commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), workingTreeDiffSha256: createHash('sha256').update(execFileSync('git', ['diff', 'HEAD'], { maxBuffer: 64 << 20 })).digest('hex'), source: 'browser Engine; not a hardware recording', sr, seconds,
+    writeFileSync(resolve(out, 'manifest.json'), JSON.stringify({ date: new Date().toISOString(), ...sourceSnapshot, source: 'browser Engine; not a hardware recording', sr, seconds,
       diagnostic: 'Output attenuated 16x before final clamp then restored in float WAV; no demo limiter; matched WAV uses a constant gain capped at 0.88 peak', entries }, null, 2));
   }
 }

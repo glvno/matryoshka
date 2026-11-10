@@ -52,7 +52,7 @@ for entry in manifest['entries']:
 (root / 'analysis.json').write_text(json.dumps(results, indent=2) + '\n')
 # Portable local review package; audio is our engine only, never copied reference recordings.
 esc = html.escape
-banner = f"Generated ad hoc {manifest['date']} from repository commit {manifest['commit']}; not maintained; stale after 24 hours. Sources: web/presets, web/presets/cards, web/src/assemblies, web/src/engine.ts."
+banner = f"Generated ad hoc {manifest['date']} with latest render batch from repository commit {manifest['commit']}; consult each manifest entry for its source; not maintained; stale after 24 hours. Sources: web/presets, web/presets/cards, web/src/assemblies, web/src/engine.ts."
 body = ['<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Preset auditions</title><style>body{font:17px system-ui;margin:2em auto;max-width:1100px;padding:1em;background:#f7f4eb;color:#18282a}article{border-top:1px solid #acb7b4;padding:2em 0}img{width:100%;height:auto}audio{max-width:100%}small{display:block}nav a{margin-right:1em}</style>',
     f'<h1>Preset auditions — candidates for review</h1><p>{esc(banner)}</p>',
     '<p>No owner listening or approval is claimed. Browser renders are not FM-1 recordings. Raw diagnostic files retain peaks above full scale; matched files use constant gain only, targeting −23 LUFS with peak capped at 0.88. No extra demo limiter is used.</p>', '<nav>']
