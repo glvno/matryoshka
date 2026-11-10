@@ -3679,6 +3679,19 @@ const harmVoice = (name: string, harm: Record<string, number>): number => {
   makeAssembly(p, ids, 'chord voices').poly = {};
   return hid;
 };
+// Cable-order harmony: live roots, recorded playback below the split, then releases.
+for (const chain of [['harm', 'arp'], ['harm', 'steps'], ['steps', 'harm'], ['harm', 'steps', 'arp'], ['steps', 'harm', 'arp']]) {
+  const name = `route-${chain.join('-')}`;
+  harmVoice(name, { type: 1 });
+  const p = tests[name], main = p.modules.find(m => m.type === 'fm1')!, h = p.modules.find(m => m.type === 'harm')!, al = p.modules.find(m => m.type === 'alloc')!;
+  p.cables = p.cables.filter(c => c.from.port !== 'keys');
+  const path = [main, ...chain.map(type => type === 'harm' ? h : addModule(p, DEFS[type], 0, 0)), al];
+  for (let i = 0; i + 1 < path.length; i++) connect(p, DEFS, { module: path[i].id, port: 'keys' }, { module: path[i + 1].id, port: 'keys' });
+  const track = p.modules.find(m => m.type === 'steps');
+  if (track) track.notes = [{ at: 0, len: 1, note: 55, vel: 100 }, { at: 2, len: 1, note: 60, vel: 100 }];
+  events[name] = [[0, 'on', 60], [128 * 50, 'off', 60], [128 * 60, 'on', 65], [128 * 100, 'off', 65]];
+  ends[name] = 128 * 200;
+}
 harmVoice('harm-side', {});
 events['harm-side'] = [[0, 'on', 60], [128 * 20, 'off', 60],
   [128 * 30, 'on', 54], [128 * 35, 'on', 62], [128 * 60, 'on', 57], [128 * 80, 'off', 62], [128 * 85, 'on', 67], [128 * 90, 'on', 65],
@@ -3708,7 +3721,7 @@ for (const voicing of [-8, -4, 4, 8]) {
 if (process.argv.includes('--panel-fixtures')) {
   const out = new URL('../../build/panel-fixtures/', import.meta.url);
   mkdirSync(out, { recursive: true });
-  for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns', 'matrix-audio', 'harm-side'])
+  for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns', 'matrix-audio', 'harm-side', 'route-harm-steps', 'route-steps-harm', 'route-harm-arp', 'route-steps-harm-arp', 'route-harm-steps-arp'])
     writeFileSync(new URL(`${name}.m1p`, out), encodePatch(tests[name], true));
   {
     // more than 64 modules (#721): arm-many with the Drum map moved last (index 69, a device past 63) and its chain of

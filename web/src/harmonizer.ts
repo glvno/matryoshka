@@ -156,17 +156,18 @@ export function harmRootOff(s: HarmState, key: number, off: (note: number) => vo
 }
 
 /** a root pressed: its chord's notes that no held root sounds yet start (`on`); one already held plays again */
-export function harmRootOn(s: HarmState, key: number, p: HarmParams, on: (note: number) => void, off: (note: number) => void): void {
+export function harmRootOn(s: HarmState, key: number, p: HarmParams, on: (note: number) => void, off: (note: number) => void, room: (notes: number[]) => boolean = () => true): void {
   harmRootOff(s, key, off);
   if (s.roots.length >= HARM_ROOTS) return;
   const notes = harmChord(s, key, p);
+  if (!room(notes)) return;
   s.roots.push({ key, notes });
   for (const n of notes) if (s.count[n]++ === 0) on(n);
 }
 
 /** a key from Main (`zone`: the keys under the split are buttons; the FM-1's keys come without it: its seven lowest keys
  * are the buttons, engine.c eng_chord_button) */
-export function harmKey(s: HarmState, note: number, down: boolean, p: HarmParams, zone: boolean, on: (note: number) => void, off: (note: number) => void): void {
+export function harmKey(s: HarmState, note: number, down: boolean, p: HarmParams, zone: boolean, on: (note: number) => void, off: (note: number) => void, room: (notes: number[]) => boolean = () => true): void {
   if (zone && s.buttonKeys[note]) {
     const held = s.buttonKeys[note];
     if (!down) {
@@ -181,7 +182,7 @@ export function harmKey(s: HarmState, note: number, down: boolean, p: HarmParams
     harmRootOff(s, note, off);
     s.buttonKeys[note] = b + 1;
     harmButton(s, b, true, p);
-  } else harmRootOn(s, note, p, on, off);
+  } else harmRootOn(s, note, p, on, off, room);
 }
 
 /** every root and button let go, the latch cleared (what sounded is the caller's to end) */

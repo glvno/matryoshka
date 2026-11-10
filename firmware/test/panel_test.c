@@ -168,15 +168,15 @@ static void later(uint32_t ms)
 static uint16_t px(uint32_t x, uint32_t y) { return fb[y * 240u + x]; }
 /* #368: a black key on a drum track's page sounds through the track (eng_steps_thru): its note into the track's keys
  * since the thru ring stood at `from` (thru_head) */
-static int thru_heard(uint8_t from, uint32_t mod, uint32_t note)
+static int thru_heard(uint16_t from, uint32_t mod, uint32_t note)
 {
-    uint8_t h;
+    uint16_t h;
     for (h = from; h != thru_head; h++)
         if (thru_ring[h % ENG_THRU][0] == mod && thru_ring[h % ENG_THRU][1] == (note | 0x80u))
             return 1;
     return 0;
 }
-static uint8_t th;                          /* (where the thru ring stood before a key) */
+static uint16_t th;                          /* (where the thru ring stood before a key) */
 static void blocks(uint32_t n)
 {
     static int32_t bl[128], br[128];
@@ -3795,6 +3795,28 @@ int main(void)
         page = 0;
         screen_idle();
     }
+    {   /* Approved cable-order capture and Side controls while step recording. */
+        const char *fixtures[] = {"build/panel-fixtures/route-harm-steps.m1p", "build/panel-fixtures/route-steps-harm.m1p"};
+        for (uint32_t order = 0; order < 2u; order++) for (uint32_t preview = 0; preview < 2u; preview++) {
+            panel_keys(0); sr_held = 0; sr_stop();
+            check("routing capture fixture loads", !load_fixture(fixtures[order]));
+            pv_gen++; pages_ensure(); seq_select(0); page = 0; page_set(PAGE_SEQ); later(1500); octave = 0; panel_held = 0; sb_on = 0;
+            int mod = eng_steps_module(0);
+            sr_empty(mod); sr_preview = (uint8_t)preview; sr_start(0, -1);
+            sr_down(3); /* minor: a control, not G#3 */
+            check("Side button does not enter or advance", sr_n == 0 && sr_k == 0 && sr_keys == 0);
+            sr_down(K_C4);
+            check("capture expands only upstream harmony", sr_n == (order ? 1u : 3u));
+            sr_up(3); /* changing the chord now leaves this root's snapshot intact */
+            check("releasing a control does not commit", sr_k == 0 && sr_notes(mod) == 0);
+            sr_up(K_C4);
+            check("root release commits once, preview independent", sr_k == 1 && sr_notes(mod) == (order ? 1 : 3) && sr_len_at(mod, 0, 60) == 1);
+            if (!order) check("printed minor chord remains editable pitches", sr_len_at(mod, 0, 63) == 1 && sr_len_at(mod, 0, 67) == 1 && sr_len_at(mod, 0, 64) == 0);
+            check("all audition notes released", seq_thru_count[K_C4] == 0);
+            sr_stop();
+        }
+        sr_preview = 1; page = 0; (void)load("808 KIT"); pv_gen++; screen_idle();
+    }
     {   /* the owner's design (2026-10-24): on every page of every factory patch, reached by SELECT and ALGO (drawn in
          * passes, now and then stopped by a waiting click), and on every patch reached by PRESET (its toast first, the page
          * around it) and when its toast ends, the screen is the screen drawn whole, pixel for pixel; and the pixels each
@@ -4086,7 +4108,7 @@ int main(void)
             panel_keys(1u << 7);                            /* C4 */
             eng_render(l2, r2, 128);
             {
-                uint8_t h;
+                uint16_t h;
                 for (h = th; h != thru_head; h++) {
                     hd |= thru_ring[h % ENG_THRU][0] == (uint8_t)drums && (thru_ring[h % ENG_THRU][1] & 0x80u);
                     hp |= thru_ring[h % ENG_THRU][0] == (uint8_t)pat && (thru_ring[h % ENG_THRU][1] & 0x80u);

@@ -1,3 +1,4 @@
+import { keyRouteError } from './key-routing';
 // SPDX-License-Identifier: GPL-3.0-only
 // Patch editor: module cards on a canvas, SVG cables, drag-to-connect, a selection, assemblies and undo.
 import { resizeHandle } from './resize-handle';
@@ -6282,7 +6283,7 @@ export class Editor {
       } else {
         to = { module: Number(input.dataset.mod), port: input.dataset.port! };
         if (!this.patch.cables.some((c) => sameEnd(c.from, from) && sameEnd(c.to, to)) && !connect(this.patch, DEFS, from, to))
-          throw new Error('cannot connect these ports');
+          throw new Error(from.port === 'keys' ? keyRouteError(this.patch, { from, to }) ?? 'Cannot connect these ports.' : 'Cannot connect these ports.');
       }
       // A thumb alias of a merged assembly jack feeds the same group of inputs.
       const physical = this.inputJack(to);

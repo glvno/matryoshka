@@ -81,7 +81,7 @@ static void steprec_suite(void)
 {
     int pat, drums, map;
     uint32_t told, y, cx, cy;
-    uint8_t th0;
+    uint16_t th0;
     while (page != 0u && trail_n)
         tap(BTN_HOME);
     if (eng_transport_running())
@@ -354,7 +354,7 @@ static void steprec_suite(void)
     sr_begin(0);
     check("step preview starts enabled", sr_preview);
     sr_down(K_C4);
-    check("preview on: the held entry note sounds", seq_thru_note[K_C4] == 61u);
+    check("preview on: the held entry note sounds", seq_thru_count[K_C4] == 1u && seq_thru_chord[K_C4][0] == 60u);
     panel_held |= 1u << BTN_SEL;
     panel_edges(1u << BTN_SEL, 0);
     tap(BTN_ACC);

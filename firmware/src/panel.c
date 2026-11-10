@@ -651,6 +651,7 @@ static uint32_t drum_white_ms;                   /* (when it last said so: once 
 static uint8_t key_eng[27];                      /* the note it played in the engine: key_note, a Drum map row's (eng_keys_drummap), */
 #define KEY_SILENT 0xFFu                         /* or none (a white key on a Drum map) */
 static uint32_t key_sounding;                    /* bit n: key n started a note (not a key pressed on the SEQ page) */
+static uint8_t key_chord_track[27];
 static uint32_t key_chord;                       /* bit n: key n (0..6) went down as a Harmonizer's chord button (#598) */
 static int8_t chord_due = -1;                    /* a chord button moved: panel_status names the chord of this Harmonizer */
 #define CHORD_KEYS 7u                            /* the seven lowest keys, F3..B3 at OCT 0: the Side layout's buttons */
@@ -703,6 +704,32 @@ static int panel_key(uint32_t n, int down, int quick)
         rec_held_used = 1;
         return 1;
     }
+    if (down && n < CHORD_KEYS && !sb_on && (sr_on ? eng_steps_harm((uint32_t)seq_module()) : eng_keys_harm()) >= 0) {   /* the keys reach a Harmonizer (#598):
+                                                     * its Side layout, the lowest keys its chord buttons whatever the octave
+                                                     * (black maj min dim, white sus2 sus4 7 9); MIDI out sends the button's
+                                                     * key under the split, so a Harmonizer the FM-1 plays into does the same */
+        int h = sr_on ? eng_steps_harm((uint32_t)seq_module()) : eng_keys_harm();
+        int32_t z = ((eng_get_param((uint32_t)h, HARM_P_SPLIT) + 32768) >> 16) - (int32_t)CHORD_KEYS + (int32_t)n;
+        key_eng[n] = (uint8_t)(z < 0 ? 0 : z > 127 ? 127 : z);
+        key_chord |= bit;
+        key_sounding |= bit;
+        key_chord_track[n] = sr_on ? (uint8_t)(seq_module() + 1) : 0;
+        if (key_chord_track[n]) eng_steps_chord_button(key_chord_track[n] - 1u, n, 1);
+        else eng_chord_button(n, 1);
+        midi_send(0x90u, key_eng[n], 100u);
+        chord_due = (int8_t)h;
+        return 1;
+    }
+    if (!down && (key_chord & bit)) {
+        key_chord &= ~bit;
+        key_sounding &= ~bit;
+        if (key_chord_track[n]) eng_steps_chord_button(key_chord_track[n] - 1u, n, 0);
+        else eng_chord_button(n, 0);
+        midi_send(0x80u, key_eng[n], 0u);
+        key_chord_track[n] = 0;
+        chord_due = (int8_t)eng_keys_harm();
+        return 1;
+    }
     if (!(key_sounding & bit) && ((page == PAGE_SEQ && !seq_play_keys() && !help_on) || !down)) {   /* the SEQ page: steps and tracks
                                                      * (under a card the keys play: D-245) */
         if (page == PAGE_SEQ && !seq_play_keys())
@@ -711,28 +738,7 @@ static int panel_key(uint32_t n, int down, int quick)
             seq_thru_up(n);                         /* (a black key held on a drum track's page, let go elsewhere: #368) */
         return 1;
     }
-    if (down && n < CHORD_KEYS && !seq_kbd() && !sb_on && eng_keys_harm() >= 0) {   /* the keys reach a Harmonizer (#598):
-                                                     * its Side layout, the lowest keys its chord buttons whatever the octave
-                                                     * (black maj min dim, white sus2 sus4 7 9); MIDI out sends the button's
-                                                     * key under the split, so a Harmonizer the FM-1 plays into does the same */
-        int h = eng_keys_harm();
-        int32_t z = ((eng_get_param((uint32_t)h, HARM_P_SPLIT) + 32768) >> 16) - (int32_t)CHORD_KEYS + (int32_t)n;
-        key_eng[n] = (uint8_t)(z < 0 ? 0 : z > 127 ? 127 : z);
-        key_chord |= bit;
-        key_sounding |= bit;
-        eng_chord_button(n, 1);
-        midi_send(0x90u, key_eng[n], 100u);
-        chord_due = (int8_t)h;
-        return 1;
-    }
-    if (!down && (key_chord & bit)) {
-        key_chord &= ~bit;
-        key_sounding &= ~bit;
-        eng_chord_button(n, 0);
-        midi_send(0x80u, key_eng[n], 0u);
-        chord_due = (int8_t)eng_keys_harm();
-        return 1;
-    }
+
     if (down) {
         int32_t note = 53 + (int32_t)n + 12 * octave;
         /* into an armed track at the default velocity (FX held on its keyboard, a live take: the accent's), so a take

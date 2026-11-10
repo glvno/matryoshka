@@ -254,6 +254,10 @@ export function setStepValue(notes: readonly StepNote[] | undefined, k: number, 
 
 /** step k holds exactly these notes (cursor entry of a chord, #135): its own notes go (a note tied through it ends before it),
  * each key a note one step long at its velocity (1..127), the step's chance kept */
+export function chordFits(notes: readonly StepNote[] | undefined, k: number, keys: readonly { note: number }[], len = STEPS_MAX): boolean {
+  const kept = setStep(notes, k, { on: false, accent: false, chance: 100 }, len) ?? [];
+  return kept.length + new Set(keys.map(x => x.note)).size <= TRACK_NOTES_MAX;
+}
 export function setChord(notes: readonly StepNote[] | undefined, k: number, keys: readonly { note: number; vel: number }[], len = STEPS_MAX): StepNote[] | undefined {
   const chance = stepView(notes, k).on ? stepView(notes, k).chance : 100;
   const out = setStep(notes, k, { on: false, accent: false, chance: 100 }, len) ?? [];
