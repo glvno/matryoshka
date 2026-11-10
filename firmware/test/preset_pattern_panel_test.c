@@ -19,6 +19,24 @@ uint32_t host_eng_routes_end(const uint8_t *p, uint32_t len, uint32_t at) { retu
 int main(void)
 {
     uint32_t i, d, kits = 0;
+    const char *paths[] = {"build/panel-fixtures/pattern-control-only.m1p", "build/panel-fixtures/pattern-direct-trig.m1p", "build/panel-fixtures/pattern-ambiguous-gate.m1p"};
+    for (i = 0; i < 3; i++) {
+        const uint32_t *words; uint32_t saved[128]; int n, mod;
+        check("load actual 808 routing fixture", !load_fixture(paths[i])); pv_gen++; pages_ensure();
+        mod = eng_steps_module(0);
+        for (d = 0; d < pg_ndev; d++) {
+            const preset_pattern_t *origin = preset_pattern_identity(m1_pattern_origin((uint32_t)mod, 0));
+            if (!origin || origin->structure != pg_dev[d].structure) continue;
+            n = eng_pattern_notes((uint32_t)mod, 0, &words); memcpy(saved, words, (size_t)n * 4);
+            check("grouping cannot authorize control-only or ambiguous replacement", dp_pattern_module(d) == (i == 1 ? mod : -1));
+            check("routing fixture selects factory sound", !dp_load(d, 1));
+            check("routing fixture binary reloads", !eng_load(pv_bin, pv_len)); pv_gen++; pages_ensure();
+            if (i == 1) check("direct Steps trig replaces notes through real saved binary", eng_pattern_notes((uint32_t)mod, 0, &words) != n || memcmp(saved, words, (size_t)n * 4));
+            else check("control-only and ambiguous notes survive selection and reload", eng_pattern_notes((uint32_t)mod, 0, &words) == n && !memcmp(saved, words, (size_t)n * 4));
+            break;
+        }
+        check("routing fixture found the real 808 card", d < pg_ndev);
+    }
     for (i = 0; i < N_PRESETS; i++) {
         if (strcmp(PRESET_LIST[i].name, "808 KIT") && strcmp(PRESET_LIST[i].name, "909 KIT") && strcmp(PRESET_LIST[i].name, "<7PH")) continue;
         check("load actual kit", !load_at(i)); pv_gen++; pages_ensure();
@@ -30,6 +48,16 @@ int main(void)
             if (mod < 0 || !(before = preset_pattern_identity(m1_pattern_origin((uint32_t)mod, 0))) || before->structure != pg_dev[d].structure) continue;
             for (k = 0; k < dp_list(d); k++) if (!(pr_list[k] & PR_USER) && k) { target = k; break; }
             check("kit has a second factory sound", target > 0);
+            if (strcmp(PRESET_LIST[i].name, "808 KIT")) {
+                uint32_t g, rows = 0;
+                booting = 0; page = 0;
+                for (g = 0; g < pg_dev[d].npg; g++) {
+                    pages_focus(d, g);
+                    check("909 wrapper navigation reaches each child-control page", pg_cur_dev == d && pg_cur_page == g && pages_now()->nrows > 0);
+                    rows += pages_now()->nrows;
+                }
+                check("909 wrapper navigation includes every promoted row", rows == pg_dev[d].nrows);
+            }
             n = eng_pattern_notes((uint32_t)mod, 0, &words); memcpy(saved, words, (size_t)n * 4);
             for (tr = 0; tr < (uint32_t)eng_steps_count(); tr++) {
                 counts[tr] = (uint32_t)eng_pattern_notes((uint32_t)eng_steps_module(tr), 0, &words);

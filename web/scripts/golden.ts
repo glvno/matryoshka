@@ -3801,6 +3801,32 @@ if (process.argv.includes('--panel-fixtures')) {
     if (!connect(p, DEFS, { module: t.id, port: 'pitch' }, { module: cut.module, port: cut.port })) throw new Error('engine-tracked: no cutoff cv');
     writeFileSync(new URL('engine-tracked.m1p', out), encodePatch(p, true));
   }
+  for (const mode of ['control-only', 'direct-trig', 'ambiguous-gate']) {
+    const p = FM1_PRESETS['808 Kit']();
+    const map = p.modules.find((m) => m.type === 'drummap')!;
+    const track = p.modules.find((m) => m.type === 'steps')!;
+    const gate = p.cables.find((c) => c.from.module === map.id && /^g[1-8]$/.test(c.from.port))!.to;
+    p.cables = p.cables.filter((c) => !(c.from.module === map.id && /^g[1-8]$/.test(c.from.port)));
+    const osc = p.modules.find((m) => m.type === 'osc')!;
+    p.cables.push({ from: { module: track.id, port: mode === 'control-only' ? 'vel' : 'trig' },
+      to: mode === 'control-only' ? { module: osc.id, port: 'pitch' } : gate });
+    if (mode === 'ambiguous-gate') {
+      const other = addModule(p, DEFS.steps, 0, 600);
+      const another = p.modules.find((m) => m.type === 'env' && m.id !== gate.module)!;
+      p.cables.push({ from: { module: other.id, port: 'trig' }, to: { module: another.id, port: 'gate' } });
+    }
+    writeFileSync(new URL(`pattern-${mode}.m1p`, out), encodePatch(p, true));
+  }
+  {
+    const p = FM1_PRESETS['909 Kit']();
+    let target = p.modules.find((m) => m.type === 'osc')!;
+    for (let i = 0; i < 10; i++) {
+      const lfo = addModule(p, DEFS.lfo, 1500, i * 300);
+      if (!connect(p, DEFS, { module: lfo.id, port: 'out' }, { module: target.id, port: 'p1' })) throw new Error('env-many routing');
+      target = lfo;
+    }
+    writeFileSync(new URL('env-many.m1p', out), encodePatch(p, true));
+  }
   console.log('panel fixtures generated');
   process.exit(0);
 }

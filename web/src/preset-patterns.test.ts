@@ -3,7 +3,7 @@ import { expect, it } from 'vitest';
 import { FM1_PRESETS } from './presets';
 import { factoryPresets } from './factory-presets';
 import { applyPreset, presetsOf } from './device-presets';
-import { devicesOf } from './pages';
+import { devicesOf, patternDriver } from './pages';
 import { DEFS } from './modules';
 import { addModule, validatePatch } from './patch';
 import { noteWord } from './track';
@@ -160,7 +160,8 @@ it('preserves a disconnected 808 default with only a Steps velocity cable into o
   const osc = p.modules.find((m) => m.type === 'osc')!;
   p.cables.push({ from: { module: t.id, port: 'vel' }, to: { module: osc.id, port: 'pitch' } });
   const notes = structuredClone(t.notes);
-  expect(devicesOf(p, DEFS).find((d) => d.asm === a.id)!.track).toBeUndefined();
+  expect(devicesOf(p, DEFS).find((d) => d.asm === a.id)!.track).toBe(t.id); // grouping is independent of replacement permission
+  expect(patternDriver(p, a, DEFS)).toBeUndefined();
   applyPreset(p, a, presets[1]);
   expect(t.notes).toEqual(notes);
 });

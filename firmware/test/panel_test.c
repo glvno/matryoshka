@@ -423,6 +423,17 @@ static int marks_ok(int mod)
 #include "help_test.h"                              /* #450: OCT on release, the controls sheet, the quick start */
 #include "nudge_test.h"                             /* #450: the nudges (D-249), ENV in the menu */
 #include "steprec_test.h"                           /* #532: step record on the SEQ page */
+/* Page-button fixture insertion walks forward, like the format readers: later optional sections stay intact. */
+static uint32_t panel_buttons_at(void)
+{
+    uint32_t at = eng_cables_end(pv_bin, pv_len);
+    if (pv_bin[6] & 4u) at += pv_bin[2];
+    if (pv_bin[6] & 8u) at = eng_routes_end(pv_bin, pv_len, at);
+    at = eng_steps_end(pv_bin, pv_len, at);
+    if (pv_bin[6] & 32u) at = eng_devices_end(pv_bin, pv_len, at);
+    if (pv_bin[7] & ENG_FLAG_EXTRAS) at = eng_extras_end(pv_bin, pv_len, at);
+    return at;
+}
 #include "controls_test.h"                          /* #553: every row of the controls table driven, its effect checked */
 #include "report_test.h"                            /* #549: KEYS_NOW, GUIDE_NOW, panel_align */
 
@@ -1128,25 +1139,28 @@ int main(void)
     {                                                       /* Page buttons (#117), spliced into the 808 Kit's binary */
         /* LFO (button 3) a Page button: device 2 (the Drum map) page 0, then its page 1 (SEL is fixed since #197) */
         static const uint8_t sec[] = {0, 0, 0, 3, 0, 0, 0, 2, 2, 0, 2, 1};
-        uint32_t at = pv_len, n, end = pv_len;
-        if (pv_bin[6] & 2u)                                 /* before the macro ranges, always last: u8 count, count x 5 bytes */
-            for (n = 1; n < 256u; n++)
-                if (pv_len >= 1u + n * 5u && pv_bin[pv_len - 1u - n * 5u] == n) {
-                    at = end = pv_len - 1u - n * 5u;
-                    break;
-                }
-        if (pv_bin[6] & 128u)                               /* and before the Drum maps' row names (format 33): */
-            for (n = 1; n < 16u; n++)                       /* u8 count, count x (1 + 64) bytes */
-                if (end >= 1u + n * 65u && pv_bin[end - 1u - n * 65u] == n) {
-                    at = end - 1u - n * 65u;
-                    break;
-                }
+        uint32_t at = panel_buttons_at();
+        static uint8_t before[sizeof pv_bin];
+        uint32_t before_len = pv_len, origin = eng_origins_at(pv_bin, pv_len);
+        memcpy(before, pv_bin, pv_len);
+        check("Page button insertion point precedes names, provenance and ranges", at && origin > at && !(pv_bin[6] & 64u));
         memmove(pv_bin + at + sizeof sec, pv_bin + at, pv_len - at);
         memcpy(pv_bin + at, sec, sizeof sec);
         pv_len += sizeof sec;
         pv_bin[6] |= 64u;
         pv_gen++;
         check("a patch with a Page button loads", eng_load(pv_bin, pv_len) == 0 && eng_button_kind(3) == ENG_BTN_PAGE);
+        check("Page button insertion preserves every later section", !memcmp(before + at, pv_bin + at + sizeof sec, before_len - at)
+              && eng_origins_at(pv_bin, pv_len) == origin + sizeof sec);
+        memmove(pv_bin + at, pv_bin + at + sizeof sec, pv_len - at - sizeof sec);
+        pv_len -= sizeof sec; pv_bin[6] &= ~64u;
+        check("Page button removal and saved binary reload restore all bytes", pv_len == before_len && !memcmp(before, pv_bin, pv_len)
+              && !eng_load(pv_bin, pv_len) && eng_origins_at(pv_bin, pv_len) == origin);
+        memmove(pv_bin + at + sizeof sec, pv_bin + at, pv_len - at);
+        memcpy(pv_bin + at, sec, sizeof sec); pv_len += sizeof sec; pv_bin[6] |= 64u;
+        check("Page button saved binary reload retains its list and origin", !eng_load(pv_bin, pv_len)
+              && eng_button_kind(3) == ENG_BTN_PAGE && eng_origins_at(pv_bin, pv_len) == origin + sizeof sec);
+
         page_show(0);
         trail_n = 0;
         pages_focus(4, 0);                                  /* (the Output) */
@@ -1184,8 +1198,8 @@ int main(void)
                                                              * steps (#196) and arms it */
         uint64_t drums = (uint64_t)1 << eng_steps_module(0);
         foot_t f;
-        check("a patch loads WIRED: nothing armed, the footer: the patch, then KEYS WIRED", m64(eng_arm_mask_get()) == 0u
-              && (foot_layout(&f), !strcmp(f.a, "808 KIT") && !strcmp(f.w, "KEYS WIRED")));
+        check("the edited patch stays WIRED: nothing armed, the footer marks the edit and says KEYS WIRED", m64(eng_arm_mask_get()) == 0u
+              && (foot_layout(&f), !strcmp(f.a, "808 KIT *") && !strcmp(f.w, "KEYS WIRED")));
         pages_focus(1, 0);                                  /* DRUMS */
         loop();
         check("the track's device page: LEN RATE SWING GATE", pages_now()->nrows == 4u && pages_focus_track() == 0);
@@ -1326,8 +1340,8 @@ int main(void)
     }
 
     {                                                       /* ENV past the last row shown: the list scrolls, the bar stays.
-                                                             * On the 909 Kit: the 808 Kit has fewer devices than ENV shows */
-        if (load("909 KIT") == 0) {
+                                                             * The env-many fixture has more top-level devices than ENV shows. */
+        if (load_fixture("build/panel-fixtures/env-many.m1p") == 0) {
             pv_gen++;
             page = 0;
             trail_n = 0;
@@ -1336,7 +1350,7 @@ int main(void)
             loop();
             tap(4);
             later(2000);
-            check("(the 909 Kit: ENV, more devices than it shows)", page == PAGE_ENV && pg_ndev > ENV_ROWS);
+            check("(env-many: ENV, more devices than it shows)", page == PAGE_ENV && pg_ndev > ENV_ROWS);
             {
                 uint32_t d1 = pg_cur_dev, all, list, i;
                 for (i = 0; pg_cur_dev < env_first + ENV_ROWS - 1u && i < 16u; i++)
@@ -1362,7 +1376,7 @@ int main(void)
             tap(4);
             later(1500);
         } else {
-            check("(the 909 Kit loads)", 0);
+            check("(the env-many fixture loads)", 0);
         }
         load("808 KIT");
         pv_gen++;

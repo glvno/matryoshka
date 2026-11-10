@@ -221,6 +221,22 @@ function drumDrivers(p: Patch, members: Set<number>, defs: Record<string, Module
   return p.modules.filter((m) => m.type === 'steps' && maps.some((map) => keyReach(p, m.id).has(map.id))).map((m) => m.id);
 }
 
+/** Pattern replacement needs one note/gate driver; control-only environment grouping grants no permission. */
+export function patternDriver(p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>): number | undefined {
+  const members = new Set(allModules(p, a));
+  const mapped = drumDrivers(p, members, defs);
+  if (mapped !== undefined) return mapped.length === 1 ? mapped[0] : undefined;
+  const tracks = p.modules.filter((m) => m.type === 'steps' && p.cables.some((c) => {
+    if (!members.has(c.to.module) || !keyReach(p, m.id).has(c.from.module)) return false;
+    if (c.from.port === 'keys' && c.to.port === 'keys') return true;
+    const source = p.modules.find((x) => x.id === c.from.module);
+    return source && ['steps', 'arp', 'harm'].includes(source.type) &&
+      defs[source.type]?.outputs.some((port) => port.name === c.from.port && port.kind === 'gate') &&
+      defs[p.modules.find((x) => x.id === c.to.module)?.type ?? '']?.inputs.some((port) => port.name === c.to.port && port.kind === 'gate');
+  }));
+  return tracks.length === 1 ? tracks[0].id : undefined;
+}
+
 /** the patch's devices in the environment's grouped order (see the top of this file) */
 export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
   const inAsm = new Set(assembliesOf(p).flatMap((a) => a.modules));
@@ -257,12 +273,12 @@ export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
     placed.add(t);
     // (a cable from it, or from an Arpeggiator it plays through)
     const from = new Set([...keyReach(p, t.module!)].filter(id => ['steps', 'harm', 'arp'].includes(p.modules.find(m => m.id === id)?.type ?? '')));
+    const direct = (d: Device): boolean => p.cables.some((c) => from.has(c.from.module) && deviceOf.get(c.to.module) === d);
     const driven = reading.filter((d) => !placed.has(d) && !d.kind && (drums.get(d) !== undefined
       ? drums.get(d)!.length === 1 && drums.get(d)![0] === t.module
-      : p.cables.some((c) => from.has(c.from.module) && deviceOf.get(c.to.module) === d &&
-        (d.asm === undefined || (c.from.port === 'keys' && c.to.port === 'keys') ||
-          (defs[p.modules.find((m) => m.id === c.from.module)?.type ?? '']?.outputs.some((port) => port.name === c.from.port && port.kind === 'gate') &&
-            defs[p.modules.find((m) => m.id === c.to.module)?.type ?? '']?.inputs.some((port) => port.name === c.to.port && port.kind === 'gate'))))));
+      : direct(d)));
+    // Keep directly connected pages (the external Drum map) before the kit reached through that map.
+    driven.sort((a, b) => Number(!direct(a)) - Number(!direct(b)));
     for (const d of driven) {
       d.track = t.module;
       out.push(d);
