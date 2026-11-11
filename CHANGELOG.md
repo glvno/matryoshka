@@ -4,6 +4,7 @@
 
 - Release-packaging checks preserve the host compiler's search path while isolating firmware build settings.
 - Selecting a user preset in the editor loads its own values even when a factory preset has the same name, without replacing the drum pattern.
+- Device scenario runs enforce and save EDITOR IGNORE on the test rig, check it around installs and scenarios, and stop if it cannot be confirmed.
 - **Send saved assembly presets with a patch:** FM-1 & MIDI now offers “Send this patch’s presets” beside Send patch. It transfers saved assembly presets, including nested ones, asks before replacing FM-1 copies, and refreshes Library even after incomplete transfers. PRESET selects presets for matching device pages; nested assemblies have no separate page in that patch. Sending the patch itself still preserves its sound without copying preset lists.
 - Expand the Monolith audition studies to seven composed effects treatments, each with a dry reference.
 
