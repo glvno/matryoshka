@@ -138,6 +138,8 @@ const rig = {
     if (name === RIG_PRESET) throw new Error('that is the rig\'s mark');
     return acked(presetPutFrame(RIG_STRUCTURE, name, values), CMD.presetPut, 1);
   },
+  /** A fresh INFO from the picked rig, including its current EDITOR setting. */
+  info: async (): Promise<Info | null> => parseInfo(await ask(helloFrame(), (p) => p.cmd === CMD.info)),
   key: (id: number, down: boolean): Promise<void> => acked(testKeyFrame(id, down), CMD.testKey),   // (held or not: safe to send again)
   async tap(id: number, hold = 80): Promise<void> {
     await rig.key(id, true);

@@ -35,7 +35,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { boot, download, downloadEmuMidi, smoke, smokeState, venvPython } from './branch-firmware.mjs';
-import { DEV_ENV, audioLocation, fm1Label, loadRig, pickRig, rigAtLocation, rigPage, survey } from './rig-link.mjs';
+import { DEV_ENV, RigIsolationError, ensureRigIgnored, audioLocation, fm1Label, loadRig, pickRig, rigAtLocation, rigPage, survey } from './rig-link.mjs';
 import { parseWav, startCapture } from './audio-capture.mjs';
 import { CHECK_SCENARIOS, checkScenarios } from './device-check.mjs';
 import { EmuChannel } from './emu-channel.mjs';
@@ -238,6 +238,7 @@ class Target {
 /** a real FM-1 (or the emulator) over the editor link's device test mode (#291): the rig's page (dev/rig-client.ts) */
 class RigTarget extends Target {
   constructor(page) { super(); this.page = page; this.rp = page; }
+  info() { return this.page.evaluate(() => window.__rig.info()); }
   diag(n) { return this.page.evaluate((x) => window.__rig.diag(x), n); }
   /** a recording of what the FM-1 plays: its USB audio on this Mac (audio-capture.mjs), the input at the rig's USB
    *  location (`audioInput`; by its name while the rig is the one FM-1 connected); `audioWhy` says why there is none.
@@ -471,11 +472,14 @@ async function installOnRig(run, url) {
   const pinned = !!loadRig()?.usbLocation;
   const { browser, context } = await launch(url);
   try {
-    const s = await survey(await rigPage(context, url));
+    const page = await rigPage(context, url);
+    const s = await survey(page);
     if (!s.rig) throw new Error('the registered rig is not connected: nothing installed');
     if (!pinned && (s.ports !== 1 || s.pairs.length !== 1))
       throw new Error(`${s.ports} FM-1 ports are connected and the rig's USB location is not recorded: the rig must be the only FM-1 for an install (unplug the other, or register the rig again with it alone to record its location): nothing installed`);
     if (pinned && s.pairs.length > 1) console.log(`  ${s.pairs.length - 1} other FM-1${s.pairs.length === 2 ? '' : 's'} connected: the installer sees only the rig's USB location (${loadRig().usbLocation})`);
+    await page.evaluate((p) => window.__rig.pick(p), s.rig);
+    await ensureRigIgnored(new RigTarget(page), B, ENC, true);
   } finally {
     await browser.close();
   }
@@ -567,6 +571,7 @@ async function main() {
     emu = new RigTarget(rp);
     emu.audioWhy = REAL ? rigAudioWhy : 'the emulator through the device test mode has no USB audio';
     emu.audioInput = rigAudioIn;
+    await ensureRigIgnored(emu, B, ENC, true);
     // a known start: the device page (the owner's rig was once left on HOME held's SYSTEM page, and every check failed)
     if (!(await emu.home())) { const h = await emu.screen(); throw new Error(`the FM-1 did not come back to its device page with HOME (screen page ${h.page}${h.booting ? ', still booting' : ''}): bring it there by hand and run again`); }
     // the keys' octave back to 0: the footer's "= OCT =" is how the checks know a device page, and pitches count from it
@@ -2187,15 +2192,18 @@ async function main() {
       }, 30000);
       try {
         await withDeadline(async () => {
+          if (DEVICE) await ensureRigIgnored(emu, B, ENC);
           if (name !== 'connect') await fresh(name);
           await run();
+          if (DEVICE) await ensureRigIgnored(emu, B, ENC);
         }, 600000, `scenario ${name}`);
       } catch (e) {
         writeFileSync(join(OUT, `${name}-failure.json`), JSON.stringify({ ...progress(), error: e.stack }, null, 1));
         await check(`${name}: ran to the end`, false, e.message.split('\n')[0]);
         await withDeadline(() => shot(`${name}-error`), 5000, 'failure screenshot').catch(() => {});
         // A timed-out operation can still be running. Never overlap the next scenario with it.
-        if (e.name === 'DeadlineError' || emuProc?.channel.error) break;
+        if (e instanceof RigIsolationError || e.name === 'DeadlineError' || emuProc?.channel.error) break;
+        if (DEVICE) await withDeadline(() => ensureRigIgnored(emu, B, ENC), 15000, 'rig editor isolation recovery');
       } finally { clearInterval(heartbeat); }
     }
   } finally {

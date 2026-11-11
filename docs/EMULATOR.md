@@ -255,15 +255,21 @@ link as `m1emu serve` drives the emulator:
   install on any FM-1, so they keep `emu:smoke` ([D-171](ledger/firmware-install.md#D-171)). Results and the
   screen as text go to `build/device/scenarios/`. Before the scenarios the runner taps HOME until the screen reports
   the device page (the menu, GLO, SEQ or a preset list left up), and stops with a message if it never does. Then it
-  sets the settings the checks count on (issue #779): GLO > MIDI > MIDI OUT and CLOCK OUT on, GLO > PANEL > COUNT-IN
-  OFF, each turned only once its row shows, and prints what a run before had left changed. The volume
+  sets and saves GLO > SYSTEM > EDITOR to IGNORE, checking the setting through a fresh INFO reply.
+  This also happens before an install and again after the rig restarts. Before and after each scenario, the runner
+  checks IGNORE and restores it if needed. Missing firmware support, a missing settings row or an unconfirmed value
+  stops the run. It saves only global settings, not the current patch or a bank slot. The other startup settings
+  are GLO > MIDI > MIDI OUT and CLOCK OUT on, and GLO > PANEL > COUNT-IN OFF (issue #779).
+  Each knob is turned only once its row shows. The volume
   never stops a run ([D-125](ledger/releases.md#D-125)): on a rig whose firmware reads its peak after MASTER (no INFO
   feature bit 10), a check that hears nothing is skipped as "MASTER down"; skips are counted apart and are no failure.
 - **The owner's own FM-1 beside the rig (issue #698).** The rig's scripts may run while the owner plays their own FM-1
   in Chrome on the site. The rig's page asks the other FM-1 only HELLO and PRESET_GET, and the installer and the
   recorder go by the rig's USB location. While the editor is connected to one FM-1, it plays nothing from another
-  FM-1's MIDI, so the rig's test keys and its PLAY do not reach the owner's page. The editor's Connect still takes the
-  first FM-1 that answers, which can be the rig. A rig install restarts the rig twice on USB (into update mode and back),
+  FM-1's MIDI, so the rig's test keys and its PLAY do not reach the owner's page. With the rig at IGNORE, the normal
+  editor's Connect skips it; the test runner's own editor can still connect because it sees only the rig's ports
+  and is explicitly marked as a test-tools page. IGNORE is an editor convention, not a firmware access lock.
+  A rig install restarts the rig twice on USB (into update mode and back),
   but not macOS's MIDI service (`MIDIServer` ran on through the rig install of 2026-11-06). In the two-device test of
   2026-11-06, Chrome still heard the owner's FM-1 after a rig install. Never restart `MIDIServer`
   (`killall MIDIServer`) while the owner plays: Chrome then hears no MIDI until it is quit and opened again.
