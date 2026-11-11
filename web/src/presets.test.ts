@@ -115,7 +115,10 @@ describe('factory <7PH (a groove box): the 909 Kit\'s drums and a Silver Box on 
     const long = notes.filter((n) => n.len > 1);
     expect(long.some((n) => notes.some((m) => m.at === n.at + 1))).toBe(true); // a slide: the next step starts a note
     expect(long.some((n) => !notes.some((m) => m.at === n.at + 1))).toBe(true); // a tie: the next step rests
-    expect(devicesOf(p, DEFS).map((d) => d.name).slice(0, 5)).toEqual(['Main', 'DRUMS', 'Drum map', 'PATTERN', 'Silver Box']);
+    const devices = devicesOf(p, DEFS);
+    expect(devices.map((d) => d.name)).toEqual(['Main', 'DRUMS', 'Drum map', '909 kit', 'PATTERN', 'Silver Box', 'Output']);
+    expect(devices.find((d) => d.name === '909 kit')!.track).toBe(drums);
+    expect(devices.find((d) => d.name === 'Silver Box')!.track).toBe(pattern);
   });
 
   it('PLAY: the drums and the bass each sound; unarmed a key plays the bass, DRUMS armed it plays the kit', () => {

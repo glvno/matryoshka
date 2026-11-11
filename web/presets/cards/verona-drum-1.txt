@@ -65,8 +65,8 @@
 # master
 #   master = 0.61                      0..1
 
-# Drafts of 2026-11-04 after the Vermona DRM1 MKIV's manual (its sound tips for each channel), not yet listened to on the
-# FM-1 (#613). The rows follow the original's knobs: see web/scripts/verona-voices.ts for what each does here.
+# Sounds follow the Vermona DRM1 MKIV manual's channel recipes. These are model studies, not measured hardware matches.
+# The rows follow the original's knobs: see web/scripts/verona-voices.ts for what each does here.
 # bend: 0 none, up a falling sweep, below 0 a rising one (the kick's only falls). time: the kick's pitch sweep (and,
 # on the FM-1, its noise burst). wave: 1 a sine, up to an overdriven square. clap: the claps' rate, so their number
 # (below about 22 Hz one clap). The hi-hat plays open on HH OPEN and closed on HH CLOSE.
@@ -84,7 +84,10 @@ hi hat / filter = 11000
 mix = 0.35
 clap / reverb = 0.6
 clap = 45
-  master = 0.57
+  master = 0.68
+multi / volume = 0.3
+multi / decay = 0.08
+drum 1 / volume = 0.55
 
 preset: Trouser Flap
 # DECAY at its longest for a long, low boom (the manual: Trap, drum and bass, dubstep); the bend kept low
@@ -98,11 +101,13 @@ kick / attack = 0.3
 snare / decay rev = 0.6
 snare / reverb = 0.25
 hi hat / decay = 0.5
-  master = 0.59
+  master = 0.71
+multi / volume = 0.3
+multi / decay = 0.08
+drum 1 / volume = 0.55
 
 preset: Beat Box 78
-# the snare with RESONANCE backed off, as a preset rhythm box from about 1978; a short kick, a thin hat, the multi a
-# cowbell
+# Light kick/snare/hat groove with one quiet, short metallic accent.
 kick / decay = 0.18
 kick / pitch = -24
 kick / bend = 1.2
@@ -116,9 +121,11 @@ snare / reverb = 0
 hi hat / decay = 0.15
 mix = 0.2
 hi hat / bend = 0.5
-multi / decay = 0.12
+multi / decay = 0.08
 highpass = 500
-  master = 0.58
+  master = 0.74
+multi / volume = 0.3
+drum 1 / volume = 0.55
 
 preset: Clave and Conga
 # the manual's tip: the snare with FILTER and RESONANCE open and no noise is a clave; drum 1 a conga, the multi a bongo
@@ -136,7 +143,7 @@ pitch 3 = -2
 multi / decay = 0.09
 highpass = 900
 hi hat / decay = 0.12
-  master = 0.93
+  master = 0.96
 
 preset: Metal Works
 # FM in the audio range on drum 1 (atonal, metallic), the multi's three squares spread for a bell, hats bending up
@@ -149,10 +156,12 @@ drum 1 / wave = 3
 multi / pitch = 0.4
 pitch 2 = 8
 pitch 3 = 3
-multi / decay = 0.7
+multi / decay = 0.18
 highpass = 1200
 hi hat / bend = -1.5
 hi hat / resonance = 0.6
 hi hat / pitch = 34
 hi hat / decay = 0.8
-  master = 0.86
+  master = 0.88
+multi / volume = 0.6
+drum 1 / volume = 0.55

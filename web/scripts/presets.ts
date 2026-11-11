@@ -11,16 +11,15 @@
 //                                            structure is a factory engine's, as card blocks to paste into the engine's card
 // After a card changes: npm run export-defs (the FM-1's ROM list, firmware/src/presets.h) and npm test.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { FACTORY } from '../src/assemblies';
 import type { AssemblyDef } from '../src/assembly';
 import { PRESETS_FORMAT, fixPreset, type Preset } from '../src/device-presets';
 import { defIsEngine } from '../src/engines';
-import { CARDS, cardOf, hasFactoryPresets, shippedPresets } from '../src/factory-presets';
+import { CARDS, factoryPresetDefs, cardOf, hasFactoryPresets, shippedPresets } from '../src/factory-presets';
 import { cardSlug, cardTemplate, formatPreset, parseCard } from '../src/preset-cards';
 import { defStructure } from '../src/structure';
 
 /** the engines, and the effects (which ship presets only from a card, #661) */
-const ENGINES = FACTORY.filter((d) => defIsEngine(d) || d.category === 'Effects');
+const ENGINES = factoryPresetDefs().filter((d) => hasFactoryPresets(d) || d.category === 'Effects');
 const [cmd, ...rest] = process.argv.slice(2);
 
 const engine = (name: string | undefined): AssemblyDef => {

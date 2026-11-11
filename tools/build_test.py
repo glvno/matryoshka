@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""Focused release packaging checks; compiler and SDK are mocked, no hardware."""
+"""Focused release packaging checks; cross-compiler and SDK mocked, host C compiler real."""
 import contextlib
 import hashlib
 import io
@@ -8,12 +8,15 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
 
 import build
 import release_manifest
+
+MMIO_CHECK = build.mmio_check
 
 
 class ReleaseBuild(unittest.TestCase):
@@ -27,7 +30,8 @@ class ReleaseBuild(unittest.TestCase):
         self.stack.enter_context(patch.multiple(build, PRODUCT=build.PRODUCT, VERSION=None,
                                               FW_VERSION=(0, 0, 0), OUT=build.OUT, GEN=build.GEN, LDR=build.LDR,
                                               SDK_SHA256={}))
-        self.stack.enter_context(patch.dict(os.environ, {}, clear=True))
+        # The host compiler needs PATH to locate its subprocesses; isolate build options only.
+        self.stack.enter_context(patch.dict(os.environ, {"PATH": os.environ.get("PATH", os.defpath)}, clear=True))
         self.stack.enter_context(patch.object(build, "build_loader", return_value=b"loader"))
         self.stack.enter_context(patch.object(build, "build_app", side_effect=self.compile_app))
         self.stack.enter_context(patch.object(build, "check", return_value=([], [])))
@@ -49,6 +53,33 @@ class ReleaseBuild(unittest.TestCase):
         with patch.dict(os.environ, {"M1_EMU_MIDI": bridge}), patch("sys.argv", [
             "build.py", "--release", "1.13.0", "--out-dir", str(path)]):
             self.assertEqual(build.main(), 0)
+
+    def test_package_accepts_generated_pattern_metadata(self):
+        # presets.h is generated build input: arbitrary uint32 pattern identities
+        # must survive the real packaging safeguard without being treated as MMIO.
+        # Compiler, SDK and binary checks retain this harness's stubs.
+        # Independently compile the header and compare its values with the JSON
+        # identity contract, rejecting truncation or a changed ownership identity.
+        source = self.root / "patterns.c"
+        source.write_text('#include <stdio.h>\n#include "presets.h"\n'
+                          'int main(void) {\n'
+                          '  for (unsigned i = 0; i < N_PRESET_PATTERNS; ++i)\n'
+                          '    printf("%08x %08x\\n", (unsigned)PRESET_PATTERNS[i].identity,\n'
+                          '           (unsigned)PRESET_PATTERNS[i].structure);\n'
+                          '  return 0;\n}\n')
+        binary = self.root / "patterns"
+        subprocess.run(["cc", "-I", str(build.FW / "src"), str(source), "-o", str(binary)],
+                       check=True, env={**os.environ, "TMPDIR": str(self.root)})
+        actual = subprocess.run([str(binary)], check=True, capture_output=True, text=True).stdout.splitlines()
+        patterns = json.loads((build.SRC / "web/src/preset-patterns.json").read_text())
+        self.assertEqual(actual, [f"{p['id']} {p['structure']}" for p in patterns])
+        with patch.object(build, "mmio_check", MMIO_CHECK):
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                try:
+                    self.run_build(self.root / "metadata")
+                except SystemExit as error:
+                    self.fail(f"{error}\n{output.getvalue()}")
 
     def pair(self):
         normal = self.root / "normal"

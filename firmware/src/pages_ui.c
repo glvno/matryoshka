@@ -2586,6 +2586,54 @@ static int32_t dev_poly_top(uint32_t d, uint32_t mod, uint32_t par)
     return poly_max(par & 0x7Fu);
 }
 
+#include "preset_pattern.h"
+static int dp_pattern_module(uint32_t d)
+{
+    eng_mset_t sources = mset_none(), maps = mset_none();
+    uint32_t k, i, f, fp, t, tp, has_map = 0;
+    int found = -1;
+    pages_ensure();
+    /* Keys into poly members, or gate cables into this device. eng_arms follows only bounded key-source chains. */
+    for (k = 0; k < pg_dev[d].nmem; k++) {
+        uint32_t member = pg_mem(d, k);
+        int type = eng_type(member);
+        if (type != T_DRUMMAP && type != T_STEPS && type != T_ARP && type != T_HARM)
+            sources = mset_or(sources, eng_arms(member));
+        for (i = 0; i < (uint32_t)eng_ncables(); i++) {
+            int source;
+            eng_cable(i, &f, &fp, &t, &tp);
+            if (t != member || type < 0 || tp >= 32u || !(PRESET_GATE_IN[type] & (1u << tp))) continue;
+            source = eng_type(f);
+            if ((source != T_STEPS && source != T_ARP && source != T_HARM && source != T_DRUMMAP)
+                || fp >= 32u || !(PRESET_GATE_OUT[source] & (1u << fp))) continue;
+            if (source == T_DRUMMAP) { has_map = 1; maps = mset_or(maps, eng_arms(f)); }
+            else sources = mset_or(sources, eng_arms(f));
+        }
+    }
+    if (has_map) sources = maps;  /* The drum map owns the drum default; companion melodic tracks keep their patterns. */
+    for (i = 0; i < (uint32_t)eng_nmodules(); i++) if (mset_has(sources, i) && eng_type(i) == T_STEPS) {
+        if (found >= 0) return -1;
+        found = (int)i;
+    }
+    return found;
+}
+static void dp_clear_origin(uint32_t d)
+{
+    int mod = dp_pattern_module(d), pattern = eng_pattern();
+    if (mod >= 0 && pattern >= 0) m1_clear_origin((uint32_t)mod, (uint32_t)pattern);
+}
+static void dp_pattern(uint32_t d, const char *name)
+{
+    int mod = dp_pattern_module(d), pattern = eng_pattern();
+    const preset_pattern_t *before, *after;
+    if (mod < 0 || pattern < 0) return;
+    before = preset_pattern_identity(m1_pattern_origin((uint32_t)mod, (uint32_t)pattern));
+    after = preset_pattern_find(pg_dev[d].structure, name);
+    if (!before || before->structure != pg_dev[d].structure || !after || before->len != after->len || before->rate != after->rate ||
+        !preset_pattern_untouched((uint32_t)mod, (uint32_t)pattern, before)) return;
+    (void)m1_default_pattern((uint32_t)mod, (uint32_t)pattern, after->notes, after->n, after->identity);
+}
+
 /* load list entry k of device d: its rows take the values (the running binary and the editor too); an entry of fewer
  * values than the device has rows (a Cassia 1 preset stored before 1.8.2 kept 88 of its 118, #485, D-858) sets the rows it
  * has, in order, and the rest keep their values (dp_short says so) */
@@ -2596,6 +2644,11 @@ static int dp_load(uint32_t d, uint32_t k)
     uint32_t i;
     if (d >= pg_ndev || k >= dp_list(d) || (n = dp_entry(pr_list[k], nm)) < 0)
         return -1;
+    if (!(pr_list[k] & PR_USER)) {
+        dp_pattern(d, nm);
+        pages_ensure(); /* Notes precede page metadata; growth or shrink can move every row pointer. */
+    }
+    else dp_clear_origin(d);
     dp_short = (uint32_t)n < pg_dev[d].nrows;
     for (i = 0; i < (uint32_t)n && i < pg_dev[d].nrows; i++) {
         uint32_t mod = pg_dev[d].rows[2u * i], par = pg_dev[d].rows[2u * i + 1u];
@@ -2680,6 +2733,7 @@ static void dp_store(uint32_t d)
         return;
     }
     dp_name_set(d, nm);
+    dp_clear_origin(d);
     {
         char m[40];
         put(put(m, "STORED "), nm)[0] = 0;

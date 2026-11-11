@@ -1,0 +1,33 @@
+# Whole-kit selection preserves the original nested voice cards and mixer input 4 for hybrid bass.
+engine: 909 kit
+
+preset: Warehouse
+# Open, ringing hats and a firm snare over the original kick circuit.
+hihat / r3 = 0.08
+hihat / cutoff = 6500
+snare / cutoff = 5500
+macros / snare tail = 0.35
+  kick = 0.32
+  snare = 0.3
+  hats and perc = 0.21
+
+preset: Dry Jack
+# Tight envelopes leave space for shuffled or syncopated placement.
+hihat / r3 = 0.025
+snare / r3 = 0.1
+perc / op hat = 0.1
+perc / clap = 0.05
+  kick = 0.24
+  snare = 0.22
+  hats and perc = 0.17
+
+preset: Dub Pressure
+# A darker kit with a longer kick and sparse percussion.
+hihat / cutoff = 3500
+snare / cutoff = 2200
+macros / kick decay = 0.65
+macros / snare tail = 0.4
+perc / op hat = 0.3
+  kick = 0.31
+  snare = 0.29
+  hats and perc = 0.21

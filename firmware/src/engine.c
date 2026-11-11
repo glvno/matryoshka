@@ -711,7 +711,7 @@ typedef struct {
     uint16_t nsrc;
     uint8_t order[ENG_MAX_MODULES], outputs[ENG_MAX_MODULES];
     uint8_t from_m[ENG_MAX_CABLES], from_p[ENG_MAX_CABLES], to_m[ENG_MAX_CABLES], to_p[ENG_MAX_CABLES];
-    uint16_t ncab, nbuf, nphys;      /* nbuf: values given a buffer (what the arena counts), nphys: the buffers (#800) */
+    uint16_t ncab, nbuf, nphys;      /* nbuf: logical values (sanity cap), nphys: allocated buffers (#824) */
     node_t *node;                    /* the modules, nmod of them in the arena's top (#721, arena_nodes); node_none until a load */
     sum_t sum[MAX_SUM];
     const esig_t *sum_src[MAX_SRC];
@@ -1037,8 +1037,8 @@ static void visit(uint32_t id, uint8_t *st)
  * read in the next block (a feedback cable; a cable out of its poly group: an idle part's outputs stay silent, part_quiet
  * reads them after the render) or outside the render (buf_late). The second core (#271): lane 1 of a split segment runs
  * at the same time as lane 0, so a buffer serves one lane only (the odd parts of a group that may split, else lane 0),
- * and a value one lane writes and the other reads lives to the end of the segment that reads it. The arena still counts a
- * buffer per value, as the editor's budget does (patchbin.ts memoryBudget): the same patches load. */
+ * and a value one lane writes and the other reads lives to the end of the segment that reads it. Allocation rule 1 charges
+ * only physical buffers. Comparison builds (rule 0) still reserve one buffer per value. */
 #ifndef ENG_BUF_REUSE
 #define ENG_BUF_REUSE 1
 #endif
@@ -1735,6 +1735,44 @@ static void pat_layout(void)
 
 static int aot_buffer_guard(const uint8_t *p, uint32_t len);
 static void aot_bind(const uint8_t *p, uint32_t len, uint32_t lines);   /* aot.c (#808) */
+uint32_t eng_origins_end(const uint8_t *p, uint32_t len, uint32_t at)
+{
+    uint32_t n, i, previous = 0;
+    if (p[1] < 54u || at > len || len - at < 2u) return 0;
+    n = (uint32_t)p[at] | (uint32_t)p[at + 1u] << 8;
+    at += 2u;
+    if (n > 16u * 64u || n > (len - at) / 6u) return 0;
+    for (i = 0; i < n; i++, at += 6u) {
+        uint32_t key = (uint32_t)p[at] * 64u + p[at + 1u];
+        if (p[at] >= p[2] || p[at + 1u] >= 64u || (i && key <= previous)
+            || eng_type_at(p, len, p[at]) != T_STEPS) return 0;
+        previous = key;
+    }
+    return at;
+}
+uint32_t eng_origins_at(const uint8_t *p, uint32_t len)
+{
+    uint32_t at;
+    if (len < 8u || !(p[7] & ENG_FLAG_ORIGINS) || !(at = eng_cables_end(p, len))) return 0;
+    if (p[6] & 4u) at += p[2];
+    if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at))) return 0;
+    if (!(at = eng_steps_end(p, len, at))) return 0;
+    if ((p[6] & 32u) && !(at = eng_devices_end(p, len, at))) return 0;
+    if ((p[7] & ENG_FLAG_EXTRAS) && !(at = eng_extras_end(p, len, at))) return 0;
+    if ((p[6] & 64u) && !(at = eng_buttons_end(p, len, at))) return 0;
+    if ((p[6] & 128u) && !(at = eng_names_end(p, len, at))) return 0;
+    return eng_origins_end(p, len, at) ? at : 0;
+}
+uint32_t eng_origin_record(const uint8_t *p, uint32_t len, uint32_t module, uint32_t pattern)
+{
+    uint32_t at = eng_origins_at(p, len), end;
+    if (!at) return 0;
+    end = eng_origins_end(p, len, at);
+    for (at += 2u; at < end; at += 6u)
+        if (p[at] == module && p[at + 1u] == pattern) return at;
+    return 0;
+}
+
 int eng_load(const uint8_t *p, uint32_t len)
 {
     uint32_t i, j, c, k, v, at, ncab, n0, nl;
@@ -2316,6 +2354,8 @@ int eng_load(const uint8_t *p, uint32_t len)
             return -3;
         at = end;
     }
+    if ((p[7] & ENG_FLAG_ORIGINS) && !(at = eng_origins_end(p, len, at)))
+        return -3;
     if (p[6] & 2u) {                             /* the macro ranges: u8 count, then module / pin (bit 7 bipolar) / parameter / lo / hi each */
         uint32_t nr;
         if (at >= len)
@@ -2398,7 +2438,7 @@ int eng_load(const uint8_t *p, uint32_t len)
                         return -6;
             }
         }
-        if (bs.values > bs.n && !arena_lo((bs.values - bs.n) * ENG_BUF_BYTES))   /* the arena counts every value's buffer */
+        if (!ENG_BUFFER_ALLOCATION && bs.values > bs.n && !arena_lo((bs.values - bs.n) * ENG_BUF_BYTES))   /* conservative allocation rule */
             return -6;
         E.nbuf = (uint16_t)bs.values;
         E.nphys = (uint16_t)bs.n;
