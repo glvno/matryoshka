@@ -84,10 +84,12 @@ describe('patterns and songs: the model', () => {
 });
 
 describe('patterns and songs: the binary (format 48)', () => {
-  it('a patch without patterns or songs is written exactly as before: no section, its old format', () => {
+  it('a patch without patterns, songs or origins is written exactly as before: no section, its old format', () => {
     for (const name of Object.keys(FM1_PRESETS)) {
       const p = FM1_PRESETS[name]();
       if (p.modules.some((m) => m.patterns?.length || m.seq)) continue;
+      // Legacy patches have no provenance; format-54 origins have their own binary tests.
+      for (const m of p.modules) delete m.factoryPatterns;
       expect(patternRecord(p, deviceView(p, true).patch), name).toEqual([]);
       const b = encodePatch(p, true);
       // (or counted records, format 51, when its old format is over the FM-1's bytes: #667; or 51 for a key assign

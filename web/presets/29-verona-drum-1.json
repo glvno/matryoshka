@@ -1599,7 +1599,13 @@
      "note": 64,
      "vel": 100
     }
-   ]
+   ],
+   "factoryPatterns": {
+    "version": 1,
+    "ids": [
+     "d61acf96"
+    ]
+   }
   }
  ],
  "cables": [
@@ -3429,6 +3435,7 @@
      "head": "master"
     }
    ],
+   "preset": "Init",
    "children": [
     1,
     2,

@@ -7,7 +7,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef PROTO_TEST_EXTERNAL_ENGINE
+#include "../src/engine.h"
+#else
 #include "../src/engine.c"
+#endif
 
 static int applied, stored;
 static int slot_writes, slot_erases;
@@ -187,6 +191,8 @@ static int arms_calls;
 static eng_mset_t arms_last;                                  /* (what the link carried, before the engine keeps the patch's) */
 static void m1_arms(eng_mset_t mask) { arms_calls++; arms_last = mask; eng_arm_mask(mask); }   /* (main.c's, #191) */
 #include "../src/proto.c"
+
+#ifndef PROTO_TEST_EXTERNAL_ENGINE
 
 static uint8_t *slurp(const char *path, long *n)
 {
@@ -755,13 +761,20 @@ int main(int argc, char **argv)
         CHECK(m1_handle(syx + start, (uint32_t)(end - start)) == 1);
         at = end + 1;
     }
+    { uint32_t origin_frames = 0;
     for (i = 0; i < (long)nreplies; i++) {
         uint8_t p[8];
         uint32_t n = m1_unpack7(replies[i] + 5, reply_len[i] - 6u, p, sizeof p);
+        if (replies[i][4] == R_PATTERN_ORIGIN) {
+            CHECK(n == 6u && p[0] == 255u && p[1] == origin_frames && !p[2] && !p[3] && !p[4] && !p[5]);
+            origin_frames++;
+            continue;
+        }
         CHECK(replies[i][4] == R_ACK && n >= 4u);
         CHECK(p[2] == S_OK);
         acks_ok++;
     }
+    CHECK(origin_frames == 2u); }
     CHECK(applied == 1);
     CHECK(m1_cur_len == (uint32_t)np || (patch[1] < ENG_PATCH_VERSION && m1_cur[1] == ENG_PATCH_VERSION));   /* (an older format's: upgraded) */
     run(b_l, b_r);
@@ -817,14 +830,21 @@ int main(int argc, char **argv)
         uint8_t q[4] = {0x7D, 0x4D, 0x31, C_HELLO}, p[16];
         uint32_t n;
         nreplies = 0;
-        CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 2 && replies[0][4] == R_INFO && replies[1][4] == R_TEMPO_NOW);
+        CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 4 && replies[0][4] == R_INFO && replies[1][4] == R_TEMPO_NOW);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
         CHECK(n == 13u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[12] == M1_FEATURES3);
+        { uint32_t j; uint8_t origin[6];
+          for (j = 0; j < 2u; j++) {
+              CHECK(replies[j + 2u][4] == R_PATTERN_ORIGIN);
+              CHECK(m1_unpack7(replies[j + 2u] + 5, reply_len[j + 2u] - 6u, origin, sizeof origin) == 6u);
+              CHECK(origin[0] == 255u && origin[1] == j && !origin[2] && !origin[3] && !origin[4] && !origin[5]);
+          } }
+
         CHECK(p[9] == M1_FW_MAJOR && p[10] == M1_FW_MINOR && p[11] == M1_FW_PATCH);   /* #216: the firmware's version */
         CHECK(p[5] == M1_FEATURES && p[6] == M1_FEATURES2 && (p[3] & M1_INFO_MIDI_OUT));
         midi_out_on = 0;
         nreplies = 0;
-        CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 2);
+        CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 4);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
         CHECK(n == 13u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION);
         CHECK(!(p[3] & M1_INFO_MIDI_OUT));
@@ -833,7 +853,7 @@ int main(int argc, char **argv)
         CHECK((M1_FEATURES3 & 8u) && !(p[3] & M1_INFO_EDITOR_IGNORE));
         editor_ignore_on = 1;
         nreplies = 0;
-        CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 2);
+        CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 4);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
         CHECK(n == 13u && (p[3] & M1_INFO_EDITOR_IGNORE) && (p[3] & M1_INFO_MIDI_OUT));
         editor_ignore_on = 0;
@@ -1233,3 +1253,5 @@ int main(int argc, char **argv)
     printf("proto ok: %u acks, %ld patch bytes, render identical\n", acks_ok, np);
     return 0;
 }
+
+#endif /* PROTO_TEST_EXTERNAL_ENGINE */

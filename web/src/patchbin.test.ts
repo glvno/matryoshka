@@ -57,6 +57,7 @@ describe('binary patch format', () => {
     let grouped = 0;
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
       const p = make();
+      for (const m of p.modules) delete m.factoryPatterns; // This assertion isolates the assembly overlay from the optional origin section.
       if (polyGroups(p).length) continue; // a poly assembly is not only layout: its cards run once per voice
       // (a patch written with counted records keeps the parameters its device rows name, #667: they differ without the
       // overlay's devices, so the comparison holds for the patches an older format holds)
@@ -287,11 +288,13 @@ describe('binary patch format', () => {
         + 1 + devs.reduce((n, d) => n + 8 + deviceText((d.asm !== undefined ? make().assemblies?.find((x) => x.id === d.asm)?.preset : '') ?? '').length + 2 * (d.asm !== undefined ? make().assemblies!.find((x) => x.id === d.asm)!.params.length : 0) + extrasMembers(make(), p, d, b[1]), 0) : 0; // and the extras
       const valued = p.modules.filter((m) => m.type === 'steps' && m.notes?.length);
       const keep = layout(make()).keep;   // (counted records, #667: a record's size follows its values and the rows kept)
+      const origins = p.modules.reduce((n, m) => n + (m.factoryPatterns?.ids.filter(Boolean).length ?? 0), 0);
       const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + PANEL_BYTES + p.modules.reduce((s, m) => s + (b[1] >= COUNTED ? moduleRecordSize(m, b[1], false, keep.get(m.id)) : 1 + 4 * paramsAt(m.type, b[1]).length + (DEFS[m.type].paramInputs ? 8 + 6 * maskBytes(m.type) : 0) + (DEFS[m.type].data ?? 0)), 0) + (b[7] & (FLAG_CABLES3 >> 8) ? 3 : 4) * p.cables.length
         + (valued.length ? 1 + valued.reduce((n, m) => n + 2 + 4 * m.notes!.length, 0) : 0) + pages + buttonRecord(make(), p).length
         + (drumMaps(p).length ? 1 + drumMaps(p).length * (1 + 8 * 8) : 0)
         + (rangeList(p).length ? 1 + 5 * rangeList(p).length : 0) // the macro ranges (the 909 Kit's velocity VCAs)
         + routeBytes(p) // the side-input routes (Cassia 1's PD Osc: pm to range)
+        + (origins ? 2 + 6 * origins : 0) // format54 u16 count and six-byte origin records
         + patternBytes(make()); // the patterns and songs (format 48: Silver Box's demo)
       expect(b.length, name).toBe(size);
       expect(!!(b[6] & FLAG_DEVICES), name).toBe(devs.length > 0);

@@ -152,6 +152,18 @@
    "version": 51
   },
   {
+   "name": "<7PH",
+   "len": 2352,
+   "fnv": "06ca7fb3",
+   "version": 54
+  },
+  {
+   "name": "<7PH",
+   "len": 2352,
+   "fnv": "1984553d",
+   "version": 54
+  },
+  {
    "name": "303 ACID",
    "len": 140,
    "fnv": "1d419c2d",
@@ -441,6 +453,12 @@
   },
   {
    "name": "8 LIRE",
+   "len": 3146,
+   "fnv": "19d4ed12",
+   "version": 51
+  },
+  {
+   "name": "8 LIRE",
    "len": 2536,
    "fnv": "7c18b5cd",
    "version": 51
@@ -698,6 +716,24 @@
    "version": 51
   },
   {
+   "name": "808 KIT",
+   "len": 1864,
+   "fnv": "5c42908a",
+   "version": 54
+  },
+  {
+   "name": "808 KIT",
+   "len": 1864,
+   "fnv": "864953a0",
+   "version": 54
+  },
+  {
+   "name": "808 KIT",
+   "len": 1864,
+   "fnv": "d19124d3",
+   "version": 54
+  },
+  {
    "name": "909 KIT",
    "len": 1345,
    "fnv": "61929948",
@@ -936,6 +972,18 @@
    "len": 2963,
    "fnv": "a96dfb0c",
    "version": 46
+  },
+  {
+   "name": "909 KIT",
+   "len": 1769,
+   "fnv": "60f12e35",
+   "version": 54
+  },
+  {
+   "name": "909 KIT",
+   "len": 1769,
+   "fnv": "984d0a1b",
+   "version": 54
   },
   {
    "name": "ALGO FOUR",
@@ -2585,6 +2633,12 @@
    "name": "ELVIRA 2",
    "len": 2267,
    "fnv": "490fa098",
+   "version": 46
+  },
+  {
+   "name": "ELVIRA 2",
+   "len": 2267,
+   "fnv": "86abebb8",
    "version": 46
   },
   {
@@ -4538,6 +4592,18 @@
    "version": 46
   },
   {
+   "name": "MERIDIAN 8",
+   "len": 1763,
+   "fnv": "cbce14a7",
+   "version": 54
+  },
+  {
+   "name": "MERIDIAN 8",
+   "len": 1763,
+   "fnv": "ddb4134a",
+   "version": 54
+  },
+  {
    "name": "METAL",
    "len": 186,
    "fnv": "9a40869a",
@@ -5570,6 +5636,18 @@
    "version": 46
   },
   {
+   "name": "PERUN 4",
+   "len": 1810,
+   "fnv": "4a1f1096",
+   "version": 54
+  },
+  {
+   "name": "PERUN 4",
+   "len": 1810,
+   "fnv": "f2286efd",
+   "version": 54
+  },
+  {
    "name": "PHASE BASS",
    "len": 241,
    "fnv": "bfe126df",
@@ -6518,6 +6596,12 @@
    "version": 46
   },
   {
+   "name": "SCROUNGE",
+   "len": 2027,
+   "fnv": "f61447c8",
+   "version": 54
+  },
+  {
    "name": "SILVER BOX",
    "len": 452,
    "fnv": "ba8e9ca7",
@@ -7392,6 +7476,12 @@
    "len": 3580,
    "fnv": "79feec0d",
    "version": 46
+  },
+  {
+   "name": "SPOKES 6",
+   "len": 2155,
+   "fnv": "896fc810",
+   "version": 54
   },
   {
    "name": "SQUARE LEAD",
@@ -8427,9 +8517,21 @@
   },
   {
    "name": "VERONA DRUM 1",
+   "len": 2542,
+   "fnv": "4b952197",
+   "version": 51
+  },
+  {
+   "name": "VERONA DRUM 1",
    "len": 2893,
    "fnv": "c24478af",
    "version": 51
+  },
+  {
+   "name": "VERONA DRUM 1",
+   "len": 2392,
+   "fnv": "f70d3025",
+   "version": 54
   },
   {
    "name": "VIBRATO LEAD",

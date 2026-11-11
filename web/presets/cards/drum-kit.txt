@@ -19,7 +19,7 @@
 #   hats level = 0.35                  0..1
 #   level = 0.67                       0..1
 
-# Drafts of 2026-10-29 after a simple one-drum-per-key kit, not yet listened to on the FM-1 (#413).
+# Drafts of 2026-10-29 after a simple one-drum-per-key kit (#413).
 engine: drum kit
 
 preset: Boom Bap
@@ -37,14 +37,14 @@ snare level = 0.55
   level = 0.68
 
 preset: Tight Techno
-# a clicky, short kick, a snappy snare, tight hats and a bright cowbell
+# Clicky kick, snappy snare, tight hats and a single tom pickup.
 kick tune = -27
 kick decay = 0.22
 snare tone = 4
-snare noise = 0.7
+snare noise = 0.75
 clap tail = 0.08
-hat decay = 0.04
-open decay = 0.22
+hat decay = 0.05
+open decay = 0.2
 tom tune = -8
 cowbell tune = 12
 kick level = 0.85
@@ -57,26 +57,26 @@ preset: Electro 808
 kick tune = -33
 kick decay = 1.4
 snare tone = 6
-snare noise = 0.35
+snare noise = 0.75
 clap tail = 0.25
-hat decay = 0.09
-open decay = 0.7
+hat decay = 0.05
+open decay = 0.2
 tom tune = -4
 cowbell tune = 14
 kick level = 0.9
 snare level = 0.5
 hats level = 0.3
-  level = 0.69
+  level = 0.65
 
 preset: Lo-fi House
 # a soft, roomy kit: medium kick, a dark snare with a lot of noise, a lazy clap and loose hats
 kick tune = -29
 kick decay = 0.5
 snare tone = -4
-snare noise = 0.6
+snare noise = 0.75
 clap tail = 0.3
-hat decay = 0.12
-open decay = 0.6
+hat decay = 0.05
+open decay = 0.2
 tom tune = -14
 kick level = 0.75
 snare level = 0.5
