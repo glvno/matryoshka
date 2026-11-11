@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""Focused release packaging checks; compiler and SDK are mocked, no hardware."""
+"""Focused release packaging checks; cross-compiler and SDK mocked, host C compiler real."""
 import contextlib
 import hashlib
 import io
@@ -30,7 +30,8 @@ class ReleaseBuild(unittest.TestCase):
         self.stack.enter_context(patch.multiple(build, PRODUCT=build.PRODUCT, VERSION=None,
                                               FW_VERSION=(0, 0, 0), OUT=build.OUT, GEN=build.GEN, LDR=build.LDR,
                                               SDK_SHA256={}))
-        self.stack.enter_context(patch.dict(os.environ, {}, clear=True))
+        # The host compiler needs PATH to locate its subprocesses; isolate build options only.
+        self.stack.enter_context(patch.dict(os.environ, {"PATH": os.environ.get("PATH", os.defpath)}, clear=True))
         self.stack.enter_context(patch.object(build, "build_loader", return_value=b"loader"))
         self.stack.enter_context(patch.object(build, "build_app", side_effect=self.compile_app))
         self.stack.enter_context(patch.object(build, "check", return_value=([], [])))
