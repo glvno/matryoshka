@@ -1,6 +1,6 @@
 # Current engine recognition contract
 
-This describes the existing implementation in `web/src/engines.ts`, its callers `defIsEngine` and `instIsEngine`, and `web/src/engines.test.ts`. It is the baseline for a future capability query, not a stronger validation rule. The ruling is [D-321](../ledger/patches-and-presets.md#D-321), Decided.
+This describes the recognition implementation in `web/src/assembly-capabilities.ts`, its callers `defIsEngine` and `instIsEngine` in `web/src/engines.ts`, and their regression tests. It is the baseline preserved by the capability query, not a stronger validation rule. The ruling is [D-321](../ledger/patches-and-presets.md#D-321), Decided.
 
 ## Recognition
 
@@ -41,4 +41,4 @@ Audio connects to Output only when nothing already feeds Output. A stereo pair l
 | Reachability graph has a cycle | Terminates; succeeds only if a voicing type is reachable |
 | First keys input is unvoiced, later keys input reaches Voicing | Recognized; insertion's first-input choice requires separate scrutiny |
 
-Contract extraction should add focused regression cases for the last three cases where coverage is missing. This documentation change does not modify the recognizer.
+The capability query's regression tests cover nested engines, merged targets, later qualifying inputs and cycles. Extracting the recognizer does not strengthen this contract or change insertion behavior.

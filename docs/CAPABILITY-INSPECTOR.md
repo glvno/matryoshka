@@ -41,7 +41,7 @@ The preview neither applies that operation nor persists its declaration. The exi
 
 ## Branch workflow
 
-The temporary project branch is `capabilities-integration`. Small implementation branches target it by pull request. Normal fixes and features continue through `main`; relevant changes are merged into the project branch after their normal review. Shared project-branch history is not rebased or force-pushed. Before integration into `main`, bring it up to date and review/test the combined result. Retire the project branch when the work lands or the experiment is stopped. This scoped proposal is [D-148](ledger/releases.md#D-148), Proposed for michael glaviano; the normal `main` workflow in [D-145](ledger/releases.md#D-145), Decided, remains in force.
+The inspector follows the normal `main` integration workflow in [D-145](ledger/releases.md#D-145), Decided. Its example patches, structural checker and design notes travel with the inspection feature. The wider [architecture proposal](ASSEMBLY-CAPABILITIES.md) remains a proposal; landing the inspector does not approve or implement its later playback controls, stored capability declarations, firmware changes or sound-selection interface. Targeted checks follow [D-144](ledger/releases.md#D-144), Decided; this editor-only inspection feature does not require device qualification.
 
 ## Verification
 
