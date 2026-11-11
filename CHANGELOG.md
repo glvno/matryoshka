@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Experimental assembly capability inspector (`?capabilities=1`): inspect engine recognition and supported audio paths while editing, load design examples, and validate a dry-route bypass preview. The preview leaves audio unchanged.
+- The experimental capability inspector shows current module names beside IDs and explains filter output labels. It distinguishes unmet engine/audio-path requirements from unimplemented Harmony, Arp and Steps performance recognition.
 
 ## 1.13.0 — 2026-11-10
 

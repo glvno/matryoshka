@@ -3,6 +3,7 @@
 import { capabilitiesOf, previewBypass } from './assembly-capabilities';
 import type { AssemblyInst, PortRef } from './assembly';
 import { DEFS } from './modules';
+import { longName, moduleTitle } from './labels';
 import { validatePatch, type Patch } from './patch';
 import './capability-inspector.css';
 
@@ -86,21 +87,32 @@ export class CapabilityInspector {
 
   private render(p: Patch, a: AssemblyInst): void {
     const report = capabilitiesOf(p, a);
-    const port = (r: PortRef): string => `${r.label || r.port} → #${r.module}.${r.port}`;
+    const module = (id: number): string => {
+      const m = this.host.patch().modules.find(item => item.id === id);
+      return m ? `${moduleTitle(m, DEFS[m.type]?.label ?? m.type)} · #${id}` : `Missing module · #${id}`;
+    };
+    const port = (r: PortRef): string => {
+      const m = this.host.patch().modules.find(item => item.id === r.module);
+      const name = r.port === 'lp12' ? 'low pass · 12 dB/octave' : longName(m?.type ?? '', r.port);
+      return `${r.label || name} → ${module(r.module)} · ${name} (#${r.module}.${r.port})`;
+    };
     const parent = p.assemblies?.find(other => other.children?.includes(a.id));
-    this.body.append(text('h3', a.label || a.name), text('p', parent ? `Inside ${parent.label || parent.name} · #${parent.id}` : 'Top-level assembly'));
+    this.body.append(text('h3', `${a.label || a.name} · #${a.id}`), text('p', parent ? `Inside ${parent.label || parent.name} · #${parent.id}` : 'Top-level assembly'),
+      text('p', 'Recognition coverage: engine and limited audio paths only. Performance recognition for Harmony (Harmonizer), Arp (Arpeggiator) and Steps is not implemented. This does not make those assemblies or their keys routes invalid.'));
     const list = document.createElement('ul');
     if (report.engine) {
       list.append(text('li', 'Engine recognized'));
-      for (const input of report.engine.inputs) list.append(text('li', `${port(input.port)} reaches voicing ${input.voicing.map(id => `#${id}`).join(', ')}`));
+      for (const input of report.engine.inputs) list.append(text('li', `${port(input.port)} reaches voicing ${input.voicing.map(module).join(', ')}`));
       list.append(text('li', `Audio outputs: ${report.engine.outputs.map(port).join('; ')}`));
       this.body.append(text('p', 'Engine recognition does not prove an audible voice-to-output path.'));
     }
+    else list.append(text('li', 'Engine contract requirements not met: an exposed keys input must reach voicing, and an audio output must be exposed.'));
     if (report.audio) {
       list.append(text('li', 'Audio processing recognized'));
-      for (const path of report.audio.paths) list.append(text('li', `${port(path.input)} → ${path.modules.map(id => `#${id}`).join(' → ')} → ${port(path.output)}`));
+      for (const path of report.audio.paths) list.append(text('li', `${port(path.input)} → ${path.modules.map(module).join(' → ')} → ${port(path.output)}`));
     }
-    if (!report.engine && !report.audio) list.append(text('li', 'No supported capability recognized. The assembly remains editable.'));
+    else list.append(text('li', 'Audio-processing contract requirements not met: exposed audio inputs and outputs must all participate in supported paths.'));
+    if (!report.engine && !report.audio) list.append(text('li', 'Neither implemented contract is recognized here. The assembly remains editable; performance recognition is not evaluated.'));
     this.body.append(list);
     for (const note of report.diagnostics) this.body.append(text('p', note));
     if (!report.audio) return;

@@ -9,10 +9,11 @@ This is an experimental inspection interface, not the final instrument view. Its
 1. Start the editor with its usual `npm run dev` command from `web/`, or use a static build of this branch. Use the existing dev server if it already serves this checkout; do not start a second one for it.
 2. Open the editor with `?capabilities=1`.
 3. In the inspector, choose **02 custom effects** and click **Load example**. This opens the example as the editor's patch.
-4. Choose **Two filters** in the assembly list. The inspector shows the exposed audio ports and the modules on the supported path.
+4. Choose **Two filters** in the assembly list. The inspector shows the exposed audio ports and the modules on the supported path. Module names appear beside numeric patch-local IDs, so two filters with the same name remain distinguishable. The `lp12` output is labeled **low pass · 12 dB/octave**.
 5. Click **Validate dry route** to check the explicitly selected input/output pair. This is a contract preview; it does not bypass playback or store a declaration.
 6. Expand the assembly in the editor and remove the cable between the filters. Audio-processing recognition disappears. Undo restores it. Renaming or moving the assembly does not remove recognition.
 7. Compare **01 factory effects**, **05 shared effects**, **06 no engine** and **07 nested**. A shared effect remains one assembly; a parent and child can both qualify as engines; audio processing does not require an engine.
+8. Load **04 harmony arp** and select **Harmonizer**, **Arpeggiator** and **Steps** in the assembly list. The coverage note says performance recognition is not implemented. The engine and audio-processing requirement messages describe only those implemented contracts; they do not say these performance assemblies are invalid. Ordinary editing and keys-routing rules still apply.
 
 Close the panel with its Close button or Escape while focus is inside it. Ordinary sessions without the query flag do not load the inspector or its example chunks. No experimental declarations are added to saved patches or assembly presets.
 
@@ -24,7 +25,11 @@ The audio experiment describes the primitive audio dependencies of Delay, Reverb
 
 Unknown dependencies receive a diagnostic rather than an invented route. Merged audio inputs are outside this experiment. A recognized path establishes structural dependence, not audible output at every setting, a complete account of all side paths, stereo semantics or a resource saving. Control values can still mute or change the sound. Custom and factory assemblies use exactly the same query.
 
-Recognition is refreshed after editor structure and layout notifications. The query does not cache an execution plan. The inspector lists assembly IDs and ports for investigation; these details are not proposed final instrument controls.
+Performance capability recognition is not implemented. Harmony (the Harmonizer), Arp (the Arpeggiator) and Steps are not classified as performance capabilities by this inspector. Existing engine recognition can follow keys cables through such modules to voicing, but that does not establish a performance contract. The **04 harmony arp** example demonstrates the existing Steps → Harmony → Arp route before a mono lead. It contains no authored Steps phrase and does not demonstrate recorded-note preservation.
+
+The inspector separates missing implementation from unmet requirements. It states the performance recognition limit separately from the engine and audio-processing results. A missing engine or audio-processing result means that contract's requirements were not met, not that the assembly or patch is invalid. Diagnostics remain visible for missing ports, incomplete supported audio paths and undescribed audio dependencies.
+
+Recognition is refreshed after editor structure and layout notifications. The query does not cache an execution plan. Assembly headings, module routes, voicing targets and port references show current names beside numeric patch-local IDs. Renaming updates the displayed names without changing recognition, and IDs distinguish duplicate names. Port references also retain their raw port identifiers for investigation. These details are not proposed final instrument controls.
 
 ## Bypass contract preview
 
