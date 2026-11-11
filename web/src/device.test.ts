@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+import { recoveredLines } from './test-buffer-budget';
 // Connecting the FM-1 syncs by default (#171): the decision on connect and the chip's state; Live over the budget (#200).
 import { describe, expect, it } from 'vitest';
 import { chipState, DeviceLink, IGNORED_NOW, ignoredFound, linkCandidates, type LinkCandidate, liveSync, notFound, sysexRefused, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, transportOf } from './device';
@@ -252,6 +253,53 @@ describe('DeviceLink.connect', () => {
       g.window = savedWin;
     }
   };
+  it('refreshes allocation rules for each device, unsolicited INFO, and failed reconnect', async () => {
+    const fm1 = { i: port('f', 'FM-1'), o: port('F', 'FM-1') };
+    let rule: number | undefined = 1;
+    const info = () => [1, 128, 255, 3, 255, 0, 1, 31, 53, 0, 0, 0, 0, ...(rule === undefined ? [] : [rule])];
+    fm1.o.send = (d) => {
+      fm1.o.sent.push(d);
+      const p = parse(d)!;
+      const answer = p.cmd === CMD.hello ? frame(CMD.info, info()) : frame(CMD.ack, [p.cmd, p.payload[0] ?? 0, 0, 0]);
+      setTimeout(() => fm1.i.onmidimessage?.({ data: answer }), 0);
+    };
+    const link = new DeviceLink(), patch = recoveredLines();
+    const shared = encodePatch(patch, false, false, 1);
+    await withMidi([fm1.i], [fm1.o], async () => {
+      await link.connect();
+      expect(link.bufferAllocation).toBe(1);
+      await expect(link.upload(patch)).resolves.toBeUndefined();
+      await expect(link.uploadSlot(0, 'TEST', patch)).resolves.toBeUndefined();
+      const changing = structuredClone(patch);
+      const pending = link.upload(changing, shared);
+      Object.assign(changing, newPatch(DEFS));
+      rule = undefined;
+      fm1.i.onmidimessage?.({ data: frame(CMD.info, info()) });
+      await expect(pending).rejects.toThrow('over the FM-1 budget'); // validate submitted bytes, not the now-smaller editor patch
+
+      for (const unsupported of [undefined, 0, 2, 255]) {
+        rule = unsupported;
+        await link.hello();
+        expect(link.bufferAllocation).toBe(0);
+        const count = fm1.o.sent.length;
+        await expect(link.upload(patch, shared)).rejects.toThrow('over the FM-1 budget');
+        await expect(link.uploadSlot(0, 'TEST', patch)).rejects.toThrow('over the FM-1 budget');
+        expect(fm1.o.sent).toHaveLength(count); // reject before CHUNK, COMMIT or SLOT
+      }
+      rule = 1;
+      fm1.i.onmidimessage?.({ data: frame(CMD.info, info()) });
+      expect(link.bufferAllocation).toBe(1);
+      rule = undefined;
+      fm1.i.onmidimessage?.({ data: frame(CMD.info, info()) });
+      expect(link.bufferAllocation).toBe(0);
+      rule = 1;
+      await link.connect();
+      expect(link.bufferAllocation).toBe(1);
+    });
+    await expect(withMidi([], [], () => link.connect(), new Error('no MIDI'))).rejects.toThrow();
+    expect(link.bufferAllocation).toBe(0);
+    expect(link.info).toBeNull();
+  });
   it.each(['slot', 'upload'])('discards old patch snapshot indices at the %s boundary', async (boundary) => {
     const inp = port('i', 'FM-1'), out = port('o', 'FM-1');
     answering(out, inp);

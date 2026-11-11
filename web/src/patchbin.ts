@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+import { signalBuffers, type BufferAllocation } from './signal-buffers';
 import { chainedHarmonizer, keyRouteError } from './key-routing';
 // Compact binary patch format, read by firmware/src/engine.c (eng_load).
 //
@@ -805,10 +806,10 @@ export const drumMaps = (p: Patch): number[] => p.modules.flatMap((m, i) => (m.t
 
 /** the binary patch; refused when it is over the FM-1 budget, unless `anyway` (tools that count the engine's work on patches the
  * estimate has not seen yet: scripts/cpu-costs.ts). `counted`: in format COUNTED whatever its size (tests, golden kits) */
-export function encodePatch(source: Patch, anyway = false, counted = false): Uint8Array {
+export function encodePatch(source: Patch, anyway = false, counted = false, allocation: BufferAllocation = 0): Uint8Array {
   const routingError = keyRouteError(source);
   if (routingError) throw new Error(routingError);
-  const budget = deviceBudget(source);
+  const budget = deviceBudget(source, allocation);
   if (!budget.fits && !anyway) throw new Error(`over the FM-1 budget: ${budget.over.map((i) => (i.key === 'browser' ? i.label : `${i.label} ${i.used} of ${i.max}`)).join(', ')}`);
   const { p, groups, devs, kinds, keep, names, size, v: ver } = layout(source, undefined, counted);
   const index = new Map(p.modules.map((m, i) => [m.id, i]));
@@ -1060,7 +1061,7 @@ export interface LineUse { id: number; type: string; copies: number; bytes: numb
  * part of its poly group, and the spare copy), signal buffers (one per connected output port and copy, and one per input
  * copy with two or more sources: a module outside a poly assembly reading a per-part output has one source per part) and
  * parameter values (per module its type's, twice that with a morph B side, and per copy their effective values) */
-export interface PoolUse { instances: number; buffers: number; params: number }
+export interface PoolUse { instances: number; buffers: number; params: number; physicalBuffers?: number }
 /** the memory a patch takes on the FM-1 (#649): each line-type module's lines, the module copies, signal buffers and
  * parameter values; `used` the total bytes of the arena and the low line area, `max` theirs, and whether the lines fit
  * what the others leave (`fits`, linePlace) */
@@ -1074,7 +1075,7 @@ function copiesOf(groups: DeviceGroup[]): (id: number) => number {
   return (id) => copies.get(id) ?? 1;
 }
 /** PoolUse of a device form (`groups`: its poly groups), counted as eng_load takes them */
-export function poolUse(p: Patch, groups: DeviceGroup[]): PoolUse {
+export function poolUse(p: Patch, groups: DeviceGroup[], allocation: BufferAllocation = 0): PoolUse {
   const ninst = copiesOf(groups);
   const groupOf = new Map<number, number>();
   groups.forEach((g, i) => g.modules.forEach((id) => groupOf.set(id, i)));
@@ -1100,12 +1101,12 @@ export function poolUse(p: Patch, groups: DeviceGroup[]): PoolUse {
   let params = 0; // engine.c par_take: a node's values (and morph B side), each instance's effective values
   const morph = hasMorph(p);
   for (const m of p.modules) params += DEFS[m.type].params.length * ((morph ? 2 : 1) + ninst(m.id));
-  return { instances, buffers, params };
+  return { instances, buffers, params, ...(allocation === 1 ? { physicalBuffers: signalBuffers(p, groups).physical } : {}) };
 }
 /** the memory of a patch's device form (what eng_load takes, a copy per part as it counts them) */
-export function lineBudget(source: Patch): LineBudget {
+export function lineBudget(source: Patch, allocation: BufferAllocation = 0): LineBudget {
   const { patch: p, groups } = deviceView(source, true);
-  return linesOf(p, copiesOf(groups), poolUse(p, groups));
+  return linesOf(p, copiesOf(groups), poolUse(p, groups, allocation));
 }
 export const KEY_ROUTING_BYTES = 8040;
 function linesOf(p: Patch, ninst: (id: number) => number, pool: PoolUse): LineBudget {
@@ -1119,7 +1120,7 @@ function linesOf(p: Patch, ninst: (id: number) => number, pool: PoolUse): LineBu
     modules.push({ id: m.id, type: m.type, copies: n, bytes: one * n });
   }
   const lines = sizes.reduce((a, b) => a + b, 0);
-  const copiesBytes = (pool.instances + 1) * INST_BYTES, buffersBytes = pool.buffers * BUF_BYTES, paramsBytes = pool.params * PAR_BYTES;
+  const copiesBytes = (pool.instances + 1) * INST_BYTES, buffersBytes = (pool.physicalBuffers ?? pool.buffers) * BUF_BYTES, paramsBytes = pool.params * PAR_BYTES;
   const nodes = p.modules.length, nodesBytes = nodes * NODE_BYTES;
   // engine.c key_memory_t: bounded queues and transient chord/entry state, allocated only by chained routes.
   const keyBytes = chainedHarmonizer(p) && p.modules.some(m => m.type === 'steps') ? KEY_ROUTING_BYTES : 0;
@@ -1133,14 +1134,14 @@ export const MAX_LINES = 128;
  * The longest length (ms, a whole step of the row) Delay `id` can take with every other line of the patch where it is, at
  * least `floor`; 0 when even the shortest does not fit. The editor's length row stops there (lengthRoom).
  */
-export function delayRoom(source: Patch, id: number): number {
+export function delayRoom(source: Patch, id: number, allocation: BufferAllocation = 0): number {
   const pd = DEFS.delay.params.find((q) => q.name === 'length')!;
   const m = source.modules.find((x) => x.id === id);
   if (!m || m.type !== 'delay') return 0;
   const was = m.params.length;
   const fits = (ms: number): boolean => {
     m.params.length = ms;
-    try { return lineBudget(source).fits; } finally { if (was === undefined) delete m.params.length; else m.params.length = was; }
+    try { return lineBudget(source, allocation).fits; } finally { if (was === undefined) delete m.params.length; else m.params.length = was; }
   };
   const step = pd.step ?? 10;
   if (!fits(pd.min)) return 0;
@@ -1158,8 +1159,8 @@ export function delayRoom(source: Patch, id: number): number {
  * "Memory full: 350 of 362 KB used. Shorten the other Delay or remove the Granular (86 KB)." When the module copies take
  * more than any line, fewer voices come first.
  */
-export function linesAdvice(source: Patch, except?: number): string {
-  const b = lineBudget(source);
+export function linesAdvice(source: Patch, except?: number, allocation: BufferAllocation = 0): string {
+  const b = lineBudget(source, allocation);
   const others = b.modules.filter((u) => u.id !== except).sort((x, y) => y.bytes - x.bytes);
   const name = (u: LineUse): string => `the ${DEFS[u.type].label}${u.copies > 1 ? ` (×${u.copies})` : ''}`;
   const delays = others.filter((u) => u.type === 'delay');
@@ -1233,11 +1234,11 @@ export interface Budget {
 /** the patch bytes the budget counts: the binary's, plus the room kept for the engine devices' preset names (presetNames) */
 const bytesOf = (source: Patch, view: ReturnType<typeof deviceView>): number => layout(source, view).need;
 
-export function deviceBudget(source: Patch): Budget {
+export function deviceBudget(source: Patch, allocation: BufferAllocation = 0): Budget {
   const view = deviceView(source, true);
   const { patch: p, groups } = view;
   const ninst = copiesOf(groups);
-  const pool = poolUse(p, groups);
+  const pool = poolUse(p, groups, allocation);
   const { instances, buffers, params } = pool;
   const count = (...types: string[]): number => p.modules.filter((m) => types.includes(m.type)).reduce((n, m) => n + ninst(m.id), 0);
   const lines = linesOf(p, ninst, pool);

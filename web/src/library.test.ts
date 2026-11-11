@@ -98,6 +98,24 @@ it('with an FM-1 the column shows its slots: named when they hold the bank, else
   vi.unstubAllGlobals();
 });
 
+it('refreshing capability-dependent rows preserves an in-flight slot upload and its result', async () => {
+  const dev = fakeDevice(true), write = dev.uploadSlot.bind(dev);
+  savePatch({ ...FM1_PRESETS.Init(), name: 'In flight' });
+  const root = document.createElement('div');
+  const pane = buildPatchesSection(root, dev, { remove: () => {} });
+  dev.uploadSlot = async (...args) => {
+    await Promise.resolve();
+    pane.refresh();
+    return write(...args);
+  };
+  pane.enter();
+  await flush();
+  button(cols(root)[0].querySelector('.bank-row')!, '→').click();
+  await flush();
+  await flush();
+  expect(rows(cols(root)[1])).toEqual(['IN FLIGHT']);
+});
+
 it('your assemblies: a delete and a replace act at once, each with an undo; a rename never takes a used name', () => {
   const [a, b] = FACTORY;
   expect(storeAssembly({ ...a, name: 'One' }).result).toBe('saved');

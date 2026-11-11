@@ -127,7 +127,8 @@
 //               [minimum readable patch format, maximum readable patch format], [firmware major, minor, patch:
 //               0.0.0 a dev or CI build; #216, absent from firmware before 1.8],
 //               [features 16..23: bit16 TEMPO / TEMPO_NOW, bit17 a preset carries up to 176 values, bit18 KEYS_NOW /
-//               GUIDE_NOW, bit19 flags bit3 says EDITOR, bit20 ARMS, bit21 ARMS wide, bit22 DEVICE_SETTINGS, bit23 PATTERN_ORIGIN]. Also unasked
+//               GUIDE_NOW, bit19 flags bit3 says EDITOR, bit20 ARMS, bit21 ARMS wide, bit22 DEVICE_SETTINGS, bit23 PATTERN_ORIGIN],
+//               [byte13 allocation rule: 0 separate signal buffers, 1 physical lifetime buffers; unknown/missing means 0]. Also unasked
 //               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8), and when EDITOR changed after
 //               a HELLO (feature bit 19)
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
@@ -328,6 +329,8 @@ export interface Info {
   /** feature bits: 2 = the TRANSPORT command, 4 = MUTE, 32 = TRACK, 256 = sandbox mode (1 ARP, 8 STEPVAL are retired;
    *  STEP went with 4's meaning) */
   features: number;
+  /** INFO byte 13: signal-buffer allocation rule. Missing or unknown means separate charging. */
+  bufferAllocation?: number;
   /** Inclusive binary patch format range; absent from older firmware, whose feature bits describe compatibility. */
   patchFormats?: { min: number; max: number };
   /** MENU > MIDI OUT is on (the FM-1's panel reaches the editor); null: the firmware does not say (no feature bit 8) */
@@ -371,6 +374,7 @@ export function parseInfo(p: Parsed): Info | null {
   if (p.cmd !== CMD.info || p.payload.length < 5) return null;
   const features = (p.payload[5] ?? 0) | ((p.payload[6] ?? 0) << 8) | ((p.payload[12] ?? 0) << 16);
   return { version: p.payload[0], maxModules: p.payload[1], maxCables: p.payload[2], flashOk: !!(p.payload[3] & 1), patchLoaded: !!(p.payload[3] & 2), delays: p.payload[4], features,
+    ...(p.payload.length >= 14 ? { bufferAllocation: p.payload[13] } : {}),
     midiOut: features & FEATURE_SANDBOX ? !!(p.payload[3] & 4) : null,
     editorIgnored: !!(features & FEATURE_EDITOR_SETTING) && !!(p.payload[3] & INFO_EDITOR_IGNORE),
     ...(p.payload.length >= 9 ? { patchFormats: { min: p.payload[7], max: p.payload[8] } } : {}),

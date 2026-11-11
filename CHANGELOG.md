@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Firmware capability updates refresh Library budgets without interrupting an active bank transfer.
+- Patches can use memory recovered by sharing signal buffers. In the [host allocation check](tools/buffer_budget.py), one patch uses 1,536 bytes of signal storage instead of 44,032, recovering 42,496 bytes for its effect lines. The editor follows the connected firmware's reported rule; older firmware and offline budgets stay conservative. Voice and CPU limits are unchanged. Host allocation checks, the focused emulator scenario and registered-FM-1 audio/timing qualification pass.
+- Hardware CPU surveys clear the previous patch's cached diagnostic peak before committing the next patch, without discarding its first rendered block.
+
 - Experimental assembly capability inspector (`?capabilities=1`): inspect engine recognition and supported audio paths while editing, load design examples, and validate a dry-route bypass preview. The preview leaves audio unchanged.
 - The experimental capability inspector shows current module names beside IDs and explains filter output labels. It distinguishes unmet engine/audio-path requirements from unimplemented Harmony, Arp and Steps performance recognition.
 - Release-packaging checks preserve the host compiler's search path while isolating firmware build settings.

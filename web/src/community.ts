@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+import type { BufferAllocation } from './signal-buffers';
 // Community patches (glvno/matryoshka#157): a curated list bundled with the app, `community.json`, fed by the GitHub issue
 // form `.github/ISSUE_TEMPLATE/community-patch.yml`. An accepted submission becomes one entry in a commit; the entries are
 // third-party patches under CC BY-SA 4.0 (LICENSING.md), not the GPL code. No live fetching: the app reads only the
@@ -115,9 +116,9 @@ export function enginesOf(p: Patch): string[] {
 /** its chip, FM-1 · NN % or SANDBOX (sandbox.ts): worked out once per entry when first shown, as the bundled entries do not
  *  change while the page is open (never stored) */
 const chips = new Map<string, Chip>();
-export function chipOfEntry(c: CommunityPatch): Chip {
-  let chip = chips.get(c.entry.title);
-  if (!chip) chips.set(c.entry.title, (chip = c.patch ? chipOf(c.patch) : { fits: false, text: 'SANDBOX' }));
+export function chipOfEntry(c: CommunityPatch, allocation: BufferAllocation = 0): Chip {
+  let chip = chips.get(allocation + c.entry.title);
+  if (!chip) chips.set(allocation + c.entry.title, (chip = c.patch ? chipOf(c.patch, allocation) : { fits: false, text: 'SANDBOX' }));
   return chip;
 }
 

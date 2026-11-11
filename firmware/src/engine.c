@@ -711,7 +711,7 @@ typedef struct {
     uint16_t nsrc;
     uint8_t order[ENG_MAX_MODULES], outputs[ENG_MAX_MODULES];
     uint8_t from_m[ENG_MAX_CABLES], from_p[ENG_MAX_CABLES], to_m[ENG_MAX_CABLES], to_p[ENG_MAX_CABLES];
-    uint16_t ncab, nbuf, nphys;      /* nbuf: values given a buffer (what the arena counts), nphys: the buffers (#800) */
+    uint16_t ncab, nbuf, nphys;      /* nbuf: logical values (sanity cap), nphys: allocated buffers (#824) */
     node_t *node;                    /* the modules, nmod of them in the arena's top (#721, arena_nodes); node_none until a load */
     sum_t sum[MAX_SUM];
     const esig_t *sum_src[MAX_SRC];
@@ -1037,8 +1037,8 @@ static void visit(uint32_t id, uint8_t *st)
  * read in the next block (a feedback cable; a cable out of its poly group: an idle part's outputs stay silent, part_quiet
  * reads them after the render) or outside the render (buf_late). The second core (#271): lane 1 of a split segment runs
  * at the same time as lane 0, so a buffer serves one lane only (the odd parts of a group that may split, else lane 0),
- * and a value one lane writes and the other reads lives to the end of the segment that reads it. The arena still counts a
- * buffer per value, as the editor's budget does (patchbin.ts memoryBudget): the same patches load. */
+ * and a value one lane writes and the other reads lives to the end of the segment that reads it. Allocation rule 1 charges
+ * only physical buffers. Comparison builds (rule 0) still reserve one buffer per value. */
 #ifndef ENG_BUF_REUSE
 #define ENG_BUF_REUSE 1
 #endif
@@ -2438,7 +2438,7 @@ int eng_load(const uint8_t *p, uint32_t len)
                         return -6;
             }
         }
-        if (bs.values > bs.n && !arena_lo((bs.values - bs.n) * ENG_BUF_BYTES))   /* the arena counts every value's buffer */
+        if (!ENG_BUFFER_ALLOCATION && bs.values > bs.n && !arena_lo((bs.values - bs.n) * ENG_BUF_BYTES))   /* conservative allocation rule */
             return -6;
         E.nbuf = (uint16_t)bs.values;
         E.nphys = (uint16_t)bs.n;

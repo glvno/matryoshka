@@ -705,6 +705,16 @@ static int locks_test(const char *kit_path)
 
 int main(int argc, char **argv)
 {
+    if (argc == 2 && !strcmp(argv[1], "--allocation")) {
+        uint8_t q[4] = {0x7D, 0x4D, 0x31, C_HELLO}, p[16];
+        uint32_t n;
+        CHECK(m1_handle(q, sizeof q) == 1 && replies[0][4] == R_INFO);
+        n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
+        CHECK(n == 14u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION);
+        CHECK(p[12] == M1_FEATURES3 && p[13] == ENG_BUFFER_ALLOCATION);
+        printf("allocation rule %u advertised with unchanged format range %u..%u\n", p[13], p[7], p[8]);
+        return 0;
+    }
     if (argc >= 2 && !strcmp(argv[1], "--old"))
         return old_format(argc - 2, argv + 2);
     if (argc >= 2 && !strcmp(argv[1], "--grow"))
@@ -832,7 +842,7 @@ int main(int argc, char **argv)
         nreplies = 0;
         CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 4 && replies[0][4] == R_INFO && replies[1][4] == R_TEMPO_NOW);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
-        CHECK(n == 13u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[12] == M1_FEATURES3);
+        CHECK(n == 14u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[12] == M1_FEATURES3 && p[13] == ENG_BUFFER_ALLOCATION);
         { uint32_t j; uint8_t origin[6];
           for (j = 0; j < 2u; j++) {
               CHECK(replies[j + 2u][4] == R_PATTERN_ORIGIN);
@@ -846,7 +856,7 @@ int main(int argc, char **argv)
         nreplies = 0;
         CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 4);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
-        CHECK(n == 13u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION);
+        CHECK(n == 14u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION);
         CHECK(!(p[3] & M1_INFO_MIDI_OUT));
         midi_out_on = 1;
         /* #702: EDITOR at IGNORE is flag bit 3, with feature bit 19; at ALLOW the bit is clear (as in older firmware) */
@@ -855,7 +865,7 @@ int main(int argc, char **argv)
         nreplies = 0;
         CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 4);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
-        CHECK(n == 13u && (p[3] & M1_INFO_EDITOR_IGNORE) && (p[3] & M1_INFO_MIDI_OUT));
+        CHECK(n == 14u && (p[3] & M1_INFO_EDITOR_IGNORE) && (p[3] & M1_INFO_MIDI_OUT));
         editor_ignore_on = 0;
     }
     /* ARMS (#191, feature bit 20): the editor's armed set, u32 LE words, as the FM-1's own; no reply, no ARMS_NOW. Two words
