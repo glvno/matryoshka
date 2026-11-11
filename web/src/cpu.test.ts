@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { readFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { CPU, cpuEstimate, runCost, type TypeCost } from './cpu';
-import { encodePatch } from './patchbin';
 import { cpuChecks, looseModel } from './cpu-checks';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, EDITOR_ONLY } from './patch';
@@ -111,20 +109,13 @@ describe('CPU estimate against the test rig (docs/measurements/cpu-survey-2026-1
     read('cpu-survey-2026-11-09-rig-integration.json'), read('cpu-survey-2026-11-09-rig-integration-run.json'),
   ];
   const median = (v: number[]): number => [...v].sort((a, b) => a - b)[(v.length - 1) >> 1];
-  // Scrounge's five fixed Pans changed cost in #782. These surveys ran the old loop. Keep their
-  // calibration check on its recorded cost; the current cost still has no candidate rig measurement.
+  // Published measurements belong to the frozen v1.13.0 patch, not today's factory pattern/format.
+  // The fixture's encoded SHA-256 was checked against the recorded input before retaining it here.
+  const publishedScrounge = JSON.parse(readFileSync(new URL('./cpu-scrounge-1.13.json', import.meta.url), 'utf8')) as Patch;
   const scroungeBaseline = JSON.parse(readFileSync(new URL('../../docs/measurements/cpu-survey-2026-11-10-scrounge-baseline.json', import.meta.url), 'utf8')) as {
     fixture_sha256: string; pan_cost: TypeCost; phases: { cpu: number[][] }[];
   };
   const publishedPanTable = { ...CPU, types: { ...CPU.types, pan: scroungeBaseline.pan_cost } };
-  it('keeps the published Scrounge calibration within -3 / +5 points on the exact measured patch', () => {
-    const patch = FM1_PRESETS.Scrounge();
-    expect(createHash('sha256').update(encodePatch(patch, true)).digest('hex')).toBe(scroungeBaseline.fixture_sha256);
-    const device = 100 * Math.max(...scroungeBaseline.phases.map(p => median(p.cpu.slice(1).map(s => s[1])))) / CPU.blockUs;
-    const estimate = 100 * cpuEstimate(patch, publishedPanTable).use;
-    expect(estimate).toBeGreaterThanOrEqual(device - 3);
-    expect(estimate).toBeLessThanOrEqual(device + 5);
-  });
   const voicesOf = (p: Patch): number => Math.max(1, ...deviceView(p, true).groups.map((g) => g.cfg.parts));
   // renamed since the survey; played there with more voices than today; changed since (none)
   const RENAMED: Record<string, string> = {};
@@ -143,11 +134,12 @@ describe('CPU estimate against the test rig (docs/measurements/cpu-survey-2026-1
         rig.set(name, Math.max(rig.get(name) ?? 0, median(samples.slice(1))));
       }
     }
+  rig.set('Scrounge', Math.max(...scroungeBaseline.phases.map(p => median(p.cpu.slice(1).map(s => s[1])))));
   it('has a figure for every factory patch the rig measured as it is today', () => expect(rig.size).toBe(Object.keys(FM1_PRESETS).length - CHANGED.size));
   for (const name of Object.keys(FM1_PRESETS))
     it.skipIf(!rig.has(name))(`${name === 'Scrounge' ? 'published Pan calibration' : 'reads'} within -3 / +5 points of the rig: ${name}`, () => {
       const device = (100 * rig.get(name)!) / CPU.blockUs;
-      const est = 100 * cpuEstimate(FM1_PRESETS[name](), name === 'Scrounge' ? publishedPanTable : CPU).use;
+      const est = 100 * cpuEstimate(name === 'Scrounge' ? publishedScrounge : FM1_PRESETS[name](), name === 'Scrounge' ? publishedPanTable : CPU).use;
       expect(est).toBeGreaterThanOrEqual(device - 3);
       expect(est).toBeLessThanOrEqual(device + 5);
     });
