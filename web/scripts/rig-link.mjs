@@ -132,3 +132,50 @@ export async function pickRig(page) {
   await page.evaluate((x) => window.__rig.pick(x), s.rig);
   return s;
 }
+
+/** An isolation failure stops the run, rather than continuing with another scenario. */
+export class RigIsolationError extends Error {
+  name = 'RigIsolationError';
+}
+
+/** Set and save EDITOR IGNORE on a picked target; INFO, not screen wording, proves isolation. */
+export async function ensureRigIgnored(target, buttons, encoders, persist = false) {
+  try {
+    const info = await target.info();
+    if (!info || !(info.features & (1 << 19)))
+      throw new Error('firmware does not support EDITOR IGNORE');
+    if (info.editorIgnored) {
+      if (persist) {
+        await target.diag(129);
+        if (!(await target.info())?.editorIgnored) throw new Error('INFO no longer confirms EDITOR IGNORE');
+      }
+      return;
+    }
+    if (!(await target.home())) throw new Error('the rig did not return to its device page');
+    await target.tap(buttons.glo);
+    try {
+      if (!(await target.waitText('ALGO tab', 3000))) throw new Error('the settings menu did not open');
+      let found = false;
+      for (let i = 0; i < 6; i++) {
+        const { texts } = await target.screen();
+        if (texts.some((t) => t.s === 'SYSTEM 2/2') && texts.some((t) => t.s === 'EDITOR')) {
+          found = true;
+          break;
+        }
+        await target.turn(encoders.algo, 1);
+        await target.elapse(300);
+      }
+      if (!found) throw new Error('the EDITOR row on SYSTEM 2/2 did not appear');
+      await target.turn(encoders.k1, 1);
+      await target.elapse(300);
+      if (!(await target.info())?.editorIgnored) throw new Error('INFO did not confirm EDITOR IGNORE');
+      await target.diag(129); // Save only global settings, never the current patch or a slot.
+    } finally {
+      await target.tap(buttons.glo);
+    }
+    if (!(await target.info())?.editorIgnored) throw new Error('INFO no longer confirms EDITOR IGNORE');
+    console.log('  rig isolation: EDITOR set to IGNORE and settings saved');
+  } catch (cause) {
+    throw new RigIsolationError(`rig editor isolation failed: ${cause.message}`, { cause });
+  }
+}
