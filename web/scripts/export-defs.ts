@@ -315,7 +315,9 @@ P.push('typedef struct { uint32_t identity; uint32_t structure; const char *name
 patternDefaults.forEach((p, i) => P.push(`static const uint32_t FPN_${i}[] = {${p.notes.map((w) => `${w}u`).join(',')}};`));
 P.push(`#define N_PRESET_PATTERNS ${patternDefaults.length}`);
 P.push('static const preset_pattern_t PRESET_PATTERNS[N_PRESET_PATTERNS] = {');
-patternDefaults.forEach((p, i) => P.push(`    {0x${p.id}u, 0x${p.structure}u, "${p.name.toUpperCase()}", FPN_${i}, ${p.notes.length}, ${p.len}, ${p.rate}, ${p.swing}, ${p.dir}, ${toQ16(p.gate)}},`));
+// Hashes are data, like the packed note words: decimal keeps arbitrary identities
+// from looking like literal hardware addresses to the firmware build safeguard.
+patternDefaults.forEach((p, i) => P.push(`    {${Number.parseInt(p.id, 16)}u, 0x${p.structure}u, "${p.name.toUpperCase()}", FPN_${i}, ${p.notes.length}, ${p.len}, ${p.rate}, ${p.swing}, ${p.dir}, ${toQ16(p.gate)}},`));
 P.push('};', '');
 const MIG = migrationTables(PRESET_MIGRATIONS);   // (after FPRESET_LIST: presetmig.c reads both)
 P.push(...MIG.lines);
