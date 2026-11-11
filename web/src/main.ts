@@ -344,7 +344,8 @@ device.onEvent = (e) => {
       if (mirror.following && mirror.follows(port)) unfollowFm1(IGNORED_NOW);
     }
     showBudget();
-    libraryDeviceChanged();
+    // INFO changes capabilities, not the connection or its in-flight bank operations.
+    for (const pane of Object.values(libraryPanes)) pane.refresh();
     return syncChip();   // INFO also refreshes the memory rule for this device
   }
   if (e.kind === 'keys') {   // a key edge the FM-1's panel took (#549): through the copy too, as the FM-1 took it

@@ -36,6 +36,7 @@ NOTES = [60, 64, 67, 71, 72, 76, 79, 83]
 def phase(link, n, data, hold=2.0, run=False):
     M.upload_chunks(link, data)
     c = M.crc16(data)
+    cpu(link)                                  # clear the previous patch's diagnostic peak; commit resets eng_us_max, not diag_us_peak
     link.ack(M.frame(0x11, [len(data) & 0xFF, len(data) >> 8, c & 0xFF, c >> 8]), 0x11, wait=3.0)
     samples = []
     means = []
