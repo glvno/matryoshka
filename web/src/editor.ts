@@ -75,7 +75,7 @@ import { SongView } from './song';
 import type { PatternView } from './engine';
 import { fixLocks, fixNotes, fixPatterns, fixSeq, overdub, PATTERNS_MAX, patternLocks as patternLocksOf, patternOf, SONGS_MAX, type Pattern, type SeqState, type SongEntry, type StepLock, type StepNote } from './track';
 import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './engines';
-import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, sameName, renamePreset, shortBy, shortPresetText, stepPreset, storePreset } from './device-presets';
+import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, sameName, renamePreset, shortBy, shortPresetText, stepPreset, storePreset, type Preset } from './device-presets';
 import { engineOf } from './library-presets';
 import { structureOf } from './structure';
 import { armable, armDrawing, armedWith, keepArmed, noKeysReach, type DeviceKey } from './arm';
@@ -4069,7 +4069,7 @@ export class Editor {
     chip.className = 'preset-chip';
     const step = (dir: 1 | -1): void => {
       const pr = stepPreset(this.patch, a, dir);
-      if (pr) this.loadPreset(a, pr.name);
+      if (pr) this.loadPreset(a, pr);
     };
     const name = this.button('', '', () => {
         const r = name.getBoundingClientRect();
@@ -4104,10 +4104,8 @@ export class Editor {
     });
   }
 
-  /** load a preset by name into an assembly: one undo step */
-  private loadPreset(a: AssemblyInst, name: string): void {
-    const pr = presetsOf(this.patch, a).find((x) => sameName(x.name, name));
-    if (!pr) return;
+  /** load the selected preset into an assembly: one undo step */
+  private loadPreset(a: AssemblyInst, pr: Preset): void {
     const missing = shortBy(this.patch, a, pr);
     if (this.change(() => applyPreset(this.patch, a, pr)))
       this.ev.onError(missing ? shortPresetText(engineOf(pr.structure) || a.label, missing, pr.values.length + missing) : `${a.label}: preset "${pr.name}"`);
@@ -4117,7 +4115,7 @@ export class Editor {
   private presetItems(a: AssemblyInst): MenuItem[] {
     const list = presetsOf(this.patch, a);
     const cur = list.find((x) => sameName(x.name, a.preset));
-    const items: MenuItem[] = list.map((pr) => ({ text: `${sameName(pr.name, a.preset) ? '● ' : ''}${pr.name}${pr.factory ? ' (factory)' : ''}`, run: () => this.loadPreset(a, pr.name) }));
+    const items: MenuItem[] = list.map((pr) => ({ text: `${sameName(pr.name, a.preset) ? '● ' : ''}${pr.name}${pr.factory ? ' (factory)' : ''}`, run: () => this.loadPreset(a, pr) }));
     items.push({ text: cur && !cur.factory ? `Store over "${cur.name}"` : 'Store as a preset…', rule: !!list.length, run: () => {
       const n = cur && !cur.factory ? cur.name : window.prompt('Store the card’s values as the preset', nextPresetName(this.patch, a))?.trim();
       if (!n) return;
