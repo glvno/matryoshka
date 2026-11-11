@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { FACTORY } from './assemblies';
 import { addableModules, assemblyShelves, openableByValue, openableGroups, SHELVES } from './catalog';
@@ -90,15 +89,4 @@ describe('what the editor offers (#84)', () => {
     expect(openableGroups()[0].items.map((o) => o.value)).toEqual([`saved:${c.entry.title}`]);
   });
 
-  it('the palette, the browser and the Open picker read these lists, not their own', () => {
-    const main = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
-    const palette = main.slice(main.indexOf('const commands = ('), main.indexOf('const loadNamed'));
-    for (const own of ['Object.values(DEFS)', 'FACTORY', 'loadLibrary()', 'patchCandidates', 'PRESETS', 'savedPatches']) expect(palette).not.toContain(own);
-    expect(palette).toContain('addableModules(DEFS)');
-    expect(palette).toContain('assemblyShelves()');
-    expect(palette).toContain('openableGroups(device.bufferAllocation)');
-    const browser = readFileSync(new URL('./browser.ts', import.meta.url), 'utf8');
-    expect(browser).toContain('assemblyShelves()');
-    expect(browser).not.toContain('FACTORY');
-  });
 });

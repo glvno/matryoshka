@@ -28,6 +28,7 @@ export interface Fm1Events {
   cin?(bars: number): void;
   /** the SEQ page: a track's notes as they are after an edit there (of pattern `pat`, 0-based: the one it plays), a track
    * muted (module = its index in the binary) */
+  origin?(module: number, pattern: number, identity: number): void;
   track?(module: number, notes: StepNote[], pat: number): void;
   /** the SEQ page: a track's P-locks of pattern `pat` after an edit there (#524; device-form indices, values Q16 / 65536) */
   locks?(module: number, pat: number, locks: RawLock[]): void;
@@ -98,6 +99,7 @@ export class Fm1Ui {
       transport: (r: number) => ev.transport?.(r !== 0),
       once: () => ev.once?.(),
       cin: (bars: number) => ev.cin?.(bars),
+      origin: (m: number, pat: number, identity: number) => ev.origin?.(m, pat, identity >>> 0),
       track: (m: number, at: number, n: number, pat: number) => ev.track?.(m, memory ? [...new Uint32Array(memory.buffer, at, n)].map(wordNote) : [], pat ?? 0),
       locks: (m: number, pat: number, at: number, n: number) => ev.locks?.(m, pat, memory ? Array.from({ length: n }, (_, j) => {
         const b = new Uint8Array(memory!.buffer, at + 7 * j, 7);

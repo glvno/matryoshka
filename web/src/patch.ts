@@ -202,6 +202,8 @@ export interface ModuleInst {
   /** a Steps module only: its patterns 2..PATTERNS_MAX (track.ts Pattern; null: it has none of that number, which then
    * plays its pattern 1); absent while there are none */
   patterns?: (Pattern | null)[];
+  /** Explicit factory default revision per pattern (0..63). Missing/unknown identities never authorize replacement. */
+  factoryPatterns?: { version: 1; ids: (string | null)[] };
   /** a Steps module only: pattern 1's P-locks (#524, track.ts StepLock; patterns 2.. hold their own); absent while there
    * are none */
   locks?: StepLock[];
@@ -283,9 +285,14 @@ export function fixTrack(m: ModuleInst): void {
     else delete m.name;
     delete m.notes;
     delete m.patterns;
+    delete m.factoryPatterns;
     delete m.locks;
     return;
   }
+  const origins = m.factoryPatterns?.version === 1 && Array.isArray(m.factoryPatterns.ids) ? m.factoryPatterns.ids.slice(0, 64).map((id) => typeof id === 'string' && /^[0-9a-f]{8}$/.test(id) && id !== '00000000' ? id : null) : [];
+  while (origins.length && !origins[origins.length - 1]) origins.pop();
+  if (origins.length) m.factoryPatterns = { version: 1, ids: origins };
+  else delete m.factoryPatterns;
   const locks = fixLocks(m.locks);
   if (locks) m.locks = locks;
   else delete m.locks;

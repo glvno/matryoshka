@@ -1735,6 +1735,44 @@ static void pat_layout(void)
 
 static int aot_buffer_guard(const uint8_t *p, uint32_t len);
 static void aot_bind(const uint8_t *p, uint32_t len, uint32_t lines);   /* aot.c (#808) */
+uint32_t eng_origins_end(const uint8_t *p, uint32_t len, uint32_t at)
+{
+    uint32_t n, i, previous = 0;
+    if (p[1] < 54u || at > len || len - at < 2u) return 0;
+    n = (uint32_t)p[at] | (uint32_t)p[at + 1u] << 8;
+    at += 2u;
+    if (n > 16u * 64u || n > (len - at) / 6u) return 0;
+    for (i = 0; i < n; i++, at += 6u) {
+        uint32_t key = (uint32_t)p[at] * 64u + p[at + 1u];
+        if (p[at] >= p[2] || p[at + 1u] >= 64u || (i && key <= previous)
+            || eng_type_at(p, len, p[at]) != T_STEPS) return 0;
+        previous = key;
+    }
+    return at;
+}
+uint32_t eng_origins_at(const uint8_t *p, uint32_t len)
+{
+    uint32_t at;
+    if (len < 8u || !(p[7] & ENG_FLAG_ORIGINS) || !(at = eng_cables_end(p, len))) return 0;
+    if (p[6] & 4u) at += p[2];
+    if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at))) return 0;
+    if (!(at = eng_steps_end(p, len, at))) return 0;
+    if ((p[6] & 32u) && !(at = eng_devices_end(p, len, at))) return 0;
+    if ((p[7] & ENG_FLAG_EXTRAS) && !(at = eng_extras_end(p, len, at))) return 0;
+    if ((p[6] & 64u) && !(at = eng_buttons_end(p, len, at))) return 0;
+    if ((p[6] & 128u) && !(at = eng_names_end(p, len, at))) return 0;
+    return eng_origins_end(p, len, at) ? at : 0;
+}
+uint32_t eng_origin_record(const uint8_t *p, uint32_t len, uint32_t module, uint32_t pattern)
+{
+    uint32_t at = eng_origins_at(p, len), end;
+    if (!at) return 0;
+    end = eng_origins_end(p, len, at);
+    for (at += 2u; at < end; at += 6u)
+        if (p[at] == module && p[at + 1u] == pattern) return at;
+    return 0;
+}
+
 int eng_load(const uint8_t *p, uint32_t len)
 {
     uint32_t i, j, c, k, v, at, ncab, n0, nl;
@@ -2316,6 +2354,8 @@ int eng_load(const uint8_t *p, uint32_t len)
             return -3;
         at = end;
     }
+    if ((p[7] & ENG_FLAG_ORIGINS) && !(at = eng_origins_end(p, len, at)))
+        return -3;
     if (p[6] & 2u) {                             /* the macro ranges: u8 count, then module / pin (bit 7 bipolar) / parameter / lo / hi each */
         uint32_t nr;
         if (at >= len)

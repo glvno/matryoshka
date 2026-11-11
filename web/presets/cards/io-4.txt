@@ -59,7 +59,7 @@
 #   ensemble = 2                       1..2
 #   out: a screen, not a value
 
-# Drafts of 2026-10-29 after the Jupiter-4, not yet listened to on the FM-1 (#413).
+# Drafts of 2026-10-29 after the Jupiter-4 (#413).
 engine: Io 4
 
 # Switches: range 1 16', 2 8', 3 4'. vco wave form 1 off, 2 saw, 3 square, 4 pulse. pw 1 50 %, 2 40 %, 3 20 %, 4 10 %;
@@ -169,3 +169,43 @@ preset: PWM Brass
   level = 0.3
   lfo / rate = 1.5 Hz
   ensemble = 1
+
+# A short saw piano with two-stage brightness decay: a study of the Jupiter-4's named PIANO role.
+# A panel-informed candidate, not an asserted exact match to the original preset ROM.
+preset: Compu Piano
+  sub = OFF
+  vco / wave form = SAW
+  lpf cutoff = 1100 Hz
+  res = 0.08
+  kybd follow = 4
+  env mod = 3 oct
+  vcf / a = 0.001 s
+  vcf / d = 0.35 s
+  vcf / s = 0
+  vcf / r = 0.2 s
+  vca / a = 0.002 s
+  vca / d = 1.1 s
+  vca / s = 0
+  vca / r = 0.25 s
+  ensemble = OFF
+  level = 0.73
+
+# Low square and sub, short filter envelope, no unison or ensemble: leaves room around a rhythm section.
+preset: Compu Bass
+  range = 1
+  sub = ON
+  vco / wave form = SQUARE
+  lpf cutoff = 350 Hz
+  res = 0.12
+  kybd follow = 4
+  env mod = 1.5 oct
+  vcf / a = 0.001 s
+  vcf / d = 0.22 s
+  vcf / s = 0.1
+  vcf / r = 0.12 s
+  vca / a = 0.002 s
+  vca / d = 0.4 s
+  vca / s = 0.65
+  vca / r = 0.12 s
+  ensemble = OFF
+  level = 0.55

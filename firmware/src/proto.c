@@ -43,10 +43,10 @@
 #define M1_PATCH_MAX 3840u                                   /* a bank slot is one 4 KB sector: 256 B of header, the patch */
 #define M1_VERSION 1
 
-enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_PRESETS = 0x2D, C_PRESET_GET = 0x2E, C_PRESET_PUT = 0x2F, C_PRESET_DEL = 0x30, C_SANDBOX = 0x31, C_TEST_KEY = 0x32, C_TEST_TURN = 0x33, C_TEST_SCREEN = 0x34, C_TEST_PEAK = 0x35, C_PATTERN = 0x36, C_SONG = 0x37, C_TEMPO = 0x38, C_ARMS = 0x39, C_DEVICE_SETTINGS = 0x3A, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B, R_PRESET = 0x4C, R_PRESET_DATA = 0x4D, R_PRESET_STORED = 0x4E, R_SCREEN = 0x50, R_PEAK = 0x51, R_PATTERN_NOW = 0x52, R_SONG_NOW = 0x53, R_ARMS_NOW = 0x54, R_TEMPO_NOW = 0x55, R_LOCKS_NOW = 0x56, R_KEYS_NOW = 0x57, R_GUIDE_NOW = 0x58, R_DEVICE_SETTINGS = 0x59 };
+enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_PRESETS = 0x2D, C_PRESET_GET = 0x2E, C_PRESET_PUT = 0x2F, C_PRESET_DEL = 0x30, C_SANDBOX = 0x31, C_TEST_KEY = 0x32, C_TEST_TURN = 0x33, C_TEST_SCREEN = 0x34, C_TEST_PEAK = 0x35, C_PATTERN = 0x36, C_SONG = 0x37, C_TEMPO = 0x38, C_ARMS = 0x39, C_DEVICE_SETTINGS = 0x3A, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B, R_PRESET = 0x4C, R_PRESET_DATA = 0x4D, R_PRESET_STORED = 0x4E, R_SCREEN = 0x50, R_PEAK = 0x51, R_PATTERN_NOW = 0x52, R_SONG_NOW = 0x53, R_ARMS_NOW = 0x54, R_TEMPO_NOW = 0x55, R_LOCKS_NOW = 0x56, R_KEYS_NOW = 0x57, R_GUIDE_NOW = 0x58, R_DEVICE_SETTINGS = 0x59, R_PATTERN_ORIGIN = 0x5A };
 #define M1_FEATURES 246u                                     /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW, bit 6 = LIVE, bit 7 = the presets (#195) (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
 #define M1_FEATURES2 255u                                     /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down, bit 11 = reads format 35, bit 12 = reads format 36, bit 13 = reads format 37, bit 14 = reads format 38, bit 15 = reads format 39 (legacy editor compatibility; INFO bytes 7..8 report the readable range) */
-#define M1_FEATURES3 127u                                      /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485), bit 18 = KEYS_NOW and GUIDE_NOW (the panel's keys and state, #549), bit 19 = INFO's flags bit 3 says GLO > SYSTEM > EDITOR (#702), bit 20 = ARMS, the editor's armed set (#191), bit 21 = ARMS and ARMS_NOW carry ENG_MSET_WORDS words, modules 0..127 (#721; INFO byte 1 says 128) */
+#define M1_FEATURES3 255u                                      /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485), bit 18 = KEYS_NOW and GUIDE_NOW (the panel's keys and state, #549), bit 19 = INFO's flags bit 3 says GLO > SYSTEM > EDITOR (#702), bit 20 = ARMS, the editor's armed set (#191), bit 21 = ARMS and ARMS_NOW carry ENG_MSET_WORDS words, modules 0..127 (#721; INFO byte 1 says 128), bit 22 = device settings, bit 23 = explicit factory pattern origins / snapshots */
 #define M1_INFO_MIDI_OUT 4u                                  /* INFO byte 3 (flags) bit 2: MENU > MIDI OUT is on (with feature bit 8) */
 #define M1_INFO_EDITOR_IGNORE 8u                             /* INFO byte 3 (flags) bit 3: GLO > SYSTEM > EDITOR is at IGNORE, the
                                                               * editor leaves this FM-1 alone (with feature bit 19, #702) */
@@ -352,11 +352,11 @@ static void m1_arms_now(eng_mset_t mask)
 }
 
 /* unasked: a track's notes after an edit on the panel (the editor follows): module, n, n u32 LE */
-static void m1_track_now(uint32_t mod)
+static void m1_track_pattern_now(uint32_t mod, uint32_t pattern)
 {
     static uint8_t f[8u + (8u * (3u + 4u * TRACK_NOTES_MAX) + 6u) / 7u];
     const uint32_t *w;
-    int n = eng_steps_notes(mod, &w);
+    int n = eng_pattern_notes(mod, pattern, &w);
     uint32_t o = 0, k, len, acc = 0, nb = 0;
     if (n < 0)
         return;
@@ -368,7 +368,7 @@ static void m1_track_now(uint32_t mod)
     len = 3u + 4u * (uint32_t)n;
     for (k = 0; k < len; k++) {   /* m1_pack7 of the payload, a byte at a time from the engine's words (no 514 B copy); last
                                    * the pattern they are (format 48: the one the track plays) */
-        uint32_t b = k == 0u ? mod & 255u : k == 1u ? (uint32_t)n & 255u : k == len - 1u ? (uint32_t)eng_pattern_playing(mod) & 255u : (w[(k - 2u) >> 2] >> (8u * ((k - 2u) & 3u))) & 255u;
+        uint32_t b = k == 0u ? mod & 255u : k == 1u ? (uint32_t)n & 255u : k == len - 1u ? pattern & 255u : (w[(k - 2u) >> 2] >> (8u * ((k - 2u) & 3u))) & 255u;
         acc |= b << nb;
         nb += 8u;
         while (nb >= 7u) {
@@ -382,6 +382,8 @@ static void m1_track_now(uint32_t mod)
     f[o++] = 0xF7;
     m1_send(f, o);
 }
+static void m1_track_now(uint32_t mod) { m1_track_pattern_now(mod, (uint32_t)eng_pattern_playing(mod)); }
+
 /* a parameter turned on the FM-1 (K1..K4 on a device page): module, parameter, the value Q16.16 */
 static void m1_param_now(uint32_t mod, uint32_t par, int32_t v)
 {
@@ -446,6 +448,8 @@ static int m1_valid(const uint8_t *p, uint32_t len)
         return 0;
     if ((p[6] & 128u) && !(at = eng_names_end(p, len, at)))     /* flag bit 7: the Drum maps' row names */
         return 0;
+    if ((p[7] & ENG_FLAG_ORIGINS) && !(at = eng_origins_end(p, len, at)))
+        return 0;
     if (p[6] & 2u) {                                            /* flag bit 1: the macro ranges after that */
         if (at >= len)
             return 0;
@@ -493,6 +497,8 @@ static uint32_t m1_range_section(void)
     if ((m1_cur[6] & 64u) && !(at = eng_buttons_end(m1_cur, m1_cur_len, at)))   /* then the button kinds */
         return 0;
     if ((m1_cur[6] & 128u) && !(at = eng_names_end(m1_cur, m1_cur_len, at)))    /* then the Drum maps' row names */
+        return 0;
+    if ((m1_cur[7] & ENG_FLAG_ORIGINS) && !(at = eng_origins_end(m1_cur, m1_cur_len, at)))
         return 0;
     return at < m1_cur_len ? at : 0;
 }
@@ -660,6 +666,58 @@ static void m1_patch_patterns(void)
     m1_edited = 1;
 }
 
+/* Origin event (0x5A): six bytes, module/pattern/u32 LE identity. Module 255 with
+ * pattern 0/1 begins/ends a snapshot. The u32 field is its record count in both frames. */
+static void m1_origin_now(uint32_t mod, uint32_t pattern, uint32_t identity)
+{
+    uint8_t p[6]; uint32_t k;
+    p[0] = (uint8_t)mod; p[1] = (uint8_t)pattern;
+    for (k = 0; k < 4u; k++) p[k + 2u] = (uint8_t)(identity >> (8u * k));
+    m1_reply(R_PATTERN_ORIGIN, p, sizeof p);
+}
+static uint32_t m1_origin_read(const uint8_t *p)
+{ return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
+static uint32_t m1_pattern_origin(uint32_t mod, uint32_t pattern)
+{
+    uint32_t at = eng_origin_record(m1_cur, m1_cur_len, mod, pattern);
+    return at ? m1_origin_read(m1_cur + at + 2u) : 0;
+}
+static void m1_origin_snapshot(void)
+{
+    uint32_t at = eng_origins_at(m1_cur, m1_cur_len), end = at ? eng_origins_end(m1_cur, m1_cur_len, at) : 0;
+    uint32_t count = at ? (end - at - 2u) / 6u : 0;
+    m1_origin_now(255u, 0, count);
+    if (at) for (at += 2u; at < end; at += 6u)
+        m1_origin_now(m1_cur[at], m1_cur[at + 1u], m1_origin_read(m1_cur + at + 2u));
+    m1_origin_now(255u, 1, count);
+}
+static void m1_clear_origin(uint32_t mod, uint32_t pattern)
+{
+    uint32_t at = eng_origin_record(m1_cur, m1_cur_len, mod, pattern), k;
+    if (at) { for (k = 0; k < 4u; k++) m1_cur[at + 2u + k] = 0; m1_edited = 1; }
+    m1_origin_now(mod, pattern, 0);
+}
+/* Only called for two known, nonempty factory defaults whose notes fit compact words. No other track or
+ * pattern moves. Refuse growth before the engine changes, so SAVE and the live track always agree. */
+static int m1_default_pattern(uint32_t mod, uint32_t pattern, const uint32_t *words, uint32_t n, uint32_t identity)
+{
+    const uint32_t *old;
+    int before = eng_pattern_notes(mod, pattern, &old);
+    uint32_t width = pattern ? 2u : 4u;
+    if (!identity || !eng_origin_record(m1_cur, m1_cur_len, mod, pattern) || before <= 0 || !n || !m1_track_at(mod) || (pattern && m1_cur[1] < 48u) ||
+        (n > (uint32_t)before && m1_cur_len + (n - (uint32_t)before) * width > M1_PATCH_MAX))
+        return 0;
+    if (!eng_pattern_set_notes(mod, pattern, words, n))
+        return 0;
+    m1_patch_track(mod);
+    { uint32_t at = eng_origin_record(m1_cur, m1_cur_len, mod, pattern), k;
+      for (k = 0; k < 4u; k++) m1_cur[at + 2u + k] = (uint8_t)(identity >> (8u * k)); }
+    m1_edited = 1;
+    m1_track_pattern_now(mod, pattern);
+    m1_origin_now(mod, pattern, identity);
+    return 1;
+}
+
 /* the P-locks as the engine has them into the binary (format 49, #524; SAVE keeps them): the section after the patterns
  * replaced, made or dropped, what follows moves. 1 done; 0 when the binary is older than format 49 or would outgrow
  * M1_PATCH_MAX (the caller undoes the engine's edit: the two never differ) */
@@ -798,6 +856,7 @@ static int m1_handle(const uint8_t *f, uint32_t n)
     case C_HELLO:
         m1_info();
         m1_tempo_now();
+        m1_origin_snapshot();
         m1_heard = 1;                                        /* (the editor is there: GUIDE_NOW, KEYS_NOW; main.c guide_poll) */
         m1_guide_due = 1;
         break;
@@ -873,6 +932,7 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         m1_set_current(m1_up, total);
         m1_up_got = m1_up_total = 0;
         m1_ack(C_COMMIT, 0, S_OK, 0);
+        m1_origin_snapshot();
         break;
     }
     case C_STORE:

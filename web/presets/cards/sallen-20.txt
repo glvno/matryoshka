@@ -58,7 +58,7 @@
 # output
 #   volume = 0.75                      0..2
 
-# Drafts of 2026-10-29 after the Korg MS-20, not yet listened to on the FM-1 (#413).
+# Drafts of 2026-10-29 after the Korg MS-20 (#413).
 engine: Sallen 20
 
 # Switch positions: vco 1 scale 1..4 = 32' 16' 8' 4'; vco 2 scale 1..4 = 16' 8' 4' 2';
@@ -87,7 +87,7 @@ preset: Acid Scream
   sustain = 0.15
   eg 2 / release = 0.2 s
   frequency = 6 Hz
-  volume = 0.96
+  volume = 0.67
 
 # A 16' pulse and saw with the resonant high pass peaking on each note: the high-pass growl the MS-20 is known for.
 preset: Growl Bass
@@ -180,3 +180,21 @@ preset: ESP Warble
   threshold = 0.1
   esp route = 2
   volume = 0.48
+
+# A narrow pulse with no second oscillator: a breath-sized attack and a quiet high-pass resonance.
+preset: Soft Reed
+  vco 1 scale = 3
+  vco 1 wave = 3
+  vco 1 pw = 0.25
+  vco 1 level = 0.35
+  vco 2 level = 0
+  highpass / cutoff = 110 Hz
+  highpass / peak = 0.2
+  lowpass / cutoff = 1100 Hz
+  lowpass / peak = 0.25
+  lowpass / eg2/ext = 0.6
+  eg 2 / attack = 0.08 s
+  decay = 0.35 s
+  sustain = 0.7
+  eg 2 / release = 0.2 s
+  volume = 0.44

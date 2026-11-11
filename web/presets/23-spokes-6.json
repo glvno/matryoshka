@@ -1401,7 +1401,13 @@
      "note": 57,
      "vel": 100
     }
-   ]
+   ],
+   "factoryPatterns": {
+    "version": 1,
+    "ids": [
+     "12fe980f"
+    ]
+   }
   },
   {
    "id": 52,
@@ -3101,6 +3107,7 @@
      "col": true
     }
    ],
+   "preset": "Init",
    "children": [
     1,
     2,

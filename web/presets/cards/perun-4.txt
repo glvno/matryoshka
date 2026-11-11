@@ -56,7 +56,7 @@
 #   master = 2 dB                      0..24 dB
 #   out: a screen, not a value
 
-# Drafts of 2026-10-29 after the Erica Synths Perkons HD-01, not yet listened to on the FM-1 (#413).
+# Drafts of 2026-10-29 after the Erica Synths Perkons HD-01 (#413).
 engine: Perun 4
 
 # voice 1 is the kick: param 1 is the pitch sweep amount, param 2 saturates it before the filter.
@@ -84,18 +84,19 @@ voice 3 / decay = 0.08
 voice 3 / param 1 = 0.9
 voice 3 / cutoff = 6000
 voice 3 / drive = 2
-voice 3 / level = 0.6
+voice 3 / level = 0.5
 voice 4 / tune = 28
-voice 4 / decay = 0.04
-voice 4 / param 1 = 0.7
+voice 4 / decay = 0.06
+voice 4 / param 1 = 0.8
 voice 4 / cutoff = 7000
 voice 4 / drive = 2
-voice 4 / level = 0.4
+voice 4 / level = 0.25
 time = 375
 feedback = 0.5
 lfo → time = 0.05
 comp = -20
   master = 5.5 dB
+voice 2 / level = 0.75
 
 preset: Punchy Breaks
 # a short, open, punchy kick; a crisp analogue snare; a high-passed tight hat; a short metal
@@ -112,17 +113,17 @@ voice 2 / param 2 = analog
 voice 2 / cutoff = 9000
 voice 2 / drive = 2.5
 voice 2 / send = 0.1
-voice 2 / level = 0.8
+voice 2 / level = 0.75
 voice 3 / decay = 0.06
 voice 3 / param 1 = 0.95
 voice 3 / param 2 = 0.4
 voice 3 / cutoff = 400
 voice 3 / mode = 1
 voice 3 / drive = 2
-voice 3 / level = 0.6
+voice 3 / level = 0.5
 voice 4 / tune = 24
-voice 4 / decay = 0.15
-voice 4 / param 1 = 0.3
+voice 4 / decay = 0.06
+voice 4 / param 1 = 0.8
 voice 4 / param 2 = 31
 voice 4 / cutoff = 8000
 voice 4 / mode = 0.3
@@ -130,7 +131,8 @@ voice 4 / send = 0.1
 time = 150
 feedback = 0.2
 comp = -10
-  master = 0 dB
+  master = 0.5 dB
+voice 4 / level = 0.25
 
 preset: Distorted EBM
 # everything driven hard: a saturated mid-length kick, a digital snare, a growling low-passed hat,
@@ -153,10 +155,10 @@ voice 3 / cutoff = 1200
 voice 3 / mode = 0.7
 voice 3 / drive = 5
 voice 3 / send = 0.4
-voice 3 / level = 0.6
+voice 3 / level = 0.5
 voice 4 / tune = 19
-voice 4 / decay = 0.3
-voice 4 / param 1 = 0.5
+voice 4 / decay = 0.06
+voice 4 / param 1 = 0.8
 voice 4 / param 2 = 26
 voice 4 / cutoff = 4000
 voice 4 / drive = 6
@@ -167,7 +169,9 @@ lfo → time = 0.1
 lfo rate = 0.15
 lfo wave = triangle
 comp = -24
-  master = 5.5 dB
+  master = 6 dB
+voice 4 / level = 0.25
+voice 2 / level = 0.75
 
 preset: Dub Percussion
 # clean and wet: a soft deep kick; a formant snare, a band-ish hat and a high tuned metal all sent to a long,
@@ -184,7 +188,7 @@ voice 2 / param 2 = formant
 voice 2 / cutoff = 2000
 voice 2 / mode = 0.5
 voice 2 / send = 0.6
-voice 2 / level = 0.6
+voice 2 / level = 0.75
 voice 3 / tune = -2
 voice 3 / decay = 0.12
 voice 3 / param 1 = 0.4
@@ -193,19 +197,20 @@ voice 3 / cutoff = 3000
 voice 3 / mode = 0.5
 voice 3 / send = 0.5
 voice 4 / tune = 36
-voice 4 / decay = 0.3
-voice 4 / param 1 = 0.2
+voice 4 / decay = 0.12
+voice 4 / param 1 = 0.8
 voice 4 / param 2 = 43
 voice 4 / cutoff = 5000
 voice 4 / mode = 0
 voice 4 / send = 0.7
-voice 4 / level = 0.45
+voice 4 / level = 0.25
 time = 450
 feedback = 0.7
 lfo → time = 0.3
 lfo rate = 0.08
 comp = -16
-  master = 3.5 dB
+  master = 8 dB
+voice 3 / level = 0.5
 
 preset: Clicky Minimal
 # tiny sounds: a very short clicking kick with a big sweep, a short eml snare, a high-passed tick hat,
@@ -224,19 +229,19 @@ voice 2 / param 2 = eml color
 voice 2 / cutoff = 8000
 voice 2 / drive = 1
 voice 2 / send = 0.3
-voice 2 / level = 0.55
+voice 2 / level = 0.75
 voice 3 / decay = 0.03
 voice 3 / param 1 = 1
 voice 3 / param 2 = 0.9
 voice 3 / cutoff = 9000
 voice 3 / level = 0.5
 voice 4 / tune = 40
-voice 4 / decay = 0.02
-voice 4 / param 1 = 0.9
+voice 4 / decay = 0.06
+voice 4 / param 1 = 0.8
 voice 4 / param 2 = 46
 voice 4 / cutoff = 10000
 voice 4 / send = 0.4
-voice 4 / level = 0.4
+voice 4 / level = 0.25
 time = 190
 feedback = 0.55
 lfo → time = 0.5

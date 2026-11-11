@@ -283,22 +283,10 @@ static void ct_seq(uint32_t t, int longer, int empty)
 static int ct_page_button(void)
 {
     static const uint8_t sec[] = {0, 0, 0, 3, 0, 0, 0, 2, 2, 0, 2, 1};
-    uint32_t at, n, end;
+    uint32_t at;
     if (ct_load("808 KIT"))
         return 0;
-    at = end = pv_len;
-    if (pv_bin[6] & 2u)
-        for (n = 1; n < 256u; n++)
-            if (pv_len >= 1u + n * 5u && pv_bin[pv_len - 1u - n * 5u] == n) {
-                at = end = pv_len - 1u - n * 5u;
-                break;
-            }
-    if (pv_bin[6] & 128u)
-        for (n = 1; n < 16u; n++)
-            if (end >= 1u + n * 65u && pv_bin[end - 1u - n * 65u] == n) {
-                at = end - 1u - n * 65u;
-                break;
-            }
+    at = panel_buttons_at();
     memmove(pv_bin + at + sizeof sec, pv_bin + at, pv_len - at);
     memcpy(pv_bin + at, sec, sizeof sec);
     pv_len += sizeof sec;

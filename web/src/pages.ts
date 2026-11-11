@@ -1,5 +1,5 @@
-import { keyReach } from './key-routing';
 // SPDX-License-Identifier: GPL-3.0-only
+import { keyReach } from './key-routing';
 // Devices and their pages: what the FM-1 lets you play with K1..K4, and what Main's knobs in the editor's dock turn.
 //
 // Every top-level thing on the canvas, a module or an assembly, is a device (docs/ledger/vocabulary.md "Device"), unless it is editor-only
@@ -211,6 +211,32 @@ export const modulePages = (p: Patch, m: ModuleInst, defs: Record<string, Module
 /** an assembly's pages, as its device would have them (the patch card draws them for a nested one too) */
 export const assemblyPages = (p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>): Page[] => paginate(assemblySections(p, a, defs), typeIn(p));
 
+/** The drum maps that actually trigger an assembly, and the Steps tracks whose keys reach them.
+ * Audio and velocity/control cables cannot claim pattern ownership. keyReach is bounded by a visited set. */
+function drumDrivers(p: Patch, members: Set<number>, defs: Record<string, ModuleDef>): number[] | undefined {
+  const maps = p.modules.filter((m) => m.type === 'drummap' && p.cables.some((c) =>
+    c.from.module === m.id && /^g[1-8]$/.test(c.from.port) && members.has(c.to.module) &&
+    defs[p.modules.find((m) => m.id === c.to.module)?.type ?? '']?.inputs.some((port) => port.name === c.to.port && port.kind === 'gate')));
+  if (!maps.length) return undefined;
+  return p.modules.filter((m) => m.type === 'steps' && maps.some((map) => keyReach(p, m.id).has(map.id))).map((m) => m.id);
+}
+
+/** Pattern replacement needs one note/gate driver; control-only environment grouping grants no permission. */
+export function patternDriver(p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>): number | undefined {
+  const members = new Set(allModules(p, a));
+  const mapped = drumDrivers(p, members, defs);
+  if (mapped !== undefined) return mapped.length === 1 ? mapped[0] : undefined;
+  const tracks = p.modules.filter((m) => m.type === 'steps' && p.cables.some((c) => {
+    if (!members.has(c.to.module) || !keyReach(p, m.id).has(c.from.module)) return false;
+    if (c.from.port === 'keys' && c.to.port === 'keys') return true;
+    const source = p.modules.find((x) => x.id === c.from.module);
+    return source && ['steps', 'arp', 'harm'].includes(source.type) &&
+      defs[source.type]?.outputs.some((port) => port.name === c.from.port && port.kind === 'gate') &&
+      defs[p.modules.find((x) => x.id === c.to.module)?.type ?? '']?.inputs.some((port) => port.name === c.to.port && port.kind === 'gate');
+  }));
+  return tracks.length === 1 ? tracks[0].id : undefined;
+}
+
 /** the patch's devices in the environment's grouped order (see the top of this file) */
 export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
   const inAsm = new Set(assembliesOf(p).flatMap((a) => a.modules));
@@ -238,6 +264,8 @@ export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
   // the device each module belongs to: its outermost assembly's, else its own
   const deviceOf = new Map<number, Device>();
   for (const d of reading) for (const id of d.asm !== undefined ? allModules(p, assembliesOf(p).find((a) => a.id === d.asm)!) : [d.module!]) deviceOf.set(id, d);
+  const drums = new Map(reading.filter((d) => d.asm !== undefined).map((d) =>
+    [d, drumDrivers(p, new Set(allModules(p, assembliesOf(p).find((a) => a.id === d.asm)!)), defs)]));
   const out: Device[] = reading.filter((d) => d.kind === 'main');
   const placed = new Set<Device>(out);
   for (const t of reading.filter((d) => d.kind === 'steps')) {
@@ -245,7 +273,11 @@ export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
     placed.add(t);
     // (a cable from it, or from an Arpeggiator it plays through)
     const from = new Set([...keyReach(p, t.module!)].filter(id => ['steps', 'harm', 'arp'].includes(p.modules.find(m => m.id === id)?.type ?? '')));
-    const driven = reading.filter((d) => !placed.has(d) && !d.kind && p.cables.some((c) => from.has(c.from.module) && deviceOf.get(c.to.module) === d));
+    const direct = (d: Device): boolean => p.cables.some((c) => from.has(c.from.module) && deviceOf.get(c.to.module) === d);
+    const driven = reading.filter((d) => !placed.has(d) && !d.kind && (direct(d) ||
+      (drums.get(d)?.length === 1 && drums.get(d)![0] === t.module)));
+    // Keep directly connected pages (the external Drum map) before the kit reached through that map.
+    driven.sort((a, b) => Number(!direct(a)) - Number(!direct(b)));
     for (const d of driven) {
       d.track = t.module;
       out.push(d);

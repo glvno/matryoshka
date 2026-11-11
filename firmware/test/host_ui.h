@@ -186,7 +186,14 @@ static void host_ps_init(void)
         host_ps_flash[i] = 0xFFu;
     ps_scan();
 }
-static int m1_preset_name(uint32_t dev, const char *name) { (void)dev; (void)name; m1_edited = 1; return 0; }   /* (the preview keeps no patch) */
+static int m1_preset_name(uint32_t dev, const char *name)
+{
+#ifdef HOST_DEFAULT_PATTERN_IMPL
+    return host_preset_name(pv_bin, &pv_len, dev, name);
+#else
+    (void)dev; (void)name; m1_edited = 1; return 0;
+#endif
+}
 static uint32_t host_preset_stored;         /* presets stored on the panel (#194) */
 static void m1_preset_stored(uint32_t structure, const char *name) { (void)structure; (void)name; host_preset_stored++; }
 #include "../src/font5x7.c"
@@ -195,6 +202,33 @@ static const uint8_t *m1_panel(void) { uint32_t at = eng_panel_at(pv_bin, pv_len
 #define BATT_START 900                     /* the battery (ui.c): full, no USB host (fm1_open's simulator has 900 too) */
 #include "../src/sandbox_msg.h"
 #include "../src/ui.c"
+static uint32_t m1_pattern_origin(uint32_t mod, uint32_t pattern)
+{
+    uint32_t at = eng_origin_record(pv_bin, pv_len, mod, pattern);
+    return at ? (uint32_t)pv_bin[at + 2u] | (uint32_t)pv_bin[at + 3u] << 8 | (uint32_t)pv_bin[at + 4u] << 16 | (uint32_t)pv_bin[at + 5u] << 24 : 0;
+}
+#ifndef HOST_ORIGIN_HOOK
+#define host_origin_notify(mod, pattern, identity) ((void)0)
+#define host_pattern_notify(mod, pattern, words, n) ((void)0)
+#endif
+static void host_set_origin(uint32_t mod, uint32_t pattern, uint32_t identity)
+{
+    uint32_t at = eng_origin_record(pv_bin, pv_len, mod, pattern), k;
+    if (at) for (k = 0; k < 4u; k++) pv_bin[at + 2u + k] = (uint8_t)(identity >> (8u * k));
+    host_origin_notify(mod, pattern, identity);
+}
+static void m1_clear_origin(uint32_t mod, uint32_t pattern) { host_set_origin(mod, pattern, 0); }
+static int m1_default_pattern(uint32_t mod, uint32_t pattern, const uint32_t *words, uint32_t n, uint32_t identity)
+{
+#ifdef HOST_DEFAULT_PATTERN_IMPL
+    return host_default_pattern(pv_bin, &pv_len, mod, pattern, words, n, identity);
+#else
+    if (!eng_origin_record(pv_bin, pv_len, mod, pattern) || !eng_pattern_set_notes(mod, pattern, words, n)) return 0;
+    host_pattern_notify(mod, pattern, words, n);
+    host_set_origin(mod, pattern, identity);
+    return 1;
+#endif
+} /* preview SAVE uses the editor's mirrored notes; real device persistence is covered through proto.c */
 #include "../src/pages_ui.c"
 #include "../src/sandbox_ui.c"
 static const uint8_t *pages_src(uint32_t *len) { *len = pv_len; return pv_bin; }
