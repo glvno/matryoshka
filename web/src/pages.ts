@@ -274,9 +274,8 @@ export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
     // (a cable from it, or from an Arpeggiator it plays through)
     const from = new Set([...keyReach(p, t.module!)].filter(id => ['steps', 'harm', 'arp'].includes(p.modules.find(m => m.id === id)?.type ?? '')));
     const direct = (d: Device): boolean => p.cables.some((c) => from.has(c.from.module) && deviceOf.get(c.to.module) === d);
-    const driven = reading.filter((d) => !placed.has(d) && !d.kind && (drums.get(d) !== undefined
-      ? drums.get(d)!.length === 1 && drums.get(d)![0] === t.module
-      : direct(d)));
+    const driven = reading.filter((d) => !placed.has(d) && !d.kind && (direct(d) ||
+      (drums.get(d)?.length === 1 && drums.get(d)![0] === t.module)));
     // Keep directly connected pages (the external Drum map) before the kit reached through that map.
     driven.sort((a, b) => Number(!direct(a)) - Number(!direct(b)));
     for (const d of driven) {
