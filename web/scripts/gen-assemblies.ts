@@ -4214,11 +4214,11 @@ asm('Spokes 6', 'Drums', (b) => {
 
 // Verona Drum 1, after the Vermona DRM1 MKIV (#613; its user manual, "The instrument channels", pages 11 to 18). The FM-1
 // version: six of its eight instrument channels, each with every knob of its panel and its own signal flow
-// (scripts/verona-voices.ts): KICK, DRUM 1, MULTI, SNARE, HI HAT 1, CLAP, and each channel's VOLUME. A Drum map row per
+// (scripts/verona-voices.ts): KICK, DRUM 1, MULTI, SNARE, HI HAT 1, CLAP, and each channel's PAN and VOLUME. A Drum map row per
 // channel on the white keys from F3, the hi-hat on two (OPEN, and CLOSED with its fixed short decay, as the original's
 // two MIDI notes per hi-hat); a row's velocity is the channel's level, as the DRM1's MIDI velocity. The channels share
-// one white noise source; MASTER is the level of the mixer they all go into. Left out to fit the FM-1 (Verona Drum 1 XL has
-// them, scripts/xl/verona-drum-1.ts): DRUM 2 and HI HAT 2 (each the same as its pair), PAN, the clap's NOISE COLOR, the
+// one white noise source; MASTER controls both output amplifiers. Left out to fit the FM-1 (Verona Drum 1 XL has
+// them, scripts/xl/verona-drum-1.ts): DRUM 2 and HI HAT 2 (each the same as its pair), the clap's NOISE COLOR, the
 // hi-hat's TRIG switch (its two rows play open and closed), MULTI's PITCH 2 / PITCH 3 off position (here they are the
 // oscillators' coarse tune), the kick's own noise envelope (its noise lasts as long as TIME), and the snare's second noise
 // VCA (NOISE and REVERB are its envelopes' levels, 0..1).
@@ -4226,8 +4226,7 @@ asm('Verona Drum 1', 'Drums', (b) => {
   const map = b.add('drummap', 0, 0, Object.fromEntries(PLATE_KEYS[1].map((n, r) => [`n${r + 1}`, n])));
   b.module(map).names = ['KICK', 'DRUM 1', 'MULTI', 'SNARE', 'HH OPEN', 'HH CLOSE', 'CLAP', 'ROW 8'];
   const noise = sharedNoise(b, 0, 1);
-  // MASTER: every channel into the mixer's first input, its level the overall volume
-  const mix = b.add('mixer', 7, 0, { l1: 0.7, l2: 0, l3: 0, l4: 0 });   // (MASTER is the level row, #448)
+  const master = b.add('macro', 7, 0, { value: 0.7 });   // (MASTER is the level row, #448)
   const channels: [string, Voice][] = [
     ['kick', kick(b, 1, noise, { lean: true })],
     ['drum 1', drum(b, 2, { coarse: -17, decay: 0.35 })],
@@ -4236,6 +4235,11 @@ asm('Verona Drum 1', 'Drums', (b) => {
     ['hi hat', hihat(b, 5, noise)],
     ['clap', clap(b, 6, noise, { color: false })],
   ];
+  const outL = b.add('vca', 7, 1, { gain: 1 });
+  const outR = b.add('vca', 7, 2, { gain: 1 });
+  b.wire(master, 'out', outL, 'cv');
+  b.wire(master, 'out', outR, 'cv');
+  const pans = channels.map((_, i) => b.add('pan', 1 + i, 6, { pan: 0 }));
   /** each channel's Drum map row (the hi-hat's open row; its closed row is 6) */
   const rows = [1, 2, 3, 4, 5, 7];
   channels.forEach(([name, v], i) => {
@@ -4246,8 +4250,10 @@ asm('Verona Drum 1', 'Drums', (b) => {
       for (const [m, port] of v.closed) b.wire(map, 'g6', m, port);
       b.wire(map, 'v6', v.closedVel![0], v.closedVel![1]);
     }
-    b.wire(v.out[0], v.out[1], mix, 'in1');
-    b.nest(name, 1 + i, 0, v.members);
+    b.wire(v.out[0], v.out[1], pans[i], 'in');
+    b.wire(pans[i], 'l', outL, 'in');
+    b.wire(pans[i], 'r', outR, 'in');
+    b.nest(name, 1 + i, 0, [...v.members, pans[i]]);
   });
   channels.forEach(([, v]) => {
     const [first, ...also] = v.gate;
@@ -4260,12 +4266,14 @@ asm('Verona Drum 1', 'Drums', (b) => {
     b.nestOutput('out', v.out[0], v.out[1]);
   });
   b.input('keys', map, 'keys');
-  b.output('out', mix, 'out');
-  channels.forEach(([name, v]) => {
+  b.output('l', outL, 'out');
+  b.output('r', outR, 'out');
+  channels.forEach(([name, v], i) => {
     v.rows.forEach(([label, m, param], k) => b.param(label, m, param, k === 0 ? { head: name, col: true } : {}));
+    b.param('pan', pans[i], 'pan');
     b.param('volume', v.out[0], 'gain');
   });
-  b.param('master', mix, 'l1', { head: 'master', col: true });
+  b.param('master', master, 'value', { head: 'master', col: true });
 });
 
 // an LFO through a Scale: vibrato (into a pitch input), tremolo (into a VCA's cv with an offset), a filter sweep

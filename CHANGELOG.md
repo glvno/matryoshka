@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed pan positions take less CPU on the FM-1 without changing the output samples.
+- Verona Drum 1 has PAN on each of its six channels. Saved presets keep their control values and start with centered PAN.
 - Firmware capability updates refresh Library budgets without interrupting an active bank transfer.
 - Patches can use memory recovered by sharing signal buffers. In the [host allocation check](tools/buffer_budget.py), one patch uses 1,536 bytes of signal storage instead of 44,032, recovering 42,496 bytes for its effect lines. The editor follows the connected firmware's reported rule; older firmware and offline budgets stay conservative. Voice and CPU limits are unchanged. Host allocation checks, the focused emulator scenario and registered-FM-1 audio/timing qualification pass.
 - Hardware CPU surveys clear the previous patch's cached diagnostic peak before committing the next patch, without discarding its first rendered block.

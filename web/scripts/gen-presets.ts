@@ -673,9 +673,6 @@ for (const [name, asm, chord] of [['Basic Poly', 'basic poly', true], ['Drift Po
 // factory patch (D-334); a drum engine gets no Arpeggiator (as Spokes 6).
 after.push(() => {
   const x = around('Verona Drum 1', 'Verona Drum 1');
-  // the Output's l only (its r then plays the l, as in every engine): one cable fewer for the FM-1's patch bytes
-  const out = x.p.modules.find((m) => m.type === 'output')!;
-  x.p.cables = x.p.cables.filter((c) => !(c.to.module === out.id && c.to.port === 'r'));
   sequenced(x, 'PATTERN', {
     1: 'X...x...X...x.x.',
     2: '..........x...x.',

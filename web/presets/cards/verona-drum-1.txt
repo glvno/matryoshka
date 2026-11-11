@@ -11,6 +11,7 @@
 #   kick / wave = 1.4                  1..32
 #   kick / noise = 0.25                0..2
 #   kick / attack = 0.5                0..1
+#   kick / pan = 0                      -1..1
 #   kick / volume = 1.27               0..2
 # drum 1
 #   drum 1 / decay = 0.35 s            0.001..10 s
@@ -20,6 +21,7 @@
 #   fm int = 0                         -4..4
 #   fm freq = -24 st                   -48..48 st
 #   drum 1 / wave = 1.2                1..32
+#   drum 1 / pan = 0                      -1..1
 #   drum 1 / volume = 1.27             0..2
 # multi
 #   multi / decay = 0.22 s             0.001..10 s
@@ -29,6 +31,7 @@
 #   pitch 2 = 12 st                    -48..48 st
 #   pitch 3 = 12 st                    -48..48 st
 #   highpass = 250 Hz                  20..16000 Hz
+#   multi / pan = 0                      -1..1
 #   multi / volume = 1.27              0..2
 # snare
 #   snare / decay rev = 0.35 s         0.001..10 s
@@ -38,6 +41,7 @@
 #   snare / attack = 1                 0..1
 #   snare / resonance = 0.88           0..1
 #   snare / filter = 240 Hz            20..16000 Hz
+#   snare / pan = 0                      -1..1
 #   snare / volume = 1.27              0..2
 # hi hat
 #   hi hat / decay = 0.35 s            0.001..10 s
@@ -47,6 +51,7 @@
 #   hi hat / resonance = 0.25          0..1
 #   mix = 0.5                          0..1
 #   hi hat / pitch = 30 st             -48..48 st
+#   hi hat / pan = 0                      -1..1
 #   hi hat / volume = 1.27             0..2
 # clap
 #   clap / decay rev = 0.2 s           0.001..10 s
@@ -55,6 +60,7 @@
 #   clap / noise = 0.6                 0..2
 #   clap / resonance = 0.45            0..1
 #   clap / filter = 2200 Hz            20..16000 Hz
+#   clap / pan = 0                      -1..1
 #   clap / volume = 1.27               0..2
 # master
 #   master = 0.61                      0..1
@@ -117,7 +123,7 @@ mix = 0.2
 hi hat / bend = 0.5
 multi / decay = 0.08
 highpass = 500
-  master = 0.75
+  master = 0.74
 multi / volume = 0.3
 drum 1 / volume = 0.55
 
@@ -137,7 +143,7 @@ pitch 3 = -2
 multi / decay = 0.09
 highpass = 900
 hi hat / decay = 0.12
-  master = 0.97
+  master = 0.96
 
 preset: Metal Works
 # FM in the audio range on drum 1 (atonal, metallic), the multi's three squares spread for a bell, hats bending up
@@ -156,6 +162,6 @@ hi hat / bend = -1.5
 hi hat / resonance = 0.6
 hi hat / pitch = 34
 hi hat / decay = 0.8
-  master = 0.89
+  master = 0.88
 multi / volume = 0.6
 drum 1 / volume = 0.55

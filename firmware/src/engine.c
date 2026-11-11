@@ -9401,6 +9401,16 @@ static void m_pan(const node_t *nd, inst_t *it, uint32_t n)
     esig_t *l = it->out[PAN_O_L], *r = it->out[PAN_O_R];
     int32_t base = EF(it, PAN_P_PAN);
     uint32_t i;
+    /* With no position cable, the effective knob value is fixed for this block. */
+    if (pos == zero_buf) {
+        uint32_t turn = (uint32_t)(clampi(base, -ENG_ONE, ENG_ONE) + ENG_ONE) << 13;
+        int32_t gl = sin_turn(turn + 0x40000000u), gr = sin_turn(turn);
+        for (i = 0; i < n; i++) {
+            l[i] = mul16(in[i], gl);
+            r[i] = mul16(in[i], gr);
+        }
+        return;
+    }
     for (i = 0; i < n; i++) {
         int32_t p = clampi(base + pos[i], -ENG_ONE, ENG_ONE);
         uint32_t turn = (uint32_t)(p + ENG_ONE) << 13;
