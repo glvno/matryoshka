@@ -33,6 +33,7 @@ import { buildCommunitySection } from './library-community';
 import { isSaved, onSavedChange, putBackSaved, removeSaved, restoreSaved, savedPatches, savePatch as keepPatch, unsavedChanges } from './saved';
 import { showAction, showToast, showUndo } from './toast';
 import { popMenu, type MenuItem } from './menu';
+import type { CapabilityInspector } from './capability-inspector';
 import { initStatusline, pinStatus } from './statusline';
 import { buildAssembliesSection, storeAssembly, storeTutorialAssembly } from './assemblies';
 import { AssemblyBrowser } from './browser';
@@ -860,8 +861,10 @@ const firstPatch = loadSaved() ?? starterPatch();
 // the global tempo setting (D-907, wired below) before the editor draws Main's tempo row; a first visit: Global, at this
 // patch's tempo
 tempo.set(readTempo((() => { try { return localStorage.getItem(TEMPO_KEY); } catch { return null; } })(), patchTempo(firstPatch)));
+let capabilityInspector: CapabilityInspector | null = null;
 const editor = new Editor($('canvas'), firstPatch, {
   onStructure(p) {
+    capabilityInspector?.sync();
     stampOctave(p);
     $<HTMLInputElement>('patch-name').value = p.name;
     syncSides();
@@ -1003,6 +1006,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     envs.sync(envList);
   },
   onLayout(p) {
+    capabilityInspector?.sync();
     queueSave(p);
     syncSides();
   },
@@ -1206,6 +1210,12 @@ const toastResult = (run: () => unknown) => async (): Promise<void> => {
     if (text) showToast(text);
   }
 };
+async function openCapabilityInspector(): Promise<void> {
+  const { CapabilityInspector } = await import('./capability-inspector');
+  capabilityInspector ??= new CapabilityInspector({ patch: () => editor.patch, load: p => editor.setPatch(p) });
+  capabilityInspector.open();
+}
+const capabilityExperiment = new URLSearchParams(location.search).get('capabilities') === '1';
 const patchMenu = (): MenuItem[] => {
   const name = editor.patch.name.trim();
   const items: MenuItem[] = [
@@ -1215,6 +1225,7 @@ const patchMenu = (): MenuItem[] => {
     { text: 'Store to an FM-1 slot\u2026', run: toastResult(() => storeToSlot()) },
     { text: 'FM-1 & MIDI settings\u2026', run: () => $<HTMLDialogElement>('device-bar').showModal(), rule: true },
   ];
+  if (capabilityExperiment) items.push({ text: 'Inspect assembly capabilities…', run: () => void openCapabilityInspector(), rule: true });
   // only while the open patch's name is one of Your patches; the open patch stays open
   if (name && isSaved(name)) items.push({ text: 'Delete from Your patches', run: () => deleteSaved(name), danger: true, rule: true });
   return items;
@@ -2980,3 +2991,6 @@ if (import.meta.env.DEV) {
     },
   };
 }
+
+// Explicit experimental entry point; ordinary sessions do not load the inspector or its fixtures.
+if (capabilityExperiment) void openCapabilityInspector();
