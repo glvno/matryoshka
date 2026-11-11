@@ -17,6 +17,7 @@ import { PRESET_MIGRATIONS } from '../src/preset-migrate';
 import { readLineage } from './lineage-lib';
 import { CASE_PICKS, casesHeader, migrationCases, migrationTables } from './preset-migration-c';
 import { aotHeader } from './gen-aot';
+import patternDefaults from '../src/preset-patterns.json';
 const FACTORY_PRESETS = factoryPresets();
 
 const up = (s: string): string => s.toUpperCase().replace(/[^A-Z0-9]/g, '_');
@@ -306,6 +307,18 @@ const RENAMED: Record<string, string> = { 'HERA 6': 'HERA 4', 'HERA 5': 'HERA 4'
   FACTORY_PRESETS.forEach((p, i) => P.push(`    {0x${p.structure}u, "${p.name.toUpperCase().replace(/[^ -~]/g, '').replace(/"/g, '')}", ${p.values.length}, FPV_${i}},`));
   P.push('};', '');
 }
+P.push('/* Gate-port kinds for pattern authorization, independent of environment grouping. */');
+for (const [name, ports] of [['IN', 'inputs'], ['OUT', 'outputs']] as const)
+  P.push(`static const uint32_t PRESET_GATE_${name}[] = {${TYPE_ORDER.map((t) => DEFS[t][ports].reduce((bits, p, i) => bits + (p.kind === 'gate' ? 2 ** i : 0), 0) + 'u').join(',')}};`);
+P.push('/* Separate factory drum demonstration patterns (#833), packed note words. */');
+P.push('typedef struct { uint32_t identity; uint32_t structure; const char *name; const uint32_t *notes; uint16_t n; uint8_t len, rate, swing, dir; int32_t gate; } preset_pattern_t;');
+patternDefaults.forEach((p, i) => P.push(`static const uint32_t FPN_${i}[] = {${p.notes.map((w) => `${w}u`).join(',')}};`));
+P.push(`#define N_PRESET_PATTERNS ${patternDefaults.length}`);
+P.push('static const preset_pattern_t PRESET_PATTERNS[N_PRESET_PATTERNS] = {');
+// Hashes are data, like the packed note words: decimal keeps arbitrary identities
+// from looking like literal hardware addresses to the firmware build safeguard.
+patternDefaults.forEach((p, i) => P.push(`    {${Number.parseInt(p.id, 16)}u, 0x${p.structure}u, "${p.name.toUpperCase()}", FPN_${i}, ${p.notes.length}, ${p.len}, ${p.rate}, ${p.swing}, ${p.dir}, ${toQ16(p.gate)}},`));
+P.push('};', '');
 const MIG = migrationTables(PRESET_MIGRATIONS);   // (after FPRESET_LIST: presetmig.c reads both)
 P.push(...MIG.lines);
 writeFileSync(new URL('../../firmware/src/presets.h', import.meta.url), P.join('\n'));

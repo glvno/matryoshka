@@ -4,7 +4,7 @@ import { FACTORY } from './assemblies';
 import { toDef, type AssemblyDef } from './assembly';
 import HERA_6 from '../scripts/xl/hera-6-base.json';
 import { defIsEngine, instIsEngine } from './engines';
-import { CARDS, cardOf, factoryPresets, presetsByRules, presetsOfDef, shippedPresets, xlEnginePresets, xlPresetsOfDef } from './factory-presets';
+import { CARDS, cardOf, factoryPresetDefs, factoryPresets, presetsByRules, presetsOfDef, shippedPresets, xlEnginePresets, xlPresetsOfDef } from './factory-presets';
 import { cardRows, cardSlug, cardTemplate, formatCard, formatPreset, parseCard, projectPresets } from './preset-cards';
 import { XL_PRESETS } from './presets';
 import { defRowOrder, defStructure } from './structure';
@@ -116,15 +116,15 @@ describe('preset cards (#413)', () => {
     expect(parseCard(t, HERA).errors).toEqual(['the file holds no preset']);
   });
 
-  it('every card in presets/cards/ is an engine\'s or an effect\'s (#661), reads clean, and gives it three to five presets after Init', () => {
+  it('every authored engine, kit or effect card reads clean and ships its distinct named presets', () => {
     expect(Object.keys(CARDS).length).toBeGreaterThan(0);
     for (const [slug, text] of Object.entries(CARDS)) {
-      const d = [...ENGINES, ...EFFECTS].find((x) => cardSlug(x.name) === slug);
+      const d = factoryPresetDefs().find((x) => cardSlug(x.name) === slug);
       expect(d, slug).toBeTruthy();
       const r = parseCard(text, d!);
       expect(r.errors, slug).toEqual([]);
       expect(r.presets.length - 1, slug).toBeGreaterThanOrEqual(3);
-      expect(r.presets.length - 1, slug).toBeLessThanOrEqual(5);
+      expect(new Set(r.presets.map((p) => p.name)).size, slug).toBe(r.presets.length);
       // the card is what the engine (or effect) ships
       expect(shippedPresets(d!).map((p) => p.name)).toEqual(r.presets.map((p) => p.name));
       expect(cardOf(d!)?.presets.length).toBe(r.presets.length);

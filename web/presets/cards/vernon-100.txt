@@ -64,7 +64,7 @@
 #   osc 3/ext = 0                      0..1
 #   out: a screen, not a value
 
-# Drafts of 2026-10-29 after the EML ElectroComp 100, not yet listened to on the FM-1 (#413).
+# Drafts of 2026-10-29 after the EML ElectroComp 100 (#413).
 engine: Vernon 100
 
 # Switch positions: oscillator 1 color 1..5 = falling ramp, ramp, triangle, square, narrow pulse; hi/lo 1 HI (audio),

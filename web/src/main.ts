@@ -290,7 +290,7 @@ async function offerInstall(): Promise<void> {
 syncChip();
 device.onStatus = (msg) => {
   devStatus(msg);
-  if (!device.connected) libraryDeviceChanged();   // (it went away)
+  if (!device.connected) { clearDevicePatternOrigins(); installedLayout = null; libraryDeviceChanged(); }   // (it went away)
 };
 // the FM-1 on its own (#65): while Live is on, its knobs and patch buttons move the editor's, and the status line follows its slot
 let fromDevice = false;
@@ -362,6 +362,8 @@ device.onEvent = (e) => {
     return;
   }
   if (e.kind === 'slot') {
+    clearDevicePatternOrigins();
+    installedLayout = null;
     if (!device.hasLive) onEditorPatch = false;   // (an FM-1 that takes LIVE loads no slot under Live: this is SAVE or a boot)
     deviceSlot = { slot: e.slot, name: e.name };
     devStatus(`FM-1 plays slot ${slotLabel(e.slot)} ${e.name}`);
@@ -393,10 +395,24 @@ device.onEvent = (e) => {
   if (!live()) return;
   fm1Event(e, 'device');
 };
+function clearDevicePatternOrigins(): void {
+  const was = fromDevice;
+  fromDevice = true;
+  try { editor.clearPatternOrigins(); } finally { fromDevice = was; }
+}
 /** what an FM-1 did on its panel, the real one over USB or the emulated one: the editor follows */
 function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
   const mark = (on: boolean): void => { if (from === 'device') fromDevice = on; else fromEmu = on; };
   if (e.kind === 'slot') return;
+  if (e.kind === 'origins') {
+    if (from === 'device' && (linkBusy() || installedLayout !== deviceLayoutKey(editor.patch))) return;
+    const replay = from === 'emu' && fromDevice && panelReported();
+    mark(true);
+    try {
+      if (!editor.originsFromDevice(e.update, replay) && from === 'device') device.invalidateOrigins();
+    } finally { mark(false); }
+    return;
+  }
   // (by module or device index, while the FM-1 still holds the patch from before an upload: see linkBusy)
   if (from === 'device' && linkBusy() && ['track', 'mute', 'locks', 'param', 'arms', 'focus'].includes(e.kind)) return;
   // the copy's own edits while it replays an FM-1 that reports its panel (#549): the FM-1 sends its own (TRACK_NOW,
@@ -501,10 +517,12 @@ async function sendPatch(): Promise<boolean> {
     return false;
   } finally {
     uploading = false;
+    device.reconcileOrigins();
   }
   return true;
 }
 const queueUpload = (): void => {
+  device.invalidateOrigins();
   clearTimeout(uploadTimer);
   uploadTimer = 0;
   if (uploading) { dirty = true; return; }
@@ -775,6 +793,7 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
   cin: (bars) => {
     if (!mirror.following) host.countIn(bars);
   },
+  origin: (m, pat, identity) => fm1Event({ kind: 'origins', update: { kind: 'change', record: { module: m, pattern: pat, identity } } }, 'emu'),
   track: (m, notes, pat) => fm1Event({ kind: 'track', module: m, notes, pat }, 'emu'),
   locks: (m, pat, locks) => fm1Event({ kind: 'locks', module: m, pat, locks }, 'emu'),
   pattern: (p, song) => fm1Event({ kind: 'pattern', pattern: p, song }, 'emu'),
@@ -1000,6 +1019,7 @@ const editor = new Editor($('canvas'), firstPatch, {
   },
   onLoad(p) {
     loadsSeen++;
+    device.invalidateOrigins();
     emuFresh = true;
     uploadGate.forget();   // (a patch opened always goes to the FM-1 whole: its mutes, arms and pattern start afresh too)
     installedLayout = null;
@@ -2161,6 +2181,8 @@ try {
 
 // FM-1 link: FM-1 & MIDI's Connect and the Connect FM-1 button over the canvas
 async function connectFm1(): Promise<void> {
+  if (device.connected) clearDevicePatternOrigins();
+  installedLayout = null;
   try {
     const info = await device.connect();
     devStatus(`FM-1 connected (protocol ${info.version}, up to ${info.maxModules} modules, flash ${info.flashOk ? 'ok' : 'not available'})`);

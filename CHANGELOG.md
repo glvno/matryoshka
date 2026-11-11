@@ -4,8 +4,15 @@
 
 - Experimental assembly capability inspector (`?capabilities=1`): inspect engine recognition and supported audio paths while editing, load design examples, and validate a dry-route bypass preview. The preview leaves audio unchanged.
 - The experimental capability inspector shows current module names beside IDs and explains filter output labels. It distinguishes unmet engine/audio-path requirements from unimplemented Harmony, Arp and Steps performance recognition.
+- Release-packaging checks preserve the host compiler's search path while isolating firmware build settings.
+- Selecting a user preset in the editor loads its own values even when a factory preset has the same name, without replacing the drum pattern.
 - Device scenario runs enforce and save EDITOR IGNORE on the test rig, check it around installs and scenarios, and stop if it cannot be confirmed.
 - **Send saved assembly presets with a patch:** FM-1 & MIDI now offers “Send this patch’s presets” beside Send patch. It transfers saved assembly presets, including nested ones, asks before replacing FM-1 copies, and refreshes Library even after incomplete transfers. PRESET selects presets for matching device pages; nested assemblies have no separate page in that patch. Sending the patch itself still preserves its sound without copying preset lists.
+- Expand the Monolith audition studies to seven composed effects treatments, each with a dry reference.
+
+- Factory sound revisions soften 8 Lire’s Pair FM Bells and Feedback Howl, give Spokes more contrasting chord roles, and reduce prominent tonal percussion. The 909 and Perun demonstration grooves use their actual hat and snare lanes.
+
+- Factory drum sounds carry distinct default patterns. Selecting another factory sound changes only an untouched factory pattern; saved user patterns stay in place. Factory sound banks add practical melodic and kit choices, reduce harsh drone settings, and correct final-output peaks in the audition phrases.
 
 ## 1.13.0 — 2026-11-10
 

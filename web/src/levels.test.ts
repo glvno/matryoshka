@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // #448: every factory engine names its level rows (levels.ts LEVEL_ROWS), and they are on its card.
 import { expect, it } from 'vitest';
-import { FACTORY } from './assemblies';
+import { factoryPresetDefs } from './factory-presets';
 import { defIsEngine } from './engines';
 import { LEVEL_ROWS } from './levels';
 import { cardRows } from './preset-cards';
 
 it('every factory engine has its level rows on its card', () => {
-  const engines = FACTORY.filter((d) => defIsEngine(d));
+  const engines = factoryPresetDefs().filter((d) => defIsEngine(d) || d.name === '808 kit' || d.name === '909 kit');
   const missing = engines.flatMap((d) => {
     const keys = LEVEL_ROWS[d.name];
     if (!keys) return [`${d.name}: none listed`];

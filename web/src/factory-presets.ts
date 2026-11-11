@@ -13,7 +13,7 @@ import { setFactoryPresets, type Preset } from './device-presets';
 import { defIsEngine, instIsEngine } from './engines';
 import { DEFS } from './modules';
 import { cardSlug, parseCard, projectPresets, type CardParse } from './preset-cards';
-import { XL_PRESETS } from './presets';
+import { FM1_PRESETS, XL_PRESETS } from './presets';
 import { defStructureAndOrder } from './structure';
 
 /** the card files by slug (web/presets/cards/hera-6.txt is "hera-6") */
@@ -124,7 +124,12 @@ const once = <T>(f: () => T): (() => T) => {
 export const hasFactoryPresets = (def: AssemblyDef): boolean => defIsEngine(def) || CARDS[cardSlug(def.name)] !== undefined;
 
 /** every factory engine's presets, then the factory effects' with a card (the FM-1's ROM list) */
-export const factoryPresets = once((): Preset[] => FACTORY.flatMap((d) => shippedPresets(d)));
+export const factoryPresetDefs = once((): AssemblyDef[] => [...FACTORY, ...['808 Kit', '909 Kit'].flatMap((name) => {
+  const p = FM1_PRESETS[name]();
+  const a = p.assemblies?.find((a) => a.name === name.toLowerCase());
+  return a ? [toDef(p, a)] : [];
+})]);
+export const factoryPresets = once((): Preset[] => factoryPresetDefs().flatMap((d) => shippedPresets(d)));
 
 /** the presets a factory assembly ships: an engine's (presetsOfDef), an effect's card's, else none */
 export function shippedPresets(def: AssemblyDef): Preset[] {

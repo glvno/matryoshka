@@ -59,7 +59,7 @@
 #   lfo 2 → bite = 0                   -4..4
 #   out: a screen, not a value
 
-# Drafts of 2026-10-29 after the Neuzeit Elmyra 2, not yet listened to on the FM-1 (#413).
+# Drafts of 2026-10-29 after the Neutral Labs Elmyra 2 (#413).
 engine: Elvira 2
 
 # Keys F3..B3 and C4..F4 each trigger one of the four voices at its own tune; the
@@ -96,7 +96,7 @@ fdbk = 0.35
 mix = 0.25
 lfo 1 freq = 0.08 Hz
 lfo 1 → cutoff = 0.4
-  vol = 0.69
+  vol = 0.56
 
 preset: Deep Drone
 # Self-running dark ambient: all four drones up on C2 / G2 / C3 / G3, a closed ladder breathing slowly.
@@ -112,7 +112,7 @@ voice 2 / drone = 1
 voice 3 / tune = -12 st
 voice 3 / fine = -5 ct
 voice 3 / wave = 0.2
-voice 3 / page = formant
+voice 3 / page = analog
 voice 3 / drone = 1
 voice 4 / tune = -5 st
 voice 4 / wave = 0.4
@@ -121,13 +121,13 @@ voice 4 / drone = 0.8
 cutoff = 600 Hz
 reso = 0.35
 time = 650 ms
-fdbk = 0.6
+fdbk = 0.4
 mix = 0.4
-bite = 2
+bite = 1
 choke = 4000 Hz
-  vol = 0.61
+  vol = 0.99
 lfo 1 freq = 0.05 Hz
-lfo 1 → cutoff = 0.8
+lfo 1 → cutoff = 0.35
 
 preset: Rusty Bells
 # Keys: a high open-fifth cluster on digital / formant pages, crushed to ring like rusted metal, long delay tails.
@@ -167,10 +167,10 @@ choke = 9000 Hz
 lfo 2 freq = 0.4 Hz
 lfo 2 wav = S&H
 lfo 2 → bite = 0.5
-  vol = 0.42
+  vol = 0.34
 
-preset: Ouch Rhythm
-# Harsh and rhythmic from the keys: short plucks on a minor-seventh cluster, heavy crush, the ouch drive pulsed by a square LFO into a short feeding-back delay.
+preset: Pulse Lantern
+# Muted rhythmic pulses on a minor-seventh cluster: short plucks, a restrained drive pulse and a short delay.
 voice 1 / tune = -12 st
 voice 1 / wave = 0.6
 voice 1 / page = eml color
@@ -195,20 +195,20 @@ voice 4 / page = digital
 voice 4 / mod = 20
 voice 4 / attack = 0.005 s
 voice 4 / release = 0.3 s
-cutoff = 3500 Hz
+cutoff = 1800 Hz
 reso = 0.5
 time = 190 ms
-fdbk = 0.75
+fdbk = 0.45
 mix = 0.5
-bite = 12
-choke = 5000 Hz
-  vol = 0.51
+bite = 1.5
+choke = 2200 Hz
+  vol = 0.53
 lfo 2 freq = 2.5 Hz
 lfo 2 wav = square
-lfo 2 → bite = 2
+lfo 2 → bite = 0.35
 
-preset: Swarm Cluster
-# Self-running dissonant swarm: four drones a semitone apart with detuned beating, eml color waves, a slow filter sweep and a long delay.
+preset: Beating Cluster
+# Self-running close-interval bed: four drones a semitone apart with detuned beating, eml color waves, a slow filter sweep and a long delay.
 voice 1 / tune = -3 st
 voice 1 / fine = -14 ct
 voice 1 / wave = 0.45
@@ -232,10 +232,10 @@ voice 4 / drone = 0.9
 cutoff = 1200 Hz
 reso = 0.4
 time = 620 ms
-fdbk = 0.7
+fdbk = 0.45
 mix = 0.45
-bite = 4
-choke = 7000 Hz
-  vol = 0.35
+bite = 1.3
+choke = 1800 Hz
+  vol = 0.81
 lfo 1 freq = 0.03 Hz
-lfo 1 → cutoff = 1.2
+lfo 1 → cutoff = 0.4

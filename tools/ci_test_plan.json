@@ -10,5 +10,37 @@
   "tools/emu/src/smoke.rs": {
     "sha256": "dc5c4ec2f6947c97e04c79d37ca314094e2b646fbac0b7eda448ca1dec5072fd",
     "plan": "Review the test-only piano smoke correction from 9a71ad4d against the new playable-roll key behavior. These exact harness bytes passed the focused piano smoke selection, 27/27 checks, against unchanged frozen DEV candidate 0fe53aa9; no runtime feature source changed. Preserve the original four obsolete assertion failures as historical results. Do not repeat full smoke during integration. Run full smoke once on the future versioned final release candidate under D-144; this plan is review input, not automated qualification."
+  },
+  "web/src/headroom.ts": {
+    "sha256": "6a601d3aa2045fdc03e95efaf015767d58d43ec6ec6e3a35ba840a8afb8c1646",
+    "plan": "Review the defined 16-second 44118 Hz phrase: low/mid/high notes, sustained/repeated notes and effect tails; drums run for 13 seconds then stop. Verify diagnostic attenuation occurs before the final output clamp, with gain restored only in the float measurement. Compare Sallen 20 Acid Scream and Wanderer Punch Bass before/after at identical note, velocity and gain settings. Review raw and separately loudness-matched outputs, waveform, spectrogram and spectrum for all 101 scoped candidates. Confirm unchanged 0.88 headroom target, voices and resource margins. The final-1 inventory contains 101 spectrograms from mixed render runs; each entry records its source snapshot and actual patch hash. The current script includes later provenance bookkeeping changes and is not the source of every retained render. Results cover the defined phrase only. Independent content/spec review passed at a4a4d3cc; this plan is review input, not automated qualification, owner listening or hardware evidence."
+  },
+  "web/scripts/preset-auditions.ts": {
+    "sha256": "d153b04dbd673ea1f5b916f99737b2e74e33aec11a2d351379d7d9b24ab63c29",
+    "plan": "Render all affected banks after regeneration. Preserve per-entry source provenance for unchanged banks. Check the two Lire revisions against earlier files, corrected 909/Perun drum routing, six Spokes arrangements, finite samples, raw peaks and existing resource limits. The complete review still includes 101 bank entries."
+  },
+  "web/scripts/preset-peak-repro.ts": {
+    "sha256": "daaa407c150211693abc9a06772d99dbe76593afbda7fd0b0ebd05d5fe6aae59",
+    "plan": "Review the defined 16-second 44118 Hz phrase: low/mid/high notes, sustained/repeated notes and effect tails; drums run for 13 seconds then stop. Verify diagnostic attenuation occurs before the final output clamp, with gain restored only in the float measurement. Compare Sallen 20 Acid Scream and Wanderer Punch Bass before/after at identical note, velocity and gain settings. Review raw and separately loudness-matched outputs, waveform, spectrogram and spectrum for all 101 scoped candidates. Confirm unchanged 0.88 headroom target, voices and resource margins. The final-1 inventory contains 101 spectrograms from mixed render runs; each entry records its source snapshot and actual patch hash. The current script includes later provenance bookkeeping changes and is not the source of every retained render. Results cover the defined phrase only. Independent content/spec review passed at a4a4d3cc; this plan is review input, not automated qualification, owner listening or hardware evidence."
+  },
+  "web/scripts/preset-spectrograms.py": {
+    "sha256": "ee4f008f6c20480a2d10b2a98629797bb1abbf6e6a29f5ba5ac4facecef4c307",
+    "plan": "Review the defined 16-second 44118 Hz phrase: low/mid/high notes, sustained/repeated notes and effect tails; drums run for 13 seconds then stop. Verify diagnostic attenuation occurs before the final output clamp, with gain restored only in the float measurement. Compare Sallen 20 Acid Scream and Wanderer Punch Bass before/after at identical note, velocity and gain settings. Review raw and separately loudness-matched outputs, waveform, spectrogram and spectrum for all 101 scoped candidates. Confirm unchanged 0.88 headroom target, voices and resource margins. The final-1 inventory contains 101 spectrograms from mixed render runs; each entry records its source snapshot and actual patch hash. The current script includes later provenance bookkeeping changes and is not the source of every retained render. Results cover the defined phrase only. Independent content/spec review passed at a4a4d3cc; this plan is review input, not automated qualification, owner listening or hardware evidence. Check mixed-run report labels against per-entry provenance; no later commit may relabel earlier renders."
+  },
+  "web/scripts/audition-render.ts": {
+    "sha256": "177cd2a8ee3ccac97ccea036fd7233e527eda8d0c6107e7c9b198c1bb5b906b0",
+    "plan": "Compare extracted renderer and WAV encoding against f8db8ab8: identical fixed 16-second phrase and pre-clamp diagnostic attenuation. Render revised banks and four dry/effected pairs. Check finite output, raw peaks, matched constant gain, full saved patches and complete spectrogram coverage. Existing engine nonlinearities remain; no demo limiter."
+  },
+  "web/scripts/audition-arrangements.ts": {
+    "sha256": "2fbd894f38a47b1deca8225fc85d4f0de518296b4ec22fe6bf5b2ede97780426",
+    "plan": "Render all six Spokes presets; verify distinct tone/chord phrases, Boom Bap chord silence and saved-patch notes. This helper is used only by audition generation. Existing sound-selection tests must continue to preserve melodic tracks and edited drum patterns."
+  },
+  "web/scripts/preset-effects-auditions.ts": {
+    "sha256": "2eef77969882bf655b8352d7a82e7ce397674aa14df4216acfc851a2d33cb1db",
+    "plan": "Render seven dry/effected Monolith pairs with identical synth controls, notes and Output levels. Verify all fourteen saved patch hashes, finite samples, raw peaks at or below 0.88 and existing resource budgets. Inspect every plot. Verify the final chorus preserves stereo. Auditions remain complete patch experiments; no factory selector or hardware qualification is claimed."
+  },
+  "web/scripts/preset-review-page.py": {
+    "sha256": "52919f28b246c07cd40e280bed0a2e288bc809203f1d3a2fdc5788e8d120ced1",
+    "plan": "Generate the phone listening page from manifests; verify all local audio/image/patch links, bank navigation, narrow layout and playback switching. Confirm clear before/after, raw/matched and dry/effected labels; retain source date/commit and scope limits. A review page is not owner aesthetic acceptance."
   }
 }

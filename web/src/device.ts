@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+import { FEATURE_PATTERN_ORIGINS, PatternOrigins, type OriginUpdate } from './pattern-origin';
 // The FM-1 as a Web MIDI SysEx peer: patch upload, store, live parameters (wire format: protocol.ts).
 import { DEFS } from './modules';
 import type { Patch, Range } from './patch';
@@ -165,6 +166,7 @@ const TRIES = 3;
 /** what the FM-1 does on its own (#65, #83): a knob or patch button as MIDI CC, the slot it plays now, a step edited or a
  * track muted on its SEQ page (`module`: the module's device index, deviceIndex) */
 export type DeviceEvent =
+  | { kind: 'origins'; update: OriginUpdate }
   | { kind: 'cc'; n: number; v: number }
   | { kind: 'slot'; slot: number; name: string }
   | { kind: 'track'; module: number; notes: StepNote[]; pat: number }
@@ -195,6 +197,13 @@ export type DeviceEvent =
 export const PRESET_NEEDS_UPDATE = 'Update the FM-1 to store this preset on it';
 
 export class DeviceLink {
+  private origins = new PatternOrigins();
+  invalidateOrigins(): void { this.origins.suspend(); }
+  reconcileOrigins(): void {
+    const records = this.origins.snapshot();
+    this.onEvent({ kind: 'origins', update: records ? { kind: 'snapshot', records } : { kind: 'reset' } });
+  }
+
   private out: MIDIOutput | null = null;
   private inp: MIDIInput | null = null;
   private waiter: { match: (p: ReturnType<typeof parse>) => boolean; done: (p: NonNullable<ReturnType<typeof parse>>) => void } | null = null;
@@ -223,6 +232,7 @@ export class DeviceLink {
     if (!navigator.requestMIDIAccess) throw new Error('Web MIDI is not available in this browser (use Chrome or Edge)');
     if (this.inp) this.inp.onmidimessage = null; // a reconnect: let go of the old port
     this.out = this.inp = null;
+    this.info = null; this.origins.reset();
     let access: MIDIAccess;
     try {
       access = await navigator.requestMIDIAccess({ sysex: true });
@@ -230,7 +240,7 @@ export class DeviceLink {
       throw new Error(sysexRefused(e));
     }
     access.onstatechange = () => {
-      if (this.out && this.out.state !== 'connected') this.onStatus('FM-1 disconnected');
+      if (this.out && this.out.state !== 'connected') { this.origins.reset(); this.onStatus('FM-1 disconnected'); }
     };
     const inputs = [...access.inputs.values()], outputs = [...access.outputs.values()];
     // the ports named like an FM-1 first; then, as macOS may show it under another name (#187), every other in / out pair
@@ -255,6 +265,7 @@ export class DeviceLink {
     if (this.inp) this.inp.onmidimessage = null;
     this.out = this.inp = null;
     this.info = null;
+    this.origins.reset();
     this.running = false;
   }
 
@@ -266,6 +277,7 @@ export class DeviceLink {
 
   /** listen on `inp` and send to `out`: the link's ports from now on */
   private attach(inp: MIDIInput, out: MIDIOutput): void {
+    this.origins.resume();
     this.out = out;
     this.inp = inp;
     this.running = false;
@@ -277,7 +289,12 @@ export class DeviceLink {
       }
       if (ev.data && ev.data.length === 3 && (ev.data[0] & 0xf0) === 0xb0) return this.onEvent({ kind: 'cc', n: ev.data[1], v: ev.data[2] });
       const p = ev.data ? parse(ev.data) : null;
+      if (p?.cmd === CMD.originNow) {
+        if (!(this.info?.features && (this.info.features & FEATURE_PATTERN_ORIGINS))) { this.origins.reset(); return; }
+        return this.onEvent({ kind: 'origins', update: this.origins.receive(Uint8Array.from(p.payload)) });
+      }
       if (p?.cmd === CMD.slotNow && p.payload.length >= 1) {
+        this.origins.suspend();
         const name = String.fromCharCode(...p.payload.slice(1, 21).filter((c) => c)).trim();
         return this.onEvent({ kind: 'slot', slot: p.payload[0], name });
       }
@@ -307,7 +324,9 @@ export class DeviceLink {
       if (stored) return this.onEvent({ kind: 'presetStored', ...stored });
       const entry = p && this.collecting ? parsePresetEntry(p) : null;
       if (entry && this.collecting) return this.collecting(entry);
+      if (p?.cmd === CMD.info) this.info = parseInfo(p);
       if (p && this.waiter?.match(p)) {
+        if (p.cmd === CMD.ack && p.payload[0] === CMD.commit && p.payload[2] === 0) this.origins.resume();
         const w = this.waiter;
         this.waiter = null;
         w.done(p);
@@ -363,6 +382,7 @@ export class DeviceLink {
 
   /** Upload and switch to the patch (`bin`: it encoded already). Calls are serialised. */
   upload(patch: Patch, encoded?: Uint8Array): Promise<void> {
+    this.invalidateOrigins();
     const run = async (): Promise<void> => {
       const bin = encoded ?? encodePatch(patch);
       await this.sendChunks(bin);
@@ -410,6 +430,10 @@ export class DeviceLink {
   }
 
   private async sendChunks(bin: Uint8Array): Promise<void> {
+    if (bin[1] >= 54 && (!this.info?.patchFormats || bin[1] > this.info.patchFormats.max || !(this.info.features & FEATURE_PATTERN_ORIGINS)))
+      throw new Error('This patch carries factory pattern origins. Update the FM-1 firmware before sending it; its origins cannot be removed automatically.');
+    const range = this.info?.patchFormats;
+    if (range && (bin[1] < range.min || bin[1] > range.max)) throw new Error(UPDATE_TO_SYNC);
     const frames = chunkFrames(bin);
     for (let i = 0; i < frames.length; i++) await this.ackFor(frames[i], CMD.chunk, i & 0x7f);
   }
