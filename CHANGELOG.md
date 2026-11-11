@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Experimental assembly capability inspector (`?capabilities=1`): inspect engine recognition and supported audio paths while editing, load design examples, and validate a dry-route bypass preview. The preview leaves audio unchanged.
+- The experimental capability inspector shows current module names beside IDs and explains filter output labels. It distinguishes unmet engine/audio-path requirements from unimplemented Harmony, Arp and Steps performance recognition.
 - Release-packaging checks preserve the host compiler's search path while isolating firmware build settings.
 - Selecting a user preset in the editor loads its own values even when a factory preset has the same name, without replacing the drum pattern.
 - Device scenario runs enforce and save EDITOR IGNORE on the test rig, check it around installs and scenarios, and stop if it cannot be confirmed.

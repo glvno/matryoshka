@@ -1,0 +1,196 @@
+{
+  "version": 2,
+  "name": "Audio without an engine",
+  "modules": [
+    {
+      "id": 1,
+      "type": "fm1",
+      "x": 20,
+      "y": 20,
+      "params": {
+        "morph": 0,
+        "tempo": 120
+      },
+      "panel": {
+        "kinds": {
+          "fx": "nothing",
+          "lfo": "nothing",
+          "edit": "nothing",
+          "arp": "nothing"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "output",
+      "x": 830,
+      "y": 20,
+      "params": {
+        "level": 0.15
+      }
+    },
+    {
+      "id": 3,
+      "type": "osc",
+      "x": 100,
+      "y": 300,
+      "params": {
+        "wave": 0,
+        "pw": 0.5,
+        "coarse": 0,
+        "fine": 0,
+        "pm": 0,
+        "level": 0.8,
+        "fb": 0,
+        "unison": 1,
+        "detune": 10,
+        "blend": 0.5,
+        "stack": 0,
+        "pm2": 0,
+        "pm3": 0,
+        "analog": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "wave"
+        ],
+        "p2": [
+          "pw"
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "type": "filter",
+      "x": 800,
+      "y": 300,
+      "params": {
+        "cutoff": 1200,
+        "res": 0.2,
+        "cvamt": 1,
+        "track": 0,
+        "morph": 0,
+        "osc": 0,
+        "drive": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "cutoff"
+        ],
+        "p2": [
+          "res"
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "type": "filter",
+      "x": 1070,
+      "y": 300,
+      "params": {
+        "cutoff": 1200,
+        "res": 0.2,
+        "cvamt": 1,
+        "track": 0,
+        "morph": 0,
+        "osc": 0,
+        "drive": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "cutoff"
+        ],
+        "p2": [
+          "res"
+        ]
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": {
+        "module": 4,
+        "port": "lp12"
+      },
+      "to": {
+        "module": 5,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 3,
+        "port": "out"
+      },
+      "to": {
+        "module": 4,
+        "port": "in",
+        "label": "audio in"
+      }
+    },
+    {
+      "from": {
+        "module": 5,
+        "port": "lp12",
+        "label": "audio out"
+      },
+      "to": {
+        "module": 2,
+        "port": "l"
+      }
+    }
+  ],
+  "assemblies": [
+    {
+      "v": 1,
+      "id": 1,
+      "name": "Two filters",
+      "label": "Two filters",
+      "x": 800,
+      "y": 300,
+      "open": false,
+      "modules": [
+        4,
+        5
+      ],
+      "inputs": [
+        {
+          "module": 4,
+          "port": "in",
+          "label": "audio in"
+        }
+      ],
+      "outputs": [
+        {
+          "module": 5,
+          "port": "lp12",
+          "label": "audio out"
+        }
+      ],
+      "params": [
+        {
+          "module": 4,
+          "param": "cutoff",
+          "label": "cutoff 1"
+        },
+        {
+          "module": 5,
+          "param": "cutoff",
+          "label": "cutoff 2"
+        }
+      ]
+    }
+  ]
+}
