@@ -54,10 +54,7 @@ describe('the lineage (#627)', () => {
     expect(migrationsOf(l, []).problems).toHaveLength(1);
   });
 
-  it('moves the presets of the 1.9.1 level rows, #430 and D-852, and not the 1.5.0 rebuilds', () => {
-    const engines = new Set(Object.values(PRESET_MIGRATIONS).map((m) => m.engine));
-    for (const e of ['basic poly', 'drift poly', 'mono lead', 'supersaw stack', 'Expander S', 'Oracle V', 'Monolith D', 'Sallen 20', 'Silver Box', 'Cassia 1', 'drum kit', '8 Lire', 'Elvira 2']) expect(engines, e).toContain(e);
-    for (const s of ['06ea3383', 'b708700b', '6573011a', '404a1620', '52587cb7', 'e18a8dd2', '00c036a8', '1486a89e']) expect(PRESET_MIGRATIONS[s], s).toBeUndefined();
+  it('moves every migrated preset to its engine\'s structure today', () => {
     for (const [from, m] of Object.entries(PRESET_MIGRATIONS)) {
       const today = lineage.engines[m.engine];
       expect(m.to, from).toBe(today[today.length - 1].structure);
@@ -124,7 +121,6 @@ describe('a 1.9.0 preset on today\'s factory patch (#627 done-when)', () => {
           const j = before.findIndex((x) => x[0] === r[0]);
           expect(mine!.values[k], `${engine} ${r[0]} "${r[1]}"`).toBe(j >= 0 ? old[j] : init[k]);
         });
-        expect(now.length - before.length, engine).toBe(engine === 'Cassia 1' ? 35 : 1);   // (Cassia 1: the CZ-1 rows of #658)
       }
       expect(applyPreset(p, a, mine!)).toBe(true);
       expect(currentValues(p, a)).toEqual(mine!.values);

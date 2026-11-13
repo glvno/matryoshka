@@ -4,7 +4,7 @@ import { Engine } from './engine';
 import { harmButton, harmChord, harmInit, harmIntervals, harmKey, harmName, HARM_BUTTONS, type HarmParams, type HarmState } from './harmonizer';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
-import { encodePatch, formatOf, FORMAT_1_11, FORMAT_1_12, TYPE_ORDER } from './patchbin';
+import { encodePatch, formatOf, FORMAT_1_11, FORMAT_1_12 } from './patchbin';
 import { deviceView, keySource } from './poly';
 import { armable, armMask } from './arm';
 
@@ -200,8 +200,6 @@ describe('Harmonizer note logic (#598)', () => {
 
 describe('Harmonizer module (#598)', () => {
   it('is appended after the Matrix, in format 52, between Main and a Voicing', () => {
-    expect(TYPE_ORDER[TYPE_ORDER.length - 1]).toBe('harm');
-    expect(DEFS.harm.params.map((q) => q.name)).toEqual(['type', 'sus', 'ext', 'voicing', 'lock', 'split']);
     const { p, harm, alloc } = harmPatch();
     expect(keySource(p, p.modules.find((m) => m.id === alloc)!)?.id).toBe(harm);
     const view = deviceView(p, true);

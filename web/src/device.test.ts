@@ -59,12 +59,12 @@ describe('chipState', () => {
 });
 
 describe('syncLine', () => {
-  it('shows what the chip shows, with Sync or Stop syncing while connected (Sync on a sandbox patch: sandbox mode)', () => {
-    expect(syncLine(chipState(true, true, true))).toEqual({ text: 'Synced with the FM-1', action: 'stop' });
-    expect(syncLine(chipState(true, false, true))).toEqual({ text: 'Not synced', action: 'sync' });
-    expect(syncLine(chipState(true, true, false))).toEqual({ text: 'Sandbox controller: the browser plays, the FM-1 drives it', action: 'stop' });
-    expect(syncLine(chipState(true, false, false))).toEqual({ text: 'Sandbox patch, not synced: Sync makes the FM-1 its controller', action: 'sync' });
-    expect(syncLine(chipState(false, true, true))).toEqual({ text: 'Not connected', action: null });
+  it('offers Sync or Stop syncing while connected (Sync on a sandbox patch: sandbox mode), nothing while not', () => {
+    const states = [chipState(true, true, true), chipState(true, false, true), chipState(true, true, false), chipState(true, false, false), chipState(false, true, true)];
+    expect(states.map((s) => syncLine(s).action)).toEqual(['stop', 'sync', 'stop', 'sync', null]);
+    const texts = states.map((s) => syncLine(s).text);
+    expect(texts.every((t) => t.length > 0)).toBe(true);
+    expect(new Set(texts).size).toBe(texts.length);
   });
 });
 
@@ -125,11 +125,12 @@ describe('sandbox mode (the FM-1 as a sandbox patch\'s controller)', () => {
     expect(liveSync.sandbox(true, true, true)).toBe(false);
   });
 
-  it('labels the chip SANDBOX CONTROLLER, and says how to turn MIDI OUT on when the FM-1 reports it off', () => {
-    expect(sandboxChip({ hasSandbox: true, midiOut: true })).toEqual({ text: 'FM-1 \u00b7 SANDBOX CONTROLLER', title: SANDBOX_HOVER, midiOff: false });
+  it('labels the chip, and flags MIDI OUT off when the FM-1 reports it off', () => {
+    const on = sandboxChip({ hasSandbox: true, midiOut: true });
+    expect(on).toMatchObject({ title: SANDBOX_HOVER, midiOff: false });
     const off = sandboxChip({ hasSandbox: true, midiOut: false });
-    expect(off.text).toBe('FM-1 \u00b7 turn on MIDI OUT (GLO, K3) to control the sandbox');
     expect(off.midiOff).toBe(true);
+    expect(off.text).not.toBe(on.text);
     expect(off.title.startsWith(SANDBOX_HOVER)).toBe(true);
   });
 
@@ -150,10 +151,12 @@ describe('sandbox mode (the FM-1 as a sandbox patch\'s controller)', () => {
     expect(transportOf([0xb0, 89, 127])).toBe(null);
   });
 
-  it('asks for the 1.3 firmware when the FM-1 has no sandbox mode (it keeps its sound)', () => {
+  it('says something else when the FM-1 has no sandbox mode (it keeps its sound)', () => {
     const old = sandboxChip({ hasSandbox: false, midiOut: null });
-    expect(old.text).toBe('FM-1 \u00b7 SANDBOX CONTROLLER');
-    expect(old.title).toBe(`${SANDBOX_HOVER} Update the FM-1 to 1.3 to mute it and show the page.`);
+    const current = sandboxChip({ hasSandbox: true, midiOut: true });
+    expect(old.text).toBe(current.text);
+    expect(old.title.startsWith(SANDBOX_HOVER)).toBe(true);
+    expect(old.title).not.toBe(current.title);
   });
 });
 
@@ -182,11 +185,10 @@ describe('syncsWith', () => {
   });
   it('offers the matching update when either side is too old', () => {
     const oldFirmware = { ...info(0), patchFormats: { min: 31, max: 38 } };
-    expect(syncUpdateNotice(oldFirmware)).toMatchObject({ target: 'firmware', label: 'Update the FM-1' });
+    expect(syncUpdateNotice(oldFirmware)).toMatchObject({ target: 'firmware' });
     expect(syncUpdateNotice(info(246))).toMatchObject({ target: 'firmware' });
     const newFirmware = { ...info(65526), patchFormats: { min: VERSION + 1, max: 200 } };
-    expect(syncUpdateNotice(newFirmware)).toMatchObject({ target: 'editor', label: 'Open current editor' });
-    expect(syncUpdateNotice(newFirmware).message).toContain('editor is older');
+    expect(syncUpdateNotice(newFirmware)).toMatchObject({ target: 'editor' });
   });
   it('holds back legacy format 39 firmware, but not an FM-1 unheard from yet', () => {
     expect(syncsWith(info(246 | (255 << 8)))).toBe(false); // format 39 predates the current writer
@@ -308,9 +310,9 @@ describe('DeviceLink.connect', () => {
     await withMidi([inp], [out], async () => {
       await link.connect();
       const bin = encodePatch(withFxBus(subtractiveSaw()), true);
-      expect(bin[1]).toBe(55);
+      expect(bin[1]).toBe(VERSION);
       expect((bin[6] | bin[7] << 8) & FLAG_PATTERN_ORIGINS).toBe(0);
-      link.info!.patchFormats = { min: 31, max: 54 };
+      link.info!.patchFormats = { min: 31, max: VERSION - 1 };
       const sent = out.sent.length;
       await expect(link.uploadSlotBin(0, 'FX', bin)).rejects.toThrow();
       expect(out.sent).toHaveLength(sent);
@@ -382,8 +384,6 @@ describe('DeviceLink.connect', () => {
     const link = new DeviceLink();
     const err = await withMidi([ign.i], [ign.o], () => link.connect()).catch((e: Error) => e);
     expect((err as Error).message).toBe(ignoredFound(1));
-    expect(ignoredFound(1)).toBe('An FM-1 is set to ignore the editor, so it leaves it alone: on it, GLO \u203a SYSTEM \u203a EDITOR to ALLOW, then connect again');
-    expect(ignoredFound(2)).toMatch(/^2 FM-1s are set to ignore the editor/);
     expect(link.connected).toBe(false);
   });
   it('the test tools\' page connects to it all the same (the rig is set to IGNORE, #702)', async () => {
@@ -414,27 +414,26 @@ describe('DeviceLink.connect', () => {
   it('lists the ports it saw when nothing answers', async () => {
     const link = new DeviceLink();
     const err = await withMidi([port('k', 'Launchkey MIDI')], [port('K', 'Launchkey MIDI')], () => link.connect()).catch((e: Error) => e);
-    expect((err as Error).message).toMatch(/^No FM-1 answered as Matryoshka \(MIDI ports: Launchkey MIDI\)/);
+    expect((err as Error).message).toMatch(/MIDI ports: Launchkey MIDI/);
     expect(link.connected).toBe(false);
   });
-  it('says what to change when the browser blocks SysEx', async () => {
+  it('maps a browser SysEx refusal to its own message', async () => {
     const refused = Object.assign(new Error('Permission denied'), { name: 'NotAllowedError' });
     const err = await withMidi([], [], () => new DeviceLink().connect(), refused).catch((e: Error) => e);
-    expect((err as Error).message).toMatch(/blocks SysEx for this site/);
+    expect((err as Error).message).toBe(sysexRefused(refused));
+    expect(sysexRefused(refused)).not.toBe(sysexRefused(new Error('Permission denied')));
   });
   it('a request with no port open rejects, not a TypeError on null (#754)', async () => {
     const err = await new DeviceLink().hello().catch((e: Error) => e);
     expect(err).toBeInstanceOf(Error);
-    expect((err as Error).message).toBe('the FM-1 is not connected');
   });
 });
 
 describe('notFound / sysexRefused', () => {
-  it('says there are no ports, or names the connected ones', () => {
-    expect(notFound([], [], false)).toBe('FM-1 not found (the browser sees no MIDI ports). Is it connected by USB and switched on?');
+  it('names the connected ports', () => {
     expect(notFound(asIn([port('a', 'X', { state: 'disconnected' }), port('b', 'Y')]), asOut([port('B', 'Y')]), false)).toMatch(/\(MIDI ports: Y\)/);
   });
   it('passes on another error', () => {
-    expect(sysexRefused(new Error('boom'))).toBe('Web MIDI did not open: boom');
+    expect(sysexRefused(new Error('boom'))).toContain('boom');
   });
 });

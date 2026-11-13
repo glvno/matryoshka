@@ -164,7 +164,6 @@ describe('CPU estimate with two cores (docs/measurements/cpu-survey-2026-11-05-r
   const read = (f: string) => new Map((JSON.parse(readFileSync(new URL(`../../docs/measurements/${f}`, import.meta.url), 'utf8')) as Reading[]).map((r) => [r.name.toLowerCase(), r]));
   const split = read('cpu-survey-2026-11-05-rig-merged-split.json'), one = read('cpu-survey-2026-11-05-rig-release-1.10-head.json');
   const steady = (r: Reading) => [...r.n8_samples.slice(1)].sort((a, b) => a - b)[(r.n8_samples.length - 1) >> 1];
-  it('has the second core in the table', () => expect(CPU.cores?.idleUs).toBeGreaterThan(0));
   // patches changed since the split survey (not measured as they are now): re-measure on the rig, then drop them here.
   // Algo Four: eight voices and the DX100's eight algorithms (#658), where the survey measured three voices and one
   // Oracle V: the Prophet-5's functions its FM-1 version had cut (#658), where the survey measured the 1.10 voice

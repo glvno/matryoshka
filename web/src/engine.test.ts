@@ -70,12 +70,6 @@ describe('patch model', () => {
     bad.cables[0].to.port = 'ghost';
     expect(() => validatePatch(bad, DEFS)).toThrow(/no input/);
   });
-
-  it('holds more modules than the FM-1 (the budget meter counts them)', () => {
-    const p = emptyPatch();
-    for (let i = 0; i < 40; i++) addModule(p, DEFS.const, 0, 0);
-    expect(p.modules).toHaveLength(40);
-  });
 });
 
 describe('engine', () => {

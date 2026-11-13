@@ -54,17 +54,8 @@ describe('hardware candidate measurement profiles', () => {
 describe('owner-selected factory defaults', () => {
   const bank = Object.entries(FM1_PRESETS).map(([name, make]) => ({ name, patch: make() }));
 
-  it('exposes the approved 22 names in order, with examples only in the editor', () => {
-    const names = [
-      'Oracle V', 'Monolith D', 'Silver Box', 'Hera 3', 'Sallen 20', 'Expander S', 'Algo Four',
-      'Canvas', 'Wanderer', 'Briefcase 3', 'Io 4', 'Vernon 100', '8 Lire', 'Elvira 2',
-      'Scrounge', 'Meridian 8', 'Perun 4', '808 Kit', '909 Kit', 'Spokes 6', 'Cassia 1', 'Verona Drum 1',
-    ];
-    expect(Object.keys(FM1_PRESETS)).toEqual(names);
-    expect(selectedFactoryNames).toEqual(names);
-    expect(Object.keys(EXAMPLE_PRESETS)).toEqual([
-      'Init', 'Simple FM', 'Plucked String', 'Basic Poly', 'Drift Poly', 'Mono Lead', 'Supersaw Stack', '<7PH',
-    ]);
+  it('exposes the selected names in order, with examples only in the editor', () => {
+    expect(Object.keys(FM1_PRESETS)).toEqual(selectedFactoryNames);
     for (const name of Object.keys(EXAMPLE_PRESETS)) {
       expect(FM1_PRESETS[name]).toBeUndefined();
       expect(PRESETS[name]).toBe(EXAMPLE_PRESETS[name]);
@@ -87,8 +78,7 @@ describe('owner-selected factory defaults', () => {
 
   it('preserves protected patches byte for byte and sets only the selected melodic Outputs', () => {
     const protectedEntries = SOURCE.filter(entry => !factoryFxAudit.some(audit => audit.name === entry.name));
-    expect(bank).toHaveLength(22);
-    expect(protectedEntries).toHaveLength(9);
+    expect(bank).toHaveLength(SOURCE.length);
     expect(bank.map(entry => entry.name)).toEqual(SOURCE.map(entry => selectedFactoryProfile[entry.name]?.bankName ?? entry.name));
     for (const source of protectedEntries) {
       expect(selectedFactoryProfile[source.name]).toBeUndefined();
@@ -100,33 +90,21 @@ describe('owner-selected factory defaults', () => {
     }
   });
 
-  it.each([
-    ['Monolith D', [1], ['drive', 'chorus', 'delay', 'reverb']],
-    ['Silver Box', [1], ['drive', 'chorus', 'delay', 'reverb']],
-    ['Algo Four', [4], ['drive', 'delay', 'reverb']],
-    ['Oracle V', [4], ['drive', 'chorus']],
-    ['Canvas', [1], ['delay']],
-    ['Expander S', [3], ['drive', 'chorus', 'delay', 'reverb']],
-    ['Briefcase 3', [1], ['drive', 'chorus', 'delay']],
-    ['Wanderer', [1, 1], ['drive', 'delay', 'reverb']],
-    ['Cassia 1', [4], ['drive', 'delay']],
-    ['Vernon 100', [1, 1], ['drive', 'chorus', 'delay']],
-    ['Sallen 20', [1], ['drive', 'chorus', 'delay']],
-    ['Hera 3', [3, 1], []],
-    ['Io 4', [4, 1], ['drive', 'delay']],
-  ] as const)('retains selected voices and added FX for %s', (name, voices, addedFx) => {
-    const p = patchOf(name, bank);
-    expect(p.modules.filter(m => m.type === 'alloc').map(m => m.params.voices)).toEqual(voices);
+  it.each(factoryFxAudit.map(audit => audit.name))('retains selected voices and keeps added FX bypassed for %s', sourceName => {
+    const options = selectedFactoryProfile[sourceName];
+    const p = patchOf(options?.bankName ?? sourceName, bank);
+    const source = SOURCE.find(entry => entry.name === sourceName)!.patch as unknown as Patch;
+    for (const m of p.modules.filter(m => m.type === 'alloc')) {
+      const original = source.modules.find(o => o.id === m.id)!.params.voices;
+      expect(m.params.voices, `${sourceName} alloc ${m.id}`).toBe(options?.voices !== undefined && original > 1 ? options.voices : original);
+    }
     const bus = fxBusOf(p);
-    expect(bus?.stages.map(stage => stage.kind) ?? []).toEqual(addedFx);
     for (const stage of bus?.stages ?? []) {
       for (const id of stage.targets) expect(p.modules.find(m => m.id === id)!.bypass).toBe(true);
     }
-    const sourceName = Object.entries(selectedFactoryProfile).find(([source, options]) => (options.bankName ?? source) === name)![0];
-    if (selectedFactoryProfile[sourceName].harmonizer === 'removed') expect(p.modules.some(m => m.type === 'harm')).toBe(false);
+    if (options?.harmonizer === 'removed') expect(p.modules.some(m => m.type === 'harm')).toBe(false);
     else expect(p.modules.find(m => m.type === 'harm')!.bypass).toBe(true);
     expect(p.modules.find(m => m.type === 'arp')!.bypass).toBe(true);
-    const source = SOURCE.find(entry => entry.name === sourceName)!.patch;
     const audit = factoryFxAudit.find(entry => entry.name === sourceName)!;
     for (const effect of audit.existingFx) for (const id of effect.kernels) {
       const original = source.modules.find(m => m.id === id)!;

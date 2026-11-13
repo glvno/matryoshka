@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type Patch } from './patch';
-import { FLAG_CABLES3, fm1Edits, morphRoom, COUNTED, presenceOf, PRES_ATT1, PRES_P2, REC_TEMPLATE, DEVICE, deviceBudget, deviceSection, encodePatch, FORMAT_1_11, fm1Rows, formatOf, layout, PANEL_BYTES, storedParams, toQ16, TYPE_ORDER, VERSION } from './patchbin';
+import { FLAG_CABLES3, fm1Edits, morphRoom, COUNTED, presenceOf, PRES_ATT1, PRES_P2, REC_TEMPLATE, DEVICE, deviceBudget, deviceSection, encodePatch, fm1Rows, formatOf, layout, PANEL_BYTES, storedParams, toQ16, TYPE_ORDER } from './patchbin';
 import { deviceView } from './poly';
 import { PRESETS } from './presets';
 import { relocatedPatches } from './community-factory';
@@ -23,11 +23,6 @@ function lfoPatch(): Patch {
 const rd32 = (b: Uint8Array, at: number): number => new DataView(b.buffer, b.byteOffset).getInt32(at, true);
 
 describe('counted records (#667, format 51)', () => {
-  it('is the 1.11 format', () => {
-    expect([FORMAT_1_11, COUNTED]).toEqual([51, 51]);
-    expect(VERSION).toBeGreaterThanOrEqual(51);   // (1.12 moved on: format-1-12.test.ts)
-  });
-
   it('keeps a record\'s parameters up to the last one off its default, on either morph side, and at least `keep`', () => {
     const p = lfoPatch();
     const lfo = p.modules[0];

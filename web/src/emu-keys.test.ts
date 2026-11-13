@@ -20,7 +20,7 @@ const SRC = ['firmware/wasm/fm1_ui.c', 'firmware/test/host_ui.h', 'firmware/src/
 
 let bytes: Uint8Array<ArrayBuffer>;
 beforeAll(() => {
-  const stale = !existsSync(WASM) || SRC.some((f) => statSync(resolve(ROOT, f)).mtimeMs > statSync(WASM).mtimeMs);
+  const stale = !existsSync(WASM) || SRC.some((f) => existsSync(resolve(ROOT, f)) && statSync(resolve(ROOT, f)).mtimeMs > statSync(WASM).mtimeMs);
   if (stale) buildFm1Wasm(WASM);
   bytes = new Uint8Array(readFileSync(WASM));
 }, 120_000);

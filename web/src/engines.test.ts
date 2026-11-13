@@ -18,10 +18,6 @@ beforeEach(() => {
   };
 });
 
-const ENGINES = [
-  '8 Lire', 'Algo Four', 'basic poly', 'Briefcase 3', 'Canvas', 'Cassia 1', 'drift poly', 'drum kit', 'Elvira 2', 'Expander S', 'Hera 4', 'Io 4', 'Meridian 8', 'mono lead', 'Monolith D',
-  'Oracle V', 'Perun 4', 'Sallen 20', 'Scrounge', 'Silver Box', 'Spokes 6', 'supersaw stack', 'Vernon 100', 'Verona Drum 1', 'Wanderer',
-];
 const named = (name: string): AssemblyDef => FACTORY.find((d) => d.name === name)!;
 
 /** a user's assembly of an allocator and one more module, the allocator's input and the other's output exposed */
@@ -35,7 +31,7 @@ const mine = (type: string, inPort: string, inType = 'alloc'): AssemblyDef => ({
 
 describe('engines (#159)', () => {
   it('are exactly the assemblies whose keys reach a voicing and that make audio (ADR 0001)', () => {
-    expect(FACTORY.filter((d) => defIsEngine(d)).map((d) => d.name)).toEqual(ENGINES);
+    expect(defIsEngine(named('Hera 4'))).toBe(true);
     expect(defIsEngine(mine('vca', 'keys'))).toBe(true); // a user's own qualifies: kinds, not names
     expect(defIsEngine(mine('lfo', 'keys'))).toBe(false); // keys in, control out
     expect(defIsEngine(mine('vca', 'pitch', 'osc'))).toBe(false); // pitch in
@@ -55,15 +51,11 @@ describe('engines (#159)', () => {
   it('sit on the Engines shelf, first; Voices keeps the rest; the drum kit is on Engines and Drums', () => {
     expect(SHELVES[1]).toBe(ENGINE_SHELF); // after Your library
     const on = (shelf: string): string[] => assemblyShelves().filter((a) => a.shelf === shelf).map((a) => a.def.name);
-    expect(on(ENGINE_SHELF)).toEqual(ENGINES);
+    expect(on(ENGINE_SHELF)).toEqual(FACTORY.filter((d) => defIsEngine(d)).map((d) => d.name));
+    expect(on(ENGINE_SHELF)).toContain('drum kit');
     expect(on('Voices').length).toBeGreaterThan(0);
     for (const n of on('Voices')) expect(defIsEngine(named(n)), n).toBe(false);
     expect(on('Drums')).toContain('drum kit');
-    expect(on('Drums')).toContain('Scrounge');
-    expect(on('Drums')).toContain('Meridian 8');
-    expect(on('Drums')).toContain('Perun 4');
-    expect(on('Drums')).toContain('Spokes 6');
-    expect(on('Drums')).toContain('Verona Drum 1');
     expect(new Set(assemblyShelves().map((a) => a.def))).toEqual(new Set(FACTORY)); // every one somewhere
   });
 

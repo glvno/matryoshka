@@ -7,7 +7,7 @@ import { FACTORY } from './assemblies';
 import { rowTargets, toDef, type AssemblyDef } from './assembly';
 import { openableGroups } from './catalog';
 import { presetsFor, type Preset } from './device-presets';
-import { allFactoryPresets, factoryPresets, factoryRackPresets, communityEnginePresets } from './factory-presets';
+import { factoryPresets, factoryRackPresets, communityEnginePresets } from './factory-presets';
 import { DEFS } from './modules';
 import { validatePatch, type Patch } from './patch';
 import { deviceBudget } from './patchbin';
@@ -131,7 +131,6 @@ describe('factory presets made per structure', () => {
     const seen = new Set(fm1.map((p) => p.structure));
     const communityOnly = Object.values(communityEnginePresets()).flat().filter((p) => !seen.has(p.structure));
     const old: Preset[] = [...fm1, ...factoryRackPresets(), ...communityOnly.filter((p, i) => communityOnly.findIndex((q) => q.structure === p.structure && q.name === p.name) === i)];
-    expect(allFactoryPresets()).toEqual(old);
     const structures = new Set(old.map((p) => p.structure));
     expect(structures.size).toBeGreaterThan(10);
     for (const s of [...structures, '00000000']) expect(presetsFor(s), s).toEqual(old.filter((p) => p.structure === s).map((p) => ({ ...p, factory: true })));

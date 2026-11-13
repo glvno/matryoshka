@@ -17,22 +17,21 @@ describe('the community list (#157)', () => {
     }
   });
 
-  it('discovers archived originals even when a selected default keeps the same name', async () => {
+  it('keeps an entry even when a selected default has the same name', async () => {
+    const { code } = await encodeShare(Object.values(PRESETS)[0]());
+    const title = Object.keys(PRESETS)[0];
+    const entry = { title, author: 'someone', licence: 'CC-BY-SA-4.0', source: 'https://www.reddit.com/r/MVaveFM1/comments/x', code, added: '2026-10-21' };
+    expect(communityEntries([entry]).map(e => e.title)).toEqual([title]);
     const titles = communityEntries().map(entry => entry.title);
-    expect(titles).toContain('Hera 4');
-    expect(titles).toContain('Hera 6 XL');
-    expect(titles).not.toContain('Hera 3');
-    expect(titles).toContain('Oracle V');
     expect(titles).toHaveLength(RAW.length);
     expect((await loadCommunity()).map(c => c.entry.title)).toEqual(titles);
   });
 
-  it('Babushka (#663) opens with its Rungler collapsed and fits the FM-1', async () => {
-    const c = (await loadCommunity()).find((x) => x.entry.title === 'Babushka');
-    expect(c?.entry.author).toBe('fairplay');
-    const p = c!.patch!;
-    expect(p.assemblies?.map((a) => [a.name, a.open])).toEqual([['Rungler', false]]);
-    expect(chipOf(p).fits).toBe(true);
+  it('every bundled patch decodes and fits the FM-1, or is an XL version', async () => {
+    for (const c of await loadCommunity()) {
+      expect(c.patch, c.entry.title).toBeDefined();
+      if (xlBase(c.entry.title) === null) expect(chipOf(c.patch!).fits, c.entry.title).toBe(true);
+    }
   });
 
   it('names what is wrong with an entry', async () => {

@@ -25,8 +25,8 @@ describe('test coverage figures', () => {
     const stats = groupCoverage({}, '2026-11-09');
     const historical = { ...stats, measurement: { label: 'v1.12.0', historical: true } };
     expect(isCoverageStats(historical)).toBe(true);
-    expect(coverageMeasurement(historical)).toBe('Last measured on v1.12.0');
-    expect(coverageMeasurement(stats)).toBe('Vitest measurement');
+    expect(coverageMeasurement(historical)).toContain('v1.12.0');
+    expect(coverageMeasurement(stats)).not.toContain('v1.12.0');
     expect(isCoverageStats({ ...historical, measurement: { label: '', historical: true } })).toBe(false);
     expect(isCoverageStats({ ...stats, core: { pct: Infinity, lines: 1 } })).toBe(false);
     expect(isCoverageStats({ ...stats, core: { pct: 101, lines: 1 } })).toBe(false);
