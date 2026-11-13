@@ -29,7 +29,7 @@ it('calibrates one shared 909 card for standalone and hybrid playback', () => {
   expect(hybrid.modules.filter((m) => m.type === 'steps')).toEqual(notes);
   expect(factoryPresets()).toEqual(settled);
   expect(hybrid.modules.find((m) => m.type === 'output')!.params.level).toBe(output);
-}, 240_000);
+}, 1_200_000); // about 140 s on a 4-vCPU CI runner, about 610 s under the release candidate's coverage instrumentation (D-147)
 
 it('calibrates Tight Techno with its authored 11 hits instead of Init\'s 19', () => {
   const x = around('drum kit', 'drum kit');
