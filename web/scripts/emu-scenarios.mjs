@@ -2051,8 +2051,8 @@ async function main() {
       await emu.elapse(1200);
       await check('device preset: Silver Box opens again, synced', await openSynced('Silver Box'));
       await emu.turn(ENC.preset, -1);
-      // (the last of its list: LONG SWEEP, the last factory one, in the emulator; the rig may hold user presets after it)
-      const last = DEVICE ? 'PRESET ' : 'PRESET LONG SWEEP';
+      // (the last of its list: OPEN SAW, the last factory one since 1.14.0, in the emulator; the rig may hold user presets after it)
+      const last = DEVICE ? 'PRESET ' : 'PRESET OPEN SAW';
       const shown = await emu.waitText(last, 2000);
       await check('device preset: the first PRESET turn left loads the last of its list, not INIT', shown && !(await emu.text('PRESET INIT')));
       await emu.elapse(1200);
