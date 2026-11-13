@@ -87,7 +87,7 @@ class ImpactReportTest(unittest.TestCase):
 
     def test_row_moves_and_generated_backlinks_do_not_report_all_rules(self):
         (self.root / "docs/ledger/rules.md").rename(self.root / "docs/ledger/moved.md")
-        self.write("docs/ledger/backlinks.md", f"# Backlinks\n\n## [{FIRST}](moved.md#{FIRST})\n- `README.md:3`\n")
+        self.write("docs/ledger/backlinks.md", f"# Backlinks\n\n## [{FIRST}](moved.md#{FIRST})\n- `README.md`\n")
         self.assertEqual(self.references(), [])
 
     def test_backlink_scanner_ignores_examples_and_excluded_files(self):

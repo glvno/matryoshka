@@ -596,11 +596,12 @@ def backlinks_text(ledger: Ledger, refs: dict[str, list[tuple[Path, int]]]) -> l
         target = os.path.relpath(row.file, ledger.dir).replace(os.sep, "/")
         out.append(f"## [{rid}]({target}#{rid})")
         out.append("")
-        places = sorted(set(refs.get(rid, [])), key=lambda t: (group(t[0]), rel(ledger.root, t[0]), t[1]))
+        # Files only: a line number would go stale on any edit above a mention and fail the check.
+        places = sorted({p for p, _ in refs.get(rid, [])}, key=lambda p: (group(p), rel(ledger.root, p)))
         if not places:
             out.append("- (no references)")
-        for p, n in places:
-            out.append(f"- `{rel(ledger.root, p)}:{n}`")
+        for p in places:
+            out.append(f"- `{rel(ledger.root, p)}`")
         out.append("")
     return out[:-1] if out[-1] == "" else out
 
