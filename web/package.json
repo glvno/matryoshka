@@ -18,6 +18,7 @@
     "export-defs": "vite-node scripts/export-defs.ts",
     "presets": "vite-node scripts/presets.ts",
     "cpu-costs": "vite-node scripts/cpu-costs.ts",
+    "parity-status": "vite-node scripts/parity-status.ts",
     "cpu-hot": "vite-node scripts/cpu-hot.ts",
     "listen-renders": "vite-node scripts/listen-renders.ts",
     "fm1-wasm": "node scripts/fm1-wasm.mjs",
