@@ -1,0 +1,237 @@
+{
+  "schema": 1,
+  "version": "1.14.0",
+  "firmware_product": "FM-1_7011400",
+  "source_commit": "6367e5af8b504a01618caa63e76edff1a3b34aaa",
+  "source_tree": "c2059d9ec7f768d9e43fececf0ac7f45afa503b6",
+  "status": "automated qualification passed; owner checks and publication approval outstanding",
+  "release_approval": {
+    "status": "not requested",
+    "scope": "Publication needs a separate owner checkpoint (D-1150)."
+  },
+  "build_manifest_sha256": "e928cad46ed09a8394ccdf73d60c4c0852a734b98489c5abc05544d952cfd1b2",
+  "artifacts": {
+    "package": {
+      "name": "matryoshka-1.14.0.fwsc",
+      "size": 610609,
+      "sha256": "4ef8bb4a385311abfbd6228b1c5d4852a1afc62a2ef1c899acb07ed71be630ac"
+    },
+    "normal": {
+      "name": "matryoshka-1.14.0-app.bin",
+      "size": 573612,
+      "sha256": "2f4147e1990cb28f23cf3e3ebbd57d167440c5e30c2a047d897ae03de9e634be"
+    },
+    "normal_elf": {
+      "name": "matryoshka-1.14.0-app.elf",
+      "size": 644628,
+      "sha256": "3b74518962a5fa13b13549d5d5103f2ba65e0a3c1a9f6cbc054e4ff10652b714"
+    },
+    "normal_sidecar": {
+      "name": "matryoshka-1.14.0.json",
+      "size": 411,
+      "sha256": "2ed5760c049ee05a0606f92f30fb64af8f3647c1af139e28015c1524516b95d0"
+    },
+    "bridge": {
+      "name": "matryoshka-emu.bin",
+      "size": 570364,
+      "sha256": "0d7fd9b77be6e183d34dd4ec51c0487a6bb98ccd96836528c11a919bd633c2ea"
+    },
+    "bridge_elf": {
+      "name": "matryoshka-emu.elf",
+      "size": 640480,
+      "sha256": "2879f75ccdf35074c84e39ccce94a56f6f04b98e6a2847697eea83772f8240f6"
+    },
+    "bridge_sidecar": {
+      "name": "matryoshka-emu.json",
+      "size": 411,
+      "sha256": "2076eb5ee7d2c21e59a4f3364741d65a29f5ebdea3ab03ca916f5004e3448e83"
+    }
+  },
+  "ci_runs": {
+    "release": 43519341023,
+    "web": 43519344939
+  },
+  "full_host": "PASS in release run, one execution",
+  "full_web": {
+    "instrumented": {
+      "files_passed": 215,
+      "tests_passed": 2240,
+      "tests_skipped": 2
+    },
+    "uninstrumented_loudness": {
+      "files_passed": 4,
+      "tests_passed": 4
+    },
+    "run_success": true,
+    "coverage_lines_percent": 65.13,
+    "coverage_record": "release/coverage/v1.14.0/"
+  },
+  "byte_identity": {
+    "earlier_release_run": 43515369553,
+    "earlier_source_commit": "7fc95cdc79f2053109a68a074842aa4a829213ca",
+    "result": "Package, app, app ELF, sidecar, SHA256SUMS and all three bridge files are byte-identical between release runs 43515369553 and 43519341023; only build-manifest.json's run id and source fields differ. firmware/ is unchanged between the two commits.",
+    "candidate_11": {
+      "package_sha256": "0a1896e575978b80a2487204ac9d87f9b6db3a524ab470526f3f0ba8eaf1f595",
+      "app_sha256": "f38c92288331e8745bdddb8a7ffbbf78093213ba4b01b8a4c2ff73657d470221",
+      "version": "v1.14.0-DEV",
+      "product": "FM-1_7000000"
+    },
+    "method": "The isolated Linux builder (QEMU Debian 12, JieLi toolchain) built tree 28860be4 (commit 7fc95cdc) twice in one session with release.yml's options: the dev build is byte-identical to candidate 11 (app and package); the --release 1.14.0 build is byte-identical to the CI release artifacts (app, package, sidecar, SHA256SUMS). Only --release differs between the two builds, so the final artifacts are candidate 11's bytes but for the version and identity stamp."
+  },
+  "full_boot": {
+    "checks": 19,
+    "failed": 0,
+    "on": "the release .fwsc with the run's bridge (identical bytes, run 43515369553)",
+    "info_firmware": "1.14.0",
+    "handshake_identity": "FM-1_7011400",
+    "note": "Run on release run 43515369553's package and bridge; release run 43519341023's are byte-identical (byte_identity)."
+  },
+  "full_scenarios": {
+    "passed": 396,
+    "failed": 1,
+    "skipped": [
+      {
+        "name": "3.5mm out: OFF leaves USB audio as it was",
+        "reason": "the emulator has no USB audio: tools/audio_out_test.sh and the rig's recording prove it"
+      }
+    ],
+    "seconds": 1359,
+    "on_bridge_sha256": "0d7fd9b77be6e183d34dd4ec51c0487a6bb98ccd96836528c11a919bd633c2ea",
+    "failure": "device preset: the first PRESET turn left loads the last of its list, not INIT. The scenario expected LONG SWEEP; 1.14.0 adds DRY SQUARE, ACCENT LADDER and OPEN SAW after it, so the list ends with OPEN SAW (firmware/src/presets.h). Harness fixed (web/scripts/emu-scenarios.mjs); the affected scenario re-ran under D-144.",
+    "affected_rerun": {
+      "scenario": "devicePreset",
+      "checks": 11,
+      "failed": 0,
+      "on_bridge_sha256": "0d7fd9b77be6e183d34dd4ec51c0487a6bb98ccd96836528c11a919bd633c2ea",
+      "log": "build/release-1.14-preparation/final/emu-scenarios-devicePreset.log"
+    }
+  },
+  "reused_candidate_11_hardware": {
+    "basis": "D-144 as amended: these rig results on candidate 11 carry over because the final artifacts are its bytes but for the version stamp (byte_identity).",
+    "default_profiles": {
+      "phases": 96,
+      "passed": 96,
+      "max_cpu_percent": 96.18,
+      "late": 0,
+      "shed": 0,
+      "overload": 0,
+      "firmware_package_sha256": "0a1896e575978b80a2487204ac9d87f9b6db3a524ab470526f3f0ba8eaf1f595",
+      "bank_sha256": "88c62f3950b00bd89b525f4ca82a290a58a353da129a22181e13700147970099"
+    },
+    "authored_subset_peaking_88_percent": {
+      "phases": 34,
+      "passed": 34,
+      "max_cpu_percent": 92.52,
+      "late": 0,
+      "shed": 0,
+      "overload": 0,
+      "firmware_package_sha256": "0a1896e575978b80a2487204ac9d87f9b6db3a524ab470526f3f0ba8eaf1f595",
+      "bank_sha256": "88c62f3950b00bd89b525f4ca82a290a58a353da129a22181e13700147970099",
+      "scope": "the 34 phases that peaked at or above 88% on candidate 10 (owner's choice); candidate 10 passed all 330"
+    },
+    "preset_stepping": {
+      "patches": 22,
+      "passed": true,
+      "restored": true
+    },
+    "protected_survey": {
+      "patches": 9,
+      "worst_us": 2503,
+      "late": 0,
+      "shed": 0
+    },
+    "physical_fx_and_recall": "passed (candidate11/final/physical-fx.json, candidate11/physical-recall.json)",
+    "canvas_margin": "about 60 µs, accepted by the owner; follow-up #878"
+  },
+  "full_smoke": {
+    "checks": 317,
+    "failed": 0,
+    "level_warnings": 0,
+    "seconds": 915.5,
+    "exit_code": 0,
+    "on": "build/flash/43519341023/matryoshka.bin (the release app, sha256 2f4147e1…)",
+    "harness": "tools/emu/src/smoke.rs and web/scripts/emu-patches.ts as fixed for the 1.14 bank in PR #880 (D-887 preservation, <7PH from a user slot)",
+    "log": "build/release-1.14-preparation/final/emu-smoke-full.log"
+  },
+  "test_revision": {
+    "frozen_commit": "6367e5af8b504a01618caa63e76edff1a3b34aaa",
+    "harness_fixes": [
+      {
+        "pr": 880,
+        "files": [
+          "tools/emu/src/smoke.rs",
+          "web/scripts/emu-patches.ts",
+          "web/src/headroom-1..4.test.ts",
+          "web/src/shared-levels.test.ts",
+          "tools/ci_checks.json",
+          "tools/ci_test_plan.json"
+        ],
+        "in_frozen_commit": true
+      },
+      {
+        "branch": "docs_release-1.14-record",
+        "files": [
+          "web/scripts/emu-scenarios.mjs"
+        ],
+        "in_frozen_commit": false,
+        "changes": "devicePreset expects OPEN SAW; rig octave reset after the quick start; RIG_SCENARIOS (D-1151)"
+      }
+    ],
+    "note": "Test-only changes after the frozen commit do not change firmware/ or tools/ (D-105) and are recorded here (D-146)."
+  },
+  "rig_install": {
+    "run": 43519341023,
+    "gate": "boot (emu:boot, D-123)",
+    "result": "the FM-1 at USB location 0x01140000 runs FM-1_7011400, firmware 1.14.0; EDITOR IGNORE confirmed by INFO"
+  },
+  "hardware": {
+    "scope": "D-1151: only the scenarios whose result needs the hardware, on the registered rig (USB location 0x01140000) running the release bytes.",
+    "rig_scenarios": {
+      "first_run": {
+        "log": "build/release-1.14-preparation/final/device-scenarios-rig.log",
+        "passed": 57,
+        "failed": 0,
+        "skipped": 13,
+        "note": "MASTER was down, so nine recording checks were skipped; the owner turned MASTER to half."
+      },
+      "audio_rerun": {
+        "scenarios": [
+          "check35mmOut",
+          "checkOutput",
+          "checkFlashWrite",
+          "checkDualCore"
+        ],
+        "log": "build/release-1.14-preparation/final/device-scenarios-rig-audio.log",
+        "passed": 51,
+        "failed": 1,
+        "skipped": 5,
+        "failure": "USB audio streams: the Mac's stream stalled on checkOutput's first recording (0.50 s of audio in 3.32 s). The FM-1's counters read afterwards showed no underruns, missed packets or stalls (DIAG 126 [0,1,0,0,240,31,163,232]); every other recording in the run passed."
+      },
+      "checkOutput_rerun": {
+        "log": "build/release-1.14-preparation/final/device-scenarios-rig-output2.log",
+        "passed": 17,
+        "failed": 0,
+        "skipped": 3,
+        "usb_stream": "3.30 s of audio in 3.33 s",
+        "stereo": "left C4 -38.0 dB C5 -44.3 dB, right C4 -135.7 dB C5 -34.1 dB"
+      },
+      "clock_and_drumHold": "passed in the first run",
+      "by_design_skips": [
+        "MONO, MONO L and MONO loudness: USB audio is taken before OUTPUT's mix (D-140); the emulator's I2S proves them",
+        "3.5MM OUT OFF silences the speaker and the jack: the owner's ears (D-139)"
+      ]
+    },
+    "stopped_full_run": {
+      "log": "build/release-1.14-preparation/final/device-scenarios.log",
+      "passed": 211,
+      "failed": 26,
+      "skipped": 3,
+      "note": "The pre-D-1151 run of every scenario, stopped by the owner's ruling. Its failures came from the runner, which left the rig at its saved - OCT after the install's quick start; fixed in emu-scenarios.mjs. The emulator covers those scenarios (full_scenarios)."
+    },
+    "rig_state_after": "transport stopped, all notes off, program 0, EDITOR IGNORE confirmed by INFO; MASTER at half (owner)"
+  },
+  "owner_checks": {
+    "status": "not yet requested",
+    "steps": "D-139: the analog output in headphones, instruments played by hand, a power cycle. D-137 waives them only for bytes that differ from bytes the owner already checked in version and identity alone; whether the owner checked candidate 11's bytes is not recorded here."
+  }
+}

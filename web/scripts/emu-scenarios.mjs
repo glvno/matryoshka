@@ -10,7 +10,8 @@
 // Chrome sees only the emulator's port (the page's Web MIDI is filtered), so a real FM-1 plugged in is never touched.
 // Results, LCD snapshots and page screenshots go to build/emu/scenarios/. Exit code 1 when a check fails.
 //
-// The same scenarios on the test rig, a real FM-1 (the device test mode, #291; npm run device:scenarios):
+// On the test rig, a real FM-1 (the device test mode, #291; npm run device:scenarios), only the scenarios whose verdict
+// needs the hardware, RIG_SCENARIOS (D-1151); the emulator stands in for the rest, which run in emu:scenarios only:
 //   npm run device:scenarios [-- --install RUN [--gate full]] [--only NAME,..] [--headed]
 // drives the registered rig (scripts/rig.mjs) over the editor link: its panel (TEST_KEY / TEST_TURN), its screen as text
 // (TEST_SCREEN) and its output's peak (TEST_PEAK). The page sees only the rig's ports; another FM-1 connected is asked
@@ -59,6 +60,17 @@ const SCENARIOS = (() => {
   const body = src.slice(from, src.indexOf('\n  };\n', from));
   return [...[...body.matchAll(/^    async (\w+)\(\)/gm)].map((m) => m[1]), ...CHECK_SCENARIOS];
 })();
+/** the scenarios a real rig runs (D-1151): only those whose verdict depends on what the emulator does not model (D-141).
+ *  Every other scenario runs in emu:scenarios only. A scenario joins this list only with the hardware it needs */
+const RIG_SCENARIOS = {
+  clock: 'MIDI clock rate and jitter over USB, timed on the Mac',
+  drumHold: 'the hold time across USB MIDI, timed on the Mac',
+  check35mmOut: '3.5MM OUT OFF leaves USB audio at its level (the emulator has no USB audio)',
+  checkOutput: "STEREO's left and right heard on USB audio (MONO and MONO L only on the emulator, D-140)",
+  checkFlashWrite: 'real flash erase and program timing under a held note',
+  checkDualCore: "the second core's real timing: shed, overload and late halves",
+};
+for (const n of Object.keys(RIG_SCENARIOS)) if (!SCENARIOS.includes(n)) throw new Error(`RIG_SCENARIOS names ${n}, which is no scenario`);
 if (flag('--list')) {
   console.log(SCENARIOS.join('\n'));
   process.exit(0);
@@ -67,6 +79,11 @@ if (flag('--list')) {
   const unknown = only?.filter((n) => !SCENARIOS.includes(n)) ?? [];
   if (unknown.length) {
     console.error(`no scenario named ${unknown.join(', ')}; the scenarios: ${SCENARIOS.join(' ')}`);
+    process.exit(2);
+  }
+  const emulated = REAL ? (only?.filter((n) => n !== 'connect' && !(n in RIG_SCENARIOS)) ?? []) : [];
+  if (emulated.length) {
+    console.error(`${emulated.join(', ')}: the emulator stands in for ${emulated.length > 1 ? 'these' : 'it'}, so the rig does not run ${emulated.length > 1 ? 'them' : 'it'} (D-1151): npm run emu:scenarios -- --only ${emulated.join(',')}. The rig's: ${Object.keys(RIG_SCENARIOS).join(' ')}`);
     process.exit(2);
   }
   if (!['full', 'boot'].includes(GATE)) {
@@ -574,15 +591,6 @@ async function main() {
     await ensureRigIgnored(emu, B, ENC, true);
     // a known start: the device page (the owner's rig was once left on HOME held's SYSTEM page, and every check failed)
     if (!(await emu.home())) { const h = await emu.screen(); throw new Error(`the FM-1 did not come back to its device page with HOME (screen page ${h.page}${h.booting ? ', still booting' : ''}): bring it there by hand and run again`); }
-    // the keys' octave back to 0: the footer's "= OCT =" is how the checks know a device page, and pitches count from it
-    // (the owner's rig was left at OCT + after a by-hand check, 2026-11-06, and every device-page check failed)
-    for (let i = 0; i < 6; i++) {
-      const foot = (await emu.texts()).find((t) => /^(= OCT =|OCT \++|-+ OCT)$/.test(t));
-      if (!foot || foot === '= OCT =') break;
-      console.log(`  note: the keys' octave was ${foot}: OCT ${foot.startsWith('OCT') ? '-' : '+'} brings it back to 0`);
-      await emu.tap(foot.startsWith('OCT') ? B.octDown : B.octUp);
-      await emu.elapse(400);
-    }
     // MASTER does not matter to the checks (TEST_PEAK reads before it), but say so when nothing can be heard
     if ((await rp.evaluate(() => window.__rig.peak())).masterDown) console.log('  note: MASTER is all the way down: the checks do not depend on it, but you will hear nothing');
   } else {
@@ -601,6 +609,18 @@ async function main() {
   if (await emu.waitText('QUICK START', (DEVICE ? 1000 : 8000) / SLACK)) {   // (a probe: not stretched by SLACK)
     await emu.tap(B.home);
     await emu.elapse(300);
+  }
+  // the keys' octave back to 0: the footer's "= OCT =" is how the checks know a device page, and pitches count from it
+  // (the owner's rig was left at OCT + after a by-hand check, 2026-11-06, and every device-page check failed). After the
+  // quick start, which hides the footer: a run that installs firmware boots into it (1.14.0's first rig run kept - OCT)
+  if (DEVICE) {
+    for (let i = 0; i < 6; i++) {
+      const foot = (await emu.texts()).find((t) => /^(= OCT =|OCT \++|-+ OCT)$/.test(t));
+      if (!foot || foot === '= OCT =') break;
+      console.log(`  note: the keys' octave was ${foot}: OCT ${foot.startsWith('OCT') ? '-' : '+'} brings it back to 0`);
+      await emu.tap(foot.startsWith('OCT') ? B.octDown : B.octUp);
+      await emu.elapse(400);
+    }
   }
   // #779: the settings the checks count on, whatever a run before left. A failed run once left the rig with MIDI OUT off
   // and COUNT-IN at 1 BAR, both saved, and every later run failed its clock, sandbox and live-take checks. The emulator
@@ -2051,8 +2071,8 @@ async function main() {
       await emu.elapse(1200);
       await check('device preset: Silver Box opens again, synced', await openSynced('Silver Box'));
       await emu.turn(ENC.preset, -1);
-      // (the last of its list: LONG SWEEP, the last factory one, in the emulator; the rig may hold user presets after it)
-      const last = DEVICE ? 'PRESET ' : 'PRESET LONG SWEEP';
+      // (the last of its list: OPEN SAW, the last factory one since 1.14.0, in the emulator; the rig may hold user presets after it)
+      const last = DEVICE ? 'PRESET ' : 'PRESET OPEN SAW';
       const shown = await emu.waitText(last, 2000);
       await check('device preset: the first PRESET turn left loads the last of its list, not INIT', shown && !(await emu.text('PRESET INIT')));
       await emu.elapse(1200);
@@ -2206,7 +2226,7 @@ async function main() {
 
   try {
     for (const [name, run] of Object.entries(scenarios)) {
-      if (only && name !== 'connect' && !only.includes(name)) continue;   // (connect opens the editor and syncs: the others need it)
+      if ((only || REAL) && name !== 'connect' && !(only ?? Object.keys(RIG_SCENARIOS)).includes(name)) continue;   // (connect opens the editor and syncs: the others need it; a rig runs RIG_SCENARIOS, D-1151)
       console.log(`-- ${name}`);
       const started = Date.now();
       const progress = () => ({ scenario: name, elapsedMs: Date.now() - started, pending: emuProc?.channel.pending ?? [], at: new Date().toISOString() });
