@@ -1,0 +1,209 @@
+{
+ "licence": "GPL-3.0-only",
+ "source": "https://github.com/glvno/matryoshka",
+ "approved24Sha256": "6c8bd36c5ad02e5ff4463dea6f95a0379c3f01b49b4a302f923fc0d918ad139c",
+ "patches": [
+  {
+   "name": "Oracle V",
+   "origin": "original-fm1",
+   "sha256": "b1061ee3d11aabe1513eda1a1533663e7d905029e355dd4d3806edbda4e0031f",
+   "catalog": "hardware",
+   "kind": "melodic"
+  },
+  {
+   "name": "Init",
+   "origin": "original-fm1",
+   "sha256": "e3dbe7a1a41af61e023cb4506ef9a88efbdbeaf843cfa798e458f02b074efda8",
+   "catalog": "example"
+  },
+  {
+   "name": "Simple FM",
+   "origin": "original-fm1",
+   "sha256": "f0f03d55519ce60584dee97a6534c503703effbe2dc5bb7028bcf2e64a02150e",
+   "catalog": "example"
+  },
+  {
+   "name": "Plucked String",
+   "origin": "original-fm1",
+   "sha256": "92437fac85539d95f2597502381cc9af0116fb180fc1a731a6b26a576c47a311",
+   "catalog": "example"
+  },
+  {
+   "name": "Monolith D",
+   "origin": "approved24",
+   "sha256": "e84bef9b182bddb210c4caaaecc8e2309f51d7763cff33be857a20f247e78e16",
+   "catalog": "hardware",
+   "kind": "melodic"
+  },
+  {
+   "name": "Silver Box",
+   "origin": "approved24",
+   "sha256": "a94c247158d6bb088c8527a28425fae39a544589d6f88be23e05be8f9ef0822b",
+   "catalog": "hardware",
+   "kind": "melodic"
+  },
+  {
+   "name": "Hera 4",
+   "origin": "original-fm1",
+   "sha256": "975182314141fb495e78ec16376756f1d1b54238cfe63476e26bc22041279d8c",
+   "catalog": "hardware",
+   "kind": "melodic"
+  },
+  {
+   "name": "Sallen 20",
+   "origin": "approved24",
+   "sha256": "d064e2c9a1cb507b96cbb74213ed9a8117a30c1366e76f02b6c33ebf624275ec",
+   "catalog": "hardware",
+   "kind": "melodic"
+  },
+  {
+   "name": "Expander S",
+   "origin": "original-fm1",
+   "sha256": "64f4d4f5c9ebd46b11cf9d89f5ba38b51b871c2ca886b28ff5dcc3f6526ef8b9",
+   "catalog": "hardware",
+   "kind": "melodic"
+  },
+  {
+   "name": "Algo Four",
+   "origin": "original-fm1",
+   "sha256": "eb00393d8a5385f53f2b3e13301e10ec2e605d438189db46891f6f2d2cb4271b",
+   "catalog": "hardware",
+   "kind": "melodic"
+  },
+  {
+   "name": "Canvas",
+   "origin": "original-fm1",
+   "sha256": "145d7566995f4efa7d4e056bdc7fd76c5d6203f7d8c9d23d5d5cbb6c2a96e764",
+   "catalog": "hardware",
+   "kind": "melodic"
+  },
+  {
+   "name": "Wanderer",
+   "origin": "approved24",
+   "sha256": "6d51be9f850eeec0bab74e4b2319a9594bc4c54d115e02f4a6e1aac22751a78b",
+   "catalog": "hardware",
+   "kind": "melodic"
+  },
+  {
+   "name": "Briefcase 3",
+   "origin": "original-fm1",
+   "sha256": "0c1df48112dc1bb80b294fdf658301ecda2a0d42f9765d575ddada20df19afbb",
+   "catalog": "hardware",
+   "kind": "melodic"
+  },
+  {
+   "name": "Io 4",
+   "origin": "approved24",
+   "sha256": "88f2a57942446022879d0a5d8c45826167e64e930689680c8beed22a04011301",
+   "catalog": "hardware",
+   "kind": "melodic"
+  },
+  {
+   "name": "Vernon 100",
+   "origin": "approved24",
+   "sha256": "09e67162640314bc8516b0f0341e6e47d834570f235bf3cbde9703bdf5cc0ade",
+   "catalog": "hardware",
+   "kind": "melodic"
+  },
+  {
+   "name": "8 Lire",
+   "origin": "approved24",
+   "sha256": "cb4b5e0d0c5a4686e75046d13d07dbf3c52c0f9ed3aee1dd058efec622c2e515",
+   "catalog": "hardware",
+   "kind": "drum-drone"
+  },
+  {
+   "name": "Elvira 2",
+   "origin": "approved24",
+   "sha256": "45bbef7c08fb1878e6c492de1df372a1523b60312a86583959e55ffda0052f0d",
+   "catalog": "hardware",
+   "kind": "drum-drone"
+  },
+  {
+   "name": "Scrounge",
+   "origin": "approved24",
+   "sha256": "cf27d72582b1ef8b4b4adf7471fc2413fbe9af702ff804ca027a078b10f7e75b",
+   "catalog": "hardware",
+   "kind": "drum-drone"
+  },
+  {
+   "name": "Meridian 8",
+   "origin": "approved24",
+   "sha256": "ce7883cf39078591f5cf289b1f3f6711b2fd174bc4f68b1b7115fca25314c263",
+   "catalog": "hardware",
+   "kind": "drum-drone"
+  },
+  {
+   "name": "Perun 4",
+   "origin": "approved24",
+   "sha256": "31877e1adb9d6db67ce33924a98dfcba439573ae368cb95018ef0cbdd35745c1",
+   "catalog": "hardware",
+   "kind": "drum-drone"
+  },
+  {
+   "name": "808 Kit",
+   "origin": "approved24",
+   "sha256": "d5b6735c0c396dc0c8e4841cf33976df7958bef70a274fa45995f629d754e609",
+   "catalog": "hardware",
+   "kind": "drum-drone"
+  },
+  {
+   "name": "909 Kit",
+   "origin": "approved24",
+   "sha256": "b3a68592e3565f9fe4d467dff0a3b200118f3dd769b722d45430929218a612c3",
+   "catalog": "hardware",
+   "kind": "drum-drone"
+  },
+  {
+   "name": "<7PH",
+   "origin": "approved24",
+   "sha256": "3178af0eb4de225202f3bebc8d63bfa0ce6ac5c75548388bf64e742a31794d76",
+   "catalog": "example"
+  },
+  {
+   "name": "Spokes 6",
+   "origin": "approved24",
+   "sha256": "03febadd27bc12c4fd38ffef97665ef0427b46d3968891f73cf2fa2c953e0a3b",
+   "catalog": "hardware",
+   "kind": "drum-drone"
+  },
+  {
+   "name": "Cassia 1",
+   "origin": "approved24",
+   "sha256": "d7508de0aae52abf2460d605c919559ec819db26d814c6f3c87c13ae608a2582",
+   "catalog": "hardware",
+   "kind": "melodic"
+  },
+  {
+   "name": "Basic Poly",
+   "origin": "original-fm1",
+   "sha256": "bd172d99a17b13f058e3ff5012b13cc8373544d2f1db444dc4c171f97cfd437b",
+   "catalog": "example"
+  },
+  {
+   "name": "Drift Poly",
+   "origin": "original-fm1",
+   "sha256": "0db4954876bca050fabdd77fd05bb46094b328cb3b037985c8aec1788f6cf827",
+   "catalog": "example"
+  },
+  {
+   "name": "Mono Lead",
+   "origin": "original-fm1",
+   "sha256": "1a07c3af6715cdb0debd0aeab1406ec0a17eb4112c9b356f1021ce9b23f103f3",
+   "catalog": "example"
+  },
+  {
+   "name": "Supersaw Stack",
+   "origin": "original-fm1",
+   "sha256": "fbebcee7845948b3c22d90d178fabf4c1dd613cfd58539baef64eb9cc9619a81",
+   "catalog": "example"
+  },
+  {
+   "name": "Verona Drum 1",
+   "origin": "approved24",
+   "sha256": "1914355dc0f6e4d1846d725d67744a55377cb8fce5c45d5024b85bebac5bbfa8",
+   "catalog": "hardware",
+   "kind": "drum-drone"
+  }
+ ]
+}

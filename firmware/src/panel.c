@@ -120,9 +120,12 @@ static void page_set(uint32_t p);
 static void page_mask(void);
 static void screen_back(void);                 /* (below: one step back on the trail) */
 static uint32_t glo_t0;                        /* fm1_ms | 1 of a GLO press in the menu, 0: none; bit 1: its 2 s hold fired (menu_fire) */
+static int fx_button(uint32_t b, int down);
 static void panel_button_set(uint32_t b, int down)
 {
     const uint8_t *pn;
+    if (fx_button(b, down))
+        return;
     if (eng_button_kind(b) == ENG_BTN_PAGE && !(FIXED_BTNS >> b & 1u)) {   /* a page list (#117): its own press / hold rules */
         page_button(b, down);
         return;
@@ -229,7 +232,8 @@ static void screen_back(void)
     pg_list_step = trail[trail_n].lstep;
     pg_list_peek = 0;
     pg_strip_dirty = 1;
-    if (trail[trail_n].page == 0u && pages_focus(trail[trail_n].dev, trail[trail_n].pg))
+    if ((trail[trail_n].page == 0u || trail[trail_n].page == PAGE_ENV || trail[trail_n].page == PAGE_FX)
+        && pages_focus(trail[trail_n].dev, trail[trail_n].pg))
         m1_focus_now(pg_cur_dev, pg_cur_page);
     page_show(trail[trail_n].page);
     page_mask();
@@ -274,6 +278,23 @@ static void page_set(uint32_t p)
     }
     trail_push();
     page_show(p);
+}
+
+/* Only recognized master-FX patches reserve FX here. SEQ/SONG and all legacy/custom button mappings keep their jobs. */
+static int fx_button(uint32_t b, int down)
+{
+    if (b != 0u || sb_on || !eng_fx_count() || (page != 0u && page != PAGE_ENV && page != PAGE_FX))
+        return 0;
+    if (down) {
+        if (page == PAGE_FX)
+            screen_back();
+        else {
+            trail_push();
+            fx_focus();
+            page_show(PAGE_FX);
+        }
+    }
+    return 1;
 }
 
 /* ---- Page buttons (#117): a press puts the next page of the button's list on K1..K4 (round the list; the first press
@@ -577,6 +598,13 @@ static void panel_encoders(int32_t *st)
             st[5] = 0;
         }
     }
+    if (page == PAGE_FX) {
+        if (st[0]) {
+            fx_select(st[0]);
+            ui_dirty = ui_dirty ? ui_dirty : 1;
+        }
+        st[0] = st[1] = 0;
+    }
     if (page == PAGE_ENV) {                         /* the environment: SELECT the row (its first page on K1..K4), ALGO its presets */
         if (st[0] && pages_select(st[0])) {
             m1_focus_now(pg_cur_dev, pg_cur_page);
@@ -586,7 +614,7 @@ static void panel_encoders(int32_t *st)
             ui_dirty = ui_dirty ? ui_dirty : 1;
         st[0] = st[1] = 0;
     }
-    if (page != 0 && !menu_page() && page != PAGE_ENV)
+    if (page != 0 && !menu_page() && page != PAGE_ENV && page != PAGE_FX)
         return;
     if (st[0] && pg_list_btn >= 0 && !pg_list_peek) {   /* SELECT inside a page list: leaves it */
         pg_list_btn = -1;
@@ -635,7 +663,7 @@ static void panel_encoders(int32_t *st)
             pages_also(k, v);                       /* (the parameters the row also sets, #357) */
         }
         m1_param_now(mod, par, r == 1 ? v << 16 : v);   /* the editor follows (Live) */
-        if (page == PAGE_ENV)
+        if (page == PAGE_ENV || page == PAGE_FX)
             env_knob_msg(k);
         midi_send(0xB0u, 16u + k, pages_cc(k));
         if (!ui_dirty)
@@ -813,7 +841,17 @@ static uint8_t env_held_used;
 static void sel_open(void)
 {
     pages_ensure();
-    if (page == PAGE_ENV) {
+    if (page == PAGE_FX) {
+        const uint8_t *targets;
+        uint32_t k, n = eng_fx_targets(fx_row, &targets);
+        eng_fx_set(fx_row, !eng_fx_on(fx_row));
+        for (k = 0; k < n; k++) {
+            m1_patch_bypass(targets[k], !eng_fx_on(fx_row));
+            m1_param_now(targets[k], 0xFFu, eng_fx_on(fx_row) ? 0 : 65536);   /* the editor follows the stage */
+        }
+        leds_panel();
+        ui_dirty = ui_dirty ? ui_dirty : 1;
+    } else if (page == PAGE_ENV) {
         dev_arm(1);
         ui_dirty = ui_dirty ? ui_dirty : 1;          /* (its row) */
     } else if (page == PAGE_SONG) {
@@ -1247,7 +1285,7 @@ static void panel_status(void)
             if (!panel_label(b, name))
                 put(name, PANEL_BTN_NAME[b])[0] = 0;
             q = put(q, name);
-            q = put(q, eng_buttons_lit() >> b & 1u ? " ON" : " OFF");   /* (as its LED: ARP ON = arpeggiating) */
+            q = put(q, panel_lights() >> b & 1u ? " ON" : " OFF");
         }
         *q = 0;
         if (page == 0 && !knob_touched)

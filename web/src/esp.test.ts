@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS, IMPLS } from './modules';
 import { addModule, connect, emptyPatch } from './patch';
-import { FM1_PRESETS, PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 const SR = 44118;
 const C4 = 261.6255653;
@@ -103,21 +103,19 @@ describe('Follower: envelope and trigger', () => {
 
 describe('Sallen 20: the ESP', () => {
   it('has the panel rows and the patch panel jacks', () => {
-    for (const p of [PRESETS['Sallen 20'], FM1_PRESETS['Sallen 20']]) {
-      const patch = p();
-      const a = patch.assemblies!.find((x) => x.name === 'Sallen 20')!;
-      const esp = patch.modules.find((m) => m.type === 'esp')!;
-      const rows = a.params.filter((r) => r.module === esp.id).map((r) => r.label);
-      expect(rows).toEqual(['signal level', 'low cut', 'high cut', 'cv adjust', 'threshold']);
-      expect(a.inputs.some((r) => r.label === 'esp signal in' && r.module === esp.id && r.port === 'in')).toBe(true);
-      for (const label of ['esp amp out', 'esp bpf out', 'f-v cv out', 'env out', 'trig out']) expect(a.outputs.some((r) => r.label === label && r.module === esp.id), label).toBe(true);
-    }
+    const patch = relocatedPatches['Sallen 20']();
+    const a = patch.assemblies!.find((x) => x.name === 'Sallen 20')!;
+    const esp = patch.modules.find((m) => m.type === 'esp')!;
+    const rows = a.params.filter((r) => r.module === esp.id).map((r) => r.label);
+    expect(rows).toEqual(['signal level', 'low cut', 'high cut', 'cv adjust', 'threshold']);
+    expect(a.inputs.some((r) => r.label === 'esp signal in' && r.module === esp.id && r.port === 'in')).toBe(true);
+    for (const label of ['esp amp out', 'esp bpf out', 'f-v cv out', 'env out', 'trig out']) expect(a.outputs.some((r) => r.label === label && r.module === esp.id), label).toBe(true);
   });
 
   // the manual's patch ("Using the External Signal Processor", step 4): TRIG OUT to TRIGGER IN, F-V CV OUT to VCO 1+2 CV IN;
   // no key is played, the oscillator patched into SIGNAL IN plays the instrument
   const played = (patchTrig: boolean): number => {
-    const p = PRESETS['Sallen 20']();
+    const p = relocatedPatches['Sallen 20']();
     const a = p.assemblies!.find((x) => x.name === 'Sallen 20')!;
     const inp = (label: string) => a.inputs.find((r) => r.label === label)!;
     const out = (label: string) => a.outputs.find((r) => r.label === label)!;

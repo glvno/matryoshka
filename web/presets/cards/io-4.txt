@@ -59,7 +59,7 @@
 #   ensemble = 2                       1..2
 #   out: a screen, not a value
 
-# Drafts of 2026-10-29 after the Jupiter-4 (#413).
+# Curated panel studies of 2026-11-13 after the Jupiter-4 (#413).
 engine: Io 4
 
 # Switches: range 1 16', 2 8', 3 4'. vco wave form 1 off, 2 saw, 3 square, 4 pulse. pw 1 50 %, 2 40 %, 3 20 %, 4 10 %;
@@ -83,11 +83,11 @@ preset: Ensemble Pad
   vca / d = 1 s
   vca / s = 1
   vca / r = 1.5 s
-  level = 0.46
+  level = 0.56
   lfo / rate = 2.5 Hz
   ensemble = 2
 
-# A narrow pulse with the sub, plucked envelopes, the ensemble off: for the arpeggio (the TRIGGER rate clocks it).
+# A narrow pulse with the sub, plucked envelopes, the ensemble off: a manually played or externally sequenced arpeggio.
 preset: Arp Pluck
   sub = 2
   pw mode = 1
@@ -104,11 +104,11 @@ preset: Arp Pluck
   vca / d = 0.3 s
   vca / s = 0
   vca / r = 0.3 s
-  level = 0.71
+  level = 1.28
   trigger / rate = 8 Hz
   ensemble = 1
 
-# All four voices on one key (UNISON I), portamento on, the LFO fading in after a key: the lead.
+# All four voices on one key (UNISON I), portamento on, no automatic vibrato: the lead.
 preset: Unison Lead
   sub = 2
   # no vibrato (0.03 before): with it the four unison voices overloaded the FM-1 on the first key and the guard
@@ -125,7 +125,7 @@ preset: Unison Lead
   vca / d = 0.4 s
   vca / s = 0.9
   vca / r = 0.3 s
-  level = 0.28
+  level = 0.37
   lfo / rate = 4.5 Hz
   delay time = 0.4 s
   portamento = 0.12 s
@@ -188,7 +188,7 @@ preset: Compu Piano
   vca / s = 0
   vca / r = 0.25 s
   ensemble = OFF
-  level = 0.73
+  level = 1.22
 
 # Low square and sub, short filter envelope, no unison or ensemble: leaves room around a rhythm section.
 preset: Compu Bass
@@ -208,4 +208,27 @@ preset: Compu Bass
   vca / s = 0.65
   vca / r = 0.12 s
   ensemble = OFF
-  level = 0.55
+  level = 0.59
+
+# Inverted filter envelope: a dark strike opens as the filter envelope falls, under a separately decaying VCA.
+preset: Inverse Keys
+  sub = OFF
+  pw mode = MANUAL
+  vco / wave form = SAW
+  hpf cutoff = 100 Hz
+  lpf cutoff = 3600 Hz
+  res = 0.18
+  kybd follow = 70%
+  env mod = 2 oct
+  polarity = INV
+  vcf / a = 0.001 s
+  vcf / d = 0.65 s
+  vcf / s = 0
+  vcf / r = 0.15 s
+  vca / a = 0.003 s
+  vca / d = 0.9 s
+  vca / s = 0.4
+  vca / r = 0.18 s
+  key assign = POLY I
+  ensemble = OFF
+  level = 1.44

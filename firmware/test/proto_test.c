@@ -703,15 +703,105 @@ static int locks_test(const char *kit_path)
     return 0;
 }
 
+static int fx_test(const char *path)
+{
+    long len;
+    uint8_t *kit = slurp(path, &len);
+    uint32_t at, i, flags, count;
+    const uint8_t *end, *targets;
+    uint8_t record[1u + ENG_FX_STAGE_COUNT * (4u + ENG_FX_TARGETS_MAX)];
+    CHECK(kit && len >= 8 && len <= M1_PATCH_MAX && m1_valid(kit, (uint32_t)len));
+    CHECK(!eng_load(kit, (uint32_t)len) && eng_fx_count() == ENG_FX_STAGE_COUNT);
+    m1_set_current(kit, (uint32_t)len);
+    flags = (uint32_t)m1_cur[6] | (uint32_t)m1_cur[7] << 8;
+    CHECK(flags & ENG_FLAG_FX_BUS);
+    at = m1_notes_at();
+    CHECK(at && (at = eng_steps_end(m1_cur, m1_cur_len, at)));
+    if (m1_cur[6] & 32u) at = eng_devices_end(m1_cur, m1_cur_len, at);
+    if (m1_cur[7] & ENG_FLAG_EXTRAS) at = eng_extras_end(m1_cur, m1_cur_len, at);
+    if (m1_cur[6] & 64u) at = eng_buttons_end(m1_cur, m1_cur_len, at);
+    if (m1_cur[6] & 128u) at = eng_names_end(m1_cur, m1_cur_len, at);
+    if (m1_cur[7] & ENG_FLAG_ORIGINS) at = eng_origins_end(m1_cur, m1_cur_len, at);
+    CHECK(at && (end = eng_skip_fx(m1_cur + at, m1_cur + m1_cur_len, (uint16_t)flags)));
+    count = (uint32_t)(end - m1_cur - at);
+    CHECK(count <= sizeof record);
+    memcpy(record, m1_cur + at, count);
+    for (i = at; i < at + count; i++)
+        CHECK(!m1_valid(m1_cur, i));
+    {
+        uint8_t old = m1_cur[at + 4u];
+        m1_cur[at + 4u] = ENG_FX_TARGETS_MAX + 1u;
+        CHECK(!m1_valid(m1_cur, m1_cur_len));
+        m1_cur[at + 4u] = old;
+    }
+    CHECK(eng_fx_targets(0, &targets) > 0u);
+    m1_patch_range(targets[0], 0, 0, 1, 20, 220);
+    CHECK(m1_valid(m1_cur, m1_cur_len) && m1_range_section() == at + count);
+    CHECK(!memcmp(record, m1_cur + at, count));
+    CHECK(m1_cur[at + count] >= 1u);
+    m1_patch_range(targets[0], 0, 0, 0, 0, 0);
+    CHECK(m1_valid(m1_cur, m1_cur_len) && !memcmp(record, m1_cur + at, count));
+    CHECK(!eng_load(m1_cur, m1_cur_len) && eng_fx_count() == ENG_FX_STAGE_COUNT);
+    {
+        uint8_t sparse[sizeof record], stages = 0;
+        uint32_t src = 1u, dst = 1u;
+        while (src < count) {
+            uint32_t bytes = 4u + record[src + 3u];
+            if (record[src] == ENG_FX_CHORUS || record[src] == ENG_FX_REVERB) {
+                memcpy(sparse + dst, record + src, bytes);
+                dst += bytes;
+                stages++;
+            }
+            src += bytes;
+        }
+        sparse[0] = stages;
+        CHECK(stages == 2u);
+        memmove(m1_cur + at + dst, m1_cur + at + count, m1_cur_len - at - count);
+        memcpy(m1_cur + at, sparse, dst);
+        m1_cur_len -= count - dst;
+        CHECK(m1_valid(m1_cur, m1_cur_len) && !eng_load(m1_cur, m1_cur_len));
+        CHECK(eng_fx_count() == 2u && eng_fx_kind(0) == ENG_FX_CHORUS && eng_fx_kind(1) == ENG_FX_REVERB);
+        CHECK(eng_fx_kind(2) == UINT32_MAX && eng_fx_page(0) < eng_fx_page(1));
+        CHECK(eng_fx_targets(1, &targets) == 1u);
+        m1_patch_range(targets[0], 0, 0, 1, 20, 220);
+        CHECK(m1_range_section() == at + dst && !memcmp(m1_cur + at, sparse, dst));
+        CHECK(m1_valid(m1_cur, m1_cur_len) && !eng_load(m1_cur, m1_cur_len));
+        {
+            uint32_t second = at + 5u + m1_cur[at + 4u];
+            m1_cur[second] = ENG_FX_CHORUS;
+            CHECK(!m1_valid(m1_cur, m1_cur_len));
+            m1_cur[second] = ENG_FX_REVERB;
+            m1_cur[at + 1u] = ENG_FX_DRIVE;
+            CHECK(m1_valid(m1_cur, m1_cur_len) && eng_load(m1_cur, m1_cur_len) != 0); /* Chorus targets are not Drive just because this is row zero. */
+            m1_cur[at + 1u] = ENG_FX_CHORUS;
+            src = second - at;
+            dst = 1u + 4u + m1_cur[second + 3u];
+            memcpy(sparse + 1u, m1_cur + second, dst - 1u);
+            sparse[0] = 1u;
+            count = src + dst - 1u;
+            memmove(m1_cur + at + dst, m1_cur + at + count, m1_cur_len - at - count);
+            memcpy(m1_cur + at, sparse, dst);
+            m1_cur_len -= count - dst;
+            CHECK(m1_valid(m1_cur, m1_cur_len) && !eng_load(m1_cur, m1_cur_len));
+            CHECK(eng_fx_count() == 1u && eng_fx_kind(0) == ENG_FX_REVERB && eng_fx_targets(0, &targets) == 1u);
+        }
+    }
+    free(kit);
+    printf("FX framing, bounded skipping and mutable ranges ok\n");
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
+    if (argc == 3 && !strcmp(argv[1], "--fx"))
+        return fx_test(argv[2]);
     if (argc == 2 && !strcmp(argv[1], "--allocation")) {
         uint8_t q[4] = {0x7D, 0x4D, 0x31, C_HELLO}, p[16];
         uint32_t n;
         CHECK(m1_handle(q, sizeof q) == 1 && replies[0][4] == R_INFO);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
-        CHECK(n == 14u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION);
-        CHECK(p[12] == M1_FEATURES3 && p[13] == ENG_BUFFER_ALLOCATION);
+        CHECK(n == 15u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION);
+        CHECK(p[12] == M1_FEATURES3 && p[13] == ENG_BUFFER_ALLOCATION && p[14] == 1u);
         printf("allocation rule %u advertised with unchanged format range %u..%u\n", p[13], p[7], p[8]);
         return 0;
     }
@@ -842,7 +932,7 @@ int main(int argc, char **argv)
         nreplies = 0;
         CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 4 && replies[0][4] == R_INFO && replies[1][4] == R_TEMPO_NOW);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
-        CHECK(n == 14u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[12] == M1_FEATURES3 && p[13] == ENG_BUFFER_ALLOCATION);
+        CHECK(n == 15u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[12] == M1_FEATURES3 && p[13] == ENG_BUFFER_ALLOCATION && p[14] == 1u);
         { uint32_t j; uint8_t origin[6];
           for (j = 0; j < 2u; j++) {
               CHECK(replies[j + 2u][4] == R_PATTERN_ORIGIN);
@@ -856,7 +946,7 @@ int main(int argc, char **argv)
         nreplies = 0;
         CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 4);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
-        CHECK(n == 14u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION);
+        CHECK(n == 15u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[14] == 1u);
         CHECK(!(p[3] & M1_INFO_MIDI_OUT));
         midi_out_on = 1;
         /* #702: EDITOR at IGNORE is flag bit 3, with feature bit 19; at ALLOW the bit is clear (as in older firmware) */
@@ -865,7 +955,7 @@ int main(int argc, char **argv)
         nreplies = 0;
         CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 4);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
-        CHECK(n == 14u && (p[3] & M1_INFO_EDITOR_IGNORE) && (p[3] & M1_INFO_MIDI_OUT));
+        CHECK(n == 15u && (p[3] & M1_INFO_EDITOR_IGNORE) && (p[3] & M1_INFO_MIDI_OUT) && p[14] == 1u);
         editor_ignore_on = 0;
     }
     /* ARMS (#191, feature bit 20): the editor's armed set, u32 LE words, as the FM-1's own; no reply, no ARMS_NOW. Two words

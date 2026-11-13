@@ -3,6 +3,7 @@
  * idle voices, with partial blocks as well as full ones. The golden kits separately compare the two engine languages. */
 #include <stdio.h>
 #include <stdlib.h>
+#include "lanes_host.h"
 #include "engine.c"
 
 int main(int argc, char **argv)
@@ -10,7 +11,7 @@ int main(int argc, char **argv)
     uint8_t patch[8192];
     int32_t left[128], right[128];
     const uint32_t lengths[] = {128, 1, 7, 63, 127};
-    const int32_t waves[] = {0, 2, 0, 3, 0, 1, 0};
+    const int32_t waves[] = {0, 2, 0, 3, 0, 1, 4, 5, 0};
     uint32_t b, m, n, len;
     FILE *f;
     if (argc != 2 || !(f = fopen(argv[1], "rb")))
@@ -32,7 +33,8 @@ int main(int argc, char **argv)
             for (m = 0; m < (uint32_t)eng_nmodules(); m++) {
                 eng_set_att(m, 0, (b & 1) ? ENG_ONE : -ENG_ONE);
                 if (eng_type(m) == T_OSC) {
-                    eng_set_param(m, OSC_P_WAVE, waves[(b / 11) % 7] * ENG_ONE);
+                    eng_set_param(m, OSC_P_WAVE, waves[(b / 11) % (sizeof waves / sizeof waves[0])] * ENG_ONE);
+                    eng_set_param(m, OSC_P_ANALOG, (b / 11) % 3 == 0 ? 0 : (b / 11) % 3 == 1 ? ENG_ONE / 2 : ENG_ONE);
                     eng_set_param(m, OSC_P_PM, (b % 3) * ENG_ONE);
                     eng_set_param(m, OSC_P_FB, b % 4 ? 0 : ENG_ONE / 3);
                     eng_set_param(m, OSC_P_COARSE, ((int32_t)(b % 37) - 18) * ENG_ONE);

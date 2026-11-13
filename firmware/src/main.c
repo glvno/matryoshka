@@ -715,15 +715,14 @@ static int slot_used(uint32_t s) { return s < M1_SLOTS && (bank_mask >> s & 1u);
  * D-907; was CPU in the bar), clock in (bit 0; bit 1: CLOCK OUT off, #473, read alike; bit 2: 3.5MM OUT off, #631, a
  * record from before reads as ON), TEMPO and the tempo's bit 8 (byte 7, tempo_glo.h; was program change),
  * MIDI channel, MIDI out, the bank's format, the selected module, REC's count-in (byte 12, #414: a record without
- * it, SET_MIN bytes, reads as OFF), the factory set the bank's untouched factory slots hold (bytes 13..15, #441: a
+ * it, SET_MIN bytes, reads as OFF), the last processed factory set (bytes 13..15, #441: a
  * record without them reads as unknown). The version stays 1, so an older firmware reads the longer record too; it
  * must stay at most 16 bytes: firmware up to 1.6 reads it into a buffer of 12 + 4 bytes without a bound */
 #define SET_VERSION 1u
 #define SET_MIN 12u
 #define SET_LEN 16u
-/* the patch format the bank's untouched factory slots were brought to (settings byte 10; 0 in a record from before)
- * and the factory set they were brought to (presets.h FACTORY_SET_ID; 0 = unknown): either one off, the boot rewrites
- * them once (bank_upgrade) */
+/* Last processed patch format (settings byte 10) and factory set (bytes 13..15).
+ * A change checks for new factory names and migrates user assembly presets, never saved patch bytes. */
 static uint8_t bank_fmt;
 static uint32_t bank_set;
 static void settings_pack(uint8_t *d)
@@ -931,6 +930,7 @@ static int m1_preset_del(uint32_t structure, const char *name)
     int rc;
     if (!flash_ok)
         return -1;
+    dp_remember_names();                         /* infer saved display-only names before either namespace disappears */
     rc = ps_del(structure, name);
     if (!rc)
         dp_deleted(structure, name);             /* (a device set to it drops the name: pages_ui.c) */
@@ -1016,61 +1016,10 @@ static void factory_bank(void)
     (void)store_write(SL_SETTINGS, 0, set, SET_LEN);
 }
 
-/* FNV-1a, 32 bits (web/scripts/legacy-factory.ts fnv32) */
-static uint32_t fnv32(const uint8_t *p, uint32_t n)
-{
-    uint32_t h = 0x811C9DC5u;
-    while (n--)
-        h = (h ^ *p++) * 0x01000193u;
-    return h;
-}
-
-/* after an update: every slot that is byte for byte a factory patch an earlier firmware wrote (presets.h LEGACY_FACTORY,
- * so untouched since the factory bank or FACTORY RESET), in any format, gets today's patch of that name; the slot keeps
- * its name (a renamed factory patch's, presets.h FACTORY_RENAMED, takes the new one's), anything edited and saved stays as it is, and a slot holding one of today's patches is not in the table.
- * Once per factory set and format (bank_set, bank_fmt). Returns how many slots were rewritten */
-static uint32_t bank_upgrade(void)
-{
-    uint32_t s, k, r, i, len, h, n = 0;
-    char name[M1_NAME + 1];
-    boot_step("FACTORY PATCHES");
-    for (s = 0; s < M1_SLOTS; s++) {
-        if (!slot_used(s))
-            continue;
-        fm1_wdt_feed();
-        for (k = 0; k <= M1_NAME; k++)
-            name[k] = 0;
-        if (sl_read(s, m1_up, &len, name) || len < 8u || m1_up[0] != 0xA1u)
-            continue;
-        h = fnv32(m1_up, len);
-        for (k = 0; k < N_LEGACY_FACTORY; k++)
-            if (LEGACY_FACTORY[k].fnv == h && LEGACY_FACTORY[k].len == len)
-                break;
-        if (k >= N_LEGACY_FACTORY)
-            continue;
-        for (r = 0; r < N_FACTORY_RENAMED; r++) {      /* a renamed factory patch's slot takes the new one's name */
-            const char *was = FACTORY_RENAMED[r].was, *to = PRESET_LIST[FACTORY_RENAMED[r].now].name;
-            for (i = 0; i < M1_NAME && was[i] && name[i] == was[i]; i++)
-                ;
-            if (FACTORY_RENAMED[r].now != LEGACY_FACTORY[k].now || was[i] || (i < M1_NAME && name[i]))
-                continue;
-            for (i = 0; i < M1_NAME; i++)
-                name[i] = 0;
-            for (i = 0; i < M1_NAME && to[i]; i++)
-                name[i] = to[i];
-        }
-        if (store_write(s, name, PRESET_LIST[LEGACY_FACTORY[k].now].data, PRESET_LIST[LEGACY_FACTORY[k].now].len) == 0)
-            n++;
-    }
-    bank_fmt = ENG_PATCH_VERSION;
-    bank_set = FACTORY_SET_ID;
-    return n;
-}
-
 #include "bank_new.h"
 /* after an update: each factory patch new in this firmware for this bank (the set it was brought to, `set`, did not have
  * it) into its own slot if empty, else the first empty one, never over a used slot (bank_new.h, #630). Before bank_set
- * moves on, with bank_upgrade; a power cut before the settings record: the next boot finds the placed ones by name. What
+ * moves on; a power cut before the settings record: the next boot finds the placed ones by name. What
  * the bar says once into msg (bn_msg); 0 when nothing was new */
 static int bank_add(uint32_t set, char *msg)
 {
@@ -1103,7 +1052,7 @@ static int bank_add(uint32_t set, char *msg)
     return bn_msg(&plan, msg);
 }
 
-/* after an update, with bank_upgrade: the user presets of an earlier structure of a factory engine move to today's
+/* after an update: the user presets of an earlier structure of a factory engine move to today's
  * structure (presetmig.c, D-865); how many moved */
 static uint32_t presets_upgrade(void)
 {
@@ -1150,18 +1099,17 @@ static void patch_boot(void)                    /* the slot the settings record 
     } else if (sl_read(SL_SETTINGS, set, &len, 0) == 0 && settings_unpack(set, len, &slot, &module) == 0) {
         if (bank_fmt < ENG_PATCH_VERSION || bank_set != FACTORY_SET_ID) {   /* the first boot after an update that changed the factory patches or the format */
             static char new_msg[BN_BAR + 1u];
-            uint32_t was = bank_set, n = bank_upgrade(), moved = presets_upgrade();   /* (all before the settings record: a cut runs them again) */
+            uint32_t was = bank_set, moved = presets_upgrade();   /* (all before the settings record: a cut runs them again) */
             int added = bank_add(was, new_msg);  /* (a factory patch new in this firmware, #630) */
+            bank_fmt = ENG_PATCH_VERSION;
+            bank_set = FACTORY_SET_ID;
             cur_preset = slot;
             sel = module;
             settings_pack(set);
             (void)store_write(SL_SETTINGS, 0, set, SET_LEN);
-            if (added) {                         /* (said over FACTORY PATCHES UPDATED: the new slot is the news) */
+            if (added) {
                 boot_msg = new_msg;
                 boot_msg_ms = 4000;
-            } else if (n) {
-                boot_msg = "FACTORY PATCHES UPDATED";
-                boot_msg_ms = 3000;
             } else if (moved) {
                 boot_msg = "PRESETS UPDATED";
                 boot_msg_ms = 3000;
@@ -1454,7 +1402,7 @@ static void leds_play(void)
 /* a patch button's LED: lit while it is held or switched on */
 static void leds_panel(void)
 {
-    uint32_t b, mask = eng_buttons_lit();   /* (ARP on Arpeggiators: lit while they play) */
+    uint32_t b, mask = panel_lights();
     for (b = 0; b < ENG_PANEL_BUTTONS; b++)
         fm1_led_key(PANEL_BTN_ID[b], (int)(mask >> b & 1u) || (b == BTN_GLO_IDX && page == PAGE_MENU) || (b == BTN_ENV_IDX && page == PAGE_ENV));   /* (GLO, ENV: lit on their pages) */
 }

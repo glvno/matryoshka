@@ -178,11 +178,11 @@ export function checkScenarios(h) {
   }
   /** the bank's first empty slot (0-based), -1 when every slot is used */
   const firstEmpty = async () => (await page().evaluate(() => window.__m1test.slots())).findIndex((s) => !s.used);
-  /** Use this checkout's factory bytes: a bank may contain an edited patch with the same name. */
-  const storeFactory = (slot, name) => page().evaluate(async ([n, key]) => {
-    const { FM1_PRESETS } = await import('/src/presets.ts');
+  /** Use this checkout's editor fixture bytes: a bank may contain an edited patch with the same name. */
+  const storeFixture = (slot, name) => page().evaluate(async ([n, key]) => {
+    const { PRESETS } = await import('/src/presets.ts');
     const { encodePatch } = await import('/src/patchbin.ts');
-    const patch = FM1_PRESETS[key]();
+    const patch = PRESETS[key]();
     await window.__m1test.storeBin(n, patch.name, Array.from(encodePatch(patch)));
   }, [slot, name]);
 
@@ -769,7 +769,7 @@ export function checkScenarios(h) {
       };
       const parse = (hint) => /^ARM: 1 DRUMS(\*?) 2 PATTERN(\*?)$/.exec(hint);
       try {
-        await storeFactory(slot, '<7PH');
+        await storeFixture(slot, '<7PH');
         await check('7 teach: Live off', await live(false));
         await emu.elapse(1000);
         // PRESET a click at a time: the message shows once <7PH has loaded
@@ -822,7 +822,7 @@ export function checkScenarios(h) {
       const slot = await firstEmpty();
       if (slot < 0) return skip('flash write: factory patch fixture', 'the FM-1\'s bank has no empty slot');
       try {
-        await storeFactory(slot, 'Basic Poly');
+        await storeFixture(slot, 'Basic Poly');
         if (!(await live(false))) return check('flash write: Live off in the editor (Stop syncing)', false);
         const found = await presetTo('BASIC POLY', slot);
         if (!found) return check('flash write: the factory fixture loads from its slot', false);

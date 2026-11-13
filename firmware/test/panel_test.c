@@ -6,16 +6,27 @@
 #define UI_PREVIEW_LIB
 #define CTL_GESTURES                                        /* (controls.h: the rows' gestures, controls_test.h) */
 #define FB_WATCH
+#define HOST_PANEL_FIXTURES
 #include "ui_preview.c"
 
 /* what panel.c asks of proto.c and audio.c */
 static volatile uint32_t eng_shed_count;
 static int focus_dev = -1, focus_pg = -1, param_now = 0;
 static void m1_focus_now(uint32_t d, uint32_t g) { focus_dev = (int)d; focus_pg = (int)g; }
-static void m1_param_now(uint32_t mod, uint32_t par, int32_t v) { (void)mod; (void)par; (void)v; param_now++; }
+static uint32_t preset_events, preset_record;
+static struct { uint32_t mod, par; int32_t value; } preset_event[512];
+static void m1_param_now(uint32_t mod, uint32_t par, int32_t v)
+{
+    param_now++;
+    if (preset_record && preset_events < 512u) {
+        preset_event[preset_events].mod = mod;
+        preset_event[preset_events].par = par;
+        preset_event[preset_events++].value = v;
+    }
+}
 static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v);   /* (below: into pv_bin, as proto.c's into m1_cur) */
 static void m1_panel_on(uint32_t mask) { (void)mask; }
-static void m1_patch_bypass(uint32_t mod, int on) { (void)mod; (void)on; }
+static void m1_patch_bypass(uint32_t mod, int on);
 /* KEYS_NOW (#549): each key edge panel_key took, with the keys and buttons held then (report_test.h) */
 #define M1_KEYS_NOW
 #define PANEL_ALIGN
@@ -115,6 +126,21 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
     pv_bin[at + 1u] = (uint8_t)(v >> 8);
     pv_bin[at + 2u] = (uint8_t)(v >> 16);
     pv_bin[at + 3u] = (uint8_t)((uint32_t)v >> 24);
+}
+static void m1_patch_bypass(uint32_t mod, int on)
+{
+    uint32_t at = eng_records_at(pv_bin, pv_len), i;
+    if (!at || mod >= pv_bin[2])
+        return;
+    for (i = 0; i < mod; i++) {
+        if (!eng_rec_ok(pv_bin, pv_len, at))
+            return;
+        at += eng_rec_size(pv_bin, at);
+    }
+    if (!eng_rec_ok(pv_bin, pv_len, at))
+        return;
+    pv_bin[at] = (uint8_t)(on ? pv_bin[at] | 0x80u : pv_bin[at] & 0x7Fu);
+    m1_edited = 1;
 }
 
 #define ROWS_Y (LK_HH + 4u)                            /* the device page's first bar */
@@ -456,6 +482,175 @@ static const char *harm_notes(int h)
     return out;
 }
 
+static void fx_suite(void)
+{
+    uint32_t before_dev, before_pg, i, flags, at;
+    check("FX fixture: real compiled graph loads with four stages", ct_fx_load());
+    if (eng_fx_count() != 4u)
+        return;
+    before_dev = pg_cur_dev;
+    before_pg = pg_cur_page;
+    check("new bank: Harmony starts disabled with LFO dark", !(panel_lights() & 8u));
+    tap(5);
+    check("new bank: LFO enables Harmony and lights enabled state", (panel_lights() & 8u) && !(eng_buttons_get() & 8u));
+    tap(5);
+    check("new bank: LFO disables Harmony without changing its legacy Toggle state", !(panel_lights() & 8u) && (eng_buttons_get() & 8u));
+    tap(2);
+    check("FX enters the rendered four-stage page", page == PAGE_FX && help_state() == HS_FX && on_screen("MASTER FX")
+          && on_screen("DRIVE") && on_screen("CHORUS") && on_screen("DELAY") && on_screen("REVERB") && (panel_lights() & 1u));
+    for (i = 0; i < 4u; i++) {
+        uint32_t sum, edited, k, n;
+        const uint8_t *targets;
+        int was = eng_fx_on(i);
+        check("FX SELECT follows metadata's device and first page", fx_row == i && pg_cur_dev == eng_fx_device(i) && pg_cur_page == eng_fx_page(i));
+        sum = ct_params();
+        enc(2, 1);
+        later(50);
+        if (ct_params() == sum) {
+            enc(2, -1);
+            later(50);
+        }
+        check("FX K1 changes the actual selected page parameter", ct_params() != sum);
+        edited = ct_params();
+        preset_events = 0;
+        preset_record = 1;
+        tap(BTN_SEL);
+        preset_record = 0;
+        check("FX SEL toggles desired state without changing parameter values", eng_fx_on(i) != was && ct_params() == edited);
+        n = eng_fx_targets(i, &targets);
+        check("FX SEL tells the editor about every target", preset_events == n);
+        for (k = 0; k < n; k++) {
+            check("FX stage desired state reaches every real target", eng_bypass(targets[k]) == !eng_fx_on(i));
+            check("FX SEL notifies the target's stage state", k < preset_events && preset_event[k].mod == targets[k]
+                  && preset_event[k].par == 0xFFu && preset_event[k].value == (eng_fx_on(i) ? 0 : 65536));
+        }
+        if (i < 3u)
+            enc(0, 1);
+    }
+    tap(2);
+    check("FX returns to the exact preceding device page", page == 0u && pg_cur_dev == before_dev && pg_cur_page == before_pg && !(panel_lights() & 1u));
+    tap(2);
+    tap(BTN_HOME);
+    check("HOME leaves FX with the same back behavior", page == 0u && pg_cur_dev == before_dev && pg_cur_page == before_pg);
+    tap(BTN_ENV);
+    before_dev = pg_cur_dev;
+    tap(2);
+    tap(2);
+    check("FX preserves the preceding ENV row", page == PAGE_ENV && pg_cur_dev == before_dev);
+    tap(BTN_HOME);
+    tap(2);
+    page_set(PAGE_MENU);
+    tap(BTN_HOME);
+    check("FX survives an intervening menu and back", page == PAGE_FX && pg_cur_dev == eng_fx_device(fx_row) && pg_cur_page == eng_fx_page(fx_row));
+    tap(BTN_HOME);
+    check("saved FX desired states reload", !eng_load(pv_bin, pv_len) && eng_fx_on(0) && eng_fx_on(1) && eng_fx_on(2) && eng_fx_on(3));
+    pv_gen++;
+    pages_ensure();
+    pages_focus(eng_fx_device(3), eng_fx_page(3));
+    check("later stage parameters remain accessible on normal device pages", pages_page(1) && page == 0u);
+    page_set(PAGE_SEQ);
+    tap(2);
+    check("SEQ FX retains its contextual job", page == PAGE_SEQ);
+    song_prep();
+    page_set(PAGE_SONG);
+    tap(2);
+    check("SONG FX never opens the FX page", page == PAGE_SONG);
+
+    /* Exercise the real bounded reader, including every truncation and overlap, not a copied serialization string. */
+    flags = (uint32_t)pv_bin[6] | (uint32_t)pv_bin[7] << 8;
+    at = panel_buttons_at();
+    if (pv_bin[6] & 64u) at = eng_buttons_end(pv_bin, pv_len, at);
+    if (pv_bin[6] & 128u) at = eng_names_end(pv_bin, pv_len, at);
+    if (pv_bin[7] & ENG_FLAG_ORIGINS) at = eng_origins_end(pv_bin, pv_len, at);
+    {
+        const uint8_t *end = eng_skip_fx(pv_bin + at, pv_bin + pv_len, (uint16_t)flags);
+        check("FX reader locates the full optional record", at && end && * (pv_bin + at) == 4u);
+        if (at && end) {
+            for (i = at; pv_bin + i < end; i++)
+                check("FX reader rejects truncated metadata", !eng_skip_fx(pv_bin + at, pv_bin + i, (uint16_t)flags));
+            {
+                uint32_t target = at + 5u;
+                uint8_t saved_target = pv_bin[target + 1u];
+                pv_bin[target + 1u] = pv_bin[target];
+                check("FX reader rejects duplicate targets", !eng_skip_fx(pv_bin + at, pv_bin + pv_len, (uint16_t)flags));
+                pv_bin[target + 1u] = saved_target;
+            }
+            {
+                uint8_t sparse[1u + ENG_FX_STAGE_COUNT * (4u + ENG_FX_TARGETS_MAX)];
+                uint32_t src = at + 1u, dst = 1u, bytes = (uint32_t)(end - pv_bin - at);
+                sparse[0] = 0;
+                while (src < at + bytes) {
+                    uint32_t n = 4u + pv_bin[src + 3u];
+                    if (pv_bin[src] == ENG_FX_CHORUS || pv_bin[src] == ENG_FX_REVERB) {
+                        memcpy(sparse + dst, pv_bin + src, n);
+                        dst += n;
+                        sparse[0]++;
+                    }
+                    src += n;
+                }
+                memmove(pv_bin + at + dst, pv_bin + at + bytes, pv_len - at - bytes);
+                memcpy(pv_bin + at, sparse, dst);
+                pv_len -= bytes - dst;
+                check("sparse FX loads actual kinds rather than row-index types", !eng_load(pv_bin, pv_len) && eng_fx_count() == 2u &&
+                      eng_fx_kind(0) == ENG_FX_CHORUS && eng_fx_kind(1) == ENG_FX_REVERB);
+                pv_gen++;
+                page_show(0);
+                fx_row = 0;
+                tap(2);
+                check("sparse FX draws only present actual-kind names", page == PAGE_FX && on_screen("CHORUS") && on_screen("REVERB") &&
+                      !on_screen("DRIVE") && !on_screen("DELAY"));
+                enc(0, 1);
+                check("sparse SELECT reaches the Reverb first page", fx_row == 1u &&
+                      pg_cur_dev == eng_fx_device(1) && pg_cur_page == eng_fx_page(1));
+                {
+                    int chorus = eng_fx_on(0), reverb = eng_fx_on(1);
+                    tap(BTN_SEL);
+                    check("sparse SEL toggles selected actual kind only", eng_fx_on(0) == chorus && eng_fx_on(1) != reverb);
+                }
+                enc(0, 1);
+                check("sparse SELECT wraps over present rows only", fx_row == 0u && pg_cur_page == eng_fx_page(0));
+                enc(0, -1);
+                check("sparse SELECT wraps backward over present rows only", fx_row == 1u && pg_cur_page == eng_fx_page(1));
+                tap(BTN_HOME);
+            }
+        }
+    }
+    /* Optional FX bindings are not authority for a separately verified Harmony Toggle. */
+    check("Harmony-only indicator fixture resets", ct_fx_load());
+    {
+        const uint8_t *end = eng_skip_fx(pv_bin + at, pv_bin + pv_len, (uint16_t)((uint32_t)pv_bin[6] | (uint32_t)pv_bin[7] << 8));
+        check("Harmony-only fixture has a bounded optional FX record", end != 0);
+        if (end) {
+            uint32_t bytes = (uint32_t)(end - pv_bin - at);
+            memmove(pv_bin + at, end, pv_len - (uint32_t)(end - pv_bin));
+            pv_len -= bytes;
+            pv_bin[7] &= (uint8_t)~64u;
+            check("format55 loads without an FX record", !eng_load(pv_bin, pv_len) && !eng_fx_count());
+            pv_gen++;
+            page_show(0);
+            check("rackless Harmony starts off with LFO dark", !(panel_lights() & 8u));
+            tap(5);
+            check("rackless LFO enables Harmony and its light", (panel_lights() & 8u) && !(eng_buttons_get() & 8u));
+            pv_bin[1] = 54u;
+            check("older format keeps the same valid Toggle graph", !eng_load(pv_bin, pv_len));
+            pv_gen++;
+            page_show(0);
+            check("older Harmony Toggle retains its generic light state", panel_lights() == eng_buttons_lit());
+            tap(5);
+            check("older Harmony Toggle light follows bypass after switching", panel_lights() == eng_buttons_lit() && !((panel_lights() ^ eng_buttons_get()) & 8u));
+        }
+    }
+    check("legacy patch replaces FX metadata", !load_fixture("build/panel-fixtures/steps-patterns.m1p") && !eng_fx_count());
+    pv_gen++;
+    page_show(0);
+    trail_n = 0;
+    tap(2);
+    check("legacy FX never reserves the new page", page != PAGE_FX && panel_lights() == eng_buttons_lit());
+    ct_reset();
+}
+
+#include "fx_preset_panel_test.h"
+
 int main(void)
 {
     static uint16_t before[240 * 240];
@@ -637,7 +832,7 @@ int main(void)
                 if (i >= 88u && pr_vals[i] != init[i])
                     kept = 0, printf("      (row %u: %d, Init's %d)\n", i, pr_vals[i], init[i]);
             }
-            check("  its 88 rows set in order, the other 31 keep their values", same && kept);
+            check("  its 88 rows set in order, all remaining rows keep their values", same && kept);
             check("  the bar: STORED SHORT: SEE EDITOR (24 characters)", !strcmp(msg_text, "STORED SHORT: SEE EDITOR"));
             later(1500);
         }
@@ -2981,6 +3176,9 @@ int main(void)
         static uint16_t staged[240 * 240];
         uint32_t i, n;
         int main;
+        char slot_label[8];
+        fmt_int(slot_label, (int32_t)preset_at("<7PH") + 1);
+        put(slot_label + str_len(slot_label), ".")[0] = 0;
         bank_mask = ((uint64_t)1 << N_PRESETS) - 1u;
         (void)load("909 KIT");
         cur_preset = preset_at("<7PH") - 1u;               /* the 909 Kit, then <7PH */
@@ -2993,7 +3191,7 @@ int main(void)
         lcd_px = 0;
         patch_enc(1);
         check("PRESET: the next patch, its slot and name in the footer's toast, its page around it", cur_preset == preset_at("<7PH")
-              && !strcmp(patch_label, "<7PH") && on_screen("<7PH") && on_screen("23.") && toast_scr != 0u
+              && !strcmp(patch_label, "<7PH") && on_screen("<7PH") && on_screen(slot_label) && toast_scr != 0u
               && px(0, 240u - LK_TOH) == P_SAND && px(0, 239u - LK_TOH) != P_SAND && K1_TAB == KNOB_HUE[0]);
         printf("      LCD pixels for one PRESET click: %u\n", lcd_px);
         snap_to(getenv("PANEL_SNAP_PATCH"));
@@ -4722,6 +4920,8 @@ int main(void)
     nudge_suite();
     steprec_suite();
     controls_suite();
+    fx_suite();
+    fx_preset_suite();
     report_suite();
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
     return failed != 0;

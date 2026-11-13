@@ -1,4 +1,4 @@
-import { addModule, connect } from './patch';
+import { connect } from './patch';
 // SPDX-License-Identifier: GPL-3.0-only
 // The FM-1's UI as WebAssembly (fm1-ui.ts, firmware/wasm/fm1_ui.c) against the host preview of the same firmware
 // (tools/ui_preview.sh): the same patch and page must give the same framebuffer, and the panel must drive it.
@@ -12,6 +12,7 @@ import { encodePatch } from './patchbin';
 import { deviceView } from './poly';
 import { PROFILES } from './fm1-profiles';
 import { FM1_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 import { DEFS } from './modules';
 import { devicesOf } from './pages';
 import { buildFm1Wasm } from '../scripts/fm1-wasm.mjs';
@@ -37,7 +38,7 @@ beforeAll(() => {
 
 describe('the FM-1 UI as WebAssembly', () => {
   it('keeps Cassia playable after rapid turns of its voices row, past its top', async () => {
-    const patch = FM1_PRESETS['Cassia 1']();
+    const patch = relocatedPatches['Cassia 1']();
     const values: number[] = [];
     const ui = await Fm1Ui.create(bytes, { param: (_m, p, v) => { if (p === 0x80) values.push(v); } });
     expect(ui.load(encodePatch(patch), 'CASSIA 1')).toBe(0);
@@ -142,11 +143,15 @@ describe('the FM-1 UI as WebAssembly', () => {
     const main = patch.modules.find(m => m.type === 'fm1')!;
     const track = patch.modules.find(m => m.type === 'steps')!;
     delete track.notes;
-    const h = addModule(patch, DEFS.harm, 0, 0);
+    // The selected Silver Box's own Harmony sits after its track: move it in front, the track then feeds the Arpeggiator.
+    const h = patch.modules.find(m => m.type === 'harm')!;
+    const arp = patch.modules.find(m => m.type === 'arp')!;
     h.params.type = 1;
-    patch.cables = patch.cables.filter(c => !(c.to.module === track.id && c.to.port === 'keys'));
+    delete h.bypass;
+    patch.cables = patch.cables.filter(c => !(c.to.port === 'keys' && [track.id, h.id, arp.id].includes(c.to.module)));
     expect(connect(patch, DEFS, { module: main.id, port: 'keys' }, { module: h.id, port: 'keys' })).toBe(true);
     expect(connect(patch, DEFS, { module: h.id, port: 'keys' }, { module: track.id, port: 'keys' })).toBe(true);
+    expect(connect(patch, DEFS, { module: track.id, port: 'keys' }, { module: arp.id, port: 'keys' })).toBe(true);
     let notes: { at: number; note: number }[] = [];
     const ui = await Fm1Ui.create(bytes, { track: (_id, n) => { notes = n; } });
     expect(ui.load(encodePatch(patch), 'HARM CAPTURE')).toBe(0); ui.tick(1000);

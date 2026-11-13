@@ -7,7 +7,8 @@ import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type Patch } from './patch';
 import { FLAG_CABLES3, fm1Edits, morphRoom, COUNTED, presenceOf, PRES_ATT1, PRES_P2, REC_TEMPLATE, DEVICE, deviceBudget, deviceSection, encodePatch, FORMAT_1_11, fm1Rows, formatOf, layout, PANEL_BYTES, storedParams, toQ16, TYPE_ORDER, VERSION } from './patchbin';
 import { deviceView } from './poly';
-import { FM1_PRESETS } from './presets';
+import { PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 import { communityEntries } from './community';
 import { decodeShare } from './share';
 import { oracleMorph, ORACLE_B } from './test-morph';
@@ -85,7 +86,7 @@ describe('counted records (#667, format 51)', () => {
 
   it('writes a morph B side only where it differs from A, and keeps room for the B values the FM-1 may add (D-1004, D-1005)', () => {
     const p = oracleMorph();
-    const plain = FM1_PRESETS['Oracle V']();
+    const plain = relocatedPatches['Oracle V']();
     const l = layout(p, undefined, true), lp = layout(plain, undefined, true);
     const { patch: dev } = deviceView(p, true);
     const withB = dev.modules.filter((m) => m.paramsB);
@@ -120,7 +121,7 @@ describe('counted records (#667, format 51)', () => {
   });
 
   it('writes a patch that fits in an older format as before (else counted), and counts the smaller form in the budget', () => {
-    for (const [name, make] of Object.entries(FM1_PRESETS)) {
+    for (const [name, make] of Object.entries(PRESETS)) {
       const p = make();
       const l = layout(p);
       // in its old format when that holds it; counted (Wanderer and Vernon 100, with their PATTERN track) when not
@@ -130,7 +131,7 @@ describe('counted records (#667, format 51)', () => {
   });
 
   it('keeps every parameter the FM-1 can change in its copy (rows, card rows, a plain module\'s device), so it never grows there', () => {
-    for (const [name, make] of Object.entries(FM1_PRESETS)) {
+    for (const [name, make] of Object.entries(PRESETS)) {
       const p = make();
       const { patch: dev } = deviceView(p, true);
       const keep = fm1Rows(p, dev, deviceSection(p, dev));

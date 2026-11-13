@@ -5,8 +5,8 @@
 // the inner ports it exposes and the inner parameters it promotes. Cables always run between inner ports, so the engine,
 // the voice split, the binary format and the FM-1 never see assemblies; an editor that does not know the overlay loads
 // the same patch and only loses the grouping. An assembly holds plain modules and, nested, other assemblies (`children`,
-// to any depth), never the FM-1 panel or an Output. A container input may fan out to several inner inputs
-// (`PortRef.also`: one "gate" jack for two envelopes). A saved assembly (`AssemblyDef`, one JSON file) is a small patch of
+// to any depth), never the FM-1 panel or an Output. A container jack may bundle several inner endpoints (`PortRef.also`):
+// inputs fan out, outputs sum through ordinary cables. A saved assembly (`AssemblyDef`, one JSON file) is a small patch of
 // its own: every module inside with local ids, the cables between them, the nested assemblies, the exposed ports and
 // promoted parameters.
 import {
@@ -40,7 +40,7 @@ export interface PortRef {
   module: number;
   port: string;
   label: string;
-  /** further inner inputs this container input also feeds (merged ports; inputs only). A cable to the port goes to all of them. */
+  /** Further inner endpoints: an input fans out to them; an output connects all sources to the destination. */
   also?: Target[];
 }
 export interface ParamRef {
@@ -396,6 +396,9 @@ export interface NestedDef extends AssemblyLayout {
   outputs: PortRef[];
   params: ParamRef[];
   heads?: EmptyHead[];
+  /** Preserve a nested group's switch and the members that were already off before that switch. */
+  bypass?: boolean;
+  kept?: number[];
   poly?: PolyCards;
 }
 
@@ -730,8 +733,9 @@ export function reconcile(p: Patch, a: AssemblyInst, defs?: Record<string, Modul
   };
   const clean = (dir: 'in' | 'out', list: PortRef[]): PortRef[] => {
     const out: PortRef[] = [];
-    const seen = new Set<string>();
+    const seenInputs = new Set<string>();
     for (const r of list) {
+      const seen = dir === 'in' ? seenInputs : new Set<string>();
       const ts = targetsOf(r).filter((t) => {
         const k = `${t.module}:${t.port}`;
         if (seen.has(k) || !portOk(dir, t)) return false;
@@ -740,7 +744,7 @@ export function reconcile(p: Patch, a: AssemblyInst, defs?: Record<string, Modul
       });
       if (!ts.length) continue;
       const next: PortRef = { module: ts[0].module, port: ts[0].port, label: r.label };
-      if (dir === 'in' && ts.length > 1) next.also = ts.slice(1);
+      if (ts.length > 1) next.also = ts.slice(1);
       out.push(next);
     }
     return out;
@@ -925,13 +929,13 @@ function childLabel(p: Patch | undefined, a: AssemblyInst, kind: 'param' | 'in' 
   return kind === 'param' ? c.params.find((r) => r.module === module && r.param === name)?.label : findRef(c, kind, module, name)?.label;
 }
 
-/** show an inner port on the card; `also` merges further inner inputs into the same jack. With the patch, a port a nested
+/** show an inner port on the card; `also` bundles further inner endpoints. With the patch, a port a nested
  * assembly shows keeps that assembly's label */
 export function exposePort(a: AssemblyInst, dir: 'in' | 'out', module: number, port: string, also?: Target[], p?: Patch): void {
   if (isExposed(a, dir, module, port)) return;
   const list = dir === 'in' ? a.inputs : a.outputs;
   const r: PortRef = { module, port, label: uniqueLabel(list.map((x) => x.label), childLabel(p, a, dir, module, port) ?? port) };
-  const extra = dir === 'in' ? (also ?? []).filter((t) => !isExposed(a, 'in', t.module, t.port) && !(t.module === module && t.port === port)) : [];
+  const extra = (also ?? []).filter((t) => (dir === 'out' || !isExposed(a, 'in', t.module, t.port)) && !(t.module === module && t.port === port));
   if (extra.length) r.also = extra;
   list.push(r);
 }
@@ -1361,6 +1365,10 @@ export function toDef(p: Patch, a: AssemblyInst): AssemblyDef {
       };
       if (d.heads?.length) n.heads = d.heads.map(remap);
       if (d.children?.length) n.children = d.children.map((id) => localAsm.get(id)!);
+      if (d.bypass) {
+        n.bypass = true;
+        if (d.kept?.length) n.kept = d.kept.map((id) => local.get(id)!).filter((id) => id !== undefined);
+      }
       if (d.poly) n.poly = { ...d.poly };
       return n;
     });
@@ -1430,6 +1438,10 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
     if (d.heads?.length) n.heads = d.heads.map(remap);
     taken.push(n.label);
     if (d.children?.length) n.children = d.children.map((id) => freshAsm.get(id)!);
+    if (d.bypass) {
+      n.bypass = true;
+      if (d.kept?.length) n.kept = d.kept.map((id) => fresh.get(id)!).filter((id) => id !== undefined);
+    }
     if (d.poly) n.poly = fixCards(d.poly);
     return n;
   });
@@ -1557,7 +1569,7 @@ export function validateAssemblyDef(raw: unknown, defs: Record<string, ModuleDef
       if (!isRec(r)) return [];
       const t = target(r, dir);
       const ref: PortRef = { ...t, label: String(r.label ?? r.port) };
-      if (dir === 'in' && Array.isArray(r.also) && r.also.length) ref.also = r.also.map((x) => target(x, 'in'));
+      if (Array.isArray(r.also) && r.also.length) ref.also = r.also.map((x) => target(x, dir));
       return [ref];
     });
   const params = (list: unknown): ParamRef[] =>
@@ -1612,6 +1624,10 @@ export function validateAssemblyDef(raw: unknown, defs: Record<string, ModuleDef
       if (nh) n.heads = nh;
       n.inputs = pinsToParams(ports(e.inputs, 'in'), n.params, moduleOf);
       if (Array.isArray(e.children) && e.children.length) n.children = e.children.map(Number);
+      if (e.bypass) {
+        n.bypass = true;
+        if (Array.isArray(e.kept)) n.kept = e.kept.filter((id): id is number => seen.has(id as number));
+      }
       if (e.poly) n.poly = fixCards(e.poly);
       return n;
     });
@@ -1691,7 +1707,7 @@ export function fixAssemblies(p: Patch, defs: Record<string, ModuleDef>): string
       ...assemblyLayout(e),
       modules: [...new Set(members)],
       inputs: refs(e.inputs, 'port'),
-      outputs: refs(e.outputs, 'port').map((r) => ({ module: r.module, port: r.port, label: r.label })),
+      outputs: refs(e.outputs, 'port'),
       params: tidyRows(refs(e.params, 'param') as unknown as ParamRef[]),
     };
     const ah = emptyHeads(e.heads, a.params);

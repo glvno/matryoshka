@@ -19,6 +19,7 @@ typedef struct {
     int32_t notes_n;
     uint32_t notes_sum, acc_n, len_sum, vel_sum, chance_sum, pitch_sum;
     uint32_t song_sel, song_cur, song_len, song_sum, song, clear_at, del_at, msg_sum;
+    uint32_t fx_row, fx_on;
     int mlen;
 } ct_snap_t;
 static int ct_mod;                                      /* the track shown when the gesture began, -1 none */
@@ -60,6 +61,9 @@ static void ct_take(ct_snap_t *s)
     s->octave = octave;
     s->tempo = (panel >= 0 ? eng_get_param((uint32_t)panel, FM1_P_TEMPO) : 0) + (int32_t)eng_tempo_global_get();
     s->params = ct_params();
+    s->fx_row = fx_row;
+    for (i = 0; i < eng_fx_count(); i++)
+        s->fx_on |= (uint32_t)eng_fx_on(i) << i;
     s->arms = eng_arm_mask_get();
     for (i = 0; (int)i < eng_steps_count(); i++)
         s->mutes |= (uint32_t)(eng_steps_muted((uint32_t)eng_steps_module(i)) != 0) << i;
@@ -113,6 +117,9 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_MENU: return a->page == PAGE_MENU && b->page != PAGE_MENU;
     case CE_ENV: return a->page == PAGE_ENV && b->page != PAGE_ENV;
     case CE_SEQ: return a->page == PAGE_SEQ && b->page != PAGE_SEQ;
+    case CE_FX_PAGE: return a->page == PAGE_FX && b->page != PAGE_FX;
+    case CE_FX_TOGGLE: return a->fx_on != b->fx_on && a->params == b->params;
+    case CE_FX_ROW: return a->fx_row != b->fx_row;
     case CE_OCTAVE: case CE_KEYS_OCTAVE: return a->octave != b->octave;
     case CE_TEMPO: return a->tempo != b->tempo || (sb_on && a->msg_sum != b->msg_sum);   /* (sandbox: the editor's) */
     case CE_PATCH: return a->stepped != b->stepped;
@@ -250,6 +257,20 @@ static int ct_load(const char *name)
     later(2000);
     return 0;
 }
+static int ct_fx_load(void)
+{
+    ct_reset();
+    if (load_fixture("build/panel-fixtures/fx-bus.m1p"))
+        return 0;
+    pv_gen++;
+    page_show(0);
+    screen_patch();
+    pages_ensure();
+    pages_focus(pages_home(), 0);
+    fx_row = 0;
+    later(2000);
+    return eng_fx_count() == 4u;
+}
 /* the SEQ page of track t (a step of it on, in the selected row, under the white key CT_STEP: a held step has a note;
  * longer: 32 steps; empty: no notes, for step record and a live take) */
 static void ct_seq(uint32_t t, int longer, int empty)
@@ -372,8 +393,16 @@ static int ct_enter(uint32_t s, uint32_t v)
             later(2000);
             return eng_keys_harm() >= 0;
         }
+        if (v == 4)
+            return ct_fx_load();
         return 0;
     case HS_ENV:
+        if (v == 2) {
+            if (!ct_fx_load())
+                return 0;
+            tap(BTN_ENV);
+            return page == PAGE_ENV;
+        }
         if (v > 1 || ct_load(v ? "<7PH" : "ORACLE V"))
             return 0;
         ct_focus_assembly();
@@ -435,6 +464,12 @@ static int ct_enter(uint32_t s, uint32_t v)
         tap(BTN_REC);
         later(100);
         return sr_on;
+    case HS_FX:
+        if (v || !ct_fx_load())
+            return 0;
+        tap(2);
+        later(1500);
+        return page == PAGE_FX;
     }
     return 0;
 }

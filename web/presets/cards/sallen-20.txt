@@ -58,7 +58,7 @@
 # output
 #   volume = 0.75                      0..2
 
-# Drafts of 2026-10-29 after the Korg MS-20 (#413).
+# Curated panel studies of 2026-11-13 after the Korg MS-20 (#413).
 engine: Sallen 20
 
 # Switch positions: vco 1 scale 1..4 = 32' 16' 8' 4'; vco 2 scale 1..4 = 16' 8' 4' 2';
@@ -87,7 +87,7 @@ preset: Acid Scream
   sustain = 0.15
   eg 2 / release = 0.2 s
   frequency = 6 Hz
-  volume = 0.67
+  volume = 0.69
 
 # A 16' pulse and saw with the resonant high pass peaking on each note: the high-pass growl the MS-20 is known for.
 preset: Growl Bass
@@ -155,7 +155,7 @@ preset: Noise Sweep
   eg 2 / release = 2.5 s
   frequency = 0.15 Hz
   waveform = 0.5
-  volume = 0.66
+  volume = 1.14
 
 # The ESP hears the white noise through a narrow band and its F-V output drives VCO 2: a random warble on top of VCO 1.
 preset: ESP Warble
@@ -179,7 +179,7 @@ preset: ESP Warble
   high cut = 600 Hz
   threshold = 0.1
   esp route = 2
-  volume = 0.48
+  volume = 0.57
 
 # A narrow pulse with no second oscillator: a breath-sized attack and a quiet high-pass resonance.
 preset: Soft Reed
@@ -198,3 +198,45 @@ preset: Soft Reed
   sustain = 0.7
   eg 2 / release = 0.2 s
   volume = 0.44
+
+# Opposed filter contours: the high pass rises while the low pass falls as EG 2 decays, pinching the tail.
+preset: Pinch Pluck
+  vco 1 wave = PULSE
+  vco 1 pw = 0.35
+  vco 1 level = 0.3
+  vco 2 level = 0
+  highpass / cutoff = 350 Hz
+  highpass / peak = 0.6
+  highpass / eg2/ext = -1.5
+  lowpass / cutoff = 650 Hz
+  lowpass / peak = 0.5
+  lowpass / eg2/ext = 2.5
+  eg 2 / attack = 0.001 s
+  decay = 0.32 s
+  sustain = 0
+  eg 2 / release = 0.12 s
+  volume = 0.8
+
+# EG 1 adds a delayed pitch rise to a triangle plus quiet octave saw; EG 2 opens the amplifier first.
+preset: Pitch Bloom
+  vco 1 wave = TRIANGLE
+  vco 2 scale = 4'
+  vco 2 wave = SAW
+  vco 2 pitch = 0 st
+  vco 2 fine = 3 ct
+  eg1/ext = 0.08
+  vco 1 level = 0.4
+  vco 2 level = 0.12
+  highpass / cutoff = 60 Hz
+  highpass / peak = 0.1
+  lowpass / cutoff = 1800 Hz
+  lowpass / peak = 0.18
+  lowpass / eg2/ext = 0.5
+  delay = 0.12 s
+  eg 1 / attack = 0.35 s
+  eg 1 / release = 0.15 s
+  eg 2 / attack = 0.04 s
+  decay = 0.6 s
+  sustain = 0.75
+  eg 2 / release = 0.25 s
+  volume = 0.57

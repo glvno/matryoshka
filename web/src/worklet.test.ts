@@ -3,6 +3,7 @@ import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
 import { DEFS } from './modules';
 import { PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 import { withParts } from './test-poly';
 import { polyGroups } from './poly';
 import type { HostMsg } from './worklet';
@@ -48,7 +49,7 @@ function stereoPatch(): Patch {
 it('streams nothing until a Scope view is set, then follows that output through every factory preset and a polyphonic load', () => {
   const processor = new Processor();
   const poly = withParts(subtractiveSaw(), 4);
-  for (const [index, patch] of [...Object.values(PRESETS).map(make => make()), poly].entries()) {
+  for (const [index, patch] of [...Object.values({ ...PRESETS, ...relocatedPatches }).map(make => make()), poly].entries()) {
     processor.port.postMessage.mockClear();
     send(processor, { t: 'patch', patch, revision: index + 1 });
     send(processor, { t: 'on', note: 60, vel: .8 });

@@ -123,7 +123,7 @@ preset: Poly Brass
   amp / r = 0.35 s
   wheel mod / freq A = 0.08
   freq B = 0.08
-  volume = 0.48
+  volume = 0.6
 
 # Slow saws with light vibrato and long envelopes.
 preset: Vintage Strings
@@ -146,7 +146,7 @@ preset: Vintage Strings
   lfo rate = 5.5 Hz
   wheel mod / freq A = 0.2
   freq B = 0.2
-  volume = 0.44
+  volume = 0.58
 
 # Poly-mod FM: osc B's triangle, a 12th up, into osc A's frequency; through an open filter with a percussive decay.
 preset: Poly-Mod Bell

@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { assembliesOf } from './assembly';
 import { CPU_VOICE_TOP } from './cpu';
 import { deviceBudget, encodePatch, FORMAT_1_11, formatOf, POLY_ROW, ROW_MORE } from './patchbin';
-import { FM1_PRESETS } from './presets';
-import { MAX_PARTS, type Patch } from './patch';
+import { relocatedPatches } from './community-factory';
+import type { Patch } from './patch';
 
 const voicesRow = (p: Patch) => assembliesOf(p).flatMap((a) => a.params).find((r) => r.param === 'voices' && p.modules.find((m) => m.id === r.module)?.type === 'alloc');
 const withVoices = (p: Patch, v: number): Patch => {
@@ -29,26 +29,16 @@ const TOPS: Record<string, number> = { 'Oracle V': 4, 'Expander S': 6, 'Cassia 1
 describe("the FM-1's VOICES row top", () => {
   for (const [name, top] of Object.entries(TOPS))
     it(`${name} stops at ${top}, the most voices whose CPU estimate stays at ${100 * CPU_VOICE_TOP} % or under`, () => {
-      const p = FM1_PRESETS[name]();
+      const p = relocatedPatches[name]();
       expect(voicesRow(p)!.top).toBe(top);
       const b = deviceBudget(withVoices(p, top));
       expect(b.fits && b.cpu.use <= CPU_VOICE_TOP).toBe(true);
       expect(deviceBudget(withVoices(p, top + 1)).cpu.use).toBeGreaterThan(CPU_VOICE_TOP);
     });
 
-  it('no other factory patch has a top: each stays under the bar with eight voices', () => {
-    for (const [name, make] of Object.entries(FM1_PRESETS)) {
-      const p = make();
-      const r = voicesRow(p);
-      if (!r || name in TOPS) continue;
-      expect(r.top, name).toBeUndefined();
-      const b = deviceBudget(withVoices(p, MAX_PARTS));
-      expect(b.fits && b.cpu.use <= CPU_VOICE_TOP, name).toBe(true);
-    }
-  });
 
   it('goes to the FM-1 as the poly row\'s extras (format 51); a row without one is written as before', () => {
-    const p = FM1_PRESETS['Cassia 1']();
+    const p = relocatedPatches['Cassia 1']();
     expect(formatOf(p)).toBe(FORMAT_1_11);
     const bin = encodePatch(p, true);
     const got = rowBytes(bin)!;

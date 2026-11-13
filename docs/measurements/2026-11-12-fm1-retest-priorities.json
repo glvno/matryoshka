@@ -1,0 +1,20 @@
+{
+  "scope": "Remaining most promising pending configurations after all five requested full-matrix retests passed; current qualification still required.",
+  "candidates": [
+    {
+      "variantId": "expander-s-original-drive-chorus-delay",
+      "rank": 1,
+      "why": "Strongest original-polyphony recovery prospect: older complete8/8 clean81.289% pass, substantial headroom and Four Voice parity. Four notes instead of the selected two; gives up Reverb. Needs current full-phase qualification."
+    },
+    {
+      "variantId": "algo-four-v4-drive-chorus-delay",
+      "rank": 2,
+      "why": "Older complete8/8 clean77.016% pass offers strong headroom evidence for one more note than the selected three-note full rack. Independent articulation retained; Reverb omitted. Needs current full-phase qualification."
+    },
+    {
+      "variantId": "algo-four-v5-drive-chorus-delay",
+      "rank": 3,
+      "why": "Older complete8/8 clean93.212% pass gains two notes over the selected three-note full rack while remaining below original DX100 polyphony. Less headroom than four notes; Reverb omitted. Needs current qualification."
+    }
+  ]
+}

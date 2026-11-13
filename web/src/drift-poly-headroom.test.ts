@@ -4,7 +4,7 @@ import { applyPreset, presetsOf } from './device-presets';
 import { Engine } from './engine';
 import { instIsEngine } from './engines';
 import './factory-presets';
-import { FM1_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 const SR = 48000;
 const CHORD = [60, 64, 67, 71, 72, 76, 79, 83];
@@ -12,7 +12,7 @@ const CHORD = [60, 64, 67, 71, 72, 76, 79, 83];
 // #413: drift poly's chords broke up on the FM-1 because they clipped (Slow Pad at five notes, Analog Strings at four).
 // Its mixer levels leave headroom, so every factory preset holds eight notes at eight voices (the FM-1's most) unclipped.
 it('every drift poly factory preset holds an eight-note chord at eight voices without clipping', () => {
-  const make = FM1_PRESETS['Drift Poly'];
+  const make = relocatedPatches['Drift Poly'];
   const base = make();
   const engine = (p: typeof base) => (p.assemblies ?? []).find((a) => instIsEngine(p, a) && a.name === 'drift poly')!;
   const presets = presetsOf(base, engine(base));

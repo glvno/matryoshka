@@ -68,6 +68,7 @@ static pdev_t pg_dev[PG_DEVS] UI_POOL;
 static uint32_t pg_mem(uint32_t d, uint32_t k) { return pg_dev[d].mrun ? pg_dev[d].mem[0] + k : pg_dev[d].mem[k]; }
 static char pg_tname[PG_DEVS][9] UI_POOL;              /* a Steps track's name, for its device (m1_track_name: 8 characters) */
 static char pg_pname[PG_DEVS][17] UI_POOL;             /* the preset each device was set to (#194; read from the extras for a new patch) */
+static uint32_t pg_pstructure[PG_DEVS] UI_POOL;        /* remembered namespace; 0: infer a saved name from its values */
 static ppage_t pg_page[PG_PAGES] UI_POOL;
 static uint32_t pg_ndev, pg_npage, pg_built_gen = 0xFFFFFFFFu, pg_built_at;
 static uint32_t pg_cur_dev, pg_cur_page;                /* the focus: the device and its page K1..K4 turn */
@@ -94,12 +95,15 @@ static uint8_t pg_list_step, pg_list_peek;
 
 static void m1_track_name(uint32_t mod, char *out);     /* proto.c: a Steps track's name ("" none) */
 static void m1_param_now(uint32_t mod, uint32_t par, int32_t v);   /* proto.c: a row turned here (the editor follows) */
+static void m1_focus_now(uint32_t dev, uint32_t page);           /* proto.c: the selected FX row's device page */
 static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v); /* proto.c: the running binary follows */
+static void m1_patch_bypass(uint32_t mod, int on);
 static int poly_row_set(uint32_t mod, uint32_t field, int32_t v); /* main.c: a poly group's setting */
 static void m1_preset_stored(uint32_t structure, const char *name);   /* proto.c: a preset stored here (#195) */
 static void m1_arms_now(eng_mset_t mask);                       /* proto.c: the armed modules changed here (#191) */
 static const uint8_t *pages_src(uint32_t *len);         /* the running patch's binary (proto.c m1_cur; the preview's) */
 static uint32_t pages_gen(void);                        /* changes when another patch becomes current */
+static uint32_t pages_capacity(void);                 /* writable native patch bytes, not preset-store capacity */
 
 /* where the device pages section starts in (p, len), 0 if there is none (proto.c m1_devices_at, on any binary) */
 static uint32_t pages_at(const uint8_t *p, uint32_t len)
@@ -301,8 +305,10 @@ static void pages_extras(const uint8_t *p, uint32_t len)
         pg_dev[i].nmem = 0;
         pg_dev[i].mrun = 0;
         pg_dev[i].unreached = 0;
-        if (pg_names_fresh)
+        if (pg_names_fresh) {
             pg_pname[i][0] = 0;
+            pg_pstructure[i] = 0;
+        }
     }
     if (!p || !(p[7] & ENG_FLAG_EXTRAS) || !(at = pages_at(p, len)) || !(at = eng_devices_end(p, len, at)) || !eng_extras_end(p, len, at)) {
         pg_names_fresh = 0;
@@ -1321,6 +1327,11 @@ static int head_free(void) { return !msg_until && !eng_overload && !load_err; }
 /* the top bar of page 0, GLO and ENV (ui.c header_draw): the device page's header; ENV's bar */
 static void pages_strip(void)
 {
+    if (page == PAGE_FX) {
+        bar_fill(P_LILAC);
+        text_bc(&FONT_S, 8, 3, "MASTER FX", P_NIGHT, P_LILAC, 224, TA_LEFT);
+        return;
+    }
     if (page == PAGE_ENV) {                             /* the environment: ENVIRONMENT and the patch, on lilac */
         char nm[32], num[8], *q = nm;
         if (cur_preset < M1_SLOTS) {
@@ -2457,6 +2468,77 @@ static void env_knob_msg(uint32_t k)
     ui_msg(m, 1000);
 }
 
+/* Master FX uses the same page rows and edits as normal devices. Metadata is already bounded and type checked by the
+ * engine; stage order and indices never come from labels. Normal device pages retain the later parameter pages. */
+static uint32_t fx_row;
+static uint32_t fx_shown[4], fx_params_shown[4];
+static const char *const FX_NAMES[4] = {"DRIVE", "CHORUS", "DELAY", "REVERB"};
+static void fx_focus(void)
+{
+    uint32_t n = eng_fx_count();
+    if (!n)
+        return;
+    fx_row %= n;
+    pages_ensure();
+    if (pages_focus(eng_fx_device(fx_row), eng_fx_page(fx_row)))
+        m1_focus_now(pg_cur_dev, pg_cur_page);
+}
+static void fx_select(int32_t step)
+{
+    uint32_t n = eng_fx_count();
+    if (!n)
+        return;
+    fx_row = (uint32_t)(((int32_t)fx_row + step % (int32_t)n + (int32_t)n) % (int32_t)n);
+    fx_focus();
+}
+static void fx_draw(int full)
+{
+    uint32_t i;
+    const ppage_t *pg;
+    pages_ensure();
+    pg = pages_now();
+    if (full) {
+        lcd_fill(0, BAR_H, 240, 240u - BAR_H, P_NIGHT);
+        for (i = 0; i < 4u; i++)
+            fx_shown[i] = fx_params_shown[i] = 0;
+        if (!msg_until)
+            pages_strip();
+        text_bc(&FONT_S, 6, 218, HINT_FX, P_DIM, P_NIGHT, 228, TA_LEFT);
+    }
+    pg_strip_dirty = 0;
+    for (i = 0; i < eng_fx_count() && i < 4u; i++) {
+        uint32_t kind = eng_fx_kind(i), h = 2u + kind * 32u + i * 8u + (uint32_t)eng_fx_on(i) * 2u + (uint32_t)(i == fx_row);
+        if (kind < 4u && fx_shown[i] != h) {
+            fx_shown[i] = h;
+            list_row(ENV_Y0 + i * ENV_ROW_H, i == fx_row ? 2 : 0, i == fx_row ? P_TRACK : P_PANEL,
+                     8, 8, eng_fx_on(i) ? P_SEA : P_DIM, FX_NAMES[kind], 24, P_INK, 0, 0,
+                     eng_fx_on(i) ? "ON" : "OFF", 208, eng_fx_on(i) ? P_SEA : P_DIM);
+        }
+    }
+    for (i = 0; i < 4u; i++) {
+        char label[24], num[20], unit[8], value[32], *q;
+        uint32_t base = 0, live = 0, h, y = 136u + i * 19u;
+        label[0] = num[0] = unit[0] = 0;
+        label[0] = 'K'; label[1] = (char)('1' + i); label[2] = ' '; label[3] = 0;
+        if (pg && i < pg->nrows) {
+            caps(label + 3, pg->lab[i], pg->llen[i], 16);
+            row_show(pg, i, num, unit, 100, &base, &live);
+        }
+        q = put(value, num);
+        if (unit[0])
+            q = put(put(q, " "), unit);
+        *q = 0;
+        h = row_sig(row_sig_word(2166136261u, fx_row), label, str_len(label));
+        h = row_sig(h, value, str_len(value)) | 1u;
+        if (h != fx_params_shown[i]) {
+            fx_params_shown[i] = h;
+            lcd_fill(0, y, 240, 18, P_NIGHT);
+            text_bc(&FONT_S, 8, y + 2u, label, P_DIM, P_NIGHT, 128, TA_LEFT);
+            text_bc(&FONT_S, 138, y + 2u, value, P_INK, P_NIGHT, 94, TA_RIGHT);
+        }
+    }
+}
+
 /* ---- presets on the FM-1 (#194, docs/ledger/vocabulary.md "Preset"): an assembly device's card row values under a name, for its
  * structure. The factory engines' come in ROM (presets.h FPRESET_LIST, read-only), the user's from the preset store
  * (presetstore.c). A device's list: the factory ones in their order, then the user's by name. Loading sets the device's
@@ -2465,24 +2547,161 @@ static void env_knob_msg(uint32_t k)
 #define PR_USER 0x8000u                                 /* a list entry: a store slot | PR_USER, else a FPRESET_LIST index */
 #define PR_MAX (N_FPRESETS + PS_SLOTS)
 static uint16_t pr_list[PR_MAX < 256u ? 256u : PR_MAX];
-static int32_t pr_vals[PS_MAXV] ENG_POOL;                        /* a user preset's values (the store holds PS_MAXV at most: 176, #485) */
+static int32_t pr_vals[PS_MAXV > FP_MAX_VALUES ? PS_MAXV : FP_MAX_VALUES] ENG_POOL; /* existing store/ROM decode scratch */
 static uint8_t dp_short;                                /* the entry dp_load loaded last had fewer values than the device's rows */
-static const int32_t *pr_at = pr_vals;                  /* the entry dp_entry read last: its values (a factory one's in ROM, any
-                                                         * number of them: Cassia 1 has 118 rows, #464), else pr_vals */
+static const int32_t *pr_at = pr_vals;                  /* decoded entry values; no heap or audio-path decompression */
+static uint32_t pr_structure;                           /* identity of the last dp_entry, including scoped factory entries */
 
-/* device d's presets into pr_list: how many */
+/* FXP1 hashes binary bytes, not printed hex. Footer words are signed whole Q16 numbers. */
+static uint32_t dp_fx_hash(uint32_t base, uint32_t mask)
+{
+    uint32_t h = 2166136261u, i;
+    static const uint8_t prefix[4] = {'F', 'X', 'P', '1'};
+    for (i = 0; i < 4u; i++) h = (h ^ prefix[i]) * 16777619u;
+    for (i = 0; i < 4u; i++) h = (h ^ ((base >> (8u * i)) & 255u)) * 16777619u;
+    return (h ^ mask) * 16777619u;
+}
+
+/* Only the sole non-master structure-bearing device owns the graph-recognized rack. */
+static uint32_t dp_fx_mask(uint32_t d)
+{
+    uint32_t i, bus, owner = PG_DEVS, mask = 0;
+    if (d >= pg_ndev || !pg_dev[d].structure || !eng_fx_count()) return 0;
+    bus = eng_fx_device(0);
+    for (i = 0; i < pg_ndev; i++)
+        if (pg_dev[i].structure && pg_dev[i].bin != bus) {
+            if (owner != PG_DEVS) return 0;
+            owner = i;
+        }
+    if (owner != d) return 0;
+    for (i = 0; i < eng_fx_count(); i++) {
+        uint32_t kind = eng_fx_kind(i);
+        if (kind >= 4u || eng_fx_device(i) != bus || (mask & (1u << kind))) return 0;
+        mask |= 1u << kind;
+    }
+    return mask;
+}
+
+static uint32_t dp_structure(uint32_t d)
+{
+    uint32_t mask = dp_fx_mask(d);
+    return mask ? dp_fx_hash(pg_dev[d].structure, mask) : pg_dev[d].structure;
+}
+
+static const uint8_t DP_FX_N[4] = {4, 3, 6, 6};
+static const uint8_t DP_FX_PAR[4][6] = {
+    {SHAPE_P_DRIVE, SHAPE_P_MODE, SHAPE_P_LEVEL, SHAPE_P_SYM},
+    {CHORUS_P_RATE, CHORUS_P_DEPTH, CHORUS_P_MIX},
+    {DELAY_P_TIME, DELAY_P_FB, DELAY_P_MIX, DELAY_P_SYNC, DELAY_P_PINGPONG, DELAY_P_NOTE},
+    {REVERB_P_SIZE, REVERB_P_DAMP, REVERB_P_MIX, REVERB_P_PRE, REVERB_P_MOD, REVERB_P_FREEZE}
+};
+
+static uint32_t dp_fx_size(uint32_t mask)
+{
+    uint32_t k, n = 4;
+    for (k = 0; k < 4u; k++) if (mask & (1u << k)) n += 1u + DP_FX_N[k];
+    return n;
+}
+
+static uint32_t dp_fx_stage(uint32_t kind)
+{
+    uint32_t s;
+    for (s = 0; s < eng_fx_count(); s++) if (eng_fx_kind(s) == kind) return s;
+    return UINT32_MAX;
+}
+
+/* Actual graph bindings, independent of labels, pagination, and row order. The reverb mix is
+ * the Macro on the wet return's B input, never the wet-only kernel's mix parameter. */
+static int dp_fx_binding(uint32_t stage, uint32_t control, uint32_t target, uint32_t *mod, uint32_t *par)
+{
+    const uint8_t *targets;
+    uint32_t n = eng_fx_targets(stage, &targets), kind = eng_fx_kind(stage), i, j;
+    if (kind >= 4u || control >= DP_FX_N[kind] || target >= n) return 0;
+    *mod = targets[target];
+    *par = DP_FX_PAR[kind][control];
+    if (kind == ENG_FX_REVERB && control == 2u) {
+        uint32_t mix = UINT32_MAX;
+        for (i = 0; i < (uint32_t)eng_ncables(); i++) {
+            uint32_t f, fp, t, tp;
+            eng_cable(i, &f, &fp, &t, &tp);
+            if (f != targets[0] || fp != REVERB_O_OUT || eng_type(t) != T_MATH || tp != MATH_I_A) continue;
+            for (j = 0; j < (uint32_t)eng_ncables(); j++) {
+                uint32_t a, ap, b, bp;
+                eng_cable(j, &a, &ap, &b, &bp);
+                if (b == t && bp == MATH_I_B && eng_type(a) == T_MACRO && ap == MACRO_O_OUT) {
+                    if (mix != UINT32_MAX && mix != a) return 0;
+                    mix = a;
+                }
+            }
+        }
+        if (mix == UINT32_MAX) return 0;
+        *mod = mix;
+        *par = MACRO_P_VALUE;
+    }
+    return row_ok(*mod, *par);
+}
+
+/* Validate the entire envelope and all bindings before touching synth, pattern, or rack state.
+ * A scoped key without a valid tail is never treated as a shortened legacy preset. */
+static int dp_validate(uint32_t d, int n)
+{
+    uint32_t mask, base = pg_dev[d].structure, at, kind, c, t, m, p;
+    if (n <= 0) return 0;
+    if (pr_structure == base) return 1;
+    mask = dp_fx_mask(d);
+    if (!mask || pr_structure != dp_fx_hash(base, mask) || (uint32_t)n > PS_MAXV ||
+        (uint32_t)n != pg_dev[d].nrows + dp_fx_size(mask)) return 0;
+    at = (uint32_t)n - 4u;
+    if (pr_at[at] != (int32_t)(int16_t)base * 65536 ||
+        pr_at[at + 1u] != (int32_t)(int16_t)(base >> 16) * 65536 ||
+        pr_at[at + 2u] != (int32_t)mask * 65536 || pr_at[at + 3u] != 23118 * 65536) return 0;
+    for (at = 0; at < pg_dev[d].nrows; at++) {
+        m = pg_dev[d].rows[2u * at]; p = pg_dev[d].rows[2u * at + 1u];
+        if (m == 0xFFu) continue;
+        if (!row_ok(m, p)) return 0;
+        if (p & POLY_ROW) {
+            if (pr_at[at] % 65536 || pr_at[at] < ((p & 0x7Fu) == ENG_POLY_PARTS ? 65536 : 0) ||
+                pr_at[at] / 65536 > poly_max(p & 0x7Fu)) return 0;
+        } else if (pr_at[at] < DEFS[eng_type(m)].pmin[p] || pr_at[at] > DEF_TOP(&DEFS[eng_type(m)], p)) return 0;
+    }
+    for (kind = 0; kind < 4u; kind++) if (mask & (1u << kind)) {
+        uint32_t stage = dp_fx_stage(kind), count = eng_fx_targets(stage, 0);
+        if (!count || (pr_at[at] != 0 && pr_at[at] != 65536)) return 0;
+        at++;
+        for (c = 0; c < DP_FX_N[kind]; c++, at++)
+            for (t = 0; t < count; t++) {
+                if (!dp_fx_binding(stage, c, t, &m, &p) ||
+                    pr_at[at] < DEFS[eng_type(m)].pmin[p] || pr_at[at] > DEF_TOP(&DEFS[eng_type(m)], p) ||
+                    (kind == ENG_FX_REVERB && c == 2u && (pr_at[at] < 0 || pr_at[at] > 65536))) return 0;
+            }
+    }
+    return 1;
+}
+
+/* Prefer the authored factory bank for this exact rack, falling back to base factory sounds.
+ * Both user namespaces remain visible; factory entries are never synthesized at recall time. */
 static uint32_t dp_list(uint32_t d)
 {
     uint8_t slots[PS_SLOTS];
-    uint32_t n = 0, k, m;
+    uint32_t n = 0, k, m, scoped, factory;
     if (d >= pg_ndev || !pg_dev[d].structure)
         return 0;
+    scoped = dp_structure(d);
+    factory = pg_dev[d].structure;
+    if (scoped != factory)
+        for (k = 0; k < N_FPRESETS; k++)
+            if (FPRESET_LIST[k].structure == scoped) { factory = scoped; break; }
     for (k = 0; k < N_FPRESETS; k++)
-        if (FPRESET_LIST[k].structure == pg_dev[d].structure)
+        if (FPRESET_LIST[k].structure == factory)
             pr_list[n++] = (uint16_t)k;
     m = ps_list(pg_dev[d].structure, slots, PS_SLOTS);
     for (k = 0; k < m && k < PS_SLOTS; k++)
         pr_list[n++] = (uint16_t)(PR_USER | slots[k]);
+    if (scoped != pg_dev[d].structure) {
+        m = ps_list(scoped, slots, PS_SLOTS);
+        for (k = 0; k < m && k < PS_SLOTS; k++)
+            pr_list[n++] = (uint16_t)(PR_USER | slots[k]);
+    }
     return n;
 }
 
@@ -2493,6 +2712,7 @@ static int dp_entry(uint16_t e, char *name)
     if (e & PR_USER) {
         if (ps_read(e & 0xFFu, &st, name, &n))
             return -1;
+        pr_structure = st;
         for (k = 0; k < n; k++)
             pr_vals[k] = ps_vbuf[k];
         pr_at = pr_vals;
@@ -2501,8 +2721,9 @@ static int dp_entry(uint16_t e, char *name)
     for (k = 0; k < 16u && FPRESET_LIST[e].name[k]; k++)
         name[k] = FPRESET_LIST[e].name[k];
     name[k] = 0;
-    pr_at = FPRESET_LIST[e].v;                          /* (all of them: not cut to what the store holds) */
-    return (int)FPRESET_LIST[e].n;
+    pr_structure = FPRESET_LIST[e].structure;
+    pr_at = fp_values(e, pr_vals, sizeof pr_vals / sizeof *pr_vals);
+    return pr_at ? (int)FPRESET_LIST[e].n : -1;
 }
 
 /* device d's row i value now (canonical order, as a preset holds it) */
@@ -2512,13 +2733,15 @@ static int32_t dp_row_value(uint32_t d, uint32_t i)
     return mod == 0xFFu ? 0 : (par & POLY_ROW) ? (row_ok(mod, par) ? poly_value(mod, par & 0x7Fu) << 16 : 0) : eng_get_param(mod, par);
 }
 
+static int32_t dev_poly_top(uint32_t d, uint32_t mod, uint32_t par);
+
 /* whether loading entry e (its values at pr_at, n of them) would leave device d as it is: each row dp_load
  * sets holds the entry's value already (a poly row at its whole number); rows past a shorter entry are kept by a load,
  * so they do not count. An entry of no values never matches. */
 static int dp_same(uint32_t d, int n)
 {
     uint32_t i;
-    if (n <= 0)
+    if (!dp_validate(d, n))
         return 0;
     for (i = 0; i < (uint32_t)n && i < pg_dev[d].nrows; i++) {
         uint32_t mod = pg_dev[d].rows[2u * i], par = pg_dev[d].rows[2u * i + 1u];
@@ -2526,10 +2749,20 @@ static int dp_same(uint32_t d, int n)
         if (mod == 0xFFu)
             continue;
         if (par & POLY_ROW) {
-            if (row_ok(mod, par) && (int32_t)poly_value(mod, par & 0x7Fu) != ((v + 32768) >> 16))
+            if (row_ok(mod, par) && poly_value(mod, par & 0x7Fu) != clampi((v + 32768) >> 16, 0, dev_poly_top(d, mod, par)))
                 return 0;
         } else if (eng_type(mod) >= 0 && par < DEFS[eng_type(mod)].npar && eng_get_param(mod, par) != v)
             return 0;
+    }
+    if (pr_structure != pg_dev[d].structure) {
+        uint32_t mask = dp_fx_mask(d), kind, c, t, m, p, at = pg_dev[d].nrows;
+        for (kind = 0; kind < 4u; kind++) if (mask & (1u << kind)) {
+            uint32_t stage = dp_fx_stage(kind);
+            if (pr_at[at++] != eng_fx_on(stage) * 65536) return 0;
+            for (c = 0; c < DP_FX_N[kind]; c++, at++)
+                for (t = 0; t < eng_fx_targets(stage, 0); t++)
+                    if (!dp_fx_binding(stage, c, t, &m, &p) || eng_get_param(m, p) != pr_at[at]) return 0;
+        }
     }
     return 1;
 }
@@ -2541,17 +2774,34 @@ static int dp_current(uint32_t d, uint32_t n)
 {
     char nm[17];
     uint32_t k;
-    int c;
-    if (pg_pname[d][0]) {
-        for (k = 0; k < n; k++)
-            if (dp_entry(pr_list[k], nm) >= 0 && !ps_name_cmp(nm, pg_pname[d]))
-                return (int)k;
-        return -1;
+    int c, named = -1, same = -1;
+    for (k = 0; k < n; k++) {
+        c = dp_entry(pr_list[k], nm);
+        if (c < 0 || !dp_validate(d, c)) continue;
+        if (pg_pname[d][0] && !ps_name_cmp(nm, pg_pname[d])) {
+            if (pg_pstructure[d] && pg_pstructure[d] == pr_structure) return (int)k;
+            if (dp_same(d, c)) {
+                if (same < 0 || pr_structure != pg_dev[d].structure) same = (int)k;
+            }
+            if (named < 0 || pr_structure != pg_dev[d].structure) named = (int)k;
+        } else if (!pg_pname[d][0] && dp_same(d, c)) {
+            if (same < 0 || pr_structure != pg_dev[d].structure) same = (int)k;
+        }
     }
-    for (k = 0; k < n; k++)
-        if ((c = dp_entry(pr_list[k], nm)) >= 0 && dp_same(d, c))
-            return (int)k;
-    return -1;
+    return same >= 0 ? same : named;
+}
+
+/* Resolve display-only names while both namespaces still exist, before deletion.
+ * Runtime loads/stores carry exact identity; native saved patches retain their old layout. */
+static void dp_remember_names(void)
+{
+    uint32_t d;
+    pages_ensure();
+    for (d = 0; d < pg_ndev; d++) if (pg_pname[d][0] && !pg_pstructure[d]) {
+        int k = dp_current(d, dp_list(d));
+        char nm[17];
+        if (k >= 0 && dp_entry(pr_list[k], nm) >= 0) pg_pstructure[d] = pr_structure;
+    }
 }
 
 static void dp_name_set(uint32_t d, const char *name)
@@ -2560,6 +2810,7 @@ static void dp_name_set(uint32_t d, const char *name)
     for (k = 0; k < 16u && name[k]; k++)
         pg_pname[d][k] = name[k];
     pg_pname[d][k] = 0;
+    pg_pstructure[d] = 0;
     if (!m1_preset_name(pg_dev[d].bin, pg_pname[d]))
         pg_built_at = 0xFFFFFFFFu;                      /* (the binary moved after it: the pages are read again, the names kept) */
 }
@@ -2622,16 +2873,175 @@ static void dp_clear_origin(uint32_t d)
     int mod = dp_pattern_module(d), pattern = eng_pattern();
     if (mod >= 0 && pattern >= 0) m1_clear_origin((uint32_t)mod, (uint32_t)pattern);
 }
-static void dp_pattern(uint32_t d, const char *name)
+static const preset_pattern_t *dp_pattern_for(uint32_t d, const char *name, int *mod, int *pattern, uint32_t *old_count)
 {
-    int mod = dp_pattern_module(d), pattern = eng_pattern();
     const preset_pattern_t *before, *after;
-    if (mod < 0 || pattern < 0) return;
-    before = preset_pattern_identity(m1_pattern_origin((uint32_t)mod, (uint32_t)pattern));
+    *mod = dp_pattern_module(d); *pattern = eng_pattern();
+    if (*mod < 0 || *pattern < 0) return 0;
+    before = preset_pattern_identity(m1_pattern_origin((uint32_t)*mod, (uint32_t)*pattern));
     after = preset_pattern_find(pg_dev[d].structure, name);
     if (!before || before->structure != pg_dev[d].structure || !after || before->len != after->len || before->rate != after->rate ||
-        !preset_pattern_untouched((uint32_t)mod, (uint32_t)pattern, before)) return;
-    (void)m1_default_pattern((uint32_t)mod, (uint32_t)pattern, after->notes, after->n, after->identity);
+        !preset_pattern_untouched((uint32_t)*mod, (uint32_t)*pattern, before)) return 0;
+    *old_count = before->n;
+    return after;
+}
+static void dp_pattern(uint32_t d, const char *name)
+{
+    int mod, pattern;
+    uint32_t old_count;
+    const preset_pattern_t *after = dp_pattern_for(d, name, &mod, &pattern, &old_count);
+    if (after) (void)m1_default_pattern((uint32_t)mod, (uint32_t)pattern, after->notes, after->n, after->identity);
+}
+
+static int dp_mark_param(uint32_t *written, uint32_t m, uint32_t p)
+{
+    if (!row_ok(m, p) || (p & POLY_ROW) || p >= 32u) return 0;
+    if (!eng_tempo_row(m, p) && !DEF_FIXED((uint32_t)eng_type(m), p)) written[m] |= 1u << p;
+    return 1;
+}
+
+/* Exact native growth before any recall mutation: missing A parameters, sparse B preservation,
+ * factory pattern growth, and the remembered name. No patch-size copy or speculative engine load. */
+static int dp_room(uint32_t d, const char *name, int factory)
+{
+    uint32_t written[ENG_MAX_MODULES] = {0}, len, total, at, i, j, kind, c, t, m, par, old_name = 0, mask = dp_fx_mask(d);
+    const uint8_t *bin = pages_src(&len);
+    if (!bin || len < 8u || len > pages_capacity() || bin[1] < ENG_COUNTED) return 0;
+    total = len;
+    for (i = 0; i < pg_dev[d].nrows; i++) {
+        const uint8_t *x;
+        m = pg_dev[d].rows[2u * i]; par = pg_dev[d].rows[2u * i + 1u];
+        if (m == 0xFFu || (par & POLY_ROW)) continue;
+        if (!dp_mark_param(written, m, par)) return 0;
+        if (eng_tempo_row(m, par) || DEF_FIXED((uint32_t)eng_type(m), par)) continue;
+        x = dev_row_more(d, m, par);
+        for (j = 0; x && j < x[0]; j++)
+            if (!dp_mark_param(written, x[1u + 2u * j], x[2u + 2u * j])) return 0;
+    }
+    for (kind = 0; kind < 4u; kind++) if (mask & (1u << kind)) {
+        uint32_t stage = dp_fx_stage(kind);
+        for (c = 0; c < DP_FX_N[kind]; c++)
+            for (t = 0; t < eng_fx_targets(stage, 0); t++)
+                if (!dp_fx_binding(stage, c, t, &m, &par) || !dp_mark_param(written, m, par)) return 0;
+    }
+    at = eng_records_at(bin, len);
+    for (m = 0; m < bin[2]; m++) {
+        if (!eng_rec_ok(bin, len, at)) return 0;
+        if (written[m]) {
+            uint32_t held = eng_rec_npar(bin, at), want = held, bm;
+            int bad;
+            for (j = 0; j < 32u; j++) if ((written[m] >> j & 1u) && want <= j) want = j + 1u;
+            bm = eng_b_at(bin, len, m, &bad);
+            if (bad) return 0;
+            total += 4u * (want - held);
+            if (bm) {
+                total += (want + 7u) / 8u - (held + 7u) / 8u;
+                for (j = 0; j < want; j++)
+                    if ((written[m] >> j & 1u) && (j >= held || !(bin[bm + (j >> 3)] >> (j & 7u) & 1u))) total += 4u;
+            }
+        }
+        at += eng_rec_size(bin, at);
+    }
+    at = pages_at(bin, len);
+    if (!at || !(at = eng_devices_end(bin, len, at)) || !(bin[7] & ENG_FLAG_EXTRAS)) return 0;
+    j = bin[at++];
+    for (i = 0; i < j; i++) {
+        uint32_t n = bin[at + 5u];
+        if (i == pg_dev[d].bin) { old_name = n; break; }
+        at += 6u + n;
+        at += 1u + 2u * bin[at];
+        at += 1u + ((bin[at] & ENG_MEMBER_RUN) ? 1u : bin[at]);
+    }
+    if (i == j) return 0;
+    i = str_len(name);
+    if (i > old_name) total += i - old_name;
+    if (factory) {
+        int mod, pattern;
+        uint32_t before;
+        const preset_pattern_t *after = dp_pattern_for(d, name, &mod, &pattern, &before);
+        if (after) total = total - 4u * before + 4u * after->n; /* pattern writes precede parameter growth */
+    }
+    return total <= pages_capacity();
+}
+
+/* Counted records and sparse morph-B values can grow on an edit; refresh page pointers only
+ * when the binary moved, before reading another canonical row or its additional bindings. */
+static int dp_param_set(uint32_t mod, uint32_t par, int32_t value)
+{
+    uint32_t before, after;
+    (void)pages_src(&before);
+    eng_set_param(mod, par, value);
+    m1_patch_param(mod, par, value);
+    m1_param_now(mod, par, value);
+    (void)pages_src(&after);
+    if (before != after) pages_ensure();
+    return before != after;
+}
+
+static void dp_more_set(uint32_t d, uint32_t mod, uint32_t par, int32_t value)
+{
+    uint32_t i;
+    const uint8_t *x = dev_row_more(d, mod, par);
+    for (i = 0; x && i < x[0]; i++) {
+        uint32_t m = x[1u + 2u * i], p = x[2u + 2u * i];
+        if (!row_ok(m, p) || (p & POLY_ROW)) continue;
+        if (dp_param_set(m, p, clampi(value, DEFS[eng_type(m)].pmin[p], DEF_TOP(&DEFS[eng_type(m)], p))))
+            x = dev_row_more(d, mod, par);             /* a grown record moved the row extras too */
+    }
+}
+
+/* Poly edits can fail for memory/old-format reasons. Do them before any other writes and
+ * roll back earlier rows on failure; no editor parameter notification escapes a rejection. */
+static int dp_prepare_poly(uint32_t d)
+{
+    int32_t before[PS_MAXV];
+    uint32_t i, count = pg_dev[d].nrows;
+    for (i = 0; i < count; i++) before[i] = dp_row_value(d, i);
+    for (i = 0; i < count; i++) {
+        uint32_t m = pg_dev[d].rows[2u * i], p = pg_dev[d].rows[2u * i + 1u];
+        int32_t v;
+        if (m == 0xFFu || !(p & POLY_ROW)) continue;
+        v = clampi(pr_at[i] / 65536, 0, dev_poly_top(d, m, p));
+        if (v == poly_value(m, p & 0x7Fu)) continue;
+        if (poly_row_set(m, p & 0x7Fu, v)) {
+            while (i) {
+                i--;
+                m = pg_dev[d].rows[2u * i]; p = pg_dev[d].rows[2u * i + 1u];
+                if (m != 0xFFu && (p & POLY_ROW) && poly_value(m, p & 0x7Fu) != before[i] / 65536)
+                    (void)poly_row_set(m, p & 0x7Fu, before[i] / 65536);
+            }
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static void dp_fx_apply(uint32_t d)
+{
+    uint32_t mask = dp_fx_mask(d), kind, c, t, m = 0, p = 0, at = pg_dev[d].nrows;
+    uint8_t on[4] = {0};
+    for (kind = 0; kind < 4u; kind++) if (mask & (1u << kind)) {
+        uint32_t stage = dp_fx_stage(kind);
+        on[kind] = pr_at[at++] != 0;
+        for (c = 0; c < DP_FX_N[kind]; c++, at++)
+            for (t = 0; t < eng_fx_targets(stage, 0); t++) {
+                (void)dp_fx_binding(stage, c, t, &m, &p); /* fully checked before any writes */
+                (void)dp_param_set(m, p, pr_at[at]);
+            }
+    }
+    for (kind = 0; kind < 4u; kind++) if (mask & (1u << kind))
+        eng_fx_set(dp_fx_stage(kind), on[kind]);
+    /* As on the panel, write target desired bypass, never the processing tail. PARAM_NOW
+     * 0xFF is Q16 bypass; the editor applies it to the coherent recognized stage. Helpers retain
+     * their compiler-normalized native state and their own editable-graph representation. */
+    for (kind = 0; kind < 4u; kind++) if (mask & (1u << kind)) {
+        const uint8_t *targets;
+        uint32_t count = eng_fx_targets(dp_fx_stage(kind), &targets);
+        for (t = 0; t < count; t++) {
+            m1_patch_bypass(targets[t], !on[kind]);
+            m1_param_now(targets[t], 0xFFu, on[kind] ? 0 : 65536);
+        }
+    }
 }
 
 /* load list entry k of device d: its rows take the values (the running binary and the editor too); an entry of fewer
@@ -2641,9 +3051,13 @@ static int dp_load(uint32_t d, uint32_t k)
 {
     char nm[17];
     int n;
-    uint32_t i;
+    uint32_t i, scoped, structure;
     if (d >= pg_ndev || k >= dp_list(d) || (n = dp_entry(pr_list[k], nm)) < 0)
         return -1;
+    if (!dp_validate(d, n)) return -1;
+    structure = pr_structure;
+    scoped = structure != pg_dev[d].structure;
+    if (scoped && (!dp_room(d, nm, !(pr_list[k] & PR_USER)) || !dp_prepare_poly(d))) return -1;
     if (!(pr_list[k] & PR_USER)) {
         dp_pattern(d, nm);
         pages_ensure(); /* Notes precede page metadata; growth or shrink can move every row pointer. */
@@ -2660,30 +3074,56 @@ static int dp_load(uint32_t d, uint32_t k)
                 continue;
             v = clampi((v + 32768) >> 16, 0, dev_poly_top(d, mod, par));   /* (a VOICES row's top: a preset of more
                                                      * voices plays the most the row offers) */
-            if (poly_row_set(mod, par & 0x7Fu, v))
+            if (!scoped && poly_row_set(mod, par & 0x7Fu, v))
                 return -1;
             m1_param_now(mod, par, v << 16);
         } else {
             if (eng_type(mod) < 0 || par >= DEFS[eng_type(mod)].npar || eng_tempo_row(mod, par) || DEF_FIXED((uint32_t)eng_type(mod), par))   /* (a preset
                                                      * leaves the global tempo, D-907, and a row set when the patch loads) */
                 continue;
-            eng_set_param(mod, par, v);
-            m1_patch_param(mod, par, v);
-            m1_param_now(mod, par, v);
-            more_set(dev_row_more(d, mod, par), v);     /* (the parameters the row also sets, #357) */
+            if (scoped) {
+                (void)dp_param_set(mod, par, v);
+                dp_more_set(d, mod, par, v);
+            } else {
+                eng_set_param(mod, par, v);
+                m1_patch_param(mod, par, v);
+                m1_param_now(mod, par, v);
+                more_set(dev_row_more(d, mod, par), v); /* legacy row propagation */
+            }
         }
     }
+    if (scoped) dp_fx_apply(d);
     dp_name_set(d, nm);
+    pg_pstructure[d] = structure;
     return 0;
 }
 
 /* device d's row values now, in canonical order, into pr_vals: how many */
 static uint32_t dp_values(uint32_t d)
 {
-    uint32_t i, n = pg_dev[d].nrows < PS_MAXV ? pg_dev[d].nrows : PS_MAXV;
-    for (i = 0; i < n; i++)
-        pr_vals[i] = dp_row_value(d, i);
-    return n;
+    uint32_t i, mask = dp_fx_mask(d), n = pg_dev[d].nrows, at = n, kind, c, m, p;
+    if (n + (mask ? dp_fx_size(mask) : 0u) > PS_MAXV) return 0;
+    for (i = 0; i < n; i++) pr_vals[i] = dp_row_value(d, i);
+    for (kind = 0; kind < 4u; kind++) if (mask & (1u << kind)) {
+        uint32_t stage = dp_fx_stage(kind), t;
+        pr_vals[at++] = eng_fx_on(stage) ? 65536 : 0;
+        for (c = 0; c < DP_FX_N[kind]; c++) {
+            if (!dp_fx_binding(stage, c, 0, &m, &p)) return 0;
+            pr_vals[at] = eng_get_param(m, p);
+            for (t = 1; t < eng_fx_targets(stage, 0); t++)
+                if (!dp_fx_binding(stage, c, t, &m, &p) || eng_get_param(m, p) != pr_vals[at]) return 0;
+            at++;
+        }
+    }
+    if (mask) {
+        pr_vals[at++] = (int32_t)(int16_t)pg_dev[d].structure * 65536;
+        pr_vals[at++] = (int32_t)(int16_t)(pg_dev[d].structure >> 16) * 65536;
+        pr_vals[at++] = (int32_t)mask * 65536;
+        pr_vals[at++] = 23118 * 65536;
+    }
+    pr_at = pr_vals;
+    pr_structure = dp_structure(d);
+    return dp_validate(d, (int)at) ? at : 0;
 }
 
 /* ENV held + SAVE: the device in focus's values as a preset: over the user preset it was set to, else under a new name:
@@ -2692,17 +3132,21 @@ static uint32_t dp_values(uint32_t d)
 static void dp_store(uint32_t d)
 {
     char nm[17], base[17], num[8];
-    uint32_t k, n, len;
+    uint32_t k, n, len, structure, factory = 0;
     int rc;
     pages_ensure();
     if (d >= pg_ndev || !pg_dev[d].structure) {
         ui_msg("PRESETS: ASSEMBLIES ONLY", 1200);
         return;
     }
+    structure = dp_structure(d);
     for (k = 0; k < 16u && pg_pname[d][k]; k++)
         nm[k] = pg_pname[d][k];
     nm[k] = 0;
-    if (!nm[0] || ps_find(pg_dev[d].structure, nm) < 0) {   /* no user preset of that name: a new one */
+    for (k = 0; k < N_FPRESETS; k++)
+        if ((FPRESET_LIST[k].structure == pg_dev[d].structure || FPRESET_LIST[k].structure == structure) &&
+            !ps_name_cmp(FPRESET_LIST[k].name, nm)) factory = 1;
+    if (!nm[0] || factory || ps_find(structure, nm) < 0) {   /* never overwrite a factory name */
         int taken;
         uint32_t m = dp_list(d);
         if (!nm[0] && (!m || dp_entry(pr_list[0], nm) < 0))
@@ -2725,21 +3169,30 @@ static void dp_store(uint32_t d)
             if (!taken)
                 break;
         }
+        if (k == 100u) {
+            ui_msg("PRESET NAME FULL", 1500);
+            return;
+        }
     }
     n = dp_values(d);                                   /* (after the names: dp_entry reads a user one's values into pr_vals) */
-    rc = ps_put(pg_dev[d].structure, nm, pr_vals, n);
+    if (!n) {
+        ui_msg("PRESET NOT STORED", 1500);              /* includes >176: never truncate the rack or synth */
+        return;
+    }
+    rc = ps_put(structure, nm, pr_vals, n);
     if (rc) {
         ui_msg(rc == -2 ? "PRESETS FULL" : "PRESET NOT STORED", 1500);
         return;
     }
     dp_name_set(d, nm);
+    pg_pstructure[d] = structure;
     dp_clear_origin(d);
     {
         char m[40];
         put(put(m, "STORED "), nm)[0] = 0;
         ui_msg(m, 1500);
     }
-    m1_preset_stored(pg_dev[d].structure, nm);          /* (the editor hears of it: #195) */
+    m1_preset_stored(structure, nm);                    /* editor fetches the same namespace that was written */
 }
 
 /* the editor deleted a preset on the FM-1: a device set to it keeps its sound but no longer names it (ENV shows no preset,
@@ -2749,8 +3202,11 @@ static void dp_deleted(uint32_t structure, const char *name)
     uint32_t d, hit = 0;
     pages_ensure();
     for (d = 0; d < pg_ndev; d++)
-        if (pg_dev[d].structure == structure && pg_pname[d][0] && !ps_name_cmp(pg_pname[d], name)) {
+        if ((pg_pstructure[d] ? pg_pstructure[d] == structure :
+             (pg_dev[d].structure == structure || dp_structure(d) == structure)) &&
+            pg_pname[d][0] && !ps_name_cmp(pg_pname[d], name)) {
             dp_name_set(d, "");
+            pg_pstructure[d] = 0;
             hit = 1;
         }
     if (!hit)

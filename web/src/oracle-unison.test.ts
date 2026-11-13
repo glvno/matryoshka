@@ -3,10 +3,10 @@ import { expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { connect } from './patch';
-import { XL_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 it('Oracle V XL keeps five poly voices and applies its chord offsets and detune only in unison', () => {
-  const p = XL_PRESETS['Oracle V XL']();
+  const p = relocatedPatches['Oracle V XL']();
   const rows = p.assemblies!.flatMap(a => a.params);
   const count = rows.find(r => r.label === 'uni voices')!;
   const detune = rows.find(r => r.label === 'uni detune')!;

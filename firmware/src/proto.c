@@ -138,10 +138,11 @@ static void m1_slot_now(uint32_t slot, const char *name)
 /* INFO: the answer to HELLO, and unasked when MENU > MIDI OUT changed under the editor's Live (live.c) or GLO > SYSTEM >
  * EDITOR changed after a HELLO (menu.c, #702). Bytes 9..11 (#216):
  * the firmware's major, minor and patch, as in its identity FM-1_7MMmmpp; older firmware ends at byte 8. Byte 12: feature
- * bits 16..23 (bit 16 TEMPO / TEMPO_NOW, D-907). Byte 13: signal-buffer allocation rule (#824). */
+ * bits 16..23 (bit 16 TEMPO / TEMPO_NOW, D-907). Byte 13: signal-buffer allocation rule (#824).
+ * Byte 14: feature bits 24..31 (bit 24: complete FX-scoped preset recall). */
 static void m1_info(void)
 {
-    uint8_t p[14];
+    uint8_t p[15];
     p[0] = M1_VERSION;
     p[1] = ENG_MAX_MODULES;
     p[2] = ENG_MAX_CABLES;
@@ -157,6 +158,7 @@ static void m1_info(void)
     p[11] = M1_FW_PATCH;
     p[12] = M1_FEATURES3;
     p[13] = ENG_BUFFER_ALLOCATION;
+    p[14] = 1u;
     m1_reply(R_INFO, p, sizeof p);
 }
 
@@ -450,6 +452,12 @@ static int m1_valid(const uint8_t *p, uint32_t len)
         return 0;
     if ((p[7] & ENG_FLAG_ORIGINS) && !(at = eng_origins_end(p, len, at)))
         return 0;
+    {
+        const uint8_t *next;
+        if (at > len || !(next = eng_skip_fx(p + at, p + len, (uint16_t)((uint16_t)p[6] | (uint16_t)p[7] << 8))))
+            return 0;
+        at = (uint32_t)(next - p);
+    }
     if (p[6] & 2u) {                                            /* flag bit 1: the macro ranges after that */
         if (at >= len)
             return 0;
@@ -500,6 +508,12 @@ static uint32_t m1_range_section(void)
         return 0;
     if ((m1_cur[7] & ENG_FLAG_ORIGINS) && !(at = eng_origins_end(m1_cur, m1_cur_len, at)))
         return 0;
+    {
+        const uint8_t *next;
+        if (at > m1_cur_len || !(next = eng_skip_fx(m1_cur + at, m1_cur + m1_cur_len, (uint16_t)((uint16_t)m1_cur[6] | (uint16_t)m1_cur[7] << 8))))
+            return 0;
+        at = (uint32_t)(next - m1_cur);
+    }
     return at < m1_cur_len ? at : 0;
 }
 

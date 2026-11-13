@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { expect, it } from 'vitest';
 import { Engine } from './engine';
-import { XL_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 it.each([64, 127])('Hera 6 XL holds sounding voices at CC 64 value %i and releases at 63', (down) => {
-  const p = XL_PRESETS['Hera 6 XL']();
+  const p = relocatedPatches['Hera 6 XL']();
   const voice = p.assemblies!.find(a => a.name === 'voice')!;
   const env = p.modules.find(m => voice.modules.includes(m.id) && m.type === 'adsr')!;
   Object.assign(env.params, { a: 0.001, d: 0.001, s: 0.6, r: 0.001, long: 0 });
@@ -32,7 +32,7 @@ it.each([64, 127])('Hera 6 XL holds sounding voices at CC 64 value %i and releas
 });
 
 it('Hera hold lets a voice that decays to silence go, even while the pedal stays down', () => {
-  const p = XL_PRESETS['Hera 6 XL']();
+  const p = relocatedPatches['Hera 6 XL']();
   const voice = p.assemblies!.find(a => a.name === 'voice')!;
   const env = p.modules.find(m => voice.modules.includes(m.id) && m.type === 'adsr')!;
   Object.assign(env.params, { a: 0.001, d: 0.001, s: 0, r: 0.001, long: 0 });

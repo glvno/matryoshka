@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FM-1 configuration catalogue</title>
+<style>
+:root{color-scheme:light;--paper:#f7f9fc;--ink:#18324c;--muted:#52667c;--line:#cdd8e4;--include:#27634e;--test:#956018;--exclude:#9c444b;--white:#fff}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 "Avenir Next",Avenir,"Segoe UI",sans-serif}main{max-width:1640px;margin:auto;padding:30px 24px 70px}h1{font:500 clamp(30px,4vw,48px)/1.12 Georgia,serif;margin:0 0 14px}h2{font-size:18px;margin:16px 0 6px}p{max-width:84ch;margin:8px 0}.muted{color:var(--muted)}a{color:#235d9a}button,select,input{font:inherit;color:inherit}button,select,input[type=search]{border:1px solid var(--line);border-radius:6px;padding:8px 11px;background:var(--white)}button{cursor:pointer}button:hover{border-color:var(--ink)}button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible,a:focus-visible{outline:3px solid #4586bc;outline-offset:3px}header{padding-bottom:16px;border-bottom:3px solid var(--ink)}.legend{display:flex;gap:20px;flex-wrap:wrap;margin:16px 0 8px}.legend span{max-width:31ch}.decision{font-weight:700}.include{color:var(--include)}.test{color:var(--test)}.exclude{color:var(--exclude)}.filters{position:sticky;top:0;z-index:3;background:var(--paper);padding:14px 0 10px;border-bottom:1px solid var(--line)}.controls,.shortcuts{display:flex;flex-wrap:wrap;gap:10px;align-items:end}.controls label{display:grid;gap:3px;font-size:13px;font-weight:600}.controls .query{flex:1;min-width:210px}.controls select{max-width:245px}.shortcuts{margin-top:10px;align-items:center}.shortcuts label{display:flex;align-items:center;gap:6px}.shortcuts button{padding:5px 9px;font-size:13px}#count{margin-left:auto;font-variant-numeric:tabular-nums}.ledger{overflow:auto;background:var(--white);border:1px solid var(--line);border-top:0}table{border-collapse:collapse;width:100%;min-width:1190px;table-layout:fixed}th{text-align:left;background:#e8eef6;padding:11px 12px;font-size:13px}td{padding:14px 12px;vertical-align:top;border-top:1px solid var(--line);overflow-wrap:anywhere}tr:nth-child(even){background:#fafbfd}th:nth-child(1){width:15%}th:nth-child(2){width:22%}th:nth-child(3){width:14%}th:nth-child(4){width:23%}th:nth-child(5){width:17%}th:nth-child(6){width:9%}.instrument{font:600 20px/1.2 Georgia,serif;margin:0 0 6px}.id{font-size:11px;color:var(--muted);line-height:1.3}.tag{display:inline-block;font-size:11px;padding:2px 6px;background:#e8eef6;border-radius:4px;margin-bottom:5px}.voices,.cpu{font-weight:700;font-size:19px;font-variant-numeric:tabular-nums}.fine{font-size:12px;color:var(--muted);margin-top:5px}.reason{font-size:13px;margin-top:7px}.guard{font-size:12px;white-space:nowrap}.bad{color:var(--exclude);font-weight:700}details{font-size:12px;margin-top:10px}summary{cursor:pointer;color:#235d9a}pre{white-space:pre-wrap;word-break:break-word;background:#edf2f8;padding:10px;max-height:420px;overflow:auto;font-size:11px}.empty{text-align:center;padding:35px}footer{margin-top:20px;font-size:13px;color:var(--muted)}.guide{margin-top:12px}.guide summary{font-size:14px}.guide p{font-size:14px}.downloads{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}#error{color:var(--exclude)}@media(max-width:650px){main{padding:20px 12px}.controls label{flex:1;min-width:140px}.controls select{max-width:100%;width:100%}.filters{position:static}.legend{gap:10px}.legend span{max-width:none}.ledger{margin:0 -5px}.shortcuts{gap:8px}#count{width:100%;margin:0}.instrument{font-size:18px}}@media print{.filters,.downloads{display:none}.ledger{overflow:visible}main{padding:0}table{min-width:0;font-size:10px}th,td{padding:5px}.instrument{font-size:13px}.voices,.cpu{font-size:13px}details{display:none}}
+.instrument-group th{width:auto;background:#dce6f1;border-top:3px solid var(--ink);padding:14px 12px}.instrument-group .instrument{display:inline-block;margin:0 14px 0 0}.instrument-group .fine{font-weight:400}
+</style>
+</head>
+<body>
+<main>
+<header>
+<h1>Which FM-1 profiles belong in the bank?</h1>
+<p>This catalogue contains <strong id="total"></strong> configurations with Include, Needs more testing or Exclude recommendations—not a new bank, an audition approval, or an importable patch file.</p>
+<p class="muted">Snapshot: 12 November 2026. “Current” means the tested prototype firmware <code>cf98f108…</code>. Older measurements stay older; a clean partial run does not qualify untested phases.</p>
+<p id="nominations"></p>
+<p id="mono-retests"></p>
+<p id="owner-retests"></p>
+<p class="fine">Groups and configurations rank Include → Needs more testing → Exclude; equal-ranked groups are alphabetical. Within a recommendation, profiles at original polyphony parity prioritize more FX before extra voices.</p>
+<div class="legend"><span><strong class="include">Include</strong><br>Current-qualified audition candidate or unchanged protected source. Scoped reduced-headroom acceptances are explicitly labeled.</span><span><strong class="test">Needs more testing</strong><br>Incomplete current qualification, older evidence or unmeasured preparation.</span><span><strong class="exclude">Exclude</strong><br>The stated policy, resource, guard or unresolved-identity reason. Excluded does not mean removed.</span></div>
+<p><strong>Hera has several distinct choices.</strong> The published profile has three notes, a shared filter and independent amplitude envelopes. A four-note shared-filter Chorus + Delay option also qualifies. The requested original-polyphony/native-Chorus-only three-note retest is the intended “Hera 3”; it retains independent filters and amplitude envelopes. Use “Hera variants” below.</p>
+<details class="guide"><summary>How to interpret voices, effects and evidence</summary>
+<p><strong>Include means candidate-pool advice</strong>, not “put every alternative instrument in the bank.” No current selection is changed by this report.</p>
+<p><strong>Voices:</strong> auxiliary one-voice control groups do not add played notes. Shared-filter profiles retain independent amplitude envelopes; shared-amplitude and shared-contour profiles explicitly couple envelopes. Original-synth polyphony is a hardware reference, not the FM-1 source patch’s allocator count.</p>
+<p><strong>Effects:</strong> total effects include the intrinsic/native effects already exposed by the instrument. “No added FX” does not remove native Chorus, Drive/timbre or Reverb. The word native here means intrinsic effect, not wire-format support.</p>
+<p><strong>Evidence:</strong> first-render peaks are retained. A stopped run leaves later phases unknown; zero guards cover only observed phases. The standard95% headroom target remains. Only the five requested retests use the disclosed interpretation: complete five-second matrices below100% with zero mute, shedding or observed late halves. Those exceeding95% are explicitly labeled reduced-headroom acceptances, not standard95% passes. Earlier failures remain in history. Older-only peaks are not current CPU predictions.</p>
+<p><strong>Scope:</strong> rejected, failed, unmeasured and unresolved configurations remain visible. Only older measured entries covered by a final current-firmware complete pass on the same or a dominating configuration are removed: at least the same played notes and added effects, the same intrinsic effects, no additional articulation coupling or DSP compromises. Every removal has a replacement ID and both evidence records in the JSON’s <code>supersededConfigurations</code>. Current failures and unknown equivalence are not hidden.</p>
+<p><strong>Polyphony versus FX:</strong> once the original synth’s played-note count is reached, prioritize the fullest FX rack possible. Extra polyphony with an incomplete Drive + Chorus + Delay + Reverb rack is Exclude, even if it passes CPU testing. Extra voices are eligible only after the full rack is present. Intrinsic effects count; protected drum/drone sources are unchanged.</p>
+<p id="outside-policy"></p>
+</details>
+</header>
+<section class="filters" aria-label="Configuration filters">
+<div class="controls">
+<label class="query">Find a configuration<input id="query" type="search" placeholder="Hera, shared filter, 5 notes, reverb…"></label>
+<label>Instrument<select id="instrument"><option value="">Every instrument</option></select></label>
+<label>Recommendation<select id="decision"><option value="">Every recommendation</option><option>Include</option><option>Needs more testing</option><option>Exclude</option></select></label>
+<label>Evidence<select id="scope"><option value="">Every evidence scope</option><option>Current</option><option>Older only</option><option>Prepared only</option><option>Protected / not re-surveyed</option></select></label>
+</div>
+<div class="shortcuts"><button id="all">Everything</button><button id="published">Published bank</button><button id="requested">Requested retests</button><button id="hera">Hera variants</button><button id="promising">Promising retests</button><button id="threshold">Current ceiling-only</button><label><input id="more" type="checkbox">More played notes than published</label><span id="count" role="status" aria-live="polite"></span></div>
+</section>
+<div class="ledger" role="region" aria-label="Scrollable configuration comparison" tabindex="0"><table id="rows"><caption class="fine">Recommendations grouped by instrument. Expand a configuration’s history for exact source identities. On narrow screens, scroll this table sideways to see every column.</caption><thead><tr><th scope="col">Configuration</th><th scope="col">Voices and articulation</th><th scope="col">Total effects</th><th scope="col">Recommendation</th><th scope="col">CPU and phase coverage</th><th scope="col">Observed guards</th></tr></thead></table></div>
+<p id="empty" class="empty" hidden>No configurations match. Choose Everything to clear the filters.</p>
+<p id="error" role="alert"></p>
+<div class="downloads"><button id="csv">Download filtered CSV</button><button id="json">Download full catalogue JSON (not a patch)</button></div>
+<footer><p>No MIDI connection, firmware flash, patch import, saved-slot write or bank-profile change is performed by this page. The raw provenance and per-phase diagnostics are included in the catalogue JSON.</p><p id="coverage"></p></footer>
+</main>
+<script id="catalogue-data" type="application/json">__CATALOGUE_DATA__</script>
+<script>
+'use strict';
+const data=JSON.parse(document.getElementById('catalogue-data').textContent);
+const $=id=>document.getElementById(id);
+const effects=xs=>xs===null?'Not audited / unknown':xs.length?xs.map(x=>x[0].toUpperCase()+x.slice(1)).join(' + '):'None';
+const f=x=>x===null||x===undefined?'—':Number(x).toFixed(1)+'%';
+const cell=(tag,text,cls)=>{const e=document.createElement(tag);e.textContent=text;if(cls)e.className=cls;return e};
+const publishedNotes=new Map(data.rows.filter(r=>r.selected&&!r.protected).map(r=>[r.instrument,r.playedNotes]));
+const rank=new Map(data.recommendationOrder.map((name,index)=>[name,index]));
+const nominations=data.nominationCoverage;
+$('nominations').textContent=(nominations.withoutInclusion.length?'FM-1 coverage: no Include nomination for '+nominations.withoutInclusion.join(', ')+'.':'FM-1 coverage: all '+nominations.bankInstruments.length+' intended instruments have an Include nomination.')+' '+nominations.currentQualified.length+' have current-qualified melodic profiles; '+nominations.protectedNotResurveyed.length+' are unchanged protected entries, not freshly re-surveyed.';
+$('outside-policy').textContent='Outside the bank policy: '+nominations.outsideBankPolicy.join(', ')+'. Their Exclude recommendations remain visible; they are not missing FM-1 nominations.';
+for(const name of [...new Set(data.rows.map(r=>r.instrument))].sort())$('instrument').append(new Option(name,name));
+$('total').textContent=data.rows.length;
+$('coverage').textContent=`${data.counts.removedConfigurations} entries removed only with proven later same/better replacements; ${data.counts.namedCloneProfiles} fitting profiles and ${data.counts.observations} supporting observations remain, plus protected and early configurations. Exclude recommendations are retained. This report is not a patch file.`;
+const mono=data.monoRetest.counts;
+$('mono-retests').textContent=`Initial harmonizer-free batch: ${mono.passed} complete passes, ${mono.failed} stopped failures; ${mono.observedPhases}/${mono.requiredPhases} phases observed. All three compact original-DSP Canvas alternatives fit bytes; none cleared the initial95% gate. Later requested retests are identified separately.`;
+const owner=data.ownerRetest;
+$('owner-retests').textContent=owner?`Latest requested retests: ${owner.counts.passed}/${owner.counts.requested} complete passes, ${owner.counts.observedPhases}/${owner.counts.requiredPhases} phases; ${owner.counts.standard95Passes} standard95% passes and ${owner.counts.reducedHeadroomAcceptances} reduced-headroom acceptances. Published bank unchanged.`:'';
+let publishedOnly=false,thresholdOnly=false,promisingOnly=false,requestedOnly=false,filtered=[];
+function reset(){for(const id of ['query','instrument','decision','scope'])$(id).value='';$('more').checked=false;publishedOnly=false;thresholdOnly=false;promisingOnly=false;requestedOnly=false}
+function render(){
+ const q=$('query').value.toLowerCase().trim().replaceAll('-',' '),tokens=q.split(/\s+/).filter(Boolean);
+ filtered=data.rows.filter(r=>{
+  const text=[r.instrument,r.id,r.profile,r.generation,r.playedNotes+' notes',r.playedNotes+' voices',...(r.totalFx||[]),r.reason,r.harmonizerRemoved?'harmonizer removed':'',r.retestPriority?.why||''].join(' ').toLowerCase().replaceAll('-',' ');
+  return tokens.every(t=>text.includes(t))&&(!$('instrument').value||r.instrument===$('instrument').value)&&(!$('decision').value||r.recommendation===$('decision').value)&&(!$('scope').value||r.evidenceScope===$('scope').value)&&(!publishedOnly||r.selected)&&(!thresholdOnly||r.thresholdOnly)&&(!promisingOnly||r.retestPriority)&&(!requestedOnly||r.ownerRetest)&&(!$('more').checked||(publishedNotes.has(r.instrument)&&r.playedNotes>publishedNotes.get(r.instrument)));
+ });
+ const byInstrument=new Map();
+ for(const r of filtered){if(!byInstrument.has(r.instrument))byInstrument.set(r.instrument,[]);byInstrument.get(r.instrument).push(r)}
+ for(const configurations of byInstrument.values())configurations.sort((a,b)=>rank.get(a.recommendation)-rank.get(b.recommendation)||b.fxPreference-a.fxPreference||(a.retestPriority?.rank??999)-(b.retestPriority?.rank??999)||a.priority-b.priority||a.id.localeCompare(b.id));
+ const groups=[...byInstrument].sort(([an,ar],[bn,br])=>rank.get(ar[0].recommendation)-rank.get(br[0].recommendation)||an.localeCompare(bn));
+ filtered=groups.flatMap(([,configurations])=>configurations);
+ const table=$('rows');for(const body of [...table.tBodies])body.remove();
+ for(const [instrument,configurations] of groups){
+  const body=document.createElement('tbody');body.dataset.instrument=instrument;
+  const heading=body.insertRow();heading.className='instrument-group';
+  const title=document.createElement('th');title.scope='rowgroup';title.colSpan=6;
+  const counts=data.recommendationOrder.map(decision=>[decision,configurations.filter(r=>r.recommendation===decision).length]).filter(([,count])=>count);
+  title.append(cell('h2',instrument,'instrument'),cell('span',counts.map(([decision,count])=>count+' '+decision).join(' · '),'fine'));heading.append(title);table.append(body);
+  const original=configurations[0].originalSynth;
+  if(original)title.append(cell('div',original.model+': '+original.baselineNotes+' original played note(s). '+original.articulation,'fine'));
+  for(const r of configurations){
+  const tr=document.createElement('tr');tr.dataset.id=r.id;
+  const profile=tr.insertCell();if(r.selected)profile.append(cell('span',r.protected?'Protected / unchanged':'Published selection','tag'));
+  profile.append(cell('div',r.id,'id'));
+  const v=tr.insertCell();v.append(cell('div',r.playedNotes===null?'Note count unresolved':r.playedNotes+(r.playedNotes===1?' note':' notes'),'voices'));
+  if(r.auxiliaryVoices.length)v.append(cell('div','Plus '+r.auxiliaryVoices.join(' + ')+' auxiliary control voice(s), not played notes','fine'));
+  v.append(cell('div',r.profile,'reason'));
+  if(r.qualityChanges.length)v.append(cell('div','Explicit DSP changes: '+JSON.stringify(r.qualityChanges),'fine'));
+  if(r.harmonizerRemoved)v.append(cell('div','Harmonizer physically removed; Steps and Arp retained','fine'));
+  if(r.proposedBankName)v.append(cell('div','Intended bank name: '+r.proposedBankName,'fine'));
+  if(r.textOnlyChanges?.length)v.append(cell('div',`${r.textOnlyChanges.length} display captions abbreviated; all controls, selector choices and original DSP retained`,'fine'));
+  const fx=tr.insertCell();fx.append(cell('strong',effects(r.totalFx)));
+  if(r.fxKnown)fx.append(cell('div','Intrinsic: '+effects(r.nativeFx),'fine'),cell('div','Added: '+effects(r.addedFx),'fine'));
+  const d=tr.insertCell();d.append(cell('span',r.recommendation,'decision '+(r.recommendation==='Include'?'include':r.recommendation==='Exclude'?'exclude':'test')),cell('div',r.reason,'reason'));
+  if(r.reducedHeadroomAcceptance)d.append(cell('div','Reduced headroom accepted; not a standard95% pass','decision test'));
+  if(r.retestPriority)d.append(cell('div',`Retest priority ${r.retestPriority.rank}: ${r.retestPriority.why}`,'reason'));
+  const details=document.createElement('details');details.append(cell('summary',`Sources and history (${r.observations.length} runs; ${r.preparedVersions.length} preparations)`));
+  details.addEventListener('toggle',()=>{if(!details.open||details.dataset.loaded)return;details.dataset.loaded='1';details.append(cell('pre',JSON.stringify({generation:r.generation,allocations:r.allocations,originalAllocations:r.originalAllocations,addedControlAllocators:r.controlAllocators,notes:r.notes,qualityFlags:r.qualityFlags||[],ownerRetest:r.ownerRetest,reducedHeadroomAcceptance:r.reducedHeadroomAcceptance,harmonizerRemoved:r.harmonizerRemoved,basedOnVariantId:r.basedOnVariantId,harmonizerFreeRetest:r.harmonizerFreeRetest,textOnlyChanges:r.textOnlyChanges,rebuildFromSelectedCanvas:r.rebuildFromSelectedCanvas,preparedVersions:r.preparedVersions,currentResourceBlock:r.currentBlock,observations:r.observations},null,2)))});
+  d.append(details);
+  const o=r.displayEvidence,e=tr.insertCell();e.append(cell('span',r.evidenceScope,'tag'));
+  if(o){e.append(cell('div',f(o.peakPercent),'cpu'),cell('div',`${o.observedPhases}/${o.requiredPhases??'?'} phases observed`,'reason'),cell('div',o.complete?'Complete recorded recipe':'Remaining phase behavior unknown','fine'));
+   if(r.ownerRetest)e.append(cell('div',r.ownerRetest.accepted?'Requested retest: five seconds per phase':'Requested retest stopped or failed','fine'));
+   if(r.evidenceScope!=='Current')e.append(cell('div','Earlier firmware / method only','fine'));
+  }else e.append(cell('div',r.currentBlock?'Byte-blocked before upload':r.protected?'Not re-surveyed':'No hardware CPU result','reason'));
+  const g=tr.insertCell();for(const [key,label]of[['mute','Mute'],['shed','Shed'],['late','Late']])g.append(cell('div',label+': '+(o?.[key]??'unknown'),'guard '+(o?.[key]>0?'bad':'')));
+  body.append(tr);
+  }
+ }
+ $('count').textContent=`${filtered.length} of ${data.rows.length} configurations in ${groups.length} instrument groups`;$('empty').hidden=filtered.length!==0;
+}
+for(const id of ['query','instrument','decision','scope','more'])$(id).addEventListener('input',render);
+$('all').onclick=()=>{reset();render()};$('published').onclick=()=>{reset();publishedOnly=true;render()};$('hera').onclick=()=>{reset();$('instrument').value='Hera 4';render()};$('threshold').onclick=()=>{reset();thresholdOnly=true;render()};
+$('promising').onclick=()=>{reset();promisingOnly=true;render()};
+$('requested').onclick=()=>{reset();requestedOnly=true;render()};
+function download(name,text,type){const a=document.createElement('a'),url=URL.createObjectURL(new Blob([text],{type}));a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+$('json').onclick=()=>download('fm1-configuration-catalogue.json',JSON.stringify(data,null,2),'application/json');
+$('csv').onclick=()=>{const quote=x=>'"'+String(x??'').replaceAll('"','""')+'"';const fields=['Configuration','Instrument','Recommendation','Reason','Played notes','Articulation','Total FX','Intrinsic FX','Added FX','Evidence scope','Observed peak percent','Observed phases','Required phases','Mute','Shed','Late','Original synth','Original played notes','Full rack configured','Extra voices at FX expense','Harmonizer removed','Retest priority','Retest rationale','Display caption changes','Owner retest accepted','Reduced headroom accepted','Intended bank name'];const lines=[fields,...filtered.map(r=>{const o=r.displayEvidence;return[r.id,r.instrument,r.recommendation,r.reason,r.playedNotes,r.profile,effects(r.totalFx),r.fxKnown?effects(r.nativeFx):'unknown',r.fxKnown?effects(r.addedFx):'unknown',r.evidenceScope,o?.peakPercent,o?.observedPhases,o?.requiredPhases,o?.mute,o?.shed,o?.late,r.originalSynth?.model,r.originalSynth?.baselineNotes,r.fullFxRack===null?'unknown':r.fullFxRack,r.extraVoicesAtFxExpense,r.harmonizerRemoved||false,r.retestPriority?.rank,r.retestPriority?.why,r.textOnlyChanges?.length||0,r.ownerRetest?.accepted,r.reducedHeadroomAcceptance,r.proposedBankName]})];download('fm1-configurations-filtered.csv',lines.map(row=>row.map(quote).join(',')).join('\r\n'),'text/csv;charset=utf-8')};
+render();
+</script>
+</body></html>

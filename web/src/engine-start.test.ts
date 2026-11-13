@@ -21,7 +21,7 @@ describe('"Start with an engine" (#160)', () => {
     expect(by('Meridian 8').stereo).toBe(true); // the odd and even outputs
     expect(by('Perun 4').stereo).toBe(false); // mono, as the original
     expect(by('Spokes 6').stereo).toBe(false); // mono on the FM-1 (the XL has the pan)
-    expect(by('Verona Drum 1').stereo).toBe(true); // PAN on each of its six channels
+    expect(by('Verona Drum 1').stereo).toBe(true); // a PAN per channel, left and right outputs (#782, D-881)
     for (const t of tiles) {
       expect(t.line.length, t.name).toBeGreaterThan(0);
       if (t.cpu !== null) expect(t.cpu, t.name).toBeGreaterThan(0);

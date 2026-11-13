@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // What the page no longer works out as it loads (1.5.1): the factory patches built when first opened, the picker's chips worked
 // out when shown, the factory presets made per structure, the structure labels found in one pass. Each gives what the eager
-// computation gave, for every factory patch and XL.
+// computation gave, for factory and relocated community patches.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { FACTORY } from './assemblies';
 import { rowTargets, toDef, type AssemblyDef } from './assembly';
 import { openableGroups } from './catalog';
 import { presetsFor, type Preset } from './device-presets';
-import { allFactoryPresets, factoryPresets, xlEnginePresets } from './factory-presets';
+import { allFactoryPresets, factoryPresets, factoryRackPresets, communityEnginePresets } from './factory-presets';
 import { DEFS } from './modules';
 import { validatePatch, type Patch } from './patch';
 import { deviceBudget } from './patchbin';
-import { factoryShape, FM1_PRESETS, PRESETS, shapeOf, withXls, XL_PRESETS } from './presets';
+import { factoryShape, FM1_PRESETS, PRESETS, shapeOf } from './presets';
+import { relocatedPatches } from './community-factory';
+import { buildSelectedFactoryBank } from './factory-bank';
 import { chipOf, chipOfBudget } from './sandbox';
 import { defRowOrder, defStructure, defStructureAndOrder, fnv, rowOrder, structureAndRows, structureOf } from './structure';
 
@@ -25,19 +27,15 @@ beforeEach(() => {
   };
 });
 
-/** the factory patches as they were built before 1.5.1: every file checked as the page loaded */
-const eager = (files: Record<string, unknown>): Patch[] =>
-  Object.entries(files).sort(([a], [b]) => (a < b ? -1 : 1)).map(([, raw]) => validatePatch(structuredClone(raw), DEFS));
-const FM1 = eager(import.meta.glob<unknown>('../presets/*.json', { eager: true, import: 'default' }));
-const XL = eager(import.meta.glob<unknown>('../presets/xl/*.json', { eager: true, import: 'default' }));
-const ALL = withXls(FM1, XL);
+/** Eager selected defaults and preserved originals remain separate sources, even with matching names. */
+const FM1 = buildSelectedFactoryBank().map(({ patch }) => patch);
+const ORIGINALS = Object.values(import.meta.glob<unknown>('../community/factory/*.json', { eager: true, import: 'default' })).map(raw => validatePatch(structuredClone(raw), DEFS));
+const ALL = [...FM1, ...ORIGINALS];
 
 describe('factory patches built when first opened', () => {
-  it('lists the same names in the same order, and builds each as the eager check did', () => {
-    expect(Object.keys(FM1_PRESETS)).toEqual(FM1.map((p) => p.name));
-    expect(Object.keys(XL_PRESETS)).toEqual(XL.map((p) => p.name));
-    expect(Object.keys(PRESETS)).toEqual(ALL.map((p) => p.name));
-    for (const p of ALL) expect(PRESETS[p.name](), p.name).toEqual(p);
+  it('builds each patch with the content the eager check produced', () => {
+    for (const p of FM1) expect(PRESETS[p.name](), p.name).toEqual(p);
+    for (const p of ORIGINALS) expect(relocatedPatches[p.name](), p.name).toEqual(p);
   });
 
   it('gives a fresh copy each time', () => {
@@ -47,14 +45,14 @@ describe('factory patches built when first opened', () => {
   });
 
   it('reads each shape from the file as the built patch has it (the morph picker builds only patches of the open shape)', () => {
-    for (const p of ALL) expect(factoryShape(p.name), p.name).toBe(shapeOf(p));
+    for (const [name, make] of Object.entries(PRESETS)) expect(factoryShape(name), name).toBe(shapeOf(make()));
   });
 });
 
 describe('the Open picker\'s chips', () => {
-  it('are what the patch\'s budget says, for every factory patch and XL, asked once or again', () => {
+  it('are what the patch’s budget says, for every factory patch, asked once or again', () => {
     const items = openableGroups().find((g) => g.label === 'Factory patches')!.items;
-    expect(items.map((o) => o.name)).toEqual(ALL.map((p) => p.name));
+    expect(items.map((o) => o.name)).toEqual(Object.keys(FM1_PRESETS));
     for (const o of items) {
       const want = chipOfBudget(deviceBudget(ALL.find((p) => p.name === o.name)!));
       expect(o.chip(), o.name).toEqual(want);
@@ -128,11 +126,11 @@ describe('structure fingerprints and row orders', () => {
 
 describe('factory presets made per structure', () => {
   it('give each structure what the one eager list gave it', () => {
-    // the list as it was set before 1.5.1: the FM-1's, then the XLs' own (once per structure and name)
+    // Factory card sounds, selected rack sounds, then unique Community-only sounds.
     const fm1 = factoryPresets();
     const seen = new Set(fm1.map((p) => p.structure));
-    const xlOnly = Object.values(xlEnginePresets()).flat().filter((p) => !seen.has(p.structure));
-    const old: Preset[] = [...fm1, ...xlOnly.filter((p, i) => xlOnly.findIndex((q) => q.structure === p.structure && q.name === p.name) === i)];
+    const communityOnly = Object.values(communityEnginePresets()).flat().filter((p) => !seen.has(p.structure));
+    const old: Preset[] = [...fm1, ...factoryRackPresets(), ...communityOnly.filter((p, i) => communityOnly.findIndex((q) => q.structure === p.structure && q.name === p.name) === i)];
     expect(allFactoryPresets()).toEqual(old);
     const structures = new Set(old.map((p) => p.structure));
     expect(structures.size).toBeGreaterThan(10);

@@ -23,6 +23,7 @@ import { deviceSection } from './patchbin';
 import { deviceView } from './poly';
 import type { PanelState } from './protocol';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
+import { fxBusOf } from './fx-bus';
 
 /** what the strip needs of the panel's state (GUIDE_NOW, or the Emu copy's same bytes); the device page in focus too,
  * for its knob names */
@@ -61,6 +62,7 @@ export function stripPatch(source: Patch): StripPatch {
   const panel = mainOf(source)?.panel;
   const buttons: PatchButtonRow[] = main ? PATCH_BUTTON_NAMES.flatMap((b) => {
     const kind = kindOf(panel, b);
+    if (b === 'fx' && fxBusOf(source)) return [];
     const job = kind === 'bypass' || kind === 'page' || dev.cables.some((c) => c.from.module === main.id && c.from.port === b);
     if (!job) return [];
     const label = (panelLabel(panel?.labels?.[b]) || buttonLabel(b)).toLowerCase();
@@ -129,7 +131,7 @@ export function stripView(p: StripInput, patch: StripPatch | null = null): Strip
   const base = { state, name: HELP_STATE_NAME[state], title: HELP_STATE_TITLE[state] };
   const split = (rows: StripRow[]): { rows: StripRow[]; more: StripRow[] } => ({ rows: rows.slice(0, SHEET_ROWS), more: rows.slice(SHEET_ROWS) });
   // on a device page: the names of the rows K1..K4 turn on the page in focus (unknown without the patch)
-  const names = state === 'device' && p.device !== undefined && p.devicePage !== undefined ? patch?.pages[p.device]?.[p.devicePage] : undefined;
+  const names = (state === 'device' || state === 'fx') && p.device !== undefined && p.devicePage !== undefined ? patch?.pages[p.device]?.[p.devicePage] : undefined;
   const pageKnobs = names ? ([0, 1, 2, 3].map((k) => names[k] ?? '') as [string, string, string, string]) : null;
   // a held step first, then the buttons held: the first whose rows this state lists
   const candidates: Modifier[] = [...(p.stepHeld ? ['step' as const] : []), ...heldButtons(p.held)];

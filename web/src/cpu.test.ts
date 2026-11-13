@@ -4,12 +4,17 @@ import { describe, expect, it } from 'vitest';
 import { CPU, cpuEstimate, runCost, type TypeCost } from './cpu';
 import { cpuChecks, looseModel } from './cpu-checks';
 import { DEFS } from './modules';
-import { addModule, connect, emptyPatch, EDITOR_ONLY } from './patch';
+import { addModule, connect, emptyPatch, EDITOR_ONLY, validatePatch } from './patch';
 import { FM1_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 import { withParts } from './test-poly';
 import { deviceView } from './poly';
 import type { Patch } from './patch';
 import { acid, twoOpFM } from './test-patches';
+
+// Historical rig recordings must not follow changes to the live factory catalogue.
+const survey = JSON.parse(readFileSync(new URL('./cpu-survey-factory-1.13.json', import.meta.url), 'utf8')) as { patches: Record<string, Patch> };
+const measuredPatches = Object.fromEntries(Object.entries(survey.patches).map(([name, patch]) => [name, () => validatePatch(structuredClone(patch), DEFS)]));
 
 describe('CPU estimate', () => {
   it('charges moving oscillator pitch from the active wide LFO rate', () => {
@@ -26,7 +31,7 @@ describe('CPU estimate', () => {
     expect(oscillatorCost()).toBe(slow);
   });
   it('counts Io 4 voice-level flaws before choosing the VCA gain fast path', () => {
-    const p = FM1_PRESETS['Io 4']();
+    const p = relocatedPatches['Io 4']();
     const withFlaws = cpuEstimate(p);
     for (const a of p.assemblies ?? []) for (const f of a.poly?.flaws ?? []) f.level = 100;
     const withoutFlaws = cpuEstimate(p);
@@ -116,6 +121,10 @@ describe('CPU estimate against the test rig (docs/measurements/cpu-survey-2026-1
     fixture_sha256: string; pan_cost: TypeCost; phases: { cpu: number[][] }[];
   };
   const publishedPanTable = { ...CPU, types: { ...CPU.types, pan: scroungeBaseline.pan_cost } };
+  // Exact engine optimizations changed Canvas timing, not its frozen released graph or the fitted factors.
+  const canvasBaseline = JSON.parse(readFileSync(new URL('../../docs/measurements/cpu-survey-2026-11-12-canvas-exact.json', import.meta.url), 'utf8')) as {
+    phases: { cpuSamples: number[][] }[];
+  };
   const voicesOf = (p: Patch): number => Math.max(1, ...deviceView(p, true).groups.map((g) => g.cfg.parts));
   // renamed since the survey; played there with more voices than today; changed since (none)
   const RENAMED: Record<string, string> = {};
@@ -126,8 +135,8 @@ describe('CPU estimate against the test rig (docs/measurements/cpu-survey-2026-1
   for (const f of files)
     for (const r of f) {
       const name = RENAMED[r.name] ?? r.name;
-      if (!FM1_PRESETS[name] || CHANGED.has(name)) continue;
-      const own = voicesOf(FM1_PRESETS[name]());
+      if (!measuredPatches[name] || CHANGED.has(name)) continue;
+      const own = voicesOf(measuredPatches[name]());
       for (const ph of ['n0', 'n1', 'n4', 'n8']) {
         const samples = r[`${ph}_samples`] as number[];
         if (r[`${ph}_ovl`] || samples.length < 2 || (SURVEYED[name] ?? own) - Number(r[`${ph}_shed`]) !== own) continue;
@@ -135,11 +144,12 @@ describe('CPU estimate against the test rig (docs/measurements/cpu-survey-2026-1
       }
     }
   rig.set('Scrounge', Math.max(...scroungeBaseline.phases.map(p => median(p.cpu.slice(1).map(s => s[1])))));
-  it('has a figure for every factory patch the rig measured as it is today', () => expect(rig.size).toBe(Object.keys(FM1_PRESETS).length - CHANGED.size));
-  for (const name of Object.keys(FM1_PRESETS))
-    it.skipIf(!rig.has(name))(`${name === 'Scrounge' ? 'published Pan calibration' : 'reads'} within -3 / +5 points of the rig: ${name}`, () => {
+  rig.set('Canvas', Math.max(...canvasBaseline.phases.map(p => median(p.cpuSamples.slice(1).map(s => s[1])))));
+  it('has a figure for every original patch the rig measured as it is today', () => expect(rig.size).toBe(Object.keys(measuredPatches).length - CHANGED.size));
+  for (const name of Object.keys(measuredPatches))
+    it.skipIf(!rig.has(name))(`${name === 'Scrounge' ? 'published Pan calibration' : name === 'Canvas' ? 'current exact-engine calibration' : 'reads'} within -3 / +5 points of the rig: ${name}`, () => {
       const device = (100 * rig.get(name)!) / CPU.blockUs;
-      const est = 100 * cpuEstimate(name === 'Scrounge' ? publishedScrounge : FM1_PRESETS[name](), name === 'Scrounge' ? publishedPanTable : CPU).use;
+      const est = 100 * cpuEstimate(name === 'Scrounge' ? publishedScrounge : measuredPatches[name](), name === 'Scrounge' ? publishedPanTable : CPU).use;
       expect(est).toBeGreaterThanOrEqual(device - 3);
       expect(est).toBeLessThanOrEqual(device + 5);
     });
@@ -163,11 +173,11 @@ describe('CPU estimate with two cores (docs/measurements/cpu-survey-2026-11-05-r
   // Io 4: its factory patch now has the Ladder's stage saturation (#672), regenerated with its named switches
   // Hera 4, Wanderer: other instruments in their slots (Hera 6 XL's panel at four voices, Wanderer XL)
   const changedSince = new Set(['algo four', 'oracle v', 'expander s', 'cassia 1', 'io 4', 'hera 5', 'wanderer']);
-  for (const name of Object.keys(FM1_PRESETS)) {
+  for (const name of Object.keys(measuredPatches)) {
     const s = split.get(name.toLowerCase()), o = one.get(name.toLowerCase());
     if (!s || !o || changedSince.has(name.toLowerCase())) continue;
     it(`never promises more than the split saved on the rig: ${name}`, () => {
-      const e = cpuEstimate(FM1_PRESETS[name]());
+      const e = cpuEstimate(measuredPatches[name]());
       const modelled = e.oneCoreUs - e.us, measured = steady(o) - steady(s);
       expect(modelled).toBeLessThanOrEqual(measured + 60);   // (60 us: the idle cost spreads -31..+80 us about its 24 us median)
     });

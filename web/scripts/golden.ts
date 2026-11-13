@@ -9,15 +9,21 @@ import { deviceBudget, encodePatch, FLAG_INPUTS, PANEL_BYTES, recordSize, toQ16 
 import { cpuEstimate } from '../src/cpu';
 import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, sandboxFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
-import { make, FM1_PRESETS, XL_PRESETS, type Build } from '../src/presets';
+import { make, FM1_PRESETS, PRESETS, type Build } from '../src/presets';
+import { relocatedPatches } from '../src/community-factory';
 import { oracleMorph } from '../src/test-morph';
 import { addModule, connect, defaultParams, emptyPatch, fixMatrix, newPatch, paramUnit, setMorphTarget, SOURCES, stepByte, type Patch, type PolyCfg } from '../src/patch';
 import { migrateSteps, overdub, STEPS_MAX, type StepNote } from '../src/track';
-import { insertAssembly, makeAssembly } from '../src/assembly';
+import { insertAssembly, makeAssembly, rowTargets } from '../src/assembly';
 import { FACTORY } from '../src/assemblies';
 import { wireEngine } from '../src/engines';
 import { withParts } from '../src/test-poly';
 import { acid, cardRows } from '../src/test-patches';
+import { fxBusOf, withFxBus } from '../src/fx-bus';
+import { setKind, setSwitches, setTarget } from '../src/buttons';
+import PANEL_BANK from '../factory/bank.json';
+import PANEL_EXAMPLES from '../factory/examples.json';
+import { validatePatch } from '../src/patch';
 
 const SR = DEVICE_SR;
 const OUT = new URL('../../build/golden/', import.meta.url);
@@ -150,13 +156,19 @@ for (const shape of [0, .25, .5, .75, 1]) for (const back of [0, 1]) {
     wire(lfo, 'pulse', out, 'r');
   });
 }
-for (const [n, p] of Object.entries(FM1_PRESETS)) tests[n] = p();
+// Keep the excluded original FM-1 patches in audio/count-record coverage after their Community move;
+// XLs remain opt-in below rather than making every browser-sized patch a firmware fixture.
+const audioPresets = {
+  ...Object.fromEntries(Object.entries(relocatedPatches).filter(([name]) => !name.endsWith(' XL'))),
+  ...PRESETS,
+};
+for (const [n, p] of Object.entries(audioPresets)) tests[n] = p();
 // D-1004: Oracle V with a morph B side on its filter and envelopes (every module has a B side, as the editor makes one;
 // format 51 writes only the B values off A): played half way
 tests['oracle-morph'] = oracleMorph();
 // #649: an XL the FM-1's one memory arena holds (Hera 6 XL: 151 module copies, past the 128 of the fixed pools before it;
 // Wanderer XL fitted too and took Wanderer's factory slot, D-348)
-for (const n of ['Hera 6 XL']) tests[n] = XL_PRESETS[n]();
+for (const n of ['Hera 6 XL']) tests[n] = relocatedPatches[n]();
 events['Wanderer'] = [[0, 'on', 60], [128 * 20, 'on', 72], [128 * 40, 'on', 67], [128 * 60, 'off', 72], [128 * 80, 'off', 60], [128 * 100, 'off', 67]];
 // Mono Lead: its notes one after another. A note over a held one lengthens its glide to 166 ms (the allocator's legato output on
 // the Glide's time), and a gliding pitch leaves a small phase offset between the engines (within a cent, nothing at rest),
@@ -178,7 +190,7 @@ events['lfo-shape-sync'] = [[0, 'run', 0], [128 * 80, 'bon', 0], [128 * 82, 'bof
 // TRIG into both EGs (a loop through EG 1 and VCO 1: its block of delay must fall where the editor's order puts it)
 for (const [route, src] of [[2, 2], [3, 2], [4, 4]] as const) {
   const name = `sallen-esp-${route}`;
-  const p = FM1_PRESETS['Sallen 20']();
+  const p = relocatedPatches['Sallen 20']();
   const card = p.assemblies!.find((a) => a.params.some((r) => r.label === 'esp route'))!;
   for (const [label, v] of [['signal in', src], ['esp route', route], ['threshold', 0.2]] as const) {
     const row = card.params.find((r) => r.label === label)!;
@@ -189,7 +201,7 @@ for (const [route, src] of [[2, 2], [3, 2], [4, 4]] as const) {
 }
 for (let pos = 1; pos <= 6; pos++) {
   const name = `monolith-wave-${pos}`;
-  const p = FM1_PRESETS['Monolith D']();
+  const p = relocatedPatches['Monolith D']();
   const card = p.assemblies!.find((a) => a.params.some((r) => r.label === 'osc 1 wave'))!;
   for (const row of card.params.filter((r) => /^osc [123] wave$/.test(r.label)))
     p.modules.find((m) => m.id === row.module)!.params[row.param] = pos;
@@ -201,7 +213,7 @@ for (let pos = 1; pos <= 6; pos++) {
 // line 2 modulation off, ring and noise
 for (let k = 1; k <= 8; k++) {
   const name = `cassia-wave-${k}`;
-  const p = FM1_PRESETS['Cassia 1']();
+  const p = relocatedPatches['Cassia 1']();
   const card = p.assemblies!.find((a) => a.params.some((r) => r.label === 'wave 2'))!;
   const set = (label: string, head: number, v: number): void => {
     const row = card.params.filter((r) => r.label === label)[head];
@@ -3754,8 +3766,51 @@ for (const voicing of [-8, -4, 4, 8]) {
 if (process.argv.includes('--panel-fixtures')) {
   const out = new URL('../../build/panel-fixtures/', import.meta.url);
   mkdirSync(out, { recursive: true });
+  // Panel regressions exercise the original graph/card shapes, not whichever audition ROM
+  // export-defs last selected. Keep the real ROM's assembly presets and pattern tables.
+  // The 808 Kit's own factory pattern provenance gives the section-splice regression a section after the Page-button
+  // insertion point.
+  const panelPatches = [...PANEL_BANK, ...PANEL_EXAMPLES].map(({ name, patch }) =>
+    ({ name, binary: encodePatch(validatePatch(structuredClone(patch), DEFS), false, false, 1) }));
+  const panelHeader = ['/* SPDX-License-Identifier: GPL-3.0-only */',
+    '/* Generated panel-only source graph fixtures; never replaces firmware/src/presets.h. */',
+    '#pragma once', '#undef N_PRESETS', `#define N_PRESETS ${panelPatches.length}`,
+    '#define PRESET_LIST PANEL_PRESET_LIST'];
+  panelPatches.forEach(({ binary }, i) =>
+    panelHeader.push(`static const uint8_t PANEL_PRESET_${i}[] = {${Array.from(binary).join(',')}};`));
+  panelHeader.push('static const struct { const char *name; const uint8_t *data; uint32_t len; } PANEL_PRESET_LIST[N_PRESETS] = {');
+  panelPatches.forEach(({ name }, i) =>
+    panelHeader.push(`    {${JSON.stringify(name.toUpperCase())}, PANEL_PRESET_${i}, sizeof PANEL_PRESET_${i}},`));
+  panelHeader.push('};', '');
+  writeFileSync(new URL('panel_bank.h', out), panelHeader.join('\n'));
   for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns', 'matrix-audio', 'harm-side', 'route-harm-steps', 'route-steps-harm', 'route-harm-arp', 'route-steps-harm-arp', 'route-harm-steps-arp', 'route-dense-steps', 'route-root-snapshot', 'route-branch-snapshot'])
     writeFileSync(new URL(`${name}.m1p`, out), encodePatch(tests[name], true));
+  {
+    const p = withFxBus(tests['route-harm-steps']);
+    const harm = p.modules.find(m => m.type === 'harm')!;
+    harm.bypass = true;
+    setKind(p, 'lfo', 'bypass');
+    setTarget(p, 'lfo', { module: harm.id });
+    setSwitches(p, 'lfo', true);
+    writeFileSync(new URL('fx-bus.m1p', out), encodePatch(p, true));
+  }
+  {
+    // A real assembly owns the complete rack: panel preset recall must include every promoted FX control.
+    const p = newPatch(DEFS);
+    const instrument = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Monolith D')!, 300, 0);
+    wireEngine(p, instrument);
+    writeFileSync(new URL('fx-preset.m1p', out), encodePatch(withFxBus(p), true));
+  }
+  {
+    const p = newPatch(DEFS);
+    const instrument = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Expander S')!, 300, 0);
+    wireEngine(p, instrument);
+    for (const row of instrument.params) if (row.param === 'voices') {
+      row.top = 3;
+      p.modules.find(m => m.id === row.module)!.params.voices = 3;
+    }
+    writeFileSync(new URL('fx-preset-poly.m1p', out), encodePatch(withFxBus(p), true));
+  }
   {
     // more than 64 modules (#721): arm-many with the Drum map moved last (index 69, a device past 63) and its chain of
     // mixers as one assembly
@@ -3857,6 +3912,64 @@ for (const name of ['envelope filter', 'ducking delay', 'gated reverb', 'overdri
   ends[key] = 128 * 400;
 }
 
+// The ordinary stereo master insert, including its real return helpers and all eight effect kernels.
+// LFO / EDIT toggle Delay / Reverb: cut new wet input while the note still sounds, resume on the
+// same held note, then release and bypass again with echoes/reverb left to spill over the dry ramps.
+// The spilled tails then fall silent and end (D-1100), and both stages come back ON for a new note.
+{
+  const key = 'fx-bus-transitions';
+  const p = withFxBus(make(key, (add, wire) => {
+    const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.7 });
+    const left = add('osc', 0, 0, { wave: 0, level: 0.5 });
+    const right = add('osc', 0, 0, { wave: 0, coarse: 7, level: 0.3 });
+    const env = add('adsr', 0, 0, { a: 0.004, d: 0.04, s: 0.8, r: 0.025 });
+    const vl = add('vca', 0, 0), vr = add('vca', 0, 0);
+    wire(kb, 'pitch', left, 'pitch'); wire(kb, 'pitch', right, 'pitch');
+    wire(kb, 'gate', env, 'gate');
+    wire(left, 'out', vl, 'in'); wire(right, 'out', vr, 'in');
+    wire(env, 'env', vl, 'cv'); wire(env, 'env', vr, 'cv');
+    wire(vl, 'out', out, 'l'); wire(vr, 'out', out, 'r');
+  }));
+  const params = {
+    drive: { drive: 2.2, mode: 0, level: 0.6, sym: 0.08, stages: 1, os: 0 },
+    chorus: { rate: 0.7, depth: 0.45, mix: 0.35 },
+    delay: { time: 64, fb: 0.4, mix: 0.4, sync: 0, pingpong: 1, length: 500, rate: 0, tape: 0, heads: 0, swell: 0 },
+    reverb: { size: 0.45, damp: 0.55, mix: 1, pre: 8, mod: 0.2, freeze: 0 },
+  };
+  for (const stage of fxBusOf(p)!.stages) {
+    const assembly = p.assemblies!.find(a => a.id === stage.assembly)!;
+    assembly.bypass = false;
+    for (const id of stage.helpers) p.modules.find(m => m.id === id)!.bypass = false;
+    for (const id of stage.targets) {
+      const m = p.modules.find(m => m.id === id)!;
+      m.bypass = false;
+      Object.assign(m.params, params[stage.kind]);
+    }
+    if (stage.kind === 'reverb') {
+      const mix = assembly.params.find(row => row.label.toLowerCase() === 'mix')!;
+      for (const target of rowTargets(mix)) p.modules.find(m => m.id === target.module)!.params[target.param] = 0.35;
+    }
+    if (stage.kind === 'delay' || stage.kind === 'reverb') {
+      const button = stage.kind === 'delay' ? 'lfo' : 'edit';
+      setKind(p, button, 'bypass');
+      setTarget(p, button, { asm: stage.assembly });
+      setSwitches(p, button, true);
+    }
+  }
+  tests[key] = p;
+  events[key] = [
+    [0, 'on', 48],
+    [128 * 96, 'bon', 3], [128 * 144, 'bon', 4],
+    [128 * 192, 'boff', 3], [128 * 224, 'boff', 4],
+    [128 * 256, 'off', 48],
+    [128 * 304, 'on', 55], [128 * 368, 'off', 55],
+    [128 * 384, 'bon', 3], [128 * 416, 'bon', 4],
+    [128 * 1024, 'boff', 3], [128 * 1024, 'boff', 4],
+    [128 * 1040, 'on', 60], [128 * 1100, 'off', 60],
+  ];
+  ends[key] = 128 * 1280;
+}
+
 // Format 54 metadata cannot change the notes or audio. Unknown identities remain readable.
 tests['factory-origin'] = structuredClone(tests['steps-kit']);
 tests['factory-origin'].modules.find((m) => m.type === 'steps')!.factoryPatterns = { version: 1, ids: ['12345678'] };
@@ -3871,7 +3984,7 @@ for (const [name, patch] of Object.entries(tests))
 // written with counted records whatever their size: the C engine must give the parameters a record leaves out their
 // defaults, on both morph sides
 const counted = new Set<string>();
-for (const name of [...Object.keys(FM1_PRESETS), 'morph', 'morph-unassigned', 'fixed-links', 'side-input-fanout', 'oracle-morph', 'matrix-presence', 'cables-wide']) {
+for (const name of [...Object.keys(audioPresets), 'morph', 'morph-unassigned', 'fixed-links', 'side-input-fanout', 'oracle-morph', 'matrix-presence', 'cables-wide']) {
   if (!tests[name] || bins[name]) continue;
   const twin = `${name} counted`;
   tests[twin] = structuredClone(tests[name]);

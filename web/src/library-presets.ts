@@ -10,10 +10,24 @@ import { devicePresetName, type DevicePresetEntry } from './protocol';
 import { defStructure } from './structure';
 import { showUndo } from './toast';
 import type { LibrarySection } from './bank';
+import { fxPresetStructure } from './fx-preset-format';
+
+let engineNames: Map<string, string> | undefined;
 
 /** which engine (or factory assembly) a structure is, by name; '' when it is the user's own */
 export function engineOf(structure: string): string {
-  return FACTORY.find((d) => defStructure(d) === structure)?.name ?? '';
+  if (!engineNames) {
+    engineNames = new Map();
+    for (const def of FACTORY) {
+      const base = defStructure(def);
+      if (!engineNames.has(base)) engineNames.set(base, def.name);
+      for (let mask = 1; mask < 16; mask++) {
+        const scoped = fxPresetStructure(base, mask);
+        if (!engineNames.has(scoped)) engineNames.set(scoped, `${def.name} + FX`);
+      }
+    }
+  }
+  return engineNames.get(structure) ?? '';
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { class?: string } = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
@@ -100,7 +114,7 @@ export function buildPresetsSection(root: HTMLElement, device: DeviceLink, ev: P
       el('button', { class: 'lib-move', textContent: '→', ariaLabel: `send "${p.name}" to the FM-1`, disabled: !ready(),
         title: !device.connected ? 'Connect an FM-1 first' : !device.hasPresets ? 'This firmware keeps no presets: update it' : onDevice(p) ? 'Send it to the FM-1, replacing the FM-1’s preset of that name (asks first)' : 'Send it to the FM-1',
         onclick: () => {
-          if (!device.presetFits(p.values.length)) {   // (older firmware keeps 88 values: D-476)
+          if (!device.presetFits(p.values.length, p)) {
             status.textContent = PRESET_NEEDS_UPDATE;
             return;
           }
@@ -151,7 +165,7 @@ export function buildPresetsSection(root: HTMLElement, device: DeviceLink, ev: P
     const replaced = mine.filter((p) => onDevice(p));
     if (replaced.length && !window.confirm(`Sending replaces ${replaced.length} preset${replaced.length === 1 ? '' : 's'} on the FM-1 (${replaced.slice(0, 6).map((p) => p.name).join(', ')}${replaced.length > 6 ? ', …' : ''}). Send all?`)) return;
     void run('Send presets', async () => {
-      const fit = mine.filter((x) => device.presetFits(x.values.length));   // (older firmware keeps 88 values: D-476)
+      const fit = mine.filter(x => device.presetFits(x.values.length, x));
       for (const x of fit) await device.putPreset(x.structure, x.name, x.values);
       onFm1 = await device.listPresets();
       const left = mine.length - fit.length;
@@ -164,7 +178,7 @@ export function buildPresetsSection(root: HTMLElement, device: DeviceLink, ev: P
     el('div', { class: 'lib-cols' },
       el('section', { class: 'card lib-col', ariaLabel: 'In this browser' },
         el('h2', {}, el('span', { class: 'mtag src', textContent: 'MINE' }), 'In this browser', mineCount),
-        el('p', { class: 'muted', textContent: 'Your presets, kept in this browser: stored values of an assembly’s card rows, loadable by any device of that structure.' }),
+        el('p', { class: 'muted', textContent: 'Your saved sounds. A sole instrument with a master FX rack also stores the rack’s controls and on/off states. Those presets require the same instrument structure and rack stages.' }),
         mineEl,
       ),
       el('section', { class: 'card lib-col', ariaLabel: 'FM-1' },

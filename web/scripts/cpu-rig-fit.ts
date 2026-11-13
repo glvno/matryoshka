@@ -17,7 +17,6 @@ import { assembliesOf, parentOf } from '../src/assembly';
 import { CPU, cpuEstimate, type CpuTable } from '../src/cpu';
 import { DEFS } from '../src/modules';
 import { validatePatch, type Patch } from '../src/patch';
-import { FM1_PRESETS } from '../src/presets';
 import { deviceView } from '../src/poly';
 
 const ROOT = new URL('../../', import.meta.url).pathname;
@@ -68,8 +67,9 @@ function targets(files: { file: string; at?: Record<string, number>; only?: stri
   return out;
 }
 
-// today's patches at their own voices
-const today = new Map(Object.entries(FM1_PRESETS).map(([n, f]) => [n, f()]));
+// The historical survey is fitted against its released graphs, not today's candidates.
+const survey = JSON.parse(readFileSync(new URL('../src/cpu-survey-factory-1.13.json', import.meta.url), 'utf8')) as { patches: Record<string, Patch> };
+const today = new Map(Object.entries(survey.patches).map(([name, patch]) => [name, validatePatch(structuredClone(patch), DEFS)]));
 const now = targets(NOW, (n) => (today.has(n) ? voicesOf(today.get(n)!) : undefined));
 // patches whose structure changed since today's survey and that it could not measure (none since #781's survey)
 const CHANGED = new Set<string>([]);

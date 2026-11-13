@@ -32,14 +32,25 @@ for p in build/golden/*.m1p; do
   if ! cmp -s "$T/out/$b.base" "$T/out/$b.poison"; then echo "DIFFERS $b (buffers poisoned outside their life)"; fail=1; fi
 done
 # Changing modes exercises retained oscillator state; partial blocks and idle/wake exercise shared-input means.
-gcc -O1 -w -I"$T/base/src" -o "$T/base_transition" firmware/test/exact_transition.c -lm
-gcc -O1 -w ${EXACT_CFLAGS:-} -Ifirmware/src -o "$T/new_transition" firmware/test/exact_transition.c -lm
-for b in fm-2op simple-fm poly-feedback poly-shared part-flaws side-input-fanout; do
+gcc -O1 -w -I"$T/base/src" -o "$T/base_transition" firmware/test/exact_transition.c -lm -lpthread
+gcc -O1 -w ${EXACT_CFLAGS:-} -Ifirmware/src -o "$T/new_transition" firmware/test/exact_transition.c -lm -lpthread
+for b in fm-2op simple-fm fm-pm2-only fm-3pm-index fm-3pm-index-fb poly-feedback poly-shared part-flaws side-input-fanout; do
     [ -f "build/golden/$b.m1p" ] || continue
-    "$T/base_transition" "build/golden/$b.m1p" > "$T/out/$b.transitions.base"
-    "$T/new_transition" "build/golden/$b.m1p" > "$T/out/$b.transitions.new"
+    HOST_CORES=2 "$T/base_transition" "build/golden/$b.m1p" > "$T/out/$b.transitions.base"
+    HOST_CORES=2 "$T/new_transition" "build/golden/$b.m1p" > "$T/out/$b.transitions.new"
     if ! cmp -s "$T/out/$b.transitions.base" "$T/out/$b.transitions.new"; then
         echo "DIFFERS $b transitions"; fail=1
+    fi
+done
+# Live controls, partial blocks, ring wraps and state/key-event transitions in the optimized kernels (steps: the stopped
+# Steps pass and every way out of it, alone and through the factory patches).
+for kind in reverb filter filter_outputs chorus control pd steps; do
+    gcc -O1 -w -I"$T/base/src" -Ifirmware/src -o "$T/base_$kind" "firmware/test/exact_$kind.c" -lm
+    gcc -O1 -w ${EXACT_CFLAGS:-} -Ifirmware/src -o "$T/new_$kind" "firmware/test/exact_$kind.c" -lm
+    "$T/base_$kind" > "$T/out/$kind.base"
+    "$T/new_$kind" > "$T/out/$kind.new"
+    if ! cmp -s "$T/out/$kind.base" "$T/out/$kind.new"; then
+        echo "DIFFERS $kind transitions/state"; fail=1
     fi
 done
 # Every factory patch, the working tree's set for both engines (#781: the kits hold none of them).

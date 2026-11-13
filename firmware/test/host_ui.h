@@ -26,7 +26,7 @@ static uint8_t m1_edited;                  /* proto.c: the running patch was edi
 static uint64_t bank_mask = 0x3FFFu;     /* slotstore.c: the occupied slots (the preview: the factory patches) */
 static uint8_t pv_bin[4096];               /* the previewed patch (proto.c's m1_cur) */
 static uint32_t pv_len;
-#define FELUCCA_VERSION "v1.13.0-DEV"
+#define FELUCCA_VERSION "v1.14.0-DEV"
 #define FM1_TICKS_PER_US 24u
 
 /* lcd.c's two line buffers (#377) and their rule: on the device the DMA reads the one just sent until the next transfer
@@ -135,6 +135,10 @@ static void lcd_line_out_raw(uint32_t x, uint32_t y, uint32_t w)   /* lcd.c's */
 
 #include "../src/engine.c"
 #include "../src/presets.h"
+#ifdef HOST_PANEL_FIXTURES
+/* Stable graph fixtures for panel regressions; retain the actual ROM preset/pattern tables. */
+#include "../../build/panel-fixtures/panel_bank.h"
+#endif
 #include "../src/tempo_glo.h"
 /* the preset store (presetstore.c, #194) over 7 sectors of RAM flash (all 0xFF until host_ps_init) */
 static uint8_t host_ps_flash[7u * 0x1000u];
@@ -195,7 +199,8 @@ static int m1_preset_name(uint32_t dev, const char *name)
 #endif
 }
 static uint32_t host_preset_stored;         /* presets stored on the panel (#194) */
-static void m1_preset_stored(uint32_t structure, const char *name) { (void)structure; (void)name; host_preset_stored++; }
+static uint32_t host_preset_structure;
+static void m1_preset_stored(uint32_t structure, const char *name) { host_preset_structure = structure; (void)name; host_preset_stored++; }
 #include "../src/font5x7.c"
 #include "../src/font_bc.c"
 static const uint8_t *m1_panel(void) { uint32_t at = eng_panel_at(pv_bin, pv_len); return at ? pv_bin + at : 0; }
@@ -232,6 +237,8 @@ static int m1_default_pattern(uint32_t mod, uint32_t pattern, const uint32_t *wo
 #include "../src/pages_ui.c"
 #include "../src/sandbox_ui.c"
 static const uint8_t *pages_src(uint32_t *len) { *len = pv_len; return pv_bin; }
+static uint32_t host_pages_capacity = sizeof pv_bin;
+static uint32_t pages_capacity(void) { return host_pages_capacity; }
 static uint32_t pv_gen = 1;               /* another patch in pv_bin: +1 */
 static uint32_t pages_gen(void) { return pv_gen; }
 /* The LEDs, as the HAL keeps them (one byte per matrix column, a bit per row: lit, dim glow, the mid level, breathing),

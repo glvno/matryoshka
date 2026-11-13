@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { decodeShare, encodeShare, handOut, LINK_MAX, openShareLink, PAGES_URL, shareCodeOf, shareLink, storedIdOf, storedLink } from './share';
 import { fetchCode, storeCode, type Kv } from './share-store';
 import { DEFS } from './modules';
-import { PRESETS, xlBase } from './presets';
+import { PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
+import { xlBase } from './community';
 import { FACTORY } from './assemblies';
 import { insertAssembly } from './assembly';
 import { demoPatch } from './demo';
@@ -15,8 +17,8 @@ const memoryKv = (): Kv & { size(): number } => {
 };
 
 describe('share links', () => {
-  it('round-trips every factory patch through the fragment, well under the link limit', async () => {
-    for (const make of Object.values(PRESETS)) {
+  it('round-trips factory and relocated community patches through share links', async () => {
+    for (const make of Object.values({ ...PRESETS, ...relocatedPatches })) {
       const p = make();
       const s = await encodeShare(p, { base: 'https://example.test/x/' });
       expect(s.length).toBe(s.link.length);
@@ -52,7 +54,7 @@ describe('share links', () => {
   });
 
   it('drops the layout when asked to, or when it does not fit (the Demo); the slim form is still checked', async () => {
-    const oracle = PRESETS['Oracle V']();
+    const oracle = relocatedPatches['Oracle V']();
     const lean = await encodeShare(oracle, { layout: false });
     expect(lean).toMatchObject({ layout: false, layoutFits: true, tooLong: false });
     // the positions go, the assemblies (which modules they hold) stay
@@ -95,7 +97,7 @@ describe('share links', () => {
   });
 
   it('a patch with the layout unticked that fits: the lean `#p=` link, nothing stored', async () => {
-    const s = await encodeShare(PRESETS['Oracle V'](), { layout: false });
+    const s = await encodeShare(relocatedPatches['Oracle V'](), { layout: false });
     const h = await handOut(s, { store: async () => { throw new Error('must not store'); } });
     expect(h).toMatchObject({ stored: false, layout: false });
     expect(h.link).toBe(s.link);

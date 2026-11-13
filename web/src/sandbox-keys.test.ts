@@ -2,7 +2,8 @@
 // The FM-1's keys in sandbox mode play a Drum map's rows on black keys 1..8, as on the FM-1 (D-520, the 1.10 early check)
 import { describe, expect, it } from 'vitest';
 import { blackKey, drumKeyNote, keysDrumMap, SandboxKeys } from './sandbox-keys';
-import { FM1_PRESETS, XL_PRESETS } from './presets';
+import { PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 describe('sandbox keys (D-520 in sandbox mode)', () => {
   it('counts the black keys from F#3', () => {
@@ -11,7 +12,7 @@ describe('sandbox keys (D-520 in sandbox mode)', () => {
   });
 
   it('Verona Drum 1 XL: its keys reach the PATTERN track\'s Drum map, black keys 1..8 its rows, the white keys nothing', () => {
-    const p = XL_PRESETS['Verona Drum 1 XL']();
+    const p = relocatedPatches['Verona Drum 1 XL']();
     const map = keysDrumMap(p)!;
     expect(map?.names?.[0]).toBe('KICK');
     const rows = Array.from({ length: 8 }, (_, r) => map.params[`n${r + 1}`]);
@@ -24,12 +25,12 @@ describe('sandbox keys (D-520 in sandbox mode)', () => {
   });
 
   it('a melodic patch plays the plain notes', () => {
-    expect(keysDrumMap(FM1_PRESETS['Basic Poly']())).toBeNull();
-    expect(keysDrumMap(FM1_PRESETS.Init())).toBeNull();
+    expect(keysDrumMap(PRESETS['Basic Poly']())).toBeNull();
+    expect(keysDrumMap(PRESETS.Init())).toBeNull();
   });
 
   it('a note-off ends what its note-on played, a silent key stays silent', () => {
-    const p = XL_PRESETS['Verona Drum 1 XL']();
+    const p = relocatedPatches['Verona Drum 1 XL']();
     const k = new SandboxKeys();
     const row1 = keysDrumMap(p)!.params.n1;
     expect(k.route({ t: 'on', note: 54, vel: 0.8 }, p, [], 0)).toEqual([{ t: 'on', note: row1, vel: 0.8 }]);

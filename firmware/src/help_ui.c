@@ -46,6 +46,8 @@ static uint32_t help_state(void)
         return HS_MENU;
     if (page == PAGE_ENV)
         return HS_ENV;
+    if (page == PAGE_FX)
+        return HS_FX;
     if (page == PAGE_SONG)
         return HS_SONG;
     if (page == PAGE_SEQ)
@@ -80,6 +82,7 @@ static int hc_menu_guide(void) { return menu_tab == MT_GUIDE; }
 static int hc_menu_page(void) { return menu_page() != 0; }
 static int hc_menu_system(void) { return menu_tab == MT_SYSTEM && !menu_sys2; }   /* (its first page: UPDATE MODE, FACTORY RESET) */
 static int hc_harm(void) { return (sr_on ? eng_steps_harm((uint32_t)seq_module()) : eng_keys_harm()) >= 0; }   /* (the keys reach a Harmonizer: its chord buttons, #598) */
+static int hc_fx_bank(void) { return eng_fx_count() > 0u; }
 
 /* the rows of the patch buttons with a job in the loaded patch (FX, LFO, EDIT, ARP; SEL, ENV and GLO are fixed): the
  * button by its own name, then its job: a Toggle "name on/off", a Page button "name pages", a Gate with a cable from its
@@ -94,6 +97,8 @@ static uint32_t help_patch_rows(const char **out)
     for (i = 0; i < 4u; i++) {
         uint32_t b = B[i], kind = eng_button_kind(b), k;
         char lab[16], *p = help_btn_row[n];
+        if (b == 0u && hc_fx_bank())
+            continue;                              /* controls.ts's FX row describes the graph contract, never the old patch mapping */
         if (!panel_btn_job(b))                      /* (ui.c: a Gate's job is its jack's cable) */
             continue;
         if (!panel_label(b, lab))

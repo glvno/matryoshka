@@ -226,12 +226,18 @@ static int32_t sin_turn30(uint32_t ph)
     return s0 + (int32_t)(((int64_t)(s1 - s0) * fr) >> 16);
 }
 
+/* The unchanged Newton refinement; d must remain current even when its seed divisor is unchanged. */
+HOT int32_t recip24_refine(int32_t d, int32_t x)
+{
+    int32_t t = (int32_t)(((int64_t)d * x) >> 24);
+    return (int32_t)(((int64_t)x * ((2 << 24) - t)) >> 24);
+}
+
 /* 1 / (d / 2^24) in Q24 for d (Q24) in [2^24, 2^30): 32-bit divide for a first estimate, one Newton step */
 static int32_t recip24(int32_t d)
 {
     int32_t x = (int32_t)(0xFFFFFFFFu / ((uint32_t)d >> 8)) << 8;
-    int32_t t = (int32_t)(((int64_t)d * x) >> 24);
-    return (int32_t)(((int64_t)x * ((2 << 24) - t)) >> 24);
+    return recip24_refine(d, x);
 }
 
 static inline int32_t round_q16(int32_t v) { return (v + 32768) >> 16; }   /* Math.round for the integer params */
@@ -515,7 +521,7 @@ typedef struct {
         struct { int32_t a[8], b[8], ia; uint32_t phase; } fs;   /* the Hilbert chains (w1 w2 per section), chain A's delayed sample, the quadrature oscillator */
         struct { struct grain_line *ln; uint32_t w, acc, seed; uint8_t prev; } gr;   /* acc: grains per sample, Q24 */
         struct { int16_t *buf; int64_t cur; uint32_t len, w, t, seen, beat; int32_t rate; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev, rk, ph, tp; } dly;   /* len: its line's samples, from its length (dly_samples); cur 64 bits (a long line is more samples than Q16 holds in 32) */   /* t, ring, seen, beat: the clock tempo; cur, rate: the read position's distance behind w (samples Q16, 0 = not yet set) and its glide (dly_glide); rk, ph: a lower rate (#659, dly_slow): the rate step's k the line holds (0 none yet), the sample within a line sample; tp: Tape on (#660, dly_tape) */
-        struct { int16_t *buf; uint16_t li[8], ai[2], pi; int32_t lp[8]; uint32_t ph[2]; } rev;   /* the FDN lines' write indices, the diffusers', the pre-delay's; damping states; modulation phases */
+        struct { int16_t *buf; uint16_t li[8], ai[2], pi; int32_t lp[8]; uint32_t ph[2]; int32_t gain[8], size; uint8_t gains_ok, frozen; } rev;   /* FDN indices/states/phases; exact decay gains cached until effective size/freeze changes */
         struct { int32_t v; uint32_t t; int32_t rk[4], inc[4], k[4]; uint32_t len[4]; uint8_t stage, prev, ok; } env;  /* Q30, like the ADSR; t: samples
                                                     * in the segment; rk, inc, k, len, ok: segments 1 2 3 and release, as m_adsr */
         rate_env_t rateenv;
@@ -568,6 +574,25 @@ typedef struct {
                                       * (engine.ts fed); an Arpeggiator: 0 Main's keys, 2 + the Steps module cabled into its
                                       * keys in (engine.ts ArpRun.feed: it plays that track's notes) */
 } node_t;
+/* Only the validated master bus opts into spillover. No node/instance arena layout change.
+ * gain: 1024 samples from dry to effect; fade: Q30, bounded by two seconds for a
+ * frozen or self-sustaining tail. Each stereo kernel advances its own identical ramp.
+ * quiet: consecutive OFF samples whose natural tail stayed within IDLE_Q16 at mix qmix (m_fx ends it).
+ * clr: FX_CLEAR_STEP chunks of an ended tail's line still to clear (fx_clear). */
+#define FX_RAMP 1024u
+#define FX_FULL (1u << 30)
+#define FX_FADE_STEP ((FX_FULL + 2u * ENG_SR - 1u) / (2u * ENG_SR))
+typedef struct { uint32_t fade, quiet; int32_t qmix; uint16_t gain; uint8_t tail, clr; } fx_run_t;
+typedef struct {
+    uint8_t kind, device, page, n, on;
+    uint8_t targets[ENG_FX_TARGETS_MAX];
+    fx_run_t run[ENG_FX_TARGETS_MAX];
+} fx_stage_t;
+static struct {
+    uint32_t count;
+    uint8_t target[ENG_MAX_MODULES];   /* 1 + stage * ENG_FX_TARGETS_MAX + target slot; 0: ordinary module */
+    fx_stage_t stage[ENG_FX_STAGE_COUNT];
+} fx;
 
 /* a node's morph B side: right after its parameters (eng_load gives it twice its type's npar when the patch has one) */
 #define PARB(nd) ((nd)->par + DEFS[(nd)->type].npar)
@@ -707,7 +732,7 @@ typedef struct {
 } harm_t;
 
 typedef struct {
-    uint8_t loaded, nmod, nsum, norder, nout, ngrp, ninst;   /* ngrp: the poly groups, E.grp[1..ngrp] */
+    uint8_t loaded, nmod, nsum, norder, nout, ngrp, ninst, format;   /* ngrp: the poly groups, E.grp[1..ngrp] */
     uint16_t nsrc;
     uint8_t order[ENG_MAX_MODULES], outputs[ENG_MAX_MODULES];
     uint8_t from_m[ENG_MAX_CABLES], from_p[ENG_MAX_CABLES], to_m[ENG_MAX_CABLES], to_p[ENG_MAX_CABLES];
@@ -1772,15 +1797,135 @@ uint32_t eng_origin_record(const uint8_t *p, uint32_t len, uint32_t module, uint
         if (p[at] == module && p[at + 1u] == pattern) return at;
     return 0;
 }
+const uint8_t *eng_skip_fx(const uint8_t *p, const uint8_t *end, uint16_t flags)
+{
+    eng_mset_t seen = mset_none();
+    uint32_t s, k, count, previous = 0;
+    if (!p || !end || p > end) return 0;
+    if (!(flags & ENG_FLAG_FX_BUS)) return p;
+    if (p == end || !(count = *p++) || count > ENG_FX_STAGE_COUNT) return 0;
+    for (s = 0; s < count; s++) {
+        uint32_t n, kind;
+        if ((uint32_t)(end - p) < 4u) return 0;
+        kind = p[0];
+        if (kind >= ENG_FX_STAGE_COUNT || (s && kind <= previous)) return 0;
+        previous = kind;
+        n = p[3];
+        p += 4u;
+        if (!n || n > ENG_FX_TARGETS_MAX || (uint32_t)(end - p) < n) return 0;
+        for (k = 0; k < n; k++) {
+            uint32_t m = p[k];
+            if (m >= ENG_MAX_MODULES || mset_has(seen, m)) return 0;
+            seen = mset_or(seen, mset_one(m));
+        }
+        p += n;
+    }
+    return p;
+}
+
+/* The record cannot point at a made-up page. Check the assembly device, every target
+ * appearing in its parameter rows (including tied extras), and the first such page. */
+static int fx_page_valid(const uint8_t *p, uint32_t len, uint32_t at, const uint8_t *rec)
+{
+    uint32_t d, g, r, ndev, first = 256u, found = 0, np = 0, pages = 0;
+    if (!at || at >= len || rec[1] >= 32u || rec[2] >= 32u || rec[1] >= (ndev = p[at++])) return 0;
+    for (d = 0; d < ndev; d++) {
+        uint32_t kind = p[at++];
+        if (kind == 0u || kind == ENG_DEV_NAMED) {
+            uint32_t m = p[at++];
+            if (m >= E.nmod) return 0;
+            pages += (DEFS[E.node[m].type].npar + 3u) / 4u;
+            if (kind == ENG_DEV_NAMED) at += 1u + p[at];
+            continue;
+        }
+        at += 1u + p[at];
+        np = p[at++];
+        if (d == rec[1] && (kind != 1u || rec[2] >= np || pages + rec[2] >= 160u)) return 0;
+        for (g = 0; g < np; g++) {
+            uint32_t nr;
+            at += 1u + p[at];
+            nr = p[at + 3u];
+            if (d == rec[1] && !nr) return 0;
+            if (nr) pages++;
+            at += 4u;
+            for (r = 0; r < nr; r++) {
+                uint32_t mod = p[at], par = p[at + 1u], k, more;
+                if (d == rec[1] && (mod >= E.nmod || (par & 0x80u) ||
+                    (par & ~ENG_ROW_MORE) >= DEFS[E.node[mod].type].npar)) return 0;
+                if (d == rec[1] && !(par & 0x80u))
+                    for (k = 0; k < rec[3]; k++) if (mod == rec[4u + k]) {
+                        if (first == 256u) first = g;
+                        found |= 1u << k;
+                    }
+                at += 2u;
+                at += 1u + p[at];
+                if (!(par & ENG_ROW_MORE)) continue;
+                if (par & 0x80u) { at++; continue; }
+                more = p[at++];
+                if (d == rec[1])
+                    for (uint32_t a = 0; a < more; a++) {
+                        uint32_t m = p[at + 2u * a], j = p[at + 2u * a + 1u];
+                        if (m >= E.nmod || j >= DEFS[E.node[m].type].npar) return 0;
+                        for (k = 0; k < rec[3]; k++) if (m == rec[4u + k]) {
+                            if (first == 256u) first = g;
+                            found |= 1u << k;
+                        }
+                    }
+                at += 2u * more;
+                more = p[at++];
+                while (more--) at += 1u + p[at];
+            }
+        }
+    }
+    return first == rec[2] && found == (1u << rec[3]) - 1u;
+}
+
+static int fx_load(const uint8_t *p, uint32_t len, uint32_t at, uint32_t devices)
+{
+    static const uint8_t types[ENG_FX_STAGE_COUNT] = { T_SHAPE, T_CHORUS, T_DELAY, T_REVERB };
+    if (at > len) return 0;
+    const uint8_t *q = p + at, *end = eng_skip_fx(q, p + len, (uint16_t)p[6] | (uint16_t)p[7] << 8);
+    uint32_t s, k, device, count;
+    if (!end) return 0;
+    if (!(p[7] & (ENG_FLAG_FX_BUS >> 8))) return (int)at;
+    count = *q++;
+    device = q[1];
+    for (s = 0; s < count; s++) {
+        fx_stage_t *st = &fx.stage[s];
+        if (q[1] != device || !fx_page_valid(p, len, devices, q)) return 0;
+        st->kind = q[0]; st->device = q[1]; st->page = q[2]; st->n = q[3]; st->on = 0;
+        for (k = 0; k < st->n; k++) {
+            uint32_t m = q[4u + k];
+            if (m >= E.nmod || E.node[m].type != types[st->kind] || E.node[m].grp || E.node[m].ninst != 1u) return 0;
+            st->targets[k] = (uint8_t)m;
+            st->on |= !E.node[m].bypass;
+        }
+        for (k = 0; k < st->n; k++) {
+            uint32_t m = st->targets[k];
+            fx.target[m] = (uint8_t)(1u + s * ENG_FX_TARGETS_MAX + k);
+            E.node[m].bypass = (uint8_t)!st->on;
+            st->run[k].gain = st->on ? FX_RAMP : 0u;
+            st->run[k].fade = FX_FULL;
+            st->run[k].tail = st->on;
+            st->run[k].quiet = 0;
+            st->run[k].clr = 0;   /* eng_load zeroed every line */
+        }
+        q += 4u + st->n;
+    }
+    fx.count = count;
+    return (int)(end - p);
+}
 
 int eng_load(const uint8_t *p, uint32_t len)
 {
-    uint32_t i, j, c, k, v, at, ncab, n0, nl;
+    uint32_t i, j, c, k, v, at, ncab, n0, nl, devices = 0;
     uint8_t st[ENG_MAX_MODULES], member[ENG_MAX_MODULES], held[ENG_MAX_MODULES];   /* held: the parameters each record holds */
     uint32_t line_sz[ENG_MAX_LINES], line_off[ENG_MAX_LINES];   /* the lines: their bytes and places (on the main loop's
                                                                  * stack, 1 KB: not the RAM region's, which the interrupts need) */
     uint8_t line_reg[ENG_MAX_LINES];
     E.loaded = 0;
+    fx.count = 0;
+    for (i = 0; i < ENG_MAX_MODULES; i++) fx.target[i] = 0;
     load_generation++;
     key_memory = 0;
     E.kev = E.kev_legacy; E.blk_thru = E.blk_legacy; E.rin = E.rin_legacy;
@@ -2304,6 +2449,7 @@ int eng_load(const uint8_t *p, uint32_t len)
     for (i = 0; i < E.ntrk; i++)                 /* every track plays the patch's pattern */
         E.trk_pat[i] = E.pat_sel;
     if (p[6] & 32u) {                            /* the device pages (the LCD's, proto.c / pages_ui.c): not the engine's */
+        devices = at;
         uint32_t end = eng_devices_end(p, len, at);
         if (!end)
             return -3;
@@ -2356,6 +2502,7 @@ int eng_load(const uint8_t *p, uint32_t len)
     }
     if ((p[7] & ENG_FLAG_ORIGINS) && !(at = eng_origins_end(p, len, at)))
         return -3;
+    if (!(at = (uint32_t)fx_load(p, len, at, devices))) return -3;
     if (p[6] & 2u) {                             /* the macro ranges: u8 count, then module / pin (bit 7 bipolar) / parameter / lo / hi each */
         uint32_t nr;
         if (at >= len)
@@ -2538,6 +2685,7 @@ int eng_load(const uint8_t *p, uint32_t len)
         if (E.node[E.order[i]].type == T_OUTPUT)
             E.outputs[E.nout++] = E.order[i];
     E.loaded = 1;
+    E.format = p[1];
     for (i = 0; i < E.nmod; i++)                 /* a track that plays a Drum map is never shifted by a song (engine.ts) */
         if (E.node[i].type == T_STEPS)
             E.trk_drum[E.node[i].trk] = (uint8_t)(eng_steps_drummap(i) >= 0);
@@ -2589,6 +2737,7 @@ int eng_tempo_row(uint32_t module, uint32_t param)
 
 int eng_parts(void) { return !E.loaded ? 0 : E.ngrp ? E.grp[1].parts : 1; }
 int eng_groups(void) { return E.loaded ? E.ngrp : 0; }
+uint32_t eng_format(void) { return E.loaded ? E.format : 0u; }
 
 static void mono_update(grp_t *g);
 
@@ -2656,8 +2805,38 @@ static void toggles_sync(void)
 
 static void arp_switched(uint32_t m);
 static void harm_switched(uint32_t m);
+uint32_t eng_fx_count(void) { return E.loaded ? fx.count : 0u; }
+uint32_t eng_fx_kind(uint32_t stage) { return stage < eng_fx_count() ? fx.stage[stage].kind : UINT32_MAX; }
+uint32_t eng_fx_device(uint32_t stage) { return stage < eng_fx_count() ? fx.stage[stage].device : UINT32_MAX; }
+uint32_t eng_fx_page(uint32_t stage) { return stage < eng_fx_count() ? fx.stage[stage].page : UINT32_MAX; }
+uint32_t eng_fx_targets(uint32_t stage, const uint8_t **targets)
+{
+    if (targets) *targets = stage < eng_fx_count() ? fx.stage[stage].targets : 0;
+    return stage < eng_fx_count() ? fx.stage[stage].n : 0u;
+}
+int eng_fx_on(uint32_t stage) { return stage < eng_fx_count() && fx.stage[stage].on; }
+void eng_fx_set(uint32_t stage, int on)
+{
+    uint32_t k;
+    fx_stage_t *st;
+    if (stage >= eng_fx_count()) return;
+    st = &fx.stage[stage];
+    st->on = (uint8_t)(on != 0);
+    for (k = 0; k < st->n; k++) {
+        E.node[st->targets[k]].bypass = (uint8_t)!st->on;
+        if (st->on) {
+            st->run[k].tail = 1;
+            st->run[k].quiet = 0;
+        }
+    }
+    toggles_sync();
+}
 void eng_set_bypass(uint32_t module, int on)
 {
+    if (module < E.nmod && fx.target[module]) {
+        eng_fx_set((fx.target[module] - 1u) / ENG_FX_TARGETS_MAX, !on);
+        return;
+    }
     if (module < E.nmod && E.node[module].type != T_FM1 && E.node[module].type != T_OUTPUT) {
         uint8_t was = E.node[module].bypass;
         E.node[module].bypass = (uint8_t)(on != 0);
@@ -4365,6 +4544,10 @@ void eng_buttons(uint32_t mask)
         if (E.btn_kind[b] == ENG_BTN_TOGGLE && ((was ^ panel_buttons) >> b & 1u))
             for (k = 0; k < E.btn_n[b]; k++) {
                 uint32_t m = E.btn_list[E.btn_first[b] + k];
+                if (fx.target[m]) {
+                    eng_fx_set((fx.target[m] - 1u) / ENG_FX_TARGETS_MAX, !(mask >> b & 1u));
+                    continue;
+                }
                 if (E.node[m].type != T_FM1 && E.node[m].type != T_OUTPUT) {
                     uint8_t was = E.node[m].bypass;
                     E.node[m].bypass = (uint8_t)(panel_buttons >> b & 1u);
@@ -5476,14 +5659,13 @@ static inline int32_t allpass16(int32_t *s, int32_t a, int32_t x)      /* y = a 
 static const int32_t STACK_OCT[5][3] = {{0}, {0, 65536}, {0, 38229}, {0, 65536, 103765}, {0, -65536}};
 static const uint8_t STACK_N[5] = {1, 2, 2, 3, 2};
 
-/* the oscillator's summed phase modulation (osc_pm), radians Q16, one block */
-static esig_t osc_pmc[2][ENG_BLOCK];    /* (one per lane, #271) */
 /* The oscillator's phase modulation as one signal and its index (#518, modules.ts oscPm): with only pm patched (or
  * nothing), that input and the pm index, as before; with pm2, pm3 or index patched, pm x in + pm2 x in2 + pm3 x in3 in
- * radians (osc_pmc), times the index input when it is patched, and index 1. *idx 0: no phase modulation. */
+ * radians, times the index input when it is patched, and index 1. *idx 0: no phase modulation.
+ * Reuse this lane's discarded-output buffer: no input reads it, and each FM frame consumes its sum before writing output. */
 HOT const esig_t *osc_pm(const node_t *nd, inst_t *it, uint32_t n, int32_t *idx)
 {
-    esig_t *pm_c = osc_pmc[IT_LANE(nd, it)];
+    esig_t *pm_c = IT_LANE(nd, it) ? dummy_out1 : dummy_out;
     const esig_t *pm = it->in[OSC_I_PM], *pm2 = it->in[OSC_I_PM2], *pm3 = it->in[OSC_I_PM3], *ix = it->in[OSC_I_INDEX];
     int32_t i1 = nd->conn & (1u << OSC_I_PM) ? EF(it, OSC_P_PM) : 0, i2, i3;
     uint32_t i;
@@ -5658,6 +5840,35 @@ static __attribute__((noinline)) void m_osc_ana(const node_t *nd, inst_t *it, ui
     y2 = it->s.osc.y2;
     pm1 = it->s.osc.pm1;
     xb = it->s.osc.xb;
+    /* No feedback or sync: choose the analog waveform once per block, retaining both FM sub-samples and decimator. */
+    if (fb == 0 && !(nd->conn & (1u << OSC_I_SYNC))) {
+#define ANA_FM(Y)                                                                       \
+        INC_LOOP(rpf, base) {                                                           \
+            uint32_t dt = dt_ >> 1, ph;                                                 \
+            int32_t pm_now = pm[i], pm_mid = (pm1 + pm_now) >> 1, p0, p1;               \
+            pm1 = pm_now;                                                              \
+            phase += dt;                                                               \
+            ph = phase + (uint32_t)(((int64_t)mul16(idx, pm_mid) * TURN_PER_RAD) >> 16); \
+            y2 = (Y);                                                                  \
+            phase += dt;                                                               \
+            ph = phase + (uint32_t)(((int64_t)mul16(idx, pm_now) * TURN_PER_RAD) >> 16); \
+            y1 = (Y);                                                                  \
+            p0 = allpass16(ap + 4, HB_A[2], allpass16(ap, HB_A[0], y2));                 \
+            p1 = allpass16(ap + 6, HB_A[3], allpass16(ap + 2, HB_A[1], xb));             \
+            xb = y1;                                                                   \
+            out[i] = mul16((p0 + p1) >> 1, lvl);                                        \
+        }
+        switch (kind) {
+        case 1: ANA_FM(ana_tri(ph, a)) break;
+        case 2: ANA_FM(ana_saw(ph, dt, a, frc)) break;
+        case 4: ANA_FM((ana_tri(ph, a) + ana_saw(ph, dt, a, frc)) >> 1) break;
+        case 5: ANA_FM(-ana_saw(ph, dt, a, frc)) break;
+        default: ANA_FM(wave_square(ph, dt, a.pw, frc)) break;
+        }
+#undef ANA_FM
+        s1 = n ? sync[n - 1] : s1;
+        n = 0;
+    }
     INC_LOOP(rpf, base) {                                                  /* m_osc's FM path, ana_wave for wave */
         uint32_t dt = dt_ >> 1, sub;
         int32_t pm_now = idx > 0 ? pm[i] : 0, pm_mid = (pm1 + pm_now) >> 1, ya = 0;
@@ -6194,6 +6405,31 @@ static void m_shape(const node_t *nd, inst_t *it, uint32_t n)
     int32_t sym = EF(it, SHAPE_P_SYM), stages = clampi(round_q16(EF(it, SHAPE_P_STAGES)), 1, 4);
     int os = EF(it, SHAPE_P_OS) >= 32768, *ap = it->s.shp.ap;
     uint32_t i;
+    /* Select the common native-rate transfers once per block; dormant oversampler state is untouched. */
+    if (!os && mode == 2 && stages == 2) {
+        for (i = 0; i < n; i++) {
+            int32_t x = mul16(in[i], drive);
+            int32_t y = shape_chain(x, 2, sym, 2);
+            out[i] = mul16(y, lvl);
+        }
+        return;
+    }
+    if (!os && mode == 2 && stages == 1) {
+        for (i = 0; i < n; i++) {
+            int32_t x = mul16(in[i], drive);
+            int32_t y = shape_curve(x + sym, 2);
+            out[i] = mul16(y, lvl);
+        }
+        return;
+    }
+    if (!os && mode == 0 && stages == 1) {
+        for (i = 0; i < n; i++) {
+            int32_t x = mul16(in[i], drive);
+            int32_t y = shape_curve(x + sym, 0);
+            out[i] = mul16(y, lvl);
+        }
+        return;
+    }
     for (i = 0; i < n; i++) {
         int32_t x = mul16(in[i], drive), y;
         if (os)
@@ -6386,12 +6622,22 @@ typedef struct {
     int32_t g, a1, a2, a3;
 } svf_coef_t;
 
+typedef struct { uint32_t key; int32_t seed; } svf_recip_t;
+
 /* the coefficients of one stage for the tan() warped cutoff g */
-static void svf_stage(svf_coef_t *c, int32_t g, int32_t k24)
+static void svf_stage(svf_coef_t *c, int32_t g, int32_t k24, svf_recip_t *cache)
 {
     int32_t den = (1 << 24) + mulq(g, g + k24, 24);
     c->g = g;
-    c->a1 = recip24(den);
+    if (cache) {
+        uint32_t key = (uint32_t)den >> 8;
+        if (cache->key != key) {
+            cache->key = key;
+            cache->seed = (int32_t)(0xFFFFFFFFu / key) << 8;
+        }
+        c->a1 = recip24_refine(den, cache->seed);
+    } else
+        c->a1 = recip24(den);
     c->a2 = mulq(g, c->a1, 24);
     c->a3 = mulq(g, c->a2, 24);
 }
@@ -6437,9 +6683,6 @@ HOT int32_t filter_drive_loss(int32_t a)
 HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv)
 {
     const esig_t *in = it->in[FILTER_I_IN], *cv = it->in[FILTER_I_CV], *mo = it->in[FILTER_I_MORPH];
-    esig_t *lp = it->out[FILTER_O_LP12], *bp = it->out[FILTER_O_BP], *hp = it->out[FILTER_O_HP];
-    esig_t *lp24 = it->out[FILTER_O_LP24], *mix = it->out[FILTER_O_MIX];
-    esig_t *notch = it->out[FILTER_O_NOTCH], *peak = it->out[FILTER_O_PEAK], *apo = it->out[FILTER_O_AP];
     int32_t res = EF(it, FILTER_P_RES);
     /* self-oscillation (osc on, res past FILTER_OSC_FROM; modules.ts): the damping falls below 0 near the top and grows
      * with the band-pass state squared (held to +-FILTER_OSC_CLIP), so stage 1 is solved per sample there */
@@ -6451,10 +6694,19 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv)
     int32_t morph = EF(it, FILTER_P_MORPH), tr = EF(it, FILTER_P_TRACK) >= 32768 ? IT_PV(nd, it)->pitch : 0;
     uint32_t base = hz_turns((uint32_t)EF(it, FILTER_P_CUTOFF)), i;
     svf_coef_t c, d;
-    int fixed = !(nd->conn & (1u << FILTER_I_CV));
+    svf_recip_t reciprocal = {0, 0};   /* block-local: no lane sharing; only the seed division can be reused */
+    int fixed = !cvamt || !(nd->conn & (1u << FILTER_I_CV));   /* zero depth: changing CV cannot move the coefficients */
     int msig = nd->conn & (1u << FILTER_I_MORPH);
-    int ext = !IS_DUMMY(notch) || !IS_DUMMY(peak) || !IS_DUMMY(apo) || !IS_DUMMY(it->out[FILTER_O_HP6]);   /* the notch / peak / allpass / hp6 outputs are in use */
-    int st2 = !IS_DUMMY(lp24) || !IS_DUMMY(mix);     /* the second stage only feeds lp24 and mix: skipped when neither is */
+    int ext = !IS_DUMMY(it->out[FILTER_O_NOTCH]) || !IS_DUMMY(it->out[FILTER_O_PEAK]) ||
+              !IS_DUMMY(it->out[FILTER_O_AP]) || !IS_DUMMY(it->out[FILTER_O_HP6]);
+    int st2 = !IS_DUMMY(it->out[FILTER_O_LP24]) || !IS_DUMMY(it->out[FILTER_O_MIX]);
+    uint32_t used = 0;
+    for (i = 0; i < FILTER_NOUT; i++)
+        if (!IS_DUMMY(it->out[i]))
+            used |= 1u << i;
+    int lp_only = used == (1u << FILTER_O_LP12);
+    int hp6_only = used == (1u << FILTER_O_HP6);
+    esig_t *single = lp_only ? it->out[FILTER_O_LP12] : it->out[FILTER_O_HP6];
     int32_t lcv = 0;
     if (tr)
         base = exp2_scale(base, tr);
@@ -6463,8 +6715,35 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv)
     if (fixed) {
         int32_t g = svf_g(base);
         gc = g;
-        svf_stage(&c, g, k24);
-        svf_stage(&d, g, SQRT2_24);
+        if (!osc && !drv)
+            svf_stage(&c, g, k24, 0);
+        if (st2)
+            svf_stage(&d, g, SQRT2_24, 0);
+    }
+    /* Fixed linear MIX-only routing needs both stages, but no dummy-port stores or per-sample routing checks. */
+    if (!osc && !drv && fixed && !msig && used == (1u << FILTER_O_MIX)) {
+        esig_t *out = it->out[FILTER_O_MIX];
+        const int32_t m = clampi(morph, 0, 65536);
+        for (i = 0; i < n; i++) {
+            int32_t v0 = in[i] << 4, v3 = v0 - ic2;
+            int32_t v1 = mulr(c.a1, ic1, 24) + mulr(c.a2, v3, 24);
+            int32_t v2 = ic2 + mulr(c.a2, ic1, 24) + mulr(c.a3, v3, 24);
+            int32_t h, w3, w1, w2;
+            ic1 = clampi(2 * v1 - ic1, -(1 << 30), 1 << 30);
+            ic2 = clampi(2 * v2 - ic2, -(1 << 30), 1 << 30);
+            h = v0 - mulr(v1, k24, 24) - v2;
+            w3 = v2 - jc2;
+            w1 = mulr(d.a1, jc1, 24) + mulr(d.a2, w3, 24);
+            w2 = jc2 + mulr(d.a2, jc1, 24) + mulr(d.a3, w3, 24);
+            jc1 = clampi(2 * w1 - jc1, -(1 << 30), 1 << 30);
+            jc2 = clampi(2 * w2 - jc2, -(1 << 30), 1 << 30);
+            out[i] = (w2 + mul16(h - w2, m) + 8) >> 4;
+        }
+        it->s.flt.ic1 = ic1;
+        it->s.flt.ic2 = ic2;
+        it->s.flt.jc1 = jc1;
+        it->s.flt.jc2 = jc2;
+        return;
     }
     for (i = 0; i < n; i++) {
         int32_t v0 = in[i] << 4, v3, v1, v2, w3, w1, w2, h, m, kv1;          /* Q20 */
@@ -6474,9 +6753,9 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv)
             g = svf_g(exp2_scale(base, mul16(lcv, cvamt)));
             gc = g;
             if (!osc && !drv)                        /* (with osc or drive stage 1 is solved again below, every sample) */
-                svf_stage(&c, g, k24);
+                svf_stage(&c, g, k24, 0);
             if (st2)
-                svf_stage(&d, g, SQRT2_24);
+                svf_stage(&d, g, SQRT2_24, 0);
         }
         if (osc) {                                   /* the damping k + gam b^2 */
             int32_t b = clampi(ic1, -FILTER_OSC_CLIP_Q20, FILTER_OSC_CLIP_Q20);
@@ -6487,17 +6766,27 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv)
             ke = (osc ? ke : k24) + mulr(r24, filter_drive_loss(a > FILTER_DRIVE_TOP_Q20 ? FILTER_DRIVE_TOP_Q20 : (int32_t)a), 24);
         }
         if (osc || drv)
-            svf_stage(&c, gc, ke);
+            svf_stage(&c, gc, ke, &reciprocal);
         v3 = v0 - ic2;
         v1 = mulr(c.a1, ic1, 24) + mulr(c.a2, v3, 24);
         v2 = ic2 + mulr(c.a2, ic1, 24) + mulr(c.a3, v3, 24);
         ic1 = clampi(2 * v1 - ic1, -(1 << 30), 1 << 30);
         ic2 = clampi(2 * v2 - ic2, -(1 << 30), 1 << 30);
-        kv1 = mulr(v1, osc || drv ? ke : k24, 24);
-        h = v0 - kv1 - v2;
-        lp[i] = (v2 + 8) >> 4;
-        bp[i] = (v1 + 8) >> 4;
-        hp[i] = (h + 8) >> 4;
+        kv1 = h = 0;
+        if (!lp_only) {
+            kv1 = mulr(v1, osc || drv ? ke : k24, 24);
+            h = v0 - kv1 - v2;
+        }
+        /* One connected LP12 or HP6 output needs no stores to the unused ports. */
+        if (lp_only)
+            single[i] = (v2 + 8) >> 4;
+        else if (hp6_only)
+            single[i] = (h + 2 * v1 + 8) >> 4;
+        else {
+            it->out[FILTER_O_LP12][i] = (v2 + 8) >> 4;
+            it->out[FILTER_O_BP][i] = (v1 + 8) >> 4;
+            it->out[FILTER_O_HP][i] = (h + 8) >> 4;
+        }
         if (st2) {
             w3 = v2 - jc2;
             w1 = mulr(d.a1, jc1, 24) + mulr(d.a2, w3, 24);
@@ -6505,15 +6794,14 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv)
             jc1 = clampi(2 * w1 - jc1, -(1 << 30), 1 << 30);
             jc2 = clampi(2 * w2 - jc2, -(1 << 30), 1 << 30);
             m = clampi(msig ? morph + mo[i] : morph, 0, 65536);
-            lp24[i] = (w2 + 8) >> 4;
-            mix[i] = (w2 + mul16(h - w2, m) + 8) >> 4;
+            it->out[FILTER_O_LP24][i] = (w2 + 8) >> 4;
+            it->out[FILTER_O_MIX][i] = (w2 + mul16(h - w2, m) + 8) >> 4;
         }
-        if (ext) {                                                        /* from the same states: notch = in - k bp, peak = lp12 - hp, allpass = in - 2 k bp, hp6 */
-            notch[i] = (v0 - kv1 + 8) >> 4;
-            peak[i] = (v2 - h + 8) >> 4;
-            apo[i] = (v0 - 2 * kv1 + 8) >> 4;
-            /* hp + 2 bp: the MS-20 filter's 6 dB high pass (modules.ts). Read through it->out here, not a local: a ninth
-             * live pointer made every filter dearer (npm run cpu-costs: filter run 29567 -> 31116 cycles; this way 25987) */
+        if (ext && !hp6_only) {                      /* notch = in - k bp, peak = lp12 - hp, allpass = in - 2 k bp, hp6 */
+            it->out[FILTER_O_NOTCH][i] = (v0 - kv1 + 8) >> 4;
+            it->out[FILTER_O_PEAK][i] = (v2 - h + 8) >> 4;
+            it->out[FILTER_O_AP][i] = (v0 - 2 * kv1 + 8) >> 4;
+            /* hp + 2 bp: the MS-20 filter's 6 dB high pass (modules.ts). */
             it->out[FILTER_O_HP6][i] = (h + 2 * v1 + 8) >> 4;
         }
     }
@@ -6693,7 +6981,7 @@ static void diode_run(const node_t *nd, inst_t *it, uint32_t n, int audio)
 static void m_ladder(const node_t *nd, inst_t *it, uint32_t n)
 {
     /* Constant arguments remove all audio-rate checks (and the stages' saturators) from the ordinary filter loop. */
-    int audio = (nd->conn & (1u << LADDER_I_FM)) != 0;
+    int audio = EF(it, LADDER_P_CVAMT) != 0 && (nd->conn & (1u << LADDER_I_FM)) != 0;
     if (EF(it, LADDER_P_DIODE) >= 32768)
         diode_run(nd, it, n, audio);
     else if (EF(it, LADDER_P_STSAT) >= 32768) {
@@ -7813,26 +8101,150 @@ static const uint32_t RV_MOD_INC[2] = {48696u, 80836u};   /* 0.5 and 0.83 Hz in 
 #define RV_LOG2_T0 (-152169)         /* log2(0.2) Q16 */
 #define RV_DB60 653118               /* 3 / log10(2) = 9.966 Q16: the octaves of gain lost per T */
 
+/* A slow sine stays in one table interval for many samples. Cache its endpoints, retaining sin_turn's exact interpolation. */
+typedef struct { uint32_t index; int32_t first, delta; } slow_sine_t;
+HOT int32_t slow_sine(uint32_t ph, slow_sine_t *c)
+{
+    uint32_t index = ph >> 22, fr = (ph >> 6) & 0xFFFFu;
+    if (index != c->index) {
+        c->index = index;
+        c->first = SIN_T[index];
+        c->delta = SIN_T[index + 1u] - c->first;
+    }
+    return (c->first + (int32_t)(((int64_t)c->delta * fr) >> 16)) >> 14;
+}
+
+/* Inline only the sample loop: the fully wet master bus folds away both final mix products, with one block dispatch.
+ * Keep setup / gain-cache writes in m_reverb and preserve sample-order stores for aliased input and output. */
+HOT void reverb_samples(inst_t *it, uint32_t n, const esig_t *in, esig_t *out, int16_t *const line[8],
+                        int16_t *const ap[2], int16_t *pre, const int32_t g[8],
+                        int32_t d, int32_t depth, uint32_t dpre, int32_t gin, int32_t mix)
+{
+    uint32_t i, k;
+    int32_t t[8], dry = ENG_ONE - mix;
+    /* the indices and states in locals (the int16 line writes could alias them in it->s), the lines written out */
+    uint32_t li[8], ai0 = it->s.rev.ai[0], ai1 = it->s.rev.ai[1], pi = it->s.rev.pi, ph0 = it->s.rev.ph[0], ph1 = it->s.rev.ph[1];
+    int32_t lp[8], od = ENG_ONE - d;
+    slow_sine_t sine[2] = {{UINT32_MAX, 0, 0}, {UINT32_MAX, 0, 0}};
+    for (k = 0; k < 8u; k++) {
+        li[k] = it->s.rev.li[k];
+        lp[k] = it->s.rev.lp[k];
+    }
+    for (i = 0; i < n; i++) {
+        int32_t x = in[i], u = x, wet = 0, sum = 0, bo, y, o;
+        if (dpre) {
+            uint32_t rp = pi + RV_PRE - dpre;
+            if (rp >= RV_PRE)
+                rp -= RV_PRE;
+            u = (int32_t)pre[rp] * 8;
+        }
+        pre[pi] = dly_pack(x);
+        if (++pi == RV_PRE)
+            pi = 0;
+        bo = (int32_t)ap[0][ai0] * 8;                                   /* input diffusion */
+        y = bo - u;
+        ap[0][ai0] = dly_pack(u + (bo >> 1));
+        if (++ai0 == 223u)
+            ai0 = 0;
+        u = y;
+        bo = (int32_t)ap[1][ai1] * 8;
+        y = bo - u;
+        ap[1][ai1] = dly_pack(u + (bo >> 1));
+        if (++ai1 == 347u)
+            ai1 = 0;
+        u = y;
+        u = mulr(u, gin, 16);
+        /* Q13 taps times od plus rounding fit int32: -32768*65536+4096 .. 32767*65536+4096. */
+#define RV_DAMP(k, sample)                                                              \
+        wet += o;                                                                   \
+        lp[k] = (sample) + mulr(lp[k], d, 16);                                      \
+        t[k] = mulr(lp[k], g[k], 16);                                               \
+        sum += t[k];
+#define RV_MODTAP(k, ph)                                                                \
+        {                                                                          \
+            const uint32_t L = RV_LINE[k], w = li[k];                               \
+            int32_t sn = slow_sine(ph, &sine[k]);                                   \
+            int32_t dl = (int32_t)((L - 2u) << 16) - mulq(depth, 32768 + (sn >> 1), 16);   /* the delay, samples Q16 */ \
+            uint32_t di = (uint32_t)dl >> 16, fr = (uint32_t)dl & 0xFFFFu, ra = w + L - di, rb;   \
+            int32_t a, b;                                                           \
+            if (ra >= L)                                                            \
+                ra -= L;                                                            \
+            rb = ra ? ra - 1u : L - 1u;                                             \
+            a = (int32_t)line[k][ra] * 8;                                           \
+            b = (int32_t)line[k][rb] * 8;                                           \
+            o = a + (int32_t)(((int64_t)(b - a) * fr) >> 16);                       \
+        }                                                                          \
+        RV_DAMP(k, mulr(o, od, 16))
+#define RV_TAP(k)                                                                       \
+        o = (int32_t)line[k][li[k]] * 8;                                            \
+        RV_DAMP(k, (((o >> 3) * od + 4096) >> 13))
+        if (depth > 0) {
+            RV_MODTAP(0, ph0)
+            RV_MODTAP(1, ph1)
+        } else {
+            /* The same Q13 bound as the six fixed taps applies when modulation is off. */
+            RV_TAP(0) RV_TAP(1)
+        }
+        RV_TAP(2) RV_TAP(3) RV_TAP(4) RV_TAP(5) RV_TAP(6) RV_TAP(7)
+#undef RV_TAP
+#undef RV_MODTAP
+#undef RV_DAMP
+        sum >>= 2;
+        /* Constant indices, as in the taps above: keep line lengths and feedback values visible to the compiler. */
+#define RV_WRITE(k)                                                                     \
+        {                                                                          \
+            uint32_t w = li[k];                                                     \
+            line[k][w] = dly_pack(u + t[k] - sum);                                   \
+            if (++w == RV_LINE[k])                                                  \
+                w = 0;                                                             \
+            li[k] = w;                                                             \
+        }
+        RV_WRITE(0) RV_WRITE(1) RV_WRITE(2) RV_WRITE(3)
+        RV_WRITE(4) RV_WRITE(5) RV_WRITE(6) RV_WRITE(7)
+#undef RV_WRITE
+        ph0 += RV_MOD_INC[0];
+        ph1 += RV_MOD_INC[1];
+        out[i] = mulr(x, dry, 16) + mulr(mulr(wet, RV_GOUT, 16), mix, 16);
+    }
+    for (k = 0; k < 8u; k++) {
+        it->s.rev.li[k] = (uint16_t)li[k];
+        it->s.rev.lp[k] = lp[k];
+    }
+    it->s.rev.ai[0] = (uint16_t)ai0;
+    it->s.rev.ai[1] = (uint16_t)ai1;
+    it->s.rev.pi = (uint16_t)pi;
+    it->s.rev.ph[0] = ph0;
+    it->s.rev.ph[1] = ph1;
+}
+
 static void m_reverb(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *in = it->in[REVERB_I_IN];
     esig_t *out = it->out[0];
     int16_t *base = it->s.rev.buf, *line[8], *ap[2], *pre;
-    int32_t d = mul16(EF(it, REVERB_P_DAMP), 52429), mix = EF(it, REVERB_P_MIX), dry = ENG_ONE - mix;   /* damp x 0.8 */
-    int32_t depth = mul16(EF(it, REVERB_P_MOD), RV_MOD), g[8], t[8];
-    int32_t tq = (int32_t)exp2_q16(mul16(EF(it, REVERB_P_SIZE), 5 << 16) + RV_LOG2_T0 + (16 << 16));   /* T, seconds Q16 */
-    uint32_t dpre = (uint32_t)((mulq(EF(it, REVERB_P_PRE), ENG_SR, 16) + 500) / 1000), i, k, off = 0;
+    int32_t d = mul16(EF(it, REVERB_P_DAMP), 52429), mix = EF(it, REVERB_P_MIX);   /* damp x 0.8 */
+    int32_t depth = mul16(EF(it, REVERB_P_MOD), RV_MOD), size = EF(it, REVERB_P_SIZE), g[8];
+    uint32_t dpre = (uint32_t)((mulq(EF(it, REVERB_P_PRE), ENG_SR, 16) + 500) / 1000), k, off = 0;
     int frz = EF(it, REVERB_P_FREEZE) >= 32768;   /* freeze: every gain 1, no damping, nothing new into the lines */
     int32_t gin = frz ? 0 : RV_GIN;
     if (frz)
         d = 0;
-    if (tq < 1)
-        tq = 1;
+    if (!it->s.rev.gains_ok || it->s.rev.size != size || it->s.rev.frozen != frz) {
+        int32_t tq = (int32_t)exp2_q16(mul16(size, 5 << 16) + RV_LOG2_T0 + (16 << 16));
+        if (tq < 1)
+            tq = 1;
+        for (k = 0; k < 8u; k++) {
+            int64_t e = -(((int64_t)RV_LINE[k] * RV_DB60) << 16) / ((int64_t)tq * ENG_SR);
+            it->s.rev.gain[k] = frz ? ENG_ONE : (int32_t)exp2_q16((int32_t)(e < -(16 << 16) ? -(16 << 16) : e) + (16 << 16));
+        }
+        it->s.rev.size = size;
+        it->s.rev.frozen = (uint8_t)frz;
+        it->s.rev.gains_ok = 1;
+    }
     if (dpre > RV_PRE - 1u)
         dpre = RV_PRE - 1u;
     for (k = 0; k < 8u; k++) {
-        int64_t e = -(((int64_t)RV_LINE[k] * RV_DB60) << 16) / ((int64_t)tq * ENG_SR);
-        g[k] = frz ? ENG_ONE : (int32_t)exp2_q16((int32_t)(e < -(16 << 16) ? -(16 << 16) : e) + (16 << 16));
+        g[k] = it->s.rev.gain[k];
         line[k] = base + off;
         off += RV_LINE[k];
     }
@@ -7841,90 +8253,10 @@ static void m_reverb(const node_t *nd, inst_t *it, uint32_t n)
         off += RV_DIFF[k];
     }
     pre = base + off;
-    {
-        /* the indices and states in locals (the int16 line writes could alias them in it->s), the lines written out */
-        uint32_t li[8], ai0 = it->s.rev.ai[0], ai1 = it->s.rev.ai[1], pi = it->s.rev.pi, ph0 = it->s.rev.ph[0], ph1 = it->s.rev.ph[1];
-        int32_t lp[8], od = ENG_ONE - d;
-        for (k = 0; k < 8u; k++) {
-            li[k] = it->s.rev.li[k];
-            lp[k] = it->s.rev.lp[k];
-        }
-        for (i = 0; i < n; i++) {
-            int32_t x = in[i], u = x, wet = 0, sum = 0, bo, y, o;
-            if (dpre) {
-                uint32_t rp = pi + RV_PRE - dpre;
-                if (rp >= RV_PRE)
-                    rp -= RV_PRE;
-                u = (int32_t)pre[rp] * 8;
-            }
-            pre[pi] = dly_pack(x);
-            if (++pi == RV_PRE)
-                pi = 0;
-            bo = (int32_t)ap[0][ai0] * 8;                                   /* input diffusion */
-            y = bo - u;
-            ap[0][ai0] = dly_pack(u + (bo >> 1));
-            if (++ai0 == 223u)
-                ai0 = 0;
-            u = y;
-            bo = (int32_t)ap[1][ai1] * 8;
-            y = bo - u;
-            ap[1][ai1] = dly_pack(u + (bo >> 1));
-            if (++ai1 == 347u)
-                ai1 = 0;
-            u = y;
-            u = mulr(u, gin, 16);
-#define RV_DAMP(k)                                                                      \
-            wet += o;                                                                   \
-            lp[k] = mulr(o, od, 16) + mulr(lp[k], d, 16);                               \
-            t[k] = mulr(lp[k], g[k], 16);                                               \
-            sum += t[k];
-#define RV_MODTAP(k, ph)                                                                \
-            if (depth > 0) {                                                            \
-                const uint32_t L = RV_LINE[k], w = li[k];                               \
-                int32_t sn = sin_turn(ph);                                              \
-                int32_t dl = (int32_t)((L - 2u) << 16) - mulq(depth, 32768 + (sn >> 1), 16);   /* the delay, samples Q16 */ \
-                uint32_t di = (uint32_t)dl >> 16, fr = (uint32_t)dl & 0xFFFFu, ra = w + L - di, rb;   \
-                int32_t a, b;                                                           \
-                if (ra >= L)                                                            \
-                    ra -= L;                                                            \
-                rb = ra ? ra - 1u : L - 1u;                                             \
-                a = (int32_t)line[k][ra] * 8;                                           \
-                b = (int32_t)line[k][rb] * 8;                                           \
-                o = a + (int32_t)(((int64_t)(b - a) * fr) >> 16);                       \
-            } else                                                                      \
-                o = (int32_t)line[k][li[k]] * 8;                                        \
-            RV_DAMP(k)
-#define RV_TAP(k)                                                                       \
-            o = (int32_t)line[k][li[k]] * 8;                                            \
-            RV_DAMP(k)
-            RV_MODTAP(0, ph0)
-            RV_MODTAP(1, ph1)
-            RV_TAP(2) RV_TAP(3) RV_TAP(4) RV_TAP(5) RV_TAP(6) RV_TAP(7)
-#undef RV_TAP
-#undef RV_MODTAP
-#undef RV_DAMP
-            sum >>= 2;
-            for (k = 0; k < 8u; k++) {                                      /* Householder feedback, write */
-                uint32_t w = li[k];
-                line[k][w] = dly_pack(u + t[k] - sum);
-                if (++w == RV_LINE[k])
-                    w = 0;
-                li[k] = w;
-            }
-            ph0 += RV_MOD_INC[0];
-            ph1 += RV_MOD_INC[1];
-            out[i] = mulr(x, dry, 16) + mulr(mulr(wet, RV_GOUT, 16), mix, 16);
-        }
-        for (k = 0; k < 8u; k++) {
-            it->s.rev.li[k] = (uint16_t)li[k];
-            it->s.rev.lp[k] = lp[k];
-        }
-        it->s.rev.ai[0] = (uint16_t)ai0;
-        it->s.rev.ai[1] = (uint16_t)ai1;
-        it->s.rev.pi = (uint16_t)pi;
-        it->s.rev.ph[0] = ph0;
-        it->s.rev.ph[1] = ph1;
-    }
+    if (mix == ENG_ONE)
+        reverb_samples(it, n, in, out, line, ap, pre, g, d, depth, dpre, gin, ENG_ONE);
+    else
+        reverb_samples(it, n, in, out, line, ap, pre, g, d, depth, dpre, gin, mix);
 }
 
 /* The level / rate envelope (modules.ts env): three segments to l1 l2 l3 in r1 r2 r3 on the gate, hold l3, release to l4
@@ -8420,7 +8752,7 @@ static void m_pd(const node_t *nd, inst_t *it, uint32_t n)
     int32_t base = EF(it, PD_P_COARSE) / 12 + EF(it, PD_P_FINE) / 1200, lvl = EF(it, PD_P_LEVEL);
     int32_t w1 = clampi(round_q16(EF(it, PD_P_WAVE)), 0, 7), w2 = clampi(round_q16(EF(it, PD_P_WAVE2)), 0, 8);
     int32_t alt = w2 > 0, d0 = EF(it, PD_P_DCW), range = clampi(EF(it, PD_P_RANGE), 0, 5 * ENG_ONE);
-    int32_t idx = nd->conn & (1u << PD_I_PM) ? EF(it, PD_P_PM) : 0, s1 = it->s.pd.s1, room, oct, cap[2], k, m0, dm;
+    int32_t idx = nd->conn & (1u << PD_I_PM) ? EF(it, PD_P_PM) : 0, s1 = it->s.pd.s1, room, oct, cap[2], k, m0 = 0, dm = 0;
     int32_t has_sync = (nd->conn >> PD_I_SYNC) & 1u, w = 0, c = 0;
     uint32_t phase = it->s.pd.phase, r = it->s.pd.r, odd = it->s.pd.odd, dt = 0, inc0, i;
     const int32_t *ts = PD_T[0], *ss = PD_S[0];
@@ -8435,7 +8767,7 @@ static void m_pd(const node_t *nd, inst_t *it, uint32_t n)
         w = k ? w2 : w1;
         cap[k] = w < PD_RESO ? clampi((room - ENG_ONE) / PD_STEEP[w], 0, ENG_ONE) : 0;   /* (a resonance: the ratio below) */
     }
-    {   /* the resonance's ratio 2^(dcw x range), Q16: at the block's first and last sample, a straight line between */
+    if (w1 >= PD_RESO || w2 >= PD_RESO) {   /* resonance ratio endpoints are unused by two bend waves */
         int32_t lim = oct > 0 ? oct : 0, x0 = mul16(clampi(d0 + dcw[0], 0, ENG_ONE), range), x1 = n ? mul16(clampi(d0 + dcw[n - 1], 0, ENG_ONE), range) : x0;
         m0 = (int32_t)exp2_q16((x0 < lim ? x0 : lim) + (16 << 16));
         dm = n ? ((int32_t)exp2_q16((x1 < lim ? x1 : lim) + (16 << 16)) - m0) / (int32_t)n : 0;
@@ -8466,6 +8798,20 @@ static void m_pd(const node_t *nd, inst_t *it, uint32_t n)
         }                                                                               \
     } while (0)
     PD_PICK();
+    if (alt && !has_sync && !idx && w1 < PD_RESO && w2 < PD_RESO) {
+        INC_LOOP(rp, base) {
+            uint32_t old = phase;
+            int32_t d;
+            phase += dt_;
+            if (phase < old) {
+                odd ^= 1u;
+                PD_PICK();
+            }
+            d = clampi(d0 + dcw[i], 0, c);
+            out[i] = mul16(sin_turn(pd_bent(ts, ss, phase, d)), lvl);
+        }
+        n = 0;
+    }
     INC_LOOP(rp, base) {
         uint32_t old, pmo = 0, fresh = 0;   /* fresh: a new cycle (or a sync): the resonance sine restarts */
         int32_t d, y;
@@ -8521,19 +8867,28 @@ static void m_chorus(const node_t *nd, inst_t *it, uint32_t n)
     uint32_t w = it->s.ch.w, phase = it->s.ch.phase, i;
     uint32_t dphi = hz_turns((uint32_t)EF(it, CHORUS_P_RATE));
     int32_t swing = mul16((int32_t)CH_SWING_Q16, EF(it, CHORUS_P_DEPTH)), mix = EF(it, CHORUS_P_MIX), dry = ENG_ONE - mix;
+    slow_sine_t sine[2] = {{UINT32_MAX, 0, 0}, {UINT32_MAX, 0, 0}};
     for (i = 0; i < n; i++) {
-        int32_t x = in[i], tap[2], k;
-        uint32_t dd[2];
+        int32_t x = in[i], left, right, direct;
         buf[w] = dly_pack(x);
-        dd[0] = CH_BASE_Q16 + (uint32_t)mul16(swing, sin_turn(phase));
-        dd[1] = CH_BASE_Q16 + (uint32_t)mul16(swing, sin_turn(phase + 0x40000000u));
-        for (k = 0; k < 2; k++) {
-            uint32_t di = dd[k] >> 16, p0 = w >= di ? w - di : w + CH_LEN - di, p1 = p0 ? p0 - 1u : CH_LEN - 1u;
-            int32_t a = (int32_t)buf[p0] * 8, b = (int32_t)buf[p1] * 8;
-            tap[k] = a + mulr(b - a, (int32_t)(dd[k] & 0xFFFFu), 16);
+#define CH_TAP(result, k, ph) do {                                                        \
+            uint32_t dd = CH_BASE_Q16 + (uint32_t)mul16(swing, slow_sine(ph, &sine[k]));    \
+            uint32_t di = dd >> 16, p0 = w >= di ? w - di : w + CH_LEN - di;                \
+            uint32_t p1 = p0 ? p0 - 1u : CH_LEN - 1u;                                      \
+            int32_t a = (int32_t)buf[p0] * 8, b = (int32_t)buf[p1] * 8;                     \
+            result = a + mulr(b - a, (int32_t)(dd & 0xFFFFu), 16);                          \
+        } while (0)
+        CH_TAP(left, 0, phase);
+        CH_TAP(right, 1, phase + 0x40000000u);
+#undef CH_TAP
+        if (mix == ENG_ONE) {
+            l[i] = left;
+            r[i] = right;
+        } else {
+            direct = mul16(x, dry);
+            l[i] = direct + mul16(left, mix);
+            r[i] = direct + mul16(right, mix);
         }
-        l[i] = mul16(x, dry) + mul16(tap[0], mix);
-        r[i] = mul16(x, dry) + mul16(tap[1], mix);
         if (++w == CH_LEN)
             w = 0;
         phase += dphi;
@@ -8624,6 +8979,16 @@ static int steps_sounding(uint32_t t)
     uint32_t j;
     for (j = 0; j < E.trk_nsnd[t]; j++)
         if (E.trk_snd[t][j].cnt > 0)
+            return 1;
+    return 0;
+}
+
+/* Thru notes are held until their key-up, never decremented by the per-sample gate timer. */
+static int steps_countdown(uint32_t t)
+{
+    uint32_t j;
+    for (j = 0; j < E.trk_nsnd[t]; j++)
+        if (E.trk_snd[t][j].cnt > 0 && !E.trk_snd[t][j].thru)
             return 1;
     return 0;
 }
@@ -8861,6 +9226,7 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
     int32_t len, dir = clampi(round_q16(EF(it, STEPS_P_DIR)), 0, 3), ht, step;
     int32_t swing = EF(it, STEPS_P_SWING) - 50 * ENG_ONE, gate = EF(it, STEPS_P_GATE);
     int ext = (nd->conn >> STEPS_I_CLK) & 1u;
+    int timed;
     uint32_t i;
     if (E.trk_q[t] != 0xFFu && !E.running) {     /* stopped: a chosen pattern plays at once */
         E.trk_pat[t] = E.trk_q[t];
@@ -8871,6 +9237,26 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
     step = (ht * E.tick_len) >> 1;               /* a step's samples */
     if (E.nthru || E.thru_kill)
         steps_thru(nd, it, len, ext, tr[0]);
+    timed = steps_countdown(t);
+    /* Stopped, internally clocked, nothing sounding, no hit, no swung step pending, no reset cable: no sample of the loop
+     * below can step, fire or end a note (no tick falls: E.tick_off is -1 while stopped), so it would only count sst, keep
+     * r1 at 0, clear gap and write constant outputs. The same in one pass, bit-identical (an idle track cost Canvas ~145 us
+     * a block on the FM-1 in its per-sample loop) */
+    if (n && !ext && !E.running && (E.tick_off < 0 || (uint32_t)E.tick_off >= n) && !it->s.stp.hit && it->s.stp.pend <= 0 &&
+        !E.trk_nsnd[t] && reset == zero_buf) {
+        it->s.stp.r1 = 0;
+        it->s.stp.sst = (int32_t)((uint32_t)it->s.stp.sst + n);
+        it->s.stp.gap = 0;
+        fill(trig, 0, n);
+        fill(keys, 0, n);
+        fill(vel, it->s.stp.vel, n);
+        if (tr == zero_buf)
+            fill(pitch, it->s.stp.pitch, n);
+        else if (!IS_DUMMY(pitch))
+            for (i = 0; i < n; i++)
+                pitch[i] = it->s.stp.pitch + tr[i];
+        goto stopped;
+    }
     for (i = 0; i < n; i++) {
         int32_t adv = 0, sl;
         if (reset[i] >= 32768 && it->s.stp.r1 < 32768)
@@ -8919,10 +9305,13 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
             steps_start(t, node, (uint32_t)clampi((int32_t)E.trk_last[t] + (int32_t)(((int64_t)tr[i] * 12 + 32768) >> 16), 0, 127), it->s.stp.hit == 2u ? ACCENT_VEL : STEP_VEL, 0, steps_hold(0, gate, sl));
             it->s.stp.gap = (uint8_t)was;
             it->s.stp.hit = 0;
+            timed = 1;
         }
         it->s.stp.sst++;
-        if (it->s.stp.pend > 0 && --it->s.stp.pend == 0 && (dir == 0 || it->s.stp.pstep < len))
+        if (it->s.stp.pend > 0 && --it->s.stp.pend == 0 && (dir == 0 || it->s.stp.pstep < len)) {
             steps_fire(nd, it, it->s.stp.pstep, len, gate, sl, tr[i], (int32_t)i);
+            timed |= steps_countdown(t);
+        }
         for (; adv > 0; adv--) {
             int32_t sw, d = 0;
             step_visit_t next = steps_next(it, len, dir);
@@ -8958,8 +9347,10 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
             if (d > 0) {
                 it->s.stp.pend = d;
                 it->s.stp.pstep = it->s.stp.pos;
-            } else
+            } else {
                 steps_fire(nd, it, it->s.stp.pos, len, gate, sl, tr[i], (int32_t)i);
+                timed |= steps_countdown(t);
+            }
         }
         {
             int up = E.trk_nsnd[t] && !it->s.stp.gap && steps_sounding(t);
@@ -8968,7 +9359,7 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
             vel[i] = it->s.stp.vel;
             if (it->s.stp.gap)
                 it->s.stp.gap = 0;
-            else if (E.trk_nsnd[t]) {
+            else if (timed && E.trk_nsnd[t]) {
                 int32_t j;
                 for (j = (int32_t)E.trk_nsnd[t] - 1; j >= 0; j--)
                     if (E.trk_snd[t][j].cnt > 0 && !E.trk_snd[t][j].thru && --E.trk_snd[t][j].cnt == 0)
@@ -8976,6 +9367,7 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
             }
         }
     }
+stopped:
     for (i = 0; i < E.nrin; i++)
         if (E.rin[i].trk == t)
             E.rin[i].t += (int32_t)n;
@@ -9349,8 +9741,15 @@ static void m_quant(const node_t *nd, inst_t *it, uint32_t n)
     int32_t si = clampi(round_q16(EF(it, QUANT_P_SCALE)), 0, N_SCALES - 1), root = round_q16(EF(it, QUANT_P_ROOT));
     const uint8_t *sc = SCALES[si].st;
     uint32_t ns = SCALES[si].n, i, k;
+    int32_t previous = 0, quantized = 0;
     for (i = 0; i < n; i++) {
-        int32_t semis = clampi(in[i], -(1 << 27), 1 << 27) * 12 - root * ENG_ONE, oct, w, best, bd;
+        int32_t sample = in[i], semis, oct, w, best, bd;
+        if (i && sample == previous) {
+            out[i] = quantized;
+            continue;
+        }
+        previous = sample;
+        semis = clampi(sample, -(1 << 27), 1 << 27) * 12 - root * ENG_ONE;
         oct = semis >= 0 ? semis / OCT_Q16 : -((-semis + OCT_Q16 - 1) / OCT_Q16);     /* floor */
         w = semis - oct * OCT_Q16;
         best = sc[0] * ENG_ONE;
@@ -9362,7 +9761,8 @@ static void m_quant(const node_t *nd, inst_t *it, uint32_t n)
                 best = d;
             }
         }
-        out[i] = (oct * OCT_Q16 + best + root * ENG_ONE) / 12;
+        quantized = (oct * OCT_Q16 + best + root * ENG_ONE) / 12;
+        out[i] = quantized;
     }
 }
 
@@ -9507,7 +9907,7 @@ static void m_vowel(const node_t *nd, inst_t *it, uint32_t n)
     t = v - (vi << 16);
     for (f = 0; f < 3u; f++) {
         int32_t hz = ((int32_t)FORMANT_HZ[vi][f] << 16) + (int32_t)((int64_t)(FORMANT_HZ[vi + 1][f] - FORMANT_HZ[vi][f]) * t);
-        svf_stage(&c[f], svf_g(hz_turns((uint32_t)hz)), k24);
+        svf_stage(&c[f], svf_g(hz_turns((uint32_t)hz)), k24, 0);
     }
     for (i = 0; i < n; i++) {
         int32_t v0 = in[i] << 4, sum = 0;
@@ -9809,6 +10209,151 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     default: break;                      /* output: read by eng_render */
     }
 }
+/* A signal within +-IDLE_Q16 (Q16) counts as silent: idle parts (part_quiet) and a natural master FX tail (m_fx). */
+#define IDLE_Q16 6
+/* Discard only an exhausted tail, never a saved parameter. Keeping the physical line and its capacity avoids allocation
+ * and prevents a frozen tail reappearing on ON. A tail's end only marks its line (fx_end: run->clr, the chunks of
+ * FX_CLEAR_STEP samples still to clear); each OFF bypass block then clears one chunk and the last resets the state, so no
+ * audio block pays for a whole line (a 700 ms Delay is 30944 samples). Before the kernel runs again (ON) the rest is
+ * cleared at once. Nothing reads the line or the state in between, so the result is the immediate clear's. */
+#define FX_CLEAR_STEP 2048u
+static void fx_clear(const node_t *nd, inst_t *it, fx_run_t *run, int all)
+{
+    uint32_t i, from, to, len = nd->type == T_DELAY ? it->s.dly.len : RV_LEN;
+    int16_t *buf = nd->type == T_DELAY ? it->s.dly.buf : it->s.rev.buf;
+    do {
+        from = (uint32_t)--run->clr * FX_CLEAR_STEP;
+        to = from + FX_CLEAR_STEP < len ? from + FX_CLEAR_STEP : len;
+        for (i = from; i < to; i++) buf[i] = 0;
+    } while (all && run->clr);
+    if (run->clr) return;
+    if (nd->type == T_DELAY) {
+        uint32_t len = it->s.dly.len, beat = it->s.dly.beat;
+        for (i = 0; i < sizeof(it->s.dly); i++) ((uint8_t *)&it->s.dly)[i] = 0;
+        it->s.dly.buf = buf; it->s.dly.len = len; it->s.dly.beat = beat;
+    } else {
+        for (i = 0; i < sizeof(it->s.rev); i++) ((uint8_t *)&it->s.rev)[i] = 0;
+        it->s.rev.buf = buf;
+    }
+}
+static void fx_end(const node_t *nd, const inst_t *it, fx_run_t *run)
+{
+    run->tail = 0;
+    run->quiet = 0;
+    run->clr = (uint8_t)(((nd->type == T_DELAY ? it->s.dly.len : RV_LEN) + FX_CLEAR_STEP - 1u) / FX_CLEAR_STEP);
+}
+
+static void m_fx(const node_t *nd, inst_t *it, uint32_t n, uint32_t target)
+{
+    fx_stage_t *st = &fx.stage[(target - 1u) / ENG_FX_TARGETS_MAX];
+    fx_run_t *run = &st->run[(target - 1u) % ENG_FX_TARGETS_MAX];
+    const def_t *d = &DEFS[nd->type];
+    const esig_t *dry = it->in[d->thru];
+    uint32_t i, j, gain = run->gain, fade = run->fade;
+    int tail = nd->type == T_DELAY || nd->type == T_REVERB;
+    /* A single Reverb is an ordinary parallel wet branch: stereo dry is outside
+     * this kernel. Never inject its collapsed input, including OFF and ramps. */
+    int wet_only = st->kind == ENG_FX_REVERB && st->n == 1u;
+    int32_t mix = tail ? EF(it, nd->type == T_DELAY ? DELAY_P_MIX : REVERB_P_MIX) : 0, rate0 = 0;
+    int64_t cur0 = 0;
+    uint32_t mark0 = 0, loud = 0, span;
+    if (run->clr && (st->on || run->tail))   /* the kernel runs again: finish a pending clear first */
+        fx_clear(nd, it, run, 1);
+    if (!st->on && (tail ? !run->tail : !gain)) {
+        if (wet_only) {
+            for (j = 0; j < d->nout; j++)
+                if (!IS_DUMMY(it->out[j])) for (i = 0; i < n; i++) it->out[j][i] = 0;
+        } else m_bypass(nd, it, n);
+        if (run->clr) fx_clear(nd, it, run, 0);
+        return;
+    }
+    if (!st->on && tail) {
+        if (run->tail == 1u &&
+            (nd->type == T_REVERB ? EF(it, REVERB_P_FREEZE) >= 32768 :
+             EF(it, DELAY_P_SWELL) >= 32768 &&
+             (int64_t)EF(it, DELAY_P_FB) * DELAY_SWELL_NUM >= (int64_t)ENG_ONE * DELAY_SWELL_DEN))
+            run->tail = 2u;
+        if (nd->type == T_DELAY) {   /* the read point and line format, which the quiet window below must see still */
+            cur0 = it->s.dly.cur;
+            rate0 = it->s.dly.rate;
+            mark0 = it->s.dly.rk | (uint32_t)it->s.dly.tp << 8;
+        }
+        it->in[d->thru] = zero_buf;   /* OFF never admits another input sample to a delay/reverb line */
+    }
+    process(nd, it, n);
+    it->in[d->thru] = dry;
+    if (st->on && gain == FX_RAMP && (!tail || fade == FX_FULL)) return;
+    /* An OFF natural tail at rest (tail 1, wet gain held, a stereo pair's dry ramp done): gain and fade stay put, so the
+     * loop below reduces exactly to these forms (mulq(x, FX_FULL, 30) == x; the direct dry is dry). Its tail ends once
+     * every sample it added stayed within IDLE_Q16 for `span` consecutive samples at an unchanged mix, with the Delay's
+     * read point standing and its line format unchanged: a Delay's whole line (its length times its rate step), the
+     * Reverb's whole memory (RV_LEN). In that window, every Delay line sample is rewritten from a read heard as silent,
+     * and a feedback below one never grows a sample (dly_pack rounds |fb x| to at most |x|), so no echo above the
+     * threshold remains. Then the forced tail's clear applies and later OFF blocks take the bypass above. */
+    if (!st->on && tail && run->tail == 1u && (wet_only || !gain)) {
+        for (j = 0; j < d->nout; j++) {
+            esig_t *o = it->out[j];
+            if (IS_DUMMY(o)) continue;
+            if (wet_only) {
+                if (fade != FX_FULL || gain != FX_RAMP)
+                    for (i = 0; i < n; i++) o[i] = mulq(mulq(o[i], (int32_t)fade, 30), (int32_t)gain, 10);
+                for (i = 0; i < n; i++) loud |= (uint32_t)o[i] + IDLE_Q16 > 2u * IDLE_Q16;
+            } else if (fade == FX_FULL) {
+                for (i = 0; i < n; i++) {
+                    loud |= (uint32_t)o[i] + IDLE_Q16 > 2u * IDLE_Q16;
+                    o[i] += dry[i];
+                }
+            } else {
+                for (i = 0; i < n; i++) {
+                    int32_t t = mulq(o[i], (int32_t)fade, 30);
+                    loud |= (uint32_t)t + IDLE_Q16 > 2u * IDLE_Q16;
+                    o[i] = dry[i] + t;
+                }
+            }
+        }
+        if (nd->type == T_DELAY && (rate0 || it->s.dly.rate || cur0 != it->s.dly.cur ||
+                                    mark0 != (it->s.dly.rk | (uint32_t)it->s.dly.tp << 8)))
+            loud = 1;
+        run->quiet = loud || mix != run->qmix ? 0u : run->quiet + n;
+        run->qmix = mix;
+        span = nd->type == T_DELAY ? it->s.dly.len * it->s.dly.rk : RV_LEN;
+        if (run->quiet >= span)
+            fx_end(nd, it, run);
+        return;
+    }
+    /* buf_take keeps every input alive through this module's turn (end < next writer).
+     * Thus post-kernel dry reads need neither a scratch block nor a longer lifetime. */
+    for (i = 0; i < n; i++) {
+        if (st->on) {
+            if (gain < FX_RAMP) gain++;
+            if (fade < FX_FULL) fade = FX_FULL - fade < (FX_FULL / FX_RAMP) ? FX_FULL : fade + FX_FULL / FX_RAMP;
+        } else {
+            /* Keep a partly enabled wet tail at its existing level, not a jump to full. */
+            if (gain && !wet_only) gain--;
+            if (run->tail == 2u) fade = fade > FX_FADE_STEP ? fade - FX_FADE_STEP : 0u;
+        }
+        for (j = 0; j < d->nout; j++) {
+            esig_t *o = it->out[j];
+            if (IS_DUMMY(o)) continue;
+            if (!tail) {
+                o[i] = dry[i] + mulq(o[i] - dry[i], (int32_t)gain, 10);
+            } else if (wet_only) {
+                o[i] = mulq(o[i], (int32_t)fade, 30);
+                o[i] = mulq(o[i], (int32_t)gain, 10);
+            } else {
+                int32_t kernel_dry = st->on ? (nd->type == T_REVERB ? mulr(dry[i], ENG_ONE - mix, 16) : mul16(dry[i], ENG_ONE - mix)) : 0;
+                int32_t dry_gain = ENG_ONE - mulq(mix, (int32_t)gain, 10);
+                int32_t direct = nd->type == T_REVERB ? mulr(dry[i], dry_gain, 16) : mul16(dry[i], dry_gain);
+                o[i] = direct + mulq(o[i] - kernel_dry, (int32_t)fade, 30);
+            }
+        }
+    }
+    run->gain = (uint16_t)gain;
+    run->fade = fade;
+    if (tail && !st->on && !fade)
+        fx_end(nd, it, run);
+}
+
 
 /* Profiling hooks for the CPU estimate (tools/cpu): stage 0 before a module's input sums, 1 before its parameter
  * inputs, 2 before it runs, 3 after; 4 at the start of a block, 5 at its end. Compiled out unless ENG_PROF is defined. */
@@ -9829,7 +10374,6 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
  * which runs it and checks again (a part that sounds without its envelopes, a knob opening a drone, comes back). The checks
  * are staggered (#434): part v of group k runs in the blocks where (idle_blk + (k - 1) ENG_MAX_PARTS + v) % IDLE_CHECK is 0,
  * so parts that went idle together (every part after a load) do not all run in one block. */
-#define IDLE_Q16 6
 #define IDLE_CHECK 32u
 static int part_quiet(uint32_t k, uint32_t v)
 {
@@ -9975,7 +10519,9 @@ static void render_mods(uint32_t k0, uint32_t k1, uint32_t n, uint32_t first, ui
             if (nd->grp)
                 apply_flaws(nd, it);
             ENG_PROF(2, E.order[k], v);
-            if (nd->bypass)
+            if (fx.target[E.order[k]])
+                m_fx(nd, it, n, fx.target[E.order[k]]);
+            else if (nd->bypass)
                 m_bypass(nd, it, n);
             else if (nd->disabled_inputs) {
                 const esig_t *raw[MAX_IN];

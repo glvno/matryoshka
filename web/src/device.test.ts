@@ -5,10 +5,11 @@ import { describe, expect, it } from 'vitest';
 import { chipState, DeviceLink, IGNORED_NOW, ignoredFound, linkCandidates, type LinkCandidate, liveSync, notFound, sysexRefused, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, transportOf } from './device';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, removeModule } from './patch';
-import { deviceBudget, encodePatch, VERSION } from './patchbin';
+import { deviceBudget, encodePatch, FLAG_PATTERN_ORIGINS, VERSION } from './patchbin';
 import { FM1_PRESETS } from './presets';
 import { CMD, frame, liveFrame, parse } from './protocol';
 import { subtractiveSaw } from './test-patches';
+import { withFxBus } from './fx-bus';
 
 const names = Object.keys(FM1_PRESETS);
 const a = encodePatch(FM1_PRESETS[names[0]]());
@@ -299,6 +300,21 @@ describe('DeviceLink.connect', () => {
     await expect(withMidi([], [], () => link.connect(), new Error('no MIDI'))).rejects.toThrow();
     expect(link.bufferAllocation).toBe(0);
     expect(link.info).toBeNull();
+  });
+  it('refuses master FX uploads on older firmware before sending any patch data', async () => {
+    const inp = port('i', 'FM-1'), out = port('o', 'FM-1');
+    answering(out, inp);
+    const link = new DeviceLink();
+    await withMidi([inp], [out], async () => {
+      await link.connect();
+      const bin = encodePatch(withFxBus(subtractiveSaw()), true);
+      expect(bin[1]).toBe(55);
+      expect((bin[6] | bin[7] << 8) & FLAG_PATTERN_ORIGINS).toBe(0);
+      link.info!.patchFormats = { min: 31, max: 54 };
+      const sent = out.sent.length;
+      await expect(link.uploadSlotBin(0, 'FX', bin)).rejects.toThrow();
+      expect(out.sent).toHaveLength(sent);
+    });
   });
   it.each(['slot', 'upload'])('discards old patch snapshot indices at the %s boundary', async (boundary) => {
     const inp = port('i', 'FM-1'), out = port('o', 'FM-1');

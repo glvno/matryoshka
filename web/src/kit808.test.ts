@@ -7,7 +7,8 @@ import { Engine } from './engine';
 import { readFileSync } from 'node:fs';
 import { deviceBudget, encodePatch, rangeList } from './patchbin';
 import { cpuEstimate } from './cpu';
-import { FM1_PRESETS, XL_PRESETS } from './presets';
+import { FM1_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 import { assembliesOf } from './assembly';
 import type { Patch } from './patch';
 
@@ -118,7 +119,7 @@ describe('808 Kit (the FM-1 version)', () => {
 });
 
 describe('808 Kit XL', () => {
-  const xl = (): Patch => XL_PRESETS['808 Kit XL']();
+  const xl = (): Patch => relocatedPatches['808 Kit XL']();
 
   it('has every TR-808 knob and switch on its card, in the panel\'s order', () => {
     expect(rowsOf(xl())).toEqual([

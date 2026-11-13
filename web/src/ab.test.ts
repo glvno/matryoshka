@@ -6,10 +6,11 @@ import { DEFS } from './modules';
 import { addModule, type ModuleInst, type Patch } from './patch';
 import { encodePatch } from './patchbin';
 import { PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 const copy = (p: Patch): Patch => JSON.parse(JSON.stringify(p)) as Patch;
 const base = (): Patch => {
-  const p = PRESETS['Oracle V']();
+  const p = relocatedPatches['Oracle V']();
   p.view = { zoom: 0.8, x: 10, y: 20 };
   p.octave = -1;
   return p;

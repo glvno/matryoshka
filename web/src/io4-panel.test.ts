@@ -2,7 +2,7 @@
 import { expect, it } from 'vitest';
 import { FACTORY } from './assemblies';
 import { DEFS, LFO_RANGE_K } from './modules';
-import { FM1_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 import { deviceBudget } from './patchbin';
 
 const io4 = FACTORY.find((d) => d.name === 'Io 4')!;
@@ -29,8 +29,8 @@ it('Io 4 LFO RATE reaches the Jupiter-4\'s 80 Hz: the fast range, shown as the r
   expect(rate.altText!.text(4, { range: 0 })).toBe('4 Hz');
 });
 
-it('the factory Io 4 keeps its four voices and its Arpeggiator within the FM-1 budget', () => {
-  const p = FM1_PRESETS['Io 4']();
+it('the original Io 4 keeps its four voices and its Arpeggiator within the FM-1 budget', () => {
+  const p = relocatedPatches['Io 4']();
   expect(p.modules.some((m) => m.type === 'arp')).toBe(true);
   expect(p.modules.find((m) => m.type === 'alloc' && m.params.voices === 4)).toBeDefined();
   expect(deviceBudget(p).fits).toBe(true);

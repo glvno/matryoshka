@@ -3,7 +3,7 @@ import { expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch } from './patch';
-import { FM1_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 function cycle(shape?: number, back = false): [Float32Array, Float32Array] {
   const p = emptyPatch();
@@ -48,7 +48,7 @@ it('reaches both saw directions and fully closed or open pulse widths', () => {
 });
 
 it('Sallen 20 uses one continuous waveform knob for both modulation-generator outputs', () => {
-  const p = FM1_PRESETS['Sallen 20']();
+  const p = relocatedPatches['Sallen 20']();
   const card = p.assemblies!.find((a) => a.params.some((r) => r.head === 'mg'))!;
   const row = card.params.find((r) => r.label === 'waveform')!;
   const knob = p.modules.find((m) => m.id === row.module)!;

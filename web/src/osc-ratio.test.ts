@@ -3,7 +3,7 @@ import { expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch } from './patch';
-import { XL_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 function frequency(ratio: number, coarse = 0, fine = 0, detune = 3) {
   const p = emptyPatch(), osc = addModule(p, DEFS.osc, 0, 0), out = addModule(p, DEFS.output, 0, 0);
@@ -33,7 +33,7 @@ it('ratio composes with coarse and fine tuning', () => {
   expect(frequency(8, -12, 50) / 261.6255653).toBeCloseTo(2 ** (50 / 1200), 4);
 });
 it('Algo Four XL exposes ratio choices and signed detune positions for all four operators', () => {
-  const p = XL_PRESETS['Algo Four XL']();
+  const p = relocatedPatches['Algo Four XL']();
   const card = p.assemblies!.find(a => a.params.some(r => r.label === 'algorithm'))!;
   const ratios = card.params.filter(r => r.label === 'freq ratio'), detunes = card.params.filter(r => r.label === 'detune');
   expect(ratios).toHaveLength(4); expect(detunes).toHaveLength(4);

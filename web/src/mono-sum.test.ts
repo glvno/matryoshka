@@ -6,7 +6,7 @@
 import { expect, it } from 'vitest';
 import './factory-presets';
 import { HEADROOM, monoOf, peaksOfPlay, plays } from './headroom';
-import { FM1_PRESETS } from './presets';
+import { PRESETS } from './presets';
 
 it('the mono sum (L + R) / 2 never peaks above the stereo output (#612)', () => {
   for (let i = 0; i < 2000; i++) {
@@ -21,7 +21,7 @@ it('the mono sum (L + R) / 2 never peaks above the stereo output (#612)', () => 
 
 it('every factory patch keeps its headroom in mono (#612)', () => {
   const rows: string[] = [];
-  for (const [name, make] of Object.entries(FM1_PRESETS)) {
+  for (const [name, make] of Object.entries(PRESETS)) {
     const w = plays(make())[0];
     const { stereo, mono } = peaksOfPlay(w, 1);
     expect(mono, name).toBeLessThanOrEqual(stereo + 1e-9);

@@ -6,7 +6,8 @@
 // Rerun it in every pull request that closes or finds a gap, and after `npm run cpu-costs` changes the CPU table.
 // Needs `gh`, logged in to the repository. Run from web/.
 import { execFileSync } from 'node:child_process';
-import { FM1_PRESETS, PRESETS, isXl } from '../src/presets';
+import { FM1_PRESETS, PRESETS } from '../src/presets';
+import { relocatedPatches } from '../src/community-factory';
 import { deviceBudget, overText } from '../src/patchbin';
 import { BANDS, BAND_TEXT, openBoxes, parseInputs, renderRegion, rowOf, ticketCost, withRegion, type Band, type Base, type Row, type Ticket } from './parity-bands';
 
@@ -40,8 +41,9 @@ for (const i of instruments) {
     if (!b.tag) warnings.push(`#${i.number} ${name}: untagged box "${b.name}" (left out of the band)`);
     if (b.ticket !== undefined && !tickets.has(b.ticket)) addTicket(issue(b.ticket));
   }
-  const make = PRESETS[inputs.measure];
-  if (!make) { warnings.push(`#${i.number} ${name}: no factory patch or XL named "${inputs.measure}"`); continue; }
+  // a current factory patch, else an XL or archived original, which live in Community (web/community/factory)
+  const make = PRESETS[inputs.measure] ?? relocatedPatches[inputs.measure];
+  if (!make) { warnings.push(`#${i.number} ${name}: no factory patch, XL or archived original named "${inputs.measure}"`); continue; }
   const patch = make();
   if (inputs.at !== undefined) {
     const allocs = patch.modules.filter((x) => x.type === 'alloc');
@@ -54,7 +56,7 @@ for (const i of instruments) {
     over: b.over.filter((x) => x.key !== 'cpu').map(overText) };
   const factory = FM1_PRESETS[name]?.();
   const fm1Voices = factory && (Math.max(0, ...factory.modules.filter((x) => x.type === 'alloc').map((x) => x.params.voices ?? 0)) || undefined);
-  rows.push(rowOf(i.number, name, inputs.comparand || original, boxes, inputs, base, isXl(inputs.measure), tickets, fm1Voices));
+  rows.push(rowOf(i.number, name, inputs.comparand || original, boxes, inputs, base, / XL$/.test(inputs.measure), tickets, fm1Voices));
 }
 
 const sha = execFileSync('git', ['rev-parse', '--short=8', 'HEAD'], { encoding: 'utf8' }).trim();

@@ -3,18 +3,19 @@
 // Library > Patches (#218): the two columns against a stand-in FM-1
 import { beforeEach, expect, it, vi } from 'vitest';
 import { FACTORY, loadLibrary, removeAssembly, renameAssembly, storeAssembly } from './assemblies';
-import { buildPatchesSection } from './bank';
+import { bankPatches, buildPatchesSection } from './bank';
 import type { DeviceLink } from './device';
 import type { Patch } from './patch';
 import { encodePatch } from './patchbin';
-import { FM1_PRESETS } from './presets';
+import { FM1_PRESETS, PRESETS } from './presets';
 import { SLOTS, slotLabel, type SlotInfo } from './protocol';
 import { addedTitles, loadCommunity } from './community';
 import { savePatch } from './saved';
+import { relocatedPatches } from './community-factory';
 
 // jsdom's streams cannot inflate a share code: the community entries decode to a factory patch here (community.test.ts
 // decodes the real ones)
-vi.mock('./share', async (real) => ({ ...(await real<typeof import('./share')>()), decodeShare: async () => FM1_PRESETS.Init() }));
+vi.mock('./share', async (real) => ({ ...(await real<typeof import('./share')>()), decodeShare: async () => PRESETS.Init() }));
 
 const names = Object.keys(FM1_PRESETS).slice(0, 2);
 const empty = (): SlotInfo[] => Array.from({ length: SLOTS }, (_, slot) => ({ slot, used: false, length: 0, name: '' }));
@@ -60,6 +61,31 @@ it('without an FM-1 the FM-1 column is the offline copy: → adds to it, ← cop
   expect(button(fm1, 'Send bank to FM-1').disabled).toBe(true);
 });
 
+it('keeps archived name-only patches in a populated offline bank through library refresh and reordering', () => {
+  const mine = { ...relocatedPatches['Monolith D'](), notes: 'customized saved default' };
+  mine.modules.find(module => module.type === 'output')!.params.level = 0.123;
+  const stored = JSON.stringify([{ name: 'Hera 4' }, { name: 'Hera 3' }, { name: 'Oracle V XL' }, { name: mine.name, patch: mine }]);
+  localStorage.setItem('matryoshka.bank', stored);
+  const root = document.createElement('div');
+  const pane = buildPatchesSection(root, fakeDevice(false), { remove: () => {} });
+  const fm1 = cols(root)[1];
+  expect(rows(fm1)).toEqual(['Hera 4', 'Hera 3', 'Oracle V XL', 'Monolith D']);
+  pane.refresh();
+  expect(rows(fm1)).toEqual(['Hera 4', 'Hera 3', 'Oracle V XL', 'Monolith D']);
+  expect(localStorage.getItem('matryoshka.bank')).toBe(stored);
+  button(fm1.querySelectorAll('.bank-row')[0], '▼').click();
+  pane.refresh();
+  expect(bankPatches()).toEqual([
+    { name: 'Hera 3', patch: FM1_PRESETS['Hera 3']() },
+    { name: 'Hera 4', patch: relocatedPatches['Hera 4']() },
+    { name: 'Oracle V XL', patch: relocatedPatches['Oracle V XL']() },
+    { name: mine.name, patch: mine },
+  ]);
+  expect(JSON.parse(localStorage.getItem('matryoshka.bank')!)).toEqual([
+    { name: 'Hera 3' }, { name: 'Hera 4' }, { name: 'Oracle V XL' }, { name: mine.name, patch: mine },
+  ]);
+});
+
 it('a patch over the FM-1 budget is marked SANDBOX and cannot go to the FM-1; the old over-budget list folds into Your patches', () => {
   const huge = FM1_PRESETS[names[0]]();
   huge.modules = [...huge.modules, ...Array.from({ length: 400 }, (_, i) => ({ ...huge.modules.find((m) => m.type === 'output')!, id: 1000 + i }))];
@@ -98,9 +124,28 @@ it('with an FM-1 the column shows its slots: named when they hold the bank, else
   vi.unstubAllGlobals();
 });
 
+it('recognizes an existing example slot and copies it without treating it as a factory default', async () => {
+  const name = 'Basic Poly', dev = fakeDevice(true);
+  await dev.uploadSlot(0, name.toUpperCase(), PRESETS[name]());
+  const root = document.createElement('div');
+  const pane = buildPatchesSection(root, dev, { remove: () => {} });
+  pane.enter();
+  await flush();
+  const [browser, fm1] = cols(root);
+  expect([...browser.querySelectorAll<HTMLOptionElement>('.lib-factory option')].some(option => option.value === name)).toBe(false);
+  const copy = button(fm1.querySelector('.bank-row')!, '←');
+  expect(copy.disabled).toBe(false);
+  copy.click();
+  expect(rows(browser)).toContain(name);
+  vi.stubGlobal('confirm', () => true);
+  fm1.querySelector<HTMLButtonElement>('.lib-saveas')!.click();
+  expect(JSON.parse(localStorage.getItem('matryoshka.bank')!)[0]).toEqual({ name, patch: PRESETS[name]() });
+  vi.unstubAllGlobals();
+});
+
 it('refreshing capability-dependent rows preserves an in-flight slot upload and its result', async () => {
   const dev = fakeDevice(true), write = dev.uploadSlot.bind(dev);
-  savePatch({ ...FM1_PRESETS.Init(), name: 'In flight' });
+  savePatch({ ...PRESETS.Init(), name: 'In flight' });
   const root = document.createElement('div');
   const pane = buildPatchesSection(root, dev, { remove: () => {} });
   dev.uploadSlot = async (...args) => {

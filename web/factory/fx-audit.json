@@ -1,0 +1,417 @@
+[
+ {
+  "name": "Oracle V",
+  "voices": [
+   {
+    "module": 6,
+    "voices": 4
+   }
+  ],
+  "cards": [
+   {
+    "assembly": 1,
+    "name": "voice",
+    "rows": 37
+   },
+   {
+    "assembly": 2,
+    "name": "Oracle V",
+    "rows": 63
+   }
+  ],
+  "omit": [],
+  "existingFx": [],
+  "evidence": "No Drive, Chorus, audio Delay or Reverb control in the original card rows or their selector/macro targets."
+ },
+ {
+  "name": "Monolith D",
+  "voices": [
+   {
+    "module": 2,
+    "voices": 1
+   }
+  ],
+  "cards": [
+   {
+    "assembly": 1,
+    "name": "Monolith D",
+    "rows": 37
+   }
+  ],
+  "omit": [],
+  "existingFx": [],
+  "evidence": "No Drive, Chorus, audio Delay or Reverb control in the original card rows or their selector/macro targets."
+ },
+ {
+  "name": "Silver Box",
+  "voices": [
+   {
+    "module": 2,
+    "voices": 1
+   }
+  ],
+  "cards": [
+   {
+    "assembly": 1,
+    "name": "Silver Box",
+    "rows": 8
+   }
+  ],
+  "omit": [],
+  "existingFx": [],
+  "evidence": "No Drive, Chorus, audio Delay or Reverb control in the original card rows or their selector/macro targets."
+ },
+ {
+  "name": "Hera 4",
+  "voices": [
+   {
+    "module": 7,
+    "voices": 4
+   },
+   {
+    "module": 43,
+    "voices": 1
+   }
+  ],
+  "cards": [
+   {
+    "assembly": 1,
+    "name": "voice",
+    "rows": 16
+   },
+   {
+    "assembly": 2,
+    "name": "Hera 4",
+    "rows": 32
+   }
+  ],
+  "omit": [
+   "chorus"
+  ],
+  "existingFx": [
+   {
+    "kind": "chorus",
+    "assembly": 2,
+    "row": 23,
+    "label": "chorus",
+    "bindings": [
+     {
+      "module": 56,
+      "param": "pos"
+     },
+     {
+      "module": 57,
+      "param": "pos"
+     }
+    ],
+    "kernels": [
+     14,
+     55
+    ],
+    "path": "56/57 select dry, chorus14 L/R (I), or chorus55 L/R (II); row.also binds57.pos"
+   }
+  ],
+  "evidence": "delay time row1 is adsr44.a (LFO onset), not audio Delay."
+ },
+ {
+  "name": "Sallen 20",
+  "voices": [
+   {
+    "module": 3,
+    "voices": 1
+   }
+  ],
+  "cards": [
+   {
+    "assembly": 1,
+    "name": "Sallen 20",
+    "rows": 42
+   }
+  ],
+  "omit": [],
+  "existingFx": [],
+  "evidence": "delay row22 is pulse19.time (envelope trigger), not audio Delay. Original Main1.fx -> 39.in SWITCH moves intact to Main1.edit in the candidate only."
+ },
+ {
+  "name": "Expander S",
+  "voices": [
+   {
+    "module": 4,
+    "voices": 4
+   }
+  ],
+  "cards": [
+   {
+    "assembly": 1,
+    "name": "voice",
+    "rows": 36
+   },
+   {
+    "assembly": 2,
+    "name": "Expander S",
+    "rows": 43
+   }
+  ],
+  "omit": [],
+  "existingFx": [],
+  "evidence": "No Drive, Chorus, audio Delay or Reverb control in the original card rows or their selector/macro targets."
+ },
+ {
+  "name": "Algo Four",
+  "voices": [
+   {
+    "module": 2,
+    "voices": 8
+   }
+  ],
+  "cards": [
+   {
+    "assembly": 1,
+    "name": "voice",
+    "rows": 30
+   },
+   {
+    "assembly": 2,
+    "name": "Algo Four",
+    "rows": 43
+   }
+  ],
+  "omit": [],
+  "existingFx": [],
+  "evidence": "No Drive, Chorus, audio Delay or Reverb control in the original card rows or their selector/macro targets."
+ },
+ {
+  "name": "Canvas",
+  "voices": [
+   {
+    "module": 2,
+    "voices": 1
+   }
+  ],
+  "cards": [
+   {
+    "assembly": 1,
+    "name": "Canvas",
+    "rows": 69
+   }
+  ],
+  "omit": [
+   "drive",
+   "reverb"
+  ],
+  "existingFx": [
+   {
+    "kind": "drive",
+    "assembly": 1,
+    "row": 39,
+    "label": "timbre",
+    "bindings": [
+     {
+      "module": 30,
+      "param": "drive"
+     }
+    ],
+    "kernels": [
+     30
+    ],
+    "path": "Direct shape30.drive timbre control; shape30.p1 also receives31.out, preserving its original modulation"
+   },
+   {
+    "kind": "reverb",
+    "assembly": 1,
+    "row": 50,
+    "label": "reverb",
+    "bindings": [
+     {
+      "module": 50,
+      "param": "mix"
+     }
+    ],
+    "kernels": [
+     50
+    ],
+    "path": "Direct Reverb wet/dry control"
+   }
+  ],
+  "evidence": "Main1.fx -> 5.in3 keyboard/PULSER gate moves intact to Main1.edit in the candidate only."
+ },
+ {
+  "name": "Wanderer",
+  "voices": [
+   {
+    "module": 2,
+    "voices": 1
+   },
+   {
+    "module": 3,
+    "voices": 1
+   }
+  ],
+  "cards": [
+   {
+    "assembly": 1,
+    "name": "Wanderer",
+    "rows": 59
+   }
+  ],
+  "omit": [],
+  "existingFx": [],
+  "evidence": "No Drive, Chorus, audio Delay or Reverb control in the original card rows or their selector/macro targets."
+ },
+ {
+  "name": "Briefcase 3",
+  "voices": [
+   {
+    "module": 2,
+    "voices": 1
+   }
+  ],
+  "cards": [
+   {
+    "assembly": 1,
+    "name": "matrix",
+    "rows": 120
+   },
+   {
+    "assembly": 2,
+    "name": "Briefcase 3",
+    "rows": 33
+   }
+  ],
+  "omit": [
+   "reverb"
+  ],
+  "existingFx": [
+   {
+    "kind": "reverb",
+    "assembly": 2,
+    "row": 24,
+    "label": "mix",
+    "bindings": [
+     {
+      "module": 21,
+      "param": "mix"
+     }
+    ],
+    "kernels": [
+     21
+    ],
+    "path": "Reverb section direct wet/dry control; original matrix reverb return rows also retained"
+   }
+  ],
+  "evidence": "Original interface and preset bindings remain unchanged."
+ },
+ {
+  "name": "Io 4",
+  "voices": [
+   {
+    "module": 2,
+    "voices": 4
+   },
+   {
+    "module": 3,
+    "voices": 1
+   }
+  ],
+  "cards": [
+   {
+    "assembly": 1,
+    "name": "voice",
+    "rows": 20
+   },
+   {
+    "assembly": 2,
+    "name": "Io 4",
+    "rows": 45
+   }
+  ],
+  "omit": [
+   "chorus"
+  ],
+  "existingFx": [
+   {
+    "kind": "chorus",
+    "assembly": 2,
+    "row": 43,
+    "label": "ensemble",
+    "bindings": [
+     {
+      "module": 52,
+      "param": "pos"
+     }
+    ],
+    "kernels": [
+     51
+    ],
+    "path": "52.out -> 51.p1; chorus51.map.p1=[mix], OFF=0 / ON=0.45"
+   }
+  ],
+  "evidence": "delay time row29 is adsr13.a (LFO onset), not audio Delay."
+ },
+ {
+  "name": "Vernon 100",
+  "voices": [
+   {
+    "module": 2,
+    "voices": 1
+   },
+   {
+    "module": 3,
+    "voices": 1
+   }
+  ],
+  "cards": [
+   {
+    "assembly": 1,
+    "name": "Vernon 100",
+    "rows": 46
+   }
+  ],
+  "omit": [],
+  "existingFx": [],
+  "evidence": "No Drive, Chorus, audio Delay or Reverb control in the original card rows or their selector/macro targets."
+ },
+ {
+  "name": "Cassia 1",
+  "voices": [
+   {
+    "module": 2,
+    "voices": 4
+   }
+  ],
+  "cards": [
+   {
+    "assembly": 1,
+    "name": "voice",
+    "rows": 138
+   },
+   {
+    "assembly": 2,
+    "name": "Cassia 1",
+    "rows": 153
+   }
+  ],
+  "omit": [
+   "chorus"
+  ],
+  "existingFx": [
+   {
+    "kind": "chorus",
+    "assembly": 2,
+    "row": 11,
+    "label": "chorus",
+    "bindings": [
+     {
+      "module": 58,
+      "param": "mix"
+     }
+    ],
+    "kernels": [
+     58
+    ],
+    "path": "Direct chorus wet/dry control"
+   }
+  ],
+  "evidence": "delay row6 is adsr22.a (vibrato onset), not audio Delay."
+ }
+]

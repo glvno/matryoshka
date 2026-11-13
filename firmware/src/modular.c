@@ -8,7 +8,7 @@
 #define FELUCCA_ID "FM-1_7000000"  /* package identity (build.py: the .fwsc marker string): FM-1_7MMmmpp, 7000000 dev / CI */
 #endif
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "v1.13.0-DEV"
+#define FELUCCA_VERSION "v1.14.0-DEV"
 #endif
 #define FELUCCA_FLASH 1
 #define FELUCCA_OTA 1
@@ -149,6 +149,7 @@ static void m1_arms(eng_mset_t mask);                         /* main.c: the edi
 #include "pages_ui.c"
 #include "sandbox_ui.c"
 static const uint8_t *pages_src(uint32_t *len) { *len = m1_cur_len; return m1_cur_len ? m1_cur : 0; }
+static uint32_t pages_capacity(void) { return sizeof m1_cur; }
 static uint32_t pages_gen(void) { return m1_gen; }
 #include "menu.c"
 #include "clock_out.h"       /* MIDI clock out (#473): the audio ISR times the ticks, the 2 kHz timer sends them */

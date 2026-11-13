@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { arpLitInverted, kindOf, setKind, setTarget, switches, toggleEngaged, toggleTargets } from './buttons';
+import { litWhileEnabled, kindOf, setKind, setTarget, switches, toggleEngaged, toggleTargets } from './buttons';
 import { arpChoices, arpFree, arpsOf, insertArpeggiator } from './arp-button';
 import { DEFS, PANEL_BUTTONS } from './modules';
 import { Engine } from './engine';
@@ -141,14 +141,25 @@ describe('ARP\'s light (D-231): lit while its Arpeggiator plays', () => {
     const p = emptyPatch('t');
     addModule(p, DEFS.fm1, 0, 0);
     const arp = insertArpeggiator(p)!;
-    expect(arpLitInverted(p, 'arp')).toBe(true);
+    expect(litWhileEnabled(p, 'arp')).toBe(true);
     arp.bypass = true;
     expect(toggleEngaged(p, 'arp')).toBe(true); // (engaged: its target bypassed; so the light is dark)
     const fold = addModule(p, DEFS.shape, 300, 0);
     setTarget(p, 'arp', { module: fold.id });
-    expect(arpLitInverted(p, 'arp')).toBe(false);
+    expect(litWhileEnabled(p, 'arp')).toBe(false);
     setKind(p, 'fx', 'bypass');
     setTarget(p, 'fx', { module: arp.id });
-    expect(arpLitInverted(p, 'fx')).toBe(false);
+    expect(litWhileEnabled(p, 'fx')).toBe(false);
+  });
+
+  it('LFO on Harmonies lights by enabled state like the firmware\'s format 55 panel (D-888); on anything else, as the Toggle', () => {
+    const p = emptyPatch('t');
+    addModule(p, DEFS.fm1, 0, 0);
+    const harm = addModule(p, DEFS.harm, 300, 0);
+    setKind(p, 'lfo', 'bypass');
+    setTarget(p, 'lfo', { module: harm.id });
+    expect(litWhileEnabled(p, 'lfo')).toBe(true);
+    setTarget(p, 'lfo', { module: addModule(p, DEFS.shape, 600, 0).id });
+    expect(litWhileEnabled(p, 'lfo')).toBe(false);
   });
 });

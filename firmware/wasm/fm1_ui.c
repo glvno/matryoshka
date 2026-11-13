@@ -166,9 +166,9 @@ static void leds_play(void)
 }
 static void leds_panel(void)
 {
-    uint32_t b, mask = eng_buttons_lit();   /* (ARP on Arpeggiators: lit while they play, main.c) */
+    uint32_t b, mask = panel_lights();
     for (b = 0; b < ENG_PANEL_BUTTONS; b++)
-        fm1_led_key(PANEL_BTN_ID[b], (int)(mask >> b & 1u) || (b == BTN_GLO_IDX && page == PAGE_MENU));   /* (GLO: lit on the menu) */
+        fm1_led_key(PANEL_BTN_ID[b], (int)(mask >> b & 1u) || (b == BTN_GLO_IDX && page == PAGE_MENU) || (b == BTN_ENV_IDX && page == PAGE_ENV));
 }
 /* OCT- / OCT+ breathe while the octave is shifted; HOME and the patch buttons the patch uses glow (MENU > LEDS) */
 static void leds_octave(void)
@@ -355,8 +355,9 @@ WASM_EXPORT("fm1w_focus") void fm1w_focus(uint32_t dev, uint32_t pg)
 }
 WASM_EXPORT("fm1w_param") void fm1w_param(uint32_t mod, uint32_t par, int32_t v)
 {
-    if ((int)mod < eng_nmodules()) {
-        eng_set_param(mod, par, v);
+    if (mod < (uint32_t)eng_nmodules()) {
+        if (par == 0xFFu) eng_set_bypass(mod, v != 0); /* PARAM_NOW bypass sentinel precedes parameter/poly decoding */
+        else eng_set_param(mod, par, v);
         if (!ui_dirty)
             ui_dirty = 1;
     }

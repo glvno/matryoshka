@@ -18,10 +18,18 @@ import { fixNotes, PATTERNS_MAX, SONGS_MAX, type SongEntry, type StepNote } from
 import { lockPlan, lockValue } from './locks';
 import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
 import { harmButton, harmButtonOf, harmChord, harmSnapshot, harmClear, harmInit, harmKey, type HarmParams, type HarmState } from './harmonizer';
+import { DEFS, DELAY_SWELL_DEN, DELAY_SWELL_NUM } from './modules';
+import { fxBusOf, type FxStageKind } from './fx-bus';
+import { devicesOf } from './pages';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 export const BLOCK = 128;
 
+const FX_RAMP = 1024, FX_FULL = 2 ** 30;
+const FX_KINDS: readonly FxStageKind[] = ['drive', 'chorus', 'delay', 'reverb'];
+/** quiet: consecutive OFF samples whose natural tail stayed within IDLE at mix qmix (runFx ends it; engine.c fx_run_t) */
+interface FxRun { gain: number; fade: number; tail: number; quiet: number; qmix: number }
+interface FxStageRun { kind: FxStageKind; assembly: number; device: number; page: number; targets: Node[]; helpers: Node[]; on: boolean }
 /**
  * A paraphonic group's mix (#125): a poly group whose parts do not gate their own sound (no cable from its Part's gate or
  * legato output to a module inside the group: the gate goes only to modules that run once, say one shared envelope) has
@@ -92,6 +100,7 @@ interface Node {
   flawParams: { key: 'bright' | 'env' | 'level'; pd: ParamDef }[];
   /** the P-locks on it now (#524): per parameter the value a track's step locks it to, in place of `params` (null: none) */
   lock: Record<string, number> | null;
+  fx: { stage: FxStageRun; run: FxRun } | null;
 }
 
 /** a Steps track's P-locks as it plays them (locks.ts lockPlan): per locked row the parameters it sets, per pattern its
@@ -246,6 +255,8 @@ export class Engine {
   private main: Node | null = null;
   private morphT = 0;
   private hasB = false;
+  private fxStages: FxStageRun[] = [];
+  private readonly fxZero = new Float32Array(BLOCK);
 
   constructor(readonly sampleRate: number) {}
 
@@ -283,6 +294,7 @@ export class Engine {
   load(source: Patch, compile = false): void {
     const routingError = keyRouteError(source);
     if (routingError) throw new Error(routingError);
+    const bus = fxBusOf(source);
     this.src = source;
     this.compiled = compile;
     source = armView(source, this.armedKeys); // the armed devices hear Main's keys, the others not (#190); unchanged while none is
@@ -342,6 +354,7 @@ export class Engine {
             inst: Array.from({ length: ninst }, (_, v) => this.newInst(impl, instSeed(mi, v))),
             flawParams: FLAW_KEYS3.flatMap((key) => (FLAW_TARGETS[key][m.type] ?? []).map((name) => ({ key, pd: impl.def.params.find((q) => q.name === name)! }))),
             lock: null,
+            fx: null,
           };
       node.lock = null;
       node.group = group;
@@ -377,6 +390,37 @@ export class Engine {
       from.used[c.from.port] = true;
     }
     this.nodes = next;
+    const previousFx = new Map([...next.values()].map((node) => [node.id, node.fx]));
+    for (const node of next.values()) node.fx = null;
+    const devices = bus ? devicesOf(source, DEFS) : [];
+    this.fxStages = bus ? bus.stages.map((stage) => {
+      const targets = stage.targets.map((id) => {
+        const node = next.get(id);
+        if (!node || node.inst.length !== 1 || node.group >= 0) throw new Error('Master FX target was dropped or made polyphonic');
+        return node;
+      });
+      const device = devices.findIndex((d) => d.asm === bus.assembly);
+      const page = devices[device]?.pages.findIndex((p) => p.rows.some((r) => stage.targets.includes(r.module) || r.also?.some((a) => stage.targets.includes(a.module)))) ?? -1;
+      if (device < 0 || page < 0) throw new Error('Master FX device/page is missing');
+      const helpers = (stage.kind === 'reverb' && targets.length === 1 ? stage.helpers : []).map(id => {
+        const node = next.get(id);
+        if (!node) throw new Error('Master FX helper was dropped');
+        node.bypass = false; // runtime-only: the wet kernel owns OFF and spillover, never ordinary helper bypass
+        return node;
+      });
+      const st: FxStageRun = { kind: stage.kind, assembly: stage.assembly, device, page, targets, helpers, on: targets.some((node) => !node.bypass) };
+      for (const node of targets) {
+        const old = previousFx.get(node.id);
+        const run = old?.stage.kind === stage.kind ? old.run : { gain: st.on ? FX_RAMP : 0, fade: FX_FULL, tail: st.on ? 1 : 0, quiet: 0, qmix: 0 };
+        if (st.on) {
+          run.tail = 1;
+          run.quiet = 0;
+        }
+        node.bypass = !st.on;
+        node.fx = { stage: st, run };
+      }
+      return st;
+    }) : [];
     paraMix([...next.values()]);
     const { order } = processingOrder(patch);
     this.order = order.map((id) => next.get(id)!);
@@ -387,7 +431,8 @@ export class Engine {
     const mainInst = patch.modules.find((m) => m.type === 'fm1');   // the switched-on buttons the patch was saved with
     this.buttons = PANEL_BUTTONS.reduce((mask, b, i) => (mainInst?.panel?.on?.includes(b) && mainInst.panel.toggle?.includes(b) ? mask | (1 << i) : mask), 0);
     const srcPanel = source.modules.find((m) => m.type === 'fm1')?.panel;
-    this.btnTargets = PANEL_BUTTONS.map((b) => (kindOf(srcPanel, b) === 'bypass' ? toggleTargets(source, b).filter((id) => next.has(id)) : null));
+    const wetHelpers = new Set(this.fxStages.flatMap(s => s.helpers.map(n => n.id)));
+    this.btnTargets = PANEL_BUTTONS.map((b) => (kindOf(srcPanel, b) === 'bypass' ? toggleTargets(source, b).filter((id) => next.has(id) && !wetHelpers.has(id)) : null));
     this.btnSwitch = PANEL_BUTTONS.map((b) => switches(srcPanel, b));
     this.syncToggles();
     const oldArps = new Map(this.arps.map((a) => [a.node.id, a]));
@@ -835,9 +880,34 @@ export class Engine {
     else delete n.range[index][name];
   }
 
+  fxCount(): number { return this.fxStages.length; }
+  fxKind(stage: number): number { return this.fxStages[stage] ? FX_KINDS.indexOf(this.fxStages[stage].kind) : -1; }
+  fxDevice(stage: number): number { return this.fxStages[stage]?.device ?? -1; }
+  fxPage(stage: number): number { return this.fxStages[stage]?.page ?? -1; }
+  fxOn(stage: number): boolean { return this.fxStages[stage]?.on ?? false; }
+  /** Desired stage state; processing a spillover tail is deliberately separate. */
+  setFx(stage: number, on: boolean): void {
+    const st = this.fxStages[stage];
+    if (!st) return;
+    st.on = on;
+    for (const node of st.targets) {
+      node.bypass = !on;
+      if (on) {
+        node.fx!.run.tail = 1;
+        node.fx!.run.quiet = 0;
+      }
+    }
+    this.syncToggles();
+  }
+
   /** bypass a module (its state is kept: it resumes where it stopped) */
   setBypass(id: number, on: boolean): void {
     const n = this.nodes.get(id);
+    if (n?.fx) {
+      this.setFx(this.fxStages.indexOf(n.fx.stage), !on);
+      return;
+    }
+    if (n && this.fxStages.some((s) => s.helpers.includes(n))) return; // runtime-owned wet return (D-1100)
     if (n && n.type !== 'fm1' && n.type !== 'output') n.bypass = on;
     const a = this.arpById.get(id);
     if (a && a.byp !== a.node.bypass) this.arpSwitched(a);
@@ -988,11 +1058,24 @@ export class Engine {
   private liveSource(src: Patch): Patch {
     return {
       ...src,
+      assemblies: src.assemblies?.map((a) => {
+        const stage = this.fxStages.find((s) => s.assembly === a.id);
+        if (!stage) return a;
+        const out = { ...a };
+        if (stage.on) delete out.bypass;
+        else out.bypass = true;
+        delete out.kept;
+        return out;
+      }),
       modules: src.modules.map((m) => {
         const n = this.nodes.get(m.id);
         if (!n) return m;
-        const out = { ...m, params: { ...m.params, ...n.params }, att: [n.att[0], n.att[1]] as [number, number], range: { p1: { ...n.range[0] }, p2: { ...n.range[1] } } };
-        if (n.bypass) out.bypass = true;
+        const out = { ...m, params: { ...m.params, ...n.params }, att: [n.att[0], n.att[1]] as [number, number] };
+        if (Object.keys(n.range[0]).length || Object.keys(n.range[1]).length)
+          out.range = { p1: { ...n.range[0] }, p2: { ...n.range[1] } };
+        else delete out.range;
+        const helperStage = this.fxStages.find(s => s.helpers.includes(n));
+        if (helperStage ? !helperStage.on : n.bypass) out.bypass = true;
         else delete out.bypass;
         if (m.type === 'steps') {
           const st = n.inst[0].state as StepsState;
@@ -1438,7 +1521,123 @@ export class Engine {
     }
   }
 
+  /** Clear only an exhausted tail, in place. No parameter or physical line capacity changes. engine.c spreads this over the
+   * following OFF blocks (fx_clear) and finishes it before the kernel runs again; nothing reads the state in between, so
+   * clearing at once here gives the same audio and the same state. */
+  private clearFxTail(inst: Inst): void {
+    const state = inst.state as Record<string, unknown>;
+    for (const key in state) {
+      const value = state[key];
+      if (key === 'beat') continue;
+      if (typeof value === 'number') state[key] = 0;
+      else if (typeof value === 'boolean') state[key] = false;
+      else if (value instanceof Float32Array || value instanceof Float64Array) value.fill(0);
+      else if (Array.isArray(value)) {
+        for (let i = 0; i < value.length; i++) {
+          if (typeof value[i] === 'number') value[i] = 0;
+          else (value[i] as Float32Array).fill(0);
+        }
+      }
+    }
+  }
+
+  private runFx(node: Node, inst: Inst, ctx: Ctx): void {
+    const { stage: st, run } = node.fx!;
+    const tail = st.kind === 'delay' || st.kind === 'reverb';
+    // The single kernel's stereo dry paths live outside it; this branch returns wet or zero only.
+    const wetOnly = st.kind === 'reverb' && st.targets.length === 1;
+    const dry = inst.inp.in;
+    const input = ctx.inp.in;
+    const mix = inst.eff.mix ?? 0;
+    let { gain, fade } = run;
+    if (!st.on && (tail ? !run.tail : !gain)) {
+      for (const name in ctx.out) {
+        if (wetOnly) ctx.out[name].fill(0, 0, ctx.n);
+        else ctx.out[name].set(dry.subarray(0, ctx.n));
+      }
+      return;
+    }
+    // the Delay's read point and line format, which the quiet window below must see still (engine.c m_fx)
+    type DelayMark = { cur: number; rate: number; hold: number; rk: number; tp: boolean; buf: Float32Array };
+    const dly = st.kind === 'delay' ? inst.state as DelayMark : null;
+    let cur0 = 0, rate0 = 0, hold0 = 0, rk0 = 0, tp0 = false;
+    if (!st.on && tail) {
+      if (run.tail === 1 && (st.kind === 'reverb' ? (inst.eff.freeze ?? 0) >= 0.5 :
+        (inst.eff.swell ?? 0) >= 0.5 && Math.round((inst.eff.fb ?? 0) * 65536) * DELAY_SWELL_NUM >= 65536 * DELAY_SWELL_DEN)) run.tail = 2;
+      if (dly) ({ cur: cur0, rate: rate0, hold: hold0, rk: rk0, tp: tp0 } = dly);
+      ctx.inp.in = this.fxZero;
+    }
+    node.impl.process(ctx, inst.state);
+    ctx.inp.in = input;
+    if (st.on && gain === FX_RAMP && (!tail || fade === FX_FULL)) return;
+    // An OFF natural tail at rest: gain and fade stay put, so the loop below reduces exactly to these forms. Its tail ends
+    // once every sample it added stayed within IDLE for a whole line (the Delay's length times its rate step, the
+    // Reverb's whole memory) at an unchanged mix, the Delay's read point standing (engine.c m_fx has the argument).
+    if (!st.on && tail && run.tail === 1 && (wetOnly || !gain)) {
+      let loud = false;
+      for (const name in ctx.out) {
+        const out = ctx.out[name];
+        if (wetOnly) {
+          if (fade !== FX_FULL || gain !== FX_RAMP) for (let i = 0; i < ctx.n; i++) out[i] *= fade / FX_FULL * gain / FX_RAMP;
+          for (let i = 0; i < ctx.n; i++) if (out[i] > IDLE || out[i] < -IDLE) loud = true;
+        } else {
+          for (let i = 0; i < ctx.n; i++) {
+            const t = fade === FX_FULL ? out[i] : out[i] * fade / FX_FULL;
+            if (t > IDLE || t < -IDLE) loud = true;
+            out[i] = dry[i] + t;
+          }
+        }
+      }
+      if (dly && (rate0 || dly.rate || hold0 || dly.hold || cur0 !== dly.cur || rk0 !== dly.rk || tp0 !== dly.tp)) loud = true;
+      run.quiet = loud || mix !== run.qmix ? 0 : run.quiet + ctx.n;
+      run.qmix = mix;
+      let span = dly ? dly.buf.length * dly.rk : 0;
+      if (!dly) {
+        const rv = inst.state as { pre: Float32Array; ap: Float32Array[]; line: Float32Array[] };
+        span = rv.pre.length;
+        for (const l of rv.ap) span += l.length;
+        for (const l of rv.line) span += l.length;
+      }
+      if (run.quiet >= span) {
+        this.clearFxTail(inst);
+        run.tail = 0;
+        run.quiet = 0;
+      }
+      return;
+    }
+    const fadeStep = Math.ceil(FX_FULL / (2 * this.sampleRate));
+    for (let i = 0; i < ctx.n; i++) {
+      if (st.on) {
+        if (gain < FX_RAMP) gain++;
+        if (fade < FX_FULL) fade = Math.min(FX_FULL, fade + FX_FULL / FX_RAMP);
+      } else {
+        if (gain && !wetOnly) gain--;
+        if (run.tail === 2) fade = Math.max(0, fade - fadeStep);
+      }
+      for (const name in ctx.out) {
+        const out = ctx.out[name];
+        if (!tail) out[i] = dry[i] + (out[i] - dry[i]) * gain / FX_RAMP;
+        else if (wetOnly) out[i] *= fade / FX_FULL * gain / FX_RAMP;
+        else {
+          const direct = st.on ? dry[i] * (1 - mix) : 0;
+          out[i] = dry[i] * (1 - mix * gain / FX_RAMP) + (out[i] - direct) * fade / FX_FULL;
+        }
+      }
+    }
+    run.gain = gain;
+    run.fade = fade;
+    if (tail && !st.on && !fade) {
+      this.clearFxTail(inst);
+      run.tail = 0;
+    }
+  }
+
   private run(node: Node, inst: Inst, voice: VoiceState, out: Record<string, Float32Array>, n: number): void {
+    if (node.fx) {
+      const ctx: Ctx = { sr: this.sampleRate, n, inp: inst.dspInp, out, connected: node.connected, used: node.used, p: inst.eff, voice, display: inst.display };
+      this.runFx(node, inst, ctx);
+      return;
+    }
     if (node.bypass) {
       const src = node.thru ? inst.inp[node.thru] : undefined;
       for (const name in out) if (src) out[name].set(src.subarray(0, n));

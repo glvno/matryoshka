@@ -2,7 +2,7 @@
 import { expect, it } from 'vitest';
 import { applyLevels, around, loudness, plugIn, seedFactoryPatterns, sharedPresetLevels, wire } from '../scripts/factory-build';
 import { factoryPresets } from './factory-presets';
-import { FM1_PRESETS } from './presets';
+import { FM1_PRESETS, PRESETS } from './presets';
 import { cases, measure, LOUDNESS_TOLERANCE } from './levels';
 import { addModule } from './patch';
 import { DEFS } from './modules';
@@ -12,7 +12,7 @@ factoryPresets();
 
 it('calibrates one shared 909 card for standalone and hybrid playback', () => {
   const standalone = seedFactoryPatterns(FM1_PRESETS['909 Kit']());
-  const hybrid = seedFactoryPatterns(FM1_PRESETS['<7PH']());
+  const hybrid = seedFactoryPatterns(PRESETS['<7PH']());
   const notes = structuredClone(hybrid.modules.filter((m) => m.type === 'steps'));
   const settled = structuredClone(factoryPresets());
   const output = hybrid.modules.find((m) => m.type === 'output')!.params.level;

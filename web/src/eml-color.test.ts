@@ -3,7 +3,7 @@ import { expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch } from './patch';
-import { FM1_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 import WT from './wavetables.json';
 
 it('appends the EML COLOR bank while preserving old modulation ranges', () => {
@@ -42,7 +42,7 @@ it('COLOR has triangle, square and saw landmarks in the original order', () => {
 });
 
 it('Vernon uses the COLOR bank for oscillators 2, 3 and 4', () => {
-  const p = FM1_PRESETS['Vernon 100']();
+  const p = relocatedPatches['Vernon 100']();
   const oscs = p.modules.filter((m) => m.type === 'wavetable');
   expect(oscs).toHaveLength(3);
   expect(oscs.map((m) => m.params.bank)).toEqual([4, 4, 4]);

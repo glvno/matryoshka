@@ -4,7 +4,7 @@ import { around } from '../scripts/factory-build';
 import { Engine } from './engine';
 import { DEVICE_SR } from './modules';
 import { deviceBudget } from './patchbin';
-import { FM1_PRESETS } from './presets';
+import { PRESETS } from './presets';
 
 it.each([1, 2])('Silver Box waveform position %i selects the named oscillator wave', (pos) => {
   const { p, a, set } = around('test', 'Silver Box');
@@ -19,7 +19,7 @@ it.each([1, 2])('Silver Box waveform position %i selects the named oscillator wa
 });
 
 it('keeps the lean Silver Box in <7PH within the FM-1 budget', () => {
-  const p = FM1_PRESETS['<7PH']();
+  const p = PRESETS['<7PH']();
   const row = p.assemblies!.flatMap((a) => a.params).find((r) => r.label === 'wave')!;
   expect(row.param).toBe('wave');
   expect(p.modules.find((m) => m.id === row.module)!.type).toBe('osc');

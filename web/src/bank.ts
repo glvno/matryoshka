@@ -17,17 +17,18 @@ import type { DeviceLink } from './device';
 import { DEFS } from './modules';
 import { validatePatch, type Patch } from './patch';
 import { deviceBudget, encodePatch } from './patchbin';
-import { FM1_PRESETS } from './presets';
+import { EXAMPLE_PRESETS, FM1_PRESETS, PRESETS } from './presets';
 import { NAME_BYTES, SLOTS, slotLabel, type SlotInfo } from './protocol';
 import { renamedKey } from './storage-key';
 import { addCommunity, addedCommunity, onAddedChange, openCommunity, removeCommunity } from './community';
+import { relocatedPatches } from './community-factory';
 import { chipEl } from './sandbox';
 import { isSaved, onSavedChange, putBackSaved, renameSaved, savedPatches, savePatch } from './saved';
 import { showToast, showUndo } from './toast';
 
 interface Entry {
   name: string;
-  /** a patch of the editor, kept as a copy; factory patches are rebuilt from FM1_PRESETS */
+  /** A stored graph; name-only entries resolve to current defaults or preserved former factory patches. */
   patch?: Patch;
 }
 
@@ -66,8 +67,9 @@ function load(): Entry[] {
     const raw = JSON.parse(localStorage.getItem(STORE) ?? 'null') as Entry[] | null;
     if (Array.isArray(raw)) {
       const ok = raw
-        .filter((e) => typeof e?.name === 'string' && (e.patch ? true : e.name in FM1_PRESETS))
-        .map((e) => (e.patch ? { name: e.name, patch: validatePatch(e.patch, DEFS) } : { name: e.name }))
+        .filter((e) => typeof e?.name === 'string' && (e.patch ? true : e.name in PRESETS || e.name in relocatedPatches))
+        .map((e) => e.patch ? { name: e.name, patch: validatePatch(e.patch, DEFS) }
+          : e.name in FM1_PRESETS || e.name in relocatedPatches ? { name: e.name } : { name: e.name, patch: PRESETS[e.name]() })
         .slice(0, SLOTS);
       return ok;
     }
@@ -85,7 +87,7 @@ function save(list: Entry[]): void {
   }
 }
 
-const patchOf = (e: Entry): Patch => (e.patch ? e.patch : FM1_PRESETS[e.name]());
+const patchOf = (e: Entry): Patch => (e.patch ? e.patch : (FM1_PRESETS[e.name] ?? relocatedPatches[e.name])());
 const copyOf = (p: Patch): Patch => validatePatch(JSON.parse(JSON.stringify(p)), DEFS);
 
 /** the bank, with the patches that cannot go to the FM-1 moved out: the old over-budget list, and a copy that no longer
@@ -192,10 +194,9 @@ export function knownCopy(s: SlotInfo, candidates: Candidate[], length: (p: Patc
   return null;
 }
 
-/** the patches the bank holds (the editor's own copies; factory patches are rebuilt), for the morph picker */
-/** the bank's patches; `factory` picks which factory patches the bank names are built (all of them by default) */
+/** Stored copies and archived names are always opened; `factory` can cheaply filter current defaults by shape. */
 export const bankPatches = (factory: (name: string) => boolean = () => true): { name: string; patch: Patch }[] =>
-  load().filter((e) => e.patch || factory(e.name)).map((e) => ({ name: e.name, patch: patchOf(e) }));
+  load().filter((e) => e.patch || !(e.name in FM1_PRESETS) || factory(e.name)).map((e) => ({ name: e.name, patch: patchOf(e) }));
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { class?: string } = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -252,6 +253,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
     ...savedPatches().map((s) => ({ name: s.name, patch: () => s.patch })),
     ...addedCommunity().map((c) => ({ name: c.entry.title, patch: () => openCommunity(c) })),
     ...Object.entries(FM1_PRESETS).map(([name, make]) => ({ name, patch: make, factory: true })),
+    ...Object.entries(EXAMPLE_PRESETS).map(([name, make]) => ({ name, patch: make })),
   ];
   const factoryLength = new Map<string, number>(); // a factory patch's binary length, by name
   const lengthOf = (e: Entry): number => {

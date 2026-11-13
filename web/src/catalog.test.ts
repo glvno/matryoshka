@@ -3,9 +3,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { FACTORY } from './assemblies';
 import { addableModules, assemblyShelves, openableByValue, openableGroups, SHELVES } from './catalog';
 import { DEFS } from './modules';
-import { validatePatch, type Patch } from './patch';
+import { validatePatch } from './patch';
 import { addCommunity, loadCommunity } from './community';
-import { PRESETS, xlBase } from './presets';
+import { EXAMPLE_PRESETS, FM1_PRESETS, PRESETS } from './presets';
 import { savePatch } from './saved';
 
 const mem = new Map<string, string>();
@@ -37,40 +37,35 @@ describe('what the editor offers (#84)', () => {
   it('opens exactly the Open picker\'s entries, each to a loadable patch', () => {
     savePatch({ ...Object.values(PRESETS)[0](), name: 'Mine' });
     const groups = openableGroups();
-    expect(groups.map((g) => g.label)).toEqual(['Your patches', 'Factory patches']); // no Tutorial, no Community
     expect(groups[0].items.map((o) => o.name)).toEqual(['Mine']);
     expect(groups[0].items[0].from).toBe('Mine');
-    expect(groups[1].items.map((o) => o.name)).toEqual(Object.keys(PRESETS)); // no retired factory patches
+    expect(groups.flatMap(g => g.items).filter(o => !o.from).map(o => o.name)).toEqual(Object.keys(PRESETS));
     for (const o of groups.flatMap((g) => g.items)) {
       expect(openableByValue(o.value)).toBeDefined();
       expect(() => validatePatch(o.load(), DEFS)).not.toThrow();
       expect(o.chip().text).toMatch(/^(FM-1 · \d+ %|SANDBOX)$/);
     }
-    expect(groups[1].items.filter((o) => !xlBase(o.name)).every((o) => o.chip().fits)).toBe(true); // every factory FM-1 version fits (an XL need not)
   });
 
-  it('lists a factory XL right under its FM-1 version, and its chip comes from the patch, not the name', () => {
-    const base = 'Oracle V';
-    const big = (): Patch => {
-      const p = PRESETS[base]();
-      p.modules = [...p.modules, ...Array.from({ length: 400 }, (_, i) => ({ ...p.modules.find((m) => m.type === 'output')!, id: 1000 + i }))];
-      return p;
-    };
-    PRESETS[`${base} XL`] = big;
-    PRESETS['Init XL'] = PRESETS.Init; // an XL trimmed to fit shows FM-1
-    try {
-      const items = openableGroups().find((g) => g.label === 'Factory patches')!.items;
-      const i = items.findIndex((o) => o.name === base);
-      expect(items[i + 1]).toMatchObject({ name: `${base} XL`, xl: true });
-      expect(items[i + 1].chip()).toEqual({ fits: false, text: 'SANDBOX' });
-      expect(items[i].xl).toBe(false);
-      const init = items.findIndex((o) => o.name === 'Init');
-      expect(items[init + 1]).toMatchObject({ name: 'Init XL', xl: true });
-      expect(items[init + 1].chip().fits).toBe(true);
-      expect(items.length).toBe(Object.keys(PRESETS).length);
-    } finally {
-      delete PRESETS[`${base} XL`];
-      delete PRESETS['Init XL'];
+  it('keeps relocated patches out of the default picker until explicitly added from Community', async () => {
+    const entries = await loadCommunity();
+    const original = entries.find(c => c.entry.title === 'Oracle V XL')!;
+    const defaults = openableGroups().find(g => g.label === 'Factory patches')!.items;
+    expect(defaults.map(o => o.name)).toEqual(Object.keys(FM1_PRESETS));
+    expect(defaults.some(o => o.name === original.entry.title)).toBe(false);
+    addCommunity(original.entry.title);
+    const added = openableByValue(`community:${original.entry.title}`)!;
+    expect(added.author).toBe(original.entry.author);
+    expect(added.load()).toEqual(original.patch);
+  });
+
+  it('opens every editor example without adding it from Community or offering it as a hardware default', () => {
+    const factory = openableGroups().find(g => g.label === 'Factory patches')!.items;
+    const examples = openableGroups().find(g => g.label === 'Examples')!.items;
+    expect(examples.map(o => o.name)).toEqual(Object.keys(EXAMPLE_PRESETS));
+    for (const example of examples) {
+      expect(openableByValue(example.value)!.load().name).toBe(example.name);
+      expect(factory.some(o => o.name === example.name)).toBe(false);
     }
   });
 

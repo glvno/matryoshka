@@ -3,11 +3,11 @@ import type { BufferAllocation } from './signal-buffers';
 // What the editor offers to add or open, in one place: the command palette, the assembly browser and the Open picker all
 // read these lists, so anything hidden or retired in one is gone from the others too (glvno/matryoshka#84).
 import type { AssemblyDef } from './assembly';
-import { addedCommunity, chipOfEntry, openCommunity, pairXl } from './community';
+import { addedCommunity, chipOfEntry, openCommunity } from './community';
 import { FACTORY, FACTORY_SHELVES, loadLibrary, shelvesOf, USER_SHELF } from './assemblies';
 import { moduleName } from './labels';
 import type { ModuleDef, Patch } from './patch';
-import { PRESETS } from './presets';
+import { EXAMPLE_PRESETS, FM1_PRESETS, PRESETS } from './presets';
 import { chipOf, type Chip } from './sandbox';
 import { savedPatches } from './saved';
 
@@ -38,8 +38,6 @@ export interface Openable {
   from?: string;
   /** an added community patch's author, shown after its name ("Sol 29N XL · michael glaviano") */
   author?: string;
-  /** an XL listed right under its FM-1 version */
-  xl?: boolean;
   /** its chip, FM-1 · NN % or SANDBOX (sandbox.ts), worked out when asked */
   chip: () => Chip;
 }
@@ -52,9 +50,8 @@ const factoryChip = (name: string, allocation: BufferAllocation): Chip => {
   return c;
 };
 
-/** the Open picker's two groups: Your patches (saved ones newest first, then the community patches added in Library >
- *  Community, community.ts, with their authors) and the factory patches, each XL right under its FM-1 version. The
- *  tutorial's patches open from the course, and community patches show only once added. */
+/** Saved patches, hardware candidates and editor examples remain independently openable.
+ * Community patches only appear after the user adds them in Library > Community. */
 export function openableGroups(allocation: BufferAllocation = 0): { label: string; items: Openable[] }[] {
   const mine = savedPatches();
   const saved = new Set(mine.map((e) => e.name));
@@ -68,7 +65,8 @@ export function openableGroups(allocation: BufferAllocation = 0): { label: strin
           .map((c) => ({ value: `community:${c.entry.title}`, name: c.entry.title, author: c.entry.author, load: () => openCommunity(c), chip: () => chipOfEntry(c, allocation) })),
       ],
     },
-    { label: 'Factory patches', items: pairXl(Object.keys(PRESETS)).map(({ name, xl }) => ({ value: name, name, xl, load: PRESETS[name], chip: () => factoryChip(name, allocation) })) },
+    { label: 'Factory patches', items: Object.keys(FM1_PRESETS).map(name => ({ value: name, name, load: FM1_PRESETS[name], chip: () => factoryChip(name, allocation) })) },
+    { label: 'Examples', items: Object.keys(EXAMPLE_PRESETS).map(name => ({ value: name, name, load: EXAMPLE_PRESETS[name], chip: () => factoryChip(name, allocation) })) },
   ].filter((g) => g.items.length);
 }
 

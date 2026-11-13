@@ -364,6 +364,10 @@ export const FEATURE_ARMS = 1 << 20;
 /** INFO feature bit 21 (#721): ARMS and ARMS_NOW carry ARM_WORDS words, modules 0..127 (INFO's module limit says 128);
  * older firmware takes and sends two, modules 0..63 */
 export const FEATURE_WIDE_ARMS = 1 << 21;
+/** INFO payload byte 14, bit 24: complete synth + master-FX presets (FXP1). */
+export const FEATURE_FX_PRESETS = 1 << 24;
+/** PARAM_NOW's parameter sentinel: logical FX kernel bypass, value 0/1 in Q16. */
+export const FX_BYPASS_PARAM = 0xff;
 
 /** INFO's flags bit 3: EDITOR at IGNORE (with feature bit 19) */
 const INFO_EDITOR_IGNORE = 8;
@@ -372,7 +376,7 @@ export const PRESET_VALUES_MAX = 176;
 export const PRESET_VALUES_OLD = 88;
 export function parseInfo(p: Parsed): Info | null {
   if (p.cmd !== CMD.info || p.payload.length < 5) return null;
-  const features = (p.payload[5] ?? 0) | ((p.payload[6] ?? 0) << 8) | ((p.payload[12] ?? 0) << 16);
+  const features = (p.payload[5] ?? 0) | ((p.payload[6] ?? 0) << 8) | ((p.payload[12] ?? 0) << 16) | ((p.payload[14] ?? 0) << 24);
   return { version: p.payload[0], maxModules: p.payload[1], maxCables: p.payload[2], flashOk: !!(p.payload[3] & 1), patchLoaded: !!(p.payload[3] & 2), delays: p.payload[4], features,
     ...(p.payload.length >= 14 ? { bufferAllocation: p.payload[13] } : {}),
     midiOut: features & FEATURE_SANDBOX ? !!(p.payload[3] & 4) : null,

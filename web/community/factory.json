@@ -1,0 +1,245 @@
+[
+ {
+  "title": "Oracle V",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "oracle-v.json",
+  "added": "2026-11-11",
+  "notes": ""
+ },
+ {
+  "title": "Monolith D",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "monolith-d.json",
+  "added": "2026-11-11",
+  "notes": ""
+ },
+ {
+  "title": "Hera 4",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "hera-4.json",
+  "added": "2026-11-11",
+  "notes": "Juno-106 panel, four voices (the original has six; Hera 6 XL plays six in the browser). MIDI CC 64 is the hold pedal; Output sets volume. Poly 2 steals when all voices are busy. HPF 2/3 and chorus II settings are approximated by ear. Patch shift, tape, memory and the MIDI function switch are hardware or storage, not reproduced."
+ },
+ {
+  "title": "Sallen 20",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "sallen-20.json",
+  "added": "2026-11-11",
+  "notes": ""
+ },
+ {
+  "title": "Expander S",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "expander-s.json",
+  "added": "2026-11-11",
+  "notes": ""
+ },
+ {
+  "title": "Algo Four",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "algo-four.json",
+  "added": "2026-11-11",
+  "notes": ""
+ },
+ {
+  "title": "Canvas",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "canvas.json",
+  "added": "2026-11-11",
+  "notes": "Music Easel patch field with four independent random outputs. Select PATCH to connect any control source to an input. FX fires the pulser. The Arpeggiator has a rate input in Hz. Missing: external audio/preamp/envelope detector and linear decay. Pulse/wave rows use numbers; sine is extra. Plates, trims, program cards and local/remote switching need hardware or storage. Low range starts at 0.22 Hz, not 0.17. Output split remains unverified."
+ },
+ {
+  "title": "Wanderer",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "wanderer.json",
+  "added": "2026-11-11",
+  "notes": ""
+ },
+ {
+  "title": "Briefcase 3",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "briefcase-3.json",
+  "added": "2026-11-11",
+  "notes": ""
+ },
+ {
+  "title": "Io 4",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "io-4.json",
+  "added": "2026-11-11",
+  "notes": "Jupiter-4 architecture, four voices. UNISON ON is UNISON I; SHARE is UNISON II: one key uses four voices, two keys use two each, three or four use one each. Assignment still uses separate assign and unison rows. Other control gaps remain under the 1.5 fidelity audit."
+ },
+ {
+  "title": "Vernon 100",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "vernon-100.json",
+  "added": "2026-11-11",
+  "notes": ""
+ },
+ {
+  "title": "Cassia 1",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "cassia-1.json",
+  "added": "2026-11-11",
+  "notes": ""
+ },
+ {
+  "title": "Drift Poly",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "drift-poly.json",
+  "added": "2026-11-11",
+  "notes": "The drift poly engine as made, so its presets (PRESET on its page) are at hand on the FM-1."
+ },
+ {
+  "title": "Supersaw Stack",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "supersaw-stack.json",
+  "added": "2026-11-11",
+  "notes": "The supersaw stack engine as made, so its presets (PRESET on its page) are at hand on the FM-1."
+ },
+ {
+  "title": "8 Lire XL",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "8-lire-xl.json",
+  "added": "2026-11-11",
+  "notes": "The SOMA Lyra-8 after its manual (v2.1). The card is its 46 controls: TUNE per voice (continuous); source (FM / off / LFO), MOD, SHARP, FAST per pair; HOLD, PITCH per group; 34>56 78>12, TOTAL FB, VIBRATO; the Hyper LFO; the MOD DELAY; the DISTORTION. The rear jacks are inputs; the Lyra switches them by plugging, here a crossfader inside the assembly (0 = unplugged). Not here: outside audio into EXT IN (no audio input module), the plates' skin response (velocity and aftertouch stand in)."
+ },
+ {
+  "title": "808 Kit XL",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "808-kit-xl.json",
+  "added": "2026-11-11",
+  "notes": "Every TR-808 voice, knob and switch. Two tracks: DRUMS (the 808 Kit's rows) and DRUMS 2 (mid tom, hi tom, cymbal, ACCENT). Only the AC row accents (by the accent level), as on the TR-808. Switches: tom / conga for the three toms, rim shot / claves, hand clap / maracas. pre-scale sets both tracks' rate. The step count is each track's len: set them alike. Not here: the rhythm memory (A / B variations, fill-ins, auto fill, rhythm tracks)."
+ },
+ {
+  "title": "909 Kit XL",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "909-kit-xl.json",
+  "added": "2026-11-11",
+  "notes": "Every TR-909 drum, knob and pattern feature. Three tracks: DRUMS (the 909 Kit's rows), DRUMS 2 (mid tom, crash, ride, ACCENT), FLAM (kick, snare, toms). The crash and ride stand in for samples. Card accent flam: TOTAL ACCENT, FLAM, SHUFFLE and SCALE for all three tracks; kick, snare, toms and closed hat also accent on velocity 127. The hats share one level (hihat card). LAST STEP is each track's len: set them alike."
+ },
+ {
+  "title": "Algo Four XL",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "algo-four-xl.json",
+  "added": "2026-11-11",
+  "notes": "DX100 panel; one OP picker selects all fourteen operator controls. LFO SPEED covers 0.0008–55 Hz. AR/D1R/D2R use 0..31 rates: zero stops the stage; D2R zero holds D1L. D1L/RR use 0..15. Rate scaling uses 0..3. PB MODE selects LOW/HIGH/KON. Breath uses CC 2; foot uses CC 64. Ratio has the original 64 choices; detune has -3..+3 positions (up to 2.6 cents). Bend uses octaves. Cartridge, MIDI settings and stored patch memory are hardware/storage, not reproduced."
+ },
+ {
+  "title": "Briefcase 3 XL",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "briefcase-3-xl.json",
+  "added": "2026-11-11",
+  "notes": "EMS VCS3 with all 256 matrix pins, 0 out/1 in. Missing engine abilities: external audio (input 1 carries keys, input 2 is silent), envelope repeat and decay beyond 10 s, variable sine/triangle shapes, and the 18 dB filter (24 dB here). The scope replaces the meter; speaker switches, headphone/control outputs and keyboard sockets are hardware, not reproduced. Output filters are flat at 0.5; pan is 0 left/1 right."
+ },
+ {
+  "title": "Elvira 2 XL",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "elvira-2-xl.json",
+  "added": "2026-11-11",
+  "notes": "Elmyra 2 controls with eleven MODP programs, twelve filter types, microtonal scales, effects, two LFOs and patch jacks. BITMANGLER uses 16-bit XOR; the original's exact mask sequence is unverified. Missing: outside audio, control-motion recording and the full 128-step TUNE sequencer. The sequence here has eight steps. Browser only."
+ },
+ {
+  "title": "Expander S XL",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "expander-s-xl.json",
+  "added": "2026-11-11",
+  "notes": "The Oberheim Eight Voice: eight SEMs, each with every knob of its own (two VCOs with FM / PWM from an envelope or its LFO and sync, the saw / pulse mixer, the 12 dB VCF from low pass through notch to high pass or band pass, two ADS envelopes, VCA on, level and pan), an all-SEMs row per control that moves all eight at once, played by the keyboard: unison, assign, split with its own unison per half, portamento per half, octave, tune, VCF. Not here: the jacks, the R/C assign mode."
+ },
+ {
+  "title": "Hera 6 XL",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "hera-6-xl.json",
+  "added": "2026-11-11",
+  "notes": "Juno-106 panel, six voices. MIDI CC 64 is the hold pedal; Output sets volume. Poly 2 steals when all voices are busy; its card still needs to select no-steal with Poly 2. HPF 2/3 and chorus II settings are approximated by ear. Patch shift, tape, memory and the MIDI function switch are hardware or storage, not reproduced."
+ },
+ {
+  "title": "Meridian 8 XL",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "meridian-8-xl.json",
+  "added": "2026-11-11",
+  "notes": "The Landscape NOON, after its manual. The card is its 58 controls: per channel main, secondary, volume, MOD, mute and CV mute; nine LINK buttons; the main volume. Patch points are ports: gate 1..8 (any voltage powers its channel: drones), odd / even cv, audio (opened by the 1-2 link; patch an output 1..8 into it for internal processing), outputs 1..8, l, r. Aftertouch presses all touch plates. Not here: audio from outside the browser; plug-sensing outputs (a level and a mono Macro stand in)."
+ },
+ {
+  "title": "Oracle V XL",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "oracle-v-xl.json",
+  "added": "2026-11-11",
+  "notes": "The Prophet-5 Rev 4 whole (Sequential Prophet-5 User’s Guide): oscillator A saw and pulse, B saw, triangle and pulse, each on or off, sync, B’s keyboard switch and lo freq; the Rev 1/2 and Rev 3 filters, keyboard amount, velocity and aftertouch, the Release switch; Poly Mod (filter envelope and oscillator B into A’s frequency, pulse width and the filter, at audio rate) and Wheel-Mod (LFO saw / triangle / square, 0.022 to 500 Hz, or noise into both frequencies, both pulse widths and the filter); "
+ },
+ {
+  "title": "Perun 4 XL",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "perun-4-xl.json",
+  "added": "2026-11-11",
+  "notes": "After the PERKONS HD-01 manual (1.3): per voice 3 algorithms of 3 modes (CHORD, DIGITAL NOISE too), param 1 / 2, tune, decay, drone, cutoff, VCF LP / BP / HP, drive, send, level. The mod LFO (7 waves, sync) reaches all 8 knobs of each voice; control all; quantiser. Each voice has a track (VOICE 1..4: length, rate, play mode, swing, chance, accent, tune lock), rates ÷8..x4, groove, fills (C4..F4). Mod sync x8..÷8. BBD: colour, vintage, sync to 1/1D; compressor. Switches step, never blend. Not her"
+ },
+ {
+  "title": "Spokes 6 XL",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "spokes-6-xl.json",
+  "added": "2026-11-11",
+  "notes": "After the Elektron Model:Cycles manual: six tracks, each able to play any of the six FM machines (kick, snare, metal, perc, tone, chord: pitch, decay, color, shape, sweep, contour), with fine tune, level, volume + dist, pan, delay and reverb sends, punch, gate mode, chance, mute, retrigs (rate to a 1/128 triplet, length or INF, fade) and an LFO (speed or a tempo multiple, backward, start phase, wave, depth, trig mode, envelope wave, fade in / out) and velocity, each reaching appendix B's destina"
+ },
+ {
+  "title": "Verona Drum 1 XL",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "verona-drum-1-xl.json",
+  "added": "2026-11-11",
+  "notes": "The whole Vermona DRM1 MKIV: all eight channels with every knob, PAN and VOLUME each, MASTER. The rows are the TRIG buttons; a hi-hat row plays open or closed by its TRIG switch, and the CLOSED track plays both hi-hats closed (the original's second MIDI note per hi-hat)."
+ }
+]

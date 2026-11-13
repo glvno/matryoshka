@@ -7,12 +7,16 @@ import { assemblyPages } from './pages';
 import type { Patch } from './patch';
 import { devicePresetName } from './protocol';
 import { structureOf } from './structure';
+import { fxPresetScope } from './fx-preset';
 
 /** Assemblies with card pages, including nested ones; repeated copies share one preset list. */
 export function patchPresets(patch: Patch): Preset[] {
   const structures = new Set((patch.assemblies ?? [])
     .filter((a) => assemblyPages(patch, a, DEFS).length > 0)
-    .map((a) => structureOf(patch, a)));
+    .flatMap(a => {
+      const scope = fxPresetScope(patch, a);
+      return scope ? [scope.baseStructure, scope.structure] : [structureOf(patch, a)];
+    }));
   return userPresets().filter((p) => structures.has(p.structure));
 }
 
@@ -27,7 +31,7 @@ export async function sendPatchPresets(patch: Patch, device: PresetPeer, confirm
   if (!presets.length) return 'This patch’s devices have no saved user presets to send. Factory presets are already on the FM-1.';
   const seen = new Set<string>();
   for (const p of presets) {
-    if (!device.presetFits(p.values.length)) throw new Error(`${p.name}: ${PRESET_NEEDS_UPDATE}`);
+    if (!device.presetFits(p.values.length, p)) throw new Error(`${p.name}: ${PRESET_NEEDS_UPDATE}`);
     if (!devicePresetName(p.name)) throw new Error(`“${p.name}” has no characters the FM-1 can store. Rename it in Library > Presets before sending.`);
     if (seen.has(key(p))) throw new Error(`Two presets become “${devicePresetName(p.name)}” on the FM-1. Rename one in Library > Presets before sending.`);
     seen.add(key(p));

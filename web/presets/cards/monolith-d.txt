@@ -48,7 +48,9 @@
 #   volume = 0.44                      0..2
 #   a-440 = OFF                        OFF, ON
 
-# Drafts of 2026-10-29 after the Minimoog Model D (#413).
+# Curated Model D roles; the seven existing sounds below are retained unchanged.
+# Original additions use Fmini-1's role-led bank as a design reference, not parameter translations.
+# Source pin, differences and audition guidance: docs/measurements/2026-11-13-fmini-1-preset-reference.md.
 engine: Monolith D
 
 # Ranges: 1 LO, 2 32', 3 16', 4 8', 5 4', 6 2'. Waves: 1 triangle, 2 tri/saw (osc 3: reverse saw), 3 saw, 4 square, 5 wide rect, 6 narrow rect.
@@ -133,7 +135,7 @@ preset: Square Lead
   contours / decay (2) = 0.8
   contours / sustain (2) = 1
   decay on = 2
-  volume = 0.34
+  volume = 0.52
 
 # Pink noise alone through a slow, resonant filter sweep: wind and surf.
 preset: Pink Wind
@@ -229,3 +231,194 @@ preset: Rhea Plucked Bass
   contours / sustain (2) = 0
   decay on = ON
   volume = 1.86
+
+# A single 16' pulse supplies the articulation; a quiet 32' triangle supplies weight.
+# Unlike Fat Bass this decays to silence while held. Play detached notes around MIDI 48..67.
+# Decay macros 0.63 / 0.70 are about 214 / 389 ms; DECAY off cuts the tail when released.
+preset: Pocket Pulse
+  glide on = OFF
+  osc mod = OFF
+  osc 1 range = 16'
+  osc 1 wave = NARROW RECT
+  osc 2 range = 32'
+  osc 2 fine = 0 ct
+  osc 2 wave = TRIANGLE
+  osc 1 = 0.65
+  osc 2 = 0.18
+  osc 3 = 0
+  noise = 0
+  cutoff = 240 Hz
+  emphasis = 0.34
+  contour = 2.8
+  kbd control = 1
+  filter mod = OFF
+  contours / attack (1) = 0.001 s
+  contours / decay (1) = 0.63
+  contours / sustain (1) = 0
+  contours / attack (2) = 0.002 s
+  contours / decay (2) = 0.70
+  contours / sustain (2) = 0
+  decay on = OFF
+  volume = 1.59
+
+# A root, a quieter fifth and an octave triangle: an interval lead, not another unison.
+# Osc 2's +7 st is an interval, not detune. Try MIDI 48..72 and overlapping notes for glide.
+preset: Fifth Signal
+  glide = 0.11 s
+  glide on = ON
+  osc mod = OFF
+  osc 1 range = 8'
+  osc 1 wave = SAW
+  osc 2 range = 8'
+  osc 2 freq = 7 st
+  osc 2 fine = 0 ct
+  osc 2 wave = WIDE RECT
+  osc 3 range = 4'
+  osc 3 fine = 0 ct
+  osc 3 wave = TRIANGLE
+  osc 1 = 0.5
+  osc 2 = 0.24
+  osc 3 = 0.12
+  noise = 0
+  cutoff = 1100 Hz
+  emphasis = 0.22
+  contour = 1.6
+  kbd control = 2
+  filter mod = OFF
+  contours / attack (1) = 0.018 s
+  contours / decay (1) = 0.76
+  contours / sustain (1) = 0.45
+  contours / attack (2) = 0.006 s
+  contours / decay (2) = 0.68
+  contours / sustain (2) = 0.92
+  decay on = ON
+  volume = 0.45
+
+# Root triangle plus a quiet two-octave triangle: a wooden upper-register pluck.
+# Filter closes before loudness does; no sustain and no effects create the struck identity.
+# Play MIDI 60..84; DECAY off makes short gates drier without changing the held decay.
+preset: Copper Pluck
+  glide on = OFF
+  osc mod = OFF
+  osc 1 range = 8'
+  osc 1 wave = TRIANGLE
+  osc 2 range = 2'
+  osc 2 fine = 0 ct
+  osc 2 wave = TRIANGLE
+  osc 1 = 0.7
+  osc 2 = 0.1
+  osc 3 = 0
+  noise = 0
+  cutoff = 1300 Hz
+  emphasis = 0.08
+  contour = 1.7
+  kbd control = 1+2
+  filter mod = OFF
+  contours / attack (1) = 0.001 s
+  contours / decay (1) = 0.60
+  contours / sustain (1) = 0
+  contours / attack (2) = 0.001 s
+  contours / decay (2) = 0.74
+  contours / sustain (2) = 0
+  decay on = OFF
+  volume = 1.54
+
+# One narrow pulse, a restrained triangle and a trace of pink noise; no unison beating.
+# The filter speaks after the amplitude starts, unlike the near-instant Square Lead.
+# Play MIDI 55..79 with detached breath-length gates; cutoff 700..1600 Hz changes the reed.
+preset: Hollow Reed
+  glide on = OFF
+  osc mod = OFF
+  osc 1 range = 8'
+  osc 1 wave = NARROW RECT
+  osc 2 range = 8'
+  osc 2 fine = 0 ct
+  osc 2 wave = TRIANGLE
+  osc 1 = 0.55
+  osc 2 = 0.16
+  osc 3 = 0
+  noise = 0.025
+  white/pink = PINK
+  cutoff = 850 Hz
+  emphasis = 0.29
+  contour = 1.1
+  kbd control = 1+2
+  filter mod = OFF
+  contours / attack (1) = 0.045 s
+  contours / decay (1) = 0.65
+  contours / sustain (1) = 0.65
+  contours / attack (2) = 0.025 s
+  contours / decay (2) = 0.58
+  contours / sustain (2) = 0.88
+  decay on = ON
+  volume = 0.62
+
+# Straight 16'/8'/4' registrations, no detune or filter contour: a mono organ stop.
+# Full sustain and DECAY off keep the note gate-shaped, unlike horn or pluck contours.
+# Play MIDI 60..84; blend osc 3 from 0.08..0.25 for a stronger upper registration.
+preset: Register Organ
+  glide on = OFF
+  osc mod = OFF
+  osc 1 range = 16'
+  osc 1 wave = TRIANGLE
+  osc 2 range = 8'
+  osc 2 fine = 0 ct
+  osc 2 wave = SQUARE
+  osc 3 range = 4'
+  osc 3 fine = 0 ct
+  osc 3 wave = TRIANGLE
+  osc 1 = 0.36
+  osc 2 = 0.28
+  osc 3 = 0.16
+  noise = 0
+  cutoff = 2400 Hz
+  emphasis = 0.04
+  contour = 0
+  kbd control = 1+2
+  filter mod = OFF
+  contours / attack (1) = 0.001 s
+  contours / decay (1) = 0.50
+  contours / sustain (1) = 1
+  contours / attack (2) = 0.008 s
+  contours / decay (2) = 0.50
+  contours / sustain (2) = 1
+  decay on = OFF
+  volume = 0.31
+
+# Osc 3 is inaudible in the mixer but remains a fixed sub-audio modulation source.
+# LO with keyboard control off and -12 st is about 2 Hz. Mod mix adds 18% pink noise.
+# A negative contour darkens the held root/fifth; wheel adds filter motion, never pitch.
+# Play MIDI 48..72, hold a note, then move the wheel from 0..1; try mod mix 0..0.35.
+preset: Wheel Furnace
+  glide on = OFF
+  mod mix = 0.18
+  osc mod = OFF
+  osc 3 ctrl = OFF
+  osc 1 range = 8'
+  osc 1 wave = TRI/SAW
+  osc 2 range = 8'
+  osc 2 freq = 7 st
+  osc 2 fine = -2 ct
+  osc 2 wave = SQUARE
+  osc 3 range = LO
+  osc 3 freq = -12 st
+  osc 3 fine = 0 ct
+  osc 3 wave = TRIANGLE
+  osc 1 = 0.52
+  osc 2 = 0.2
+  osc 3 = 0
+  noise = 0.035
+  white/pink = PINK
+  cutoff = 1700 Hz
+  emphasis = 0.58
+  contour = -1.8
+  kbd control = 2
+  filter mod = ON
+  contours / attack (1) = 0.45 s
+  contours / decay (1) = 0.84
+  contours / sustain (1) = 0.65
+  contours / attack (2) = 0.03 s
+  contours / decay (2) = 0.70
+  contours / sustain (2) = 0.9
+  decay on = ON
+  volume = 0.79

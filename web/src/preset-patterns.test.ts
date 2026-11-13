@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { expect, it } from 'vitest';
-import { FM1_PRESETS } from './presets';
+import { PRESETS } from './presets';
 import { factoryPresets } from './factory-presets';
 import { applyPreset, presetsOf } from './device-presets';
 import { devicesOf, patternDriver } from './pages';
@@ -11,7 +11,7 @@ import { invalidatePresetPatterns, presetPattern, seedPresetPattern } from './pr
 import { PRESET_PATTERNS, patternRevision, setPresetPatterns } from './preset-pattern-data';
 factoryPresets();
 function fixture(name = 'Spokes 6') {
-  const p = FM1_PRESETS[name]();
+  const p = PRESETS[name]();
   const d = devicesOf(p, DEFS).find((d) => d.asm !== undefined)!;
   const a = p.assemblies!.find((a) => a.id === d.asm)!;
   const t = p.modules.find((m) => m.id === d.track)!;

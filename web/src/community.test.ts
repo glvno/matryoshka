@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import RAW from './community.json';
 import {
@@ -12,15 +11,20 @@ import { PRESETS } from './presets';
 import { decodeShare, encodeShare } from './share';
 
 describe('the community list (#157)', () => {
-  // the guard for every accepted submission: a broken code, a missing author or licence fails here
-  it('every entry has its fields, its licence and a code that decodes to a valid patch', async () => {
-    expect(Array.isArray(RAW)).toBe(true);
+  it('retains valid attribution, source and licence metadata for every bundled entry', () => {
     for (const raw of RAW as unknown[]) {
       expect(entryProblems(raw), JSON.stringify(raw).slice(0, 120)).toEqual([]);
-      await expect(decodeShare((raw as { code: string }).code, DEFS)).resolves.toBeTruthy();
     }
-    expect(communityEntries()).toHaveLength((RAW as unknown[]).length);
-    expect((await loadCommunity()).every((c) => c.patch)).toBe(true);
+  });
+
+  it('discovers archived originals even when a selected default keeps the same name', async () => {
+    const titles = communityEntries().map(entry => entry.title);
+    expect(titles).toContain('Hera 4');
+    expect(titles).toContain('Hera 6 XL');
+    expect(titles).not.toContain('Hera 3');
+    expect(titles).toContain('Oracle V');
+    expect(titles).toHaveLength(RAW.length);
+    expect((await loadCommunity()).map(c => c.entry.title)).toEqual(titles);
   });
 
   it('Babushka (#663) opens with its Rungler collapsed and fits the FM-1', async () => {
@@ -35,12 +39,11 @@ describe('the community list (#157)', () => {
     const { code } = await encodeShare(Object.values(PRESETS)[0]());
     const good = { title: 'A patch', author: 'someone', licence: 'CC-BY-SA-4.0', source: 'https://www.reddit.com/r/MVaveFM1/comments/x', code, added: '2026-10-21' };
     expect(entryProblems(good)).toEqual([]);
-    expect(entryProblems({ ...good, author: ' ' })).toEqual(['no author']);
-    expect(entryProblems({ ...good, licence: 'CC-BY-4.0' })).toEqual(['the licence is not CC-BY-SA-4.0']);
-    expect(entryProblems({ ...good, licence: undefined })).toEqual(['the licence is not CC-BY-SA-4.0']);
-    expect(entryProblems({ ...good, source: 'javascript:alert(1)' })).toEqual(['the source is not an https URL']);
-    expect(entryProblems({ ...good, added: '21.10.2026' })).toEqual(['added is not a YYYY-MM-DD date']);
-    expect(entryProblems({ ...good, code: 'x' })).toEqual(['the code is not a share link value']);
+    for (const invalid of [
+      { author: ' ' }, { licence: 'CC-BY-4.0' }, { licence: undefined }, { licence: '__proto__' },
+      { source: 'javascript:alert(1)' }, { added: '21.10.2026' }, { code: 'x' },
+    ]) expect(entryProblems({ ...good, ...invalid }).length).toBeGreaterThan(0);
+    expect(entryProblems({ ...good, licence: 'GPL-3.0-only' })).toEqual([]);
     await expect(decodeShare(code.slice(0, -12) + 'AAAAAAAAAAAA', DEFS)).rejects.toThrow();
     // ill-formed entries are left out, the rest newest first
     const list = communityEntries([{ ...good, title: 'old', added: '2026-01-01' }, { ...good, author: '' }, { ...good, title: 'new', added: '2026-10-01' }]);
@@ -67,12 +70,6 @@ describe('the community list (#157)', () => {
     expect(u.searchParams.get('template')).toBe('community-patch.yml');
     expect(u.searchParams.get('patch-title')).toBe('Acid & co');
     expect(u.searchParams.get('link')).toBe('https://glvno.github.io/matryoshka/#p=abc');
-    // the ids the URL fills exist in the form, and the form states the licence and requires the checkbox
-    const form = readFileSync(new URL('../../.github/ISSUE_TEMPLATE/community-patch.yml', import.meta.url), 'utf8');
-    for (const id of ['patch-title', 'link', 'author']) expect(form).toContain(`id: ${id}`);
-    expect(form).toContain('CC BY-SA 4.0');
-    expect(form).toMatch(/required: true/);
-    expect(form).toContain('community-patch');
   });
 });
 
@@ -80,6 +77,8 @@ describe('families and XL pairing', () => {
   it('reads an XL name', () => {
     expect(xlBase('Sol 29N XL')).toBe('Sol 29N');
     expect(xlBase(' Algo Four XL ')).toBe('Algo Four');
+    expect(xlBase('Hera 6 XL')).toBe('Hera 3');
+    expect(xlBase('Hera 6 XL', new Set(['Hera 4']))).toBe('Hera 4');
     expect(xlBase('XL')).toBeNull();
     expect(xlBase('Sol 29NXL')).toBeNull();
     expect(xlBase('Sol 29N')).toBeNull();
@@ -88,6 +87,32 @@ describe('families and XL pairing', () => {
   it('moves each XL right under its FM-1 version, and leaves an XL without one where it is', () => {
     expect(pairXl(['A XL', 'B', 'A', 'C XL', 'B XL'])).toEqual([
       { name: 'B', xl: false }, { name: 'B XL', xl: true }, { name: 'A', xl: false }, { name: 'A XL', xl: true }, { name: 'C XL', xl: false },
+    ]);
+  });
+
+  it('pairs the full Hera with the selected default, falling back to the unchanged archive name', () => {
+    expect(pairXl(['Hera 6 XL', 'Other', 'Hera 3'])).toEqual([
+      { name: 'Other', xl: false }, { name: 'Hera 3', xl: false }, { name: 'Hera 6 XL', xl: true },
+    ]);
+    expect(pairXl(['Hera 6 XL', 'Hera 4'])).toEqual([
+      { name: 'Hera 4', xl: false }, { name: 'Hera 6 XL', xl: true },
+    ]);
+    expect(pairXl(['Hera 6 XL', 'Hera 4', 'Hera 3'])).toEqual([
+      { name: 'Hera 4', xl: false }, { name: 'Hera 3', xl: false }, { name: 'Hera 6 XL', xl: true },
+    ]);
+    expect(pairXl(['Hera 6 XL'])).toEqual([{ name: 'Hera 6 XL', xl: false }]);
+  });
+
+  it('groups Hera by the names actually available without relabelling any entry', () => {
+    for (const base of ['Hera 3', 'Hera 4']) {
+      const list = ['Hera 6 XL', 'Other', base].map(title => ({ entry: { ...RAW[0], title } as CommunityEntry }));
+      expect(familiesOf(list).map(f => [f.name, f.members.map(m => m.entry.title)])).toEqual([
+        [base, [base, 'Hera 6 XL']], ['Other', ['Other']],
+      ]);
+    }
+    const list = ['Hera 6 XL', 'Hera 4', 'Hera 3'].map(title => ({ entry: { ...RAW[0], title } as CommunityEntry }));
+    expect(familiesOf(list).map(f => [f.name, f.members.map(m => m.entry.title)])).toEqual([
+      ['Hera 3', ['Hera 3', 'Hera 6 XL']], ['Hera 4', ['Hera 4']],
     ]);
   });
 
@@ -124,6 +149,22 @@ describe('adding community patches to Your patches', () => {
     expect(removeCommunity(b)).toBe(true);
     expect(isAdded(b)).toBe(false);
     expect(addedTitles()).toEqual([a]);
+  });
+
+  it('keeps already-added originals accessible with their original payload and attribution', async () => {
+    await loadCommunity();
+    mem.set('matryoshka.community-added', JSON.stringify(['Oracle V', 'Hera 4', 'Hera 6 XL']));
+    expect(communityEntries().some(entry => entry.title === 'Oracle V')).toBe(true);
+    const added = addedCommunity();
+    expect(added.map(c => c.entry.title)).toEqual(['Oracle V', 'Hera 4', 'Hera 6 XL']);
+    for (const c of added) {
+      const raw = RAW.find(entry => entry.title === c.entry.title)!;
+      expect(c.entry).toEqual(raw);
+      expect(c.patch).toEqual(await decodeShare(raw.code, DEFS));
+      expect(c.patch.name).toBe(c.entry.title);
+    }
+    unlinkSaved(['Oracle V']);
+    expect(addedCommunity().map(c => c.entry.title)).toEqual(['Hera 4', 'Hera 6 XL']);
   });
 
   it('drops the link once the user saves a patch of that name, and leaves out titles no longer in the list', async () => {

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEVICE_SR } from './modules';
 import { removeModule, type Patch } from './patch';
-import { FM1_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 import { removeMember } from './assembly';
 
 const SR = DEVICE_SR;
@@ -42,8 +42,8 @@ function pitch(a: Float32Array): number {
 
 describe('Sallen 20 ESP on the FM-1', () => {
   it('OFF / OFF plays exactly as the patch without the ESP routing', () => {
-    const p = FM1_PRESETS['Sallen 20']();
-    const q = FM1_PRESETS['Sallen 20']();
+    const p = relocatedPatches['Sallen 20']();
+    const q = relocatedPatches['Sallen 20']();
     // (the analog shape off: each oscillator's flaws follow its place in the patch, which removing modules moves, #673)
     for (const x of [p, q]) for (const m of x.modules) if (m.type === 'osc') m.params.analog = 0;
     const a = card(q);
@@ -60,7 +60,7 @@ describe('Sallen 20 ESP on the FM-1', () => {
   });
 
   it('ENV>GAIN: VCO 1 into SIGNAL IN opens the VCA with no key held', () => {
-    const p = FM1_PRESETS['Sallen 20']();
+    const p = relocatedPatches['Sallen 20']();
     set(p, 'signal in', 2);
     expect(rms(render(p, 0.5).subarray(SR / 4))).toBe(0); // route OFF: silent without a key
     set(p, 'esp route', 3);
@@ -68,7 +68,7 @@ describe('Sallen 20 ESP on the FM-1', () => {
   });
 
   it('TRIG>EGS: the MG into SIGNAL IN fires both EGs with no key held', () => {
-    const p = FM1_PRESETS['Sallen 20']();
+    const p = relocatedPatches['Sallen 20']();
     set(p, 'signal in', 4);
     set(p, 'threshold', 0.2);
     expect(rms(render(p, 1).subarray(SR / 2))).toBe(0);
@@ -78,7 +78,7 @@ describe('Sallen 20 ESP on the FM-1', () => {
 
   it('F-V>VCO 2: VCO 2 follows VCO 1, an octave up when VCO 1 goes up an octave', () => {
     const at = (scale: number, route: number): number => {
-      const p = FM1_PRESETS['Sallen 20']();
+      const p = relocatedPatches['Sallen 20']();
       set(p, 'signal in', 2);
       set(p, 'esp route', route);
       set(p, 'vco 1 scale', scale);

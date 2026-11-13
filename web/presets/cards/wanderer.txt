@@ -69,7 +69,7 @@
 #   repeat = kybd                      kybd, auto
 #   out: a screen, not a value
 
-# Drafts of 2026-10-29 after the ARP Odyssey (#413).
+# Curated panel studies of 2026-11-13 after the ARP Odyssey (#413).
 engine: Wanderer
 
 # Coarse is in octaves, fine in octaves (0.01 is 12 cents).
@@ -78,7 +78,7 @@ engine: Wanderer
 # s/h trig 1 LFO, 2 keyboard. n/r src 1 noise, 2 ring. mod 1 src 1 kybd CV, 2 S/H mixer; mod 2 src 1 S/H (lagged), 2 LFO sine;
 # mod 3 src 1 ADSR, 2 AR. vca eg 1 AR, 2 ADSR. ar / adsr trig 1 keyboard, 2 LFO repeat; repeat 1 kybd repeat, 2 auto repeat.
 
-# VCO 2 synced to VCO 1 and swept a fifth up and back by the ADSR: the sync lead.
+# VCO 2 synced to VCO 1, starting a fifth up and swept further by the ADSR: the sync lead.
 preset: Sync Lead
   vco 2 / coarse = 0.5833
   vco 2 / fine = 0
@@ -125,10 +125,10 @@ preset: S/H Bleeps
   release = 0.15 s
   ar trig = 2
   repeat = 1
-  vca level = 1.45
+  vca level = 2
   gain = 0
 
-# The ring modulator on two VCOs an inharmonic 16 semitones apart, the ADSR on the VCA: a metallic bell.
+# The digital pulse XOR ring modulator on VCOs an inharmonic 16 semitones apart, the ADSR on the VCA: a metallic bell.
 preset: Ring Bell
   vco 2 / coarse = 1.3333
   vco 2 / fine = 0.025
@@ -196,5 +196,79 @@ preset: PWM Lead
   s = 0.7
   r = 0.3 s
   portamento = 0.15
-  vca level = 1.02
+  vca level = 1.23
+  gain = 0
+
+# A fingered interval, not a stored chord: lowest key on saw, highest key on narrow pulse, one shared AR amplifier.
+preset: Two Finger Reed
+  vco 2 / coarse = 0
+  vco 2 / fine = 0
+  vco 2 / pulse width = 0.25
+  vco 1 = 0.35
+  vco 1 wave = saw
+  vco 2 = 0.4
+  vco 2 wave = square
+  vcf freq = 1400 Hz
+  resonance = 0.15
+  mod 1 = 0.25
+  mod 3 = 0.15
+  vca eg = ar
+  attack = 0.02 s
+  release = 0.16 s
+  a = 0.05 s
+  d = 0.35 s
+  s = 0.6
+  r = 0.16 s
+  vca level = 1.11
+  gain = 0
+
+# Sample noise only when a key is pressed, then glide the held cutoff value: no clocked pitch wandering.
+preset: Keyed Color
+  vco 2 / coarse = 0
+  vco 2 / fine = 0.0033
+  vco 1 / pulse width = 0.4
+  vco 1 = 0.45
+  vco 1 wave = square
+  vco 2 = 0
+  s/h 1 = 0
+  s/h 2 = 1
+  s/h 2 src = noise
+  s/h trig = kybd
+  output lag = 0.08 s
+  vcf freq = 1000 Hz
+  resonance = 0.45
+  mod 2 = 0.3
+  mod 2 src = s/h
+  mod 3 = 0.2
+  vca eg = adsr
+  a = 0.002 s
+  d = 0.45 s
+  s = 0.2
+  r = 0.15 s
+  vca level = 3.64
+  gain = 0
+
+# Pink noise through a resonant band set by HPF and LPF; a held key gives a soft swell, not a pitched lead.
+preset: Pink Breath
+  vco 1 = 0
+  vco 2 = 0
+  noise/ring = 0.45
+  n/r src = noise
+  noise = pink
+  vcf freq = 2200 Hz
+  resonance = 0.4
+  mod 1 = 0
+  mod 2 = 0.1
+  mod 2 src = lfo
+  mod 3 = 0.2
+  hpf = 650 Hz
+  lfo freq = 0.35 Hz
+  vca eg = ar
+  attack = 0.25 s
+  release = 0.45 s
+  a = 0.4 s
+  d = 0.7 s
+  s = 0.6
+  r = 0.45 s
+  vca level = 4
   gain = 0

@@ -5,7 +5,9 @@ import { insertAssembly, promote, toDef, type AssemblyDef } from './assembly';
 import { addUserPreset, applyPreset, currentValues, deletePreset, exportPresets, importPresets, matchesPreset, nextPresetName, presetsOf, renamePreset, setFactoryPresets, stepPreset, storePreset, userPresets } from './device-presets';
 import { DEFS } from './modules';
 import { connect, newPatch, validatePatch } from './patch';
-import { defStructure, structureOf } from './structure';
+import { defStructure, rowOrder, structureOf } from './structure';
+import { buildSelectedFactoryBank } from './factory-bank';
+import type { Preset } from './device-presets';
 
 const mem = new Map<string, string>();
 beforeEach(() => {
@@ -59,6 +61,24 @@ describe('structure (#192)', () => {
 });
 
 describe('presets (#192)', () => {
+  it('loads wider presets within this card cap without changing their stored values or match identity', () => {
+    const p = buildSelectedFactoryBank().find(entry => entry.name === 'Expander S')!.patch;
+    const a = p.assemblies!.find(a => a.params.some(r => r.param === 'voices'))!;
+    const rows = rowOrder(p, a), at = rows.findIndex(r => r.param === 'voices');
+    const allocator = p.modules.find(m => m.id === rows[at].module)!;
+    const stored: Preset = { name: 'Wide', structure: structureOf(p, a), values: currentValues(p, a), factory: true };
+    stored.values[at] = 4;
+    setFactoryPresets([stored]);
+    expect(applyPreset(p, a, stored)).toBe(true);
+    expect(allocator.params.voices).toBe(3);
+    expect(presetsOf(p, a)[0].values[at]).toBe(3);
+    expect(matchesPreset(p, a)).toBe(true);
+    expect(stored.values[at]).toBe(4);
+    a.params.find(r => r.module === allocator.id && r.param === 'voices')!.top = 4;
+    expect(applyPreset(p, a, stored)).toBe(true);
+    expect(allocator.params.voices).toBe(4);
+    expect(matchesPreset(p, a)).toBe(true);
+  });
   it('store on one copy, load on another (one structure), and the patch remembers the name', () => {
     const p = newPatch(DEFS);
     const a = insertAssembly(p, DEFS, named('Hera 4'), 0, 0);

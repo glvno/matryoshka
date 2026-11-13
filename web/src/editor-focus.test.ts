@@ -10,6 +10,7 @@ import { allFactoryPresets } from './factory-presets';
 import { DEFS } from './modules';
 import { devicesOf, homeDevice } from './pages';
 import { PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 import { presetPattern } from './preset-patterns';
 
 vi.hoisted(() => {
@@ -21,21 +22,21 @@ vi.hoisted(() => {
   proto.scrollTo ??= () => {};
 });
 
-function editorOn(name: string): { editor: Editor; focused: string[] } {
+function editorOn(name: string, make = PRESETS[name]): { editor: Editor; focused: string[] } {
   document.body.innerHTML = '<div id="canvas"><div id="canvas-space"><div id="patch-world"><svg id="cables"></svg><div id="modules"></div><svg id="cable-glow"></svg><svg id="patch-preview"></svg></div></div></div>';
   const focused: string[] = [];
   const ev: EditorEvents = {
     onStructure() {}, onParam() {}, onAtt() {}, onBypass() {}, onRange() {}, onTrack() {}, onTransport() {}, onLayout() {}, onError() {}, onSaveAssembly() {},
     onFocus(key, page) { focused.push(`${key}:${page}`); },
   };
-  return { editor: new Editor(document.getElementById('canvas')!, PRESETS[name](), ev), focused };
+  return { editor: new Editor(document.getElementById('canvas')!, make(), ev), focused };
 }
 
 const home = (name: string): string => { const d = devicesOf(PRESETS[name](), DEFS); return d[homeDevice(d)].key; };
 
 describe('the focus when another patch opens (#496)', () => {
   it('a device of the last patch whose key the new one has too (Main): the new patch opens on its home device', () => {
-    const { editor } = editorOn('Vernon 100');
+    const { editor } = editorOn('Vernon 100', relocatedPatches['Vernon 100']);
     const main = editor.devices.find((d) => d.name === 'Main')!;
     editor.focusFrom({ device: main.key, page: 0 });   // (the FM-1 moved to Main: FOCUS_NOW)
     expect(editor.focus).toEqual({ device: main.key, page: 0 });

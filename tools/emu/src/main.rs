@@ -50,6 +50,25 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    // All execution commands take app bytes. A package is encrypted transport data, not instructions.
+    // `xip` retains its complete unpacked window, including the prefix before ENTRY.
+    let app = if cmd != "xip" && bin.ends_with(".fwsc") {
+        match fm1_soc::fwsc::unpack(&app) {
+            Ok(unpacked) => match unpacked.xip.get(machine::XIP_PAD..) {
+                Some(image) => image.to_vec(),
+                None => {
+                    eprintln!("{bin}: unpacked XIP window is shorter than the app prefix");
+                    return ExitCode::FAILURE;
+                }
+            },
+            Err(error) => {
+                eprintln!("{bin}: {error}");
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        app
+    };
     match cmd.as_str() {
         "smoke" => {
             let out = opt(&a, "--out").unwrap_or("build/emu/smoke");

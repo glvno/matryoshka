@@ -78,7 +78,7 @@ preset: Strings
   s = 0.8
   r = 0.583 s
   chorus = II
-  level = 0.73
+  level = 0.65
 
 preset: Bass
   pwm = 0
@@ -93,7 +93,7 @@ preset: Bass
   s = 0.15
   r = 0.062 s
   chorus = OFF
-  level = 0.84
+  level = 0.64
 
 preset: Organ
   pwm = 0
@@ -108,7 +108,7 @@ preset: Organ
   s = 1
   r = 0.021 s
   chorus = II
-  level = 0.38
+  level = 0.33
 
 preset: Glass Pad
   # A thin, bright pulse swept slowly by the LFO: glassy.
@@ -129,4 +129,4 @@ preset: Glass Pad
   s = 0.8
   r = 1.25 s
   chorus = II
-  level = 0.92
+  level = 0.76

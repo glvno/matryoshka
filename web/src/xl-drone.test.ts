@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, type Patch } from './patch';
-import { XL_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 const SR = 44118;
 
@@ -48,7 +48,7 @@ const crossings = (x: Float32Array, from: number): number => {
 describe('drone XLs', () => {
   it("8 Lire XL: TUNE is continuous, an octave up doubles the voice's pitch", () => {
     const at = (octaves: number): number => {
-      const p = XL_PRESETS['8 Lire XL']();
+      const p = relocatedPatches['8 Lire XL']();
       const row = find(p, 'params', 'tune 1');
       expect(row.param).toBe('value');
       p.modules.find((m) => m.id === row.module)!.params.value = octaves;
@@ -64,7 +64,7 @@ describe('drone XLs', () => {
   });
 
   it('8 Lire XL: opened with both HOLDs up, the drone fades in, no step from silence (#516)', () => {
-    const p = XL_PRESETS['8 Lire XL']();
+    const p = relocatedPatches['8 Lire XL']();
     for (const a of p.assemblies ?? [])
       for (const r of a.params.filter((x) => x.label === 'hold')) p.modules.find((m) => m.id === r.module)!.params[r.param] = 1;
     const out = render(p, Math.ceil((0.1 * SR) / 128)); // the first 100 ms
@@ -76,8 +76,8 @@ describe('drone XLs', () => {
   });
 
   it('Meridian 8 XL: a steady voltage into a gate input is a drone, with no key held', () => {
-    const quiet = XL_PRESETS['Meridian 8 XL']();
-    const p = XL_PRESETS['Meridian 8 XL']();
+    const quiet = relocatedPatches['Meridian 8 XL']();
+    const p = relocatedPatches['Meridian 8 XL']();
     for (const x of [quiet, p]) x.modules.filter((m) => m.type === 'steps').forEach((m) => (m.notes = []));
     const gate = find(p, 'inputs', 'gate 1');
     const v = addModule(p, DEFS.const, 0, 0);

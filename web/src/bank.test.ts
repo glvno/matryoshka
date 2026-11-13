@@ -2,8 +2,9 @@
 import { beforeEach, expect, it } from 'vitest';
 import { addToBank, bankMatches, bankPatches, knownCopy, slotFor, uploadLoses } from './bank';
 import type { Patch } from './patch';
-import { PRESETS } from './presets';
+import { FM1_PRESETS, PRESETS } from './presets';
 import { SLOTS, type SlotInfo } from './protocol';
+import { relocatedPatches } from './community-factory';
 
 const bank = (names: (string | null)[], length = 100): SlotInfo[] =>
   Array.from({ length: SLOTS }, (_, slot) => ({ slot, used: names[slot] != null, length: names[slot] != null ? length : 0, name: names[slot] ?? '' }));
@@ -52,7 +53,7 @@ it('a slot’s patch comes from this browser’s copy with its name and length, 
 });
 
 it('the bank takes patches that fit, never one over the FM-1 budget', () => {
-  const [name, make] = Object.entries(PRESETS)[0];
+  const name = 'Monolith D', make = PRESETS.Init;
   mem.set('matryoshka.bank', JSON.stringify([{ name }]));
   expect(addToBank({ ...make(), name: 'Mine' })).toMatch(/kept in the bank/);
   expect(addToBank({ ...make(), name: 'Mine' })).toMatch(/updated in the bank/);
@@ -61,4 +62,41 @@ it('the bank takes patches that fit, never one over the FM-1 budget', () => {
   huge.modules = [...huge.modules, ...Array.from({ length: 400 }, (_, i) => ({ ...huge.modules.find((m) => m.type === 'output')!, id: 1000 + i }))];
   expect(addToBank({ ...huge, name: 'Huge' })).toMatch(/too big/);
   expect(bankPatches().map((e) => e.name)).not.toContain('Huge');
+});
+
+it('retains old example-name bank entries and edited user graphs after examples leave the defaults', () => {
+  const mine = { ...PRESETS.Init(), name: 'Mine', notes: 'saved by the user' };
+  mem.set('matryoshka.bank', JSON.stringify([{ name: 'Init' }, { name: '<7PH' }, { name: 'Mine', patch: mine }]));
+  expect(bankPatches()).toEqual([
+    { name: 'Init', patch: PRESETS.Init() },
+    { name: '<7PH', patch: PRESETS['<7PH']() },
+    { name: 'Mine', patch: mine },
+  ]);
+});
+
+it('retains archived name-only defaults beside selected defaults and saved graphs without rewriting the bank', () => {
+  const mine = { ...relocatedPatches['Monolith D'](), notes: 'saved by the user' };
+  mine.modules.find(module => module.type === 'output')!.params.level = 0.123;
+  const stored = JSON.stringify([{ name: 'Hera 4' }, { name: 'Hera 3' }, { name: mine.name, patch: mine }, { name: 'Oracle V XL' }]);
+  mem.set('matryoshka.bank', stored);
+  const expected = [
+    { name: 'Hera 4', patch: relocatedPatches['Hera 4']() },
+    { name: 'Hera 3', patch: FM1_PRESETS['Hera 3']() },
+    { name: mine.name, patch: mine },
+    { name: 'Oracle V XL', patch: relocatedPatches['Oracle V XL']() },
+  ];
+  expect(bankPatches()).toEqual(expected);
+  expect(bankPatches(() => false)).toEqual(expected.filter(entry => entry.name !== 'Hera 3'));
+  expect(expected[0].patch.name).toBe('Hera 4');
+  expect(expected[0].patch.modules.filter(m => m.type === 'alloc').map(m => m.params.voices)).toContain(4);
+  expect(mem.get('matryoshka.bank')).toBe(stored);
+  bankPatches()[0].patch.name = 'Changed copy';
+  expect(bankPatches()).toEqual(expected);
+});
+
+it('still drops unknown name-only entries and uses defaults for corrupt bank JSON', () => {
+  mem.set('matryoshka.bank', JSON.stringify([{ name: 'Unknown historical patch' }, null, { name: 42 }, { name: 'Hera 4' }]));
+  expect(bankPatches()).toEqual([{ name: 'Hera 4', patch: relocatedPatches['Hera 4']() }]);
+  mem.set('matryoshka.bank', '{');
+  expect(bankPatches().map(entry => entry.name)).toEqual(Object.keys(FM1_PRESETS));
 });

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* User presets move when a factory engine's structure changes (#627, docs/ledger/patches-and-presets.md D-865): at the first
- * boot after an update (main.c, with bank_upgrade), each preset in the store (presetstore.c) whose structure is an earlier
+ * boot after an update (main.c presets_upgrade), each preset in the store (presetstore.c) whose structure is an earlier
  * one of a factory engine is rewritten for today's structure under the same name. presets.h PMIG_LIST says which structures
  * move and how (web/src/preset-migrations.json, as the editor does it: web/src/preset-migrate.ts): for each of today's rows
  * an earlier row kept as it is, a table that reads one or two earlier rows as whole numbers (Selector positions), a line
@@ -15,7 +15,7 @@
  * Host test: tools/preset_test.sh. */
 
 /* today's Init values of a structure (FPRESET_LIST), 0 none */
-static const int32_t *pm_init(uint32_t structure, uint32_t n)
+static const uint8_t *pm_init(uint32_t structure, uint32_t n)
 {
     uint32_t k;
     for (k = 0; k < N_FPRESETS; k++)
@@ -62,24 +62,24 @@ static int32_t pm_line(uint32_t l, const int32_t *old, uint32_t n, int32_t init)
 }
 
 /* migration m's values of today's rows from an earlier preset's n values (old) into out; init: today's Init values */
-static void pm_apply(uint32_t m, const int32_t *old, uint32_t n, const int32_t *init, int32_t *out)
+static void pm_apply(uint32_t m, const int32_t *old, uint32_t n, const uint8_t *init, int32_t *out)
 {
     uint32_t k, tab = PMIG_LIST[m].tab, line = PMIG_LIST[m].line;
     const uint8_t *op = PMIG_OPS + PMIG_LIST[m].ops;
     for (k = 0; k < PMIG_LIST[m].nnew; k++) {
         uint32_t o = op[k];
         if (o == 0xFFu)
-            out[k] = init[k];
+            out[k] = fp_decode(init, k);
         else if (o == 0xFDu)
-            out[k] = pm_line(line++, old, n, init[k]);
+            out[k] = pm_line(line++, old, n, fp_decode(init, k));
         else if (o != 0xFEu)
-            out[k] = o < n ? old[o] : init[k];
+            out[k] = o < n ? old[o] : fp_decode(init, k);
         else {
             const uint32_t t = tab++;
             const uint32_t a = PMIG_TAB[t].a, b = PMIG_TAB[t].b;
             int32_t ia, ib = 0;
             if (a >= n || (b != 0xFFu && b >= n)) {
-                out[k] = init[k];
+                out[k] = fp_decode(init, k);
                 continue;
             }
             ia = pm_whole(old[a]) - PMIG_TAB[t].la;
@@ -100,7 +100,7 @@ static uint32_t pm_run(int32_t *work)
     uint32_t m, moved = 0;
     char name[PS_NAME + 1u];
     for (m = 0; m < N_PMIG; m++) {
-        const int32_t *init = pm_init(PMIG_LIST[m].to, PMIG_LIST[m].nnew);
+        const uint8_t *init = pm_init(PMIG_LIST[m].to, PMIG_LIST[m].nnew);
         uint32_t skip = 0;
         if (!init || PMIG_LIST[m].nnew > PS_MAXV)
             continue;

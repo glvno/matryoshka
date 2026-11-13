@@ -10,8 +10,11 @@ import { addUserPreset, applyPreset, importPresets, migrateUserPresets, presetsF
 import { factoryPresets } from './factory-presets';
 import { renderPlay, ways } from './headroom';
 import { migrateValues, PRESET_MIGRATIONS } from './preset-migrate';
-import { FM1_PRESETS } from './presets';
+import { PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 import { structureOf } from './structure';
+import type { AssemblyInst } from './assembly';
+import type { Patch } from './patch';
 
 const mem = new Map<string, string>();
 beforeEach(() => {
@@ -89,14 +92,14 @@ function earlierPreset(from: string): number[] {
   return old;
 }
 
-/** today's factory patch that has an engine of the structure, and that engine */
-function factoryWith(structure: string): { name: string; p: ReturnType<(typeof FM1_PRESETS)[string]>; a: NonNullable<ReturnType<(typeof FM1_PRESETS)[string]>['assemblies']>[number] } {
-  for (const [name, make] of Object.entries(FM1_PRESETS)) {
+/** today's patch that has an engine of the structure, and that engine */
+function factoryWith(structure: string): { name: string; p: Patch; a: AssemblyInst } {
+  for (const [name, make] of Object.entries({ ...relocatedPatches, ...PRESETS })) {
     const p = make();
     const a = (p.assemblies ?? []).find((x) => structureOf(p, x) === structure);
     if (a) return { name, p, a };
   }
-  throw new Error(`no factory patch has ${structure}`);
+  throw new Error(`no patch has ${structure}`);
 }
 
 describe('a 1.9.0 preset on today\'s factory patch (#627 done-when)', () => {
