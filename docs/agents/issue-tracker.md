@@ -6,7 +6,7 @@ Use GitHub issues in **glvno/matryoshka** (`gh --repo glvno/matryoshka`). The `o
 
 The GitHub project "Matryoshka", https://github.com/users/glvno/projects/6, is where work is managed ([D-069](../ledger/project.md#D-069)). Every open issue is on it.
 
-- **Status** says where the work stands. Inbox means not triaged. Then Next, In progress, Device check (built and emulator-tested, waiting for a real FM-1), Backlog (accepted, not scheduled yet), Someday (spikes and ideas with no plan) and Done. The owner decides what moves out of Inbox. An issue in the next release's milestone is Next.
+- **Status** says where the work stands. Inbox means not triaged. Then Next, In progress, Device check (built and emulator-tested, waiting for a real FM-1), Backlog (accepted, not scheduled yet), Someday (spikes and ideas with no plan) and Done. The owner decides what moves out of Inbox.
 - **Horizon** (Now, Next, Later) is planning order, not progress. **Initiative** groups issues by goal. **Priority** is High, Medium or Low.
 - A **milestone** names the release an issue is planned for. No label carries plan state.
 
