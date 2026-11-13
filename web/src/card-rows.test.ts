@@ -15,7 +15,7 @@ import { deviceView } from './poly';
 import { applyPreset, currentValues } from './device-presets';
 import { defStructure, structureOf } from './structure';
 import { cardRows } from './test-patches';
-import { XL_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 const voice = (p: Patch): AssemblyInst => assembliesOf(p).find((a) => a.name === 'voice')!;
 const mod = (p: Patch, id: number) => p.modules.find((m) => m.id === id)!;
@@ -249,7 +249,7 @@ describe('copies shown one at a time (the Casio CZ\'s envelope steps)', () => {
 
 
 it('Algo Four selects all fourteen controls with one operator picker and keeps each operator on its own pages', () => {
-  const p = load(XL_PRESETS['Algo Four XL']());
+  const p = load(relocatedPatches['Algo Four XL']());
   const cards = assembliesOf(p).filter(a => a.params.some(r => r.copies?.name === 'op'));
   expect(cards).toHaveLength(2); // the instrument card and its nested voice card
   const labels = ['freq ratio', 'detune', 'out level', 'key velocity', 'ar', 'd1r', 'd1l', 'd2r',

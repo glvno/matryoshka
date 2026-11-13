@@ -8,6 +8,7 @@ import { insertAssembly, type AssemblyInst } from '../src/assembly';
 import { DEFS } from '../src/modules';
 import { addModule, type Patch } from '../src/patch';
 import { FM1_PRESETS } from '../src/presets';
+import { relocatedPatches } from '../src/community-factory';
 import { deviceBudget, encodePatch } from '../src/patchbin';
 import { fixNotes } from '../src/track';
 import { plugIn, wire } from './factory-build';
@@ -34,7 +35,7 @@ function track(p: Patch, a: AssemblyInst, voices: number, live: boolean): void {
   }
 }
 function oracle(voices: number): Patch {
-  const p = FM1_PRESETS['Oracle V']();
+  const p = relocatedPatches['Oracle V']();
   // Keep the factory's Steps -> Arpeggiator -> Oracle key path and performance controls.
   const t = p.modules.find((m) => m.type === 'steps')!;
   t.name = 'SYNTH';

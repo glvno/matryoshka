@@ -3,10 +3,10 @@ import { expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { connect } from './patch';
-import { XL_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 it('Algo Four XL exposes LOW/HIGH/KON and bends only the selected held voices', () => {
-  const p = XL_PRESETS['Algo Four XL']();
+  const p = relocatedPatches['Algo Four XL']();
   const row = p.assemblies!.flatMap(a => a.params).find(r => r.label === 'pb mode')!;
   expect(row.names).toEqual(['LOW', 'HIGH', 'KON']);
   const alloc = p.modules.find(m => m.type === 'alloc')!;
@@ -32,7 +32,7 @@ it('Algo Four XL exposes LOW/HIGH/KON and bends only the selected held voices', 
 });
 
 it('Algo Four XL receives the dedicated breath and foot-controller signals', () => {
-  const p = XL_PRESETS['Algo Four XL']();
+  const p = relocatedPatches['Algo Four XL']();
   const main = p.modules.find(m => m.type === 'fm1')!;
   const ports = p.cables.filter(c => c.from.module === main.id).map(c => c.from.port);
   expect(ports).toContain('breath'); expect(ports).toContain('sustain');

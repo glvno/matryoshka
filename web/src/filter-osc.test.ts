@@ -6,7 +6,7 @@ import { Engine } from './engine';
 import { DEFS, FILTER_OSC_FROM } from './modules';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
 import { encodePatch, encodedSize, formatOf, recordSize, WRITE_FLOOR } from './patchbin';
-import { FM1_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 const SR = 44118;
 
@@ -110,7 +110,7 @@ describe('Multimode self-oscillation (osc)', () => {
   });
 
   it('Sallen 20 turns it on in both filters; its rows are unchanged', () => {
-    const p = FM1_PRESETS['Sallen 20']();
+    const p = relocatedPatches['Sallen 20']();
     const filters = p.modules.filter((m) => m.type === 'filter');
     expect(filters.length).toBe(2);
     expect(filters.every((m) => m.params.osc === 1)).toBe(true);

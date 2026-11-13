@@ -14,7 +14,7 @@
 #   accent = 1                         -4..4
 #   volume = 1                         0..1
 
-# Drafts of 2026-10-29 after the Roland TB-303 (#413).
+# Curated panel studies of 2026-11-13 after the Roland TB-303 (#413).
 engine: Silver Box
 
 preset: Acid Squelch
@@ -51,7 +51,7 @@ preset: Short Zap
   env mod = 3.8
   decay = 0.12 s
   accent = 2
-  volume = 0.88
+  volume = 1
 
 preset: Long Sweep
   waveform = 1
@@ -61,3 +61,33 @@ preset: Long Sweep
   decay = 1.2 s
   accent = 1
   volume = 1
+
+# Plain square ostinato: little resonance, no accent boost, a short filter contour rather than a fake amp-decay control.
+preset: Dry Square
+  waveform = SQUARE
+  cut off freq = 450 Hz
+  resonance = 0.15
+  env mod = 0.6
+  decay = 0.18 s
+  accent = 0
+  volume = 0.45
+
+# Small normal contour leaves the resonance-linked accent sweep exposed; consecutive accented notes build the sweep.
+preset: Accent Ladder
+  waveform = SAW
+  cut off freq = 180 Hz
+  resonance = 0.82
+  env mod = 0.5
+  decay = 0.75 s
+  accent = 1.8
+  volume = 1
+
+# Open saw for note-length and slide phrasing, without the resonant envelope dominating every note.
+preset: Open Saw
+  waveform = SAW
+  cut off freq = 3200 Hz
+  resonance = 0.1
+  env mod = 0.3
+  decay = 0.18 s
+  accent = 0.35
+  volume = 0.81

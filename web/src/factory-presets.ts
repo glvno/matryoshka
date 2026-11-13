@@ -4,17 +4,20 @@
 // preset-cards.ts, #413) ships the presets written there, in their order. The other engines get the same engine with a
 // few card rows moved by a rule that reads parameter names only (a filter's cutoff, an envelope's times, an effect's mix),
 // so a rule that finds nothing to move makes no preset.
-// The FM-1 gets the same list in ROM (export-defs, #194). The XL patches' engines get the same variations, made from the
-// engine as the XL ships it (a card's presets are carried over only onto an XL whose rows are its FM-1 version's under
-// the same names, which the XLs built as their originals' whole panels are not); they stay in the browser, as the XLs do.
+// Assembly presets retain their original structures even when a patch moves to Community. Community-only
+// engines keep their browser presets; factory assemblies still ship the same card/rule presets in ROM.
 import { FACTORY } from './assemblies';
 import { toDef, type AssemblyDef } from './assembly';
 import { setFactoryPresets, type Preset } from './device-presets';
 import { defIsEngine, instIsEngine } from './engines';
 import { DEFS } from './modules';
 import { cardSlug, parseCard, projectPresets, type CardParse } from './preset-cards';
-import { FM1_PRESETS, XL_PRESETS } from './presets';
+import { FM1_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 import { defStructureAndOrder } from './structure';
+import { factoryFxPresets } from './factory-fx-presets';
+import { FACTORY_FX_MASKS } from './factory-fx-recipes';
+import { lofiPresets } from './lofi-presets';
 
 /** the card files by slug (web/presets/cards/hera-6.txt is "hera-6") */
 export const CARDS: Record<string, string> = Object.fromEntries(
@@ -60,10 +63,9 @@ const CUTOFF_UNIT = (k: number): number => {
   return Math.log(k) / Math.log(pd.max / pd.min);
 };
 
-/** the XLs' rules: the same variations, also reaching controls only an XL has (a DX envelope's levels and rates, a
- * delay's wet mix and feedback on a Crossfader or a Macro), so an XL keeps every preset its FM-1 version has. Kept apart
- * from RULES so the FM-1's list (its ROM) stays as it is. */
-const XL_EXTRA: Record<string, Rule> = {
+/** Community engine variations also reach native rate envelopes and Macro/Crossfader controls.
+ * The factory assembly rules and their ROM contents remain unchanged. */
+const COMMUNITY_EXTRA: Record<string, Rule> = {
   // a cutoff or resonance on a Macro that sets filters over their whole range (Oracle V XL: one knob for two filters);
   // the cutoff moves by the same factor as a filter's own, in its range's unit (log 20..16000 Hz)
   Bright: (r) => (r.type !== 'macro' ? undefined : r.label === 'cutoff' ? r.value + CUTOFF_UNIT(2.2) : r.label === 'res' ? r.value + 0.1 : undefined),
@@ -80,8 +82,8 @@ const RATE_VARIATIONS: Record<string, Rule> = {
   Tight: (r) => r.param === 'd1r' || r.param === 'd2r' ? r.value ? r.value + 2 : 0 : undefined,
   Long: (r) => r.param === 'd1r' || r.param === 'd2r' ? r.value ? Math.max(1, r.value - 2) : 0 : undefined,
 };
-export const XL_RULES: { name: string; rule: Rule }[] = RULES.map(({ name, rule }) => {
-  const extra = XL_EXTRA[name];
+export const COMMUNITY_RULES: { name: string; rule: Rule }[] = RULES.map(({ name, rule }) => {
+  const extra = COMMUNITY_EXTRA[name];
   return { name, rule: (r: Row) => r.type === 'rateenv' ? RATE_VARIATIONS[name]?.(r) : rule(r) ?? extra?.(r) };
 });
 
@@ -123,7 +125,8 @@ const once = <T>(f: () => T): (() => T) => {
 /** a factory assembly that ships presets: every engine, and an effect with a card (#661: an effect gets no rule-made ones) */
 export const hasFactoryPresets = (def: AssemblyDef): boolean => defIsEngine(def) || CARDS[cardSlug(def.name)] !== undefined;
 
-/** every factory engine's presets, then the factory effects' with a card (the FM-1's ROM list) */
+/** Every factory engine's presets, then the factory effects' with a card (the FM-1's ROM list), then the whole-kit
+ * presets of the 808 and 909 Kits. */
 export const factoryPresetDefs = once((): AssemblyDef[] => [...FACTORY, ...['808 Kit', '909 Kit'].flatMap((name) => {
   const p = FM1_PRESETS[name]();
   const a = p.assemblies?.find((a) => a.name === name.toLowerCase());
@@ -131,37 +134,44 @@ export const factoryPresetDefs = once((): AssemblyDef[] => [...FACTORY, ...['808
 })]);
 export const factoryPresets = once((): Preset[] => factoryPresetDefs().flatMap((d) => shippedPresets(d)));
 
+/** Read-only sounds for the selected racks, plus new card-only sounds where no rack is added.
+ * These do not change any factory patch or the legacy card-only sound definitions. */
+export const factoryRackPresets = once((): Preset[] => factoryPresetDefs().flatMap(def => {
+  const base = shippedPresets(def), extra = lofiPresets(def, base);
+  return FACTORY_FX_MASKS[def.name] === undefined ? extra : factoryFxPresets(def, [...base, ...extra]);
+}));
+
 /** the presets a factory assembly ships: an engine's (presetsOfDef), an effect's card's, else none */
 export function shippedPresets(def: AssemblyDef): Preset[] {
   return defIsEngine(def) ? presetsOfDef(def) : cardOf(def)?.presets ?? [];
 }
 
-/** an XL engine's presets: its FM-1 version's card (the FM-1 engine of the same name, or the name without " XL") carried
- * onto its rows when every row the card sets is there under the same name, else the XL rules */
-export function xlPresetsOfDef(def: AssemblyDef): Preset[] {
+/** Carry the original engine's card onto compatible rows, otherwise use Community variations. */
+export function communityPresetsOfDef(def: AssemblyDef): Preset[] {
   const base = FACTORY.find((d) => d.name === def.name || `${d.name} XL` === def.name);
   const card = base ? cardOf(base) : undefined;
   const carried = base && card?.presets.length ? projectPresets(base, card.presets, def) : null;
-  return carried ?? presetsByRules(def, XL_RULES);
+  return carried ?? presetsByRules(def, COMMUNITY_RULES);
 }
 
-/** the XL patches' engines' presets, by XL name: browser only */
-export const xlEnginePresets = once((): Record<string, Preset[]> => Object.fromEntries(
-  Object.entries(XL_PRESETS).map(([name, make]) => {
+/** Original Community engines' presets, by patch name: browser only. */
+export const communityEnginePresets = once((): Record<string, Preset[]> => Object.fromEntries(
+  Object.entries(relocatedPatches).map(([name, make]) => {
     const p = make();
-    return [name, (p.assemblies ?? []).filter((a) => instIsEngine(p, a)).flatMap((a) => xlPresetsOfDef(toDef(p, a)))];
+    return [name, (p.assemblies ?? []).filter((a) => instIsEngine(p, a)).flatMap((a) => communityPresetsOfDef(toDef(p, a)))];
   }),
 ));
 
-/** an XL engine of a factory engine's structure already has that engine's presets; two XLs sharing an engine list it once.
- * By structure: a factory engine's structure needs no XL worked out, so the XLs' presets are made only when a structure no
- * factory engine has is asked for */
+/** Structures already served by a factory assembly need no Community engine instantiated. */
 const fm1Structures = once(() => new Set(factoryPresets().map((p) => p.structure)));
-const xlOnly = once((): Preset[] => {
+const communityOnly = once((): Preset[] => {
   const seen = fm1Structures();
-  const list = Object.values(xlEnginePresets()).flat().filter((p) => !seen.has(p.structure));
+  const list = Object.values(communityEnginePresets()).flat().filter((p) => !seen.has(p.structure));
   return list.filter((p, i) => list.findIndex((q) => q.structure === p.structure && q.name === p.name) === i);
 });
-/** every factory preset the browser offers: the FM-1's, then the XLs' own */
-export const allFactoryPresets = (): Preset[] => [...factoryPresets(), ...xlOnly()];
-setFactoryPresets((structure) => (fm1Structures().has(structure) ? factoryPresets() : xlOnly()).filter((p) => p.structure === structure));
+/** Assembly presets from both catalogues, without duplicating shared engine structures. */
+export const allFactoryPresets = (): Preset[] => [...factoryPresets(), ...factoryRackPresets(), ...communityOnly()];
+setFactoryPresets(structure => [
+  ...(fm1Structures().has(structure) ? factoryPresets() : communityOnly()).filter(p => p.structure === structure),
+  ...factoryRackPresets().filter(p => p.structure === structure),
+]);

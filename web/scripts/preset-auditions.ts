@@ -12,7 +12,8 @@ import { structureOf } from '../src/structure';
 import { factoryPresets } from '../src/factory-presets';
 import { renderAudition, auditionWav } from './audition-render';
 import { arrangeSpokesAudition } from './audition-arrangements';
-import { FM1_PRESETS } from '../src/presets';
+import { PRESETS } from '../src/presets';
+import { relocatedPatches } from '../src/community-factory';
 import { devicesOf } from '../src/pages';
 import { DEVICE_SR, DEFS } from '../src/modules';
 import { integratedLoudness } from '../src/loudness';
@@ -53,7 +54,7 @@ for (const name of names) {
     track.notes = fixNotes(Object.entries(rows).flatMap(([row, pattern]) => (patternNotes(pattern) ?? []).map((n) => ({ ...n, note: map.params[`n${row}`] }))));
     x.out.params.level = 0.5;
     return x.p;
-  })() : FM1_PRESETS[name]();
+  })() : (PRESETS[name] ?? relocatedPatches[name])();
   if (name === 'drum kit') for (const a of original.assemblies ?? []) { const init = presetPattern(structureOf(original, a), 'Init'); if (init) { a.preset = 'Init'; seedPresetPattern(original, a, init.id); } }
   const kind = melodic.includes(name) ? 'melodic' : drones.includes(name) ? 'drone' : 'drum';
   const devices = devicesOf(original, DEFS).filter((d) => d.asm !== undefined);

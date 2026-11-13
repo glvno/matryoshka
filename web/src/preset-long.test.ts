@@ -8,9 +8,9 @@ import { instIsEngine } from './engines';
 import './factory-presets';
 import type { Patch } from './patch';
 import { CMD, FEATURE_LONG_PRESETS, parse, parsePresetData, presetPutFrame } from './protocol';
-import { FM1_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
-const cassia = (): Patch => FM1_PRESETS['Cassia 1']();
+const cassia = (): Patch => relocatedPatches['Cassia 1']();
 const card = (p: Patch) => p.assemblies!.find((a) => instIsEngine(p, a) && a.params.some((r) => r.label === 'wave 2'))!;
 
 describe('presets longer than 88 values (#485)', () => {

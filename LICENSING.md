@@ -73,9 +73,13 @@ The active Matryoshka wordmark uses preset p13: the approved narrow Roboto Flex 
 
 The Install panel's Restore Official Open and `tools/fm1_install.py` accept M-VAVE Official Open, but Matryoshka does not ship it: the user downloads it from [M-VAVE's release page](https://github.com/m-vave/fm1_open/releases) (the Workbench page or its `.fwsc`). Official Open is a mix: M-VAVE's app sources are GPL-3.0 with an extra linking permission ([LICENSE.md](https://github.com/m-vave/fm1_open/blob/main/LICENSE.md)); its boot and update files are Apache-2.0; and its sound engine (`sdk/lib/libfm1_engine.a`) is M-VAVE's own and not open source ([THIRD_PARTY.md](https://github.com/m-vave/fm1_open/blob/main/THIRD_PARTY.md), "Binary SDK"). That licence lets anyone pass the engine on as part of firmware for FM-1 devices, with its notices; so shipping it would be allowed. Matryoshka ships only open-source files, so it leaves that to M-VAVE. This repository holds no part of Official Open: the checks name it by SHA-256 only (its update loader and its start-up part, flash 0x0000–0x3FFF), and the tests that use M-VAVE's file read a local copy (`FM1_OPEN_FILE`, `FM1_OPEN_FWSC`).
 
-## Community patches (CC BY-SA 4.0)
+## Community patches and archived factory data
 
-The entries of `web/src/community.json` are patches made by other people, submitted through the issue form `.github/ISSUE_TEMPLATE/community-patch.yml`. Each is licensed by its author under the [Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/) licence; the author is named in its entry and shown with it in the app. They are data, distinct from the GPL-3.0-only code, which does not cover them. A submitter confirms on the form that they may license the patch so.
+The Community shelf displays each entry’s author, source and licence. The shelf’s location does not determine the licence.
+
+Existing submitted Community patches retain the [Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/) licence their authors granted. These submissions are kept in `web/community/submissions.json` and included in the bundled `web/src/community.json` catalogue. They are data distinct from the GPL-3.0-only code; the code’s licence does not cover them. A submitter confirms on `.github/ISSUE_TEMPLATE/community-patch.yml` that they may license the patch so.
+
+Archived factory and XL patch data in `web/community/factory/`, catalogued by `web/community/factory.json`, retain **GPL-3.0-only**, their named author and their source attribution. Moving these patches to Community does not grant CC BY-SA 4.0 or otherwise relicense them. Likewise, existing CC BY-SA submissions do not become GPL-licensed when bundled beside factory data.
 
 ## Ideas taken from other FM-1 projects (no code copied)
 

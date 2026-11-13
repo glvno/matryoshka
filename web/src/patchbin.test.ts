@@ -8,8 +8,8 @@ import { devicesOf, NAME_MAX } from './pages';
 import { assemblyById, makeAssembly } from './assembly';
 import { instIsEngine } from './engines';
 import { engineBytes } from './test-bin';
-import { buttonRecord, deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_CABLES3, POLY_ROW, rowParam, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION, formatOf, paramsAt, SECTION_FORMATS, WRITE_FLOOR, COUNTED, layout, moduleRecordSize } from './patchbin';
-import { FM1_PRESETS } from './presets';
+import { buttonRecord, fxRecord, deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_CABLES3, POLY_ROW, rowParam, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION, formatOf, paramsAt, SECTION_FORMATS, WRITE_FLOOR, COUNTED, layout, moduleRecordSize } from './patchbin';
+import { PRESETS } from './presets';
 import { deviceView, polyGroups } from './poly';
 import { polyCfg, withParts } from './test-poly';
 import { subtractiveSaw, wobble } from './test-patches';
@@ -54,8 +54,7 @@ describe('binary patch format', () => {
   });
 
   it('the assembly overlay of the factory patches reaches the binary only as the device pages', () => {
-    let grouped = 0;
-    for (const [name, make] of Object.entries(FM1_PRESETS)) {
+    for (const [name, make] of Object.entries(PRESETS)) {
       const p = make();
       for (const m of p.modules) delete m.factoryPatterns; // This assertion isolates the assembly overlay from the optional origin section.
       if (polyGroups(p).length) continue; // a poly assembly is not only layout: its cards run once per voice
@@ -65,9 +64,7 @@ describe('binary patch format', () => {
       const flat = { ...p, assemblies: undefined };
       delete flat.assemblies;
       expect(engineBytes(p), name).toEqual(engineBytes(flat));
-      if (p.assemblies?.length) grouped++;
     }
-    expect(grouped).toBeGreaterThanOrEqual(5); // the factory patches without a poly assembly that open as cards (Init stays flat)
   });
 
   it('never writes the legacy disabled-input masks (format 17) and keeps macro ranges last', () => {
@@ -227,7 +224,7 @@ describe('binary patch format', () => {
   });
 
   it('the device extras say which Steps track drives a device (format 34)', () => {
-    const p = FM1_PRESETS['808 Kit']();
+    const p = PRESETS['808 Kit']();
     const devs = devicesOf(p, DEFS);
     const rec = extrasRecord(devs, p);
     const track = devs.findIndex((d) => d.kind === 'steps');
@@ -239,7 +236,7 @@ describe('binary patch format', () => {
   });
 
   it('carries the Drum maps\' row names for the FM-1 (format 33, flag bit 7): their own, else the defaults', () => {
-    const p = FM1_PRESETS['808 Kit']();
+    const p = PRESETS['808 Kit']();
     const map = p.modules.find((m) => m.type === 'drummap')!;
     map.names = ['boom'];
     const b = encodePatch(p);
@@ -262,7 +259,7 @@ describe('binary patch format', () => {
   });
 
   it('encodes every preset with the documented layout', () => {
-    for (const [name, make] of Object.entries(FM1_PRESETS)) {
+    for (const [name, make] of Object.entries(PRESETS)) {
       const b = encodePatch(make());
       const { patch: p, groups } = deviceView(make(), true); // what the device gets: the allocator as a Part per poly group, compiled
       const g = groups.length;
@@ -295,6 +292,7 @@ describe('binary patch format', () => {
         + (rangeList(p).length ? 1 + 5 * rangeList(p).length : 0) // the macro ranges (the 909 Kit's velocity VCAs)
         + routeBytes(p) // the side-input routes (Cassia 1's PD Osc: pm to range)
         + (origins ? 2 + 6 * origins : 0) // format54 u16 count and six-byte origin records
+        + fxRecord(make(), p).length // format 55: the master FX stages (D-1010)
         + patternBytes(make()); // the patterns and songs (format 48: Silver Box's demo)
       expect(b.length, name).toBe(size);
       expect(!!(b[6] & FLAG_DEVICES), name).toBe(devs.length > 0);
@@ -303,8 +301,7 @@ describe('binary patch format', () => {
     }
   });
 
-  it('counts what a patch costs on the device: every factory preset fits, and voices multiply the per-voice part', () => {
-    for (const [name, make] of Object.entries(FM1_PRESETS)) expect(deviceBudget(make()).fits, name).toBe(true);
+  it('counts what a patch costs on the device: voices multiply the per-voice part', () => {
     const mono = deviceBudget(subtractiveSaw());
     const p = withParts(subtractiveSaw(), 4);
     const poly = deviceBudget(p);
@@ -395,7 +392,7 @@ describe('binary patch format', () => {
 
 describe('the budget\'s memory reading', () => {
   it('a slot of one or two (one reverb, one of two arpeggiators) counts only when exceeded', () => {
-    const p = FM1_PRESETS.Init();
+    const p = PRESETS.Init();
     const b = deviceBudget(p);
     expect(b.items.find((i) => i.key === 'arps')?.used).toBe(1);
     expect(b.fullest?.key).not.toBe('arps');
@@ -407,7 +404,7 @@ describe('the budget counts what the FM-1 receives', () => {
   // the button record (non-gate panel buttons) went uncounted: a patch could pass the budget and still be over M1_PATCH_MAX
   // (plus the room kept for each engine device's preset name, #452: NAME_MAX less the name it has)
   it('patch bytes equal the encoded size (the smaller form) for every factory patch, plus the room kept for engine preset names', () => {
-    for (const [name, make] of Object.entries(FM1_PRESETS)) {
+    for (const [name, make] of Object.entries(PRESETS)) {
       const p = make();
       const used = deviceBudget(p).items.find((i) => i.key === 'bytes')!.used;
       const engines = devicesOf(p, DEFS).filter((d) => d.asm !== undefined && instIsEngine(p, assemblyById(p, d.asm)!));

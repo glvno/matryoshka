@@ -6,6 +6,7 @@ import { demoPatch } from './demo';
 import { DEFS } from './modules';
 import { BAR_H, CARD_H, CARD_W, cardLayout, cutLabel, DARK, detailFor, fitLine, HEAD_H, LABEL_CHAR, LABEL_PAD, mapTop, patchFacts, ROW_H, type CardLayout } from './patch-card';
 import { PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 const inside = (l: CardLayout): void => {
   for (const b of l.boxes) {
@@ -43,9 +44,9 @@ const inside = (l: CardLayout): void => {
 };
 
 describe('the patch card', () => {
-  it('lays a factory patch out inside the map: a box per top-level card, the cables between boxes', () => {
-    for (const name of ['Init', 'Oracle V', '808 Kit']) {
-      const p = PRESETS[name]();
+  it('lays a patch out inside the map: a box per top-level card, the cables between boxes', () => {
+    for (const make of [PRESETS.Init, relocatedPatches['Oracle V'], PRESETS['808 Kit']]) {
+      const p = make();
       const l = cardLayout(p, DEFS);
       inside(l);
       const hidden = hiddenModules(p);
@@ -67,7 +68,7 @@ describe('the patch card', () => {
   });
 
   it('shows an engine’s blurb and every page of its knobs, with their values', () => {
-    const l = cardLayout(PRESETS['Oracle V'](), DEFS);
+    const l = cardLayout(relocatedPatches['Oracle V'](), DEFS);
     expect(l.detail).toBe('full');
     const box = l.boxes.find((b) => b.label === 'ORACLE V')!;
     expect(box.blurb).toBe('Prophet-5 type shit');
@@ -102,7 +103,7 @@ describe('the patch card', () => {
   });
 
   it('leaves out a cable inside one box', () => {
-    const p = PRESETS['Oracle V']();
+    const p = relocatedPatches['Oracle V']();
     const l = cardLayout(p, DEFS);
     for (const c of l.lines) expect(c.from.x === c.to.x && c.from.y === c.to.y).toBe(false);
     const inner = p.cables.filter((c) => hiddenModules(p).has(c.from.module) && hiddenModules(p).has(c.to.module));
@@ -110,7 +111,7 @@ describe('the patch card', () => {
   });
 
   it('puts the Main module in the dock along the map\'s bottom, its cables leaving the dock\'s top edge', () => {
-    const l = cardLayout(PRESETS['Oracle V'](), DEFS);
+    const l = cardLayout(relocatedPatches['Oracle V'](), DEFS);
     const dock = l.boxes.filter((b) => b.kind === 'dock');
     expect(dock.length).toBe(1);
     expect(dock[0].y + dock[0].h).toBeLessThanOrEqual(l.map.y + l.map.h);
@@ -138,7 +139,7 @@ describe('the patch card', () => {
     expect(fitLine(init)).toMatch(/^Plays on the FM-1 · \d+ %$/);
     const demo = patchFacts(demoPatch(), DEFS);
     expect(fitLine(demo)).toMatch(/^Sandbox/);
-    expect(patchFacts(PRESETS['Hera 4'](), DEFS).engines.length).toBeLessThanOrEqual(1);
+    expect(patchFacts(relocatedPatches['Hera 4'](), DEFS).engines.length).toBeLessThanOrEqual(1);
   });
 
   it('uses the dark theme\'s token values from tokens.css', () => {

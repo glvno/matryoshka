@@ -12,7 +12,8 @@ import { factoryPresets } from './factory-presets';
 import { PRESET_MIGRATIONS, migrateValues } from './preset-migrate';
 import { structureOf } from './structure';
 import { readLineage } from '../scripts/lineage-lib';
-import { FM1_PRESETS, XL_PRESETS } from './presets';
+import { FM1_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 const SR = 44118;
 /** the knobs of each channel as the manual lists them (pages 11 to 18), in its order */
@@ -179,7 +180,7 @@ describe('Verona Drum 1 (#613)', () => {
 });
 
 describe('Verona Drum 1 XL (#613)', () => {
-  const xl = (): Patch => XL_PRESETS['Verona Drum 1 XL']();
+  const xl = (): Patch => relocatedPatches['Verona Drum 1 XL']();
   it('has all eight channels with every knob, PAN and VOLUME each, MASTER, and the hi-hats\' TRIG switch', () => {
     const s = sections(xl(), 'Verona Drum 1 XL');
     expect([...s.keys()]).toEqual(['kick', 'drum 1', 'drum 2', 'multi', 'snare', 'hi hat 1', 'hi hat 2', 'clap', 'master']);

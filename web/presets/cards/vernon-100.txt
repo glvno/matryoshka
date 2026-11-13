@@ -64,7 +64,7 @@
 #   osc 3/ext = 0                      0..1
 #   out: a screen, not a value
 
-# Drafts of 2026-10-29 after the EML ElectroComp 100 (#413).
+# Curated panel studies of 2026-11-13 after the EML ElectroComp 100 (#413).
 engine: Vernon 100
 
 # Switch positions: oscillator 1 color 1..5 = falling ramp, ramp, triangle, square, narrow pulse; hi/lo 1 HI (audio),
@@ -121,7 +121,7 @@ preset: Wobble Bass
   amp shaper = 0.25
   osc 3/ext = 0
 
-# Oscillator 1 in LO as a square steps the band pass and both pitches by a semitone: a sample-and-hold stand-in.
+# Oscillator 1 in LO as a square alternates the band pass and both pitches: a periodic step, not random sample and hold.
 preset: Stepped Pulse
   oscillator 1 / color = 4
   oscillator 1 / tune = 1.9
@@ -139,7 +139,7 @@ preset: Stepped Pulse
   envelope 2 / attack = 0.005 s
   envelope 2 / decay = 0.73
   envelope 2 / sustain = 0.7
-  amp shaper = 0.66
+  amp shaper = 0.85
   osc 3/ext = 0
 
 # Oscillator 1 at audio rate, tracking the keys, into oscillators 2 and 3 through the mixer: clangorous FM, struck.
@@ -189,5 +189,71 @@ preset: Slow Sweep Pad
   envelope 2 / attack = 1.2 s
   envelope 2 / decay = 0.94
   envelope 2 / sustain = 0.8
-  amp shaper = 0.37
+  amp shaper = 0.55
   osc 3/ext = 0
+
+# The COLOR bank's triangle end, one oscillator per held extreme, without oscillator 4 or the direct-output bypass.
+preset: Triangle Duo
+  oscillator 2 / color = 0
+  oscillator 3 / color = 0.05
+  oscillator 3 / tune = 0
+  osc 2 = 0.55
+  osc 3 = 0.55
+  osc 4/ext = 0
+  filter / tune = 1800 Hz
+  resonance = 0.1
+  filter control / osc 1/env 1 = 0.1
+  envelope 1 / attack = 0.03 s
+  envelope 1 / decay = 0.73
+  envelope 1 / sustain = 0.7
+  envelope 2 / attack = 0.02 s
+  envelope 2 / decay = 0.81
+  envelope 2 / sustain = 0.8
+  env 1/env 2 = ENV 2
+  osc 3/ext = 0
+  amp shaper = 0.21
+
+# Band reject removes a moving middle from contrasting COLOR positions; the amplifier stays nearly level.
+preset: Notch Loom
+  oscillator 2 / color = 0.35
+  oscillator 3 / color = 0.95
+  osc 2 = 0.45
+  osc 3 = 0.35
+  osc 4/ext = 0
+  filter / tune = 700 Hz
+  resonance = 0.45
+  mode = BR
+  filter control / osc 1/env 1 = 0.5
+  kb1/kb2 = KB1
+  envelope 1 / attack = 0.35 s
+  envelope 1 / decay = 0.86
+  envelope 1 / sustain = 0.15
+  envelope 2 / attack = 0.02 s
+  envelope 2 / decay = 0.81
+  envelope 2 / sustain = 0.9
+  env 1/env 2 = ENV 2
+  osc 3/ext = 0
+  amp shaper = 0.56
+
+# HP mode and the double-saw end of COLOR make a thin struck chord; ENV 1 shapes amplitude, ENV 2 the filter.
+preset: HP Clav
+  oscillator 2 / color = 1
+  oscillator 3 / color = 0.5
+  osc 2 = 0.4
+  osc 3 = 0.25
+  osc 4/ext = 0
+  filter / tune = 900 Hz
+  resonance = 0.35
+  mode = HP
+  filter control / osc 1/env 1 = 0
+  filter control / osc 4/env 2 = 0.3
+  envelope 1 / attack = 0.001 s
+  envelope 1 / decay = 0.62
+  envelope 1 / sustain = 0
+  envelope 2 / attack = 0.001 s
+  envelope 2 / decay = 0.73
+  envelope 2 / sustain = 0
+  sus on/off = OFF
+  env 1/env 2 = ENV 1
+  osc 3/ext = 0
+  amp shaper = 1

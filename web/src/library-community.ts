@@ -6,8 +6,9 @@
 // the Library it opens nothing: an added patch opens from the Open picker or the palette.
 import type { BufferAllocation } from './signal-buffers';
 import type { LibrarySection } from './bank';
+import ARCHIVED from '../community/factory.json';
 import {
-  addCommunity, addedTitles, ageOf, chipOfEntry, familiesOf, ISSUE_FORM, isAdded, LICENCE, LICENCE_URL, loadCommunity, notesOf, onAddedChange,
+  addCommunity, addedTitles, ageOf, chipOfEntry, familiesOf, ISSUE_FORM, isAdded, LICENCES, loadCommunity, notesOf, onAddedChange,
   REDDIT_SEARCH, removeCommunity, SUBREDDIT, type CommunityPatch,
 } from './community';
 import { chipEl } from './sandbox';
@@ -24,6 +25,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEl
 
 export type CommunityFilter = 'all' | 'fm1' | 'sandbox' | 'added';
 const FILTERS: [CommunityFilter, string][] = [['all', 'ALL'], ['fm1', 'FM-1'], ['sandbox', 'SANDBOX'], ['added', 'ADDED']];
+const archivedTitles = new Set(ARCHIVED.map(entry => entry.title));
 
 /** whether a version row shows under a filter */
 export function passes(c: CommunityPatch, f: CommunityFilter, added: string[] = addedTitles(), allocation: BufferAllocation = 0): boolean {
@@ -61,8 +63,10 @@ export function buildCommunitySection(root: HTMLElement, ev: CommunityEvents, al
     const added = isAdded(c.entry.title) && !isSaved(c.entry.title);
     return el('div', { class: 'bank-row' },
       el('span', { class: 'grow', textContent: c.entry.title }),
+      ...(archivedTitles.has(c.entry.title) ? [el('span', { class: 'muted', textContent: 'Archived factory', title: 'Original version, kept separately from current factory patches.' })] : []),
       ...(c.entry.author !== base.entry.author ? [el('span', { class: 'muted', textContent: c.entry.author })] : []),
       ...(c.entry.source !== base.entry.source ? [el('a', { href: c.entry.source, target: '_blank', rel: 'noopener', textContent: 'Source ↗' })] : []),
+      ...(c.entry.licence !== base.entry.licence ? [el('a', { href: LICENCES[c.entry.licence].url, target: '_blank', rel: 'noopener', textContent: LICENCES[c.entry.licence].name })] : []),
       chipEl(chipOfEntry(c, allocation())),
       el('button', {
         type: 'button',
@@ -84,7 +88,11 @@ export function buildCommunitySection(root: HTMLElement, ev: CommunityEvents, al
       el('h2', {}, el('span', { class: 'grow', textContent: name }), el('span', { class: 'muted', textContent: `${authors} · ${ageOf(newest)}` })),
       ...(notes ? [el('p', { textContent: notes })] : []),
       el('div', { class: 'bank-list' }, ...members.map((c) => row(c, base))),
-      el('p', { class: 'comm-source' }, el('a', { href: base.entry.source, target: '_blank', rel: 'noopener', textContent: 'Source ↗' })),
+      el('p', { class: 'comm-source' },
+        el('a', { href: base.entry.source, target: '_blank', rel: 'noopener', textContent: 'Source ↗' }),
+        ' · ',
+        el('a', { href: LICENCES[base.entry.licence].url, target: '_blank', rel: 'noopener', textContent: LICENCES[base.entry.licence].name }),
+      ),
     );
   };
 
@@ -104,8 +112,7 @@ export function buildCommunitySection(root: HTMLElement, ev: CommunityEvents, al
 
   root.append(
     el('div', { class: 'comm-top' },
-      el('p', { class: 'muted' }, 'Patches by players, shared under ', el('a', { href: LICENCE_URL, target: '_blank', rel: 'noopener', textContent: LICENCE }),
-        '. Add one and it shows in Your patches with its author; nothing from here shows anywhere until you add it.'),
+      el('p', { class: 'muted' }, 'Patches by players and former factory instruments. Each card names its author and licence. Add one to put it in Your patches; nothing from here appears there until you add it.'),
       el('div', { class: 'comm-filters', role: 'group', ariaLabel: 'Show' }, ...filterBtns),
     ),
     grid,

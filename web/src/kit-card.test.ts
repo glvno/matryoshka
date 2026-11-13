@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { expect, it } from 'vitest';
 import { kitCard } from '../scripts/kit-card';
-import { FM1_PRESETS } from './presets';
+import { PRESETS } from './presets';
 import { structureOf } from './structure';
 import { allModules } from './assembly';
 import { devicesOf } from './pages';
@@ -10,7 +10,7 @@ import { applyPreset, presetsOf } from './device-presets';
 import { factoryPresets } from './factory-presets';
 factoryPresets();
 it.each(['909 Kit', '<7PH'])('%s wraps existing children without altering their graph, values or identity', (name) => {
-  const p = FM1_PRESETS[name](), parent = p.assemblies!.find((a) => a.name === '909 kit')!;
+  const p = PRESETS[name](), parent = p.assemblies!.find((a) => a.name === '909 kit')!;
   p.assemblies = p.assemblies!.filter((a) => a !== parent);
   const modules = structuredClone(p.modules), cables = structuredClone(p.cables);
   const children = p.assemblies.map((a) => ({ a: structuredClone(a), structure: structureOf(p, a) }));
@@ -22,7 +22,7 @@ it.each(['909 Kit', '<7PH'])('%s wraps existing children without altering their 
   }
 });
 it('hybrid kit selection preserves every bass value and child structure', () => {
-  const p = FM1_PRESETS['<7PH'](), kit = p.assemblies!.find((a) => a.name === '909 kit')!;
+  const p = PRESETS['<7PH'](), kit = p.assemblies!.find((a) => a.name === '909 kit')!;
   const bass = p.assemblies!.find((a) => a.name === 'Silver Box')!;
   const ids = new Set(allModules(p, bass)), values = structuredClone(p.modules.filter((m) => ids.has(m.id)));
   const structures = p.assemblies!.map((a) => structureOf(p, a));
@@ -32,7 +32,7 @@ it('hybrid kit selection preserves every bass value and child structure', () => 
 });
 
 it('909 parent navigation exposes every existing child control and the three kit mix levels', () => {
-  const p = FM1_PRESETS['909 Kit']();
+  const p = PRESETS['909 Kit']();
   const parent = p.assemblies!.find((a) => a.name === '909 kit')!;
   const devices = devicesOf(p, DEFS), card = devices.find((d) => d.asm === parent.id)!;
   const rows = card.pages.flatMap((page) => page.rows);

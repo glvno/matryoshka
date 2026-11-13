@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Presets (#192, docs/ledger/vocabulary.md "Preset"): stored sets of card row values for one structure (structure.ts). Any assembly
-// device of that structure can load them, whatever its name or patch; a plain module never has any. The user's own are
-// kept in the browser (localStorage `matryoshka.presets`); factory ones (#193) come with the app, read-only (storing over
+// Presets (#192, docs/ledger/vocabulary.md "Preset"): stored card values for one structure, optionally including a
+// compatible master FX rack (FXP1). A plain module never has any. Legacy presets change only their synth card.
+// User presets live in localStorage `matryoshka.presets`; factory ones (#193) come with the app, read-only (storing over
 // one makes a new one). A patch remembers which preset each assembly was set to (AssemblyInst.preset), for display only:
 // the patch plays its own values. Not the A/B snapshot, not a patch (a patch is the whole stored thing).
 import { tiedTo, type AssemblyInst } from './assembly';
@@ -10,12 +10,15 @@ import { topOf, type Patch } from './patch';
 import { applyPresetPattern, clearPresetPattern } from './preset-patterns';
 import { migrationRank, movePreset } from './preset-migrate';
 import { rowOrder, structureOf } from './structure';
+import { applyFxValues, currentFxValues, fxPresetScope, validFxValues } from './fx-preset';
+import { fxPresetInfo, fxPresetValues } from './fx-preset-format';
+import { PRESET_VALUES_MAX } from './protocol';
 
 export interface Preset {
   /** the structure fingerprint it belongs to */
   structure: string;
   name: string;
-  /** the card rows' values, in canonical row order (structure.ts rowOrder) */
+  /** Canonical card rows (structure.ts rowOrder), followed by the FXP1 rack payload/footer when scoped. */
   values: number[];
   /** shipped with the app: read-only */
   factory?: true;
@@ -30,6 +33,7 @@ export const PRESET_NAME_MAX = 24;
 /** the factory presets: set by factory-presets.ts (#193), as a list or as a function that gives a structure's (called when a
  * structure's factory presets are first asked for, so the page does not work them all out as it loads) */
 let factorySource: Preset[] | ((structure: string) => Preset[]) = [];
+const recalledStructures = new WeakMap<AssemblyInst, string>();
 let factoryMade = new Map<string, Preset[]>();
 export const setFactoryPresets = (list: Preset[] | ((structure: string) => Preset[])): void => void ((factorySource = list), (factoryMade = new Map()));
 /** a structure's factory presets, in their own order (Init first) */
@@ -113,12 +117,47 @@ export function presetsFor(structure: string): Preset[] {
   return [...factoryFor(structure), ...userPresets().filter((p) => p.structure === structure).sort(by)];
 }
 
-/** the presets an assembly can load */
-export const presetsOf = (p: Patch, a: AssemblyInst): Preset[] => presetsFor(structureOf(p, a));
+/** Values as this card can play them. Keep stored factory/user values intact for wider copies. */
+function boundedValues(p: Patch, a: AssemblyInst, rows: { module: number; param: string }[], values: number[]): number[] {
+  let bounded: number[] | undefined;
+  rows.slice(0, values.length).forEach((r, i) => {
+    const m = p.modules.find(x => x.id === r.module);
+    const pd = m && DEFS[m.type]?.params.find(d => d.name === r.param);
+    if (!pd) return;
+    const cardTop = a.params.find(x => x.module === r.module && x.param === r.param)?.top;
+    const value = Math.min(topOf(pd), cardTop ?? Infinity, Math.max(pd.min, values[i]));
+    if (value !== values[i]) {
+      bounded ??= [...values];
+      bounded[i] = value;
+    }
+  });
+  return bounded ?? values;
+}
+
+/** The presets this assembly can load, respecting its exposed row limits. */
+export const presetsOf = (p: Patch, a: AssemblyInst): Preset[] => {
+  const rows = rowOrder(p, a), base = structureOf(p, a), scope = fxPresetScope(p, a);
+  const legacy = presetsFor(base);
+  const scoped = scope ? presetsFor(scope.structure) : [];
+  const authored = scoped.filter(preset => preset.factory);
+  const list = [...authored, ...legacy.filter(preset => !preset.factory || !authored.length), ...scoped.filter(preset => !preset.factory)];
+  return list.map(preset => {
+    const values = boundedValues(p, a, rows, preset.values);
+    return values === preset.values ? preset : { ...preset, values };
+  });
+};
 
 /** an assembly's card row values, in canonical order */
 export function currentValues(p: Patch, a: AssemblyInst): number[] {
   return rowOrder(p, a).map((r) => p.modules.find((m) => m.id === r.module)?.params[r.param] ?? 0);
+}
+
+/** Capture a sound's complete compatible scope; ordinary assemblies keep card-only presets. */
+export function capturePreset(p: Patch, a: AssemblyInst, name: string): Preset {
+  const values = currentValues(p, a), scope = fxPresetScope(p, a);
+  return scope
+    ? { structure: scope.structure, name, values: fxPresetValues(scope.baseStructure, scope.mask, values, currentFxValues(p, scope)) }
+    : { structure: structureOf(p, a), name, values };
 }
 
 /** load a preset into an assembly: its card rows take the preset's values (clamped to each parameter's range), every
@@ -126,18 +165,30 @@ export function currentValues(p: Patch, a: AssemblyInst): number[] {
  * Cassia 1 preset the FM-1 stored before 1.8.2 kept 88 of 118, #485, D-858) sets the rows it has, in order; the rest keep
  * their values (shortBy says how many). False when it does not fit (another structure, or more values than rows). */
 export function applyPreset(p: Patch, a: AssemblyInst, preset: Preset): boolean {
-  if (preset.structure !== structureOf(p, a)) return false;
+  const base = structureOf(p, a), fx = fxPresetInfo(preset);
+  const scope = fx ? fxPresetScope(p, a) : null;
   const rows = rowOrder(p, a);
-  if (preset.values.length > rows.length) return false;
-  if (preset.factory) applyPresetPattern(p, a, preset.structure, preset.name);
+  if (fx ? !scope || preset.structure !== scope.structure || fx.rows !== rows.length || preset.values.length > PRESET_VALUES_MAX
+    : preset.structure !== base || preset.values.length > rows.length) return false;
+  if (preset.values.some(v => !Number.isFinite(v))) return false;
+  if (scope && (!validFxValues(p, scope, preset.values, rows.length) || rows.some((row, i) => {
+    const m = p.modules.find(m => m.id === row.module);
+    const pd = m && DEFS[m.type]?.params.find(pd => pd.name === row.param);
+    return pd && (preset.values[i] < pd.min || preset.values[i] > topOf(pd));
+  }))) return false;
+  const count = fx?.rows ?? preset.values.length;
+  const values = boundedValues(p, a, rows, preset.values);
+  if (preset.factory) applyPresetPattern(p, a, base, preset.name);
   else clearPresetPattern(p, a);
-  rows.slice(0, preset.values.length).forEach((r, i) => {
+  rows.slice(0, count).forEach((r, i) => {
     for (const t of tiedTo(p, r.module, r.param)) {
       const m = p.modules.find((x) => x.id === t.module);
       const pd = m && DEFS[m.type]?.params.find((d) => d.name === t.param);
-      if (m && pd) m.params[t.param] = Math.min(topOf(pd), Math.max(pd.min, preset.values[i]));
+      if (m && pd) m.params[t.param] = Math.min(topOf(pd), Math.max(pd.min, values[i]));
     }
   });
+  if (scope) applyFxValues(p, scope, values, rows.length);
+  recalledStructures.set(a, preset.structure);
   a.preset = preset.name;
   return true;
 }
@@ -155,25 +206,44 @@ export const shortPresetText = (engine: string, missing: number, rows: number): 
  * one of no values never) */
 const agrees = (now: number[], values: number[]): boolean => values.length > 0 && values.length <= now.length && values.every((v, i) => Math.abs(v - now[i]) < 1e-6);
 
+function agreesWithPreset(p: Patch, a: AssemblyInst, preset: Preset): boolean {
+  if (fxPresetInfo(preset)) {
+    const now = capturePreset(p, a, preset.name);
+    return now.structure === preset.structure && now.values.length === preset.values.length && agrees(now.values, preset.values);
+  }
+  return preset.structure === structureOf(p, a) && agrees(currentValues(p, a), preset.values);
+}
+
+/** Names may exist in both legacy and rack namespaces. A live selection wins;
+ * after patch reload, infer it from the actual values, scoped entries first. */
+export function rememberedPreset(p: Patch, a: AssemblyInst, list = presetsOf(p, a)): Preset | undefined {
+  const named = list.filter(pr => sameName(pr.name, a.preset));
+  return named.find(pr => pr.structure === recalledStructures.get(a))
+    ?? named.find(pr => !!fxPresetInfo(pr) && agreesWithPreset(p, a, pr))
+    ?? named.find(pr => agreesWithPreset(p, a, pr)) ?? named[0];
+}
+
 /** whether the assembly's values still match the preset it remembers (false: edited since, or the preset is gone) */
 export function matchesPreset(p: Patch, a: AssemblyInst): boolean {
-  if (!a.preset) return false;
-  const pr = presetsOf(p, a).find((x) => sameName(x.name, a.preset));
-  if (!pr) return false;
-  return agrees(currentValues(p, a), pr.values);
+  const pr = rememberedPreset(p, a);
+  return !!pr && agreesWithPreset(p, a, pr);
 }
 
 /** store the assembly's values as a user preset under `name` (a user preset of that name for the structure is
  * overwritten; a factory one's name gets a new name: "<name> 2"); the assembly remembers it. Returns the name used. */
 export function storePreset(p: Patch, a: AssemblyInst, name: string): string {
-  const structure = structureOf(p, a);
+  const snapshot = capturePreset(p, a, name), structure = snapshot.structure;
+  if (fxPresetInfo(snapshot) && snapshot.values.length > PRESET_VALUES_MAX)
+    throw new Error(`This sound and its FX need ${snapshot.values.length} preset values; a preset holds ${PRESET_VALUES_MAX} at most`);
   let n = fixName(name) || 'preset';
-  const taken = (x: string): boolean => factoryFor(structure).some((f) => sameName(f.name, x));
+  const available = presetsOf(p, a);
+  const taken = (x: string): boolean => available.some(f => (f.factory || f.structure !== structure) && sameName(f.name, x));
   for (let k = 2; taken(n); k++) n = `${fixName(name).slice(0, PRESET_NAME_MAX - 3)} ${k}`;
   const list = userPresets().filter((x) => !(x.structure === structure && sameName(x.name, n)));
-  list.push({ structure, name: n, values: currentValues(p, a) });
+  list.push({ ...snapshot, name: n });
   writeUser(list);
   a.preset = n;
+  recalledStructures.set(a, structure);
   clearPresetPattern(p, a);
   return n;
 }
@@ -249,9 +319,8 @@ export function nextPresetName(p: Patch, a: AssemblyInst): string {
 export function stepPreset(p: Patch, a: AssemblyInst, dir: 1 | -1): Preset | null {
   const list = presetsOf(p, a);
   if (!list.length) return null;
-  const now = a.preset ? [] : currentValues(p, a);
-  const i = a.preset
-    ? list.findIndex((x) => sameName(x.name, a.preset))
-    : list.findIndex((x) => agrees(now, x.values));
+  const remembered = rememberedPreset(p, a, list);
+  const i = a.preset ? list.indexOf(remembered!)
+    : list.findIndex(pr => agreesWithPreset(p, a, pr));
   return list[i < 0 ? (dir > 0 ? 0 : list.length - 1) : (i + dir + list.length) % list.length];
 }

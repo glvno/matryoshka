@@ -193,14 +193,34 @@ export function cases(p: Patch): Case[] {
   return out;
 }
 
-/** the factory sounds that land under their rule because their level rows run out of range (a row at its top with the
- * Output at 1), as "patch / preset": how many dB short they land, measured (the owner, 2026-11-04: they stay under) */
+/** the factory sounds that land under their rule because their gain carriers run out of range (a level row or the master
+ * Drive's level at its top, the Output set by the patch as it is) or a peak cap stops them first, as "patch / preset": how
+ * many dB short they land, measured (the owner, 2026-11-04 and 2026-11-13: they stay under; the calibration is gain only,
+ * never timbre) */
 export const SHORT: Record<string, number> = {
-  'Briefcase 3 / Resonant Ping': 14.1,
-  'Briefcase 3 / Sea Noise': 10.9,
-  'Briefcase 3 / Space Drone': 6.0,
+  'Briefcase 3 / Resonant Ping': 13.9,
+  // noise through a slowly rocked resonant filter (surf): reverb / level at its top (1) with the Output at 1
+  'Briefcase 3 / Sea Noise': 13.0,
+  // the slow trapezoid drone: reverb / level at its top (1) with the Output at 1
+  'Briefcase 3 / Space Drone': 8.9,
   'Drift Poly / Drift Bass': 5.6,
-  'Vernon 100 / Metal Clang': 9.5,
+  // short zero-sustain chord swells: output / level at its top (2); the peak cap would bind before the target
+  'Expander S / Dusk Chord': 6.4,
+  // its audition phrase (scripts/audition-render.test.ts) peaks 1.11 at output / level 2: the level stops at 1.58
+  'Expander S / Highpass Pluck': 2.5,
+  // pink noise through a slow resonant sweep (wind): output / volume at its top (2) with the Output at 1
+  'Monolith D / Pink Wind': 2.4,
+  // a slow filter sweep: tone / volume at its top (1) with the Output at 1; the peak cap binds next
+  'Silver Box / Long Sweep': 1.7,
+  // tone / volume at its top (1) with the Output at 1
+  'Silver Box / Short Zap': 1.8,
+  // a thin struck chord: amp shaper at its top (1) with the Output at 1; the peak cap binds next
+  'Vernon 100 / HP Clav': 4.8,
+  'Vernon 100 / Metal Clang': 10.3,
+  // key-held pulsed noise texture: vca level at its top (4)
+  'Wanderer / Paper Rain': 11.1,
+  // a pink-noise swell through a resonant band: vca level at its top (4)
+  'Wanderer / Pink Breath': 14.3,
 };
 
 /** the factory sounds of these patches that land off their rule by more than LOUDNESS_TOLERANCE (a SHORT one: off its

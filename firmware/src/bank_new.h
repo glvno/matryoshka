@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 glvno */
 /* A factory patch that is new in this firmware reaches a bank kept through an update (#630, D-126, D-283): main.c
- * bank_add places it once per factory set, after bank_upgrade. New means the set the bank was last brought to
+ * bank_add places it once per factory set. New means the set the bank was last brought to
  * (bank_set) did not have a patch of that name (presets.h RELEASED_SETS). A set not in that table (a build between
  * releases) counts as having every patch a release ever wrote; today's set counts as having them all. A patch some
  * slot already holds by name is not new (a power cut between the slot and the settings record: the next boot does not

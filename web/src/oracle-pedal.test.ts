@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { expect, it } from 'vitest';
 import { Engine } from './engine';
-import { XL_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 function rig(mode: 'rEL' | 'HLd', release: 'OFF' | 'ON') {
-  const p = XL_PRESETS['Oracle V XL']();
+  const p = relocatedPatches['Oracle V XL']();
   const rows = p.assemblies!.flatMap(a => a.params);
   for (const [label, choice] of [['release/sustain', mode], ['release', release]]) {
     const row = rows.find(r => r.label === label)!;

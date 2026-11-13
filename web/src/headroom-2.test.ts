@@ -3,8 +3,8 @@
 import { expect, it } from 'vitest';
 import './factory-presets';
 import { overHeadroom } from './headroom';
-import { FM1_PRESETS } from './presets';
+import { PRESETS } from './presets';
 
 it('no factory patch or factory engine preset clips (part 2 of 4)', () => {
-  expect(overHeadroom(Object.entries(FM1_PRESETS).filter((_, i) => i % 4 === 1), 1, 0.95)).toEqual([]);
+  expect(overHeadroom(Object.entries(PRESETS).filter((_, i) => i % 4 === 1), 1, 0.95)).toEqual([]);
 }, 60_000);

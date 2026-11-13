@@ -7,10 +7,10 @@ import { instIsEngine } from './engines';
 import './factory-presets';
 import { PD_WAVES } from './modules';
 import type { Patch } from './patch';
-import { FM1_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 type Nodes = Map<number, { inst: { eff: Record<string, number> }[] }>;
-const cassia = (): Patch => FM1_PRESETS['Cassia 1']();
+const cassia = (): Patch => relocatedPatches['Cassia 1']();
 const card = (p: Patch) => p.assemblies!.find((a) => instIsEngine(p, a) && a.params.some((r) => r.label === 'wave 2'))!;
 /** the row's target module of the n-th row with this label on a line (the vibrato's `wave` is not a line's) */
 const rowOf = (p: Patch, label: string, n = 0) => card(p).params.filter((r) => r.label === label && p.modules.find((m) => m.id === r.module)!.type !== 'lfo')[n];

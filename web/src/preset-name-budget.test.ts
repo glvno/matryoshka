@@ -10,7 +10,8 @@ import { instIsEngine } from './engines';
 import { DEFS } from './modules';
 import { devicesOf, NAME_MAX } from './pages';
 import { DEVICE, deviceBudget, deviceText, encodePatch, layout, presetNames } from './patchbin';
-import { FM1_PRESETS } from './presets';
+import { PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 import type { Patch } from './patch';
 
 const bytes = (p: Patch): number => deviceBudget(p).items.find((i) => i.key === 'bytes')!.used;
@@ -21,7 +22,7 @@ const asmDevices = (p: Patch): number[] => devicesOf(p, DEFS).flatMap((d) => (d.
 describe('preset names and the FM-1 budget (#452)', () => {
   it('every FM-1 factory patch fits at every factory preset of its devices, the name included', () => {
     const bad: string[] = [];
-    for (const [name, make] of Object.entries(FM1_PRESETS)) {
+    for (const [name, make] of Object.entries(PRESETS)) {
       const p = make();
       for (const ai of asmDevices(p)) {
         for (const preset of presetsOf(p, p.assemblies![ai])) {
@@ -44,7 +45,7 @@ describe('preset names and the FM-1 budget (#452)', () => {
   });
 
   it('an engine keeps room for the longest name: a user preset name of any length leaves the budget as it was', () => {
-    const p = FM1_PRESETS['Io 4']();
+    const p = relocatedPatches['Io 4']();
     const a = p.assemblies!.find((x) => instIsEngine(p, x))!;
     const before = bytes(p);
     a.preset = 'ABCDEFGHIJKLMNOPQRSTUVWX';
@@ -55,7 +56,7 @@ describe('preset names and the FM-1 budget (#452)', () => {
   });
 
   it('another device\'s name goes along while it fits, else it is left out (as the FM-1 does)', () => {
-    const p = FM1_PRESETS['<7PH']();
+    const p = PRESETS['<7PH']();
     const devs = devicesOf(p, DEFS);
     const drum = p.assemblies!.find((x) => !instIsEngine(p, x) && devs.some((d) => d.asm === x.id))!;
     for (const a of p.assemblies!) if (!instIsEngine(p, a)) delete a.preset;
@@ -67,7 +68,7 @@ describe('preset names and the FM-1 budget (#452)', () => {
     expect(namesWithRoom(5)[index]).toBe('');
     expect(namesWithRoom(6)[index]).toBe('SNAPPY');
     // with room: written
-    const q = FM1_PRESETS['909 Kit']();
+    const q = PRESETS['909 Kit']();
     const kick = q.assemblies!.find((x) => devicesOf(q, DEFS).some((d) => d.asm === x.id))!;
     kick.preset = 'SNAPPY';
     expect(holds(encodePatch(q), 'SNAPPY')).toBe(true);

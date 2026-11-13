@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { deflate } from './share';
 import { codeProblem, fetchCode, ID_LENGTH, storeCode, storeId, STORE_MAX, type Kv } from './share-store';
 import { PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 const memoryKv = (): Kv & { map: Map<string, string> } => {
   const map = new Map<string, string>();
@@ -12,7 +13,7 @@ const memoryKv = (): Kv & { map: Map<string, string> } => {
 describe('stored share links (the site side)', () => {
   it('stores a patch under the hash of its code, once, and serves it back', async () => {
     const kv = memoryKv();
-    const code = await deflate(JSON.stringify(PRESETS['Oracle V']()));
+    const code = await deflate(JSON.stringify(relocatedPatches['Oracle V']()));
     const r = await storeCode(kv, code);
     expect(r).toEqual({ id: await storeId(code) });
     const id = (r as { id: string }).id;

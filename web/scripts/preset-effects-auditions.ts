@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { FM1_PRESETS } from '../src/presets';
+import { relocatedPatches } from '../src/community-factory';
 import { factoryPresets } from '../src/factory-presets';
 import { applyPreset, presetsOf } from '../src/device-presets';
 import { devicesOf } from '../src/pages';
@@ -83,7 +83,7 @@ const source = {
 };
 const entries = [];
 for (const study of studies) {
-  const original = FM1_PRESETS['Monolith D']();
+  const original = relocatedPatches['Monolith D']();
   const device = devicesOf(original, DEFS).find((d) => d.asm !== undefined)!;
   const assembly = original.assemblies!.find((a) => a.id === device.asm)!;
   const preset = presetsOf(original, assembly).find((p) => p.name === study.preset);

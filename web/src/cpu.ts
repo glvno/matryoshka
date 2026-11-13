@@ -38,10 +38,14 @@ export interface TypeCost {
   glide?: number;
   /** oscillator pitch-conversion work for each unison count (1..5), measured with that many copies */
   movingCopies?: number[];
-  /** cycles saved when the first output is not patched (nor the outputs FIRST_ALSO lists): work only it needs; more with
-   * some inputs patched (firstOffWith: the filter's second stage also works out its own coefficients while the cv moves) */
+  /** cycles saved when the first output is not patched (nor the outputs FIRST_ALSO lists): work only it needs, the least any
+   * other output saves when the module is heard through it alone; more with some inputs patched (firstOffWith: the filter's
+   * second stage also works out its own coefficients while the cv moves) */
   firstOff?: number;
   firstOffWith?: Record<string, number>;
+  /** cycles saved beyond firstOff when this output is the only one patched (the filter's lp12 alone: engine.c filter_run
+   * skips the high pass and the stores to the other ports) */
+  alone?: Record<string, number>;
   /** an oscillator: cycles its summed phase modulation adds (#518: pm2, pm3 or the index input patched), over the FM path
    * one patched pm input runs (OSC_PM_SUM) */
   pmSum?: number;
@@ -181,19 +185,28 @@ const OSC_PM_SUM = ['pm2', 'pm3', 'index'];
 
 export function runCost(m: ModuleInst, t: TypeCost, inputs: Set<string>, outputs: Set<string>, moved: Set<string> = new Set(), note = CPU.note): number {
   const shift = DEFS[m.type]?.inputs.some((i) => i.name === 'pitch') && !inputs.has('pitch') ? 60 - note : 0;
+  // a choice a parameter input or the morph moves counts at its costliest value: the modulation may take it there (a
+  // Phase Distortion wave a Selector moves into the resonances)
+  const worst = (d: CostDim): boolean => 'values' in d && moved.has(d.param);
   let c = t.run;
   if (t.dims && t.grid) {
     const parts = t.dims.map((d) => place(d, m, inputs, outputs, moved, shift));
     const sizes = t.dims.map(dimSize);
-    c = 0;
-    const walk = (k: number, at: number, w: number): void => {
-      if (!w) return;
-      if (k === parts.length) return void (c += w * t.grid![at]);
-      for (const [i, wi] of parts[k]) walk(k + 1, at * sizes[k] + i, w * wi);
+    const all = t.dims.map((d, k) => (worst(d) ? Array.from({ length: sizes[k] }, (_, i) => i) : null));
+    const cost = (k: number, at: number): number => {
+      if (k === parts.length) return t.grid![at];
+      const each = all[k];
+      if (each) return Math.max(...each.map((i) => cost(k + 1, at * sizes[k] + i)));
+      let s = 0;
+      for (const [i, w] of parts[k]) if (w) s += w * cost(k + 1, at * sizes[k] + i);
+      return s;
     };
-    walk(0, 0, 1);
+    c = cost(0, 0);
   }
-  for (const { dim, add } of t.extra ?? []) for (const [i, w] of place(dim, m, inputs, outputs, moved, shift)) c += w * add[i];
+  for (const { dim, add } of t.extra ?? []) {
+    if (worst(dim)) c += Math.max(...add);
+    else for (const [i, w] of place(dim, m, inputs, outputs, moved, shift)) c += w * add[i];
+  }
   return c;
 }
 
@@ -202,7 +215,7 @@ export function runCost(m: ModuleInst, t: TypeCost, inputs: Set<string>, outputs
 const MOVERS = new Set(['osc', 'pd', 'noise', 'wavetable', 'string', 'grain', 'glide', 'adsr', 'env', 'env8', 'rateenv', 'random']);
 
 /** outputs that need the same work as the first output (TypeCost.firstOff): the filter's mix is made from its lp24 */
-const FIRST_ALSO: Record<string, string[]> = { filter: ['mix'] };
+export const FIRST_ALSO: Record<string, string[]> = { filter: ['mix'] };
 
 /** the most a signal from module `id` changes per sample, in Q16 steps (Infinity: it may change every sample by any
  * amount): an LFO by its slope (rate x depth; sample & hold steps a few times a second), a Scale by its input's times its
@@ -307,8 +320,10 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
       one += runCost({ ...m, params: { ...m.params, pm: on ? Math.max(1, paramOf(m, 'pm')) : 0 } }, t, new Set([...inputs, 'pm']), outputs, moved, table.note) + (on ? t.pmSum ?? 0 : 0);
     } else if (!m.bypass && t.matrix) one += t.run + matrixCost(m, t.matrix, inputs, outputs, moved);
     else one += m.bypass ? table.bypass * outputs.size : runCost(m, t, inputs, outputs, moved, table.note);
-    if (t.firstOff && !m.bypass && !outputs.has(def.outputs[0].name) && !(FIRST_ALSO[m.type] ?? []).some((o) => outputs.has(o)))
-      one -= t.firstOff + Math.max(0, ...Object.entries(t.firstOffWith ?? {}).filter(([i]) => inputs.has(i)).map(([, v]) => v));
+    if ((t.firstOff || t.alone) && !m.bypass && !outputs.has(def.outputs[0].name) && !(FIRST_ALSO[m.type] ?? []).some((o) => outputs.has(o))) {
+      one -= (t.firstOff ?? 0) + Math.max(0, ...Object.entries(t.firstOffWith ?? {}).filter(([i]) => inputs.has(i)).map(([, v]) => v));
+      if (outputs.size === 1) one -= t.alone?.[[...outputs][0]] ?? 0;
+    }
     // a pitch input that keeps moving: something that never holds still reaches it (an envelope or a glide only moves for a moment)
     if (t.moving && !m.bypass && p.cables.some((c) => c.to.module === m.id && c.to.port === 'pitch' && keepsMoving(p, c.from.module))) {
       const copies = m.type === 'osc' ? Math.max(Math.round(m.params.unison ?? 1), STACKS[Math.round(m.params.stack ?? 0)]?.length ?? 1) : 1;

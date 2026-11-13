@@ -1,21 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The test patches of the owner's 1.10 device check (scripts/device-check.mjs), built here from the descriptions on the
-// check's page: the owner made them by hand in the editor and kept them in Your patches. Each starts from a factory patch's
-// JSON (web/presets), so the editor's validatePatch reads it as it reads any saved patch. src/check-fixtures.test.ts checks
+// check's page: the owner made them by hand in the editor and kept them in Your patches. Each starts from an editor example's
+// JSON (web/factory/examples.json), so the editor's validatePatch reads it as it reads any saved patch. src/check-fixtures.test.ts checks
 // that each is what its description says (and fits the FM-1, or not, as the check needs).
 import { readFileSync } from 'node:fs';
 
-const preset = (file) => JSON.parse(readFileSync(new URL(`../presets/${file}`, import.meta.url), 'utf8'));
+/** the editor example named `name` (web/factory/examples.json), a fresh copy */
+const example = (name) => JSON.parse(readFileSync(new URL('../factory/examples.json', import.meta.url), 'utf8')).find((e) => e.name === name).patch;
 /** MIDI note numbers */
 export const NOTE = { C3: 48, 'C#3': 49, D3: 50, E3: 52, G3: 55, C4: 60 };
 const step = (at, note, len = 1) => ({ at, len, note, vel: 100 });
 const cable = (fm, fp, tm, tp) => ({ from: { module: fm, port: fp }, to: { module: tm, port: tp } });
 
-/** Basic Poly (factory patch 26): Main's keys into PATTERN (a Steps track), its keys into the Arpeggiator (bypassed) and
+/** Basic Poly (an editor example): Main's keys into PATTERN (a Steps track), its keys into the Arpeggiator (bypassed) and
  *  the Voicing of the basic poly engine (saw, 24 dB low pass, ADSR with sustain 0.6, VCA, 4 voices), named `name`, PATTERN
  *  pattern 1 holding `notes` */
 function basicPoly(name, notes = []) {
-  const p = preset('25-basic-poly.json');
+  const p = example('Basic Poly');
   p.name = name;
   delete p.notes;
   p.modules.find((m) => m.type === 'steps').notes = notes;

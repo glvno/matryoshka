@@ -33,9 +33,9 @@ export async function open(url = 'http://localhost:5173/') {
   await page.goto(url);
   await page.waitForTimeout(1200);
   await page.evaluate(async () => {
-    const { PRESETS } = await import('/src/presets.ts');
+    const { relocatedPatches } = await import('/src/community-factory.ts');
     const { setKind } = await import('/src/buttons.ts');
-    const p = PRESETS['Vernon 100']();
+    const p = relocatedPatches['Vernon 100']();
     p.modules.find((m) => m.type === 'fm1').params.tempo = 97;
     setKind(p, 'arp', 'nothing');
     p.cables = p.cables.filter((c) => !(c.from.port === 'arp' && p.modules.find((m) => m.id === c.from.module)?.type === 'fm1'));

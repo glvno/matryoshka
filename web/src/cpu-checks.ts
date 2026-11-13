@@ -20,7 +20,12 @@ export function cpuChecks(note: number): { name: string; patch: Patch; notes: nu
     const n = Math.max(1, ...deviceView(p, true).groups.map((g) => g.cfg.parts));
     return Array.from({ length: n }, (_, i) => note + [0, 4, 7, 11, 14, 17, 21, 24][i % 8] - (i >= 8 ? 12 : 0));
   };
-  const out = Object.entries(FM1_PRESETS).map(([name, make]) => { const patch = make(); return { name, patch, notes: voices(patch) }; });
+  // Candidate banks may contain patches that cannot be loaded. As for assemblies below, keep CPU-over-budget checks
+  // but omit structural or memory failures that the counter cannot execute.
+  const out = Object.entries(FM1_PRESETS).flatMap(([name, make]) => {
+    const patch = make();
+    return deviceBudget(patch).over.every((i) => i.key === 'cpu') ? [{ name, patch, notes: voices(patch) }] : [];
+  });
   out.push({ name: 'Acid, 4 parts', patch: withParts(acid(), 4), notes: chord });
   const morph = acid();
   for (const m of morph.modules) if (m.type !== 'fm1') m.paramsB = { ...m.params };
@@ -44,14 +49,16 @@ export function cpuChecks(note: number): { name: string; patch: Patch; notes: nu
 /** modules whose cost depends on what they are fed (grains alive, a compressor working): the table holds their worst case */
 export const BUSY_TYPES = new Set(['grain', 'dyn']);
 
-/** checks the model may overestimate by more than usual: a busy module (above), or a filter whose cutoff an LFO or a
- * Follower moves (the model charges a cutoff that moves every sample; a slow LFO changes the Q16 value only every few
- * samples, and the filter works out its coefficients only then) */
+/** Checks whose data-dependent work the table conservatively charges at its worst case:
+ * busy modules, repeated-value quantizers, or filters whose moving Q16 cutoff may hold across samples. */
 export function looseModel(p: Patch): boolean {
   if (p.modules.some((m) => BUSY_TYPES.has(m.type))) return true;
   // an envelope or a glide into an oscillator's pitch (a drum's sweep, portamento): the model charges every sample as
   // moving, it settles sooner
   const byId = new Map(p.modules.map((m) => [m.id, m]));
+  // A connected quantizer is charged for different input every sample. Held Q16 values reuse the exact result;
+  // the observed repetition rate is not inferable from a cable (Sample & Hold can hold or run at audio rate).
+  if (p.cables.some((c) => c.to.port === 'in' && byId.get(c.to.module)?.type === 'quant')) return true;
   const fromEnv = (id: number, seen = new Set<number>()): boolean => {
     if (seen.has(id)) return false;
     seen.add(id);

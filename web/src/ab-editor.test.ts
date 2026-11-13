@@ -8,7 +8,7 @@ import { Editor, type EditorEvents } from './editor';
 import { DEFS } from './modules';
 import type { ModuleInst, Patch } from './patch';
 import { encodePatch } from './patchbin';
-import { PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 // (jsdom lacks these; selector.ts makes its ResizeObserver when it loads, so before the imports)
 vi.hoisted(() => {
@@ -78,7 +78,7 @@ const layout = (p: Patch): unknown => [p.modules.map((m) => [m.id, m.x, m.y]), (
 describe('A/B flip in the editor (#103)', () => {
   /** A is Oracle V; B moves a parameter, a Steps note and an attenuverter, and the cards */
   function twoSides(structural = false) {
-    const r = rig(PRESETS['Oracle V']());
+    const r = rig(relocatedPatches['Oracle V']());
     const { editor } = r;
     editor.takeSnapshot('A');
     const a = copy(editor.patch);

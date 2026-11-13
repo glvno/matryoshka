@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 glvno */
 /* A factory patch new in this firmware, placed after an update (#630, firmware/src/bank_new.h) on the host, with today's
- * presets.h: its own slot empty, its own slot taken, the bank full, several new (one placed elsewhere never takes another's
- * own slot), a power cut before the settings record (the patch already there by name), a set from between releases, and
- * what the bar says (26 characters at most).
+ * presets.h: its own slot empty, its own slot taken, the bank full, a power cut before the settings record (the patch
+ * already there by name), a set from between releases, a bank older than every remaining default, and what the bar says
+ * (26 characters at most). Today's 22-patch bank removed the editor examples from the defaults (D-890), so at most one
+ * patch (Verona Drum 1) is ever new; renamed Hera 3 counts as present wherever Hera 4 was (D-887).
  *   tools/bank_new_test.sh */
 #include <stdio.h>
 #include <string.h>
@@ -33,50 +34,41 @@ int main(void)
     bn_plan_t p;
     char msg[BN_BAR + 1u];
     int v = find("VERONA DRUM 1"), i, s;
-    uint32_t set191 = 0xb9a4a8u, old = 0u;                  /* 1.9.1's set; 0: 1.6.0 and older */
-    uint64_t has29 = first(29);
+    uint32_t set191 = 0xb9a4a8u, set113 = 0x5a93c5u, old = 0u;   /* 1.9.1's set, 1.12.0..1.13.0's; 0: 1.6.0 and older */
+    uint64_t has21 = first(21);
     printf("bank_new: a new factory patch after an update (#630)\n");
-    check("(Verona Drum 1 is factory index 29, 1.9.1's set had the 29 before it)", v == 29 && bn_new(set191) == (uint64_t)1 << 29);
+    check("(Verona Drum 1 is factory index 21, 1.9.1's set had the 21 before it)", v == 21 && bn_new(set191) == (uint64_t)1 << 21);
     check("today's set: nothing new", bn_new(FACTORY_SET_ID) == 0);
+    check("1.13.0's set: nothing new (Hera 3 is its Hera 4)", find("HERA 3") == 3 && bn_new(set113) == 0);
 
-    bn_plan(set191, has29, has29, 64, &p);
-    check("own slot empty: Verona Drum 1 into slot 29 (the FM-1's 30)", p.placed == 1 && p.skipped == 0 && p.slot[v] == 29);
-    check("  the bar: NEW: 30. VERONA DRUM 1 (NEW PATCH: ... is 28 characters)", bn_msg(&p, msg) && !strcmp(msg, "NEW: 30. VERONA DRUM 1"));
+    bn_plan(set191, has21, has21, 64, &p);
+    check("own slot empty: Verona Drum 1 into slot 21 (the FM-1's 22)", p.placed == 1 && p.skipped == 0 && p.slot[v] == 21);
+    check("  the bar: NEW: 22. VERONA DRUM 1 (NEW PATCH: ... is 28 characters)", bn_msg(&p, msg) && !strcmp(msg, "NEW: 22. VERONA DRUM 1"));
 
-    bn_plan(set191, first(30) | (uint64_t)1 << 31, has29, 64, &p);
-    check("own slot taken (a user patch in 29): the first empty slot, 30 (the FM-1's 31), 29 untouched", p.placed == 1 && p.slot[v] == 30);
-    check("  the bar: NEW: 31. VERONA DRUM 1", bn_msg(&p, msg) && !strcmp(msg, "NEW: 31. VERONA DRUM 1"));
+    bn_plan(set191, first(22) | (uint64_t)1 << 23, has21, 64, &p);
+    check("own slot taken (a user patch in 21): the first empty slot, 22 (the FM-1's 23), 21 untouched", p.placed == 1 && p.slot[v] == 22);
+    check("  the bar: NEW: 23. VERONA DRUM 1", bn_msg(&p, msg) && !strcmp(msg, "NEW: 23. VERONA DRUM 1"));
 
-    bn_plan(set191, ~(uint64_t)0, has29, 64, &p);
+    bn_plan(set191, ~(uint64_t)0, has21, 64, &p);
     check("bank full: skipped, nothing written", p.placed == 0 && p.skipped == 1 && p.slot[v] == BN_NONE);
     check("  the bar: NO FREE SLOT FOR NEW PATCH", bn_msg(&p, msg) && !strcmp(msg, "NO FREE SLOT FOR NEW PATCH"));
 
-    bn_plan(set191, first(29), has29 | (uint64_t)1 << v, 64, &p);
+    bn_plan(set191, first(21), has21 | (uint64_t)1 << v, 64, &p);
     check("already there by name (a power cut before the settings record): not placed twice, nothing said",
           p.placed == 0 && p.skipped == 0 && !bn_msg(&p, msg));
     bn_plan(set191, first(10), first(10), 64, &p);
-    check("a factory patch the owner deleted is not new: only Verona Drum 1 comes", p.placed == 1 && p.slot[v] == 29);
+    check("a factory patch the owner deleted is not new: only Verona Drum 1 comes", p.placed == 1 && p.slot[v] == 21);
 
-    bn_plan(0xabcdefu, has29, has29, 64, &p);
+    bn_plan(0xabcdefu, has21, has21, 64, &p);
     /* since v1.10.0 every factory patch is in a released set, so a bank from between releases gets nothing new */
     check("a set from between releases: only what no release had (none since 1.10.0)", p.placed == 0);
-    bn_plan(FACTORY_SET_ID, has29, has29, 64, &p);
+    bn_plan(FACTORY_SET_ID, has21, has21, 64, &p);
     check("today's set: nothing placed, nothing said", p.placed == 0 && !bn_msg(&p, msg));
 
-    {   /* a 1.6.0 bank (no set id): Basic Poly, Drift Poly, Mono Lead, Supersaw Stack (1.7.0) and Verona Drum 1 are new;
-         * the owner's patch sits in 25 (Basic Poly's own slot) */
-        uint64_t used = first(26), named = first(25);
-        int ok = 1;
-        bn_plan(old, used, named, 64, &p);
-        for (i = 26; i < 30; i++)
-            ok &= p.slot[i] == (uint8_t)i;
-        check("several new: each into its own slot where empty", ok && p.placed == 5);
-        check("  Basic Poly (own slot taken) into the first empty one after the others took theirs: 30", p.slot[25] == 30);
-        check("  the bar: 5 NEW PATCHES ADDED", bn_msg(&p, msg) && !strcmp(msg, "5 NEW PATCHES ADDED"));
-        bn_plan(old, ~(uint64_t)0 & ~((uint64_t)1 << 40 | (uint64_t)1 << 50), named, 64, &p);
-        check("several new, two empty slots: two placed (40, 50), three skipped", p.placed == 2 && p.skipped == 3 && p.slot[25] == 40 && p.slot[26] == 50);
-        check("  the bar: NO FREE SLOT: 3 SKIPPED", bn_msg(&p, msg) && !strcmp(msg, "NO FREE SLOT: 3 SKIPPED"));
-    }
+    /* a 1.6.0 bank (no set id) with the owner's patches in 0..21: the removed editor examples never come back, so
+     * only Verona Drum 1 is new, into the first empty slot */
+    bn_plan(old, first(22), has21, 64, &p);
+    check("a 1.6.0 bank: only Verona Drum 1, not the removed examples", p.placed == 1 && p.skipped == 0 && p.slot[v] == 22);
     {   /* every factory name in every slot: the bar never takes more than 26 characters */
         int ok = 1;
         for (i = 0; i < N_PRESETS; i++)
@@ -92,9 +84,9 @@ int main(void)
         check("every factory name in every slot: at most 26 characters, NEW PATCH: when it fits", ok);
         memset(&p, 0, sizeof p);
         p.placed = 1;
-        p.first = (uint32_t)find("INIT");
+        p.first = (uint32_t)find("IO 4");
         p.slot[p.first] = 1;
-        check("  (NEW PATCH: 2. INIT)", bn_msg(&p, msg) && !strcmp(msg, "NEW PATCH: 2. INIT"));
+        check("  (NEW PATCH: 2. IO 4)", bn_msg(&p, msg) && !strcmp(msg, "NEW PATCH: 2. IO 4"));
     }
     printf(fails ? "bank_new: %d FAILED\n" : "bank_new: all passed\n", fails);
     return fails ? 1 : 0;

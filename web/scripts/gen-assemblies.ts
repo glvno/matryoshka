@@ -11,6 +11,7 @@ import { cardRows } from '../src/preset-cards';
 import { clap, drum, hihat, kick, multi, sharedNoise, snare, type Voice } from './verona-voices';
 import { updateLineage } from './lineage-lib';
 import { junoDef } from './xl/hera-6';
+import { masterFxDef } from './master-fx';
 
 const OUT = new URL('../src/assemblies/', import.meta.url);
 /** the touch plates of 8 Lire and Elvira 2: the white keys from F3 (the drum kits' rows, gen-presets.ts KIT_NOTES); their
@@ -4825,6 +4826,8 @@ asm('octave fuzz', 'Effects', (b) => {
   b.param('tone', tone, 'cutoff');
   b.param('tracking', fol, 'highcut');
 });
+
+defs.push(masterFxDef());
 
 // an exposed pin is offered as the sliders it routes to (the editor has no p1 / p2 jacks): the same migration as on load
 for (const d of defs) {

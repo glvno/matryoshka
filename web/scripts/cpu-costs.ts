@@ -13,7 +13,7 @@ import { execSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 // @ts-ignore: plain JavaScript modules
 import { pool } from '../../tools/cpu/pool.mjs';
-import { cpuEstimate, type CostDim, type CpuTable, type TypeCost } from '../src/cpu';
+import { cpuEstimate, FIRST_ALSO, type CostDim, type CpuTable, type TypeCost } from '../src/cpu';
 import { DEFS } from '../src/modules';
 import { encodePatch } from '../src/patchbin';
 import { addModule, connect, EDITOR_ONLY, fromUnit, newPatch, type ModuleInst, type ParamDef, type Patch } from '../src/patch';
@@ -201,6 +201,14 @@ function bends(values: number[], costs: number[][], thr: number, step: boolean):
 const GRID_MAX = 16384;
 /** more settings a type's choices are tried in: the Delay's heads (#660) cost only with Tape on */
 const CHOICE_CONTEXTS: Record<string, KitCfg[]> = { delay: [{ params: { tape: 1 } }] };
+/** settings with exact fast paths in engine.c (cpu.ts CostDim exact): those values, then one ordinary value counted for
+ * every other (a Scale's or VCA's gain of 0 or 1; a fully wet Chorus or Reverb drops its dry and mix products) */
+const EXACT: Record<string, Record<string, { exact: number[]; other: number }>> = {
+  scale: { gain: { exact: [0, 1], other: 0.37 } },
+  vca: { gain: { exact: [0, 1], other: 0.37 } },
+  chorus: { mix: { exact: [1], other: 0.5 } },
+  reverb: { mix: { exact: [1], other: 0.5 } },
+};
 /** settings left out of the dims search, counted another way (cpu.ts OSC_PM_SUM): the oscillator's summed phase modulation
  * (#518) runs its FM path as one patched pm input does, plus the summing loop (TypeCost.pmSum); as dims they would push
  * its wave and pitch out of the grid */
@@ -238,10 +246,11 @@ async function typeCost(type: string): Promise<TypeCost> {
   await Promise.all(
     def.params.map(async (pd, order) => {
       if (folded?.params.includes(pd.name)) return;
-      if ((type === 'scale' || type === 'vca') && pd.name === 'gain') {
-        const values = [0, 1, .37];
-        const effect = await effectOf(type, (v) => ({ gain: v }), values, [{}, { inputs: allInputs }]);
-        dims.push({ dim: { param: 'gain', exact: [0, 1] }, values, effect, order, set: setParam('gain') });
+      const ex = EXACT[type]?.[pd.name];
+      if (ex) {
+        const values = [...ex.exact, ex.other];
+        const effect = await effectOf(type, (v) => ({ [pd.name]: v }), values, [{}, { inputs: allInputs }]);
+        dims.push({ dim: { param: pd.name, exact: ex.exact }, values, effect, order, set: setParam(pd.name) });
         return;
       }
       const t = tries(pd);
@@ -336,21 +345,32 @@ async function typeCost(type: string): Promise<TypeCost> {
     }));
   }
   // work only the first output needs (the filter's second stage feeds lp24 and mix): saved when the module is heard through
-  // its second output instead (cpu.ts FIRST_ALSO lists outputs that need the same work)
-  if (def.outputs.length > 1 && type !== 'fm1') {
-    const second = def.outputs[1].name;
-    const off = Math.round(base.run - (await measure(type, { primary: second })).run);
-    if (off > thr) {
+  // another output instead. Counted on the outputs that share the module's work: not those with a cost of their own (dims or
+  // extras: a Math output's own pass), whose discount for the first would follow from how many are patched, nor those
+  // cpu.ts FIRST_ALSO lists. Each counted alone against patched beside the first: firstOff is the least they save, alone
+  // what one of them saves beyond that (the filter's lp12 alone skips its high pass and band pass, engine.c filter_run)
+  const own = new Set([...dims, ...extra].flatMap((d) => ('output' in d.dim ? [d.dim.output] : [])));
+  const others = type === 'fm1' ? [] : def.outputs.slice(1).map((o) => o.name).filter((o) => !own.has(o) && !(FIRST_ALSO[type] ?? []).includes(o));
+  if (others.length) {
+    const saved = async (o: string, inputs: string[] = []): Promise<number> =>
+      (await measure(type, { inputs, outputs: [o] })).run - (await measure(type, { inputs, primary: o })).run;
+    const offs = await Promise.all(others.map((o) => saved(o)));
+    const least = Math.min(...offs);
+    const off = least > thr ? Math.round(least) : 0;
+    if (off) {
       out.firstOff = off;
+      const general = others[offs.indexOf(least)];
       const withIn: Record<string, number> = {};
       await Promise.all(
-        allInputs.map(async (name, i) => {
-          const more = Math.round((await measure(type, { inputs: [name] })).run - (await measure(type, { inputs: [name], primary: second })).run) - off;
+        allInputs.map(async (name) => {
+          const more = Math.round((await saved(general, [name])) - off);
           if (more > thr) withIn[name] = more;
         }),
       );
       if (Object.keys(withIn).length) out.firstOffWith = withIn;
     }
+    const alone = Object.fromEntries(others.map((o, i) => [o, Math.round(offs[i] - off)]).filter(([, v]) => (v as number) > thr));
+    if (Object.keys(alone).length) out.alone = alone;
   }
   if (dims.length) {
     out.dims = dims.map((d) => d.dim);

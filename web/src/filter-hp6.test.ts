@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
-import { FM1_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 const SR = 48000;
 const C4 = 261.6255653;
@@ -105,7 +105,7 @@ describe('Multimode hp6: a resonant 6 dB high pass', () => {
   });
 
   it('Sallen 20 runs its high pass through hp6 and keeps its card rows', () => {
-    const p = FM1_PRESETS['Sallen 20']();
+    const p = relocatedPatches['Sallen 20']();
     const card = p.assemblies!.find((a) => a.params.some((r) => r.head === 'highpass'))!;
     const cutoff = card.params.find((r) => r.head === 'highpass')!;
     const hpf = p.modules.find((m) => m.id === cutoff.module)!;

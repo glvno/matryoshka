@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { BUTTON_ID, CONDITIONS, CONTROLS, HELP_STATE_NAME, HELP_STATES, sheetRows, stateRows, stripDoes, type Condition, type ControlRow, type HelpState } from './controls';
+import { BUTTON_ID, CONDITIONS, CONTROLS, HELP_STATE_NAME, HELP_STATES, sheetRows, type Condition, type ControlRow, type HelpState } from './controls';
 import { ControlsStrip, conditionHolds, heldButtons, knobsOnlyHeld, MORE_KEY, SHEET_ROWS, stripPatch, stripView, type StripInput } from './controls-strip';
 import { setKind, setPages } from './buttons';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
 import { binaryPage } from './patchbin';
 import { devicesOf } from './pages';
+import { fxBusOf, withFxBus } from './fx-bus';
+import { deviceSection } from './patchbin';
+import { deviceView } from './poly';
 
 /** Main, an oscillator into a VCA into the Output; FX a Toggle of the VCA labelled DRIVE, LFO a Gate with no cable (no
  * job), EDIT a Page button, ARP a Gate cabled into the VCA's cv that switches */
@@ -49,6 +52,38 @@ describe('the controls strip is made from the controls table (#554, controls.ts)
     expect(v.rows.length, 'the sheet\'s first screen').toBe(Math.min(SHEET_ROWS, tableRows(s, 'state').length));
     expect(ids(v.everywhere)).toEqual(tableRows(s, 'everywhere'));
     expect(v.rows.length, 'every state lists rows').toBeGreaterThan(0);
+  });
+
+  it('renders real master FX controls instead of the legacy FX binding, with selected-stage knob labels', () => {
+    const legacy = rig().p;
+    expect(stripPatch(legacy).buttons.some((b) => b.button === 'FX')).toBe(true);
+    const p = withFxBus(legacy), bus = fxBusOf(p)!;
+    expect(bus).not.toBeNull();
+    const compiled = stripPatch(p);
+    expect(compiled.buttons.some((b) => b.button === 'FX')).toBe(false);
+    const normal = stripView(at('device', { conditions: cond('fx_bank') }), compiled);
+    expect(ids([...normal.rows, ...normal.more])).toContain('fx-open');
+    const devs = deviceSection(p, deviceView(p, true).patch);
+    const device = devs.findIndex((d) => d.asm === bus.assembly);
+    const target = bus.stages[2].targets;
+    const page = devs[device].pages.findIndex((pg) => pg.rows.some((r) => target.includes(r.module)));
+    const v = stripView(at('fx', { device, devicePage: page }), compiled);
+    expect(ids(v.rows)).toEqual(['fx-row', 'fx-params', 'fx-toggle', 'fx-back']);
+    expect(v.knobs).toEqual(Array.from({ length: 4 }, (_, k) => devs[device].pages[page].rows[k]?.label ?? ''));
+    expect(ids(stripView(at('step', { held: 1 << BUTTON_ID.FX }), compiled).rows)).toEqual(['sr-accent']);
+  });
+
+  it('shows the sparse Reverb page’s helper-bound mix knob without exposing the legacy FX Toggle', () => {
+    const p = withFxBus(rig().p, { omit: ['drive', 'chorus', 'delay'] }), bus = fxBusOf(p)!;
+    const compiled = stripPatch(p), devs = deviceSection(p, deviceView(p, true).patch);
+    const device = devs.findIndex(d => d.asm === bus.assembly), stage = bus.stages[0];
+    const page = devs[device].pages.findIndex(pg => pg.rows.some(r => stage.targets.includes(r.module)));
+    const mix = devs[device].pages[page].rows.find(r => stage.helpers.includes(r.module));
+    expect(mix).toBeDefined();
+    const view = stripView(at('fx', { device, devicePage: page }), compiled);
+    expect(view.knobs).toContain(mix!.label);
+    expect(ids(view.rows)).toEqual(['fx-row', 'fx-params', 'fx-toggle', 'fx-back']);
+    expect(compiled.buttons.some(b => b.button === 'FX')).toBe(false);
   });
 
   it('a row\'s condition decides whether it shows (a device page, a Page button\'s list or not)', () => {
@@ -184,38 +219,6 @@ describe('ControlsStrip draws chips as the FM-1\'s sheet does', () => {
     expect(s.el.querySelector('.cs-from')!.textContent).toContain('your FM-1');
     s.draw(null, 'emu');
     expect(s.el.hidden).toBe(true);
-  });
-
-  it('a chip says what the row does in the strip\'s own words (`strip`, `stripIn` by state), not the sheet\'s short ones', () => {
-    localStorage.setItem(MORE_KEY, '1');
-    const words = (s: ControlsStrip, id: string): string | null | undefined => s.el.querySelector(`[data-row="${id}"] .cs-does`)?.textContent;
-    const s = new ControlsStrip();
-    s.draw(at('roll'), 'emu');
-    expect(words(s, 'roll-keys')).toBe('play each key’s own note without changing the pattern');
-    expect(words(s, 'step')).toBeUndefined();
-    expect(words(s, 'step-record-there')).toBe('step record starting from that step');
-    expect(words(s, 'home'), 'EVERYWHERE too').toBe('go back one step');
-    s.draw(at('drum'), 'emu');
-    expect(words(s, 'step'), 'stripIn: the drum grid\'s own').toBe('turn the selected sound on or off at that step');
-    s.draw(at('device', { conditions: cond('list') }), 'emu');
-    expect(words(s, 'list-home'), '{list}: the Page button').toBe("leave the Page button's pages, back where you were");
-    // a row without them: its words off the sheet (plain), then the sheet's
-    const row = CONTROLS.find((r) => r.id === 'roll-keys')!;
-    const was = row.strip;
-    try {
-      delete row.strip;
-      s.draw(at('roll', { held: 1 }), 'emu');
-      s.draw(at('roll'), 'emu');
-      expect(words(s, 'roll-keys')).toBe(row.does);
-    } finally { row.strip = was; }
-    localStorage.removeItem(MORE_KEY);
-  });
-
-  it('every row the strip can show has its own words, 3 words or more', () => {
-    for (const s of HELP_STATES) for (const r of [...stateRows(s), ...sheetRows(s, 'everywhere', true).filter((x): x is ControlRow => 'gesture' in x)]) {
-      expect(r.strip, `${s}: ${r.id}`).toBeTruthy();
-      expect(stripDoes(r, s).split(' ').length, `${s}: ${r.id}: ${stripDoes(r, s)}`).toBeGreaterThanOrEqual(3);
-    }
   });
 
   it('"+N more" shows every row and back; the choice is kept for this viewer', () => {

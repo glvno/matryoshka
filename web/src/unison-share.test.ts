@@ -4,7 +4,7 @@ import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch } from './patch';
 import { encodePatch, formatOf } from './patchbin';
-import { FM1_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 function setup(priority = 1, voices = 4, stack = 0) {
   const p = emptyPatch();
@@ -73,7 +73,7 @@ it('encodes shared unison without changing older unison or legato values', () =>
 });
 
 it('Io 4 keeps its four voices and reaches the shared mode by its key assign switch (UNISON II, #681)', () => {
-  const p = FM1_PRESETS['Io 4']();
+  const p = relocatedPatches['Io 4']();
   const row = p.assemblies!.flatMap(a => a.params).find(r => r.label === 'key assign')!;
   expect(row.names).toEqual(['POLY I', 'POLY II', 'UNISON I', 'UNISON II']);
   const sel = p.modules.find(m => m.id === row.module)!;

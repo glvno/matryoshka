@@ -3,7 +3,7 @@ import { recoveredLines } from '../src/test-buffer-budget';
 // Offline #824 accounting. Emits fixtures and model counts; no device connection or factory writes.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { FM1_PRESETS, make } from '../src/presets';
+import { PRESETS, make } from '../src/presets';
 import { ARENA, BUF_BYTES, deviceBudget, encodePatch, lineBudget, linePlace, poolUse } from '../src/patchbin';
 import { deviceView } from '../src/poly';
 import { signalBuffers } from '../src/signal-buffers';
@@ -14,7 +14,7 @@ import { aotPatch } from './gen-aot';
 
 const out = new URL('../../build/buffer-budget/', import.meta.url);
 mkdirSync(out, { recursive: true });
-const fixtures: [string, Patch][] = Object.entries(FM1_PRESETS).map(([name, build]) => [name, build()]);
+const fixtures: [string, Patch][] = Object.entries(PRESETS).map(([name, build]) => [name, build()]);
 function chain(feedback: boolean, late: boolean, parts: number): Patch {
   const p = make('buffer boundary', (add, wire) => {
     const main = add('fm1', 0, 0), osc = add('osc', 0, 0, { level: .2 });

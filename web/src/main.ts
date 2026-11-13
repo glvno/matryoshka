@@ -6,9 +6,12 @@ import './site-move';
 import { openDeviceSettings } from './device-settings';
 import { renderFm1Help } from './controls-help';
 import { ControlsStrip, stripPatch, type StripPatch } from './controls-strip';
-import { addUserPreset, currentValues, exportPresets, importPresets, migrateUserPresets, presetsOf } from './device-presets';
+import { addUserPreset, capturePreset, exportPresets, importPresets, migrateUserPresets, presetsOf } from './device-presets';
 import { armedFromMask, armMask } from './arm';
 import './factory-presets'; // the factory engines' presets (#193)
+import { fxBusOf, fxRuntimeHelpers } from './fx-bus';
+import { setFxStageEnabled } from './fx-preset';
+import { FEATURE_FX_PRESETS, FX_BYPASS_PARAM } from './protocol';
 import { applyImport, backupFile, backupKeys, collectKeys, importSummary, receiveMigration } from './migrate';
 import { moveOffer, onPagesDev } from './move-offer';
 import { CPU, CPU_WARN } from './cpu';
@@ -468,6 +471,20 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
   }
   if (e.kind === 'param') {   // K1..K4 turned on a device page of the FM-1 tab's emulator
     const m = deviceView(editor.patch, true).patch.modules[e.module];
+    if (e.param === FX_BYPASS_PARAM) {
+      if (!m || (e.value !== 0 && e.value !== 1) || (from === 'device' && !(device.info && device.info.features & FEATURE_FX_PRESETS))) return;
+      const stage = fxBusOf(editor.patch)?.stages.find(stage => stage.targets.includes(m.id));
+      if (!stage) return;
+      const helpers = fxRuntimeHelpers(editor.patch);
+      for (const id of setFxStageEnabled(editor.patch, stage, e.value === 0)) {
+        if (helpers.has(id)) continue;
+        const module = editor.patch.modules.find(module => module.id === id)!;
+        host.send({ t: 'bypass', id, on: !!module.bypass });
+      }
+      editor.rebuild();
+      queueSave(editor.patch);
+      return;
+    }
     // a poly group's setting is the Voice allocator's parameter (the allocator's Part has its id: patchbin.ts rowParam)
     const name = m && (e.param & POLY_ROW ? POLY_ROW_PARAMS[e.param & 0x7f] : DEFS[m.type].params[e.param]?.name);
     if (!m || !name) return;
@@ -971,6 +988,7 @@ const editor = new Editor($('canvas'), firstPatch, {
   onMute: muteTrack,
   onBypass(id, on) {
     if (fromDevice) uploadGate.forget();
+    if (fxRuntimeHelpers(editor.patch).has(id)) { queueSave(editor.patch); return; }   // (the stage's targets carry it)
     host.send({ t: 'bypass', id, on });
     queueEmu();
     tutorial.bypassed();
@@ -1126,7 +1144,7 @@ const fillPicker = (): void => {
         const opt = new Option('', o.value);
         const name = document.createElement('span');
         name.className = 'o-name';
-        name.textContent = `${o.xl ? '└ ' : ''}${o.name}`;
+        name.textContent = o.name;
         if (o.author) {
           const by = document.createElement('span');
           by.className = 'o-by';
@@ -2938,7 +2956,7 @@ if (import.meta.env.DEV) {
     presetNow: (label: string): { name: string; off: number; rows: number } | null => {
       const a = (editor.patch.assemblies ?? []).find((x) => x?.label === label);
       if (!a) return null;
-      const now = currentValues(editor.patch, a);
+      const now = capturePreset(editor.patch, a, a.preset ?? 'Preset').values;
       const near = (u: number, v: number): boolean => Math.abs(u - v) <= 2e-3 * Math.max(1, Math.abs(v));
       const best = presetsOf(editor.patch, a).filter((p) => p.factory && p.values.length === now.length)
         .map((p) => ({ name: p.name, off: p.values.filter((v, i) => !near(now[i], v)).length, rows: now.length }))

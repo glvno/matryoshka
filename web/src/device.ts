@@ -5,7 +5,7 @@ import { FEATURE_PATTERN_ORIGINS, PatternOrigins, type OriginUpdate } from './pa
 import { DEFS } from './modules';
 import type { Patch, Range } from './patch';
 import type { SongEntry, StepNote } from './track';
-import { encodePatch, toQ16, VERSION } from './patchbin';
+import { encodePatch, FLAG_FX_BUS, FLAG_PATTERN_ORIGINS, toQ16, VERSION } from './patchbin';
 import { deviceView } from './poly';
 
 /** a module's index on the FM-1: its place in the patch's device form (poly.ts deviceView: editor-only modules such as
@@ -18,6 +18,8 @@ export function deviceLayoutKey(patch: Patch): string {
 }
 import { FEATURE_DEVICE_SETTINGS, deviceSettingsFrame, parseDeviceSettings, type DeviceSettings, armsFrame, parseArmsNow, FEATURE_WIDE_ARMS, editorSkips, FEATURE_ARMS, FEATURE_LONG_PRESETS, FEATURE_PANEL_REPORT, parseKeysNow, parseGuideNow, type KeysNow, type PanelState, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, parseLocksNow, type RawLock, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
+import { FEATURE_FX_PRESETS } from './protocol';
+import { fxPresetInfo } from './fx-preset-format';
 
 /** what connecting the FM-1 does with Live sync (#171): `sync` turns it on without asking, `ask` offers Sync / Not now,
  *  `off` leaves it off (Not now was chosen in this visit) */
@@ -438,7 +440,10 @@ export class DeviceLink {
   }
 
   private async sendChunks(bin: Uint8Array): Promise<void> {
-    if (bin[1] >= 54 && (!this.info?.patchFormats || bin[1] > this.info.patchFormats.max || !(this.info.features & FEATURE_PATTERN_ORIGINS)))
+    const flags = bin[6] | bin[7] << 8;
+    if ((flags & FLAG_FX_BUS) && (!this.info?.patchFormats || this.info.patchFormats.max < 55))
+      throw new Error('This patch carries master FX controls. Update the FM-1 firmware before sending it.');
+    if ((flags & FLAG_PATTERN_ORIGINS) && (!this.info?.patchFormats || bin[1] > this.info.patchFormats.max || !(this.info.features & FEATURE_PATTERN_ORIGINS)))
       throw new Error('This patch carries factory pattern origins. Update the FM-1 firmware before sending it; its origins cannot be removed automatically.');
     const range = this.info?.patchFormats;
     if (range && (bin[1] < range.min || bin[1] > range.max)) throw new Error(UPDATE_TO_SYNC);
@@ -557,7 +562,8 @@ export class DeviceLink {
 
   /** whether a preset of n values can be stored on this FM-1 (false: older firmware and more than 88: it must be updated;
    *  more than 176 never) */
-  presetFits(n: number): boolean {
+  presetFits(n: number, preset?: { structure: string; values: number[] }): boolean {
+    if (preset && fxPresetInfo(preset) && !(this.info && this.info.features & FEATURE_FX_PRESETS)) return false;
     return n <= PRESET_VALUES_OLD || (this.hasLongPresets && n <= PRESET_VALUES_MAX);
   }
 
@@ -589,7 +595,7 @@ export class DeviceLink {
 
   /** store a preset on the FM-1; one older firmware cannot hold whole is refused before anything is sent (D-476) */
   putPreset(structure: string, name: string, values: number[]): Promise<void> {
-    if (!this.presetFits(values.length)) return Promise.reject(new Error(PRESET_NEEDS_UPDATE));
+    if (!this.presetFits(values.length, { structure, values })) return Promise.reject(new Error(PRESET_NEEDS_UPDATE));
     return this.serial(async () => { await this.ackFor(presetPutFrame(structure, name, values), CMD.presetPut, undefined, FLASH_TIMEOUT); });
   }
 

@@ -1,0 +1,1370 @@
+{
+  "scope": "All eight pending mono settings plus full-rack Canvas, harmonizer physically removed. Canvas rebuilt from qualified compact original-DSP source; display captions abbreviated without removing controls or choices. Published bank unchanged.",
+  "created": "2026-11-12T23:24:55.243196+00:00",
+  "expectedFirmwarePackageSha256": "cf98f1087249abe6d9e55363eab789459d0f970ce2d9a1e6f4b0109dc6745c5d",
+  "hardwareAttempt": {
+    "status": "completed",
+    "identityVerified": true,
+    "editorIgnoreVerified": true,
+    "testPatchUploads": 44,
+    "firmwareWrites": 0,
+    "savedSlotWrites": 0,
+    "restoredProgramZero": true,
+    "transportStopped": true
+  },
+  "counts": {
+    "requested": 9,
+    "passed": 5,
+    "failed": 4,
+    "resourceBlocked": 0,
+    "requiredPhases": 56,
+    "observedPhases": 44,
+    "hardwareTested": 9
+  },
+  "cases": [
+    {
+      "variantId": "briefcase-3-original-drive-chorus-delay-no-harm",
+      "basedOnVariantId": "briefcase-3-original-drive-chorus-delay",
+      "instrument": "Briefcase 3",
+      "harmonizerRemoved": true,
+      "status": "passed",
+      "peakCpuPercent": 94.83115093039284,
+      "observedPhases": 8,
+      "requiredPhases": 8,
+      "mute": 0,
+      "shed": 0,
+      "late": 0,
+      "budgetBytes": 2961,
+      "textOnlyChanges": [],
+      "rebuildFromSelectedCanvas": false,
+      "sourceSha256": "7d1080bed11dbc01859639dde2fe632de3bf479c7dbfcb07fc7879f67d8bfc01",
+      "evidence": "release-evidence-private/prototype-bank/fx-bus/mono-no-harm-common-native55-hardware.json"
+    },
+    {
+      "variantId": "briefcase-3-original-drive-chorus-no-harm",
+      "basedOnVariantId": "briefcase-3-original-drive-chorus",
+      "instrument": "Briefcase 3",
+      "harmonizerRemoved": true,
+      "status": "passed",
+      "peakCpuPercent": 89.9724328049621,
+      "observedPhases": 8,
+      "requiredPhases": 8,
+      "mute": 0,
+      "shed": 0,
+      "late": 0,
+      "budgetBytes": 2772,
+      "textOnlyChanges": [],
+      "rebuildFromSelectedCanvas": false,
+      "sourceSha256": "34ac51a107eb073afdf196411de1d2e10625fb4513cb431330eaf18a02253d76",
+      "evidence": "release-evidence-private/prototype-bank/fx-bus/mono-no-harm-common-native55-hardware.json"
+    },
+    {
+      "variantId": "briefcase-3-original-drive-delay-no-harm",
+      "basedOnVariantId": "briefcase-3-original-drive-delay",
+      "instrument": "Briefcase 3",
+      "harmonizerRemoved": true,
+      "status": "passed",
+      "peakCpuPercent": 87.5947622329428,
+      "observedPhases": 8,
+      "requiredPhases": 8,
+      "mute": 0,
+      "shed": 0,
+      "late": 0,
+      "budgetBytes": 2850,
+      "textOnlyChanges": [],
+      "rebuildFromSelectedCanvas": false,
+      "sourceSha256": "a29d3fae2e35463193f32fd839d6fe5d6af4af71b80fdb16336efe6193931386",
+      "evidence": "release-evidence-private/prototype-bank/fx-bus/mono-no-harm-common-native55-hardware.json"
+    },
+    {
+      "variantId": "sallen-20-original-chorus-delay-reverb-no-harm",
+      "basedOnVariantId": "sallen-20-original-chorus-delay-reverb",
+      "instrument": "Sallen 20",
+      "harmonizerRemoved": true,
+      "status": "failed",
+      "peakCpuPercent": 95.2446588559614,
+      "observedPhases": 1,
+      "requiredPhases": 4,
+      "mute": 0,
+      "shed": 0,
+      "late": 0,
+      "budgetBytes": 2387,
+      "textOnlyChanges": [],
+      "rebuildFromSelectedCanvas": false,
+      "sourceSha256": "bbd1ba672debad41d42e71d5d508b775489b5f4cadc83bc2f6fd34059f4d992b",
+      "evidence": "release-evidence-private/prototype-bank/fx-bus/mono-no-harm-common-native55-hardware.json"
+    },
+    {
+      "variantId": "sallen-20-original-drive-chorus-reverb-no-harm",
+      "basedOnVariantId": "sallen-20-original-drive-chorus-reverb",
+      "instrument": "Sallen 20",
+      "harmonizerRemoved": true,
+      "status": "passed",
+      "peakCpuPercent": 93.72846312887664,
+      "observedPhases": 8,
+      "requiredPhases": 8,
+      "mute": 0,
+      "shed": 0,
+      "late": 0,
+      "budgetBytes": 2304,
+      "textOnlyChanges": [],
+      "rebuildFromSelectedCanvas": false,
+      "sourceSha256": "048cf7138ac76262866ee880bac2e90b85279f57d4ea551baf3c75b3cff56bf0",
+      "evidence": "release-evidence-private/prototype-bank/fx-bus/mono-no-harm-common-native55-hardware.json"
+    },
+    {
+      "variantId": "sallen-20-original-drive-delay-reverb-no-harm",
+      "basedOnVariantId": "sallen-20-original-drive-delay-reverb",
+      "instrument": "Sallen 20",
+      "harmonizerRemoved": true,
+      "status": "passed",
+      "peakCpuPercent": 92.66023432115782,
+      "observedPhases": 8,
+      "requiredPhases": 8,
+      "mute": 0,
+      "shed": 0,
+      "late": 0,
+      "budgetBytes": 2382,
+      "textOnlyChanges": [],
+      "rebuildFromSelectedCanvas": false,
+      "sourceSha256": "c1bfdfec4aaafe930c4857b047e7d90050cd629cd8798f983af3b33eb1ece489",
+      "evidence": "release-evidence-private/prototype-bank/fx-bus/mono-no-harm-common-native55-hardware.json"
+    },
+    {
+      "variantId": "canvas-original-chorus-no-harm",
+      "basedOnVariantId": "canvas-original-chorus",
+      "instrument": "Canvas",
+      "harmonizerRemoved": true,
+      "status": "failed",
+      "peakCpuPercent": 95.69262577532736,
+      "observedPhases": 1,
+      "requiredPhases": 4,
+      "mute": 1,
+      "shed": 0,
+      "late": 0,
+      "budgetBytes": 3747,
+      "textOnlyChanges": [
+        {
+          "module": 68,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 70,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 71,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 72,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 73,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 74,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 76,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 78,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 79,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        }
+      ],
+      "rebuildFromSelectedCanvas": true,
+      "sourceSha256": "179a4f23505df53e8a6c3938ae8f430e646de9b38e9254852223b99914355ed5",
+      "evidence": "release-evidence-private/prototype-bank/fx-bus/canvas-compact-no-harm-common-native55-hardware.json"
+    },
+    {
+      "variantId": "canvas-original-delay-no-harm",
+      "basedOnVariantId": "canvas-original-delay",
+      "instrument": "Canvas",
+      "harmonizerRemoved": true,
+      "status": "failed",
+      "peakCpuPercent": 95.65816678152999,
+      "observedPhases": 1,
+      "requiredPhases": 4,
+      "mute": 0,
+      "shed": 0,
+      "late": 0,
+      "budgetBytes": 3825,
+      "textOnlyChanges": [
+        {
+          "module": 68,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 70,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 71,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 72,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 73,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 74,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 76,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 78,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 79,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        }
+      ],
+      "rebuildFromSelectedCanvas": true,
+      "sourceSha256": "3954ef70f7fb0abc58fe992ddb91d23bc4e9a6347c2c694e0117f63ffae81cd2",
+      "evidence": "release-evidence-private/prototype-bank/fx-bus/canvas-compact-no-harm-common-native55-hardware.json"
+    },
+    {
+      "variantId": "canvas-original-chorus-delay-no-harm",
+      "basedOnVariantId": "canvas-original-chorus-delay",
+      "instrument": "Canvas",
+      "harmonizerRemoved": true,
+      "status": "failed",
+      "peakCpuPercent": 103.2736044107512,
+      "observedPhases": 1,
+      "requiredPhases": 4,
+      "mute": 1,
+      "shed": 0,
+      "late": 0,
+      "budgetBytes": 3635,
+      "textOnlyChanges": [
+        {
+          "module": 68,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 70,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 71,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 72,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 73,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 74,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 76,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 78,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 79,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "main",
+            "PRESS",
+            "SEQ",
+            "ENV",
+            "pulser",
+            "RND1",
+            "mod cv",
+            "patch"
+          ],
+          "after": [
+            "MN",
+            "PRS",
+            "SQ",
+            "EG",
+            "PUL",
+            "R1",
+            "CV",
+            "PT"
+          ]
+        },
+        {
+          "module": 8,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "keyboard",
+            "pulser",
+            "off"
+          ],
+          "after": [
+            "KEY",
+            "PUL",
+            "off"
+          ]
+        },
+        {
+          "module": 10,
+          "param": "s1",
+          "field": "label",
+          "before": "voltage 1",
+          "after": "V1"
+        },
+        {
+          "module": 10,
+          "param": "s2",
+          "field": "label",
+          "before": "voltage 2",
+          "after": "V2"
+        },
+        {
+          "module": 10,
+          "param": "s3",
+          "field": "label",
+          "before": "voltage 3",
+          "after": "V3"
+        },
+        {
+          "module": 10,
+          "param": "s4",
+          "field": "label",
+          "before": "voltage 4",
+          "after": "V4"
+        },
+        {
+          "module": 10,
+          "param": "s5",
+          "field": "label",
+          "before": "voltage 5",
+          "after": "V5"
+        },
+        {
+          "module": 11,
+          "param": "s1",
+          "field": "label",
+          "before": "pulse 1",
+          "after": "P1"
+        },
+        {
+          "module": 11,
+          "param": "s2",
+          "field": "label",
+          "before": "pulse 2",
+          "after": "P2"
+        },
+        {
+          "module": 11,
+          "param": "s3",
+          "field": "label",
+          "before": "pulse 3",
+          "after": "P3"
+        },
+        {
+          "module": 11,
+          "param": "s4",
+          "field": "label",
+          "before": "pulse 4",
+          "after": "P4"
+        },
+        {
+          "module": 11,
+          "param": "s5",
+          "field": "label",
+          "before": "pulse 5",
+          "after": "P5"
+        },
+        {
+          "module": 14,
+          "param": "view",
+          "field": "label",
+          "before": "envelope",
+          "after": "ENV"
+        },
+        {
+          "module": 12,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "keyboard",
+            "pulser",
+            "sequencer"
+          ],
+          "after": [
+            "KEY",
+            "PUL",
+            "SEQ"
+          ]
+        },
+        {
+          "module": 13,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "sustained",
+            "transient",
+            "off"
+          ],
+          "after": [
+            "SUST",
+            "TRAN",
+            "off"
+          ]
+        },
+        {
+          "module": 14,
+          "param": "r1",
+          "field": "label",
+          "before": "attack",
+          "after": "ATT"
+        },
+        {
+          "module": 14,
+          "param": "r2",
+          "field": "label",
+          "before": "sustain",
+          "after": "SUS"
+        },
+        {
+          "module": 14,
+          "param": "r4",
+          "field": "label",
+          "before": "decay",
+          "after": "DEC"
+        },
+        {
+          "module": 4,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "keyboard",
+            "self",
+            "sequencer"
+          ],
+          "after": [
+            "KEY",
+            "self",
+            "SEQ"
+          ]
+        },
+        {
+          "module": 5,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "triggered",
+            "off",
+            "once"
+          ],
+          "after": [
+            "TRIG",
+            "off",
+            "once"
+          ]
+        },
+        {
+          "module": 75,
+          "param": "gain",
+          "field": "label",
+          "before": "period proc",
+          "after": "PER PROC"
+        },
+        {
+          "module": 15,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "keyboard",
+            "pulser",
+            "sequencer"
+          ],
+          "after": [
+            "KEY",
+            "PUL",
+            "SEQ"
+          ]
+        },
+        {
+          "module": 18,
+          "param": "pos",
+          "field": "label",
+          "before": "keyboard",
+          "after": "KEY"
+        },
+        {
+          "module": 19,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "- high",
+            "+ hi",
+            "low"
+          ],
+          "after": [
+            "-HI",
+            "+HI",
+            "LO"
+          ]
+        },
+        {
+          "module": 56,
+          "param": "value",
+          "field": "label",
+          "before": "frequency",
+          "after": "FREQ"
+        },
+        {
+          "module": 60,
+          "param": "value",
+          "field": "label",
+          "before": "fine tune",
+          "after": "FINE"
+        },
+        {
+          "module": 20,
+          "param": "wave",
+          "field": "label",
+          "before": "waveshape",
+          "after": "WAVE"
+        },
+        {
+          "module": 22,
+          "param": "pos",
+          "field": "label",
+          "before": "modulation",
+          "after": "MOD"
+        },
+        {
+          "module": 22,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "bal. ext",
+            "f.m. osc",
+            "a.m. osc"
+          ],
+          "after": [
+            "BAL EXT",
+            "FM",
+            "AM"
+          ]
+        },
+        {
+          "module": 69,
+          "param": "gain",
+          "field": "label",
+          "before": "freq proc",
+          "after": "FREQ PROC"
+        },
+        {
+          "module": 32,
+          "param": "gain",
+          "field": "label",
+          "before": "index proc",
+          "after": "IDX PROC"
+        },
+        {
+          "module": 24,
+          "param": "pos",
+          "field": "label",
+          "before": "keyboard",
+          "after": "KEY"
+        },
+        {
+          "module": 62,
+          "param": "value",
+          "field": "label",
+          "before": "fine tune",
+          "after": "FINE"
+        },
+        {
+          "module": 28,
+          "param": "wave",
+          "field": "label",
+          "before": "timbre wave",
+          "after": "T WAVE"
+        },
+        {
+          "module": 29,
+          "param": "mix",
+          "field": "label",
+          "before": "timbre mix",
+          "after": "T MIX"
+        },
+        {
+          "module": 31,
+          "param": "gain",
+          "field": "label",
+          "before": "timbre proc",
+          "after": "TIMB PROC"
+        },
+        {
+          "module": 37,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "lopass",
+            "combination",
+            "vca"
+          ],
+          "after": [
+            "LP",
+            "LP+VCA",
+            "vca"
+          ]
+        },
+        {
+          "module": 34,
+          "param": "offset",
+          "field": "label",
+          "before": "level 1",
+          "after": "LVL1"
+        },
+        {
+          "module": 34,
+          "param": "gain",
+          "field": "label",
+          "before": "level 1 proc",
+          "after": "L1 PROC"
+        },
+        {
+          "module": 41,
+          "param": "pos",
+          "field": "label",
+          "before": "source 2",
+          "after": "SRC2"
+        },
+        {
+          "module": 41,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "preamp",
+            "mod osc",
+            "gate 1"
+          ],
+          "after": [
+            "preamp",
+            "mod osc",
+            "GATE1"
+          ]
+        },
+        {
+          "module": 45,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "lopass",
+            "combination",
+            "vca"
+          ],
+          "after": [
+            "LP",
+            "LP+VCA",
+            "vca"
+          ]
+        },
+        {
+          "module": 42,
+          "param": "offset",
+          "field": "label",
+          "before": "level 2",
+          "after": "LVL2"
+        },
+        {
+          "module": 42,
+          "param": "gain",
+          "field": "label",
+          "before": "level 2 proc",
+          "after": "L2 PROC"
+        },
+        {
+          "module": 3,
+          "param": "time",
+          "field": "label",
+          "before": "portamento",
+          "after": "GLIDE"
+        },
+        {
+          "module": 77,
+          "param": "gain",
+          "field": "label",
+          "before": "porta proc",
+          "after": "PORT PROC"
+        },
+        {
+          "module": 53,
+          "param": "pos",
+          "field": "label",
+          "before": "add to main",
+          "after": "MAIN ADD"
+        },
+        {
+          "module": 53,
+          "param": "pos",
+          "field": "names",
+          "before": [
+            "octaves",
+            "preset",
+            "none"
+          ],
+          "after": [
+            "OCT",
+            "PRE",
+            "none"
+          ]
+        },
+        {
+          "module": 52,
+          "param": "v1",
+          "field": "label",
+          "before": "preset 1",
+          "after": "PRE1"
+        },
+        {
+          "module": 52,
+          "param": "v2",
+          "field": "label",
+          "before": "preset 2",
+          "after": "PRE2"
+        },
+        {
+          "module": 52,
+          "param": "v3",
+          "field": "label",
+          "before": "preset 3",
+          "after": "PRE3"
+        },
+        {
+          "module": 52,
+          "param": "v4",
+          "field": "label",
+          "before": "preset 4",
+          "after": "PRE4"
+        },
+        {
+          "module": 71,
+          "param": "pos",
+          "field": "label",
+          "before": "index in",
+          "after": "IDX CV"
+        },
+        {
+          "module": 72,
+          "param": "pos",
+          "field": "label",
+          "before": "timbre in",
+          "after": "TIMB CV"
+        },
+        {
+          "module": 73,
+          "param": "pos",
+          "field": "label",
+          "before": "level 1 in",
+          "after": "L1 CV"
+        },
+        {
+          "module": 74,
+          "param": "pos",
+          "field": "label",
+          "before": "level 2 in",
+          "after": "L2 CV"
+        },
+        {
+          "module": 76,
+          "param": "pos",
+          "field": "label",
+          "before": "period in",
+          "after": "PER CV"
+        },
+        {
+          "module": 78,
+          "param": "pos",
+          "field": "label",
+          "before": "porta in",
+          "after": "PORT CV"
+        },
+        {
+          "module": 79,
+          "param": "pos",
+          "field": "label",
+          "before": "inverter in",
+          "after": "INV CV"
+        }
+      ],
+      "rebuildFromSelectedCanvas": true,
+      "sourceSha256": "5eec58195863bb2a558f803b096e4fee100b9fb8e2b21911625accfdb44a5197",
+      "evidence": "release-evidence-private/prototype-bank/fx-bus/canvas-compact-no-harm-common-native55-hardware.json"
+    }
+  ],
+  "bankChanged": false,
+  "history": "Initial missing-mark attempt sent no test patches. Owner connected the registered rig alone. EDITOR was ALLOW; canonical ensureRigIgnored restored and saved IGNORE before any test uploads. Initial two oversized Canvas preparations were replaced by current byte-fitting compact-caption encodings; their old preparation evidence remains."
+}

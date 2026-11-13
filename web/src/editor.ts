@@ -11,7 +11,7 @@ import { clearAround, isPile, tidy, tidyAssembly } from './tidy';
 import { buttonLabel, DEFS, drumRowName, FIXED_DOES, PANEL_BUTTONS, rowRange } from './modules';
 import { FIXED_BUTTONS, type Range } from './patch';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
-import { arpLitInverted, buttonLight, kindOf, pageList, setPages, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
+import { litWhileEnabled, buttonLight, kindOf, pageList, setPages, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
 import { buttonEditor } from './button-editor';
 import { arpChoices, arpFree, type ArpChoice } from './arp-button';
 import { showToast, showUndo } from './toast';
@@ -76,9 +76,9 @@ import { SongView } from './song';
 import type { PatternView } from './engine';
 import { fixLocks, fixNotes, fixPatterns, fixSeq, overdub, PATTERNS_MAX, patternLocks as patternLocksOf, patternOf, SONGS_MAX, type Pattern, type SeqState, type SongEntry, type StepLock, type StepNote } from './track';
 import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './engines';
-import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, sameName, renamePreset, shortBy, shortPresetText, stepPreset, storePreset, type Preset } from './device-presets';
+import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, rememberedPreset, sameName, renamePreset, shortBy, shortPresetText, stepPreset, storePreset, type Preset } from './device-presets';
 import { engineOf } from './library-presets';
-import { structureOf } from './structure';
+import { fxPresetInfo } from './fx-preset-format';
 import { armable, armDrawing, armedWith, keepArmed, noKeysReach, type DeviceKey } from './arm';
 import { PianoRoll } from './roll';
 import { stepGrid, stopEntry, type LockRow, type StepGrid } from './step-grid';
@@ -3379,7 +3379,7 @@ export class Editor {
       const n = document.createElement('span');
       n.className = 'merged';
       n.textContent = `×${o.also.length + 1}`;
-      n.title = `one jack for ${o.also.length + 1} inputs: ${[{ module: m.id, port: p.name }, ...o.also].map((t) => `${DEFS[this.patch.modules.find((x) => x.id === t.module)!.type].label} ${t.port}`).join(', ')}`;
+      n.title = `one jack for ${o.also.length + 1} ${dir === 'in' ? 'inputs' : 'summed outputs'}: ${[{ module: m.id, port: p.name }, ...o.also].map((t) => `${DEFS[this.patch.modules.find((x) => x.id === t.module)!.type].label} ${t.port}`).join(', ')}`;
       parts.splice(dir === 'in' ? 2 : 1, 0, n);
     }
     row.append(...parts);
@@ -3453,7 +3453,7 @@ export class Editor {
     btn.classList.toggle('unassigned', kind === 'nothing');
     btn.classList.toggle('assigned', buttonLight(this.patch, b, false) === 'dim');
     const engaged = glo ? this.gloOn : kind === 'page' ? this.pageOn?.b === b : kind === 'bypass' ? switches(panel, b) && toggleEngaged(this.patch, b) : switches(panel, b) && !!panel?.on?.includes(b);
-    btn.setAttribute('aria-pressed', String(arpLitInverted(this.patch, b) ? !engaged : engaged));   // (ARP on Arpeggiators: lit while they play)
+    btn.setAttribute('aria-pressed', String(litWhileEnabled(this.patch, b) ? !engaged : engaged));   // (ARP on Arpeggiators: lit while they play)
     const does = fixed ? FIXED_DOES[b] : kind === 'nothing' ? 'does nothing (its jack is high while held)' : kind === 'gate' ? 'a gate' : kind === 'page' ? 'a list of device pages (press: the next, hold: the first)' : 'bypasses its target';
     btn.title = fixed ? `${name}: ${does}` : `${name}: ${does}${kind === 'page' ? '' : switches(panel, b) ? ', switches on / off' : ', while held'} (right-click: edit the button)`;
     // touch (#153): the dock scrolls sideways from a button (touch-action: pan-x), so a switch flips when the finger is
@@ -3627,7 +3627,7 @@ export class Editor {
     const a = t && 'asm' in t ? assembliesOf(this.patch).find((x) => x.id === t.asm) : undefined;
     if (!switches(m.panel, b)) {
       if (btn) btn.dataset.down = String(down);
-      btn?.setAttribute('aria-pressed', String(kind === 'bypass' && arpLitInverted(this.patch, b) ? !down : down));
+      btn?.setAttribute('aria-pressed', String(kind === 'bypass' && litWhileEnabled(this.patch, b) ? !down : down));
       if (kind === 'bypass') this.showBypass(toggleTargets(this.patch, b), down, a);
       this.ev.onButton?.(i, down);
       return;
@@ -3652,7 +3652,7 @@ export class Editor {
       panel.on = on ? [...(panel.on ?? []), b] : (panel.on ?? []).filter((x) => x !== b);
       if (!panel.on.length) delete panel.on;
     }
-    btn?.setAttribute('aria-pressed', String(kind === 'bypass' && arpLitInverted(this.patch, b) ? !on : on));
+    btn?.setAttribute('aria-pressed', String(kind === 'bypass' && litWhileEnabled(this.patch, b) ? !on : on));
     this.ev.onButton?.(i, on);
     this.ev.onLayout(this.patch);           // saved with the patch (the device keeps switched buttons too)
   }
@@ -4117,24 +4117,24 @@ export class Editor {
   /** the presets menu of an assembly device: load one, store, rename, delete */
   private presetItems(a: AssemblyInst): MenuItem[] {
     const list = presetsOf(this.patch, a);
-    const cur = list.find((x) => sameName(x.name, a.preset));
-    const items: MenuItem[] = list.map((pr) => ({ text: `${sameName(pr.name, a.preset) ? '● ' : ''}${pr.name}${pr.factory ? ' (factory)' : ''}`, run: () => this.loadPreset(a, pr) }));
+    const cur = rememberedPreset(this.patch, a, list);
+    const items: MenuItem[] = list.map(pr => ({ text: `${pr === cur ? '● ' : ''}${pr.name}${fxPresetInfo(pr) ? ' + FX' : ''}${pr.factory ? ' (factory)' : ''}`, run: () => this.loadPreset(a, pr) }));
     items.push({ text: cur && !cur.factory ? `Store over "${cur.name}"` : 'Store as a preset…', rule: !!list.length, run: () => {
-      const n = cur && !cur.factory ? cur.name : window.prompt('Store the card’s values as the preset', nextPresetName(this.patch, a))?.trim();
+      const n = cur && !cur.factory ? cur.name : window.prompt('Store this sound as the preset', nextPresetName(this.patch, a))?.trim();
       if (!n) return;
       this.change(() => storePreset(this.patch, a, n));
     } });
     if (cur && !cur.factory) {
       items.push({ text: 'Store as a new preset…', run: () => {
-        const n = window.prompt('Store the card’s values as the new preset', nextPresetName(this.patch, a))?.trim();
+        const n = window.prompt('Store this sound as the new preset', nextPresetName(this.patch, a))?.trim();
         if (n) this.change(() => storePreset(this.patch, a, n));
       } });
       items.push({ text: 'Rename preset…', run: () => {
         const n = window.prompt('Rename the preset', cur.name)?.trim();
-        if (n && n !== cur.name && renamePreset(structureOf(this.patch, a), cur.name, n)) this.change(() => (a.preset = n));
+        if (n && n !== cur.name && renamePreset(cur.structure, cur.name, n)) this.change(() => (a.preset = n));
       } });
       items.push({ text: `Delete preset "${cur.name}"`, danger: true, run: () => {
-        if (deletePreset(structureOf(this.patch, a), cur.name)) this.change(() => delete a.preset);
+        if (deletePreset(cur.structure, cur.name)) this.change(() => delete a.preset);
       } });
     }
     return items;
@@ -4258,7 +4258,7 @@ export class Editor {
     const outs = a.outputs.map((r, i) => {
       const m = mod(r.module);
       const pd = DEFS[m.type].outputs.find((q) => q.name === r.port)!;
-      const port = this.port(m, pd, 'out', { label: r.label, rename: () => this.renameRef(r, 'output'), open });
+      const port = this.port(m, pd, 'out', { label: r.label, rename: () => this.renameRef(r, 'output'), also: r.also, open });
       if (arranging) this.arrangeItem(port, a, 'out', i);
       return port;
     });
@@ -5986,7 +5986,15 @@ export class Editor {
 
   private inputJack(to: Endpoint): HTMLElement | undefined {
     return this.ports.get(this.key(to.module, to.port, 'in')) ?? [...this.ports.values()].find((dot) =>
-      dot.dataset.also && (JSON.parse(dot.dataset.also) as Target[]).some((t) => sameEnd(t, to)));
+      dot.dataset.dir === 'in' && dot.dataset.also && (JSON.parse(dot.dataset.also) as Target[]).some((t) => sameEnd(t, to)));
+  }
+
+  /** A shared source can belong to several summed output jacks; the other sources identify its visible cable. */
+  private outputJack(from: Endpoint, to: Endpoint): HTMLElement | undefined {
+    return this.ports.get(this.key(from.module, from.port, 'out')) ?? [...this.ports.values()].find((dot) =>
+      dot.dataset.dir === 'out' && dot.dataset.also &&
+      (JSON.parse(dot.dataset.also) as Target[]).some((t) => sameEnd(t, from)) &&
+      this.patch.cables.some((c) => c.from.module === Number(dot.dataset.mod) && c.from.port === dot.dataset.port && sameEnd(c.to, to)));
   }
 
   /** Outside cables end at side jacks; internal branches are editable input-to-parameter routes. */
@@ -6142,7 +6150,7 @@ export class Editor {
     }
     const physicalCables = new Set<string>();
     for (const c of this.patch.cables) {
-      const a = this.ports.get(this.key(c.from.module, c.from.port, 'out'));
+      const a = this.outputJack(c.from, c.to);
       const b = this.inputJack(c.to);
       const thumbs = this.sliderPorts.filter(({ m, pd }) => m.id === c.to.module && parameterInputs(m, pd).includes(c.to.port));
       a?.classList.add('connected'); b?.classList.add('connected');
@@ -6153,7 +6161,7 @@ export class Editor {
       const role = cableRole(DEFS[this.patch.modules.find((x) => x.id === c.to.module)!.type], c.to.port);
       const kind = `${role === 'signal' ? 'audio' : role === 'mod' ? 'control' : role} role-${role}`;
       if (b) {
-        const key = `${c.from.module}:${c.from.port}:${b.dataset.mod}:${b.dataset.port}`;
+        const key = `${a.dataset.mod}:${a.dataset.port}:${b.dataset.mod}:${b.dataset.port}`;
         if (!physicalCables.has(key)) add(a, b, kind, () => this.removeCable(c), () => withRange(`${this.endName(c.from)} → ${this.endName(c.to)}. Click to disconnect it`, src, c.from.port), false, c);
         physicalCables.add(key);
       } else
@@ -6240,19 +6248,26 @@ export class Editor {
     }
   }
 
-  /** remove a cable; one drawn to a merged jack whose other inputs are hidden takes their cables (from the same output) with it,
-   * and one into a parameter a card row ties to others (#357) takes the same output's cables into those */
+  /** Remove all hidden ordinary cables represented by a bundled jack, including tied parameter destinations. */
   private removeCable(c: Cable): void {
     const hidden = hiddenModules(this.patch);
     const more: Endpoint[] = [...this.tiedCables(c)];
+    const sources: Endpoint[] = [c.from];
     for (const a of assembliesOf(this.patch)) {
       const ref = findRef(a, 'in', c.to.module, c.to.port);
       if (!ref?.also?.length) continue;
       for (const t of targetsOf(ref)) if (hidden.has(t.module) && !sameEnd(t, c.to) && !more.some((x) => sameEnd(x, t))) more.push(t);
     }
+    const jack = this.outputJack(c.from, c.to);
+    if (jack?.dataset.also) {
+      const ends: Endpoint[] = [{ module: Number(jack.dataset.mod), port: jack.dataset.port! }, ...JSON.parse(jack.dataset.also) as Target[]];
+      for (const t of ends) if (hidden.has(t.module) && !sources.some((x) => sameEnd(x, t))) sources.push(t);
+    }
     this.change(() => {
-      disconnect(this.patch, c);
-      for (const t of more) disconnect(this.patch, { from: c.from, to: t });
+      for (const from of sources) {
+        disconnect(this.patch, { from, to: c.to });
+        for (const to of more) disconnect(this.patch, { from, to });
+      }
     });
   }
 
@@ -6299,24 +6314,30 @@ export class Editor {
     }
     if (a.dataset.dir === b.dataset.dir) return this.ev.onError('connect an output to an input');
     const [out, input] = a.dataset.dir === 'out' ? [a, b] : [b, a];
-    const from = { module: Number(out.dataset.mod), port: out.dataset.port! };
+    const sources: Endpoint[] = [{ module: Number(out.dataset.mod), port: out.dataset.port! },
+      ...(out.dataset.also ? JSON.parse(out.dataset.also) as Target[] : [])];
     this.change(() => {
-      let to: Endpoint;
-      if (input.dataset.param) {
-        to = connectParameter(this.patch, DEFS, from, Number(input.dataset.mod), input.dataset.param);
-        // a card row that sets several parameters (#357): the cable reaches every one of them
-        for (const t of tiedTo(this.patch, Number(input.dataset.mod), input.dataset.param).slice(1)) connectParameter(this.patch, DEFS, from, t.module, t.param);
-      } else {
-        to = { module: Number(input.dataset.mod), port: input.dataset.port! };
+      const wire = (from: Endpoint, to: Endpoint): void => {
         if (!this.patch.cables.some((c) => sameEnd(c.from, from) && sameEnd(c.to, to)) && !connect(this.patch, DEFS, from, to))
           throw new Error(from.port === 'keys' ? keyRouteError(this.patch, { from, to }) ?? 'Cannot connect these ports.' : 'Cannot connect these ports.');
-      }
-      // A thumb alias of a merged assembly jack feeds the same group of inputs.
-      const physical = this.inputJack(to);
-      const also = input.dataset.also ?? physical?.dataset.also;
-      if (also) {
-        if (physical) connect(this.patch, DEFS, from, { module: Number(physical.dataset.mod), port: physical.dataset.port! });
-        for (const target of JSON.parse(also) as Target[]) connect(this.patch, DEFS, from, target);
+      };
+      for (const from of sources) {
+        let to: Endpoint;
+        if (input.dataset.param) {
+          to = connectParameter(this.patch, DEFS, from, Number(input.dataset.mod), input.dataset.param);
+          // A card row that sets several parameters: the cable reaches every one of them.
+          for (const t of tiedTo(this.patch, Number(input.dataset.mod), input.dataset.param).slice(1)) connectParameter(this.patch, DEFS, from, t.module, t.param);
+        } else {
+          to = { module: Number(input.dataset.mod), port: input.dataset.port! };
+          wire(from, to);
+        }
+        // A thumb alias of a merged assembly jack feeds the same group of inputs.
+        const physical = this.inputJack(to);
+        const also = input.dataset.also ?? physical?.dataset.also;
+        if (also) {
+          if (physical) wire(from, { module: Number(physical.dataset.mod), port: physical.dataset.port! });
+          for (const target of JSON.parse(also) as Target[]) wire(from, target);
+        }
       }
     });
   }

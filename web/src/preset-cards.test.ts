@@ -4,9 +4,9 @@ import { FACTORY } from './assemblies';
 import { toDef, type AssemblyDef } from './assembly';
 import HERA_6 from '../scripts/xl/hera-6-base.json';
 import { defIsEngine, instIsEngine } from './engines';
-import { CARDS, cardOf, factoryPresetDefs, factoryPresets, presetsByRules, presetsOfDef, shippedPresets, xlEnginePresets, xlPresetsOfDef } from './factory-presets';
+import { CARDS, cardOf, factoryPresetDefs, factoryPresets, presetsByRules, presetsOfDef, shippedPresets, communityEnginePresets, communityPresetsOfDef } from './factory-presets';
 import { cardRows, cardSlug, cardTemplate, formatCard, formatPreset, parseCard, projectPresets } from './preset-cards';
-import { XL_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 import { defRowOrder, defStructure } from './structure';
 
 const ENGINES = FACTORY.filter((d) => defIsEngine(d));
@@ -142,14 +142,14 @@ describe('preset cards (#413)', () => {
   });
 
   it('an XL built as its original\'s whole panel keeps the rule-made presets: its rows are not its FM-1 version\'s', () => {
-    const xl = XL_PRESETS['Hera 6 XL']();
+    const xl = relocatedPatches['Hera 6 XL']();
     const a = (xl.assemblies ?? []).find((x) => instIsEngine(xl, x))!;
     const def = toDef(xl, a);
     expect(cardRows(def).map((r) => r.key)).not.toContain('filters / cutoff');
     expect(projectPresets(HERA, presetsOfDef(HERA), def)).toBeNull();
-    const list = xlPresetsOfDef(def);
+    const list = communityPresetsOfDef(def);
     expect(list.map((p) => p.name)).toEqual(['Init', 'Bright', 'Dark', 'Pad', 'Pluck', 'Wet']);
-    expect(xlEnginePresets()['Hera 6 XL'].map((p) => p.name)).toEqual(list.map((p) => p.name));
+    expect(communityEnginePresets()['Hera 6 XL'].map((p) => p.name)).toEqual(list.map((p) => p.name));
     for (const p of list) expect(p.structure).toBe(defStructure(def));
     // an engine whose rows are a card's (here: the card's own engine, and one with a row more) takes the card
     expect(projectPresets(HERA, presetsOfDef(HERA), HERA)!.map((p) => p.values)).toEqual(presetsOfDef(HERA).map((p) => p.values));

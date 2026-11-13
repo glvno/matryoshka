@@ -3,6 +3,7 @@ import { expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch } from './patch';
+import { relocatedPatches } from './community-factory';
 
 function xor(a: number, b: number, twice = false): number {
   const p = emptyPatch();
@@ -38,9 +39,8 @@ it('flipping the same bits twice restores the quantized input', () => {
   expect(xor(.123456, .75, true)).toBe(Math.floor(.123456 * 32768) / 32768);
 });
 
-it('Elvira 2 XL routes all four BITMANGLER programs through audio XOR', async () => {
-  const { XL_PRESETS } = await import('./presets');
-  const p = XL_PRESETS['Elvira 2 XL']();
+it('Elvira 2 XL routes all four BITMANGLER programs through audio XOR', () => {
+  const p = relocatedPatches['Elvira 2 XL']();
   const voices = p.assemblies!.filter((a) => /^voice [1-4]$/.test(a.name));
   expect(voices).toHaveLength(4);
   for (const voice of voices) for (const row of voice.params) {

@@ -6,8 +6,8 @@
 import { expect, it } from 'vitest';
 import './factory-presets';
 import { offRule } from './levels';
-import { FM1_PRESETS } from './presets';
+import { PRESETS } from './presets';
 
 it('every factory patch and factory engine preset is on the loudness rule (part 1 of 4)', () => {
-  expect(offRule(Object.entries(FM1_PRESETS).filter((_, i) => i % 4 === 0))).toEqual([]);
+  expect(offRule(Object.entries(PRESETS).filter((_, i) => i % 4 === 0))).toEqual([]);
 }, 120_000);

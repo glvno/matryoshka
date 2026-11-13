@@ -1,0 +1,226 @@
+{
+  "Algo Four": {
+    "model": "Yamaha DX100",
+    "baselineNotes": 8,
+    "articulation": "Eight notes in POLY mode; one note in MONO mode. Four operators are timbral components, not four played-note voices.",
+    "sources": [
+      {
+        "url": "https://synthfool.com/docs/Yamaha/DX_Series/Yamaha%20DX-100%20Owners%20Manual.pdf#page=13",
+        "note": "Yamaha-authored original owner's manual, printed p.12 / PDF p.13, section 13 POLY/MONO: POLY permits up to 8 notes; MONO is monophonic. Directly read as a rendered page."
+      },
+      {
+        "url": "https://manualsdump.com/en/manuals/yamaha-dx100/243897/14",
+        "note": "Searchable transcription of Yamaha owner's manual printed p.12, section 13 POLY/MONO, independently exposes the same eight-note versus mono statement."
+      }
+    ],
+    "rationale": "Repository docs/ledger/fidelity.md D-740 resolves the broad 4-op DX/TX architecture reference to DX100. Normal polyphonic baseline is eight, sourced from Yamaha's manual rather than FM-1 voice allocation. No unresolved count ambiguity for this model/mode."
+  },
+  "Briefcase 3": {
+    "model": "EMS VCS3 / Synthi VCS3, ordinary EMS keyboard articulation",
+    "baselineNotes": 1,
+    "articulation": "Monophonic keyboard control of a patchable studio. Multiple oscillators, free-running drones, or external audio do not constitute independently keyed polyphonic voices.",
+    "sources": [
+      {
+        "url": "https://www.manualslib.com/manual/4172126/Ems-Synthi-Vcs3.html?page=16#manual",
+        "note": "EMS-authored Synthi VCS3 User's Manual, viewer p.16, KEYBOARD section: 'It is monophonic'; users wanting chords are directed to an external organ or harmonium. This is an original manufacturer manual mirrored by ManualsLib, not the host's editorial specification."
+      }
+    ],
+    "rationale": "Repository docs/ARCHITECTURE.md:142 maps Briefcase 3 to EMS VCS3. Use one for its documented normal EMS keyboard articulation, not three for three oscillators. Explicit boundary: standalone VCS3 has no integral piano keyboard and arbitrary external controllers or sound sources can change the performance setup. Repository model mapping does not identify an alternate controller; no unverified alternate-controller count is invented."
+  },
+  "Canvas": {
+    "model": "Buchla Music Easel (208 Stored Program Sound Source / 218 keyboard; repo follows 2013 208e/218e second-edition directive)",
+    "baselineNotes": 1,
+    "articulation": "Monophonic keyboard MAIN pitch CV, shared by complex and modulation oscillators through their keyboard switches; dual lopass gates and separately patched sequencing/drone sources are not two independently key-playable voices.",
+    "sources": [
+      {
+        "url": "https://buchla.com/guides/Buchla_Music_Easel_Manual.pdf#page=23",
+        "note": "Allen Strange / Buchla, Operating Directive for the Music Easel, 2013 second edition: printed p. 18 / PDF p. 23 gives one Model 218 MAIN key-voltage output to the pitch input, controlling both oscillators; particular key pitch is memorized until another key is touched. Printed p. 20 / PDF p. 25 explicitly says both oscillators are simultaneously driven by the same voltage and track at a ratio set by tuning. Printed p. 1 / PDF p. 6 identifies recreation of original 1973 design with minor alterations."
+      },
+      {
+        "url": "https://buchla.com/guides/218e-V3_User%27s_Guide_v5.1.pdf#page=10",
+        "note": "Later manufacturer corroboration only: PDF p. 10 says CV and bus remain monophonic even in poly mode; only external MIDI is polyphonic. Not the historical target or evidence that the Easel 208 sound source is polyphonic."
+      },
+      {
+        "url": "repo:docs/ARCHITECTURE.md#L142",
+        "note": "Repo instrument mapping explicitly identifies Buchla Music Easel."
+      },
+      {
+        "url": "repo:web/scripts/gen-assemblies.ts#L2079-L2086",
+        "note": "Repo explicitly targets 208/218 and names the 2013 second edition used above; both oscillators receive the keyboard through their KEYBOARD switches."
+      }
+    ],
+    "rationale": "Use 1 independently key-played pitch from the original single MAIN keyboard CV architecture, not oscillator or lopass-gate count. Two audible tunings, sequencer-plus-keyboard patches, and later 218e polyphonic MIDI do not establish two simultaneous independent keyboard voices in the intended 208/218 sound source. No unresolved baseline-count ambiguity within that keyboard definition. Once one played pitch is retained, complete FX before extra polyphony; above one played pitch requires full rack under owner policy."
+  },
+  "Cassia 1": {
+    "model": "Casio CZ-1, normal single-tone two-line mode",
+    "baselineNotes": 8,
+    "articulation": "Two-line LINE SELECT 1+2′ and 1+1′: 8 played notes. Single-line 1 or 2: 16 played notes. TONE MIX: 4 notes; SOLO: 1. TONE MIX layers whole tones and must not be confused with a two-line single tone.",
+    "sources": [
+      {
+        "url": "https://archive.org/download/synthmanual-casio-cz-1-owners-manual/casiocz-1ownersmanual_text.pdf#page=33",
+        "note": "Casio-authored owner's manual, section 1-13 DETUNE/LINE SELECT, printed pp.32–33 / PDF pp.33–34: line 1 and line 2 individually are 16-note; 1+2′ and 1+1′ are 8-note. Both pages directly read as rendered pages. Printed p.10 / PDF p.11 summarizes 16 maximum, 8 with 2DCO, 4 with TONE MIX, mono with SOLO."
+      },
+      {
+        "url": "https://archive.org/download/synthmanual-casio-cz-1-owners-manual/casiocz-1ownersmanual_djvu.txt",
+        "note": "Searchable OCR of the same original Casio manual, sections Keyboard, 1-13 DETUNE/LINE SELECT, and Part 2 TONE MIX. Typography in OCR is damaged; line-prime labels were confirmed against rendered PDF pp.33–34."
+      }
+    ],
+    "rationale": "Repository docs/ARCHITECTURE.md:142 specifies two PD lines; docs/ledger/fidelity.md D-746/D-747 confirms the CZ-1 and its two-line behavior. Eight is the requested two-line parity baseline, not an unconditional hardware maximum. Explicit mode ambiguity: a genuinely single-line comparison requires 16 instead; no single number describes every CZ-1 mode. A muted second line is not proof of hardware-equivalent single-line voice allocation."
+  },
+  "Expander S": {
+    "model": "Oberheim Four Voice (four SEM voice cards with polyphonic keyboard)",
+    "baselineNotes": 4,
+    "articulation": "Four independently articulated synthesizer voices, one complete SEM per simultaneously played note; not one played note per oscillator.",
+    "sources": [
+      {
+        "url": "https://www.outofphase.fr/wp-content/uploads/2022/12/instruction_manual_fvs.pdf#page=2",
+        "note": "Original Oberheim Instruction Manual for the 4-Voice Synthesizer with Programmer, introduction, printed p. 1 / PDF p. 2, inspected as scan: up to four keyboard notes simultaneously, each triggering a separate SEM constituting a complete synthesizer voice."
+      },
+      {
+        "url": "repo:docs/ARCHITECTURE.md#L142",
+        "note": "Authoritative repo mapping says Oberheim SEM / Four Voice; existing FM-1 voice-count statements are not used as original-hardware evidence."
+      },
+      {
+        "url": "repo:web/scripts/gen-assemblies.ts#L1837-L1849",
+        "note": "Target architecture explicitly includes Four Voice per-card panning, keyboard portamento/octave/tune and assignment modes, resolving the standalone-SEM versus Four Voice ambiguity without relying on allocator configuration."
+      },
+      {
+        "url": "repo:docs/ledger/fidelity.md#D-745",
+        "note": "D-744/D-745 name SEM and Four Voice controls and original Four Voice CONT / REASSIGN / R/C assignment modes; they also identify remaining keyboard-split/envelope fidelity differences."
+      },
+      {
+        "url": "repo:web/scripts/xl/expander-s.ts#L2-L7",
+        "note": "Separately named Expander S XL targets Oberheim Eight Voice; do not transfer its eight-note baseline to exact FM-1 name Expander S."
+      }
+    ],
+    "rationale": "Use 4 conservatively because the documented instrument-level target is Four Voice, while SEM names its constituent one-voice card. Selecting 1 would ignore explicit Four Voice keyboard/assignment/panning evidence; selecting 8 would conflate XL. At four played notes this is original polyphony parity, so incomplete FX alone does not satisfy the owner's combined incomplete-rack AND above-original-notes Exclude condition. Above four played notes requires full Drive+Chorus+Delay+Reverb. Once four are reached, complete FX before adding notes. Model ambiguity resolved for the base instrument; full control/timbral parity is not asserted."
+  },
+  "Hera 4": {
+    "model": "Roland JUNO-106",
+    "baselineNotes": 6,
+    "articulation": "Six independent polyphonic synth voices; unison is an intentional alternate articulation.",
+    "sources": [
+      {
+        "url": "https://cdn.roland.com/assets/media/pdf/JUNO-106_OM.pdf#page=1",
+        "note": "Original Roland owner's manual, opening cover/introduction, PDF page 1: six voice fully programmable polyphonic synthesizer, six VCFs, six VCAs, six envelopes. Directly read as a rendered page."
+      }
+    ],
+    "rationale": "Repository docs/ARCHITECTURE.md:142 maps Hera 4 to Juno-106. Hera 4's name and current allocator do not define original hardware polyphony. No unresolved count ambiguity."
+  },
+  "Io 4": {
+    "model": "Roland JUPITER-4",
+    "baselineNotes": 4,
+    "articulation": "Four-note normal polyphony; unison modes intentionally change how the four hardware voices are distributed.",
+    "sources": [
+      {
+        "url": "https://www.roland.com/global/products/rc_jupiter-4/",
+        "note": "Roland manufacturer page, Standard Features: 'Double the polyphony of the original hardware (selectable from two to eight notes)'. Eight is the recreation's maximum and twice the original, establishing original maximum four. Page HTML fetched and statement read directly; this is a manufacturer historical comparison, not an original-manual citation."
+      }
+    ],
+    "rationale": "Repository docs/ARCHITECTURE.md:142 maps Io 4 to Jupiter-4. Four follows from explicit manufacturer comparison (8/2), not its name, FM-1 allocator, or treating the software recreation's eight notes as original hardware. Original Jupiter-4 manual was not obtained; no count ambiguity remains in the cited comparison."
+  },
+  "Monolith D": {
+    "model": "Moog Minimoog Model D",
+    "baselineNotes": 1,
+    "articulation": "Monophonic; its three oscillators form one played-note voice.",
+    "sources": [
+      {
+        "url": "https://cdn.inmusicbrands.com/Moog/Model%20D/Minimoog_Model_D_Manual.pdf#page=15",
+        "note": "Moog manufacturer's user manual, printed/PDF p.15, Features & Controls: 'self-contained monophonic analog synthesizer'. Printed/PDF p.10, New Features: no changes to original sound engine. Hosted on Moog parent manufacturer's CDN."
+      }
+    ],
+    "rationale": "Repository docs/ARCHITECTURE.md:142 identifies Minimoog Model D. One keyboard note is the original architectural baseline; oscillator intervals are not independent played-note polyphony. No unresolved count ambiguity."
+  },
+  "Oracle V": {
+    "model": "Sequential Prophet-5 (Rev 4 per repository fidelity ledger)",
+    "baselineNotes": 5,
+    "articulation": "Five-note polyphonic in normal operation; monophonic in unison.",
+    "sources": [
+      {
+        "url": "https://sequential.com/classics-reissued/prophet-5-10/",
+        "note": "Manufacturer page, Origin story: original Prophet-5 had five-note polyphony. Prophet-5 Specifications: monophonic unison selects one to all five voices."
+      }
+    ],
+    "rationale": "Repository docs/ledger/fidelity.md D-742 identifies Prophet-5 Rev 4. Use stock Prophet-5 five-note parity, not FM-1 allocator capacity, Prophet-10, or expanded hardware. No unresolved count ambiguity for stock hardware."
+  },
+  "Sallen 20": {
+    "model": "Korg MS-20",
+    "baselineNotes": 1,
+    "articulation": "Monophonic; the two VCOs do not provide independently keyed notes.",
+    "sources": [
+      {
+        "url": "https://www.korg.com/us/products/synthesizers/ms_20mini/",
+        "note": "Korg manufacturer page, 'The classic MS-20 – recreated in mini size!': expressly describes the original 1978 MS-20 as a monophonic synthesizer, before describing its mini recreation."
+      }
+    ],
+    "rationale": "Repository docs/ARCHITECTURE.md:142 maps Sallen 20 to MS-20; docs/PRESET-BANKS.md:37 names its manual as control reference. Original hardware is one played-note voice, not two oscillator voices. No unresolved count ambiguity."
+  },
+  "Silver Box": {
+    "model": "Roland TB-303 Bass Line",
+    "baselineNotes": 1,
+    "articulation": "Monophonic sequenced bass line.",
+    "sources": [
+      {
+        "url": "https://www.roland.com/uk/promos/303day/",
+        "note": "Roland manufacturer history, THE SOUND: TB-303 'was a monosynth: meaning that it only made one sound at a time', contrasting it with multiple simultaneous piano notes. Manufacturer article HTML fetched and passage read directly."
+      }
+    ],
+    "rationale": "Repository docs/ARCHITECTURE.md:142 maps Silver Box to TB-303. Its original normal architecture is one note at a time. No unresolved count ambiguity."
+  },
+  "Vernon 100": {
+    "model": "EML ElectroComp 100 (Model 100 panel target; related 101 manuals are qualified corroboration only)",
+    "baselineNotes": 2,
+    "articulation": "[INFERENCE] Qualified dual-pitch/paraphonic baseline: original Model 100 panel has separate KB1 and KB2 keyboard outputs and separate oscillator assignments, feeding a shared filter/amplitude shaper. Four oscillators are not four independently played notes. Exact original multi-key priority and overlap retrigger remain unresolved.",
+    "sources": [
+      {
+        "url": "https://lh3.googleusercontent.com/blogger_img/APIUysh7mIUl7SKJRpBejVp_gtd6PbM0Ccf-eU6MfiDRo2SaGMJPIU9MXoWAHSPI8pjGwkdYBksi7tLGAaJP_YA=s1600",
+        "note": "Primary physical Model 100 panel photograph, unpaginated: keyboard GATE / KB1 / KB2 jacks; oscillator 2 selects KB1, oscillator 3 selects KB2, with mix alternatives. Archived auction-photo provenance: https://www.matrixsynth.com/2010/02/electrocomp-eml-100.html. Photo is primary panel evidence; host's prose is not manufacturer documentation."
+      },
+      {
+        "url": "https://lh3.googleusercontent.com/blogger_img/APIUysh1nskuQPbtL4dqOdwdA9USvwHBZ9s8fHBRsR3wv7fZe9fbOiQFwasg49LEdK-8gVeyXDpr67XY9GG_rm0=s1600",
+        "note": "Primary panel photograph, unpaginated: explicit MODEL EML 100 marking, one FILTER and one AMPLITUDE SHAPER with ENV1 / ENV2 selection; supports model identification and shared articulation."
+      },
+      {
+        "url": "https://synthfool.com/docs/EML/100_series/eml101_service.pdf",
+        "note": "Manufacturer EML 101 Service Manual: PDF p. 2 distinguishes logicized KB1/KB2 controls; PDF pp. 5-6 jointly cover 100 and 101 keyboard cleaning, p. 6 mentions KB2 voltage; PDF p. 15 IV(B) KB-2 Tuning describes independent KB2 tracking calibration against KB1. Not a Model 100 owner's manual and does not explicitly specify its two-key selection rules."
+      },
+      {
+        "url": "https://synthfool.com/docs/EML/100_series/eml101_user_manual.pdf",
+        "note": "Manufacturer EML 101 User Manual, printed p. 8 / PDF p. 10 distinguishes four audio oscillators; PDF p. 68, New EML 101 Features, explains sequencer control of KB2 oscillators 3/4 while 1/2 remain under keyboard control. Related-model corroboration only, not direct Model 100 simultaneous-key specification."
+      },
+      {
+        "url": "repo:docs/ARCHITECTURE.md#L142",
+        "note": "Repo authoritative mapping specifically says EML ElectroComp 100, not 101."
+      },
+      {
+        "url": "repo:web/scripts/gen-assemblies.ts#L3098-L3124",
+        "note": "Repo explicitly says it targets the 100 panel, no 100 manual was found, shared-control behavior comes from 101 manuals, and some gate behavior is uncertain. The implementation's lowest/highest logic is not used as independent hardware proof."
+      }
+    ],
+    "rationale": "[INFERENCE] Recommend working baseline 2 from actual Model 100 dual keyboard-CV routes and oscillator selector labels, common 100/101 keyboard service documentation, and intended repo dual-pitch target; do not derive 2 from current FM-1 allocation or 4 from oscillator count. Unresolved: no direct Model 100 manufacturer prose explicitly specifying two simultaneous depressed keys was located; exact selection for three-plus held keys and overlap-trigger behavior are not established. Keep that qualification with the numeric baseline. Do not silently relabel target 101 or assert two independently enveloped complete voices. At the qualified two-pitch parity point FX outranks additional played pitches under owner policy."
+  },
+  "Wanderer": {
+    "model": "ARP Odyssey (original architecture; repo specifies Rev 3 / 24 dB filter)",
+    "baselineNotes": 2,
+    "articulation": "Duophonic/paraphonic: keyboard supplies lowest-held-key CV to VCO 1 and highest-held-key CV to VCO 2; a single key drives both. One shared filter and amp with shared envelope articulation, not two complete independent voice cards. Sync or LF settings can remove independent two-pitch behavior.",
+    "sources": [
+      {
+        "url": "http://www.arpodyssey.com/manuals/OddyMan29.jpg",
+        "note": "ARP Instruments Odyssey Owner's Manual, second edition March 1976, printed p. 29, Keyboard and Pedals, original page scan inspected: two control voltages; equal for zero/one key, lowest and highest depressed keys for two or more; VCO1/VCO2 connections explained. Edition attribution at http://www.arpodyssey.com/oddyman.html."
+      },
+      {
+        "url": "https://cdn.korg.com/us/support/download/files/2da5c4341ec598574d4af552ecb88b6e.pdf#page=4",
+        "note": "Korg ARP ODYSSEY / ARP ODYSSEY Module Owner's Manual, printed/PDF p. 4, Main Features: oscillators can sound independent pitches for two simultaneous keys, but there is only one filter and amp. P. 5 block diagram corroborates shared path; p. 8 SYNC explains loss of independent VCO2 fundamental when synchronized."
+      },
+      {
+        "url": "repo:docs/ARCHITECTURE.md#L142",
+        "note": "Repo instrument mapping explicitly identifies ARP Odyssey."
+      },
+      {
+        "url": "repo:web/scripts/gen-assemblies.ts#L2405-L2409",
+        "note": "Repo identifies original Odyssey Rev 3 and distinguishes reissue-only DRIVE / VCF TYPE controls."
+      }
+    ],
+    "rationale": "Baseline 2 counts the original keyboard's maximum simultaneous independently chosen pitches, confirmed by original ARP prose rather than FM-1 allocator counts. Preserve paraphonic articulation. Two played pitches is parity, above two requires full rack under the owner's rule. No unresolved count ambiguity; patch-specific mono/sync operation does not change the hardware maximum."
+  }
+}

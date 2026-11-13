@@ -5,9 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type ModuleInst, type Patch } from './patch';
-import { DEVICE, deviceBudget, encodedSize, encodePatch, FLAG_NOTES, FLAG_PATTERNS, formatOf, layout, patternRecord, VERSION } from './patchbin';
+import { DEVICE, deviceBudget, encodedSize, encodePatch, FLAG_NOTES, FLAG_PATTERNS, formatOf, fxRecord, harmonyLfo, layout, patternRecord, VERSION } from './patchbin';
 import { deviceView, VOICING_CABLE_INPUTS } from './poly';
-import { FM1_PRESETS } from './presets';
+import { PRESETS } from './presets';
 import { fixPatterns, fixSeq, isShortNote, noteWord, patternOf, shortWord, wordShort, type StepNote } from './track';
 
 const SR = 48000; // 120 bpm: a 1/16 step every 6000 samples
@@ -85,8 +85,8 @@ describe('patterns and songs: the model', () => {
 
 describe('patterns and songs: the binary (format 48)', () => {
   it('a patch without patterns, songs or origins is written exactly as before: no section, its old format', () => {
-    for (const name of Object.keys(FM1_PRESETS)) {
-      const p = FM1_PRESETS[name]();
+    for (const name of Object.keys(PRESETS)) {
+      const p = PRESETS[name]();
       if (p.modules.some((m) => m.patterns?.length || m.seq)) continue;
       // Legacy patches have no provenance; format-54 origins have their own binary tests.
       for (const m of p.modules) delete m.factoryPatterns;
@@ -100,7 +100,9 @@ describe('patterns and songs: the binary (format 48)', () => {
       const top = (p.assemblies ?? []).some((a) => a.params.some((r) => r.top !== undefined));
       const appended = dev.modules.some((m) => DEFS[m.type].params.some((q) => q.since === VERSION && (m.params[q.name] ?? q.default) !== q.default));
       const many = dev.modules.length > 64;   // (more than 64 modules: 51, #721; 8 Lire's Lyra-8 controls, #658)
-      if (layout(p).base.bytes <= DEVICE.bytes && !cabled && !top && !appended && !many) expect(b[1], name).toBeLessThan(VERSION);
+      // a master FX bus or a Harmony on LFO needs format 55 (D-888, D-1010): its stage record or the Harmony light
+      if (fxRecord(p, dev).length || harmonyLfo(p, dev)) expect(b[1], name).toBe(55);
+      else if (layout(p).base.bytes <= DEVICE.bytes && !cabled && !top && !appended && !many) expect(b[1], name).toBeLessThan(VERSION);
       expect(b[7] & (FLAG_PATTERNS >> 8), name).toBe(0);
     }
   });
@@ -245,7 +247,7 @@ describe('patterns and songs: playing', () => {
 
 describe('Silver Box: demo patterns and a song (#375)', () => {
   it('holds four TB-303-style patterns in short words and a song, named as on the TB-303, within the FM-1 budget', () => {
-    const p = FM1_PRESETS['Silver Box']();
+    const p = PRESETS['Silver Box']();
     const t = p.modules.find((m) => m.type === 'steps')!;
     const main = p.modules.find((m) => m.type === 'fm1')!;
     expect(t.notes).toBeUndefined(); // (pattern 1 stays empty: the keys play it as a synth)
@@ -260,7 +262,7 @@ describe('Silver Box: demo patterns and a song (#375)', () => {
     expect(deviceBudget(p).fits).toBe(true);
   });
   it('its song plays: the voice sounds once song 1 is chosen and the transport runs', () => {
-    const p = FM1_PRESETS['Silver Box']();
+    const p = PRESETS['Silver Box']();
     const e = new Engine(SR);
     e.load(p);
     e.setSong(1);

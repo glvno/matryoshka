@@ -4,6 +4,7 @@
 set -e
 cd "$(dirname "$0")/.."
 mkdir -p build
+# Generate test-only source graphs; never overwrite the selected firmware ROM.
 (cd web && npx vite-node scripts/golden.ts --panel-fixtures)
 gcc -O1 -Wall -Wno-unused-function -Wno-unused-result -Wno-macro-redefined -o build/panel_test firmware/test/panel_test.c
 build/panel_test

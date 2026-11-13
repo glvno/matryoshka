@@ -5,10 +5,10 @@ import { applyPreset, presetsOf } from './device-presets';
 import './factory-presets';
 import { DEFS } from './modules';
 import { connect } from './patch';
-import { XL_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 it('Algo Four XL exposes native rate controls for every operator and preserves eight voices', () => {
-  const p = XL_PRESETS['Algo Four XL']();
+  const p = relocatedPatches['Algo Four XL']();
   const envs = p.modules.filter(m => m.type === 'rateenv');
   expect(envs).toHaveLength(4);
   expect(p.modules.find(m => m.type === 'alloc')!.params.voices).toBe(8);
@@ -21,7 +21,7 @@ it('Algo Four XL exposes native rate controls for every operator and preserves e
 });
 
 it('Algo Four pedal holds all four operators without hiding reused-key attacks, and portamento assignment releases them', () => {
-  const p = XL_PRESETS['Algo Four XL']();
+  const p = relocatedPatches['Algo Four XL']();
   const alloc = p.modules.find(m => m.type === 'alloc')!, main = p.modules.find(m => m.type === 'fm1')!;
   alloc.params.voices = 1; // force the sustained voice to be reused
   p.cables = p.cables.filter(c => c.to.port !== 'keys');
@@ -47,7 +47,7 @@ it('Algo Four pedal holds all four operators without hiding reused-key attacks, 
 
 it('Algo Four XL keeps Pad, Pluck, Tight and Long with their musical timing', () => {
   const play = (name: string, seconds: number) => {
-    const p = XL_PRESETS['Algo Four XL']();
+    const p = relocatedPatches['Algo Four XL']();
     const card = p.assemblies!.find(a => a.params.some(r => r.label === 'algorithm'))!;
     const preset = presetsOf(p, card).find(p => p.name === name)!;
     expect(preset, name).toBeDefined();

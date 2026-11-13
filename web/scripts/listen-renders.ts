@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Renders every XL and its FM-1 version with the same phrase through the browser engine, for listening side by side
 // (#292): build/listen/<slug>.wav (stereo, 16-bit) and build/listen/listen.json (per pair: both files, integrated
-// loudness after BS.1770, sample peak, the difference, a flag past MAX_DIFF dB). The factory XLs and the community pairs.
+// loudness after BS.1770, sample peak, the difference, a flag past MAX_DIFF dB). Every community XL paired with its original.
 // The phrase: a patch whose Steps tracks hold notes runs its transport and holds a low key; the rest play four chords, then a line.
 // Notes follow the patch's keyboard octave (Patch.octave). The FM-1's own rendering (the emulator) is not included.
 // Run from web/:  npm run listen-renders
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { communityEntries } from '../src/community';
+import { communityEntries, xlBase } from '../src/community';
 import { Engine } from '../src/engine';
 import { DEFS } from '../src/modules';
 import type { Patch } from '../src/patch';
-import { FM1_PRESETS, XL_PRESETS, xlBase } from '../src/presets';
+import { FM1_PRESETS } from '../src/presets';
+import { relocatedPatches } from '../src/community-factory';
 import { decodeShare } from '../src/share';
 import { lufs, peakDb } from './loudness';
 
@@ -73,14 +74,11 @@ function measure(name: string, p: Patch) {
 
 mkdirSync(out, { recursive: true });
 const pairs: [string, Patch, Patch, string][] = [];
-for (const [xlName, make] of Object.entries(XL_PRESETS)) {
-  const base = xlBase(xlName)!;
-  if (FM1_PRESETS[base]) pairs.push([base, FM1_PRESETS[base](), make(), 'factory']);
-}
-const community = new Map<string, Patch>();
-for (const e of communityEntries()) community.set(e.title, await decodeShare(e.code, DEFS));
+const community = new Map<string, Patch>(Object.entries({ ...FM1_PRESETS, ...relocatedPatches }).map(([name, make]) => [name, make()]));
+for (const e of communityEntries()) if (!community.has(e.title)) community.set(e.title, await decodeShare(e.code, DEFS));
+const available = new Set(community.keys());
 for (const [title, xl] of community) {
-  const base = xlBase(title);
+  const base = xlBase(title, available);
   if (base && community.has(base)) pairs.push([base, community.get(base)!, xl, 'community']);
 }
 

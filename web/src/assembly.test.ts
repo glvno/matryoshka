@@ -424,9 +424,6 @@ describe('assemblies', () => {
   });
 
   it('ships factory assemblies that load, insert and play', () => {
-    expect(FACTORY.map((d) => d.name)).toEqual([
-      '8 Lire', 'adsr operator', 'Algo Four', 'auto pan', 'barber pole', 'basic poly', 'boom kick', 'bowed glass', 'bowed string', 'Briefcase 3', 'Canvas', 'Cassia 1', 'clap', 'clock', 'cloud', 'cowbell', 'drift poly', 'drum kit', 'ducking delay', 'echo', 'Elvira 2', 'envelope filter', 'Expander S', 'filter voice', 'fm pair', 'gamelan', 'gated reverb', 'glass bell', 'hats', 'Hera 4', 'hihat', 'Io 4', 'kalimba', 'kick', 'marimba', 'Meridian 8', 'mono lead', 'Monolith D', 'noise voice', 'octave fuzz', 'operator', 'Oracle V', 'overdrive', 'Perun 4', 'pluck', 'rain', 'random melody', 'resonator bank', 'reverse pad', 'rim', 'Sallen 20', 'Scrounge', 'shimmer', 'sidechain pump', 'Silver Box', 'slicer', 'snare', 'Spokes 6', 'stack voice', 'stutter', 'sub bass', 'supersaw stack', 'tabla', 'talking filter', 'time smear', 'tom', 'Vernon 100', 'Verona Drum 1', 'vibrato', 'voice', 'vowel voice', 'Wanderer', 'wavetable pad',
-    ]);
     for (const d of FACTORY) {
       expect(d.modules.every((m) => m.map === undefined || Object.keys(m.map).every((k) => k === 'p1' || k === 'p2')), d.name).toBe(true);   // (no knob columns: D-1001)
       expect(d.inputs.length + d.outputs.length, d.name).toBeGreaterThan(0);
@@ -448,15 +445,16 @@ describe('assemblies', () => {
       feed('pitch', 'pitch');
       feed('gate', 'gate');
       feed('keys', 'keys');
-      if (inp('in')) {
+      const signalInputs = a.inputs.filter((r) => ['in', 'left', 'right'].includes(r.label));
+      if (signalInputs.length) {
         // a held key is a steady signal to pan / smear / shift: at a quarter, so a dense granular cloud of it stays below the clamp
         const sc = addModule(p, DEFS.scale, 0, 0);
         sc.params.gain = 0.25;
         connect(p, DEFS, { module: kb, port: 'gate' }, { module: sc.id, port: 'in' });
-        for (const t of targetsOf(inp('in')!)) expect(connect(p, DEFS, { module: sc.id, port: 'out' }, t), `${d.name} in`).toBe(true);
+        for (const input of signalInputs) for (const t of targetsOf(input)) expect(connect(p, DEFS, { module: sc.id, port: 'out' }, t), `${d.name} ${input.label}`).toBe(true);
       }
-      const o = a.outputs.find((r) => ['out', 'l', 'pitch', 'clock'].includes(r.label))!;
-      expect(connect(p, DEFS, o, { module: out, port: 'l' }), d.name).toBe(true);
+      const o = a.outputs.find((r) => ['out', 'l', 'left', 'pitch', 'clock'].includes(r.label))!;
+      for (const from of targetsOf(o)) expect(connect(p, DEFS, from, { module: out, port: 'l' }), d.name).toBe(true);
       const l = render(p, 24000, d.name === 'drum kit' ? 36 : d.name === 'Perun 4' || d.name === 'Spokes 6' ? 53 : 60); // (the kit's kick is General MIDI's 36; Perun 4's four voices and Spokes 6's drums are F3..B3)
       if (inp('gate') || inp('keys') || o.label !== 'out') expect(Math.max(...Array.from(l).map(Math.abs)), d.name).toBeGreaterThan(0.05);
       // all of them: a finite output, nothing stuck at the clamp

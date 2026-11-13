@@ -4,7 +4,7 @@
 // pulser triggers its envelope by itself, and Canvas's patch field (Canvas XL's until D-348 put it in the factory slot) moves a cord.
 import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
-import { FM1_PRESETS, XL_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 import type { Patch } from './patch';
 
 const SR = 44118;
@@ -29,7 +29,7 @@ const COLUMNS = 'ABCDEFGHIJKLMNOP'.split('');
 
 describe('Briefcase 3 (the VCS3)', () => {
   it('on the FM-1: the panel on its card, the control columns I to P on the matrix card, every pin named column then row', () => {
-    const p = FM1_PRESETS['Briefcase 3']();
+    const p = relocatedPatches['Briefcase 3']();
     const labels = card(p).params.map((r) => r.label);
     for (const l of ['frequency', 'sine', 'ramp', 'shape', 'square', 'triangle', 'colour', 'input 1', 'ring mod', 'response', 'attack', 'on', 'decay', 'signal', 'trapezoid', 'mix', 'filter 1', 'level 1', 'filter 2', 'level 2', 'x', 'y'])
       expect(labels, l).toContain(l);
@@ -43,7 +43,7 @@ describe('Briefcase 3 (the VCS3)', () => {
   });
 
   it('on the FM-1: the keys reach oscillator 1 through input amplifier 1 and pin I8; pulled out, the pitch stays', () => {
-    const p = FM1_PRESETS['Briefcase 3']();
+    const p = relocatedPatches['Briefcase 3']();
     const pitchOf = (q: Patch, note: number): number => {
       const x = play(q, [note], SR / 4);
       // (cycles per sample between the first and the last upward crossing: since #738 gave Briefcase 3 room for
@@ -71,7 +71,7 @@ describe('Briefcase 3 (the VCS3)', () => {
   });
 
   it('Briefcase 3 XL: the whole matrix, a section per column, 16 pins each in row order', () => {
-    const p = XL_PRESETS['Briefcase 3 XL']();
+    const p = relocatedPatches['Briefcase 3 XL']();
     const rows = card(p).params;
     const pins = rows.filter((r) => /^[A-P]\d+ /.test(r.label));
     expect(pins).toHaveLength(256);
@@ -87,7 +87,7 @@ describe('Briefcase 3 (the VCS3)', () => {
   });
 
   it('Briefcase 3 XL: a signal pin routes the sound: without B14 and C14 the outputs are silent, B1 brings oscillator 1 back', () => {
-    const p = XL_PRESETS['Briefcase 3 XL']();
+    const p = relocatedPatches['Briefcase 3 XL']();
     const pin = (label: string, v: number): void => set(p, card(p).params.find((r) => r.label.startsWith(label + ' '))!.label, v);
     pin('B14', 0);
     pin('C14', 0);
@@ -99,7 +99,7 @@ describe('Briefcase 3 (the VCS3)', () => {
 
 describe('Canvas (the Music Easel)', () => {
   it('exposes four independent random voltages and accepts a patch cord from each', () => {
-    const p = FM1_PRESETS.Canvas();
+    const p = relocatedPatches.Canvas();
     const a = card(p);
     const sources = [1, 2, 3, 4].map((n) => a.outputs.find((r) => r.label === `random ${n}`));
     expect(sources.every(Boolean)).toBe(true);
@@ -124,12 +124,12 @@ describe('Canvas (the Music Easel)', () => {
   });
 
   it('on the FM-1: the card is the panel, section by section', () => {
-    const heads = card(FM1_PRESETS.Canvas()).params.filter((r) => r.head).map((r) => r.head);
+    const heads = card(relocatedPatches.Canvas()).params.filter((r) => r.head).map((r) => r.head);
     expect(heads).toEqual(['sequencer', 'envelope', 'pulser', 'random', 'mod osc', 'complex osc', 'lopass gate', 'output', 'keyboard', 'patch field']);
   });
 
   it('the pulser on self triggers the envelope by itself: bursts at its period while a key is held', () => {
-    const p = FM1_PRESETS.Canvas();
+    const p = relocatedPatches.Canvas();
     set(p, 'trigger', 2, 1); // the envelope's: pulser
     set(p, 'trigger', 2, 2); // the pulser's: self
     set(p, 'period', 0.25); // (a shorter period's bursts run together: the lopass gate closes in 350 ms, #669)
@@ -147,8 +147,7 @@ describe('Canvas (the Music Easel)', () => {
   });
 
   it('the switches have the panel\'s names, and the patch field moves a cord', () => {
-    const p = FM1_PRESETS.Canvas();
-    expect(XL_PRESETS['Canvas XL']).toBeUndefined();   // (D-348: no XL beside it)
+    const p = relocatedPatches.Canvas();
     expect(row(p, 'mode', 0).names).toEqual(['sustained', 'transient', 'off']);
     expect(row(p, 'range').names).toEqual(['- high', '+ hi', 'low']);
     const jacks = card(p).params.filter((r) => r.label.endsWith(' in'));

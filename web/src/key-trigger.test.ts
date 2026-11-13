@@ -3,6 +3,7 @@ import { expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch } from './patch';
+import { relocatedPatches } from './community-factory';
 
 it('Voicing pulses for a middle key press and never for a key release', () => {
   const p = emptyPatch();
@@ -32,9 +33,8 @@ it('Voicing pulses for a middle key press and never for a key release', () => {
   e.noteOff(67); check(false);
 });
 
-it.each(['Wanderer'])('%s retriggers its keyboard gate on presses only', async (name) => {
-  const { PRESETS } = await import('./presets');
-  const p = PRESETS[name]();
+it.each(['Wanderer'])('%s retriggers its keyboard gate on presses only', (name) => {
+  const p = relocatedPatches[name]();
   // Select the actual factory gate circuit driven by the low-priority Voicing's key-press output.
   const path = p.cables.find((c) => c.from.port === 'trig' && p.modules.find((m) => m.id === c.from.module)?.type === 'alloc');
   expect(path).toBeDefined();

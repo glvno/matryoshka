@@ -1,91 +1,66 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The XLs' home (docs/ledger/patches-and-presets.md D-338): web/presets/xl, written by scripts/gen-xl.ts from
-// scripts/xl/index.ts, listed in the browser after their FM-1 versions, never part of what goes to the FM-1. The XL here is
-// a placeholder built only in this test: none ships with it.
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { DEFS } from './modules';
-import { addModule, connect, type Patch } from './patch';
-import { FM1_PRESETS, isXl, PRESETS, withXls, XL_PRESETS, xlBase } from './presets';
-import { buildXls, xlFile, type Xl } from '../scripts/xl/xl';
+import MANIFEST from '../community/factory.json';
+import FINGERPRINTS from '../community/fingerprints.json';
+import SUBMISSIONS from '../community/submissions.json';
+import RAW from './community.json';
+import { communityEntries, familiesOf, loadCommunity, xlBase } from './community';
+import { relocatedPatches } from './community-factory';
+import { FM1_PRESETS } from './presets';
+import { inflate } from './share';
 
-/** the placeholder: Init with a 1.2 s Delay after it and a Granular and two 1 s Delays beside it (over the FM-1's effect
- * memory, D-375, so a sandbox patch) */
-const initXl: Xl = {
-  base: 'Init',
-  build(p: Patch): Patch {
-    const out = p.modules.find((m) => m.type === 'output')!;
-    const from = p.cables.find((c) => c.to.module === out.id)!.from;
-    p.cables = p.cables.filter((c) => c.to.module !== out.id);
-    const gr = addModule(p, DEFS.grain, 1600, 300);
-    const dly = addModule(p, DEFS.delay, 1600, 20);
-    connect(p, DEFS, from, { module: gr.id, port: 'in' });
-    connect(p, DEFS, { module: gr.id, port: 'out' }, { module: dly.id, port: 'in' });
-    Object.assign(dly.params, { time: 1200, fb: 0.5, mix: 0.4, length: 1200 });
-    for (let i = 0; i < 2; i++) {
-      const more = addModule(p, DEFS.delay, 1900, 20 + 300 * i);
-      Object.assign(more.params, { time: 900, length: 1000 });
-      connect(p, DEFS, from, { module: more.id, port: 'in' });
-      connect(p, DEFS, { module: more.id, port: 'out' }, { module: out.id, port: 'l' });
-    }
-    connect(p, DEFS, from, { module: dly.id, port: 'in' });
-    connect(p, DEFS, { module: dly.id, port: 'out' }, { module: out.id, port: 'l' });
-    connect(p, DEFS, { module: dly.id, port: 'r' }, { module: out.id, port: 'r' });
-    return p;
-  },
-};
+const originals = import.meta.glob<{ name: string }>('../community/factory/*.json', { eager: true, import: 'default' });
 
-describe('XLs', () => {
-  it('names an XL after its FM-1 version', () => {
-    expect(xlBase('Algo Four XL')).toBe('Algo Four');
-    expect(xlBase('Algo Four')).toBeUndefined();
-    expect(xlFile('Algo Four XL')).toBe('algo-four-xl.json');
-  });
-
-  it('builds an XL from its FM-1 version, named "<base> XL", whatever the FM-1 budget says', () => {
-    const [x] = buildXls([initXl], FM1_PRESETS);
-    expect(x.patch.name).toBe('Init XL');
-    expect(x.patch.modules.some((m) => m.type === 'delay')).toBe(true);
-    expect(x.budget.fits).toBe(false); // a sandbox patch: allowed
-    expect(x.budget.over.map((i) => i.key)).toContain('memory');
-    expect(() => buildXls([{ ...initXl, base: 'No Such Patch' }], FM1_PRESETS)).toThrow(/no FM-1 factory patch/);
-    expect(() => buildXls([initXl, initXl], FM1_PRESETS)).toThrow(/two XLs/);
-    // an XL that fits the FM-1 is allowed too
-    const [fits] = buildXls([{ base: 'Init', build: (p) => p }], FM1_PRESETS);
-    expect(fits.budget.fits).toBe(true);
-  });
-
-  it('lists each XL right after its FM-1 version in the browser, and an orphan last', () => {
-    const fm1 = ['Oracle V', 'Init', 'Algo Four'].map((name) => ({ ...FM1_PRESETS.Init(), name }));
-    const xl = (name: string): Patch => ({ ...FM1_PRESETS.Init(), name });
-    const order = withXls(fm1, [xl('Algo Four XL'), xl('Gone XL'), xl('Oracle V XL')]).map((p) => p.name);
-    expect(order).toEqual(['Oracle V', 'Oracle V XL', 'Init', 'Algo Four', 'Algo Four XL', 'Gone XL']);
-  });
-
-  it('gives every shipped XL a Steps track and an Arpeggiator after it, on the keys (the kitchen sink)', () => {
-    for (const [name, make] of Object.entries(XL_PRESETS)) {
-      const p = make();
-      const type = (id: number): string | undefined => p.modules.find((m) => m.id === id)?.type;
-      const keys = p.cables.filter((c) => c.from.port === 'keys' && c.to.port === 'keys');
-      expect(keys.some((c) => type(c.from.module) === 'steps' && type(c.to.module) === 'arp'), name).toBe(true);
-      expect(keys.some((c) => type(c.from.module) === 'arp'), name).toBe(true);
+describe('preserved factory patches in Community', () => {
+  it('bundles and exposes every original unchanged, including earlier versions of same-name defaults', async () => {
+    const entries = communityEntries();
+    for (const { file, ...meta } of MANIFEST) {
+      const original = originals[`../community/factory/${file}`];
+      const entry = RAW.find(e => e.title === meta.title);
+      expect(createHash('sha256').update(JSON.stringify(original)).digest('hex')).toBe(FINGERPRINTS[meta.title as keyof typeof FINGERPRINTS]);
+      expect(relocatedPatches[meta.title]().name).toBe(meta.title);
+      expect(entry).toMatchObject(meta);
+      expect(entry!.licence).toBe('GPL-3.0-only');
+      expect(JSON.parse(await inflate(entry!.code))).toEqual(original);
+      expect(entries.find(e => e.title === meta.title)).toEqual(entry);
     }
   });
-  it('keeps the shipped XLs out of everything that goes to the FM-1', () => {
-    const fm1 = Object.keys(FM1_PRESETS);
-    const xls = Object.keys(XL_PRESETS);
-    for (const name of xls) {
-      expect(isXl(name)).toBe(true);
-      expect(fm1, name).not.toContain(name);
-      expect(fm1, name).toContain(xlBase(name));
-      const names = Object.keys(PRESETS);
-      expect(names.indexOf(name), name).toBeGreaterThan(names.indexOf(xlBase(name)!));
+
+  it('keeps existing CC submissions exactly as submitted, and publishes no duplicate titles', () => {
+    const entries = communityEntries();
+    expect(RAW).toHaveLength(SUBMISSIONS.length + MANIFEST.length);
+    expect(entries).toHaveLength(SUBMISSIONS.length + MANIFEST.length);
+    expect(RAW.slice(0, SUBMISSIONS.length)).toEqual(SUBMISSIONS);
+    expect(new Set(RAW.map(e => e.title)).size).toBe(RAW.length);
+    for (const submission of SUBMISSIONS) expect(entries.find(e => e.title === submission.title)).toEqual(submission);
+    expect(new Set(entries.map(e => e.title)).size).toBe(entries.length);
+  });
+
+  it('keeps Hera 4 attributed and visible beside its XL without renaming it to the selected Hera 3', async () => {
+    const families = familiesOf(await loadCommunity());
+    expect(xlBase('Hera 6 XL')).toBe('Hera 3');
+    expect(FM1_PRESETS['Hera 3']).toBeDefined();
+    expect(FM1_PRESETS['Hera 4']).toBeUndefined();
+    const hera = families.find(f => f.name === 'Hera 4')!;
+    expect(hera.members.map(m => m.entry.title)).toEqual(['Hera 4', 'Hera 6 XL']);
+    expect(hera.members.map(m => m.patch?.name)).toEqual(['Hera 4', 'Hera 6 XL']);
+    for (const member of hera.members) {
+      expect(member.entry).toMatchObject({ author: 'michael glaviano', licence: 'GPL-3.0-only', source: 'https://github.com/glvno/matryoshka' });
     }
-    for (const name of fm1) expect(isXl(name)).toBe(false);
-    expect(Object.keys(PRESETS).filter((n) => !isXl(n))).toEqual(fm1);
-    // presets.h (export-defs) holds the FM-1's factory patches only
-    const h = readFileSync(new URL('../../firmware/src/presets.h', import.meta.url), 'utf8');
-    expect(Number(/#define N_PRESETS (\d+)/.exec(h)![1])).toBe(fm1.length);
-    for (const name of xls) expect(h).not.toContain(`"${name.toUpperCase()}"`);
+    expect(families.flatMap(f => f.members.map(m => m.entry.title))).not.toContain('Hera 3');
+    for (const base of ['8 Lire', 'Elvira 2', 'Meridian 8', 'Perun 4', '808 Kit', '909 Kit', 'Spokes 6', 'Verona Drum 1']) {
+      expect(FM1_PRESETS[base]).toBeDefined();
+      expect(relocatedPatches[base]).toBeUndefined();
+      expect(relocatedPatches[`${base} XL`]).toBeDefined();
+    }
+  });
+
+  it('returns independent copies without changing a saved or shared original', () => {
+    for (const make of Object.values(relocatedPatches)) {
+      const first = make(), second = make();
+      first.modules[0].params.tempo = 91;
+      expect(make()).toEqual(second);
+    }
   });
 });

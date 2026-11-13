@@ -8,6 +8,7 @@ import { copiesOf, polyGroups } from './poly';
 import { fixAssemblies, makeAssembly } from './assembly';
 import { addAlloc, polyCfg, withParts } from './test-poly';
 import { PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 import { PANEL_BYTES, encodePatch, paramsAt, recordSize } from './patchbin';
 import { acid, subtractiveSaw, twoOpFM, wobble } from './test-patches';
 
@@ -279,8 +280,8 @@ describe('engine', () => {
     expect(l.every(Number.isFinite)).toBe(true);
   });
 
-  it('renders every preset without NaN or clipping runaway', () => {
-    for (const [name, make] of Object.entries(PRESETS)) {
+  it('renders factory and relocated community patches without NaN or clipping runaway', () => {
+    for (const [name, make] of Object.entries({ ...PRESETS, ...relocatedPatches })) {
       const e = new Engine(SR);
       e.load(make());
       e.transport(true); // (the drum kits play on the transport)
@@ -306,8 +307,8 @@ describe('engine', () => {
     expect(modulate(level, 0.5, 0.25)).toBeCloseTo(0.75, 9); // the others stay linear
   });
 
-  it('every factory patch has device pages for the knobs: no page holds more than four rows', () => {
-    for (const [name, make] of Object.entries(PRESETS)) {
+  it('factory and relocated community patches have device pages for the knobs: no page holds more than four rows', () => {
+    for (const [name, make] of Object.entries({ ...PRESETS, ...relocatedPatches })) {
       const devices = devicesOf(make(), DEFS);
       expect(devices.length, `${name}: a device`).toBeGreaterThan(0);
       for (const d of devices) for (const pg of d.pages) {

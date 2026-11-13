@@ -10,7 +10,7 @@ use crate::p33::{Cpu0Bus, P33};
 pub const RAM_SIZE: usize = 1 << 20;
 /// app.bin offset 0 runs from here (firmware/app.ld); the XIP window starts 0x120 before it.
 pub const ENTRY: u32 = 0x0200_0120;
-const XIP_PAD: usize = 0x120;
+pub const XIP_PAD: usize = 0x120;
 pub const FLASH_SIZE: usize = 1 << 20;
 /// Stack paint (#273): the firmware paints its stacks with this word at boot (main.c `stack_paint`); the emulator also
 /// paints PAINT_LO..PAINT_HI before the first instruction, so a build without that (main before #273) is measured too.

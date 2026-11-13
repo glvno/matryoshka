@@ -19,6 +19,7 @@ static const char *patch_label;
                                                  * pages of settings drawn as a device page (pages_ui.c menu_tab_page); INFO
                                                  * and GUIDE are texts */
 #define PAGE_ENV 9u                             /* ENV: the environment (#197, pages_ui.c env_draw) */
+#define PAGE_FX 12u                             /* graph-proven master FX: four stages and the selected stage's first parameter page */
 static uint8_t page;                            /* 0: the device page, 5 the menu (6, GLO's own page, went into it: #395), 8 the SEQ page, 9 the environment,
                                                  * 11 the SONG page (seq_ui.c); (7, the legend, is gone: #114; 10, the preset list, too: #395) */
 static void seq_bar(void);
@@ -387,7 +388,7 @@ static void header_draw_now(void)
         *p = 0;
         b[24] = 0;                              /* (the CPU load is in MENU > INFO) */
         msg_until = 0;
-        if (dev_like() || page == PAGE_ENV)   /* the device page: the devices strip; the menu's and ENV's bars */
+        if (dev_like() || page == PAGE_ENV || page == PAGE_FX)
             pages_strip();
         else
             bar_text(b, C_ACC);
@@ -415,7 +416,7 @@ static void ui_msg_clear(void)
 /* the patch buttons that glow: assigned (any kind but Nothing, #116) or with a cable from them; the rest stay dark */
 static uint32_t panel_used(void)
 {
-    uint32_t i, from, fp, to, tp, used = 0;
+    uint32_t i, from, fp, to, tp, used = eng_fx_count() ? 1u : 0u;
     int main = eng_find(T_FM1);
     for (i = 0; i < ENG_PANEL_BUTTONS; i++)
         if (eng_button_kind(i) != ENG_BTN_NOTHING)
@@ -433,6 +434,8 @@ static uint32_t panel_used(void)
 static int panel_btn_job(uint32_t b)
 {
     uint32_t i, from, fp, to, tp, kind = eng_button_kind(b);
+    if (b == 0u && eng_fx_count())
+        return 1;
     int main = eng_find(T_FM1);
     if (kind == ENG_BTN_TOGGLE || kind == ENG_BTN_PAGE)
         return 1;
@@ -444,8 +447,32 @@ static int panel_btn_job(uint32_t b)
     return 0;
 }
 
+/* Format 55's verified Harmony Toggle shows enabled state even without an added FX rack.
+ * Older formats keep their bypass light; FX's sequencer contexts keep their existing meaning. */
+static uint32_t panel_lights(void)
+{
+    uint32_t mask = eng_buttons_lit();
+    if (eng_format() >= 55u && !sb_on && page != 8u && page != 11u) {
+        const uint8_t *targets;
+        uint32_t k, n = eng_button_targets(3u, &targets);
+        int harmony = eng_button_kind(3u) == ENG_BTN_TOGGLE && n > 0u, on = 1;
+        if (eng_fx_count())
+            mask = page == PAGE_FX ? mask | 1u : mask & ~1u;
+        for (k = 0; k < n; k++) {
+            if (eng_type(targets[k]) != T_HARM)
+                harmony = 0;
+            if (eng_bypass(targets[k]))
+                on = 0;
+        }
+        if (harmony)
+            mask = on ? mask | 8u : mask & ~8u;
+    }
+    return mask;
+}
+
 static void menu_draw(int full);
 static void env_draw(int full);
+static void fx_draw(int full);
 
 #define LEFT_W 216u
 
@@ -478,6 +505,8 @@ static void view_draw(int full)                 /* whichever page is showing */
         song_draw(full);
     else if (page == PAGE_ENV)
         env_draw(full);
+    else if (page == PAGE_FX)
+        fx_draw(full);
     else if (sb_on && page == 0u)
         sandbox_draw(full);
     else

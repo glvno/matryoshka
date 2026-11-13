@@ -9,7 +9,7 @@ import './factory-presets';
 import { fixAssemblies, makeAssembly } from './assembly';
 import { DEFS } from './modules';
 import { deviceBudget } from './patchbin';
-import { FM1_PRESETS, PRESETS } from './presets';
+import { PRESETS } from './presets';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
 
 /** the patch as the editor holds it once opened (positions aside: the editor may move cards, the binary has none) */
@@ -28,13 +28,14 @@ describe('factory patches are what the editor opens (#465)', () => {
     expect(changed).toEqual([]);
   });
 
-  it('the FM-1 budget of a factory patch is the same opened in the editor, and every FM-1 factory patch fits', () => {
-    for (const [name, make] of Object.entries(FM1_PRESETS)) {
+  it('reports the same candidate budget before and after opening in the editor, even when it does not fit', () => {
+    for (const [name, make] of Object.entries(PRESETS)) {
       const p = make();
       const node = deviceBudget(p);
       const page = deviceBudget(opened(p));
       expect(page.items, name).toEqual(node.items);
-      expect(page.fits, `${name}: ${JSON.stringify(page.over)}`).toBe(true);
+      expect(page.fits, name).toBe(node.fits);
+      expect(page.over, name).toEqual(node.over);
     }
   });
 

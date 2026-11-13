@@ -3,7 +3,7 @@ import { expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, defaultMap, emptyPatch, validatePatch } from './patch';
-import { XL_PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 
 function wave(wide: number, range = 3, sync = 0) {
   const p = emptyPatch();
@@ -43,7 +43,7 @@ it('keeps the old rate and modulation ranges, and defaults the appended paramete
 });
 
 it('Algo Four XL exposes the full speed range through its one LFO SPEED row', () => {
-  const p = XL_PRESETS['Algo Four XL']();
+  const p = relocatedPatches['Algo Four XL']();
   const rows = p.assemblies!.flatMap(a => a.params).filter(r => r.label === 'lfo speed');
   expect(rows.length).toBeGreaterThan(0);
   for (const row of rows) {

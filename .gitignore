@@ -9,3 +9,7 @@ tools/emu/target/
 tools/emu/live/
 .claude/
 .empathetic-docs/
+# Local review exports: tools/fm1_configuration_catalogue.py output and earlier prototype bank exports
+web/public/fm1-configurations.html
+web/public/prototype-bank/
+web/public/prototype-fx-bank/

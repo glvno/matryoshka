@@ -616,7 +616,12 @@ async function main() {
   };
   let page = watch(await context.newPage());
   const T = () => page.evaluate(() => window.__m1test.state());
-  const open = (name) => page.evaluate((n) => window.__m1test.open(n), name);
+  const open = (name) => page.evaluate(async (n) => {
+    const { loadCommunity, addCommunity } = await import('/src/community.ts');
+    const entry = (await loadCommunity()).find(c => c.entry.title === n);
+    if (entry) addCommunity(n);
+    return window.__m1test.open(n);
+  }, name);
   /** 8 Lire with its MOD DELAY's mix at 0 (D-748: two lines, mono, 0.35 at Init): a held plate summed with its own echoes 330
    *  and 470 ms on rises and falls by a quarter as each arrives in or out of phase (the browser engine renders the same; dry
    *  it is flat), so the checks of a voice that holds hear the voice, not the delay */

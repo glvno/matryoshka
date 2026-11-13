@@ -1,0 +1,156 @@
+{
+  "scope": "Exactly the five owner-requested configurations; not a global ceiling change or selected-bank change",
+  "evidenceFile": "owner-five-common-native55-hardware.json",
+  "evidenceSha256": "7164b497a5ab90901fe5521693489254cd4b71e4b5ed31d2f729bed70104a5df",
+  "firmwarePackageSha256": "cf98f1087249abe6d9e55363eab789459d0f970ce2d9a1e6f4b0109dc6745c5d",
+  "acceptancePolicy": {
+    "id": "owner-five-complete-clean-under100",
+    "scope": [
+      "algo-four-v4-drive-delay-reverb",
+      "canvas-original-delay-no-harm",
+      "expander-s-v3-drive-chorus-delay-reverb",
+      "hera-4-v3-none",
+      "sallen-20-original-chorus-delay-reverb-no-harm"
+    ],
+    "cpuExclusiveMaxPercent": 100,
+    "headroomWarningAbovePercent": 95,
+    "requiredMute": 0,
+    "requiredShed": 0,
+    "requiredLate": 0,
+    "basis": "Owner requested inclusion if the next test does well; interpretation disclosed before testing: complete matrix below 100%, zero guards, 95% remains a warning."
+  },
+  "counts": {
+    "requested": 5,
+    "passed": 5,
+    "failed": 0,
+    "observedPhases": 28,
+    "requiredPhases": 28,
+    "standard95Passes": 2,
+    "reducedHeadroomAcceptances": 3
+  },
+  "cases": [
+    {
+      "variantId": "algo-four-v4-drive-delay-reverb",
+      "label": "Algo Four: 4 notes, Drive + Delay + Reverb",
+      "passed": true,
+      "strict95Passed": true,
+      "reducedHeadroomAcceptance": false,
+      "peakCpuPercent": 88.83528600964851,
+      "observedPhases": 8,
+      "requiredPhases": 8,
+      "mute": 0,
+      "shed": 0,
+      "late": 0,
+      "minimumHeldSeconds": 5.19801741700212,
+      "sourceSha256": "ffc7c7326a83a0226c34ce1c3a8b152c551d4cfaef48a8217f31548fc218e504",
+      "phaseBinarySha256": [
+        "a72830bd2c3cb06e61ac48cc21cf45189d88922b6e1ba1951736bae71ff4cfc1",
+        "f80e0b5129b6643749367665ed3af173b2635cbfac7e87f1852364535b300e98",
+        "09e4f4bba49afe05a6098518b66daeef6f516109832f77fb7636b879bd0a2f64",
+        "61db43f04d5502eb3786ce78029a6e0958f80bd4aa928fa6aeed93e6ff985c20",
+        "341af1256d7daa9672fa2dcd46add2ea3c6880fc265ab0348fc931fd90789506",
+        "a826c6a869ca9d9c5a7454831b31c4f12aec55ab534c542fb0fea5a872c002cf",
+        "5930dc24759b34158cee24f4f447d5a215cf20113fb1bb6ae0e1791bf38910db",
+        "4eded214d27a95c4113e3abafdae3b9203d07de27e6ccb914016945db9213226"
+      ]
+    },
+    {
+      "variantId": "canvas-original-delay-no-harm",
+      "label": "Canvas: mono, Drive + Delay + Reverb, no harmonizer",
+      "passed": true,
+      "strict95Passed": false,
+      "reducedHeadroomAcceptance": true,
+      "peakCpuPercent": 96.62301860785665,
+      "observedPhases": 4,
+      "requiredPhases": 4,
+      "mute": 0,
+      "shed": 0,
+      "late": 0,
+      "minimumHeldSeconds": 5.288155749993166,
+      "sourceSha256": "3954ef70f7fb0abc58fe992ddb91d23bc4e9a6347c2c694e0117f63ffae81cd2",
+      "phaseBinarySha256": [
+        "4084418a57d54317b5b7bc83dd6eaa2ca04258003bdb0dfdbdccd5bf88529517",
+        "da3e5a12b734fa276f82fe9710a3e10687e7a65dbff53b03e747525c84d7f323",
+        "4084418a57d54317b5b7bc83dd6eaa2ca04258003bdb0dfdbdccd5bf88529517",
+        "da3e5a12b734fa276f82fe9710a3e10687e7a65dbff53b03e747525c84d7f323"
+      ]
+    },
+    {
+      "variantId": "expander-s-v3-drive-chorus-delay-reverb",
+      "label": "Expander: 3 notes, full rack",
+      "passed": true,
+      "strict95Passed": false,
+      "reducedHeadroomAcceptance": true,
+      "peakCpuPercent": 97.76016540317023,
+      "observedPhases": 8,
+      "requiredPhases": 8,
+      "mute": 0,
+      "shed": 0,
+      "late": 0,
+      "minimumHeldSeconds": 5.235534958002972,
+      "sourceSha256": "d9354f465e18933783d467f52bdc758ca1221e2afdee97f7e58c2c1ee955d2c0",
+      "phaseBinarySha256": [
+        "93edecb0d817d0af3a82b041def5704948ffd93d299f458f9b172e8496ffe7e5",
+        "bb394c431b2a79d93ff6733d2b013ddd4765b733fd6afd725dc889a9586d6ac5",
+        "df2c30e88d6800f74ac1131a5a6498fdf24641b0d25f329924ad47e994d2925a",
+        "4c60214d79b55b286f1b199e7d284afeb43afa4bc0d79707e01fa08d9433d3d2",
+        "922978e8b995291d8ea5775df57b95d8be531e87df3c63edc6f046cb7ff5a276",
+        "cf7637d98970a980c133cebbb78255ae0b784c1484c9ceb69ff77825c58e58d5",
+        "a21b25ce6f3df2828f52b5b8b2f8ff910639be15b9f2ff8008c74ac81f512676",
+        "99fd40e2d417be0b9b744b6bc5a854782dd9fa002c0c749f86fc0e29acb44636"
+      ]
+    },
+    {
+      "variantId": "hera-4-v3-none",
+      "label": "Hera 3: 3 independent voices, native Chorus",
+      "passed": true,
+      "strict95Passed": true,
+      "reducedHeadroomAcceptance": false,
+      "peakCpuPercent": 89.17987594762234,
+      "observedPhases": 4,
+      "requiredPhases": 4,
+      "mute": 0,
+      "shed": 0,
+      "late": 0,
+      "minimumHeldSeconds": 5.291335667003295,
+      "sourceSha256": "ad40caeccbd888a51a29b02a0b935c306d852223d46fcb3aaa837edd9ffc0fd6",
+      "phaseBinarySha256": [
+        "5cf2226bf67d1b252d3c2f9c7cf754830f98a5fb9038d16271bed6a0267be4eb",
+        "ae3ebb41d4e0447bcc37010df7b5e2b6f98720f4c241b185ee536d19665d8425",
+        "061b1ce05a25fbe8c73df440627d6ed32161721f22365ffe5526cd319f1d64fe",
+        "56683c0b01c586eb1bf2e26764023784fc8b970897bc44820189dc25e94d904c"
+      ]
+    },
+    {
+      "variantId": "sallen-20-original-chorus-delay-reverb-no-harm",
+      "label": "Sallen 20: mono, Chorus + Delay + Reverb, no harmonizer",
+      "passed": true,
+      "strict95Passed": false,
+      "reducedHeadroomAcceptance": true,
+      "peakCpuPercent": 95.31357684355616,
+      "observedPhases": 4,
+      "requiredPhases": 4,
+      "mute": 0,
+      "shed": 0,
+      "late": 0,
+      "minimumHeldSeconds": 5.369934207992628,
+      "sourceSha256": "bbd1ba672debad41d42e71d5d508b775489b5f4cadc83bc2f6fd34059f4d992b",
+      "phaseBinarySha256": [
+        "f6ea34a2f7ab375675fefcfcaaa48af55ee3f413213255a6461ca86ba1c486da",
+        "9417b91da4a93259ff3ed2794819798d191a5c5fd4043d85dd9be2cfb36ceede",
+        "f6ea34a2f7ab375675fefcfcaaa48af55ee3f413213255a6461ca86ba1c486da",
+        "9417b91da4a93259ff3ed2794819798d191a5c5fd4043d85dd9be2cfb36ceede"
+      ]
+    }
+  ],
+  "firmwareWrites": 0,
+  "savedSlotWrites": 0,
+  "bankChanged": false,
+  "rigRestored": {
+    "notesOff": true,
+    "transportStopped": true,
+    "programZeroCommandSent": true,
+    "slotWrites": false
+  },
+  "ownerAuditionStillRequired": true
+}

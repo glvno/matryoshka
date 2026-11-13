@@ -4,7 +4,8 @@ import { armable, armableDevices, armDrawing, armedFromMask, armedWith, armMask,
 import { assembliesOf } from './assembly';
 import { devicesOf } from './pages';
 import { deviceView } from './poly';
-import { FM1_PRESETS } from './presets';
+import { PRESETS } from './presets';
+import { relocatedPatches } from './community-factory';
 import { FACTORY } from './assemblies';
 import { insertAssembly } from './assembly';
 import { newPatch } from './patch';
@@ -109,7 +110,7 @@ describe('an instrument armed through its key sources (#395)', () => {
   const sourceOf = (p: Patch, type: string): number => p.modules.find((m) => m.type === type)!.id;
 
   it('every factory instrument fed by a track or an Arpeggiator arms them with it; an Arpeggiator alone is not armed', () => {
-    for (const [name, make] of Object.entries(FM1_PRESETS)) {
+    for (const [name, make] of Object.entries(PRESETS)) {
       const p = make();
       const arp = p.modules.find((m) => m.type === 'arp');
       if (arp) expect(armable(p, `m${arp.id}`), name).toBe(false);
@@ -129,7 +130,7 @@ describe('an instrument armed through its key sources (#395)', () => {
   });
 
   it("Oracle V armed: Main's keys reach it through its track and the bypassed Arpeggiator, and the mask names both", () => {
-    const p = FM1_PRESETS['Oracle V']();
+    const p = relocatedPatches['Oracle V']();
     const a = assembliesOf(p).find((x) => x.label === 'Oracle V')!;
     const steps = sourceOf(p, 'steps'), arp = sourceOf(p, 'arp');
     expect(armedWith(p, [`a${a.id}`]).sort()).toEqual([`a${a.id}`, `m${arp}`, `m${steps}`].sort());
@@ -144,7 +145,7 @@ describe('an instrument armed through its key sources (#395)', () => {
 describe('what the editor draws for the arm (#418): everything the arm routes, nothing else', () => {
   const ends = (c: { from: { module: number; port: string }; to: { module: number; port: string } }): string => `${c.from.module}:${c.from.port}>${c.to.module}:${c.to.port}`;
   const heraChain = (): { p: Patch; a: string; steps: number; arp: number; cables: string[] } => {
-    const p = FM1_PRESETS['Hera 4']();
+    const p = relocatedPatches['Hera 4']();
     const a = `a${assembliesOf(p).find((x) => x.label === 'Hera 4')!.id}`;
     const main = p.modules.find((m) => m.type === 'fm1')!.id;
     const steps = p.modules.find((m) => m.type === 'steps')!.id, arp = p.modules.find((m) => m.type === 'arp')!.id;
@@ -241,7 +242,7 @@ describe('an engine no keys cable reaches is not armed (D-905, D-818)', () => {
   });
 
   it('Basic Poly with the keys cable into its Voicing removed (the 1.9.0 device check T12): no arm, no virtual cable, silent', () => {
-    const p = FM1_PRESETS['Basic Poly']();
+    const p = PRESETS['Basic Poly']();
     const alloc = p.modules.find((m) => m.type === 'alloc')!;
     p.cables = p.cables.filter((c) => !(c.to.module === alloc.id && c.to.port === 'keys'));
     const a = assembliesOf(p).find((x) => x.modules.includes(alloc.id) || x.poly)!;

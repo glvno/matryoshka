@@ -30,7 +30,7 @@ eng_step_entry_t *eng_steps_entry_memory(void); /* NULL for legacy routes */
 
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 54   /* 54: explicit factory pattern origins before macro ranges, flag bit 13; 53: bounded Harmonizer/Steps/Arpeggiator keys chains; 52 (release 1.12, #598): the Harmonizer module (T_HARM) appended after the Matrix; a group's note source may be one; 51 (release 1.11, #667): a module record's parameter count after its type byte (ENG_COUNTED): the parameters after it, and their morph B values, are not written and take their defaults; the attenuverters and p1 / p2 masks only where they are off their template (ENG_REC_TEMPLATE, a presence byte), no knob masks k1..k4; cables in 3 bytes (ENG_FLAG_CABLES3); the morph B set as the module mask, then per module with a B side a bitmap and only the B values off A; empty page names and row labels (the device's, the parameter's name); a device's members as a run (ENG_MEMBER_RUN); 50 (release 1.10, #384): bit 31 of a note word (ENG_NOTE_WRAP): tied across the loop point, a drone with the most length; 49 (release 1.9, #518): the oscillator's pm2 / pm3 parameters and pm2, pm3, index inputs; a phase modulation index to 16 rad, the LFO's random wave and wide rate to 80 Hz (values past the old tops); a device of kind 2 (ENG_DEV_NAMED: a plain module with its own name) in the device pages; 48: the patterns and songs section (flag bit 10 = p[7] bit 2, ENG_FLAG_PATTERNS: Steps patterns 2..64 with short note words, the selected pattern, up to eight songs), written only by patches that have patterns or songs; 47: filter osc parameter (self-oscillation) appended; 46: appended Follower module (esp); 45: filter hp6 output after existing ports; 44: Steps play direction; 43: appended Ratio module; 42: appended Rate Env module; 41: ADSR hold input after existing ports; 40: LFO wide-rate parameter; 39: group legato bit 6 selects shared unison with bit 7; 38: group parts byte high nibble is unison count (0 means all); 37: group priority bit 7 disables stealing, assign 3 rotates with key-release reset; 36: flag bit 9 is the mask of modules with a morph B side; 35: Tier 1 of #351: the types pd, env8, select; a device page row's extras (bit 6 of its parameter byte, ENG_ROW_MORE: the further parameters it sets, its positions' names; #357, #358); a type with more than 16 parameters writes its masks as u32; parameters appended to adsr (long), lfo (phase, range, dir, mult), delay (note, swell), reverb (freeze), pulse (inf), drummap (repeat): an older binary's record holds the parameters of its own format (eng_npar, defs.h psince) and the rest take their defaults; the Steps rates 7..8 and swing past 75 (ptop); 34: the device extras section (flag bit 8: p[7] bit 0; #194, #197): per device its driving Steps track, its structure, its preset's name; 33: the Drum maps' row names section (flag bit 7, the #139 follow-up); 32: the Drum map module (#137; its record's data byte: where its keys come from); 31: the Steps module holds notes (#133: its record only its name, the notes section at flag bit 4, a keys output instead of acc, a group's note source may be a Steps module); 30: the button kinds section (flag bit 6); 29: the device pages section (flag bit 5), the Main module without the knob outputs / parameters k1..k6, the panel section with 7 labels, the Macro module; 28: env shot (one-shot); 27: step values (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (name + pattern in its record), 7 panel buttons; 25: the group record's MIDI channel and key range; 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
+#define ENG_PATCH_VERSION 55   /* 55: optional validated master FX bus after format54 origins and before macro ranges */
 #define ENG_COUNTED 51                /* the first format whose module records carry their parameter count (patchbin.ts COUNTED, #667) */
 /* Format 51's record (patchbin.ts, D-1000): u8 type, u8 count (bits 0..5: the parameters it holds; bit 7, ENG_REC_TEMPLATE,
  * on a type with parameter inputs: its attenuverters and p1 / p2 masks are at their template, eng_mask_template, and left
@@ -138,8 +138,8 @@ static inline int eng_group_valid(const uint8_t *q, uint32_t version)
  * starts with the module mask, so a B set there has it (flag bit 9) */
 static inline int eng_flags_ok(const uint8_t *p)
 {
-    const uint32_t f7 = 1u | 2u | 4u | 8u | 16u | 32u;   /* ENG_FLAG_EXTRAS, _MORPH_MODULES, _PATTERNS, _LOCKS, _CABLES3 */
-    return (!(p[7] & 32u) || p[1] >= 54u) && !(p[7] & ~f7) && (!(p[7] & 2u) || (p[1] >= 36u && (p[6] & 1u))) && (!(p[7] & 4u) || p[1] >= 48u)
+    const uint32_t f7 = 1u | 2u | 4u | 8u | 16u | 32u | 64u;
+    return (!(p[7] & 64u) || (p[1] >= 55u && (p[6] & 32u))) && (!(p[7] & 32u) || p[1] >= 54u) && !(p[7] & ~f7) && (!(p[7] & 2u) || (p[1] >= 36u && (p[6] & 1u))) && (!(p[7] & 4u) || p[1] >= 48u)
         && (!(p[7] & 8u) || p[1] >= 49u) && (!(p[7] & 16u) || p[1] >= ENG_COUNTED) && (p[1] < ENG_COUNTED || !(p[6] & 1u) || (p[7] & 2u))
         && (p[1] >= 34u || !p[7]) && (p[1] >= 33u || !(p[6] & 128u)) && (p[1] >= 17u || !(p[6] & 4u)) && (p[1] >= 18u || !(p[6] & 8u))
         && (p[1] >= 27u || !(p[6] & 16u)) && (p[1] >= 30u || !(p[6] & 64u));
@@ -424,6 +424,20 @@ static inline uint32_t eng_names_end(const uint8_t *p, uint32_t len, uint32_t at
 uint32_t eng_origins_end(const uint8_t *p, uint32_t len, uint32_t at);
 uint32_t eng_origins_at(const uint8_t *p, uint32_t len);
 uint32_t eng_origin_record(const uint8_t *p, uint32_t len, uint32_t module, uint32_t pattern);
+/* Format55: u8 count (1..4), then in signal order u8 kind, device, first page, target count,
+ * and that many device-form module indices. The optional record precedes macro ranges. */
+#define ENG_FLAG_FX_BUS (1u << 14)
+#define ENG_FX_STAGE_COUNT 4u /* maximum; sparse records contain 1..4 ordered unique kinds */
+#define ENG_FX_TARGETS_MAX 8u
+enum { ENG_FX_DRIVE, ENG_FX_CHORUS, ENG_FX_DELAY, ENG_FX_REVERB };
+const uint8_t *eng_skip_fx(const uint8_t *p, const uint8_t *end, uint16_t flags); /* NULL: malformed */
+uint32_t eng_fx_count(void);
+uint32_t eng_fx_kind(uint32_t stage);       /* UINT32_MAX: no such stage */
+uint32_t eng_fx_device(uint32_t stage);     /* UINT32_MAX: no such stage */
+uint32_t eng_fx_page(uint32_t stage);       /* UINT32_MAX: no such stage */
+uint32_t eng_fx_targets(uint32_t stage, const uint8_t **targets);
+int eng_fx_on(uint32_t stage);             /* desired UI state, independent of a processing tail */
+void eng_fx_set(uint32_t stage, int on);    /* coherent stereo stage; does not change parameter values */
 /* row r's name of the Drum map `module` in a patch binary (the #139 follow-up; at most ENG_DRUM_NAME characters and a 0 into out), 0 when
  * the binary has none for it (before format 33) */
 int eng_drum_name(const uint8_t *p, uint32_t len, uint32_t module, uint32_t r, char *out);
@@ -530,6 +544,7 @@ int eng_find(uint32_t type);
 /* the parts of the patch's first poly group (1 without one: everything plays the shared keyboard), 0 if none is loaded */
 int eng_parts(void);
 int eng_groups(void);                                                /* the poly groups of the loaded patch */
+uint32_t eng_format(void);                                           /* loaded binary format, 0 without a patch */
 /* a setting of poly group g (0 = the first): ENG_POLY_* (assign 0..3, legato/priority 0..2, unison 0..2, steal 0..1, stack 0..8), -1 if none.
  * eng_poly_set changes all but parts/unison at once (0 = refused); parts/unison need a reload (the binary's group record). */
 enum { ENG_POLY_PARTS, ENG_POLY_ASSIGN, ENG_POLY_LEGATO, ENG_POLY_PRIORITY, ENG_POLY_UNISON, ENG_POLY_STEAL, ENG_POLY_STACK, ENG_NPOLY };
@@ -594,7 +609,7 @@ int eng_tempo_row(uint32_t module, uint32_t param);   /* (module, param) is Main
                                                        * own value stays as it is (proto.c m1_patch_param) */
 uint32_t eng_buttons_get(void);
 /* the patch buttons' LEDs (the FM-1, the EMU view): eng_buttons_get, but ARP as a Toggle of Arpeggiators is lit while
- * they play, not while they are bypassed (D-231; the editor: buttons.ts arpLitInverted) */
+ * they play, not while they are bypassed (D-231; the editor: buttons.ts litWhileEnabled) */
 uint32_t eng_buttons_lit(void);
 /* Steps modules (the SEQ page): how many the patch has and the module of the t-th (patch order); a step as a byte (the
  * step view of its notes, track.ts: bit 0 on, bit 1 accent, bits 2..6 the chance code, bit 7 tie; -1 if no such module /

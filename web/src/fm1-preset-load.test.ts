@@ -15,7 +15,7 @@ import { devicesOf } from './pages';
 import { topOf, type Patch } from './patch';
 import { encodePatch, POLY_ROW, POLY_ROW_PARAMS } from './patchbin';
 import { deviceView } from './poly';
-import { FM1_PRESETS } from './presets';
+import { PRESETS } from './presets';
 import { buildFm1Wasm } from '../scripts/fm1-wasm.mjs';
 
 const ROOT = resolve(__dirname, '../..');
@@ -52,7 +52,7 @@ const values = (p: Patch): Map<string, number> => new Map(p.modules.flatMap((m) 
 const near = (a: number, b: number): boolean => Math.abs(a - b) <= 1.5 / 65536 * Math.max(1, Math.abs(b) / 1024);
 
 describe('a preset loaded on the FM-1 (#464)', () => {
-  for (const [patchName, make] of Object.entries(FM1_PRESETS)) {
+  for (const [patchName, make] of Object.entries(PRESETS)) {
     const probe = make();
     const engines = devicesOf(probe, DEFS).map((d, i) => ({ d, i })).filter(({ d }) => d.asm !== undefined)
       .filter(({ d }) => presetsOf(probe, probe.assemblies!.find((a) => a.id === d.asm)!).some((x) => x.factory));
