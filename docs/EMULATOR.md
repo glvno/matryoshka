@@ -233,8 +233,11 @@ link as `m1emu serve` drives the emulator:
   socket, the rig is registered again (alone; the mark stays). `npm run rig -- check` names the rig among the connected
   FM-1s and says whether the FM-1 at the rig's USB location carries the mark. `tools/fm1_usb.py list` prints each USB
   MIDI device's location.
-- **`cd web && npm run device:scenarios [-- --install RUN [--gate full]] [--only NAME,..] [--headed]`:** the scenarios of
-  `emu-scenarios.mjs` on the rig. The rig's page (`/__rig` on the dev server, `web/dev/rig-client.ts`) finds the FM-1s,
+- **`cd web && npm run device:scenarios [-- --install RUN [--gate full]] [--only NAME,..] [--headed]`:** on the rig, only
+  the scenarios whose result needs the hardware: `RIG_SCENARIOS` in `emu-scenarios.mjs` (`clock`, `drumHold`,
+  `check35mmOut`, `checkOutput`, `checkFlashWrite`, `checkDualCore`, [D-1151](ledger/releases.md#D-1151)). The emulator
+  stands in for every other scenario, so they run in `emu:scenarios` only, and `--only` refuses them on the rig. The rig's
+  page (`/__rig` on the dev server, `web/dev/rig-client.ts`) finds the FM-1s,
   asks each its INFO and the mark (nothing else), and drives only the rig; the editor's page sees only the rig's ports.
   `--install RUN` first installs that firmware CI run on the rig ([D-123](ledger/releases.md#D-123)): after the boot
   check passed on that run's builds (`--gate full`: after `emu:smoke` and `emu:scenarios`), through `tools/fm1_install.py --rig`. That installer sees only the
@@ -291,8 +294,8 @@ link as `m1emu serve` drives the emulator:
 ### The release's device check as scenarios
 
 The owner's device check of release 1.10 had 40 steps. Every step that needs no ears, no hands and no power switch is
-now a scenario in `web/scripts/device-check.mjs`. These scenarios run after the others, in `emu:scenarios` and in
-`device:scenarios`. Their release-candidate qualification follows [D-139](ledger/releases.md#D-139) and [D-141](ledger/releases.md#D-141). The owner's own check is then only what they
+now a scenario in `web/scripts/device-check.mjs`. These scenarios run after the others in `emu:scenarios`. On the rig,
+`device:scenarios` runs only those that need the hardware ([D-1151](ledger/releases.md#D-1151)). Their release-candidate qualification follows [D-139](ledger/releases.md#D-139) and [D-141](ledger/releases.md#D-141). The owner's own check is then only what they
 leave out: the analog output heard in headphones and recorded over a mono cable, each instrument played by hand to judge
 its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)). A check that needs a recording it cannot trust is skipped, not failed ([D-140](ledger/releases.md#D-140)).
 
