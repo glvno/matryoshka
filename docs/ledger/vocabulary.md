@@ -22,6 +22,10 @@ A reusable nested building block of modules whose collapsed card shows only what
 
 A second set of parameter values for the same modules and cables; patch morphing fades between the patch and its B side.
 
+### Band
+
+How close an FM-1 factory instrument can come to full parity: `fit: full`, `reachable`, `tight`, `xl-only` or `unmeasured`. A script works it out from the instrument's full-parity cost and writes it on the instrument's sub-issue of issue #375 ([D-149](releases.md#D-149)).
+
 ### Bank
 
 The FM-1's 64 patch slots, its only patch list; PRESET steps the occupied slots. The editor keeps one bank, its offline copy in the browser (several named banks: issue #220).
@@ -193,6 +197,10 @@ The binary patch format that added the PD Osc, Env 8 and Selector modules, the p
 ### Forwarder
 
 The page at the old GitHub Pages address: it sends visitors to the Cloudflare site and offers to bring their browser data along.
+
+### Full-parity cost
+
+What an FM-1 factory instrument would take of the FM-1 with every open gap closed: its CPU estimate, its modules and its bytes. It is the factory patch or XL measured at the original's voice count, plus each gap that patch lacks, plus the estimated cost of each engine feature the instrument waits for.
 
 ### Global
 

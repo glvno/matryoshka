@@ -34,5 +34,6 @@ Before researching a question about open work, gaps or status, search the issues
 
 A [**living list**](../ledger/vocabulary.md#living-list) is a parent issue with one sub-issue per item ([D-071](../ledger/project.md#D-071)). Read the one sub-issue a question is about, not the whole list.
 
-- Issue #375 indexes the FM-1 factory instruments' parity gaps. Each instrument with open gaps has its own sub-issue (#851 to #866). A pull request that closes or finds a gap ticks or adds its box in that sub-issue.
+- Issue #375 indexes the FM-1 factory instruments' parity gaps. Each instrument has its own sub-issue (#851 to #866 open, #871 to #876 closed at full parity). A pull request that closes or finds a gap ticks or adds its box in that sub-issue, then runs `npm run parity-status -- --apply` from `web/` once merged ([D-149](../ledger/releases.md#D-149)).
+- An instrument's band (`fit: full`, `reachable`, `tight`, `xl-only`, `unmeasured`) is its label and its row in #375's generated table. The script works it out from the sub-issue's boxes, its **Comparand** / **Measure** / **Extra** lines and each engine ticket's **Cost:** line; edit those, never the table.
 - List the sub-issues: `gh api graphql -f query='{repository(owner:"glvno",name:"matryoshka"){issue(number:375){subIssues(first:100){nodes{number state title}}}}}'`.
