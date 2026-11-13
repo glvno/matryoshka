@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.14.0 — 2026-11-13
 
 - **Editable master FX:** ordinary assemblies provide the present stages in Drive → Chorus → Delay → Reverb order, without duplicating effects already exposed by an instrument. One Reverb adds a mono wet return while preserving stereo dry sound.
 - The Effects shelf also offers `master FX` for custom patches, with stereo jack bundles and editable child stages. Unsupported helper-bypass edits retain ordinary module playback instead of being force-enabled by FX recognition.
