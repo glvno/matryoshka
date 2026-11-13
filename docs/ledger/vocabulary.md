@@ -274,6 +274,10 @@ The editor–FM-1 sync. While it is on, the FM-1 plays the editor's patch and ed
 
 Recording while the transport runs: played notes land on the nearest step and overdub the track.
 
+### Living list
+
+An issue kept open to collect many related gaps or checks in one place, such as issue #375, the FM-1 parity gaps. Agents read it before planning instead of auditing again.
+
 ### Macro
 
 A module (format 29) holding one value 0..1 on one output; old knob cables migrate to Macro modules in a "Macros" assembly.

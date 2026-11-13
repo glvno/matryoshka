@@ -158,6 +158,7 @@
     {"name": "Host test ui", "paths": ["tools/ui_preview.sh", "firmware/test/ui_preview.c"], "host": ["ui"], "web": []},
     {"name": "Panel fixtures", "paths": ["firmware/test/*test.h", "firmware/test/midi_redraw_test.c", "firmware/test/lanes_host.h"], "host": ["panel"], "web": []},
     {"name": "Ledger checks handled by the required ledger job", "paths": ["tools/ledger_check*", ".github/workflows/ledger-check.yml"], "host": [], "web": []},
+    {"name": "Issue housekeeping workflow: closes issues on GitHub, touches no build or runtime file", "paths": [".github/workflows/close-linked-issues.yml"], "host": [], "web": []},
     {"name": "USB return, identity and persistent settings", "paths": ["firmware/src/usb_return.h", "firmware/src/usb_poll_clock.h", "firmware/src/device_identity.h", "firmware/src/device_settings.c", "firmware/test/usb_return_test.c", "firmware/test/usb_poll_clock_test.c", "firmware/test/device_identity_test.c", "tools/usb_return_test.sh"], "host": ["usb_return", "usb", "panel"], "web": []},
     {"name": "Flash storage hardware", "paths": ["firmware/hal/fm1_flash.h"], "host": ["preset", "bank"], "web": []},
     {"name": "Editor rendering and FM-1 mirror", "paths": ["web/src/editor.ts", "web/src/fm1-view.ts"], "host": [], "web": ["web/src/panel-align.test.ts", "web/src/factory-reconciled.test.ts", "web/src/emu-keys.test.ts", "web/src/editor-origins.test.ts"]},
