@@ -9,8 +9,10 @@
 //   build/emu/low-delay.m1p, low-delay-pp.m1p     a 290 ms Delay (its line in .lowram's line area), plain and ping-pong
 //                              (#273, #651: the smoke checks every block of each echo against the note's own sound)
 //   build/emu/stereo-sides.m1p   a saw on the left only and a sine an octave up on the right only (STEREO keeps them apart)
-//   build/emu/old-drift-poly.m1p   the newest earlier factory Drift Poly committed in git (an update finds it in the bank:
-//                              the boot rewrites a slot holding it, #441)
+//   build/emu/old-oracle-v.m1p   the newest earlier factory Oracle V committed in git, unlike today's (an update finds it
+//                              in the bank: the boot keeps the slot holding it as it is, D-887)
+//   build/emu/7ph.m1p          the <7PH groove-box example (editor-only since D-890, its bytes kept), encoded as the
+//                              factory patches are, for the piano roll's melodic PATTERN
 // encodePatch(p, true) skips the budget check (these are meant to be too heavy). Run from web/:
 //   npx vite-node scripts/emu-patches.ts   (tools/emu_smoke.sh does this)
 import { execFileSync } from 'node:child_process';
@@ -19,6 +21,7 @@ import { cpuEstimate } from '../src/cpu';
 import { DEFS } from '../src/modules';
 import { addModule, connect, emptyPatch, type Patch } from '../src/patch';
 import { delayBytes, encodePatch, linePlace } from '../src/patchbin';
+import { EXAMPLE_PRESETS } from '../src/presets';
 import { withParts } from '../src/test-poly';
 
 const out = new URL('../../build/emu/', import.meta.url);
@@ -126,12 +129,13 @@ function factoryBytes(src: string): Map<string, number[]> {
   for (const m of src.matchAll(/static const uint8_t (PRESET_\d+)\[\d+\] = \{([^}]*)\}/g)) data.set(m[1], m[2].split(',').map(Number));
   return new Map([...src.matchAll(/\{"([^"]*)", (PRESET_\d+),/g)].map((m) => [m[1], data.get(m[2])!]));
 }
-{ // an earlier factory patch as an update finds it in the bank (#441): the newest committed version unlike today's
+{ // an earlier factory patch as an update finds it in the bank (#441, D-887): the newest committed version unlike today's
   const root = new URL('../../', import.meta.url).pathname;
   const today = factoryBytes(readFileSync(new URL('../../firmware/src/presets.h', import.meta.url), 'utf8'));
   const commits = execFileSync('git', ['log', '--format=%H', '--', 'firmware/src/presets.h'], { cwd: root, encoding: 'utf8' }).split('\n').filter(Boolean);
-  for (const [file, name] of [['old-drift-poly.m1p', 'DRIFT POLY']] as const) {
-    const now = today.get(name)!.join(',');
+  for (const [file, name] of [['old-oracle-v.m1p', 'ORACLE V']] as const) {
+    const now = today.get(name)?.join(',');
+    if (now === undefined) throw new Error(`${name}: not a factory patch in today's presets.h`);
     let hit: number[] | undefined;
     for (const c of commits) {
       const b = factoryBytes(execFileSync('git', ['show', `${c}:firmware/src/presets.h`], { cwd: root, encoding: 'utf8', maxBuffer: 64 << 20 })).get(name);
@@ -145,3 +149,5 @@ function factoryBytes(src: string): Map<string, number[]> {
     console.log(`${file}: ${name} of an earlier presets.h, format ${hit[1]}, ${hit.length} bytes`);
   }
 }
+
+writeFileSync(new URL('7ph.m1p', out), encodePatch(EXAMPLE_PRESETS['<7PH'](), true, false, 1));

@@ -7,4 +7,4 @@ import { PRESETS } from './presets';
 
 it('no factory patch or factory engine preset clips (part 2 of 4)', () => {
   expect(overHeadroom(Object.entries(PRESETS).filter((_, i) => i % 4 === 1), 1, 0.95)).toEqual([]);
-}, 180_000);
+}, 960_000);

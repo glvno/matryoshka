@@ -518,17 +518,16 @@ fn preset_records(f: &[u8]) -> Vec<(u32, String, Vec<i32>)> {
     out
 }
 
-/// After an update that changed a factory patch but not the format (#441): a bank from 1.6.0 (a 12-byte settings record
-/// at today's format, no factory set) with slot 0 an earlier factory Drift Poly (untouched), slot 1 an edited copy of
-/// it and slot 2 today's Init. The boot rewrites slot 0 with today's Drift Poly, leaves slots 1 and 2 alone and stores
-/// the factory set (settings bytes 13..15); the factory patches 1.6.0 did not have (#630: Basic Poly, Mono Lead, Supersaw
-/// Stack, Verona Drum 1; Drift Poly is there by name) go into their own empty slots, and the bar says so (over FACTORY
-/// PATCHES UPDATED); the next boot rewrites and adds nothing. The same boot moves the user presets of earlier engine
-/// structures to today's, with the values the editor gives them (D-865).
+/// After an update that changed the factory set but not the format (#441, D-887): a bank from 1.6.0 (a 12-byte settings
+/// record at today's format, no factory set) with slot 0 an earlier factory Oracle V (untouched), slot 1 an edited copy
+/// of it and slot 2 today's third factory patch. The boot keeps all three as they are, raw factory match or not, and
+/// stores the factory set (settings bytes 13..15); the one factory patch no release before 1.10 had by name (Verona
+/// Drum 1, #630) goes into its own empty slot, and the bar says so; the next boot rewrites and adds nothing. The same boot
+/// moves the user presets of earlier engine structures to today's, with the values the editor gives them (D-865).
 fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
-    let old = std::fs::read("build/emu/old-drift-poly.m1p").map_err(|e| format!("build/emu/old-drift-poly.m1p: {e} (run web/scripts/emu-patches.ts)"))?;
-    let today = |name: &str| presets.iter().find(|p| p.0 == name).map(|p| p.1.clone()).ok_or(format!("no factory {name}"));
-    let (drift, init) = (today("DRIFT POLY")?, today("INIT")?);
+    let old = std::fs::read("build/emu/old-oracle-v.m1p").map_err(|e| format!("build/emu/old-oracle-v.m1p: {e} (run web/scripts/emu-patches.ts)"))?;
+    let (third, kept) = presets.get(2).cloned().ok_or("no third factory patch")?;
+    let v = presets.iter().position(|p| p.0 == "VERONA DRUM 1").ok_or("no factory VERONA DRUM 1")?;
     let version: u8 = include_str!("../../../firmware/src/engine.h").split("#define ENG_PATCH_VERSION ").nth(1).and_then(|s| s.split_whitespace().next()?.parse().ok()).ok_or("ENG_PATCH_VERSION")?;
     let set_id = u32::from_str_radix(PRESETS_H.split("#define FACTORY_SET_ID 0x").nth(1).and_then(|s| s.split('u').next()).ok_or("FACTORY_SET_ID")?, 16).map_err(|e| e.to_string())?;
     let mut edited = old.clone();
@@ -536,9 +535,9 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
     edited[last] ^= 1;
     let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
     let put = |f: &mut Vec<u8>, at: usize, s: Vec<u8>| f[at..at + 0x1000].copy_from_slice(&s);
-    put(&mut flash, 0xA0000, record(0, 1, "DRIFT POLY", &old, false));
-    put(&mut flash, 0xA1000, record(1, 2, "MY DRIFT", &edited, false));
-    put(&mut flash, 0xA2000, record(2, 3, "INIT", &init, false));
+    put(&mut flash, 0xA0000, record(0, 1, "ORACLE V", &old, false));
+    put(&mut flash, 0xA1000, record(1, 2, "MY ORACLE", &edited, false));
+    put(&mut flash, 0xA2000, record(2, 3, &third, &kept, false));
     // 1.6.0's settings record: version 1, slot 2, octave 0, LEDs, accel, CPU bar, clock in, program change, channel,
     // MIDI out, the bank's format (today's), module 0
     put(&mut flash, 0xA3000, record(64, 4, "", &[1, 2, 8, 0, 1, 0, 0, 0, 0, 1, version, 0], false));
@@ -551,25 +550,22 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
     }
     let mut m = Machine::boot(app, Some(&flash));
     quick_start(&mut m, 9000)?;
-    let said = wait_text(&mut m, "4 NEW PATCHES ADDED", 1000)?;
-    t.check("upgrade: the patches new since 1.6.0 are added, said once (#630)", said, String::new());
+    let bar = format!("NEW: {}. VERONA DRUM 1", v + 1);
+    let said = wait_text(&mut m, &bar, 1000)?;
+    t.check(&format!("upgrade: the patch new since 1.6.0 is added, said once ({bar}, #630)"), said, String::new());
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
-    t.screen(&m, "upgrade: boot opens the settings record's slot", "INIT");
+    t.screen(&m, "upgrade: boot opens the settings record's slot", &third);
     let f = m.flash();
     *emulated += m.ms();
     let s0 = bank_record(&f, 0).ok_or("slot 0 gone")?;
-    t.check("upgrade: the untouched earlier Drift Poly holds today's", s0.1 == drift, format!("{} bytes, format {} (today's: {} bytes)", s0.1.len(), s0.1[1], drift.len()));
+    t.check("upgrade: the untouched earlier Oracle V stays as it is (D-887)", s0 == (1, old.clone()), format!("sequence {}, {} bytes, format {}", s0.0, s0.1.len(), s0.1[1]));
     let s1 = bank_record(&f, 1).ok_or("slot 1 gone")?;
     t.check("upgrade: the edited copy stays as it is", s1 == (2, edited.clone()), format!("sequence {}", s1.0));
     let s2 = bank_record(&f, 2).ok_or("slot 2 gone")?;
-    t.check("upgrade: a slot holding today's patch is not rewritten", s2 == (3, init.clone()), format!("sequence {}", s2.0));
-    let added = ["BASIC POLY", "MONO LEAD", "SUPERSAW STACK", "VERONA DRUM 1"].iter().all(|n| {
-        let i = presets.iter().position(|p| p.0 == *n);
-        i.is_some_and(|i| bank_record(&f, i as u32).is_some_and(|r| r.1 == presets[i].1))
-    });
-    t.check("upgrade: Basic Poly, Mono Lead, Supersaw Stack, Verona Drum 1 in their own slots", added, String::new());
-    t.check("upgrade: Drift Poly (there by name) is not added again", bank_record(&f, 26).is_none(), String::new());
+    t.check("upgrade: a slot holding today's patch is not rewritten", s2 == (3, kept.clone()), format!("sequence {}", s2.0));
+    t.check(&format!("upgrade: Verona Drum 1 in its own slot ({v}, the FM-1's {}), today's bytes", v + 1), bank_record(&f, v as u32).is_some_and(|r| r.1 == presets[v].1), String::new());
+    t.check("upgrade: nothing else is added", (3..64u32).filter(|&i| i != v as u32).all(|i| bank_record(&f, i).is_none()), String::new());
     let set = bank_record(&f, 64).ok_or("settings gone")?.1;
     let got = if set.len() >= 16 { set[13] as u32 | (set[14] as u32) << 8 | (set[15] as u32) << 16 } else { 0 };
     let store = preset_records(&f);
@@ -585,7 +581,7 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
     t.check("upgrade: the settings record keeps the factory set (16 bytes, 13..15)", set.len() == 16 && got == set_id && set[1] == 2, format!("{} bytes, set {got:06x}, FACTORY_SET_ID {set_id:06x}", set.len()));
     let mut m = Machine::boot(app, Some(&f));
     quick_start(&mut m, 9000)?;
-    let again = wait_text(&mut m, "NEW PATCHES ADDED", 2500)? || wait_text(&mut m, "FACTORY PATCHES UPDATED", 10)?;
+    let again = wait_text(&mut m, &bar, 2500)? || wait_text(&mut m, "PRESETS UPDATED", 10)?;
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     t.check("upgrade: the next boot rewrites nothing", !again && m.flash() == f, String::new());
     *emulated += m.ms();
@@ -593,9 +589,9 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
 }
 
 /// A factory patch new in this firmware (#630): a bank from 1.9.1 (its factory set in the settings record) with slots 0..2
-/// holds the first three factory patches. The boot puts Verona Drum 1 (factory index 29) into its own slot, the FM-1's 30,
-/// says NEW: 30. VERONA DRUM 1 once, and the slot loads it; the next boot adds nothing. With a patch of the owner's in
-/// slot 29, it goes into the first empty slot (the FM-1's 4) and slot 29 stays as it is.
+/// holds the first three factory patches. The boot puts Verona Drum 1 (factory index 21) into its own slot, the FM-1's 22,
+/// says NEW: 22. VERONA DRUM 1 once, and the slot loads it; the next boot adds nothing. With a patch of the owner's in
+/// slot 21, it goes into the first empty slot (the FM-1's 4) and slot 21 stays as it is.
 fn new_patch(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
     let version: u8 = include_str!("../../../firmware/src/engine.h").split("#define ENG_PATCH_VERSION ").nth(1).and_then(|s| s.split_whitespace().next()?.parse().ok()).ok_or("ENG_PATCH_VERSION")?;
     let v = presets.iter().position(|p| p.0 == "VERONA DRUM 1").ok_or("no factory VERONA DRUM 1")?;
@@ -614,16 +610,17 @@ fn new_patch(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Ve
     };
     let mut m = Machine::boot(app, Some(&bank(false)));
     quick_start(&mut m, 9000)?;
-    let said = wait_text(&mut m, "NEW: 30. VERONA DRUM 1", 1000)?;
-    t.check("new patch: a bank from 1.9.1 gets Verona Drum 1, said once (NEW: 30. VERONA DRUM 1)", said, String::new());
+    let bar = format!("NEW: {}. VERONA DRUM 1", v + 1);
+    let said = wait_text(&mut m, &bar, 1000)?;
+    t.check(&format!("new patch: a bank from 1.9.1 gets Verona Drum 1, said once ({bar})"), said, String::new());
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     let f = m.flash();
     let s = bank_record(&f, v as u32);
-    t.check("new patch: in its own slot (29, the FM-1's 30), today's bytes", s.as_ref().is_some_and(|r| r.1 == presets[v].1), String::new());
+    t.check(&format!("new patch: in its own slot ({v}, the FM-1's {}), today's bytes", v + 1), s.as_ref().is_some_and(|r| r.1 == presets[v].1), String::new());
     t.check("new patch: slots 0..2 untouched, none other added", (0..3u32).all(|i| bank_record(&f, i).is_some_and(|r| r.0 == 1 + i)) && (3..64u32).filter(|&i| i != v as u32).all(|i| bank_record(&f, i).is_none()), String::new());
     m.midi(&[0xC0, v as u8], 500)?;
-    t.screen(&m, "new patch: slot 30 loads Verona Drum 1", "VERONA DRUM 1");
+    t.screen(&m, &format!("new patch: slot {} loads Verona Drum 1", v + 1), "VERONA DRUM 1");
     *emulated += m.ms();
     let mut m = Machine::boot(app, Some(&f));
     quick_start(&mut m, 9000)?;
@@ -638,7 +635,7 @@ fn new_patch(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Ve
     t.check("new patch: its own slot taken: the first empty one, said (NEW: 4. VERONA DRUM 1)", said, String::new());
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     let f = m.flash();
-    t.check("new patch: the owner's slot 29 stays as it is", bank_record(&f, v as u32).is_some_and(|r| r.0 == 4 && r.1 == presets[1].1), String::new());
+    t.check(&format!("new patch: the owner's slot {v} stays as it is"), bank_record(&f, v as u32).is_some_and(|r| r.0 == 4 && r.1 == presets[1].1), String::new());
     t.check("new patch: Verona Drum 1 in slot 3", bank_record(&f, 3).is_some_and(|r| r.1 == presets[v].1), String::new());
     *emulated += m.ms();
     Ok(())
@@ -819,53 +816,67 @@ fn verona_hats(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, 
     Ok(())
 }
 
-/// The same piano-roll assertions used by full smoke and the focused normal-firmware probe.
-fn piano_roll(m: &mut Machine, presets: &[(String, Vec<u8>)], t: &mut Run) -> Result<(), String> {
-    if let Some(gb) = presets.iter().position(|(n, _)| n == "<7PH") {
-        // D-823: all piano keys play outside step record; only REC changes entry mode.
-        m.midi(&[0xC0, gb as u8], 500)?;
-        t.screen(m, "roll: <7PH loads", "<7PH");
-        m.tap(SEQ, 120, 400)?;
-        m.turn(ALGO, 1, 600)?;               // DRUMS, then PATTERN
-        t.screen(m, "roll: PATTERN's piano roll", "KEYS play  SELECT view  OCT octave  SEL song");
-        t.screen(m, "roll: its pitch rows (A#3 the median)", "A#3");
-        t.screen(m, "roll: the bar names the fixed page of the median (G#3-D#4, D-809)", "PATTERN ARM G#3-D#4");
-        // Compare the whole stopped grid, including selected row, notes and off-window markers.
-        // Audio must sound and release as well: an inert key must not pass the no-edit assertion.
-        let grid = m.lcd()[44 * 240..196 * 240].to_vec();
-        for (key, label) in [(1, "black key 1 (F#3)"), (8, "black key 4 (C#4)"), (4, "white key (A3)")] {
-            let peak = note_peak(m, 14 + key, 300)?;
-            t.check(&format!("roll: {label} plays"), peak > LOUD, format!("peak {peak}"));
-            let quiet = settles(m, 3000)?;
-            t.check(&format!("roll: {label} releases"), quiet, String::new());
-            t.check(&format!("roll: {label} leaves notes and selected row unchanged"),
-                m.lcd()[44 * 240..196 * 240] == grid, String::new());
-            t.screen(m, &format!("roll: {label} keeps PATTERN and its view"), "PATTERN ARM G#3-D#4 P");
-        }
-        let below = m.lcd()[192 * 240 + 57]; // step 1's marker under the bottom row: A#2 is below the window
-        let above = m.lcd()[42 * 240 + 57]; // (nothing above it on step 1)
-        t.check("roll: a marker under a step with a note below the window", below == 0x9cf2 && above != 0x9cf2,
-            format!("{below:#06x} / {above:#06x}"));
-        t.snap(m, "roll-keys-no-edit");
-        t.screen(m, "roll: ALGO arms the track it shows (#395)", "PATTERN ARM");
-        m.turn(SELECT, 1, 600)?;             // SELECT: the view a page of 8 pitches down (D-809)
-        t.screen(m, "roll: SELECT pages the view 8 pitches down (C3-G3)", "PATTERN ARM C3-G3");
-        m.turn(SELECT, -1, 600)?;
-        t.screen(m, "roll: SELECT back (G#3-D#4)", "PATTERN ARM G#3-D#4");
-        m.tap(REC, 120, 600)?;               // stopped: step record (D-804)
-        t.screen(m, "roll: REC, stopped: step record", "STEP 1/16  PATTERN ARM");
-        t.screen(m, "roll: step record's hint: REC ends it", "REC done");
-        m.tap(14 + 4, 120, 400)?;
-        t.screen(m, "roll: a released note advances step record", "STEP 2/16  PATTERN ARM");
-        m.tap(PLAY, 120, 1300)?;             // PLAY in step record: the transport starts, PATTERN (armed by the page) records
-        t.screen(m, "roll: PLAY in step record: a live take of the melodic track armed", "PATTERN REC");
-        t.screen(m, "roll: while recording the keys are its keyboard", "KEYS record  SELECT view  OCT octave");
-        m.tap(REC, 120, 300)?;
-        m.tap(PLAY, 120, 300)?;
-        m.tap(SEQ, 120, 400)?;
-    } else {
-        t.check("roll: the factory <7PH is there", false, String::new());
+/// <7PH (editor-only since D-890, its bytes kept; web/scripts/emu-patches.ts) in the slot after the factory patches of a
+/// bank the first boot wrote: the flash to boot from, and that slot
+fn bank_with_7ph(app: &[u8], presets: &[(String, Vec<u8>)]) -> Result<(Vec<u8>, u8), String> {
+    let gb = std::fs::read("build/emu/7ph.m1p").map_err(|e| format!("build/emu/7ph.m1p: {e} (run web/scripts/emu-patches.ts)"))?;
+    let mut m = Machine::boot(app, None);
+    quick_start(&mut m, 9000)?;
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    m.run_for(2500)?;
+    let mut f = m.flash();
+    const AT: usize = 0xDF000; // the store's last sector (firmware/src/slotstore.c), free after the factory bank
+    if f[AT..AT + 0x1000].iter().any(|&b| b != 0xff) {
+        return Err("the store's last sector is not free after the first boot".into());
     }
+    let slot = presets.len() as u32;
+    f[AT..AT + 0x1000].copy_from_slice(&record(slot, 1, "<7PH", &gb, false));
+    Ok((f, slot as u8))
+}
+
+/// The same piano-roll assertions used by full smoke and the focused normal-firmware probe, on <7PH in slot `gb`.
+fn piano_roll(m: &mut Machine, gb: u8, t: &mut Run) -> Result<(), String> {
+    // D-823: all piano keys play outside step record; only REC changes entry mode.
+    m.midi(&[0xC0, gb], 500)?;
+    t.screen(m, "roll: <7PH loads", "<7PH");
+    m.tap(SEQ, 120, 400)?;
+    m.turn(ALGO, 1, 600)?;               // DRUMS, then PATTERN
+    t.screen(m, "roll: PATTERN's piano roll", "KEYS play  SELECT view  OCT octave  SEL song");
+    t.screen(m, "roll: its pitch rows (A#3 the median)", "A#3");
+    t.screen(m, "roll: the bar names the fixed page of the median (G#3-D#4, D-809)", "PATTERN ARM G#3-D#4");
+    // Compare the whole stopped grid, including selected row, notes and off-window markers.
+    // Audio must sound and release as well: an inert key must not pass the no-edit assertion.
+    let grid = m.lcd()[44 * 240..196 * 240].to_vec();
+    for (key, label) in [(1, "black key 1 (F#3)"), (8, "black key 4 (C#4)"), (4, "white key (A3)")] {
+        let peak = note_peak(m, 14 + key, 300)?;
+        t.check(&format!("roll: {label} plays"), peak > LOUD, format!("peak {peak}"));
+        let quiet = settles(m, 3000)?;
+        t.check(&format!("roll: {label} releases"), quiet, String::new());
+        t.check(&format!("roll: {label} leaves notes and selected row unchanged"),
+            m.lcd()[44 * 240..196 * 240] == grid, String::new());
+        t.screen(m, &format!("roll: {label} keeps PATTERN and its view"), "PATTERN ARM G#3-D#4 P");
+    }
+    let below = m.lcd()[192 * 240 + 57]; // step 1's marker under the bottom row: A#2 is below the window
+    let above = m.lcd()[42 * 240 + 57]; // (nothing above it on step 1)
+    t.check("roll: a marker under a step with a note below the window", below == 0x9cf2 && above != 0x9cf2,
+        format!("{below:#06x} / {above:#06x}"));
+    t.snap(m, "roll-keys-no-edit");
+    t.screen(m, "roll: ALGO arms the track it shows (#395)", "PATTERN ARM");
+    m.turn(SELECT, 1, 600)?;             // SELECT: the view a page of 8 pitches down (D-809)
+    t.screen(m, "roll: SELECT pages the view 8 pitches down (C3-G3)", "PATTERN ARM C3-G3");
+    m.turn(SELECT, -1, 600)?;
+    t.screen(m, "roll: SELECT back (G#3-D#4)", "PATTERN ARM G#3-D#4");
+    m.tap(REC, 120, 600)?;               // stopped: step record (D-804)
+    t.screen(m, "roll: REC, stopped: step record", "STEP 1/16  PATTERN ARM");
+    t.screen(m, "roll: step record's hint: REC ends it", "REC done");
+    m.tap(14 + 4, 120, 400)?;
+    t.screen(m, "roll: a released note advances step record", "STEP 2/16  PATTERN ARM");
+    m.tap(PLAY, 120, 1300)?;             // PLAY in step record: the transport starts, PATTERN (armed by the page) records
+    t.screen(m, "roll: PLAY in step record: a live take of the melodic track armed", "PATTERN REC");
+    t.screen(m, "roll: while recording the keys are its keyboard", "KEYS record  SELECT view  OCT octave");
+    m.tap(REC, 120, 300)?;
+    m.tap(PLAY, 120, 300)?;
+    m.tap(SEQ, 120, 400)?;
     Ok(())
 }
 
@@ -877,14 +888,21 @@ pub fn roll_probe(app: &[u8], out: &str) -> ExitCode {
     }
     let mut t = Run { out: out.to_string(), fails: Vec::new(), warns: Vec::new(), checks: 0, shot: 0 };
     let presets = factory();
-    let mut m = Machine::boot(app, None);
+    let (flash, gb) = match bank_with_7ph(app, &presets) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("roll probe: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut m = Machine::boot(app, Some(&flash));
     let result = (|| {
         m.run_to(1500)?;
         let quick = quick_start(&mut m, 8000)?;
         t.check("roll probe: quick start closes", quick, String::new());
         let ready = wait_text(&mut m, &presets[0].0, 4000)?;
         t.check("roll probe: factory patch loaded", ready, String::new());
-        piano_roll(&mut m, &presets, &mut t)
+        piano_roll(&mut m, gb, &mut t)
     })();
     if let Err(e) = result {
         t.check("roll probe: firmware keeps running", false, e);
@@ -911,7 +929,8 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
         t.check("seq: the factory 808 Kit is there", false, String::new());
         return Ok(());
     };
-    let mut m = Machine::boot(app, None);
+    let (flash, gb) = bank_with_7ph(app, presets)?;
+    let mut m = Machine::boot(app, Some(&flash));
     quick_start(&mut m, 9000)?;
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
@@ -1025,7 +1044,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.run_for(1500)?;
     t.screen(&m, "clear: the page stays after it", "ALGO track");
     m.tap(SEQ, 120, 400)?;
-    piano_roll(&mut m, &presets, t)?;
+    piano_roll(&mut m, gb, t)?;
     if let Some(sb) = presets.iter().position(|(n, _)| n == "SILVER BOX") {
         // patterns and songs (#375): PRESET on the SEQ page picks the pattern (stopped: at once; the bar shows it), SEL
         // tapped opens the SONG page, K4 right plays song 1 (Silver Box's demo), PLAY sounds it, K4 left the pattern again
