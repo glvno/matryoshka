@@ -40,9 +40,9 @@ named-scenario command below. Host and web CI use the changed-domain plan in `to
 ([D-102](ledger/releases.md#D-102)). Explicit RC dispatches require the exact frozen commit. Required build checks
 remain separate ([D-100](ledger/releases.md#D-100), [D-116](ledger/releases.md#D-116)).
 
-An unmapped change fails planning. Native recorder changes need a concrete manual test/review plan in
-`tools/ci_test_plan.json`, tied to the changed file's hash. CI reports it as review input, never an automated pass.
-A missing or stale plan fails the required `build` check. Main pushes still run targeted checks because CI has no
+A changed path that no rule names runs more checks, never a planning failure: the full host suite for a firmware path,
+the companion test for a web path. Rules marked manual (the native recorder, the exact-engine harnesses, emulator
+fixtures) print a review note in the plan; CI reports it as review input, never an automated pass. Main pushes still run targeted checks because CI has no
 reliable record for reusing a previous pull request's results. Coverage display records follow
 [D-147](ledger/releases.md#D-147); deployment does not run tests.
 
