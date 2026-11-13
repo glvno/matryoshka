@@ -1,5 +1,7 @@
 # Changelog
 
+## Unreleased
+
 ## 1.14.0 — 2026-11-13
 
 - **Editable master FX:** ordinary assemblies provide the present stages in Drive → Chorus → Delay → Reverb order, without duplicating effects already exposed by an instrument. One Reverb adds a mono wet return while preserving stereo dry sound.

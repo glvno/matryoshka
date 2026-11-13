@@ -5,9 +5,9 @@
   "measuredCommit": "6367e5af8b504a01618caa63e76edff1a3b34aaa",
   "sourceFingerprint": "52d691bb27a369846635f8f787d0d0fd6fc07e26e2b3d8e2ae3714f4f36a0c8a",
   "sourceUrl": "https://github.com/glvno/matryoshka/actions/runs/43519344939",
-  "measurementLabel": "v1.14.0",
+  "measurementLabel": "candidate 6367e5af",
   "targetRelease": "v1.14.0",
-  "display": "current",
+  "display": "historical",
   "qualification": "display-only",
   "instrumentation": "All web tests except levels-1..4; those four pass separately without coverage."
 }

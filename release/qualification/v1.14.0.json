@@ -4,10 +4,13 @@
   "firmware_product": "FM-1_7011400",
   "source_commit": "6367e5af8b504a01618caa63e76edff1a3b34aaa",
   "source_tree": "c2059d9ec7f768d9e43fececf0ac7f45afa503b6",
-  "status": "automated qualification passed; owner checks and publication approval outstanding",
+  "status": "approved for publication; automated qualification passed and owner device checks unverified",
   "release_approval": {
-    "status": "not requested",
-    "scope": "Publication needs a separate owner checkpoint (D-1150)."
+    "status": "approved",
+    "by": "repository owner",
+    "date": "2026-11-13",
+    "instruction": "ship it",
+    "scope": "Publication of v1.14.0 from tag commit 76dfc277bf19a7ab1c5c590cf4f4f0780998f221 (firmware/ and tools/ equal to the qualified source) with the owner's device checks left unverified. This is release approval, not evidence that those checks were performed."
   },
   "build_manifest_sha256": "e928cad46ed09a8394ccdf73d60c4c0852a734b98489c5abc05544d952cfd1b2",
   "artifacts": {
@@ -182,10 +185,10 @@
   "rig_install": {
     "run": 43519341023,
     "gate": "boot (emu:boot, D-123)",
-    "result": "the FM-1 at USB location 0x01140000 runs FM-1_7011400, firmware 1.14.0; EDITOR IGNORE confirmed by INFO"
+    "result": "the registered test rig runs FM-1_7011400, firmware 1.14.0; EDITOR IGNORE confirmed by INFO"
   },
   "hardware": {
-    "scope": "D-1151: only the scenarios whose result needs the hardware, on the registered rig (USB location 0x01140000) running the release bytes.",
+    "scope": "D-1151: only the scenarios whose result needs the hardware, on the registered test rig running the release bytes.",
     "rig_scenarios": {
       "first_run": {
         "log": "build/release-1.14-preparation/final/device-scenarios-rig.log",
@@ -231,7 +234,7 @@
     "rig_state_after": "transport stopped, all notes off, program 0, EDITOR IGNORE confirmed by INFO; MASTER at half (owner)"
   },
   "owner_checks": {
-    "status": "not yet requested",
+    "status": "unverified; not performed before publication",
     "steps": "D-139: the analog output in headphones, instruments played by hand, a power cycle. D-137 waives them only for bytes that differ from bytes the owner already checked in version and identity alone; whether the owner checked candidate 11's bytes is not recorded here."
   }
 }
