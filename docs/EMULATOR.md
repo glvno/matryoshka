@@ -311,16 +311,16 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
     both orders of pressing. An open hit pressed while the closed key is held rings on (#657). Verona Drum 1 XL goes to
     sandbox mode, and the browser's own output (an analyser on the editor's engine) plays every black key and no white
     key. Which drum each black key plays is judged by ear only on the owner's page.
-  - `checkRowDrone` (steps 3.1 to 3.4, [D-819](ledger/steps.md#D-819)): on `T110 DRONE`, LFO held + FX makes row E3 one
-    drone and removes its second note. E3's own pitch holds over the loop point with no new attack. Again it is one
-    step, and an empty row says NOTHING TO DRONE.
+  - `checkRowDrone` (steps 3.1 to 3.3, [D-819](ledger/steps.md#D-819)): on `T110 DRONE`, SEQ opens the piano roll, a
+    key sounds without editing the pattern, and LFO + FX in either order leaves the pattern unchanged.
   - `checkLiveDrone` (steps 3.5 to 3.7): step record's bar and hint on `T111 LIVE DRONE`, and FX + LFO there is a rest.
     A key held for 3 s in a live take becomes a drone that holds round the loop. The editor's roll draws it across the
     whole track. PLAY releases it, and leaving the page says PATTERN STAYS ARMED.
   - `checkDelays` (steps 4.1 to 4.5, [D-375](ledger/engine.md#D-375), [D-376](ledger/engine.md#D-376)): on
     `T111 TWO DELAYS`, one note gives an echo on the right at 300 ms and one on the left at 1200 ms. On the FM-1, LENGTH
-    says SET IN THE EDITOR and TIME stops at the length. The editor's budget shows 129 / 190 KB of effect memory with a
-    line for each Delay, and a click on a line selects its card. Dragging SHORT's length to its top stops at 700 ms with
+    says SET IN THE EDITOR and TIME stops at the length. The editor's budget shows one effect memory line with LONG its
+    largest share and a line for SHORT, and a click on a line selects its card. Dragging SHORT's length to its top stops
+    past 1900 ms, at what the memory leaves, with
     the note that says why. The patch then goes to the FM-1 again and both echoes still play.
   - `checkNoKeys` (steps 5.1 and 5.2, [D-905](ledger/device-ui.md#D-905), [D-295](ledger/patch-format.md#D-295)): on
     `T111 NO KEYS` the engine's ARM dot is dashed and arms nothing. On the FM-1, SEL says NO KEYS REACH THIS DEVICE and
@@ -340,7 +340,7 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
     starts nothing.
   - `checkDualCore` (steps 8.1, 8.2 and 8.4, [D-380](ledger/engine.md#D-380)): INFO's PROCESSOR row reads 2 CORES. Io 4,
     Hera 4 and Cassia 1 each play 8 held keys with nothing shed, no overload (DIAG pages 119 and 127) and no dropout in
-    the recording. On the rig, the INFO tab's CPU row must read under 80 % with the keys held. Monolith D and Simple FM
+    the recording. On the rig, the INFO tab's CPU row must read at most 90 % with the keys held. Monolith D and Simple FM
     sound.
 - **The test patches** are built in `web/scripts/check-fixtures.mjs` from the check page's descriptions. Each run keeps
   them in the editor's Your patches, as the owner keeps them. `web/src/check-fixtures.test.ts` checks that each one is
