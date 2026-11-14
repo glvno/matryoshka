@@ -101,8 +101,11 @@ HOT int32_t block_mean(int64_t sum, uint32_t n)
 #define ENG_CTL_LOG2 4u
 #endif
 #define ENG_CTL (1u << ENG_CTL_LOG2)
+/* the helpers below are out of line: one call a stretch, and the loops that call them stay as small as before (the
+ * FM-1's code runs through a cache) */
+#define CTL_FN static __attribute__((noinline))
 /* 1 - (1 - k)^ENG_CTL for a rate k (Q30): ENG_CTL steps of v += k (t - v) as one */
-static int32_t ctl_rate(int32_t k)
+CTL_FN int32_t ctl_rate(int32_t k)
 {
     int32_t p = (1 << 30) - k;
     uint32_t j;
@@ -110,8 +113,17 @@ static int32_t ctl_rate(int32_t k)
         p = mulq(p, p, 30);
     return (1 << 30) - p;
 }
+/* whether gate[1 .. ENG_CTL - 1] all stay on the side g of the gate threshold (no edge inside the stretch) */
+CTL_FN int ctl_keeps(const esig_t *gate, uint32_t g)
+{
+    uint32_t j;
+    for (j = 1; j < ENG_CTL; j++)
+        if ((uint32_t)(gate[j] > 32768) != g)
+            return 0;
+    return 1;
+}
 /* out[0 .. ENG_CTL - 1]: a Q30 level from v to v1 in even steps, >> 14 (the envelopes' output), the last exactly v1 */
-HOT void ctl_ramp30(esig_t *out, int32_t v, int32_t v1)
+CTL_FN void ctl_ramp30(esig_t *out, int32_t v, int32_t v1)
 {
     int32_t st = (v1 - v) >> ENG_CTL_LOG2;
     uint32_t m;
@@ -123,7 +135,7 @@ HOT void ctl_ramp30(esig_t *out, int32_t v, int32_t v1)
 }
 /* out[0 .. j - 1]: from w0 (the last stretch's value) to w1 on the line, rounded (a pitch hears a step's bias), the last
  * exactly w1 (Q16; j <= ENG_CTL) */
-HOT void ctl_ramp16(esig_t *out, int32_t w0, int32_t w1, uint32_t j)
+CTL_FN void ctl_ramp16(esig_t *out, int32_t w0, int32_t w1, uint32_t j)
 {
     const int32_t d = w1 - w0;
     uint32_t m;
@@ -6695,10 +6707,7 @@ static void m_adsr(const node_t *nd, inst_t *it, uint32_t n)
                 int32_t d;
                 if (!(i & (ENG_CTL - 1u)) && i + ENG_CTL <= n) {   /* #806: a stretch at once, when no edge comes inside
                                                                      * it and the decay goes on past its end */
-                    uint32_t j = 1;
-                    while (j < ENG_CTL && ADSR_KEEP(i + j))
-                        j++;
-                    if (j == ENG_CTL) {
+                    if (ctl_keeps(gate + i, g) && (g || ctl_keeps(hold + i, 1u))) {
                         int32_t v1;
                         if (adk < 0)
                             adk = ctl_rate(ad);
@@ -6739,10 +6748,7 @@ static void m_adsr(const node_t *nd, inst_t *it, uint32_t n)
             for (;;) {
                 int32_t dv;
                 if (!(i & (ENG_CTL - 1u)) && i + ENG_CTL <= n) {   /* #806: as the decay; and at least a step a sample */
-                    uint32_t j = 1;
-                    while (j < ENG_CTL && (gate[i + j] > 32768) == g)
-                        j++;
-                    if (j == ENG_CTL) {
+                    if (ctl_keeps(gate + i, g)) {
                         if (ark < 0)
                             ark = ctl_rate(ar);
                         dv = mulq(v, ark, 30);
@@ -8568,10 +8574,7 @@ static void m_env(const node_t *nd, inst_t *it, uint32_t n)
             else
                 while (tt + 1u < ln) {
                     if (!(i & (ENG_CTL - 1u)) && i + ENG_CTL <= n && tt + ENG_CTL < ln) {
-                        uint32_t j = 1;           /* #806: a falling stretch at once, no edge inside it, the segment on past it */
-                        while (j < ENG_CTL && (gate[i + j] > 32768) == g)
-                            j++;
-                        if (j == ENG_CTL) {
+                        if (ctl_keeps(gate + i, g)) {   /* #806: a falling stretch at once, no edge inside it, the segment on past it */
                             int32_t v1;
                             if (kq < 0)
                                 kq = ctl_rate(kk);
@@ -8711,10 +8714,7 @@ static void m_env8(const node_t *nd, inst_t *it, uint32_t n)
             else
                 while (tt + 1u < len) {
                     if (!(i & (ENG_CTL - 1u)) && i + ENG_CTL <= n && tt + ENG_CTL < len) {
-                        uint32_t j = 1;           /* #806: as m_env */
-                        while (j < ENG_CTL && (gate[i + j] > 32768) == g)
-                            j++;
-                        if (j == ENG_CTL) {
+                        if (ctl_keeps(gate + i, g)) {   /* #806: as m_env */
                             int32_t v1;
                             if (kq < 0)
                                 kq = ctl_rate(k);
