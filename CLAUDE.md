@@ -41,6 +41,7 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 - A user-visible change adds a line under `## Unreleased` in CHANGELOG.md; a decision becomes a row in `docs/ledger/`.
 - **Answer from the tracker first** ([D-070](docs/ledger/project.md#D-070)): before researching a question about open work, gaps or status, or sending a subagent to, search the issues and read the one that answers it. Name that issue in the subagent's brief, and write what the research finds back to it. Keep the issue's board Status current.
 - Issue #375 indexes every FM-1 factory instrument's parity gaps; each instrument has its own sub-issue, closed at full parity ([D-071](docs/ledger/project.md#D-071)). Read that sub-issue before planning scope instead of re-auditing; a pull request that closes or finds a gap ticks or adds its box there, and after merge reruns `npm run parity-status -- --apply`, which writes each instrument's band ([D-149](docs/ledger/releases.md#D-149)).
+- Issue #868 holds the CPU headroom plan and what has been measured or tried. Read its "The plan" section before any headroom work. A pull request that finishes or changes a step ticks its box there, names itself and moves "Next" in the same change.
 
 ## Gotchas and lessons
 
