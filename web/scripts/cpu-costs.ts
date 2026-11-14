@@ -43,30 +43,31 @@ const SURVEY = {
  * patches that do not split, of the steady 8-key time on the dual-core build minus on that one (24 us; from -31 to +80).
  * Its saving (#802) is fitted to the two-core schedule's firmware with the second core's work refused (tools/m1_link.py
  * cores split off) against the same firmware with it: 0.75 x the modelled saving (schedule.ts scheduleTime) stays under
- * every patch's measured saving (at most 0.80, Verona Drum 1; the patches that shed voices on one core left out), so the
- * estimate never promises more room than the FM-1 has. */
+ * every patch's measured saving (the patches that shed voices on one core left out), so the estimate never promises more
+ * room than the FM-1 has. */
 const CORES = {
   idleUs: 29,   // (24 us at the scale before, cpu-rig-fit.ts)
   splitEff: 0.75,
-  survey: 'docs/measurements/cpu-survey-2026-11-14-rig-two-core-split-off.json against -two-core.json (CI run 43551744806); the idle cost: -2026-11-05-rig-release-1.10-head.json against -rig-merged-split.json',
+  survey: 'docs/measurements/cpu-survey-2026-11-14-rig-steps-split-off.json against -steps.json (CI run 43571432090); the idle cost: -2026-11-05-rig-release-1.10-head.json against -rig-merged-split.json',
 };
 /** Each factory engine's factor on its modules' cycles (src/cpu.ts CpuTable.rig), fitted by scripts/cpu-rig-fit.ts to the
- * test rig's survey of the 1.14 bank on the two-core schedule's firmware (#802, at SURVEY's scale): the smallest that makes
- * the estimate read at least the rig's steady peak for every voice count its factory patch played on the rig. The counted
- * engine misses what the FM-1 spends beyond its instructions (its caches and memory, the hardware's own timing, how the
- * two cores share the block), and that differs from engine to engine: the factors run from 0.62 to 1.28. The patches
- * outside the 1.14 bank (basic poly, drift poly, mono lead, supersaw stack) keep the factors of the 2026-11-09 survey. */
+ * test rig's survey of the 1.14 bank on the firmware with Steps' quiet samples in one pass (#802, at SURVEY's scale): the
+ * smallest that makes the estimate read at least the rig's steady peak for every voice count its factory patch played on
+ * the rig, transport stopped and running. The counted engine misses what the FM-1 spends beyond its instructions (its
+ * caches and memory, the hardware's own timing, how the two cores share the block), and that differs from engine to
+ * engine: the factors run from 0.61 to 1.06. The patches outside the 1.14 bank (basic poly, drift poly, mono lead,
+ * supersaw stack) keep the factors of the 2026-11-09 survey. */
 const RIG = {
   engines: {
-    '8 Lire': 0.66, '808 kit': 0.92, '909 kit': 0.86, 'Algo Four': 0.68, 'Briefcase 3': 0.84,
-    'Canvas': 0.83, 'Cassia 1': 0.67, 'Elvira 2': 0.98, 'Expander S': 0.79,
-    'Hera 4': 0.67, 'Io 4': 0.72, 'Meridian 8': 0.78, 'Monolith D': 0.79,
-    'Oracle V': 0.73, 'Perun 4': 0.92, 'Sallen 20': 0.87, 'Scrounge': 0.92,
-    'Silver Box': 1.07, 'Spokes 6': 0.95, 'Vernon 100': 0.62, 'Verona Drum 1': 0.98,
-    'Wanderer': 1.11, 'basic poly': 0.92, 'drift poly': 0.92, 'mono lead': 1.28,
+    '8 Lire': 0.65, '808 kit': 0.85, '909 kit': 0.74, 'Algo Four': 0.65, 'Briefcase 3': 0.82,
+    'Canvas': 0.79, 'Cassia 1': 0.67, 'Elvira 2': 0.94, 'Expander S': 0.77,
+    'Hera 4': 0.65, 'Io 4': 0.71, 'Meridian 8': 0.72, 'Monolith D': 0.76,
+    'Oracle V': 0.72, 'Perun 4': 0.77, 'Sallen 20': 0.88, 'Scrounge': 0.8,
+    'Silver Box': 1, 'Spokes 6': 0.81, 'Vernon 100': 0.61, 'Verona Drum 1': 0.89,
+    'Wanderer': 1.06, 'basic poly': 0.92, 'drift poly': 0.92, 'mono lead': 1.28,
     'supersaw stack': 0.88,
   } as Record<string, number>,
-  survey: 'docs/measurements/cpu-survey-2026-11-14-rig-two-core.json and -run.json (CI run 43551744806, the 22 patches of the 1.14 bank)',
+  survey: 'docs/measurements/cpu-survey-2026-11-14-rig-steps.json and -run.json (CI run 43571432090, the 22 patches of the 1.14 bank)',
 };
 const BLOCKS = 24;
 const SKIP = 3; // blocks before the maximum is taken for a module kit (the first notes, envelopes starting)
