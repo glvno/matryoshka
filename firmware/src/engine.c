@@ -1961,7 +1961,7 @@ static int bufs_place(const uint8_t *p, uint32_t len, uint8_t *pos, uint8_t *seg
     for (i = 0; i < E.nmod; i++)
         for (k = 0; k < E.node[i].ninst; k++)
             for (j = 0; j < DEFS[E.node[i].type].nout; j++)
-                inst_pool[E.node[i].inst0 + k].out[j] = inst_lane[E.node[i].inst0 + k] ? dummy_out1 : dummy_out;
+                inst_pool[E.node[i].inst0 + k].out[j] = LANE_OF(E.node[i].inst0 + k) ? dummy_out1 : dummy_out;
     bs.base = (esig_t *)((uint8_t *)eng_arena + ar_lo);
     bs.n = bs.values = 0;
     bs.keep = !ENG_BUF_REUSE || aot_buffer_guard(p, len);
@@ -1981,14 +1981,14 @@ static int bufs_place(const uint8_t *p, uint32_t len, uint8_t *pos, uint8_t *seg
         for (j = 0; j < DEFS[nd->type].nin; j++) {   /* its summed inputs (it->in holds the buffer until they are wired) */
             int sum = buf_nsrc(m, j) >= 2u;
             for (v = 0; v < nd->ninst; v++)
-                if (!(inst_pool[nd->inst0 + v].in[j] = sum ? buf_take(&bs, (int32_t)k, buf_late(nd) ? BUF_FOREVER : (int32_t)k, inst_lane[nd->inst0 + v]) : zero_buf))
+                if (!(inst_pool[nd->inst0 + v].in[j] = sum ? buf_take(&bs, (int32_t)k, buf_late(nd) ? BUF_FOREVER : (int32_t)k, LANE_OF(nd->inst0 + v)) : zero_buf))
                     return -6;
         }
         for (j = 0; j < DEFS[nd->type].nout; j++) {  /* its connected outputs */
             for (c = 0; c < E.ncab && !(E.from_m[c] == m && E.from_p[c] == j); c++)
                 ;
             for (v = 0; c < E.ncab && v < nd->ninst; v++)
-                if (!(inst_pool[nd->inst0 + v].out[j] = buf_take(&bs, (int32_t)k, buf_end(m, j, v, (int32_t)k, inst_lane[nd->inst0 + v], pos, seg_end), inst_lane[nd->inst0 + v])))
+                if (!(inst_pool[nd->inst0 + v].out[j] = buf_take(&bs, (int32_t)k, buf_end(m, j, v, (int32_t)k, LANE_OF(nd->inst0 + v), pos, seg_end), LANE_OF(nd->inst0 + v))))
                     return -6;
         }
     }
