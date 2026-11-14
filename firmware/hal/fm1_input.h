@@ -565,17 +565,31 @@ static struct { uint8_t due, p, n; uint16_t late; uint32_t t1, spent; } fm1__hal
                                                                                        * this much early for its interrupt's
                                                                                        * lateness; it moves one tick a pulse
                                                                                        * towards the target width */
+/* A test (the owner, 2026-11-14: a dim glow on a key beside lit ones, twice as bright between two lit keys, in every
+ * version so far): if the LED lines' drivers need time to go dark before the 595 switches the column, or the column time
+ * to switch before the lines light, the last column's LEDs glow in the next one, or the next column's in the last. The
+ * scan has always lit column n right after its latch. FM1_LINE_GAP_NS on each side of the latch: the time since the
+ * lines went dark (fm1__dark) is waited out before it, column p's keys (work, not waiting) and the rest after it */
+#ifndef FM1_LINE_GAP_NS
+#define FM1_LINE_GAP_NS 1500u
+#endif
+static uint32_t fm1__dark;                         /* when the lines last went dark in the tick (TIMER4) */
 /* the tick from the latch on: column n latched and lit, column p's keys, the frame; spent: the tick's time before this */
 static void fm1__tick_rest(uint32_t p, uint32_t n, uint32_t t0, uint32_t spent)
 {
-    uint32_t g;
+    uint32_t g, tl;
+    while (fm1_ticks() - fm1__dark < FM1__DIM_T(FM1_LINE_GAP_NS))
+        ;
     fm1__sr_latch();                               /* column n, the lines dark */
+    tl = fm1_ticks();
     fm1__sr_ok = 1;
     if (n == 0u)                                   /* (a new frame: the mid level's turn, before column 0 lights) */
         fm1__mid_ph = (uint8_t)(fm1__mid_ph + 1u >= fm1__mid_n ? 0u : fm1__mid_ph + 1u);
-    fm1__led_lines(FM1__LIT(n));
     fm1__tick_col = (uint8_t)n;
     fm1__keys(p);                                  /* its keys now: no wait for the frame's end */
+    while (fm1_ticks() - tl < FM1__DIM_T(FM1_LINE_GAP_NS))
+        ;
+    fm1__led_lines(FM1__LIT(n));
     if (n == 0u) {
         fm1__frame();
         if (fm1__an_f)                             /* the power-on sweep: the next frame's picture */
@@ -595,6 +609,7 @@ static void fm1_input_tick_end(void)
         return;
     fm1__half.due = 0;
     fm1__led_lines(0);
+    fm1__dark = fm1_ticks();
     fm1_in_stat.dim_n++;
     fm1_in_stat.dim_sum += t - fm1__half.t1;
     if (t - fm1__half.t1 > fm1__dim_t && fm1__half.late < fm1__dim_t / 2u)
@@ -617,6 +632,7 @@ static void fm1_input_tick(void)
     w = 0xFFFFu ^ (1u << n) ^ (n < 2u ? 1u << (11u + n) : 0u);
     step = fm1__sr_ok && p != 1u;                  /* (the column's one bit: w's bit 0, w from bit 15 down) */
     fm1__led_lines(0);
+    fm1__dark = fm1_ticks();
     fm1_in_stat.last = t0;
     while (b < FM1_GAP_BINS - 1u && g >= (150u * FM1_TICKS_PER_US << b))
         b++;
@@ -661,6 +677,7 @@ static void fm1_input_tick(void)
         while (fm1_ticks() - t1 < T)              /* (no one-shot, or little of the pulse left) */
             ;
         fm1__led_lines(0);
+        fm1__dark = fm1_ticks();
         fm1_in_stat.dim_n++;
         fm1_in_stat.dim_sum += fm1_ticks() - t1;
         fm1__tick_rest(p, n, t0, 0);
@@ -681,6 +698,7 @@ static void fm1_input_tick(void)
         while (k == 16u && d < T)                 /* only a shift shorter than the pulse waits */
             d = fm1_ticks() - t1;
         fm1__led_lines(0);
+        fm1__dark = fm1_ticks();
         fm1__dim_k = (uint8_t)(d > T ? (k ? k - 1u : 0u) : d < T && k < 16u ? k + 1u : k);
         fm1_in_stat.dim_n++;
         fm1_in_stat.dim_sum += d;
