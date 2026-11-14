@@ -6253,14 +6253,20 @@ static void __attribute__((noinline)) lfo_free(inst_t *it, esig_t *out, uint32_t
         it->s.lfo.wok = 1;
         wl = mul16(kind == 0 ? sin_turn(phase + off) : kind == 1 ? wave_tri(phase + off) : kind == 2 ? wave_saw(phase + off, 0, lrc) : it->s.lfo.last, depth);
     }
-    if (LFO_STEPS(kind)) {
-        for (i = 0; i < n; i++) {
-            uint32_t prev = phase;
-            phase += dt;
-            if (phase < prev)
-                lfo_cycle(it);
-            out[i] = mul16(kind == 4 ? it->s.lfo.held : wave_square(phase + off, dt, 0x80000000u, lrc), depth);
+    if (LFO_STEPS(kind)) {                       /* (a loop for each, as before: a choice inside one slowed the square) */
+#define LFO_STEP_LOOP(Y)                                                                \
+        for (i = 0; i < n; i++) {                                                       \
+            uint32_t prev = phase;                                                      \
+            phase += dt;                                                                \
+            if (phase < prev)                                                           \
+                lfo_cycle(it);                                                          \
+            out[i] = mul16((Y), depth);                                                 \
         }
+        if (kind == 4)
+            LFO_STEP_LOOP(it->s.lfo.held)
+        else
+            LFO_STEP_LOOP(wave_square(phase + off, dt, 0x80000000u, lrc))
+#undef LFO_STEP_LOOP
         wl = n ? out[n - 1u] : wl;
     } else
         for (i = 0; i < n; i += j) {
