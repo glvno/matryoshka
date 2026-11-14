@@ -100,16 +100,16 @@ describe('CPU estimate', () => {
     expect(reverb).toBeLessThan(0.3);
   });
 });
-// The factory patches on the test rig (docs/measurements/2026-11-14-rig-steps-quiet.md: the longest audio interrupt at
-// rest and with 1 / 4 / 8 keys held, the transport stopped and running, on the firmware with Steps' quiet samples in one pass), which the
+// The factory patches on the test rig (docs/measurements/2026-11-14-rig-reverb-late.md: the longest audio interrupt at
+// rest and with 1 / 4 / 8 keys held, the transport stopped and running, on the firmware with the Reverb's lines one block late), which the
 // engines' factors were fitted to (scripts/cpu-rig-fit.ts, frozen in cpu-costs.ts RIG). The estimate is each patch's worst
 // case, every voice playing; the rig's figure is its steady peak (the median of a phase's samples after the first, the most
 // over the phases). A patch whose overload guard dropped parts counts at the voices it kept; one the guard muted is left
 // out. A new survey after large engine or firmware changes replaces the files and the fit.
-describe('CPU estimate against the test rig (docs/measurements/cpu-survey-2026-11-14-rig-steps*.json)', () => {
+describe('CPU estimate against the test rig (docs/measurements/cpu-survey-2026-11-14-rig-reverb*.json)', () => {
   type Reading = { name: string } & Record<string, number[] | number>;
   const read = (f: string) => JSON.parse(readFileSync(new URL(`../../docs/measurements/${f}`, import.meta.url), 'utf8')) as Reading[];
-  const files = [read('cpu-survey-2026-11-14-rig-steps.json'), read('cpu-survey-2026-11-14-rig-steps-run.json')];
+  const files = [read('cpu-survey-2026-11-14-rig-reverb.json'), read('cpu-survey-2026-11-14-rig-reverb-run.json')];
   const median = (v: number[]): number => [...v].sort((a, b) => a - b)[(v.length - 1) >> 1];
   /** the rig's steady peak (us) of each factory patch, the phases it played without shedding */
   const rig = new Map<string, number>();
@@ -135,10 +135,10 @@ describe('CPU estimate against the test rig (docs/measurements/cpu-survey-2026-1
 // #802: the second core. The same firmware with the second core's work refused (tools/m1_link.py cores split off: core 0
 // renders every module, the second core idles) against the two-core schedule, 8 keys held: core 0's saving must never be
 // estimated above what the rig saved. A patch that shed voices on one core has no one-core figure to compare.
-describe('CPU estimate with two cores (docs/measurements/cpu-survey-2026-11-14-rig-steps-split-off.json)', () => {
+describe('CPU estimate with two cores (docs/measurements/cpu-survey-2026-11-14-rig-reverb-split-off.json)', () => {
   type Reading = { name: string; n8_samples: number[]; n8_shed: number };
   const read = (f: string) => new Map((JSON.parse(readFileSync(new URL(`../../docs/measurements/${f}`, import.meta.url), 'utf8')) as Reading[]).map((r) => [r.name, r]));
-  const two = read('cpu-survey-2026-11-14-rig-steps.json'), one = read('cpu-survey-2026-11-14-rig-steps-split-off.json');
+  const two = read('cpu-survey-2026-11-14-rig-reverb.json'), one = read('cpu-survey-2026-11-14-rig-reverb-split-off.json');
   const steady = (r: Reading) => [...r.n8_samples.slice(1)].sort((a, b) => a - b)[(r.n8_samples.length - 2) >> 1];
   for (const name of Object.keys(measuredPatches)) {
     const s = two.get(name), o = one.get(name);

@@ -9,7 +9,7 @@ import { DEFS, LFO_RANGE_K, MATRIX_N, matrixPin, STACKS, TRACK_POLY } from './mo
 import { allModules, assembliesOf, parentOf } from './assembly';
 import { flawOf, hasMorph, type ModuleInst, type Patch } from './patch';
 import { deviceView } from './poly';
-import { schedule, scheduleTime, SCH_FORK, SCH_SYNC, type Schedule } from './schedule';
+import { schedule, scheduleTime, scheduleWork, SCH_FORK, SCH_SYNC, type Schedule } from './schedule';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 /** what changes a module's cost: a choice / switch / small integer (its measured values, the nearest one counts), a number
@@ -253,6 +253,8 @@ const keepsMoving = (p: Patch, id: number): boolean => slope(p, id) >= 0.5;
 /** what the two-core schedule counts for one copy of a module type (engine.c DEF_COST, made from this table by
  * export-defs): its run and parameter inputs, in 64 cycles */
 export const scheduleCost = (table: CpuTable, type: string): number => Math.max(1, Math.round(((table.types[type]?.run ?? 0) + (table.types[type]?.cv ?? 0)) / 64));
+/** what it counts for a module bypassed when the patch loads (engine.c DEF_COST_BYPASS, D-1104): passing an input through */
+export const scheduleBypass = (table: CpuTable): number => Math.max(1, Math.round(table.bypass / 64));
 
 /** cores: 2, the FM-1 since #271 (core 0's time: the second core's share of a two-core schedule, #802, or of the split poly
  * groups' odd parts, plus an idle second core's cost); 1 as with core 1 held. `scheduleFits`: whether the schedule's buffers
@@ -356,11 +358,11 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
   const c = table.cores;
   let parted = splitGroups.size;
   if (cores === 2 && c) {
-    const s = schedule(p, groups, (type) => scheduleCost(table, type));
+    const s = schedule(p, groups, (type) => scheduleCost(table, type), scheduleBypass(table));
     if (s.on && (scheduleFits?.(s) ?? true)) {
       const each = (m: number): number => work.get(p.modules[m].id) ?? 0;
       const items = s.order.reduce((n, m) => n + each(m) * s.copies[m], 0);
-      split = items - scheduleTime(s, each, SCH_SYNC * 64, SCH_FORK * 64);
+      split = items - scheduleTime(s, scheduleWork(s, each), SCH_SYNC * 64, SCH_FORK * 64);
       parted = 1;
     }
   }

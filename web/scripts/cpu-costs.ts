@@ -48,26 +48,26 @@ const SURVEY = {
 const CORES = {
   idleUs: 29,   // (24 us at the scale before, cpu-rig-fit.ts)
   splitEff: 0.75,
-  survey: 'docs/measurements/cpu-survey-2026-11-14-rig-steps-split-off.json against -steps.json (CI run 43571432090); the idle cost: -2026-11-05-rig-release-1.10-head.json against -rig-merged-split.json',
+  survey: 'docs/measurements/cpu-survey-2026-11-14-rig-reverb-split-off.json against -reverb.json (CI run 43615466841); the idle cost: -2026-11-05-rig-release-1.10-head.json against -rig-merged-split.json',
 };
 /** Each factory engine's factor on its modules' cycles (src/cpu.ts CpuTable.rig), fitted by scripts/cpu-rig-fit.ts to the
- * test rig's survey of the 1.14 bank on the firmware with Steps' quiet samples in one pass (#802, at SURVEY's scale): the
- * smallest that makes the estimate read at least the rig's steady peak for every voice count its factory patch played on
- * the rig, transport stopped and running. The counted engine misses what the FM-1 spends beyond its instructions (its
- * caches and memory, the hardware's own timing, how the two cores share the block), and that differs from engine to
- * engine: the factors run from 0.61 to 1.06. The patches outside the 1.14 bank (basic poly, drift poly, mono lead,
+ * test rig's survey of the 1.14 bank on the firmware with the Reverb's lines one block late (#802, D-1103, at SURVEY's
+ * scale): the smallest that makes the estimate read at least the rig's steady peak for every voice count its factory patch
+ * played on the rig, transport stopped and running. The counted engine misses what the FM-1 spends beyond its instructions
+ * (its caches and memory, the hardware's own timing, how the two cores share the block), and that differs from engine to
+ * engine: the factors run from 0.62 to 1.06. The patches outside the 1.14 bank (basic poly, drift poly, mono lead,
  * supersaw stack) keep the factors of the 2026-11-09 survey. */
 const RIG = {
   engines: {
-    '8 Lire': 0.65, '808 kit': 0.85, '909 kit': 0.74, 'Algo Four': 0.65, 'Briefcase 3': 0.82,
-    'Canvas': 0.79, 'Cassia 1': 0.67, 'Elvira 2': 0.94, 'Expander S': 0.77,
-    'Hera 4': 0.65, 'Io 4': 0.71, 'Meridian 8': 0.72, 'Monolith D': 0.76,
-    'Oracle V': 0.72, 'Perun 4': 0.77, 'Sallen 20': 0.88, 'Scrounge': 0.8,
-    'Silver Box': 1, 'Spokes 6': 0.81, 'Vernon 100': 0.61, 'Verona Drum 1': 0.89,
+    '8 Lire': 0.65, '808 kit': 0.83, '909 kit': 0.72, 'Algo Four': 0.66, 'Briefcase 3': 0.77,
+    'Canvas': 0.83, 'Cassia 1': 0.67, 'Elvira 2': 0.91, 'Expander S': 0.79,
+    'Hera 4': 0.65, 'Io 4': 0.73, 'Meridian 8': 0.75, 'Monolith D': 0.76,
+    'Oracle V': 0.74, 'Perun 4': 0.83, 'Sallen 20': 0.86, 'Scrounge': 0.82,
+    'Silver Box': 1.02, 'Spokes 6': 0.82, 'Vernon 100': 0.62, 'Verona Drum 1': 0.9,
     'Wanderer': 1.06, 'basic poly': 0.92, 'drift poly': 0.92, 'mono lead': 1.28,
     'supersaw stack': 0.88,
   } as Record<string, number>,
-  survey: 'docs/measurements/cpu-survey-2026-11-14-rig-steps.json and -run.json (CI run 43571432090, the 22 patches of the 1.14 bank)',
+  survey: 'docs/measurements/cpu-survey-2026-11-14-rig-reverb.json and -run.json (CI run 43615466841, the 22 patches of the 1.14 bank)',
 };
 const BLOCKS = 24;
 const SKIP = 3; // blocks before the maximum is taken for a module kit (the first notes, envelopes starting)

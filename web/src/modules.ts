@@ -2022,7 +2022,9 @@ const delay: ModuleImpl<DelayState> = {
  * line outputs) x RV_GOUT. `freeze` holds the tail: every g is 1, no damping, and the input stops entering the lines (the
  * dry signal still passes). Lines 0 and 1 are read with a fractional delay that swings by mod x RV_MOD samples at
  * RV_MOD_HZ (sine, linear interpolation). Mono, shared per patch like the delay; the firmware keeps the same lines as
- * int16 (Q13) in one 16 KB block per instance.
+ * int16 (Q13) in one 16 KB block per instance. The lines hear the input one block late (D-1103): RV_LATE samples, through
+ * a ring, with the settings of the block before; the dry signal and `mix` are on time. The FM-1 then runs the lines on
+ * whichever core is free while the patch plays the block (engine.c reverb_kernel).
  */
 export const RV_LINE = [331, 439, 547, 661, 773, 881, 991, 1117];
 export const RV_DIFF = [223, 347];
@@ -2033,6 +2035,8 @@ const RV_GIN = 0.125;
 const RV_GOUT = 0.5;
 const RV_MOD = 6;
 const RV_MOD_HZ = [0.5, 0.83];
+/** the lines' lateness: one FM-1 block (engine.h ENG_BLOCK) at DEVICE_SR */
+export const RV_LATE = 128;
 interface ReverbState {
   pre: Float32Array;
   pi: number;
@@ -2043,6 +2047,11 @@ interface ReverbState {
   lp: number[];
   /** the two modulation LFOs, in turns */
   ph: number[];
+  /** the last RV_LATE inputs (scaled to the rate) and the next place in it */
+  ring: Float32Array;
+  hw: number;
+  /** the settings of the block before: size, damp, pre, mod, freeze (null before the first block) */
+  kp: number[] | null;
 }
 
 const reverb: ModuleImpl<ReverbState> = {
@@ -2071,29 +2080,38 @@ const reverb: ModuleImpl<ReverbState> = {
       li: RV_LINE.map(() => 0),
       lp: RV_LINE.map(() => 0),
       ph: [0, 0],
+      ring: new Float32Array(len(RV_LATE)),
+      hw: 0,
+      kp: null,
     };
   },
   process(c, s) {
+    // the lines run on the settings of the block before (D-1103); the first block's input is silence in the ring
+    const [size, damp, pre, mod, freeze] = s.kp ?? [c.p.size ?? 0.5, c.p.damp ?? 0.4, c.p.pre ?? 0, c.p.mod ?? 0, c.p.freeze ?? 0];
     // freeze: an infinite decay (every line's gain 1, no damping) and nothing new into the lines; the tail holds
-    const frz = (c.p.freeze ?? 0) >= 0.5;
-    const T = 0.2 * Math.pow(2, 5 * (c.p.size ?? 0.5));
+    const frz = freeze >= 0.5;
+    const T = 0.2 * Math.pow(2, 5 * size);
     const g = s.line.map((b) => (frz ? 1 : Math.pow(2, (-9.965784 * b.length) / (T * c.sr)))); // 10^(-3 L / (T sr))
-    const d = frz ? 0 : (c.p.damp ?? 0.4) * 0.8;
+    const d = frz ? 0 : damp * 0.8;
     const gin = frz ? 0 : RV_GIN;
     const mix = c.p.mix ?? 0.3;
-    const dpre = Math.min(s.pre.length - 1, Math.round(((c.p.pre ?? 0) / 1000) * c.sr));
-    const depth = (c.p.mod ?? 0) * RV_MOD;
+    const dpre = Math.min(s.pre.length - 1, Math.round((pre / 1000) * c.sr));
+    const depth = mod * RV_MOD;
     const inc = RV_MOD_HZ.map((f) => f / c.sr);
     const t = new Array<number>(8);
     for (let i = 0; i < c.n; i++) {
       const x = c.inp.in[i];
+      // the input one block late into the lines
+      const late = s.ring[s.hw];
+      s.ring[s.hw] = x;
+      if (++s.hw === s.ring.length) s.hw = 0;
       // pre-delay
-      let u = x;
+      let u = late;
       if (dpre > 0) {
         const rp = s.pi - dpre + s.pre.length;
         u = s.pre[rp % s.pre.length];
       }
-      s.pre[s.pi] = x;
+      s.pre[s.pi] = late;
       if (++s.pi === s.pre.length) s.pi = 0;
       // input diffusion
       for (let k = 0; k < 2; k++) {
@@ -2136,6 +2154,12 @@ const reverb: ModuleImpl<ReverbState> = {
       }
       c.out.out[i] = x * (1 - mix) + wet * RV_GOUT * mix;
     }
+    const kp = s.kp ?? (s.kp = [0, 0, 0, 0, 0]);
+    kp[0] = c.p.size ?? 0.5;
+    kp[1] = c.p.damp ?? 0.4;
+    kp[2] = c.p.pre ?? 0;
+    kp[3] = c.p.mod ?? 0;
+    kp[4] = c.p.freeze ?? 0;
   },
 };
 

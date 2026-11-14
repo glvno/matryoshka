@@ -4,6 +4,7 @@
 
 - **The FM-1 uses both of its cores for every patch.** Before, the second core only helped patches with several voices. Now drum kits, monophonic instruments and effects share the work too. On the factory patches the busiest moment uses up to 23 points less of the FM-1's time: Verona Drum 1 76 % → 53 %, 808 Kit 76 % → 57 %, Canvas 86 % → 67 %, Meridian 8 60 % → 40 %. The sound is unchanged, bit for bit. The editor's CPU estimate counts the same plan.
 - **A playing Steps track costs less.** A running track took about 135 µs of every 2.9 ms block on the FM-1; it now takes about 48 µs. With the transport running, the factory patches use 1 to 12 points less of the FM-1's time: Spokes 6 66 % → 53 %, Perun 4 52 % → 44 %, 808 Kit 63 % → 57 %. The sound is unchanged, bit for bit. The editor's CPU estimate now counts a Steps track as playing.
+- **The Reverb's tail starts one block later.** A Reverb's lines now hear its input 128 samples (about 3 ms) late; the dry signal is on time. In exchange, the FM-1 runs the Reverb's lines on whichever core is free instead of after the voices: Briefcase 3 uses 6 points less of the FM-1's time (62 % → 56 %). Both engines sound the same.
 
 ## 1.14.0 — 2026-11-13
 

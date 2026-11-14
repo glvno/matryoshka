@@ -43,6 +43,7 @@
 #define GRAIN_OCT 4                 /* the grains' pitch (in + slider) is clamped to +-4 octaves (modules.ts GRAIN_OCT) */
 #define GRAIN_SPRAY (ENG_SR / 4u)   /* spray scatters a grain's start by up to this many samples (0.25 s) */
 #define RV_LEN 8074u                /* the eight FDN lines (5740), two input allpasses (570) and the 40 ms pre-delay (1764), int16 Q13 */
+#define RV_MEM (RV_LEN + 2u * ENG_BLOCK)   /* and its ring of the last block's inputs (D-1103: int32 each), in int16 units */
 #define DELAY_LEN 30944u            /* the line of a 700 ms length (dly_samples), every Delay's before the length row (D-375) */
 #define DELAY_TIME_TOP (DELAY_REACH_MAX * ENG_ONE)   /* ms: what a Delay's time reaches past the knob's 700 (modules.ts browserMax: the longest length at the lowest rate), kept under modulation; its line limits it as it plays */
 #define STR_LEN 1104u               /* ceil(ENG_SR / 40) + 1: the lowest string is 40 Hz, as the reference */
@@ -524,7 +525,7 @@ typedef struct {
         struct { int32_t a[8], b[8], ia; uint32_t phase; } fs;   /* the Hilbert chains (w1 w2 per section), chain A's delayed sample, the quadrature oscillator */
         struct { struct grain_line *ln; uint32_t w, acc, seed; uint8_t prev; } gr;   /* acc: grains per sample, Q24 */
         struct { int16_t *buf; int64_t cur; uint32_t len, w, t, seen, beat; int32_t rate; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev, rk, ph, tp; } dly;   /* len: its line's samples, from its length (dly_samples); cur 64 bits (a long line is more samples than Q16 holds in 32) */   /* t, ring, seen, beat: the clock tempo; cur, rate: the read position's distance behind w (samples Q16, 0 = not yet set) and its glide (dly_glide); rk, ph: a lower rate (#659, dly_slow): the rate step's k the line holds (0 none yet), the sample within a line sample; tp: Tape on (#660, dly_tape) */
-        struct { int16_t *buf; uint16_t li[8], ai[2], pi; int32_t lp[8]; uint32_t ph[2]; int32_t gain[8], size; uint8_t gains_ok, frozen; } rev;   /* FDN indices/states/phases; exact decay gains cached until effective size/freeze changes */
+        struct { int16_t *buf; uint16_t li[8], ai[2], pi; int32_t lp[8]; uint32_t ph[2]; int32_t gain[8], size, kp[6]; uint8_t gains_ok, frozen, hw, kdone; } rev;   /* FDN indices/states/phases; exact decay gains cached until effective size/freeze changes; D-1103: the settings of the block before (kp, the kernel's), the ring's next place (hw), the kernel already run this block (kdone) */
         struct { int32_t v; uint32_t t; int32_t rk[4], inc[4], k[4]; uint32_t len[4]; uint8_t stage, prev, ok; } env;  /* Q30, like the ADSR; t: samples
                                                     * in the segment; rk, inc, k, len, ok: segments 1 2 3 and release, as m_adsr */
         rate_env_t rateenv;
@@ -1000,7 +1001,7 @@ static uint32_t line_bytes(uint32_t t, const int32_t *par)
     case T_DELAY: return LINE_BYTES(2u * dly_samples(par[DELAY_P_LENGTH]));
     case T_STRING: case T_COMB: return LINE_BYTES(2u * STR_LEN);   /* (the comb uses a string line, it->s.str) */
     case T_GRAIN: return LINE_BYTES(sizeof(grain_line_t));
-    case T_REVERB: return LINE_BYTES(2u * RV_LEN);
+    case T_REVERB: return LINE_BYTES(2u * RV_MEM);
     case T_CHORUS: return LINE_BYTES(2u * CH_LEN);
     default: return 0;
     }
@@ -8274,15 +8275,20 @@ HOT void reverb_samples(inst_t *it, uint32_t n, const esig_t *in, esig_t *out, i
     it->s.rev.ph[1] = ph1;
 }
 
-static void m_reverb(const node_t *nd, inst_t *it, uint32_t n)
+/* D-1103: the Reverb's lines hear its input one block (ENG_BLOCK samples) late, with the settings it had in the block
+ * before; its dry signal is on time. The last ENG_BLOCK inputs wait in a ring after the lines (RV_RING). reverb_kernel
+ * turns this block's share of them into the wet signal, in place, before the module's turn: a two-core schedule runs it
+ * as an item of its own with nothing to wait for (sched_build), else m_reverb runs it first. m_reverb then mixes the wet
+ * with this block's dry input, keeps that input in the ring and its settings (kp) for the next block. */
+#define RV_RING(it) ((int32_t *)((it)->s.rev.buf + RV_LEN))
+static __attribute__((noinline)) void reverb_kernel(inst_t *it, uint32_t n)   /* (one copy for both callers) */
 {
-    const esig_t *in = it->in[REVERB_I_IN];
-    esig_t *out = it->out[0];
     int16_t *base = it->s.rev.buf, *line[8], *ap[2], *pre;
-    int32_t d = mul16(EF(it, REVERB_P_DAMP), 52429), mix = EF(it, REVERB_P_MIX);   /* damp x 0.8 */
-    int32_t depth = mul16(EF(it, REVERB_P_MOD), RV_MOD), size = EF(it, REVERB_P_SIZE), g[8];
-    uint32_t dpre = (uint32_t)((mulq(EF(it, REVERB_P_PRE), ENG_SR, 16) + 500) / 1000), k, off = 0;
-    int frz = EF(it, REVERB_P_FREEZE) >= 32768;   /* freeze: every gain 1, no damping, nothing new into the lines */
+    const int32_t *kp = it->s.rev.kp;
+    int32_t d = mul16(kp[REVERB_P_DAMP], 52429);   /* damp x 0.8 */
+    int32_t depth = mul16(kp[REVERB_P_MOD], RV_MOD), size = kp[REVERB_P_SIZE], g[8], *ring = RV_RING(it);
+    uint32_t dpre = (uint32_t)((mulq(kp[REVERB_P_PRE], ENG_SR, 16) + 500) / 1000), k, off = 0, a, hw = it->s.rev.hw;
+    int frz = kp[REVERB_P_FREEZE] >= 32768;      /* freeze: every gain 1, no damping, nothing new into the lines */
     int32_t gin = frz ? 0 : RV_GIN;
     if (frz)
         d = 0;
@@ -8310,10 +8316,33 @@ static void m_reverb(const node_t *nd, inst_t *it, uint32_t n)
         off += RV_DIFF[k];
     }
     pre = base + off;
-    if (mix == ENG_ONE)
-        reverb_samples(it, n, in, out, line, ap, pre, g, d, depth, dpre, gin, ENG_ONE);
-    else
-        reverb_samples(it, n, in, out, line, ap, pre, g, d, depth, dpre, gin, mix);
+    while (n) {                                  /* (the ring's end, then its start: a block shorter than ENG_BLOCK) */
+        a = ENG_BLOCK - hw < n ? ENG_BLOCK - hw : n;
+        reverb_samples(it, a, ring + hw, ring + hw, line, ap, pre, g, d, depth, dpre, gin, ENG_ONE);
+        n -= a;
+        hw = hw + a == ENG_BLOCK ? 0u : hw + a;
+    }
+}
+static void m_reverb(const node_t *nd, inst_t *it, uint32_t n)
+{
+    const esig_t *in = it->in[REVERB_I_IN];
+    esig_t *out = it->out[0];
+    int32_t mix = EF(it, REVERB_P_MIX), dry = ENG_ONE - mix, *ring = RV_RING(it);
+    uint32_t i, k, hw;
+    (void)nd;
+    if (!it->s.rev.kdone)
+        reverb_kernel(it, n);
+    it->s.rev.kdone = 0;
+    hw = it->s.rev.hw;
+    for (i = 0; i < n; i++) {
+        int32_t w = ring[hw];
+        ring[hw] = in[i];
+        out[i] = mulr(in[i], dry, 16) + mulr(w, mix, 16);
+        hw = hw + 1u == ENG_BLOCK ? 0u : hw + 1u;
+    }
+    it->s.rev.hw = (uint8_t)hw;
+    for (k = 0; k < 6u; k++)
+        it->s.rev.kp[k] = EF(it, k);
 }
 
 /* The level / rate envelope (modules.ts env): three segments to l1 l2 l3 in r1 r2 r3 on the gate, hold l3, release to l4
@@ -10325,7 +10354,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
 #define FX_CLEAR_STEP 2048u
 static void fx_clear(const node_t *nd, inst_t *it, fx_run_t *run, int all)
 {
-    uint32_t i, from, to, len = nd->type == T_DELAY ? it->s.dly.len : RV_LEN;
+    uint32_t i, from, to, len = nd->type == T_DELAY ? it->s.dly.len : RV_MEM;
     int16_t *buf = nd->type == T_DELAY ? it->s.dly.buf : it->s.rev.buf;
     do {
         from = (uint32_t)--run->clr * FX_CLEAR_STEP;
@@ -10346,7 +10375,7 @@ static void fx_end(const node_t *nd, const inst_t *it, fx_run_t *run)
 {
     run->tail = 0;
     run->quiet = 0;
-    run->clr = (uint8_t)(((nd->type == T_DELAY ? it->s.dly.len : RV_LEN) + FX_CLEAR_STEP - 1u) / FX_CLEAR_STEP);
+    run->clr = (uint8_t)(((nd->type == T_DELAY ? it->s.dly.len : RV_MEM) + FX_CLEAR_STEP - 1u) / FX_CLEAR_STEP);
 }
 
 static void m_fx(const node_t *nd, inst_t *it, uint32_t n, uint32_t target)
@@ -10695,17 +10724,21 @@ static int eng_lane_wait(void) { return 0; }                    /* 0: done; else
 #if ENG_SCHED
 #define SCH_SYNC 6u                     /* (DEF_COST units, 64 cycles: about 400 cycles) */
 #define SCH_FORK 24u                    /* (about 1,500 cycles) */
+#define SCH_KMAX 4u                     /* Reverb kernels with an item of their own (D-1103; a further one runs in m_reverb) */
+#define SCH_KIX (ENG_MAX_INST + 1u)     /* (the first kernel's place in fin and at, after the copies') */
+#define SCH_RV_MIX 16u                  /* a Reverb's own turn once its kernel has an item: the mix (about 1,000 cycles) */
 typedef struct {                        /* (sched_build's, on the main loop's stack) */
-    uint32_t fin[ENG_MAX_INST + 1u];    /* when each copy would end, DEF_COST units */
-    uint8_t at[ENG_MAX_INST + 1u];      /* its place in its lane */
+    uint32_t fin[SCH_KIX + SCH_KMAX];   /* when each copy (then each kernel) would end, DEF_COST units */
+    uint8_t at[SCH_KIX + SCH_KMAX];     /* its place in its lane */
     uint8_t pos[ENG_MAX_MODULES];       /* a module's place in E.order */
+    uint8_t km[SCH_KMAX], kl[SCH_KMAX], nk;   /* the kernels: their Reverb, their lane; how many */
 } sch_build_t;
 typedef struct { const sch_build_t *b; uint32_t lane, t, need; } sch_acc_t;   /* an item in `lane`: when it may start; the
-                                                                                * other lane's items it needs */
-static void sch_dep(sch_acc_t *a, uint32_t d)          /* the item waits for copy d */
+                                                                               * other lane's items it needs */
+static void sch_dep(sch_acc_t *a, uint32_t d)          /* the item waits for copy d (or kernel d - SCH_KIX) */
 {
     uint32_t t = a->b->fin[d];
-    if (LANE_OF(d) != a->lane) {
+    if ((d >= SCH_KIX ? a->b->kl[d - SCH_KIX] : LANE_OF(d)) != a->lane) {
         t += SCH_SYNC;
         if (a->b->at[d] + 1u > a->need)
             a->need = a->b->at[d] + 1u;
@@ -10755,6 +10788,9 @@ static void sch_deps(sch_acc_t *a, uint32_t m, uint32_t v)
         if (pos[o] < pos[m] && (nd->type == T_STEPS || E.node[o].type == T_STEPS))
             for (w = 0; w < E.node[o].ninst; w++)
                 sch_dep(a, E.node[o].inst0 + w);
+    for (w = 0; w < a->b->nk; w++)               /* a Reverb waits for its kernel (D-1103) */
+        if (a->b->km[w] == m)
+            sch_dep(a, SCH_KIX + w);
 }
 #endif
 /* no schedule: the lanes of the poly segments' split (render_split), which the editor's budget counts (rule 1) */
@@ -10770,17 +10806,37 @@ static void sched_build(void)
 {
 #if ENG_SCHED
     sch_build_t b;
-    uint32_t end[2] = {0, SCH_FORK}, total = 0, k, v, l, n0;
+    uint32_t end[2] = {0, SCH_FORK}, total = 0, k, v, l, n0, copies = 0;
 #endif
     sched_off();
 #if ENG_SCHED
-    for (k = 0; k < E.norder; k++)
+    for (k = 0; k < E.norder; k++) {
         b.pos[E.order[k]] = (uint8_t)k;
+        copies += E.node[E.order[k]].ninst;
+    }
     sch.n[0] = sch.n[1] = 0;
+    b.nk = 0;
+    /* D-1103: each Reverb's kernel first, waiting for nothing (it reads the block before), where it would end first; none
+     * of its cost while the Reverb is bypassed when the patch loads (an off master FX stage: D-1104) */
+    for (k = 0; k < E.norder && b.nk < SCH_KMAX && copies + b.nk < ENG_MAX_INST + 1u; k++) {
+        uint32_t m = E.order[k], r = b.nk, cost = E.node[m].bypass ? 0u : DEF_COST[T_REVERB], best;
+        if (E.node[m].type != T_REVERB)
+            continue;
+        best = end[1] + cost < end[0] + cost ? 1u : 0u;
+        b.km[r] = (uint8_t)m;
+        b.kl[r] = (uint8_t)best;
+        b.fin[SCH_KIX + r] = end[best] += cost;
+        b.at[SCH_KIX + r] = (uint8_t)sch.n[best]++;
+        total += cost;
+        b.nk++;
+    }
     for (k = 0; k < E.norder; k++) {
         uint32_t m = E.order[k];
         const node_t *nd = &E.node[m];
-        uint32_t cost = DEF_COST[nd->type];
+        uint32_t cost = nd->bypass ? DEF_COST_BYPASS : DEF_COST[nd->type];   /* (D-1104: bypassed when the patch loads) */
+        for (v = 0; v < b.nk; v++)
+            if (b.km[v] == m && !nd->bypass)
+                cost = SCH_RV_MIX;
         for (v = 0; v < nd->ninst; v++) {
             uint32_t ix = nd->inst0 + v, best = 0, fin = 0;
             for (l = 0; l < (nd->type == T_STEPS ? 1u : 2u); l++) {
@@ -10803,6 +10859,11 @@ static void sched_build(void)
     }
     sch.on = 1;
     n0 = sch.n[0];
+    for (k = 0; k < b.nk; k++) {                 /* the kernels: their Reverb's item with part 1 (sch_item), waiting for nothing */
+        uint32_t slot = (b.kl[k] ? n0 : 0u) + b.at[SCH_KIX + k];
+        sch.it[slot] = (uint16_t)(b.km[k] << 3 | 1u);
+        sch.need[slot] = 0;
+    }
     for (k = 0; k < E.norder; k++) {             /* each lane's items in E.order's order, with what they wait for */
         uint32_t m = E.order[k];
         const node_t *nd = &E.node[m];
@@ -10845,11 +10906,34 @@ static uint8_t sch_gone;                 /* core 0 renders lane 1's items itself
 typedef struct { const node_t *nd; const inst_t *it; int32_t means[MAX_IN]; } sch_ctx_t;   /* a core's last copy (prev) */
 #define SCH_NODE(x) (&E.node[(x) >> 3 & 0x7Fu])                       /* an item's module and copy (sched_t it[]) */
 #define SCH_INST(x) (&inst_pool[SCH_NODE(x)->inst0 + ((x) & 7u)])
-/* item `slot` (a place in sch.it), unless its part is shed or idle this block */
+/* D-1103: does m_reverb run this block, with nothing cleared before it? Not when the Reverb is bypassed or an off master
+ * FX stage at rest (m_fx); not when a pending clear comes first (m_fx clears, then m_reverb runs the kernel itself) */
+static int reverb_early(uint32_t m)
+{
+    uint32_t t = fx.target[m];
+    if (t) {
+        const fx_stage_t *st = &fx.stage[(t - 1u) / ENG_FX_TARGETS_MAX];
+        const fx_run_t *run = &st->run[(t - 1u) % ENG_FX_TARGETS_MAX];
+        return (st->on || run->tail) && !run->clr;
+    }
+    return !E.node[m].bypass;
+}
+/* item `slot` (a place in sch.it), unless its part is shed or idle this block; part 1 of a Reverb: its kernel */
 static void sch_item(uint32_t slot, uint32_t n, sch_ctx_t *c)
 {
     const node_t *nd = SCH_NODE(sch.it[slot]);
-    inst_t *it = SCH_INST(sch.it[slot]);
+    inst_t *it;
+    if ((sch.it[slot] & 7u) && nd->type == T_REVERB) {
+        it = &inst_pool[nd->inst0];
+        if (reverb_early((uint32_t)(nd - E.node))) {
+            uint32_t t0 = ENG_ITEM_BEGIN();
+            reverb_kernel(it, n);
+            it->s.rev.kdone = 1;
+            ENG_ITEM_END(nd, it, t0);
+        }
+        return;
+    }
+    it = SCH_INST(sch.it[slot]);
     if (nd->grp && (IT_V(nd, it) >= cur_g_parts(nd) || IT_PV(nd, it)->skip))
         return;
     render_item(nd, it, n, c->nd == nd ? c->it : 0, c->means);

@@ -210,10 +210,10 @@ int main(void)
         for (blocks = 0; stage->run[0].tail && blocks < 3u * ENG_SR / ENG_BLOCK; blocks++) render(ENG_BLOCK, 0);
         CHECK(!stage->run[0].tail, "a silent natural Reverb tail ends within three seconds");
         CHECK(!render(ENG_BLOCK, ENG_ONE / 8), "an ended wet Reverb returns exactly zero");
-        CHECK(stage->run[0].clr == (RV_LEN + FX_CLEAR_STEP - 1u) / FX_CLEAR_STEP - 1u, "the Reverb's memory clears one step a block");
+        CHECK(stage->run[0].clr == (RV_MEM + FX_CLEAR_STEP - 1u) / FX_CLEAR_STEP - 1u, "the Reverb's memory (its ring too, D-1103) clears one step a block");
         stage->on = 1; stage->run[0].tail = 1; stage->run[0].quiet = 0;
         CHECK(!render(ENG_BLOCK, 0) && !stage->run[0].clr, "ON finishes a pending clear before the kernel runs");
-        for (i = 0; i < RV_LEN; i++) CHECK(!line[i], "ON during a pending clear leaves no old tail in the memory");
+        for (i = 0; i < RV_MEM; i++) CHECK(!line[i], "ON during a pending clear leaves no old tail or input in the memory");
         CHECK(render(ENG_SR / 4, ENG_ONE / 4) > 0, "ON after an ended tail plays new input");
     }
     printf("fx_tail_test: %s\n", fails ? "FAIL" : "ok");
