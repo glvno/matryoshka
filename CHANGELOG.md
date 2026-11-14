@@ -7,6 +7,7 @@
 - **The Reverb's tail starts one block later.** A Reverb's lines now hear its input 128 samples (about 3 ms) late; the dry signal is on time. In exchange, the FM-1 runs the Reverb's lines on whichever core is free instead of after the voices: Briefcase 3 uses 6 points less of the FM-1's time (62 % → 56 %). Both engines sound the same.
 - **The LED and key scan leaves more room for sound.** It took about 9 % of the FM-1's main core, part of it inside the audio's time; it now takes about 3.5 %. The busiest factory patches use 2 to 3 points less (Oracle V 74 % → 71 %, Cassia 1 75 % → 72 %). The LEDs and keys are meant to look and respond as before.
 - **A moving filter costs less.** While the Multimode filter's cutoff input moves, the filter follows it every 4th sample instead of every sample: about 9 % less of Hera 3's work while its envelopes open and close the filter. The difference in sound is about 73 dB below the signal.
+- **LFOs, envelopes and glides cost less.** They now work out their curve every 16th sample (0.36 ms) and draw a straight line in between: the LFO's sine, triangle, saw and random waves, envelope decays and releases, and moving glides. Square and sample-and-hold LFOs, attacks and held levels are unchanged. On the FM-1 the busiest moment of Cassia 1 drops from 72 % to 69 %, 8 Lire from 47 % to 44 %, Io 4 from 65 % to 64 %; a few patches with room to spare read a point or two higher (Spokes 6 52 % → 54 % with the transport running). In a blind comparison the difference could not be heard.
 
 ## 1.14.0 — 2026-11-13
 
