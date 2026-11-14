@@ -9,7 +9,7 @@ import { DEFS, LFO_RANGE_K, MATRIX_N, matrixPin, STACKS, TRACK_POLY } from './mo
 import { allModules, assembliesOf, parentOf } from './assembly';
 import { flawOf, hasMorph, type ModuleInst, type Patch } from './patch';
 import { deviceView } from './poly';
-import { schedule, scheduleTime, SCH_FORK, SCH_SYNC, type Schedule } from './schedule';
+import { schedule, scheduleTime, scheduleWork, SCH_FORK, SCH_SYNC, type Schedule } from './schedule';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 /** what changes a module's cost: a choice / switch / small integer (its measured values, the nearest one counts), a number
@@ -360,7 +360,7 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
     if (s.on && (scheduleFits?.(s) ?? true)) {
       const each = (m: number): number => work.get(p.modules[m].id) ?? 0;
       const items = s.order.reduce((n, m) => n + each(m) * s.copies[m], 0);
-      split = items - scheduleTime(s, each, SCH_SYNC * 64, SCH_FORK * 64);
+      split = items - scheduleTime(s, scheduleWork(s, each), SCH_SYNC * 64, SCH_FORK * 64);
       parted = 1;
     }
   }

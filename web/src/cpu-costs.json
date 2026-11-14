@@ -30179,7 +30179,7 @@
    ]
   },
   "reverb": {
-   "run": 96266,
+   "run": 96925,
    "cv": 243,
    "dims": [
     {
@@ -30194,10 +30194,10 @@
     }
    ],
    "grid": [
-    79420,
-    81474,
-    94212,
-    96266
+    82517,
+    82517,
+    96925,
+    96925
    ]
   },
   "output": {
@@ -44904,7 +44904,7 @@
   },
   {
    "name": "Canvas",
-   "cycles": 452219
+   "cycles": 452878
   },
   {
    "name": "Wanderer",
@@ -44912,7 +44912,7 @@
   },
   {
    "name": "Briefcase 3",
-   "cycles": 375704
+   "cycles": 376363
   },
   {
    "name": "Io 4",
@@ -45008,11 +45008,11 @@
   },
   {
    "name": "assembly Briefcase 3",
-   "cycles": 338256
+   "cycles": 339792
   },
   {
    "name": "assembly Canvas",
-   "cycles": 445998
+   "cycles": 447927
   },
   {
    "name": "assembly Cassia 1",
@@ -45048,7 +45048,7 @@
   },
   {
    "name": "assembly echo",
-   "cycles": 113457
+   "cycles": 116502
   },
   {
    "name": "assembly Elvira 2",
@@ -45076,7 +45076,7 @@
   },
   {
    "name": "assembly gated reverb",
-   "cycles": 125547
+   "cycles": 131070
   },
   {
    "name": "assembly glass bell",
@@ -45184,7 +45184,7 @@
   },
   {
    "name": "assembly shimmer",
-   "cycles": 130445
+   "cycles": 133938
   },
   {
    "name": "assembly sidechain pump",
