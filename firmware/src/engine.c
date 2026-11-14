@@ -10473,8 +10473,9 @@ static int sum_plain(const sum_t *sm)
 }
 
 /* one copy `it` of module nd for one block of n frames: its input sums, its parameter inputs and its run. prev: the copy of
- * the same module rendered just before it on this core, whose parameter inputs' means are in `means` (apply_cv), else 0 */
-HOT void render_item(const node_t *nd, inst_t *it, uint32_t n, const inst_t *prev, int32_t *means)
+ * the same module rendered just before it on this core, whose parameter inputs' means are in `means` (apply_cv), else 0.
+ * (Not inlined: one copy for both render paths, as the flash has no room for two.) */
+static __attribute__((noinline)) void render_item(const node_t *nd, inst_t *it, uint32_t n, const inst_t *prev, int32_t *means)
 {
     uint32_t m = (uint32_t)(nd - E.node), s, i;
     ENG_PROF(0, m, IT_V(nd, it));
