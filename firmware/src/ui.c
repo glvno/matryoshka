@@ -11,6 +11,8 @@
 #define C_TRACK 0x2145u                         /* a bar's empty part, a hot row (the panel colour) */
 #define C_HINT 0x6B6Du                          /* hint lines */
 
+#include "messages.h"                           /* the bar's, the toasts' and the footer's words */
+
 /* the panel state of the patch: the preset in the list, the module the knobs act on (SELECT turns it), its load error and name */
 static uint32_t cur_preset, sel;
 static int load_err;

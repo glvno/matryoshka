@@ -118,7 +118,7 @@ static void steprec_suite(void)
     check("REC held + the white key of step 3: step record on step 3, nothing written or heard, the step not switched",
           sr_on && sr_k == 2u && sr_notes(pat) == 0 && host_track_told == told && seq_held < 0 && thru_head == th0
           && !eng_transport_running() && !seq_rec);
-    check("  the bar says STEP 3 first, then the roll's pitches", bar_shows("STEP 3/16  PATTERN ARM G#3-D#4 P01", C_ACC));
+    check("  the bar says STEP 3 first, then the roll's pitches", bar_shows(MSG_BAR_STEP "3/16  PATTERN" MSG_BAR_ARM " G#3-D#4 P01", C_ACC));
     cx = seq_grid_x(2) + 5u;
     cy = GRID_Y + GRID_RH * 1u + GRID_CH - 1u;
     check("  the cursor's column: its empty cells tinted, a sky tick under it; the next column plain",
@@ -199,7 +199,7 @@ static void steprec_suite(void)
         later(1100);
         check("SEL held + G4's white key in step record: the pen, the view on G4's page (E4-B4), the row G4, heard, nothing written, the cursor stays",
               sr_on && seq_roll_lo == 64u && seq_grid_note(-1, seq_row) == 67u && steps_inst((uint32_t)pat)->s.stp.hit
-              && sr_notes(pat) == before && sr_k == k0 && bar_shows("STEP 4/16  PATTERN ARM E4-B4 P01", C_ACC));
+              && sr_notes(pat) == before && sr_k == k0 && bar_shows(MSG_BAR_STEP "4/16  PATTERN" MSG_BAR_ARM " E4-B4 P01", C_ACC));
         sr_tap_key(1u);                                 /* black key 1: F#3 */
         check("  SEL + black key 1: its own pitch (F#3), not a row; the view on C3-G3, nothing written", seq_roll_lo == 48u
               && seq_grid_note(-1, seq_row) == 54u && sr_notes(pat) == before && sr_k == k0);
@@ -226,12 +226,12 @@ static void steprec_suite(void)
         later(1100);
         check("a note on the last step: the cursor wraps to step 1, the bar says STEP 1; E4 was off the view, which moved to its page (#582)",
               sr_len_at(pat, (uint32_t)len - 1u, 64) == 1u && sr_k == 0u && seq_roll_lo == 64u
-              && bar_shows("STEP 1/16  PATTERN ARM E4-B4 P01", C_ACC));
+              && bar_shows(MSG_BAR_STEP "1/16  PATTERN" MSG_BAR_ARM " E4-B4 P01", C_ACC));
         enc(5, -1);
         sr_down(K_G4);
         tap(BTN_LFO);
         check("keys held + LFO on the last step: no tie past the end, the note one step, the cursor on step 1",
-              sr_len_at(pat, (uint32_t)len - 1u, 67) == 1u && sr_k == 0u && !strcmp(msg_text, "NO TIE PAST THE END"));
+              sr_len_at(pat, (uint32_t)len - 1u, 67) == 1u && sr_k == 0u && !strcmp(msg_text, MSG_NO_TIE_PAST_END));
         sr_up(K_G4);
         check("  G4 let go then: nothing more (the cursor stays on step 1)", sr_k == 0u && sr_len_at(pat, (uint32_t)len - 1u, 67) == 1u);
         eng_set_param((uint32_t)pat, STEPS_P_LEN, 32 << 16);
@@ -239,7 +239,7 @@ static void steprec_suite(void)
         enc(5, 17);
         later(1100);
         check("a 32-step track: K4 to step 18, the view shows steps 17-32", seq_len(pat) == 32 && sr_k == 17u && seq_pg == 1u
-              && px(seq_grid_x(1) + 5u, GRID_CUR_Y) == P_SKY && bar_shows("STEP 18/32  PATTERN ARM E4-B4 P01", C_ACC));
+              && px(seq_grid_x(1) + 5u, GRID_CUR_Y) == P_SKY && bar_shows(MSG_BAR_STEP "18/32  PATTERN" MSG_BAR_ARM " E4-B4 P01", C_ACC));
         enc(5, -2);
         check("  K4 back to step 16: the view shows steps 1-16", sr_k == 15u && seq_pg == 0u && px(seq_grid_x(15) + 5u, GRID_CUR_Y) == P_SKY);
         check("  drawn in place = drawn whole", sr_whole_same());
@@ -278,7 +278,7 @@ static void steprec_suite(void)
     check("  the piano roll's sheet: REC and REC + a white key, SELECT's pages, SEL + SELECT; every row fits", help_state() == HS_ROLL
           && sheet_fits() && help_rows(0, sr_rows) > 0u);
     later(1100);
-    check("  the bar without STEP, the cursor's tick gone", bar_shows("PATTERN ARM G#3-D#4 P01", C_ACC) && px(seq_grid_x(1) + 5u, GRID_CUR_Y) == C_BG
+    check("  the bar without STEP, the cursor's tick gone", bar_shows("PATTERN" MSG_BAR_ARM " G#3-D#4 P01", C_ACC) && px(seq_grid_x(1) + 5u, GRID_CUR_Y) == C_BG
           && strstr(seq_grid_text[1], HINT_ROW_TRACK));
     tap(BTN_REC);
     check("REC, stopped: step record on the page's first step (1), not the cursor's last step (2)", sr_on && sr_k == 0u
@@ -323,7 +323,7 @@ static void steprec_suite(void)
         tap(BTN_PLAY);
         check("PLAY in step record: the transport starts (MIDI Start out), step record becomes a live take (the roll's keys its keyboard)",
               !sr_on && seq_rec && eng_transport_running() && sent(at, 0xFAu, 0xFFu, 0xFFu) && seq_kbd()
-              && (E.trk_rec >> E.node[pat].trk & 1u) && !strcmp(msg_text, "REC PATTERN"));
+              && (E.trk_rec >> E.node[pat].trk & 1u) && !strcmp(msg_text, MSG_REC "PATTERN"));
     }
     tap(BTN_REC);
     check("  REC then, running: the live take ends, the transport goes on (as on every page)", !sr_on && !seq_rec && eng_transport_running());
@@ -337,7 +337,7 @@ static void steprec_suite(void)
     sr_begin(5);
     loop();
     check("REC held + a white key while a live take records: the take ends, step record on that step (6)", sr_on && sr_k == 5u
-          && !seq_rec && !E.trk_rec && eng_transport_running() && !strcmp(msg_text, "REC OFF: STEP RECORD"));
+          && !seq_rec && !E.trk_rec && eng_transport_running() && !strcmp(msg_text, MSG_REC_OFF_STEP));
     tap(BTN_PLAY);
     check("  PLAY while running in step record: the transport stops, step record goes on", sr_on && !eng_transport_running() && !seq_rec);
     tap(BTN_HOME);
@@ -363,7 +363,7 @@ static void steprec_suite(void)
     panel_edges(0, 1u << BTN_SEL);
     loop();
     check("SEL + FX silences preview without moving or writing", !sr_preview && sr_on && sr_k == 0u && sr_keys
-          && !seq_thru_note[K_C4] && !sr_notes(pat) && page == PAGE_SEQ && !strcmp(msg_text, "NOTE PREVIEW OFF"));
+          && !seq_thru_note[K_C4] && !sr_notes(pat) && page == PAGE_SEQ && !strcmp(msg_text, MSG_NOTE_PREVIEW_OFF));
     tap(BTN_LFO);
     sr_up(K_C4);
     check("silenced held note still writes its tie", sr_len_at(pat, 0, 60) == 2u && sr_k == 2u);
@@ -407,7 +407,7 @@ static void steprec_suite(void)
     check("  the drum grid's sheet: every row fits", help_state() == HS_DRUM && sheet_fits());
     sr_begin(0);
     later(1100);
-    check("  the drum grid's bar: no pitches", bar_shows("STEP 1/16  DRUMS ARM P01", C_ACC));
+    check("  the drum grid's bar: no pitches", bar_shows(MSG_BAR_STEP "1/16  DRUMS" MSG_BAR_ARM " P01", C_ACC));
     th0 = thru_head;
     sr_down(1);                                         /* black key 1: row 1 (the kick) */
     sr_down(5);                                         /* black key 3: row 3 */

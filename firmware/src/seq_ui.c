@@ -418,11 +418,11 @@ static int seq_no_track(int b)
     if (b >= 0 && b < eng_steps_count())
         return 0;
     if (!eng_steps_count()) {
-        ui_msg("NO STEPS MODULE", 1000);
+        ui_msg(MSG_NO_STEPS, 1000);
         return 1;
     }
     fmt_int(num, b + 1);
-    put(put(m, "NO TRACK "), num)[0] = 0;
+    put(put(m, MSG_NO_TRACK), num)[0] = 0;
     ui_msg(m, 1000);
     return 1;
 }
@@ -447,7 +447,7 @@ static void seq_mute_key(uint32_t n)
     eng_steps_mute((uint32_t)mod, !eng_steps_muted((uint32_t)mod));
     m1_mute_now((uint32_t)mod, eng_steps_muted((uint32_t)mod));
     seq_name((uint32_t)b, name);
-    put(put(m, name), eng_steps_muted((uint32_t)mod) ? " MUTED" : " ON")[0] = 0;
+    put(put(m, name), eng_steps_muted((uint32_t)mod) ? MSG_MUTED : MSG_ON)[0] = 0;
     ui_msg(m, 1000);
     if (page == PAGE_SEQ)                        /* (no other page shows mutes) */
         seq_track_redraw();
@@ -527,10 +527,10 @@ static void seq_roll_tie(int mod, uint32_t k, uint32_t note)
         uint32_t last = (w[t] & ENG_NOTE_WRAP) && at + n > len ? at + n - len - 1u : at + n - 1u;
         if (!eng_note_drone(w[t]) && k == last) {
             w[t] &= ~(ENG_NOTE_WRAP | 63u << 6);
-            seq_msg_due = "TIE OFF";
+            seq_msg_due = MSG_TIE_OFF;
         } else {
             w[t] = eng_note_end_on(w[t], k, len);
-            seq_msg_due = "TIED";
+            seq_msg_due = MSG_TIED;
         }
     } else {
         for (i = 0; i < nn; i++)                 /* the row's last note starting before k */
@@ -542,16 +542,16 @@ static void seq_roll_tie(int mod, uint32_t k, uint32_t note)
                 if (((w[i] >> 12) & 127u) == note && (w[i] & 63u) < len && (prev < 0 || (w[i] & 63u) > (w[prev] & 63u)))
                     prev = i;
         if (prev < 0) {
-            seq_msg_due = "NOTHING TO TIE";
+            seq_msg_due = MSG_NOTHING_TO_TIE;
             return;
         }
         if ((w[prev] & 63u) == k) {              /* the last note starts on k: a drone, or one step again */
             if (eng_note_drone(w[prev])) {
                 w[prev] &= ~(ENG_NOTE_WRAP | 63u << 6);
-                seq_msg_due = "TIE OFF";
+                seq_msg_due = MSG_TIE_OFF;
             } else {
                 w[prev] |= ENG_NOTE_WRAP | 63u << 6;
-                seq_msg_due = "DRONE";
+                seq_msg_due = MSG_DRONE;
             }
             (void)eng_steps_set_notes((uint32_t)mod, w, (uint32_t)nn);
             return;
@@ -574,7 +574,7 @@ static void seq_roll_tie(int mod, uint32_t k, uint32_t note)
                 n = wrap ? len : TRACK_STEPS - at;
             w[prev] = (w[prev] & ~(63u << 6)) | (n - 1u) << 6;
         }
-        seq_msg_due = "TIED";
+        seq_msg_due = MSG_TIED;
     }
     (void)eng_steps_set_notes((uint32_t)mod, w, (uint32_t)nn);
 }
@@ -598,7 +598,7 @@ static void seq_row_drone(void)
                 first = i;
         }
     if (first < 0) {
-        seq_msg_due = "NOTHING TO DRONE";
+        seq_msg_due = MSG_NOTHING_TO_DRONE;
         return;
     }
     for (i = m = 0; i < nn; i++)
@@ -606,10 +606,10 @@ static void seq_row_drone(void)
             uint32_t x = ws[i];
             if (count == 1 && eng_note_drone(x)) {
                 w[m++] = x & ~(ENG_NOTE_WRAP | 63u << 6);
-                seq_msg_due = "DRONE OFF";
+                seq_msg_due = MSG_DRONE_OFF;
             } else {
                 w[m++] = x | ENG_NOTE_WRAP | 63u << 6;
-                seq_msg_due = "DRONE";
+                seq_msg_due = MSG_DRONE;
             }
         } else if (((ws[i] >> 12) & 127u) != note)
             w[m++] = ws[i];
@@ -688,7 +688,7 @@ static int sr_put(int mod, uint32_t from, uint32_t to, int chord)
         w[m++] = sr_at[i] | (end - sr_at[i]) << 6 | (uint32_t)sr_note[i] << 12 | (uint32_t)sr_vel[i] << 19;
     }
     if (!eng_steps_set_notes((uint32_t)mod, w, m)) {
-        seq_msg_due = "PATCH NOTE MEMORY FULL";
+        seq_msg_due = MSG_NOTE_MEMORY_FULL;
         return 0;
     }
     seq_sync(mod);
@@ -775,7 +775,7 @@ static void sr_lfo(void)
         sr_skip |= sr_keys;
         sr_keys = 0;
         sr_n = 0;
-        seq_msg_due = "NO TIE PAST THE END";
+        seq_msg_due = MSG_NO_TIE_PAST_END;
         sr_move(mod, 1);
         return;
     }
@@ -889,7 +889,7 @@ static void sr_preview_toggle(void)
             if (sr_keys >> n & 1u)
                 seq_thru_up(n);
     seq_pen_ms = fm1_ms | 1u;                     /* SEL's release must not open SONG */
-    ui_msg(sr_preview ? "NOTE PREVIEW ON" : "NOTE PREVIEW OFF", 1500);
+    ui_msg(sr_preview ? MSG_NOTE_PREVIEW_ON : MSG_NOTE_PREVIEW_OFF, 1500);
     ui_dirty = ui_dirty ? ui_dirty : 1;
 }
 
@@ -1161,13 +1161,13 @@ static void seq_rec_msg(void)
         if (seq_mod_armed(eng_steps_module((uint32_t)t)) && !n++)
             first = t;
     if (!n)
-        put(m, "REC: NO TRACK ARMED")[0] = 0;
+        put(m, MSG_REC_NO_TRACK)[0] = 0;
     else if (n == 1) {
         seq_name((uint32_t)first, name);
-        put(put(m, "REC "), name)[0] = 0;
+        put(put(m, MSG_REC), name)[0] = 0;
     } else {
         fmt_int(num, n);
-        put(put(put(m, "REC "), num), " TRACKS")[0] = 0;
+        put(put(put(m, MSG_REC), num), MSG_REC_TRACKS)[0] = 0;
     }
     ui_msg(m, 1200);
 }
@@ -1180,7 +1180,7 @@ static void seq_rec_press(void)
     sr_stop();                                   /* (REC ends step record, then acts: D-808) */
     if (seq_rec) {
         seq_rec_off();
-        ui_msg("REC OFF", 1000);
+        ui_msg(MSG_REC_OFF, 1000);
         return;
     }
     seq_rec = 1;
@@ -1191,7 +1191,7 @@ static void seq_rec_press(void)
         seq_cin_shown = 0xFF;
         seq_cin_lit = 1;
         seq_cin_engine(seq_cin_bars);            /* (a click on each beat, D-803) */
-        ui_msg("COUNT-IN", 4000);
+        ui_msg(MSG_COUNT_IN, 4000);
     } else
         seq_rec_msg();
     seq_rec_sync();
@@ -1223,7 +1223,7 @@ static void sr_rec_white(uint32_t n)
         return;
     if (seq_rec) {
         seq_rec_off();
-        seq_msg_due = "REC OFF: STEP RECORD";
+        seq_msg_due = MSG_REC_OFF_STEP;
     }
     sr_stop();
     sr_start(k, (int)n);
@@ -1266,7 +1266,7 @@ static void seq_cin_poll(void)
     if (k == seq_cin_shown)
         return;
     seq_cin_shown = (uint8_t)k;
-    p = put(m, "COUNT-IN ");
+    p = put(m, MSG_COUNT_IN " ");
     if (seq_cin_bars > 1u) {
         fmt_int(num, (int32_t)(k / 4u) + 1);
         p = put(p, num);
@@ -1296,7 +1296,7 @@ static void seq_arm_key(uint32_t n)
     m1_arms_now(eng_arm_mask_get());
     seq_rec_sync();                              /* (REC on: it records from now on, or no longer: #395) */
     seq_name((uint32_t)b, name);
-    put(put(m, name), mset_has(eng_arm_mask_get(), (uint32_t)mod) ? " ARMED" : " DISARMED")[0] = 0;
+    put(put(m, name), mset_has(eng_arm_mask_get(), (uint32_t)mod) ? MSG_ARMED : MSG_DISARMED)[0] = 0;
     ui_msg(m, 1200);
     seq_track_redraw();
 }
@@ -1319,7 +1319,7 @@ static void seq_clear_press(void)
         (void)eng_steps_set_notes((uint32_t)mod, none, 0);
         seq_held = -1;
         seq_sync(mod);
-        put(put(seq_msg_buf, name), " CLEARED")[0] = 0;
+        put(put(seq_msg_buf, name), MSG_CLEARED)[0] = 0;
         seq_msg_due = seq_msg_buf;
         seq_msg_ms = 1200;
         ui_dirty = ui_dirty ? ui_dirty : 1;      /* (the cells that had notes) */
@@ -1328,7 +1328,7 @@ static void seq_clear_press(void)
     seq_clear_at = fm1_ms | 1u;
     seq_clear_gen = pages_gen();
     seq_clear_trk = seq_trk;
-    put(put(put(seq_msg_buf, "CLEAR "), name), "? REC AGAIN")[0] = 0;   /* (26 characters at most: a name has 8) */
+    put(put(put(seq_msg_buf, MSG_CLEAR), name), MSG_REC_AGAIN)[0] = 0;   /* (26 characters at most: a name has 8) */
     seq_msg_due = seq_msg_buf;
     seq_msg_ms = SEQ_CLEAR_MS;
 }
@@ -1340,7 +1340,7 @@ static void seq_clear_cancel(void)
     if (!seq_clear_at)
         return;
     seq_clear_at = 0;
-    seq_msg_due = "NOT CLEARED";
+    seq_msg_due = MSG_NOT_CLEARED;
     seq_msg_ms = 0;
 }
 
@@ -1358,7 +1358,7 @@ static void seq_leave(void)
         seq_page_armed = 0;
         if ((int)t < eng_steps_count() && seq_mod_armed(eng_steps_module(t))) {
             seq_name(t, name);
-            put(put(m, name), " STAYS ARMED")[0] = 0;
+            put(put(m, name), MSG_STAYS_ARMED)[0] = 0;
             seq_msg_due = m;
             seq_msg_ms = 1500;
         }
@@ -1385,7 +1385,7 @@ static int seq_arm_label(char *out, int *rec)
         more += k != t && seq_mod_armed(eng_steps_module((uint32_t)k));
     seq_name((uint32_t)t, name);
     *rec = seq_rec != 0;                         /* (REC on: the armed tracks record, #395; COUNT-IN until then, #414) */
-    q = put(put(out, seq_cin ? "COUNT-IN " : *rec ? "REC " : "ARM "), name);
+    q = put(put(out, seq_cin ? MSG_COUNT_IN " " : *rec ? MSG_FOOT_REC : MSG_FOOT_ARM), name);
     if (more) {
         q = put(q, " +");
         q[0] = (char)('0' + (more > 9 ? 9 : more));
@@ -1440,7 +1440,7 @@ static void seq_bar(void)
 {
     char b[48], name[TRACK_NAME_MAX + 8], *p = b;
     if (!eng_steps_count()) {
-        bar_text("NO STEPS MODULE", C_ACC);
+        bar_text(MSG_NO_STEPS, C_ACC);
         return;
     }
     seq_name(seq_trk, name);
@@ -1449,13 +1449,13 @@ static void seq_bar(void)
         char num[8];
         int mod = seq_module();
         fmt_int(num, (int32_t)sr_k + 1);
-        p = put(put(put(p, "STEP "), num), "/");
+        p = put(put(put(p, MSG_BAR_STEP), num), "/");
         fmt_int(num, mod >= 0 ? seq_len(mod) : 16);
         p = put(put(p, num), "  ");
     }
     p = put(p, name);
     if (seq_mod_armed(seq_module()))             /* the track shown is armed (#179): REC records it (#395) */
-        p = put(p, seq_rec ? " REC" : " ARM");
+        p = put(p, seq_rec ? MSG_BAR_REC : MSG_BAR_ARM);
     if (seq_bar_lo() != 0xFFu)                   /* the roll: the pitches shown, C3-G3 (D-809) */
         p = seq_note_name(put(seq_note_name(put(p, " "), seq_roll_lo), "-"), seq_roll_lo + 7u);
     p = seq_pat_text(p);                         /* (after REC / ARM: name REC C3-G3 P03>P04) */
@@ -2118,17 +2118,17 @@ static void song_del_press(void)
     }
     song_del_at = fm1_ms | 1u;
     song_del_k = song_cur;
-    put(put(put(seq_msg_buf, "DELETE ENTRY "), num), "? REC AGAIN")[0] = 0;
+    put(put(put(seq_msg_buf, "DELETE ENTRY "), num), MSG_REC_AGAIN)[0] = 0;
     seq_msg_due = seq_msg_buf;
     seq_msg_ms = SEQ_CLEAR_MS;
 }
 static void song_bar(void)
 {
     char b[32], *p = b;
-    p = put(p, "SONG ");
+    p = put(p, MSG_SONG);
     *p++ = (char)('1' + song_sel);
     song_shown_run = (int8_t)(eng_transport_running() != 0);
-    p = put(p, eng_song() == song_sel + 1 ? (song_shown_run ? " PLAYS" : " STOPPED") : eng_song() ? " (SONG " : " (PATTERN P");
+    p = put(p, eng_song() == song_sel + 1 ? (song_shown_run ? MSG_SONG_RUNS : MSG_SONG_STOPPED) : eng_song() ? " (SONG " : " (PATTERN P");
     if (eng_song() && eng_song() != song_sel + 1) {
         *p++ = (char)('0' + eng_song());
         p = put(p, " PLAYS)");

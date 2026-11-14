@@ -128,9 +128,9 @@ static void teach_suite(void)
     panel_held |= 1u << BTN_PLAY;                       /* PLAY held alone: the hint after 0.6 s, not before */
     panel_edges(1u << BTN_PLAY, 0);
     later(PLAY_HINT_MS - 100u);
-    check("PLAY held 0.5 s: no hint yet", !strstr(msg_text, "TURN PRESET"));
+    check("PLAY held 0.5 s: no hint yet", !strstr(msg_text, MSG_TURN_PRESET));
     later(200u);
-    check("PLAY held 0.7 s: TEMPO 97: TURN PRESET in the header (D-920)", nudged("TEMPO 97: TURN PRESET"));
+    check("PLAY held 0.7 s: TEMPO 97: TURN PRESET in the header (D-920)", nudged(MSG_TEMPO "97" MSG_TURN_PRESET));
     nudge_snap("play-held");
     check("  the hint ends: the screen as a whole redraw", nudge_ends_whole());
     panel_held &= ~(1u << BTN_PLAY);
@@ -146,7 +146,7 @@ static void teach_suite(void)
     enc(6, 1);
     later(PLAY_HINT_MS);
     check("PLAY held + PRESET before 0.6 s: the tempo a click up, no hint after it",
-          ((eng_get_param((uint32_t)panel, FM1_P_TEMPO) + 32768) >> 16) == 98 && !strstr(msg_text, "TURN PRESET"));
+          ((eng_get_param((uint32_t)panel, FM1_P_TEMPO) + 32768) >> 16) == 98 && !strstr(msg_text, MSG_TURN_PRESET));
     panel_held &= ~(1u << BTN_PLAY);
     panel_edges(0, 1u << BTN_PLAY);
     loop();
@@ -155,7 +155,7 @@ static void teach_suite(void)
     m1_patch_param((uint32_t)panel, FM1_P_TEMPO, bpm0 << 16);
     later(NUDGE_MS + 100u);
     tap(BTN_PLAY);                                      /* a tap: no hint */
-    check("a PLAY tap: no hint", !strstr(msg_text, "TURN PRESET"));
+    check("a PLAY tap: no hint", !strstr(msg_text, MSG_TURN_PRESET));
     tap(BTN_PLAY);
     blocks(800);
     later(NUDGE_MS + 100u);
@@ -175,7 +175,7 @@ static void teach_suite(void)
     p = key_peak(0u);
     loop();
     snprintf(want, sizeof want, "DRUMS armed: key 1 (F3, white) plays nothing (peak %d), the header says DRUMS: BLACK KEYS 1-8", (int)p);
-    check(want, p <= idle && nudged("DRUMS: BLACK KEYS 1-8"));
+    check(want, p <= idle && nudged(MSG_DRUMS_BLACK_KEYS));
     check("  the nudge ends: the screen as a whole redraw", nudge_ends_whole());
     p = key_peak(1u);
     check("  black key 1 (F#3) plays the Drum map's first row", p > 1000 && p > 16 * idle);
@@ -191,7 +191,7 @@ static void teach_suite(void)
     p = key_peak(0u);
     loop();
     snprintf(want, sizeof want, "DRUMS and PATTERN armed: key 1 (F3) plays PATTERN's Silver Box (peak %d), no nudge", (int)p);
-    check(want, p > 1000 && p > 16 * idle && !strstr(msg_text, "BLACK KEYS"));
+    check(want, p > 1000 && p > 16 * idle && !strstr(msg_text, MSG_DRUMS_BLACK_KEYS));
     panel_keys(1u);                                     /* a key held through an arm change still goes quiet (keys_off) */
     loop();
     blocks(40);
@@ -238,7 +238,7 @@ static void nudge_suite(void)
     later(2000);
     if (eng_transport_running())
         tap(BTN_PLAY);
-    put(put(want, PANEL_BTN_NAME[b]), ": NOT USED IN PATCH")[0] = 0;
+    put(put(want, PANEL_BTN_NAME[b]), MSG_NOT_USED)[0] = 0;
     tap(PANEL_BTN_ID[b]);
     printf("      (%s: %s)\n", PRESET_LIST[p].name, want);
     check("a patch button with no job: it names itself, NOT USED IN PATCH (D-249)", nudged(want));
@@ -251,8 +251,8 @@ static void nudge_suite(void)
                 j = i;
         if (j < 4u) {
             tap(PANEL_BTN_ID[B[j]]);
-            check("  a patch button with a job: no nudge, its state", strstr(msg_text, "NOT USED") == 0
-                  && (strstr(msg_text, " ON") || strstr(msg_text, " OFF")));
+            check("  a patch button with a job: no nudge, its state", strstr(msg_text, MSG_NOT_USED) == 0
+                  && (strstr(msg_text, MSG_ON) || strstr(msg_text, MSG_OFF)));
             tap(PANEL_BTN_ID[B[j]]);
             later(1500);
         }
@@ -262,12 +262,12 @@ static void nudge_suite(void)
     bank_mask = 0;
     patch_enc(1);
     loop();
-    check("HOME + PRESET, the bank empty: BANK EMPTY, no patch stepped", presets_stepped == stepped && nudged("BANK EMPTY"));
+    check("HOME + PRESET, the bank empty: BANK EMPTY, no patch stepped", presets_stepped == stepped && nudged(MSG_BANK_EMPTY));
     nudge_snap("bank-empty");
     check("  the nudge ends: the screen as a whole redraw", nudge_ends_whole());
     tap(BTN_GLO);
     enc(6, 1);
-    check("  PRESET in the menu, the bank empty: BANK EMPTY", page == PAGE_MENU && presets_stepped == stepped && nudged("BANK EMPTY"));
+    check("  PRESET in the menu, the bank empty: BANK EMPTY", page == PAGE_MENU && presets_stepped == stepped && nudged(MSG_BANK_EMPTY));
     later(NUDGE_MS + 100u);
     bank_mask = bank0;
 
@@ -295,11 +295,11 @@ static void nudge_suite(void)
         int oct = octave, pg = seq_pg;
         check("(the SEQ page on a track of 16 steps or fewer)", page == PAGE_SEQ && seq_module() >= 0 && seq_len(seq_module()) <= 16);
         tap(BTN_OCT_UP);
-        check("OCT+ on a SEQ page of 16 steps: ALL 16 STEPS SHOWN, no page, no octave", nudged("ALL 16 STEPS SHOWN")
+        check("OCT+ on a SEQ page of 16 steps: ALL 16 STEPS SHOWN, no page, no octave", nudged(MSG_ALL_STEPS_SHOWN)
               && seq_pg == pg && octave == oct);
         nudge_snap("seq-16");
         tap(BTN_OCT_DOWN);
-        check("  OCT- the same", nudged("ALL 16 STEPS SHOWN") && seq_pg == pg && octave == oct);
+        check("  OCT- the same", nudged(MSG_ALL_STEPS_SHOWN) && seq_pg == pg && octave == oct);
         check("  the nudge ends: the screen as a whole redraw", nudge_ends_whole());
     }
     tap(BTN_SEQ);
@@ -326,11 +326,11 @@ static void nudge_suite(void)
             tap(BTN_SEL);
             if (t == T_MIXER) {
                 check("SEL on a device with no keys input: NOTHING HERE TAKES KEYS (D-235), the armed set kept",
-                      nudged("NOTHING HERE TAKES KEYS") && m64(eng_arm_mask_get()) == arm0);
+                      nudged(MSG_NOTHING_TAKES_KEYS) && m64(eng_arm_mask_get()) == arm0);
                 none++;
             } else {
                 check("SEL on a Drum map no keys cable reaches: NO KEYS REACH THIS DEVICE (#215), the armed set kept",
-                      !m64(env_listeners(d)) && nudged("NO KEYS REACH THIS DEVICE") && m64(eng_arm_mask_get()) == arm0);
+                      !m64(env_listeners(d)) && nudged(MSG_NO_KEYS_REACH) && m64(eng_arm_mask_get()) == arm0);
                 nudge_snap("no-keys");
                 check("  the nudge ends: the screen as a whole redraw", nudge_ends_whole());
                 reach++;
@@ -348,7 +348,7 @@ static void nudge_suite(void)
                 break;
         }
         tap(BTN_SEL);
-        check("  on its environment row too", page == PAGE_ENV && pg_cur_dev == d && nudged("NO KEYS REACH THIS DEVICE"));
+        check("  on its environment row too", page == PAGE_ENV && pg_cur_dev == d && nudged(MSG_NO_KEYS_REACH));
         tap(BTN_HOME);
     }
 
@@ -385,7 +385,7 @@ static void nudge_suite(void)
                 tap(BTN_SEL);
                 check(grp ? "SEL on a poly engine no keys cable reaches: NO KEYS REACH THIS DEVICE (D-905), the armed set kept"
                           : "SEL on a mono engine no keys cable reaches: NO KEYS REACH THIS DEVICE (#215), the armed set kept",
-                      !m64(env_listeners(d)) && !env_armed(d) && nudged("NO KEYS REACH THIS DEVICE") && m64(eng_arm_mask_get()) == arm0);
+                      !m64(env_listeners(d)) && !env_armed(d) && nudged(MSG_NO_KEYS_REACH) && m64(eng_arm_mask_get()) == arm0);
                 if (grp) {
                     poly++;
                 } else {
@@ -406,7 +406,7 @@ static void nudge_suite(void)
             later(1500);
             tap(BTN_SEL);
             check("  on its environment row too, the armed set kept", page == PAGE_ENV && pg_cur_dev == d
-                  && nudged("NO KEYS REACH THIS DEVICE") && m64(eng_arm_mask_get()) == arm0);
+                  && nudged(MSG_NO_KEYS_REACH) && m64(eng_arm_mask_get()) == arm0);
         }
         tap(BTN_HOME);
     }
@@ -438,7 +438,7 @@ static void nudge_suite(void)
             arm0 = m64(eng_arm_mask_get());
             tap(BTN_SEL);
             check("SEL on a poly engine a track drives through other cables: NO KEYS REACH THIS DEVICE (#633), the armed set kept",
-                  !m64(env_listeners(d)) && !env_armed(d) && nudged("NO KEYS REACH THIS DEVICE") && m64(eng_arm_mask_get()) == arm0);
+                  !m64(env_listeners(d)) && !env_armed(d) && nudged(MSG_NO_KEYS_REACH) && m64(eng_arm_mask_get()) == arm0);
             seen++;
         }
         check("  (the engine seen)", seen == 1u);
@@ -458,8 +458,8 @@ static void nudge_suite(void)
     check("(sandbox mode)", sb_on && page == 0u);
     {
         static const struct { uint32_t id; const char *say; } SBN[5] = {
-            {BTN_SEQ, "SANDBOX: SEQ IN EDITOR"}, {BTN_ENV, "SANDBOX: ENV IN EDITOR"}, {BTN_REC, "SANDBOX: REC IN EDITOR"},
-            {BTN_SAVE, "SANDBOX: SAVE IN EDITOR"}, {BTN_SEL, "SANDBOX: ARM IN EDITOR"}};
+            {BTN_SEQ, MSG_SANDBOX_SEQ}, {BTN_ENV, MSG_SANDBOX_ENV}, {BTN_REC, MSG_SANDBOX_REC},
+            {BTN_SAVE, MSG_SANDBOX_SAVE}, {BTN_SEL, MSG_SANDBOX_ARM}};
         uint32_t i;
         for (i = 0; i < 5u; i++) {
             int from = mlen;
@@ -479,7 +479,7 @@ static void nudge_suite(void)
         tap(BTN_GLO);                                   /* the menu in sandbox mode: ENV nudges, SAVE keeps its job */
         tap(BTN_ENV);
         check("  ENV in the menu in sandbox mode: the nudge, the environment does not open (D-232)", page == PAGE_MENU
-              && nudged("SANDBOX: ENV IN EDITOR"));
+              && nudged(MSG_SANDBOX_ENV));
         sv = saved;
         tap(BTN_SAVE);
         check("  SAVE in the menu in sandbox mode: saves and closes it", saved == sv + 1 && page == 0u);
@@ -488,7 +488,7 @@ static void nudge_suite(void)
     m1_live(1);
     cfg.midi_out = 0;                                   /* MIDI OUT off: nothing reaches the editor */
     tap(BTN_SEQ);
-    check("SEQ in sandbox mode, MIDI OUT off: TURN ON MIDI OUT: GLO, K3", nudged("TURN ON MIDI OUT: GLO, K3"));
+    check("SEQ in sandbox mode, MIDI OUT off: TURN ON MIDI OUT: GLO, K3", nudged(MSG_MIDI_OUT_OFF));
     nudge_snap("midi-out");
     later(NUDGE_MS + 100u);
     m1_live(1);
@@ -498,11 +498,11 @@ static void nudge_suite(void)
     check("  a key: no nudge drawn by the key edge", msg_text[0] == 0);
     panel_keys(0u);
     loop();
-    check("  ... the loop shows it", nudged("TURN ON MIDI OUT: GLO, K3"));
+    check("  ... the loop shows it", nudged(MSG_MIDI_OUT_OFF));
     later(NUDGE_MS + 100u);
     m1_live(1);
     enc(2, 1);
-    check("  K1: the nudge", nudged("TURN ON MIDI OUT: GLO, K3"));
+    check("  K1: the nudge", nudged(MSG_MIDI_OUT_OFF));
     m1_live(1);
     check("  the nudge ends: the screen as a whole redraw", nudge_ends_whole());
     m1_live(0);
@@ -510,7 +510,7 @@ static void nudge_suite(void)
     check("(sandbox mode ends)", !sb_on);
     m1_live(1);                                         /* sandbox mode begins with MIDI OUT off: the nudge at once */
     loop();
-    check("sandbox mode begins, MIDI OUT off: the nudge at once", sb_on && nudged("TURN ON MIDI OUT: GLO, K3"));
+    check("sandbox mode begins, MIDI OUT off: the nudge at once", sb_on && nudged(MSG_MIDI_OUT_OFF));
     m1_live(0);
     loop();
     cfg.midi_out = 1;

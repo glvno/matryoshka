@@ -1656,18 +1656,18 @@ static uint32_t foot_layout(foot_t *f)
         q = f->o;                                       /* = OCT =, OCT +, OCT ++, - OCT, -- OCT (the owner, 2026-10-24) */
         for (i = 0; i < (uint32_t)(octave < 0 ? -octave : 0); i++)
             *q++ = '-';
-        q = put(q, octave > 0 ? "OCT " : octave < 0 ? " OCT" : "= OCT =");
+        q = put(q, octave > 0 ? MSG_FOOT_OCT_UP : octave < 0 ? MSG_FOOT_OCT_DOWN : MSG_FOOT_OCT);
         for (i = 0; i < (uint32_t)(octave > 0 ? octave : 0); i++)
             *q++ = '+';
         *q = 0;
         wt = text_w(&FONT_F, f->t, -1) + 8u;
         wo = FOOT_OCT_W;
         {                                               /* nothing armed: KEYS WIRED after the name, in the tempo's ink */
-            uint32_t ww = wired ? text_w(&FONT_F, " KEYS WIRED", -1) : 0u;
+            uint32_t ww = wired ? text_w(&FONT_F, " " MSG_KEYS_WIRED, -1) : 0u;
             fit(f->a, &FONT_F, 240u - 12u - 13u - wm - wt - wo - 3u * 6u - ww);
             wa = text_w(&FONT_F, f->a, -1);
             if (ww) {
-                put(f->w, "KEYS WIRED")[0] = 0;
+                put(f->w, MSG_KEYS_WIRED)[0] = 0;
                 f->xw = 6u + wa + text_w(&FONT_F, " ", -1);
                 wa += ww;
             }
@@ -1726,7 +1726,7 @@ static void foot_row(const foot_t *f, uint32_t y, uint16_t *row)
                 row[BATT_FX + i] = c;
         }
         if (f->off && y == BATT_FY)                     /* (the device test mode's SCREEN reads the mark as a text) */
-            scr_pend(OFF_FX, OFF_FW, 6u, "3.5MM OFF", -1);
+            scr_pend(OFF_FX, OFF_FW, 6u, MSG_FOOT_OUT35_OFF, -1);
         for (i = 0; f->off && i < OFF_FW; i++)
             if (OFF_MARK[y - BATT_FY][i] == '#')
                 row[OFF_FX + i] = P_WARN;
@@ -2251,13 +2251,13 @@ static void dev_arm(int layer)
     if (pg_cur_dev >= pg_ndev)
         return;
     if (!mset_any(l = env_listeners(pg_cur_dev))) {
-        ui_msg(dev_keys_input(pg_cur_dev) ? "NO KEYS REACH THIS DEVICE" : "NOTHING HERE TAKES KEYS", 1200);
+        ui_msg(dev_keys_input(pg_cur_dev) ? MSG_NO_KEYS_REACH : MSG_NOTHING_TAKES_KEYS, 1200);
         return;
     }
     mask = env_armed(pg_cur_dev) ? mset_minus(eng_arm_mask_get(), l) : layer ? mset_or(eng_arm_mask_get(), l) : l;
     seq_arm_set(mask);
     caps(t, pg_dev[pg_cur_dev].name, pg_dev[pg_cur_dev].nlen, 14);
-    put(put(m, t), env_armed(pg_cur_dev) ? " ARMED" : " DISARMED")[0] = 0;
+    put(put(m, t), env_armed(pg_cur_dev) ? MSG_ARMED : MSG_DISARMED)[0] = 0;
     if (env_armed(pg_cur_dev) && env_track_no(pg_cur_dev) < 0) {   /* (#582: a track that came along is named too, as the
                                                      * footer then names it: SILVER BOX + PATTERN ARMED; 26 characters, else
                                                      * the track's name alone) */
@@ -2269,14 +2269,14 @@ static void dev_arm(int layer)
                 continue;
             seq_name((uint32_t)k, tn);
             caps(tc, tn, str_len(tn), TRACK_NAME_MAX + 7u);
-            if (str_len(t) + 3u + str_len(tc) + 6u <= 26u)
-                put(put(put(put(m, t), " + "), tc), " ARMED")[0] = 0;
+            if (str_len(t) + sizeof MSG_ARMED_PLUS - 1u + str_len(tc) + sizeof MSG_ARMED - 1u <= 26u)
+                put(put(put(put(m, t), MSG_ARMED_PLUS), tc), MSG_ARMED)[0] = 0;
             else
-                put(put(m, tc), " ARMED")[0] = 0;
+                put(put(m, tc), MSG_ARMED)[0] = 0;
             break;
         }
     }
-    ui_msg(mset_any(eng_arm_mask_get()) ? m : "KEYS WIRED", 1200);
+    ui_msg(mset_any(eng_arm_mask_get()) ? m : MSG_KEYS_WIRED, 1200);
 }
 
 /* nothing armed and the keys reach device d by its cables (#582): its row says WIRED, dim, where ARMED goes (the footer's
@@ -2298,9 +2298,9 @@ static void env_status(uint32_t d, char *out)
     char num[12];
     out[0] = 0;
     if (env_armed(d)) {
-        put(out, "ARMED")[0] = 0;
+        put(out, MSG_ROW_ARMED)[0] = 0;
     } else if (env_wired(d)) {
-        put(out, "WIRED")[0] = 0;
+        put(out, MSG_ROW_WIRED)[0] = 0;
     } else if (t == T_FM1) {
         fmt_int(num, (eng_get_param((uint32_t)m, FM1_P_TEMPO) + 32768) >> 16);
         put(put(out, num), " BPM")[0] = 0;
@@ -3211,7 +3211,7 @@ static void dp_deleted(uint32_t structure, const char *name)
         }
     if (!hit)
         return;
-    ui_msg("PRESET DELETED: SOUND KEPT", 2500);        /* (the bar's 26 characters) */
+    ui_msg(MSG_PRESET_DELETED, 2500);                  /* (the bar's 26 characters) */
     ui_dirty = 2;                                       /* (ENV's rows lose the name) */
 }
 
@@ -3221,8 +3221,8 @@ static void dp_deleted(uint32_t structure, const char *name)
  * editor's Send or Live, then SAVE, rewrites it); else none stored yet */
 static void dp_none_msg(uint32_t d)
 {
-    ui_msg(d >= pg_ndev || pg_dev[d].module >= 0 ? "NONE. HOME+PRESET: PATCHES"
-           : !pg_dev[d].structure ? "OLD PATCH: SEND + SAVE IT" : "NONE YET: ENV+SAVE STORES", 1500);
+    ui_msg(d >= pg_ndev || pg_dev[d].module >= 0 ? MSG_NONE_PATCHES
+           : !pg_dev[d].structure ? MSG_OLD_PATCH : MSG_NONE_YET, 1500);
 }
 
 /* PRESET on a device page (#395), PRESET or ALGO on the environment (#198): the focused device's next / previous preset,
@@ -3245,11 +3245,11 @@ static int dev_preset_step(int32_t st)
     if (dp_load(pg_cur_dev, (uint32_t)c))
         return 0;
     if (dp_short) {                                     /* (some rows kept their values: the editor's status line says what to do) */
-        ui_msg("STORED SHORT: SEE EDITOR", 1500);       /* (the bar's 26 characters) */
+        ui_msg(MSG_STORED_SHORT, 1500);                 /* (the bar's 26 characters) */
         return 1;
     }
     caps(t, pg_pname[pg_cur_dev], str_len(pg_pname[pg_cur_dev]), 16);
-    put(put(m, "PRESET "), t)[0] = 0;
+    put(put(m, MSG_PRESET), t)[0] = 0;
     ui_msg(m, 1000);
     return 1;
 }

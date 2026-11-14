@@ -34,6 +34,6 @@ static int live_holds_preset(void)
 {
     if (!editor_live())
         return 0;
-    ui_msg(live_paused ? "SANDBOX: PATCH STAYS" : "EDITOR LIVE: PATCH STAYS", 1500);   /* (a stored sound is a patch: #450) */
+    ui_msg(live_paused ? MSG_SANDBOX_PATCH_STAYS : MSG_LIVE_PATCH_STAYS, 1500);   /* (a stored sound is a patch: #450) */
     return 1;
 }

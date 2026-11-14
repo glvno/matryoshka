@@ -56,16 +56,16 @@ static const uint8_t PANEL_BTN_ID[ENG_PANEL_BUTTONS] = {2, 3, 4, 5, 6, 7, 10};  
  * sb_mout_due and panel_status shows it */
 #define NUDGE_MS 1500u
 static uint8_t sb_mout_due;
-static void sb_mout_nudge(void) { ui_msg("TURN ON MIDI OUT: GLO, K3", NUDGE_MS); }   /* (25 characters) */
+static void sb_mout_nudge(void) { ui_msg(MSG_MIDI_OUT_OFF, NUDGE_MS); }   /* (25 characters) */
 static void sb_nudge(uint32_t p)                    /* SAVE, REC, SEQ, ENV or SEL pressed in sandbox mode: where that is done */
 {
     if (!cfg.midi_out) {                            /* (nothing reaches the editor without it) */
         sb_mout_nudge();
         return;
     }
-    ui_msg(p & (1u << BTN_SAVE) ? "SANDBOX: SAVE IN EDITOR" : p & (1u << BTN_REC) ? "SANDBOX: REC IN EDITOR"
-           : p & (1u << BTN_SEQ) ? "SANDBOX: SEQ IN EDITOR" : p & (1u << BTN_ENV) ? "SANDBOX: ENV IN EDITOR"
-           : "SANDBOX: ARM IN EDITOR", NUDGE_MS);
+    ui_msg(p & (1u << BTN_SAVE) ? MSG_SANDBOX_SAVE : p & (1u << BTN_REC) ? MSG_SANDBOX_REC
+           : p & (1u << BTN_SEQ) ? MSG_SANDBOX_SEQ : p & (1u << BTN_ENV) ? MSG_SANDBOX_ENV
+           : MSG_SANDBOX_ARM, NUDGE_MS);
 }
 
 /* HOME held + PRESET (#395), and PRESET in the menu: the next / previous patch, its name over the bars (#170); HOME's
@@ -75,7 +75,7 @@ static void patch_turn(int32_t d)
     if (panel_held >> BTN_HOME & 1u)
         home_turned = 1;
     if (!sb_on && !bank_mask) {
-        ui_msg("BANK EMPTY", NUDGE_MS);
+        ui_msg(MSG_BANK_EMPTY, NUDGE_MS);
         return;
     }
     if (!sb_on)
@@ -423,13 +423,13 @@ static void play_once_press(void)
         return;
     }
     if (!eng_steps_count()) {
-        ui_msg("NO STEPS MODULE", NUDGE_MS);
+        ui_msg(MSG_NO_STEPS, NUDGE_MS);
         return;
     }
     sr_stop();
     eng_play_once();
     play_once_asked++;
-    ui_msg("COUNT-IN 1", 4000);                     /* (panel_status names each beat) */
+    ui_msg(MSG_COUNT_IN " 1", 4000);                /* (panel_status names each beat) */
     leds_play();
     ui_dirty = ui_dirty ? ui_dirty : 1;
 }
@@ -499,12 +499,12 @@ static void panel_encoders(int32_t *st)
                 sb_mout_nudge();
             else if (bpm) {
                 fmt_int(num, bpm);
-                put(put(m, "TEMPO "), num)[0] = 0;
+                put(put(m, MSG_TEMPO), num)[0] = 0;
                 ui_msg(m, 1000);
                 if (!ui_dirty)
                     ui_dirty = 1;
             } else
-                ui_msg("SANDBOX: TEMPO IN EDITOR", NUDGE_MS);
+                ui_msg(MSG_SANDBOX_TEMPO, NUDGE_MS);
         } else if (panel >= 0 && !eng_clock_is_external()) {
             char m[16], num[8];
             int32_t bpm = (eng_get_param((uint32_t)panel, FM1_P_TEMPO) + 32768) >> 16;
@@ -512,12 +512,12 @@ static void panel_encoders(int32_t *st)
             eng_set_param((uint32_t)panel, FM1_P_TEMPO, bpm << 16);
             m1_patch_param((uint32_t)panel, FM1_P_TEMPO, bpm << 16);
             fmt_int(num, bpm);
-            put(put(m, "TEMPO "), num)[0] = 0;
+            put(put(m, MSG_TEMPO), num)[0] = 0;
             ui_msg(m, 1000);
             if (!ui_dirty)
                 ui_dirty = 1;
         } else if (panel >= 0) {
-            ui_msg("TEMPO: MIDI CLOCK", 1000);
+            ui_msg(MSG_TEMPO_MIDI_CLOCK, 1000);
         }
         return;
     }
@@ -922,7 +922,7 @@ static void help_edges(uint32_t p, uint32_t rel, int pair)
     if (help_on == HELP_QUICK && (p & (1u << BTN_SAVE)) && (panel_held >> BTN_HOME & 1u)) {
         cfg.quick = 0;
         settings_store();
-        help_msg = "QUICK START OFF: GLO>SYSTEM";   /* (in the header as the card goes) */
+        help_msg = MSG_QUICK_START_OFF;             /* (in the header as the card goes) */
         help_msg_ms = 2500;
         help_close();
         home_turned = 1;                            /* (HOME's release then does nothing) */
@@ -954,7 +954,7 @@ static uint32_t out_combo(uint32_t p, uint32_t rel)
         const char *m;
         out_t0 |= 2u;
         out_off = (uint8_t)!out_off;
-        m = out_off ? "3.5MM OUT OFF" : "3.5MM OUT ON";
+        m = out_off ? MSG_OUT35_OFF : MSG_OUT35_ON;
         if (help_on) {                              /* (the toast in the bar once the card has gone) */
             help_msg = m;
             help_msg_ms = 2000;
@@ -1048,7 +1048,7 @@ static void panel_edges(uint32_t p, uint32_t rel)
             sr_lfo();
         if (!sr_on && (!roll || !(panel_held >> BTN_ACC & 1u))) {
             if (oct_rel && seq_module() >= 0 && seq_len(seq_module()) <= 16)
-                ui_msg("ALL 16 STEPS SHOWN", NUDGE_MS);   /* (one page of steps: nothing to page to, D-249) */
+                ui_msg(MSG_ALL_STEPS_SHOWN, NUDGE_MS);   /* (one page of steps: nothing to page to, D-249) */
             else if (oct_rel & (1u << BTN_OCT_DOWN))
                 seq_page_step(-1);
             if (oct_rel & (1u << BTN_OCT_UP))
@@ -1112,7 +1112,7 @@ static void panel_edges(uint32_t p, uint32_t rel)
         ui_dirty = ui_dirty ? ui_dirty : 1;         /* (the footer's octave) */
         {
             char m[12], num[8], *q = m;
-            q = put(q, "OCTAVE ");
+            q = put(q, MSG_OCTAVE);
             if (octave > 0)
                 *q++ = '+';
             fmt_int(num, octave);
@@ -1138,7 +1138,7 @@ static void panel_edges(uint32_t p, uint32_t rel)
                 && !((page == PAGE_SEQ || page == PAGE_SONG) && (PANEL_BTN_ID[b] == BTN_ACC || PANEL_BTN_ID[b] == BTN_LFO))) {
                 char m[28];                         /* a patch button with no job in the patch names itself (D-249); FX and LFO
                                                      * have the SEQ and SONG pages' jobs there */
-                put(put(m, PANEL_BTN_NAME[b]), ": NOT USED IN PATCH")[0] = 0;
+                put(put(m, PANEL_BTN_NAME[b]), MSG_NOT_USED)[0] = 0;
                 ui_msg(m, NUDGE_MS);
             }
             if (p >> PANEL_BTN_ID[b] & 1u)
@@ -1210,14 +1210,14 @@ static void panel_status(void)
         if (st == 1 && !help_on) {
             uint32_t b = eng_once_beat();
             if (b != beat_seen && b < 4u) {
-                char m[] = "COUNT-IN 1";
-                m[9] = (char)('1' + b);
+                char m[] = MSG_COUNT_IN " 1";
+                m[sizeof m - 2u] = (char)('1' + b);
                 ui_msg(m, 4000);
             }
             beat_seen = (uint8_t)b;
         } else if (beat_seen != 0xFFu) {         /* the count-in is over: playing once, or it ended (PLAY) */
             if (st == 2)
-                ui_msg("PLAY ONCE", 1500);
+                ui_msg(MSG_PLAY_ONCE, 1500);
             else
                 ui_msg_clear();
             beat_seen = 0xFFu;
@@ -1235,7 +1235,7 @@ static void panel_status(void)
         if (panel >= 0 && !eng_clock_is_external()) {
             char m[32], num[8];
             fmt_int(num, (eng_get_param((uint32_t)panel, FM1_P_TEMPO) + 32768) >> 16);
-            put(put(put(m, "TEMPO "), num), ": TURN PRESET")[0] = 0;   /* (22 characters at most) */
+            put(put(put(m, MSG_TEMPO), num), MSG_TURN_PRESET)[0] = 0;   /* (22 characters at most) */
             ui_msg(m, 1500);
         }
     }
@@ -1266,7 +1266,7 @@ static void panel_status(void)
         eng_harm_name((uint32_t)chord_due, name);
         chord_due = -1;
         if (!help_on) {
-            put(put(m, "CHORD: "), name[0] ? name : "SINGLE NOTES")[0] = 0;   /* (at most 26 characters, D-249) */
+            put(put(m, MSG_CHORD), name[0] ? name : MSG_CHORD_NONE)[0] = 0;   /* (at most 26 characters, D-249) */
             ui_msg(m, NUDGE_MS);
         }
     }
@@ -1274,7 +1274,7 @@ static void panel_status(void)
         drum_white_due = 0;
         if (!help_on && (!drum_white_ms || fm1_ms - drum_white_ms >= DRUM_WHITE_MS)) {
             drum_white_ms = fm1_ms | 1u;
-            ui_msg("DRUMS: BLACK KEYS 1-8", NUDGE_MS);
+            ui_msg(MSG_DRUMS_BLACK_KEYS, NUDGE_MS);
         }
     }
     if (knob_touched || button_touched) {           /* what was just moved, in the bar for a second */
@@ -1285,7 +1285,7 @@ static void panel_status(void)
             if (!panel_label(b, name))
                 put(name, PANEL_BTN_NAME[b])[0] = 0;
             q = put(q, name);
-            q = put(q, panel_lights() >> b & 1u ? " ON" : " OFF");
+            q = put(q, panel_lights() >> b & 1u ? MSG_ON : MSG_OFF);
         }
         *q = 0;
         if (page == 0 && !knob_touched)

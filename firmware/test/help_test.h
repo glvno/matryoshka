@@ -127,7 +127,7 @@ static void help_suite(void)
     panel_held &= ~(1u << BTN_OCT_UP);
     panel_edges(0, 1u << BTN_OCT_UP);
     loop();
-    check("  let go: octave +1", octave == 1 && !help_on && on_screen("OCTAVE +1"));
+    check("  let go: octave +1", octave == 1 && !help_on && on_screen(MSG_OCTAVE "+1"));
     tap(BTN_OCT_DOWN);
     check("OCT- tapped: octave 0", octave == 0);
     later(1500);                                        /* (the OCTAVE message ends) */
@@ -147,7 +147,7 @@ static void help_suite(void)
     panel_held &= ~(1u << BTN_OCT_UP);
     panel_edges(0, 1u << BTN_OCT_UP);
     loop();
-    check("  both let go: the octave unchanged, no OCTAVE message", octave == 0 && !on_screen("OCTAVE"));
+    check("  both let go: the octave unchanged, no OCTAVE message", octave == 0 && !on_screen(MSG_OCTAVE));
     check("  the pair's CCs went out (a mirror of the panel opens its sheet too)", sent(from, 0xB0u, 92u, 127u) && sent(from, 0xB0u, 93u, 127u)
           && sent(from, 0xB0u, 92u, 0u) && sent(from, 0xB0u, 93u, 0u));
     for (bad = 0, y = 0; y < 240u; y++)                 /* the page around the card: dimmed to 40 % */
@@ -342,8 +342,8 @@ static void help_suite(void)
     loop();
     check("HOME + SAVE: the quick start closes and is off, the setting stored at once (no SAVE of the patch)",
           !help_on && cfg.quick == 0u && settings_stored == steps0 + 1 && saved == sv0);
-    check("  the header says QUICK START OFF: GLO>SYSTEM (in the bar's width)", on_screen("QUICK START OFF: GLO>SYSTEM")
-          && text_w(&FONT_S, "QUICK START OFF: GLO>SYSTEM", -1) < 232u);
+    check("  the header says QUICK START OFF: GLO>SYSTEM (in the bar's width)", on_screen(MSG_QUICK_START_OFF)
+          && text_w(&FONT_S, MSG_QUICK_START_OFF, -1) < 232u);
     panel_held &= ~(1u << BTN_SAVE);
     panel_edges(0, 1u << BTN_SAVE);
     panel_held &= ~(1u << BTN_HOME);
@@ -412,8 +412,8 @@ static void out35_suite(void)
     b_down(BTN_OCT_UP);
     later(1000);
     later(1100);
-    check("  held 2 s: 3.5MM OUT OFF, said in the top bar, the mark in the footer", out_off == 1u && !strcmp(msg_text, "3.5MM OUT OFF")
-          && px(OFF_FX + 2u, BATT_FY + 2u) == P_WARN && on_screen("3.5MM OFF"));
+    check("  held 2 s: 3.5MM OUT OFF, said in the top bar, the mark in the footer", out_off == 1u && !strcmp(msg_text, MSG_OUT35_OFF)
+          && px(OFF_FX + 2u, BATT_FY + 2u) == P_WARN && on_screen(MSG_FOOT_OUT35_OFF));
     later(3000);
     check("  held on: no second turn", out_off == 1u);
     b_up(BTN_HOME);
@@ -427,7 +427,7 @@ static void out35_suite(void)
     b_down(BTN_HOME);
     later(2100);
     check("  then HOME held with them 2 s: 3.5MM OUT ON, the sheet closes for the top bar's message", out_off == 0u && !help_on
-          && !strcmp(msg_text, "3.5MM OUT ON") && px(OFF_FX + 2u, BATT_FY + 2u) != P_WARN);
+          && !strcmp(msg_text, MSG_OUT35_ON) && px(OFF_FX + 2u, BATT_FY + 2u) != P_WARN);
     b_up(BTN_HOME);
     b_up(BTN_OCT_DOWN);
     b_up(BTN_OCT_UP);

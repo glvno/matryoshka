@@ -246,7 +246,7 @@ static int menu_fire(void)
     update_arm = 0;
     ui_dirty = 1;
     if (test_input_recent()) {                      /* the device test mode (#291): a script never wipes or leaves the FM-1 */
-        ui_msg("TEST INPUT: REFUSED", 2000);
+        ui_msg(MSG_TEST_REFUSED, 2000);
         return 1;
     }
     if (row == MR_UPDATE)
@@ -309,12 +309,12 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
         if (!up)
             break;
         if (test_input_recent()) {                  /* the device test mode (#291): a script never wipes or leaves the FM-1 */
-            ui_msg("TEST INPUT: REFUSED", 2000);
+            ui_msg(MSG_TEST_REFUSED, 2000);
             break;
         }
         menu_armed = (uint8_t)row;
         update_arm = fm1_ms | 1u;
-        ui_msg(row == MR_UPDATE ? "HOLD GLO 2 S: UPDATE MODE" : "HOLD GLO 2 S: RESET BANK", MENU_ARM_MS);   /* (26 characters) */
+        ui_msg(row == MR_UPDATE ? MSG_HOLD_UPDATE : MSG_HOLD_RESET, MENU_ARM_MS);   /* (26 characters) */
         break;
     default: break;
     }
@@ -386,7 +386,7 @@ static void batt_draw(void)
         return;
     if (batt_low_due) {
         batt_low_due = 0;
-        ui_msg("LOW BATTERY", 3000);
+        ui_msg(MSG_LOW_BATTERY, 3000);
     }
     batt_mark_sync();
     if (batt_raw() != raw_shown || batt_shown() != lvl_shown) {

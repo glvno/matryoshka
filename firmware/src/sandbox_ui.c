@@ -178,7 +178,7 @@ static void sb_head(head_t *h)
  * tempo ("--" when it sent none); 1 when nothing is armed in the editor (KEYS WIRED: only from an editor that says) */
 static int sb_foot(char *name, char *tempo)
 {
-    put(name, sb_have && (sb.flags & SB_UNSAVED) ? "SANDBOX *" : "SANDBOX")[0] = 0;
+    put(name, sb_have && (sb.flags & SB_UNSAVED) ? MSG_SANDBOX_EDITED : MSG_SANDBOX)[0] = 0;
     if (sb_have && sb.tempo)
         fmt_int(tempo, (int32_t)sb.tempo);
     else
@@ -197,7 +197,7 @@ static void sandbox_card(void)
 {
     char t[40];
     text_bc(&FONT_L, 0, 74, "SANDBOX", P_GOLD, P_NIGHT, 240, TA_CENTER);
-    put(t, "THE BROWSER PLAYS THIS PATCH")[0] = 0;
+    put(t, MSG_BROWSER_PLAYS)[0] = 0;
     fit(t, &FONT_S, 232u);
     text_bc(&FONT_S, 0, 112, t, P_INK, P_NIGHT, 240, TA_CENTER);
     put(t, "KEYS AND KNOBS DRIVE IT FROM HERE")[0] = 0;
