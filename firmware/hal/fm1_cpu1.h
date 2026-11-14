@@ -227,6 +227,21 @@ static inline int fm1_cpu1_wait(void)
     return rc > 0 ? 0 : -1;
 }
 
+/* a word the two cores share while a job runs (#802: each lane's progress): its writer's stores before it are out first,
+ * and its reader's loads after it come after it (csync; the cores share the caches) */
+static inline void fm1_cpu1_put(volatile uint32_t *p, uint32_t x)
+{
+    FM1_C1_SYNC();
+    *p = x;
+    FM1_C1_SYNC();
+}
+static inline uint32_t fm1_cpu1_get(const volatile uint32_t *p)
+{
+    uint32_t x = *p;
+    FM1_C1_SYNC();
+    return x;
+}
+
 /* ---- Matryoshka's (#271) */
 
 /* the bytes of core 1's user stack it has used since its start (the mark fm1_cpu1_start leaves) */

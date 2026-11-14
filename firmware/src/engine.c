@@ -19,6 +19,9 @@
 #ifndef ENG_LOWRAM
 #define ENG_LOWRAM
 #endif
+#ifndef ENG_NOINIT                      /* (modular.c: the RAM NOINIT region, not cleared at boot: what is there is set before use) */
+#define ENG_NOINIT
+#endif
 
 /* The patch: modules, cables, summed inputs; below them the memory: one arena a load divides as the patch needs it
  * (#649, eng_arena: the module copies, the parameter values, the signal buffers and the lines). A patch that does not
@@ -870,21 +873,28 @@ static volatile uint16_t panel_buttons; /* the patch buttons held / switched on 
 #define IT_PV(nd, it) (&E.pv[E.grp[(nd)->grp].pv0 + IT_V(nd, it)])
 /* the lane a copy renders in (#271, #802): lane 1 runs on the second core while lane 0 runs on core 0. Each lane has its
  * own scratch (lock_buf, ramp_buf), its own dummy output and its own buffers (buf_take), so the two cores never share
- * them. Set when a patch loads (sched_build): the lanes of its two-core schedule, else the odd parts of a poly group */
-static uint8_t inst_lane[ENG_MAX_INST + 1u] ENG_POOL;
-#define IT_LANE(nd, it) ((void)(nd), (uint32_t)inst_lane[(it) - inst_pool])
+ * them. Set when a patch loads (sched_build): the lanes of its two-core schedule, else the odd parts of a poly group. One
+ * bit per copy (the pool and the RAM region have no room to spare) */
+static uint8_t inst_lane[(ENG_MAX_INST + 8u) / 8u] ENG_NOINIT;
+#define LANE_OF(ix) ((uint32_t)(inst_lane[(ix) >> 3] >> ((ix) & 7u)) & 1u)
+#define IT_LANE(nd, it) ((void)(nd), LANE_OF((uint32_t)((it) - inst_pool)))
+static void lane_set(uint32_t ix, uint32_t lane)
+{
+    inst_lane[ix >> 3] = (uint8_t)((inst_lane[ix >> 3] & ~(1u << (ix & 7u))) | lane << (ix & 7u));
+}
 /* #802: the patch's two-core schedule (sched_build). An item is one copy of a module (one part's, or the module's when it
  * runs once). Each lane renders its items in E.order's order; before an item it waits until the other lane has finished
  * the items it depends on, which come earlier in E.order (need: that many of the other lane's first items). */
 typedef struct {
-    uint8_t on;                         /* the patch renders on two lanes (else core 0 renders E.order alone) */
-    uint16_t n[2];                      /* each lane's items: lane 0's first in mod[] and ix[], then lane 1's */
-    uint8_t mod[ENG_MAX_INST + 1u];     /* an item's module (an index of E.node) */
-    uint8_t ix[ENG_MAX_INST + 1u];      /* its copy (an index of inst_pool) */
+    uint8_t on;                         /* the patch renders on two lanes (else render_split) */
+    uint16_t n[2];                      /* each lane's items: lane 0's first in it[], then lane 1's */
+    uint16_t it[ENG_MAX_INST + 1u];     /* an item: its module (an index of E.node) << 3 | its part; SCH_PUB: an item of the
+                                         * other lane waits for it (its lane publishes its progress after it) */
     uint8_t need[ENG_MAX_INST + 1u];    /* before it: how many of the other lane's first items must be done */
-    uint8_t pub[ENG_MAX_INST + 1u];     /* after it: 1 when an item of the other lane waits for it (its lane says so) */
 } sched_t;
-static sched_t sch ENG_POOL;
+#define SCH_PUB 0x8000u
+typedef char sch_part_bits_check[ENG_MAX_PARTS <= 8 && ENG_MAX_MODULES <= 128 ? 1 : -1];   /* (it[]'s fields) */
+static sched_t sch ENG_NOINIT;
 /* a granular line: the recording (Q13 like the delay) and the grains reading it (start, read phase from it Q16, rate Q16,
  * window phase and increment (u32 turns, half a turn over the grain), samples left) */
 typedef struct { uint32_t start, rp, rate, wph, winc, left; } grain_t;
@@ -1123,7 +1133,7 @@ static int32_t buf_end(uint32_t m, uint32_t p, uint32_t s, int32_t d, uint32_t l
             int32_t at = pos[t];
             if ((f->ninst > 1u ? w : 0u) != s)
                 continue;
-            if (inst_lane[r->inst0 + w] != lane) {  /* read by the other lane */
+            if (LANE_OF(r->inst0 + w) != lane) {     /* read by the other lane */
                 if (sch.on)
                     return BUF_FOREVER;
                 if (buf_split(r))
@@ -10627,17 +10637,20 @@ static int eng_lane_wait(void) { return 0; }                    /* 0: done; else
 #if ENG_SCHED
 #define SCH_SYNC 6u                     /* (DEF_COST units, 64 cycles: about 400 cycles) */
 #define SCH_FORK 24u                    /* (about 1,500 cycles) */
-static uint32_t sch_fin[ENG_MAX_INST + 1u] ENG_POOL;   /* (sched_build: when each copy would end, DEF_COST units) */
-static uint8_t sch_at[ENG_MAX_INST + 1u] ENG_POOL;     /* (its place in its lane) */
-static uint8_t sch_pos[ENG_MAX_MODULES] ENG_POOL;      /* (a module's place in E.order) */
-typedef struct { uint32_t lane, t, need; } sch_acc_t;  /* an item in `lane`: when it may start; the other lane's items it needs */
+typedef struct {                        /* (sched_build's, on the main loop's stack) */
+    uint32_t fin[ENG_MAX_INST + 1u];    /* when each copy would end, DEF_COST units */
+    uint8_t at[ENG_MAX_INST + 1u];      /* its place in its lane */
+    uint8_t pos[ENG_MAX_MODULES];       /* a module's place in E.order */
+} sch_build_t;
+typedef struct { const sch_build_t *b; uint32_t lane, t, need; } sch_acc_t;   /* an item in `lane`: when it may start; the
+                                                                                * other lane's items it needs */
 static void sch_dep(sch_acc_t *a, uint32_t d)          /* the item waits for copy d */
 {
-    uint32_t t = sch_fin[d];
-    if (inst_lane[d] != a->lane) {
+    uint32_t t = a->b->fin[d];
+    if (LANE_OF(d) != a->lane) {
         t += SCH_SYNC;
-        if (sch_at[d] + 1u > a->need)
-            a->need = sch_at[d] + 1u;
+        if (a->b->at[d] + 1u > a->need)
+            a->need = a->b->at[d] + 1u;
     }
     if (t > a->t)
         a->t = t;
@@ -10669,18 +10682,19 @@ static void sch_readers(sch_acc_t *a, uint32_t m, uint32_t v, uint32_t t)
 static void sch_deps(sch_acc_t *a, uint32_t m, uint32_t v)
 {
     const node_t *nd = &E.node[m];
+    const uint8_t *pos = a->b->pos;
     uint32_t c, o, w;
     for (c = 0; c < E.ncab; c++) {
         uint32_t f = E.from_m[c], t = E.to_m[c];
         if (f == t)
             continue;
-        if (t == m && sch_pos[f] < sch_pos[m])
+        if (t == m && pos[f] < pos[m])
             sch_copies(a, f, nd->grp, v);
-        else if (f == m && sch_pos[t] < sch_pos[m])
+        else if (f == m && pos[t] < pos[m])
             sch_readers(a, m, v, t);
     }
     for (o = 0; o < E.nmod; o++)
-        if (sch_pos[o] < sch_pos[m] && (nd->type == T_STEPS || E.node[o].type == T_STEPS))
+        if (pos[o] < pos[m] && (nd->type == T_STEPS || E.node[o].type == T_STEPS))
             for (w = 0; w < E.node[o].ninst; w++)
                 sch_dep(a, E.node[o].inst0 + w);
 }
@@ -10692,17 +10706,18 @@ static void sched_off(void)
     sch.on = 0;
     for (i = 0; i < E.nmod; i++)
         for (k = 0; k < E.node[i].ninst; k++)
-            inst_lane[E.node[i].inst0 + k] = (uint8_t)(buf_split(&E.node[i]) ? k & 1u : 0u);
+            lane_set(E.node[i].inst0 + k, buf_split(&E.node[i]) ? k & 1u : 0u);
 }
 static void sched_build(void)
 {
 #if ENG_SCHED
+    sch_build_t b;
     uint32_t end[2] = {0, SCH_FORK}, total = 0, k, v, l, n0;
 #endif
     sched_off();
 #if ENG_SCHED
     for (k = 0; k < E.norder; k++)
-        sch_pos[E.order[k]] = (uint8_t)k;
+        b.pos[E.order[k]] = (uint8_t)k;
     sch.n[0] = sch.n[1] = 0;
     for (k = 0; k < E.norder; k++) {
         uint32_t m = E.order[k];
@@ -10711,16 +10726,16 @@ static void sched_build(void)
         for (v = 0; v < nd->ninst; v++) {
             uint32_t ix = nd->inst0 + v, best = 0, fin = 0;
             for (l = 0; l < (nd->type == T_STEPS ? 1u : 2u); l++) {
-                sch_acc_t a = {l, end[l], 0};
+                sch_acc_t a = {&b, l, end[l], 0};
                 sch_deps(&a, m, v);
                 if (l == 0u || a.t + cost < fin) {
                     fin = a.t + cost;
                     best = l;
                 }
             }
-            inst_lane[ix] = (uint8_t)best;
-            sch_fin[ix] = end[best] = fin;
-            sch_at[ix] = (uint8_t)sch.n[best]++;
+            lane_set(ix, best);
+            b.fin[ix] = end[best] = fin;
+            b.at[ix] = (uint8_t)sch.n[best]++;
             total += cost;
         }
     }
@@ -10730,20 +10745,24 @@ static void sched_build(void)
     }
     sch.on = 1;
     n0 = sch.n[0];
-    for (k = 0; k < (uint32_t)n0 + sch.n[1]; k++)
-        sch.pub[k] = 0;
     for (k = 0; k < E.norder; k++) {             /* each lane's items in E.order's order, with what they wait for */
         uint32_t m = E.order[k];
         const node_t *nd = &E.node[m];
         for (v = 0; v < nd->ninst; v++) {
-            uint32_t ix = nd->inst0 + v, slot = (inst_lane[ix] ? n0 : 0u) + sch_at[ix];
-            sch_acc_t a = {inst_lane[ix], 0, 0};
+            uint32_t ix = nd->inst0 + v, slot = (LANE_OF(ix) ? n0 : 0u) + b.at[ix];
+            sch.it[slot] = (uint16_t)(m << 3 | v);
+        }
+    }
+    for (k = 0; k < E.norder; k++) {             /* (after every item is in place: SCH_PUB marks an earlier one) */
+        uint32_t m = E.order[k];
+        const node_t *nd = &E.node[m];
+        for (v = 0; v < nd->ninst; v++) {
+            uint32_t ix = nd->inst0 + v, slot = (LANE_OF(ix) ? n0 : 0u) + b.at[ix];
+            sch_acc_t a = {&b, LANE_OF(ix), 0, 0};
             sch_deps(&a, m, v);
-            sch.mod[slot] = (uint8_t)m;
-            sch.ix[slot] = (uint8_t)ix;
             sch.need[slot] = (uint8_t)a.need;
             if (a.need)
-                sch.pub[(inst_lane[ix] ? 0u : n0) + a.need - 1u] = 1;
+                sch.it[(LANE_OF(ix) ? 0u : n0) + a.need - 1u] |= SCH_PUB;
         }
     }
 #endif
@@ -10762,15 +10781,17 @@ static void sched_build(void)
 #define ENG_LANE_ITEM() ((void)0)
 #endif
 /* each lane's items done this block, on cache lines of their own: lane 1's after each item, lane 0's after the items lane
- * 1 waits for (sch.pub) */
-static struct { volatile uint32_t done; uint32_t pad[15]; } sch_prog[2] __attribute__((aligned(64)));
+ * 1 waits for (SCH_PUB) */
+static struct { volatile uint32_t done; uint32_t pad[15]; } sch_prog[2] ENG_NOINIT __attribute__((aligned(64)));
 static uint8_t sch_gone;                 /* core 0 renders lane 1's items itself: the second core was given up this block */
 typedef struct { const node_t *nd; const inst_t *it; int32_t means[MAX_IN]; } sch_ctx_t;   /* a core's last copy (prev) */
-/* item `slot` (a place in sch.mod / sch.ix), unless its part is shed or idle this block */
+#define SCH_NODE(x) (&E.node[(x) >> 3 & 0x7Fu])                       /* an item's module and copy (sched_t it[]) */
+#define SCH_INST(x) (&inst_pool[SCH_NODE(x)->inst0 + ((x) & 7u)])
+/* item `slot` (a place in sch.it), unless its part is shed or idle this block */
 static void sch_item(uint32_t slot, uint32_t n, sch_ctx_t *c)
 {
-    const node_t *nd = &E.node[sch.mod[slot]];
-    inst_t *it = &inst_pool[sch.ix[slot]];
+    const node_t *nd = SCH_NODE(sch.it[slot]);
+    inst_t *it = SCH_INST(sch.it[slot]);
     if (nd->grp && (IT_V(nd, it) >= cur_g_parts(nd) || IT_PV(nd, it)->skip))
         return;
     render_item(nd, it, n, c->nd == nd ? c->it : 0, c->means);
@@ -10784,9 +10805,9 @@ static uint32_t sch_woke(uint32_t l)
 {
     uint32_t i, k = 0, base = l ? sch.n[0] : 0u;
     for (i = base; i < base + sch.n[l]; i++) {
-        const node_t *nd = &E.node[sch.mod[i]];
-        const inst_t *it = &inst_pool[sch.ix[i]];
-        k += !nd->grp || (IT_V(nd, it) < cur_g_parts(nd) && !IT_PV(nd, it)->skip);
+        const node_t *nd = SCH_NODE(sch.it[i]);
+        uint32_t v = sch.it[i] & 7u;
+        k += !nd->grp || (v < cur_g_parts(nd) && !E.pv[E.grp[nd->grp].pv0 + v].skip);
     }
     return k;
 }
@@ -10824,7 +10845,7 @@ static void sch_lane(uint32_t l, uint32_t n)
             seen = sch_wait(l, sch.need[base + i], n);
         ENG_LANE_ITEM();
         sch_item(base + i, n, &c);
-        if (l || sch.pub[base + i])
+        if (l || (sch.it[base + i] & SCH_PUB))
             ENG_LANE_PUT(&sch_prog[l].done, i + 1u);
     }
 }

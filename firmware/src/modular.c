@@ -61,20 +61,14 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 #include "font_bc.c"
 #define ENG_POOL __attribute__((section(".pool")))
 #define ENG_LOWRAM __attribute__((section(".lowram")))   /* app.ld: the SRAM below the RAM region (#273) */
+#define ENG_NOINIT __attribute__((section(".noinit")))   /* app.ld: NOINIT (#802: the two-core schedule; the pool and the
+                                                          * RAM region have no room to spare) */
 #define ENG_LANE_HOOKS 1           /* #271, #802: engine.c hands lane 1 of its schedule to the second core (fm1_cpu1.h) */
 #define BT_POOL ENG_POOL
 #include "blk_time.h"              /* the block's time, measured (#802, #803: DIAG pages 132..139) */
 #define ENG_TMARK(k) (bt_eng[k] = fm1_ticks())
-/* a lane's progress, across the cores (#802): the shared caches need only csync, around the store (the lane's writes before
- * it are out first) and after the load (what the lane reads next comes after it) */
-#define ENG_LANE_PUT(p, x) do { FM1_C1_SYNC(); *(p) = (x); FM1_C1_SYNC(); } while (0)
-#define ENG_LANE_GET(p) fm1_lane_get(p)
-static inline uint32_t fm1_lane_get(const volatile uint32_t *p)
-{
-    uint32_t x = *p;
-    FM1_C1_SYNC();
-    return x;
-}
+#define ENG_LANE_PUT(p, x) fm1_cpu1_put((p), (x))                 /* a lane's progress, across the cores (#802) */
+#define ENG_LANE_GET(p) fm1_cpu1_get(p)
 #define ENG_LANE_NOW() fm1_ticks()                       /* core 0's waits inside the job count as its waits (BT_WAIT) */
 #define ENG_LANE_WAITED(t0) (bt_wait += fm1_ticks() - (t0))
 static uint8_t lanes_off;                  /* DIAG pages 110 / 111 (tools/m1_link.py cores split off / on): core 0 renders every part (to measure) */
