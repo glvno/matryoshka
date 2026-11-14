@@ -13,3 +13,5 @@ tools/emu/live/
 web/public/fm1-configurations.html
 web/public/prototype-bank/
 web/public/prototype-fx-bank/
+# Written by tools/ledger_check.py --fix on demand (D-007)
+docs/ledger/backlinks.md
