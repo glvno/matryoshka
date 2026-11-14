@@ -108,7 +108,7 @@ import { deviceView, keysInto, MAX_POLY, type DeviceGroup, VOICING_CABLE_INPUTS 
 import { devicesOf, NAME_MAX, type Device, type PageRow } from './pages';
 import { allModules, assemblyById, ROW_NAMES_MAX } from './assembly';
 import { structureAndRows } from './structure';
-import { cpuEstimate, type CpuEstimate } from './cpu';
+import { CPU, cpuEstimate, type CpuEstimate } from './cpu';
 import { instIsEngine } from './engines';
 import { engineUnreached } from './arm';
 import { FX_STAGE_TARGET_MAX, fxBusOf, type FxStageKind } from './fx-bus';
@@ -1312,7 +1312,9 @@ export function deviceBudget(source: Patch, allocation: BufferAllocation = 0): B
   const counted = items.filter((i) => (i.max > 2 && !SANITY_CAPS.has(i.key)) || i.used > i.max);
   const fullest = counted.reduce<BudgetItem | undefined>((a, i) => (!a || i.used / i.max > a.used / a.max ? i : a), undefined);
   const memory = fullest ? fullest.used / fullest.max : 0;
-  const cpu = cpuEstimate(source);
+  // the two-core schedule's buffers (#802): engine.c takes them only while they and the lines fit (allocation rule 1)
+  const rule1 = allocation === 1 ? pool : poolUse(p, groups, 1);
+  const cpu = cpuEstimate(source, CPU, 2, (s) => linesOf(p, ninst, { ...rule1, physicalBuffers: signalBuffers(p, groups, false, s).physical }).fits);
   if (cpu.use > 1) over.push({ key: 'cpu', label: 'CPU (estimate)', used: Math.round(cpu.use * 100), max: 100 });
   for (const label of browserOnly(source)) over.push({ key: 'browser', label, used: 1, max: 0 });
   return { buffers, instances, params, fits: !over.length, items, over, memory, fullest, cpu, use: Math.max(memory, cpu.use), lines };

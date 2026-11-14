@@ -9,6 +9,7 @@ import { DEFS, LFO_RANGE_K, MATRIX_N, matrixPin, STACKS, TRACK_POLY } from './mo
 import { allModules, assembliesOf, parentOf } from './assembly';
 import { flawOf, hasMorph, type ModuleInst, type Patch } from './patch';
 import { deviceView } from './poly';
+import { schedule, scheduleTime, SCH_FORK, SCH_SYNC, type Schedule } from './schedule';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 /** what changes a module's cost: a choice / switch / small integer (its measured values, the nearest one counts), a number
@@ -132,10 +133,11 @@ export interface CpuEstimate {
   /** every module's cycles, as one core renders them, as counted (without the rig's factors: the emulator's count,
    * cpu.test.ts) */
   cycles: number;
-  /** the cycles the second core takes off core 0 (#271, engine.c render_split): in a poly group of 2 or more parts, the
-   * odd parts of each module but a Steps (with the rig's factors) */
+  /** the cycles the second core takes off core 0: with a two-core schedule (#802, engine.c sched_build) every item's
+   * cycles less the scheduled block's (schedule.ts scheduleTime), else in a poly group of 2 or more parts the odd parts of
+   * each module but a Steps (#271, render_split) (with the rig's factors) */
   split: number;
-  /** the poly groups whose parts are split (each hands work over and waits for it) */
+  /** the poly groups whose parts are split (each hands work over and waits for it); with a schedule, 1 (one job) */
   splitGroups: number;
   /** on core 0, with the second core (cores 2) or without it (1) */
   us: number;
@@ -248,9 +250,14 @@ function slope(p: Patch, id: number, seen = new Set<number>()): number {
 /** does a signal from module `id` change about every sample (the oscillator works out its increments only when the pitch moves)? */
 const keepsMoving = (p: Patch, id: number): boolean => slope(p, id) >= 0.5;
 
-/** cores: 2, the FM-1 since #271 (core 0's time: the split poly groups' odd parts on core 1, plus an idle second core's
- * cost); 1 as with core 1 held */
-export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 = 2): CpuEstimate {
+/** what the two-core schedule counts for one copy of a module type (engine.c DEF_COST, made from this table by
+ * export-defs): its run and parameter inputs, in 64 cycles */
+export const scheduleCost = (table: CpuTable, type: string): number => Math.max(1, Math.round(((table.types[type]?.run ?? 0) + (table.types[type]?.cv ?? 0)) / 64));
+
+/** cores: 2, the FM-1 since #271 (core 0's time: the second core's share of a two-core schedule, #802, or of the split poly
+ * groups' odd parts, plus an idle second core's cost); 1 as with core 1 held. `scheduleFits`: whether the schedule's buffers
+ * and the lines fit the arena (patchbin.ts deviceBudget; else engine.c loads without the schedule); unknown: they fit */
+export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 = 2, scheduleFits?: (s: Schedule) => boolean): CpuEstimate {
   // counted on what the FM-1 runs (poly.ts deviceView): an allocator is a Part in each group it drives
   const { patch: p, groups } = deviceView(source, true);
   const copies = new Map<number, number>();
@@ -267,6 +274,7 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
   let total = table.block, split = 0, counted = table.block;
   const splitGroups = new Set<number>();
   const modules: CpuModule[] = [];
+  const work = new Map<number, number>();   // a copy's cycles by module id, with the rig's factor (the schedule's items)
   for (const m of p.modules) {
     const def = DEFS[m.type];
     const t = table.types[m.type];
@@ -340,11 +348,22 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
       splitGroups.add(groupOf.get(m.id)!);
     }
     modules.push({ id: m.id, type: m.type, copies: k, cycles: one * k });
+    work.set(m.id, one);
     total += one * k;
   }
   modules.sort((a, b) => b.cycles - a.cycles);
   const oneCoreUs = total / table.cyclesPerUs + table.fixedUs;
   const c = table.cores;
+  let parted = splitGroups.size;
+  if (cores === 2 && c) {
+    const s = schedule(p, groups, (type) => scheduleCost(table, type));
+    if (s.on && (scheduleFits?.(s) ?? true)) {
+      const each = (m: number): number => work.get(p.modules[m].id) ?? 0;
+      const items = s.order.reduce((n, m) => n + each(m) * s.copies[m], 0);
+      split = items - scheduleTime(s, each, SCH_SYNC * 64, SCH_FORK * 64);
+      parted = 1;
+    }
+  }
   const us = cores === 2 && c ? oneCoreUs + c.idleUs - (c.splitEff * split) / table.cyclesPerUs : oneCoreUs;
-  return { cycles: counted, split, splitGroups: splitGroups.size, oneCoreUs, us, use: us / table.blockUs, modules };
+  return { cycles: counted, split, splitGroups: parted, oneCoreUs, us, use: us / table.blockUs, modules };
 }

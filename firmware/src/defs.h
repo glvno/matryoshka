@@ -1880,5 +1880,5 @@ static const def_t DEFS[N_TYPES] = {
     {HARM_NIN, HARM_NOUT, HARM_NPAR, 0, HARM_CVBASE, -1, HARM_NDATA, 0, HARM_MIN, HARM_MAX, HARM_DEF, HARM_INC, "HARMONIZER", HARM_PN, HARM_INNAMES, HARM_LOG, HARM_UNIT, HARM_CH, 0, 0, HARM_STEP},   /* harm */
 };
 /* one copy of each type, a block: what the two-core schedule balances (engine.c sched_build, #802), in 64 cycles of
- * web/src/cpu-costs.json (its run and parameter inputs) */
+ * web/src/cpu-costs.json (its run and parameter inputs: cpu.ts scheduleCost) */
 static const uint16_t DEF_COST[N_TYPES] = {15, 80, 79, 53, 9, 10, 33, 9, 429, 11, 108, 1508, 3, 60, 96, 38, 243, 178, 327, 156, 89, 36, 36, 41, 49, 72, 548, 256, 54, 360, 105, 54, 37, 468, 204, 542, 668, 11, 15, 1, 11, 212, 9, 16, 134, 35, 15, 177, 10, 12, 13, 67, 94, 14, 3};

@@ -2,20 +2,23 @@
 import { DEFS } from './modules';
 import type { Patch } from './patch';
 import type { DeviceGroup } from './poly';
+import type { Schedule } from './schedule';
 
 /** Unknown rules and disconnected devices always use separate charging. */
 export type BufferAllocation = 0 | 1;
 export const bufferAllocation = (rule?: number): BufferAllocation => rule === 1 ? 1 : 0;
 
 /** Accounting of engine.c's lifetime allocator. Input must be deviceView(source, true).
- * `separate` models ENG_BUF_REUSE=0 or a compiled candidate. Current encoders never emit legacy disabled-input masks. */
-export function signalBuffers(p: Patch, groups: DeviceGroup[], separate = false): { values: number; physical: number } {
+ * `separate` models ENG_BUF_REUSE=0 or a compiled candidate. Current encoders never emit legacy disabled-input masks.
+ * `sched`: a two-core schedule's lanes (schedule.ts, #802), where a value read across the lanes keeps its buffer. */
+export function signalBuffers(p: Patch, groups: DeviceGroup[], separate = false, sched?: Schedule): { values: number; physical: number } {
   const index = new Map(p.modules.map((m, i) => [m.id, i]));
   const group = p.modules.map((m) => groups.findIndex((g) => g.modules.has(m.id)));
   const copies = group.map((g) => g < 0 ? 1 : groups[g].cfg.parts);
   const cables = p.cables.map((c) => ({ from: index.get(c.from.module)!, to: index.get(c.to.module)!, output: c.from.port, input: c.to.port }));
   const split = (m: number): boolean => group[m] >= 0 && copies[m] >= 2 && p.modules[m].type !== 'steps';
-  const lane = (m: number, v: number): number => split(m) ? v & 1 : 0;
+  const scheduled = sched?.on ? sched : undefined;
+  const lane = (m: number, v: number): number => scheduled ? scheduled.lane[m][v] : split(m) ? v & 1 : 0;
   const late = (m: number): boolean => ['output', 'fm1', 'arp', 'part'].includes(p.modules[m].type);
   const visited = new Set<number>(), order: number[] = [];
   function visit(m: number): void {
@@ -46,7 +49,7 @@ export function signalBuffers(p: Patch, groups: DeviceGroup[], separate = false)
       if (pos[c.to] <= start || (group[m] >= 0 && group[c.to] !== group[m]) || late(c.to)) return Infinity;
       for (let w = 0; w < copies[c.to]; w++) {
         if ((copies[m] > 1 ? w : 0) !== v) continue;
-        const at = lane(c.to, w) !== lane(m, v) && split(c.to) ? segmentEnd[pos[c.to]] : pos[c.to];
+        const at = lane(c.to, w) === lane(m, v) ? pos[c.to] : scheduled ? Infinity : split(c.to) ? segmentEnd[pos[c.to]] : pos[c.to];
         end = Math.max(end, at);
       }
     }
