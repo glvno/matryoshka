@@ -320,3 +320,5 @@ Every module except Main and Output has a power button in its card header: off, 
 
 Project decisions live in [`docs/ledger/`](docs/ledger/) as rows with stable `D-###` IDs; start with [its README](docs/ledger/README.md). Cite a row as `([D-###](docs/ledger/<file>.md#D-###), Status)`. If a decision is not a row there, it has not been decided.
 <!-- decision-ledger:end -->
+
+You can also try Matryoshka in the browser, no flashing needed, in the free community [FM-1 Emulator](https://fm1-emulator.atst.tools/).
