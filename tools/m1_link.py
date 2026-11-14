@@ -663,12 +663,6 @@ def modtime(link, a):
             json.dump({"patch": patch, "notes": held, "seconds": secs, "halves": w[0],
                        "modules_ns": [{"core0": c0, "core1": c1} for c0, c1 in rows]}, f, indent=1)
         print(f"raw values: {out}")
-    if out:
-        with open(out, "w") as f:
-            json.dump({"patch": patch, "notes": held, "seconds": secs, "page132": w, "page138": j, "page139": sp,
-                       "spans_ns": {BT_SPANS[i][0]: {"mean": m, "max": x} for i, (m, x) in enumerate(spans[:len(BT_SPANS)])}},
-                      f, indent=1)
-        print(f"raw values: {out}")
 
 
 def print_blocktime(w, spans, j, sp, patch, held):

@@ -32851,7 +32851,7 @@
    ]
   },
   "steps": {
-   "run": 14611,
+   "run": 3126,
    "cv": 271,
    "dims": [
     {
@@ -32859,61 +32859,15 @@
     },
     {
      "input": "reset"
-    },
-    {
-     "param": "rate",
-     "values": [
-      0,
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7,
-      8
-     ]
     }
    ],
    "grid": [
-    14611,
-    14611,
-    14611,
-    14611,
-    14611,
-    14611,
-    14875,
-    14611,
-    15144,
-    15251,
-    15251,
-    15251,
-    15251,
-    15251,
-    15251,
-    15515,
-    15251,
-    15784,
-    16107,
-    16107,
-    16107,
-    16107,
-    16107,
-    16107,
-    16107,
-    16107,
-    16106,
-    16747,
-    16747,
-    16747,
-    16747,
-    16747,
-    16747,
-    16747,
-    16747,
-    16746
+    3126,
+    15003,
+    15731,
+    16243
    ],
-   "thru": 268
+   "thru": 14
   },
   "macro": {
    "run": 386,
@@ -44922,91 +44876,91 @@
  "checks": [
   {
    "name": "Oracle V",
-   "cycles": 702375
+   "cycles": 689035
   },
   {
    "name": "Monolith D",
-   "cycles": 248101
+   "cycles": 235002
   },
   {
    "name": "Silver Box",
-   "cycles": 181025
+   "cycles": 167685
   },
   {
    "name": "Hera 3",
-   "cycles": 599816
+   "cycles": 586476
   },
   {
    "name": "Sallen 20",
-   "cycles": 318479
+   "cycles": 305139
   },
   {
    "name": "Expander S",
-   "cycles": 460625
+   "cycles": 447285
   },
   {
    "name": "Algo Four",
-   "cycles": 550358
+   "cycles": 537018
   },
   {
    "name": "Canvas",
-   "cycles": 465559
+   "cycles": 452219
   },
   {
    "name": "Wanderer",
-   "cycles": 297208
+   "cycles": 283868
   },
   {
    "name": "Briefcase 3",
-   "cycles": 389044
+   "cycles": 375704
   },
   {
    "name": "Io 4",
-   "cycles": 569424
+   "cycles": 556084
   },
   {
    "name": "Vernon 100",
-   "cycles": 358126
+   "cycles": 344786
   },
   {
    "name": "8 Lire",
-   "cycles": 392992
+   "cycles": 379652
   },
   {
    "name": "Elvira 2",
-   "cycles": 208490
+   "cycles": 195150
   },
   {
    "name": "Scrounge",
-   "cycles": 332803
+   "cycles": 310367
   },
   {
    "name": "Meridian 8",
-   "cycles": 357534
+   "cycles": 335098
   },
   {
    "name": "Perun 4",
-   "cycles": 313443
+   "cycles": 295711
   },
   {
    "name": "808 Kit",
-   "cycles": 426376
+   "cycles": 405760
   },
   {
    "name": "909 Kit",
-   "cycles": 259054
+   "cycles": 238438
   },
   {
    "name": "Spokes 6",
-   "cycles": 412159
+   "cycles": 362847
   },
   {
    "name": "Cassia 1",
-   "cycles": 760071
+   "cycles": 746731
   },
   {
    "name": "Verona Drum 1",
-   "cycles": 411232
+   "cycles": 390616
   },
   {
    "name": "Acid, 4 parts",

@@ -9274,6 +9274,49 @@ static void steps_turn(uint32_t t)
 }
 
 static const uint8_t RATE_HT[9] = {48, 32, 24, 16, 12, 8, 6, 96, 3};   /* half ticks a step: track.ts STEPS_RATE_HT */
+/* An internally clocked track with no reset cable, from sample i of an n-sample block: the first sample m_steps's loop must
+ * take one at a time, n if none. Those are a gap or a hit to show, the transport's start (sample 0), the block's tick, a
+ * half step's or a swung step's countdown reaching 0, and a timed note's end. Every sample before it only counts down and
+ * writes the same outputs (steps_skip). */
+static uint32_t steps_quiet(const inst_t *it, uint32_t t, uint32_t i, uint32_t n, int timed)
+{
+    uint32_t e = n, j;
+    if (it->s.stp.gap || (i == 0 && (it->s.stp.hit || (E.running && !it->s.stp.run))))
+        return i;
+    if (E.tick_off >= (int32_t)i && (uint32_t)E.tick_off < e)
+        e = (uint32_t)E.tick_off;
+    if (it->s.stp.half > 0 && E.running && i + (uint32_t)it->s.stp.half - 1u < e)
+        e = i + (uint32_t)it->s.stp.half - 1u;
+    if (it->s.stp.pend > 0 && i + (uint32_t)it->s.stp.pend - 1u < e)
+        e = i + (uint32_t)it->s.stp.pend - 1u;
+    if (timed)
+        for (j = 0; j < E.trk_nsnd[t]; j++)
+            if (E.trk_snd[t][j].cnt > 0 && !E.trk_snd[t][j].thru && i + (uint32_t)E.trk_snd[t][j].cnt - 1u < e)
+                e = i + (uint32_t)E.trk_snd[t][j].cnt - 1u;
+    return e;
+}
+/* k quiet samples (steps_quiet) at once, bit for bit what m_steps's loop does with them */
+static void steps_skip(inst_t *it, uint32_t t, int timed, esig_t *trig, esig_t *keys, esig_t *pitch, esig_t *vel,
+                       const esig_t *tr, uint32_t k)
+{
+    uint32_t j;
+    int32_t up = E.trk_nsnd[t] && steps_sounding(t) ? ENG_ONE : 0;
+    it->s.stp.r1 = 0;
+    if (it->s.stp.half > 0 && E.running)
+        it->s.stp.half -= (int32_t)k;
+    it->s.stp.sst = (int32_t)((uint32_t)it->s.stp.sst + k);
+    if (it->s.stp.pend > 0)
+        it->s.stp.pend -= (int32_t)k;
+    if (timed)
+        for (j = 0; j < E.trk_nsnd[t]; j++)
+            if (E.trk_snd[t][j].cnt > 0 && !E.trk_snd[t][j].thru)
+                E.trk_snd[t][j].cnt -= (int32_t)k;
+    fill(trig, up, k);
+    fill(keys, up, k);
+    fill(vel, it->s.stp.vel, k);
+    for (j = 0; j < k; j++)
+        pitch[j] = it->s.stp.pitch + tr[j];
+}
 static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *clk = it->in[STEPS_I_CLK], *reset = it->in[STEPS_I_RESET], *tr = it->in[STEPS_I_TRANSPOSE];
@@ -9315,6 +9358,14 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
     }
     for (i = 0; i < n; i++) {
         int32_t adv = 0, sl;
+        if (!ext && reset == zero_buf) {         /* samples where nothing steps, fires or ends: in one pass (#802) */
+            uint32_t e = steps_quiet(it, t, i, n, timed);
+            if (e > i) {
+                steps_skip(it, t, timed, trig + i, keys + i, pitch + i, vel + i, tr + i, e - i);
+                i = e - 1u;
+                continue;
+            }
+        }
         if (reset[i] >= 32768 && it->s.stp.r1 < 32768)
             it->s.stp.pos = -1;
         it->s.stp.r1 = reset[i];
