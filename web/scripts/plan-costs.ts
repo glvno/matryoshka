@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The two-core plan's costs from the FM-1 itself (#802, D-1105): each module type's time per copy on the test rig, from
+// The two-core plan's costs from the FM-1 itself (#802, not yet ruled): each module type's time per copy on the test rig, from
 // `tools/m1_link.py --rig modtime` on every factory patch (8 keys held), into web/src/plan-costs.json. export-defs makes
 // engine.c's DEF_COST from it and cpu.ts scheduleCost reads it, so the firmware and the editor plan alike.
 //   npx vite-node scripts/plan-costs.ts docs/measurements/modtime-....json

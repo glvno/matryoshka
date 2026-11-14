@@ -252,7 +252,7 @@ function slope(p: Patch, id: number, seen = new Set<number>()): number {
 const keepsMoving = (p: Patch, id: number): boolean => slope(p, id) >= 0.5;
 
 /** what the two-core schedule counts for one copy of a module type (engine.c DEF_COST, made from it by export-defs), in 64
- * cycles at the table's scale: its time per copy on the test rig (plan-costs.json, scripts/plan-costs.ts, D-1105); a type
+ * cycles at the table's scale: its time per copy on the test rig (plan-costs.json, scripts/plan-costs.ts; not yet ruled); a type
  * missing there, the table's run and parameter inputs */
 export const scheduleCost = (table: CpuTable, type: string): number =>
   (PLAN.types as Record<string, number>)[type] ?? Math.max(1, Math.round(((table.types[type]?.run ?? 0) + (table.types[type]?.cv ?? 0)) / 64));
