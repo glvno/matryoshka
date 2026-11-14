@@ -4,6 +4,9 @@
  * Optional arguments are complete patch binaries (for example the original Canvas phase graphs), rendered unchanged. */
 #include <stdio.h>
 #include "engine.c"
+#ifndef RV_MEM
+#define RV_MEM RV_LEN                        /* (an engine before D-1103: no ring of inputs after the lines) */
+#endif
 
 static int emit(const void *p, size_t n)
 {
@@ -52,7 +55,7 @@ int main(int argc, char **argv)
 {
     static const uint32_t lengths[] = {128, 1, 2, 7, 31, 63, 127};
     static const int32_t edges[] = {0, 1, 32767, 32768, ENG_ONE};
-    struct { int16_t before[8], data[RV_LEN], after[8]; } memory;
+    struct { int16_t before[8], data[RV_MEM], after[8]; } __attribute__((aligned(4))) memory;
     esig_t input[ENG_BLOCK], output[ENG_BLOCK];
     uint32_t trial, b, i, k, seed = 0x12345678u;
     for (trial = 0; trial < 3; trial++) {
@@ -65,7 +68,7 @@ int main(int argc, char **argv)
         it.s.rev.buf = memory.data;
         for (i = 0; i < 8; i++)
             memory.before[i] = memory.after[i] = 0x1234;
-        for (i = 0; i < RV_LEN; i++) {
+        for (i = 0; i < RV_MEM; i++) {
             seed = lcg(seed);
             memory.data[i] = trial == 0 ? 0 : trial == 1 ? (int16_t)((int32_t)(seed >> 16) - 32768) : (i & 1) ? -32768 : 32767;
         }
