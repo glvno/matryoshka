@@ -63,9 +63,10 @@ def main():
                 free = fixture['sharedArenaBeforeLines'] if variant.startswith('recovered') else fixture['arenaBeforeLines']
                 if variant == 'reference':
                     free += 65536
-                if 'sched' in variant:
-                    assert result['physical'] >= expected_physical, (fixture['name'], name, 'physical', result, fixture)
-                    assert result['arenaBeforeLines'] == free - (result['physical'] - expected_physical) * 512, (fixture['name'], name, 'arena', result, free)
+                if 'sched' in variant:   # (the editor's mirror of the schedule, patchbin.ts deviceBuffers, #802)
+                    expected_physical = fixture['scheduledPhysical']
+                    assert result['physical'] == expected_physical, (fixture['name'], name, 'physical', result, fixture)
+                    assert result['arenaBeforeLines'] == free - (expected_physical - fixture['physical']) * 512, (fixture['name'], name, 'arena', result, free)
                 else:
                     assert result['physical'] == expected_physical, (fixture['name'], name, 'physical', result, fixture)
                     assert result['arenaBeforeLines'] == free, (fixture['name'], name, 'arena', result, free)
@@ -83,8 +84,8 @@ def main():
         if fixture['name'] == 'recovered-lines':
             assert fixture['sharedLinesFit'] and fixture['over'] == ['memory'], fixture
             assert runs['recovered-0']['peak'] > 0, 'Recovered fixture must sound'
-            # (its lines fit only beside the one-core allocation: the schedule gives way to it, #802)
-            assert runs['recovered-sched-0']['physical'] == fixture['physical'], runs['recovered-sched-0']
+            # (its lines fit only beside the one-core allocation: the schedule gives way to it, #802, and the editor knows)
+            assert fixture['scheduledPhysical'] == fixture['physical'], fixture
         report.append(dict(fixture, runs=runs))
         print(f"{fixture['name']}: {fixture['values']} values / {fixture['physical']} physical; "
               f"{fixture['recoverableBytes']} B potentially recoverable", flush=True)
