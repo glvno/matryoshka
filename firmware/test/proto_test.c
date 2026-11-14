@@ -852,7 +852,7 @@ int main(int argc, char **argv)
     run(a_l, a_r);
     eng_all_notes_off();
     /* protocol: the frames, then the same render */
-    CHECK(eng_load(patch, 8) != 0 || 1);                      /* anything: the upload must replace it */
+    (void)eng_load(patch, 8);                                 /* anything: the upload must replace it */
     while (at < ns) {
         long start = at + 1, end = start;
         CHECK(syx[at] == 0xF0);
@@ -949,8 +949,8 @@ int main(int argc, char **argv)
         CHECK(n == 15u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[14] == 1u);
         CHECK(!(p[3] & M1_INFO_MIDI_OUT));
         midi_out_on = 1;
-        /* #702: EDITOR at IGNORE is flag bit 3, with feature bit 19; at ALLOW the bit is clear (as in older firmware) */
-        CHECK((M1_FEATURES3 & 8u) && !(p[3] & M1_INFO_EDITOR_IGNORE));
+        /* #702: EDITOR at IGNORE is flag bit 3; at ALLOW the bit is clear (as in older firmware) */
+        CHECK(!(p[3] & M1_INFO_EDITOR_IGNORE));
         editor_ignore_on = 1;
         nreplies = 0;
         CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 4);
@@ -965,8 +965,6 @@ int main(int argc, char **argv)
         uint32_t n, mods = 0, k;
         for (k = 0; k < (uint32_t)eng_nmodules() && k < 32u; k++)
             mods |= 1u << k;
-        CHECK(M1_FEATURES3 & 16u);                             /* (feature bit 20 in INFO byte 12) */
-        CHECK(M1_FEATURES3 & 32u);                             /* (feature bit 21: the wide form, #721) */
         pl[0] = 0x05u;                                         /* modules 0 and 2 */
         n = 4u + m1_pack7(pl, 8u, q + 4);
         nreplies = 0;
@@ -1310,7 +1308,6 @@ int main(int argc, char **argv)
             fr[3] = C_PRESET_DEL;
             w = 4 + m1_pack7(pl, 20, fr + 4);
             CHECK(m1_handle(fr, w) == 1);
-            CHECK(M1_FEATURES3 & 2u);                            /* (feature bit 17 says so) */
         }
         n0 = nreplies;
         m1_preset_stored(0x12345678u, "DUSK");

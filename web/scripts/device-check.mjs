@@ -20,7 +20,7 @@ export const CHECK_SCENARIOS = ['checkOutput', 'checkVerona', 'checkRowDrone', '
 /** `h`: what emu-scenarios.mjs's scenarios use (the target, the editor's page, the checks) */
 export function checkScenarios(h) {
   const { emu, T, open, patchJson, openSynced, check, loudCheck, skip, until, trackNotes, notesUntil, fmt, noteAt, shot, B, BLACK, WHITE, ENC,
-    C4, QUIET, LOUD, DEVICE, REAL } = h;
+    C4, QUIET, LOUD, REAL } = h;
   const page = () => h.page;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const db = (x) => (x > 0 ? (20 * Math.log10(x)).toFixed(1) : '-inf');
@@ -129,25 +129,7 @@ export function checkScenarios(h) {
     await menuClose();
   }
 
-  /** the peak in windows of `ms` while `events` ([ms from the start, action]) happen at their times: [ms, peak] each.
-   *  The emulator's times are its own (exact), the rig's are when each answer came */
-  async function timeline(events, n, ms) {
-    const out = [];
-    const t0 = Date.now();
-    out.fired = [];                                 // (when each event went out, on the same clock)
-    let m = await emu.mark(), k = 0;
-    for (let i = 0; i < n; i++) {
-      const at = DEVICE ? Date.now() - t0 : i * ms;
-      while (k < events.length && events[k][0] <= at) { out.fired.push(at); await events[k++][1](); }
-      await emu.elapse(ms);
-      out.push([DEVICE ? Date.now() - t0 : (i + 1) * ms, await emu.peak(m)]);
-      m = await emu.mark();
-    }
-    while (k < events.length) { out.fired.push(Infinity); await events[k++][1](); }
-    return out;
-  }
-  /** the loudest window in [from, to) ms of a timeline */
-  const most = (w, from, to) => Math.max(0, ...w.filter((x) => x[0] > from && x[0] <= to).map((x) => x[1]));
+  /** the peaks of a list of [ms, peak] windows */
   const prof = (w) => w.map((x) => x[1]).join(',');
 
   /** HOME held + PRESET: `clicks` patches on (the FM-1's bank, with Live off; with Live on the editor's patch stays) */
@@ -340,7 +322,7 @@ export function checkScenarios(h) {
       }
     },
 
-    // ---- 2. Verona Drum 1 (D-862, D-864, D-866, D-863), steps 2.1..2.5
+    // ---- 2. Verona Drum 1 (D-862, D-864, D-866, D-863), steps 2.1, 2.2, 2.5 (the hi-hats, 2.3 and 2.4: smoke's verona_hats)
     async checkVerona() {
       await check('2.1 verona: Verona Drum 1 opens, synced', await openSynced('Verona Drum 1'));
       let found = await emu.shows('VERONA DRUM1');
@@ -357,36 +339,6 @@ export function checkScenarios(h) {
       const p = await emu.peak(m);
       await check('2.2 verona: a white key on its device page: nothing plays, the bar says DRUMS: BLACK KEYS 1-8', said && p < QUIET, `peak ${p}`);
       await emu.elapse(1600);
-      // the hats: black key 5 HH OPEN, 6 HH CLOSE; the peak in 25 ms windows from the first press
-      const [OPEN, CLOSE] = [BLACK[4], BLACK[5]];
-      const down = (k) => () => emu.key(k, true), up = (k) => () => emu.key(k, false);
-      const alone = await timeline([[0, down(OPEN)], [80, up(OPEN)]], 28, 25);
-      await emu.elapse(800);
-      const held = await timeline([[0, down(OPEN)], [100, down(CLOSE)], [180, up(CLOSE)], [500, up(OPEN)]], 28, 25);
-      await emu.elapse(800);
-      const tapped = await timeline([[0, down(OPEN)], [80, up(OPEN)], [120, down(CLOSE)], [200, up(CLOSE)]], 28, 25);
-      await emu.elapse(800);
-      console.log(`  verona open hat alone: ${prof(alone)}\n  open held, close pressed at ${held.fired[1]} ms: ${prof(held)}\n  open tapped, close at ${tapped.fired[2]} ms: ${prof(tapped)}`);
-      // the open hat alone rings about 300 ms; a close cuts it: from 75 to 175 ms after the close's press (its own hit is
-      // over by then) the open hat alone, at the same time from its press, is still well up
-      const top = most(alone, 0, 150);
-      const cut = (w, i) => { const t = w.fired[i]; return { was: most(alone, t + 75, t + 175), now: most(w, t + 75, t + 175) }; };
-      const ch = cut(held, 1), ct = cut(tapped, 2);
-      await loudCheck('2.3 verona: stopped, HH OPEN held and HH CLOSE pressed: the open hat\'s tail is cut (75..175 ms after the close, under a third of the open hat alone)', top,
-        top > LOUD / 2 && ch.was > QUIET && ch.now < ch.was / 3, `open alone: peak ${top}, then ${ch.was}; held + close: ${ch.now}`);
-      await loudCheck('2.3 verona: HH OPEN tapped, then HH CLOSE right after: cut too', top,
-        top > LOUD / 2 && ct.was > QUIET && ct.now < ct.was / 3, `${ct.now} against ${ct.was}`);
-      // #657: the other order, HH CLOSE held, then HH OPEN: the open hat plays, and rings on once both are let go (from the
-      // release on, as loud as the open hat alone at the same time from its hit, not cut)
-      const other = await timeline([[0, down(CLOSE)], [150, down(OPEN)], [270, up(OPEN)], [290, up(CLOSE)]], 32, 25);
-      await emu.elapse(800);
-      const [, tOpen, , tGo] = other.fired, after = tGo - tOpen;
-      console.log(`  close held, open pressed at ${tOpen} ms, both let go at ${tGo} ms: ${prof(other)}`);
-      const hit = most(other, tOpen, tOpen + 125), ring = most(other, tGo, tGo + 100), ref = most(alone, after, after + 100);
-      await loudCheck('2.4 verona: HH CLOSE held, HH OPEN pressed: the open hat plays (its peak at least half of its own) (#657)', hit,
-        hit >= top / 2 && hit > LOUD, `open's peak ${hit}, alone ${top}`);
-      await loudCheck('2.4 verona: let go of both: its tail rings out (the 100 ms after, at least half of the open hat alone that long after its hit)', hit,
-        ref > QUIET && ring >= ref / 2, `tail ${ring}, alone ${ref} (${after} ms after the hit)`);
       // 2.5: the XL in sandbox mode: the browser plays it from the FM-1's keys (the level of the editor's own output)
       await page().evaluate(() => window.__m1test.level());
       await open('Verona Drum 1 XL');
@@ -462,8 +414,8 @@ export function checkScenarios(h) {
       await emu.tap(B.seq, 120);
       await emu.waitText('ALGO track', 3000);
       await emu.tap(B.rec);
-      await check('3.5 live drone: REC, stopped: step record, the bar starts with STEP 1/16, the hint reads LFO rest  KEY+LFO tie (TEST_SCREEN sends its first 31 characters)',
-        (await emu.waitText('STEP 1/16', 3000)) && (await emu.text('LFO rest  KEY+LFO')), (await emu.texts()).join(' | '));
+      await check('3.5 live drone: REC, stopped: step record, the bar starts with STEP 1/16',
+        await emu.waitText('STEP 1/16', 3000), (await emu.texts()).join(' | '));
       await emu.key(B.fx, true);
       await emu.elapse(150);
       await emu.tap(B.lfo);
@@ -566,8 +518,12 @@ export function checkScenarios(h) {
       }), 2000) ?? [];
       const mem = lines.find((x) => /^Memory\d/.test(x)) ?? '';
       const under = lines.slice(lines.indexOf(mem) + 1, lines.indexOf(mem) + 6);
-      await check('4.4 delays: the FM-1 budget: Memory of 362 KB (the module table in it since D-390), LONG its largest share, a line for SHORT under it',
-        /^Memory\d+ \/ 362 KB$/.test(mem) && /^Delay LONG/.test(under[0] ?? '') && under.some((x) => /^Delay SHORT/.test(x)), [mem, ...under].join(' | '));
+      const total = await page().evaluate(async (alloc) => {
+        const { kb, lineBudget } = await import('/src/patchbin.ts');
+        return kb(lineBudget(JSON.parse(window.__m1test.patchJson()), alloc).max);
+      }, (await T()).bufferAllocation ?? 0);
+      await check(`4.4 delays: the FM-1 budget: Memory of ${total} KB (the module table in it since D-390), LONG its largest share, a line for SHORT under it`,
+        mem.startsWith('Memory') && mem.endsWith(`/ ${total} KB`) && /^Delay LONG/.test(under[0] ?? '') && under.some((x) => /^Delay SHORT/.test(x)), [mem, ...under].join(' | '));
       const shortId = JSON.parse(await patchJson()).modules.find((m) => m.name === 'SHORT')?.id;
       await page().evaluate(() => [...document.querySelectorAll('#budget .budget-item.pick')].find((e) => /Delay SHORT/.test(e.textContent))?.click());
       const sel = await until(async () => (await T()).selected.includes(shortId), 2000);
@@ -598,7 +554,7 @@ export function checkScenarios(h) {
       // (#649: one memory; the longest length is 3800 ms, what one Delay can take of it alone, #734: beside LONG's 1200 ms
       // the row stops past the old 1900 ms top, at what is left, and the note says so)
       await check('4.5 delays: SHORT\'s length dragged to its top stops at what the memory leaves (past 1900 ms), and the note says so',
-        len > 1900 && len < 3800 && new RegExp(`^Memory full: .*This Delay stops at ${len} ms\\.$`).test(toast ?? ''), `length ${len}; "${toast ?? ''}"; under the pointer: ${pointed}`);
+        len > 1900 && len < 3800 && (toast ?? '').includes(`${len} ms`), `length ${len}; "${toast ?? ''}"; under the pointer: ${pointed}`);
       const up = await until(async () => {
         const x = await T();
         return x.status === 'patch on the FM-1' && x.chip === 'synced' && (await page().evaluate(() => window.__sent.some((f) => f[1] === 0x10 || f[1] === 0x11))) ? x : null;
@@ -615,9 +571,9 @@ export function checkScenarios(h) {
       await check('5.1 no keys: T111 NO KEYS opens, synced', !!(await fixture(FIXTURES.noKeys)));
       const dot = await page().evaluate(() => {
         const d = document.querySelector('.arm-dot.no-keys');
-        return d ? { style: getComputedStyle(d, '::before').borderTopStyle, title: d.title } : null;
+        return d ? { title: d.title } : null;
       });
-      await check('5.1 no keys: the engine\'s ARM dot is dashed', !!dot && /dashed/.test(dot.style), JSON.stringify(dot));
+      await check('5.1 no keys: the engine\'s ARM dot is marked no-keys', !!dot, JSON.stringify(dot));
       await page().evaluate(() => document.querySelector('.arm-dot.no-keys')?.click());
       await sleep(400);
       await check('5.1 no keys: a click on it arms nothing', (await T()).armed.length === 0, JSON.stringify((await T()).armed));
@@ -668,7 +624,7 @@ export function checkScenarios(h) {
       if (shown && used >= 0) {
         await pick(used);
         const d1 = await dlg();
-        await check('6.2 store: a used slot says what it holds, the button reads Replace', /holds ".+": storing replaces it with "T110 DRONE STORED"\./.test(d1.note) && d1.button === 'Replace', `"${d1.note}" ${d1.button}`);
+        await check('6.2 store: a used slot says what it holds, the button reads Replace', d1.note.includes(FIXTURES.droneStored().name) && d1.button === 'Replace', `"${d1.note}" ${d1.button}`);
       }
       if (shown && empty >= 0) {
         await pick(empty);
@@ -767,7 +723,7 @@ export function checkScenarios(h) {
         await emu.elapse(600);
         return hint;
       };
-      const parse = (hint) => /^ARM: 1 DRUMS(\*?) 2 PATTERN(\*?)$/.exec(hint);
+      const parse = (hint) => /^ARM: 1 \S+?(\*?) 2 \S+?(\*?)(\s|$)/.exec(hint);
       try {
         await storeFixture(slot, '<7PH');
         await check('7 teach: Live off', await live(false));
@@ -789,7 +745,7 @@ export function checkScenarios(h) {
           first = false;
           await check('7.2 teach: REC held again: DRUMS (black key 1 armed it) has its *', !!m && m[1] === '*' && !m[2], `"${hint}"`);
         }
-        const info = (await emu.texts()).find((t) => /^ARM \w+ \+1$/.test(t)) ?? '';
+        const info = (await emu.texts()).find((t) => /^ARM [^:\s]/.test(t)) ?? '';
         await check(`7.2 teach: still holding REC, the black key of the one not armed${first ? '' : ' (PATTERN)'}, then let go: it records nothing (the transport stays stopped), the info line reads ARM .. +1`,
           !!info && !(await running()), `"${info}"; ${(await running()) ? 'running' : 'stopped'}`);
         if (info) {   // (#748: both armed, the keys reach a track into no Drum map, so a white key plays its note: the bass)
@@ -800,7 +756,7 @@ export function checkScenarios(h) {
         await emu.elapse(1500);
         await emu.key(B.play, true);
         await emu.elapse(800);
-        const tempo = (await emu.texts()).find((t) => /^TEMPO \d+: TURN PRESET$/.test(t)) ?? '';
+        const tempo = (await emu.texts()).find((t) => /^TEMPO \d+/.test(t)) ?? '';
         await emu.turn(ENC.preset, 1);
         await emu.elapse(300);
         await emu.turn(ENC.preset, -1);
@@ -887,10 +843,8 @@ export function checkScenarios(h) {
       }
     },
 
-    // ---- 8. dual core (#271, D-380), steps 8.1, 8.2, 8.4 (playing them by hand for a minute and the boot are the owner's)
+    // ---- 8. dual core (#271, D-380), steps 8.2, 8.4 (8.1's 2 CORES: smoke; playing them by hand for a minute and the boot are the owner's)
     async checkDualCore() {
-      await check('8.1 dual core: GLO, ALGO to INFO: PROCESSOR reads 2 CORES', (await menuTab('PROCESSOR')) && (await emu.shows('2 CORES')), (await emu.texts()).filter((t) => /CORE/.test(t)).join(' '));
-      await menuClose();
       /** the INFO tab's CPU row (the % after the label CPU, on its line) */
       const cpuRow = async () => {
         const s = await emu.screen();

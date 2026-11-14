@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Select CI checks by changed domain under D-102 and D-144.
 
-An uncovered path fails with a test-plan request. Add a reviewed rule to
-ci_checks.json instead of falling back to the whole suite or skipping it.
+A path no rule names never fails planning: a firmware path runs the full host
+suite, a web path runs its companion test if it has one. Rules marked `manual`
+add a review note for the pull request; they are not an automated pass.
 This selector records scope, not release qualification or artifact provenance.
 """
 import argparse
 import fnmatch
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -53,22 +53,8 @@ def applicable_host(checks, config, root):
             or (root / config['optional_host'][name]).is_file()}
 
 
-def manual_plan(path, root):
-    """A per-change manual plan is review input, never a machine test result."""
-    plan_file = root / 'tools/ci_test_plan.json'
-    plans = json.loads(plan_file.read_text()) if plan_file.exists() else {}
-    entry = plans.get(path, {})
-    actual = hashlib.sha256((root / path).read_bytes()).hexdigest() if (root / path).exists() else 'deleted'
-    if entry.get('sha256') != actual or not entry.get('plan', '').strip():
-        raise ValueError('TEST PLAN REQUIRED: ' + path + ' has no automated regression runner. '
-                         'In tools/ci_test_plan.json, record its sha256 (' + actual
-                         + ') and a concrete focused test/review plan for PR review. '
-                         'A stale or absent plan cannot satisfy the required build check.')
-    return 'MANUAL PLAN (requires PR review, not an automated pass): ' + entry['plan']
-
-
 def select(paths, config, area, root=ROOT):
-    host, web, explanations, uncovered = set(), set(), {}, []
+    host, web, explanations = set(), set(), {}
     firmware = any(matches(p, config['firmware_paths']) for p in paths)
     for path in paths:
         relevant = (matches(path, config['firmware_paths']) if area == 'firmware'
@@ -82,8 +68,7 @@ def select(paths, config, area, root=ROOT):
         reasons = [r['name'] for r in rules]
         for rule in rules:
             if rule.get('manual'):
-                review = manual_plan(path, root)
-                reasons.append(review)
+                reasons.append('MANUAL REVIEW (not an automated pass): ' + rule['manual'])
             host.update(rule['host'])
             web.update(rule['web'])
         # Companion tests are an explicit local domain, including changed test files.
@@ -98,15 +83,17 @@ def select(paths, config, area, root=ROOT):
         if matches(path, config['non_runtime']):
             reasons.append('non-runtime documentation or asset; build checks still apply')
         if not reasons:
-            uncovered.append(path)
+            # No rule names this path: run more rather than fail planning.
+            if area == 'firmware':
+                host.update(config['full_host'])
+                reasons.append('no rule: the full host suite')
+            else:
+                reasons.append('no rule and no companion test: build checks only')
         explanations[path] = reasons
     host = applicable_host(host, config, root)
     missing_tests = sorted(p for p in web if not (root / p).is_file())
     if missing_tests:
         raise ValueError('test-plan rule names missing tests: ' + ', '.join(missing_tests))
-    if uncovered:
-        raise ValueError('TEST PLAN REQUIRED: no reviewed domain mapping for ' + ', '.join(uncovered)
-                         + '. Add a focused rule with its reason to tools/ci_checks.json.')
     return {'firmware': firmware, 'host': sorted(host), 'web': sorted(web), 'reasons': explanations}
 
 

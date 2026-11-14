@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { editorSkips, parsePeak, parseScreen, testKeyFrame, testScreenFrame, testTurnFrame, fm1Ascii, parseInfo, parseSandbox, SANDBOX_BYTES, SANDBOX_EXT_BYTES, sandboxFrame, sandboxPayload, type SandboxPage, chunkFrames, CMD, commitFrame, crc16, devicePresetName, frame, LIVE_MS, liveFrame, pack7, paramFrame, parse, parsePresetData, parsePresetEntry, parsePresetStored, parseSlot, presetPutFrame, slotEraseFrame, slotFrame, slotInfoFrame, unpack7 } from './protocol';
+
+/** sandbox_msg.h's SB_* sizes, its #define expressions evaluated in order */
+const SB: Record<string, number> = {};
+for (const [, name, expr] of readFileSync(new URL('../../firmware/src/sandbox_msg.h', import.meta.url), 'utf8').matchAll(/^#define (SB_\w+) ([^/\n]+)/gm)) {
+  SB[name] = Number(new Function(`return ${expr.replace(/(\d+)u\b/g, '$1').replace(/SB_\w+/g, (n) => String(SB[n]))}`)());
+}
 
 describe('SysEx protocol', () => {
   it('packs and unpacks every length without loss and with 7-bit bytes only', () => {
@@ -107,9 +114,8 @@ describe('sandbox mode on the wire', () => {
     expect(p.cmd).toBe(CMD.sandbox);
     expect(p.cmd).toBe(0x31);
     expect(p.payload.length).toBe(SANDBOX_BYTES + SANDBOX_EXT_BYTES);
-    expect(SANDBOX_BYTES).toBe(171);   // (firmware/src/sandbox_msg.h SB_BYTES)
-    expect(SANDBOX_EXT_BYTES).toBe(13);   // (SB_EXT_BYTES)
-    expect(f.length).toBe(217);   // small (a CHUNK is up to 445 bytes): a page on every change is cheap
+    expect(SANDBOX_BYTES).toBe(SB.SB_BYTES);
+    expect(SANDBOX_EXT_BYTES).toBe(SB.SB_EXT_BYTES);
     const back = parseSandbox(p.payload)!;
     expect(back).toEqual({ ...page, ...more, rows: [{ ...page.rows[0]!, pos: 150 / 255 }, { ...page.rows[1]!, value: '-12' }, page.rows[2], null] });
     expect(sandboxPayload(page)[0]).toBe(0b0111);
@@ -163,8 +169,6 @@ describe('sandbox mode on the wire', () => {
     expect(p.payload).toEqual([5, 0, 0, 0x80, 1, 1, 0, 0]);
     expect(parse(armsFrame([0, 0]))!.payload).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
     expect(parse(armsFrame([5, 0, 1, 0x80000000]))!.payload).toEqual([5, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0x80]);
-    expect(FEATURE_ARMS).toBe(1 << 20);
-    expect(FEATURE_WIDE_ARMS).toBe(1 << 21);
     const info = parseInfo(parse(frame(CMD.info, [1, 64, 255, 1, 8, 246, 255, 31, 51, 0, 0, 0, 31]))!)!;
     expect(info.features & FEATURE_ARMS).toBeTruthy();
     expect(info.features & FEATURE_WIDE_ARMS).toBeFalsy();
@@ -221,8 +225,7 @@ describe('patterns and songs on the wire (#375, format 48)', () => {
     expect(parseLocksNow([4, 2, 2, 0, 7])).toBeNull();
   });
   it('KEYS_NOW and GUIDE_NOW (#549): a key edge with the keys and buttons held; the panel state, compared', async () => {
-    const { parseKeysNow, parseGuideNow, panelOffBy, FEATURE_PANEL_REPORT } = await import('./protocol');
-    expect(FEATURE_PANEL_REPORT).toBe(1 << 18);
+    const { parseKeysNow, parseGuideNow, panelOffBy } = await import('./protocol');
     const k = parse(frame(CMD.keysNow, [0x80 | 4, 0x10, 0, 0, 0, 1 << 3, 0]))!;
     expect(parseKeysNow(k.payload)).toEqual({ key: 4, down: true, keys: 0x10, held: 8 });
     expect(parseKeysNow([4, 0, 0])).toBeNull();

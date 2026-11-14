@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """#824 offline allocation proof. Never writes production engine code or touches hardware.
 
-The separate-buffer reference alone gets an extra 64 KiB in a build-directory copy
-of engine.c, so newly admitted patches have an independent non-sharing audio oracle.
+The separate-buffer reference alone gets an extra 64 KiB of arena (-DENG_ARENA_EXTRA, a
+build flag), so newly admitted patches have an independent non-sharing audio oracle.
 Production memory constants and files are never changed by this runner.
 """
 import json
@@ -21,13 +21,6 @@ def run(args, **kwargs):
 
 def main():
     run(['npx', 'vite-node', 'scripts/buffer-budget.ts'], cwd=ROOT / 'web')
-    source = (ROOT / 'firmware/src/engine.c').read_text()
-    arena = '#define ENG_ARENA ('
-    if source.count(arena) != 1:
-        raise RuntimeError('Arena definition changed: review the test-only reference')
-    reference = OUT / 'reference-src'
-    reference.mkdir(exist_ok=True)
-    (reference / 'engine.c').write_text(source.replace(arena, '#define ENG_ARENA (65536u + '))
     variants = {
         'baseline': ['-DENG_BUF_ACCOUNTING=0'],
         'separate': ['-DENG_BUF_REUSE=0'],
@@ -35,7 +28,7 @@ def main():
         'recovered': [],
         'recovered-poison': ['-DENG_POISON'],
         'compiled': ['-DENG_AOT=1'],
-        'reference': ['-I' + str(reference), '-DENG_BUF_REUSE=0'],
+        'reference': ['-DENG_ARENA_EXTRA=65536u', '-DENG_BUF_REUSE=0'],
     }
     for name, flags in variants.items():
         run(['cc', '-O1', '-w', *flags, '-Ifirmware/src', 'firmware/test/buffer_budget.c',

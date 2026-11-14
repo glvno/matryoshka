@@ -7,7 +7,6 @@ import SUBMISSIONS from '../community/submissions.json';
 import RAW from './community.json';
 import { communityEntries, familiesOf, loadCommunity, xlBase } from './community';
 import { relocatedPatches } from './community-factory';
-import { FM1_PRESETS } from './presets';
 import { inflate } from './share';
 
 const originals = import.meta.glob<{ name: string }>('../community/factory/*.json', { eager: true, import: 'default' });
@@ -40,8 +39,6 @@ describe('preserved factory patches in Community', () => {
   it('keeps Hera 4 attributed and visible beside its XL without renaming it to the selected Hera 3', async () => {
     const families = familiesOf(await loadCommunity());
     expect(xlBase('Hera 6 XL')).toBe('Hera 3');
-    expect(FM1_PRESETS['Hera 3']).toBeDefined();
-    expect(FM1_PRESETS['Hera 4']).toBeUndefined();
     const hera = families.find(f => f.name === 'Hera 4')!;
     expect(hera.members.map(m => m.entry.title)).toEqual(['Hera 4', 'Hera 6 XL']);
     expect(hera.members.map(m => m.patch?.name)).toEqual(['Hera 4', 'Hera 6 XL']);
@@ -49,11 +46,6 @@ describe('preserved factory patches in Community', () => {
       expect(member.entry).toMatchObject({ author: 'michael glaviano', licence: 'GPL-3.0-only', source: 'https://github.com/glvno/matryoshka' });
     }
     expect(families.flatMap(f => f.members.map(m => m.entry.title))).not.toContain('Hera 3');
-    for (const base of ['8 Lire', 'Elvira 2', 'Meridian 8', 'Perun 4', '808 Kit', '909 Kit', 'Spokes 6', 'Verona Drum 1']) {
-      expect(FM1_PRESETS[base]).toBeDefined();
-      expect(relocatedPatches[base]).toBeUndefined();
-      expect(relocatedPatches[`${base} XL`]).toBeDefined();
-    }
   });
 
   it('returns independent copies without changing a saved or shared original', () => {

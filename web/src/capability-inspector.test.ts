@@ -14,25 +14,26 @@ describe('experimental capability inspector', () => {
     let p = fixture(); const before = structuredClone(p);
     inspector = new CapabilityInspector({ patch: () => p, load: next => { p = next; } });
     inspector.open();
-    const selection = inspector.el.querySelector<HTMLSelectElement>('[aria-label="Assembly to inspect"]')!;
+    const el = inspector.el;
+    // The bypass preview (its button and status line) is rendered only for a recognized audio-processing assembly.
+    const status = () => el.querySelector<HTMLElement>('[role="status"]');
+    const selection = el.querySelector<HTMLSelectElement>('[aria-label="Assembly to inspect"]')!;
     const a = p.assemblies!.find(a => a.name === 'Two filters')!;
     selection.value = String(a.id); selection.dispatchEvent(new Event('change'));
-    expect(inspector.el.textContent).toContain('Audio processing recognized');
-    const preview = [...inspector.el.querySelectorAll('button')].find(b => b.textContent === 'Validate dry route')!;
-    preview.click();
-    expect(inspector.el.textContent).toContain('Valid for existing module bypass');
+    expect(status()?.textContent).toBe('');
+    (status()!.previousElementSibling as HTMLButtonElement).click();
+    expect(status()!.textContent).not.toBe('');
     expect(p).toEqual(before);
     p.cables = p.cables.filter(c => !(a.modules.includes(c.from.module) && a.modules.includes(c.to.module)));
     inspector.sync();
-    expect(inspector.el.textContent).not.toContain('Audio processing recognized');
-    expect(inspector.el.textContent).not.toContain('Valid for existing module bypass');
+    expect(status()).toBeNull();
     // Undo restores a snapshot as a new object; keep inspecting the same assembly.
     p = structuredClone(before); inspector.sync();
     expect(selection.value).toBe(String(a.id));
-    expect(inspector.el.textContent).toContain('Audio processing recognized');
-    expect(inspector.el.textContent).not.toContain('Valid for existing module bypass');
+    expect(status()?.textContent).toBe('');
     p = newPatch(DEFS); inspector.sync();
-    expect(inspector.el.textContent).toContain('No assemblies in this patch');
+    expect(selection.disabled).toBe(true);
+    expect(status()).toBeNull();
   });
   it('revalidates bypass at action time and closes with Escape while restoring focus', () => {
     const p = fixture();

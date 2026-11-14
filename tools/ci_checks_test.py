@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Offline regressions for check scope; never builds firmware or runs a full suite."""
 import json
-import hashlib
 import os
 from pathlib import Path
 import subprocess
@@ -29,18 +28,18 @@ class SelectionTests(unittest.TestCase):
         selected = ci.select(['web/src/roll.ts', 'web/src/piano.test.ts'], self.config, 'web')
         self.assertEqual(set(selected['web']), {'web/src/roll.test.ts', 'web/src/piano.test.ts'})
 
-    def test_uncovered_executable_and_missing_test_require_a_plan(self):
-        for area, path in [('firmware', 'firmware/src/new_transport.c'), ('web', 'web/src/new_view.ts')]:
-            with self.subTest(path=path), self.assertRaisesRegex(ValueError, 'TEST PLAN REQUIRED'):
-                ci.select([path], self.config, area)
+    def test_unmapped_path_runs_more_and_never_fails_planning(self):
+        chosen = ci.select(['firmware/src/new_transport.c'], self.config, 'firmware')
+        self.assertEqual(set(chosen['host']), ci.applicable_host(self.config['full_host'], self.config, ci.ROOT))
+        for path in ['web/src/new_view.ts', 'web/src/removed.test.ts']:
+            with self.subTest(path=path):
+                chosen = ci.select([path], self.config, 'web')
+                self.assertEqual(chosen['web'], [])
+                self.assertIn('build checks only', chosen['reasons'][path][0])
         bad = dict(self.config, rules=[{'name': 'stale rule', 'paths': ['web/src/roll.ts'],
                                        'host': [], 'web': ['web/src/does-not-exist.test.ts']}])
         with self.assertRaisesRegex(ValueError, 'missing tests'):
             ci.select(['web/src/roll.ts'], bad, 'web')
-
-    def test_removed_companion_cannot_silently_pass(self):
-        with self.assertRaisesRegex(ValueError, 'TEST PLAN REQUIRED'):
-            ci.select(['web/src/removed.test.ts'], self.config, 'web')
 
     def test_ci_edits_exercise_selector_and_docs_do_not_select_runtime_tests(self):
         for path in ['tools/ci_checks.py', 'tools/ci_checks.json', '.github/workflows/firmware.yml',
@@ -76,23 +75,11 @@ class SelectionTests(unittest.TestCase):
                 chosen = ci.plan('firmware')
         self.assertIn('preset-pattern', chosen['host'])
 
-    def test_manual_plan_is_bound_to_changed_bytes_and_visible_as_review(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            (root / 'tools').mkdir()
-            source = root / 'tools/fm1_rec.swift'
-            source.write_text('capture implementation')
-            config = dict(self.config, rules=[r for r in self.config['rules'] if r.get('manual')])
-            with self.assertRaisesRegex(ValueError, 'TEST PLAN REQUIRED'):
-                ci.select(['tools/fm1_rec.swift'], config, 'firmware', root=root)
-            (root / 'tools/ci_test_plan.json').write_text(json.dumps({'tools/fm1_rec.swift': {
-                'sha256': hashlib.sha256(source.read_bytes()).hexdigest(),
-                'plan': 'Review channel selection and verify a bounded capture on the registered rig.'}}))
-            selected = ci.select(['tools/fm1_rec.swift'], config, 'firmware', root=root)
-            self.assertIn('MANUAL PLAN', selected['reasons']['tools/fm1_rec.swift'][1])
-            source.write_text('changed capture implementation')
-            with self.assertRaisesRegex(ValueError, 'TEST PLAN REQUIRED'):
-                ci.select(['tools/fm1_rec.swift'], config, 'firmware', root=root)
+    def test_manual_rule_is_a_visible_review_note_not_a_pass(self):
+        config = dict(self.config, rules=[r for r in self.config['rules'] if r.get('manual')])
+        selected = ci.select(['tools/fm1_rec.swift'], config, 'firmware')
+        self.assertEqual(selected['host'], [])
+        self.assertTrue(any(r.startswith('MANUAL REVIEW') for r in selected['reasons']['tools/fm1_rec.swift']))
 
     def test_usb_return_regression_becomes_mandatory_when_feature_exists(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -4,8 +4,9 @@
 Usage:
   python3 tools/ledger_check.py                 check; exit 1 on any finding
   python3 tools/ledger_check.py --fix           anchor new rows, link bare D-### mentions,
-                                                link vocabulary terms, regenerate
-                                                docs/ledger/backlinks.md, then check
+                                                link vocabulary terms, write a local
+                                                docs/ledger/backlinks.md (not committed),
+                                                then check
   python3 tools/ledger_check.py --changed BASE  list affected rows and guidance, including
                                                 passages citing changed decisions
 Options:
@@ -32,7 +33,6 @@ What it enforces (the rules in docs/ledger/README.md):
   9. every Not-yet-settled item names a ticket or link
  10. vocabulary.md terms are `### Term` headings; a bold term in a Decision cell that
      matches one is a link to it
- 11. backlinks.md matches what --fix would generate
 
 Ignore patterns: one glob per line in docs/ledger/.checkignore (relative to the root).
 Standard library only.
@@ -596,11 +596,12 @@ def backlinks_text(ledger: Ledger, refs: dict[str, list[tuple[Path, int]]]) -> l
         target = os.path.relpath(row.file, ledger.dir).replace(os.sep, "/")
         out.append(f"## [{rid}]({target}#{rid})")
         out.append("")
-        places = sorted(set(refs.get(rid, [])), key=lambda t: (group(t[0]), rel(ledger.root, t[0]), t[1]))
+        # Files only: a line number would go stale on any edit above a mention and fail the check.
+        places = sorted({p for p, _ in refs.get(rid, [])}, key=lambda p: (group(p), rel(ledger.root, p)))
         if not places:
             out.append("- (no references)")
-        for p, n in places:
-            out.append(f"- `{rel(ledger.root, p)}:{n}`")
+        for p in places:
+            out.append(f"- `{rel(ledger.root, p)}`")
         out.append("")
     return out[:-1] if out[-1] == "" else out
 
@@ -662,16 +663,12 @@ def run(root: Path, fix: bool) -> tuple[list[Finding], list[str]]:
                     if m.group(0) in ledger.rows_by_id:
                         refs.setdefault(m.group(0), []).append((p, i))
 
-    expected = backlinks_text(ledger, refs)
+    # backlinks.md is a local, uncommitted index (D-007): written on --fix, never a finding.
     if fix:
+        expected = backlinks_text(ledger, refs)
         if not backlinks_path.exists() or read_lines(backlinks_path) != expected:
             write_lines(backlinks_path, expected)
             changes.append(f"{rel(root, backlinks_path)}: regenerated")
-    else:
-        if not backlinks_path.exists():
-            findings.append(Finding(backlinks_path, 0, "backlinks.md is missing; run `python3 tools/ledger_check.py --fix`"))
-        elif read_lines(backlinks_path) != expected:
-            findings.append(Finding(backlinks_path, 1, "backlinks.md is stale; run `python3 tools/ledger_check.py --fix`"))
 
     findings.sort(key=lambda x: (rel(root, x.path), x.line, x.message))
     return findings, changes

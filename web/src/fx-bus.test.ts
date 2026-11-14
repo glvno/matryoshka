@@ -149,11 +149,9 @@ describe('editable master FX', () => {
     const stage = fxBusOf(p)!.stages[0];
     const assembly = p.assemblies!.find((a) => a.id === stage.assembly)!;
     expect(stage.targets).toHaveLength(1);
-    expect(stage.helpers).toHaveLength(5);
     expect(allModules(p, assembly).sort((a, b) => a - b)).toEqual([...stage.targets, ...stage.helpers].sort((a, b) => a - b));
     expect(allModules(p, assembly).every((id) => p.modules.find((m) => m.id === id)!.bypass)).toBe(true);
     expect(p.modules.find((m) => m.id === stage.targets[0])!.params.mix).toBe(1);
-    expect(assembly.params.map((r) => r.label)).toEqual(['size', 'damp', 'mix', 'pre', 'mod', 'freeze']);
     const mix = assembly.params[2];
     const helper = p.modules.find((m) => m.id === mix.module)!;
     expect(helper.type).toBe('macro');

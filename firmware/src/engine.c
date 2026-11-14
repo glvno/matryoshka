@@ -902,7 +902,10 @@ typedef char eng_inst_bytes_check[sizeof(inst_t) == ENG_INST_BYTES ? 1 : -1];   
 #if defined(M1_FW_MAJOR) && !defined(__wasm__)
 typedef char eng_node_bytes_check[sizeof(node_t) == ENG_NODE_BYTES ? 1 : -1];   /* (patchbin.ts NODE_BYTES follows it) */
 #endif
-#define ENG_ARENA (LINE_ARENA + 255u * ENG_BUF_BYTES + 129u * ENG_INST_BYTES + 1536u * 4u + 64u * ENG_NODE_BYTES)   /* 344,628 B */
+#ifndef ENG_ARENA_EXTRA
+#define ENG_ARENA_EXTRA 0u                      /* (tools/buffer_budget.py's separate-buffer reference: -DENG_ARENA_EXTRA=65536u) */
+#endif
+#define ENG_ARENA (ENG_ARENA_EXTRA + LINE_ARENA + 255u * ENG_BUF_BYTES + 129u * ENG_INST_BYTES + 1536u * 4u + 64u * ENG_NODE_BYTES)   /* 344,628 B */
 #define ENG_ARENA_HOST (ENG_ARENA + (ENG_MAX_INST + 1u) * (sizeof(inst_t) > ENG_INST_BYTES ? (uint32_t)sizeof(inst_t) - ENG_INST_BYTES : 0u) \
                         + (sizeof(node_t) > ENG_NODE_BYTES ? ENG_MAX_MODULES * ((uint32_t)sizeof(node_t) - ENG_NODE_BYTES) + 8u : 0u))
 static uint32_t eng_arena[ENG_ARENA_HOST / 4u] ENG_POOL __attribute__((aligned(8)));
@@ -8994,8 +8997,7 @@ static int steps_countdown(uint32_t t)
 }
 
 /* a note as the pitch output gives it: octaves from C4, rounded to Q16 (modules.ts stepPitch) = (d +- 6) / 12 with d =
- * n * ENG_ONE, split as ENG_ONE = 12 * 5461 + 4: written plainly the compiler folds -STEP_NOTE * ENG_ONE + 6 into
- * 0xFFC40006, which build.py rejects as a chip ROM address */
+ * n * ENG_ONE, split as ENG_ONE = 12 * 5461 + 4 */
 static int32_t steps_pitch(uint32_t note)
 {
     int32_t n = (int32_t)note - STEP_NOTE;
@@ -9665,8 +9667,7 @@ static void m_range(const node_t *nd, inst_t *it, uint32_t n)
     int32_t olo = EF(it, RANGE_P_OUTLO), ospan = EF(it, RANGE_P_OUTHI) - olo;
     int32_t c = clampi(EF(it, RANGE_P_CURVE), -ENG_ONE, ENG_ONE);
     const int32_t clamp = EF(it, RANGE_P_CLAMP) >= ENG_ONE / 2;
-    /* tlo 0 or -RANGE_T_MAX Q16 as a shift of clamp - 1: written as a constant it is 0xFFC00000, which build.py rejects as
-     * a chip ROM address */
+    /* tlo 0 or -RANGE_T_MAX Q16 as a shift of clamp - 1 */
     const int32_t thi = clamp ? ENG_ONE : RANGE_T_MAX * ENG_ONE, tlo = (clamp - 1) * (RANGE_T_MAX * ENG_ONE);
     int64_t inv = span ? ((int64_t)1 << 32) / span : 0;
     uint32_t i;

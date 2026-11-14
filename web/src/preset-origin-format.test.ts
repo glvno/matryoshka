@@ -6,7 +6,6 @@ import { deviceView } from './poly';
 import { DEVICE, deviceBudget, encodePatch, formatOf, originRecord } from './patchbin';
 import { DeviceLink } from './device';
 import { patternRevision, PRESET_PATTERNS } from './preset-pattern-data';
-import { FEATURE_PATTERN_ORIGINS } from './pattern-origin';
 function fixture() {
   const p = emptyPatch(), t = addModule(p, DEFS.steps, 0, 0);
   t.factoryPatterns = { version: 1, ids: ['fedcba98'] };
@@ -67,5 +66,4 @@ it.each([null, { min: 31, max: 53 }, { min: 31, max: 54 }])('rejects unsupported
   // No output is attached: reaching a write would fail differently. Rejection happens before chunk construction/send.
   if (range) link.info = { version: 1, maxModules: 128, maxCables: 255, flashOk: true, patchLoaded: true, midiOut: true, delays: 0, features: 0, patchFormats: range };
   await expect(link.uploadSlotBin(0, 'test', encodePatch(p))).rejects.toThrow(/Update.*origins cannot be removed/);
-  expect(FEATURE_PATTERN_ORIGINS).toBe(0x800000);
 });

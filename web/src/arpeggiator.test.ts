@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type Patch } from './patch';
-import { encodePatch, formatOf, GROUP_REC } from './patchbin';
+import { encodePatch, formatOf } from './patchbin';
 import { deviceView } from './poly';
 import { MAX_PARTS } from './patch';
 
@@ -59,8 +59,7 @@ describe('Arpeggiator module', () => {
     const view = deviceView(p, true);
     expect(view.patch.modules.some((m) => m.id === ids.arp)).toBe(true);
     expect(view.groups.map((g) => g.src)).toContain(ids.arp);
-    const bin = encodePatch(p);
-    expect(bin.length).toBeGreaterThan(0);
+    expect(() => encodePatch(p)).not.toThrow();
     const render = (compile: boolean): Float32Array => {
       const e = new Engine(SR);
       e.load(structuredClone(p), compile);
@@ -229,7 +228,6 @@ describe('device form', () => {
     const bin = encodePatch(p);
     expect(bin[1]).toBe(formatOf(p));
     expect(bin[8 + 4 + 5 * MAX_PARTS]).toBe(patch.modules.findIndex((m) => m.id === ids.arp) + 1);
-    expect(GROUP_REC).toBe(8 + 5 * MAX_PARTS);
   });
 
   it('a patch with the old firmware arpeggiator keeps its tempo as the Main module\'s', () => {

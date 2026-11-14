@@ -52,11 +52,11 @@ describe('the FM-1 UI as WebAssembly', () => {
       ui.tick(1000 + i * 10);
       ui.encoder(ENCODERS.k1 + k, 5);
     }
-    // (#649: the memory holds Cassia's eight voices; the voices row's top is four, what the CPU estimate holds with the
-    // CZ-1 functions of #658 under the 90 % bar (D-870) since #781, and where it starts: the row's top in the binary,
-    // gen-presets voiceTops)
-    expect([...new Set(values)]).toEqual([4].map((v) => v << 16));
-    for (let i = 0; i < 4; i++) ui.encoder(ENCODERS.k1 + k, -5);   /* (one step a turn: 3, 2, 1, then held at 1) */
+    // (#649: the memory holds Cassia's eight voices; the voices row stops at its top in the binary, gen-presets voiceTops)
+    const top = devices[d].pages[p].rows[k].top!;
+    expect(top).toBeGreaterThan(1);
+    expect([...new Set(values)]).toEqual([top << 16]);
+    for (let i = 0; i < top; i++) ui.encoder(ENCODERS.k1 + k, -5);   /* (one step a turn, then held at 1) */
     expect(values.slice(-2)).toEqual([1 << 16, 1 << 16]);
   }, 30_000);
 

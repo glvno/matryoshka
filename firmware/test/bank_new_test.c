@@ -32,43 +32,47 @@ static int find(const char *name)
 int main(void)
 {
     bn_plan_t p;
-    char msg[BN_BAR + 1u];
+    char msg[BN_BAR + 1u], want[BN_BAR + 1u];
     int v = find("VERONA DRUM 1"), i, s;
     uint32_t set191 = 0xb9a4a8u, set113 = 0x5a93c5u, old = 0u;   /* 1.9.1's set, 1.12.0..1.13.0's; 0: 1.6.0 and older */
-    uint64_t has21 = first(21);
+    uint64_t vbit = v >= 0 ? (uint64_t)1 << v : 0u, had = first(N_PRESETS) & ~vbit;   /* (every factory patch but Verona Drum 1) */
     printf("bank_new: a new factory patch after an update (#630)\n");
-    check("(Verona Drum 1 is factory index 21, 1.9.1's set had the 21 before it)", v == 21 && bn_new(set191) == (uint64_t)1 << 21);
+    check("(Verona Drum 1 is in the factory bank, 1.9.1's set had every other patch)", v >= 0 && bn_new(set191) == vbit);
+    if (v < 0)
+        return 1;
     check("today's set: nothing new", bn_new(FACTORY_SET_ID) == 0);
-    check("1.13.0's set: nothing new (Hera 3 is its Hera 4)", find("HERA 3") == 3 && bn_new(set113) == 0);
+    check("1.13.0's set: nothing new (Hera 3 is its Hera 4)", find("HERA 3") >= 0 && bn_new(set113) == 0);
 
-    bn_plan(set191, has21, has21, 64, &p);
-    check("own slot empty: Verona Drum 1 into slot 21 (the FM-1's 22)", p.placed == 1 && p.skipped == 0 && p.slot[v] == 21);
-    check("  the bar: NEW: 22. VERONA DRUM 1 (NEW PATCH: ... is 28 characters)", bn_msg(&p, msg) && !strcmp(msg, "NEW: 22. VERONA DRUM 1"));
+    bn_plan(set191, had, had, 64, &p);
+    snprintf(want, sizeof want, "NEW: %d. VERONA DRUM 1", v + 1);
+    check("own slot empty: Verona Drum 1 into its own slot", p.placed == 1 && p.skipped == 0 && p.slot[v] == v);
+    check("  the bar: NEW: <slot>. VERONA DRUM 1 (NEW PATCH: ... is 28 characters)", bn_msg(&p, msg) && !strcmp(msg, want));
 
-    bn_plan(set191, first(22) | (uint64_t)1 << 23, has21, 64, &p);
-    check("own slot taken (a user patch in 21): the first empty slot, 22 (the FM-1's 23), 21 untouched", p.placed == 1 && p.slot[v] == 22);
-    check("  the bar: NEW: 23. VERONA DRUM 1", bn_msg(&p, msg) && !strcmp(msg, "NEW: 23. VERONA DRUM 1"));
+    bn_plan(set191, first((uint32_t)v + 1u) | (uint64_t)1 << (v + 2), had, 64, &p);
+    snprintf(want, sizeof want, "NEW: %d. VERONA DRUM 1", v + 2);
+    check("own slot taken (a user patch in it): the first empty slot after it, its own untouched", p.placed == 1 && p.slot[v] == v + 1);
+    check("  the bar: NEW: <slot>. VERONA DRUM 1", bn_msg(&p, msg) && !strcmp(msg, want));
 
-    bn_plan(set191, ~(uint64_t)0, has21, 64, &p);
+    bn_plan(set191, ~(uint64_t)0, had, 64, &p);
     check("bank full: skipped, nothing written", p.placed == 0 && p.skipped == 1 && p.slot[v] == BN_NONE);
     check("  the bar: NO FREE SLOT FOR NEW PATCH", bn_msg(&p, msg) && !strcmp(msg, "NO FREE SLOT FOR NEW PATCH"));
 
-    bn_plan(set191, first(21), has21 | (uint64_t)1 << v, 64, &p);
+    bn_plan(set191, had, had | vbit, 64, &p);
     check("already there by name (a power cut before the settings record): not placed twice, nothing said",
           p.placed == 0 && p.skipped == 0 && !bn_msg(&p, msg));
     bn_plan(set191, first(10), first(10), 64, &p);
-    check("a factory patch the owner deleted is not new: only Verona Drum 1 comes", p.placed == 1 && p.slot[v] == 21);
+    check("a factory patch the owner deleted is not new: only Verona Drum 1 comes", p.placed == 1 && p.slot[v] == v);
 
-    bn_plan(0xabcdefu, has21, has21, 64, &p);
+    bn_plan(0xabcdefu, had, had, 64, &p);
     /* since v1.10.0 every factory patch is in a released set, so a bank from between releases gets nothing new */
     check("a set from between releases: only what no release had (none since 1.10.0)", p.placed == 0);
-    bn_plan(FACTORY_SET_ID, has21, has21, 64, &p);
+    bn_plan(FACTORY_SET_ID, had, had, 64, &p);
     check("today's set: nothing placed, nothing said", p.placed == 0 && !bn_msg(&p, msg));
 
-    /* a 1.6.0 bank (no set id) with the owner's patches in 0..21: the removed editor examples never come back, so
-     * only Verona Drum 1 is new, into the first empty slot */
-    bn_plan(old, first(22), has21, 64, &p);
-    check("a 1.6.0 bank: only Verona Drum 1, not the removed examples", p.placed == 1 && p.skipped == 0 && p.slot[v] == 22);
+    /* a 1.6.0 bank (no set id) with the owner's patches up to Verona Drum 1's slot: the removed editor examples never come
+     * back, so only Verona Drum 1 is new, into the first empty slot */
+    bn_plan(old, first((uint32_t)v + 1u), had, 64, &p);
+    check("a 1.6.0 bank: only Verona Drum 1, not the removed examples", p.placed == 1 && p.skipped == 0 && p.slot[v] == v + 1);
     {   /* every factory name in every slot: the bar never takes more than 26 characters */
         int ok = 1;
         for (i = 0; i < N_PRESETS; i++)

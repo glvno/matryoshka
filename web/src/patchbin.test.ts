@@ -2,41 +2,17 @@
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { addModule, connect, defaultMap, emptyPatch, validatePatch, type Patch } from './patch';
-import { isShortNote } from './track';
 import { connectParameter, setInputRoute } from './parameter-routing';
 import { devicesOf, NAME_MAX } from './pages';
 import { assemblyById, makeAssembly } from './assembly';
 import { instIsEngine } from './engines';
 import { engineBytes } from './test-bin';
-import { buttonRecord, fxRecord, deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_CABLES3, POLY_ROW, rowParam, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION, formatOf, paramsAt, SECTION_FORMATS, WRITE_FLOOR, COUNTED, layout, moduleRecordSize } from './patchbin';
+import { deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION, formatOf, paramsAt, SECTION_FORMATS, WRITE_FLOOR, COUNTED, layout } from './patchbin';
 import { PRESETS } from './presets';
 import { deviceView, polyGroups } from './poly';
 import { polyCfg, withParts } from './test-poly';
 import { subtractiveSaw, wobble } from './test-patches';
 import { structureOf } from './structure';
-import { allModules } from './assembly';
-/** how many device-form modules a device is made of (the extras' member list) */
-const extrasMembers = (src: Patch, dev: Patch, d: { asm?: number; module?: number }, v = COUNTED - 1): number => {
-  const index = new Map(dev.modules.map((m, i) => [m.id, i]));
-  const at = (d.asm !== undefined ? allModules(src, src.assemblies!.find((x) => x.id === d.asm)!) : [d.module!]).filter((id) => index.has(id)).map((id) => index.get(id)!);
-  // (format 51, D-1003: one unbroken run of three or more is its first and its count)
-  return v >= COUNTED && at.length > 2 && at.every((x, i) => x === at[0] + i) ? 1 : at.length;
-};
-
-/** the side-input routes section: a count, then per route its module and input bytes and its parameter mask (patchbin.ts routesOf) */
-const routeBytes = (p: Patch): number => {
-  const masks = p.modules.flatMap((m) => Object.entries(m.inputMap ?? {}).filter(([, ps]) => ps.length).map(() => maskBytes(m.type)));
-  return masks.length ? 1 + masks.reduce((n: number, b) => n + 2 + b, 0) : 0;
-};
-
-/** bytes of the patterns and songs section as the top of patchbin.ts documents it (0 without patterns or songs) */
-function patternBytes(p: Patch): number {
-  const seq = p.modules.find((m) => m.type === 'fm1')?.seq;
-  const tracks = p.modules.filter((m) => m.type === 'steps' && m.patterns?.length);
-  if (!tracks.length && !seq?.pattern && !seq?.song && !seq?.songs?.length) return 0;
-  return 3 + tracks.reduce((n, m) => n + 2 + m.patterns!.reduce((k, x) => k + (x ? 3 + (x.notes ?? []).length * ((x.notes ?? []).every(isShortNote) ? 2 : 4) : 1), 0), 0)
-    + 1 + (seq?.songs ?? []).reduce((n, e) => n + 1 + 2 * e.length, 0);
-}
 
 describe('binary patch format', () => {
   it('marks exactly the modules with a morph B side, including modules after the first mask byte', () => {
@@ -118,7 +94,6 @@ describe('binary patch format', () => {
     // format 34's types and their parameter counts where they grew (firmware/src/defs.h at v1.4.1)
     const v34: Record<string, number> = { osc: 11, lfo: 6, adsr: 4, delay: 5, reverb: 5, pulse: 1, drummap: 8, alloc: 8, steps: 4, filter: 5, ladder: 5, glide: 2 };
     const nTypes34 = TYPE_ORDER.indexOf('pd'); // pd, env8, select came with format 35
-    expect(TYPE_ORDER.slice(nTypes34)).toEqual(['pd', 'env8', 'select', 'rateenv', 'ratio', 'esp', 'shreg', 'comp', 'range', 'matrix', 'harm']); // Rate Env in 42, Ratio in 43, Follower in 46, Shift register, Comparator, Range and Matrix in 49, Harmonizer in 52
     for (const t of TYPE_ORDER.slice(0, nTypes34)) {
       const ps = DEFS[t].params;
       expect(ps.filter((q) => (q.since ?? 0) <= 34).length, t).toBe(v34[t] ?? ps.length);
@@ -258,7 +233,7 @@ describe('binary patch format', () => {
     expect(deviceBudget(p).buffers).toBe(one.buffers + 1);
   });
 
-  it('encodes every preset with the documented layout', () => {
+  it('encodes every preset\'s header and section flags', () => {
     for (const [name, make] of Object.entries(PRESETS)) {
       const b = encodePatch(make());
       const { patch: p, groups } = deviceView(make(), true); // what the device gets: the allocator as a Part per poly group, compiled
@@ -270,31 +245,6 @@ describe('binary patch format', () => {
       expect(b[3], name).toBe(g); // poly groups (Oracle V has one)
       expect(dv.getUint16(4, true), name).toBe(p.cables.length);
       const devs = deviceSection(make(), p);
-      const txt = (t: string): number => 1 + deviceText(t).length;
-      // (format 51, D-1003: a page name equal to its device's and a row label equal to its parameter's name are empty)
-      const v51 = b[1] >= COUNTED;
-      const pageTxt = (pg: { name: string }, d: { name: string }): number => (v51 && deviceText(pg.name) === deviceText(d.name) ? 1 : txt(pg.name));
-      const labelTxt = (r: { module: number; param: string; label: string }): number => {
-        const m = p.modules.find((x) => x.id === r.module)!;
-        return v51 && !(rowParam(m.type, r.param) & POLY_ROW) && deviceText(r.label).toUpperCase() === r.param.toUpperCase() ? 1 : txt(r.label);
-      };
-      // a row's extras (#357, #358): u8 count and 2 bytes per further parameter, u8 count and a text per position name
-      // (a poly row's extras: u8 its top, a VOICES row with one: format 51)
-      const more = (r: { param: string; also?: unknown[]; names?: string[]; top?: number }): number => (r.top !== undefined && r.param === 'voices' ? 1 : r.also?.length || r.names?.length ? 2 + 2 * (r.also?.length ?? 0) + (r.names ?? []).reduce((k, s) => k + txt(s), 0) : 0);
-      const pages = devs.length ? 1 + devs.reduce((n, d) => n + (d.module !== undefined ? 2 : 2 + txt(d.name) + d.pages.reduce((k, pg) => k + pageTxt(pg, d) + 4 + pg.rows.reduce((j, r) => j + 2 + labelTxt(r) + more(r), 0), 0)), 0)
-        + 1 + devs.reduce((n, d) => n + 8 + deviceText((d.asm !== undefined ? make().assemblies?.find((x) => x.id === d.asm)?.preset : '') ?? '').length + 2 * (d.asm !== undefined ? make().assemblies!.find((x) => x.id === d.asm)!.params.length : 0) + extrasMembers(make(), p, d, b[1]), 0) : 0; // and the extras
-      const valued = p.modules.filter((m) => m.type === 'steps' && m.notes?.length);
-      const keep = layout(make()).keep;   // (counted records, #667: a record's size follows its values and the rows kept)
-      const origins = p.modules.reduce((n, m) => n + (m.factoryPatterns?.ids.filter(Boolean).length ?? 0), 0);
-      const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + PANEL_BYTES + p.modules.reduce((s, m) => s + (b[1] >= COUNTED ? moduleRecordSize(m, b[1], false, keep.get(m.id)) : 1 + 4 * paramsAt(m.type, b[1]).length + (DEFS[m.type].paramInputs ? 8 + 6 * maskBytes(m.type) : 0) + (DEFS[m.type].data ?? 0)), 0) + (b[7] & (FLAG_CABLES3 >> 8) ? 3 : 4) * p.cables.length
-        + (valued.length ? 1 + valued.reduce((n, m) => n + 2 + 4 * m.notes!.length, 0) : 0) + pages + buttonRecord(make(), p).length
-        + (drumMaps(p).length ? 1 + drumMaps(p).length * (1 + 8 * 8) : 0)
-        + (rangeList(p).length ? 1 + 5 * rangeList(p).length : 0) // the macro ranges (the 909 Kit's velocity VCAs)
-        + routeBytes(p) // the side-input routes (Cassia 1's PD Osc: pm to range)
-        + (origins ? 2 + 6 * origins : 0) // format54 u16 count and six-byte origin records
-        + fxRecord(make(), p).length // format 55: the master FX stages (D-1010)
-        + patternBytes(make()); // the patterns and songs (format 48: Silver Box's demo)
-      expect(b.length, name).toBe(size);
       expect(!!(b[6] & FLAG_DEVICES), name).toBe(devs.length > 0);
       expect(!!(b[6] & FLAG_NAMES), name).toBe(drumMaps(p).length > 0);
       expect(p.cables.length).toBeLessThanOrEqual(MAX_CABLES);

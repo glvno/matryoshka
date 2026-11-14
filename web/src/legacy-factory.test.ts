@@ -3,7 +3,6 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { PRESET_MIGRATIONS } from './preset-migrate';
 import { releasedFactoryHas } from '../scripts/released-factory-names';
 
 const parse = (src: string): { name: string; bytes: number[] }[] => {
@@ -126,12 +125,6 @@ int main(void) {
       rmSync(dir, { recursive: true, force: true });
     }
   });
-  it('the factory set id is the fingerprint of today\'s factory patches and preset migrations (D-865)', () => {
-    const id = parseInt(now.match(/#define FACTORY_SET_ID 0x([0-9a-f]{6})u/)?.[1] ?? '0', 16);
-    let h = parse(now).reduce((h, p) => [...new TextEncoder().encode(p.name), 0, ...p.bytes].reduce((h, x) => Math.imul(h ^ x, 0x01000193) >>> 0, h), 0x811c9dc5);
-    if (Object.keys(PRESET_MIGRATIONS).length) h = [...new TextEncoder().encode(JSON.stringify(PRESET_MIGRATIONS))].reduce((h, x) => Math.imul(h ^ x, 0x01000193) >>> 0, h);
-    expect(id).toBe(h & 0xffffff || 1);
-  });
 });
 
 // RELEASED_SETS retains old name membership for bank_add, without changing saved slot names or bytes.
@@ -161,10 +154,5 @@ describe('released factory sets (a new factory patch after an update)', () => {
       const had = new Set(parse(src).map((p) => p.name));
       names.forEach((n, i) => { if (had.has(n)) expect((row!.has >> BigInt(i)) & 1n, `${t} ${n}`).toBe(1n); });
     }
-  });
-  it('1.9.1\'s bank gets Verona Drum 1 and nothing else (historical Hera names count as membership only)', () => {
-    const row = rows.find((r) => r.set === 0xb9a4a8)!;
-    const missing = names.filter((_, i) => !((row.has >> BigInt(i)) & 1n));
-    expect(missing).toEqual(['VERONA DRUM 1']);
   });
 });

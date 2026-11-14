@@ -619,6 +619,28 @@ static int ct_shows(const char *t)
     return on_screen(b);
 }
 
+/* every {list} line of the DEVICE tab (controls.h CTL_LINE), "{list}" made name, is a row of the sheet now (and one is) */
+static int ct_list_named(const char *name)
+{
+    const char *r[HC_ROWS];
+    const uint8_t *l;
+    uint32_t n = help_rows(0, r), k, lines = 0;
+    for (l = CTL_SHEET[0][HS_DEVICE]; *l != CTL_END; l++) {
+        const char *spec = CTL_LINE[*l].spec, *m = spec ? strstr(spec, "{list}") : 0;
+        char want[64];
+        int found = 0;
+        if (!m)
+            continue;
+        snprintf(want, sizeof want, "%.*s%s%s", (int)(m - spec), spec, name, m + 6);
+        for (k = 0; k < n && !found; k++)
+            found = !strcmp(r[k], want);
+        if (!found)
+            return 0;
+        lines++;
+    }
+    return lines > 0u;
+}
+
 static void controls_suite(void)
 {
     uint32_t i, s, t, v, alt, rows = 0, runs = 0, bad = 0;
@@ -678,27 +700,23 @@ static void controls_suite(void)
           && ct_enter(HS_MENU, 3) && ct_shows(HINT_MENU_INFO) && ct_enter(HS_MENU, 4) && ct_shows(HINT_MENU_GUIDE));
     {                                                   /* {list}: the Page button whose list shows, as the top bar names it */
         const char *r[HC_ROWS];
-        uint32_t n = ct_enter(HS_DEVICE, 1) ? help_rows(0, r) : 0u, k, home = 0, algo = 0;
-        for (k = 0; k < n; k++) {
-            home |= !strcmp(r[k], "k:HOME~leave LFO's pages");
-            algo |= !strcmp(r[k], "n:ALGO~LFO's pages");
-        }
-        check("a Page button's list: the sheet's HOME and ALGO rows name it (leave LFO's pages, LFO's pages)", home && algo);
+        uint32_t n = ct_enter(HS_DEVICE, 1) ? help_rows(0, r) : 0u;
+        char name[16];
+        if (n && !panel_label((uint32_t)pg_list_btn, name))
+            snprintf(name, sizeof name, "%s", PANEL_BTN_NAME[pg_list_btn]);
+        check("a Page button's list: the sheet's {list} rows (controls.h) name it", n && ct_list_named(name));
         if (n && m1_panel()) {                          /* the patch's label for it, as the top bar; one too wide: the name */
             uint8_t *lab = (uint8_t *)m1_panel() + 4u + 3u * ENG_PANEL_LABEL;
             uint8_t was[ENG_PANEL_LABEL];
+            int mod, wide;
             memcpy(was, lab, sizeof was);
             memset(lab, 0, ENG_PANEL_LABEL);
             memcpy(lab, "MOD", 3);
-            n = help_rows(0, r);
-            for (k = 0, home = 0; k < n; k++)
-                home |= !strcmp(r[k], "k:HOME~leave MOD's pages");
+            mod = ct_list_named("MOD");
             memcpy(lab, "WWWWWWWWWW", ENG_PANEL_LABEL);
-            n = help_rows(0, r);
-            for (k = 0, algo = 0; k < n; k++)
-                algo |= !strcmp(r[k], "k:HOME~leave LFO's pages");
+            wide = ct_list_named(PANEL_BTN_NAME[pg_list_btn]);
             memcpy(lab, was, sizeof was);
-            check("  the patch's label for it (MOD); a label too wide for the line: the button's name", home && algo);
+            check("  the patch's label for it (MOD); a label too wide for the line: the button's name", mod && wide);
         }
         if (n) {                                        /* the trail emptied under the list (a full trail): HOME still leaves it */
             trail_n = 0;

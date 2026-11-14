@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Test ledger impact reporting
         run: python3 tools/ledger_check_test.py
       - name: Check the decision ledger
@@ -18,3 +20,24 @@ jobs:
             echo "::error::Decision ledger check failed. Run 'python3 tools/ledger_check.py --fix' locally, then commit what it changed."
             exit 1
           fi
+      # The passages to review against changed decisions (D-015), for the reviewer: informational, never fails the run.
+      - name: List passages citing changed decisions
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          out=$(python3 tools/ledger_check.py --changed "$BASE")
+          {
+            echo '### Ledger review list (`tools/ledger_check.py --changed`)'
+            echo
+            if [ -n "$out" ]; then
+              echo 'Classify each entry as still true, stale or contradicted (docs/ledger/README.md, "Before a pull request").'
+              echo
+              echo '```'
+              printf '%s\n' "$out" | head -n 400
+              echo '```'
+            else
+              echo 'No changed decision and no changed file cited by a row.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

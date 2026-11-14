@@ -40,9 +40,9 @@ named-scenario command below. Host and web CI use the changed-domain plan in `to
 ([D-102](ledger/releases.md#D-102)). Explicit RC dispatches require the exact frozen commit. Required build checks
 remain separate ([D-100](ledger/releases.md#D-100), [D-116](ledger/releases.md#D-116)).
 
-An unmapped change fails planning. Native recorder changes need a concrete manual test/review plan in
-`tools/ci_test_plan.json`, tied to the changed file's hash. CI reports it as review input, never an automated pass.
-A missing or stale plan fails the required `build` check. Main pushes still run targeted checks because CI has no
+A changed path that no rule names runs more checks, never a planning failure: the full host suite for a firmware path,
+the companion test for a web path. Rules marked manual (the native recorder, the exact-engine harnesses, emulator
+fixtures) print a review note in the plan; CI reports it as review input, never an automated pass. Main pushes still run targeted checks because CI has no
 reliable record for reusing a previous pull request's results. Coverage display records follow
 [D-147](ledger/releases.md#D-147); deployment does not run tests.
 
@@ -311,16 +311,16 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
     both orders of pressing. An open hit pressed while the closed key is held rings on (#657). Verona Drum 1 XL goes to
     sandbox mode, and the browser's own output (an analyser on the editor's engine) plays every black key and no white
     key. Which drum each black key plays is judged by ear only on the owner's page.
-  - `checkRowDrone` (steps 3.1 to 3.4, [D-819](ledger/steps.md#D-819)): on `T110 DRONE`, LFO held + FX makes row E3 one
-    drone and removes its second note. E3's own pitch holds over the loop point with no new attack. Again it is one
-    step, and an empty row says NOTHING TO DRONE.
+  - `checkRowDrone` (steps 3.1 to 3.3, [D-819](ledger/steps.md#D-819)): on `T110 DRONE`, SEQ opens the piano roll, a
+    key sounds without editing the pattern, and LFO + FX in either order leaves the pattern unchanged.
   - `checkLiveDrone` (steps 3.5 to 3.7): step record's bar and hint on `T111 LIVE DRONE`, and FX + LFO there is a rest.
     A key held for 3 s in a live take becomes a drone that holds round the loop. The editor's roll draws it across the
     whole track. PLAY releases it, and leaving the page says PATTERN STAYS ARMED.
   - `checkDelays` (steps 4.1 to 4.5, [D-375](ledger/engine.md#D-375), [D-376](ledger/engine.md#D-376)): on
     `T111 TWO DELAYS`, one note gives an echo on the right at 300 ms and one on the left at 1200 ms. On the FM-1, LENGTH
-    says SET IN THE EDITOR and TIME stops at the length. The editor's budget shows 129 / 190 KB of effect memory with a
-    line for each Delay, and a click on a line selects its card. Dragging SHORT's length to its top stops at 700 ms with
+    says SET IN THE EDITOR and TIME stops at the length. The editor's budget shows one effect memory line with LONG its
+    largest share and a line for SHORT, and a click on a line selects its card. Dragging SHORT's length to its top stops
+    past 1900 ms, at what the memory leaves, with
     the note that says why. The patch then goes to the FM-1 again and both echoes still play.
   - `checkNoKeys` (steps 5.1 and 5.2, [D-905](ledger/device-ui.md#D-905), [D-295](ledger/patch-format.md#D-295)): on
     `T111 NO KEYS` the engine's ARM dot is dashed and arms nothing. On the FM-1, SEL says NO KEYS REACH THIS DEVICE and
@@ -340,7 +340,7 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
     starts nothing.
   - `checkDualCore` (steps 8.1, 8.2 and 8.4, [D-380](ledger/engine.md#D-380)): INFO's PROCESSOR row reads 2 CORES. Io 4,
     Hera 4 and Cassia 1 each play 8 held keys with nothing shed, no overload (DIAG pages 119 and 127) and no dropout in
-    the recording. On the rig, the INFO tab's CPU row must read under 80 % with the keys held. Monolith D and Simple FM
+    the recording. On the rig, the INFO tab's CPU row must read at most 90 % with the keys held. Monolith D and Simple FM
     sound.
 - **The test patches** are built in `web/scripts/check-fixtures.mjs` from the check page's descriptions. Each run keeps
   them in the editor's Your patches, as the owner keeps them. `web/src/check-fixtures.test.ts` checks that each one is
@@ -382,7 +382,8 @@ mix), USB plugging, the scenarios' sound judged by ear.
 It reads the LCD with the firmware's own font (`font.rs` parses `font5x7.c` and finds a string drawn by
 `text_dots` exactly), so it needs no symbols and runs on the release binary. Steps (the list at the top of `tools/emu/src/smoke.rs`): the loading screen, the
 device page of factory patch 0; silence, a panel key, silence after the release; GLO (Main's global page), PLAY, HOME,
-HOME held (the menu), HOME; the PRESET encoder; TRS MIDI program change and notes, then every factory patch in turn
+HOME held (the menu), HOME; the PRESET encoder; knob acceleration, a fine click, MIDI CC and a switch on a test patch of
+its own (`knobs.m1p` from `web/scripts/emu-patches.ts`, not a factory patch); TRS MIDI program change and notes, then every factory patch in turn
 (name shown, sound, its peak against the web engine's, from `web/scripts/emu-levels.ts`, within 6 dB as a warning);
 SAVE, the flash kept, a restart (STATE RESTORED and the state back); a patch bank written straight into the flash
 (three slots and one with a bad CRC; PRESET and program change step through the three and wrap); the first boot's

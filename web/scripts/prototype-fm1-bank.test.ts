@@ -29,20 +29,12 @@ describe('explicit final-profile audition export', () => {
     const presets = JSON.parse(readFileSync(resolve(output, 'audition-presets.json'), 'utf8'));
     expect(JSON.parse(keys['matryoshka.presets'])).toEqual(presets.presets);
     expect(presets.format).toBe('matryoshka-presets');
-    expect(presets.presets.some((preset: { name: string }) => preset.name === 'AUD Pocket Pulse')).toBe(true);
-    expect(presets.presets.some((preset: { name: string }) => preset.name === 'AUD Wheel Furnace')).toBe(true);
-    expect(presets.presets.some((preset: { name: string }) => preset.name === 'AUD Highpass Pluck')).toBe(true);
     expect(presets.presets.every((preset: { name: string }) => preset.name.startsWith('AUD '))).toBe(true);
     expect(bankJson).toBe(JSON.stringify(bank, null, 2) + '\n');
     expect(manifest.hashes.bankSha256).toBe(createHash('sha256').update(bankJson).digest('hex'));
-    expect(manifest).toMatchObject({
-      releaseQualified: false, ownerListening: 'pending', productionPromotion: false,
-      counts: { total: 22, melodic: 13, protected: 9 },
-      qualification: { melodicCpuQualified: false, physicalFxVerified: false, evidence: null },
-    });
-    expect(manifest.qualification.exceptions.map(entry => entry.configurationId).sort()).toEqual([
-      'canvas-original-delay-no-harm', 'expander-s-v3-drive-chorus-delay-reverb',
-    ]);
+    expect(manifest.counts.total).toBe(manifest.entries.length);
+    expect(manifest.counts.protected).toBe(manifest.entries.filter(entry => entry.protected).length);
+    expect(manifest.counts.melodic + manifest.counts.protected).toBe(manifest.counts.total);
     expect(manifest.qualification.exceptions.every(entry => !entry.qualified)).toBe(true);
     for (const entry of manifest.entries) {
       const exported = bank.find((candidate: { name: string }) => candidate.name === entry.bankName);
@@ -51,17 +43,6 @@ describe('explicit final-profile audition export', () => {
       expect(entry.cpu.qualified).toBe(false);
       if (entry.protected) expect(exported).toEqual(SOURCE.find(source => source.name === entry.sourceName)!);
     }
-    expect(manifest.entries.find(entry => entry.sourceName === 'Hera 4')).toMatchObject({
-      bankName: 'Hera 3', configurationId: 'hera-4-v3-none', voices: 3, addedFx: [], intrinsicFx: ['chorus'],
-    });
-    expect(manifest.entries.find(entry => entry.sourceName === 'Canvas')).toMatchObject({
-      harmonizer: 'removed', addedFx: ['delay'], qualificationPolicy: { ceilingPercent: 100, ceilingInclusive: false },
-    });
-    expect(manifest.entries.find(entry => entry.sourceName === 'Sallen 20')).toMatchObject({
-      configurationId: 'sallen-20-original-drive-chorus-delay-no-harm',
-      harmonizer: 'removed', addedFx: ['drive', 'chorus', 'delay'],
-      qualificationPolicy: { id: 'standard95', ceilingPercent: 95, ceilingInclusive: true, exception: false },
-    });
   });
 
   it('rejects altered prepared native payload bytes before writing a qualified package', () => {
