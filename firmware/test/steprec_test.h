@@ -80,7 +80,7 @@ static int sr_whole_same(void)
 static void steprec_suite(void)
 {
     int pat, drums, map;
-    uint32_t told, y, cx, cy;
+    uint32_t told, y, cx, cy, bt0;
     uint16_t th0;
     while (page != 0u && trail_n)
         tap(BTN_HOME);
@@ -124,7 +124,7 @@ static void steprec_suite(void)
     check("  the cursor's column: its empty cells tinted, a sky tick under it; the next column plain",
           px(cx, cy) == C_CUR && px(cx, GRID_CUR_Y) == P_SKY && px(seq_grid_x(3) + 5u, cy) != C_CUR && px(seq_grid_x(3) + 5u, GRID_CUR_Y) == C_BG);
     check("  the hint line: the keys, LFO, K4, REC; the track line black key 10", !strcmp(seq_grid_text[2], HINT_STEP_RECORD)
-          && text_w(&FONT_S, seq_grid_text[2], -1) <= 228u && strstr(seq_grid_text[1], "BLACK 10 del"));
+          && text_w(&FONT_S, seq_grid_text[2], -1) <= 228u && strstr(seq_grid_text[1], HINT_ROW_SR_BACK));
     check("  drawn in place = drawn whole", sr_whole_same());
 
     /* a chord, a tie of only the key still held, a key added after the tie (the issue's example) */
@@ -138,10 +138,11 @@ static void steprec_suite(void)
     sr_up(K_E4);
     sr_up(K_G4);
     check("E4 and G4 let go, C4 held: nothing written, the cursor stays", sr_notes(pat) == 0 && sr_k == 2u);
+    bt0 = eng_buttons_get();
     tap(BTN_LFO);
     check("LFO with C4 held: the cursor on step 4, C4 goes on through it, E4 and G4 one step", sr_k == 3u
           && sr_len_at(pat, 2, 60) == 2u && sr_len_at(pat, 2, 64) == 1u && sr_len_at(pat, 2, 67) == 1u);
-    check("  LFO's patch job not touched (no NOT USED message)", !strstr(msg_text, "NOT USED"));
+    check("  LFO's patch job not touched (the patch buttons as they were)", eng_buttons_get() == bt0);
     sr_tap_key(K_D4);
     check("D4 pressed and let go while C4 is held: added on the cursor's step (4), the cursor stays", sr_k == 3u
           && sr_len_at(pat, 3, 62) == 0u);
@@ -212,7 +213,7 @@ static void steprec_suite(void)
         oct_pair();
         enc(0, 1);
         check("  the step record sheet on the roll: SEL + any key jumps to a pitch; every row fits", help_on && help_state() == HS_STEP
-              && on_screen("jump to pitch") && sheet_fits());
+              && help_rows_shown(0) && sheet_fits());
         tap(BTN_HOME);
     }
 
@@ -266,7 +267,7 @@ static void steprec_suite(void)
     /* the controls sheet follows */
     oct_pair();
     check("OCT- + OCT+: the controls sheet says STEP RECORD", help_on && help_state() == HS_STEP && on_screen("STEP RECORD")
-          && on_screen("one chord"));
+          && help_rows_shown(0));
     check("  every row fits the card", sheet_fits() && help_rows(0, (const char **)sr_rows) <= HC_VIS + 3u);
     tap(BTN_HOME);
     check("  HOME closes the sheet; step record goes on", !help_on && sr_on && page == PAGE_SEQ);
@@ -278,7 +279,7 @@ static void steprec_suite(void)
           && sheet_fits() && help_rows(0, sr_rows) > 0u);
     later(1100);
     check("  the bar without STEP, the cursor's tick gone", bar_shows("PATTERN ARM G#3-D#4 P01", C_ACC) && px(seq_grid_x(1) + 5u, GRID_CUR_Y) == C_BG
-          && strstr(seq_grid_text[1], "ALGO track"));
+          && strstr(seq_grid_text[1], HINT_ROW_TRACK));
     tap(BTN_REC);
     check("REC, stopped: step record on the page's first step (1), not the cursor's last step (2)", sr_on && sr_k == 0u
           && !eng_transport_running());

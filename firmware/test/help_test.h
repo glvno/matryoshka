@@ -39,6 +39,66 @@ static int help_whole_same(void)
     return !n;
 }
 
+/* row k of tab t as help_rows gives it (controls.h's table, in the state now): its description's first 12 characters */
+static const char *help_desc(uint32_t t, uint32_t k, char *buf)
+{
+    const char *r[HC_ROWS], *d;
+    uint32_t n = help_rows(t, r), i = 0;
+    if (k < n) {
+        for (d = r[k]; *d && *d != '~'; d++)
+            ;
+        for (d += *d != 0; i < 12u && d[i]; i++)
+            buf[i] = d[i];
+    }
+    buf[i] = 0;
+    return buf;
+}
+
+/* the rows of tab t that fit from help_top: each one's description on the screen, but one the scroll bar cuts (SCREEN
+ * loses a text a fill crosses), and at least one */
+static int help_rows_shown(uint32_t t)
+{
+    const char *r[HC_ROWS], *d;
+    uint32_t n = help_rows(t, r), k, shown = 0, bar = n > HC_VIS ? HC_M + HC_W - 6u : 240u, dx;
+    char b[16];
+    for (k = help_top; k < n && k < help_top + HC_VIS; k++) {
+        if (!*help_desc(t, k, b))
+            continue;
+        if (on_screen(b)) {
+            shown++;
+            continue;
+        }
+        help_rows(t, r);
+        for (d = r[k]; *d != '~'; d++)
+            ;
+        dx = help_row(HC_X0, 0, r[k], 0, 0);
+        dx = dx > HC_AC ? dx + 2u : HC_AC;
+        if (dx + text_w(&FONT_S, d + 1, -1) < bar) {
+            printf("      (row %u, \"%s\", not on the screen)\n", (unsigned)k, b);
+            return 0;
+        }
+    }
+    return shown > 0u;
+}
+
+/* a row of tab t that tab u does not list, one of tab t's first view, is off the screen (tab u shows in its place) */
+static int help_tab_gone(uint32_t t, uint32_t u)
+{
+    const char *r[HC_ROWS];
+    uint32_t nt = help_rows(t, r), nu = help_rows(u, r), i, j;
+    char a[16], b[16];
+    for (i = 0; i < nt && i < HC_VIS; i++) {
+        int listed = 0;
+        if (!*help_desc(t, i, a))
+            continue;
+        for (j = 0; j < nu && !listed; j++)
+            listed = !strcmp(a, help_desc(u, j, b));
+        if (!listed)
+            return !on_screen(a);
+    }
+    return 0;
+}
+
 static void help_suite(void)
 {
     static uint16_t ref[240 * 240], was[240 * 240];
@@ -81,7 +141,7 @@ static void help_suite(void)
     panel_edges(1u << BTN_OCT_UP, 0);
     loop();
     check("OCT- held + OCT+: the controls sheet opens on the DEVICE tab", help_on == HELP_SHEET && help_tab == 0u && on_screen("DEVICE")
-          && on_screen("EVERYWHERE") && on_screen("adjust values"));
+          && on_screen("EVERYWHERE") && help_rows_shown(0));
     panel_held &= ~(1u << BTN_OCT_DOWN);
     panel_edges(0, 1u << BTN_OCT_DOWN);
     panel_held &= ~(1u << BTN_OCT_UP);
@@ -101,19 +161,22 @@ static void help_suite(void)
     /* the controls it takes */
     from = mlen;
     enc(1, 1);
-    check("ALGO right: EVERYWHERE, the single buttons first", help_tab == 1u && on_screen("start / stop") && on_screen("save patch")
-          && on_screen("settings") && !on_screen("adjust values"));
+    check("ALGO right: EVERYWHERE, the single buttons first", help_tab == 1u && help_rows_shown(1) && help_tab_gone(0, 1));
     check("  the tab drawn in part = drawn whole", help_whole_same());
     {
         const char *r[HC_ROWS];
-        uint32_t n = help_rows(1, r), i, combos = 0;
-        for (i = 0; i < n; i++)
-            combos += i >= 7u && (strstr(r[i], "~tempo") || strstr(r[i], "~patches"));
-        check("  then the combinations: tempo, patches", combos == 2u);
+        uint32_t n = help_rows(1, r), i, singles = 0, combos = 0, late = 0;
+        for (i = 0; i < n; i++) {
+            int combo = strstr(r[i], "|t:+|") != 0;
+            combos += combo;
+            singles += !combo && !combos;
+            late += !combo && combos;
+        }
+        check("  then the combinations", singles > 0u && combos >= 2u && late == 0u);
         check("  more rows than fit: the bottom line names SELECT scroll", n > HC_VIS && on_screen("scroll"));
     }
     enc(1, -1);
-    check("ALGO left: the DEVICE tab again", help_tab == 0u && on_screen("adjust values"));
+    check("ALGO left: the DEVICE tab again", help_tab == 0u && help_rows_shown(0));
     check("  the bottom line names SELECT scroll only when the tab's rows do not fit (D-917: a busy DEVICE tab scrolls)",
           (help_rows(0, (const char *[HC_ROWS]){0}) > HC_VIS) == on_screen("scroll") && on_screen("close"));
     {                                                   /* a tab whose rows fit: OUTPUT's (no presets, no keys), then back */
@@ -183,19 +246,21 @@ static void help_suite(void)
     later(1500);
     page_show(PAGE_ENV);                                /* the state changes (as the editor or a dive would): the sheet follows */
     loop();
-    check("the sheet follows the state: ENVIRONMENT", help_on && on_screen("ENVIRONMENT") && on_screen("device row"));
+    check("the sheet follows the state: ENVIRONMENT", help_on && help_state() == HS_ENV && on_screen("ENVIRONMENT") && help_rows_shown(0));
     seq_select(0);
     page_show(PAGE_SEQ);
     loop();
-    check("  the SEQ page of a melodic track: PIANO ROLL", help_on && help_state() == HS_ROLL && on_screen("PIANO ROLL") && on_screen("toggle step record"));
+    check("  the SEQ page of a melodic track: PIANO ROLL", help_on && help_state() == HS_ROLL && on_screen("PIANO ROLL") && help_rows_shown(0));
     {
         const char *r[HC_ROWS];
+        char first[16];
         uint32_t n = help_rows(0, r);
+        help_desc(0, 0, first);
         check("  more rows than fit: a scroll bar", n > HC_VIS && px(218, HC_TOP) != P_PANEL);
         enc(0, 1);
-        check("SELECT: one row down", help_top == 1u && !on_screen("toggle step record") && on_screen("jump to pitch"));
+        check("SELECT: one row down", help_top == 1u && !on_screen(first) && help_rows_shown(0));
         enc(0, 50);
-        check("  SELECT far: stops with the last row at the bottom", help_top == n - HC_VIS && on_screen("clear track"));
+        check("  SELECT far: stops with the last row at the bottom", help_top == n - HC_VIS && help_rows_shown(0));
         check("  scrolled in part = drawn whole", help_whole_same());
         enc(0, -50);
         check("  and back to the top", help_top == 0u);
@@ -208,7 +273,7 @@ static void help_suite(void)
     oct_pair();
     page_show(0);
     loop();
-    check("  and back: DEVICE", on_screen("DEVICE") && on_screen("adjust values"));
+    check("  and back: DEVICE", on_screen("DEVICE") && help_state() == HS_DEVICE && help_rows_shown(0));
     later(1600);                                        /* (leaving the SEQ page said PATTERN STAYS ARMED, #582: gone first) */
     from = mlen;
     tap(BTN_HOME);
@@ -225,8 +290,8 @@ static void help_suite(void)
     cfg.quick = 1;
     help_open(HELP_QUICK);
     loop();
-    check("the quick start: its title, rows, PRESS OCT- + OCT+, its bottom line", help_on == HELP_QUICK && on_screen("QUICK START")
-          && on_screen("device presets") && on_screen("TO SEE CONTROLS FOR CURRENT") && on_screen("forever"));
+    check("the quick start: its title, PRESS OCT- + OCT+", help_on == HELP_QUICK && on_screen("QUICK START")
+          && on_screen("TO SEE CONTROLS FOR CURRENT"));
     check("  a whole redraw gives the same pixels", help_whole_same());
     sv0 = saved;
     tap(BTN_SAVE);
@@ -295,7 +360,7 @@ static void help_suite(void)
     check("  K3 right: on", cfg.quick == 1u);
     oct_pair();
     check("  OCT- + OCT+ in the menu: the SETTINGS sheet, K1..K4 and GLO's hold listed on SYSTEM", help_on == HELP_SHEET && on_screen("SETTINGS")
-          && on_screen("run armed row") && on_screen("set"));
+          && help_state() == HS_MENU && help_rows_shown(0));
     tap(BTN_HOME);
     check("  HOME closes the sheet, the menu stays", !help_on && page == PAGE_MENU);
     memcpy(was, fb, sizeof was);

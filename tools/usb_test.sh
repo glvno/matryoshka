@@ -4,7 +4,7 @@
 # logic under clock drift (firmware/test/usb_test.c), in the app's configuration and with the CDC console; and the
 # MIDI-only presentation (update mode) against a FELUCCA_UAC=0 build's descriptors, byte for byte; the app's build
 # (FELUCCA_OTA=1) also checks that SysEx is not held back by a full MIDI ring in an update session (#177), and that
-# SysEx out never stalls the main loop on a host that stops reading (#375); both presentations' bytes are pinned below.
+# SysEx out never stalls the main loop on a host that stops reading (#375); the MIDI-only presentation's bytes are pinned below.
 #   tools/usb_test.sh
 set -e
 cd "$(dirname "$0")/.."
@@ -46,25 +46,14 @@ else
   fail=1
 fi
 # Pinned bytes. Update mode (and the update loader's build, FELUCCA_UAC=0) stays MIDI only, byte for byte as 1.0
-# shipped it: the way back. The app's layout (#67, the ledger's D-478): audio control 0, audio streaming 1 (EP 0x84),
-# MIDI streaming 2 (EP 0x01 / 0x81), the AC collection {1, 2}, bcdDevice 3.90.
+# shipped it: the way back. (The app's layout, #67 / D-478, is walked in usb_test.c walk_config.)
 MIDI_DEV=120110010000004009120100000301020001
 MIDI_CFG=0902650002010080320904000000010100000924010001090001010904010002010300000724010001410006240201010006240202020009240301030102010009240302040101010009050102400000000005250101010905810240000000000525010103
-APP_DEV=120110010000004009120100000401020001
-APP_CFG=0902020104010080320904000000010100000B240100013500030102030C24020301010002030000000924030401030003000C2402010306000203000000092403020101000100090401000001020000090401010101020000072401020101000B2402010202100144AC0009058405B80001000007250101000000090402000001020000090402010201020000072401030101000B2402010202100144AC0009050205B400010083072501010000000905831103000104000904030002010300000724010001410006240201010006240202020009240301030102010009240302040101010009050102400000000005250101010905810240000000000525010103
 printf '%s\n%s\n' "$MIDI_DEV" "$MIDI_CFG" > build/usb_midi_pinned.hex
-printf '%s\n%s\n' "$APP_DEV" "$APP_CFG" > build/usb_app_pinned.hex
-build/usb_test dump audio > build/usb_app.hex
 if cmp -s build/usb_midi_only.hex build/usb_midi_pinned.hex; then
   echo "ok   update mode's descriptors = the pinned MIDI-only bytes"
 else
   echo "FAIL update mode's descriptors changed"; diff build/usb_midi_only.hex build/usb_midi_pinned.hex || true
-  fail=1
-fi
-if cmp -s build/usb_app.hex build/usb_app_pinned.hex; then
-  echo "ok   the app's descriptors = the pinned layout (AC 0, capture 1, playback 2, MIDI 3)"
-else
-  echo "FAIL the app's descriptors differ from the pinned layout"; diff build/usb_app.hex build/usb_app_pinned.hex || true
   fail=1
 fi
 exit $fail

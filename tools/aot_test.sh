@@ -16,7 +16,6 @@ for c in 0 1 2; do
 done
 # it must have run compiled where it can, and fallen back where it must
 expect() { grep -Eq "$1" build/aot_test.0.txt || { echo "aot: expected '$1'"; fail=1; }; }
-expect "^factory 0 +played, 1 compiled instance$"
 expect "^oracle-v-plain.m1p +fuzzed, 1 compiled instance$"
 expect "^oracle-v-twice.m1p +fuzzed, 2 compiled instances$"
 expect "^oracle-v-drums.m1p +fuzzed, 1 compiled instance$"

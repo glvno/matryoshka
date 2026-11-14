@@ -95,15 +95,18 @@ class Packages(unittest.TestCase):
         self.assertIsNone(fi.load_package(OURS, False)[2])
 
     def test_open_checks_refuse_other_packages(self):
-        self.assertRegex(fi.open_problem(open(V15, "rb").read()), "identity is FM-1_015")
-        self.assertRegex(fi.open_problem(open(OURS, "rb").read()), "not M-VAVE Official Open")
+        for path in (V15, OURS):
+            raw = open(path, "rb").read()
+            problem = fi.open_problem(raw)
+            self.assertIsNotNone(problem, path)
+            self.assertIn(fi.product_of(raw), problem)          # (the identity it has: data, not wording)
 
     def test_a_page_without_open_is_refused(self):
         with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as f:
             f.write(b"<!doctype html><p>nothing here</p>")
         with self.assertRaises(fi.InstallError) as e:
             fi.load_package(f.name, False)
-        self.assertIn("no M-VAVE Official Open", str(e.exception))
+        self.assertEqual(e.exception.code, "badpkg")
 
     def test_a_package_starting_with_lt_is_not_a_page(self):
         # an encrypted .fwsc starts with "<" (0x3C) about once in 256 builds (CI run 41178937616): still a package
@@ -168,9 +171,8 @@ class Target(unittest.TestCase):
                 self.up.check(dev, b"", lambda *a: None)
         finally:
             fi.DELAY["start"] = old
-        self.assertIn("refused Official Open", str(e.exception))
-        self.assertIn("could not be read", str(e.exception))
-        self.assertNotIn("Most likely", str(e.exception))
+        self.assertEqual(e.exception.code, "stopped")
+        self.assertEqual(str(e.exception), fi.boot_refusal(self.up.product))   # (no boot code named: none was read)
 
 
 class BootCode(unittest.TestCase):
@@ -199,16 +201,17 @@ class BootCode(unittest.TestCase):
     def test_names(self):
         v15 = head_of(V15)
         self.assertEqual(hashlib.sha256(v15).hexdigest(), fi.V15_HEAD_SHA256)
-        self.assertEqual(fi.head_text(v15), "V15's")
-        self.assertIn("neither V15's nor Official Open's", fi.head_text(b"\0" * 0x4000))
+        self.assertEqual(fi.head_text(v15), fi.HEAD_NAMES["v15"])
+        zeros = b"\0" * 0x4000
+        self.assertIsNone(fi.head_which(zeros))
+        self.assertIn(hashlib.sha256(zeros).hexdigest(), fi.head_text(zeros))
 
     def test_v15_over_another_head_is_refused_before_sending(self):
         dev = running("FM-1_712", b"\0" * 0x4000)
         with self.assertRaises(fi.InstallError) as e:
             self.up.install(dev, b"", "FM-1_015", target="v15", state=self.state)
         self.assertEqual(e.exception.code, "bootcode")
-        self.assertIn("neither V15's nor Official Open's", str(e.exception))
-        self.assertIn("--save-head", str(e.exception))
+        self.assertIn(hashlib.sha256(b"\0" * 0x4000).hexdigest(), str(e.exception))
         self.assertFalse(self.sent)
         self.assertIsNone(fi.remembered_target(self.state))
 
@@ -217,7 +220,7 @@ class BootCode(unittest.TestCase):
         with self.assertRaises(fi.InstallError) as e:
             self.up.install(dev, b"", "FM-1_8000014", target="open", state=self.state)
         self.assertEqual(e.exception.code, "bootcode")
-        self.assertIn("is V15's", str(e.exception))
+        self.assertIn(fi.HEAD_NAMES["v15"], str(e.exception))
         self.assertFalse(self.sent)
 
     def test_matching_or_unreadable_head_goes_on(self):
@@ -233,7 +236,7 @@ class BootCode(unittest.TestCase):
         self.assertNotEqual(rk, v15)
         self.assertEqual(fi.head_is(v15, "v15"), "exact")
         self.assertEqual(fi.head_is(rk, "v15"), "rekeyed")
-        self.assertIn("V15's, with its chip-key block written again", fi.head_text(rk))
+        self.assertTrue(fi.head_text(rk).startswith(fi.HEAD_NAMES["v15"]) and fi.head_text(rk) != fi.HEAD_NAMES["v15"])
         self.assertIsNone(fi.head_is(rekey(v15, 0x980F ^ 0x100), "v15"))       # another key
         self.assertIsNone(fi.head_is(rekey(v15, 0x980F, True), "v15"))         # its CRC broken
         other = bytearray(rk)
@@ -271,7 +274,7 @@ class BootCode(unittest.TestCase):
             self.assertEqual(fi.main(["--info", "--save-head", out], backend=Backend(), out=buf), 0)
         finally:
             fi.handshake = old
-        self.assertIn("boot code: V15's", buf.getvalue())
+        self.assertIn(fi.HEAD_NAMES["v15"], buf.getvalue())
         self.assertEqual(open(out, "rb").read(), head)
 
 
@@ -449,7 +452,7 @@ class RigPin(RigFakes, unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertEqual(self.installed, [(RIG, "FM-1_7000000")])
         self.assertFalse([p for loc, p in usb.sent if loc != RIG])
-        self.assertIn("its mark reads back at USB location 0x01130000", out)
+        self.assertIn(fm1_usb.location_text(RIG), out)
 
     def test_another_fm1_in_the_rigs_socket_is_refused(self):
         for mark in (None, [1, 2, 3, 4]):
@@ -495,7 +498,8 @@ class RigPin(RigFakes, unittest.TestCase):
         usb = self.usb((OWNER, "FM-1_7011000", None), (RIG, "FM-1_7000000", MARK))
         code, out = self.run_rig(usb, "--dry-run")
         self.assertEqual(code, 0, out)
-        self.assertRegex(out, r"dry run: would install FM-1_7\d+ on FM-1_7000000 \(Matryoshka\) at USB location 0x01130000")
+        self.assertIn("FM-1_7000000", out)
+        self.assertIn(fm1_usb.location_text(RIG), out)
         self.assertEqual(self.installed, [])
         self.assertTrue(usb.sent and reads(usb) and all(loc == RIG for loc, _ in usb.sent))
         usb = self.usb((OWNER, "FM-1_7011000", MARK), (RIG, "FM-1_7011000", None))   # (the owner's FM-1 in the rig's socket)
@@ -557,7 +561,7 @@ class M1LinkRig(RigFakes, unittest.TestCase):
             usb = self.usb((OWNER, "FM-1_7011000", MARK), (RIG, "FM-1_7011000", mark))
             with self.assertRaises(SystemExit) as e:
                 self.rig_link(usb)
-            self.assertIn("0x01130000", str(e.exception.code))
+            self.assertIn(fm1_usb.location_text(RIG), str(e.exception.code))
             self.assertFalse([p for loc, p in usb.sent if loc != RIG])
             self.assertTrue(all(p[4] == fm1_usb.C_PRESET_GET for loc, p in usb.sent), "only the mark's read")
 
@@ -575,7 +579,7 @@ class M1LinkRig(RigFakes, unittest.TestCase):
         try:
             with self.assertRaises(SystemExit) as e:
                 m1_link.Link()
-            self.assertIn("--rig", str(e.exception.code))
+            self.assertNotIn(e.exception.code, (None, 0))
         finally:
             m1_link.fm1s_connected = old
 

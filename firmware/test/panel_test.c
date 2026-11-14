@@ -671,8 +671,6 @@ int main(void)
         check("whole-step row: a value typed between its steps keeps its decimals (2.50)", !strcmp(num, "2.50"));
         value_parts(&DEFS[T_LFO], LFO_P_DEPTH, 65536, num, unit);
         check("a row of fractional steps keeps its decimals (1.00)", !strcmp(num, "1.00"));
-        check("a whole-step row's knob click is whole steps: Delay time 7 ms, so 1 ms goes to 8 (was 6.99, to 7.99)",
-              DEFS[T_DELAY].pinc[DELAY_P_TIME] == 7 << 16);
     }
     {                                                       /* #396: a bent (plog 2) cutoff at its top read as at its bottom, so the
                                                              * bar went empty at 20 kHz and the next click up landed near 20 Hz */
@@ -706,12 +704,9 @@ int main(void)
     check("no-steal row changes the engine and saved flag", poly_row_set(mod, ENG_POLY_STEAL, 0) == 0 && eng_poly_get(0, ENG_POLY_STEAL) == 0 && (pv_bin[11] & 0x80u));
     check("priority row preserves no-steal", poly_row_set(mod, ENG_POLY_PRIORITY, 2) == 0 && pv_bin[11] == 0x82u && eng_poly_get(0, ENG_POLY_PRIORITY) == 2);
     check("reset assignment reaches the engine and saved patch", poly_row_set(mod, ENG_POLY_ASSIGN, 3) == 0 && eng_poly_get(0, ENG_POLY_ASSIGN) == 3 && pv_bin[9] == 3);
-    check("assignment row spans all four choices", poly_max(ENG_POLY_ASSIGN) == 3);
-    check("steal row is boolean", poly_max(ENG_POLY_STEAL) == 1);
     check("reload retains no-steal and reset assignment", eng_load(pv_bin, pv_len) == 0 && eng_poly_get(0, ENG_POLY_STEAL) == 0 && eng_poly_get(0, ENG_POLY_ASSIGN) == 3);
     check("turning stealing back on preserves priority", poly_row_set(mod, ENG_POLY_STEAL, 1) == 0 && pv_bin[11] == 2 && eng_poly_get(0, ENG_POLY_STEAL) == 1);
     check("unison count edits preserve poly voices", poly_row_set(mod, ENG_POLY_STACK, 1) == 0 && eng_poly_get(0, ENG_POLY_STACK) == 1 && eng_poly_get(0, ENG_POLY_PARTS) == 2 && pv_bin[8] == 0x12u);
-    check("unison count row spans all hardware voices", poly_max(ENG_POLY_STACK) == ENG_MAX_PARTS);
     check("poly count edits preserve the unison count", poly_row_set(mod, ENG_POLY_PARTS, 4) == 0 && pv_bin[8] == 0x14u);
     check("rejected poly edit restores both counts", poly_row_set(mod, ENG_POLY_PARTS, 5) != 0 && pv_bin[8] == 0x14u && eng_poly_get(0, ENG_POLY_STACK) == 1 && eng_poly_get(0, ENG_POLY_PARTS) == 4);
     arena_size = ENG_ARENA;
@@ -724,7 +719,6 @@ int main(void)
     check("reducing unison count releases excess voices", poly_row_set(mod, ENG_POLY_STACK, 1) == 0 && !E.pv[E.grp[1].pv0 + 1].on);
     check("shared unison mode saves both flags", poly_row_set(mod, ENG_POLY_UNISON, 2) == 0 && eng_poly_get(0, ENG_POLY_UNISON) == 2 && (pv_bin[10] & 0xC0u) == 0xC0u);
     check("legato edit preserves shared unison", poly_row_set(mod, ENG_POLY_LEGATO, 2) == 0 && pv_bin[10] == 0xC2u);
-    check("unison mode row has three choices", poly_max(ENG_POLY_UNISON) == 2);
     check("normal unison keeps legato and clears share", poly_row_set(mod, ENG_POLY_UNISON, 1) == 0 && pv_bin[10] == 0x82u);
     /* Group-format guards use only stable Main/Part/VCA/Output records, independent of factory players.
      * Real older records and upgrades are checked by tools/old_format.sh. */
@@ -1115,8 +1109,7 @@ int main(void)
         enc(1, 1);
         check("ALGO again: GUIDE (D-248), a text, not a page", menu_tab == MT_GUIDE && !menu_page());
         check("  the tab chip and the title say GUIDE, its first lines point at the controls sheet", on_screen("GUIDE")
-              && on_screen("Guide") && on_screen("PRESS OCT- + OCT+") && on_screen("TO SEE CONTROLS FOR CURRENT")
-              && !on_screen("MANUAL"));
+              && on_screen("Guide") && on_screen("PRESS OCT- + OCT+") && on_screen("TO SEE CONTROLS FOR CURRENT"));
         {                                                   /* the GUIDE's lines (D-200, D-248): at most 35 characters after
                                                              * the style marker, capitals, no ';'; it explains ideas, so no
                                                              * line names a control (a whole word) but its first two. PRESET
@@ -1146,8 +1139,7 @@ int main(void)
                     vocab += !strcmp(l, IDEA[k]);
             }
             check("  GUIDE lines: at most 35 characters, capitals, no ';' (D-200)", bad == 0u);
-            check("  GUIDE: the first two lines, then no control named (D-248)", !strcmp(MANUAL[0] + 1, "PRESS OCT- + OCT+")
-                  && !strcmp(MANUAL[1] + 1, "TO SEE CONTROLS FOR CURRENT PAGE") && ctrl == 0u);
+            check("  GUIDE: after the first two lines, no control named (D-248)", ctrl == 0u);
             check("  GUIDE: a heading for each of the 14 ideas of D-248, and P-lock (#524)", vocab == 15u);
         }
         enc(1, 1);

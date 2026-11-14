@@ -902,7 +902,10 @@ typedef char eng_inst_bytes_check[sizeof(inst_t) == ENG_INST_BYTES ? 1 : -1];   
 #if defined(M1_FW_MAJOR) && !defined(__wasm__)
 typedef char eng_node_bytes_check[sizeof(node_t) == ENG_NODE_BYTES ? 1 : -1];   /* (patchbin.ts NODE_BYTES follows it) */
 #endif
-#define ENG_ARENA (LINE_ARENA + 255u * ENG_BUF_BYTES + 129u * ENG_INST_BYTES + 1536u * 4u + 64u * ENG_NODE_BYTES)   /* 344,628 B */
+#ifndef ENG_ARENA_EXTRA
+#define ENG_ARENA_EXTRA 0u                      /* (tools/buffer_budget.py's separate-buffer reference: -DENG_ARENA_EXTRA=65536u) */
+#endif
+#define ENG_ARENA (ENG_ARENA_EXTRA + LINE_ARENA + 255u * ENG_BUF_BYTES + 129u * ENG_INST_BYTES + 1536u * 4u + 64u * ENG_NODE_BYTES)   /* 344,628 B */
 #define ENG_ARENA_HOST (ENG_ARENA + (ENG_MAX_INST + 1u) * (sizeof(inst_t) > ENG_INST_BYTES ? (uint32_t)sizeof(inst_t) - ENG_INST_BYTES : 0u) \
                         + (sizeof(node_t) > ENG_NODE_BYTES ? ENG_MAX_MODULES * ((uint32_t)sizeof(node_t) - ENG_NODE_BYTES) + 8u : 0u))
 static uint32_t eng_arena[ENG_ARENA_HOST / 4u] ENG_POOL __attribute__((aligned(8)));

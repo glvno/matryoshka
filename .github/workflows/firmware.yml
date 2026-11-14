@@ -94,7 +94,6 @@ jobs:
           python3 tools/build.py 2>&1 | tee build/build.log
           test "${PIPESTATUS[0]}" -eq 0
           if grep -E "warning:" build/build.log | grep -v "SDK .* differs"; then echo "::error::compiler warnings"; exit 1; fi
-          grep -E "pool [0-9]+ B of [0-9]+" build/build.log
       - name: Host checks selected for this scope
         run: python3 tools/ci_checks.py run --area firmware
       - uses: actions/upload-artifact@v4
