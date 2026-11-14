@@ -16,7 +16,8 @@ import { pool } from '../../tools/cpu/pool.mjs';
 // @ts-ignore: plain JavaScript modules
 import { profile, readElf } from '../../tools/cpu/rv32.mjs';
 import { CPU } from '../src/cpu';
-import { cpuChecks } from '../src/cpu-checks';
+import { cpuChecks, startEvents } from '../src/cpu-checks';
+import type { Patch } from '../src/patch';
 import { encodePatch } from '../src/patchbin';
 import { deviceView } from '../src/poly';
 import { DEVICE_COMPILE } from '../src/device-compile';
@@ -24,8 +25,9 @@ import { DEVICE_COMPILE } from '../src/device-compile';
 const ROOT = new URL('../../', import.meta.url).pathname;
 const NOTE = 72, BLOCKS = 24, SKIP = Number(process.env.CPU_SKIP ?? 3);
 const ON = (n: number): number => (1 << 16) | n;
-// CPU_NOTES=n holds only the first n notes of each check (what idle voices save when fewer keys are down than voices)
-const events = (notes: number[]): number[] => [...notes.slice(0, Number(process.env.CPU_NOTES ?? notes.length)).map(ON), ...Array(BLOCKS).fill(3 << 16)];
+// CPU_NOTES=n holds only the first n notes of each check (what idle voices save when fewer keys are down than voices); a
+// patch with a Steps track plays with its transport running (startEvents)
+const events = (c: { patch: Patch; notes: number[] }): number[] => [...startEvents(c.patch), ...c.notes.slice(0, Number(process.env.CPU_NOTES ?? c.notes.length)).map(ON), ...Array(BLOCKS).fill(3 << 16)];
 const arg = (k: string): string | undefined => {
   const i = process.argv.indexOf(k);
   return i < 0 ? undefined : process.argv[i + 1];
@@ -45,7 +47,7 @@ if (hot) {
     { cwd: ROOT, stdio: 'inherit' },
   );
   const hist = new Float64Array(4 << 20);
-  const r = profile(readElf(elf), encodePatch(c.patch, true), events(c.notes), undefined, hist);
+  const r = profile(readElf(elf), encodePatch(c.patch, true), events(c), undefined, hist);
   const blocks = r.blocks.slice(SKIP).map((b: { total: number }) => b.total);
   const total = hist.reduce((s, v) => s + v, 0);
   const pcs: number[] = [];
@@ -79,7 +81,7 @@ if (process.argv.includes('--types')) {
   await Promise.all(
     checks.map(async (c) => {
       const dv = deviceView(c.patch).patch;
-      const r = await PROF.run('prof', encodePatch(c.patch, true), events(c.notes));
+      const r = await PROF.run('prof', encodePatch(c.patch, true), events(c));
       const pk = r.blocks.slice(SKIP).reduce((a: { total: number }, b: { total: number }) => (b.total > a.total ? b : a));
       all += pk.total;
       for (const [key, st] of pk.nodes as Map<string, { sum: number; cv: number; run: number }>) {
@@ -107,7 +109,7 @@ if (nodes) {
   const c = checks.find((x) => x.name === nodes);
   if (!c) throw new Error(`no check ${nodes}`);
   const dv = deviceView(c.patch).patch;
-  const r = profile(readElf(`${ROOT}build/cpu/prof.elf`), encodePatch(c.patch, true), events(c.notes));
+  const r = profile(readElf(`${ROOT}build/cpu/prof.elf`), encodePatch(c.patch, true), events(c));
   const blocks = r.blocks.slice(SKIP);
   const peakB = blocks.reduce((a: { total: number }, b: { total: number }) => (b.total > a.total ? b : a));
   const rows = new Map<string, { sum: number; cv: number; run: number; copies: number }>();
@@ -137,7 +139,7 @@ const before: Record<string, number> = arg('--compare') ? JSON.parse(readFileSyn
 const peaks: Record<string, number> = {};
 await Promise.all(
   checks.map(async (c) => {
-    const r = await POOL.run('plain', encodePatch(c.patch, true), events(c.notes));
+    const r = await POOL.run('plain', encodePatch(c.patch, true), events(c));
     if (r.exit) throw new Error(`${c.name}: refused (${r.exit})`);
     peaks[c.name] = Math.max(...r.blocks.slice(SKIP).map((b: { total: number }) => b.total));
   }),

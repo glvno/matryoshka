@@ -17,7 +17,7 @@ import { cpuEstimate, FIRST_ALSO, type CostDim, type CpuTable, type TypeCost } f
 import { DEFS } from '../src/modules';
 import { encodePatch } from '../src/patchbin';
 import { addModule, connect, EDITOR_ONLY, fromUnit, newPatch, type ModuleInst, type ParamDef, type Patch } from '../src/patch';
-import { cpuChecks } from '../src/cpu-checks';
+import { cpuChecks, startEvents } from '../src/cpu-checks';
 
 const ROOT = new URL('../../', import.meta.url).pathname;
 execSync('tools/cpu/build.sh', { cwd: ROOT, stdio: 'inherit' });
@@ -81,7 +81,7 @@ type Run = { totals: number[]; nodes: Map<string, Stage>[] };
 type Blocks = { blocks: { total: number; nodes: Map<string, Stage> }[]; exit: number };
 const emulate = (elf: string, patch: Uint8Array, ev: number[]): Promise<Blocks> => POOL.run(elf, patch, ev);
 const run = async (elf: string, p: Patch, notes = [NOTE]): Promise<Run> => {
-  const r = await emulate(elf, encodePatch(p, true), events(notes));
+  const r = await emulate(elf, encodePatch(p, true), [...startEvents(p), ...events(notes)]);
   if (r.exit) throw new Error(`${p.name}: the engine refused the patch (${r.exit})`);
   return { totals: r.blocks.map((b) => b.total), nodes: r.blocks.map((b) => b.nodes) };
 };
@@ -547,9 +547,10 @@ const table: CpuTable = {
 const checks = cpuChecks(NOTE).map(({ name, patch, notes }): [string, Patch, number[]] => [name, patch, notes]);
 // a check's peak includes the note-on block: envelopes and glides moving there are what the FM-1 must keep up with. The
 // patch loads one silent block before the notes, as on the FM-1 (a patch is loaded before it is played): the load block
-// works out what the engine then keeps until a setting changes (#289), which is no part of playing
+// works out what the engine then keeps until a setting changes (#289), which is no part of playing. A patch with a Steps
+// track counts with its transport running (startEvents)
 const checkRun = async (p: Patch, notes: number[]): Promise<number> => {
-  const r = await emulate(ELF.plain, encodePatch(p, true), [RENDER, ...notes.map(ON), ...Array(BLOCKS).fill(RENDER)]);
+  const r = await emulate(ELF.plain, encodePatch(p, true), [RENDER, ...startEvents(p), ...notes.map(ON), ...Array(BLOCKS).fill(RENDER)]);
   if (r.exit) throw new Error(`${p.name}: the engine refused the patch (${r.exit})`);
   return Math.max(...r.blocks.slice(1).map((b) => b.total));
 };

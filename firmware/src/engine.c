@@ -10415,6 +10415,12 @@ static void m_fx(const node_t *nd, inst_t *it, uint32_t n, uint32_t target)
 #ifndef ENG_PROF
 #define ENG_PROF(stage, node, part) ((void)0)
 #endif
+/* The device's time per copy (#802, modular.c, DIAG pages 144..160): a timestamp before a copy renders, and its span after,
+ * added to its module's sum on its lane's row. Compiled out unless ENG_ITEM_END is defined. */
+#ifndef ENG_ITEM_END
+#define ENG_ITEM_BEGIN() 0u
+#define ENG_ITEM_END(nd, it, t0) ((void)(t0))
+#endif
 /* The device's block timing (#802, #803; modular.c, blk_time.h): a timestamp before the voices (0), after them (1) and
  * before the Output modules' sum (2). Compiled out unless ENG_TMARK is defined. */
 #ifndef ENG_TMARK
@@ -10487,7 +10493,7 @@ static int sum_plain(const sum_t *sm)
  * (Not inlined: one copy for both render paths, as the flash has no room for two.) */
 static __attribute__((noinline)) void render_item(const node_t *nd, inst_t *it, uint32_t n, const inst_t *prev, int32_t *means)
 {
-    uint32_t m = (uint32_t)(nd - E.node), s, i;
+    uint32_t m = (uint32_t)(nd - E.node), s, i, t0 = ENG_ITEM_BEGIN();
     ENG_PROF(0, m, IT_V(nd, it));
     for (s = it->sum0; s < (uint32_t)it->sum0 + it->nsum; s++) {
         const sum_t *sm = &E.sum[s];
@@ -10580,6 +10586,7 @@ static __attribute__((noinline)) void render_item(const node_t *nd, inst_t *it, 
     } else
         process(nd, it, n);
     ENG_PROF(3, m, IT_V(nd, it));
+    ENG_ITEM_END(nd, it, t0);
 }
 
 /* the modules E.order[k0..k1) for one block of n frames: every part v = first, first + step, .. of a module in a poly group,
