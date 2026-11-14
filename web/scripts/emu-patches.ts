@@ -9,6 +9,7 @@
 //   build/emu/low-delay.m1p, low-delay-pp.m1p     a 290 ms Delay (its line in .lowram's line area), plain and ping-pong
 //                              (#273, #651: the smoke checks every block of each echo against the note's own sound)
 //   build/emu/stereo-sides.m1p   a saw on the left only and a sine an octave up on the right only (STEREO keeps them apart)
+//   build/emu/knobs.m1p        an LFO whose first page holds a 0..1 row and a switch: the knob acceleration and a switch's step
 //   build/emu/old-oracle-v.m1p   the newest earlier factory Oracle V committed in git, unlike today's (an update finds it
 //                              in the bank: the boot keeps the slot holding it as it is, D-887)
 //   build/emu/7ph.m1p          the <7PH groove-box example (editor-only since D-890, its bytes kept), encoded as the
@@ -114,6 +115,19 @@ function stereoSides(): Patch {
   return p;
 }
 writeFileSync(new URL('stereo-sides.m1p', out), encodePatch(stereoSides()));
+
+/** the knobs (#340, #405): one LFO, the home device; its first page K1..K4 = WAVE, RATE, DEPTH (0..1 in 0.01 steps, at 0)
+ * and SYNC (a switch, at SYNC). The smoke test turns DEPTH for the knob acceleration and SYNC for a switch's single step */
+function knobs(): Patch {
+  const p = emptyPatch('EMU KNOBS');
+  addModule(p, DEFS.fm1, 0, 0);
+  const lfo = addModule(p, DEFS.lfo, 300, 0);
+  const o = addModule(p, DEFS.output, 600, 0);
+  Object.assign(lfo.params, { depth: 0, sync: 1 });
+  if (!connect(p, DEFS, { module: lfo.id, port: 'out' }, { module: o.id, port: 'l' })) throw new Error('knobs: out -> l');
+  return p;
+}
+writeFileSync(new URL('knobs.m1p', out), encodePatch(knobs()));
 
 for (const [file, p] of [
   ['heavy-poly.m1p', withParts(heavy('EMU HEAVY POLY', 6), 8)],

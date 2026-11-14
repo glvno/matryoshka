@@ -382,7 +382,8 @@ mix), USB plugging, the scenarios' sound judged by ear.
 It reads the LCD with the firmware's own font (`font.rs` parses `font5x7.c` and finds a string drawn by
 `text_dots` exactly), so it needs no symbols and runs on the release binary. Steps (the list at the top of `tools/emu/src/smoke.rs`): the loading screen, the
 device page of factory patch 0; silence, a panel key, silence after the release; GLO (Main's global page), PLAY, HOME,
-HOME held (the menu), HOME; the PRESET encoder; TRS MIDI program change and notes, then every factory patch in turn
+HOME held (the menu), HOME; the PRESET encoder; knob acceleration, a fine click, MIDI CC and a switch on a test patch of
+its own (`knobs.m1p` from `web/scripts/emu-patches.ts`, not a factory patch); TRS MIDI program change and notes, then every factory patch in turn
 (name shown, sound, its peak against the web engine's, from `web/scripts/emu-levels.ts`, within 6 dB as a warning);
 SAVE, the flash kept, a restart (STATE RESTORED and the state back); a patch bank written straight into the flash
 (three slots and one with a bad CRC; PRESET and program change step through the three and wrap); the first boot's
