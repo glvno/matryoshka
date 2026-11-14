@@ -6,6 +6,7 @@
 - **A playing Steps track costs less.** A running track took about 135 µs of every 2.9 ms block on the FM-1; it now takes about 48 µs. With the transport running, the factory patches use 1 to 12 points less of the FM-1's time: Spokes 6 66 % → 53 %, Perun 4 52 % → 44 %, 808 Kit 63 % → 57 %. The sound is unchanged, bit for bit. The editor's CPU estimate now counts a Steps track as playing.
 - **The Reverb's tail starts one block later.** A Reverb's lines now hear its input 128 samples (about 3 ms) late; the dry signal is on time. In exchange, the FM-1 runs the Reverb's lines on whichever core is free instead of after the voices: Briefcase 3 uses 6 points less of the FM-1's time (62 % → 56 %). Both engines sound the same.
 - **The LED and key scan leaves more room for sound.** It took about 9 % of the FM-1's main core, part of it inside the audio's time; it now takes about 3.5 %. The busiest factory patches use 2 to 3 points less (Oracle V 74 % → 71 %, Cassia 1 75 % → 72 %). The LEDs and keys are meant to look and respond as before.
+- **A moving filter costs less.** While the Multimode filter's cutoff input moves, the filter follows it every 4th sample instead of every sample: about 9 % less of Hera 3's work while its envelopes open and close the filter. The difference in sound is about 73 dB below the signal.
 
 ## 1.14.0 — 2026-11-13
 

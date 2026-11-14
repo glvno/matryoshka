@@ -55,15 +55,16 @@ const CORES = {
  * scale): the smallest that makes the estimate read at least the rig's steady peak for every voice count its factory patch
  * played on the rig, transport stopped and running. The counted engine misses what the FM-1 spends beyond its instructions
  * (its caches and memory, the hardware's own timing, how the two cores share the block), and that differs from engine to
- * engine: the factors run from 0.62 to 1.06. The patches outside the 1.14 bank (basic poly, drift poly, mono lead,
+ * engine: the factors run from 0.64 to 1.06. Refitted 2026-11-14 to the same surveys after #787 (D-1105) made the
+ * table's moving Multimode filter cheaper. The patches outside the 1.14 bank (basic poly, drift poly, mono lead,
  * supersaw stack) keep the factors of the 2026-11-09 survey. */
 const RIG = {
   engines: {
     '8 Lire': 0.65, '808 kit': 0.83, '909 kit': 0.72, 'Algo Four': 0.66, 'Briefcase 3': 0.77,
     'Canvas': 0.83, 'Cassia 1': 0.67, 'Elvira 2': 0.91, 'Expander S': 0.79,
-    'Hera 4': 0.65, 'Io 4': 0.73, 'Meridian 8': 0.75, 'Monolith D': 0.76,
-    'Oracle V': 0.74, 'Perun 4': 0.83, 'Sallen 20': 0.86, 'Scrounge': 0.82,
-    'Silver Box': 1.02, 'Spokes 6': 0.82, 'Vernon 100': 0.62, 'Verona Drum 1': 0.9,
+    'Hera 4': 0.71, 'Io 4': 0.73, 'Meridian 8': 0.75, 'Monolith D': 0.76,
+    'Oracle V': 0.74, 'Perun 4': 0.83, 'Sallen 20': 0.95, 'Scrounge': 0.83,
+    'Silver Box': 1.02, 'Spokes 6': 0.83, 'Vernon 100': 0.64, 'Verona Drum 1': 0.91,
     'Wanderer': 1.06, 'basic poly': 0.92, 'drift poly': 0.92, 'mono lead': 1.28,
     'supersaw stack': 0.88,
   } as Record<string, number>,
