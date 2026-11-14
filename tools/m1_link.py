@@ -46,6 +46,8 @@
                                           (#802, DIAG pages 144..176: each module's time a half buffer on the FM-1 over
                                            SECONDS (default 3), on core 0's lane and on core 1's; --patch and --notes as
                                            blocktime; --json: the raw values. Reads only)
+  tools/m1_link.py t5 [SECONDS]           (#803, DIAG page 177: TIMER5's time over SECONDS (default 3): the LED and key
+                                           scan a tick, the USB / MIDI polls, the dim pulses. Reads only)
   tools/m1_link.py diag [DIS]             (what the last reset left: its cause, the crash record, where a stalled main loop
                                            was; DIS = the build's matryoshka.dis (CI artifact matryoshka-elf) names the functions)
 Every command takes --rig (the test rig: the FM-1 at its registered USB location, checked by its mark) or --location HEX
@@ -515,6 +517,8 @@ def main():
         blocktime(link, a[1:])
     elif a[0] == "modtime":
         modtime(link, a[1:])
+    elif a[0] == "t5":
+        t5parts(link, a[1:])
     elif a[0] == "diag":
         raw = []
         for page in range(32):
@@ -621,6 +625,29 @@ def blocktime(link, a):
                        "spans_ns": {BT_SPANS[i][0]: {"mean": m, "max": x} for i, (m, x) in enumerate(spans[:len(BT_SPANS)])}},
                       f, indent=1)
         print(f"raw values: {out}")
+
+
+def t5parts(link, a):
+    """DIAG page 177 (main.c fm1_timer5_irq): TIMER5's parts over one window of SECONDS"""
+    secs = float(a[0]) if a else 3.0
+    first = diag_words(link, 177)
+    if len(first) < 8:
+        sys.exit("no TIMER5 page (a firmware from before #803's split)")
+    time.sleep(secs)
+    w = diag_words(link, 177)
+    ns = lambda ticks: ticks * 125 / 3                 # TIMER4: 24 MHz
+    span = (w[7] - first[7]) & 0xFFFFFFFF
+    n, scan, un, usb, mx = w[:5]
+    dn, dsum = (w[5] - first[5]) & 0xFFFFFFFF, (w[6] - first[6]) & 0xFFFFFFFF
+    if not n:
+        sys.exit("no TIMER5 interrupts in the window")
+    print(f"window {ns(span) / 1e6:.0f} ms: {n} interrupts ({n / (ns(span) / 1e9):.0f} a second)")
+    print(f"  the LED and key scan: mean {ns(scan) / n / 1000:.2f} us a tick, most {ns(mx) / 1000:.2f} us; "
+          f"{100 * scan / span:.2f} % of core 0")
+    if un:
+        print(f"  the USB / MIDI polls: {un}, mean {ns(usb) / un / 1000:.2f} us each; {100 * usb / span:.2f} % of core 0")
+    if dn:
+        print(f"  dim pulses: {dn} ({dn / n:.2f} a tick), mean {ns(dsum) / dn / 1000:.2f} us")
 
 
 def modtime(link, a):
