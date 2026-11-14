@@ -38,32 +38,35 @@ const SURVEY = {
   survey: 'docs/measurements/cpu-survey-2026-11-09-rig-integration.json and -run.json (CI run 42673451565, default switches, all 30 factory patches)',
   fit: 'rig us = 1.192 x estimate before + 242 us (the 5 patches without an engine of their own: Init, Simple FM, Plucked String, 909 Kit, <7PH), so 233.4 / 1.192 cycles per us plus 1.192 x 23 + 242 us a block; the second core idle cost 1.192 x 24 us',
 };
-/** The second core (#271), fitted to the test rig's surveys of every factory patch (docs/measurements/2026-11-05-rig-second-
- * core.md) against release-1.10's head before #271 (the one-core firmware): what the second core costs core 0 is the median,
- * over the patches that do not split, of the steady 8-key time on the dual-core build minus on that one (24 us; from -31 to
- * +80). A split poly group saves core 0 about the time its odd parts take (least squares: 1.00 x their modelled time); 0.85
- * is taken, so the estimate stays under each poly patch's measured saving (within its noise) and never promises more room
- * than the FM-1 has. */
+/** The second core. Its idle cost to core 0 is fitted to the test rig's surveys of every factory patch (docs/measurements/
+ * 2026-11-05-rig-second-core.md) against release-1.10's head before #271 (the one-core firmware): the median, over the
+ * patches that do not split, of the steady 8-key time on the dual-core build minus on that one (24 us; from -31 to +80).
+ * Its saving (#802) is fitted to the two-core schedule's firmware with the second core's work refused (tools/m1_link.py
+ * cores split off) against the same firmware with it: 0.75 x the modelled saving (schedule.ts scheduleTime) stays under
+ * every patch's measured saving (at most 0.76, Verona Drum 1; the patches that shed voices on one core left out), so the
+ * estimate never promises more room than the FM-1 has. */
 const CORES = {
   idleUs: 29,   // (24 us at the scale before, cpu-rig-fit.ts)
-  splitEff: 0.85,
-  survey: 'docs/measurements/cpu-survey-2026-11-05-rig-release-1.10-head.json (CI run 42096997058) against -rig-merged-split.json (CI run 42093061899)',
+  splitEff: 0.75,
+  survey: 'docs/measurements/cpu-survey-2026-11-14-rig-two-core-split-off.json against -two-core.json (CI run 43549489314); the idle cost: -2026-11-05-rig-release-1.10-head.json against -rig-merged-split.json',
 };
 /** Each factory engine's factor on its modules' cycles (src/cpu.ts CpuTable.rig), fitted by scripts/cpu-rig-fit.ts to the
- * same surveys as SURVEY: the smallest that makes the estimate read at least the rig's steady peak for every voice count
- * its factory patch played on the rig. The counted engine misses what the FM-1 spends beyond its instructions (its caches
- * and memory, the hardware's own timing), and that differs from engine to engine: the factors run from 0.64 to 1.28. */
+ * test rig's survey of the 1.14 bank on the two-core schedule's firmware (#802, at SURVEY's scale): the smallest that makes
+ * the estimate read at least the rig's steady peak for every voice count its factory patch played on the rig. The counted
+ * engine misses what the FM-1 spends beyond its instructions (its caches and memory, the hardware's own timing, how the
+ * two cores share the block), and that differs from engine to engine: the factors run from 0.66 to 1.28. The patches
+ * outside the 1.14 bank (basic poly, drift poly, mono lead, supersaw stack) keep the factors of the 2026-11-09 survey. */
 const RIG = {
   engines: {
-    '8 Lire': 0.78, '808 kit': 0.91, 'Algo Four': 0.64, 'Briefcase 3': 0.95,
-    'Canvas': 0.86, 'Cassia 1': 0.74, 'Elvira 2': 1.12, 'Expander S': 0.84,
-    'Hera 4': 0.75, 'Io 4': 0.82, 'Meridian 8': 0.89, 'Monolith D': 0.95,
-    'Oracle V': 0.82, 'Perun 4': 1.04, 'Sallen 20': 1.09, 'Scrounge': 0.92,
-    'Silver Box': 1.27, 'Spokes 6': 1.01, 'Vernon 100': 0.78, 'Verona Drum 1': 0.96,
-    'Wanderer': 1.16, 'basic poly': 0.92, 'drift poly': 0.92, 'mono lead': 1.28,
+    '8 Lire': 0.66, '808 kit': 0.92, '909 kit': 0.9, 'Algo Four': 0.67, 'Briefcase 3': 0.83,
+    'Canvas': 0.82, 'Cassia 1': 0.67, 'Elvira 2': 0.96, 'Expander S': 0.79,
+    'Hera 4': 0.65, 'Io 4': 0.74, 'Meridian 8': 0.78, 'Monolith D': 0.78,
+    'Oracle V': 0.73, 'Perun 4': 0.96, 'Sallen 20': 0.89, 'Scrounge': 0.96,
+    'Silver Box': 1.09, 'Spokes 6': 0.93, 'Vernon 100': 0.63, 'Verona Drum 1': 0.97,
+    'Wanderer': 1.1, 'basic poly': 0.92, 'drift poly': 0.92, 'mono lead': 1.28,
     'supersaw stack': 0.88,
   } as Record<string, number>,
-  survey: SURVEY.survey,
+  survey: 'docs/measurements/cpu-survey-2026-11-14-rig-two-core.json and -run.json (CI run 43549489314, the 22 patches of the 1.14 bank)',
 };
 const BLOCKS = 24;
 const SKIP = 3; // blocks before the maximum is taken for a module kit (the first notes, envelopes starting)

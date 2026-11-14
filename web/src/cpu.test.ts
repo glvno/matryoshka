@@ -1,19 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { CPU, cpuEstimate, runCost, type TypeCost } from './cpu';
+import { CPU, cpuEstimate, runCost } from './cpu';
 import { cpuChecks, looseModel } from './cpu-checks';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, EDITOR_ONLY, validatePatch } from './patch';
 import { FM1_PRESETS } from './presets';
 import { relocatedPatches } from './community-factory';
 import { withParts } from './test-poly';
-import { deviceView } from './poly';
 import type { Patch } from './patch';
 import { acid, twoOpFM } from './test-patches';
 
-// Historical rig recordings must not follow changes to the live factory catalogue.
-const survey = JSON.parse(readFileSync(new URL('./cpu-survey-factory-1.13.json', import.meta.url), 'utf8')) as { patches: Record<string, Patch> };
+// The rig's recordings are of the graphs it played (the 1.14 bank), not the live factory catalogue.
+const survey = JSON.parse(readFileSync(new URL('./cpu-survey-factory-1.14.json', import.meta.url), 'utf8')) as { patches: Record<string, Patch> };
 const measuredPatches = Object.fromEntries(Object.entries(survey.patches).map(([name, patch]) => [name, () => validatePatch(structuredClone(patch), DEFS)]));
 
 describe('CPU estimate', () => {
@@ -101,84 +100,52 @@ describe('CPU estimate', () => {
     expect(reverb).toBeLessThan(0.3);
   });
 });
-// The factory patches on the test rig (docs/measurements/2026-11-09-rig-integration.md: the longest audio interrupt at
-// rest and with 1 / 4 / 8 keys held, the transport stopped and running), which the scale and the engines' factors were fitted
-// to (scripts/cpu-rig-fit.ts, frozen in cpu-costs.ts SURVEY and RIG). The estimate is each patch's worst case, every voice
-// playing; the rig's figure is its steady peak (the median of a phase's samples after the first, the most over the phases).
-// A patch whose overload guard dropped parts counts at the voices it kept; one the guard muted is left out. A new survey
-// after large engine or firmware changes replaces the files and the fit.
-describe('CPU estimate against the test rig (docs/measurements/cpu-survey-2026-11-09-rig-integration*.json)', () => {
+// The factory patches on the test rig (docs/measurements/2026-11-14-rig-two-core-schedule.md: the longest audio interrupt at
+// rest and with 1 / 4 / 8 keys held, the transport stopped and running, on the two-core schedule's firmware), which the
+// engines' factors were fitted to (scripts/cpu-rig-fit.ts, frozen in cpu-costs.ts RIG). The estimate is each patch's worst
+// case, every voice playing; the rig's figure is its steady peak (the median of a phase's samples after the first, the most
+// over the phases). A patch whose overload guard dropped parts counts at the voices it kept; one the guard muted is left
+// out. A new survey after large engine or firmware changes replaces the files and the fit.
+describe('CPU estimate against the test rig (docs/measurements/cpu-survey-2026-11-14-rig-two-core*.json)', () => {
   type Reading = { name: string } & Record<string, number[] | number>;
   const read = (f: string) => JSON.parse(readFileSync(new URL(`../../docs/measurements/${f}`, import.meta.url), 'utf8')) as Reading[];
-  const files = [
-    read('cpu-survey-2026-11-09-rig-integration.json'), read('cpu-survey-2026-11-09-rig-integration-run.json'),
-  ];
+  const files = [read('cpu-survey-2026-11-14-rig-two-core.json'), read('cpu-survey-2026-11-14-rig-two-core-run.json')];
   const median = (v: number[]): number => [...v].sort((a, b) => a - b)[(v.length - 1) >> 1];
-  // Published measurements belong to the frozen v1.13.0 patch, not today's factory pattern/format.
-  // The fixture's encoded SHA-256 was checked against the recorded input before retaining it here.
-  const publishedScrounge = JSON.parse(readFileSync(new URL('./cpu-scrounge-1.13.json', import.meta.url), 'utf8')) as Patch;
-  const scroungeBaseline = JSON.parse(readFileSync(new URL('../../docs/measurements/cpu-survey-2026-11-10-scrounge-baseline.json', import.meta.url), 'utf8')) as {
-    fixture_sha256: string; pan_cost: TypeCost; phases: { cpu: number[][] }[];
-  };
-  const publishedPanTable = { ...CPU, types: { ...CPU.types, pan: scroungeBaseline.pan_cost } };
-  // Exact engine optimizations changed Canvas timing, not its frozen released graph or the fitted factors.
-  const canvasBaseline = JSON.parse(readFileSync(new URL('../../docs/measurements/cpu-survey-2026-11-12-canvas-exact.json', import.meta.url), 'utf8')) as {
-    phases: { cpuSamples: number[][] }[];
-  };
-  const voicesOf = (p: Patch): number => Math.max(1, ...deviceView(p, true).groups.map((g) => g.cfg.parts));
-  // renamed since the survey; played there with more voices than today; changed since (none)
-  const RENAMED: Record<string, string> = {};
-  const SURVEYED: Record<string, number> = {};
-  const CHANGED = new Set<string>([]);
-  /** the rig's steady peak (us) of each factory patch at its own voices */
+  /** the rig's steady peak (us) of each factory patch, the phases it played without shedding */
   const rig = new Map<string, number>();
   for (const f of files)
     for (const r of f) {
-      const name = RENAMED[r.name] ?? r.name;
-      if (!measuredPatches[name] || CHANGED.has(name)) continue;
-      const own = voicesOf(measuredPatches[name]());
+      if (!measuredPatches[r.name]) continue;
       for (const ph of ['n0', 'n1', 'n4', 'n8']) {
         const samples = r[`${ph}_samples`] as number[];
-        if (r[`${ph}_ovl`] || samples.length < 2 || (SURVEYED[name] ?? own) - Number(r[`${ph}_shed`]) !== own) continue;
-        rig.set(name, Math.max(rig.get(name) ?? 0, median(samples.slice(1))));
+        if (r[`${ph}_ovl`] || samples.length < 2 || Number(r[`${ph}_shed`])) continue;
+        rig.set(r.name, Math.max(rig.get(r.name) ?? 0, median(samples.slice(1))));
       }
     }
-  rig.set('Scrounge', Math.max(...scroungeBaseline.phases.map(p => median(p.cpu.slice(1).map(s => s[1])))));
-  rig.set('Canvas', Math.max(...canvasBaseline.phases.map(p => median(p.cpuSamples.slice(1).map(s => s[1])))));
-  it('has a figure for every original patch the rig measured as it is today', () => expect(rig.size).toBe(Object.keys(measuredPatches).length - CHANGED.size));
+  it('has a figure for every patch the rig measured', () => expect(rig.size).toBe(Object.keys(measuredPatches).length));
   for (const name of Object.keys(measuredPatches))
-    it.skipIf(!rig.has(name))(`${name === 'Scrounge' ? 'published Pan calibration' : name === 'Canvas' ? 'current exact-engine calibration' : 'reads'} within -3 / +5 points of the rig: ${name}`, () => {
+    it.skipIf(!rig.has(name))(`reads within -3 / +5 points of the rig: ${name}`, () => {
       const device = (100 * rig.get(name)!) / CPU.blockUs;
-      const est = 100 * cpuEstimate(name === 'Scrounge' ? publishedScrounge : measuredPatches[name](), name === 'Scrounge' ? publishedPanTable : CPU).use;
+      const est = 100 * cpuEstimate(measuredPatches[name]()).use;
       expect(est).toBeGreaterThanOrEqual(device - 3);
       expect(est).toBeLessThanOrEqual(device + 5);
     });
 });
 
-// #271: the second core. The split survey of 2026-11-05 (every factory patch on the test rig, split on, CI run 42093061899)
-// against release-1.10's head before #271 (CI run 42096997058): core 0's estimate against the device. The estimate is the one-core model plus the idle cost minus the split's saving
-// (scripts/cpu-costs.ts CORES), so it keeps the one-core model's band; and the split must never be estimated to save more than
-// it saved on the rig.
-describe('CPU estimate with two cores (docs/measurements/cpu-survey-2026-11-05-rig-merged-split.json)', () => {
-  type Reading = { name: string; n0_us: number; n1_us: number; n4_us: number; n8_us: number; n8_samples: number[]; budget_us: number };
-  const read = (f: string) => new Map((JSON.parse(readFileSync(new URL(`../../docs/measurements/${f}`, import.meta.url), 'utf8')) as Reading[]).map((r) => [r.name.toLowerCase(), r]));
-  const split = read('cpu-survey-2026-11-05-rig-merged-split.json'), one = read('cpu-survey-2026-11-05-rig-release-1.10-head.json');
-  const steady = (r: Reading) => [...r.n8_samples.slice(1)].sort((a, b) => a - b)[(r.n8_samples.length - 1) >> 1];
-  // patches changed since the split survey (not measured as they are now): re-measure on the rig, then drop them here.
-  // Algo Four: eight voices and the DX100's eight algorithms (#658), where the survey measured three voices and one
-  // Oracle V: the Prophet-5's functions its FM-1 version had cut (#658), where the survey measured the 1.10 voice
-  // Expander S: the SEM's modulation, sync, band pass, drone and the keyboard's portamento (#658)
-  // Cassia 1: four voices with the CZ-1 functions of #658, where the survey measured two
-  // Io 4: its factory patch now has the Ladder's stage saturation (#672), regenerated with its named switches
-  // Hera 4, Wanderer: other instruments in their slots (Hera 6 XL's panel at four voices, Wanderer XL)
-  const changedSince = new Set(['algo four', 'oracle v', 'expander s', 'cassia 1', 'io 4', 'hera 5', 'wanderer']);
+// #802: the second core. The same firmware with the second core's work refused (tools/m1_link.py cores split off: core 0
+// renders every module, the second core idles) against the two-core schedule, 8 keys held: core 0's saving must never be
+// estimated above what the rig saved. A patch that shed voices on one core has no one-core figure to compare.
+describe('CPU estimate with two cores (docs/measurements/cpu-survey-2026-11-14-rig-two-core-split-off.json)', () => {
+  type Reading = { name: string; n8_samples: number[]; n8_shed: number };
+  const read = (f: string) => new Map((JSON.parse(readFileSync(new URL(`../../docs/measurements/${f}`, import.meta.url), 'utf8')) as Reading[]).map((r) => [r.name, r]));
+  const two = read('cpu-survey-2026-11-14-rig-two-core.json'), one = read('cpu-survey-2026-11-14-rig-two-core-split-off.json');
+  const steady = (r: Reading) => [...r.n8_samples.slice(1)].sort((a, b) => a - b)[(r.n8_samples.length - 2) >> 1];
   for (const name of Object.keys(measuredPatches)) {
-    const s = split.get(name.toLowerCase()), o = one.get(name.toLowerCase());
-    if (!s || !o || changedSince.has(name.toLowerCase())) continue;
-    it(`never promises more than the split saved on the rig: ${name}`, () => {
+    const s = two.get(name), o = one.get(name);
+    if (!s || !o || o.n8_shed) continue;
+    it(`never promises more than the second core saved on the rig: ${name}`, () => {
       const e = cpuEstimate(measuredPatches[name]());
-      const modelled = e.oneCoreUs - e.us, measured = steady(o) - steady(s);
-      expect(modelled).toBeLessThanOrEqual(measured + 60);   // (60 us: the idle cost spreads -31..+80 us about its 24 us median)
+      expect(e.oneCoreUs - e.us).toBeLessThanOrEqual(steady(o) - steady(s) + 60);   // (60 us: the second core's idle cost and its noise)
     });
   }
 });

@@ -1881,4 +1881,4 @@ static const def_t DEFS[N_TYPES] = {
 };
 /* one copy of each type, a block: what the two-core schedule balances (engine.c sched_build, #802), in 64 cycles of
  * web/src/cpu-costs.json (its run and parameter inputs: cpu.ts scheduleCost) */
-static const uint16_t DEF_COST[N_TYPES] = {14, 81, 79, 53, 9, 9, 33, 9, 430, 11, 108, 1508, 3, 60, 96, 38, 243, 178, 326, 156, 89, 36, 36, 40, 49, 72, 548, 256, 54, 360, 105, 54, 37, 468, 204, 542, 668, 11, 15, 1, 11, 16, 9, 16, 134, 35, 16, 177, 10, 12, 13, 66, 94, 15, 4};
+static const uint16_t DEF_COST[N_TYPES] = {15, 80, 79, 53, 9, 10, 33, 9, 429, 11, 108, 1508, 3, 60, 96, 38, 243, 178, 327, 156, 89, 36, 36, 41, 49, 72, 548, 256, 54, 360, 105, 54, 37, 468, 204, 542, 668, 11, 15, 1, 11, 212, 9, 16, 134, 35, 15, 177, 10, 12, 13, 67, 94, 14, 3};
