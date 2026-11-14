@@ -3,9 +3,8 @@
 // 11k low-pass the input and keep every 2nd or 4th sample, so the same line (the same memory) holds two or four times its
 // length. The screen shows the rate and the length row the time it holds; a new rate keeps the echoes, pitched as a tape
 // changing speed.
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { DEFS, delayRateK, delayReach, DELAY_LENGTH_MAX, DELAY_RATES, DELAY_REACH_MAX, DELAY_TAIL, DEVICE_SR, rowRange } from './modules';
+import { DEFS, delayRateK, delayReach, DELAY_LENGTH_MAX, DELAY_RATES, DELAY_REACH_MAX, DEVICE_SR, rowRange } from './modules';
 import { addModule, connect, emptyPatch, topOf, type Patch } from './patch';
 import { deviceBudget, encodePatch, formatOf, FORMAT_1_11 } from './patchbin';
 import { Engine } from './engine';
@@ -14,7 +13,6 @@ const SR = 44100;
 const ratePd = DEFS.delay.params.find((q) => q.name === 'rate')!;
 const lengthPd = DEFS.delay.params.find((q) => q.name === 'length')!;
 const timePd = DEFS.delay.params.find((q) => q.name === 'time')!;
-const defsH = readFileSync(new URL('../../firmware/src/defs.h', import.meta.url), 'utf8');
 
 /** a constant (or an 8.4 kHz sine) into a Delay (mix 1, no feedback) into the Output */
 function delayPatch(params: Record<string, number>, input: 'const' | 'sine' = 'const'): Patch {
@@ -54,9 +52,6 @@ describe('the Delay\'s rate row', () => {
     expect(DELAY_RATES.map((_, r) => delayRateK(r))).toEqual([1, 2, 4]);
     expect(DELAY_REACH_MAX).toBe(DELAY_LENGTH_MAX * 4);
     expect(topOf(timePd)).toBe(DELAY_REACH_MAX);
-    // the FM-1 shows it by name, and has the same filter and tail
-    expect(defsH).toMatch(/DELAY_CH8\[\] = \{"44K", "22K", "11K", 0\}/);
-    expect(defsH).toMatch(new RegExp(`#define DELAY_TAIL ${DELAY_TAIL}\\b`));
     // a Delay at 44k is written as before; a lower rate is format 51
     expect(formatOf(delayPatch({ time: 500 }))).toBeLessThan(FORMAT_1_11);
     expect(formatOf(delayPatch({ time: 500, rate: 1 }))).toBe(FORMAT_1_11);

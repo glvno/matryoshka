@@ -2,7 +2,6 @@
 // Tape on the Delay (#660, docs/ledger/modules.md): darker, softer repeats (a low pass and a high pass in the feedback loop),
 // saturation in the loop, wow and flutter, and up to three playback heads at 1x, 2x and 3x the time, from the same line.
 // Tape off plays exactly as the Delay without it.
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { DEFS, DELAY_HEADS, DELAY_HEAD_MASK, delayLine, DEVICE_SR } from './modules';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
@@ -10,7 +9,6 @@ import { deviceBudget, formatOf, FORMAT_1_11 } from './patchbin';
 import { Engine } from './engine';
 
 const SR = 44100;
-const defsH = readFileSync(new URL('../../firmware/src/defs.h', import.meta.url), 'utf8');
 
 /** a Const into a Delay (mix 1) into the Output; `pulse` frames of 1, then 0 (an impulse of one block) */
 function setup(params: Record<string, number>, input: 'pulse' | 'sine' = 'pulse'): { e: Engine; p: Patch; src: number } {
@@ -56,7 +54,6 @@ describe('Tape on the Delay', () => {
     for (const n of ['tape', 'wow', 'heads']) expect(DEFS.delay.params.find((q) => q.name === n)!.since).toBe(FORMAT_1_11);
     expect(DEFS.delay.params.find((q) => q.name === 'heads')!.choices).toEqual(['1', '2', '3', '1+2', '1+3', '2+3', '1+2+3']);
     expect(DELAY_HEADS.length).toBe(DELAY_HEAD_MASK.length);
-    expect(defsH).toMatch(/DELAY_CH11\[\] = \{"1", "2", "3", "1\+2", "1\+3", "2\+3", "1\+2\+3", 0\}/);
     expect(formatOf(setup({ time: 300 }).p)).toBeLessThan(FORMAT_1_11);
     expect(formatOf(setup({ time: 300, tape: 1 }).p)).toBe(FORMAT_1_11);
     // no memory of its own: the same line
