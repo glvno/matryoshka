@@ -192,12 +192,19 @@ static void usb_poll_after_flash(void)
 {
     usb_poll_request(&usb_at, fm1_ticks());
 }
+/* TIMER5's parts (DIAG page 177, m1_link.py t5): the interrupts, the LED and key scan's ticks, the 2 kHz USB / MIDI polls
+ * and their ticks, the split pulses' ends in TIMER2 and their ticks (#803), since the page was last read. In NOINIT (the
+ * page clears them; the first read is not meaningful) */
+static uint32_t __attribute__((section(".noinit"))) t5p_n, t5p_scan, t5p_un, t5p_usb, t5p_bn, t5p_b;
 void fm1_timer5_irq(uint32_t *f)                /* f: the saved r0..r3, reti, rets, psr (fm1_isr.S) */
 {
     static uint32_t last, acc, next;
-    uint32_t t0 = fm1_ticks();
+    uint32_t t0 = fm1_ticks(), t1;
     fm1_timer5_ack();
     fm1_input_tick();
+    t1 = fm1_ticks() - t0;
+    t5p_n++;
+    t5p_scan += t1;
     if (t0 - last > t5_gap_max) {
         t5_gap_max = t0 - last;
         t5_gap_at = fm1_ms;
@@ -217,13 +224,25 @@ void fm1_timer5_irq(uint32_t *f)                /* f: the saved r0..r3, reti, re
         next = fm1_ms + DIAG_EVERY_MS;
     }
     if (usb_poll_due(&usb_at, t0)) {
+        t1 = fm1_ticks();
         clk_out_poll(t0);                       /* MIDI clock out: the ticks due now to the USB ring (clock_out.h) */
         usb_poll();                             /* 2 kHz: all USB SIE traffic lives here */
         uart_midi_poll();                       /* the TRS jack's DMA ring (128 bytes = 41 ms) */
+        t5p_un++;
+        t5p_usb += fm1_ticks() - t1;
     }
     bt_t5(t0);                                  /* (blk_time.h: its time, read only) */
 }
 extern void isr_timer5(void);
+void fm1_timer2_irq(void)                       /* a split dim pulse's end (fm1_input.h, #803): the same priority as TIMER5 */
+{
+    uint32_t t0 = fm1_ticks();
+    fm1_timer2_stop();
+    fm1_input_tick_end();
+    t5p_bn++;
+    t5p_b += fm1_ticks() - t0;
+}
+extern void isr_timer2(void);
 
 static void hexs(char *b, uint32_t v)
 {
@@ -325,7 +344,10 @@ static uint32_t batt_us;                        /* the last battery read's time,
  *   144: starts a window (clears the sums) when none runs, else ends it; answers the halves counted, the patch's
  *        modules, 1 while a window runs
  *   145..176: four modules each (page 145 modules 0..3): the mean time a half of its copies on core 0's lane and on
- *        core 1's, ns, over the last window */
+ *        core 1's, ns, over the last window;
+ * page 177 TIMER5's parts since its last read (#803; m1_link.py t5), read only, then cleared: its interrupts, the LED and
+ * key scan's ticks (TIMER4), the USB / MIDI polls and their ticks, the split pulses' ends' ticks (TIMER2's interrupts),
+ * the dim pulses (fm1_in_stat dim_n, since boot) and their total width (ticks, since boot), the split pulses' ends */
 static void settings_store(void);
 static bt_acc_t bt_last BT_POOL;                        /* the window DIAG page 132 took (pages 133..138 report it) */
 static uint32_t bt_t5_in_n0 BT_POOL, bt_t5_out_n0 BT_POOL;      /* TIMER5's counts when the running window began */
@@ -616,6 +638,23 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
         v[7] = fm1_ms;
         t5_gap_max = 0;
         st_off.rd_max = st_off.step_max = 0;
+        fm1_irq_on();
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
+    if (page == 177u) {                         /* #803: TIMER5's parts */
+        uint32_t v[8];
+        fm1_irq_off();
+        v[0] = t5p_n;
+        v[1] = t5p_scan;
+        v[2] = t5p_un;
+        v[3] = t5p_usb;
+        v[4] = t5p_b;
+        v[5] = fm1_in_stat.dim_n;
+        v[6] = fm1_in_stat.dim_sum;
+        v[7] = t5p_bn;
+        t5p_n = t5p_scan = t5p_un = t5p_usb = t5p_bn = t5p_b = 0;
         fm1_irq_on();
         for (i = 0; i < sizeof v; i++)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
@@ -1677,6 +1716,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
     audio_init();
     boot_step("MIDI");
     uart_midi_init();                                   /* before TIMER5: PORTH read-modify-write */
+    fm1_timer2_init(isr_timer2, 4);                     /* (before TIMER5: the scan's split pulses end in it) */
     fm1_timer5_start(isr_timer5, 4);
     fm1_guard_lock_top();
     fm1_irq_enable_all();

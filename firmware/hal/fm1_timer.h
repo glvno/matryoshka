@@ -26,3 +26,26 @@ FM1_INLINE void fm1_timer5_start(void (*isr)(void), uint32_t prio)   /* IRQs off
 }
 
 FM1_INLINE void fm1_timer5_ack(void) { FM1_T5_CON |= 0x4000u; }
+
+/* TIMER2 (0x10600: CON, CNT +4, PRD +8; IRQ 6), a one-shot at the crystal's 24 MHz (TIMER4's tick): unused by the ROM,
+ * the SPL and the rest of the firmware. The input scan ends a split dim pulse in it (fm1_input.h, #803).
+ *   fm1_timer2_init(isr, prio)    stopped, its IRQ attached (IRQs off)
+ *   fm1_timer2_once(ticks)        fires once, ticks (>= 1) from now; returns 1
+ *   fm1_timer2_stop()             first thing in its ISR: stopped, the pending flag cleared */
+#define FM1_T2_CON (*(volatile uint32_t *)0x10600u)
+#define FM1_T2_CNT (*(volatile uint32_t *)0x10604u)
+#define FM1_T2_PRD (*(volatile uint32_t *)0x10608u)
+FM1_INLINE void fm1_timer2_init(void (*isr)(void), uint32_t prio)
+{
+    FM1_T2_CON = 0x4000u;
+    fm1_irq_attach(FM1_IRQ_TIMER2, isr, prio);
+}
+FM1_INLINE int fm1_timer2_once(uint32_t ticks)
+{
+    FM1_T2_CON = 0x4000u;
+    FM1_T2_CNT = 0;
+    FM1_T2_PRD = ticks;
+    FM1_T2_CON = 0x4009u;                        /* on, the crystal, no prescaler */
+    return 1;
+}
+FM1_INLINE void fm1_timer2_stop(void) { FM1_T2_CON = 0x4000u; }
