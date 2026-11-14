@@ -5,6 +5,7 @@
 // measured on the test rig (a scale plus a fixed time per block, and a factor for each factory engine: `rig`); a table
 // measured on the FM-1 itself can replace it (`source`). Every figure here is an estimate.
 import TABLE from './cpu-costs.json';
+import PLAN from './plan-costs.json';
 import { DEFS, LFO_RANGE_K, MATRIX_N, matrixPin, STACKS, TRACK_POLY } from './modules';
 import { allModules, assembliesOf, parentOf } from './assembly';
 import { flawOf, hasMorph, type ModuleInst, type Patch } from './patch';
@@ -250,11 +251,14 @@ function slope(p: Patch, id: number, seen = new Set<number>()): number {
 /** does a signal from module `id` change about every sample (the oscillator works out its increments only when the pitch moves)? */
 const keepsMoving = (p: Patch, id: number): boolean => slope(p, id) >= 0.5;
 
-/** what the two-core schedule counts for one copy of a module type (engine.c DEF_COST, made from this table by
- * export-defs): its run and parameter inputs, in 64 cycles */
-export const scheduleCost = (table: CpuTable, type: string): number => Math.max(1, Math.round(((table.types[type]?.run ?? 0) + (table.types[type]?.cv ?? 0)) / 64));
-/** what it counts for a module bypassed when the patch loads (engine.c DEF_COST_BYPASS, D-1104): passing an input through */
-export const scheduleBypass = (table: CpuTable): number => Math.max(1, Math.round(table.bypass / 64));
+/** what the two-core schedule counts for one copy of a module type (engine.c DEF_COST, made from it by export-defs), in 64
+ * cycles at the table's scale: its time per copy on the test rig (plan-costs.json, scripts/plan-costs.ts, D-1105); a type
+ * missing there, the table's run and parameter inputs */
+export const scheduleCost = (table: CpuTable, type: string): number =>
+  (PLAN.types as Record<string, number>)[type] ?? Math.max(1, Math.round(((table.types[type]?.run ?? 0) + (table.types[type]?.cv ?? 0)) / 64));
+/** what it counts for a module bypassed when the patch loads (engine.c DEF_COST_BYPASS, D-1104): passing an input through,
+ * at the plan's scale */
+export const scheduleBypass = (table: CpuTable): number => PLAN.bypass || Math.max(1, Math.round(table.bypass / 64));
 
 /** cores: 2, the FM-1 since #271 (core 0's time: the second core's share of a two-core schedule, #802, or of the split poly
  * groups' odd parts, plus an idle second core's cost); 1 as with core 1 held. `scheduleFits`: whether the schedule's buffers

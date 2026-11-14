@@ -1881,6 +1881,6 @@ static const def_t DEFS[N_TYPES] = {
 };
 /* one copy of each type, a block: what the two-core schedule balances (engine.c sched_build, #802), in 64 cycles of
  * web/src/cpu-costs.json (its run and parameter inputs: cpu.ts scheduleCost) */
-static const uint16_t DEF_COST[N_TYPES] = {14, 81, 79, 53, 9, 9, 33, 9, 430, 11, 108, 1518, 3, 60, 96, 38, 243, 178, 326, 156, 89, 36, 36, 40, 49, 72, 548, 256, 54, 360, 105, 54, 37, 468, 204, 542, 668, 11, 15, 1, 11, 53, 9, 16, 134, 35, 16, 177, 10, 12, 13, 66, 94, 15, 4};
+static const uint16_t DEF_COST[N_TYPES] = {111, 157, 117, 54, 10, 28, 66, 36, 299, 33, 122, 1529, 36, 124, 77, 54, 279, 152, 282, 175, 102, 40, 51, 28, 38, 49, 415, 294, 54, 399, 168, 62, 55, 537, 205, 501, 767, 53, 10, 1, 13, 145, 11, 86, 230, 60, 22, 203, 11, 247, 15, 76, 108, 17, 5};
 /* a module bypassed when the patch loads, in the same units: passing an input through (D-1104; cpu.ts scheduleBypass) */
-#define DEF_COST_BYPASS 18u
+#define DEF_COST_BYPASS 21u
