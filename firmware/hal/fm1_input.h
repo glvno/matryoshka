@@ -561,7 +561,10 @@ static void fm1_led_anim_stop(void) { fm1__an_f = 0; }   /* (the LEDs as the las
 #define FM1_TICK_SPLIT_ARM(ticks) 0              /* (ticks: TIMER4 ticks; 1 when armed) */
 #endif
 #define FM1_SPLIT_MIN_NS 4000u
-static struct { uint8_t due, p, n; uint32_t t1, spent; } fm1__half;
+static struct { uint8_t due, p, n; uint16_t late; uint32_t t1, spent; } fm1__half;   /* late (ticks): the one-shot is armed
+                                                                                       * this much early for its interrupt's
+                                                                                       * lateness; it moves one tick a pulse
+                                                                                       * towards the target width */
 /* the tick from the latch on: column n latched and lit, column p's keys, the frame; spent: the tick's time before this */
 static void fm1__tick_rest(uint32_t p, uint32_t n, uint32_t t0, uint32_t spent)
 {
@@ -594,6 +597,10 @@ static void fm1_input_tick_end(void)
     fm1__led_lines(0);
     fm1_in_stat.dim_n++;
     fm1_in_stat.dim_sum += t - fm1__half.t1;
+    if (t - fm1__half.t1 > fm1__dim_t && fm1__half.late < fm1__dim_t / 2u)
+        fm1__half.late++;
+    else if (t - fm1__half.t1 < fm1__dim_t && fm1__half.late)
+        fm1__half.late--;
     fm1__tick_rest(fm1__half.p, fm1__half.n, t, fm1__half.spent);
 }
 static void fm1_input_tick(void)
@@ -641,13 +648,13 @@ static void fm1_input_tick(void)
         fm1__led_lines(lit | dim);
         fm1__sr_bits(w, step ? 15u : 0u, 16u);     /* (the 595 still drives column p) */
         e = fm1_ticks() - t1;
-        if (e + FM1__DIM_T(1000u) < T) {
+        if (e + fm1__half.late + FM1__DIM_T(1000u) < T) {
             fm1__half.p = (uint8_t)p;
             fm1__half.n = (uint8_t)n;
             fm1__half.t1 = t1;
             fm1__half.spent = fm1_ticks() - t0;
             fm1__half.due = 1;
-            if (FM1_TICK_SPLIT_ARM(T - e))
+            if (FM1_TICK_SPLIT_ARM(T - e - fm1__half.late))
                 return;
             fm1__half.due = 0;
         }
