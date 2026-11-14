@@ -169,9 +169,13 @@ const measure = async (type: string, cfg: KitCfg = {}): Promise<Stage> => {
 };
 const runs = (type: string, cfgs: KitCfg[]): Promise<number[]> => Promise.all(cfgs.map((c) => measure(type, c).then((x) => x.run)));
 
+/** more values to try: an envelope's first time near one block (128 samples, 2.9 ms), where a rising first segment stops
+ * filling the note-on block per sample and the falling stretches of ENG_CTL samples (#806) take over: the cost bends there,
+ * between the coarse points below */
+const MORE_TRIES: Record<string, Record<string, number[]>> = { env: { r1: [0.003] }, env8: { r1: [0.003] }, adsr: { a: [0.003] } };
 /** a parameter's values to try: every value of a choice / switch / small integer, else points across its range (just above
  * the minimum too: some modules change mode when a value leaves 0) */
-function tries(pd: ParamDef): { values: number[]; discrete: boolean } {
+function tries(type: string, pd: ParamDef): { values: number[]; discrete: boolean } {
   if (pd.choices) return { values: pd.choices.map((_, i) => i), discrete: true };
   if (pd.toggle) return { values: [0, 1], discrete: true };
   if (pd.step && pd.step >= 1 && pd.max - pd.min <= 8) {
@@ -180,8 +184,8 @@ function tries(pd: ParamDef): { values: number[]; discrete: boolean } {
     return { values, discrete: true };
   }
   const eps = Math.max(pd.step ?? 0, (pd.max - pd.min) * 0.01);
-  const values = [pd.min, pd.log ? pd.min * 1.01 : pd.min + eps, ...[0.25, 0.5, 0.75, 1].map((u) => fromUnit(pd, u))];
-  return { values: [...new Set(values.map((v) => +v.toPrecision(6)))], discrete: false };
+  const values = [pd.min, pd.log ? pd.min * 1.01 : pd.min + eps, ...[0.25, 0.5, 0.75, 1].map((u) => fromUnit(pd, u)), ...(MORE_TRIES[type]?.[pd.name] ?? [])];
+  return { values: [...new Set(values.map((v) => +v.toPrecision(6)))].sort((a, b) => a - b), discrete: false };
 }
 
 /** the points of a cost curve that linear interpolation needs (every curve in `costs` within `thr`); the first two stay
@@ -258,7 +262,7 @@ async function typeCost(type: string): Promise<TypeCost> {
         dims.push({ dim: { param: pd.name, exact: ex.exact }, values, effect, order, set: setParam(pd.name) });
         return;
       }
-      const t = tries(pd);
+      const t = tries(type, pd);
       if (!t.discrete) return void numbers.push(pd);
       const effect = await effectOf(type, (v) => ({ [pd.name]: v }), t.values, [{}, { inputs: allInputs }, ...(CHOICE_CONTEXTS[type] ?? [])]);
       if (effect > thr) dims.push({ dim: { param: pd.name, values: t.values }, values: t.values, effect, order, set: setParam(pd.name) });
@@ -270,7 +274,7 @@ async function typeCost(type: string): Promise<TypeCost> {
   const modes: { name: string; min: number; ref: number }[] = [];
   await Promise.all(
     numbers.map(async (pd) => {
-      const t = tries(pd);
+      const t = tries(type, pd);
       const order = def.params.indexOf(pd);
       const curves = await Promise.all(contexts.map((c) => runs(type, t.values.map((v) => ({ ...c, params: { ...c.params, [pd.name]: v } })))));
       const effect = Math.max(...curves.map((c) => Math.max(...c) - Math.min(...c)));

@@ -689,6 +689,18 @@ export const LFO_MULTS: { name: string; num: number; den: number }[] = [
 ];
 const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
 /**
+ * #806: the LFO, the ADSR's and the envelopes' falling segments and the exp glide work out their curve on the last
+ * sample of every CTL samples of the block and draw a line to it (engine.c ENG_CTL). A gate edge inside the stretch, or a
+ * moving glide input, runs it per sample.
+ */
+export const CTL = 16;
+/** out[at .. at + j - 1]: a line from w0 (the last stretch's value) to w1, the last sample exactly w1 */
+function ctlRamp(out: Float32Array, at: number, w0: number, w1: number, j: number): void {
+  for (let m = 0; m < j; m++) out[at + m] = w0 + ((w1 - w0) * (m + 1)) / j;
+}
+/** 1 - (1 - k)^CTL: CTL steps of v += k (t - v) as one */
+const ctlRate = (k: number): number => 1 - Math.pow(1 - k, CTL);
+/**
  * A synced LFO's cycle against the 24 ppqn clock (engine.c m_lfo the same): per8 = 8 x the clock ticks per cycle (a whole
  * number for every length and speed); snap = the ticks between restarts, where a whole number of cycles ends on a tick;
  * cycles = the cycles per snap; num / den = the length in quarter notes. A length of whole ticks snaps every cycle
@@ -715,9 +727,12 @@ interface LfoState {
   /** samples since the last clk edge, and the smoothed distance between edges (0 = none seen yet) */
   since: number;
   interval: number;
-  /** the random wave: where its S-curve starts (its value when the cycle began) and its value at the last sample */
+  /** the random wave: where its S-curve starts (its value when the cycle began) and its value at the last stretch's end */
   from: number;
   last: number;
+  /** the output at the last stretch's end (#806), set (wok) at the first block from the wave where it starts */
+  wl: number;
+  wok: boolean;
 }
 
 /** A triangle's rise occupies `duty` of its cycle; at the ends it becomes a falling or rising saw. */
@@ -758,7 +773,7 @@ const lfo: ModuleImpl<LfoState> = {
       param('wide', 0.0008, LFO_WIDE_MAX, 4, { unit: 'Hz', step: 0.0001, log: true, since: 40, grew: { since: 49, from: 55 } }),
     ],
   },
-  init: (sr) => ({ phase: 0, seed: 0x2545f491, held: 0, clkHi: false, rstHi: false, ticks: 0, wraps: 0, since: sr, interval: 0, from: 0, last: 0 }),
+  init: (sr) => ({ phase: 0, seed: 0x2545f491, held: 0, clkHi: false, rstHi: false, ticks: 0, wraps: 0, since: sr, interval: 0, from: 0, last: 0, wl: 0, wok: false }),
   process(c, s) {
     const kind = Math.round(c.p.wave ?? 0);
     // backward: the wave read at off - phase, which for these waves is -w(phase - off) (the triangle is the same both ways)
@@ -784,6 +799,12 @@ const lfo: ModuleImpl<LfoState> = {
       s.seed = (Math.imul(s.seed, 1664525) + 1013904223) >>> 0;
       s.held = s.seed / 0x80000000 - 1;
     };
+    if (!s.wok) {
+      // the first block: the ramp starts where the wave does (engine.c m_lfo)
+      s.wok = true;
+      const ph = off ? s.phase + off - Math.floor(s.phase + off) : s.phase;
+      s.wl = (kind === LFO_RANDOM ? s.last : lfoWave(kind, ph, 0, duty)) * depth; // (no poly-BLEP)
+    }
     for (let i = 0; i < c.n; i++) {
       const clk = c.inp.clk[i] >= 0.5;
       const rst = c.inp.reset[i] >= 0.5;
@@ -819,10 +840,19 @@ const lfo: ModuleImpl<LfoState> = {
         }
       }
       const ph = off ? s.phase + off - Math.floor(s.phase + off) : s.phase;
-      let w: number;
-      if (kind === LFO_RANDOM) w = s.last = s.from + (s.held - s.from) * lfoSmooth(s.phase);
-      else w = kind === 4 ? s.held : lfoWave(kind, ph, dt, duty);
-      c.out.out[i] = w * depth;
+      if (kind === 3 || kind === 4) {
+        // the square and S&H step: per sample, so a clock or gate taken from them keeps its edges (engine.c LFO_STEPS)
+        c.out.out[i] = s.wl = (kind === 4 ? s.held : lfoWave(kind, ph, dt, duty)) * depth;
+      } else if ((i & (CTL - 1)) === CTL - 1 || i + 1 === c.n) {
+        // #806: a smooth wave at a stretch's end, its poly-BLEP spanning the stretch, and a line to it (engine.c m_lfo)
+        const j = (i & (CTL - 1)) + 1;
+        let w: number;
+        if (kind === LFO_RANDOM) w = s.last = s.from + (s.held - s.from) * lfoSmooth(s.phase);
+        else w = lfoWave(kind, ph, dt * j, duty);
+        w *= depth;
+        ctlRamp(c.out.out, i + 1 - j, s.wl, w, j);
+        s.wl = w;
+      }
       c.out.pulse[i] = wave(3, ph, dt, duty) * (c.p.depth ?? 1) * (back ? -1 : 1);
     }
   },
@@ -911,13 +941,31 @@ const adsr: ModuleImpl<AdsrState> = {
     const ar = rate((c.p.r ?? 0.3) * k);
     const aInc = 1 / Math.max((c.p.a ?? 0.01) * c.sr, 1);
     const sus = c.p.s ?? 0.6;
+    const adK = ctlRate(ad), arK = ctlRate(ar);
+    const gate = c.inp.gate, hold = c.inp.hold;
     for (let i = 0; i < c.n; i++) {
-      const g = c.inp.gate[i] > 0.5 ? 1 : 0;
+      const g = gate[i] > 0.5 ? 1 : 0;
       if (g && !s.prev) s.stage = 1;
       // Hold defers release without hiding the gate's next rising edge. It cannot start an idle envelope
       // or freeze a release already in progress.
-      else if (!g && s.stage !== 0 && s.stage !== 4 && (c.inp.hold?.[i] ?? 0) <= 0.5) s.stage = 4;
+      else if (!g && s.stage !== 0 && s.stage !== 4 && (hold?.[i] ?? 0) <= 0.5) s.stage = 4;
       s.prev = g;
+      // #806: a decay or release stretch at once (engine.c m_adsr), when no edge comes inside it and the stage goes on
+      // past its end
+      if ((s.stage === 2 || s.stage === 4) && (i & (CTL - 1)) === 0 && i + CTL <= c.n) {
+        let j = 1;
+        if (s.stage === 2) while (j < CTL && (gate[i + j] > 0.5 ? 1 : 0) === g && (g || (hold?.[i + j] ?? 0) > 0.5)) j++;
+        else while (j < CTL && (gate[i + j] > 0.5 ? 1 : 0) === g) j++;
+        if (j === CTL) {
+          const v1 = s.stage === 2 ? s.v + (sus - s.v) * adK : s.v - s.v * arK;
+          if (s.stage === 2 ? Math.abs(v1 - sus) >= 1e-4 : v1 >= 1e-4) {
+            ctlRamp(c.out.env, i, s.v, v1, CTL);
+            s.v = v1;
+            i += CTL - 1;
+            continue;
+          }
+        }
+      }
       switch (s.stage) {
         case 1:
           s.v += aInc;
@@ -2215,18 +2263,29 @@ const glide: ModuleImpl<{ y: number }> = {
       return;
     }
     const k = 1 - Math.exp(-4.6 / Math.max((c.p.time ?? 0.1) * c.sr, 1));
-    if (fall > 0) {
-      const kd = 1 - Math.exp(-4.6 / Math.max(fall * c.sr, 1));
-      for (let i = 0; i < c.n; i++) {
-        const d = c.inp.in[i] - s.y;
-        s.y += (d >= 0 ? k : kd) * d;
-        c.out.out[i] = s.y;
+    const kd = fall > 0 ? 1 - Math.exp(-4.6 / Math.max(fall * c.sr, 1)) : k;
+    const kq = ctlRate(k), kdq = ctlRate(kd);
+    const inp = c.inp.in, out = c.out.out;
+    for (let i = 0; i < c.n; ) {
+      // #806: a stretch whose input holds goes at once, a line to where CTL steps take it (engine.c m_glide); a moving
+      // input runs per sample
+      if ((i & (CTL - 1)) === 0 && i + CTL <= c.n) {
+        const x = inp[i];
+        let j = 1;
+        while (j < CTL && inp[i + j] === x) j++;
+        if (j === CTL) {
+          const d = x - s.y;
+          const y1 = s.y + (d >= 0 ? kq : kdq) * d;
+          ctlRamp(out, i, s.y, y1, CTL);
+          s.y = y1;
+          i += CTL;
+          continue;
+        }
       }
-      return;
-    }
-    for (let i = 0; i < c.n; i++) {
-      s.y += k * (c.inp.in[i] - s.y);
-      c.out.out[i] = s.y;
+      const d = inp[i] - s.y;
+      s.y += (d >= 0 ? k : kd) * d;
+      out[i] = s.y;
+      i++;
     }
   },
 };
@@ -2353,6 +2412,8 @@ const env: ModuleImpl<EnvState> = {
     const len = tm.map((t) => Math.max(Math.round(t * c.sr), 1));
     const inc = len.map((l) => 1 / l);
     const k = len.map((l) => 1 - Math.exp(-4.6 / l));
+    const kq = k.map(ctlRate);
+    const gate = c.inp.gate;
     const shot = (c.p.shot ?? 0) >= 0.5;
     for (let i = 0; i < c.n; i++) {
       const g = c.inp.gate[i] > 0.5 ? 1 : 0;
@@ -2364,6 +2425,20 @@ const env: ModuleImpl<EnvState> = {
         s.t = 0;
       }
       s.prev = g;
+      // #806: a falling stretch at once (engine.c m_env), when no edge comes inside it and the segment goes on past it
+      const st0 = s.stage;
+      if (st0 !== 0 && st0 !== 4 && s.v >= lv[st0] && (i & (CTL - 1)) === 0 && i + CTL <= c.n && s.t + CTL < len[st0]) {
+        let j = 1;
+        while (j < CTL && (gate[i + j] > 0.5 ? 1 : 0) === g) j++;
+        if (j === CTL) {
+          const v1 = s.v + (lv[st0] - s.v) * kq[st0];
+          ctlRamp(c.out.env, i, s.v, v1, CTL);
+          s.v = v1;
+          s.t += CTL;
+          i += CTL - 1;
+          continue;
+        }
+      }
       // a segment: linear up, exponential down; done -> the next stage (the hold stages track their level)
       for (let guard = 0; guard < 4; guard++) {
         const st = s.stage;
@@ -3930,6 +4005,8 @@ const env8: ModuleImpl<Env8State> = {
     }
     const inc = len.map((l) => 1 / l);
     const kk = len.map((l) => 1 - Math.exp(-4.6 / l));
+    const kq = kk.map(ctlRate);
+    const gate = c.inp.gate;
     const end = env8End(c.p.end ?? 3);
     const hs = env8Sus(Math.round(c.p.sus ?? 2), end);
     for (let i = 0; i < c.n; i++) {
@@ -3942,6 +4019,20 @@ const env8: ModuleImpl<Env8State> = {
         s.t = 0;
       }
       s.prev = g;
+      // #806: a falling stretch at once, as env (engine.c m_env8)
+      const st0 = s.stage;
+      if (st0 >= 1 && st0 <= end && s.v >= lv[st0] && (i & (CTL - 1)) === 0 && i + CTL <= c.n && s.t + CTL < len[st0]) {
+        let j = 1;
+        while (j < CTL && (gate[i + j] > 0.5 ? 1 : 0) === g) j++;
+        if (j === CTL) {
+          const v1 = s.v + (lv[st0] - s.v) * kq[st0];
+          ctlRamp(c.out.env, i, s.v, v1, CTL);
+          s.v = v1;
+          s.t += CTL;
+          i += CTL - 1;
+          continue;
+        }
+      }
       for (let guard = 0; guard < 10; guard++) {
         const st = s.stage;
         if (st === 0) {

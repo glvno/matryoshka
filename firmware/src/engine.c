@@ -94,6 +94,48 @@ HOT int32_t block_mean(int64_t sum, uint32_t n)
     return (int32_t)(sum / (int64_t)n);
 }
 
+/* #806: the LFO, the ADSR's and the envelopes' falling segments and the exp glide work out their curve on the last sample
+ * of every ENG_CTL samples of the block and ramp in a line between (modules.ts CTL). A gate edge inside the stretch, or
+ * a moving glide input, runs it per sample as before. */
+#ifndef ENG_CTL_LOG2
+#define ENG_CTL_LOG2 4u
+#endif
+#define ENG_CTL (1u << ENG_CTL_LOG2)
+/* 1 - (1 - k)^ENG_CTL for a rate k (Q30): ENG_CTL steps of v += k (t - v) as one */
+static int32_t ctl_rate(int32_t k)
+{
+    int32_t p = (1 << 30) - k;
+    uint32_t j;
+    for (j = 0; j < ENG_CTL_LOG2; j++)
+        p = mulq(p, p, 30);
+    return (1 << 30) - p;
+}
+/* out[0 .. ENG_CTL - 1]: a Q30 level from v to v1 in even steps, >> 14 (the envelopes' output), the last exactly v1 */
+HOT void ctl_ramp30(esig_t *out, int32_t v, int32_t v1)
+{
+    int32_t st = (v1 - v) >> ENG_CTL_LOG2;
+    uint32_t m;
+    for (m = 0; m + 1u < ENG_CTL; m++) {
+        v += st;
+        out[m] = v >> 14;
+    }
+    out[ENG_CTL - 1u] = v1 >> 14;
+}
+/* out[0 .. j - 1]: from w0 (the last stretch's value) to w1 on the line, rounded (a pitch hears a step's bias), the last
+ * exactly w1 (Q16; j <= ENG_CTL) */
+HOT void ctl_ramp16(esig_t *out, int32_t w0, int32_t w1, uint32_t j)
+{
+    const int32_t d = w1 - w0;
+    uint32_t m;
+    if (j == ENG_CTL)
+        for (m = 0; m + 1u < ENG_CTL; m++)
+            out[m] = w0 + ((d * (int32_t)(m + 1u) + (int32_t)(ENG_CTL / 2u)) >> ENG_CTL_LOG2);
+    else
+        for (m = 0; m + 1u < j; m++)
+            out[m] = w0 + d * (int32_t)(m + 1u) / (int32_t)j;
+    out[j - 1u] = w1;
+}
+
 /* ------------------------------------------------------------------ number helpers */
 
 /* the Random module's values (modules.ts hash32, walkInit, walkStep, walkHold): integer, bit for bit the reference. A walk:
@@ -507,7 +549,7 @@ typedef struct {
     union {
         struct { uint32_t phase; int32_t s1, y1, y2, pm1, xb, ap[8]; uint32_t ph[4], rc[5][2]; int16_t tol[4]; } osc;   /* s1: last sync sample; FM mode: feedback history, pm interpolation, decimator; ph: unison voices 2..5 (plain path); rc: their blep_pos caches, kept across blocks; tol: the part's analog tolerances, Q15 (modules.ts analogTol) */
         struct { uint32_t seed; walk_t w; uint32_t held_seed; int32_t held, clock; } rnd;   /* seed: engine.ts instSeed */
-        struct { uint32_t phase, seed; int32_t held; uint32_t since; int32_t interval; uint16_t ticks; uint8_t clk_hi, rst_hi, wraps; int32_t from, last; } lfo;   /* interval: clock edge distance in samples, Q8; wraps: cycles ended since the last snap; from, last: the random wave's start and its last value */
+        struct { uint32_t phase, seed; int32_t held; uint32_t since; int32_t interval; uint16_t ticks; uint8_t clk_hi, rst_hi, wraps, wok; int32_t from, last, wl; } lfo;   /* interval: clock edge distance in samples, Q8; wraps: cycles ended since the last snap; from, last: the random wave's start and its last value; wl: the output at the last stretch's end (#806), set (wok) at the first block from the wave where it starts */
         struct { int32_t y; } gld;         /* Q24 */
         struct { uint32_t seed; int32_t y; } noise;   /* y: the colour one-pole, Q24 */
         struct { int32_t ic1[3], ic2[3]; } vow;       /* three band passes, Q20 */
@@ -6183,30 +6225,45 @@ static inline int32_t lfo_smooth(inst_t *it, uint32_t phase)
     return it->s.lfo.last = it->s.lfo.from + mul16(it->s.lfo.held - it->s.lfo.from, s);
 }
 
-/* the free-running LFO (no sync, nothing in clk / reset): the wave picked once a block. A function of its own: inside
- * m_lfo the branch around it came out longer than 16 KB in the JieLi build, a form of `if ((R & #h) == #i) goto` that
- * fm1-emu (7ca5b96) does not decode yet (docs/ARCHITECTURE.md "Estimated CPU load"). off: the start phase, added where
- * the wave is read (u32 turns); depth comes negated for a backward wave. */
+/* the square and sample & hold waves step: they stay per sample, so a clock or gate taken from them keeps its edges
+ * (#806 ramps only the smooth waves) */
+#define LFO_STEPS(kind) ((kind) == 3 || (kind) == 4)
+/* the free-running LFO (no sync, nothing in clk / reset): the wave picked once a block. A smooth wave is read at the end
+ * of each stretch of ENG_CTL samples and ramped to (#806; the saw's poly-BLEP spans the stretch). A function of its own:
+ * inside m_lfo the branch around it came out longer than 16 KB in the JieLi build, a form of `if ((R & #h) == #i) goto`
+ * that fm1-emu (7ca5b96) does not decode yet (docs/ARCHITECTURE.md "Estimated CPU load"). off: the start phase, added
+ * where the wave is read (u32 turns); depth comes negated for a backward wave. */
 static void __attribute__((noinline)) lfo_free(inst_t *it, esig_t *out, uint32_t dt, int32_t kind, int32_t depth, uint32_t off, uint32_t n)
 {
-    uint32_t phase = it->s.lfo.phase, since = it->s.lfo.since + n, i, lrc[4] = {0};
-#define LFO_FREE(Y)                                                                     \
-    for (i = 0; i < n; i++) {                                                           \
-        uint32_t prev = phase;                                                          \
-        phase += dt;                                                                    \
-        if (phase < prev)                                                               \
-            lfo_cycle(it);                                                              \
-        out[i] = mul16((Y), depth);                                                     \
+    uint32_t phase = it->s.lfo.phase, since = it->s.lfo.since + n, i, j, lrc[4] = {0};
+    int32_t wl = it->s.lfo.wl, w;
+    if (!it->s.lfo.wok) {                        /* the first block: the ramp starts where the wave does (no poly-BLEP) */
+        it->s.lfo.wok = 1;
+        wl = mul16(kind == 0 ? sin_turn(phase + off) : kind == 1 ? wave_tri(phase + off) : kind == 2 ? wave_saw(phase + off, 0, lrc) : it->s.lfo.last, depth);
     }
-    switch (kind) {
-    case 0: LFO_FREE(sin_turn(phase + off)) break;
-    case 1: LFO_FREE(wave_tri(phase + off)) break;
-    case 2: LFO_FREE(wave_saw(phase + off, dt, lrc)) break;
-    case 4: LFO_FREE(it->s.lfo.held) break;
-    case LFO_RANDOM: LFO_FREE(lfo_smooth(it, phase)) break;
-    default: LFO_FREE(wave_square(phase + off, dt, 0x80000000u, lrc)) break;
-    }
-#undef LFO_FREE
+    if (LFO_STEPS(kind)) {
+        for (i = 0; i < n; i++) {
+            uint32_t prev = phase;
+            phase += dt;
+            if (phase < prev)
+                lfo_cycle(it);
+            out[i] = mul16(kind == 4 ? it->s.lfo.held : wave_square(phase + off, dt, 0x80000000u, lrc), depth);
+        }
+        wl = n ? out[n - 1u] : wl;
+    } else
+        for (i = 0; i < n; i += j) {
+            uint32_t prev = phase, dj;
+            j = n - i < ENG_CTL ? n - i : ENG_CTL;
+            dj = dt * j;
+            phase += dj;
+            if (phase < prev)
+                lfo_cycle(it);
+            w = kind == 0 ? sin_turn(phase + off) : kind == 1 ? wave_tri(phase + off) : kind == 2 ? wave_saw(phase + off, dj, lrc) : lfo_smooth(it, phase);
+            w = mul16(w, depth);
+            ctl_ramp16(out + i, wl, w, j);
+            wl = w;
+        }
+    it->s.lfo.wl = wl;
     it->s.lfo.since = since < ENG_SR ? since : ENG_SR;   /* as m_lfo's loop counts it, the clock and reset inputs low */
     it->s.lfo.clk_hi = 0;
     it->s.lfo.rst_hi = 0;
@@ -6245,7 +6302,8 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
     int32_t mi = clampi((EF(it, LFO_P_MULT) + 32768) >> 16, 0, LFO_NMULT - 1), range = clampi((EF(it, LFO_P_RANGE) + 32768) >> 16, 0, LFO_NRANGE - 1);
     uint32_t num = (uint32_t)DELAY_DIV_NUM[div] * LFO_MULT_NUM[mi], den = (uint32_t)DELAY_DIV_DEN[div] * LFO_MULT_DEN[mi];
     uint32_t per8 = 192u * num / den, g = per8 & 7u ? (per8 & 3u ? (per8 & 1u ? 1u : 2u) : 4u) : 8u;   /* g = gcd(per8, 8) */
-    uint32_t snap = per8 / g, cycles = 8u / g, dtbpm = 0, lrc[4] = {0}, off = 0;
+    uint32_t snap = per8 / g, cycles = 8u / g, dtbpm = 0, lrc[4] = {0}, off = 0, dtlive = 0;
+    int32_t ilive = 0;                           /* the clock interval dtlive is for (0: none yet; live needs one above 0) */
     uint32_t duty = 32768u;
     if (nd->conn & (1u << LFO_I_SHAPE)) {
         int64_t sum = 0;
@@ -6273,6 +6331,10 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
     if (!sync && duty == 32768u && IS_DUMMY(pulse) && !(nd->conn & ((1u << LFO_I_CLK) | (1u << LFO_I_RESET)))) {
         lfo_free(it, out, dtfree, kind, depth, off, n);
         return;
+    }
+    if (!it->s.lfo.wok) {                        /* the first block: the ramp starts where the wave does (as lfo_free) */
+        it->s.lfo.wok = 1;
+        it->s.lfo.wl = mul16(kind == LFO_RANDOM ? it->s.lfo.last : lfo_wave(kind, phase + off, 0, duty, rise, fall, lrc), depth);
     }
     for (i = 0; i < n; i++) {
         uint32_t prev = phase;
@@ -6303,7 +6365,11 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
         }
         it->s.lfo.rst_hi = (uint8_t)r;
         live = sync && it->s.lfo.interval > 0 && it->s.lfo.since < ENG_SR / 2;
-        dt = !sync ? dtfree : live ? (uint32_t)((1ull << 43) / ((uint64_t)per8 * (uint32_t)it->s.lfo.interval)) : dtbpm;
+        if (live && it->s.lfo.interval != ilive) {   /* (the 64-bit division only when the clock's interval moved) */
+            ilive = it->s.lfo.interval;
+            dtlive = (uint32_t)((1ull << 43) / ((uint64_t)per8 * (uint32_t)ilive));
+        }
+        dt = !sync ? dtfree : live ? dtlive : dtbpm;
         phase += dt;
         if (phase < prev) {
             if (live && it->s.lfo.wraps + 1u >= cycles)
@@ -6314,10 +6380,17 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
                 lfo_cycle(it);              /* a new cycle: sample & hold takes a new random value */
             }
         }
-        w = kind == 4 ? it->s.lfo.held : kind == LFO_RANDOM ? lfo_smooth(it, phase) : lfo_wave(kind, phase + off, dt, duty, rise, fall, lrc);
-        out[i] = mul16(w, depth);
+        if (LFO_STEPS(kind))
+            it->s.lfo.wl = out[i] = mul16(kind == 4 ? it->s.lfo.held : lfo_wave(kind, phase + off, dt, duty, rise, fall, lrc), depth);
+        else if ((i & (ENG_CTL - 1u)) == ENG_CTL - 1u || i + 1u == n) {   /* a stretch's end (#806): the wave, the ramp to it */
+            uint32_t j = (i & (ENG_CTL - 1u)) + 1u;
+            w = kind == LFO_RANDOM ? lfo_smooth(it, phase) : lfo_wave(kind, phase + off, dt * j, duty, rise, fall, lrc);
+            w = mul16(w, depth);
+            ctl_ramp16(out + i + 1u - j, it->s.lfo.wl, w, j);
+            it->s.lfo.wl = w;
+        }
         if (!IS_DUMMY(pulse)) {
-            int32_t pw = !duty ? -ENG_ONE : duty == 65536u ? ENG_ONE : wave_square(phase + off, dt, duty << 16, lrc);
+            int32_t pw = !duty ? -ENG_ONE : duty == 65536u ? ENG_ONE : wave_square(phase + off, dt, duty << 16, lrc + 2);
             pulse[i] = mul16(pw, back ? -EF(it, LFO_P_DEPTH) : EF(it, LFO_P_DEPTH));
         }
     }
@@ -6396,19 +6469,46 @@ static void m_glide(const node_t *nd, inst_t *it, uint32_t n)
         it->s.gld.y = y;
         return;
     }
-    if (fall > 0) {                                /* rising at `time`, falling at `fall` */
-        int32_t kd = env_rate(fall);
-        for (i = 0; i < n; i++) {
-            int32_t d = (clampi(in[i], -(1 << 23), (1 << 23) - 1) << 8) - y;
-            y += mulq(d >= 0 ? k : kd, d, 30);
-            out[i] = (y + 128) >> 8;
+    /* exp, rising at `time`, falling at `fall` (or `time`). #806: a stretch whose input holds goes at once: a settled
+     * glide (no step would move it) fills its level, as it would per sample; a moving one ramps to where ENG_CTL steps
+     * take it. A moving input runs per sample. */
+    int32_t kd = fall > 0 ? env_rate(fall) : k, kq = -1, kdq = -1;
+    for (i = 0; i < n;) {
+        int32_t d;
+        if (!(i & (ENG_CTL - 1u)) && i + ENG_CTL <= n) {
+            const esig_t x0 = in[i];
+            uint32_t j = 1;
+            while (j < ENG_CTL && in[i + j] == x0)
+                j++;
+            if (j == ENG_CTL) {
+                d = (clampi(x0, -(1 << 23), (1 << 23) - 1) << 8) - y;
+                if (!mulq(d >= 0 ? k : kd, d, 30)) {
+                    const int32_t o = (y + 128) >> 8;
+                    for (j = 0; j < ENG_CTL; j++)
+                        out[i + j] = o;
+                } else {
+                    int32_t y1, st;
+                    if (d >= 0 && kq < 0)
+                        kq = ctl_rate(k);
+                    if (d < 0 && kdq < 0)
+                        kdq = ctl_rate(kd);
+                    y1 = y + mulq(d >= 0 ? kq : kdq, d, 30);
+                    st = (int32_t)(((int64_t)y1 - y) >> ENG_CTL_LOG2);
+                    for (j = 0; j + 1u < ENG_CTL; j++) {
+                        y += st;
+                        out[i + j] = (y + 128) >> 8;
+                    }
+                    y = y1;
+                    out[i + ENG_CTL - 1u] = (y + 128) >> 8;
+                }
+                i += ENG_CTL;
+                continue;
+            }
         }
-        it->s.gld.y = y;
-        return;
-    }
-    for (i = 0; i < n; i++) {
-        y += mulq(k, (clampi(in[i], -(1 << 23), (1 << 23) - 1) << 8) - y, 30);
+        d = (clampi(in[i], -(1 << 23), (1 << 23) - 1) << 8) - y;
+        y += mulq(d >= 0 ? k : kd, d, 30);
         out[i] = (y + 128) >> 8;
+        i++;
     }
     it->s.gld.y = y;
 }
@@ -6529,7 +6629,7 @@ static void m_adsr(const node_t *nd, inst_t *it, uint32_t n)
     const esig_t *gate = it->in[ADSR_I_GATE], *hold = it->in[ADSR_I_HOLD];
     esig_t *out = it->out[0];
     int32_t pa = EF(it, ADSR_P_A), pd = EF(it, ADSR_P_D), pr = EF(it, ADSR_P_R);
-    int32_t ainc, ad, ar, sus = EF(it, ADSR_P_S) << 14, v = it->s.adsr.v;
+    int32_t ainc, ad, ar, adk, ark, sus = EF(it, ADSR_P_S) << 14, v = it->s.adsr.v;
     if (EF(it, ADSR_P_LONG) >= 32768) {          /* long: decay and release x 2.4 (modules.ts ADSR_LONG) */
         pd = (int32_t)(((int64_t)pd * ADSR_LONG_Q16) >> 16);
         pr = (int32_t)(((int64_t)pr * ADSR_LONG_Q16) >> 16);
@@ -6555,6 +6655,7 @@ static void m_adsr(const node_t *nd, inst_t *it, uint32_t n)
     ainc = it->s.adsr.ainc;
     ad = it->s.adsr.ad;
     ar = it->s.adsr.ar;
+    adk = ark = -1;                              /* (their stretch rates: worked out when first used) */
     for (i = 0; i < n; i++) {
         uint8_t g = gate[i] > 32768 ? 1 : 0;
         if (g && !prev)
@@ -6592,6 +6693,28 @@ static void m_adsr(const node_t *nd, inst_t *it, uint32_t n)
         case 2:
             for (;;) {
                 int32_t d;
+                if (!(i & (ENG_CTL - 1u)) && i + ENG_CTL <= n) {   /* #806: a stretch at once, when no edge comes inside
+                                                                     * it and the decay goes on past its end */
+                    uint32_t j = 1;
+                    while (j < ENG_CTL && ADSR_KEEP(i + j))
+                        j++;
+                    if (j == ENG_CTL) {
+                        int32_t v1;
+                        if (adk < 0)
+                            adk = ctl_rate(ad);
+                        v1 = v + mulq(sus - v, adk, 30);
+                        d = sus - v1;
+                        if ((d < 0 ? -d : d) >= 107374) {
+                            ctl_ramp30(out + i, v, v1);
+                            v = v1;
+                            i += ENG_CTL - 1u;
+                            if (i + 1u >= n || !ADSR_KEEP(i + 1u))
+                                break;
+                            i++;
+                            continue;
+                        }
+                    }
+                }
                 v += mulq(sus - v, ad, 30);
                 d = sus - v;
                 out[i] = v >> 14;
@@ -6614,7 +6737,27 @@ static void m_adsr(const node_t *nd, inst_t *it, uint32_t n)
         }
         case 4:                                   /* (at least one step: past about 11 s the product rounds to 0 above the end level) */
             for (;;) {
-                int32_t dv = mulq(v, ar, 30);
+                int32_t dv;
+                if (!(i & (ENG_CTL - 1u)) && i + ENG_CTL <= n) {   /* #806: as the decay; and at least a step a sample */
+                    uint32_t j = 1;
+                    while (j < ENG_CTL && (gate[i + j] > 32768) == g)
+                        j++;
+                    if (j == ENG_CTL) {
+                        if (ark < 0)
+                            ark = ctl_rate(ar);
+                        dv = mulq(v, ark, 30);
+                        if (dv >= (int32_t)ENG_CTL && v - dv >= 107374) {
+                            ctl_ramp30(out + i, v, v - dv);
+                            v -= dv;
+                            i += ENG_CTL - 1u;
+                            if (i + 1u >= n || (gate[i + 1u] > 32768) != g)
+                                break;
+                            i++;
+                            continue;
+                        }
+                    }
+                }
+                dv = mulq(v, ar, 30);
                 v -= dv > 0 ? dv : 1;
                 if (v < 107374) {
                     v = 0;
@@ -8409,17 +8552,51 @@ static void m_env(const node_t *nd, inst_t *it, uint32_t n)
                                                    * ends it, which takes the steps below */
             const int32_t t = lv[stage], d = inc[stage], kk = k[stage];
             const uint32_t ln = len[stage];
+            int32_t kq = -1;                      /* kk for a stretch (#806), when first used */
             int ran = 0;
-            while (v < t ? v + d < t : tt + 1u < ln) {
-                tt++;
-                v += v < t ? d : mulq(t - v, kk, 30);
-                out[i] = v >> 14;
-                if (i + 1u >= n || (gate[i + 1u] > 32768) != g) {
-                    ran = 1;
-                    break;
+            if (v < t)                            /* rising: the plain loop (a stretch check in it slowed it, #806) */
+                while (v + d < t) {
+                    tt++;
+                    v += d;
+                    out[i] = v >> 14;
+                    if (i + 1u >= n || (gate[i + 1u] > 32768) != g) {
+                        ran = 1;
+                        break;
+                    }
+                    i++;
                 }
-                i++;
-            }
+            else
+                while (tt + 1u < ln) {
+                    if (!(i & (ENG_CTL - 1u)) && i + ENG_CTL <= n && tt + ENG_CTL < ln) {
+                        uint32_t j = 1;           /* #806: a falling stretch at once, no edge inside it, the segment on past it */
+                        while (j < ENG_CTL && (gate[i + j] > 32768) == g)
+                            j++;
+                        if (j == ENG_CTL) {
+                            int32_t v1;
+                            if (kq < 0)
+                                kq = ctl_rate(kk);
+                            v1 = v + mulq(t - v, kq, 30);
+                            ctl_ramp30(out + i, v, v1);
+                            v = v1;
+                            tt += ENG_CTL;
+                            i += ENG_CTL - 1u;
+                            if (i + 1u >= n || (gate[i + 1u] > 32768) != g) {
+                                ran = 1;
+                                break;
+                            }
+                            i++;
+                            continue;
+                        }
+                    }
+                    tt++;
+                    v += mulq(t - v, kk, 30);
+                    out[i] = v >> 14;
+                    if (i + 1u >= n || (gate[i + 1u] > 32768) != g) {
+                        ran = 1;
+                        break;
+                    }
+                    i++;
+                }
             if (ran)
                 continue;
         }
@@ -8518,17 +8695,51 @@ static void m_env8(const node_t *nd, inst_t *it, uint32_t n)
         if (stage <= end && stage == cst) {       /* inside a step with its rates cached: run it until the gate changes or
                                                    * the sample that ends it, which takes the steps below */
             const int32_t t = eff[ENV8_P_L1 + 2u * (stage - 1u)] << 14;
+            int32_t kq = -1;                      /* k for a stretch (#806), when first used */
             int ran = 0;
-            while (v < t ? v + inc < t : tt + 1u < len) {
-                tt++;
-                v += v < t ? inc : mulq(t - v, k, 30);
-                out[i] = v >> 14;
-                if (i + 1u >= n || (gate[i + 1u] > 32768) != g) {
-                    ran = 1;
-                    break;
+            if (v < t)                            /* rising: the plain loop (as m_env) */
+                while (v + inc < t) {
+                    tt++;
+                    v += inc;
+                    out[i] = v >> 14;
+                    if (i + 1u >= n || (gate[i + 1u] > 32768) != g) {
+                        ran = 1;
+                        break;
+                    }
+                    i++;
                 }
-                i++;
-            }
+            else
+                while (tt + 1u < len) {
+                    if (!(i & (ENG_CTL - 1u)) && i + ENG_CTL <= n && tt + ENG_CTL < len) {
+                        uint32_t j = 1;           /* #806: as m_env */
+                        while (j < ENG_CTL && (gate[i + j] > 32768) == g)
+                            j++;
+                        if (j == ENG_CTL) {
+                            int32_t v1;
+                            if (kq < 0)
+                                kq = ctl_rate(k);
+                            v1 = v + mulq(t - v, kq, 30);
+                            ctl_ramp30(out + i, v, v1);
+                            v = v1;
+                            tt += ENG_CTL;
+                            i += ENG_CTL - 1u;
+                            if (i + 1u >= n || (gate[i + 1u] > 32768) != g) {
+                                ran = 1;
+                                break;
+                            }
+                            i++;
+                            continue;
+                        }
+                    }
+                    tt++;
+                    v += mulq(t - v, k, 30);
+                    out[i] = v >> 14;
+                    if (i + 1u >= n || (gate[i + 1u] > 32768) != g) {
+                        ran = 1;
+                        break;
+                    }
+                    i++;
+                }
             if (ran)
                 continue;
         }
