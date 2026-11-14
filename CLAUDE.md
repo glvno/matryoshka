@@ -45,7 +45,6 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 ## Gotchas and lessons
 
 - **Never flash firmware that lacks Felucca's OTA handling** (USB MIDI + `ota.c` / `ota_hw.c`): it removes the way back. Recovery = re-run the install in the loader; return to stock = bundled `web/public/firmware/FM-1_015.fwsc`. Identity: ours `FM-1_7MMmmpp` (1.8.0 = `FM-1_7010800`, dev / CI `FM-1_7000000`; 1.0..1.7 in the field `FM-1_7XY`, every parser takes both, [D-178](docs/ledger/firmware-install.md#D-178)) (loader `ota-FM-1_700`), Felucca / Sloop `FM-1_9XY`, stock `FM-1_0XX`; the `FM-1` prefix must stay.
-- `tools/build.py` rejects immediates between 0xFFC00000 and 0xFFD00000 (look like ROM addresses): Q16 constants of -64 .. -48 trip it.
 - Fixed point: a Q16 one-pole with a small coefficient stalls short of its target; keep such states in Q24 / Q30. `exp2_q16` returns a plain integer. `sig_t` clashes with macOS `<signal.h>` (hence `esig_t`). The C name `STEPS_MAX` is a generated array.
 - After a `git merge` into engine.c, read the whole file: fragments auto-merge without conflict markers.
 - Never `git checkout <file>` on a file with uncommitted work.

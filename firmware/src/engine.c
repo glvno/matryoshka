@@ -8997,8 +8997,7 @@ static int steps_countdown(uint32_t t)
 }
 
 /* a note as the pitch output gives it: octaves from C4, rounded to Q16 (modules.ts stepPitch) = (d +- 6) / 12 with d =
- * n * ENG_ONE, split as ENG_ONE = 12 * 5461 + 4: written plainly the compiler folds -STEP_NOTE * ENG_ONE + 6 into
- * 0xFFC40006, which build.py rejects as a chip ROM address */
+ * n * ENG_ONE, split as ENG_ONE = 12 * 5461 + 4 */
 static int32_t steps_pitch(uint32_t note)
 {
     int32_t n = (int32_t)note - STEP_NOTE;
@@ -9668,8 +9667,7 @@ static void m_range(const node_t *nd, inst_t *it, uint32_t n)
     int32_t olo = EF(it, RANGE_P_OUTLO), ospan = EF(it, RANGE_P_OUTHI) - olo;
     int32_t c = clampi(EF(it, RANGE_P_CURVE), -ENG_ONE, ENG_ONE);
     const int32_t clamp = EF(it, RANGE_P_CLAMP) >= ENG_ONE / 2;
-    /* tlo 0 or -RANGE_T_MAX Q16 as a shift of clamp - 1: written as a constant it is 0xFFC00000, which build.py rejects as
-     * a chip ROM address */
+    /* tlo 0 or -RANGE_T_MAX Q16 as a shift of clamp - 1 */
     const int32_t thi = clamp ? ENG_ONE : RANGE_T_MAX * ENG_ONE, tlo = (clamp - 1) * (RANGE_T_MAX * ENG_ONE);
     int64_t inv = span ? ((int64_t)1 << 32) / span : 0;
     uint32_t i;

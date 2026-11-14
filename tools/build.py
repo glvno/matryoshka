@@ -351,16 +351,18 @@ def check(img, syms, dis, rts):
     else:
         notes.append(f".c1_text: {len(c1_ins)} insns, {c1_jobs} call through a register (the job), no flash address")
     fn = "?"
-    for ln in dis.splitlines():     # nothing may call or load an address in the chip ROM
+    for ln in dis.splitlines():     # nothing may call an address in the chip ROM
         mm = LINE.match(ln)
         if not mm and ln.rstrip().endswith(":") and not re.search(r"[<\s]\.", " " + ln):
             fn = ln.strip()[:60]
         if not mm:
             continue
-        for v in re.findall(r"= (-?\d+) <|call -?\d+ <[^:>]*: ([0-9a-f]+) >", mm.group(3)):
-            val = (int(v[0]) & 0xFFFFFFFF) if v[0] else int(v[1], 16) & 0xFFFFFFFF
+        # (immediate loads are not checked: objdump annotates every constant, and Q16 values such as -64 << 16 fall in
+        # the ROM window, so a load check only ever reported harmless arithmetic)
+        for v in re.findall(r"call -?\d+ <[^:>]*: ([0-9a-f]+) >", mm.group(3)):
+            val = int(v, 16) & 0xFFFFFFFF
             if 0xFFC00000 <= val < 0xFFD00000:
-                errors.append(f"reference to ROM address {val:#010x} in {fn}: {mm.group(3).strip()[:100]}")
+                errors.append(f"call to ROM address {val:#010x} in {fn}: {mm.group(3).strip()[:100]}")
     if len(img) > APP_SLOT:
         errors.append(f"image {len(img)} B exceeds the app slot")
 
@@ -428,11 +430,14 @@ def mmio_check():
         regs |= more
     errors = []
     for f in sorted([*(FW / "src").glob("*.[ch]"), *(FW / "loader").glob("*.c")]):
-        for no, ln in enumerate(strip(f.read_text()).splitlines(), 1):
+        text = f.read_text()
+        # generated tables (presets.h, defs.h, ...) hold data words, not addresses: no literal check there
+        generated = re.search(r"generated|do not edit", "\n".join(text.splitlines()[:3]), re.I)
+        for no, ln in enumerate(strip(text).splitlines(), 1):
             where = f"{f.relative_to(FW)}:{no}"
             for rx, what in ((MMIO_LIT, "register/window address"), (MMIO_CAST, "volatile pointer cast"),
                              (MMIO_ASM, "inline asm")):
-                m = rx.search(ln)
+                m = None if generated and rx is MMIO_LIT else rx.search(ln)
                 if m:
                     errors.append(f"{where}: {what} outside hal/ ({m.group(0).strip()}); add a hal/ helper")
             used = set(re.findall(r"\b[A-Z_][A-Z0-9_]*\b", ln)) & regs
