@@ -1,6 +1,6 @@
 # The cheaper LED and key scan, on the registered rig, 2026-11-14
 
-Issue #803, [D-934](../ledger/device-ui.md#D-934). The firmware is CI run 43628947934 of branch `docs_led-key-scan`. It was installed through `npm run device:scenarios -- --install 43628947934` after the 30-second emulator boot check ([D-123](../ledger/releases.md#D-123)). The baseline is the build with the Reverb's lines one block late, CI run 43615466841 ([the Reverb measurements](2026-11-14-rig-reverb-late.md)). The rig's LEDs were at DIM HIGH, its glow pulse 8 µs.
+Issue #803, [D-934](../ledger/device-ui.md#D-934). The firmware is CI run 43628947934 (the pulse trim: 43633922891) of branch `docs_led-key-scan`. It was installed through `npm run device:scenarios -- --install 43628947934` after the 30-second emulator boot check ([D-123](../ledger/releases.md#D-123)). The baseline is the build with the Reverb's lines one block late, CI run 43615466841 ([the Reverb measurements](2026-11-14-rig-reverb-late.md)). The rig's LEDs were at DIM HIGH, its glow pulse 8 µs.
 
 ## What changed
 
@@ -15,11 +15,11 @@ From `tools/m1_link.py --rig t5` (DIAG page 177), with no keys held:
 | The scan, a tick (TIMER5 and TIMER2) | 8.7 µs | 3.5 µs |
 | The scan's share of core 0 | 8.7 % | 3.5 % |
 | Glow pulses a tick | 0.73 | 0.73 |
-| A glow pulse | 7.8 µs | 8.6 µs |
+| A glow pulse (target 8 µs) | 7.8 µs | 8.05 µs |
 
 TIMER5's time inside the audio interrupt, 8 keys held (`tools/m1_link.py --rig blocktime`): Canvas 173 → 68 µs a block, Cassia 1 → 66 µs, Oracle V → 70 µs.
 
-The split pulse first ran 8.6 µs, longer than the 8 µs target, because the one-shot's interrupt comes a little late. A later commit arms the one-shot early by that measured lateness, so the pulse follows the target.
+The split pulse first ran 8.6 µs, longer than the target, because the one-shot's interrupt comes a little late. The tick now arms the one-shot early by that measured lateness. On CI run 43633922891 the pulses average 8.05 µs, and the scan takes 3.6 % of core 0.
 
 ## Raw data
 
