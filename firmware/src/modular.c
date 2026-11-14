@@ -66,11 +66,19 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 #define ENG_LANE_HOOKS 1           /* #271, #802: engine.c hands lane 1 of its schedule to the second core (fm1_cpu1.h) */
 #define BT_POOL ENG_POOL
 #include "blk_time.h"              /* the block's time, measured (#802, #803: DIAG pages 132..139) */
-#define ENG_TMARK(k) (bt_eng[k] = fm1_ticks())
+#define ENG_TMARK(k) (bt_eng[k] = fm1_ticks(), (k) == 0 && mt_on ? (void)mt_blocks++ : (void)0)
 #define ENG_LANE_PUT(p, x) fm1_cpu1_put((p), (x))                 /* a lane's progress, across the cores (#802) */
 #define ENG_LANE_GET(p) fm1_cpu1_get(p)
 #define ENG_LANE_NOW() fm1_ticks()                       /* core 0's waits inside the job count as its waits (BT_WAIT) */
 #define ENG_LANE_WAITED(t0) (bt_wait += fm1_ticks() - (t0))
+/* each module's time a half buffer on the device (#802, DIAG pages 144..160, tools/m1_link.py modtime): while mt_on, every
+ * copy's span is added to its module's sum on its lane's row (the two cores never write one row), and the halves counted.
+ * Off, it costs a test per copy. In NOINIT: page 144 clears it when it starts a window */
+#define MT_MODULES 128u
+static uint8_t mt_on;
+static uint32_t mt_sum[2][MT_MODULES] ENG_NOINIT, mt_blocks ENG_NOINIT;
+#define ENG_ITEM_BEGIN() (mt_on ? fm1_ticks() : 0u)
+#define ENG_ITEM_END(nd, it, t0) do { if (mt_on) mt_sum[IT_LANE(nd, it)][(nd) - E.node] += fm1_ticks() - (t0); } while (0)
 static uint8_t lanes_off;                  /* DIAG pages 110 / 111 (tools/m1_link.py cores split off / on): core 0 renders every part (to measure) */
 static uint32_t lane_t0;                   /* when the last job was handed over (eng_lane_poll) */
 static void bt_parts(uint32_t group);      /* (after engine.c; the actual segment, interpreted or compiled) */
@@ -100,6 +108,7 @@ static int eng_lane_wait(void)             /* -1: given up (held, barred): core 
     return rc;
 }
 #include "engine.c"
+typedef char mt_modules_check[ENG_MAX_MODULES == MT_MODULES ? 1 : -1];   /* (mt_sum has a slot for every module) */
 static void bt_parts(uint32_t arg)         /* the awake items handed over, per lane: the schedule's (#802), or a poly */
 {                                          /* segment's of group `arg` (render_split: the even parts on core 0) */
     uint32_t v;

@@ -320,7 +320,12 @@ static uint32_t batt_us;                        /* the last battery read's time,
  *   139: (core 0 reads TIMER4 back to back for 5 ms, the interrupts on: the main loop stops that long) the reads, the
  *        shortest step between two (ns), the steps longer than 1 us with no audio ISR in them (TIMER5's interrupts),
  *        their total (ns), TIMER5's C bodies over the same time (ns) and their count, the audio ISRs that fell in it, the
- *        longest of those steps (ns) */
+ *        longest of those steps (ns);
+ * pages 144..176 each module's time a half buffer (#802; modular.c mt_sum; m1_link.py modtime), read only:
+ *   144: starts a window (clears the sums) when none runs, else ends it; answers the halves counted, the patch's
+ *        modules, 1 while a window runs
+ *   145..176: four modules each (page 145 modules 0..3): the mean time a half of its copies on core 0's lane and on
+ *        core 1's, ns, over the last window */
 static void settings_store(void);
 static bt_acc_t bt_last BT_POOL;                        /* the window DIAG page 132 took (pages 133..138 report it) */
 static uint32_t bt_t5_in_n0 BT_POOL, bt_t5_out_n0 BT_POOL;      /* TIMER5's counts when the running window began */
@@ -612,6 +617,29 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
         t5_gap_max = 0;
         st_off.rd_max = st_off.step_max = 0;
         fm1_irq_on();
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
+    if (page >= 144u && page <= 176u) {         /* #802: each module's time a half (modular.c mt_sum) */
+        uint32_t v[8], k;
+        if (page == 144u) {
+            if (!mt_on) {
+                for (k = 0; k < MT_MODULES; k++)
+                    mt_sum[0][k] = mt_sum[1][k] = 0;
+                mt_blocks = 0;
+            }
+            mt_on = (uint8_t)!mt_on;
+            v[0] = mt_blocks;
+            v[1] = E.nmod;
+            v[2] = mt_on;
+            v[3] = v[4] = v[5] = v[6] = v[7] = 0;
+        } else
+            for (k = 0; k < 4u; k++) {
+                uint32_t q = 4u * (page - 145u) + k;
+                v[2u * k] = mt_on ? 0u : bt_ns(mt_sum[0][q], mt_blocks);
+                v[2u * k + 1u] = mt_on ? 0u : bt_ns(mt_sum[1][q], mt_blocks);
+            }
         for (i = 0; i < sizeof v; i++)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
         return sizeof v;

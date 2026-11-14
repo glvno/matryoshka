@@ -20,10 +20,11 @@ import { validatePatch, type Patch } from '../src/patch';
 import { deviceView } from '../src/poly';
 
 const ROOT = new URL('../../', import.meta.url).pathname;
-/** The two-core schedule's build (#802): every factory patch of the 1.14 bank, transport stopped and running. */
+/** The build with Steps' quiet samples in one pass (#802, #878): every factory patch of the 1.14 bank, transport stopped
+ * and running. */
 const NOW: { file: string; at?: Record<string, number>; only?: string[]; skip?: string[] }[] = [
-  { file: 'docs/measurements/cpu-survey-2026-11-14-rig-two-core.json' },
-  { file: 'docs/measurements/cpu-survey-2026-11-14-rig-two-core-run.json' },
+  { file: 'docs/measurements/cpu-survey-2026-11-14-rig-steps.json' },
+  { file: 'docs/measurements/cpu-survey-2026-11-14-rig-steps-run.json' },
 ];
 /** the survey of the firmware before (release-1.10 with the second core) and the commit its factory patches are from */
 const BEFORE = { file: 'docs/measurements/cpu-survey-2026-11-05-rig-merged-split.json', commit: 'e3235d64' };

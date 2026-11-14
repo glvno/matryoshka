@@ -42,6 +42,10 @@
                                            first; --notes: hold the first N of the rig survey's 8 notes (C4 E4 G4 B4 C5 E5
                                            G5 B5) from 1 s before the window to its end; --json: the raw values too. Reads
                                            only, except that page 139 holds the main loop 5 ms)
+  tools/m1_link.py modtime [SECONDS] [--notes N] [--patch NAME] [--json FILE]
+                                          (#802, DIAG pages 144..176: each module's time a half buffer on the FM-1 over
+                                           SECONDS (default 3), on core 0's lane and on core 1's; --patch and --notes as
+                                           blocktime; --json: the raw values. Reads only)
   tools/m1_link.py diag [DIS]             (what the last reset left: its cause, the crash record, where a stalled main loop
                                            was; DIS = the build's matryoshka.dis (CI artifact matryoshka-elf) names the functions)
 Every command takes --rig (the test rig: the FM-1 at its registered USB location, checked by its mark) or --location HEX
@@ -509,6 +513,8 @@ def main():
         print_usblog(st, ct, ents, first, last, st2[0] != n)
     elif a[0] == "blocktime":
         blocktime(link, a[1:])
+    elif a[0] == "modtime":
+        modtime(link, a[1:])
     elif a[0] == "diag":
         raw = []
         for page in range(32):
@@ -547,10 +553,8 @@ BT_SPANS = [
 ]
 
 
-def blocktime(link, a):
-    """DIAG pages 132..139 (main.c m1_diag, firmware/src/blk_time.h): one window of SECONDS, optionally on a factory patch
-    with notes held"""
-    import json
+def window_args(a):
+    """blocktime's and modtime's arguments: SECONDS, --notes N, --patch NAME, --json FILE"""
     def opt(name, conv, default):
         if name in a:
             k = a.index(name)
@@ -561,24 +565,39 @@ def blocktime(link, a):
             return v
         return default
     notes, patch, out = opt("--notes", int, 0), opt("--patch", str, None), opt("--json", str, None)
-    secs = float(a[0]) if a else 3.0
     if not 0 <= notes <= len(BT_NOTES):
         sys.exit(f"--notes takes 0..{len(BT_NOTES)}")
-    words = lambda p: [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range((len(p) - 1) // 4)]
-    page = lambda n: words(link.ask(frame(0x2B, [n]), (0x4B, n)))
+    return float(a[0]) if a else 3.0, BT_NOTES[:notes], patch, out
+
+
+def diag_words(link, n):
+    p = link.ask(frame(0x2B, [n]), (0x4B, n))
+    return [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range((len(p) - 1) // 4)]
+
+
+def load_factory(link, patch):
+    """a factory patch (firmware/src/presets.h) uploaded live"""
+    ps = factory_presets()
+    hit = [d for n, d in ps if n.lower() == patch.lower()] or [d for n, d in ps if n.lower().startswith(patch.lower())]
+    if len(hit) != 1:
+        sys.exit(f"--patch {patch!r}: {'no' if not hit else 'more than one'} factory patch of that name; "
+                 f"names: {', '.join(n for n, _ in ps)}")
+    upload_chunks(link, hit[0])
+    c = crc16(hit[0])
+    link.ack(frame(0x11, [len(hit[0]) & 0xFF, len(hit[0]) >> 8, c & 0xFF, c >> 8]), 0x11, wait=3.0)
+    time.sleep(0.5)
+
+
+def blocktime(link, a):
+    """DIAG pages 132..139 (main.c m1_diag, firmware/src/blk_time.h): one window of SECONDS, optionally on a factory patch
+    with notes held"""
+    import json
+    secs, held, patch, out = window_args(a)
+    page = lambda n: diag_words(link, n)
     if len(page(132)) < 8:
         sys.exit("no block-time pages (a firmware from before #802 / #803)")
     if patch:
-        ps = factory_presets()
-        hit = [d for n, d in ps if n.lower() == patch.lower()] or [d for n, d in ps if n.lower().startswith(patch.lower())]
-        if len(hit) != 1:
-            sys.exit(f"--patch {patch!r}: {'no' if not hit else 'more than one'} factory patch of that name; "
-                     f"names: {', '.join(n for n, _ in ps)}")
-        upload_chunks(link, hit[0])
-        c = crc16(hit[0])
-        link.ack(frame(0x11, [len(hit[0]) & 0xFF, len(hit[0]) >> 8, c & 0xFF, c >> 8]), 0x11, wait=3.0)
-        time.sleep(0.5)
-    held = BT_NOTES[:notes]
+        load_factory(link, patch)
     try:
         for k in held:
             link.out.send(mido.Message("note_on", note=k, velocity=100))
@@ -601,6 +620,48 @@ def blocktime(link, a):
             json.dump({"patch": patch, "notes": held, "seconds": secs, "page132": w, "page138": j, "page139": sp,
                        "spans_ns": {BT_SPANS[i][0]: {"mean": m, "max": x} for i, (m, x) in enumerate(spans[:len(BT_SPANS)])}},
                       f, indent=1)
+        print(f"raw values: {out}")
+
+
+def modtime(link, a):
+    """DIAG pages 144..176 (main.c m1_diag, modular.c mt_sum): each module's mean time a half over one window of SECONDS,
+    on core 0's lane and on core 1's, optionally on a factory patch with notes held"""
+    import json
+    secs, held, patch, out = window_args(a)
+    page = lambda n: diag_words(link, n)
+    first = page(144)
+    if len(first) < 8:
+        sys.exit("no module-time pages (a firmware from before #802's per-module timing)")
+    if first[2]:                                       # (a window left running: end it, then start afresh)
+        page(144)
+    if patch:
+        load_factory(link, patch)
+    try:
+        for k in held:
+            link.out.send(mido.Message("note_on", note=k, velocity=100))
+        time.sleep(1.0 if held else 0.1)
+        page(144)                                      # the window starts here
+        time.sleep(secs)
+        w = page(144)
+        nmod = w[1]
+        rows = []
+        for pg in range(145, 145 + (nmod + 3) // 4):
+            x = page(pg)
+            rows += [(x[2 * i], x[2 * i + 1]) for i in range(4)]
+        rows = rows[:nmod]
+    finally:
+        for k in held:
+            link.out.send(mido.Message("note_off", note=k))
+    print(f"{patch or 'the running patch'}, {len(held)} notes held; {w[0]} halves counted, {nmod} modules")
+    print(f"{'module':>6} {'core 0 us':>10} {'core 1 us':>10}")
+    for m, (c0, c1) in enumerate(rows):
+        if c0 or c1:
+            print(f"{m:6} {c0 / 1000:10.1f} {c1 / 1000:10.1f}")
+    print(f"{'sum':>6} {sum(r[0] for r in rows) / 1000:10.1f} {sum(r[1] for r in rows) / 1000:10.1f}")
+    if out:
+        with open(out, "w") as f:
+            json.dump({"patch": patch, "notes": held, "seconds": secs, "halves": w[0],
+                       "modules_ns": [{"core0": c0, "core1": c1} for c0, c1 in rows]}, f, indent=1)
         print(f"raw values: {out}")
 
 

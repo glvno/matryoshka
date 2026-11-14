@@ -12,6 +12,12 @@ import { withParts } from './test-poly';
 import { acid } from './test-patches';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
+/** the emulator event that starts the transport (tools/cpu/prof.c, kind 4, note 1) */
+const TRANSPORT_ON = (4 << 16) | 1;
+/** what a count plays before its notes: a patch with a Steps track counts with the transport running, the worst case the
+ * estimate stands for (a stopped track costs far less, #877; issue #878) */
+export const startEvents = (p: Patch): number[] => (p.modules.some((m) => m.type === 'steps') ? [TRANSPORT_ON] : []);
+
 export function cpuChecks(note: number): { name: string; patch: Patch; notes: number[] }[] {
   const chord = [note - 12, note - 5, note, note + 4];
   // one note per voice of the patch's largest poly group: a voice with no note goes idle (engine.c part_quiet), and the
@@ -56,6 +62,10 @@ export function looseModel(p: Patch): boolean {
   // an envelope or a glide into an oscillator's pitch (a drum's sweep, portamento): the model charges every sample as
   // moving, it settles sooner
   const byId = new Map(p.modules.map((m) => [m.id, m]));
+  // a Math module heard only through outputs other than its first (the master FX's mid / side): the table's output dims
+  // charge that output's pass on top of the first's, which the engine then skips
+  const firstMath = DEFS.math.outputs[0].name;
+  if (p.modules.some((m) => m.type === 'math' && p.cables.some((c) => c.from.module === m.id) && !p.cables.some((c) => c.from.module === m.id && c.from.port === firstMath))) return true;
   // A connected quantizer is charged for different input every sample. Held Q16 values reuse the exact result;
   // the observed repetition rate is not inferable from a cable (Sample & Hold can hold or run at audio rate).
   if (p.cables.some((c) => c.to.port === 'in' && byId.get(c.to.module)?.type === 'quant')) return true;

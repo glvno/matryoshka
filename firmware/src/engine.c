@@ -9274,6 +9274,49 @@ static void steps_turn(uint32_t t)
 }
 
 static const uint8_t RATE_HT[9] = {48, 32, 24, 16, 12, 8, 6, 96, 3};   /* half ticks a step: track.ts STEPS_RATE_HT */
+/* An internally clocked track with no reset cable, from sample i of an n-sample block: the first sample m_steps's loop must
+ * take one at a time, n if none. Those are a gap or a hit to show, the transport's start (sample 0), the block's tick, a
+ * half step's or a swung step's countdown reaching 0, and a timed note's end. Every sample before it only counts down and
+ * writes the same outputs (steps_skip). */
+static uint32_t steps_quiet(const inst_t *it, uint32_t t, uint32_t i, uint32_t n, int timed)
+{
+    uint32_t e = n, j;
+    if (it->s.stp.gap || (i == 0 && (it->s.stp.hit || (E.running && !it->s.stp.run))))
+        return i;
+    if (E.tick_off >= (int32_t)i && (uint32_t)E.tick_off < e)
+        e = (uint32_t)E.tick_off;
+    if (it->s.stp.half > 0 && E.running && i + (uint32_t)it->s.stp.half - 1u < e)
+        e = i + (uint32_t)it->s.stp.half - 1u;
+    if (it->s.stp.pend > 0 && i + (uint32_t)it->s.stp.pend - 1u < e)
+        e = i + (uint32_t)it->s.stp.pend - 1u;
+    if (timed)
+        for (j = 0; j < E.trk_nsnd[t]; j++)
+            if (E.trk_snd[t][j].cnt > 0 && !E.trk_snd[t][j].thru && i + (uint32_t)E.trk_snd[t][j].cnt - 1u < e)
+                e = i + (uint32_t)E.trk_snd[t][j].cnt - 1u;
+    return e;
+}
+/* k quiet samples (steps_quiet) at once, bit for bit what m_steps's loop does with them */
+static void steps_skip(inst_t *it, uint32_t t, int timed, esig_t *trig, esig_t *keys, esig_t *pitch, esig_t *vel,
+                       const esig_t *tr, uint32_t k)
+{
+    uint32_t j;
+    int32_t up = E.trk_nsnd[t] && steps_sounding(t) ? ENG_ONE : 0;
+    it->s.stp.r1 = 0;
+    if (it->s.stp.half > 0 && E.running)
+        it->s.stp.half -= (int32_t)k;
+    it->s.stp.sst = (int32_t)((uint32_t)it->s.stp.sst + k);
+    if (it->s.stp.pend > 0)
+        it->s.stp.pend -= (int32_t)k;
+    if (timed)
+        for (j = 0; j < E.trk_nsnd[t]; j++)
+            if (E.trk_snd[t][j].cnt > 0 && !E.trk_snd[t][j].thru)
+                E.trk_snd[t][j].cnt -= (int32_t)k;
+    fill(trig, up, k);
+    fill(keys, up, k);
+    fill(vel, it->s.stp.vel, k);
+    for (j = 0; j < k; j++)
+        pitch[j] = it->s.stp.pitch + tr[j];
+}
 static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *clk = it->in[STEPS_I_CLK], *reset = it->in[STEPS_I_RESET], *tr = it->in[STEPS_I_TRANSPOSE];
@@ -9315,6 +9358,14 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
     }
     for (i = 0; i < n; i++) {
         int32_t adv = 0, sl;
+        if (!ext && reset == zero_buf) {         /* samples where nothing steps, fires or ends: in one pass (#802) */
+            uint32_t e = steps_quiet(it, t, i, n, timed);
+            if (e > i) {
+                steps_skip(it, t, timed, trig + i, keys + i, pitch + i, vel + i, tr + i, e - i);
+                i = e - 1u;
+                continue;
+            }
+        }
         if (reset[i] >= 32768 && it->s.stp.r1 < 32768)
             it->s.stp.pos = -1;
         it->s.stp.r1 = reset[i];
@@ -10415,6 +10466,12 @@ static void m_fx(const node_t *nd, inst_t *it, uint32_t n, uint32_t target)
 #ifndef ENG_PROF
 #define ENG_PROF(stage, node, part) ((void)0)
 #endif
+/* The device's time per copy (#802, modular.c, DIAG pages 144..160): a timestamp before a copy renders, and its span after,
+ * added to its module's sum on its lane's row. Compiled out unless ENG_ITEM_END is defined. */
+#ifndef ENG_ITEM_END
+#define ENG_ITEM_BEGIN() 0u
+#define ENG_ITEM_END(nd, it, t0) ((void)(t0))
+#endif
 /* The device's block timing (#802, #803; modular.c, blk_time.h): a timestamp before the voices (0), after them (1) and
  * before the Output modules' sum (2). Compiled out unless ENG_TMARK is defined. */
 #ifndef ENG_TMARK
@@ -10487,7 +10544,7 @@ static int sum_plain(const sum_t *sm)
  * (Not inlined: one copy for both render paths, as the flash has no room for two.) */
 static __attribute__((noinline)) void render_item(const node_t *nd, inst_t *it, uint32_t n, const inst_t *prev, int32_t *means)
 {
-    uint32_t m = (uint32_t)(nd - E.node), s, i;
+    uint32_t m = (uint32_t)(nd - E.node), s, i, t0 = ENG_ITEM_BEGIN();
     ENG_PROF(0, m, IT_V(nd, it));
     for (s = it->sum0; s < (uint32_t)it->sum0 + it->nsum; s++) {
         const sum_t *sm = &E.sum[s];
@@ -10580,6 +10637,7 @@ static __attribute__((noinline)) void render_item(const node_t *nd, inst_t *it, 
     } else
         process(nd, it, n);
     ENG_PROF(3, m, IT_V(nd, it));
+    ENG_ITEM_END(nd, it, t0);
 }
 
 /* the modules E.order[k0..k1) for one block of n frames: every part v = first, first + step, .. of a module in a poly group,
