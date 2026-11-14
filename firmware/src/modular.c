@@ -35,8 +35,9 @@
 #include "fm1_irq.h"
 #include "fm1_guard.h"
 #include "fm1_cpu1.h"          /* the second core (#271: main.c starts and checks it; engine.c render_split hands it parts) */
-#include "fm1_input.h"
 #include "fm1_timer.h"
+#define FM1_TICK_SPLIT_ARM(ticks) fm1_timer2_once(ticks)   /* a split dim pulse ends in TIMER2 (#803; main.c fm1_timer2_irq) */
+#include "fm1_input.h"
 #include "fm1_audio.h"
 #include "fm1_adc.h"
 #define FL_READ_UID 1

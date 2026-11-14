@@ -210,6 +210,7 @@ static volatile struct {
      * the note's first sample leaving the I2S DMA (the half it renders starts one half later) */
     uint32_t kb_n, kb_sum, kb_max, dac_sum, dac_max;
     uint32_t dim_n, dim_sum;     /* the dim pulses and their widths (TIMER4 ticks) */
+    uint32_t split_late;         /* split ticks (#803) whose one-shot had not come by the next tick */
 } fm1_in_stat;
 
 static void fm1__led_lines(uint32_t rowmask)       /* row bit 1 PA9, 2 PA10, 3 PH6, 4 PH9 */
@@ -242,10 +243,12 @@ static void fm1__sr_latch(void)
     FM1_PR(FM1_PA, FM1_OUT) |= 1u << 1;
     FM1_PR(FM1_PA, FM1_OUT) &= ~(1u << 1);
 }
+static uint8_t fm1__sr_ok;                         /* the 595 holds fm1__tick_col's word (fm1_input_tick's one-bit steps) */
 static void fm1__sr_word(uint32_t w)
 {
     fm1__sr_bits(w, 0, 16u);
     fm1__sr_latch();
+    fm1__sr_ok = 0;                                /* (another word: the next tick shifts all 16) */
 }
 
 static uint32_t fm1__rows(void)
@@ -542,12 +545,70 @@ static int fm1_led_anim_on(void) { return fm1__an_f != 0u; }
 static void fm1_led_idle_start(uint32_t glow) { fm1__anim_begin(glow, 1); }
 static int fm1_led_idle_on(void) { return fm1__an_f != 0u && fm1__an_idle; }
 static void fm1_led_anim_stop(void) { fm1__an_f = 0; }   /* (the LEDs as the last frame left them: the UI writes them) */
+/* #803: the tick's cost, a TIMER5 interrupt every 100 us that nests in the audio interrupt.
+ * - One bit a column. Column n's word is column p's moved one place along the 595 chain with one new bit (its bit 0):
+ *   the extra bit 11 + n of columns 0 and 1 is column 10's and 0's carried on. So the tick clocks one bit, not 16, from
+ *   every column but 1 (column 2 drops the carried bit 13): fm1__sr_ok says the 595 holds column p's word (cleared by
+ *   fm1__sr_word, which the polled scan uses). The edges are the same read-modify-writes; only fewer of them.
+ * - A split pulse. A glow of at least FM1_SPLIT_MIN_NS (DIM HIGH, 8 us) was waited inside the interrupt for the rest of
+ *   the pulse after the shift. With a one-shot (FM1_TICK_SPLIT_ARM, the app's TIMER2, the same priority as TIMER5) the
+ *   tick lights the pulse, clocks the next column's bit and returns; fm1_input_tick_end ends the pulse in the one-shot's
+ *   interrupt and does the rest of the tick (the latch, column n lit, column p's keys, the frame). Not while any LED
+ *   breathes in that column (its share of the pulse rides on the shift as before), nor without a one-shot (host
+ *   builds): the pulse is waited as before. A tick that finds the last one's end still due ends it first
+ *   (fm1_in_stat.split_late) */
+#ifndef FM1_TICK_SPLIT_ARM
+#define FM1_TICK_SPLIT_ARM(ticks) 0              /* (ticks: TIMER4 ticks; 1 when armed) */
+#endif
+#define FM1_SPLIT_MIN_NS 4000u
+static struct { uint8_t due, p, n; uint32_t t1, spent; } fm1__half;
+/* the tick from the latch on: column n latched and lit, column p's keys, the frame; spent: the tick's time before this */
+static void fm1__tick_rest(uint32_t p, uint32_t n, uint32_t t0, uint32_t spent)
+{
+    uint32_t g;
+    fm1__sr_latch();                               /* column n, the lines dark */
+    fm1__sr_ok = 1;
+    if (n == 0u)                                   /* (a new frame: the mid level's turn, before column 0 lights) */
+        fm1__mid_ph = (uint8_t)(fm1__mid_ph + 1u >= fm1__mid_n ? 0u : fm1__mid_ph + 1u);
+    fm1__led_lines(FM1__LIT(n));
+    fm1__tick_col = (uint8_t)n;
+    fm1__keys(p);                                  /* its keys now: no wait for the frame's end */
+    if (n == 0u) {
+        fm1__frame();
+        if (fm1__an_f)                             /* the power-on sweep: the next frame's picture */
+            fm1__anim_frame();
+    }
+    g = fm1_ticks() - t0 + spent;
+    fm1_in_stat.cost_sum += g;
+    fm1_in_stat.ticks++;
+    if (g > fm1_in_stat.cost_max)
+        fm1_in_stat.cost_max = g;
+}
+/* the split pulse's end (the one-shot's interrupt; a later tick, if it never came) */
+static void fm1_input_tick_end(void)
+{
+    uint32_t t = fm1_ticks();
+    if (!fm1__half.due)
+        return;
+    fm1__half.due = 0;
+    fm1__led_lines(0);
+    fm1_in_stat.dim_n++;
+    fm1_in_stat.dim_sum += t - fm1__half.t1;
+    fm1__tick_rest(fm1__half.p, fm1__half.n, t, fm1__half.spent);
+}
 static void fm1_input_tick(void)
 {
-    uint32_t p = fm1__tick_col, n = p + 1u == FM1_NCOL ? 0u : p + 1u;
-    uint32_t t0 = fm1_ticks(), g = t0 - fm1_in_stat.last, b = 0;
-    uint32_t w = 0xFFFFu ^ (1u << n) ^ (n < 2u ? 1u << (11u + n) : 0u), lit, dim = 0, k = fm1__dim_k;
-    uint32_t br = 0, kb = 0;
+    uint32_t p, n, t0, g, b = 0, w, lit, dim = 0, k = fm1__dim_k, br = 0, kb = 0, step;
+    if (fm1__half.due) {
+        fm1_in_stat.split_late++;
+        fm1_input_tick_end();
+    }
+    p = fm1__tick_col;
+    n = p + 1u == FM1_NCOL ? 0u : p + 1u;
+    t0 = fm1_ticks();
+    g = t0 - fm1_in_stat.last;
+    w = 0xFFFFu ^ (1u << n) ^ (n < 2u ? 1u << (11u + n) : 0u);
+    step = fm1__sr_ok && p != 1u;                  /* (the column's one bit: w's bit 0, w from bit 15 down) */
     fm1__led_lines(0);
     fm1_in_stat.last = t0;
     while (b < FM1_GAP_BINS - 1u && g >= (150u * FM1_TICKS_PER_US << b))
@@ -574,6 +635,30 @@ static void fm1_input_tick(void)
             br = kb ? fm1_led_breath[p] & ~(lit | dim) : 0u;
         }
     }
+    if (dim && !br && fm1__dim_t >= FM1__DIM_T(FM1_SPLIT_MIN_NS)) {   /* a split pulse (see above) */
+        uint32_t t1, e, T = fm1__dim_t;
+        t1 = fm1_ticks();
+        fm1__led_lines(lit | dim);
+        fm1__sr_bits(w, step ? 15u : 0u, 16u);     /* (the 595 still drives column p) */
+        e = fm1_ticks() - t1;
+        if (e + FM1__DIM_T(1000u) < T) {
+            fm1__half.p = (uint8_t)p;
+            fm1__half.n = (uint8_t)n;
+            fm1__half.t1 = t1;
+            fm1__half.spent = fm1_ticks() - t0;
+            fm1__half.due = 1;
+            if (FM1_TICK_SPLIT_ARM(T - e))
+                return;
+            fm1__half.due = 0;
+        }
+        while (fm1_ticks() - t1 < T)              /* (no one-shot, or little of the pulse left) */
+            ;
+        fm1__led_lines(0);
+        fm1_in_stat.dim_n++;
+        fm1_in_stat.dim_sum += fm1_ticks() - t1;
+        fm1__tick_rest(p, n, t0, 0);
+        return;
+    }
     if (dim | br) {                                /* the dim pulse of column p: over the first k bits */
         uint32_t t1, d, T = fm1__dim_t;
         t1 = fm1_ticks();                          /* (before the write: d spans one write and the bits) */
@@ -592,26 +677,10 @@ static void fm1_input_tick(void)
         fm1__dim_k = (uint8_t)(d > T ? (k ? k - 1u : 0u) : d < T && k < 16u ? k + 1u : k);
         fm1_in_stat.dim_n++;
         fm1_in_stat.dim_sum += d;
-    } else {
-        k = 0;
-    }
-    fm1__sr_bits(w, k, 16u);
-    fm1__sr_latch();                               /* column n, the lines dark */
-    if (n == 0u)                                   /* (a new frame: the mid level's turn, before column 0 lights) */
-        fm1__mid_ph = (uint8_t)(fm1__mid_ph + 1u >= fm1__mid_n ? 0u : fm1__mid_ph + 1u);
-    fm1__led_lines(FM1__LIT(n));
-    fm1__tick_col = (uint8_t)n;
-    fm1__keys(p);                                  /* its keys now: no wait for the frame's end */
-    if (n == 0u) {
-        fm1__frame();
-        if (fm1__an_f)                             /* the power-on sweep: the next frame's picture */
-            fm1__anim_frame();
-    }
-    g = fm1_ticks() - t0;
-    fm1_in_stat.cost_sum += g;
-    fm1_in_stat.ticks++;
-    if (g > fm1_in_stat.cost_max)
-        fm1_in_stat.cost_max = g;
+        fm1__sr_bits(w, k, 16u);
+    } else
+        fm1__sr_bits(w, step ? 15u : 0u, 16u);
+    fm1__tick_rest(p, n, t0, 0);
 }
 
 /* main-loop critical section against fm1_input_tick (main loop only: it

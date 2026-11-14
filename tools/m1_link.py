@@ -628,22 +628,25 @@ def blocktime(link, a):
 
 
 def t5parts(link, a):
-    """DIAG page 177 (main.c fm1_timer5_irq): TIMER5's parts over one window of SECONDS"""
+    """DIAG page 177 (main.c fm1_timer5_irq, fm1_timer2_irq): TIMER5's parts over one window of SECONDS"""
     secs = float(a[0]) if a else 3.0
     first = diag_words(link, 177)
     if len(first) < 8:
         sys.exit("no TIMER5 page (a firmware from before #803's split)")
+    t = time.monotonic()
     time.sleep(secs)
     w = diag_words(link, 177)
-    ns = lambda ticks: ticks * 125 / 3                 # TIMER4: 24 MHz
-    span = (w[7] - first[7]) & 0xFFFFFFFF
-    n, scan, un, usb, mx = w[:5]
+    span = (time.monotonic() - t) * 24e6                # TIMER4 ticks (24 MHz), from the host's clock
+    ns = lambda ticks: ticks * 125 / 3
+    n, scan, un, usb, b, bn = w[0], w[1], w[2], w[3], w[4], w[7]
     dn, dsum = (w[5] - first[5]) & 0xFFFFFFFF, (w[6] - first[6]) & 0xFFFFFFFF
     if not n:
         sys.exit("no TIMER5 interrupts in the window")
-    print(f"window {ns(span) / 1e6:.0f} ms: {n} interrupts ({n / (ns(span) / 1e9):.0f} a second)")
-    print(f"  the LED and key scan: mean {ns(scan) / n / 1000:.2f} us a tick, most {ns(mx) / 1000:.2f} us; "
-          f"{100 * scan / span:.2f} % of core 0")
+    print(f"window {secs:.1f} s: {n} TIMER5 interrupts ({n / secs:.0f} a second)")
+    print(f"  the LED and key scan in TIMER5: mean {ns(scan) / n / 1000:.2f} us a tick; {100 * scan / span:.2f} % of core 0")
+    if bn:
+        print(f"  the split pulses' ends (TIMER2): {bn}, mean {ns(b) / bn / 1000:.2f} us each; {100 * b / span:.2f} % of core 0")
+    print(f"  the scan in all: {100 * (scan + b) / span:.2f} % of core 0, {ns(scan + b) / n / 1000:.2f} us a tick")
     if un:
         print(f"  the USB / MIDI polls: {un}, mean {ns(usb) / un / 1000:.2f} us each; {100 * usb / span:.2f} % of core 0")
     if dn:
