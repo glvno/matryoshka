@@ -20,10 +20,10 @@ import { validatePatch, type Patch } from '../src/patch';
 import { deviceView } from '../src/poly';
 
 const ROOT = new URL('../../', import.meta.url).pathname;
-/** The combined development build: every factory patch, transport stopped and running. */
+/** The two-core schedule's build (#802): every factory patch of the 1.14 bank, transport stopped and running. */
 const NOW: { file: string; at?: Record<string, number>; only?: string[]; skip?: string[] }[] = [
-  { file: 'docs/measurements/cpu-survey-2026-11-09-rig-integration.json' },
-  { file: 'docs/measurements/cpu-survey-2026-11-09-rig-integration-run.json' },
+  { file: 'docs/measurements/cpu-survey-2026-11-14-rig-two-core.json' },
+  { file: 'docs/measurements/cpu-survey-2026-11-14-rig-two-core-run.json' },
 ];
 /** the survey of the firmware before (release-1.10 with the second core) and the commit its factory patches are from */
 const BEFORE = { file: 'docs/measurements/cpu-survey-2026-11-05-rig-merged-split.json', commit: 'e3235d64' };
@@ -67,8 +67,8 @@ function targets(files: { file: string; at?: Record<string, number>; only?: stri
   return out;
 }
 
-// The historical survey is fitted against its released graphs, not today's candidates.
-const survey = JSON.parse(readFileSync(new URL('../src/cpu-survey-factory-1.13.json', import.meta.url), 'utf8')) as { patches: Record<string, Patch> };
+// The survey is fitted against the graphs it played (the 1.14 bank), not today's candidates.
+const survey = JSON.parse(readFileSync(new URL('../src/cpu-survey-factory-1.14.json', import.meta.url), 'utf8')) as { patches: Record<string, Patch> };
 const today = new Map(Object.entries(survey.patches).map(([name, patch]) => [name, validatePatch(structuredClone(patch), DEFS)]));
 const now = targets(NOW, (n) => (today.has(n) ? voicesOf(today.get(n)!) : undefined));
 // patches whose structure changed since today's survey and that it could not measure (none since #781's survey)
@@ -95,11 +95,14 @@ for (const n of CHANGED) {
   if (t) now.set(n, new Map([...t].map(([v, us]) => [v, us * rise])));
 }
 
-/** a factory patch's engine: its top-level assembly of the patch's name (<7PH, the 909 Kit, Init and the like have none) */
-const engineOf = (p: Patch): string | undefined => assembliesOf(p).find((x) => !parentOf(p, x.id) && x.name.toLowerCase() === p.name.toLowerCase())?.name;
+/** a factory patch's engine: its top-level assembly of the patch's name, or of ENGINE_NAME's (<7PH, Init and the like
+ * have none) */
+const ENGINE_NAME: Record<string, string> = { 'Hera 3': 'Hera 4' };   // (the 1.14 bank's Hera 3 plays the Hera 4 engine)
+const engineOf = (p: Patch): string | undefined => assembliesOf(p).find((x) => !parentOf(p, x.id) && x.name.toLowerCase() === (ENGINE_NAME[p.name] ?? p.name).toLowerCase())?.name;
 
 // the scale and the fixed time: est = a x before + b, least squares over the targets of the patches without an engine of
-// their own (what the scale is for: modules outside a factory engine; each engine then gets its factor)
+// their own (what the scale is for: modules outside a factory engine; each engine then gets its factor). A survey with
+// fewer than three such patches (the 1.14 bank has none) keeps the frozen scale (cpu-costs.ts SURVEY, CORES)
 const pts: { name: string; v: number; us: number; was: number; patch: Patch }[] = [];
 for (const [n, t] of now)
   for (const [v, us] of t) {
@@ -109,8 +112,10 @@ for (const [n, t] of now)
 const plain = pts.filter((p) => !engineOf(p.patch));
 const N = plain.length, sx = plain.reduce((s, p) => s + p.was, 0), sy = plain.reduce((s, p) => s + p.us, 0);
 const sxx = plain.reduce((s, p) => s + p.was * p.was, 0), sxy = plain.reduce((s, p) => s + p.was * p.us, 0);
-const a = (N * sxy - sx * sy) / (N * sxx - sx * sx), b = (sy - a * sx) / N;
-const scaled: CpuTable = { ...base, cyclesPerUs: Math.round((10 * BASE.cyclesPerUs) / a) / 10, fixedUs: Math.round(b + a * BASE.fixedUs), cores: { ...base.cores!, idleUs: Math.round(a * BASE.idleUs) } };
+const frozen = new Set(plain.map((p) => p.name)).size < 3;
+const a = frozen ? BASE.cyclesPerUs / CPU.cyclesPerUs : (N * sxy - sx * sy) / (N * sxx - sx * sx), b = frozen ? CPU.fixedUs - a * BASE.fixedUs : (sy - a * sx) / N;
+const scaled: CpuTable = frozen ? { ...CPU, rig: undefined }
+  : { ...base, cyclesPerUs: Math.round((10 * BASE.cyclesPerUs) / a) / 10, fixedUs: Math.round(b + a * BASE.fixedUs), cores: { ...base.cores!, idleUs: Math.round(a * BASE.idleUs) } };
 
 // each engine's factor: the most any of its patch's targets needs (bisection on the estimate, which grows with it)
 const engines: Record<string, number> = {};

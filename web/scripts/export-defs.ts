@@ -14,6 +14,7 @@ import { FALLBACK_NAME, fallbackPatch } from '../src/fallback';
 import { factoryPresets, factoryRackPresets } from '../src/factory-presets';
 import { controlsHeader, readmeWithControls } from './controls-h';
 import { PRESET_MIGRATIONS } from '../src/preset-migrate';
+import { CPU, scheduleCost } from '../src/cpu';
 import { readLineage } from './lineage-lib';
 import { CASE_PICKS, casesHeader, migrationCases, migrationTables } from './preset-migration-c';
 import { aotHeader } from './gen-aot';
@@ -226,6 +227,11 @@ for (const t of TYPE_ORDER) {
   w(`    {${n}_NIN, ${n}_NOUT, ${n}_NPAR, ${d.inputs.reduce((mask, port, i) => mask | (d.params.some((pd) => pd.input === port.name) ? 1 << i : 0), 0)}, ${n}_CVBASE, ${(() => { const t = thruInput(d); return t ? d.inputs.findIndex((p) => p.name === t) : -1; })()}, ${n}_NDATA, ${d.outputs.reduce((mask, o, i) => mask | (o.kind === 'audio' ? 1 << i : 0), 0)}, ${has ? `${n}_MIN, ${n}_MAX, ${n}_DEF, ${n}_INC` : '0, 0, 0, 0'}, "${d.label.toUpperCase()}", ${has ? `${n}_PN` : '0'}, ${n}_INNAMES, ${has ? `${n}_LOG, ${n}_UNIT, ${n}_CH` : '0, 0, 0'}, ${d.params.some((p) => p.top !== undefined) ? `${n}_TOP` : '0'}, ${d.params.some((p) => p.since !== undefined) ? `${n}_SINCE` : '0'}, ${has ? `${n}_STEP` : '0'}},   /* ${t} */`);
 }
 w('};');
+// what one copy of each type costs a block, in 64 cycles of the CPU table: what the two-core schedule balances (engine.c
+// sched_build, #802; cpu.ts scheduleCost, the editor's mirror)
+w('/* one copy of each type, a block: what the two-core schedule balances (engine.c sched_build, #802), in 64 cycles of');
+w(' * web/src/cpu-costs.json (its run and parameter inputs: cpu.ts scheduleCost) */');
+w(`static const uint16_t DEF_COST[N_TYPES] = {${TYPE_ORDER.map((t) => scheduleCost(CPU, t)).join(', ')}};`);
 w();
 writeFileSync(new URL('../../firmware/src/defs.h', import.meta.url), L.join('\n'));
 

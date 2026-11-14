@@ -4,7 +4,7 @@ import { recoveredLines } from '../src/test-buffer-budget';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { PRESETS, make } from '../src/presets';
-import { ARENA, BUF_BYTES, deviceBudget, encodePatch, lineBudget, linePlace, poolUse } from '../src/patchbin';
+import { ARENA, BUF_BYTES, deviceBudget, deviceBuffers, encodePatch, lineBudget, linePlace, poolUse } from '../src/patchbin';
 import { deviceView } from '../src/poly';
 import { signalBuffers } from '../src/signal-buffers';
 import { withParts } from '../src/test-poly';
@@ -72,6 +72,7 @@ const report = fixtures.map(([name, p], i) => {
   const bin = encodePatch(p, true), file = `${String(i).padStart(2, '0')}.m1p`;
   writeFileSync(new URL(file, out), bin);
   return { name, file, bytes: bin.length, sha256: createHash('sha256').update(bin).digest('hex'), ...count,
+    scheduledPhysical: deviceBuffers(patch, groups),   // (the default firmware's: the two-core schedule's while it fits, #802)
     recoverableBytes: (count.values - count.physical) * BUF_BYTES,
     lineArenaBytes: (() => {
       const sizes = memory.modules.flatMap((m) => Array(m.copies).fill(m.bytes / m.copies));

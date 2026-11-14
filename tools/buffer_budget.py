@@ -21,14 +21,19 @@ def run(args, **kwargs):
 
 def main():
     run(['npx', 'vite-node', 'scripts/buffer-budget.ts'], cwd=ROOT / 'web')
+    # The accounting variants build without the two-core schedule (-DENG_SCHED=0): their buffers are the one-core
+    # allocation the editor counts. The *-sched variants are the default build (#802): a schedule takes more buffers only
+    # while they and the lines fit, so they load whatever the editor admits and play the same audio.
     variants = {
-        'baseline': ['-DENG_BUF_ACCOUNTING=0'],
-        'separate': ['-DENG_BUF_REUSE=0'],
-        'poison': ['-DENG_BUF_ACCOUNTING=0', '-DENG_POISON'],
-        'recovered': [],
-        'recovered-poison': ['-DENG_POISON'],
+        'baseline': ['-DENG_BUF_ACCOUNTING=0', '-DENG_SCHED=0'],
+        'separate': ['-DENG_BUF_REUSE=0', '-DENG_SCHED=0'],
+        'poison': ['-DENG_BUF_ACCOUNTING=0', '-DENG_POISON', '-DENG_SCHED=0'],
+        'recovered': ['-DENG_SCHED=0'],
+        'recovered-poison': ['-DENG_POISON', '-DENG_SCHED=0'],
+        'recovered-sched': [],
+        'recovered-sched-poison': ['-DENG_POISON'],
         'compiled': ['-DENG_AOT=1'],
-        'reference': ['-DENG_ARENA_EXTRA=65536u', '-DENG_BUF_REUSE=0'],
+        'reference': ['-DENG_ARENA_EXTRA=65536u', '-DENG_BUF_REUSE=0', '-DENG_SCHED=0'],
     }
     for name, flags in variants.items():
         run(['cc', '-O1', '-w', *flags, '-Ifirmware/src', 'firmware/test/buffer_budget.c',
@@ -42,7 +47,7 @@ def main():
     for fixture in fixtures:
         runs = {}
         for variant in variants:
-            for cores in ([0, 1, 2] if variant in ('baseline', 'recovered', 'recovered-poison', 'compiled') else [0]):
+            for cores in ([0, 1, 2] if variant in ('baseline', 'recovered', 'recovered-poison', 'recovered-sched', 'recovered-sched-poison', 'compiled') else [0]):
                 name = f'{variant}-{cores}'
                 env = dict(os.environ, HOST_CORES=str(cores), HOST_CHAOS='15')
                 got = subprocess.run([str(OUT / ('check-' + variant)), str(OUT / fixture['file'])],
@@ -55,11 +60,16 @@ def main():
                 result = json.loads(got.stdout)
                 expected_physical = fixture['values'] if variant in ('separate', 'reference') or result['compiledGuard'] else fixture['physical']
                 assert result['values'] == fixture['values'], (fixture['name'], name, 'values')
-                assert result['physical'] == expected_physical, (fixture['name'], name, 'physical', result, fixture)
                 free = fixture['sharedArenaBeforeLines'] if variant.startswith('recovered') else fixture['arenaBeforeLines']
                 if variant == 'reference':
                     free += 65536
-                assert result['arenaBeforeLines'] == free, (fixture['name'], name, 'arena', result, free)
+                if 'sched' in variant:   # (the editor's mirror of the schedule, patchbin.ts deviceBuffers, #802)
+                    expected_physical = fixture['scheduledPhysical']
+                    assert result['physical'] == expected_physical, (fixture['name'], name, 'physical', result, fixture)
+                    assert result['arenaBeforeLines'] == free - (expected_physical - fixture['physical']) * 512, (fixture['name'], name, 'arena', result, free)
+                else:
+                    assert result['physical'] == expected_physical, (fixture['name'], name, 'physical', result, fixture)
+                    assert result['arenaBeforeLines'] == free, (fixture['name'], name, 'arena', result, free)
                 if variant == 'compiled':
                     assert result['lineArenaBytes'] == fixture['lineArenaBytes'], (fixture['name'], name, 'lines')
                     assert result['compiledScratchOffset'] + result['compiledScratchBytes'] <= free, (fixture['name'], name, 'compiled scratch')
@@ -74,14 +84,18 @@ def main():
         if fixture['name'] == 'recovered-lines':
             assert fixture['sharedLinesFit'] and fixture['over'] == ['memory'], fixture
             assert runs['recovered-0']['peak'] > 0, 'Recovered fixture must sound'
+            # (its lines fit only beside the one-core allocation: the schedule gives way to it, #802, and the editor knows)
+            assert fixture['scheduledPhysical'] == fixture['physical'], fixture
         report.append(dict(fixture, runs=runs))
         print(f"{fixture['name']}: {fixture['values']} values / {fixture['physical']} physical; "
               f"{fixture['recoverableBytes']} B potentially recoverable", flush=True)
     (OUT / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
     assert any(x['runs']['compiled-0'].get('compiledGuard') for x in report), 'No compiled candidate covered'
     assert any(x['runs']['compiled-2'].get('compiledRendered') and x['runs']['compiled-2'].get('laneJobs') for x in report), 'No concurrent compiled execution covered'
-    assert any(x['runs']['baseline-2'].get('laneJobs', 0) for x in report), 'No concurrent-core work covered'
-    print(f'{len(report)} fixtures: allocation parity and exact audio across separate/shared/recovered/poisoned buffers and host lanes.')
+    assert any(x['runs']['recovered-sched-2'].get('laneJobs', 0) for x in report), 'No concurrent-core work covered'
+    assert any(x['runs']['recovered-sched-0']['physical'] > x['physical'] for x in report), 'No two-core schedule covered'
+    print(f'{len(report)} fixtures: allocation parity and exact audio across separate/shared/recovered/poisoned buffers, '
+          'the two-core schedule and host lanes.')
     print('CPU is an editor estimate only. No emulator, device timing, owner listening, or capacity approval.')
 
 

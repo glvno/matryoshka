@@ -61,11 +61,18 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 #include "font_bc.c"
 #define ENG_POOL __attribute__((section(".pool")))
 #define ENG_LOWRAM __attribute__((section(".lowram")))   /* app.ld: the SRAM below the RAM region (#273) */
-#define ENG_LANE_HOOKS 1           /* #271: engine.c hands lane 1 of a split segment to the second core (fm1_cpu1.h) */
+#define ENG_NOINIT __attribute__((section(".noinit")))   /* app.ld: NOINIT (#802: the two-core schedule; the pool and the
+                                                          * RAM region have no room to spare) */
+#define ENG_LANE_HOOKS 1           /* #271, #802: engine.c hands lane 1 of its schedule to the second core (fm1_cpu1.h) */
 #define BT_POOL ENG_POOL
 #include "blk_time.h"              /* the block's time, measured (#802, #803: DIAG pages 132..139) */
 #define ENG_TMARK(k) (bt_eng[k] = fm1_ticks())
+#define ENG_LANE_PUT(p, x) fm1_cpu1_put((p), (x))                 /* a lane's progress, across the cores (#802) */
+#define ENG_LANE_GET(p) fm1_cpu1_get(p)
+#define ENG_LANE_NOW() fm1_ticks()                       /* core 0's waits inside the job count as its waits (BT_WAIT) */
+#define ENG_LANE_WAITED(t0) (bt_wait += fm1_ticks() - (t0))
 static uint8_t lanes_off;                  /* DIAG pages 110 / 111 (tools/m1_link.py cores split off / on): core 0 renders every part (to measure) */
+static uint32_t lane_t0;                   /* when the last job was handed over (eng_lane_poll) */
 static void bt_parts(uint32_t group);      /* (after engine.c; the actual segment, interpreted or compiled) */
 static int eng_lane_run(void (*fn)(uint32_t), uint32_t arg)
 {
@@ -76,9 +83,14 @@ static int eng_lane_run(void (*fn)(uint32_t), uint32_t arg)
         took = fm1_cpu1_run(bt_c1_job, arg);                            /* wait; fn runs inside bt_c1_job (timed) */
     }
     bt_handed(t, took);
+    lane_t0 = t;
     if (took)
         bt_parts(arg);
     return took;
+}
+static int eng_lane_poll(void)             /* 1 done, 0 working, -1 given up (held, barred): core 0 renders the lane */
+{
+    return fm1_cpu1_poll(lane_t0);
 }
 static int eng_lane_wait(void)             /* -1: given up (held, barred): core 0 renders the lane */
 {
@@ -88,12 +100,18 @@ static int eng_lane_wait(void)             /* -1: given up (held, barred): core 
     return rc;
 }
 #include "engine.c"
-static void bt_parts(uint32_t group)       /* the awake parts of the segment just handed over, per lane (render_split: */
-{                                          /* the even parts on core 0, the odd ones on the second core) */
-    const grp_t *g = &E.grp[group];
+static void bt_parts(uint32_t arg)         /* the awake items handed over, per lane: the schedule's (#802), or a poly */
+{                                          /* segment's of group `arg` (render_split: the even parts on core 0) */
     uint32_t v;
-    for (v = 0; v < g->parts; v++)
-        if (!E.pv[g->pv0 + v].skip)
+#if ENG_SCHED
+    if (sch.on) {
+        bt.parts[0] += sch_woke(0u);
+        bt.parts[1] += sch_woke(1u);
+        return;
+    }
+#endif
+    for (v = 0; v < E.grp[arg].parts; v++)
+        if (!E.pv[E.grp[arg].pv0 + v].skip)
             bt.parts[v & 1u]++;
 }
 #include "presets.h"

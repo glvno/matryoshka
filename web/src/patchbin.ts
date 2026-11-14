@@ -108,7 +108,8 @@ import { deviceView, keysInto, MAX_POLY, type DeviceGroup, VOICING_CABLE_INPUTS 
 import { devicesOf, NAME_MAX, type Device, type PageRow } from './pages';
 import { allModules, assemblyById, ROW_NAMES_MAX } from './assembly';
 import { structureAndRows } from './structure';
-import { cpuEstimate, type CpuEstimate } from './cpu';
+import { CPU, cpuEstimate, scheduleCost, type CpuEstimate } from './cpu';
+import { schedule, type Schedule } from './schedule';
 import { instIsEngine } from './engines';
 import { engineUnreached } from './arm';
 import { FX_STAGE_TARGET_MAX, fxBusOf, type FxStageKind } from './fx-bus';
@@ -1165,6 +1166,17 @@ export function lineBudget(source: Patch, allocation: BufferAllocation = 0): Lin
   const { patch: p, groups } = deviceView(source, true);
   return linesOf(p, copiesOf(groups), poolUse(p, groups, allocation));
 }
+/** does a two-core schedule's allocation fit (#802, engine.c eng_load): its buffers (the lanes' own) and the lines, beside
+ * the copies and values of allocation rule 1. Input: deviceView(source, true) */
+export function scheduleFits(p: Patch, groups: DeviceGroup[], s: Schedule): boolean {
+  return linesOf(p, copiesOf(groups), { ...poolUse(p, groups, 1), physicalBuffers: signalBuffers(p, groups, false, s).physical }).fits;
+}
+/** the physical signal buffers engine.c allocates (rule 1): its two-core schedule's while they fit, else the one-core
+ * allocation's. Input: deviceView(source, true) */
+export function deviceBuffers(p: Patch, groups: DeviceGroup[]): number {
+  const s = schedule(p, groups, (type) => scheduleCost(CPU, type));
+  return signalBuffers(p, groups, false, s.on && scheduleFits(p, groups, s) ? s : undefined).physical;
+}
 export const KEY_ROUTING_BYTES = 8040;
 function linesOf(p: Patch, ninst: (id: number) => number, pool: PoolUse): LineBudget {
   const modules: LineUse[] = [];
@@ -1312,7 +1324,7 @@ export function deviceBudget(source: Patch, allocation: BufferAllocation = 0): B
   const counted = items.filter((i) => (i.max > 2 && !SANITY_CAPS.has(i.key)) || i.used > i.max);
   const fullest = counted.reduce<BudgetItem | undefined>((a, i) => (!a || i.used / i.max > a.used / a.max ? i : a), undefined);
   const memory = fullest ? fullest.used / fullest.max : 0;
-  const cpu = cpuEstimate(source);
+  const cpu = cpuEstimate(source, CPU, 2, (s) => scheduleFits(p, groups, s));
   if (cpu.use > 1) over.push({ key: 'cpu', label: 'CPU (estimate)', used: Math.round(cpu.use * 100), max: 100 });
   for (const label of browserOnly(source)) over.push({ key: 'browser', label, used: 1, max: 0 });
   return { buffers, instances, params, fits: !over.length, items, over, memory, fullest, cpu, use: Math.max(memory, cpu.use), lines };

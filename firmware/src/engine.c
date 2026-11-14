@@ -19,6 +19,9 @@
 #ifndef ENG_LOWRAM
 #define ENG_LOWRAM
 #endif
+#ifndef ENG_NOINIT                      /* (modular.c: the RAM NOINIT region, not cleared at boot: what is there is set before use) */
+#define ENG_NOINIT
+#endif
 
 /* The patch: modules, cables, summed inputs; below them the memory: one arena a load divides as the patch needs it
  * (#649, eng_arena: the module copies, the parameter values, the signal buffers and the lines). A patch that does not
@@ -868,9 +871,30 @@ static volatile uint16_t panel_buttons; /* the patch buttons held / switched on 
 #define IT_V(nd, it) ((uint32_t)((it) - &inst_pool[(nd)->inst0]))
 #define IT_G(nd) (&E.grp[(nd)->grp])
 #define IT_PV(nd, it) (&E.pv[E.grp[(nd)->grp].pv0 + IT_V(nd, it)])
-/* the lane an instance renders in (#271): the odd parts of a poly group are lane 1, which the second core may render while
- * core 0 renders lane 0; each lane has its own scratch (lane_scr) and its own dummy output */
-#define IT_LANE(nd, it) ((nd)->grp ? IT_V(nd, it) & 1u : 0u)
+/* the lane a copy renders in (#271, #802): lane 1 runs on the second core while lane 0 runs on core 0. Each lane has its
+ * own scratch (lock_buf, ramp_buf), its own dummy output and its own buffers (buf_take), so the two cores never share
+ * them. Set when a patch loads (sched_build): the lanes of its two-core schedule, else the odd parts of a poly group. One
+ * bit per copy (the pool and the RAM region have no room to spare) */
+static uint8_t inst_lane[(ENG_MAX_INST + 8u) / 8u] ENG_NOINIT;
+#define LANE_OF(ix) ((uint32_t)(inst_lane[(ix) >> 3] >> ((ix) & 7u)) & 1u)
+#define IT_LANE(nd, it) ((void)(nd), LANE_OF((uint32_t)((it) - inst_pool)))
+static void lane_set(uint32_t ix, uint32_t lane)
+{
+    inst_lane[ix >> 3] = (uint8_t)((inst_lane[ix >> 3] & ~(1u << (ix & 7u))) | lane << (ix & 7u));
+}
+/* #802: the patch's two-core schedule (sched_build). An item is one copy of a module (one part's, or the module's when it
+ * runs once). Each lane renders its items in E.order's order; before an item it waits until the other lane has finished
+ * the items it depends on, which come earlier in E.order (need: that many of the other lane's first items). */
+typedef struct {
+    uint8_t on;                         /* the patch renders on two lanes (else render_split) */
+    uint16_t n[2];                      /* each lane's items: lane 0's first in it[], then lane 1's */
+    uint16_t it[ENG_MAX_INST + 1u];     /* an item: its module (an index of E.node) << 3 | its part; SCH_PUB: an item of the
+                                         * other lane waits for it (its lane publishes its progress after it) */
+    uint8_t need[ENG_MAX_INST + 1u];    /* before it: how many of the other lane's first items must be done */
+} sched_t;
+#define SCH_PUB 0x8000u
+typedef char sch_part_bits_check[ENG_MAX_PARTS <= 8 && ENG_MAX_MODULES <= 128 ? 1 : -1];   /* (it[]'s fields) */
+static sched_t sch ENG_NOINIT;
 /* a granular line: the recording (Q13 like the delay) and the grains reading it (start, read phase from it Q16, rate Q16,
  * window phase and increment (u32 turns, half a turn over the grain), samples left) */
 typedef struct { uint32_t start, rp, rate, wph, winc, left; } grain_t;
@@ -1063,18 +1087,20 @@ static void visit(uint32_t id, uint8_t *st)
  * patch needs far fewer buffers than values. The output is the same, bit for bit: every module writes each of its
  * connected outputs whole before anything reads them in that block. A value keeps its own buffer (BUF_FOREVER) when it is
  * read in the next block (a feedback cable; a cable out of its poly group: an idle part's outputs stay silent, part_quiet
- * reads them after the render) or outside the render (buf_late). The second core (#271): lane 1 of a split segment runs
- * at the same time as lane 0, so a buffer serves one lane only (the odd parts of a group that may split, else lane 0),
- * and a value one lane writes and the other reads lives to the end of the segment that reads it. Allocation rule 1 charges
- * only physical buffers. Comparison builds (rule 0) still reserve one buffer per value. */
+ * reads them after the render) or outside the render (buf_late). The second core (#271, #802): the two lanes run at the
+ * same time, so a buffer serves one lane only (inst_lane), and a value one lane writes and the other reads keeps its own
+ * buffer for the block when the patch has a two-core schedule (sched_build: the lanes meet only where one waits for the
+ * other), else lives to the end of the poly segment that reads it (the odd parts' lanes). Allocation rule 1 charges
+ * only the physical buffers of the one-core allocation: a schedule takes more only while they and the lines fit
+ * (eng_load). Comparison builds (rule 0) still reserve one buffer per value. */
 #ifndef ENG_BUF_REUSE
 #define ENG_BUF_REUSE 1
 #endif
 #define BUF_FOREVER 0x7FFFFFFF
 typedef struct { esig_t *base; uint32_t n, values; int keep; } bufs_t;   /* the buffers (in a row from base), the values given one */
-/* may this module's run be split across the cores (lane_splits, before the parts are known: as many as its copies)? */
+/* may this module's run be split across the cores by parts (the odd parts' lanes, before the parts are known: as many as
+ * its copies)? */
 static int buf_split(const node_t *nd) { return nd->grp && nd->ninst >= 2u && nd->type != T_STEPS; }
-static uint32_t buf_lane(const node_t *nd, uint32_t v) { return buf_split(nd) ? v & 1u : 0u; }
 /* inputs read outside the module's turn: the Output's after the render, Main's morph and an Arpeggiator's before it, the
  * Part's assign and unison after it (group_cables) */
 static int buf_late(const node_t *nd) { return nd->type == T_OUTPUT || nd->type == T_FM1 || nd->type == T_ARP || nd->type == T_PART; }
@@ -1107,8 +1133,12 @@ static int32_t buf_end(uint32_t m, uint32_t p, uint32_t s, int32_t d, uint32_t l
             int32_t at = pos[t];
             if ((f->ninst > 1u ? w : 0u) != s)
                 continue;
-            if (buf_lane(r, w) != lane && buf_split(r))
-                at = seg_end[at];
+            if (LANE_OF(r->inst0 + w) != lane) {     /* read by the other lane */
+                if (sch.on)
+                    return BUF_FOREVER;
+                if (buf_split(r))
+                    at = seg_end[at];
+            }
             if (at > end)
                 end = at;
         }
@@ -1763,6 +1793,8 @@ static void pat_layout(void)
 
 static int aot_buffer_guard(const uint8_t *p, uint32_t len);
 static void aot_bind(const uint8_t *p, uint32_t len, uint32_t lines);   /* aot.c (#808) */
+static void sched_build(void);                                          /* the patch's two-core schedule (#802) */
+static void sched_off(void);
 uint32_t eng_origins_end(const uint8_t *p, uint32_t len, uint32_t at)
 {
     uint32_t n, i, previous = 0;
@@ -1917,6 +1949,56 @@ static int fx_load(const uint8_t *p, uint32_t len, uint32_t at, uint32_t devices
     }
     fx.count = count;
     return (int)(end - p);
+}
+
+/* the dummy for the unconnected output ports, and a buffer for each value, the connected outputs and the summed inputs of
+ * every copy, in the order they are written: a buffer whose value has ended takes the next (buf_take, #800). Each copy's
+ * in its lane (inst_lane). pos and seg_end: scratch of ENG_MAX_MODULES. 0, or -6: they do not fit */
+static int bufs_place(const uint8_t *p, uint32_t len, uint8_t *pos, uint8_t *seg_end)
+{
+    uint32_t i, j, k, v, c;
+    bufs_t bs;
+    for (i = 0; i < E.nmod; i++)
+        for (k = 0; k < E.node[i].ninst; k++)
+            for (j = 0; j < DEFS[E.node[i].type].nout; j++)
+                inst_pool[E.node[i].inst0 + k].out[j] = LANE_OF(E.node[i].inst0 + k) ? dummy_out1 : dummy_out;
+    bs.base = (esig_t *)((uint8_t *)eng_arena + ar_lo);
+    bs.n = bs.values = 0;
+    bs.keep = !ENG_BUF_REUSE || aot_buffer_guard(p, len);
+#ifdef ENG_POISON
+    poi_n = 0;
+#endif
+    for (k = 0; k < E.norder; k++)
+        pos[E.order[k]] = (uint8_t)k;
+    for (k = E.norder; k-- > 0;) {                   /* the last place of the run of split-able modules of one group that
+                                                      * place k is in (a poly segment), k itself outside one */
+        const node_t *nd = &E.node[E.order[k]], *nx = k + 1u < E.norder ? &E.node[E.order[k + 1u]] : 0;
+        seg_end[k] = (uint8_t)(nx && buf_split(nd) && buf_split(nx) && nx->grp == nd->grp ? seg_end[k + 1u] : k);
+    }
+    for (k = 0; k < E.norder; k++) {
+        uint32_t m = E.order[k];
+        node_t *nd = &E.node[m];
+        for (j = 0; j < DEFS[nd->type].nin; j++) {   /* its summed inputs (it->in holds the buffer until they are wired) */
+            int sum = buf_nsrc(m, j) >= 2u;
+            for (v = 0; v < nd->ninst; v++)
+                if (!(inst_pool[nd->inst0 + v].in[j] = sum ? buf_take(&bs, (int32_t)k, buf_late(nd) ? BUF_FOREVER : (int32_t)k, LANE_OF(nd->inst0 + v)) : zero_buf))
+                    return -6;
+        }
+        for (j = 0; j < DEFS[nd->type].nout; j++) {  /* its connected outputs */
+            for (c = 0; c < E.ncab && !(E.from_m[c] == m && E.from_p[c] == j); c++)
+                ;
+            for (v = 0; c < E.ncab && v < nd->ninst; v++)
+                if (!(inst_pool[nd->inst0 + v].out[j] = buf_take(&bs, (int32_t)k, buf_end(m, j, v, (int32_t)k, LANE_OF(nd->inst0 + v), pos, seg_end), LANE_OF(nd->inst0 + v))))
+                    return -6;
+        }
+    }
+    if (!ENG_BUFFER_ALLOCATION && bs.values > bs.n && !arena_lo((bs.values - bs.n) * ENG_BUF_BYTES))   /* conservative allocation rule */
+        return -6;
+    E.nbuf = (uint16_t)bs.values;
+    E.nphys = (uint16_t)bs.n;
+    for (i = 0; i < bs.n * ENG_BLOCK; i++)
+        bs.base[i] = 0;
+    return 0;
 }
 
 int eng_load(const uint8_t *p, uint32_t len)
@@ -2549,51 +2631,32 @@ int eng_load(const uint8_t *p, uint32_t len)
     for (i = 0; i < E.nmod; i++)
         if (st[i] == 0)
             visit(i, st);
-    /* the dummy for the unconnected output ports; a buffer for each value, the connected outputs and the summed inputs of
-     * every copy, in the order they are written: a buffer whose value has ended takes the next (buf_take, #800) */
-    for (i = 0; i < E.nmod; i++)
-        for (k = 0; k < E.node[i].ninst; k++)
-            for (j = 0; j < DEFS[E.node[i].type].nout; j++)
-                inst_pool[E.node[i].inst0 + k].out[j] = E.node[i].grp && (k & 1u) ? dummy_out1 : dummy_out;
+    /* the lines' bytes (placed last: line_place) */
+    nl = 0;
+    for (i = 0; i < E.nmod; i++) {
+        uint32_t b = line_bytes(E.node[i].type, E.node[i].par);
+        for (k = 0; b && k < E.node[i].ninst; k++) {
+            if (nl >= ENG_MAX_LINES)
+                return -4;
+            line_sz[nl++] = b;
+        }
+    }
+    /* the lanes (#802) and the buffers: a two-core schedule's while they and the lines fit, else the one-core allocation's
+     * (which the editor's budget counts) */
+    sched_build();
     {
-        uint8_t *pos = member, *seg_end = held;      /* (member and held are not needed past here) */
-        bufs_t bs;
-        bs.base = (esig_t *)((uint8_t *)eng_arena + ar_lo);
-        bs.n = bs.values = 0;
-        bs.keep = !ENG_BUF_REUSE || aot_buffer_guard(p, len);
-#ifdef ENG_POISON
-        poi_n = 0;
-#endif
-        for (k = 0; k < E.norder; k++)
-            pos[E.order[k]] = (uint8_t)k;
-        for (k = E.norder; k-- > 0;) {               /* the last place of the run of split-able modules of one group that
-                                                      * place k is in (render_split's segment), k itself outside one */
-            const node_t *nd = &E.node[E.order[k]], *nx = k + 1u < E.norder ? &E.node[E.order[k + 1u]] : 0;
-            seg_end[k] = (uint8_t)(nx && buf_split(nd) && buf_split(nx) && nx->grp == nd->grp ? seg_end[k + 1u] : k);
-        }
-        for (k = 0; k < E.norder; k++) {
-            uint32_t m = E.order[k];
-            node_t *nd = &E.node[m];
-            for (j = 0; j < DEFS[nd->type].nin; j++) {   /* its summed inputs (it->in holds the buffer until they are wired) */
-                int sum = buf_nsrc(m, j) >= 2u;
-                for (v = 0; v < nd->ninst; v++)
-                    if (!(inst_pool[nd->inst0 + v].in[j] = sum ? buf_take(&bs, (int32_t)k, buf_late(nd) ? BUF_FOREVER : (int32_t)k, buf_lane(nd, v)) : zero_buf))
-                        return -6;
+        uint32_t lo = ar_lo;
+        for (;; ar_lo = lo) {
+            int rc = bufs_place(p, len, member, held);  /* (member and held are not needed past here) */
+            if (!sch.on) {
+                if (rc)
+                    return rc;
+                break;
             }
-            for (j = 0; j < DEFS[nd->type].nout; j++) {  /* its connected outputs */
-                for (c = 0; c < ncab && !(E.from_m[c] == m && E.from_p[c] == j); c++)
-                    ;
-                for (v = 0; c < ncab && v < nd->ninst; v++)
-                    if (!(inst_pool[nd->inst0 + v].out[j] = buf_take(&bs, (int32_t)k, buf_end(m, j, v, (int32_t)k, buf_lane(nd, v), pos, seg_end), buf_lane(nd, v))))
-                        return -6;
-            }
+            if (!rc && !line_place(line_sz, nl, line_reg, line_off))
+                break;
+            sched_off();
         }
-        if (!ENG_BUFFER_ALLOCATION && bs.values > bs.n && !arena_lo((bs.values - bs.n) * ENG_BUF_BYTES))   /* conservative allocation rule */
-            return -6;
-        E.nbuf = (uint16_t)bs.values;
-        E.nphys = (uint16_t)bs.n;
-        for (i = 0; i < bs.n * ENG_BLOCK; i++)
-            bs.base[i] = 0;
     }
     /* inputs of every instance: none -> zeros, one source -> that buffer itself, several -> a summing buffer. An instance
      * reads its own part of an output of its group, the one buffer of a module that runs once, and every part (summed)
@@ -2650,15 +2713,6 @@ int eng_load(const uint8_t *p, uint32_t len)
         }
     }
     /* the lines of the line-type modules, last: into what the arena has left and line_low (line_place) */
-    nl = 0;
-    for (i = 0; i < E.nmod; i++) {
-        uint32_t b = line_bytes(E.node[i].type, E.node[i].par);
-        for (k = 0; b && k < E.node[i].ninst; k++) {
-            if (nl >= ENG_MAX_LINES)
-                return -4;
-            line_sz[nl++] = b;
-        }
-    }
     if (line_place(line_sz, nl, line_reg, line_off))
         return -4;
     nl = 0;
@@ -10428,11 +10482,112 @@ static int sum_plain(const sum_t *sm)
     return 1;
 }
 
+/* one copy `it` of module nd for one block of n frames: its input sums, its parameter inputs and its run. prev: the copy of
+ * the same module rendered just before it on this core, whose parameter inputs' means are in `means` (apply_cv), else 0.
+ * (Not inlined: one copy for both render paths, as the flash has no room for two.) */
+static __attribute__((noinline)) void render_item(const node_t *nd, inst_t *it, uint32_t n, const inst_t *prev, int32_t *means)
+{
+    uint32_t m = (uint32_t)(nd - E.node), s, i;
+    ENG_PROF(0, m, IT_V(nd, it));
+    for (s = it->sum0; s < (uint32_t)it->sum0 + it->nsum; s++) {
+        const sum_t *sm = &E.sum[s];
+        esig_t *dst = sm->dst;
+        uint32_t q;
+        if (!sm->n) {
+            for (i = 0; i < n; i++)
+                dst[i] = 0;
+            continue;
+        }
+        if (sm->n >= 3u && sum_plain(sm)) {         /* unweighted (every sum of the factory patches): three or
+                                                     * four sources a pass, dst read and written once a pass (#781) */
+            const esig_t *const *p = &E.sum_src[sm->first];
+            const esig_t *a = p[0], *b = p[1], *c = p[2];
+            if (sm->n >= 4u) {
+                const esig_t *d = p[3];
+                for (i = 0; i < n; i++)
+                    dst[i] = a[i] + b[i] + c[i] + d[i];
+                q = 4;
+            } else {
+                for (i = 0; i < n; i++)
+                    dst[i] = a[i] + b[i] + c[i];
+                q = 3;
+            }
+            for (; q + 3u <= sm->n; q += 3u) {
+                a = p[q], b = p[q + 1u], c = p[q + 2u];
+                for (i = 0; i < n; i++)
+                    dst[i] += a[i] + b[i] + c[i];
+            }
+            for (; q < sm->n; q++) {
+                a = p[q];
+                for (i = 0; i < n; i++)
+                    dst[i] += a[i];
+            }
+            continue;
+        }
+        if (sm->n >= 2) {                           /* the first two sources in one pass, the rest added */
+            const esig_t *a = E.sum_src[sm->first], *b = E.sum_src[sm->first + 1u];
+            const int32_t wa = E.sum_w[sm->first], wb = E.sum_w[sm->first + 1u];
+            if (!wa && !wb)
+                for (i = 0; i < n; i++)
+                    dst[i] = a[i] + b[i];
+            else if (wa && wb)
+                for (i = 0; i < n; i++)
+                    dst[i] = mul16(a[i], wa) + mul16(b[i], wb);
+            else
+                for (i = 0; i < n; i++)
+                    dst[i] = (wa ? mul16(a[i], wa) : a[i]) + (wb ? mul16(b[i], wb) : b[i]);
+            q = 2;
+        } else {
+            const esig_t *a = E.sum_src[sm->first];
+            const int32_t w = E.sum_w[sm->first];
+            if (w)
+                for (i = 0; i < n; i++)
+                    dst[i] = mul16(a[i], w);
+            else
+                for (i = 0; i < n; i++)
+                    dst[i] = a[i];
+            q = 1;
+        }
+        for (; q < sm->n; q++) {
+            const esig_t *src = E.sum_src[sm->first + q];
+            const int32_t w = E.sum_w[sm->first + q];
+            if (w)
+                for (i = 0; i < n; i++)
+                    dst[i] += mul16(src[i], w);
+            else
+                for (i = 0; i < n; i++)
+                    dst[i] += src[i];
+        }
+    }
+    ENG_PROF(1, m, IT_V(nd, it));
+    apply_cv(nd, it, n, prev, means);
+    if (nd->grp)
+        apply_flaws(nd, it);
+    ENG_PROF(2, m, IT_V(nd, it));
+    if (fx.target[m])
+        m_fx(nd, it, n, fx.target[m]);
+    else if (nd->bypass)
+        m_bypass(nd, it, n);
+    else if (nd->disabled_inputs) {
+        const esig_t *raw[MAX_IN];
+        uint32_t input;
+        for (input = 0; input < DEFS[nd->type].nin; input++) {
+            raw[input] = it->in[input];
+            if (nd->disabled_inputs & (1u << input)) it->in[input] = zero_buf;
+        }
+        process(nd, it, n);
+        for (input = 0; input < DEFS[nd->type].nin; input++) it->in[input] = raw[input];
+    } else
+        process(nd, it, n);
+    ENG_PROF(3, m, IT_V(nd, it));
+}
+
 /* the modules E.order[k0..k1) for one block of n frames: every part v = first, first + step, .. of a module in a poly group,
- * once for a module that runs once (#271: step 2 renders one lane of a split segment, first 0 or 1; step 1 renders all) */
+ * once for a module that runs once (#271, compiled assemblies: step 2 renders one lane of a split segment, first 0 or 1;
+ * step 1 renders all) */
 static void render_mods(uint32_t k0, uint32_t k1, uint32_t n, uint32_t first, uint32_t step)
 {
-    uint32_t k, v, s, i;
+    uint32_t k, v;
     for (k = k0; k < k1; k++) {
         const node_t *nd = &E.node[E.order[k]];
         const inst_t *prev = 0;
@@ -10443,99 +10598,8 @@ static void render_mods(uint32_t k0, uint32_t k1, uint32_t n, uint32_t first, ui
             inst_t *it = &inst_pool[nd->inst0 + v];
             if (nd->grp && E.pv[E.grp[nd->grp].pv0 + v].skip)
                 continue;
-            ENG_PROF(0, E.order[k], v);
-            for (s = it->sum0; s < (uint32_t)it->sum0 + it->nsum; s++) {
-                const sum_t *sm = &E.sum[s];
-                esig_t *dst = sm->dst;
-                uint32_t q;
-                if (!sm->n) {
-                    for (i = 0; i < n; i++)
-                        dst[i] = 0;
-                    continue;
-                }
-                if (sm->n >= 3u && sum_plain(sm)) {         /* unweighted (every sum of the factory patches): three or
-                                                             * four sources a pass, dst read and written once a pass (#781) */
-                    const esig_t *const *p = &E.sum_src[sm->first];
-                    const esig_t *a = p[0], *b = p[1], *c = p[2];
-                    if (sm->n >= 4u) {
-                        const esig_t *d = p[3];
-                        for (i = 0; i < n; i++)
-                            dst[i] = a[i] + b[i] + c[i] + d[i];
-                        q = 4;
-                    } else {
-                        for (i = 0; i < n; i++)
-                            dst[i] = a[i] + b[i] + c[i];
-                        q = 3;
-                    }
-                    for (; q + 3u <= sm->n; q += 3u) {
-                        a = p[q], b = p[q + 1u], c = p[q + 2u];
-                        for (i = 0; i < n; i++)
-                            dst[i] += a[i] + b[i] + c[i];
-                    }
-                    for (; q < sm->n; q++) {
-                        a = p[q];
-                        for (i = 0; i < n; i++)
-                            dst[i] += a[i];
-                    }
-                    continue;
-                }
-                if (sm->n >= 2) {                           /* the first two sources in one pass, the rest added */
-                    const esig_t *a = E.sum_src[sm->first], *b = E.sum_src[sm->first + 1u];
-                    const int32_t wa = E.sum_w[sm->first], wb = E.sum_w[sm->first + 1u];
-                    if (!wa && !wb)
-                        for (i = 0; i < n; i++)
-                            dst[i] = a[i] + b[i];
-                    else if (wa && wb)
-                        for (i = 0; i < n; i++)
-                            dst[i] = mul16(a[i], wa) + mul16(b[i], wb);
-                    else
-                        for (i = 0; i < n; i++)
-                            dst[i] = (wa ? mul16(a[i], wa) : a[i]) + (wb ? mul16(b[i], wb) : b[i]);
-                    q = 2;
-                } else {
-                    const esig_t *a = E.sum_src[sm->first];
-                    const int32_t w = E.sum_w[sm->first];
-                    if (w)
-                        for (i = 0; i < n; i++)
-                            dst[i] = mul16(a[i], w);
-                    else
-                        for (i = 0; i < n; i++)
-                            dst[i] = a[i];
-                    q = 1;
-                }
-                for (; q < sm->n; q++) {
-                    const esig_t *src = E.sum_src[sm->first + q];
-                    const int32_t w = E.sum_w[sm->first + q];
-                    if (w)
-                        for (i = 0; i < n; i++)
-                            dst[i] += mul16(src[i], w);
-                    else
-                        for (i = 0; i < n; i++)
-                            dst[i] += src[i];
-                }
-            }
-            ENG_PROF(1, E.order[k], v);
-            apply_cv(nd, it, n, prev, means);
+            render_item(nd, it, n, prev, means);
             prev = it;
-            if (nd->grp)
-                apply_flaws(nd, it);
-            ENG_PROF(2, E.order[k], v);
-            if (fx.target[E.order[k]])
-                m_fx(nd, it, n, fx.target[E.order[k]]);
-            else if (nd->bypass)
-                m_bypass(nd, it, n);
-            else if (nd->disabled_inputs) {
-                const esig_t *raw[MAX_IN];
-                uint32_t input;
-                for (input = 0; input < DEFS[nd->type].nin; input++) {
-                    raw[input] = it->in[input];
-                    if (nd->disabled_inputs & (1u << input)) it->in[input] = zero_buf;
-                }
-                process(nd, it, n);
-                for (input = 0; input < DEFS[nd->type].nin; input++) it->in[input] = raw[input];
-            } else
-                process(nd, it, n);
-            ENG_PROF(3, E.order[k], v);
         }
         if (nd->type == T_STEPS && E.nlt && first == 0u)   /* its P-locks for the step it is on (#524) */
             locks_step(nd, &inst_pool[nd->inst0]);
@@ -10546,16 +10610,257 @@ static void render_mods(uint32_t k0, uint32_t k1, uint32_t n, uint32_t first, ui
     }
 }
 
-/* #271: the second core. A run of modules in one poly group with two or more parts (a segment of E.order) is split in two
- * lanes: the even parts on core 0, the odd parts on the second core at the same time; then core 0 goes on with the next
- * module. A part reads only its own part of its group, and modules that ran before the segment, so the lanes share
- * nothing but their inputs, and each lane renders exactly as one core would (the same arithmetic, each part's modules in
- * the same order). A Steps module (it writes the engine's track state) is never split. The hooks are the device's
- * (modular.c: the second core) or a test's (host_test.c: inline or a thread); without them core 0 renders both lanes. */
+/* #802: the patch on two cores. When a patch loads, sched_build puts each item (a copy of a module: one part's, or the
+ * module's when it runs once) in lane 0 (core 0) or lane 1 (the second core). In E.order, each item goes to the lane where
+ * it would end first, counting its cost (DEF_COST, from the CPU estimate's table), the lane's items before it and the
+ * items it waits for (sch_deps); a wait across the lanes costs SCH_SYNC. Each lane renders its items in E.order's order
+ * and waits only for items that come before, so the lanes never wait for each other in a circle. The patch keeps the
+ * schedule when it ends sooner than one core would, by more than handing the job over costs (SCH_FORK).
+ * The lanes render exactly as one core would. An item starts after every value it reads is complete, and nothing it writes
+ * is read or overwritten by the other lane before that lane may: its scratch, dummy output and buffers are its lane's
+ * (inst_lane, buf_take), and a value read across the lanes keeps its buffer for the block (buf_end). A Steps module stays in
+ * lane 0 (the tracks share their key queues) and keeps its place in E.order against every other item: its locks_step sets
+ * the P-lock values that the items after it read this block, and a P-lock may be recorded on any module while the patch
+ * plays. The hooks are the device's (modular.c: the second core) or a test's (lanes_host.h); without them core 0 renders
+ * the patch alone. */
 #ifndef ENG_LANE_HOOKS
 static int eng_lane_run(void (*fn)(uint32_t), uint32_t arg) { (void)fn; (void)arg; return 0; }   /* 1: it took the job */
 static int eng_lane_wait(void) { return 0; }                    /* 0: done; else given up (core 0 renders the lane) */
 #endif
+#ifndef ENG_SCHED                        /* (-DENG_SCHED=0: no schedule, the poly segments' split as before #802) */
+#if defined(ENG_LANE_HOOKS) && !ENG_AOT
+#define ENG_SCHED 1
+#else
+#define ENG_SCHED 0
+#endif
+#endif
+#if ENG_SCHED
+#define SCH_SYNC 6u                     /* (DEF_COST units, 64 cycles: about 400 cycles) */
+#define SCH_FORK 24u                    /* (about 1,500 cycles) */
+typedef struct {                        /* (sched_build's, on the main loop's stack) */
+    uint32_t fin[ENG_MAX_INST + 1u];    /* when each copy would end, DEF_COST units */
+    uint8_t at[ENG_MAX_INST + 1u];      /* its place in its lane */
+    uint8_t pos[ENG_MAX_MODULES];       /* a module's place in E.order */
+} sch_build_t;
+typedef struct { const sch_build_t *b; uint32_t lane, t, need; } sch_acc_t;   /* an item in `lane`: when it may start; the
+                                                                                * other lane's items it needs */
+static void sch_dep(sch_acc_t *a, uint32_t d)          /* the item waits for copy d */
+{
+    uint32_t t = a->b->fin[d];
+    if (LANE_OF(d) != a->lane) {
+        t += SCH_SYNC;
+        if (a->b->at[d] + 1u > a->need)
+            a->need = a->b->at[d] + 1u;
+    }
+    if (t > a->t)
+        a->t = t;
+}
+/* the copies of module f that copy v of a module of group g reads (buf_of): every part of another group's, else its own
+ * part or the one copy */
+static void sch_copies(sch_acc_t *a, uint32_t f, uint32_t g, uint32_t v)
+{
+    const node_t *s = &E.node[f];
+    uint32_t w;
+    if (s->grp && s->grp != g)
+        for (w = 0; w < s->ninst; w++)
+            sch_dep(a, s->inst0 + w);
+    else
+        sch_dep(a, s->inst0 + (s->ninst > 1u ? v : 0u));
+}
+/* the copies of module t that read copy v of module m (buf_end's readers) */
+static void sch_readers(sch_acc_t *a, uint32_t m, uint32_t v, uint32_t t)
+{
+    const node_t *f = &E.node[m], *r = &E.node[t];
+    uint32_t w;
+    for (w = 0; w < r->ninst; w++)
+        if ((f->grp && f->grp != r->grp) || (f->ninst > 1u ? w : 0u) == v)
+            sch_dep(a, r->inst0 + w);
+}
+/* what copy v of module m waits for, all before it in E.order: the copies it reads; the readers of a feedback cable out of
+ * it (they read its block before, which it may not overwrite before they have run); every Steps module before it, and
+ * when it is one, every module before it (see above) */
+static void sch_deps(sch_acc_t *a, uint32_t m, uint32_t v)
+{
+    const node_t *nd = &E.node[m];
+    const uint8_t *pos = a->b->pos;
+    uint32_t c, o, w;
+    for (c = 0; c < E.ncab; c++) {
+        uint32_t f = E.from_m[c], t = E.to_m[c];
+        if (f == t)
+            continue;
+        if (t == m && pos[f] < pos[m])
+            sch_copies(a, f, nd->grp, v);
+        else if (f == m && pos[t] < pos[m])
+            sch_readers(a, m, v, t);
+    }
+    for (o = 0; o < E.nmod; o++)
+        if (pos[o] < pos[m] && (nd->type == T_STEPS || E.node[o].type == T_STEPS))
+            for (w = 0; w < E.node[o].ninst; w++)
+                sch_dep(a, E.node[o].inst0 + w);
+}
+#endif
+/* no schedule: the lanes of the poly segments' split (render_split), which the editor's budget counts (rule 1) */
+static void sched_off(void)
+{
+    uint32_t i, k;
+    sch.on = 0;
+    for (i = 0; i < E.nmod; i++)
+        for (k = 0; k < E.node[i].ninst; k++)
+            lane_set(E.node[i].inst0 + k, buf_split(&E.node[i]) ? k & 1u : 0u);
+}
+static void sched_build(void)
+{
+#if ENG_SCHED
+    sch_build_t b;
+    uint32_t end[2] = {0, SCH_FORK}, total = 0, k, v, l, n0;
+#endif
+    sched_off();
+#if ENG_SCHED
+    for (k = 0; k < E.norder; k++)
+        b.pos[E.order[k]] = (uint8_t)k;
+    sch.n[0] = sch.n[1] = 0;
+    for (k = 0; k < E.norder; k++) {
+        uint32_t m = E.order[k];
+        const node_t *nd = &E.node[m];
+        uint32_t cost = DEF_COST[nd->type];
+        for (v = 0; v < nd->ninst; v++) {
+            uint32_t ix = nd->inst0 + v, best = 0, fin = 0;
+            for (l = 0; l < (nd->type == T_STEPS ? 1u : 2u); l++) {
+                sch_acc_t a = {&b, l, end[l], 0};
+                sch_deps(&a, m, v);
+                if (l == 0u || a.t + cost < fin) {
+                    fin = a.t + cost;
+                    best = l;
+                }
+            }
+            lane_set(ix, best);
+            b.fin[ix] = end[best] = fin;
+            b.at[ix] = (uint8_t)sch.n[best]++;
+            total += cost;
+        }
+    }
+    if (!sch.n[1] || (end[0] > end[1] ? end[0] : end[1]) + SCH_FORK >= total) {
+        sched_off();
+        return;
+    }
+    sch.on = 1;
+    n0 = sch.n[0];
+    for (k = 0; k < E.norder; k++) {             /* each lane's items in E.order's order, with what they wait for */
+        uint32_t m = E.order[k];
+        const node_t *nd = &E.node[m];
+        for (v = 0; v < nd->ninst; v++) {
+            uint32_t ix = nd->inst0 + v, slot = (LANE_OF(ix) ? n0 : 0u) + b.at[ix];
+            sch.it[slot] = (uint16_t)(m << 3 | v);
+        }
+    }
+    for (k = 0; k < E.norder; k++) {             /* (after every item is in place: SCH_PUB marks an earlier one) */
+        uint32_t m = E.order[k];
+        const node_t *nd = &E.node[m];
+        for (v = 0; v < nd->ninst; v++) {
+            uint32_t ix = nd->inst0 + v, slot = (LANE_OF(ix) ? n0 : 0u) + b.at[ix];
+            sch_acc_t a = {&b, LANE_OF(ix), 0, 0};
+            sch_deps(&a, m, v);
+            sch.need[slot] = (uint8_t)a.need;
+            if (a.need)
+                sch.it[(LANE_OF(ix) ? 0u : n0) + a.need - 1u] |= SCH_PUB;
+        }
+    }
+#endif
+}
+
+#if ENG_SCHED
+#ifndef ENG_LANE_PUT                    /* a lane's progress, published to the other core and read from it (the device: csync) */
+#define ENG_LANE_PUT(p, x) __atomic_store_n((p), (x), __ATOMIC_RELEASE)
+#define ENG_LANE_GET(p) __atomic_load_n((p), __ATOMIC_ACQUIRE)
+#endif
+#ifndef ENG_LANE_NOW                    /* core 0's waits for lane 1 inside the job, timed (modular.c: DIAG page 132's) */
+#define ENG_LANE_NOW() 0u
+#define ENG_LANE_WAITED(t0) ((void)(t0))
+#endif
+#ifndef ENG_LANE_ITEM                   /* before each item of a lane (lanes_host.h: random delays) */
+#define ENG_LANE_ITEM() ((void)0)
+#endif
+/* each lane's items done this block, on cache lines of their own: lane 1's after each item, lane 0's after the items lane
+ * 1 waits for (SCH_PUB) */
+static struct { volatile uint32_t done; uint32_t pad[15]; } sch_prog[2] ENG_NOINIT __attribute__((aligned(64)));
+static uint8_t sch_gone;                 /* core 0 renders lane 1's items itself: the second core was given up this block */
+typedef struct { const node_t *nd; const inst_t *it; int32_t means[MAX_IN]; } sch_ctx_t;   /* a core's last copy (prev) */
+#define SCH_NODE(x) (&E.node[(x) >> 3 & 0x7Fu])                       /* an item's module and copy (sched_t it[]) */
+#define SCH_INST(x) (&inst_pool[SCH_NODE(x)->inst0 + ((x) & 7u)])
+/* item `slot` (a place in sch.it), unless its part is shed or idle this block */
+static void sch_item(uint32_t slot, uint32_t n, sch_ctx_t *c)
+{
+    const node_t *nd = SCH_NODE(sch.it[slot]);
+    inst_t *it = SCH_INST(sch.it[slot]);
+    if (nd->grp && (IT_V(nd, it) >= cur_g_parts(nd) || IT_PV(nd, it)->skip))
+        return;
+    render_item(nd, it, n, c->nd == nd ? c->it : 0, c->means);
+    c->nd = nd;
+    c->it = it;
+    if (nd->type == T_STEPS && E.nlt)            /* its P-locks for the step it is on (#524) */
+        locks_step(nd, it);
+}
+/* lane `l`'s items that run this block (not shed, not idle) */
+static uint32_t sch_woke(uint32_t l)
+{
+    uint32_t i, k = 0, base = l ? sch.n[0] : 0u;
+    for (i = base; i < base + sch.n[l]; i++) {
+        const node_t *nd = SCH_NODE(sch.it[i]);
+        uint32_t v = sch.it[i] & 7u;
+        k += !nd->grp || (v < cur_g_parts(nd) && !E.pv[E.grp[nd->grp].pv0 + v].skip);
+    }
+    return k;
+}
+/* core 0, the second core given up: lane 1's items up to `to`, from where it stopped (the item it was in, again) */
+static void sch_take(uint32_t to, uint32_t n)
+{
+    sch_ctx_t c = {0};
+    uint32_t i;
+    for (i = ENG_LANE_GET(&sch_prog[1].done); i < to; i++) {
+        sch_item(sch.n[0] + i, n, &c);
+        ENG_LANE_PUT(&sch_prog[1].done, i + 1u);
+    }
+}
+/* lane l until the other lane has done `need` items; core 0 renders lane 1's itself once the second core is given up */
+static uint32_t sch_wait(uint32_t l, uint32_t need, uint32_t n)
+{
+    uint32_t p, spins = 0, t0 = ENG_LANE_NOW();
+    while ((p = ENG_LANE_GET(&sch_prog[!l].done)) < need)
+        if (!l && (sch_gone || ((++spins & 31u) == 0u && eng_lane_poll() < 0))) {
+            sch_gone = 1;
+            sch_take(need, n);
+            p = need;
+            break;
+        }
+    if (!l)
+        ENG_LANE_WAITED(t0);
+    return p;
+}
+static void sch_lane(uint32_t l, uint32_t n)
+{
+    sch_ctx_t c = {0};
+    uint32_t i, base = l ? sch.n[0] : 0u, seen = 0;
+    for (i = 0; i < sch.n[l]; i++) {
+        if (sch.need[base + i] > seen)
+            seen = sch_wait(l, sch.need[base + i], n);
+        ENG_LANE_ITEM();
+        sch_item(base + i, n, &c);
+        if (l || (sch.it[base + i] & SCH_PUB))
+            ENG_LANE_PUT(&sch_prog[l].done, i + 1u);
+    }
+}
+static void sch_job(uint32_t n)                  /* (on the second core) */
+{
+    sch_lane(1u, n);
+}
+#endif
+
+/* No schedule (a patch whose schedule's buffers and lines do not fit, a build without one): the poly segments' split, the
+ * one-core allocation's lanes (#271). A run of modules in one poly group with two or more parts (a segment of E.order) is
+ * split in two lanes: the even parts on core 0, the odd parts on the second core at the same time; then core 0 goes on
+ * with the next module. A part reads only its own part of its group, and modules that ran before the segment, so the
+ * lanes share nothing but their inputs, and each lane renders exactly as one core would. A Steps module (it writes the
+ * engine's track state) is never split. */
 static struct { uint32_t k0, k1, n; } lane_job;
 static void lane1_job(uint32_t arg)                 /* (on the second core) */
 {
@@ -10611,6 +10916,30 @@ static void render_split(uint32_t n)
             render_mods(k, e, n, 0u, 1u);
         k = e;
     }
+}
+/* the patch for one block of n frames: with a schedule, on both cores when lane 1 has an item to render this block (an
+ * idle part's turn alone gains nothing from the second core) and the second core takes the job, else on core 0 in E.order;
+ * without one, the poly segments' split */
+static void render_sched(uint32_t n)
+{
+#if ENG_SCHED
+    if (sch.on) {
+        if (sch_woke(1u)) {
+            ENG_LANE_PUT(&sch_prog[0].done, 0u);
+            ENG_LANE_PUT(&sch_prog[1].done, 0u);
+            sch_gone = 0;
+            if (eng_lane_run(sch_job, n)) {
+                sch_lane(0u, n);
+                if (eng_lane_wait() != 0)        /* the second core was given up: the rest of lane 1 here */
+                    sch_take(sch.n[1], n);
+                return;
+            }
+        }
+        render_mods(0, E.norder, n, 0u, 1u);
+        return;
+    }
+#endif
+    render_split(n);
 }
 static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the patch, clamped */
 {
@@ -10795,7 +11124,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
         }
         E.idle_blk = (uint8_t)((E.idle_blk + 1u) % IDLE_CHECK);
         ENG_TMARK(0);
-        render_split(n);
+        render_sched(n);
         ENG_TMARK(1);
         if (n == ENG_BLOCK)
             for (k = 1; k <= E.ngrp; k++) {             /* a released part that has gone quiet goes idle (part_quiet) */

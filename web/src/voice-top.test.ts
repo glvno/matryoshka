@@ -22,18 +22,18 @@ const rowBytes = (bin: Uint8Array): number[] | undefined => {
   return undefined;
 };
 
-/** the factory patches whose VOICES row has a top (D-870 as amended 2026-11-08: the CPU model recalibrated on the test
- * rig, the top the most voices whose estimate stays at CPU_VOICE_TOP or under) */
+/** the former factory patches whose VOICES row has a top (D-870 as amended 2026-11-08, kept unchanged in Community): the
+ * top fits the FM-1's budget with the CPU estimate at CPU_VOICE_TOP or under. It was the most voices that did; the two-core
+ * schedule (#802, D-1101) may fit more, and a preserved original does not move */
 const TOPS: Record<string, number> = { 'Oracle V': 4, 'Expander S': 6, 'Cassia 1': 4 };
 
 describe("the FM-1's VOICES row top", () => {
   for (const [name, top] of Object.entries(TOPS))
-    it(`${name} stops at ${top}, the most voices whose CPU estimate stays at ${100 * CPU_VOICE_TOP} % or under`, () => {
+    it(`${name} stops at ${top}, where its CPU estimate stays at ${100 * CPU_VOICE_TOP} % or under`, () => {
       const p = relocatedPatches[name]();
       expect(voicesRow(p)!.top).toBe(top);
       const b = deviceBudget(withVoices(p, top));
       expect(b.fits && b.cpu.use <= CPU_VOICE_TOP).toBe(true);
-      expect(deviceBudget(withVoices(p, top + 1)).cpu.use).toBeGreaterThan(CPU_VOICE_TOP);
     });
 
 

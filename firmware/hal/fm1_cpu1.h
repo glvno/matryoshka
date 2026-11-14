@@ -191,28 +191,55 @@ static inline int fm1_cpu1_run(void (*fn)(uint32_t), uint32_t arg)
     return 1;
 }
 
+/* one look at the job handed over at t0 (#802: core 0 polls it while it waits for the second core's progress inside the
+ * job): 1 = done; 0 = still working; -1 = it read a wrong job or has not finished 8 ms after the hand-off: core 1 is held
+ * from now on (the caller does the rest of the work), or it was held already */
+static inline int fm1_cpu1_poll(uint32_t t0)
+{
+    FM1_C1_SYNC();
+    if (!fm1_c1_on)
+        return -1;
+    if (fm1_c1_mb.bad) {                        /* a unit that cannot run it: one core */
+        fm1_cpu1_hold();
+        fm1_cpu1_bar();
+        fm1_c1_gave_up = 1;
+        return -1;
+    }
+    if (fm1_c1_mb.done == fm1_c1_mb.job)
+        return 1;
+    if (FM1_C1_T4 - t0 > 24000u * 8u) {         /* 8 ms: far past any stretch (or it faulted) */
+        fm1_cpu1_hold();
+        fm1_cpu1_bar();
+        fm1_c1_gave_up = 2;
+        return -1;
+    }
+    return 0;
+}
+
 /* 0 = done; -1 = it read a wrong job or did not finish in time: core 1 is held from now on (the
  * caller does the work) */
 static inline int fm1_cpu1_wait(void)
 {
     uint32_t t0 = FM1_C1_T4;
-    for (;;) {
-        FM1_C1_SYNC();
-        if (fm1_c1_mb.bad) {                    /* a unit that cannot run it: one core */
-            fm1_cpu1_hold();
-            fm1_cpu1_bar();
-            fm1_c1_gave_up = 1;
-            return -1;
-        }
-        if (fm1_c1_mb.done == fm1_c1_mb.job)
-            return 0;
-        if (FM1_C1_T4 - t0 > 24000u * 8u) {     /* 8 ms: far past any stretch (or it faulted) */
-            fm1_cpu1_hold();
-            fm1_cpu1_bar();
-            fm1_c1_gave_up = 2;
-            return -1;
-        }
-    }
+    int rc;
+    while (!(rc = fm1_cpu1_poll(t0)))
+        ;
+    return rc > 0 ? 0 : -1;
+}
+
+/* a word the two cores share while a job runs (#802: each lane's progress): its writer's stores before it are out first,
+ * and its reader's loads after it come after it (csync; the cores share the caches) */
+static inline void fm1_cpu1_put(volatile uint32_t *p, uint32_t x)
+{
+    FM1_C1_SYNC();
+    *p = x;
+    FM1_C1_SYNC();
+}
+static inline uint32_t fm1_cpu1_get(const volatile uint32_t *p)
+{
+    uint32_t x = *p;
+    FM1_C1_SYNC();
+    return x;
 }
 
 /* ---- Matryoshka's (#271) */
