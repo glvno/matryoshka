@@ -108,7 +108,7 @@ import { deviceView, keysInto, MAX_POLY, type DeviceGroup, VOICING_CABLE_INPUTS 
 import { devicesOf, NAME_MAX, type Device, type PageRow } from './pages';
 import { allModules, assemblyById, ROW_NAMES_MAX } from './assembly';
 import { structureAndRows } from './structure';
-import { CPU, cpuEstimate, scheduleCost, type CpuEstimate } from './cpu';
+import { CPU, cpuEstimate, scheduleBypass, scheduleCost, type CpuEstimate } from './cpu';
 import { schedule, type Schedule } from './schedule';
 import { instIsEngine } from './engines';
 import { engineUnreached } from './arm';
@@ -1043,9 +1043,10 @@ export function encodePatch(source: Patch, anyway = false, counted = false, allo
 /** a line of the FM-1's line areas in bytes, rounded to whole words (engine.c LINE_BYTES) */
 const lineBytes = (n: number): number => (n + 3) & ~3;
 /** the lines of the fixed-size line modules, bytes (engine.c): a string or comb line per copy (STR_LEN), the granular's 1 s
- * and its grain records (grain_line_t), the reverb's eight lines, allpasses and pre-delay (RV_LEN), the chorus's (CH_LEN) */
+ * and its grain records (grain_line_t), the reverb's eight lines, allpasses and pre-delay (RV_LEN) and its ring of the last
+ * block's inputs (RV_MEM, D-1103: 128 int32), the chorus's (CH_LEN) */
 export const LINES = {
-  string: lineBytes(2 * 1104), grain: lineBytes(2 * 44118 + 8 * 24), reverb: lineBytes(2 * 8074), chorus: lineBytes(2 * 927),
+  string: lineBytes(2 * 1104), grain: lineBytes(2 * 44118 + 8 * 24), reverb: lineBytes(2 * 8074 + 4 * 128), chorus: lineBytes(2 * 927),
 } as const;
 /** a Delay's line, bytes, from its length (modules.ts delayLine; engine.c dly_samples) */
 export const delayBytes = (ms: number): number => lineBytes(2 * delayLine(ms));
@@ -1065,7 +1066,7 @@ export const NODE_BYTES = 92;
  * (linePlace).
  */
 export const ARENA = delayBytes(DELAY_LENGTH_DEFAULT) + 8 * LINES.string + LINES.grain + 255 * BUF_BYTES + 129 * INST_BYTES + 1536 * PAR_BYTES + 64 * NODE_BYTES;
-export const LINE_LOW = LINES.reverb + LINES.chorus + 8192;
+export const LINE_LOW = lineBytes(2 * 8074) + LINES.chorus + 8192;   /* (engine.c LINE_LOW: the reverb's lines before its ring) */
 /** the FM-1's limits (firmware/src/engine.c: ENG_MAX_MODULES, ENG_MAX_CABLES, POLY_MAX_GROUPS, POLY_MAX_PARTS, ENG_MAX_ARPS, ENG_MAX_HARMS,
  * ENG_MAX_TRACKS, ENG_MAX_NOTES; proto.c M1_PATCH_MAX). `memory`: the arena and the low line area, bytes (memoryBudget):
  * the module copies, signal buffers, parameter values and lines share it. `instances` and `buffers` are sanity caps
@@ -1174,7 +1175,7 @@ export function scheduleFits(p: Patch, groups: DeviceGroup[], s: Schedule): bool
 /** the physical signal buffers engine.c allocates (rule 1): its two-core schedule's while they fit, else the one-core
  * allocation's. Input: deviceView(source, true) */
 export function deviceBuffers(p: Patch, groups: DeviceGroup[]): number {
-  const s = schedule(p, groups, (type) => scheduleCost(CPU, type));
+  const s = schedule(p, groups, (type) => scheduleCost(CPU, type), scheduleBypass(CPU));
   return signalBuffers(p, groups, false, s.on && scheduleFits(p, groups, s) ? s : undefined).physical;
 }
 export const KEY_ROUTING_BYTES = 8040;

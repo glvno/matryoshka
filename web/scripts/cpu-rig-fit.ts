@@ -20,11 +20,11 @@ import { validatePatch, type Patch } from '../src/patch';
 import { deviceView } from '../src/poly';
 
 const ROOT = new URL('../../', import.meta.url).pathname;
-/** The build with Steps' quiet samples in one pass (#802, #878): every factory patch of the 1.14 bank, transport stopped
- * and running. */
+/** The build with the Reverb's lines one block late (#802, D-1103, D-1104): every factory patch of the 1.14 bank, transport
+ * stopped and running. */
 const NOW: { file: string; at?: Record<string, number>; only?: string[]; skip?: string[] }[] = [
-  { file: 'docs/measurements/cpu-survey-2026-11-14-rig-steps.json' },
-  { file: 'docs/measurements/cpu-survey-2026-11-14-rig-steps-run.json' },
+  { file: 'docs/measurements/cpu-survey-2026-11-14-rig-reverb.json' },
+  { file: 'docs/measurements/cpu-survey-2026-11-14-rig-reverb-run.json' },
 ];
 /** the survey of the firmware before (release-1.10 with the second core) and the commit its factory patches are from */
 const BEFORE = { file: 'docs/measurements/cpu-survey-2026-11-05-rig-merged-split.json', commit: 'e3235d64' };

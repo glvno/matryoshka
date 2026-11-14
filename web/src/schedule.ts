@@ -5,11 +5,17 @@ import type { DeviceGroup } from './poly';
 /** engine.c SCH_SYNC and SCH_FORK: a wait across the cores, and handing the job over, in schedule cost units (64 cycles) */
 export const SCH_SYNC = 6;
 export const SCH_FORK = 24;
+/** engine.c SCH_KMAX, SCH_RV_MIX, ENG_MAX_INST (D-1103): Reverb kernels with an item of their own; a Reverb's own turn once
+ * its kernel has one (the mix), in schedule cost units; the module copies (sch.it holds one more item) */
+export const SCH_KMAX = 4;
+export const SCH_RV_MIX = 16;
+const MAX_INST = 254;
 
 /** A patch's two-core schedule on the FM-1 (#802, engine.c sched_build). An item is one copy of a module of the device form:
  * one part's in its poly group, else the module's. `order` is engine.c's E.order (module indices), `copies[m]` a module's
- * copies, `lane[m][v]` the core of its copy v (1: the second core). `on` false: no schedule, `lane` the poly segments'
- * odd parts (the lanes signal-buffers.ts counts by default). */
+ * copies, `lane[m][v]` the core of its copy v (1: the second core). A Reverb with a kernel item (D-1103: its lines, which
+ * read the block before) has it as copy 1, first in its lane, waiting for nothing; `kernels` lists those Reverbs. `on`
+ * false: no schedule, `lane` the poly segments' odd parts (the lanes signal-buffers.ts counts by default). */
 export interface Schedule {
   on: boolean;
   order: number[];
@@ -19,10 +25,22 @@ export interface Schedule {
   items: [number, number][][];
   /** the copies [module, copy] each item waits for (sch_deps), by `${m}/${v}` */
   deps: Map<string, [number, number][]>;
+  kernels: number[];
 }
 
-/** Input must be deviceView(source, true); `cost(type)`: one copy's cost in 64 cycles (engine.c DEF_COST) */
-export function schedule(p: Patch, groups: DeviceGroup[], cost: (type: string) => number): Schedule {
+/** `work(m)`: one copy's cycles; a Reverb with a kernel item splits them between its kernel (copy 1) and its mix */
+export function scheduleWork(s: Schedule, work: (m: number) => number): (m: number, v: number) => number {
+  const mix = SCH_RV_MIX * 64;
+  return (m, v) => {
+    const w = work(m);
+    if (!s.kernels.includes(m)) return w;
+    return v === 1 ? Math.max(0, w - mix) : Math.min(w, mix);
+  };
+}
+
+/** Input must be deviceView(source, true); `cost(type)`: one copy's cost in 64 cycles (engine.c DEF_COST); `bypass`: a
+ * module's bypassed when the patch loads (DEF_COST_BYPASS, D-1104; a master FX stage's targets as they are saved) */
+export function schedule(p: Patch, groups: DeviceGroup[], cost: (type: string) => number, bypass: number): Schedule {
   const index = new Map(p.modules.map((m, i) => [m.id, i]));
   const group = p.modules.map((m) => groups.findIndex((g) => g.modules.has(m.id)));
   const copies = group.map((g) => (g < 0 ? 1 : groups[g].cfg.parts));
@@ -59,13 +77,29 @@ export function schedule(p: Patch, groups: DeviceGroup[], cost: (type: string) =
         if (pos[o] < pos[m] && (steps(m) || steps(o))) for (let w = 0; w < copies[o]; w++) d.push([o, w]);
       deps.set(`${m}/${v}`, d);
     }
+  // D-1103: each Reverb's kernel first (copy 1), waiting for nothing, where it would end first; its Reverb waits for it
+  const total0 = copies.reduce((a, b) => a + b, 0);
+  const kernels: number[] = [];
+  for (const m of order)
+    if (p.modules[m].type === 'reverb' && kernels.length < SCH_KMAX && total0 + kernels.length < MAX_INST + 1) kernels.push(m);
   const lane = parity();
   const fin = copies.map((n) => new Array<number>(n).fill(0));
   const end = [0, SCH_FORK];
   const n = [0, 0];
   let total = 0;
+  const off = (m: number): boolean => !!p.modules[m].bypass && p.modules[m].type !== 'fm1' && p.modules[m].type !== 'output';
+  for (const m of kernels) {
+    const c = off(m) ? 0 : cost('reverb');
+    const best = end[1] + c < end[0] + c ? 1 : 0;
+    lane[m][1] = best;
+    fin[m][1] = end[best] += c;
+    n[best]++;
+    total += c;
+    deps.set(`${m}/1`, []);
+    deps.get(`${m}/0`)!.push([m, 1]);
+  }
   for (const m of order) {
-    const c = cost(p.modules[m].type);
+    const c = off(m) ? bypass : kernels.includes(m) ? SCH_RV_MIX : cost(p.modules[m].type);
     for (let v = 0; v < copies[m]; v++) {
       let best = 0, bestFin = 0;
       for (let l = 0; l < (steps(m) ? 1 : 2); l++) {
@@ -80,9 +114,10 @@ export function schedule(p: Patch, groups: DeviceGroup[], cost: (type: string) =
     }
   }
   const items: [number, number][][] = [[], []];
-  if (!n[1] || Math.max(end[0], end[1]) + SCH_FORK >= total) return { on: false, order, copies, lane: parity(), items, deps };
+  if (!n[1] || Math.max(end[0], end[1]) + SCH_FORK >= total) return { on: false, order, copies, lane: parity(), items, deps, kernels: [] };
+  for (const m of kernels) items[lane[m][1]].push([m, 1]);
   for (const m of order) for (let v = 0; v < copies[m]; v++) items[lane[m][v]].push([m, v]);
-  return { on: true, order, copies, lane, items, deps };
+  return { on: true, order, copies, lane, items, deps, kernels };
 }
 
 /** When the scheduled render of one block ends on core 0, `work(m, v)` the cycles of each item; each lane renders its
