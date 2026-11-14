@@ -20,9 +20,11 @@ it('reaches the DX100 low endpoint without stalling and the high endpoint at 55 
   const low = wave(.0008);
   expect(low[4095] - low[0]).toBeCloseTo(2 * .0008 * 4095 / 4096, 6);
   const high = wave(55);
-  const wraps = Array.from(high).flatMap((v, i) => i > 0 && v - high[i - 1] < -1 ? [i] : []);
+  // a wrap: where the rising saw starts to fall (its drop spreads over a stretch of CTL samples since #806)
+  const fall = (i: number): boolean => i > 0 && high[i] < high[i - 1];
+  const wraps = Array.from(high).flatMap((_, i) => fall(i) && !fall(i - 1) ? [i] : []);
   expect(wraps.length).toBeGreaterThanOrEqual(54);
-  expect((wraps.length - 1) * 4096 / (wraps.at(-1)! - wraps[0])).toBeCloseTo(55, 1);
+  expect((wraps.length - 1) * 4096 / (wraps.at(-1)! - wraps[0])).toBeCloseTo(55, 0); // (a wrap is found to within a stretch)
 });
 
 it('uses the wide setting only in wide free-running mode', () => {

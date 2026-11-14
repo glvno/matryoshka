@@ -51,24 +51,23 @@ const CORES = {
   survey: 'docs/measurements/cpu-survey-2026-11-14-rig-reverb-split-off.json against -reverb.json (CI run 43615466841); the idle cost: -2026-11-05-rig-release-1.10-head.json against -rig-merged-split.json',
 };
 /** Each factory engine's factor on its modules' cycles (src/cpu.ts CpuTable.rig), fitted by scripts/cpu-rig-fit.ts to the
- * test rig's survey of the 1.14 bank on the firmware with the Reverb's lines one block late (#802, D-1103, at SURVEY's
- * scale): the smallest that makes the estimate read at least the rig's steady peak for every voice count its factory patch
- * played on the rig, transport stopped and running. The counted engine misses what the FM-1 spends beyond its instructions
- * (its caches and memory, the hardware's own timing, how the two cores share the block), and that differs from engine to
- * engine: the factors run from 0.64 to 1.06. Refitted 2026-11-14 to the same surveys after #787 (D-1105) made the
- * table's moving Multimode filter cheaper. The patches outside the 1.14 bank (basic poly, drift poly, mono lead,
+ * test rig's survey of the 1.14 bank on the firmware with modulation every 16 samples (#806, D-1106, at SURVEY's scale):
+ * the smallest that makes the estimate read at least the rig's steady peak for every voice count its factory patch played
+ * on the rig, transport stopped and running. The counted engine misses what the FM-1 spends beyond its instructions (its
+ * caches and memory, the hardware's own timing, how the two cores share the block), and that differs from engine to
+ * engine: the factors run from 0.59 to 1.06. The patches outside the 1.14 bank (basic poly, drift poly, mono lead,
  * supersaw stack) keep the factors of the 2026-11-09 survey. */
 const RIG = {
   engines: {
-    '8 Lire': 0.65, '808 kit': 0.83, '909 kit': 0.72, 'Algo Four': 0.66, 'Briefcase 3': 0.77,
-    'Canvas': 0.83, 'Cassia 1': 0.67, 'Elvira 2': 0.91, 'Expander S': 0.79,
-    'Hera 4': 0.71, 'Io 4': 0.73, 'Meridian 8': 0.75, 'Monolith D': 0.76,
-    'Oracle V': 0.74, 'Perun 4': 0.83, 'Sallen 20': 0.95, 'Scrounge': 0.83,
-    'Silver Box': 1.02, 'Spokes 6': 0.83, 'Vernon 100': 0.64, 'Verona Drum 1': 0.91,
+    '8 Lire': 0.59, '808 kit': 0.85, '909 kit': 0.78, 'Algo Four': 0.65, 'Briefcase 3': 0.74,
+    'Canvas': 0.82, 'Cassia 1': 0.62, 'Elvira 2': 0.95, 'Expander S': 0.75,
+    'Hera 4': 0.7, 'Io 4': 0.68, 'Meridian 8': 0.71, 'Monolith D': 0.73,
+    'Oracle V': 0.71, 'Perun 4': 0.82, 'Sallen 20': 0.9, 'Scrounge': 0.85,
+    'Silver Box': 0.92, 'Spokes 6': 0.85, 'Vernon 100': 0.61, 'Verona Drum 1': 0.92,
     'Wanderer': 1.06, 'basic poly': 0.92, 'drift poly': 0.92, 'mono lead': 1.28,
     'supersaw stack': 0.88,
   } as Record<string, number>,
-  survey: 'docs/measurements/cpu-survey-2026-11-14-rig-reverb.json and -run.json (CI run 43615466841, the 22 patches of the 1.14 bank)',
+  survey: 'docs/measurements/cpu-survey-2026-11-14-rig-modctl.json and -run.json (CI run 43652865098, the 22 patches of the 1.14 bank)',
 };
 const BLOCKS = 24;
 const SKIP = 3; // blocks before the maximum is taken for a module kit (the first notes, envelopes starting)
@@ -169,9 +168,13 @@ const measure = async (type: string, cfg: KitCfg = {}): Promise<Stage> => {
 };
 const runs = (type: string, cfgs: KitCfg[]): Promise<number[]> => Promise.all(cfgs.map((c) => measure(type, c).then((x) => x.run)));
 
+/** more values to try: an envelope's first time near one block (128 samples, 2.9 ms), where a rising first segment stops
+ * filling the note-on block per sample and the falling stretches of ENG_CTL samples (#806) take over: the cost bends there,
+ * between the coarse points below */
+const MORE_TRIES: Record<string, Record<string, number[]>> = { env: { r1: [0.003] }, env8: { r1: [0.003] }, adsr: { a: [0.003] } };
 /** a parameter's values to try: every value of a choice / switch / small integer, else points across its range (just above
  * the minimum too: some modules change mode when a value leaves 0) */
-function tries(pd: ParamDef): { values: number[]; discrete: boolean } {
+function tries(type: string, pd: ParamDef): { values: number[]; discrete: boolean } {
   if (pd.choices) return { values: pd.choices.map((_, i) => i), discrete: true };
   if (pd.toggle) return { values: [0, 1], discrete: true };
   if (pd.step && pd.step >= 1 && pd.max - pd.min <= 8) {
@@ -180,8 +183,8 @@ function tries(pd: ParamDef): { values: number[]; discrete: boolean } {
     return { values, discrete: true };
   }
   const eps = Math.max(pd.step ?? 0, (pd.max - pd.min) * 0.01);
-  const values = [pd.min, pd.log ? pd.min * 1.01 : pd.min + eps, ...[0.25, 0.5, 0.75, 1].map((u) => fromUnit(pd, u))];
-  return { values: [...new Set(values.map((v) => +v.toPrecision(6)))], discrete: false };
+  const values = [pd.min, pd.log ? pd.min * 1.01 : pd.min + eps, ...[0.25, 0.5, 0.75, 1].map((u) => fromUnit(pd, u)), ...(MORE_TRIES[type]?.[pd.name] ?? [])];
+  return { values: [...new Set(values.map((v) => +v.toPrecision(6)))].sort((a, b) => a - b), discrete: false };
 }
 
 /** the points of a cost curve that linear interpolation needs (every curve in `costs` within `thr`); the first two stay
@@ -258,7 +261,7 @@ async function typeCost(type: string): Promise<TypeCost> {
         dims.push({ dim: { param: pd.name, exact: ex.exact }, values, effect, order, set: setParam(pd.name) });
         return;
       }
-      const t = tries(pd);
+      const t = tries(type, pd);
       if (!t.discrete) return void numbers.push(pd);
       const effect = await effectOf(type, (v) => ({ [pd.name]: v }), t.values, [{}, { inputs: allInputs }, ...(CHOICE_CONTEXTS[type] ?? [])]);
       if (effect > thr) dims.push({ dim: { param: pd.name, values: t.values }, values: t.values, effect, order, set: setParam(pd.name) });
@@ -270,7 +273,7 @@ async function typeCost(type: string): Promise<TypeCost> {
   const modes: { name: string; min: number; ref: number }[] = [];
   await Promise.all(
     numbers.map(async (pd) => {
-      const t = tries(pd);
+      const t = tries(type, pd);
       const order = def.params.indexOf(pd);
       const curves = await Promise.all(contexts.map((c) => runs(type, t.values.map((v) => ({ ...c, params: { ...c.params, [pd.name]: v } })))));
       const effect = Math.max(...curves.map((c) => Math.max(...c) - Math.min(...c)));
