@@ -101,8 +101,8 @@ HOT int32_t block_mean(int64_t sum, uint32_t n)
 #define ENG_CTL_LOG2 4u
 #endif
 #define ENG_CTL (1u << ENG_CTL_LOG2)
-/* the helpers below are out of line: one call a stretch, and the loops that call them stay as small as before (the
- * FM-1's code runs through a cache) */
+/* the helpers below are out of line: one call a stretch, and the loops that call them stay as small as before (inlined,
+ * they slowed unrelated loops on the rig: docs/ARCHITECTURE.md "Modulation every 16 samples") */
 #define CTL_FN static __attribute__((noinline))
 /* 1 - (1 - k)^ENG_CTL for a rate k (Q30): ENG_CTL steps of v += k (t - v) as one */
 CTL_FN int32_t ctl_rate(int32_t k)
@@ -6399,7 +6399,7 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
             }
         }
         if (LFO_STEPS(kind))
-            it->s.lfo.wl = out[i] = mul16(kind == 4 ? it->s.lfo.held : lfo_wave(kind, phase + off, dt, duty, rise, fall, lrc), depth);
+            out[i] = mul16(kind == 4 ? it->s.lfo.held : lfo_wave(kind, phase + off, dt, duty, rise, fall, lrc), depth);
         else if ((i & (ENG_CTL - 1u)) == ENG_CTL - 1u || i + 1u == n) {   /* a stretch's end (#806): the wave, the ramp to it */
             uint32_t j = (i & (ENG_CTL - 1u)) + 1u;
             w = kind == LFO_RANDOM ? lfo_smooth(it, phase) : lfo_wave(kind, phase + off, dt * j, duty, rise, fall, lrc);
@@ -6412,6 +6412,8 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
             pulse[i] = mul16(pw, back ? -EF(it, LFO_P_DEPTH) : EF(it, LFO_P_DEPTH));
         }
     }
+    if (LFO_STEPS(kind) && n)
+        it->s.lfo.wl = out[n - 1u];              /* (once: a store each sample slowed the loop on the rig) */
     it->s.lfo.phase = phase;
     (void)nd;
 }
