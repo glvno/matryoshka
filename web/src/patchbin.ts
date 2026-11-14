@@ -108,7 +108,7 @@ import { deviceView, keysInto, MAX_POLY, type DeviceGroup, VOICING_CABLE_INPUTS 
 import { devicesOf, NAME_MAX, type Device, type PageRow } from './pages';
 import { allModules, assemblyById, ROW_NAMES_MAX } from './assembly';
 import { structureAndRows } from './structure';
-import { CPU, cpuEstimate, scheduleCost, type CpuEstimate } from './cpu';
+import { CPU, cpuEstimate, scheduleBypass, scheduleCost, type CpuEstimate } from './cpu';
 import { schedule, type Schedule } from './schedule';
 import { instIsEngine } from './engines';
 import { engineUnreached } from './arm';
@@ -1175,7 +1175,7 @@ export function scheduleFits(p: Patch, groups: DeviceGroup[], s: Schedule): bool
 /** the physical signal buffers engine.c allocates (rule 1): its two-core schedule's while they fit, else the one-core
  * allocation's. Input: deviceView(source, true) */
 export function deviceBuffers(p: Patch, groups: DeviceGroup[]): number {
-  const s = schedule(p, groups, (type) => scheduleCost(CPU, type));
+  const s = schedule(p, groups, (type) => scheduleCost(CPU, type), scheduleBypass(CPU));
   return signalBuffers(p, groups, false, s.on && scheduleFits(p, groups, s) ? s : undefined).physical;
 }
 export const KEY_ROUTING_BYTES = 8040;

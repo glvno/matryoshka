@@ -10816,9 +10816,10 @@ static void sched_build(void)
     }
     sch.n[0] = sch.n[1] = 0;
     b.nk = 0;
-    /* D-1103: each Reverb's kernel first, waiting for nothing (it reads the block before), where it would end first */
+    /* D-1103: each Reverb's kernel first, waiting for nothing (it reads the block before), where it would end first; none
+     * of its cost while the Reverb is bypassed when the patch loads (an off master FX stage: D-1104) */
     for (k = 0; k < E.norder && b.nk < SCH_KMAX && copies + b.nk < ENG_MAX_INST + 1u; k++) {
-        uint32_t m = E.order[k], r = b.nk, cost = DEF_COST[T_REVERB], best;
+        uint32_t m = E.order[k], r = b.nk, cost = E.node[m].bypass ? 0u : DEF_COST[T_REVERB], best;
         if (E.node[m].type != T_REVERB)
             continue;
         best = end[1] + cost < end[0] + cost ? 1u : 0u;
@@ -10832,9 +10833,9 @@ static void sched_build(void)
     for (k = 0; k < E.norder; k++) {
         uint32_t m = E.order[k];
         const node_t *nd = &E.node[m];
-        uint32_t cost = DEF_COST[nd->type];
+        uint32_t cost = nd->bypass ? DEF_COST_BYPASS : DEF_COST[nd->type];   /* (D-1104: bypassed when the patch loads) */
         for (v = 0; v < b.nk; v++)
-            if (b.km[v] == m)
+            if (b.km[v] == m && !nd->bypass)
                 cost = SCH_RV_MIX;
         for (v = 0; v < nd->ninst; v++) {
             uint32_t ix = nd->inst0 + v, best = 0, fin = 0;

@@ -38,8 +38,9 @@ export function scheduleWork(s: Schedule, work: (m: number) => number): (m: numb
   };
 }
 
-/** Input must be deviceView(source, true); `cost(type)`: one copy's cost in 64 cycles (engine.c DEF_COST) */
-export function schedule(p: Patch, groups: DeviceGroup[], cost: (type: string) => number): Schedule {
+/** Input must be deviceView(source, true); `cost(type)`: one copy's cost in 64 cycles (engine.c DEF_COST); `bypass`: a
+ * module's bypassed when the patch loads (DEF_COST_BYPASS, D-1104; a master FX stage's targets as they are saved) */
+export function schedule(p: Patch, groups: DeviceGroup[], cost: (type: string) => number, bypass: number): Schedule {
   const index = new Map(p.modules.map((m, i) => [m.id, i]));
   const group = p.modules.map((m) => groups.findIndex((g) => g.modules.has(m.id)));
   const copies = group.map((g) => (g < 0 ? 1 : groups[g].cfg.parts));
@@ -86,8 +87,9 @@ export function schedule(p: Patch, groups: DeviceGroup[], cost: (type: string) =
   const end = [0, SCH_FORK];
   const n = [0, 0];
   let total = 0;
+  const off = (m: number): boolean => !!p.modules[m].bypass && p.modules[m].type !== 'fm1' && p.modules[m].type !== 'output';
   for (const m of kernels) {
-    const c = cost('reverb');
+    const c = off(m) ? 0 : cost('reverb');
     const best = end[1] + c < end[0] + c ? 1 : 0;
     lane[m][1] = best;
     fin[m][1] = end[best] += c;
@@ -97,7 +99,7 @@ export function schedule(p: Patch, groups: DeviceGroup[], cost: (type: string) =
     deps.get(`${m}/0`)!.push([m, 1]);
   }
   for (const m of order) {
-    const c = kernels.includes(m) ? SCH_RV_MIX : cost(p.modules[m].type);
+    const c = off(m) ? bypass : kernels.includes(m) ? SCH_RV_MIX : cost(p.modules[m].type);
     for (let v = 0; v < copies[m]; v++) {
       let best = 0, bestFin = 0;
       for (let l = 0; l < (steps(m) ? 1 : 2); l++) {
