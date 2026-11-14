@@ -1021,9 +1021,13 @@ const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }>
     const k2 = Math.SQRT2; // stage 2 is damped (Q 0.7): the resonance peak comes from stage 1 alone
     const tr = (c.p.track ?? 0) >= 0.5 ? c.voice.pitch : 0; // keyboard tracking: the cutoff follows the played pitch 1 octave per octave (C4 = the cutoff as set)
     let fc = c.p.cutoff ?? 1000, m = c.p.morph ?? 0;
+    let g = 0;
     for (let i = 0; i < c.n; i++) {
-      fc = Math.min((c.p.cutoff ?? 1000) * Math.pow(2, c.inp.cv[i] * (c.p.cvamt ?? 1) + tr), c.sr * 0.45);
-      const g = Math.tan((Math.PI * fc) / c.sr);
+      // #787: the cutoff (and its coefficients) follows the cv every 4th sample of the block, as engine.c filter_run
+      if ((i & 3) === 0) {
+        fc = Math.min((c.p.cutoff ?? 1000) * Math.pow(2, c.inp.cv[i] * (c.p.cvamt ?? 1) + tr), c.sr * 0.45);
+        g = Math.tan((Math.PI * fc) / c.sr);
+      }
       if (over > 0) {
         const b = Math.min(FILTER_OSC_CLIP, Math.max(-FILTER_OSC_CLIP, s.ic1));
         k = k0 + gam * b * b;

@@ -6805,7 +6805,9 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv)
     }
     for (i = 0; i < n; i++) {
         int32_t v0 = in[i] << 4, v3, v1, v2, w3, w1, w2, h, m, kv1;          /* Q20 */
-        if (!fixed && (i == 0 || cv[i] != lcv)) {      /* the coefficients only when the cv moves (exactly the same values) */
+        /* the coefficients only when the cv moves (the same values again), at most every 4th sample of the block (#787:
+         * the cutoff follows the cv in steps of 4 samples, modules.ts the same) */
+        if (!fixed && (i & 3u) == 0 && (i == 0 || cv[i] != lcv)) {
             int32_t g;
             lcv = cv[i];
             g = svf_g(exp2_scale(base, mul16(lcv, cvamt)));
