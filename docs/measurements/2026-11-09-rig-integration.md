@@ -69,7 +69,7 @@ The change is not a universal speed-up. Oracle V and Init need more time in this
 
 `web/scripts/cpu-rig-fit.ts` fits the combined build's two complete surveys. The resulting scale is 195.8 counted cycles per microsecond, plus 270 microseconds per block. The scaled second-core idle cost is 29 microseconds. Factory engine factors range from 0.64 to 1.28. `web/scripts/cpu-costs.ts` freezes these values; `web/src/cpu-costs.json` records the generated table and source surveys. The 169 CPU tests passed, including each measured factory patch's allowed model error. Regenerating the firmware headers produced no change.
 
-Later factory-bank revisions must not change the input graphs associated with these recordings. Historical rig assertions and `cpu-rig-fit.ts` use `web/src/cpu-survey-factory-1.13.json`, captured from released revision `d604efe0d3f7d15d5620fa392925f9789d5b0b2c`; the separately recorded Scrounge fixture remains authoritative for its Pan calibration. Current candidate graphs are counted separately by `cpu-costs.ts`. Candidates with structural or memory limits are not executable counter fixtures; a high CPU estimate alone does not exclude a candidate from counting.
+The CPU model's calibration moved to the two-core schedule's survey ([2026-11-14](2026-11-14-rig-two-core-schedule.md)); this survey's graphs were `web/src/cpu-survey-factory-1.13.json` at revision `d604efe0d3f7d15d5620fa392925f9789d5b0b2c`, now in git history.
 
 ## Correctness evidence
 
