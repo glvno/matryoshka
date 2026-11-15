@@ -21,7 +21,7 @@ export interface LofiPresetDesign {
 // Hera 4 is the canonical definition (selected bank name Hera 6); it has no added FX rack.
 // Levels are conservative design starting points, not calibrated loudness or listening approval.
 
-/** Algo Four's DX100 sounds (D-1201) in card units, one object per operator: its rows without the operator number. Ratio and
+/** Algo Four's DX100 sounds (D-1204) in card units, one object per operator: its rows without the operator number. Ratio and
  * detune are parameter indices (modules.ts RATIOS: 0 = 0.50, 4 = 1.00, 5 = 1.41, 7 = 1.73, 8 = 2.00, 10 = 3.00,
  * 12 = 3.46, 13 = 4.00, 16 = 5.00, 19 = 6.00, 22 = 7.00, 31 = 10.00, 35 = 11.30, 63 = 25.95; detune 3 = 0, 1 = -2,
  * 5 = +2). Operators 1 and 3 have rate/level envelopes (r1, l2, r2, l3, r4), 2 and 4 ADSRs; operator 4 has no index.
