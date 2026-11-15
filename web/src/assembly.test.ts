@@ -58,6 +58,7 @@ import { addModule, connect, emptyPatch, removeModule, validatePatch, type Patch
 import { encodePatch } from './patchbin';
 import { engineBytes } from './test-bin';
 import { PRESETS } from './presets';
+import { addBoard } from '../scripts/vcs3-board';
 
 /** panel -> osc -> vca -> output, with an envelope on the vca: the modules of a 1-operator voice */
 function voice(): { p: Patch; kb: number; osc: number; env: number; vca: number; out: number } {
@@ -437,6 +438,7 @@ describe('assemblies', () => {
       const out = addModule(p, DEFS.output, 0, 0).id;
       p.modules[1].params.level = 1;
       const a = insertAssembly(p, DEFS, d, 0, 0);
+      if (d.name === 'Briefcase 3') addBoard(p, a);   // (its routes are the pin board beside it, D-1052: alone it is silent)
       const inp = (label: string) => a.inputs.find((r) => r.label === label);
       const feed = (from: string, label: string): void => {
         const r = inp(label);
