@@ -68,7 +68,8 @@ export const LOFI_PRESET_DESIGNS: Record<string, LofiPresetDesign[]> = {
         'voice / volume': 0.36,
       },
       fx: {
-        reason: 'A short dark room supports mellow chord playing; a slow shallow chorus warms the reduced-index EP body without a long rhythmic echo.',
+        reason: 'The owner-approved 1.14 saturation is back with the rack\'s drive, rounding the reduced-index EP body; the 1.16 slow shallow chorus stays, and a short dark room supports mellow chords without a rhythmic echo.',
+        drive: { drive: 1.35, mode: 0, level: 0.54, sym: 0 },
         chorus: { rate: 0.4, depth: 0.2, mix: 0.2 },
         reverb: { size: 0.34, damp: 0.78, mix: 0.17, pre: 16, mod: 0, freeze: 0 },
       },
@@ -141,7 +142,8 @@ export const LOFI_PRESET_DESIGNS: Record<string, LofiPresetDesign[]> = {
         { ratio: 19, detune: 3, level: 0.5, a: 0.001, d: 0.44, s: 0.35, r: 0.005 },
       ),
       fx: {
-        reason: 'A fast shallow chorus stands in for the chart\'s delayed LFO vibrato; a small room supports the gated organ without a rotary claim.',
+        reason: 'Compensated soft clipping drives the feedback stop like an organ played through a small amplifier; a fast shallow chorus stands in for the chart\'s delayed LFO vibrato, and a small room supports it without a rotary claim.',
+        drive: { drive: 2.2, mode: 0, level: 0.38, sym: 0 },
         chorus: { rate: 4, depth: 0.12, mix: 0.3 },
         reverb: { size: 0.3, damp: 0.65, mix: 0.1, pre: 10, mod: 0, freeze: 0 },
       },
@@ -179,7 +181,8 @@ export const LOFI_PRESET_DESIGNS: Record<string, LofiPresetDesign[]> = {
         { ratio: 0, detune: 3, level: 1.4, a: 0.25, d: 0.5, s: 1, r: 0.11 },
       ),
       fx: {
-        reason: 'A slow shallow chorus widens the section and a close room places it; no echo repeats the swells.',
+        reason: 'Gentle compensated saturation brings back some of the edge that feedback 7 gave the chart\'s brass; a slow shallow chorus widens the section and a close room places it, with no echo repeating the swells.',
+        drive: { drive: 1.5, mode: 0, level: 0.48, sym: 0 },
         chorus: { rate: 0.5, depth: 0.16, mix: 0.18 },
         reverb: { size: 0.3, damp: 0.7, mix: 0.12, pre: 12, mod: 0, freeze: 0 },
       },
@@ -234,7 +237,8 @@ export const LOFI_PRESET_DESIGNS: Record<string, LofiPresetDesign[]> = {
         { ratio: 13, detune: 3, level: 1, a: 0.001, d: 0.15, s: 0, r: 0.1 },
       ),
       fx: {
-        reason: 'Slow deep chorus makes the soft keys waver like a worn recording, and a very dark small room keeps them close; no echo.',
+        reason: 'Light compensated saturation warms the soft keys like a worn amplifier; slow deep chorus makes them waver like a worn recording, and a very dark small room keeps them close, with no echo.',
+        drive: { drive: 1.6, mode: 0, level: 0.72, sym: 0 },
         chorus: { rate: 0.2, depth: 0.55, mix: 0.38 },
         reverb: { size: 0.3, damp: 0.85, mix: 0.14, pre: 10, mod: 0, freeze: 0 },
       },
@@ -400,7 +404,8 @@ export const LOFI_PRESET_DESIGNS: Record<string, LofiPresetDesign[]> = {
         { ratio: 4, detune: 3, level: 1, a: 0.001, d: 0.05, s: 0.2, r: 0.05 },
       ),
       fx: {
-        reason: 'One short 85 ms reflection adds a close percussive response; the gated clav stays dry otherwise.',
+        reason: 'Compensated soft clipping gives the clav the bark of a driven amplifier; one short 85 ms reflection adds a close percussive response.',
+        drive: { drive: 2, mode: 0, level: 0.39, sym: 0 },
         delay: { time: 85, fb: 0, mix: 0.11, sync: 0, pingpong: 0, note: 0 },
       },
       role: 'Funky clavinet-style comping that keeps its bite while held and stops at once on release. A high 1:1 index for the snap, a 3.00 second carrier for the nasal string, 50 ms releases. Play short syncopated chords.',
@@ -418,7 +423,8 @@ export const LOFI_PRESET_DESIGNS: Record<string, LofiPresetDesign[]> = {
         { ratio: 4, detune: 3, level: 1, a: 0.01, d: 0.5, s: 0.7, r: 0.2 },
       ),
       fx: {
-        reason: 'A clear 300 ms echo follows the melody and a small dark room joins the phrases.',
+        reason: 'Compensated soft clipping turns the feedback buzz into a growl; a clear 300 ms echo follows the melody and a small dark room joins the phrases.',
+        drive: { drive: 2.6, mode: 0, level: 0.29, sym: 0 },
         delay: { time: 300, fb: 0.22, mix: 0.2, sync: 0, pingpong: 0, note: 0 },
         reverb: { size: 0.3, damp: 0.72, mix: 0.08, pre: 20, mod: 0, freeze: 0 },
       },
