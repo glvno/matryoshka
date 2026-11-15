@@ -444,6 +444,16 @@ static void m1_patch_bypass(uint32_t mod, int on)
     m1_edited = 1;
 }
 
+/* where the macro ranges start in binary p, or would start (past the master FX bus), 0 if a section before is malformed */
+static uint32_t m1_ranges_at(const uint8_t *p, uint32_t len)
+{
+    uint32_t at = eng_section_at(p, len, ENG_SEC_FX);
+    const uint8_t *next;
+    if (!at || at > len || !(next = eng_skip_fx(p + at, p + len, (uint16_t)((uint16_t)p[6] | (uint16_t)p[7] << 8))))
+        return 0;
+    return (uint32_t)(next - p);
+}
+
 /* a patch binary that eng_load would at least not reject for its framing: header, record sizes add up to the length */
 static int m1_valid(const uint8_t *p, uint32_t len)
 {
@@ -456,29 +466,8 @@ static int m1_valid(const uint8_t *p, uint32_t len)
         return 0;
     for (uint32_t g = 0; g < p[3]; g++)
         if (!eng_group_valid(p + 8u + ENG_GROUP_REC * g, p[1])) return 0;
-    if (!(at = eng_cables_end(p, len)))                         /* the records (in the binary's format), cables, morph B set */
+    if (!(at = m1_ranges_at(p, len)))                         /* the sections up to the master FX bus, then past it */
         return 0;
-    if (p[6] & 4u) at += p[2];                              /* switched fixed-input links, before ranges */
-    if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at)))
-        return 0;
-    if (!(at = eng_steps_end(p, len, at)))      /* flag bit 4: the tracks' notes; flag bit 10: the patterns and songs */
-        return 0;
-    if ((p[6] & 32u) && !(at = eng_devices_end(p, len, at)))    /* flag bit 5: the device pages */
-        return 0;
-    if ((p[7] & ENG_FLAG_EXTRAS) && !(at = eng_extras_end(p, len, at)))   /* flag bit 8: the device extras */
-        return 0;
-    if ((p[6] & 64u) && !(at = eng_buttons_end(p, len, at)))    /* flag bit 6: the button kinds */
-        return 0;
-    if ((p[6] & 128u) && !(at = eng_names_end(p, len, at)))     /* flag bit 7: the Drum maps' row names */
-        return 0;
-    if ((p[7] & ENG_FLAG_ORIGINS) && !(at = eng_origins_end(p, len, at)))
-        return 0;
-    {
-        const uint8_t *next;
-        if (at > len || !(next = eng_skip_fx(p + at, p + len, (uint16_t)((uint16_t)p[6] | (uint16_t)p[7] << 8))))
-            return 0;
-        at = (uint32_t)(next - p);
-    }
     if (p[6] & 2u) {                                            /* flag bit 1: the macro ranges after that */
         if (at >= len)
             return 0;
@@ -487,54 +476,30 @@ static int m1_valid(const uint8_t *p, uint32_t len)
     return at == len;
 }
 
-/* the offset in the current patch where the notes section starts (or would start: after the side-input routes), 0 if
- * the binary is malformed */
-static uint32_t m1_notes_at(void)
+/* where section sec (ENG_SEC_*) of the current patch starts (or would start), 0 if the binary is malformed */
+static uint32_t m1_sec_at(uint32_t sec)
 {
-    uint32_t at = m1_cur_len >= 8u ? eng_cables_end(m1_cur, m1_cur_len) : 0;
-    if (!at)
-        return 0;
-    if (m1_cur[6] & 4u) at += m1_cur[2];
-    if ((m1_cur[6] & 8u) && !(at = eng_routes_end(m1_cur, m1_cur_len, at)))
-        return 0;
+    uint32_t at = eng_section_at(m1_cur, m1_cur_len, sec);
     return at <= m1_cur_len ? at : 0;
 }
+
+/* the offset in the current patch where the notes section starts (or would start: after the side-input routes), 0 if
+ * the binary is malformed */
+static uint32_t m1_notes_at(void) { return m1_sec_at(ENG_SEC_NOTES); }
 
 /* the offset of the device pages section (its count byte) in the current patch, 0 if the patch has none */
 static uint32_t m1_devices_at(void)
 {
-    uint32_t at;
-    if (!(m1_cur[6] & 32u) || !(at = m1_notes_at()))
-        return 0;
-    if (!(at = eng_steps_end(m1_cur, m1_cur_len, at)))
-        return 0;
-    return at < m1_cur_len ? at : 0;
+    uint32_t at = m1_sec_at(ENG_SEC_DEVICES);
+    return (m1_cur[6] & 32u) && at < m1_cur_len ? at : 0;
 }
 
 /* the offset of the macro range section (its count byte) in the current patch, 0 if the patch has none */
 static uint32_t m1_range_section(void)
 {
     uint32_t at;
-    if (!(m1_cur[6] & 2u) || !(at = m1_notes_at()))
+    if (!(m1_cur[6] & 2u) || !(at = m1_ranges_at(m1_cur, m1_cur_len)))
         return 0;
-    if (!(at = eng_steps_end(m1_cur, m1_cur_len, at)))
-        return 0;
-    if ((m1_cur[6] & 32u) && !(at = eng_devices_end(m1_cur, m1_cur_len, at)))   /* the device pages come before the ranges */
-        return 0;
-    if ((m1_cur[7] & ENG_FLAG_EXTRAS) && !(at = eng_extras_end(m1_cur, m1_cur_len, at)))   /* then the device extras */
-        return 0;
-    if ((m1_cur[6] & 64u) && !(at = eng_buttons_end(m1_cur, m1_cur_len, at)))   /* then the button kinds */
-        return 0;
-    if ((m1_cur[6] & 128u) && !(at = eng_names_end(m1_cur, m1_cur_len, at)))    /* then the Drum maps' row names */
-        return 0;
-    if ((m1_cur[7] & ENG_FLAG_ORIGINS) && !(at = eng_origins_end(m1_cur, m1_cur_len, at)))
-        return 0;
-    {
-        const uint8_t *next;
-        if (at > m1_cur_len || !(next = eng_skip_fx(m1_cur + at, m1_cur + m1_cur_len, (uint16_t)((uint16_t)m1_cur[6] | (uint16_t)m1_cur[7] << 8))))
-            return 0;
-        at = (uint32_t)(next - m1_cur);
-    }
     return at < m1_cur_len ? at : 0;
 }
 
@@ -638,7 +603,7 @@ static void m1_patch_track(uint32_t mod)
     const uint32_t *w;
     int n = eng_pattern_notes(mod, 0, &w), i;
     uint32_t sec, at, cnt, old = 0, len, has = m1_cur[6] & 16u;
-    if (n < 0 || !m1_track_at(mod) || !(sec = m1_notes_at()) || (has && !eng_notes_end(m1_cur, m1_cur_len, sec)))
+    if (n < 0 || !m1_track_at(mod) || !(sec = m1_notes_at()) || (has && !m1_sec_at(ENG_SEC_PATTERNS)))
         return;
     m1_patch_patterns();                             /* (the pattern edited may be any: both sections follow the engine) */
     cnt = has ? m1_cur[sec] : 0u;
@@ -683,13 +648,11 @@ static void m1_patch_track(uint32_t mod)
  * keeps its old section. The clean linked patterns (#901, m1_pat_clean) are left out: their content is the store's */
 static void m1_patterns_sec(void)
 {
-    uint32_t sec = m1_notes_at(), old = 0;
+    uint32_t sec = m1_sec_at(ENG_SEC_PATTERNS), old = 0;
     int n;
     if (!sec || m1_cur[1] < 48u)
         return;
-    if ((m1_cur[6] & 16u) && !(sec = eng_notes_end(m1_cur, m1_cur_len, sec)))
-        return;
-    if ((m1_cur[7] & ENG_FLAG_PATTERNS) && !(old = eng_patterns_end(m1_cur, m1_cur_len, sec)))
+    if ((m1_cur[7] & ENG_FLAG_PATTERNS) && !(old = m1_sec_at(ENG_SEC_LOCKS)))
         return;
     old = old ? old - sec : 0u;
     eng_patterns_omit(m1_pat_clean());
@@ -768,15 +731,11 @@ static int m1_default_pattern(uint32_t mod, uint32_t pattern, const uint32_t *wo
  * binary is older than format 49 or would outgrow M1_PATCH_MAX (the caller undoes the engine's edit: the two never differ) */
 static int m1_locks_sec(void)
 {
-    uint32_t sec = m1_notes_at(), old = 0;
+    uint32_t sec = m1_sec_at(ENG_SEC_LOCKS), old = 0;
     int n;
     if (!sec || m1_cur[1] < 49u)
         return 0;
-    if ((m1_cur[6] & 16u) && !(sec = eng_notes_end(m1_cur, m1_cur_len, sec)))
-        return 0;
-    if ((m1_cur[7] & ENG_FLAG_PATTERNS) && !(sec = eng_patterns_end(m1_cur, m1_cur_len, sec)))
-        return 0;
-    if ((m1_cur[7] & ENG_FLAG_LOCKS) && !(old = eng_locks_end(m1_cur, m1_cur_len, sec)))
+    if ((m1_cur[7] & ENG_FLAG_LOCKS) && !(old = m1_sec_at(ENG_SEC_LINKS)))
         return 0;
     old = old ? old - sec : 0u;
     eng_patterns_omit(m1_pat_clean());

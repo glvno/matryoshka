@@ -221,8 +221,8 @@ static int pl_check(const uint8_t *b, uint32_t len)
 static const uint8_t *pl_row_more(uint32_t m, uint32_t j)
 {
     const uint8_t *b = m1_cur;
-    uint32_t len = m1_cur_len, at = eng_links_at(b, len), n, d, g, np, r, nr;
-    if (!at || ((b[7] & ENG_FLAG_LINKS) && !(at = eng_links_end(b, len, at))) || !(b[6] & 32u) || !eng_devices_end(b, len, at))
+    uint32_t len = m1_cur_len, at = (b[6] & 32u) ? eng_section_at(b, len, ENG_SEC_DEVICES) : 0u, n, d, g, np, r, nr;
+    if (!at || !eng_devices_end(b, len, at))
         return 0;
     n = b[at++];
     for (d = 0; d < n; d++) {

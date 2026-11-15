@@ -290,6 +290,14 @@ static inline uint32_t eng_links_end(const uint8_t *p, uint32_t len, uint32_t at
     at += 1u + 3u * p[at];
     return at <= len ? at : 0;
 }
+/* the sections after the side-input routes, in their order in a binary (eng_section_at): ENG_SEC_FX is where the master
+ * FX bus would start, right after the pattern origins */
+enum { ENG_SEC_NOTES, ENG_SEC_PATTERNS, ENG_SEC_LOCKS, ENG_SEC_LINKS, ENG_SEC_DEVICES, ENG_SEC_EXTRAS, ENG_SEC_BUTTONS,
+       ENG_SEC_NAMES, ENG_SEC_ORIGINS, ENG_SEC_FX };
+/* where section `sec` (ENG_SEC_*) starts in binary p, or would start, past every section before it that the binary has;
+ * 0 if one of those is cut short. Past the routes it can exceed `len` when the binary has none of those sections: the
+ * callers check. The one walk over the sections that every "where does X start" asks (#901) */
+uint32_t eng_section_at(const uint8_t *p, uint32_t len, uint32_t sec);
 /* where the stored pattern links section starts in binary p, or would start (right after the P-locks), 0 if the binary is
  * malformed (#901: proto.c m1_patch_links, patlink.c) */
 uint32_t eng_links_at(const uint8_t *p, uint32_t len);

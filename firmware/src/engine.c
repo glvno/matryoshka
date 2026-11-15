@@ -1868,17 +1868,26 @@ uint32_t eng_origins_end(const uint8_t *p, uint32_t len, uint32_t at)
     }
     return at;
 }
+/* the sections eng_section_at walks, in their order: the header byte and bit that say a binary has one, and its end */
+typedef uint32_t (*sec_end_t)(const uint8_t *p, uint32_t len, uint32_t at);
+static const struct { uint8_t byte, bit; sec_end_t end; } SECTIONS[ENG_SEC_FX] = {
+    { 6, 16u, eng_notes_end }, { 7, ENG_FLAG_PATTERNS, eng_patterns_end }, { 7, ENG_FLAG_LOCKS, eng_locks_end },
+    { 7, ENG_FLAG_LINKS, eng_links_end }, { 6, 32u, eng_devices_end }, { 7, ENG_FLAG_EXTRAS, eng_extras_end },
+    { 6, 64u, eng_buttons_end }, { 6, 128u, eng_names_end }, { 7, ENG_FLAG_ORIGINS, eng_origins_end } };
+uint32_t eng_section_at(const uint8_t *p, uint32_t len, uint32_t sec)
+{
+    uint32_t at, k;
+    if (len < 8u || !(at = eng_cables_end(p, len))) return 0;
+    if (p[6] & 4u) at += p[2];
+    if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at))) return 0;
+    for (k = 0; k < sec; k++)
+        if ((p[SECTIONS[k].byte] & SECTIONS[k].bit) && !(at = SECTIONS[k].end(p, len, at))) return 0;
+    return at;
+}
 uint32_t eng_origins_at(const uint8_t *p, uint32_t len)
 {
     uint32_t at;
-    if (len < 8u || !(p[7] & ENG_FLAG_ORIGINS) || !(at = eng_cables_end(p, len))) return 0;
-    if (p[6] & 4u) at += p[2];
-    if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at))) return 0;
-    if (!(at = eng_steps_end(p, len, at))) return 0;
-    if ((p[6] & 32u) && !(at = eng_devices_end(p, len, at))) return 0;
-    if ((p[7] & ENG_FLAG_EXTRAS) && !(at = eng_extras_end(p, len, at))) return 0;
-    if ((p[6] & 64u) && !(at = eng_buttons_end(p, len, at))) return 0;
-    if ((p[6] & 128u) && !(at = eng_names_end(p, len, at))) return 0;
+    if (len < 8u || !(p[7] & ENG_FLAG_ORIGINS) || !(at = eng_section_at(p, len, ENG_SEC_ORIGINS))) return 0;
     return eng_origins_end(p, len, at) ? at : 0;
 }
 uint32_t eng_origin_record(const uint8_t *p, uint32_t len, uint32_t module, uint32_t pattern)
@@ -1892,14 +1901,8 @@ uint32_t eng_origin_record(const uint8_t *p, uint32_t len, uint32_t module, uint
 }
 uint32_t eng_links_at(const uint8_t *p, uint32_t len)
 {
-    uint32_t at;
-    if (len < 8u || !(at = eng_cables_end(p, len))) return 0;
-    if (p[6] & 4u) at += p[2];
-    if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at))) return 0;
-    if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at))) return 0;
-    if ((p[7] & ENG_FLAG_PATTERNS) && !(at = eng_patterns_end(p, len, at))) return 0;
-    if ((p[7] & ENG_FLAG_LOCKS) && !(at = eng_locks_end(p, len, at))) return 0;
-    return at <= len && (!(p[7] & ENG_FLAG_LINKS) || eng_links_end(p, len, at)) ? at : 0;
+    uint32_t at = eng_section_at(p, len, ENG_SEC_LINKS);
+    return at && at <= len && (!(p[7] & ENG_FLAG_LINKS) || eng_links_end(p, len, at)) ? at : 0;
 }
 const uint8_t *eng_skip_fx(const uint8_t *p, const uint8_t *end, uint16_t flags)
 {
@@ -5534,19 +5537,7 @@ int eng_steps_hit(uint32_t module, int accent, int record)
 static uint32_t names_at(const uint8_t *p, uint32_t len)
 {
     uint32_t at;
-    if (len < 8u || p[1] < 33u || !(p[6] & 128u) || !(at = eng_cables_end(p, len)))
-        return 0;
-    if (p[6] & 4u)
-        at += p[2];
-    if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at)))
-        return 0;
-    if (!(at = eng_steps_end(p, len, at)))
-        return 0;
-    if ((p[6] & 32u) && !(at = eng_devices_end(p, len, at)))
-        return 0;
-    if ((p[7] & ENG_FLAG_EXTRAS) && !(at = eng_extras_end(p, len, at)))
-        return 0;
-    if ((p[6] & 64u) && !(at = eng_buttons_end(p, len, at)))
+    if (len < 8u || p[1] < 33u || !(p[6] & 128u) || !(at = eng_section_at(p, len, ENG_SEC_NAMES)))
         return 0;
     return eng_names_end(p, len, at) ? at : 0;
 }

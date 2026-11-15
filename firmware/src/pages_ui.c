@@ -109,12 +109,7 @@ static uint32_t pages_capacity(void);                 /* writable native patch b
 static uint32_t pages_at(const uint8_t *p, uint32_t len)
 {
     uint32_t at;
-    if (len < 8u || !(p[6] & 32u) || !(at = eng_cables_end(p, len)))
-        return 0;
-    if (p[6] & 4u) at += p[2];
-    if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at)))
-        return 0;
-    if (!(at = eng_steps_end(p, len, at)))
+    if (len < 8u || !(p[6] & 32u) || !(at = eng_section_at(p, len, ENG_SEC_DEVICES)))
         return 0;
     return at < len ? at : 0;
 }
