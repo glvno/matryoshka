@@ -3645,53 +3645,80 @@ asm('Elvira 2', 'Voices', (b) => {
 // Scrounge, after the neutral labs Scrooge (its manual v1.1): five voices that live on their control voltage. On the
 // original each sequencer step is a voltage curve (POKE its height, TILT its slope, GATE its length) that both powers a
 // voice's starved CMOS circuit and sets its pitch and timbre; here a Drum map row plays a one-shot curve (an Env L/R:
-// tilt = the rise, gate = the fall) whose height is the row's velocity (a pin on l1: the step's accent is its POKE), and
-// the curve, summed with the two modulation tracks, drives the voice's level, pitch and tone all at once. Voices: 1 a
-// boomy sine with a pitch drop (kick), 2 a high square through a Bitcrusher (hats to drones), 3 noise through a band pass
-// (snare), 4 a triangle bent by a square (growls, chirps), 5 a saw into a ladder (squelchy bass); each with the two
-// unlabelled knobs of the original, its volume slider and the A-B switch (a pan: left = A, right = B). Rows 6 and 7 are
-// MOD X and MOD Y: their own curves through a slew limiter (SLEW), into every voice by its X / Y amount (the X-Y switch).
-// The mix saturates; CHOP (a square LFO opening and closing both outputs, the CTL ALL gesture on all five voices) and MELT
-// (both outputs' sample rate, by a pin) after it. Mod wheel = the MOD X input. Row 8 (EXT) stays free. The sequencer is the
-// patch's Steps track, not part of the engine.
+// tilt = the rise, gate = the fall) whose height is the POKE, and the curve, through the voice's SLEW (a Slew limiter)
+// and MELT (a Bitcrusher on the curve), summed with one of the two modulation tracks, drives the voice's level, pitch
+// and tone all at once. Voices: 1 a boomy sine with a pitch drop (kick), 2 a high square through a Bitcrusher (hats to
+// drones), 3 noise through a band pass (snare), 4 a triangle bent by a square (growls, chirps), 5 a saw into a ladder
+// (squelchy bass); each with the two unlabelled knobs of the original, its volume slider and three switches (Selectors):
+// A-B (A, A+B, B; the original's middle feeds neither main output but the voice's own jack, which the FM-1 has not, so
+// here it feeds both), X-Y (X, OFF, Y: which modulation track the curve takes) and the curve's shape (TILT: it falls
+// over the gate; FLAT: the original's flat gate, held at the POKE for the gate, then off). Rows 6 and 7 are MOD X and
+// MOD Y: their own curves through a slew limiter. The mix saturates; CHOP (a square LFO opening and closing both
+// outputs, the CTL ALL gesture on all five voices) and MELT (both outputs' sample rate, by a pin) after it; one VOL sets
+// both outputs. Mod wheel = the MOD X input. Row 8 (EXT) stays free.
+// The POKE: voice 1's is its Drum map row's velocity. Rows 2..7 take theirs from a track's velocity on the curve's p1
+// pin (the FM-1's Scrounge has one Steps track per row, D-1056); with nothing there a curve's base, the default step
+// velocity, is its height. Each p1 pin sets its levels through a macro range (0..1), so the pin replaces the base; the
+// shape Selector adds -1 (TILT: the curve falls to 0) or 0 (FLAT: it stays at the POKE) to the second level.
+/** (the right saturator, which the out section's vol row moves too) */
+const scroungeR = { id: 0 };
 asm('Scrounge', 'Drums', (b) => {
   const map = b.add('drummap', 0, 0, Object.fromEntries(PLATE_KEYS[1].map((n, r) => [`n${r + 1}`, n])));
   b.module(map).names = ['VOICE 1', 'VOICE 2', 'VOICE 3', 'VOICE 4', 'VOICE 5', 'MOD X', 'MOD Y', 'EXT'];
-  const curveOf = (col: number, row: number, gate: number) =>
-    b.add('env', col, row, { l1: 0, r1: 0.001, l2: 0, r2: gate, l3: 0, r3: 0.001, l4: 0, r4: 0.001 }, { p1: 'l1' });
-  const modX = curveOf(0, 1, 0.4);
-  const modY = curveOf(0, 2, 0.2);
+  const POKE = 100 / 127;
+  const curveOf = (col: number, row: number, gate: number, levels: string[]) => {
+    const env = b.add('env', col, row, { l1: POKE, r1: 0.001, l2: levels.includes('l2') ? POKE : 0, r2: gate, l3: 0, r3: 0.001, l4: 0, r4: 0.001 }, { p1: 'l1' });
+    const m = b.module(env);
+    m.map!.p1 = levels;
+    m.range = { p1: Object.fromEntries(levels.map((l) => [l, [0, 1]])) };
+    return env;
+  };
+  const modX = curveOf(0, 1, 0.4, ['l1']);
+  const modY = curveOf(0, 2, 0.2, ['l1']);
   const slewX = b.add('glide', 0, 3, { time: 0.05 });
   const slewY = b.add('glide', 0, 4, { time: 0.2 });
   for (const [r, env, slew] of [[6, modX, slewX], [7, modY, slewY]] as const) {
     b.wire(map, `g${r}`, env, 'gate');
-    b.wire(map, `v${r}`, env, 'p1');
     b.wire(env, 'env', slew, 'in');
   }
   const L = b.add('shape', 7, 0, { drive: 1.5, mode: 0, level: 0.8 });
   const R = b.add('shape', 7, 1, { drive: 1.5, mode: 0, level: 0.8 });
-  type V = { env: number; curve: number; vca: number; pan: number; members: number[]; k1: [number, string, string]; k2: [number, string, string] };
-  const voice = (i: number, gate: number, xy: [number, number], build: (col: number, curve: number, vca: number) => Omit<V, 'env' | 'curve' | 'vca' | 'pan'>): V => {
+  type V = { env: number; curve: number; vca: number; pan: number; ab: number; xy: number; tilt: number; slew: number; melt: number; members: number[]; k1: [number, string, string]; k2: [number, string, string] };
+  /** xy: the X-Y switch's position (1 X, 2 OFF, 3 Y) */
+  const voice = (i: number, gate: number, xy: number, build: (col: number, curve: number, vca: number) => Pick<V, 'members' | 'k1' | 'k2'>): V => {
     const col = 1 + i;
-    const env = curveOf(col, 0, gate);
-    const curve = b.add('mixer', col, 1, { l1: 1, l2: xy[0], l3: xy[1], l4: 0 });
+    const env = curveOf(col, 0, gate, ['l1', 'l2']);
+    const tilt = b.add('select', col, 7, { count: 2, pos: 1, v1: -1, v2: 0 });
+    b.module(env).map!.p2 = ['l2'];
+    const slew = b.add('glide', col, 8, { time: 0.001 });
+    const melt = b.add('crush', col, 9, { bits: 16, rate: 1 });
+    const curve = b.add('mixer', col, 1, { l1: 1, l2: 1, l3: 0, l4: 0 });
+    // X-Y: the Selector passes MOD X (in1), nothing (in2: its value 0) or MOD Y (in3) into the curve's second input
+    const xs = b.add('select', col, 10, { count: 3, pos: xy, v1: 0, v2: 0, v3: 0 });
     const vca = b.add('vca', col, 5, { gain: 0.8 });
-    const pan = b.add('pan', col, 6, { pan: 0 });
+    // A-B: the Selector's -1 / 0 / 1 on the Pan's position by its p1 pin (half depth: the whole way across)
+    const pan = b.add('pan', col, 6, { pan: 0 }, { p1: 'pan', att: [0.5, 1] });
+    const ab = b.add('select', col, 11, { count: 3, pos: 2, v1: -1, v2: 0, v3: 1 });
     b.wire(map, `g${i + 1}`, env, 'gate');
-    b.wire(map, `v${i + 1}`, env, 'p1');
-    b.wire(env, 'env', curve, 'in1');
-    b.wire(slewX, 'out', curve, 'in2');
-    b.wire(slewY, 'out', curve, 'in3');
+    if (i === 0) b.wire(map, 'v1', env, 'p1');
+    b.wire(tilt, 'out', env, 'p2');
+    b.wire(env, 'env', slew, 'in');
+    b.wire(slew, 'out', melt, 'in');
+    b.wire(melt, 'out', curve, 'in1');
+    b.wire(slewX, 'out', xs, 'in1');
+    b.wire(slewY, 'out', xs, 'in3');
+    b.wire(xs, 'out', curve, 'in2');
     b.wire(curve, 'out', vca, 'cv');
     b.wire(vca, 'out', pan, 'in');
+    b.wire(ab, 'out', pan, 'p1');
     b.wire(pan, 'l', L, 'in');
     b.wire(pan, 'r', R, 'in');
     const v = build(col, curve, vca);
-    return { env, curve, vca, pan, ...v, members: [env, curve, ...v.members, vca, pan] };
+    return { env, curve, vca, pan, ab, xy: xs, tilt, slew, melt, ...v, members: [env, tilt, slew, melt, curve, xs, ...v.members, vca, pan, ab] };
   };
   const voices: V[] = [
     // 1: boom (a sine whose pitch rides the curve: the voltage drops, so does the pitch)
-    voice(0, 0.35, [0, 0], (col, curve, vca) => {
+    voice(0, 0.35, 2, (col, curve, vca) => {
       const osc = b.add('osc', col, 2, { wave: 0, coarse: -31, level: 1 });
       const boom = b.add('scale', col, 3, { gain: 1.5, offset: 0 });
       b.wire(curve, 'out', boom, 'in');
@@ -3700,7 +3727,7 @@ asm('Scrounge', 'Drums', (b) => {
       return { members: [osc, boom], k1: [osc, 'coarse', 'pitch'], k2: [boom, 'gain', 'boom'] };
     }),
     // 2: a high square, starved: the curve bends it and the Bitcrusher folds it into metal (a drone at low pitch)
-    voice(1, 0.06, [0, 0.15], (col, curve, vca) => {
+    voice(1, 0.06, 2, (col, curve, vca) => {
       const osc = b.add('osc', col, 2, { wave: 3, coarse: 30, pw: 0.3, level: 0.7 });
       const bend = b.add('scale', col, 3, { gain: 1, offset: 0 });
       const crush = b.add('crush', col, 4, { bits: 16, rate: 6 });
@@ -3711,7 +3738,7 @@ asm('Scrounge', 'Drums', (b) => {
       return { members: [osc, bend, crush], k1: [osc, 'coarse', 'pitch'], k2: [crush, 'rate', 'grit'] };
     }),
     // 3: noise through a band pass the curve opens (a snare's crack, a hiss)
-    voice(2, 0.15, [0, 0], (col, curve, vca) => {
+    voice(2, 0.15, 2, (col, curve, vca) => {
       const nz = b.add('noise', col, 2, { level: 1 });
       const bp = b.add('filter', col, 3, { cutoff: 1800, res: 0.5, cvamt: 2 });
       b.wire(nz, 'out', bp, 'in');
@@ -3720,7 +3747,7 @@ asm('Scrounge', 'Drums', (b) => {
       return { members: [nz, bp], k1: [bp, 'cutoff', 'tone'], k2: [bp, 'res', 'ring'] };
     }),
     // 4: a triangle whose phase a square bends (growl), both pitched up hard by the curve (chirp)
-    voice(3, 0.12, [0, 0.4], (col, curve, vca) => {
+    voice(3, 0.12, 3, (col, curve, vca) => {
       const sq = b.add('osc', col, 2, { wave: 3, coarse: -5, level: 1 });
       const tri = b.add('osc', col, 3, { wave: 1, coarse: 7, pm: 2, level: 0.9 });
       const chirp = b.add('scale', col, 4, { gain: 2.5, offset: 0 });
@@ -3732,7 +3759,7 @@ asm('Scrounge', 'Drums', (b) => {
       return { members: [sq, tri, chirp], k1: [tri, 'coarse', 'pitch'], k2: [tri, 'pm', 'growl'] };
     }),
     // 5: a saw into a ladder whose cutoff follows the curve (squelch)
-    voice(4, 0.25, [0.35, 0], (col, curve, vca) => {
+    voice(4, 0.25, 1, (col, curve, vca) => {
       const osc = b.add('osc', col, 2, { wave: 2, coarse: -24, level: 0.9 });
       const lad = b.add('ladder', col, 3, { cutoff: 180, res: 0.7, cvamt: 4, drive: 2 });
       b.wire(osc, 'out', lad, 'in');
@@ -3767,7 +3794,7 @@ asm('Scrounge', 'Drums', (b) => {
   voices.forEach((v) => {
     b.nestInput('gate', v.env, 'gate');
     b.nestInput('poke', v.env, 'p1');
-    b.nestInput('mod', v.curve, 'in2', [v.curve, 'in3']);
+    b.nestInput('mod', v.xy, 'in1', [v.xy, 'in3']);
     b.nestOutput('a', v.pan, 'l');
     b.nestOutput('b', v.pan, 'r');
   });
@@ -3780,10 +3807,12 @@ asm('Scrounge', 'Drums', (b) => {
     b.param(v.k2[2], v.k2[0], v.k2[1]);
     b.param('tilt', v.env, 'r1');
     b.param('gate', v.env, 'r2');
+    b.param('shape', v.tilt, 'pos');
+    b.param('slew', v.slew, 'time');
+    b.param('melt', v.melt, 'rate');
     b.param('vol', v.vca, 'gain');
-    b.param('a-b', v.pan, 'pan');
-    b.param('x', v.curve, 'l2');
-    b.param('y', v.curve, 'l3');
+    b.param('a-b', v.ab, 'pos');
+    b.param('x-y', v.xy, 'pos');
   });
   b.param('x gate', modX, 'r2', { col: true, head: 'mod' });
   b.param('x slew', slewX, 'time');
@@ -3792,10 +3821,20 @@ asm('Scrounge', 'Drums', (b) => {
   b.param('chop', chop, 'rate', { head: 'ctl all' });
   b.param('chop depth', chop, 'depth');
   b.param('melt', melt, 'value');
-  b.param('vol a', L, 'level', { head: 'out' });
-  b.param('vol b', R, 'level');
+  b.param('vol', L, 'level', { head: 'out' });
   b.param('out', scope, 'view', { col: true });
+  scroungeR.id = R;
 });
+// the out section's vol is both saturators' level (a row's `also`); the switches' positions named as on the Scrooge
+{
+  const d = defs.find((x) => x.name === 'Scrounge')!;
+  const names: Record<string, string[]> = { shape: ['TILT', 'FLAT'], 'a-b': ['A', 'A+B', 'B'], 'x-y': ['X', 'OFF', 'Y'] };
+  for (const list of [d.params, ...(d.assemblies ?? []).map((n) => n.params)])
+    for (const r of list) {
+      if (r.label === 'vol' && d.modules[r.module - 1].type === 'shape') r.also = [{ module: scroungeR.id, param: 'level' }];
+      if (names[r.label]) r.names = names[r.label];
+    }
+}
 
 // Meridian 8, after the Landscape NOON (its manual, landscape.fm/s/Noon-Manual-baw6.pdf, and the instrument's page,
 // landscape.fm/noon): eight passive circuits powered by their gates, no supply of their own. Since D-1054 the FM-1 plays

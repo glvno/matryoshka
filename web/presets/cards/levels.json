@@ -55,8 +55,7 @@
   "output / volume": 0.75
  },
  "Scrounge": {
-  "out / vol a": 0.7,
-  "out / vol b": 0.7
+  "out / vol": 0.61
  },
  "Silver Box": {
   "tone / volume": 1

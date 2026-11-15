@@ -55,7 +55,7 @@ export const LEVEL_ROWS: Record<string, string[]> = {
   '808 kit': ['bass drum / level', 'snare drum / level', 'low tom / level', 'mid tom / level', 'hi tom / level', 'rim shot / level', 'hand clap / level', 'cow bell / level', 'cymbal / level', 'open hihat / level', 'closed hihat / level'],
   '909 kit': ['kick / level', 'snare / level', 'low tom / level', 'mid tom / level', 'high tom / level', 'rim / level', 'clap / level', 'hihat / level', 'crash / level', 'ride / level'],
   'Sallen 20': ['output / volume'],
-  Scrounge: ['out / vol a', 'out / vol b'],
+  Scrounge: ['out / vol'],
   'Silver Box': ['tone / volume'],
   'Spokes 6': ['master / master'],
   'supersaw stack': ['level'],
