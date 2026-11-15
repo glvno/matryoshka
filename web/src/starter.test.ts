@@ -5,10 +5,10 @@ import { deviceBudget, encodePatch } from './patchbin';
 import { Engine } from './engine';
 
 describe('the first-run patch', () => {
-  it('is the factory Vernon 100, fits the FM-1 and plays a chord without clipping', () => {
+  it('is the factory Monolith D, fits the FM-1 and plays a chord without clipping', () => {
     const p = starterPatch();
     expect(p.name).toBe(STARTER);
-    expect(p.assemblies?.some((a) => a.name === 'Vernon 100')).toBe(true);
+    expect(p.assemblies?.some((a) => a.name === 'Monolith D')).toBe(true);
     const b = deviceBudget(p);
     expect(b.over, JSON.stringify(b.over)).toEqual([]);
     expect(() => encodePatch(p)).not.toThrow();

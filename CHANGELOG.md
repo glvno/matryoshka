@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **The FM-1 factory bank has 20 patches, Monolith D first.** The FM-1 opens Monolith D at its first boot and after FACTORY RESET; Oracle V comes second. Perun 4 and Spokes 6 leave the bank and stay in the editor's Community section beside their XLs, unchanged. An update leaves your saved slots as they are; FACTORY RESET installs the new bank.
+- **The FM-1 factory bank has 20 patches, Monolith D first.** The FM-1 opens Monolith D at its first boot and after FACTORY RESET, and the editor opens it on a first visit; Oracle V comes second. Perun 4 and Spokes 6 leave the bank and stay in the editor's Community section beside their XLs, unchanged. An update leaves your saved slots as they are; FACTORY RESET installs the new bank.
 
 ## 1.16.0 — 2026-11-15
 
