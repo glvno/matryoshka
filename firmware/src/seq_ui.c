@@ -12,7 +12,9 @@
  * on at power-on. The drum grid keeps sounding its entered notes regardless of the piano-roll preview choice.
  *
  * ALGO picks the track, PRESET the pattern, SEL tapped the song page. REC + a black key arms a track and SEQ + a
- * black key mutes it. The controls table (web/src/controls.ts) defines the sheet, editor help and hint text.
+ * black key mutes it. With the pattern store on (#901), SEL + SAVE saves the selected pattern into it, FX + SAVE as a new
+ * entry, and SEL + PRESET loads its entries into the pattern (patlink.c). The controls table (web/src/controls.ts) defines
+ * the sheet, editor help and hint text.
  * The grid draws only changed cells, names, markers and playhead columns. Edits reach the running patch and editor.
  */
 
@@ -2016,11 +2018,72 @@ static void song_sync(void)
     m1_patch_patterns();
     m1_song_now(song_sel);
 }
-/* PRESET on the SEQ or SONG page: the patch's pattern, d patterns on */
+/* the pattern store (#901, patlink.c) on the SEQ page: the selected pattern saved into it (SEL held + SAVE; FX held +
+ * SAVE: always as a new entry, a copy), or its entries loaded into the selected pattern one by one (SEL held + PRESET).
+ * SEL's release then opens nothing (as after the pen) */
+static uint16_t seq_pl_at;              /* the stored entry the last load took (pl_step goes on from it), 0 none */
+static const char *const SEQ_PL_SAVED[] = { "PATTERN STORE FULL", "PATTERN NOT SAVED", "PATTERN SAVED: ", "SAVED AS NEW: " };
+static const char *const SEQ_PL_LOADED[] = { "PATCH FULL", "NOT LOADED", "", "LOCKS LEFT OUT: OTHER LAYOUT" };   /* (pl_load_entry + 2) */
+static int seq_pl_pattern(void)
+{
+    seq_pen_ms = fm1_ms | 1u;
+    if (eng_pattern() < 0 || !eng_steps_count()) {
+        ui_msg("NO STEPS MODULE", 1000);
+        return -1;
+    }
+    return eng_pattern();
+}
+static void seq_pattern_save(int as_new)
+{
+    char name[PT_NAME + 1u], got[PT_NAME + 1u], m[40], num[8], *q = name;
+    const char *s = patch_label ? patch_label : "";
+    int p = seq_pl_pattern(), rc;
+    if (p < 0)
+        return;
+    fmt_int(num, p + 1);
+    for (; *s && q < name + PT_NAME - 2u - str_len(num); s++)   /* (the patch's name in capitals, room left for " P3") */
+        if (*s >= 32 && *s < 127 && (*s != ' ' || q > name))
+            *q++ = (char)(*s >= 'a' && *s <= 'z' ? *s - ('a' - 'A') : *s);
+    while (q > name && q[-1] == ' ')
+        q--;
+    put(put(q, " P"), num)[0] = 0;
+    rc = pl_save((uint32_t)p, as_new, name, got);
+    q = put(m, pt_on ? SEQ_PL_SAVED[rc + 2] : "NO PATTERN STORE");   /* (pl_save + 2) */
+    if (rc >= 0)
+        q = put(q, got);
+    q[0] = 0;
+    ui_msg(m, 1500);
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+}
+static void seq_pattern_load(int32_t d)
+{
+    char got[PT_NAME + 1u], m[40], num[8], *q;
+    int p = seq_pl_pattern(), rc;
+    if (p < 0)
+        return;
+    if (!seq_pl_at)
+        seq_pl_at = (uint16_t)pl_link((uint32_t)p);
+    for (; d; d += d > 0 ? -1 : 1)
+        seq_pl_at = (uint16_t)pl_step(seq_pl_at, d);
+    rc = pl_load_entry((uint32_t)p, seq_pl_at, got);
+    seq_held = -1;
+    fmt_int(num, p + 1);
+    q = rc == 1 ? m : put(put(put(m, "P"), num), ": ");
+    q = put(q, rc ? SEQ_PL_LOADED[rc + 2] : got);
+    q[0] = 0;
+    ui_msg(m, 1500);
+    ui_dirty = ui_dirty ? ui_dirty : 1;          /* (the cells of the pattern loaded) */
+}
+/* PRESET on the SEQ or SONG page: the patch's pattern, d patterns on (SEL held on the SEQ page with the store on: a stored
+ * pattern into it) */
 static void seq_pattern_step(int32_t d)
 {
     char m[32];
     int p = eng_pattern();
+    if (page == PAGE_SEQ && pt_on && (panel_held >> BTN_PEN & 1u)) {
+        seq_pattern_load(d);
+        return;
+    }
     if (p < 0 || !eng_steps_count()) {
         ui_msg("NO STEPS MODULE", 1000);
         return;

@@ -7,6 +7,7 @@
 import { validatePatch, type ModuleDef, type Patch } from './patch';
 import { SITE_URL } from './site';
 import { b64url, inflateCapped, isStoreId, STORE_MAX } from './share-store';
+import { withoutLinks } from './track';
 
 export const LINK_MAX = 8000;
 
@@ -61,9 +62,11 @@ const here = (): string => (typeof location === 'undefined' ? PAGES_URL : locati
 /**
  * A patch as a link, with its layout (`layout`, the default) while that fits under LINK_MAX characters, else without it
  * (the assemblies are always kept). `stores`: the layout was asked for and does not fit, or even the lean link does not:
- * `handOut` stores the full form on the site.
+ * `handOut` stores the full form on the site. The patch's links to stored patterns are left out: their ids belong to one
+ * FM-1 (#901), and the patterns' notes are in the patch anyway.
  */
-export async function encodeShare(p: Patch, opts: { layout?: boolean; base?: string } = {}): Promise<Share> {
+export async function encodeShare(patch: Patch, opts: { layout?: boolean; base?: string } = {}): Promise<Share> {
+  const p = withoutLinks(patch);
   const base = opts.base ?? here();
   const make = (code: string): { code: string; link: string; length: number } => {
     const link = shareLink(code, base);

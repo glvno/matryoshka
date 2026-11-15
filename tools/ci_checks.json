@@ -106,6 +106,7 @@
     "preset": ["tools/preset_test.sh"],
     "preset-pattern": ["tools/preset_pattern_test.sh"],
     "bank": ["tools/bank_new_test.sh"],
+    "patstore": ["tools/patstore_test.sh"],
     "ui": ["tools/ui_preview.sh", "build/ui-preview.png", "0", "1"],
     "selector": ["python3", "tools/ci_checks_test.py"],
     "usb_return": ["sh", "tools/usb_return_test.sh"],
@@ -113,9 +114,10 @@
     "release-build": ["python3", "tools/build_test.py"],
     "configuration-catalogue": ["python3", "tools/fm1_configuration_catalogue_test.py"],
     "fx-tail": ["sh", "tools/fx_tail_test.sh"],
-    "harness-compile": ["sh", "tools/harness_compile_test.sh"]
+    "harness-compile": ["sh", "tools/harness_compile_test.sh"],
+    "patlink": ["sh", "tools/patlink_test.sh"]
   },
-  "full_host": ["pan", "golden", "buffer-budget", "aot", "usb", "usb_return", "clock", "peak", "audio", "frame", "ota", "guard", "power", "installer", "panel", "preset", "preset-pattern", "bank", "ui", "fx-tail", "harness-compile"],
+  "full_host": ["pan", "golden", "buffer-budget", "aot", "usb", "usb_return", "clock", "peak", "audio", "frame", "ota", "guard", "power", "installer", "panel", "preset", "preset-pattern", "bank", "patstore", "ui", "fx-tail", "harness-compile", "patlink"],
   "optional_host": {"usb_return": "firmware/src/usb_return.h"},
   "rules": [
     {"name": "Pan arithmetic", "paths": ["firmware/src/engine.c", "firmware/test/pan_exact_test.c", "tools/pan_test.sh"], "host": ["pan"], "web": []},
@@ -125,6 +127,7 @@
     {"name": "Capability example generator uses assembly engine recognition and keys routing", "paths": ["web/scripts/capability-examples.ts"], "host": [], "web": ["web/src/engines.test.ts", "web/src/key-routing.test.ts"]},
     {"name": "Parity bands: a GitHub tracking script that measures factory patches with deviceBudget; ships nothing to the app or firmware", "paths": ["web/scripts/parity-bands.ts", "web/scripts/parity-bands.test.ts", "web/scripts/parity-status.ts"], "host": [], "web": ["web/scripts/parity-bands.test.ts"]},
     {"name": "Shared kit calibration", "paths": ["web/scripts/gen-presets.ts", "web/scripts/factory-build.ts", "web/src/levels.ts", "web/presets/21-909-kit.json", "web/presets/22-7ph.json", "web/presets/cards/909-kit.txt", "web/presets/cards/drum-kit.txt"], "host": [], "web": ["web/src/shared-levels.test.ts"]},
+    {"name": "Pattern store glue and payload vectors", "paths": ["firmware/src/patlink.c", "firmware/src/patstore.c", "firmware/src/proto.c", "firmware/src/engine.c", "firmware/src/engine.h", "firmware/src/slotstore.c", "firmware/test/patlink_test.c", "firmware/test/pattern_cases.h", "firmware/test/proto_test.c", "tools/patlink_test.sh", "web/src/pattern-store.ts", "web/src/pattern-library.ts", "web/scripts/pattern-vectors.ts"], "host": ["patlink", "panel"], "web": ["web/src/pattern-store.test.ts", "web/src/pattern-protocol.test.ts", "web/src/pattern-library.test.ts"]},
     {"name": "Factory pattern provenance", "paths": ["web/src/preset-pattern*", "web/src/pattern-origin*", "web/src/preset-origin-format.test.ts", "web/scripts/preset-pattern-build.ts", "web/scripts/gen-preset-patterns.ts", "web/scripts/kit-card.ts", "firmware/src/preset_pattern.h", "firmware/test/preset_pattern*", "tools/preset_pattern_test.sh"], "host": ["preset-pattern"], "web": ["web/src/preset-patterns.test.ts", "web/src/pattern-origin.test.ts", "web/src/preset-origin-format.test.ts", "web/src/kit-card.test.ts", "web/src/editor-origins.test.ts"]},
     {"name": "Factory build and card validation", "paths": ["web/scripts/factory-build.ts", "web/scripts/presets.ts"], "host": [], "web": ["web/src/factory-presets.test.ts", "web/src/preset-cards.test.ts", "web/src/kit-card.test.ts"]},
     {"name": "Preset audition measurements", "paths": ["web/src/headroom.ts", "web/scripts/preset-auditions.ts", "web/scripts/audition-render.ts", "web/scripts/audition-arrangements.ts", "web/scripts/preset-effects-auditions.ts", "web/scripts/preset-review-page.py", "web/scripts/preset-peak-repro.ts", "web/scripts/preset-spectrograms.py"], "host": [], "web": [], "manual": "Renders are review input: compare the audition phrase and peaks before and after. They do not establish owner listening or hardware qualification."},
@@ -160,6 +163,7 @@
     {"name": "Host test panel", "paths": ["tools/panel_test.sh", "firmware/test/panel_test.c"], "host": ["panel"], "web": []},
     {"name": "Host test preset", "paths": ["tools/preset_test.sh", "firmware/test/preset_test.c"], "host": ["preset"], "web": []},
     {"name": "Host test bank", "paths": ["tools/bank_new_test.sh", "firmware/test/bank_new_test.c"], "host": ["bank"], "web": []},
+    {"name": "Pattern store and the bank's hand-over of its sectors", "paths": ["firmware/src/patstore.c", "firmware/src/slotstore.c", "firmware/test/patstore_test.c", "tools/patstore_test.sh"], "host": ["patstore", "usb_return"], "web": []},
     {"name": "Host test ui", "paths": ["tools/ui_preview.sh", "firmware/test/ui_preview.c"], "host": ["ui"], "web": []},
     {"name": "Panel fixtures", "paths": ["firmware/test/*test.h", "firmware/test/midi_redraw_test.c", "firmware/test/lanes_host.h"], "host": ["panel"], "web": []},
     {"name": "Ledger checks handled by the required ledger job", "paths": ["tools/ledger_check*", ".github/workflows/ledger-check.yml"], "host": [], "web": []},

@@ -18,7 +18,7 @@ import { DEFS } from './modules';
 import { validatePatch, type Patch } from './patch';
 import { deviceBudget, encodePatch } from './patchbin';
 import { EXAMPLE_PRESETS, FM1_PRESETS, PRESETS } from './presets';
-import { NAME_BYTES, SLOTS, slotLabel, type SlotInfo } from './protocol';
+import { NAME_BYTES, SLOTS_MAX, slotLabel, type SlotInfo } from './protocol';
 import { renamedKey } from './storage-key';
 import { addCommunity, addedCommunity, onAddedChange, openCommunity, removeCommunity } from './community';
 import { relocatedPatches } from './community-factory';
@@ -75,13 +75,13 @@ function load(): Entry[] {
         .filter((e) => typeof e?.name === 'string' && (e.patch ? true : e.name in PRESETS || e.name in relocatedPatches))
         .map((e) => e.patch ? { name: e.name, patch: validatePatch(e.patch, DEFS) }
           : e.name in FM1_PRESETS || e.name in relocatedPatches ? { name: e.name } : { name: e.name, patch: PRESETS[e.name]() })
-        .slice(0, SLOTS);
+        .slice(0, SLOTS_MAX);
       return ok;
     }
   } catch {
     /* fall through to the default */
   }
-  return Object.keys(FM1_PRESETS).slice(0, SLOTS).map((name) => ({ name }));
+  return Object.keys(FM1_PRESETS).slice(0, SLOTS_MAX).map((name) => ({ name }));
 }
 
 function save(list: Entry[]): void {
@@ -125,7 +125,7 @@ function putEntry(list: Entry[], e: Entry, overFactory = false): string | null {
     list[i] = e;
     return null;
   }
-  if (list.length >= SLOTS) return `the bank is full (${SLOTS} slots): "${e.name}" was not added`;
+  if (list.length >= SLOTS_MAX) return `the bank is full (${SLOTS_MAX} slots): "${e.name}" was not added`;
   list.push(e);
   return null;
 }
@@ -319,7 +319,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
     }
     if (!slots) return say('Read the FM-1 first');
     const to = slotFor(slots, name);
-    if (!to) return say(`The FM-1's bank is full (${SLOTS} slots): "${name}" was not sent`);
+    if (!to) return say(`The FM-1's bank is full (${device.bankSlots} slots): "${name}" was not sent`);
     if (to.replaces && !window.confirm(`FM-1 slot ${slotLabel(to.slot)} holds "${to.replaces.name}". Replace it with "${name}"?`)) return say('Nothing was sent');
     void run('Sending', async () => {
       status.textContent = `Sending "${name}" to slot ${slotLabel(to.slot)}…`;
@@ -353,7 +353,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
     const total = mine.length + added.length;
     mineCount.textContent = `${total} patch${total === 1 ? '' : 'es'}`;
     // a full bank leaves → working: it can still replace a patch of the same name, and else says the bank is full
-    const full = live() ? !!slots && !slots.some((s) => !s.used) : list.length >= SLOTS;
+    const full = live() ? !!slots && !slots.some((s) => !s.used) : list.length >= SLOTS_MAX;
     const waiting = live() && !slots;
     const sandbox = (): HTMLElement => chipEl({ fits: false, text: 'SANDBOX' });
     const toFm1Btn = (name: string, ok: boolean, patch: () => Patch): HTMLElement =>
@@ -427,7 +427,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
             onclick: () => copy && toBrowser(copy.name, copy.patch) }),
         );
       }) : [el('p', { class: 'muted', textContent: 'The bank is empty: HOME + PRESET steps through the factory patches built into the firmware.' })]));
-      countEl.textContent = `${used.length} of ${SLOTS} slots used on the FM-1`;
+      countEl.textContent = `${used.length} of ${device.bankSlots} slots used on the FM-1`;
     } else {
       bankEl.replaceChildren(...(list.length ? list.map((e, i) => el('div', { class: 'bank-row' },
         el('span', { class: 'slot', textContent: slotLabel(i) }),
@@ -445,7 +445,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
         el('button', { class: 'delete', textContent: '×', title: 'take it out of the bank (Your patches keep theirs)', ariaLabel: `take "${e.name}" out of the bank`, disabled: busy, onclick: () => { list.splice(i, 1); changed(); } }),
         el('button', { class: 'lib-move', textContent: '←', ariaLabel: `copy "${e.name}" into Your patches`, title: 'Copy into Your patches', disabled: busy, onclick: () => toBrowser(e.name, patchOf(e)) }),
       )) : [el('p', { class: 'muted', textContent: 'Empty. → beside a patch, or Add from factory, puts one here.' })]));
-      countEl.textContent = live() ? '' : `${list.length} of ${SLOTS} slots`;
+      countEl.textContent = live() ? '' : `${list.length} of ${SLOTS_MAX} slots`;
     }
   };
 
@@ -469,11 +469,17 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
     status.textContent = `the ${BANK_NAME.toLowerCase()} is what the FM-1 holds${missing.length ? `, less ${missing.length} this browser has no copy of` : ''}`;
   };
   send.onclick = () => void run('Sending the bank', async () => {
-    const total = list.length;
+    // an FM-1 whose pattern store is on has fewer slots than the offline copy can hold (#901): the entries past them stay
+    const room = device.bankSlots;
+    if (list.length > room && !window.confirm(`This FM-1 has ${room} slots: the last ${list.length - room} entr${list.length - room === 1 ? 'y' : 'ies'} of the ${BANK_NAME.toLowerCase()} (${list.slice(room, room + 6).map((e) => e.name).join(', ')}${list.length - room > 6 ? ', …' : ''}) do not fit and are not sent. Send the first ${room}?`)) {
+      status.textContent = 'Nothing was sent.';
+      return;
+    }
+    const total = Math.min(list.length, room);
     status.textContent = 'Reading the bank on the FM-1…';
     const have = await device.readBank();
     slots = have;
-    const lost = uploadLoses(have, list.map((e) => e.name));
+    const lost = uploadLoses(have, list.slice(0, total).map((e) => e.name));
     const shown = lost.slice(0, 8).map((s) => `${slotLabel(s.slot)} ${s.name}`).join(', ') + (lost.length > 8 ? ', …' : '');
     if (lost.length && !window.confirm(`Sending the ${BANK_NAME.toLowerCase()} replaces ${lost.length} patch${lost.length === 1 ? '' : 'es'} on the FM-1 that it does not hold (${shown}). Send anyway?`)) {
       status.textContent = 'Nothing was sent.';
@@ -485,7 +491,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
       bar.value = (100 * i) / total;
       await device.uploadSlot(i, list[i].name.toUpperCase(), patchOf(list[i]));
     }
-    for (let i = total; i < SLOTS; i++)
+    for (let i = total; i < have.length; i++)
       if (have[i].used) {
         status.textContent = `Emptying slot ${slotLabel(i)}`;
         await device.eraseSlot(i);
@@ -504,7 +510,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
       status.textContent = 'The FM-1 bank is empty.';
     });
   };
-  resetList.onclick = () => { list = Object.keys(FM1_PRESETS).slice(0, SLOTS).map((name) => ({ name })); changed(); };
+  resetList.onclick = () => { list = Object.keys(FM1_PRESETS).slice(0, SLOTS_MAX).map((name) => ({ name })); changed(); };
   emptyList.onclick = () => { list = []; changed(); };
 
   onSavedChange(refresh);

@@ -326,7 +326,7 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
     `T111 NO KEYS` the engine's ARM dot is dashed and arms nothing. On the FM-1, SEL says NO KEYS REACH THIS DEVICE and
     the keys play nothing.
   - `checkStore` (steps 6.1 to 6.4, [D-959](ledger/editor.md#D-959), [D-297](ledger/patch-format.md#D-297)):
-    `T110 DRONE STORED` holds its drone. "Store to an FM-1 slot…" lists the 64 slots. A used slot says what it holds and
+    `T110 DRONE STORED` holds its drone. "Store to an FM-1 slot…" lists the FM-1's slots (60 with the pattern store, 64 without). A used slot says what it holds and
     the button reads Replace. Store goes into the first empty slot. With Live on, HOME held + PRESET says EDITOR LIVE:
     PATCH STAYS. With Live off, PRESET away and back to that slot still plays the drone. The slot is emptied again at the
     end.

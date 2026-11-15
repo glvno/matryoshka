@@ -23,6 +23,7 @@ static volatile uint8_t out_mono;          /* audio.c: GLO > SYSTEM > OUTPUT: 0 
 static volatile uint8_t out_off;           /* audio.c: GLO > SYSTEM > 3.5MM OUT: 1 OFF, the speaker and the jack silent (#631) */
 static uint8_t m1_edited;                  /* proto.c: the running patch was edited */
 #define M1_SLOTS 64u
+static uint32_t bank_slots = 60u;          /* proto.c / slotstore.c: the slots there are (the pattern store on) */
 static uint64_t bank_mask = 0x3FFFu;     /* slotstore.c: the occupied slots (the preview: the factory patches) */
 static uint8_t pv_bin[4096];               /* the previewed patch (proto.c's m1_cur) */
 static uint32_t pv_len;
@@ -140,35 +141,46 @@ static void lcd_line_out_raw(uint32_t x, uint32_t y, uint32_t w)   /* lcd.c's */
 #include "../../build/panel-fixtures/panel_bank.h"
 #endif
 #include "../src/tempo_glo.h"
-/* the preset store (presetstore.c, #194) over 7 sectors of RAM flash (all 0xFF until host_ps_init) */
-static uint8_t host_ps_flash[7u * 0x1000u];
+/* the preset store (presetstore.c, #194) over 7 sectors of RAM flash (all 0xFF until host_ps_init), and the pattern store
+ * (patstore.c, #901) over its 4 (until host_pt_init) */
+static uint8_t host_ps_flash[7u * 0x1000u], host_pt_flash[4u * 0x1000u];
 static void fm1_wdt_feed(void) {}
-static int host_ps_in(uint32_t off, uint32_t n) { return off >= 0x99000u && off + n <= 0x99000u + sizeof host_ps_flash; }
+static uint8_t *host_flash(uint32_t off, uint32_t n)   /* the RAM behind flash bytes off .. off + n, 0 none */
+{
+    if (off >= 0x99000u && off + n <= 0x99000u + sizeof host_ps_flash)
+        return host_ps_flash + off - 0x99000u;
+    if (off >= 0xDC000u && off + n <= 0xDC000u + sizeof host_pt_flash)
+        return host_pt_flash + off - 0xDC000u;
+    return 0;
+}
 static int st_read(uint32_t off, void *dst, uint32_t n)
 {
     uint32_t i;
-    if (!host_ps_in(off, n))
+    const uint8_t *f = host_flash(off, n);
+    if (!f)
         return -8;
     for (i = 0; i < n; i++)
-        ((uint8_t *)dst)[i] = host_ps_flash[off - 0x99000u + i];
+        ((uint8_t *)dst)[i] = f[i];
     return 0;
 }
 static int st_erase(uint32_t off)
 {
     uint32_t i;
-    if (!host_ps_in(off, 0x1000u))
+    uint8_t *f = host_flash(off, 0x1000u);
+    if (!f)
         return -8;
     for (i = 0; i < 0x1000u; i++)
-        host_ps_flash[off - 0x99000u + i] = 0xFFu;
+        f[i] = 0xFFu;
     return 0;
 }
 static int st_prog(uint32_t off, const void *src, uint32_t n)
 {
     uint32_t i;
-    if (!host_ps_in(off, n))
+    uint8_t *f = host_flash(off, n);
+    if (!f)
         return -8;
     for (i = 0; i < n; i++)
-        host_ps_flash[off - 0x99000u + i] &= ((const uint8_t *)src)[i];
+        f[i] &= ((const uint8_t *)src)[i];
     return 0;
 }
 static uint16_t m1_crc16(const uint8_t *p, uint32_t n)
@@ -189,6 +201,18 @@ static void host_ps_init(void)
     for (i = 0; i < sizeof host_ps_flash; i++)
         host_ps_flash[i] = 0xFFu;
     ps_scan();
+}
+/* the pattern store (#901): the bank's scratch and the record header patstore.c and patlink.c read (no bank here: no slot
+ * links a stored pattern), then the store, off until host_pt_init turns it on (erased and formatted) */
+#define M1_PATCH_MAX 3840u                 /* (proto.c's) */
+static uint8_t sl_buf[M1_PATCH_MAX];       /* slotstore.c's */
+typedef struct { uint32_t magic, id, seq, len, crc; char name[20]; uint32_t rsv[2]; } sl_hdr_t;
+static int sl_head(uint32_t id, sl_hdr_t *h, int check) { (void)id; (void)h; (void)check; return -1; }
+#include "../src/patstore.c"
+static void host_pt_init(void)
+{
+    pt_on = 1;
+    pt_clear_all();
 }
 static int m1_preset_name(uint32_t dev, const char *name)
 {
@@ -316,6 +340,18 @@ static uint32_t host_locks_told;                     /* (panel_test.c: LOCKS_NOW
 static void m1_locks_now(uint32_t mod, uint32_t pat) { (void)mod; (void)pat; host_locks_told++; }
 #endif
 static int m1_patch_locks(void) { return 1; }      /* (the preview keeps no patch: the engine has the locks) */
+/* the pattern store's glue (patlink.c, #901) on the previewed binary: proto.c's status codes and what it sends stood in */
+enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE, S_FULL, S_MISSING, S_USED };
+static uint8_t m1_up[M1_PATCH_MAX];        /* (proto.c's upload buffer, the payloads' scratch) */
+static int m1_patch_links(const uint8_t *s, uint32_t n) { (void)s; (void)n; return 1; }   /* (no links in the preview) */
+static uint32_t host_link_told;             /* (panel_test.c: PAT_LINK_NOW sent) */
+static void m1_pat_link_now(uint32_t p, uint32_t id, uint32_t hash) { (void)p; (void)id; (void)hash; host_link_told++; }
+static void m1_track_pattern_now(uint32_t mod, uint32_t pattern) { (void)pattern; m1_track_now(mod); }
+#define m1_cur pv_bin
+#define m1_cur_len pv_len
+#include "../src/patlink.c"
+#undef m1_cur
+#undef m1_cur_len
 #ifdef HOST_THRU_HOOK                       /* (the wasm build: what the SEQ page sounds through a track also goes to the page) */
 static void host_steps_thru(uint32_t module, uint32_t note, uint32_t vel);
 #define eng_steps_thru host_steps_thru

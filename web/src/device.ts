@@ -5,7 +5,8 @@ import { FEATURE_PATTERN_ORIGINS, PatternOrigins, type OriginUpdate } from './pa
 import { DEFS } from './modules';
 import type { Patch, Range } from './patch';
 import type { SongEntry, StepNote } from './track';
-import { encodePatch, FLAG_FX_BUS, FLAG_PATTERN_ORIGINS, toQ16, VERSION } from './patchbin';
+import { encodePatch, FLAG_FX_BUS, FLAG_LINKS, FLAG_PATTERN_ORIGINS, toQ16, VERSION, type LinkStore } from './patchbin';
+import { FNV0, fnv } from './pattern-store';
 import { deviceView } from './poly';
 
 /** a module's index on the FM-1: its place in the patch's device form (poly.ts deviceView: editor-only modules such as
@@ -16,7 +17,8 @@ export function deviceLayoutKey(patch: Patch): string {
   const view = deviceView(patch, true);
   return JSON.stringify([view.patch.modules.map((m) => [m.id, m.type]), view.groups.map((g) => [g.key, [...g.modules], g.src])]);
 }
-import { FEATURE_DEVICE_SETTINGS, deviceSettingsFrame, parseDeviceSettings, type DeviceSettings, armsFrame, parseArmsNow, FEATURE_WIDE_ARMS, editorSkips, FEATURE_ARMS, FEATURE_LONG_PRESETS, FEATURE_PANEL_REPORT, parseKeysNow, parseGuideNow, type KeysNow, type PanelState, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, parseLocksNow, type RawLock, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { FEATURE_DEVICE_SETTINGS, deviceSettingsFrame, parseDeviceSettings, type DeviceSettings, armsFrame, parseArmsNow, FEATURE_WIDE_ARMS, editorSkips, FEATURE_ARMS, FEATURE_LONG_PRESETS, FEATURE_PANEL_REPORT, parseKeysNow, parseGuideNow, type KeysNow, type PanelState, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, parseLocksNow, type RawLock, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, slotCount, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { FEATURE_PATTERN_STORE, parseLinkNow, parsePatData, parsePatEntry, parsePatStored, PAT_OK, PAT_STATUS, PAT_USED, patDelFrame, patGetFrame, patPutFrames, patsFrame, type PatListItem, type StoredPatternEntry } from './protocol';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 import { FEATURE_FX_PRESETS } from './protocol';
 import { fxPresetInfo } from './fx-preset-format';
@@ -194,7 +196,10 @@ export type DeviceEvent =
   /** a key edge the FM-1's panel took (KEYS_NOW, #549, feature bit 18) */
   | ({ kind: 'keys' } & KeysNow)
   /** the FM-1's panel state (GUIDE_NOW, #549, #554, feature bit 18): after HELLO and whenever it changed */
-  | { kind: 'guide'; state: PanelState };
+  | { kind: 'guide'; state: PanelState }
+  /** the running patch's link of pattern `pattern` changed on the FM-1 (PAT_LINK_NOW, #901): the stored id (0 none) and its
+   *  payload hash */
+  | { kind: 'link'; pattern: number; id: number; hash: number };
 
 /** what the editor says when older firmware cannot store a preset whole (more than 88 values, D-476) */
 export const PRESET_NEEDS_UPDATE = 'Update the FM-1 to store this preset on it';
@@ -218,6 +223,11 @@ export class DeviceLink {
   running = false;
   /** PRESETS's answers, one frame each, while listPresets waits for them */
   private collecting: ((e: DevicePresetEntry) => void) | null = null;
+  /** PATS's answers, one frame each, while listPatterns waits for them */
+  private collectingPatterns: ((e: PatListItem) => void) | null = null;
+  /** what the FM-1's pattern store holds (#901): each user entry's payload hash by id, as listPatterns last read it and the
+   *  link's own changes since; null: not read since it connected */
+  private stored: Map<number, number> | null = null;
   onStatus: (s: string) => void = () => {};
   /** what the FM-1 does on its own (#65): a knob or patch button as MIDI CC, the slot it plays now */
   onEvent: (e: DeviceEvent) => void = () => {};
@@ -271,6 +281,7 @@ export class DeviceLink {
     this.info = null;
     this.origins.reset();
     this.running = false;
+    this.stored = null;
   }
 
   /** the linked FM-1 was set to ignore the editor (an INFO nobody asked for, #702): let go of it, and say so */
@@ -327,6 +338,13 @@ export class DeviceLink {
       if (p?.cmd === CMD.focusNow && p.payload.length >= 2) return this.onEvent({ kind: 'focus', device: p.payload[0], page: p.payload[1] });
       const stored = p ? parsePresetStored(p) : null;
       if (stored) return this.onEvent({ kind: 'presetStored', ...stored });
+      const ln = p?.cmd === CMD.patLinkNow ? parseLinkNow(p.payload) : null;
+      if (ln) {
+        if (ln.id) this.stored?.set(ln.id, ln.hash);   // (the FM-1 holds that id as the link says: SAVE may have written it)
+        return this.onEvent({ kind: 'link', ...ln });
+      }
+      const pat = p && this.collectingPatterns ? parsePatEntry(p) : null;
+      if (pat && this.collectingPatterns) return this.collectingPatterns(pat);
       const entry = p && this.collecting ? parsePresetEntry(p) : null;
       if (entry && this.collecting) return this.collecting(entry);
       if (p?.cmd === CMD.info) this.info = parseInfo(p);
@@ -386,13 +404,14 @@ export class DeviceLink {
     return a;
   }
 
-  /** Upload and switch to the patch (`bin`: it encoded already). Calls are serialised. */
+  /** Upload and switch to the patch (`bin`: it encoded already, for this link's pattern store as it is now: linkStore).
+   *  Calls are serialised. */
   upload(patch: Patch, encoded?: Uint8Array): Promise<void> {
-    const submitted = structuredClone(patch), bytes = encoded?.slice();
+    const submitted = structuredClone(patch), bytes = encoded?.slice(), store = this.linkStore;
     this.invalidateOrigins();
     const run = async (): Promise<void> => {
       // Recheck inside the serial queue: the device may have changed after a caller encoded it.
-      const checked = encodePatch(submitted, false, false, this.bufferAllocation);
+      const checked = encodePatch(submitted, false, false, this.bufferAllocation, store);
       if (bytes && !sameBinary(bytes, checked)) throw new Error('Patch changed before upload: send it again');
       const bin = bytes ?? checked;
       await this.sendChunks(bin);
@@ -445,6 +464,7 @@ export class DeviceLink {
       throw new Error('This patch carries master FX controls. Update the FM-1 firmware before sending it.');
     if ((flags & FLAG_PATTERN_ORIGINS) && (!this.info?.patchFormats || bin[1] > this.info.patchFormats.max || !(this.info.features & FEATURE_PATTERN_ORIGINS)))
       throw new Error('This patch carries factory pattern origins. Update the FM-1 firmware before sending it; its origins cannot be removed automatically.');
+    if ((flags & FLAG_LINKS) && !this.hasPatternStore) throw new Error('This patch links stored patterns, and this FM-1 has no pattern store.');
     const range = this.info?.patchFormats;
     if (range && (bin[1] < range.min || bin[1] > range.max)) throw new Error(UPDATE_TO_SYNC);
     const frames = chunkFrames(bin);
@@ -455,7 +475,7 @@ export class DeviceLink {
   uploadSlot(slot: number, name: string, patch: Patch): Promise<void> {
     const submitted = structuredClone(patch);
     return this.serial(async () => {
-      const bin = encodePatch(submitted, false, false, this.bufferAllocation);
+      const bin = encodePatch(submitted, false, false, this.bufferAllocation, this.linkStore);
       await this.sendChunks(bin);
       await this.ackFor(slotFrame(slot, name, bin), CMD.slot, slot, FLASH_TIMEOUT);
     });
@@ -485,11 +505,94 @@ export class DeviceLink {
     });
   }
 
-  /** all 64 slots of the bank */
+  /** the slots of the FM-1's bank (60 with its pattern store on, else 64: INFO byte 15) */
+  get bankSlots(): number {
+    return slotCount(this.info);
+  }
+
+  /** every slot of the bank */
   async readBank(): Promise<SlotInfo[]> {
     const out: SlotInfo[] = [];
-    for (let s = 0; s < SLOTS; s++) out.push(await this.readSlot(s));
+    for (let s = 0; s < this.bankSlots; s++) out.push(await this.readSlot(s));
     return out;
+  }
+
+  /** the FM-1's pattern store is on (INFO feature bit 25, #901) */
+  get hasPatternStore(): boolean {
+    return !!(this.info && this.info.features & FEATURE_PATTERN_STORE);
+  }
+
+  /** the pattern store a patch sent now is written for (patchbin.ts LinkStore): what this FM-1's store holds, `unknown`
+   *  before its list was read, `none` without a store; `assume` with no FM-1 (the budget's) */
+  get linkStore(): LinkStore {
+    if (!this.connected) return 'assume';
+    return !this.hasPatternStore ? 'none' : this.stored ?? 'unknown';
+  }
+
+  /** the entries of the FM-1's pattern store, the user's then the read-only factory ones (PATS); it also learns what the
+   *  store holds for linkStore */
+  listPatterns(): Promise<StoredPatternEntry[]> {
+    return this.serial(() => new Promise<StoredPatternEntry[]>((resolve, reject) => {
+      const got: StoredPatternEntry[] = [];
+      // (a long list takes a while: the time runs from the last entry heard)
+      const late = (): number => window.setTimeout(() => { this.collectingPatterns = null; reject(new Error('no answer from the FM-1')); }, ACK_TIMEOUT * TRIES);
+      let t = late();
+      this.collectingPatterns = (e) => {
+        clearTimeout(t);
+        if (e.entry) got[e.k] = e.entry;
+        const all = got.filter(Boolean);
+        if (e.count && all.length < e.count) return void (t = late());
+        this.collectingPatterns = null;
+        this.stored = new Map(all.filter((x) => !x.readOnly).map((x) => [x.id, x.hash]));
+        resolve(all);
+      };
+      this.out!.send(patsFrame());
+    }));
+  }
+
+  /** a stored pattern's payload (PAT_GET, in pieces); null: the FM-1 has no such id */
+  getPattern(id: number): Promise<Uint8Array | null> {
+    return this.serial(async () => {
+      const out: number[] = [];
+      let total = Infinity;
+      while (out.length < total) {
+        const at = out.length;
+        const d = parsePatData(await this.request(patGetFrame(id, at), (x) => { const r = x && parsePatData(x); return !!r && r.id === id && (r.total === null || r.offset === at); }))!;
+        if (d.total === null) return null;
+        if (!d.bytes.length && at < d.total) throw new Error('the FM-1 sent the pattern short');
+        total = d.total;
+        out.push(...d.bytes);
+      }
+      return Uint8Array.from(out.slice(0, total));
+    });
+  }
+
+  /** a payload into the FM-1's pattern store under `name`: a new entry (`id` 0) or over entry `id` (a rename: the same
+   *  payload, a new name); its id. Refused with the store's reason (full, read-only, gone) */
+  putPattern(id: number, name: string, payload: Uint8Array): Promise<number> {
+    return this.serial(async () => {
+      const frames = patPutFrames(id, name, payload);
+      for (let i = 0; ; i++) {
+        const last = i === frames.length - 1;
+        // (never sent twice: a chunk again would start the put again or land after it was stored)
+        const r = parsePatStored(await this.request(frames[i], (x) => x?.cmd === CMD.patStored, last ? 2 * FLASH_TIMEOUT : ACK_TIMEOUT, 1))!;
+        if (r.status !== PAT_OK) throw new Error(`FM-1: ${PAT_STATUS[r.status] ?? `error ${r.status}`}`);
+        if (!last) continue;
+        this.stored?.set(r.id, fnv(FNV0, payload));
+        return r.id;
+      }
+    });
+  }
+
+  /** delete a stored pattern; without `force` one the bank's patches link is kept and `used` says how many slots link it */
+  deletePattern(id: number, force: boolean): Promise<{ deleted: boolean; used: number }> {
+    return this.serial(async () => {
+      const r = parsePatStored(await this.request(patDelFrame(id, force), (x) => x?.cmd === CMD.patStored, FLASH_TIMEOUT, 1))!;
+      if (r.status === PAT_USED) return { deleted: false, used: r.count };
+      if (r.status !== PAT_OK) throw new Error(`FM-1: ${PAT_STATUS[r.status] ?? `error ${r.status}`}`);
+      this.stored?.delete(id);
+      return { deleted: true, used: 0 };
+    });
   }
 
   get takesDeviceSettings(): boolean { return !!(this.info && this.info.features & FEATURE_DEVICE_SETTINGS); }

@@ -31,6 +31,9 @@ import { ScopeScreens } from './scope-view';
 import { EnvScreens } from './env-view';
 import { addToBank, bankPatches, buildPatchesSection, type LibrarySection as LibraryPane } from './bank';
 import { buildPresetsSection } from './library-presets';
+import { buildPatternsSection } from './pattern-library';
+import { payloadHash } from './pattern-store';
+import { PATTERNS_MAX, withoutLinks, type PatternLink } from './track';
 import { bindPatchPresetTransfer } from './patch-presets';
 import { buildCommunitySection } from './library-community';
 import { isSaved, onSavedChange, putBackSaved, removeSaved, restoreSaved, savedPatches, savePatch as keepPatch, unsavedChanges } from './saved';
@@ -205,6 +208,8 @@ let uploadedLoad = -1;
  *  nothing (upload-gate.ts) */
 const uploadGate = new UploadGate();
 let installedLayout: string | null = null;
+/** Library > Patterns (#901), once built: it follows the patch's selected pattern and the FM-1's store */
+let patternsPane: LibraryPane | null = null;
 const pendingMutes = new Map<number, boolean>();
 /** after edits that went out live, the gate learns the bytes the FM-1 now holds once they stop for a moment (encoding a
  *  big patch takes a few ms: not on every knob event) */
@@ -217,13 +222,13 @@ function liveEdited(): void {
   clearTimeout(gateTimer);
   gateTimer = window.setTimeout(() => {
     if (!live()) return uploadGate.forget();
-    try { uploadGate.refresh(encodePatch(editor.patch, false, false, device.bufferAllocation)); } catch { uploadGate.forget(); }
+    try { uploadGate.refresh(encodePatch(editor.patch, false, false, device.bufferAllocation, device.linkStore)); } catch { uploadGate.forget(); }
   }, GATE_MS);
 }
 /** a structural change under Live: the patch goes to the FM-1 again only when its encoded bytes changed */
 function structureChanged(): void {
   let bin: Uint8Array | null = null;
-  try { bin = encodePatch(editor.patch, false, false, device.bufferAllocation); } catch { /* over the budget: sendPatch says so */ }
+  try { bin = encodePatch(editor.patch, false, false, device.bufferAllocation, device.linkStore); } catch { /* over the budget: sendPatch says so */ }
   if (bin && onEditorPatch && !uploadGate.needs(bin)) return;
   uploadGate.forget();   // (until the upload: the FM-1 holds the old bytes)
   queueUpload();
@@ -401,9 +406,35 @@ device.onEvent = (e) => {
     }).catch(() => {});
     return;
   }
+  if (e.kind === 'link') {   // the FM-1's SEQ page loaded, saved or linked a stored pattern, or its SAVE wrote one (#901)
+    patternsPane?.deviceChanged(currentView === 'library' && librarySection === 'patterns');
+    if (live() && !linkBusy() && e.pattern > 0 && e.pattern < PATTERNS_MAX) void linkFromDevice(e.pattern, e.id ? { id: e.id, hash: e.hash } : null);
+    return;
+  }
   if (!live()) return;
   fm1Event(e, 'device');
 };
+/** pattern p's link as the FM-1 has it now (PAT_LINK_NOW): followed; a pattern it loaded from its store comes over with it */
+async function linkFromDevice(p: number, link: PatternLink | null): Promise<void> {
+  const payload = link && payloadHash(editor.patch, p) !== link.hash ? await device.getPattern(link.id).catch(() => null) : null;
+  fromDevice = true;
+  try {
+    if (payload) editor.loadStoredPattern(p, payload, link);
+    else editor.setLink(p, link);
+  } finally { fromDevice = false; }
+}
+/** after a STORE (#901): the FM-1's SAVE wrote each edited linked pattern over the stored one, so the links are clean
+ *  again; the store's list is read again (a link the store has not got stays as it was: SAVE kept that pattern inline) */
+function linksStored(): void {
+  const store = device.linkStore;
+  for (const [k, l] of Object.entries(editor.links)) {
+    const p = Number(k), hash = payloadHash(editor.patch, p);
+    if (hash !== l.hash && (typeof store !== 'object' || store.has(l.id))) editor.setLink(p, { id: l.id, hash });
+  }
+  if (!device.hasPatternStore) return;
+  if (currentView === 'library' && librarySection === 'patterns') patternsPane?.deviceChanged(true);
+  else void device.listPatterns().catch(() => {});
+}
 function clearDevicePatternOrigins(): void {
   const was = fromDevice;
   fromDevice = true;
@@ -516,7 +547,7 @@ async function sendPatch(): Promise<boolean> {
       dirty = false;
       devStatus('sending patch…');
       const load = loadsSeen;
-      const bin = encodePatch(editor.patch, false, false, device.bufferAllocation);
+      const bin = encodePatch(editor.patch, false, false, device.bufferAllocation, device.linkStore);
       const layout = deviceLayoutKey(editor.patch);
       uploadGate.forget();
       installedLayout = null;
@@ -627,7 +658,7 @@ function offerSync(asked = false): void {
     if (fitsDevice) void sendPatch();
     return syncChip();
   }
-  const d = syncOnConnect({ fits: fitsDevice, declined: !asked && syncDeclined(), editorBin: fitsDevice ? encodePatch(editor.patch, false, false, device.bufferAllocation) : new Uint8Array(), deviceBin: null });
+  const d = syncOnConnect({ fits: fitsDevice, declined: !asked && syncDeclined(), editorBin: fitsDevice ? encodePatch(editor.patch, false, false, device.bufferAllocation, device.linkStore) : new Uint8Array(), deviceBin: null });
   if (d === 'sync') return setLive(true);
   if (d === 'ask' && !syncAsk.open) {
     const name = editor.patch.name.trim() || 'Untitled';
@@ -889,6 +920,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     host.setPatch(p);
     queueSave(p);
     showBudget();
+    patternsPane?.refresh();
     if (fromDevice) uploadGate.forget();   // (from the FM-1: P-locks set there, #524; it has them, its bytes are not known)
     else if (live()) structureChanged();
     if (!fromEmu) queueEmu();
@@ -951,6 +983,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     if (fromDevice) uploadGate.forget();
     host.send({ t: 'pattern', p: pattern });
     host.send({ t: 'song', n: song });
+    patternsPane?.refresh();
     if (!fromEmu) queueEmu();
     queueSave(editor.patch);
     if (fromDevice) return;
@@ -1993,7 +2026,7 @@ function emuLoad(): void {
   const over = b.over.map((i) => i.key === 'cpu' || i.key === 'browser' ? overText(i) : i.key === 'memory' ? linesAdvice(editor.patch, undefined, device.bufferAllocation) : `${i.used} ${i.label} (the FM-1 holds ${i.max})`).join(', ');
   let err = 0;
   try {
-    err = ui.load(encodePatch(editor.patch, true), editor.patch.name.toUpperCase(), { fresh: emuFresh });
+    err = ui.load(encodePatch(editor.patch, true, false, 0, 'none'), editor.patch.name.toUpperCase(), { fresh: emuFresh });   // (the emulator keeps no pattern store)
   } catch {
     err = -1;
   }
@@ -2087,9 +2120,9 @@ function setView(v: View): void {
   showAddress();
 }
 /** the address follows the view (#218), replaced, not pushed: PATCH has no fragment, EMU #emu, LIBRARY #library (Patches),
- *  #assemblies, #presets or #community. A replaceState fires no hashchange, so openFromAddress does not run again. A fragment that is
+ *  #assemblies, #presets, #patterns or #community. A replaceState fires no hashchange, so openFromAddress does not run again. A fragment that is
  *  not a view's (a share link's #p= being opened) is left alone */
-const VIEW_HASHES = ['', '#patch', '#emu', '#fm1', '#library', '#presets', '#assemblies', '#community', '#flash', '#about'];
+const VIEW_HASHES = ['', '#patch', '#emu', '#fm1', '#library', '#presets', '#patterns', '#assemblies', '#community', '#flash', '#about'];
 function showAddress(): void {
   if (!VIEW_HASHES.includes(location.hash)) return;
   const want = currentView === 'emu' ? '#emu' : currentView === 'library' ? (librarySection === 'patches' ? '#library' : `#${librarySection}`) : '';
@@ -2116,9 +2149,9 @@ function toPatch(): void {
 // LIBRARY's sections (#218): Patches, Assemblies, Presets, Community as tabs under the switch, the last one remembered per browser; one shows
 // at a time (bank.ts, assemblies.ts, library-presets.ts build them below). Entering one rereads it, and reads the FM-1
 // when one is connected
-type LibrarySection = 'patches' | 'assemblies' | 'presets' | 'community';
+type LibrarySection = 'patches' | 'assemblies' | 'presets' | 'patterns' | 'community';
 const LIBRARY_SECTION = 'matryoshka.library-section';
-const isSection = (v: unknown): v is LibrarySection => v === 'patches' || v === 'assemblies' || v === 'presets' || v === 'community';
+const isSection = (v: unknown): v is LibrarySection => v === 'patches' || v === 'assemblies' || v === 'presets' || v === 'patterns' || v === 'community';
 let librarySection: LibrarySection = (() => {
   try {
     const v = localStorage.getItem(LIBRARY_SECTION);
@@ -2128,7 +2161,7 @@ let librarySection: LibrarySection = (() => {
   }
 })();
 const sectionBtns = [...document.querySelectorAll<HTMLButtonElement>('#library-tabs [data-section]')];
-const sectionEls: Record<LibrarySection, HTMLElement> = { patches: $('lib-patches'), assemblies: $('lib-assemblies'), presets: $('lib-presets'), community: $('lib-community') };
+const sectionEls: Record<LibrarySection, HTMLElement> = { patches: $('lib-patches'), assemblies: $('lib-assemblies'), presets: $('lib-presets'), patterns: $('lib-patterns'), community: $('lib-community') };
 /** the sections' panes with an FM-1 column (set when they are built, below) */
 const libraryPanes: Partial<Record<LibrarySection, LibraryPane>> = {};
 function showLibrarySection(): void {
@@ -2219,6 +2252,8 @@ async function connectFm1(): Promise<void> {
     armsReported = false;                                   // (whether this firmware reports its armed set shows with its first ARMS_NOW)
     uploadGate.forget();                                    // (what this FM-1 holds is not known yet)
     if (!mirror.following) void followFm1('matryoshka');   // it runs Matryoshka (it answered HELLO): its panel drives the page
+    // (what its pattern store holds, before the first sync: a linked pattern it holds as it is goes as a reference, #901)
+    if (device.hasPatternStore) await device.listPatterns().catch(() => {});
     offerSync();
     libraryDeviceChanged();
     if (syncsWith(device.info)) void offerFirmwareUpdate();   // (else sayUpdate has offered the update already)
@@ -2362,6 +2397,7 @@ $('dev-store').onclick = async () => {
   try {
     if (!(await sendPatch())) return;
     await device.store();
+    linksStored();
     setBaseline();
     devStatus(`stored into the FM-1's slot ${deviceSlot ? slotLabel(deviceSlot.slot) : ''} (the one it plays; it opens it at the next start)`);
   } catch (e) {
@@ -2429,7 +2465,7 @@ const saveCard = async (by?: string): Promise<void> => {
   }
 };
 const savePatch = (): void => {
-  const blob = new Blob([JSON.stringify(editor.patch, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify(withoutLinks(editor.patch), null, 2)], { type: 'application/json' });   // (link ids belong to one FM-1, #901)
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `${fileStem(editor.patch)}.json`;
@@ -2789,6 +2825,12 @@ libraryPanes.patches = buildPatchesSection($('lib-patches'), device, { remove: d
 if (addedTitles().length) void loadCommunity().then(() => { fillPicker(); libraryPanes.patches?.refresh(); });
 libraryPanes.community = buildCommunitySection($('lib-community'), { status: (msg) => { status.textContent = msg; } }, () => device.bufferAllocation);
 libraryPanes.presets = buildPresetsSection($('lib-presets'), device, { changed: () => editor.rebuild() });
+patternsPane = libraryPanes.patterns = buildPatternsSection($('lib-patterns'), device, {
+  patch: () => editor.patch,
+  pattern: () => editor.pattern,
+  load: (p, payload, link) => editor.loadStoredPattern(p, payload, link),
+  link: (p, link) => editor.setLink(p, link),
+});
 refreshAssemblies = buildAssembliesSection($('lib-assemblies'), {
   status(msg) {
     status.textContent = msg;
@@ -2810,7 +2852,7 @@ $('about-btn').onclick = (e) => {
 const openFromAddress = (): void => {
   const h = location.hash.slice(1);
   if (h === 'patch') setView('patch');
-  if (h === 'library' || h === 'presets' || h === 'assemblies' || h === 'community') setLibrarySection(h === 'library' ? 'patches' : h);
+  if (h === 'library' || h === 'presets' || h === 'patterns' || h === 'assemblies' || h === 'community') setLibrarySection(h === 'library' ? 'patches' : h);
   if (h === 'emu' || h === 'fm1') setView('emu');
   if (h === 'flash') openInstall();
   if (h === 'about') void about.open();

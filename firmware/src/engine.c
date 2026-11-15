@@ -876,6 +876,9 @@ typedef struct {
 /* the engine. The clock ticks (24 ppqn) come from the arpeggiator or MIDI in (eng_clock_tick). */
 static eng_t eng_one ENG_POOL;
 #define E eng_one
+/* the patterns eng_patterns_record and eng_locks_record leave out (bit p; eng_patterns_omit): the clean linked ones, whose
+ * content is the pattern store's (#901). A load clears it. Not in E: the pool has no room */
+static uint64_t pat_omit;
 /* the knobs' pending ramps (#405, eng_knob_param): the module and parameter, blocks left, the offset still to go, its step */
 typedef struct { int32_t mod, par, left, off, step; } ramp_t;
 static ramp_t ramp[ENG_KNOBS];
@@ -1865,17 +1868,26 @@ uint32_t eng_origins_end(const uint8_t *p, uint32_t len, uint32_t at)
     }
     return at;
 }
+/* the sections eng_section_at walks, in their order: the header byte and bit that say a binary has one, and its end */
+typedef uint32_t (*sec_end_t)(const uint8_t *p, uint32_t len, uint32_t at);
+static const struct { uint8_t byte, bit; sec_end_t end; } SECTIONS[ENG_SEC_FX] = {
+    { 6, 16u, eng_notes_end }, { 7, ENG_FLAG_PATTERNS, eng_patterns_end }, { 7, ENG_FLAG_LOCKS, eng_locks_end },
+    { 7, ENG_FLAG_LINKS, eng_links_end }, { 6, 32u, eng_devices_end }, { 7, ENG_FLAG_EXTRAS, eng_extras_end },
+    { 6, 64u, eng_buttons_end }, { 6, 128u, eng_names_end }, { 7, ENG_FLAG_ORIGINS, eng_origins_end } };
+uint32_t eng_section_at(const uint8_t *p, uint32_t len, uint32_t sec)
+{
+    uint32_t at, k;
+    if (len < 8u || !(at = eng_cables_end(p, len))) return 0;
+    if (p[6] & 4u) at += p[2];
+    if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at))) return 0;
+    for (k = 0; k < sec; k++)
+        if ((p[SECTIONS[k].byte] & SECTIONS[k].bit) && !(at = SECTIONS[k].end(p, len, at))) return 0;
+    return at;
+}
 uint32_t eng_origins_at(const uint8_t *p, uint32_t len)
 {
     uint32_t at;
-    if (len < 8u || !(p[7] & ENG_FLAG_ORIGINS) || !(at = eng_cables_end(p, len))) return 0;
-    if (p[6] & 4u) at += p[2];
-    if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at))) return 0;
-    if (!(at = eng_steps_end(p, len, at))) return 0;
-    if ((p[6] & 32u) && !(at = eng_devices_end(p, len, at))) return 0;
-    if ((p[7] & ENG_FLAG_EXTRAS) && !(at = eng_extras_end(p, len, at))) return 0;
-    if ((p[6] & 64u) && !(at = eng_buttons_end(p, len, at))) return 0;
-    if ((p[6] & 128u) && !(at = eng_names_end(p, len, at))) return 0;
+    if (len < 8u || !(p[7] & ENG_FLAG_ORIGINS) || !(at = eng_section_at(p, len, ENG_SEC_ORIGINS))) return 0;
     return eng_origins_end(p, len, at) ? at : 0;
 }
 uint32_t eng_origin_record(const uint8_t *p, uint32_t len, uint32_t module, uint32_t pattern)
@@ -1886,6 +1898,11 @@ uint32_t eng_origin_record(const uint8_t *p, uint32_t len, uint32_t module, uint
     for (at += 2u; at < end; at += 6u)
         if (p[at] == module && p[at + 1u] == pattern) return at;
     return 0;
+}
+uint32_t eng_links_at(const uint8_t *p, uint32_t len)
+{
+    uint32_t at = eng_section_at(p, len, ENG_SEC_LINKS);
+    return at && at <= len && (!(p[7] & ENG_FLAG_LINKS) || eng_links_end(p, len, at)) ? at : 0;
 }
 const uint8_t *eng_skip_fx(const uint8_t *p, const uint8_t *end, uint16_t flags)
 {
@@ -2534,6 +2551,7 @@ int eng_load(const uint8_t *p, uint32_t len)
     }
     E.nlt = 0;
     E.nlk = 0;
+    pat_omit = 0;
     for (i = 0; i < ENG_MAX_TRACKS; i++)
         E.trk_lkey[i] = -2;
     if (p[7] & ENG_FLAG_LOCKS) {                 /* the P-locks (format 49, #524, patchbin.ts lockRecord) */
@@ -2583,6 +2601,15 @@ int eng_load(const uint8_t *p, uint32_t len)
                     l->v = rd32(p + at + 2u);
                 }
             }
+        }
+    }
+    if (p[7] & ENG_FLAG_LINKS) {                 /* the stored pattern links (format 59, #901): checked, then left to patlink.c */
+        uint32_t count, last = 0, id;
+        if (at >= len || !(count = p[at]) || count >= ENG_PATTERNS || at + 1u + 3u * count > len) return -3;
+        for (i = 0, at++; i < count; i++, at += 3u) {
+            id = (uint32_t)p[at + 1u] | (uint32_t)p[at + 2u] << 8;
+            if (p[at] <= last || p[at] >= ENG_PATTERNS || !id || id > ENG_LINK_ID_MAX) return -3;
+            last = p[at];
         }
     }
     pat_layout();                                /* (the slices in their order: every track's first, then the rest) */
@@ -5044,6 +5071,28 @@ int eng_pattern_set_notes(uint32_t module, uint32_t p, const uint32_t *notes, ui
             w[m++] = notes[i];
     return trk_put_at(E.node[module].trk, p, w, m);
 }
+int eng_pattern_shape(uint32_t module, uint32_t p, uint32_t len, uint32_t rate)
+{
+    uint32_t t;
+    if (!p || !eng_pattern_has(module, p) || len > TRACK_STEPS || (rate != 0xFFu && rate > 8u))
+        return -1;
+    t = E.node[module].trk;
+    E.pat_len[t][p] = (uint8_t)len;
+    E.pat_rate[t][p] = (uint8_t)rate;
+    return 0;
+}
+void eng_pattern_drop(uint32_t module, uint32_t p)
+{
+    uint32_t t, none = 0;
+    if (!p || !eng_pattern_has(module, p))
+        return;
+    t = E.node[module].trk;
+    (void)trk_put_at(t, p, &none, 0);            /* (its notes go, the slices after it move down) */
+    E.pat_has[t] &= ~((uint64_t)1u << p);
+    E.pat_len[t][p] = 0;
+    E.pat_rate[t][p] = 0xFFu;
+    E.trk_lkey[t] = -2;
+}
 void eng_song_set(uint32_t n)
 {
     uint32_t t;
@@ -5096,40 +5145,49 @@ int eng_song_delete(uint32_t s, uint32_t k)
     E.song_n[s]--;
     return 0;
 }
-/* the patterns and songs section (patchbin.ts patternRecord: byte for byte what the editor writes for the same patterns) */
+void eng_patterns_omit(uint64_t mask) { pat_omit = mask & ~(uint64_t)1u; }
+int eng_notes_short(const uint32_t *w, uint32_t n)
+{
+    uint32_t j, sh = 1;
+    for (j = 0; j < n; j++)
+        sh &= !(w[j] & ENG_NOTE_WRAP) && NW_AT(w[j]) < 16u && NW_LEN(w[j]) <= 16u && (NW_VEL(w[j]) == STEP_VEL || NW_VEL(w[j]) == ACCENT_VEL) && !NW_CODE(w[j]);
+    return (int)sh;
+}
+/* pattern k of track t is written in short words */
+static int pat_short(uint32_t t, uint32_t k) { return eng_notes_short(&E.trk_note[E.pat_first[t][k]], E.pat_n[t][k]); }
+/* the patterns and songs section (patchbin.ts patternRecord: byte for byte what the editor writes for the same patterns),
+ * the patterns in pat_omit left out as if the tracks had not got them */
 int eng_patterns_record(uint8_t *out, uint32_t cap)
 {
     uint32_t t, k, j, n = 0, ns = 0, nt = 0, np;
 #define PUT(b) do { if (out && n < cap) out[n] = (uint8_t)(b); n++; } while (0)
+#define HAS(t) (E.pat_has[t] & ~pat_omit)
     if (!E.loaded)
         return 0;
     for (k = 0; k < ENG_SONGS; k++)
         if (E.song_n[k])
             ns = k + 1u;
     for (t = 0; t < E.ntrk; t++)
-        nt += E.pat_has[t] > 1u;
+        nt += HAS(t) > 1u;
     if (!nt && !ns && !E.pat_sel && !E.song)
         return 0;
     PUT(E.pat_sel);
     PUT(E.song);
     PUT(nt);
     for (t = 0; t < E.ntrk; t++) {
-        if (E.pat_has[t] <= 1u)
+        if (HAS(t) <= 1u)
             continue;
-        for (np = ENG_PATTERNS - 1u; !(E.pat_has[t] >> np & 1u); np--)
+        for (np = ENG_PATTERNS - 1u; !(HAS(t) >> np & 1u); np--)
             ;
         PUT(eng_steps_module(t));
         PUT(np);
         for (k = 1; k <= np; k++) {
-            uint32_t sh = 1, first = E.pat_first[t][k];
-            if (!(E.pat_has[t] >> k & 1u)) {
+            uint32_t sh, first = E.pat_first[t][k];
+            if (!(HAS(t) >> k & 1u)) {
                 PUT(0xFFu);
                 continue;
             }
-            for (j = 0; j < E.pat_n[t][k]; j++) {   /* short words when every note fits one (track.ts isShortNote) */
-                uint32_t w = E.trk_note[first + j];
-                sh &= !(w & ENG_NOTE_WRAP) && NW_AT(w) < 16u && NW_LEN(w) <= 16u && (NW_VEL(w) == STEP_VEL || NW_VEL(w) == ACCENT_VEL) && !NW_CODE(w);
-            }
+            sh = (uint32_t)pat_short(t, k);
             PUT(E.pat_n[t][k]);
             PUT(E.pat_len[t][k] | (sh ? 0x80u : 0u));
             PUT(E.pat_rate[t][k]);
@@ -5156,6 +5214,7 @@ int eng_patterns_record(uint8_t *out, uint32_t cap)
             PUT((uint8_t)E.song_shift[k][j]);
         }
     }
+#undef HAS
 #undef PUT
     return n <= cap || !out ? (int)n : -1;
 }
@@ -5205,6 +5264,35 @@ int eng_locks_step(uint32_t module, uint32_t p, uint32_t k)
         n += E.lk[i].trk == t && E.lk[i].pat == p && E.lk[i].at == k;
     return (int)n;
 }
+/* lock i goes; when no lock is left on its row, the row goes and the rows after it move down */
+static void lock_drop(uint32_t i)
+{
+    uint32_t r = E.lk[i].row;
+    for (; i + 1u < E.nlk; i++)
+        E.lk[i] = E.lk[i + 1u];
+    E.nlk--;
+    for (i = 0; i < E.nlk && E.lk[i].row != r; i++)
+        ;
+    if (i == E.nlk) {
+        for (i = r; i + 1u < E.nlt; i++)
+            E.lt[i] = E.lt[i + 1u];
+        E.nlt--;
+        for (i = 0; i < E.nlk; i++)
+            if (E.lk[i].row > r)
+                E.lk[i].row--;
+    }
+}
+void eng_locks_clear(uint32_t p)
+{
+    uint32_t i;
+    if (!E.loaded)
+        return;
+    for (i = E.nlk; i-- > 0;)
+        if (E.lk[i].pat == p)
+            lock_drop(i);
+    for (i = 0; i < E.ntrk; i++)
+        E.trk_lkey[i] = -2;
+}
 int eng_lock_set(uint32_t module, uint32_t p, uint32_t k, uint32_t m, uint32_t j, const uint8_t *also, int32_t v, int on)
 {
     uint32_t t, r, i, n = 0;
@@ -5217,19 +5305,7 @@ int eng_lock_set(uint32_t module, uint32_t p, uint32_t k, uint32_t m, uint32_t j
     if (!on) {
         if (i == E.nlk)
             return 0;
-        for (; i + 1u < E.nlk; i++)
-            E.lk[i] = E.lk[i + 1u];
-        E.nlk--;
-        for (i = 0; i < E.nlk && E.lk[i].row != r; i++)
-            ;
-        if (i == E.nlk) {                        /* no lock on the row is left: it goes, the rows after it move down */
-            for (i = r; i + 1u < E.nlt; i++)
-                E.lt[i] = E.lt[i + 1u];
-            E.nlt--;
-            for (i = 0; i < E.nlk; i++)
-                if (E.lk[i].row > r)
-                    E.lk[i].row--;
-        }
+        lock_drop(i);
         return 0;
     }
     if (i < E.nlk) {
@@ -5321,21 +5397,25 @@ int eng_locks_list(uint32_t module, uint32_t p, uint8_t *out, uint32_t cap)
     }
     return (int)n;
 }
+/* lock i is track t's and its pattern is not left out (pat_omit) */
+static int lock_kept(uint32_t i, uint32_t t) { return E.lk[i].trk == t && !(pat_omit >> E.lk[i].pat & 1u); }
 int eng_locks_record(uint8_t *out, uint32_t cap)
 {
     uint32_t t, r, i, k, p, n = 0, nt = 0, at, nr, np;
     uint8_t idx[ENG_LOCK_TARGETS];
 #define PUT(b) do { if (out && n < cap) out[n] = (uint8_t)(b); n++; } while (0)
-    if (!E.loaded || !E.nlk)
+    if (!E.loaded)
         return 0;
     for (t = 0; t < E.ntrk; t++) {
-        for (i = 0; i < E.nlk && E.lk[i].trk != t; i++)
+        for (i = 0; i < E.nlk && !lock_kept(i, t); i++)
             ;
         nt += i < E.nlk;
     }
+    if (!nt)
+        return 0;
     PUT(nt);
     for (t = 0; t < E.ntrk; t++) {
-        for (i = 0; i < E.nlk && E.lk[i].trk != t; i++)
+        for (i = 0; i < E.nlk && !lock_kept(i, t); i++)
             ;
         if (i == E.nlk)
             continue;
@@ -5346,7 +5426,7 @@ int eng_locks_record(uint8_t *out, uint32_t cap)
             idx[r] = 0xFFu;
             if (E.lt[r].trk != t)
                 continue;
-            for (i = 0; i < E.nlk && E.lk[i].row != r; i++)
+            for (i = 0; i < E.nlk && !(E.lk[i].row == r && lock_kept(i, t)); i++)
                 ;
             if (i == E.nlk)
                 continue;
@@ -5360,7 +5440,7 @@ int eng_locks_record(uint8_t *out, uint32_t cap)
         if (out && at < cap)
             out[at] = (uint8_t)nr;
         for (p = np = 0; p < ENG_PATTERNS; p++) {
-            for (i = 0; i < E.nlk && !(E.lk[i].trk == t && E.lk[i].pat == p); i++)
+            for (i = 0; i < E.nlk && !(E.lk[i].pat == p && lock_kept(i, t)); i++)
                 ;
             np += i < E.nlk;
         }
@@ -5368,7 +5448,7 @@ int eng_locks_record(uint8_t *out, uint32_t cap)
         for (p = 0; p < ENG_PATTERNS; p++) {
             uint32_t c = 0;
             for (i = 0; i < E.nlk; i++)
-                c += E.lk[i].trk == t && E.lk[i].pat == p;
+                c += E.lk[i].pat == p && lock_kept(i, t);
             if (!c)
                 continue;
             PUT(p);
@@ -5437,19 +5517,7 @@ int eng_steps_hit(uint32_t module, int accent, int record)
 static uint32_t names_at(const uint8_t *p, uint32_t len)
 {
     uint32_t at;
-    if (len < 8u || p[1] < 33u || !(p[6] & 128u) || !(at = eng_cables_end(p, len)))
-        return 0;
-    if (p[6] & 4u)
-        at += p[2];
-    if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at)))
-        return 0;
-    if (!(at = eng_steps_end(p, len, at)))
-        return 0;
-    if ((p[6] & 32u) && !(at = eng_devices_end(p, len, at)))
-        return 0;
-    if ((p[7] & ENG_FLAG_EXTRAS) && !(at = eng_extras_end(p, len, at)))
-        return 0;
-    if ((p[6] & 64u) && !(at = eng_buttons_end(p, len, at)))
+    if (len < 8u || p[1] < 33u || !(p[6] & 128u) || !(at = eng_section_at(p, len, ENG_SEC_NAMES)))
         return 0;
     return eng_names_end(p, len, at) ? at : 0;
 }

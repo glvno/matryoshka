@@ -8,7 +8,7 @@ import type { DeviceLink } from './device';
 import type { Patch } from './patch';
 import { encodePatch } from './patchbin';
 import { FM1_PRESETS, PRESETS } from './presets';
-import { SLOTS, slotLabel, type SlotInfo } from './protocol';
+import { SLOTS_MAX as SLOTS, slotLabel, type SlotInfo } from './protocol';
 import { addedTitles, loadCommunity } from './community';
 import { savePatch } from './saved';
 import { relocatedPatches } from './community-factory';
@@ -18,13 +18,14 @@ import { relocatedPatches } from './community-factory';
 vi.mock('./share', async (real) => ({ ...(await real<typeof import('./share')>()), decodeShare: async () => PRESETS.Init() }));
 
 const names = Object.keys(FM1_PRESETS).slice(0, 2);
-const empty = (): SlotInfo[] => Array.from({ length: SLOTS }, (_, slot) => ({ slot, used: false, length: 0, name: '' }));
+const empty = (n = SLOTS): SlotInfo[] => Array.from({ length: n }, (_, slot) => ({ slot, used: false, length: 0, name: '' }));
 
-/** an FM-1 that keeps its slots in memory */
-function fakeDevice(connected: boolean): DeviceLink & { slots: SlotInfo[] } {
-  const slots = empty();
+/** an FM-1 that keeps its slots in memory (`bankSlots`: 60 when its pattern store is on) */
+function fakeDevice(connected: boolean, bankSlots = SLOTS): DeviceLink & { slots: SlotInfo[] } {
+  const slots = empty(bankSlots);
   return {
     slots,
+    bankSlots,
     get connected() { return connected; },
     readBank: async () => slots.map((s) => ({ ...s })),
     readSlot: async (i: number) => ({ ...slots[i] }),
@@ -120,6 +121,25 @@ it('with an FM-1 the column shows its slots: named when they hold the bank, else
   fm1.querySelector<HTMLButtonElement>('.lib-saveas')!.click();
   expect(JSON.parse(localStorage.getItem('matryoshka.bank')!)).toEqual(Object.keys(FM1_PRESETS).slice(0, 3).map((name) => ({ name })));
   expect(fm1.querySelector('.lib-state')!.textContent).toBe(inBank);
+  vi.unstubAllGlobals();
+});
+
+it('Send bank to an FM-1 with fewer slots (its pattern store on, #901) warns and sends the entries that fit', async () => {
+  const three = Object.keys(FM1_PRESETS).slice(0, 3);
+  localStorage.setItem('matryoshka.bank', JSON.stringify(three.map((name) => ({ name }))));
+  const dev = fakeDevice(true, 2);
+  const root = document.createElement('div');
+  const pane = buildPatchesSection(root, dev, { remove: () => {} });
+  pane.enter();
+  await flush();
+  const asked: string[] = [];
+  vi.stubGlobal('confirm', (q: string) => (asked.push(q), true));
+  button(cols(root)[1], 'Send bank to FM-1').click();
+  for (let i = 0; i < 8; i++) await flush();
+  expect(asked[0]).toContain('This FM-1 has 2 slots');
+  expect(asked[0]).toContain(three[2]);
+  expect(dev.slots.map((s) => s.name)).toEqual(three.slice(0, 2).map((n) => n.toUpperCase().slice(0, 20)));
+  expect(dev.slots).toHaveLength(2);
   vi.unstubAllGlobals();
 });
 

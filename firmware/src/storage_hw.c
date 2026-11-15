@@ -155,10 +155,10 @@ static int st_erase(uint32_t off)
 }
 /* the program reads its source with the read path off: a source in the flash (.rodata: a factory patch, presetstore's zero
  * word) hangs the CPU on a cache miss (a preset delete froze the FM-1), so every write goes through a RAM copy, a page at
- * a time */
+ * a time (on the main stack, which is RAM: the RAM proper outside it is short, #901) */
 static int st_prog(uint32_t off, const void *src, uint32_t n)
 {
-    static uint8_t bounce[256];
+    uint8_t bounce[256];
     const uint8_t *s = src;
     if (!FL_STORE_OK(off, n))                   /* only inside the storage areas */
         return -8;

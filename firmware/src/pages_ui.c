@@ -2,7 +2,7 @@
  * Copyright (C) 2026 morgulbrut */
 /* Device pages: the FM-1 as a player of the patch's devices (web/src/pages.ts). Every top-level module or assembly of the
  * editor's canvas is a device; its card's rows, four to a page, are what K1..K4 turn. SELECT steps the devices, ALGO the
- * pages of one; the patch binary lists them (patchbin.ts, the device pages section: proto.c m1_devices_at). A plain
+ * pages of one; the patch binary lists them (patchbin.ts, the device pages section: pages_at). A plain
  * module's pages are made here: its parameters in order, four to a page, named as in defs.h.
  *
  * The screen (the owner's design of 2026-10-24; the numbers are the look constants, LK_*, below "drawing"; Barlow
@@ -105,16 +105,11 @@ static const uint8_t *pages_src(uint32_t *len);         /* the running patch's b
 static uint32_t pages_gen(void);                        /* changes when another patch becomes current */
 static uint32_t pages_capacity(void);                 /* writable native patch bytes, not preset-store capacity */
 
-/* where the device pages section starts in (p, len), 0 if there is none (proto.c m1_devices_at, on any binary) */
+/* where the device pages section starts in (p, len), 0 if there is none (engine.c eng_section_at, on any binary) */
 static uint32_t pages_at(const uint8_t *p, uint32_t len)
 {
     uint32_t at;
-    if (len < 8u || !(p[6] & 32u) || !(at = eng_cables_end(p, len)))
-        return 0;
-    if (p[6] & 4u) at += p[2];
-    if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at)))
-        return 0;
-    if (!(at = eng_steps_end(p, len, at)))
+    if (len < 8u || !(p[6] & 32u) || !(at = eng_section_at(p, len, ENG_SEC_DEVICES)))
         return 0;
     return at < len ? at : 0;
 }
@@ -310,7 +305,8 @@ static void pages_extras(const uint8_t *p, uint32_t len)
             pg_pstructure[i] = 0;
         }
     }
-    if (!p || !(p[7] & ENG_FLAG_EXTRAS) || !(at = pages_at(p, len)) || !(at = eng_devices_end(p, len, at)) || !eng_extras_end(p, len, at)) {
+    if (!p || !(p[6] & 32u) || !(p[7] & ENG_FLAG_EXTRAS) || !(at = eng_section_at(p, len, ENG_SEC_EXTRAS))
+        || !eng_section_at(p, len, ENG_SEC_BUTTONS)) {
         pg_names_fresh = 0;
         return;
     }
@@ -618,8 +614,8 @@ static uint32_t pages_list(uint32_t b, const uint8_t **l)
 {
     uint32_t len, at, k;
     const uint8_t *p = pages_src(&len), *kind;
-    if (!p || !(p[6] & 64u) || b >= ENG_PANEL_BUTTONS || !(at = pages_at(p, len)) || !(at = eng_devices_end(p, len, at))
-        || ((p[7] & ENG_FLAG_EXTRAS) && !(at = eng_extras_end(p, len, at))) || !eng_buttons_end(p, len, at))
+    if (!p || !(p[6] & 64u) || !(p[6] & 32u) || b >= ENG_PANEL_BUTTONS || !(at = eng_section_at(p, len, ENG_SEC_BUTTONS))
+        || !eng_section_at(p, len, ENG_SEC_NAMES))
         return 0;
     kind = p + at;
     at += ENG_PANEL_BUTTONS;
@@ -1334,7 +1330,7 @@ static void pages_strip(void)
     }
     if (page == PAGE_ENV) {                             /* the environment: ENVIRONMENT and the patch, on lilac */
         char nm[32], num[8], *q = nm;
-        if (cur_preset < M1_SLOTS) {
+        if (cur_preset < bank_slots) {
             fmt_int(num, (int32_t)cur_preset + 1);
             if (cur_preset < 9u)
                 *q++ = '0';
@@ -1548,7 +1544,7 @@ static void toast_row(uint32_t y, uint16_t *row)
     char num[8], nm[32], *q = num;
     for (i = 0; i < 240u; i++)
         row[i] = P_SAND;
-    if (cur_preset < M1_SLOTS) {
+    if (cur_preset < bank_slots) {
         char d[8];
         fmt_int(d, (int32_t)cur_preset + 1);
         if (cur_preset < 9u)
@@ -2942,8 +2938,7 @@ static int dp_room(uint32_t d, const char *name, int factory)
         }
         at += eng_rec_size(bin, at);
     }
-    at = pages_at(bin, len);
-    if (!at || !(at = eng_devices_end(bin, len, at)) || !(bin[7] & ENG_FLAG_EXTRAS)) return 0;
+    if (!(bin[6] & 32u) || !(bin[7] & ENG_FLAG_EXTRAS) || !(at = eng_section_at(bin, len, ENG_SEC_EXTRAS))) return 0;
     j = bin[at++];
     for (i = 0; i < j; i++) {
         uint32_t n = bin[at + 5u];

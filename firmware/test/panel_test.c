@@ -385,6 +385,7 @@ static int load_at(uint32_t p)
     pv_len = PRESET_LIST[p].len;
     if (eng_load(pv_bin, pv_len))
         return -1;
+    m1_pat_load();                                      /* (no links: the last patch's are gone, #901) */
     patch_label = PRESET_LIST[p].name;
     {
         static int32_t l[128], r[128];
@@ -4925,7 +4926,9 @@ int main(void)
     }
     nudge_suite();
     steprec_suite();
+    host_pt_init();                                     /* (the pattern store on: the SEQ page's pattern rows show, #901) */
     controls_suite();
+    pt_on = 0;
     fx_suite();
     fx_preset_suite();
     report_suite();

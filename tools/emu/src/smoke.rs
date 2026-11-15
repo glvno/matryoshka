@@ -612,8 +612,8 @@ fn preset_records(f: &[u8]) -> Vec<(u32, String, Vec<i32>)> {
     out
 }
 
-/// The bank's slots (main.c M1_SLOTS)
-const SLOTS: u32 = 64;
+/// The bank's slots (slotstore.c bank_slots: 60 once the pattern store has its 4 sectors, which every smoke bank leaves room for)
+const SLOTS: u32 = 60;
 
 /// presets.h FACTORY_SET_ID: today's factory set
 fn factory_set_id() -> u32 {
@@ -1024,9 +1024,9 @@ fn bank_with_7ph(app: &[u8], presets: &[(String, Vec<u8>)]) -> Result<(Vec<u8>, 
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     let mut f = m.flash();
-    const AT: usize = 0xDF000; // the store's last sector (firmware/src/slotstore.c), free after the factory bank
+    const AT: usize = 0xDB000; // the bank's last sector (firmware/src/slotstore.c; 0xDC000.. is the pattern store's), free after the factory bank
     if f[AT..AT + 0x1000].iter().any(|&b| b != 0xff) {
-        return Err("the store's last sector is not free after the first boot".into());
+        return Err("the bank's last sector is not free after the first boot".into());
     }
     let slot = presets.len() as u32;
     f[AT..AT + 0x1000].copy_from_slice(&record(slot, 1, "<7PH", &gb, false));

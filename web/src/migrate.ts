@@ -13,7 +13,7 @@
 //      listening, quietly.
 // "Download a backup" (the forwarder) and "Save browser backup" (the app) save the same keys as a file (BACKUP_FORMAT),
 // which "Load .json" takes as well. The data never goes into a URL.
-import { SLOTS } from './protocol';
+import { SLOTS_MAX } from './protocol';
 import { OLD_SITE_URL, PAGES_DEV_URL } from './site';
 
 /** the earlier addresses' origins. Only a test build sets VITE_MIGRATE_FROM (a forwarder served locally); the default is
@@ -101,8 +101,8 @@ const LISTS: Record<string, ListRule> = {
     rename: (e, name) => ({ ...e, name, patch: { ...(e.patch as object), name } }),
   },
   'matryoshka.assemblies': { id: byName, what: (n) => plural(n, 'library assembly', 'library assemblies'), rename: (e, name) => ({ ...e, name }) },
-  // the FM-1 bank is the slot list the FM-1 gets: a name already in it keeps its patch, and it holds SLOTS at most
-  'matryoshka.bank': { id: byName, cap: SLOTS, what: (n) => plural(n, 'FM-1 bank entry', 'FM-1 bank entries') },
+  // the FM-1 bank is the slot list the FM-1 gets: a name already in it keeps its patch, and it holds SLOTS_MAX at most
+  'matryoshka.bank': { id: byName, cap: SLOTS_MAX, what: (n) => plural(n, 'FM-1 bank entry', 'FM-1 bank entries') },
   'matryoshka.bank-over': { id: byName, what: (n) => plural(n, 'browser-only bank patch', 'browser-only bank patches') },
   'matryoshka.tutorial.variations': { id: (e) => String(e.id ?? ''), what: (n) => plural(n, 'tutorial variation') },
 };

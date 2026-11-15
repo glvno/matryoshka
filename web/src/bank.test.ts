@@ -3,7 +3,7 @@ import { beforeEach, expect, it } from 'vitest';
 import { addToBank, bankMatches, bankPatches, knownCopy, slotFor, uploadLoses } from './bank';
 import type { Patch } from './patch';
 import { FM1_PRESETS, PRESETS } from './presets';
-import { SLOTS, type SlotInfo } from './protocol';
+import { SLOTS_MAX as SLOTS, type SlotInfo } from './protocol';
 import { relocatedPatches } from './community-factory';
 
 const bank = (names: (string | null)[], length = 100): SlotInfo[] =>

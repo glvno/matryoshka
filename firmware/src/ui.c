@@ -377,7 +377,7 @@ static void header_draw_now(void)
         bar_text(b, C_RED);
     } else {
         char b[40], num[12], *p = b;
-        if (cur_preset < M1_SLOTS && !booting) {   /* the slot's number (1..64) before the name */
+        if (cur_preset < bank_slots && !booting) {   /* the slot's number (1..60, 64 without the pattern store) before the name */
             fmt_int(num, (int32_t)cur_preset + 1);
             if (cur_preset < 9u)
                 *p++ = '0';

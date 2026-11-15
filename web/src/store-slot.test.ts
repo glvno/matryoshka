@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // "Store to an FM-1 slot…" (#635): the slots with their names or EMPTY, the first empty one offered
 import { describe, expect, it } from 'vitest';
-import { SLOTS, type SlotInfo } from './protocol';
+import { SLOTS_MAX as SLOTS, type SlotInfo } from './protocol';
 import { firstFree, slotNote, slotText } from './store-slot';
 
 const bank = (used: Record<number, string>): SlotInfo[] =>

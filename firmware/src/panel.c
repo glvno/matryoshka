@@ -1125,6 +1125,10 @@ static void panel_edges(uint32_t p, uint32_t rel)
         p &= ~(1u << BTN_SAVE);
         preset_store_focused();
     }
+    if ((p & (1u << BTN_SAVE)) && page == PAGE_SEQ && !sr_on && pt_on && (panel_held & (1u << BTN_SEL | 1u << BTN_ACC))) {
+        p &= ~(1u << BTN_SAVE);                     /* SEL / FX held + SAVE on the SEQ page: the pattern into the store (#901) */
+        seq_pattern_save((int)(panel_held >> BTN_ACC & 1u));
+    }
     if (p & (1u << BTN_SAVE)) {
         int menu = page == PAGE_MENU;
         save_state();
