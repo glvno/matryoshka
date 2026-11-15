@@ -12,6 +12,14 @@ const PM_LINE = 0xfd;
 const PM_TABLE = 0xfe;
 const PM_INIT = 0xff;
 
+/** where `run` starts in `into`: an earlier identical run of values is shared (a line or table points at its first value),
+ * else it is appended. Values never change at run time, so two lines or tables may read the same ones. */
+function shared(into: number[], run: number[]): number {
+  for (let i = 0; i + run.length <= into.length; i++) if (run.every((x, k) => into[i + k] === x)) return i;
+  into.push(...run);
+  return into.length - run.length;
+}
+
 /** the presets.h lines, and how many bytes of ROM the tables take */
 export function migrationTables(migrations: Record<string, Migration>): { lines: string[]; bytes: number } {
   const ops: number[] = [];
@@ -30,13 +38,11 @@ export function migrationTables(migrations: Record<string, Migration>): { lines:
       } else if ('x' in op) {
         if ((op.lo ?? 0) < -128 || (op.lo ?? 0) > 127 || op.mul.length > 0xff) throw new Error(`a line of ${m.engine}`);
         ops.push(PM_LINE);
-        lines.push({ x: op.x, key: op.key ?? 0xff, n: op.mul.length, lo: op.lo ?? 0, v: lv.length });
-        lv.push(op.min, op.max, ...op.mul.flatMap((k, i) => [k, op.add[i]]));
+        lines.push({ x: op.x, key: op.key ?? 0xff, n: op.mul.length, lo: op.lo ?? 0, v: shared(lv, [op.min, op.max, ...op.mul.flatMap((k, i) => [k, op.add[i]])]) });
       } else {
         if (op.v.some((x) => !Number.isInteger(x) || x < -128 || x > 127)) throw new Error(`a table value of ${m.engine} is not a small whole number`);
         ops.push(PM_TABLE);
-        tabs.push({ rows: op.rows, lo: op.lo, n: op.n, v: tv.length });
-        tv.push(...op.v);
+        tabs.push({ rows: op.rows, lo: op.lo, n: op.n, v: shared(tv, op.v) });
       }
     }
   }

@@ -3775,135 +3775,228 @@ asm('Scrounge', 'Drums', (b) => {
   b.param('out', scope, 'view', { col: true });
 });
 
-// Meridian 8, after the Landscape NOON (the instrument's page, landscape.fm/noon): eight passive circuits powered by their
-// gates, no supply of their own. A Drum map row is a channel's gate; its "power" (an ADSR: up while the gate is held,
-// sagging after it) is the VCA's cv and also pushes the circuit's pitch or filter, so a hit swoops and a dying gate
-// starves the sound. Channels: 1 DOT (a saw through a ladder low pass), 2 DUAL (a sine ping), 3 SYS (a resonator struck
-// at the gate, the power sweeps its pitch), 4 PLAST (noise through a comb filter the power stretches), 5 CYMPATH (a narrow
-// square crumbled by a Bitcrusher), 6 CYRINX (a chirping triangle), 7 LARYNX (a saw through a formant filter the power
-// moves), 8 BACID (a saw into an acid ladder); each with its two tone sliders and its volume (the cheaper modules where the
-// first try, two Multimodes on cv and a three-voice cluster, read 85 %). LINK: channel n's power into channel n + 1 (8
-// into 1), by an amount: a powered channel half-powers its neighbour. ODD / EVEN CV: an offset into the odd / even
-// channels (they drone, and the voltage detunes them). The odd channels sum to the left output, the even ones to the
-// right (the original's two main outputs), each through a saturator for the passive mix's squash; one main volume.
+// Meridian 8, after the Landscape NOON (its manual, landscape.fm/s/Noon-Manual-baw6.pdf, and the instrument's page,
+// landscape.fm/noon): eight passive circuits powered by their gates, no supply of their own. Since D-1054 the FM-1 plays
+// the whole design Meridian 8 XL had (scripts/xl/meridian-8.ts says how each part reads the manual); its card is the NOON's
+// controls, one row each, named as the manual's "Sliders", "Volume controls", "Link buttons", "Mod buttons" and "Mute
+// buttons" name them: per channel `main`, `secondary`, `volume`, MOD (`mod`: up, down) and mute (mute, on); the nine LINK
+// buttons (off, on); `main volume`. The CV mute buttons are left out with the CV inputs they mute (the owner, 2026-11-15).
+//  - A Drum map row is a channel's gate (the white keys from F3); its power is an ADSR on the gate, scaled by the gate's
+//    voltage (the key's velocity at half weight: a Math), after the mute button. The power is the VCA's cv and also
+//    pushes the circuit's pitch or filter, so a hit swoops and a dying gate starves the sound.
+//  - Channels: 1 DOT (a saw through a Multimode the power sweeps per sample; MOD the filter pinged), 2 DUAL (a sine pinged
+//    up by the power; MOD through a resonant band pass), 3 SYS (a resonator struck at the gate; MOD phased), 4 PLAST
+//    (noise through a comb the power stretches; MOD crushed), 5 CYMPATH (a three-voice cluster of narrow squares crumbled
+//    by a Bitcrusher, its main slider also its loudness: voltage starving; MOD uncrushed), 6 CYRINX (a chirping
+//    triangle; MOD folded), 7 LARYNX (a saw through a formant filter; MOD folded), 8 BACID (a saw into a 24 dB Multimode,
+//    then the slam drive; MOD its band pass).
+//  - LINK as voltage sharing: the seven buttons between neighbours share both ways; `8>1` and `1>8` wrap around one way
+//    each. Each is a VCA the button opens, 0 or 1 (Meridian 8 XL: an Attenuverter whose gain the button sets).
+//  - The touch plates: the keyboard's aftertouch (the input `touch`) is a finger across every channel's plates and the
+//    left-side plates at once. The touched channels' power goes onto one bus, the gates onto the left-side plates; the
+//    bus comes back into every channel through the skin, a slow random wobble (moisture).
+//  - The passive mix: odd channels to `l`, even to `r`, each bleeding 5 % into the other side, each side through a
+//    saturator whose level is the main volume.
+// What the XL had that is not here, because it changes nothing the FM-1 plays: the patch points as assembly ports
+// (gate 1..8, odd / even cv, audio) and the CV mute buttons on the odd / even cv, the fixed
+// Macros the XL left at one value (the gate's voltage, the odd / even voltages, the mono plug), a separate skin amount
+// per channel (one touch amount for all, as the XL's were all at 1) and the per-channel touch VCAs, summed into one
+// (x·a + y·a = (x + y)·a). The FM-1 version plays what the XL plays, but for the summing order (about -100 dB).
+/** (the right saturator, which the main volume row moves too) */
+const meridianR = { id: 0 };
 asm('Meridian 8', 'Drums', (b) => {
   const map = b.add('drummap', 0, 0, Object.fromEntries(PLATE_KEYS[1].map((n, r) => [`n${r + 1}`, n])));
   b.module(map).names = ['DOT', 'DUAL', 'SYS', 'PLAST', 'CYMPATH', 'CYRINX', 'LARYNX', 'BACID'];
-  const odd = b.add('macro', 0, 1, { value: 0 });
-  const even = b.add('macro', 0, 2, { value: 0 });
-  const L = b.add('shape', 9, 0, { drive: 1.5, mode: 0, level: 0 }, { p1: 'level' });
-  const R = b.add('shape', 9, 1, { drive: 1.5, mode: 0, level: 0 }, { p1: 'level' });
-  const main = b.add('macro', 9, 2, { value: 0.8 });
-  const scope = b.add('scope', 10, 0, { time: 16 });
-  type Ch = { name: string; env: number; vca: number; members: number[]; power: [number, string][]; s1: [number, string, string]; s2: [number, string, string] };
-  const channel = (i: number, name: string, adsr: Record<string, number>, build: (col: number, env: number, vca: number) => Omit<Ch, 'name' | 'env' | 'vca'>): Ch => {
+  const OFF_ON = { count: 2, v1: 0, v2: 1 };
+  // the passive mix's bleed between the two sides
+  const bleed = b.add('macro', 0, 3, { value: 0.05 });
+  // the left-side plates: the gates summed, pressed by the touch
+  const leftSrc = b.add('scale', 0, 9, { gain: 0.5, offset: 0 });
+  const leftV = b.add('vca', 0, 9.5, { gain: 1 });
+  b.wire(leftSrc, 'out', leftV, 'in');
+  // the DOT/DUAL link button
+  const dotDual = b.add('select', 1, 6, OFF_ON);
+  // the main mix: odd left, even right, bleeding into each other; the main volume is the saturators' level
+  const bl = b.add('vca', 9, 1, { gain: 1 });
+  const br = b.add('vca', 9, 1.5, { gain: 1 });
+  const L = b.add('shape', 10, 0, { drive: 1.5, mode: 0, level: 0.8 });
+  const R = b.add('shape', 10, 1, { drive: 1.5, mode: 0, level: 0.8 });
+  b.wire(bleed, 'out', bl, 'cv');
+  b.wire(bleed, 'out', br, 'cv');
+  b.wire(bl, 'out', L, 'in');
+  b.wire(br, 'out', R, 'in');
+  // the touch plates: the touched channels' power onto the bus (one VCA on their sum), the bus with the skin's wobble and
+  // the left-side plates back into every channel
+  const tOut = b.add('vca', 0, 7.5, { gain: 1 });
+  const tIn = b.add('vca', 0, 10, { gain: 1 });
+  // (the skin's Random is seeded by its place in the patch: twelfth here, after Main, the 13th module, as in Meridian 8
+  // XL, so the wobble is the XL's)
+  const skin = b.add('random', 0, 6.5, { mode: 1, rate: 7 });
+  if (skin !== 12) throw new Error('Meridian 8: the skin Random moved from its place (its seed)');
+  const wobble = b.add('scale', 0, 7, { gain: 0.5, offset: 1 });
+  const busV = b.add('vca', 0, 8, { gain: 1 });
+  b.wire(skin, 'out', wobble, 'in');
+  b.wire(tOut, 'out', busV, 'in');
+  b.wire(wobble, 'out', busV, 'cv');
+  b.wire(busV, 'out', tIn, 'in');
+  b.wire(leftV, 'out', tIn, 'in');
+  const scope = b.add('scope', 12, 0, { time: 16 });
+  b.wire(L, 'out', scope, 'a');
+  b.wire(R, 'out', scope, 'b');
+
+  type Ch = { name: string; col: number; vca: number; mod: number; mute: number; pw: number; node: number; members: number[]; s1: [number, string]; s2: [number, string] };
+  /** the circuit: its modules, where the power goes in, its two sliders, the MOD button's two inputs (`a` up, `b` down)
+   * and a module between the button and the VCA */
+  type Circuit = { members: number[]; power: [number, string][]; s1: [number, string]; s2: [number, string]; a: [number, string]; b: [number, string]; post?: number };
+  // (the modules in Meridian 8 XL's order, which the two-core schedule follows: each channel, the links, the link buttons)
+  const channel = (i: number, name: string, adsr: Record<string, number>, f: (col: number, node: number) => Circuit): Ch => {
     const col = 1 + i;
     const env = b.add('adsr', col, 0, adsr);
+    const gv = b.add('math', col, 0.25, { ka: 0.5, kb: 1, off: 0.5 }); // the gate's voltage: (velocity x 0.5 + 0.5) x envelope
+    const mute = b.add('select', col, 0.4, { count: 2, pos: 2 }); // the mute button (mute, on), after the gate
+    const pw = b.add('scale', col, 0.5, { gain: 1, offset: 0 }); // the channel's own power: what it shares
+    const node = b.add('scale', col, 0.75, { gain: 1, offset: 0 }); // what reaches the circuit: its power, links, touch
     const vca = b.add('vca', col, 4, { gain: 0.8 });
+    const mod = b.add('select', col, 3.5, { count: 2 }); // the MOD button: the circuit's two modes
     b.wire(map, `g${i + 1}`, env, 'gate');
-    const c = build(col, env, vca);
-    for (const [m, port] of [[vca, 'cv'] as [number, string], ...c.power]) b.wire(env, 'env', m, port);
+    b.wire(map, `v${i + 1}`, gv, 'a');
+    b.wire(env, 'env', gv, 'b');
+    b.wire(gv, 'mul', mute, 'in2');
+    b.wire(mute, 'out', pw, 'in');
+    b.wire(map, `g${i + 1}`, leftSrc, 'in');
+    b.wire(pw, 'out', node, 'in');
+    b.wire(pw, 'out', tOut, 'in');
+    b.wire(tIn, 'out', node, 'in');
+    const c = f(col, node);
+    b.wire(c.a[0], c.a[1], mod, 'in1');
+    b.wire(c.b[0], c.b[1], mod, 'in2');
+    if (c.post) {
+      b.wire(mod, 'out', c.post, 'in');
+      b.wire(c.post, 'out', vca, 'in');
+    } else b.wire(mod, 'out', vca, 'in');
+    for (const [m, port] of [[vca, 'cv'] as [number, string], ...c.power]) b.wire(node, 'out', m, port);
     b.wire(vca, 'out', i % 2 === 0 ? L : R, 'in');
-    return { name, env, vca, ...c, power: [[vca, 'cv'], ...c.power], members: [env, ...c.members, vca] };
+    b.wire(vca, 'out', i % 2 === 0 ? br : bl, 'in');
+    return { name, col, vca, mod, mute, pw, node, members: [env, mute, pw, node, ...c.members, mod, ...(c.post ? [c.post] : []), vca], s1: c.s1, s2: c.s2 };
   };
   const chs: Ch[] = [
-    channel(0, 'dot', { a: 0.002, d: 0.08, s: 0.6, r: 0.15 }, (col, env, vca) => {
+    channel(0, 'dot', { a: 0.002, d: 0.08, s: 0.6, r: 0.15 }, (col) => {
       const osc = b.add('osc', col, 1, { wave: 2, coarse: -17, level: 0.8 });
-      const lp = b.add('ladder', col, 2, { cutoff: 600, res: 0.4, cvamt: 3 });
+      const lp = b.add('filter', col, 2, { cutoff: 600, res: 0.4, cvamt: 3 });
       b.wire(osc, 'out', lp, 'in');
-      b.wire(lp, 'lp12', vca, 'in');
-      return { members: [osc, lp], power: [[osc, 'pitch'], [lp, 'cv']], s1: [osc, 'coarse', 'pitch'], s2: [lp, 'cutoff', 'filter'] };
+      return { members: [osc, lp], power: [[osc, 'pitch'], [lp, 'cv']], s1: [osc, 'coarse'], s2: [lp, 'cutoff'], a: [lp, 'lp12'], b: [lp, 'bp'] };
     }),
-    channel(1, 'dual', { a: 0.001, d: 0.25, s: 0.3, r: 0.3 }, (col, env, vca) => {
+    channel(1, 'dual', { a: 0.001, d: 0.25, s: 0.3, r: 0.3 }, (col, node) => {
       const osc = b.add('osc', col, 1, { wave: 0, coarse: -24, level: 1 });
       const ping = b.add('scale', col, 2, { gain: 1.5, offset: 0 });
-      b.wire(env, 'env', ping, 'in');
+      const bp = b.add('filter', col, 2.5, { cutoff: 400, res: 0.9, cvamt: 3 });
+      b.wire(node, 'out', ping, 'in');
       b.wire(ping, 'out', osc, 'pitch');
-      b.wire(osc, 'out', vca, 'in');
-      return { members: [osc, ping], power: [], s1: [osc, 'coarse', 'pitch'], s2: [ping, 'gain', 'ping'] };
+      b.wire(osc, 'out', bp, 'in');
+      return { members: [osc, ping, bp], power: [[bp, 'cv']], s1: [osc, 'coarse'], s2: [ping, 'gain'], a: [osc, 'out'], b: [bp, 'bp'] };
     }),
-    channel(2, 'sys', { a: 0.001, d: 0.1, s: 0.5, r: 0.2 }, (col, env, vca) => {
+    channel(2, 'sys', { a: 0.001, d: 0.1, s: 0.5, r: 0.2 }, (col) => {
       const strike = b.add('pulse', col, 1, { time: 0.002 });
-      const hit = b.add('scale', col, 2, { gain: 0.03, offset: 0 });
-      const res = b.add('modal', col, 3, { coarse: -10, decay: 0.4, struct: 0.3, bright: 0.6, damp: 0.4 });
+      const hit = b.add('scale', col, 1.5, { gain: 0.03, offset: 0 });
+      const res = b.add('modal', col, 2, { coarse: -10, decay: 0.4, struct: 0.3, bright: 0.6, damp: 0.4 });
+      const ph = b.add('phaser', col, 2.5, { rate: 3, depth: 0.9, center: 900, fb: 0.7, mix: 1 });
       b.wire(map, 'g3', strike, 'trig');
       b.wire(strike, 'out', hit, 'in');
       b.wire(hit, 'out', res, 'in');
-      b.wire(res, 'out', vca, 'in');
-      return { members: [strike, hit, res], power: [[res, 'pitch']], s1: [res, 'coarse', 'pitch'], s2: [res, 'struct', 'hollow'] };
+      b.wire(res, 'out', ph, 'in');
+      return { members: [strike, hit, res, ph], power: [[res, 'pitch']], s1: [res, 'coarse'], s2: [res, 'struct'], a: [res, 'out'], b: [ph, 'out'] };
     }),
-    channel(3, 'plast', { a: 0.003, d: 0.12, s: 0.4, r: 0.25 }, (col, env, vca) => {
+    channel(3, 'plast', { a: 0.003, d: 0.12, s: 0.4, r: 0.25 }, (col) => {
       const nz = b.add('noise', col, 1, { level: 0.6, color: 0.3 });
       const cb = b.add('comb', col, 2, { coarse: 5, fb: 0.85, damp: 0.3, mix: 1 });
+      const st = b.add('crush', col, 2.5, { bits: 5, rate: 6 });
       b.wire(nz, 'out', cb, 'in');
-      b.wire(cb, 'out', vca, 'in');
-      return { members: [nz, cb], power: [[cb, 'pitch']], s1: [cb, 'coarse', 'tone'], s2: [cb, 'fb', 'squish'] };
+      b.wire(cb, 'out', st, 'in');
+      return { members: [nz, cb, st], power: [[cb, 'pitch']], s1: [cb, 'coarse'], s2: [cb, 'fb'], a: [cb, 'out'], b: [st, 'out'] };
     }),
-    channel(4, 'cympath', { a: 0.001, d: 0.15, s: 0.2, r: 0.35 }, (col, env, vca) => {
-      const osc = b.add('osc', col, 1, { wave: 3, coarse: 26, pw: 0.35, level: 0.6 });
+    // (the main slider is a Macro on the cluster's coarse tune, -10 .. +40 semitones, and on its loudness: the pin at 50 / 96
+    // of the coarse tune's 96 semitones, from -10. Meridian 8 XL's macro range does the same; a pin's depth reaches the FM-1
+    // exactly, where a macro range's ends are rounded to 1/255 of the range)
+    channel(4, 'cympath', { a: 0.001, d: 0.15, s: 0.2, r: 0.35 }, (col) => {
+      const osc = b.add('osc', col, 1, { wave: 3, coarse: -10, pw: 0.35, level: 0.6, unison: 3, detune: 100, blend: 0.5 }, { p1: 'coarse', att: [50 / 96, 1] });
+      const slider = b.add('macro', col, 0.9, { value: 0.72 }); // (26 semitones)
+      const starve = b.add('scale', col, 1.25, { gain: 1, offset: 0.28 });
+      const sv = b.add('vca', col, 1.5, { gain: 1 });
       const crush = b.add('crush', col, 2, { bits: 16, rate: 3 });
-      b.wire(osc, 'out', crush, 'in');
-      b.wire(crush, 'out', vca, 'in');
-      return { members: [osc, crush], power: [[osc, 'pitch']], s1: [osc, 'coarse', 'pitch'], s2: [crush, 'rate', 'crumble'] };
+      b.wire(slider, 'out', osc, 'p1');
+      b.wire(slider, 'out', starve, 'in');
+      b.wire(osc, 'out', sv, 'in');
+      b.wire(starve, 'out', sv, 'cv');
+      b.wire(sv, 'out', crush, 'in');
+      return { members: [osc, slider, starve, sv, crush], power: [[osc, 'pitch']], s1: [slider, 'value'], s2: [crush, 'rate'], a: [crush, 'out'], b: [sv, 'out'] };
     }),
-    channel(5, 'cyrinx', { a: 0.005, d: 0.06, s: 0.5, r: 0.12 }, (col, env, vca) => {
+    channel(5, 'cyrinx', { a: 0.005, d: 0.06, s: 0.5, r: 0.12 }, (col, node) => {
       const osc = b.add('osc', col, 1, { wave: 1, coarse: 12, level: 0.9 });
       const chirp = b.add('scale', col, 2, { gain: 2, offset: 0 });
-      b.wire(env, 'env', chirp, 'in');
+      const fold = b.add('shape', col, 2.5, { drive: 4, mode: 2, level: 0.7 });
+      b.wire(node, 'out', chirp, 'in');
       b.wire(chirp, 'out', osc, 'pitch');
-      b.wire(osc, 'out', vca, 'in');
-      return { members: [osc, chirp], power: [], s1: [osc, 'coarse', 'pitch'], s2: [chirp, 'gain', 'chirp'] };
+      b.wire(osc, 'out', fold, 'in');
+      return { members: [osc, chirp, fold], power: [], s1: [osc, 'coarse'], s2: [chirp, 'gain'], a: [osc, 'out'], b: [fold, 'out'] };
     }),
-    channel(6, 'larynx', { a: 0.01, d: 0.2, s: 0.6, r: 0.3 }, (col, env, vca) => {
+    channel(6, 'larynx', { a: 0.01, d: 0.2, s: 0.6, r: 0.3 }, (col) => {
       const osc = b.add('osc', col, 1, { wave: 2, coarse: -12, level: 0.8 });
       const vow = b.add('vowel', col, 2, { vowel: 0.5, res: 0.7, level: 1 });
+      const sq = b.add('shape', col, 2.5, { drive: 6, mode: 2, level: 0.6 });
       b.wire(osc, 'out', vow, 'in');
-      b.wire(vow, 'out', vca, 'in');
-      return { members: [osc, vow], power: [[osc, 'pitch'], [vow, 'vowel']], s1: [osc, 'coarse', 'pitch'], s2: [vow, 'vowel', 'vowel'] };
+      b.wire(vow, 'out', sq, 'in');
+      return { members: [osc, vow, sq], power: [[osc, 'pitch'], [vow, 'vowel']], s1: [osc, 'coarse'], s2: [vow, 'vowel'], a: [vow, 'out'], b: [sq, 'out'] };
     }),
-    channel(7, 'bacid', { a: 0.001, d: 0.18, s: 0.4, r: 0.2 }, (col, env, vca) => {
+    channel(7, 'bacid', { a: 0.001, d: 0.18, s: 0.4, r: 0.2 }, (col) => {
       const osc = b.add('osc', col, 1, { wave: 2, coarse: -29, level: 0.9 });
-      const lad = b.add('ladder', col, 2, { cutoff: 150, res: 0.75, cvamt: 4, drive: 2 });
-      b.wire(osc, 'out', lad, 'in');
-      b.wire(lad, 'lp24', vca, 'in');
-      return { members: [osc, lad], power: [[lad, 'cv']], s1: [osc, 'coarse', 'pitch'], s2: [lad, 'res', 'acid'] };
+      const lp = b.add('filter', col, 2, { cutoff: 150, res: 0.75, cvamt: 4 });
+      const slam = b.add('shape', col, 3, { drive: 2, mode: 0, level: 0.8 });
+      b.wire(osc, 'out', lp, 'in');
+      return { members: [osc, lp], power: [[lp, 'cv']], s1: [osc, 'coarse'], s2: [lp, 'res'], a: [lp, 'lp24'], b: [lp, 'bp'], post: slam };
     }),
   ];
-  // the links: channel n's power (its own ADSR, not what it receives) into the next channel's power inputs
-  const links = chs.map((c, i) => {
-    const to = chs[(i + 1) % chs.length];
-    const link = b.add('scale', 1 + i, 5, { gain: 0, offset: 0 });
-    b.wire(c.env, 'env', link, 'in');
-    for (const [m, port] of to.power) b.wire(link, 'out', m, port);
-    return link;
-  });
+  // the links: each a VCA from the channels' own power into their circuits, opened by its button (0 or 1)
+  const link = (k: number, from: Ch[], to: Ch[]): number => {
+    const v = b.add('vca', 1 + k, 6.5, { gain: 1 });
+    for (const c of from) b.wire(c.pw, 'out', v, 'in');
+    for (const c of to) b.wire(v, 'out', c.node, 'in');
+    return v;
+  };
+  const links = [...Array.from({ length: 7 }, (_, i) => link(i, [chs[i], chs[i + 1]], [chs[i], chs[i + 1]])), link(7, [chs[7]], [chs[0]]), link(8, [chs[0]], [chs[7]])];
+  const buttons = [dotDual, ...Array.from({ length: 8 }, (_, i) => b.add('select', 2 + i, 6.75, OFF_ON))];
+  buttons.forEach((sw, i) => b.wire(sw, 'out', links[i], 'cv'));
   chs.forEach((c, i) => {
-    for (const [m, port] of c.power) b.wire(i % 2 === 0 ? odd : even, 'out', m, port);
-  });
-  b.wire(main, 'out', L, 'p1');
-  b.wire(main, 'out', R, 'p1');
-  b.wire(L, 'out', scope, 'a');
-  b.wire(R, 'out', scope, 'b');
-  chs.forEach((c, i) => b.nest(`${i + 1} ${c.name}`, 1 + i, 0, c.members));
-  chs.forEach((c) => {
-    b.nestInput('gate', c.env, 'gate');
-    b.nestInput('power', c.vca, 'cv', ...c.power.slice(1));
+    b.nest(`${i + 1} ${c.name}`, c.col, 0, c.members);
+    b.nestInput('power', c.node, 'in');
     b.nestOutput('out', c.vca, 'out');
   });
   b.input('keys', map, 'keys');
+  b.input('touch', leftV, 'cv', [tOut, 'cv'], [tIn, 'cv']);
   b.output('l', L, 'out');
   b.output('r', R, 'out');
   chs.forEach((c, i) => {
-    b.param(c.s1[2], c.s1[0], c.s1[1], { head: `${i + 1} ${c.name}`, ...(i % 4 === 0 ? { col: true } : {}) });
-    b.param(c.s2[2], c.s2[0], c.s2[1]);
-    b.param('vol', c.vca, 'gain');
+    b.param('main', c.s1[0], c.s1[1], { head: `${i + 1} ${c.name}`, ...(i % 4 === 0 ? { col: true } : {}) });
+    b.param('secondary', c.s2[0], c.s2[1]);
+    b.param('volume', c.vca, 'gain');
+    b.param('mod', c.mod, 'pos');
+    b.param('mute', c.mute, 'pos');
   });
-  links.forEach((l, i) => b.param(`${i + 1}-${((i + 1) % 8) + 1}`, l, 'gain', i === 0 ? { col: true, head: 'link' } : {}));
-  b.param('odd cv', odd, 'value', { col: true, head: 'cv' });
-  b.param('even cv', even, 'value');
-  b.param('main', main, 'value', { head: 'out' });
+  buttons.forEach((sw, i) => b.param(i < 7 ? `${i + 1}-${i + 2}` : i === 7 ? '8>1' : '1>8', sw, 'pos', i === 0 ? { col: true, head: 'link' } : {}));
+  b.param('main volume', L, 'level', { head: 'out' });
   b.param('out', scope, 'view', { col: true });
+  meridianR.id = R;
 });
+// the main volume is both saturators' level (a row's `also`); the buttons' positions named as in Meridian 8 XL
+{
+  const d = defs.find((x) => x.name === 'Meridian 8')!;
+  const names: Record<string, string[]> = { mod: ['up', 'down'], mute: ['mute', 'on'] };
+  for (const list of [d.params, ...(d.assemblies ?? []).map((n) => n.params)])
+    for (const r of list) {
+      if (r.label === 'main volume') r.also = [{ module: meridianR.id, param: 'level' }];
+      const n = names[r.label] ?? (/^(\d-\d|\d>\d)$/.test(r.label) ? ['off', 'on'] : undefined);
+      if (n) r.names = n;
+    }
+}
 
 // Perun 4, after the Erica Synths PERKONS HD-01 (the manual's voice tables and Sound On Sound's review): four drum voices
 // with the same eight controls each: TUNE, DECAY, PARAM 1 / 2 (one algorithm per voice here: 1 the FOLD DRUM, a sine with
@@ -4855,7 +4948,7 @@ for (const [name, rows] of Object.entries(LEVELS)) {
     const r = cardRows(d).find((x) => x.key === key);
     if (!r) throw new Error(`presets/cards/levels.json: ${name} has no row ${key}`);
     const ref = d.params[r.i];
-    d.modules.find((m) => m.id === ref.module)!.params[ref.param] = v;
+    for (const t of [ref, ...(ref.also ?? [])]) d.modules.find((m) => m.id === t.module)!.params[t.param] = v;   // (a row's `also` moves with it)
   }
 }
 // the one-line description of each engine (the Engines shelf, engines.ts) on the "Start with an engine" tiles, the
