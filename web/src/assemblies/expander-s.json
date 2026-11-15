@@ -222,7 +222,8 @@
         "d": 0.6,
         "s": 0.4,
         "r": 0.6,
-        "long": 0
+        "long": 0,
+        "ads": 1
       },
       "att": [
         1,
@@ -247,7 +248,8 @@
         "d": 0.6,
         "s": 0.8,
         "r": 0.6,
-        "long": 0
+        "long": 0,
+        "ads": 1
       },
       "att": [
         1,
@@ -1341,11 +1343,6 @@
       "label": "s"
     },
     {
-      "module": 9,
-      "param": "r",
-      "label": "r"
-    },
-    {
       "module": 10,
       "param": "view",
       "label": "env 2",
@@ -1365,11 +1362,6 @@
       "module": 10,
       "param": "s",
       "label": "s"
-    },
-    {
-      "module": 10,
-      "param": "r",
-      "label": "r"
     },
     {
       "module": 1,
@@ -1629,11 +1621,6 @@
           "label": "s"
         },
         {
-          "module": 9,
-          "param": "r",
-          "label": "r"
-        },
-        {
           "module": 10,
           "param": "view",
           "label": "env 2"
@@ -1652,11 +1639,6 @@
           "module": 10,
           "param": "s",
           "label": "s"
-        },
-        {
-          "module": 10,
-          "param": "r",
-          "label": "r"
         },
         {
           "module": 24,

@@ -136,6 +136,9 @@ describe('counted records (#667, format 51)', () => {
           const m = dev.modules.find((x) => x.id === r.module)!;
           if (m.type === 'part') continue;
           const i = DEFS[m.type].params.findIndex((q) => q.name === r.param);
+          // (a parameter appended after format 51, as the ADSR's ads in 57, is written only off its default, in its own
+          // format; an FM-1 reading an older record plays it at its default)
+          if ((DEFS[m.type].params[i].since ?? 0) > COUNTED) continue;
           expect(storedParams(m, COUNTED, false, keep.get(m.id)).length, `${name} ${r.param}`).toBeGreaterThan(i);
         }
       }

@@ -20,7 +20,8 @@ const source = (name: string): Patch => validatePatch(structuredClone(SOURCE.fin
 
 function rig(name: string, compile: boolean, original = source(name)) {
   const p = sharedArticulationFactory(original);
-  for (const m of p.modules) if (m.type === 'adsr') Object.assign(m.params, { a: 0.005, d: 0.005, s: 0.55, r: 0.2, long: 0 });
+  // (ads off: these trials time their own releases, D-745's ADS aside)
+  for (const m of p.modules) if (m.type === 'adsr') Object.assign(m.params, { a: 0.005, d: 0.005, s: 0.55, r: 0.2, long: 0, ads: 0 });
   const env = p.modules.find(m => m.name === 'shared amplitude envelope')!;
   env.params.a = 0.15;
   const mask = p.modules.find(m => m.name === 'phrase membership')!;

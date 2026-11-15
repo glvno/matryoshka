@@ -2061,6 +2061,19 @@ kit('adsr-long', (add, wire) => {
   wire(env, 'env', vca, 'cv');
   wire(vca, 'out', out, 'l');
 });
+// the SEM's ADS (D-745, format 57): the release falls at the decay's time; `r` (here far off it) is unused
+kit('adsr-ads', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.6 });
+  const env = add('adsr', 0, 0, { a: 0.01, d: 0.12, s: 0.4, r: 2, ads: 1 });
+  const vca = add('vca', 0, 0);
+  const out = add('output', 0, 0);
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(kb, 'gate', env, 'gate');
+  wire(osc, 'out', vca, 'in');
+  wire(env, 'env', vca, 'cv');
+  wire(vca, 'out', out, 'l');
+});
 
 // polyphony: osc -> filter (its own envelope on cv) -> vca (second envelope) per voice, one delay and the output shared
 kit(

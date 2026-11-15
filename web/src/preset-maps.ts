@@ -245,4 +245,7 @@ export const HAND_MAPS: HandMap[] = [
       'macro#61.value': { line: 'osc#26.fine', mul: [1 / 600], add: [0.5], min: 0, max: 1 },
     },
   },
+  // ---- D-745 amended (2026-11-14): Expander S's envelopes are the SEM's ADS, the decay also the release, so the two
+  // release rows went. Every other row keeps its value; the old releases have no row to go to.
+  { engine: 'Expander S', from: '81f409f6', to: 'b3a433a3', why: 'D-745: the SEM\'s ADS envelopes: the release rows went', rows: {} },
 ];
