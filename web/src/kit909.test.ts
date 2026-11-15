@@ -10,6 +10,7 @@ import { factoryPresets } from './factory-presets';
 import { PRESET_MIGRATIONS, migrateValues } from './preset-migrate';
 import { structureOf } from './structure';
 import { readLineage } from '../scripts/lineage-lib';
+import { presetsHPatches } from '../scripts/factory-lz';
 import { FM1_PRESETS } from './presets';
 import { relocatedPatches } from './community-factory';
 import { assembliesOf } from './assembly';
@@ -73,7 +74,7 @@ describe('909 Kit (the FM-1 version: the whole TR-909, D-1055)', () => {
   it('ships in presets.h as the patch encodes', () => {
     const bin = encodePatch(kit());
     const h = readFileSync(new URL('../../firmware/src/presets.h', import.meta.url), 'utf8');
-    const shipped = [...h.matchAll(/static const uint8_t PRESET_\d+\[\d+\] = \{([^}]*)\}/g)].map((m) => m[1].split(',').map(Number));
+    const shipped = presetsHPatches(h).map((x) => x.bytes);
     expect(shipped.some((b) => b.length === bin.length && b.every((x, i) => x === bin[i]))).toBe(true);
   });
 
