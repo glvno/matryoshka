@@ -165,7 +165,7 @@ export const LOFI_PRESET_DESIGNS: Record<string, LofiPresetDesign[]> = {
         'vca / level': 0.47,
       },
       fx: {
-        reason: 'No added rack exists on Hera. Its retained native chorus II and newly slow low-depth DCO/PWM motion supply the wavering organ character without fabricated external space.',
+        reason: 'Deliberately dry: the retained native chorus II and newly slow low-depth DCO/PWM motion supply the wavering organ character without added external space.',
       },
       role: 'Dark wavering organ for held chord accompaniment: much less sub, a 1.7 kHz low-pass and slow pitch/pulse movement distinguish it from the bright steady Organ. Its short release is nominally 0.18 s because Hera scales decay/release rows by 2.4.',
       references: ['Beach House', 'Broadcast', 'Stereolab', 'John Maus'],

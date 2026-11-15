@@ -15,12 +15,13 @@ export const FACTORY_FX_MASKS: Record<string, number> = {
   'Monolith D': 15,
   'Silver Box': 15,
   'Algo Four': 14,
-  'Oracle V': 3,
+  'Oracle V': 14,
   'Canvas': 4,
   'Expander S': 15,
   'Briefcase 3': 7,
   'Wanderer': 13,
-  'Cassia 1': 5,
+  'Cassia 1': 12,
+  'Hera 4': 12,
   'Vernon 100': 7,
   'Sallen 20': 7,
   'Io 4': 13,
@@ -150,23 +151,46 @@ export const FACTORY_FX_RECIPES: Record<string, Record<string, FxRecipe>> = {
   },
   'Oracle V': {
     'Sync Lead': {
-      reason: 'Compensated saturation gives the poly-mod sync sweep a wiry edge; shallow chorus spreads the lead without inventing a missing delay stage.',
-      drive: { drive: 2.2, mode: 0, level: 0.47, sym: 0 },
+      reason: 'Shallow chorus spreads the poly-mod sync sweep, and a 280 ms answer gives the lead a line behind it; no drive on this rack.',
       chorus: { rate: 0.48, depth: 0.18, mix: 0.2 },
+      delay: { time: 280, fb: 0.2, mix: 0.16, sync: 0, pingpong: 0, note: 0 },
     },
     'Poly Brass': {
       reason: 'Low-depth chorus broadens the brass sustain while keeping the distinct amplitude and filter attacks predominantly direct.',
       chorus: { rate: 0.65, depth: 0.16, mix: 0.18 },
     },
     'Vintage Strings': {
-      reason: 'Slow deep chorus makes the long saw envelopes hazy and gently unstable rather than pristine; no drive pushes the previously headroom-limited voice sum.',
+      reason: 'Slow deep chorus makes the long saw envelopes hazy and gently unstable rather than pristine, and a dark hall lets them hang; no drive pushes the voice sum.',
       chorus: { rate: 0.18, depth: 0.62, mix: 0.4 },
+      reverb: { size: 0.6, damp: 0.78, mix: 0.18, pre: 20, mod: 0, freeze: 0 },
     },
     'Poly-Mod Bell': {
-      reason: 'Deliberately dry: preserve the audio-rate FM sidebands and percussive decay; the available drive/chorus rack would change the bell rather than add a room.',
+      reason: 'A small dark room behind the bell leaves its audio-rate FM sidebands and percussive decay in front; no chorus moves its pitch.',
+      reverb: { size: 0.4, damp: 0.72, mix: 0.14, pre: 14, mod: 0, freeze: 0 },
     },
     'Unison Bass': {
       reason: 'Deliberately dry: the unison oscillator stack already supplies weight; neither added harmonics nor moving stereo copies improve its tight low-register job.',
+    },
+  },
+  'Hera 4': {
+    'Brass': {
+      reason: 'A close room behind the native chorus gives the brass swell a place without a repeat smearing its stabs.',
+      reverb: { size: 0.3, damp: 0.7, mix: 0.12, pre: 12, mod: 0, freeze: 0 },
+    },
+    'Strings': {
+      reason: 'A dark predelayed hall extends the chorused string ensemble, as the Juno was so often played into one; no echo.',
+      reverb: { size: 0.62, damp: 0.78, mix: 0.2, pre: 24, mod: 0, freeze: 0 },
+    },
+    'Bass': {
+      reason: 'Deliberately dry: the sub-oscillator bass needs compact note endings and an unmoving low image.',
+    },
+    'Organ': {
+      reason: 'Deliberately dry: the bright steady organ keeps its native chorus alone, distinct from the darker Faded Organ.',
+    },
+    'Glass Pad': {
+      reason: 'A slow 380 ms echo and a soft hall turn the glassy pad into a wide wash behind its native chorus.',
+      delay: { time: 380, fb: 0.24, mix: 0.18, sync: 0, pingpong: 1, note: 0 },
+      reverb: { size: 0.66, damp: 0.75, mix: 0.2, pre: 20, mod: 0, freeze: 0 },
     },
   },
   'Canvas': {

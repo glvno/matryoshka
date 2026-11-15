@@ -67,16 +67,16 @@ describe('presets (#192)', () => {
     const rows = rowOrder(p, a), at = rows.findIndex(r => r.param === 'voices');
     const allocator = p.modules.find(m => m.id === rows[at].module)!;
     const stored: Preset = { name: 'Wide', structure: structureOf(p, a), values: currentValues(p, a), factory: true };
-    stored.values[at] = 4;
+    stored.values[at] = 5;
     setFactoryPresets([stored]);
     expect(applyPreset(p, a, stored)).toBe(true);
-    expect(allocator.params.voices).toBe(3);
-    expect(presetsOf(p, a)[0].values[at]).toBe(3);
-    expect(matchesPreset(p, a)).toBe(true);
-    expect(stored.values[at]).toBe(4);
-    a.params.find(r => r.module === allocator.id && r.param === 'voices')!.top = 4;
-    expect(applyPreset(p, a, stored)).toBe(true);
     expect(allocator.params.voices).toBe(4);
+    expect(presetsOf(p, a)[0].values[at]).toBe(4);
+    expect(matchesPreset(p, a)).toBe(true);
+    expect(stored.values[at]).toBe(5);
+    a.params.find(r => r.module === allocator.id && r.param === 'voices')!.top = 5;
+    expect(applyPreset(p, a, stored)).toBe(true);
+    expect(allocator.params.voices).toBe(5);
     expect(matchesPreset(p, a)).toBe(true);
   });
   it('store on one copy, load on another (one structure), and the patch remembers the name', () => {

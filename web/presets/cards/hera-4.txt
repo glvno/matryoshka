@@ -93,7 +93,7 @@ preset: Bass
   s = 0.15
   r = 0.062 s
   chorus = OFF
-  level = 0.51
+  level = 0.76
 
 preset: Organ
   pwm = 0
@@ -129,4 +129,4 @@ preset: Glass Pad
   s = 0.8
   r = 1.25 s
   chorus = II
-  level = 0.76
+  level = 1.12

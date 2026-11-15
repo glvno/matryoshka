@@ -5,7 +5,7 @@
 # The level row (voice / volume) gen-presets sets in every preset, by loudness (#448): leave it to it.
 #
 # voice
-#   voices = 8                         1..16
+#   voices = 6                         1..16
 #   poly/mono = POLY                   POLY, MONO
 #   algorithm = 5                      1..8
 #   feedback = 0                       0..1

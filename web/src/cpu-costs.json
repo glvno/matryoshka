@@ -43169,7 +43169,7 @@
  "checks": [
   {
    "name": "Oracle V",
-   "cycles": 684068
+   "cycles": 713600
   },
   {
    "name": "Monolith D",
@@ -43181,7 +43181,7 @@
   },
   {
    "name": "Hera 6",
-   "cycles": 891759
+   "cycles": 681521
   },
   {
    "name": "Sallen 20",
@@ -43189,11 +43189,11 @@
   },
   {
    "name": "Expander S",
-   "cycles": 444386
+   "cycles": 569308
   },
   {
    "name": "Algo Four",
-   "cycles": 538110
+   "cycles": 791323
   },
   {
    "name": "Canvas",
@@ -43209,7 +43209,7 @@
   },
   {
    "name": "Io 4",
-   "cycles": 545729
+   "cycles": 562992
   },
   {
    "name": "Vernon 100",
@@ -43249,7 +43249,7 @@
   },
   {
    "name": "Cassia 1",
-   "cycles": 720751
+   "cycles": 734472
   },
   {
    "name": "Verona Drum 1",
@@ -43273,7 +43273,7 @@
   },
   {
    "name": "assembly Algo Four",
-   "cycles": 959302
+   "cycles": 725095
   },
   {
    "name": "assembly auto pan",
