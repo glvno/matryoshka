@@ -46,12 +46,12 @@ export const PINS: Record<string, number> = {
 };
 
 export interface Tile { columns: string; rows: number[]; name: string }
-/** the 16 tiles in patch order: column group by column group, rows 1-4, 5-8, 9-12, 13-16. Each is named by its first pin,
- * as the FM-1 shows the device ("A5": columns A, E, N, P of rows 5 to 8). A name costs its length and a byte: "AENP 5-8"
- * would take 156 bytes for the 16, which the factory patch with its effects rack has not got; these take 52. */
+/** the 16 tiles in patch order: column group by column group, rows 1-4, 5-8, 9-12, 13-16. Each is named by its columns
+ * and rows, as the FM-1 shows the device ("AENP 5-8"). The names take 156 bytes for the 16 (a name costs its length and a
+ * byte): Briefcase 3's effects rack has no drive to make room for them (the owner, D-1052). */
 export const TILES: Tile[] = TILE_COLUMNS.flatMap((columns) => [0, 1, 2, 3].map((rb) => {
   const rows = [1, 2, 3, 4].map((k) => rb * 4 + k);
-  return { columns, rows, name: `${columns[0]}${rows[0]}` };
+  return { columns, rows, name: `${columns} ${rows[0]}-${rows[3]}` };
 }));
 /** the tile parameter of a pin ("H13") */
 export function pinAt(pin: string): { tile: number; param: string } {

@@ -18,7 +18,7 @@ export const FACTORY_FX_MASKS: Record<string, number> = {
   'Oracle V': 14,
   'Canvas': 4,
   'Expander S': 15,
-  'Briefcase 3': 7,
+  'Briefcase 3': 6,
   'Wanderer': 13,
   'Cassia 1': 12,
   'Hera 4': 12,
@@ -257,8 +257,7 @@ export const FACTORY_FX_RECIPES: Record<string, Record<string, FxRecipe>> = {
       chorus: { rate: 0.14, depth: 0.6, mix: 0.36 },
     },
     'Buzz Lead': {
-      reason: 'Compensated hard clipping gives the buzzing source a frayed edge while a short slap supports its rhythmic trapezoid phrase without multiplying vibrato.',
-      drive: { drive: 2.6, mode: 1, level: 0.34, sym: 0 },
+      reason: 'A short slap supports the buzzing source\'s rhythmic trapezoid phrase without multiplying vibrato. (Its hard-clipping drive went with the rack\'s drive stage, D-1052.)',
       delay: { time: 115, fb: 0.09, mix: 0.18, sync: 0, pingpong: 0, note: 0 },
     },
   },

@@ -47,7 +47,8 @@ export const selectedFactoryProfile: Readonly<Record<string, SelectedFactoryOpti
   'Oracle V': { omit: ['drive'], configurationId: 'oracle-v-v4-chorus-delay-reverb' },
   Canvas: { omit: ['drive', 'chorus', 'reverb'], harmonizer: 'removed', canvasCaptions: 'short', configurationId: 'canvas-original-delay-no-harm' },
   'Expander S': { configurationId: 'expander-s-v4-drive-chorus-delay-reverb', outputLevel: 0.68 },
-  'Briefcase 3': { harmonizer: 'removed', configurationId: 'briefcase-3-original-drive-chorus-delay-no-harm' },
+  // (drive omitted to make room for the pin board's tile names: owner in chat 2026-11-15, "briefcase 3: drop drive", D-1052)
+  'Briefcase 3': { omit: ['drive'], harmonizer: 'removed', configurationId: 'briefcase-3-pin-board-chorus-delay-no-harm' },
   Wanderer: { omit: ['chorus'], configurationId: 'selected-wanderer' },
   'Cassia 1': { omit: ['drive'], configurationId: 'cassia-1-v4-chorus-delay-reverb' },
   'Vernon 100': { omit: ['reverb'], configurationId: 'selected-vernon-100' },

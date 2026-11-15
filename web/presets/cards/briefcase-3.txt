@@ -152,4 +152,4 @@ preset: Buzz Lead
   on = 0.3 s
   decay = 0.8 s
   mix = 0.2
-  reverb / level = 0.36
+  reverb / level = 0.31

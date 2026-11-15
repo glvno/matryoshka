@@ -50,7 +50,7 @@ describe('Briefcase 3: the VCS3 pin board on Matrix tiles (D-1052)', () => {
     const a = p.assemblies!.find((x) => x.name === 'Briefcase 3')!;
     const tiles = p.modules.filter((m) => m.type === 'matrix');
     expect(tiles.map((m) => m.name)).toEqual(TILES.map((t) => t.name));
-    expect(tiles.map((m) => m.name)).toEqual(['A1', 'A5', 'A9', 'A13', 'B1', 'B5', 'B9', 'B13', 'D1', 'D5', 'D9', 'D13', 'I1', 'I5', 'I9', 'I13']);
+    expect(tiles.map((m) => m.name)).toEqual(['AENP', 'BCKO', 'DFGH', 'IJLM'].flatMap((g) => ['1-4', '5-8', '9-12', '13-16'].map((r) => `${g} ${r}`)));
     expect(tiles.every((m) => !a.modules.includes(m.id))).toBe(true);
     const index = (id: number): number => p.modules.findIndex((m) => m.id === id);
     expect(Math.min(...tiles.map((m) => index(m.id)))).toBeGreaterThan(Math.max(...a.modules.map(index)));
@@ -73,12 +73,13 @@ describe('Briefcase 3: the VCS3 pin board on Matrix tiles (D-1052)', () => {
     }
   });
 
-  it('keeps no pin on the card, and fits the FM-1 with its effects', () => {
+  it('keeps no pin on the card, and fits the FM-1 with its effects rack of chorus and delay (no drive: the tile names took its room)', () => {
     const p = FM1_PRESETS['Briefcase 3']();
     const a = p.assemblies!.find((x) => x.name === 'Briefcase 3')!;
     expect(p.assemblies!.some((x) => x.label === 'matrix')).toBe(false);
     expect(a.params.some((r) => /^[A-P]\d+/.test(r.label))).toBe(false);
     for (const l of ['pan 1', 'pan 2', 'range x', 'range y', 'meter']) expect(a.params.map((r) => r.label)).toContain(l);
+    expect(p.assemblies!.filter((x) => ['Drive', 'Chorus', 'Delay', 'Reverb'].includes(x.name)).map((x) => x.name)).toEqual(['Chorus', 'Delay']);
     const b = deviceBudget(p);
     expect(b.fits).toBe(true);
     expect(b.cpu.use).toBeLessThanOrEqual(CPU_VOICE_TOP);
