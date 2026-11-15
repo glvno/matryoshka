@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
 # The second core's self-test against the audio interrupt's hand-off (#271): a firmware CI run's build in the emulator
-# with a 4-note chord held on the boot patch (Oracle V: its voices split across both cores), and fm1_c1_race_ticks set,
+# with a 4-note chord held on Oracle V (program change 1: its voices split across both cores), and fm1_c1_race_ticks set,
 # which waits that long between writing a job and publishing its number (hal/fm1_cpu1.h): an interrupt that comes in that
 # window and hands its own job over must not make the self-test fail. Reads back, at the end: the second core on,
 # gave_up (4: the self-test's answer was wrong), the self-tests passed and failed. Exit code 1 when core 1 was given up.
@@ -21,7 +21,7 @@ ISA="$(tools/emu/isa_fix.sh)"
 cargo build --quiet --release --manifest-path tools/emu/Cargo.toml --config "$ISA"
 word() { printf '%x' $(( 0x$1 & ~3 )); }
 OUT=$(tools/emu/target/release/m1emu run "$D/matryoshka.bin" --ms 12000 \
-  --keys "3000:m903c64,3000:m904064,3000:m904364,3000:m904764" \
+  --keys "2000:mc001,3000:m903c64,3000:m904064,3000:m904364,3000:m904764" \
   --poke "$RACE=$(printf '%x' "$TICKS")@4000" \
   --peek "$(word $ON),$(word $GAVE),$PASS,$FAIL" 2>&1)
 echo "$OUT" | grep -E "emulated|peek" 

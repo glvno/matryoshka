@@ -412,7 +412,7 @@ the supplied hexadecimal address in user mode. This proves the checked path ran 
 measure hardware timing.
 
 `tools/aot_stack.sh BIN ELF` uses the matching build's `_c1_ustack` symbol plus its 256-byte guard as that bound.
-It boots Oracle V, requires its compiled polyphonic segment to run on core 1, plays four then eight held notes, and requires
+It boots, selects Oracle V by program change, requires its compiled polyphonic segment to run on core 1, plays four then eight held notes, and requires
 the second core and its self-tests to stay healthy. Use `--interpreter` only for an interpreter control build.
 Build `m1emu` first; `M1EMU` can name another built copy. Run this focused check on compiled-assembly comparison
 builds before their rig install. The failing AOT build from CI run 42673451565 crosses the bound in `process` at

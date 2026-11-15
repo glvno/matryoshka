@@ -43168,12 +43168,12 @@
  },
  "checks": [
   {
-   "name": "Oracle V",
-   "cycles": 713580
-  },
-  {
    "name": "Monolith D",
    "cycles": 231419
+  },
+  {
+   "name": "Oracle V",
+   "cycles": 713580
   },
   {
    "name": "Silver Box",
@@ -43232,20 +43232,12 @@
    "cycles": 604960
   },
   {
-   "name": "Perun 4",
-   "cycles": 287789
-  },
-  {
    "name": "808 Kit",
    "cycles": 684893
   },
   {
    "name": "909 Kit",
    "cycles": 705701
-  },
-  {
-   "name": "Spokes 6",
-   "cycles": 347220
   },
   {
    "name": "Cassia 1",

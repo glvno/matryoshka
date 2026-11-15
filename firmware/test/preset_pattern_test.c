@@ -93,7 +93,7 @@ int main(void)
         CHECK(preset_pattern_untouched((uint32_t)mod, 0, init));
         seen++;
     }
-    CHECK(seen >= 5);
+    CHECK(seen >= 4);                                   /* Meridian 8, the 808 Kit, the 909 Kit, Verona Drum 1 (D-1201) */
     printf("factory default patterns: %u kits, compare/swap/save-reload/unrelated tracks passed\n", seen);
     return 0;
 }

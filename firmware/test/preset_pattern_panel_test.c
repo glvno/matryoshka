@@ -101,8 +101,8 @@ int main(void)
     check("<7PH's frozen 909 card has no factory sound", seven == 0);
     check("both kit wrappers exercised", kits == 2);
     for (i = 0; i < N_PRESETS; i++) {
-        if (strcmp(PRESET_LIST[i].name, "SPOKES 6")) continue;
-        check("load Spokes save fixture", !load_at(i)); pv_gen++; pages_ensure();
+        if (strcmp(PRESET_LIST[i].name, "MERIDIAN 8")) continue;
+        check("load Meridian save fixture", !load_at(i)); pv_gen++; pages_ensure();
         host_ps_init();
         for (d = 0; d < pg_ndev; d++) {
             int mod = dp_pattern_module(d), n;
@@ -111,25 +111,25 @@ int main(void)
             if (mod < 0 || !m1_pattern_origin((uint32_t)mod, 0)) continue;
             for (k = 0; k < dp_list(d); k++) {
                 char name[17];
-                if (dp_entry(pr_list[k], name) >= 0 && !strcmp(name, "LO-FI HOUSE")) break;
+                if (dp_entry(pr_list[k], name) >= 0 && !strcmp(name, "INDUSTRIAL")) break;
             }
-            check("select LO-FI HOUSE", !dp_load(d, k));
+            check("select INDUSTRIAL", !dp_load(d, k));
             check("factory selection retains origin after name resize", !!m1_pattern_origin((uint32_t)mod, 0));
             n = eng_pattern_notes((uint32_t)mod, 0, &words); memcpy(saved, words, (size_t)n * 4);
             bytes = pv_len;
             dp_store(d);
             check("physical preset save grows the real binary name", pv_len > bytes);
             check("physical preset save clears origin", !m1_pattern_origin((uint32_t)mod, 0));
-            check("saved Spokes binary reloads", !eng_load(pv_bin, pv_len)); pv_gen++; pages_ensure();
+            check("saved Meridian binary reloads", !eng_load(pv_bin, pv_len)); pv_gen++; pages_ensure();
             check("origin stays cleared after reload", !m1_pattern_origin((uint32_t)mod, 0));
             check("select factory after physical preset save", !dp_load(d, 0));
             check("saved user pattern survives factory selection", eng_pattern_notes((uint32_t)mod, 0, &words) == n && !memcmp(saved, words, (size_t)n * 4));
             break;
         }
-        check("Spokes save owner found", d < pg_ndev);
+        check("Meridian save owner found", d < pg_ndev);
         break;
     }
-    check("Spokes save fixture found", i < N_PRESETS);
+    check("Meridian save fixture found", i < N_PRESETS);
     printf("focused preset panel: %u kits, %s\n", kits, failed ? "FAILED" : "passed");
     return failed != 0;
 }
