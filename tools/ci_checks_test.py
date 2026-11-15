@@ -116,17 +116,23 @@ class SelectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             (root / 'web/src').mkdir(parents=True)
+            (root / 'web/scripts').mkdir(parents=True)
             for number in range(1, 5):
                 (root / f'web/src/levels-{number}.test.ts').touch()
+            (root / 'web/src/headroom-1.test.ts').touch()
+            (root / 'web/src/kit909.test.ts').touch()
+            (root / 'web/scripts/audition-render.test.ts').touch()
+            (root / 'web/src/other.test.ts').touch()
             plan = root / 'plan.json'
             plan.write_text(json.dumps({'commit': 'a'*40, 'mode': 'rc', 'web': []}))
             with patch.object(ci, 'ROOT', root), patch.object(ci, 'git', return_value='a'*40), patch.object(ci.subprocess, 'run') as run:
                 ci.execute(plan, 'web')
                 commands = [call.args[0] for call in run.call_args_list]
                 self.assertIn('--coverage', commands[0])
-                self.assertEqual(commands[0][-2:], ['--exclude', 'src/levels-*.test.ts'])
+                self.assertEqual(commands[0][-8:], [a for g in ci.SLOW_RENDERS for a in ('--exclude', g)])
                 self.assertNotIn('--coverage', commands[1])
-                self.assertEqual(commands[1][4:], [f'src/levels-{n}.test.ts' for n in range(1, 5)])
+                self.assertEqual(commands[1][4:], ['scripts/audition-render.test.ts', 'src/headroom-1.test.ts', 'src/kit909.test.ts',
+                                                   *[f'src/levels-{n}.test.ts' for n in range(1, 5)]])
                 self.assertEqual(commands[2][-1], 'scripts/coverage-stats.ts')
             with patch.object(ci, 'ROOT', root), patch.object(ci, 'git', return_value='a'*40), patch.object(ci.subprocess, 'run', side_effect=[None, subprocess.CalledProcessError(1, 'levels')]) as run:
                 with self.assertRaises(subprocess.CalledProcessError):

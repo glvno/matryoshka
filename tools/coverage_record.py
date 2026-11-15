@@ -104,7 +104,7 @@ def produce(repo, stats_path, output, run_url):
                     sourceFingerprint=fingerprint(repo, commit), sourceUrl=run_url,
                     measurementLabel='candidate ' + commit[:8], targetRelease=None, display='current',
                     qualification='display-only',
-                    instrumentation='All web tests except levels-1..4; those four pass separately without coverage.')
+                    instrumentation='All web tests except the slow renders (levels-*, headroom-*, kit909, audition-render); those pass separately without coverage.')
     write_bundle(output, data, manifest)
     read_bundle(output)
 

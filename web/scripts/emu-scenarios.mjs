@@ -1902,11 +1902,11 @@ async function main() {
       await check('arming: SEL on a device fed through a track arms it with the track, the bar names both (#582)', await emu.waitText('DRUM MAP + DRUMS ARMED', 1500));
       await check('arming: the editor shows the set the FM-1 armed (ARMS_NOW, #191)', !!(await until(async () => (await T()).armed.length > 0, 2000)));
       await emu.elapse(1300);
-      await emu.turn(ENC.select, 1);                // the next device, an instrument of the kit: its voices take no keys
+      await emu.turn(ENC.select, 2);                // past the second Drum map (D-1053) to the kit's card: its voices take no keys
       await emu.elapse(300);
       await emu.tap(B.scl);
       await check('arming: SEL on a device that takes no keys says so', await emu.waitText('NOTHING HERE TAKES KEYS', 1500));
-      await emu.turn(ENC.select, -1);
+      await emu.turn(ENC.select, -2);
       await emu.elapse(1300);
       await emu.tap(B.seq, 120);
       await check('arming: the SEQ page arms the track it shows', await emu.waitText('DRUMS ARM', 3000));
