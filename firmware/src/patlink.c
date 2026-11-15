@@ -30,6 +30,7 @@
  * sl_head / sl_buf (slotstore.c), PRESET_PATTERNS, KIT_GROUPS (presets.h). */
 #define PL_KIT (PT_ID_MAX + 1u)            /* the first factory patch pattern's id: 0xE000 */
 #define PL_FACTORY 0xFF00u                 /* the first factory demonstration pattern's id */
+#define PL_END (PL_FACTORY + 256u)         /* one above every 16-bit id */
 
 static uint32_t pl_hash[ENG_PATTERNS];     /* each link's payload hash as the store gave it to this patch */
 
@@ -502,7 +503,7 @@ static uint32_t pl_after(uint32_t from)
             return from;
     return 0;
 }
-/* the entry before stored id `from` (at most 0x10000) in the store's order, 0 none */
+/* the entry before stored id `from` (at most PL_END) in the store's order, 0 none */
 static uint32_t pl_before(uint32_t from)
 {
     pt_info_t in;
@@ -515,8 +516,8 @@ static uint32_t pl_before(uint32_t from)
 /* the entry after (dir > 0) or before stored id `from` in the store's order, round; from 0: the first or the last */
 static uint32_t pl_step(uint32_t from, int dir)
 {
-    uint32_t id = dir > 0 ? pl_after(from) : pl_before(from ? from : 0x10000u);
-    return id ? id : dir > 0 ? pl_after(0) : pl_before(0x10000u);
+    uint32_t id = dir > 0 ? pl_after(from) : pl_before(from ? from : PL_END);
+    return id ? id : dir > 0 ? pl_after(0) : pl_before(PL_END);
 }
 
 /* ---- the editor link (proto.c) */
