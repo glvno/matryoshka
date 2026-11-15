@@ -4,7 +4,14 @@
  "firmware_product": "FM-1_7011600",
  "source_commit": "4b096b9050e79d1e95008c5c8955c2deff8a7001",
  "source_tree": "b06112e1e0a4e6710417188281377a895f01a62b",
- "status": "automated qualification passed; owner device checks pending",
+ "status": "approved for publication; automated qualification and owner device checks passed",
+ "release_approval": {
+  "status": "approved",
+  "by": "repository owner",
+  "date": "2026-11-15",
+  "instruction": "1.16 passes all the manual checks. go.",
+  "scope": "Publication of v1.16.0 from the merge of this record, whose firmware/ and tools/ equal the qualified source 4b096b90 (D-105)."
+ },
  "build_manifest_sha256": "aa73a2222ef2273ed664e7f5bc7005eed40d81ec84b2cd24cfd62a9ada890efc",
  "artifacts": {
   "package": {
@@ -124,7 +131,10 @@
   }
  },
  "owner_checks": {
-  "status": "pending",
-  "steps": "D-139: the analog output in headphones, instruments played by hand, a power cycle (with a stored pattern and the 60-slot library)."
+  "status": "passed",
+  "by": "repository owner",
+  "date": "2026-11-15",
+  "steps": "D-139: the analog output in headphones, instruments played by hand, a power cycle (with a stored pattern and the 60-slot library).",
+  "report": "1.16 passes all the manual checks."
  }
 }
