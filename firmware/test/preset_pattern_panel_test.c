@@ -64,16 +64,18 @@ int main(void)
                 counts[tr] = (uint32_t)eng_pattern_notes((uint32_t)eng_steps_module(tr), 0, &words);
                 memcpy(other[tr], words, counts[tr] * 4);
             }
-            { uint32_t bytes = pv_len, rows = pg_dev[d].nrows;
+            { uint32_t rows = pg_dev[d].nrows;
               int32_t expected[PS_MAXV]; char name[17];
               int want = dp_entry(pr_list[target], name);
               memcpy(expected, pr_at, (size_t)want * sizeof(int32_t));
               check("actual dp_load factory selection", !dp_load(d, target));
-              check("real protocol resized saved notes", pv_len != bytes);
+              /* (the binary's length alone can stay: the 808 Kit's Electro Snap is two notes shorter than Init and its
+               * name eight bytes longer, D-1053; the notes read back from the rewritten binary are the proof) */
               pages_ensure();
               for (k = 0; k < rows && k < (uint32_t)want; k++)
                   check("all sound rows applied after resize", dp_row_value(d, k) == expected[k]);
               check("resized binary reloads", !eng_load(pv_bin, pv_len));
+              check("real protocol rewrote saved notes", eng_pattern_notes((uint32_t)mod, 0, &words) != n || memcmp(saved, words, (size_t)n * 4));
               for (k = 0; k < rows && k < (uint32_t)want; k++)
                   check("all sound rows survive reload", dp_row_value(d, k) == expected[k]);
             }
