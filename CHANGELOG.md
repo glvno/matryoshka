@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **The CPU estimate is closer to the FM-1 when you add voices.** The editor read too high as voices were added to the poly factory instruments; it now follows the test rig's measurements at several voice counts. Hera 3 at 6 voices reads 86 % (the FM-1 measures 84 %; it read 94 %), Oracle V at 5 reads 84 % (the FM-1 82 %; it read 87 %), Algo Four at 8 reads 84 % (the FM-1 80 %; it read 86 %).
+- **Canvas's envelope decays in a straight line**, as the Buchla Music Easel's does. Env L/R has a new CURVE setting (exp or lin) for its falling segments. A patch that uses lin needs FM-1 firmware newer than 1.15.
 
 ## 1.15.0 — 2026-11-14
 

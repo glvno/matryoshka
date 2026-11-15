@@ -2165,10 +2165,11 @@ asm('Canvas', 'Voices', (b) => {
     b.wire(sTrig, 'out', s, 'clock');
     b.wire(stages, 'out', s, 'p1');
   }
-  // ---- envelope generator (the mode's gate 2 sets the one-shot pin: transient)
+  // ---- envelope generator (the mode's gate 2 sets the one-shot pin: transient); its decay falls linearly, as the
+  // Easel's does (#689: `curve` lin)
   const eTrig = b.add('select', 7, 0, { count: 3, pos: 1 });
   const eMode = b.add('select', 7, 1, { count: 3, pos: 2 });
-  const env = b.add('env', 8, 0, { l1: 1, r1: 0.003, l2: 1, r2: 0.02, l3: 1, r3: 0.001, l4: 0, r4: 0.6, shot: 0 }, { p1: 'shot' });
+  const env = b.add('env', 8, 0, { l1: 1, r1: 0.003, l2: 1, r2: 0.02, l3: 1, r3: 0.001, l4: 0, r4: 0.6, shot: 0, curve: 1 }, { p1: 'shot' });
   b.wire(part, 'gate', eTrig, 'in1');
   b.wire(pEnd, 'not', eTrig, 'in2');
   b.wire(seqP, 'gate', eTrig, 'in3');
