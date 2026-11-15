@@ -115,9 +115,10 @@ enum {
 #define OSC_P_PM2 11
 #define OSC_P_PM3 12
 #define OSC_P_ANALOG 13
+#define OSC_P_PHASE 14
 #define OSC_NIN 8
 #define OSC_NOUT 1
-#define OSC_NPAR 14
+#define OSC_NPAR 15
 #define OSC_CVBASE 3
 #define OSC_NDATA 0
 
@@ -1236,19 +1237,19 @@ static const uint8_t FM1_LOG[] = {0, 0};
 static const char *const FM1_UNIT[] = {"", "BPM"};
 static const char *const *const FM1_CH[] = {0, 0};
 static const char *const OSC_INNAMES[] = {"PITCH", "PM", "SYNC", "P1", "P2", "PM2", "PM3", "INDEX"};
-static const int32_t OSC_MIN[] = {0, 3277, -3145728, -6553600, 0, 0, 0, 65536, 0, 0, 0, 0, 0, 0};
-static const int32_t OSC_MAX[] = {196608, 62259, 3145728, 6553600, 524288, 65536, 65536, 327680, 6553600, 65536, 262144, 524288, 524288, 65536};
-static const int32_t OSC_DEF[] = {0, 32768, 0, 0, 0, 52429, 0, 65536, 655360, 32768, 0, 0, 0, 0};
-static const int32_t OSC_INC[] = {65536, 655, 65536, 131072, 5243, 655, 655, 65536, 65536, 655, 65536, 5243, 5243, 655};
-static const int32_t OSC_STEP[] = {65536, 655, 65536, 65536, 655, 655, 655, 65536, 65536, 655, 65536, 655, 655, 655};
-static const int32_t OSC_TOP[] = {327680, 62259, 3145728, 6553600, 1048576, 65536, 65536, 327680, 6553600, 65536, 262144, 1048576, 1048576, 65536};
-static const uint8_t OSC_SINCE[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 49, 49, 51};
-static const char *const OSC_PN[] = {"WAVE", "PW", "COARSE", "FINE", "PM", "LEVEL", "FB", "UNISON", "DETUNE", "BLEND", "STACK", "PM2", "PM3", "ANALOG"};
-static const uint8_t OSC_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-static const char *const OSC_UNIT[] = {"", "", "ST", "CT", "RAD", "", "", "", "CT", "", "", "RAD", "RAD", ""};
+static const int32_t OSC_MIN[] = {0, 3277, -3145728, -6553600, 0, 0, 0, 65536, 0, 0, 0, 0, 0, 0, 0};
+static const int32_t OSC_MAX[] = {196608, 62259, 3145728, 6553600, 524288, 65536, 65536, 327680, 6553600, 65536, 262144, 524288, 524288, 65536, 23592960};
+static const int32_t OSC_DEF[] = {0, 32768, 0, 0, 0, 52429, 0, 65536, 655360, 32768, 0, 0, 0, 0, 0};
+static const int32_t OSC_INC[] = {65536, 655, 65536, 131072, 5243, 655, 655, 65536, 65536, 655, 65536, 5243, 5243, 655, 262144};
+static const int32_t OSC_STEP[] = {65536, 655, 65536, 65536, 655, 655, 655, 65536, 65536, 655, 65536, 655, 655, 655, 65536};
+static const int32_t OSC_TOP[] = {327680, 62259, 3145728, 6553600, 1048576, 65536, 65536, 327680, 6553600, 65536, 262144, 1048576, 1048576, 65536, 23592960};
+static const uint8_t OSC_SINCE[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 49, 49, 51, 58};
+static const char *const OSC_PN[] = {"WAVE", "PW", "COARSE", "FINE", "PM", "LEVEL", "FB", "UNISON", "DETUNE", "BLEND", "STACK", "PM2", "PM3", "ANALOG", "PHASE"};
+static const uint8_t OSC_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static const char *const OSC_UNIT[] = {"", "", "ST", "CT", "RAD", "", "", "", "CT", "", "", "RAD", "RAD", "", "DEG"};
 static const char *const OSC_CH0[] = {"SINE", "TRIANGLE", "SAW", "SQUARE", "SHARKTOOTH", "REVERSE SAW", 0};
 static const char *const OSC_CH10[] = {"OFF", "+OCT", "+5TH", "+OCT+5TH", "-OCT", 0};
-static const char *const *const OSC_CH[] = {OSC_CH0, 0, 0, 0, 0, 0, 0, 0, 0, 0, OSC_CH10, 0, 0, 0};
+static const char *const *const OSC_CH[] = {OSC_CH0, 0, 0, 0, 0, 0, 0, 0, 0, 0, OSC_CH10, 0, 0, 0, 0};
 static const char *const LFO_INNAMES[] = {"CLK", "RESET", "P1", "P2", "SHAPE"};
 static const int32_t LFO_MIN[] = {0, 1311, 0, 0, 0, 2621440, 0, 0, 0, 0, 52};
 static const int32_t LFO_MAX[] = {262144, 2621440, 65536, 65536, 655360, 19660800, 23592960, 131072, 65536, 393216, 5242880};

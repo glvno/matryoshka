@@ -361,6 +361,24 @@ kit('osc-analog-parts', (add, wire) => {
   wire(o, 'out', mix, 'in1'); wire(q, 'out', mix, 'in2'); wire(t, 'out', mix, 'in3');
   wire(mix, 'out', vca, 'in'); wire(kb, 'gate', env, 'gate'); wire(env, 'env', vca, 'cv'); wire(vca, 'out', out, 'l');
 }, 4);
+// the start phase (#691, format 58): a gate's rising edge on sync restarts the cycle at 90 degrees, the sine at its peak;
+// plain and unison (left, right), then the FM path and the analog shape (osc-phase-fm)
+kit('osc-phase', (add, wire) => {
+  const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.5 });
+  const o = add('osc', 0, 0, { wave: 0, phase: 90, level: 0.8 });
+  const u = add('osc', 0, 0, { wave: 2, unison: 3, detune: 15, phase: 90, level: 0.8 });
+  for (const x of [o, u]) { wire(kb, 'pitch', x, 'pitch'); wire(kb, 'gate', x, 'sync'); }
+  wire(o, 'out', out, 'l'); wire(u, 'out', out, 'r');
+});
+kit('osc-phase-fm', (add, wire) => {
+  const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.5 });
+  const mod = add('osc', 0, 0, { wave: 0, coarse: 12, phase: 90, level: 0.3 });
+  const o = add('osc', 0, 0, { wave: 0, pm: 1, phase: 90, level: 0.8 });
+  const a = add('osc', 0, 0, { wave: 2, analog: 1, phase: 90, level: 0.8 });
+  for (const x of [mod, o, a]) { wire(kb, 'pitch', x, 'pitch'); wire(kb, 'gate', x, 'sync'); }
+  wire(mod, 'out', o, 'pm'); wire(o, 'out', out, 'l'); wire(a, 'out', out, 'r');
+});
+for (const k of ['osc-phase', 'osc-phase-fm']) events[k] = [[0, 'on', 60], [128 * 30, 'off', 60], [128 * 40, 'on', 64], [128 * 70, 'off', 64], [128 * 80, 'on', 67], [128 * 120, 'off', 67]];
 kit('random-held', (add, wire) => {
   const clock = add('lfo', 0, 0, { wave: 3, rate: 13, depth: 1 });
   const out = add('output', 0, 0);

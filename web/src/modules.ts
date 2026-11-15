@@ -453,6 +453,7 @@ const osc: ModuleImpl<OscState> = {
       param('pm2', 0, 8, 0, { ...PM_INDEX, since: 49 }),
       param('pm3', 0, 8, 0, { ...PM_INDEX, since: 49 }),
       param('analog', 0, 1, 0, { step: 0.01, since: 51 }),
+      param('phase', 0, 360, 0, { step: 1, unit: 'deg', since: 58 }),
     ],
   },
   init: () => ({ phase: 0, s1: 0, y1: 0, y2: 0, pm1: 0, xb: 0, ap: [0, 0, 0, 0, 0, 0, 0, 0], ph: [0, 0, 0, 0], pmc: new Float32Array(0), tol: [0, 0, 0, 0] }),
@@ -474,6 +475,8 @@ const osc: ModuleImpl<OscState> = {
     const fb = c.p.fb ?? 0;
     const lvl = c.p.level ?? 1;
     const out = c.out.out;
+    // where a sync edge restarts every copy's phase (#691): `phase` degrees into the cycle, 0 its start (as the LFO's)
+    const ph0 = (c.p.phase ?? 0) / 360;
     if (idx <= 0 && fb <= 0) {
       // the plain oscillator: one wave per frame; unison: n detuned copies (phases s.phase, s.ph[0..n-2]) weighted by blend;
       // stack: the copies cycle through its intervals (at least one copy per interval)
@@ -488,20 +491,20 @@ const osc: ModuleImpl<OscState> = {
         s.s1 = sync[i];
         if (nu === 1) {
           const dt = dts[0][i];
-          if (rst) s.phase = 0;
+          if (rst) s.phase = ph0;
           s.phase += dt;
           if (s.phase >= 1) s.phase -= 1;
           out[i] = wave(kind, s.phase, dt, pw) * lvl;
           continue;
         }
         const dt0 = dts[0][i];
-        if (rst) s.phase = 0;
+        if (rst) s.phase = ph0;
         s.phase += dt0;
         if (s.phase >= 1) s.phase -= 1;
         let y = wave(kind, s.phase, dt0, pw) * wt[0];
         for (let j = 1; j < nu; j++) {
           const dtj = dts[j][i];
-          if (rst) s.ph[j - 1] = 0;
+          if (rst) s.ph[j - 1] = ph0;
           s.ph[j - 1] += dtj;
           if (s.ph[j - 1] >= 1) s.ph[j - 1] -= 1;
           y += wave(kind, s.ph[j - 1], dtj, pw) * wt[j];
@@ -518,7 +521,7 @@ const osc: ModuleImpl<OscState> = {
     const dts = incRamp(0, pitch, c.n, base, c.sr);
     for (let i = 0; i < c.n; i++) {
       const dt = dts[i] / 2;
-      if (sync[i] >= 0.5 && s.s1 < 0.5) s.phase = 0;
+      if (sync[i] >= 0.5 && s.s1 < 0.5) s.phase = ph0;
       s.s1 = sync[i];
       const pmNow = idx > 0 ? pm[i] : 0;
       const pmMid = (s.pm1 + pmNow) / 2;

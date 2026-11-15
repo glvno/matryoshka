@@ -6,6 +6,7 @@
 - **Canvas's envelope decays in a straight line**, as the Buchla Music Easel's does. Env L/R has a new CURVE setting (exp or lin) for its falling segments. A patch that uses lin needs FM-1 firmware newer than 1.15.
 - **Hera plays six voices again, as the Juno-106 does, and is called Hera 6.** It keeps its native Chorus and adds no effects; on the FM-1 it uses at most 84 % of the time with six keys held. A factory update leaves a saved Hera 3 slot as it is; FACTORY RESET installs Hera 6.
 - **Expander S's envelopes work like the Oberheim SEM's:** attack, decay and sustain, with the decay also setting the release. The two release rows are gone from its card. The ADSR has a new ADS switch for this. A patch that uses it needs FM-1 firmware newer than 1.15. A preset you stored for Expander S keeps its other settings; its release now follows its decay.
+- **An oscillator can start each note at any point of its cycle.** The Oscillator has a new PHASE setting, 0 to 360 degrees: a rising edge on its SYNC input restarts the wave there instead of at the start, so a gate on SYNC can begin every hit of an FM drum at the modulator's peak, as the Vermona DRM1 does. At 0, its default, it plays as before. A patch that uses it needs FM-1 firmware newer than 1.15.
 
 ## 1.15.0 — 2026-11-14
 
