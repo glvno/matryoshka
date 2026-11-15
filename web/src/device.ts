@@ -543,7 +543,7 @@ export class DeviceLink {
         const all = got.filter(Boolean);
         if (e.count && all.length < e.count) return void (t = late());
         this.collectingPatterns = null;
-        this.stored = new Map(all.filter((x) => !x.readOnly).map((x) => [x.id, x.hash]));
+        this.stored = new Map(all.map((x) => [x.id, x.hash]));   // (a factory patch links read-only entries too, #923)
         resolve(all);
       };
       this.out!.send(patsFrame());

@@ -378,7 +378,7 @@ One of a Steps track's note lists, numbered 1 to 64, with its own length and rat
 
 ### Pattern store
 
-The FM-1's own store of patterns, outside the patches. A stored pattern is one pattern number across a patch's Steps tracks, with a name. A patch refers to it by a number, and loading the patch copies it in; any patch can load it.
+The FM-1's own store of patterns, outside the patches. A stored pattern is one pattern number across a patch's Steps tracks, with a name. A patch refers to it by a number, and loading the patch copies it in; any patch can load it. After the user's stored patterns come read-only factory entries, which the firmware carries: the patterns some factory patches refer to, and the factory demonstration patterns.
 
 ### Piano roll
 

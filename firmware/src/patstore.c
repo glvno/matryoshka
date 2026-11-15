@@ -31,7 +31,7 @@
 #define PT_NSEC 4u
 #define PT_NAME 16u
 #define PT_MAX 2048u                    /* payload bytes at most */
-#define PT_ID_MAX 0xEFFFu               /* user ids 1..PT_ID_MAX */
+#define PT_ID_MAX 0xDFFFu               /* user ids 1..PT_ID_MAX; 0xE000.. are read-only factory entries (patlink.c) */
 #define PT_FNV0 0x811C9DC5u
 #define PT_MAGIC 0x31544150u            /* "PAT1": a committed record */
 #define PT_SMAGIC 0x31535450u           /* "PTS1": a formatted sector */

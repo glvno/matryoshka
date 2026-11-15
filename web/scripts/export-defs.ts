@@ -20,8 +20,10 @@ import { CASE_PICKS, casesHeader, migrationCases, migrationTables } from './pres
 import { aotHeader } from './gen-aot';
 import patternDefaults from '../src/preset-patterns.json';
 import { releasedFactoryHas } from './released-factory-names';
-import { packedListC } from './factory-lz';
+import { lzPack, packedListC } from './factory-lz';
 import { patternCasesHeader } from './pattern-vectors';
+import FACTORY_STORE from '../src/factory-store.json';
+import { fromHex, storedName } from '../src/pattern-store';
 const FACTORY_PRESETS = [...factoryPresets(), ...factoryRackPresets()];
 
 const up = (s: string): string => s.toUpperCase().replace(/[^A-Z0-9]/g, '_');
@@ -346,6 +348,27 @@ P.push('static const preset_pattern_t PRESET_PATTERNS[N_PRESET_PATTERNS] = {');
 // from looking like literal hardware addresses to the firmware build safeguard.
 patternDefaults.forEach((p, i) => P.push(`    {${Number.parseInt(p.id, 16)}u, 0x${p.structure}u, "${p.name.toUpperCase()}", FPN_${i}, ${p.notes.length}, ${p.len}, ${p.rate}, ${p.swing}, ${p.dir}, ${toQ16(p.gate)}},`));
 P.push('};', '');
+{ // the patterns the factory patches link (#923, factory-kit-patterns.ts via factory-store.json): read-only entries of the
+  // pattern store, a kit's packed together (lz_unpack.h), each its name (NUL ended), u16 payload length, payload (patlink.c pl_read)
+  const kits = [...new Set(FACTORY_STORE.map((e) => e.kit))];
+  P.push('/* the factory patches\' linked patterns (#923): read-only pattern store entries from id `first`, a group per kit, packed */');
+  const groups = kits.map((kit, g) => {
+    const xs = FACTORY_STORE.filter((e) => e.kit === kit);
+    if (xs.some((e, k) => e.id !== xs[0].id + k)) throw new Error(`${kit}: its linked patterns' ids are not consecutive`);
+    const raw = Uint8Array.from(xs.flatMap((e) => {
+      const payload = fromHex(e.payload);
+      if (!/^[ -~]{1,16}$/.test(e.name) || storedName(e.name) !== e.name) throw new Error(`${kit}: stored name "${e.name}"`);
+      return [...new TextEncoder().encode(e.name), 0, payload.length & 0xff, payload.length >> 8, ...payload];
+    }));
+    if (raw.length > DEVICE.bytes) throw new Error(`${kit}: its linked patterns take ${raw.length} bytes unpacked, more than m1_up`);
+    const z = lzPack(raw);
+    P.push(`static const uint8_t KITP_${g}[${z.length}] = {${Array.from(z).join(',')}};   /* ${kit} */`);
+    return { first: xs[0].id, n: xs.length, len: raw.length, z: z.length };
+  });
+  P.push(`#define N_KIT_GROUPS ${groups.length}`, `#define N_KIT_PATTERNS ${FACTORY_STORE.length}`,
+    'static const struct { const uint8_t *lz; uint16_t lz_len, len, first; uint8_t n; } KIT_GROUPS[N_KIT_GROUPS] = {',
+    ...groups.map((g, i) => `    {KITP_${i}, ${g.z}, ${g.len}, ${g.first}, ${g.n}},`), '};', '');
+}
 const MIG = migrationTables(PRESET_MIGRATIONS);   // (after FPRESET_LIST: presetmig.c reads both)
 P.push(...MIG.lines);
 writeFileSync(new URL('../../firmware/src/presets.h', import.meta.url), P.join('\n'));
