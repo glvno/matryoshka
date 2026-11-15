@@ -133,7 +133,9 @@ export const FACTORY_FX_RECIPES: Record<string, Record<string, FxRecipe>> = {
       reason: 'Deliberately dry: the fast FM bite and low body already separate the rhythmic bass role; preserve the click without extra nonlinear harmonics.',
     },
     'Lately Bass': {
-      reason: 'Deliberately dry: the FM feedback growl already carries the dance-bass hook, and this rack has no drive; no delay smears repeated notes.',
+      reason: 'It was dry only because the rack lost its drive (D-1200). A slow shallow chorus now spreads the feedback growl\'s upper partials and a very small dark room gives it a floor; no delay smears repeated notes.',
+      chorus: { rate: 0.3, depth: 0.16, mix: 0.14 },
+      reverb: { size: 0.2, damp: 0.8, mix: 0.07, pre: 6, mod: 0, freeze: 0 },
     },
     'E Piano': {
       reason: 'A short dark room gives the decaying electric-piano body depth while leaving the high-ratio tine attack clear and unmodulated.',
