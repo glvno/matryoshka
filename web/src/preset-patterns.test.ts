@@ -76,7 +76,8 @@ it('does not attach defaults to user sounds', () => {
   applyPreset(p, a, presets[2]);
   expect(t).toEqual(before);
 });
-it.each(['Scrounge', 'Meridian 8', 'Perun 4', 'Spokes 6', 'Verona Drum 1', '808 Kit', '909 Kit', '<7PH'])('%s defaults are distinct and all select', (name) => {
+// (<7PH's lean 909 card ships no presets since the 909 Kit is the whole TR-909, D-1055)
+it.each(['Scrounge', 'Meridian 8', 'Perun 4', 'Spokes 6', 'Verona Drum 1', '808 Kit', '909 Kit'])('%s defaults are distinct and all select', (name) => {
   const { p, a, t, presets } = fixture(name);
   const seen = new Set<string>();
   for (const preset of presets) {
@@ -88,13 +89,16 @@ it.each(['Scrounge', 'Meridian 8', 'Perun 4', 'Spokes 6', 'Verona Drum 1', '808 
   }
 });
 
-it('preserves the hybrid bass track and its mixer level when selecting a drum sound', () => {
-  const { p, a, t, presets } = fixture('<7PH');
-  const bass = structuredClone(p.modules.filter((m) => m.type === 'steps' && m.id !== t.id));
+it('preserves a second (bass) track and the mixer\'s other input when selecting a drum sound', () => {
+  const { p, a, t, presets } = fixture('909 Kit');
+  const bass = addModule(p, DEFS.steps, 20, 900);
+  bass.name = 'PATTERN';
+  bass.notes = [{ at: 0, len: 2, note: 36, vel: 100 }];
+  const others = structuredClone(p.modules.filter((m) => m.type === 'steps' && m.id !== t.id));
   const mix = p.modules.find((m) => m.type === 'mixer' && p.cables.some((c) => c.from.module === m.id && p.modules.some((o) => o.type === 'output' && o.id === c.to.module)))!;
   const level = mix.params.l4;
   applyPreset(p, a, presets[1]);
-  expect(p.modules.filter((m) => m.type === 'steps' && m.id !== t.id)).toEqual(bass);
+  expect(p.modules.filter((m) => m.type === 'steps' && m.id !== t.id)).toEqual(others);
   expect(mix.params.l4).toBe(level);
 });
 

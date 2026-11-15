@@ -53,7 +53,7 @@ export const LEVEL_ROWS: Record<string, string[]> = {
   'Oracle V': ['mixer / volume'],
   'Perun 4': ['master / master'],
   '808 kit': ['bass drum / level', 'snare drum / level', 'low tom / level', 'mid tom / level', 'hi tom / level', 'rim shot / level', 'hand clap / level', 'cow bell / level', 'cymbal / level', 'open hihat / level', 'closed hihat / level'],
-  '909 kit': ['mix / kick', 'mix / snare', 'mix / hats and perc'],
+  '909 kit': ['kick / level', 'snare / level', 'low tom / level', 'mid tom / level', 'high tom / level', 'rim / level', 'clap / level', 'hihat / level', 'crash / level', 'ride / level'],
   'Sallen 20': ['output / volume'],
   Scrounge: ['out / vol a', 'out / vol b'],
   'Silver Box': ['tone / volume'],

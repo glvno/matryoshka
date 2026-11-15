@@ -1,35 +1,27 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { expect, it } from 'vitest';
-import { applyLevels, around, loudness, plugIn, seedFactoryPatterns, sharedPresetLevels, wire } from '../scripts/factory-build';
+import { around, plugIn, seedFactoryPatterns, wire } from '../scripts/factory-build';
 import { factoryPresets } from './factory-presets';
-import { FM1_PRESETS, PRESETS } from './presets';
-import { cases, measure, LOUDNESS_TOLERANCE } from './levels';
+import { FM1_PRESETS } from './presets';
+import { cases, measure } from './levels';
 import { addModule } from './patch';
 import { DEFS } from './modules';
 import { fixNotes, patternNotes } from './track';
 import { applyPreset, presetsOf } from './device-presets';
 factoryPresets();
 
-it('calibrates one shared 909 card for standalone and hybrid playback', () => {
+// (the 909 Kit's card was shared with <7PH's until the 909 Kit became the whole TR-909, D-1055: <7PH keeps its lean card,
+// which ships no presets)
+it('the 909 Kit and each of its card\'s presets land on the loudness rule', () => {
   const standalone = seedFactoryPatterns(FM1_PRESETS['909 Kit']());
-  const hybrid = seedFactoryPatterns(PRESETS['<7PH']());
-  const notes = structuredClone(hybrid.modules.filter((m) => m.type === 'steps'));
-  const settled = structuredClone(factoryPresets());
-  const output = hybrid.modules.find((m) => m.type === 'output')!.params.level;
-  const plan = loudness(standalone, { output: 1, hold: LOUDNESS_TOLERANCE });
-  applyLevels(plan);
-  sharedPresetLevels(hybrid, plan, standalone);
-  for (const p of [standalone, hybrid]) for (const c of cases(p)) {
+  for (const c of cases(standalone)) {
     const m = measure(c.patch);
     expect(m.chord).toBeNull();
-    expect(m.single, `${p.name} / ${c.preset}`).toBeLessThanOrEqual(-16.5);
-    expect(m.single >= -19.5 || m.peak >= 0.88 * 10 ** (-1.5 / 20), `${p.name} / ${c.preset}`).toBe(true);
-    expect(m.peak, `${p.name} / ${c.preset}`).toBeLessThanOrEqual(0.88);
+    expect(m.single, c.preset).toBeLessThanOrEqual(-16.5);
+    expect(m.single >= -19.5 || m.peak >= 0.88 * 10 ** (-1.5 / 20), c.preset).toBe(true);
+    expect(m.peak, c.preset).toBeLessThanOrEqual(0.88);
   }
-  expect(hybrid.modules.filter((m) => m.type === 'steps')).toEqual(notes);
-  expect(factoryPresets()).toEqual(settled);
-  expect(hybrid.modules.find((m) => m.type === 'output')!.params.level).toBe(output);
-}, 1_200_000); // about 140 s on a 4-vCPU CI runner, about 610 s under the release candidate's coverage instrumentation (D-147)
+}, 1_200_000);
 
 it('calibrates Tight Techno with its authored 11 hits instead of Init\'s 19', () => {
   const x = around('drum kit', 'drum kit');

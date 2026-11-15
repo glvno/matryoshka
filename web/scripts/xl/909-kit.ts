@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// 909 Kit XL: the 909 Kit with every instrument, knob and pattern feature of the Roland TR-909. The FM-1 version
-// (web/presets/NN-909-kit.json, D-337 in docs/ledger/patches-and-presets.md) plays rows 3 and 5..8 on one lean card
-// "perc": the clap is the snare's noise through a band pass, the open hat is the closed hat's filtered noise, the tom a
-// sine, the rim a short triangle, the cowbell two squares, each with one envelope and its velocity through a macro range.
-// Its kick, snare and closed hat (rows 1, 2, 4), its DRUMS track and Drum map stay as they are here.
+// 909 Kit XL: the 909 Kit with every instrument, knob and pattern feature of the Roland TR-909. It was built from the
+// lean FM-1 version of 1.15 (D-337 in docs/ledger/patches-and-presets.md: rows 3 and 5..8 on one lean card "perc"; its
+// kick, snare and closed hat, DRUMS track and Drum map stay as they were there) and is archived in
+// web/community/factory/909-kit-xl.json. The FM-1's 909 Kit (web/factory/bank.json) is this design since D-1055, with its
+// identical modules merged, row-less Macros and Mixers folded into what they set, the clap's bursts from a synced
+// Oscillator, the hats' level Mixer folded into their level VCAs, one DRUMS track into all three Drum maps (no
+// Arpeggiator) and a card "909 kit" around the voices' cards.
 // The TR-909 (Roland's owner's manual, archive.org "synthmanual-roland-tr-909-owners-manual"; Electronics & Music Maker,
 // March 1984) has a bass drum (TUNE LEVEL ATTACK DECAY), snare (TUNE LEVEL TONE SNAPPY), low / mid / high toms (TUNE
 // LEVEL DECAY), rim shot and hand clap (LEVEL), closed and open hi-hat (one LEVEL, a DECAY each; the closed hat cuts the

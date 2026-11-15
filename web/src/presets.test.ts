@@ -42,7 +42,8 @@ describe('factory drum kits: the keys play the drums out of the box (#141)', () 
         const n = map.params[`n${r}`];
         expect(n >= 53 && n <= 79 && WHITE.has(n % 12), `row ${r}`).toBe(true);
       }
-      // (the 808 Kit's DRUMS also plays its second Drum map: MT/MC HT/HC CY AC, D-1053)
+      // (each kit's DRUMS also plays its other Drum maps: the 808's MT/MC HT/HC CY AC, D-1053; the 909's MID TOM CRASH
+      // RIDE ACCENT and its FLAM rows, D-1055)
       const hit = new Set(p.modules.filter((m) => m.type === 'drummap').flatMap((m) => [1, 2, 3, 4, 5, 6, 7, 8].map((r) => m.params[`n${r}`])).filter((n) => n > 0));
       expect(st.notes!.length).toBeGreaterThan(0);
       for (const n of st.notes!) expect(hit.has(n.note), `step note ${n.note}`).toBe(true);
@@ -68,14 +69,11 @@ describe('factory drum kits: the keys play the drums out of the box (#141)', () 
     });
   }
 
-  it('row names: the 909 Kit\'s rows are the defaults (its hat on row 4, CL HAT, as the 808\'s); the 808 Kit\'s are the TR-808\'s instruments (D-1053)', () => {
-    const names = (n: string): string[] => {
-      const m = FM1_PRESETS[n]().modules.find((x) => x.type === 'drummap')!;
-      return [0, 1, 2].map((r) => drumRowName(m.names, r));
-    };
-    expect(FM1_PRESETS['909 Kit']().modules.find((x) => x.type === 'drummap')!.names).toBeUndefined();
-    expect(names('909 Kit')).toEqual(DRUM_MAP_DEFAULT.slice(0, 3).map((d) => d.name));
-    expect(FM1_PRESETS['808 Kit']().modules.find((x) => x.type === 'drummap')!.names).toEqual(['BD', 'SD', 'CP/MA', 'CH', 'OH', 'LT/LC', 'RS/CL', 'CB']);
+  it('row names: both kits\' rows are their originals\' instruments, the hat on row 4 (D-1053, D-1055)', () => {
+    const names = (n: string): string[] | undefined => FM1_PRESETS[n]().modules.find((x) => x.type === 'drummap')!.names;
+    expect(names('909 Kit')).toEqual(['KICK', 'SNARE', 'CLAP', 'CL HAT', 'OP HAT', 'LOW TOM', 'RIM', 'HI TOM']);
+    expect(names('808 Kit')).toEqual(['BD', 'SD', 'CP/MA', 'CH', 'OH', 'LT/LC', 'RS/CL', 'CB']);
+    expect(drumRowName(undefined, 3)).toBe(DRUM_MAP_DEFAULT[3].name);
   });
 
   it('a Drum map\'s own defaults stay General MIDI', () => {

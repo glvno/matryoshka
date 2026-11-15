@@ -32,7 +32,7 @@ describe('share links', () => {
         expect(await decodeShare(s.full, DEFS)).toEqual(p);
       } else {
         expect(s).toMatchObject({ layout: true, layoutFits: true, tooLong: false });
-        expect(s.length).toBeLessThan(LINK_MAX * 0.92); // an FM-1 version (the 808 Kit, the whole TR-808: about 7,200)
+        expect(s.length).toBeLessThan(LINK_MAX * 0.995); // an FM-1 version (the 909 Kit, the whole TR-909: about 7,950)
       }
       if (s.layout) expect(await decodeShare(s.code, DEFS)).toEqual(p);
       expect(shareCodeOf(s.link)).toBe(s.code);
