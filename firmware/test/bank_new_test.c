@@ -4,7 +4,7 @@
  * presets.h: its own slot empty, its own slot taken, the bank full, a power cut before the settings record (the patch
  * already there by name), a set from between releases, a bank older than every remaining default, and what the bar says
  * (26 characters at most). Today's 22-patch bank removed the editor examples from the defaults (D-890), so at most one
- * patch (Verona Drum 1) is ever new; renamed Hera 3 counts as present wherever Hera 4 was (D-887).
+ * patch (Verona Drum 1) is ever new; renamed Hera 6 counts as present wherever Hera 3 or Hera 4 was (D-887).
  *   tools/bank_new_test.sh */
 #include <stdio.h>
 #include <string.h>
@@ -41,7 +41,7 @@ int main(void)
     if (v < 0)
         return 1;
     check("today's set: nothing new", bn_new(FACTORY_SET_ID) == 0);
-    check("1.13.0's set: nothing new (Hera 3 is its Hera 4)", find("HERA 3") >= 0 && bn_new(set113) == 0);
+    check("1.13.0's set: nothing new (Hera 6 is its Hera 4)", find("HERA 6") >= 0 && bn_new(set113) == 0);
 
     bn_plan(set191, had, had, 64, &p);
     snprintf(want, sizeof want, "NEW: %d. VERONA DRUM 1", v + 1);

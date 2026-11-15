@@ -79,14 +79,15 @@ it('retains archived name-only defaults beside selected defaults and saved graph
   mine.modules.find(module => module.type === 'output')!.params.level = 0.123;
   const stored = JSON.stringify([{ name: 'Hera 4' }, { name: 'Hera 3' }, { name: mine.name, patch: mine }, { name: 'Oracle V XL' }]);
   mem.set('matryoshka.bank', stored);
+  // (a name-only Hera 3, the default of 1.14 and 1.15, follows its instrument to today's name)
   const expected = [
     { name: 'Hera 4', patch: relocatedPatches['Hera 4']() },
-    { name: 'Hera 3', patch: FM1_PRESETS['Hera 3']() },
+    { name: 'Hera 6', patch: FM1_PRESETS['Hera 6']() },
     { name: mine.name, patch: mine },
     { name: 'Oracle V XL', patch: relocatedPatches['Oracle V XL']() },
   ];
   expect(bankPatches()).toEqual(expected);
-  expect(bankPatches(() => false)).toEqual(expected.filter(entry => entry.name !== 'Hera 3'));
+  expect(bankPatches(() => false)).toEqual(expected.filter(entry => entry.name !== 'Hera 6'));
   expect(expected[0].patch.name).toBe('Hera 4');
   expect(expected[0].patch.modules.filter(m => m.type === 'alloc').map(m => m.params.voices)).toContain(4);
   expect(mem.get('matryoshka.bank')).toBe(stored);

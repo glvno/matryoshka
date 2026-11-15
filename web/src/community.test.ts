@@ -76,7 +76,7 @@ describe('families and XL pairing', () => {
   it('reads an XL name', () => {
     expect(xlBase('Sol 29N XL')).toBe('Sol 29N');
     expect(xlBase(' Algo Four XL ')).toBe('Algo Four');
-    expect(xlBase('Hera 6 XL')).toBe('Hera 3');
+    expect(xlBase('Hera 6 XL')).toBe('Hera 6');
     expect(xlBase('Hera 6 XL', new Set(['Hera 4']))).toBe('Hera 4');
     expect(xlBase('XL')).toBeNull();
     expect(xlBase('Sol 29NXL')).toBeNull();
@@ -90,28 +90,28 @@ describe('families and XL pairing', () => {
   });
 
   it('pairs the full Hera with the selected default, falling back to the unchanged archive name', () => {
-    expect(pairXl(['Hera 6 XL', 'Other', 'Hera 3'])).toEqual([
-      { name: 'Other', xl: false }, { name: 'Hera 3', xl: false }, { name: 'Hera 6 XL', xl: true },
+    expect(pairXl(['Hera 6 XL', 'Other', 'Hera 6'])).toEqual([
+      { name: 'Other', xl: false }, { name: 'Hera 6', xl: false }, { name: 'Hera 6 XL', xl: true },
     ]);
     expect(pairXl(['Hera 6 XL', 'Hera 4'])).toEqual([
       { name: 'Hera 4', xl: false }, { name: 'Hera 6 XL', xl: true },
     ]);
-    expect(pairXl(['Hera 6 XL', 'Hera 4', 'Hera 3'])).toEqual([
-      { name: 'Hera 4', xl: false }, { name: 'Hera 3', xl: false }, { name: 'Hera 6 XL', xl: true },
+    expect(pairXl(['Hera 6 XL', 'Hera 4', 'Hera 6'])).toEqual([
+      { name: 'Hera 4', xl: false }, { name: 'Hera 6', xl: false }, { name: 'Hera 6 XL', xl: true },
     ]);
     expect(pairXl(['Hera 6 XL'])).toEqual([{ name: 'Hera 6 XL', xl: false }]);
   });
 
   it('groups Hera by the names actually available without relabelling any entry', () => {
-    for (const base of ['Hera 3', 'Hera 4']) {
+    for (const base of ['Hera 6', 'Hera 4']) {
       const list = ['Hera 6 XL', 'Other', base].map(title => ({ entry: { ...RAW[0], title } as CommunityEntry }));
       expect(familiesOf(list).map(f => [f.name, f.members.map(m => m.entry.title)])).toEqual([
         [base, [base, 'Hera 6 XL']], ['Other', ['Other']],
       ]);
     }
-    const list = ['Hera 6 XL', 'Hera 4', 'Hera 3'].map(title => ({ entry: { ...RAW[0], title } as CommunityEntry }));
+    const list = ['Hera 6 XL', 'Hera 4', 'Hera 6'].map(title => ({ entry: { ...RAW[0], title } as CommunityEntry }));
     expect(familiesOf(list).map(f => [f.name, f.members.map(m => m.entry.title)])).toEqual([
-      ['Hera 3', ['Hera 3', 'Hera 6 XL']], ['Hera 4', ['Hera 4']],
+      ['Hera 6', ['Hera 6', 'Hera 6 XL']], ['Hera 4', ['Hera 4']],
     ]);
   });
 

@@ -102,8 +102,10 @@ for (const compile of [false, true]) describe(`shared articulation, device compi
     expect(e.envStates(env.id)![0].stage).toBe(0);
   });
 
-  it.each(engines)('$name does not revive a stolen pitch or restart common amplitude on voice stealing', ({ name, member }) => {
-    const { e, env, mask, amp, render } = rig(name, compile);
+  it.each(engines)('$name does not revive a stolen pitch or restart common amplitude on voice stealing', ({ name, member, allocator }) => {
+    const original = source(name);
+    original.modules.find(m => m.id === allocator)!.params.voices = 4; // (five notes steal one)
+    const { e, env, mask, amp, render } = rig(name, compile, original);
     for (const note of [72, 69, 67, 64]) {
       e.noteOn(note);
       render(0.02);

@@ -36,16 +36,16 @@ describe('preserved factory patches in Community', () => {
     expect(new Set(entries.map(e => e.title)).size).toBe(entries.length);
   });
 
-  it('keeps Hera 4 attributed and visible beside its XL without renaming it to the selected Hera 3', async () => {
+  it('keeps Hera 4 attributed and visible beside its XL without renaming it to the selected Hera 6', async () => {
     const families = familiesOf(await loadCommunity());
-    expect(xlBase('Hera 6 XL')).toBe('Hera 3');
+    expect(xlBase('Hera 6 XL')).toBe('Hera 6');
     const hera = families.find(f => f.name === 'Hera 4')!;
     expect(hera.members.map(m => m.entry.title)).toEqual(['Hera 4', 'Hera 6 XL']);
     expect(hera.members.map(m => m.patch?.name)).toEqual(['Hera 4', 'Hera 6 XL']);
     for (const member of hera.members) {
       expect(member.entry).toMatchObject({ author: 'michael glaviano', licence: 'GPL-3.0-only', source: 'https://github.com/glvno/matryoshka' });
     }
-    expect(families.flatMap(f => f.members.map(m => m.entry.title))).not.toContain('Hera 3');
+    expect(families.flatMap(f => f.members.map(m => m.entry.title))).not.toContain('Hera 6');
   });
 
   it('returns independent copies without changing a saved or shared original', () => {

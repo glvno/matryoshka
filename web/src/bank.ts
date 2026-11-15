@@ -62,11 +62,16 @@ function loadOver(): Entry[] {
   return [];
 }
 
+/** factory defaults renamed since a bank was stored: the stored name, today's (the same instrument: a name-only entry
+ *  follows it; a saved copy keeps the name it was saved under) */
+const RENAMED: Record<string, string> = { 'Hera 3': 'Hera 6' };
+
 function load(): Entry[] {
   try {
     const raw = JSON.parse(localStorage.getItem(STORE) ?? 'null') as Entry[] | null;
     if (Array.isArray(raw)) {
       const ok = raw
+        .map((e) => (e && !e.patch && typeof e.name === 'string' && RENAMED[e.name] ? { name: RENAMED[e.name] } : e))
         .filter((e) => typeof e?.name === 'string' && (e.patch ? true : e.name in PRESETS || e.name in relocatedPatches))
         .map((e) => e.patch ? { name: e.name, patch: validatePatch(e.patch, DEFS) }
           : e.name in FM1_PRESETS || e.name in relocatedPatches ? { name: e.name } : { name: e.name, patch: PRESETS[e.name]() })
