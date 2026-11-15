@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Meridian 8's channels can ring or stop short:** each channel has a DECAY and a RELEASE row, how long its power takes to fall while its key is held and after it is let go. A DRIVE row in the OUT section sets how hard both output saturators are driven. At their starting values the patch sounds as before. The five presets now differ in length too: Broken Beat is clipped short, Lo-fi Hip Hop and Tonal Percs ring out, and Industrial's bacid and cympath hang on. A saved slot keeps its old version; FACTORY RESET installs the new one. A preset you stored for Meridian 8 keeps its values, and its new rows start at their starting values.
+
 ## 1.16.0 — 2026-11-15
 
 - **Patterns can live on the FM-1 outside the patches, and any patch can load them.** On the SEQ page, SEL held + SAVE saves the pattern you are on into the FM-1's pattern store, FX held + SAVE saves a new copy, and SEL held + PRESET loads stored patterns into the pattern you are on. A patch keeps its pattern 1 and points to its stored patterns, so a pattern costs it 3 bytes instead of its notes, and a patch with many patterns fits. Saving over a stored pattern changes it in every patch that uses it. P-locks come along only into a patch with the same modules. The editor's pattern library lists, loads, saves, renames, deletes and exports stored patterns, and shows the factory drum patterns too. The store takes room from the bank, which now has 60 slots: at the first start, patches in slots 61 to 64 move to empty slots (an FM-1 with more than 60 patches keeps 64 slots and has no pattern store until you delete one). Patterns already in your patches stay where they are.
