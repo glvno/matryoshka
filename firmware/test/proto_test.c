@@ -210,6 +210,13 @@ static uint32_t m1_pat_del(uint32_t id, uint32_t force, uint32_t *count);
 #endif
 #include "../src/proto.c"
 
+/* the offset of the device pages section (its count byte) in the current patch, 0 if the patch has none */
+static uint32_t m1_devices_at(void)
+{
+    uint32_t at = m1_sec_at(ENG_SEC_DEVICES);
+    return (m1_cur[6] & 32u) && at < m1_cur_len ? at : 0;
+}
+
 #ifndef PROTO_TEST_EXTERNAL_ENGINE
 
 static uint8_t *slurp(const char *path, long *n)

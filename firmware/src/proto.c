@@ -487,13 +487,6 @@ static uint32_t m1_sec_at(uint32_t sec)
  * the binary is malformed */
 static uint32_t m1_notes_at(void) { return m1_sec_at(ENG_SEC_NOTES); }
 
-/* the offset of the device pages section (its count byte) in the current patch, 0 if the patch has none */
-static uint32_t m1_devices_at(void)
-{
-    uint32_t at = m1_sec_at(ENG_SEC_DEVICES);
-    return (m1_cur[6] & 32u) && at < m1_cur_len ? at : 0;
-}
-
 /* the offset of the macro range section (its count byte) in the current patch, 0 if the patch has none */
 static uint32_t m1_range_section(void)
 {
@@ -570,8 +563,8 @@ static void m1_preset_stored(uint32_t structure, const char *name)
  * #194: SAVE keeps it); what follows moves. 0 = done, -1 the patch has no extras or would outgrow M1_PATCH_MAX */
 static int m1_preset_name(uint32_t dev, const char *name)
 {
-    uint32_t at = m1_devices_at(), k, cnt, n = 0, old;
-    if (!at || !(m1_cur[7] & ENG_FLAG_EXTRAS) || !(at = eng_devices_end(m1_cur, m1_cur_len, at)) || !eng_extras_end(m1_cur, m1_cur_len, at))
+    uint32_t at = (m1_cur[6] & 32u) && (m1_cur[7] & ENG_FLAG_EXTRAS) ? m1_sec_at(ENG_SEC_EXTRAS) : 0u, k, cnt, n = 0, old;
+    if (!at || !m1_sec_at(ENG_SEC_BUTTONS))
         return -1;
     cnt = m1_cur[at++];
     if (dev >= cnt)
