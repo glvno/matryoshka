@@ -152,7 +152,6 @@ describe('exact final-profile audition qualification', () => {
 
   it.each([
     ['Canvas', 'canvas-original-delay-no-harm', false, false],
-    ['Expander S', 'expander-s-v3-drive-chorus-delay-reverb', true, true],
   ] as const)('permits only the complete clean <100%% exception for %s', (name, id, harm, drive) => {
     const { context, evidence } = fixture(name, id, harm, drive);
     for (const phase of evidence.cases[0].phases) phase.peakPercent = 99.9;
@@ -168,6 +167,7 @@ describe('exact final-profile audition qualification', () => {
 
   it.each([
     ['Canvas', 'selected-canvas'], ['Expander S', 'selected-expander-s'],
+    ['Expander S', 'expander-s-v3-drive-chorus-delay-reverb'], ['Expander S', 'expander-s-v4-drive-chorus-delay-reverb'],
     ['Sallen 20', 'selected-sallen-20'], ['Algo Four', 'canvas-original-delay-no-harm'],
     ['Sallen 20', 'sallen-20-original-drive-chorus-delay-no-harm'],
     ['Sallen 20', 'sallen-20-original-chorus-delay-reverb-no-harm'],
@@ -184,7 +184,7 @@ describe('exact final-profile audition qualification', () => {
   });
 
   it('keeps renamed bank identity separate from the source profile key', () => {
-    const { context, evidence } = fixture('Hera 4', 'hera-4-v6-none', true, false);
+    const { context, evidence } = fixture('Hera 4', 'hera-4-v4-chorus-delay-reverb', true, false);
     expect(validateFactoryQualification(evidence, context).cases[0]).toMatchObject({ sourceName: 'Hera 4', bankName: 'Hera 6' });
     evidence.cases[0].bankName = 'Hera 4';
     expect(() => validateFactoryQualification(evidence, context)).toThrow('bankName');

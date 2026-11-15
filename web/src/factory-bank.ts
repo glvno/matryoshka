@@ -43,17 +43,17 @@ export interface SelectedFactoryOptions extends FactoryMeasurementOptions {
 export const selectedFactoryProfile: Readonly<Record<string, SelectedFactoryOptions>> = {
   'Monolith D': { configurationId: 'selected-monolith-d' },
   'Silver Box': { configurationId: 'selected-silver-box' },
-  'Algo Four': { voices: 4, omit: ['chorus'], configurationId: 'algo-four-v4-drive-delay-reverb', outputLevel: 0.88 },
-  'Oracle V': { omit: ['delay', 'reverb'], configurationId: 'selected-oracle-v' },
+  'Algo Four': { omit: ['drive'], configurationId: 'algo-four-v6-chorus-delay-reverb', outputLevel: 0.88 },
+  'Oracle V': { omit: ['drive'], configurationId: 'oracle-v-v4-chorus-delay-reverb' },
   Canvas: { omit: ['drive', 'chorus', 'reverb'], harmonizer: 'removed', canvasCaptions: 'short', configurationId: 'canvas-original-delay-no-harm' },
-  'Expander S': { voices: 3, configurationId: 'expander-s-v3-drive-chorus-delay-reverb', outputLevel: 0.68 },
+  'Expander S': { configurationId: 'expander-s-v4-drive-chorus-delay-reverb', outputLevel: 0.68 },
   'Briefcase 3': { harmonizer: 'removed', configurationId: 'briefcase-3-original-drive-chorus-delay-no-harm' },
   Wanderer: { omit: ['chorus'], configurationId: 'selected-wanderer' },
-  'Cassia 1': { omit: ['reverb'], configurationId: 'selected-cassia-1' },
+  'Cassia 1': { omit: ['drive'], configurationId: 'cassia-1-v4-chorus-delay-reverb' },
   'Vernon 100': { omit: ['reverb'], configurationId: 'selected-vernon-100' },
   'Sallen 20': { omit: ['reverb'], harmonizer: 'removed', configurationId: 'sallen-20-original-drive-chorus-delay-no-harm' },
-  'Hera 4': { bankName: 'Hera 6', voices: 6, omit: ['drive', 'chorus', 'delay', 'reverb'], configurationId: 'hera-4-v6-none', outputLevel: 0.39 },
-  'Io 4': { omit: ['reverb'], configurationId: 'selected-io-4' },
+  'Hera 4': { bankName: 'Hera 6', omit: ['drive'], configurationId: 'hera-4-v4-chorus-delay-reverb', outputLevel: 0.39 },
+  'Io 4': { configurationId: 'selected-io-4' },
 };
 
 /** Selected names in source order, without building the patch graphs. */

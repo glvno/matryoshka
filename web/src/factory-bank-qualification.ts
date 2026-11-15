@@ -16,7 +16,6 @@ export interface FactoryQualificationPolicyDetails {
 
 const EXCEPTIONS: Readonly<Record<string, string>> = {
   Canvas: 'canvas-original-delay-no-harm',
-  'Expander S': 'expander-s-v3-drive-chorus-delay-reverb',
 };
 
 export function factoryQualificationPolicy(sourceName: string, configurationId: string): FactoryQualificationPolicyDetails {
@@ -40,7 +39,6 @@ export function factoryQualificationPhaseIds(harmonizerPresent: boolean, addedDr
 
 export function factoryQualificationTargetSeconds(configurationId: string, phaseId: string): number {
   const longPhases: Readonly<Record<string, string>> = {
-    'expander-s-v3-drive-chorus-delay-reverb': 'c9-root60-arp-on-drive-fold',
     'canvas-original-delay-no-harm': 'plain8-arp-on-drive-absent',
   };
   return longPhases[configurationId] === phaseId ? 60 : 5;

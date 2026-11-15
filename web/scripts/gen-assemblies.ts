@@ -1975,7 +1975,7 @@ namePositions('Expander S', {
 });
 
 // Algo Four, a four-operator FM polysynth after the Yamaha DX100 (its Owner's Manual: chapter IV "The Voice Parameters"):
-// the keys go into the Voice allocator, which plays eight voice cards, the DX100's eight voices (#658). A card: four
+// the keys go into the Voice allocator, which plays six voice cards of the DX100's eight voices (#658, D-1200). A card: four
 // operators (an oscillator, an envelope and a VCA each) and the DX100's eight algorithms, as Algo Four XL builds them: the
 // `algorithm` row is a Selector whose value table puts its position on its out, which moves each voice's four route
 // Selectors to the same position, one in front of the phase input of each of operators 1, 2 and 3 and one for what is
@@ -2005,7 +2005,7 @@ const ALGO_PATHS: [number, number, number[]][] = [
 ];
 
 asm('Algo Four', 'Voices', (b) => {
-  const part = b.add('alloc', 0, 2, { voices: 8, stack: 1 });
+  const part = b.add('alloc', 0, 2, { voices: 6, stack: 1 });
   const op: number[] = [];
   const env: number[] = [];
   const vca: number[] = [];

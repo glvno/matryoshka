@@ -52,8 +52,8 @@ export const LOFI_PRESET_DESIGNS: Record<string, LofiPresetDesign[]> = {
         'voice / volume': 0.36,
       },
       fx: {
-        reason: 'A short dark room supports mellow chord playing; modest compensated saturation rounds the reduced-index EP body without a long rhythmic echo.',
-        drive: { drive: 1.35, mode: 0, level: 0.42, sym: 0 },
+        reason: 'A short dark room supports mellow chord playing; a slow shallow chorus warms the reduced-index EP body without a long rhythmic echo.',
+        chorus: { rate: 0.4, depth: 0.2, mix: 0.2 },
         reverb: { size: 0.34, damp: 0.78, mix: 0.17, pre: 16, mod: 0, freeze: 0 },
       },
       role: 'Warm decaying electric-piano chords. A neutral 1:1 lower stack, reduced FM index and subordinate short upper strike replace E Piano\'s brighter detuned body; held notes decay rather than sustain. Start with three-note voicings around MIDI 48-76.',
@@ -165,7 +165,7 @@ export const LOFI_PRESET_DESIGNS: Record<string, LofiPresetDesign[]> = {
         'vca / level': 0.47,
       },
       fx: {
-        reason: 'No added rack exists on Hera. Its retained native chorus II and newly slow low-depth DCO/PWM motion supply the wavering organ character without fabricated external space.',
+        reason: 'Deliberately dry: the retained native chorus II and newly slow low-depth DCO/PWM motion supply the wavering organ character without added external space.',
       },
       role: 'Dark wavering organ for held chord accompaniment: much less sub, a 1.7 kHz low-pass and slow pitch/pulse movement distinguish it from the bright steady Organ. Its short release is nominally 0.18 s because Hera scales decay/release rows by 2.4.',
       references: ['Beach House', 'Broadcast', 'Stereolab', 'John Maus'],

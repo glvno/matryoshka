@@ -5,7 +5,7 @@
 # The level row (mixer / volume) gen-presets sets in every preset, by loudness (#448): leave it to it.
 #
 # voice
-#   voices = 5                         1..16
+#   voices = 4                         1..16
 #   unison = off                       off, on, share
 #   uni voices = all                   all, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
 #   uni detune = 0                     0..2
@@ -102,7 +102,7 @@ preset: Sync Lead
   filt env = 2.5
   wheel mod / freq A = 0.1
   freq B = 0.1
-  volume = 0.69
+  volume = 1
 
 # Two detuned saws, a slow filter attack: the brass swell.
 preset: Poly Brass
