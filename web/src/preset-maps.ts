@@ -41,6 +41,18 @@ export const HAND_MAPS: HandMap[] = [
     why: 'issue #782: MASTER controls both stereo output amplifiers at the same value; PAN starts centered',
     rows: { 'macro#3.value': { from: 'mixer#3.l1' } },
   },
+  // ---- the whole TR-808 (D-1053): every row of the eight-voice card keeps its value but the low tom's TUNING, which was
+  // its body's coarse tune (semitones) and is now the TR-808's TUNING knob, a Macro over seven semitones either way of
+  // the body's -12 (a tuning further out lands on the knob's end). The open hihat's DECAY is named, as the cymbal's
+  // DECAY (an envelope's r3 too) would otherwise take it. The new voices, switches, ACCENT and PRE-SCALE start at Init.
+  {
+    engine: '808 kit', from: 'b3d5b969', to: '5609dff3',
+    why: 'D-1053: the whole TR-808; the low tom\'s tuning on its ±7-semitone knob',
+    rows: {
+      'macro#13.value': { line: 'modal#42.coarse', mul: [1 / 14], add: [19 / 14], min: 0, max: 1 },
+      'env#55.r3': { from: 'env#35.r3' }, 'env#103.r3': 'init',
+    },
+  },
   // ---- the whole DRM1 MKIV (D-899): each row of the six-channel card goes to the same channel's row of the same label
   // (HI HAT is HI HAT 1); the duplicated drum and hat modules would otherwise pair with the wrong channel. The snare's NOISE
   // and REVERB were its envelopes' peaks with one VCA at 1 and are now their VCAs' gains: the same number. MULTI's PITCH 2

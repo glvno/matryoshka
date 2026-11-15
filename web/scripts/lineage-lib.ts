@@ -18,6 +18,7 @@ import { rowTargets, validateAssemblyDef, type AssemblyDef } from '../src/assemb
 import { defIsEngine } from '../src/engines';
 import { DEFS } from '../src/modules';
 import { HAND_MAPS, type HandMap } from '../src/preset-maps';
+import { kitCardDefs } from '../src/factory-presets';
 import { cardSlug } from '../src/preset-cards';
 import type { Migration, MigrationOp } from '../src/preset-migrate';
 import { defStructureAndOrder } from '../src/structure';
@@ -68,9 +69,13 @@ export function factoryEngines(files: { name: string; text: string }[]): Map<str
   }
   return out;
 }
+/** today's factory engines: the assembly files' (src/assemblies), then the 808 and 909 Kits' cards (their factory
+ * patches', D-1053) */
 export const todaysEngines = (): Map<string, AssemblyDef> => {
   const dir = new URL('assemblies/', SRC);
-  return factoryEngines(readdirSync(dir).map((name) => ({ name, text: readFileSync(new URL(name, dir), 'utf8') })));
+  const out = factoryEngines(readdirSync(dir).map((name) => ({ name, text: readFileSync(new URL(name, dir), 'utf8') })));
+  for (const def of kitCardDefs()) out.set(def.name, def);
+  return out;
 };
 
 /** a step from one structure to the next: for each of the newer's rows, how it gets its value from the older's */

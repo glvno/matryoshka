@@ -843,7 +843,8 @@ int main(void)
     booting = 0;
     page = 0;
     screen_idle();
-    /* the 808 Kit's devices (#196): Main, DRUMS (the track), the Drum map it drives (3 pages: its rows, then REPEAT, #184), the 808 kit card, Output */
+    /* the 808 Kit's devices (#196): Main, DRUMS (the track), the Drum maps it drives (BD .. CB: 3 pages, its rows, then REPEAT,
+     * #184; then MT/MC HT/HC CY AC, D-1053), the 808 kit card, Output */
     check("the device page: the home device in focus (not Main or the track)", page == 0 && pg_cur_dev == 2 && pg_cur_page == 0 && pg_ndev > 4);
     {                                                       /* the header (the owner's design, 2026-10-24) */
         uint32_t x, gold = 0;
@@ -923,10 +924,13 @@ int main(void)
         check("700 ms later: nothing redrawn (no toast)", lcd_px == 0u);
         lcd_px = 0;
         stop_n = 0;
-        enc(0, 1);                                          /* SELECT: the 808 kit card, and back */
-        check("SELECT: the next device, the editor told, its name in the header", pg_cur_dev == 3 && focus_dev == 3
-              && on_screen("808 KIT") && !on_screen("DRUM MAP"));
+        enc(0, 1);                                          /* SELECT: the second Drum map, then the 808 kit card, and back */
+        check("SELECT: the next device, the editor told", pg_cur_dev == 3 && focus_dev == 3 && on_screen("DRUM MAP"));
         printf("      LCD pixels for one SELECT click: the header %u, the page %u\n", stop_px[0], lcd_px);
+        enc(0, 1);
+        check("SELECT: the next device, the editor told, its name in the header", pg_cur_dev == 4 && focus_dev == 4
+              && on_screen("808 KIT") && !on_screen("DRUM MAP"));
+        enc(0, -1);
         enc(0, -1);
         check("SELECT back: the device before", pg_cur_dev == 2 && focus_dev == 2 && pg_cur_page == 0);
         enc(4, 1);
@@ -1291,6 +1295,9 @@ int main(void)
             loop();
         }
         check("every button: CC 127 on the press, 0 on the release", all);
+        pages_focus(3, 0);                                  /* (the second Drum map: SELECT lands on the 808 kit card, where
+                                                             * PRESET loads a sound, so the patch is edited, D-1053) */
+        loop();
         at = mlen;
         enc(0, 1);
         enc(1, -1);
@@ -1351,7 +1358,7 @@ int main(void)
 
         page_show(0);
         trail_n = 0;
-        pages_focus(4, 0);                                  /* (the Output) */
+        pages_focus(5, 0);                                  /* (the Output) */
         loop();
         tap(5);
         check("LFO tapped: its list's first page, a step on the trail, lit", pg_list_btn == 3 && pg_cur_dev == 2 && pg_cur_page == 0
@@ -1374,7 +1381,7 @@ int main(void)
         loop();
         check("let go: back to the step it was on", !pg_list_peek && pg_list_step == 1 && pg_cur_dev == 2 && pg_cur_page == 1);
         tap(BTN_HOME);
-        check("HOME: back to where it was before the list, unlit", pg_list_btn < 0 && pg_cur_dev == 4 && pg_cur_page == 0
+        check("HOME: back to where it was before the list, unlit", pg_list_btn < 0 && pg_cur_dev == 5 && pg_cur_page == 0
               && trail_n == 0 && !(eng_buttons_get() >> 3 & 1u));
         tap(5);
         enc(0, 1);
@@ -1472,9 +1479,11 @@ int main(void)
             enc(2, -3);
         }
         later(1500);
-        tap(3);                                             /* the 808 kit card: its keys come from the Drum map, not Main */
+        enc(0, 1);                                          /* (past the second Drum map, D-1053) */
+        later(1500);
+        tap(3);                                             /* the 808 kit card: its keys come from the Drum maps, not Main */
         check("SEL on a row that takes no keys: NOTHING HERE TAKES KEYS, nothing armed, the page stays",
-              page == PAGE_ENV && pg_cur_dev == d0 + 1u && m64(eng_arm_mask_get()) == 0u && !strcmp(msg_text, MSG_NOTHING_TAKES_KEYS));
+              page == PAGE_ENV && pg_cur_dev == d0 + 2u && m64(eng_arm_mask_get()) == 0u && !strcmp(msg_text, MSG_NOTHING_TAKES_KEYS));
         tap(4);
         check("ENV again: back where it came from", page == 0 && trail_n == n0);
         pages_focus(1, 0);                                  /* SEL on a row (#395): DRUMS armed, then disarmed */
@@ -1807,7 +1816,7 @@ int main(void)
             tap(BTN_HOME);
         tap(BTN_SEQ);
         check("the SEQ page on DRUMS shows its Drum map's rows (row 1 first)", page == PAGE_SEQ && map >= 0 && seq_map() == map && seq_row == 0);
-        check("the row names come with the patch (format 33)", m1_drum_name((uint32_t)map, 1, nm) && !strcmp(nm, "SNARE"));
+        check("the row names come with the patch (format 33)", m1_drum_name((uint32_t)map, 1, nm) && !strcmp(nm, "SD"));   /* (the TR-808's legends, D-1053) */
         panel_keys(1u << 3);                                /* G#3: the second black key = row 2 (the snare) */
         panel_keys(0);
         check("a black key picks a row", seq_row == 1);
@@ -2509,7 +2518,9 @@ int main(void)
         later(1500);
         check("device page, unmuted and disarmed: as it was", eng_armed() < 0 && !memcmp(base, fb, sizeof base));
 
-        E.node[map].ksrc = 0;                               /* the Drum map off DRUMS: a melodic track, its roll (#241) */
+        E.node[map].ksrc = 0;                               /* every Drum map off DRUMS: a melodic track, its roll (#241) */
+        int map2 = eng_steps_drummap((uint32_t)drums);      /* (the 808 Kit's second map, MT/MC HT/HC CY AC, D-1053) */
+        if (map2 >= 0) E.node[map2].ksrc = 0;
         tap(BTN_SEQ);
         eng_arm_mask(s64(0));                                    /* (WIRED again: the page armed it) */
         header_draw();
@@ -2540,6 +2551,7 @@ int main(void)
         check("melodic track, unmuted and disarmed: the page as it was", eng_armed() < 0 && !memcmp(base, fb, sizeof base));
         tap(BTN_SEQ);
         E.node[map].ksrc = 2u + (uint32_t)drums;
+        if (map2 >= 0) E.node[map2].ksrc = 2u + (uint32_t)drums;
     }
 
     {                                                       /* the keys on a Drum map (the owner, 2026-10-23): black keys 1..8 play

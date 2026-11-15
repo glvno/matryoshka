@@ -125,13 +125,15 @@ const once = <T>(f: () => T): (() => T) => {
 /** a factory assembly that ships presets: every engine, and an effect with a card (#661: an effect gets no rule-made ones) */
 export const hasFactoryPresets = (def: AssemblyDef): boolean => defIsEngine(def) || CARDS[cardSlug(def.name)] !== undefined;
 
-/** Every factory engine's presets, then the factory effects' with a card (the FM-1's ROM list), then the whole-kit
- * presets of the 808 and 909 Kits. */
-export const factoryPresetDefs = once((): AssemblyDef[] => [...FACTORY, ...['808 Kit', '909 Kit'].flatMap((name) => {
+/** The 808 and 909 Kits' cards: they live in their factory patches, not in an assembly file. */
+export const kitCardDefs = once((): AssemblyDef[] => ['808 Kit', '909 Kit'].flatMap((name) => {
   const p = FM1_PRESETS[name]();
   const a = p.assemblies?.find((a) => a.name === name.toLowerCase());
   return a ? [toDef(p, a)] : [];
-})]);
+}));
+/** Every factory engine's presets, then the factory effects' with a card (the FM-1's ROM list), then the whole-kit
+ * presets of the 808 and 909 Kits. */
+export const factoryPresetDefs = once((): AssemblyDef[] => [...FACTORY, ...kitCardDefs()]);
 export const factoryPresets = once((): Preset[] => factoryPresetDefs().flatMap((d) => shippedPresets(d)));
 
 /** Read-only sounds for the selected racks, plus new card-only sounds where no rack is added.

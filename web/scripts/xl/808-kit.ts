@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // 808 Kit XL: the 808 Kit with every instrument, knob and switch of the Roland TR-808, after its owner's manual
-// (archive.org "synthmanual-roland-tr-808-owners-manual": "Control Descriptions", "Specifications"). The FM-1 version
-// (web/presets/NN-808-kit.json, gen-presets.ts) plays eight of the eleven voices, its rows accent their own drum by
-// velocity, and its card "808 kit" has the TR-808's knobs for those eight. Its drums, DRUMS track and Drum map stay as
-// they are here.
+// (archive.org "synthmanual-roland-tr-808-owners-manual": "Control Descriptions", "Specifications"). It was built from
+// the eight-voice FM-1 version of 1.15 (its drums, DRUMS track and Drum map stay as they were there) and is archived in
+// web/community/factory/808-kit-xl.json. The FM-1's 808 Kit (web/factory/bank.json) is this design since D-1053, with
+// its identical modules merged, one DRUMS track into both Drum maps, no Arpeggiator, and one voice per tom / conga pair
+// (the switch's value retunes the tom's body and pins its decay and pitch drop to the conga's).
 // The TR-808 has eleven voices, sixteen sounds: bass drum (LEVEL TONE DECAY), snare drum (LEVEL TONE SNAPPY), low / mid /
 // high tom (LEVEL TUNING; a switch makes each a low / mid / high conga), rim shot (LEVEL; switched: claves), hand clap
 // (LEVEL; switched: maracas), cow bell (LEVEL), cymbal (LEVEL TONE DECAY), open hihat (LEVEL DECAY), closed hihat (LEVEL;

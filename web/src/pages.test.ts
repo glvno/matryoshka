@@ -21,11 +21,11 @@ describe('device pages', () => {
     expect(devicesOf(p, DEFS).find((d) => d.asm === a.id)!.track).toBe(track.id);
     expect(patternDriver(p, a, DEFS)).toBeUndefined();
   });
-  it('808 keeps its direct Drum map before the indirectly triggered kit', () => {
+  it('808 keeps its direct Drum maps before the indirectly triggered kit', () => {
     const p = PRESETS['808 Kit']();
     const ds = devicesOf(p, DEFS);
-    expect(ds.slice(0, 4).map((d) => d.asm !== undefined ? 'kit' : p.modules.find((m) => m.id === d.module)!.type))
-      .toEqual(['fm1', 'steps', 'drummap', 'kit']);
+    expect(ds.slice(0, 5).map((d) => d.asm !== undefined ? 'kit' : p.modules.find((m) => m.id === d.module)!.type))
+      .toEqual(['fm1', 'steps', 'drummap', 'drummap', 'kit']);
   });
 
   it('a plain module is a device of its parameters, four to a page; scopes are none', () => {
