@@ -2524,8 +2524,7 @@
   {
    "from": {
     "module": 3,
-    "port": "out",
-    "label": "1 osc 1 sine"
+    "port": "out"
    },
    "to": {
     "module": 53,
@@ -2535,8 +2534,7 @@
   {
    "from": {
     "module": 4,
-    "port": "out",
-    "label": "2 osc 1 ramp"
+    "port": "out"
    },
    "to": {
     "module": 53,
@@ -2546,8 +2544,7 @@
   {
    "from": {
     "module": 5,
-    "port": "out",
-    "label": "3 osc 2 square"
+    "port": "out"
    },
    "to": {
     "module": 53,
@@ -2557,8 +2554,7 @@
   {
    "from": {
     "module": 6,
-    "port": "out",
-    "label": "4 osc 2 triangle"
+    "port": "out"
    },
    "to": {
     "module": 53,
@@ -2572,8 +2568,7 @@
    },
    "to": {
     "module": 31,
-    "port": "a",
-    "label": "A meter"
+    "port": "a"
    }
   },
   {
@@ -2583,8 +2578,7 @@
    },
    "to": {
     "module": 14,
-    "port": "in",
-    "label": "E ring A"
+    "port": "in"
    }
   },
   {
@@ -2594,8 +2588,7 @@
    },
    "to": {
     "module": 15,
-    "port": "cv",
-    "label": "N filter freq"
+    "port": "cv"
    }
   },
   {
@@ -2605,15 +2598,13 @@
    },
    "to": {
     "module": 28,
-    "port": "in",
-    "label": "P out 2 level"
+    "port": "in"
    }
   },
   {
    "from": {
     "module": 7,
-    "port": "out",
-    "label": "5 osc 3 square"
+    "port": "out"
    },
    "to": {
     "module": 54,
@@ -2623,8 +2614,7 @@
   {
    "from": {
     "module": 8,
-    "port": "out",
-    "label": "6 osc 3 triangle"
+    "port": "out"
    },
    "to": {
     "module": 54,
@@ -2634,8 +2624,7 @@
   {
    "from": {
     "module": 12,
-    "port": "out",
-    "label": "7 noise"
+    "port": "out"
    },
    "to": {
     "module": 54,
@@ -2645,8 +2634,7 @@
   {
    "from": {
     "module": 13,
-    "port": "out",
-    "label": "8 input 1"
+    "port": "out"
    },
    "to": {
     "module": 54,
@@ -2660,8 +2648,7 @@
    },
    "to": {
     "module": 31,
-    "port": "a",
-    "label": "A meter"
+    "port": "a"
    }
   },
   {
@@ -2671,8 +2658,7 @@
    },
    "to": {
     "module": 14,
-    "port": "in",
-    "label": "E ring A"
+    "port": "in"
    }
   },
   {
@@ -2682,8 +2668,7 @@
    },
    "to": {
     "module": 15,
-    "port": "cv",
-    "label": "N filter freq"
+    "port": "cv"
    }
   },
   {
@@ -2693,15 +2678,13 @@
    },
    "to": {
     "module": 28,
-    "port": "in",
-    "label": "P out 2 level"
+    "port": "in"
    }
   },
   {
    "from": {
     "module": 16,
-    "port": "out",
-    "label": "10 filter"
+    "port": "out"
    },
    "to": {
     "module": 55,
@@ -2711,8 +2694,7 @@
   {
    "from": {
     "module": 20,
-    "port": "out",
-    "label": "11 trapezoid"
+    "port": "out"
    },
    "to": {
     "module": 55,
@@ -2722,8 +2704,7 @@
   {
    "from": {
     "module": 18,
-    "port": "out",
-    "label": "12 env signal"
+    "port": "out"
    },
    "to": {
     "module": 55,
@@ -2737,8 +2718,7 @@
    },
    "to": {
     "module": 31,
-    "port": "a",
-    "label": "A meter"
+    "port": "a"
    }
   },
   {
@@ -2748,8 +2728,7 @@
    },
    "to": {
     "module": 14,
-    "port": "in",
-    "label": "E ring A"
+    "port": "in"
    }
   },
   {
@@ -2759,8 +2738,7 @@
    },
    "to": {
     "module": 15,
-    "port": "cv",
-    "label": "N filter freq"
+    "port": "cv"
    }
   },
   {
@@ -2770,15 +2748,13 @@
    },
    "to": {
     "module": 28,
-    "port": "in",
-    "label": "P out 2 level"
+    "port": "in"
    }
   },
   {
    "from": {
     "module": 14,
-    "port": "out",
-    "label": "13 ring mod"
+    "port": "out"
    },
    "to": {
     "module": 56,
@@ -2788,8 +2764,7 @@
   {
    "from": {
     "module": 22,
-    "port": "out",
-    "label": "14 reverb"
+    "port": "out"
    },
    "to": {
     "module": 56,
@@ -2799,8 +2774,7 @@
   {
    "from": {
     "module": 32,
-    "port": "out",
-    "label": "15 stick x"
+    "port": "out"
    },
    "to": {
     "module": 56,
@@ -2810,8 +2784,7 @@
   {
    "from": {
     "module": 33,
-    "port": "out",
-    "label": "16 stick y"
+    "port": "out"
    },
    "to": {
     "module": 56,
@@ -2825,8 +2798,7 @@
    },
    "to": {
     "module": 31,
-    "port": "a",
-    "label": "A meter"
+    "port": "a"
    }
   },
   {
@@ -2836,8 +2808,7 @@
    },
    "to": {
     "module": 14,
-    "port": "in",
-    "label": "E ring A"
+    "port": "in"
    }
   },
   {
@@ -2847,8 +2818,7 @@
    },
    "to": {
     "module": 15,
-    "port": "cv",
-    "label": "N filter freq"
+    "port": "cv"
    }
   },
   {
@@ -2858,15 +2828,13 @@
    },
    "to": {
     "module": 28,
-    "port": "in",
-    "label": "P out 2 level"
+    "port": "in"
    }
   },
   {
    "from": {
     "module": 3,
-    "port": "out",
-    "label": "1 osc 1 sine"
+    "port": "out"
    },
    "to": {
     "module": 57,
@@ -2876,8 +2844,7 @@
   {
    "from": {
     "module": 4,
-    "port": "out",
-    "label": "2 osc 1 ramp"
+    "port": "out"
    },
    "to": {
     "module": 57,
@@ -2887,8 +2854,7 @@
   {
    "from": {
     "module": 5,
-    "port": "out",
-    "label": "3 osc 2 square"
+    "port": "out"
    },
    "to": {
     "module": 57,
@@ -2898,8 +2864,7 @@
   {
    "from": {
     "module": 6,
-    "port": "out",
-    "label": "4 osc 2 triangle"
+    "port": "out"
    },
    "to": {
     "module": 57,
@@ -2913,8 +2878,7 @@
    },
    "to": {
     "module": 26,
-    "port": "in",
-    "label": "B output 1"
+    "port": "in"
    }
   },
   {
@@ -2924,8 +2888,7 @@
    },
    "to": {
     "module": 29,
-    "port": "in",
-    "label": "C output 2"
+    "port": "in"
    }
   },
   {
@@ -2935,8 +2898,7 @@
    },
    "to": {
     "module": 11,
-    "port": "in",
-    "label": "K osc 3 freq"
+    "port": "in"
    }
   },
   {
@@ -2946,15 +2908,13 @@
    },
    "to": {
     "module": 25,
-    "port": "in",
-    "label": "O out 1 level"
+    "port": "in"
    }
   },
   {
    "from": {
     "module": 7,
-    "port": "out",
-    "label": "5 osc 3 square"
+    "port": "out"
    },
    "to": {
     "module": 58,
@@ -2964,8 +2924,7 @@
   {
    "from": {
     "module": 8,
-    "port": "out",
-    "label": "6 osc 3 triangle"
+    "port": "out"
    },
    "to": {
     "module": 58,
@@ -2975,8 +2934,7 @@
   {
    "from": {
     "module": 12,
-    "port": "out",
-    "label": "7 noise"
+    "port": "out"
    },
    "to": {
     "module": 58,
@@ -2986,8 +2944,7 @@
   {
    "from": {
     "module": 13,
-    "port": "out",
-    "label": "8 input 1"
+    "port": "out"
    },
    "to": {
     "module": 58,
@@ -3001,8 +2958,7 @@
    },
    "to": {
     "module": 26,
-    "port": "in",
-    "label": "B output 1"
+    "port": "in"
    }
   },
   {
@@ -3012,8 +2968,7 @@
    },
    "to": {
     "module": 29,
-    "port": "in",
-    "label": "C output 2"
+    "port": "in"
    }
   },
   {
@@ -3023,8 +2978,7 @@
    },
    "to": {
     "module": 11,
-    "port": "in",
-    "label": "K osc 3 freq"
+    "port": "in"
    }
   },
   {
@@ -3034,15 +2988,13 @@
    },
    "to": {
     "module": 25,
-    "port": "in",
-    "label": "O out 1 level"
+    "port": "in"
    }
   },
   {
    "from": {
     "module": 16,
-    "port": "out",
-    "label": "10 filter"
+    "port": "out"
    },
    "to": {
     "module": 59,
@@ -3052,8 +3004,7 @@
   {
    "from": {
     "module": 20,
-    "port": "out",
-    "label": "11 trapezoid"
+    "port": "out"
    },
    "to": {
     "module": 59,
@@ -3063,8 +3014,7 @@
   {
    "from": {
     "module": 18,
-    "port": "out",
-    "label": "12 env signal"
+    "port": "out"
    },
    "to": {
     "module": 59,
@@ -3078,8 +3028,7 @@
    },
    "to": {
     "module": 26,
-    "port": "in",
-    "label": "B output 1"
+    "port": "in"
    }
   },
   {
@@ -3089,8 +3038,7 @@
    },
    "to": {
     "module": 29,
-    "port": "in",
-    "label": "C output 2"
+    "port": "in"
    }
   },
   {
@@ -3100,8 +3048,7 @@
    },
    "to": {
     "module": 11,
-    "port": "in",
-    "label": "K osc 3 freq"
+    "port": "in"
    }
   },
   {
@@ -3111,15 +3058,13 @@
    },
    "to": {
     "module": 25,
-    "port": "in",
-    "label": "O out 1 level"
+    "port": "in"
    }
   },
   {
    "from": {
     "module": 14,
-    "port": "out",
-    "label": "13 ring mod"
+    "port": "out"
    },
    "to": {
     "module": 60,
@@ -3129,8 +3074,7 @@
   {
    "from": {
     "module": 22,
-    "port": "out",
-    "label": "14 reverb"
+    "port": "out"
    },
    "to": {
     "module": 60,
@@ -3140,8 +3084,7 @@
   {
    "from": {
     "module": 32,
-    "port": "out",
-    "label": "15 stick x"
+    "port": "out"
    },
    "to": {
     "module": 60,
@@ -3151,8 +3094,7 @@
   {
    "from": {
     "module": 33,
-    "port": "out",
-    "label": "16 stick y"
+    "port": "out"
    },
    "to": {
     "module": 60,
@@ -3166,8 +3108,7 @@
    },
    "to": {
     "module": 26,
-    "port": "in",
-    "label": "B output 1"
+    "port": "in"
    }
   },
   {
@@ -3177,8 +3118,7 @@
    },
    "to": {
     "module": 29,
-    "port": "in",
-    "label": "C output 2"
+    "port": "in"
    }
   },
   {
@@ -3188,8 +3128,7 @@
    },
    "to": {
     "module": 11,
-    "port": "in",
-    "label": "K osc 3 freq"
+    "port": "in"
    }
   },
   {
@@ -3199,15 +3138,13 @@
    },
    "to": {
     "module": 25,
-    "port": "in",
-    "label": "O out 1 level"
+    "port": "in"
    }
   },
   {
    "from": {
     "module": 3,
-    "port": "out",
-    "label": "1 osc 1 sine"
+    "port": "out"
    },
    "to": {
     "module": 61,
@@ -3217,8 +3154,7 @@
   {
    "from": {
     "module": 4,
-    "port": "out",
-    "label": "2 osc 1 ramp"
+    "port": "out"
    },
    "to": {
     "module": 61,
@@ -3228,8 +3164,7 @@
   {
    "from": {
     "module": 5,
-    "port": "out",
-    "label": "3 osc 2 square"
+    "port": "out"
    },
    "to": {
     "module": 61,
@@ -3239,8 +3174,7 @@
   {
    "from": {
     "module": 6,
-    "port": "out",
-    "label": "4 osc 2 triangle"
+    "port": "out"
    },
    "to": {
     "module": 61,
@@ -3254,8 +3188,7 @@
    },
    "to": {
     "module": 18,
-    "port": "in",
-    "label": "D envelope"
+    "port": "in"
    }
   },
   {
@@ -3265,8 +3198,7 @@
    },
    "to": {
     "module": 14,
-    "port": "cv",
-    "label": "F ring B"
+    "port": "cv"
    }
   },
   {
@@ -3276,8 +3208,7 @@
    },
    "to": {
     "module": 21,
-    "port": "in",
-    "label": "G reverb"
+    "port": "in"
    }
   },
   {
@@ -3287,15 +3218,13 @@
    },
    "to": {
     "module": 15,
-    "port": "in",
-    "label": "H filter"
+    "port": "in"
    }
   },
   {
    "from": {
     "module": 7,
-    "port": "out",
-    "label": "5 osc 3 square"
+    "port": "out"
    },
    "to": {
     "module": 62,
@@ -3305,8 +3234,7 @@
   {
    "from": {
     "module": 8,
-    "port": "out",
-    "label": "6 osc 3 triangle"
+    "port": "out"
    },
    "to": {
     "module": 62,
@@ -3316,8 +3244,7 @@
   {
    "from": {
     "module": 12,
-    "port": "out",
-    "label": "7 noise"
+    "port": "out"
    },
    "to": {
     "module": 62,
@@ -3327,8 +3254,7 @@
   {
    "from": {
     "module": 13,
-    "port": "out",
-    "label": "8 input 1"
+    "port": "out"
    },
    "to": {
     "module": 62,
@@ -3342,8 +3268,7 @@
    },
    "to": {
     "module": 18,
-    "port": "in",
-    "label": "D envelope"
+    "port": "in"
    }
   },
   {
@@ -3353,8 +3278,7 @@
    },
    "to": {
     "module": 14,
-    "port": "cv",
-    "label": "F ring B"
+    "port": "cv"
    }
   },
   {
@@ -3364,8 +3288,7 @@
    },
    "to": {
     "module": 21,
-    "port": "in",
-    "label": "G reverb"
+    "port": "in"
    }
   },
   {
@@ -3375,15 +3298,13 @@
    },
    "to": {
     "module": 15,
-    "port": "in",
-    "label": "H filter"
+    "port": "in"
    }
   },
   {
    "from": {
     "module": 16,
-    "port": "out",
-    "label": "10 filter"
+    "port": "out"
    },
    "to": {
     "module": 63,
@@ -3393,8 +3314,7 @@
   {
    "from": {
     "module": 20,
-    "port": "out",
-    "label": "11 trapezoid"
+    "port": "out"
    },
    "to": {
     "module": 63,
@@ -3404,8 +3324,7 @@
   {
    "from": {
     "module": 18,
-    "port": "out",
-    "label": "12 env signal"
+    "port": "out"
    },
    "to": {
     "module": 63,
@@ -3419,8 +3338,7 @@
    },
    "to": {
     "module": 18,
-    "port": "in",
-    "label": "D envelope"
+    "port": "in"
    }
   },
   {
@@ -3430,8 +3348,7 @@
    },
    "to": {
     "module": 14,
-    "port": "cv",
-    "label": "F ring B"
+    "port": "cv"
    }
   },
   {
@@ -3441,8 +3358,7 @@
    },
    "to": {
     "module": 21,
-    "port": "in",
-    "label": "G reverb"
+    "port": "in"
    }
   },
   {
@@ -3452,15 +3368,13 @@
    },
    "to": {
     "module": 15,
-    "port": "in",
-    "label": "H filter"
+    "port": "in"
    }
   },
   {
    "from": {
     "module": 14,
-    "port": "out",
-    "label": "13 ring mod"
+    "port": "out"
    },
    "to": {
     "module": 64,
@@ -3470,8 +3384,7 @@
   {
    "from": {
     "module": 22,
-    "port": "out",
-    "label": "14 reverb"
+    "port": "out"
    },
    "to": {
     "module": 64,
@@ -3481,8 +3394,7 @@
   {
    "from": {
     "module": 32,
-    "port": "out",
-    "label": "15 stick x"
+    "port": "out"
    },
    "to": {
     "module": 64,
@@ -3492,8 +3404,7 @@
   {
    "from": {
     "module": 33,
-    "port": "out",
-    "label": "16 stick y"
+    "port": "out"
    },
    "to": {
     "module": 64,
@@ -3507,8 +3418,7 @@
    },
    "to": {
     "module": 18,
-    "port": "in",
-    "label": "D envelope"
+    "port": "in"
    }
   },
   {
@@ -3518,8 +3428,7 @@
    },
    "to": {
     "module": 14,
-    "port": "cv",
-    "label": "F ring B"
+    "port": "cv"
    }
   },
   {
@@ -3529,8 +3438,7 @@
    },
    "to": {
     "module": 21,
-    "port": "in",
-    "label": "G reverb"
+    "port": "in"
    }
   },
   {
@@ -3540,15 +3448,13 @@
    },
    "to": {
     "module": 15,
-    "port": "in",
-    "label": "H filter"
+    "port": "in"
    }
   },
   {
    "from": {
     "module": 3,
-    "port": "out",
-    "label": "1 osc 1 sine"
+    "port": "out"
    },
    "to": {
     "module": 65,
@@ -3558,8 +3464,7 @@
   {
    "from": {
     "module": 4,
-    "port": "out",
-    "label": "2 osc 1 ramp"
+    "port": "out"
    },
    "to": {
     "module": 65,
@@ -3569,8 +3474,7 @@
   {
    "from": {
     "module": 5,
-    "port": "out",
-    "label": "3 osc 2 square"
+    "port": "out"
    },
    "to": {
     "module": 65,
@@ -3580,8 +3484,7 @@
   {
    "from": {
     "module": 6,
-    "port": "out",
-    "label": "4 osc 2 triangle"
+    "port": "out"
    },
    "to": {
     "module": 65,
@@ -3595,8 +3498,7 @@
    },
    "to": {
     "module": 9,
-    "port": "in",
-    "label": "I osc 1 freq"
+    "port": "in"
    }
   },
   {
@@ -3606,8 +3508,7 @@
    },
    "to": {
     "module": 10,
-    "port": "in",
-    "label": "J osc 2 freq"
+    "port": "in"
    }
   },
   {
@@ -3633,8 +3534,7 @@
   {
    "from": {
     "module": 7,
-    "port": "out",
-    "label": "5 osc 3 square"
+    "port": "out"
    },
    "to": {
     "module": 66,
@@ -3644,8 +3544,7 @@
   {
    "from": {
     "module": 8,
-    "port": "out",
-    "label": "6 osc 3 triangle"
+    "port": "out"
    },
    "to": {
     "module": 66,
@@ -3655,8 +3554,7 @@
   {
    "from": {
     "module": 12,
-    "port": "out",
-    "label": "7 noise"
+    "port": "out"
    },
    "to": {
     "module": 66,
@@ -3666,8 +3564,7 @@
   {
    "from": {
     "module": 13,
-    "port": "out",
-    "label": "8 input 1"
+    "port": "out"
    },
    "to": {
     "module": 66,
@@ -3681,8 +3578,7 @@
    },
    "to": {
     "module": 9,
-    "port": "in",
-    "label": "I osc 1 freq"
+    "port": "in"
    }
   },
   {
@@ -3692,8 +3588,7 @@
    },
    "to": {
     "module": 10,
-    "port": "in",
-    "label": "J osc 2 freq"
+    "port": "in"
    }
   },
   {
@@ -3719,8 +3614,7 @@
   {
    "from": {
     "module": 16,
-    "port": "out",
-    "label": "10 filter"
+    "port": "out"
    },
    "to": {
     "module": 67,
@@ -3730,8 +3624,7 @@
   {
    "from": {
     "module": 20,
-    "port": "out",
-    "label": "11 trapezoid"
+    "port": "out"
    },
    "to": {
     "module": 67,
@@ -3741,8 +3634,7 @@
   {
    "from": {
     "module": 18,
-    "port": "out",
-    "label": "12 env signal"
+    "port": "out"
    },
    "to": {
     "module": 67,
@@ -3756,8 +3648,7 @@
    },
    "to": {
     "module": 9,
-    "port": "in",
-    "label": "I osc 1 freq"
+    "port": "in"
    }
   },
   {
@@ -3767,8 +3658,7 @@
    },
    "to": {
     "module": 10,
-    "port": "in",
-    "label": "J osc 2 freq"
+    "port": "in"
    }
   },
   {
@@ -3794,8 +3684,7 @@
   {
    "from": {
     "module": 14,
-    "port": "out",
-    "label": "13 ring mod"
+    "port": "out"
    },
    "to": {
     "module": 68,
@@ -3805,8 +3694,7 @@
   {
    "from": {
     "module": 22,
-    "port": "out",
-    "label": "14 reverb"
+    "port": "out"
    },
    "to": {
     "module": 68,
@@ -3816,8 +3704,7 @@
   {
    "from": {
     "module": 32,
-    "port": "out",
-    "label": "15 stick x"
+    "port": "out"
    },
    "to": {
     "module": 68,
@@ -3827,8 +3714,7 @@
   {
    "from": {
     "module": 33,
-    "port": "out",
-    "label": "16 stick y"
+    "port": "out"
    },
    "to": {
     "module": 68,
@@ -3842,8 +3728,7 @@
    },
    "to": {
     "module": 9,
-    "port": "in",
-    "label": "I osc 1 freq"
+    "port": "in"
    }
   },
   {
@@ -3853,8 +3738,7 @@
    },
    "to": {
     "module": 10,
-    "port": "in",
-    "label": "J osc 2 freq"
+    "port": "in"
    }
   },
   {

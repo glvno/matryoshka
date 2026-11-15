@@ -65,7 +65,7 @@ export function pinAt(pin: string): { tile: number; param: string } {
  * columns, their pins at `pins` (unlisted: 0); returns the tiles' module ids in order */
 export function addBoard(p: Patch, a: AssemblyInst, pins: Record<string, number> = PINS, at: { x: number; y: number } = { x: 0, y: 0 }): number[] {
   const wire = (from: { module: number; port: string }, to: { module: number; port: string }): void => {
-    if (!connect(p, DEFS, from, to)) throw new Error(`${p.name}: bad cable ${from.module}.${from.port} -> ${to.module}.${to.port}`);
+    if (!connect(p, DEFS, { module: from.module, port: from.port }, { module: to.module, port: to.port })) throw new Error(`${p.name}: bad cable ${from.module}.${from.port} -> ${to.module}.${to.port}`);
   };
   const dests = (c: string): { module: number; port: string }[] => {
     if (COLUMN_ROWS[c]) {

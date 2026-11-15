@@ -198,9 +198,9 @@ export function cases(p: Patch): Case[] {
  * many dB short they land, measured (the owner, 2026-11-04 and 2026-11-13: they stay under; the calibration is gain only,
  * never timbre) */
 export const SHORT: Record<string, number> = {
-  'Briefcase 3 / Resonant Ping': 13.9,
+  'Briefcase 3 / Resonant Ping': 5.4,
   // noise through a slowly rocked resonant filter (surf): reverb / level at its top (1) with the Output at 1
-  'Briefcase 3 / Sea Noise': 13.0,
+  'Briefcase 3 / Sea Noise': 8.8,
   // the slow trapezoid drone: reverb / level at its top (1) with the Output at 1
   'Briefcase 3 / Space Drone': 8.9,
   'Drift Poly / Drift Bass': 5.6,

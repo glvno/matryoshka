@@ -27,15 +27,21 @@ function render(p: Patch, notes: number[], secs = 2.5): Float32Array[] {
 }
 
 describe('Briefcase 3: the VCS3 pin board on Matrix tiles (D-1052)', () => {
-  it('renders sample for sample as Briefcase 3 XL, at the same Output level', () => {
+  it('renders sample for sample as Briefcase 3 XL, at the same gain (the Output and reverb / level: the loudness rule sets both)', () => {
     const xl = relocatedPatches['Briefcase 3 XL']();
     const p = source();
-    p.modules.find((m) => m.type === 'output')!.params.level = xl.modules.find((m) => m.type === 'output')!.params.level;
+    const out = (q: Patch) => q.modules.find((m) => m.type === 'output')!;
+    out(p).params.level = out(xl).params.level;
+    // (the card's third `level` row, the reverb's: its rows up to there are in the same order as the XL's)
+    const revLevel = (q: Patch) => q.assemblies!.find((x) => x.name === 'Briefcase 3')!.params.filter((r) => r.label === 'level')[2];
+    const [rp, rx] = [revLevel(p), revLevel(xl)];
+    p.modules.find((m) => m.id === rp.module)!.params[rp.param] = xl.modules.find((m) => m.id === rx.module)!.params[rx.param];
     for (const notes of [[48], [60], [36]]) {
       const [al, ar] = render(xl, notes), [bl, br] = render(p, notes);
-      expect(Math.max(...al.map(Math.abs))).toBeGreaterThan(0.05);
-      expect(bl).toEqual(al);
-      expect(br).toEqual(ar);
+      expect(al.reduce((m, v) => Math.max(m, Math.abs(v)), 0)).toBeGreaterThan(0.05);
+      const differ = (x: Float32Array, y: Float32Array): number => x.findIndex((v, i) => v !== y[i]);
+      expect(differ(al, bl), `note ${notes}: first differing sample, left`).toBe(-1);
+      expect(differ(ar, br), `note ${notes}: first differing sample, right`).toBe(-1);
     }
   });
 
