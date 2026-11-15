@@ -19,7 +19,7 @@ uint32_t host_eng_routes_end(const uint8_t *p, uint32_t len, uint32_t at) { retu
 
 int main(void)
 {
-    uint32_t i, d, kits = 0;
+    uint32_t i, d, kits = 0, seven = 0;
     const char *paths[] = {"build/panel-fixtures/pattern-control-only.m1p", "build/panel-fixtures/pattern-direct-trig.m1p", "build/panel-fixtures/pattern-ambiguous-gate.m1p"};
     for (i = 0; i < 3; i++) {
         const uint32_t *words; uint32_t saved[128]; int n, mod;
@@ -92,10 +92,14 @@ int main(void)
             n = eng_pattern_notes((uint32_t)mod, 0, &words); memcpy(saved, words, (size_t)n * 4);
             check("next factory sound after USER", !dp_load(d, 0));
             check("USER pattern preserved", eng_pattern_notes((uint32_t)mod, 0, &words) == n && !memcmp(saved, words, (size_t)n * 4));
+            if (!strcmp(PRESET_LIST[i].name, "<7PH")) seven++;
             kits++; break;
         }
     }
-    check("all three kit wrappers exercised", kits == 3);
+    /* <7PH keeps its frozen lean 909 card (D-890), which ships no factory sounds since the 909 Kit is the whole TR-909
+     * (D-1055): only the 808 and 909 Kits' cards switch a factory pattern */
+    check("<7PH's frozen 909 card has no factory sound", seven == 0);
+    check("both kit wrappers exercised", kits == 2);
     for (i = 0; i < N_PRESETS; i++) {
         if (strcmp(PRESET_LIST[i].name, "SPOKES 6")) continue;
         check("load Spokes save fixture", !load_at(i)); pv_gen++; pages_ensure();
