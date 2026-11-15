@@ -102,7 +102,7 @@ describe('the controls strip is made from the controls table (#554, controls.ts)
     expect(v.held).toBe('SEL');
     expect(ids(v.rows)).toEqual(CONTROLS.filter((r) => r.gesture.hold === 'SEL' && r.sheet?.roll !== undefined)
       .sort((a, b) => a.sheet!.roll! - b.sheet!.roll!).map((r) => r.id));
-    expect(ids(v.rows)).toEqual(['roll-pitch', 'pen']);
+    expect(ids(v.rows)).toEqual(['pattern-save', 'pattern-load', 'roll-pitch', 'pen']);   // (the pattern store's two, #901)
     expect(v.everywhere).toEqual([]);
   });
 

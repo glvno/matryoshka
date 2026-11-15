@@ -164,9 +164,19 @@ static uint32_t m1_test_screen(uint32_t k, uint8_t *out);
 static uint32_t m1_test_peak(void);
 static void m1_tempo(uint32_t patch, uint32_t bpm);           /* main.c: the editor set the global tempo (D-907) */
 static void m1_arms(eng_mset_t mask);                         /* main.c: the editor's armed set (#191) */
+static void m1_pat_load(void);                                /* patlink.c: the pattern store (#901), the hooks proto.c needs */
+static uint64_t m1_pat_clean(void);
+static uint32_t m1_pat_links(uint8_t *out);
+static void m1_pat_info(uint8_t *p);
+static uint32_t m1_pat_list(uint32_t after, uint8_t *e);
+static const uint8_t *m1_pat_get(uint32_t id, uint32_t *len);
+static uint32_t m1_pat_put(uint32_t *id, const char *name, const uint8_t *p, uint32_t len);
+static uint32_t m1_pat_del(uint32_t id, uint32_t force, uint32_t *count);
 #include "tempo_glo.h"            /* the global tempo (D-907): proto.c, menu.c, main.c */
 #include "proto.c"
 #include "slotstore.c"
+#include "patstore.c"          /* the pattern store in the bank's last 4 sectors (#901; slotstore.c pt_claim hands them over) */
+#include "patlink.c"           /* the pattern store's glue: the payloads, the running patch's links (#901) */
 #include "presetstore.c"
 #include "presetmig.c"         /* user presets of earlier engine structures move at the first boot after an update (D-865) */
 #ifdef M1_BENCH

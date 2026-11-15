@@ -56,11 +56,12 @@ export const EFFECTS = [
   'entry', 'entry_pattern', 'add_entry', 'dup_entry', 'transpose', 'song_play', 'song', 'delete_entry', 'back_steps',
   'tab', 'scroll', 'set', 'save_close', 'run_row',
   'editor', 'analog_out', 'chord_button', 'fx_page', 'fx_toggle', 'fx_row',
+  'pattern_save', 'pattern_new', 'pattern_load',
 ] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 /** the conditions a row can show under (help_ui.c hc_<name>); '!name': when it is false */
-export const CONDITIONS = ['list', 'dev_presets', 'dev_store', 'dev_keys', 'long_track', 'tracks', 'menu_guide', 'menu_page', 'menu_system', 'roll', 'harm', 'roll_preview', 'roll_silent', 'fx_bank'] as const;
+export const CONDITIONS = ['list', 'dev_presets', 'dev_store', 'dev_keys', 'long_track', 'tracks', 'menu_guide', 'menu_page', 'menu_system', 'roll', 'harm', 'roll_preview', 'roll_silent', 'fx_bank', 'pattern_store'] as const;
 export type Condition = (typeof CONDITIONS)[number];
 
 export interface ControlRow {
@@ -230,6 +231,13 @@ export const CONTROLS: ControlRow[] = [
     help: 'on a lock page: that page’s rows locked on the held step; turned back to the row’s normal value, the lock goes' },
   { id: 'song-page', gesture: { do: [B('SEL')], how: 'tap' }, does: 'structure song', sheet: { drum: 70, roll: 60 }, effect: 'song_page', hint: 'SEL song',
     help: 'the SONG page (not after SEL held as the pen)' },
+  // (the pattern store, #901: patterns kept apart from the patches, which link them)
+  { id: 'pattern-save', gesture: { hold: 'SEL', do: [B('SAVE')] }, does: 'save pattern', when: 'pattern_store', sheet: { drum: 72, roll: 62 }, effect: 'pattern_save',
+    help: 'the selected pattern into the pattern store: over the stored pattern it is linked to (every patch that links it plays the change), else as a new one named after the patch and the pattern (SCROUNGE P3), which it is then linked to; pattern 1 is only copied. The bar says PATTERN SAVED or SAVED AS NEW and the name, PATTERN STORE FULL when there is no room' },
+  { id: 'pattern-new', gesture: { hold: 'FX', do: [B('SAVE')] }, does: 'save pattern as new', when: 'pattern_store', sheet: { drum: 74, roll: 64 }, effect: 'pattern_new',
+    help: 'the selected pattern into the pattern store as a new one (a copy), which it is then linked to instead (pattern 1 is only copied)' },
+  { id: 'pattern-load', gesture: { hold: 'SEL', do: [E('PRESET')] }, does: 'load stored pattern', when: 'pattern_store', sheet: { drum: 76, roll: 66 }, effect: 'pattern_load',
+    help: 'steps through the pattern store, your patterns first, then the factory ones, each click loading one into the selected pattern: one of yours is linked (pattern 1 and the factory ones are copied). The bar names it (P3: SCROUNGE P3); its P-locks load only into a patch of the layout they were saved in, else the bar says LOCKS LEFT OUT: OTHER LAYOUT' },
   { id: 'clear', gesture: { hold: 'SEQ', do: [B('REC')] }, does: 'clear track', sheet: { drum: 80, roll: 200 }, effect: 'clear', hint: 'SEQ+REC clear',
     help: 'the bar asks first; REC again within 3 s, SEQ still held, clears the selected track' },
 
@@ -328,6 +336,8 @@ const STRIP: Record<string, string | ({ _: string } & Partial<Record<HelpState, 
   'row-select': 'pick a drum sound, silently', accent: 'accent that step (play it louder)',
   'step-record': 'write notes one step at a time, from the first step shown', 'step-record-there': 'step record starting from that step',
   pattern: 'change pattern (1..64; running: at the end of the pass)', 'song-page': 'arrange patterns into a song',
+  'pattern-save': 'save this pattern to the pattern store (over its link)', 'pattern-new': 'save this pattern to the store as a new copy',
+  'pattern-load': 'load stored patterns into this pattern as you turn',
   clear: 'clear the whole track (press REC again to confirm)', 'steps-page': 'show the next or previous 16 steps',
   tie: 'tie the note on through that step (on its own step: a drone)', 'row-drone': 'make the selected row one long held note (a drone)', 'held-pitch': "change this step's pitch", 'held-velocity': "change this step's velocity",
   'held-chance': 'change the chance this step plays', 'held-chance-select': 'change the chance this step plays',
@@ -478,7 +488,7 @@ export const CONDITION_TEXT: Record<Condition, string> = {
   long_track: 'a track of more than 16 steps', tracks: 'a patch with Steps tracks', menu_guide: 'the GUIDE tab', menu_page: 'the MIDI, PANEL and SYSTEM tabs',
   menu_system: 'the SYSTEM tab', roll: 'a melodic track', harm: 'the keys on a Harmonizer: the seven lowest keys',
   roll_preview: 'a melodic track with note preview on', roll_silent: 'a melodic track with note preview off',
-  fx_bank: 'a patch with a recognized master FX bus',
+  fx_bank: 'a patch with a recognized master FX bus', pattern_store: 'while the pattern store is on',
 };
 
 /** a gesture in words: "HOME held + PRESET", "a held step + K2", "OCT- / OCT+" */

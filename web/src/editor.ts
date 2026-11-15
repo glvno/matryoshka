@@ -74,7 +74,8 @@ import { addComment, COMMENT_H, COMMENT_W, moveComments, pasteComments, removeCo
 import { patternStrip, type PatternStrip } from './pattern-strip';
 import { SongView } from './song';
 import type { PatternView } from './engine';
-import { fixLocks, fixNotes, fixPatterns, fixSeq, overdub, PATTERNS_MAX, patternLocks as patternLocksOf, patternOf, SONGS_MAX, type Pattern, type SeqState, type SongEntry, type StepLock, type StepNote } from './track';
+import { fixLocks, fixNotes, fixPatterns, fixSeq, overdub, PATTERNS_MAX, patternLocks as patternLocksOf, patternOf, SONGS_MAX, type Pattern, type PatternLink, type SeqState, type SongEntry, type StepLock, type StepNote } from './track';
+import { applyPayload, type LocksLoaded } from './pattern-store';
 import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './engines';
 import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, rememberedPreset, sameName, renamePreset, shortBy, shortPresetText, stepPreset, storePreset, type Preset } from './device-presets';
 import { engineOf } from './library-presets';
@@ -1409,6 +1410,38 @@ export class Editor {
   patternFromDevice(pattern: number, song: number): void {
     this.putSeq((s) => { s.pattern = pattern; s.song = song; });
     this.patternShown();
+  }
+  /** the patch's links to stored patterns (#901), by pattern index */
+  get links(): Record<number, PatternLink> {
+    return this.mainSeq()?.links ?? {};
+  }
+  /** a stored pattern's payload loaded into pattern p (pattern-store.ts applyPayload), linked to `link` or to nothing: an
+   *  undo step. What became of its locks; null when nothing changed */
+  loadStoredPattern(p: number, payload: ArrayLike<number>, link: PatternLink | null): LocksLoaded | null {
+    let locks: LocksLoaded = 'none';
+    const changed = this.change(() => {
+      locks = applyPayload(this.patch, p, payload);
+      this.putSeq((s) => {
+        const links = { ...(s.links ?? {}) };
+        if (link && p > 0) links[p] = link;
+        else delete links[p];
+        s.links = links;
+      });
+    });
+    return changed ? locks : null;
+  }
+  /** pattern p's link set or removed as the FM-1 or its store has it now (PAT_LINK_NOW, a store written): followed, no
+   *  undo step (main.ts marks it when it comes from the FM-1) */
+  setLink(p: number, link: PatternLink | null): void {
+    const was = this.links[p];
+    if (was?.id === link?.id && was?.hash === link?.hash) return;
+    this.putSeq((s) => {
+      const links = { ...(s.links ?? {}) };
+      if (link) links[p] = link;
+      else delete links[p];
+      s.links = links;
+    });
+    this.ev.onStructure(this.patch);
   }
   /** song k's entries (an undo step) */
   setSong(k: number, entries: SongEntry[]): void {

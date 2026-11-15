@@ -28,7 +28,7 @@ How close an FM-1 factory instrument can come to full parity: `fit: full`, `reac
 
 ### Bank
 
-The FM-1's 64 patch slots, its only patch list; PRESET steps the occupied slots. The editor keeps one bank, its offline copy in the browser (several named banks: issue #220).
+The FM-1's patch slots, its only patch list: 60 slots with the [pattern store](#pattern-store), 64 on an FM-1 without one. PRESET steps the occupied slots. The editor keeps one bank, its offline copy in the browser (several named banks: issue #220).
 
 ### Blurb
 
@@ -374,7 +374,11 @@ Fading every parameter of a patch towards its B side with Main's `morph` paramet
 
 ### Pattern
 
-One of a Steps track's note lists, numbered 1 to 64, with its own length and rate or the track's. The patch has one selected pattern number, and every track plays its pattern of that number; a track that has no pattern of that number plays its pattern 1. Patterns are saved in the patch.
+One of a Steps track's note lists, numbered 1 to 64, with its own length and rate or the track's. The patch has one selected pattern number, and every track plays its pattern of that number; a track that has no pattern of that number plays its pattern 1. Pattern 1 is saved in the patch; each other pattern is saved in the patch or kept in the [pattern store](#pattern-store) and referred to by the patch.
+
+### Pattern store
+
+The FM-1's own store of patterns, outside the patches. A stored pattern is one pattern number across a patch's Steps tracks, with a name. A patch refers to it by a number, and loading the patch copies it in; any patch can load it.
 
 ### Piano roll
 
@@ -506,7 +510,7 @@ The About card's section of AI-usage figures: Blood (time), Sweat (human interve
 
 ### Slot
 
-One of the bank's 64 patch places on the FM-1, shown numbered 01..64. Program change 0 selects slot 01.
+One of the bank's patch places on the FM-1, shown numbered from 01: 60 of them with the [pattern store](#pattern-store), 64 without. Program change 0 selects slot 01.
 
 ### Snapshot
 

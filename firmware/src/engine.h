@@ -30,7 +30,7 @@ eng_step_entry_t *eng_steps_entry_memory(void); /* NULL for legacy routes */
 
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 58   /* 58: the Oscillator's `phase` (where sync restarts the cycle, #691) appended; 57: the ADSR's `ads` (release at the decay's time, D-745) appended; 56: Env L/R's `curve` (a linear fall, #689) appended; 55: optional validated master FX bus after format54 origins and before macro ranges */
+#define ENG_PATCH_VERSION 59   /* 59: the stored pattern links (ENG_FLAG_LINKS, #901) after the P-locks; 58: the Oscillator's `phase` (where sync restarts the cycle, #691) appended; 57: the ADSR's `ads` (release at the decay's time, D-745) appended; 56: Env L/R's `curve` (a linear fall, #689) appended; 55: optional validated master FX bus after format54 origins and before macro ranges */
 #define ENG_COUNTED 51                /* the first format whose module records carry their parameter count (patchbin.ts COUNTED, #667) */
 /* Format 51's record (patchbin.ts, D-1000): u8 type, u8 count (bits 0..5: the parameters it holds; bit 7, ENG_REC_TEMPLATE,
  * on a type with parameter inputs: its attenuverters and p1 / p2 masks are at their template, eng_mask_template, and left
@@ -138,9 +138,9 @@ static inline int eng_group_valid(const uint8_t *q, uint32_t version)
  * starts with the module mask, so a B set there has it (flag bit 9) */
 static inline int eng_flags_ok(const uint8_t *p)
 {
-    const uint32_t f7 = 1u | 2u | 4u | 8u | 16u | 32u | 64u;
+    const uint32_t f7 = 1u | 2u | 4u | 8u | 16u | 32u | 64u | 128u;
     return (!(p[7] & 64u) || (p[1] >= 55u && (p[6] & 32u))) && (!(p[7] & 32u) || p[1] >= 54u) && !(p[7] & ~f7) && (!(p[7] & 2u) || (p[1] >= 36u && (p[6] & 1u))) && (!(p[7] & 4u) || p[1] >= 48u)
-        && (!(p[7] & 8u) || p[1] >= 49u) && (!(p[7] & 16u) || p[1] >= ENG_COUNTED) && (p[1] < ENG_COUNTED || !(p[6] & 1u) || (p[7] & 2u))
+        && (!(p[7] & 8u) || p[1] >= 49u) && (!(p[7] & 16u) || p[1] >= ENG_COUNTED) && (!(p[7] & 128u) || p[1] >= 59u) && (p[1] < ENG_COUNTED || !(p[6] & 1u) || (p[7] & 2u))
         && (p[1] >= 34u || !p[7]) && (p[1] >= 33u || !(p[6] & 128u)) && (p[1] >= 17u || !(p[6] & 4u)) && (p[1] >= 18u || !(p[6] & 8u))
         && (p[1] >= 27u || !(p[6] & 16u)) && (p[1] >= 30u || !(p[6] & 64u));
 }
@@ -277,8 +277,24 @@ static inline uint32_t eng_locks_end(const uint8_t *p, uint32_t len, uint32_t at
     }
     return at <= len ? at : 0;
 }
+/* the end of the stored pattern links section (format 59, flag bit 15 = p[7] bit 7, #901; patchbin.ts) that
+ * starts at `at`: u8 count (1..63), count x (u8 pattern index 1..63, u16 LE store id 1..ENG_LINK_ID_MAX), ascending. 0 if
+ * it runs past `len`. The engine checks the links and plays nothing from them: the FM-1 copies a linked pattern's content
+ * from its pattern store into the engine after the load (patlink.c) */
+#define ENG_FLAG_LINKS 128u                     /* in p[7] */
+#define ENG_LINK_ID_MAX 0xEFFFu
+static inline uint32_t eng_links_end(const uint8_t *p, uint32_t len, uint32_t at)
+{
+    if (at >= len)
+        return 0;
+    at += 1u + 3u * p[at];
+    return at <= len ? at : 0;
+}
+/* where the stored pattern links section starts in binary p, or would start (right after the P-locks), 0 if the binary is
+ * malformed (#901: proto.c m1_patch_links, patlink.c) */
+uint32_t eng_links_at(const uint8_t *p, uint32_t len);
 /* the end of the Steps sections from `at` (the notes, flag bit 4; the patterns and songs, ENG_FLAG_PATTERNS; the P-locks,
- * ENG_FLAG_LOCKS): `at` when the patch has none, 0 when one is cut short */
+ * ENG_FLAG_LOCKS; the stored pattern links, ENG_FLAG_LINKS): `at` when the patch has none, 0 when one is cut short */
 static inline uint32_t eng_steps_end(const uint8_t *p, uint32_t len, uint32_t at)
 {
     if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))
@@ -286,6 +302,8 @@ static inline uint32_t eng_steps_end(const uint8_t *p, uint32_t len, uint32_t at
     if ((p[7] & ENG_FLAG_PATTERNS) && !(at = eng_patterns_end(p, len, at)))
         return 0;
     if ((p[7] & ENG_FLAG_LOCKS) && !(at = eng_locks_end(p, len, at)))
+        return 0;
+    if ((p[7] & ENG_FLAG_LINKS) && !(at = eng_links_end(p, len, at)))
         return 0;
     return at;
 }
@@ -646,6 +664,13 @@ int eng_pattern_len(uint32_t module, uint32_t p);
 int eng_steps_len(uint32_t module);                  /* the length of the pattern a track plays, -1 */
 int eng_pattern_notes(uint32_t module, uint32_t p, const uint32_t **w);   /* pattern p's notes as eng_steps_notes, -1 */
 int eng_pattern_set_notes(uint32_t module, uint32_t p, const uint32_t *notes, uint32_t n);   /* as eng_steps_set_notes */
+/* the glue of the pattern store (#901, patlink.c): pattern p (1..) of a track gets its own length (0 the track's, else
+ * 1..TRACK_STEPS) and rate (0xFF the track's, else a STEPS_RATES index), 0 done, -1 the track has not got it or out of
+ * range; the track no longer has pattern p (1..): its notes go, it plays its pattern 1 there; n note words are all short
+ * words (eng_patterns_record's rule, track.ts isShortNote) */
+int eng_pattern_shape(uint32_t module, uint32_t p, uint32_t len, uint32_t rate);
+void eng_pattern_drop(uint32_t module, uint32_t p);
+int eng_notes_short(const uint32_t *w, uint32_t n);
 void eng_song_set(uint32_t n);
 int eng_song(void);                                  /* the song playing (0 none) */
 int eng_song_entry(uint32_t module);                 /* the entry a track plays in the song, -1 none yet */
@@ -655,8 +680,11 @@ int eng_song_put(uint32_t s, uint32_t k, uint32_t pat, int32_t shift);   /* entr
 int eng_song_insert(uint32_t s, uint32_t k);         /* a copy of entry k before it; 0 = done */
 int eng_song_delete(uint32_t s, uint32_t k);
 /* the patterns and songs section as the engine has it now (patchbin.ts patternRecord), into out (cap bytes): its length,
- * 0 when there is nothing to write (pattern 1, no song, no patterns, no entries), -1 when it does not fit */
+ * 0 when there is nothing to write (pattern 1, no song, no patterns, no entries), -1 when it does not fit. The patterns
+ * eng_patterns_omit names (bit p, pattern 0 never) are left out of it and of eng_locks_record, as if no track had them: the
+ * clean linked ones, whose content is the pattern store's (#901, proto.c m1_patch_patterns). A load clears the mask */
 int eng_patterns_record(uint8_t *out, uint32_t cap);
+void eng_patterns_omit(uint64_t mask);
 /* P-locks (#524, format 49; track.ts StepLock, engine.ts locksStep): a lock on a step of a pattern sets a row of the
  * device its track plays (the parameters of its locked row, ENG_LOCK_PAIRS at most) in place of their normal values
  * while the track's playhead is on that step. ENG_PAT_LOCKS per pattern, ENG_MAX_LOCKS and ENG_LOCK_TARGETS rows per
@@ -677,8 +705,12 @@ int eng_lock_set(uint32_t module, uint32_t p, uint32_t k, uint32_t m, uint32_t j
 /* the pattern the SEQ page's locks go into: the one the track plays; one it has not got is made first, from its pattern 1
  * (its notes and its locks: track.ts, the editor's setLocks). -1 none */
 int eng_locks_pattern(uint32_t module);
-/* pattern p's locks, 7 bytes each into out (cap bytes): step, module, parameter, i32 LE value; their count, -1 no track */
+/* pattern p's locks, 7 bytes each into out (cap bytes): step, module, parameter, i32 LE value; their count, -1 no track.
+ * eng_lock_item: the k-th of them alone into o (7 bytes), 0, -1 none. eng_locks_clear: every track's locks of pattern p
+ * removed */
 int eng_locks_list(uint32_t module, uint32_t p, uint8_t *out, uint32_t cap);
+int eng_lock_item(uint32_t module, uint32_t p, uint32_t k, uint8_t *o);
+void eng_locks_clear(uint32_t p);
 /* the P-locks section as the engine has it now (patchbin.ts lockRecord), into out (cap bytes): its length, 0 when there
  * are no locks, -1 when it does not fit */
 int eng_locks_record(uint8_t *out, uint32_t cap);

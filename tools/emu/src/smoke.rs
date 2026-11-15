@@ -612,8 +612,8 @@ fn preset_records(f: &[u8]) -> Vec<(u32, String, Vec<i32>)> {
     out
 }
 
-/// The bank's slots (main.c M1_SLOTS)
-const SLOTS: u32 = 64;
+/// The bank's slots (slotstore.c bank_slots: 60 once the pattern store has its 4 sectors, which every smoke bank leaves room for)
+const SLOTS: u32 = 60;
 
 /// presets.h FACTORY_SET_ID: today's factory set
 fn factory_set_id() -> u32 {

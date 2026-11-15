@@ -7,6 +7,7 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //       (bit 0: a morph B set follows the cables; bit 2: disabled-input masks follow it; bit 3: additional input routes follow masks; bit 4: the tracks' notes follow them; bit 1: macro ranges are last;
 //       bit 13, format 54: u16 count, then (module u8, pattern u8, identity u32 LE) origins before the final macro ranges;
 //       bit 14, format 55: graph-proven master FX stages after origins and before macro ranges (fxRecord);
+//       bit 15, format 59: stored pattern links right after the P-locks (linkRecord);
 //       bit 12, format 51: the cables take 3 bytes, FLAG_CABLES3)
 //   (everything below describes the patch's device form, poly.ts deviceView: Voice allocators become Part modules in the
 //   poly groups they drive; module indices of the other modules are the patch's)
@@ -60,6 +61,12 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //                first, then the further ones its device page row sets (PageRow.also); then u8 P patterns with locks, per
 //                pattern u8 its number (0-based), u8 L (1..LOCKS_MAX), L locks: u8 step, u8 row (0..T-1), i32 LE value
 //                (Q16.16, the parameter's own units)
+//   with flag bit 15 (format 59, #901, written only when a pattern is linked to the FM-1's pattern store: linkPlan): the
+//                stored pattern links, right after the P-locks: u8 count (1..63), then per link, ascending and unique: u8
+//                pattern index (1..63; pattern 1 is never linked), u16 LE store id (1..LINK_ID_MAX). A linked pattern whose
+//                payload (pattern-store.ts) is the one the FM-1's store holds is left out of the patterns and P-locks
+//                sections: the FM-1 copies it from the store as it loads the patch. An edited one stays in them (its
+//                content plays), and the FM-1's SAVE writes it over the stored one
 //   with flag bit 5: the device pages (pages.ts): u8 device count, then per device u8 kind: 0 a plain module, then u8 its
 //                module index (the FM-1 makes its pages itself: its parameters in order, four to a page, named as in
 //                defs.h); 2 (format 49, #518) a plain module with its own name (ModuleInst.name; not a Steps module, whose
@@ -103,6 +110,7 @@ import { DEFS, delayLine, DELAY_LENGTH_DEFAULT, DRUM_ROWS, drumRowName, PANEL_BU
 import { KIND_CODE, kindOf, mainOf, switches, toggleEngaged, toggleTargets } from './buttons';
 import { defaultMap, EDITOR_ONLY, flawOf, hasMorph, isBipolar, MAX_MODULES, MAX_PARTS, MODULES_1_10, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef, type Patch } from './patch';
 import { isShortNote, noteWord, shortWord, type StepNote } from './track';
+import { payloadHash } from './pattern-store';
 import { lockPlan, PATCH_LOCKS_MAX } from './locks';
 import { deviceView, keysInto, MAX_POLY, type DeviceGroup, VOICING_CABLE_INPUTS } from './poly';
 import { devicesOf, NAME_MAX, type Device, type PageRow } from './pages';
@@ -122,7 +130,7 @@ export const GROUP_REC = 4 + 5 * MAX_PARTS + 4;
 /** bytes of the panel section (engine.h ENG_PANEL_BYTES): two masks and the labels */
 export const PANEL_BYTES = 4 + PANEL_LABEL_KEYS.length * PANEL_LABEL_MAX;
 export const MAX_CABLES = 255;
-export const VERSION = 58; // 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14; ordinary patches retain their lowest format
+export const VERSION = 59; // 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14; ordinary patches retain their lowest format
 /**
  * The lowest format the encoder writes: a patch that uses no parameter appended after it (ParamDef.since past it: a value
  * off its default on either morph side, a pin, macro range, input route or card row on it) is written in this format, its
@@ -133,8 +141,9 @@ export const VERSION = 58; // 58: the Oscillator's `phase` appended (where sync 
 export const WRITE_FLOOR = 46;
 /** the formats past WRITE_FLOOR that only add something the encoder writes when the patch uses it (format 48: the patterns
  * and songs, flag bit 10; format 50: a note word's bit 31, NOTE_WRAP; format 51: counted records, when the patch would not
- * fit otherwise, COUNTED); every other format past WRITE_FLOOR appends parameters (ParamDef.since) */
-export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module', 53: 'chained Harmonizer keys routes', 54: 'factory pattern origins', 55: 'master FX stages', 56: 'the linear envelope fall', 57: 'the ADS envelope', 58: 'the oscillator start phase' };
+ * fit otherwise, COUNTED; format 59: stored pattern links, flag bit 15); every other format past WRITE_FLOOR appends
+ * parameters (ParamDef.since) */
+export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module', 53: 'chained Harmonizer keys routes', 54: 'factory pattern origins', 55: 'master FX stages', 56: 'the linear envelope fall', 57: 'the ADS envelope', 58: 'the oscillator start phase', 59: 'stored pattern links' };
 /** the flag (u16 at offset 6) of the P-locks section (format 49, #524) */
 export const FLAG_LOCKS = 2048;
 
@@ -156,6 +165,47 @@ export function lockRecord(source: Patch, dev: Patch): number[] {
     }
   }
   return out;
+}
+/** the format of the stored pattern links section (#901), and its flag (u16 at offset 6: header byte 7, bit 7) */
+export const FORMAT_LINKS = 59;
+export const FLAG_LINKS = 1 << 15;
+/**
+ * The pattern store a binary is written for (the links section): `assume` (the budget, and a binary meant for no FM-1 in
+ * particular) holds every link's pattern as the link last saw it; `unknown` (an FM-1 with a store whose list has not been
+ * read) holds every linked id, contents unknown; `none` (an FM-1 without a store) holds nothing and takes no links section;
+ * else what the FM-1 holds: each stored id's payload hash.
+ */
+export type LinkStore = 'assume' | 'unknown' | 'none' | ReadonlyMap<number, number>;
+/**
+ * The links a binary for `store` carries (`dev`: the device form): every link to an id the store holds, ascending; and the
+ * linked patterns it leaves out (`refs`): those whose payload the store holds as it is (its hash is the link's and the
+ * store's). A link to an id the store has not got is left out, its pattern written as any other.
+ */
+export function linkPlan(source: Patch, dev: Patch, store: LinkStore): { entries: [number, number][]; refs: number[] } {
+  const links = source.modules.find((m) => m.type === 'fm1')?.seq?.links;
+  const plan: { entries: [number, number][]; refs: number[] } = { entries: [], refs: [] };
+  if (!links || store === 'none') return plan;
+  for (const [k, l] of Object.entries(links)) {
+    const p = Number(k);
+    if (typeof store === 'object' && !store.has(l.id)) continue;
+    plan.entries.push([p, l.id]);
+    const stored = store === 'assume' ? l.hash : store === 'unknown' ? undefined : store.get(l.id);
+    if (stored === l.hash && payloadHash(source, p, dev) === l.hash) plan.refs.push(p);
+  }
+  return plan;
+}
+/** the stored pattern links section's bytes (see the top of this file), [] without links */
+export const linkRecord = (entries: [number, number][]): number[] =>
+  entries.length ? [entries.length, ...entries.flatMap(([p, id]) => [p, id & 0xff, id >> 8])] : [];
+/** a device form without patterns `refs` (0-based) on any track: what the binary leaves to the store */
+function withoutPatterns(dev: Patch, refs: number[]): Patch {
+  return { ...dev, modules: dev.modules.map((m) => {
+    if (m.type !== 'steps' || !m.patterns?.some((_, i) => refs.includes(i + 1))) return m;
+    const pats = m.patterns.map((x, i) => (refs.includes(i + 1) ? null : x));
+    while (pats.length && pats[pats.length - 1] === null) pats.pop();
+    const { patterns: _p, ...rest } = m;
+    return pats.length ? { ...rest, patterns: pats } : rest;
+  }) };
 }
 /**
  * The 1.9 format (#518, #519): the one format change of release 1.9. Everything it adds is written only when a patch
@@ -801,20 +851,23 @@ export const encodedSize = (source: Patch): number => layout(source).size;
  * and the room kept for them (presetNames), the binary's `size` and the device pages and button kinds it holds. `need`:
  * the bytes the budget counts, the smaller of the two forms with the room kept, so the room counted records free shows
  * in every patch while a patch that fits an older format is still written in it. `force`: counted records whatever the
- * size (tests and golden kits).
+ * size (tests and golden kits). `store`: the pattern store it is written for (linkPlan): `p` leaves out the linked
+ * patterns the store holds as they are, and `links` is the links section.
  */
-export function layout(source: Patch, view: ReturnType<typeof deviceView> = deviceView(source, true), force = false) {
-  if (rowsMemo) return layoutOf(source, view, force);
+export function layout(source: Patch, view: ReturnType<typeof deviceView> = deviceView(source, true), force = false, store: LinkStore = 'assume') {
+  if (rowsMemo) return layoutOf(source, view, force, store);
   rowsMemo = new Map();
   sizesMemo = new Map();
   try {
-    return layoutOf(source, view, force);
+    return layoutOf(source, view, force, store);
   } finally {
     rowsMemo = sizesMemo = null;
   }
 }
-function layoutOf(source: Patch, view: ReturnType<typeof deviceView>, force: boolean) {
-  const { patch: p, groups } = view;
+function layoutOf(source: Patch, view: ReturnType<typeof deviceView>, force: boolean, store: LinkStore) {
+  const plan = linkPlan(source, view.patch, store);
+  const links = linkRecord(plan.entries);
+  const { groups } = view, p = plan.refs.length ? withoutPatterns(view.patch, plan.refs) : view.patch;
   const devs = deviceSection(source, p);
   const kinds = buttonRecord(source, p);
   const keep = fm1Rows(source, p, devs);
@@ -822,13 +875,13 @@ function layoutOf(source: Patch, view: ReturnType<typeof deviceView>, force: boo
   const at = (v: number) => {
     const room = morphRoom(p, v, edits, keep);
     const named = presetNames(source, p, groups, devs, kinds.length + room, v, keep);
-    return { v, names: named.names, reserve: named.reserve + room, size: sizeOf(p, groups, devs, v, keep, source, named.names) + kinds.length };
+    return { v, names: named.names, reserve: named.reserve + room, size: sizeOf(p, groups, devs, v, keep, source, named.names) + kinds.length + links.length };
   };
-  const base = at(baseFormat(source, p));
+  const base = at(links.length ? FORMAT_LINKS : baseFormat(source, p));
   const counted = base.v < COUNTED ? at(COUNTED) : base;
   const need = Math.min(base.size + base.reserve, counted.size + counted.reserve);
   const w = !force && (base.size + base.reserve <= DEVICE.bytes || need === base.size + base.reserve) ? base : counted;
-  return { p, groups, devs, kinds, keep, ...w, need, base: { v: base.v, bytes: base.size + base.reserve }, counted: counted.size + counted.reserve };
+  return { p, groups, devs, kinds, keep, links, ...w, need, base: { v: base.v, bytes: base.size + base.reserve }, counted: counted.size + counted.reserve };
 }
 
 function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[], v: number, keep: Map<number, number>, source?: Patch, names?: string[]): number {
@@ -857,13 +910,16 @@ function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[], v: number, keep: Ma
 export const drumMaps = (p: Patch): number[] => p.modules.flatMap((m, i) => (m.type === 'drummap' ? [i] : []));
 
 /** the binary patch; refused when it is over the FM-1 budget, unless `anyway` (tools that count the engine's work on patches the
- * estimate has not seen yet: scripts/cpu-costs.ts). `counted`: in format COUNTED whatever its size (tests, golden kits) */
-export function encodePatch(source: Patch, anyway = false, counted = false, allocation: BufferAllocation = 0): Uint8Array {
+ * estimate has not seen yet: scripts/cpu-costs.ts). `counted`: in format COUNTED whatever its size (tests, golden kits).
+ * `store`: the pattern store of the FM-1 it goes to (LinkStore; the budget assumes it holds every link's pattern, so a
+ * store that does not can make the binary bigger than the budget said: refused too) */
+export function encodePatch(source: Patch, anyway = false, counted = false, allocation: BufferAllocation = 0, store: LinkStore = 'assume'): Uint8Array {
   const routingError = keyRouteError(source);
   if (routingError) throw new Error(routingError);
   const budget = deviceBudget(source, allocation);
   if (!budget.fits && !anyway) throw new Error(`over the FM-1 budget: ${budget.over.map((i) => (i.key === 'browser' ? i.label : `${i.label} ${i.used} of ${i.max}`)).join(', ')}`);
-  const { p, groups, devs, kinds, keep, names, size, v: ver } = layout(source, undefined, counted);
+  const { p, groups, devs, kinds, keep, names, size, need, links, v: ver } = layout(source, undefined, counted, store);
+  if (!anyway && need > DEVICE.bytes) throw new Error(`over the FM-1 budget: ${LABELS.bytes} ${need} of ${DEVICE.bytes} (its linked patterns go whole: the FM-1's pattern store has not got them)`);
   const index = new Map(p.modules.map((m, i) => [m.id, i]));
   const morph = hasMorph(p);
   const ranges = rangeList(p);
@@ -884,7 +940,7 @@ export function encodePatch(source: Patch, anyway = false, counted = false, allo
   out[2] = p.modules.length;
   out[3] = groups.length;
   dv.setUint16(4, p.cables.length, true);
-  dv.setUint16(6, (short ? FLAG_CABLES3 : 0) | (morph ? FLAG_MORPH | FLAG_MORPH_MODULES : 0) | (ranges.length ? FLAG_RANGE : 0) | (routes.length ? FLAG_INPUT_MAP : 0) | (valued.length ? FLAG_NOTES : 0) | (devs.length ? FLAG_DEVICES | FLAG_EXTRAS : 0) | (kinds.length ? FLAG_BUTTONS : 0) | (drumMaps(p).length ? FLAG_NAMES : 0) | (pats.length ? FLAG_PATTERNS : 0) | (locks.length ? FLAG_LOCKS : 0) | (origins.length ? FLAG_PATTERN_ORIGINS : 0) | (fx.length ? FLAG_FX_BUS : 0), true);
+  dv.setUint16(6, (short ? FLAG_CABLES3 : 0) | (morph ? FLAG_MORPH | FLAG_MORPH_MODULES : 0) | (ranges.length ? FLAG_RANGE : 0) | (routes.length ? FLAG_INPUT_MAP : 0) | (valued.length ? FLAG_NOTES : 0) | (devs.length ? FLAG_DEVICES | FLAG_EXTRAS : 0) | (kinds.length ? FLAG_BUTTONS : 0) | (drumMaps(p).length ? FLAG_NAMES : 0) | (pats.length ? FLAG_PATTERNS : 0) | (locks.length ? FLAG_LOCKS : 0) | (links.length ? FLAG_LINKS : 0) | (origins.length ? FLAG_PATTERN_ORIGINS : 0) | (fx.length ? FLAG_FX_BUS : 0), true);
   let at = 8;
   for (const { cfg, src } of groups) {
     out.set([cfg.parts | (Math.min(MAX_PARTS, cfg.unisonParts ?? 0) << 4), cfg.assign, cfg.legato | (cfg.unison ? 0x80 : 0) | (cfg.unisonShare ? 0x40 : 0), cfg.priority | (cfg.steal === false ? 0x80 : 0)], at);
@@ -1008,6 +1064,10 @@ export function encodePatch(source: Patch, anyway = false, counted = false, allo
   if (locks.length) {
     out.set(locks, at);
     at += locks.length;
+  }
+  if (links.length) {
+    out.set(links, at);
+    at += links.length;
   }
   if (devs.length) {
     const rec = [...deviceRecord(devs, p, ver), ...extrasRecord(devs, source, p, names, ver)];

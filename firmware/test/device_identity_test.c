@@ -6,6 +6,7 @@
 #define FELUCCA_DEVICE_IDENTITY 1
 #define M1_NAME 20u
 #define M1_SLOTS 64u
+static uint32_t bank_slots = M1_SLOTS;  /* (proto.c's) */
 #define M1_PATCH_MAX 3840u
 #define ENG_POOL
 #include "../src/device_identity.h"
@@ -21,6 +22,7 @@ static uint16_t m1_crc16(const uint8_t *p,uint32_t n) {
 }
 static void fm1_wdt_feed(void) {}
 #include "../src/slotstore.c"
+#include "../src/patstore.c"
 #define SET_LEN 16u
 static uint8_t flash_ok=1, boot_safe, patches_up=1, ui_dirty;
 static void settings_pack(uint8_t *p) { memset(p,0,16); p[0]=1; }

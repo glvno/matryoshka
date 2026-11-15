@@ -1334,7 +1334,7 @@ static void pages_strip(void)
     }
     if (page == PAGE_ENV) {                             /* the environment: ENVIRONMENT and the patch, on lilac */
         char nm[32], num[8], *q = nm;
-        if (cur_preset < M1_SLOTS) {
+        if (cur_preset < bank_slots) {
             fmt_int(num, (int32_t)cur_preset + 1);
             if (cur_preset < 9u)
                 *q++ = '0';
@@ -1548,7 +1548,7 @@ static void toast_row(uint32_t y, uint16_t *row)
     char num[8], nm[32], *q = num;
     for (i = 0; i < 240u; i++)
         row[i] = P_SAND;
-    if (cur_preset < M1_SLOTS) {
+    if (cur_preset < bank_slots) {
         char d[8];
         fmt_int(d, (int32_t)cur_preset + 1);
         if (cur_preset < 9u)

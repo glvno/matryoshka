@@ -72,6 +72,15 @@
 //   33 TEST_TURN   encoder u8, clicks i8             an encoder turned (0 SELECT, 1 ALGO, 2..5 K1..K4, 6 PRESET); ACK
 //   34 TEST_SCREEN (none)                            device answers SCREEN (50): the head, then one per text on the LCD
 //   35 TEST_PEAK   (none)                            device answers PEAK (51): the output's peak since the last TEST_PEAK
+//   3B PATS     (none)                               the FM-1's pattern store (#901, feature bit 25): one PAT (5B) per entry, the
+//                                                    user's in id order, then the read-only factory ones
+//   3C PAT_GET  id u16, offset u16                   device answers PAT_DATA (5C): the payload from offset, 256 bytes at most
+//   3D PAT_PUT  id u16 (0 new), total u16, offset u16, name 16 bytes, then up to 256 payload bytes (pattern-store.ts)
+//                                                    the chunks gather on the FM-1 (offset 0 starts a put); each chunk but the
+//                                                    last answers PAT_STORED with id 0xFFFF, the last stores it and answers
+//                                                    PAT_STORED with its id. A rename is a put of the same id and payload
+//   3E PAT_DEL  id u16, force u8                     delete it; PAT_STORED. Without force, an id the bank's patches link
+//                                                    answers S_USED with how many slots link it
 // device -> host
 //   42 SLOT    slot u8, used u8 (0/1), length u16, name 20 bytes
 //   43 SLOT_NOW  slot u8, name 20 bytes                unasked: the slot the FM-1 plays now (a patch from its panel, program
@@ -120,6 +129,12 @@
 //      truncation, count mismatch or interrupted snapshots discard all pending/previous ownership. Patch switches,
 //      queued uploads and reconnects invalidate it too; uploads accept a new snapshot only after COMMIT succeeds.
 //      HELLO and successful COMMIT send a complete snapshot. Panel factory/USER selections emit changed records.
+//   5B PAT      k u16, count u16 (0: no entries, nothing follows), id u16, len u16, hash u32, layout u32, tracks u8, flags u8
+//               (bit0 read-only factory), name 16 bytes   one entry of the pattern store (an answer to PATS)
+//   5C PAT_DATA  id u16, total u16 (0xFFFF: no such id), offset u16, then the payload's bytes from offset (256 at most)
+//   5D PAT_STORED  id u16 (0xFFFF: a chunk taken), status u8 (PAT_STATUS), count u8 (with S_USED: the slots that link it)
+//   5E PAT_LINK_NOW  pattern u8, id u16 (0 none), hash u32   unasked: the running patch's link of that pattern changed on
+//                                                    the FM-1 (its SEQ page loaded, saved or saved as new; SAVE wrote it)
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded, bit2 MENU > MIDI OUT on: with
 //               feature bit 8, bit3 GLO > SYSTEM > EDITOR at IGNORE: with feature bit 19, #702), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
 //               bit5 TRACK / TRACK_NOW, bit6 LIVE, bit7 presets], [features 8..15: bit8 sandbox mode, bit9 the device
@@ -128,7 +143,9 @@
 //               0.0.0 a dev or CI build; #216, absent from firmware before 1.8],
 //               [features 16..23: bit16 TEMPO / TEMPO_NOW, bit17 a preset carries up to 176 values, bit18 KEYS_NOW /
 //               GUIDE_NOW, bit19 flags bit3 says EDITOR, bit20 ARMS, bit21 ARMS wide, bit22 DEVICE_SETTINGS, bit23 PATTERN_ORIGIN],
-//               [byte13 allocation rule: 0 separate signal buffers, 1 physical lifetime buffers; unknown/missing means 0]. Also unasked
+//               [byte13 allocation rule: 0 separate signal buffers, 1 physical lifetime buffers; unknown/missing means 0],
+//               [features 24..31: bit24 FX presets, bit25 the pattern store is on], [byte15 the bank's slots (absent: 64)],
+//               [bytes16..19 the pattern store's bytes free and in all, u16 LE each]. Also unasked
 //               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8), and when EDITOR changed after
 //               a HELLO (feature bit 19)
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
@@ -138,7 +155,7 @@ import { ARM_WORDS, type Range } from './patch';
 import { noteWord, PATTERNS_MAX, SHIFT_MAX, SONG_LEN_MAX, SONGS_MAX, TRACK_NOTES_MAX, wordNote, type SongEntry, type StepNote } from './track';
 
 export const PREFIX = [0x7d, 0x4d, 0x31];
-export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, sandbox: 0x31, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e, testKey: 0x32, testTurn: 0x33, testScreen: 0x34, testPeak: 0x35, screen: 0x50, peak: 0x51, pattern: 0x36, song: 0x37, patternNow: 0x52, songNow: 0x53, armsNow: 0x54, arms: 0x39, tempo: 0x38, tempoNow: 0x55, locksNow: 0x56, keysNow: 0x57, guideNow: 0x58, deviceSettings: 0x3a, deviceSettingsReply: 0x59, originNow: 0x5a } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
+export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, sandbox: 0x31, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e, testKey: 0x32, testTurn: 0x33, testScreen: 0x34, testPeak: 0x35, screen: 0x50, peak: 0x51, pattern: 0x36, song: 0x37, patternNow: 0x52, songNow: 0x53, armsNow: 0x54, arms: 0x39, tempo: 0x38, tempoNow: 0x55, locksNow: 0x56, keysNow: 0x57, guideNow: 0x58, deviceSettings: 0x3a, deviceSettingsReply: 0x59, originNow: 0x5a, pats: 0x3b, pat: 0x5b, patGet: 0x3c, patData: 0x5c, patPut: 0x3d, patStored: 0x5d, patDel: 0x3e, patLinkNow: 0x5e } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
 export const PROTO_VERSION = 1;
 export const CHUNK_BYTES = 384;
 export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store', 'the preset store is full', 'no such preset'];
@@ -222,7 +239,11 @@ export const paramFrame = (module: number, param: number, q16: number): Uint8Arr
   return frame(CMD.param, [module, param, v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff]);
 };
 
-export const SLOTS = 64;
+/** the most slots a bank has: an FM-1 whose pattern store is on has fewer (INFO byte 15, slotCount) */
+export const SLOTS_MAX = 64;
+/** the slots of the FM-1's bank (INFO byte 15: 60 with the pattern store on, #901); firmware that does not say, and the
+ *  offline copy of the bank, have SLOTS_MAX */
+export const slotCount = (info: Info | null): number => info?.slots ?? SLOTS_MAX;
 /** a slot as people see it: internal slot 0..63 shows as 01..64 (the protocol, the firmware and program change count from 0) */
 export const slotLabel = (slot: number): string => String(slot + 1).padStart(2, '0');
 export const NAME_BYTES = 20;
@@ -341,6 +362,10 @@ export interface Info {
   /** the firmware's version (INFO bytes 9..11, #216; 0.0.0 a dev or CI build); absent from firmware before 1.8, whose
    *  identity (FM-1_7XY) gives major and minor */
   firmware?: { major: number; minor: number; patch: number };
+  /** the bank's slots (INFO byte 15, #901); absent from firmware before the pattern store: SLOTS_MAX */
+  slots?: number;
+  /** the pattern store's payload bytes free and in all (INFO bytes 16..19, #901); absent before it */
+  store?: { free: number; total: number };
 }
 export interface Ack {
   cmd: number;
@@ -366,6 +391,9 @@ export const FEATURE_ARMS = 1 << 20;
 export const FEATURE_WIDE_ARMS = 1 << 21;
 /** INFO payload byte 14, bit 24: complete synth + master-FX presets (FXP1). */
 export const FEATURE_FX_PRESETS = 1 << 24;
+/** INFO feature bit 25 (byte 14 bit 1, #901): the pattern store is on (PATS, PAT_GET, PAT_PUT, PAT_DEL, PAT_LINK_NOW and
+ *  format 59's links section) */
+export const FEATURE_PATTERN_STORE = 1 << 25;
 /** PARAM_NOW's parameter sentinel: logical FX kernel bypass, value 0/1 in Q16. */
 export const FX_BYPASS_PARAM = 0xff;
 
@@ -382,7 +410,9 @@ export function parseInfo(p: Parsed): Info | null {
     midiOut: features & FEATURE_SANDBOX ? !!(p.payload[3] & 4) : null,
     editorIgnored: !!(features & FEATURE_EDITOR_SETTING) && !!(p.payload[3] & INFO_EDITOR_IGNORE),
     ...(p.payload.length >= 9 ? { patchFormats: { min: p.payload[7], max: p.payload[8] } } : {}),
-    ...(p.payload.length >= 12 ? { firmware: { major: p.payload[9], minor: p.payload[10], patch: p.payload[11] } } : {}) };
+    ...(p.payload.length >= 12 ? { firmware: { major: p.payload[9], minor: p.payload[10], patch: p.payload[11] } } : {}),
+    ...(p.payload.length >= 16 && p.payload[15] ? { slots: p.payload[15] } : {}),
+    ...(p.payload.length >= 20 ? { store: { free: p.payload[16] | (p.payload[17] << 8), total: p.payload[18] | (p.payload[19] << 8) } } : {}) };
 }
 /** the test tools drive the editor's own page against the test rig, which is set to IGNORE so the site leaves it alone
  *  (#702): their page (scripts/emu-scenarios.mjs --device) sets this before it loads. Nothing else does */
@@ -431,6 +461,53 @@ export function parsePresetData(p: Parsed): { structure: string; name: string; v
 }
 export const parsePresetStored = (p: Parsed): { structure: string; name: string } | null =>
   p.cmd === CMD.presetStored && p.payload.length >= 20 ? readKey(p.payload, 0) : null;
+
+// ---- the pattern store (#901, feature bit 25): stored patterns by id (pattern-store.ts has the payload)
+
+/** one entry of the store as PAT lists it: id, payload bytes, payload hash, layout fingerprint (0: no locks), tracks,
+ *  read-only (a factory pattern), name */
+export interface StoredPatternEntry { id: number; len: number; hash: number; layout: number; tracks: number; readOnly: boolean; name: string }
+/** PAT_STORED's statuses (proto.c S_*) and what they mean for a stored pattern */
+export const PAT_OK = 0, PAT_RANGE = 1, PAT_FLASH = 4, PAT_FULL = 7, PAT_MISSING = 8, PAT_USED = 9;
+export const PAT_STATUS: Record<number, string> = { [PAT_OK]: 'ok', [PAT_RANGE]: 'refused (a read-only pattern, or out of range)', [PAT_FLASH]: 'flash error', [PAT_FULL]: 'the pattern store is full', [PAT_MISSING]: 'no such pattern', [PAT_USED]: 'patches use it' };
+/** the payload bytes one PAT_GET / PAT_PUT carries at most */
+export const PAT_CHUNK = 256;
+const u16le = (v: number): number[] => [v & 0xff, (v >> 8) & 0xff];
+const u32at = (p: number[], at: number): number => (p[at] | (p[at + 1] << 8) | (p[at + 2] << 16) | (p[at + 3] << 24)) >>> 0;
+export const patsFrame = (): Uint8Array => frame(CMD.pats);
+export const patGetFrame = (id: number, offset: number): Uint8Array => frame(CMD.patGet, [...u16le(id), ...u16le(offset)]);
+/** a payload as PAT_PUT chunks (`id` 0: a new entry); an empty payload is one chunk with nothing in it */
+export function patPutFrames(id: number, name: string, payload: ArrayLike<number>): Uint8Array[] {
+  const key = Array.from({ length: 16 }, (_, i) => (name.charCodeAt(i) >= 32 && name.charCodeAt(i) < 127 ? name.charCodeAt(i) : 0));
+  const out: Uint8Array[] = [];
+  for (let off = 0; off < payload.length || !out.length; off += PAT_CHUNK)
+    out.push(frame(CMD.patPut, [...u16le(id), ...u16le(payload.length), ...u16le(off), ...key, ...Array.from(payload).slice(off, off + PAT_CHUNK)]));
+  return out;
+}
+export const patDelFrame = (id: number, force: boolean): Uint8Array => frame(CMD.patDel, [...u16le(id), force ? 1 : 0]);
+/** a PAT: its place in the list, the list's length (count 0: the store is empty) and its entry (none then) */
+export interface PatListItem { k: number; count: number; entry: StoredPatternEntry | null }
+export function parsePatEntry(p: Parsed): PatListItem | null {
+  const x = p.payload;
+  if (p.cmd !== CMD.pat || x.length < 4) return null;
+  const k = x[0] | (x[1] << 8), count = x[2] | (x[3] << 8);
+  if (!count) return { k, count, entry: null };
+  if (x.length < 34) return null;
+  return { k, count, entry: { id: x[4] | (x[5] << 8), len: x[6] | (x[7] << 8), hash: u32at(x, 8), layout: u32at(x, 12), tracks: x[16], readOnly: !!(x[17] & 1),
+    name: String.fromCharCode(...x.slice(18, 34).filter((c) => c >= 32 && c < 127)).trim() } };
+}
+/** a PAT_DATA: the id, the payload's whole length (null: no such id), the offset and the bytes from it */
+export function parsePatData(p: Parsed): { id: number; total: number | null; offset: number; bytes: number[] } | null {
+  const x = p.payload;
+  if (p.cmd !== CMD.patData || x.length < 6) return null;
+  const total = x[2] | (x[3] << 8);
+  return { id: x[0] | (x[1] << 8), total: total === 0xffff ? null : total, offset: x[4] | (x[5] << 8), bytes: x.slice(6) };
+}
+export const parsePatStored = (p: Parsed): { id: number; status: number; count: number } | null =>
+  p.cmd === CMD.patStored && p.payload.length >= 4 ? { id: p.payload[0] | (p.payload[1] << 8), status: p.payload[2], count: p.payload[3] } : null;
+/** a PAT_LINK_NOW payload: the pattern index, the stored id it links now (0 none) and its payload hash */
+export const parseLinkNow = (payload: number[]): { pattern: number; id: number; hash: number } | null =>
+  payload.length >= 7 ? { pattern: payload[0], id: payload[1] | (payload[2] << 8), hash: u32at(payload, 3) } : null;
 
 // ---- sandbox mode: the editor's device page for the FM-1 to draw (SANDBOX, firmware/src/sandbox_msg.h)
 

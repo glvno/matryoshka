@@ -761,10 +761,11 @@ static void m1_transport(int run)
     ui_dirty = ui_dirty ? ui_dirty : 1;
 }
 
-/* The bank (slotstore.c) is the only patch list: 64 slots, filled with the factory patches (presets.h) on the first boot
- * and by FACTORY RESET. PRESET steps through the occupied slots, MIDI program change n loads slot n, SAVE writes the running
- * patch (edits included) back into its slot and the panel settings into the settings record, which the next boot reads
- * (the slot it opens, the octave, the menu, the mixer). cur_preset is the slot the running patch came from. */
+/* The bank (slotstore.c) is the only patch list: 60 slots (64 while the pattern store is off: bank_slots, slotstore.c
+ * pt_claim), filled with the factory patches (presets.h) on the first boot and by FACTORY RESET. PRESET steps through the
+ * occupied slots, MIDI program change n loads slot n, SAVE writes the running patch (edits included) back into its slot
+ * and the panel settings into the settings record, which the next boot reads (the slot it opens, the octave, the menu,
+ * the mixer). cur_preset is the slot the running patch came from. */
 static uint32_t popcount64(uint64_t v)
 {
     uint32_t n = 0;
@@ -772,7 +773,7 @@ static uint32_t popcount64(uint64_t v)
         n++;
     return n;
 }
-static int slot_used(uint32_t s) { return s < M1_SLOTS && (bank_mask >> s & 1u); }
+static int slot_used(uint32_t s) { return s < bank_slots && (bank_mask >> s & 1u); }
 
 /* the settings record: version, slot, octave + 8, LED mode, knob accel (bit 0; bit 1: the quick start off, D-247: a record
  * from before reads as on, and an older firmware reads the accel as before; bits 2..3: OUTPUT, #612: 0 STEREO, 1 MONO, 2
@@ -906,6 +907,7 @@ static int m1_store(const uint8_t *patch, uint32_t len)        /* SAVE, the edit
         name[i] = 0;
     for (i = 0; i < M1_NAME && src[i]; i++)
         name[i] = src[i];
+    pl_writeback();                              /* the edited linked patterns over their stored entries first (#901) */
     if (store_write(cur_preset, name, m1_cur, m1_cur_len))
         return -2;
     settings_pack(set);
@@ -933,7 +935,7 @@ static int preset_load(uint32_t n)
     char slot_name[M1_NAME + 1];
     if (!slot_used(n) || sl_read(n, bank_buf, &len, slot_name) || m1_apply(bank_buf, len)) {
         fallback_boot();
-        cur_preset = n < M1_SLOTS ? n : 0u;
+        cur_preset = n < bank_slots ? n : 0u;
         return -1;
     }
     m1_set_current(bank_buf, len);
@@ -957,8 +959,8 @@ static void preset_step(int32_t d)                  /* the PRESET knob: the next
         return;
     if (live_holds_preset())
         return;
-    for (i = 0; i < M1_SLOTS; i++) {
-        s = (s + (d > 0 ? 1u : M1_SLOTS - 1u)) % M1_SLOTS;
+    for (i = 0; i < bank_slots; i++) {
+        s = (s + (d > 0 ? 1u : bank_slots - 1u)) % bank_slots;
         if (slot_used(s))
             break;
     }
@@ -1082,7 +1084,7 @@ static void factory_bank(void)
     uint8_t set[SET_LEN];
     uint32_t i;
     boot_step("FACTORY BANK");
-    for (i = 0; i < N_PRESETS && i < M1_SLOTS; i++)
+    for (i = 0; i < N_PRESETS && i < bank_slots; i++)
         factory_write(i, i);
     cur_preset = 0;
     sel = 0;
@@ -1103,7 +1105,7 @@ static int bank_add(uint32_t set, char *msg)
     uint64_t named = 0;
     uint32_t s, i, k;
     sl_hdr_t h;
-    for (s = 0; s < M1_SLOTS; s++) {
+    for (s = 0; s < bank_slots; s++) {
         if (!slot_used(s) || sl_head(s, &h, 0))
             continue;
         for (i = 0; i < N_PRESETS; i++) {
@@ -1113,7 +1115,7 @@ static int bank_add(uint32_t set, char *msg)
                 named |= (uint64_t)1 << i;
         }
     }
-    bn_plan(set, bank_mask, named, M1_SLOTS, &plan);
+    bn_plan(set, bank_mask, named, bank_slots, &plan);
     for (i = 0; i < N_PRESETS; i++)
         if (plan.slot[i] != BN_NONE)
             factory_write(plan.slot[i], i);
@@ -1160,6 +1162,7 @@ static void patch_boot(void)                    /* the slot the settings record 
     }
     boot_step("BANK");
     sl_scan();
+    pt_claim();                                  /* (the pattern store's sectors, before any factory patch is placed: #901) */
     if (!bank_mask && sl_sec[SL_SETTINGS] == SL_NONE) {          /* an empty store: the first boot (or after a reset) */
         factory_bank();
         boot_msg = "FACTORY BANK WRITTEN";
@@ -1187,7 +1190,7 @@ static void patch_boot(void)                    /* the slot the settings record 
         leds_octave();
     }
     if (!slot_used(slot)) {                       /* the slot is gone: the first occupied one */
-        for (slot = 0; slot < M1_SLOTS && !slot_used(slot); slot++)
+        for (slot = 0; slot < bank_slots && !slot_used(slot); slot++)
             ;
     }
     boot_step("PATCH");
@@ -1215,6 +1218,7 @@ static void defaults_now(void)
         ui_msg("WRITING THE FACTORY BANK", 10000);
         eng_run = 0;
         sl_clear_all();
+        pt_clear_all();                          /* (the pattern store's sectors erased and formatted) */
         eng_resume();
         factory_bank();
     }

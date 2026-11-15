@@ -63,7 +63,8 @@ static uint32_t bank_set, cur_preset, sel;
 static int boot_safe, flash_ok = 1, boot_msg_ms, migrations, factories, fallbacks, settings_writes, loads;
 static uint8_t sl_sec[5];
 static const char *boot_msg;
-static int slot_used(uint32_t s) { return s < M1_SLOTS && (bank_mask & ((uint64_t)1 << s)); }
+static uint32_t bank_slots = M1_SLOTS;   /* (slotstore.c's: the slots there are, #901) */
+static int slot_used(uint32_t s) { return s < bank_slots && (bank_mask & ((uint64_t)1 << s)); }
 static int sl_head(uint32_t s, sl_hdr_t *h, int unused) { (void)unused; *h = slots[s].h; return 0; }
 static int store_write(uint32_t s, const char *name, const uint8_t *data, uint32_t len) {
  if (s == SL_SETTINGS) { settings_writes++; return 0; }
@@ -78,6 +79,7 @@ ${fn('int bank_add(')}
 static void gt_apply(void) {}
 static void fallback_boot(void) { fallbacks++; }
 static void sl_scan(void) {}
+static void pt_claim(void) {}            /* (the pattern store's claim, slotstore.c: nothing to move here) */
 static int sl_read(uint32_t s, uint8_t *data, uint32_t *len, char *name) {
  (void)s; (void)data; (void)name; *len = SET_LEN; return 0;
 }

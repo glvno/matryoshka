@@ -21,6 +21,7 @@ import { aotHeader } from './gen-aot';
 import patternDefaults from '../src/preset-patterns.json';
 import { releasedFactoryHas } from './released-factory-names';
 import { packedListC } from './factory-lz';
+import { patternCasesHeader } from './pattern-vectors';
 const FACTORY_PRESETS = [...factoryPresets(), ...factoryRackPresets()];
 
 const up = (s: string): string => s.toUpperCase().replace(/[^A-Z0-9]/g, '_');
@@ -352,6 +353,8 @@ writeFileSync(new URL('../../firmware/src/presets.h', import.meta.url), P.join('
   const initOf = (s: string): number[] | undefined => FACTORY_PRESETS.find((p) => p.structure === s && p.name === 'Init')?.values;
   writeFileSync(new URL('../../firmware/test/pmig_cases.h', import.meta.url), casesHeader(migrationCases(readLineage(), PRESET_MIGRATIONS, initOf, CASE_PICKS)));
 }
+// the stored pattern payload's cross-language vectors (#901, pattern-vectors.ts; firmware/test reads them)
+writeFileSync(new URL('../../firmware/test/pattern_cases.h', import.meta.url), patternCasesHeader());
 writeFileSync(new URL('../../firmware/src/controls.h', import.meta.url), controlsHeader(
   readFileSync(new URL('../../firmware/src/help_ui.c', import.meta.url), 'utf8'), readFileSync(new URL('../../firmware/src/font_bc.h', import.meta.url), 'utf8')));
 { // the README's list of the FM-1's controls (between its controls markers), from the same table
@@ -359,4 +362,4 @@ writeFileSync(new URL('../../firmware/src/controls.h', import.meta.url), control
   writeFileSync(readme, readmeWithControls(readFileSync(readme, 'utf8')));
 }
 writeFileSync(new URL('../../firmware/src/aot_gen.h', import.meta.url), aotHeader());   // the compiled factory assemblies (#808)
-console.log(`wrote defs.h, presets.h (preset migrations: ${MIG.bytes} bytes), controls.h, the README's controls, test/pmig_cases.h, aot_gen.h`);
+console.log(`wrote defs.h, presets.h (preset migrations: ${MIG.bytes} bytes), controls.h, the README's controls, test/pmig_cases.h, test/pattern_cases.h, aot_gen.h`);

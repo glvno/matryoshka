@@ -20,6 +20,8 @@ typedef struct {
     uint32_t notes_sum, acc_n, len_sum, vel_sum, chance_sum, pitch_sum;
     uint32_t song_sel, song_cur, song_len, song_sum, song, clear_at, del_at, msg_sum;
     uint32_t fx_row, fx_on;
+    uint32_t stored, store_sum, pat_sum;                /* the pattern store (#901): its entries, their ids and hashes, and
+                                                         * the selected pattern's notes on every track */
     int mlen;
 } ct_snap_t;
 static int ct_mod;                                      /* the track shown when the gesture began, -1 none */
@@ -101,6 +103,22 @@ static void ct_take(ct_snap_t *s)
     for (k = 0; msg_text[k]; k++)
         s->msg_sum = ct_fnv(s->msg_sum, (uint8_t)msg_text[k]);
     s->mlen = mlen;
+    {
+        pt_info_t in;
+        uint32_t id = 0, t;
+        s->stored = pt_count();
+        s->store_sum = s->pat_sum = 0x811c9dc5u;
+        while (!pt_next(id, &in))
+            s->store_sum = ct_fnv(ct_fnv(s->store_sum, id = in.id), in.hash);
+        for (t = 0; (int)t < eng_steps_count() && eng_pattern() >= 0; t++) {
+            const uint32_t *w;
+            uint32_t m = (uint32_t)eng_steps_module(t), p = (uint32_t)eng_pattern();
+            int n = eng_pattern_has(m, p) ? eng_pattern_notes(m, p, &w) : -1;
+            s->pat_sum = ct_fnv(s->pat_sum, (uint32_t)n);
+            for (k = 0; (int)k < n; k++)
+                s->pat_sum = ct_fnv(s->pat_sum, w[k]);
+        }
+    }
 }
 
 /* the row's effect from b (before) to a (after) */
@@ -177,6 +195,9 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_RUN_ROW: return a->updates != b->updates;
     case CE_ANALOG_OUT: return a->out_off != b->out_off && a->page == b->page && a->sr_on == b->sr_on && a->octave == b->octave && !help_on;   /* (HOME
                                                          * and the OCTs did nothing of their own, no sheet) */
+    case CE_PATTERN_SAVE: return a->msg_sum != b->msg_sum && a->store_sum != b->store_sum;   /* (a new entry, or one written over) */
+    case CE_PATTERN_NEW: return a->stored == b->stored + 1u;
+    case CE_PATTERN_LOAD: return a->msg_sum != b->msg_sum && a->pat_sum != b->pat_sum;
     case CE_CHORD_BUTTON: {                             /* (#598) a chord button: its key under the split out, no note played */
         int i, btn = 0;
         for (i = b->mlen; i < a->mlen; i++)

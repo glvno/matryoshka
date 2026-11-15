@@ -86,12 +86,13 @@
       <div id="lib-patches" class="lib-section"><h2 class="lib-title">Patches</h2></div>
       <div id="lib-assemblies" class="lib-section" hidden><h2 class="lib-title">Assemblies</h2></div>
       <div id="lib-presets" class="lib-section" hidden><h2 class="lib-title">Presets</h2></div>
+      <div id="lib-patterns" class="lib-section" hidden><h2 class="lib-title">Patterns</h2></div>
       <div id="lib-community" class="lib-section" hidden><h2 class="lib-title">Community patches</h2></div>
     </section>
     <!-- the views (main.ts setView): centred over the main area; Install firmware is a panel over all three, not a view -->
     <div id="view-switch" class="view-switch" role="tablist" aria-label="View"><button type="button" role="tab" data-view="patch" aria-selected="true" title="The patch: the canvas of cards">Patch</button><button type="button" role="tab" data-view="emu" aria-selected="false" tabindex="-1" title="The FM-1's firmware, emulated in the browser">Emu</button><button type="button" role="tab" data-view="library" aria-selected="false" tabindex="-1" title="Manage what is stored, in this browser and on the FM-1">Library</button></div>
     <!-- LIBRARY's sections, tabs under the switch while LIBRARY shows (main.ts setLibrarySection) -->
-    <nav id="library-tabs" class="library-tabs view-switch" aria-label="Library sections" hidden><button type="button" data-section="patches" aria-current="true">Patches</button><button type="button" data-section="assemblies" aria-current="false">Assemblies</button><button type="button" data-section="presets" aria-current="false">Presets</button><button type="button" data-section="community" aria-current="false">Community</button></nav>
+    <nav id="library-tabs" class="library-tabs view-switch" aria-label="Library sections" hidden><button type="button" data-section="patches" aria-current="true">Patches</button><button type="button" data-section="assemblies" aria-current="false">Assemblies</button><button type="button" data-section="presets" aria-current="false">Presets</button><button type="button" data-section="patterns" aria-current="false">Patterns</button><button type="button" data-section="community" aria-current="false">Community</button></nav>
     <!-- Connect FM-1 (top right, in every view): connects as FM-1 & MIDI's Connect does; connected, it opens FM-1 & MIDI (main.ts syncChip) -->
     <button id="fm1-connect" class="fm1-connect" type="button" title="Connect the FM-1 over USB MIDI"><span class="sl-dot" aria-hidden="true"></span><span class="fm1-connect-text">Connect FM-1</span></button>
     <!-- the Install panel (Get started > Install firmware, the palette, #flash): flasher.ts's page over the main area -->

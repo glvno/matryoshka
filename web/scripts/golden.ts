@@ -5,7 +5,7 @@
 // Run from web/:  npx vite-node scripts/golden.ts   (tools/golden.sh does this and runs the C comparison)
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { Engine } from '../src/engine';
-import { deviceBudget, encodePatch, FLAG_INPUTS, PANEL_BYTES, recordSize, toQ16 } from '../src/patchbin';
+import { deviceBudget, encodePatch, FLAG_INPUTS, FLAG_LINKS, FORMAT_LINKS, PANEL_BYTES, recordSize, toQ16 } from '../src/patchbin';
 import { cpuEstimate } from '../src/cpu';
 import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, sandboxFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
@@ -3434,6 +3434,18 @@ for (const dirs of [[0, 0], [1, 3]]) {
   events[name] = [[128 * 5, 'run', 0], [128 * 40, 'pat', 1], [128 * 200, 'pat', 2], [128 * 420, 'pat', 3], [128 * 600, 'stop', 0],
     [128 * 620, 'pat', 1], [128 * 640, 'run', 0], [128 * 800, 'pat', 0]];
   ends[name] = 128 * 1000;
+}
+// stored pattern links (#901, format 59): steps-patterns with patterns 2 and 4 linked to stored patterns whose payloads
+// are not the patch's (edited copies), so they stay in the patterns section and the links section follows the P-locks.
+// The engines play the inline patterns: the C reader skips the links (without a store a reference loads nothing)
+tests['steps-links'] = structuredClone(tests['steps-patterns']);
+tests['steps-links'].name = 'steps-links';
+tests['steps-links'].modules.find((m) => m.type === 'fm1')!.seq = { links: { 1: { id: 7, hash: 1 }, 3: { id: 0x1234, hash: 2 } } };
+events['steps-links'] = events['steps-patterns'];
+ends['steps-links'] = ends['steps-patterns'];
+{
+  const bin = encodePatch(tests['steps-links'], true);
+  if (!((bin[6] | bin[7] << 8) & FLAG_LINKS) || bin[1] !== FORMAT_LINKS) throw new Error('steps-links: no links section');
 }
 
 // drones and ties across the loop point (#384, format 50): a track's keys into a two-voice allocator. A drone (tied round

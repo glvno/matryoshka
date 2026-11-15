@@ -306,7 +306,16 @@ export interface SeqState {
   /** the editor names the patterns as the TB-303 does (I-A1 .. IV-B8: patternName), not P01 .. P64; editor only, never in
    * the binary (the FM-1 shows P01 ..) */
   names?: '303';
+  /** patterns 2..64 linked to the FM-1's pattern store (#901, format 59), by pattern index (1..63): the stored pattern's id
+   * and its payload hash as the store holds it (pattern-store.ts). The pattern's notes stay in the patch too; while its
+   * payload hash equals `hash` the binary carries only the reference (patchbin.ts linkPlan). The ids belong to one FM-1,
+   * so share links and files leave them out (withoutLinks) */
+  links?: Record<number, PatternLink>;
 }
+/** a pattern's link to a stored pattern: its id (1..LINK_ID_MAX) and payload hash (u32) */
+export interface PatternLink { id: number; hash: number }
+/** the highest id a link takes: the store's user ids (patstore.c PT_ID_MAX; read-only factory ids are never linked) */
+export const LINK_ID_MAX = 0xefff;
 
 /** pattern p (0-based) as the editor names it: P01 .. P64, or the TB-303's I-A1 .. IV-B8 (four groups of two sections of
  * eight) */
@@ -356,7 +365,35 @@ export function fixSeq(raw: unknown): SeqState | undefined {
     if (songs.length) out.songs = songs;
   }
   if (o.names === '303') out.names = '303';
+  const links = fixLinks(o.links);
+  if (links) out.links = links;
   return Object.keys(out).length ? out : undefined;
+}
+
+/** a patch's pattern links from anything: index 1..63, id 1..LINK_ID_MAX, hash u32; undefined when none is left */
+export function fixLinks(raw: unknown): Record<number, PatternLink> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const out: Record<number, PatternLink> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const p = Number(k);
+    if (!Number.isInteger(p) || p < 1 || p >= PATTERNS_MAX || !v || typeof v !== 'object') continue;
+    const { id, hash } = v as Record<string, unknown>;
+    if (!Number.isInteger(id) || (id as number) < 1 || (id as number) > LINK_ID_MAX) continue;
+    if (!Number.isInteger(hash) || (hash as number) < 0 || (hash as number) > 0xffffffff) continue;
+    out[p] = { id: id as number, hash: hash as number };
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** a patch without its pattern links (share links and files: the ids belong to one FM-1); the patch itself when it has none */
+export function withoutLinks<P extends { modules: { type: string; seq?: SeqState }[] }>(p: P): P {
+  if (!p.modules.some((m) => m.seq?.links)) return p;
+  return { ...p, modules: p.modules.map((m) => {
+    if (!m.seq?.links) return m;
+    const { links: _l, ...seq } = m.seq;
+    const { seq: _s, ...rest } = m;
+    return Object.keys(seq).length ? { ...rest, seq } : rest;
+  }) } as P;
 }
 
 /** pattern p (0-based) of a track as it plays: its notes, length and rate. A pattern the track has not got plays its
