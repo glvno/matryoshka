@@ -72,6 +72,35 @@ export const HAND_MAPS: HandMap[] = [
       'pan#102.pan': 'init', 'vca#88.gain': 'init', 'noise#64.color': 'init',
     },
   },
+  // ---- the whole NOON (D-1054): each channel's pitch, second slider and volume go to its `main`, `secondary` and `volume`
+  // (DOT's and BACID's Ladder cutoff and resonance are now their Multimode's, the same numbers). CYMPATH's pitch was its
+  // oscillator's coarse tune and is now the main slider's Macro, -10 .. +40 semitones over 0 .. 1. A one-way LINK amount
+  // above 0 turns its button on (8-1 is 8>1); at 0 or below (a ducking link) it stays off. `main` is `main volume`, the
+  // same number. The odd and even CV rows have no row now; MOD, mute, CV mute and 1>8 start at Init.
+  {
+    engine: 'Meridian 8', from: 'dfc4cd9c', to: 'bdc40944',
+    why: 'D-1054: the whole NOON; rows by channel',
+    rows: {
+      'osc#23.coarse': { from: 'osc#10.coarse' }, 'filter#24.cutoff': { from: 'ladder#11.cutoff' }, 'vca#21.gain': { from: 'vca#9.gain' },
+      'osc#32.coarse': { from: 'osc#14.coarse' }, 'scale#33.gain': { from: 'scale#15.gain' }, 'vca#30.gain': { from: 'vca#13.gain' },
+      'modal#44.coarse': { from: 'modal#20.coarse' }, 'modal#44.struct': { from: 'modal#20.struct' }, 'vca#40.gain': { from: 'vca#17.gain' },
+      'comb#54.coarse': { from: 'comb#24.coarse' }, 'comb#54.fb': { from: 'comb#24.fb' }, 'vca#51.gain': { from: 'vca#22.gain' },
+      'macro#64.value': { line: 'osc#27.coarse', mul: [1 / 50], add: [10 / 50], min: 0, max: 1 },
+      'crush#67.rate': { from: 'crush#28.rate' }, 'vca#61.gain': { from: 'vca#26.gain' },
+      'osc#75.coarse': { from: 'osc#31.coarse' }, 'scale#76.gain': { from: 'scale#32.gain' }, 'vca#73.gain': { from: 'vca#30.gain' },
+      'osc#85.coarse': { from: 'osc#35.coarse' }, 'vowel#86.vowel': { from: 'vowel#36.vowel' }, 'vca#83.gain': { from: 'vca#34.gain' },
+      'osc#95.coarse': { from: 'osc#39.coarse' }, 'filter#96.res': { from: 'ladder#40.res' }, 'vca#93.gain': { from: 'vca#38.gain' },
+      'select#5.pos': { line: 'scale#41.gain', mul: [1000], add: [1], min: 1, max: 2 },
+      'select#115.pos': { line: 'scale#42.gain', mul: [1000], add: [1], min: 1, max: 2 },
+      'select#116.pos': { line: 'scale#43.gain', mul: [1000], add: [1], min: 1, max: 2 },
+      'select#117.pos': { line: 'scale#44.gain', mul: [1000], add: [1], min: 1, max: 2 },
+      'select#118.pos': { line: 'scale#45.gain', mul: [1000], add: [1], min: 1, max: 2 },
+      'select#119.pos': { line: 'scale#46.gain', mul: [1000], add: [1], min: 1, max: 2 },
+      'select#120.pos': { line: 'scale#47.gain', mul: [1000], add: [1], min: 1, max: 2 },
+      'select#121.pos': { line: 'scale#48.gain', mul: [1000], add: [1], min: 1, max: 2 },
+      'shape#8.level+shape#9.level': { from: 'macro#6.value' },
+    },
+  },
   // ---- 1.5.0 (#430's predecessors): the FM-1 instruments rebuilt at parity with their originals. Their 1.2 .. 1.4
   // structures had other modules and rows altogether: no map.
   ...([
