@@ -1,5 +1,7 @@
 # Changelog
 
+## Unreleased
+
 ## 1.15.0 — 2026-11-14
 
 - **The FM-1 uses both of its cores for every patch.** Before, the second core only helped patches with several voices. Now drum kits, monophonic instruments and effects share the work too. On the factory patches the busiest moment uses up to 23 points less of the FM-1's time: Verona Drum 1 76 % → 53 %, 808 Kit 76 % → 57 %, Canvas 86 % → 67 %, Meridian 8 60 % → 40 %. The sound is unchanged, bit for bit. The editor's CPU estimate counts the same plan.

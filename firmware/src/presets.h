@@ -71,7 +71,7 @@ static const struct { uint32_t set; uint64_t has; } RELEASED_SETS[N_RELEASED_SET
     {0x626f70u, 0x3fffffull},   /* v1.11.1 */
     {0x7ba90fu, 0x3fffffull},   /* v1.10.0 .. v1.10.1 */
     {0xb9a4a8u, 0x1fffffull},   /* v1.9.1 */
-    {0xc72a4au, 0x3fffffull},   /* v1.14.0 */
+    {0xc72a4au, 0x3fffffull},   /* v1.14.0 .. v1.15.0 */
     {0xec32dbu, 0x1fffffull},   /* v1.8.2 .. v1.9.0 */
 };
 
