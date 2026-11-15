@@ -53,13 +53,13 @@ const KIT808: FactoryKit = {
     { name: 'ELECTRO B', grid: {
       BD: 'x...x...x.x..x..',
       SD: '....x.......x...',
-      CP: '....x.......x...',
+      CP: '............x...',
       CH: 'x.x.x.x.x.x.x...',
       OH: '..............x.',
       CB: '..........x.....',
       MT: '............x...',
       LT: '.............x.x',
-      AC: 'x...x...x...x...',
+      AC: 'x.......x.......',
     } },
     ...ab('DISCO', {
       BD: 'x...x...x...x...',
@@ -111,13 +111,13 @@ const KIT808: FactoryKit = {
       CB: '.......x......x.',
       AC: '....x.......x...',
     }, {
-      BD: 'x.....x.x.x..xxx',
+      BD: 'x.....x.x.x..x..',
       SD: '..............xx',
       CP: '....x.......x...',
       CH: 'xxxxxxxxxxxx.x..',
       OH: '............x...',
       CB: '.......x......x.',
-      AC: '....x.......x..x',
+      AC: '....x.......x...',
     }),
     ...ab('HOUSE', {
       BD: 'x...x...x...x...',
@@ -219,11 +219,10 @@ const KIT808: FactoryKit = {
     }, {
       BD: 'x.....x.x..x..x.',
       SD: '....x.......x...',
-      CP: '....x.......x.xx',
+      CP: '....x.......x...',
       CH: 'xxxxxxxxxxxxxx..',
       OH: '..............x.',
-      CY: 'x...............',
-      AC: 'x...x...x...x.x.',
+      AC: 'x...x...x...x...',
     }),
   ],
   // a rhythm track: ELECTRO with its B every fourth bar, then MIAMI BASS, back to ELECTRO
