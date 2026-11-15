@@ -5,30 +5,30 @@
 #
 # kick
 #   kick / decay = 0.5 s               0.001..10 s
-#   kick / pitch = -29 st              -48..48 st
-#   kick / bend = 2.2                  -4..4
+#   kick / pitch = 0.28                0..1
+#   kick / bend = 0.55                 0..1
 #   time = 0.04 s                      0.001..10 s
 #   kick / wave = 1.4                  1..32
 #   kick / noise = 0.25                0..2
-#   kick / attack = 0.5                0..1
+#   kick / attack = 0                  0..1
 #   kick / pan = 0                     -1..1
 #   kick / volume = 1.27               0..2
 # drum 1
 #   drum 1 / decay = 0.35 s            0.001..10 s
-#   drum 1 / pitch = -17 st            -48..48 st
+#   drum 1 / pitch = 0.6               0..1
 #   drum 1 / bend = 0.5                -4..4
 #   drum 1 / attack = 0.3              0..1
-#   drum 1 / fm int = 0                -4..4
+#   drum 1 / fm int = 0                0..1
 #   drum 1 / fm freq = -24 st          -48..48 st
 #   drum 1 / wave = 1.2                1..32
 #   drum 1 / pan = -0.35               -1..1
 #   drum 1 / volume = 1.27             0..2
 # drum 2
 #   drum 2 / decay = 0.25 s            0.001..10 s
-#   drum 2 / pitch = -7 st             -48..48 st
+#   drum 2 / pitch = 0.69              0..1
 #   drum 2 / bend = 0.5                -4..4
 #   drum 2 / attack = 0.3              0..1
-#   drum 2 / fm int = 0                -4..4
+#   drum 2 / fm int = 0                0..1
 #   drum 2 / fm freq = -24 st          -48..48 st
 #   drum 2 / wave = 1.2                1..32
 #   drum 2 / pan = 0.35                -1..1
@@ -90,19 +90,21 @@
 
 # Sounds follow the Vermona DRM1 MKIV manual's channel recipes. These are model studies, not measured hardware matches.
 # The rows follow the original's knobs: see web/scripts/verona-voices.ts for what each does here.
-# bend: 0 none, up a falling sweep, below 0 a rising one (the kick's only falls). time: the kick's pitch sweep. wave: 1 a
-# sine, up to an overdriven square. clap: the claps' rate, so their number (below about 22 Hz one clap). pitch 2 / pitch
-# 3: octaves below the multi's pitch, off at -4. A hi-hat's row plays it open or closed by its trig switch; the HH 1 CL
-# and HH 2 CL rows (G4, A4) play it closed whatever trig says.
+# pitch (kick, drum 1, drum 2): 0..1 over the original knob's range, the kick 22..380 Hz, drum 1 18..300 Hz, drum 2
+# 24..430 Hz. bend: 0 none, up a falling sweep, below 0 a rising one; the kick's only falls, 0..1 up to four octaves. time:
+# the kick's pitch sweep. kick / attack: the spike's shape, 0 a 3 ms click, up a tail that widens it into a push. fm int:
+# 0 off, up to four octaves either way. wave: 1 a sine, up to an overdriven square. clap: the claps' rate, so their number
+# (below about 22 Hz one clap). pitch 2 / pitch 3: octaves below the multi's pitch, off at -4. A hi-hat's row plays it
+# open or closed by its trig switch; the HH 1 CL and HH 2 CL rows (G4, A4) play it closed whatever trig says.
 engine: Verona Drum 1
 
 preset: Dance Floor
 # the manual's dance kick: short decay, more bend, little time; a tight hat and a full clap
 kick / decay = 0.32
-kick / pitch = -28
-kick / bend = 2.8
+kick / pitch = 0.3
+kick / bend = 0.7
 time = 0.03
-kick / attack = 0.7
+kick / attack = 0.4
 hi hat 1 / decay = 0.25
 hi hat 1 / filter = 11000
 hi hat 1 / mix = 0.35
@@ -116,12 +118,11 @@ drum 1 / volume = 0.55
 preset: Trouser Flap
 # DECAY at its longest for a long, low boom (the manual: Trap, drum and bass, dubstep); the bend kept low
 kick / decay = 2.5
-kick / pitch = -31
-kick / bend = 0.9
+kick / pitch = 0.24
+kick / bend = 0.23
 time = 0.09
 kick / wave = 1.8
 kick / noise = 0.1
-kick / attack = 0.3
 snare / decay rev = 0.6
 snare / reverb = 0.25
 hi hat 1 / decay = 0.5
@@ -133,8 +134,8 @@ drum 1 / volume = 0.55
 preset: Beat Box 78
 # Light kick/snare/hat groove with one quiet, short metallic accent.
 kick / decay = 0.18
-kick / pitch = -24
-kick / bend = 1.2
+kick / pitch = 0.38
+kick / bend = 0.3
 kick / wave = 1
 kick / noise = 0
 snare / resonance = 0.55
@@ -157,7 +158,7 @@ snare / filter = 2500
 snare / resonance = 0.98
 snare / noise = 0
 snare / reverb = 0
-drum 1 / pitch = -5
+drum 1 / pitch = 0.85
 drum 1 / decay = 0.25
 drum 1 / bend = 0.15
 drum 1 / attack = 0.6
@@ -171,8 +172,8 @@ hi hat 1 / decay = 0.12
 
 preset: Metal Works
 # FM in the audio range on drum 1 (atonal, metallic), the multi's three squares spread for a bell, hats bending up
-drum 1 / pitch = 2
-drum 1 / fm int = 1.5
+drum 1 / pitch = 0.99
+drum 1 / fm int = 0.38
 drum 1 / fm freq = 9
 drum 1 / decay = 0.6
 drum 1 / bend = -0.3
