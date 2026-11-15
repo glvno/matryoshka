@@ -2,8 +2,10 @@
 // Verona Drum 1's voices (#613), after the instrument channels of the Vermona DRM1 MKIV (its user manual, "The instrument
 // channels of the DRM1 MKIV", pages 11 to 18: vermona.com, drm1mk4_manual_web_en.pdf). One function per channel, each the
 // channel's own signal flow with one row per knob, named as the panel names it. gen-assemblies.ts builds the FM-1 engine
-// from them (six channels, one shared noise source) and scripts/xl/verona-drum-1.ts the XL (all eight, each with its own noise,
-// pan and the second hi-hat notes). Both builders have `add`, `wire` and `module`, which is all a voice needs.
+// from them (all eight channels since D-899; the clap's noise its own, the others one shared, which plays the same) and
+// scripts/xl/verona-drum-1.ts built the archived XL. Both builders have `add`, `wire` and `module`, which is all a voice needs.
+// The `lean` options are the six-channel 1.14 design's (they made room on the one-core FM-1); the factory engine no longer
+// uses them.
 //
 // What each knob does, after the manual:
 //  - KICK: a sine through a waveshaper (WAVE: from sine to an overdriven square), its pitch swept down by its own envelope

@@ -32,7 +32,7 @@ describe('share links', () => {
         expect(await decodeShare(s.full, DEFS)).toEqual(p);
       } else {
         expect(s).toMatchObject({ layout: true, layoutFits: true, tooLong: false });
-        expect(s.length).toBeLessThan(LINK_MAX * 0.75); // an FM-1 version (Briefcase 3, the VCS3's control columns: about 5800)
+        expect(s.length).toBeLessThan(LINK_MAX * 0.85); // an FM-1 version (Verona Drum 1, the whole DRM1 MKIV: about 6,400)
       }
       if (s.layout) expect(await decodeShare(s.code, DEFS)).toEqual(p);
       expect(shareCodeOf(s.link)).toBe(s.code);

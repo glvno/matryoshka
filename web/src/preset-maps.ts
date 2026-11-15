@@ -41,6 +41,37 @@ export const HAND_MAPS: HandMap[] = [
     why: 'issue #782: MASTER controls both stereo output amplifiers at the same value; PAN starts centered',
     rows: { 'macro#3.value': { from: 'mixer#3.l1' } },
   },
+  // ---- the whole DRM1 MKIV (D-899): each row of the six-channel card goes to the same channel's row of the same label
+  // (HI HAT is HI HAT 1); the duplicated drum and hat modules would otherwise pair with the wrong channel. The snare's NOISE
+  // and REVERB were its envelopes' peaks with one VCA at 1 and are now their VCAs' gains: the same number. MULTI's PITCH 2
+  // / 3 were the oscillators' coarse tune (semitones, PITCH's 19 its middle) and are now octaves below PITCH. DRUM 2, HI
+  // HAT 2, the TRIG switches and NOISE COLOR start at Init.
+  {
+    engine: 'Verona Drum 1', from: '7bd94d43', to: 'ad27b323',
+    why: 'D-899: the whole DRM1 MKIV; rows by channel and label',
+    rows: {
+      'env#8.r2': { from: 'env#8.r2' }, 'osc#4.coarse': { from: 'osc#4.coarse' }, 'scale#6.gain': { from: 'scale#6.gain' }, 'env#5.r2': { from: 'env#5.r2' },
+      'shape#7.drive': { from: 'shape#7.drive' }, 'vca#11.gain': { from: 'vca#10.gain' }, 'env#12.l1': { from: 'env#11.l1' }, 'pan#96.pan': { from: 'pan#60.pan' },
+      'vca#13.gain': { from: 'vca#12.gain' }, 'env#17.r2': { from: 'env#16.r2' }, 'osc#14.coarse': { from: 'osc#13.coarse' }, 'scale#18.gain': { from: 'scale#17.gain' },
+      'env#21.l1': { from: 'env#20.l1' }, 'scale#16.gain': { from: 'scale#15.gain' }, 'osc#15.coarse': { from: 'osc#14.coarse' }, 'shape#19.drive': { from: 'shape#18.drive' },
+      'pan#97.pan': { from: 'pan#61.pan' }, 'vca#22.gain': { from: 'vca#21.gain' }, 'env#23.r2': { from: 'env#22.r2' }, 'scale#24.offset': { from: 'scale#23.offset' },
+      'scale#24.gain': { from: 'scale#23.gain' }, 'env#35.l1': { from: 'env#28.l1' }, 'filter#36.cutoff': { from: 'filter#29.cutoff' }, 'pan#99.pan': { from: 'pan#62.pan' },
+      'vca#37.gain': { from: 'vca#30.gain' }, 'env#40.r2': { from: 'env#33.r2' }, 'vca#41.gain': { from: 'env#33.l1' }, 'env#38.r2': { from: 'env#31.r2' },
+      'vca#39.gain': { from: 'env#31.l1' }, 'env#42.l1': { from: 'env#34.l1' }, 'filter#43.res': { from: 'filter#35.res' }, 'filter#43.cutoff': { from: 'filter#35.cutoff' },
+      'pan#100.pan': { from: 'pan#63.pan' }, 'vca#44.gain': { from: 'vca#36.gain' }, 'env#48.r3': { from: 'env#40.r3' }, 'filter#51.cutoff': { from: 'filter#43.cutoff' },
+      'scale#50.gain': { from: 'scale#42.gain' }, 'env#49.l1': { from: 'env#41.l1' }, 'filter#51.res': { from: 'filter#43.res' }, 'xfade#46.mix': { from: 'xfade#38.mix' },
+      'osc#45.coarse': { from: 'osc#37.coarse' }, 'pan#101.pan': { from: 'pan#64.pan' }, 'vca#54.gain': { from: 'vca#46.gain' }, 'env#66.r2': { from: 'env#54.r2' },
+      'vca#67.gain': { from: 'vca#55.gain' }, 'lfo#60.wide': { from: 'lfo#49.wide' }, 'vca#65.gain': { from: 'vca#53.gain' }, 'filter#68.res': { from: 'filter#56.res' },
+      'filter#68.cutoff': { from: 'filter#56.cutoff' }, 'pan#103.pan': { from: 'pan#65.pan' }, 'vca#69.gain': { from: 'vca#57.gain' }, 'macro#2.value': { from: 'macro#3.value' },
+      'const#28.value': { line: 'osc#26.coarse', mul: [1 / 12], add: [-19 / 12], min: -4, max: 4 },
+      'const#32.value': { line: 'osc#27.coarse', mul: [1 / 12], add: [-19 / 12], min: -4, max: 4 },
+      // DRUM 2, HI HAT 2, the TRIG switches and NOISE COLOR: Init (not a copy of the pair's old values)
+      'env#73.r2': 'init', 'osc#70.coarse': 'init', 'scale#74.gain': 'init', 'env#77.l1': 'init', 'scale#72.gain': 'init', 'osc#71.coarse': 'init',
+      'shape#75.drive': 'init', 'pan#98.pan': 'init', 'vca#78.gain': 'init', 'select#57.pos': 'init', 'env#82.r3': 'init', 'filter#85.cutoff': 'init',
+      'scale#84.gain': 'init', 'env#83.l1': 'init', 'filter#85.res': 'init', 'xfade#80.mix': 'init', 'osc#79.coarse': 'init', 'select#91.pos': 'init',
+      'pan#102.pan': 'init', 'vca#88.gain': 'init', 'noise#64.color': 'init',
+    },
+  },
   // ---- 1.5.0 (#430's predecessors): the FM-1 instruments rebuilt at parity with their originals. Their 1.2 .. 1.4
   // structures had other modules and rows altogether: no map.
   ...([
