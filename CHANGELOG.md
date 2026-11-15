@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **The CPU estimate is closer to the FM-1 when you add voices.** The editor read too high as voices were added to the poly factory instruments; it now follows the test rig's measurements at several voice counts. Hera 3 at 6 voices reads 86 % (the FM-1 measures 84 %; it read 94 %), Oracle V at 5 reads 84 % (the FM-1 82 %; it read 87 %), Algo Four at 8 reads 84 % (the FM-1 80 %; it read 86 %).
+
 ## 1.15.0 — 2026-11-14
 
 - **The FM-1 uses both of its cores for every patch.** Before, the second core only helped patches with several voices. Now drum kits, monophonic instruments and effects share the work too. On the factory patches the busiest moment uses up to 23 points less of the FM-1's time: Verona Drum 1 76 % → 53 %, 808 Kit 76 % → 57 %, Canvas 86 % → 67 %, Meridian 8 60 % → 40 %. The sound is unchanged, bit for bit. The editor's CPU estimate counts the same plan.
