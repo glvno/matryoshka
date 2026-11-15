@@ -80,30 +80,38 @@ function playHeld(p: Patch, evs: [number, number, boolean][], ms: number, from =
 
 describe('Verona Drum 1 (#613)', () => {
   const fm1 = (): Patch => FM1_PRESETS['Verona Drum 1']();
-  it('fits the FM-1 and is its last factory patch, with six channels of the original\'s knobs, PAN and VOLUME each, and MASTER', () => {
+  it('fits the FM-1 and is its last factory patch, with all eight channels of the original\'s knobs, PAN and VOLUME each, and MASTER (D-899)', () => {
     expect(Object.keys(FM1_PRESETS).at(-1)).toBe('Verona Drum 1');
     expect(deviceBudget(fm1()).fits).toBe(true);
     expect(deviceBudget(fm1()).cpu.use).toBeLessThanOrEqual(CPU_VOICE_TOP);
     const s = sections(fm1(), 'Verona Drum 1');
-    expect([...s.keys()]).toEqual(['kick', 'drum 1', 'multi', 'snare', 'hi hat', 'clap', 'master']);
-    const want: Record<string, string[]> = { kick: KNOBS.kick, 'drum 1': KNOBS.drum, multi: KNOBS.multi, snare: KNOBS.snare, 'hi hat': KNOBS.hat, clap: KNOBS.clap.filter((k) => k !== 'noise color') };
+    expect([...s.keys()]).toEqual(['kick', 'drum 1', 'drum 2', 'multi', 'snare', 'hi hat 1', 'hi hat 2', 'clap', 'master']);
+    const want: Record<string, string[]> = {
+      kick: KNOBS.kick, 'drum 1': KNOBS.drum, 'drum 2': KNOBS.drum, multi: KNOBS.multi, snare: KNOBS.snare,
+      'hi hat 1': [...KNOBS.hat, 'trig'], 'hi hat 2': [...KNOBS.hat, 'trig'], clap: KNOBS.clap,
+    };
     for (const [head, knobs] of Object.entries(want)) expect(s.get(head), head).toEqual([...knobs, 'pan', 'volume']);
     expect(s.get('master')).toEqual(['master']);
   });
 
-  it('names its Drum map rows after the channels, and each row sounds', () => {
+  it('names its Drum map rows after the TRIG buttons, and each row sounds, the closed hi-hat rows too', () => {
     const p = fm1();
-    const map = p.modules.find((m) => m.type === 'drummap')!;
-    expect(map.names).toEqual(['KICK', 'DRUM 1', 'MULTI', 'SNARE', 'HH OPEN', 'HH CLOSE', 'CLAP', 'ROW 8']);
-    for (let r = 1; r <= 7; r++) expect(play(p, [[0, map.params[`n${r}`]]], 200), map.names![r - 1]).toBeGreaterThan(0.01);
+    const [map, closed] = ['KICK', 'HH 1 CL'].map((n) => p.modules.find((m) => m.type === 'drummap' && m.names?.[0] === n)!);
+    expect(map.names).toEqual(['KICK', 'DRUM 1', 'DRUM 2', 'MULTI', 'SNARE', 'HI HAT 1', 'HI HAT 2', 'CLAP']);
+    for (let r = 1; r <= 8; r++) expect(play(p, [[0, map.params[`n${r}`]]], 200), map.names![r - 1]).toBeGreaterThan(0.01);
+    expect([closed.params.n1, closed.params.n2]).toEqual([67, 69]);
+    for (let r = 1; r <= 2; r++) expect(play(p, [[0, closed.params[`n${r}`]]], 60), closed.names![r - 1]).toBeGreaterThan(0.005);
   });
 
-  it('plays a 16-step pattern on a Steps track named PATTERN between Main\'s keys and the engine (D-330)', () => {
+  it('plays a 16-step pattern on one Steps track named PATTERN into both Drum maps (D-330), so the demo patterns switch', () => {
     const p = fm1();
-    const st = p.modules.find((m) => m.type === 'steps')!;
-    expect(st.name).toBe('PATTERN');
+    const tracks = p.modules.filter((m) => m.type === 'steps');
+    expect(tracks.map((m) => m.name)).toEqual(['PATTERN']);
+    const st = tracks[0];
     expect(st.params.len ?? 16).toBe(16);
     expect(st.notes!.length).toBeGreaterThan(16);
+    const maps = p.modules.filter((m) => m.type === 'drummap').map((m) => m.id);
+    expect(maps.every((id) => p.cables.some((c) => c.from.module === st.id && c.from.port === 'keys' && c.to.module === id && c.to.port === 'keys'))).toBe(true);
     expect(p.modules.some((m) => m.type === 'arp')).toBe(false);
   });
 
@@ -112,9 +120,9 @@ describe('Verona Drum 1 (#613)', () => {
     const a = p.assemblies!.find((x) => x.name === 'Verona Drum 1')!;
     const pans = a.params.filter((r) => r.label === 'pan');
     const master = a.params.find((r) => r.label === 'master')!;
-    const map = p.modules.find((m) => m.type === 'drummap')!;
+    const map = p.modules.find((m) => m.type === 'drummap' && m.names?.[0] === 'KICK')!;
     const levels = (row: number, pan: number, gain: number): number[] => {
-      pans.forEach((r, i) => { p.modules.find((m) => m.id === r.module)!.params[r.param] = i === [0, 1, 2, 3, 4, 4, 5][row - 1] ? pan : 0; });
+      pans.forEach((r, i) => { p.modules.find((m) => m.id === r.module)!.params[r.param] = i === row - 1 ? pan : 0; });
       p.modules.find((m) => m.id === master.module)!.params[master.param] = gain;
       const e = new Engine(SR);
       e.load(p);
@@ -123,8 +131,8 @@ describe('Verona Drum 1 (#613)', () => {
       e.render(l, r);
       return [l, r].map((x) => Math.sqrt(x.reduce((sum, v) => sum + v * v, 0) / x.length));
     };
-    expect(pans).toHaveLength(6);
-    for (const row of [1, 2, 3, 4, 5, 6, 7]) {
+    expect(pans).toHaveLength(8);
+    for (let row = 1; row <= 8; row++) {
       const left = levels(row, -1, 0.4), right = levels(row, 1, 0.4);
       const center = levels(row, 0, 0.4), half = levels(row, 0, 0.2);
       expect(left[0], `row ${row}`).toBeGreaterThan(0.001);
@@ -137,38 +145,44 @@ describe('Verona Drum 1 (#613)', () => {
     }
   });
 
-  it('keeps every saved mono control value and centers the six new pans when migrating a preset', () => {
+  it('moves a preset of the six-channel card onto the same channels, MULTI\'s pitches into octaves, the new rows at Init (D-899)', () => {
     const p = fm1();
     const a = p.assemblies!.find((x) => x.name === 'Verona Drum 1')!;
-    const from = 'db9de761';
-    const migration = PRESET_MIGRATIONS[from];
-    const before = readLineage().engines['Verona Drum 1'].find((x) => x.structure === from)!;
     const init = factoryPresets().find((x) => x.structure === structureOf(p, a) && x.name === 'Init')!;
-    const old = before.rows.map((_, i) => (i + 1) / 100);
-    const values = migrateValues(migration, old, init.values);
+    // (and the 1.13 mono card on through the six-channel one)
+    expect(PRESET_MIGRATIONS.db9de761.to).toBe(init.structure);
+    const from = '7bd94d43';
+    const migration = PRESET_MIGRATIONS[from];
     expect(migration.to).toBe(init.structure);
-    expect(migration.rows.filter((r) => r === -1)).toHaveLength(6);
-    expect(new Set(migration.rows.filter((r) => typeof r === 'number' && r >= 0)).size).toBe(old.length);
-    migration.rows.forEach((r, i) => expect(values[i]).toBe(r === -1 ? 0 : old[r as number]));
-    applyPreset(p, a, { structure: init.structure, name: 'Migrated', values });
-    const master = a.params.find((r) => r.label === 'master')!;
-    expect(p.modules.find((m) => m.id === master.module)!.params[master.param]).toBe(old[before.rows.findIndex((r) => r[1] === 'master')]);
+    const before = readLineage().engines['Verona Drum 1'].find((x) => x.structure === from)!;
+    const old = before.rows.map((_, i) => (i + 1) / 100);
+    const pitch2 = before.rows.findIndex((r) => r[0] === 'osc#26.coarse');
+    old[pitch2] = 7;   // a fifth over PITCH's 19 ... an octave under it: -1
+    const values = migrateValues(migration, old, init.values);
+    const moved = migration.rows.filter((r) => typeof r === 'number' && r >= 0) as number[];
+    expect(new Set(moved).size).toBe(old.length - 2);   // (every row but the two pitches, which go through a line)
+    expect(migration.rows.filter((r) => r === -1)).toHaveLength(21);   // DRUM 2, HI HAT 2, two TRIGs, NOISE COLOR
+    migration.rows.forEach((r, i) => { if (typeof r === 'number' && r >= 0) expect(values[i]).toBe(old[r]); });
+    const now = readLineage().engines['Verona Drum 1'].find((x) => x.structure === init.structure)!;
+    const at = (id: string): number => now.rows.findIndex((r) => r[0] === id);
+    expect(values[at('const#28.value')]).toBeCloseTo(-1, 3);   // multi / pitch 2 (Q16)
+    expect(values[at('vca#39.gain')]).toBe(old[before.rows.findIndex((r) => r[0] === 'env#31.l1')]);   // snare / noise
   });
 
   it('a closed hit cuts the open hi-hat ringing, and dies in its fixed short time', () => {
     const p = fm1();
-    const map = p.modules.find((m) => m.type === 'drummap')!;
-    const [open, closed] = [map.params.n5, map.params.n6];
+    const [map, closedMap] = ['KICK', 'HH 1 CL'].map((n) => p.modules.find((m) => m.type === 'drummap' && m.names?.[0] === n)!);
+    const [open, closed] = [map.params.n6, closedMap.params.n1];   // (HI HAT 1's TRIG is open as made)
     const ringing = play(p, [[0, open]], 400, 250);
     const cut = play(p, [[0, open], [100, closed]], 400, 250);
     expect(ringing).toBeGreaterThan(0.002);
     expect(cut).toBeLessThan(ringing / 20);
   });
 
-  it('a hi-hat row pressed while its other row\'s key is still down plays, either way round (the 1.10 early check, D-866)', () => {
+  it('a hi-hat row pressed while its closed row\'s key is still down plays, either way round (the 1.10 early check, D-866)', () => {
     const p = fm1();
-    const map = p.modules.find((m) => m.type === 'drummap')!;
-    const [open, closed] = [map.params.n5, map.params.n6];
+    const [map, closedMap] = ['KICK', 'HH 1 CL'].map((n) => p.modules.find((m) => m.type === 'drummap' && m.names?.[0] === n)!);
+    const [open, closed] = [map.params.n6, closedMap.params.n1];
     const ringing = playHeld(p, [[0, open, true], [300, open, false]], 400, 250);
     expect(ringing).toBeGreaterThan(0.002);
     // the open row held, then the closed row: it cuts the open hat

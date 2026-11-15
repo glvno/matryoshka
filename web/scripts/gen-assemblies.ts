@@ -8,7 +8,7 @@ import { defaultMap, defaultParams, rowDef, STEP_VEL, type ModuleInst, type Poly
 import { defIsEngine } from '../src/engines';
 import { pinsToParams, type AssemblyDef, type NestedDef, type PortRef, type ParamRef } from '../src/assembly';
 import { cardRows } from '../src/preset-cards';
-import { clap, drum, hihat, kick, multi, sharedNoise, snare, type Voice } from './verona-voices';
+import { clap, drum, hihat, kick, multi, ownNoise, sharedNoise, snare, TRIG_NAMES, type Voice } from './verona-voices';
 import { updateLineage } from './lineage-lib';
 import { junoDef } from './xl/hera-6';
 import { masterFxDef } from './master-fx';
@@ -4214,50 +4214,57 @@ asm('Spokes 6', 'Drums', (b) => {
   b.param('out', scope, 'view', { col: true });
 });
 
-// Verona Drum 1, after the Vermona DRM1 MKIV (#613; its user manual, "The instrument channels", pages 11 to 18). The FM-1
-// version: six of its eight instrument channels, each with every knob of its panel and its own signal flow
-// (scripts/verona-voices.ts): KICK, DRUM 1, MULTI, SNARE, HI HAT 1, CLAP, and each channel's PAN and VOLUME. A Drum map row per
-// channel on the white keys from F3, the hi-hat on two (OPEN, and CLOSED with its fixed short decay, as the original's
-// two MIDI notes per hi-hat); a row's velocity is the channel's level, as the DRM1's MIDI velocity. The channels share
-// one white noise source; MASTER controls both output amplifiers. Left out to fit the FM-1 (Verona Drum 1 XL has
-// them, scripts/xl/verona-drum-1.ts): DRUM 2 and HI HAT 2 (each the same as its pair), the clap's NOISE COLOR, the
-// hi-hat's TRIG switch (its two rows play open and closed), MULTI's PITCH 2 / PITCH 3 off position (here they are the
-// oscillators' coarse tune), the kick's own noise envelope (its noise lasts as long as TIME), and the snare's second noise
-// VCA (NOISE and REVERB are its envelopes' levels, 0..1).
+// Verona Drum 1, after the Vermona DRM1 MKIV (#613; its user manual, "Sound Generation" and "The instrument channels",
+// pages 10 to 18; "MIDI Functions", pages 19 and 20). All eight instrument channels, each with every knob of its panel and
+// its own signal flow (scripts/verona-voices.ts): KICK, DRUM 1, DRUM 2, MULTI, SNARE, HI HAT 1, HI HAT 2, CLAP, and each
+// channel's PAN and VOLUME; MASTER controls both output amplifiers. Each channel has its own noise source; NOISE COLOR is
+// on the clap, as on the original. The Drum map's eight rows are the eight TRIG buttons in the panel's order, on the white
+// keys from F3; a hi-hat's row plays it open or closed by its TRIG switch (the original's TRIG button mode). A second Drum
+// map plays both hi-hats closed whatever TRIG says, as the original's second MIDI note per hi-hat (rows HH 1 CL and HH 2
+// CL, on G4 and A4); both maps take the same keys, so one PATTERN track plays all ten rows. A row's velocity is the
+// channel's level, as the DRM1's MIDI velocity. Built in the 1.15 order first (kick, drum 1, multi, snare, hi hat 1, clap),
+// then DRUM 2 and HI HAT 2, so a user preset of the six-channel card keeps each channel's values (preset-maps.ts).
 asm('Verona Drum 1', 'Drums', (b) => {
   const map = b.add('drummap', 0, 0, Object.fromEntries(PLATE_KEYS[1].map((n, r) => [`n${r + 1}`, n])));
-  b.module(map).names = ['KICK', 'DRUM 1', 'MULTI', 'SNARE', 'HH OPEN', 'HH CLOSE', 'CLAP', 'ROW 8'];
-  const noise = sharedNoise(b, 0, 1);
-  const master = b.add('macro', 7, 0, { value: 0.7 });   // (MASTER is the level row, #448)
-  const channels: [string, Voice][] = [
-    ['kick', kick(b, 1, noise, { lean: true })],
-    ['drum 1', drum(b, 2, { coarse: -17, decay: 0.35 })],
-    ['multi', multi(b, 3, { lean: true })],
-    ['snare', snare(b, 4, noise, { lean: true })],
-    ['hi hat', hihat(b, 5, noise)],
-    ['clap', clap(b, 6, noise, { color: false })],
+  b.module(map).names = ['KICK', 'DRUM 1', 'DRUM 2', 'MULTI', 'SNARE', 'HI HAT 1', 'HI HAT 2', 'CLAP'];
+  const master = b.add('macro', 10, 0, { value: 0.7 });   // (MASTER is the level row, #448)
+  // (every Noise starts from the same seed, so one white noise for the kick, the snare and the hi-hats plays what one each
+  // would, bit for bit; the clap has its own for its NOISE COLOR)
+  const noise = sharedNoise(b, 0, 2);
+  /** heading, column, its voice, its pan */
+  const built: [string, number, Voice, number][] = [
+    ['kick', 1, kick(b, 1, noise), 0],
+    ['drum 1', 2, drum(b, 2, { coarse: -17, decay: 0.35 }), -0.35],
+    ['multi', 4, multi(b, 4), 0.25],
+    ['snare', 5, snare(b, 5, noise), 0],
+    ['hi hat 1', 6, hihat(b, 6, noise, { trig: 1 }), -0.2],
+    ['clap', 8, clap(b, 8, ownNoise, { color: true }), 0.1],
+    ['drum 2', 3, drum(b, 3, { coarse: -7, decay: 0.25 }), 0.35],
+    ['hi hat 2', 7, hihat(b, 7, noise, { trig: 1, pitch: 27 }), 0.3],
   ];
-  const outL = b.add('vca', 7, 1, { gain: 1 });
-  const outR = b.add('vca', 7, 2, { gain: 1 });
+  const channels = [...built].sort((x, y) => x[1] - y[1]);   // (the panel's order: the Drum map's rows, the card)
+  const outL = b.add('vca', 10, 1, { gain: 1 });
+  const outR = b.add('vca', 10, 2, { gain: 1 });
   b.wire(master, 'out', outL, 'cv');
   b.wire(master, 'out', outR, 'cv');
-  const pans = channels.map((_, i) => b.add('pan', 1 + i, 6, { pan: 0 }));
-  /** each channel's Drum map row (the hi-hat's open row; its closed row is 6) */
-  const rows = [1, 2, 3, 4, 5, 7];
-  channels.forEach(([name, v], i) => {
-    const r = rows[i];
+  const pans = channels.map(([, col, , pan]) => b.add('pan', col, 6, { pan }));
+  channels.forEach(([name, col, v], i) => {
+    const r = i + 1;
     for (const [m, port] of v.gate) b.wire(map, `g${r}`, m, port);
     b.wire(map, `v${r}`, v.vel[0], v.vel[1]);
-    if (v.closed) {
-      for (const [m, port] of v.closed) b.wire(map, 'g6', m, port);
-      b.wire(map, 'v6', v.closedVel![0], v.closedVel![1]);
-    }
     b.wire(v.out[0], v.out[1], pans[i], 'in');
     b.wire(pans[i], 'l', outL, 'in');
     b.wire(pans[i], 'r', outR, 'in');
-    b.nest(name, 1 + i, 0, [...v.members, pans[i]]);
+    b.nest(name, col, 0, [...v.members, pans[i]]);
   });
-  channels.forEach(([, v]) => {
+  // the closed hi-hats' rows, whatever the channels' TRIG says
+  const closed = b.add('drummap', 0, 1, { n1: 67, n2: 69, n3: 0, n4: 0, n5: 0, n6: 0, n7: 0, n8: 0 });
+  b.module(closed).names = ['HH 1 CL', 'HH 2 CL', '-', '-', '-', '-', '-', '-'];
+  channels.filter(([, , v]) => v.closed).forEach(([, , v], k) => {
+    for (const [m, port] of v.closed!) b.wire(closed, `g${k + 1}`, m, port);
+    b.wire(closed, `v${k + 1}`, v.closedVel![0], v.closedVel![1]);
+  });
+  channels.forEach(([, , v]) => {
     const [first, ...also] = v.gate;
     b.nestInput('gate', first[0], first[1], ...also);
     if (v.closed) {
@@ -4267,16 +4274,17 @@ asm('Verona Drum 1', 'Drums', (b) => {
     b.nestInput('velocity', v.vel[0], v.vel[1]);
     b.nestOutput('out', v.out[0], v.out[1]);
   });
-  b.input('keys', map, 'keys');
+  b.input('keys', map, 'keys', [closed, 'keys']);
   b.output('l', outL, 'out');
   b.output('r', outR, 'out');
-  channels.forEach(([name, v], i) => {
+  channels.forEach(([name, , v], i) => {
     v.rows.forEach(([label, m, param], k) => b.param(label, m, param, k === 0 ? { head: name, col: true } : {}));
     b.param('pan', pans[i], 'pan');
     b.param('volume', v.out[0], 'gain');
   });
   b.param('master', master, 'value', { head: 'master', col: true });
 });
+namePositions('Verona Drum 1', { trig: TRIG_NAMES });
 
 // an LFO through a Scale: vibrato (into a pitch input), tremolo (into a VCA's cv with an offset), a filter sweep
 asm('vibrato', 'Utilities', (b) => {

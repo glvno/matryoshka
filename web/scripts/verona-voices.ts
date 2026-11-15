@@ -2,8 +2,10 @@
 // Verona Drum 1's voices (#613), after the instrument channels of the Vermona DRM1 MKIV (its user manual, "The instrument
 // channels of the DRM1 MKIV", pages 11 to 18: vermona.com, drm1mk4_manual_web_en.pdf). One function per channel, each the
 // channel's own signal flow with one row per knob, named as the panel names it. gen-assemblies.ts builds the FM-1 engine
-// from them (six channels, one shared noise source) and scripts/xl/verona-drum-1.ts the XL (all eight, each with its own noise,
-// pan and the second hi-hat notes). Both builders have `add`, `wire` and `module`, which is all a voice needs.
+// from them (all eight channels since D-899; the clap's noise its own, the others one shared, which plays the same) and
+// scripts/xl/verona-drum-1.ts built the archived XL. Both builders have `add`, `wire` and `module`, which is all a voice needs.
+// The `lean` options are the six-channel 1.14 design's (they made room on the one-core FM-1); the factory engine no longer
+// uses them.
 //
 // What each knob does, after the manual:
 //  - KICK: a sine through a waveshaper (WAVE: from sine to an overdriven square), its pitch swept down by its own envelope
@@ -11,7 +13,7 @@
 //    short noise burst at a fixed length (NOISE its level) and a transient spike (ATTACK its level).
 //  - DRUM 1 / DRUM 2: a sine through the waveshaper (WAVE), the one envelope (DECAY) on the level and, by BEND, the pitch
 //    (centre none, clockwise falling, counter-clockwise rising), a sine modulator into the pitch (FM INT its depth, FM
-//    FREQ its pitch, restarted by every hit, so the modulation starts at the same point each time), the spike (ATTACK).
+//    FREQ its pitch, restarted by every hit at its peak, the Oscillator's phase 90, as the original's), the spike (ATTACK).
 //    Drum 2 sits higher (its PITCH's default), as the original's Drum 2 covers a higher range.
 //  - MULTI: three square oscillators; PITCH moves all three, PITCH 2 and PITCH 3 set the second and third below it
 //    (octaves), and fully counter-clockwise they are off; BEND as Drum's, the spike (ATTACK), then a high pass (HIGHPASS).
@@ -101,7 +103,7 @@ export function kick(b: VoiceBuilder, col: number, noise: NoiseFrom, o: { coarse
 /** DRUM 1 / DRUM 2: DECAY PITCH BEND ATTACK FM INT FM FREQ WAVE */
 export function drum(b: VoiceBuilder, col: number, o: { coarse: number; decay: number }): Voice {
   const osc = b.add('osc', col, 0, { wave: 0, coarse: o.coarse, level: 1 });
-  const fm = b.add('osc', col, 1, { wave: 0, coarse: -24, level: 1 });
+  const fm = b.add('osc', col, 1, { wave: 0, coarse: -24, level: 1, phase: 90 });
   const fmInt = b.add('scale', col, 1.5, { gain: 0, offset: 0 });
   const amp = decayEnv(b, col, 2, o.decay);
   const bend = b.add('scale', col, 2.5, { gain: 0.5, offset: 0 });
