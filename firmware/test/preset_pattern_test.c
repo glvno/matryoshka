@@ -43,12 +43,14 @@ static int check_origin_format(uint32_t mod)
 }
 int main(void)
 {
+    static uint8_t bin[4096];
     uint32_t i, seen = 0;
     for (i = 0; i < N_PRESETS; i++) {
         int mod, tr;
         uint32_t j;
         const preset_pattern_t *init = 0, *next = 0;
-        m1_set_current(PRESET_LIST[i].data, PRESET_LIST[i].len);
+        CHECK(lz_unpack(PRESET_LIST[i].lz, PRESET_LIST[i].lz_len, bin, sizeof bin) == (int32_t)PRESET_LIST[i].len);
+        m1_set_current(bin, PRESET_LIST[i].len);
         CHECK(eng_load(m1_cur, m1_cur_len) == 0);
         if (!eng_steps_count()) continue;
         mod = eng_steps_module(0);

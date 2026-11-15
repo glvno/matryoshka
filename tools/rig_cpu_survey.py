@@ -6,19 +6,16 @@
 # 1 / 4 / 8 notes held over USB MIDI, 2 s each, sampled every 0.5 s; on firmware with DIAG page 119 (#458) also the
 # overload guard's mean ISR time at each sample and the late halves of the phase. Reload for EACH phase so a voice shed in an earlier
 # phase cannot make the next one look cheaper. Peaks include the first block; a sample need not precede shedding.
-import sys, time, json, re, argparse
+import sys, time, json, argparse
 import os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import m1_link as M
 import mido
 
 
 def presets(path):
-    out = []
     if os.path.isdir(path):                      # a directory of patch binaries (NAME.bin): a factory preset's patch, say
         return [(f[:-4], open(os.path.join(path, f), 'rb').read()) for f in sorted(os.listdir(path)) if f.endswith('.bin')]
-    for m in re.finditer(r"PRESET_\d+\[\d+\] = \{([\d,]*)\};\s*/\* (.*?) \*/", open(path).read()):
-        out.append((m.group(2), bytes(int(x) for x in m.group(1).split(","))))
-    return out
+    return M.factory_presets(path)               # (presets.h stores them packed: m1_link unpacks)
 
 
 def page(link, n):

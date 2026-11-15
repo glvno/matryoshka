@@ -118,11 +118,19 @@ static void periods(int from, double *mean, double *dev)
         }
     *dev = worst;
 }
+/* factory patch k (presets.h, packed) loaded: 0, else -1 */
+static int factory_load(uint32_t k)
+{
+    static uint8_t bin[4096];
+    if (lz_unpack(PRESET_LIST[k].lz, PRESET_LIST[k].lz_len, bin, sizeof bin) != (int32_t)PRESET_LIST[k].len)
+        return -1;
+    return eng_load(bin, PRESET_LIST[k].len) ? -1 : 0;
+}
 static int load_factory(void)
 {
     uint32_t k;
     for (k = 0; k < N_PRESETS; k++)
-        if (eng_load(PRESET_LIST[k].data, PRESET_LIST[k].len) == 0 && eng_find(T_FM1) >= 0)
+        if (factory_load(k) == 0 && eng_find(T_FM1) >= 0)
             return (int)k;
     return -1;
 }
@@ -254,7 +262,7 @@ int main(void)
         int fa;
         for (k = 0; k < N_PRESETS && strcmp(PRESET_LIST[k].name, "808 KIT"); k++)
             ;
-        check("the 808 Kit loads (play once)", k < N_PRESETS && eng_load(PRESET_LIST[k].data, PRESET_LIST[k].len) == 0);
+        check("the 808 Kit loads (play once)", k < N_PRESETS && factory_load(k) == 0);
         set_tempo(120);
         play_ms(300);
         at = log_n;

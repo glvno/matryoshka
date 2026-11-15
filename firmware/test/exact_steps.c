@@ -144,10 +144,12 @@ static void render(uint32_t total)
 static void patches(void)
 {
     static const uint32_t partial[] = {128, 128, 77, 128, 200, 1, 128, 256};
+    static uint8_t bin[4096];
     uint32_t t, b, m;
     for (t = 0; t < N_PRESETS; t++) {
         int trk = -1;
-        if (eng_load(PRESET_LIST[t].data, PRESET_LIST[t].len)) { printf("%2u load failed\n", t); continue; }
+        if (lz_unpack(PRESET_LIST[t].lz, PRESET_LIST[t].lz_len, bin, sizeof bin) != (int32_t)PRESET_LIST[t].len ||
+            eng_load(bin, PRESET_LIST[t].len)) { printf("%2u load failed\n", t); continue; }
         for (m = 0; m < (uint32_t)eng_nmodules(); m++)
             if (eng_type(m) == T_STEPS) { trk = (int)m; break; }
         eng_transport(0);
@@ -185,7 +187,7 @@ static void patches(void)
             if (b == 300) eng_note_off(67, 1);
             if (b == 301) eng_transport(0);
             if (b == 330) {                                  /* the patch loaded again, stopped */
-                if (eng_load(PRESET_LIST[t].data, PRESET_LIST[t].len)) { printf("%2u reload failed\n", t); break; }
+                if (eng_load(bin, PRESET_LIST[t].len)) { printf("%2u reload failed\n", t); break; }
             }
             render(partial[b % 8u]);
         }

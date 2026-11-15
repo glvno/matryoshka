@@ -380,7 +380,8 @@ static int load_at(uint32_t p)
 {
     if (p >= N_PRESETS)
         return -1;
-    memcpy(pv_bin, PRESET_LIST[p].data, PRESET_LIST[p].len);
+    if (lz_unpack(PRESET_LIST[p].lz, PRESET_LIST[p].lz_len, pv_bin, sizeof pv_bin) != (int32_t)PRESET_LIST[p].len)
+        return -1;
     pv_len = PRESET_LIST[p].len;
     if (eng_load(pv_bin, pv_len))
         return -1;
@@ -753,8 +754,8 @@ int main(void)
     {                                                   /* a VOICES row stops at what the CPU holds (format 51: the
                                                          * row's top, gen-presets voiceTops); one without a top offers 8 */
         static const char *const NAME[3] = {"CASSIA 1", "EXPANDER S", "BASIC POLY"};
-        static const int32_t WANT[3] = {4, 6, ENG_MAX_PARTS};
-        static const char *const SAYS[3] = {"Cassia 1's VOICES row stops at four voices, a turn up there stays",
+        static const int32_t WANT[3] = {5, 6, ENG_MAX_PARTS};
+        static const char *const SAYS[3] = {"Cassia 1's VOICES row stops at five voices, a turn up there stays",
                                             "Expander S's VOICES row stops at six voices, a turn up there stays",
                                             "Basic Poly's VOICES row (no top) reaches all eight voices"};
         uint32_t t, d, g, k;

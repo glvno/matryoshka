@@ -239,14 +239,54 @@ def upload_chunks(link, data):
         link.ack(frame(0x10, [seq & 0x7F, off & 0xFF, off >> 8, len(data) & 0xFF, len(data) >> 8, *part]), 0x10)
 
 
-def factory_presets():
-    """[(name, bytes)] of the factory presets, from the generated firmware/src/presets.h (cd web && npm run export-defs)"""
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "firmware", "src", "presets.h")
+def lz_unpack(src):
+    """a factory patch as presets.h stores it, unpacked (the format: firmware/src/lz_unpack.h)"""
+    out, i = bytearray(), 0
+
+    def more(n):
+        nonlocal i
+        while True:
+            d = src[i]
+            i += 1
+            n += d
+            if d != 255:
+                return n
+    while i < len(src):
+        t = src[i]
+        i += 1
+        n = t >> 4
+        if n == 15:
+            n = more(n)
+        if n > len(src) - i:
+            raise ValueError("packed patch cut short")
+        out += src[i:i + n]
+        i += n
+        if i == len(src):
+            break
+        d = src[i] | src[i + 1] << 8
+        i += 2
+        n = (t & 15) + 4
+        if n == 19:
+            n = more(n)
+        if not 0 < d <= len(out):
+            raise ValueError("packed patch match out of range")
+        for _ in range(n):
+            out.append(out[-d])
+    return bytes(out)
+
+
+def factory_presets(path=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "firmware", "src", "presets.h")):
+    """[(name, bytes)] of the factory presets, unpacked, from the generated firmware/src/presets.h (cd web && npm run export-defs)"""
+    src = open(path).read()
+    lengths = {m.group(1): int(m.group(2)) for m in re.finditer(r'\{"[^"]*", (PRESET_\d+), sizeof PRESET_\d+, (\d+)\}', src)}
     out = []
-    for m in re.finditer(r"PRESET_\d+\[\d+\] = \{([\d,]*)\};\s*/\* (.*?) \*/", open(path).read()):
-        out.append((m.group(2), bytes(int(x) for x in m.group(1).split(","))))
+    for m in re.finditer(r"static const uint8_t (PRESET_\d+)\[\d+\] = \{([\d,]*)\};\s*/\* (.*?) \*/", src):
+        data = lz_unpack(bytes(int(x) for x in m.group(2).split(",")))
+        if len(data) != lengths.get(m.group(1)):
+            sys.exit(f"{path}: {m.group(3)} unpacks to {len(data)} bytes, not {lengths.get(m.group(1))}")
+        out.append((m.group(3), data))
     if not out:
-        sys.exit("no presets found in firmware/src/presets.h")
+        sys.exit(f"no presets found in {path}")
     return out
 
 
