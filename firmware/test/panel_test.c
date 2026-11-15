@@ -2292,16 +2292,16 @@ int main(void)
         seq_sync(pat);
         while (page != 0u && trail_n)
             tap(BTN_HOME);
-        (void)load("SCROUNGE");                             /* the factory Scrounge's PATTERN: it drives a Drum map, so its grid */
+        (void)load("SCROUNGE");                             /* the factory Scrounge's VOICE 1: it drives a Drum map, so its grid */
         pv_gen++;
         page = 0;
         trail_n = 0;
         screen_idle();
-        check("(Scrounge: one track, PATTERN, into its Drum map)", eng_steps_count() == 1 && eng_steps_drummap((uint32_t)eng_steps_module(0)) >= 0);
+        check("(Scrounge: a track per row and LEN GLB (D-1056), VOICE 1 first, into its Drum map)", eng_steps_count() == 8 && eng_steps_drummap((uint32_t)eng_steps_module(0)) >= 0);
         seq_select(0);
         page_set(PAGE_SEQ);
         later(1500);
-        check("Scrounge's PATTERN: the drum grid of its map's rows, not the roll", page == PAGE_SEQ && seq_map() >= 0
+        check("Scrounge's VOICE 1: the drum grid of its map's rows, not the roll", page == PAGE_SEQ && seq_map() >= 0
               && px(4u + GRID_NAME_W - 1u, GRID_Y + 1u) == C_ACC && !strcmp(seq_grid_text[2], HINT_DRUM));
         snap_to(getenv("PANEL_SNAP_SCROUNGE"));
         while (page != 0u && trail_n)
@@ -3690,7 +3690,7 @@ int main(void)
         check("ARP again: bypassed, dark", eng_bypass(arp) && !(eng_buttons_lit() >> 6 & 1u));
         check("(the other buttons' LEDs as their state)", (eng_buttons_lit() & 0x3Fu) == (eng_buttons_get() & 0x3Fu));
         check("Monolith D: the keys play notes (no Drum map on the black keys)", eng_keys_drummap() < 0);
-        check("8 Lire, Scrounge: PATTERN plays their Drum maps through the arpeggiator: the black keys play the rows",
+        check("8 Lire through the arpeggiator, Scrounge's tracks straight: they play their Drum maps, the black keys the rows",
               load("8 LIRE") == 0 && eng_keys_drummap() >= 0 && load("SCROUNGE") == 0 && eng_keys_drummap() >= 0);
     }
 

@@ -76,8 +76,9 @@ it('does not attach defaults to user sounds', () => {
   applyPreset(p, a, presets[2]);
   expect(t).toEqual(before);
 });
-// (<7PH's lean 909 card ships no presets since the 909 Kit is the whole TR-909, D-1055)
-it.each(['Scrounge', 'Meridian 8', 'Perun 4', 'Spokes 6', 'Verona Drum 1', '808 Kit', '909 Kit'])('%s defaults are distinct and all select', (name) => {
+// (<7PH's lean 909 card ships no presets since the 909 Kit is the whole TR-909, D-1055; Scrounge's sounds carry no
+// pattern since each of its rows has its own track, D-1056)
+it.each(['Meridian 8', 'Perun 4', 'Spokes 6', 'Verona Drum 1', '808 Kit', '909 Kit'])('%s defaults are distinct and all select', (name) => {
   const { p, a, t, presets } = fixture(name);
   const seen = new Set<string>();
   for (const preset of presets) {

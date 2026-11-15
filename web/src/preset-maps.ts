@@ -41,6 +41,22 @@ export const HAND_MAPS: HandMap[] = [
     why: 'issue #782: MASTER controls both stereo output amplifiers at the same value; PAN starts centered',
     rows: { 'macro#3.value': { from: 'mixer#3.l1' } },
   },
+  // ---- the whole Scrooge (D-1056): each voice's A-B pan (-1..1) becomes the A-B switch's nearest position (A, A+B, B);
+  // its X and Y amounts have no place on the X-Y switch (X, OFF, Y), which starts at Init; VOL A becomes the one VOL
+  // (VOL B, which the factory presets always set with it, goes). The new SLEW, MELT and shape rows start at Init.
+  {
+    engine: 'Scrounge', from: 'ed682e82', to: '2253126c',
+    why: 'D-1056: the whole Scrooge; A-B and X-Y are 3-way switches, one VOL',
+    rows: {
+      'select#16.pos': { line: 'pan#11.pan', mul: [1], add: [2], min: 1, max: 3 },
+      'select#27.pos': { line: 'pan#17.pan', mul: [1], add: [2], min: 1, max: 3 },
+      'select#39.pos': { line: 'pan#24.pan', mul: [1], add: [2], min: 1, max: 3 },
+      'select#50.pos': { line: 'pan#30.pan', mul: [1], add: [2], min: 1, max: 3 },
+      'select#62.pos': { line: 'pan#37.pan', mul: [1], add: [2], min: 1, max: 3 },
+      'select#13.pos': 'init', 'select#24.pos': 'init', 'select#36.pos': 'init', 'select#47.pos': 'init', 'select#59.pos': 'init',
+      'shape#6.level+shape#7.level': { from: 'shape#6.level' },
+    },
+  },
   // ---- the whole TR-808 (D-1053): every row of the eight-voice card keeps its value but the low tom's TUNING, which was
   // its body's coarse tune (semitones) and is now the TR-808's TUNING knob, a Macro over seven semitones either way of
   // the body's -12 (a tuning further out lands on the knob's end). The open hihat's DECAY is named, as the cymbal's
