@@ -12,9 +12,9 @@
    "8 Lire": 0.59,
    "808 kit": 0.85,
    "909 kit": 0.78,
-   "Algo Four": 1.5,
+   "Algo Four": 1.22,
    "Briefcase 3": 0.74,
-   "Canvas": 0.82,
+   "Canvas": 0.83,
    "Cassia 1": 0.88,
    "Elvira 2": 0.95,
    "Expander S": 1.42,
@@ -23,7 +23,7 @@
    "Meridian 8": 0.71,
    "Monolith D": 0.73,
    "Oracle V": 1.46,
-   "Perun 4": 0.82,
+   "Perun 4": 0.83,
    "Sallen 20": 0.9,
    "Scrounge": 0.85,
    "Silver Box": 0.92,
@@ -37,13 +37,13 @@
    "supersaw stack": 0.88
   },
   "voices": {
-   "Algo Four": 0.58,
+   "Algo Four": 0.6,
    "Cassia 1": 0.59,
    "Expander S": 0.72,
    "Hera 4": 0.5,
    "Oracle V": 0.61
   },
-  "survey": "docs/measurements/cpu-survey-2026-11-14-rig-modctl.json and -run.json (CI run 43652865098, the 22 patches of the 1.14 bank); the voices: -step7-voices.json and -hera-voices.json (main at 0b7b930a)"
+  "survey": "docs/measurements/cpu-survey-2026-11-14-rig-modctl.json and -run.json (CI run 43652865098, the 22 patches of the 1.14 bank); the voices: -step7-voices.json and -hera-voices.json (main at 0b7b930a); Canvas: -canvas-linear.json and -run.json (CI run 43668448074)"
  },
  "blockUs": 2901,
  "note": 72,
