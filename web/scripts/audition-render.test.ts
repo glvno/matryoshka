@@ -46,4 +46,4 @@ it.each([DEVICE_SR, 48000])('keeps held Hera Bass and the untrimmed 909 Kit with
     expect(peak, instrument).toBeGreaterThan(0.01);
     expect(peak, instrument).toBeLessThanOrEqual(HEADROOM);
   }
-}, 240_000);   // (the 909 Kit plays each of its 12 patterns, #923)
+}, 480_000);   // (the 909 Kit plays each of its 12 patterns: over 240 s on CI, #923)
