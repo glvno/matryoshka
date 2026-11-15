@@ -29,9 +29,10 @@
 //    resonant low pass (FILTER, RESONANCE) whose cutoff the envelope sweeps by BEND (as Drum's pitch); the spike (ATTACK)
 //    is the cluster itself for a few milliseconds, so it follows PITCH. A hit is open (DECAY) or closed (a fixed short
 //    decay): the TRIG switch says which the channel's row plays, as the original's TRIG button mode does.
-//  - CLAP: a run of transient spikes (CLAP: their rate, so their number in a fixed window; fully counter-clockwise one),
-//    noise shaped by them (NOISE its level, NOISE COLOR: white to darker), the pseudo reverb tail (REVERB, DECAY REV), all
-//    through a resonant low pass (FILTER, RESONANCE).
+//  - CLAP: a run of short noise bursts, the claps (CLAP: their rate, so their number in a fixed window; fully
+//    counter-clockwise one; NOISE their level, NOISE COLOR: white to darker), the pseudo reverb tail (REVERB, DECAY REV),
+//    all through a resonant low pass (FILTER, RESONANCE). The manual calls the claps "transient spikes"; here, as on a
+//    TR-808, a clap is a noise burst alone (a level pulse into the filter beside it plays as a low buzz, not a clap).
 // The rows are in the panel's order. A voice's velocity (a Drum map row's v) scales its level, as the DRM1's MIDI velocity
 // does. Its VOLUME and PAN are the builder's (the output stage differs between the two versions).
 import { DEFS } from '../src/modules';
@@ -329,14 +330,15 @@ export const TRIG_NAMES = ['open', 'closed'];
 
 /** CLAP: DECAY REV REVERB CLAP NOISE COLOR NOISE RESONANCE FILTER. The claps: an LFO square at CLAP's rate (its wide
  * range, 0.0008 to 80 Hz), restarted by the hit, through a 45 ms window (a Pulse and a Logic and): fully counter-clockwise
- * one clap, at 80 Hz four. Each rise strikes a short envelope: a spike itself, and the noise's level. */
+ * one clap, at 80 Hz four. Each rise strikes a short envelope (1 ms up, a fall over 20 ms) on the noise's level: a bright
+ * noise burst per clap. */
 export function clap(b: VoiceBuilder, col: number, noise: NoiseFrom, o: { color: boolean }): Voice {
   const rate = b.add('lfo', col, 0, { wave: 3, range: 3, wide: 55, depth: 1 });
   const win = b.add('pulse', col, 0.5, { time: 0.045 });
   const and = b.add('logic', col, 1, { thresh: 0.5 });
-  const cenv = decayEnv(b, col, 1.5, 0.008);
+  const cenv = decayEnv(b, col, 1.5, 0.02);
   const [nz, nzp] = noise(b, col, 2);
-  const nVca = b.add('vca', col, 2.5, { gain: 0.6 });
+  const nVca = b.add('vca', col, 2.5, { gain: 1.6 });
   const rEnv = decayEnv(b, col, 3, 0.2);
   const rVca = b.add('vca', col, 3.5, { gain: 0.45 });
   const lp = b.add('filter', col, 4, { cutoff: 2200, res: 0.45 });
@@ -348,7 +350,6 @@ export function clap(b: VoiceBuilder, col: number, noise: NoiseFrom, o: { color:
   b.wire(cenv, 'env', nVca, 'cv');
   b.wire(nz, nzp, rVca, 'in');
   b.wire(rEnv, 'env', rVca, 'cv');
-  b.wire(cenv, 'env', lp, 'in');
   b.wire(nVca, 'out', lp, 'in');
   b.wire(rVca, 'out', lp, 'in');
   b.wire(lp, 'lp12', sum, 'in');
