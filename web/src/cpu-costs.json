@@ -43168,12 +43168,12 @@
  },
  "checks": [
   {
-   "name": "Oracle V",
-   "cycles": 713584
-  },
-  {
    "name": "Monolith D",
    "cycles": 231426
+  },
+  {
+   "name": "Oracle V",
+   "cycles": 713584
   },
   {
    "name": "Silver Box",
@@ -43232,10 +43232,6 @@
    "cycles": 604964
   },
   {
-   "name": "Perun 4",
-   "cycles": 287793
-  },
-  {
    "name": "808 Kit",
    "cycles": 684897
   },
@@ -43244,16 +43240,12 @@
    "cycles": 705705
   },
   {
-   "name": "Spokes 6",
-   "cycles": 347232
-  },
-  {
    "name": "Cassia 1",
    "cycles": 734456
   },
   {
    "name": "Verona Drum 1",
-   "cycles": 584492
+   "cycles": 595666
   },
   {
    "name": "Shush 101",
@@ -43545,7 +43537,7 @@
   },
   {
    "name": "assembly Verona Drum 1",
-   "cycles": 568076
+   "cycles": 578918
   },
   {
    "name": "assembly vibrato",
