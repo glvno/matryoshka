@@ -114,6 +114,26 @@ export const HAND_MAPS: HandMap[] = [
       'pan#102.pan': 'init', 'vca#88.gain': 'init', 'noise#64.color': 'init',
     },
   },
+  // ---- Verona Drum 1's knobs over the original's travel (#866): PITCH of the kick and the DRUMs is a Macro over the
+  // panel's range, the kick's BEND its pitch envelope's peak and a DRUM's FM INT its modulator's level. Those rows start at
+  // Init: moving the old values through lines would take the FM-1's migration tables to 3,537 bytes, past their budget. The
+  // kick's ATTACK is now the spike's shape (its tail) at the peak Init had, so it starts at Init too (the click as it was).
+  // The rest go by channel and label: the inserted Macros move every later module, and the automatic map would pair those
+  // with the channel before.
+  {
+    engine: 'Verona Drum 1', from: 'ad27b323', to: '8e051b73',
+    why: '#866: PITCH, the kick\'s BEND and ATTACK and FM INT over the knobs\' travel; rows by channel and label',
+    rows: {
+      'macro#7.value': 'init', 'env#5.l1': 'init', 'env#13.l2': 'init',
+      'macro#20.value': 'init', 'scale#19.gain': { from: 'scale#18.gain' }, 'env#23.l1': { from: 'env#21.l1' },
+      'osc#16.level': 'init', 'osc#16.coarse': { from: 'osc#15.coarse' },
+      'macro#77.value': 'init', 'scale#76.gain': { from: 'scale#74.gain' }, 'env#80.l1': { from: 'env#77.l1' },
+      'osc#73.level': 'init', 'osc#73.coarse': { from: 'osc#71.coarse' },
+      'env#37.l1': { from: 'env#35.l1' }, 'env#44.l1': { from: 'env#42.l1' },
+      'env#51.l1': { from: 'env#49.l1' }, 'scale#52.gain': { from: 'scale#50.gain' }, 'osc#47.coarse': { from: 'osc#45.coarse' },
+      'env#86.l1': { from: 'env#83.l1' }, 'scale#87.gain': { from: 'scale#84.gain' }, 'osc#82.coarse': { from: 'osc#79.coarse' },
+    },
+  },
   // ---- the whole NOON (D-1054): each channel's pitch, second slider and volume go to its `main`, `secondary` and `volume`
   // (DOT's and BACID's Ladder cutoff and resonance are now their Multimode's, the same numbers). CYMPATH's pitch was its
   // oscillator's coarse tune and is now the main slider's Macro, -10 .. +40 semitones over 0 .. 1. A one-way LINK amount

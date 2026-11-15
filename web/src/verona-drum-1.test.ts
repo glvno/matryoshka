@@ -2,6 +2,7 @@
 // Verona Drum 1 and Verona Drum 1 XL (#613, after the Vermona DRM1 MKIV; docs/ledger/patches-and-presets.md D-862..D-864): the
 // cards carry the original's knobs per channel, every row sounds its channel, and a closed hi-hat cuts an open one.
 import { describe, expect, it } from 'vitest';
+import { DRUM1_HZ, DRUM2_HZ, KICK_HZ } from '../scripts/verona-voices';
 import { Engine } from './engine';
 import { instIsEngine } from './engines';
 import type { Patch } from './patch';
@@ -145,6 +146,58 @@ describe('Verona Drum 1 (#613)', () => {
     }
   });
 
+  /** the card row under heading `head` labelled `label` */
+  const rowAt = (p: Patch, head: string, label: string): { module: number; param: string } => {
+    const a = p.assemblies!.find((x) => x.name === 'Verona Drum 1' && instIsEngine(p, x))!;
+    let h = '';
+    const r = a.params.find((x) => (h = x.head ?? h) === head && x.label === label);
+    if (!r) throw new Error(`no row ${head} / ${label}`);
+    return r;
+  };
+
+  it('spans the original knobs\' travel: PITCH over the panel\'s range, the kick\'s BEND one way, FM INT off at its lowest (#866)', () => {
+    const p = fm1();
+    const mod = (id: number) => p.modules.find((m) => m.id === id)!;
+    for (const [head, [lo, hi]] of [['kick', KICK_HZ], ['drum 1', DRUM1_HZ], ['drum 2', DRUM2_HZ]] as const) {
+      const r = rowAt(p, head, 'pitch');
+      expect(mod(r.module).type, head).toBe('macro');
+      const c = p.cables.find((x) => x.from.module === r.module)!;
+      const bend = mod(c.to.module);
+      expect([bend.type, c.to.port, bend.map!.p2]).toEqual(['scale', 'p2', ['offset']]);
+      // the offset's macro range: 0..1 of its -4..4 octaves, from middle C (the Oscillator's coarse 0)
+      const st = (u: number): number => 12 * (8 * u - 4);
+      const [ul, uh] = bend.range!.p2!.offset;
+      expect(Math.abs(st(ul) - 12 * Math.log2(lo / 261.6255653)), head).toBeLessThan(0.4);
+      expect(Math.abs(st(uh) - 12 * Math.log2(hi / 261.6255653)), head).toBeLessThan(0.4);
+      expect(p.modules.find((m) => p.cables.some((x) => x.from.module === bend.id && x.to.module === m.id && x.to.port === 'pitch'))!.params.coarse).toBe(0);
+    }
+    const bend = rowAt(p, 'kick', 'bend');
+    expect([mod(bend.module).type, bend.param]).toEqual(['env', 'l1']);
+    for (const head of ['drum 1', 'drum 2']) {
+      const r = rowAt(p, head, 'fm int');
+      expect([mod(r.module).type, r.param, mod(r.module).params.level], head).toEqual(['osc', 'level', 0]);
+    }
+  });
+
+  it('the kick\'s ATTACK shapes its spike: the click\'s front stays, a tail after it widens it (#866)', () => {
+    const render = (attack: number): Float32Array => {
+      const p = fm1();
+      const r = rowAt(p, 'kick', 'attack');
+      p.modules.find((m) => m.id === r.module)!.params[r.param] = attack;
+      const e = new Engine(SR);
+      e.load(p);
+      e.noteOn(p.modules.find((m) => m.type === 'drummap' && m.names?.[0] === 'KICK')!.params.n1, 100);
+      const l = new Float32Array(Math.round(SR * 0.02)), rr = new Float32Array(l.length);
+      e.render(l, rr);
+      return l;
+    };
+    const [click, wide] = [render(0), render(0.4)];
+    const ms = (t: number): number => Math.round((SR * t) / 1000);
+    const diff = (from: number, to: number): number => Math.max(...Array.from({ length: ms(to) - ms(from) }, (_, i) => Math.abs(wide[ms(from) + i] - click[ms(from) + i])));
+    expect(diff(0, 0.7)).toBeLessThan(1e-6);
+    expect(diff(3, 10)).toBeGreaterThan(0.01);
+  });
+
   it('moves a preset of the six-channel card onto the same channels, MULTI\'s pitches into octaves, the new rows at Init (D-899)', () => {
     const p = fm1();
     const a = p.assemblies!.find((x) => x.name === 'Verona Drum 1')!;
@@ -160,13 +213,15 @@ describe('Verona Drum 1 (#613)', () => {
     old[pitch2] = 7;   // a fifth over PITCH's 19 ... an octave under it: -1
     const values = migrateValues(migration, old, init.values);
     const moved = migration.rows.filter((r) => typeof r === 'number' && r >= 0) as number[];
-    expect(new Set(moved).size).toBe(old.length - 2);   // (every row but the two pitches, which go through a line)
-    expect(migration.rows.filter((r) => r === -1)).toHaveLength(21);   // DRUM 2, HI HAT 2, two TRIGs, NOISE COLOR
+    // (every row but the two pitches, which go through a line, and the five rows the knobs' travel moved to Init (#866): the
+    // kick's PITCH, BEND and ATTACK, DRUM 1's PITCH and FM INT)
+    expect(new Set(moved).size).toBe(old.length - 2 - 5);
+    expect(migration.rows.filter((r) => r === -1)).toHaveLength(21 + 5);   // DRUM 2, HI HAT 2, two TRIGs, NOISE COLOR; those five
     migration.rows.forEach((r, i) => { if (typeof r === 'number' && r >= 0) expect(values[i]).toBe(old[r]); });
     const now = readLineage().engines['Verona Drum 1'].find((x) => x.structure === init.structure)!;
     const at = (id: string): number => now.rows.findIndex((r) => r[0] === id);
-    expect(values[at('const#28.value')]).toBeCloseTo(-1, 3);   // multi / pitch 2 (Q16)
-    expect(values[at('vca#39.gain')]).toBe(old[before.rows.findIndex((r) => r[0] === 'env#31.l1')]);   // snare / noise
+    expect(values[at('const#30.value')]).toBeCloseTo(-1, 3);   // multi / pitch 2 (Q16)
+    expect(values[at('vca#41.gain')]).toBe(old[before.rows.findIndex((r) => r[0] === 'env#31.l1')]);   // snare / noise
   });
 
   it('a closed hit cuts the open hi-hat ringing, and dies in its fixed short time', () => {

@@ -9,12 +9,17 @@
 //
 // What each knob does, after the manual:
 //  - KICK: a sine through a waveshaper (WAVE: from sine to an overdriven square), its pitch swept down by its own envelope
-//    (BEND the depth, TIME its length; TIME does nothing at BEND 0, as on the original), the amp envelope (DECAY), a
-//    short noise burst at a fixed length (NOISE its level) and a transient spike (ATTACK its level).
+//    (BEND the depth, 0 none to four octaves, TIME its length; TIME does nothing at BEND 0, as on the original), the amp
+//    envelope (DECAY), a short noise burst at a fixed length (NOISE its level) and a transient spike whose shape ATTACK
+//    sets: fully counter-clockwise a 3 ms click; turned up, the click falls to a tail that dies over 8 ms, which widens
+//    it (past half way the tail climbs over the click, a push). The manual: "Turning the ATTACK knob alters the shape of
+//    this peak impulse"; it gives no circuit, so this reads the shape as the spike's width.
 //  - DRUM 1 / DRUM 2: a sine through the waveshaper (WAVE), the one envelope (DECAY) on the level and, by BEND, the pitch
-//    (centre none, clockwise falling, counter-clockwise rising), a sine modulator into the pitch (FM INT its depth, FM
-//    FREQ its pitch, restarted by every hit at its peak, the Oscillator's phase 90, as the original's), the spike (ATTACK).
-//    Drum 2 sits higher (its PITCH's default), as the original's Drum 2 covers a higher range.
+//    (centre none, clockwise falling, counter-clockwise rising), a sine modulator into the pitch (FM INT its depth, off
+//    fully counter-clockwise, FM FREQ its pitch, restarted by every hit at its peak, the Oscillator's phase 90, as the
+//    original's), the spike (ATTACK). Drum 2 covers a higher range, as the original's.
+//  - PITCH of KICK, DRUM 1 and DRUM 2 spans the original knob's range (Vermona's list of the MKIV's changes): a Macro whose
+//    macro range sets the bend Attenuverter's offset (travel), the Oscillator at middle C.
 //  - MULTI: three square oscillators; PITCH moves all three, PITCH 2 and PITCH 3 set the second and third below it
 //    (octaves), and fully counter-clockwise they are off; BEND as Drum's, the spike (ATTACK), then a high pass (HIGHPASS).
 //  - SNARE: the spike rings a resonant low pass (ATTACK the spike, RESONANCE, FILTER its pitch: the tonal part). Beside it
@@ -29,7 +34,8 @@
 //    through a resonant low pass (FILTER, RESONANCE).
 // The rows are in the panel's order. A voice's velocity (a Drum map row's v) scales its level, as the DRM1's MIDI velocity
 // does. Its VOLUME and PAN are the builder's (the output stage differs between the two versions).
-import type { ModuleInst } from '../src/patch';
+import { DEFS } from '../src/modules';
+import { paramUnit, type ModuleInst } from '../src/patch';
 
 export interface VoiceBuilder {
   add(type: string, col: number, row: number, params?: Record<string, number>): number;
@@ -59,6 +65,34 @@ export const ownNoise: NoiseFrom = (b, col, row) => [b.add('noise', col, row, { 
 const decayEnv = (b: VoiceBuilder, col: number, row: number, decay: number, l1 = 1): number =>
   b.add('env', col, row, { l1, r1: 0.001, l2: 0, r2: decay, l3: 0, r3: 0.001, l4: 0, r4: 0.001, shot: 1 });
 
+/** octaves from middle C (an Oscillator at coarse 0) to `hz` */
+const octaves = (hz: number): number => Math.log2(hz / 261.6255653);
+
+/** a row over the original knob's travel only: a Macro (0..1) on Attenuverter `m`'s p2 pin, whose macro range puts 0..1
+ * between `lo` and `hi` octaves of its offset (p2 moves the offset as made, so the record keeps its template), the ends on
+ * the binary's 1/255 steps; the Macro at `value`'s place. The offset's own value no longer counts (the range replaces it).
+ * Returns the Macro. */
+function travel(b: VoiceBuilder, col: number, row: number, m: number, lo: number, hi: number, value: number): number {
+  const t = b.module(m);
+  const [param] = t.map!.p2;
+  const pd = DEFS[t.type].params.find((p) => p.name === param)!;
+  const u = (v: number): number => Math.round(paramUnit(pd, v) * 255) / 255;
+  const [ul, uh] = [u(lo), u(hi)];
+  const k = b.add('macro', col, row, { value: Math.round(((paramUnit(pd, value) - ul) / (uh - ul)) * 100) / 100 });
+  t.range = { p2: { [param]: [ul, uh] } };
+  b.wire(k, 'out', m, 'p2');
+  return k;
+}
+
+/** each channel's PITCH range (Hz), from Vermona's list of the MKIV's changes */
+export const KICK_HZ: [number, number] = [22, 380];
+export const DRUM1_HZ: [number, number] = [18, 300];
+export const DRUM2_HZ: [number, number] = [24, 430];
+/** the kick's spike: its fixed peak, its fall from the peak (s), and how long the tail ATTACK adds lasts (s) */
+export const KICK_SPIKE = { level: 0.5, fall: 0.002, tail: 0.008 };
+/** the kick's BEND and a DRUM's FM INT turned fully up: octaves of sweep, octaves of the modulator's swing */
+export const BEND_MAX = 4;
+
 /** the velocity stage: a VCA whose cv is the row's velocity; gain 127 / 100 so a plain step (velocity 100) plays the voice
  * at its own level */
 export const VEL_GAIN = 1.27;
@@ -71,16 +105,17 @@ export interface Out {
 /** KICK: DECAY PITCH BEND TIME WAVE NOISE ATTACK. `lean` (the FM-1): the noise burst lasts as long as the pitch sweep
  * (TIME) instead of its own fixed time, which saves an envelope. */
 export function kick(b: VoiceBuilder, col: number, noise: NoiseFrom, o: { coarse?: number; lean?: boolean } = {}): Voice {
-  const osc = b.add('osc', col, 0, { wave: 0, coarse: o.coarse ?? -29, level: 1 });
-  const penv = decayEnv(b, col, 1, 0.04);
-  const bend = b.add('scale', col, 1.5, { gain: 2.2, offset: 0 });
+  const osc = b.add('osc', col, 0, { wave: 0, coarse: 0, level: 1 });
+  const penv = decayEnv(b, col, 1, 0.04, 0.55);
+  const bend = b.add('scale', col, 1.5, { gain: BEND_MAX, offset: 0 });
+  const pitch = travel(b, col + 0.5, 1.5, bend, octaves(KICK_HZ[0]), octaves(KICK_HZ[1]), (o.coarse ?? -29) / 12);
   const wave = b.add('shape', col, 2, { drive: 1.4, mode: 0, level: 0.8 });
   const amp = decayEnv(b, col, 2.5, 0.5);
   const vca = b.add('vca', col, 3, { gain: 1 });
   const [nz, nzp] = noise(b, col, 3.5);
   const nEnv = o.lean ? penv : decayEnv(b, col, 4, 0.012);
   const nVca = b.add('vca', col, 4.5, { gain: 0.25 });
-  const spike = decayEnv(b, col, 5, 0.002, 0.5);
+  const spike = b.add('env', col, 5, { l1: KICK_SPIKE.level, r1: 0.001, l2: 0, r2: KICK_SPIKE.fall, l3: 0, r3: KICK_SPIKE.tail, l4: 0, r4: 0.001, shot: 1 });
   const sum = b.add('vca', col, 5.5, { gain: VEL_GAIN });
   b.wire(penv, 'env', bend, 'in');
   b.wire(bend, 'out', osc, 'pitch');
@@ -93,20 +128,21 @@ export function kick(b: VoiceBuilder, col: number, noise: NoiseFrom, o: { coarse
   b.wire(spike, 'env', sum, 'in');
   const own = isShared(b, nz) ? [] : [nz];
   return {
-    members: [osc, penv, bend, wave, amp, vca, ...own, ...(o.lean ? [] : [nEnv]), nVca, spike, sum],
+    members: [osc, penv, bend, pitch, wave, amp, vca, ...own, ...(o.lean ? [] : [nEnv]), nVca, spike, sum],
     gate: [[penv, 'gate'], [amp, 'gate'], ...(o.lean ? [] : [[nEnv, 'gate'] as [number, string]]), [spike, 'gate']],
     vel: [sum, 'cv'], out: [sum, 'out'],
-    rows: [['decay', amp, 'r2'], ['pitch', osc, 'coarse'], ['bend', bend, 'gain'], ['time', penv, 'r2'], ['wave', wave, 'drive'], ['noise', nVca, 'gain'], ['attack', spike, 'l1']],
+    rows: [['decay', amp, 'r2'], ['pitch', pitch, 'value'], ['bend', penv, 'l1'], ['time', penv, 'r2'], ['wave', wave, 'drive'], ['noise', nVca, 'gain'], ['attack', spike, 'l2']],
   };
 }
 
 /** DRUM 1 / DRUM 2: DECAY PITCH BEND ATTACK FM INT FM FREQ WAVE */
-export function drum(b: VoiceBuilder, col: number, o: { coarse: number; decay: number }): Voice {
-  const osc = b.add('osc', col, 0, { wave: 0, coarse: o.coarse, level: 1 });
-  const fm = b.add('osc', col, 1, { wave: 0, coarse: -24, level: 1, phase: 90 });
-  const fmInt = b.add('scale', col, 1.5, { gain: 0, offset: 0 });
+export function drum(b: VoiceBuilder, col: number, o: { hz: [number, number]; coarse: number; decay: number }): Voice {
+  const osc = b.add('osc', col, 0, { wave: 0, coarse: 0, level: 1 });
+  const fm = b.add('osc', col, 1, { wave: 0, coarse: -24, level: 0, phase: 90 });
+  const fmInt = b.add('scale', col, 1.5, { gain: BEND_MAX, offset: 0 });
   const amp = decayEnv(b, col, 2, o.decay);
   const bend = b.add('scale', col, 2.5, { gain: 0.5, offset: 0 });
+  const pitch = travel(b, col + 0.5, 2.5, bend, octaves(o.hz[0]), octaves(o.hz[1]), o.coarse / 12);
   const wave = b.add('shape', col, 3, { drive: 1.2, mode: 0, level: 0.8 });
   const vca = b.add('vca', col, 3.5, { gain: 1 });
   const spike = decayEnv(b, col, 4, 0.002, 0.3);
@@ -121,10 +157,10 @@ export function drum(b: VoiceBuilder, col: number, o: { coarse: number; decay: n
   b.wire(vca, 'out', sum, 'in');
   b.wire(spike, 'env', sum, 'in');
   return {
-    members: [osc, fm, fmInt, amp, bend, wave, vca, spike, sum],
+    members: [osc, fm, fmInt, amp, bend, pitch, wave, vca, spike, sum],
     gate: [[amp, 'gate'], [spike, 'gate'], [fm, 'sync']],
     vel: [sum, 'cv'], out: [sum, 'out'],
-    rows: [['decay', amp, 'r2'], ['pitch', osc, 'coarse'], ['bend', bend, 'gain'], ['attack', spike, 'l1'], ['fm int', fmInt, 'gain'], ['fm freq', fm, 'coarse'], ['wave', wave, 'drive']],
+    rows: [['decay', amp, 'r2'], ['pitch', pitch, 'value'], ['bend', bend, 'gain'], ['attack', spike, 'l1'], ['fm int', fm, 'level'], ['fm freq', fm, 'coarse'], ['wave', wave, 'drive']],
   };
 }
 
