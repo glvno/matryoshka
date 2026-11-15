@@ -2621,6 +2621,39 @@
         ["select#24.pos","x-y",19]
       ]}
     ],
+    "Shush 101": [
+      {"structure": "c5bee090", "rows": [
+        ["scale#18.gain","pw",4],
+        ["scale#29.gain","bend vco",25],
+        ["scale#21.gain","env",14],
+        ["select#17.pos","pwm source",5],
+        ["glide#2.time","portamento",23],
+        ["select#9.pos","sub mode",10],
+        ["scale#30.gain","bend vcf",26],
+        ["adsr#15.a","attack",19],
+        ["adsr#15.d","decay",20],
+        ["adsr#15.r","release",22],
+        ["adsr#15.s","sustain",21],
+        ["select#26.pos","trigger",18],
+        ["select#4.pos","range",3],
+        ["select#27.pos","vca",17],
+        ["scale#14.gain","vco mod",2],
+        ["select#13.pos","waveform",1],
+        ["vca#28.gain","volume",28],
+        ["osc#7.fine+osc#6.fine+osc#8.fine","tune",6],
+        ["vca#31.gain","lfo mod",27],
+        ["ladder#20.cutoff","freq",12],
+        ["ladder#20.res","res",13],
+        ["mixer#19.l1","pulse",7],
+        ["mixer#19.l2","saw",8],
+        ["mixer#19.l3","sub osc",9],
+        ["mixer#19.l4","noise",11],
+        ["select#3.pos","porta mode",24],
+        ["lfo#11.rate","rate",0],
+        ["scale#23.gain","kybd",16],
+        ["scale#22.gain","mod",15]
+      ]}
+    ],
     "Silver Box": [
       {"structure": "e18a8dd2", "since": "1.2.0", "rows": [
         ["adsr#8.d","amp decay",11],

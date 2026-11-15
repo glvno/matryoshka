@@ -43248,6 +43248,10 @@
    "cycles": 595662
   },
   {
+   "name": "Shush 101",
+   "cycles": 209740
+  },
+  {
    "name": "Acid, 4 parts",
    "cycles": 236241
   },
@@ -43470,6 +43474,10 @@
   {
    "name": "assembly shimmer",
    "cycles": 133920
+  },
+  {
+   "name": "assembly Shush 101",
+   "cycles": 153054
   },
   {
    "name": "assembly sidechain pump",

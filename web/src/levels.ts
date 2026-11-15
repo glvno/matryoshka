@@ -58,6 +58,7 @@ export const LEVEL_ROWS: Record<string, string[]> = {
   Scrounge: ['out / vol'],
   'Silver Box': ['tone / volume'],
   'Spokes 6': ['master / master'],
+  'Shush 101': ['controller / volume'],
   'supersaw stack': ['level'],
   'Vernon 100': ['output mixer / amp shaper', 'output mixer / osc 3/ext'],
   'Verona Drum 1': ['master / master'],

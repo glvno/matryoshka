@@ -1,0 +1,179 @@
+# Shush 101: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+# The level row (controller / volume) the loudness step sets in every preset (#448): leave it to it.
+#
+# modulator
+#   rate = 3 Hz                        0.02..40 Hz
+#   waveform = TRIANGLE                TRIANGLE, SQUARE, RANDOM, NOISE
+# vco
+#   vco mod = 0                        -4..4
+#   range = 8'                         16', 8', 4', 2'
+#   pw = 0                             -4..4
+#   pwm source = MAN                   ENV, MAN, LFO
+#   tune = 0 ct                        -100..100 ct
+# source mixer
+#   pulse = 0                          0..1
+#   saw = 0.6                          0..1
+#   sub osc = 0.35                     0..1
+#   sub mode = 1 OCT DOWN              1 OCT DOWN, 2 OCT DOWN, 2 OCT PULSE
+#   noise = 0                          0..1
+# vcf
+#   freq = 500 Hz                      20..16000 Hz
+#   res = 0.35                         0..1
+#   env = 3                            -4..4
+#   mod = 0                            -4..4
+#   kybd = 0.5                         -4..4
+# env
+#   vca = ENV                          ENV, GATE
+#   trigger = GATE+TRIG                GATE+TRIG, GATE, LFO
+#   attack = 0.003 s                   0.001..5 s
+#   decay = 0.25 s                     0.001..5 s
+#   sustain = 0.4                      0..1
+#   release = 0.1 s                    0.001..8 s
+# controller
+#   portamento = 0.15 s                0.001..5 s
+#   porta mode = OFF                   ON, OFF, AUTO
+#   bend vco = 0                       -4..4
+#   bend vcf = 0                       -4..4
+#   lfo mod = 0.1                      0..2
+#   volume = 1.29                      0..2
+
+# Classic SH-101 roles (#869), set from the panel. Units: vco mod, env, mod, kybd and the bend rows in octaves (kybd 1 =
+# the whole key); pw 0 = 50 %, 1 = 5 %. The envelope's `long` setting plays decay and release 2.4 times the row's value.
+engine: Shush 101
+
+# Saw and the sub an octave down through a closed, snappy filter: the bass the SH-101 is known for.
+preset: Rubber Bass
+  range = 16'
+  saw = 0.7
+  sub osc = 0.6
+  freq = 160 Hz
+  res = 0.45
+  env = 3.5
+  kybd = 0.5
+  attack = 0.001 s
+  decay = 0.06 s
+  sustain = 0
+  release = 0.03 s
+  volume = 1.59
+
+# A square two octaves under the pulse, round and low; GATE trigger so legato notes run on.
+preset: Sub Pulse Bass
+  pulse = 0.6
+  pw = 0.3
+  saw = 0
+  sub osc = 0.7
+  sub mode = 2 OCT DOWN
+  freq = 320 Hz
+  res = 0.2
+  env = 2.5
+  trigger = GATE
+  attack = 0.002 s
+  decay = 0.1 s
+  sustain = 0.2
+  release = 0.04 s
+  volume = 1.17
+
+# A resonant saw with AUTO portamento: legato notes slide, as a sequenced acid line does.
+preset: Acid Line
+  saw = 1
+  sub osc = 0
+  freq = 260 Hz
+  res = 0.7
+  env = 3.5
+  kybd = 0.3
+  attack = 0.001 s
+  decay = 0.12 s
+  sustain = 0.1
+  release = 0.03 s
+  portamento = 0.06 s
+  porta mode = AUTO
+  volume = 1.9
+
+# Saw and pulse two octaves up, AUTO glide, vibrato on the lever's push.
+preset: Glide Lead
+  range = 4'
+  pulse = 0.4
+  pw = 0.25
+  saw = 0.6
+  sub osc = 0.1
+  freq = 1800 Hz
+  res = 0.3
+  env = 1.5
+  kybd = 1
+  attack = 0.01 s
+  decay = 0.2 s
+  sustain = 0.7
+  release = 0.12 s
+  portamento = 0.12 s
+  porta mode = AUTO
+  rate = 5.5 Hz
+  lfo mod = 0.15
+  volume = 1.25
+
+# The LFO sweeps the pulse width under a slow filter opening: the SH-101's brass.
+preset: PWM Brass
+  rate = 0.8 Hz
+  pulse = 0.8
+  pw = 0.5
+  pwm source = LFO
+  saw = 0
+  sub osc = 0.3
+  freq = 700 Hz
+  res = 0.1
+  env = 2.5
+  attack = 0.06 s
+  decay = 0.25 s
+  sustain = 0.6
+  release = 0.15 s
+  volume = 0.32
+
+# RANDOM into the filter, the envelope restarted on each LFO cycle: the sample-and-hold burble.
+preset: Random Bleeps
+  rate = 8 Hz
+  waveform = RANDOM
+  range = 4'
+  saw = 0.9
+  sub osc = 0.3
+  freq = 1200 Hz
+  res = 0.65
+  env = 1
+  mod = 2
+  trigger = LFO
+  attack = 0.001 s
+  decay = 0.06 s
+  sustain = 0
+  release = 0.04 s
+  volume = 1.42
+
+# The square with the VCA on the gate: an organ-like hollow lead, no envelope on the level.
+preset: Hollow Square
+  pulse = 0.8
+  saw = 0
+  sub osc = 0.4
+  sub mode = 2 OCT DOWN
+  freq = 2400 Hz
+  res = 0
+  env = 0.5
+  kybd = 1
+  vca = GATE
+  volume = 0.16
+
+# Noise through a resonant filter that the LFO's triangle sweeps slowly: wind.
+preset: Wind
+  rate = 0.2 Hz
+  saw = 0
+  sub osc = 0
+  noise = 0.9
+  freq = 700 Hz
+  res = 0.7
+  env = 1
+  mod = 1.5
+  kybd = 0
+  attack = 0.6 s
+  decay = 1 s
+  sustain = 0.6
+  release = 1 s
+  volume = 1.55

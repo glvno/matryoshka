@@ -4448,6 +4448,158 @@ asm('Verona Drum 1', 'Drums', (b) => {
 });
 namePositions('Verona Drum 1', { trig: TRIG_NAMES });
 
+// Shush 101, after the Roland SH-101 (its service notes, Nov. 1982: page 1 the specifications, page 2 the block diagram;
+// issue #869): one voice (the allocator plays the last key, legato), the panel left to right. The switches are Selectors:
+//  - MODULATOR: the LFO's triangle (`out`) and square (`pulse`, the same cycle); RANDOM is the noise sampled at each cycle
+//    (the CPU's random voltage, clocked by the LFO). WAVEFORM picks triangle, square, random or noise; the selected wave
+//    feeds VCO MOD and VCF MOD. The square is also the `arp clock` output: the factory patch's Arpeggiator steps on it, as
+//    the SH-101's arpeggiator steps on the LFO's clock.
+//  - RANGE 16' .. 2' adds octaves to the VCO's pitch (not to KYBD, which reads the key's pitch after the portamento).
+//  - The SUB OSC is a second oscillator on the VCO's pitch, phase locked to it. SUB MODE (1 OCT DOWN square, 2 OCT DOWN
+//    square, 2 OCT DOWN 25 % pulse) moves its coarse tune through pin 1 (x 96 st x 0.125: -1 = 12 st lower) and, at the
+//    third position, its pulse width through pin 2 (x 0.9 x -0.2778: 0.5 -> 0.25).
+//  - PWM source ENV / MAN / LFO (the LFO's triangle made 0..1), times the PW slider, narrows the pulse from 50 % (0) toward
+//    5 % (1) through the oscillator's pin (x 0.9 x -0.5).
+//  - PORTAMENTO (0..5 s) ON / OFF / AUTO moves the Slew limiter's time through its pin: ON 0 (the time as set), OFF -1
+//    (the shortest), AUTO the key's legato gate - 1 (it glides only on legato notes).
+//  - ENV TRIGGER: GATE+TRIG restarts the envelope on every new key, legato too (the key's gate with its one-sample trig
+//    taken out through a Logic xor); GATE only on a new phrase; LFO on the LFO's square while a key is held.
+//  - VCA: the envelope or the key's gate.
+// The ADSR's `long` setting is on, so decay and release reach the specification's 10 s. The ladder's cvamt is 1: ENV,
+// MOD, KYBD (0..100 % of the key's pitch), the bender and the lever's LFO each reach the cutoff through their own amount,
+// in octaves. BENDER: Main's bend into `bend` (the key's pitch already carries Main's 2 semitones, so `bend vco` adds to
+// them); LFO MOD: Main's mod into `wheel` opens the LFO's triangle into the VCO and the VCF at one depth. TUNE moves the
+// three oscillators' fine tune (one row, `also`). Left out (the FM-1 has its own): the arpeggiator and the sequencer (the
+// patch's Arpeggiator and PATTERN track), TRANSPOSE (the OCT buttons), the external clock and the CV / gate jacks.
+asm('Shush 101', 'Voices', (b) => {
+  const part = b.add('alloc', 0, 2, { voices: 1, legato: 2, priority: 0 });
+  const porta = b.add('glide', 1, 2, { time: 0.15 }, { p1: 'time', att: [1, 1] });
+  const portaMode = b.add('select', 1, 3, { count: 3, pos: 2, v1: 0, v2: -1, v3: -1, fade: 0 });
+  b.wire(part, 'pitch', porta, 'in');
+  b.wire(part, 'legato', portaMode, 'in3');
+  b.wire(portaMode, 'out', porta, 'p1');
+  const range = b.add('select', 2, 3, { count: 4, pos: 2, v1: -1, v2: 0, v3: 1, v4: 2, fade: 0 });
+  // the VCO's pitch: one sum (an Attenuverter at gain 1) of the glided key, RANGE, VCO MOD, the lever's LFO and the bender
+  const vcoPitch = b.add('scale', 2, 2, { gain: 1, offset: 0 });
+  b.wire(porta, 'out', vcoPitch, 'in');
+  b.wire(range, 'out', vcoPitch, 'in');
+  const pulse = b.add('osc', 3, 0, { wave: 3, pw: 0.5, level: 1, analog: 1 }, { p1: 'pw', att: [-0.5, 1] });
+  const saw = b.add('osc', 3, 1, { wave: 2, level: 1, analog: 1 });
+  const sub = b.add('osc', 3, 2, { wave: 3, pw: 0.5, coarse: -12, level: 1, analog: 1 }, { p1: 'coarse', p2: 'pw', att: [0.125, -0.2778] });
+  const subMode = b.add('select', 2, 4, { count: 3, pos: 1, v1: 0, v2: -1, v3: -1, fade: 0 });
+  b.wire(subMode, 'out', sub, 'p1');
+  b.wire(subMode, 'g3', sub, 'p2');
+  for (const o of [pulse, saw, sub]) b.wire(vcoPitch, 'out', o, 'pitch');
+  const noise = b.add('noise', 3, 3, { level: 1, color: 0 });
+  const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 3, depth: 1 });
+  const random = b.add('sh', 0, 1, { mode: 0 });
+  b.wire(noise, 'out', random, 'in');
+  b.wire(lfo, 'pulse', random, 'clock');
+  const lfoWave = b.add('select', 1, 0, { count: 4, pos: 1, fade: 0 });
+  b.wire(lfo, 'out', lfoWave, 'in1');
+  b.wire(lfo, 'pulse', lfoWave, 'in2');
+  b.wire(random, 'out', lfoWave, 'in3');
+  b.wire(noise, 'out', lfoWave, 'in4');
+  const vcoMod = b.add('scale', 2, 0, { gain: 0, offset: 0 });
+  b.wire(lfoWave, 'out', vcoMod, 'in');
+  b.wire(vcoMod, 'out', vcoPitch, 'in');
+  const env = b.add('adsr', 5, 2, { a: 0.003, d: 0.25, s: 0.4, r: 0.1, long: 1 });
+  const lfoUni = b.add('scale', 1, 1, { gain: 0.5, offset: 0.5 });
+  b.wire(lfo, 'out', lfoUni, 'in');
+  const pwmSrc = b.add('select', 2, 1, { count: 3, pos: 2, v1: 0, v2: 1, v3: 0, fade: 0 });
+  b.wire(env, 'env', pwmSrc, 'in1');
+  b.wire(lfoUni, 'out', pwmSrc, 'in3');
+  const pwm = b.add('scale', 3, 4, { gain: 0, offset: 0 });
+  b.wire(pwmSrc, 'out', pwm, 'in');
+  b.wire(pwm, 'out', pulse, 'p1');
+  const mixer = b.add('mixer', 4, 1, { l1: 0, l2: 0.6, l3: 0.35, l4: 0 });
+  b.wire(pulse, 'out', mixer, 'in1');
+  b.wire(saw, 'out', mixer, 'in2');
+  b.wire(sub, 'out', mixer, 'in3');
+  b.wire(noise, 'out', mixer, 'in4');
+  const vcf = b.add('ladder', 5, 0, { cutoff: 500, res: 0.35, cvamt: 1, drive: 1, track: 0, diode: 0 });
+  b.wire(mixer, 'out', vcf, 'in');
+  const vcfEnv = b.add('scale', 5, 1, { gain: 3, offset: 0 });
+  b.wire(env, 'env', vcfEnv, 'in');
+  b.wire(vcfEnv, 'out', vcf, 'cv');
+  const vcfMod = b.add('scale', 4, 0, { gain: 0, offset: 0 });
+  b.wire(lfoWave, 'out', vcfMod, 'in');
+  b.wire(vcfMod, 'out', vcf, 'cv');
+  const kybd = b.add('scale', 4, 2, { gain: 0.5, offset: 0 });
+  b.wire(porta, 'out', kybd, 'in');
+  b.wire(kybd, 'out', vcf, 'cv');
+  const gateTrig = b.add('logic', 4, 3, { thresh: 0.5 });
+  b.wire(part, 'gate', gateTrig, 'a');
+  b.wire(part, 'trig', gateTrig, 'b');
+  const lfoTrig = b.add('logic', 4, 4, { thresh: 0.5 });
+  b.wire(part, 'gate', lfoTrig, 'a');
+  b.wire(lfo, 'pulse', lfoTrig, 'b');
+  const trigMode = b.add('select', 5, 3, { count: 3, pos: 1, fade: 0 });
+  b.wire(gateTrig, 'xor', trigMode, 'in1');
+  b.wire(part, 'gate', trigMode, 'in2');
+  b.wire(lfoTrig, 'and', trigMode, 'in3');
+  b.wire(trigMode, 'out', env, 'gate');
+  const vcaMode = b.add('select', 6, 1, { count: 2, pos: 1, fade: 0 });
+  b.wire(env, 'env', vcaMode, 'in1');
+  b.wire(part, 'gate', vcaMode, 'in2');
+  const vca = b.add('vca', 6, 0, { gain: 1 });
+  b.wire(vcf, 'lp24', vca, 'in');
+  b.wire(vcaMode, 'out', vca, 'cv');
+  const bendVco = b.add('scale', 0, 3, { gain: 0, offset: 0 });
+  const bendVcf = b.add('scale', 0, 4, { gain: 0, offset: 0 });
+  b.wire(bendVco, 'out', vcoPitch, 'in');
+  b.wire(bendVcf, 'out', vcf, 'cv');
+  const lfoMod = b.add('vca', 1, 4, { gain: 0.1 });
+  b.wire(lfo, 'out', lfoMod, 'in');
+  b.wire(lfoMod, 'out', vcoPitch, 'in');
+  b.wire(lfoMod, 'out', vcf, 'cv');
+  b.input('keys', part, 'keys');
+  b.input('bend', bendVco, 'in', [bendVcf, 'in']);
+  b.input('wheel', lfoMod, 'cv');
+  b.output('out', vca, 'out');
+  b.output('arp clock', lfo, 'pulse');
+  b.param('rate', lfo, 'rate', { head: 'modulator' });
+  b.param('waveform', lfoWave, 'pos');
+  b.param('vco mod', vcoMod, 'gain', { col: true, head: 'vco' });
+  b.param('range', range, 'pos');
+  b.param('pw', pwm, 'gain');
+  b.param('pwm source', pwmSrc, 'pos');
+  b.param('tune', saw, 'fine');
+  b.param('pulse', mixer, 'l1', { col: true, head: 'source mixer' });
+  b.param('saw', mixer, 'l2');
+  b.param('sub osc', mixer, 'l3');
+  b.param('sub mode', subMode, 'pos');
+  b.param('noise', mixer, 'l4');
+  b.param('freq', vcf, 'cutoff', { col: true, head: 'vcf' });
+  b.param('res', vcf, 'res');
+  b.param('env', vcfEnv, 'gain');
+  b.param('mod', vcfMod, 'gain');
+  b.param('kybd', kybd, 'gain');
+  b.param('vca', vcaMode, 'pos', { col: true, head: 'env' });
+  b.param('trigger', trigMode, 'pos');
+  b.param('attack', env, 'a');
+  b.param('decay', env, 'd');
+  b.param('sustain', env, 's');
+  b.param('release', env, 'r');
+  b.param('portamento', porta, 'time', { col: true, head: 'controller' });
+  b.param('porta mode', portaMode, 'pos');
+  b.param('bend vco', bendVco, 'gain');
+  b.param('bend vcf', bendVcf, 'gain');
+  b.param('lfo mod', lfoMod, 'gain');
+  b.param('volume', vca, 'gain'); // the SH-101's VOLUME, the level row (#448): set by the loudness step
+});
+// TUNE moves the three oscillators' fine tune (#357, a row's `also`); the switches' positions named as the panel
+{
+  const d = defs.find((x) => x.name === 'Shush 101')!;
+  const tune = d.params.find((r) => r.label === 'tune')!;
+  tune.also = d.modules.filter((m) => m.type === 'osc' && m.id !== tune.module).map((m) => ({ module: m.id, param: 'fine' }));
+  namePositions('Shush 101', {
+    waveform: ['TRIANGLE', 'SQUARE', 'RANDOM', 'NOISE'], range: ["16'", "8'", "4'", "2'"], 'pwm source': ['ENV', 'MAN', 'LFO'],
+    'sub mode': ['1 OCT DOWN', '2 OCT DOWN', '2 OCT PULSE'], vca: ['ENV', 'GATE'], trigger: ['GATE+TRIG', 'GATE', 'LFO'],
+    'porta mode': ['ON', 'OFF', 'AUTO'],
+  });
+}
+
 // an LFO through a Scale: vibrato (into a pitch input), tremolo (into a VCA's cv with an offset), a filter sweep
 asm('vibrato', 'Utilities', (b) => {
   const lfo = b.add('lfo', 0, 0, { wave: 0, rate: 5, depth: 1 });
@@ -5044,6 +5196,7 @@ const BLURBS: Record<string, string> = {
   'Spokes 6': 'Model:Cycles type shit',
   'Cassia 1': 'CZ-1 type shit',
   'Verona Drum 1': 'DRM1 MKIV type shit',
+  'Shush 101': 'Roland SH-101 after its block diagram: VCO with sub and noise, 24 dB VCF, one ADSR, LFO, portamento, bender.',
   'drift poly': 'Two oscillators per voice, four voices that drift a little out of tune',
   'basic poly': 'The plainest polysynth: a saw, a low pass and an envelope per voice',
   'mono lead': 'One voice through a ladder filter, gliding between legato notes',

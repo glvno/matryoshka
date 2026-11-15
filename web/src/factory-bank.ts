@@ -43,6 +43,7 @@ export interface SelectedFactoryOptions extends FactoryMeasurementOptions {
 export const selectedFactoryProfile: Readonly<Record<string, SelectedFactoryOptions>> = {
   'Monolith D': { configurationId: 'selected-monolith-d' },
   'Silver Box': { configurationId: 'selected-silver-box' },
+  'Shush 101': { configurationId: 'selected-shush-101' },
   'Algo Four': { omit: ['drive'], configurationId: 'algo-four-v6-chorus-delay-reverb', outputLevel: 0.88 },
   'Oracle V': { omit: ['drive'], configurationId: 'oracle-v-v4-chorus-delay-reverb' },
   Canvas: { omit: ['drive', 'chorus', 'reverb'], harmonizer: 'removed', canvasCaptions: 'short', configurationId: 'canvas-original-delay-no-harm' },
