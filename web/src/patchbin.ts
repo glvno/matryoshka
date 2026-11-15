@@ -45,15 +45,16 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //   with flag bit 3: u8 count, then u8 module index, u8 input index, the parameter mask per routed input (u16 LE, or u32 LE
 //                when the module's type has more than 16 parameters: maskBytes)
 //   with flag bit 4: the tracks' notes (#133): u8 count, then per Steps module with notes, in module order: u8 module index,
-//                u8 n (1..TRACK_NOTES_MAX), n u32 LE notes (track.ts noteWord), sorted by start, then note; bit 31 of a
-//                word (format 50, NOTE_WRAP): tied across the loop point
+//                u8 n (1..TRACK_NOTES_MAX), n u32 LE words (track.ts noteWords), sorted by start, then note; bit 31 of a
+//                word (format 50, NOTE_WRAP): tied across the loop point; format 60 (#674, FORMAT_CONDS): a note with a trig
+//                condition (chance code NOTE_COND) is followed by its condition word (velocity 0), which n counts
 //   with flag bit 10 (format 48, written only when used: patternRecord): the patterns and songs (track.ts Pattern, SeqState):
 //                u8 the selected pattern (0-based), u8 the song playing (0 none, 1..SONGS_MAX); u8 track count, per Steps module
 //                with patterns past its first, in module order: u8 module index, u8 P, then patterns 2..P+1, each u8 n: 0xFF the
-//                track has no such pattern (it plays its pattern 1), else n notes (0..TRACK_NOTES_MAX), u8 len (bits 0..6: 0 the
+//                track has no such pattern (it plays its pattern 1), else n words (0..TRACK_NOTES_MAX), u8 len (bits 0..6: 0 the
 //                track's, else 1..STEPS_MAX; bit 7: short words), u8 rate (0xFF the track's, else a STEPS_RATES index), n
 //                words: u16 LE short ones (track.ts shortWord, when every note of the pattern fits one: isShortNote) or u32 LE
-//                (noteWord); then u8 song count, per song u8 entry count, per entry u8 pattern, i8 shift. Pattern 1 of every
+//                (noteWords, as the notes section's); then u8 song count, per song u8 entry count, per entry u8 pattern, i8 shift. Pattern 1 of every
 //                track stays in the notes section, so a patch without patterns is written as before.
 //   with flag bit 11 (format 49, #524, written only when used: lockRecord): the P-locks, right after the patterns: u8 track
 //                count, per Steps module with locks, in module order: u8 module index, u8 T rows (1..LOCK_ROWS_MAX), per row
@@ -109,7 +110,7 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 import { DEFS, delayLine, DELAY_LENGTH_DEFAULT, DRUM_ROWS, drumRowName, PANEL_BUTTONS } from './modules';
 import { KIND_CODE, kindOf, mainOf, switches, toggleEngaged, toggleTargets } from './buttons';
 import { defaultMap, EDITOR_ONLY, flawOf, hasMorph, isBipolar, MAX_MODULES, MAX_PARTS, MODULES_1_10, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef, type Patch } from './patch';
-import { isShortNote, noteWord, shortWord, type StepNote } from './track';
+import { noteWords, patternWords, wordCount } from './track';
 import { payloadHash } from './pattern-store';
 import { lockPlan, PATCH_LOCKS_MAX } from './locks';
 import { deviceView, keysInto, MAX_POLY, type DeviceGroup, VOICING_CABLE_INPUTS } from './poly';
@@ -130,7 +131,7 @@ export const GROUP_REC = 4 + 5 * MAX_PARTS + 4;
 /** bytes of the panel section (engine.h ENG_PANEL_BYTES): two masks and the labels */
 export const PANEL_BYTES = 4 + PANEL_LABEL_KEYS.length * PANEL_LABEL_MAX;
 export const MAX_CABLES = 255;
-export const VERSION = 59; // 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14; ordinary patches retain their lowest format
+export const VERSION = 60; // 60: trig conditions, a note's condition word after it (#674); 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14; ordinary patches retain their lowest format
 /**
  * The lowest format the encoder writes: a patch that uses no parameter appended after it (ParamDef.since past it: a value
  * off its default on either morph side, a pin, macro range, input route or card row on it) is written in this format, its
@@ -141,9 +142,9 @@ export const VERSION = 59; // 59: stored pattern links, flag bit 15 (#901); 58: 
 export const WRITE_FLOOR = 46;
 /** the formats past WRITE_FLOOR that only add something the encoder writes when the patch uses it (format 48: the patterns
  * and songs, flag bit 10; format 50: a note word's bit 31, NOTE_WRAP; format 51: counted records, when the patch would not
- * fit otherwise, COUNTED; format 59: stored pattern links, flag bit 15); every other format past WRITE_FLOOR appends
- * parameters (ParamDef.since) */
-export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module', 53: 'chained Harmonizer keys routes', 54: 'factory pattern origins', 55: 'master FX stages', 56: 'the linear envelope fall', 57: 'the ADS envelope', 58: 'the oscillator start phase', 59: 'stored pattern links' };
+ * fit otherwise, COUNTED; format 59: stored pattern links, flag bit 15; format 60: trig conditions, FORMAT_CONDS); every
+ * other format past WRITE_FLOOR appends parameters (ParamDef.since) */
+export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module', 53: 'chained Harmonizer keys routes', 54: 'factory pattern origins', 55: 'master FX stages', 56: 'the linear envelope fall', 57: 'the ADS envelope', 58: 'the oscillator start phase', 59: 'stored pattern links', 60: 'trig conditions' };
 /** the flag (u16 at offset 6) of the P-locks section (format 49, #524) */
 export const FLAG_LOCKS = 2048;
 
@@ -277,6 +278,13 @@ function uses112(dev: Patch): boolean {
 function uses110(dev: Patch): boolean {
   return dev.modules.some((m) => m.type === 'steps' && [m.notes, ...(m.patterns ?? []).map((x) => x?.notes)].some((ns) => ns?.some((n) => n.wrap)));
 }
+/** the format of trig conditions (#674): a note with chance code NOTE_COND and its condition word after it (track.ts
+ * noteWords), in the notes and patterns sections */
+export const FORMAT_CONDS = 60;
+/** what a patch uses of FORMAT_CONDS (`dev`: its device form): a note with a trig condition, in any pattern */
+function usesConds(dev: Patch): boolean {
+  return dev.modules.some((m) => m.type === 'steps' && [m.notes, ...(m.patterns ?? []).map((x) => x?.notes)].some((ns) => ns?.some((n) => n.cond)));
+}
 /** a device of the device pages section's kind 2 (format 49): a plain module with its own name */
 export const NAMED_MODULE = 2;
 /** the name a plain module device carries in the binary (kind NAMED_MODULE), '' when it has none: its own name, as the
@@ -309,7 +317,7 @@ export const formatOf = (source: Patch, view: ReturnType<typeof deviceView> = de
 /** the lowest format that holds what this patch uses: VERSION, or WRITE_FLOOR when it uses nothing appended since (`dev`: its device form) */
 export function baseFormat(source: Patch, dev: Patch = deviceView(source, true).patch): number {
   const late = (type: string): ParamDef[] => DEFS[type].params.filter((q) => (q.since ?? 0) > WRITE_FLOOR || (q.grew?.since ?? 0) > WRITE_FLOOR);
-  const floor = fxRecord(source, dev).length || harmonyLfo(source, dev) ? 55 : originRecord(dev).length ? 54 : chainedHarmonizer(source) ? 53 : uses112(dev) ? FORMAT_1_12 : uses111(source, dev) ? FORMAT_1_11 : uses110(dev) ? FORMAT_1_10 : uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
+  const floor = usesConds(dev) ? FORMAT_CONDS : fxRecord(source, dev).length || harmonyLfo(source, dev) ? 55 : originRecord(dev).length ? 54 : chainedHarmonizer(source) ? 53 : uses112(dev) ? FORMAT_1_12 : uses111(source, dev) ? FORMAT_1_11 : uses110(dev) ? FORMAT_1_10 : uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
   if (!dev.modules.some((m) => late(m.type).length)) return floor;
   let v = floor;
   const rows = new Set<string>();
@@ -599,8 +607,6 @@ const noteTracks = (p: Patch): number[] => p.modules.flatMap((m, i) => (m.type =
 export const trackRecSize = (n: number): number => 2 + 4 * n;
 /** the flag (u16 at offset 6) of the patterns and songs section, format 48 */
 export const FLAG_PATTERNS = 1024;
-/** a pattern's words are short ones (track.ts shortWord): every note fits one */
-export const shortPattern = (notes: readonly StepNote[] | undefined): boolean => (notes ?? []).every(isShortNote);
 
 /** the patterns and songs section's bytes (see the top of this file), [] when the patch has no pattern past the first on
  * any track, pattern 1 selected, no song playing and no song entries: such a patch is written as before (`dev`: the
@@ -619,11 +625,9 @@ export function patternRecord(source: Patch, dev: Patch): number[] {
         out.push(0xff);
         continue;
       }
-      const notes = x.notes ?? [];
-      const short = shortPattern(notes);
-      out.push(notes.length, (x.len ?? 0) | (short ? 0x80 : 0), x.rate ?? 0xff);
-      for (const n of notes) {
-        const w = short ? shortWord(n) : noteWord(n);
+      const { short, words } = patternWords(x.notes);
+      out.push(words.length, (x.len ?? 0) | (short ? 0x80 : 0), x.rate ?? 0xff);
+      for (const w of words) {
         out.push(w & 0xff, (w >>> 8) & 0xff);
         if (!short) out.push((w >>> 16) & 0xff, w >>> 24);
       }
@@ -877,7 +881,7 @@ function layoutOf(source: Patch, view: ReturnType<typeof deviceView>, force: boo
     const named = presetNames(source, p, groups, devs, kinds.length + room, v, keep);
     return { v, names: named.names, reserve: named.reserve + room, size: sizeOf(p, groups, devs, v, keep, source, named.names) + kinds.length + links.length };
   };
-  const base = at(links.length ? FORMAT_LINKS : baseFormat(source, p));
+  const base = at(Math.max(links.length ? FORMAT_LINKS : 0, baseFormat(source, p)));
   const counted = base.v < COUNTED ? at(COUNTED) : base;
   const need = Math.min(base.size + base.reserve, counted.size + counted.reserve);
   const w = !force && (base.size + base.reserve <= DEVICE.bytes || need === base.size + base.reserve) ? base : counted;
@@ -895,7 +899,7 @@ function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[], v: number, keep: Ma
   if (morph) size += morphBytes(p, v, keep);
   if (routes.length) size += 1 + routes.reduce((n, r) => n + 2 + r.bytes, 0);
   const tracks = noteTracks(p);
-  if (tracks.length) size += 1 + tracks.reduce((n, i) => n + trackRecSize(p.modules[i].notes!.length), 0);
+  if (tracks.length) size += 1 + tracks.reduce((n, i) => n + trackRecSize(wordCount(p.modules[i].notes)), 0);
   size += patternRecord(source ?? p, p).length;
   size += lockRecord(source ?? p, p).length;
   size += originRecord(p).length;
@@ -1050,11 +1054,11 @@ export function encodePatch(source: Patch, anyway = false, counted = false, allo
   if (valued.length) {
     out[at++] = valued.length;
     for (const i of valued) {
-      const notes = p.modules[i].notes!;
+      const words = noteWords(p.modules[i].notes);
       out[at] = i;
-      out[at + 1] = notes.length;
-      notes.forEach((n, j) => dv.setUint32(at + 2 + 4 * j, noteWord(n), true));
-      at += trackRecSize(notes.length);
+      out[at + 1] = words.length;
+      words.forEach((w, j) => dv.setUint32(at + 2 + 4 * j, w, true));
+      at += trackRecSize(words.length);
     }
   }
   if (pats.length) {
@@ -1374,7 +1378,7 @@ export function deviceBudget(source: Patch, allocation: BufferAllocation = 0): B
   const lines = linesOf(p, ninst, pool);
   const used: Record<BudgetKey, number> = {
     modules: p.modules.length, cables: p.cables.length, poly: groups.length, parts: Math.max(1, ...groups.map((g) => g.cfg.parts)),
-    instances, buffers, memory: lines.used, arps: count('arp'), harms: count('harm'), tracks: count('steps'), notes: p.modules.reduce((n, m) => n + (m.type === 'steps' ? (m.notes?.length ?? 0) + (m.patterns ?? []).reduce((k, x) => k + (x?.notes?.length ?? 0), 0) : 0), 0),
+    instances, buffers, memory: lines.used, arps: count('arp'), harms: count('harm'), tracks: count('steps'), notes: p.modules.reduce((n, m) => n + (m.type === 'steps' ? wordCount(m.notes) + (m.patterns ?? []).reduce((k, x) => k + wordCount(x?.notes), 0) : 0), 0),
     locks: p.modules.reduce((n, m) => n + (m.type === 'steps' ? (m.locks?.length ?? 0) + (m.patterns ?? []).reduce((k, x) => k + (x?.locks?.length ?? 0), 0) : 0), 0), bytes: bytesOf(source, view),
   };
   const items = (Object.keys(DEVICE) as BudgetKey[]).map((key) => ({ key, label: LABELS[key], used: used[key], max: DEVICE[key] }));

@@ -33,8 +33,11 @@ export interface StepNote {
   /** MIDI note (60 = C4) and velocity (1..127) */
   note: number;
   vel: number;
-  /** percent, 5..100 in steps of 5 (each time round the pattern a hash decides; modules.ts notePlays); absent = 100 */
+  /** percent, 5..100 in steps of 5 (each time round the pattern a hash decides; modules.ts notePlays); absent = 100. A note
+   * with a trig condition (`cond`) has none */
   chance?: number;
+  /** its trig condition (#674, format 60, D-830; COND_*): when it plays, instead of every time; absent = every time */
+  cond?: number;
   /** tied across the loop point (#384, format 50): its length runs on past the end of the pass into the next pass's first
    * steps instead of being cut there. With the most length (STEPS_MAX) it is a drone: it ties back onto its own step and
    * never starts again while it plays (isDrone). Absent = cut at the end of the pass */
@@ -80,6 +83,43 @@ const int = (v: unknown, lo: number, hi: number): number | null => {
   return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : null;
 };
 
+/**
+ * Trig conditions (#674, D-830), a note's `cond` as a byte: bit 6 (COND_NOT) its inverse, bits 3..5 B - 1 and bits 0..2
+ * A - 1 for A:B (B 2..COND_B_MAX, A 1..B: it plays on pass A of every B passes of the pattern, counted from 1); with
+ * bits 3..5 zero, bits 0..2 one of the others: FILL (while the performer holds FILL), PRE (the last condition its track
+ * judged held), NEI (the last condition the track before it judged held), 1ST (the first pass). Passes count from the
+ * track's start (the transport's, or a reset edge) and start again when it plays another pattern. A chance and every
+ * condition but PRE and NEI set what PRE and NEI read next. engine.c steps_cond reads the same byte.
+ */
+export const COND_NOT = 0x40;
+export const COND_FILL = 1;
+export const COND_PRE = 2;
+export const COND_NEI = 3;
+export const COND_FIRST = 4;
+export const COND_B_MAX = 8;
+/** A:B as a condition byte */
+export const condAB = (a: number, b: number): number => ((b - 1) << 3) | (a - 1);
+/** a valid condition byte (one COND_ORDER holds) */
+export const isCond = (c: unknown): c is number => {
+  if (typeof c !== 'number' || !Number.isInteger(c) || c < 0 || c > 0x7f) return false;
+  const b = (c >> 3) & 7, a = c & 7;
+  return b ? a <= b : a >= COND_FILL && a <= COND_FIRST;
+};
+/** the conditions in the order a knob steps through them (the FM-1's K4 on a held step, the editor's menus): none, FILL,
+ * NOT FILL, PRE, NOT PRE, NEI, NOT NEI, 1ST, NOT 1ST, then 1:2, 2:2, 1:3 .. 8:8, then NOT 1:2 .. NOT 8:8 (engine.c
+ * cond_at, the same order) */
+export const COND_ORDER: readonly number[] = [
+  0,
+  ...[COND_FILL, COND_PRE, COND_NEI, COND_FIRST].flatMap((k) => [k, k | COND_NOT]),
+  ...[0, COND_NOT].flatMap((not) => Array.from({ length: COND_B_MAX - 1 }, (_, i) => i + 2).flatMap((b) => Array.from({ length: b }, (_, a) => not | condAB(a + 1, b)))),
+];
+/** a condition's name as the FM-1 and the editor write it: FILL, NOT 1ST, 3:4, NOT 1:2; '' for none */
+export function condName(c: number | undefined): string {
+  if (!c || !isCond(c)) return '';
+  const b = (c >> 3) & 7, a = c & 7;
+  return (c & COND_NOT ? 'NOT ' : '') + (b ? `${a + 1}:${b + 1}` : ['', 'FILL', 'PRE', 'NEI', '1ST'][a]);
+}
+
 /** a chance as stored: 5..100 in steps of 5, undefined for 100 */
 const fixChance = (v: unknown): number | undefined => {
   const c = v === undefined || v === null ? 100 : int(v, 5, 100);
@@ -101,15 +141,27 @@ export function fixNotes(raw: unknown): StepNote[] | undefined {
     const at = int(o.at, 0, STEPS_MAX - 1), note = int(o.note, 0, 127);
     if (at === null || note === null || Number(o.at) < 0 || Number(o.at) >= STEPS_MAX) continue;
     const n: StepNote = { at, len: int(o.len, 1, STEPS_MAX) ?? 1, note, vel: int(o.vel, 1, 127) ?? STEP_VEL };
-    const chance = fixChance(o.chance);
+    const cond = isCond(o.cond) && o.cond ? o.cond : undefined;
+    const chance = cond ? undefined : fixChance(o.chance);
     if (chance !== undefined) n.chance = chance;
+    if (cond) n.cond = cond;
     if (o.wrap === true) n.wrap = true;
     out.push(n);
   }
   out.sort(order);
-  const kept = out.filter((n, i) => i === 0 || n.at !== out[i - 1].at || n.note !== out[i - 1].note).slice(0, TRACK_NOTES_MAX);
+  const kept: StepNote[] = [];
+  let words = 0;
+  for (const [i, n] of out.entries()) {
+    if (i > 0 && n.at === out[i - 1].at && n.note === out[i - 1].note) continue;
+    if ((words += n.cond ? 2 : 1) > TRACK_NOTES_MAX) break;
+    kept.push(n);
+  }
   return kept.length ? kept : undefined;
 }
+
+/** the words a track's notes take in the binary (noteWords: a note with a condition takes two), what TRACK_NOTES_MAX and
+ * DEVICE.notes count */
+export const wordCount = (notes: readonly StepNote[] | undefined): number => (notes ?? []).reduce((k, n) => k + (n.cond ? 2 : 1), 0);
 
 /**
  * The notes of a pattern saved before #133 (patch format 30 and older): a step byte per step (bit 0 on, bit 1 accent,
@@ -137,24 +189,51 @@ export function migrateSteps(steps: unknown, notes?: unknown, vels?: unknown): S
 }
 
 /** a note in the binary (patchbin.ts, engine.c): u32 LE, bits 0..5 the start, 6..11 the length - 1, 12..18 the note,
- * 19..25 the velocity, 26..30 the chance code (100 - chance) / 5, bit 31 tied across the loop point (NOTE_WRAP, format 50) */
+ * 19..25 the velocity, 26..30 the chance code (100 - chance) / 5, bit 31 tied across the loop point (NOTE_WRAP, format 50).
+ * A note with a trig condition (format 60, #674) has chance code NOTE_COND, and its condition word follows it: a word of
+ * velocity 0 with the note's start and note, the condition in bits 6..11 (its low six bits) and 26 (bit 6); engine.c keeps
+ * the words as they are (NW_COND) */
 export const NOTE_WRAP = 0x80000000;
+export const NOTE_COND = 31;
 export const noteWord = (n: StepNote): number =>
-  ((n.at | ((n.len - 1) << 6) | (n.note << 12) | (n.vel << 19) | (((100 - (n.chance ?? 100)) / 5) << 26)) >>> 0) + (n.wrap ? NOTE_WRAP : 0);
+  ((n.at | ((n.len - 1) << 6) | (n.note << 12) | (n.vel << 19) | ((n.cond ? NOTE_COND : (100 - (n.chance ?? 100)) / 5) << 26)) >>> 0) + (n.wrap ? NOTE_WRAP : 0);
+/** a note's condition word (its note's start and note, velocity 0) */
+export const condWord = (n: StepNote): number => (n.at | ((n.cond! & 63) << 6) | (n.note << 12) | (((n.cond! >> 6) & 1) << 26)) >>> 0;
+/** a track's notes as words: each note, and after a note with a condition its condition word */
+export const noteWords = (notes: readonly StepNote[] | undefined): number[] => (notes ?? []).flatMap((n) => (n.cond ? [noteWord(n), condWord(n)] : [noteWord(n)]));
 export function wordNote(w: number): StepNote {
   const n: StepNote = { at: w & 63, len: ((w >>> 6) & 63) + 1, note: (w >>> 12) & 127, vel: (w >>> 19) & 127 };
   const code = Math.min(19, (w >>> 26) & 31);
-  if (code) n.chance = 100 - 5 * code;
+  if (code && ((w >>> 26) & 31) !== NOTE_COND) n.chance = 100 - 5 * code;
   if (w & NOTE_WRAP) n.wrap = true;
   return n;
 }
+/** words back into notes: a condition word gives the note before it (the same start and note, chance code NOTE_COND) its
+ * condition; one anywhere else is dropped */
+export function wordsNotes(words: readonly number[]): StepNote[] {
+  const out: StepNote[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i] >>> 0;
+    if (!((w >>> 19) & 127)) continue;
+    const n = wordNote(w), c = words[i + 1] >>> 0;
+    if (((w >>> 26) & 31) === NOTE_COND && i + 1 < words.length && !((c >>> 19) & 127) && (c & 0x7f03f) === (w & 0x7f03f)) {
+      const cond = ((c >>> 6) & 63) | (((c >>> 26) & 1) << 6);
+      if (isCond(cond) && cond) n.cond = cond;
+      i++;
+    }
+    out.push(n);
+  }
+  return out;
+}
 
-/** a step as the card's lanes and the SEQ page show it: on (notes start there; accent, chance, note and velocity are its
- * lowest note's), or tied (a note started before goes on through it) */
+/** a step as the card's lanes and the SEQ page show it: on (notes start there; accent, chance, condition, note and velocity
+ * are its lowest note's), or tied (a note started before goes on through it) */
 export interface StepView {
   on: boolean;
   accent: boolean;
   chance: number;
+  /** its trig condition (0: none) */
+  cond: number;
   tie: boolean;
   note: number;
   vel: number;
@@ -166,10 +245,23 @@ export function stepView(notes: readonly StepNote[] | undefined, k: number, len?
     on: !!first,
     accent: first?.vel === ACCENT_VEL,
     chance: first?.chance ?? 100,
+    cond: first?.cond ?? 0,
     tie: !first && !!notes?.some((n) => noteThrough(n, k, len)),
     note: first?.note ?? STEP_NOTE,
     vel: first?.vel ?? STEP_VEL,
   };
+}
+
+/** the notes `which` picks take condition `cond` (0: none; it takes their chance away) */
+export function setCond(notes: readonly StepNote[] | undefined, which: (n: StepNote) => boolean, cond: number): StepNote[] | undefined {
+  return fixNotes((notes ?? []).map((n) => {
+    if (!which(n)) return n;
+    const out: StepNote = { ...n };
+    delete out.chance;
+    if (cond && isCond(cond)) out.cond = cond;
+    else delete out.cond;
+    return out;
+  }));
 }
 
 /** the notes starting on step k */
@@ -225,8 +317,10 @@ export function setStep(notes: readonly StepNote[] | undefined, k: number, s: { 
   const mine = out.filter((n) => n.at === k);
   if (!mine.length && out.length < TRACK_NOTES_MAX) out.push({ at: k, len: 1, note: STEP_NOTE, vel: s.accent ? ACCENT_VEL : STEP_VEL, ...(chance ? { chance } : {}) });
   for (const n of mine) {
-    if (chance) n.chance = chance;
-    else delete n.chance;
+    if (chance) {
+      n.chance = chance;
+      delete n.cond;
+    } else delete n.chance;
     if (s.accent) n.vel = ACCENT_VEL;
     else if (n.vel === ACCENT_VEL) n.vel = STEP_VEL;
   }
@@ -259,11 +353,11 @@ export function chordFits(notes: readonly StepNote[] | undefined, k: number, key
   return kept.length + new Set(keys.map(x => x.note)).size <= TRACK_NOTES_MAX;
 }
 export function setChord(notes: readonly StepNote[] | undefined, k: number, keys: readonly { note: number; vel: number }[], len = STEPS_MAX): StepNote[] | undefined {
-  const chance = stepView(notes, k).on ? stepView(notes, k).chance : 100;
+  const v = stepView(notes, k), chance = v.on ? v.chance : 100, cond = v.on ? v.cond : 0;
   const out = setStep(notes, k, { on: false, accent: false, chance: 100 }, len) ?? [];
   for (const x of keys)
     if (out.length < TRACK_NOTES_MAX && k >= 0 && k < STEPS_MAX)
-      out.push({ at: k, len: 1, note: Math.max(0, Math.min(127, Math.round(x.note))), vel: Math.max(1, Math.min(127, Math.round(x.vel))), ...(chance < 100 ? { chance } : {}) });
+      out.push({ at: k, len: 1, note: Math.max(0, Math.min(127, Math.round(x.note))), vel: Math.max(1, Math.min(127, Math.round(x.vel))), ...(chance < 100 ? { chance } : {}), ...(cond ? { cond } : {}) });
   return fixNotes(out);
 }
 
@@ -417,9 +511,16 @@ export function patternOf(m: { notes?: StepNote[]; patterns?: (Pattern | null)[]
 
 /** a short note word (format 48's patterns section, 16 bits): bits 0..3 the start, 4..7 the length - 1, 8..14 the note,
  * 15 the accent (full velocity, else the default velocity); for a pattern whose every note fits it (isShortNote) */
-export const isShortNote = (n: StepNote): boolean => !n.wrap && n.at < 16 && n.len <= 16 && (n.vel === STEP_VEL || n.vel === ACCENT_VEL) && (n.chance ?? 100) === 100;
+export const isShortNote = (n: StepNote): boolean => !n.wrap && n.at < 16 && n.len <= 16 && (n.vel === STEP_VEL || n.vel === ACCENT_VEL) && (n.chance ?? 100) === 100 && !n.cond;
 export const shortWord = (n: StepNote): number => n.at | ((n.len - 1) << 4) | (n.note << 8) | (n.vel === ACCENT_VEL ? 0x8000 : 0);
 export const wordShort = (w: number): StepNote => ({ at: w & 15, len: ((w >> 4) & 15) + 1, note: (w >> 8) & 127, vel: w & 0x8000 ? ACCENT_VEL : STEP_VEL });
+/** a pattern's words as the binary and the pattern store write them: short ones (u16) when every note fits one, else
+ * noteWords (u32) */
+export function patternWords(notes: readonly StepNote[] | undefined): { short: boolean; words: number[] } {
+  const ns = notes ?? [];
+  const short = ns.every(isShortNote);
+  return { short, words: short ? ns.map(shortWord) : noteWords(ns) };
+}
 
 /**
  * A P-lock (#524, #519 Q1..Q5): on step `at` of a pattern, a row of the device the track plays (pages.ts Device.track: a

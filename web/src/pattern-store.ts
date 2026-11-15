@@ -7,10 +7,11 @@
 //   u32 LE layout     0 when the pattern has no P-locks, else the patch's layout fingerprint (layoutOf)
 //   u8  T             tracks written: 1 + the last track that has this pattern (at least 1)
 //   per track k < T (track k: the k-th Steps module of the binary's module order):
-//       u8 n          0xFF: the track has no such pattern (it plays its pattern 1); else n notes 0..128
+//       u8 n          0xFF: the track has no such pattern (it plays its pattern 1); else n words 0..128
 //       if n != 0xFF: u8 len (bits 0..6: 0 the track's length, else 1..64; bit 7: short words), u8 rate (0xFF the
 //                     track's, else a STEPS_RATES index), n words: u16 LE short ones when every note is short
-//                     (track.ts isShortNote, shortWord), else u32 LE (noteWord), in the order the engine keeps them
+//                     (track.ts isShortNote, shortWord), else u32 LE (noteWords: a note with a trig condition, #674, and
+//                     its condition word), in the order the engine keeps them
 //   u8  L             tracks with locks
 //   per locked track, ascending k: u8 k, u8 c (1..64), c x (u8 step, u8 module index, u8 parameter index, i32 LE value
 //                     Q16.16): the row's own parameter, in engine.c eng_locks_list order
@@ -25,7 +26,7 @@ import { lockPlan } from './locks';
 import { TYPE_ORDER, toQ16 } from './patchbin';
 import type { StoredPatternEntry } from './protocol';
 import { PRESET_PATTERNS, type PresetPattern } from './preset-pattern-data';
-import { fixLocks, fixNotes, fixPatterns, isShortNote, noteWord, shortWord, wordNote, wordShort, type Pattern, type StepLock, type StepNote } from './track';
+import { fixLocks, fixNotes, fixPatterns, isShortNote, noteWord, patternWords, shortWord, wordNote, wordShort, wordsNotes, type Pattern, type StepLock, type StepNote } from './track';
 import FACTORY_STORE from './factory-store.json';
 
 export const PAYLOAD_VERSION = 1;
@@ -79,11 +80,9 @@ export function encodePayload(source: Patch, p: number, dev: Patch = deviceView(
       out.push(0xff);
       continue;
     }
-    const notes = x.notes ?? [];
-    const short = notes.every(isShortNote);
-    out.push(notes.length, (p ? x.len ?? 0 : 0) | (short ? 0x80 : 0), p ? x.rate ?? 0xff : 0xff);
-    for (const n of notes) {
-      const w = short ? shortWord(n) : noteWord(n);
+    const { short, words } = patternWords(x.notes);
+    out.push(words.length, (p ? x.len ?? 0 : 0) | (short ? 0x80 : 0), p ? x.rate ?? 0xff : 0xff);
+    for (const w of words) {
       out.push(w & 0xff, (w >>> 8) & 0xff);
       if (!short) out.push((w >>> 16) & 0xff, w >>> 24);
     }
@@ -125,7 +124,7 @@ export function decodePayload(bytes: ArrayLike<number>): Payload {
     }
     if (n > 128) bad();
     const len = u8(), rate = u8(), short = !!(len & 0x80);
-    const notes = Array.from({ length: n }, () => (short ? wordShort(u16()) : wordNote(u32())));
+    const notes = short ? Array.from({ length: n }, () => wordShort(u16())) : wordsNotes(Array.from({ length: n }, u32));
     tracks.push({ notes, len: len & 0x7f, rate });
   }
   const locks: Payload['locks'] = [];
@@ -200,11 +199,9 @@ export function autoName(patchName: string, p: number): string {
 
 /** a factory demonstration pattern (PRESET_PATTERNS, D-882 / D-1009) as a payload: one track, its notes, length and rate */
 export function factoryPayload(e: PresetPattern): Uint8Array {
-  const notes = e.notes.map(wordNote);
-  const short = notes.every(isShortNote);
-  const out = [PAYLOAD_VERSION, 0, 0, 0, 0, 1, notes.length, (e.len & 0x7f) | (short ? 0x80 : 0), e.rate];
-  for (const n of notes) {
-    const w = short ? shortWord(n) : noteWord(n);
+  const { short, words } = patternWords(wordsNotes(e.notes));
+  const out = [PAYLOAD_VERSION, 0, 0, 0, 0, 1, words.length, (e.len & 0x7f) | (short ? 0x80 : 0), e.rate];
+  for (const w of words) {
     out.push(w & 0xff, (w >>> 8) & 0xff);
     if (!short) out.push((w >>> 16) & 0xff, w >>> 24);
   }

@@ -26,7 +26,7 @@
 //                                                    settings until the Arpeggiator module replaced it: feature bit 0, retired.)
 //   26 STEP, 28 STEPVAL: a step's byte, a step's note / velocity (feature bits 2 and 3), retired with patch format 31 (#133)
 //   27 MUTE     module u8, on u8                     mute / unmute a Steps module (not saved); no reply. Feature bit 2.
-//   2A TRACK    module u8, n u8, n u32 LE notes, [pattern u8]   a Steps module's notes, all of them (track.ts noteWord,
+//   2A TRACK    module u8, n u8, n u32 LE words, [pattern u8]   a Steps module's notes, all of them (track.ts noteWords,
 //                                                    sorted, at most TRACK_NOTES_MAX), of that pattern (0-based; format 48,
 //                                                    without it: the one the track plays); no reply. Feature bit 5.
 //   36 PATTERN  pattern u8, song u8                  the patch's pattern (0-based) and the song playing (0 none): each track
@@ -152,7 +152,7 @@
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
 
 import { ARM_WORDS, type Range } from './patch';
-import { noteWord, PATTERNS_MAX, SHIFT_MAX, SONG_LEN_MAX, SONGS_MAX, TRACK_NOTES_MAX, wordNote, type SongEntry, type StepNote } from './track';
+import { noteWords, PATTERNS_MAX, SHIFT_MAX, SONG_LEN_MAX, SONGS_MAX, TRACK_NOTES_MAX, wordsNotes, type SongEntry, type StepNote } from './track';
 
 export const PREFIX = [0x7d, 0x4d, 0x31];
 export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, sandbox: 0x31, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e, testKey: 0x32, testTurn: 0x33, testScreen: 0x34, testPeak: 0x35, screen: 0x50, peak: 0x51, pattern: 0x36, song: 0x37, patternNow: 0x52, songNow: 0x53, armsNow: 0x54, arms: 0x39, tempo: 0x38, tempoNow: 0x55, locksNow: 0x56, keysNow: 0x57, guideNow: 0x58, deviceSettings: 0x3a, deviceSettingsReply: 0x59, originNow: 0x5a, pats: 0x3b, pat: 0x5b, patGet: 0x3c, patData: 0x5c, patPut: 0x3d, patStored: 0x5d, patDel: 0x3e, patLinkNow: 0x5e } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
@@ -270,15 +270,16 @@ export const attFrame = (module: number, input: number, q16: number): Uint8Array
 };
 
 export const bypassFrame = (module: number, on: boolean): Uint8Array => frame(CMD.bypass, [module, on ? 1 : 0]);
-/** a Steps module's notes (all of them), of pattern `pat` (0-based; format 48: absent, the one the track plays) */
+/** a Steps module's notes (all of them, as words: noteWords), of pattern `pat` (0-based; format 48: absent, the one the
+ * track plays) */
 export function trackFrame(module: number, notes: readonly StepNote[] | undefined, pat?: number): Uint8Array {
-  const n = (notes ?? []).slice(0, TRACK_NOTES_MAX);
-  return frame(CMD.track, [module, n.length, ...n.flatMap((x) => { const w = noteWord(x); return [w & 0xff, (w >>> 8) & 0xff, (w >>> 16) & 0xff, w >>> 24]; }), ...(pat === undefined ? [] : [pat & 0xff])]);
+  const w = noteWords(notes).slice(0, TRACK_NOTES_MAX);
+  return frame(CMD.track, [module, w.length, ...w.flatMap((x) => [x & 0xff, (x >>> 8) & 0xff, (x >>> 16) & 0xff, x >>> 24]), ...(pat === undefined ? [] : [pat & 0xff])]);
 }
 /** a TRACK / TRACK_NOW payload's notes and pattern (absent: an older firmware's, the track's only one: 0) */
 export function parseTrack(payload: number[]): { module: number; notes: StepNote[]; pat: number } | null {
   if (payload.length < 2 || payload.length < 2 + 4 * payload[1]) return null;
-  const notes = Array.from({ length: payload[1] }, (_, j) => wordNote((payload[2 + 4 * j] | (payload[3 + 4 * j] << 8) | (payload[4 + 4 * j] << 16) | (payload[5 + 4 * j] << 24)) >>> 0));
+  const notes = wordsNotes(Array.from({ length: payload[1] }, (_, j) => (payload[2 + 4 * j] | (payload[3 + 4 * j] << 8) | (payload[4 + 4 * j] << 16) | (payload[5 + 4 * j] << 24)) >>> 0));
   const pat = payload.length > 2 + 4 * payload[1] ? Math.min(PATTERNS_MAX - 1, payload[2 + 4 * payload[1]]) : 0;
   return { module: payload[0], notes, pat };
 }

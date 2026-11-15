@@ -161,8 +161,8 @@ describe('the stored pattern payload', () => {
 });
 
 describe('format 59: stored pattern links', () => {
-  it('is the newest format, written only by a patch with a link', () => {
-    expect(VERSION).toBe(59);
+  it('is a section format, written only by a patch with a link', () => {
+    expect(VERSION).toBe(60);
     expect(FORMAT_LINKS).toBe(59);
     expect(SECTION_FORMATS[59]).toBe('stored pattern links');
     expect(FLAG_LINKS).toBe(0x8000);

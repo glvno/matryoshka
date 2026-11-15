@@ -13,7 +13,7 @@ import { make, FM1_PRESETS, PRESETS, type Build } from '../src/presets';
 import { relocatedPatches } from '../src/community-factory';
 import { oracleMorph } from '../src/test-morph';
 import { addModule, connect, defaultParams, emptyPatch, fixMatrix, newPatch, paramUnit, setMorphTarget, SOURCES, stepByte, type Patch, type PolyCfg } from '../src/patch';
-import { migrateSteps, overdub, STEPS_MAX, type StepNote } from '../src/track';
+import { COND_FILL, COND_FIRST, COND_NEI, COND_NOT, COND_PRE, condAB, migrateSteps, overdub, STEPS_MAX, type StepNote } from '../src/track';
 import { insertAssembly, makeAssembly, rowTargets } from '../src/assembly';
 import { FACTORY } from '../src/assemblies';
 import { wireEngine } from '../src/engines';
@@ -35,7 +35,7 @@ mkdirSync(OUT, { recursive: true });
  * velocity 100 / let go: engine.ts thru, engine.c eng_steps_thru, #368)]; take: the notes recorded so far go into their
  * tracks (the editor's overdub, the panel's); kon / koff: a note the Harmonizers take as a root whatever it is (the FM-1's
  * keys: engine.ts noteOn root, engine.c eng_harm_zone); cbon / cboff: chord button `note` (engine.ts chordButton, #598) */
-type Ev = [number, 'on' | 'off' | 'kon' | 'koff' | 'cbon' | 'cboff' | 'run' | 'stop' | 'once' | 'cin' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'armx' | 'rec' | 'take' | 'cc' | 'pat' | 'song' | 'thon' | 'thoff', number, number?];
+type Ev = [number, 'on' | 'off' | 'kon' | 'koff' | 'cbon' | 'cboff' | 'run' | 'stop' | 'once' | 'cin' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'armx' | 'rec' | 'take' | 'cc' | 'pat' | 'song' | 'thon' | 'thoff' | 'fill', number, number?];
 const EVENTS: Ev[] = [
   [0, 'on', 60],
   [128 * 40, 'on', 67],
@@ -3495,6 +3495,45 @@ for (const dir of [0, 2, 3]) {
   ends[name] = 128 * 900;
 }
 
+// trig conditions (#674, format 60): two tracks' keys into two-voice allocators. Track 1 has FILL / NOT FILL, A:B and NOT
+// A:B, 1ST / NOT 1ST, a NEI on the first track (no track before it: never), a chance (50 %) and a PRE / NOT PRE pair on
+// its step; its pattern 2 (long words in the patterns section) another 1ST, 3:4 and NOT 3:4 (its passes count again from
+// the pattern change) and FILL. Track 2 reads track 1 (NEI, NOT NEI), has 4:4 and NOT 1:2, a chance and a PRE. FILL held
+// and let go while it runs, the pattern changed and back, stop and run again (the passes and PRE start again)
+{
+  const C = { FILL: COND_FILL, PRE: COND_PRE, NEI: COND_NEI, FIRST: COND_FIRST, NOT: COND_NOT };
+  const ab = condAB;
+  const c = (x: StepNote, cond: number): StepNote => ({ ...x, cond });
+  tests['steps-conds'] = make('steps-conds', (add, wire) => {
+    add('fm1', 0, 0, { tempo: 200 });
+    const out = add('output', 1600, 0, { level: 0.6 });
+    for (const [i, port] of [[0, 'l'], [1, 'r']] as const) {
+      const st = add('steps', 200, 300 * i, i ? { len: 6, rate: 5, gate: 0.5 } : { len: 8, rate: 5, gate: 0.6 });
+      const al = add('alloc', 400, 300 * i, { voices: 2, legato: 0 });
+      const o = add('osc', 600, 300 * i, { wave: 2, level: 0.4 });
+      const e = add('adsr', 600, 300 * i + 150, { a: 0.003, d: 0.05, s: 0.4, r: 0.03 });
+      const v = add('vca', 800, 300 * i);
+      wire(st, 'keys', al, 'keys');
+      wire(al, 'pitch', o, 'pitch');
+      wire(al, 'gate', e, 'gate');
+      wire(o, 'out', v, 'in');
+      wire(e, 'env', v, 'cv');
+      wire(v, 'out', out, port);
+    }
+  });
+  const [a, b] = tests['steps-conds'].modules.filter((m) => m.type === 'steps');
+  a.notes = [n(0, 1, 48), c(n(0, 1, 64), C.NEI), c(n(1, 1, 50), C.FILL), c(n(2, 1, 52), C.FILL | C.NOT), c(n(3, 1, 53), ab(1, 2)),
+    c(n(4, 2, 55, 90), ab(2, 3) | C.NOT), c(n(5, 1, 57), C.FIRST), c(n(6, 1, 59, 127), C.FIRST | C.NOT), n(7, 1, 60, 100, 50),
+    c(n(7, 1, 72), C.PRE), c(n(7, 1, 74), C.PRE | C.NOT)];
+  a.patterns = [{ len: 4, notes: [c(n(0, 1, 48), C.FIRST), c(n(1, 1, 50), ab(3, 4)), c(n(2, 1, 52), ab(3, 4) | C.NOT), c(n(3, 1, 55), C.FILL)] }];
+  b.notes = [c(n(0, 1, 36), C.NEI), c(n(2, 1, 38), C.NEI | C.NOT), c(n(3, 1, 40), ab(4, 4)), c(n(4, 1, 41), ab(1, 2) | C.NOT), n(5, 1, 43, 100, 30),
+    c(n(5, 1, 47), C.PRE)];
+  events['steps-conds'] = [[128 * 5, 'run', 0], [128 * 150, 'fill', 1], [128 * 260, 'fill', 0], [128 * 400, 'pat', 1], [128 * 600, 'pat', 0],
+    [128 * 700, 'stop', 0], [128 * 720, 'run', 0]];
+  ends['steps-conds'] = 128 * 1000;
+  if (encodePatch(tests['steps-conds'], true)[1] !== 60) throw new Error('steps-conds: not format 60');
+}
+
 // P-locks (#524, format 49): a melody track into an oscillator and a filter, its steps locking the filter's cutoff and
 // resonance and the oscillator's wave (a choice) on some steps, every other step back at the normal values; pattern 2 with
 // locks of its own, pattern 3 the track has not got (it plays pattern 1's notes and locks), stop (the locks let go) and
@@ -4119,6 +4158,7 @@ for (const [name, patch] of Object.entries(tests)) {
     else if (kind === 'tick') e.clockTick();
     else if (kind === 'once') e.playOnce();
     else if (kind === 'cin') e.countIn(note);
+    else if (kind === 'fill') e.setFill(!!note);
     else e.transport(kind === 'run');
   }
   seg(END);
@@ -4135,7 +4175,7 @@ for (const [name, patch] of Object.entries(tests)) {
   // must take exactly (host_test checks): the FM-1's memory is counted from them (#649)
   if (!bins[name]) { const b = deviceBudget(patch); writeFileSync(new URL(`${f}.par`, OUT), `${b.params} ${b.buffers} ${b.instances} ${b.lines.nodes}\n`); }
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
-  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'kon' ? `${fr} kon ${n} 127` : k === 'bon' || k === 'boff' || k === 'koff' || k === 'cbon' || k === 'cboff' || k === 'arm' || k === 'arms' || k === 'pat' || k === 'song' || k === 'cin' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' || k === 'thon' || k === 'thoff' || k === 'armx' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
+  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'kon' ? `${fr} kon ${n} 127` : k === 'bon' || k === 'boff' || k === 'koff' || k === 'cbon' || k === 'cboff' || k === 'arm' || k === 'arms' || k === 'pat' || k === 'song' || k === 'cin' || k === 'fill' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' || k === 'thon' || k === 'thoff' || k === 'armx' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }
 // protocol test input: upload of the acid kit, then a cutoff change on its filter
 {

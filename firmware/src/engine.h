@@ -30,7 +30,7 @@ eng_step_entry_t *eng_steps_entry_memory(void); /* NULL for legacy routes */
 
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 59   /* 59: the stored pattern links (ENG_FLAG_LINKS, #901) after the P-locks; 58: the Oscillator's `phase` (where sync restarts the cycle, #691) appended; 57: the ADSR's `ads` (release at the decay's time, D-745) appended; 56: Env L/R's `curve` (a linear fall, #689) appended; 55: optional validated master FX bus after format54 origins and before macro ranges */
+#define ENG_PATCH_VERSION 60   /* 60: trig conditions, a note's condition word after it (ENG_NOTE_COND, #674); 59: the stored pattern links (ENG_FLAG_LINKS, #901) after the P-locks; 58: the Oscillator's `phase` (where sync restarts the cycle, #691) appended; 57: the ADSR's `ads` (release at the decay's time, D-745) appended; 56: Env L/R's `curve` (a linear fall, #689) appended; 55: optional validated master FX bus after format54 origins and before macro ranges */
 #define ENG_COUNTED 51                /* the first format whose module records carry their parameter count (patchbin.ts COUNTED, #667) */
 /* Format 51's record (patchbin.ts, D-1000): u8 type, u8 count (bits 0..5: the parameters it holds; bit 7, ENG_REC_TEMPLATE,
  * on a type with parameter inputs: its attenuverters and p1 / p2 masks are at their template, eng_mask_template, and left
@@ -487,6 +487,8 @@ static inline int eng_note_drone(uint32_t w) { return (w & ENG_NOTE_WRAP) && ((w
 static inline int eng_note_through(uint32_t w, uint32_t k, uint32_t len)
 {
     uint32_t at = w & 63u, n = ((w >> 6) & 63u) + 1u;
+    if (!(w & 127u << 19))                       /* (a condition word, velocity 0, is no note: ENG_NOTE_COND) */
+        return 0;
     if (at < k && k < at + n)
         return 1;
     if (!(w & ENG_NOTE_WRAP) || at >= len || k >= at)
@@ -510,6 +512,19 @@ static inline uint32_t eng_note_cut_before(uint32_t w, uint32_t k, uint32_t len)
     return (w & ~(ENG_NOTE_WRAP | 63u << 6)) | (len - at - 1u) << 6;
 }
 int eng_steps_hit_note(uint32_t module, uint32_t note, int accent, int record);
+/* trig conditions (#674, format 60, D-830; track.ts StepNote.cond, noteWords): a note with a condition has chance code
+ * ENG_NOTE_COND, and its condition word comes right after it: velocity 0, the note's start and note, the condition byte
+ * (track.ts COND_*: bit 6 the inverse, bits 3..5 B - 1 and bits 0..2 A - 1 of A:B, else 1 FILL, 2 PRE, 3 NEI, 4 1ST) in
+ * bits 6..11 (its low six bits) and 26 (bit 6). The tracks keep the words as the binary has them (eng_steps_notes too);
+ * a word of velocity 0 is no note. FILL: the performer's (eng_fill, held or not). A note's condition (0 none) and setting
+ * it (0: none; a note on `note` must start on step k; -1 when there is none or no room for the word) */
+#define ENG_NOTE_COND 31u
+#define ENG_COND_WORD(w, c) (((w) & 0x7F03Fu) | ((c) & 63u) << 6 | ((c) >> 6 & 1u) << 26)
+#define ENG_COND_OF(x) ((((x) >> 6) & 63u) | (((x) >> 26) & 1u) << 6)
+void eng_fill(int on);
+int eng_fill_on(void);
+uint32_t eng_steps_cond(uint32_t module, uint32_t k, uint32_t note);
+int eng_steps_cond_set(uint32_t module, uint32_t k, uint32_t note, uint32_t cond);
 
 /* Install a patch from its binary form (web/src/patchbin.ts) into the selected voice. 0 on success, negative on error
  * (the voice is then silent). Resets all module state. Never call while eng_render runs (stop the audio ISR's call first). */

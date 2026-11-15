@@ -5,7 +5,7 @@ import { fixedDoes } from './controls';
 import { ARP_MODES, ARP_RATES } from './arpeggiator';
 import { HARM_EXT, HARM_SUS, HARM_TYPES, HARM_VOICING } from './harmonizer';
 import { DRUM_ROWS, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
-import { isDrone, STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type SongEntry, type StepLock, type StepNote } from './track';
+import { COND_FILL, COND_FIRST, COND_NEI, COND_NOT, COND_PRE, isDrone, STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type SongEntry, type StepLock, type StepNote } from './track';
 import WT from './wavetables.json';
 import { rateEnvelopeInit, rateEnvelopeProcess } from './rate-envelope';
 import { formatValue } from './labels';
@@ -3236,6 +3236,9 @@ export function clickSample(k: number, len: number, half: number): number {
 export interface StepsPattern { notes: StepNote[]; len?: number; rate?: number; locks?: StepLock[] }
 /** the patch's song state the engine shares with its tracks (Main's `seq`): the song playing (0 none) and the songs */
 export interface StepsSong { song: number; songs: SongEntry[][] }
+/** what the engine shares with its tracks for trig conditions (#674, D-830): FILL held (Engine.setFill), and the tracks'
+ * states in module order (a NEI condition reads the track before its own, StepsState.trk) */
+export interface StepsConds { fill: boolean; tracks: StepsState[] }
 
 /** the Steps module's state: its patterns (ModuleInst.notes, .patterns, loaded by the engine), the notes of the one it
  * plays, and where it plays */
@@ -3276,6 +3279,13 @@ export interface StepsState {
   /** ordinal visit within the current traversal, independent of the step chosen */
   visit: number;
   loop: number;
+  /** trig conditions (#674): the passes of the pattern since the track started (the transport's start, a reset edge) or
+   * last changed pattern (0: the first), what the last condition it judged gave (PRE; a NEI on the track after it reads
+   * it), its place among the patch's tracks (module order) and what the engine shares (FILL, the other tracks) */
+  pass: number;
+  pre: boolean;
+  trk: number;
+  conds: StepsConds;
   /** a step half a tick after a tick (1/64): samples to go (0: none) */
   half: number;
   /** a swung step waiting: samples to go (0: none) and which step */
@@ -3313,6 +3323,15 @@ export interface StepsState {
 export function notePlays(seed: number, loop: number, k: number, j: number, chance = 100): boolean {
   const code = Math.min(19, Math.max(0, Math.round((100 - chance) / 5)));
   return !code || hash32((seed ^ Math.imul(loop, 0x9e3779b9) ^ Math.imul(k + 1, 0x85ebca6b) ^ Math.imul(j, 0xc2b2ae35)) >>> 0) % 100 < 100 - 5 * code;
+}
+/** does a note with trig condition `c` (track.ts COND_*) play now on track s; every condition but PRE and NEI leaves what
+ * it gave for them (engine.c steps_cond, the same) */
+export function condPlays(s: StepsState, c: number): boolean {
+  const b = (c >> 3) & 7, a = c & 7, not = !!(c & COND_NOT);
+  if (!b && (a === COND_PRE || a === COND_NEI)) return not !== (a === COND_PRE ? s.pre : !!s.conds.tracks[s.trk - 1]?.pre);
+  const r = not !== (b ? s.pass % (b + 1) === a : a === COND_FILL ? s.conds.fill : a === COND_FIRST && s.pass === 0);
+  s.pre = r;
+  return r;
 }
 
 /** the pattern a track plays (pats[pat], else its pattern 1) */
@@ -3418,7 +3437,7 @@ const steps: ModuleImpl<StepsState> = {
     ],
     data: TRACK_NAME_MAX,
   },
-  init: () => ({ notes: [], pats: [{ notes: [] }], pat: 0, queued: -1, songPos: -1, shift: 0, drum: false, song: { song: 0, songs: [] }, pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, once: 0, onceAt: -1, run: false, c1: 0, r1: 0, count: 0, pos: -1, visit: 0, loop: 0, half: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], coalesce: false, evSnapshot: [], thru: [], thruSnapshot: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
+  init: () => ({ notes: [], pats: [{ notes: [] }], pat: 0, queued: -1, songPos: -1, shift: 0, drum: false, song: { song: 0, songs: [] }, pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, once: 0, onceAt: -1, run: false, c1: 0, r1: 0, count: 0, pos: -1, visit: 0, loop: 0, pass: 0, pre: false, trk: 0, conds: { fill: false, tracks: [] }, half: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], coalesce: false, evSnapshot: [], thru: [], thruSnapshot: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
   seed(s, seed) {
     s.seed = seed;
   },
@@ -3474,7 +3493,12 @@ const steps: ModuleImpl<StepsState> = {
       let j = 0, any = false;
       for (const n of s.notes) {
         if (n.at !== k) continue;
-        if (notePlays(s.seed, s.loop, k, j++, n.chance)) {
+        const code = Math.min(19, Math.max(0, Math.round((100 - (n.chance ?? 100)) / 5)));
+        let plays = true;
+        if (n.cond) plays = condPlays(s, n.cond);
+        else if (code) s.pre = plays = notePlays(s.seed, s.loop, k, j, n.chance);
+        j++;
+        if (plays) {
           const note = Math.max(0, Math.min(127, n.note + s.shift)); // (a song entry's shift)
           const key = Math.max(0, Math.min(127, note + semis));
           const drone = isDrone(n);
@@ -3571,9 +3595,12 @@ const steps: ModuleImpl<StepsState> = {
       for (; adv > 0; adv--) {
         let next = nextStep(s, len, dir);
         if (next.visit === 0) { // the end of a pass: a song's next entry, a queued pattern
+          const was = s.pat, fresh = s.pos < 0;
           stepsTurn(s);
           shape();
           next = nextStep(s, len, dir);
+          s.pass = fresh || s.pat !== was ? 0 : s.pass + 1; // (trig conditions: its passes of the pattern, #674)
+          if (fresh) s.pre = false;
         }
         // In the new play modes a live length edit can end the pass before an old note's countdown does: such a note ends
         // after this sample, so a note starting now still gets its low trig sample. A note whose countdown ran out keeps
