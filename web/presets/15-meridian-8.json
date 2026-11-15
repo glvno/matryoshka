@@ -3020,7 +3020,7 @@
    "factoryPatterns": {
     "version": 1,
     "ids": [
-     "58c8475b"
+     "b7d44071"
     ]
    }
   },
@@ -5226,6 +5226,16 @@
      "label": "secondary"
     },
     {
+     "module": 17,
+     "param": "d",
+     "label": "decay"
+    },
+    {
+     "module": 17,
+     "param": "r",
+     "label": "release"
+    },
+    {
      "module": 22,
      "param": "gain",
      "label": "volume"
@@ -5313,6 +5323,16 @@
      "module": 34,
      "param": "gain",
      "label": "secondary"
+    },
+    {
+     "module": 26,
+     "param": "d",
+     "label": "decay"
+    },
+    {
+     "module": 26,
+     "param": "r",
+     "label": "release"
     },
     {
      "module": 31,
@@ -5410,6 +5430,16 @@
      "label": "secondary"
     },
     {
+     "module": 36,
+     "param": "d",
+     "label": "decay"
+    },
+    {
+     "module": 36,
+     "param": "r",
+     "label": "release"
+    },
+    {
      "module": 41,
      "param": "gain",
      "label": "volume"
@@ -5497,6 +5527,16 @@
      "module": 55,
      "param": "fb",
      "label": "secondary"
+    },
+    {
+     "module": 47,
+     "param": "d",
+     "label": "decay"
+    },
+    {
+     "module": 47,
+     "param": "r",
+     "label": "release"
     },
     {
      "module": 52,
@@ -5590,6 +5630,16 @@
      "label": "secondary"
     },
     {
+     "module": 57,
+     "param": "d",
+     "label": "decay"
+    },
+    {
+     "module": 57,
+     "param": "r",
+     "label": "release"
+    },
+    {
      "module": 62,
      "param": "gain",
      "label": "volume"
@@ -5677,6 +5727,16 @@
      "module": 77,
      "param": "gain",
      "label": "secondary"
+    },
+    {
+     "module": 69,
+     "param": "d",
+     "label": "decay"
+    },
+    {
+     "module": 69,
+     "param": "r",
+     "label": "release"
     },
     {
      "module": 74,
@@ -5768,6 +5828,16 @@
      "label": "secondary"
     },
     {
+     "module": 79,
+     "param": "d",
+     "label": "decay"
+    },
+    {
+     "module": 79,
+     "param": "r",
+     "label": "release"
+    },
+    {
      "module": 84,
      "param": "gain",
      "label": "volume"
@@ -5855,6 +5925,16 @@
      "module": 97,
      "param": "res",
      "label": "secondary"
+    },
+    {
+     "module": 89,
+     "param": "d",
+     "label": "decay"
+    },
+    {
+     "module": 89,
+     "param": "r",
+     "label": "release"
     },
     {
      "module": 94,
@@ -5978,6 +6058,16 @@
      "label": "secondary"
     },
     {
+     "module": 17,
+     "param": "d",
+     "label": "decay"
+    },
+    {
+     "module": 17,
+     "param": "r",
+     "label": "release"
+    },
+    {
      "module": 22,
      "param": "gain",
      "label": "volume"
@@ -6010,6 +6100,16 @@
      "module": 34,
      "param": "gain",
      "label": "secondary"
+    },
+    {
+     "module": 26,
+     "param": "d",
+     "label": "decay"
+    },
+    {
+     "module": 26,
+     "param": "r",
+     "label": "release"
     },
     {
      "module": 31,
@@ -6046,6 +6146,16 @@
      "label": "secondary"
     },
     {
+     "module": 36,
+     "param": "d",
+     "label": "decay"
+    },
+    {
+     "module": 36,
+     "param": "r",
+     "label": "release"
+    },
+    {
      "module": 41,
      "param": "gain",
      "label": "volume"
@@ -6078,6 +6188,16 @@
      "module": 55,
      "param": "fb",
      "label": "secondary"
+    },
+    {
+     "module": 47,
+     "param": "d",
+     "label": "decay"
+    },
+    {
+     "module": 47,
+     "param": "r",
+     "label": "release"
     },
     {
      "module": 52,
@@ -6115,6 +6235,16 @@
      "label": "secondary"
     },
     {
+     "module": 57,
+     "param": "d",
+     "label": "decay"
+    },
+    {
+     "module": 57,
+     "param": "r",
+     "label": "release"
+    },
+    {
      "module": 62,
      "param": "gain",
      "label": "volume"
@@ -6147,6 +6277,16 @@
      "module": 77,
      "param": "gain",
      "label": "secondary"
+    },
+    {
+     "module": 69,
+     "param": "d",
+     "label": "decay"
+    },
+    {
+     "module": 69,
+     "param": "r",
+     "label": "release"
     },
     {
      "module": 74,
@@ -6183,6 +6323,16 @@
      "label": "secondary"
     },
     {
+     "module": 79,
+     "param": "d",
+     "label": "decay"
+    },
+    {
+     "module": 79,
+     "param": "r",
+     "label": "release"
+    },
+    {
      "module": 84,
      "param": "gain",
      "label": "volume"
@@ -6215,6 +6365,16 @@
      "module": 97,
      "param": "res",
      "label": "secondary"
+    },
+    {
+     "module": 89,
+     "param": "d",
+     "label": "decay"
+    },
+    {
+     "module": 89,
+     "param": "r",
+     "label": "release"
     },
     {
      "module": 94,
@@ -6324,9 +6484,20 @@
     },
     {
      "module": 9,
+     "param": "drive",
+     "label": "drive",
+     "head": "out",
+     "also": [
+      {
+       "module": 10,
+       "param": "drive"
+      }
+     ]
+    },
+    {
+     "module": 9,
      "param": "level",
      "label": "main volume",
-     "head": "out",
      "also": [
       {
        "module": 10,

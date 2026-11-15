@@ -7,48 +7,64 @@
 # 1 dot
 #   1 dot / main = -17 st              -48..48 st
 #   1 dot / secondary = 600 Hz         20..16000 Hz
+#   1 dot / decay = 0.08 s             0.001..5 s
+#   1 dot / release = 0.15 s           0.001..8 s
 #   1 dot / volume = 0.8               0..2
 #   1 dot / mod = up                   up, down
 #   1 dot / mute = on                  mute, on
 # 2 dual
 #   2 dual / main = -24 st             -48..48 st
 #   2 dual / secondary = 1.5           -4..4
+#   2 dual / decay = 0.25 s            0.001..5 s
+#   2 dual / release = 0.3 s           0.001..8 s
 #   2 dual / volume = 0.8              0..2
 #   2 dual / mod = up                  up, down
 #   2 dual / mute = on                 mute, on
 # 3 sys
 #   3 sys / main = -10 st              -24..24 st
 #   3 sys / secondary = 0.3            0..1
+#   3 sys / decay = 0.1 s              0.001..5 s
+#   3 sys / release = 0.2 s            0.001..8 s
 #   3 sys / volume = 0.8               0..2
 #   3 sys / mod = up                   up, down
 #   3 sys / mute = on                  mute, on
 # 4 plast
 #   4 plast / main = 5 st              -24..24 st
 #   4 plast / secondary = 0.85         -0.98..0.98
+#   4 plast / decay = 0.12 s           0.001..5 s
+#   4 plast / release = 0.25 s         0.001..8 s
 #   4 plast / volume = 0.8             0..2
 #   4 plast / mod = up                 up, down
 #   4 plast / mute = on                mute, on
 # 5 cympath
 #   5 cympath / main = 0.72            0..1
 #   5 cympath / secondary = 3          1..64
+#   5 cympath / decay = 0.15 s         0.001..5 s
+#   5 cympath / release = 0.35 s       0.001..8 s
 #   5 cympath / volume = 0.8           0..2
 #   5 cympath / mod = up               up, down
 #   5 cympath / mute = on              mute, on
 # 6 cyrinx
 #   6 cyrinx / main = 12 st            -48..48 st
 #   6 cyrinx / secondary = 2           -4..4
+#   6 cyrinx / decay = 0.06 s          0.001..5 s
+#   6 cyrinx / release = 0.12 s        0.001..8 s
 #   6 cyrinx / volume = 0.8            0..2
 #   6 cyrinx / mod = up                up, down
 #   6 cyrinx / mute = on               mute, on
 # 7 larynx
 #   7 larynx / main = -12 st           -48..48 st
 #   7 larynx / secondary = 0.5         0..4
+#   7 larynx / decay = 0.2 s           0.001..5 s
+#   7 larynx / release = 0.3 s         0.001..8 s
 #   7 larynx / volume = 0.8            0..2
 #   7 larynx / mod = up                up, down
 #   7 larynx / mute = on               mute, on
 # 8 bacid
 #   8 bacid / main = -29 st            -48..48 st
 #   8 bacid / secondary = 0.75         0..1
+#   8 bacid / decay = 0.18 s           0.001..5 s
+#   8 bacid / release = 0.2 s          0.001..8 s
 #   8 bacid / volume = 0.8             0..2
 #   8 bacid / mod = up                 up, down
 #   8 bacid / mute = on                mute, on
@@ -63,12 +79,15 @@
 #   8>1 = off                          off, on
 #   1>8 = off                          off, on
 # out
+#   drive = 1.5                        1..32
 #   main volume = 0.58                 0..1
 #   out: a screen, not a value
 
 # Drafts of 2026-10-29 after the Soma / Sonicware NOON (#413), moved onto the whole NOON's card (D-1054): each channel's
 # pitch and second slider are its main and secondary, CYMPATH's pitch its main slider (-10 .. +40 semitones over 0 .. 1),
-# a link above 0 its button on.
+# a link above 0 its button on. Since #861 each preset sets the decay and release of the channels whose length is part of
+# its character (Broken Beat clipped short, Lo-fi Hip Hop and Tonal Percs ringing out, Industrial's long bacid and
+# cympath); the drive stays at Init in all five.
 engine: Meridian 8
 
 preset: Deep Techno
@@ -89,7 +108,17 @@ preset: Deep Techno
 6 cyrinx / volume = 0.25
 8 bacid / main = -31
 8 bacid / secondary = 0.85
-  main volume = 0.82
+1 dot / decay = 0.12
+1 dot / release = 0.2
+2 dual / decay = 0.5
+2 dual / release = 0.6
+3 sys / decay = 0.15
+3 sys / release = 0.3
+5 cympath / decay = 0.08
+5 cympath / release = 0.15
+8 bacid / decay = 0.3
+8 bacid / release = 0.4
+  main volume = 0.76
 3 sys / volume = 0.3
 7 larynx / volume = 0.25
 8 bacid / volume = 0.35
@@ -116,7 +145,21 @@ preset: Broken Beat
 8 bacid / secondary = 0.6
 3-4 = on
 6-7 = on
-  main volume = 0.68
+1 dot / decay = 0.04
+1 dot / release = 0.06
+2 dual / decay = 0.12
+2 dual / release = 0.15
+3 sys / decay = 0.05
+3 sys / release = 0.1
+4 plast / decay = 0.05
+4 plast / release = 0.08
+5 cympath / decay = 0.06
+5 cympath / release = 0.1
+6 cyrinx / decay = 0.1
+6 cyrinx / release = 0.2
+7 larynx / decay = 0.15
+7 larynx / release = 0.2
+  main volume = 0.87
 2 dual / volume = 0.35
 3 sys / volume = 0.3
 6 cyrinx / volume = 0.25
@@ -145,7 +188,21 @@ preset: Lo-fi Hip Hop
 8 bacid / main = -29
 8 bacid / secondary = 0.4
 8 bacid / volume = 0.35
-  main volume = 0.98
+1 dot / decay = 0.15
+1 dot / release = 0.3
+2 dual / decay = 0.4
+2 dual / release = 0.6
+3 sys / decay = 0.2
+3 sys / release = 0.4
+4 plast / decay = 0.2
+4 plast / release = 0.45
+5 cympath / decay = 0.25
+5 cympath / release = 0.5
+7 larynx / decay = 0.35
+7 larynx / release = 0.5
+8 bacid / decay = 0.25
+8 bacid / release = 0.3
+  main volume = 0.78
 3 sys / volume = 0.3
 
 preset: Industrial
@@ -171,7 +228,17 @@ preset: Industrial
 8 bacid / secondary = 1
 4-5 = on
 8>1 = on
-  main volume = 0.41
+1 dot / decay = 0.05
+1 dot / release = 0.08
+4 plast / decay = 0.06
+4 plast / release = 0.1
+5 cympath / decay = 0.3
+5 cympath / release = 0.6
+6 cyrinx / decay = 0.15
+6 cyrinx / release = 0.3
+8 bacid / decay = 0.4
+8 bacid / release = 0.6
+  main volume = 0.37
 2 dual / volume = 0.35
 6 cyrinx / volume = 0.25
 7 larynx / volume = 0.25
@@ -204,4 +271,18 @@ preset: Tonal Percs
 8 bacid / main = -17
 8 bacid / secondary = 0.2
 8 bacid / volume = 0.6
-  main volume = 0.66
+1 dot / decay = 0.15
+1 dot / release = 0.3
+2 dual / decay = 0.6
+2 dual / release = 0.9
+3 sys / decay = 0.25
+3 sys / release = 0.5
+4 plast / decay = 0.2
+4 plast / release = 0.4
+6 cyrinx / decay = 0.08
+6 cyrinx / release = 0.15
+7 larynx / decay = 0.3
+7 larynx / release = 0.5
+8 bacid / decay = 0.3
+8 bacid / release = 0.45
+  main volume = 0.5

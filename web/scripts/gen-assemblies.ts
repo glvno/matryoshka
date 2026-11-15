@@ -3842,6 +3842,9 @@ asm('Scrounge', 'Drums', (b) => {
 // controls, one row each, named as the manual's "Sliders", "Volume controls", "Link buttons", "Mod buttons" and "Mute
 // buttons" name them: per channel `main`, `secondary`, `volume`, MOD (`mod`: up, down) and mute (mute, on); the nine LINK
 // buttons (off, on); `main volume`. The CV mute buttons are left out with the CV inputs they mute (the owner, 2026-11-15).
+// Two kinds of row the NOON has no control for (#861, from the owner's listening pass, #413): per channel `decay` and
+// `release`, its power envelope's decay and release times, and `drive`, both output saturators' drive (a row's `also`).
+// At their Init values the patch plays as without them.
 //  - A Drum map row is a channel's gate (the white keys from F3); its power is an ADSR on the gate, scaled by the gate's
 //    voltage (the key's velocity at half weight: a Math), after the mute button. The power is the VCA's cv and also
 //    pushes the circuit's pitch or filter, so a hit swoops and a dying gate starves the sound.
@@ -3857,13 +3860,13 @@ asm('Scrounge', 'Drums', (b) => {
 //    left-side plates at once. The touched channels' power goes onto one bus, the gates onto the left-side plates; the
 //    bus comes back into every channel through the skin, a slow random wobble (moisture).
 //  - The passive mix: odd channels to `l`, even to `r`, each bleeding 5 % into the other side, each side through a
-//    saturator whose level is the main volume.
+//    saturator whose drive is the drive row and whose level is the main volume.
 // What the XL had that is not here, because it changes nothing the FM-1 plays: the patch points as assembly ports
 // (gate 1..8, odd / even cv, audio) and the CV mute buttons on the odd / even cv, the fixed
 // Macros the XL left at one value (the gate's voltage, the odd / even voltages, the mono plug), a separate skin amount
 // per channel (one touch amount for all, as the XL's were all at 1) and the per-channel touch VCAs, summed into one
 // (x·a + y·a = (x + y)·a). The FM-1 version plays what the XL plays, but for the summing order (about -100 dB).
-/** (the right saturator, which the main volume row moves too) */
+/** (the right saturator, which the drive and main volume rows move too) */
 const meridianR = { id: 0 };
 asm('Meridian 8', 'Drums', (b) => {
   const map = b.add('drummap', 0, 0, Object.fromEntries(PLATE_KEYS[1].map((n, r) => [`n${r + 1}`, n])));
@@ -3905,7 +3908,7 @@ asm('Meridian 8', 'Drums', (b) => {
   b.wire(L, 'out', scope, 'a');
   b.wire(R, 'out', scope, 'b');
 
-  type Ch = { name: string; col: number; vca: number; mod: number; mute: number; pw: number; node: number; members: number[]; s1: [number, string]; s2: [number, string] };
+  type Ch = { name: string; col: number; env: number; vca: number; mod: number; mute: number; pw: number; node: number; members: number[]; s1: [number, string]; s2: [number, string] };
   /** the circuit: its modules, where the power goes in, its two sliders, the MOD button's two inputs (`a` up, `b` down)
    * and a module between the button and the VCA */
   type Circuit = { members: number[]; power: [number, string][]; s1: [number, string]; s2: [number, string]; a: [number, string]; b: [number, string]; post?: number };
@@ -3938,7 +3941,7 @@ asm('Meridian 8', 'Drums', (b) => {
     for (const [m, port] of [[vca, 'cv'] as [number, string], ...c.power]) b.wire(node, 'out', m, port);
     b.wire(vca, 'out', i % 2 === 0 ? L : R, 'in');
     b.wire(vca, 'out', i % 2 === 0 ? br : bl, 'in');
-    return { name, col, vca, mod, mute, pw, node, members: [env, mute, pw, node, ...c.members, mod, ...(c.post ? [c.post] : []), vca], s1: c.s1, s2: c.s2 };
+    return { name, col, env, vca, mod, mute, pw, node, members: [env, mute, pw, node, ...c.members, mod, ...(c.post ? [c.post] : []), vca], s1: c.s1, s2: c.s2 };
   };
   const chs: Ch[] = [
     channel(0, 'dot', { a: 0.002, d: 0.08, s: 0.6, r: 0.15 }, (col) => {
@@ -4038,22 +4041,27 @@ asm('Meridian 8', 'Drums', (b) => {
   chs.forEach((c, i) => {
     b.param('main', c.s1[0], c.s1[1], { head: `${i + 1} ${c.name}`, ...(i % 4 === 0 ? { col: true } : {}) });
     b.param('secondary', c.s2[0], c.s2[1]);
+    b.param('decay', c.env, 'd');
+    b.param('release', c.env, 'r');
     b.param('volume', c.vca, 'gain');
     b.param('mod', c.mod, 'pos');
     b.param('mute', c.mute, 'pos');
   });
   buttons.forEach((sw, i) => b.param(i < 7 ? `${i + 1}-${i + 2}` : i === 7 ? '8>1' : '1>8', sw, 'pos', i === 0 ? { col: true, head: 'link' } : {}));
-  b.param('main volume', L, 'level', { head: 'out' });
+  b.param('drive', L, 'drive', { head: 'out' });
+  b.param('main volume', L, 'level');
   b.param('out', scope, 'view', { col: true });
   meridianR.id = R;
 });
-// the main volume is both saturators' level (a row's `also`); the buttons' positions named as in Meridian 8 XL
+// the drive and the main volume are both saturators' drive and level (a row's `also`); the buttons' positions named as in
+// Meridian 8 XL
 {
   const d = defs.find((x) => x.name === 'Meridian 8')!;
   const names: Record<string, string[]> = { mod: ['up', 'down'], mute: ['mute', 'on'] };
   for (const list of [d.params, ...(d.assemblies ?? []).map((n) => n.params)])
     for (const r of list) {
       if (r.label === 'main volume') r.also = [{ module: meridianR.id, param: 'level' }];
+      if (r.label === 'drive') r.also = [{ module: meridianR.id, param: 'drive' }];
       const n = names[r.label] ?? (/^(\d-\d|\d>\d)$/.test(r.label) ? ['off', 'on'] : undefined);
       if (n) r.names = n;
     }

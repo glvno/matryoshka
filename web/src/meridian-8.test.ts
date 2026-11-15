@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Meridian 8 on the FM-1, the whole Landscape NOON (D-1054, scripts/gen-assemblies.ts): the card is the NOON's controls
-// but the CV mutes (left out with the CV inputs), it fits the FM-1, it plays what Meridian 8 XL plays (the touch plates'
-// wobble too: its Random sits where the XL's does), and a user preset of the 1.15 card moves onto the same channels.
+// but the CV mutes (left out with the CV inputs), plus each channel's decay and release and both saturators' drive (#861),
+// it fits the FM-1, it plays what Meridian 8 XL plays at Init (the touch plates' wobble too: its Random sits where the
+// XL's does), and a user preset of the 1.15 card moves onto the same channels.
 import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import type { Patch } from './patch';
@@ -53,7 +54,7 @@ function render(p: Patch): Float32Array[] {
 }
 
 describe('Meridian 8, the whole NOON (D-1054)', () => {
-  it('fits the FM-1 with the NOON\'s 50 controls on its card (no CV mute: no CV inputs)', () => {
+  it('fits the FM-1 with the NOON\'s 50 controls, 16 decay and release rows and a drive on its card (no CV mute: no CV inputs)', () => {
     const b = deviceBudget(fm1());
     expect(b.fits).toBe(true);
     expect(b.cpu.use).toBeLessThanOrEqual(CPU_VOICE_TOP);
@@ -65,9 +66,13 @@ describe('Meridian 8, the whole NOON (D-1054)', () => {
       heads.set(head, [...(heads.get(head) ?? []), r.label!]);
     }
     expect([...heads.keys()]).toEqual([...CHANNELS, 'link', 'out']);
-    for (const c of CHANNELS) expect(heads.get(c), c).toEqual(['main', 'secondary', 'volume', 'mod', 'mute']);
+    for (const c of CHANNELS) expect(heads.get(c), c).toEqual(['main', 'secondary', 'decay', 'release', 'volume', 'mod', 'mute']);
     expect(heads.get('link')).toEqual(['1-2', '2-3', '3-4', '4-5', '5-6', '6-7', '7-8', '8>1', '1>8']);
-    expect(heads.get('out')).toEqual(['main volume', 'out']);
+    expect(heads.get('out')).toEqual(['drive', 'main volume', 'out']);
+    // (the drive moves both saturators, as the main volume does)
+    const drive = rows.find((r) => r.label === 'drive')!;
+    expect(drive.also).toHaveLength(1);
+    expect(drive.also![0].param).toBe('drive');
   });
 
   it('its PATTERN track carries its Init preset pattern\'s origin (D-1009), so the demo patterns can replace it', () => {
