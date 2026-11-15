@@ -1,0 +1,145 @@
+{
+ "schema": 1,
+ "version": "1.15.0",
+ "firmware_product": "FM-1_7011500",
+ "source_commit": "080eb2f8be1d3aee3d0819551ad8d206ed27668d",
+ "source_tree": "e5332da60f6bc6300d09c44a9b77b694e4f9b3f7",
+ "status": "approved for publication; automated qualification passed and owner device checks unverified",
+ "release_approval": {
+  "status": "approved",
+  "by": "repository owner",
+  "date": "2026-11-14",
+  "instruction": "i'm going to skip the device checks, you have my permission to just ship it",
+  "scope": "Publication of v1.15.0 from the merge of this record, whose firmware/ and tools/ equal the qualified source 080eb2f8 (D-105), with the owner's device checks (D-139) left unverified. This is release approval, not evidence that those checks were performed."
+ },
+ "build_manifest_sha256": "c68c8eab54657910571e9d7cb12fb27135cb17665ff85e8110a2294c42b1d915",
+ "artifacts": {
+  "package": {
+   "name": "matryoshka-1.15.0.fwsc",
+   "size": 610609,
+   "sha256": "8d03de563fd7ac88ab8eae467fabe7d68a818d942c4b05df136a9e7f4c67c1b7"
+  },
+  "normal": {
+   "name": "matryoshka-1.15.0-app.bin",
+   "size": 578080,
+   "sha256": "793a43ed398d62451dcd03ed3a709dc9636f39df9039da308cd356a8964726c7"
+  },
+  "normal_elf": {
+   "name": "matryoshka-1.15.0-app.elf",
+   "size": 650892,
+   "sha256": "9a90e877f9b42c1189786c9729b2803a012d7712e492c261629b29d96e1fc8d2"
+  },
+  "normal_sidecar": {
+   "name": "matryoshka-1.15.0.json",
+   "size": 411,
+   "sha256": "df368ab0a40bb62519dd304ecb0f3a2e28d5c14a19156bb9817b954653d383a2"
+  },
+  "bridge": {
+   "name": "matryoshka-emu.bin",
+   "size": 574944,
+   "sha256": "b4986f1353d36d2547ef8f9f3d233619f3eb61e2c2eb2e233d226669f6b7a99c"
+  },
+  "bridge_elf": {
+   "name": "matryoshka-emu.elf",
+   "size": 646744,
+   "sha256": "8a50bf9b03de312e21d401842a94e2a049be04ead483e3f3a121f8cf16df2928"
+  },
+  "bridge_sidecar": {
+   "name": "matryoshka-emu.json",
+   "size": 411,
+   "sha256": "dbc44265acc3255602e8198d2f05bad4f563ce3bf005a01b915ce11d920befb0"
+  }
+ },
+ "ci_runs": {
+  "release": 43658214076,
+  "web": 43658216194
+ },
+ "full_host": "PASS in release run 43658214076 (rc mode on the frozen commit), one execution",
+ "full_web": {
+  "instrumented": {
+   "files_passed": 215
+  },
+  "uninstrumented_loudness": {
+   "files_passed": 4
+  },
+  "run_success": true,
+  "coverage_lines_percent": 65.38,
+  "coverage_record": "release/coverage/v1.15.0/"
+ },
+ "full_boot": {
+  "checks": 19,
+  "failed": 0,
+  "on": "the release app with the run's bridge",
+  "handshake_identity": "FM-1_7011500"
+ },
+ "full_smoke": {
+  "first_run": {
+   "checks": 308,
+   "failed": 2,
+   "failure": "overload: the heavy mono fixture (24 oversampled unison oscillators, one part) no longer overloads the emulated FM-1, because every patch shares both cores since D-1101; the guard therefore did not mute it. Fixture doubled to 48 oscillators (web/scripts/emu-patches.ts)."
+  },
+  "affected_rerun": {
+   "checks": 308,
+   "failed": 0,
+   "level_warnings": 0,
+   "seconds": 950.9,
+   "on": "the release app, sha256 793a43ed..."
+  }
+ },
+ "full_scenarios": {
+  "passed": 383,
+  "failed": 1,
+  "skipped": [
+   {
+    "name": "3.5mm out: OFF leaves USB audio as it was",
+    "reason": "the emulator has no USB audio: tools/audio_out_test.sh and the rig's recording prove it"
+   }
+  ],
+  "on_bridge_sha256": "b4986f1353d36d2547ef8f9f3d233619f3eb61e2c2eb2e233d226669f6b7a99c",
+  "failure": "2.5 verona: the scenario expected Verona Drum 1 XL to go to sandbox mode; since 1.15's headroom it fits the FM-1 and is synced. Harness changed to check whichever path the editor takes (web/scripts/device-check.mjs).",
+  "affected_rerun": {
+   "scenario": "checkVerona",
+   "checks": 11,
+   "failed": 0,
+   "on_bridge_sha256": "b4986f1353d36d2547ef8f9f3d233619f3eb61e2c2eb2e233d226669f6b7a99c"
+  }
+ },
+ "test_revision": {
+  "frozen_commit": "080eb2f8be1d3aee3d0819551ad8d206ed27668d",
+  "harness_fixes": [
+   {
+    "branch": "docs_release-1.15-record",
+    "files": [
+     "web/scripts/device-check.mjs",
+     "web/scripts/emu-patches.ts"
+    ],
+    "in_frozen_commit": false,
+    "changes": "checkVerona follows sandbox mode or the FM-1, whichever the editor takes; the heavy mono overload fixture has 48 oscillators"
+   }
+  ],
+  "note": "Test-only changes after the frozen commit do not change firmware/ or tools/ (D-105) and are recorded here (D-146)."
+ },
+ "rig_install": {
+  "run": 43658214076,
+  "gate": "boot (emu:boot, D-123)",
+  "result": "the registered test rig runs FM-1_7011500, firmware 1.15.0"
+ },
+ "hardware": {
+  "scope": "D-1151: only the scenarios whose result needs the hardware, on the registered test rig running the release bytes.",
+  "rig_scenarios": {
+   "passed": 66,
+   "failed": 0,
+   "skipped": 4,
+   "by_design_skips": [
+    "3.5MM OUT OFF silences the speaker and the jack: the owner's ears (D-139)",
+    "MONO, MONO L and MONO loudness: USB audio is taken before OUTPUT's mix (D-140); the emulator's I2S proves them"
+   ],
+   "dual_core": "Hera 4 and Cassia 1 with 8 keys held: no shed voice, no overload, no late half of 2758; the CPU row 64 % and 63 %"
+  },
+  "rig_state_after": "MASTER at half (owner)"
+ },
+ "owner_checks": {
+  "status": "unverified; not performed before publication",
+  "steps": "D-139: the analog output in headphones, instruments played by hand, a power cycle. The owner waived them for this release (release_approval)."
+ }
+}

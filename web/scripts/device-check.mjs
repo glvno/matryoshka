@@ -339,11 +339,44 @@ export function checkScenarios(h) {
       const p = await emu.peak(m);
       await check('2.2 verona: a white key on its device page: nothing plays, the bar says DRUMS: BLACK KEYS 1-8', said && p < QUIET, `peak ${p}`);
       await emu.elapse(1600);
-      // 2.5: the XL in sandbox mode: the browser plays it from the FM-1's keys (the level of the editor's own output)
+      // 2.5: the XL. Over the FM-1's budget it goes to sandbox mode and the browser plays it from the FM-1's keys (the level
+      // of the editor's own output); since 1.15's headroom (#868) it fits, and the FM-1 plays it (the emulator's output)
       await page().evaluate(() => window.__m1test.level());
+      const loads0 = (await T()).loads;
       await open('Verona Drum 1 XL');
-      const sb = await until(async () => (await T()).sandbox, 4000);
-      await check('2.5 verona: Verona Drum 1 XL: the FM-1 goes to sandbox mode', !!sb && (await emu.waitSandboxPage(6000)));
+      const where = await until(async () => {
+        const x = await T();
+        return x.sandbox ? 'sandbox' : x.loads > loads0 && x.uploadedLoad === x.loads && x.chip === 'synced' ? 'fm1' : null;
+      }, 6000);
+      if (where === 'fm1') {
+        await check('2.5 verona: Verona Drum 1 XL fits the FM-1 and is synced (not sandbox mode)', await emu.waitOwnPage(6000));
+        const rows = [];
+        for (const k of BLACK) rows.push(await emu.notePeak(k, 250));
+        const whites = [];
+        for (const k of [WHITE[0], WHITE[4], WHITE[8]]) whites.push(await emu.notePeak(k, 250));
+        await check('2.5 verona: black keys 1..8 each play on the FM-1 (KICK .. CLAP by ear is the owner\'s)', rows.every((x) => x > QUIET), rows.join(' '));
+        await check('2.5 verona: the white keys play nothing', whites.every((x) => x < QUIET), whites.join(' '));
+        // black key 6 (HI HAT 1) held and 7 (HI HAT 2) pressed: 7's hit is not lost (D-866): its peak at least 70 % of 7 alone
+        const hit7 = async (held) => {
+          if (held) await emu.key(held, true);
+          await emu.elapse(100);
+          const m = await emu.mark();
+          await emu.key(BLACK[6], true);
+          await emu.elapse(150);
+          await emu.key(BLACK[6], false);
+          await emu.elapse(150);
+          const p = await emu.peak(m);
+          if (held) await emu.key(held, false);
+          await emu.elapse(400);
+          return p;
+        };
+        const seven = await hit7(0), both = await hit7(BLACK[5]);
+        await check('2.5 verona: black key 6 held and 7 pressed: both hats play (7\'s hit is not lost: at least 70 % of the peak of 7 alone)',
+          rows[5] > QUIET && seven > QUIET && both >= 0.7 * seven, `6 alone peak ${rows[5]}; 7 alone ${seven}, 6 held + 7 ${both}`);
+        await shot('check-verona-xl');
+        return;
+      }
+      await check('2.5 verona: Verona Drum 1 XL: the FM-1 goes to sandbox mode', where === 'sandbox' && (await emu.waitSandboxPage(6000)));
       await emu.elapse(1500);
       const level = () => page().evaluate(() => window.__m1test.level());
       /** the browser's output while key `k` is held 150 ms and 250 ms after ({ peak, energy }); the wall clock, the browser's

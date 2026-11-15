@@ -3,7 +3,8 @@
 //   build/emu/heavy-poly.m1p   eight parts of a heavy voice (six oversampled unison oscillators): far over the CPU budget,
 //                              on two cores too (#271: each core renders four parts),
 //                              the overload guard must drop parts until it plays
-//   build/emu/heavy-mono.m1p   one part of many such oscillators: nothing to drop, the guard must mute it (OVERLOAD)
+//   build/emu/heavy-mono.m1p   one part of many such oscillators: nothing to drop, the guard must mute it (OVERLOAD); twice
+//                              as many since every patch shares both cores (D-1101), which made 24 fit the emulated FM-1
 //   build/emu/panel.m1p        the patch buttons
 //   build/emu/long-delay.m1p, long-delay-pp.m1p   a 700 ms Delay (its line in the pool's line area), plain and ping-pong
 //   build/emu/low-delay.m1p, low-delay-pp.m1p     a 290 ms Delay (its line in .lowram's line area), plain and ping-pong
@@ -131,7 +132,7 @@ writeFileSync(new URL('knobs.m1p', out), encodePatch(knobs()));
 
 for (const [file, p] of [
   ['heavy-poly.m1p', withParts(heavy('EMU HEAVY POLY', 6), 8)],
-  ['heavy-mono.m1p', heavy('EMU HEAVY MONO', 24)],
+  ['heavy-mono.m1p', heavy('EMU HEAVY MONO', 48)],
 ] as const) {
   writeFileSync(new URL(file, out), encodePatch(p, true));
   console.log(`${file}: CPU estimate ${Math.round(cpuEstimate(p).use * 100)} %`);

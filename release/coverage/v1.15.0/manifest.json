@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "reportSha256": "b92c854b9e41586e7e08b1ba395e1e8a1d88d1585579fc62c0d438c86d8490a9",
+  "measuredAt": "2026-11-15",
+  "measuredCommit": "080eb2f8be1d3aee3d0819551ad8d206ed27668d",
+  "sourceFingerprint": "92cc680180f4aebeefea0b89ff7374dc195036bddd3418937404d6efc273248d",
+  "sourceUrl": "https://github.com/glvno/matryoshka/actions/runs/43658216194",
+  "measurementLabel": "v1.15.0",
+  "targetRelease": "v1.15.0",
+  "display": "current",
+  "qualification": "display-only",
+  "instrumentation": "All web tests except levels-1..4; those four pass separately without coverage."
+}
