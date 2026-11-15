@@ -42,7 +42,8 @@ describe('factory drum kits: the keys play the drums out of the box (#141)', () 
         const n = map.params[`n${r}`];
         expect(n >= 53 && n <= 79 && WHITE.has(n % 12), `row ${r}`).toBe(true);
       }
-      const hit = new Set(rows.map((r) => map.params[`n${r}`]));
+      // (the 808 Kit's DRUMS also plays its second Drum map: MT/MC HT/HC CY AC, D-1053)
+      const hit = new Set(p.modules.filter((m) => m.type === 'drummap').flatMap((m) => [1, 2, 3, 4, 5, 6, 7, 8].map((r) => m.params[`n${r}`])).filter((n) => n > 0));
       expect(st.notes!.length).toBeGreaterThan(0);
       for (const n of st.notes!) expect(hit.has(n.note), `step note ${n.note}`).toBe(true);
       expect(p.octave).toBe(-1);
@@ -67,15 +68,14 @@ describe('factory drum kits: the keys play the drums out of the box (#141)', () 
     });
   }
 
-  it('row names: both kits\' rows are the defaults (the 909 Kit\'s hat on row 4, CL HAT, as the 808\'s)', () => {
+  it('row names: the 909 Kit\'s rows are the defaults (its hat on row 4, CL HAT, as the 808\'s); the 808 Kit\'s are the TR-808\'s instruments (D-1053)', () => {
     const names = (n: string): string[] => {
       const m = FM1_PRESETS[n]().modules.find((x) => x.type === 'drummap')!;
       return [0, 1, 2].map((r) => drumRowName(m.names, r));
     };
-    for (const k of ['808 Kit', '909 Kit']) {
-      expect(FM1_PRESETS[k]().modules.find((x) => x.type === 'drummap')!.names, k).toBeUndefined();
-      expect(names(k), k).toEqual(DRUM_MAP_DEFAULT.slice(0, 3).map((d) => d.name));
-    }
+    expect(FM1_PRESETS['909 Kit']().modules.find((x) => x.type === 'drummap')!.names).toBeUndefined();
+    expect(names('909 Kit')).toEqual(DRUM_MAP_DEFAULT.slice(0, 3).map((d) => d.name));
+    expect(FM1_PRESETS['808 Kit']().modules.find((x) => x.type === 'drummap')!.names).toEqual(['BD', 'SD', 'CP/MA', 'CH', 'OH', 'LT/LC', 'RS/CL', 'CB']);
   });
 
   it('a Drum map\'s own defaults stay General MIDI', () => {

@@ -73,7 +73,7 @@ describe('the FM-1\'s copy (presets.h, test/pmig_cases.h)', () => {
     expect(readFileSync(new URL('../../firmware/test/pmig_cases.h', import.meta.url), 'utf8')).toBe(want);
   });
   it('the tables stay small', () => {
-    expect(migrationTables(PRESET_MIGRATIONS).bytes).toBeLessThan(3400);   // (2,240 with the #658 engines: each earlier Cassia 1 structure moves onto its 153 rows; 3,073 once Expander S's structures move onto its ADS card, D-745; 3,273 once Verona Drum 1's move onto its eight channels, D-899; 2,970 once identical lines and tables share their values and Meridian 8's move onto the whole NOON, D-1054)
+    expect(migrationTables(PRESET_MIGRATIONS).bytes).toBeLessThan(3400);   // (2,240 with the #658 engines: each earlier Cassia 1 structure moves onto its 153 rows; 3,073 once Expander S's structures move onto its ADS card, D-745; 3,273 once Verona Drum 1's move onto its eight channels, D-899; 2,970 once identical lines and tables share their values and Meridian 8's move onto the whole NOON, D-1054; MIGBYTES once the 808 Kit's eight-voice card moves onto the whole TR-808, D-1053)
   });
 });
 

@@ -155,8 +155,8 @@ it('preserves SAVE then physical USER then browser factory selection after owner
 });
 it('preserves a disconnected 808 default with only a Steps velocity cable into oscillator pitch', () => {
   const { p, a, t, presets } = fixture('808 Kit');
-  const map = p.modules.find((m) => m.type === 'drummap')!;
-  p.cables = p.cables.filter((c) => !(c.from.module === map.id && /^g[1-8]$/.test(c.from.port)));
+  const maps = new Set(p.modules.filter((m) => m.type === 'drummap').map((m) => m.id));
+  p.cables = p.cables.filter((c) => !(maps.has(c.from.module) && /^g[1-8]$/.test(c.from.port)));
   const osc = p.modules.find((m) => m.type === 'osc')!;
   p.cables.push({ from: { module: t.id, port: 'vel' }, to: { module: osc.id, port: 'pitch' } });
   const notes = structuredClone(t.notes);
