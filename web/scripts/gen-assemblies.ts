@@ -1845,8 +1845,8 @@ namePositions('Sallen 20', {
 // filter's `bp` switch (the band-pass output in place of the low pass .. high pass mode) and the VCF MODULATION source
 // `vcf src` (the filter envelope or the LFO, by `env 1 amt`); `vca on` (the VCA held open: a drone). The Four Voice's
 // keyboard: `portamento` (its time; 0.001 off), `octave` (-2 .. +2) and master `tune` (semitones), and the Voicing's
-// `assign` mode (rotate = CONT, lowest, reuse = REASSIGN, reset = R/C). Not here: the keyboard split (two Voicings,
-// each half its own voices), and the SEM's ADS envelopes (decay doubling as release): the envelopes keep their own release.
+// `assign` mode (rotate = CONT, lowest, reuse = REASSIGN, reset = R/C). The SEM's ADS envelopes: each ADSR at `ads`, its
+// decay also its release, and no release row (D-745). Not here: the keyboard split (two Voicings, each half its own voices).
 asm('Expander S', 'Voices', (b) => {
   const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 5, depth: 1 });
   const vib = b.add('scale', 0, 1, { gain: 0, offset: 0 });
@@ -1856,8 +1856,8 @@ asm('Expander S', 'Voices', (b) => {
   const flt = b.add('filter', 2, 0, { cutoff: 1100, res: 0.35, drive: 1 }, { p1: 'cutoff' }); // drive: the SEM's state-variable filter saturates gently (#670)
   const amt = b.add('scale', 2, 2, { gain: 0.25, offset: 0 });
   const mode = b.add('xfade', 3, 0, { mix: 0 });
-  const env1 = b.add('adsr', 2, 1, { a: 0.01, d: 0.6, s: 0.4, r: 0.6 });
-  const env2 = b.add('adsr', 3, 1, { a: 0.01, d: 0.6, s: 0.8, r: 0.6 });
+  const env1 = b.add('adsr', 2, 1, { a: 0.01, d: 0.6, s: 0.4, r: 0.6, ads: 1 });
+  const env2 = b.add('adsr', 3, 1, { a: 0.01, d: 0.6, s: 0.8, r: 0.6, ads: 1 });
   const vca = b.add('vca', 4, 0, { gain: 0.6 });
   const width = b.add('scale', 4, 1, { gain: 0.4, offset: 0 });
   const pan = b.add('pan', 5, 0, { pan: 0 });
@@ -1959,9 +1959,9 @@ asm('Expander S', 'Voices', (b) => {
   b.param('env 1 amt', amt, 'gain');
   b.param('vcf src', vcfSrc, 'pos');
   b.param('env 1', env1, 'view', { head: 'envelopes' });
-  for (const q of ['a', 'd', 's', 'r']) b.param(q, env1, q);
+  for (const q of ['a', 'd', 's']) b.param(q, env1, q);
   b.param('env 2', env2, 'view', { col: true });
-  for (const q of ['a', 'd', 's', 'r']) b.param(q, env2, q);
+  for (const q of ['a', 'd', 's']) b.param(q, env2, q);
   b.param('lfo rate', lfo, 'rate', { head: 'lfo' });
   b.param('vibrato', vib, 'gain');
   b.param('vca on', vcaOn, 'pos', { head: 'output' });

@@ -98,11 +98,12 @@ describe('patterns and songs: the binary (format 48)', () => {
       const dev = deviceView(p, true).patch;
       const cabled = dev.cables.some((c) => VOICING_CABLE_INPUTS.includes(c.to.port) && dev.modules.find((m) => m.id === c.to.module)?.type === 'part');
       const top = (p.assemblies ?? []).some((a) => a.params.some((r) => r.top !== undefined));
-      const appended = dev.modules.some((m) => DEFS[m.type].params.some((q) => q.since === VERSION && (m.params[q.name] ?? q.default) !== q.default));
+      // the newest format of a parameter set off its default that came after 55 (Canvas's linear envelope fall, 56, D-1011;
+      // Expander S's ADS, 57, D-1012): such a patch needs that format
+      const appended = Math.max(0, ...dev.modules.flatMap((m) => DEFS[m.type].params.filter((q) => (q.since ?? 0) > 55 && (m.params[q.name] ?? q.default) !== q.default).map((q) => q.since!)));
       const many = dev.modules.length > 64;   // (more than 64 modules: 51, #721; 8 Lire's Lyra-8 controls, #658)
-      // a master FX bus or a Harmony on LFO needs format 55 (D-888, D-1010): its stage record or the Harmony light; a
-      // parameter appended in today's format set off its default (Canvas's linear envelope fall, D-1011) needs that format
-      if (fxRecord(p, dev).length || harmonyLfo(p, dev)) expect(b[1], name).toBe(appended ? VERSION : 55);
+      // a master FX bus or a Harmony on LFO needs format 55 (D-888, D-1010): its stage record or the Harmony light
+      if (fxRecord(p, dev).length || harmonyLfo(p, dev)) expect(b[1], name).toBe(appended || 55);
       else if (layout(p).base.bytes <= DEVICE.bytes && !cabled && !top && !appended && !many) expect(b[1], name).toBeLessThan(VERSION);
       expect(b[7] & (FLAG_PATTERNS >> 8), name).toBe(0);
     }

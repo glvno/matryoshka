@@ -73,7 +73,7 @@ describe('the FM-1\'s copy (presets.h, test/pmig_cases.h)', () => {
     expect(readFileSync(new URL('../../firmware/test/pmig_cases.h', import.meta.url), 'utf8')).toBe(want);
   });
   it('the tables stay small', () => {
-    expect(migrationTables(PRESET_MIGRATIONS).bytes).toBeLessThan(3072);   // (2,240 with the #658 engines: each earlier Cassia 1 structure moves onto its 153 rows)
+    expect(migrationTables(PRESET_MIGRATIONS).bytes).toBeLessThan(3200);   // (2,240 with the #658 engines: each earlier Cassia 1 structure moves onto its 153 rows; 3,073 once Expander S's structures move onto its ADS card, D-745)
   });
 });
 

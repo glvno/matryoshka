@@ -25,10 +25,13 @@ interface Spec {
   corners: { stage: number; x: string; y?: string }[];
 }
 const SPECS: Record<string, (p: Record<string, number>) => Spec> = {
-  adsr: () => ({
-    sustain: 3, release: 4, times: [[1, 'a'], [2, 'd'], [4, 'r']], next: (st) => st + 1,
-    corners: [{ stage: 1, x: 'a' }, { stage: 2, x: 'd', y: 's' }, { stage: 4, x: 'r' }],
-  }),
+  adsr: (p) => {
+    const rel = (p.ads ?? 0) >= 0.5 ? 'd' : 'r'; // ads: the release at the decay's time (D-745), its corner drags the decay
+    return {
+      sustain: 3, release: 4, times: [[1, 'a'], [2, 'd'], [4, rel]], next: (st) => st + 1,
+      corners: [{ stage: 1, x: 'a' }, { stage: 2, x: 'd', y: 's' }, { stage: 4, x: rel }],
+    };
+  },
   env: (p) => {
     const shot = (p.shot ?? 0) >= 0.5; // one-shot: no sustain, the release follows the last segment
     return {

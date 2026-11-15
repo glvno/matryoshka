@@ -930,6 +930,8 @@ const adsr: ModuleImpl<AdsrState> = {
       param('s', 0, 1, 0.6, { step: 0.01 }),
       param('r', 0.001, 8, 0.3, { unit: 's', step: 0.001, log: true, altText: { when: 'long', text: longTime } }),
       param('long', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 35 }),
+      // ADS (the Oberheim SEM's envelopes, D-745): the release falls at the decay's time, `r` unused (format 57)
+      param('ads', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 57 }),
     ],
     views: [param('view', 0, 0, 0, { screen: true })],
   },
@@ -938,7 +940,7 @@ const adsr: ModuleImpl<AdsrState> = {
     const rate = (t: number) => 1 - Math.exp(-4.6 / Math.max(t * c.sr, 1)); // reaches ~99% in t seconds
     const k = (c.p.long ?? 0) >= 0.5 ? ADSR_LONG : 1;
     const ad = rate((c.p.d ?? 0.2) * k);
-    const ar = rate((c.p.r ?? 0.3) * k);
+    const ar = (c.p.ads ?? 0) >= 0.5 ? ad : rate((c.p.r ?? 0.3) * k);
     const aInc = 1 / Math.max((c.p.a ?? 0.01) * c.sr, 1);
     const sus = c.p.s ?? 0.6;
     const adK = ctlRate(ad), arK = ctlRate(ar);

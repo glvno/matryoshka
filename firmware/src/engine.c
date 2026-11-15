@@ -6648,7 +6648,8 @@ static void m_adsr(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *gate = it->in[ADSR_I_GATE], *hold = it->in[ADSR_I_HOLD];
     esig_t *out = it->out[0];
-    int32_t pa = EF(it, ADSR_P_A), pd = EF(it, ADSR_P_D), pr = EF(it, ADSR_P_R);
+    int32_t pa = EF(it, ADSR_P_A), pd = EF(it, ADSR_P_D), pr = EF(it, ADSR_P_ADS) >= 32768 ? pd : EF(it, ADSR_P_R); /* ads: the
+                                                                     * release at the decay's time (the SEM, D-745) */
     int32_t ainc, ad, ar, adk, ark, sus = EF(it, ADSR_P_S) << 14, v = it->s.adsr.v;
     if (EF(it, ADSR_P_LONG) >= 32768) {          /* long: decay and release x 2.4 (modules.ts ADSR_LONG) */
         pd = (int32_t)(((int64_t)pd * ADSR_LONG_Q16) >> 16);

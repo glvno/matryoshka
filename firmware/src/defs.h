@@ -193,9 +193,10 @@ enum {
 #define ADSR_P_S 2
 #define ADSR_P_R 3
 #define ADSR_P_LONG 4
+#define ADSR_P_ADS 5
 #define ADSR_NIN 4
 #define ADSR_NOUT 1
-#define ADSR_NPAR 5
+#define ADSR_NPAR 6
 #define ADSR_CVBASE 1
 #define ADSR_NDATA 0
 
@@ -1297,17 +1298,17 @@ static const uint8_t SCALE_LOG[] = {0, 0};
 static const char *const SCALE_UNIT[] = {"", ""};
 static const char *const *const SCALE_CH[] = {0, 0};
 static const char *const ADSR_INNAMES[] = {"GATE", "P1", "P2", "HOLD"};
-static const int32_t ADSR_MIN[] = {66, 66, 0, 66, 0};
-static const int32_t ADSR_MAX[] = {327680, 327680, 65536, 524288, 65536};
-static const int32_t ADSR_DEF[] = {655, 13107, 39322, 19661, 0};
-static const int32_t ADSR_INC[] = {3276, 3276, 655, 5242, 65536};
-static const int32_t ADSR_STEP[] = {66, 66, 655, 66, 65536};
-static const uint8_t ADSR_SINCE[] = {0, 0, 0, 0, 35};
-static const char *const ADSR_PN[] = {"A", "D", "S", "R", "LONG"};
-static const uint8_t ADSR_LOG[] = {1, 1, 0, 1, 0};
-static const char *const ADSR_UNIT[] = {"S", "S", "", "S", ""};
+static const int32_t ADSR_MIN[] = {66, 66, 0, 66, 0, 0};
+static const int32_t ADSR_MAX[] = {327680, 327680, 65536, 524288, 65536, 65536};
+static const int32_t ADSR_DEF[] = {655, 13107, 39322, 19661, 0, 0};
+static const int32_t ADSR_INC[] = {3276, 3276, 655, 5242, 65536, 65536};
+static const int32_t ADSR_STEP[] = {66, 66, 655, 66, 65536, 65536};
+static const uint8_t ADSR_SINCE[] = {0, 0, 0, 0, 35, 57};
+static const char *const ADSR_PN[] = {"A", "D", "S", "R", "LONG", "ADS"};
+static const uint8_t ADSR_LOG[] = {1, 1, 0, 1, 0, 0};
+static const char *const ADSR_UNIT[] = {"S", "S", "", "S", "", ""};
 static const char *const ADSR_CH4[] = {"OFF", "ON", 0};
-static const char *const *const ADSR_CH[] = {0, 0, 0, 0, ADSR_CH4};
+static const char *const *const ADSR_CH[] = {0, 0, 0, 0, ADSR_CH4, ADSR_CH4};
 static const char *const VCA_INNAMES[] = {"IN", "CV", "P1", "P2"};
 static const int32_t VCA_MIN[] = {0};
 static const int32_t VCA_MAX[] = {131072};
@@ -1883,6 +1884,6 @@ static const def_t DEFS[N_TYPES] = {
 };
 /* one copy of each type, a block: what the two-core schedule balances (engine.c sched_build, #802), in 64 cycles of
  * web/src/cpu-costs.json (its run and parameter inputs: cpu.ts scheduleCost) */
-static const uint16_t DEF_COST[N_TYPES] = {14, 81, 36, 53, 9, 9, 33, 9, 436, 11, 108, 1518, 3, 40, 96, 39, 243, 178, 326, 156, 89, 36, 36, 40, 49, 72, 548, 256, 54, 360, 105, 54, 37, 468, 204, 542, 668, 11, 15, 1, 11, 53, 9, 16, 134, 36, 16, 177, 10, 12, 13, 66, 94, 15, 4};
+static const uint16_t DEF_COST[N_TYPES] = {14, 81, 36, 53, 9, 9, 34, 9, 436, 11, 108, 1518, 3, 40, 96, 39, 243, 178, 326, 156, 89, 36, 36, 40, 49, 72, 548, 256, 54, 360, 105, 54, 37, 468, 204, 542, 668, 11, 15, 1, 11, 53, 9, 16, 134, 36, 16, 177, 10, 12, 13, 66, 94, 15, 4};
 /* a module bypassed when the patch loads, in the same units: passing an input through (D-1104; cpu.ts scheduleBypass) */
 #define DEF_COST_BYPASS 18u

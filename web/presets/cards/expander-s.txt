@@ -40,12 +40,10 @@
 #   envelopes / a (1) = 0.01 s         0.001..5 s
 #   envelopes / d (1) = 0.6 s          0.001..5 s
 #   envelopes / s (1) = 0.4            0..1
-#   envelopes / r (1) = 0.6 s          0.001..8 s
 #   env 2: a screen, not a value
 #   envelopes / a (2) = 0.01 s         0.001..5 s
 #   envelopes / d (2) = 0.6 s          0.001..5 s
 #   envelopes / s (2) = 0.8            0..1
-#   envelopes / r (2) = 0.6 s          0.001..8 s
 # lfo
 #   lfo rate = 5 Hz                    0.02..40 Hz
 #   vibrato = 0                        -4..4
@@ -72,11 +70,9 @@ preset: SEM Brass
   envelopes / a (1) = 0.06 s
   envelopes / d (1) = 0.5 s
   envelopes / s (1) = 0.6
-  envelopes / r (1) = 0.3 s
   envelopes / a (2) = 0.04 s
   envelopes / d (2) = 0.4 s
   envelopes / s (2) = 0.9
-  envelopes / r (2) = 0.3 s
   lfo rate = 5.5 Hz
   vibrato = 0.05
   level = 0.47
@@ -98,11 +94,9 @@ preset: SEM Bass
   envelopes / a (1) = 0.002 s
   envelopes / d (1) = 0.3 s
   envelopes / s (1) = 0.2
-  envelopes / r (1) = 0.15 s
   envelopes / a (2) = 0.002 s
   envelopes / d (2) = 0.3 s
   envelopes / s (2) = 0.6
-  envelopes / r (2) = 0.15 s
   level = 0.92
 
 preset: Notch Strings
@@ -120,11 +114,9 @@ preset: Notch Strings
   envelopes / a (1) = 0.8 s
   envelopes / d (1) = 1 s
   envelopes / s (1) = 0.7
-  envelopes / r (1) = 1.5 s
   envelopes / a (2) = 0.7 s
-  envelopes / d (2) = 1 s
+  envelopes / d (2) = 1.8 s
   envelopes / s (2) = 0.9
-  envelopes / r (2) = 1.8 s
   lfo rate = 5.5 Hz
   vibrato = 0.03
   level = 1.27
@@ -145,11 +137,9 @@ preset: Highpass Pluck
   envelopes / a (1) = 0.001 s
   envelopes / d (1) = 0.25 s
   envelopes / s (1) = 0
-  envelopes / r (1) = 0.2 s
   envelopes / a (2) = 0.001 s
   envelopes / d (2) = 0.4 s
   envelopes / s (2) = 0.2
-  envelopes / r (2) = 0.3 s
   level = 1.58
 
 preset: Unison Lead
@@ -169,11 +159,9 @@ preset: Unison Lead
   envelopes / a (1) = 0.01 s
   envelopes / d (1) = 0.4 s
   envelopes / s (1) = 0.5
-  envelopes / r (1) = 0.3 s
   envelopes / a (2) = 0.01 s
   envelopes / d (2) = 0.3 s
   envelopes / s (2) = 0.8
-  envelopes / r (2) = 0.3 s
   lfo rate = 6 Hz
   vibrato = 0.06
   level = 0.67
