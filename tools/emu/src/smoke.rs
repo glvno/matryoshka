@@ -145,9 +145,10 @@ fn drum_row_names(patch: &[u8]) -> Option<Vec<String>> {
         .map(|i| patch[i..i + 64].chunks(8).map(|c| String::from_utf8_lossy(c).trim_end_matches('\0').to_string()).collect())
 }
 
-/// The device preset PRESET reaches first from INIT on a factory patch's engine: the engine is the one structure of
-/// presets.h FPRESET_LIST whose fingerprint (u32 LE) the patch's bytes carry; its presets in the list's order, INIT first
-fn preset_after_init(patch: &[u8]) -> Option<String> {
+/// The device preset PRESET loads first on a factory patch's engine that is set to no preset and off every entry's values:
+/// the engine is the one structure of presets.h FPRESET_LIST whose fingerprint (u32 LE) the patch's bytes carry; its first
+/// preset in the list's order (INIT)
+fn first_preset(patch: &[u8]) -> Option<String> {
     let list = &PRESETS_H[PRESETS_H.find("FPRESET_LIST[")?..];
     let rows: Vec<(u32, &str)> = list
         .lines()
@@ -162,7 +163,7 @@ fn preset_after_init(patch: &[u8]) -> Option<String> {
     ids.sort_unstable();
     ids.dedup();
     let [id] = ids[..] else { return None };
-    rows.iter().filter(|r| r.0 == id).nth(1).map(|r| r.1.to_string())
+    rows.iter().find(|r| r.0 == id).map(|r| r.1.to_string())
 }
 
 /// `s` in the footer (y 220 on, any of the firmware's sizes or the brand type)
@@ -1670,12 +1671,13 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     t.screen(&m, "HOME held: nothing opens (#395)", DEVICE_PAGE);
     go_home(&mut m)?;
 
-    // ---- 4. PRESET encoder (#395): alone it steps the focused device's presets (here patch 0's engine, set to no preset
-    // and at Init's values, so on INIT: the next in presets.h FPRESET_LIST, #432; named in the bar; a module's page says NO
-    // PRESETS ON A MODULE, panel_test.c); HOME held, patches
-    let next = preset_after_init(&presets[0].1).map_or("PRESET ?".into(), |n| format!("PRESET {n}"));
+    // ---- 4. PRESET encoder (#395): alone it steps the focused device's presets (here patch 0's engine, Monolith D's since
+    // D-1203, set to no preset and off its presets' values, so its first in presets.h FPRESET_LIST loads; named in the bar;
+    // the step from Init's values to the entry after it, #432, and a module's page saying NO PRESETS ON A MODULE are in
+    // panel_test.c); HOME held, patches
+    let first = first_preset(&presets[0].1).map_or("PRESET ?".into(), |n| format!("PRESET {n}"));
     m.turn(PRESET, 1, 500)?;
-    t.screen(&m, &format!("PRESET alone on an assembly's page at Init's values: the preset after INIT loaded, {next} in the bar (#432)"), &next);
+    t.screen(&m, &format!("PRESET alone on an assembly's page set to no preset: its first preset loaded, {first} in the bar (#395)"), &first);
     t.screen(&m, "  (the patch stays)", &presets[0].0);
     m.run_for(1500)?;
     patch_turn(&mut m, 1, 500)?;

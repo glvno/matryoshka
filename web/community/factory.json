@@ -126,6 +126,24 @@
   "notes": "The supersaw stack engine as made, so its presets (PRESET on its page) are at hand on the FM-1."
  },
  {
+  "title": "Perun 4",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "perun-4.json",
+  "added": "2026-11-15",
+  "notes": "The PERKONS HD-01 drum machine's FM-1 version, a factory patch until 1.17. Four drum voices on F3 to B3; Perun 4 XL has the whole instrument."
+ },
+ {
+  "title": "Spokes 6",
+  "author": "michael glaviano",
+  "licence": "GPL-3.0-only",
+  "source": "https://github.com/glvno/matryoshka",
+  "file": "spokes-6.json",
+  "added": "2026-11-15",
+  "notes": "The Model:Cycles drum machine's FM-1 version, a factory patch until 1.17. Six tracks of FM machines; Spokes 6 XL has the whole instrument."
+ },
+ {
   "title": "8 Lire XL",
   "author": "michael glaviano",
   "licence": "GPL-3.0-only",

@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
-# Check the built firmware against core 1's guarded stack while Oracle V starts and plays four/eight notes.
+# Check the built firmware against core 1's guarded stack while Oracle V (program change 1) starts and plays four/eight notes.
 # The emulator's ordinary runs do not enforce this hardware limit. Use the matching bin and ELF from CI:
 #   tools/aot_stack.sh BIN ELF
 # Build m1emu first (tools/emu/isa_fix.sh); M1EMU may name an already built harness.
@@ -28,7 +28,7 @@ OUTDIR=$(mktemp -d build/aot-stack.XXXXXX)
 trap 'rm -rf "$OUTDIR"' EXIT
 rc=0
 OUT=$(cd "$OUTDIR" && M1EMU_C1_WATCH_PC="$WATCH" M1EMU_C1_STACK_LOW=$(printf '%x' "$((0x$LOW + 256))") "$EMU" run "$BIN" --ms 10000 \
-  --keys '3000:m903c64,3000:m904064,3000:m904364,3000:m904764,7000:m904864,7000:m904c64,7000:m904f64,7000:m905364' \
+  --keys '2000:mc001,3000:m903c64,3000:m904064,3000:m904364,3000:m904764,7000:m904864,7000:m904c64,7000:m904f64,7000:m905364' \
   --peek "$(word "$ON"),$(word "$GAVE"),$PASS,$FAIL$AOT_PEEK" 2>&1) || rc=$?
 printf '%s\n' "$OUT"
 [ "$rc" -eq 0 ] || exit "$rc"

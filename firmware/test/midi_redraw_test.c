@@ -149,6 +149,7 @@ int main(void)
         cfg.ch = 0;
         pv_gen++;
         screen_idle();
+        pages_ensure();                                 /* (Cassia's own pages: the boot patch's would stand otherwise) */
         for (d = 0; d < pg_ndev && !found; d++)
             for (g = 0; g < pg_dev[d].npg && !found; g++) {
                 const ppage_t *pg = &pg_page[pg_dev[d].pg0 + g];

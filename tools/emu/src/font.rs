@@ -253,7 +253,7 @@ mod tests {
             (r << 11 | g << 5 | b) as u16
         }).collect();
         assert!(on_screen(&fb, "= OCT ="), "the footer's octave");
-        assert!(on_screen(&fb, "ORACLE V"), "the patch's name");
+        assert!(on_screen(&fb, "MONOLITH D"), "the patch's name");
         assert!(!on_screen(&fb, "NOT THERE"));
     }
 }

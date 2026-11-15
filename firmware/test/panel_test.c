@@ -1608,6 +1608,7 @@ int main(void)
                 uint16_t keep[240 * 240];
                 char before[17];
                 int stepped = presets_stepped;
+                uint32_t slot = cur_preset;
                 memcpy(before, pg_pname[d], sizeof before);
                 param_now = 0;
                 later(2000);
@@ -1617,7 +1618,7 @@ int main(void)
                       && !strncmp(msg_text, MSG_PRESET, sizeof MSG_PRESET - 1u) && !strcmp(msg_text + sizeof MSG_PRESET - 1u, pg_pname[d]));
                 memcpy(before, pg_pname[d], sizeof before);
                 enc(6, 1);
-                check("  again: the one after it, no patch change", strcmp(before, pg_pname[d]) != 0 && presets_stepped == stepped && cur_preset == preset_at("ORACLE V"));
+                check("  again: the one after it, no patch change", strcmp(before, pg_pname[d]) != 0 && presets_stepped == stepped && cur_preset == slot);
                 memcpy(keep, fb, sizeof keep);
                 ui_dirty = 2;
                 loop();
@@ -3218,8 +3219,8 @@ int main(void)
         lcd_px = 0;
         patch_enc(1);
         printf("      LCD pixels for a PRESET click while the next one waits: %u\n", lcd_px);
-        check("PRESET turning fast: the next name, only the toast drawn", cur_preset == 0 && !strcmp(patch_label, "ORACLE V")
-              && on_screen("ORACLE V") && lcd_px == 240u * LK_TOH);
+        check("PRESET turning fast: the next name, only the toast drawn", cur_preset == 0 && !strcmp(patch_label, "MONOLITH D")
+              && on_screen("MONOLITH D") && lcd_px == 240u * LK_TOH);
         stop_answer = 0;
         loop();
         pages_waiting = 0;
@@ -3229,7 +3230,7 @@ int main(void)
         printf("      LCD pixels for the toast's end: %u\n", lcd_px);
         check("the toast ends: only its band drawn again, the footer and the bars under it", toast_scr == 0u
               && fb_changed_in(0, 0, 240, 240u - LK_TOH) == 0u && lcd_px <= 240u * LK_TOH && px(0, 239) == P_SAND
-              && px(0, 240u - LK_TOH) != P_SAND && on_screen("ORACLE V"));
+              && px(0, 240u - LK_TOH) != P_SAND && on_screen("MONOLITH D"));
         memcpy(staged, fb, sizeof staged);
         ui_dirty = 2;
         loop();

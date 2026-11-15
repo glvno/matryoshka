@@ -139,8 +139,8 @@ export function exportSelectedFactoryAudition(options: AuditionExportOptions) {
   if (options.evidence && (!options.cases || !options.firmware))
     throw new Error('Evidence requires independent --cases and --firmware inputs');
   const bank = buildSelectedFactoryBank();
-  if (bank.length !== 22 || SOURCE.length !== bank.length || factoryFxAudit.length !== 13)
-    throw new Error('Expected 22 bank entries, 13 melodic selections and nine protected patches');
+  if (bank.length !== 20 || SOURCE.length !== bank.length || factoryFxAudit.length !== 13)
+    throw new Error('Expected 20 bank entries, 13 melodic selections and seven protected patches');
   const created = options.created ?? new Date();
   const bankJson = JSON.stringify(bank, null, 2) + '\n';
   const curatedPresets = new Map<string, Preset>();
@@ -230,7 +230,7 @@ export function exportSelectedFactoryAudition(options: AuditionExportOptions) {
       addedDrivePresent: addedFx.includes('drive'),
     };
   });
-  if (entries.filter(entry => entry.protected).length !== 9) throw new Error('Expected exactly nine protected instrument graphs');
+  if (entries.filter(entry => entry.protected).length !== 7) throw new Error('Expected exactly seven protected instrument graphs');
   const identities: ExpectedFactoryQualificationCase[] = entries.filter(entry => !entry.protected).map(entry => ({
     sourceName: entry.sourceName, bankName: entry.bankName, configurationId: entry.configurationId!,
     defaultPatchSha256: entry.defaultPatchSha256, defaultNativeSha256: entry.defaultNativeSha256,
@@ -265,7 +265,7 @@ export function exportSelectedFactoryAudition(options: AuditionExportOptions) {
     },
     qualification: {
       ...qualification,
-      scope: 'Exactly the selected melodic configurations and separately identified physical FX interface proof. Nine protected instrument graphs preserved byte for byte, not a fresh MCU survey. Only measured matrix states; arbitrary edits are not qualified.',
+      scope: 'Exactly the selected melodic configurations and separately identified physical FX interface proof. Seven protected instrument graphs preserved byte for byte, not a fresh MCU survey. Only measured matrix states; arbitrary edits are not qualified.',
       physicalFxScope: 'Interface-only proof, explicitly reused where stated; not fresh validation of every refreshed bank control, audio, optical LCD/LED or coupled-target state.',
       evidence: attachment?.data ?? null,
       evidenceSha256: attachment?.sha256 ?? null,
@@ -282,7 +282,7 @@ export function exportSelectedFactoryAudition(options: AuditionExportOptions) {
       scope: 'All thirteen selected melodic engines, with intentional per-sound FX, nine additional lo-fi synth designs and the hardware-parity curation. Protected drum/drone presets are retained. Browser renders and owner listening are separate from CPU qualification.',
       transfer: 'The matching firmware contains the authored sounds as read-only factory presets; load the matching selected bank graphs to use them. AUD-prefixed saved copies are optional and can be sent with Send this patch’s presets. They consume user-store slots and do not replace ROM. Back up before import; an existing same-structure/same-name user copy can be replaced.',
     },
-    counts: { total: bank.length, melodic: factoryFxAudit.length, protected: 9 },
+    counts: { total: bank.length, melodic: factoryFxAudit.length, protected: 7 },
     selectedProfile: selectedFactoryProfile,
     entries: entries.map(entry => {
       const measured = qualification.cases.find(candidate => candidate.configurationId === entry.configurationId);
