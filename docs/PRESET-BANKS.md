@@ -34,35 +34,35 @@ The mixer, ladder filter and separate contours support substantial basses and ex
 
 ## Algo Four
 
-Four operators in the Yamaha DX100's eight algorithms, its 64 ratios and its detune give struck, plucked and sustained FM roles. Algo Four has no LFO, velocity, pitch envelope or keyboard level scaling, so the master chorus stands in for vibrato and amplitude modulation, and high notes stay brighter than on a DX100. Ping EP follows the owner's manual's programming example (chapter V, printed pages 40–43). Combo Organ, Elec Lute, Backing Brass, FM Bells and Harpsi Piano follow Yamaha's DX27/DX100 Voice Programming Guide (1986, printed pages 7–14). Their output levels and envelope rates are converted by estimate, and each sound's design names what it leaves out. The other new sounds take only a role from a DX100 preset name. The twenty added sounds exist only with the master FX bus ([D-1204](ledger/patches-and-presets.md#D-1204)). [Owner's manual](https://homepages.abdn.ac.uk/d.j.benson/pages/dx7/manuals/dx100-man.pdf); [programming guide](https://data.yamaha.com/files/download/other_assets/4/320784/DX27SE2.PDF).
+Four operators in the Yamaha DX100's eight algorithms, its 64 ratios and its detune give struck, plucked and sustained FM roles. Algo Four has no LFO, velocity, pitch envelope or keyboard level scaling, so the master chorus stands in for vibrato and amplitude modulation, and high notes stay brighter than on a DX100. Its master FX bus has drive, chorus, delay and reverb ([D-1200](ledger/patches-and-presets.md#D-1200)); drive gives the growling basses and leads, the driven keys and the gritty organ their edge. Ping EP follows the owner's manual's programming example (chapter V, printed pages 40–43). Combo Organ, Elec Lute, Backing Brass, FM Bells and Harpsi Piano follow Yamaha's DX27/DX100 Voice Programming Guide (1986, printed pages 7–14). Their output levels and envelope rates are converted by estimate, and each sound's design names what it leaves out. The other new sounds take only a role from a DX100 preset name. The twenty added sounds exist only with the master FX bus ([D-1204](ledger/patches-and-presets.md#D-1204)). [Owner's manual](https://homepages.abdn.ac.uk/d.j.benson/pages/dx7/manuals/dx100-man.pdf); [programming guide](https://data.yamaha.com/files/download/other_assets/4/320784/DX27SE2.PDF).
 
 | Preset | Intended use |
 |---|---|
 | Init | Dry two-stack FM starting point (algorithm 5). |
 | Solid Bass | Picked FM bass with a fast bite, dry. |
-| Lately Bass | Growling house bass from operator 4 feedback, two voices, with a light chorus and a small room. |
+| Lately Bass | Growling house bass from operator 4 feedback and its 1.14 drive; two voices. |
 | E Piano | Classic DX tine piano with a held body and a close room. |
 | Tubular Bell | Long inharmonic bell with echo and hall. |
 | Brass Stab | Short brass hits from two swelling stacks. |
-| Amber EP | Warm, mellow decaying electric-piano chords. |
+| Amber EP | Warm, mellow decaying electric-piano chords, lightly driven as in 1.14. |
 | Porcelain Keys | Short harmonic bell keys for hooks. |
 | Ping EP | Percussive electric piano with a metallic 7.00 attack ping, from the owner's manual; five voices. |
-| Dusty EP | Dark, wavering lo-fi chord keys with a slow deep chorus; five voices. |
+| Dusty EP | Dark, wavering lo-fi chord keys, lightly driven, with a slow deep chorus; five voices. |
 | Harpsi Piano | Plucked keyboard between piano and harpsichord, from the guide; four voices. |
 | FM Bells | Short metallic octave bells, from the guide; four voices. |
 | Wood Marimba | Wooden mallet for ostinatos. |
 | Slap Bass | Hollow slap pop and thumb click for funk lines; two voices, dry. |
 | Sub Bass | Held sine sub bass with a rounded onset; two voices, dry. |
 | Upright Pluck | Plucked acoustic-style bass that decays while held; two voices. |
-| Backing Brass | Swelling horn-section chords an octave down, from the guide. |
+| Backing Brass | Swelling horn-section chords an octave down, from the guide, with gentle drive for edge. |
 | Glass Pad | Slow glassy pad with chorus, echo and hall. |
 | Dawn Sweep | Evolving pad whose brightness rises over seconds. |
 | FM Strings | Sustained string-ensemble chords from two detuned modulators. |
-| Combo Organ | Gated combo organ with a gritty feedback stop, from the guide; four voices. |
+| Combo Organ | Gated combo organ with a gritty feedback stop through drive, from the guide; four voices. |
 | Elec Lute | Plucked-string accompaniment, from the guide. |
 | Koto | Bright nasal pluck for sparse melodies; five voices. |
-| FM Clav | Funky clav comping that stops at once on release; five voices. |
-| Feed Lead | Buzzy feedback solo lead; two voices. |
+| FM Clav | Funky driven clav comping that stops at once on release; five voices. |
+| Feed Lead | Growling driven feedback solo lead; two voices. |
 | Pan Flute | Soft flute line with a short chiff at each onset; two voices. |
 | Storm Wind | Noise-like wind swells for transitions; three voices. |
 | Space Chime | Inharmonic struck chimes with long echoes. |
