@@ -22,15 +22,17 @@ import { deviceView } from '../src/poly';
 const ROOT = new URL('../../', import.meta.url).pathname;
 /** The build with modulation every 16 samples (#806, D-1106), on top of the Reverb's lines one block late (D-1103), the
  * cheaper LED and key scan (D-934) and the filter's cutoff every 4 samples (D-1105): every factory patch of the 1.14
- * bank, transport stopped and running. */
+ * bank, transport stopped and running; then the poly patches at more voices than they play (#868 step 7, the D-870 tops),
+ * on the same engine. */
 const NOW: { file: string; at?: Record<string, number>; only?: string[]; skip?: string[] }[] = [
   { file: 'docs/measurements/cpu-survey-2026-11-14-rig-modctl.json' },
   { file: 'docs/measurements/cpu-survey-2026-11-14-rig-modctl-run.json' },
+  ...['', '-run'].map((s) => ({ file: `docs/measurements/cpu-survey-2026-11-14-rig-step7-voices${s}.json`, at: { 'Oracle V': 5, 'Cassia 1': 5, 'Algo Four': 8, 'Expander S': 6 } })),
 ];
 /** the survey of the firmware before (release-1.10 with the second core) and the commit its factory patches are from */
 const BEFORE = { file: 'docs/measurements/cpu-survey-2026-11-05-rig-merged-split.json', commit: 'e3235d64' };
-/** factory patches renamed since a survey: the survey's name, today's */
-const RENAMED: Record<string, string> = { 'Hera 5': 'Hera 4' };
+/** factory patches renamed since a survey, or measured under another name (a voice count after it): the survey's name, today's */
+const RENAMED: Record<string, string> = { 'Hera 5': 'Hera 4', 'Oracle V 5': 'Oracle V', 'Cassia 1 5': 'Cassia 1', 'Algo Four 8': 'Algo Four', 'Expander S 6': 'Expander S' };
 /** the scale before (2026-10-20, cpu-costs.ts SURVEY then; the second core's idle cost of 2026-11-05) */
 const BASE = { cyclesPerUs: 233.4, fixedUs: 23, idleUs: 24 };
 
