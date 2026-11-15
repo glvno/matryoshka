@@ -6,6 +6,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import SOURCE from '../factory/bank.json';
 import { buildSelectedFactoryBank, factoryFile, factoryFxAudit, selectedFactoryProfile } from '../src/factory-bank';
+import { withKitPatterns } from '../src/factory-kit-patterns';
+import type { Patch } from '../src/patch';
 import {
   FACTORY_QUALIFICATION_SCOPE, factoryQualificationPhaseIds, factoryQualificationPolicy,
   factoryQualificationTargetSeconds, validateFactoryQualification,
@@ -198,7 +200,9 @@ export function exportSelectedFactoryAudition(options: AuditionExportOptions) {
     const sourceName = SOURCE[index].name;
     const audit = factoryFxAudit.find(entry => entry.name === sourceName);
     const selected = selectedFactoryProfile[sourceName];
-    if (!audit && (name !== sourceName || JSON.stringify(patch) !== JSON.stringify(SOURCE[index].patch)))
+    // (a drum kit with a pattern set is its source plus those patterns, links and songs: D-829)
+    const source = withKitPatterns(structuredClone(SOURCE[index].patch) as unknown as Patch);
+    if (!audit && (name !== sourceName || JSON.stringify(patch) !== JSON.stringify(source)))
       throw new Error(`${sourceName}: protected source changed`);
     if (audit && (!selected || name !== (selected.bankName ?? sourceName)))
       throw new Error(`${sourceName}: selected source/bank name mismatch`);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { buildFactoryBank, buildSelectedFactoryBank, factoryFile, factoryFxAudit, selectedFactoryNames, selectedFactoryProfile } from './factory-bank';
+import { FACTORY_KITS, withKitPatterns } from './factory-kit-patterns';
 import SOURCE from '../factory/bank.json';
 import { fxBusOf, type FxStageKind } from './fx-bus';
 import { EXAMPLE_PRESETS, factoryShape, FM1_PRESETS, PRESETS, shapeOf } from './presets';
@@ -82,7 +83,9 @@ describe('owner-selected factory defaults', () => {
     expect(bank.map(entry => entry.name)).toEqual(SOURCE.map(entry => selectedFactoryProfile[entry.name]?.bankName ?? entry.name));
     for (const source of protectedEntries) {
       expect(selectedFactoryProfile[source.name]).toBeUndefined();
-      expect(patchOf(source.name, bank)).toEqual(source.patch);
+      // (a drum kit with a pattern set, D-829: its source plus those patterns, links and songs, nothing else; D-1053, D-1055)
+      const kit = FACTORY_KITS.some(k => k.patch === source.name);
+      expect(patchOf(source.name, bank)).toEqual(kit ? withKitPatterns(structuredClone(source.patch) as unknown as Patch) : source.patch);
     }
     for (const [name, options] of Object.entries(selectedFactoryProfile)) if (options.outputLevel !== undefined) {
       expect(factoryFxAudit.some(audit => audit.name === name), name).toBe(true);

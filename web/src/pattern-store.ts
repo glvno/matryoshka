@@ -224,6 +224,35 @@ export function factoryEntries(): (StoredPatternEntry & { payload: Uint8Array; k
   ];
 }
 
+/** the patch's links to factory patches' patterns (factory-store.json) whose entry is the one the link was made for */
+function factoryLinks(p: Patch): { k: number; payload: Uint8Array }[] {
+  const links = p.modules.find((m) => m.type === 'fm1')?.seq?.links ?? {};
+  return Object.entries(links).flatMap(([k, l]) => {
+    const e = FACTORY_STORE.find((x) => x.id === l.id);
+    const payload = e && fromHex(e.payload);
+    return payload && fnv(FNV0, payload) === l.hash ? [{ k: Number(k), payload }] : [];
+  });
+}
+/** a patch without the patterns it links to factory entries as those entries hold them (share links: whoever opens one
+ * has the entries, #923); the patch itself when it has none */
+export function withoutFactoryPatterns(p: Patch): Patch {
+  const dev = deviceView(p, true).patch;
+  const clean = factoryLinks(p).filter((x) => fnv(FNV0, encodePayload(p, x.k, dev)) === fnv(FNV0, x.payload)).map((x) => x.k);
+  if (!clean.length) return p;
+  return { ...p, modules: p.modules.map((m) => {
+    if (m.type !== 'steps' || !m.patterns) return m;
+    const pats = fixPatterns(m.patterns.map((x, i) => (clean.includes(i + 1) ? null : x)));
+    const { patterns: _p, ...rest } = m;
+    return pats ? { ...rest, patterns: pats } : rest;
+  }) };
+}
+/** the patterns withoutFactoryPatterns left out, back from the factory entries (changed in place) */
+export function withFactoryPatterns(p: Patch): Patch {
+  const steps = p.modules.filter((m) => m.type === 'steps');
+  for (const x of factoryLinks(p)) if (!steps.some((m) => m.patterns?.[x.k - 1])) applyPayload(p, x.k, x.payload);
+  return p;
+}
+
 /** bytes as hexadecimal text, two digits each (pattern files, factory-store.json), and back */
 export const hexBytes = (bytes: ArrayLike<number>): string => Array.from(bytes, (x) => x.toString(16).padStart(2, '0')).join('');
 export const fromHex = (s: string): Uint8Array => Uint8Array.from(s.match(/../g) ?? [], (x) => parseInt(x, 16));
