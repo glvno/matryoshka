@@ -13829,7 +13829,7 @@
      "x": 20,
      "y": 1180,
      "params": {
-      "voices": 8,
+      "voices": 6,
       "assign": 0,
       "legato": 0,
       "priority": 0,
@@ -15527,7 +15527,8 @@
        "module": 2,
        "param": "voices",
        "label": "voices",
-       "head": "voice"
+       "head": "voice",
+       "top": 6
       },
       {
        "module": 28,

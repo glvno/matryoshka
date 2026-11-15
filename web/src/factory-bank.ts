@@ -43,7 +43,7 @@ export interface SelectedFactoryOptions extends FactoryMeasurementOptions {
 export const selectedFactoryProfile: Readonly<Record<string, SelectedFactoryOptions>> = {
   'Monolith D': { configurationId: 'selected-monolith-d' },
   'Silver Box': { configurationId: 'selected-silver-box' },
-  'Algo Four': { voices: 4, omit: ['chorus'], configurationId: 'algo-four-v4-drive-delay-reverb', outputLevel: 0.88 },
+  'Algo Four': { omit: ['drive'], configurationId: 'algo-four-v6-chorus-delay-reverb', outputLevel: 0.88 },
   'Oracle V': { omit: ['delay', 'reverb'], configurationId: 'selected-oracle-v' },
   Canvas: { omit: ['drive', 'chorus', 'reverb'], harmonizer: 'removed', canvasCaptions: 'short', configurationId: 'canvas-original-delay-no-harm' },
   'Expander S': { voices: 3, configurationId: 'expander-s-v3-drive-chorus-delay-reverb', outputLevel: 0.68 },
@@ -53,7 +53,7 @@ export const selectedFactoryProfile: Readonly<Record<string, SelectedFactoryOpti
   'Vernon 100': { omit: ['reverb'], configurationId: 'selected-vernon-100' },
   'Sallen 20': { omit: ['reverb'], harmonizer: 'removed', configurationId: 'sallen-20-original-drive-chorus-delay-no-harm' },
   'Hera 4': { bankName: 'Hera 6', voices: 6, omit: ['drive', 'chorus', 'delay', 'reverb'], configurationId: 'hera-4-v6-none', outputLevel: 0.39 },
-  'Io 4': { omit: ['reverb'], configurationId: 'selected-io-4' },
+  'Io 4': { configurationId: 'selected-io-4' },
 };
 
 /** Selected names in source order, without building the patch graphs. */
