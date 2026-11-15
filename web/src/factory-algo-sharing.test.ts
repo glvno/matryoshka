@@ -38,7 +38,7 @@ function rig(operators: '4' | '3+4', algorithm = 8, setup?: (p: Patch) => void) 
 
 for (const operators of MODES) {
   it.each(ALGORITHMS)(`shared Op ${operators}, algorithm %i: only eligible carriers sound, including during long shared releases`, algorithm => {
-    const { e, render, heard } = rig(operators, algorithm);
+    const { p, e, render, heard } = rig(operators, algorithm);
     const carriers = [1, ...(algorithm >= 6 ? [2] : []), ...(algorithm >= 5 ? [3] : []), ...(algorithm === 8 ? [4] : [])];
     const sounding = (op: number) => heard(op).filter(samples => peak(samples) > 0.001).length;
     render(0.02);
@@ -57,7 +57,9 @@ for (const operators of MODES) {
     const chord = [60, 64, 67, 69, 72, 74, 76, 79];
     for (const note of chord.slice(1)) e.noteOn(note);
     render(0.06);
-    for (const op of carriers) expect(sounding(op)).toBe(8);
+    // Every voice of the allocator sounds; the chord holds more notes than it has.
+    const voices = p.modules.find(m => m.type === 'alloc')!.params.voices;
+    for (const op of carriers) expect(sounding(op)).toBe(voices);
     for (const note of chord) e.noteOff(note);
     const tail = render(0.15);
     expect(e.envStates(16)![0].v).toBeGreaterThan(0.5);

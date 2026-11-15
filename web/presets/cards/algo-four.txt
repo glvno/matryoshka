@@ -109,7 +109,7 @@ preset: Lately Bass
   l3 1 = 0.5
   r4 1 = 0.12 s
   level 3 = 0.44
-  volume = 0.77
+  volume = 0.44
 
 preset: E Piano
   # a DX electric piano: stack 1 the body, 1:1, its modulator fading over a second and a half and
@@ -134,7 +134,7 @@ preset: E Piano
   l3 3 = 0.08
   r4 3 = 0.35 s
   level 3 = 0.22
-  volume = 0.3
+  volume = 0.25
 
 preset: Tubular Bell
   # a bell: operator 2 at 3.5 times the note (inharmonic) ringing for seconds; stack 3 an octave

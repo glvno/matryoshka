@@ -52,8 +52,8 @@ export const LOFI_PRESET_DESIGNS: Record<string, LofiPresetDesign[]> = {
         'voice / volume': 0.36,
       },
       fx: {
-        reason: 'A short dark room supports mellow chord playing; modest compensated saturation rounds the reduced-index EP body without a long rhythmic echo.',
-        drive: { drive: 1.35, mode: 0, level: 0.42, sym: 0 },
+        reason: 'A short dark room supports mellow chord playing; a slow shallow chorus warms the reduced-index EP body without a long rhythmic echo.',
+        chorus: { rate: 0.4, depth: 0.2, mix: 0.2 },
         reverb: { size: 0.34, damp: 0.78, mix: 0.17, pre: 16, mod: 0, freeze: 0 },
       },
       role: 'Warm decaying electric-piano chords. A neutral 1:1 lower stack, reduced FM index and subordinate short upper strike replace E Piano\'s brighter detuned body; held notes decay rather than sustain. Start with three-note voicings around MIDI 48-76.',

@@ -14,7 +14,7 @@ export interface FxRecipe {
 export const FACTORY_FX_MASKS: Record<string, number> = {
   'Monolith D': 15,
   'Silver Box': 15,
-  'Algo Four': 13,
+  'Algo Four': 14,
   'Oracle V': 3,
   'Canvas': 4,
   'Expander S': 15,
@@ -23,7 +23,7 @@ export const FACTORY_FX_MASKS: Record<string, number> = {
   'Cassia 1': 5,
   'Vernon 100': 7,
   'Sallen 20': 7,
-  'Io 4': 5,
+  'Io 4': 13,
 };
 
 // Drive mode 0 is soft clip; its small-signal slope is 1.5, so level compensates drive.
@@ -132,8 +132,7 @@ export const FACTORY_FX_RECIPES: Record<string, Record<string, FxRecipe>> = {
       reason: 'Deliberately dry: the fast FM bite and low body already separate the rhythmic bass role; preserve the click without extra nonlinear harmonics.',
     },
     'Lately Bass': {
-      reason: 'Compensated saturation turns the FM feedback growl into a rough dance-bass hook, with no delay smearing repeated notes.',
-      drive: { drive: 2.8, mode: 0, level: 0.2, sym: 0 },
+      reason: 'Deliberately dry: the FM feedback growl already carries the dance-bass hook, and this rack has no drive; no delay smears repeated notes.',
     },
     'E Piano': {
       reason: 'A short dark room gives the decaying electric-piano body depth while leaving the high-ratio tine attack clear and unmodulated.',
