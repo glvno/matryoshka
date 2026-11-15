@@ -22,7 +22,7 @@ import { addModule, type Patch } from '../src/patch';
 import { around, plugIn, wire } from './factory-build';
 import { fixNotes, patternNotes } from '../src/track';
 
-const melodic = ['Io 4', 'Monolith D', 'Sallen 20', 'Silver Box', 'Vernon 100', 'Wanderer'];
+const melodic = ['Algo Four', 'Io 4', 'Monolith D', 'Sallen 20', 'Silver Box', 'Vernon 100', 'Wanderer'];
 const drones = ['8 Lire', 'Elvira 2'];
 const drums = ['Scrounge', 'Meridian 8', 'Perun 4', 'Spokes 6', 'Verona Drum 1', '808 Kit', '909 Kit', '<7PH', 'drum kit'];
 const names = [...melodic, ...drones, ...drums];
