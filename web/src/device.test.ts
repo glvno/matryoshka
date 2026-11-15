@@ -310,9 +310,9 @@ describe('DeviceLink.connect', () => {
     await withMidi([inp], [out], async () => {
       await link.connect();
       const bin = encodePatch(withFxBus(subtractiveSaw()), true);
-      expect(bin[1]).toBe(VERSION);
+      expect(bin[1]).toBe(55);   // (the master FX record's format, D-1010)
       expect((bin[6] | bin[7] << 8) & FLAG_PATTERN_ORIGINS).toBe(0);
-      link.info!.patchFormats = { min: 31, max: VERSION - 1 };
+      link.info!.patchFormats = { min: 31, max: 54 };
       const sent = out.sent.length;
       await expect(link.uploadSlotBin(0, 'FX', bin)).rejects.toThrow();
       expect(out.sent).toHaveLength(sent);

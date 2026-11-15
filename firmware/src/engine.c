@@ -8506,7 +8506,7 @@ static void m_reverb(const node_t *nd, inst_t *it, uint32_t n)
 
 /* The level / rate envelope (modules.ts env): three segments to l1 l2 l3 in r1 r2 r3 on the gate, hold l3, release to l4
  * in r4. Rising: linear at the rate that covers 0..1 in r (the ADSR attack); falling: 99 % in r (the ADSR decay), then the
- * segment ends (the last 1 % is stepped). Q30. */
+ * segment ends (the last 1 % is stepped), or with `curve` lin (#689, format 56) linear at the rising rate. Q30. */
 static void m_env(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *gate = it->in[ENV_I_GATE];
@@ -8516,6 +8516,7 @@ static void m_env(const node_t *nd, inst_t *it, uint32_t n)
     uint8_t stage = it->s.env.stage, prev = it->s.env.prev;
     uint32_t i, st;
     int shot = EF(it, ENV_P_SHOT) >= 32768;   /* one-shot: the gate only starts it, the segments run through, then the release */
+    int lin = EF(it, ENV_P_CURVE) >= 32768;   /* curve lin (#689): a falling segment is linear too, at the rising one's rate */
     static const uint8_t LP[6] = {ENV_P_L4, ENV_P_L1, ENV_P_L2, ENV_P_L3, ENV_P_L3, ENV_P_L4};
     static const uint8_t RP[6] = {0, ENV_P_R1, ENV_P_R2, ENV_P_R3, 0, ENV_P_R4};
     static const uint8_t SL[6] = {0, 0, 1, 2, 0, 3};   /* the segment's cache slot */
@@ -8579,6 +8580,17 @@ static void m_env(const node_t *nd, inst_t *it, uint32_t n)
                     }
                     i++;
                 }
+            else if (lin)                         /* falling, linear: as rising (no stretch: a linear step costs as little) */
+                while (v - d > t) {
+                    tt++;
+                    v -= d;
+                    out[i] = v >> 14;
+                    if (i + 1u >= n || (gate[i + 1u] > 32768) != g) {
+                        ran = 1;
+                        break;
+                    }
+                    i++;
+                }
             else
                 while (tt + 1u < ln) {
                     if (!(i & (ENG_CTL - 1u)) && i + ENG_CTL <= n && tt + ENG_CTL < ln) {
@@ -8623,8 +8635,8 @@ static void m_env(const node_t *nd, inst_t *it, uint32_t n)
                 v += inc[stage];
                 if (v < t)
                     break;
-            } else if (tt < len[stage]) {
-                v += mulq(t - v, k[stage], 30);
+            } else if (lin ? v - inc[stage] > t : tt < len[stage]) {
+                v = lin ? v - inc[stage] : v + mulq(t - v, k[stage], 30);
                 break;
             }
             v = t;

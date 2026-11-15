@@ -100,8 +100,9 @@ describe('patterns and songs: the binary (format 48)', () => {
       const top = (p.assemblies ?? []).some((a) => a.params.some((r) => r.top !== undefined));
       const appended = dev.modules.some((m) => DEFS[m.type].params.some((q) => q.since === VERSION && (m.params[q.name] ?? q.default) !== q.default));
       const many = dev.modules.length > 64;   // (more than 64 modules: 51, #721; 8 Lire's Lyra-8 controls, #658)
-      // a master FX bus or a Harmony on LFO needs format 55 (D-888, D-1010): its stage record or the Harmony light
-      if (fxRecord(p, dev).length || harmonyLfo(p, dev)) expect(b[1], name).toBe(55);
+      // a master FX bus or a Harmony on LFO needs format 55 (D-888, D-1010): its stage record or the Harmony light; a
+      // parameter appended in today's format set off its default (Canvas's linear envelope fall, D-1011) needs that format
+      if (fxRecord(p, dev).length || harmonyLfo(p, dev)) expect(b[1], name).toBe(appended ? VERSION : 55);
       else if (layout(p).base.bytes <= DEVICE.bytes && !cabled && !top && !appended && !many) expect(b[1], name).toBeLessThan(VERSION);
       expect(b[7] & (FLAG_PATTERNS >> 8), name).toBe(0);
     }

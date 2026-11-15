@@ -2168,6 +2168,27 @@ kit('env-lr', (add, wire) => {
   wire(ea, 'env', va, 'cv');
   wire(va, 'out', out, 'l');
 });
+// the same with `curve` lin (#689, format 56): every falling segment is linear, at the rising rate
+kit('env-lr-lin', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const mod = add('osc', 0, 0, { wave: 0, coarse: 12, level: 0.8 });
+  const car = add('osc', 0, 0, { wave: 0, pm: 2.5 });
+  const ea = add('env', 0, 0, { l1: 1, r1: 0.005, l2: 0.3, r2: 0.15, l3: 0.5, r3: 0.4, l4: 0, r4: 0.3, curve: 1 });
+  const ep = add('env', 0, 0, { l1: 1, r1: 0.002, l2: 0, r2: 0.08, l3: 0.2, r3: 0.5, l4: 0.6, r4: 0.2, curve: 1 });
+  const sc = add('scale', 0, 0, { gain: 0.5, offset: -0.25 });
+  const va = add('vca', 0, 0);
+  const out = add('output', 0, 0, { level: 0.8 });
+  wire(kb, 'pitch', mod, 'pitch');
+  wire(kb, 'pitch', car, 'pitch');
+  wire(ep, 'env', sc, 'in');
+  wire(sc, 'out', car, 'pitch');
+  wire(kb, 'gate', ea, 'gate');
+  wire(kb, 'gate', ep, 'gate');
+  wire(mod, 'out', car, 'pm');
+  wire(car, 'out', va, 'in');
+  wire(ea, 'env', va, 'cv');
+  wire(va, 'out', out, 'l');
+});
 // two plucked strings per voice (noise and pulse bursts, damp and decay apart), plus one rung by an oscillator
 kit(
   'string',

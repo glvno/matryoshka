@@ -2374,9 +2374,11 @@ const shape: ModuleImpl<OsState> = {
  * A level / rate envelope (the DX7 shape): on a gate it runs through three segments to l1, l2, l3 (each in its time r),
  * holds l3 while the gate stays up, and on release goes to l4 in r4 and stays there. A rising segment is linear at the
  * rate that would cover 0..1 in r (the ADSR's attack); a falling one approaches its level exponentially, 99 % in r (the
- * ADSR's decay) and ends after r (the last 1 % is stepped). A segment that starts at its level is skipped. Stage: 0 idle at
- * l4, 1..3 the segments, 4 holding l3, 5 the release. `shot` (one-shot, for drums played by short trigs): the gate only
- * starts it, the three segments run through whatever the gate does, then the release follows at once.
+ * ADSR's decay) and ends after r (the last 1 % is stepped). `curve` lin (#689, format 56): a falling segment is linear
+ * too, at the rising one's rate (a fall from 1 to 0 takes r), as the Buchla Music Easel's envelope decays. A segment that
+ * starts at its level is skipped. Stage: 0 idle at l4, 1..3 the segments, 4 holding l3, 5 the release. `shot` (one-shot,
+ * for drums played by short trigs): the gate only starts it, the three segments run through whatever the gate does, then
+ * the release follows at once.
  */
 interface EnvState {
   stage: 0 | 1 | 2 | 3 | 4 | 5;
@@ -2402,6 +2404,7 @@ const env: ModuleImpl<EnvState> = {
       param('l4', 0, 1, 0, { step: 0.01 }),
       param('r4', 0.001, 10, 0.5, { unit: 's', step: 0.001, log: true }),
       param('shot', 0, 1, 0, { step: 1, toggle: true }),
+      param('curve', 0, 1, 0, { step: 1, choices: GLIDE_CURVES, since: 56 }),
     ],
     views: [param('view', 0, 0, 0, { screen: true })],
   },
@@ -2415,6 +2418,7 @@ const env: ModuleImpl<EnvState> = {
     const kq = k.map(ctlRate);
     const gate = c.inp.gate;
     const shot = (c.p.shot ?? 0) >= 0.5;
+    const lin = Math.round(c.p.curve ?? 0) === 1;
     for (let i = 0; i < c.n; i++) {
       const g = c.inp.gate[i] > 0.5 ? 1 : 0;
       if (g && !s.prev) {
@@ -2427,7 +2431,7 @@ const env: ModuleImpl<EnvState> = {
       s.prev = g;
       // #806: a falling stretch at once (engine.c m_env), when no edge comes inside it and the segment goes on past it
       const st0 = s.stage;
-      if (st0 !== 0 && st0 !== 4 && s.v >= lv[st0] && (i & (CTL - 1)) === 0 && i + CTL <= c.n && s.t + CTL < len[st0]) {
+      if (!lin && st0 !== 0 && st0 !== 4 && s.v >= lv[st0] && (i & (CTL - 1)) === 0 && i + CTL <= c.n && s.t + CTL < len[st0]) {
         let j = 1;
         while (j < CTL && (gate[i + j] > 0.5 ? 1 : 0) === g) j++;
         if (j === CTL) {
@@ -2439,7 +2443,7 @@ const env: ModuleImpl<EnvState> = {
           continue;
         }
       }
-      // a segment: linear up, exponential down; done -> the next stage (the hold stages track their level)
+      // a segment: linear up, exponential (or linear) down; done -> the next stage (the hold stages track their level)
       for (let guard = 0; guard < 4; guard++) {
         const st = s.stage;
         if (st === 0 || st === 4) {
@@ -2451,8 +2455,8 @@ const env: ModuleImpl<EnvState> = {
         if (s.v < t) {
           s.v += inc[st];
           if (s.v < t) break;
-        } else if (s.t < len[st]) {
-          s.v += (t - s.v) * k[st];
+        } else if (lin ? s.v - inc[st] > t : s.t < len[st]) {
+          s.v = lin ? s.v - inc[st] : s.v + (t - s.v) * k[st];
           break;
         }
         s.v = t;

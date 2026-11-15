@@ -59,20 +59,20 @@ const CORES = {
  * Cassia 1 at 5, Algo Four at 8, Expander S and Hera at 6) have a factor for their modules inside the poly group
  * (`voices`) beside the one for the rest (`engines`, at most 1.5): the pair that reads at least the rig at each count with
  * the least over-read, so the estimate follows the rig's slope as voices are added (one factor over-read Hera at 6 voices
- * by 17 points). The patches outside the 1.14 bank (basic poly, drift poly, mono lead, supersaw stack) keep the factors of
- * the 2026-11-09 survey. */
+ * by 17 points). Canvas is fitted to its survey with the envelope's linear fall (#689, format 56) instead. The patches
+ * outside the 1.14 bank (basic poly, drift poly, mono lead, supersaw stack) keep the factors of the 2026-11-09 survey. */
 const RIG = {
   engines: {
-    '8 Lire': 0.59, '808 kit': 0.85, '909 kit': 0.78, 'Algo Four': 1.5, 'Briefcase 3': 0.74,
-    'Canvas': 0.82, 'Cassia 1': 0.88, 'Elvira 2': 0.95, 'Expander S': 1.42,
+    '8 Lire': 0.59, '808 kit': 0.85, '909 kit': 0.78, 'Algo Four': 1.22, 'Briefcase 3': 0.74,
+    'Canvas': 0.83, 'Cassia 1': 0.88, 'Elvira 2': 0.95, 'Expander S': 1.42,
     'Hera 4': 1.08, 'Io 4': 0.68, 'Meridian 8': 0.71, 'Monolith D': 0.73,
-    'Oracle V': 1.46, 'Perun 4': 0.82, 'Sallen 20': 0.9, 'Scrounge': 0.85,
+    'Oracle V': 1.46, 'Perun 4': 0.83, 'Sallen 20': 0.9, 'Scrounge': 0.85,
     'Silver Box': 0.92, 'Spokes 6': 0.85, 'Vernon 100': 0.61, 'Verona Drum 1': 0.92,
     'Wanderer': 1.06, 'basic poly': 0.92, 'drift poly': 0.92, 'mono lead': 1.28,
     'supersaw stack': 0.88,
   } as Record<string, number>,
-  voices: { 'Algo Four': 0.58, 'Cassia 1': 0.59, 'Expander S': 0.72, 'Hera 4': 0.5, 'Oracle V': 0.61 } as Record<string, number>,
-  survey: 'docs/measurements/cpu-survey-2026-11-14-rig-modctl.json and -run.json (CI run 43652865098, the 22 patches of the 1.14 bank); the voices: -step7-voices.json and -hera-voices.json (main at 0b7b930a)',
+  voices: { 'Algo Four': 0.6, 'Cassia 1': 0.59, 'Expander S': 0.72, 'Hera 4': 0.5, 'Oracle V': 0.61 } as Record<string, number>,
+  survey: 'docs/measurements/cpu-survey-2026-11-14-rig-modctl.json and -run.json (CI run 43652865098, the 22 patches of the 1.14 bank); the voices: -step7-voices.json and -hera-voices.json (main at 0b7b930a); Canvas: -canvas-linear.json and -run.json (CI run 43668448074)',
 };
 const BLOCKS = 24;
 const SKIP = 3; // blocks before the maximum is taken for a module kit (the first notes, envelopes starting)

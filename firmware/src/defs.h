@@ -355,9 +355,10 @@ enum {
 #define ENV_P_L4 6
 #define ENV_P_R4 7
 #define ENV_P_SHOT 8
+#define ENV_P_CURVE 9
 #define ENV_NIN 3
 #define ENV_NOUT 1
-#define ENV_NPAR 9
+#define ENV_NPAR 10
 #define ENV_CVBASE 1
 #define ENV_NDATA 0
 
@@ -1397,15 +1398,16 @@ static const char *const SHAPE_UNIT[] = {"", "", "", "", "", ""};
 static const char *const SHAPE_CH1[] = {"SOFT", "HARD", "FOLD", 0};
 static const char *const *const SHAPE_CH[] = {0, SHAPE_CH1, 0, ADSR_CH4, 0, 0};
 static const char *const ENV_INNAMES[] = {"GATE", "P1", "P2"};
-static const int32_t ENV_MIN[] = {0, 66, 0, 66, 0, 66, 0, 66, 0};
-static const int32_t ENV_MAX[] = {65536, 655360, 65536, 655360, 65536, 655360, 65536, 655360, 65536};
-static const int32_t ENV_DEF[] = {65536, 655, 39322, 19661, 39322, 65536, 0, 32768, 0};
-static const int32_t ENV_INC[] = {655, 6553, 655, 6553, 655, 6553, 655, 6553, 65536};
-static const int32_t ENV_STEP[] = {655, 66, 655, 66, 655, 66, 655, 66, 65536};
-static const char *const ENV_PN[] = {"L1", "R1", "L2", "R2", "L3", "R3", "L4", "R4", "SHOT"};
-static const uint8_t ENV_LOG[] = {0, 1, 0, 1, 0, 1, 0, 1, 0};
-static const char *const ENV_UNIT[] = {"", "S", "", "S", "", "S", "", "S", ""};
-static const char *const *const ENV_CH[] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+static const int32_t ENV_MIN[] = {0, 66, 0, 66, 0, 66, 0, 66, 0, 0};
+static const int32_t ENV_MAX[] = {65536, 655360, 65536, 655360, 65536, 655360, 65536, 655360, 65536, 65536};
+static const int32_t ENV_DEF[] = {65536, 655, 39322, 19661, 39322, 65536, 0, 32768, 0, 0};
+static const int32_t ENV_INC[] = {655, 6553, 655, 6553, 655, 6553, 655, 6553, 65536, 65536};
+static const int32_t ENV_STEP[] = {655, 66, 655, 66, 655, 66, 655, 66, 65536, 65536};
+static const uint8_t ENV_SINCE[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 56};
+static const char *const ENV_PN[] = {"L1", "R1", "L2", "R2", "L3", "R3", "L4", "R4", "SHOT", "CURVE"};
+static const uint8_t ENV_LOG[] = {0, 1, 0, 1, 0, 1, 0, 1, 0, 0};
+static const char *const ENV_UNIT[] = {"", "S", "", "S", "", "S", "", "S", "", ""};
+static const char *const *const ENV_CH[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, GLIDE_CH1};
 static const char *const STRING_INNAMES[] = {"PITCH", "GATE", "EXC", "P1", "P2"};
 static const int32_t STRING_MIN[] = {3277, 0, 0, -1572864, 0};
 static const int32_t STRING_MAX[] = {655360, 65536, 65536, 1572864, 65536};
@@ -1838,7 +1840,7 @@ static const def_t DEFS[N_TYPES] = {
     {OUTPUT_NIN, OUTPUT_NOUT, OUTPUT_NPAR, 0, OUTPUT_CVBASE, -1, OUTPUT_NDATA, 0, OUTPUT_MIN, OUTPUT_MAX, OUTPUT_DEF, OUTPUT_INC, "OUTPUT", OUTPUT_PN, OUTPUT_INNAMES, OUTPUT_LOG, OUTPUT_UNIT, OUTPUT_CH, 0, 0, OUTPUT_STEP},   /* output */
     {GLIDE_NIN, GLIDE_NOUT, GLIDE_NPAR, 0, GLIDE_CVBASE, 0, GLIDE_NDATA, 0, GLIDE_MIN, GLIDE_MAX, GLIDE_DEF, GLIDE_INC, "SLEW LIMITER", GLIDE_PN, GLIDE_INNAMES, GLIDE_LOG, GLIDE_UNIT, GLIDE_CH, 0, GLIDE_SINCE, GLIDE_STEP},   /* glide */
     {SHAPE_NIN, SHAPE_NOUT, SHAPE_NPAR, 0, SHAPE_CVBASE, 0, SHAPE_NDATA, 1, SHAPE_MIN, SHAPE_MAX, SHAPE_DEF, SHAPE_INC, "WAVESHAPER", SHAPE_PN, SHAPE_INNAMES, SHAPE_LOG, SHAPE_UNIT, SHAPE_CH, 0, 0, SHAPE_STEP},   /* shape */
-    {ENV_NIN, ENV_NOUT, ENV_NPAR, 0, ENV_CVBASE, -1, ENV_NDATA, 0, ENV_MIN, ENV_MAX, ENV_DEF, ENV_INC, "ENV L/R", ENV_PN, ENV_INNAMES, ENV_LOG, ENV_UNIT, ENV_CH, 0, 0, ENV_STEP},   /* env */
+    {ENV_NIN, ENV_NOUT, ENV_NPAR, 0, ENV_CVBASE, -1, ENV_NDATA, 0, ENV_MIN, ENV_MAX, ENV_DEF, ENV_INC, "ENV L/R", ENV_PN, ENV_INNAMES, ENV_LOG, ENV_UNIT, ENV_CH, 0, ENV_SINCE, ENV_STEP},   /* env */
     {STRING_NIN, STRING_NOUT, STRING_NPAR, 0, STRING_CVBASE, -1, STRING_NDATA, 1, STRING_MIN, STRING_MAX, STRING_DEF, STRING_INC, "STRING", STRING_PN, STRING_INNAMES, STRING_LOG, STRING_UNIT, STRING_CH, 0, 0, STRING_STEP},   /* string */
     {WAVETABLE_NIN, WAVETABLE_NOUT, WAVETABLE_NPAR, 0, WAVETABLE_CVBASE, -1, WAVETABLE_NDATA, 1, WAVETABLE_MIN, WAVETABLE_MAX, WAVETABLE_DEF, WAVETABLE_INC, "WAVETABLE", WAVETABLE_PN, WAVETABLE_INNAMES, WAVETABLE_LOG, WAVETABLE_UNIT, WAVETABLE_CH, WAVETABLE_TOP, 0, WAVETABLE_STEP},   /* wavetable */
     {CHORUS_NIN, CHORUS_NOUT, CHORUS_NPAR, 0, CHORUS_CVBASE, 0, CHORUS_NDATA, 3, CHORUS_MIN, CHORUS_MAX, CHORUS_DEF, CHORUS_INC, "CHORUS", CHORUS_PN, CHORUS_INNAMES, CHORUS_LOG, CHORUS_UNIT, CHORUS_CH, 0, 0, CHORUS_STEP},   /* chorus */

@@ -23,12 +23,14 @@ const ROOT = new URL('../../', import.meta.url).pathname;
 /** The build with modulation every 16 samples (#806, D-1106), on top of the Reverb's lines one block late (D-1103), the
  * cheaper LED and key scan (D-934) and the filter's cutoff every 4 samples (D-1105): every factory patch of the 1.14
  * bank, transport stopped and running; then the poly patches at more voices than they play (#868 step 7, the D-870 tops;
- * Hera 3 at 5 and 6 voices, #860), on the same engine. `at`: the voices a record played, by the survey's or today's name. */
+ * Hera 3 at 5 and 6 voices, #860), on the same engine; and Canvas with its envelope's linear fall (#689, format 56).
+ * `at`: the voices a record played, by the survey's or today's name. */
 const NOW: { file: string; at?: Record<string, number>; only?: string[]; skip?: string[] }[] = [
-  { file: 'docs/measurements/cpu-survey-2026-11-14-rig-modctl.json' },
-  { file: 'docs/measurements/cpu-survey-2026-11-14-rig-modctl-run.json' },
+  { file: 'docs/measurements/cpu-survey-2026-11-14-rig-modctl.json', skip: ['Canvas'] },
+  { file: 'docs/measurements/cpu-survey-2026-11-14-rig-modctl-run.json', skip: ['Canvas'] },
   ...['', '-run'].map((s) => ({ file: `docs/measurements/cpu-survey-2026-11-14-rig-step7-voices${s}.json`, at: { 'Oracle V': 5, 'Cassia 1': 5, 'Algo Four': 8, 'Expander S': 6 } })),
   ...['', '-run'].map((s) => ({ file: `docs/measurements/cpu-survey-2026-11-14-rig-hera-voices${s}.json`, at: { 'Hera 3 5': 5, 'Hera 3 6': 6 }, only: ['Hera 3'] })),
+  ...['', '-run'].map((s) => ({ file: `docs/measurements/cpu-survey-2026-11-14-rig-canvas-linear${s}.json` })),
 ];
 /** the survey of the firmware before (release-1.10 with the second core) and the commit its factory patches are from */
 const BEFORE = { file: 'docs/measurements/cpu-survey-2026-11-05-rig-merged-split.json', commit: 'e3235d64' };
