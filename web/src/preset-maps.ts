@@ -53,6 +53,20 @@ export const HAND_MAPS: HandMap[] = [
       'env#55.r3': { from: 'env#35.r3' }, 'env#103.r3': 'init',
     },
   },
+  // ---- the whole TR-909 (D-1055): the lean card's rows that are still a knob of the TR-909 keep their values: the kick's
+  // and snare's tune, the kick's attack and decay, the snare's snappy and the closed hat's decay are the same parameters.
+  // Everything else starts at Init: the three mix levels (the voices' own levels replace them; lines for them would
+  // take the FM-1's migration tables past their budget), the lean open hat's and perc voices' decays, the snare's TONE
+  // (its filter's cutoff, which sat under the snare snap Macro), TOTAL ACCENT, FLAM, SHUFFLE, SCALE and the new voices.
+  {
+    engine: '909 kit', from: '141e7773', to: 'e15440d5',
+    why: 'D-1055: the whole TR-909; the knobs the lean card shared with it keep their values',
+    rows: {
+      'osc#43.coarse': { from: 'osc#2.coarse' }, 'mixer#52.l2': { from: 'mixer#11.l2' }, 'env#46.r3': { from: 'env#5.r3' },
+      'osc#58.coarse': { from: 'osc#17.coarse' }, 'mixer#61.l1': { from: 'mixer#20.l1' }, 'env#99.r3': { from: 'env#25.r3' },
+      'filter#55.cutoff': 'init',
+    },
+  },
   // ---- the whole DRM1 MKIV (D-899): each row of the six-channel card goes to the same channel's row of the same label
   // (HI HAT is HI HAT 1); the duplicated drum and hat modules would otherwise pair with the wrong channel. The snare's NOISE
   // and REVERB were its envelopes' peaks with one VCA at 1 and are now their VCAs' gains: the same number. MULTI's PITCH 2

@@ -3922,13 +3922,16 @@ if (process.argv.includes('--panel-fixtures')) {
     writeFileSync(new URL(`pattern-${mode}.m1p`, out), encodePatch(p, true));
   }
   {
-    const p = FM1_PRESETS['909 Kit']();
+    // (a drum kit and ten LFOs, more top-level devices than ENV shows: <7PH, which keeps the lean 909 kit this fixture
+    // was first built on; the factory 909 Kit has the FM-1's 128 modules since D-1055)
+    const p = PRESETS['<7PH']();
     let target = p.modules.find((m) => m.type === 'osc')!;
     for (let i = 0; i < 10; i++) {
       const lfo = addModule(p, DEFS.lfo, 1500, i * 300);
       if (!connect(p, DEFS, { module: lfo.id, port: 'out' }, { module: target.id, port: 'p1' })) throw new Error('env-many routing');
       target = lfo;
     }
+    if (!deviceBudget(p).fits) throw new Error('env-many: past the FM-1\'s limits');
     writeFileSync(new URL('env-many.m1p', out), encodePatch(p, true));
   }
   console.log('panel fixtures generated');

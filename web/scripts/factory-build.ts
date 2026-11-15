@@ -7,7 +7,7 @@ import { addModule, connect, disconnect, emptyPatch, MAX_PARTS, validatePatch, t
 import { setKind, setSwitches, setTarget } from '../src/buttons';
 import { FACTORY } from '../src/assemblies';
 import { allModules, assembliesOf, insertAssembly, parentOf, type AssemblyDef, type AssemblyInst } from '../src/assembly';
-import { LEVEL_ROWS, LOUDNESS_TOLERANCE, cases, gainFor, levelRows, measure, peakBound, scaledRow, type Case, type LevelRow, type Loudness } from '../src/levels';
+import { LEVEL_ROWS, cases, gainFor, levelRows, measure, peakBound, scaledRow, type Case, type LevelRow, type Loudness } from '../src/levels';
 import { cardRows, formatValue } from '../src/preset-cards';
 import { deviceBudget } from '../src/patchbin';
 import { CPU_VOICE_TOP } from '../src/cpu';
@@ -248,41 +248,6 @@ export function seedFactoryPatterns(p: Patch): Patch {
   for (const a of p.assemblies ?? []) {
     const init = presetPattern(structureOf(p, a), 'Init');
     if (init) { a.preset = 'Init'; seedPresetPattern(p, a, init.id); }
-  }
-  return p;
-}
-
-export function sharedPresetLevels(p: Patch, plan: LevelPlan, reference: Patch): Patch {
-  const engine = p.assemblies!.find((a) => a.name === plan.engine)!;
-  for (const r of levelRows(p, engine)) mod(p, r.module).params[r.param] = plan.init[r.key];
-  const out = p.modules.find((m) => m.type === 'output')!;
-  const outputBefore = out.params.level;
-  const sounds = cases(p);
-  const measurements = sounds.map((c) => ({ preset: c.preset, m: measure(c.patch) }));
-  const targets = measurements.map(({ m }) => out.params.level * gainFor(m));
-  const tolerance = 10 ** (LOUDNESS_TOLERANCE / 20);
-  const lo = Math.max(0.01, ...targets.map((v) => v / tolerance));
-  const hi = Math.min(1, ...targets.map((v) => v * tolerance), ...measurements.map(({ m }) => out.params.level * HEADROOM / m.peak));
-  const lowStep = Math.ceil((lo - 1e-9) * 100) / 100;
-  const highStep = Math.floor((hi + 1e-9) * 100) / 100;
-  if (lowStep > 1) throw new Error(`${p.name}: shared ${plan.engine} levels need a different bass balance`);
-  out.params.level = Math.max(lowStep, Math.min(highStep, Math.round(targets[0] * 100) / 100));
-  sounds.forEach((c, i) => {
-    const peak = measurements[i].m.peak * out.params.level / outputBefore;
-    if (peak <= HEADROOM) return;
-    const values = Object.fromEntries(levelRows(c.patch, c.engine!).map((r) => [r.key, scaledRow(r, mod(c.patch, r.module).params[r.param], HEADROOM / peak, true)]));
-    if (c.preset === 'Init') plan.init = values;
-    else plan.presets[c.preset] = values;
-  });
-  applyLevels(plan);
-  for (const patch of [reference, p]) {
-    const a = patch.assemblies!.find((a) => a.name === plan.engine)!;
-    for (const r of levelRows(patch, a)) mod(patch, r.module).params[r.param] = plan.init[r.key];
-    for (const c of cases(patch)) {
-      const m = measure(c.patch);
-      if (m.peak > HEADROOM || Math.abs(dbOf(gainFor(m))) > LOUDNESS_TOLERANCE)
-        throw new Error(`${patch.name} / ${c.preset}: joint levels miss the loudness or peak limit`);
-    }
   }
   return p;
 }
