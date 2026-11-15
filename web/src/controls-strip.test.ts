@@ -106,11 +106,11 @@ describe('the controls strip is made from the controls table (#554, controls.ts)
     expect(v.everywhere).toEqual([]);
   });
 
-  it('a held drum step: velocity, chance and locks, with K1..K4 named after them', () => {
+  it('a held drum step: velocity, chance, condition and locks, with K1..K4 named after them', () => {
     const v = stripView(at('drum', { stepHeld: true }));
     expect(v.held).toBe('step');
-    expect(ids(v.rows)).toEqual(['held-velocity', 'held-chance-select', 'lock-pages', 'lock-rows']);
-    expect(v.knobs).toEqual(['p-lock rows', 'velocity', 'p-lock rows', 'p-lock rows']);
+    expect(ids(v.rows)).toEqual(['held-velocity', 'held-chance-select', 'held-cond', 'lock-pages', 'lock-rows']);
+    expect(v.knobs).toEqual(['p-lock rows', 'velocity', 'p-lock rows', 'trig condition']);
   });
 
   it('a held button with EVERYWHERE rows (PLAY: tempo), and one with nothing held + it (the state\'s own rows)', () => {
@@ -189,7 +189,7 @@ describe('the controls strip is made from the controls table (#554, controls.ts)
     expect(stripView(at('roll')).knobs).toBeNull();
     expect(stripView(at('drum')).knobs).toBeNull();
     expect(stripView(at('roll', { stepHeld: true })).knobs).toBeNull();
-    expect(stripView(at('drum', { stepHeld: true })).knobs).toEqual(['p-lock rows', 'velocity', 'p-lock rows', 'p-lock rows']);
+    expect(stripView(at('drum', { stepHeld: true })).knobs).toEqual(['p-lock rows', 'velocity', 'p-lock rows', 'trig condition']);
     expect(stripView(at('step')).knobs, 'step record: K4 the cursor, no step to hold').toEqual(['', '', '', 'move cursor']);
   });
 

@@ -174,6 +174,10 @@ A patch selected to ship as a default with the editor and firmware. The first bo
 
 `FALLBACK_PATCH`, one small patch compiled into the firmware (saw into VCA with an ADSR), played when a slot does not load and in safe mode.
 
+### Fill
+
+A performance control for **trig conditions**: while it is held, notes with the FILL condition play and notes with NOT FILL rest. On the FM-1 it is SEQ held, then FX held; in the editor, a **Steps track** card's fill button ([D-830](steps.md#D-830)).
+
 ### Fixed button
 
 A panel button whose job the firmware sets (GLO, SEL, ENV): a patch cannot give it a Toggle or Page role.
@@ -587,6 +591,10 @@ The unnumbered tutorial chapter for experienced users, "Overview for advanced us
 ### Trail
 
 The list (at most 8) of screens a button press has opened; a HOME tap on one of them goes back one. On a device page a HOME tap moves between the pages instead ([D-243](device-ui.md#D-243)).
+
+### Trig condition
+
+A rule on one note of a **Steps track** that says on which passes of its pattern it plays: FILL, PRE (the last rule its track judged held), NEI (the same for the track before it), 1ST (the first pass), A:B (pass A of every B), or the opposite of one of them. It takes the place of the note's chance ([D-830](steps.md#D-830)).
 
 ### Unplugged
 

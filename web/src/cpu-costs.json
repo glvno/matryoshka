@@ -36912,7 +36912,7 @@
    ]
   },
   "steps": {
-   "run": 3126,
+   "run": 3133,
    "cv": 271,
    "dims": [
     {
@@ -36923,10 +36923,10 @@
     }
    ],
    "grid": [
-    3126,
-    15003,
-    15731,
-    16243
+    3133,
+    15004,
+    15732,
+    16244
    ],
    "thru": 14
   },
@@ -43168,84 +43168,92 @@
  },
  "checks": [
   {
-   "name": "Monolith D",
-   "cycles": 231419
+   "name": "Oracle V",
+   "cycles": 713584
   },
   {
-   "name": "Oracle V",
-   "cycles": 713580
+   "name": "Monolith D",
+   "cycles": 231426
   },
   {
    "name": "Silver Box",
-   "cycles": 164718
+   "cycles": 164722
   },
   {
    "name": "Hera 6",
-   "cycles": 681501
+   "cycles": 681505
   },
   {
    "name": "Sallen 20",
-   "cycles": 285162
+   "cycles": 285166
   },
   {
    "name": "Expander S",
-   "cycles": 569288
+   "cycles": 569292
   },
   {
    "name": "Algo Four",
-   "cycles": 791303
+   "cycles": 791307
   },
   {
    "name": "Canvas",
-   "cycles": 454806
+   "cycles": 454810
   },
   {
    "name": "Wanderer",
-   "cycles": 279662
+   "cycles": 279666
   },
   {
    "name": "Briefcase 3",
-   "cycles": 490569
+   "cycles": 490588
   },
   {
    "name": "Io 4",
-   "cycles": 562972
+   "cycles": 562976
   },
   {
    "name": "Vernon 100",
-   "cycles": 333200
+   "cycles": 333204
   },
   {
    "name": "8 Lire",
-   "cycles": 352192
+   "cycles": 352196
   },
   {
    "name": "Elvira 2",
-   "cycles": 189765
+   "cycles": 189769
   },
   {
    "name": "Scrounge",
-   "cycles": 547369
+   "cycles": 546868
   },
   {
    "name": "Meridian 8",
-   "cycles": 604960
+   "cycles": 604964
+  },
+  {
+   "name": "Perun 4",
+   "cycles": 287793
   },
   {
    "name": "808 Kit",
-   "cycles": 684893
+   "cycles": 684897
   },
   {
    "name": "909 Kit",
-   "cycles": 705701
+   "cycles": 705705
+  },
+  {
+   "name": "Spokes 6",
+   "cycles": 347232
   },
   {
    "name": "Cassia 1",
-   "cycles": 734452
+   "cycles": 734456
   },
   {
    "name": "Verona Drum 1",
-   "cycles": 595662
+   "cycles": 584492
   },
   {
    "name": "Shush 101",
@@ -43537,7 +43545,7 @@
   },
   {
    "name": "assembly Verona Drum 1",
-   "cycles": 578918
+   "cycles": 568076
   },
   {
    "name": "assembly vibrato",

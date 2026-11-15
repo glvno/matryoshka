@@ -193,6 +193,8 @@ export interface EditorEvents {
   /** song k's entries changed (0-based k) */
   onSong?(k: number, entries: SongEntry[]): void;
   onMute?(id: number, on: boolean): void;
+  /** FILL held or let go (#674, a Steps card's fill button) */
+  onFill?(on: boolean): void;
   /** the armed Steps track changed (#134; null: none) and what it plays (poly.ts trackTargets), or its cables changed */
   /** the armed set changed (#190): the armed devices, and what each plays by name (a Steps track: what it drives) */
   /** the armed set changed: the devices armed, what they play, and the devices armed with them (#418: the key sources in front) */
@@ -1543,6 +1545,7 @@ export class Editor {
         this.ev.onStructure(this.patch);
       },
       mute: (on) => this.ev.onMute?.(m.id, on),
+      fill: (on) => this.ev.onFill?.(on),
       arm: (on) => this.toggleArm(`m${m.id}`, on),
       armed: () => this.armedSet.has(`m${m.id}`),
       rec: (on) => {

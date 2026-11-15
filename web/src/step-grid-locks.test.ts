@@ -16,7 +16,7 @@ it('a locked step shows a dot; its list edits, removes and adds locks', () => {
   ];
   const sent: (StepLock[] | undefined)[] = [];
   const g = stepGrid(m, 0, {
-    notes: () => {}, begin: () => () => {}, name: () => {}, mute: () => {}, arm: () => {}, armed: () => false, rec: () => {}, recording: () => false, roll: () => {},
+    notes: () => {}, begin: () => () => {}, name: () => {}, mute: () => {}, fill: () => {}, arm: () => {}, armed: () => false, rec: () => {}, recording: () => false, roll: () => {},
     lockRows: () => rows,
     locks: (l) => { sent.push(l); if (l) m.locks = l; else delete m.locks; },
   });

@@ -31,6 +31,8 @@ export type HostMsg =
   | { t: 'song'; n: number }
   | { t: 'songs'; songs: SongEntry[][] }
   | { t: 'mute'; id: number; on: boolean }
+  /** FILL held or let go (#674: the notes with a FILL trig condition play while it is held) */
+  | { t: 'fill'; on: boolean }
   /** the armed devices (#190, `m<id>` / `a<id>`): only they hear Main's keys; none: the cables decide */
   | { t: 'arm'; devices: string[] }
   /** live recording on a Steps track (#135) */
@@ -121,6 +123,7 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'song') this.engine.setSong(m.n);
         else if (m.t === 'songs') this.engine.setSongs(m.songs);
         else if (m.t === 'mute') this.engine.setMute(m.id, m.on);
+        else if (m.t === 'fill') this.engine.setFill(m.on);
         else if (m.t === 'arm') this.engine.arm(m.devices);
         else if (m.t === 'rec') this.engine.setRec(m.id, m.on);
         else if (m.t === 'thru') this.engine.thru(m.id, m.note, m.vel);
