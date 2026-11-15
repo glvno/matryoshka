@@ -2022,6 +2022,8 @@ static void song_sync(void)
  * SAVE: always as a new entry, a copy), or its entries loaded into the selected pattern one by one (SEL held + PRESET).
  * SEL's release then opens nothing (as after the pen) */
 static uint16_t seq_pl_at;              /* the stored entry the last load took (pl_step goes on from it), 0 none */
+static const char *const SEQ_PL_SAVED[] = { "PATTERN STORE FULL", "PATTERN NOT SAVED", "PATTERN SAVED: ", "SAVED AS NEW: " };
+static const char *const SEQ_PL_LOADED[] = { "PATCH FULL", "NOT LOADED", "", "LOCKS LEFT OUT: OTHER LAYOUT" };   /* (pl_load_entry + 2) */
 static int seq_pl_pattern(void)
 {
     seq_pen_ms = fm1_ms | 1u;
@@ -2046,7 +2048,7 @@ static void seq_pattern_save(int as_new)
         q--;
     put(put(q, " P"), num)[0] = 0;
     rc = pl_save((uint32_t)p, as_new, name, got);
-    q = put(m, rc == 0 ? "PATTERN SAVED: " : rc == 1 ? "SAVED AS NEW: " : rc == -2 ? "PATTERN STORE FULL" : pt_on ? "PATTERN NOT SAVED" : "NO PATTERN STORE");
+    q = put(m, pt_on ? SEQ_PL_SAVED[rc + 2] : "NO PATTERN STORE");   /* (pl_save + 2) */
     if (rc >= 0)
         q = put(q, got);
     q[0] = 0;
@@ -2067,7 +2069,7 @@ static void seq_pattern_load(int32_t d)
     seq_held = -1;
     fmt_int(num, p + 1);
     q = rc == 1 ? m : put(put(put(m, "P"), num), ": ");
-    q = put(q, rc == 1 ? "LOCKS LEFT OUT: OTHER LAYOUT" : rc == -2 ? "PATCH FULL" : rc < 0 ? "NOT LOADED" : got);
+    q = put(q, rc ? SEQ_PL_LOADED[rc + 2] : got);
     q[0] = 0;
     ui_msg(m, 1500);
     ui_dirty = ui_dirty ? ui_dirty : 1;          /* (the cells of the pattern loaded) */

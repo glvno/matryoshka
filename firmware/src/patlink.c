@@ -418,7 +418,7 @@ static int pl_save(uint32_t p, int as_new, const char *name, char *got)
 static int pl_load_entry(uint32_t p, uint32_t id, char *got)
 {
     pt_info_t in;
-    uint32_t t, i;
+    uint32_t t, i, m;
     int rc;
     if (pl_read(id, m1_up, sizeof m1_up, &in) || (rc = pl_apply(p, m1_up, in.len)) == -1)
         return -1;
@@ -431,9 +431,9 @@ static int pl_load_entry(uint32_t p, uint32_t id, char *got)
     }
     pl_rewrite();
     for (t = 0; t < (uint32_t)eng_steps_count(); t++)   /* (the editor follows the tracks that have it) */
-        if (eng_pattern_has((uint32_t)eng_steps_module(t), p)) {
-            m1_track_pattern_now((uint32_t)eng_steps_module(t), p);
-            m1_locks_now((uint32_t)eng_steps_module(t), p);
+        if (eng_pattern_has(m = (uint32_t)eng_steps_module(t), p)) {
+            m1_track_pattern_now(m, p);
+            m1_locks_now(m, p);
         }
     m1_pat_link_now(p, pl_link(p), pl_hash[p]);
     return rc;

@@ -5264,15 +5264,16 @@ int eng_locks_step(uint32_t module, uint32_t p, uint32_t k)
         n += E.lk[i].trk == t && E.lk[i].pat == p && E.lk[i].at == k;
     return (int)n;
 }
-/* rows left without a lock go, the rows after each move down */
-static void lock_rows_tidy(void)
+/* lock i goes; when no lock is left on its row, the row goes and the rows after it move down */
+static void lock_drop(uint32_t i)
 {
-    uint32_t r, i;
-    for (r = E.nlt; r-- > 0;) {
-        for (i = 0; i < E.nlk && E.lk[i].row != r; i++)
-            ;
-        if (i < E.nlk)
-            continue;
+    uint32_t r = E.lk[i].row;
+    for (; i + 1u < E.nlk; i++)
+        E.lk[i] = E.lk[i + 1u];
+    E.nlk--;
+    for (i = 0; i < E.nlk && E.lk[i].row != r; i++)
+        ;
+    if (i == E.nlk) {
         for (i = r; i + 1u < E.nlt; i++)
             E.lt[i] = E.lt[i + 1u];
         E.nlt--;
@@ -5283,14 +5284,12 @@ static void lock_rows_tidy(void)
 }
 void eng_locks_clear(uint32_t p)
 {
-    uint32_t i, k;
+    uint32_t i;
     if (!E.loaded)
         return;
-    for (i = k = 0; i < E.nlk; i++)
-        if (E.lk[i].pat != p)
-            E.lk[k++] = E.lk[i];
-    E.nlk = (uint16_t)k;
-    lock_rows_tidy();
+    for (i = E.nlk; i-- > 0;)
+        if (E.lk[i].pat == p)
+            lock_drop(i);
     for (i = 0; i < E.ntrk; i++)
         E.trk_lkey[i] = -2;
 }
@@ -5306,10 +5305,7 @@ int eng_lock_set(uint32_t module, uint32_t p, uint32_t k, uint32_t m, uint32_t j
     if (!on) {
         if (i == E.nlk)
             return 0;
-        for (; i + 1u < E.nlk; i++)
-            E.lk[i] = E.lk[i + 1u];
-        E.nlk--;
-        lock_rows_tidy();                        /* (no lock on the row is left: it goes) */
+        lock_drop(i);
         return 0;
     }
     if (i < E.nlk) {
