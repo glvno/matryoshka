@@ -273,6 +273,7 @@ The assembly browser and the palette put the engines on an **Engines** shelf, fi
 ## Unison
 
 - `osc` parameters `unison` (1..5) and `detune` (0..100 cents, default 10): in the plain path (no pm, no feedback) the oscillator runs n phases, voice j detuned by detune·(2j/(n−1) − 1) cents (−detune .. +detune, symmetric), and outputs their sum / n (the peak stays at `level`; detuned copies beat). A sync edge restarts every phase. The FM path ignores unison (one voice). C: the extra phases are `inst_t.s.osc.ph[4]` (the union is sized by the delay's record, so nothing grew), one `exp2_scale` per voice per sample, sum × 1/n from a table. Binary patch format 11 (the oscillator record has 9 parameters). Golden kit `unison` (5 + 2 voices): 1.3 % rel rms (the detuned saw edges fall on different samples in float and Q16, as in the other saw kits).
+- `osc` `phase` (format 58, [D-786](ledger/modules.md#D-786)): where a sync edge restarts the cycle, 0..360 degrees, every unison copy alike, in the plain, unison, analog and FM paths. C: `osc_ph0` turns the degrees (Q16) into a u32 phase as `m_lfo`'s `phase` does (x 11930465 >> 16); 0 restarts at 0 as before, bit for bit. Golden kits `osc-phase` (plain sine, unison saw) and `osc-phase-fm` (FM sine with a synced modulator, analog saw).
 
 ## Frequency shifter
 

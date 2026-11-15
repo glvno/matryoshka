@@ -5799,6 +5799,13 @@ HOT const esig_t *osc_pm(const node_t *nd, inst_t *it, uint32_t n, int32_t *idx)
     return pm_c;
 }
 
+/* Where a rising edge on sync restarts every copy's phase (#691): the `phase` parameter, degrees Q16 -> u32 turns
+ * (x 2^16 / 360, as m_lfo's); 0, the cycle's start. */
+static inline uint32_t osc_ph0(const inst_t *it)
+{
+    return (uint32_t)(((uint64_t)(uint32_t)EF(it, OSC_P_PHASE) * 11930465u) >> 16);
+}
+
 /* The plain oscillator with the analog shape (#673): any copy count, the sync input, a loop per wave. */
 static __attribute__((noinline)) void osc_ana(const node_t *nd, inst_t *it, uint32_t n, int32_t kind, int32_t base, int32_t lvl,
                                               int32_t nu, const int32_t *doct, const int32_t *wq, const ana_t *a)
@@ -5808,6 +5815,7 @@ static __attribute__((noinline)) void osc_ana(const node_t *nd, inst_t *it, uint
     uint32_t ph[5], dts[5], (*rc)[2] = it->s.osc.rc, i;
     inc_ramp_t rp[5];
     int32_t s1 = it->s.osc.s1, j, synced = (nd->conn & (1u << OSC_I_SYNC)) != 0;
+    uint32_t ph0 = osc_ph0(it);
     ph[0] = it->s.osc.phase;
     for (j = 1; j < nu; j++)
         ph[j] = it->s.osc.ph[j - 1];
@@ -5823,7 +5831,7 @@ static __attribute__((noinline)) void osc_ana(const node_t *nd, inst_t *it, uint
                 s1 = sync[i];                                                           \
                 if (rst)                                                                \
                     for (j = 0; j < nu; j++)                                            \
-                        ph[j] = 0;                                                      \
+                        ph[j] = ph0;                                                    \
             }
 #define ANA_ONE(W)                                                                      \
         {                                                                               \
@@ -5834,7 +5842,7 @@ static __attribute__((noinline)) void osc_ana(const node_t *nd, inst_t *it, uint
                     int rst = sync[i] >= 32768 && s1 < 32768;                           \
                     s1 = sync[i];                                                       \
                     if (rst)                                                            \
-                        p0 = 0;                                                         \
+                        p0 = ph0;                                                       \
                     p0 += dt_;                                                          \
                     out[i] = mul16(W(p0, dt_, r0), lvl);                                \
                 }                                                                       \
@@ -5985,7 +5993,7 @@ static __attribute__((noinline)) void m_osc_ana(const node_t *nd, inst_t *it, ui
         uint32_t dt = dt_ >> 1, sub;
         int32_t pm_now = idx > 0 ? pm[i] : 0, pm_mid = (pm1 + pm_now) >> 1, ya = 0;
         if (sync[i] >= 32768 && s1 < 32768)
-            phase = 0;
+            phase = osc_ph0(it);
         s1 = sync[i];
         pm1 = pm_now;
         for (sub = 0; sub < 2; sub++) {
@@ -6024,6 +6032,7 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
     int32_t kind = round_q16(EF(it, OSC_P_WAVE)), lvl = EF(it, OSC_P_LEVEL), fb = EF(it, OSC_P_FB);
     int32_t idx;
     int32_t y1, y2, pm1, xb, *ap = it->s.osc.ap, s1 = it->s.osc.s1;
+    uint32_t ph0 = osc_ph0(it);                                            /* where sync restarts the phases (#691) */
     uint32_t dt_fm = 0;
     inc_ramp_t rpf;
     pm = osc_pm(nd, it, n, &idx);
@@ -6065,7 +6074,7 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
                 int rst = sync[i] >= 32768 && s1 < 32768;                               \
                 s1 = sync[i];                                                           \
                 if (rst)                                                                \
-                    phase = 0;                                                          \
+                    phase = ph0;                                                        \
                 phase += dt;                                                            \
                 out[i] = mul16((Y), lvl);                                               \
             }
@@ -6122,9 +6131,9 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
                 int32_t y;                                                              \
                 s1 = sync[i];                                                         \
                 if (rst) {                                                              \
-                    phase = 0;                                                          \
+                    phase = ph0;                                                        \
                     for (j = 1; j < nu; j++)                                            \
-                        lph[j - 1] = 0;                                                 \
+                        lph[j - 1] = ph0;                                               \
                 }                                                                       \
                 phase += dts[0];                                                        \
                 y = mul16(W(phase, dts[0], rc[0]), wq[0]);                              \
@@ -6191,7 +6200,7 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
         uint32_t dt = dt_ >> 1, sub;
         int32_t pm_now = idx > 0 ? pm[i] : 0, pm_mid = (pm1 + pm_now) >> 1, ya = 0;
         if (sync[i] >= 32768 && s1 < 32768)
-            phase = 0;
+            phase = ph0;
         s1 = sync[i];
         pm1 = pm_now;
         for (sub = 0; sub < 2; sub++) {
