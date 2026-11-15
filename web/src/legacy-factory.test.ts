@@ -129,12 +129,12 @@ int main(void) {
 
 // RELEASED_SETS retains old name membership for bank_add, without changing saved slot names or bytes.
 describe('released factory sets (a new factory patch after an update)', () => {
-  it.each(['HERA 6', 'HERA 5', 'HERA 4'])('treats %s as the same released lineage when Hera 3 becomes the default', predecessor => {
+  it.each(['HERA 3', 'HERA 5', 'HERA 4'])('treats %s as the same released lineage when Hera 6 becomes the default', predecessor => {
     const savedNames = [predecessor, 'ORACLE V'];
-    expect(['HERA 3', 'ORACLE V', 'VERONA DRUM 1'].filter(name => !releasedFactoryHas(savedNames, name))).toEqual(['VERONA DRUM 1']);
+    expect(['HERA 6', 'ORACLE V', 'VERONA DRUM 1'].filter(name => !releasedFactoryHas(savedNames, name))).toEqual(['VERONA DRUM 1']);
     expect(savedNames).toEqual([predecessor, 'ORACLE V']);
-    expect(releasedFactoryHas(['HERA 3'], 'HERA 4')).toBe(true);
-    expect(releasedFactoryHas(['HERA 3'], 'EXPANDER S')).toBe(false);
+    expect(releasedFactoryHas(['HERA 6'], 'HERA 4')).toBe(true);
+    expect(releasedFactoryHas(['HERA 6'], 'EXPANDER S')).toBe(false);
   });
   const rows = [...now.matchAll(/\{0x([0-9a-f]{6})u, 0x([0-9a-f]+)ull\}/g)].map((m) => ({ set: parseInt(m[1], 16), has: BigInt('0x' + m[2]) }));
   const tags = (() => {

@@ -68,20 +68,20 @@ it('keeps archived name-only patches in a populated offline bank through library
   const root = document.createElement('div');
   const pane = buildPatchesSection(root, fakeDevice(false), { remove: () => {} });
   const fm1 = cols(root)[1];
-  expect(rows(fm1)).toEqual(['Hera 4', 'Hera 3', 'Oracle V XL', 'Monolith D']);
+  expect(rows(fm1)).toEqual(['Hera 4', 'Hera 6', 'Oracle V XL', 'Monolith D']);
   pane.refresh();
-  expect(rows(fm1)).toEqual(['Hera 4', 'Hera 3', 'Oracle V XL', 'Monolith D']);
+  expect(rows(fm1)).toEqual(['Hera 4', 'Hera 6', 'Oracle V XL', 'Monolith D']);
   expect(localStorage.getItem('matryoshka.bank')).toBe(stored);
   button(fm1.querySelectorAll('.bank-row')[0], '▼').click();
   pane.refresh();
   expect(bankPatches()).toEqual([
-    { name: 'Hera 3', patch: FM1_PRESETS['Hera 3']() },
+    { name: 'Hera 6', patch: FM1_PRESETS['Hera 6']() },
     { name: 'Hera 4', patch: relocatedPatches['Hera 4']() },
     { name: 'Oracle V XL', patch: relocatedPatches['Oracle V XL']() },
     { name: mine.name, patch: mine },
   ]);
   expect(JSON.parse(localStorage.getItem('matryoshka.bank')!)).toEqual([
-    { name: 'Hera 3' }, { name: 'Hera 4' }, { name: 'Oracle V XL' }, { name: mine.name, patch: mine },
+    { name: 'Hera 6' }, { name: 'Hera 4' }, { name: 'Oracle V XL' }, { name: mine.name, patch: mine },
   ]);
 });
 

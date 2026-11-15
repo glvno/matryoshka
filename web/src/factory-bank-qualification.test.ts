@@ -14,7 +14,7 @@ function fixture(sourceName = 'Algo Four', configurationId = 'algo-four-v4-drive
     id, nativeSha256: NATIVE, targetSeconds: factoryQualificationTargetSeconds(configurationId, id),
   }));
   const identity = {
-    sourceName, bankName: sourceName === 'Hera 4' ? 'Hera 3' : sourceName, configurationId,
+    sourceName, bankName: sourceName === 'Hera 4' ? 'Hera 6' : sourceName, configurationId,
     defaultPatchSha256: PATCH, defaultNativeSha256: NATIVE, harmonizerPresent, addedDrivePresent, phases,
   };
   const context: FactoryQualificationContext = {
@@ -184,8 +184,8 @@ describe('exact final-profile audition qualification', () => {
   });
 
   it('keeps renamed bank identity separate from the source profile key', () => {
-    const { context, evidence } = fixture('Hera 4', 'hera-4-v3-none', true, false);
-    expect(validateFactoryQualification(evidence, context).cases[0]).toMatchObject({ sourceName: 'Hera 4', bankName: 'Hera 3' });
+    const { context, evidence } = fixture('Hera 4', 'hera-4-v6-none', true, false);
+    expect(validateFactoryQualification(evidence, context).cases[0]).toMatchObject({ sourceName: 'Hera 4', bankName: 'Hera 6' });
     evidence.cases[0].bankName = 'Hera 4';
     expect(() => validateFactoryQualification(evidence, context)).toThrow('bankName');
   });

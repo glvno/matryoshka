@@ -128,7 +128,7 @@ export function chipOfEntry(c: CommunityPatch, allocation: BufferAllocation = 0)
 /** Hera's full version follows the selected name, falling back to the original name in archive-only lists. */
 export const xlBase = (name: string, available?: ReadonlySet<string>): string | null => {
   if (name.trim() === 'Hera 6 XL') {
-    return available && !available.has('Hera 3') && available.has('Hera 4') ? 'Hera 4' : 'Hera 3';
+    return available && !available.has('Hera 6') && available.has('Hera 4') ? 'Hera 4' : 'Hera 6';
   }
   return /^(.*\S) XL$/.exec(name.trim())?.[1] ?? null;
 };

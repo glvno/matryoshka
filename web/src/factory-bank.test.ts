@@ -63,7 +63,7 @@ describe('owner-selected factory defaults', () => {
     expect(FM1_PRESETS['Hera 4']).toBeUndefined();
     expect(PRESETS['Hera 4']).toBeUndefined();
     expect(factoryShape('Hera 4')).toBeUndefined();
-    expect(factoryShape('Hera 3')).toBe(shapeOf(FM1_PRESETS['Hera 3']()));
+    expect(factoryShape('Hera 6')).toBe(shapeOf(FM1_PRESETS['Hera 6']()));
   });
 
   it('uses the selected graphs unchanged in browser defaults and generated numeric files', () => {

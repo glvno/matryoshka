@@ -18,7 +18,7 @@ export interface LofiPresetDesign {
 // 8 = 2.00, 25 = 8.00; detune index 3 = neutral. Use the row's choice name when passing
 // these values through parseValue, whose numeric-looking names otherwise take precedence.
 // Existing voices, algorithm topology, bounded DSP quality and intrinsic effect paths remain.
-// Hera 4 is the canonical definition (selected bank name Hera 3); it has no added FX rack.
+// Hera 4 is the canonical definition (selected bank name Hera 6); it has no added FX rack.
 // Levels are conservative design starting points, not calibrated loudness or listening approval.
 export const LOFI_PRESET_DESIGNS: Record<string, LofiPresetDesign[]> = {
   'Algo Four': [
@@ -167,7 +167,7 @@ export const LOFI_PRESET_DESIGNS: Record<string, LofiPresetDesign[]> = {
       fx: {
         reason: 'No added rack exists on Hera. Its retained native chorus II and newly slow low-depth DCO/PWM motion supply the wavering organ character without fabricated external space.',
       },
-      role: 'Dark wavering organ for three-note held accompaniment: much less sub, a 1.7 kHz low-pass and slow pitch/pulse movement distinguish it from the bright steady Organ. Its short release is nominally 0.18 s because Hera scales decay/release rows by 2.4.',
+      role: 'Dark wavering organ for held chord accompaniment: much less sub, a 1.7 kHz low-pass and slow pitch/pulse movement distinguish it from the bright steady Organ. Its short release is nominally 0.18 s because Hera scales decay/release rows by 2.4.',
       references: ['Beach House', 'Broadcast', 'Stereolab', 'John Maus'],
     },
   ],
