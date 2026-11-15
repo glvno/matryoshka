@@ -40,7 +40,7 @@ Four operators in the Yamaha DX100's eight algorithms, its 64 ratios and its det
 |---|---|
 | Init | Dry two-stack FM starting point (algorithm 5). |
 | Solid Bass | Picked FM bass with a fast bite, dry. |
-| Lately Bass | Growling house bass from operator 4 feedback, two voices, dry. |
+| Lately Bass | Growling house bass from operator 4 feedback, two voices, with a light chorus and a small room. |
 | E Piano | Classic DX tine piano with a held body and a close room. |
 | Tubular Bell | Long inharmonic bell with echo and hall. |
 | Brass Stab | Short brass hits from two swelling stacks. |
