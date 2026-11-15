@@ -22,17 +22,18 @@ import { deviceView } from '../src/poly';
 const ROOT = new URL('../../', import.meta.url).pathname;
 /** The build with modulation every 16 samples (#806, D-1106), on top of the Reverb's lines one block late (D-1103), the
  * cheaper LED and key scan (D-934) and the filter's cutoff every 4 samples (D-1105): every factory patch of the 1.14
- * bank, transport stopped and running; then the poly patches at more voices than they play (#868 step 7, the D-870 tops),
- * on the same engine. */
+ * bank, transport stopped and running; then the poly patches at more voices than they play (#868 step 7, the D-870 tops;
+ * Hera 3 at 5 and 6 voices, #860), on the same engine. `at`: the voices a record played, by the survey's or today's name. */
 const NOW: { file: string; at?: Record<string, number>; only?: string[]; skip?: string[] }[] = [
   { file: 'docs/measurements/cpu-survey-2026-11-14-rig-modctl.json' },
   { file: 'docs/measurements/cpu-survey-2026-11-14-rig-modctl-run.json' },
   ...['', '-run'].map((s) => ({ file: `docs/measurements/cpu-survey-2026-11-14-rig-step7-voices${s}.json`, at: { 'Oracle V': 5, 'Cassia 1': 5, 'Algo Four': 8, 'Expander S': 6 } })),
+  ...['', '-run'].map((s) => ({ file: `docs/measurements/cpu-survey-2026-11-14-rig-hera-voices${s}.json`, at: { 'Hera 3 5': 5, 'Hera 3 6': 6 }, only: ['Hera 3'] })),
 ];
 /** the survey of the firmware before (release-1.10 with the second core) and the commit its factory patches are from */
 const BEFORE = { file: 'docs/measurements/cpu-survey-2026-11-05-rig-merged-split.json', commit: 'e3235d64' };
 /** factory patches renamed since a survey, or measured under another name (a voice count after it): the survey's name, today's */
-const RENAMED: Record<string, string> = { 'Hera 5': 'Hera 4', 'Oracle V 5': 'Oracle V', 'Cassia 1 5': 'Cassia 1', 'Algo Four 8': 'Algo Four', 'Expander S 6': 'Expander S' };
+const RENAMED: Record<string, string> = { 'Hera 5': 'Hera 4', 'Oracle V 5': 'Oracle V', 'Cassia 1 5': 'Cassia 1', 'Algo Four 8': 'Algo Four', 'Expander S 6': 'Expander S', 'Hera 3 5': 'Hera 3', 'Hera 3 6': 'Hera 3' };
 /** the scale before (2026-10-20, cpu-costs.ts SURVEY then; the second core's idle cost of 2026-11-05) */
 const BASE = { cyclesPerUs: 233.4, fixedUs: 23, idleUs: 24 };
 
@@ -57,7 +58,7 @@ function targets(files: { file: string; at?: Record<string, number>; only?: stri
     for (const r of read(f.file)) {
       const name = RENAMED[r.name] ?? r.name;
       if ((f.only && !f.only.includes(name)) || f.skip?.includes(name)) continue;
-      const n = f.at?.[name] ?? voices(name);
+      const n = f.at?.[r.name] ?? f.at?.[name] ?? voices(name);
       if (n === undefined) continue;
       for (const ph of PHASES) {
         const s = r[`${ph}_samples`] as number[] | undefined;
@@ -121,24 +122,49 @@ const a = frozen ? BASE.cyclesPerUs / CPU.cyclesPerUs : (N * sxy - sx * sy) / (N
 const scaled: CpuTable = frozen ? { ...CPU, rig: undefined }
   : { ...base, cyclesPerUs: Math.round((10 * BASE.cyclesPerUs) / a) / 10, fixedUs: Math.round(b + a * BASE.fixedUs), cores: { ...base.cores!, idleUs: Math.round(a * BASE.idleUs) } };
 
-// each engine's factor: the most any of its patch's targets needs (bisection on the estimate, which grows with it)
-const engines: Record<string, number> = {};
+// each engine's factor: the most any of its patch's targets needs (bisection on the estimate, which grows with it). An
+// engine measured at two or more voice counts also gets a factor for its modules inside a poly group (CpuTable.rig.voices):
+// the pair that reads at least the rig at every count measured, with the least over-read summed over them (the single
+// factor, fitted at the voices a patch plays, over-read its higher counts: Hera 3 at 6 voices 94 % against 84 %)
+const engines: Record<string, number> = {}, voices: Record<string, number> = {};
+const tableWith = (e: string, k: number, kv?: number): CpuTable => ({ ...scaled, rig: { engines: { [e]: k }, voices: kv === undefined ? undefined : { [e]: kv }, survey: '' } });
+/** the least factor (to 0.01) with which `reads(k)` holds: the estimate grows with it */
+const least = (reads: (k: number) => boolean): number => {
+  let lo = 0.3, hi = 3;
+  for (let i = 0; i < 24; i++) {
+    const k = (lo + hi) / 2;
+    if (reads(k)) hi = k;
+    else lo = k;
+  }
+  return Math.ceil(hi * 100) / 100;
+};
+const byEngine = new Map<string, typeof pts>();
 for (const pt of pts) {
   const e = engineOf(pt.patch);
-  if (!e) continue;
-  let lo = 0.3, hi = 3;
-  for (let i = 0; i < 40; i++) {
-    const k = (lo + hi) / 2;
-    if (cpuEstimate(pt.patch, { ...scaled, rig: { engines: { [e]: k }, survey: '' } }).us < pt.us) lo = k;
-    else hi = k;
-  }
-  engines[e] = Math.max(engines[e] ?? 0, Math.ceil(hi * 100) / 100);
+  if (e) byEngine.set(e, [...(byEngine.get(e) ?? []), pt]);
 }
-const fitted: CpuTable = { ...scaled, rig: { engines, survey: '' } };
+for (const [e, list] of byEngine) {
+  const estimate = (pt: (typeof pts)[number], t: CpuTable): number => cpuEstimate(pt.patch, t).us;
+  if (new Set(list.map((pt) => pt.v)).size < 2) {
+    engines[e] = Math.max(...list.map((pt) => least((k) => estimate(pt, tableWith(e, k)) >= pt.us)));
+    continue;
+  }
+  let best: { ks: number; kv: number; over: number } | undefined;
+  for (let ks = 0.3; ks <= 1.5 + 1e-9; ks += 0.02) {   // (capped: a shared factor past 1.5 bought a flatter slope than the counts measured support)
+    const k = Math.round(ks * 100) / 100;
+    const kv = Math.max(...list.map((pt) => least((v) => estimate(pt, tableWith(e, k, v)) >= pt.us)));
+    const over = list.reduce((s, pt) => s + estimate(pt, tableWith(e, k, kv)) - pt.us, 0);
+    if (!best || over < best.over) best = { ks: k, kv, over };
+  }
+  engines[e] = best!.ks;
+  voices[e] = best!.kv;
+}
+const fitted: CpuTable = { ...scaled, rig: { engines, voices, survey: '' } };
 
 console.log(`rise of the unchanged patches since ${BEFORE.file}: x ${rise.toFixed(3)} (${rises.length} patches)`);
 console.log(`scale: est = ${a.toFixed(3)} x before + ${b.toFixed(0)} us -> cyclesPerUs ${scaled.cyclesPerUs}, fixedUs ${scaled.fixedUs}, idleUs ${scaled.cores!.idleUs}`);
 console.log(`engines: ${JSON.stringify(Object.fromEntries(Object.entries(engines).sort()))}`);
+console.log(`voices: ${JSON.stringify(Object.fromEntries(Object.entries(voices).sort()))}`);
 console.log('\n| patch | voices | rig | before | after |\n|---|---:|---:|---:|---:|');
 const pct = (us: number): string => `${((100 * us) / CPU.blockUs).toFixed(1)} %`;
 for (const pt of pts.sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : x.v - y.v)))

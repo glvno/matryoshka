@@ -105,8 +105,10 @@ export interface CpuTable {
   calibration: Record<string, number | string>;
   /** the test rig's survey of the factory patches (scripts/cpu-costs.ts RIG): per factory engine (a top-level assembly of
    * that name), the factor on its modules' cycles that makes the estimate read what the rig measured for its factory patch
-   * (its steady peak; the scale and the fixed time per block are fitted on every patch together) */
-  rig?: { engines: Record<string, number>; survey: string };
+   * (its steady peak; the scale and the fixed time per block are fitted on every patch together). `voices`: for an engine
+   * the rig measured at several voice counts, the factor on its modules inside a poly group instead (the rest keep
+   * `engines`'), so the estimate follows the rig's slope as voices are added */
+  rig?: { engines: Record<string, number>; voices?: Record<string, number>; survey: string };
 }
 
 export const CPU: CpuTable = TABLE as CpuTable;
@@ -267,11 +269,12 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
   groups.forEach((g, i) => g.modules.forEach((id) => (groupOf.set(id, i), copies.set(id, g.cfg.parts))));
   const ninst = (id: number): number => copies.get(id) ?? 1;
   const morph = hasMorph(p);
-  // the rig's factor of each module of a factory engine (CpuTable.rig), by its id (deviceView keeps the source's ids)
+  // the rig's factor of each module of a factory engine (CpuTable.rig), by its id (deviceView keeps the source's ids); a
+  // module inside a poly group takes the engine's voice factor where the rig measured it at several voice counts
   const factor = new Map<number, number>();
   for (const a of assembliesOf(source)) {
-    const k = table.rig?.engines[a.name];
-    if (k !== undefined && !parentOf(source, a.id)) for (const id of allModules(source, a)) factor.set(id, k);
+    const k = table.rig?.engines[a.name], kv = table.rig?.voices?.[a.name];
+    if (k !== undefined && !parentOf(source, a.id)) for (const id of allModules(source, a)) factor.set(id, kv !== undefined && groupOf.has(id) ? kv : k);
   }
   let total = table.block, split = 0, counted = table.block;
   const splitGroups = new Set<number>();
