@@ -25,6 +25,7 @@ import { addModule, connect, emptyPatch, type Patch } from '../src/patch';
 import { delayBytes, encodePatch, linePlace } from '../src/patchbin';
 import { EXAMPLE_PRESETS } from '../src/presets';
 import { withParts } from '../src/test-poly';
+import { presetsHPatches } from './factory-lz';
 
 const out = new URL('../../build/emu/', import.meta.url);
 mkdirSync(out, { recursive: true });
@@ -138,29 +139,23 @@ for (const [file, p] of [
   console.log(`${file}: CPU estimate ${Math.round(cpuEstimate(p).use * 100)} %`);
 }
 
-/** the bytes of every factory patch in a presets.h, by name */
-function factoryBytes(src: string): Map<string, number[]> {
-  const data = new Map<string, number[]>();
-  for (const m of src.matchAll(/static const uint8_t (PRESET_\d+)\[\d+\] = \{([^}]*)\}/g)) data.set(m[1], m[2].split(',').map(Number));
-  return new Map([...src.matchAll(/\{"([^"]*)", (PRESET_\d+),/g)].map((m) => [m[1], data.get(m[2])!]));
-}
 { // an earlier factory patch as an update finds it in the bank (#441, D-887): the newest committed version unlike today's
   const root = new URL('../../', import.meta.url).pathname;
-  const today = factoryBytes(readFileSync(new URL('../../firmware/src/presets.h', import.meta.url), 'utf8'));
+  const today = new Map(presetsHPatches(readFileSync(new URL('../../firmware/src/presets.h', import.meta.url), 'utf8')).map((p) => [p.name, p.bytes]));
   const commits = execFileSync('git', ['log', '--format=%H', '--', 'firmware/src/presets.h'], { cwd: root, encoding: 'utf8' }).split('\n').filter(Boolean);
   for (const [file, name] of [['old-oracle-v.m1p', 'ORACLE V']] as const) {
     const now = today.get(name)?.join(',');
     if (now === undefined) throw new Error(`${name}: not a factory patch in today's presets.h`);
-    let hit: number[] | undefined;
+    let hit: Uint8Array | undefined;
     for (const c of commits) {
-      const b = factoryBytes(execFileSync('git', ['show', `${c}:firmware/src/presets.h`], { cwd: root, encoding: 'utf8', maxBuffer: 64 << 20 })).get(name);
+      const b = presetsHPatches(execFileSync('git', ['show', `${c}:firmware/src/presets.h`], { cwd: root, encoding: 'utf8', maxBuffer: 64 << 20 })).find((p) => p.name === name)?.bytes;
       if (b && b.join(',') !== now) {
         hit = b;
         break;
       }
     }
     if (!hit) throw new Error(`${name}: no earlier factory version in git`);
-    writeFileSync(new URL(file, out), Uint8Array.from(hit));
+    writeFileSync(new URL(file, out), hit);
     console.log(`${file}: ${name} of an earlier presets.h, format ${hit[1]}, ${hit.length} bytes`);
   }
 }

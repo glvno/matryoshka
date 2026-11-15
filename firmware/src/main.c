@@ -923,10 +923,12 @@ static int m1_store(const uint8_t *patch, uint32_t len)        /* SAVE, the edit
 
 static void fallback_boot(void);
 
+/* a slot's patch as read (preset_load), a factory patch unpacked (factory_write) */
+static uint8_t bank_buf[M1_PATCH_MAX] ENG_POOL;
+
 /* slot n into the engine; an empty slot or one that does not load: the fallback patch. 0 = the slot's patch runs */
 static int preset_load(uint32_t n)
 {
-    static uint8_t bank_buf[M1_PATCH_MAX] ENG_POOL;
     uint32_t len = 0;
     char slot_name[M1_NAME + 1];
     if (!slot_used(n) || sl_read(n, bank_buf, &len, slot_name) || m1_apply(bank_buf, len)) {
@@ -1059,22 +1061,29 @@ static void boot_step(const char *what)
 static const char *boot_msg;                    /* shown in the bar once the pages are up */
 static uint32_t boot_msg_ms;
 
+/* factory patch i (presets.h, stored packed: lz_unpack.h) into slot s, unpacked into bank_buf (preset_load's, which
+ * reads it again next) */
+static void factory_write(uint32_t s, uint32_t i)
+{
+    char name[M1_NAME];
+    uint32_t k;
+    for (k = 0; k < M1_NAME; k++)
+        name[k] = 0;
+    for (k = 0; k < M1_NAME && PRESET_LIST[i].name[k]; k++)
+        name[k] = PRESET_LIST[i].name[k];
+    fm1_wdt_feed();
+    if (lz_unpack(PRESET_LIST[i].lz, PRESET_LIST[i].lz_len, bank_buf, sizeof bank_buf) == (int32_t)PRESET_LIST[i].len)
+        (void)store_write(s, name, bank_buf, PRESET_LIST[i].len);
+}
+
 /* the factory patches (presets.h) into slots 0.., then the settings record (slot 0): the first boot, FACTORY RESET */
 static void factory_bank(void)
 {
     uint8_t set[SET_LEN];
     uint32_t i;
     boot_step("FACTORY BANK");
-    for (i = 0; i < N_PRESETS && i < M1_SLOTS; i++) {
-        char name[M1_NAME];
-        uint32_t k;
-        for (k = 0; k < M1_NAME; k++)
-            name[k] = 0;
-        for (k = 0; k < M1_NAME && PRESET_LIST[i].name[k]; k++)
-            name[k] = PRESET_LIST[i].name[k];
-        fm1_wdt_feed();
-        (void)store_write(i, name, PRESET_LIST[i].data, PRESET_LIST[i].len);
-    }
+    for (i = 0; i < N_PRESETS && i < M1_SLOTS; i++)
+        factory_write(i, i);
     cur_preset = 0;
     sel = 0;
     bank_fmt = ENG_PATCH_VERSION;
@@ -1094,7 +1103,6 @@ static int bank_add(uint32_t set, char *msg)
     uint64_t named = 0;
     uint32_t s, i, k;
     sl_hdr_t h;
-    char name[M1_NAME];
     for (s = 0; s < M1_SLOTS; s++) {
         if (!slot_used(s) || sl_head(s, &h, 0))
             continue;
@@ -1106,16 +1114,9 @@ static int bank_add(uint32_t set, char *msg)
         }
     }
     bn_plan(set, bank_mask, named, M1_SLOTS, &plan);
-    for (i = 0; i < N_PRESETS; i++) {
-        if (plan.slot[i] == BN_NONE)
-            continue;
-        for (k = 0; k < M1_NAME; k++)
-            name[k] = 0;
-        for (k = 0; k < M1_NAME && PRESET_LIST[i].name[k]; k++)
-            name[k] = PRESET_LIST[i].name[k];
-        fm1_wdt_feed();
-        (void)store_write(plan.slot[i], name, PRESET_LIST[i].data, PRESET_LIST[i].len);
-    }
+    for (i = 0; i < N_PRESETS; i++)
+        if (plan.slot[i] != BN_NONE)
+            factory_write(plan.slot[i], i);
     return bn_msg(&plan, msg);
 }
 

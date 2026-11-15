@@ -40,7 +40,10 @@ int main(int argc, char **argv)
     {   /* a copy of the preset; with argv[9] (parts, 1..8) all its modules go into one poly group of that many parts */
         uint8_t *bin = pv_bin;
         uint32_t len = PRESET_LIST[p].len;
-        memcpy(bin, PRESET_LIST[p].data, len);
+        if (lz_unpack(PRESET_LIST[p].lz, PRESET_LIST[p].lz_len, bin, sizeof pv_bin) != (int32_t)len) {
+            fprintf(stderr, "preset %u does not unpack\n", p);
+            return 1;
+        }
         if (argc > 9 && !bin[3] && len + ENG_GROUP_REC + bin[2] <= sizeof pv_bin) {
             uint32_t extra = ENG_GROUP_REC + bin[2];
             memmove(bin + 8 + extra, bin + 8, len - 8u);

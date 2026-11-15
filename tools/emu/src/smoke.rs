@@ -73,21 +73,61 @@ const HEADER_ROWS: usize = 36;
 pub(crate) const QUIET: i32 = 64;
 pub(crate) const LOUD: i32 = 1000;
 
-/// (name, binary) of every factory patch in presets.h
 /// on the device page (pages_ui.c): the footer's octave at 0 ("= OCT =")
 pub(crate) const DEVICE_PAGE: &str = "= OCT =";
 
+/// A factory patch as presets.h stores it, unpacked (the format: firmware/src/lz_unpack.h)
+fn lz_unpack(src: &[u8]) -> Vec<u8> {
+    let more = |i: &mut usize, mut n: usize| loop {
+        let d = src[*i];
+        *i += 1;
+        n += d as usize;
+        if d != 255 {
+            break n;
+        }
+    };
+    let (mut out, mut i) = (Vec::new(), 0);
+    while i < src.len() {
+        let t = src[i];
+        i += 1;
+        let mut n = (t >> 4) as usize;
+        if n == 15 {
+            n = more(&mut i, n);
+        }
+        out.extend_from_slice(&src[i..i + n]);
+        i += n;
+        if i == src.len() {
+            break;
+        }
+        let d = src[i] as usize | (src[i + 1] as usize) << 8;
+        i += 2;
+        n = (t & 15) as usize + 4;
+        if n == 19 {
+            n = more(&mut i, n);
+        }
+        assert!(d > 0 && d <= out.len(), "packed patch: a match out of range");
+        for _ in 0..n {
+            out.push(out[out.len() - d]);
+        }
+    }
+    out
+}
+
+/// (name, binary) of every factory patch in presets.h, unpacked
 pub(crate) fn factory() -> Vec<(String, Vec<u8>)> {
     let list = &PRESETS_H[PRESETS_H.find("PRESET_LIST[").expect("PRESET_LIST")..];
     let mut out = Vec::new();
     for line in list.lines().skip(1) {
         let Some(rest) = line.trim().strip_prefix("{\"") else { break };
         let name = &rest[..rest.find('"').unwrap()];
-        let arr = rest[rest.find(", PRESET_").unwrap() + 2..].split(',').next().unwrap().trim();
+        let fields: Vec<&str> = rest[rest.find(", PRESET_").unwrap() + 2..].split(',').map(str::trim).collect();
+        let (arr, len) = (fields[0], fields[2].trim_end_matches('}').parse::<usize>().expect("unpacked length"));
         let def = format!("static const uint8_t {arr}[");
         let d = &PRESETS_H[PRESETS_H.find(&def).unwrap_or_else(|| panic!("{arr}"))..];
         let body = &d[d.find('{').unwrap() + 1..d.find('}').unwrap()];
-        let bytes = body.split(',').filter_map(|t| t.trim().parse::<u8>().ok()).collect();
+        let packed: Vec<u8> = body.split(',').filter_map(|t| t.trim().parse::<u8>().ok()).collect();
+        let bytes = lz_unpack(&packed);
+        assert_eq!(bytes.len(), len, "{name}: unpacked length");
         out.push((name.to_string(), bytes));
     }
     out
@@ -1764,4 +1804,18 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     }
     t.check("no registers fm1-emu does not model besides P33", unknown.is_empty(), format!("{} other", unknown.len()));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// every factory patch of presets.h unpacks to its length (factory() checks it) and starts as a patch does
+    #[test]
+    fn factory_patches_unpack() {
+        let n: usize = PRESETS_H.split("#define N_PRESETS ").nth(1).and_then(|s| s.lines().next()).unwrap().trim().parse().unwrap();
+        let list = factory();
+        assert_eq!(list.len(), n);
+        assert!(list.iter().all(|(_, b)| b.len() > 8 && b[0] == 0xA1), "patch magic");
+    }
 }

@@ -54,7 +54,7 @@ for kind in reverb filter filter_outputs chorus control pd steps; do
     fi
 done
 # Every factory patch, the working tree's set for both engines (#781: the kits hold none of them).
-cp firmware/src/presets.h "$T/base/src/presets.h"
+cp firmware/src/presets.h firmware/src/lz_unpack.h "$T/base/src/"
 cp firmware/test/exact_factory.c "$T/base/test/"
 gcc -O1 -w -o "$T/base_factory" "$T/base/test/exact_factory.c" -lm -lpthread
 gcc -O1 -w ${EXACT_CFLAGS:-} -o "$T/new_factory" firmware/test/exact_factory.c -lm -lpthread

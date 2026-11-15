@@ -152,7 +152,7 @@ static int compare(const char *name, const uint8_t *p, uint32_t len, int quiet, 
     return 0;
 }
 
-static uint8_t file_buf[65536];
+static uint8_t file_buf[65536], factory_buf[4096];
 
 int main(int argc, char **argv)
 {
@@ -162,7 +162,12 @@ int main(int argc, char **argv)
         for (t = 0; t < N_PRESETS; t++) {   /* every factory patch of presets.h (PRESET_LIST) */
             char name[32];
             snprintf(name, sizeof name, "factory %u", t);
-            fail |= compare(name, PRESET_LIST[t].data, PRESET_LIST[t].len, quiet, f);
+            if (lz_unpack(PRESET_LIST[t].lz, PRESET_LIST[t].lz_len, factory_buf, sizeof factory_buf) != (int32_t)PRESET_LIST[t].len) {
+                printf("FAIL %s: does not unpack\n", name);
+                fail = 1;
+                continue;
+            }
+            fail |= compare(name, factory_buf, PRESET_LIST[t].len, quiet, f);
         }
     for (a = 1 + quiet; a < argc; a++) {
         FILE *fp = fopen(argv[a], "rb");

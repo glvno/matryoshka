@@ -380,7 +380,8 @@ static int load_at(uint32_t p)
 {
     if (p >= N_PRESETS)
         return -1;
-    memcpy(pv_bin, PRESET_LIST[p].data, PRESET_LIST[p].len);
+    if (lz_unpack(PRESET_LIST[p].lz, PRESET_LIST[p].lz_len, pv_bin, sizeof pv_bin) != (int32_t)PRESET_LIST[p].len)
+        return -1;
     pv_len = PRESET_LIST[p].len;
     if (eng_load(pv_bin, pv_len))
         return -1;

@@ -30,7 +30,7 @@ for p in build/golden/*.m1p; do
   n=$((n + 1))
 done
 [ $fail = 0 ] && echo "all $n kits bit-identical to $BASE in every mode (none, deferred, thread, thread with delays, lost jobs)"
-cp firmware/src/presets.h "$T/base/src/presets.h"
+cp firmware/src/presets.h firmware/src/lz_unpack.h "$T/base/src/"
 cp firmware/test/exact_factory.c "$T/base/test/"
 [ -f "$T/base/test/lanes_host.h" ] || cp firmware/test/lanes_host.h "$T/base/test/"
 gcc -O1 -w -o "$T/base_factory" "$T/base/test/exact_factory.c" -lm -lpthread

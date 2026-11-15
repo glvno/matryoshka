@@ -20,6 +20,7 @@ import { CASE_PICKS, casesHeader, migrationCases, migrationTables } from './pres
 import { aotHeader } from './gen-aot';
 import patternDefaults from '../src/preset-patterns.json';
 import { releasedFactoryHas } from './released-factory-names';
+import { packedListC } from './factory-lz';
 const FACTORY_PRESETS = [...factoryPresets(), ...factoryRackPresets()];
 
 const up = (s: string): string => s.toUpperCase().replace(/[^A-Z0-9]/g, '_');
@@ -250,9 +251,6 @@ const binaries = presetNames.map(name => {
   if (binary.length > DEVICE.bytes) throw new Error(`${name}: selected factory patch exceeds native byte limit`);
   return binary;
 });
-binaries.forEach((bin, i) => {
-  P.push(`static const uint8_t PRESET_${i}[${bin.length}] = {${Array.from(bin).join(',')}};   /* ${presetNames[i]} */`);
-});
 { // the factory set's fingerprint (24 bits of FNV-1a over every name and binary, never 0): stored in the settings record,
   // a change checks new factory names and user assembly preset migrations, without rewriting saved patches
   let h = 0x811c9dc5;
@@ -261,13 +259,12 @@ binaries.forEach((bin, i) => {
   });
   // then the preset migrations (D-865), when there are any: a new map makes the boot move the presets it covers
   if (Object.keys(PRESET_MIGRATIONS).length) for (const x of new TextEncoder().encode(JSON.stringify(PRESET_MIGRATIONS))) h = Math.imul(h ^ x, 0x01000193) >>> 0;
-  P.push('', '/* the factory set (PRESET_LIST: names and bytes, then web/src/preset-migrations.json as JSON when it has any), 24 bits', '   of FNV-1a, never 0: kept in the settings record for new factory names and user assembly preset migrations.', '   Existing saved patch bytes are preserved (main.c bank_add, presets_upgrade). */');
+  P.push('', '/* the factory set (PRESET_LIST: names and unpacked bytes, then web/src/preset-migrations.json as JSON when it has any),', '   24 bits of FNV-1a, never 0: kept in the settings record for new factory names and user assembly preset migrations.', '   Existing saved patch bytes are preserved (main.c bank_add, presets_upgrade). */');
   P.push(`#define FACTORY_SET_ID 0x${((h & 0xffffff) || 1).toString(16).padStart(6, '0')}u`);
 }
 P.push('', `#define N_PRESETS ${presetNames.length}`);
-P.push('static const struct { const char *name; const uint8_t *data; uint32_t len; } PRESET_LIST[N_PRESETS] = {');
-presetNames.forEach((n, i) => P.push(`    {"${n.toUpperCase()}", PRESET_${i}, sizeof PRESET_${i}},`));
-P.push('};', '');
+P.push('/* the factory patches, packed (lz_unpack.h, web/scripts/factory-lz.ts): unpacked only to go into the bank */', '#include "lz_unpack.h"');
+P.push(...packedListC('PRESET', 'PRESET_LIST', presetNames.map((name, i) => ({ name, binary: binaries[i] }))), '');
 { // safe mode's patch, and the last resort when nothing else loads (web/src/fallback.ts)
   const bin = encodePatch(fallbackPatch());
   P.push(`#define FALLBACK_NAME "${FALLBACK_NAME}"`, `static const uint8_t FALLBACK_PATCH[${bin.length}] = {${Array.from(bin).join(',')}};`, '');

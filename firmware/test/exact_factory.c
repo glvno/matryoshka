@@ -11,10 +11,12 @@ int main(void)
     /* (PRESET_LIST follows whatever presets.h holds) */
     static const unsigned NOTES[8] = {60, 64, 67, 71, 72, 76, 79, 83};
     static int32_t l[128], r[128];
+    static uint8_t bin[4096];
     unsigned t, b, k;
     for (t = 0; t < N_PRESETS; t++) {
         uint64_t h = 1469598103934665603ull;
-        if (eng_load(PRESET_LIST[t].data, PRESET_LIST[t].len)) { printf("%2u load failed\n", t); continue; }
+        if (lz_unpack(PRESET_LIST[t].lz, PRESET_LIST[t].lz_len, bin, sizeof bin) != (int32_t)PRESET_LIST[t].len ||
+            eng_load(bin, PRESET_LIST[t].len)) { printf("%2u load failed\n", t); continue; }
         for (b = 0; b < 300; b++) {
             if (b == 2) for (k = 0; k < 8; k++) eng_note_on(NOTES[k], 52000, 1);
             if (b == 200) for (k = 0; k < 8; k++) eng_note_off(NOTES[k], 1);

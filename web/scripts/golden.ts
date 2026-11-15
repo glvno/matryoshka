@@ -24,6 +24,7 @@ import { setKind, setSwitches, setTarget } from '../src/buttons';
 import PANEL_BANK from '../factory/bank.json';
 import PANEL_EXAMPLES from '../factory/examples.json';
 import { validatePatch } from '../src/patch';
+import { packedListC } from './factory-lz';
 
 const SR = DEVICE_SR;
 const OUT = new URL('../../build/golden/', import.meta.url);
@@ -3828,12 +3829,7 @@ if (process.argv.includes('--panel-fixtures')) {
     '/* Generated panel-only source graph fixtures; never replaces firmware/src/presets.h. */',
     '#pragma once', '#undef N_PRESETS', `#define N_PRESETS ${panelPatches.length}`,
     '#define PRESET_LIST PANEL_PRESET_LIST'];
-  panelPatches.forEach(({ binary }, i) =>
-    panelHeader.push(`static const uint8_t PANEL_PRESET_${i}[] = {${Array.from(binary).join(',')}};`));
-  panelHeader.push('static const struct { const char *name; const uint8_t *data; uint32_t len; } PANEL_PRESET_LIST[N_PRESETS] = {');
-  panelPatches.forEach(({ name }, i) =>
-    panelHeader.push(`    {${JSON.stringify(name.toUpperCase())}, PANEL_PRESET_${i}, sizeof PANEL_PRESET_${i}},`));
-  panelHeader.push('};', '');
+  panelHeader.push(...packedListC('PANEL_PRESET', 'PANEL_PRESET_LIST', panelPatches), '');
   writeFileSync(new URL('panel_bank.h', out), panelHeader.join('\n'));
   for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns', 'matrix-audio', 'harm-side', 'route-harm-steps', 'route-steps-harm', 'route-harm-arp', 'route-steps-harm-arp', 'route-harm-steps-arp', 'route-dense-steps', 'route-root-snapshot', 'route-branch-snapshot'])
     writeFileSync(new URL(`${name}.m1p`, out), encodePatch(tests[name], true));

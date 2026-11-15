@@ -11,6 +11,7 @@ import { FM1_PRESETS } from './presets';
 import { relocatedPatches } from './community-factory';
 import { assembliesOf } from './assembly';
 import type { Patch } from './patch';
+import { presetsHPatches } from '../scripts/factory-lz';
 
 const SR = 48000;
 /** the Drum map rows' keys: DRUMS (F3..F4) and the XL's DRUMS 2 (G4 A4 B4 C5) */
@@ -71,7 +72,7 @@ describe('808 Kit (the FM-1 version)', () => {
     const bin = encodePatch(p);
     expect(bin[6] & 2).toBe(2);   // (the macro ranges section's flag)
     const h = readFileSync(new URL('../../firmware/src/presets.h', import.meta.url), 'utf8');
-    const shipped = [...h.matchAll(/static const uint8_t PRESET_\d+\[\d+\] = \{([^}]*)\}/g)].map((m) => m[1].split(',').map(Number));
+    const shipped = presetsHPatches(h).map((p) => p.bytes);
     expect(shipped.some((b) => b.length === bin.length && b.every((x, i) => x === bin[i]))).toBe(true);
   });
 

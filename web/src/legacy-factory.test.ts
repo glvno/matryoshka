@@ -4,12 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { releasedFactoryHas } from '../scripts/released-factory-names';
+import { lzPack, presetsHPatches as parse } from '../scripts/factory-lz';
 
-const parse = (src: string): { name: string; bytes: number[] }[] => {
-  const data = new Map<string, number[]>();
-  for (const m of src.matchAll(/static const uint8_t (PRESET_\d+)\[\d+\] = \{([^}]*)\}/g)) data.set(m[1], m[2].split(',').map(Number));
-  return [...src.matchAll(/\{"([^"]*)", (PRESET_\d+),/g)].map((m) => ({ name: m[1], bytes: data.get(m[2])! }));
-};
 const now = readFileSync(new URL('../../firmware/src/presets.h', import.meta.url), 'utf8');
 const names = parse(now).map((p) => p.name);
 const show = (rev: string): string => {
@@ -40,6 +36,7 @@ describe('saved bank after a firmware update', () => {
 #include <assert.h>
 #include <stdint.h>
 #include <string.h>
+#include "lz_unpack.h"
 #define M1_NAME 16
 #define M1_SLOTS 4
 #define N_PRESETS 2
@@ -51,9 +48,11 @@ describe('saved bank after a firmware update', () => {
 #define SET_LEN 16
 static const uint8_t old_patch[] = {${saved.join(',')}};
 static const uint8_t new_patch[] = {${current.join(',')}};
-static const struct { const char *name; const uint8_t *data; uint32_t len; } PRESET_LIST[] = {
- {"INIT", new_patch, sizeof new_patch}, {"NEW FACTORY", new_patch, sizeof new_patch}
+static const uint8_t new_lz[] = {${lzPack(current).join(',')}};
+static const struct { const char *name; const uint8_t *lz; uint16_t lz_len, len; } PRESET_LIST[] = {
+ {"INIT", new_lz, sizeof new_lz, sizeof new_patch}, {"NEW FACTORY", new_lz, sizeof new_lz, sizeof new_patch}
 };
+static uint8_t bank_buf[3840];
 static const struct { uint32_t set; uint64_t has; } RELEASED_SETS[] = {{1u, 1u}};
 ${planner}
 typedef struct { char name[M1_NAME]; } sl_hdr_t;
@@ -74,6 +73,7 @@ static int store_write(uint32_t s, const char *name, const uint8_t *data, uint32
 }
 static void fm1_wdt_feed(void) {}
 static void boot_step(const char *s) { (void)s; }
+${fn('void factory_write(')}
 ${fn('int bank_add(')}
 static void gt_apply(void) {}
 static void fallback_boot(void) { fallbacks++; }
@@ -104,7 +104,7 @@ int main(void) {
  assert(!strcmp(slots[0].h.name, "INIT"));
  assert(slots[1].len == sizeof user_patch && !memcmp(slots[1].data, user_patch, sizeof user_patch));
  assert(!strcmp(slots[1].h.name, "USER PATCH"));
- assert(!strcmp(slots[2].h.name, "NEW FACTORY") && slots[2].len == sizeof new_patch);
+ assert(!strcmp(slots[2].h.name, "NEW FACTORY") && slots[2].len == sizeof new_patch && !memcmp(slots[2].data, new_patch, sizeof new_patch));
  assert(bank_mask == 7 && bank_set == FACTORY_SET_ID && bank_fmt == ENG_PATCH_VERSION);
  assert(migrations == 1 && settings_writes == 1 && loads == 1 && !factories && !fallbacks);
  patch_boot();
@@ -119,7 +119,7 @@ int main(void) {
     const dir = mkdtempSync(join(tmpdir(), 'fm1-bank-boot-'));
     try {
       const binary = join(dir, 'boot-test');
-      execFileSync(process.env.CC ?? 'cc', ['-std=c99', '-Wall', '-Wextra', '-Werror', '-x', 'c', '-', '-o', binary], { input: source, stdio: ['pipe', 'pipe', 'pipe'] });
+      execFileSync(process.env.CC ?? 'cc', ['-std=c99', '-Wall', '-Wextra', '-Werror', '-I', new URL('../../firmware/src', import.meta.url).pathname, '-x', 'c', '-', '-o', binary], { input: source, stdio: ['pipe', 'pipe', 'pipe'] });
       expect(() => execFileSync(binary)).not.toThrow();
     } finally {
       rmSync(dir, { recursive: true, force: true });
