@@ -92,7 +92,8 @@
         "stack": 0,
         "pm2": 0,
         "pm3": 0,
-        "analog": 0
+        "analog": 0,
+        "phase": 0
       },
       "att": [
         1,
@@ -351,7 +352,8 @@
         "stack": 0,
         "pm2": 0,
         "pm3": 0,
-        "analog": 0
+        "analog": 0,
+        "phase": 0
       },
       "att": [
         1,
@@ -385,7 +387,8 @@
         "stack": 0,
         "pm2": 0,
         "pm3": 0,
-        "analog": 0
+        "analog": 0,
+        "phase": 90
       },
       "att": [
         1,
@@ -639,7 +642,8 @@
         "stack": 0,
         "pm2": 0,
         "pm3": 0,
-        "analog": 0
+        "analog": 0,
+        "phase": 0
       },
       "att": [
         1,
@@ -692,7 +696,8 @@
         "stack": 0,
         "pm2": 0,
         "pm3": 0,
-        "analog": 0
+        "analog": 0,
+        "phase": 0
       },
       "att": [
         1,
@@ -787,7 +792,8 @@
         "stack": 0,
         "pm2": 0,
         "pm3": 0,
-        "analog": 0
+        "analog": 0,
+        "phase": 0
       },
       "att": [
         1,
@@ -1132,7 +1138,8 @@
         "stack": 0,
         "pm2": 0,
         "pm3": 0,
-        "analog": 0
+        "analog": 0,
+        "phase": 0
       },
       "att": [
         1,
@@ -1719,7 +1726,8 @@
         "stack": 0,
         "pm2": 0,
         "pm3": 0,
-        "analog": 0
+        "analog": 0,
+        "phase": 0
       },
       "att": [
         1,
@@ -1753,7 +1761,8 @@
         "stack": 0,
         "pm2": 0,
         "pm3": 0,
-        "analog": 0
+        "analog": 0,
+        "phase": 90
       },
       "att": [
         1,
@@ -1955,7 +1964,8 @@
         "stack": 0,
         "pm2": 0,
         "pm3": 0,
-        "analog": 0
+        "analog": 0,
+        "phase": 0
       },
       "att": [
         1,
