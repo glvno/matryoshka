@@ -320,4 +320,18 @@ export const HAND_MAPS: HandMap[] = [
   // ---- D-745 amended (2026-11-14): Expander S's envelopes are the SEM's ADS, the decay also the release, so the two
   // release rows went. Every other row keeps its value; the old releases have no row to go to.
   { engine: 'Expander S', from: '81f409f6', to: 'b3a433a3', why: 'D-745: the SEM\'s ADS envelopes: the release rows went', rows: {} },
+  // ---- D-1052: Briefcase 3 is Briefcase 3 XL's design with its pins on Matrix tiles beside it. An oscillator's
+  // frequency was its column's offset (octaves) and is now its dial, 1.875 octaves a unit from -1.5 (oscillator 3: -2.56):
+  // the value lands where it plays the same pitch. Filter 1 and 2 were each output filter's morph (low pass to high pass)
+  // and are now its knob (flat at 0.5, darker left, thinner right): the number carries over. Every other row keeps its
+  // value; pan 1, pan 2, range x and range y start at Init. The pins were never in a preset.
+  {
+    engine: 'Briefcase 3', from: 'cf5034d5', to: 'b44a8aec', why: 'D-1052: the frequency dials and the output filter knobs',
+    rows: {
+      'const#33.value': { line: 'scale#8.offset', mul: [1 / 1.875], add: [1.5 / 1.875], min: -4, max: 4 },
+      'const#35.value': { line: 'scale#9.offset', mul: [1 / 1.875], add: [1.5 / 1.875], min: -4, max: 4 },
+      'const#37.value': { line: 'scale#10.offset', mul: [1 / 1.875], add: [2.56 / 1.875], min: -4, max: 4 },
+      'macro#40.value': { from: 'filter#26.morph' }, 'macro#45.value': { from: 'filter#29.morph' },
+    },
+  },
 ];
