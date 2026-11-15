@@ -1,0 +1,130 @@
+{
+ "schema": 1,
+ "version": "1.16.0",
+ "firmware_product": "FM-1_7011600",
+ "source_commit": "4b096b9050e79d1e95008c5c8955c2deff8a7001",
+ "source_tree": "b06112e1e0a4e6710417188281377a895f01a62b",
+ "status": "automated qualification passed; owner device checks pending",
+ "build_manifest_sha256": "aa73a2222ef2273ed664e7f5bc7005eed40d81ec84b2cd24cfd62a9ada890efc",
+ "artifacts": {
+  "package": {
+   "name": "matryoshka-1.16.0.fwsc",
+   "size": 610609,
+   "sha256": "1d0631ad8da96fb336e0cb6f4fe61ff9159ee41c1879faa4fbe85c742072ef50"
+  },
+  "normal": {
+   "name": "matryoshka-1.16.0-app.bin",
+   "size": 573392,
+   "sha256": "c32f764c7d059fd2ded62323481a6642f77de8b5c5c6aa3e1bc9d3f1ee54cf9b"
+  },
+  "normal_elf": {
+   "name": "matryoshka-1.16.0-app.elf",
+   "size": 647816,
+   "sha256": "d68363e8aa6800b06166487f58ed980529f557d72468653c2124aa60dd26ce5d"
+  },
+  "normal_sidecar": {
+   "name": "matryoshka-1.16.0.json",
+   "size": 411,
+   "sha256": "c4abe92a77433b1ec7b289285ad5cda7d217ae09ae9baa4467f5171ada80fc65"
+  },
+  "bridge": {
+   "name": "matryoshka-emu.bin",
+   "size": 570480,
+   "sha256": "09186eb21495cf47a14e24b8c4dea52f6671683622d4ef7b8b55860f671cfbc4"
+  },
+  "bridge_elf": {
+   "name": "matryoshka-emu.elf",
+   "size": 643668,
+   "sha256": "6dbb1a81519708a3b20b6f128d9e5b85e9b7ed8f786c61959311697b92693589"
+  },
+  "bridge_sidecar": {
+   "name": "matryoshka-emu.json",
+   "size": 411,
+   "sha256": "3591a07b5068413032c8abc90f23ce639d48370d5d19ededd640a20a92df19a6"
+  }
+ },
+ "ci_runs": {
+  "release": 43757195572,
+  "first_freeze_release": 43752369526
+ },
+ "refreeze": {
+  "first_frozen_commit": "e3845cb53844027849a98fd97bcef1e70951d176",
+  "reason": "PR #925 changed tools/ci_checks.py (the RC web run's slow-render group), so the release was rebuilt on its merge commit to keep firmware/ and tools/ equal to the tag's (D-105).",
+  "result": "release run 43757195572's package, app, ELF and bridge are byte-identical to run 43752369526's, so every check on the first freeze's artifacts stands (D-144)."
+ },
+ "full_host": "PASS in release runs 43752369526 and 43757195572 (rc mode on each frozen commit)",
+ "full_web": {
+  "rc_run": 43752372516,
+  "run_success": false,
+  "result": "2,271 tests passed; 4 timed out only under coverage instrumentation: src/headroom-3.test.ts, src/kit909.test.ts (the XL comparison), scripts/audition-render.test.ts (two headroom renders). They pass uninstrumented (each pull request's web CI and the local full suite on main). PR #925 moves them to the uninstrumented group for later releases; the owner asked to skip the rerun.",
+  "coverage_record": "release/coverage/v1.16.0/ (historical: v1.15.0's measurement, display only, D-147)"
+ },
+ "full_boot": {
+  "checks": 19,
+  "failed": 0,
+  "on": "the release app with the run's bridge",
+  "handshake_identity": "FM-1_7011600"
+ },
+ "full_smoke": {
+  "checks": 308,
+  "failed": 0,
+  "level_warnings": 0,
+  "on": "the release app, sha256 c32f764c..."
+ },
+ "full_scenarios": {
+  "passed": 383,
+  "failed": 1,
+  "skipped": [
+   {
+    "name": "3.5mm out: OFF leaves USB audio as it was",
+    "reason": "the emulator has no USB audio: tools/audio_out_test.sh and the rig's recording prove it"
+   }
+  ],
+  "on_bridge_sha256": "09186eb21495cf47a14e24b8c4dea52f6671683622d4ef7b8b55860f671cfbc4",
+  "failure": "arming: SEL on a device that takes no keys says so. The scenario stepped once from the 808 Kit's Drum map to its card; the full TR-808 (D-1053) has a second Drum map in between, which takes keys. Harness changed to step twice (PR #925).",
+  "affected_rerun": {
+   "scenario": "arming",
+   "checks": 36,
+   "failed": 0
+  }
+ },
+ "test_revision": {
+  "frozen_commit": "4b096b9050e79d1e95008c5c8955c2deff8a7001",
+  "harness_fixes": [
+   {
+    "pr": 925,
+    "files": [
+     "web/scripts/emu-scenarios.mjs",
+     "tools/ci_checks.py",
+     "tools/ci_checks_test.py",
+     "tools/coverage_record.py"
+    ],
+    "in_frozen_commit": true,
+    "changes": "the arming scenario steps past the second Drum map; the RC web run keeps the slow renders out of coverage"
+   }
+  ]
+ },
+ "rig_install": {
+  "run": 43752369526,
+  "gate": "boot (emu:boot, D-123)",
+  "result": "the registered test rig runs FM-1_7011600, firmware 1.16.0"
+ },
+ "hardware": {
+  "scope": "D-1151: only the scenarios whose result needs the hardware, on the registered test rig running the release bytes.",
+  "rig_scenarios": {
+   "passed": 66,
+   "failed": 0,
+   "skipped": 4,
+   "by_design_skips": [
+    "3.5MM OUT OFF silences the speaker and the jack: the owner's ears (D-139)",
+    "MONO, MONO L and MONO loudness: USB audio is taken before OUTPUT's mix (D-140); the emulator's I2S proves them"
+   ],
+   "flash_writes": "settings record, SAVE and preset store with C4 held: 0 dropouts; every write stepped",
+   "dual_core": "Io 4, Hera and Cassia 1 with 8 keys held: no shed voice, no overload, no late half"
+  }
+ },
+ "owner_checks": {
+  "status": "pending",
+  "steps": "D-139: the analog output in headphones, instruments played by hand, a power cycle (with a stored pattern and the 60-slot library)."
+ }
+}

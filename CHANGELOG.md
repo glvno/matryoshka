@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.16.0 — 2026-11-15
 
 - **Patterns can live on the FM-1 outside the patches, and any patch can load them.** On the SEQ page, SEL held + SAVE saves the pattern you are on into the FM-1's pattern store, FX held + SAVE saves a new copy, and SEL held + PRESET loads stored patterns into the pattern you are on. A patch keeps its pattern 1 and points to its stored patterns, so a pattern costs it 3 bytes instead of its notes, and a patch with many patterns fits. Saving over a stored pattern changes it in every patch that uses it. P-locks come along only into a patch with the same modules. The editor's pattern library lists, loads, saves, renames, deletes and exports stored patterns, and shows the factory drum patterns too. The store takes room from the bank, which now has 60 slots: at the first start, patches in slots 61 to 64 move to empty slots (an FM-1 with more than 60 patches keeps 64 slots and has no pattern store until you delete one). Patterns already in your patches stay where they are.
 - **The poly factory instruments get Chorus, Delay and Reverb on their FX page, and as many voices as the FM-1 holds with every effect on.** Each new effect starts off. A saved slot keeps its old version; FACTORY RESET installs the new ones.
