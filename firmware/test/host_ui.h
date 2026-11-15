@@ -343,7 +343,7 @@ static int m1_patch_locks(void) { return 1; }      /* (the preview keeps no patc
 /* the pattern store's glue (patlink.c, #901) on the previewed binary: proto.c's status codes and what it sends stood in */
 enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE, S_FULL, S_MISSING, S_USED };
 static uint8_t m1_up[M1_PATCH_MAX];        /* (proto.c's upload buffer, the payloads' scratch) */
-static int m1_patch_links(void) { return 1; }
+static int m1_patch_links(const uint8_t *s, uint32_t n) { (void)s; (void)n; return 1; }   /* (no links in the preview) */
 static uint32_t host_link_told;             /* (panel_test.c: PAT_LINK_NOW sent) */
 static void m1_pat_link_now(uint32_t p, uint32_t id, uint32_t hash) { (void)p; (void)id; (void)hash; host_link_told++; }
 static void m1_track_pattern_now(uint32_t mod, uint32_t pattern) { (void)pattern; m1_track_now(mod); }

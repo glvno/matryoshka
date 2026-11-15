@@ -2060,7 +2060,7 @@ static void seq_pattern_load(int32_t d)
     if (p < 0)
         return;
     if (!seq_pl_at)
-        seq_pl_at = pl_id[p];
+        seq_pl_at = (uint16_t)pl_link((uint32_t)p);
     for (; d; d += d > 0 ? -1 : 1)
         seq_pl_at = (uint16_t)pl_step(seq_pl_at, d);
     rc = pl_load_entry((uint32_t)p, seq_pl_at, got);

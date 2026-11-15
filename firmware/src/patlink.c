@@ -12,8 +12,9 @@
  *   u8 k, u8 c (1..64) and c locks of 7 bytes as eng_locks_list writes them.
  * Pattern index 0 (pattern 1) has no own length / rate: written as len 0 and rate 0xFF, ignored when loaded.
  *
- * The running patch links pattern indices 1..63 to stored ids (format 59's section, after the P-locks): pl_id and the
- * payload's hash as the store gave it to this patch (pl_hash). A linked pattern whose payload still hashes to pl_hash is
+ * The running patch links pattern indices 1..63 to stored ids in format 59's section after the P-locks: m1_cur holds the
+ * only copy (pl_link reads it, pl_set_link rewrites it). pl_hash keeps each link's payload hash as the store gave it to
+ * this patch. A linked pattern whose payload still hashes to that is
  * clean: proto.c leaves it out of the patterns and locks sections (m1_pat_clean), so the binary carries only the link and
  * the next load copies it from the store again. An edited one stays inline, and SAVE writes it over its stored entry
  * (pl_writeback). Factory demonstration patterns (presets.h PRESET_PATTERNS) are read-only entries 0xFF00 + index after
@@ -25,8 +26,47 @@
  * sl_head / sl_buf (slotstore.c), PRESET_PATTERNS (presets.h). */
 #define PL_FACTORY 0xFF00u                 /* the first factory entry's id */
 
-static uint16_t pl_id[ENG_PATTERNS];       /* the running patch's links: pattern index -> stored id, 0 none */
 static uint32_t pl_hash[ENG_PATTERNS];     /* each link's payload hash as the store gave it to this patch */
+
+/* the running patch's links (m1_cur's format 59 section): its entries (3 bytes each), their count in *n */
+static const uint8_t *pl_links(uint32_t *n)
+{
+    uint32_t at = (m1_cur[7] & ENG_FLAG_LINKS) ? eng_links_at(m1_cur, m1_cur_len) : 0u;
+    *n = at ? m1_cur[at] : 0u;
+    return m1_cur + at + 1u;
+}
+/* pattern p's stored id, 0 not linked */
+static uint32_t pl_link(uint32_t p)
+{
+    uint32_t n, k;
+    const uint8_t *e = pl_links(&n);
+    for (k = 0; k < n; k++, e += 3)
+        if (e[0] == p)
+            return (uint32_t)e[1] | (uint32_t)e[2] << 8;
+    return 0;
+}
+/* pattern p linked to id (0: its link goes) in the binary (proto.c m1_patch_links): 1 done, 0 the binary cannot hold it */
+static int pl_set_link(uint32_t p, uint32_t id)
+{
+    uint8_t s[1u + 3u * (ENG_PATTERNS - 1u)];
+    uint32_t n, k, o = 0;
+    const uint8_t *e = pl_links(&n);
+    for (k = 0; k <= n; k++, e += 3) {
+        if (id && (k == n || e[0] > p)) {            /* (in order, once) */
+            s[1u + 3u * o] = (uint8_t)p;
+            s[2u + 3u * o] = (uint8_t)id;
+            s[3u + 3u * o++] = (uint8_t)(id >> 8);
+            id = 0;
+        }
+        if (k < n && e[0] != p) {
+            s[1u + 3u * o] = e[0];
+            s[2u + 3u * o] = e[1];
+            s[3u + 3u * o++] = e[2];
+        }
+    }
+    s[0] = (uint8_t)o;
+    return m1_patch_links(s, o ? 1u + 3u * o : 0u);
+}
 
 /* a payload as it is made: into o (cap bytes; o 0: only counted and hashed), n bytes so far, h their FNV-1a hash */
 typedef struct { uint8_t *o; uint32_t cap, n, h; } pl_out_t;
@@ -268,10 +308,9 @@ static int pl_apply(uint32_t p, const uint8_t *b, uint32_t len)
 
 /* ---- the running patch's links */
 
-/* the links into the binary, then the patterns and locks (the clean ones out, the others in) */
+/* the patterns and locks into the binary after a link changed (the clean ones out, the others in) */
 static void pl_rewrite(void)
 {
-    (void)m1_patch_links();
     (void)m1_patch_locks();
     m1_patch_patterns();
     m1_edited = 1;
@@ -282,18 +321,14 @@ static void pl_rewrite(void)
  * copy, dirty unless it equals the stored one */
 static void m1_pat_load(void)
 {
-    uint32_t at = eng_links_at(m1_cur, m1_cur_len), n, k, p, id, t, nt = (uint32_t)eng_steps_count();
+    uint32_t n, k, p, id, t, nt = (uint32_t)eng_steps_count();
+    const uint8_t *e = pl_links(&n);
     pt_info_t in;
-    for (p = 0; p < ENG_PATTERNS; p++) {
-        pl_id[p] = 0;
+    for (p = 0; p < ENG_PATTERNS; p++)
         pl_hash[p] = 0;
-    }
-    if (!at || !(m1_cur[7] & ENG_FLAG_LINKS))
-        return;
-    for (n = m1_cur[at], k = 0; k < n; k++) {
-        p = m1_cur[at + 1u + 3u * k];
-        id = (uint32_t)m1_cur[at + 2u + 3u * k] | (uint32_t)m1_cur[at + 3u + 3u * k] << 8;
-        pl_id[p] = (uint16_t)id;
+    for (k = 0; k < n; k++, e += 3) {
+        p = e[0];
+        id = (uint32_t)e[1] | (uint32_t)e[2] << 8;
         for (t = 0; t < nt && !eng_pattern_has((uint32_t)eng_steps_module(t), p); t++)
             ;
         if (t < nt) {
@@ -310,41 +345,31 @@ static void m1_pat_load(void)
 static uint64_t m1_pat_clean(void)
 {
     uint64_t c = 0;
-    uint32_t p;
-    for (p = 1; p < ENG_PATTERNS; p++)
-        if (pl_id[p] && pl_hash_of(p) == pl_hash[p])
-            c |= (uint64_t)1u << p;
+    uint32_t n, k;
+    const uint8_t *e = pl_links(&n);
+    for (k = 0; k < n; k++, e += 3)
+        if (pl_hash_of(e[0]) == pl_hash[e[0]])
+            c |= (uint64_t)1u << e[0];
     return c;
-}
-
-/* proto.c m1_patch_links: the links section into out, its length (0 none) */
-static uint32_t m1_pat_links(uint8_t *out)
-{
-    uint32_t p, n = 0;
-    for (p = 1; p < ENG_PATTERNS; p++)
-        if (pl_id[p]) {
-            out[1u + 3u * n] = (uint8_t)p;
-            out[2u + 3u * n] = (uint8_t)pl_id[p];
-            out[3u + 3u * n] = (uint8_t)(pl_id[p] >> 8);
-            n++;
-        }
-    out[0] = (uint8_t)n;
-    return n ? 1u + 3u * n : 0u;
 }
 
 /* SAVE (main.c m1_store, before the slot is written): each edited linked pattern over its stored entry. One whose entry is
  * gone loses its link and stays inline; one the store cannot take (full, flash) stays inline and linked */
 static void pl_writeback(void)
 {
+    uint8_t e[3u * (ENG_PATTERNS - 1u)];
     pl_out_t s;
     pt_info_t in;
-    uint32_t p, id, changed = 0;
+    uint32_t n, k, p, id, changed = 0;
+    const uint8_t *l = pl_links(&n);
     int rc;
     if (!pt_on)
         return;
-    for (p = 1; p < ENG_PATTERNS; p++) {
-        if (!pl_id[p])
-            continue;
+    for (k = 0; k < 3u * n; k++)                     /* (a copy: a link that goes rewrites the section) */
+        e[k] = l[k];
+    for (k = 0; k < n; k++) {
+        p = e[3u * k];
+        id = (uint32_t)e[3u * k + 1u] | (uint32_t)e[3u * k + 2u] << 8;
         s.o = m1_up;
         s.cap = sizeof m1_up;
         s.n = 0;
@@ -352,18 +377,16 @@ static void pl_writeback(void)
         pl_encode(p, &s);
         if (s.h == pl_hash[p] || s.n > s.cap)
             continue;
-        id = pl_id[p];
         rc = pt_stat(id, &in) ? -4 : pt_put(&id, in.name, m1_up, s.n);
         if (rc == -4) {
-            pl_id[p] = 0;
-            pl_hash[p] = 0;
-        } else if (!rc) {
-            pl_hash[p] = s.h;
-        } else {
+            (void)pl_set_link(p, 0);
+            id = s.h = 0;
+        } else if (rc) {
             continue;
         }
+        pl_hash[p] = s.h;
         changed = 1;
-        m1_pat_link_now(p, pl_id[p], pl_hash[p]);
+        m1_pat_link_now(p, id, s.h);
     }
     if (changed)
         pl_rewrite();
@@ -378,16 +401,16 @@ static int pl_save(uint32_t p, int as_new, const char *name, char *got)
 {
     pl_out_t s = { m1_up, sizeof m1_up, 0, PT_FNV0 };
     pt_info_t in;
-    uint32_t id = 0, i;
+    uint32_t id, i;
     int rc, over;
     if (!pt_on)
         return -1;
     pl_encode(p, &s);
-    over = !as_new && p && pl_id[p] && !pt_stat(pl_id[p], &in);
-    if (over) {
-        id = pl_id[p];
+    over = !as_new && p && (id = pl_link(p)) != 0 && !pt_stat(id, &in);
+    if (over)
         name = in.name;
-    }
+    else
+        id = 0;
     rc = s.n > s.cap ? -3 : pt_put(&id, name, m1_up, s.n);
     if (rc)
         return rc == -1 ? -1 : -2;
@@ -395,13 +418,11 @@ static int pl_save(uint32_t p, int as_new, const char *name, char *got)
         got[i] = name[i];
     got[i] = 0;
     if (p) {
-        pl_id[p] = (uint16_t)id;
         pl_hash[p] = s.h;
-        if (!m1_patch_links())                        /* (the binary cannot hold the link: the entry is a copy) */
-            pl_id[p] = 0;
+        (void)pl_set_link(p, id);                     /* (a binary that cannot hold the link: the entry is a copy) */
         pl_rewrite();
     }
-    m1_pat_link_now(p, pl_id[p], s.h);
+    m1_pat_link_now(p, pl_link(p), s.h);
     return over ? 0 : 1;
 }
 
@@ -417,10 +438,9 @@ static int pl_load_entry(uint32_t p, uint32_t id, char *got)
     for (i = 0; i <= PT_NAME; i++)
         got[i] = in.name[i];
     if (p) {
-        pl_id[p] = (uint16_t)(id < PL_FACTORY ? id : 0u);
-        pl_hash[p] = pl_id[p] ? pl_hash_of(p) : 0u;
-        if (pl_id[p] && !m1_patch_links())
-            pl_id[p] = 0;
+        id = id < PL_FACTORY ? id : 0u;
+        pl_hash[p] = id ? pl_hash_of(p) : 0u;
+        (void)pl_set_link(p, id);
     }
     pl_rewrite();
     for (t = 0; t < (uint32_t)eng_steps_count(); t++)   /* (the editor follows the tracks that have it) */
@@ -428,7 +448,7 @@ static int pl_load_entry(uint32_t p, uint32_t id, char *got)
             m1_track_pattern_now((uint32_t)eng_steps_module(t), p);
             m1_locks_now((uint32_t)eng_steps_module(t), p);
         }
-    m1_pat_link_now(p, pl_id[p], pl_hash[p]);
+    m1_pat_link_now(p, pl_link(p), pl_hash[p]);
     return rc;
 }
 
@@ -529,7 +549,8 @@ static uint32_t pl_used(uint32_t id)
 static uint32_t m1_pat_del(uint32_t id, uint32_t force, uint32_t *count)
 {
     pt_info_t in;
-    uint32_t p, live = 0;
+    uint32_t n, k, live = 0;
+    const uint8_t *e;
     int rc;
     if (id > PT_ID_MAX)
         return S_RANGE;
@@ -539,10 +560,10 @@ static uint32_t m1_pat_del(uint32_t id, uint32_t force, uint32_t *count)
         return S_USED;
     if ((rc = pt_del(id)) != 0)
         return rc == -4 ? S_MISSING : S_FLASH;
-    for (p = 1; p < ENG_PATTERNS; p++)                 /* (the running patch's links to it: inline from now on, SAVE drops
+    for (e = pl_links(&n), k = 0; k < n; k++, e += 3)  /* (the running patch's links to it: inline from now on, SAVE drops
                                                         * the link) */
-        if (pl_id[p] == id) {
-            pl_hash[p] = 0;
+        if (((uint32_t)e[1] | (uint32_t)e[2] << 8) == id) {
+            pl_hash[e[0]] = 0;
             live = 1;
         }
     if (live)

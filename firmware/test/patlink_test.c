@@ -176,11 +176,11 @@ static void links(void)
     len = m1_cur_len;
     memcpy(orig, m1_cur, len);
     m1_patch_patterns();                             /* (a patch without links: written as it was) */
-    OK(m1_patch_locks() && m1_patch_links() && m1_cur_len == len && !memcmp(orig, m1_cur, len));
+    OK(m1_patch_locks() && pl_set_link(p, 0) && m1_cur_len == len && !memcmp(orig, m1_cur, len));
     wn = encode(p, want);
     OK(!pt_put(&id, "LOCKS P2", want, wn) && id);
     /* linked, clean: the binary keeps the link, not the pattern */
-    pl_id[p] = (uint16_t)id;
+    OK(pl_set_link(p, id) && pl_link(p) == id);
     pl_hash[p] = pt_fnv(PT_FNV0, want, wn);
     pl_rewrite();
     OK(m1_cur[1] == ENG_PATCH_VERSION && (m1_cur[7] & ENG_FLAG_LINKS) && m1_valid(m1_cur, m1_cur_len));
@@ -188,7 +188,7 @@ static void links(void)
     ln = m1_cur_len;
     memcpy(linked, m1_cur, ln);
     /* loaded: the store gives the pattern back, as it was */
-    OK(!load_patch(linked, ln) && has(p) && pl_id[p] == id);
+    OK(!load_patch(linked, ln) && has(p) && pl_link(p) == id);
     n = encode(p, pay);
     OK(n == wn && !memcmp(pay, want, n));
     OK(m1_pat_clean() == (uint64_t)1u << p);
@@ -211,15 +211,15 @@ static void links(void)
     OK(link_told(p, id) && m1_pat_clean() == (uint64_t)1u << p && inline_has(p) == 0);
     /* its entry gone: the pattern absent at load, the link kept */
     OK(!pt_del(id));
-    OK(!load_patch(linked, ln) && !has(p) && pl_id[p] == id && (m1_cur[7] & ENG_FLAG_LINKS));
+    OK(!load_patch(linked, ln) && !has(p) && pl_link(p) == id && (m1_cur[7] & ENG_FLAG_LINKS));
     m1_patch_patterns();
-    OK(m1_patch_links() && (m1_cur[7] & ENG_FLAG_LINKS));
+    OK(m1_patch_locks() && (m1_cur[7] & ENG_FLAG_LINKS) && pl_link(p) == id);
     /* edited with its entry gone: SAVE drops the link, the pattern stays inline */
     OK(eng_pattern_set_notes((uint32_t)eng_steps_module(0), p, notes_one(), 1u));
     m1_patch_track((uint32_t)eng_steps_module(0));
     nreplies = 0;
     pl_writeback();
-    OK(!pl_id[p] && !(m1_cur[7] & ENG_FLAG_LINKS) && inline_has(p) == 1 && link_told(p, 0));
+    OK(!pl_link(p) && !(m1_cur[7] & ENG_FLAG_LINKS) && inline_has(p) == 1 && link_told(p, 0));
     printf("patlink: links left out, loaded from the store, written back at SAVE\n");
 }
 
@@ -232,18 +232,18 @@ static void seq_page(void)
         ;
     if (c == N_PATTERN_CASES || load_patch(PATTERN_CASES[c].patch, PATTERN_CASES[c].patch_len))
         return;
-    OK(pl_save(p, 0, "LOCKS P2", got) == 1 && !strcmp(got, "LOCKS P2") && (id = pl_id[p]) != 0);
-    OK(pl_save(p, 0, "OTHER", got) == 0 && pl_id[p] == id && !strcmp(got, "LOCKS P2"));
-    OK(pl_save(p, 1, "COPY", got) == 1 && pl_id[p] != id && !strcmp(got, "COPY"));
-    OK(pl_save(0, 0, "FIRST", got) == 1 && !pl_id[0]);
-    OK(pl_load_entry(p, PL_FACTORY, got) == 0 && !pl_id[p] && !strcmp(got, PRESET_PATTERNS[0].name));
+    OK(pl_save(p, 0, "LOCKS P2", got) == 1 && !strcmp(got, "LOCKS P2") && (id = pl_link(p)) != 0);
+    OK(pl_save(p, 0, "OTHER", got) == 0 && pl_link(p) == id && !strcmp(got, "LOCKS P2"));
+    OK(pl_save(p, 1, "COPY", got) == 1 && pl_link(p) != id && !strcmp(got, "COPY"));
+    OK(pl_save(0, 0, "FIRST", got) == 1 && !pl_link(0));
+    OK(pl_load_entry(p, PL_FACTORY, got) == 0 && !pl_link(p) && !strcmp(got, PRESET_PATTERNS[0].name));
     {
         const uint32_t *w;
         int n = eng_pattern_notes((uint32_t)eng_steps_module(0), p, &w);
         OK(n == (int)PRESET_PATTERNS[0].n && !memcmp(w, PRESET_PATTERNS[0].notes, 4u * (uint32_t)n));
         OK(eng_pattern_len((uint32_t)eng_steps_module(0), p) == PRESET_PATTERNS[0].len);
     }
-    OK(pl_load_entry(p, id, got) == 0 && pl_id[p] == id && link_told(p, id));
+    OK(pl_load_entry(p, id, got) == 0 && pl_link(p) == id && link_told(p, id));
     {
         pt_info_t first, last;
         OK(!pt_next(0, &first) && pl_step(0, 1) == first.id && pl_step(first.id, -1) == PL_FACTORY + N_PRESET_PATTERNS - 1u);
@@ -255,7 +255,7 @@ static void seq_page(void)
         ;
     if (c < N_PATTERN_CASES && !load_patch(PATTERN_CASES[c].patch, PATTERN_CASES[c].patch_len)) {
         OK(pl_layout() != PATTERN_CASES[0].layout);
-        OK(pl_load_entry(1, id, got) == 1 && eng_locks_count() == 0 && pl_id[1] == id);
+        OK(pl_load_entry(1, id, got) == 1 && eng_locks_count() == 0 && pl_link(1) == id);
     }
     printf("patlink: the SEQ page's save, save as new and load\n");
 }
@@ -317,7 +317,7 @@ static void link_frames(void)
     frame(C_PAT_DEL, b, 3);
     OK(reply(0, R_PAT_STORED, e, sizeof e) == 4u && e[2] == S_RANGE);
     /* DEL: used by a slot, then forced */
-    pl_id[2] = (uint16_t)id;
+    OK(pl_set_link(2, id));
     pl_hash[2] = pl_hash_of(2);
     pl_rewrite();
     OK(!sl_write(3, "LINKER", m1_cur, m1_cur_len));
@@ -329,7 +329,7 @@ static void link_frames(void)
     b[2] = 1;
     frame(C_PAT_DEL, b, 3);
     OK(reply(0, R_PAT_STORED, e, sizeof e) == 4u && e[2] == S_OK && pt_stat(id, &(pt_info_t){0}));
-    OK(inline_has(2) == 1 && pl_id[2] == id);       /* (the running patch keeps it inline; SAVE drops the link) */
+    OK(inline_has(2) == 1 && pl_link(2) == id);     /* (the running patch keeps it inline; SAVE drops the link) */
     frame(C_PAT_DEL, b, 3);
     OK(reply(0, R_PAT_STORED, e, sizeof e) == 4u && e[2] == S_MISSING);
     printf("patlink: INFO, PATS, PAT_GET, PAT_PUT and PAT_DEL\n");

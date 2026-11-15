@@ -40,8 +40,6 @@
  *   static uint64_t m1_pat_clean(void);                         the pattern store (#901, patlink.c): the linked patterns whose
  *                                                               content is the store's (bit p), left out of the patterns and
  *                                                               locks sections
- *   static uint32_t m1_pat_links(uint8_t *out);                 the running patch's links section (u8 count, count x (u8 pattern,
- *                                                               u16 id)) into out (190 bytes), its length, 0 none
  *   static void m1_pat_info(uint8_t *p);                        INFO bytes 14..19: bit 1 of byte 14 (the store is on), byte 15 the
  *                                                               bank's slots, 16..19 the store's bytes free and total (u16 each)
  *   static uint32_t m1_pat_list(uint32_t after, uint8_t *e);    the stored patterns: e 0, how many; else the one with the
@@ -801,14 +799,14 @@ static int m1_patch_locks(void)
     return ok;
 }
 
-/* the running patch's stored pattern links (#901, patlink.c's table) into the binary: the section after the P-locks
- * replaced, made or dropped, what follows moves. A patch that gets a link is written as format 59 (the formats since
- * ENG_COUNTED read the same otherwise; eng_upgrade relies on it too). 1 done; 0 when the binary is older than
- * ENG_COUNTED (too big to upgrade) or would outgrow M1_PATCH_MAX: it keeps its old section */
-static int m1_patch_links(void)
+/* the running patch's stored pattern links (#901; the binary is their only copy, patlink.c reads them there) become s: n
+ * bytes (u8 count, count x (u8 pattern, u16 LE id), ascending; n 0: none). The section after the P-locks replaced, made
+ * or dropped, what follows moves. A patch that gets a link is written as format 59 (the formats since ENG_COUNTED read
+ * the same otherwise; eng_upgrade relies on it too). 1 done; 0 when the binary is older than ENG_COUNTED (too big to
+ * upgrade) or would outgrow M1_PATCH_MAX: it keeps its old section */
+static int m1_patch_links(const uint8_t *s, uint32_t n)
 {
-    uint8_t s[1u + 3u * (ENG_PATTERNS - 1u)];
-    uint32_t n = m1_pat_links(s), sec = eng_links_at(m1_cur, m1_cur_len), old = 0, i;
+    uint32_t sec = eng_links_at(m1_cur, m1_cur_len), old = 0, i;
     if (!sec)
         return 0;
     if (m1_cur[7] & ENG_FLAG_LINKS)
