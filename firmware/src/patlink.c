@@ -116,7 +116,7 @@ static void pl_encode(uint32_t p, pl_out_t *s)
     uint32_t nt = (uint32_t)eng_steps_count(), t, k, T = 1, L = 0, m;
     int c, r;
     const uint32_t *w;
-    uint8_t lk[7];
+    uint8_t lk[7u * ENG_PAT_LOCKS];
     for (t = 0; t < nt; t++) {
         m = (uint32_t)eng_steps_module(t);
         if (eng_pattern_has(m, p))
@@ -138,18 +138,12 @@ static void pl_encode(uint32_t p, pl_out_t *s)
     }
     pl_b(s, L);
     for (t = 0; t < nt; t++) {
-        m = (uint32_t)eng_steps_module(t);
-        if ((c = eng_locks_list(m, p, 0, 0)) <= 0)
+        if ((c = eng_locks_list((uint32_t)eng_steps_module(t), p, lk, sizeof lk)) <= 0)
             continue;
         pl_b(s, t);
         pl_b(s, (uint32_t)c);
-        for (k = 0; (int)k < c; k++) {
-            (void)eng_lock_item(m, p, k, lk);
-            pl_b(s, lk[0]);
-            pl_b(s, lk[1]);
-            pl_b(s, lk[2]);
-            pl_w(s, pl_rd32(lk + 3), 4);
-        }
+        for (k = 0; k < 7u * (uint32_t)c; k++)        /* (eng_locks_list's 7 bytes a lock are the payload's) */
+            pl_b(s, lk[k]);
     }
 }
 static uint32_t pl_hash_of(uint32_t p)
@@ -357,23 +351,16 @@ static uint64_t m1_pat_clean(void)
  * gone loses its link and stays inline; one the store cannot take (full, flash) stays inline and linked */
 static void pl_writeback(void)
 {
-    uint8_t e[3u * (ENG_PATTERNS - 1u)];
     pl_out_t s;
     pt_info_t in;
-    uint32_t n, k, p, id, changed = 0;
-    const uint8_t *l = pl_links(&n);
+    uint32_t p, id, changed = 0;
     int rc;
     if (!pt_on)
         return;
-    for (k = 0; k < 3u * n; k++)                     /* (a copy: a link that goes rewrites the section) */
-        e[k] = l[k];
-    for (k = 0; k < n; k++) {
-        p = e[3u * k];
-        id = (uint32_t)e[3u * k + 1u] | (uint32_t)e[3u * k + 2u] << 8;
-        s.o = m1_up;
-        s.cap = sizeof m1_up;
-        s.n = 0;
-        s.h = PT_FNV0;
+    for (p = 1; p < ENG_PATTERNS; p++) {            /* (by pattern: a link that goes rewrites the section) */
+        if (!(id = pl_link(p)))
+            continue;
+        s = (pl_out_t){ m1_up, sizeof m1_up, 0, PT_FNV0 };
         pl_encode(p, &s);
         if (s.h == pl_hash[p] || s.n > s.cap)
             continue;

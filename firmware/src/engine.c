@@ -5377,17 +5377,6 @@ int eng_locks_pattern(uint32_t module)
     E.trk_lkey[t] = -2;
     return (int)p;
 }
-/* lock l as eng_locks_list writes it: step, module, parameter, i32 LE value */
-static void lock_bytes(const lock_t *l, uint8_t *o)
-{
-    o[0] = l->at;
-    o[1] = E.lt[l->row].mod[0];
-    o[2] = E.lt[l->row].par[0];
-    o[3] = (uint8_t)l->v;
-    o[4] = (uint8_t)((uint32_t)l->v >> 8);
-    o[5] = (uint8_t)((uint32_t)l->v >> 16);
-    o[6] = (uint8_t)((uint32_t)l->v >> 24);
-}
 int eng_locks_list(uint32_t module, uint32_t p, uint8_t *out, uint32_t cap)
 {
     uint32_t t, i, n = 0;
@@ -5398,24 +5387,19 @@ int eng_locks_list(uint32_t module, uint32_t p, uint8_t *out, uint32_t cap)
         const lock_t *l = &E.lk[i];
         if (l->trk != t || l->pat != p)
             continue;
-        if (out && 7u * (n + 1u) <= cap)
-            lock_bytes(l, out + 7u * n);
+        if (out && 7u * (n + 1u) <= cap) {
+            uint8_t *o = out + 7u * n;
+            o[0] = l->at;
+            o[1] = E.lt[l->row].mod[0];
+            o[2] = E.lt[l->row].par[0];
+            o[3] = (uint8_t)l->v;
+            o[4] = (uint8_t)((uint32_t)l->v >> 8);
+            o[5] = (uint8_t)((uint32_t)l->v >> 16);
+            o[6] = (uint8_t)((uint32_t)l->v >> 24);
+        }
         n++;
     }
     return (int)n;
-}
-int eng_lock_item(uint32_t module, uint32_t p, uint32_t k, uint8_t *o)
-{
-    uint32_t t, i;
-    if (!steps_inst(module))
-        return -1;
-    t = E.node[module].trk;
-    for (i = 0; i < E.nlk; i++)
-        if (E.lk[i].trk == t && E.lk[i].pat == p && !k--) {
-            lock_bytes(&E.lk[i], o);
-            return 0;
-        }
-    return -1;
 }
 /* lock i is track t's and its pattern is not left out (pat_omit) */
 static int lock_kept(uint32_t i, uint32_t t) { return E.lk[i].trk == t && !(pat_omit >> E.lk[i].pat & 1u); }

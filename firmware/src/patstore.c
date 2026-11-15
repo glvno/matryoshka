@@ -185,12 +185,16 @@ static int pt_kill(uint32_t loc)
 }
 
 /* program the record h at sector sec's tail: the header fields, the payload (from p, or with p 0 from the flash at
- * address from), each checked, then the magic; 0 = ok */
-static int pt_emit(uint32_t sec, const pt_hdr_t *h, const uint8_t *p, uint32_t from)
+ * address from: a copy, which gets the next sequence number and the next free id), each checked, then the magic; 0 = ok */
+static int pt_emit(uint32_t sec, pt_hdr_t *h, const uint8_t *p, uint32_t from)
 {
     uint32_t off = pt_tail[sec], a = PT_BASE + sec * PT_SEC + off, n, k, i;
     uint8_t b[32];
     int rc;
+    if (!p) {
+        h->seq = pt_seq++;
+        h->nextid = (uint16_t)pt_nextid;
+    }
     pt_tail[sec] = PT_SEC;                              /* (until it is through: what a failure leaves is not clean) */
     rc = st_prog(a + 4u, (const uint8_t *)h + 4u, PT_HDR - 4u) || pt_cmp(a + 4u, (const uint8_t *)h + 4u, PT_HDR - 4u);
     for (n = 0; !rc && n < h->len; n += k) {
@@ -276,8 +280,6 @@ static int pt_compact(uint32_t r)
     for (loc = v * PT_SEC; !pt_iter(&loc, &h) && loc / PT_SEC == v; loc += pt_size(h.len)) {
         if (h.magic != PT_MAGIC)
             continue;
-        h.seq = pt_seq++;
-        h.nextid = (uint16_t)pt_nextid;
         if (pt_emit(t, &h, 0, PT_BASE + loc + PT_HDR))
             return -1;
         n++;
@@ -294,9 +296,9 @@ static uint32_t pt_tab_loc(uint32_t k) { return pt_get16(sl_buf + 4u * k + 2u); 
 
 static int pt_head(uint32_t loc, pt_hdr_t *h) { return st_read(PT_BASE + loc, h, PT_HDR); }
 
-/* table entry k is still needed (pt_finish): no other record of its id is newer, and none of the same contents sits in
- * another sector */
-static int pt_needed(uint32_t k, uint32_t n, pt_hdr_t *h)
+/* table entry k (its header into *h) is still needed: no other record of its id is newer, and (with twins) none of the
+ * same contents sits in another sector (pt_finish; pt_dedupe asks without twins). 0 also when its header cannot be read */
+static int pt_needed(uint32_t k, uint32_t n, pt_hdr_t *h, int twins)
 {
     pt_hdr_t o;
     uint32_t j, i, same;
@@ -305,7 +307,8 @@ static int pt_needed(uint32_t k, uint32_t n, pt_hdr_t *h)
     for (j = 0; j < n; j++) {
         if (j == k || pt_tab_id(j) != pt_tab_id(k) || pt_head(pt_tab_loc(j), &o))
             continue;
-        same = o.len == h->len && o.hash == h->hash && o.crc == h->crc && pt_tab_loc(j) / PT_SEC != pt_tab_loc(k) / PT_SEC;
+        same = twins && o.len == h->len && o.hash == h->hash && o.crc == h->crc
+            && pt_tab_loc(j) / PT_SEC != pt_tab_loc(k) / PT_SEC;
         for (i = 0; same && i < PT_NAME; i++)
             same = o.name[i] == h->name[i];
         if (o.seq > h->seq || same)
@@ -324,7 +327,7 @@ static int pt_finish(uint32_t n)
         if (!pt_tail[sec])
             continue;
         for (need = 0, k = 0; k < n; k++)
-            if (pt_tab_loc(k) / PT_SEC == sec && pt_needed(k, n, &h))
+            if (pt_tab_loc(k) / PT_SEC == sec && pt_needed(k, n, &h, 1))
                 need += pt_size(h.len);
         for (d = 0; d < PT_NSEC; d++)
             if (d != sec && pt_tail[d] && pt_room(d) >= need && need < fewest) {
@@ -336,27 +339,20 @@ static int pt_finish(uint32_t n)
     if (best == PT_NSEC)
         return -1;
     for (k = 0; k < n; k++)
-        if (pt_tab_loc(k) / PT_SEC == best && pt_needed(k, n, &h)) {
-            h.seq = pt_seq++;
-            h.nextid = (uint16_t)pt_nextid;
-            if (pt_emit(dest, &h, 0, PT_BASE + pt_tab_loc(k) + PT_HDR))
-                return -1;
-        }
+        if (pt_tab_loc(k) / PT_SEC == best && pt_needed(k, n, &h, 1)
+            && pt_emit(dest, &h, 0, PT_BASE + pt_tab_loc(k) + PT_HDR))
+            return -1;
     return pt_format(best);
 }
 
 /* of each id the newest record lives: older ones (a cut before a replaced record was killed) are killed */
 static void pt_dedupe(uint32_t n)
 {
-    pt_hdr_t h, o;
-    uint32_t k, j;
+    pt_hdr_t h;
+    uint32_t k;
     for (k = 0; k < n; k++)
-        for (j = 0; j < n; j++)
-            if (j != k && pt_tab_id(j) == pt_tab_id(k) && !pt_head(pt_tab_loc(k), &h) && !pt_head(pt_tab_loc(j), &o)
-                && o.seq > h.seq) {
-                (void)pt_kill(pt_tab_loc(k));
-                break;
-            }
+        if (!pt_head(pt_tab_loc(k), &h) && !pt_needed(k, n, &h, 0))
+            (void)pt_kill(pt_tab_loc(k));
 }
 
 static void pt_see_id(uint32_t v)
@@ -454,7 +450,7 @@ static int pt_read(uint32_t id, uint8_t *dst, uint32_t cap, pt_info_t *out)
 static int pt_put(uint32_t *id, const char *name, const uint8_t *p, uint32_t len)
 {
     pt_hdr_t h, o;
-    uint32_t i, sec, r = pt_size(len);
+    uint32_t i, end, sec, r = pt_size(len);
     int old = -1, rc;
     if (!pt_on)
         return -1;
@@ -480,12 +476,10 @@ static int pt_put(uint32_t *id, const char *name, const uint8_t *p, uint32_t len
     h.len = (uint16_t)len;
     h.hash = pt_fnv(PT_FNV0, p, len);
     h.nextid = (uint16_t)pt_nextid;
-    for (i = 0; i < PT_NAME; i++)
-        h.name[i] = 0;
-    for (i = 0; i < PT_NAME && name && name[i]; i++)
-        h.name[i] = name[i];
-    for (i = 0; i < PT_NAME; i++)
-        sl_buf[i] = (uint8_t)h.name[i];
+    for (i = 0, end = !name; i < PT_NAME; i++) {      /* (the name zero padded, and with the payload into sl_buf for the CRC) */
+        end = end || !name[i];
+        sl_buf[i] = (uint8_t)(h.name[i] = end ? 0 : name[i]);
+    }
     for (i = 0; i < len; i++)
         sl_buf[PT_NAME + i] = p[i];
     h.crc = m1_crc16(sl_buf, PT_NAME + len);

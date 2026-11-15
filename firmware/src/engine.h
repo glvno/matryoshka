@@ -714,10 +714,8 @@ int eng_lock_set(uint32_t module, uint32_t p, uint32_t k, uint32_t m, uint32_t j
  * (its notes and its locks: track.ts, the editor's setLocks). -1 none */
 int eng_locks_pattern(uint32_t module);
 /* pattern p's locks, 7 bytes each into out (cap bytes): step, module, parameter, i32 LE value; their count, -1 no track.
- * eng_lock_item: the k-th of them alone into o (7 bytes), 0, -1 none. eng_locks_clear: every track's locks of pattern p
- * removed */
+ * eng_locks_clear: every track's locks of pattern p removed */
 int eng_locks_list(uint32_t module, uint32_t p, uint8_t *out, uint32_t cap);
-int eng_lock_item(uint32_t module, uint32_t p, uint32_t k, uint8_t *o);
 void eng_locks_clear(uint32_t p);
 /* the P-locks section as the engine has it now (patchbin.ts lockRecord), into out (cap bytes): its length, 0 when there
  * are no locks, -1 when it does not fit */

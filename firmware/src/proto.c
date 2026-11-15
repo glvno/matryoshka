@@ -643,35 +643,40 @@ static void m1_patch_track(uint32_t mod)
     m1_edited = 1;
 }
 
-/* the patterns and songs as the engine has them into the binary (format 48, SAVE keeps them): the section replaced, made or
- * dropped, what follows moves. A patch of an older format (one too big to upgrade) or one that would outgrow M1_PATCH_MAX
- * keeps its old section. The clean linked patterns (#901, m1_pat_clean) are left out: their content is the store's */
-static void m1_patterns_sec(void)
+/* a Steps section as the engine has it into the binary (SAVE keeps it): s ENG_SEC_PATTERNS the patterns and songs (format
+ * 48), ENG_SEC_LOCKS the P-locks (format 49, #524), the clean linked patterns (#901, m1_pat_clean) left out of both: their
+ * content is the store's. The section replaced, made or dropped, what follows moves. 1 done; 0 when the binary is older
+ * than the section's format (one too big to upgrade) or would outgrow M1_PATCH_MAX: it keeps its old section (a caller of
+ * the locks undoes the engine's edit: the two never differ) */
+static int m1_steps_sec(uint32_t s)
 {
-    uint32_t sec = m1_sec_at(ENG_SEC_PATTERNS), old = 0;
+    uint32_t pat = s == ENG_SEC_PATTERNS, flag = pat ? ENG_FLAG_PATTERNS : ENG_FLAG_LOCKS, sec = m1_sec_at(s), old = 0;
+    int (*rec)(uint8_t *, uint32_t) = pat ? eng_patterns_record : eng_locks_record;
     int n;
-    if (!sec || m1_cur[1] < 48u)
-        return;
-    if ((m1_cur[7] & ENG_FLAG_PATTERNS) && !(old = m1_sec_at(ENG_SEC_LOCKS)))
-        return;
+    if (!sec || m1_cur[1] < (pat ? 48u : 49u))
+        return 0;
+    if ((m1_cur[7] & flag) && !(old = m1_sec_at(s + 1u)))
+        return 0;
     old = old ? old - sec : 0u;
     eng_patterns_omit(m1_pat_clean());
-    n = eng_patterns_record(0, 0);
-    if (n < 0 || (!n && !old) || m1_cur_len - old + (uint32_t)n > M1_PATCH_MAX)
-        return;
+    n = rec(0, 0);
+    if (n < 0 || m1_cur_len - old + (uint32_t)n > M1_PATCH_MAX)
+        return 0;
+    if (!n && !old)
+        return 1;
     m1_splice(sec, old, (uint32_t)n);
-    (void)eng_patterns_record(m1_cur + sec, (uint32_t)n);
-    m1_cur[7] = (uint8_t)(n ? m1_cur[7] | ENG_FLAG_PATTERNS : m1_cur[7] & ~ENG_FLAG_PATTERNS);
+    (void)rec(m1_cur + sec, (uint32_t)n);
+    m1_cur[7] = (uint8_t)(n ? m1_cur[7] | flag : m1_cur[7] & ~flag);
     m1_edited = 1;
+    return 1;
 }
-static int m1_locks_sec(void);
-/* a patch with links (#901) rewrites both sections together: an edit of a linked pattern's notes or locks makes it no
- * longer clean, and then its notes and its locks go inline at once */
+/* the patterns and songs into the binary; a patch with links (#901) rewrites the locks with them: an edit of a linked
+ * pattern's notes or locks makes it no longer clean, and then its notes and its locks go inline at once */
 static void m1_patch_patterns(void)
 {
-    m1_patterns_sec();
+    (void)m1_steps_sec(ENG_SEC_PATTERNS);
     if (m1_cur[7] & ENG_FLAG_LINKS)
-        (void)m1_locks_sec();
+        (void)m1_steps_sec(ENG_SEC_LOCKS);
 }
 
 /* Origin event (0x5A): six bytes, module/pattern/u32 LE identity. Module 255 with
@@ -726,35 +731,12 @@ static int m1_default_pattern(uint32_t mod, uint32_t pattern, const uint32_t *wo
     return 1;
 }
 
-/* the P-locks as the engine has them into the binary (format 49, #524; SAVE keeps them): the section after the patterns
- * replaced, made or dropped, what follows moves; the clean linked patterns' locks left out (#901). 1 done; 0 when the
- * binary is older than format 49 or would outgrow M1_PATCH_MAX (the caller undoes the engine's edit: the two never differ) */
-static int m1_locks_sec(void)
-{
-    uint32_t sec = m1_sec_at(ENG_SEC_LOCKS), old = 0;
-    int n;
-    if (!sec || m1_cur[1] < 49u)
-        return 0;
-    if ((m1_cur[7] & ENG_FLAG_LOCKS) && !(old = m1_sec_at(ENG_SEC_LINKS)))
-        return 0;
-    old = old ? old - sec : 0u;
-    eng_patterns_omit(m1_pat_clean());
-    n = eng_locks_record(0, 0);
-    if (n < 0 || m1_cur_len - old + (uint32_t)n > M1_PATCH_MAX)
-        return 0;
-    if (!n && !old)
-        return 1;
-    m1_splice(sec, old, (uint32_t)n);
-    (void)eng_locks_record(m1_cur + sec, (uint32_t)n);
-    m1_cur[7] = (uint8_t)(n ? m1_cur[7] | ENG_FLAG_LOCKS : m1_cur[7] & ~ENG_FLAG_LOCKS);
-    m1_edited = 1;
-    return 1;
-}
+/* the P-locks into the binary (m1_steps_sec; with links, #901, the patterns too: m1_patch_patterns). 1 done, 0 not */
 static int m1_patch_locks(void)
 {
-    int ok = m1_locks_sec();
-    if (ok && (m1_cur[7] & ENG_FLAG_LINKS))      /* (with links: the patterns too, m1_patch_patterns) */
-        m1_patterns_sec();
+    int ok = m1_steps_sec(ENG_SEC_LOCKS);
+    if (ok && (m1_cur[7] & ENG_FLAG_LINKS))
+        (void)m1_steps_sec(ENG_SEC_PATTERNS);
     return ok;
 }
 
