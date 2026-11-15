@@ -18,7 +18,7 @@ describe('hardware candidate measurement profiles', () => {
   });
 
 
-  it.each([0, 1, 2, 2.5, 5, NaN, Infinity])('rejects an invalid Oracle V voice request %s', voices => {
+  it.each([0, 1, 2, 2.5, 6, NaN, Infinity])('rejects an invalid Oracle V voice request %s', voices => {
     expect(() => buildFactoryBank({ 'Oracle V': { voices } })).toThrow(/voices/);
   });
 
