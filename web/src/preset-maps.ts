@@ -76,9 +76,9 @@ export const HAND_MAPS: HandMap[] = [
   // (DOT's and BACID's Ladder cutoff and resonance are now their Multimode's, the same numbers). CYMPATH's pitch was its
   // oscillator's coarse tune and is now the main slider's Macro, -10 .. +40 semitones over 0 .. 1. A one-way LINK amount
   // above 0 turns its button on (8-1 is 8>1); at 0 or below (a ducking link) it stays off. `main` is `main volume`, the
-  // same number. The odd and even CV rows have no row now; MOD, mute, CV mute and 1>8 start at Init.
+  // same number. The odd and even CV rows have no row now (nor the CV mute buttons); MOD, mute and 1>8 start at Init.
   {
-    engine: 'Meridian 8', from: 'dfc4cd9c', to: 'bdc40944',
+    engine: 'Meridian 8', from: 'dfc4cd9c', to: 'bef10cad',
     why: 'D-1054: the whole NOON; rows by channel',
     rows: {
       'osc#23.coarse': { from: 'osc#10.coarse' }, 'filter#24.cutoff': { from: 'ladder#11.cutoff' }, 'vca#21.gain': { from: 'vca#9.gain' },
@@ -91,13 +91,13 @@ export const HAND_MAPS: HandMap[] = [
       'osc#85.coarse': { from: 'osc#35.coarse' }, 'vowel#86.vowel': { from: 'vowel#36.vowel' }, 'vca#83.gain': { from: 'vca#34.gain' },
       'osc#95.coarse': { from: 'osc#39.coarse' }, 'filter#96.res': { from: 'ladder#40.res' }, 'vca#93.gain': { from: 'vca#38.gain' },
       'select#5.pos': { line: 'scale#41.gain', mul: [1000], add: [1], min: 1, max: 2 },
-      'select#115.pos': { line: 'scale#42.gain', mul: [1000], add: [1], min: 1, max: 2 },
-      'select#116.pos': { line: 'scale#43.gain', mul: [1000], add: [1], min: 1, max: 2 },
-      'select#117.pos': { line: 'scale#44.gain', mul: [1000], add: [1], min: 1, max: 2 },
-      'select#118.pos': { line: 'scale#45.gain', mul: [1000], add: [1], min: 1, max: 2 },
-      'select#119.pos': { line: 'scale#46.gain', mul: [1000], add: [1], min: 1, max: 2 },
-      'select#120.pos': { line: 'scale#47.gain', mul: [1000], add: [1], min: 1, max: 2 },
-      'select#121.pos': { line: 'scale#48.gain', mul: [1000], add: [1], min: 1, max: 2 },
+      'select#107.pos': { line: 'scale#42.gain', mul: [1000], add: [1], min: 1, max: 2 },
+      'select#108.pos': { line: 'scale#43.gain', mul: [1000], add: [1], min: 1, max: 2 },
+      'select#109.pos': { line: 'scale#44.gain', mul: [1000], add: [1], min: 1, max: 2 },
+      'select#110.pos': { line: 'scale#45.gain', mul: [1000], add: [1], min: 1, max: 2 },
+      'select#111.pos': { line: 'scale#46.gain', mul: [1000], add: [1], min: 1, max: 2 },
+      'select#112.pos': { line: 'scale#47.gain', mul: [1000], add: [1], min: 1, max: 2 },
+      'select#113.pos': { line: 'scale#48.gain', mul: [1000], add: [1], min: 1, max: 2 },
       'shape#8.level+shape#9.level': { from: 'macro#6.value' },
     },
   },

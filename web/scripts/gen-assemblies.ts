@@ -3778,9 +3778,9 @@ asm('Scrounge', 'Drums', (b) => {
 // Meridian 8, after the Landscape NOON (its manual, landscape.fm/s/Noon-Manual-baw6.pdf, and the instrument's page,
 // landscape.fm/noon): eight passive circuits powered by their gates, no supply of their own. Since D-1054 the FM-1 plays
 // the whole design Meridian 8 XL had (scripts/xl/meridian-8.ts says how each part reads the manual); its card is the NOON's
-// 58 controls, one row each, named as the manual's "Sliders", "Volume controls", "Link buttons", "Mod buttons", "Mute
-// buttons" and "CV mute buttons" name them: per channel `main`, `secondary`, `volume`, MOD (`mod`: up, down), mute and CV
-// mute (mute, on); the nine LINK buttons (off, on); `main volume`.
+// controls, one row each, named as the manual's "Sliders", "Volume controls", "Link buttons", "Mod buttons" and "Mute
+// buttons" name them: per channel `main`, `secondary`, `volume`, MOD (`mod`: up, down) and mute (mute, on); the nine LINK
+// buttons (off, on); `main volume`. The CV mute buttons are left out with the CV inputs they mute (the owner, 2026-11-15).
 //  - A Drum map row is a channel's gate (the white keys from F3); its power is an ADSR on the gate, scaled by the gate's
 //    voltage (the key's velocity at half weight: a Math), after the mute button. The power is the VCA's cv and also
 //    pushes the circuit's pitch or filter, so a hit swoops and a dying gate starves the sound.
@@ -3798,7 +3798,7 @@ asm('Scrounge', 'Drums', (b) => {
 //  - The passive mix: odd channels to `l`, even to `r`, each bleeding 5 % into the other side, each side through a
 //    saturator whose level is the main volume.
 // What the XL had that is not here, because it changes nothing the FM-1 plays: the patch points as assembly ports
-// (gate 1..8, odd / even cv, audio; the CV mute buttons stay on the card and mute nothing without them), the fixed
+// (gate 1..8, odd / even cv, audio) and the CV mute buttons on the odd / even cv, the fixed
 // Macros the XL left at one value (the gate's voltage, the odd / even voltages, the mono plug), a separate skin amount
 // per channel (one touch amount for all, as the XL's were all at 1) and the per-channel touch VCAs, summed into one
 // (x·a + y·a = (x + y)·a). The FM-1 version plays what the XL plays, but for the summing order (about -100 dB).
@@ -3848,8 +3848,7 @@ asm('Meridian 8', 'Drums', (b) => {
   /** the circuit: its modules, where the power goes in, its two sliders, the MOD button's two inputs (`a` up, `b` down)
    * and a module between the button and the VCA */
   type Circuit = { members: number[]; power: [number, string][]; s1: [number, string]; s2: [number, string]; a: [number, string]; b: [number, string]; post?: number };
-  // (the modules in Meridian 8 XL's order, which the two-core schedule follows: each channel, the links, the CV mute
-  // buttons, the link buttons)
+  // (the modules in Meridian 8 XL's order, which the two-core schedule follows: each channel, the links, the link buttons)
   const channel = (i: number, name: string, adsr: Record<string, number>, f: (col: number, node: number) => Circuit): Ch => {
     const col = 1 + i;
     const env = b.add('adsr', col, 0, adsr);
@@ -3964,16 +3963,10 @@ asm('Meridian 8', 'Drums', (b) => {
     return v;
   };
   const links = [...Array.from({ length: 7 }, (_, i) => link(i, [chs[i], chs[i + 1]], [chs[i], chs[i + 1]])), link(7, [chs[7]], [chs[0]]), link(8, [chs[0]], [chs[7]])];
-  // the CV mute buttons (mute, on), into each channel's power
-  const cvMutes = chs.map((c) => {
-    const m = b.add('select', c.col, 0.6, { count: 2, pos: 2 });
-    b.wire(m, 'out', c.pw, 'in');
-    return m;
-  });
   const buttons = [dotDual, ...Array.from({ length: 8 }, (_, i) => b.add('select', 2 + i, 6.75, OFF_ON))];
   buttons.forEach((sw, i) => b.wire(sw, 'out', links[i], 'cv'));
   chs.forEach((c, i) => {
-    b.nest(`${i + 1} ${c.name}`, c.col, 0, [...c.members, cvMutes[i]]);
+    b.nest(`${i + 1} ${c.name}`, c.col, 0, c.members);
     b.nestInput('power', c.node, 'in');
     b.nestOutput('out', c.vca, 'out');
   });
@@ -3987,7 +3980,6 @@ asm('Meridian 8', 'Drums', (b) => {
     b.param('volume', c.vca, 'gain');
     b.param('mod', c.mod, 'pos');
     b.param('mute', c.mute, 'pos');
-    b.param('cv mute', cvMutes[i], 'pos');
   });
   buttons.forEach((sw, i) => b.param(i < 7 ? `${i + 1}-${i + 2}` : i === 7 ? '8>1' : '1>8', sw, 'pos', i === 0 ? { col: true, head: 'link' } : {}));
   b.param('main volume', L, 'level', { head: 'out' });
@@ -3997,7 +3989,7 @@ asm('Meridian 8', 'Drums', (b) => {
 // the main volume is both saturators' level (a row's `also`); the buttons' positions named as in Meridian 8 XL
 {
   const d = defs.find((x) => x.name === 'Meridian 8')!;
-  const names: Record<string, string[]> = { mod: ['up', 'down'], mute: ['mute', 'on'], 'cv mute': ['mute', 'on'] };
+  const names: Record<string, string[]> = { mod: ['up', 'down'], mute: ['mute', 'on'] };
   for (const list of [d.params, ...(d.assemblies ?? []).map((n) => n.params)])
     for (const r of list) {
       if (r.label === 'main volume') r.also = [{ module: meridianR.id, param: 'level' }];

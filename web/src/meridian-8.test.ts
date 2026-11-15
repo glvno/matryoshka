@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Meridian 8 on the FM-1, the whole Landscape NOON (D-1054, scripts/gen-assemblies.ts): the card is the NOON's 58 controls,
-// it fits the FM-1, it plays what Meridian 8 XL plays (the touch plates' wobble too: its Random sits where the XL's does),
-// and a user preset of the 1.15 card moves onto the same channels.
+// Meridian 8 on the FM-1, the whole Landscape NOON (D-1054, scripts/gen-assemblies.ts): the card is the NOON's controls
+// but the CV mutes (left out with the CV inputs), it fits the FM-1, it plays what Meridian 8 XL plays (the touch plates'
+// wobble too: its Random sits where the XL's does), and a user preset of the 1.15 card moves onto the same channels.
 import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import type { Patch } from './patch';
@@ -52,7 +52,7 @@ function render(p: Patch): Float32Array[] {
 }
 
 describe('Meridian 8, the whole NOON (D-1054)', () => {
-  it('fits the FM-1 with the NOON\'s 58 controls on its card', () => {
+  it('fits the FM-1 with the NOON\'s 50 controls on its card (no CV mute: no CV inputs)', () => {
     const b = deviceBudget(fm1());
     expect(b.fits).toBe(true);
     expect(b.cpu.use).toBeLessThanOrEqual(CPU_VOICE_TOP);
@@ -64,7 +64,7 @@ describe('Meridian 8, the whole NOON (D-1054)', () => {
       heads.set(head, [...(heads.get(head) ?? []), r.label!]);
     }
     expect([...heads.keys()]).toEqual([...CHANNELS, 'link', 'out']);
-    for (const c of CHANNELS) expect(heads.get(c), c).toEqual(['main', 'secondary', 'volume', 'mod', 'mute', 'cv mute']);
+    for (const c of CHANNELS) expect(heads.get(c), c).toEqual(['main', 'secondary', 'volume', 'mod', 'mute']);
     expect(heads.get('link')).toEqual(['1-2', '2-3', '3-4', '4-5', '5-6', '6-7', '7-8', '8>1', '1>8']);
     expect(heads.get('out')).toEqual(['main volume', 'out']);
   });
@@ -108,7 +108,7 @@ describe('Meridian 8, the whole NOON (D-1054)', () => {
     expect(want('filter#24.cutoff')).toBe(was('ladder#11.cutoff')); // dot / secondary
     expect(want('vca#93.gain')).toBe(was('vca#38.gain'));           // bacid / volume
     expect(want('macro#64.value')).toBeCloseTo(0.8, 3);             // cympath / main: (30 + 10) / 50
-    expect(want('select#116.pos')).toBe(2);                        // 3-4 on
+    expect(want('select#108.pos')).toBe(2);                        // 3-4 on
     expect(want('select#5.pos')).toBe(1);                          // 1-2 off
     expect(want('shape#8.level+shape#9.level')).toBe(was('macro#6.value'));   // main volume
   });
