@@ -47416,7 +47416,13 @@
        "note": 59,
        "vel": 100
       }
-     ]
+     ],
+     "factoryPatterns": {
+      "version": 1,
+      "ids": [
+       "58c8475b"
+      ]
+     }
     },
     {
      "id": 118,

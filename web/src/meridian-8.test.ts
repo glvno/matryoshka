@@ -14,6 +14,7 @@ import { structureOf } from './structure';
 import { readLineage } from '../scripts/lineage-lib';
 import { FM1_PRESETS } from './presets';
 import { relocatedPatches } from './community-factory';
+import { presetPattern } from './preset-patterns';
 
 const SR = 44118;
 const CHANNELS = ['1 dot', '2 dual', '3 sys', '4 plast', '5 cympath', '6 cyrinx', '7 larynx', '8 bacid'];
@@ -67,6 +68,12 @@ describe('Meridian 8, the whole NOON (D-1054)', () => {
     for (const c of CHANNELS) expect(heads.get(c), c).toEqual(['main', 'secondary', 'volume', 'mod', 'mute']);
     expect(heads.get('link')).toEqual(['1-2', '2-3', '3-4', '4-5', '5-6', '6-7', '7-8', '8>1', '1>8']);
     expect(heads.get('out')).toEqual(['main volume', 'out']);
+  });
+
+  it('its PATTERN track carries its Init preset pattern\'s origin (D-1009), so the demo patterns can replace it', () => {
+    const p = fm1();
+    const track = p.modules.find((m) => m.type === 'steps' && m.name === 'PATTERN')!;
+    expect(track.factoryPatterns?.ids[0]).toBe(presetPattern(structureOf(p, engine(p)), 'Init')!.id);
   });
 
   it('keeps the skin\'s Random at the XL\'s place, which seeds it, and plays what Meridian 8 XL plays', () => {
