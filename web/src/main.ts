@@ -29,6 +29,7 @@ import { Fm1View } from './fm1-view';
 import { panelPlay, EmuKeys } from './emu-keys';
 import { SandboxKeys } from './sandbox-keys';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
+import type { Snapshot } from './snapshots';
 import { ScopeScreens } from './scope-view';
 import { EnvScreens } from './env-view';
 import { addToBank, bankPatches, buildPatchesSection, type LibrarySection as LibraryPane } from './bank';
@@ -111,9 +112,11 @@ function loadSaved(): Patch | null {
   }
 }
 
+/** remember the patch; while a snapshot is on screen the current patch is the one remembered (snapshots live only while
+ *  the page is open, #943: a reload brings back the current patch, never a snapshot in its place) */
 function save(p: Patch): void {
   try {
-    localStorage.setItem(STORE, JSON.stringify(p));
+    localStorage.setItem(STORE, JSON.stringify(p === editor.patch ? editor.currentPatch() : p));
   } catch {
     /* private mode or storage blocked: the patch just isn't remembered */
   }
@@ -131,7 +134,10 @@ let suppressSave = false;
 const queueSave = (p: Patch): void => {
   if (suppressSave) return;
   clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(() => save(p), 300);
+  saveTimer = window.setTimeout(() => {
+    save(p);
+    if (editor.snaps.list.length) renderSnapshots();   // (each snapshot's count of changes, and the mark of one changed since it was taken)
+  }, 300);
 };
 
 const device = new DeviceLink();
@@ -1101,6 +1107,10 @@ const editor = new Editor($('canvas'), firstPatch, {
     if (kind === 'undo') tutorial.undone();
     else tutorial.redone();
   },
+  onSnapshots() {
+    nameInput.value = editor.patch.name;   // (each stop has its own name, D-970)
+    renderSnapshots();
+  },
   morphCandidates: patchCandidates,
 }, $('dock'));
 // the wheels stand beside the keyboard, each under its output's jack; the octave buttons under the dock's outputs
@@ -1119,7 +1129,7 @@ editor.dockPlay = arpBtn;
 initStatusline($('statusline'));
 editor.rebuild();
 showBudget();
-snapshotCandidates = () => editor.snapshots.B ? [{ name: 'Snapshot B', patch: { ...JSON.parse(editor.snapshots.B) as Patch, name: 'Snapshot B' } }] : [];
+snapshotCandidates = () => editor.snaps.list.map((s) => ({ name: `Snapshot ${s.letter}`, patch: { ...JSON.parse(s.patch) as Patch, name: `Snapshot ${s.letter}` } }));
 host.setPatch(editor.patch);
 const tutorial = new Tutorial({
   editor,
@@ -1135,8 +1145,6 @@ const tutorial = new Tutorial({
     refreshAssemblies();
     status.textContent = `"${def.name}" saved to the assembly library`;
   },
-  snapshot: (side) => takeSnapshot(side),
-  flipAB: () => flipAB(),
   share: () => sharePatch(),
   arpPlay: (on) => setPlaying(on),
   bypass: (id, on) => { const m = editor.patch.modules.find((m) => m.id === id); if (!m) return; if (on) m.bypass = true; else delete m.bypass; host.send({ t: 'bypass', id, on }); tutorial.bypassed(); editor.rebuild(); queueSave(editor.patch); },
@@ -1442,7 +1450,7 @@ addEventListener('keydown', (e) => {
 }, true);
 const browser = new AssemblyBrowser((d) => { toPatch(); editor.insert(d); });
 
-// ---- diff against the baseline (the patch as last loaded, uploaded or stored) and A / B
+// ---- diff against the baseline (the patch as last loaded, uploaded or stored) and snapshots
 let baseline = JSON.stringify(editor.patch);
 const setBaseline = (): void => {
   baseline = JSON.stringify(editor.patch);
@@ -1469,20 +1477,95 @@ const showDiff = (): void => {
   diffPanel.append(h, ul);
   diffPanel.hidden = false;
 };
-const takeSnapshot = (side: 'A' | 'B'): void => {
-  editor.takeSnapshot(side);
-  editor.rebuild();
-  status.textContent = `${side} = this patch`;
-};
-const flipAB = (): void => {
-  if (editor.toggleAB()) {
-    audition.restart();   // (a test phrase starts again: each side hears the same notes from the top, #945)
-    nameInput.value = editor.patch.name;   // (the patch takes the target's name, D-579)
-    tutorial.flipped();
-    status.textContent = `${editor.side}${diffCount(diffPatches(JSON.parse(editor.snapshots[editor.side === 'A' ? 'B' : 'A']!) as Patch, editor.patch, DEFS)) ? '' : ' (same as the other side)'}`;
+// ---- snapshots (#943): versions of the patch kept while the page is open, lettered A, B… as they are taken. The strip over
+// the canvas shows them with the current patch last; Alt+B goes A, B, …, the current patch, A…, Shift+Alt+B takes one
+const snapStrip = $('snapshot-strip');
+/** how many changes the snapshot is from the current patch, counted as Show changes counts them */
+const snapChanges = (s: Snapshot): number => diffCount(diffPatches(editor.currentPatch(), JSON.parse(s.patch) as Patch, DEFS));
+const snapTitle = (s: Snapshot): string => s.name ? `${s.letter} “${s.name}”` : s.letter;
+function renderSnapshots(): void {
+  const { list, shown } = editor.snaps;
+  const edited = editor.shownEdited();
+  const entry = (label: string, title: string, on: boolean, run: () => void): HTMLButtonElement => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'snap';
+    b.textContent = label;
+    b.title = title;
+    b.setAttribute('aria-pressed', String(on));
+    b.onclick = run;
+    return b;
+  };
+  const items = list.map((s) => {
+    const n = snapChanges(s);
+    const changed = edited && shown === s.letter;
+    const b = entry(s.letter, `Snapshot ${snapTitle(s)}: ${n ? `${n} change${n === 1 ? '' : 's'} from the current patch` : 'the same as the current patch'}${changed ? '. Changed since it was taken: switching away keeps the changes as a new snapshot' : ''}. Click to hear it, right-click or double-click for more`, shown === s.letter, () => showStop(s.letter));
+    if (changed) b.classList.add('edited');
+    if (s.name) {
+      const name = document.createElement('span');
+      name.className = 'snap-name';
+      name.textContent = s.name;
+      b.append(name);
+    }
+    // the thumbnail: the number of changes; a spectrogram of the test phrase (#945) can take this place
+    const thumb = document.createElement('span');
+    thumb.className = 'snap-thumb';
+    thumb.textContent = n ? String(n) : '=';
+    b.append(thumb);
+    const more = (e: Event): void => { e.preventDefault(); popMenu(snapshotMenu(s), b); };
+    b.oncontextmenu = more;
+    b.ondblclick = more;
+    return b;
+  });
+  const take = entry(list.length ? '+' : '+ Snapshot', 'Take a snapshot of the patch on screen (Shift+Alt+B)', false, () => takeSnapshot());
+  take.classList.add('snap-take');
+  take.removeAttribute('aria-pressed');
+  snapStrip.replaceChildren(...items, ...(list.length ? [entry('Current', 'The current patch: your latest edits (Alt+B goes through the snapshots and back here)', shown === null, () => showStop(null))] : []), take);
+}
+const snapshotMenu = (s: Snapshot): MenuItem[] => [
+  { text: 'Rename…', run: () => {
+    const to = window.prompt(`Name of snapshot ${s.letter} (empty: none)`, s.name ?? '');
+    if (to !== null) editor.renameSnapshot(s.letter, to.trim());
+  } },
+  { text: 'Make it the current patch', run: () => {
+    const kept = editor.makeCurrent(s.letter);
+    status.textContent = `${s.letter} is the current patch${kept ? `; the patch it replaces is kept as ${kept.letter}` : ''}`;
     queueSave(editor.patch);
-  } else status.textContent = 'set A and B first';
+  } },
+  { text: 'Save as a patch…', run: () => {
+    const p = JSON.parse(s.patch) as Patch;
+    const name = window.prompt('Save the snapshot to Your patches as', s.name ?? `${p.name} ${s.letter}`)?.trim();
+    if (name) status.textContent = keepPatch({ ...p, name }).msg;
+  } },
+  { text: 'Remove', danger: true, run: () => {
+    editor.removeSnapshot(s.letter);
+    status.textContent = `snapshot ${s.letter} removed`;
+    queueSave(editor.patch);
+  } },
+];
+const takeSnapshot = (): void => {
+  const s = editor.takeSnapshot();
+  editor.rebuild();   // (the morph picker offers the snapshots)
+  status.textContent = `snapshot ${s.letter} taken: Alt+B compares it with the current patch`;
 };
+/** after a switch: the name, the status line (what the stop is, and where changes to the snapshot left went) */
+const switched = (r: { kept?: Snapshot } | null): void => {
+  if (!r) return;
+  audition.restart();   // (a test phrase starts again: each stop hears the same notes from the top, #945)
+  tutorial.flipped();
+  const s = editor.snaps.get(editor.snaps.shown);
+  const n = s ? snapChanges(s) : 0;
+  const where = s ? `snapshot ${snapTitle(s)}: ${n ? `${n} change${n === 1 ? '' : 's'} from the current patch` : 'the same as the current patch'}` : 'the current patch';
+  status.textContent = where + (r.kept ? ` · your changes are kept as snapshot ${r.kept.letter}` : '');
+  queueSave(editor.patch);
+};
+const showStop = (letter: string | null): void => switched(editor.showSnapshot(letter));
+const cycleSnapshots = (): void => {
+  const r = editor.cycleSnapshots();
+  if (r) switched(r);
+  else status.textContent = 'take a snapshot first (Shift+Alt+B), then Alt+B compares it with the current patch';
+};
+renderSnapshots();
 
 // ---- the command palette: modules, assemblies, patches
 const palette = $<HTMLDialogElement>('palette');
@@ -1526,9 +1609,10 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Delete selection', detail: 'Delete', run: inPatch(() => editor.removeSelected()) },
     { kind: 'command', label: 'Bypass selection', detail: 'B', run: inPatch(() => editor.bypassSelected()) },
     { kind: 'command', label: 'Show changes since last load / upload', keywords: 'diff', run: inPatch(showDiff) },
-    { kind: 'command', label: 'Set snapshot A', keywords: 'compare ab', run: () => takeSnapshot('A') },
-    { kind: 'command', label: 'Set snapshot B', keywords: 'compare ab', run: () => takeSnapshot('B') },
-    { kind: 'command', label: 'Switch A / B snapshots', detail: 'Alt+B', run: inPatch(flipAB) },
+    { kind: 'command', label: 'Take a snapshot', detail: 'Shift+Alt+B', keywords: 'compare ab a/b set version keep', run: inPatch(takeSnapshot) },
+    { kind: 'command', label: 'Next snapshot', detail: 'Alt+B', keywords: 'compare ab a/b switch flip cycle current patch', run: inPatch(cycleSnapshots) },
+    ...editor.snaps.list.map((s) => ({ kind: 'command' as const, label: `Show snapshot ${snapTitle(s)}`, keywords: 'compare ab a/b switch', run: inPatch(() => showStop(s.letter)) })),
+    ...(editor.snaps.shown !== null ? [{ kind: 'command' as const, label: 'Back to the current patch', keywords: 'compare ab a/b switch snapshot', run: inPatch(() => showStop(null)) }] : []),
     // Mutate and Randomize (#944): the selected cards' parameters, one undo step
     { kind: 'command', label: 'Mutate selection', detail: `Alt+M · ±${Math.round(editor.mutateAmount * 100)} %`, keywords: 'vary variation nudge random sound design', run: inPatch(() => void editor.mutate('mutate')) },
     { kind: 'command', label: 'Randomize selection', keywords: 'random dice new sound design', run: inPatch(() => void editor.mutate('randomize')) },
@@ -1770,7 +1854,7 @@ window.addEventListener('keydown', (e) => {
   else if (mod && k.toLowerCase() === 'a') (editor.selectAllRows() || editor.selectAll(), (done = true));
   else if ((k === ' ' || k === 'Enter') && !mod && !e.altKey && editor.applyRows()) done = true; // pick mode: show / hide the selected rows
   else if (mod && k.toLowerCase() === 'd') done = editor.duplicateSelected();
-  else if (e.altKey && !mod && (e.code === 'KeyB' || k.toLowerCase() === 'b')) (flipAB(), (done = true));   // (the code: Option+B types ∫ on a Mac)
+  else if (e.altKey && !mod && (e.code === 'KeyB' || k.toLowerCase() === 'b')) ((e.shiftKey ? takeSnapshot() : cycleSnapshots()), (done = true));   // (the code: Option+B types ∫ on a Mac)
   // the canvas's TIDY and FIT (#987), Mutate (#944); by the code, as Option+letter types a symbol on a Mac
   else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyT') (onCanvas(() => editor.tidyUp())(), (done = true));
   else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyZ') (onCanvas(() => editor.zoomToFit())(), (done = true));
@@ -2159,6 +2243,7 @@ function setView(v: View): void {
   $('tab-library').hidden = v !== 'library';
   $('canvas').hidden = v !== 'patch';
   $('help-btn').hidden = v !== 'patch';
+  snapStrip.hidden = v !== 'patch';
   // the sidebar is the same in every view; LIBRARY's sections are tabs under the switch
   $('library-tabs').hidden = v !== 'library';
   // the FM-1 is its own instrument: its panel has the keys and knobs, so the Main dock, the wheels and the keyboard go;
@@ -3035,7 +3120,7 @@ if (import.meta.env.DEV) {
   // the lesson editor's live link: it checks steps against this synth and loads patches into it
   tutorial.observer = synthLink(() => ({
     patch: editor.patch, selected: [...editor.selected], arpPlay: editor.playing, audio: host.running && !host.muted,
-    snapshots: { A: !!editor.snapshots.A, B: !!editor.snapshots.B }, zoom: editor.zoom, library: loadLibrary(),
+    snapshots: { A: !!editor.snaps.get('A'), B: !!editor.snaps.get('B') }, zoom: editor.zoom, library: loadLibrary(),
   }), (p) => { sink.send({ t: 'panic' }); loadNamed(p, { quiet: true }); });
   const link = document.createElement('a');
   link.href = '/lesson-editor'; link.target = '_blank'; link.rel = 'noopener';

@@ -92,6 +92,7 @@ import { pinchStart, pinchStep, type Pinch } from './touch';
 import type { ScreenSpec } from './scope-view';
 import type { EnvSpec } from './env-view';
 import { flipPlan } from './ab';
+import { body, sameVersion, Snapshots, type Snapshot } from './snapshots';
 import { isGlobalTempo, patchTempo, tempo } from './tempo';
 import { EXCLUDED_TYPES,
   addChild,
@@ -163,6 +164,8 @@ function kindMark(kind: ButtonKind | 'main'): SVGSVGElement {
   return svg;
 }
 const HISTORY = 40;
+/** an undo step: the patch (Editor.snap) and the stop it belongs to, a snapshot's letter or null for the current patch */
+type UndoStep = { s: string; shown: string | null };
 /** a logarithmic slider's value rounded to the parameter's step (a glide time to the ms, a cutoff to the Hz), not to a whole number */
 function snapTo(pd: ParamDef, v: number): number {
   const step = pd.step ?? 0;
@@ -223,6 +226,8 @@ export interface EditorEvents {
   onSaveAssembly(def: AssemblyDef): void;
   /** undo or redo happened (the tutorial counts them) */
   onHistory?(kind: 'undo' | 'redo'): void;
+  /** the snapshots or the stop on screen changed (taken, switched, renamed, removed, an undo across a switch) */
+  onSnapshots?(): void;
   /** the patches the morph picker on the Main card offers as the B side (those of the same structure are listed) */
   morphCandidates?(like: Patch): { name: string; patch: Patch }[];
 }
@@ -332,9 +337,10 @@ export class Editor {
   private cablePaths: { path: SVGPathElement; from: HTMLElement; to: HTMLElement; origin: HTMLElement; cable?: Cable }[] = [];
   private stack: string[] = [];
   private routingOpen = new Set<string>();
-/** undo steps: the patch snapshot and the A / B side it belongs to (a flip is a step; undoing it goes back to that side) */
-  private history: { s: string; side: 'A' | 'B' }[] = [];
-  private future: { s: string; side: 'A' | 'B' }[] = [];
+/** undo steps: the patch as an undo snapshot and the stop it belongs to, a snapshot's letter or null for the current patch
+ * (a switch is a step; undoing it goes back to the stop it left) */
+  private history: UndoStep[] = [];
+  private future: UndoStep[] = [];
   private parameterDisplays: { id: number; update: (values: Record<string, number> | null) => void; el?: HTMLElement }[] = [];
   /** the patch's devices (pages.ts) and the page Main's knobs K1..K4 edit: the dock's DEVICE / PAGE pickers or a click on a
    * row choose it, the FM-1 too with Live on */
@@ -440,8 +446,8 @@ export class Editor {
     this.history = [];
     this.future = [];
     this.dropGesture();
-    this.snapshots.A = this.snapshots.B = null;
-    this.side = 'A';
+    this.snaps.clear();   // (snapshots belong to the patch they were taken from)
+    this.ev.onSnapshots?.();
     this.routingOpen.clear();
     this.stack = [];
     this.selected.clear();
@@ -638,10 +644,10 @@ export class Editor {
   }
 
   /** one undo step from `before` (a snap) to now, if anything changed; inside an open gesture the gesture's step covers it */
-  private commit(before: string, side = this.side): boolean {
+  private commit(before: string, shown = this.snaps.shown): boolean {
     if (before === this.snap()) return false;
     if (this.gesture !== null) return true;
-    this.history.push({ s: before, side });
+    this.history.push({ s: before, shown });
     if (this.history.length > HISTORY) this.history.shift();
     this.future = [];
     return true;
@@ -693,9 +699,8 @@ export class Editor {
     this.endPass(); // (a pass being recorded is a step of its own)
     const e = this.history.pop();
     if (e === undefined) return this.ev.onError('nothing to undo');
-    this.future.push({ s: this.snap(), side: this.side });
-    this.restore(e.s);
-    this.side = e.side;
+    this.future.push({ s: this.snap(), shown: this.snaps.shown });
+    this.travel(e);
     this.ev.onHistory?.('undo');
   }
 
@@ -705,10 +710,32 @@ export class Editor {
     this.endPass(); // (a pass being recorded is a step of its own)
     const e = this.future.pop();
     if (e === undefined) return this.ev.onError('nothing to redo');
-    this.history.push({ s: this.snap(), side: this.side });
-    this.restore(e.s);
-    this.side = e.side;
+    this.history.push({ s: this.snap(), shown: this.snaps.shown });
+    this.travel(e);
     this.ev.onHistory?.('redo');
+  }
+
+  /**
+   * Go to an undo / redo step: its patch, on its stop. Arriving on a snapshot from the current patch keeps the current
+   * patch, as a switch does. Arriving on the current patch from a snapshot takes the step's version; a kept current patch
+   * that differs from it (after a snapshot was removed) becomes a new snapshot, so an undo never drops it (#943).
+   */
+  private travel(e: UndoStep): void {
+    const from = this.snaps.shown;
+    const to = e.shown !== null && this.snaps.get(e.shown) ? e.shown : null;
+    let name = this.patch.name;
+    if (from === null && to !== null) this.snaps.current = JSON.stringify(this.patch);
+    if (from !== null && to === null) {
+      const kept = JSON.parse(this.snaps.current!) as Patch;
+      if (body(kept) !== body(JSON.parse(e.s) as Patch)) this.keep(kept);
+      this.snaps.current = null;
+      name = kept.name;
+    }
+    if (to !== null && to !== from) name = (JSON.parse(this.snaps.get(to)!.patch) as Patch).name;
+    this.restore(e.s);
+    this.patch.name = name;   // (undo leaves the name alone, but each stop has its own)
+    this.snaps.shown = to;
+    this.ev.onSnapshots?.();
   }
 
   /** a structural change from outside (the tutorial's "do it for me"): undoable like the editor's own */
@@ -3336,45 +3363,108 @@ export class Editor {
     return true;
   }
 
-  // ---- A / B: two snapshots; the toggle swaps them, as a parameter-only update when the structure matches
+  // ---- snapshots (#943): versions of the patch to compare with the current patch. The switch goes A, B, …, the current
+  // patch, A…; a switch changes values in place when only values differ (ab.ts flipPlan)
 
-  readonly snapshots: { A: string | null; B: string | null } = { A: null, B: null };
-  side: 'A' | 'B' = 'A';
+  readonly snaps = new Snapshots();
 
-  /** keep the current patch as snapshot A or B */
-  takeSnapshot(which: 'A' | 'B'): void {
-    this.snapshots[which] = JSON.stringify(this.patch);
-    this.side = which;
-  }
-
-  /** go to the other snapshot (false when it is empty) */
-  toggleAB(): boolean {
-    const other = this.side === 'A' ? 'B' : 'A';
-    const s = this.snapshots[other];
-    if (s === null) return false;
-    // an open gesture or a REC pass is a step of the side we leave (#103: the flip is a step of its own)
+  /** keep the patch on screen as a new snapshot; returns it */
+  takeSnapshot(name?: string): Snapshot {
     this.endGesture();
     this.endPass();
-    this.snapshots[this.side] = JSON.stringify(this.patch); // the side we leave keeps what we did to it
-    const from = this.side;
-    this.side = other;
-    this.applyLive(JSON.parse(s) as Patch, from);
-    return true;
+    const s = this.snaps.take(this.patch, name);
+    this.ev.onSnapshots?.();
+    return s;
+  }
+
+  /** the current patch, whether it is on screen or a snapshot is */
+  currentPatch(): Patch {
+    return this.snaps.current === null ? this.patch : JSON.parse(this.snaps.current) as Patch;
+  }
+
+  /** the snapshot on screen has been changed since it was taken (switching away keeps the change as a new snapshot) */
+  shownEdited(): boolean {
+    const s = this.snaps.get(this.snaps.shown);
+    return !!s && !sameVersion(JSON.parse(s.patch) as Patch, this.patch);
+  }
+
+  /** keep `p` as a new snapshot, unless a snapshot holds that version already */
+  private keep(p: Patch): Snapshot {
+    return this.snaps.holding(p) ?? this.snaps.take(p);
+  }
+
+  /**
+   * Show a snapshot (its letter) or the current patch (null). Null when there is nothing to do; else `kept`, the new
+   * snapshot that holds the changes made to the snapshot left (a snapshot never changes, and neither does the current
+   * patch while a snapshot is shown, so no switch loses work). One undo step, which belongs to the stop left.
+   */
+  showSnapshot(target: string | null): { kept?: Snapshot } | null {
+    const from = this.snaps.shown;
+    if (target === from || (target !== null && !this.snaps.get(target))) return null;
+    // an open gesture or a REC pass is a step of the stop we leave (the switch is a step of its own)
+    this.endGesture();
+    this.endPass();
+    let kept: Snapshot | undefined;
+    if (from === null) this.snaps.current = JSON.stringify(this.patch);
+    else if (this.shownEdited() && !sameVersion(JSON.parse(this.snaps.current!) as Patch, this.patch)) kept = this.keep(this.patch);
+    const to = JSON.parse(target === null ? this.snaps.current! : this.snaps.get(target)!.patch) as Patch;
+    this.snaps.shown = target;
+    this.applyLive(to, from);
+    if (target === null) this.snaps.current = null;
+    this.ev.onSnapshots?.();
+    return kept ? { kept } : {};
+  }
+
+  /** the switch: the next stop (`step` -1: the one before). Null when there is no snapshot */
+  cycleSnapshots(step: 1 | -1 = 1): { kept?: Snapshot } | null {
+    const to = this.snaps.next(step);
+    return to === undefined ? null : this.showSnapshot(to);
+  }
+
+  /** the snapshot becomes the current patch, shown; the current patch is kept as a new snapshot (returned) unless a
+   * snapshot holds it already or it is the same version */
+  makeCurrent(letter: string): Snapshot | null {
+    if (!this.snaps.get(letter)) return null;
+    const cur = JSON.parse(this.snaps.shown === null ? JSON.stringify(this.patch) : this.snaps.current!) as Patch;
+    if (this.snaps.shown !== letter) this.showSnapshot(letter);
+    const kept = sameVersion(cur, this.patch) ? null : this.keep(cur);
+    this.snaps.shown = this.snaps.current = null;
+    this.ev.onSnapshots?.();
+    return kept;
+  }
+
+  renameSnapshot(letter: string, name: string): void {
+    const s = this.snaps.get(letter);
+    if (!s) return;
+    if (name) s.name = name;
+    else delete s.name;
+    this.ev.onSnapshots?.();
+  }
+
+  /** forget a snapshot; when it is on screen the current patch comes back first (changes made to it are kept as a new
+   * snapshot, as any switch keeps them) */
+  removeSnapshot(letter: string): void {
+    if (!this.snaps.get(letter)) return;
+    if (this.snaps.shown === letter) this.showSnapshot(null);
+    this.snaps.remove(letter);
+    // undo steps on it go back to being steps of the current patch (its letter may be given again)
+    for (const e of [...this.history, ...this.future]) if (e.shown === letter) e.shown = null;
+    this.ev.onSnapshots?.();
   }
 
   /**
    * Switch to `target`, keeping the canvas layout (ab.ts flipPlan, #103): when only values differ they go out as onParam /
    * onAtt / onBypass / onRange / onTrack (no reload, the voices keep sounding), else a full load through onStructure. One
-   * undo step, which belongs to `side` (the side before the flip).
+   * undo step, which belongs to `shown` (the stop before a switch; Mutate's change belongs to the stop on screen).
    */
-  applyLive(target: Patch, side = this.side): void {
+  private applyLive(target: Patch, shown = this.snaps.shown): void {
     this.endGesture();
     this.endPass();
     const before = this.mark();
     const plan = flipPlan(this.patch, target);
     if (plan.reload) {
       this.patch = plan.patch;
-      this.commit(before, side);
+      this.commit(before, shown);
       this.selected.clear();
       this.selectedAsm.clear();
       this.rebuild();
@@ -3389,7 +3479,7 @@ export class Editor {
       else if (m.t === 'range') this.ev.onRange(m.id, m.index, m.name, m.range);
       else this.ev.onTrack?.(m.id, m.notes, 0);
     }
-    this.commit(before, side);
+    this.commit(before, shown);
     this.rebuild();
     this.ev.onLayout(this.patch);
   }

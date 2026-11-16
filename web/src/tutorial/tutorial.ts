@@ -23,8 +23,6 @@ export interface TutorialHost {
   note(on: boolean, note?: number, vel?: number): void;
   library(): AssemblyDef[];
   saveAssembly(def: AssemblyDef): void;
-  snapshot(side: 'A' | 'B'): void;
-  flipAB(): void;
   share(): Promise<void>;
   arpPlay(on: boolean): void;
   bypass(id: number, on: boolean): void;
@@ -136,7 +134,7 @@ export class Tutorial {
     const e = this.host.editor;
     return {
       patch: e.patch, entry: this.entry ?? e.patch, zoom: e.zoom, arpPlay: e.playing, audio: this.host.audioOn(),
-      lastSaved: this.lastSaved, selected: e.selected, library: this.host.library(), snapshots: e.snapshots, seen: this.seen,
+      lastSaved: this.lastSaved, selected: e.selected, library: this.host.library(), snapshots: { A: e.snaps.get('A')?.patch ?? null, B: e.snaps.get('B')?.patch ?? null }, seen: this.seen,
     };
   }
 

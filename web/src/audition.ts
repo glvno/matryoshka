@@ -253,7 +253,7 @@ export class Audition {
     } else void this.play();
   }
 
-  /** a playing phrase from its first note (an A/B flip: each side hears the same notes from the top) */
+  /** a playing phrase from its first note (a snapshot switch: each version hears the same notes from the top) */
   restart(): void {
     if (this.playing) this.send();
   }

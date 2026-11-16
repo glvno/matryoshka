@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // @vitest-environment jsdom
-// The A/B flip through the editor (#103): after A -> B -> A the browser engine and the FM-1 (Live) play the stored versions,
-// the canvas keeps its layout, and each flip is one undo step that goes back to the side it left.
+// Snapshots through the editor (#943, the switching rules of #103): switching between a snapshot and the current patch
+// plays the stored versions in the browser engine and the FM-1 (Live), the canvas keeps its layout, each switch is one undo
+// step that goes back to the stop it left, and no switch, edit, removal or undo loses the current patch or a snapshot.
 import { describe, expect, it, vi } from 'vitest';
 import { BLOCK, Engine } from './engine';
 import { Editor, type EditorEvents } from './editor';
@@ -75,12 +76,12 @@ const fresh = (p: Patch): Engine => {
 };
 const layout = (p: Patch): unknown => [p.modules.map((m) => [m.id, m.x, m.y]), (p.assemblies ?? []).map((a) => [a.id, a.x, a.y, a.open, a.frameSize])];
 
-describe('A/B flip in the editor (#103)', () => {
-  /** A is Oracle V; B moves a parameter, a Steps note and an attenuverter, and the cards */
-  function twoSides(structural = false) {
+describe('snapshots in the editor (#943)', () => {
+  /** snapshot A is Oracle V; the current patch moves a parameter, a Steps note and an attenuverter */
+  function snapshotAndCurrent(structural = false) {
     const r = rig(relocatedPatches['Oracle V']());
     const { editor } = r;
-    editor.takeSnapshot('A');
+    expect(editor.takeSnapshot().letter).toBe('A');
     const a = copy(editor.patch);
     const p = editor.patch;
     const m = p.modules.find((x) => x.type !== 'fm1' && DEFS[x.type].params.some((d) => d.max > d.min))!;
@@ -90,20 +91,20 @@ describe('A/B flip in the editor (#103)', () => {
     const routed = p.modules.find((x) => DEFS[x.type].paramInputs)!;
     routed.att = [0.25, -0.5];
     if (structural) p.assemblies![0].label = 'changed';
-    p.name = 'B';
-    editor.takeSnapshot('B');
+    p.name = 'current';
     const b = copy(editor.patch);
-    return { ...r, a, b };
+    return { ...r, a, b, m, pd };
   }
+  const steps = (p: Patch): ModuleInst => p.modules.find((x) => x.type === 'steps')!;
 
-  it('values only: A -> B -> A plays each stored version in both engines, without a reload', () => {
-    const { editor, engine, fm1, log, a, b } = twoSides();
-    // the canvas is moved on side B before the flip: it stays moved
+  it('one snapshot compares with the current patch: values only switch in place in both engines', () => {
+    const { editor, engine, fm1, log, a, b } = snapshotAndCurrent();
+    // the canvas is moved before the switch: it stays moved
     editor.patch.modules[0].x += 200;
     const moved = layout(editor.patch);
     log.length = 0;
-    expect(editor.toggleAB()).toBe(true);
-    expect(editor.side).toBe('A');
+    expect(editor.cycleSnapshots()).toEqual({});
+    expect(editor.snaps.shown).toBe('A');
     expect(log).not.toContain('structure');
     expect(log).toContain('track');
     expect(sound(editor.patch)).toBe(sound(a));
@@ -111,61 +112,153 @@ describe('A/B flip in the editor (#103)', () => {
     expect(listen(engine)).toEqual(listen(fresh(a)));
     expect(layout(editor.patch)).toEqual(moved);
     expect(editor.patch.name).toBe(a.name);
+    expect(sound(editor.currentPatch())).toBe(sound(b));   // (what the autosave keeps while A plays)
 
-    editor.toggleAB();
-    expect(editor.side).toBe('B');
+    editor.cycleSnapshots();
+    expect(editor.snaps.shown).toBeNull();
     expect(sound(editor.patch)).toBe(sound(b));
     expect(sound(fm1())).toBe(sound(b));
-    expect(editor.patch.name).toBe('B');
+    expect(editor.patch.name).toBe('current');
     expect(layout(editor.patch)).toEqual(moved);
   });
 
   it('another overlay (an assembly label): a full load, the layout stays', () => {
-    const { editor, fm1, log, a, b } = twoSides(true);
+    const { editor, fm1, log, a, b } = snapshotAndCurrent(true);
     log.length = 0;
-    editor.toggleAB();
+    editor.cycleSnapshots();
     expect(log).toContain('structure');
     expect(sound(fm1())).toBe(sound(a));
     expect(editor.patch.assemblies![0].label).toBe(a.assemblies![0].label);
-    editor.toggleAB();
+    editor.cycleSnapshots();
     expect(sound(fm1())).toBe(sound(b));
     expect(layout(editor.patch)).toEqual(layout(b));
   });
 
-  it('a flip is one undo step that goes back to the side it left', () => {
-    const { editor, a, b } = twoSides();
-    editor.toggleAB(); // B -> A
+  it('letters come in the order taken, and the switch goes through each and back to the current patch', () => {
+    const { editor, m, pd } = snapshotAndCurrent();
+    const values: number[] = [];
+    const value = (): number => editor.patch.modules.find((x) => x.id === m.id)!.params[pd.name];
+    values.push(value());   // (the current patch, as B is taken)
+    expect(editor.takeSnapshot().letter).toBe('B');
+    editor.patch.modules.find((x) => x.id === m.id)!.params[pd.name] = (pd.min + pd.max) / 2;
+    const stops: (string | null)[] = [];
+    for (let i = 0; i < 4; i++) {
+      editor.cycleSnapshots();
+      stops.push(editor.snaps.shown);
+    }
+    expect(stops).toEqual(['A', 'B', null, 'A']);
+    editor.cycleSnapshots(); // B
+    expect(value()).toBe(values[0]);
+    editor.cycleSnapshots(); // the current patch, with its latest edit
+    expect(value()).toBe((pd.min + pd.max) / 2);
+    expect(editor.cycleSnapshots(-1)).not.toBeNull();
+    expect(editor.snaps.shown).toBe('B');
+  });
+
+  it('without a snapshot the switch does nothing', () => {
+    const { editor } = rig(relocatedPatches['Oracle V']());
+    expect(editor.cycleSnapshots()).toBeNull();
+  });
+
+  it('a switch is one undo step that goes back to the stop it left', () => {
+    const { editor, a, b } = snapshotAndCurrent();
+    editor.cycleSnapshots(); // current -> A
     expect(sound(editor.patch)).toBe(sound(a));
     editor.undo();
-    expect(editor.side).toBe('B');
+    expect(editor.snaps.shown).toBeNull();
     expect(sound(editor.patch)).toBe(sound(b));
+    expect(editor.patch.name).toBe('current');
     editor.redo();
-    expect(editor.side).toBe('A');
+    expect(editor.snaps.shown).toBe('A');
     expect(sound(editor.patch)).toBe(sound(a));
+    expect(sound(editor.currentPatch())).toBe(sound(b));
   });
 
-  it('a flip during a REC pass ends the pass first: one undo step for the pass, one for the flip', () => {
-    const { editor, a, b } = twoSides();
-    const id = editor.patch.modules.find((x) => x.type === 'steps')!.id;
+  it('a switch during a REC pass ends the pass first: one undo step for the pass, one for the switch', () => {
+    const { editor, a, b } = snapshotAndCurrent();
+    const id = steps(editor.patch).id;
     editor.recorded([{ id, loop: 0, note: { at: 3, len: 1, note: 60, vel: 100 } }]);
     const recorded = sound(editor.patch);
-    editor.toggleAB(); // B (with the pass) -> A
+    editor.cycleSnapshots(); // the current patch (with the pass) -> A
     expect(sound(editor.patch)).toBe(sound(a));
-    editor.undo(); // the flip
-    expect([editor.side, sound(editor.patch)]).toEqual(['B', recorded]);
+    editor.undo(); // the switch
+    expect([editor.snaps.shown, sound(editor.patch)]).toEqual([null, recorded]);
     editor.undo(); // the pass
-    expect([editor.side, sound(editor.patch)]).toEqual(['B', sound(b)]);
+    expect([editor.snaps.shown, sound(editor.patch)]).toEqual([null, sound(b)]);
   });
 
-  it('an edit on a side is kept when it is left and comes back', () => {
-    const { editor, b } = twoSides();
-    editor.toggleAB(); // on A
-    const m = editor.patch.modules.find((x) => x.type === 'steps')!;
-    m.notes = [{ at: 1, len: 1, note: 50, vel: 90 }];
+  it('an edit while a snapshot plays changes neither it nor the current patch: switching away keeps it as a new snapshot', () => {
+    const { editor, a, b } = snapshotAndCurrent();
+    editor.cycleSnapshots(); // on A
+    steps(editor.patch).notes = [{ at: 1, len: 1, note: 50, vel: 90 }];
+    expect(editor.shownEdited()).toBe(true);
     const edited = sound(editor.patch);
-    editor.toggleAB(); // on B
+    const r = editor.cycleSnapshots(); // the current patch
+    expect(r?.kept?.letter).toBe('B');
     expect(sound(editor.patch)).toBe(sound(b));
-    editor.toggleAB(); // on A again
+    expect(sound(JSON.parse(editor.snaps.get('A')!.patch) as Patch)).toBe(sound(a));
+    expect(sound(JSON.parse(editor.snaps.get('B')!.patch) as Patch)).toBe(edited);
+    editor.cycleSnapshots(); // A, as taken
+    expect(sound(editor.patch)).toBe(sound(a));
+    editor.cycleSnapshots(); // B: the edit
     expect(sound(editor.patch)).toBe(edited);
+  });
+
+  it('an edit taken back before switching away keeps nothing new', () => {
+    const { editor, a } = snapshotAndCurrent();
+    editor.cycleSnapshots(); // on A
+    const before = steps(editor.patch).notes;
+    steps(editor.patch).notes = [{ at: 1, len: 1, note: 50, vel: 90 }];
+    steps(editor.patch).notes = before;
+    expect(editor.cycleSnapshots()).toEqual({});
+    expect(editor.snaps.list.map((s) => s.letter)).toEqual(['A']);
+    expect(sound(JSON.parse(editor.snaps.get('A')!.patch) as Patch)).toBe(sound(a));
+  });
+
+  it('make it the current patch: the snapshot is the current patch, the patch it replaces is kept', () => {
+    const { editor, a, b } = snapshotAndCurrent();
+    const kept = editor.makeCurrent('A');
+    expect(kept?.letter).toBe('B');
+    expect(editor.snaps.shown).toBeNull();
+    expect(sound(editor.patch)).toBe(sound(a));
+    expect(sound(editor.currentPatch())).toBe(sound(a));
+    expect(sound(JSON.parse(editor.snaps.get('B')!.patch) as Patch)).toBe(sound(b));
+  });
+
+  it('removing the snapshot on screen brings the current patch back; an undo never drops the current patch', () => {
+    const { editor, b } = snapshotAndCurrent();
+    editor.takeSnapshot(); // B = the current patch
+    steps(editor.patch).notes = [{ at: 2, len: 1, note: 52, vel: 80 }];
+    const current = sound(editor.patch);
+    editor.cycleSnapshots(); // A
+    editor.cycleSnapshots(); // B
+    editor.removeSnapshot('A');
+    expect(editor.snaps.shown).toBe('B');
+    editor.undo(); // B -> the step that was A's: now one of the current patch
+    editor.undo();
+    const kept = editor.snaps.list.map((s) => sound(JSON.parse(s.patch) as Patch));
+    expect([...kept, sound(editor.patch)]).toContain(current);
+    expect(kept).toContain(sound(b));
+
+    editor.removeSnapshot('B');
+    expect(editor.snaps.get('B')).toBeUndefined();
+  });
+
+  it('a snapshot is removed after the current patch comes back, with the edits made on it kept', () => {
+    const { editor, b } = snapshotAndCurrent();
+    editor.cycleSnapshots(); // on A
+    steps(editor.patch).notes = [{ at: 1, len: 1, note: 50, vel: 90 }];
+    const edited = sound(editor.patch);
+    editor.removeSnapshot('A');
+    expect(editor.snaps.shown).toBeNull();
+    expect(sound(editor.patch)).toBe(sound(b));
+    expect(editor.snaps.list.map((s) => [s.letter, sound(JSON.parse(s.patch) as Patch)])).toEqual([['B', edited]]);
+  });
+
+  it('opening another patch forgets the snapshots', () => {
+    const { editor } = snapshotAndCurrent();
+    editor.setPatch(relocatedPatches['Oracle V']());
+    expect(editor.snaps.list).toEqual([]);
+    expect(editor.snaps.shown).toBeNull();
   });
 });

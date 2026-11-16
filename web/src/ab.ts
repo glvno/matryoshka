@@ -1,4 +1,4 @@
-// The A/B flip (#103): what a flip from the patch on screen to the other snapshot does. The canvas keeps its layout
+// A snapshot switch (#103, #943): what a switch from the patch on screen to another version does. The canvas keeps its layout
 // (card and frame positions, frame sizes, expanded or collapsed, the view, the octave); the sound is the target's. When only
 // values differ the engines take them as live messages (the voices keep sounding); anything else is a full load.
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Test phrases (#945): fixed notes at a fixed tempo and velocity, so a sound is auditioned with the same input every time
-// (an A/B flip restarts the phrase), and "My take", the last run of notes the user played, kept as played. The browser
+// (a snapshot switch restarts the phrase), and "My take", the last run of notes the user played, kept as played. The browser
 // engine plays them, scheduled in the audio thread (worklet.ts), and the WAV export renders them offline
 // (phrase-render.ts, #946) through the same PhrasePlayer, so both hear the same blocks.
 import { DRUM_MAP_DEFAULT } from './modules';
