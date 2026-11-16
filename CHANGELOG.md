@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.18.0 — 2026-11-16
 
 - **The 808 Kit's rhythms play a fill-in while you hold FILL** (SEQ held, then FX held; the Steps card's fill button in the editor), as the TR-808's TAP played its fill-in rhythms. Each of the 12 rhythms has its own fill-in in its style, over the second half of the bar: tom runs, snare and clap rolls, a rolling bass drum for MIAMI BASS. It plays on patterns 2 to 24; pattern 1, the demonstration pattern each 808 Kit preset swaps for its own, stays as it was (pattern 2 is ELECTRO B, with ELECTRO's fill-in). Let go of FILL and every rhythm plays exactly as before. The 909 Kit's grooves (HOUSE, TECHNO A and B, ACID, JACK, GARAGE, ELECTRO, BREAKS) get fill-ins too: snare rolls ending on flams, and tom runs. A saved slot keeps its old kit; FACTORY RESET installs the new one.
 
