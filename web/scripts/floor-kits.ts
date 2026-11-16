@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The floor sweep (#969, tools/floor_test.sh): every module type with an input it can ring from (`in` / `exc`, or a gate
 // for the String and the envelopes), struck once (a 1 ms pulse at 0.5 into that input, the gate held 0.5 s), then left
-// silent for 10 s; at its defaults and at a long-ring setting (feedback, resonance, decay near their tops, damping off).
+// silent for 10 s; at its defaults and at a long-ring setting (feedback, resonance, decay near their tops, damping off),
+// and the resonant filters at a few more settings (EXTRA).
 // Writes build/floor/NAME.{m1p,ev,f32} (the reference output of web/src/engine.ts); host_test with HOST_TEST_FLOOR=1 then
 // says whether the C engine's last second holds a floor the reference does not. Run from web/: npx vite-node scripts/floor-kits.ts
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -20,19 +21,27 @@ const LONG: Record<string, (lo: number, hi: number) => number> = {
   fb: (lo, hi) => hi * 0.98, feedback: (lo, hi) => hi * 0.98, regen: (lo, hi) => hi * 0.98, res: (lo, hi) => hi * 0.97,
   decay: (lo, hi) => hi, size: (lo, hi) => hi * 0.95, damp: (lo) => lo,
 };
+/** more settings of the resonant filters, where a ring was held at other cutoffs and in other modes too (#969): a low
+ * cutoff at the band pass (the high resonance's own output), the Multimode filter's drive, the Ladder's modes */
+const EXTRA: Record<string, Record<string, { params: Record<string, number>; out?: string }>> = {
+  filter: { low: { params: { cutoff: 60, res: 0.995 }, out: 'bp' }, drive: { params: { res: 0.97, drive: 3 } } },
+  ladder: { low: { params: { cutoff: 60, res: 0.97 } }, diode: { params: { res: 0.97, diode: 1 } }, stsat: { params: { res: 0.97, drive: 3, stsat: 1 } } },
+};
 const names: string[] = [];
 for (const [type, def] of Object.entries(DEFS)) {
   if (SKIP.includes(type) || !def.outputs.length) continue;
   const inp = def.inputs.find((i) => i.name === 'in' || i.name === 'exc');
   const gated = def.inputs.some((i) => i.name === 'gate');
   if (!inp && !gated) continue;
-  for (const variant of ['def', 'long']) {
+  for (const variant of ['def', 'long', ...Object.keys(EXTRA[type] ?? {})]) {
+    const extra = EXTRA[type]?.[variant];
     if (variant === 'long' && !def.params.some((q) => LONG[q.name])) continue;
     const name = `${type}-${variant}`;
     const p = newPatch(DEFS, name);
     const main = p.modules.find((m) => m.type === 'fm1')!, out = p.modules.find((m) => m.type === 'output')!;
     const m = addModule(p, def, 300, 0);
     if (variant === 'long') for (const q of def.params) if (LONG[q.name]) m.params[q.name] = LONG[q.name](q.min, q.max);
+    if (extra) Object.assign(m.params, extra.params);
     if (inp) {
       const pl = addModule(p, DEFS.pulse, 0, 0), hit = addModule(p, DEFS.scale, 0, 0);
       pl.params.time = 0.001;
@@ -43,7 +52,7 @@ for (const [type, def] of Object.entries(DEFS)) {
     }
     if (gated) connect(p, DEFS, { module: main.id, port: 'gate' }, { module: m.id, port: 'gate' });
     if (def.inputs.some((i) => i.name === 'pitch')) connect(p, DEFS, { module: main.id, port: 'pitch' }, { module: m.id, port: 'pitch' });
-    for (const port of ['l', 'r']) connect(p, DEFS, { module: m.id, port: def.outputs[0].name }, { module: out.id, port });
+    for (const port of ['l', 'r']) connect(p, DEFS, { module: m.id, port: extra?.out ?? def.outputs[0].name }, { module: out.id, port });
     const e = new Engine(SR);
     e.load(p);
     const st = new Float32Array(END * 2);
