@@ -7,7 +7,7 @@ import { addModule, connect, newPatch, processingOrder, thruInput, validatePatch
 
 const voice: Voice = {
   pitch: 0, gate: 0, velocity: 0, keyTrig: false, low: false, high: false, unison: false,
-  clock: false, run: false, tick: -1, ticks: 0, tickLen: DEVICE_SR / 48, buttons: 0,
+  clock: false, run: false, tick: -1, tickAt: -1, ticks: 0, tickLen: DEVICE_SR / 48, buttons: 0,
   bend: 0, mod: 0, at: 0, breath: 0, sustain: 0, foot: 0, index: 0, parts: 1, legato: 0, jump: 0, flaw: 0,
 };
 

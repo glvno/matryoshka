@@ -818,6 +818,7 @@ typedef struct {
     uint32_t ticks, tick_acc;        /* the clock: ticks so far, the tempo's remainder (1 / (60 ENG_SR) of a tick) */
     uint32_t run_ticks;              /* ticks when the transport last started (the tracks' bars count from there: eng_run_ticks) */
     int32_t tick_off, tick_n, tick_len;   /* this block's ticks while running: the sample they fall on (-1 none), how many, samples per tick */
+    int32_t tick_at;                 /* the sample they fall on whether or not the transport runs (the clock always runs, D-358) */
     uint32_t ext_since, ext_len;     /* MIDI clock: samples since its last tick, samples per tick as measured (0: not yet) */
     uint8_t ntrk;
     uint16_t nnotes;                 /* the Steps tracks' notes (#133): track t's pattern p are trk_note[pat_first[t][p] .. +
@@ -6458,6 +6459,7 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
     int32_t kind = round_q16(EF(it, LFO_P_WAVE)), depth = EF(it, LFO_P_DEPTH);
     int sync = EF(it, LFO_P_SYNC) >= 32768, back = EF(it, LFO_P_DIR) >= 32768;
     int32_t div = clampi((EF(it, LFO_P_DIV) + 32768) >> 16, 0, DELAY_NDIV - 1), bpm = EF(it, LFO_P_BPM);
+    int tempo = sync && round_q16(bpm) <= LFO_TEMPO;   /* TEMPO (#956): the engine's clock is the clk input, at its tick length */
     int32_t mi = clampi((EF(it, LFO_P_MULT) + 32768) >> 16, 0, LFO_NMULT - 1), range = clampi((EF(it, LFO_P_RANGE) + 32768) >> 16, 0, LFO_NRANGE - 1);
     uint32_t num = (uint32_t)DELAY_DIV_NUM[div] * LFO_MULT_NUM[mi], den = (uint32_t)DELAY_DIV_DEN[div] * LFO_MULT_DEN[mi];
     uint32_t per8 = 192u * num / den, g = per8 & 7u ? (per8 & 3u ? (per8 & 1u ? 1u : 2u) : 4u) : 8u;   /* g = gcd(per8, 8) */
@@ -6498,7 +6500,7 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
     for (i = 0; i < n; i++) {
         uint32_t prev = phase;
         int32_t w;
-        int c = clk[i] >= 32768, r = rst[i] >= 32768, live;
+        int c = tempo ? (int32_t)i == E.tick_at : clk[i] >= 32768, r = rst[i] >= 32768, live;
         if (it->s.lfo.since < ENG_SR)
             it->s.lfo.since++;
         if (c && !it->s.lfo.clk_hi) {
@@ -6508,8 +6510,8 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
             else
                 it->s.lfo.interval = it->s.lfo.interval > 0 ? it->s.lfo.interval + (d8 - it->s.lfo.interval) / 8 : d8;
             it->s.lfo.since = 0;
-            if (sync && ++it->s.lfo.ticks >= snap) {
-                it->s.lfo.ticks = 0;
+            if (sync && (it->s.lfo.ticks = (uint16_t)(it->s.lfo.ticks + (tempo ? (uint32_t)E.tick_n : 1u))) >= snap) {
+                it->s.lfo.ticks = tempo ? (uint16_t)(it->s.lfo.ticks % snap) : 0;   /* (MIDI clock ticks can come several to a sample) */
                 it->s.lfo.wraps = 0;
                 phase = prev = 0;
                 lfo_cycle(it);
@@ -6523,7 +6525,9 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
             lfo_cycle(it);
         }
         it->s.lfo.rst_hi = (uint8_t)r;
-        live = sync && it->s.lfo.interval > 0 && it->s.lfo.since < ENG_SR / 2;
+        live = sync && (tempo || (it->s.lfo.interval > 0 && it->s.lfo.since < ENG_SR / 2));
+        if (tempo)
+            it->s.lfo.interval = E.tick_len << 8;
         if (live && it->s.lfo.interval != ilive) {   /* (the 64-bit division only when the clock's interval moved) */
             ilive = it->s.lfo.interval;
             dtlive = (uint32_t)((1ull << 43) / ((uint64_t)per8 * (uint32_t)ilive));
@@ -11623,6 +11627,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                         cin_on = 0;
                 }
             }
+            E.tick_at = E.tick_off;      /* (a TEMPO LFO's clock, #956: m_lfo) */
             if (!run)
                 E.tick_off = -1;
             E.clk_seen = t;

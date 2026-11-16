@@ -386,4 +386,10 @@ export const HAND_MAPS: HandMap[] = [
       'macro#40.value': { from: 'filter#26.morph' }, 'macro#45.value': { from: 'filter#29.morph' },
     },
   },
+  // ---- Shush 101's MOD SYNC (#956): a preset stored before the row came keeps its modulator on its RATE in Hz (FREE), so
+  // it plays as it was stored; DIVISION starts at Init.
+  {
+    engine: 'Shush 101', from: 'c5bee090', to: '1700115e', why: '#956: MOD SYNC and DIVISION; stored presets stay FREE',
+    rows: { 'lfo#11.sync': { line: 'lfo#11.rate', mul: [0], add: [0], min: 0, max: 1 } },
+  },
 ];
