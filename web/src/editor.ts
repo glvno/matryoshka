@@ -80,6 +80,7 @@ import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './
 import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, rememberedPreset, sameName, renamePreset, shortBy, shortPresetText, stepPreset, storePreset, type Preset } from './device-presets';
 import { engineOf } from './library-presets';
 import { fxPresetInfo } from './fx-preset-format';
+import { fxBusOf, type FxBus } from './fx-bus';
 import { armable, armDrawing, armedWith, keepArmed, noKeysReach, type DeviceKey } from './arm';
 import { PianoRoll } from './roll';
 import { stepGrid, stopEntry, type LockRow, type StepGrid } from './step-grid';
@@ -4085,18 +4086,43 @@ export class Editor {
     this.ev.onSaveAssembly(toDef(this.patch, a));
   }
 
+  /** an assembly's on / off switch (its card's ⏻): every module inside bypassed or back, one undo step, each change sent live */
+  private switchAssembly(a: AssemblyInst): void {
+    this.touch();
+    const changed = bypassAssembly(this.patch, a, !a.bypass);
+    for (const id of changed) this.ev.onBypass(id, !!this.patch.modules.find((m) => m.id === id)?.bypass);
+    this.rebuild();
+    this.ev.onLayout(this.patch);
+  }
+
   private assemblyButtons(a: AssemblyInst): HTMLElement[] {
-    const pw = this.button('⏻', `${a.label} on / off (bypass every module inside)`, () => {
-      this.touch();
-      const changed = bypassAssembly(this.patch, a, !a.bypass);
-      for (const id of changed) this.ev.onBypass(id, !!this.patch.modules.find((m) => m.id === id)?.bypass);
-      this.rebuild();
-      this.ev.onLayout(this.patch);
-    }, 'pw');
+    const pw = this.button('⏻', `${a.label} on / off (bypass every module inside)`, () => this.switchAssembly(a), 'pw');
     pw.classList.toggle('on', !a.bypass);
     pw.setAttribute('aria-pressed', String(!a.bypass));
     const arm = parentOf(this.patch, a.id) ? [] : armable(this.patch, `a${a.id}`) ? [this.armButton(`a${a.id}`, a.label)] : noKeysReach(this.patch, `a${a.id}`) ? [this.noKeysButton(a.label)] : [];
     return [...arm, this.polyButton(a), pw, this.moreButton((at) => this.assemblyMenu(a, at))];
+  }
+
+  /** the collapsed master FX bus card's stage switches (D-966): one per present stage, named as its stage card, each that
+   * card's ⏻, so a stage turns on or off without expanding the bus */
+  private fxStageSwitches(bus: FxBus): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'fx-stages';
+    row.setAttribute('role', 'group');
+    row.setAttribute('aria-label', 'Effects on / off');
+    for (const s of bus.stages) {
+      const st = this.patch.assemblies!.find((x) => x.id === s.assembly)!;
+      const b = this.button(st.label, `${st.label} on / off (bypass every module inside)`, () => {
+        this.switchAssembly(st);
+        // (the card is redrawn: keyboard focus stays on the switch)
+        this.modulesEl.querySelector<HTMLElement>(`.fx-stages button[data-asm="${st.id}"]`)?.focus();
+      }, 'sm fx-stage');
+      b.classList.toggle('on', !st.bypass);
+      b.setAttribute('aria-pressed', String(!st.bypass));
+      b.dataset.asm = String(st.id);
+      row.append(b);
+    }
+    return row;
   }
 
   /** the preset chip on an assembly device that has presets (#192): ‹ name › steps through them (each load one undo
@@ -4331,7 +4357,8 @@ export class Editor {
       hint.textContent = 'nothing exposed: open it and mark ports and parameters';
       body.append(hint);
     }
-    el.append(head, body);
+    const bus = !parent && a.children?.length ? fxBusOf(this.patch) : null;
+    el.append(head, ...(bus?.assembly === a.id ? [this.fxStageSwitches(bus)] : []), body);
     return el;
   }
 

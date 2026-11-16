@@ -949,8 +949,16 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 :is(.mhead, .fhead) button.vc-btn:hover { color: var(--ink); border-color: var(--secondary); }
 :is(.mhead, .fhead) button.vc-btn.set { color: var(--gate); }
 :is(.mhead, .fhead) button.vc-btn.over { color: var(--danger); border-color: var(--danger); }
+/* the collapsed master FX bus card's stage switches, under its header: poly's small capitals, filled in the ⏻'s colour when on */
+.module .fx-stages { position: relative; z-index: 2; display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 6px; border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
+.fx-stages button.fx-stage { height: 18px; padding: 0 6px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer;
+  font: 600 10px/1 'Barlow Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .08em; }
+.fx-stages button.fx-stage:hover { color: var(--ink); border-color: var(--accent); }
+.fx-stages button.fx-stage.on { color: var(--panel); background: var(--accent); border-color: var(--accent); }
+.fx-stages button.fx-stage:focus-visible { outline: 2px solid var(--secondary); outline-offset: 1px; }
 .flaw-note { padding: 6px 8px 0; color: var(--muted); font-size: 12px; }
-@media (pointer: coarse) { :is(.mhead, .fhead) :is(button.chev, button.more, button.pw, button.out) { width: 30px; height: 30px; } :is(.mhead, .fhead) :is(button.poly-btn, button.vc-btn) { height: 24px; } }
+@media (pointer: coarse) { :is(.mhead, .fhead) :is(button.chev, button.more, button.pw, button.out) { width: 30px; height: 30px; } :is(.mhead, .fhead) :is(button.poly-btn, button.vc-btn), .fx-stages button.fx-stage { height: 24px; } }
 /* the card's menu */
 .ctx { min-width: 190px; gap: 0; }
 .ctx button { display: flex; justify-content: space-between; gap: 16px; padding: 6px 12px; border-radius: 5px; font-size: 13px; }
