@@ -46,6 +46,7 @@ import { initStatusline, pinStatus } from './statusline';
 import { buildAssembliesSection, storeAssembly, storeTutorialAssembly } from './assemblies';
 import { AssemblyBrowser } from './browser';
 import { searchCommands, type Command } from './commands';
+import { MUTATE_AMOUNTS } from './mutate';
 import { buildFlashTab } from './flasher';
 import { attachKeyboard, attachMidi, followOctave, isFm1In, isTextEntry, otherFm1 } from './input';
 import { Piano } from './piano';
@@ -1524,6 +1525,12 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Set snapshot A', keywords: 'compare ab', run: () => takeSnapshot('A') },
     { kind: 'command', label: 'Set snapshot B', keywords: 'compare ab', run: () => takeSnapshot('B') },
     { kind: 'command', label: 'Switch A / B snapshots', detail: 'Alt+B', run: inPatch(flipAB) },
+    // Mutate and Randomize (#944): the selected cards' parameters, one undo step
+    { kind: 'command', label: 'Mutate selection', detail: `Alt+M · ±${Math.round(editor.mutateAmount * 100)} %`, keywords: 'vary variation nudge random sound design', run: inPatch(() => void editor.mutate('mutate')) },
+    { kind: 'command', label: 'Randomize selection', keywords: 'random dice new sound design', run: inPatch(() => void editor.mutate('randomize')) },
+    ...MUTATE_AMOUNTS.map((a) => ({ kind: 'command' as const, label: `Mutate amount: ±${Math.round(a * 100)} %`, detail: a === editor.mutateAmount ? 'now' : undefined, keywords: 'mutate how far', run: () => setMutateAmount(a) })),
+    { kind: 'command', label: 'Lock selection for Mutate', keywords: 'keep protect hold mutate randomize', run: inPatch(() => editor.lockCards(true)) },
+    { kind: 'command', label: 'Unlock selection for Mutate', keywords: 'mutate randomize', run: inPatch(() => editor.lockCards(false)) },
     { kind: 'command', label: 'Start audio', keywords: 'sound browser', run: () => void startAudio() },
     { kind: 'command', label: 'Panic: stop all notes', keywords: 'silence stuck', run: panic },
     { kind: 'command', label: 'FM-1 & MIDI settings', keywords: 'connect send store sync hardware keyboard release', run: () => $<HTMLDialogElement>('device-bar').showModal() },
@@ -1537,13 +1544,13 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Collapse / expand the sidebar', keywords: 'hide show side panel rail more room', detail: 'Ctrl/Cmd+B', run: () => toggleSidebarCollapsed() },
     { kind: 'command', label: 'Expand all assemblies', keywords: 'open frames nested show inside', run: inPatch(() => editor.setAllOpen(true)) },
     { kind: 'command', label: 'Collapse all assemblies', keywords: 'close frames nested cards fold', run: inPatch(() => editor.setAllOpen(false)) },
-    { kind: 'command', label: 'Tidy up the canvas', keywords: 'clean up arrange align layout grid', run: inPatch(() => editor.tidyUp()) },
+    { kind: 'command', label: 'Tidy up the canvas', detail: 'Alt+T', keywords: 'clean up arrange align layout grid', run: inPatch(() => editor.tidyUp()) },
     { kind: 'command', label: 'Cable slack: none', keywords: 'slack sag tight straight', run: inPatch(() => setSlack(0)) },
     { kind: 'command', label: 'Cable slack: half', keywords: 'slack sag droop hang loose', run: inPatch(() => setSlack(0.5)) },
     { kind: 'command', label: 'Cable slack: full', keywords: 'slack sag droop hang heavy', run: inPatch(() => setSlack(1)) },
     ...(editor.patch.slackFrom ? [{ kind: 'command' as const, label: 'Cable slack: unplug its input', keywords: 'slack sway modulate', run: inPatch(() => editor.setSideSource('slackFrom', null)) }] : []),
     ...(editor.patch.zoomFrom ? [{ kind: 'command' as const, label: 'Zoom: unplug its input', keywords: 'zoom modulate', run: inPatch(() => editor.setSideSource('zoomFrom', null)) }] : []),
-    { kind: 'command', label: 'Fit patch to screen', keywords: 'zoom view', run: inPatch(() => editor.zoomToFit()) },
+    { kind: 'command', label: 'Fit patch to screen', detail: 'Alt+Z', keywords: 'zoom view', run: inPatch(() => editor.zoomToFit()) },
     { kind: 'command', label: 'Store to an FM-1 slot\u2026', keywords: 'bank flash save device', run: () => void storeToSlot() },
     { kind: 'command', label: 'Reset canvas scale', keywords: 'zoom 100%', run: inPatch(() => editor.setZoom(1)) },
     // the patch's modules with their own names (#518): picking one selects it
@@ -1753,6 +1760,10 @@ window.addEventListener('keydown', (e) => {
   else if ((k === ' ' || k === 'Enter') && !mod && !e.altKey && editor.applyRows()) done = true; // pick mode: show / hide the selected rows
   else if (mod && k.toLowerCase() === 'd') done = editor.duplicateSelected();
   else if (e.altKey && !mod && (e.code === 'KeyB' || k.toLowerCase() === 'b')) (flipAB(), (done = true));   // (the code: Option+B types ∫ on a Mac)
+  // the canvas's TIDY and FIT (#987), Mutate (#944); by the code, as Option+letter types a symbol on a Mac
+  else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyT') (onCanvas(() => editor.tidyUp())(), (done = true));
+  else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyZ') (onCanvas(() => editor.zoomToFit())(), (done = true));
+  else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyM') (editor.mutate('mutate'), (done = true));
   else if (!mod && k.toLowerCase() === 'b') done = editor.bypassSelected();
   else if (mod && k.toLowerCase() === 'g') (editor.makeAssembly(), (done = true)); // plain G is a note key
   else if (k === ' ') {
@@ -1995,6 +2006,23 @@ try {
   if (v > 0) setSlack(v);
 } catch {
   /* storage blocked: no slack */
+}
+// Mutate's amount (#944): kept per browser, like the slack
+const MUTATE_AMOUNT = 'matryoshka.mutate-amount';
+function setMutateAmount(v: number): void {
+  editor.mutateAmount = v;
+  status.textContent = `Mutate moves each parameter by up to ±${Math.round(v * 100)} % of its range`;
+  try {
+    localStorage.setItem(MUTATE_AMOUNT, String(v));
+  } catch {
+    /* storage blocked: the amount lasts until the page is reloaded */
+  }
+}
+try {
+  const v = Number(localStorage.getItem(MUTATE_AMOUNT));
+  if ((MUTATE_AMOUNTS as readonly number[]).includes(v)) editor.mutateAmount = v;
+} catch {
+  /* storage blocked: the default amount */
 }
 function panic(): void {
   tutorial.stop();

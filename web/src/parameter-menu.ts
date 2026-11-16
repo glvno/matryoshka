@@ -14,6 +14,9 @@ interface Events {
   touch?(): void;
   onAtt(id: number, index: number, value: number): void;
   onRange(id: number, index: number, name: string, range: Range | null): void;
+  /** Mutate's lock on this parameter (#944): its own, whether its card or an assembly around it locks it anyway, and the
+   *  setter (an undo step); absent for a parameter Mutate never moves */
+  lock?: { own: boolean; card: boolean; set(on: boolean): void };
 }
 
 /** does the cable's source swing both ways (its output range, ranges.ts, starts below 0: an LFO's −1..1)? A macro range
@@ -76,6 +79,21 @@ export function parameterMenu(m: ModuleInst, def: ModuleDef, pd: ParamDef, ev: E
   const target = pd.toggle || pd.choices ? 'jack' : 'thumb';
   hint(`Drop a cable on the ${target} to modulate ${label}, with its own depth. ${def.label} takes up to two different sources.`
     + (pd.input ? ` The ${longName(def.type, pd.input)} jack is ${label}'s built-in input.` : ''));
+
+  if (ev.lock) {
+    const { own, card, set } = ev.lock;
+    const row = document.createElement('label');
+    row.className = 'mutate-lock-line';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = own || card;
+    box.disabled = card;
+    box.setAttribute('aria-label', `${def.label} ${label}: lock for Mutate and Randomize`);
+    row.title = card ? 'Its card is locked: unlock the card from its menu' : 'Mutate and Randomize leave a locked parameter alone';
+    box.onchange = () => set(box.checked);
+    row.append(box, 'Lock: Mutate and Randomize leave it alone');
+    content.append(row);
+  }
 
   // what modulates it: the cables into the pins routed to this parameter
   const routes = pinRoutes(p, m, pd.name);
