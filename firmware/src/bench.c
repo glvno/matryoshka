@@ -32,8 +32,10 @@ static float bench_inf[BENCH_N] ENG_NOINIT, bench_outf[BENCH_N] ENG_NOINIT, benc
 static float bench_arg[4][64] ENG_NOINIT;      /* arguments: sin / cos, exp, log2, exp2 */
 static int32_t bench_pitch[64] ENG_NOINIT;     /* bench_arg[3] as Q16 octaves */
 static float bench_bq[6] ENG_NOINIT;           /* DELAY_AA[0] as float */
-static int32_t bench_rq[3][6] ENG_NOINIT;      /* six modes: g, c1, c2 (Q30) */
+static int32_t bench_rq[3][6] ENG_NOINIT;      /* six two-pole modes (the engine before #840): g, c1, c2 (Q30) */
 static float bench_rf[3][6] ENG_NOINIT;
+static int32_t bench_cq[4][6] ENG_NOINIT;      /* six rotated modes (m_modal): b, rc, rs, -rc (Q31) */
+static float bench_cf[3][6] ENG_NOINIT;        /* b, rc, rs */
 static uint32_t bench_res[48][3] ENG_NOINIT;   /* per kernel: fastest run, slowest run (ticks), the result's bits */
 static uint32_t bench_done ENG_NOINIT;
 
@@ -276,7 +278,59 @@ static uint32_t k_bq_f(void)                              /* dly_aa in float: th
     return bf2u(y1);
 }
 
-static uint32_t k_res_q(void)                             /* six two-pole modes a sample: m_modal's MODE, word for word */
+static uint32_t k_res_q(void)                             /* six modes a sample: m_modal's MODE, word for word */
+{
+    const int32_t *b = bench_cq[0], *rc = bench_cq[1], *rs = bench_cq[2], *nrc = bench_cq[3];
+    int32_t u[6] = {0, 0, 0, 0, 0, 0}, v[6] = {0, 0, 0, 0, 0, 0};
+    uint32_t k;
+    for (k = 0; k < BENCH_N; k++) {
+        int32_t x = clampi(bench_in[k], -(8 << 16), 8 << 16) << 11, y = 0, ui, vi, nu, nv;
+#define HI(a, b) ((int32_t)(((int64_t)(a) * (b)) >> 32))
+#define MODE(i)                                                                                             \
+        ui = (u[i] + HI(b[i], x)) << 1;                                                                    \
+        vi = v[i] << 1;                                                                                     \
+        nu = HI(rc[i], ui) - HI(rs[i], vi);                                                                 \
+        nv = HI(rs[i], ui) - HI(nrc[i], vi);                                                                \
+        u[i] = clampi(nu - (nu > 0) + (nu < 0), -(8 << 26), 8 << 26);                                       \
+        v[i] = clampi(nv - (nv > 0) + (nv < 0), -(8 << 26), 8 << 26);                                       \
+        y += v[i] >> 3;
+        MODE(0) MODE(1) MODE(2) MODE(3) MODE(4) MODE(5)
+#undef MODE
+#undef HI
+        bench_out[k] = (y + 64) >> 7;
+    }
+    return (uint32_t)v[0];
+}
+
+/* m_modal's six modes in float (no clamp, no step toward zero: float does not wrap, and its rounding does not hold a
+ * ring up) from in, the states starting at s0; off: the input plus a constant offset (OpenPocket's way to keep a
+ * decaying filter out of the subnormal range) */
+HOT uint32_t bench_res_f(const float *in, float s0, int off)
+{
+    const float *b = bench_cf[0], *rc = bench_cf[1], *rs = bench_cf[2];
+    float u[6], v[6], o = bench_vf[6] * 1.0e25f;      /* 1e-15 */
+    uint32_t i, k;
+    for (i = 0; i < 6u; i++)
+        u[i] = v[i] = s0;
+    for (k = 0; k < BENCH_N; k++) {
+        float x = off ? in[k] + o : in[k], y = 0.0f, ui;
+#define MODE(i)                                                                                             \
+        ui = u[i] + b[i] * x;                                                                               \
+        u[i] = rc[i] * ui - rs[i] * v[i];                                                                   \
+        v[i] = rs[i] * ui + rc[i] * v[i];                                                                   \
+        y += v[i];
+        MODE(0) MODE(1) MODE(2) MODE(3) MODE(4) MODE(5)
+#undef MODE
+        bench_outf[k] = y;
+    }
+    return bf2u(v[0]);
+}
+
+static uint32_t k_res_f(void) { return bench_res_f(bench_inf, 0.0f, 0); }
+static uint32_t k_res_f_sub(void) { return bench_res_f(bench_zero, bench_vf[5], 0); }     /* a silent tail, subnormal */
+static uint32_t k_res_f_off(void) { return bench_res_f(bench_zero, bench_vf[5], 1); }     /* the same with the offset */
+
+static uint32_t k_res2_q(void)                            /* the two-pole modes m_modal had before #840 (y = g x + c1 y1 - c2 y2) */
 {
     const int32_t *g = bench_rq[0], *c1 = bench_rq[1], *c2 = bench_rq[2];
     int32_t a1[6] = {0, 0, 0, 0, 0, 0}, a2[6] = {0, 0, 0, 0, 0, 0};
@@ -295,17 +349,13 @@ static uint32_t k_res_q(void)                             /* six two-pole modes 
     return (uint32_t)a1[0];
 }
 
-/* the six modes in float (no clamp: float does not wrap) from in, the states starting at s0; off: the input plus a
- * constant offset (OpenPocket's way to keep a decaying filter out of the subnormal range) */
-HOT uint32_t bench_res_f(const float *in, float s0, int off)
+static uint32_t k_res2_f(void)                            /* the same two-pole modes in float */
 {
     const float *g = bench_rf[0], *c1 = bench_rf[1], *c2 = bench_rf[2];
-    float a1[6], a2[6], o = bench_vf[6] * 1.0e25f;    /* 1e-15 */
-    uint32_t i, k;
-    for (i = 0; i < 6u; i++)
-        a1[i] = a2[i] = s0;
+    float a1[6] = {0, 0, 0, 0, 0, 0}, a2[6] = {0, 0, 0, 0, 0, 0};
+    uint32_t k;
     for (k = 0; k < BENCH_N; k++) {
-        float x = off ? in[k] + o : in[k], y = 0.0f, v;
+        float x = bench_inf[k], y = 0.0f, v;
 #define MODE(i)                                                                                             \
         v = g[i] * x + c1[i] * a1[i] - c2[i] * a2[i];                                                       \
         a2[i] = a1[i];                                                                                      \
@@ -317,10 +367,6 @@ HOT uint32_t bench_res_f(const float *in, float s0, int off)
     }
     return bf2u(a1[0]);
 }
-
-static uint32_t k_res_f(void) { return bench_res_f(bench_inf, 0.0f, 0); }
-static uint32_t k_res_f_sub(void) { return bench_res_f(bench_zero, bench_vf[5], 0); }     /* a silent tail, subnormal */
-static uint32_t k_res_f_off(void) { return bench_res_f(bench_zero, bench_vf[5], 1); }     /* the same with the offset */
 
 static uint32_t k_op_q(void)                              /* a one-pole, m_noise's: Q16 coefficient, Q24 state */
 {
@@ -460,8 +506,9 @@ static const bench_t BENCH[] = {
     {"exp2 q exp2_scale", k_exp2_q, 1}, {"exp2 f exp2f", k_exp2f, 1}, {"exp2 f expf", k_exp2_e, 1},
     {"exp2 f poly5", k_exp2_p, 1},
     {"biquad x2 q dly_aa", k_bq_q, 2}, {"biquad x2 f", k_bq_f, 2},
-    {"res x6 q modal", k_res_q, 6}, {"res x6 f", k_res_f, 6},
+    {"res x6 q rotated", k_res_q, 6}, {"res x6 f rotated", k_res_f, 6},
     {"res x6 f subnormal", k_res_f_sub, 6}, {"res x6 f sub+offset", k_res_f_off, 6},
+    {"res x6 q 2-pole", k_res2_q, 6}, {"res x6 f 2-pole", k_res2_f, 6},
     {"onepole q", k_op_q, 1}, {"onepole f", k_op_f, 1},
     {"osc q15 (2026-10)", k_osc_q, 1}, {"osc f (2026-10)", k_osc_f, 1},
     {"mac4 q15 (2026-10)", k_mul_q, 4}, {"mac4 f (2026-10)", k_mul_f, 4},
@@ -508,6 +555,12 @@ static void bench_prepare(void)
         bench_rf[2][i] = r * r;
         for (j = 0; j < 3u; j++)
             bench_rq[j][i] = (int32_t)(bench_rf[j][i] * 1073741824.0f);
+        bench_cf[0][i] = 0.1f / r;
+        bench_cf[1][i] = r * cosf(th);
+        bench_cf[2][i] = r * sinf(th);
+        for (j = 0; j < 3u; j++)
+            bench_cq[j][i] = (int32_t)(bench_cf[j][i] * 2147483648.0f);
+        bench_cq[3][i] = -bench_cq[1][i];
     }
 }
 
