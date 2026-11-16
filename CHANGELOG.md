@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.17.0 — 2026-11-15
 
 - **The FM-1 factory bank starts with Monolith D.** The FM-1 opens Monolith D at its first boot and after FACTORY RESET, and the editor opens it on a first visit; Oracle V comes second. Perun 4 and Spokes 6 leave the bank and stay in the editor's Community section beside their XLs, unchanged. An update leaves your saved slots as they are; FACTORY RESET installs the new bank.
 - **Meridian 8's channels can ring or stop short:** each channel has a DECAY and a RELEASE row, how long its power takes to fall while its key is held and after it is let go. A DRIVE row in the OUT section sets how hard both output saturators are driven. At their starting values the patch sounds as before. The five presets now differ in length too: Broken Beat is clipped short, Lo-fi Hip Hop and Tonal Percs ring out, and Industrial's bacid and cympath hang on. A saved slot keeps its old version; FACTORY RESET installs the new one. A preset you stored for Meridian 8 keeps its values, and its new rows start at their starting values.

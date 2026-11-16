@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "version": "1.17.0",
+  "firmware_product": "FM-1_7011700",
+  "source_commit": "2c1b07dfdb2bb91f3f1a07bb482556158bb74ddd",
+  "source_tree": "0c3e4b1dd70c3444b33e0bbf98ca136adb9bf517",
+  "status": "automated qualification passed; awaiting the owner's device checks (D-139) and publication approval (D-105)",
+  "build_manifest_sha256": "dec60d1102496f59fcf83d102630ee81935c5254f2b93f44968d53e8c7a3a3e7",
+  "artifacts": {
+    "package": {"name": "matryoshka-1.17.0.fwsc", "size": 610609, "sha256": "11edcd2c539dee3bbab1f03aaab1594dff3654f22ec1888c4c893ab75412309c"},
+    "normal": {"name": "matryoshka-1.17.0-app.bin", "size": 580156, "sha256": "6857b46d4c27a4e32d8c332e777b26d54521bfc3bf623993fd61af794a620785"},
+    "normal_elf": {"name": "matryoshka-1.17.0-app.elf", "size": 656800, "sha256": "d8a7d61da09e1a6298f77700cc5d4065773bb438172c6e3ced8ffe74992a8b51"},
+    "normal_sidecar": {"name": "matryoshka-1.17.0.json", "size": 411, "sha256": "1302b41851cd20aa71cb9fe85f3b952683db76304f5f47c1d9234519a8293a22"},
+    "bridge": {"name": "matryoshka-emu.bin", "size": 577068, "sha256": "5a06720f38cd9ef48198d63700e7be3b2967071a8b9d2fecc7c9249c3905d711"}
+  },
+  "ci_runs": {"release": 43801740107, "first_freeze_release": 43793652734, "web_rc": 43801743401, "first_freeze_web_rc": 43793656005},
+  "refreeze": {
+    "first_frozen_commit": "784062e4b77bc708b810294afa31b218b17a0f6b",
+    "reason": "PR #952 changed tools/ci_checks.py (the RC web run's uninstrumented group), so the release was rebuilt on its merge commit to keep firmware/ and tools/ equal to the tag's (D-105).",
+    "result": "release run 43801740107's package, app, ELF and bridge are byte-identical to run 43793652734's, so every check on the first freeze's artifacts stands (D-144)."
+  },
+  "full_host": "PASS in release runs 43793652734 and 43801740107 (rc mode on each frozen commit)",
+  "full_web": {
+    "rc_run": 43801743401,
+    "run_success": true,
+    "result": "219 test files passed with coverage, then the 11 slow render files uninstrumented. The first freeze's run 43793656005 passed 2,287 tests; the 909 Kit's loudness test (src/shared-levels.test.ts, its 12 linked patterns) timed out at 20 min under coverage only, and PR #952 moved it to the uninstrumented group.",
+    "coverage_record": "release/coverage/v1.17.0/ (measured on 2c1b07df, D-147)"
+  },
+  "full_boot": {"checks": 19, "failed": 0, "on": "the release app with the run's bridge", "handshake_identity": "FM-1_7011700"},
+  "full_smoke": {"checks": 309, "failed": 0, "level_warnings": 0, "on": "the release app, sha256 6857b46d..."},
+  "full_scenarios": {
+    "passed": 384,
+    "failed": 0,
+    "skipped": [{"name": "3.5mm out: OFF leaves USB audio as it was", "reason": "the emulator has no USB audio: tools/audio_out_test.sh and the rig's recording prove it"}],
+    "on_bridge_sha256": "5a06720f38cd9ef48198d63700e7be3b2967071a8b9d2fecc7c9249c3905d711"
+  },
+  "test_revision": {
+    "frozen_commit": "2c1b07dfdb2bb91f3f1a07bb482556158bb74ddd",
+    "harness_fixes": [{"pr": 952, "files": ["tools/ci_checks.py", "tools/ci_checks_test.py"], "in_frozen_commit": true, "changes": "the RC web run keeps src/shared-levels.test.ts out of coverage"}]
+  },
+  "rig_install": {"run": 43793652734, "gate": "boot (emu:boot, D-123)", "result": "the registered test rig runs FM-1_7011700, firmware 1.17.0; reinstalled from run 43801740107 (identical bytes) after the USB audio comparison"},
+  "hardware": {
+    "scope": "D-1151: only the scenarios whose result needs the hardware, on the registered test rig running the release bytes.",
+    "rig_scenarios": {
+      "passed": 65,
+      "failed": 1,
+      "skipped": 5,
+      "by_design_skips": ["3.5MM OUT OFF silences the speaker and the jack: the owner's ears (D-139)", "MONO, MONO L and MONO loudness: USB audio is taken before OUTPUT's mix (D-140); the emulator's I2S proves them"],
+      "failure": "USB audio streams: the stream the Mac opened stalled (0.30 s of audio in 3.45 s) in the first scenario after the install; 1.1 (STEREO saw and sine) was skipped with it.",
+      "affected_rerun": "checkOutput re-run 13 times on the release bytes: 4 stalls (3 of 6 right after an install, 1 of 7 without). The same check on the 1.16.0 release stalled 1 of 3 times right after an install, so the stall is not new in 1.17. Every failure shows the host had set the streaming alternate setting back to 0 (DIAG 125 word 0 = 17). Issue #953 tracks it.",
+      "dual_core": "checkDualCore at the install gate: 22 of 22 (Io 4, Hera 6 and Cassia 1 with 8 keys held: no shed voice, no overload, no late half)"
+    }
+  },
+  "owner_checks": {"status": "pending", "steps": "D-139: the analog output in headphones, instruments played by hand, a power cycle."}
+}
