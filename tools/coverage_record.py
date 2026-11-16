@@ -26,8 +26,10 @@ def git(repo, *args):
 
 def source_path(path):
     # Conservative on purpose: version stamping, dependencies, tests and CI config
-    # count. Only documentation and the durable display records are excluded.
-    return not (path.startswith(('docs/', RECORDS, '.agents/', '.claude/', '.codex/'))
+    # count. Excluded: documentation, and what the release record adds after the
+    # candidate is measured (D-146): release/ (qualification and coverage records)
+    # and the bundled package in web/public/firmware/.
+    return not (path.startswith(('docs/', 'release/', 'web/public/firmware/', '.agents/', '.claude/', '.codex/'))
                 or ('/' not in path and path.endswith('.md')))
 
 

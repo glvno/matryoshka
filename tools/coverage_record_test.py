@@ -105,7 +105,8 @@ class CoverageRecords(unittest.TestCase):
 
     def test_guidance_is_excluded_but_test_dependency_and_workflow_changes_count(self):
         before = coverage.fingerprint(self.root, 'HEAD')
-        for path in ['README.md', 'AGENTS.md', 'CLAUDE.md', 'docs/policy.md']:
+        for path in ['README.md', 'AGENTS.md', 'CLAUDE.md', 'docs/policy.md', 'release/qualification/v1.13.0.json',
+                     'web/public/firmware/matryoshka.json']:
             f = self.root / path
             f.parent.mkdir(parents=True, exist_ok=True)
             f.write_text('guidance')
