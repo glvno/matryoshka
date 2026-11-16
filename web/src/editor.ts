@@ -4333,6 +4333,12 @@ export class Editor {
     const copy = copyStarts(a.params);
     const starts = new Map(groupStarts(kept.map((i) => ({ ...a.params[i], copy: copy[i], knob: !shown[i].screen }))).map((st, k) => [kept[k], st && k > 0]));
     const tie = this.patch.assemblies?.some((x) => x.params.some((r) => r.also || r.names)) ? ties(this.patch) : null;
+    // the master FX bus card: the rows of a stage that is off are dimmed, as the stage's switch shows it (D-966)
+    const bus = !parent && a.children?.length ? fxBusOf(this.patch) : null;
+    const offRows = new Set(bus?.assembly === a.id ? bus.stages.flatMap((s) => {
+      const st = this.patch.assemblies!.find((x) => x.id === s.assembly)!;
+      return st.bypass ? st.modules : [];
+    }) : []);
     // copies shown one at a time (the CZ's envelope steps): only the picked one, under a row that picks it
     const runs = copyRuns(a.params);
     const runOf = (i: number) => runs.find((x) => i >= x.at && i < x.at + x.rows * x.count);
@@ -4348,6 +4354,7 @@ export class Editor {
       const first = run && i === run.at + picked * run.rows;
       const lead = first ? a.params[run.at] : r;   // (the run's heading and column break stay above whichever copy shows)
       const above = [...(lead.head ? [this.heading(a, first ? run.at : i)] : []), ...(first ? [this.copyPicker(a, run)] : [])];
+      if (offRows.has(m.id)) for (const e of [row, ...above]) e.classList.add('stage-off');
       return [{ el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: !!lead.col, above, span: pd.screen ? r.span : undefined, gap: !!starts.get(first ? run.at : i) && !lead.col && !lead.head && !run }];
     });
     body.append(...this.edgeLayout(ins, outs, params));
@@ -4357,7 +4364,6 @@ export class Editor {
       hint.textContent = 'nothing exposed: open it and mark ports and parameters';
       body.append(hint);
     }
-    const bus = !parent && a.children?.length ? fxBusOf(this.patch) : null;
     el.append(head, ...(bus?.assembly === a.id ? [this.fxStageSwitches(bus)] : []), body);
     return el;
   }

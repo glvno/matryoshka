@@ -957,6 +957,8 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .fx-stages button.fx-stage:hover { color: var(--ink); border-color: var(--accent); }
 .fx-stages button.fx-stage.on { color: var(--panel); background: var(--accent); border-color: var(--accent); }
 .fx-stages button.fx-stage:focus-visible { outline: 2px solid var(--secondary); outline-offset: 1px; }
+/* its rows (and their heading) while that stage is off: dimmed, still editable */
+.module.assembly .stage-off { opacity: .45; }
 .flaw-note { padding: 6px 8px 0; color: var(--muted); font-size: 12px; }
 @media (pointer: coarse) { :is(.mhead, .fhead) :is(button.chev, button.more, button.pw, button.out) { width: 30px; height: 30px; } :is(.mhead, .fhead) :is(button.poly-btn, button.vc-btn), .fx-stages button.fx-stage { height: 24px; } }
 /* the card's menu */

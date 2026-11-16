@@ -112,6 +112,32 @@ describe('the collapsed master FX bus card', () => {
     expect(pressed()).toEqual(['false', 'false', 'false', 'false']);
   });
 
+  it('dims the rows and heading of each stage that is off, and only those', () => {
+    const p = busPatch();
+    const editor = editorOn(p);
+    const bus = fxBusOf(p)!;
+    const card = () => document.querySelector<HTMLElement>(`.module.assembly[data-asm="${bus.assembly}"]`)!;
+    // a row's stage: the stage whose assembly holds its module
+    const kindOf = (row: HTMLElement) => bus.stages.find((s) => editor.patch.assemblies!.find((a) => a.id === s.assembly)!.modules.includes(Number(row.dataset.mod)))!.kind;
+    const dimmed = () => [...new Set([...card().querySelectorAll<HTMLElement>('.param[data-mod]')].filter((r) => r.classList.contains('stage-off')).map(kindOf))];
+    const rows = [...card().querySelectorAll<HTMLElement>('.param[data-mod]')];
+    expect(new Set(rows.map(kindOf))).toEqual(new Set(['drive', 'chorus', 'delay', 'reverb']));
+    expect(rows.every((r) => r.classList.contains('stage-off'))).toBe(true);   // every stage starts off
+    expect(card().querySelectorAll('.stage-off:not(.param)').length).toBe(4);  // and each stage's heading
+    switchOf(stageId(p, 'delay')).click();
+    switchOf(stageId(p, 'reverb')).click();
+    expect(dimmed()).toEqual(['drive', 'chorus']);
+    // the Reverb's mix row lives on its helper macro: it follows the stage too
+    const mix = bus.stages.find((s) => s.kind === 'reverb')!.helpers;
+    expect([...card().querySelectorAll<HTMLElement>('.param[data-mod]')].some((r) => mix.includes(Number(r.dataset.mod)) && !r.classList.contains('stage-off'))).toBe(true);
+    // turned off on the FM-1 (main.ts applies it and redraws)
+    setFxStageEnabled(editor.patch, fxBusOf(editor.patch)!.stages.find((s) => s.kind === 'delay')!, false);
+    editor.rebuild();
+    expect(dimmed()).toEqual(['drive', 'chorus', 'delay']);
+    // no other card is dimmed
+    expect(document.querySelectorAll(`.module:not([data-asm="${bus.assembly}"]) .stage-off`)).toHaveLength(0);
+  });
+
   it('follows the expanded card, the FM-1’s FX page and a preset load', () => {
     const p = busPatch();
     const editor = editorOn(p);
