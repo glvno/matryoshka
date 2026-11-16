@@ -71,6 +71,9 @@ import { addedTitles, loadCommunity, onAddedChange, unlinkSaved } from './commun
 import { chipEl, sandboxCardDue, sandboxWords, showSandboxCard, type Chip } from './sandbox';
 import { ShareSheet } from './share-sheet';
 import { fileStem, savePatchCard } from './patch-card';
+import { Audition } from './audition';
+import { PHRASES } from './phrases';
+import { resample } from './wav';
 import { starterPatch } from './starter';
 import { recordKey, recordOff } from './step-grid';
 import { Tutorial } from './tutorial/tutorial';
@@ -681,8 +684,8 @@ function offerSync(asked = false): void {
 }
 /** the on-screen keyboard plays through the sink like the letter keys; Z / X and its buttons share the octave */
 const piano = new Piano($('piano'), {
-  on: (note, vel) => sink.send({ t: 'on', note, vel }, true),
-  off: (note) => sink.send({ t: 'off', note }, true),
+  on: (note, vel) => (audition.played({ t: 'on', note, vel }), sink.send({ t: 'on', note, vel }, true)),
+  off: (note) => (audition.played({ t: 'off', note }), sink.send({ t: 'off', note }, true)),
   shift: (d) => noteKeys.shift(d),
 });
 /** the wheels: pitch bend and CC 1, shown in the dock under Main's bend and modulation jacks (the editor places them) */
@@ -1473,6 +1476,7 @@ const takeSnapshot = (side: 'A' | 'B'): void => {
 };
 const flipAB = (): void => {
   if (editor.toggleAB()) {
+    audition.restart();   // (a test phrase starts again: each side hears the same notes from the top, #945)
     nameInput.value = editor.patch.name;   // (the patch takes the target's name, D-579)
     tutorial.flipped();
     status.textContent = `${editor.side}${diffCount(diffPatches(JSON.parse(editor.snapshots[editor.side === 'A' ? 'B' : 'A']!) as Patch, editor.patch, DEFS)) ? '' : ' (same as the other side)'}`;
@@ -1531,6 +1535,12 @@ const commands = (): Command[] => {
     ...MUTATE_AMOUNTS.map((a) => ({ kind: 'command' as const, label: `Mutate amount: ±${Math.round(a * 100)} %`, detail: a === editor.mutateAmount ? 'now' : undefined, keywords: 'mutate how far', run: () => setMutateAmount(a) })),
     { kind: 'command', label: 'Lock selection for Mutate', keywords: 'keep protect hold mutate randomize', run: inPatch(() => editor.lockCards(true)) },
     { kind: 'command', label: 'Unlock selection for Mutate', keywords: 'mutate randomize', run: inPatch(() => editor.lockCards(false)) },
+    { kind: 'command', label: audition.playing ? 'Stop the test phrase' : 'Play the test phrase', detail: 'Q', keywords: 'audition listen phrase held note chord sweep drums', run: () => audition.toggle() },
+    ...PHRASES.map((p) => ({ kind: 'command', label: `Test phrase: ${p.label}`, detail: p.detail, keywords: 'audition listen play', run: () => { audition.choose({ kind: p.kind }); void audition.play(); } })),
+    { kind: 'command', label: audition.choice.loop ? 'Test phrase: loop off' : 'Test phrase: loop on', keywords: 'audition repeat again once', run: () => audition.choose({ loop: !audition.choice.loop }) },
+    { kind: 'command', label: 'Use my last take as the test phrase', detail: 'My take', keywords: 'audition phrase played recorded notes performance', run: () => audition.useTake() },
+    { kind: 'command', label: 'Export the test phrase to WAV', detail: '44.1 kHz stereo', keywords: 'render audio file save download sound bounce', run: () => void audition.exportPhrase() },
+    { kind: 'command', label: audition.recording ? 'Stop recording and save the WAV' : 'Record the Output to WAV', keywords: 'audio file save download capture performance sound', run: () => void audition.toggleRecord() },
     { kind: 'command', label: 'Start audio', keywords: 'sound browser', run: () => void startAudio() },
     { kind: 'command', label: 'Panic: stop all notes', keywords: 'silence stuck', run: panic },
     { kind: 'command', label: 'FM-1 & MIDI settings', keywords: 'connect send store sync hardware keyboard release', run: () => $<HTMLDialogElement>('device-bar').showModal() },
@@ -1764,6 +1774,7 @@ window.addEventListener('keydown', (e) => {
   else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyT') (onCanvas(() => editor.tidyUp())(), (done = true));
   else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyZ') (onCanvas(() => editor.zoomToFit())(), (done = true));
   else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyM') (editor.mutate('mutate'), (done = true));
+  else if (!mod && !e.altKey && !e.shiftKey && k.toLowerCase() === 'q') (audition.toggle(), (done = true));   // the test phrase (#945)
   else if (!mod && k.toLowerCase() === 'b') done = editor.bypassSelected();
   else if (mod && k.toLowerCase() === 'g') (editor.makeAssembly(), (done = true)); // plain G is a note key
   else if (k === ' ') {
@@ -2028,6 +2039,7 @@ function panic(): void {
   tutorial.stop();
   host.mute(true);
   sink.send({ t: 'panic' });
+  audition.stop();
 }
 /** MIDI clock out (FM-1 & MIDI, wired below): clock at Main's tempo to the ticked outputs, Start / Stop with Play */
 const clockOut = new ClockOut(() => tempoNow(tempo.setting, editor.patch));   // (the global tempo while it is on, D-907)
@@ -2613,8 +2625,35 @@ const syncAudioBtn = (): void => {
 };
 host.onState = () => { syncAudioBtn(); screens.state(); envs.state(); };
 syncAudioBtn();
+// the deck's test phrase and WAV export (#945, #946): left of the keys
+const audition = new Audition({
+  send: (m) => host.send(m),
+  start: startAudio,
+  sampleRate: () => host.sampleRate,
+  patch: () => editor.patch,
+  stem: () => fileStem(editor.patch),
+  armed: () => [...editor.armedSet],
+  tempo: () => (tempo.global ? tempo.bpm : null),
+  status: (text) => (status.textContent = text),
+  download: (bytes, name) => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'audio/wav' }));
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  },
+  // (loaded lazily: the page's bundle carries no engine, the worklet has its own; a turn of the event loop between slices
+  // keeps the page responsive)
+  render: async (patch, phrase, setup) => (await import('./phrase-render')).renderPhrase(patch, phrase, { ...setup, yieldEvery: () => new Promise((r) => setTimeout(r, 0)) }),
+  resample: (left, right, from) => resample(left, right, from),
+  now: () => new Date(),
+  clock: () => performance.now() / 1000,
+}, (() => { try { return localStorage; } catch { return null; } })());
+$('piano').before(audition.el);
+host.onPhraseEnd = () => audition.ended();
+host.onRecording = (chunk, last) => void audition.recorded(chunk, last);
 audioBtn.onclick = () => (host.running && !host.muted ? panic() : void startAudio());
-const noteKeys = attachKeyboard({ send: (m) => sink.send(m, true) }, () => currentTab === 'patch' && !document.querySelector('dialog[open], [popover]:popover-open'), (o) => {
+const noteKeys = attachKeyboard({ send: (m) => (audition.played(m), sink.send(m, true)) }, () => currentTab === 'patch' && !document.querySelector('dialog[open], [popover]:popover-open'), (o) => {
   keyOctave = o;
   piano.setOctave(o);
   if (stampOctave(editor.patch)) queueSave(editor.patch);
@@ -2643,7 +2682,7 @@ const setMidi = async (on: boolean): Promise<void> => {
   if (!on || midiAsking) return;
   midiAsking = true;
   midiSwitch = await attachMidi(
-    sink,
+    { send: (m) => (audition.played(m), sink.send(m)) },   // (its notes go into the takes too, #945)
     (s) => {
       if (!host.running) status.textContent = s;
     },

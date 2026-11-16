@@ -547,7 +547,7 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 /* the deck's columns line up with the workspace's: the buttons under the sidebar, the wheels' column (drawn over it), the keys */
 .deck-row { grid-column: 1 / -1; height: 92px; display: grid; grid-template-columns: subgrid; column-gap: 0; padding: 6px 0 8px; }
 .deck-row > .deck-controls { grid-column: 1; margin: 0 8px; }
-.deck-row > .piano { grid-column: 3; margin: 0 8px; }
+.deck-row > .deck-keys { grid-column: 3; margin: 0 8px; display: flex; gap: 8px; min-width: 0; }
 /* the wheels' column: its jacks sit half over its top edge like the dock's (a see-through band takes no pointer) */
 .wheels { position: relative; z-index: 2; display: flex; gap: 8px; margin-top: -8px; padding: 8px 6px 8px; pointer-events: none;
   background: linear-gradient(transparent 8px, var(--line) 8px, var(--line) 9px, var(--panel) 9px); border-right: 1px solid var(--line); }
@@ -610,6 +610,14 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .deck-controls #midi-btn[aria-pressed="true"] { background: var(--key-white); border-color: var(--key-edge); color: var(--key-black); }
 .arp-line { display: flex; gap: 6px; align-items: stretch; }
 .deck.folded .piano { display: none; }
+/* the test phrase group (#945, #946) in front of the keys: play, which phrase, loop; root, octave, WAV, record */
+.deck-phrase { flex: none; display: grid; grid-template-columns: 76px 44px 66px 62px; grid-template-rows: 1fr 1fr; gap: 6px; }
+.deck-phrase button { padding: 0 6px; font: var(--cap); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+.deck-phrase select { min-width: 0; font-size: 12px; padding: 0 4px; }
+.deck-phrase select:disabled { opacity: .45; }
+.deck-phrase .ph-kind { grid-column: 2 / 4; }
+.deck-phrase .ph-play[aria-pressed="true"], .deck-phrase .ph-loop[aria-pressed="true"] { background: var(--secondary); border-color: var(--secondary); color: var(--panel); }
+.deck-phrase .ph-rec[aria-pressed="true"] { background: var(--danger); border-color: var(--danger); color: var(--panel); }
 /* K1..K4 as knobs in the knobs' colours: the arc from 7 to 5 o'clock is the value, the line on the cap points at it */
 .deck-knobs { display: flex; gap: 6px; align-items: stretch; }
 /* the FM-1's button block (design board D): its two rows in device order, six columns and a lane on the right for ARP's
@@ -745,7 +753,12 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
   .workspace > .dock-wrap { grid-column: 2; }
   .deck { display: flex; flex-direction: column; }
   .deck-row { display: flex; padding: 6px 4px 8px 8px; gap: 6px; }
-  .deck-row > .deck-controls, .deck-row > .piano { margin: 0; }
+  .deck-row > .deck-controls, .deck-row > .deck-keys { margin: 0; }
+  .deck-keys { flex: 1; }
+  /* narrow: play and the phrase only (the palette has the rest) */
+  .deck-phrase { grid-template-columns: 72px; }
+  .deck-phrase .ph-kind { grid-column: 1; }
+  .deck-phrase .ph-loop, .deck-phrase .ph-pitch, .deck-phrase .ph-octave, .deck-phrase .ph-wav, .deck-phrase .ph-rec { display: none; }
   .deck-controls { width: 112px; }
   .deck-controls button { padding: 0 4px; font-size: 11px; }
   .piano-octave { width: 88px; }
