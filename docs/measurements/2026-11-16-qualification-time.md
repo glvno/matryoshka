@@ -166,9 +166,12 @@ patches by index (`i % 6`), and the heavy ones land together.
 Per patch, on the M3 Max with four renders at once (`offRule` and `overHeadroom` on one patch each): the 808 Kit takes
 498 s of the loudness test's 1,236 s and 236 s of the headroom test's 512 s; the 909 Kit 271 s and 126 s; Scrounge 112 s
 and 46 s; Algo Four 79 s and 25 s; every other patch 33 s or less. The 808 Kit alone sets the floor of any deal by whole
-patches: dealt by cost, the longest loudness part would be the 808 Kit on its own, about 690 s on a CI runner
-[INFERENCE: scaled by the CI-to-Mac ratio of `levels-6`, 1.38] instead of 779 s. The parts are left dealt by index;
-a shorter floor needs the 808 Kit's own cases split across parts.
+patches: about 690 s on a CI runner [INFERENCE: scaled by the CI-to-Mac ratio of `levels-6`, 1.38]. In the first RC web
+run of this branch (43920290311) `levels-5` timed out at 1,069 s of its 960 s. The loudness parts are now dealt case by
+case (`levelsPart` in `web/src/levels.ts`): each patch's measured time is spread over its cases, and the costliest case
+goes onto the part with the least time so far. The 808 Kit's and 909 Kit's presets so spread over several parts, and no
+part takes more than a quarter over its sixth (`web/src/loudness-parts.test.ts`): about 285 s of 960 s on CI
+[INFERENCE].
 
 ## 4. What each real-time check proves (the value audit)
 
