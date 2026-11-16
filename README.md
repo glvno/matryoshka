@@ -74,7 +74,7 @@ The firmware plays one patch at a time. See [D-202](docs/ledger/device-ui.md#D-2
 
 The arpeggiator is a module in the patch, not part of the firmware. See [D-415](docs/ledger/modules.md#D-415).
 
-Updating Matryoshka keeps saved patch bytes and names, even when the factory set changes. It does not replace an untouched factory copy with a new revision. Empty-store initialization and explicit **FACTORY RESET** still install the bundled factory bank. Adding a genuinely new factory name can use an empty slot, and saved assembly presets still receive their structure migrations. See [D-887](docs/ledger/patches-and-presets.md#D-887) (Decided).
+Updating Matryoshka keeps saved patch bytes and names, even when the factory set changes. It does not replace an untouched factory copy with a new revision. Empty-store initialization and explicit **FACTORY RESET** install the factory instruments the firmware carries and, when they are installed, the other factory sounds. Adding a genuinely new factory name can use an empty slot, also when the factory sounds are installed later, and saved assembly presets still receive their structure migrations. See [D-887](docs/ledger/patches-and-presets.md#D-887) (Decided).
 
 Knobs and stuff. Every top-level module or assembly with card rows is a device, and so are Main, each Steps track and the Output.
 
