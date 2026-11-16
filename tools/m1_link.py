@@ -60,6 +60,7 @@ Every command takes --rig (the test rig: the FM-1 at its registered USB location
 while more than one FM-1 is connected, since they share the name (#771).
 Needs mido and python-rtmidi (build/venv has them).
 """
+import atexit
 import collections
 import os
 import re
@@ -134,6 +135,12 @@ class _RtIn:
         port.ignore_types(sysex=False, timing=True, active_sense=True)
         port.set_callback(lambda ev, _data=None: self.q.append(ev[0]))
 
+    def close(self):
+        """stop CoreMIDI calling back into Python: a packet that arrives while the interpreter shuts down crashed it
+        (python-rtmidi's callback taking the GIL during finalization, SIGSEGV)"""
+        self.port.cancel_callback()
+        self.port.close_port()
+
     def iter_pending(self):
         while self.q:
             yield mido.Message.from_bytes(self.q.popleft())
@@ -166,6 +173,7 @@ class Link:
             o = i if i in outs else outs[0]
             midi_in, midi_out = be.open_ports(i, o)
             self.inp, self.out = _RtIn(midi_in), _RtOut(midi_out)
+            atexit.register(self.inp.close)
             return
         n = fm1s_connected()
         if n > 1:
@@ -176,6 +184,7 @@ class Link:
         if not o or not i:
             sys.exit("FM-1 not found")
         self.out, self.inp = mido.open_output(o), mido.open_input(i)
+        atexit.register(self.inp.close)
 
     def ask(self, msg, want, tries=3, wait=0.8):
         for _ in range(tries):
