@@ -9,6 +9,7 @@ The GitHub project "Matryoshka", https://github.com/users/glvno/projects/6, is w
 - **Status** says where the work stands. Inbox means not triaged. Then Next, In progress, Device check (built and emulator-tested, waiting for a real FM-1), Backlog (accepted, not scheduled yet), Someday (spikes and ideas with no plan) and Done. The owner decides what moves out of Inbox.
 - **Horizon** (Now, Next, Later) is planning order, not progress. **Initiative** groups issues by goal. **Priority** is High, Medium or Low.
 - A **milestone** names the release an issue is planned for. No label carries plan state.
+- A bug a user reports (an author other than the owner and his agents) is P0 unless the owner says otherwise ([D-073](../ledger/project.md#D-073)): set Status Next, Horizon Now, Priority High and the next release's milestone when you see it, start it before other planned work, and name every open P0 issue in each status report.
 
 Keep it current:
 
