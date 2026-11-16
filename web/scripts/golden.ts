@@ -1463,6 +1463,37 @@ kit('moving-rates', (add, wire) => {
   wire(md, 'out', mix, 'in3');
   wire(mix, 'out', out, 'l');
 });
+// #840: a ring with no input falls to exactly zero on the FM-1, as in the editor. A fixed-point two-pole recursion with
+// rounded products holds its modes ringing for ever (66 dB down, steady), and a decay rate in Q16 octaves rings 2.5 s for
+// 3 s and 5 s for 7.4 s. The gamelan assembly as the report plays it (a new patch, pitch, gate and output wired, one
+// note), and a low ring at the longest decay with no damping, each rendered past the end of its ring.
+{
+  const p = newPatch(DEFS, 'gamelan tail');
+  const main = p.modules.find((m) => m.type === 'fm1')!, out = p.modules.find((m) => m.type === 'output')!;
+  const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'gamelan')!, 300, 300);
+  for (const i of a.inputs) {
+    const from = (['pitch', 'gate'] as const).find((k) => i.port === k || i.label === k);
+    if (from) connect(p, DEFS, { module: main.id, port: from }, { module: i.module, port: i.port });
+  }
+  for (const o of a.outputs) connect(p, DEFS, { module: o.module, port: o.port }, { module: out.id, port: 'l' });
+  tests['gamelan-tail'] = p;
+  events['gamelan-tail'] = [[0, 'on', 60], [128 * 172, 'off', 60]];
+  ends['gamelan-tail'] = 128 * 1400;
+}
+kit('modal-long', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const pl = add('pulse', 0, 0, { time: 0.002 });
+  const hit = add('scale', 0, 0, { gain: 0.015, offset: 0 });
+  const md = add('modal', 0, 0, { coarse: -12, decay: 5, struct: 0, bright: 0.2, damp: 0 });
+  const out = add('output', 0, 0);
+  wire(kb, 'gate', pl, 'trig');
+  wire(pl, 'out', hit, 'in');
+  wire(hit, 'out', md, 'in');
+  wire(kb, 'pitch', md, 'pitch');
+  wire(md, 'out', out, 'l');
+});
+events['modal-long'] = [[0, 'on', 48], [128 * 40, 'off', 48]];
+ends['modal-long'] = 128 * 3000;
 // the eight-step envelope: a sustain mid-way (the release jumps past it, rising and falling steps after it), sus off (the
 // steps run through the gate), sus = end; its rates moved by LFOs (the firmware caches one step's rates)
 kit('env8', (add, wire) => {

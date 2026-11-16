@@ -1533,13 +1533,17 @@ const MODAL_N = 6;
 const MODAL_BAR = [1, 2.756, 5.404, 8.933, 13.34, 18.64];
 
 /**
- * Modal resonator: six two-pole resonators y = a sin(th) x + 2 r cos(th) y1 - r^2 y2 (impulse response r^n sin(th n): the
- * ring of an impulse has the input's amplitude) at the ratios of the harmonics (struct 0) to a free bar (struct 1) of the
- * pitch; `decay` is the fundamental's time to -60 dB, partial i decays in decay / (1 + 2 damp i); the amplitudes fall as
- * (0.3 + 0.7 bright)^i and are normalised to a sum of 1. Partials above 0.45 sr are left out. The states are held to +-8:
- * excite it with short bursts (a pulse, a plucked string, a gated noise); a steady input builds up to the clamp.
+ * Modal resonator: six resonators with poles r e^(+-j th) (impulse response a r^n sin((n + 1) th): the ring of an impulse
+ * has the input's amplitude) at the ratios of the harmonics (struct 0) to a free bar (struct 1) of the pitch; `decay` is
+ * the fundamental's time to -60 dB, partial i decays in decay / (1 + 2 damp i); the amplitudes a fall as
+ * (0.3 + 0.7 bright)^i and are normalised to a sum of 1. Partials above 0.45 sr are left out. Each mode is a pair of
+ * states (u, v) turned by th and shrunk by r every sample: u += (a / r) x; (u, v) <- r (u cos th - v sin th,
+ * u sin th + v cos th); out = v (D-1109). A pitch change keeps a ring's level, and in the fixed-point engine a ring falls
+ * to exactly zero (a two-pole recursion y = g x + c1 y1 - c2 y2 with rounded products holds a quiet ring for ever, #840).
+ * The input and the states are held to +-8: excite it with short bursts (a pulse, a plucked string, a gated noise); a
+ * steady input builds up to the clamp.
  */
-const modal: ModuleImpl<{ y1: Float64Array; y2: Float64Array }> = {
+const modal: ModuleImpl<{ u: Float64Array; v: Float64Array }> = {
   def: {
     type: 'modal',
     label: 'Resonator',
@@ -1553,12 +1557,12 @@ const modal: ModuleImpl<{ y1: Float64Array; y2: Float64Array }> = {
       param('damp', 0, 1, 0.3, { step: 0.01 }),
     ],
   },
-  init: () => ({ y1: new Float64Array(MODAL_N), y2: new Float64Array(MODAL_N) }),
+  init: () => ({ u: new Float64Array(MODAL_N), v: new Float64Array(MODAL_N) }),
   process(c, s) {
     const f0 = C4 * Math.pow(2, c.inp.pitch[0] + (c.p.coarse ?? 0) / 12);
     const st = c.p.struct ?? 0, damp = c.p.damp ?? 0.3, decay = c.p.decay ?? 1;
     const bw = 0.3 + 0.7 * (c.p.bright ?? 0.5);
-    const g = new Float64Array(MODAL_N), c1 = new Float64Array(MODAL_N), c2 = new Float64Array(MODAL_N);
+    const b = new Float64Array(MODAL_N), rc = new Float64Array(MODAL_N), rs = new Float64Array(MODAL_N);
     let sum = 0, a = 1;
     const amp = new Float64Array(MODAL_N);
     for (let i = 0; i < MODAL_N; i++) {
@@ -1571,18 +1575,18 @@ const modal: ModuleImpl<{ y1: Float64Array; y2: Float64Array }> = {
       if (f >= c.sr * 0.45) continue;
       const th = (2 * Math.PI * f) / c.sr;
       const r = Math.pow(2, -LOG2_1000 / ((decay / (1 + 2 * damp * i)) * c.sr));
-      g[i] = (amp[i] / sum) * Math.sin(th);
-      c1[i] = 2 * r * Math.cos(th);
-      c2[i] = r * r;
+      b[i] = r > 0 ? Math.min(1, amp[i] / sum / r) : 0;   // (below 1: the firmware keeps it in Q31)
+      rc[i] = r * Math.cos(th);
+      rs[i] = r * Math.sin(th);
     }
     for (let n = 0; n < c.n; n++) {
-      const x = c.inp.in[n];
+      const x = Math.max(-8, Math.min(8, c.inp.in[n]));
       let y = 0;
       for (let i = 0; i < MODAL_N; i++) {
-        const v = Math.max(-8, Math.min(8, g[i] * x + c1[i] * s.y1[i] - c2[i] * s.y2[i]));
-        s.y2[i] = s.y1[i];
-        s.y1[i] = v;
-        y += v;
+        const u = s.u[i] + b[i] * x, v = s.v[i];
+        s.u[i] = Math.max(-8, Math.min(8, rc[i] * u - rs[i] * v));
+        s.v[i] = Math.max(-8, Math.min(8, rs[i] * u + rc[i] * v));
+        y += s.v[i];
       }
       c.out.out[n] = y;
     }

@@ -30409,7 +30409,7 @@
    "cv": 234
   },
   "modal": {
-   "run": 34436,
+   "run": 33920,
    "cv": 245
   },
   "shift": {
@@ -37483,11 +37483,11 @@
   },
   {
    "name": "Meridian 8",
-   "cycles": 604965
+   "cycles": 604449
   },
   {
    "name": "808 Kit",
-   "cycles": 684898
+   "cycles": 682834
   },
   {
    "name": "909 Kit",
@@ -37543,7 +37543,7 @@
   },
   {
    "name": "assembly bowed glass",
-   "cycles": 99837
+   "cycles": 99321
   },
   {
    "name": "assembly bowed string",
@@ -37583,7 +37583,7 @@
   },
   {
    "name": "assembly drum kit",
-   "cycles": 376809
+   "cycles": 375777
   },
   {
    "name": "assembly ducking delay",
@@ -37615,7 +37615,7 @@
   },
   {
    "name": "assembly gamelan",
-   "cycles": 95174
+   "cycles": 94139
   },
   {
    "name": "assembly gated reverb",
@@ -37623,7 +37623,7 @@
   },
   {
    "name": "assembly glass bell",
-   "cycles": 93223
+   "cycles": 92704
   },
   {
    "name": "assembly hats",
@@ -37643,7 +37643,7 @@
   },
   {
    "name": "assembly kalimba",
-   "cycles": 63580
+   "cycles": 63064
   },
   {
    "name": "assembly kick",
@@ -37651,7 +37651,7 @@
   },
   {
    "name": "assembly marimba",
-   "cycles": 95880
+   "cycles": 94848
   },
   {
    "name": "assembly master FX",
@@ -37659,7 +37659,7 @@
   },
   {
    "name": "assembly Meridian 8",
-   "cycles": 563463
+   "cycles": 562947
   },
   {
    "name": "assembly mono lead",
@@ -37699,7 +37699,7 @@
   },
   {
    "name": "assembly rain",
-   "cycles": 66539
+   "cycles": 66023
   },
   {
    "name": "assembly random melody",
@@ -37707,7 +37707,7 @@
   },
   {
    "name": "assembly resonator bank",
-   "cycles": 119212
+   "cycles": 117664
   },
   {
    "name": "assembly reverse pad",
@@ -37715,7 +37715,7 @@
   },
   {
    "name": "assembly rim",
-   "cycles": 63239
+   "cycles": 62723
   },
   {
    "name": "assembly Sallen 20",
@@ -37771,7 +37771,7 @@
   },
   {
    "name": "assembly tabla",
-   "cycles": 67465
+   "cycles": 66949
   },
   {
    "name": "assembly talking filter",
@@ -37783,7 +37783,7 @@
   },
   {
    "name": "assembly tom",
-   "cycles": 54917
+   "cycles": 54401
   },
   {
    "name": "assembly Vernon 100",
