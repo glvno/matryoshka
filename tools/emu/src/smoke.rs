@@ -20,13 +20,13 @@
 //!    start); HOME + SAVE turns the quick start off for good (the next power-on has none); the menu's GUIDE tab (D-248)
 //!    and ENV from it (the environment, HOME back to the tab, D-249); OCT- +
 //!    OCT+ held at power-on and MENU > SYSTEM > UPDATE MODE (K1, then GLO held) = update mode (no engine)
-//!    then the bank's power-loss rules and the first boot's factory bank (also on a UC25HQ80 flash chip; an unknown chip is
+//!    then the first boot's factory bank (also on a UC25HQ80 flash chip; an unknown chip is
 //!    left alone, #739); an update that changed a factory patch but not
 //!    the format (#441): the untouched slot gets today's patch, an edited one and today's stay, once; a factory patch
 //!    new since the bank's factory set goes into its own slot, else the first empty one, said once (#630)
 //! 9. the patch buttons (held / switched) and the SEQ page on the 808 Kit: a step, a track, PLAY, a mute, REC
 //! 10. the Delay's longest time (#273): its echo 700 ms after the note, ping-pong half of it on the left and 700 ms on the right
-//! 11. STEREO (the 1.10 early check): a saw on the Output's l and a sine on its r come out on their own sides of the I2S
+//! 11. (STEREO's sides: the device check's checkOutput, D-1159)
 //! 12. Verona Drum 1's hi-hat (the 1.10 early check): the closed hat (G4, the second Drum map) sent while black key 6 (HI HAT
 //!     1, open) is still down cuts the open hat
 //! 13. hardware the emulator does not model: any register besides P33 fails the test (P33's supply registers are
@@ -443,7 +443,6 @@ pub fn run(app: &[u8], out: &str, levels: Option<&str>, strict: bool) -> ExitCod
         ("count-in", Box::new(move |t: &mut Run, e: &mut u64| count_in(app, t, e))),
         ("global-tempo", Box::new(move |t: &mut Run, e: &mut u64| global_tempo(app, t, e))),
         ("long-delay", Box::new(move |t: &mut Run, e: &mut u64| long_delay(app, t, e))),
-        ("stereo", Box::new(move |t: &mut Run, e: &mut u64| stereo_sides(app, t, e))),
         ("verona", Box::new(move |t: &mut Run, e: &mut u64| verona_hats(app, t, e, p))),
     ];
     run_parts(&mut t, &mut emulated, parts);
@@ -537,29 +536,9 @@ fn record(id: u32, seq: u32, name: &str, data: &[u8], torn: bool) -> Vec<u8> {
     s
 }
 
-/// The bank's power-loss rules (#74): of two records of one slot the newer wins (a write cut after its commit, before the
-/// old sector was erased); a record without its header (cut before the commit) does not count; the first boot writes
-/// the factory patches.
+/// The first boot writes the factory patches. (The bank's power-loss rules, #74, are the host's: patstore_test.c and
+/// patlink_test.c cut a write at every byte, D-1159.)
 fn store(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
-    let mut flash = crate::machine::installed_flash();
-    let put = |f: &mut Vec<u8>, at: usize, s: Vec<u8>| f[at..at + 0x1000].copy_from_slice(&s);
-    put(&mut flash, 0x97000, record(3, 9, "EMU NEW", &presets[1].1, false));
-    put(&mut flash, 0xA5000, record(3, 5, "EMU OLD", &presets[2].1, false));
-    put(&mut flash, 0xB0000, record(7, 20, "EMU TORN", &presets[3].1, true));
-    put(&mut flash, 0xC0000, record(0, 1, "EMU ZERO", &presets[0].1, false));
-    let mut m = Machine::boot(app, Some(&flash));
-    quick_start(&mut m, 9000)?;
-    wait_text(&mut m, DEVICE_PAGE, 2000)?;
-    m.run_for(300)?;
-    t.screen(&m, "store: boot opens slot 0 (no settings record)", "EMU ZERO");
-    m.midi(&[0xC0, 3], 500)?;
-    t.screen(&m, "store: the newer of two records of a slot wins", "EMU NEW");
-    m.midi(&[0xC0, 7], 500)?;
-    t.check("store: a record cut before its header does not count", !font::on_screen(m.lcd(), "EMU TORN"), String::new());
-    let f = m.flash();
-    t.check("store: the older record was erased", f[0xA5000..0xA5004] == [0xff; 4], String::new());
-    *emulated += m.ms();
-
     let mut m = Machine::boot(app, None);
     let quick = quick_start(&mut m, 9000)?;
     t.check("store: the quick start over the first boot's page (D-247)", quick, String::new());
@@ -1017,34 +996,6 @@ fn long_delay(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String>
         }
         *emulated += m.ms();
     }
-    Ok(())
-}
-
-/// STEREO (the 1.10 early check, T110 MONO L R): a saw into the Output's l, a sine an octave up into its r
-/// (web/scripts/emu-patches.ts stereo-sides). Both sides of the I2S sound while a key is held, and they carry different
-/// signals: the right word is the right side, not a copy of the left and not silent.
-fn stereo_sides(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
-    let patch = std::fs::read("build/emu/stereo-sides.m1p").map_err(|e| format!("build/emu/stereo-sides.m1p: {e} (run web/scripts/emu-patches.ts)"))?;
-    let mut flash = crate::machine::installed_flash();
-    flash[0xA0000..0xA1000].copy_from_slice(&slot_sector(0, "EMU STEREO", &patch, false));
-    let mut m = Machine::boot(app, Some(&flash));
-    quick_start(&mut m, 9000)?;
-    wait_text(&mut m, DEVICE_PAGE, 9000)?;
-    m.run_for(2500)?;
-    patch_screen(t, &mut m, "stereo: EMU STEREO loads", "EMU STEREO")?;
-    m.midi(&[0x90, 60, 100], 400)?;
-    let mk = m.mark();
-    m.run_for(300)?;
-    let a = &m.audio[mk..];
-    let side = |ch: usize| a.iter().skip(ch).step_by(2).map(|s| (*s as i32).abs()).max().unwrap_or(0);
-    let (l, r) = (side(0), side(1));
-    let n = (a.len() / 2).max(1) as i64;
-    let diff = a.chunks(2).map(|f| ((f[0] as i32) - (*f.get(1).unwrap_or(&0) as i32)).unsigned_abs() as i64).sum::<i64>() / n;
-    m.midi(&[0x80, 60, 0], 300)?;
-    t.check("stereo: the left side (the saw) sounds", l > LOUD, format!("peak {l}"));
-    t.check("stereo: the right side (the sine) sounds", r > LOUD, format!("peak {r}"));
-    t.check("stereo: the two sides differ (each its own signal)", diff > LOUD as i64 / 4, format!("mean |L - R| {diff}"));
-    *emulated += m.ms();
     Ok(())
 }
 

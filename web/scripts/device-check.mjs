@@ -14,7 +14,7 @@ import { correlation, dropouts, hz, onset, peakOf, rmsOf, toneLevel, toneProfile
 import { FIXTURES, NOTE, oldPatch } from './check-fixtures.mjs';
 
 /** the scenarios' names, in the order they run (scripts/emu-scenarios.mjs lists them for --only and --list) */
-export const CHECK_SCENARIOS = ['checkOutput', 'checkVerona', 'checkRowDrone', 'checkLiveDrone', 'checkDelays', 'checkNoKeys', 'checkStore',
+export const CHECK_SCENARIOS = ['checkOutput', 'checkVerona', 'checkRowDrone', 'checkLiveDrone', 'checkDelays', 'checkStore',
   'checkOldPattern', 'checkTeach', 'checkDualCore', 'check35mmOut', 'checkFlashWrite'];
 
 /** `h`: what emu-scenarios.mjs's scenarios use (the target, the editor's page, the checks) */
@@ -238,24 +238,17 @@ export function checkScenarios(h) {
         await menuClose();
         await check('3.5mm out: the mark on the device page too', await mark());
         const off = await held('off');
-        if (!REAL) {
-          await heard('3.5mm out: ON: the analog output (the I2S) plays', on, level(on) > FLOOR, `${db(level(on))} dB`);
-          await heard('3.5mm out: OFF: the analog output is silent', off, top2(off) === 0, `peak ${db(top2(off))} dB`);
-          await skip('3.5mm out: OFF leaves USB audio as it was', 'the emulator has no USB audio: tools/audio_out_test.sh and the rig\'s recording prove it');
-        } else {
-          const k = level(on), f = level(off);
-          await heard('3.5mm out: OFF leaves USB audio at its level (the rig\'s recording, within 0.3 dB)', off, k > FLOOR && Math.abs(20 * Math.log10(f / k)) <= 0.3, `ON ${db(k)} dB, OFF ${db(f)} dB`);
-          await skip('3.5mm out: OFF silences the speaker and the jack', 'the rig records USB audio, not the analog output: the owner\'s ears prove it');
-        }
+        // (USB audio: tools/audio_out_test.sh proves bit for bit that 3.5MM OUT leaves it as it was; the rig no longer runs
+        // this scenario, D-1151)
+        await heard('3.5mm out: ON: the analog output (the I2S) plays', on, level(on) > FLOOR, `${db(level(on))} dB`);
+        await heard('3.5mm out: OFF: the analog output is silent', off, top2(off) === 0, `peak ${db(top2(off))} dB`);
         const p0 = (await emu.screen()).page, octOf = async () => (await emu.texts()).find((t) => /OCT/.test(t)), oct0 = await octOf();
         const toastOn = await hold3(async () => (await emu.text('3.5MM OUT ON')) && !(await mark()));
         await check('3.5mm out: HOME + OCT- + OCT+ held 2 s: ON, the top bar says 3.5MM OUT ON, the mark goes', toastOn);
         await check('3.5mm out: let go: no controls sheet, HOME went nowhere, the octave as it was', !(await emu.text('EVERYWHERE')) && (await emu.screen()).page === p0
           && (await octOf()) === oct0, `page ${(await emu.screen()).page}, ${await octOf()} (was ${oct0})`);
-        if (!REAL) {   // (the rig records USB audio, which 3.5MM OUT never changes: no stream is opened for this one)
-          const back = await held('combo-on');
-          await heard('3.5mm out: ON by the hold: the analog output plays again', back, level(back) > FLOOR, `${db(level(back))} dB`);
-        }
+        const back = await held('combo-on');
+        await heard('3.5mm out: ON by the hold: the analog output plays again', back, level(back) > FLOOR, `${db(level(back))} dB`);
         const toastOff = await hold3(async () => (await emu.text('3.5MM OUT OFF')) && (await mark()));
         await check('3.5mm out: held 2 s again: OFF, the top bar says 3.5MM OUT OFF, the mark shows', toastOff);
         await emu.waitFor(async () => !(await emu.text('3.5MM OUT OFF')), 3000);   // (the message gone: menuTab looks for the row's name)
@@ -611,27 +604,6 @@ export function checkScenarios(h) {
       await emu.elapse(500);
       const e2 = await echoes('after');
       await heard('4.5 delays: both echoes play after it', e2.a, !e2.a.why && both(e2), say(e2));
-    },
-
-    // ---- 5. an engine no keys reach (D-905, D-295, #633), steps 5.1, 5.2
-    async checkNoKeys() {
-      await check('5.1 no keys: T111 NO KEYS opens, synced', !!(await fixture(FIXTURES.noKeys)));
-      const dot = await page().evaluate(() => {
-        const d = document.querySelector('.arm-dot.no-keys');
-        return d ? { title: d.title } : null;
-      });
-      await check('5.1 no keys: the engine\'s ARM dot is marked no-keys', !!dot, JSON.stringify(dot));
-      await page().evaluate(() => document.querySelector('.arm-dot.no-keys')?.click());
-      await sleep(400);
-      await check('5.1 no keys: a click on it arms nothing', (await T()).armed.length === 0, JSON.stringify((await T()).armed));
-      let found = await emu.text('BASIC POLY');
-      for (let i = 0; i < 6 && !found; i++) { await emu.turn(ENC.select, 1); found = await emu.waitText('BASIC POLY', 600); }
-      await emu.tap(B.scl);
-      await check('5.2 no keys: SELECT to basic poly, SEL: NO KEYS REACH THIS DEVICE', found && (await emu.waitText('NO KEYS REACH THIS DEVICE', 1500)));
-      await emu.elapse(600);
-      await check('5.2 no keys: nothing is armed, in the editor either', (await T()).armed.length === 0 && (await emu.waitText('KEYS WIRED', 3000)));
-      const p = await emu.notePeak();
-      await check('5.2 no keys: the keys play nothing', p < QUIET, `peak ${p}`);
     },
 
     // ---- 6. the store dialog and format 50 (D-959, D-297, D-461), steps 6.1..6.4

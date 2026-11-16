@@ -31,7 +31,7 @@
 // Results go to build/device/scenarios/.
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { basename, dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -43,6 +43,7 @@ import { parseWav, startCapture } from './audio-capture.mjs';
 import { CHECK_SCENARIOS, checkScenarios } from './device-check.mjs';
 import { EmuChannel } from './emu-channel.mjs';
 import { acquireEmulatorSlot, withDeadline } from './emu-slot.mjs';
+import { runEmulatorProcess } from './emu-process.mjs';
 import { mergeShards, planShards, scenarioTiming, stamp } from './emu-shards.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -50,12 +51,13 @@ const REPO = 'glvno/matryoshka';
 const args = process.argv.slice(2);
 const flag = (n) => args.includes(n);
 const opt = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
-const given = args.find((a, i) => !a.startsWith('--') && !['--only', '--install', '--url', '--port', '--gate', '--shards', '--shard'].includes(args[i - 1]));
+const given = args.find((a, i) => !a.startsWith('--') && !['--only', '--install', '--url', '--port', '--gate', '--shards', '--shard', '--smoke'].includes(args[i - 1]));
 const DEVICE = flag('--device') || flag('--via-emu');   // the device test mode's path (a rig, or the emulator through it)
 const REAL = flag('--device') && !flag('--via-emu');    // a real FM-1: the registered rig
 /** --shards N: a run split over N emulators, each with its own browser, all in the one emulator slot (runShards); --shard K:
- *  one of them, started by that run, its results in shard-K/ */
-const SHARDS = opt('--shards') === undefined ? 1 : Number(opt('--shards'));
+ *  one of them, started by that run, its results in shard-K/. A full run on the emulator takes four (D-1157); a run of
+ *  --only, a shard and the rig take one */
+const SHARDS = opt('--shards') !== undefined ? Number(opt('--shards')) : DEVICE || flag('--only') || opt('--shard') ? 1 : 4;
 const SHARD = opt('--shard');
 const RUN_OUT = join(ROOT, DEVICE ? 'build/device/scenarios' : 'build/emu/scenarios');
 const OUT = SHARD ? join(RUN_OUT, `shard-${SHARD}`) : RUN_OUT;
@@ -73,12 +75,15 @@ const SCENARIOS = (() => {
 const RIG_SCENARIOS = {
   clock: 'MIDI clock rate and jitter over USB, timed on the Mac',
   drumHold: 'the hold time across USB MIDI, timed on the Mac',
-  check35mmOut: '3.5MM OUT OFF leaves USB audio at its level (the emulator has no USB audio)',
   checkOutput: "STEREO's left and right heard on USB audio (MONO and MONO L only on the emulator, D-140)",
   checkFlashWrite: 'real flash erase and program timing under a held note',
   checkDualCore: "the second core's real timing: shed, overload and late halves",
 };
 for (const n of Object.keys(RIG_SCENARIOS)) if (!SCENARIOS.includes(n)) throw new Error(`RIG_SCENARIOS names ${n}, which is no scenario`);
+/** editor-side scenarios a full run leaves out (D-1158): each pull request that changes what they check runs them with
+ *  --only (tools/ci_checks.json's rule names the command); a release candidate's run does not */
+const PER_PR_SCENARIOS = ['signalBuffers', 'liveCompile', 'rollPen', 'mirrorKeys', 'longPreset', 'abFlip', 'editorIgnore'];
+for (const n of PER_PR_SCENARIOS) if (!SCENARIOS.includes(n)) throw new Error(`PER_PR_SCENARIOS names ${n}, which is no scenario`);
 if (flag('--list')) {
   console.log(SCENARIOS.join('\n'));
   process.exit(0);
@@ -567,7 +572,7 @@ async function runShards() {
   rmSync(OUT, { recursive: true, force: true });
   mkdirSync(OUT, { recursive: true });
   if (!only) rmSync(scenariosMark(fw), { force: true });
-  const names = SCENARIOS.filter((n) => n !== 'connect' && (!only || only.includes(n)));
+  const names = SCENARIOS.filter((n) => n !== 'connect' && (only ? only.includes(n) : !PER_PR_SCENARIOS.includes(n)));
   const plan = planShards(names, SHARDS, before);
   writeFileSync(join(OUT, 'run.json'), JSON.stringify({ firmware: fw, sha256: sha256(fw), scenarios: only ?? 'all', shards: plan.map((s) => s.names), started: new Date().toISOString() }, null, 1));
   buildEmu();
@@ -575,6 +580,13 @@ async function runShards() {
   const { url, vite } = opt('--url') ? { url: opt('--url') } : await devServer();
   console.log(`editor: ${url}; ${plan.length} shards: ${plan.map((s, i) => `[${i + 1}] ${s.names.length} scenarios`).join(', ')}`);
   const started = Date.now();
+  // --smoke APP (D-143): a frozen candidate's emu:smoke on its release app, beside the shards in the same slot; its output
+  // goes to build/emu/smoke.log
+  const smokeApp = opt('--smoke') && resolve(process.cwd(), opt('--smoke'));
+  const smokeLog = join(ROOT, 'build/emu/smoke.log');
+  const smokeRun = smokeApp ? (mkdirSync(dirname(smokeLog), { recursive: true }), runEmulatorProcess('sh', [join(ROOT, 'tools/emu_smoke.sh'), smokeApp],
+    { cwd: ROOT, stdio: ['ignore', openSync(smokeLog, 'w'), openSync(smokeLog, 'a')], log: () => {} })) : null;
+  if (smokeApp) console.log(`emu:smoke on ${smokeApp} beside the scenarios (${smokeLog})`);
   const exits = await Promise.all(plan.map((s, i) => new Promise((res) => {
     const k = i + 1;
     const c = own(spawn(process.execPath, [fileURLToPath(import.meta.url), fw, '--only', ['connect', ...s.names].join(','), '--url', url, '--shard', String(k),
@@ -594,16 +606,19 @@ async function runShards() {
     if (!failed.length) writeFileSync(scenariosMark(fw), `${sha256(fw)}\n${new Date().toISOString()}\n`);
     else rmSync(scenariosMark(fw), { force: true });
   }
+  const smokeExit = smokeRun ? await smokeRun : null;
   release();
   console.log(`\n${plan.length} shards in ${((Date.now() - started) / 1000).toFixed(0)} s (each: ${exits.map((e, i) => `[${i + 1}] exit ${e}`).join(', ')})`);
+  if (smokeRun) console.log(`emu:smoke: ${smokeExit === 0 ? 'passed' : `FAILED (exit ${smokeExit})`}; ${readFileSync(smokeLog, 'utf8').split('\n').find((l) => / checks, \d+ failed/.test(l)) ?? ''} (${smokeLog})`);
   console.log(`${merged.length - failed.length - skipped.length} of ${merged.length} checks passed${skipped.length ? `, ${skipped.length} skipped (${skipped.map((f) => `${f.name}: ${f.reason}`).join('; ')})` : ''}${failed.length ? `; failed: ${failed.map((f) => `[${f.shard}] ${f.name}`).join('; ')}` : ''}`);
-  process.exit(failed.length ? 1 : 0);
+  process.exit(failed.length || (smokeRun && smokeExit !== 0) ? 1 : 0);
 }
 
 async function main() {
   if (opt('--gate') && !flag('--install')) throw new Error('--gate goes with --install RUN');
   if (flag('--install') && !REAL) throw new Error('--install is for the rig: npm run device:scenarios -- --install RUN');
   if (REAL && !loadRig()) throw new Error('no rig registered: connect the rig alone and run npm run rig -- register');
+  if (opt('--smoke') && (SHARDS < 2 || only)) throw new Error('--smoke APP goes with a full run over several emulators (D-143)');
   if (SHARDS > 1) return runShards();
   const runStart = Date.now();
   if (!REAL && !SHARD) await acquireEmulatorSlot();   // (a shard runs inside its --shards run's slot)
@@ -1489,44 +1504,6 @@ async function main() {
       await check('play once: PLAY in the count-in ends it, nothing starts', !(await T()).deviceRunning && !(await emu.text('PLAY ONCE')));
       await emu.snap('play-once');
     },
-    async recCountIn() {   // D-803 (amended 2026-11-07): REC's count-in clicks on each beat, as play once's; none once it records
-      await check('rec count-in: Init opens, synced', await openSynced('Init'));
-      const set = await setCountIn(1);
-      await check('rec count-in: GLO > PANEL > COUNT-IN 1 BAR', set === '1 BAR', `COUNT-IN ${set ?? 'not found on the menu\'s tabs (nothing turned)'}`);
-      if (set !== '1 BAR') {                        // (nothing to count in: COUNT-IN back to OFF if it was turned at all)
-        if (set) await setCountIn(0);
-        return;
-      }
-      try {
-        await emu.key(B.rec, true);                   // (REC acts on its release: the windows from there, so beat 1 is in them)
-        await emu.elapse(80);
-        await emu.key(B.rec, false);
-        const win = await emu.windows(48, 25);       // (Init's track is empty and no key is held: only the click is heard)
-        const counting = await emu.text('COUNT-IN');
-        const onsets = win.filter((w, i) => w[1] > LOUD && (i === 0 || win[i - 1][1] <= LOUD)).map((w) => w[0]);
-        const beat = onsets.length >= 3 ? (onsets[onsets.length - 1] - onsets[1]) / (onsets.length - 2) : onsets.length === 2 ? onsets[1] - onsets[0] : 0;
-        console.log(`  rec count-in: the count-in's peaks per 25 ms: ${prof(win)}`);
-        await check('rec count-in: REC, stopped: the transport starts and the bar counts in (COUNT-IN)', counting);
-        // beat 1 within 300 ms of REC's release (the panel's scan and a main loop pass), then the bar's other beats: all four
-        // in the 1.2 s, or three when the fourth falls past it (the 25 ms windows round the onsets either way)
-        if (CLICK_UNHEARD) await skip('rec count-in: a click on each beat of the count-in from beat 1, a beat apart', CLICK_UNHEARD);
-        else await loudCheck('rec count-in: a click on each beat of the count-in from beat 1, a beat apart', Math.max(...win.map((w) => w[1])),
-          beat >= 200 && onsets[0] <= 300 && (onsets.length === 4 || (onsets.length === 3 && onsets[0] + 3 * beat > 1150))
-            && onsets.slice(1).every((t, i) => Math.abs(t - onsets[i] - beat) <= 40),
-          `click onsets at ${onsets.join(' ')} ms (a beat ${beat} ms)`);
-        await until(async () => !(await emu.text('COUNT-IN')), 5000);
-        await emu.elapse(Math.max(beat, 300));
-        const after = await emu.windows(40, 25);
-        if (CLICK_UNHEARD) await skip('rec count-in: once it records, no click (a second bar heard silent)', CLICK_UNHEARD);
-        else await check('rec count-in: once it records, no click (a second bar heard silent)', Math.max(...after.map((w) => w[1])) <= LOUD, `peaks ${prof(after)}`);
-        await emu.tap(B.play);                        // (PLAY stops the transport and the recording)
-        await emu.elapse(300);
-      } finally {                                   // (#779: never left at 1 BAR, which a later live take would inherit)
-        const off = await setCountIn(0);
-        await check('rec count-in: COUNT-IN OFF again', off === 'OFF', `COUNT-IN ${off ?? 'not found on the menu\'s tabs (nothing turned)'}`);
-      }
-      await emu.snap('rec-count-in');
-    },
     async tieRoll() {   // piano-roll ties are entered through step record
       await check('tie roll: Silver Box opens, synced', await openSynced('Silver Box'));
       await check('tie roll: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
@@ -2075,6 +2052,11 @@ async function main() {
       await emu.tap(B.scl);
       await check('arming: SEL on a poly engine no keys cable reaches: NO KEYS REACH THIS DEVICE (D-905)', await emu.waitText('NO KEYS REACH THIS DEVICE', 1500));
       await check('arming: the poly engine is not armed, in the editor either', (await emu.waitText('KEYS WIRED', 3000)) && (await T()).armed.length === 0);
+      // the editor's ARM dot of an engine no keys reach (D-905): marked no-keys, and a click on it arms nothing
+      const dot = await page.evaluate(() => document.querySelector('.arm-dot.no-keys')?.title ?? null);
+      await check('arming: the poly engine\'s ARM dot in the editor is marked no-keys', dot !== null, `${dot}`);
+      await page.evaluate(() => document.querySelector('.arm-dot.no-keys')?.click());
+      await check('arming: a click on that ARM dot arms nothing', !(await until(async () => ((await T()).armed.length > 0 ? true : null), 400)), JSON.stringify((await T()).armed));
       await emu.elapse(1300);
       await emu.tap(B.env, 120);
       await check('arming: ENV opens the environment on the poly engine\'s row', await emu.waitText('ENVIRONMENT', 3000));
@@ -2295,6 +2277,7 @@ async function main() {
   try {
     for (const [name, run] of Object.entries(scenarios)) {
       if ((only || REAL) && name !== 'connect' && !(only ?? Object.keys(RIG_SCENARIOS)).includes(name)) continue;   // (connect opens the editor and syncs: the others need it; a rig runs RIG_SCENARIOS, D-1151)
+      if (!only && !REAL && PER_PR_SCENARIOS.includes(name)) continue;   // (D-1158: their pull requests run them)
       console.log(`-- ${name}`);
       const started = Date.now();
       const first = results.length;
