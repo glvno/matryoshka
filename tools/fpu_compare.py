@@ -21,7 +21,9 @@ LINE = re.compile(r"^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2} )+)\s*\t(.*)$")   # tools
 HEAD = re.compile(r"^([^\s.<][^\s<]*):\s*$")                               # a function's label (JieLi objdump: "name:")
 MUL64 = re.compile(r"\br\d+_r\d+ [-+]?= r\d+ \* r\d+")                     # mul / madd / msub .prr
 LOAD16 = re.compile(r"= h\[")
-FLOAT = re.compile(r"\(f\)|\b(?:ftoi|ftou|itof|utof|ftof|fmin|fmax)\b|\biff\b")
+FPU_OP = ("3f e5", "3f f5")   # the FPU's arithmetic and conversions (fm1-emu fpu.rs: 0xe53f, its parallel twin 0xf53f);
+RAW = re.compile(r"^\s*[0-9a-f]+:\s+((?:[0-9a-f]{2} )+)\s*(.*)$")   # JieLi's objdump prints them, without a tab, as
+#                                                                    "<unknown instruction>" (LINE skips those lines)
 SOFT = re.compile(r"<__(?:add|sub|mul|div|neg|fix|fixuns|float|floatun|extend|trunc|eq|ne|lt|le|gt|ge|unord|cmp)\w*sf\w*")
 WINDOW = 3
 
@@ -67,9 +69,10 @@ def main(argv):
 
     print()
     for v in ("bench-soft", "bench-fpu"):
-        lines = [m.group(3) for m in map(LINE.match, dis[v].splitlines()) if m]
-        print(f"{v:<11} FPU instructions {sum(1 for x in lines if FLOAT.search(x)):5d}, "
-              f"calls to software float helpers {sum(1 for x in lines if SOFT.search(x)):5d}")
+        lines = [m for m in map(RAW.match, dis[v].splitlines()) if m]
+        print(f"{v:<11} FPU instructions {sum(1 for m in lines if m.group(1).startswith(FPU_OP)):5d}, calls to software "
+              f"float helpers {sum(1 for m in lines if SOFT.search(m.group(2))):5d}, instructions objdump cannot print "
+              f"{sum(1 for m in lines if 'unknown instruction' in m.group(2)):5d}")
 
     hits = {}
     for name, ins in n.items():
