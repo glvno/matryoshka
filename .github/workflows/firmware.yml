@@ -40,6 +40,8 @@ jobs:
           ref: ${{ inputs.rc_sha || github.sha }}
       - name: Test the CI selector
         run: python3 tools/ci_checks_test.py
+      - name: Test tools/m1_link.py's bank commands
+        run: python3 tools/m1_link_test.py
       # Required `build` propagates either area's planning failure, even for web-only paths.
       - name: Validate the web test plan too
         run: python3 tools/ci_checks.py plan --area web --file build/ci-web-plan.json
