@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The snapshots (#943): versions of the patch kept while the page is open, lettered A, B, C… in the order they are
+// The snapshots (#943): versions of the patch kept with the open patch in this browser, lettered A, B, C… in the order they are
 // taken, to compare by ear with the current patch. The switch goes through them in order and then back to the current
 // patch, so the current patch is always one of the stops. This is the list and its rules; the editor (editor.ts) switches
 // the patch on screen with ab.ts's in-place rules.
@@ -41,6 +41,32 @@ export function body(p: Patch): string {
 
 /** the same version: the same body and the same name */
 export const sameVersion = (a: Patch, b: Patch): boolean => a.name === b.name && body(a) === body(b);
+
+/** a short fingerprint of the remembered patch's text (FNV-1a), which ties stored snapshots to that patch */
+function fingerprint(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+  return (h >>> 0).toString(36);
+}
+
+/** what the browser keeps beside the remembered patch (`patchText`, as written to storage) so the snapshots survive a
+ *  reload (D-972); null when there are none */
+export function snapshotRecord(patchText: string, list: readonly Snapshot[]): string | null {
+  return list.length ? JSON.stringify({ patch: fingerprint(patchText), list }) : null;
+}
+
+/** the snapshots kept for the remembered patch `patchText`: none when the record belongs to another patch or is damaged */
+export function storedSnapshots(record: string | null, patchText: string | null): Snapshot[] {
+  if (!record || patchText === null) return [];
+  try {
+    const r = JSON.parse(record) as { patch?: unknown; list?: unknown };
+    if (r.patch !== fingerprint(patchText) || !Array.isArray(r.list)) return [];
+    return (r.list as Partial<Snapshot>[]).filter((s): s is Snapshot => typeof s?.letter === 'string' && /^[A-Z]+$/.test(s.letter) && typeof s.patch === 'string' && (s.name === undefined || typeof s.name === 'string'))
+      .map((s) => ({ letter: s.letter, patch: s.patch, ...(s.name ? { name: s.name } : {}) }));
+  } catch {
+    return [];
+  }
+}
 
 export class Snapshots {
   readonly list: Snapshot[] = [];

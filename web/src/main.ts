@@ -29,7 +29,7 @@ import { Fm1View } from './fm1-view';
 import { panelPlay, EmuKeys } from './emu-keys';
 import { SandboxKeys } from './sandbox-keys';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
-import type { Snapshot } from './snapshots';
+import { snapshotRecord, storedSnapshots, type Snapshot } from './snapshots';
 import { ScopeScreens } from './scope-view';
 import { EnvScreens } from './env-view';
 import { addToBank, bankPatches, buildPatchesSection, type LibrarySection as LibraryPane } from './bank';
@@ -103,20 +103,29 @@ const STORE = renamedKey('matryoshka.patch', 'modular-1.patch');
 /** the address's fragment as the page opened (a share link's #p=, stripped once loaded): the reload after an import opens it again */
 const openedHash = location.hash;
 
+/** the snapshots of the remembered patch (D-972): kept beside it, tied to its text, never in the patch itself */
+const SNAP_STORE = 'matryoshka.snapshots';
+/** the remembered patch's text as the page opened (its snapshots come back only for it) */
+let savedText: string | null = null;
+
 function loadSaved(): Patch | null {
   try {
-    const s = localStorage.getItem(STORE);
-    return s ? validatePatch(JSON.parse(s), DEFS) : null;
+    savedText = localStorage.getItem(STORE);
+    return savedText ? validatePatch(JSON.parse(savedText), DEFS) : null;
   } catch {
     return null;
   }
 }
 
-/** remember the patch; while a snapshot is on screen the current patch is the one remembered (snapshots live only while
- *  the page is open, #943: a reload brings back the current patch, never a snapshot in its place) */
+/** remember the patch, and with it its snapshots; while a snapshot is on screen the current patch is the one remembered,
+ *  so a reload brings back the current patch, never a snapshot in its place (#943) */
 function save(p: Patch): void {
   try {
-    localStorage.setItem(STORE, JSON.stringify(p === editor.patch ? editor.currentPatch() : p));
+    const text = JSON.stringify(p === editor.patch ? editor.currentPatch() : p);
+    localStorage.setItem(STORE, text);
+    const record = p === editor.patch ? snapshotRecord(text, editor.snaps.list) : null;
+    if (record) localStorage.setItem(SNAP_STORE, record);
+    else localStorage.removeItem(SNAP_STORE);
   } catch {
     /* private mode or storage blocked: the patch just isn't remembered */
   }
@@ -1110,6 +1119,7 @@ const editor = new Editor($('canvas'), firstPatch, {
   onSnapshots() {
     nameInput.value = editor.patch.name;   // (each stop has its own name, D-970)
     renderSnapshots();
+    queueSave(editor.patch);   // (the snapshots are kept beside the patch)
   },
   morphCandidates: patchCandidates,
 }, $('dock'));
@@ -1477,8 +1487,9 @@ const showDiff = (): void => {
   diffPanel.append(h, ul);
   diffPanel.hidden = false;
 };
-// ---- snapshots (#943): versions of the patch kept while the page is open, lettered A, B… as they are taken. The strip over
-// the canvas shows them with the current patch last; Alt+B goes A, B, …, the current patch, A…, Shift+Alt+B takes one
+// ---- snapshots (#943): versions of the patch kept with it, lettered A, B… as they are taken (kept beside the remembered
+// patch: save, D-972). The strip over the canvas shows them with the current patch last; Alt+B goes A, B, …, the current
+// patch, A…, Shift+Alt+B takes one
 const snapStrip = $('snapshot-strip');
 /** how many changes the snapshot is from the current patch, counted as Show changes counts them */
 const snapChanges = (s: Snapshot): number => diffCount(diffPatches(editor.currentPatch(), JSON.parse(s.patch) as Patch, DEFS));
@@ -1565,6 +1576,13 @@ const cycleSnapshots = (): void => {
   if (r) switched(r);
   else status.textContent = 'take a snapshot first (Shift+Alt+B), then Alt+B compares it with the current patch';
 };
+// the snapshots the browser kept with the remembered patch, when the page opened on it (each is checked as a patch is)
+if (firstPatch === editor.patch && savedText !== null) {
+  const kept = storedSnapshots((() => { try { return localStorage.getItem(SNAP_STORE); } catch { return null; } })(), savedText).flatMap((s) => {
+    try { return [{ ...s, patch: JSON.stringify(validatePatch(JSON.parse(s.patch), DEFS)) }]; } catch { return []; }
+  });
+  if (kept.length) editor.restoreSnapshots(kept);
+}
 renderSnapshots();
 
 // ---- the command palette: modules, assemblies, patches

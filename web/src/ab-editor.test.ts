@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { BLOCK, Engine } from './engine';
 import { Editor, type EditorEvents } from './editor';
 import { DEFS } from './modules';
+import { MUTATE_SKIP } from './mutate';
 import type { ModuleInst, Patch } from './patch';
 import { encodePatch } from './patchbin';
 import { relocatedPatches } from './community-factory';
@@ -260,5 +261,31 @@ describe('snapshots in the editor (#943)', () => {
     editor.setPatch(relocatedPatches['Oracle V']());
     expect(editor.snaps.list).toEqual([]);
     expect(editor.snaps.shown).toBeNull();
+  });
+
+  it('a run of Mutates keeps the patch before it as one snapshot; an edit between starts a new run', () => {
+    const { editor } = rig(relocatedPatches['Oracle V']());
+    const m = editor.patch.modules.find((x) => !MUTATE_SKIP[x.type] && DEFS[x.type].params.some((d) => d.max > d.min && !d.fixed && !d.screen && !d.onScreen))!;
+    const scope = { modules: [m.id], assemblies: [] };
+    const before = sound(editor.patch);
+    expect(editor.mutate('mutate', scope)).toBeGreaterThan(0);
+    expect(editor.snaps.list.map((s) => [s.letter, s.name])).toEqual([['A', 'before mutate']]);
+    expect(sound(JSON.parse(editor.snaps.get('A')!.patch) as Patch)).toBe(before);
+    editor.mutate('mutate', scope);
+    editor.mutate('randomize', scope);
+    expect(editor.snaps.list).toHaveLength(1);   // (the same run)
+    steps(editor.patch).notes = [{ at: 1, len: 1, note: 50, vel: 90 }];   // another edit: a new run
+    const edited = sound(editor.patch);
+    editor.mutate('mutate', scope);
+    expect(editor.snaps.list).toHaveLength(2);
+    expect(sound(JSON.parse(editor.snaps.get('B')!.patch) as Patch)).toBe(edited);
+  });
+
+  it('Mutate on a snapshot keeps no copy of it: the snapshot is the original', () => {
+    const { editor } = snapshotAndCurrent();
+    const m = editor.patch.modules.find((x) => !MUTATE_SKIP[x.type] && DEFS[x.type].params.some((d) => d.max > d.min && !d.fixed && !d.screen && !d.onScreen))!;
+    editor.cycleSnapshots(); // on A
+    editor.mutate('mutate', { modules: [m.id], assemblies: [] });
+    expect(editor.snaps.list.map((s) => s.letter)).toEqual(['A']);
   });
 });

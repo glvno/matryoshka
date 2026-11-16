@@ -534,7 +534,7 @@ One of the bank's patch places on the FM-1, shown numbered from 01: 60 of them w
 
 ### Snapshot
 
-A version of the patch kept to compare by ear with the [current patch](#current-patch). Snapshots are lettered A, B, C… in the order they are taken, and the editor keeps them while the page is open; they are not saved with the patch. Not the same as the [B side](#b-side) of patch morphing.
+A version of the patch kept to compare by ear with the [current patch](#current-patch). Snapshots are lettered A, B, C… in the order they are taken. The browser keeps them with the open patch, also after a reload, and forgets them when another patch opens; they are never saved in the patch. Not the same as the [B side](#b-side) of patch morphing.
 
 ### Song
 

@@ -2,7 +2,7 @@
 // The snapshot list (#943): automatic letters, the switch's order with the current patch as the last stop, and what counts
 // as the same version.
 import { describe, expect, it } from 'vitest';
-import { body, letterAt, sameVersion, Snapshots } from './snapshots';
+import { body, letterAt, sameVersion, snapshotRecord, storedSnapshots, Snapshots } from './snapshots';
 import { relocatedPatches } from './community-factory';
 import type { Patch } from './patch';
 
@@ -67,5 +67,19 @@ describe('snapshots (#943)', () => {
     moved.modules[0].y += 50;
     expect(s.holding(moved)?.letter).toBe('A');
     expect(s.holding({ ...copy(a), name: 'other' })).toBeUndefined();
+  });
+
+  it('kept beside the remembered patch, the snapshots come back for that patch only (D-972)', () => {
+    const p = relocatedPatches['Oracle V']();
+    const s = new Snapshots();
+    s.take(p);
+    s.take({ ...copy(p), name: 'bright' }, 'bright');
+    const text = JSON.stringify(p);
+    const record = snapshotRecord(text, s.list)!;
+    expect(storedSnapshots(record, text)).toEqual(s.list);
+    expect(storedSnapshots(record, JSON.stringify({ ...p, name: 'another' }))).toEqual([]);
+    expect(storedSnapshots(record, null)).toEqual([]);
+    expect(storedSnapshots('not json', text)).toEqual([]);
+    expect(snapshotRecord(text, [])).toBeNull();
   });
 });

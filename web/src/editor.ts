@@ -3377,6 +3377,13 @@ export class Editor {
     return s;
   }
 
+  /** put back the snapshots the browser kept for this patch (after a reload, D-972); the current patch is on screen */
+  restoreSnapshots(list: readonly Snapshot[]): void {
+    this.snaps.clear();
+    this.snaps.list.push(...list);
+    this.ev.onSnapshots?.();
+  }
+
   /** the current patch, whether it is on screen or a snapshot is */
   currentPatch(): Patch {
     return this.snaps.current === null ? this.patch : JSON.parse(this.snaps.current) as Patch;
@@ -3489,16 +3496,24 @@ export class Editor {
   /** Mutate's largest move, a share of each parameter's range (the host keeps it per browser) */
   mutateAmount = MUTATE_DEFAULT;
 
+  /** the patch (Editor.snap) and the stop on screen right after the last Mutate or Randomize: while they still match, the
+   *  next one belongs to the same run and keeps no further snapshot */
+  private mutateRun: string | null = null;
+
   /** mutate or randomize `scope` (default: the selected cards) as one undo step, sent live (the structure stays, so the
-   *  voices keep sounding and the selection stays, to go again); the number of parameters moved */
+   *  voices keep sounding and the selection stays, to go again); the number of parameters moved. The first of a run keeps
+   *  the patch as it was as a snapshot, "before mutate", unless a snapshot holds that version already (D-975) */
   mutate(mode: MutateMode, scope: MutateScope = { modules: [...this.selected], assemblies: [...this.selectedAsm] }): number {
     const verb = mode === 'mutate' ? 'Mutate' : 'Randomize';
     if (!scope.modules.length && !scope.assemblies.length) return this.ev.onError(`${verb}: select the cards first`), 0;
     const { patch, moved } = mutatePatch(this.patch, scope, mode, this.mutateAmount, DEFS);
     if (!moved) return this.ev.onError(`${verb}: nothing to move there (locked, or left alone: Main, the Output, voices, Steps, the Arpeggiator, Drum maps, the Harmonizer)`), 0;
+    const run = (): string => `${this.snaps.shown}|${this.snap()}`;
+    const kept = this.mutateRun === run() ? null : this.snaps.holding(this.patch) ? null : this.takeSnapshot('before mutate');
     this.applyLive(patch);
+    this.mutateRun = run();
     const amount = mode === 'mutate' ? ` by up to ±${Math.round(this.mutateAmount * 100)} %` : '';
-    this.ev.onError(`${mode === 'mutate' ? 'Mutated' : 'Randomized'} ${moved} parameter${moved === 1 ? '' : 's'}${amount}. Ctrl/Cmd+Z puts them back`);
+    this.ev.onError(`${mode === 'mutate' ? 'Mutated' : 'Randomized'} ${moved} parameter${moved === 1 ? '' : 's'}${amount}${kept ? `; the patch before is snapshot ${kept.letter}` : ''}. Ctrl/Cmd+Z puts them back`);
     return moved;
   }
 
