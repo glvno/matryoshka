@@ -395,6 +395,37 @@ export const FEATURE_FX_PRESETS = 1 << 24;
 /** INFO feature bit 25 (byte 14 bit 1, #901): the pattern store is on (PATS, PAT_GET, PAT_PUT, PAT_DEL, PAT_LINK_NOW and
  *  format 59's links section) */
 export const FEATURE_PATTERN_STORE = 1 << 25;
+/** INFO feature bit 26 (byte 14 bit 2, #915, D-490): the factory region's commands (firmware/src/factory.c) */
+export const FEATURE_FACTORY = 1 << 26;
+/** the factory region's commands and answers (#915, D-490) */
+export const FACT = { begin: 0x16, write: 0x17, sum: 0x18, read: 0x19, commit: 0x1a, info: 0x3f, infoReply: 0x5f, sumReply: 0x60, dataReply: 0x61 } as const;
+export const FACT_SIZE = 18 * 0x1000;
+export const FACT_HEADER = 64;
+/** FACT_INFO: the region's state (0 none: the firmware tier alone plays, 1 valid, 2 newer than the firmware reads, 3
+ *  damaged), the layout the firmware reads, the region header's layout, format, content version, factory set, body length
+ *  and patches, flags (writing; the tier alone plays), the region's size, the newest patch format the firmware plays, the
+ *  firmware tier's content version and patches, the factory patches in all (the tier and the region merged) */
+export interface FactoryInfo {
+  state: number; reads: number; layout: number; format: number; version: number; set: number; len: number; patches: number;
+  writing: boolean; tierOnly: boolean; size: number; plays: number; tierVersion: number; tierPatches: number; merged: number;
+}
+export function parseFactoryInfo(p: Parsed): FactoryInfo | null {
+  const b = p.payload;
+  if (p.cmd !== FACT.infoReply || b.length < 26) return null;
+  const u16 = (i: number): number => b[i] | b[i + 1] << 8, u32 = (i: number): number => (u16(i) | u16(i + 2) << 16) >>> 0;
+  return {
+    state: b[0], reads: b[1], layout: b[2], format: b[3], version: u16(4), set: u32(6), len: u32(10), patches: u16(14),
+    writing: !!(b[16] & 1), tierOnly: !!(b[16] & 2), size: u32(17), plays: b[21], tierVersion: u16(22), tierPatches: b[24], merged: b[25],
+  };
+}
+export const factBeginFrame = (): Uint8Array => frame(FACT.begin);
+export const factInfoFrame = (): Uint8Array => frame(FACT.info);
+export const factSumFrame = (sector: number): Uint8Array => frame(FACT.sum, [sector]);
+/** n bytes (1..256) at offset `off` of sector `sector`, inside one page: offset 0 erases the sector first */
+export const factWriteFrame = (sector: number, off: number, bytes: ArrayLike<number>): Uint8Array =>
+  frame(FACT.write, [sector, off & 0xff, off >> 8, ...Array.from(bytes)]);
+export const factReadFrame = (off: number, n: number): Uint8Array => frame(FACT.read, [off & 0xff, off >> 8 & 0xff, off >> 16 & 0xff, off >>> 24, n]);
+export const factCommitFrame = (image: Uint8Array): Uint8Array => frame(FACT.commit, image.subarray(0, FACT_HEADER));
 /** PARAM_NOW's parameter sentinel: logical FX kernel bypass, value 0/1 in Q16. */
 export const FX_BYPASS_PARAM = 0xff;
 

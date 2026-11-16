@@ -2536,15 +2536,17 @@ static void fx_draw(int full)
 }
 
 /* ---- presets on the FM-1 (#194, docs/ledger/vocabulary.md "Preset"): an assembly device's card row values under a name, for its
- * structure. The factory engines' come in ROM (presets.h FPRESET_LIST, read-only), the user's from the preset store
+ * structure. The factory engines' come with the factory region (factory.c, read-only; none without it), the user's from
+ * the preset store
  * (presetstore.c). A device's list: the factory ones in their order, then the user's by name. Loading sets the device's
  * rows (format 34's extras say which, in canonical order) as K1..K4 would, the editor told; ENV held + SAVE stores the
  * device's values (over the user preset it was set to, else under a new name). */
-#define PR_USER 0x8000u                                 /* a list entry: a store slot | PR_USER, else a FPRESET_LIST index */
-/* a device's list holds one structure's factory presets and up to two user namespaces (dp_list) */
-#define PR_MAX (FP_MAX_LIST + 2u * PS_SLOTS)
+#define PR_USER 0x8000u                                 /* a list entry: a store slot | PR_USER, else a factory preset's index */
+/* a device's list holds one structure's factory presets (at most FC_STRUCT_PRESETS, factory.c) and up to two user
+ * namespaces (dp_list) */
+#define PR_MAX (FC_STRUCT_PRESETS + 2u * PS_SLOTS)
 static uint16_t pr_list[PR_MAX];
-static int32_t pr_vals[PS_MAXV > FP_MAX_VALUES ? PS_MAXV : FP_MAX_VALUES] ENG_POOL; /* existing store/ROM decode scratch */
+static int32_t pr_vals[PS_MAXV] ENG_POOL;              /* existing store/factory decode scratch */
 static uint8_t dp_short;                                /* the entry dp_load loaded last had fewer values than the device's rows */
 static const int32_t *pr_at = pr_vals;                  /* decoded entry values; no heap or audio-path decompression */
 static uint32_t pr_structure;                           /* identity of the last dp_entry, including scoped factory entries */
@@ -2681,16 +2683,15 @@ static uint32_t dp_list(uint32_t d)
 {
     uint8_t slots[PS_SLOTS];
     uint32_t n = 0, k, m, scoped, factory;
+    int f;
     if (d >= pg_ndev || !pg_dev[d].structure)
         return 0;
     scoped = dp_structure(d);
     factory = pg_dev[d].structure;
-    if (scoped != factory)
-        for (k = 0; k < N_FPRESETS; k++)
-            if (FPRESET_LIST[k].structure == scoped) { factory = scoped; break; }
-    for (k = 0; k < N_FPRESETS; k++)
-        if (FPRESET_LIST[k].structure == factory)
-            pr_list[n++] = (uint16_t)k;
+    if (scoped != factory && fc_preset_find(scoped, 0) >= 0)
+        factory = scoped;
+    for (f = fc_preset_find(factory, 0); f >= 0 && n < FC_STRUCT_PRESETS; f = fc_preset_find(factory, (uint32_t)f + 1u))
+        pr_list[n++] = (uint16_t)f;
     m = ps_list(pg_dev[d].structure, slots, PS_SLOTS);
     for (k = 0; k < m && k < PS_SLOTS; k++)
         pr_list[n++] = (uint16_t)(PR_USER | slots[k]);
@@ -2715,12 +2716,10 @@ static int dp_entry(uint16_t e, char *name)
         pr_at = pr_vals;
         return (int)n;
     }
-    for (k = 0; k < 16u && FPRESET_LIST[e].name[k]; k++)
-        name[k] = FPRESET_LIST[e].name[k];
-    name[k] = 0;
-    pr_structure = FPRESET_LIST[e].structure;
-    pr_at = fp_values(e, pr_vals, sizeof pr_vals / sizeof *pr_vals);
-    return pr_at ? (int)FPRESET_LIST[e].n : -1;
+    pr_structure = fc_preset_structure(e);
+    k = (uint32_t)fc_preset_name(e, name);
+    pr_at = (int)k >= 0 ? fc_preset_values(e, pr_vals, sizeof pr_vals / sizeof *pr_vals) : 0;
+    return pr_at ? (int)k : -1;
 }
 
 /* device d's row i value now (canonical order, as a preset holds it) */
@@ -2870,24 +2869,27 @@ static void dp_clear_origin(uint32_t d)
     int mod = dp_pattern_module(d), pattern = eng_pattern();
     if (mod >= 0 && pattern >= 0) m1_clear_origin((uint32_t)mod, (uint32_t)pattern);
 }
-static const preset_pattern_t *dp_pattern_for(uint32_t d, const char *name, int *mod, int *pattern, uint32_t *old_count)
+/* the factory pattern `name` of device d's structure into *after when the pattern on show is its structure's factory
+ * pattern, untouched, and the same length and rate: 1 (*old_count: its notes) */
+static int dp_pattern_for(uint32_t d, const char *name, int *mod, int *pattern, uint32_t *old_count, fc_pattern_t *after)
 {
-    const preset_pattern_t *before, *after;
+    fc_pattern_t before;
     *mod = dp_pattern_module(d); *pattern = eng_pattern();
     if (*mod < 0 || *pattern < 0) return 0;
-    before = preset_pattern_identity(m1_pattern_origin((uint32_t)*mod, (uint32_t)*pattern));
-    after = preset_pattern_find(pg_dev[d].structure, name);
-    if (!before || before->structure != pg_dev[d].structure || !after || before->len != after->len || before->rate != after->rate ||
-        !preset_pattern_untouched((uint32_t)*mod, (uint32_t)*pattern, before)) return 0;
-    *old_count = before->n;
-    return after;
+    if (preset_pattern_identity(m1_pattern_origin((uint32_t)*mod, (uint32_t)*pattern), &before) ||
+        before.structure != pg_dev[d].structure || preset_pattern_find(pg_dev[d].structure, name, after) ||
+        before.len != after->len || before.rate != after->rate ||
+        !preset_pattern_untouched((uint32_t)*mod, (uint32_t)*pattern, &before)) return 0;
+    *old_count = before.n;
+    return 1;
 }
 static void dp_pattern(uint32_t d, const char *name)
 {
     int mod, pattern;
     uint32_t old_count;
-    const preset_pattern_t *after = dp_pattern_for(d, name, &mod, &pattern, &old_count);
-    if (after) (void)m1_default_pattern((uint32_t)mod, (uint32_t)pattern, after->notes, after->n, after->identity);
+    fc_pattern_t after;
+    if (dp_pattern_for(d, name, &mod, &pattern, &old_count, &after))
+        (void)m1_default_pattern((uint32_t)mod, (uint32_t)pattern, after.notes, after.n, after.identity);
 }
 
 static int dp_mark_param(uint32_t *written, uint32_t m, uint32_t p)
@@ -2954,8 +2956,9 @@ static int dp_room(uint32_t d, const char *name, int factory)
     if (factory) {
         int mod, pattern;
         uint32_t before;
-        const preset_pattern_t *after = dp_pattern_for(d, name, &mod, &pattern, &before);
-        if (after) total = total - 4u * before + 4u * after->n; /* pattern writes precede parameter growth */
+        fc_pattern_t after;
+        if (dp_pattern_for(d, name, &mod, &pattern, &before, &after))
+            total = total - 4u * before + 4u * after.n; /* pattern writes precede parameter growth */
     }
     return total <= pages_capacity();
 }
@@ -3139,9 +3142,13 @@ static void dp_store(uint32_t d)
     for (k = 0; k < 16u && pg_pname[d][k]; k++)
         nm[k] = pg_pname[d][k];
     nm[k] = 0;
-    for (k = 0; k < N_FPRESETS; k++)
-        if ((FPRESET_LIST[k].structure == pg_dev[d].structure || FPRESET_LIST[k].structure == structure) &&
-            !ps_name_cmp(FPRESET_LIST[k].name, nm)) factory = 1;
+    for (k = 0; k < 2u && !factory; k++) {             /* (the device's structure, then its rack's) */
+        char fn[FC_PNAME + 1u];
+        uint32_t s = k ? structure : pg_dev[d].structure;
+        int f;
+        for (f = fc_preset_find(s, 0); f >= 0 && !factory; f = fc_preset_find(s, (uint32_t)f + 1u))
+            factory = fc_preset_name((uint32_t)f, fn) >= 0 && !ps_name_cmp(fn, nm);
+    }
     if (!nm[0] || factory || ps_find(structure, nm) < 0) {   /* never overwrite a factory name */
         int taken;
         uint32_t m = dp_list(d);

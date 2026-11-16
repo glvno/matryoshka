@@ -6,7 +6,7 @@
  *   - a format 59 patch: the clean linked pattern left out of the binary, its content from the store at load, the link
  *     kept when the entry is gone, SAVE's write-back of an edited linked pattern (and the link dropped when its entry is
  *     gone), a patch without links rewritten byte for byte as it was;
- *   - the factory patches' linked patterns (#923, presets.h KIT_GROUPS): every entry read back and well formed, the 808
+ *   - the factory patches' linked patterns (#923, factory_tier.h KIT_GROUPS): every entry read back and well formed, the 808
  *     and 909 Kits loaded with all their patterns and their song, with the store off too, rewritten byte for byte, and
  *     SAVE of an edited one keeping it inline without its link;
  *   - SAVE with a power cut at every byte it programs (a user link's write-back, then the slot; a factory link's slot):
@@ -15,11 +15,13 @@
  *   - INFO, PATS, PAT_GET, PAT_PUT (in chunks), PAT_DEL (S_USED with a slot that links the entry, force, read-only).
  * tools/patlink_test.sh builds and runs it. */
 #define PROTO_TEST_PATLINK
+#define PROTO_TEST_FACTORY
 #define main proto_test_main
 #include "proto_test.c"
 #undef main
 #include "../src/presets.h"
 #include "pattern_cases.h"
+#include "factory_host.h"                       /* (the factory region holding today's image: the factory patterns, #915) */
 
 /* NOR flash in RAM from the bank's first sector to the store's end: erase sets 0xFF, a write only clears bits. A program
  * can be cut after cut_after bytes and an erase refused (a power cut, as in patstore_test.c) */
@@ -30,6 +32,11 @@ static int cut_hit;
 static int nor_in(uint32_t off, uint32_t n) { return off >= NOR0 && off + n <= NOR0 + sizeof nor; }
 static int st_read(uint32_t off, void *dst, uint32_t n)
 {
+    const uint8_t *f = host_fr(off, n);
+    if (f) {
+        memcpy(dst, f, n);
+        return 0;
+    }
     if (!nor_in(off, n))
         return -1;
     memcpy(dst, nor + off - NOR0, n);
@@ -64,6 +71,8 @@ static int st_prog(uint32_t off, const void *src, uint32_t n)
     return 0;
 }
 static void fm1_wdt_feed(void) {}
+static uint8_t flash_ok = 1;
+#include "../src/factory.c"
 #include "../src/slotstore.c"
 #include "../src/patstore.c"
 #include "../src/patlink.c"

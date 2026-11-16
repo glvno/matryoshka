@@ -20,7 +20,8 @@ export function deviceLayoutKey(patch: Patch): string {
 import { FEATURE_DEVICE_SETTINGS, deviceSettingsFrame, parseDeviceSettings, type DeviceSettings, armsFrame, parseArmsNow, FEATURE_WIDE_ARMS, editorSkips, FEATURE_ARMS, FEATURE_LONG_PRESETS, FEATURE_PANEL_REPORT, parseKeysNow, parseGuideNow, type KeysNow, type PanelState, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, parseLocksNow, type RawLock, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, slotCount, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 import { FEATURE_PATTERN_STORE, parseLinkNow, parsePatData, parsePatEntry, parsePatStored, PAT_OK, PAT_STATUS, PAT_USED, patDelFrame, patGetFrame, patPutFrames, patsFrame, type PatListItem, type StoredPatternEntry } from './protocol';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
-import { FEATURE_FX_PRESETS } from './protocol';
+import { FEATURE_FACTORY, FEATURE_FX_PRESETS, type FactoryInfo } from './protocol';
+import { factoryInfo, installFactory } from './factory-content';
 import { fxPresetInfo } from './fx-preset-format';
 
 /** what connecting the FM-1 does with Live sync (#171): `sync` turns it on without asking, `ask` offers Sync / Not now,
@@ -529,6 +530,21 @@ export class DeviceLink {
   /** the FM-1's pattern store is on (INFO feature bit 25, #901) */
   get hasPatternStore(): boolean {
     return !!(this.info && this.info.features & FEATURE_PATTERN_STORE);
+  }
+
+  /** the firmware has the factory region's commands (INFO feature bit 26, #915, D-490) */
+  get hasFactoryRegion(): boolean {
+    return !!(this.info && this.info.features & FEATURE_FACTORY);
+  }
+
+  /** FACT_INFO: the factory region's state and version (factory-content.ts factoryOffer reads it) */
+  factoryInfo(): Promise<FactoryInfo> {
+    return this.serial(() => factoryInfo((f, m, t, n) => this.request(f, m, t, n)));
+  }
+
+  /** the factory region installed from `image` (factory-content.ts installFactory); `progress` in pages */
+  installFactory(image: Uint8Array, progress?: (done: number, total: number) => void): Promise<void> {
+    return this.serial(() => installFactory((f, m, t, n) => this.request(f, m, t, n), image, progress));
   }
 
   /** the pattern store a patch sent now is written for (patchbin.ts LinkStore): what this FM-1's store holds, `unknown`

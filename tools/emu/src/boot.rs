@@ -1,24 +1,30 @@
 //! `m1emu boot`: the boot check, a quick gate for installs on the test rig while the owner iterates (D-123). About 20 s
 //! of emulated time, where `smoke` takes minutes. It uses the smoke test's checks (smoke.rs) on fewer steps:
 //!
-//! 1. the plain build (BIN, the bytes that get installed): the loading screen draws (a LCD that is not blank, READY),
+//! 1. the plain build (BIN, the bytes that get installed), on a flash holding the factory region (as the editor or
+//!    tools/fm1_install.py leave it, #915): the loading screen draws (a LCD that is not blank, READY),
 //!    the quick start and then the home page (the device page of factory patch 0); silent without keys, a panel key
 //!    sounds (the audio path runs); no register fm1-emu does not model besides P33
-//! 2. the plain build's update mode: OCT- + OCT+ held at power-on shows UPDATE MODE, and the flash chip is known
+//! 2. the plain build on a blank flash (no factory region, #915): the firmware tier alone is written into the bank, each
+//!    patch into its own slot, no other factory slot is written, and the bar says FACTORY SOUNDS MISSING:, then CONNECT TO
+//!    MATRYOSHKA.LOL
+//! 3. the plain build's update mode: OCT- + OCT+ held at power-on shows UPDATE MODE, and the flash chip is known
 //!    (no NO FLASH ID line: update mode could not stage an update without it)
-//! 3. with `--link EMU_BIN` (the same commit's M1_EMU_MIDI=1 build, CI artifact `matryoshka-emu-midi`: the plain build
+//! 4. with `--link EMU_BIN` (the same commit's M1_EMU_MIDI=1 build, CI artifact `matryoshka-emu-midi`: the plain build
 //!    has no link the emulator can reach, since fm1-emu has no USB controller): the editor protocol answers HELLO with
 //!    INFO, and the update protocol (Felucca's M-UPGRADE, firmware/src/ota.c) answers its handshake with a Matryoshka
 //!    identity (FM-1_7..), both after boot and in update mode. This is what keeps a firmware installable: the Install
-//!    panel and tools/fm1_install.py find the FM-1 by that handshake. Without --link these checks are not made, and the
-//!    summary says so.
+//!    panel and tools/fm1_install.py find the FM-1 by that handshake. Then the factory content's round trip (D-490): on
+//!    a blank flash FACT_INFO says none, the editor's install (FACT_BEGIN, every page by FACT_WRITE, FACT_COMMIT) is taken,
+//!    FACT_INFO says valid with every factory patch, the bar says the new patches were added and each region patch is in
+//!    its slot. Without --link these checks are not made, and the summary says so.
 //!
 //! Snapshots go to OUT. The last line is the summary: `boot check: PASS ..` or `boot check: FAIL ..`.
 
 use crate::font;
-use crate::machine::Machine;
+use crate::machine::{Machine, FACTORY_REGION, FLASH_SIZE};
 use crate::serve::{Mailbox, ToBytes, ToPackets};
-use crate::smoke::{factory, note_peak, quick_start, wait_text, Run, C4, DEVICE_PAGE, LOUD, OCT_DOWN, OCT_UP, QUIET};
+use crate::smoke::{bank_record, factory, note_peak, quick_start, wait_text, Run, C4, DEVICE_PAGE, LOUD, OCT_DOWN, OCT_UP, QUIET};
 use std::collections::VecDeque;
 use std::process::ExitCode;
 
@@ -27,14 +33,42 @@ const PREFIX: [u8; 3] = [0x7D, 0x4D, 0x31];
 const HELLO: u8 = 0x01;
 const INFO: u8 = 0x41;
 const PROTO_VERSION: u8 = 1;
+/// The factory region's commands and answers (protocol.ts FACT, D-490)
+const C_FACT_BEGIN: u8 = 0x16;
+const C_FACT_WRITE: u8 = 0x17;
+const C_FACT_COMMIT: u8 = 0x1A;
+const C_FACT_INFO: u8 = 0x3F;
+const R_ACK: u8 = 0x40;
+const R_FACT_INFO: u8 = 0x5F;
+/// What the firmware compiles in of the factory content (#915): the firmware tier's image FC_TIER
+const FACTORY_TIER_H: &str = include_str!("../../../firmware/src/factory_tier.h");
+
+/// The firmware tier's image (factory_tier.h FC_TIER)
+fn tier_image() -> Vec<u8> {
+    let s = &FACTORY_TIER_H[FACTORY_TIER_H.find("FC_TIER[").expect("FC_TIER")..];
+    s[s.find('{').unwrap() + 1..s.find('}').unwrap()].split(',').map(|x| x.trim().parse().unwrap()).collect()
+}
+
+/// (name, slot) of an image's patches (firmware/src/factory.c: the count u16 at 20, the directory's offset u32 at 32,
+/// 36 bytes each: name[20], the slot u16 at 30)
+fn image_patches(img: &[u8]) -> Vec<(String, u32)> {
+    let u16_at = |a: usize| u16::from_le_bytes([img[a], img[a + 1]]) as usize;
+    let dir = u32::from_le_bytes(img[32..36].try_into().unwrap()) as usize;
+    (0..u16_at(20))
+        .map(|i| {
+            let e = &img[dir + 36 * i..dir + 36 * i + 36];
+            (String::from_utf8_lossy(&e[..20]).trim_end_matches('\0').to_string(), u16_at(dir + 36 * i + 30) as u32)
+        })
+        .collect()
+}
 
 pub fn run(app: &[u8], link: Option<&[u8]>, out: &str) -> ExitCode {
     let _ = std::fs::create_dir_all(out);
     let mut t = Run { out: out.to_string(), fails: Vec::new(), warns: Vec::new(), checks: 0, shot: 0 };
     let t0 = std::time::Instant::now();
     let mut emulated = 0u64;
-    let r = plain(app, &mut t, &mut emulated).and_then(|_| match link {
-        Some(l) => linked(l, &mut t, &mut emulated),
+    let r = plain(app, &mut t, &mut emulated).and_then(|_| blank_region(app, &mut t, &mut emulated)).and_then(|_| match link {
+        Some(l) => linked(l, &mut t, &mut emulated).and_then(|_| factory_install(l, &mut t, &mut emulated)),
         None => Ok(()),
     });
     if let Err(e) = r {
@@ -95,6 +129,29 @@ fn plain(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     t.check("update mode: the flash chip is known (updates can be staged)", !font::on_screen(m.lcd(), "NO FLASH ID"), String::new());
     let p = note_peak(&mut m, C4, 300)?;
     t.check("update mode: no engine (a key is silent)", p < QUIET, format!("peak {p}"));
+    *emulated += m.ms();
+    Ok(())
+}
+
+/// A blank flash (no factory region, #915): the firmware tier alone in the bank, in its slots; the bar says where to get
+/// the rest
+fn blank_region(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
+    let mut m = Machine::boot(app, Some(&vec![0xffu8; FLASH_SIZE]));
+    quick_start(&mut m, 9000)?;
+    let missing = wait_text(&mut m, "FACTORY SOUNDS MISSING", 4000)?;
+    t.snap(&m, "blank-region");
+    t.check("blank region: the bar says FACTORY SOUNDS MISSING:", missing, format!("at {} ms", m.ms()));
+    let connect = wait_text(&mut m, "CONNECT TO MATRYOSHKA.LOL", 6000)?;
+    t.check("blank region: then CONNECT TO MATRYOSHKA.LOL", connect, format!("at {} ms", m.ms()));
+    let f = m.flash();
+    let tier = image_patches(&tier_image());
+    let region = image_patches(FACTORY_REGION);
+    let missing_tier: Vec<_> = tier.iter().filter(|(_, s)| bank_record(&f, *s).is_none()).map(|(n, _)| n.clone()).collect();
+    let written_region: Vec<_> = region.iter().filter(|(_, s)| bank_record(&f, *s).is_some()).map(|(n, _)| n.clone()).collect();
+    t.check("blank region: each firmware-tier patch is written into its own slot", !tier.is_empty() && missing_tier.is_empty(), format!("missing {missing_tier:?}"));
+    t.check("blank region: no region patch is written", written_region.is_empty(), format!("{written_region:?}"));
+    let p = note_peak(&mut m, C4, 600)?;
+    t.check("blank region: the firmware tier plays (a panel key sounds)", p > LOUD, format!("peak {p}"));
     *emulated += m.ms();
     Ok(())
 }
@@ -212,6 +269,25 @@ fn info(msg: &[u8]) -> Option<(u8, u8, u32, Option<[u8; 3]>)> {
     Some((p[0], p[3], features, (p.len() >= 12).then(|| [p[9], p[10], p[11]])))
 }
 
+/// An editor frame: F0, the prefix, the command, the payload packed into 7-bit bytes, F7 (protocol.ts frame)
+fn frame(cmd: u8, payload: &[u8]) -> Vec<u8> {
+    let mut f = vec![0xF0, PREFIX[0], PREFIX[1], PREFIX[2], cmd];
+    f.extend(pack7(payload));
+    f.push(0xF7);
+    f
+}
+
+/// The payload of an answer of ours with command `cmd`
+fn reply(msg: &[u8], cmd: u8) -> Option<Vec<u8>> {
+    let n = msg.len();
+    (n >= 6 && msg[0] == 0xF0 && msg[n - 1] == 0xF7 && msg[1..4] == PREFIX && msg[4] == cmd).then(|| unpack7(&msg[5..n - 1]))
+}
+
+/// The status of an ACK of `cmd` (proto.c m1_ack: cmd, seq, status, ..)
+fn ack(msg: &[u8], cmd: u8) -> Option<u8> {
+    reply(msg, R_ACK).filter(|p| p.len() >= 3 && p[0] == cmd).map(|p| p[2])
+}
+
 /// M-UPGRADE's handshake (ota.c: F0 pack7(00 59 cmd len24 body chk) F7, cmd 0x11, no body)
 fn handshake() -> Vec<u8> {
     let mut f = vec![0xF0];
@@ -286,6 +362,68 @@ fn linked(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     l.send(&handshake());
     let id = l.wait(&mut m, 1500, identity)?;
     t.check("update mode: the M-UPGRADE handshake is answered with a Matryoshka identity", id.as_deref().is_some_and(ours), format!("{id:?}"));
+    *emulated += m.ms();
+    Ok(())
+}
+
+/// The factory content over the link on the M1_EMU_MIDI build (#915, D-490): a blank flash, the image installed as the
+/// editor and tools/fm1_install.py write it (pages inside one 256-byte page each, sector 0 after the header's 64 bytes,
+/// a record page at 0xF00 written whole), then FACT_INFO and the bank
+fn factory_install(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
+    let mut m = Machine::boot(app, Some(&vec![0xffu8; FLASH_SIZE]));
+    let mut l = Link::new();
+    l.run(&mut m, 1500)?;
+    quick_start(&mut m, 8000)?;
+    l.run(&mut m, 500)?;
+    l.send(&frame(C_FACT_INFO, &[]));
+    let before = l.wait(&mut m, 1500, |x| reply(x, R_FACT_INFO))?;
+    t.check("factory link: FACT_INFO on a blank flash: no region, the firmware tier alone plays",
+        before.as_ref().is_some_and(|p| p.len() >= 26 && p[0] == 0 && p[16] & 2 != 0), format!("{before:?}"));
+    l.send(&frame(C_FACT_BEGIN, &[]));
+    let st = l.wait(&mut m, 3000, |x| ack(x, C_FACT_BEGIN))?;
+    t.check("factory link: FACT_BEGIN is acknowledged S_OK", st == Some(0), format!("{st:?}"));
+    let img = FACTORY_REGION;
+    let mut failed = None;
+    let mut pages = 0;
+    'sectors: for s in 0..img.len().div_ceil(0x1000) {
+        let mut off = if s == 0 { 64 } else { 0 };
+        while off < 0x1000 && s * 0x1000 + off < img.len() {
+            let at = s * 0x1000 + off;
+            let mut page = img[at..at + (256 - (off & 0xFF)).min(img.len() - at)].to_vec();
+            if off & 0xF00 == 0xF00 && page.len() < 80 {
+                page.resize(256, 0xFF);                 // (the page an update record would be in: whole)
+            }
+            let mut p = vec![s as u8, off as u8, (off >> 8) as u8];
+            p.extend_from_slice(&page);
+            l.send(&frame(C_FACT_WRITE, &p));
+            let st = l.wait(&mut m, 3000, |x| ack(x, C_FACT_WRITE))?;
+            if st != Some(0) {
+                failed = Some(format!("sector {s} offset {off:#x}: {st:?}"));
+                break 'sectors;
+            }
+            pages += 1;
+            off = (off | 0xFF) + 1;
+        }
+    }
+    t.check("factory link: FACT_WRITE takes every page of the image", failed.is_none(), failed.unwrap_or_else(|| format!("{pages} pages")));
+    l.send(&frame(C_FACT_COMMIT, &img[..64]));
+    let st = l.wait(&mut m, 5000, |x| ack(x, C_FACT_COMMIT))?;
+    t.check("factory link: FACT_COMMIT is acknowledged S_OK", st == Some(0), format!("{st:?}"));
+    let added = wait_text(&mut m, "NEW PATCHES ADDED", 8000)?;
+    t.snap(&m, "factory-installed");
+    t.check("factory link: the bar says the region's patches were added", added, format!("at {} ms", m.ms()));
+    let tier = image_patches(&tier_image());
+    let region = image_patches(img);
+    l.send(&frame(C_FACT_INFO, &[]));
+    let after = l.wait(&mut m, 1500, |x| reply(x, R_FACT_INFO))?;
+    t.check("factory link: FACT_INFO says valid, the region's patches, every factory patch in all",
+        after.as_ref().is_some_and(|p| p.len() >= 26 && p[0] == 1 && p[16] & 2 == 0 && p[14] as usize == region.len() && p[25] as usize == tier.len() + region.len()),
+        format!("{after:?}"));
+    let f = m.flash();
+    let missing: Vec<_> = region.iter().filter(|(_, s)| bank_record(&f, *s).is_none()).map(|(n, _)| n.clone()).collect();
+    t.check("factory link: each region patch is in its own slot", missing.is_empty(), format!("missing {missing:?}"));
+    let flash_img = &f[crate::machine::FACTORY_BASE..crate::machine::FACTORY_BASE + img.len()];
+    t.check("factory link: the region holds the image byte for byte", flash_img == img, String::new());
     *emulated += m.ms();
     Ok(())
 }

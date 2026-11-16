@@ -8,7 +8,14 @@ import { OPEN_RELEASES, logicalImage, productOf, validateOpenPackage, validateSt
 import { FELUCCA_WARNING, firmwareKind, runsFelucca } from './felucca-store';
 import { runningVersion, updateOffer } from './fm1-version';
 import { type MvaveTarget, TARGET_NAME, WHICH_TARGET, rememberTarget, targetGuard } from './mvave-target';
-import { CMD, editorSkips, helloFrame, parse, parseInfo } from './protocol';
+import { CMD, editorSkips, FEATURE_FACTORY, helloFrame, parse, parseInfo } from './protocol';
+import { factoryInfo, fetchFactoryImage, installFactory, linkAsk, loadFactorySets, pickSet } from './factory-content';
+
+/** the Install panel's factory sounds box (#915): ticked by default; unticked, this warning shows */
+export const FACTORY_LABEL = ' Install factory instruments and presets (recommended)';
+export const FACTORY_WARNING =
+  'Without them the FM-1 plays only the patches built into the firmware, has no factory presets, and says FACTORY SOUNDS MISSING when it starts. ' +
+  'The editor offers them again whenever the FM-1 connects; saved patches are never touched.';
 
 /** why Official Open does not come with the app (fm1_open's THIRD_PARTY.md allows passing the engine on inside FM-1
  *  firmware; Matryoshka ships only open-source files) */
@@ -170,6 +177,10 @@ export function buildFlashTab(root: HTMLElement): void {
   let bundle: Bundle | null = null;
 
   const ack = el('input', { type: 'checkbox', id: 'ack' });
+  // the factory sounds after a Matryoshka install (#915): ticked by default, a warning when unticked
+  const factoryBox = el('input', { type: 'checkbox', id: 'install-factory', checked: true });
+  const factoryWarn = el('p', { class: 'card warn', hidden: true, textContent: FACTORY_WARNING });
+  factoryBox.onchange = () => (factoryWarn.hidden = factoryBox.checked);
   // installing over Felucca (#73): shown once the FM-1 reports a Felucca identity, needed for any non-stock install then
   const feluccaAck = el('input', { type: 'checkbox', id: 'ack-felucca' });
   const feluccaNote = el('div', { class: 'card warn', hidden: true }, el('h2', { textContent: 'Felucca projects, samples and presets' }), el('p', { textContent: FELUCCA_WARNING }), el('label', {}, feluccaAck, ' I have saved what I need: install anyway'));
@@ -258,6 +269,37 @@ export function buildFlashTab(root: HTMLElement): void {
     if (product === STOCK_PRODUCT) throw new Error('this is the official V15: use Return to stock');
     await overFelucca();
     await installImage(logicalImage(raw), product);
+    if (/^FM-1_7/.test(product) && factoryBox.checked) await installFactoryAfter();
+    else if (/^FM-1_7/.test(product)) log('factory sounds: not installed (the box is unticked). The editor offers them when the FM-1 connects.');
+  };
+
+  /** the factory sounds after a Matryoshka install (#915): the FM-1 found again once it runs the new firmware, then
+   *  the newest set it reads (factory-content.ts), unless it holds that one already */
+  const installFactoryAfter = async (): Promise<void> => {
+    log('installing the factory instruments and presets…');
+    const up = await access();
+    let dev = null;
+    for (let t = 0; t < 10 && !dev; t++) {
+      dev = await up.find((id: { model: string }) => !/^ota-/i.test(id.model));
+      if (!dev) await new Promise((r) => setTimeout(r, 1500));
+    }
+    if (!dev) throw new Error('the FM-1 did not come back after the install: connect it in the editor to install the factory sounds');
+    try {
+      const ask = linkAsk(dev.link);
+      const info = parseInfo(await ask(helloFrame(), (p) => p?.cmd === CMD.info, 800, 3));
+      if (!info || !(info.features & FEATURE_FACTORY)) return log('this firmware has no factory region: nothing more to install');
+      if (editorSkips(info)) return log(IGNORED_INSTALL);
+      const fi = await factoryInfo(ask);
+      const set = pickSet(await loadFactorySets(), fi);
+      if (!set) throw new Error('no factory sounds for this firmware come with this copy of the app');
+      if (fi.state === 1 && !fi.writing && parseInt(set.set, 16) === fi.set) return log(`factory sounds: current (version ${fi.version})`);
+      const image = await fetchFactoryImage(set);
+      bar.value = 0;
+      await installFactory(ask, image, (done, total) => (bar.value = Math.round((100 * done) / total)));
+      log(`factory sounds installed (version ${set.version}, ${image.length} bytes)`);
+    } finally {
+      dev.link.close();
+    }
   };
 
   // ---- Matryoshka
@@ -419,7 +461,7 @@ export function buildFlashTab(root: HTMLElement): void {
     ),
     foreignNote,
     feluccaNote,
-    card('Install Matryoshka', bundleInfo, el('div', { class: 'row' }, installBtn, findBtn), licences),
+    card('Install Matryoshka', bundleInfo, el('label', {}, factoryBox, FACTORY_LABEL), factoryWarn, el('div', { class: 'row' }, installBtn, findBtn), licences),
     card(
       'Return to stock',
       el('p', { class: 'muted', textContent: "M-VAVE's official firmware V15 comes with this app; its size and checksum are checked before it is sent." }),

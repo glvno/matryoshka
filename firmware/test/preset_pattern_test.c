@@ -1,9 +1,14 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* Focused #833 host check. Reuse protocol stubs; do not run the broad protocol/panel suites. */
+/* Focused #833 host check. Reuse protocol stubs; do not run the broad protocol/panel suites. The factory patterns come
+ * from the factory region (factory.c over factory_host.h's RAM region holding today's image, #915). */
+#define PROTO_TEST_FACTORY
 #define main unused_proto_main
 #include "proto_test.c"
 #undef main
 #include "../src/presets.h"
+#define HOST_FR_ST
+#include "factory_host.h"
+#include "../src/factory.c"
 #include "../src/preset_pattern.h"
 static int check_origin_format(uint32_t mod)
 {
@@ -48,26 +53,27 @@ int main(void)
     for (i = 0; i < N_PRESETS; i++) {
         int mod, tr;
         uint32_t j;
-        const preset_pattern_t *init = 0, *next = 0;
+        static fc_pattern_t a, b, got;
+        const fc_pattern_t *init = 0, *next = 0;
         CHECK(lz_unpack(PRESET_LIST[i].lz, PRESET_LIST[i].lz_len, bin, sizeof bin) == (int32_t)PRESET_LIST[i].len);
         m1_set_current(bin, PRESET_LIST[i].len);
         CHECK(eng_load(m1_cur, m1_cur_len) == 0);
         if (!eng_steps_count()) continue;
         mod = eng_steps_module(0);
-        for (j = 0; j < N_PRESET_PATTERNS; j++) {
-            if (!strcmp(PRESET_PATTERNS[j].name, "INIT") && preset_pattern_untouched((uint32_t)mod, 0, &PRESET_PATTERNS[j])) {
-                init = &PRESET_PATTERNS[j];
-                if (j + 1 < N_PRESET_PATTERNS && PRESET_PATTERNS[j + 1].structure == init->structure) next = &PRESET_PATTERNS[j + 1];
+        for (j = 0; j < fc_npatterns(); j++) {
+            if (!fc_pattern(j, &a) && !strcmp(a.name, "INIT") && preset_pattern_untouched((uint32_t)mod, 0, &a)) {
+                init = &a;
+                if (!fc_pattern(j + 1u, &b) && b.structure == a.structure) next = &b;
                 break;
             }
         }
         if (!init || !next) continue;
         CHECK(m1_pattern_origin((uint32_t)mod, 0) == init->identity);
         CHECK(!check_origin_format((uint32_t)mod));
-        CHECK(preset_pattern_identity(init->identity) == init);
-        CHECK(!preset_pattern_identity(0)); CHECK(!preset_pattern_identity(0xdeadbeefu));
-        CHECK(preset_pattern_find(init->structure, "Init") == init);
-        CHECK(!preset_pattern_find(init->structure, "My sound"));
+        CHECK(!preset_pattern_identity(init->identity, &got) && got.identity == init->identity && !strcmp(got.name, init->name));
+        CHECK(preset_pattern_identity(0, &got) < 0); CHECK(preset_pattern_identity(0xdeadbeefu, &got) < 0);
+        CHECK(!preset_pattern_find(init->structure, "Init", &got) && got.identity == init->identity);
+        CHECK(preset_pattern_find(init->structure, "My sound", &got) < 0);
         CHECK(!preset_pattern_untouched((uint32_t)mod, 1, init));
         eng_set_param((uint32_t)mod, STEPS_P_SWING, 60 << 16);
         CHECK(!preset_pattern_untouched((uint32_t)mod, 0, init));

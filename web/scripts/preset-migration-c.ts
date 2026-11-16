@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The FM-1's copy of the preset migrations (src/preset-migrations.json, #627, D-865) as C tables for presets.h
-// (firmware/src/presetmig.c reads them), and the test cases the firmware's host test (firmware/test/preset_test.c) and the
-// emulator's smoke test (tools/emu/src/smoke.rs) check the FM-1 against: earlier presets and what the editor makes of them.
+// The FM-1's copy of the preset migrations (src/preset-migrations.json, #627, D-865) as the migrations section of the
+// factory region's image (scripts/factory-region.ts; firmware/src/presetmig.c reads it, #915), and the test cases the
+// firmware's host test (firmware/test/preset_test.c) and the emulator's smoke test (tools/emu/src/smoke.rs) check the FM-1
+// against: earlier presets and what the editor makes of them.
 import { DEFS } from '../src/modules';
 import { toQ16 } from '../src/patchbin';
 import { migrateValues, type Migration } from '../src/preset-migrate';
@@ -20,17 +21,19 @@ function shared(into: number[], run: number[]): number {
   return into.length - run.length;
 }
 
-/** the presets.h lines, and how many bytes of ROM the tables take */
-export function migrationTables(migrations: Record<string, Migration>): { lines: string[]; bytes: number } {
+/** the migrations section (firmware/src/factory.c describes it): u16 counts of the list, tables, lines, ops, table values
+ *  and line values, then the list (16 bytes each), the tables (8), the lines (6), the line values (i32), the table values
+ *  (i8) and the ops (u8), all little endian */
+export function migrationSection(migrations: Record<string, Migration>): Uint8Array {
   const ops: number[] = [];
   const tabs: { rows: number[]; lo: number[]; n: number[]; v: number }[] = [];
   const tv: number[] = [];
   const lines: { x: number; key: number; n: number; lo: number; v: number }[] = [];
   const lv: number[] = [];
-  const list: string[] = [];
+  const list: { from: string; to: string; ops: number; tab: number; line: number; nold: number; nnew: number }[] = [];
   for (const [from, m] of Object.entries(migrations)) {
     if (m.n > 0xfd || m.rows.length > 0xff) throw new Error(`a migration of ${m.engine} with ${m.n} -> ${m.rows.length} rows`);
-    list.push(`    {0x${from}u, 0x${m.to}u, ${ops.length}, ${tabs.length}, ${lines.length}, ${m.n}, ${m.rows.length}},   /* ${m.engine} */`);
+    list.push({ from, to: m.to, ops: ops.length, tab: tabs.length, line: lines.length, nold: m.n, nnew: m.rows.length });
     for (const op of m.rows) {
       if (typeof op === 'number') {
         if (op > 0xfc) throw new Error(`a migration of ${m.engine} copies row ${op}`);
@@ -46,32 +49,35 @@ export function migrationTables(migrations: Record<string, Migration>): { lines:
       }
     }
   }
-  const out = [
-    '/* user presets of earlier structures of the factory engines move to today\'s at the first boot after an update (web/src/',
-    '   preset-migrations.json, D-865, presetmig.c). PMIG_LIST: the earlier structure, today\'s, its first op, table and line, the earlier',
-    '   row count, today\'s; PMIG_OPS: one byte for each of today\'s rows, an earlier row to copy (0..0xFC), 0xFD the next line,',
-    '   0xFE the next table, 0xFF the Init value; PMIG_TAB: one or two earlier rows (b 0xFF: one) read as whole numbers, held',
-    '   inside lo .. lo + n - 1, the value at that place in PMIG_TV (a * nb + b); PMIG_LINE: an earlier row x times mul plus add',
-    '   (Q16), held inside min .. max, its n lines picked by the earlier row key read as a whole number (key - lo, held inside',
-    '   them; key 0xFF: one line); PMIG_LV from v: min, max, then mul and add for each line */',
-    `#define N_PMIG ${list.length}`,
-    `#define N_PMIG_TAB ${tabs.length}`,
-    `#define N_PMIG_LINE ${lines.length}`,
-    `static const uint8_t PMIG_OPS[${Math.max(1, ops.length)}] = {${ops.length ? ops.join(',') : '0'}};`,
-    `static const int8_t PMIG_TV[${Math.max(1, tv.length)}] = {${tv.length ? tv.join(',') : '0'}};`,
-    'static const struct { uint8_t a, b, na, nb; int8_t la, lb; uint16_t v; } PMIG_TAB[N_PMIG_TAB ? N_PMIG_TAB : 1] = {',
-    ...(tabs.length ? tabs.map((t) => `    {${t.rows[0]}, ${t.rows[1] ?? 0xff}, ${t.n[0]}, ${t.n[1] ?? 1}, ${t.lo[0]}, ${t.lo[1] ?? 0}, ${t.v}},`) : ['    {0, 0, 0, 0, 0, 0, 0},']),
-    '};',
-    `static const int32_t PMIG_LV[${Math.max(1, lv.length)}] = {${lv.length ? lv.join(',') : '0'}};`,
-    'static const struct { uint8_t x, key, n; int8_t lo; uint16_t v; } PMIG_LINE[N_PMIG_LINE ? N_PMIG_LINE : 1] = {',
-    ...(lines.length ? lines.map((l) => `    {${l.x}, ${l.key}, ${l.n}, ${l.lo}, ${l.v}},`) : ['    {0, 0, 0, 0, 0},']),
-    '};',
-    'static const struct { uint32_t from, to; uint16_t ops, tab, line; uint8_t nold, nnew; } PMIG_LIST[N_PMIG ? N_PMIG : 1] = {',
-    ...(list.length ? list : ['    {0, 0, 0, 0, 0, 0, 0},']),
-    '};',
-    '',
-  ];
-  return { lines: out, bytes: ops.length + tv.length + 8 * tabs.length + 4 * lv.length + 6 * lines.length + 16 * list.length };
+  if ([ops.length, tv.length, lv.length].some((n) => n > 0xffff)) throw new Error('the preset migrations outgrow their 16-bit offsets');
+  const out = new Uint8Array(12 + 16 * list.length + 8 * tabs.length + 6 * lines.length + 4 * lv.length + tv.length + ops.length);
+  const v = new DataView(out.buffer);
+  [list.length, tabs.length, lines.length, ops.length, tv.length, lv.length].forEach((n, i) => v.setUint16(2 * i, n, true));
+  let at = 12;
+  for (const e of list) {
+    v.setUint32(at, parseInt(e.from, 16), true);
+    v.setUint32(at + 4, parseInt(e.to, 16), true);
+    v.setUint16(at + 8, e.ops, true);
+    v.setUint16(at + 10, e.tab, true);
+    v.setUint16(at + 12, e.line, true);
+    out[at + 14] = e.nold;
+    out[at + 15] = e.nnew;
+    at += 16;
+  }
+  for (const t of tabs) {
+    out.set([t.rows[0], t.rows[1] ?? 0xff, t.n[0], t.n[1] ?? 1, t.lo[0] & 0xff, (t.lo[1] ?? 0) & 0xff], at);
+    v.setUint16(at + 6, t.v, true);
+    at += 8;
+  }
+  for (const l of lines) {
+    out.set([l.x, l.key, l.n, l.lo & 0xff], at);
+    v.setUint16(at + 4, l.v, true);
+    at += 6;
+  }
+  for (const x of lv) { v.setInt32(at, x, true); at += 4; }
+  for (const x of tv) out[at++] = x & 0xff;
+  out.set(ops, at);
+  return out;
 }
 
 /** a value inside a parameter's range for a test preset: distinct from row to row, exact in Q16, never half way between

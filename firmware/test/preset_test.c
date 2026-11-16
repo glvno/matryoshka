@@ -3,7 +3,8 @@
 /* The preset store (firmware/src/presetstore.c, #194) on the host, over a RAM flash that behaves like NOR: an erase sets a
  * sector to 0xFF, a program only clears bits. A program can be cut after n bytes (a power cut). tools/preset_test.sh.
  * Also the presets of earlier engine structures moving to today's (presetmig.c, D-865) against what the editor makes of
- * them (pmig_cases.h, from web/scripts/export-defs.ts). */
+ * them (pmig_cases.h, from web/scripts/export-defs.ts), with the migrations and Init values the factory region carries
+ * (factory_host.h, factory.c, #915), and none without it. */
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -15,9 +16,15 @@ static long cut_after = -1;            /* bytes the next programs may write befo
 static int erases;
 static int cut_hit;                    /* a program or erase was refused for the cut */
 
+#include "factory_host.h"
 static void fm1_wdt_feed(void) {}
 static int st_read(uint32_t off, void *dst, uint32_t n)
 {
+    const uint8_t *f = host_fr(off, n);        /* (the factory region: read only here) */
+    if (f) {
+        memcpy(dst, f, n);
+        return 0;
+    }
     if (off < FLASH_LO || off + n > FLASH_LO + FLASH_N)
         return -8;
     memcpy(dst, flash + (off - FLASH_LO), n);
@@ -63,7 +70,11 @@ static uint16_t m1_crc16(const uint8_t *p, uint32_t n)
     }
     return c;
 }
-
+enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE, S_FULL, S_MISSING, S_USED };   /* (proto.c's, for factory.c) */
+#define M1_NAME 20u
+static uint8_t flash_ok = 1;
+#include "../src/engine.h"
+#include "../src/factory.c"
 #include "../src/presetstore.c"
 #include "../src/presets.h"
 #include "../src/presetmig.c"
@@ -477,6 +488,13 @@ static void migration_tests(void)
     long cut, total;
     int ok = 1, stays = 0;
     put_cases();
+    host_fr_blank();                                   /* (no factory region: the tier's migrations, but no Init values, #915) */
+    fc_scan();
+    memcpy(after, flash, sizeof flash);
+    CHECK(fc_nmig() > 0 && pm_run(work) == 0u && !memcmp(after, flash, sizeof flash),
+          "without the factory region nothing moves (the migrations need its Init presets: the next boot with it moves them)");
+    host_fr_load();                                    /* (the factory region: its Init presets, the tier's migrations) */
+    fc_scan();
     moved = pm_run(work);
     for (c = 0; c < N_PMC; c++)
         if (moved_as(c) != 1) {

@@ -86,7 +86,7 @@ jobs:
         working-directory: web
         run: |
           npm run export-defs
-          git diff --exit-code ../firmware/src/defs.h ../firmware/src/presets.h ../firmware/src/controls.h ../firmware/src/aot_gen.h ../firmware/test/pmig_cases.h ../README.md || { echo "::error::defs.h / presets.h / controls.h / aot_gen.h / test/pmig_cases.h / the README's controls are stale: run 'npm run export-defs' and commit"; exit 1; }
+          git diff --exit-code ../firmware/src/defs.h ../firmware/src/presets.h ../firmware/src/factory_tier.h ../firmware/src/controls.h ../firmware/src/aot_gen.h ../firmware/test/pmig_cases.h ../firmware/test/factory_region.h public/firmware/matryoshka-factory.bin public/firmware/factory-sets.json ../README.md || { echo "::error::defs.h / presets.h / factory_tier.h / controls.h / aot_gen.h / test/pmig_cases.h / test/factory_region.h / the factory region's image and manifest / the README's controls are stale: run 'npm run export-defs' and commit"; exit 1; }
       - name: build the firmware, no warnings, pool headroom >= 8 KB
         run: |
           export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"

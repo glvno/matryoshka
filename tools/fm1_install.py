@@ -9,7 +9,10 @@ step 2, the loader reads the whole package and writes it. In both steps the
 device asks (SysEx read requests on the logical image) and we answer. Then
 the FM-1 restarts and the installed identity is checked.
 
-  fm1_install.py PACKAGE.fwsc [--port NAME] [--yes] [--force]
+  fm1_install.py PACKAGE.fwsc [--port NAME] [--yes] [--force] [--no-factory]
+                                      (a Matryoshka package: then the factory content, web/public/firmware/
+                                      matryoshka-factory.bin, into the FM-1's factory region over the editor link, #915;
+                                      --no-factory leaves it out: the FM-1 plays its firmware tier until it is installed)
   fm1_install.py FM-1.fwsc            (the official V15 file: back to the stock firmware)
   fm1_install.py FM1-Open-V14-Workbench.html   (M-VAVE Official Open, from its Workbench page or its .fwsc:
                                       for an FM-1 set up by Official Open, #183; not shipped with Matryoshka:
@@ -834,7 +837,22 @@ def check_rig(dev, rig, read_mark, loc_text):
                                      "rig, nothing was sent (another FM-1 in the rig's socket? register the rig again)")
 
 
-def run(a, backend, out, ask):
+def install_factory(a, out):
+    """#915: the factory content (web/public/firmware/matryoshka-factory.bin) into the FM-1's factory region over the editor
+    link, once the new firmware runs (tools/m1_link.py factory-install; run that again to finish a cut install)"""
+    import m1_link
+    loc = None
+    if a.location:
+        import fm1_usb
+        loc = fm1_usb.parse_location(a.location)
+    link = m1_link.Link(loc)
+    print("factory content: installing (FACTORY SOUNDS MISSING on the FM-1 until it is done)", file=out)
+    m1_link.factory_install(link, open(m1_link.FACTORY_BIN, "rb").read(), log=lambda s: print(f"  {s}", file=out))
+    print(m1_link.factory_info_text(m1_link.factory_info(link)), file=out)
+
+
+def run(a, backend, out, ask, factory=None):
+    real = backend is None                                # (a real FM-1: the tests pass their own backend, and `factory`)
     rig = None
     if a.rig:
         rig = load_rig()
@@ -903,6 +921,13 @@ def run(a, backend, out, ask):
         up.install(dev, image, product, prog, target=target, sure=a.sure)
     finally:
         prog.end()
+    if product.startswith("FM-1_7") and not a.no_factory:   # (Matryoshka only: its factory content, #915)
+        if factory or real:
+            time.sleep(DELAY["settle"] * 3)
+            (factory or install_factory)(a, out)
+    elif product.startswith("FM-1_7"):
+        print("factory content: not installed (--no-factory): the FM-1 plays its firmware tier until the editor or "
+              "tools/m1_link.py factory-install installs it", file=out)
     return 0
 
 
@@ -913,7 +938,7 @@ def ask_tty(prompt):
         return False
 
 
-def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty):
+def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty, factory=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("package", nargs="?", help="Felucca package (.fwsc)")
     ap.add_argument("--info", action="store_true", help="print the identity of the connected FM-1")
@@ -928,6 +953,8 @@ def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty):
     ap.add_argument("--force", action="store_true", help="install a package without the Felucca loader marker")
     ap.add_argument("--sure", action="store_true", help="finish a cut-off install in M-VAVE's loader with this package "
                                                         "although it is not recorded which one it was writing")
+    ap.add_argument("--no-factory", action="store_true", help="Matryoshka: leave out the factory content after the firmware "
+                                                              "(#915: the FM-1 plays its firmware tier until it is installed)")
     a = ap.parse_args(argv)
     if bool(a.info) == bool(a.package):
         ap.error("give a PACKAGE.fwsc or --info")
@@ -937,7 +964,7 @@ def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty):
         ap.error("--rig takes the rig's own location: give one of --rig and --location")
     try:
         try:
-            return run(a, backend, out, ask)
+            return run(a, backend, out, ask, factory)
         except ImportError:
             raise InstallError("usage", "needs mido and python-rtmidi (pip install mido python-rtmidi)")
     except InstallError as e:

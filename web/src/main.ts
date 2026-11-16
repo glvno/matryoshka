@@ -88,6 +88,7 @@ import { ClockOut, isFm1Out, portLabels } from './clock-out';
 import { currentTheme, onThemeChange, setTheme, themeChoice, toggleTheme } from './theme';
 import { INSTALL_VERSION, installLabel } from './version';
 import { runningVersion, updateOffer } from './fm1-version';
+import { factoryOffer, fetchFactoryImage, loadFactorySets, pickSet, type FactorySet } from './factory-content';
 import { PanelAlign } from './panel-align';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -2261,6 +2262,7 @@ async function connectFm1(): Promise<void> {
     offerSync();
     libraryDeviceChanged();
     if (syncsWith(device.info)) void offerFirmwareUpdate();   // (else sayUpdate has offered the update already)
+    void offerFactoryContent();
   } catch (e) {
     showBudget();
     libraryDeviceChanged();
@@ -2276,6 +2278,25 @@ async function offerFirmwareUpdate(): Promise<void> {
   if (!text || !device.connected) return;
   devStatus(text);
   showAction(text, 'Update', openInstall, 12000);
+}
+/** the FM-1's factory sounds (#915): none, damaged, for a newer firmware, a cut-off install, or older than this site's set
+ *  for the firmware it runs: one click installs them (factory-content.ts). Saved slots are never touched (D-887) */
+async function offerFactoryContent(): Promise<void> {
+  if (!device.hasFactoryRegion) return;
+  const info = await device.factoryInfo().catch(() => null);
+  const offer = info && factoryOffer(info, pickSet(await loadFactorySets().catch(() => []), info));
+  if (!offer || !device.connected) return;
+  devStatus(offer.text);
+  showAction(offer.text, offer.action, () => void installFactoryContent(offer.set), 20000);
+}
+async function installFactoryContent(set: FactorySet): Promise<void> {
+  try {
+    const image = await fetchFactoryImage(set);
+    await device.installFactory(image, (done, total) => devStatus(`Installing the factory sounds: ${Math.round((100 * done) / total)} %`));
+    devStatus(`Factory sounds installed (version ${set.version}): the FM-1 adds the new patches to free slots`);
+  } catch (e) {
+    devStatus(`The factory sounds were not installed: ${(e as Error).message}`);
+  }
 }
 $('dev-btn').onclick = async () => {
   await connectFm1();

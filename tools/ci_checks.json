@@ -9,6 +9,10 @@
     "web/package-lock.json",
     "web/scripts/export-defs.ts",
     "web/scripts/factory-lz.ts",
+    "web/scripts/factory-region.ts",
+    "web/src/factory-tiers.ts",
+    "web/public/firmware/matryoshka-factory.bin",
+    "web/public/firmware/factory-sets.json",
     "web/scripts/controls-h.ts",
     "web/scripts/released-factory.json",
     "web/scripts/golden.ts",
@@ -115,9 +119,10 @@
     "configuration-catalogue": ["python3", "tools/fm1_configuration_catalogue_test.py"],
     "fx-tail": ["sh", "tools/fx_tail_test.sh"],
     "harness-compile": ["sh", "tools/harness_compile_test.sh"],
-    "patlink": ["sh", "tools/patlink_test.sh"]
+    "patlink": ["sh", "tools/patlink_test.sh"],
+    "factory": ["sh", "tools/factory_test.sh"]
   },
-  "full_host": ["pan", "golden", "buffer-budget", "aot", "usb", "usb_return", "clock", "peak", "audio", "frame", "ota", "guard", "power", "installer", "panel", "preset", "preset-pattern", "bank", "patstore", "ui", "fx-tail", "harness-compile", "patlink"],
+  "full_host": ["pan", "golden", "buffer-budget", "aot", "usb", "usb_return", "clock", "peak", "audio", "frame", "ota", "guard", "power", "installer", "panel", "preset", "preset-pattern", "bank", "patstore", "ui", "fx-tail", "harness-compile", "patlink", "factory"],
   "optional_host": {"usb_return": "firmware/src/usb_return.h"},
   "rules": [
     {"name": "Pan arithmetic", "paths": ["firmware/src/engine.c", "firmware/test/pan_exact_test.c", "tools/pan_test.sh"], "host": ["pan"], "web": []},
@@ -138,7 +143,8 @@
     {"name": "MIDI and clock", "paths": ["firmware/src/clock_out.h", "firmware/src/midi_input.h", "firmware/src/midi_uart.c", "firmware/src/tempo_glo.h", "web/src/arpeggiator.ts", "web/src/harmonizer.ts", "web/src/track.ts", "web/src/locks.ts", "web/src/arm.ts"], "host": ["clock", "golden"], "web": ["web/src/clock-out.test.ts", "web/src/arpeggiator.test.ts", "web/src/harmonizer.test.ts"]},
     {"name": "Protocol and main loop", "paths": ["firmware/src/proto.c", "firmware/src/main.c", "firmware/src/host_frame.h", "web/src/protocol.ts"], "host": ["golden", "frame", "preset"], "web": ["web/src/protocol.test.ts"]},
     {"name": "Patch storage and migration", "paths": ["firmware/src/preset*", "firmware/src/slotstore.c", "firmware/src/storage_hw.c", "firmware/src/bank_new.h", "web/src/preset-*", "web/scripts/preset-migration-c.ts", "web/scripts/lineage-lib.ts", "web/scripts/legacy-factory*", "web/scripts/released-factory.json", "web/scripts/released-factory-names.ts"], "host": ["preset", "bank"], "web": ["web/src/preset-migrate.test.ts", "web/src/legacy-factory.test.ts"]},
-    {"name": "Factory patches packed in presets.h: the packer, both decoders and every reader of the factory list", "paths": ["firmware/src/lz_unpack.h", "web/scripts/factory-lz.ts"], "host": ["preset", "bank", "panel", "preset-pattern", "aot", "clock", "golden", "ui"], "web": ["web/src/factory-lz.test.ts", "web/src/legacy-factory.test.ts", "web/src/kit808.test.ts"]},
+    {"name": "Factory patches packed in presets.h: the packer, both decoders and every reader of the factory list", "paths": ["firmware/src/lz_unpack.h", "web/scripts/factory-lz.ts"], "host": ["preset", "bank", "panel", "preset-pattern", "aot", "clock", "golden", "ui", "factory"], "web": ["web/src/factory-lz.test.ts", "web/src/legacy-factory.test.ts", "web/src/kit808.test.ts"]},
+    {"name": "Factory content tiers (#915): the firmware tier, the factory region, its reader, writer, link commands and install", "paths": ["firmware/src/factory*", "firmware/test/factory*", "firmware/loader/ldr_record.h", "tools/factory_test.sh", "web/scripts/factory-region.ts", "web/src/factory-tiers.ts", "web/src/factory-content.ts", "web/public/firmware/matryoshka-factory.bin", "web/public/firmware/factory-sets.json"], "host": ["factory", "bank", "preset", "preset-pattern", "patlink", "panel", "ui", "harness-compile", "golden"], "web": ["web/src/factory-protocol.test.ts", "web/src/factory-content.test.ts"]},
     {"name": "Panel and screen", "paths": ["firmware/src/*ui.c", "firmware/src/panel.c", "firmware/src/menu.c", "firmware/src/manual.c", "firmware/src/messages.h", "firmware/src/live.c", "firmware/src/lcd*", "firmware/src/screen_text.h", "firmware/src/help*", "firmware/src/poly_edit.h", "firmware/src/sandbox*", "firmware/wasm/*", "web/src/controls.ts", "web/scripts/controls-h.ts", "web/src/pages.ts", "web/src/buttons.ts", "web/src/labels.ts", "web/src/device-shown.ts"], "host": ["panel", "ui", "harness-compile"], "web": ["web/src/fm1-ui.test.ts", "web/src/piano.test.ts", "web/src/roll.test.ts"]},
     {"name": "Engine and patch format", "paths": ["firmware/src/engine*", "firmware/src/rate_envelope.h", "firmware/src/defs.h", "firmware/src/dsp_tables.h", "firmware/src/wt_tables.h", "web/src/engine.ts", "web/src/modules.ts", "web/src/patch.ts", "web/src/patchbin.ts", "web/src/poly.ts", "web/src/rate-envelope.ts", "web/src/parameter-routing.ts", "web/src/wavetables.json", "web/src/test-patches.ts", "web/src/test-poly.ts", "web/src/fallback.ts", "web/src/structure.ts", "web/src/device-compile.ts", "web/scripts/golden.ts", "web/scripts/export-defs.ts", "tools/gen_dsp_tables.py", "tools/gen_wavetables.py"], "host": ["golden", "aot", "fx-tail", "harness-compile"], "web": ["web/src/engine.test.ts", "web/src/patchbin.test.ts", "web/src/voice-extremes.test.ts"]},
     {"name": "Ahead-of-time engine", "paths": ["firmware/src/aot*", "web/scripts/gen-aot.ts", "web/scripts/aot-kits.ts"], "host": ["aot", "golden", "harness-compile"], "web": []},

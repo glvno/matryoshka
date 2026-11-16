@@ -42,6 +42,8 @@ use std::process::ExitCode;
 pub const AUDIO_RATE: u32 = 44118;
 
 const PRESETS_H: &str = include_str!("../../../firmware/src/presets.h");
+/// What the firmware compiles in of the factory content (#915): the fallback patch's name
+const FACTORY_TIER_H: &str = include_str!("../../../firmware/src/factory_tier.h");
 /// Earlier presets of factory engines and what the editor makes of them (web/scripts/export-defs.ts, D-865)
 const PMIG_CASES_H: &str = include_str!("../../../firmware/test/pmig_cases.h");
 
@@ -412,7 +414,7 @@ fn go_home(m: &mut Machine) -> Result<(), String> {
 /// slot 1 one with nothing to drop, slot 2 a factory patch.
 fn heavy_bank(presets: &[(String, Vec<u8>)]) -> Result<Vec<u8>, String> {
     let read = |f: &str| std::fs::read(format!("build/emu/{f}")).map_err(|e| format!("build/emu/{f}: {e} (run web/scripts/emu-patches.ts)"));
-    let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
+    let mut flash = crate::machine::installed_flash();
     for (slot, name, patch) in [(0u32, "EMU HEAVY POLY", read("heavy-poly.m1p")?), (1, "EMU HEAVY MONO", read("heavy-mono.m1p")?), (2, "EMU LIGHT", presets[1].1.clone())] {
         let at = 0xA0000 + slot as usize * 0x1000;
         flash[at..at + 0x1000].copy_from_slice(&slot_sector(slot, name, &patch, false));
@@ -452,7 +454,7 @@ fn record(id: u32, seq: u32, name: &str, data: &[u8], torn: bool) -> Vec<u8> {
 /// old sector was erased); a record without its header (cut before the commit) does not count; the first boot writes
 /// the factory patches.
 fn store(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
-    let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
+    let mut flash = crate::machine::installed_flash();
     let put = |f: &mut Vec<u8>, at: usize, s: Vec<u8>| f[at..at + 0x1000].copy_from_slice(&s);
     put(&mut flash, 0x97000, record(3, 9, "EMU NEW", &presets[1].1, false));
     put(&mut flash, 0xA5000, record(3, 5, "EMU OLD", &presets[2].1, false));
@@ -516,13 +518,13 @@ fn flash_chips(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, 
     let shown = wait_text(&mut m, "NO FLASH ID", 3000)?;
     t.check("flash chips: an unknown chip says NO FLASH ID (#72)", shown, String::new());
     m.run_for(500)?;
-    t.check("flash chips: nothing written to an unknown chip", m.flash().iter().all(|&b| b == 0xff), String::new());
+    t.check("flash chips: nothing written to an unknown chip", m.flash() == crate::machine::installed_flash(), String::new());
     *emulated += m.ms();
     Ok(())
 }
 
 /// The newest record of `id` in the bank (firmware/src/slotstore.c: 66 sectors, "M1S2" records): (sequence number, data)
-fn bank_record(f: &[u8], id: u32) -> Option<(u32, Vec<u8>)> {
+pub(crate) fn bank_record(f: &[u8], id: u32) -> Option<(u32, Vec<u8>)> {
     let word = |a: usize| u32::from_le_bytes(f[a..a + 4].try_into().unwrap());
     (0..66usize)
         .map(|i| if i < 2 { 0x97000 + i * 0x1000 } else { 0xA0000 + (i - 2) * 0x1000 })
@@ -710,7 +712,7 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
     let mut edited = old.clone();
     let last = edited.len() - 1;
     edited[last] ^= 1;
-    let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
+    let mut flash = crate::machine::installed_flash();
     let put = |f: &mut Vec<u8>, at: usize, s: Vec<u8>| f[at..at + 0x1000].copy_from_slice(&s);
     put(&mut flash, 0xA0000, record(0, 1, "ORACLE V", &old, false));
     put(&mut flash, 0xA1000, record(1, 2, "MY ORACLE", &edited, false));
@@ -785,7 +787,7 @@ fn new_patch(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Ve
     let bar_taken = bank_msg(&plan_taken, skipped_taken, presets).unwrap_or_default();
     let put = |f: &mut Vec<u8>, at: usize, s: Vec<u8>| f[at..at + 0x1000].copy_from_slice(&s);
     let bank = |own_taken: bool| {
-        let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
+        let mut flash = crate::machine::installed_flash();
         for i in 0..3usize {
             put(&mut flash, 0xA0000 + i * 0x1000, record(i as u32, 1 + i as u32, &presets[i].0, &presets[i].1, false));
         }
@@ -834,7 +836,7 @@ fn new_patch(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Ve
 /// The patch buttons (#60): a held button (FX) opens a VCA while held; a switching one (ARP, saved on) flips on each press.
 fn panel(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     let patch = std::fs::read("build/emu/panel.m1p").map_err(|e| format!("build/emu/panel.m1p: {e} (run web/scripts/emu-patches.ts)"))?;
-    let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
+    let mut flash = crate::machine::installed_flash();
     flash[0xA0000..0xA1000].copy_from_slice(&slot_sector(0, "EMU PANEL", &patch, false));
     let mut m = Machine::boot(app, Some(&flash));
     quick_start(&mut m, 9000)?;
@@ -882,7 +884,7 @@ fn long_delay(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String>
         ("low-delay-pp.m1p", "EMU LOW PINGPONG", 290, true),
     ] {
         let patch = std::fs::read(format!("build/emu/{file}")).map_err(|e| format!("build/emu/{file}: {e} (run web/scripts/emu-patches.ts)"))?;
-        let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
+        let mut flash = crate::machine::installed_flash();
         flash[0xA0000..0xA1000].copy_from_slice(&slot_sector(0, name, &patch, false));
         let mut m = Machine::boot(app, Some(&flash));
         quick_start(&mut m, 9000)?;
@@ -936,7 +938,7 @@ fn long_delay(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String>
 /// signals: the right word is the right side, not a copy of the left and not silent.
 fn stereo_sides(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     let patch = std::fs::read("build/emu/stereo-sides.m1p").map_err(|e| format!("build/emu/stereo-sides.m1p: {e} (run web/scripts/emu-patches.ts)"))?;
-    let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
+    let mut flash = crate::machine::installed_flash();
     flash[0xA0000..0xA1000].copy_from_slice(&slot_sector(0, "EMU STEREO", &patch, false));
     let mut m = Machine::boot(app, Some(&flash));
     quick_start(&mut m, 9000)?;
@@ -1336,9 +1338,9 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     t.check("safe mode: no quick start (D-247)", !font::on_screen(m.lcd(), "QUICK START"), String::new());
     m.run_for(1500)?;                         // (the SAFE MODE message holds the bar for 4 s: still there)
     t.screen(&m, "safe mode: the message stays up", "SAFE MODE");
-    let fallback = PRESETS_H.split("#define FALLBACK_NAME \"").nth(1).and_then(|s| s.split('"').next()).unwrap_or("FALLBACK_NAME");
+    let fallback = FACTORY_TIER_H.split("#define FALLBACK_NAME \"").nth(1).and_then(|s| s.split('"').next()).unwrap_or("FALLBACK_NAME");
     wait_text(&mut m, fallback, 6000)?;       // (then the patch's name shows)
-    t.screen(&m, "safe mode: the fallback patch (presets.h FALLBACK_NAME)", fallback);
+    t.screen(&m, "safe mode: the fallback patch (factory_tier.h FALLBACK_NAME)", fallback);
     let p = midi_note_peak(&mut m, 60, 500)?;
     t.check("safe mode: the fallback patch sounds", p > QUIET, format!("peak {p}"));
     *emulated += m.ms();
@@ -1522,7 +1524,7 @@ fn global_tempo(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
 /// sets K3's row by position; a switch steps at once.
 fn knobs(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     let patch = std::fs::read("build/emu/knobs.m1p").map_err(|e| format!("build/emu/knobs.m1p: {e} (run web/scripts/emu-patches.ts)"))?;
-    let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
+    let mut flash = crate::machine::installed_flash();
     flash[0xA0000..0xA1000].copy_from_slice(&slot_sector(0, "EMU KNOBS", &patch, false));
     let mut m = Machine::boot(app, Some(&flash));
     quick_start(&mut m, 9000)?;
@@ -1759,7 +1761,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     *emulated += m.ms();
 
     // ---- 7. the preset bank in flash
-    let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
+    let mut flash = crate::machine::installed_flash();
     let bank = [("EMU BANK A", 9usize, false), ("EMU BANK B", 4, false), ("EMU BANK C", 0, false), ("EMU BANK D", 1, true)];
     for (slot, (name, preset, bad)) in [0u32, 2, 5, 6].iter().zip(bank) {
         let at = 0xA0000 + *slot as usize * 0x1000;

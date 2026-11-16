@@ -1062,81 +1062,118 @@ static void boot_step(const char *what)
 
 static const char *boot_msg;                    /* shown in the bar once the pages are up */
 static uint32_t boot_msg_ms;
+static const char *boot_msg_then;               /* ... then this one (ui.c msg_then) */
 
-/* factory patch i (presets.h, stored packed: lz_unpack.h) into slot s, unpacked into bank_buf (preset_load's, which
- * reads it again next) */
+/* factory patch i (factory.c: the firmware tier and the factory region merged; unpacked in place) into slot s, unpacked into
+ * bank_buf (preset_load's, which reads it again next) */
 static void factory_write(uint32_t s, uint32_t i)
 {
     char name[M1_NAME];
-    uint32_t k;
-    for (k = 0; k < M1_NAME; k++)
-        name[k] = 0;
-    for (k = 0; k < M1_NAME && PRESET_LIST[i].name[k]; k++)
-        name[k] = PRESET_LIST[i].name[k];
+    int32_t len;
     fm1_wdt_feed();
-    if (lz_unpack(PRESET_LIST[i].lz, PRESET_LIST[i].lz_len, bank_buf, sizeof bank_buf) == (int32_t)PRESET_LIST[i].len)
-        (void)store_write(s, name, bank_buf, PRESET_LIST[i].len);
+    if (!fc_patch_info(i, name, 0, 0) && (len = fc_patch(i, bank_buf, sizeof bank_buf)) > 0)
+        (void)store_write(s, name, bank_buf, (uint32_t)len);
 }
 
-/* the factory patches (presets.h) into slots 0.., then the settings record (slot 0): the first boot, FACTORY RESET */
+/* the factory patches (factory.c) into their slots, then the settings record (slot 0): the first boot, FACTORY RESET. The
+ * bank keeps the factory set it was brought to: the region's, else FC_TIER_SET (a later factory region adds the rest) */
 static void factory_bank(void)
 {
     uint8_t set[SET_LEN];
-    uint32_t i;
+    char name[M1_NAME];
+    uint32_t i, slot, first = M1_SLOTS;
     boot_step("FACTORY BANK");
-    for (i = 0; i < N_PRESETS && i < bank_slots; i++)
-        factory_write(i, i);
-    cur_preset = 0;
+    for (i = 0; i < fc_npatches(); i++)
+        if (!fc_patch_info(i, name, 0, &slot) && slot < bank_slots) {
+            factory_write(slot, i);
+            first = slot < first ? slot : first;
+        }
+    cur_preset = first < bank_slots ? first : 0u;
     sel = 0;
     bank_fmt = ENG_PATCH_VERSION;
-    bank_set = FACTORY_SET_ID;
+    bank_set = fc_set();
     settings_pack(set);
     (void)store_write(SL_SETTINGS, 0, set, SET_LEN);
 }
 
 #include "bank_new.h"
-/* after an update: each factory patch new in this firmware for this bank (the set it was brought to, `set`, did not have
- * it) into its own slot if empty, else the first empty one, never over a used slot (bank_new.h, #630). Before bank_set
- * moves on; a power cut before the settings record: the next boot finds the placed ones by name. What
- * the bar says once into msg (bn_msg); 0 when nothing was new */
+/* new factory content for this bank (the set it was brought to, `set`): each factory patch the set did not have into its
+ * own slot if empty, else the first empty one, never over a used slot (bank_new.h, #630). Before bank_set moves on; a
+ * power cut before the settings record: the next boot finds the placed ones by name. What the bar says once into msg
+ * (bn_msg); 0 when nothing was new */
 static int bank_add(uint32_t set, char *msg)
 {
     static bn_plan_t plan;
+    char name[M1_NAME];
     uint64_t named = 0;
     uint32_t s, i, k;
     sl_hdr_t h;
     for (s = 0; s < bank_slots; s++) {
         if (!slot_used(s) || sl_head(s, &h, 0))
             continue;
-        for (i = 0; i < N_PRESETS; i++) {
-            for (k = 0; k < M1_NAME && PRESET_LIST[i].name[k] && h.name[k] == PRESET_LIST[i].name[k]; k++)
+        for (i = 0; i < fc_npatches(); i++) {
+            if (fc_patch_info(i, name, 0, 0))
+                continue;
+            for (k = 0; k < M1_NAME && name[k] && h.name[k] == name[k]; k++)
                 ;
-            if (k == M1_NAME || (!PRESET_LIST[i].name[k] && !h.name[k]))
+            if (k == M1_NAME || (!name[k] && !h.name[k]))
                 named |= (uint64_t)1 << i;
         }
     }
     bn_plan(set, bank_mask, named, bank_slots, &plan);
-    for (i = 0; i < N_PRESETS; i++)
+    for (i = 0; i < fc_npatches(); i++)
         if (plan.slot[i] != BN_NONE)
             factory_write(plan.slot[i], i);
     return bn_msg(&plan, msg);
 }
 
-/* after an update: the user presets of an earlier structure of a factory engine move to today's
- * structure (presetmig.c, D-865); how many moved */
+/* new factory content: the user presets of an earlier structure of a factory engine move to today's structure (presetmig.c,
+ * D-865); how many moved */
 static uint32_t presets_upgrade(void)
 {
-    if (!N_PMIG)
+    if (!fc_nmig())
         return 0;
     boot_step("PRESETS");
-    return pm_run(pr_vals);                     /* (pr_vals: pages_ui.c's preset values, unused until the pages are up) */
+    return pm_run(pr_vals);                     /* (pr_vals: pages_ui.c's preset values; the pages decode them again) */
+}
+
+/* the bank brought to the factory region's content (the first boot after an update that changed the factory content or
+ * the format, or a new factory region, #915): the presets that move, the patches new to it, then the settings record
+ * (cur_preset and sel as they are). What the bar says, 0 nothing. Without the factory region nothing changes: a later boot
+ * with it does this */
+static const char *factory_sync(void)
+{
+    static char new_msg[BN_BAR + 1u];
+    uint32_t was = bank_set, moved;
+    int added;
+    if (!fc_region || (bank_fmt >= ENG_PATCH_VERSION && bank_set == fc_set()))
+        return 0;
+    moved = presets_upgrade();                  /* (all before the settings record: a cut runs them again) */
+    added = bank_add(was, new_msg);             /* (a factory patch new to this bank, #630) */
+    bank_fmt = ENG_PATCH_VERSION;
+    bank_set = fc_set();
+    settings_store();
+    return added ? new_msg : moved ? "PRESETS UPDATED" : 0;
+}
+
+/* the main loop, after a FACT_COMMIT (factory.c fc_sync_due): the bank brought to the new content */
+static void factory_installed(void)
+{
+    const char *msg;
+    fc_sync_due = 0;
+    if (!flash_ok || boot_safe)
+        return;
+    msg = factory_sync();
+    leds_avail();
+    ui_full = 1;                                /* (a device's preset list reads the new content) */
+    ui_msg(msg ? msg : "FACTORY SOUNDS INSTALLED", 3000);
 }
 
 /* safe mode: SAVE held while the loading screen is up, or the previous boot did not get through (bootguard): nothing is
  * read from the flash (the bank stays: a normal boot opens it again) */
 
-/* safe mode's patch, and the last resort when a slot does not load: the fallback compiled into the firmware (presets.h
- * FALLBACK_PATCH, web/src/fallback.ts) */
+/* safe mode's patch, and the last resort when a slot does not load: the fallback compiled into the firmware
+ * (factory_tier.h FALLBACK_PATCH, web/src/fallback.ts) */
 static void fallback_boot(void)
 {
     boot_step("PATCH");
@@ -1163,31 +1200,28 @@ static void patch_boot(void)                    /* the slot the settings record 
     boot_step("BANK");
     sl_scan();
     pt_claim();                                  /* (the pattern store's sectors, before any factory patch is placed: #901) */
+    boot_step("FACTORY");
+    fc_scan();                                   /* (the firmware tier, and the factory region when valid, #915) */
     if (!bank_mask && sl_sec[SL_SETTINGS] == SL_NONE) {          /* an empty store: the first boot (or after a reset) */
         factory_bank();
+        slot = cur_preset;
         boot_msg = "FACTORY BANK WRITTEN";
         boot_msg_ms = 2000;
     } else if (sl_read(SL_SETTINGS, set, &len, 0) == 0 && settings_unpack(set, len, &slot, &module) == 0) {
-        if (bank_fmt < ENG_PATCH_VERSION || bank_set != FACTORY_SET_ID) {   /* the first boot after an update that changed the factory patches or the format */
-            static char new_msg[BN_BAR + 1u];
-            uint32_t was = bank_set, moved = presets_upgrade();   /* (all before the settings record: a cut runs them again) */
-            int added = bank_add(was, new_msg);  /* (a factory patch new in this firmware, #630) */
-            bank_fmt = ENG_PATCH_VERSION;
-            bank_set = FACTORY_SET_ID;
-            cur_preset = slot;
-            sel = module;
-            settings_pack(set);
-            (void)store_write(SL_SETTINGS, 0, set, SET_LEN);
-            if (added) {
-                boot_msg = new_msg;
-                boot_msg_ms = 4000;
-            } else if (moved) {
-                boot_msg = "PRESETS UPDATED";
-                boot_msg_ms = 3000;
-            }
+        const char *msg;
+        cur_preset = slot;
+        sel = module;
+        if ((msg = factory_sync()) != 0) {
+            boot_msg = msg;
+            boot_msg_ms = 4000;
         }
         leds_avail();
         leds_octave();
+    }
+    if (!fc_region) {                            /* (no factory region: the firmware tier alone plays, #915) */
+        boot_msg = "FACTORY SOUNDS MISSING:";
+        boot_msg_ms = 3000;
+        boot_msg_then = "CONNECT TO MATRYOSHKA.LOL";
     }
     if (!slot_used(slot)) {                       /* the slot is gone: the first occupied one */
         for (slot = 0; slot < bank_slots && !slot_used(slot); slot++)
@@ -1202,7 +1236,8 @@ static void patch_boot(void)                    /* the slot the settings record 
     }
 }
 
-/* MENU > FACTORY RESET: the bank erased and the factory patches written again, the settings, mixer and transport as made */
+/* MENU > FACTORY RESET: the bank erased and the factory patches written again (the firmware tier's and the factory
+ * region's when valid, #915), the settings, mixer and transport as made */
 static void defaults_now(void)
 {
     eng_all_notes_off();
@@ -1222,7 +1257,7 @@ static void defaults_now(void)
         eng_resume();
         factory_bank();
     }
-    (void)preset_load(0);
+    (void)preset_load(cur_preset);
     leds_avail();
     leds_octave();
     leds_play();
@@ -1782,6 +1817,8 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         help_msg_ms = boot_msg_ms;
     } else if (boot_msg)
         ui_msg(boot_msg, boot_msg_ms);
+    msg_then = boot_msg_then;                           /* (FACTORY SOUNDS MISSING: then where to get them, #915) */
+    msg_then_ms = 5000;
     leds_play();
     leds_avail();
     lcd_service = midi_yield;
@@ -1814,6 +1851,8 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         c1_poll();
         host_poll();
         tempo_poll();
+        if (fc_sync_due)                                /* a factory region came in over the link (#915) */
+            factory_installed();
     }
 }
 

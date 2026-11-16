@@ -61,7 +61,7 @@ jobs:
         working-directory: web
         run: |
           npm run export-defs
-          git diff --exit-code ../firmware/src/defs.h ../firmware/src/presets.h ../firmware/src/controls.h ../firmware/src/aot_gen.h ../firmware/test/pmig_cases.h ../README.md || { echo "::error::generated firmware files are stale: run 'npm run export-defs' and commit"; exit 1; }
+          git diff --exit-code ../firmware/src/defs.h ../firmware/src/presets.h ../firmware/src/factory_tier.h ../firmware/src/controls.h ../firmware/src/aot_gen.h ../firmware/test/pmig_cases.h ../firmware/test/factory_region.h public/firmware/matryoshka-factory.bin public/firmware/factory-sets.json ../README.md || { echo "::error::generated firmware files are stale: run 'npm run export-defs' and commit"; exit 1; }
       - name: build the release, no warnings, pool headroom >= 8 KB
         env:
           VERSION: ${{ inputs.version }}

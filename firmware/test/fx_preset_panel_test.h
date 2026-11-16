@@ -21,9 +21,9 @@ static int fx_preset_event(uint32_t mod, uint32_t par, int32_t value)
  * sound it can actually load, without rewriting the ROM or saved preset to its local cap. */
 static void fx_preset_poly_match(void)
 {
-    static int32_t values[PS_MAXV];
-    uint32_t d, i, voice, mod, n, count, scope, factory;
-    int k, current;
+    static int32_t values[PS_MAXV], init[PS_MAXV];
+    uint32_t d, i, voice, mod, n, count, scope, factory, fn = 0;
+    int k, current, f;
     char name[17];
     ct_reset();
     host_ps_init();
@@ -43,12 +43,13 @@ static void fx_preset_poly_match(void)
     check("FX poly preset: full scoped capture fits", n == pg_dev[d].nrows + 27u && n <= PS_MAXV);
     if (!n) return;
     memcpy(values, pr_vals, n * sizeof *values);
-    for (factory = 0; factory < N_FPRESETS; factory++)
-        if (FPRESET_LIST[factory].structure == pg_dev[d].structure && !ps_name_cmp(FPRESET_LIST[factory].name, "INIT")) break;
-    check("FX poly preset: source factory Init is available", factory < N_FPRESETS);
-    if (factory == N_FPRESETS) return;
-    check("FX poly preset: source factory Init carries four voices", FPRESET_LIST[factory].n == pg_dev[d].nrows && fp_decode(FPRESET_LIST[factory].v, voice) == 4 * 65536);
-    for (i = 0; i < pg_dev[d].nrows && i < FPRESET_LIST[factory].n; i++) values[i] = fp_decode(FPRESET_LIST[factory].v, i);
+    factory = fc_npresets();
+    for (f = fc_preset_find(pg_dev[d].structure, 0); f >= 0; f = fc_preset_find(pg_dev[d].structure, (uint32_t)f + 1u))
+        if ((k = fc_preset_name((uint32_t)f, name)) >= 0 && !ps_name_cmp(name, "INIT")) { factory = (uint32_t)f; fn = (uint32_t)k; break; }
+    check("FX poly preset: source factory Init is available", factory < fc_npresets() && fc_preset_values(factory, init, PS_MAXV));
+    if (factory == fc_npresets()) return;
+    check("FX poly preset: source factory Init carries four voices", fn == pg_dev[d].nrows && init[voice] == 4 * 65536);
+    for (i = 0; i < pg_dev[d].nrows && i < fn; i++) values[i] = init[i];
     check("FX poly preset: factory sound plus rack saves unchanged", !ps_put(scope, "WIDE", values, n));
     k = fx_preset_index(d, scope, "WIDE");
     check("FX poly preset: recall clamps factory voices to the exposed top", k >= 0 && !dp_load(d, (uint32_t)k) && poly_value(mod, ENG_POLY_PARTS) == 3);
@@ -60,10 +61,10 @@ static void fx_preset_poly_match(void)
     check("FX poly preset: current-sound discovery finds the capped scoped sound", current >= 0 &&
           dp_entry(pr_list[current], name) == (int)n && pr_structure == scope && dp_same(d, (int)n));
     check("FX poly preset: stored and ROM voice values remain portable", !ps_read((uint32_t)ps_find(scope, "WIDE"), &i, name, &count) &&
-          ps_vbuf[voice] == 4 * 65536 && fp_decode(FPRESET_LIST[factory].v, voice) == 4 * 65536);
+          ps_vbuf[voice] == 4 * 65536 && init[voice] == 4 * 65536);
     pr_structure = pg_dev[d].structure;
-    pr_at = fp_values(factory, pr_vals, sizeof pr_vals / sizeof *pr_vals);
-    check("FX poly preset: legacy factory matching uses the same voice clamp", dp_same(d, (int)FPRESET_LIST[factory].n));
+    pr_at = fc_preset_values(factory, pr_vals, sizeof pr_vals / sizeof *pr_vals);
+    check("FX poly preset: legacy factory matching uses the same voice clamp", dp_same(d, (int)fn));
     host_ps_init();
     ct_reset();
 }

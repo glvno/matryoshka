@@ -1379,8 +1379,13 @@ static void panel_draw_now(void)
     help_follow();                                  /* a card first (help_ui.c), then the page: under it, a dim frame */
     if (help_due)
         help_draw();
-    if (msg_until && fm1_ms >= msg_until)
-        ui_msg_clear();
+    if (msg_until && fm1_ms >= msg_until) {
+        if (msg_then) {                             /* (a message that follows it: main.c's FACTORY SOUNDS MISSING, #915) */
+            ui_msg(msg_then, msg_then_ms);
+            msg_then = 0;
+        } else
+            ui_msg_clear();
+    }
     if (ui_full) {                                  /* (a message still on show, such as the boot's, stays) */
         uint32_t left = msg_until && fm1_ms < msg_until ? msg_until - fm1_ms : 0u;
         ui_full = 0;
