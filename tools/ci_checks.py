@@ -21,11 +21,12 @@ CONFIG = ROOT / 'tools/ci_checks.json'
 # web tests a release-candidate run keeps out of coverage (D-147): renders too slow to pass their limits instrumented
 SLOW_RENDERS = ('src/levels-*.test.ts', 'src/headroom-*.test.ts', 'src/kit909.test.ts', 'src/shared-levels.test.ts',
                 'scripts/audition-render.test.ts')
-# Their seconds on a 4-vCPU runner, uninstrumented (web run 43906880954, release candidate 1.18.0). Only the deal over
-# the RC run's parallel jobs uses them (`slow_part`): a file not listed counts as the median of those listed.
+# Their seconds on a 4-vCPU runner, uninstrumented (web run 43906880954, release candidate 1.18.0; the loudness parts as
+# dealt by measured cost since, `levelsPart` in web/src/levels.ts: about a sixth of their 1,700 s each). Only the deal
+# over the RC run's parallel jobs uses them (`slow_part`): a file not listed counts as the median of those listed.
 SLOW_RENDER_SECONDS = {
-    'src/levels-1.test.ts': 215, 'src/levels-2.test.ts': 115, 'src/levels-3.test.ts': 311, 'src/levels-4.test.ts': 84,
-    'src/levels-5.test.ts': 779, 'src/levels-6.test.ts': 419, 'src/headroom-1.test.ts': 421, 'src/headroom-2.test.ts': 246,
+    'src/levels-1.test.ts': 285, 'src/levels-2.test.ts': 285, 'src/levels-3.test.ts': 285, 'src/levels-4.test.ts': 285,
+    'src/levels-5.test.ts': 285, 'src/levels-6.test.ts': 285, 'src/headroom-1.test.ts': 421, 'src/headroom-2.test.ts': 246,
     'src/headroom-3.test.ts': 152, 'src/headroom-4.test.ts': 52, 'src/kit909.test.ts': 13, 'src/shared-levels.test.ts': 546,
     'scripts/audition-render.test.ts': 578,
 }

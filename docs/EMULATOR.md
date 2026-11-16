@@ -150,7 +150,7 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   in RAM (`m1_emu_mb` in `firmware/src/usb.c`, found by its magic words `M1EM` `MIDI`) instead of EP1; the rest of the
   MIDI path (the rings, SysEx, the editor protocol) is the normal one. It is never packaged or installed. The normal
   build does not change: the flag defaults to 0 (checked by comparing the CI builds' sha256 before and after).
-- **`m1emu serve BIN [--name NAME]`:** the firmware in real time (the interpreter runs at about 0.75x, so emulated time
+- **`m1emu serve BIN [--name NAME]`:** the firmware in real time (the interpreter runs at about 0.42 to 0.46x, so emulated time
   falls behind under load), its MIDI on a CoreMIDI virtual source and destination named `NAME` (default `FM-1 (emu)`,
   which the editor's port match takes like a real FM-1), and a line protocol on stdin for the panel, the LCD and the
   audio (`tools/emu/src/serve.rs` lists it). `M1EMU_TRACE=1` prints every short message the FM-1 sends.
@@ -182,7 +182,7 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   (`MATRYOSHKA_NO_WATCH`, set in `web/scripts/rig-link.mjs`), so a commit, merge or regenerated file no longer reloads
   the editor's page mid-run. Before that, a reload dropped the link to the FM-1 and failed about 13 checks. A page that
   still loads again says so in the run's output. Run a second set of scenarios from another checkout instead.
-- **Waits (#588):** the emulated FM-1 runs at about 0.75x the wall clock and falls further behind under load, so no
+- **Waits (#588):** the emulated FM-1 runs at about 0.42 to 0.46x the wall clock and falls further behind under load, so no
   check waits a fixed wall-clock time for the FM-1. A tap waits for the key's release on the emulator's clock, a pause
   after a press is emulated time (`elapse`, `wait`), and a wait for the screen is one `until` in emulated ms. A wait for
   the editor polls its state (`__m1test`: an opened patch's own upload finished, `loads` and `uploadedLoad`). Every limit

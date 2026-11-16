@@ -173,9 +173,9 @@ class SelectionTests(unittest.TestCase):
         files = sorted(ci.SLOW_RENDER_SECONDS)
         parts = [ci.slow_part(files, k, 6) for k in range(1, 7)]
         self.assertEqual(sorted(f for p in parts for f in p), files)
-        self.assertIn(['src/levels-5.test.ts'], parts)
+        self.assertIn(['scripts/audition-render.test.ts'], parts)   # (the longest file alone)
         loads = [sum(ci.SLOW_RENDER_SECONDS[f] for f in p) for p in parts]
-        self.assertLessEqual(max(loads), ci.SLOW_RENDER_SECONDS['src/levels-5.test.ts'])
+        self.assertLessEqual(max(loads), 2 * max(ci.SLOW_RENDER_SECONDS.values()))
         self.assertEqual(ci.slow_part(['a', 'b', 'c'], 1, 2, {'a': 10, 'b': 30}), ['a', 'b'])
         self.assertEqual(ci.slow_part(['a', 'b', 'c'], 2, 2, {'a': 10, 'b': 30}), ['c'])   # (c counts as 30, the median)
         with self.assertRaises(ValueError):

@@ -92,8 +92,13 @@ By scenario (snapshot times): connect to switchPlaying 1.5 min; the tie scenario
 recCountIn to editorIgnore 4.6 min; the device check's scenarios before checkStore 4.5 min; checkStore to checkFlashWrite
 10.2 min; checkDualCore 1.4 min.
 
-Per-scenario wall and emulated times come from the `timings.json` this branch adds. No scenario run of this branch got
-the emulator slot on 2026-11-16 (other checkouts' runs held it), so they are not in this record yet.
+On this branch, with `presetTo` fixed (the 1.18.0 bridge, one emulator, `timings.json`): 384 of 385 checks passed and
+one was skipped by design. The scenarios took 1,072 s, after 237 s of setup that includes the wait for the slot. The
+emulator ran at 0.42 to 0.46x real time in every scenario. The longest: checkOldPattern 80 s, checkTeach 79 s,
+checkFlashWrite 76 s, tieLire 63 s, tieElvira 60 s, arming 58 s, checkDualCore 55 s, tie808 53 s, checkStore 52 s.
+The four checks that step the bank took 18 to 47 s each, against 123 to 142 s on the candidate. With four emulators
+and the smoke test beside them in the one slot, the same build passed 322 of 322 scenario checks and 301 smoke checks
+in 371 s; the four runners took 349 to 356 s each. Every check both runs share had the same verdict.
 
 ### `emu:smoke`: its parts
 
@@ -279,8 +284,8 @@ Every change keeps every check and every verdict.
 |---|---|---|---|
 | smoke parts side by side (`run_parts`, `tools/emu/src/smoke.rs`) | 16.4 min | 3.6 min | 309 checks, 0 failed; the same check lines, level table and `run1.wav` as the one-after-another run (section 3) |
 | boot check parts side by side | 81.8 s | 23.0 s | the same 32 check lines |
-| `presetTo` waits for SLOT_NOW, goes the shorter way round (`device-check.mjs`) | 533 s for 4 checks | not yet measured: about 0.9 s a slot instead of 2.5 s [INFERENCE] | same pass condition (name shown and SLOT_NOW = the slot); not yet run |
-| `emu:scenarios --shards 4` ([D-1157](../ledger/releases.md#D-1157), Proposed) | 23.9 min | not yet measured; about 4 to 6 min [INFERENCE: 24 min less 7 for `presetTo`, over 4] | `emu-shards.test.mjs`; not yet run end to end |
+| `presetTo` waits for SLOT_NOW, goes the shorter way round (`device-check.mjs`) | 123 to 142 s each, 533 s for 4 checks | 18 to 47 s each | the same verdicts in the serial run (section 3) |
+| four emulators by default, the smoke test beside them (`--smoke`, [D-1157](../ledger/releases.md#D-1157), [D-143](../ledger/releases.md#D-143)) | smoke 16.4 min, then scenarios 23.9 min: 40.3 min | 6.2 min for both | every shared check's verdict the same as the one-emulator run (section 3) |
 | timing in `results.json` (`scenario`, `ms`), `timings.json`, part times in smoke and boot output | none | — | `emu-shards.test.mjs`, the runs above |
 | the rig no longer records what it skips (MONO, MONO L, Meridian MONO, 3.5MM OUT by the hold) | 14 recordings | 10 | the skipped checks' verdicts are the same skips |
 | the web run's slow renders in 6 parallel jobs, the record sealed after all pass (`web.yml`, `tools/ci_checks.py`) | 33.7 min | about 15 min (13 min for `levels-5`, 1.5 min setup) [INFERENCE] | `tools/ci_checks_test.py` |
@@ -308,8 +313,7 @@ Every change keeps every check and every verdict.
 | release build | 4.2 min | 4.2 min |
 | download and builds | 1.5 min | 1.5 min |
 | boot check | 1.3 min (after the scenarios) | 0.4 min, first |
-| smoke | 16.4 min | 3.6 min |
-| scenarios | 23.9 min | about 5 min with four emulators [INFERENCE] |
+| smoke and scenarios | 16.4 min, then 23.9 min | 6.2 min together, in the one slot (measured) |
 | rig install and scenarios | 4.4 min (after everything) | about 4 min, beside smoke and scenarios |
 | web run | 33.7 min, beside | about 15 min, beside |
-| **dispatch to the last check** | **52 min** | **about 20 min**, the web run the longest leg [INFERENCE] |
+| **dispatch to the last check** | **52 min** | **about 20 min**, the web run the longest leg [INFERENCE: the measured stages above] |
