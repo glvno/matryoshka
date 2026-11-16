@@ -56,8 +56,9 @@ jobs:
         run: |
           npx vite-node scripts/gen-assemblies.ts
           git diff --exit-code src/assemblies src/preset-lineage.json src/preset-migrations.json || { echo "::error::src/assemblies/*.json or the preset lineage (src/preset-lineage.json, src/preset-migrations.json, D-865) are stale: run 'npx vite-node scripts/gen-assemblies.ts' (then gen-presets.ts, legacy-factory.ts and export-defs) and commit"; exit 1; }
-      # the FM-1's UI as WebAssembly (firmware/wasm/fm1_ui.c -> public/fm1-ui.wasm): the editor's FM-1 tab and fm1-ui.test.ts
-      - name: clang + wasm-ld, the FM-1 UI as WebAssembly
+      # the FM-1's UI and engine as WebAssembly (firmware/wasm/fm1_ui.c -> public/fm1-ui.wasm, fm1_engine.c ->
+      # public/fm1-engine.wasm): the editor's FM-1 tab, its FM-1 engine switch (#941) and their tests
+      - name: clang + wasm-ld, the FM-1 UI and engine as WebAssembly
         run: |
           sudo apt-get install -y --no-install-recommends clang lld
           npm run fm1-wasm

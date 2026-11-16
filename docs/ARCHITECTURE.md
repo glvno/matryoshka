@@ -1053,6 +1053,23 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   editor, framebuffer, LEDs, page, focus); imports `fm1.focus / param / preset / save / midi / poly`. TS wrapper
   `web/src/fm1-ui.ts` (`Fm1Ui`, `ENCODERS`, `BUTTONS`); `fm1-ui.test.ts` checks a device page pixel for pixel against
   ui_preview and drives the panel (it rebuilds the wasm when a source is newer).
+- The FM-1 engine in the browser (#941, [D-982](ledger/editor.md#D-982)): `firmware/wasm/fm1_engine.c` = `engine.c` alone
+  (libc.c, no panel, no HAL), built by the same `npm run fm1-wasm` into `web/public/fm1-engine.wasm` (git-ignored,
+  ~390 KB, ~155 KB gzipped). Exports `fm1e_*`: a patch buffer and `fm1e_load`, `fm1e_render` (128 frames at `ENG_SR`,
+  Q16, the count-in's click mixed in as `audio.c` does), and what the device link carries (parameter by module index, Q16;
+  attenuverter, bypass, notes, the transport, the tempo, the clock, the controllers, pattern, song, FILL, mute, a track's
+  note words, a note into a track, the armed set). The page fetches it the first time the deck's FM-1 engine (Alt+E, the
+  palette) is chosen and posts the bytes to the AudioWorklet, which compiles it (a compiled module does not cross into
+  a worklet). From then on `worklet.ts` runs both engines on every block and takes every message to both; the output is
+  one of them, with a 20 ms crossfade on a switch. `fm1-engine.ts` (`Fm1Engine`) wraps the exports and resamples from
+  44118 Hz to the context's rate (`resample.ts`: 64-tap Kaiser-windowed sinc, within -70 dB of the ideal to 19 kHz);
+  notes, bend and controllers are quantized as they reach the FM-1 over MIDI. `fm1-engine-host.ts` (`Fm1Bridge`, used by
+  `AudioHost`) makes the binary (`encodePatch` of the device form, no pattern store, so a kit's linked patterns are
+  written out; over the budget it still loads, as the Emulator view) and turns the browser engine's messages into module
+  indices as `device.ts` does; a Voice allocator setting, a parameter fixed at load, a macro range and a song edit reload
+  the patch (30–60 ms after the last such edit). It does not model the FM-1's CPU limit (the overload guard), its MASTER
+  level or its codec. Its cost, measured in Node's V8 (Chrome's JavaScript engine) on an arm64 Mac: about 1–3 % of one
+  core with the resampler, against 2–27 % for the browser engine, on the factory patches.
 - The editor's Emulator view (EMU, #110): one of the PATCH | EMU | LIBRARY switch's views over the main area
   (`#view-switch`, main.ts `setView`; PATCH on a page load, not remembered; #218). Firmware installs are the Install
   panel (`#flash-view`, `openInstall` / `closeInstall`), over the main area and not a view: Get started >

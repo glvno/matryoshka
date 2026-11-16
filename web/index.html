@@ -109,6 +109,7 @@
         <button id="audio-btn" title="Start the audio">Audio on</button>
         <button id="keys-btn" aria-expanded="true" aria-controls="piano" title="Show or hide the keyboard">Keys</button>
         <button id="midi-btn" aria-pressed="false" title="Play from a MIDI keyboard (the browser asks for MIDI access)">MIDI</button>
+        <button id="engine-btn" aria-pressed="false" title="Hear the patch through the FM-1’s own engine, the firmware’s fixed-point code running here (Alt+E)">FM-1 engine</button>
       </div>
       <!-- the test phrase group (audition.ts, #945 / #946) goes in front of the keys -->
       <div class="deck-keys"><div id="piano" class="piano" role="group" aria-label="Keyboard"></div></div>
@@ -273,6 +274,7 @@
             <div class="hrow"><span class="hkeys"><kbd>Q</kbd>, <b>▶ Phrase</b> by the keys</span><span>play the test phrase, again: stop. The same notes every time, at 120 bpm and velocity 100: a held note, staccato hits, a chord, a run across the range (on the root and octave you pick) or a drum pattern on the Drum map’s rows; <b>Loop</b> repeats it. An A/B flip starts it again from the top</span></div>
             <div class="hrow"><span class="hkeys"><b>↺ Use my last take</b> in the phrase menu</span><span>what you last played on the keys, the on-screen keyboard or MIDI (until a 2-second pause) becomes <b>My take</b>, a test phrase that plays it as played; it stays in this browser until the next take replaces it</span></div>
             <div class="hrow"><span class="hkeys"><b>⤓ WAV</b>, <b>● Rec</b></span><span>save the sound as a WAV file (44.1 kHz stereo, nothing limited or normalized): ⤓ WAV renders the test phrase played once; ● Rec records the Output while you play, again (■ Save) saves it</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Alt+E</kbd></span><span>switch what you hear between the browser engine and the FM-1 engine (the FM-1’s firmware engine, fixed point, running in the browser; also <b>FM-1 engine</b> in the deck). It switches while playing, so you can compare the two. The Scope, the meters and the moving thumbs follow the browser engine</span></div>
           </section>
           <section class="hsec" id="help-fm1"><h3>On the FM-1</h3></section>
         </div>
