@@ -18,6 +18,41 @@ export const FACTORY_WARNING =
   'Without them the FM-1 plays only the patches built into the firmware, has no factory presets, and says FACTORY SOUNDS MISSING when it starts. ' +
   'The editor offers them again whenever the FM-1 connects; saved patches are never touched.';
 
+/** the Install panel's one bar for an install with the factory sounds ticked: the firmware write fills it to
+ *  `write` (~600 KB served over the update loader, about 2,000 requests: the `write` step's count), the FM-1's restart
+ *  and return hold it there until `back`, and the factory image (~50 KB: about 200 page writes of 256 bytes over the
+ *  editor link, each awaiting its flash write, about a tenth of the requests) fills the rest. */
+export const INSTALL_SHARE = { write: 80, back: 86 } as const;
+
+export interface InstallMeter {
+  /** the firmware write: `n` requests served so far */
+  write(n: number): void;
+  /** the write is done, the FM-1 restarts */
+  restart(): void;
+  /** the FM-1 runs the new firmware */
+  back(): void;
+  /** the factory content: `done` of `total` pages */
+  factory(done: number, total: number): void;
+  /** the whole install finished (with the factory sounds: their commit acknowledged, or nothing to install) */
+  done(): void;
+}
+
+/** progress for one install, shown by `show(percent, step)`: never backwards; with `factory` (the box ticked when
+ *  Install was pressed) 100 % only at `done()`, unticked the firmware alone fills the bar */
+export function installMeter(show: (value: number, step: string) => void, factory: boolean): InstallMeter {
+  let at = 0;
+  const to = (v: number, step: string): void => show((at = Math.max(at, v)), step);
+  const top = factory ? INSTALL_SHARE.write : 100;
+  const first = factory ? 'Step 1 of 2: installing the firmware' : 'Installing the firmware';
+  return {
+    write: (n) => to((Math.min(99, n / 20) * top) / 100, first),
+    restart: () => to(top, `${first}: the FM-1 restarts`),
+    back: () => to(factory ? INSTALL_SHARE.back : 100, factory ? 'Step 2 of 2: installing the factory instruments and presets' : 'Done'),
+    factory: (done, total) => to(Math.min(99, INSTALL_SHARE.back + ((100 - INSTALL_SHARE.back) * done) / total), 'Step 2 of 2: installing the factory instruments and presets'),
+    done: () => to(100, 'Done'),
+  };
+}
+
 /** why Official Open does not come with the app (fm1_open's THIRD_PARTY.md allows passing the engine on inside FM-1
  *  firmware; Matryoshka ships only open-source files) */
 export const OPEN_WHY =
@@ -199,6 +234,14 @@ export function guardUnload(target: EventTarget): { arm(): void; disarm(): void 
 export function buildFlashTab(root: HTMLElement, choice: () => Fm1Choice | null = () => null): void {
   const logEl = el('pre', { class: 'log', textContent: 'Ready.\n' });
   const bar = el('progress', { max: 100, value: 0 });
+  /** the step the bar is at */
+  const stage = el('p', { class: 'muted', textContent: '' });
+  const show = (value: number, step: string): void => {
+    bar.value = value;
+    stage.textContent = step;
+  };
+  /** this run's progress: install() makes one that leaves room for the factory sounds when their box was ticked */
+  let meter = installMeter(show, false);
   // shown while an install runs: browsers give only a generic text for beforeunload
   const keepOpen = el('p', { class: 'muted', hidden: true, textContent: 'Installing: keep this tab open. If it is closed, open Install firmware again and press the same button to finish.' });
   const unload = guardUnload(window);
@@ -260,15 +303,18 @@ export function buildFlashTab(root: HTMLElement, choice: () => Fm1Choice | null 
       unload.arm();
       keepOpen.hidden = false;
     }
-    bar.value = 0;
+    meter = installMeter(show, false);
+    show(0, '');
     log(`\n— ${name}`);
     try {
       await fn();
+      if (installs) meter.done();
     } catch (e) {
       const err = e as Error & { code?: string; detail?: string };
       if (err.code === 'whichtarget') (sureRow.hidden = false), sureRow.scrollIntoView({ block: 'nearest' });
       if (err.code === 'otherloader') log(`ERROR: ${otherLoader(err.detail ?? '')}`);
       else log(`ERROR: ${(err.code && ERRORS[err.code]) || err.message}${err.detail ? ` (${err.detail})` : ''}`);
+      if (installs) stage.textContent = 'Stopped: see the log below';
     } finally {
       unload.disarm();
       keepOpen.hidden = true;
@@ -282,9 +328,9 @@ export function buildFlashTab(root: HTMLElement, choice: () => Fm1Choice | null 
     else if (kind === 'verify') {
       if (Number(a) === 1) log('checking the package…');
     } else if (kind === 'loader') log('switching to update mode');
-    else if (kind === 'write') bar.value = Math.min(99, Number(a) / 20);
-    else if (kind === 'reboot') (bar.value = 100), log('restarting');
-    else if (kind === 'done') log(`done: the FM-1 runs ${a}`);
+    else if (kind === 'write') meter.write(Number(a));
+    else if (kind === 'reboot') meter.restart(), log('restarting');
+    else if (kind === 'done') meter.back(), log(`done: the FM-1 runs ${a}`);
   };
 
   /** install an image; if an earlier install was cut off (the FM-1 sits in an update loader) finish that write
@@ -312,16 +358,19 @@ export function buildFlashTab(root: HTMLElement, choice: () => Fm1Choice | null 
     log(`installing over Felucca (${dev.id.text}): its projects and samples in the shared sectors will be overwritten`);
   };
 
-  const install = async (raw: Uint8Array): Promise<void> => {
+  /** `factory`: the factory sounds box as it was when the install button was pressed */
+  const install = async (raw: Uint8Array, factory: boolean): Promise<void> => {
     const product = productOf(raw);
     log(`package: ${product}, ${raw.length} bytes`);
     const mark = new TextEncoder().encode('FELUCCA-LOADER-1');
     if (!raw.some((_: number, i: number) => i < raw.length - mark.length && mark.every((b, k) => raw[i + k] === b))) throw new Error('this package has no update loader; refusing to install it');
     if (product === STOCK_PRODUCT) throw new Error('this is the official V15: use Return to stock');
     await overFelucca();
+    const matryoshka = /^FM-1_7/.test(product);
+    meter = installMeter(show, matryoshka && factory);
     await installImage(logicalImage(raw), product);
-    if (/^FM-1_7/.test(product) && factoryBox.checked) await installFactoryAfter();
-    else if (/^FM-1_7/.test(product)) log('factory sounds: not installed (the box is unticked). The editor offers them when the FM-1 connects.');
+    if (matryoshka && factory) await installFactoryAfter();
+    else if (matryoshka) log('factory sounds: not installed (the box is unticked). The editor offers them when the FM-1 connects.');
   };
 
   /** the factory sounds after a Matryoshka install (#915): the FM-1 found again once it runs the new firmware, then
@@ -349,8 +398,7 @@ export function buildFlashTab(root: HTMLElement, choice: () => Fm1Choice | null 
       if (!set) throw new Error('no factory sounds for this firmware come with this copy of the app');
       if (fi.state === 1 && !fi.writing && parseInt(set.set, 16) === fi.set) return log(`factory sounds: current (version ${fi.version})`);
       const image = await fetchFactoryImage(set);
-      bar.value = 0;
-      await installFactory(ask, image, (done, total) => (bar.value = Math.round((100 * done) / total)));
+      await installFactory(ask, image, (done, total) => meter.factory(done, total));
       log(`factory sounds installed (version ${set.version}, ${image.length} bytes)`);
     } finally {
       dev.link.close();
@@ -360,16 +408,18 @@ export function buildFlashTab(root: HTMLElement, choice: () => Fm1Choice | null 
   // ---- Matryoshka
   const installBtn = el('button', { textContent: 'Install Matryoshka firmware', class: 'primary' });
   const bundleInfo = el('p', { class: 'muted', textContent: 'Looking for the firmware package…' });
-  installBtn.onclick = () =>
-    run('install Matryoshka', async () => {
+  installBtn.onclick = () => {
+    const factory = factoryBox.checked;
+    void run('install Matryoshka', async () => {
       if (!bundle) throw new Error('no firmware package is bundled with this copy of the app');
       const r = await fetch(`./firmware/matryoshka.fwsc?v=${bundle.sha256}`, { cache: 'no-cache' });
       if (!r.ok) throw new Error('the bundled firmware package could not be loaded');
       const raw = new Uint8Array(await r.arrayBuffer());
       const sum = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', raw)), (b) => b.toString(16).padStart(2, '0')).join('');
       if (sum !== bundle.sha256) throw new Error('the bundled firmware package does not match its checksum');
-      await install(raw);
+      await install(raw, factory);
     }, true);
+  };
   const showBundle = (b: Bundle | null): void => {
     bundle = b;
     const what = b && `${/^matryoshka/i.test(b.version) ? b.version : `Matryoshka ${b.version}`} (${b.product}, ${Math.round(b.size / 1024)} KB)`;
@@ -410,12 +460,14 @@ export function buildFlashTab(root: HTMLElement, choice: () => Fm1Choice | null 
   // ---- another package
   const pkgFile = el('input', { type: 'file', accept: '.fwsc' });
   const pkgBtn = el('button', { textContent: 'Install this package' });
-  pkgBtn.onclick = () =>
-    run('install package', async () => {
+  pkgBtn.onclick = () => {
+    const factory = factoryBox.checked;
+    void run('install package', async () => {
       const f = pkgFile.files?.[0];
       if (!f) throw new Error('choose a .fwsc package first');
-      await install(await readFile(f));
+      await install(await readFile(f), factory);
     }, true);
+  };
 
   // ---- return to stock: M-VAVE's V15 comes with the app (Apache-2.0, from m-vave/fm1_open); validateStockPackage checks
   // its size, SHA-256 and layout before anything is sent, for the bundled file and for one the user picks alike
@@ -543,7 +595,7 @@ export function buildFlashTab(root: HTMLElement, choice: () => Fm1Choice | null 
       el('p', { class: 'muted', textContent: 'A finished .fwsc from tools/build.py (it must carry the update loader).' }),
       el('div', { class: 'row' }, pkgFile, pkgBtn),
     ),
-    el('div', { class: 'card' }, bar, keepOpen, logEl),
+    el('div', { class: 'card' }, bar, stage, keepOpen, logEl),
   );
   setButtons();
 }

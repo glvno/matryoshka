@@ -3,7 +3,8 @@
 // answers M-VAVE's identity handshake (the Install panel's), HELLO (INFO), DEVICE_SETTINGS and PRESET_GET (the test
 // rig's mark) as Matryoshka does, on the input's onmidimessage (the editor's link) and its listeners (the installer's).
 import { pack7 } from './flasher/fm1ota.js';
-import { CMD, FEATURE_DEVICE_SETTINGS, frame, parse } from './protocol';
+import type { Ask } from './factory-content';
+import { CMD, FACT, FEATURE_DEVICE_SETTINGS, frame, parse } from './protocol';
 
 export interface FakePort {
   id: string; name: string; manufacturer: string; state: string;
@@ -79,3 +80,18 @@ export const fakeAccess = (...fm1s: FakeFm1[]): MIDIAccess => ({
 
 /** the protocol commands an output was sent (F0 7D 4D 31 CMD ..), in order; M-VAVE's handshake counts as -1 */
 export const commands = (p: FakePort): number[] => p.sent.map((d) => (d[1] === 0x00 && d[2] === 0x32 ? -1 : parse(d)?.cmd ?? -2));
+
+/** a running FM-1's factory region over the link, as the Install panel's factory step talks to it: every FACT_SUM
+ *  differs (each page is written), every FACT_BEGIN / FACT_WRITE is taken, FACT_COMMIT answers status `commit`.
+ *  `sent`: the FACT commands asked, in order. */
+export function fakeFactoryRegion(commit = 0): { ask: Ask; sent: number[] } {
+  const sent: number[] = [];
+  const ask: Ask = async (f, match) => {
+    const p = parse(f)!;
+    sent.push(p.cmd);
+    const r = p.cmd === FACT.sum ? { cmd: FACT.sumReply, payload: [p.payload[0], 0, 0, 0] } : { cmd: 0x40, payload: [p.cmd, 0, p.cmd === FACT.commit ? commit : 0, 0] };
+    if (!match(r)) throw new Error('the answer does not match');
+    return r;
+  };
+  return { ask, sent };
+}
