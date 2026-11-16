@@ -32,8 +32,8 @@ import { EnvScreens } from './env-view';
 import { addToBank, bankPatches, buildPatchesSection, type LibrarySection as LibraryPane } from './bank';
 import { buildPresetsSection } from './library-presets';
 import { buildPatternsSection } from './pattern-library';
-import { payloadHash } from './pattern-store';
-import { PATTERNS_MAX, withoutLinks, type PatternLink } from './track';
+import { factoryEntries, payloadHash } from './pattern-store';
+import { PATTERNS_MAX, READ_ONLY_ID, withoutLinks, type PatternLink } from './track';
 import { bindPatchPresetTransfer } from './patch-presets';
 import { buildCommunitySection } from './library-community';
 import { isSaved, onSavedChange, putBackSaved, removeSaved, restoreSaved, savedPatches, savePatch as keepPatch, unsavedChanges } from './saved';
@@ -424,12 +424,13 @@ async function linkFromDevice(p: number, link: PatternLink | null): Promise<void
   } finally { fromDevice = false; }
 }
 /** after a STORE (#901): the FM-1's SAVE wrote each edited linked pattern over the stored one, so the links are clean
- *  again; the store's list is read again (a link the store has not got stays as it was: SAVE kept that pattern inline) */
+ *  again; the store's list is read again (a link the store has not got stays as it was: SAVE kept that pattern inline). An
+ *  edited link to a factory entry went into a new stored entry (#923): the FM-1 says so (PAT_LINK_NOW) */
 function linksStored(): void {
   const store = device.linkStore;
   for (const [k, l] of Object.entries(editor.links)) {
     const p = Number(k), hash = payloadHash(editor.patch, p);
-    if (hash !== l.hash && (typeof store !== 'object' || store.has(l.id))) editor.setLink(p, { id: l.id, hash });
+    if (hash !== l.hash && l.id < READ_ONLY_ID && (typeof store !== 'object' || store.has(l.id))) editor.setLink(p, { id: l.id, hash });
   }
   if (!device.hasPatternStore) return;
   if (currentView === 'library' && librarySection === 'patterns') patternsPane?.deviceChanged(true);
@@ -2026,7 +2027,9 @@ function emuLoad(): void {
   const over = b.over.map((i) => i.key === 'cpu' || i.key === 'browser' ? overText(i) : i.key === 'memory' ? linesAdvice(editor.patch, undefined, device.bufferAllocation) : `${i.used} ${i.label} (the FM-1 holds ${i.max})`).join(', ');
   let err = 0;
   try {
-    err = ui.load(encodePatch(editor.patch, true, false, 0, 'none'), editor.patch.name.toUpperCase(), { fresh: emuFresh });   // (the emulator keeps no pattern store)
+    // (the emulator keeps no pattern store; its firmware has the factory patches' patterns, #923)
+    const factoryStore = new Map(factoryEntries().filter((e) => e.kit).map((e) => [e.id, e.hash]));
+    err = ui.load(encodePatch(editor.patch, true, false, 0, factoryStore), editor.patch.name.toUpperCase(), { fresh: emuFresh });
   } catch {
     err = -1;
   }

@@ -9,6 +9,7 @@ import { sharedCassiaContours } from './factory-cassia-sharing';
 import { sharedAlgoContours } from './factory-algo-sharing';
 import { sharedArticulationFactory } from './factory-shared-articulation';
 import { fitCanvasFactory } from './factory-canvas-fit';
+import { withKitPatterns } from './factory-kit-patterns';
 import { DEFS } from './modules';
 import { devicesOf } from './pages';
 import { addModule, connect, disconnect, removeModule, type Patch } from './patch';
@@ -140,8 +141,8 @@ export function buildFactoryBank(profile: FactoryMeasurementProfile = {}): Facto
     }
     if (options?.canvasCaptions && name !== 'Canvas') throw new Error(`${name}: Canvas captions require Canvas`);
     if (options?.voices !== undefined) reduceVoices(p, options.voices, name === 'Expander S' ? 1 : 3);
-    // Protected drums/drones never pass through validation, FX, player or button rewriting.
-    if (!audit) return { name, patch: p };
+    // Protected drums/drones never pass through validation, FX, player or button rewriting; a drum kit gets its pattern set.
+    if (!audit) return { name, patch: withKitPatterns(p) };
     if (options?.paraphony === 'shared-filter') p = sharedFilterFactory(p);
     else if (options?.paraphony === 'shared-articulation') p = sharedArticulationFactory(p);
     else if (options?.paraphony === 'shared-contours' && name === 'Cassia 1') p = sharedCassiaContours(p);

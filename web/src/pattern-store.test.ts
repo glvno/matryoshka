@@ -10,7 +10,7 @@ import { applyPayload, autoName, decodePayload, encodePayload, FACTORY_ID, facto
 import { deviceView } from './poly';
 import { PRESET_PATTERNS } from './preset-pattern-data';
 import { inflate, encodeShare } from './share';
-import { fixSeq, withoutLinks, type StepNote } from './track';
+import { fixSeq, LINK_ID_MAX, READ_ONLY_ID, withoutLinks, type StepNote } from './track';
 import { patternCases, patternCasesHeader } from '../scripts/pattern-vectors';
 
 const n = (at: number, len: number, note: number, vel = 100, chance?: number): StepNote => ({ at, len, note, vel, ...(chance ? { chance } : {}) });
@@ -114,8 +114,16 @@ describe('the stored pattern payload', () => {
     expect(() => decodePayload([1, 5, 0, 0, 0, 1, 0xff, 0])).toThrow();      // a layout without locks
   });
 
-  it('builds the read-only factory entries from preset-patterns.json, in its order', () => {
-    const f = factoryEntries();
+  it('builds the read-only factory entries: the factory patches\' patterns, then preset-patterns.json in its order', () => {
+    const all = factoryEntries();
+    const kits = all.filter((e) => e.kit), f = all.filter((e) => !e.kit);
+    expect(all.map((e) => e.id)).toEqual([...all.map((e) => e.id)].sort((a, b) => a - b));   // (in id order, as PATS lists them)
+    expect(kits.length).toBeGreaterThan(0);
+    for (const e of kits) {
+      expect(e.id).toBeGreaterThanOrEqual(READ_ONLY_ID);
+      expect(e.id).toBeLessThanOrEqual(LINK_ID_MAX);
+      expect(e).toMatchObject({ readOnly: true, layout: 0, tracks: decodePayload(e.payload).tracks.length, name: storedName(e.name), len: e.payload.length, hash: fnv(FNV0, e.payload) });
+    }
     expect(f).toHaveLength(PRESET_PATTERNS.length);
     f.forEach((e, i) => {
       expect(e).toMatchObject({ id: FACTORY_ID + i, readOnly: true, layout: 0, tracks: 1, name: storedName(PRESET_PATTERNS[i].name), len: e.payload.length, hash: fnv(FNV0, e.payload) });
@@ -231,7 +239,7 @@ describe('format 59: stored pattern links', () => {
     expect(deviceBudget(link(structuredClone(p), 1, 5)).items.find((i) => i.key === 'notes')!.used).toBe(deviceBudget(p).items.find((i) => i.key === 'notes')!.used);
   });
 
-  it('share links and files leave the links out', async () => {
+  it('share links and files leave the links to user entries out, and keep a factory patch\'s', async () => {
     const { p } = rig();
     link(p, 1, 9);
     expect(main(withoutLinks(p)).seq).toBeUndefined();
@@ -242,5 +250,7 @@ describe('format 59: stored pattern links', () => {
     const shared = JSON.parse(await inflate(s.full)) as Patch;
     expect(main(shared).seq).toEqual({ pattern: 1 });
     expect(withoutLinks(rig().p)).toBeTruthy();
+    main(p).seq!.links![2] = { id: READ_ONLY_ID + 1, hash: 7 };
+    expect(main(withoutLinks(p)).seq).toEqual({ pattern: 1, links: { 2: { id: READ_ONLY_ID + 1, hash: 7 } } });
   });
 });

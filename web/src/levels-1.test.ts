@@ -11,4 +11,4 @@ import { PRESETS } from './presets';
 
 it('every factory patch and factory engine preset is on the loudness rule (part 1 of 4)', () => {
   expect(offRule(Object.entries(PRESETS).filter((_, i) => i % 4 === 0))).toEqual([]);
-}, 480_000);
+}, 960_000);

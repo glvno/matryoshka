@@ -28,17 +28,17 @@ bass drum / decay = 0.7
 snare drum / snappy = 0.35
 open hihat / decay = 0.3
 low tom / tuning = 0.86
-  bass drum / level = 0.8
-  snare drum / level = 0.5
-  low tom / level = 0.22
-  rim shot / level = 0.2
-  hand clap / level = 0.5
-  cow bell / level = 0.08
-  open hihat / level = 0.67
-  closed hihat / level = 0.99
-  mid tom / level = 0.45
-  hi tom / level = 0.45
-  cymbal / level = 0.9
+  bass drum / level = 0.69
+  snare drum / level = 0.43
+  low tom / level = 0.19
+  rim shot / level = 0.17
+  hand clap / level = 0.43
+  cow bell / level = 0.06
+  open hihat / level = 0.57
+  closed hihat / level = 0.85
+  mid tom / level = 0.38
+  hi tom / level = 0.38
+  cymbal / level = 0.77
 
 preset: Dry Latin
 # Dry rim and tom answers around kick, snare and hats; one quiet cowbell accent.

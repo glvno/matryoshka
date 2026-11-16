@@ -18,8 +18,8 @@ static int slot_writes, slot_erases;
 static uint32_t last_slot, last_len;
 static char last_name[32];
 static uint8_t last_data[3072];
-static uint8_t replies[64][1024];
-static uint32_t reply_len[64], nreplies;
+static uint8_t replies[128][1024];                             /* (PATS answers one frame per stored pattern, the factory's too) */
+static uint32_t reply_len[128], nreplies;
 static int m1_apply(const uint8_t *p, uint32_t n)
 {
     applied++;
@@ -131,6 +131,8 @@ static int m1_preset_del(uint32_t structure, const char *name)
 }
 static void m1_send(const uint8_t *f, uint32_t n)
 {
+    if (nreplies >= sizeof reply_len / sizeof reply_len[0])
+        abort();
     memcpy(replies[nreplies], f, n);
     reply_len[nreplies++] = n;
 }

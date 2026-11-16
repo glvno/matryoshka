@@ -6,6 +6,11 @@
  *   - a format 59 patch: the clean linked pattern left out of the binary, its content from the store at load, the link
  *     kept when the entry is gone, SAVE's write-back of an edited linked pattern (and the link dropped when its entry is
  *     gone), a patch without links rewritten byte for byte as it was;
+ *   - the factory patches' linked patterns (#923, presets.h KIT_GROUPS): every entry read back and well formed, the 808
+ *     and 909 Kits loaded with all their patterns and their song, with the store off too, rewritten byte for byte, and
+ *     SAVE of an edited one keeping it inline without its link;
+ *   - SAVE with a power cut at every byte it programs (a user link's write-back, then the slot; a factory link's slot):
+ *     after the next boot the slot plays the pattern as it was or as edited, never neither;
  *   - the SEQ page's save, save as new and load (a factory entry, another layout's locks left out);
  *   - INFO, PATS, PAT_GET, PAT_PUT (in chunks), PAT_DEL (S_USED with a slot that links the entry, force, read-only).
  * tools/patlink_test.sh builds and runs it. */
@@ -16,9 +21,12 @@
 #include "../src/presets.h"
 #include "pattern_cases.h"
 
-/* NOR flash in RAM from the bank's first sector to the store's end: erase sets 0xFF, a write only clears bits */
+/* NOR flash in RAM from the bank's first sector to the store's end: erase sets 0xFF, a write only clears bits. A program
+ * can be cut after cut_after bytes and an erase refused (a power cut, as in patstore_test.c) */
 #define NOR0 0x97000u
-static uint8_t nor[0xE0000u - NOR0];
+static uint8_t nor[0xE0000u - NOR0], nor_saved[0xE0000u - NOR0];
+static long cut_after = -1;                     /* bytes the next programs may write before the "power" goes, -1 no cut */
+static int cut_hit;
 static int nor_in(uint32_t off, uint32_t n) { return off >= NOR0 && off + n <= NOR0 + sizeof nor; }
 static int st_read(uint32_t off, void *dst, uint32_t n)
 {
@@ -29,6 +37,10 @@ static int st_read(uint32_t off, void *dst, uint32_t n)
 }
 static int st_erase(uint32_t off)
 {
+    if (cut_after == 0) {
+        cut_hit = 1;
+        return -9;
+    }
     if (!nor_in(off & ~0xFFFu, 0x1000u))
         return -1;
     memset(nor + (off & ~0xFFFu) - NOR0, 0xFF, 0x1000u);
@@ -40,8 +52,15 @@ static int st_prog(uint32_t off, const void *src, uint32_t n)
     uint32_t i;
     if (!nor_in(off, n))
         return -1;
-    for (i = 0; i < n; i++)
+    for (i = 0; i < n; i++) {
+        if (cut_after == 0) {
+            cut_hit = 1;
+            return -9;
+        }
+        if (cut_after > 0)
+            cut_after--;
         nor[off - NOR0 + i] &= s[i];
+    }
     return 0;
 }
 static void fm1_wdt_feed(void) {}
@@ -246,8 +265,11 @@ static void seq_page(void)
     OK(pl_load_entry(p, id, got) == 0 && pl_link(p) == id && link_told(p, id));
     {
         pt_info_t first, last;
+        uint32_t kit_last = KIT_GROUPS[0].first + KIT_GROUPS[0].n - 1u;
         OK(!pt_next(0, &first) && pl_step(0, 1) == first.id && pl_step(first.id, -1) == PL_FACTORY + N_PRESET_PATTERNS - 1u);
-        OK(!pt_prev(PL_FACTORY, &last) && pl_step(PL_FACTORY, -1) == last.id && pl_step(last.id, 1) == PL_FACTORY);
+        OK(!pt_prev(PL_KIT, &last) && pl_step(PL_KIT, -1) == last.id && pl_step(last.id, 1) == PL_KIT);
+        OK(pl_step(kit_last, 1) == KIT_GROUPS[1].first && pl_step(KIT_GROUPS[1].first, -1) == kit_last);
+        OK(pl_step(KIT_GROUPS[N_KIT_GROUPS - 1].first + KIT_GROUPS[N_KIT_GROUPS - 1].n - 1u, 1) == PL_FACTORY);
         OK(pl_step(PL_FACTORY + N_PRESET_PATTERNS - 1u, 1) == first.id);
     }
     /* another layout: the notes load, the locks are left out */
@@ -293,18 +315,39 @@ static void link_frames(void)
     b[1] = 0x12;
     frame(C_PAT_GET, b, 4);
     OK(reply(0, R_PAT_DATA, b, sizeof b) == 6u && rd16(b + 2) == 0xFFFFu);
-    /* PATS: the user entries, then the factory ones */
+    /* PATS: the user entries, then the factory patches' patterns, then the demonstration patterns */
     frame(C_PATS, 0, 0);
-    cnt = pt_count() + N_PRESET_PATTERNS;
+    cnt = pt_count() + N_KIT_PATTERNS + N_PRESET_PATTERNS;
     OK(nreplies == cnt);
     for (k = 0; k < nreplies; k++) {
         n = reply(k, R_PAT, e, sizeof e);
         OK(n == 34u && rd16(e) == k && rd16(e + 2) == cnt);
         if (n == 34u && rd16(e + 4) == id)
             OK(rd16(e + 6) == PATTERN_CASES[c].payload_len && e[17] == 0 && !memcmp(e + 18, "CHUNKED", 8));
+        if (n == 34u && rd16(e + 4) == PL_KIT)
+            OK(k == pt_count() && e[17] == 1u && e[16] == 1u && !memcmp(e + 18, "808 ", 4));
         if (k + 1u == nreplies)
             OK(rd16(e + 4) == PL_FACTORY + N_PRESET_PATTERNS - 1u && e[17] == 1u && e[16] == 1u);
     }
+    /* GET of a factory patch's pattern: its payload */
+    b[0] = (uint8_t)PL_KIT;
+    b[1] = (uint8_t)(PL_KIT >> 8);
+    b[2] = b[3] = 0;
+    frame(C_PAT_GET, b, 4);
+    {
+        pt_info_t in;
+        static uint8_t want[M1_PATCH_MAX];
+        n = reply(0, R_PAT_DATA, b, sizeof b);
+        OK(!pl_read(PL_KIT, want, sizeof want, &in) && n == 6u + in.len && rd16(b + 2) == in.len && !memcmp(b + 6, want, in.len));
+    }
+    /* a factory patch's pattern is read-only */
+    memset(b, 0, sizeof b);
+    b[0] = (uint8_t)PL_KIT;
+    b[1] = (uint8_t)(PL_KIT >> 8);
+    b[2] = (uint8_t)PATTERN_CASES[c].payload_len;
+    memcpy(b + 22, PATTERN_CASES[c].payload, PATTERN_CASES[c].payload_len);
+    frame(C_PAT_PUT, b, 22u + PATTERN_CASES[c].payload_len);
+    OK(reply(0, R_PAT_STORED, e, sizeof e) == 4u && e[2] == S_RANGE);
     /* read-only entries */
     memset(b, 0, sizeof b);
     b[0] = 0x00;
@@ -335,6 +378,192 @@ static void link_frames(void)
     printf("patlink: INFO, PATS, PAT_GET, PAT_PUT and PAT_DEL\n");
 }
 
+/* factory patch `name` (presets.h PRESET_LIST) unpacked into out: its length, 0 none */
+static uint32_t factory_bin(const char *name, uint8_t *out)
+{
+    uint32_t i;
+    for (i = 0; i < N_PRESETS; i++)
+        if (!strcmp(PRESET_LIST[i].name, name))
+            return lz_unpack(PRESET_LIST[i].lz, PRESET_LIST[i].lz_len, out, M1_PATCH_MAX) == (int32_t)PRESET_LIST[i].len ? PRESET_LIST[i].len : 0u;
+    return 0;
+}
+/* the running patch's links whose pattern plays and is its entry's payload, clean (bit p each in *clean) */
+static uint32_t links_ok(uint64_t *clean)
+{
+    static uint8_t want[M1_PATCH_MAX];
+    uint32_t n, k, p, id, len, ok = 0;
+    const uint8_t *e = pl_links(&n);
+    pt_info_t in;
+    *clean = 0;
+    for (k = 0; k < n; k++, e += 3) {
+        p = e[0];
+        id = (uint32_t)e[1] | (uint32_t)e[2] << 8;
+        if (pl_read(id, want, sizeof want, &in))
+            continue;
+        len = encode(p, pay);
+        if (has(p) && len == in.len && !memcmp(pay, want, len) && pl_hash[p] == in.hash) {
+            ok++;
+            *clean |= (uint64_t)1u << p;
+        }
+    }
+    return ok;
+}
+/* pattern p of the first track with one more note */
+static void edit(uint32_t p)
+{
+    const uint32_t *w;
+    uint32_t notes[TRACK_NOTES_MAX], m = (uint32_t)eng_steps_module(0), k;
+    int cnt = eng_pattern_notes(m, p, &w);
+    for (k = 0; (int)k < cnt; k++)
+        notes[k] = w[k];
+    notes[cnt] = NW(15u, 1u, 61u, STEP_VEL, 0u);
+    OK(eng_pattern_set_notes(m, p, notes, (uint32_t)cnt + 1u));
+    m1_patch_track(m);
+}
+
+/* the factory patches' linked patterns (#923): the entries, the 808 and 909 Kits as they load, rewrite and SAVE */
+static void kits(void)
+{
+    static uint8_t bin[M1_PATCH_MAX];
+    static const char *const names[] = { "808 KIT", "909 KIT" };
+    pt_info_t in;
+    uint64_t clean;
+    uint32_t g, k, i, id, len = 0, n = 0, total = 0, p = 0;
+    for (g = 0; g < N_KIT_GROUPS; g++)
+        for (k = 0; k < KIT_GROUPS[g].n; k++, total++) {
+            id = KIT_GROUPS[g].first + k;
+            OK(!pl_read(id, m1_up, sizeof m1_up, &in) && in.id == id && in.name[0] && !pl_check(m1_up, in.len) &&
+               in.hash == pt_fnv(PT_FNV0, m1_up, in.len));
+        }
+    OK(total == N_KIT_PATTERNS && pl_read(KIT_GROUPS[0].first + KIT_GROUPS[0].n, m1_up, sizeof m1_up, &in) == -1);
+    for (i = 0; i < 2u; i++) {
+        OK((len = factory_bin(names[i], bin)) != 0);
+        if (!len || load_patch(bin, len)) {
+            OK(!"the kit loads");
+            continue;
+        }
+        (void)pl_links(&n);
+        OK(n >= 11u && links_ok(&clean) == n && m1_pat_clean() == clean);
+        OK(eng_song_len(0) >= 8);                       /* (its song, over the linked patterns) */
+        for (k = 0; k < (uint32_t)eng_song_len(0); k++)
+            OK(has((uint32_t)eng_song_get(0, k) & 0xFFu));
+        m1_patch_patterns();                            /* (rewritten as it came: the clean links stay out) */
+        OK(m1_patch_locks() && m1_cur_len == len && !memcmp(m1_cur, bin, len));
+        pt_on = 0;                                      /* (a factory link needs no store) */
+        OK(!load_patch(bin, len) && links_ok(&clean) == n);
+        pt_on = 1;
+        printf("patlink: %s: %u linked patterns from the factory entries, its song over them\n", names[i], (unsigned)n);
+    }
+    /* SAVE of an edited one (the 909 Kit's last, which would not fit in the patch): a new stored entry under the factory
+     * entry's name, linked, so the binary keeps its size; the others stay linked to the factory's */
+    p = pl_links(&n)[3u * (n - 1u)];
+    id = pl_link(p);
+    OK(!pl_read(id, m1_up, sizeof m1_up, &in));
+    edit(p);
+    len = m1_cur_len;
+    nreplies = 0;
+    pl_writeback();
+    {
+        pt_info_t got;
+        uint32_t now = pl_link(p);
+        OK(now >= 1u && now <= PT_ID_MAX && link_told(p, now) && !pt_stat(now, &got) && !strcmp(got.name, in.name));
+        OK(links_ok(&clean) == n && m1_pat_clean() == clean && inline_has(p) == 0 && m1_cur_len == len);
+    }
+    printf("patlink: the factory entries read back; SAVE stores an edited factory pattern as a new entry\n");
+}
+
+/* a power-on: the RAM state as after a reset, then the boot's sl_scan and pt_claim (patstore_test.c's) */
+static void boot(void)
+{
+    cut_after = -1;
+    nreplies = 0;
+    sl_next = 0;
+    bank_slots = M1_SLOTS;
+    pt_on = 0;
+    pt_scanned = 0;
+    pt_seq = pt_nextid = 0;
+    memset(pt_tail, 0, sizeof pt_tail);
+    sl_scan();
+    pt_claim();
+}
+/* slot s loaded as the FM-1 loads it */
+static int load_slot(uint32_t s)
+{
+    static uint8_t b[M1_PATCH_MAX];
+    uint32_t len;
+    return sl_read(s, b, &len, 0) || load_patch(b, len);
+}
+/* SAVE of slot 5's patch with pattern p edited (the write-back, then the slot), cut at every byte it programs: after the
+ * next boot the slot loads, and p plays as it was or as edited */
+static void cut_save(const char *what, uint32_t p)
+{
+    static uint8_t was[PT_MAX + 64u], now[PT_MAX + 64u];
+    uint32_t wn, nn, n, cut, old = 0, edited = 0;
+    int o, e;
+    memcpy(nor_saved, nor, sizeof nor);
+    boot();
+    if (load_slot(5) || !has(p)) {
+        OK(!"the slot loads with its pattern");
+        return;
+    }
+    wn = encode(p, was);
+    for (cut = 0;; cut++) {
+        memcpy(nor, nor_saved, sizeof nor);
+        boot();
+        if (load_slot(5)) {
+            OK(!"the slot loads before the cut");
+            break;
+        }
+        edit(p);
+        nn = encode(p, now);
+        cut_hit = 0;
+        cut_after = (long)cut;
+        pl_writeback();
+        (void)sl_write(5, "CUT", m1_cur, m1_cur_len);
+        boot();
+        if (load_slot(5) || !has(p)) {
+            fprintf(stderr, "%s: cut after %u bytes: the slot or its pattern is gone\n", what, (unsigned)cut);
+            OK(!"the slot plays its pattern after the cut");
+            break;
+        }
+        n = encode(p, pay);
+        o = n == wn && !memcmp(pay, was, n);
+        e = n == nn && !memcmp(pay, now, n);
+        OK(o || e);
+        old += (uint32_t)o;
+        edited += (uint32_t)e;
+        if (!cut_hit)
+            break;
+    }
+    OK(old && edited);
+    printf("patlink: %s: SAVE cut at each of its %u bytes: the pattern as it was (%u) or as edited (%u)\n", what,
+           (unsigned)cut, (unsigned)old, (unsigned)edited);
+}
+static void cuts(void)
+{
+    static uint8_t bin[M1_PATCH_MAX];
+    uint32_t c, p, id = 0, wn, len;
+    /* a user link: SAVE writes the edited pattern over its stored entry, then the slot */
+    memset(nor, 0xFF, sizeof nor);
+    boot();
+    for (c = 0; c < N_PATTERN_CASES && strcmp(PATTERN_CASES[c].name, "LOCKS P2"); c++)
+        ;
+    if (c == N_PATTERN_CASES || load_patch(PATTERN_CASES[c].patch, PATTERN_CASES[c].patch_len))
+        return;
+    p = PATTERN_CASES[c].pattern;
+    wn = encode(p, pay);
+    OK(!pt_put(&id, "LOCKS P2", pay, wn) && pl_set_link(p, id));
+    pl_hash[p] = pt_fnv(PT_FNV0, pay, wn);
+    pl_rewrite();
+    OK(!sl_write(5, "LINKED", m1_cur, m1_cur_len));
+    cut_save("a user link", p);
+    /* a factory link: SAVE keeps the edited pattern inline and writes the slot */
+    memset(nor, 0xFF, sizeof nor);
+    boot();
+    OK((len = factory_bin("808 KIT", bin)) != 0 && !sl_write(5, "808 KIT", bin, len));
+    cut_save("a factory link", 2u);
+}
+
 int main(void)
 {
     memset(nor, 0xFF, sizeof nor);
@@ -348,6 +577,8 @@ int main(void)
     links();
     seq_page();
     link_frames();
+    kits();
+    cuts();
     if (fails) {
         fprintf(stderr, "patlink: %d checks failed\n", fails);
         return 1;

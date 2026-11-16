@@ -26,14 +26,15 @@ import { TYPE_ORDER, toQ16 } from './patchbin';
 import type { StoredPatternEntry } from './protocol';
 import { PRESET_PATTERNS, type PresetPattern } from './preset-pattern-data';
 import { fixLocks, fixNotes, fixPatterns, isShortNote, noteWord, shortWord, wordNote, wordShort, type Pattern, type StepLock, type StepNote } from './track';
+import FACTORY_STORE from './factory-store.json';
 
 export const PAYLOAD_VERSION = 1;
 /** the most payload bytes a stored pattern takes (patstore.c PT_MAX) */
 export const PAYLOAD_MAX = 2048;
 /** a stored pattern's name: printable ASCII, 16 bytes (patstore.c PT_NAME) */
 export const PATTERN_NAME_BYTES = 16;
-/** the store's first read-only id: the factory demonstration patterns are listed as FACTORY_ID + their index */
-export const READ_ONLY_ID = 0xf000;
+/** the factory demonstration patterns' ids: FACTORY_ID + their index (the read-only ids from track.ts READ_ONLY_ID start
+ * with the factory patches' patterns, factory-store.json) */
 export const FACTORY_ID = 0xff00;
 /** bytes a stored pattern takes in the store besides its payload (patstore.c pt_hdr_t), and its records' alignment */
 export const RECORD_HEADER = 36;
@@ -211,26 +212,62 @@ export function factoryPayload(e: PresetPattern): Uint8Array {
   return Uint8Array.from(out);
 }
 
-/** the store's read-only factory entries as the FM-1 lists them after the user's (C_PATS), with their payloads: the editor
- * has them without an FM-1 */
-export function factoryEntries(): (StoredPatternEntry & { payload: Uint8Array; structure: string })[] {
-  return PRESET_PATTERNS.map((e, i) => {
-    const payload = factoryPayload(e);
-    return { id: FACTORY_ID + i, len: payload.length, hash: fnv(FNV0, payload), layout: 0, tracks: 1, readOnly: true, name: storedName(e.name), payload, structure: e.structure };
+/** the store's read-only factory entries as the FM-1 lists them after the user's (C_PATS), in id order, with their
+ * payloads: the factory patches' patterns (`kit`: the patch that links them), then the demonstration patterns (`structure`:
+ * the engine whose sound they belong to). The editor has them without an FM-1 */
+export function factoryEntries(): (StoredPatternEntry & { payload: Uint8Array; kit?: string; structure?: string })[] {
+  const entry = (id: number, name: string, payload: Uint8Array): StoredPatternEntry & { payload: Uint8Array } =>
+    ({ id, len: payload.length, hash: fnv(FNV0, payload), layout: (payload[1] | payload[2] << 8 | payload[3] << 16 | payload[4] << 24) >>> 0, tracks: payload[5], readOnly: true, name, payload });
+  return [
+    ...FACTORY_STORE.map((e) => ({ ...entry(e.id, e.name, fromHex(e.payload)), kit: e.kit })),
+    ...PRESET_PATTERNS.map((e, i) => ({ ...entry(FACTORY_ID + i, storedName(e.name), factoryPayload(e)), structure: e.structure })),
+  ];
+}
+
+/** the patch's links to factory patches' patterns (factory-store.json) whose entry is the one the link was made for */
+function factoryLinks(p: Patch): { k: number; payload: Uint8Array }[] {
+  const links = p.modules.find((m) => m.type === 'fm1')?.seq?.links ?? {};
+  return Object.entries(links).flatMap(([k, l]) => {
+    const e = FACTORY_STORE.find((x) => x.id === l.id);
+    const payload = e && fromHex(e.payload);
+    return payload && fnv(FNV0, payload) === l.hash ? [{ k: Number(k), payload }] : [];
   });
 }
+/** a patch without the patterns it links to factory entries as those entries hold them (share links: whoever opens one
+ * has the entries, #923); the patch itself when it has none */
+export function withoutFactoryPatterns(p: Patch): Patch {
+  const dev = deviceView(p, true).patch;
+  const clean = factoryLinks(p).filter((x) => fnv(FNV0, encodePayload(p, x.k, dev)) === fnv(FNV0, x.payload)).map((x) => x.k);
+  if (!clean.length) return p;
+  return { ...p, modules: p.modules.map((m) => {
+    if (m.type !== 'steps' || !m.patterns) return m;
+    const pats = fixPatterns(m.patterns.map((x, i) => (clean.includes(i + 1) ? null : x)));
+    const { patterns: _p, ...rest } = m;
+    return pats ? { ...rest, patterns: pats } : rest;
+  }) };
+}
+/** the patterns withoutFactoryPatterns left out, back from the factory entries (changed in place) */
+export function withFactoryPatterns(p: Patch): Patch {
+  const steps = p.modules.filter((m) => m.type === 'steps');
+  for (const x of factoryLinks(p)) if (!steps.some((m) => m.patterns?.[x.k - 1])) applyPayload(p, x.k, x.payload);
+  return p;
+}
+
+/** bytes as hexadecimal text, two digits each (pattern files, factory-store.json), and back */
+export const hexBytes = (bytes: ArrayLike<number>): string => Array.from(bytes, (x) => x.toString(16).padStart(2, '0')).join('');
+export const fromHex = (s: string): Uint8Array => Uint8Array.from(s.match(/../g) ?? [], (x) => parseInt(x, 16));
 
 /** a stored pattern as a file (Download): its name and payload */
 export const PATTERN_FILE_FORMAT = 'matryoshka-pattern';
 export const PATTERN_FILE_VERSION = 1;
 export const patternFile = (name: string, payload: ArrayLike<number>): string =>
-  JSON.stringify({ format: PATTERN_FILE_FORMAT, version: PATTERN_FILE_VERSION, name: storedName(name), payload: Array.from(payload, (x) => x.toString(16).padStart(2, '0')).join('') }, null, 1);
+  JSON.stringify({ format: PATTERN_FILE_FORMAT, version: PATTERN_FILE_VERSION, name: storedName(name), payload: hexBytes(payload) }, null, 1);
 /** a pattern file read back (Upload): its name and payload; throws when it is not one */
 export function readPatternFile(text: string): { name: string; payload: Uint8Array } {
   const o = JSON.parse(text) as Record<string, unknown>;
   if (o?.format !== PATTERN_FILE_FORMAT || o.version !== PATTERN_FILE_VERSION || typeof o.payload !== 'string' || !/^([0-9a-f]{2})+$/i.test(o.payload))
     throw new Error('not a Matryoshka pattern file');
-  const payload = Uint8Array.from(o.payload.match(/../g)!.map((x) => parseInt(x, 16)));
+  const payload = fromHex(o.payload);
   decodePayload(payload);
   return { name: storedName(typeof o.name === 'string' ? o.name : '') || 'PATTERN', payload };
 }

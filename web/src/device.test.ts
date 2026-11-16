@@ -2,7 +2,8 @@
 import { recoveredLines } from './test-buffer-budget';
 // Connecting the FM-1 syncs by default (#171): the decision on connect and the chip's state; Live over the budget (#200).
 import { describe, expect, it } from 'vitest';
-import { chipState, DeviceLink, IGNORED_NOW, ignoredFound, linkCandidates, type LinkCandidate, liveSync, notFound, sysexRefused, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, transportOf } from './device';
+import { chipState, DeviceLink, holdsFactoryLinks, IGNORED_NOW, ignoredFound, linkCandidates, type LinkCandidate, liveSync, notFound, sysexRefused, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, transportOf } from './device';
+import { factoryEntries } from './pattern-store';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, removeModule } from './patch';
 import { deviceBudget, encodePatch, FLAG_PATTERN_ORIGINS, VERSION } from './patchbin';
@@ -14,6 +15,17 @@ import { withFxBus } from './fx-bus';
 const names = Object.keys(FM1_PRESETS);
 const a = encodePatch(FM1_PRESETS[names[0]]());
 const b = encodePatch(FM1_PRESETS[names[1]]());
+
+describe('factory pattern links (#923)', () => {
+  it('sends a kit only to an FM-1 whose pattern list has its factory entries, else asks for the update', () => {
+    const kit = FM1_PRESETS['808 Kit']();
+    const all = new Map(factoryEntries().map((e) => [e.id, e.hash]));
+    expect(holdsFactoryLinks(kit, all)).toBe(true);
+    expect(holdsFactoryLinks(kit, 'assume')).toBe(true);
+    for (const older of [new Map<number, number>(), 'none', 'unknown'] as const) expect(holdsFactoryLinks(kit, older)).toBe(false);
+    expect(holdsFactoryLinks(FM1_PRESETS[names[0]](), 'none')).toBe(true);   // (a patch without factory links goes anywhere)
+  });
+});
 
 describe('syncOnConnect', () => {
   it('syncs without asking when the FM-1 already holds the same patch', () => {

@@ -8,6 +8,7 @@ import { validatePatch, type ModuleDef, type Patch } from './patch';
 import { SITE_URL } from './site';
 import { b64url, inflateCapped, isStoreId, STORE_MAX } from './share-store';
 import { withoutLinks } from './track';
+import { withFactoryPatterns, withoutFactoryPatterns } from './pattern-store';
 
 export const LINK_MAX = 8000;
 
@@ -62,11 +63,12 @@ const here = (): string => (typeof location === 'undefined' ? PAGES_URL : locati
 /**
  * A patch as a link, with its layout (`layout`, the default) while that fits under LINK_MAX characters, else without it
  * (the assemblies are always kept). `stores`: the layout was asked for and does not fit, or even the lean link does not:
- * `handOut` stores the full form on the site. The patch's links to stored patterns are left out: their ids belong to one
- * FM-1 (#901), and the patterns' notes are in the patch anyway.
+ * `handOut` stores the full form on the site. The patch's links to user entries of a pattern store are left out: their
+ * ids belong to one FM-1 (#901), and the patterns' notes are in the patch anyway. Its links to factory entries stay, and
+ * the patterns they hold as those entries are go: decodeShare puts them back (#923).
  */
 export async function encodeShare(patch: Patch, opts: { layout?: boolean; base?: string } = {}): Promise<Share> {
-  const p = withoutLinks(patch);
+  const p = withoutFactoryPatterns(withoutLinks(patch));
   const base = opts.base ?? here();
   const make = (code: string): { code: string; link: string; length: number } => {
     const link = shareLink(code, base);
@@ -127,7 +129,7 @@ export async function handOut(s: Share, opts: { base?: string; store?: (code: st
 }
 
 export async function decodeShare(code: string, defs: Record<string, ModuleDef>): Promise<Patch> {
-  return validatePatch(JSON.parse(await inflate(code)), defs);
+  return withFactoryPatterns(validatePatch(JSON.parse(await inflate(code)), defs));
 }
 
 /** the `p` value of a link's fragment (`#p=…`), or null */

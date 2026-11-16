@@ -4,7 +4,7 @@ import { FEATURE_PATTERN_ORIGINS, PatternOrigins, type OriginUpdate } from './pa
 // The FM-1 as a Web MIDI SysEx peer: patch upload, store, live parameters (wire format: protocol.ts).
 import { DEFS } from './modules';
 import type { Patch, Range } from './patch';
-import type { SongEntry, StepNote } from './track';
+import { READ_ONLY_ID, type SongEntry, type StepNote } from './track';
 import { encodePatch, FLAG_FX_BUS, FLAG_LINKS, FLAG_PATTERN_ORIGINS, toQ16, VERSION, type LinkStore } from './patchbin';
 import { FNV0, fnv } from './pattern-store';
 import { deviceView } from './poly';
@@ -78,6 +78,13 @@ export const syncsWith = (info: Info | null): boolean => {
   return range.min <= VERSION && VERSION <= range.max;
 };
 export const UPDATE_TO_SYNC = 'This FM-1 runs older Matryoshka firmware that cannot play the editor\'s patches: update it to sync.';
+/** the FM-1 a patch goes to (its pattern store as `store`) has every factory entry the patch links (#923): firmware
+ *  without them, or an FM-1 without a store, would need the patterns inline, more than a patch holds, so the editor
+ *  refuses with UPDATE_TO_SYNC instead */
+export function holdsFactoryLinks(patch: Patch, store: LinkStore): boolean {
+  const links = Object.values(patch.modules.find((m) => m.type === 'fm1')?.seq?.links ?? {}).filter((l) => l.id >= READ_ONLY_ID);
+  return store === 'assume' || links.every((l) => typeof store === 'object' && store.get(l.id) === l.hash);
+}
 /** The remedy for an incompatible peer: a writer below the readable range needs a newer editor. */
 export const syncUpdateNotice = (info: Info | null): { message: string; label: string; target: 'editor' | 'firmware' } =>
   info?.patchFormats && VERSION < info.patchFormats.min
@@ -411,6 +418,7 @@ export class DeviceLink {
     this.invalidateOrigins();
     const run = async (): Promise<void> => {
       // Recheck inside the serial queue: the device may have changed after a caller encoded it.
+      if (!holdsFactoryLinks(submitted, store)) throw new Error(UPDATE_TO_SYNC);
       const checked = encodePatch(submitted, false, false, this.bufferAllocation, store);
       if (bytes && !sameBinary(bytes, checked)) throw new Error('Patch changed before upload: send it again');
       const bin = bytes ?? checked;
@@ -475,6 +483,7 @@ export class DeviceLink {
   uploadSlot(slot: number, name: string, patch: Patch): Promise<void> {
     const submitted = structuredClone(patch);
     return this.serial(async () => {
+      if (!holdsFactoryLinks(submitted, this.linkStore)) throw new Error(UPDATE_TO_SYNC);
       const bin = encodePatch(submitted, false, false, this.bufferAllocation, this.linkStore);
       await this.sendChunks(bin);
       await this.ackFor(slotFrame(slot, name, bin), CMD.slot, slot, FLASH_TIMEOUT);
@@ -543,7 +552,7 @@ export class DeviceLink {
         const all = got.filter(Boolean);
         if (e.count && all.length < e.count) return void (t = late());
         this.collectingPatterns = null;
-        this.stored = new Map(all.filter((x) => !x.readOnly).map((x) => [x.id, x.hash]));
+        this.stored = new Map(all.map((x) => [x.id, x.hash]));   // (a factory patch links read-only entries too, #923)
         resolve(all);
       };
       this.out!.send(patsFrame());
