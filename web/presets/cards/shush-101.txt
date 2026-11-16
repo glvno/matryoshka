@@ -37,13 +37,16 @@
 # controller
 #   portamento = 0.15 s                0.001..5 s
 #   porta mode = OFF                   ON, OFF, AUTO
-#   bend vco = 0                       -4..4
+#   bend vco = 0.17                    0..1
 #   bend vcf = 0                       -4..4
 #   lfo mod = 0.1                      0..2
 #   volume = 1.29                      0..2
 
 # Classic SH-101 roles (#869), set from the panel. Units: vco mod, env, mod, kybd and the bend rows in octaves (kybd 1 =
 # the whole key); pw 0 = 50 %, 1 = 5 %. The envelope's `long` setting plays decay and release 2.4 times the row's value.
+# BEND VCO is the lever's whole pitch bend (#976), 0 to 1 octave as the SH-101's; Init's 0.17 is the 2 semitones every
+# preset bent before, so each keeps its bend. ENV TRIGGER sets the note priority as the SH-101's does: GATE+TRIG the last
+# key held, GATE and LFO the lowest.
 # MOD SYNC on (TEMPO) runs the modulator, and with it the arpeggiator, at DIVISION on the FM-1's tempo (#956); off (FREE) at
 # RATE. A preset's division is a musical one near its rate at 120 bpm, so its vibrato or sweep keeps its feel. Wind stays
 # FREE: its 0.2 Hz sweep is slower than the longest division (1/1, 0.5 Hz at 120 bpm).

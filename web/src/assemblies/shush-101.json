@@ -730,12 +730,14 @@
     },
     {
       "id": 29,
-      "type": "scale",
+      "type": "mixer",
       "x": 0,
       "y": 1680,
       "params": {
-        "gain": 0,
-        "offset": 0
+        "l1": 0.16666666666666666,
+        "l2": 0,
+        "l3": 0,
+        "l4": 0
       },
       "att": [
         1,
@@ -743,10 +745,10 @@
       ],
       "map": {
         "p1": [
-          "gain"
+          "l1"
         ],
         "p2": [
-          "offset"
+          "l2"
         ]
       }
     },
@@ -774,6 +776,28 @@
     },
     {
       "id": 31,
+      "type": "scale",
+      "x": 0,
+      "y": 2800,
+      "params": {
+        "gain": -0.16666666666666666,
+        "offset": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "gain"
+        ],
+        "p2": [
+          "offset"
+        ]
+      }
+    },
+    {
+      "id": 32,
       "type": "vca",
       "x": 320,
       "y": 2240,
@@ -1275,17 +1299,47 @@
     },
     {
       "from": {
-        "module": 11,
+        "module": 31,
         "port": "out"
       },
       "to": {
-        "module": 31,
+        "module": 2,
         "port": "in"
       }
     },
     {
       "from": {
-        "module": 31,
+        "module": 26,
+        "port": "g2"
+      },
+      "to": {
+        "module": 1,
+        "port": "priority"
+      }
+    },
+    {
+      "from": {
+        "module": 26,
+        "port": "g3"
+      },
+      "to": {
+        "module": 1,
+        "port": "priority"
+      }
+    },
+    {
+      "from": {
+        "module": 11,
+        "port": "out"
+      },
+      "to": {
+        "module": 32,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 32,
         "port": "out"
       },
       "to": {
@@ -1295,7 +1349,7 @@
     },
     {
       "from": {
-        "module": 31,
+        "module": 32,
         "port": "out"
       },
       "to": {
@@ -1312,17 +1366,21 @@
     },
     {
       "module": 29,
-      "port": "in",
+      "port": "in1",
       "label": "bend",
       "also": [
         {
           "module": 30,
           "port": "in"
+        },
+        {
+          "module": 31,
+          "port": "in"
         }
       ]
     },
     {
-      "module": 31,
+      "module": 32,
       "port": "cv",
       "label": "wheel"
     }
@@ -1534,7 +1592,7 @@
     },
     {
       "module": 29,
-      "param": "gain",
+      "param": "l1",
       "label": "bend vco"
     },
     {
@@ -1543,7 +1601,7 @@
       "label": "bend vcf"
     },
     {
-      "module": 31,
+      "module": 32,
       "param": "gain",
       "label": "lfo mod"
     },

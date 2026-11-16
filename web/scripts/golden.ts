@@ -1060,6 +1060,30 @@ for (const [name, cfg] of [['voicing-cable-mono', { parts: 3, unisonParts: 1, le
     [128 * 60, 'off', 62], [128 * 60, 'off', 64], [128 * 60, 'off', 71], [128 * 60, 'off', 72]];
   ends[name] = 128 * 70;
 }
+// Note priority on a cable (#976, format 61): a three-way Selector moved by the mod wheel, its second and third gates into
+// a one-voice Part's priority (last, then lowest at both, as the SH-101's ENV TRIGGER: GATE+TRIG, GATE, LFO); and a
+// two-voice Part whose priority value moves from last through low to high (which held note a full voicing takes over).
+for (const [name, cfg] of [['voicing-cable-priority', { parts: 1, legato: 2 }], ['voicing-cable-priority-poly', { parts: 2 }]] as const) {
+  let ids: number[] = [];
+  kit(name, (add, wire) => {
+    const main = add('fm1', 0, 0);
+    const sel = add('select', 0, 0, { count: 3, pos: 1, v1: 0, v2: 1, v3: 2 });
+    wire(main, 'mod', sel, 'pos');
+    const part = add('part', 0, 0), pitch = add('vca', 0, 0), trig = add('vca', 0, 0);
+    const out = add('output', 0, 0, { level: .2 });
+    if (cfg.parts === 1) { wire(sel, 'g2', part, 'priority'); wire(sel, 'g3', part, 'priority'); }
+    else wire(sel, 'out', part, 'priority');
+    wire(part, 'pitch', pitch, 'in'); wire(part, 'gate', pitch, 'cv'); wire(pitch, 'out', out, 'l');
+    wire(part, 'legato', trig, 'in'); wire(part, 'trig', trig, 'cv'); wire(trig, 'out', out, 'r');
+    ids = [part, pitch, trig];
+  });
+  polyAsm(tests[name], ids, cfg);
+  events[name] = [[0, 'on', 60], [128 * 5, 'on', 67], [128 * 8, 'on', 64], [128 * 10, 'off', 64], [128 * 12, 'off', 67],
+    [128 * 14, 'off', 60], [128 * 16, 'cc', 1, 64], [128 * 18, 'on', 60], [128 * 20, 'on', 67], [128 * 22, 'on', 55],
+    [128 * 24, 'off', 55], [128 * 26, 'off', 60], [128 * 28, 'off', 67], [128 * 30, 'cc', 1, 127], [128 * 32, 'on', 64],
+    [128 * 34, 'on', 57], [128 * 36, 'on', 72], [128 * 38, 'off', 57], [128 * 40, 'off', 64], [128 * 40, 'off', 72]];
+  ends[name] = 128 * 46;
+}
 // Extreme-note flags are observable per voice: multiply by that voice's pitch before summing.
 for (const unison of [false, true]) for (const steal of [false, true]) {
   const name = `voice-extremes-${unison}-${steal}`;

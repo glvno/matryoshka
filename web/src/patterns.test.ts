@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type ModuleInst, type Patch } from './patch';
-import { DEVICE, deviceBudget, encodedSize, encodePatch, FLAG_NOTES, FLAG_PATTERNS, formatOf, fxRecord, harmonyLfo, layout, patternRecord, VERSION } from './patchbin';
+import { DEVICE, deviceBudget, encodedSize, encodePatch, FLAG_NOTES, FLAG_PATTERNS, formatOf, FORMAT_PRIORITY_CABLE, fxRecord, harmonyLfo, layout, patternRecord, VERSION } from './patchbin';
 import { deviceView, VOICING_CABLE_INPUTS } from './poly';
 import { PRESETS } from './presets';
 import { fixPatterns, fixSeq, isShortNote, noteWord, patternOf, shortWord, wordShort, type StepNote } from './track';
@@ -102,8 +102,11 @@ describe('patterns and songs: the binary (format 48)', () => {
       // Expander S's ADS, 57, D-1012): such a patch needs that format
       const appended = Math.max(0, ...dev.modules.flatMap((m) => DEFS[m.type].params.filter((q) => (q.since ?? 0) > 55 && (m.params[q.name] ?? q.default) !== q.default).map((q) => q.since!)));
       const many = dev.modules.length > 64;   // (more than 64 modules: 51, #721; 8 Lire's Lyra-8 controls, #658)
+      // a cable into a Part's priority input needs format 61 (#976, D-1021: Shush 101's ENV TRIGGER)
+      const priority = dev.cables.some((c) => c.to.port === 'priority' && dev.modules.find((m) => m.id === c.to.module)?.type === 'part');
       // a master FX bus or a Harmony on LFO needs format 55 (D-888, D-1010): its stage record or the Harmony light
-      if (fxRecord(p, dev).length || harmonyLfo(p, dev)) expect(b[1], name).toBe(appended || 55);
+      if (priority) expect(b[1], name).toBe(FORMAT_PRIORITY_CABLE);
+      else if (fxRecord(p, dev).length || harmonyLfo(p, dev)) expect(b[1], name).toBe(appended || 55);
       else if (layout(p).base.bytes <= DEVICE.bytes && !cabled && !top && !appended && !many) expect(b[1], name).toBeLessThan(VERSION);
       expect(b[7] & (FLAG_PATTERNS >> 8), name).toBe(0);
     }

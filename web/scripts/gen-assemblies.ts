@@ -4448,8 +4448,9 @@ asm('Verona Drum 1', 'Drums', (b) => {
 });
 namePositions('Verona Drum 1', { trig: TRIG_NAMES });
 
-// Shush 101, after the Roland SH-101 (its service notes, Nov. 1982: page 1 the specifications, page 2 the block diagram;
-// issue #869): one voice (the allocator plays the last key, legato), the panel left to right. The switches are Selectors:
+// Shush 101, after the Roland SH-101 (its service notes, Nov. 1982: page 1 the specifications, page 2 the block diagram,
+// page 5 the bender board, page 7 the main circuit; its owner's manual, pages 29 and 31; issues #869, #976): one voice,
+// legato, the panel left to right. The switches are Selectors:
 //  - MODULATOR: the LFO's triangle (`out`) and square (`pulse`, the same cycle); RANDOM is the noise sampled at each cycle
 //    (the CPU's random voltage, clocked by the LFO). WAVEFORM picks triangle, square, random or noise; the selected wave
 //    feeds VCO MOD and VCF MOD. The square is also the `arp clock` output: the factory patch's Arpeggiator steps on it, as
@@ -4465,12 +4466,21 @@ namePositions('Verona Drum 1', { trig: TRIG_NAMES });
 //  - PORTAMENTO (0..5 s) ON / OFF / AUTO moves the Slew limiter's time through its pin: ON 0 (the time as set), OFF -1
 //    (the shortest), AUTO the key's legato gate - 1 (it glides only on legato notes).
 //  - ENV TRIGGER: GATE+TRIG restarts the envelope on every new key, legato too (the key's gate with its one-sample trig
-//    taken out through a Logic xor); GATE only on a new phrase; LFO on the LFO's square while a key is held.
+//    taken out through a Logic xor); GATE only on a new phrase; LFO on the LFO's square while a key is held. It sets the
+//    note priority too, as the SH-101's does (owner's manual p. 29; service notes p. 3, KEYBOARD READ): GATE+TRIG plays
+//    the last key held, GATE and LFO the lowest. Its second and third positions' gates go into the Voicing's priority
+//    input (#976, format 61), whose own setting is last.
 //  - VCA: the envelope or the key's gate.
 // The ADSR's `long` setting is on, so decay and release reach the specification's 10 s. The ladder's cvamt is 1: ENV,
 // MOD, KYBD (0..100 % of the key's pitch), the bender and the lever's LFO each reach the cutoff through their own amount,
-// in octaves. BENDER: Main's bend into `bend` (the key's pitch already carries Main's 2 semitones, so `bend vco` adds to
-// them); LFO MOD: Main's mod into `wheel` opens the LFO's triangle into the VCO and the VCF at one depth. TUNE moves the
+// in octaves. BENDER: Main's bend into `bend`. The key's pitch carries Main's 2 semitones of bend in every patch; here a
+// fixed -2 semitones of the same bend goes in before the portamento and cancels them, so the bend reaches the VCO only
+// through BEND VCO, 0 .. 1 octave as the SH-101's VCO Bend Sens (owner's manual p. 31: max. 1200 cents), and not the key
+// pitch KYBD reads (the SH-101 adds its bend at the VCO, service notes p. 5). LFO MOD: Main's mod into `wheel` opens the
+// LFO's triangle into the VCO and the VCF at one depth in octaves. The SH-101 feeds its one ~LFO MOD wire to the VCO
+// through 150k into a 100k summer (0.667 octave a volt, at 1 V an octave) and to the VCF through 220k into a 33k summer
+// whose key follow comes in through 150k at 100 % (0.682 octave a volt): the same depth within 2.3 % (service notes pp.
+// 5 and 7: R2, R3, R184, R192, R193), so one depth matches it. TUNE moves the
 // three oscillators' fine tune (one row, `also`). Left out (the FM-1 has its own): the arpeggiator and the sequencer (the
 // patch's Arpeggiator and PATTERN track), TRANSPOSE (the OCT buttons), the external clock (MOD SYNC's TEMPO is the FM-1's
 // clock instead) and the CV / gate jacks.
@@ -4548,16 +4558,21 @@ asm('Shush 101', 'Voices', (b) => {
   const vca = b.add('vca', 6, 0, { gain: 1 });
   b.wire(vcf, 'lp24', vca, 'in');
   b.wire(vcaMode, 'out', vca, 'cv');
-  const bendVco = b.add('scale', 0, 3, { gain: 0, offset: 0 });
+  // BEND VCO: a Mixer's level, 0 .. 1 octave; the Attenuverter takes Main's 2 semitones back out of the key's pitch
+  const bendVco = b.add('mixer', 0, 3, { l1: 1 / 6, l2: 0, l3: 0, l4: 0 });
   const bendVcf = b.add('scale', 0, 4, { gain: 0, offset: 0 });
+  const bendCancel = b.add('scale', 0, 5, { gain: -1 / 6, offset: 0 });
   b.wire(bendVco, 'out', vcoPitch, 'in');
   b.wire(bendVcf, 'out', vcf, 'cv');
+  b.wire(bendCancel, 'out', porta, 'in');
+  b.wire(trigMode, 'g2', part, 'priority');
+  b.wire(trigMode, 'g3', part, 'priority');
   const lfoMod = b.add('vca', 1, 4, { gain: 0.1 });
   b.wire(lfo, 'out', lfoMod, 'in');
   b.wire(lfoMod, 'out', vcoPitch, 'in');
   b.wire(lfoMod, 'out', vcf, 'cv');
   b.input('keys', part, 'keys');
-  b.input('bend', bendVco, 'in', [bendVcf, 'in']);
+  b.input('bend', bendVco, 'in1', [bendVcf, 'in'], [bendCancel, 'in']);
   b.input('wheel', lfoMod, 'cv');
   b.output('out', vca, 'out');
   b.output('arp clock', lfo, 'pulse');
@@ -4588,7 +4603,7 @@ asm('Shush 101', 'Voices', (b) => {
   b.param('release', env, 'r');
   b.param('portamento', porta, 'time', { col: true, head: 'controller' });
   b.param('porta mode', portaMode, 'pos');
-  b.param('bend vco', bendVco, 'gain');
+  b.param('bend vco', bendVco, 'l1');
   b.param('bend vcf', bendVcf, 'gain');
   b.param('lfo mod', lfoMod, 'gain');
   b.param('volume', vca, 'gain'); // the SH-101's VOLUME, the level row (#448): set by the loudness step
