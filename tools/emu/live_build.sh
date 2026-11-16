@@ -2,7 +2,8 @@
 # Builds fm1-live (fm1-emu's window) with tools/emu/isa_fix.sh's decoder fix into tools/emu/live/bin. A cargo `patch`
 # cannot reach it: inside fm1-emu's own workspace fm1-isa is a path dependency, so `cargo install --git ... --config
 # patch...` builds the unfixed decoder (cargo says "patch was not used"). This copies the pinned checkout to
-# tools/emu/target/fm1-emu-src, puts the fixed fm1-isa in its place and installs fm1-live from that copy.
+# tools/emu/target/fm1-emu-src, puts the fixed fm1-isa in its place, gives its fm1-core the semantics of the shifts the
+# fourth fix adds (tools/emu/core_isa_patch.py) and installs fm1-live from that copy.
 # Run from the repo root (web/scripts/emu.mjs does).
 set -euo pipefail
 M=tools/emu/Cargo.toml
@@ -13,5 +14,6 @@ DST=tools/emu/target/fm1-emu-src
 rm -rf "$DST"; cp -R "$SRC" "$DST"; rm -rf "$DST/.git"
 cp tools/emu/target/fm1-isa/src/generated_isa.rs "$DST/crates/fm1-isa/src/generated_isa.rs"
 grep -q 'mask: 0x000080000000ffff_u64' "$DST/crates/fm1-isa/src/generated_isa.rs"   # the fixes are in
-test -f "tools/emu/target/fm1-isa/.fixed3-$REV"
+test -f "tools/emu/target/fm1-isa/.fixed4-$REV"
+python3 tools/emu/core_isa_patch.py "$DST/crates/fm1-core/src"
 cargo install --quiet --path "$DST/crates/fm1-live" --force --root tools/emu/live

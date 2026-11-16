@@ -7,7 +7,7 @@ on fm1-emu's `fm1-core` / `fm1-soc`, pinned to commit `7ca5b96` in `tools/emu/Ca
 of fm1-emu is copied into this repository). Two changes are applied to it at build time: `tools/emu/isa_fix.sh` copies
 fm1-emu's `fm1-isa` crate from cargo's checkout into `tools/emu/target/fm1-isa` and corrects its decoder entries, and
 copies `fm1-core` into `tools/emu/target/fm1-core` with the hook the timing model needs (`tools/emu/core_timing_patch.py`,
-below). It writes a cargo config file that patches both in and prints its path for `--config` (`emu_smoke.sh` and `npm run emu` do this for m1emu). fm1-live cannot take that patch (inside fm1-emu's workspace fm1-isa is a path dependency: cargo says "patch was not used"), so `tools/emu/live_build.sh` builds it from a copy of the pinned checkout with the fixed fm1-isa swapped in (`tools/emu/target/fm1-emu-src`); fm1-live builds without both fixes (markers `.isa-fixed`, `.isa-fixed-2`, not `.isa-fixed-3`) are rebuilt. The first entry: the
+below) and the semantics of the fourth fix's shifts (`tools/emu/core_isa_patch.py`). It writes a cargo config file that patches both in and prints its path for `--config` (`emu_smoke.sh` and `npm run emu` do this for m1emu). fm1-live cannot take that patch (inside fm1-emu's workspace fm1-isa is a path dependency: cargo says "patch was not used"), so `tools/emu/live_build.sh` builds it from a copy of the pinned checkout with the fixed fm1-isa swapped in and `core_isa_patch.py` applied (`tools/emu/target/fm1-emu-src`); fm1-live builds without all four fixes (markers `.isa-fixed` to `.isa-fixed-4`, not `.isa-fixed-5`) are rebuilt. The first entry: the
 forward `if ((R & #h) == #i) goto #i` (6 bytes, `..ff60`) had a 13-bit offset field (bits 32..44, learned from
 samples with short jumps) while its `!=` sibling has 15 (bits 32..46). A JieLi build that jumps 8 KB or more forward
 with it stopped the emulator at boot with UnknownInstruction (every build from the cpu-opt work on, 2026-10-18: pc
@@ -20,7 +20,14 @@ bits 28..31, source = 20..23, shift register = 24..27). The third (2026-10-29): 
 samples shifted by r0..r7 only) and masks that pin bit 27, so `r0 = r1 | (1 << r15) #` (pages_turn, the row a knob
 turns, from the knob turns of #340 on) decoded as another instruction: every knob click on the device page reached a
 module index that did not exist, the row stayed, and the patch was still marked edited. They have the `&` pair's layout
-now. fm1-core already runs `#` pairs with the second instruction
+now. The fourth (2026-11-16): the read-modify-write shifts by a register, `[R+#i] op= R` (`6e e8`), had only `>>=` and
+`>>>=`, each fitted to its one corpus sample with constant operands, so `[r0+0] <<= r2` (`6e e8 00 02` in `ring_scale`,
+#978; JieLi's compiler fuses even a volatile read, shift and store into it) stopped every smoke and scenario check at
+pc 0x020267e0. All four (`<<=`, `<<<=`, `>>=`, `>>>=`) now have pi32v2-isa's layout (`rmw.lsl.r` etc.: base = bits
+28..31, count register = 24..27, offset = 4 × sext(bits 18..23), op = bits 16..17) and the semantics measured on an
+FM-1: the word at base + offset is shifted by the register's low 8 bits (32 or more acting as 32, `<<<` saturating) and
+written back, registers and flags untouched; fm1-core's store arm had no shifts, so `core_isa_patch.py` adds them
+(`cargo test` in `tools/emu` runs all 65536 encodings). fm1-core already runs `#` pairs with the second instruction
 seeing the old registers. The firmware CI keeps the ELF and
 its disassembly (artifact `matryoshka-elf`) for tracing such faults to a function.
 
