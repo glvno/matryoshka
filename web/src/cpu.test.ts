@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { CPU, cpuEstimate, runCost } from './cpu';
+import { cardCosts, cardCostText, CPU, cpuEstimate, runCost } from './cpu';
+import { allModules, assembliesOf } from './assembly';
 import { cpuChecks, looseModel } from './cpu-checks';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, EDITOR_ONLY, validatePatch } from './patch';
@@ -148,4 +149,35 @@ describe('CPU estimate with two cores (docs/measurements/cpu-survey-2026-11-14-r
       expect(e.oneCoreUs - e.us).toBeLessThanOrEqual(steady(o) - steady(s) + 60);   // (60 us: the second core's idle cost and its noise)
     });
   }
+});
+
+// #942: each card's share of the block, a poly card's per voice, an assembly card the sum of everything inside it
+describe('card costs', () => {
+  const p = relocatedPatches['Io 4']();
+  const est = cpuEstimate(p);
+  const costs = cardCosts(p, est);
+  const block = CPU.cyclesPerUs * CPU.blockUs;
+  it('gives each module its share of the block, all its copies', () => {
+    for (const m of est.modules) expect(costs.modules.get(m.id)!.share).toBeCloseTo(m.cycles / block, 9);
+  });
+  it('gives a module of a poly group what one voice costs', () => {
+    const poly = est.modules.find((m) => m.copies > 1)!;
+    const c = costs.modules.get(poly.id)!;
+    expect(c.voices).toBe(poly.copies);
+    expect(c.perVoice! * c.voices!).toBeCloseTo(c.share, 9);
+    expect(cardCostText(c)).toMatch(/%\/v$/);
+  });
+  it('sums an assembly card over every module inside it, its voices too', () => {
+    const top = assembliesOf(p).find((a) => a.poly)!;
+    const ids = new Set(allModules(p, top));
+    const inside = est.modules.filter((m) => ids.has(m.id));
+    const c = costs.assemblies.get(top.id)!;
+    expect(c.share).toBeCloseTo(inside.reduce((s, m) => s + m.cycles, 0) / block, 9);
+    expect(c.perVoice).toBeCloseTo(inside.filter((m) => m.copies > 1).reduce((s, m) => s + m.cycles / m.copies, 0) / block, 9);
+  });
+  it('leaves out a card the FM-1 never runs (the Scope)', () => {
+    const q = relocatedPatches['Io 4']();
+    const scope = addModule(q, DEFS.scope, 0, 0);
+    expect(cardCosts(q, cpuEstimate(q)).modules.has(scope.id)).toBe(false);
+  });
 });
