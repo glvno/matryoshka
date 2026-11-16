@@ -265,5 +265,20 @@ int main(int argc, char **argv)
     }
     printf("max_err %.6f at %ld  rms_err %.6f  rel_rms %.5f  bad %.4f%%  ref_peak %.4f\n", maxe, maxat, sqrt(sum / (2.0 * (double)total)),
            refsum > 0 ? sqrt(sum / refsum) : 0.0, 100.0 * (double)bad / (double)total, maxref);
+    if (getenv("HOST_TEST_FLOOR")) {        /* #969 (tools/floor_test.sh): the last second, both sides. A floor: the C output
+                                             * holds at or above -120 dBFS rms while the reference is 10 dB or more below it */
+        long from = total > (long)ENG_SR ? total - (long)ENG_SR : 0;
+        double cs = 0, rs = 0, cdb, rdb;
+        for (i = from; i < total; i++) {
+            double a = l[i] / 65536.0, b = r[i] / 65536.0;
+            cs += a * a + b * b;
+            rs += (double)ref[2 * i] * ref[2 * i] + (double)ref[2 * i + 1] * ref[2 * i + 1];
+        }
+        cdb = cs > 0 ? 10 * log10(cs / (2.0 * (double)(total - from))) : -999;
+        rdb = rs > 0 ? 10 * log10(rs / (2.0 * (double)(total - from))) : -999;
+        printf("tail: C %.1f dBFS, reference %.1f dBFS: %s\n", cdb, rdb, cdb >= -120 && cdb - rdb >= 10 ? "FLOOR" : "clear");
+        if (cdb >= -120 && cdb - rdb >= 10)
+            return 3;
+    }
     return 0;
 }

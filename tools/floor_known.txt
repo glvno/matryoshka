@@ -1,0 +1,2 @@
+# Floors tools/floor_test.sh knows about and that are not fixed yet (#969): one kit per line, then its floor as measured.
+# A listed kit still fails the check if it is clear: delete its line with the fix.
