@@ -19,7 +19,8 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG = ROOT / 'tools/ci_checks.json'
 # web tests a release-candidate run keeps out of coverage (D-147): renders too slow to pass their limits instrumented
-SLOW_RENDERS = ('src/levels-*.test.ts', 'src/headroom-*.test.ts', 'src/kit909.test.ts', 'scripts/audition-render.test.ts')
+SLOW_RENDERS = ('src/levels-*.test.ts', 'src/headroom-*.test.ts', 'src/kit909.test.ts', 'src/shared-levels.test.ts',
+                'scripts/audition-render.test.ts')
 
 
 def git(*args, root=ROOT):
