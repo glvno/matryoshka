@@ -4,9 +4,10 @@
 pi32v2 cores, timers, interrupts, SPI flash, the 240×240 LCD, the key matrix and encoders, the MASTER pot, the I2S
 audio and the TRS MIDI input. Our `matryoshka.bin` runs on it unchanged. `tools/emu/` is a small Rust crate (`m1emu`)
 on fm1-emu's `fm1-core` / `fm1-soc`, pinned to commit `7ca5b96` in `tools/emu/Cargo.toml` (a git dependency, nothing
-of fm1-emu is copied into this repository). Two decoder fixes are applied to it at build time: `tools/emu/isa_fix.sh` copies
-fm1-emu's `fm1-isa` crate from cargo's checkout into `tools/emu/target/fm1-isa`, corrects two decoder entries and hands
-cargo a `patch` through `--config` (`emu_smoke.sh` and `npm run emu` do this for m1emu). fm1-live cannot take that patch (inside fm1-emu's workspace fm1-isa is a path dependency: cargo says "patch was not used"), so `tools/emu/live_build.sh` builds it from a copy of the pinned checkout with the fixed fm1-isa swapped in (`tools/emu/target/fm1-emu-src`); fm1-live builds without both fixes (markers `.isa-fixed`, `.isa-fixed-2`, not `.isa-fixed-3`) are rebuilt. The first entry: the
+of fm1-emu is copied into this repository). Two changes are applied to it at build time: `tools/emu/isa_fix.sh` copies
+fm1-emu's `fm1-isa` crate from cargo's checkout into `tools/emu/target/fm1-isa` and corrects its decoder entries, and
+copies `fm1-core` into `tools/emu/target/fm1-core` with the hook the timing model needs (`tools/emu/core_timing_patch.py`,
+below). It writes a cargo config file that patches both in and prints its path for `--config` (`emu_smoke.sh` and `npm run emu` do this for m1emu). fm1-live cannot take that patch (inside fm1-emu's workspace fm1-isa is a path dependency: cargo says "patch was not used"), so `tools/emu/live_build.sh` builds it from a copy of the pinned checkout with the fixed fm1-isa swapped in (`tools/emu/target/fm1-emu-src`); fm1-live builds without both fixes (markers `.isa-fixed`, `.isa-fixed-2`, not `.isa-fixed-3`) are rebuilt. The first entry: the
 forward `if ((R & #h) == #i) goto #i` (6 bytes, `..ff60`) had a 13-bit offset field (bits 32..44, learned from
 samples with short jumps) while its `!=` sibling has 15 (bits 32..46). A JieLi build that jumps 8 KB or more forward
 with it stopped the emulator at boot with UnknownInstruction (every build from the cpu-opt work on, 2026-10-18: pc
@@ -118,6 +119,12 @@ command; deployment neither downloads arbitrary reports nor reruns tests.
   level warnings fail). `tools/emu/target/release/m1emu run BIN --ms N --keys SCRIPT --snap MS,.. --wav F
   --flash-in F --flash-out F --text S` is a free run (SCRIPT as fm1-emu's: `800:n7,1500:n7^,2000:e6:1,2500:mc005`;
   snapshots as `lcd_MS.png` in the current directory).
+- `tools/emu/target/release/m1emu cpu BIN --elf ELF` runs the test rig's CPU survey on the emulator: each factory slot
+  loaded by program change, 0, 1, 4 and 8 notes held 2 s, the longest audio interrupt every 0.5 s and the mean of the
+  rest. `--modtime` adds each module's time a half buffer. Both are read from the firmware's own counters, at the
+  addresses in the same build's ELF (artifact `matryoshka-elf`), and written as JSON in the shapes of
+  `tools/rig_cpu_survey.py` and `tools/m1_link.py modtime`. Run it under the timing model (below) to compare with the
+  rig; `tools/emu/timing_fit.py measure` runs it over the whole bank, several emulators at once.
 
 ## The editor link: `m1emu serve` and the scenarios
 
@@ -420,6 +427,67 @@ Build `m1emu` first; `M1EMU` can name another built copy. Run this focused check
 builds before their rig install. The failing AOT build from CI run 42673451565 crosses the bound in `process` at
 startup, even though its ordinary boot check passed.
 
+## The timing model
+
+Without it, fm1-emu charges one cycle an instruction at 240 MHz, with no cache and no flash wait states, and the test
+rig runs the same firmware about twice as long. `M1EMU_TIMING=tools/emu/timing.txt` runs any `m1emu` command under a
+model of the device's timing (`tools/emu/src/timing.rs`, [D-1155](ledger/releases.md#D-1155), issue #947). The model
+is off by default, and no gate uses it.
+
+- **What it charges.** Each instruction the interpreter runs gets a cost for its kind (plain, load, store, multiply,
+  divide, branch, a push or pop of several words, system), a cost when the next instruction does not follow on, a
+  stall when it reads what the load just before it loaded, and a refill for every miss in the flash: code through the
+  instruction cache, data through the data cache, each shared by both cores. RAM has no cache. A data read from the
+  flash that hits costs a cycle less than a load from RAM. While core 1 runs a job (its code in the flash rather than
+  its idle loop in RAM), every instruction on either core costs `dual` more: the cores share the bus and the caches.
+  Cycles count at the device's 360 MHz and are turned into the emulator's 240 MHz cycles. The timers, the audio
+  interrupt and the firmware's own clock then see the device's time: its CPU readouts, its overload guard and
+  `m1emu cpu` all read device microseconds. The extra cycles go into the time on core 0 and come out of core 1's slice.
+- **The hook.** fm1-core does not say which instruction runs. `tools/emu/core_timing_patch.py` adds a call that does
+  (`Bus::retire`: its address, length, kind and the registers it reads and writes), in the copy `isa_fix.sh` makes. A
+  bus without the model ignores it. The JIT does not call it, so the model needs the interpreter (`M1EMU_JIT` and
+  `M1EMU_TIMING` refuse each other). With the model off, the emulator plays the same samples as before the hook.
+- **The costs** (`tools/emu/timing.txt`) were measured on FM-1s by others, with the core's own cycle counter
+  ([pi32v2-isa](https://github.com/jvitkauskas/pi32v2-isa/blob/main/hw/README.md): `fm1-2026-11-15-excprobe` and
+  `fm1-2026-11-14-bootprobe`), and in [OpenPocket's AC791N handbook](https://github.com/isod89/openpocket/blob/main/docs/HARDWARE-HANDBOOK.md):
+  a plain instruction 1 cycle, a load 2 (3 when the next instruction uses it), a store 2, a multiply 2, a divide 10, a
+  branch not taken 1 and taken 7.5, about 480 cycles to fetch 64 bytes of cold, sequential code. The cache geometry
+  (32 KB, 4 ways of 64-byte lines) is fm1-emu upstream's, which fits the rig better than DUB-1's notes (8 ways of
+  32-byte lines).
+- **Two numbers are fitted**, with `tools/emu/timing_fit.py grid` on measurements the rig made in pairs:
+  - `dual` (0.1), from the same build with and without the second core's work (CI run 43551744806,
+    `cpu-survey-2026-11-14-rig-two-core.json` and `-split-off.json`; the emulator sets `lanes_off`, as `tools/m1_link.py
+    cores split off` does). With one overall scale instead, the model read the one-core run 5 % higher than the
+    two-core one and credited the second core with 1.19 times the saving the rig measured.
+  - `miss` (720 cycles a line, against the 480 measured for sequential code), from the same source built at -O2, at
+    -Os, and at -Os with its hot code in RAM (CI run 42673451565, `2026-11-09-rig-experiments.json`), and from the
+    module times of CI run 43568683497 (`docs/measurements/modtime-2026-11-14-rig.json`).
+
+  With both, the overall scale that would bring the paired measurements to the rig came out at 1.005, so `residual`
+  is 1. A -Os build still reads about 6 % higher than its -O2 twin (two patches measured; cause not found).
+- **How close it is**, the steady mean of the audio interrupt (`m1emu cpu`) against `tools/rig_cpu_survey.py` on the
+  same build, every factory patch at 0, 1, 4 and 8 keys, phases muted on either side left out. None of these surveys
+  was used in the fit:
+
+  | build | phases | emulator / rig | within 10 % | without the model |
+  |---|---|---|---|---|
+  | 747a1ea (CI run 43652865098, `cpu-survey-2026-11-14-rig-modctl.json`) | 88 | 1.03, 5.5 % rms | 93 % | 0.44 |
+  | release-1.11 head (CI run 42462440721) | 113 | 0.95, 9.0 % rms | 84 % | 0.53 |
+  | release-1.10 head (CI run 42096997058) | 120 | 0.95, 6.6 % rms | 95 % | 0.57 |
+
+  Per module, on the module-time build, the patch sums come within 3.7 % rms (worst 6.6 %). On release-1.11 the model
+  mutes 808 Kit and Verona Drum 1 under overload, as the rig did, and no patch the rig played. It sees only part of a
+  change in code layout: from release-1.10 to 1.11, Init with 8 keys went from 498 to 594 µs on the rig.
+- **Refitting.** For a build, download its `matryoshka-firmware` and `matryoshka-elf` artifacts into one directory.
+  `python3 tools/emu/timing_fit.py residual DIR RIG.json tools/emu/timing.txt` against that build's rig module times
+  (`tools/m1_link.py --rig modtime 3 --notes 8 --patch NAME` per patch, collected as in
+  `docs/measurements/modtime-2026-11-14-rig.json`) prints the overall scale it needs: near 1 means the model holds.
+  `timing_fit.py grid tools/emu/timing.txt TWO_CORE_DIR O2_DIR,SIZE_DIR,RAM_DIR MODTIME_DIR 480,0.1 720,0.1 ..` refits
+  `miss` and `dual` on the paired measurements (about 6 minutes a point on a 14-core Mac; the runs are cached in
+  `build/emu/timing-cache`). Check with `timing_fit.py measure DIR OUT.json --survey --timing tools/emu/timing.txt`
+  and `timing_fit.py compare OUT.json --survey RIG_SURVEY.json --quiet`. A cost measured anew on the chip goes into
+  `timing.txt` with its source, and the two fitted numbers are refitted after it.
+
 ## What it does not cover
 
 - **USB is not emulated**: the smoke test leaves out the editor's SysEx link and USB MIDI (`emu:scenarios` covers them, above), firmware installs (M-UPGRADE, the loader), recovery and
@@ -428,12 +496,13 @@ startup, even though its ordinary boot check passed.
   registers of the supply setup at boot (`tools/emu/src/p33.rs`, #735): they start at the boot loader's levels, and the
   second core starts only when the setup reads them back right. The boot-loop guard and MENU > UPDATE MODE cannot be
   checked. fm1-live (`npm run emu`'s window) has no such model, so it shows 1 CORE.
-- **Timing**: one instruction per cycle at 240 MHz, no cache or flash wait states. The CPU figure in the top bar
-  (303 Acid 11-12 %, the device measured 12 % at M1-0.2) is a rough guide only; the window at 120 MHz shows twice it.
-  The test rig runs the same patches about twice as long as the emulator does, and a change in code or memory layout
-  can make every patch slower on the device while the emulator's figures stay the same: the release-1.11 batch cost
-  80 to 270 µs more a half on the rig (`docs/measurements/2026-11-08-rig-release-1.11.md`), and the emulator measured
-  Init, Simple FM, Mono Lead and the 909 Kit within 1 % of 1.10.0. Only the rig measures such a change.
+- **Timing**: without the timing model (above), one instruction per cycle at 240 MHz, no cache or flash wait states.
+  The CPU figure in the top bar (303 Acid 11-12 %, the device measured 12 % at M1-0.2) is then a rough guide only; the
+  window at 120 MHz shows twice it. The test rig runs the same patches about twice as long as the plain emulator, and a
+  change in code or memory layout can make every patch slower on the device while the plain emulator's figures stay the
+  same: the release-1.11 batch cost 80 to 270 µs more a half on the rig (`docs/measurements/2026-11-08-rig-release-1.11.md`),
+  and the plain emulator measured Init, Simple FM, Mono Lead and the 909 Kit within 1 % of 1.10.0. The timing model
+  sees part of such a change; the rig still measures it.
 - **The second core** runs after each slice of 1,024 instructions of the first, for as many instructions as cycles
   passed. `m1emu` ends its turn early when it is back where the turn started (the same program counter, registers and
   stack pointer) and has written nothing since: its idle loop, which only reads its mailbox (`tools/emu/src/machine.rs`

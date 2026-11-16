@@ -9,8 +9,10 @@
 # r0..r7 only) and masks that pin bit 27, so `r0 = r1 | (1 << r15) #` (pages_turn, the row a knob turns) decoded as
 # another instruction and a knob click on the device page reached a module that did not exist; they get the `&` pair's
 # layout as well. This copies fm1-isa from cargo's checkout of the
-# pinned fm1-emu into tools/emu/target/fm1-isa, widens those entries like their siblings, and prints the cargo --config that
-# patches it in. Run from the repo root; cargo build --release --manifest-path tools/emu/Cargo.toml --config "$(...)".
+# pinned fm1-emu into tools/emu/target/fm1-isa and widens those entries like their siblings. It also copies fm1-core to
+# tools/emu/target/fm1-core with the retire hook the timing model needs (tools/emu/core_timing_patch.py, #947; buses
+# without a timing model ignore it). It prints the cargo --config that patches both in.
+# Run from the repo root; cargo build --release --manifest-path tools/emu/Cargo.toml --config "$(...)".
 set -euo pipefail
 M=tools/emu/Cargo.toml
 REV=$(sed -n 's/.*fm1-core.*rev = "\([0-9a-f]*\)".*/\1/p' "$M")
@@ -53,4 +55,15 @@ open(p, 'w').write(s)
 PY
   touch "$DST/.fixed3-$REV"
 fi
-echo "patch.'https://github.com/joakimeriksson/fm1-emu'.fm1-isa.path='$PWD/$DST'"
+CORE=tools/emu/target/fm1-core
+MARK="$CORE/.timing-$(shasum tools/emu/core_timing_patch.py | cut -c1-12)-$REV"   # (a changed patch script redoes the copy)
+if [ ! -f "$MARK" ]; then
+  rm -rf "$CORE"; cp -R "${SRC%/fm1-isa}/fm1-core" "$CORE"
+  sed -i.bak -e 's/^edition.workspace = true/edition = "2021"/' -e 's/^license.workspace = true/license = "MIT"/' "$CORE/Cargo.toml"
+  python3 tools/emu/core_timing_patch.py "$CORE/src"
+  touch "$MARK"
+fi
+# (one --config value cannot patch two crates: cargo refuses inline tables there, so it is a config file)
+CFG="$PWD/tools/emu/target/fm1-patch.toml"
+printf "[patch.'https://github.com/joakimeriksson/fm1-emu']\nfm1-isa = { path = '%s' }\nfm1-core = { path = '%s' }\n" "$PWD/$DST" "$PWD/$CORE" > "$CFG"
+echo "$CFG"

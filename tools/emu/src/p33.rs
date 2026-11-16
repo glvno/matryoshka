@@ -17,6 +17,8 @@
 use fm1_core::{Bus, JitMem};
 use fm1_soc::Soc;
 
+use crate::timing::Timing;
+
 pub const CON: u32 = 0x13e08;
 pub const DAT: u32 = 0x13e0c;
 /// P3_ANA_CON0..2, 5..9, 0x16 and VLD_KEEP 0x17
@@ -85,23 +87,34 @@ impl P33 {
     }
 }
 
-/// cpu0's bus: the SoC, with P33's two registers taken here ([`P33`])
+/// cpu0's bus: the SoC, with P33's two registers taken here ([`P33`]), and the timing model when there is one
+/// (timing.rs: its cycles go into the SoC's time)
 pub struct Cpu0Bus<'a> {
     pub soc: &'a mut Soc,
     pub p33: &'a mut P33,
+    pub timing: Option<&'a mut Timing>,
 }
 
 impl Bus for Cpu0Bus<'_> {
     #[inline(always)]
     fn read8(&mut self, a: u32) -> u8 {
+        if let Some(t) = self.timing.as_deref_mut() {
+            t.data(0, a);
+        }
         <Soc as Bus>::read8(self.soc, a)
     }
     #[inline(always)]
     fn read16(&mut self, a: u32) -> u16 {
+        if let Some(t) = self.timing.as_deref_mut() {
+            t.data(0, a);
+        }
         <Soc as Bus>::read16(self.soc, a)
     }
     #[inline(always)]
     fn read32(&mut self, a: u32) -> u32 {
+        if let Some(t) = self.timing.as_deref_mut() {
+            t.data(0, a);
+        }
         let v = <Soc as Bus>::read32(self.soc, a); // (P33's too: fm1-soc logs it, as before)
         match a {
             CON => self.p33.con,
@@ -127,7 +140,16 @@ impl Bus for Cpu0Bus<'_> {
         }
     }
     fn tick(&mut self) -> bool {
+        if let Some(t) = self.timing.as_deref_mut() {
+            self.soc.periph.cycles += t.take(0);
+        }
         <Soc as Bus>::tick(self.soc)
+    }
+    #[inline(always)]
+    fn retire(&mut self, pc: u32, len: u8, cls: u8, rw: u32) {
+        if let Some(t) = self.timing.as_deref_mut() {
+            t.retire(0, pc, len, cls, rw);
+        }
     }
     fn irq_pending(&self) -> bool {
         <Soc as Bus>::irq_pending(self.soc)

@@ -1,11 +1,13 @@
 //! One emulated FM-1 running our app.bin: fm1-emu's cpu0 + SoC (+ cpu1 once released, until held), the
 //! front panel driven at the current emulated time, the audio and the LCD read back.
-//! The run loop is fm1-live's (`fm1_soc::machine::run_dual` over `run_blocks`), with P33 modelled for cpu0 (p33.rs).
+//! The run loop is fm1-live's (`fm1_soc::machine::run_dual` over `run_blocks`), with P33 modelled for cpu0 (p33.rs) and
+//! the timing model (timing.rs) when M1EMU_TIMING names its parameters.
 
 use fm1_core::{Bus, Cpu};
 use fm1_soc::{machine, Action, Soc, RAM_BASE, VEC_BASE};
 
 use crate::p33::{Cpu0Bus, P33};
+use crate::timing::Timing;
 
 pub const RAM_SIZE: usize = 1 << 20;
 /// app.bin offset 0 runs from here (firmware/app.ld); the XIP window starts 0x120 before it.
@@ -40,6 +42,8 @@ pub struct Machine {
     pub p33: P33,
     /// every audio sample so far (interleaved stereo, 16 bit)
     pub audio: Vec<i16>,
+    /// the timing model (timing.rs), when M1EMU_TIMING names its parameters
+    pub timing: Option<Box<Timing>>,
 }
 
 /// fm1-soc's `run_dual` (cpu0 in slices, cpu1 after each with as many instructions as cycles passed) with its own
@@ -53,9 +57,10 @@ pub struct Machine {
 fn run_dual(
     cpu1: &mut Option<Cpu>,
     soc: &mut Soc,
+    timing: &mut Option<Box<Timing>>,
     n: u32,
     jit_on: bool,
-    mut run0: impl FnMut(&mut Soc, u32) -> Result<(), String>,
+    mut run0: impl FnMut(&mut Soc, Option<&mut Timing>, u32) -> Result<(), String>,
 ) -> Result<(), String> {
     let mut done = 0;
     while cpu1.is_none() {
@@ -68,7 +73,7 @@ fn run_dual(
         }
         let k = (n - done).min(4096);
         soc.periph.room_cap = k as u64;
-        run0(soc, k)?;
+        run0(soc, timing.as_deref_mut(), k)?;
         done += k;
     }
     let Some(c1) = cpu1.as_mut() else { return Ok(()) };
@@ -79,18 +84,18 @@ fn run_dual(
         if soc.core_paused(0) {
             soc.advance(k as u64); // held by cpu1 (C0_CON bit 2): time runs on
         } else {
-            run0(soc, k)?;
+            run0(soc, timing.as_deref_mut(), k)?;
         }
         done += k;
         let dt = soc.periph.cycles - c0;
-        run_cpu1(c1, soc, dt)?;
+        run_cpu1(c1, soc, timing.as_deref_mut(), dt)?;
     }
     Ok(())
 }
 
 /// fm1-soc's `run_blocks` (cpu0's block loop: interrupts between blocks, the SoC serviced when a tick is due), with
 /// cpu0 on [`Cpu0Bus`]: P33 modelled (p33.rs)
-fn run_blocks(cpu: &mut Cpu, soc: &mut Soc, p33: &mut P33, n: u32, pending_tick: &mut bool) -> Result<(), String> {
+fn run_blocks(cpu: &mut Cpu, soc: &mut Soc, p33: &mut P33, mut timing: Option<&mut Timing>, n: u32, pending_tick: &mut bool) -> Result<(), String> {
     let mut done = 0u32;
     let mut ticked = std::mem::take(pending_tick);
     while done < n {
@@ -107,7 +112,7 @@ fn run_blocks(cpu: &mut Cpu, soc: &mut Soc, p33: &mut P33, n: u32, pending_tick:
                 }
             }
         }
-        let mut bus = Cpu0Bus { soc: &mut *soc, p33: &mut *p33 };
+        let mut bus = Cpu0Bus { soc: &mut *soc, p33: &mut *p33, timing: timing.as_deref_mut() };
         match cpu.run_fast(&mut bus, n - done) {
             Ok((0, _)) => {
                 if let Err(e) = cpu.step(&mut bus) {
@@ -130,19 +135,31 @@ fn run_blocks(cpu: &mut Cpu, soc: &mut Soc, p33: &mut P33, n: u32, pending_tick:
     Ok(())
 }
 
-/// fm1-soc's `Core1Bus`, counting cpu1's writes (`run_cpu1`)
+/// fm1-soc's `Core1Bus`, counting cpu1's writes (`run_cpu1`), with the timing model when there is one (its cycles come
+/// out of cpu1's slice: `stalled`)
 struct Core1Writes<'a> {
     bus: machine::Core1Bus<'a>,
     writes: u64,
+    timing: Option<&'a mut Timing>,
+    stalled: u64,
 }
 impl Bus for Core1Writes<'_> {
     fn read8(&mut self, a: u32) -> u8 {
+        if let Some(t) = self.timing.as_deref_mut() {
+            t.data(1, a);
+        }
         self.bus.read8(a)
     }
     fn read16(&mut self, a: u32) -> u16 {
+        if let Some(t) = self.timing.as_deref_mut() {
+            t.data(1, a);
+        }
         self.bus.read16(a)
     }
     fn read32(&mut self, a: u32) -> u32 {
+        if let Some(t) = self.timing.as_deref_mut() {
+            t.data(1, a);
+        }
         self.bus.read32(a)
     }
     fn write8(&mut self, a: u32, v: u8) {
@@ -158,7 +175,20 @@ impl Bus for Core1Writes<'_> {
         self.bus.write32(a, v)
     }
     fn tick(&mut self) -> bool {
+        if let Some(t) = self.timing.as_deref_mut() {
+            let s = t.take(1);
+            if s > 0 {
+                self.stalled += s;
+                self.bus.add_ticks(s);
+            }
+        }
         self.bus.tick()
+    }
+    #[inline(always)]
+    fn retire(&mut self, pc: u32, len: u8, cls: u8, rw: u32) {
+        if let Some(t) = self.timing.as_deref_mut() {
+            t.retire(1, pc, len, cls, rw);
+        }
     }
     fn irq_pending(&self) -> bool {
         self.bus.irq_pending()
@@ -196,8 +226,9 @@ impl Bus for Core1Writes<'_> {
 
 /// fm1-soc's `run_cpu1` (up to `cycles` instructions: interrupts from its own bank, then single steps while it looks for
 /// the way back to where it started, then stretches of 256), ending early only at the start's pc, registers and stack
-/// pointer with no write since the start (`run_dual`)
-fn run_cpu1(c1: &mut Cpu, soc: &mut Soc, cycles: u64) -> Result<(), String> {
+/// pointer with no write since the start (`run_dual`). Under the timing model, `cycles` are emulator cycles: an
+/// instruction's own one plus what the model charged it.
+fn run_cpu1(c1: &mut Cpu, soc: &mut Soc, mut timing: Option<&mut Timing>, cycles: u64) -> Result<(), String> {
     // The SoC does not enforce core 1's hardware stack guard. For a stack regression check, single-step that core
     // and stop when its user stack crosses the supplied lower bound (app.ld's _c1_ustack + the 256-byte guard).
     // Checking only after run_fast could miss a function that crosses the bound and returns within one block.
@@ -225,7 +256,12 @@ fn run_cpu1(c1: &mut Cpu, soc: &mut Soc, cycles: u64) -> Result<(), String> {
             }
         }
         let chunk = if probing > 0 { 1 } else { left.min(256) };
-        let mut bus = Core1Writes { bus: machine::Core1Bus { soc: &mut *soc, budget: chunk.max(64) + 1 }, writes: 0 };
+        let mut bus = Core1Writes {
+            bus: machine::Core1Bus { soc: &mut *soc, budget: chunk.max(64) + 1 },
+            writes: 0,
+            timing: timing.as_deref_mut(),
+            stalled: 0,
+        };
         let k = if let Some(low) = stack_low {
             let pc = c1.pc;
             if c1.user && watch_pc == Some(pc) && !WATCH_HIT.swap(true, std::sync::atomic::Ordering::Relaxed) {
@@ -249,7 +285,7 @@ fn run_cpu1(c1: &mut Cpu, soc: &mut Soc, cycles: u64) -> Result<(), String> {
             }
         };
         writes += bus.writes;
-        left = left.saturating_sub(k);
+        left = left.saturating_sub(k + bus.stalled);
         probing = probing.saturating_sub(k);
         if writes == 0 && c1.pc == probe.0 && c1.sp == probe.2 && c1.regs == probe.1 {
             break; // polling with nothing to do
@@ -287,7 +323,13 @@ impl Machine {
         let mut cpu = Cpu::new(ENTRY);
         // fm1-emu's AArch64 JIT (macOS only) renders our engine wrong at 7ca5b96 (most factory patches come out
         // 20-50 dB too quiet, at random); its interpreter matches the reference engine. M1EMU_JIT=1 turns it on.
+        // The timing model needs the interpreter (only it reports each instruction).
+        let timing = Timing::from_env().map(Box::new);
         cpu.jit_on = std::env::var_os("M1EMU_JIT").is_some();
+        if cpu.jit_on && timing.is_some() {
+            eprintln!("M1EMU_JIT and M1EMU_TIMING exclude each other: the timing model needs the interpreter");
+            std::process::exit(2);
+        }
         cpu.user = true; // the SPL hands cpu0 over in user mode (fm1-emu)
         let params = RAM_BASE + 0x7fc00; // the SPL's boot parameters: an all-zero pair (fm1-emu)
         soc.write32(params, params + 0x40);
@@ -297,7 +339,7 @@ impl Machine {
             a += 4;
         }
         cpu.regs[0] = params;
-        Machine { cpu, cpu1: None, soc, pending_tick: false, p33: P33::new(), audio: Vec::new() }
+        Machine { cpu, cpu1: None, soc, pending_tick: false, p33: P33::new(), audio: Vec::new(), timing }
     }
 
     pub fn ms(&self) -> u64 {
@@ -308,8 +350,8 @@ impl Machine {
     pub fn run_to(&mut self, ms: u64) -> Result<(), String> {
         while self.ms() < ms {
             let jit = self.cpu.jit_on;
-            let Machine { cpu, cpu1, soc, pending_tick, p33, .. } = self;
-            run_dual(cpu1, soc, 100_000, jit, |soc, k| run_blocks(cpu, soc, p33, k, pending_tick))?;
+            let Machine { cpu, cpu1, soc, pending_tick, p33, timing, .. } = self;
+            run_dual(cpu1, soc, timing, 100_000, jit, |soc, t, k| run_blocks(cpu, soc, p33, t, k, pending_tick))?;
             // the hold (#271): fm1-emu pauses a core only by the stock firmware's C1_CON bit 2 pulse; our firmware (X0X's
             // and Melodee's hold) sets bit 1 and clears bit 3. Bit 3 clear stops core 1 here; a later start (0x10008 bit
             // 3 again) boots it from its entry word, as the chip does. Checked between stretches of 100,000 instructions.
