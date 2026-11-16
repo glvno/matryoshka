@@ -48,7 +48,8 @@ export function schedule(p: Patch, groups: DeviceGroup[], cost: (type: string) =
   const visited = new Set<number>(), order: number[] = [];
   function visit(m: number): void {
     visited.add(m);
-    for (const c of cables) if (c.to === m && !visited.has(c.from)) visit(c.from);
+    // (a cable into a Part orders nothing: engine.c visit, patch.ts processingOrder)
+    for (const c of cables) if (c.to === m && !visited.has(c.from) && p.modules[m].type !== 'part') visit(c.from);
     order.push(m);
   }
   p.modules.forEach((_, m) => { if (!visited.has(m)) visit(m); });
