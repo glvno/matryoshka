@@ -694,7 +694,8 @@ typedef struct {
                                       * are as they play: a cable into the Part's assign / unison / priority input moves
                                       * them (#681, group_cables; priority: format 61) */
     uint8_t mode;                    /* that Part's node, 0xFF: no such cable */
-    int32_t cv[3];                   /* what those cables carried at the end of the last block (Q16) */
+    int8_t pshift;                   /* the priority cable's whole choices (vsetting's rounding, held to +-2; in padding) */
+    int32_t cv[2];                   /* what the assign and unison cables carried at the end of the last block (Q16) */
     int8_t detune[ENG_MAX_PARTS];    /* each part's flaws (patch.ts PartFlaw): cents, */
     uint8_t drift[ENG_MAX_PARTS];    /* % of +-20 cents of wander, */
     int8_t bright[ENG_MAX_PARTS];    /* semitones on the filter cutoffs, */
@@ -2188,7 +2189,8 @@ int eng_load(const uint8_t *p, uint32_t len)
         g->assign0 = g->assign;
         g->unison0 = g->unison;
         g->mode = 0xFFu;
-        g->cv[0] = g->cv[1] = g->cv[2] = 0;
+        g->cv[0] = g->cv[1] = 0;
+        g->pshift = 0;
         g->priority = g->priority0 = q[3] & 0x7Fu;
         g->no_steal = q[3] >> 7;
         for (v = 0; v < ENG_MAX_PARTS; v++) {
@@ -2936,7 +2938,7 @@ int eng_poly_set(uint32_t g, uint32_t field, uint32_t v)
     } else if (field == ENG_POLY_LEGATO) x->legato = (uint8_t)v;
     else if (field == ENG_POLY_PRIORITY) {
         x->priority0 = (uint8_t)v;
-        x->priority = (uint8_t)vsetting(v, x->cv[2], 2);
+        x->priority = (uint8_t)vsetting(v, (int32_t)x->pshift * ENG_ONE, 2);
     }
     else if (field == ENG_POLY_STACK) {
         uint32_t i;
@@ -3493,9 +3495,9 @@ static void __attribute__((noinline)) group_cables(void)
         }
         g->cv[0] = cv[0];
         g->cv[1] = cv[1];
-        g->cv[2] = cv[2];
+        g->pshift = (int8_t)vsetting(2, cv[2], 4) - 2;   /* (whole choices, -2..2: enough for a setting of 0..2) */
         g->assign = (uint8_t)vsetting(g->assign0, cv[0], 3);
-        g->priority = (uint8_t)vsetting(g->priority0, cv[2], 2);
+        g->priority = (uint8_t)vsetting(g->priority0, (int32_t)g->pshift * ENG_ONE, 2);
         u = vsetting(g->unison0, cv[1], 2);
         if (u != (int32_t)g->unison)
             unison_switch(g, (uint32_t)u);
