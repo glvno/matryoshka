@@ -6,10 +6,11 @@ import { describe, expect, it } from 'vitest';
 import { isMatryoshkaProduct, OPEN_HEAD_SHA256, MVAVE_LOADER_SHA256, OPEN_RELEASES, STOCK_V15_SHA256, V15_HEAD_SHA256, crc16, headIs, headWhich, logicalImage, openPackageProblem, productOf, validateOpenPackage, validateStockPackage, workbenchPackages } from './flasher/fm1pkg.js';
 // @ts-ignore untyped JS module
 import { Updater, bootMismatch, headProblem, loaderFits, pack7, readHead, unpack7 } from './flasher/fm1ota.js';
-import { BOOT_CODE_IS_OPEN, MVAVE_WORKBENCH, guardUnload, ignoresEditor, surveyFm1s } from './flasher';
-import { CMD, frame, parse } from './protocol';
+import { BOOT_CODE_IS_OPEN, INSTALL_SHARE, MVAVE_WORKBENCH, guardUnload, ignoresEditor, installMeter, surveyFm1s, type InstallMeter } from './flasher';
+import { CMD, FACT, frame, parse } from './protocol';
 import { CHOOSE_FIRST, installPlan, LOADER_AMONG_SEVERAL, OTHER_CHANGED } from './fm1-choice';
-import { commands, fakeAccess, fakeFm1 } from './test-fm1s';
+import { installFactory } from './factory-content';
+import { commands, fakeAccess, fakeFactoryRegion, fakeFm1 } from './test-fm1s';
 
 const stock = (): Uint8Array => new Uint8Array(readFileSync(new URL('../public/firmware/FM-1_015.fwsc', import.meta.url)));
 
@@ -435,5 +436,49 @@ describe('several FM-1s: an install goes to the chosen one only (D-965)', () => 
     const ota = { link: { send: (b: number[]) => (sent.push(b), true), close: () => {} }, id: { text: 'ota-FM-1_700' } };
     await expect(up.write(ota, new Uint8Array(8), () => {})).rejects.toThrow(OTHER_CHANGED);
     expect(sent).toEqual([]);
+  });
+});
+
+describe("the Install panel's one bar with the factory sounds", () => {
+  const factoryImage = new Uint8Array(readFileSync(new URL('../public/firmware/matryoshka-factory.bin', import.meta.url)));
+  /** an install's bar as the panel's step() drives it: the write's request counts, the restart, the FM-1 back */
+  const firmware = (meter: InstallMeter): void => {
+    for (let n = 1; n <= 2400; n += 7) meter.write(n);
+    meter.restart();
+    meter.back();
+  };
+  const monotonic = (values: number[]): boolean => values.every((v, k) => !k || v >= values[k - 1]);
+
+  it('ticked: the bar reaches 100 % only after FACT_COMMIT is acknowledged, never going back, each step named', async () => {
+    const region = fakeFactoryRegion();
+    const seen: { value: number; step: string; committed: boolean }[] = [];
+    const meter = installMeter((value, step) => seen.push({ value, step, committed: region.sent.includes(FACT.commit) }), true);
+    firmware(meter);
+    expect(Math.max(...seen.map((s) => s.value))).toBe(INSTALL_SHARE.back);
+    await installFactory(region.ask, factoryImage, meter.factory);
+    expect(region.sent.at(-1)).toBe(FACT.commit);
+    expect(seen.every((s) => s.value < 100)).toBe(true);   // (the last page's progress comes before the commit)
+    meter.done();
+    expect(seen.at(-1)).toEqual({ value: 100, step: 'Done', committed: true });
+    expect(monotonic(seen.map((s) => s.value))).toBe(true);
+    expect(seen.find((s) => s.value > INSTALL_SHARE.write)?.step).toMatch(/^Step 2 of 2/);
+    expect(seen[0].step).toMatch(/^Step 1 of 2/);
+  });
+  it('ticked: a refused commit leaves the bar short of complete', async () => {
+    const region = fakeFactoryRegion(2);
+    const values: number[] = [];
+    const meter = installMeter((value) => values.push(value), true);
+    firmware(meter);
+    await expect(installFactory(region.ask, factoryImage, meter.factory)).rejects.toThrow();
+    expect(Math.max(...values)).toBeLessThan(100);
+  });
+  it('unticked: the firmware alone fills the bar, 100 % once the write is done', () => {
+    const values: number[] = [];
+    const meter = installMeter((value) => values.push(value), false);
+    for (let n = 1; n <= 2400; n += 7) meter.write(n);
+    expect(values.at(-1)).toBe(99);
+    meter.restart();
+    expect(values.at(-1)).toBe(100);
+    expect(monotonic(values)).toBe(true);
   });
 });
