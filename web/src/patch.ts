@@ -764,7 +764,9 @@ export function disconnect(p: Patch, cable: Cable): void {
 
 /**
  * Processing order: every module after the modules that feed it. A cable that closes a loop is
- * a feedback cable and reads the producer's previous block (one block of delay).
+ * a feedback cable and reads the producer's previous block (one block of delay). A cable into a Part (its assign, unison
+ * and priority inputs, read after the block: engine.ts voicingCables) orders nothing, so a switch the voice's own gates
+ * drive does not put a block of delay into the voice (engine.c `visit` does the same).
  */
 export function processingOrder(p: Patch): { order: number[]; feedback: Set<Cable> } {
   const ids = p.modules.map((m) => m.id);
@@ -772,7 +774,9 @@ export function processingOrder(p: Patch): { order: number[]; feedback: Set<Cabl
   const order: number[] = [];
   const feedback = new Set<Cable>();
   const incoming = new Map<number, Cable[]>();
+  const parts = new Set(p.modules.filter((m) => m.type === 'part').map((m) => m.id));
   for (const c of p.cables) {
+    if (parts.has(c.to.module)) continue;
     const l = incoming.get(c.to.module) ?? [];
     l.push(c);
     incoming.set(c.to.module, l);

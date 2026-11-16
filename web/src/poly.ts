@@ -48,8 +48,8 @@ import {
 export const MAX_POLY = 4;
 /** the allocator module's type */
 export const ALLOC = 'alloc';
-/** a Voicing's inputs that move its settings by a cable (#681); its Part has them too (deviceView) */
-export const VOICING_CABLE_INPUTS = ['assign', 'unison'];
+/** a Voicing's inputs that move its settings by a cable (#681; priority: format 61); its Part has them too (deviceView) */
+export const VOICING_CABLE_INPUTS = ['assign', 'unison', 'priority'];
 
 export interface PolyGroup {
   asm: AssemblyInst;

@@ -103,7 +103,7 @@ describe('trig conditions: the words (format 60)', () => {
   });
 
   it('the binary: format 60 only for a patch with a condition, a word more for each', () => {
-    expect(VERSION).toBe(FORMAT_CONDS);
+    expect(VERSION).toBeGreaterThanOrEqual(FORMAT_CONDS);
     expect(SECTION_FORMATS[60]).toBe('trig conditions');
     const plain = rig([notes.map((n) => ({ ...n, cond: undefined }))]).p, cond = rig([notes]).p, one = rig([[notes[0], ...notes.slice(1).map((n) => ({ ...n, cond: undefined }))]]).p;
     expect(encodePatch(plain)[1]).toBeLessThan(60);

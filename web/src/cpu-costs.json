@@ -30427,7 +30427,7 @@
   },
   "part": {
    "run": 590,
-   "cv": 111,
+   "cv": 124,
    "dims": [
     {
      "output": "low"
@@ -37423,91 +37423,91 @@
  "checks": [
   {
    "name": "Monolith D",
-   "cycles": 231424
+   "cycles": 231436
   },
   {
    "name": "Oracle V",
-   "cycles": 713590
+   "cycles": 713641
   },
   {
    "name": "Silver Box",
-   "cycles": 164723
+   "cycles": 164735
   },
   {
    "name": "Hera 6",
-   "cycles": 681511
+   "cycles": 681603
   },
   {
    "name": "Sallen 20",
-   "cycles": 303363
+   "cycles": 303375
   },
   {
    "name": "Expander S",
-   "cycles": 569298
+   "cycles": 569349
   },
   {
    "name": "Algo Four",
-   "cycles": 794892
+   "cycles": 794996
   },
   {
    "name": "Canvas",
-   "cycles": 454811
+   "cycles": 454823
   },
   {
    "name": "Wanderer",
-   "cycles": 295051
+   "cycles": 295077
   },
   {
    "name": "Briefcase 3",
-   "cycles": 490589
+   "cycles": 490601
   },
   {
    "name": "Io 4",
-   "cycles": 562987
+   "cycles": 563079
   },
   {
    "name": "Vernon 100",
-   "cycles": 349874
+   "cycles": 349900
   },
   {
    "name": "8 Lire",
-   "cycles": 352247
+   "cycles": 352245
   },
   {
    "name": "Elvira 2",
-   "cycles": 189780
+   "cycles": 189778
   },
   {
    "name": "Scrounge",
-   "cycles": 546874
+   "cycles": 546872
   },
   {
    "name": "Meridian 8",
-   "cycles": 604449
+   "cycles": 604447
   },
   {
    "name": "808 Kit",
-   "cycles": 682834
+   "cycles": 682832
   },
   {
    "name": "909 Kit",
-   "cycles": 705706
+   "cycles": 705704
   },
   {
    "name": "Cassia 1",
-   "cycles": 737914
+   "cycles": 737965
   },
   {
    "name": "Verona Drum 1",
-   "cycles": 596708
+   "cycles": 596706
   },
   {
    "name": "Shush 101",
-   "cycles": 214835
+   "cycles": 224124
   },
   {
    "name": "Acid, 4 parts",
-   "cycles": 236242
+   "cycles": 236295
   },
   {
    "name": "Acid, morph",
@@ -37523,7 +37523,7 @@
   },
   {
    "name": "assembly Algo Four",
-   "cycles": 725078
+   "cycles": 725184
   },
   {
    "name": "assembly auto pan",
@@ -37535,7 +37535,7 @@
   },
   {
    "name": "assembly basic poly",
-   "cycles": 180607
+   "cycles": 180660
   },
   {
    "name": "assembly boom kick",
@@ -37551,15 +37551,15 @@
   },
   {
    "name": "assembly Briefcase 3",
-   "cycles": 345826
+   "cycles": 345839
   },
   {
    "name": "assembly Canvas",
-   "cycles": 449858
+   "cycles": 449871
   },
   {
    "name": "assembly Cassia 1",
-   "cycles": 683451
+   "cycles": 683504
   },
   {
    "name": "assembly clap",
@@ -37579,7 +37579,7 @@
   },
   {
    "name": "assembly drift poly",
-   "cycles": 281327
+   "cycles": 281380
   },
   {
    "name": "assembly drum kit",
@@ -37603,7 +37603,7 @@
   },
   {
    "name": "assembly Expander S",
-   "cycles": 506277
+   "cycles": 506330
   },
   {
    "name": "assembly filter voice",
@@ -37631,7 +37631,7 @@
   },
   {
    "name": "assembly Hera 4",
-   "cycles": 625106
+   "cycles": 625186
   },
   {
    "name": "assembly hihat",
@@ -37639,7 +37639,7 @@
   },
   {
    "name": "assembly Io 4",
-   "cycles": 505420
+   "cycles": 505500
   },
   {
    "name": "assembly kalimba",
@@ -37663,11 +37663,11 @@
   },
   {
    "name": "assembly mono lead",
-   "cycles": 71288
+   "cycles": 71302
   },
   {
    "name": "assembly Monolith D",
-   "cycles": 163455
+   "cycles": 163469
   },
   {
    "name": "assembly noise voice",
@@ -37683,7 +37683,7 @@
   },
   {
    "name": "assembly Oracle V",
-   "cycles": 645113
+   "cycles": 645166
   },
   {
    "name": "assembly overdrive",
@@ -37719,7 +37719,7 @@
   },
   {
    "name": "assembly Sallen 20",
-   "cycles": 269367
+   "cycles": 269381
   },
   {
    "name": "assembly Scrounge",
@@ -37731,7 +37731,7 @@
   },
   {
    "name": "assembly Shush 101",
-   "cycles": 158145
+   "cycles": 164258
   },
   {
    "name": "assembly sidechain pump",
@@ -37739,7 +37739,7 @@
   },
   {
    "name": "assembly Silver Box",
-   "cycles": 106772
+   "cycles": 106785
   },
   {
    "name": "assembly slicer",
@@ -37767,7 +37767,7 @@
   },
   {
    "name": "assembly supersaw stack",
-   "cycles": 287361
+   "cycles": 287414
   },
   {
    "name": "assembly tabla",
@@ -37787,7 +37787,7 @@
   },
   {
    "name": "assembly Vernon 100",
-   "cycles": 287431
+   "cycles": 287445
   },
   {
    "name": "assembly Verona Drum 1",
@@ -37807,7 +37807,7 @@
   },
   {
    "name": "assembly Wanderer",
-   "cycles": 229093
+   "cycles": 229107
   },
   {
    "name": "assembly wavetable pad",

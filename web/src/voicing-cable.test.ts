@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// A Voicing's assign and unison on a cable (#681): one Selector row is a polysynth's key assign switch.
+// A Voicing's assign, unison and priority on a cable (#681, #976): one Selector row is a polysynth's key assign switch.
 import { expect, it } from 'vitest';
 import { BLOCK, Engine } from './engine';
 import { DEFS, voicingSetting } from './modules';
-import { addModule, connect, emptyPatch } from './patch';
+import { addModule, connect, emptyPatch, processingOrder } from './patch';
 import { deviceView } from './poly';
-import { encodePatch, formatOf, FORMAT_1_11 } from './patchbin';
+import { encodePatch, formatOf, FORMAT_1_11, FORMAT_PRIORITY_CABLE } from './patchbin';
 
 /** four voices; a Selector (Io 4's KEY ASSIGNMENT: POLY I, POLY II, UNISON I, UNISON II) into unison by its value and
  * into assign by its second position's gate */
@@ -104,4 +104,55 @@ it('the device form hands the cables to the Part; the patch needs the 1.11 forma
 it('a one-voice Voicing with a cable gets a group of its own', () => {
   const { p } = setup(1);
   expect(deviceView(p, true).groups).toHaveLength(1);
+});
+
+it('note priority on a cable (#976): the SH-101 ENV TRIGGER switch, last note at GATE+TRIG, the lower note at GATE and LFO', () => {
+  const p = emptyPatch();
+  const main = addModule(p, DEFS.fm1, 0, 0), alloc = addModule(p, DEFS.alloc, 0, 0), out = addModule(p, DEFS.output, 0, 0);
+  const sel = addModule(p, DEFS.select, 0, 0);
+  Object.assign(sel.params, { count: 3, pos: 1 });
+  Object.assign(alloc.params, { voices: 1 });
+  connect(p, DEFS, { module: main.id, port: 'keys' }, { module: alloc.id, port: 'keys' });
+  connect(p, DEFS, { module: alloc.id, port: 'gate' }, { module: out.id, port: 'l' });
+  connect(p, DEFS, { module: sel.id, port: 'g2' }, { module: alloc.id, port: 'priority' });
+  connect(p, DEFS, { module: sel.id, port: 'g3' }, { module: alloc.id, port: 'priority' });
+  const e = new Engine(44118);
+  e.load(p);
+  const l = new Float32Array(BLOCK), r = new Float32Array(BLOCK);
+  const block = (): void => e.render(l, r);
+  const notes = (): number[] => e.voiceNotes().map((v) => (v.on ? v.note : -1));
+  block();
+  // GATE+TRIG: the last key held sounds
+  e.noteOn(60); e.noteOn(67); block();
+  expect(notes()).toEqual([67]);
+  e.noteOff(60); e.noteOff(67); block();
+  // GATE and LFO: the lower key held sounds
+  for (const pos of [2, 3]) {
+    e.setParam(sel.id, 'pos', pos); block();
+    e.noteOn(60); e.noteOn(67); block();
+    expect(notes()).toEqual([60]);
+    e.noteOff(60); block();
+    expect(notes()).toEqual([67]);
+    e.noteOff(67); block();
+  }
+  // a cable into the priority input needs format 61 (firmware before it refuses the port); without it the patch stays older
+  expect(formatOf(p)).toBe(FORMAT_PRIORITY_CABLE);
+  expect(encodePatch(p)[1]).toBe(FORMAT_PRIORITY_CABLE);
+  p.cables = p.cables.filter((c) => c.to.port !== 'priority');
+  expect(formatOf(p)).toBeLessThan(FORMAT_PRIORITY_CABLE);
+});
+
+it('a cable into a Part orders nothing: a switch the voice\'s own gate drives adds no block of delay (#976)', () => {
+  const p = emptyPatch();
+  const main = addModule(p, DEFS.fm1, 0, 0), alloc = addModule(p, DEFS.alloc, 0, 0), sel = addModule(p, DEFS.select, 0, 0);
+  Object.assign(alloc.params, { voices: 1 });
+  connect(p, DEFS, { module: main.id, port: 'keys' }, { module: alloc.id, port: 'keys' });
+  connect(p, DEFS, { module: alloc.id, port: 'gate' }, { module: sel.id, port: 'in1' });
+  connect(p, DEFS, { module: sel.id, port: 'g2' }, { module: alloc.id, port: 'priority' });
+  const out = addModule(p, DEFS.output, 0, 0);
+  connect(p, DEFS, { module: sel.id, port: 'out' }, { module: out.id, port: 'l' });
+  const dev = deviceView(p).patch;
+  const { order, feedback } = processingOrder(dev);
+  expect(feedback.size).toBe(0);
+  expect(order.indexOf(alloc.id)).toBeLessThan(order.indexOf(sel.id));
 });

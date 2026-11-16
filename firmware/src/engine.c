@@ -690,10 +690,12 @@ typedef struct {
     uint8_t no_steal;               /* format 37: refuse extra polyphonic notes instead of taking a held voice */
     uint32_t down[4];               /* all 128 held input keys, even if stolen or refused */
     uint8_t unison, stack;           /* unison mode and its voice count (0: all parts) */
-    uint8_t assign0, unison0;        /* assign and unison as the record sets them; assign and unison are as they play: a
-                                      * cable into the Part's assign / unison input moves them (#681, group_cables) */
+    uint8_t assign0, unison0, priority0; /* assign, unison and priority as the record sets them; assign, unison and priority
+                                      * are as they play: a cable into the Part's assign / unison / priority input moves
+                                      * them (#681, group_cables; priority: format 61) */
     uint8_t mode;                    /* that Part's node, 0xFF: no such cable */
-    int32_t cv[2];                   /* what those cables carried at the end of the last block (Q16) */
+    int8_t pshift;                   /* the priority cable's whole choices (vsetting's rounding, held to +-2; in padding) */
+    int32_t cv[2];                   /* what the assign and unison cables carried at the end of the last block (Q16) */
     int8_t detune[ENG_MAX_PARTS];    /* each part's flaws (patch.ts PartFlaw): cents, */
     uint8_t drift[ENG_MAX_PARTS];    /* % of +-20 cents of wander, */
     int8_t bright[ENG_MAX_PARTS];    /* semitones on the filter cutoffs, */
@@ -1142,12 +1144,14 @@ static esig_t dummy_out[ENG_BLOCK], dummy_out1[ENG_BLOCK];   /* every unconnecte
 
 /* ------------------------------------------------------------------ patch loading */
 
+/* each module after its sources; a cable into a Part (assign, unison, priority: read after the block, group_cables)
+ * orders nothing, so a switch the voice's own gates drive puts no block of delay into the voice (patch.ts processingOrder) */
 static void visit(uint32_t id, uint8_t *st)
 {
     uint32_t c;
     st[id] = 1;
     for (c = 0; c < E.ncab; c++) {
-        if (E.to_m[c] != id)
+        if (E.to_m[c] != id || E.node[id].type == T_PART)
             continue;
         if (st[E.from_m[c]] == 0)
             visit(E.from_m[c], st);
@@ -1176,7 +1180,7 @@ typedef struct { esig_t *base; uint32_t n, values; int keep; } bufs_t;   /* the 
  * its copies)? */
 static int buf_split(const node_t *nd) { return nd->grp && nd->ninst >= 2u && nd->type != T_STEPS; }
 /* inputs read outside the module's turn: the Output's after the render, Main's morph and an Arpeggiator's before it, the
- * Part's assign and unison after it (group_cables) */
+ * Part's assign, unison and priority after it (group_cables) */
 static int buf_late(const node_t *nd) { return nd->type == T_OUTPUT || nd->type == T_FM1 || nd->type == T_ARP || nd->type == T_PART; }
 /* the sources summed into input j of module m (as eng_load wires them: every part of another group's output) */
 static uint32_t buf_nsrc(uint32_t m, uint32_t j)
@@ -2186,7 +2190,8 @@ int eng_load(const uint8_t *p, uint32_t len)
         g->unison0 = g->unison;
         g->mode = 0xFFu;
         g->cv[0] = g->cv[1] = 0;
-        g->priority = q[3] & 0x7Fu;
+        g->pshift = 0;
+        g->priority = g->priority0 = q[3] & 0x7Fu;
         g->no_steal = q[3] >> 7;
         for (v = 0; v < ENG_MAX_PARTS; v++) {
             const uint8_t *f = q + 4u + 5u * v;
@@ -2376,8 +2381,10 @@ int eng_load(const uint8_t *p, uint32_t len)
                 E.node[tm].ksrc = E.node[fm].type == T_FM1 ? 1u : (uint8_t)(2u + fm);
             }
         }
-        if (E.node[tm].type == T_PART && E.node[tm].grp)  /* a cable into a Part's assign or unison input (#681) */
+        if (E.node[tm].type == T_PART && E.node[tm].grp) {  /* a cable into a Part's assign, unison or priority input (#681) */
+            if (tp == PART_I_PRIORITY && p[1] < 61u) return -5;
             E.grp[E.node[tm].grp].mode = tm;
+        }
     }
     if (chained_keys && E.ntrk) {
         uint32_t bytes = (sizeof(key_memory_t) + 3u) & ~3u;
@@ -2899,8 +2906,8 @@ uint32_t eng_format(void) { return E.loaded ? E.format : 0u; }
 
 static void mono_update(grp_t *g);
 
-/* a Voicing's assign or unison with a cable into its input (modules.ts voicingSetting, #681): moved by whole choices, one
- * a unit (cv Q16, rounded to the nearest), within 0..top */
+/* a Voicing's assign, unison or priority with a cable into its input (modules.ts voicingSetting, #681): moved by whole
+ * choices, one a unit (cv Q16, rounded to the nearest), within 0..top */
 static int32_t vsetting(int32_t base, int32_t cv, int32_t top)
 {
     int32_t v = base + (int32_t)(((int64_t)cv + 32768) >> 16);
@@ -2913,7 +2920,7 @@ int eng_poly_get(uint32_t g, uint32_t field)
     if (!E.loaded || g >= E.ngrp || field >= ENG_NPOLY)
         return -1;
     x = &E.grp[1u + g];
-    return field == ENG_POLY_PARTS ? x->parts : field == ENG_POLY_ASSIGN ? x->assign0 : field == ENG_POLY_LEGATO ? x->legato : field == ENG_POLY_PRIORITY ? x->priority : field == ENG_POLY_UNISON ? x->unison0 : field == ENG_POLY_STACK ? x->stack : !x->no_steal;
+    return field == ENG_POLY_PARTS ? x->parts : field == ENG_POLY_ASSIGN ? x->assign0 : field == ENG_POLY_LEGATO ? x->legato : field == ENG_POLY_PRIORITY ? x->priority0 : field == ENG_POLY_UNISON ? x->unison0 : field == ENG_POLY_STACK ? x->stack : !x->no_steal;
 }
 
 int eng_module_group(uint32_t module) { return E.loaded && module < E.nmod ? E.node[module].grp : 0; }
@@ -2929,7 +2936,10 @@ int eng_poly_set(uint32_t g, uint32_t field, uint32_t v)
         x->assign0 = (uint8_t)v;
         x->assign = (uint8_t)vsetting(v, x->cv[0], 3);   /* (with a cable: moved by what it carries) */
     } else if (field == ENG_POLY_LEGATO) x->legato = (uint8_t)v;
-    else if (field == ENG_POLY_PRIORITY) x->priority = (uint8_t)v;
+    else if (field == ENG_POLY_PRIORITY) {
+        x->priority0 = (uint8_t)v;
+        x->priority = (uint8_t)vsetting(v, (int32_t)x->pshift * ENG_ONE, 2);
+    }
     else if (field == ENG_POLY_STACK) {
         uint32_t i;
         x->stack = (uint8_t)v;
@@ -3458,20 +3468,21 @@ static void __attribute__((noinline)) unison_switch(grp_t *g, uint32_t u)
         mono_update(g);
 }
 
-/* the end of a block (engine.ts voicingCables, #681): what the cables into each group's Part's assign and unison inputs
- * carry, their first sample (summed as the Part's input is), sets the group's assign and unison for the next block's keys */
+/* the end of a block (engine.ts voicingCables, #681): what the cables into each group's Part's assign, unison and priority
+ * inputs carry, their first sample (summed as the Part's input is), sets the group's assign, unison and priority for the
+ * next block's keys */
 static void __attribute__((noinline)) group_cables(void)
 {
     uint32_t k, c, v;
     for (k = 1; k <= E.ngrp; k++) {
         grp_t *g = &E.grp[k];
-        int32_t cv[2] = {0, 0}, u;
+        int32_t cv[3] = {0, 0, 0}, u;
         if (g->mode == 0xFFu)
             continue;
         for (c = 0; c < E.ncab; c++) {
             uint32_t fm = E.from_m[c], fp = E.from_p[c], tp = E.to_p[c];
             const node_t *f = &E.node[fm];
-            if (E.to_m[c] != g->mode || tp > PART_I_UNISON)
+            if (E.to_m[c] != g->mode || tp > PART_I_PRIORITY)
                 continue;
             if (f->grp && f->grp != k) {
                 int32_t w = para_w(fm, fp);
@@ -3484,7 +3495,9 @@ static void __attribute__((noinline)) group_cables(void)
         }
         g->cv[0] = cv[0];
         g->cv[1] = cv[1];
+        g->pshift = (int8_t)vsetting(2, cv[2], 4) - 2;   /* (whole choices, -2..2: enough for a setting of 0..2) */
         g->assign = (uint8_t)vsetting(g->assign0, cv[0], 3);
+        g->priority = (uint8_t)vsetting(g->priority0, (int32_t)g->pshift * ENG_ONE, 2);
         u = vsetting(g->unison0, cv[1], 2);
         if (u != (int32_t)g->unison)
             unison_switch(g, (uint32_t)u);

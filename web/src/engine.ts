@@ -141,10 +141,11 @@ interface Group {
   down: number[];
   /** where its notes come from: -1 the keys (Main), else the id of the Arpeggiator or Steps module that feeds its allocator */
   src: number;
-  /** its Voicing's assign and unison (0 off, 1 on, 2 share) as the patch sets them; cfg holds them as they play, moved by
-   * `cv`, what the cables into its Part's assign and unison inputs carried at the end of the last block (#681) */
-  base: [number, number];
-  cv: [number, number];
+  /** its Voicing's assign, unison (0 off, 1 on, 2 share) and priority as the patch sets them; cfg holds them as they play,
+   * moved by `cv`, what the cables into its Part's assign, unison and priority inputs carried at the end of the last block
+   * (#681) */
+  base: [number, number, number];
+  cv: [number, number, number];
 }
 /** a group's unison setting as one number: 0 off, 1 on, 2 share (engine.c grp_t unison) */
 const unisonOf = (cfg: PolyCfg): number => (cfg.unisonShare ? 2 : cfg.unison ? 1 : 0);
@@ -184,7 +185,7 @@ const KEYBOARD: PolyCfg = { parts: 1, assign: 0, legato: 0, priority: 0 };
 /** g: the poly group's index (its parts' drift seeds), -1 for the shared keyboard */
 const newGroup = (key: string, cfg: PolyCfg, g: number): Group => ({
   key, cfg: { ...cfg }, parts: Array.from({ length: cfg.parts }, (_, i) => newVoice(i, cfg.parts, driftSeed(g + 1, i))), held: [], rot: 0, down: [0, 0, 0, 0], src: -1,
-  base: [cfg.assign, unisonOf(cfg)], cv: [0, 0],
+  base: [cfg.assign, unisonOf(cfg), cfg.priority], cv: [0, 0, 0],
 });
 /** the tempo without a Main module */
 const TEMPO_DEFAULT = 120;
@@ -303,7 +304,7 @@ export class Engine {
     const oldGroups = new Map(this.groups.map((g) => [g.key, g]));
     const groupOf = new Map<number, number>();
     pg.forEach((x, i) => x.modules.forEach((id) => groupOf.set(id, i)));
-    // the groups whose Part has a cable into its assign or unison input (#681): they keep what it carried
+    // the groups whose Part has a cable into its assign, unison or priority input (#681): they keep what it carried
     const typeOf = new Map(patch.modules.map((m) => [m.id, m.type]));
     const cabled = new Set(patch.cables.filter((c) => typeOf.get(c.to.module) === 'part' && VOICING_CABLE_INPUTS.includes(c.to.port)).map((c) => groupOf.get(c.to.module) ?? -1));
     this.groups = pg.map((x, i) => {
@@ -311,8 +312,8 @@ export class Engine {
       const g = old ?? newGroup(x.key, x.cfg, i);
       const was = { ...g.cfg };
       g.cfg = { ...x.cfg };
-      g.base = [x.cfg.assign, unisonOf(x.cfg)];
-      if (!cabled.has(i)) g.cv = [0, 0];
+      g.base = [x.cfg.assign, unisonOf(x.cfg), x.cfg.priority];
+      if (!cabled.has(i)) g.cv = [0, 0, 0];
       this.voicingSet(g);
       // a change of unison mode regroups the parts (unisonSwitch); a new unison count while in unison takes the held keys again
       if (old && unisonOf(was) !== unisonOf(g.cfg)) this.unisonSwitch(g, unisonOf(was));
@@ -1401,10 +1402,11 @@ export class Engine {
     }
   }
 
-  /** a group's assign and unison as they play: the patch's, moved by its cables (modules.ts voicingSetting) */
+  /** a group's assign, unison and priority as they play: the patch's, moved by its cables (modules.ts voicingSetting) */
   private voicingSet(g: Group): void {
     const a = voicingSetting(g.base[0], g.cv[0], 3), u = voicingSetting(g.base[1], g.cv[1], 2);
     if (a !== g.cfg.assign) g.cfg.assign = a;
+    g.cfg.priority = voicingSetting(g.base[2], g.cv[2], 2);
     if (u !== unisonOf(g.cfg)) {
       g.cfg.unison = u > 0;
       g.cfg.unisonShare = u === 2;
@@ -1412,14 +1414,14 @@ export class Engine {
   }
 
   /**
-   * The end of a block (#681): what the cables into each Part's assign and unison inputs carry, their first sample (summed
-   * as the Part's input would be), sets its group's assign and unison for the keys of the next block (engine.c
-   * group_cables).
+   * The end of a block (#681): what the cables into each Part's assign, unison and priority inputs carry, their first
+   * sample (summed as the Part's input would be), sets its group's assign, unison and priority for the keys of the next
+   * block (engine.c group_cables).
    */
   private voicingCables(): void {
     for (const node of this.modeParts) {
       const g = this.groups[node.group];
-      const cv: [number, number] = [0, 0];
+      const cv: [number, number, number] = [0, 0, 0];
       for (const s of node.sources) {
         const k = VOICING_CABLE_INPUTS.indexOf(s.port);
         if (k < 0) continue;

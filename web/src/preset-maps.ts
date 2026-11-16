@@ -387,9 +387,13 @@ export const HAND_MAPS: HandMap[] = [
     },
   },
   // ---- Shush 101's MOD SYNC (#956): a preset stored before the row came keeps its modulator on its RATE in Hz (FREE), so
-  // it plays as it was stored; DIVISION starts at Init.
+  // it plays as it was stored; DIVISION starts at Init. BEND VCO (#976): its octaves were added to the 2 semitones the
+  // key's pitch carried; now they are all the bend there is (0 .. 1 octave), so a stored value comes with 1/6 octave more.
   {
-    engine: 'Shush 101', from: 'c5bee090', to: '1700115e', why: '#956: MOD SYNC and DIVISION; stored presets stay FREE',
-    rows: { 'lfo#11.sync': { line: 'lfo#11.rate', mul: [0], add: [0], min: 0, max: 1 } },
+    engine: 'Shush 101', from: 'c5bee090', to: '2ad05152', why: '#956: MOD SYNC and DIVISION, stored presets stay FREE; #976: BEND VCO carries the whole bend',
+    rows: {
+      'lfo#11.sync': { line: 'lfo#11.rate', mul: [0], add: [0], min: 0, max: 1 },
+      'mixer#29.l1': { line: 'scale#29.gain', mul: [1], add: [1 / 6], min: 0, max: 1 },
+    },
   },
 ];
