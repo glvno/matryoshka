@@ -102,6 +102,10 @@ A band under the emulated FM-1 in the [Emulator view](#emulator-view) that shows
 
 The whole tutorial as data: every chapter and step in `web/src/tutorial/course.json`.
 
+### Current patch
+
+The patch being worked on, with its latest edits. While a [snapshot](#snapshot) is on screen the editor keeps the current patch aside, and the switch always comes back to it.
+
 ### Cursor entry
 
 Recording in the editor with the transport stopped: the keys held together fill the cursor's step, then the cursor moves on. The FM-1's counterpart is step record. Formerly called step entry.
@@ -422,7 +426,7 @@ An assembly whose members run once per voice of the Voicing module that feeds it
 
 ### Preset
 
-A stored set of card row values for one structure; any assembly device of that structure can load it, in the editor and on the FM-1. A device has presets when some exist for its structure; a plain module never does. Avoid: variant, sound, snapshot (the A/B flip), program.
+A stored set of card row values for one structure; any assembly device of that structure can load it, in the editor and on the FM-1. A device has presets when some exist for its structure; a plain module never does. Avoid: variant, sound, snapshot (a version of the patch kept to compare), program.
 
 ### Preset chip
 
@@ -530,7 +534,7 @@ One of the bank's patch places on the FM-1, shown numbered from 01: 60 of them w
 
 ### Snapshot
 
-One of the two versions of the patch the A/B flip switches between, A or B. The editor keeps them while the page is open; they are not saved with the patch. Not the same as the [B side](#b-side) of patch morphing.
+A version of the patch kept to compare by ear with the [current patch](#current-patch). Snapshots are lettered A, B, C… in the order they are taken. The browser keeps them with the open patch, also after a reload, and forgets them when another patch opens; they are never saved in the patch. Not the same as the [B side](#b-side) of patch morphing.
 
 ### Song
 

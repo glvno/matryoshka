@@ -2167,8 +2167,8 @@ async function main() {
       await emu.elapse(1200);
       await page.evaluate((nm) => window.__m1test.presetOnFm1('Cassia 1', 'Glass Bell', nm, true), NAME);
     },
-    // #103: the A/B flip with Live on. A = Init; B = Init with K1..K4 turned down on the FM-1. Values only: the flip sends
-    // PARAM frames and no upload, and each side sounds as it did when it was set
+    // #103, #943: the snapshot switch with Live on. Snapshot A = Init; the current patch = Init with K1..K4 turned down on
+    // the FM-1. Values only: each switch sends PARAM frames and no upload, and each stop sounds as it did
     async abFlip() {
       // (Tempo: Patch for this one, D-907: with the global tempo, Main's tempo row on the FM-1 moves no patch value, and the
       // flip is about the patch's own values; Global again at the end)
@@ -2187,15 +2187,14 @@ async function main() {
         await sleep(300);   // (the page's own settle after the dialog closes: an Alt+B at once was lost, 2026-11-04)
       };
       const values = async () => JSON.stringify(JSON.parse(await patchJson()).modules.map((m) => [m.id, m.params, m.att ?? null, !!m.bypass]));
-      await palette('Set snapshot A');
+      await palette('Take a snapshot');
       const a = await values();
       const pA = await emu.notePeak();
       for (const k of [ENC.k1, ENC.k1 + 1, ENC.k1 + 2, ENC.k4]) await emu.turn(k, -40);
       await check('a/b: K1..K4 on the FM-1 change the editor\'s patch', !!(await until(async () => (await values()) !== a, 3000)));
       await emu.elapse(800);
       const pB = await emu.notePeak();
-      await palette('Set snapshot B');
-      const b = await values();
+      const b = await values();   // (the current patch: one snapshot compares with it, #943)
       const flip = async (to, want, peak) => {
         await page.evaluate(() => window.__sent.splice(0));
         await page.keyboard.press('Alt+KeyB');
@@ -2211,7 +2210,7 @@ async function main() {
         await loudCheck(`a/b: Alt+B to ${to}: the FM-1 sounds as ${to} did`, p, Math.abs(p - peak) <= Math.max(QUIET, 0.15 * peak), `peak ${p}, ${to} was ${peak} (A ${pA}, B ${pB})`);
       };
       await flip('A', a, pA);
-      await flip('B', b, pB);
+      await flip('the current patch', b, pB);
       await emu.snap('ab-flip');
       await shot('ab-flip');
       await tempoPatch(false);
