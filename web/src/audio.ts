@@ -50,6 +50,15 @@ export class AudioHost {
   onEntry: (e: { id: number; token: number; note: number; notes: number[]; vel: number; down: boolean }) => void = () => {};
   /** an envelope display's copies (Engine.envStates) */
   onEnv: (key: string, states: { stage: number; v: number; newest: boolean }[] | null) => void = () => {};
+  /** a test phrase played once is over (#945) */
+  onPhraseEnd: () => void = () => {};
+  /** a chunk of the Output's recording (#946): left and right at `sampleRate`; `last`: the recording stopped with it */
+  onRecording: (chunk: [Float32Array, Float32Array], last: boolean) => void = () => {};
+
+  /** the engine's sample rate (the audio device's), 0 before the audio starts */
+  get sampleRate(): number {
+    return this.ctx?.sampleRate ?? 0;
+  }
 
   get running(): boolean {
     return this.ctx?.state === 'running';
@@ -88,6 +97,10 @@ export class AudioHost {
           this.onEntry(ev.data.entry);
         } else if (Array.isArray(ev.data?.recorded)) {
           this.onRecorded(ev.data.recorded);
+        } else if (ev.data?.phrase === false) {
+          this.onPhraseEnd();
+        } else if (Array.isArray(ev.data?.rec)) {
+          this.onRecording(ev.data.rec, !!ev.data.last);
         } else if (typeof ev.data?.env === 'string') {
           this.onEnv(ev.data.env, ev.data.states);
         } else if (typeof ev.data?.view === 'string') {

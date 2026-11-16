@@ -4,6 +4,7 @@ import { Engine } from './engine';
 import type { Patch, Range } from './patch';
 import type { SongEntry, StepNote } from './track';
 import { ViewStream, VoiceStreams, voiceSums, type ViewData } from './scope-stream';
+import { PhrasePlayer, type Phrase } from './phrases';
 
 declare const sampleRate: number;
 declare class AudioWorkletProcessor {
@@ -56,6 +57,10 @@ export type HostMsg =
   | { t: 'clockrun'; on: boolean }
   | { t: 'bend'; v: number }
   | { t: 'cc'; n: number; v: number }
+  /** a test phrase (#945, phrases.ts) played into the keys, block-exact; another replaces it, null stops it */
+  | { t: 'phrase'; phrase: Phrase | null; loop?: boolean }
+  /** record the engine's output (#946) and send it back in chunks (`rec`), the last one when it stops */
+  | { t: 'record'; on: boolean }
   | { t: 'at'; v: number }
   | { t: 'panic' };
 
@@ -63,6 +68,8 @@ export type HostMsg =
 const CLOCK_GONE = Math.round((0.5 * sampleRate) / 128);
 /** blocks between two display messages (Scope screens, envelope dots): 12 x 128 = 1536 samples, about 32 ms */
 const DISPLAY_EVERY = 12;
+/** frames in one chunk of a recording sent to the page (about a third of a second) */
+const REC_CHUNK = 16384;
 
 class ModularProcessor extends AudioWorkletProcessor {
   private engine = new Engine(sampleRate);
@@ -87,6 +94,13 @@ class ModularProcessor extends AudioWorkletProcessor {
   /** the transport as last told to the page (play once starts and stops it of itself) */
   private runSent = false;
   private stepsBlocks = 0;
+  /** the test phrase playing (#945) */
+  private phrase: PhrasePlayer | null = null;
+  private phraseOn = (note: number, vel: number): void => this.engine.noteOn(note, vel);
+  private phraseOff = (note: number): void => this.engine.noteOff(note);
+  /** the recording (#946): the chunk being filled and how far */
+  private rec: [Float32Array, Float32Array] | null = null;
+  private recAt = 0;
   constructor() {
     super();
     this.port.onmessage = (ev: MessageEvent<HostMsg>) => {
@@ -145,6 +159,14 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'bend') this.engine.bend(m.v);
         else if (m.t === 'cc') this.engine.cc(m.n, m.v);
         else if (m.t === 'at') this.engine.aftertouch(m.v);
+        else if (m.t === 'phrase') {
+          this.phrase?.release(this.phraseOff);
+          this.phrase = m.phrase ? new PhrasePlayer(m.phrase, !!m.loop, sampleRate) : null;
+        }
+        else if (m.t === 'record') {
+          if (m.on && !this.rec) (this.rec = [new Float32Array(REC_CHUNK), new Float32Array(REC_CHUNK)]), (this.recAt = 0);
+          else if (!m.on && this.rec) this.sendRec(true);
+        }
         else if (m.t === 'panic') this.engine.allNotesOff();
       } catch (e) {
         this.port.postMessage({ error: String(e) });
@@ -161,6 +183,28 @@ class ModularProcessor extends AudioWorkletProcessor {
       this.port.postMessage({ view: key, chans, voices, sr: sampleRate }, bufs);
     }
     for (const [key, id] of this.envs) this.port.postMessage({ env: key, states: this.engine.envStates(id) });
+  }
+
+  /** the recorded chunk to the page (transferred); `last`: the recording ends with it */
+  private sendRec(last: boolean): void {
+    const [l, r] = this.rec!;
+    const n = this.recAt;
+    const chunk = [l.slice(0, n), r.slice(0, n)];
+    this.port.postMessage({ rec: chunk, last }, chunk.map((c) => c.buffer));
+    this.rec = last ? null : [new Float32Array(REC_CHUNK), new Float32Array(REC_CHUNK)];
+    this.recAt = 0;
+  }
+
+  /** this block's output into the recording */
+  private feedRec(left: Float32Array, right: Float32Array): void {
+    for (let i = 0; i < left.length;) {
+      const n = Math.min(left.length - i, REC_CHUNK - this.recAt);
+      this.rec![0].set(left.subarray(i, i + n), this.recAt);
+      this.rec![1].set(right.subarray(i, i + n), this.recAt);
+      this.recAt += n;
+      i += n;
+      if (this.recAt === REC_CHUNK) this.sendRec(false);
+    }
   }
 
   /** each Scope input: the sum of what is cabled into it (as Engine.probe sees each output) */
@@ -196,7 +240,12 @@ class ModularProcessor extends AudioWorkletProcessor {
     const out = outputs[0];
     try {
       if (this.sinceClock <= CLOCK_GONE && ++this.sinceClock > CLOCK_GONE) this.engine.clockExternal(false);
+      if (this.phrase && !this.phrase.block(out[0].length, this.phraseOn, this.phraseOff)) {
+        this.phrase = null;
+        this.port.postMessage({ phrase: false });   // (a phrase played once is over: the page's Phrase button follows)
+      }
       this.engine.render(out[0], out[1] ?? out[0]);
+      if (this.rec) this.feedRec(out[0], out[1] ?? out[0]);
       if (this.views.size) this.feedViews(out[0].length);
       if (this.views.size || this.envs.size) this.sendDisplays();
       if (this.watched.size) this.feedWatch(out[0].length);
