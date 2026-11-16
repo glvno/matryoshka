@@ -93,7 +93,7 @@ import type { ScreenSpec } from './scope-view';
 import { listenable, type ListenSource } from './listen';
 import type { EnvSpec } from './env-view';
 import { flipPlan } from './ab';
-import { body, sameVersion, Snapshots, type Snapshot } from './snapshots';
+import { body, sameVersion, Snapshots, type Snapshot, type SnapshotMark } from './snapshots';
 import { isGlobalTempo, patchTempo, tempo } from './tempo';
 import { EXCLUDED_TYPES,
   addChild,
@@ -165,8 +165,11 @@ function kindMark(kind: ButtonKind | 'main'): SVGSVGElement {
   return svg;
 }
 const HISTORY = 40;
-/** an undo step: the patch (Editor.snap) and the stop it belongs to, a snapshot's letter or null for the current patch */
-type UndoStep = { s: string; shown: string | null };
+/** snapshots a step added or removed, each with its place in the list (added: after the step; removed: before it) */
+type ListChange = { added: { s: Snapshot; at: number }[]; removed: { s: Snapshot; at: number }[] };
+/** an undo step: the patch (Editor.snap) and the stop it belongs to, a snapshot's letter or null for the current patch;
+ *  `list`: a step that added or removed snapshots (Make candidates, Cut the losers, #996), with the current patch kept aside */
+type UndoStep = { s: string; shown: string | null; list?: { change: ListChange; current: string | null } };
 /** a logarithmic slider's value rounded to the parameter's step (a glide time to the ms, a cutoff to the Hz), not to a whole number */
 function snapTo(pd: ParamDef, v: number): number {
   const step = pd.step ?? 0;
@@ -705,8 +708,9 @@ export class Editor {
     this.endPass(); // (a pass being recorded is a step of its own)
     const e = this.history.pop();
     if (e === undefined) return this.ev.onError('nothing to undo');
-    this.future.push({ s: this.snap(), shown: this.snaps.shown });
-    this.travel(e);
+    this.future.push(this.stepNow(e));
+    if (e.list) this.unwind(e, -1);
+    else this.travel(e);
     this.ev.onHistory?.('undo');
   }
 
@@ -716,8 +720,9 @@ export class Editor {
     this.endPass(); // (a pass being recorded is a step of its own)
     const e = this.future.pop();
     if (e === undefined) return this.ev.onError('nothing to redo');
-    this.history.push({ s: this.snap(), shown: this.snaps.shown });
-    this.travel(e);
+    this.history.push(this.stepNow(e));
+    if (e.list) this.unwind(e, 1);
+    else this.travel(e);
     this.ev.onHistory?.('redo');
   }
 
@@ -742,6 +747,36 @@ export class Editor {
     this.patch.name = name;   // (undo leaves the name alone, but each stop has its own)
     this.snaps.shown = to;
     this.ev.onSnapshots?.();
+  }
+
+  /** the state now as the counterpart of step `e` on the other stack (a list step keeps its change) */
+  private stepNow(e: UndoStep): UndoStep {
+    return { s: this.snap(), shown: this.snaps.shown, ...(e.list ? { list: { change: e.list.change, current: this.snaps.current } } : {}) };
+  }
+
+  /** undo (`dir` -1) or redo (1) a list step: take its snapshots out or put them back, then its patch, stop and kept
+   *  current patch. A kept current patch with no snapshot left to show beside it becomes a snapshot (nothing is dropped) */
+  private unwind(e: UndoStep, dir: -1 | 1): void {
+    const { change, current } = e.list!;
+    const [out, back] = dir < 0 ? [change.added, change.removed] : [change.removed, change.added];
+    for (const x of out) this.snaps.remove(x.s.letter);
+    for (const x of [...back].sort((a, b) => a.at - b.at)) this.snaps.list.splice(Math.min(x.at, this.snaps.list.length), 0, x.s);
+    const to = e.shown !== null && this.snaps.get(e.shown) ? e.shown : null;
+    const name = to !== null ? (JSON.parse(this.snaps.get(to)!.patch) as Patch).name
+      : this.snaps.shown !== null && this.snaps.current !== null ? (JSON.parse(this.snaps.current) as Patch).name : this.patch.name;
+    if (to === null && current !== null) this.keep(JSON.parse(current) as Patch);
+    this.restore(e.s);
+    this.patch.name = name;
+    this.snaps.shown = to;
+    this.snaps.current = to === null ? null : current;
+    this.ev.onSnapshots?.();
+  }
+
+  /** a step of its own on the undo stack (the future is dropped, as any new step drops it) */
+  private record(step: UndoStep): void {
+    this.history.push(step);
+    if (this.history.length > HISTORY) this.history.shift();
+    this.future = [];
   }
 
   /** a structural change from outside (the tutorial's "do it for me"): undoable like the editor's own */
@@ -3525,10 +3560,82 @@ export class Editor {
   removeSnapshot(letter: string): void {
     if (!this.snaps.get(letter)) return;
     if (this.snaps.shown === letter) this.showSnapshot(null);
-    this.snaps.remove(letter);
-    // undo steps on it go back to being steps of the current patch (its letter may be given again)
-    for (const e of [...this.history, ...this.future]) if (e.shown === letter) e.shown = null;
+    this.snaps.remove(letter);   // (its letter is never given again: undo steps on it count as steps of the current patch)
     this.ev.onSnapshots?.();
+  }
+
+  // ---- rank and cut (#996): make candidates, mark each keep or cut while listening, cut the losers, again from a survivor.
+  // Every snapshot is a candidate alike, whatever made it (taken by hand, kept from an edit, made by Make candidates)
+
+  /** mark a snapshot keep or cut (null: no mark) */
+  setMark(letter: string, mark: SnapshotMark | null): void {
+    const s = this.snaps.get(letter);
+    if (!s) return;
+    if (mark) s.mark = mark;
+    else delete s.mark;
+    this.ev.onSnapshots?.();
+  }
+
+  /** Alt+K / Alt+X: mark the snapshot on screen and go to the next stop; the same mark again takes it off and stays. Null
+   *  when the current patch is on screen (it is never a candidate) */
+  markShown(mark: SnapshotMark): { letter: string; mark: SnapshotMark | null } | null {
+    const s = this.snaps.get(this.snaps.shown);
+    if (!s) return null;
+    if (s.mark === mark) return this.setMark(s.letter, null), { letter: s.letter, mark: null };
+    s.mark = mark;
+    this.cycleSnapshots();
+    return { letter: s.letter, mark };
+  }
+
+  /**
+   * Make `n` candidates: each a Mutate, at the amount chosen for Mutate, of the patch on screen (a snapshot or the current
+   * patch), on the selected cards or, with none selected, on every card; locks hold (D-976). One undo step, then the first
+   * candidate is shown (a switch, a step of its own). Empty when nothing can move.
+   */
+  makeCandidates(n: number): Snapshot[] {
+    this.endGesture();
+    this.endPass();
+    const parent = this.patch;
+    const scope: MutateScope = this.selected.size || this.selectedAsm.size ? { modules: [...this.selected], assemblies: [...this.selectedAsm] } : { modules: parent.modules.map((m) => m.id), assemblies: [] };
+    const from = this.snaps.shown ?? 'current';
+    const before: UndoStep = { s: this.snap(), shown: this.snaps.shown, list: { change: { added: [], removed: [] }, current: this.snaps.current } };
+    const made: Snapshot[] = [];
+    for (let i = 0; i < n; i++) {
+      const { patch, moved } = mutatePatch(parent, scope, 'mutate', this.mutateAmount, DEFS);
+      if (!moved) break;
+      made.push(this.snaps.take(patch, undefined, from));
+    }
+    if (!made.length) return this.ev.onError('Make candidates: nothing to move there (locked, or left alone: Main, the Output, voices, Steps, the Arpeggiator, Drum maps, the Harmonizer)'), [];
+    before.list!.change.added = made.map((s) => ({ s, at: this.snaps.list.indexOf(s) }));
+    this.record(before);
+    this.showSnapshot(made[0].letter);
+    return made;
+  }
+
+  /**
+   * Cut the losers: remove every snapshot marked cut, as one undo step. When the snapshot on screen is one, the current
+   * patch comes back in the same step; changes made to that snapshot are kept as a new snapshot first (D-971). Returns the
+   * snapshots cut.
+   */
+  cutLosers(): Snapshot[] {
+    const list = this.snaps.list;
+    const losers = list.filter((s) => s.mark === 'cut');
+    if (!losers.length) return [];
+    this.endGesture();
+    this.endPass();
+    const change: ListChange = { added: [], removed: losers.map((s) => ({ s, at: list.indexOf(s) })) };
+    const step: UndoStep = { s: this.snap(), shown: this.snaps.shown, list: { change, current: this.snaps.current } };
+    if (this.snaps.get(this.snaps.shown)?.mark === 'cut') {
+      const cur = JSON.parse(this.snaps.current!) as Patch;
+      if (this.shownEdited() && !sameVersion(cur, this.patch) && !this.snaps.holding(this.patch)) change.added.push({ s: this.snaps.take(this.patch), at: 0 });
+      this.snaps.shown = this.snaps.current = null;
+      this.swapTo(cur);
+    }
+    for (const s of losers) this.snaps.remove(s.letter);
+    for (const a of change.added) a.at = list.indexOf(a.s);
+    this.record(step);
+    this.ev.onSnapshots?.();
+    return losers;
   }
 
   /**
@@ -3540,17 +3647,22 @@ export class Editor {
     this.endGesture();
     this.endPass();
     const before = this.mark();
+    this.swapTo(target);
+    this.commit(before, shown);
+  }
+
+  /** put `target` on screen with the canvas layout kept (ab.ts flipPlan): live messages when only values differ, else a
+   *  full load; no undo step (the caller makes it) */
+  private swapTo(target: Patch): void {
     const plan = flipPlan(this.patch, target);
+    this.patch = plan.patch;
     if (plan.reload) {
-      this.patch = plan.patch;
-      this.commit(before, shown);
       this.selected.clear();
       this.selectedAsm.clear();
       this.rebuild();
       this.ev.onStructure(this.patch);
       return;
     }
-    this.patch = plan.patch;
     for (const m of plan.live) {
       if (m.t === 'param') this.ev.onParam(m.id, m.name, m.value);
       else if (m.t === 'att') this.ev.onAtt(m.id, m.index, m.value);
@@ -3558,7 +3670,6 @@ export class Editor {
       else if (m.t === 'range') this.ev.onRange(m.id, m.index, m.name, m.range);
       else this.ev.onTrack?.(m.id, m.notes, 0);
     }
-    this.commit(before, shown);
     this.rebuild();
     this.ev.onLayout(this.patch);
   }

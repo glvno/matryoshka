@@ -29,7 +29,7 @@ import { Fm1View } from './fm1-view';
 import { panelPlay, EmuKeys } from './emu-keys';
 import { SandboxKeys } from './sandbox-keys';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
-import { snapshotRecord, storedSnapshots, type Snapshot } from './snapshots';
+import { snapshotRecord, storedSnapshots, type Snapshot, type SnapshotMark } from './snapshots';
 import { ScopeScreens } from './scope-view';
 import { OutputLoudness } from './loudness-view';
 import { EnvScreens } from './env-view';
@@ -1528,8 +1528,17 @@ function renderSnapshots(): void {
   const items = list.map((s) => {
     const n = snapChanges(s);
     const changed = edited && shown === s.letter;
-    const b = entry(s.letter, `Snapshot ${snapTitle(s)}: ${n ? `${n} change${n === 1 ? '' : 's'} from the current patch` : 'the same as the current patch'}${changed ? '. Changed since it was taken: switching away keeps the changes as a new snapshot' : ''}. Click to hear it, right-click or double-click for more`, shown === s.letter, () => showStop(s.letter));
+    const verdict = s.mark === 'keep' ? '. Marked keep' : s.mark === 'cut' ? '. Marked cut: Cut the losers (Shift+Alt+X) removes it' : '';
+    const origin = s.from ? `. Mutated from ${s.from === 'current' ? 'the current patch' : s.from}` : '';
+    const b = entry(s.letter, `Snapshot ${snapTitle(s)}: ${n ? `${n} change${n === 1 ? '' : 's'} from the current patch` : 'the same as the current patch'}${origin}${verdict}${changed ? '. Changed since it was taken: switching away keeps the changes as a new snapshot' : ''}. Click to hear it, right-click or double-click for more`, shown === s.letter, () => showStop(s.letter));
     if (changed) b.classList.add('edited');
+    if (s.mark) b.classList.add(s.mark);
+    if (s.from) {
+      const from = document.createElement('span');
+      from.className = 'snap-from';
+      from.textContent = `←${s.from === 'current' ? 'now' : s.from}`;
+      b.append(from);
+    }
     if (s.name) {
       const name = document.createElement('span');
       name.className = 'snap-name';
@@ -1552,6 +1561,9 @@ function renderSnapshots(): void {
   snapStrip.replaceChildren(...items, ...(list.length ? [entry('Current', 'The current patch: your latest edits (Alt+B goes through the snapshots and back here)', shown === null, () => showStop(null))] : []), take);
 }
 const snapshotMenu = (s: Snapshot): MenuItem[] => [
+  { text: s.mark === 'keep' ? 'Unmark keep' : 'Keep', key: 'Alt+K', run: () => editor.setMark(s.letter, s.mark === 'keep' ? null : 'keep') },
+  { text: s.mark === 'cut' ? 'Unmark cut' : 'Mark to cut', key: 'Alt+X', run: () => editor.setMark(s.letter, s.mark === 'cut' ? null : 'cut') },
+  { text: 'Make candidates from it', key: 'Alt+N', rule: true, run: () => { showStop(s.letter); makeCandidates(); } },
   { text: 'Rename…', run: () => {
     const to = window.prompt(`Name of snapshot ${s.letter} (empty: none)`, s.name ?? '');
     if (to !== null) editor.renameSnapshot(s.letter, to.trim());
@@ -1593,6 +1605,28 @@ const cycleSnapshots = (): void => {
   const r = editor.cycleSnapshots();
   if (r) switched(r);
   else status.textContent = 'take a snapshot first (Shift+Alt+B), then Alt+B compares it with the current patch';
+};
+// ---- rank and cut (#996): Make candidates (Alt+N) mutates the patch on screen into new snapshots; Alt+K / Alt+X mark the
+// snapshot on screen keep / cut and go on to the next; Cut the losers (Shift+Alt+X) removes the cut ones in one undo step
+const markShown = (mark: SnapshotMark): void => {
+  const r = editor.markShown(mark);
+  if (!r) return void (status.textContent = 'show a snapshot first (Alt+B): the current patch is never cut');
+  if (r.mark === null) status.textContent = `snapshot ${r.letter}: no mark`;
+  else switched({}), (status.textContent = `${r.letter} marked ${r.mark} · ${status.textContent}`);
+};
+const makeCandidates = (): void => {
+  const from = editor.snaps.shown ?? 'the current patch';
+  const made = editor.makeCandidates(candidates);
+  if (!made.length) return;
+  editor.rebuild();   // (the morph picker offers the snapshots)
+  switched({});
+  status.textContent = `${made.length} candidates from ${from}, ${made[0].letter}–${made.at(-1)!.letter}, each mutated by up to ±${Math.round(editor.mutateAmount * 100)} %: Alt+K keeps, Alt+X cuts, Alt+B listens on`;
+};
+const cutLosers = (): void => {
+  const cut = editor.cutLosers();
+  if (!cut.length) return void (status.textContent = 'nothing marked cut (Alt+X on a snapshot marks it)');
+  status.textContent = `cut ${cut.map((s) => s.letter).join(', ')}; Ctrl/Cmd+Z puts them back`;
+  queueSave(editor.patch);
 };
 // the snapshots the browser kept with the remembered patch, when the page opened on it (each is checked as a patch is)
 if (firstPatch === editor.patch && savedText !== null) {
@@ -1646,6 +1680,11 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Bypass selection', detail: 'B', run: inPatch(() => editor.bypassSelected()) },
     { kind: 'command', label: 'Show changes since last load / upload', keywords: 'diff', run: inPatch(showDiff) },
     { kind: 'command', label: 'Take a snapshot', detail: 'Shift+Alt+B', keywords: 'compare ab a/b set version keep', run: inPatch(takeSnapshot) },
+    { kind: 'command', label: `Make ${candidates} candidates`, detail: 'Alt+N', keywords: 'rank cut mutate variations breed generate snapshots audition', run: inPatch(makeCandidates) },
+    ...CANDIDATE_COUNTS.map((c) => ({ kind: 'command' as const, label: `Candidates per round: ${c}`, detail: c === candidates ? 'now' : undefined, keywords: 'rank cut make how many', run: () => setCandidates(c) })),
+    { kind: 'command', label: 'Keep this snapshot', detail: 'Alt+K', keywords: 'rank mark winner candidate', run: inPatch(() => markShown('keep')) },
+    { kind: 'command', label: 'Mark this snapshot to cut', detail: 'Alt+X', keywords: 'rank loser drop candidate', run: inPatch(() => markShown('cut')) },
+    { kind: 'command', label: 'Cut the losers', detail: 'Shift+Alt+X', keywords: 'rank remove drop marked cut candidates snapshots', run: inPatch(cutLosers) },
     { kind: 'command', label: 'Next snapshot', detail: 'Alt+B', keywords: 'compare ab a/b switch flip cycle current patch', run: inPatch(cycleSnapshots) },
     ...editor.snaps.list.map((s) => ({ kind: 'command' as const, label: `Show snapshot ${snapTitle(s)}`, keywords: 'compare ab a/b switch', run: inPatch(() => showStop(s.letter)) })),
     ...(editor.snaps.shown !== null ? [{ kind: 'command' as const, label: 'Back to the current patch', keywords: 'compare ab a/b switch snapshot', run: inPatch(() => showStop(null)) }] : []),
@@ -1895,6 +1934,10 @@ window.addEventListener('keydown', (e) => {
   else if ((k === ' ' || k === 'Enter') && !mod && !e.altKey && editor.applyRows()) done = true; // pick mode: show / hide the selected rows
   else if (mod && k.toLowerCase() === 'd') done = editor.duplicateSelected();
   else if (e.altKey && !mod && (e.code === 'KeyB' || k.toLowerCase() === 'b')) ((e.shiftKey ? takeSnapshot() : cycleSnapshots()), (done = true));   // (the code: Option+B types ∫ on a Mac)
+  // rank and cut (#996), by the code as Option+letter types a symbol on a Mac
+  else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyK') (markShown('keep'), (done = true));
+  else if (e.altKey && !mod && e.code === 'KeyX') ((e.shiftKey ? cutLosers() : markShown('cut')), (done = true));
+  else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyN') (makeCandidates(), (done = true));
   // the canvas's TIDY and FIT (#987), Mutate (#944); by the code, as Option+letter types a symbol on a Mac
   else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyT') (onCanvas(() => editor.tidyUp())(), (done = true));
   else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyZ') (onCanvas(() => editor.zoomToFit())(), (done = true));
@@ -2160,6 +2203,25 @@ try {
   if ((MUTATE_AMOUNTS as readonly number[]).includes(v)) editor.mutateAmount = v;
 } catch {
   /* storage blocked: the default amount */
+}
+// Make candidates' count per round (#996): kept per browser, like Mutate's amount
+const CANDIDATES = 'matryoshka.candidates';
+const CANDIDATE_COUNTS = [2, 4, 6, 8] as const;
+let candidates = 4;
+function setCandidates(v: number): void {
+  candidates = v;
+  status.textContent = `Make candidates makes ${v} at a time`;
+  try {
+    localStorage.setItem(CANDIDATES, String(v));
+  } catch {
+    /* storage blocked: the count lasts until the page is reloaded */
+  }
+}
+try {
+  const v = Number(localStorage.getItem(CANDIDATES));
+  if ((CANDIDATE_COUNTS as readonly number[]).includes(v)) candidates = v;
+} catch {
+  /* storage blocked: the default count */
 }
 function panic(): void {
   tutorial.stop();

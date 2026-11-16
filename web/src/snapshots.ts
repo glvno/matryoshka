@@ -13,7 +13,13 @@ export interface Snapshot {
   name?: string;
   /** the patch as it was taken (JSON) */
   patch: string;
+  /** the user's verdict in rank and cut (#996): keep, or cut by Cut the losers; none: not judged yet */
+  mark?: SnapshotMark;
+  /** what Make candidates mutated it from: a snapshot's letter, or `current` for the current patch; none: taken by hand */
+  from?: string;
 }
+
+export type SnapshotMark = 'keep' | 'cut';
 
 /** the letter of the nth snapshot taken: A..Z, then AA, AB.. (spreadsheet columns) */
 export function letterAt(n: number): string {
@@ -62,7 +68,7 @@ export function storedSnapshots(record: string | null, patchText: string | null)
     const r = JSON.parse(record) as { patch?: unknown; list?: unknown };
     if (r.patch !== fingerprint(patchText) || !Array.isArray(r.list)) return [];
     return (r.list as Partial<Snapshot>[]).filter((s): s is Snapshot => typeof s?.letter === 'string' && /^[A-Z]+$/.test(s.letter) && typeof s.patch === 'string' && (s.name === undefined || typeof s.name === 'string'))
-      .map((s) => ({ letter: s.letter, patch: s.patch, ...(s.name ? { name: s.name } : {}) }));
+      .map((s) => ({ letter: s.letter, patch: s.patch, ...(s.name ? { name: s.name } : {}), ...(s.mark === 'keep' || s.mark === 'cut' ? { mark: s.mark } : {}), ...(typeof s.from === 'string' ? { from: s.from } : {}) }));
   } catch {
     return [];
   }
@@ -74,20 +80,24 @@ export class Snapshots {
   shown: string | null = null;
   /** while a snapshot is on screen: the current patch (JSON), as it was left */
   current: string | null = null;
+  /** how many letters have been given since the list was last cleared: a letter is never given twice, so an undo step
+   *  that names a removed snapshot never finds another one under its letter */
+  private given = 0;
 
   get(letter: string | null): Snapshot | undefined {
     return letter === null ? undefined : this.list.find((s) => s.letter === letter);
   }
 
-  /** the letter after the newest snapshot's (A when there is none) */
+  /** the letter after every letter given so far (A when there is none) */
   nextLetter(): string {
-    const last = this.list.at(-1);
-    return letterAt(last ? indexOf(last.letter) + 1 : 0);
+    return letterAt(Math.max(this.given, ...this.list.map((s) => indexOf(s.letter) + 1)));
   }
 
-  /** keep `p` as a new snapshot at the end */
-  take(p: Patch, name?: string): Snapshot {
-    const s: Snapshot = { letter: this.nextLetter(), patch: JSON.stringify(p), ...(name ? { name } : {}) };
+  /** keep `p` as a new snapshot at the end; `from`: what Make candidates mutated it from */
+  take(p: Patch, name?: string, from?: string): Snapshot {
+    const letter = this.nextLetter();
+    this.given = indexOf(letter) + 1;
+    const s: Snapshot = { letter, patch: JSON.stringify(p), ...(name ? { name } : {}), ...(from ? { from } : {}) };
     this.list.push(s);
     return s;
   }
@@ -114,5 +124,6 @@ export class Snapshots {
   clear(): void {
     this.list.length = 0;
     this.shown = this.current = null;
+    this.given = 0;
   }
 }
