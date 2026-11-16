@@ -719,7 +719,7 @@ export function lfoSyncCycle(div: number, mult: number): { per8: number; snap: n
   return { per8, snap: per8 / g, cycles: 8 / g, num: d.num * m.num, den: d.den * m.den };
 }
 /** the LFO's `bpm` at its bottom, one under the 40 it had (shown TEMPO, #956; the one widening of an existing range against
- * D-429, proposed in D-1107: a `top` stretch must stay under 32 wide): a synced LFO runs on the engine's clock, not its clk
+ * D-429, proposed in D-1108: a `top` stretch must stay under 32 wide): a synced LFO runs on the engine's clock, not its clk
  * input or a bpm of its own (export-defs: defs.h LFO_TEMPO) */
 export const LFO_TEMPO = 39;
 
