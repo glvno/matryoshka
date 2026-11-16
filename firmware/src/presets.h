@@ -593,6 +593,7 @@ static const uint8_t FPV_344[35] = {12,24,64,16,32,64,128,0,29,129,60,52,192,112
 static const uint8_t FPR_344[29] = {6,11,15,19,21,35,36,37,42,44,45,46,47,49,50,51,52,57,64,65,66,67,69,71,72,73,74,75,76};
 #define N_FPRESETS 345
 #define FP_MAX_VALUES 171u
+#define FP_MAX_LIST 28u
 static const struct { uint32_t structure; const char *name; const uint8_t *v, *base, *rows; uint16_t n, changes; } FPRESET_LIST[N_FPRESETS] = {
     {0x0935c0fau, "INIT", FPV_0, 0, 0, 71, 0},
     {0x0935c0fau, "LYRE CHORD", FPV_1, 0, 0, 71, 0},

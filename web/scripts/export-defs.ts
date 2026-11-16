@@ -318,6 +318,10 @@ P.push(...packedListC('PRESET', 'PRESET_LIST', presetNames.map((name, i) => ({ n
   });
   P.push(`#define N_FPRESETS ${FACTORY_PRESETS.length}`);
   P.push(`#define FP_MAX_VALUES ${Math.max(...values.map(v => v.length))}u`);
+  // the most factory presets one structure has: sizes the FM-1's preset list (pages_ui.c pr_list), not the whole table
+  const perStructure = new Map<string, number>();
+  for (const p of FACTORY_PRESETS) perStructure.set(p.structure, (perStructure.get(p.structure) ?? 0) + 1);
+  P.push(`#define FP_MAX_LIST ${Math.max(...perStructure.values())}u`);
   P.push('static const struct { uint32_t structure; const char *name; const uint8_t *v, *base, *rows; uint16_t n, changes; } FPRESET_LIST[N_FPRESETS] = {');
   FACTORY_PRESETS.forEach((p, i) => {
     const r = records[i], sparse = r.base !== undefined;
