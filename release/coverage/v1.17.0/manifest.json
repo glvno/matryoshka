@@ -3,7 +3,7 @@
   "reportSha256": "538a1f876f6d927f80a774ea2f100a57fb79541b5659a46249314c2a76d2201e",
   "measuredAt": "2026-11-16",
   "measuredCommit": "2c1b07dfdb2bb91f3f1a07bb482556158bb74ddd",
-  "sourceFingerprint": "59edf5900e24a3d37587f9a6f49274e78bcd43643b1624cb49d88d7e8dc0050f",
+  "sourceFingerprint": "f1d4ca52e27fdf71cf6a763e283ffc680d81953a144eeed5981e51fb069dd928",
   "sourceUrl": "https://github.com/glvno/matryoshka/actions/runs/43801743401",
   "measurementLabel": "v1.17.0",
   "targetRelease": "v1.17.0",

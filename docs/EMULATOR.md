@@ -64,7 +64,9 @@ python3 tools/coverage_record.py prepare --bundle build/coverage-record --releas
 
 Commit the resulting `release/coverage/vX.Y.Z/` before tagging. The stored bytes survive Actions artifact expiry.
 The source fingerprint includes tracked tests, dependencies, configuration and build inputs. It excludes `docs/`,
-root Markdown guidance, agent guidance directories (`.agents/`, `.claude/`, `.codex/`), and `release/coverage/`.
+root Markdown guidance, agent guidance directories (`.agents/`, `.claude/`, `.codex/`), `release/` (the qualification
+and coverage records) and `web/public/firmware/` (the bundled package): the release record adds those after the
+candidate is measured.
 A version or source change can therefore invalidate a current measurement. The helper never starts another test run.
 
 For the transition from the already-tested candidate that has no coverage report, explicitly retain the published
