@@ -303,6 +303,13 @@ R_FACT_INFO, R_FACT_SUM, R_FACT_DATA = 0x5F, 0x60, 0x61
 FACTORY_STATE = ["none (the firmware tier alone plays)", "valid", "newer than this firmware reads", "damaged"]
 
 
+def has_factory(link):
+    """INFO feature bit 26 (byte 14 bit 2, protocol.ts FEATURE_FACTORY, D-490): the firmware has the factory region's
+    commands; older firmware (1.17 and before) answers FACT_* with an unknown-command status"""
+    p = link.ask(frame(0x01), (0x41,))
+    return len(p) > 14 and bool(p[14] & 4)
+
+
 def factory_info(link):
     """FACT_INFO as a dict"""
     p = link.ask(frame(C_FACT_INFO), (R_FACT_INFO,))

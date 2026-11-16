@@ -86,6 +86,18 @@ class Bank(unittest.TestCase):
         self.assertEqual(asked, [])
         self.assertEqual(len(fm1.erased), 60)
 
+class Factory(unittest.TestCase):
+    def test_factory_commands_follow_feature_bit_26(self):
+        class Info:
+            def __init__(self, byte14):
+                self.byte14 = byte14
+
+            def ask(self, msg, want, tries=3, wait=0.8):
+                return [5, 32, 64, 1, 2, 0, 0, 0, 0, 1, 17, 0, 0, 0, self.byte14, 60]
+        self.assertFalse(m1_link.has_factory(Info(0x02)))  # 1.17.0: the pattern store (bit 25), no factory region
+        self.assertTrue(m1_link.has_factory(Info(0x06)))   # bit 26: the factory region's commands
+
+
 
 if __name__ == "__main__":
     unittest.main()

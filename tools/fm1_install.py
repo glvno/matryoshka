@@ -846,6 +846,9 @@ def install_factory(a, out):
         import fm1_usb
         loc = fm1_usb.parse_location(a.location)
     link = m1_link.Link(loc)
+    if not m1_link.has_factory(link):
+        print("factory content: not needed (this firmware carries its factory sounds itself: 1.17 and older)", file=out)
+        return
     print("factory content: installing (FACTORY SOUNDS MISSING on the FM-1 until it is done)", file=out)
     m1_link.factory_install(link, open(m1_link.FACTORY_BIN, "rb").read(), log=lambda s: print(f"  {s}", file=out))
     print(m1_link.factory_info_text(m1_link.factory_info(link)), file=out)
