@@ -13,14 +13,14 @@ describe('snapshots (#943)', () => {
     expect([0, 1, 25, 26, 27, 51, 52, 701, 702].map(letterAt)).toEqual(['A', 'B', 'Z', 'AA', 'AB', 'AZ', 'BA', 'ZZ', 'AAA']);
   });
 
-  it('each snapshot takes the letter after the newest one; the user never picks it', () => {
+  it('each snapshot takes the next letter, never one given before; the user never picks it', () => {
     const p = relocatedPatches['Oracle V']();
     const s = new Snapshots();
     expect([s.take(p), s.take(p), s.take(p)].map((x) => x.letter)).toEqual(['A', 'B', 'C']);
     s.remove('B');
     expect(s.take(p).letter).toBe('D');
     s.remove('D');
-    expect(s.nextLetter()).toBe('D');
+    expect(s.nextLetter()).toBe('E');   // (D was cut: an undo step that names it never finds another snapshot)
     s.clear();
     expect(s.take(p).letter).toBe('A');
   });
@@ -73,7 +73,9 @@ describe('snapshots (#943)', () => {
     const p = relocatedPatches['Oracle V']();
     const s = new Snapshots();
     s.take(p);
-    s.take({ ...copy(p), name: 'bright' }, 'bright');
+    s.take({ ...copy(p), name: 'bright' }, 'bright', 'A');
+    s.list[0].mark = 'keep';   // (rank and cut's marks and origins come back too, #996)
+    s.list[1].mark = 'cut';
     const text = JSON.stringify(p);
     const record = snapshotRecord(text, s.list)!;
     expect(storedSnapshots(record, text)).toEqual(s.list);
