@@ -1020,6 +1020,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     host.send({ t: 'thru', id, note, vel });
   },
   onMute: muteTrack,
+  onFill: (on) => host.send({ t: 'fill', on }),
   onBypass(id, on) {
     if (fromDevice) uploadGate.forget();
     if (fxRuntimeHelpers(editor.patch).has(id)) { queueSave(editor.patch); return; }   // (the stage's targets carry it)

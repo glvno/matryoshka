@@ -57,6 +57,7 @@ static int8_t seq_roll_trk = -1;        /* the track its window was opened for (
 static uint32_t seq_roll_gen;
 static uint32_t ent_keys;               /* the keys held while they are the armed track's keyboard (bit n: key n) */
 static int8_t seq_held = -1;            /* the step whose white key is held (SELECT / the roll's K3 its chance, K1 / K2 its values), -1 none */
+static uint8_t seq_fill;                /* FILL held (#674, D-830: SEQ held + FX, while FX is down; panel.c): FX's accent is not */
 static uint32_t seq_held_notes[TRACK_NOTES_MAX];   /* the track's notes before the held step's press switched it */
 static uint8_t seq_held_n;
 static uint8_t seq_held_turned;         /* a knob turned while it is held (an FX press's switch is undone once; 1: none to undo) */
@@ -562,7 +563,7 @@ static void seq_roll_tie(int mod, uint32_t k, uint32_t note)
             uint32_t at = w[prev] & 63u, extra = 0, n;
             for (i = m = 0; i < nn; i++) {       /* a note of its own on k joins it */
                 if (i != prev && ((w[i] >> 12) & 127u) == note && (w[i] & 63u) == k) {
-                    extra = (w[i] >> 6) & 63u;
+                    extra = (w[i] >> 19 & 127u) ? (w[i] >> 6) & 63u : extra;   /* (not its condition word, #674) */
                     continue;
                 }
                 w[m++] = w[i];
@@ -595,7 +596,7 @@ static void seq_row_drone(void)
     nn = eng_steps_notes((uint32_t)mod, &ws);
     for (i = 0; i < nn; i++)
         if (((ws[i] >> 12) & 127u) == note) {
-            count++;
+            count += (ws[i] >> 19 & 127u) != 0u; /* (a condition word, #674, is no note) */
             if (first < 0 || (ws[i] & 63u) < (ws[first] & 63u))
                 first = i;
         }
@@ -613,7 +614,7 @@ static void seq_row_drone(void)
                 w[m++] = x | ENG_NOTE_WRAP | 63u << 6;
                 seq_msg_due = MSG_DRONE;
             }
-        } else if (((ws[i] >> 12) & 127u) != note)
+        } else if (((ws[i] >> 12) & 127u) != note || (i == first + 1 && !(ws[i] >> 19 & 127u)))   /* (its condition stays) */
             w[m++] = ws[i];
     (void)eng_steps_set_notes((uint32_t)mod, w, (uint32_t)m);
     seq_sync(mod);
@@ -899,7 +900,7 @@ static void sr_preview_toggle(void)
 static void seq_key(uint32_t n, int down)
 {
     int w = seq_white(n), b = seq_black(n), mod = seq_module(), map = seq_map();
-    int fx = (int)(panel_held >> BTN_ACC & 1u);
+    int fx = (int)(panel_held >> BTN_ACC & 1u) && !seq_fill;
     if (sr_on) {                                 /* (on the roll SEL held + any key is the pen, D-804: nothing written) */
         if (down && mod >= 0 && map < 0 && (panel_held >> BTN_PEN & 1u)) {
             seq_roll_aim(mod);
@@ -997,11 +998,71 @@ static void seq_chance(int32_t clicks)
     char m[24], num[8];
     if (mod < 0 || seq_held < 0 || !(w = seq_grid_held(map, mod)))
         return;
-    code = clampi((int32_t)((w >> 26) & 31u) - clicks, 0, 19);
+    code = clampi((int32_t)((w >> 26) & 31u) - clicks, 0, 19);   /* (a trig condition: from 100 %; the chance takes its place) */
+    if (((w >> 26) & 31u) == ENG_NOTE_COND)
+        code = clampi(-clicks, 0, 19);
     eng_steps_overdub((uint32_t)mod, (w & ~(31u << 26)) | (uint32_t)code << 26);
     seq_sync(mod);
     fmt_int(num, 100 - 5 * code);
     put(put(put(m, "CHANCE "), num), "%")[0] = 0;
+    ui_msg(m, 1000);
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+}
+
+/* trig conditions (#674, D-830; track.ts COND_ORDER, condName): the i-th condition a knob steps through (0 none, FILL,
+ * NOT FILL, PRE, NOT PRE, NEI, NOT NEI, 1ST, NOT 1ST, 1:2, 2:2, 1:3 .. 8:8, NOT 1:2 .. NOT 8:8), and a condition's name */
+#define SEQ_CONDS 79
+static uint32_t seq_cond_at(int32_t i)
+{
+    uint32_t b = 2u, inv = 0;
+    if (i <= 0)
+        return 0;
+    if (i <= 8)
+        return (uint32_t)(i + 1) / 2u | (i & 1 ? 0u : 0x40u);
+    i -= 9;
+    if (i >= 35) {
+        i -= 35;
+        inv = 0x40u;
+    }
+    while ((uint32_t)i >= b)
+        i -= (int32_t)b++;
+    return inv | (b - 1u) << 3 | (uint32_t)i;
+}
+static char *seq_cond_name(char *p, uint32_t c)
+{
+    static const char KIND[5][5] = {"OFF", "FILL", "PRE", "NEI", "1ST"};
+    char num[4];
+    if (c & 0x40u)
+        p = put(p, "NOT ");
+    if (!(c >> 3 & 7u))
+        return put(p, KIND[c & 7u]);
+    fmt_int(num, (int32_t)(c & 7u) + 1);
+    p = put(p, num);
+    *p++ = ':';
+    fmt_int(num, (int32_t)(c >> 3 & 7u) + 1);
+    return put(p, num);
+}
+/* K4 turned with a step held: the selected row's note's trig condition, a click a step through seq_cond_at (it takes
+ * the note's chance away; the bar names it: COND 3:4) */
+static void seq_cond(int32_t clicks)
+{
+    int mod = seq_module(), map = seq_map();
+    uint32_t w, c, note;
+    int32_t i;
+    char m[24];
+    if (mod < 0 || seq_held < 0 || !(w = seq_grid_held(map, mod)))
+        return;
+    note = (w >> 12) & 127u;
+    c = eng_steps_cond((uint32_t)mod, (uint32_t)seq_held, note);
+    for (i = 0; i < SEQ_CONDS && seq_cond_at(i) != c; i++)
+        ;
+    c = seq_cond_at(clampi((i < SEQ_CONDS ? i : 0) + clicks, 0, SEQ_CONDS - 1));
+    if (eng_steps_cond_set((uint32_t)mod, (uint32_t)seq_held, note, c) < 0) {
+        ui_msg("TRACK FULL: 128 NOTES", 1500);
+        return;
+    }
+    seq_sync(mod);
+    seq_cond_name(put(m, "COND "), c)[0] = 0;
     ui_msg(m, 1000);
     ui_dirty = ui_dirty ? ui_dirty : 1;
 }
@@ -1056,9 +1117,12 @@ static void seq_value(int32_t note_clicks, int32_t vel_clicks, int fast)
                 c--, p = q;
         }
         if (p != (int32_t)((w >> 12) & 127u)) {
+            uint32_t c = eng_steps_cond((uint32_t)mod, (uint32_t)seq_held, (w >> 12) & 127u);   /* (its condition goes along) */
             eng_steps_toggle((uint32_t)mod, (uint32_t)seq_held, (w >> 12) & 127u, STEP_VEL);   /* (off: it is there) */
             w = (w & ~(127u << 12)) | (uint32_t)p << 12;
             eng_steps_overdub((uint32_t)mod, w);
+            if (c)
+                (void)eng_steps_cond_set((uint32_t)mod, (uint32_t)seq_held, (uint32_t)p, c);
             seq_roll_show(p, 0);
         }
     }
@@ -1662,6 +1726,7 @@ static int seq_lock_line(int mod, char *line, uint32_t max)
 #define GRID_CUR_Y (GRID_TICK_Y + 3u)   /* the cursor's tick: 2 px under the playhead's */
 #define GRID_LOCK 0x200u                /* a cell's code: its step has P-locks (#524): a gold corner mark, top right */
 #define GRID_DRONE 0x400u               /* a cell's code: a drone starts there (#384): the tie's band comes in at its left */
+#define GRID_COND 0x800u                /* a cell's code: its note has a trig condition (#674): a sky corner mark, top left */
 static uint16_t seq_grid_cell[ENG_DRUM_ROWS][16];  /* the cells as drawn (seq_grid_state's codes) */
 static int8_t seq_grid_row = -1, seq_grid_tick = -2; /* the selected row, the playhead's column as drawn (-1 none) */
 static int8_t seq_grid_cur = -2;        /* step record's cursor column as drawn (-1 none) */
@@ -1687,7 +1752,7 @@ static uint32_t seq_grid_state(uint32_t w, int k, int32_t len, int pos, int tint
         return GRID_CUR | (tint ? GRID_TINT : 0u);
     if (w) {
         uint32_t ch = (w >> 26) & 31u;
-        s = 1u | (((w >> 19) & 127u) == ACCENT_VEL ? 2u : 0u) | (ch > 19u ? 19u : ch) << 2;
+        s = 1u | (((w >> 19) & 127u) == ACCENT_VEL ? 2u : 0u) | (ch > 19u ? 0u : ch) << 2;   /* (a condition: GRID_COND) */
     } else if (tint)
         s = GRID_TINT;
     return s | (k == pos && (!(s & 1u) || s >> 2) ? 0x80u : 0u);   /* (a full hit looks the same under the playhead) */
@@ -1712,6 +1777,12 @@ static void seq_grid_paint(uint32_t r, uint32_t i, uint32_t s, uint32_t was)
         lcd_fill(x, y, GRID_CW, GRID_CH - fill, empty);
     if (fill)
         lcd_fill(x, y + GRID_CH - fill, GRID_CW, fill, (s & 2u) ? C_ACC : C_FG);
+    if (s & GRID_COND) {                         /* a trig condition (#674): a corner of 4, 3, 2, 1 px */
+        lcd_fill(x, y, 4, 1, P_SKY);
+        lcd_fill(x, y + 1u, 3, 1, P_SKY);
+        lcd_fill(x, y + 2u, 2, 1, P_SKY);
+        lcd_fill(x, y + 3u, 1, 1, P_SKY);
+    }
     if (s & GRID_DRONE)                          /* a drone (#384): tied round the loop onto its own step */
         lcd_fill(x, y + GRID_CH / 2u - 2u, 3, 5, C_DIM);
     if (s & GRID_LOCK) {                         /* a step with P-locks (#519 Q11): a corner of 4, 3, 2, 1 px */
@@ -1848,6 +1919,8 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
                 s |= GRID_LOCK;                  /* (on the step's hits; a step without one: the selected row's cell) */
             if (s != GRID_PAST && cell[r][i] > 1u && eng_note_drone(cell[r][i]))
                 s |= GRID_DRONE;
+            if (s != GRID_PAST && cell[r][i] > 1u && ((cell[r][i] >> 26) & 31u) == ENG_NOTE_COND)
+                s |= GRID_COND;
             if (s != seq_grid_cell[r][i]) {
                 seq_grid_paint(r, i, s, seq_grid_cell[r][i]);
                 seq_grid_cell[r][i] = (uint16_t)s;

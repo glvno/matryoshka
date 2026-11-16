@@ -5,7 +5,7 @@ import { DEFS } from './modules';
 import { deviceBudget, DEVICE } from './patchbin';
 import { patternDriver } from './pages';
 import type { Patch, ModuleInst } from './patch';
-import { noteWord, patternLocks, patternOf, wordNote } from './track';
+import { noteWords, patternLocks, patternOf, wordsNotes } from './track';
 
 export { presetPattern } from './preset-pattern-data';
 import { presetPattern, presetPatternById } from './preset-pattern-data';
@@ -45,14 +45,14 @@ export function applyPresetPattern(p: Patch, a: AssemblyInst, structure: string,
   const current = patternOf(track, selected);
   if (!current.own || current.len !== before.len || current.rate !== before.rate || patternLocks(track, selected)?.length) return false;
   if (['swing', 'gate', 'dir'].some((k) => Math.round((track.params[k] ?? (k === 'gate' ? 0.25 : k === 'swing' ? 50 : 0)) * 65536) !== Math.round(before[k as 'swing' | 'gate' | 'dir'] * 65536))) return false;
-  const words = (current.notes ?? []).map(noteWord);
+  const words = noteWords(current.notes);
   if (words.length !== before.notes.length || words.some((w, i) => w !== before.notes[i])) return false;
   // Patterns all use the same length/rate in a bank: never alter shared track settings.
   if (after.len !== before.len || after.rate !== before.rate) return false;
   // Factory defaults use compact 16-step words. Reserve any growth before changing anything.
   const budget = deviceBudget(p);
   if (budget.items.find((i) => i.key === 'bytes')!.used + Math.max(0, (after.notes.length - before.notes.length) * (selected ? 2 : 4)) > DEVICE.bytes || budget.items.find((i) => i.key === 'notes')!.used + after.notes.length - before.notes.length > DEVICE.notes) return false;
-  const notes = after.notes.map(wordNote);
+  const notes = wordsNotes(after.notes);
   if (selected === 0) track.notes = notes;
   else track.patterns![selected - 1]!.notes = notes;
   track.factoryPatterns!.ids[selected] = after.id;

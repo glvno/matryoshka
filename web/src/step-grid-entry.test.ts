@@ -9,7 +9,7 @@ afterEach(stopEntry);
 it('records transformed pitches once on the first root release and ignores controls and stale replies', () => {
   const m: ModuleInst = { id: 3, type: 'steps', x: 0, y: 0, params: { len: 16 } };
   const g = stepGrid(m, 0, {
-    notes: n => { m.notes = n; }, begin: () => () => {}, name: () => {}, mute: () => {}, arm: () => {}, armed: () => true,
+    notes: n => { m.notes = n; }, begin: () => () => {}, name: () => {}, mute: () => {}, fill: () => {}, arm: () => {}, armed: () => true,
     rec: () => {}, recording: () => true, roll: () => {}, lockRows: () => [], locks: () => {},
   });
   g.rec(true);

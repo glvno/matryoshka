@@ -18,7 +18,7 @@
 import { NOTE_NAMES } from './modules';
 import type { ModuleInst } from './patch';
 import { renamedKey } from './storage-key';
-import { droneRow, fixNotes, isDrone, STEP_VEL, STEPS_MAX, STEPS_RATES, type StepNote } from './track';
+import { COND_ORDER, condName, droneRow, fixNotes, isDrone, STEP_VEL, STEPS_MAX, STEPS_RATES, type StepNote } from './track';
 
 export interface RollOps {
   /** the track as it is now (null: it is gone) and its label */
@@ -142,7 +142,7 @@ export class PianoRoll {
     help.textContent = '?';
     help.title = 'Click a note: select (Shift adds). Drag: move (Option: copy), its edges: length / start, Cmd-drag: velocity.\n'
       + 'Empty grid: drag a band; double-click adds a note, double-click a note removes it; right-click removes.\n'
-      + 'Delete removes the selection; arrows move it (Shift + ↑↓ an octave, Shift + ←→ length); L: a drone (tied round the loop, again: one step), Shift+L: the row a drone (its first note held, the rest of the row gone); Cmd-A / C / X / V / D; B draw mode; Esc.';
+      + 'Delete removes the selection; arrows move it (Shift + ↑↓ an octave, Shift + ←→ length); L: a drone (tied round the loop, again: one step), Shift+L: the row a drone (its first note held, the rest of the row gone); T / Shift+T: the trig condition (FILL, 1ST, 3:4 …: when the selection plays); Cmd-A / C / X / V / D; B draw mode; Esc.';
     this.infoEl = document.createElement('span');
     this.infoEl.className = 'roll-info';
     const close = btn('×', 'roll-close', 'close the roll (Esc)', () => this.ops.close());
@@ -360,7 +360,7 @@ export class PianoRoll {
       // far as it runs on into the next pass (a drone: up to its own start)
       const wraps = !!n.wrap && n.at < this.len && (isDrone(n) || n.at + n.len > this.len);
       const d = document.createElement('div');
-      d.className = 'roll-note' + (this.sel.has(id(n)) ? ' sel' : '') + (n.at >= this.len ? ' past' : '') + (isDrone(n) && wraps ? ' drone' : '');
+      d.className = 'roll-note' + (this.sel.has(id(n)) ? ' sel' : '') + (n.at >= this.len ? ' past' : '') + (isDrone(n) && wraps ? ' drone' : '') + (n.cond ? ' cond' : '');
       d.style.left = `${n.at * sw + 1}px`;
       d.style.top = `${this.rowOf(n.note) * rh + 1}px`;
       d.style.height = `${rh - 2}px`;
@@ -434,7 +434,7 @@ export class PianoRoll {
 
   private describe(n: StepNote): string {
     const len = isDrone(n) ? 'a drone (tied round the loop onto itself)' : `${n.len} step${n.len > 1 ? 's' : ''}${n.wrap ? ' (on across the loop point)' : ''}`;
-    return `step ${n.at + 1} · ${this.pitchName(n.note)} · ${len} · vel ${n.vel}${n.chance ? ` · ${n.chance} %` : ''}`;
+    return `step ${n.at + 1} · ${this.pitchName(n.note)} · ${len} · vel ${n.vel}${n.chance ? ` · ${n.chance} %` : ''}${n.cond ? ` · plays on ${condName(n.cond)}` : ''}`;
   }
 
   /** a note by what its row says: a Drum map row's name, else the pitch */
@@ -855,6 +855,19 @@ export class PianoRoll {
       this.sel.clear();
       this.infoEl.textContent = said === 'DRONE OFF' ? 'one step again' : 'row drone: its first note held round the loop';
       this.edit(ns ?? []);
+      return true;
+    }
+    if (lower === 't') {
+      // the selected notes' trig condition (#674): T the next in COND_ORDER, Shift+T the one before (from the first's)
+      if (!picked.length) return true;
+      const i = Math.max(0, COND_ORDER.indexOf(picked[0].cond ?? 0));
+      const c = COND_ORDER[Math.min(COND_ORDER.length - 1, Math.max(0, i + (shift ? -1 : 1)))];
+      const changed = picked.map((n): StepNote => {
+        const { chance: _c, cond: _d, ...r } = n;
+        return c ? { ...r, cond: c } : r;
+      });
+      this.infoEl.textContent = c ? `plays on ${condName(c)}` : 'plays every time';
+      this.edit(over(changed, rest));
       return true;
     }
     if (lower === 'l') {

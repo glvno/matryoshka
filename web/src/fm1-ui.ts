@@ -3,7 +3,7 @@
 // panel core and screens on the C engine, with no hardware. The page loads a patch binary (patchbin.ts encodePatch),
 // drives the panel and the clock, and draws the 240 x 240 RGB565 framebuffer. No DOM here: the editor's FM-1 tab
 // (#110) and the tests use it.
-import { wordNote, type SongEntry, type StepNote } from './track';
+import { wordsNotes, type SongEntry, type StepNote } from './track';
 import { GUIDE_BYTES, parseGuideNow, type PanelState, type RawLock } from './protocol';
 
 /** what the emulated FM-1 tells the page */
@@ -100,7 +100,7 @@ export class Fm1Ui {
       once: () => ev.once?.(),
       cin: (bars: number) => ev.cin?.(bars),
       origin: (m: number, pat: number, identity: number) => ev.origin?.(m, pat, identity >>> 0),
-      track: (m: number, at: number, n: number, pat: number) => ev.track?.(m, memory ? [...new Uint32Array(memory.buffer, at, n)].map(wordNote) : [], pat ?? 0),
+      track: (m: number, at: number, n: number, pat: number) => ev.track?.(m, memory ? wordsNotes([...new Uint32Array(memory.buffer, at, n)]) : [], pat ?? 0),
       locks: (m: number, pat: number, at: number, n: number) => ev.locks?.(m, pat, memory ? Array.from({ length: n }, (_, j) => {
         const b = new Uint8Array(memory!.buffer, at + 7 * j, 7);
         return { at: b[0], module: b[1], param: b[2], value: (b[3] | (b[4] << 8) | (b[5] << 16) | (b[6] << 24)) / 65536 };

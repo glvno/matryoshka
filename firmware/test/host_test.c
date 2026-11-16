@@ -4,7 +4,7 @@
  *   host_test NAME.m1p NAME.ev NAME.f32 [NAME.par]
  * .par: the parameter values the editor's budget counts for the patch (patchbin.ts DEVICE.params); eng_load must take as many.
  * .ev: lines "frame on NOTE VEL" / "frame off NOTE" (frame a multiple of 128, ascending), last line "end FRAMES"; "frame
- * pat N" / "frame song N" choose the patch's pattern / song (format 48).
+ * pat N" / "frame song N" choose the patch's pattern / song (format 48); "frame fill 1|0" holds FILL or lets it go (#674).
  * .f32: float32 stereo interleaved reference output. Prints max and rms error (full scale = 1.0).
  * HOST_CORES=1|2 renders the split segments' lane 1 deferred or on a thread (lanes_host.h, #271). */
 #include <math.h>
@@ -109,7 +109,7 @@ int main(int argc, char **argv)
             }
             else if (!strcmp(kind, "rec") || !strcmp(kind, "cc") || !strcmp(kind, "thon") || !strcmp(kind, "thoff"))
                 fscanf(ev, "%u %u", &note, &vel);
-            else if (!strcmp(kind, "pat") || !strcmp(kind, "song") || !strcmp(kind, "cin"))
+            else if (!strcmp(kind, "pat") || !strcmp(kind, "song") || !strcmp(kind, "cin") || !strcmp(kind, "fill"))
                 fscanf(ev, "%u", &note);
         }
         rewind(ev);
@@ -228,6 +228,11 @@ int main(int argc, char **argv)
                 eng_pattern_set(note);
             else
                 eng_song_set(note);
+#endif
+        } else if (!strcmp(kind, "fill")) {     /* (#674) FILL held (1) or let go (0) */
+            fscanf(ev, "%u", &note);
+#ifdef ENG_NOTE_COND /* engine_exact.sh also builds this harness with older engine headers */
+            eng_fill((int)note);
 #endif
         } else if (!strcmp(kind, "take")) {
             uint32_t m, w;

@@ -30,7 +30,7 @@ static int (*const HC_FN[HC_COUNT])(void) = {0, hc_list, hc_dev_presets, hc_dev_
  * buttons go here), shown when HC_FN[cond]() is not neg */
 typedef struct { const char *spec; uint8_t row, cond, neg; } ctl_line_t;
 #define CTL_PATCH 255u
-static const ctl_line_t CTL_LINE[98] = {
+static const ctl_line_t CTL_LINE[100] = {
     {"k:PLAY~start / stop", 0, 0, 0},   /* play */
     {"k:REC~record", 1, 0, 0},   /* rec */
     {"k:SAVE~save patch", 2, 0, 0},   /* save */
@@ -47,116 +47,118 @@ static const ctl_line_t CTL_LINE[98] = {
     {"k:REC|t:+|b:~arm / disarm track", 12, 6, 0},   /* arm */
     {"k:SEQ|t:+|b:~mute a track", 13, 6, 0},   /* mute */
     {"k:SEQ|t:+|k:PLAY~count in, play once", 14, 6, 0},   /* play-once */
-    {"k:HOME|t:+|k:OCT-|t:+|k:OCT+|t:2 s~3.5mm", 15, 0, 0},   /* out-35mm */
-    {"k:HOME~leave {list}'s pages", 16, 1, 0},   /* list-home */
-    {"n:SELECT~this patch's devices", 17, 0, 0},   /* devices */
-    {"n:ALGO~{list}'s pages", 18, 1, 0},   /* list-pages */
-    {"n:ALGO~this device's pages", 19, 1, 1},   /* device-pages */
-    {"n:PRESET~this device's presets", 20, 2, 0},   /* device-presets */
-    {"c:1234~adjust values", 21, 0, 0},   /* adjust */
-    {"k:HOME|t:+|c:1234~fine adjust", 22, 0, 0},   /* fine */
-    {"k:SEL~arm only this", 23, 4, 0},   /* arm-device */
-    {"k:ENV|t:then|k:SEL~arm several", 24, 4, 0},   /* arm-several */
-    {"b:~1-3 maj min dim", 25, 11, 0},   /* chord-quality */
-    {"w:~1-4 sus2 sus4 7 9", 26, 11, 0},   /* chord-add */
-    {"n:SELECT~device row", 27, 0, 0},   /* env-rows */
-    {"c:1234~device pg.1 params", 28, 0, 0},   /* env-first-page */
-    {"n:PRESET~row device's preset", 29, 2, 0},   /* env-presets */
-    {"n:ALGO~row device's preset", 30, 2, 0},   /* env-presets-algo */
-    {"k:SEL~add / drop row", 31, 4, 0},   /* env-arm */
-    {"k:FX~master FX", 32, 14, 0},   /* fx-open */
-    {"n:SELECT~effect row", 33, 0, 0},   /* fx-row */
-    {"c:1234~effect pg.1 params", 34, 0, 0},   /* fx-params */
-    {"k:SEL~effect on / off", 35, 0, 0},   /* fx-toggle */
-    {"k:FX~back", 36, 0, 0},   /* fx-back */
-    {"m:ANY KEY~play notes", 37, 0, 0},   /* roll-keys */
-    {"w:~toggle rowstep n", 38, 0, 0},   /* step */
-    {"b:~pick a row", 39, 0, 0},   /* row-key */
-    {"n:SELECT~pick a row", 40, 0, 0},   /* row-select */
-    {"n:SELECT~next 8-pitch page", 41, 0, 0},   /* roll-view */
-    {"k:SEL|t:+|n:SELECT~shift page up/down", 42, 0, 0},   /* roll-pitch */
-    {"k:SEL|t:+|m:ANY KEY~jump to pitch", 43, 10, 0},   /* pen */
-    {"k:OCT-|t:/|k:OCT+~next/prev 16 steps", 44, 5, 0},   /* steps-page */
-    {"n:ALGO~track", 45, 0, 0},   /* track */
-    {"n:PRESET~pattern", 46, 0, 0},   /* pattern */
-    {"k:FX|t:+|w:~accent", 47, 0, 0},   /* accent */
-    {"k:LFO|t:+|w:~tie", 48, 0, 0},   /* tie */
-    {"k:LFO|t:+|k:FX~row drone", 49, 0, 0},   /* row-drone */
-    {"k:REC~toggle step record", 50, 0, 0},   /* step-record */
-    {"k:REC|t:+|w:~^ but at step n/16", 51, 0, 0},   /* step-record-there */
-    {"k:REC|t:+|w:~^ but at step N/16", 51, 0, 0},   /* step-record-there */
-    {"t:hold step +|c:2~velocity", 52, 0, 0},   /* held-velocity */
-    {"t:hold step +|n:SELECT~chance", 53, 0, 0},   /* held-chance-select */
-    {"t:hold step +|n:ALGO~p-lock pages", 54, 0, 0},   /* lock-pages */
-    {"t:hold step +|c:1234~p-lock rows", 55, 0, 0},   /* lock-rows */
-    {"k:SEL|t:tap~structure song", 56, 0, 0},   /* song-page */
-    {"k:SEL|t:+|k:SAVE~save pattern", 57, 15, 0},   /* pattern-save */
-    {"k:FX|t:+|k:SAVE~save pattern as new", 58, 15, 0},   /* pattern-new */
-    {"k:SEL|t:+|n:PRESET~load stored pattern", 59, 15, 0},   /* pattern-load */
-    {"k:SEQ|t:+|k:REC~clear track", 60, 0, 0},   /* clear */
-    {"m:KEYS~play, let go: write", 61, 0, 0},   /* sr-keys */
-    {"k:SEL|t:+|k:FX~preview off", 62, 12, 0},   /* sr-preview-off */
-    {"k:SEL|t:+|k:FX~preview on", 63, 13, 0},   /* sr-preview-on */
-    {"t:keys together~one chord", 64, 0, 0},   /* sr-chord */
-    {"k:LFO~rest, keys held: tie", 65, 0, 0},   /* sr-rest */
-    {"k:FX|t:held~accent", 66, 0, 0},   /* sr-accent */
-    {"c:4~move cursor", 67, 0, 0},   /* sr-cursor */
-    {"b:10~back, clear step", 68, 0, 0},   /* sr-back */
-    {"k:PLAY~play, record live", 69, 0, 0},   /* sr-live */
-    {"k:REC~end step record", 70, 0, 0},   /* sr-end */
-    {"m:KEYS~record notes", 71, 0, 0},   /* take */
-    {"k:FX|t:held~accented notes", 72, 0, 0},   /* take-accent */
-    {"n:SELECT~pick entry", 73, 0, 0},   /* song-entry */
-    {"c:1~entry's pattern", 74, 0, 0},   /* song-pattern */
-    {"c:1|t:on END~add entry", 75, 0, 0},   /* song-add */
-    {"k:FX|t:+|c:1~duplicate entry", 76, 0, 0},   /* song-dup */
-    {"c:2~transpose entry", 77, 0, 0},   /* song-shift */
-    {"c:4~song on / off", 78, 0, 0},   /* song-play */
-    {"n:ALGO~song 1-8", 79, 0, 0},   /* song-sel */
-    {"n:PRESET~selected pattern", 80, 0, 0},   /* song-preset */
-    {"k:SEQ|t:+|k:REC~delete entry", 81, 0, 0},   /* song-delete */
-    {"k:SEL~back to steps", 82, 0, 0},   /* song-back */
-    {"n:ALGO~tab", 83, 0, 0},   /* menu-tab */
-    {"n:SELECT~scroll", 84, 7, 0},   /* menu-scroll */
-    {"c:1234~set", 85, 8, 0},   /* menu-set */
-    {"n:PRESET~patches", 86, 0, 0},   /* menu-patches */
-    {"k:SAVE~save, close", 87, 0, 0},   /* menu-save */
-    {"k:GLO|t:/|k:HOME~back", 88, 0, 0},   /* menu-back */
-    {"t:hold|k:GLO|t:2 s~run armed row", 89, 9, 0},   /* menu-run */
-    {"n:SELECT~devices", 90, 0, 0},   /* sb-devices */
-    {"n:ALGO~device pages", 91, 0, 0},   /* sb-pages */
-    {"c:1234~adjust values", 92, 0, 0},   /* sb-adjust */
-    {"t:in the editor:", 93, 0, 0},   /* sb-buttons */
-    {"k:SEQ|k:ENV|k:REC|k:SAVE|k:SEL", 93, 0, 0},   /* sb-buttons */
+    {"k:SEQ|t:+|k:FX~fill while FX held", 15, 6, 0},   /* fill */
+    {"k:HOME|t:+|k:OCT-|t:+|k:OCT+|t:2 s~3.5mm", 16, 0, 0},   /* out-35mm */
+    {"k:HOME~leave {list}'s pages", 17, 1, 0},   /* list-home */
+    {"n:SELECT~this patch's devices", 18, 0, 0},   /* devices */
+    {"n:ALGO~{list}'s pages", 19, 1, 0},   /* list-pages */
+    {"n:ALGO~this device's pages", 20, 1, 1},   /* device-pages */
+    {"n:PRESET~this device's presets", 21, 2, 0},   /* device-presets */
+    {"c:1234~adjust values", 22, 0, 0},   /* adjust */
+    {"k:HOME|t:+|c:1234~fine adjust", 23, 0, 0},   /* fine */
+    {"k:SEL~arm only this", 24, 4, 0},   /* arm-device */
+    {"k:ENV|t:then|k:SEL~arm several", 25, 4, 0},   /* arm-several */
+    {"b:~1-3 maj min dim", 26, 11, 0},   /* chord-quality */
+    {"w:~1-4 sus2 sus4 7 9", 27, 11, 0},   /* chord-add */
+    {"n:SELECT~device row", 28, 0, 0},   /* env-rows */
+    {"c:1234~device pg.1 params", 29, 0, 0},   /* env-first-page */
+    {"n:PRESET~row device's preset", 30, 2, 0},   /* env-presets */
+    {"n:ALGO~row device's preset", 31, 2, 0},   /* env-presets-algo */
+    {"k:SEL~add / drop row", 32, 4, 0},   /* env-arm */
+    {"k:FX~master FX", 33, 14, 0},   /* fx-open */
+    {"n:SELECT~effect row", 34, 0, 0},   /* fx-row */
+    {"c:1234~effect pg.1 params", 35, 0, 0},   /* fx-params */
+    {"k:SEL~effect on / off", 36, 0, 0},   /* fx-toggle */
+    {"k:FX~back", 37, 0, 0},   /* fx-back */
+    {"m:ANY KEY~play notes", 38, 0, 0},   /* roll-keys */
+    {"w:~toggle rowstep n", 39, 0, 0},   /* step */
+    {"b:~pick a row", 40, 0, 0},   /* row-key */
+    {"n:SELECT~pick a row", 41, 0, 0},   /* row-select */
+    {"n:SELECT~next 8-pitch page", 42, 0, 0},   /* roll-view */
+    {"k:SEL|t:+|n:SELECT~shift page up/down", 43, 0, 0},   /* roll-pitch */
+    {"k:SEL|t:+|m:ANY KEY~jump to pitch", 44, 10, 0},   /* pen */
+    {"k:OCT-|t:/|k:OCT+~next/prev 16 steps", 45, 5, 0},   /* steps-page */
+    {"n:ALGO~track", 46, 0, 0},   /* track */
+    {"n:PRESET~pattern", 47, 0, 0},   /* pattern */
+    {"k:FX|t:+|w:~accent", 48, 0, 0},   /* accent */
+    {"k:LFO|t:+|w:~tie", 49, 0, 0},   /* tie */
+    {"k:LFO|t:+|k:FX~row drone", 50, 0, 0},   /* row-drone */
+    {"k:REC~toggle step record", 51, 0, 0},   /* step-record */
+    {"k:REC|t:+|w:~^ but at step n/16", 52, 0, 0},   /* step-record-there */
+    {"k:REC|t:+|w:~^ but at step N/16", 52, 0, 0},   /* step-record-there */
+    {"t:hold step +|c:2~velocity", 53, 0, 0},   /* held-velocity */
+    {"t:hold step +|n:SELECT~chance", 54, 0, 0},   /* held-chance-select */
+    {"t:hold step +|c:4~trig condition", 55, 0, 0},   /* held-cond */
+    {"t:hold step +|n:ALGO~p-lock pages", 56, 0, 0},   /* lock-pages */
+    {"t:hold step +|c:1234~p-lock rows", 57, 0, 0},   /* lock-rows */
+    {"k:SEL|t:tap~structure song", 58, 0, 0},   /* song-page */
+    {"k:SEL|t:+|k:SAVE~save pattern", 59, 15, 0},   /* pattern-save */
+    {"k:FX|t:+|k:SAVE~save pattern as new", 60, 15, 0},   /* pattern-new */
+    {"k:SEL|t:+|n:PRESET~load stored pattern", 61, 15, 0},   /* pattern-load */
+    {"k:SEQ|t:+|k:REC~clear track", 62, 0, 0},   /* clear */
+    {"m:KEYS~play, let go: write", 63, 0, 0},   /* sr-keys */
+    {"k:SEL|t:+|k:FX~preview off", 64, 12, 0},   /* sr-preview-off */
+    {"k:SEL|t:+|k:FX~preview on", 65, 13, 0},   /* sr-preview-on */
+    {"t:keys together~one chord", 66, 0, 0},   /* sr-chord */
+    {"k:LFO~rest, keys held: tie", 67, 0, 0},   /* sr-rest */
+    {"k:FX|t:held~accent", 68, 0, 0},   /* sr-accent */
+    {"c:4~move cursor", 69, 0, 0},   /* sr-cursor */
+    {"b:10~back, clear step", 70, 0, 0},   /* sr-back */
+    {"k:PLAY~play, record live", 71, 0, 0},   /* sr-live */
+    {"k:REC~end step record", 72, 0, 0},   /* sr-end */
+    {"m:KEYS~record notes", 73, 0, 0},   /* take */
+    {"k:FX|t:held~accented notes", 74, 0, 0},   /* take-accent */
+    {"n:SELECT~pick entry", 75, 0, 0},   /* song-entry */
+    {"c:1~entry's pattern", 76, 0, 0},   /* song-pattern */
+    {"c:1|t:on END~add entry", 77, 0, 0},   /* song-add */
+    {"k:FX|t:+|c:1~duplicate entry", 78, 0, 0},   /* song-dup */
+    {"c:2~transpose entry", 79, 0, 0},   /* song-shift */
+    {"c:4~song on / off", 80, 0, 0},   /* song-play */
+    {"n:ALGO~song 1-8", 81, 0, 0},   /* song-sel */
+    {"n:PRESET~selected pattern", 82, 0, 0},   /* song-preset */
+    {"k:SEQ|t:+|k:REC~delete entry", 83, 0, 0},   /* song-delete */
+    {"k:SEL~back to steps", 84, 0, 0},   /* song-back */
+    {"n:ALGO~tab", 85, 0, 0},   /* menu-tab */
+    {"n:SELECT~scroll", 86, 7, 0},   /* menu-scroll */
+    {"c:1234~set", 87, 8, 0},   /* menu-set */
+    {"n:PRESET~patches", 88, 0, 0},   /* menu-patches */
+    {"k:SAVE~save, close", 89, 0, 0},   /* menu-save */
+    {"k:GLO|t:/|k:HOME~back", 90, 0, 0},   /* menu-back */
+    {"t:hold|k:GLO|t:2 s~run armed row", 91, 9, 0},   /* menu-run */
+    {"n:SELECT~devices", 92, 0, 0},   /* sb-devices */
+    {"n:ALGO~device pages", 93, 0, 0},   /* sb-pages */
+    {"c:1234~adjust values", 94, 0, 0},   /* sb-adjust */
+    {"t:in the editor:", 95, 0, 0},   /* sb-buttons */
+    {"k:SEQ|k:ENV|k:REC|k:SAVE|k:SEL", 95, 0, 0},   /* sb-buttons */
     {0, CTL_PATCH, 0, 0},
 };
 
 /* the lines of each tab in order, CTL_END after the last: [0] the state's tab, [1] EVERYWHERE; per state in HS_* order */
 #define CTL_END 255u
-static const uint8_t CTL_SHEET[2][10][20] = {
+static const uint8_t CTL_SHEET[2][10][21] = {
     {
-        {17, 19, 26, 27, 22, 23, 24, 25, 20, 21, 18, 11, 33, 97, CTL_END},   /* device */
-        {28, 32, 30, 29, 12, 33, CTL_END},   /* env */
-        {40, 39, 48, 51, 53, 47, 58, 59, 60, 61, 62, 45, 49, 50, 54, 55, 46, 56, 57, CTL_END},   /* drum */
-        {51, 52, 26, 27, 38, 58, 59, 60, 61, 42, 43, 44, 74, 46, 47, 62, CTL_END},   /* roll */
-        {73, 74, 42, 46, 47, CTL_END},   /* live */
-        {75, 76, 77, 78, 79, 80, 81, 82, 83, CTL_END},   /* song */
-        {89, 85, 86, 87, 91, 88, CTL_END},   /* menu */
-        {92, 93, 94, 95, 96, CTL_END},   /* sandbox */
-        {72, 63, 26, 27, 66, 64, 65, 67, 68, 69, 70, 44, 8, 71, CTL_END},   /* step */
-        {34, 35, 36, 37, CTL_END},   /* fx */
+        {18, 20, 27, 28, 23, 24, 25, 26, 21, 22, 19, 11, 34, 99, CTL_END},   /* device */
+        {29, 33, 31, 30, 12, 34, CTL_END},   /* env */
+        {41, 40, 49, 52, 54, 48, 60, 61, 62, 63, 64, 46, 50, 51, 55, 56, 57, 47, 58, 59, CTL_END},   /* drum */
+        {52, 53, 27, 28, 39, 60, 61, 62, 63, 43, 44, 45, 76, 47, 48, 64, CTL_END},   /* roll */
+        {75, 76, 43, 47, 48, CTL_END},   /* live */
+        {77, 78, 79, 80, 81, 82, 83, 84, 85, CTL_END},   /* song */
+        {91, 87, 88, 89, 93, 90, CTL_END},   /* menu */
+        {94, 95, 96, 97, 98, CTL_END},   /* sandbox */
+        {74, 65, 27, 28, 68, 66, 67, 69, 70, 71, 72, 45, 8, 73, CTL_END},   /* step */
+        {35, 36, 37, 38, CTL_END},   /* fx */
     },
     {
-        {3, 0, 1, 2, 4, 5, 6, 8, 9, 10, 13, 14, 15, 16, CTL_END},   /* device */
-        {3, 0, 1, 2, 4, 6, 8, 9, 10, 13, 14, 15, 16, CTL_END},   /* env */
-        {3, 0, 2, 4, 5, 9, 10, 11, 13, 14, 15, 16, CTL_END},   /* drum */
-        {3, 0, 2, 4, 5, 8, 9, 10, 11, 13, 14, 15, 16, CTL_END},   /* roll */
-        {3, 0, 1, 2, 4, 5, 8, 9, 10, 11, 13, 14, 15, 16, CTL_END},   /* live */
-        {3, 0, 1, 2, 4, 5, 8, 9, 10, 11, 13, 14, 15, 16, CTL_END},   /* song */
-        {3, 0, 1, 5, 6, 9, 11, 13, 14, 15, 16, CTL_END},   /* menu */
-        {0, 4, 8, 9, 16, CTL_END},   /* sandbox */
-        {3, 0, 2, 4, 5, 9, 10, 11, 13, 14, 15, 16, CTL_END},   /* step */
-        {3, 0, 1, 2, 4, 5, 6, 8, 9, 10, 11, 13, 14, 15, 16, CTL_END},   /* fx */
+        {3, 0, 1, 2, 4, 5, 6, 8, 9, 10, 13, 14, 15, 16, 17, CTL_END},   /* device */
+        {3, 0, 1, 2, 4, 6, 8, 9, 10, 13, 14, 15, 16, 17, CTL_END},   /* env */
+        {3, 0, 2, 4, 5, 9, 10, 11, 13, 14, 15, 16, 17, CTL_END},   /* drum */
+        {3, 0, 2, 4, 5, 8, 9, 10, 11, 13, 14, 15, 16, 17, CTL_END},   /* roll */
+        {3, 0, 1, 2, 4, 5, 8, 9, 10, 11, 13, 14, 15, 16, 17, CTL_END},   /* live */
+        {3, 0, 1, 2, 4, 5, 8, 9, 10, 11, 13, 14, 15, 16, 17, CTL_END},   /* song */
+        {3, 0, 1, 5, 6, 9, 11, 13, 14, 15, 16, 17, CTL_END},   /* menu */
+        {0, 4, 8, 9, 17, CTL_END},   /* sandbox */
+        {3, 0, 2, 4, 5, 9, 10, 11, 13, 14, 15, 16, 17, CTL_END},   /* step */
+        {3, 0, 1, 2, 4, 5, 6, 8, 9, 10, 11, 13, 14, 15, 16, 17, CTL_END},   /* fx */
     },
 };
 
@@ -188,12 +190,12 @@ static const uint8_t CTL_SHEET[2][10][20] = {
 static const uint8_t CTL_UNLISTED[2][10][2] = {
     {
         {CTL_END},   /* device */
-        {31, CTL_END},   /* env */
-        {41, CTL_END},   /* drum */
+        {32, CTL_END},   /* env */
+        {42, CTL_END},   /* drum */
         {CTL_END},   /* roll */
         {CTL_END},   /* live */
-        {84, CTL_END},   /* song */
-        {90, CTL_END},   /* menu */
+        {86, CTL_END},   /* song */
+        {92, CTL_END},   /* menu */
         {CTL_END},   /* sandbox */
         {CTL_END},   /* step */
         {CTL_END},   /* fx */
@@ -212,7 +214,7 @@ static const uint8_t CTL_UNLISTED[2][10][2] = {
     },
 };
 /* what each row does (firmware/test/controls_test.h checks it) */
-enum { CE_TRANSPORT, CE_PLAY_ONCE, CE_RECORD, CE_SAVE, CE_BACK, CE_MENU, CE_ENV, CE_SEQ, CE_OCTAVE, CE_TEMPO, CE_PATCH, CE_STORE, CE_ARM, CE_MUTE, CE_FOCUS, CE_DEVICE_PAGE, CE_LIST_BACK, CE_LIST_PAGE, CE_PRESET, CE_PARAM, CE_FINE, CE_STEP, CE_ROW, CE_ROLL_VIEW, CE_ROLL_PITCH, CE_JUMP, CE_TRACK, CE_PATTERN, CE_ACCENT, CE_TIE, CE_STEP_RECORD, CE_STEP_RECORD_AT, CE_VELOCITY, CE_CHANCE, CE_PITCH, CE_LOCK_PAGE, CE_LOCK, CE_SONG_PAGE, CE_CLEAR, CE_STEPS_PAGE, CE_KEYS_OCTAVE, CE_WRITE, CE_CHORD, CE_REST, CE_CURSOR, CE_BACK_CLEAR, CE_LIVE, CE_END, CE_TAKE, CE_TAKE_ACCENT, CE_DRONE, CE_PLAY_NOTES, CE_PREVIEW, CE_ENTRY, CE_ENTRY_PATTERN, CE_ADD_ENTRY, CE_DUP_ENTRY, CE_TRANSPOSE, CE_SONG_PLAY, CE_SONG, CE_DELETE_ENTRY, CE_BACK_STEPS, CE_TAB, CE_SCROLL, CE_SET, CE_SAVE_CLOSE, CE_RUN_ROW, CE_EDITOR, CE_ANALOG_OUT, CE_CHORD_BUTTON, CE_FX_PAGE, CE_FX_TOGGLE, CE_FX_ROW, CE_PATTERN_SAVE, CE_PATTERN_NEW, CE_PATTERN_LOAD, CE_COUNT };
+enum { CE_TRANSPORT, CE_PLAY_ONCE, CE_RECORD, CE_SAVE, CE_BACK, CE_MENU, CE_ENV, CE_SEQ, CE_OCTAVE, CE_TEMPO, CE_PATCH, CE_STORE, CE_ARM, CE_MUTE, CE_FOCUS, CE_DEVICE_PAGE, CE_LIST_BACK, CE_LIST_PAGE, CE_PRESET, CE_PARAM, CE_FINE, CE_STEP, CE_ROW, CE_ROLL_VIEW, CE_ROLL_PITCH, CE_JUMP, CE_TRACK, CE_PATTERN, CE_ACCENT, CE_TIE, CE_STEP_RECORD, CE_STEP_RECORD_AT, CE_VELOCITY, CE_CHANCE, CE_PITCH, CE_LOCK_PAGE, CE_LOCK, CE_SONG_PAGE, CE_CLEAR, CE_STEPS_PAGE, CE_KEYS_OCTAVE, CE_WRITE, CE_CHORD, CE_REST, CE_CURSOR, CE_BACK_CLEAR, CE_LIVE, CE_END, CE_TAKE, CE_TAKE_ACCENT, CE_DRONE, CE_PLAY_NOTES, CE_PREVIEW, CE_ENTRY, CE_ENTRY_PATTERN, CE_ADD_ENTRY, CE_DUP_ENTRY, CE_TRANSPOSE, CE_SONG_PLAY, CE_SONG, CE_DELETE_ENTRY, CE_BACK_STEPS, CE_TAB, CE_SCROLL, CE_SET, CE_SAVE_CLOSE, CE_RUN_ROW, CE_EDITOR, CE_ANALOG_OUT, CE_CHORD_BUTTON, CE_FX_PAGE, CE_FX_TOGGLE, CE_FX_ROW, CE_PATTERN_SAVE, CE_PATTERN_NEW, CE_PATTERN_LOAD, CE_CONDITION, CE_FILL, CE_COUNT };
 /* a gesture part: a button (id: its matrix id), an encoder (id: panel_encoders' index), K1..K4 (id: a mask, bit 0 K1), a
  * white key, a black key (n: black key n, 0 any), any key, the keys played, keys together */
 enum { CK_BUTTON, CK_ENCODER, CK_KNOBS, CK_WHITE, CK_BLACK, CK_ANY, CK_KEYS, CK_CHORD };
@@ -223,7 +225,7 @@ typedef struct { uint8_t kind, id, n; } ctl_part_t;
 /* first: a button tapped before the rest (ENV then SEL), CH_NONE none; all: the parts are buttons pressed together (nalt 1,
  * all of them in alt), 0: alternatives */
 typedef struct { const char *id; uint8_t effect, first, hold, how, at_end, nalt, all; ctl_part_t alt[5]; } ctl_row_t;
-#define CTL_NROWS 94
+#define CTL_NROWS 96
 static const ctl_row_t CTL_ROW[CTL_NROWS] = {
     {"play", CE_TRANSPORT, CH_NONE, CH_NONE, CW_PRESS, 0, 1, 0, {{CK_BUTTON, 12, 0}}},
     {"rec", CE_RECORD, CH_NONE, CH_NONE, CW_PRESS, 0, 1, 0, {{CK_BUTTON, 13, 0}}},
@@ -240,6 +242,7 @@ static const ctl_row_t CTL_ROW[CTL_NROWS] = {
     {"arm", CE_ARM, CH_NONE, 13, CW_PRESS, 0, 1, 0, {{CK_BLACK, 0, 0}}},
     {"mute", CE_MUTE, CH_NONE, 11, CW_PRESS, 0, 1, 0, {{CK_BLACK, 0, 0}}},
     {"play-once", CE_PLAY_ONCE, CH_NONE, 11, CW_PRESS, 0, 1, 0, {{CK_BUTTON, 12, 0}}},
+    {"fill", CE_FILL, CH_NONE, 11, CW_PRESS, 0, 1, 0, {{CK_BUTTON, 2, 0}}},
     {"out-35mm", CE_ANALOG_OUT, CH_NONE, CH_NONE, CW_HOLD2S, 0, 1, 3, {{CK_BUTTON, 8, 0}, {CK_BUTTON, 0, 0}, {CK_BUTTON, 1, 0}}},
     {"list-home", CE_LIST_BACK, CH_NONE, CH_NONE, CW_PRESS, 0, 1, 0, {{CK_BUTTON, 8, 0}}},
     {"devices", CE_FOCUS, CH_NONE, CH_NONE, CW_PRESS, 0, 1, 0, {{CK_ENCODER, 0, 0}}},
@@ -279,6 +282,7 @@ static const ctl_row_t CTL_ROW[CTL_NROWS] = {
     {"step-record-there", CE_STEP_RECORD_AT, CH_NONE, 13, CW_PRESS, 0, 1, 0, {{CK_WHITE, 0, 0}}},
     {"held-velocity", CE_VELOCITY, CH_NONE, CH_STEP, CW_PRESS, 0, 1, 0, {{CK_KNOBS, 2, 0}}},
     {"held-chance-select", CE_CHANCE, CH_NONE, CH_STEP, CW_PRESS, 0, 1, 0, {{CK_ENCODER, 0, 0}}},
+    {"held-cond", CE_CONDITION, CH_NONE, CH_STEP, CW_PRESS, 0, 1, 0, {{CK_KNOBS, 8, 0}}},
     {"lock-pages", CE_LOCK_PAGE, CH_NONE, CH_STEP, CW_PRESS, 0, 1, 0, {{CK_ENCODER, 1, 0}}},
     {"lock-rows", CE_LOCK, CH_NONE, CH_STEP, CW_PRESS, 0, 1, 0, {{CK_KNOBS, 15, 0}}},
     {"song-page", CE_SONG_PAGE, CH_NONE, CH_NONE, CW_TAP, 0, 1, 0, {{CK_BUTTON, 3, 0}}},

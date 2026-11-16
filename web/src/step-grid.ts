@@ -23,7 +23,7 @@
 // value, to edit from there).
 import { NOTE_NAMES } from './modules';
 import { STEPS_MAX, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef } from './patch';
-import { chordFits, isDrone, locksAt, setChord, setLock, setStep, setStepValue, STEP_NOTE, STEP_VEL, stepView, type StepLock, type StepNote, type StepView } from './track';
+import { chordFits, COND_ORDER, condName, isDrone, locksAt, setChord, setCond, setLock, setStep, setStepValue, STEP_NOTE, STEP_VEL, stepView, type StepLock, type StepNote, type StepView } from './track';
 
 /** a row of the track's device a step can lock (#524): its module's parameter, its label ("filter cutoff"), its definition
  * and its normal value now */
@@ -36,6 +36,8 @@ export interface StepGridOps {
   /** the track's name (an empty string removes it) */
   name(s: string): void;
   mute(on: boolean): void;
+  /** FILL held or let go (#674): the notes with a FILL trig condition play while it is held */
+  fill(on: boolean): void;
   /** arm / disarm the track (#134), and whether it is armed */
   arm(on: boolean): void;
   armed(): boolean;
@@ -154,6 +156,13 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
   mute.title = 'mute the track (not saved; on the FM-1: SEQ held + its black key)';
   let muted = false;
   mute.onclick = () => ops.mute(!muted);
+  const fill = document.createElement('button');
+  fill.type = 'button';
+  fill.className = 'steps-fill';
+  fill.textContent = 'fill';
+  fill.title = 'hold: FILL, the notes with a FILL trig condition play, NOT FILL ones rest (on the FM-1: SEQ held + FX)';
+  fill.onpointerdown = (e) => { e.stopPropagation(); fill.setPointerCapture?.(e.pointerId); fill.classList.add('on'); ops.fill(true); };
+  fill.onpointerup = fill.onpointercancel = () => { fill.classList.remove('on'); ops.fill(false); };
   const rec = document.createElement('button');
   rec.type = 'button';
   rec.className = 'steps-rec';
@@ -184,7 +193,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
   roll.onclick = () => ops.roll();
   const acts = document.createElement('span');
   acts.className = 'steps-acts';
-  acts.append(roll, arm, rec, mute);
+  acts.append(roll, arm, rec, mute, fill);
   head.append(name, lanes, acts);
   const rows = document.createElement('div');
   rows.className = 'steps-rows';
@@ -213,7 +222,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
   const tip = (k: number): string => {
     const s = view(m, k);
     const chord = (m.notes ?? []).filter((n) => n.at === k).map((n) => NOTE_NAMES[n.note]);
-    const what = s.tie ? ': tied (the note before goes on)' : s.on ? `${droneAt(m, k) ? ', a drone (tied round the loop onto itself)' : ''}${s.accent ? ', accented' : ''}${s.chance < 100 ? `, ${s.chance} %` : ''}` : ': off';
+    const what = s.tie ? ': tied (the note before goes on)' : s.on ? `${droneAt(m, k) ? ', a drone (tied round the loop onto itself)' : ''}${s.accent ? ', accented' : ''}${s.chance < 100 ? `, ${s.chance} %` : ''}${s.cond ? `, plays on ${condName(s.cond)}` : ''}` : ': off';
     const vals = s.on ? ` · ${chord.join(' ')}, velocity ${s.vel}` : '';
     const how = { steps: 'click: on / off, Shift-click: accent, Ctrl / Cmd-click: tie, drag up / down: chance', note: 'drag up / down: note (Shift: octaves), double click: C4', vel: 'press and sweep: velocity, double click: default' }[lane];
     return `step ${k + 1}${what}${vals}\n${how}`;
@@ -226,6 +235,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
     c.classList.toggle('acc', s.on && s.accent);
     c.classList.toggle('tie', s.tie);
     c.classList.toggle('drone', s.on && droneAt(m, k));
+    c.classList.toggle('cond', s.on && s.cond > 0);
     let v = s.on ? s.chance / 100 : 0;
     if (lane === 'vel') v = s.on ? s.vel / 127 : 0;
     c.style.setProperty('--chance', String(v));
@@ -345,7 +355,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
       box.replaceChildren();
       const h = document.createElement('div');
       h.className = 'lock-head';
-      h.textContent = `step ${k + 1}: P-locks`;
+      h.textContent = `step ${k + 1}: condition, P-locks`;
       const x = document.createElement('button');
       x.type = 'button';
       x.textContent = '×';
@@ -353,6 +363,17 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
       x.onclick = closeLocks;
       h.append(x);
       box.append(h);
+      if (view(m, k).on) {                       // the step's trig condition (#674): when its notes play
+        const line = document.createElement('div');
+        line.className = 'lock-row lock-cond';
+        const sel = document.createElement('select');
+        sel.title = 'when the step plays: FILL while FILL is held, PRE / NEI after a condition that held here / on the track before, 1ST on the first pass, A:B on pass A of every B (it takes the chance\'s place)';
+        COND_ORDER.forEach((c) => sel.append(new Option(c ? `plays on ${condName(c)}` : 'plays every time', String(c))));
+        sel.value = String(view(m, k).cond);
+        sel.onchange = () => { ops.notes(setCond(m.notes, (n) => n.at === k, Number(sel.value))); paintAll(); draw(); };
+        line.append(sel);
+        box.append(line);
+      }
       const mine = locksAt(m.locks, k);
       const put = (r: { module: number; param: string }, v: number | null): void => {
         ops.locks(setLock(m.locks, k, r.module, r.param, v));

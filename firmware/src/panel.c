@@ -593,6 +593,10 @@ static void panel_encoders(int32_t *st)
             seq_value(st[2], st[3], knob_fast(1, st[2] ? st[2] : st[3]));
             st[2] = st[3] = 0;
         }
+        if (st[5] && seq_held >= 0 && !sr_on) {     /* K4 with a step held (no lock page): its trig condition (#674) */
+            seq_cond(st[5]);
+            st[5] = 0;
+        }
         if (st[5] && sr_on) {                       /* K4 in step record (#532): the cursor, nothing written */
             sr_knob(st[5]);
             st[5] = 0;
@@ -772,7 +776,7 @@ static int panel_key(uint32_t n, int down, int quick)
         int32_t note = 53 + (int32_t)n + 12 * octave;
         /* into an armed track at the default velocity (FX held on its keyboard, a live take: the accent's), so a take
          * records what a step entered would be; else at full velocity as always */
-        uint32_t vel = eng_armed() < 0 ? 127u : seq_play_keys() && (panel_held >> BTN_ACC & 1u) ? ACCENT_VEL : STEP_VEL;
+        uint32_t vel = eng_armed() < 0 ? 127u : seq_play_keys() && (panel_held >> BTN_ACC & 1u) && !seq_fill ? ACCENT_VEL : STEP_VEL;
         int map = seq_play_keys() || sb_on ? -1 : eng_keys_drummap(), b = seq_black(n);   /* (sandbox mode: the plain notes) */
         if (seq_play_keys() && (panel_held >> BTN_SEL & 1u)) {
             seq_pen_ms = fm1_ms | 1u;
@@ -903,6 +907,10 @@ static void panel_release_quiet(uint32_t rel)
         seq_held_used = 0;
     if (rel & (1u << BTN_REC))
         rec_held_used = 0;
+    if ((rel >> BTN_ACC & 1u) && seq_fill) {        /* (FILL let go under a card, #674) */
+        seq_fill = 0;
+        eng_fill(0);
+    }
 }
 
 /* the buttons while a card shows (help_ui.c; pair: OCT- + OCT+ just went down together). The sheet: HOME closes it. The
@@ -1017,6 +1025,21 @@ static void panel_edges(uint32_t p, uint32_t rel)
             sb_nudge(p & SB_NUDGE_BTNS & ~own);
         p &= own;
         rel &= own;
+    }
+    if ((p >> BTN_ACC & 1u) && (panel_held >> BTN_SEQ & 1u) && !sb_on) {   /* SEQ held + FX (#674, D-830): FILL while FX is
+                                                     * held; neither SEQ's release nor FX's does its own, and FX is no accent */
+        seq_held_used = 1;
+        seq_fill = 1;
+        eng_fill(1);
+        ui_msg("FILL", 600);
+    }
+    if (seq_fill) {
+        p &= ~(1u << BTN_ACC);
+        if (rel >> BTN_ACC & 1u) {
+            seq_fill = 0;
+            eng_fill(0);
+            rel &= ~(1u << BTN_ACC);
+        }
     }
     if ((p & ~(1u << BTN_REC)) || (rel & (1u << BTN_SEQ)))   /* the track's clear asks: another button, or SEQ let go, */
         seq_clear_cancel();                                   /* and it is not cleared (#231) */
