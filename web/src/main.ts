@@ -813,7 +813,6 @@ const listenChip = $('listen-chip');
 const showListen = (label: string | null): void => {
   listenChip.hidden = !label;
   $('listen-name').textContent = label ?? '';
-  document.documentElement.classList.toggle('listening-any', !!label);
 };
 $('listen-stop').onclick = () => editor.stopListening();
 // envelope shapes: drags edit through the editor (made below; used only after it exists)
