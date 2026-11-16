@@ -1,0 +1,298 @@
+{
+ "version": 1,
+ "fpu": 1,
+ "frames": 128,
+ "runs": 8,
+ "pll2_con1": 122695948,
+ "cycles_per_tick": 15.003663003663004,
+ "kernels": [
+  {
+   "name": "loop ld+add",
+   "ops": 1,
+   "ticks_min": 88,
+   "ticks_max": 146,
+   "result": "fffecef9",
+   "result_f32": NaN
+  },
+  {
+   "name": "f add x8",
+   "ops": 8,
+   "ticks_min": 198,
+   "ticks_max": 199,
+   "result": "3f000000",
+   "result_f32": 0.5
+  },
+  {
+   "name": "f mul x8",
+   "ops": 8,
+   "ticks_min": 199,
+   "ticks_max": 200,
+   "result": "3ebd70a4",
+   "result_f32": 0.3700000047683716
+  },
+  {
+   "name": "f div x4",
+   "ops": 4,
+   "ticks_min": 190,
+   "ticks_max": 191,
+   "result": "3f000000",
+   "result_f32": 0.5
+  },
+  {
+   "name": "f mul+add x4",
+   "ops": 4,
+   "ticks_min": 191,
+   "ticks_max": 191,
+   "result": "3f904104",
+   "result_f32": 1.1269841194152832
+  },
+  {
+   "name": "i2f x4",
+   "ops": 4,
+   "ticks_min": 165,
+   "ticks_max": 166,
+   "result": "02805662",
+   "result_f32": 1.8857490915940727e-37
+  },
+  {
+   "name": "f2i x4",
+   "ops": 4,
+   "ticks_min": 166,
+   "ticks_max": 166,
+   "result": "0011ff00",
+   "result_f32": 1.6526801984369747e-39
+  },
+  {
+   "name": "f add x8 subnormal",
+   "ops": 8,
+   "ticks_min": 198,
+   "ticks_max": 199,
+   "result": "000ae398",
+   "result_f32": 1.0000002153053333e-39
+  },
+  {
+   "name": "f mul x8 subnormal",
+   "ops": 8,
+   "ticks_min": 199,
+   "ticks_max": 200,
+   "result": "000ae398",
+   "result_f32": 1.0000002153053333e-39
+  },
+  {
+   "name": "i mul x8",
+   "ops": 8,
+   "ticks_min": 71,
+   "ticks_max": 72,
+   "result": "e4003039",
+   "result_f32": -9.458632200089263e+21
+  },
+  {
+   "name": "q mul64 x4",
+   "ops": 4,
+   "ticks_min": 406,
+   "ticks_max": 407,
+   "result": "0fe01eda",
+   "result_f32": 2.2099988935798307e-29
+  },
+  {
+   "name": "sinf",
+   "ops": 1,
+   "ticks_min": 2147,
+   "ticks_max": 2365,
+   "result": "bdaa4fc4",
+   "result_f32": -0.08315995335578918
+  },
+  {
+   "name": "cosf",
+   "ops": 1,
+   "ticks_min": 2124,
+   "ticks_max": 2125,
+   "result": "3fdb96a8",
+   "result_f32": 1.7155351638793945
+  },
+  {
+   "name": "expf",
+   "ops": 1,
+   "ticks_min": 1687,
+   "ticks_max": 1847,
+   "result": "47ea8c22",
+   "result_f32": 120088.265625
+  },
+  {
+   "name": "log2f",
+   "ops": 1,
+   "ticks_min": 1864,
+   "ticks_max": 2019,
+   "result": "445cf077",
+   "result_f32": 883.7572631835938
+  },
+  {
+   "name": "exp2 q exp2_scale",
+   "ops": 1,
+   "ticks_min": 816,
+   "ticks_max": 817,
+   "result": "16461be8",
+   "result_f32": 1.6003118285391588e-25
+  },
+  {
+   "name": "exp2 f exp2f",
+   "ops": 1,
+   "ticks_min": 4163,
+   "ticks_max": 4706,
+   "result": "4db230e0",
+   "result_f32": 373693440.0
+  },
+  {
+   "name": "exp2 f expf",
+   "ops": 1,
+   "ticks_min": 1708,
+   "ticks_max": 1709,
+   "result": "4db230df",
+   "result_f32": 373693408.0
+  },
+  {
+   "name": "exp2 f poly5",
+   "ops": 1,
+   "ticks_min": 415,
+   "ticks_max": 439,
+   "result": "4db230e1",
+   "result_f32": 373693472.0
+  },
+  {
+   "name": "biquad x2 q dly_aa",
+   "ops": 2,
+   "ticks_min": 758,
+   "ticks_max": 944,
+   "result": "01b03c68",
+   "result_f32": 6.473886801303509e-38
+  },
+  {
+   "name": "biquad x2 f",
+   "ops": 2,
+   "ticks_min": 578,
+   "ticks_max": 620,
+   "result": "3ed81e32",
+   "result_f32": 0.4221053719520569
+  },
+  {
+   "name": "res x6 q rotated",
+   "ops": 6,
+   "ticks_min": 3769,
+   "ticks_max": 4270,
+   "result": "00a13485",
+   "result_f32": 1.4804355339289432e-38
+  },
+  {
+   "name": "res x6 f rotated",
+   "ops": 6,
+   "ticks_min": 1764,
+   "ticks_max": 1972,
+   "result": "3e213510",
+   "result_f32": 0.15742897987365723
+  },
+  {
+   "name": "res x6 f subnormal",
+   "ops": 6,
+   "ticks_min": 1756,
+   "ticks_max": 1916,
+   "result": "800e64ed",
+   "result_f32": -1.3219022946346373e-39
+  },
+  {
+   "name": "res x6 f sub+offset",
+   "ops": 6,
+   "ticks_min": 1670,
+   "ticks_max": 1890,
+   "result": "27b8afc2",
+   "result_f32": 5.1260816134901e-15
+  },
+  {
+   "name": "res x6 q 2-pole",
+   "ops": 6,
+   "ticks_min": 2538,
+   "ticks_max": 2851,
+   "result": "000509a2",
+   "result_f32": 4.6263308280298106e-40
+  },
+  {
+   "name": "res x6 f 2-pole",
+   "ops": 6,
+   "ticks_min": 999,
+   "ticks_max": 1146,
+   "result": "3ea1323f",
+   "result_f32": 0.3148364722728729
+  },
+  {
+   "name": "onepole q",
+   "ops": 1,
+   "ticks_min": 191,
+   "ticks_max": 192,
+   "result": "0012e08c",
+   "result_f32": 1.7335911717670896e-39
+  },
+  {
+   "name": "onepole f",
+   "ops": 1,
+   "ticks_min": 157,
+   "ticks_max": 158,
+   "result": "3d9704d6",
+   "result_f32": 0.07373969256877899
+  },
+  {
+   "name": "osc q15 (2026-10)",
+   "ops": 1,
+   "ticks_min": 148,
+   "ticks_max": 149,
+   "result": "000cc2d6",
+   "result_f32": 1.1719199186994878e-39
+  },
+  {
+   "name": "osc f (2026-10)",
+   "ops": 1,
+   "ticks_min": 243,
+   "ticks_max": 244,
+   "result": "c17e8a58",
+   "result_f32": -15.908775329589844
+  },
+  {
+   "name": "mac4 q15 (2026-10)",
+   "ops": 4,
+   "ticks_min": 233,
+   "ticks_max": 234,
+   "result": "00001060",
+   "result_f32": 5.874243162449633e-42
+  },
+  {
+   "name": "mac4 f (2026-10)",
+   "ops": 4,
+   "ticks_min": 234,
+   "ticks_max": 234,
+   "result": "3ddcf290",
+   "result_f32": 0.10788452625274658
+  },
+  {
+   "name": "svf q15 (2026-10)",
+   "ops": 1,
+   "ticks_min": 208,
+   "ticks_max": 209,
+   "result": "fffffc88",
+   "result_f32": NaN
+  },
+  {
+   "name": "svf f (2026-10)",
+   "ops": 1,
+   "ticks_min": 183,
+   "ticks_max": 184,
+   "result": "bcd6c947",
+   "result_f32": -0.026219023391604424
+  },
+  {
+   "name": "f2i out (2026-10)",
+   "ops": 1,
+   "ticks_min": 106,
+   "ticks_max": 106,
+   "result": "ffffb3d5",
+   "result_f32": NaN
+  }
+ ]
+}

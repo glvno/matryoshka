@@ -12,6 +12,10 @@ Identity: FM-1_7MMmmpp (7, then major, minor and patch as two digits each: 1.8.0
 FM-1_7000000 (#216).
 See BUILDING.md for the toolchain and the SDK.
 
+Measurement builds (#950, never released): M1_BENCH=1 compiles in the CPU benchmark (firmware/src/bench.c, DIAG pages
+178.., tools/m1_link.py fpubench) and links the toolchain's libm; FM1_FPU=1 compiles the app for the AC791N's FPU
+(FPU_FLAGS) and links the toolchain's r3 libraries, whose libm and float helpers use it. Both default to 0.
+
 The JieLi toolchain is Linux x86-64 only. JIELI_TOOLCHAIN points at it; on
 macOS (or with JIELI_DOCKER=1) each tool runs in a linux/amd64 container.
 """
@@ -46,8 +50,11 @@ CFLAGS = ["-Os", "-ffunction-sections", "-fno-builtin", "-Wall", "-Wno-unused-fu
 APP_SWITCHES = ("FELUCCA_FLASH", "FELUCCA_OTA", "FELUCCA_OTA_DRYRUN", "FELUCCA_OTA_RAMONLY", "FELUCCA_CDC",
                 "FELUCCA_UAC", "FELUCCA_UAC_TONE", "FELUCCA_UAC_48K", "FELUCCA_ICONS", "FELUCCA_SLICE", "FELUCCA_FM4",
                 "FELUCCA_CDC_DEFAULT", "FELUCCA_UAC_AS_FIRST", "FELUCCA_UAC_MIDI_LAST", "FELUCCA_USB_HS", "M1_EMU_MIDI",
-                "ENG_AOT", "ENG_BUF_REUSE")
+                "ENG_AOT", "ENG_BUF_REUSE", "M1_BENCH")
 SPEED = "-O2"                       # the app's audio path (#798, tools/size_fns.py); FELUCCA_SPEED=0 builds it at -Os
+# (#950, measurement only) FM1_FPU=1: what JieLi's AC79 SDK and FM1 Open compile with, the single-precision FPU
+# (-mcpu=r3 -mfprev1), and every float result rounded as written (no fused multiply-add)
+FPU_FLAGS = ["-mcpu=r3", "-mfprev1", "-ffp-contract=off"]
 # (spike) hot engine functions that run from SRAM: their compiled sections (-ffunction-sections: .text.NAME) are renamed
 # .fast_text.NAME in matryoshka.o before the link, so the code is the compiler's own, only placed elsewhere (app.ld .fast_text,
 # in NOINIT, copied there at boot by main.c). Only functions the compiler keeps out of line everywhere: a section attribute in
@@ -243,10 +250,13 @@ def llvm_objcopy():
 
 
 def build_app():
-    for switch in ("ENG_AOT", "ENG_RAMCODE", "ENG_BUF_REUSE"):
+    for switch in ("ENG_AOT", "ENG_RAMCODE", "ENG_BUF_REUSE", "FM1_FPU", "M1_BENCH"):
         if os.environ.get(switch, "0") not in ("0", "1"):
             raise SystemExit(f"{switch} must be 0 or 1")
-    flags = [*CFLAGS, "-Ifirmware/hal", "-Ifirmware/src"]
+    fpu = os.environ.get("FM1_FPU", "0") == "1"
+    flags = [*CFLAGS, *(FPU_FLAGS if fpu else []), "-Ifirmware/hal", "-Ifirmware/src"]
+    if fpu:
+        flags.append("-DM1_FPU=1")
     for flag in APP_SWITCHES:      # unset: defaults in the pinned firmware source
         v = os.environ.get(flag)    # unset: the default in firmware/src/modular.c
         if v in ("0", "1"):
@@ -282,8 +292,10 @@ def build_app():
         subprocess.run([loc, *[a for f in FAST_TEXT for a in ("--rename-section", f".text.{f}=.fast_text.{f}")],
                         OUT / "matryoshka.o"], check=True)
     elf = OUT / "matryoshka.elf"
+    lib = toolchain() / "pi32v2" / "lib" / ("r3" if fpu else "")   # r3: the FPU's libm and float helpers
+    libm = [str(lib / "libm.a")] if os.environ.get("M1_BENCH") == "1" else []   # the benchmark's sinf, expf, ...
     tc("pi32v2/bin/ld", "-T", FW / "app.ld", OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o", OUT / "fm1_cpu1.o",
-       OUT / "matryoshka.o", str(toolchain() / "pi32v2" / "lib" / "libcompiler-rt.a"), "-o", elf)   # soft float, 64-bit helpers
+       OUT / "matryoshka.o", *libm, str(lib / "libcompiler-rt.a"), "-o", elf)   # soft float (unless FM1_FPU), 64-bit helpers
     for sect in ("text.bin", "data.bin", "ramtext.bin", "c1text.bin", "fasttext.bin"):
         (OUT / sect).unlink(missing_ok=True)
     *_, syms, dis, rt, c1 = tc_all(("common/bin/objcopy", "-O", "binary", "-j", ".text", elf, OUT / "text.bin"),
@@ -467,6 +479,8 @@ def main():
     name = "matryoshka.fwsc"
     check_identity(PRODUCT)
     if a.release:                   # two digits each for major, minor and patch (#216); VERSION: MENU > SYSTEM, the splash
+        if "1" in (os.environ.get("FM1_FPU"), os.environ.get("M1_BENCH")):
+            ap.error("FM1_FPU=1 and M1_BENCH=1 are measurement builds (#950), never a release")
         PRODUCT, VERSION, FW_VERSION = release_identity(a.release)
         name = f"matryoshka-{a.release}.fwsc"
     fm1pkg_make.SDK = a.sdk
@@ -497,6 +511,7 @@ def main():
                        "build": {"ENG_AOT": int(os.environ.get("ENG_AOT", "0")),
                                  "ENG_RAMCODE": int(os.environ.get("ENG_RAMCODE", "0")),
                                  "ENG_BUF_REUSE": int(os.environ.get("ENG_BUF_REUSE", "1")),
+                                 **({"FM1_FPU": 1} if os.environ.get("FM1_FPU") == "1" else {}),
                                  "FELUCCA_SPEED": os.environ.get("FELUCCA_SPEED", SPEED),
                                  # Missing overrides use defaults in the recorded source commit.
                                  "defines": {k: os.environ[k] for k in APP_SWITCHES

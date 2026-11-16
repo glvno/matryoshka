@@ -130,6 +130,14 @@ class ReleaseBuild(unittest.TestCase):
                 build.main()
         self.assertEqual(marker.read_text(), "retain these artifacts")
 
+    def test_measurement_builds_are_never_released(self):
+        # #950: the FPU and benchmark builds are for the rig; --release refuses them before writing anything
+        for switch in ("FM1_FPU", "M1_BENCH"):
+            target = self.root / switch
+            with self.subTest(switch=switch), patch.dict(os.environ, {switch: "1"}), self.assertRaises(SystemExit):
+                self.run_build(target)
+            self.assertFalse((target / "release-1.13.0").exists())
+
     def test_manifest_rejects_wrong_version_switch_options_and_binary(self):
         normal, bridge = self.pair()
         side_path = bridge / "matryoshka-emu.json"

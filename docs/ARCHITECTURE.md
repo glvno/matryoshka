@@ -69,19 +69,18 @@ See [D-203](ledger/device-ui.md#D-203).
 
 ## Measured CPU budget (benchmark firmware, `firmware/src/bench.c`)
 
-Per 128-frame block (2902 us of audio as counted then; 2901 us at the real 44118 Hz), interrupts off, 16 repetitions, 1 us resolution, run on a real FM-1:
+The AC791N has a single-precision FPU (floating-point unit). The normal firmware is built without its flags and has no float code; `tools/build.py` with `FM1_FPU=1` builds for it (`-mcpu=r3 -mfprev1 -ffp-contract=off`, the toolchain's `lib/r3` libraries), and with `M1_BENCH=1` compiles in the benchmark (DIAG page 178, `tools/m1_link.py fpubench`). Neither is released; the CI job `fpu-measure` (a `workflow_dispatch` input) builds them. On the test rig, 2026-11-16, in CPU cycles a sample (one core has 8,159; [the measurements](measurements/2026-11-16-fpu.md)):
 
-| kernel | us/block | instances in 70 % of a block |
-|---|---|---|
-| osc, Q15 parabolic sine | 7 | 290 |
-| 4x Q15 multiply-add | 9 | 225 |
-| state variable filter, Q15 | 8 | 253 |
-| osc, float | 489 | 4 |
-| 4x float multiply-add | 444 | 4 |
-| state variable filter, float | 340 | 5 |
-| float to int16 per frame | 116 | 17 |
+| kernel | fixed point | float on the FPU | float in software |
+|---|---|---|---|
+| two biquad sections (`dly_aa`) | 88.8 | 67.7 | 2,423 |
+| six resonator modes as `m_modal` runs them | 441.6 | 206.6 | 7,295 |
+| one-pole | 22.4 | 18.4 | 457 |
+| state variable filter | 23.4 | 21.4 | 988 |
+| oscillator, parabolic sine | 17.3 | 28.5 | 1,405 |
+| exp2 for a phase increment | 94.9 (`exp2_scale`) | 48.6 (a polynomial), 201 (`expf`) | 1,849 / 3,486 |
 
-Conclusions: the core has no FPU (float links against `libcompiler-rt.a` soft float) and float is 40 to 70 times slower, so the audio path is **fixed point only** (Q15 samples, 32-bit accumulators, no float, no 64-bit division). Float is acceptable only at control rate (per block), and better avoided. The fixed kernels are tiny; real modules will cost several times their bare kernel (buffer traffic, modulation, CV), so plan for tens of module instances, and measure the real engine before promising more. The 1 us resolution makes the fixed numbers coarse (+-1 us).
+On the FPU a float add or multiply costs 1.6 cycles, a divide 3.0, an int / float conversion 2.3, and subnormal operands cost no more. libm's `sinf`, `expf` and `log2f` cost about 190 to 240 cycles a call. The result bits equal software float's on every kernel. In software float (the default libraries, what the build links without `FM1_FPU`) an operation costs 112 to 268 cycles: the 40 to 70 times of the first benchmark was software float, not the chip. Signals between modules are Q16.16 fixed point ([D-352](ledger/engine.md#D-352), amended); the firmware is to be built for the FPU with float at control rate ([D-1111](ledger/engine.md#D-1111)), and a recursive kernel may compute in float inside its module ([D-1112](ledger/engine.md#D-1112)). Issue #979 is that work; until it lands the normal build has no FPU flags and no float code. Real modules cost several times their bare kernel (buffer traffic, modulation, CV).
 
 ## Estimated CPU load (the editor's budget meter)
 
