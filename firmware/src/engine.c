@@ -564,14 +564,14 @@ typedef struct {
         struct { uint32_t phase, seed; int32_t held; uint32_t since; int32_t interval; uint16_t ticks; uint8_t clk_hi, rst_hi, wraps, wok; int32_t from, last, wl; } lfo;   /* interval: clock edge distance in samples, Q8; wraps: cycles ended since the last snap; from, last: the random wave's start and its last value; wl: the output at the last stretch's end (#806), set (wok) at the first block from the wave where it starts */
         struct { int32_t y; } gld;         /* Q24 */
         struct { uint32_t seed; int32_t y; } noise;   /* y: the colour one-pole, Q24 */
-        struct { int32_t ic1[3], ic2[3]; } vow;       /* three band passes, Q20 */
+        struct { int32_t ic1[3], ic2[3]; uint8_t e; } vow;   /* three band passes, Q20 (Q20 + e, ring_scale) */
         struct { uint32_t phase; int32_t ap[8], fbv; } phs;   /* the sweep LFO, x1 / y1 of the four allpasses, the feedback sample */
         struct { int32_t held, cnt, xb, ap[16]; } crush;   /* xb, ap: the 2x oversampling (os_up / os_down) */
         struct { int32_t xb, ap[16]; } shp;
         struct { int32_t v, ka, kd, kr, ainc, ad, ar; uint8_t stage, prev, ok; } adsr;   /* k*: the A D R the rates (ainc, ad, ar) were
                                                                                        * worked out for, ok: which are (the divisions run only on a change) */
-        struct { int32_t ic1, ic2, jc1, jc2; } flt;   /* stage 1 and stage 2 integrators */
-        struct { int32_t s[4]; } lad;                 /* the four one-pole states, Q20 */
+        struct { int32_t ic1, ic2, jc1, jc2; uint8_t e; } flt;   /* stage 1 and stage 2 integrators (Q20 + e, ring_scale) */
+        struct { int32_t s[4]; uint8_t e; } lad;      /* the four one-pole states, Q20 (Q20 + e, ring_scale) */
         struct { int32_t env; } dyn;                  /* the peak follower, Q24 */
         struct { int32_t env, lc, hc, pk, prev, y; uint32_t cnt; int32_t frac, t; uint8_t trig, arm, valid; } esp;   /* Q24: the envelope, the band pass's one-poles, its peak hold, its previous sample, the glided pitch; samples since the last crossing, that crossing's fraction (Q16), the measured pitch (Q16 octaves) */
         struct { int32_t u[6], v[6], r30[6], gn[6], b[6], kdec, kdamp, kbr; uint8_t ok; } mod;   /* the modal resonators' state pairs, Q26;
@@ -6979,6 +6979,61 @@ static void m_vca(const node_t *nd, inst_t *it, uint32_t n)
 #define LAD_SAT_KNEE (3 << 19)      /* 1.5 in Q20: the saturator's knee */
 #define LAD_SAT_CUBE 2485513        /* 1 / 6.75 in Q24 */
 
+/* #969 (D-1109): in fixed point a ring with no input ends at exactly zero. The Multimode filter, the Ladder and the
+ * Formant filter keep Q20 states and round their products. With no input, a ring that falls by less than one rounding
+ * step per sample is held there for ever: a limit cycle (a resonant ring) or a stall (a low pass short of zero), at up
+ * to about -55 dBFS with high resonance at low cutoffs. In a block whose input is all zero the states are scaled by 2^e
+ * (Q20 + e) so that the largest one's top bit is RING_TOP, whatever the ring's level: a rounding step is then far below
+ * the ring's fall per sample, so it decays as in the reference, and once it is under RING_EMAX's floor (-132 dBFS, far
+ * below the output's step) the states are set to zero. A block with input scales them back to Q20 first, so the
+ * filters play as before whenever they have input. */
+#define RING_TOP 24                 /* the largest scaled state's top bit: 2^24..2^25, room for 64x before 2^31 */
+#define RING_EMAX 27                /* the largest e: the output shift 4 + e stays under 32; there 2^25 is 2^-22 */
+
+/* is the block's input all zero? (asked only while the states are not: an audio input is non-zero at its first sample
+ * nearly always, one compare; a silent one costs about 2 cycles a sample, in fours) */
+static int ring_quiet(const esig_t *in, uint32_t n)
+{
+    uint32_t i;
+    if (in == zero_buf)
+        return 1;
+    for (i = 0; i + 4u <= n; i += 4u)
+        if (in[i] | in[i + 1u] | in[i + 2u] | in[i + 3u])
+            return 0;
+    for (; i < n; i++)
+        if (in[i])
+            return 0;
+    return 1;
+}
+
+/* the ns states s[] at scale 2^e moved to the scale returned: with quiet, the one that puts the largest's top bit at
+ * RING_TOP (not below 2^0; past RING_EMAX the ring is under the floor and the states become 0), else back to 2^0 */
+static uint32_t ring_scale(int32_t *s, uint32_t ns, uint32_t e, int quiet)
+{
+    uint32_t m = 0, i;
+    int32_t ne, d;
+    for (i = 0; i < ns; i++)
+        m |= (uint32_t)(s[i] < 0 ? -s[i] : s[i]);
+    if (!m)
+        return 0;
+    ne = quiet ? (int32_t)e + RING_TOP - (31 - __builtin_clz(m)) : 0;
+    if (ne > RING_EMAX) {
+        for (i = 0; i < ns; i++)
+            s[i] = 0;
+        return 0;
+    }
+    if (ne < 0)
+        ne = 0;
+    d = ne - (int32_t)e;
+    if (d > 0)
+        for (i = 0; i < ns; i++)
+            s[i] = (int32_t)((uint32_t)s[i] << d);
+    else if (d < 0)
+        for (i = 0; i < ns; i++)
+            s[i] = (s[i] + (1 << (-d - 1))) >> -d;
+    return (uint32_t)ne;
+}
+
 typedef struct {
     int32_t g, a1, a2, a3;
 } svf_coef_t;
@@ -7038,10 +7093,11 @@ HOT int32_t filter_drive_loss(int32_t a)
     return mulq(mulq(a, a, 20), LAD_SAT_CUBE, 20);
 }
 
-/* osc, drv: constants at each call (m_filter), so the ordinary filter carries none of the self-oscillation's or the
- * drive's work. drv (#670, drive above 0 and res above 0): the damping grows by r (1 - sat(a) / a), a = drive r |bp|,
- * so stage 1 is solved per sample, as with osc. */
-HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv)
+/* osc, drv, e: constants at each call (m_filter), so the ordinary filter carries none of the self-oscillation's or the
+ * drive's work, nor the scaling's (e: the states' scale in a silent block, ring_scale; 0 = Q20). drv (#670, drive above
+ * 0 and res above 0): the damping grows by r (1 - sat(a) / a), a = drive r |bp|, so stage 1 is solved per sample, as
+ * with osc. */
+HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv, uint32_t e)
 {
     const esig_t *in = it->in[FILTER_I_IN], *cv = it->in[FILTER_I_CV], *mo = it->in[FILTER_I_MORPH];
     int32_t res = EF(it, FILTER_P_RES);
@@ -7069,6 +7125,8 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv)
     int hp6_only = used == (1u << FILTER_O_HP6);
     esig_t *single = lp_only ? it->out[FILTER_O_LP12] : it->out[FILTER_O_HP6];
     int32_t lcv = 0;
+    const uint32_t sh = 4 + e;                   /* the outputs: Q20 + e to Q16, rounded */
+    const int32_t rnd = 1 << (sh - 1);
     if (tr)
         base = exp2_scale(base, tr);
     if (osc && !ic1 && !ic2)
@@ -7098,7 +7156,7 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv)
             w2 = jc2 + mulr(d.a2, jc1, 24) + mulr(d.a3, w3, 24);
             jc1 = clampi(2 * w1 - jc1, -(1 << 30), 1 << 30);
             jc2 = clampi(2 * w2 - jc2, -(1 << 30), 1 << 30);
-            out[i] = (w2 + mul16(h - w2, m) + 8) >> 4;
+            out[i] = (w2 + mul16(h - w2, m) + rnd) >> sh;
         }
         it->s.flt.ic1 = ic1;
         it->s.flt.ic2 = ic2;
@@ -7125,7 +7183,7 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv)
             ke = k24 + mulr(gam, mulr(b, b, 20), 20);
         }
         if (drv) {                                   /* plus r (1 - sat(a) / a), a = drive r |bp| */
-            int64_t a = ((int64_t)(ic1 < 0 ? -ic1 : ic1) * dr) >> 16;
+            int64_t a = ((int64_t)(ic1 < 0 ? -ic1 : ic1) * dr) >> (16 + e);
             ke = (osc ? ke : k24) + mulr(r24, filter_drive_loss(a > FILTER_DRIVE_TOP_Q20 ? FILTER_DRIVE_TOP_Q20 : (int32_t)a), 24);
         }
         if (osc || drv)
@@ -7142,13 +7200,13 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv)
         }
         /* One connected LP12 or HP6 output needs no stores to the unused ports. */
         if (lp_only)
-            single[i] = (v2 + 8) >> 4;
+            single[i] = (v2 + rnd) >> sh;
         else if (hp6_only)
-            single[i] = (h + 2 * v1 + 8) >> 4;
+            single[i] = (h + 2 * v1 + rnd) >> sh;
         else {
-            it->out[FILTER_O_LP12][i] = (v2 + 8) >> 4;
-            it->out[FILTER_O_BP][i] = (v1 + 8) >> 4;
-            it->out[FILTER_O_HP][i] = (h + 8) >> 4;
+            it->out[FILTER_O_LP12][i] = (v2 + rnd) >> sh;
+            it->out[FILTER_O_BP][i] = (v1 + rnd) >> sh;
+            it->out[FILTER_O_HP][i] = (h + rnd) >> sh;
         }
         if (st2) {
             w3 = v2 - jc2;
@@ -7157,15 +7215,15 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv)
             jc1 = clampi(2 * w1 - jc1, -(1 << 30), 1 << 30);
             jc2 = clampi(2 * w2 - jc2, -(1 << 30), 1 << 30);
             m = clampi(msig ? morph + mo[i] : morph, 0, 65536);
-            it->out[FILTER_O_LP24][i] = (w2 + 8) >> 4;
-            it->out[FILTER_O_MIX][i] = (w2 + mul16(h - w2, m) + 8) >> 4;
+            it->out[FILTER_O_LP24][i] = (w2 + rnd) >> sh;
+            it->out[FILTER_O_MIX][i] = (w2 + mul16(h - w2, m) + rnd) >> sh;
         }
         if (ext && !hp6_only) {                      /* notch = in - k bp, peak = lp12 - hp, allpass = in - 2 k bp, hp6 */
-            it->out[FILTER_O_NOTCH][i] = (v0 - kv1 + 8) >> 4;
-            it->out[FILTER_O_PEAK][i] = (v2 - h + 8) >> 4;
-            it->out[FILTER_O_AP][i] = (v0 - 2 * kv1 + 8) >> 4;
+            it->out[FILTER_O_NOTCH][i] = (v0 - kv1 + rnd) >> sh;
+            it->out[FILTER_O_PEAK][i] = (v2 - h + rnd) >> sh;
+            it->out[FILTER_O_AP][i] = (v0 - 2 * kv1 + rnd) >> sh;
             /* hp + 2 bp: the MS-20 filter's 6 dB high pass (modules.ts). */
-            it->out[FILTER_O_HP6][i] = (h + 2 * v1 + 8) >> 4;
+            it->out[FILTER_O_HP6][i] = (h + 2 * v1 + rnd) >> sh;
         }
     }
     it->s.flt.ic1 = ic1;
@@ -7174,54 +7232,95 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv)
     it->s.flt.jc2 = jc2;
 }
 
-static void m_filter(const node_t *nd, inst_t *it, uint32_t n)
+/* #969 (ring_scale), out of line so the ordinary filter's code stays as it was (filter_plain): a ring (states not 0) in
+ * a silent block is scaled and run here (1); after one the states go back to Q20 (0: filter_plain runs the block) */
+static __attribute__((noinline)) int filter_ring(const node_t *nd, inst_t *it, uint32_t n)
+{
+    int32_t st[4] = {it->s.flt.ic1, it->s.flt.ic2, it->s.flt.jc1, it->s.flt.jc2};
+    int quiet;
+    uint32_t e;
+    if (!(st[0] | st[1] | st[2] | st[3]))
+        return 0;
+    quiet = !filter_over(it) && ring_quiet(it->in[FILTER_I_IN], n);   /* (with osc the ring is meant to go on) */
+    if (!quiet && !it->s.flt.e)
+        return 0;
+    e = ring_scale(st, 4, it->s.flt.e, quiet);
+    it->s.flt.e = (uint8_t)e;
+    it->s.flt.ic1 = st[0];
+    it->s.flt.ic2 = st[1];
+    it->s.flt.jc1 = st[2];
+    it->s.flt.jc2 = st[3];
+    if (!e)
+        return 0;
+    if (EF(it, FILTER_P_DRIVE) > 0 && EF(it, FILTER_P_RES) > 0)
+        filter_run(nd, it, n, 0, 1, e);
+    else
+        filter_run(nd, it, n, 0, 0, e);
+    return 1;
+}
+
+static __attribute__((noinline)) void filter_plain(const node_t *nd, inst_t *it, uint32_t n)
 {
     int drv = EF(it, FILTER_P_DRIVE) > 0 && EF(it, FILTER_P_RES) > 0;   /* without resonance the drive has nothing to clip */
     if (filter_over(it)) {
         if (drv)
-            filter_run(nd, it, n, 1, 1);
+            filter_run(nd, it, n, 1, 1, 0);
         else
-            filter_run(nd, it, n, 1, 0);
+            filter_run(nd, it, n, 1, 0, 0);
     } else if (drv)
-        filter_run(nd, it, n, 0, 1);
+        filter_run(nd, it, n, 0, 1, 0);
     else
-        filter_run(nd, it, n, 0, 0);
+        filter_run(nd, it, n, 0, 0, 0);
+}
+
+static __attribute__((noinline)) void m_filter(const node_t *nd, inst_t *it, uint32_t n)
+{
+    if (!filter_ring(nd, it, n))
+        filter_plain(nd, it, n);
 }
 
 /* Ladder filter with drive (modules.ts `ladder`): four TPT one-poles (G = g / (1 + g), Q24) in a loop with k = 4 res.
  * The loop is solved linearly per sample (y4 = F (G^4 x + S), S the states' share, F = 1 / (1 + k G^4)), the loop input
  * u = sat(drive x - k y4) then runs through the stages; sat is v - v^3 / 6.75 up to |v| = 1.5, +-1 beyond. The
  * ordinary cutoff comes once per block from the mean of cv, cvamt and key tracking. With fm connected the coefficients
- * also follow each change in its samples. States Q20, products rounded; the saturator bounds the states, so no clamps. */
-HOT int32_t lad_sat(int32_t u)   /* the saturator: v - v^3 / 6.75 up to |v| = 1.5, +-1 beyond (Q20) */
+ * also follow each change in its samples. States Q20 (Q20 + e in a silent block, ring_scale), products rounded; the
+ * saturator bounds the states, so no clamps. */
+HOT int32_t lad_sat(int32_t u, uint32_t e)   /* the saturator: v - v^3 / 6.75 up to |v| = 1.5, +-1 beyond (Q20 + e) */
 {
-    if (u >= LAD_SAT_KNEE)
-        return 1 << 20;
-    if (u <= -LAD_SAT_KNEE)
-        return -(1 << 20);
-    return u - mulq(mulq(mulq(u, u, 20), u, 20), LAD_SAT_CUBE, 24);
+    int32_t a = u >> e;                         /* the level, Q20 */
+    if (a >= LAD_SAT_KNEE)
+        return (1 << 20) << e;
+    if (a <= -LAD_SAT_KNEE)
+        return -((1 << 20) << e);
+    return u - mulq(mulq(mulq(a, a, 20), u, 20), LAD_SAT_CUBE, 24);
 }
 
 /* the same saturator at a stage's input (stsat), in 32-bit products: the cubic from u in Q14 (|u| < 1.5 there, so u^2
- * Q28 and the rest fit), within 2^-14 of lad_sat and about half its cycles (three per sample) */
-HOT int32_t lad_sat_st(int32_t u)
+ * Q28 and the rest fit), within 2^-14 of lad_sat and about half its cycles (three per sample); scaled (e > 0), the last
+ * product in 64 bits, and none once the cubic is 0 (under about -42 dBFS, most of a ring's tail) */
+HOT int32_t lad_sat_st(int32_t u, uint32_t e)
 {
-    int32_t q, c;
-    if (u >= LAD_SAT_KNEE)
-        return 1 << 20;
-    if (u <= -LAD_SAT_KNEE)
-        return -(1 << 20);
-    q = u >> 6;                                 /* Q14 */
+    int32_t a = u >> e, q, c;
+    if (a >= LAD_SAT_KNEE)
+        return (1 << 20) << e;
+    if (a <= -LAD_SAT_KNEE)
+        return -((1 << 20) << e);
+    q = a >> 6;                                 /* Q14 */
     c = (((q * q) >> 14) * (LAD_SAT_CUBE >> 8)) >> 16;   /* u^2 / 6.75, Q14 */
+    if (e)
+        return c ? u - mulq(c, u, 14) : u;
     return u - ((c * q) >> 8);
 }
 
-/* stsat (#672, a constant at each call): the saturator at the input of stages 2, 3 and 4 too */
-HOT void ladder_run(const node_t *nd, inst_t *it, uint32_t n, int audio, int stsat)
+/* stsat (#672), e (the states' scale, ring_scale; 0 = Q20): constants at each call. stsat: the saturator at the input
+ * of stages 2, 3 and 4 too */
+HOT void ladder_run(const node_t *nd, inst_t *it, uint32_t n, int audio, int stsat, uint32_t e)
 {
     const esig_t *in = it->in[LADDER_I_IN], *cv = it->in[LADDER_I_CV], *fm = it->in[LADDER_I_FM];
     esig_t *lp24 = it->out[LADDER_O_LP24], *lp12 = it->out[LADDER_O_LP12];
     int32_t *s = it->s.lad.s;
+    const uint32_t sh = 4 + e;                   /* the outputs: Q20 + e to Q16, rounded */
+    const int32_t rnd = 1 << (sh - 1);
     int32_t drive = EF(it, LADDER_P_DRIVE), cvamt = EF(it, LADDER_P_CVAMT);
     int32_t k24 = EF(it, LADDER_P_RES) << 10;                                     /* 4 res, Q24 */
     int32_t tr = EF(it, LADDER_P_TRACK) >= 32768 ? IT_PV(nd, it)->pitch : 0, x = tr;
@@ -7253,20 +7352,20 @@ HOT void ladder_run(const node_t *nd, inst_t *it, uint32_t n, int audio, int sts
             S = mulr(G3, s0, 24) + mulr(G2, s1, 24) + mulr(G, s2, 24) + s3;
             S = mulr(S, hG, 24);
             y4 = mulr(F, mulr(G4, x20, 24) + S, 24);
-            u = lad_sat(mulq(x20, drive, 16) - mulq(k24, y4, 24));
+            u = lad_sat(mulq(x20, drive, 16) - mulq(k24, y4, 24), e);
             v = mulr(G, u - s0, 24); u = v + s0; s0 = u + v;
             if (stsat)
-                u = lad_sat_st(u);
+                u = lad_sat_st(u, e);
             v = mulr(G, u - s1, 24); u = v + s1; s1 = u + v;
             y2 = u;
             if (stsat)
-                u = lad_sat_st(u);
+                u = lad_sat_st(u, e);
             v = mulr(G, u - s2, 24); u = v + s2; s2 = u + v;
             if (stsat)
-                u = lad_sat_st(u);
+                u = lad_sat_st(u, e);
             v = mulr(G, u - s3, 24); u = v + s3; s3 = u + v;
-            lp24[i] = (u + 8) >> 4;
-            lp12[i] = (y2 + 8) >> 4;
+            lp24[i] = (u + rnd) >> sh;
+            lp12[i] = (y2 + rnd) >> sh;
         }
         s[0] = s0;
         s[1] = s1;
@@ -7283,8 +7382,9 @@ HOT void ladder_run(const node_t *nd, inst_t *it, uint32_t n, int audio, int sts
  * trapezoidal. The tri-diagonal elimination's factors (pivot reciprocals iu0..iu3, multipliers m1..m3, Q24) come once
  * per block, or at each change of fm when it is connected, as in the Moog mode; the loop is solved linearly (y4 =
  * p3 + b3 u), then u = sat((drive x - k p3) F), F = 1 / (1 + k b3), k = DIODE_KCRIT res. The outputs times the makeup
- * mk = (1 + k) / (1 + 4 res) (Q24, once per block): the Moog mode's passband. States Q20 (the Moog mode's s). */
-static void diode_run(const node_t *nd, inst_t *it, uint32_t n, int audio)
+ * mk = (1 + k) / (1 + 4 res) (Q24, once per block): the Moog mode's passband. States Q20 (the Moog mode's s), at scale
+ * 2^e (a constant at each call: diode_run 0, ladder_ring the scale). */
+HOT void diode_core(const node_t *nd, inst_t *it, uint32_t n, int audio, uint32_t e)
 {
     const esig_t *in = it->in[LADDER_I_IN], *cv = it->in[LADDER_I_CV], *fm = it->in[LADDER_I_FM];
     esig_t *lp24 = it->out[LADDER_O_LP24], *lp12 = it->out[LADDER_O_LP12];
@@ -7319,7 +7419,7 @@ static void diode_run(const node_t *nd, inst_t *it, uint32_t n, int audio)
             F = recip24((1 << 24) + mulq(k24, b3, 24));
         }
         p3 = mulr(s3 + mulr(m3, s2 + mulr(m2, s1 + mulr(m1, s0, 24), 24), 24), iu3, 24);
-        u = lad_sat(mulq(mulq(x20, drive, 16) - mulq(k24, p3, 24), F, 24));
+        u = lad_sat(mulq(mulq(x20, drive, 16) - mulq(k24, p3, 24), F, 24), e);
         e0 = s0 + mulr(g, u, 24);
         e1 = s1 + mulr(m1, e0, 24);
         e2 = s2 + mulr(m2, e1, 24);
@@ -7332,8 +7432,13 @@ static void diode_run(const node_t *nd, inst_t *it, uint32_t n, int audio)
         s1 = 2 * y1 - s1;
         s2 = 2 * y2 - s2;
         s3 = 2 * y3 - s3;
-        lp24[i] = mulr(y3, mk, 28);
-        lp12[i] = mulr(y1, mk, 28);
+        if (!e) {
+            lp24[i] = mulr(y3, mk, 28);
+            lp12[i] = mulr(y1, mk, 28);
+        } else {                                 /* scaled: Q16 + e, then rounded by e (no 64-bit shift by a variable) */
+            lp24[i] = (mulq(y3, mk, 28) + (1 << (e - 1))) >> e;
+            lp12[i] = (mulq(y1, mk, 28) + (1 << (e - 1))) >> e;
+        }
     }
     s[0] = s0;
     s[1] = s1;
@@ -7341,7 +7446,34 @@ static void diode_run(const node_t *nd, inst_t *it, uint32_t n, int audio)
     s[3] = s3;
 }
 
-static void m_ladder(const node_t *nd, inst_t *it, uint32_t n)
+static void diode_run(const node_t *nd, inst_t *it, uint32_t n, int audio) { diode_core(nd, it, n, audio, 0); }
+
+/* #969 (ring_scale), as filter_ring: a ring in a silent block, scaled and run here, both modes (1); else ladder_plain */
+static __attribute__((noinline)) int ladder_ring(const node_t *nd, inst_t *it, uint32_t n)
+{
+    int32_t *s = it->s.lad.s;
+    int quiet, audio;
+    uint32_t e;
+    if (!(s[0] | s[1] | s[2] | s[3]))
+        return 0;
+    quiet = ring_quiet(it->in[LADDER_I_IN], n);
+    if (!quiet && !it->s.lad.e)
+        return 0;
+    e = ring_scale(s, 4, it->s.lad.e, quiet);
+    it->s.lad.e = (uint8_t)e;
+    if (!e)
+        return 0;
+    audio = EF(it, LADDER_P_CVAMT) != 0 && (nd->conn & (1u << LADDER_I_FM)) != 0;
+    if (EF(it, LADDER_P_DIODE) >= 32768)
+        diode_core(nd, it, n, audio, e);
+    else if (EF(it, LADDER_P_STSAT) >= 32768)
+        ladder_run(nd, it, n, audio, 1, e);
+    else
+        ladder_run(nd, it, n, audio, 0, e);
+    return 1;
+}
+
+static __attribute__((noinline)) void ladder_plain(const node_t *nd, inst_t *it, uint32_t n)
 {
     /* Constant arguments remove all audio-rate checks (and the stages' saturators) from the ordinary filter loop. */
     int audio = EF(it, LADDER_P_CVAMT) != 0 && (nd->conn & (1u << LADDER_I_FM)) != 0;
@@ -7349,13 +7481,19 @@ static void m_ladder(const node_t *nd, inst_t *it, uint32_t n)
         diode_run(nd, it, n, audio);
     else if (EF(it, LADDER_P_STSAT) >= 32768) {
         if (audio)
-            ladder_run(nd, it, n, 1, 1);
+            ladder_run(nd, it, n, 1, 1, 0);
         else
-            ladder_run(nd, it, n, 0, 1);
+            ladder_run(nd, it, n, 0, 1, 0);
     } else if (audio)
-        ladder_run(nd, it, n, 1, 0);
+        ladder_run(nd, it, n, 1, 0, 0);
     else
-        ladder_run(nd, it, n, 0, 0);
+        ladder_run(nd, it, n, 0, 0, 0);
+}
+
+static __attribute__((noinline)) void m_ladder(const node_t *nd, inst_t *it, uint32_t n)
+{
+    if (!ladder_ring(nd, it, n))
+        ladder_plain(nd, it, n);
 }
 
 #define DB_TO_LOG2 10885            /* 1 / 6.0206 in Q16: dB -> octaves (log2) */
@@ -10457,22 +10595,13 @@ static void m_select(inst_t *it, uint32_t n)
 /* the formants (Hz) of A E I O U; gains 1, 1/2, 1/4 */
 static const int16_t FORMANT_HZ[5][3] = {{730, 1090, 2440}, {530, 1840, 2480}, {390, 1990, 2550}, {570, 840, 2410}, {440, 1020, 2240}};
 
-/* three parallel SVF band passes (normalized band k v1, peak 1) at the formants of vowel + input, set once per block */
-static void m_vowel(const node_t *nd, inst_t *it, uint32_t n)
+/* the Formant filter's band passes over the block, their states at scale 2^e (a constant at each call, m_vowel) */
+HOT void vowel_run(inst_t *it, const svf_coef_t *c, int32_t k24, int32_t lvl, uint32_t n, uint32_t e)
 {
-    const esig_t *in = it->in[VOWEL_I_IN], *vin = it->in[VOWEL_I_VOWEL];
+    const esig_t *in = it->in[VOWEL_I_IN];
     esig_t *out = it->out[0];
-    int32_t v = clampi(EF(it, VOWEL_P_VOWEL) + vin[0], 0, 4 << 16), vi = v >> 16, t, lvl = EF(it, VOWEL_P_LEVEL);
-    int32_t q16 = (2 << 16) + 18 * EF(it, VOWEL_P_RES), k24 = (int32_t)(((int64_t)1 << 40) / q16);
-    svf_coef_t c[3];
+    const uint32_t sh = 4 + e;                   /* the output: Q20 + e to Q16, rounded */
     uint32_t i, f;
-    if (vi > 3)
-        vi = 3;
-    t = v - (vi << 16);
-    for (f = 0; f < 3u; f++) {
-        int32_t hz = ((int32_t)FORMANT_HZ[vi][f] << 16) + (int32_t)((int64_t)(FORMANT_HZ[vi + 1][f] - FORMANT_HZ[vi][f]) * t);
-        svf_stage(&c[f], svf_g(hz_turns((uint32_t)hz)), k24, 0);
-    }
     for (i = 0; i < n; i++) {
         int32_t v0 = in[i] << 4, sum = 0;
         for (f = 0; f < 3u; f++) {
@@ -10484,8 +10613,43 @@ static void m_vowel(const node_t *nd, inst_t *it, uint32_t n)
             it->s.vow.ic2[f] = clampi(2 * v2 - ic2, -(1 << 30), 1 << 30);
             sum += mulr(v1, k24, 24) >> f;
         }
-        out[i] = mul16((sum + 8) >> 4, lvl);
+        out[i] = mul16((sum + (1 << (sh - 1))) >> sh, lvl);
     }
+}
+
+/* three parallel SVF band passes (normalized band k v1, peak 1) at the formants of vowel + input, set once per block */
+static void m_vowel(const node_t *nd, inst_t *it, uint32_t n)
+{
+    const esig_t *vin = it->in[VOWEL_I_VOWEL];
+    int32_t v = clampi(EF(it, VOWEL_P_VOWEL) + vin[0], 0, 4 << 16), vi = v >> 16, t, lvl = EF(it, VOWEL_P_LEVEL);
+    int32_t q16 = (2 << 16) + 18 * EF(it, VOWEL_P_RES), k24 = (int32_t)(((int64_t)1 << 40) / q16);
+    svf_coef_t c[3];
+    uint32_t f;
+    int quiet = (it->s.vow.ic1[0] | it->s.vow.ic1[1] | it->s.vow.ic1[2] | it->s.vow.ic2[0] | it->s.vow.ic2[1] | it->s.vow.ic2[2]) &&
+                ring_quiet(it->in[VOWEL_I_IN], n);
+    if (quiet || it->s.vow.e) {                  /* (#969, as m_filter) */
+        int32_t st[6];
+        for (f = 0; f < 3u; f++) {
+            st[f] = it->s.vow.ic1[f];
+            st[3 + f] = it->s.vow.ic2[f];
+        }
+        it->s.vow.e = (uint8_t)ring_scale(st, 6, it->s.vow.e, quiet);
+        for (f = 0; f < 3u; f++) {
+            it->s.vow.ic1[f] = st[f];
+            it->s.vow.ic2[f] = st[3 + f];
+        }
+    }
+    if (vi > 3)
+        vi = 3;
+    t = v - (vi << 16);
+    for (f = 0; f < 3u; f++) {
+        int32_t hz = ((int32_t)FORMANT_HZ[vi][f] << 16) + (int32_t)((int64_t)(FORMANT_HZ[vi + 1][f] - FORMANT_HZ[vi][f]) * t);
+        svf_stage(&c[f], svf_g(hz_turns((uint32_t)hz)), k24, 0);
+    }
+    if (it->s.vow.e)
+        vowel_run(it, c, k24, lvl, n, it->s.vow.e);
+    else
+        vowel_run(it, c, k24, lvl, n, 0);
 }
 
 #define INC_20HZ ((uint32_t)((20ull << 32) / ENG_SR))   /* 20 Hz as a phase increment */
