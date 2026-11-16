@@ -119,11 +119,40 @@ fn load(m: &mut Machine, slot: u32) -> Result<(), String> {
 }
 
 fn notes(m: &mut Machine, n: usize, on: bool) -> Result<(), String> {
-    for &k in &NOTES[..n] {
+    keys(m, &NOTES[..n], on)
+}
+
+fn keys(m: &mut Machine, ks: &[u8], on: bool) -> Result<(), String> {
+    for &k in ks {
         let msg = if on { [0x90, k, 100] } else { [0x80, k, 0] };
         m.midi(&msg, 0)?;
     }
     Ok(())
+}
+
+/// How `--modtime` plays each slot: the notes held, how long before the window opens, the transport running.
+struct Play {
+    keys: Vec<u8>,
+    settle: u64,
+    window: u64,
+    run: bool,
+}
+
+/// `--bank FILE` (web/scripts/cpu-costs.ts): a flash with a bank of its own instead of the factory one, a slot per line
+/// of FILE (`NAME<TAB>PATCH.m1p`, slot 0 first), as the smoke test's safety steps seed theirs.
+fn bank_flash(path: &str) -> Result<Vec<u8>, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
+    let mut flash = crate::machine::installed_flash();
+    for (slot, line) in text.lines().filter(|l| !l.trim().is_empty()).enumerate() {
+        let (name, file) = line.split_once('\t').ok_or_else(|| format!("{path}: want NAME<TAB>FILE, got {line:?}"))?;
+        if slot >= 48 || name.len() > 19 {
+            return Err(format!("{path}: at most 48 slots, names of at most 19 bytes ({name})"));
+        }
+        let patch = std::fs::read(file).map_err(|e| format!("{file}: {e}"))?;
+        let at = 0xA0000 + slot * 0x1000;
+        flash[at..at + 0x1000].copy_from_slice(&smoke::slot_sector(slot as u32, name, &patch, false));
+    }
+    Ok(flash)
 }
 
 /// One phase of the survey: (peaks every 500 ms, means of eng_us_last over each 500 ms, voices shed)
@@ -158,10 +187,15 @@ fn phase(m: &mut Machine, s: &Syms, slot: u32, n: usize, hold: u64, run: bool) -
 }
 
 /// Each module's mean ns a half on core 0's lane and core 1's, and the halves counted.
-fn modtime(m: &mut Machine, s: &Syms, slot: u32, window: u64) -> Result<(u32, Vec<[u64; 2]>), String> {
+/// (and the mean of `eng_us_last`, the whole audio interrupt, sampled every ms of the window)
+fn modtime(m: &mut Machine, s: &Syms, slot: u32, play: &Play) -> Result<(u32, Vec<[u64; 2]>, f64), String> {
     load(m, slot)?;
-    notes(m, 8, true)?;
-    m.run_for(1000)?;
+    if play.run {
+        m.tap(PLAY, 20, 0)?;
+    }
+    keys(m, &play.keys, true)?;
+    m.run_for(play.settle)?;
+    let window = play.window;
     // The firmware starts a window from its main loop, where no module is between ENG_ITEM_BEGIN and ENG_ITEM_END. A
     // write here can land inside one (in the audio interrupt, or on core 1): its BEGIN, taken while mt_on was off,
     // reads 0, and its END would add the whole uptime. So the counters are cleared again once every span in progress
@@ -172,7 +206,11 @@ fn modtime(m: &mut Machine, s: &Syms, slot: u32, window: u64) -> Result<(u32, Ve
         m.soc.write32(s.mt_sum + 4 * k, 0);
     }
     m.soc.write32(s.mt_blocks, 0);
-    m.run_for(window)?;
+    let mut isr = 0u64;
+    for _ in 0..window {
+        m.run_for(1)?;
+        isr += m.soc.read32(s.eng_us_last) as u64;
+    }
     m.soc.write8(s.mt_on, 0);
     let blocks = m.soc.read32(s.mt_blocks);
     let mut rows: Vec<[u64; 2]> = Vec::new();
@@ -186,9 +224,12 @@ fn modtime(m: &mut Machine, s: &Syms, slot: u32, window: u64) -> Result<(u32, Ve
     while rows.last().is_some_and(|r| r[0] == 0 && r[1] == 0) {
         rows.pop();
     }
-    notes(m, 8, false)?;
+    keys(m, &play.keys, false)?;
+    if play.run {
+        m.tap(PLAY, 20, 0)?;
+    }
     m.run_for(100)?;
-    Ok((blocks, rows))
+    Ok((blocks, rows, isr as f64 / window.max(1) as f64))
 }
 
 pub fn run(app: &[u8], a: &[String]) -> ExitCode {
@@ -227,7 +268,19 @@ pub fn run(app: &[u8], a: &[String]) -> ExitCode {
     };
     let counts: Vec<usize> = opt("--notes").unwrap_or("0,1,4,8").split(',').filter_map(|t| t.trim().parse().ok()).filter(|&n| n <= 8).collect();
     let hold: u64 = opt("--hold").and_then(|v| v.parse().ok()).unwrap_or(2000);
-    let window: u64 = opt("--window").and_then(|v| v.parse().ok()).unwrap_or(3000);
+    let play = Play {
+        keys: opt("--keys").map_or(NOTES.to_vec(), |v| v.split(',').filter_map(|t| t.trim().parse().ok()).filter(|&k: &u8| k < 128).collect()),
+        settle: opt("--settle").and_then(|v| v.parse().ok()).unwrap_or(1000),
+        window: opt("--window").and_then(|v| v.parse().ok()).unwrap_or(3000),
+        run: a.iter().any(|x| x == "--mt-run"),
+    };
+    let flash = match opt("--bank").map(bank_flash).transpose() {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::from(2);
+        }
+    };
     let run = a.iter().any(|x| x == "--run");
     let survey = !a.iter().any(|x| x == "--no-survey");
     // --poke8 NAME=V,..: bytes the firmware's DIAG pages would set (e.g. lanes_off=1, `tools/m1_link.py cores split
@@ -245,7 +298,7 @@ pub fn run(app: &[u8], a: &[String]) -> ExitCode {
     }
 
     let t0 = std::time::Instant::now();
-    let mut m = Machine::boot(app, None);
+    let mut m = Machine::boot(app, flash.as_deref());
     let result = (|| -> Result<String, String> {
         smoke::quick_start(&mut m, 9000)?;
         m.run_for(1500)?; // (the first boot writes the factory bank once the quick start closes)
@@ -280,10 +333,10 @@ pub fn run(app: &[u8], a: &[String]) -> ExitCode {
                 rows.push(format!("{{{}}}", f.join(",")));
             }
             if with_modtime {
-                let (halves, r) = modtime(&mut m, &s, *slot, window)?;
+                let (halves, r, isr) = modtime(&mut m, &s, *slot, &play)?;
                 let cells: Vec<String> = r.iter().map(|[c0, c1]| format!("[{c0},{c1}]")).collect();
-                eprintln!("{slot:2} {name:20} modtime: {} modules, {halves} halves", r.len());
-                mods.push(format!("{}:{{\"halves\":{halves},\"modules_ns\":[{}]}}", json_str(name), cells.join(",")));
+                eprintln!("{slot:2} {name:20} modtime: {} modules, {halves} halves, interrupt {isr:.1} us", r.len());
+                mods.push(format!("{}:{{\"halves\":{halves},\"isr_us\":{isr:.2},\"modules_ns\":[{}]}}", json_str(name), cells.join(",")));
             }
         }
         let timing = m.timing.as_ref().map_or("null".into(), |t| json_str(&t.p.text()));
@@ -303,7 +356,7 @@ pub fn run(app: &[u8], a: &[String]) -> ExitCode {
             json_str(a.get(1).map_or("", |s| s.as_str())),
             bank.join(","),
             rows.join(",\n"),
-            json_str(&format!("m1emu cpu --modtime: 8 notes held 1 s, then a window of {window} ms; per module index of the device patch: mean ns a half on core 0 lane, core 1 lane")),
+            json_str(&format!("m1emu cpu --modtime: notes {:?} held {} ms{}, then a window of {} ms; per module index of the device patch: mean ns a half on core 0 lane, core 1 lane; isr_us: the mean audio interrupt (eng_us_last) over the window", play.keys, play.settle, if play.run { ", transport running" } else { "" }, play.window)),
             mods.join(",\n")
         ))
     })();

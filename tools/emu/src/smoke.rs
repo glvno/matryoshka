@@ -384,7 +384,7 @@ fn settles(m: &mut Machine, max: u64) -> Result<bool, String> {
 }
 
 /// A preset-bank slot (firmware/src/slotstore.c): header at the sector start, the patch at +256.
-fn slot_sector(slot: u32, name: &str, patch: &[u8], bad_crc: bool) -> Vec<u8> {
+pub(crate) fn slot_sector(slot: u32, name: &str, patch: &[u8], bad_crc: bool) -> Vec<u8> {
     let mut crc = 0xffffu32;
     for &b in patch {
         crc ^= (b as u32) << 8;

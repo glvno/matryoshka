@@ -18,9 +18,11 @@
 //!       real time, USB MIDI on a virtual MIDI port NAME ("FM-1 (emu)"), commands on stdin (serve.rs); BIN must be an
 //!       M1_EMU_MIDI=1 build (CI artifact matryoshka-emu-midi)
 //!   m1emu cpu BIN --elf ELF [--slots 0,3,..] [--notes 0,1,4,8] [--hold MS] [--run] [--modtime] [--window MS]
-//!       [--no-survey] [--poke8 NAME=BYTE,..] [--out FILE]
+//!       [--keys 60,64,..] [--settle MS] [--mt-run] [--bank FILE] [--no-survey] [--poke8 NAME=BYTE,..] [--out FILE]
 //!       the test rig's CPU survey (and with --modtime its per-module times) from the firmware's own counters, as
-//!       JSON (cpu.rs); ELF is the same build's matryoshka.elf
+//!       JSON (cpu.rs); ELF is the same build's matryoshka.elf. --modtime holds --keys (default eight notes) for
+//!       --settle ms (1000), with the transport running under --mt-run; --bank FILE seeds the bank from FILE's
+//!       `NAME<TAB>PATCH.m1p` lines instead of the factory one (web/scripts/cpu-costs.ts)
 //!
 //! BIN is the build's matryoshka.bin (app.bin, runs from 0x02000120). M1EMU_TIMING=FILE runs any command under the
 //! timing model (timing.rs, tools/emu/timing.txt): the device's cycles instead of one 240 MHz cycle an instruction.
@@ -41,7 +43,7 @@ use machine::Machine;
 use std::process::ExitCode;
 
 fn usage() -> ExitCode {
-    eprintln!("usage: m1emu smoke BIN [--out DIR] [--levels FILE] [--strict]\n       m1emu roll BIN [--out DIR]\n       m1emu boot BIN [--link EMU_BIN] [--out DIR]\n       m1emu run BIN [--ms N] [--keys SCRIPT] [--snap MS,..] [--wav FILE] [--flash-in F] [--flash-out F] [--text S]\n       m1emu serve BIN [--flash-in F] [--name NAME]\n       m1emu cpu BIN --elf ELF [--slots 0,3,..] [--notes 0,1,4,8] [--hold MS] [--run] [--modtime] [--window MS] [--no-survey] [--poke8 NAME=BYTE,..] [--out FILE]");
+    eprintln!("usage: m1emu smoke BIN [--out DIR] [--levels FILE] [--strict]\n       m1emu roll BIN [--out DIR]\n       m1emu boot BIN [--link EMU_BIN] [--out DIR]\n       m1emu run BIN [--ms N] [--keys SCRIPT] [--snap MS,..] [--wav FILE] [--flash-in F] [--flash-out F] [--text S]\n       m1emu serve BIN [--flash-in F] [--name NAME]\n       m1emu cpu BIN --elf ELF [--slots 0,3,..] [--notes 0,1,4,8] [--hold MS] [--run] [--modtime] [--window MS] [--keys K,..] [--settle MS] [--mt-run] [--bank FILE] [--no-survey] [--poke8 NAME=BYTE,..] [--out FILE]");
     ExitCode::from(2)
 }
 
