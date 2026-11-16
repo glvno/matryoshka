@@ -86,6 +86,7 @@ class Bank(unittest.TestCase):
         self.assertEqual(asked, [])
         self.assertEqual(len(fm1.erased), 60)
 
+
 class Factory(unittest.TestCase):
     def test_factory_commands_follow_feature_bit_26(self):
         class Info:
