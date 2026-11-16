@@ -192,32 +192,60 @@ async function handshake(link, tries = 3) {
 
 export class Updater {
   // opts.skip(link, id): an async test that passes over a running FM-1 when installing (#702)
+  // opts.avoid(port): ports never probed or written to: the other FM-1s while several are connected (D-965)
+  // opts.check(): throws (nothing written) when an avoided FM-1 changed, before an update loader is written to (D-965)
   constructor(access, log, opts) {
     this.access = access;
     this.log = log || (() => {});
     this.skip = opts && opts.skip;
+    this.avoid = (opts && opts.avoid) || (() => false);
+    this.check = opts && opts.check;
     this.skipped = null;
   }
 
-  // every in/out pair with the same port name that answers the handshake; `skip(link, id)` (async) passes over a device
+  // the in/out pairs that may be an FM-1: the same port name, the outputs of one name taken in order (two FM-1s show
+  // the same name), never an avoided port
+  pairs() {
+    const outs = [...this.access.outputs.values()].filter((o) => o.state !== "disconnected" && !this.avoid(o));
+    const used = new Set(), list = [];
+    for (const input of this.access.inputs.values()) {
+      if (input.state === "disconnected" || this.avoid(input)) continue;
+      if (!/fm-1|felucca|matryoshka|modular|ota|composite|sinco|usb-midi/i.test(input.name || "")) continue;   // never probe other gear
+      const output = outs.find((o) => o.name === input.name && !used.has(o));
+      if (!output) continue;
+      used.add(output);
+      list.push([input, output]);
+    }
+    return list;
+  }
+
+  // the first in/out pair that answers the handshake; `skip(link, id)` (async) passes over a device
   // that answered (an FM-1 set to ignore the editor, #702: its identity goes to this.skipped)
   async find(filter, skip) {
-    const outs = [...this.access.outputs.values()];
-    for (const input of this.access.inputs.values()) {
-      if (input.state === "disconnected") continue;
-      if (!/fm-1|felucca|matryoshka|modular|ota|composite|sinco|usb-midi/i.test(input.name || "")) continue;   // never probe other gear
-      const output = outs.find((o) => o.name === input.name && o.state !== "disconnected");
-      if (!output) continue;
+    for (const [input, output] of this.pairs()) {
       try { await input.open(); await output.open(); } catch (_) { continue; }
       const link = new Link(input, output);
       const id = await handshake(link, 2);
       if (id && (!filter || filter(id))) {
-        if (!skip || !(await skip(link, id))) return { link, id, name: input.name };
+        if (!skip || !(await skip(link, id))) return { link, id, name: input.name, input, output };
         this.skipped = id.text;
       }
       link.close();
     }
     return null;
+  }
+
+  // every pair that answers the handshake, its link open (the caller closes each)
+  async findAll() {
+    const found = [];
+    for (const [input, output] of this.pairs()) {
+      try { await input.open(); await output.open(); } catch (_) { continue; }
+      const link = new Link(input, output);
+      const id = await handshake(link, 2);
+      if (id) found.push({ link, id, name: input.name, input, output });
+      else link.close();
+    }
+    return found;
   }
 
   async waitFor(filter, ms) {
@@ -316,6 +344,9 @@ export class Updater {
 
   // step 2 with the loader found by find()/waitFor()
   async write(ota, image, step) {
+    if (this.check) {
+      try { this.check(); } catch (e) { ota.link.close(); throw e; }
+    }
     ota.link.send(UPGRADE);
     await sleep(2000);
     const s2 = await this.serve(ota.link, image, FINISH_WRITE, 180000, (n) => step("write", n));

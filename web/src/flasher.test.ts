@@ -6,8 +6,10 @@ import { describe, expect, it } from 'vitest';
 import { isMatryoshkaProduct, OPEN_HEAD_SHA256, MVAVE_LOADER_SHA256, OPEN_RELEASES, STOCK_V15_SHA256, V15_HEAD_SHA256, crc16, headIs, headWhich, logicalImage, openPackageProblem, productOf, validateOpenPackage, validateStockPackage, workbenchPackages } from './flasher/fm1pkg.js';
 // @ts-ignore untyped JS module
 import { Updater, bootMismatch, headProblem, loaderFits, pack7, readHead, unpack7 } from './flasher/fm1ota.js';
-import { BOOT_CODE_IS_OPEN, MVAVE_WORKBENCH, guardUnload, ignoresEditor } from './flasher';
+import { BOOT_CODE_IS_OPEN, MVAVE_WORKBENCH, guardUnload, ignoresEditor, surveyFm1s } from './flasher';
 import { CMD, frame, parse } from './protocol';
+import { CHOOSE_FIRST, installPlan, LOADER_AMONG_SEVERAL, OTHER_CHANGED } from './fm1-choice';
+import { commands, fakeAccess, fakeFm1 } from './test-fm1s';
 
 const stock = (): Uint8Array => new Uint8Array(readFileSync(new URL('../public/firmware/FM-1_015.fwsc', import.meta.url)));
 
@@ -383,5 +385,55 @@ describe('an FM-1 set to ignore the editor (#702)', () => {
     up.find = async (_f: unknown, skip: unknown) => ((skipArg = skip), (up.skipped = 'FM-1_7011100'), null);
     await expect(up.install(new Uint8Array(8), 'FM-1_7011100')).rejects.toMatchObject({ code: 'ignored' });
     expect(skipArg).toBe(up.skip);
+  });
+});
+
+describe('several FM-1s: an install goes to the chosen one only (D-965)', () => {
+  const HOME = '0123456789ABCDEF0123456789AB0001', RIG = '0123456789ABCDEF0123456789AB7E57';
+  const twoFm1s = () => {
+    const rig = fakeFm1('r', { serial: RIG, rig: true }), home = fakeFm1('h', { name: 'HOME', serial: HOME });
+    return { rig, home, access: fakeAccess(rig, home) };
+  };
+  it('tells two FM-1s of one port name apart by serial, each on its own ports', async () => {
+    const { access } = twoFm1s();
+    const found = await surveyFm1s(new Updater(access));
+    expect(found.map((d) => [d.inputId, d.outputId, d.serial, d.loader, d.ignored])).toEqual([['r', 'R', RIG, false, false], ['h', 'H', HOME, false, false]]);
+    expect(found.map((d) => d.label)).toEqual(['Test rig (FM-1_7011100)', 'FM-1 HOME (FM-1_7011100)']);
+  });
+  it('with no choice nothing is sent; with one the installer never asks or writes to the other', async () => {
+    const { rig, home, access } = twoFm1s();
+    const found = await surveyFm1s(new Updater(access));
+    expect(installPlan(found, null)).toEqual({ refuse: CHOOSE_FIRST(2) });
+    const plan = installPlan(found, { serial: HOME, inputId: null, label: 'FM-1 HOME', linked: false });
+    if ('refuse' in plan) throw new Error(plan.refuse);
+    expect(plan.avoid).toEqual(['r', 'R']);
+    const rigSent = rig.o.sent.length;
+    const up = new Updater(access, () => {}, { avoid: (p: { id: string }) => plan.avoid.includes(p.id) });
+    const dev = (await up.find((id: { model: string }) => !/^ota-/i.test(id.model)))!;
+    expect(dev.input).toBe(home.i);
+    expect(dev.output).toBe(home.o);
+    dev.link.close();
+    expect(rig.o.sent.length).toBe(rigSent);
+    expect(commands(home.o).at(-1)).toBe(-1);   // (the handshake went to HOME)
+  });
+  it('the FM-1 the editor is linked to, by its port, when its firmware tells no serial', async () => {
+    const one = fakeFm1('a', { features: 0 }), two = fakeFm1('b', { features: 0 });
+    const found = await surveyFm1s(new Updater(fakeAccess(one, two)));
+    expect(found.map((d) => d.serial)).toEqual([null, null]);
+    expect(installPlan(found, { serial: null, inputId: 'b', label: 'FM-1 #2', linked: true })).toMatchObject({ target: found[1], avoid: ['a', 'A'] });
+  });
+  it('an FM-1 waiting in update mode beside another is refused, before anything is written', async () => {
+    const loader = fakeFm1('l', { port: 'Felucca Update', identity: 'ota-FM-1_700' }), home = fakeFm1('h', { serial: HOME });
+    const found = await surveyFm1s(new Updater(fakeAccess(loader, home)));
+    expect(found.map((d) => d.loader)).toEqual([true, false]);
+    expect(installPlan(found, { serial: HOME, inputId: 'h', label: 'FM-1 HOME', linked: true })).toEqual({ refuse: LOADER_AMONG_SEVERAL });
+    expect(commands(loader.o)).toEqual([-1]);   // (the handshake only)
+  });
+  it('an update loader is not written to when another FM-1 left during the install', async () => {
+    const sent: number[][] = [];
+    const up = new Updater({ inputs: new Map(), outputs: new Map() }, () => {}, { check: () => { throw new Error(OTHER_CHANGED); } });
+    const ota = { link: { send: (b: number[]) => (sent.push(b), true), close: () => {} }, id: { text: 'ota-FM-1_700' } };
+    await expect(up.write(ota, new Uint8Array(8), () => {})).rejects.toThrow(OTHER_CHANGED);
+    expect(sent).toEqual([]);
   });
 });

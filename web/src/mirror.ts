@@ -15,11 +15,12 @@ const ANY_FM1 = /fm-?1|felucca|matryoshka|modular|ota|composite|sinco|usb-midi/i
 
 /** who the FM-1 on USB MIDI is, by M-VAVE's identity handshake (as the Install panel asks): its identity, whether that is
  *  an update loader, and its port. `text` is null when a port that looks like an FM-1 is there but nothing answers the
- *  handshake (still starting, or a firmware that does not answer it); null when there is no such port */
-export async function identifyFm1(access?: MIDIAccess): Promise<{ text: string | null; loader: boolean; port: string } | null> {
+ *  handshake (still starting, or a firmware that does not answer it); null when there is no such port. `avoid`: ports not
+ *  to ask (the other FM-1s while the editor is linked to one of several, D-965) */
+export async function identifyFm1(access?: MIDIAccess, avoid?: (port: MIDIPort) => boolean): Promise<{ text: string | null; loader: boolean; port: string } | null> {
   try {
     const midi = access ?? await navigator.requestMIDIAccess({ sysex: true });
-    const dev = await new Updater(midi).find();
+    const dev = await new Updater(midi, undefined, { avoid }).find();
     if (dev) {
       dev.link.close();
       return { text: dev.id.text, loader: /^ota-/i.test(dev.id.model), port: dev.name };

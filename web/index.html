@@ -132,7 +132,7 @@
   </dialog>
       <dialog id="device-bar" class="device-controls" aria-label="FM-1 and MIDI"><h2>FM-1 &amp; MIDI</h2>
         <span class="menu-heading">FM-1 connection</span>
-        <button id="dev-btn">Connect FM-1</button>
+        <div class="row"><button id="dev-btn">Connect FM-1</button><button id="dev-choose" type="button" title="More than one FM-1 answered: choose which one the editor links to" hidden>Choose FM-1…</button></div>
         <!-- the sync state, as the FM-1 chip shows it (#180, main.ts syncChip): Sync / Stop syncing call setLive -->
         <div id="dev-sync" class="sync-line"><span id="dev-sync-text">Not connected</span><span id="dev-sync-sep" hidden aria-hidden="true">·</span><button id="dev-sync-btn" type="button" hidden>Sync</button></div>
         <p class="muted">Send patch edits, knobs and notes to the FM-1.</p>
@@ -167,6 +167,15 @@
           <p id="device-serial" class="muted"></p>
           <p id="device-settings-status" class="muted" role="status"></p>
           <div class="sync-ask-actions"><button type="button" id="device-settings-close">Close</button><button type="submit" id="device-settings-save" class="primary">Save to FM-1</button></div>
+        </form>
+      </dialog>
+      <!-- Connect FM-1 found several FM-1s and none is remembered (D-965, fm1-pick.ts): one button each; the close's returnValue is the index -->
+      <dialog id="fm1-pick" class="help sync-ask" aria-labelledby="fm1-pick-title">
+        <form method="dialog" class="sync-ask-body">
+          <h2 id="fm1-pick-title">Which FM-1?</h2>
+          <p>More than one FM-1 answered. Choose the one the editor links to. This browser remembers it by its serial and links to it straight away next time; Choose FM-1… in FM-1 &amp; MIDI asks again. The test rig is never linked without asking.</p>
+          <div class="fm1-pick-list" role="group" aria-label="FM-1s"></div>
+          <div class="sync-ask-actions"><button value="">Cancel</button></div>
         </form>
       </dialog>
       <!-- connecting the FM-1 (#171, main.ts offerSync): Sync (Enter) or Not now (Esc); the close's returnValue says which -->
