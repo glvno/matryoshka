@@ -1,5 +1,4 @@
 # Floors tools/floor_test.sh knows about and that are not fixed yet (#969): one kit per line, then its floor as measured.
 # A listed kit still fails the check if it is clear: delete its line with the fix.
 comb-long     -99.9 dBFS: fb 0.98 x max, damp 0 (int16 Q13 line with error feedback, rounded Q16 loop products)
-reverb-long   -99.8 dBFS: size 0.95 x max, damp 0 (int16 lines)
 string-long   -78.1 dBFS: decay 10 s, damp 0 (int16 Q13 line with error feedback, rounded Q16 loop products)

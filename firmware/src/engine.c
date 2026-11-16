@@ -579,7 +579,7 @@ typedef struct {
         struct { int32_t a[8], b[8], ia; uint32_t phase; } fs;   /* the Hilbert chains (w1 w2 per section), chain A's delayed sample, the quadrature oscillator */
         struct { struct grain_line *ln; uint32_t w, acc, seed; uint8_t prev; } gr;   /* acc: grains per sample, Q24 */
         struct { int16_t *buf; int64_t cur; uint32_t len, w, t, seen, beat; int32_t rate; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev, rk, ph, tp; } dly;   /* len: its line's samples, from its length (dly_samples); cur 64 bits (a long line is more samples than Q16 holds in 32) */   /* t, ring, seen, beat: the clock tempo; cur, rate: the read position's distance behind w (samples Q16, 0 = not yet set) and its glide (dly_glide); rk, ph: a lower rate (#659, dly_slow): the rate step's k the line holds (0 none yet), the sample within a line sample; tp: Tape on (#660, dly_tape) */
-        struct { int16_t *buf; uint16_t li[8], ai[2], pi; int32_t lp[8]; uint32_t ph[2]; int32_t gain[8], size, kp[6]; uint8_t gains_ok, frozen, hw, kdone; } rev;   /* FDN indices/states/phases; exact decay gains cached until effective size/freeze changes; D-1103: the settings of the block before (kp, the kernel's), the ring's next place (hw), the kernel already run this block (kdone) */
+        struct { int16_t *buf; uint16_t li[8], ai[2], pi, oct; int32_t lp[8]; uint32_t ph[2]; int32_t gain[8], size, kp[6]; uint8_t gains_ok, frozen, hw, kdone; uint32_t still, hold; } rev;   /* FDN indices/states/phases; exact decay gains cached until effective size/freeze changes; D-1103: the settings of the block before (kp, the kernel's), the ring's next place (hw), the kernel already run this block (kdone); D-1109 (reverb_kernel's drain): the loudest wet sum since the last input, in bits above one step of the lines (oct), the samples since that input (still), the samples a tail takes to fall 6 dB (hold) */
         struct { int32_t v; uint32_t t; int32_t rk[4], inc[4], k[4]; uint32_t len[4]; uint8_t stage, prev, ok; } env;  /* Q30, like the ADSR; t: samples
                                                     * in the segment; rk, inc, k, len, ok: segments 1 2 3 and release, as m_adsr */
         rate_env_t rateenv;
@@ -7727,6 +7727,15 @@ static inline int16_t dly_pack(int32_t v)
     int32_t q = (v + 4) >> 3;
     return (int16_t)clampi(q, -32768, 32767);
 }
+/* dly_pack for a line's own feedback (D-1109): cut toward zero, and a negative multiple of a step one step further, so
+ * that after a multiply-high (MUL_E rounds down) a sample fed back through a gain below 1 always comes out smaller: with
+ * nothing new coming in, the line falls to exactly zero. dly_pack, rounding to nearest, kept a sample of n steps for ever
+ * once its gain took away less than half a step (n < 1 / (2 (1 - fb)): a quiet echo repeating at a fixed level). */
+static inline int16_t dly_pack_fb(int32_t v)
+{
+    int32_t q = (v + ((v >> 31) & 8)) >> 3;
+    return (int16_t)clampi(q, -32768, 32767);
+}
 
 /* Granular (modules.ts `grain`): records in into a 1 s line (Q13), plays up to GRAIN_MAX Hann-windowed grains from it.
  * A grain starts `density` times a second (Q24 accumulator) or on a rising edge of trig, at `position` of the span back
@@ -7985,14 +7994,14 @@ static void __attribute__((noinline)) dly_glide(inst_t *it, const esig_t *in, es
         if (pp) {
             int32_t eb = (int32_t)bb[i0] * 8 + ((((int32_t)bb[i1] - bb[i0]) * fr) >> 12), dr = mul16(in[i], dry);
             x = MUL_E(ea, fb);
-            bb[w] = dly_pack(swell ? dly_soft(x) : x);
+            bb[w] = dly_pack_fb(swell ? dly_soft(x) : x);
             x = in[i] + MUL_E(eb, fb);
-            buf[w] = dly_pack(swell ? dly_soft(x) : x);
+            buf[w] = dly_pack_fb(swell ? dly_soft(x) : x);
             out[i] = dr + MUL_E(ea, mix);
             outr[i] = dr + MUL_E(eb, mix);
         } else {
             x = in[i] + MUL_E(ea, fb);
-            buf[w] = dly_pack(swell ? dly_soft(x) : x);
+            buf[w] = dly_pack_fb(swell ? dly_soft(x) : x);
             out[i] = mul16(in[i], dry) + MUL_E(ea, mix);
             outr[i] = out[i];
         }
@@ -8029,7 +8038,7 @@ static void dly_aa(int32_t *lp, const int32_t *c, const esig_t *in, uint32_t n, 
     lp[0] = x1; lp[1] = x2; lp[2] = lp[4] = u1; lp[3] = lp[5] = u2; lp[6] = y1; lp[7] = y2;
 }
 
-/* dly_pack of dly_soft: within +-1, so the clamp never acts */
+/* dly_pack of dly_soft: within +-1, so the clamp never acts (Tape's loop) */
 #define DLY_PACK_SOFT(x) ((int16_t)((dly_soft(x) + 4) >> 3))
 
 /* dly_slow's loop while the time stands (rdi, rdf: its distance in line samples, Q16, rounded up), for pp and swell known
@@ -8055,11 +8064,11 @@ HOT void slow_fast(const int pp, const int swell, int16_t *buf, uint32_t nl, uin
             int32_t v;
             if (pp) {
                 v = MUL_E(ea, fb);
-                bb[w] = swell ? DLY_PACK_SOFT(v) : dly_pack(v);
+                bb[w] = dly_pack_fb(swell ? dly_soft(v) : v);
                 v = *yp++ + MUL_E(eb, fb);
             } else
                 v = *yp++ + MUL_E(ea, fb);
-            buf[w] = swell ? DLY_PACK_SOFT(v) : dly_pack(v);
+            buf[w] = dly_pack_fb(swell ? dly_soft(v) : v);
             ph = 0;
             if (++w == nl)
                 w = 0;
@@ -8141,11 +8150,11 @@ static void __attribute__((noinline)) dly_slow(inst_t *it, const esig_t *in, esi
             int32_t v;
             if (pp) {
                 v = MUL_E(ea, fb);
-                bb[w] = dly_pack(swell ? dly_soft(v) : v);
+                bb[w] = dly_pack_fb(swell ? dly_soft(v) : v);
                 v = *yp++ + MUL_E(eb, fb);
             } else
                 v = *yp++ + MUL_E(ea, fb);
-            buf[w] = dly_pack(swell ? dly_soft(v) : v);
+            buf[w] = dly_pack_fb(swell ? dly_soft(v) : v);
             ph = 0;
             if (++w == nl)
                 w = 0;
@@ -8543,12 +8552,12 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
             int32_t ea = (int32_t)buf[rp] * 8, dr = mul16(in[i], dry);
             if (pp) {
                 int32_t eb = (int32_t)buf[H + rp] * 8;
-                buf[H + w] = dly_pack(dly_soft(MUL_E(ea, fb)));
-                buf[w] = dly_pack(dly_soft(in[i] + MUL_E(eb, fb)));
+                buf[H + w] = dly_pack_fb(dly_soft(MUL_E(ea, fb)));
+                buf[w] = dly_pack_fb(dly_soft(in[i] + MUL_E(eb, fb)));
                 out[i] = dr + MUL_E(ea, mix);
                 outr[i] = dr + MUL_E(eb, mix);
             } else {
-                buf[w] = dly_pack(dly_soft(in[i] + MUL_E(ea, fb)));
+                buf[w] = dly_pack_fb(dly_soft(in[i] + MUL_E(ea, fb)));
                 out[i] = dr + MUL_E(ea, mix);
                 outr[i] = out[i];
             }
@@ -8559,7 +8568,7 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
         for (i = 0; i < n; i++) {
             uint32_t rp = w >= d ? w - d : w + L - d;
             int32_t r = (int32_t)buf[rp] * 8;
-            buf[w] = dly_pack(in[i] + MUL_E(r, fb));
+            buf[w] = dly_pack_fb(in[i] + MUL_E(r, fb));
             if (++w == L)
                 w = 0;
             out[i] = mul16(in[i], dry) + MUL_E(r, mix);
@@ -8572,8 +8581,8 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
         for (i = 0; i < n; i++) {
             uint32_t rp = w >= d ? w - d : w + H - d;
             int32_t ea = (int32_t)buf[rp] * 8, eb = (int32_t)bb[rp] * 8, dr = mul16(in[i], dry);
-            bb[w] = dly_pack(MUL_E(ea, fb));
-            buf[w] = dly_pack(in[i] + MUL_E(eb, fb));
+            bb[w] = dly_pack_fb(MUL_E(ea, fb));
+            buf[w] = dly_pack_fb(in[i] + MUL_E(eb, fb));
             if (++w == H)
                 w = 0;
             out[i] = dr + MUL_E(ea, mix);
@@ -8591,7 +8600,14 @@ held:
 /* Reverb (modules.ts `reverb`; freeze holds the tail): an eight-line FDN with a Householder feedback matrix (f_k = t_k - sum(t) / 4), a one-pole
  * damping filter and a decay gain in every line (g_k = 2^(-9.966 L_k / (T sr)): 60 dB in T = 0.2 x 2^(5 size) s), two
  * input diffusion allpasses (g 0.5), a pre-delay of up to 40 ms, and a sine modulation of the read position of lines 0
- * and 1 (mod x 6 samples at 0.5 / 0.83 Hz, linear interpolation). All lines int16 Q13 in one block (RV_LEN). */
+ * and 1 (mod x 6 samples at 0.5 / 0.83 Hz, linear interpolation). All lines int16 Q13 in one block (RV_LEN).
+ * D-1109: a tail with no input falls to exactly zero. Rounded to nearest, the int16 line writes hold a quiet tail at a
+ * few steps of the lines for ever (about -85 dBFS at size 0.95, -82 with full damping: a write within half a step of
+ * its old value keeps it). So the lines play rounded to nearest, as always, until nothing has entered for as long as the
+ * loudest tail heard since takes to fall under one step of the lines (reverb_kernel); then they drain: every product
+ * (damping, decay gain), line write and allpass write is cut toward zero, never up in magnitude. The matrix keeps the
+ * lines' energy, the gains below 1 take some away every sample and no rounding gives any back, so it reaches zero. A
+ * frozen tail never drains. */
 static const uint16_t RV_LINE[8] = {331, 439, 547, 661, 773, 881, 991, 1117};
 static const uint16_t RV_DIFF[2] = {223, 347};
 #define RV_PRE 1764u                 /* 40 ms */
@@ -8615,13 +8631,29 @@ HOT int32_t slow_sine(uint32_t ph, slow_sine_t *c)
     return (c->first + (int32_t)(((int64_t)c->delta * fr) >> 16)) >> 14;
 }
 
-/* Inline only the sample loop: the fully wet master bus folds away both final mix products, with one block dispatch.
- * Keep setup / gain-cache writes in m_reverb and preserve sample-order stores for aliased input and output. */
-HOT void reverb_samples(inst_t *it, uint32_t n, const esig_t *in, esig_t *out, int16_t *const line[8],
-                        int16_t *const ap[2], int16_t *pre, const int32_t g[8],
-                        int32_t d, int32_t depth, uint32_t dpre, int32_t gin, int32_t mix)
+/* a x b >> 16 cut toward zero, one multiply-high: |a| < 2^18 (a line sample or a damping state), b8 = 8 b, 0 <= b <= 2^16 */
+HOT int32_t mul16_tz(int32_t a, int32_t b8)
 {
-    uint32_t i, k;
+    int32_t s = a >> 31;
+    return (mulh32(((a ^ s) - s) * 8192, b8) ^ s) - s;
+}
+
+/* Inline only the sample loop: the fully wet master bus folds away both final mix products, with one block dispatch.
+ * Keep setup / gain-cache writes in m_reverb and preserve sample-order stores for aliased input and output.
+ * drain (a constant at each call: two copies of the loop) cuts every product, line write and allpass write toward
+ * zero (D-1109), else they are rounded to nearest. Returns the OR of the wet sum's magnitudes (Q16, under 2^22; not
+ * worked out while draining), with RV_HEARD set if an input sample reached RV_QUIET. */
+#define RV_HEARD 0x80000000u
+#ifndef RV_QUIET
+#define RV_QUIET 32                  /* -66 dBFS (Q16, a power of two): quieter, an input enters the lines (x 1/8) under
+                                      * half a step. Not heard, so a tail that comes back through other modules (Shimmer's
+                                      * Granular) still drains */
+#endif
+HOT uint32_t reverb_samples(inst_t *it, uint32_t n, const esig_t *in, esig_t *out, int16_t *const line[8],
+                            int16_t *const ap[2], int16_t *pre, const int32_t g[8],
+                            int32_t d, int32_t depth, uint32_t dpre, int32_t gin, int32_t mix, const int drain)
+{
+    uint32_t i, k, peak = 0, heard = 0;
     int32_t t[8], dry = ENG_ONE - mix;
     /* the indices and states in locals (the int16 line writes could alias them in it->s), the lines written out */
     uint32_t li[8], ai0 = it->s.rev.ai[0], ai1 = it->s.rev.ai[1], pi = it->s.rev.pi, ph0 = it->s.rev.ph[0], ph1 = it->s.rev.ph[1];
@@ -8633,6 +8665,7 @@ HOT void reverb_samples(inst_t *it, uint32_t n, const esig_t *in, esig_t *out, i
     }
     for (i = 0; i < n; i++) {
         int32_t x = in[i], u = x, wet = 0, sum = 0, bo, y, o;
+        heard |= (uint32_t)(x ^ (x >> 31));
         if (dpre) {
             uint32_t rp = pi + RV_PRE - dpre;
             if (rp >= RV_PRE)
@@ -8644,22 +8677,22 @@ HOT void reverb_samples(inst_t *it, uint32_t n, const esig_t *in, esig_t *out, i
             pi = 0;
         bo = (int32_t)ap[0][ai0] * 8;                                   /* input diffusion */
         y = bo - u;
-        ap[0][ai0] = dly_pack(u + (bo >> 1));
+        ap[0][ai0] = drain ? dly_pack_fb(u + (bo >> 1)) : dly_pack(u + (bo >> 1));
         if (++ai0 == 223u)
             ai0 = 0;
         u = y;
         bo = (int32_t)ap[1][ai1] * 8;
         y = bo - u;
-        ap[1][ai1] = dly_pack(u + (bo >> 1));
+        ap[1][ai1] = drain ? dly_pack_fb(u + (bo >> 1)) : dly_pack(u + (bo >> 1));
         if (++ai1 == 347u)
             ai1 = 0;
         u = y;
         u = mulr(u, gin, 16);
-        /* Q13 taps times od plus rounding fit int32: -32768*65536+4096 .. 32767*65536+4096. */
+        /* Q13 taps times od plus rounding fit int32: -32768*65536+8191 .. 32767*65536+4096. */
 #define RV_DAMP(k, sample)                                                              \
         wet += o;                                                                   \
-        lp[k] = (sample) + mulr(lp[k], d, 16);                                      \
-        t[k] = mulr(lp[k], g[k], 16);                                               \
+        lp[k] = (sample) + (drain ? mul16_tz(lp[k], d * 8) : mulr(lp[k], d, 16));   \
+        t[k] = drain ? mul16_tz(lp[k], g[k] * 8) : mulr(lp[k], g[k], 16);           \
         sum += t[k];
 #define RV_MODTAP(k, ph)                                                                \
         {                                                                          \
@@ -8675,10 +8708,10 @@ HOT void reverb_samples(inst_t *it, uint32_t n, const esig_t *in, esig_t *out, i
             b = (int32_t)line[k][rb] * 8;                                           \
             o = a + (int32_t)(((int64_t)(b - a) * fr) >> 16);                       \
         }                                                                          \
-        RV_DAMP(k, mulr(o, od, 16))
+        RV_DAMP(k, drain ? mul16_tz(o, od * 8) : mulr(o, od, 16))
 #define RV_TAP(k)                                                                       \
         o = (int32_t)line[k][li[k]] * 8;                                            \
-        RV_DAMP(k, (((o >> 3) * od + 4096) >> 13))
+        RV_DAMP(k, drain ? ((o >> 3) * od + (((o >> 3) * od >> 31) & 8191)) >> 13 : ((o >> 3) * od + 4096) >> 13)
         if (depth > 0) {
             RV_MODTAP(0, ph0)
             RV_MODTAP(1, ph1)
@@ -8690,12 +8723,21 @@ HOT void reverb_samples(inst_t *it, uint32_t n, const esig_t *in, esig_t *out, i
 #undef RV_TAP
 #undef RV_MODTAP
 #undef RV_DAMP
-        sum >>= 2;
+        /* drain: the writes from Q18 (4 x Q16, so the matrix's quarter is exact), cut toward zero */
+        if (!drain)
+            sum >>= 2;
+        else
+            sum -= 4 * u;
         /* Constant indices, as in the taps above: keep line lengths and feedback values visible to the compiler. */
 #define RV_WRITE(k)                                                                     \
         {                                                                          \
             uint32_t w = li[k];                                                     \
-            line[k][w] = dly_pack(u + t[k] - sum);                                   \
+            if (drain) {                                                            \
+                int32_t v = 4 * t[k] - sum;                                         \
+                line[k][w] = (int16_t)clampi((v + ((v >> 31) & 31)) >> 5, -32768, 32767);   \
+            } else {                                                                \
+                line[k][w] = dly_pack(u + t[k] - sum);                              \
+            }                                                                      \
             if (++w == RV_LINE[k])                                                  \
                 w = 0;                                                             \
             li[k] = w;                                                             \
@@ -8706,6 +8748,8 @@ HOT void reverb_samples(inst_t *it, uint32_t n, const esig_t *in, esig_t *out, i
         ph0 += RV_MOD_INC[0];
         ph1 += RV_MOD_INC[1];
         out[i] = mulr(x, dry, 16) + mulr(mulr(wet, RV_GOUT, 16), mix, 16);
+        if (!drain)
+            peak |= (uint32_t)(wet ^ (wet >> 31));
     }
     for (k = 0; k < 8u; k++) {
         it->s.rev.li[k] = (uint16_t)li[k];
@@ -8716,6 +8760,7 @@ HOT void reverb_samples(inst_t *it, uint32_t n, const esig_t *in, esig_t *out, i
     it->s.rev.pi = (uint16_t)pi;
     it->s.rev.ph[0] = ph0;
     it->s.rev.ph[1] = ph1;
+    return (heard >= RV_QUIET ? RV_HEARD : 0u) | peak;
 }
 
 /* D-1103: the Reverb's lines hear its input one block (ENG_BLOCK samples) late, with the settings it had in the block
@@ -8730,8 +8775,8 @@ static __attribute__((noinline)) void reverb_kernel(inst_t *it, uint32_t n)   /*
     const int32_t *kp = it->s.rev.kp;
     int32_t d = mul16(kp[REVERB_P_DAMP], 52429);   /* damp x 0.8 */
     int32_t depth = mul16(kp[REVERB_P_MOD], RV_MOD), size = kp[REVERB_P_SIZE], g[8], *ring = RV_RING(it);
-    uint32_t dpre = (uint32_t)((mulq(kp[REVERB_P_PRE], ENG_SR, 16) + 500) / 1000), k, off = 0, a, hw = it->s.rev.hw;
-    int frz = kp[REVERB_P_FREEZE] >= 32768;      /* freeze: every gain 1, no damping, nothing new into the lines */
+    uint32_t dpre = (uint32_t)((mulq(kp[REVERB_P_PRE], ENG_SR, 16) + 500) / 1000), k, off = 0, a, hw = it->s.rev.hw, n0 = n, st = 0;
+    int frz = kp[REVERB_P_FREEZE] >= 32768, drain;   /* freeze: every gain 1, no damping, nothing new into the lines */
     int32_t gin = frz ? 0 : RV_GIN;
     if (frz)
         d = 0;
@@ -8743,10 +8788,14 @@ static __attribute__((noinline)) void reverb_kernel(inst_t *it, uint32_t n)   /*
             int64_t e = -(((int64_t)RV_LINE[k] * RV_DB60) << 16) / ((int64_t)tq * ENG_SR);
             it->s.rev.gain[k] = frz ? ENG_ONE : (int32_t)exp2_q16((int32_t)(e < -(16 << 16) ? -(16 << 16) : e) + (16 << 16));
         }
+        it->s.rev.hold = (uint32_t)(((int64_t)tq * ENG_SR * 6576) >> 32);   /* samples to fall 6.02 dB: T x 0.1003 */
         it->s.rev.size = size;
         it->s.rev.frozen = (uint8_t)frz;
         it->s.rev.gains_ok = 1;
     }
+    /* D-1109: drain once nothing has entered for as long as the loudest wet sum heard since (oct: its bits above one step
+     * of the lines) takes to fall under one step, plus RV_LEN; until something enters again. Never while frozen. */
+    drain = !frz && it->s.rev.still >= it->s.rev.hold * it->s.rev.oct + RV_LEN;
     if (dpre > RV_PRE - 1u)
         dpre = RV_PRE - 1u;
     for (k = 0; k < 8u; k++) {
@@ -8761,9 +8810,22 @@ static __attribute__((noinline)) void reverb_kernel(inst_t *it, uint32_t n)   /*
     pre = base + off;
     while (n) {                                  /* (the ring's end, then its start: a block shorter than ENG_BLOCK) */
         a = ENG_BLOCK - hw < n ? ENG_BLOCK - hw : n;
-        reverb_samples(it, a, ring + hw, ring + hw, line, ap, pre, g, d, depth, dpre, gin, ENG_ONE);
+        st |= drain ? reverb_samples(it, a, ring + hw, ring + hw, line, ap, pre, g, d, depth, dpre, gin, ENG_ONE, 1)
+                    : reverb_samples(it, a, ring + hw, ring + hw, line, ap, pre, g, d, depth, dpre, gin, ENG_ONE, 0);
         n -= a;
         hw = hw + a == ENG_BLOCK ? 0u : hw + a;
+    }
+    {
+        /* the wet sum's peak shared over its eight lines, in steps of the lines (Q16 / 8 / 8) */
+        uint32_t pk = (st & ~RV_HEARD) >> 6, bits = pk ? 32u - (uint32_t)__builtin_clz(pk) : 0u;
+        if (frz || (st & RV_HEARD)) {            /* (frozen: the held tail's level, for when it is let go) */
+            it->s.rev.still = 0;
+            it->s.rev.oct = (uint16_t)bits;
+        } else if (!drain) {
+            it->s.rev.still += n0;
+            if (bits > it->s.rev.oct)
+                it->s.rev.oct = (uint16_t)bits;
+        }
     }
 }
 static void m_reverb(const node_t *nd, inst_t *it, uint32_t n)
@@ -11026,7 +11088,7 @@ static void m_fx(const node_t *nd, inst_t *it, uint32_t n, uint32_t target)
      * every sample it added stayed within IDLE_Q16 for `span` consecutive samples at an unchanged mix, with the Delay's
      * read point standing and its line format unchanged: a Delay's whole line (its length times its rate step), the
      * Reverb's whole memory (RV_LEN). In that window, every Delay line sample is rewritten from a read heard as silent,
-     * and a feedback below one never grows a sample (dly_pack rounds |fb x| to at most |x|), so no echo above the
+     * and a feedback below one never grows a sample (dly_pack_fb makes |fb x| smaller than |x|), so no echo above the
      * threshold remains. Then the forced tail's clear applies and later OFF blocks take the bypass above. */
     if (!st->on && tail && run->tail == 1u && (wet_only || !gain)) {
         for (j = 0; j < d->nout; j++) {
