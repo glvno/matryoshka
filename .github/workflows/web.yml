@@ -61,19 +61,68 @@ jobs:
         run: |
           sudo apt-get install -y --no-install-recommends clang lld
           npm run fm1-wasm
+      # A release candidate's slow renders run in the `slow` jobs beside this one (D-147's disjoint groups)
       - name: Web tests selected for this scope
         working-directory: .
-        run: python3 tools/ci_checks.py run --area web
+        run: python3 tools/ci_checks.py run --area web ${{ inputs.mode == 'rc' && '--group coverage' || '' }}
       - run: npm run build
-      # D-147: retain display measurements only after both disjoint test groups and the build pass.
-      - name: Seal coverage display record after the full RC web job succeeds
+      - name: Keep the RC coverage stats for the seal job
         if: inputs.mode == 'rc'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-stats
+          path: web/public/coverage.json
+          retention-days: 1
+          if-no-files-found: error
+
+  # A release candidate's slow renders (loudness, headroom, the XL comparison), uninstrumented, dealt over parallel jobs
+  # by their measured times (tools/ci_checks.py slow_part)
+  slow:
+    if: inputs.mode == 'rc'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2, 3, 4, 5, 6]
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.rc_sha }}
+      - name: Plan frozen-candidate qualification
         working-directory: .
+        run: python3 tools/ci_checks.py plan --area web
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: Slow renders, part ${{ matrix.part }} of 6
+        working-directory: .
+        run: python3 tools/ci_checks.py run --area web --group slow --part ${{ matrix.part }}/6
+
+  # D-147: retain display measurements only after both disjoint test groups and the build pass.
+  seal:
+    if: inputs.mode == 'rc'
+    needs: [test, slow]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.rc_sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-stats
+          path: build/coverage-stats
+      - name: Seal coverage display record after every RC web job succeeds
         env:
           COVERAGE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: python3 tools/coverage_record.py produce --stats web/public/coverage.json --output build/coverage-record --run-url "$COVERAGE_RUN_URL"
+        run: python3 tools/coverage_record.py produce --stats build/coverage-stats/coverage.json --output build/coverage-record --run-url "$COVERAGE_RUN_URL"
       - name: Retain RC coverage for explicit release preparation
-        if: inputs.mode == 'rc'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ inputs.rc_sha }}

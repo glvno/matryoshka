@@ -85,9 +85,14 @@ command; deployment neither downloads arbitrary reports nor reruns tests.
 
 ## Commands
 
-- `cd web && npm run emu:smoke [-- FIRMWARE]`: the smoke test (below), about two minutes on an M1.
+- `cd web && npm run emu:smoke [-- FIRMWARE]`: the smoke test (below). Its parts each boot their own machines, so they
+  run side by side, a thread each (`run_parts` in `tools/emu/src/smoke.rs`); each part's lines print in order once it is
+  done, then its emulated and wall time. About four minutes on the M3 Max (1.18.0: 309 checks, 436 s emulated in 217 s;
+  the longest parts are steps 1 to 7 on one machine and the SEQ page). The first part's snapshots are named `NN-step.png`;
+  the others' start with the part's name.
 - `cd web && npm run emu:boot [-- FIRMWARE] [--link EMU_BIN]`: the [**boot check**](ledger/vocabulary.md#boot-check)
-  (`m1emu boot`, `tools/emu/src/boot.rs`, built on the smoke test's checks), about 30 s (27 s on the M1, 20 s emulated).
+  (`m1emu boot`, `tools/emu/src/boot.rs`, built on the smoke test's checks), about 25 s (1.18.0: 37 s emulated in 23 s,
+  its four parts side by side).
   On FIRMWARE, the bytes that get installed: the loading screen draws, the quick start and then the home page (factory
   patch 0) come up, silence without keys and sound from a panel key, no register fm1-emu does not model besides P33,
   and OCT- + OCT+ held at power-on enters update mode with the flash chip known. On EMU_BIN, the same commit's
@@ -104,8 +109,12 @@ command; deployment neither downloads arbitrary reports nor reruns tests.
   Choose when to run them using [D-144](ledger/releases.md#D-144).
   Scenario output includes a progress line every 30 seconds. `build/emu/scenarios/run.json` identifies the firmware
   by its SHA-256 digest. `results.json` is updated after each check, and `progress.json` names the current scenario and
-  unanswered emulator commands. An unanswered command fails after two minutes; a whole scenario fails after ten.
-  A timeout saves a failure report and stops the run. It does not start another scenario beside the unfinished one.
+  unanswered emulator commands. Each check in `results.json` names its `scenario` and the wall time it took in `ms`
+  (since the scenario's previous check, or its start). `timings.json` gives each scenario's wall time, the emulated
+  time it spent (`emuMs`), its checks and its failures, with the setup before the first scenario as `(setup)`; the
+  output prints the same after each scenario. An unanswered command fails after two minutes; a whole scenario fails
+  after ten. A timeout saves a failure report and stops the run. It does not start another scenario beside the
+  unfinished one.
   Smoke tests have a thirty-minute deadline; boot checks have five minutes. They print elapsed time every thirty seconds
   and stop their child process group on a timeout or interruption.
   While a gate runs on macOS, it prevents idle sleep. The display can sleep. Closing the lid can still suspend the Mac
@@ -140,7 +149,7 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   falls behind under load), its MIDI on a CoreMIDI virtual source and destination named `NAME` (default `FM-1 (emu)`,
   which the editor's port match takes like a real FM-1), and a line protocol on stdin for the panel, the LCD and the
   audio (`tools/emu/src/serve.rs` lists it). `M1EMU_TRACE=1` prints every short message the FM-1 sends.
-- **`cd web && npm run emu:scenarios [-- BIN] [--only NAME,..] [--list] [--headed]`:** builds m1emu and the panel WebAssembly,
+- **`cd web && npm run emu:scenarios [-- BIN] [--only NAME,..] [--shards N] [--list] [--headed]`:** builds m1emu and the panel WebAssembly,
   starts this checkout's dev server on a free port (with `MATRYOSHKA_BUNDLED_FIRMWARE=1`, so its Flash tab starts no
   `emu:smoke` of its own beside the run, issue #521; the rig scripts' and `demo.ts`'s dev servers do the same), starts `m1emu serve`, and drives the editor in Chrome (playwright-core
   with the installed Chrome, headless) through the scenarios in `web/scripts/emu-scenarios.mjs`: connect and Sync; an
@@ -153,6 +162,15 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   `build/emu/scenarios/`; about five minutes. A run of every scenario that passes writes `scenarios.passed` (the
   build's sha256) beside the build: in `build/flash/RUN/` for a build in its `emu-midi/` folder, else in the build's own
   folder; a failed run removes it.
+- **Several emulators at once (`--shards N`, [D-1157](ledger/releases.md#D-1157), Proposed):** the run takes the
+  slot, builds once and starts one dev server, then deals the scenarios over N runners of the same script, each with
+  its own `m1emu serve` and Chrome; each runner opens the editor and syncs first (`connect`), so its scenarios start
+  from the state they start from in one emulator. The deal evens out the scenarios' times in the last run's
+  `timings.json` (the longest first, onto the runner with the least time so far; without one, in turn). Each runner's
+  lines carry its number (`[2] ok ..`), and its results and snapshots go to `build/emu/scenarios/shard-K/`. At the end
+  `results.json` and `timings.json` hold every runner's, each check with its `shard`, and the run marks its build as a
+  run in one emulator does. The runners' `connect` checks count once for each runner. An interrupted run stops its
+  runners before it lets go of the slot. Not for `device:scenarios`: there is one test rig.
 - **Don't change the checkout while its scenarios run (issue #754):** the test scripts' dev servers watch no files
   (`MATRYOSHKA_NO_WATCH`, set in `web/scripts/rig-link.mjs`), so a commit, merge or regenerated file no longer reloads
   the editor's page mid-run. Before that, a reload dropped the link to the FM-1 and failed about 13 checks. A page that

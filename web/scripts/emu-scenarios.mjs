@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The device checks that cross the editor link, scripted (#290): the real editor (this checkout's dev server, in Chrome)
 // against our firmware on the emulated FM-1, whose USB MIDI is a virtual MIDI port (`m1emu serve`, docs/EMULATOR.md).
-//   npm run emu:scenarios [-- FIRMWARE] [--only NAME,..] [--headed] [--keep]
+//   npm run emu:scenarios [-- FIRMWARE] [--only NAME,..] [--shards N] [--headed] [--keep]
+//   (--shards N: the scenarios dealt over N emulators at once, inside the one emulator slot: runShards, D-1157)
 //   npm run emu:scenarios -- --list     the scenarios' names, for --only (`-- --only tieLire` reruns one; connect always
 //                                       runs first: it opens the editor and syncs, which the others need)
 // FIRMWARE: an M1_EMU_MIDI=1 build (matryoshka-emu.bin). Without one: the `matryoshka-emu-midi` artifact of the firmware
@@ -33,6 +34,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { basename, dirname, join, resolve } from 'node:path';
+import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { boot, download, downloadEmuMidi, smoke, smokeState, venvPython } from './branch-firmware.mjs';
@@ -41,16 +43,22 @@ import { parseWav, startCapture } from './audio-capture.mjs';
 import { CHECK_SCENARIOS, checkScenarios } from './device-check.mjs';
 import { EmuChannel } from './emu-channel.mjs';
 import { acquireEmulatorSlot, withDeadline } from './emu-slot.mjs';
+import { mergeShards, planShards, scenarioTiming, stamp } from './emu-shards.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const REPO = 'glvno/matryoshka';
 const args = process.argv.slice(2);
 const flag = (n) => args.includes(n);
 const opt = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
-const given = args.find((a, i) => !a.startsWith('--') && !['--only', '--install', '--url', '--port', '--gate'].includes(args[i - 1]));
+const given = args.find((a, i) => !a.startsWith('--') && !['--only', '--install', '--url', '--port', '--gate', '--shards', '--shard'].includes(args[i - 1]));
 const DEVICE = flag('--device') || flag('--via-emu');   // the device test mode's path (a rig, or the emulator through it)
 const REAL = flag('--device') && !flag('--via-emu');    // a real FM-1: the registered rig
-const OUT = join(ROOT, DEVICE ? 'build/device/scenarios' : 'build/emu/scenarios');
+/** --shards N: a run split over N emulators, each with its own browser, all in the one emulator slot (runShards); --shard K:
+ *  one of them, started by that run, its results in shard-K/ */
+const SHARDS = opt('--shards') === undefined ? 1 : Number(opt('--shards'));
+const SHARD = opt('--shard');
+const RUN_OUT = join(ROOT, DEVICE ? 'build/device/scenarios' : 'build/emu/scenarios');
+const OUT = SHARD ? join(RUN_OUT, `shard-${SHARD}`) : RUN_OUT;
 const only = opt('--only')?.split(',');
 const GATE = opt('--gate') ?? 'boot';   // --install's gate: boot (the boot check, the rig only: D-123, D-141) or full (D-144)
 /** the scenarios' names, read from this file (so --list and a wrong --only answer before anything starts) */
@@ -90,6 +98,14 @@ if (flag('--list')) {
     console.error(`--gate ${GATE}: full or boot`);
     process.exit(2);
   }
+  if (!Number.isInteger(SHARDS) || SHARDS < 1 || (SHARDS > 1 && (DEVICE || flag('--install') || SHARD))) {
+    console.error(`--shards ${opt('--shards')}: a whole number from 1, for emu:scenarios on the emulator only (one test rig, one run)`);
+    process.exit(2);
+  }
+  if (SHARD && (DEVICE || !opt('--url') || !given || !only)) {
+    console.error('--shard K is started by --shards N, with the firmware, --url and --only');
+    process.exit(2);
+  }
 }
 const PORT_NAME = `FM-1 (emu ${process.pid})`;
 
@@ -121,12 +137,21 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const children = [];
 const own = (c) => { children.push(c); return c; };
 let testBrowser;
+/** a --shards run's own runners: stopped, and waited for (10 s at most), before the run lets go of the slot (D-143) */
+const shardRunners = [];
+const stopShards = async () => {
+  const live = shardRunners.filter((c) => c.exitCode === null && c.signalCode === null);
+  for (const c of live) try { c.kill('SIGTERM'); } catch { /* gone */ }
+  await withDeadline(() => Promise.all(live.map((c) => new Promise((r) => c.once('exit', r)))), 10000, 'shard shutdown').catch(() => {});
+  for (const c of live) try { c.kill('SIGKILL'); } catch { /* gone */ }
+};
 let ending = false;
 process.on('exit', () => { for (const c of children) try { c.kill(); } catch { /* gone */ } });
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, async () => {
   if (ending) return;
   ending = true;
   if (existsSync(OUT)) writeFileSync(join(OUT, 'interrupted.json'), JSON.stringify({ signal, at: new Date().toISOString() }));
+  await stopShards();
   await withDeadline(() => testBrowser?.close() ?? Promise.resolve(), 5000, 'browser shutdown').catch(() => {});
   process.exit(130);
 });
@@ -401,9 +426,12 @@ const FILTER_MIDI = (only) => {
 };
 
 const results = [];
+/** the scenario running and when its last check came: each check records its scenario and the wall ms it took (`ms`,
+ *  since the scenario's previous check or its start), timings.json each scenario's wall and emulated time */
+const clock = { scenario: null, last: 0 };
+const record = (r) => { results.push(stamp(r, clock, Date.now())); writeFileSync(join(OUT, 'results.json'), JSON.stringify(results, null, 1)); };
 async function check(name, ok, detail = '') {
-  results.push({ name, status: ok ? 'pass' : 'fail', ok, detail });
-  writeFileSync(join(OUT, 'results.json'), JSON.stringify(results, null, 1));
+  record({ name, status: ok ? 'pass' : 'fail', ok, detail });
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${detail ? `: ${detail}` : ''}`);
 }
 /** a check that hears the FM-1. It needs MASTER up only on a rig whose TEST_PEAK reads after MASTER (firmware without INFO
@@ -412,7 +440,7 @@ async function check(name, ok, detail = '') {
 let masterMatters = false;
 async function loudCheck(name, p, ok, detail) {
   if (!ok && masterMatters && p < QUIET) {
-    results.push({ name, status: 'skip', ok: true, skipped: true, reason: 'MASTER down', detail });
+    record({ name, status: 'skip', ok: true, skipped: true, reason: 'MASTER down', detail });
     console.log(`SKIP ${name}: MASTER down? (this firmware reads its peak after MASTER) ${detail}`);
     return;
   }
@@ -421,7 +449,7 @@ async function loudCheck(name, p, ok, detail) {
 /** a check this target cannot make (the rig's USB audio while another FM-1 is connected, the analog mix on the rig): counted
  *  apart, as MASTER down is, and no failure */
 async function skip(name, reason) {
-  results.push({ name, status: 'skip', ok: true, skipped: true, reason });
+  record({ name, status: 'skip', ok: true, skipped: true, reason });
   console.log(`SKIP ${name}: ${reason}`);
 }
 /** wait until `f()` gives something, up to `ms` times SLACK on the wall clock (the editor's side of the link); that, or the
@@ -468,7 +496,7 @@ async function installOnRig(run, url) {
     if (!(await boot(dir))) throw new Error(`the gate: the boot check failed on run ${run} (${dir}/boot.log): nothing installed`);
   } else {
     if (smokeState(dir) !== 'passed') {
-      console.log('emu:smoke on its build (about two minutes)');
+      console.log('emu:smoke on its build (about four minutes)');
       if (!(await smoke(dir))) throw new Error(`the gate: emu:smoke failed on run ${run} (${dir}/smoke.log): nothing installed`);
     }
     const emuBin = await downloadEmuMidi(run, dir);
@@ -511,34 +539,87 @@ async function installOnRig(run, url) {
   return gate;
 }
 
+/** this checkout's dev server on a free port: { url, vite } */
+async function devServer() {
+  const port = await freePort();
+  const vite = own(spawn(process.execPath, [join(ROOT, 'web/node_modules/vite/bin/vite.js'), '--port', String(port), '--strictPort', '--host', '::1'], { cwd: join(ROOT, 'web'), stdio: ['ignore', 'pipe', 'inherit'], env: DEV_ENV }));
+  await withDeadline(() => new Promise((res, reject) => {
+    vite.on('error', reject);
+    vite.on('exit', (code) => reject(new Error(`vite exited (${code}) before readiness`)));
+    vite.stdout.on('data', (d) => { if (/ready in|Local:/.test(String(d))) res(); });
+  }), 60000, 'dev server startup');
+  vite.stdout.on('data', (d) => { for (const l of String(d).split('\n')) if (/reload|optimiz/i.test(l)) console.log(`  note (vite): ${l.trim()}`); });
+  return { url: `http://[::1]:${port}/`, vite };
+}
+
+const readJson = (f) => { try { return JSON.parse(readFileSync(f, 'utf8')); } catch { return null; } };
+
+/** --shards N: the scenarios dealt over N runners of this script (`--shard K`), each with its own emulator and browser
+ *  on one dev server, all inside the one emulator slot. Each runner opens the editor and syncs first (`connect`). The
+ *  deal evens out the scenarios' times in the last run's timings.json (planShards). The runners' checks come together
+ *  in results.json and timings.json here, each with its shard; their snapshots stay in shard-K/. A run of every
+ *  scenario that passes marks its build, as a run in one emulator does */
+async function runShards() {
+  const release = await acquireEmulatorSlot();
+  const fw = firmware();
+  console.log(`firmware: ${fw}`);
+  const before = Object.fromEntries((readJson(join(OUT, 'timings.json')) ?? []).map((t) => [t.scenario, t.wallMs]));
+  rmSync(OUT, { recursive: true, force: true });
+  mkdirSync(OUT, { recursive: true });
+  if (!only) rmSync(scenariosMark(fw), { force: true });
+  const names = SCENARIOS.filter((n) => n !== 'connect' && (!only || only.includes(n)));
+  const plan = planShards(names, SHARDS, before);
+  writeFileSync(join(OUT, 'run.json'), JSON.stringify({ firmware: fw, sha256: sha256(fw), scenarios: only ?? 'all', shards: plan.map((s) => s.names), started: new Date().toISOString() }, null, 1));
+  buildEmu();
+  if (spawnSync('npm', ['run', '-s', 'fm1-wasm'], { cwd: join(ROOT, 'web'), stdio: 'inherit' }).status !== 0) throw new Error('npm run fm1-wasm failed');
+  const { url, vite } = opt('--url') ? { url: opt('--url') } : await devServer();
+  console.log(`editor: ${url}; ${plan.length} shards: ${plan.map((s, i) => `[${i + 1}] ${s.names.length} scenarios`).join(', ')}`);
+  const started = Date.now();
+  const exits = await Promise.all(plan.map((s, i) => new Promise((res) => {
+    const k = i + 1;
+    const c = own(spawn(process.execPath, [fileURLToPath(import.meta.url), fw, '--only', ['connect', ...s.names].join(','), '--url', url, '--shard', String(k),
+      ...(flag('--headed') ? ['--headed'] : [])], { cwd: join(ROOT, 'web'), stdio: ['ignore', 'pipe', 'pipe'] }));
+    shardRunners.push(c);
+    for (const stream of [c.stdout, c.stderr]) createInterface({ input: stream }).on('line', (l) => console.log(`[${k}] ${l}`));
+    c.on('exit', (code, signal) => res(code ?? (signal ? 128 : 1)));
+  })));
+  vite?.kill();
+  const shards = exits.map((exit, i) => ({ exit, results: readJson(join(OUT, `shard-${i + 1}`, 'results.json')) ?? [] }));
+  const merged = mergeShards(names, shards);
+  writeFileSync(join(OUT, 'results.json'), JSON.stringify(merged, null, 1));
+  const timings = shards.flatMap((_, i) => (readJson(join(OUT, `shard-${i + 1}`, 'timings.json')) ?? []).map((t) => ({ ...t, shard: i + 1 })));
+  writeFileSync(join(OUT, 'timings.json'), JSON.stringify(timings, null, 1));
+  const failed = merged.filter((r) => !r.ok), skipped = merged.filter((r) => r.skipped);
+  if (!only) {
+    if (!failed.length) writeFileSync(scenariosMark(fw), `${sha256(fw)}\n${new Date().toISOString()}\n`);
+    else rmSync(scenariosMark(fw), { force: true });
+  }
+  release();
+  console.log(`\n${plan.length} shards in ${((Date.now() - started) / 1000).toFixed(0)} s (each: ${exits.map((e, i) => `[${i + 1}] exit ${e}`).join(', ')})`);
+  console.log(`${merged.length - failed.length - skipped.length} of ${merged.length} checks passed${skipped.length ? `, ${skipped.length} skipped (${skipped.map((f) => `${f.name}: ${f.reason}`).join('; ')})` : ''}${failed.length ? `; failed: ${failed.map((f) => `[${f.shard}] ${f.name}`).join('; ')}` : ''}`);
+  process.exit(failed.length ? 1 : 0);
+}
+
 async function main() {
   if (opt('--gate') && !flag('--install')) throw new Error('--gate goes with --install RUN');
   if (flag('--install') && !REAL) throw new Error('--install is for the rig: npm run device:scenarios -- --install RUN');
   if (REAL && !loadRig()) throw new Error('no rig registered: connect the rig alone and run npm run rig -- register');
-  if (!REAL) await acquireEmulatorSlot();
+  if (SHARDS > 1) return runShards();
+  const runStart = Date.now();
+  if (!REAL && !SHARD) await acquireEmulatorSlot();   // (a shard runs inside its --shards run's slot)
   const fw = REAL ? null : firmware();
   if (fw) console.log(`firmware: ${fw}`);
   rmSync(OUT, { recursive: true, force: true });
   mkdirSync(OUT, { recursive: true });
   if (fw && !DEVICE && !only) rmSync(scenariosMark(fw), { force: true });
   writeFileSync(join(OUT, 'run.json'), JSON.stringify({ firmware: fw, sha256: fw ? sha256(fw) : null, scenarios: only ?? 'all', started: new Date().toISOString() }, null, 1));
-  const m1emu = REAL ? null : buildEmu();
+  const m1emu = REAL ? null : SHARD ? join(ROOT, 'tools/emu/target/release/m1emu') : buildEmu();
   // the editor's copy of the panel logic (the FM-1 tab, following the FM-1): built from this checkout, not committed
-  if (spawnSync('npm', ['run', '-s', 'fm1-wasm'], { cwd: join(ROOT, 'web'), stdio: 'inherit' }).status !== 0) throw new Error('npm run fm1-wasm failed');
+  if (!SHARD && spawnSync('npm', ['run', '-s', 'fm1-wasm'], { cwd: join(ROOT, 'web'), stdio: 'inherit' }).status !== 0) throw new Error('npm run fm1-wasm failed');
 
   let url = opt('--url');
   let vite;
-  if (!url) {
-    const port = await freePort();
-    vite = own(spawn(process.execPath, [join(ROOT, 'web/node_modules/vite/bin/vite.js'), '--port', String(port), '--strictPort', '--host', '::1'], { cwd: join(ROOT, 'web'), stdio: ['ignore', 'pipe', 'inherit'], env: DEV_ENV }));
-    url = `http://[::1]:${port}/`;
-    await withDeadline(() => new Promise((res, reject) => {
-      vite.on('error', reject);
-      vite.on('exit', (code) => reject(new Error(`vite exited (${code}) before readiness`)));
-      vite.stdout.on('data', (d) => { if (/ready in|Local:/.test(String(d))) res(); });
-    }), 60000, 'dev server startup');
-    vite.stdout.on('data', (d) => { for (const l of String(d).split('\n')) if (/reload|optimiz/i.test(l)) console.log(`  note (vite): ${l.trim()}`); });
-  }
+  if (!url) ({ url, vite } = await devServer());
   console.log(`editor: ${url}`);
   let installedGate = null;
   if (flag('--install')) {
@@ -2208,11 +2289,18 @@ async function main() {
     noteAt, shot, passProfile, skip, B, BLACK, WHITE, ENC, C4, QUIET, LOUD, SLACK, DEVICE, REAL, OUT,
   }));
 
+  // (what came before the first scenario: the slot's wait, the builds, the dev server, the emulator's boot, the browser)
+  const timings = [scenarioTiming('(setup)', Date.now() - runStart, null, [])];
+  console.log(`   (setup: ${(timings[0].wallMs / 1000).toFixed(1)} s)`);
   try {
     for (const [name, run] of Object.entries(scenarios)) {
       if ((only || REAL) && name !== 'connect' && !(only ?? Object.keys(RIG_SCENARIOS)).includes(name)) continue;   // (connect opens the editor and syncs: the others need it; a rig runs RIG_SCENARIOS, D-1151)
       console.log(`-- ${name}`);
       const started = Date.now();
+      const first = results.length;
+      let emuStart = null, emuEnd = null;
+      clock.scenario = name;
+      clock.last = started;
       const progress = () => ({ scenario: name, elapsedMs: Date.now() - started, pending: emuProc?.channel.pending ?? [], at: new Date().toISOString() });
       const heartbeat = setInterval(() => {
         const state = progress();
@@ -2221,10 +2309,12 @@ async function main() {
       }, 30000);
       try {
         await withDeadline(async () => {
+          if (emuProc) emuStart = await emuProc.ms();
           if (DEVICE) await ensureRigIgnored(emu, B, ENC);
           if (name !== 'connect') await fresh(name);
           await run();
           if (DEVICE) await ensureRigIgnored(emu, B, ENC);
+          if (emuProc) emuEnd = await emuProc.ms();
         }, 600000, `scenario ${name}`);
       } catch (e) {
         writeFileSync(join(OUT, `${name}-failure.json`), JSON.stringify({ ...progress(), error: e.stack }, null, 1));
@@ -2233,7 +2323,13 @@ async function main() {
         // A timed-out operation can still be running. Never overlap the next scenario with it.
         if (e instanceof RigIsolationError || e.name === 'DeadlineError' || emuProc?.channel.error) break;
         if (DEVICE) await withDeadline(() => ensureRigIgnored(emu, B, ENC), 15000, 'rig editor isolation recovery');
-      } finally { clearInterval(heartbeat); }
+      } finally {
+        clearInterval(heartbeat);
+        const t = scenarioTiming(name, Date.now() - started, emuEnd === null ? null : emuEnd - emuStart, results.slice(first));
+        timings.push(t);
+        writeFileSync(join(OUT, 'timings.json'), JSON.stringify(timings, null, 1));
+        console.log(`   (${name}: ${(t.wallMs / 1000).toFixed(1)} s${t.emuMs === null ? '' : `, ${(t.emuMs / 1000).toFixed(1)} s emulated`})`);
+      }
     }
   } finally {
     writeFileSync(join(OUT, 'results.json'), JSON.stringify(results, null, 1));
