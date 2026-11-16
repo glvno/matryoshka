@@ -510,6 +510,12 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .routing-controls input[type=range] { width: 100%; }
 .routing-controls h4 { margin: 10px 0 4px; font-size: 11px; font-weight: 650; letter-spacing: .02em; color: var(--muted); }
 .routing-controls .routing-source { margin: 4px 0 8px; padding: 6px 8px; border-radius: 6px; background: var(--surface-tint); }
+.routing-controls .mutate-lock-line { margin: 0 0 8px; flex-wrap: nowrap; align-items: flex-start; }
+.routing-controls .mutate-lock-line input { margin-top: 2px; }
+/* a parameter Mutate and Randomize leave alone (#944): a small padlock after its name, in the muted ink */
+.mutate-lock { display: inline-block; width: 8px; height: 9px; margin-left: 4px; vertical-align: -1px; background: var(--muted);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 9'%3E%3Cpath d='M2 4V2.6a2 2 0 0 1 4 0V4h1v5H1V4zm1 0h2V2.6a1 1 0 0 0-2 0z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 9'%3E%3Cpath d='M2 4V2.6a2 2 0 0 1 4 0V4h1v5H1V4zm1 0h2V2.6a1 1 0 0 0-2 0z'/%3E%3C/svg%3E") center / contain no-repeat; }
 .routing-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .routing-head strong { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .routing-controls output { margin-left: auto; }

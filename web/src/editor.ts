@@ -8,6 +8,7 @@ import { FINE, parseValue, stepOf, stepToward, wholeSteps } from './value-input'
 import { isTextEntry } from './input';
 import { lockOf } from './relevance';
 import { clearAround, isPile, tidy, tidyAssembly } from './tidy';
+import { isLocked, MUTATE_DEFAULT, MUTATE_SKIP, mutatePatch, setParamLock, type MutateMode, type MutateScope } from './mutate';
 import { buttonLabel, DEFS, drumRowName, FIXED_DOES, PANEL_BUTTONS, rowRange } from './modules';
 import { FIXED_BUTTONS, type Range } from './patch';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
@@ -2170,6 +2171,16 @@ export class Editor {
       const hint = paramHint(def.type, pd.name);
       if (hint) name.title = hint;
     }
+    // locked for Mutate and Randomize (#944): on its own, by its card or by an assembly around it
+    const mutable = !MUTATE_SKIP[m.type] && !pd.fixed;
+    if (mutable && isLocked(this.patch, m, pd.name)) {
+      row.classList.add('mutate-locked');
+      const lock = document.createElement('span');
+      lock.className = 'mutate-lock';
+      lock.title = 'Locked: Mutate and Randomize leave it alone';
+      lock.setAttribute('aria-label', lock.title);
+      name.append(lock);
+    }
     // a Selector's position: over the positions in use (1..count, #358), by the names its card row gives them
     const range = (): ParamDef => rowRange(m.type, m.params, pd);
     const posNames = o.names && m.type === 'select' && pd.name === 'pos' ? o.names : undefined;
@@ -2419,7 +2430,8 @@ export class Editor {
     row.append(name, choice ? sel!.element : pd.toggle ? document.createElement('span') : val);
     if (canPatch) {
       const key = `${m.id}:${pd.name}`;
-      row.append(parameterMenu(m, def, pd, { ...this.ev, patch: () => this.patch, change: (fn) => this.change(fn), touch: () => this.touch() }, this.routingOpen.has(key), (on) => {
+      const lock = mutable ? { own: !!m.mutateLock?.includes(pd.name), card: isLocked(this.patch, { ...m, mutateLock: undefined }, pd.name), set: (on: boolean) => this.lockParam(m, pd.name, on) } : undefined;
+      row.append(parameterMenu(m, def, pd, { ...this.ev, patch: () => this.patch, change: (fn) => this.change(fn), touch: () => this.touch(), lock }, this.routingOpen.has(key), (on) => {
         if (on) {
           this.routingOpen.clear();
           this.routingOpen.add(key);
@@ -2848,6 +2860,7 @@ export class Editor {
       this.selected.add(m.id);
       this.showSelection();
     } });
+    if (!MUTATE_SKIP[def.type]) items.push(...this.mutateItems({ modules: [m.id], assemblies: [] }, m));
     items.push({ text: 'Delete', key: 'Del', danger: true, rule: true, run: () => this.change(() => removeModule(this.patch, m.id)) });
     this.popMenu(items, at);
   }
@@ -2869,6 +2882,7 @@ export class Editor {
         else this.rebuild();
       } },
       { text: 'Rename', key: 'dbl-click', run: () => this.rename(a) },
+      ...this.mutateItems({ modules: [], assemblies: [a.id] }, a),
       { text: 'Save to library', rule: true, run: () => this.saveAssembly(a) },
       ...(parentOf(this.patch, a.id) ? [] : this.presetItems(a)),
       { text: 'Ungroup', run: () => this.change(() => ungroup(this.patch, a.id)) },
@@ -3379,6 +3393,53 @@ export class Editor {
     this.rebuild();
     this.ev.onLayout(this.patch);
   }
+
+  // ---- Mutate and Randomize (#944, mutate.ts): new values for the chosen cards' parameters, one undo step, sent live
+
+  /** Mutate's largest move, a share of each parameter's range (the host keeps it per browser) */
+  mutateAmount = MUTATE_DEFAULT;
+
+  /** mutate or randomize `scope` (default: the selected cards) as one undo step, sent live (the structure stays, so the
+   *  voices keep sounding and the selection stays, to go again); the number of parameters moved */
+  mutate(mode: MutateMode, scope: MutateScope = { modules: [...this.selected], assemblies: [...this.selectedAsm] }): number {
+    const verb = mode === 'mutate' ? 'Mutate' : 'Randomize';
+    if (!scope.modules.length && !scope.assemblies.length) return this.ev.onError(`${verb}: select the cards first`), 0;
+    const { patch, moved } = mutatePatch(this.patch, scope, mode, this.mutateAmount, DEFS);
+    if (!moved) return this.ev.onError(`${verb}: nothing to move there (locked, or left alone: Main, the Output, voices, Steps, the Arpeggiator, Drum maps, the Harmonizer)`), 0;
+    this.applyLive(patch);
+    const amount = mode === 'mutate' ? ` by up to ±${Math.round(this.mutateAmount * 100)} %` : '';
+    this.ev.onError(`${mode === 'mutate' ? 'Mutated' : 'Randomized'} ${moved} parameter${moved === 1 ? '' : 's'}${amount}. Ctrl/Cmd+Z puts them back`);
+    return moved;
+  }
+
+  /** lock or unlock whole cards (modules and assemblies; default: the selected ones) for Mutate and Randomize: one undo
+   *  step, no engine reload */
+  lockCards(on: boolean, cards: (ModuleInst | AssemblyInst)[] = [...this.patch.modules.filter((m) => this.selected.has(m.id)), ...assembliesOf(this.patch).filter((a) => this.selectedAsm.has(a.id))]): void {
+    if (!cards.length) return this.ev.onError(`select the cards to ${on ? 'lock' : 'unlock'} first`);
+    const before = this.mark();
+    for (const card of cards) {
+      if (on) card.mutateLockAll = true;
+      else delete card.mutateLockAll;
+    }
+    if (this.commit(before)) (this.rebuild(), this.ev.onLayout(this.patch));
+  }
+
+  /** lock or unlock one parameter (its ⋮ menu): an undo step, no engine reload */
+  lockParam(m: ModuleInst, param: string, on: boolean): void {
+    const before = this.mark();
+    setParamLock(m, param, on);
+    if (this.commit(before)) (this.rebuild(), this.ev.onLayout(this.patch));
+  }
+
+  /** the card menu's Mutate, Randomize and Lock items */
+  private mutateItems(scope: MutateScope, card: ModuleInst | AssemblyInst): MenuItem[] {
+    return [
+      { text: `Mutate ±${Math.round(this.mutateAmount * 100)} %`, key: '⌥M', rule: true, run: () => void this.mutate('mutate', scope) },
+      { text: 'Randomize', run: () => void this.mutate('randomize', scope) },
+      { text: card.mutateLockAll ? 'Unlock card for Mutate' : 'Lock card for Mutate', run: () => this.lockCards(!card.mutateLockAll, [card]) },
+    ];
+  }
+
   /**
    * A port row. On a member card of an expanded assembly it gets the expose toggle; on an assembly card (`label`) the dot
    * still belongs to the inner module, so cables and drags work the same, and the label renames on click.
