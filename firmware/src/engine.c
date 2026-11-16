@@ -565,7 +565,7 @@ typedef struct {
         struct { int32_t y; } gld;         /* Q24 */
         struct { uint32_t seed; int32_t y; } noise;   /* y: the colour one-pole, Q24 */
         struct { int32_t ic1[3], ic2[3]; } vow;       /* three band passes, Q20 */
-        struct { uint32_t phase; int32_t ap[8], fbv; } phs;   /* the sweep LFO, x1 / y1 of the four allpasses, the feedback sample */
+        struct { uint32_t phase; int32_t ap[4], fbv; } phs;   /* the sweep LFO, the four allpasses' states and the feedback sample (Q20) */
         struct { int32_t held, cnt, xb, ap[16]; } crush;   /* xb, ap: the 2x oversampling (os_up / os_down) */
         struct { int32_t xb, ap[16]; } shp;
         struct { int32_t v, ka, kd, kr, ainc, ad, ar; uint8_t stage, prev, ok; } adsr;   /* k*: the A D R the rates (ainc, ad, ar) were
@@ -10491,7 +10491,15 @@ static void m_vowel(const node_t *nd, inst_t *it, uint32_t n)
 #define INC_20HZ ((uint32_t)((20ull << 32) / ENG_SR))   /* 20 Hz as a phase increment */
 
 /* four first-order allpasses in series with one coefficient a = (g - 1) / (g + 1), g = tan(pi f / sr), f = center *
- * 2^(2 depth tri) from a triangle sweep, once per block; feedback from stage 4 into stage 1 */
+ * 2^(2 depth tri) from a triangle sweep, once per block; feedback from stage 4 into stage 1. Each stage is a one-multiplier
+ * (wave digital) section with one state w: v = a (x - w), y = v + w, w <- v + x, the allpass (a + z^-1) / (1 + a z^-1)
+ * (modules.ts phaser). Values are Q20, a is Q31. Each product (the feedback's and v) is the high word, floored; the
+ * feedback, y and the new w are then each moved one step up when negative, so none is larger in magnitude than its exact
+ * value (D-1109) and a ring with no input ends at exactly zero: a section keeps (1 + a)(x^2 - y^2) = (1 - a)(w'^2 - w^2)
+ * and every stage has the same a, so with feedback under 1 the sum of the four w^2 can't grow, whatever the sweep does;
+ * it stays put only while every value is exact and stage 4 puts out 0, which a nonzero state can't keep up. (#969: the
+ * direct form, x1 / y1 states with floored products, held a quiet ring at a steady level: floor(-a y1) keeps y1 = -k for
+ * k < 1 / (1 - |a|), about 24 steps at 300 Hz) */
 static void m_phaser(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *in = it->in[PHASER_I_IN];
@@ -10499,21 +10507,23 @@ static void m_phaser(const node_t *nd, inst_t *it, uint32_t n)
     uint32_t dt = hz_turns((uint32_t)EF(it, PHASER_P_RATE)), phase = it->s.phs.phase, i, k;
     int32_t tri = wave_tri(phase), oct = mul16(2 * EF(it, PHASER_P_DEPTH), tri);
     uint32_t rinc = exp2_scale(hz_turns((uint32_t)EF(it, PHASER_P_CENTER)), oct);
-    int32_t g, a, fb = EF(it, PHASER_P_FB), mix = EF(it, PHASER_P_MIX), dry = ENG_ONE - mix, fbv = it->s.phs.fbv, *ap = it->s.phs.ap;
+    int32_t g, a, fb = clampi(EF(it, PHASER_P_FB), 0, ENG_ONE - 1) << 15, mix = EF(it, PHASER_P_MIX), dry = ENG_ONE - mix;
+    int32_t fbv = it->s.phs.fbv, *ap = it->s.phs.ap;
     if (rinc < INC_20HZ)
         rinc = INC_20HZ;
     g = svf_g(rinc);
-    a = (int32_t)(((int64_t)(g - (1 << 24)) << 24) / (g + (1 << 24)));
+    a = (int32_t)((int64_t)(g - (1 << 24)) * ((int64_t)1 << 31) / (g + (1 << 24)));
     for (i = 0; i < n; i++) {
-        int32_t x0 = in[i], x = clampi(x0 + mul16(fb, fbv), -(8 << 16), 8 << 16);
+        int32_t x0 = in[i], x = mulh32(fb, fbv * 2);
+        x = clampi(clampi(x0, -(16 << 16), 16 << 16) * 16 + x + (int32_t)((uint32_t)x >> 31), -(8 << 20), 8 << 20);
         for (k = 0; k < 4u; k++) {
-            int32_t y = mulq(a, x - ap[2 * k + 1], 24) + ap[2 * k];
-            ap[2 * k] = x;
-            ap[2 * k + 1] = y;
-            x = y;
+            int32_t w = ap[k], v = mulh32(a, (x - w) * 2), y = w + v;
+            w = x + v;
+            ap[k] = w + (int32_t)((uint32_t)w >> 31);
+            x = y + (int32_t)((uint32_t)y >> 31);
         }
         fbv = x;
-        out[i] = mul16(x0, dry) + mul16(x, mix);
+        out[i] = mul16(x0, dry) + mulq(x, mix, 20);
     }
     it->s.phs.fbv = fbv;
     it->s.phs.phase = phase + n * dt;
