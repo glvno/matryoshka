@@ -297,9 +297,9 @@
         "wave": 1,
         "rate": 3,
         "depth": 1,
-        "sync": 0,
-        "div": 6,
-        "bpm": 120,
+        "sync": 1,
+        "div": 1,
+        "bpm": 39,
         "phase": 0,
         "range": 0,
         "dir": 0,
@@ -1356,6 +1356,16 @@
         "RANDOM",
         "NOISE"
       ]
+    },
+    {
+      "module": 11,
+      "param": "sync",
+      "label": "mod sync"
+    },
+    {
+      "module": 11,
+      "param": "div",
+      "label": "division"
     },
     {
       "module": 14,

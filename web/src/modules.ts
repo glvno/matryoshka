@@ -26,9 +26,11 @@ export interface Voice {
   clock: boolean;
   /** the transport runs (PLAY, MIDI Start / Stop): the Main module's run output */
   run: boolean;
-  /** the clock's ticks in this block while the transport runs: the sample they fall on (-1: none; MIDI clock ticks all
-   * fall on sample 0), how many, and the samples per tick (from the tempo, or measured from MIDI clock) */
+  /** the clock's ticks in this block: the sample they fall on while the transport runs (-1: none; MIDI clock ticks all
+   * fall on sample 0), the same whether or not it runs (`tickAt`: the clock always runs, D-358), how many, and the samples
+   * per tick (from the tempo, or measured from MIDI clock) */
   tick: number;
+  tickAt: number;
   ticks: number;
   tickLen: number;
   /** the FM-1's patch buttons held / switched on (bit i = PANEL_BUTTONS[i]): the Main module's button outputs */
@@ -716,6 +718,10 @@ export function lfoSyncCycle(div: number, mult: number): { per8: number; snap: n
   const g = gcd(per8, 8);
   return { per8, snap: per8 / g, cycles: 8 / g, num: d.num * m.num, den: d.den * m.den };
 }
+/** the LFO's `bpm` at its bottom, one under the 40 it had (shown TEMPO, #956; the one widening of an existing range against
+ * D-429, ruled in D-1108: a `top` stretch must stay under 32 wide): a synced LFO runs on the engine's clock, not its clk
+ * input or a bpm of its own (export-defs: defs.h LFO_TEMPO) */
+export const LFO_TEMPO = 39;
 
 interface LfoState {
   phase: number;
@@ -751,7 +757,9 @@ function lfoWave(kind: number, phase: number, dt: number, duty: number): number 
  * at the `mult` speed (÷8 .. x8). The clk input is a 24 ppqn clock (the Main module's clock output): the cycle snaps to every
  * n-th edge (n = 24 x the note length in quarter notes; for a length that ends between ticks, to the first tick a whole
  * number of cycles ends on) and runs at the measured clock speed in between. Without a clock (none for half a second) it
- * runs at `bpm`. A rising edge at reset restarts the cycle. S&H draws a new value at every cycle start; random draws one
+ * runs at `bpm`. At `bpm` LFO_TEMPO (shown TEMPO) a synced LFO takes the engine's clock instead of its clk input: the
+ * FM-1's tempo (global or the patch's) or MIDI clock, whether or not the transport runs (#956). A rising edge at reset
+ * restarts the cycle. S&H draws a new value at every cycle start; random draws one
  * too and glides to it from where it is along an S-curve (lfoSmooth) over the cycle, so a reset or a snap never jumps it
  * (`phase` does not move S&H or random: their cycle starts are where the new values come). `phase` moves where
  * a cycle starts on the wave (90 degrees: a sine starts at its peak); `dir` back runs the wave backward (a saw falls).
@@ -766,9 +774,9 @@ const lfo: ModuleImpl<LfoState> = {
       param('wave', 0, 4, 0, { step: 1, choices: LFO_WAVES, top: LFO_RANDOM, grew: { since: 49, from: 4 } }),
       param('rate', 0.02, 40, 4, { unit: 'Hz', step: 0.01, log: true, altText: { when: 'range', text: lfoRateText } }),
       param('depth', 0, 1, 1, { step: 0.01 }),
-      param('sync', 0, 1, 0, { step: 1, choices: ['free', 'sync'], toggle: true }),
+      param('sync', 0, 1, 0, { step: 1, choices: ['free', 'tempo'], toggle: true }),
       param('div', 0, DELAY_DIVS.length - 1, 6, { step: 1, choices: DELAY_DIVS.map((d) => d.name) }),
-      param('bpm', 40, 300, 120, { step: 1 }),
+      param('bpm', LFO_TEMPO, 300, 120, { step: 1, altText: { when: 'sync', text: (v) => (Math.round(v) <= LFO_TEMPO ? 'TEMPO' : String(Math.round(v))) } }),
       param('phase', 0, 360, 0, { step: 1, unit: 'deg', since: 35 }),
       param('range', 0, 2, 0, { step: 1, choices: LFO_RANGES, top: 3, since: 35 }),
       param('dir', 0, 1, 0, { step: 1, choices: ['fwd', 'back'], toggle: true, since: 35 }),
@@ -791,6 +799,8 @@ const lfo: ModuleImpl<LfoState> = {
     const depth = (c.p.depth ?? 1) * (back && kind !== 1 ? -1 : 1);
     const off = ((c.p.phase ?? 0) / 360) * (back ? -1 : 1);
     const sync = (c.p.sync ?? 0) >= 0.5;
+    // at TEMPO the engine's clock is the clk input: its ticks (counted whether or not the transport runs), at its tick length
+    const tempo = sync && Math.round(c.p.bpm ?? 120) <= LFO_TEMPO;
     const cyc = lfoSyncCycle(Math.round(c.p.div ?? 6), Math.round(c.p.mult ?? 3));
     const perCycle = cyc.per8 / 8; // clock ticks per cycle
     const dtBpm = ((c.p.bpm ?? 120) * cyc.den) / (60 * cyc.num * c.sr);
@@ -809,15 +819,15 @@ const lfo: ModuleImpl<LfoState> = {
       s.wl = (kind === LFO_RANDOM ? s.last : lfoWave(kind, ph, 0, duty)) * depth; // (no poly-BLEP)
     }
     for (let i = 0; i < c.n; i++) {
-      const clk = c.inp.clk[i] >= 0.5;
+      const clk = tempo ? i === c.voice.tickAt : c.inp.clk[i] >= 0.5;
       const rst = c.inp.reset[i] >= 0.5;
       if (s.since < c.sr) s.since++;
       if (clk && !s.clkHi) {
         if (s.since >= c.sr / 2) s.interval = 0;
         else s.interval = s.interval > 0 ? s.interval + (s.since - s.interval) / 8 : s.since;
         s.since = 0;
-        if (sync && ++s.ticks >= cyc.snap) {
-          s.ticks = 0;
+        if (sync && (s.ticks += tempo ? c.voice.ticks : 1) >= cyc.snap) {
+          s.ticks = tempo ? s.ticks % cyc.snap : 0; // (MIDI clock ticks can come several to a sample)
           s.wraps = 0;
           s.phase = 0;
           newCycle();
@@ -831,8 +841,8 @@ const lfo: ModuleImpl<LfoState> = {
         newCycle();
       }
       s.rstHi = rst;
-      const live = sync && s.interval > 0 && s.since < c.sr / 2;
-      const dt = !sync ? dtFree : live ? 1 / (perCycle * s.interval) : dtBpm;
+      const live = sync && (tempo || (s.interval > 0 && s.since < c.sr / 2));
+      const dt = !sync ? dtFree : live ? 1 / (perCycle * (tempo ? c.voice.tickLen : s.interval)) : dtBpm;
       s.phase += dt;
       if (s.phase >= 1) {
         if (live && s.wraps + 1 >= cyc.cycles) s.phase = 1 - 1e-6; // wait for the clock's next snap

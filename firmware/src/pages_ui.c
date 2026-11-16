@@ -826,6 +826,10 @@ static void value_parts(const def_t *d, uint32_t j, int32_t q16, char *num, char
         put_param(num, d, j, q16);
         return;
     }
+    if (d == &DEFS[T_LFO] && j == LFO_P_BPM && (q16 + 32768) >> 16 <= LFO_TEMPO) {   /* the engine's clock (#956) */
+        put(num, "TEMPO")[0] = 0;
+        return;
+    }
     if (str_eq(u, "HZ") && q16 >= (1000 << 16)) {        /* kilohertz */
         *put_num(num, (int32_t)(((int64_t)q16 + 500) / 1000)) = 0;
         put(unit, "kHz")[0] = 0;

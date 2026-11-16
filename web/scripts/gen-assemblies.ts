@@ -3,7 +3,7 @@
 // cables, the exposed ports (an input with `also` fans out to several inner inputs) and the promoted parameters.
 // `voice` and `echo` are kept as files. Run from web/:  npx vite-node scripts/gen-assemblies.ts
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { DEFS, PD_RANGE_MAX, PD_WAVES, SELECT_N } from '../src/modules';
+import { DEFS, LFO_TEMPO, PD_RANGE_MAX, PD_WAVES, SELECT_N } from '../src/modules';
 import { defaultMap, defaultParams, rowDef, STEP_VEL, type ModuleInst, type PolyCards, type Source } from '../src/patch';
 import { defIsEngine } from '../src/engines';
 import { pinsToParams, type AssemblyDef, type NestedDef, type PortRef, type ParamRef } from '../src/assembly';
@@ -4453,7 +4453,9 @@ namePositions('Verona Drum 1', { trig: TRIG_NAMES });
 //  - MODULATOR: the LFO's triangle (`out`) and square (`pulse`, the same cycle); RANDOM is the noise sampled at each cycle
 //    (the CPU's random voltage, clocked by the LFO). WAVEFORM picks triangle, square, random or noise; the selected wave
 //    feeds VCO MOD and VCF MOD. The square is also the `arp clock` output: the factory patch's Arpeggiator steps on it, as
-//    the SH-101's arpeggiator steps on the LFO's clock.
+//    the SH-101's arpeggiator steps on the LFO's clock. MOD SYNC (#956) is the LFO's `sync`: TEMPO runs it on the FM-1's
+//    clock (its `bpm` at TEMPO: the global or the patch's tempo, or MIDI clock, transport running or not), one cycle per
+//    DIVISION, so the arpeggiator follows the tempo as the SH-101's follows its external clock; FREE runs it at RATE.
 //  - RANGE 16' .. 2' adds octaves to the VCO's pitch (not to KYBD, which reads the key's pitch after the portamento).
 //  - The SUB OSC is a second oscillator on the VCO's pitch, phase locked to it. SUB MODE (1 OCT DOWN square, 2 OCT DOWN
 //    square, 2 OCT DOWN 25 % pulse) moves its coarse tune through pin 1 (x 96 st x 0.125: -1 = 12 st lower) and, at the
@@ -4470,7 +4472,8 @@ namePositions('Verona Drum 1', { trig: TRIG_NAMES });
 // in octaves. BENDER: Main's bend into `bend` (the key's pitch already carries Main's 2 semitones, so `bend vco` adds to
 // them); LFO MOD: Main's mod into `wheel` opens the LFO's triangle into the VCO and the VCF at one depth. TUNE moves the
 // three oscillators' fine tune (one row, `also`). Left out (the FM-1 has its own): the arpeggiator and the sequencer (the
-// patch's Arpeggiator and PATTERN track), TRANSPOSE (the OCT buttons), the external clock and the CV / gate jacks.
+// patch's Arpeggiator and PATTERN track), TRANSPOSE (the OCT buttons), the external clock (MOD SYNC's TEMPO is the FM-1's
+// clock instead) and the CV / gate jacks.
 asm('Shush 101', 'Voices', (b) => {
   const part = b.add('alloc', 0, 2, { voices: 1, legato: 2, priority: 0 });
   const porta = b.add('glide', 1, 2, { time: 0.15 }, { p1: 'time', att: [1, 1] });
@@ -4491,7 +4494,7 @@ asm('Shush 101', 'Voices', (b) => {
   b.wire(subMode, 'g3', sub, 'p2');
   for (const o of [pulse, saw, sub]) b.wire(vcoPitch, 'out', o, 'pitch');
   const noise = b.add('noise', 3, 3, { level: 1, color: 0 });
-  const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 3, depth: 1 });
+  const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 3, depth: 1, sync: 1, div: 1, bpm: LFO_TEMPO });
   const random = b.add('sh', 0, 1, { mode: 0 });
   b.wire(noise, 'out', random, 'in');
   b.wire(lfo, 'pulse', random, 'clock');
@@ -4560,6 +4563,8 @@ asm('Shush 101', 'Voices', (b) => {
   b.output('arp clock', lfo, 'pulse');
   b.param('rate', lfo, 'rate', { head: 'modulator' });
   b.param('waveform', lfoWave, 'pos');
+  b.param('mod sync', lfo, 'sync');
+  b.param('division', lfo, 'div');
   b.param('vco mod', vcoMod, 'gain', { col: true, head: 'vco' });
   b.param('range', range, 'pos');
   b.param('pw', pwm, 'gain');

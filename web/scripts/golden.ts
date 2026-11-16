@@ -481,6 +481,16 @@ lfoKit('lfo-bpm-x4', { sync: 1, div: 6, bpm: 140, mult: 5, wave: 3, dir: 1 }, ()
 lfoKit('lfo-reset-phase', { rate: 5, wave: 0, phase: 90, dir: 1 }, (wire, _c, rst, lfo) => wire(rst, 'out', lfo, 'reset'));
 lfoKit('lfo-fast-back', { rate: 20, range: 2, dir: 1, phase: 120 }, () => undefined);
 lfoKit('lfo-slow', { rate: 30, range: 1, wave: 0, phase: 90 }, () => undefined);
+// #956: `bpm` at TEMPO runs a synced LFO on the engine's clock (the transport stopped), its clk input left unread
+lfoKit('lfo-tempo', { sync: 1, div: 1, bpm: 39, wave: 3 }, () => undefined);
+lfoKit('lfo-tempo-clk', { sync: 1, div: 3, mult: 4, bpm: 39, wave: 4 }, (wire, clk, _r, lfo) => wire(clk, 'out', lfo, 'clk'));
+kit('lfo-tempo-97', (add, wire) => {
+  add('fm1', 0, 0, { tempo: 97 });
+  const lfo = add('lfo', 0, 0, { wave: 1, sync: 1, div: 2, bpm: 39, depth: 0.8 });
+  const out = add('output', 0, 0);
+  wire(lfo, 'out', out, 'l');
+  wire(lfo, 'pulse', out, 'r');
+});
 // The slow endpoint is amplified after removing its DC offset, so a stalled phase cannot pass as a flat wave.
 for (const [wide, back, shape] of [[.0008, 0, -1], [55, 0, -1], [55, 1, .3], [80, 0, -1]]) {
   const name = `lfo-wide-${wide}-${back}`;

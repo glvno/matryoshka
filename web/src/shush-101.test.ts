@@ -23,8 +23,9 @@ function variant(set: Record<string, number | string>): Patch {
   return p;
 }
 type Ev = [number, number, boolean]; // seconds, note, on
-function render(p: Patch, events: Ev[], seconds: number): Float32Array {
+function render(p: Patch, events: Ev[], seconds: number, tempoGlobal: number | null = null): Float32Array {
   const e = new Engine(SR);
+  e.tempoGlobal = tempoGlobal;
   e.load(p);
   const out = new Float32Array(Math.ceil((seconds * SR) / 128) * 128), l = new Float32Array(128), r = new Float32Array(128);
   const ev = [...events].sort((x, y) => x[0] - y[0]);
@@ -80,6 +81,21 @@ describe('Shush 101 (#869)', () => {
     const arp = p.modules.find((m) => m.type === 'arp')!;
     const lfo = p.modules.find((m) => m.type === 'lfo' && p.assemblies![0].modules.includes(m.id))!;
     expect(p.cables.some((c) => c.from.module === lfo.id && c.from.port === 'pulse' && c.to.module === arp.id && c.to.port === 'clk')).toBe(true);
+  });
+
+  it('MOD SYNC: TEMPO runs the modulator at DIVISION on the tempo, transport stopped; FREE at RATE (#956)', () => {
+    // the envelope restarted on each modulator cycle (ENV TRIGGER LFO): its attacks per second
+    const attacks = (set: Record<string, number | string>, tempoGlobal: number | null = null): number => {
+      const x = render(variant({ ...dry, saw: 1, vca: 'ENV', attack: 0.001, decay: 0.01, sustain: 0, release: 0.001, trigger: 'LFO', ...set }), [[0, 60, true]], 2.5, tempoGlobal);
+      const w = Math.round(0.002 * SR), lv: number[] = [];
+      for (let i = Math.round(0.5 * SR); i + w <= x.length; i += w) lv.push(rms(x, i / SR, (i + w) / SR));
+      const top = Math.max(...lv);
+      return lv.filter((v, i) => i > 0 && v > top / 2 && lv[i - 1] <= top / 2).length / ((x.length / SR) - 0.5);
+    };
+    expect(attacks({})).toBeCloseTo(8, 0); // Init: TEMPO, 1/16 at 120 bpm
+    expect(attacks({}, 90)).toBeCloseTo(6, 0); // the global tempo
+    expect(attacks({ division: 4 })).toBeCloseTo(4, 0); // 1/8
+    expect(attacks({ 'mod sync': 0, rate: 3 }, 90)).toBeCloseTo(3, 0); // FREE: RATE in Hz, whatever the tempo
   });
 
   it('RANGE adds exact octaves', () => {
