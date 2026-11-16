@@ -158,8 +158,12 @@ stalls happen. Four of the 14 recordings fed only checks the rig skips by design
 3,931 s of work in 1,670 s of wall time. `levels-5` alone is 779 s of its 960 s limit: the loudness parts deal the
 patches by index (`i % 6`), and the heavy ones land together.
 
-A per-patch timing of the loudness and headroom renders was started and stopped unfinished; the deal of the parts by
-cost is left open.
+Per patch, on the M3 Max with four renders at once (`offRule` and `overHeadroom` on one patch each): the 808 Kit takes
+498 s of the loudness test's 1,236 s and 236 s of the headroom test's 512 s; the 909 Kit 271 s and 126 s; Scrounge 112 s
+and 46 s; Algo Four 79 s and 25 s; every other patch 33 s or less. The 808 Kit alone sets the floor of any deal by whole
+patches: dealt by cost, the longest loudness part would be the 808 Kit on its own, about 690 s on a CI runner
+[INFERENCE: scaled by the CI-to-Mac ratio of `levels-6`, 1.38] instead of 779 s. The parts are left dealt by index;
+a shorter floor needs the 808 Kit's own cases split across parts.
 
 ## 4. What each real-time check proves (the value audit)
 
