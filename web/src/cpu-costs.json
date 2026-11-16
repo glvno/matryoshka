@@ -29809,8 +29809,17 @@
    ]
   },
   "string": {
-   "run": 15317,
-   "cv": 258
+   "run": 20754,
+   "cv": 258,
+   "dims": [
+    {
+     "input": "exc"
+    }
+   ],
+   "grid": [
+    20754,
+    23899
+   ]
   },
   "wavetable": {
    "run": 11120,
@@ -30405,8 +30414,17 @@
    ]
   },
   "comb": {
-   "run": 12845,
-   "cv": 234
+   "run": 17136,
+   "cv": 234,
+   "dims": [
+    {
+     "input": "in"
+    }
+   ],
+   "grid": [
+    17136,
+    20262
+   ]
   },
   "modal": {
    "run": 33920,
@@ -37483,11 +37501,11 @@
   },
   {
    "name": "Meridian 8",
-   "cycles": 604449
+   "cycles": 611775
   },
   {
    "name": "808 Kit",
-   "cycles": 682834
+   "cycles": 687113
   },
   {
    "name": "909 Kit",
@@ -37547,7 +37565,7 @@
   },
   {
    "name": "assembly bowed string",
-   "cycles": 60236
+   "cycles": 67813
   },
   {
    "name": "assembly Briefcase 3",
@@ -37583,7 +37601,7 @@
   },
   {
    "name": "assembly drum kit",
-   "cycles": 375777
+   "cycles": 380056
   },
   {
    "name": "assembly ducking delay",
@@ -37643,7 +37661,7 @@
   },
   {
    "name": "assembly kalimba",
-   "cycles": 63064
+   "cycles": 70417
   },
   {
    "name": "assembly kick",
@@ -37659,7 +37677,7 @@
   },
   {
    "name": "assembly Meridian 8",
-   "cycles": 562947
+   "cycles": 570277
   },
   {
    "name": "assembly mono lead",
@@ -37695,7 +37713,7 @@
   },
   {
    "name": "assembly pluck",
-   "cycles": 54698
+   "cycles": 61735
   },
   {
    "name": "assembly rain",
@@ -37715,7 +37733,7 @@
   },
   {
    "name": "assembly rim",
-   "cycles": 62723
+   "cycles": 70127
   },
   {
    "name": "assembly Sallen 20",
