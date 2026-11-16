@@ -21,6 +21,34 @@ CONFIG = ROOT / 'tools/ci_checks.json'
 # web tests a release-candidate run keeps out of coverage (D-147): renders too slow to pass their limits instrumented
 SLOW_RENDERS = ('src/levels-*.test.ts', 'src/headroom-*.test.ts', 'src/kit909.test.ts', 'src/shared-levels.test.ts',
                 'scripts/audition-render.test.ts')
+# Their seconds on a 4-vCPU runner, uninstrumented (web run 43906880954, release candidate 1.18.0; the loudness parts as
+# dealt by measured cost since, `levelsPart` in web/src/levels.ts: about a sixth of their 1,700 s each). Only the deal
+# over the RC run's parallel jobs uses them (`slow_part`): a file not listed counts as the median of those listed.
+SLOW_RENDER_SECONDS = {
+    'src/levels-1.test.ts': 285, 'src/levels-2.test.ts': 285, 'src/levels-3.test.ts': 285, 'src/levels-4.test.ts': 285,
+    'src/levels-5.test.ts': 285, 'src/levels-6.test.ts': 285, 'src/headroom-1.test.ts': 421, 'src/headroom-2.test.ts': 246,
+    'src/headroom-3.test.ts': 152, 'src/headroom-4.test.ts': 52, 'src/kit909.test.ts': 13, 'src/shared-levels.test.ts': 546,
+    'scripts/audition-render.test.ts': 578,
+}
+
+
+def slow_renders(root):
+    return sorted(p.relative_to(root / 'web').as_posix() for g in SLOW_RENDERS for p in (root / 'web').glob(g))
+
+
+def slow_part(files, part, parts, seconds=SLOW_RENDER_SECONDS):
+    """The files of part `part` (1..parts) of the slow renders: the longest first, each onto the part with the least
+    time so far, so the RC run's parallel jobs end close together. Each file is in exactly one part."""
+    if not 1 <= part <= parts:
+        raise ValueError(f'part {part} of {parts}: parts count from 1')
+    known = sorted(seconds[f] for f in files if f in seconds)
+    median = known[len(known) // 2] if known else 1
+    loads = [[0, []] for _ in range(parts)]
+    for f in sorted(files, key=lambda f: (-seconds.get(f, median), f)):
+        least = min(loads, key=lambda load: load[0])
+        least[0] += seconds.get(f, median)
+        least[1].append(f)
+    return sorted(loads[part - 1][1])
 
 
 def git(*args, root=ROOT):
@@ -140,10 +168,19 @@ def plan(area, allow_package=False, root=ROOT):
     return dict(selected, mode=mode, commit=head, changed=paths, area=area)
 
 
-def execute(plan_path, area):
+def execute(plan_path, area, group=None, part=None):
+    """Run the plan. A release candidate's web tests are two disjoint groups (D-147): `group` 'coverage' runs every web
+    test but the slow renders, with coverage, then the display stats; 'slow' runs the slow renders uninstrumented, only
+    part `part` = (k, n) of them when given (`slow_part`). The RC workflow runs the groups as parallel jobs and seals
+    the coverage record only after all of them pass. Without `group` both run here, one after the other, and the stats
+    come only after both pass."""
     chosen = json.loads(plan_path.read_text())
     if chosen['commit'] != git('rev-parse', 'HEAD'):
         raise ValueError('Check plan belongs to a different commit; regenerate it.')
+    if (group or part) and (area != 'web' or chosen['mode'] != 'rc'):
+        raise ValueError('--group and --part are for a release candidate\'s web tests.')
+    if part and group != 'slow':
+        raise ValueError('--part goes with --group slow.')
     config = json.loads(CONFIG.read_text())
     if area == 'firmware':
         for check in chosen['host']:
@@ -151,17 +188,22 @@ def execute(plan_path, area):
             subprocess.run(config['host_commands'][check], cwd=ROOT, check=True)
     elif chosen['mode'] == 'rc':
         # Disjoint groups: coverage does not instrument the slow renders (loudness, headroom, the XL comparison),
-        # which pass their time limits only uninstrumented. Every web test runs once, and stats are produced only if
-        # both groups pass.
-        slow = sorted(p.relative_to(ROOT / 'web').as_posix() for g in SLOW_RENDERS for p in (ROOT / 'web').glob(g))
+        # which pass their time limits only uninstrumented. Every web test runs once.
+        slow = slow_renders(ROOT)
         if not any(p.startswith('src/levels-') for p in slow):
             raise ValueError('Expected the uninstrumented loudness test group; no coverage bundle will be produced.')
-        subprocess.run(['npx', '--no-install', 'vitest', 'run', '--testTimeout=60000', '--coverage',
-                        '--coverage.reporter=json-summary', '--coverage.reporter=text-summary',
-                        '--coverage.include=src/**', *[a for g in SLOW_RENDERS for a in ('--exclude', g)]],
-                       cwd=ROOT / 'web', check=True)
-        subprocess.run(['npx', '--no-install', 'vitest', 'run', *slow], cwd=ROOT / 'web', check=True)
-        subprocess.run(['npx', '--no-install', 'vite-node', 'scripts/coverage-stats.ts'], cwd=ROOT / 'web', check=True)
+        if group in (None, 'coverage'):
+            subprocess.run(['npx', '--no-install', 'vitest', 'run', '--testTimeout=60000', '--coverage',
+                            '--coverage.reporter=json-summary', '--coverage.reporter=text-summary',
+                            '--coverage.include=src/**', *[a for g in SLOW_RENDERS for a in ('--exclude', g)]],
+                           cwd=ROOT / 'web', check=True)
+        if group in (None, 'slow'):
+            files = slow_part(slow, *part) if part else slow
+            print('slow renders' + (f', part {part[0]} of {part[1]}' if part else '') + ':', ' '.join(files) or 'none', flush=True)
+            if files:
+                subprocess.run(['npx', '--no-install', 'vitest', 'run', *files], cwd=ROOT / 'web', check=True)
+        if group in (None, 'coverage'):
+            subprocess.run(['npx', '--no-install', 'vite-node', 'scripts/coverage-stats.ts'], cwd=ROOT / 'web', check=True)
     elif chosen['web']:
         subprocess.run(['npx', '--no-install', 'vitest', 'run',
                         *[str(Path(p).relative_to('web')) for p in chosen['web']]], cwd=ROOT / 'web', check=True)
@@ -175,10 +217,15 @@ def main():
     parser.add_argument('--area', choices=['firmware', 'web'], required=True)
     parser.add_argument('--file', type=Path, default=ROOT / 'build/ci-plan.json')
     parser.add_argument('--allow-package', action='store_true')
+    parser.add_argument('--group', choices=['coverage', 'slow'], help="a release candidate's web group (D-147)")
+    parser.add_argument('--part', help='K/N: part K of N of the slow renders (with --group slow)')
     args = parser.parse_args()
     try:
         if args.action == 'run':
-            execute(args.file, args.area)
+            m = re.fullmatch(r'(\d+)/(\d+)', args.part or '')
+            if args.part and not m:
+                raise ValueError(f'--part {args.part}: K/N')
+            execute(args.file, args.area, args.group, (int(m[1]), int(m[2])) if m else None)
             return
         chosen = plan(args.area, args.allow_package)
         args.file.parent.mkdir(parents=True, exist_ok=True)

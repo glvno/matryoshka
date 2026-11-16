@@ -36,7 +36,12 @@ Choose commands using the canonical stage rules:
 - **Registered test rig:** [D-123](ledger/releases.md#D-123) governs installation; [D-141](ledger/releases.md#D-141)
   governs targeted hardware checks and candidate qualification. Other FM-1 installers follow [D-171](ledger/firmware-install.md#D-171).
 
-The full emulator suites are `emu:smoke` and `emu:scenarios` without `--only`. For a focused scenario, see the
+The full emulator suites are `emu:smoke` and `emu:scenarios` without `--only`. A full `emu:scenarios` runs on four
+emulators at once ([D-1157](ledger/releases.md#D-1157)). For a frozen candidate, one command runs both suites in the one
+slot ([D-143](ledger/releases.md#D-143)): `npm run emu:scenarios -- BRIDGE_BIN --smoke RELEASE_APP_BIN`. The seven
+editor-side scenarios of [D-1158](ledger/releases.md#D-1158) (`PER_PR_SCENARIOS`) are not in the full run: a pull request
+that changes what they check runs them with `--only`, as its plan in `tools/ci_checks.json` says. The test rig can
+start after the boot check, beside the emulator suites ([D-141](ledger/releases.md#D-141)). For a focused scenario, see the
 named-scenario command below. Host and web CI use the changed-domain plan in `tools/ci_checks.json`
 ([D-102](ledger/releases.md#D-102)). Explicit RC dispatches require the exact frozen commit. Required build checks
 remain separate ([D-100](ledger/releases.md#D-100), [D-116](ledger/releases.md#D-116)).
@@ -85,9 +90,14 @@ command; deployment neither downloads arbitrary reports nor reruns tests.
 
 ## Commands
 
-- `cd web && npm run emu:smoke [-- FIRMWARE]`: the smoke test (below), about two minutes on an M1.
+- `cd web && npm run emu:smoke [-- FIRMWARE]`: the smoke test (below). Its parts each boot their own machines, so they
+  run side by side, a thread each (`run_parts` in `tools/emu/src/smoke.rs`); each part's lines print in order once it is
+  done, then its emulated and wall time. About four minutes on the M3 Max (1.18.0: 309 checks, 436 s emulated in 217 s;
+  the longest parts are steps 1 to 7 on one machine and the SEQ page). The first part's snapshots are named `NN-step.png`;
+  the others' start with the part's name.
 - `cd web && npm run emu:boot [-- FIRMWARE] [--link EMU_BIN]`: the [**boot check**](ledger/vocabulary.md#boot-check)
-  (`m1emu boot`, `tools/emu/src/boot.rs`, built on the smoke test's checks), about 30 s (27 s on the M1, 20 s emulated).
+  (`m1emu boot`, `tools/emu/src/boot.rs`, built on the smoke test's checks), about 25 s (1.18.0: 37 s emulated in 23 s,
+  its four parts side by side).
   On FIRMWARE, the bytes that get installed: the loading screen draws, the quick start and then the home page (factory
   patch 0) come up, silence without keys and sound from a panel key, no register fm1-emu does not model besides P33,
   and OCT- + OCT+ held at power-on enters update mode with the flash chip known. On EMU_BIN, the same commit's
@@ -104,8 +114,12 @@ command; deployment neither downloads arbitrary reports nor reruns tests.
   Choose when to run them using [D-144](ledger/releases.md#D-144).
   Scenario output includes a progress line every 30 seconds. `build/emu/scenarios/run.json` identifies the firmware
   by its SHA-256 digest. `results.json` is updated after each check, and `progress.json` names the current scenario and
-  unanswered emulator commands. An unanswered command fails after two minutes; a whole scenario fails after ten.
-  A timeout saves a failure report and stops the run. It does not start another scenario beside the unfinished one.
+  unanswered emulator commands. Each check in `results.json` names its `scenario` and the wall time it took in `ms`
+  (since the scenario's previous check, or its start). `timings.json` gives each scenario's wall time, the emulated
+  time it spent (`emuMs`), its checks and its failures, with the setup before the first scenario as `(setup)`; the
+  output prints the same after each scenario. An unanswered command fails after two minutes; a whole scenario fails
+  after ten. A timeout saves a failure report and stops the run. It does not start another scenario beside the
+  unfinished one.
   Smoke tests have a thirty-minute deadline; boot checks have five minutes. They print elapsed time every thirty seconds
   and stop their child process group on a timeout or interruption.
   While a gate runs on macOS, it prevents idle sleep. The display can sleep. Closing the lid can still suspend the Mac
@@ -136,11 +150,11 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   in RAM (`m1_emu_mb` in `firmware/src/usb.c`, found by its magic words `M1EM` `MIDI`) instead of EP1; the rest of the
   MIDI path (the rings, SysEx, the editor protocol) is the normal one. It is never packaged or installed. The normal
   build does not change: the flag defaults to 0 (checked by comparing the CI builds' sha256 before and after).
-- **`m1emu serve BIN [--name NAME]`:** the firmware in real time (the interpreter runs at about 0.75x, so emulated time
+- **`m1emu serve BIN [--name NAME]`:** the firmware in real time (the interpreter runs at about 0.42 to 0.46x, so emulated time
   falls behind under load), its MIDI on a CoreMIDI virtual source and destination named `NAME` (default `FM-1 (emu)`,
   which the editor's port match takes like a real FM-1), and a line protocol on stdin for the panel, the LCD and the
   audio (`tools/emu/src/serve.rs` lists it). `M1EMU_TRACE=1` prints every short message the FM-1 sends.
-- **`cd web && npm run emu:scenarios [-- BIN] [--only NAME,..] [--list] [--headed]`:** builds m1emu and the panel WebAssembly,
+- **`cd web && npm run emu:scenarios [-- BIN] [--only NAME,..] [--shards N] [--list] [--headed]`:** builds m1emu and the panel WebAssembly,
   starts this checkout's dev server on a free port (with `MATRYOSHKA_BUNDLED_FIRMWARE=1`, so its Flash tab starts no
   `emu:smoke` of its own beside the run, issue #521; the rig scripts' and `demo.ts`'s dev servers do the same), starts `m1emu serve`, and drives the editor in Chrome (playwright-core
   with the installed Chrome, headless) through the scenarios in `web/scripts/emu-scenarios.mjs`: connect and Sync; an
@@ -153,11 +167,22 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   `build/emu/scenarios/`; about five minutes. A run of every scenario that passes writes `scenarios.passed` (the
   build's sha256) beside the build: in `build/flash/RUN/` for a build in its `emu-midi/` folder, else in the build's own
   folder; a failed run removes it.
+- **Several emulators at once (`--shards N`, [D-1157](ledger/releases.md#D-1157)):** a full run uses four unless
+  `--shards N` says otherwise; a run of `--only` uses one. With `--smoke APP` the candidate's `emu:smoke` runs beside
+  them in the same slot, its output in `build/emu/smoke.log`. The run takes the
+  slot, builds once and starts one dev server, then deals the scenarios over N runners of the same script, each with
+  its own `m1emu serve` and Chrome; each runner opens the editor and syncs first (`connect`), so its scenarios start
+  from the state they start from in one emulator. The deal evens out the scenarios' times in the last run's
+  `timings.json` (the longest first, onto the runner with the least time so far; without one, in turn). Each runner's
+  lines carry its number (`[2] ok ..`), and its results and snapshots go to `build/emu/scenarios/shard-K/`. At the end
+  `results.json` and `timings.json` hold every runner's, each check with its `shard`, and the run marks its build as a
+  run in one emulator does. The runners' `connect` checks count once for each runner. An interrupted run stops its
+  runners before it lets go of the slot. Not for `device:scenarios`: there is one test rig.
 - **Don't change the checkout while its scenarios run (issue #754):** the test scripts' dev servers watch no files
   (`MATRYOSHKA_NO_WATCH`, set in `web/scripts/rig-link.mjs`), so a commit, merge or regenerated file no longer reloads
   the editor's page mid-run. Before that, a reload dropped the link to the FM-1 and failed about 13 checks. A page that
   still loads again says so in the run's output. Run a second set of scenarios from another checkout instead.
-- **Waits (#588):** the emulated FM-1 runs at about 0.75x the wall clock and falls further behind under load, so no
+- **Waits (#588):** the emulated FM-1 runs at about 0.42 to 0.46x the wall clock and falls further behind under load, so no
   check waits a fixed wall-clock time for the FM-1. A tap waits for the key's release on the emulator's clock, a pause
   after a press is emulated time (`elapse`, `wait`), and a wait for the screen is one `until` in emulated ms. A wait for
   the editor polls its state (`__m1test`: an opened patch's own upload finished, `loads` and `uploadedLoad`). Every limit
@@ -211,14 +236,6 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   the editor). After the count-in the bar says `PLAY ONCE` and the FM-1's Start reaches the editor; half a pass in it
   still runs, and after the pass it stops by itself (its Stop reaches the editor). SEQ held + PLAY again, then PLAY a beat
   later, must end it with nothing started.
-- **REC's count-in (`recCountIn`, [D-803](ledger/steps.md#D-803)):** on Init (an empty track, no key held), GLO > PANEL >
-  COUNT-IN set to 1 BAR, REC from a stop must start the transport, say `COUNT-IN` and click on each beat (as play once's
-  check reads them); once it records, a second bar must be silent. PLAY stops it and COUNT-IN goes back to OFF, also when
-  a check failed halfway (issue #779). A knob is turned only once its row shows on the menu: two left put COUNT-IN at OFF
-  from any value, then one right at 1 BAR. The emulator plays the analog output (USB audio is not emulated), where the
-  click is. The device test mode's peak (TEST_PEAK) and USB audio are taken before the click is mixed in
-  (`firmware/src/audio.c`), so on the rig and with `--via-emu` the click checks are skipped, and the bar's length comes
-  from the tempo.
 - **When:** use [Choosing checks](#choosing-checks) for the qualification stages in [D-144](ledger/releases.md#D-144).
 
 Not covered: plugging and unplugging USB, the installer and the update loader, USB audio.
@@ -244,7 +261,7 @@ link as `m1emu serve` drives the emulator:
   MIDI device's location.
 - **`cd web && npm run device:scenarios [-- --install RUN [--gate full]] [--only NAME,..] [--headed]`:** on the rig, only
   the scenarios whose result needs the hardware: `RIG_SCENARIOS` in `emu-scenarios.mjs` (`clock`, `drumHold`,
-  `check35mmOut`, `checkOutput`, `checkFlashWrite`, `checkDualCore`, [D-1151](ledger/releases.md#D-1151)). The emulator
+  `checkOutput`, `checkFlashWrite`, `checkDualCore`, [D-1151](ledger/releases.md#D-1151)). The emulator
   stands in for every other scenario, so they run in `emu:scenarios` only, and `--only` refuses them on the rig. The rig's
   page (`/__rig` on the dev server, `web/dev/rig-client.ts`) finds the FM-1s,
   asks each its INFO and the mark (nothing else), and drives only the rig; the editor's page sees only the rig's ports.
@@ -331,9 +348,8 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
     largest share and a line for SHORT, and a click on a line selects its card. Dragging SHORT's length to its top stops
     past 1900 ms, at what the memory leaves, with
     the note that says why. The patch then goes to the FM-1 again and both echoes still play.
-  - `checkNoKeys` (steps 5.1 and 5.2, [D-905](ledger/device-ui.md#D-905), [D-295](ledger/patch-format.md#D-295)): on
-    `T111 NO KEYS` the engine's ARM dot is dashed and arms nothing. On the FM-1, SEL says NO KEYS REACH THIS DEVICE and
-    the keys play nothing.
+  - The editor's ARM dot of an engine no keys reach ([D-905](ledger/device-ui.md#D-905)) is checked in the `arming`
+    scenario ([D-1159](ledger/releases.md#D-1159)).
   - `checkStore` (steps 6.1 to 6.4, [D-959](ledger/editor.md#D-959), [D-297](ledger/patch-format.md#D-297)):
     `T110 DRONE STORED` holds its drone. "Store to an FM-1 slot…" lists the FM-1's slots (60 with the pattern store, 64 without). A used slot says what it holds and
     the button reads Replace. Store goes into the first empty slot. With Live on, HOME held + PRESET says EDITOR LIVE:

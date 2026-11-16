@@ -86,14 +86,14 @@ if (!flag('--no-smoke') && given) {
   // (x.bin next to it, or a release's x-app.bin: the package itself is encrypted, the emulator cannot run it)
   const bin = [pkg.replace(/\.fwsc$/i, '.bin'), pkg.replace(/\.fwsc$/i, '-app.bin')].find((f) => existsSync(f));
   const fw = bin ?? pkg;
-  console.log(`\nemu:smoke on ${fw} (about two minutes; --no-smoke skips it)`);
+  console.log(`\nemu:smoke on ${fw} (about four minutes; --no-smoke skips it)`);
   if (run('node', [join(ROOT, 'web/scripts/emu.mjs'), '--smoke', fw]) !== 0) fail('\nthe smoke test failed: nothing installed');
 } else if (!flag('--no-smoke')) {                          // (a CI build: its result is kept, for the Flash tab too)
   const dir = dirname(pkg);
   const cached = smokeState(dir);
   if (cached === 'passed') console.log('\nemu:smoke passed on this build before (build/flash/<run>/smoke.log)');
   else {
-    console.log(`\nemu:smoke on ${dir} (about two minutes; --no-smoke skips it)`);
+    console.log(`\nemu:smoke on ${dir} (about four minutes; --no-smoke skips it)`);
     if (!(await smoke(dir))) fail('\nthe smoke test failed: nothing installed (smoke.log next to the package)');
   }
 }

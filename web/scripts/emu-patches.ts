@@ -9,7 +9,6 @@
 //   build/emu/long-delay.m1p, long-delay-pp.m1p   a 700 ms Delay (its line in the pool's line area), plain and ping-pong
 //   build/emu/low-delay.m1p, low-delay-pp.m1p     a 290 ms Delay (its line in .lowram's line area), plain and ping-pong
 //                              (#273, #651: the smoke checks every block of each echo against the note's own sound)
-//   build/emu/stereo-sides.m1p   a saw on the left only and a sine an octave up on the right only (STEREO keeps them apart)
 //   build/emu/knobs.m1p        an LFO whose first page holds a 0..1 row and a switch: the knob acceleration and a switch's step
 //   build/emu/old-oracle-v.m1p   the newest earlier factory Oracle V committed in git, unlike today's (an update finds it
 //                              in the bank: the boot keeps the slot holding it as it is, D-887)
@@ -99,24 +98,6 @@ for (const [file, name, ms, pp, area] of [
   ['low-delay.m1p', 'EMU LOW DELAY', 290, 0, 0], ['low-delay-pp.m1p', 'EMU LOW PINGPONG', 290, 1, 0],
 ] as const)
   writeFileSync(new URL(file, out), encodePatch(longDelay(name, ms, pp, area)));
-
-/** each side its own signal (the 1.10 early check's T110 MONO L R): a saw into the Output's l, a sine an octave up into r */
-function stereoSides(): Patch {
-  const p = emptyPatch('EMU STEREO');
-  const main = addModule(p, DEFS.fm1, 0, 0);
-  const saw = addModule(p, DEFS.osc, 300, 0), sine = addModule(p, DEFS.osc, 300, 300);
-  const env = addModule(p, DEFS.adsr, 300, 600);
-  const vl = addModule(p, DEFS.vca, 600, 0), vr = addModule(p, DEFS.vca, 600, 300);
-  const o = addModule(p, DEFS.output, 900, 0);
-  Object.assign(saw.params, { wave: 2, level: 0.8 });
-  Object.assign(sine.params, { wave: 0, coarse: 12, level: 0.8 });
-  Object.assign(env.params, { a: 0.005, d: 0.3, s: 1, r: 0.3 });
-  o.params.level = 0.5;
-  for (const [a, ap, b, bp] of [[main, 'pitch', saw, 'pitch'], [main, 'pitch', sine, 'pitch'], [main, 'gate', env, 'gate'], [saw, 'out', vl, 'in'], [sine, 'out', vr, 'in'], [env, 'env', vl, 'cv'], [env, 'env', vr, 'cv'], [vl, 'out', o, 'l'], [vr, 'out', o, 'r']] as const)
-    if (!connect(p, DEFS, { module: a.id, port: ap }, { module: b.id, port: bp })) throw new Error(`stereo: ${ap} -> ${bp}`);
-  return p;
-}
-writeFileSync(new URL('stereo-sides.m1p', out), encodePatch(stereoSides()));
 
 /** the knobs (#340, #405): one LFO, the home device; its first page K1..K4 = WAVE, RATE, DEPTH (0..1 in 0.01 steps, at 0)
  * and SYNC (a switch, at SYNC). The smoke test turns DEPTH for the knob acceleration and SYNC for a switch's single step */

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The device checks that cross the editor link, scripted (#290): the real editor (this checkout's dev server, in Chrome)
 // against our firmware on the emulated FM-1, whose USB MIDI is a virtual MIDI port (`m1emu serve`, docs/EMULATOR.md).
-//   npm run emu:scenarios [-- FIRMWARE] [--only NAME,..] [--headed] [--keep]
+//   npm run emu:scenarios [-- FIRMWARE] [--only NAME,..] [--shards N] [--headed] [--keep]
+//   (--shards N: the scenarios dealt over N emulators at once, inside the one emulator slot: runShards, D-1157)
 //   npm run emu:scenarios -- --list     the scenarios' names, for --only (`-- --only tieLire` reruns one; connect always
 //                                       runs first: it opens the editor and syncs, which the others need)
 // FIRMWARE: an M1_EMU_MIDI=1 build (matryoshka-emu.bin). Without one: the `matryoshka-emu-midi` artifact of the firmware
@@ -30,9 +31,10 @@
 // Results go to build/device/scenarios/.
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { basename, dirname, join, resolve } from 'node:path';
+import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { boot, download, downloadEmuMidi, smoke, smokeState, venvPython } from './branch-firmware.mjs';
@@ -41,16 +43,24 @@ import { parseWav, startCapture } from './audio-capture.mjs';
 import { CHECK_SCENARIOS, checkScenarios } from './device-check.mjs';
 import { EmuChannel } from './emu-channel.mjs';
 import { acquireEmulatorSlot, withDeadline } from './emu-slot.mjs';
+import { runEmulatorProcess } from './emu-process.mjs';
+import { mergeShards, planShards, scenarioTiming, stamp } from './emu-shards.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const REPO = 'glvno/matryoshka';
 const args = process.argv.slice(2);
 const flag = (n) => args.includes(n);
 const opt = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
-const given = args.find((a, i) => !a.startsWith('--') && !['--only', '--install', '--url', '--port', '--gate'].includes(args[i - 1]));
+const given = args.find((a, i) => !a.startsWith('--') && !['--only', '--install', '--url', '--port', '--gate', '--shards', '--shard', '--smoke'].includes(args[i - 1]));
 const DEVICE = flag('--device') || flag('--via-emu');   // the device test mode's path (a rig, or the emulator through it)
 const REAL = flag('--device') && !flag('--via-emu');    // a real FM-1: the registered rig
-const OUT = join(ROOT, DEVICE ? 'build/device/scenarios' : 'build/emu/scenarios');
+/** --shards N: a run split over N emulators, each with its own browser, all in the one emulator slot (runShards); --shard K:
+ *  one of them, started by that run, its results in shard-K/. A full run on the emulator takes four (D-1157); a run of
+ *  --only, a shard and the rig take one */
+const SHARDS = opt('--shards') !== undefined ? Number(opt('--shards')) : DEVICE || flag('--only') || opt('--shard') ? 1 : 4;
+const SHARD = opt('--shard');
+const RUN_OUT = join(ROOT, DEVICE ? 'build/device/scenarios' : 'build/emu/scenarios');
+const OUT = SHARD ? join(RUN_OUT, `shard-${SHARD}`) : RUN_OUT;
 const only = opt('--only')?.split(',');
 const GATE = opt('--gate') ?? 'boot';   // --install's gate: boot (the boot check, the rig only: D-123, D-141) or full (D-144)
 /** the scenarios' names, read from this file (so --list and a wrong --only answer before anything starts) */
@@ -65,12 +75,15 @@ const SCENARIOS = (() => {
 const RIG_SCENARIOS = {
   clock: 'MIDI clock rate and jitter over USB, timed on the Mac',
   drumHold: 'the hold time across USB MIDI, timed on the Mac',
-  check35mmOut: '3.5MM OUT OFF leaves USB audio at its level (the emulator has no USB audio)',
   checkOutput: "STEREO's left and right heard on USB audio (MONO and MONO L only on the emulator, D-140)",
   checkFlashWrite: 'real flash erase and program timing under a held note',
   checkDualCore: "the second core's real timing: shed, overload and late halves",
 };
 for (const n of Object.keys(RIG_SCENARIOS)) if (!SCENARIOS.includes(n)) throw new Error(`RIG_SCENARIOS names ${n}, which is no scenario`);
+/** editor-side scenarios a full run leaves out (D-1158): each pull request that changes what they check runs them with
+ *  --only (tools/ci_checks.json's rule names the command); a release candidate's run does not */
+const PER_PR_SCENARIOS = ['signalBuffers', 'liveCompile', 'rollPen', 'mirrorKeys', 'longPreset', 'abFlip', 'editorIgnore'];
+for (const n of PER_PR_SCENARIOS) if (!SCENARIOS.includes(n)) throw new Error(`PER_PR_SCENARIOS names ${n}, which is no scenario`);
 if (flag('--list')) {
   console.log(SCENARIOS.join('\n'));
   process.exit(0);
@@ -88,6 +101,14 @@ if (flag('--list')) {
   }
   if (!['full', 'boot'].includes(GATE)) {
     console.error(`--gate ${GATE}: full or boot`);
+    process.exit(2);
+  }
+  if (!Number.isInteger(SHARDS) || SHARDS < 1 || (SHARDS > 1 && (DEVICE || flag('--install') || SHARD))) {
+    console.error(`--shards ${opt('--shards')}: a whole number from 1, for emu:scenarios on the emulator only (one test rig, one run)`);
+    process.exit(2);
+  }
+  if (SHARD && (DEVICE || !opt('--url') || !given || !only)) {
+    console.error('--shard K is started by --shards N, with the firmware, --url and --only');
     process.exit(2);
   }
 }
@@ -121,12 +142,21 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const children = [];
 const own = (c) => { children.push(c); return c; };
 let testBrowser;
+/** a --shards run's own runners: stopped, and waited for (10 s at most), before the run lets go of the slot (D-143) */
+const shardRunners = [];
+const stopShards = async () => {
+  const live = shardRunners.filter((c) => c.exitCode === null && c.signalCode === null);
+  for (const c of live) try { c.kill('SIGTERM'); } catch { /* gone */ }
+  await withDeadline(() => Promise.all(live.map((c) => new Promise((r) => c.once('exit', r)))), 10000, 'shard shutdown').catch(() => {});
+  for (const c of live) try { c.kill('SIGKILL'); } catch { /* gone */ }
+};
 let ending = false;
 process.on('exit', () => { for (const c of children) try { c.kill(); } catch { /* gone */ } });
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, async () => {
   if (ending) return;
   ending = true;
   if (existsSync(OUT)) writeFileSync(join(OUT, 'interrupted.json'), JSON.stringify({ signal, at: new Date().toISOString() }));
+  await stopShards();
   await withDeadline(() => testBrowser?.close() ?? Promise.resolve(), 5000, 'browser shutdown').catch(() => {});
   process.exit(130);
 });
@@ -401,9 +431,12 @@ const FILTER_MIDI = (only) => {
 };
 
 const results = [];
+/** the scenario running and when its last check came: each check records its scenario and the wall ms it took (`ms`,
+ *  since the scenario's previous check or its start), timings.json each scenario's wall and emulated time */
+const clock = { scenario: null, last: 0 };
+const record = (r) => { results.push(stamp(r, clock, Date.now())); writeFileSync(join(OUT, 'results.json'), JSON.stringify(results, null, 1)); };
 async function check(name, ok, detail = '') {
-  results.push({ name, status: ok ? 'pass' : 'fail', ok, detail });
-  writeFileSync(join(OUT, 'results.json'), JSON.stringify(results, null, 1));
+  record({ name, status: ok ? 'pass' : 'fail', ok, detail });
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${detail ? `: ${detail}` : ''}`);
 }
 /** a check that hears the FM-1. It needs MASTER up only on a rig whose TEST_PEAK reads after MASTER (firmware without INFO
@@ -412,7 +445,7 @@ async function check(name, ok, detail = '') {
 let masterMatters = false;
 async function loudCheck(name, p, ok, detail) {
   if (!ok && masterMatters && p < QUIET) {
-    results.push({ name, status: 'skip', ok: true, skipped: true, reason: 'MASTER down', detail });
+    record({ name, status: 'skip', ok: true, skipped: true, reason: 'MASTER down', detail });
     console.log(`SKIP ${name}: MASTER down? (this firmware reads its peak after MASTER) ${detail}`);
     return;
   }
@@ -421,7 +454,7 @@ async function loudCheck(name, p, ok, detail) {
 /** a check this target cannot make (the rig's USB audio while another FM-1 is connected, the analog mix on the rig): counted
  *  apart, as MASTER down is, and no failure */
 async function skip(name, reason) {
-  results.push({ name, status: 'skip', ok: true, skipped: true, reason });
+  record({ name, status: 'skip', ok: true, skipped: true, reason });
   console.log(`SKIP ${name}: ${reason}`);
 }
 /** wait until `f()` gives something, up to `ms` times SLACK on the wall clock (the editor's side of the link); that, or the
@@ -468,7 +501,7 @@ async function installOnRig(run, url) {
     if (!(await boot(dir))) throw new Error(`the gate: the boot check failed on run ${run} (${dir}/boot.log): nothing installed`);
   } else {
     if (smokeState(dir) !== 'passed') {
-      console.log('emu:smoke on its build (about two minutes)');
+      console.log('emu:smoke on its build (about four minutes)');
       if (!(await smoke(dir))) throw new Error(`the gate: emu:smoke failed on run ${run} (${dir}/smoke.log): nothing installed`);
     }
     const emuBin = await downloadEmuMidi(run, dir);
@@ -511,34 +544,97 @@ async function installOnRig(run, url) {
   return gate;
 }
 
+/** this checkout's dev server on a free port: { url, vite } */
+async function devServer() {
+  const port = await freePort();
+  const vite = own(spawn(process.execPath, [join(ROOT, 'web/node_modules/vite/bin/vite.js'), '--port', String(port), '--strictPort', '--host', '::1'], { cwd: join(ROOT, 'web'), stdio: ['ignore', 'pipe', 'inherit'], env: DEV_ENV }));
+  await withDeadline(() => new Promise((res, reject) => {
+    vite.on('error', reject);
+    vite.on('exit', (code) => reject(new Error(`vite exited (${code}) before readiness`)));
+    vite.stdout.on('data', (d) => { if (/ready in|Local:/.test(String(d))) res(); });
+  }), 60000, 'dev server startup');
+  vite.stdout.on('data', (d) => { for (const l of String(d).split('\n')) if (/reload|optimiz/i.test(l)) console.log(`  note (vite): ${l.trim()}`); });
+  return { url: `http://[::1]:${port}/`, vite };
+}
+
+const readJson = (f) => { try { return JSON.parse(readFileSync(f, 'utf8')); } catch { return null; } };
+
+/** --shards N: the scenarios dealt over N runners of this script (`--shard K`), each with its own emulator and browser
+ *  on one dev server, all inside the one emulator slot. Each runner opens the editor and syncs first (`connect`). The
+ *  deal evens out the scenarios' times in the last run's timings.json (planShards). The runners' checks come together
+ *  in results.json and timings.json here, each with its shard; their snapshots stay in shard-K/. A run of every
+ *  scenario that passes marks its build, as a run in one emulator does */
+async function runShards() {
+  const release = await acquireEmulatorSlot();
+  const fw = firmware();
+  console.log(`firmware: ${fw}`);
+  const before = Object.fromEntries((readJson(join(OUT, 'timings.json')) ?? []).map((t) => [t.scenario, t.wallMs]));
+  rmSync(OUT, { recursive: true, force: true });
+  mkdirSync(OUT, { recursive: true });
+  if (!only) rmSync(scenariosMark(fw), { force: true });
+  const names = SCENARIOS.filter((n) => n !== 'connect' && (only ? only.includes(n) : !PER_PR_SCENARIOS.includes(n)));
+  const plan = planShards(names, SHARDS, before);
+  writeFileSync(join(OUT, 'run.json'), JSON.stringify({ firmware: fw, sha256: sha256(fw), scenarios: only ?? 'all', shards: plan.map((s) => s.names), started: new Date().toISOString() }, null, 1));
+  buildEmu();
+  if (spawnSync('npm', ['run', '-s', 'fm1-wasm'], { cwd: join(ROOT, 'web'), stdio: 'inherit' }).status !== 0) throw new Error('npm run fm1-wasm failed');
+  const { url, vite } = opt('--url') ? { url: opt('--url') } : await devServer();
+  console.log(`editor: ${url}; ${plan.length} shards: ${plan.map((s, i) => `[${i + 1}] ${s.names.length} scenarios`).join(', ')}`);
+  const started = Date.now();
+  // --smoke APP (D-143): a frozen candidate's emu:smoke on its release app, beside the shards in the same slot; its output
+  // goes to build/emu/smoke.log
+  const smokeApp = opt('--smoke') && resolve(process.cwd(), opt('--smoke'));
+  const smokeLog = join(ROOT, 'build/emu/smoke.log');
+  const smokeRun = smokeApp ? (mkdirSync(dirname(smokeLog), { recursive: true }), runEmulatorProcess('sh', [join(ROOT, 'tools/emu_smoke.sh'), smokeApp],
+    { cwd: ROOT, stdio: ['ignore', openSync(smokeLog, 'w'), openSync(smokeLog, 'a')], log: () => {} })) : null;
+  if (smokeApp) console.log(`emu:smoke on ${smokeApp} beside the scenarios (${smokeLog})`);
+  const exits = await Promise.all(plan.map((s, i) => new Promise((res) => {
+    const k = i + 1;
+    const c = own(spawn(process.execPath, [fileURLToPath(import.meta.url), fw, '--only', ['connect', ...s.names].join(','), '--url', url, '--shard', String(k),
+      ...(flag('--headed') ? ['--headed'] : [])], { cwd: join(ROOT, 'web'), stdio: ['ignore', 'pipe', 'pipe'] }));
+    shardRunners.push(c);
+    for (const stream of [c.stdout, c.stderr]) createInterface({ input: stream }).on('line', (l) => console.log(`[${k}] ${l}`));
+    c.on('exit', (code, signal) => res(code ?? (signal ? 128 : 1)));
+  })));
+  vite?.kill();
+  const shards = exits.map((exit, i) => ({ exit, results: readJson(join(OUT, `shard-${i + 1}`, 'results.json')) ?? [] }));
+  const merged = mergeShards(names, shards);
+  writeFileSync(join(OUT, 'results.json'), JSON.stringify(merged, null, 1));
+  const timings = shards.flatMap((_, i) => (readJson(join(OUT, `shard-${i + 1}`, 'timings.json')) ?? []).map((t) => ({ ...t, shard: i + 1 })));
+  writeFileSync(join(OUT, 'timings.json'), JSON.stringify(timings, null, 1));
+  const failed = merged.filter((r) => !r.ok), skipped = merged.filter((r) => r.skipped);
+  if (!only) {
+    if (!failed.length) writeFileSync(scenariosMark(fw), `${sha256(fw)}\n${new Date().toISOString()}\n`);
+    else rmSync(scenariosMark(fw), { force: true });
+  }
+  const smokeExit = smokeRun ? await smokeRun : null;
+  release();
+  console.log(`\n${plan.length} shards in ${((Date.now() - started) / 1000).toFixed(0)} s (each: ${exits.map((e, i) => `[${i + 1}] exit ${e}`).join(', ')})`);
+  if (smokeRun) console.log(`emu:smoke: ${smokeExit === 0 ? 'passed' : `FAILED (exit ${smokeExit})`}; ${readFileSync(smokeLog, 'utf8').split('\n').find((l) => / checks, \d+ failed/.test(l)) ?? ''} (${smokeLog})`);
+  console.log(`${merged.length - failed.length - skipped.length} of ${merged.length} checks passed${skipped.length ? `, ${skipped.length} skipped (${skipped.map((f) => `${f.name}: ${f.reason}`).join('; ')})` : ''}${failed.length ? `; failed: ${failed.map((f) => `[${f.shard}] ${f.name}`).join('; ')}` : ''}`);
+  process.exit(failed.length || (smokeRun && smokeExit !== 0) ? 1 : 0);
+}
+
 async function main() {
   if (opt('--gate') && !flag('--install')) throw new Error('--gate goes with --install RUN');
   if (flag('--install') && !REAL) throw new Error('--install is for the rig: npm run device:scenarios -- --install RUN');
   if (REAL && !loadRig()) throw new Error('no rig registered: connect the rig alone and run npm run rig -- register');
-  if (!REAL) await acquireEmulatorSlot();
+  if (opt('--smoke') && (SHARDS < 2 || only)) throw new Error('--smoke APP goes with a full run over several emulators (D-143)');
+  if (SHARDS > 1) return runShards();
+  const runStart = Date.now();
+  if (!REAL && !SHARD) await acquireEmulatorSlot();   // (a shard runs inside its --shards run's slot)
   const fw = REAL ? null : firmware();
   if (fw) console.log(`firmware: ${fw}`);
   rmSync(OUT, { recursive: true, force: true });
   mkdirSync(OUT, { recursive: true });
   if (fw && !DEVICE && !only) rmSync(scenariosMark(fw), { force: true });
   writeFileSync(join(OUT, 'run.json'), JSON.stringify({ firmware: fw, sha256: fw ? sha256(fw) : null, scenarios: only ?? 'all', started: new Date().toISOString() }, null, 1));
-  const m1emu = REAL ? null : buildEmu();
+  const m1emu = REAL ? null : SHARD ? join(ROOT, 'tools/emu/target/release/m1emu') : buildEmu();
   // the editor's copy of the panel logic (the FM-1 tab, following the FM-1): built from this checkout, not committed
-  if (spawnSync('npm', ['run', '-s', 'fm1-wasm'], { cwd: join(ROOT, 'web'), stdio: 'inherit' }).status !== 0) throw new Error('npm run fm1-wasm failed');
+  if (!SHARD && spawnSync('npm', ['run', '-s', 'fm1-wasm'], { cwd: join(ROOT, 'web'), stdio: 'inherit' }).status !== 0) throw new Error('npm run fm1-wasm failed');
 
   let url = opt('--url');
   let vite;
-  if (!url) {
-    const port = await freePort();
-    vite = own(spawn(process.execPath, [join(ROOT, 'web/node_modules/vite/bin/vite.js'), '--port', String(port), '--strictPort', '--host', '::1'], { cwd: join(ROOT, 'web'), stdio: ['ignore', 'pipe', 'inherit'], env: DEV_ENV }));
-    url = `http://[::1]:${port}/`;
-    await withDeadline(() => new Promise((res, reject) => {
-      vite.on('error', reject);
-      vite.on('exit', (code) => reject(new Error(`vite exited (${code}) before readiness`)));
-      vite.stdout.on('data', (d) => { if (/ready in|Local:/.test(String(d))) res(); });
-    }), 60000, 'dev server startup');
-    vite.stdout.on('data', (d) => { for (const l of String(d).split('\n')) if (/reload|optimiz/i.test(l)) console.log(`  note (vite): ${l.trim()}`); });
-  }
+  if (!url) ({ url, vite } = await devServer());
   console.log(`editor: ${url}`);
   let installedGate = null;
   if (flag('--install')) {
@@ -1408,44 +1504,6 @@ async function main() {
       await check('play once: PLAY in the count-in ends it, nothing starts', !(await T()).deviceRunning && !(await emu.text('PLAY ONCE')));
       await emu.snap('play-once');
     },
-    async recCountIn() {   // D-803 (amended 2026-11-07): REC's count-in clicks on each beat, as play once's; none once it records
-      await check('rec count-in: Init opens, synced', await openSynced('Init'));
-      const set = await setCountIn(1);
-      await check('rec count-in: GLO > PANEL > COUNT-IN 1 BAR', set === '1 BAR', `COUNT-IN ${set ?? 'not found on the menu\'s tabs (nothing turned)'}`);
-      if (set !== '1 BAR') {                        // (nothing to count in: COUNT-IN back to OFF if it was turned at all)
-        if (set) await setCountIn(0);
-        return;
-      }
-      try {
-        await emu.key(B.rec, true);                   // (REC acts on its release: the windows from there, so beat 1 is in them)
-        await emu.elapse(80);
-        await emu.key(B.rec, false);
-        const win = await emu.windows(48, 25);       // (Init's track is empty and no key is held: only the click is heard)
-        const counting = await emu.text('COUNT-IN');
-        const onsets = win.filter((w, i) => w[1] > LOUD && (i === 0 || win[i - 1][1] <= LOUD)).map((w) => w[0]);
-        const beat = onsets.length >= 3 ? (onsets[onsets.length - 1] - onsets[1]) / (onsets.length - 2) : onsets.length === 2 ? onsets[1] - onsets[0] : 0;
-        console.log(`  rec count-in: the count-in's peaks per 25 ms: ${prof(win)}`);
-        await check('rec count-in: REC, stopped: the transport starts and the bar counts in (COUNT-IN)', counting);
-        // beat 1 within 300 ms of REC's release (the panel's scan and a main loop pass), then the bar's other beats: all four
-        // in the 1.2 s, or three when the fourth falls past it (the 25 ms windows round the onsets either way)
-        if (CLICK_UNHEARD) await skip('rec count-in: a click on each beat of the count-in from beat 1, a beat apart', CLICK_UNHEARD);
-        else await loudCheck('rec count-in: a click on each beat of the count-in from beat 1, a beat apart', Math.max(...win.map((w) => w[1])),
-          beat >= 200 && onsets[0] <= 300 && (onsets.length === 4 || (onsets.length === 3 && onsets[0] + 3 * beat > 1150))
-            && onsets.slice(1).every((t, i) => Math.abs(t - onsets[i] - beat) <= 40),
-          `click onsets at ${onsets.join(' ')} ms (a beat ${beat} ms)`);
-        await until(async () => !(await emu.text('COUNT-IN')), 5000);
-        await emu.elapse(Math.max(beat, 300));
-        const after = await emu.windows(40, 25);
-        if (CLICK_UNHEARD) await skip('rec count-in: once it records, no click (a second bar heard silent)', CLICK_UNHEARD);
-        else await check('rec count-in: once it records, no click (a second bar heard silent)', Math.max(...after.map((w) => w[1])) <= LOUD, `peaks ${prof(after)}`);
-        await emu.tap(B.play);                        // (PLAY stops the transport and the recording)
-        await emu.elapse(300);
-      } finally {                                   // (#779: never left at 1 BAR, which a later live take would inherit)
-        const off = await setCountIn(0);
-        await check('rec count-in: COUNT-IN OFF again', off === 'OFF', `COUNT-IN ${off ?? 'not found on the menu\'s tabs (nothing turned)'}`);
-      }
-      await emu.snap('rec-count-in');
-    },
     async tieRoll() {   // piano-roll ties are entered through step record
       await check('tie roll: Silver Box opens, synced', await openSynced('Silver Box'));
       await check('tie roll: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
@@ -1994,6 +2052,11 @@ async function main() {
       await emu.tap(B.scl);
       await check('arming: SEL on a poly engine no keys cable reaches: NO KEYS REACH THIS DEVICE (D-905)', await emu.waitText('NO KEYS REACH THIS DEVICE', 1500));
       await check('arming: the poly engine is not armed, in the editor either', (await emu.waitText('KEYS WIRED', 3000)) && (await T()).armed.length === 0);
+      // the editor's ARM dot of an engine no keys reach (D-905): marked no-keys, and a click on it arms nothing
+      const dot = await page.evaluate(() => document.querySelector('.arm-dot.no-keys')?.title ?? null);
+      await check('arming: the poly engine\'s ARM dot in the editor is marked no-keys', dot !== null, `${dot}`);
+      await page.evaluate(() => document.querySelector('.arm-dot.no-keys')?.click());
+      await check('arming: a click on that ARM dot arms nothing', !(await until(async () => ((await T()).armed.length > 0 ? true : null), 400)), JSON.stringify((await T()).armed));
       await emu.elapse(1300);
       await emu.tap(B.env, 120);
       await check('arming: ENV opens the environment on the poly engine\'s row', await emu.waitText('ENVIRONMENT', 3000));
@@ -2208,11 +2271,19 @@ async function main() {
     noteAt, shot, passProfile, skip, B, BLACK, WHITE, ENC, C4, QUIET, LOUD, SLACK, DEVICE, REAL, OUT,
   }));
 
+  // (what came before the first scenario: the slot's wait, the builds, the dev server, the emulator's boot, the browser)
+  const timings = [scenarioTiming('(setup)', Date.now() - runStart, null, [])];
+  console.log(`   (setup: ${(timings[0].wallMs / 1000).toFixed(1)} s)`);
   try {
     for (const [name, run] of Object.entries(scenarios)) {
       if ((only || REAL) && name !== 'connect' && !(only ?? Object.keys(RIG_SCENARIOS)).includes(name)) continue;   // (connect opens the editor and syncs: the others need it; a rig runs RIG_SCENARIOS, D-1151)
+      if (!only && !REAL && PER_PR_SCENARIOS.includes(name)) continue;   // (D-1158: their pull requests run them)
       console.log(`-- ${name}`);
       const started = Date.now();
+      const first = results.length;
+      let emuStart = null, emuEnd = null;
+      clock.scenario = name;
+      clock.last = started;
       const progress = () => ({ scenario: name, elapsedMs: Date.now() - started, pending: emuProc?.channel.pending ?? [], at: new Date().toISOString() });
       const heartbeat = setInterval(() => {
         const state = progress();
@@ -2221,10 +2292,12 @@ async function main() {
       }, 30000);
       try {
         await withDeadline(async () => {
+          if (emuProc) emuStart = await emuProc.ms();
           if (DEVICE) await ensureRigIgnored(emu, B, ENC);
           if (name !== 'connect') await fresh(name);
           await run();
           if (DEVICE) await ensureRigIgnored(emu, B, ENC);
+          if (emuProc) emuEnd = await emuProc.ms();
         }, 600000, `scenario ${name}`);
       } catch (e) {
         writeFileSync(join(OUT, `${name}-failure.json`), JSON.stringify({ ...progress(), error: e.stack }, null, 1));
@@ -2233,7 +2306,13 @@ async function main() {
         // A timed-out operation can still be running. Never overlap the next scenario with it.
         if (e instanceof RigIsolationError || e.name === 'DeadlineError' || emuProc?.channel.error) break;
         if (DEVICE) await withDeadline(() => ensureRigIgnored(emu, B, ENC), 15000, 'rig editor isolation recovery');
-      } finally { clearInterval(heartbeat); }
+      } finally {
+        clearInterval(heartbeat);
+        const t = scenarioTiming(name, Date.now() - started, emuEnd === null ? null : emuEnd - emuStart, results.slice(first));
+        timings.push(t);
+        writeFileSync(join(OUT, 'timings.json'), JSON.stringify(timings, null, 1));
+        console.log(`   (${name}: ${(t.wallMs / 1000).toFixed(1)} s${t.emuMs === null ? '' : `, ${(t.emuMs / 1000).toFixed(1)} s emulated`})`);
+      }
     }
   } finally {
     writeFileSync(join(OUT, 'results.json'), JSON.stringify(results, null, 1));

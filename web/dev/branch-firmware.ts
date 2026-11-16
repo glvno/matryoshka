@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The dev server's Flash tab installs this checkout's firmware, not the package the app bundles: firmware/matryoshka.json
 // and .fwsc are answered with the firmware CI build of the checked-out commit (scripts/branch-firmware.mjs: never an
-// older firmware), after emu:smoke passed on it (started on the first request, about two minutes; the tab polls). The
+// older firmware), after emu:smoke passed on it (started on the first request, about four minutes; the tab polls). The
 // published site and `npm run build` are unchanged. MATRYOSHKA_BUNDLED_FIRMWARE=1 npm run dev serves the bundled one.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -53,7 +53,7 @@ export function branchFirmware(): Plugin {
           }
           if (isJson) {
             const side = JSON.parse(readFileSync(join(dir, 'matryoshka.json'), 'utf8')) as object;
-            const wait = state === 'running' ? 'emu:smoke is running on it (about two minutes); installing opens when it passes.'
+            const wait = state === 'running' ? 'emu:smoke is running on it (about four minutes); installing opens when it passes.'
               : state === 'failed' ? `emu:smoke failed on this build: nothing to install (${join(dir, 'smoke.log')}; delete smoke.failed there to run it again).`
               : undefined;
             return json(res, { ...side, dev: `dev server: ${label}`, ...(wait ? { wait } : {}) });

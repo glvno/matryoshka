@@ -20,19 +20,21 @@
 //!    start); HOME + SAVE turns the quick start off for good (the next power-on has none); the menu's GUIDE tab (D-248)
 //!    and ENV from it (the environment, HOME back to the tab, D-249); OCT- +
 //!    OCT+ held at power-on and MENU > SYSTEM > UPDATE MODE (K1, then GLO held) = update mode (no engine)
-//!    then the bank's power-loss rules and the first boot's factory bank (also on a UC25HQ80 flash chip; an unknown chip is
+//!    then the first boot's factory bank (also on a UC25HQ80 flash chip; an unknown chip is
 //!    left alone, #739); an update that changed a factory patch but not
 //!    the format (#441): the untouched slot gets today's patch, an edited one and today's stay, once; a factory patch
 //!    new since the bank's factory set goes into its own slot, else the first empty one, said once (#630)
 //! 9. the patch buttons (held / switched) and the SEQ page on the 808 Kit: a step, a track, PLAY, a mute, REC
 //! 10. the Delay's longest time (#273): its echo 700 ms after the note, ping-pong half of it on the left and 700 ms on the right
-//! 11. STEREO (the 1.10 early check): a saw on the Output's l and a sine on its r come out on their own sides of the I2S
+//! 11. (STEREO's sides: the device check's checkOutput, D-1159)
 //! 12. Verona Drum 1's hi-hat (the 1.10 early check): the closed hat (G4, the second Drum map) sent while black key 6 (HI HAT
 //!     1, open) is still down cuts the open hat
 //! 13. hardware the emulator does not model: any register besides P33 fails the test (P33's supply registers are
 //!     modelled, p33.rs: the menu's 2 CORES needs the supply setup's check to pass, and a check reads the rails after it)
 //!
-//! Snapshots of every step go to OUT (PNG); a WAV of the first run too.
+//! Snapshots of every step go to OUT (PNG); a WAV of the first run too. Steps 1..7 and 13 share one machine; the K1..K4
+//! knobs and steps 8..12 boot their own, so they run as parts side by side, a thread each (`run_parts`), each part's
+//! lines printed in order when it is done.
 
 use crate::font;
 use crate::machine::Machine;
@@ -196,13 +198,29 @@ pub(crate) struct Run {
     pub(crate) warns: Vec<String>,
     pub(crate) checks: u32,
     pub(crate) shot: u32,
+    /// a part's snapshots start with its name (`run_parts`)
+    prefix: String,
+    /// a part's lines, kept until `run_parts` prints them in order; None prints each line as it comes
+    lines: Option<Vec<String>>,
 }
 
 impl Run {
+    pub(crate) fn new(out: &str) -> Run {
+        Run { out: out.to_string(), fails: Vec::new(), warns: Vec::new(), checks: 0, shot: 0, prefix: String::new(), lines: None }
+    }
+
+    /// A line of the report (now, or when its part is printed)
+    pub(crate) fn say(&mut self, line: String) {
+        match &mut self.lines {
+            Some(l) => l.push(line),
+            None => println!("{line}"),
+        }
+    }
+
     pub(crate) fn check(&mut self, what: &str, ok: bool, detail: String) {
         self.checks += 1;
         let line = if detail.is_empty() { what.to_string() } else { format!("{what} ({detail})") };
-        println!("{} {line}", if ok { "ok  " } else { "FAIL" });
+        self.say(format!("{} {line}", if ok { "ok  " } else { "FAIL" }));
         if !ok {
             self.fails.push(line);
         }
@@ -211,7 +229,7 @@ impl Run {
     /// A difference from the reference engine: reported, not failed (see `--strict`).
     fn warn(&mut self, what: &str, ok: bool, detail: String) {
         let line = if detail.is_empty() { what.to_string() } else { format!("{what} ({detail})") };
-        println!("{} {line}", if ok { "ok  " } else { "WARN" });
+        self.say(format!("{} {line}", if ok { "ok  " } else { "WARN" }));
         if !ok {
             self.warns.push(line);
         }
@@ -219,7 +237,7 @@ impl Run {
 
     pub(crate) fn snap(&mut self, m: &Machine, name: &str) {
         self.shot += 1;
-        m.snap(&format!("{}/{:02}-{name}.png", self.out, self.shot));
+        m.snap(&format!("{}/{}{:02}-{name}.png", self.out, self.prefix, self.shot));
     }
 
     /// `s` on the screen now; snapshot either way.
@@ -229,6 +247,60 @@ impl Run {
         self.check(what, ok, if ok { String::new() } else { format!("{s:?} not on the LCD at {} ms", m.ms()) });
         ok
     }
+}
+
+/// A part of a run: its name and what it does with its own `Run` and emulated-time count. A part boots its own
+/// machines from the app's bytes, so it shares nothing with the others.
+pub(crate) type Part<'a> = (&'static str, Box<dyn FnOnce(&mut Run, &mut u64) -> Result<(), String> + Send + 'a>);
+
+/// Run `parts` side by side, a thread each. The machines share only the stack paint record (machine.rs UNTOUCHED),
+/// which is behind a lock. Each part's lines print once it and every part before it are done, in the given order, then
+/// a line with its emulated and wall time. The first part's snapshots keep plain numbered names, the others' start with
+/// the part's name. A part that halts (or panics) fails the check "the firmware keeps running" (the first part) or
+/// "NAME: the firmware keeps running", and the others go on. The checks, failures, warnings and emulated time add up in
+/// `t` and `emulated`.
+pub(crate) fn run_parts(t: &mut Run, emulated: &mut u64, parts: Vec<Part>) {
+    std::thread::scope(|s| {
+        let out = t.out.clone();
+        let running: Vec<_> = parts
+            .into_iter()
+            .enumerate()
+            .map(|(i, (name, f))| {
+                let out = out.clone();
+                (i, name, s.spawn(move || {
+                    let mut r = Run::new(&out);
+                    r.prefix = if i == 0 { String::new() } else { format!("{name}-") };
+                    r.lines = Some(Vec::new());
+                    let mut e = 0u64;
+                    let t0 = std::time::Instant::now();
+                    let res = f(&mut r, &mut e);
+                    (r, e, res, t0.elapsed().as_secs_f64())
+                }))
+            })
+            .collect();
+        for (i, name, h) in running {
+            let label = if i == 0 { "the firmware keeps running".to_string() } else { format!("{name}: the firmware keeps running") };
+            match h.join() {
+                Ok((r, e, res, wall)) => {
+                    for l in r.lines.into_iter().flatten() {
+                        println!("{l}");
+                    }
+                    t.checks += r.checks;
+                    t.fails.extend(r.fails);
+                    t.warns.extend(r.warns);
+                    *emulated += e;
+                    if let Err(err) = res {
+                        t.check(&label, false, format!("halt: {err}"));
+                    }
+                    println!("     ({name}: {:.1} s emulated in {wall:.1} s)", e as f64 / 1000.0);
+                }
+                Err(p) => {
+                    let why = p.downcast_ref::<String>().cloned().or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_default();
+                    t.check(&label, false, format!("panic: {why}"));
+                }
+            }
+        }
+    });
 }
 
 /// The patch's name on the screen (the footer, PRESET's toast), else in the environment's bar: a patch loads with nothing
@@ -342,7 +414,7 @@ fn slot_sector(slot: u32, name: &str, patch: &[u8], bad_crc: bool) -> Vec<u8> {
 /// `strict`: level differences fail the test too.
 pub fn run(app: &[u8], out: &str, levels: Option<&str>, strict: bool) -> ExitCode {
     let _ = std::fs::create_dir_all(out);
-    let mut t = Run { out: out.to_string(), fails: Vec::new(), warns: Vec::new(), checks: 0, shot: 0 };
+    let mut t = Run::new(out);
     let t0 = std::time::Instant::now();
     let mut emulated = 0;
     // NAME, peak, and whether it has Steps tracks (PLAY around its note); an old two-field file reads as no tracks
@@ -356,10 +428,24 @@ pub fn run(app: &[u8], out: &str, levels: Option<&str>, strict: bool) -> ExitCod
                 .collect()
         })
         .unwrap_or_default();
-    let r = steps(app, &mut t, &mut emulated, &levels);
-    if let Err(e) = r {
-        t.check("the firmware keeps running", false, format!("halt: {e}"));
-    }
+    // each part boots its own machines: they run side by side (run_parts), a thread each
+    let presets = factory();
+    let (p, l) = (&presets, &levels);
+    let parts: Vec<Part> = vec![
+        ("steps 1-7", Box::new(move |t: &mut Run, e: &mut u64| steps(app, t, e, l, p))),
+        ("knobs", Box::new(move |t: &mut Run, e: &mut u64| knobs(app, t, e))),
+        ("safety", Box::new(move |t: &mut Run, e: &mut u64| safety(app, t, e, p))),
+        ("store", Box::new(move |t: &mut Run, e: &mut u64| store(app, t, e, p))),
+        ("upgrade", Box::new(move |t: &mut Run, e: &mut u64| upgrade(app, t, e, p))),
+        ("new-patch", Box::new(move |t: &mut Run, e: &mut u64| new_patch(app, t, e, p))),
+        ("panel", Box::new(move |t: &mut Run, e: &mut u64| panel(app, t, e))),
+        ("seq", Box::new(move |t: &mut Run, e: &mut u64| seq(app, t, e, p))),
+        ("count-in", Box::new(move |t: &mut Run, e: &mut u64| count_in(app, t, e))),
+        ("global-tempo", Box::new(move |t: &mut Run, e: &mut u64| global_tempo(app, t, e))),
+        ("long-delay", Box::new(move |t: &mut Run, e: &mut u64| long_delay(app, t, e))),
+        ("verona", Box::new(move |t: &mut Run, e: &mut u64| verona_hats(app, t, e, p))),
+    ];
+    run_parts(&mut t, &mut emulated, parts);
     let wall = t0.elapsed().as_secs_f64();
     println!("\n{} (every machine of the run; a stack's run ends where its deepest use began)", crate::machine::report(&crate::machine::untouched_all()));
     println!(
@@ -450,29 +536,9 @@ fn record(id: u32, seq: u32, name: &str, data: &[u8], torn: bool) -> Vec<u8> {
     s
 }
 
-/// The bank's power-loss rules (#74): of two records of one slot the newer wins (a write cut after its commit, before the
-/// old sector was erased); a record without its header (cut before the commit) does not count; the first boot writes
-/// the factory patches.
+/// The first boot writes the factory patches. (The bank's power-loss rules, #74, are the host's: patstore_test.c and
+/// patlink_test.c cut a write at every byte, D-1159.)
 fn store(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
-    let mut flash = crate::machine::installed_flash();
-    let put = |f: &mut Vec<u8>, at: usize, s: Vec<u8>| f[at..at + 0x1000].copy_from_slice(&s);
-    put(&mut flash, 0x97000, record(3, 9, "EMU NEW", &presets[1].1, false));
-    put(&mut flash, 0xA5000, record(3, 5, "EMU OLD", &presets[2].1, false));
-    put(&mut flash, 0xB0000, record(7, 20, "EMU TORN", &presets[3].1, true));
-    put(&mut flash, 0xC0000, record(0, 1, "EMU ZERO", &presets[0].1, false));
-    let mut m = Machine::boot(app, Some(&flash));
-    quick_start(&mut m, 9000)?;
-    wait_text(&mut m, DEVICE_PAGE, 2000)?;
-    m.run_for(300)?;
-    t.screen(&m, "store: boot opens slot 0 (no settings record)", "EMU ZERO");
-    m.midi(&[0xC0, 3], 500)?;
-    t.screen(&m, "store: the newer of two records of a slot wins", "EMU NEW");
-    m.midi(&[0xC0, 7], 500)?;
-    t.check("store: a record cut before its header does not count", !font::on_screen(m.lcd(), "EMU TORN"), String::new());
-    let f = m.flash();
-    t.check("store: the older record was erased", f[0xA5000..0xA5004] == [0xff; 4], String::new());
-    *emulated += m.ms();
-
     let mut m = Machine::boot(app, None);
     let quick = quick_start(&mut m, 9000)?;
     t.check("store: the quick start over the first boot's page (D-247)", quick, String::new());
@@ -933,34 +999,6 @@ fn long_delay(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String>
     Ok(())
 }
 
-/// STEREO (the 1.10 early check, T110 MONO L R): a saw into the Output's l, a sine an octave up into its r
-/// (web/scripts/emu-patches.ts stereo-sides). Both sides of the I2S sound while a key is held, and they carry different
-/// signals: the right word is the right side, not a copy of the left and not silent.
-fn stereo_sides(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
-    let patch = std::fs::read("build/emu/stereo-sides.m1p").map_err(|e| format!("build/emu/stereo-sides.m1p: {e} (run web/scripts/emu-patches.ts)"))?;
-    let mut flash = crate::machine::installed_flash();
-    flash[0xA0000..0xA1000].copy_from_slice(&slot_sector(0, "EMU STEREO", &patch, false));
-    let mut m = Machine::boot(app, Some(&flash));
-    quick_start(&mut m, 9000)?;
-    wait_text(&mut m, DEVICE_PAGE, 9000)?;
-    m.run_for(2500)?;
-    patch_screen(t, &mut m, "stereo: EMU STEREO loads", "EMU STEREO")?;
-    m.midi(&[0x90, 60, 100], 400)?;
-    let mk = m.mark();
-    m.run_for(300)?;
-    let a = &m.audio[mk..];
-    let side = |ch: usize| a.iter().skip(ch).step_by(2).map(|s| (*s as i32).abs()).max().unwrap_or(0);
-    let (l, r) = (side(0), side(1));
-    let n = (a.len() / 2).max(1) as i64;
-    let diff = a.chunks(2).map(|f| ((f[0] as i32) - (*f.get(1).unwrap_or(&0) as i32)).unsigned_abs() as i64).sum::<i64>() / n;
-    m.midi(&[0x80, 60, 0], 300)?;
-    t.check("stereo: the left side (the saw) sounds", l > LOUD, format!("peak {l}"));
-    t.check("stereo: the right side (the sine) sounds", r > LOUD, format!("peak {r}"));
-    t.check("stereo: the two sides differ (each its own signal)", diff > LOUD as i64 / 4, format!("mean |L - R| {diff}"));
-    *emulated += m.ms();
-    Ok(())
-}
-
 /// Verona Drum 1's hi-hat (the 1.10 early check, D-866; the whole DRM1 MKIV, D-899): stopped, black key 6 (HI HAT 1's row,
 /// its TRIG open as made) rings for its DECAY; G4 over MIDI (HH 1 CL, the second Drum map's closed row) sent 20 ms later
 /// while black key 6 is still down cuts it (a closed hit dies in 45 ms); the other way round, black key 6 pressed 20 ms
@@ -1086,7 +1124,7 @@ pub fn roll_probe(app: &[u8], out: &str) -> ExitCode {
         eprintln!("{out}: {e}");
         return ExitCode::FAILURE;
     }
-    let mut t = Run { out: out.to_string(), fails: Vec::new(), warns: Vec::new(), checks: 0, shot: 0 };
+    let mut t = Run::new(out);
     let presets = factory();
     let (flash, gb) = match bank_with_7ph(app, &presets) {
         Ok(b) => b,
@@ -1554,8 +1592,8 @@ fn knobs(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     Ok(())
 }
 
-fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bool)]) -> Result<(), String> {
-    let presets = factory();
+/// Steps 1..7 and 13 on one machine (the other parts boot their own: `run`)
+fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bool)], presets: &[(String, Vec<u8>)]) -> Result<(), String> {
     // ---- 1. boot
     let mut m = Machine::boot(app, None);
     m.run_to(1500)?;
@@ -1594,7 +1632,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     m.run_for(2500)?;                         // (the first boot's FACTORY BANK WRITTEN, said once the card closed, leaves the bar after 2 s)
     t.screen(&m, "factory patch 0 loaded", &presets[0].0);
     if let Some(c) = cpu_figure(&m) {
-        println!("     CPU figure in the top bar: {c} %");
+        t.say(format!("     CPU figure in the top bar: {c} %"));
     }
 
     // ---- 2. sound
@@ -1689,8 +1727,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     patch_turn(&mut m, -2, 500)?;
     t.screen(&m, "HOME held + PRESET -2", &presets[0].0);
 
-    // ---- 4b. K1..K4 (#340, #405): on the test's own patch (knobs)
-    knobs(app, t, emulated)?;
+    // ---- 4b. K1..K4 (#340, #405): on the test's own patch (knobs, its own part)
 
     // ---- 5. TRS MIDI
     m.midi(&[0xC0, 5], 500)?;
@@ -1698,7 +1735,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     let p = midi_note_peak(&mut m, 60, 500)?;
     t.check("a MIDI note on channel 1 sounds", p > QUIET, format!("peak {p}"));
     settles(&mut m, 4000)?;
-    println!("     factory patches, MIDI note C4 for 500 ms (peak of 32767, CPU figure):");
+    t.say("     factory patches, MIDI note C4 for 500 ms (peak of 32767, CPU figure):".into());
     for (i, (name, _)) in presets.iter().enumerate() {
         m.midi(&[0xC0, i as u8], 300)?;
         let shown = font::on_screen(m.lcd(), name);
@@ -1714,12 +1751,12 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
             m.tap(PLAY, 120, 0)?;
         }
         let want = levels.iter().find(|(n, _, _)| n == name).map(|l| l.1);
-        println!(
+        t.say(format!(
             "       {i:2} {name:24} peak {p:6}  reference {:>6}  cpu {:>4} / {:>4}",
             want.map_or("-".into(), |w| w.to_string()),
             cpu.map_or("-".into(), |c| format!("{c}%")),
             cpu_note.map_or("-".into(), |c| format!("{c}%"))
-        );
+        ));
         if !shown {
             t.snap(&m, &format!("program-{i}"));
         }
@@ -1786,25 +1823,14 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     t.check("bank: the slot with a bad CRC is skipped", !d, String::new());
     *emulated += m.ms();
 
-    // ---- 8. safety: the overload guard, safe mode, update mode; power-safe slot writes
-    safety(app, t, emulated, &presets)?;
-    store(app, t, emulated, &presets)?;
-    upgrade(app, t, emulated, &presets)?;
-    new_patch(app, t, emulated, &presets)?;
-    panel(app, t, emulated)?;
-    seq(app, t, emulated, &presets)?;
-    count_in(app, t, emulated)?;
-    global_tempo(app, t, emulated)?;
-    long_delay(app, t, emulated)?;
-    stereo_sides(app, t, emulated)?;
-    verona_hats(app, t, emulated, &presets)?;
+    // ---- 8. safety, the store, the upgrade, ..: their own parts (`run`)
 
     // ---- 9. unmodelled hardware
     let known = [0x13e08u32, 0x13e0c]; // P33 (watchdog, reset reason, reboot): fm1_sys.h
     let mut unknown = m.unknown_mmio();
     unknown.retain(|(a, ..)| !known.contains(a));
     for (a, w, n) in &unknown {
-        println!("     unmodelled register {} {a:#010x} x{n}", if *w { "write" } else { "read" });
+        t.say(format!("     unmodelled register {} {a:#010x} x{n}", if *w { "write" } else { "read" }));
     }
     t.check("no registers fm1-emu does not model besides P33", unknown.is_empty(), format!("{} other", unknown.len()));
     Ok(())
@@ -1821,5 +1847,24 @@ mod tests {
         let list = factory();
         assert_eq!(list.len(), n);
         assert!(list.iter().all(|(_, b)| b.len() > 8 && b[0] == 0xA1), "patch magic");
+    }
+
+    /// parts run side by side and add up in order; a part that halts or panics fails its own "keeps running" check
+    /// and the others still count
+    #[test]
+    fn parts_add_up_and_a_halt_fails_only_its_part() {
+        let mut t = Run::new(&std::env::temp_dir().to_string_lossy());
+        let mut emulated = 0;
+        let parts: Vec<Part> = vec![
+            ("first", Box::new(|t: &mut Run, e: &mut u64| { t.check("a", true, String::new()); *e += 10; Ok(()) })),
+            ("halts", Box::new(|t: &mut Run, e: &mut u64| { t.check("b", true, String::new()); *e += 20; Err("pc 0x1".into()) })),
+            ("panics", Box::new(|_: &mut Run, _: &mut u64| panic!("boom"))),
+            ("warns", Box::new(|t: &mut Run, _: &mut u64| { t.warn("c", false, "level".into()); t.check("d", false, String::new()); Ok(()) })),
+        ];
+        run_parts(&mut t, &mut emulated, parts);
+        assert_eq!(emulated, 30);
+        assert_eq!(t.checks, 5); // a, b, the halt, the panic, d
+        assert_eq!(t.fails, vec!["halts: the firmware keeps running (halt: pc 0x1)".to_string(), "panics: the firmware keeps running (panic: boom)".to_string(), "d".to_string()]);
+        assert_eq!(t.warns, vec!["c (level)".to_string()]);
     }
 }

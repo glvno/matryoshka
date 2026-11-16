@@ -225,14 +225,48 @@ export const SHORT: Record<string, number> = {
 };
 
 /** the factory sounds of these patches that land off their rule by more than LOUDNESS_TOLERANCE (a SHORT one: off its
- * listed shortfall by more), as "patch / preset: n dB" (the gain it would need) */
-export function offRule(patches: [string, () => Patch][]): string[] {
+ * listed shortfall by more), as "patch / preset: n dB" (the gain it would need); with `keep`, only those cases
+ * (`levelsPart`'s "name#index") */
+export function offRule(patches: [string, () => Patch][], keep?: Set<string>): string[] {
   const off: string[] = [];
   for (const [name, make] of patches)
-    for (const c of cases(make())) {
+    cases(make()).forEach((c, i) => {
+      if (keep && !keep.has(`${name}#${i}`)) return;
       const db = 20 * Math.log10(gainFor(measure(c.patch)));
       const id = `${name} / ${c.preset}`;
       if (Math.abs(db - (SHORT[id] ?? 0)) > LOUDNESS_TOLERANCE) off.push(`${id}: ${db >= 0 ? '+' : ''}${db.toFixed(1)} dB`);
-    }
+    });
   return off;
+}
+
+/** Each factory patch's time in this test, in seconds: one patch at a time on an M3 Max, four at once, 2026-11-16
+ * (docs/measurements/2026-11-16-qualification-time.md). Only the deal of the test's parts uses them; a patch not
+ * listed counts as the median */
+export const LEVELS_COST: Record<string, number> = {
+  '808 Kit': 498, '909 Kit': 271, Scrounge: 112, 'Algo Four': 79, 'Monolith D': 33, Wanderer: 30, 'Io 4': 29,
+  'Verona Drum 1': 27, 'Vernon 100': 25, 'Meridian 8': 24, 'Sallen 20': 18, 'Silver Box': 16, 'Oracle V': 10, Canvas: 9.5,
+  'Cassia 1': 9.1, 'Hera 6': 8.1, 'Expander S': 7.5, '8 Lire': 7.5, 'Briefcase 3': 5.9, 'Drift Poly': 4.7, 'Shush 101': 3.6,
+  'Elvira 2': 2.3, '<7PH': 2.3, 'Supersaw Stack': 1.8, 'Basic Poly': 1.4, 'Mono Lead': 0.6, 'Plucked String': 0.2,
+  'Simple FM': 0.1, Init: 0.1,
+};
+
+/** The cases of part `part` (1..parts) of the loudness test, as "name#index". Each patch's time is spread evenly over its
+ * cases, and the costliest case goes first onto the part with the least time so far, so a heavy kit's presets spread
+ * over several parts. Every case of every patch is in exactly one part */
+export function levelsPart(patches: [string, () => Patch][], part: number, parts: number): Set<string> {
+  const known = Object.values(LEVELS_COST).sort((a, b) => a - b);
+  const median = known[Math.floor(known.length / 2)];
+  const units = patches.flatMap(([name, make]) => {
+    const n = cases(make()).length;
+    return Array.from({ length: n }, (_, i) => ({ id: `${name}#${i}`, w: (LEVELS_COST[name] ?? median) / n }));
+  });
+  units.sort((a, b) => b.w - a.w || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const load: number[] = Array(parts).fill(0);
+  const mine = new Set<string>();
+  for (const u of units) {
+    const p = load.indexOf(Math.min(...load));
+    load[p] += u.w;
+    if (p === part - 1) mine.add(u.id);
+  }
+  return mine;
 }

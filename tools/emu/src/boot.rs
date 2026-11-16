@@ -24,7 +24,7 @@
 use crate::font;
 use crate::machine::{Machine, FACTORY_REGION, FLASH_SIZE};
 use crate::serve::{Mailbox, ToBytes, ToPackets};
-use crate::smoke::{bank_record, factory, note_peak, quick_start, wait_text, Run, C4, DEVICE_PAGE, LOUD, OCT_DOWN, OCT_UP, QUIET};
+use crate::smoke::{bank_record, factory, note_peak, quick_start, run_parts, wait_text, Part, Run, C4, DEVICE_PAGE, LOUD, OCT_DOWN, OCT_UP, QUIET};
 use std::collections::VecDeque;
 use std::process::ExitCode;
 
@@ -64,16 +64,19 @@ fn image_patches(img: &[u8]) -> Vec<(String, u32)> {
 
 pub fn run(app: &[u8], link: Option<&[u8]>, out: &str) -> ExitCode {
     let _ = std::fs::create_dir_all(out);
-    let mut t = Run { out: out.to_string(), fails: Vec::new(), warns: Vec::new(), checks: 0, shot: 0 };
+    let mut t = Run::new(out);
     let t0 = std::time::Instant::now();
     let mut emulated = 0u64;
-    let r = plain(app, &mut t, &mut emulated).and_then(|_| blank_region(app, &mut t, &mut emulated)).and_then(|_| match link {
-        Some(l) => linked(l, &mut t, &mut emulated).and_then(|_| factory_install(l, &mut t, &mut emulated)),
-        None => Ok(()),
-    });
-    if let Err(e) = r {
-        t.check("the firmware keeps running", false, format!("halt: {e}"));
+    // each part boots its own machines: they run side by side (smoke.rs run_parts), a thread each
+    let mut parts: Vec<Part> = vec![
+        ("plain", Box::new(move |t: &mut Run, e: &mut u64| plain(app, t, e))),
+        ("blank-region", Box::new(move |t: &mut Run, e: &mut u64| blank_region(app, t, e))),
+    ];
+    if let Some(l) = link {
+        parts.push(("link", Box::new(move |t: &mut Run, e: &mut u64| linked(l, t, e))));
+        parts.push(("factory-install", Box::new(move |t: &mut Run, e: &mut u64| factory_install(l, t, e))));
     }
+    run_parts(&mut t, &mut emulated, parts);
     let wall = t0.elapsed().as_secs_f64();
     for f in &t.fails {
         println!("  FAIL {f}");
@@ -119,7 +122,7 @@ fn plain(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     let known = [0x13e08u32, 0x13e0c]; // P33 (watchdog, reset reason, reboot): fm1_sys.h
     let unknown: Vec<_> = m.unknown_mmio().into_iter().filter(|(a, ..)| !known.contains(a)).collect();
     for (a, w, n) in &unknown {
-        println!("     unmodelled register {} {a:#010x} x{n}", if *w { "write" } else { "read" });
+        t.say(format!("     unmodelled register {} {a:#010x} x{n}", if *w { "write" } else { "read" }));
     }
     t.check("no registers fm1-emu does not model besides P33", unknown.is_empty(), format!("{} other", unknown.len()));
     *emulated += m.ms();
@@ -332,8 +335,8 @@ fn linked(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     let got = l.wait(&mut m, 1500, info)?;
     t.check("link: HELLO is answered with INFO", got.is_some(), format!("at {} ms", m.ms()));
     if let Some((version, flags, features, fw)) = got {
-        println!("     INFO: protocol {version}, flash {}, features {features:#x}, firmware {}", if flags & 1 != 0 { "ok" } else { "NOT ok" },
-            fw.map_or("before 1.8".into(), |v| format!("{}.{}.{}", v[0], v[1], v[2])));
+        t.say(format!("     INFO: protocol {version}, flash {}, features {features:#x}, firmware {}", if flags & 1 != 0 { "ok" } else { "NOT ok" },
+            fw.map_or("before 1.8".into(), |v| format!("{}.{}.{}", v[0], v[1], v[2]))));
         t.check("link: INFO's protocol version", version == PROTO_VERSION, format!("{version}"));
         t.check("link: INFO says the flash is ok", flags & 1 != 0, format!("flags {flags:#x}"));
     }

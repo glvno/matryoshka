@@ -139,6 +139,48 @@ class SelectionTests(unittest.TestCase):
                     ci.execute(plan, 'web')
                 self.assertEqual(run.call_count, 2)  # No display result after a partial/failed suite.
 
+    def test_rc_web_groups_run_as_parallel_jobs_and_every_slow_render_once(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'web/src').mkdir(parents=True)
+            (root / 'web/scripts').mkdir(parents=True)
+            for number in range(1, 7):
+                (root / f'web/src/levels-{number}.test.ts').touch()
+            (root / 'web/src/headroom-1.test.ts').touch()
+            (root / 'web/scripts/audition-render.test.ts').touch()
+            plan = root / 'plan.json'
+            plan.write_text(json.dumps({'commit': 'a'*40, 'mode': 'rc', 'web': []}))
+            with patch.object(ci, 'ROOT', root), patch.object(ci, 'git', return_value='a'*40), patch.object(ci.subprocess, 'run') as run:
+                ci.execute(plan, 'web', 'coverage')
+                commands = [call.args[0] for call in run.call_args_list]
+                self.assertEqual(len(commands), 2)
+                self.assertIn('--coverage', commands[0])
+                self.assertEqual(commands[1][-1], 'scripts/coverage-stats.ts')
+                run.reset_mock()
+                seen = []
+                for k in range(1, 4):
+                    ci.execute(plan, 'web', 'slow', (k, 3))
+                for call in run.call_args_list:
+                    self.assertNotIn('--coverage', call.args[0])
+                    seen += call.args[0][4:]
+                self.assertEqual(sorted(seen), ci.slow_renders(root))
+            plan.write_text(json.dumps({'commit': 'a'*40, 'mode': 'targeted', 'web': []}))
+            with patch.object(ci, 'ROOT', root), patch.object(ci, 'git', return_value='a'*40), patch.object(ci.subprocess, 'run'):
+                with self.assertRaises(ValueError):
+                    ci.execute(plan, 'web', 'slow', (1, 3))
+
+    def test_slow_parts_deal_the_longest_first_and_count_an_unlisted_file_as_the_median(self):
+        files = sorted(ci.SLOW_RENDER_SECONDS)
+        parts = [ci.slow_part(files, k, 6) for k in range(1, 7)]
+        self.assertEqual(sorted(f for p in parts for f in p), files)
+        self.assertIn(['scripts/audition-render.test.ts'], parts)   # (the longest file alone)
+        loads = [sum(ci.SLOW_RENDER_SECONDS[f] for f in p) for p in parts]
+        self.assertLessEqual(max(loads), 2 * max(ci.SLOW_RENDER_SECONDS.values()))
+        self.assertEqual(ci.slow_part(['a', 'b', 'c'], 1, 2, {'a': 10, 'b': 30}), ['a', 'b'])
+        self.assertEqual(ci.slow_part(['a', 'b', 'c'], 2, 2, {'a': 10, 'b': 30}), ['c'])   # (c counts as 30, the median)
+        with self.assertRaises(ValueError):
+            ci.slow_part(files, 0, 6)
+
 
     def test_new_usb_runner_need_not_have_executable_bit(self):
         with tempfile.TemporaryDirectory() as temp:
