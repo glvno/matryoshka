@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 morgulbrut
+"""tools/m1_link.py's bank commands against a fake FM-1 (no device, no mido needed): #955, they walk the slots the FM-1's
+INFO reports (60 with the pattern store on), as proto.c answers S_RANGE past them"""
+import os
+import sys
+import types
+import unittest
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    import mido  # noqa: F401
+except ImportError:
+    stub = sys.modules["mido"] = types.ModuleType("mido")
+    stub.Message = lambda kind, data: types.SimpleNamespace(type=kind, data=list(data))
+import m1_link  # noqa: E402
+
+S_RANGE = 1
+
+
+class FakeFM1:
+    """answers HELLO, SLOT_INFO and SLOT_ERASE as firmware/src/proto.c does, for a bank of `slots` (None: INFO without
+    byte 15, firmware before the pattern store)"""
+
+    def __init__(self, slots, used=()):
+        self.slots, self.used, self.erased = slots, set(used), []
+
+    def bank(self):
+        return self.slots or 64
+
+    def ask(self, msg, want, tries=3, wait=0.8):
+        cmd, d = msg.data[3], m1_link.unpack7(msg.data[4:])
+        if cmd == 0x01:
+            info = [5, 32, 64, 1, 2, 0, 0, 0, 0, 1, 17, 0, 0, 0, 0]
+            return info + [self.slots] if self.slots else info
+        if cmd == 0x15:
+            if d[0] >= self.bank():
+                sys.exit(f"no answer from the FM-1 to command {cmd:#04x}")
+            name = list(b"Monolith D".ljust(20, b"\0"))
+            return [d[0], int(d[0] in self.used), 100, 0, *name]
+        if cmd == 0x14:
+            if d[0] >= self.bank():
+                return [0x40, cmd, S_RANGE, 0]
+            self.erased.append(d[0])
+            return [0x40, cmd, 0, 0]
+        raise AssertionError(f"unexpected command {cmd:#04x}")
+
+    def ack(self, msg, cmd, wait=0.8, tries=3):
+        p = self.ask(msg, (0x40, cmd))
+        if p[2]:
+            sys.exit(f"FM-1: bad offset or size (aux {p[3]})")
+
+
+class Bank(unittest.TestCase):
+    def run_bank(self, fm1, *a, answer="y"):
+        out, asked = [], []
+        m1_link.bank_command(fm1, list(a), ask=lambda q: asked.append(q) or answer, out=out.append)
+        return out, asked
+
+    def test_info_walks_the_60_slots(self):
+        out, _ = self.run_bank(FakeFM1(60, used=(0, 59)), "bank-info")
+        self.assertEqual(out[-1], "2 of 60 slots used")
+        self.assertTrue(out[1].startswith("slot 60  Monolith D"))
+
+    def test_info_without_byte_15_is_64(self):
+        out, _ = self.run_bank(FakeFM1(None), "bank-info")
+        self.assertTrue(out[-1].startswith("0 of 64 slots used"))
+
+    def test_clear_asks_then_erases_the_60(self):
+        fm1 = FakeFM1(60)
+        out, asked = self.run_bank(fm1, "bank-clear")
+        self.assertIn("60 slots", asked[0])
+        self.assertEqual(fm1.erased, list(range(60)))
+        self.assertEqual(out, ["bank emptied"])
+
+    def test_clear_refused_erases_nothing(self):
+        fm1 = FakeFM1(60)
+        out, _ = self.run_bank(fm1, "bank-clear", answer="")
+        self.assertEqual(fm1.erased, [])
+        self.assertEqual(out, ["bank left as it is"])
+
+    def test_clear_yes_skips_the_question(self):
+        fm1 = FakeFM1(60)
+        _, asked = self.run_bank(fm1, "bank-clear", "--yes")
+        self.assertEqual(asked, [])
+        self.assertEqual(len(fm1.erased), 60)
+
+
+if __name__ == "__main__":
+    unittest.main()

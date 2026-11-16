@@ -8,7 +8,7 @@
   tools/m1_link.py store
   tools/m1_link.py bank                   (write the factory presets from firmware/src/presets.h into the flash bank)
   tools/m1_link.py bank-info              (list the bank slots on the FM-1)
-  tools/m1_link.py bank-clear             (empty the bank: the next boot writes the factory patches again)
+  tools/m1_link.py bank-clear [--yes]     (empty the bank, after a confirmation: the next boot writes the factory patches again)
   tools/m1_link.py param MODULE PARAM VALUE     (module / parameter index, value as a float)
   tools/m1_link.py note 60 [seconds]
   tools/m1_link.py program N              (factory patch N, MIDI program change)
@@ -379,6 +379,46 @@ def factory_read(link, off, n):
     return bytes(out)
 
 
+def bank_slots(link):
+    """the slots of the FM-1's bank: INFO byte 15 (60 with the pattern store on, #901), absent before it: 64 (protocol.ts
+    slotCount). SLOT / SLOT_ERASE / SLOT_INFO past them answer S_RANGE, so SLOT_INFO gets no R_SLOT (#955)"""
+    p = link.ask(frame(0x01), (0x41,))
+    return p[15] if len(p) >= 16 and p[15] else 64
+
+
+def bank_command(link, a, ask=input, out=print):
+    """bank / bank-info / bank-clear over the bank's slots as the FM-1 reports them"""
+    slots = bank_slots(link)
+    if a[0] == "bank":
+        presets = factory_presets()[:32]
+        for slot, (name, data) in enumerate(presets):
+            upload_chunks(link, data)
+            n = [ord(c) if 32 <= ord(c) < 127 else 0 for c in name[:20]]
+            n += [0] * (20 - len(n))
+            c = crc16(data)
+            link.ack(frame(0x13, [slot, *n, len(data) & 0xFF, len(data) >> 8, c & 0xFF, c >> 8]), 0x13, wait=4.0, tries=1)
+            out(f"slot {slot + 1:02d}  {name}  ({len(data)} bytes)")
+        for slot in range(len(presets), slots):
+            link.ack(frame(0x14, [slot]), 0x14, wait=4.0, tries=1)
+        out(f"bank written: {len(presets)} presets")
+    elif a[0] == "bank-info":
+        used = 0
+        for slot in range(slots):
+            p = link.ask(frame(0x15, [slot]), (0x42, slot))
+            if p[1]:
+                used += 1
+                name = bytes(x for x in p[4:24] if 32 <= x < 127).decode()
+                out(f"slot {slot + 1:02d}  {name}  ({p[2] | p[3] << 8} bytes)")
+        out(f"{used} of {slots} slots used" + ("" if used else ": the next boot writes the factory patches again"))
+    elif a[0] == "bank-clear":
+        if "--yes" not in a and ask(f"erase all {slots} slots of the FM-1's bank? [y/N] ").strip().lower() not in ("y", "yes"):
+            out("bank left as it is")
+            return
+        for slot in range(slots):
+            link.ack(frame(0x14, [slot]), 0x14, wait=4.0, tries=1)
+        out("bank emptied")
+
+
 def main():
     a = sys.argv[1:]
     if not a:
@@ -399,31 +439,8 @@ def main():
         c = crc16(data)
         link.ack(frame(0x11, [len(data) & 0xFF, len(data) >> 8, c & 0xFF, c >> 8]), 0x11)
         print(f"uploaded {len(data)} bytes")
-    elif a[0] == "bank":
-        presets = factory_presets()[:32]
-        for slot, (name, data) in enumerate(presets):
-            upload_chunks(link, data)
-            n = [ord(c) if 32 <= ord(c) < 127 else 0 for c in name[:20]]
-            n += [0] * (20 - len(n))
-            c = crc16(data)
-            link.ack(frame(0x13, [slot, *n, len(data) & 0xFF, len(data) >> 8, c & 0xFF, c >> 8]), 0x13, wait=4.0, tries=1)
-            print(f"slot {slot + 1:02d}  {name}  ({len(data)} bytes)")
-        for slot in range(len(presets), 64):
-            link.ack(frame(0x14, [slot]), 0x14, wait=4.0, tries=1)
-        print(f"bank written: {len(presets)} presets")
-    elif a[0] == "bank-info":
-        used = 0
-        for slot in range(64):
-            p = link.ask(frame(0x15, [slot]), (0x42, slot))
-            if p[1]:
-                used += 1
-                name = bytes(x for x in p[4:24] if 32 <= x < 127).decode()
-                print(f"slot {slot + 1:02d}  {name}  ({p[2] | p[3] << 8} bytes)")
-        print(f"{used} of 64 slots used" + ("" if used else ": the next boot writes the factory patches again"))
-    elif a[0] == "bank-clear":
-        for slot in range(64):
-            link.ack(frame(0x14, [slot]), 0x14, wait=4.0, tries=1)
-        print("bank emptied")
+    elif a[0] in ("bank", "bank-info", "bank-clear"):
+        bank_command(link, a)
     elif a[0] == "factory-info":
         print(factory_info_text(factory_info(link)))
     elif a[0] == "factory-install":
