@@ -26,7 +26,7 @@ import { lockPlan } from './locks';
 import { TYPE_ORDER, toQ16 } from './patchbin';
 import type { StoredPatternEntry } from './protocol';
 import { PRESET_PATTERNS, type PresetPattern } from './preset-pattern-data';
-import { fixLocks, fixNotes, fixPatterns, isShortNote, noteWord, patternWords, shortWord, wordNote, wordShort, wordsNotes, type Pattern, type StepLock, type StepNote } from './track';
+import { fixLocks, fixNotes, fixPatterns, patternWords, wordShort, wordsNotes, type Pattern, type StepLock, type StepNote } from './track';
 import FACTORY_STORE from './factory-store.json';
 
 export const PAYLOAD_VERSION = 1;
