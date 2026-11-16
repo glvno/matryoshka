@@ -444,7 +444,8 @@ static void kits(void)
             OK(!pl_read(id, m1_up, sizeof m1_up, &in) && in.id == id && in.name[0] && !pl_check(m1_up, in.len) &&
                in.hash == pt_fnv(PT_FNV0, m1_up, in.len));
         }
-    OK(total == N_KIT_PATTERNS && pl_read(KIT_GROUPS[0].first + KIT_GROUPS[0].n, m1_up, sizeof m1_up, &in) == -1);
+    /* (a kit may take several groups, #852: the id before the last group's first is a hole between the kits' blocks) */
+    OK(total == N_KIT_PATTERNS && pl_read(KIT_GROUPS[N_KIT_GROUPS - 1].first - 1u, m1_up, sizeof m1_up, &in) == -1);
     for (i = 0; i < 2u; i++) {
         OK((len = factory_bin(names[i], bin)) != 0);
         if (!len || load_patch(bin, len)) {

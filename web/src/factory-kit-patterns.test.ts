@@ -9,7 +9,8 @@ import { FACTORY_KITS, KIT_FIRST_ID, KIT_IDS_PER_KIT, gridNotes, kitStoreEntries
 import { DEVICE, deviceBudget, encodePatch, linkPlan } from './patchbin';
 import { decodePayload, fnv, FNV0, hexBytes, PATTERN_NAME_BYTES, storedName } from './pattern-store';
 import { deviceView } from './poly';
-import { LINK_ID_MAX, PATTERNS_MAX, READ_ONLY_ID, SONG_LEN_MAX } from './track';
+import { COND_FILL, LINK_ID_MAX, PATTERNS_MAX, READ_ONLY_ID, SONG_LEN_MAX, type StepNote } from './track';
+import SOURCE from '../factory/bank.json';
 
 const bank = buildSelectedFactoryBank();
 const patchOf = (name: string) => bank.find((x) => x.name === name)!.patch;
@@ -46,6 +47,25 @@ describe('the factory kits\' linked patterns', () => {
     k808.patterns.forEach((x, i) => expect(x.name.endsWith(i % 2 ? ' A' : ' B')).toBe(true));   // (ELECTRO B, DISCO A, DISCO B, ..)
     expect(new Set(k808.patterns.map((x) => x.name.slice(0, -2))).size).toBe(12);
     expect(FACTORY_KITS.find((k) => k.patch === '909 Kit')!.patterns).toHaveLength(11);
+  });
+
+  it('fill-ins (#852, D-831): with FILL let go every pattern plays as its grid; each linked 808 pattern and 909 groove has one', () => {
+    const plain = (ns: readonly StepNote[] | undefined) => (ns ?? []).filter((n) => n.cond !== COND_FILL).map(({ cond: _, ...n }) => n);
+    for (const kit of FACTORY_KITS) {
+      const track = patchOf(kit.patch).modules.find((m) => m.type === 'steps')!;
+      const own = (SOURCE as { name: string; patch: { modules: { type: string; notes?: StepNote[] }[] } }[]).find((x) => x.name === kit.patch)!.patch.modules.find((m) => m.type === 'steps')!;
+      // (pattern 1 is the factory demonstration pattern the kit's presets swap for their own: it stays as it is)
+      expect(track.notes).toEqual(own.notes);
+      kit.patterns.forEach((x, k) => {
+        const notes = track.patterns![k]!.notes!;
+        expect(plain(notes)).toEqual(gridNotes(kit, x.grid));
+        expect(notes.some((n) => n.cond === COND_FILL)).toBe(!!x.fill);
+        for (const steps of Object.values(x.fill?.grid ?? {})) expect(steps).toMatch(new RegExp(`^[.xXf]{${16 - x.fill!.from}}$`));
+      });
+    }
+    expect(FACTORY_KITS.find((k) => k.patch === '808 Kit')!.patterns.every((x) => x.fill)).toBe(true);
+    expect(FACTORY_KITS.find((k) => k.patch === '909 Kit')!.patterns.filter((x) => x.fill).map((x) => x.name))
+      .toEqual(['HOUSE', 'TECHNO A', 'TECHNO B', 'ACID', 'JACK', 'GARAGE', 'ELECTRO', 'BREAKS']);
   });
 
   for (const kit of FACTORY_KITS) {

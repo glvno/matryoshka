@@ -18,8 +18,9 @@
  * clean: proto.c leaves it out of the patterns and locks sections (m1_pat_clean), so the binary carries only the link and
  * the next load copies it from the store again. An edited one stays inline, and SAVE writes it over its stored entry
  * (pl_writeback). Two kinds of read-only factory entries follow the user's (ids 1..PT_ID_MAX), in id order: the factory
- * patches' patterns (factory_tier.h KIT_GROUPS, compiled in with the firmware tier, #915: from PL_KIT, a group per patch
- * from its own first id; any number of tracks, in the payload layout above, a group packed together by lz_unpack.h), which
+ * patches' patterns (factory_tier.h KIT_GROUPS, compiled in with the firmware tier, #915: from PL_KIT, a patch's block
+ * from its own first id in one or more groups of consecutive ids, #852; any number of tracks, in the payload layout
+ * above, a group packed together by lz_unpack.h and unpacking into m1_up), which
  * a factory patch links like a user entry, and the factory demonstration patterns (factory.c fc_pattern, ids PL_FACTORY +
  * index: one track, no locks). Loading either on the SEQ page copies it and links nothing. A link to a read-only entry
  * needs no store; SAVE of an edited one stores it as a new user entry, which it then links.

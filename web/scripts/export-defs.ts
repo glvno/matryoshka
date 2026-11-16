@@ -358,9 +358,11 @@ P.push('static const preset_pattern_t PRESET_PATTERNS[N_PRESET_PATTERNS] = {');
 patternDefaults.forEach((p, i) => P.push(`    {${Number.parseInt(p.id, 16)}u, 0x${p.structure}u, "${p.name.toUpperCase()}", FPN_${i}, ${p.notes.length}, ${p.len}, ${p.rate}, ${p.swing}, ${p.dir}, ${toQ16(p.gate)}},`));
 P.push('};', '');
 // the patterns the factory patches link (#923, factory-kit-patterns.ts via factory-store.json): read-only entries of the
-// pattern store, a kit's packed together (lz_unpack.h), each its name (NUL ended), u16 payload length, payload (patlink.c
-// pl_read). They go into factory_tier.h (compiled in: both kits are firmware-tier patches, #915, so a kit plays its whole
-// set without the factory region), which the host tests read through factory.c
+// pattern store, packed in groups (lz_unpack.h), each entry its name (NUL ended), u16 payload length, payload (patlink.c
+// pl_read). A group holds one kit's consecutive entries, as many as unpack into m1_up; a kit whose set is larger takes
+// several groups (the 808 Kit, with its fill-ins' trig conditions, #852). They go into factory_tier.h (compiled in: both
+// kits are firmware-tier patches, #915, so a kit plays its whole set without the factory region), which the host tests
+// read through factory.c
 const KIT_LINES: string[] = [];
 let KIT_PACKED = 0;   // (bytes: the groups packed)
 {
@@ -368,19 +370,31 @@ let KIT_PACKED = 0;   // (bytes: the groups packed)
   for (const kit of kits)
     if (!FIRMWARE_TIER.some((n) => n.toUpperCase() === kit.toUpperCase()))
       throw new Error(`${kit} links factory pattern store entries but is not in the firmware tier (web/src/factory-tiers.ts): the firmware compiles only the tier's linked patterns in`);
-  KIT_LINES.push('/* the factory patches\' linked patterns (#923): read-only pattern store entries from id `first`, a group per kit, packed */');
-  const groups = kits.map((kit, g) => {
+  KIT_LINES.push('/* the factory patches\' linked patterns (#923): read-only pattern store entries from id `first`, groups of a kit\'s, packed */');
+  const chunks = kits.flatMap((kit) => {
     const xs = FACTORY_STORE.filter((e) => e.kit === kit);
     if (xs.some((e, k) => e.id !== xs[0].id + k)) throw new Error(`${kit}: its linked patterns' ids are not consecutive`);
-    const raw = Uint8Array.from(xs.flatMap((e) => {
+    const out: { kit: string; first: number; entries: number[][] }[] = [];
+    let len = 0;
+    for (const e of xs) {
       const payload = fromHex(e.payload);
       if (!/^[ -~]{1,16}$/.test(e.name) || storedName(e.name) !== e.name) throw new Error(`${kit}: stored name "${e.name}"`);
-      return [...new TextEncoder().encode(e.name), 0, payload.length & 0xff, payload.length >> 8, ...payload];
-    }));
-    if (raw.length > DEVICE.bytes) throw new Error(`${kit}: its linked patterns take ${raw.length} bytes unpacked, more than m1_up`);
+      const entry = [...new TextEncoder().encode(e.name), 0, payload.length & 0xff, payload.length >> 8, ...payload];
+      if (entry.length > DEVICE.bytes) throw new Error(`${kit}: "${e.name}" takes ${entry.length} bytes unpacked, more than m1_up`);
+      if (!out.length || len + entry.length > DEVICE.bytes) {
+        out.push({ kit, first: e.id, entries: [] });
+        len = 0;
+      }
+      out.at(-1)!.entries.push(entry);
+      len += entry.length;
+    }
+    return out;
+  });
+  const groups = chunks.map(({ kit, first, entries }, g) => {
+    const raw = Uint8Array.from(entries.flat());
     const z = lzPack(raw);
     KIT_LINES.push(`static const uint8_t KITP_${g}[${z.length}] = {${Array.from(z).join(',')}};   /* ${kit} */`);
-    return { first: xs[0].id, n: xs.length, len: raw.length, z: z.length };
+    return { first, n: entries.length, len: raw.length, z: z.length };
   });
   KIT_PACKED = groups.reduce((n, g) => n + g.z, 0);
   KIT_LINES.push(`#define N_KIT_GROUPS ${groups.length}`, `#define N_KIT_PATTERNS ${FACTORY_STORE.length}`,

@@ -2,14 +2,16 @@
 // Headroom (#440): no factory patch clips, nor any factory preset of its engines. The ways a patch is played for that:
 // its own values and each of its engines at each factory preset, with as many keys held as the engine has voices (at most
 // 8: 60 64 67 71 72 76 79 83, the voices' count read after the preset), its Drum maps' keys all held (a kit, 8 Lire), and
-// its transport running each pattern that has notes. gen-presets and gen-xl set every factory patch's Output so the
-// loudest of these peaks at HEADROOM at most (scripts/factory-build.ts headroom); headroom.test.ts keeps it so.
+// its transport running each pattern that has notes, a pattern with FILL conditions also with FILL held (#852). gen-presets
+// and gen-xl set every factory patch's Output so the loudest of these peaks at HEADROOM at most (scripts/factory-build.ts
+// headroom); headroom.test.ts keeps it so.
 import { applyPreset, currentValues, presetsOf } from './device-presets';
 import { Engine } from './engine';
 import { instIsEngine } from './engines';
 import { allModules, parentOf } from './assembly';
 import { DEVICE_SR } from './modules';
 import type { Patch } from './patch';
+import { COND_FILL, COND_NOT } from './track';
 
 /** the most a factory patch's Output peaks, played every way `plays` lists (under 1 by a margin: the FM-1's fixed point
  * engine and other keys can run a little hotter) */
@@ -25,6 +27,8 @@ export interface Play {
   run: boolean;
   /** the pattern selected (0 = pattern 1) while it runs */
   pattern?: number;
+  /** FILL held while it runs */
+  fill?: boolean;
   /** Longer safety audition for the scoped factory banks (#833). */
   phrase?: boolean;
   seconds?: number;
@@ -45,6 +49,17 @@ export function patterns(p: Patch): number[] {
   }
   return [...out].sort((a, b) => a - b);
 }
+/** the patterns (as `patterns`) whose notes change with FILL held: a note with a FILL or NOT FILL condition */
+export function fillPatterns(p: Patch): number[] {
+  const out = new Set<number>();
+  const fills = (notes: { cond?: number }[] | undefined): boolean => !!notes?.some((n) => ((n.cond ?? 0) & ~COND_NOT) === COND_FILL);
+  for (const m of p.modules) {
+    if (m.type !== 'steps') continue;
+    if (fills(m.notes)) out.add(0);
+    (m.patterns ?? []).forEach((q, i) => fills(q?.notes) && out.add(i + 1));
+  }
+  return [...out].sort((a, b) => a - b);
+}
 
 const MELODIC_AUDITION = new Set(['Algo Four', 'Io 4', 'Monolith D', 'Sallen 20', 'Silver Box', 'Vernon 100', 'Wanderer']);
 const DRUM_AUDITION = new Set(['Scrounge', 'Meridian 8', 'Perun 4', 'Spokes 6', 'Verona Drum 1', '808 Kit', '909 Kit', '<7PH', 'drum kit']);
@@ -57,6 +72,7 @@ export function ways(p: Patch, what: string, voices: number): Play[] {
     out.push({ label: `${what}, its Drum map's keys`, patch: p, notes: keys, run: false });
   }
   for (const k of patterns(p)) out.push({ label: `${what}, running pattern ${k + 1}`, patch: p, notes: [], run: true, pattern: k, ...(DRUM_AUDITION.has(p.name) ? { seconds: 16 } : {}) });
+  for (const k of fillPatterns(p)) out.push({ label: `${what}, running pattern ${k + 1} with FILL held`, patch: p, notes: [], run: true, pattern: k, fill: true, ...(DRUM_AUDITION.has(p.name) ? { seconds: 16 } : {}) });
   if (MELODIC_AUDITION.has(p.name)) out.push({ label: `${what}, register and phrase`, patch: p, notes: [], run: false, phrase: true, seconds: 16 });
   return out;
 }
@@ -85,6 +101,7 @@ export function renderPlay(w: Play, secs: number, sr = DEVICE_SR): [Float32Array
   const e = new Engine(sr);
   e.load(w.patch);
   if (w.pattern) e.setPattern(w.pattern);
+  if (w.fill) e.setFill(true);
   e.transport(w.run);
   for (const k of w.notes) e.noteOn(k, 1);
   const l = new Float32Array(Math.round(sr * secs));
