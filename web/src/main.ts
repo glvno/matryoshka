@@ -19,6 +19,8 @@ import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
 import { chipState, DeviceLink, deviceIndex, deviceLayoutKey, IGNORED_NOW, liveSync, sandboxChip, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, type ChipState, type DeviceEvent } from './device';
+import { fm1Label } from './fm1-choice';
+import { chooseFm1 } from './fm1-pick';
 import { SITE_URL } from './site';
 import { sandboxKey, sandboxPage, sandboxStep, sandboxTempoTurn } from './sandbox-mode';
 import { editorSkips, LIVE_MS, panelOffBy, slotLabel, type PanelState, type SlotInfo } from './protocol';
@@ -129,6 +131,10 @@ const queueSave = (p: Patch): void => {
 };
 
 const device = new DeviceLink();
+// several FM-1s answered Connect FM-1 and none is remembered (D-965): the user chooses
+device.choose = (found, first) => chooseFm1($<HTMLDialogElement>('fm1-pick'), found, first);
+/** the linked FM-1's name in the status line and on Connect FM-1 (D-965): the test rig, its name, the end of its serial */
+const fm1Name = (): string => (device.connected && device.identity ? fm1Label(device.identity) : 'FM-1');
 /** the patch fits the FM-1 (deviceBudget); one that does not plays only in the browser and is never sent */
 let fitsDevice = true;
 /** Live sync is on (setLive: the connect dialog, the chip, FM-1 & MIDI's Sync / Stop syncing) */
@@ -255,11 +261,12 @@ const syncChip = (): void => {
     el.classList.toggle('sandbox', s === 'sandbox controller');
   }
   fm1Connect.classList.toggle('connected', device.connected);
-  fm1Connect.querySelector('.fm1-connect-text')!.textContent = device.connected ? 'FM-1 connected' : 'Connect FM-1';
-  fm1Connect.title = device.connected ? `FM-1 ${s}: FM-1 & MIDI (send, store, sync, follow its panel)` : 'Connect the FM-1 over USB MIDI';
-  fm1Chip.querySelector('.sl-chip-text')!.textContent = `FM-1 \u00b7 ${s}`;
+  fm1Connect.querySelector('.fm1-connect-text')!.textContent = device.connected ? `${fm1Name()} connected` : 'Connect FM-1';
+  fm1Connect.title = device.connected ? `${fm1Name()} ${s}: FM-1 & MIDI (send, store, sync, follow its panel)` : 'Connect the FM-1 over USB MIDI';
+  fm1Chip.querySelector('.sl-chip-text')!.textContent = `${fm1Name()} \u00b7 ${s}`;
   const does = s === 'not synced' ? 'sync with the FM-1' : 'open FM-1 & MIDI';
-  fm1Chip.setAttribute('aria-label', `FM-1 ${s}: ${does}`);
+  fm1Chip.setAttribute('aria-label', `${fm1Name()} ${s}: ${does}`);
+  $('dev-choose').hidden = !(device.connected && (device.identity?.count ?? 0) > 1);
   fm1Chip.title = s === 'not synced' ? 'Sync with the FM-1: it plays the editor\'s patch, and changes on either side follow the other'
     : s === 'patch too big to sync' ? 'The patch is over the FM-1 budget: it plays here only (the budget beside says what is over). FM-1 & MIDI'
     : 'FM-1 & MIDI: connect, send, store, follow its panel';
@@ -2245,13 +2252,14 @@ try {
 }
 
 // FM-1 link: FM-1 & MIDI's Connect and the Connect FM-1 button over the canvas
-async function connectFm1(): Promise<void> {
+async function connectFm1(ask = false): Promise<void> {
   if (device.connected) clearDevicePatternOrigins();
   installedLayout = null;
   try {
-    const info = await device.connect();
+    const info = await device.connect({ ask });
     showBudget();
-    devStatus(`FM-1 connected (protocol ${info.version}, up to ${info.maxModules} modules, flash ${info.flashOk ? 'ok' : 'not available'})`);
+    const several = (device.identity?.count ?? 1) > 1 ? `; ${device.identity!.count} FM-1s answered, Choose FM-1… switches` : '';
+    devStatus(`${fm1Name()} connected (protocol ${info.version}, up to ${info.maxModules} modules, flash ${info.flashOk ? 'ok' : 'not available'})${several}`);
     for (const id of ['dev-send', 'dev-store', 'dev-presets']) $<HTMLInputElement>(id).disabled = false;
     $('dev-btn').textContent = 'Reconnect';
     armsReported = false;                                   // (whether this firmware reports its armed set shows with its first ARMS_NOW)
@@ -2273,7 +2281,10 @@ async function connectFm1(): Promise<void> {
  *  firmware before 1.8 (M-VAVE's identity handshake, as Connect FM-1 asks a firmware that is not Matryoshka) */
 async function offerFirmwareUpdate(): Promise<void> {
   const info = device.info;
-  const id = info?.firmware ? null : (await identifyFm1())?.text;
+  // (of several FM-1s, only the linked one is asked, D-965)
+  const linked = [device.input?.id, device.output?.id];
+  const avoid = (device.identity?.count ?? 1) > 1 ? (p: MIDIPort) => !linked.includes(p.id) : undefined;
+  const id = info?.firmware ? null : (await identifyFm1(undefined, avoid))?.text;
   const text = updateOffer(runningVersion(info, id), INSTALL_VERSION);
   if (!text || !device.connected) return;
   devStatus(text);
@@ -2302,6 +2313,7 @@ $('dev-btn').onclick = async () => {
   await connectFm1();
   if (!device.connected) void offerInstall();
 };
+$('dev-choose').onclick = () => void connectFm1(true);
 
 // ---- following the FM-1's panel (#120): any firmware, through plain MIDI (fm1-profiles.ts, mirror.ts). Its inputs go
 // through Matryoshka's panel logic (the FM-1 tab's WebAssembly copy, which tells the editor its focus and page) and the
@@ -2864,7 +2876,7 @@ refreshAssemblies = buildAssembliesSection($('lib-assemblies'), {
     tutorial.refresh();
   },
 });
-buildFlashTab($('flash-body'));
+buildFlashTab($('flash-body'), () => device.choice);   // (the Install panel installs on the FM-1 chosen here, D-965)
 const about = new AboutCard($<HTMLDialogElement>('about'));
 $('about-btn').onclick = (e) => {
   e.stopPropagation();   // under the logo, which expands the collapsed sidebar

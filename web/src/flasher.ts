@@ -10,6 +10,7 @@ import { runningVersion, updateOffer } from './fm1-version';
 import { type MvaveTarget, TARGET_NAME, WHICH_TARGET, rememberTarget, targetGuard } from './mvave-target';
 import { CMD, editorSkips, FEATURE_FACTORY, helloFrame, parse, parseInfo } from './protocol';
 import { factoryInfo, fetchFactoryImage, installFactory, linkAsk, loadFactorySets, pickSet } from './factory-content';
+import { fm1Label, installPlan, OTHER_CHANGED, readFm1Id, type Fm1Choice, type FoundFm1, type InstallPlan } from './fm1-choice';
 
 /** the Install panel's factory sounds box (#915): ticked by default; unticked, this warning shows */
 export const FACTORY_LABEL = ' Install factory instruments and presets (recommended)';
@@ -84,6 +85,38 @@ export async function ignoresEditor(link: { send(b: number[] | Uint8Array): bool
 
 /** Check the connection, on an FM-1 set to ignore the editor (#702) */
 export const IGNORED_CHECK = 'This FM-1 is set to ignore the editor: the install buttons leave it alone. On it, GLO \u203a SYSTEM \u203a EDITOR to ALLOW to install.';
+
+/** an FM-1 fm1ota.js found: its link (open), identity and ports */
+interface OtaDevice {
+  link: { send(b: number[] | Uint8Array): boolean; read(ms: number): Promise<number[] | null>; close(): void };
+  id: { text: string; model: string };
+  input: { id: string };
+  output: { id: string };
+}
+
+/** Every FM-1 on USB MIDI as the Install panel tells them apart (D-965): each answers the update handshake; a running
+ *  Matryoshka also HELLO (set to ignore the editor or not, #702), then its name, serial and the test rig's mark
+ *  (readFm1Id). Reads only; every link is closed again. */
+export async function surveyFm1s(up: { findAll(): Promise<OtaDevice[]> }): Promise<FoundFm1[]> {
+  const devs = await up.findAll();
+  const found: FoundFm1[] = [];
+  for (const [index, d] of devs.entries()) {
+    try {
+      const loader = /^ota-/i.test(d.id.model);
+      const ask = linkAsk(d.link);
+      const hello = loader || firmwareKind(d.id.text) !== 'matryoshka' ? null : await ask(helloFrame(), (p) => p?.cmd === CMD.info, 800, 2).catch(() => null);
+      const info = hello && parseInfo(hello);
+      const id = info ? await readFm1Id((frame, match) => ask(frame, match, 800, 2), info.features) : { name: null, serial: null, rig: false };
+      found.push({
+        inputId: d.input.id, outputId: d.output.id, loader, ignored: editorSkips(info), serial: id.serial, text: d.id.text,
+        label: `${fm1Label({ ...id, index, count: devs.length })} (${d.id.text})`,
+      });
+    } finally {
+      d.link.close();
+    }
+  }
+  return found;
+}
 
 const ERRORS: Record<string, string> = {
   notfound: 'FM-1 not found. Check the USB data cable and close other apps that use the MIDI port.',
@@ -163,7 +196,7 @@ export function guardUnload(target: EventTarget): { arm(): void; disarm(): void 
   };
 }
 
-export function buildFlashTab(root: HTMLElement): void {
+export function buildFlashTab(root: HTMLElement, choice: () => Fm1Choice | null = () => null): void {
   const logEl = el('pre', { class: 'log', textContent: 'Ready.\n' });
   const bar = el('progress', { max: 100, value: 0 });
   // shown while an install runs: browsers give only a generic text for beforeunload
@@ -196,14 +229,32 @@ export function buildFlashTab(root: HTMLElement): void {
   };
   const accepted = (): boolean => ack.checked;
   const supported = 'requestMIDIAccess' in navigator;
+  /** which FM-1 this button press installs on, among several (D-965): found by its first access(), the same to the end */
+  let plan: Exclude<InstallPlan, { refuse: string }> | null = null;
+  /** the installer, kept off every FM-1 but the one this press installs on */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const access = async (): Promise<any> => new Updater(await navigator.requestMIDIAccess({ sysex: true }), log, { skip: ignoresEditor });
+  const access = async (): Promise<any> => {
+    const midi = await navigator.requestMIDIAccess({ sysex: true });
+    if (!plan) {
+      const p = installPlan(await surveyFm1s(new Updater(midi)), choice());
+      if ('refuse' in p) throw new Error(`nothing was sent: ${p.refuse}`);
+      plan = p;
+      if (p.target && p.others.length) log(`installing on ${p.target.label}; the other FM-1${p.others.length > 1 ? 's are' : ' is'} left alone`);
+    }
+    const avoid = new Set(plan.avoid), others = plan.others.map((d) => d.inputId);
+    // (another FM-1 that left meanwhile may come back as an update loader or under new ports: nothing more is written)
+    const check = (): void => {
+      if (others.some((id) => midi.inputs.get(id)?.state !== 'connected')) throw new Error(OTHER_CHANGED);
+    };
+    return new Updater(midi, log, { skip: ignoresEditor, avoid: (p: MIDIPort) => avoid.has(p.id), check: others.length ? check : undefined });
+  };
 
   /** every button's action; `installs` (the four install runs, not Check the connection) guards the page against
    *  closing until the run ends */
   const run = async (name: string, fn: () => Promise<void>, installs = false): Promise<void> => {
     if (busy) return;
     busy = true;
+    plan = null;
     setButtons();
     if (installs) {
       unload.arm();
@@ -285,10 +336,14 @@ export function buildFlashTab(root: HTMLElement): void {
     }
     if (!dev) throw new Error('the FM-1 did not come back after the install: connect it in the editor to install the factory sounds');
     try {
+      up.check?.();
       const ask = linkAsk(dev.link);
       const info = parseInfo(await ask(helloFrame(), (p) => p?.cmd === CMD.info, 800, 3));
       if (!info || !(info.features & FEATURE_FACTORY)) return log('this firmware has no factory region: nothing more to install');
       if (editorSkips(info)) return log(IGNORED_INSTALL);
+      const serial = plan?.target?.serial;   // (among several FM-1s: the one installed on, by its serial when it tells it)
+      if (serial && (await readFm1Id((frame, match) => ask(frame, match, 800, 3), info.features)).serial !== serial)
+        throw new Error(`factory sounds not installed: ${OTHER_CHANGED}`);
       const fi = await factoryInfo(ask);
       const set = pickSet(await loadFactorySets(), fi);
       if (!set) throw new Error('no factory sounds for this firmware come with this copy of the app');
@@ -332,6 +387,13 @@ export function buildFlashTab(root: HTMLElement): void {
   const findBtn = el('button', { textContent: 'Check the connection' });
   findBtn.onclick = () =>
     run('find device', async () => {
+      const found = await surveyFm1s(new Updater(await navigator.requestMIDIAccess({ sysex: true })));
+      if (found.length > 1) {   // (several FM-1s, D-965: each, and which one the install buttons take)
+        for (const d of found) log(`${d.label}  [${d.loader ? 'update loader: an update was not finished' : d.ignored ? 'set to ignore the editor' : 'running'}]`);
+        const p = installPlan(found, choice());
+        return log('refuse' in p ? `the install buttons send nothing now: ${p.refuse}`
+          : p.target ? `the install buttons install on ${p.target.label}` : 'the install buttons leave them alone: each is set to ignore the editor');
+      }
       const dev = await (await access()).find();
       if (!dev) throw Object.assign(new Error('not found'), { code: 'notfound' });
       log(`${dev.id.text}  [${/^ota-/i.test(dev.id.model) ? 'update loader: an update was not finished' : 'running'}]  port: ${dev.name}`);
