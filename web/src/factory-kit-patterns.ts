@@ -48,8 +48,6 @@ export interface FactoryKit {
   flams?: Record<string, number>;
   /** patterns 2.. (pattern 1 is the patch's own) */
   patterns: KitPattern[];
-  /** pattern 1's fill-in (pattern 1's notes are the patch's own) */
-  fill?: Fill;
   /** the patch's songs, patterns 1-based as the FM-1 shows them */
   songs: number[][];
 }
@@ -87,13 +85,14 @@ const F_REGGAE: Fill = { from: 8, grid: { ...hush('CH', 'OH', 'HT'), SD: '..x.xx
 const F_SYNTHPOP: Fill = { from: 8, grid: { ...hush('CH', 'OH', 'CB'), HT: 'x.......', MT: '..x.....', LT: '....x...', SD: '......xx', CP: '......xx' } };
 
 // The TR-808: its 12 basic rhythms, each with an A and a B variation, after the styles the TR-808 is known for and the
-// rhythm patterns of its owner's manual. Rhythm 1's A is the patch's own pattern 1 (ELECTRO A).
+// rhythm patterns of its owner's manual. Rhythm 1's A is the patch's own pattern 1 (ELECTRO A). Pattern 1 has no
+// fill-in: it is the factory demonstration pattern its presets swap for their own while its notes are the factory's
+// exactly (preset-patterns.ts applyPresetPattern), and those patterns hold 32 short notes at most (factory.c FC_NOTES).
 const KIT808: FactoryKit = {
   patch: '808 Kit',
   first: KIT_FIRST_ID,
   prefix: '808',
   keys: { BD: 53, SD: 55, CP: 57, CH: 59, OH: 60, LT: 62, RS: 64, CB: 65, MT: 67, HT: 69, CY: 71, AC: 72 },
-  fill: F_ELECTRO,
   patterns: [
     { name: 'ELECTRO B', fill: F_ELECTRO, grid: {
       BD: 'x...x...x.x..x..',
@@ -276,7 +275,7 @@ const KIT808: FactoryKit = {
 
 // The TR-909's fill-ins, on its grooves (its fills and intro have none), in the manner of its own fills: snare rolls
 // ending on accented hits and flams, tom runs down; the groove's bass drum and AC row stay. Pattern 1, the patch's own,
-// has none: the patch has 9 of its 3,840 bytes left.
+// has none, as the 808 Kit's (and the patch has 9 of its 3,840 bytes left).
 const G_HOUSE: Fill = { from: 8, grid: { ...hush('CH', 'OH'), SD: 'x.x.xxXX' } };
 const G_TECHNO_A: Fill = { from: 8, grid: { ...hush('OH', 'RD'), HT: 'Xx......', MT: '..Xx....', LT: '....Xx..', SD: '......ff' } };
 const G_TECHNO_B: Fill = { from: 8, grid: { ...hush('CH', 'OH', 'RD', 'LT'), SD: 'x.xxxxXX' } };
@@ -435,7 +434,6 @@ export function withKitPatterns(p: Patch): Patch {
   if (!kit) return p;
   const tracks = p.modules.filter((m) => m.type === 'steps');
   if (tracks.length !== 1) throw new Error(`${kit.patch}: a kit's patterns are for its one Steps track`);
-  if (kit.fill) tracks[0].notes = withFill(kit, tracks[0].notes ?? [], kit.fill);
   tracks[0].patterns = kit.patterns.map((x): Pattern => ({ notes: withFill(kit, gridNotes(kit, x.grid), x.fill) }));
   const main = p.modules.find((m) => m.type === 'fm1')!;
   const songs = kit.songs.map((s) => s.map((n): SongEntry => ({ pat: n - 1, shift: 0 })));

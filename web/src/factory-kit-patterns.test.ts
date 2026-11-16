@@ -49,13 +49,13 @@ describe('the factory kits\' linked patterns', () => {
     expect(FACTORY_KITS.find((k) => k.patch === '909 Kit')!.patterns).toHaveLength(11);
   });
 
-  it('fill-ins (#852, D-831): with FILL let go every pattern plays as its grid; each 808 pattern and 909 groove has one', () => {
+  it('fill-ins (#852, D-831): with FILL let go every pattern plays as its grid; each linked 808 pattern and 909 groove has one', () => {
     const plain = (ns: readonly StepNote[] | undefined) => (ns ?? []).filter((n) => n.cond !== COND_FILL).map(({ cond: _, ...n }) => n);
     for (const kit of FACTORY_KITS) {
       const track = patchOf(kit.patch).modules.find((m) => m.type === 'steps')!;
       const own = (SOURCE as { name: string; patch: { modules: { type: string; notes?: StepNote[] }[] } }[]).find((x) => x.name === kit.patch)!.patch.modules.find((m) => m.type === 'steps')!;
-      expect(plain(track.notes)).toEqual(own.notes);
-      expect(track.notes!.some((n) => n.cond === COND_FILL)).toBe(!!kit.fill);
+      // (pattern 1 is the factory demonstration pattern the kit's presets swap for their own: it stays as it is)
+      expect(track.notes).toEqual(own.notes);
       kit.patterns.forEach((x, k) => {
         const notes = track.patterns![k]!.notes!;
         expect(plain(notes)).toEqual(gridNotes(kit, x.grid));
@@ -63,8 +63,7 @@ describe('the factory kits\' linked patterns', () => {
         for (const steps of Object.values(x.fill?.grid ?? {})) expect(steps).toMatch(new RegExp(`^[.xXf]{${16 - x.fill!.from}}$`));
       });
     }
-    const k808 = FACTORY_KITS.find((k) => k.patch === '808 Kit')!;
-    expect(!!k808.fill && k808.patterns.every((x) => x.fill)).toBe(true);
+    expect(FACTORY_KITS.find((k) => k.patch === '808 Kit')!.patterns.every((x) => x.fill)).toBe(true);
     expect(FACTORY_KITS.find((k) => k.patch === '909 Kit')!.patterns.filter((x) => x.fill).map((x) => x.name))
       .toEqual(['HOUSE', 'TECHNO A', 'TECHNO B', 'ACID', 'JACK', 'GARAGE', 'ELECTRO', 'BREAKS']);
   });
