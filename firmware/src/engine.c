@@ -7029,7 +7029,7 @@ static uint32_t ring_scale(int32_t *s, uint32_t ns, uint32_t e, int quiet)
         for (i = 0; i < ns; i++) {
             /* a separate (volatile) read: fused, this loop compiles to pi32v2's in-memory shift `[rX] <<= rY`, which
              * fm1-emu cannot decode (emu:smoke halted on it). Only blocks of a silent ring come here. */
-            int32_t v = ((volatile int32_t *)s)[i];
+            int32_t v = *(volatile int32_t *)&s[i];
             s[i] = (int32_t)((uint32_t)v << d);
         }
     else if (d < 0)
