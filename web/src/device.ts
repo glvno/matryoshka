@@ -23,6 +23,7 @@ import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 import { FEATURE_FACTORY, FEATURE_FX_PRESETS, type FactoryInfo } from './protocol';
 import { factoryInfo, installFactory } from './factory-content';
 import { fxPresetInfo } from './fx-preset-format';
+import { autoPick, fm1Label, NOT_CHOSEN, readFm1Id, rememberedFm1, rememberFm1, suggested, type Fm1Choice, type Fm1Id } from './fm1-choice';
 
 /** what connecting the FM-1 does with Live sync (#171): `sync` turns it on without asking, `ask` offers Sync / Not now,
  *  `off` leaves it off (Not now was chosen in this visit) */
@@ -251,8 +252,33 @@ export class DeviceLink {
   get input(): MIDIInput | null {
     return this.inp;
   }
+  /** the MIDI output the link sends on */
+  get output(): MIDIOutput | null {
+    return this.out;
+  }
 
-  async connect(): Promise<Info> {
+  /** the FM-1 linked now, told apart from any other (D-965): its name, serial, the rig's mark, how many FM-1s answered;
+   *  null while not connected */
+  identity: Fm1Id | null = null;
+  /** asks the user which FM-1 to link when several answered and none is remembered (main.ts's chooser): the index chosen,
+   *  or null for none. Without it Connect links none of them. `first`: the one to offer first */
+  choose: ((found: Fm1Id[], first: number) => Promise<number | null>) | null = null;
+
+  /** the FM-1 the user chose, for the Install panel (D-965): the linked one, else the one remembered in this browser */
+  get choice(): Fm1Choice | null {
+    if (this.connected && this.identity) return { serial: this.identity.serial, inputId: this.inp!.id, label: fm1Label(this.identity), linked: true };
+    const serial = rememberedFm1();
+    return serial ? { serial, inputId: null, label: fm1Label({ name: null, serial, rig: false, index: 0, count: 1 }), linked: false } : null;
+  }
+
+  /**
+   * Connect FM-1 (#187, #702, D-965). Every pair named like an FM-1 is asked HELLO, and only when none answers, every other
+   * pair once. One FM-1 that answered is linked. Of several, the one remembered by serial is, unless `ask`; else the user
+   * chooses (`choose`), and Cancel keeps the FM-1 linked before, if any. What an FM-1 sends after HELLO reaches the editor
+   * only from the one linked: it is asked again.
+   */
+  async connect(o: { ask?: boolean } = {}): Promise<Info> {
+    const before = this.connected ? this.inp?.id : undefined;
     this.detach(); // reconnect never inherits the previous device capability
     if (!navigator.requestMIDIAccess) throw new Error('Web MIDI is not available in this browser (use Chrome or Edge)');
     let access: MIDIAccess;
@@ -267,19 +293,71 @@ export class DeviceLink {
     const inputs = [...access.inputs.values()], outputs = [...access.outputs.values()];
     // the ports named like an FM-1 first; then, as macOS may show it under another name (#187), every other in / out pair
     const pairs = linkCandidates(inputs, outputs);
+    const found: { c: LinkCandidate; info: Info }[] = [];
+    const ids: Fm1Id[] = [];
     let ignored = 0;   // FM-1s set to ignore the editor (#702): skipped, and said
-    for (const c of pairs) {
-      this.attach(c.inp, c.out);
-      try {
-        const info = await this.hello(c.named ? TRIES : 1);
-        if (!editorSkips(info)) return info;
-        ignored++;
-      } catch {
-        /* no answer: the next pair */
+    const events = this.onEvent;
+    this.onEvent = () => {};
+    try {
+      for (const c of pairs) {
+        if (!c.named && found.length) break;   // (an FM-1-named pair answered: the other pairs are not asked)
+        this.attach(c.inp, c.out);
+        try {
+          const info = await this.hello(c.named ? TRIES : 1);
+          if (editorSkips(info)) ignored++;
+          else found.push({ c, info });
+        } catch {
+          /* no answer: the next pair */
+        }
+        this.detach();
       }
-      this.detach();
+      if (!found.length) throw new Error(ignored ? ignoredFound(ignored) : notFound(inputs, outputs, pairs.length > 0));
+      if (found.length > 1)
+        for (const [i, f] of found.entries()) {
+          this.attach(f.c.inp, f.c.out);
+          this.info = f.info;
+          ids.push(await this.identify(i, found.length));
+          this.detach();
+        }
+    } finally {
+      this.onEvent = events;
     }
-    throw new Error(ignored ? ignoredFound(ignored) : notFound(inputs, outputs, pairs.length > 0));
+    let pick: number | null = 0;
+    if (found.length > 1) {
+      const remembered = rememberedFm1();
+      pick = autoPick(ids, remembered, o.ask);
+      if (pick === null) {
+        const chosen = this.choose ? await this.choose(ids, suggested(ids, remembered)) : null;
+        const kept = before ? ids.findIndex((d) => d.portId === before) : -1;
+        if (chosen !== null && ids[chosen]) {
+          pick = chosen;
+          rememberFm1(ids[chosen]);
+        } else if (kept >= 0) pick = kept;
+        else throw new Error(NOT_CHOSEN);
+      }
+    }
+    const { c } = found[pick];
+    this.attach(c.inp, c.out);
+    let info: Info;
+    try {
+      info = await this.hello(c.named ? TRIES : 1);
+    } catch (e) {
+      this.detach();
+      throw e;
+    }
+    if (editorSkips(info)) {
+      this.detach();
+      throw new Error(ignoredFound(1));
+    }
+    this.identity = ids[pick] ?? await this.identify(0, 1);
+    return info;
+  }
+
+  /** what tells the attached FM-1 apart (D-965, fm1-choice.ts readFm1Id), with its place among the FM-1s that answered */
+  private async identify(index: number, count: number): Promise<Fm1Id> {
+    const fw = this.info?.firmware;
+    const id = await readFm1Id((frame, match) => this.request(frame, match), this.info?.features ?? 0);
+    return { ...id, index, count, port: this.inp?.name ?? '', portId: this.inp?.id ?? '', firmware: fw ? `${fw.major}.${fw.minor}.${fw.patch}` : '' };
   }
 
   /** let go of the ports (an FM-1 set to ignore the editor, #702): nothing more is sent or heard */
@@ -287,6 +365,7 @@ export class DeviceLink {
     if (this.inp) this.inp.onmidimessage = null;
     this.out = this.inp = null;
     this.info = null;
+    this.identity = null;
     this.origins.reset();
     this.running = false;
     this.stored = null;
