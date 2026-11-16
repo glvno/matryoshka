@@ -71,6 +71,10 @@ html { touch-action: pan-x pan-y; }
 .budget-item.pick { cursor: pointer; }
 .budget-item.pick:hover > :first-child { color: var(--ink); text-decoration: underline; }
 .budget-list p { margin: 4px 0 0; font-size: 11px; }
+/* the cost list's order and length (#942, main.ts showBudget) */
+.budget-sort { display: flex; gap: 4px; margin: 2px 0; }
+.budget-sort button { min-height: 0; padding: 1px 6px; font-size: 10.5px; }
+.budget-sort button[aria-pressed="true"] { color: var(--panel); background: var(--secondary); border-color: var(--secondary); }
 /* collapsing the sidebar: the canvas takes its place, and the sidebar shrinks to the strip left of the Main dock
    (the logo and the expand button); not in the compact layout, where the sidebar is a drawer */
 .sidebar { position: relative; }
@@ -924,6 +928,9 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 /* an engine (engines.ts): gold, the gate colour */
 .mtag.eng { --tag: var(--gate); }
 .mhead .voices { font: 600 11px/1 'Barlow Condensed', system-ui, sans-serif; padding: 1px 5px; border: 1px solid currentColor; border-radius: 8px; color: var(--accent); }
+/* a card's share of the FM-1's CPU (#942, editor.ts costSlot): small, quiet, tabular */
+.mhead .mcpu { padding: 0 3px; font: 500 10px/1 'Barlow', system-ui, sans-serif; font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; cursor: help; }
+.mhead .mcpu[hidden] { display: none; }
 /* the header: ▸ (an assembly), the tag and the title (the drag handle), then poly (an assembly), ⏻ and ⋯, always shown */
 .mhead { padding: 0 4px 0 6px; }
 .mhead > span:not(.tools), .fhead > span:not(.tools) { flex: 1; contain: inline-size; }

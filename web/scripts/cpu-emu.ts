@@ -30,7 +30,7 @@ export interface EmuRun { ns: Map<number, number>; lanes: Map<number, [number, n
 interface Req { p: Patch; keys: number[]; run: boolean; done: (r: EmuRun) => void; fail: (e: Error) => void }
 
 export function buildEmu(): void {
-  const cfg = execFileSync(`${ROOT}tools/emu/isa_fix.sh`, { encoding: 'utf8' }).trim().split('\n').pop()!;
+  const cfg = execFileSync(`${ROOT}tools/emu/isa_fix.sh`, { cwd: ROOT, encoding: 'utf8' }).trim().split('\n').pop()!;
   execFileSync('cargo', ['build', '--release', '--config', cfg], { cwd: `${ROOT}tools/emu`, stdio: 'inherit' });
   for (const f of ['matryoshka.bin', 'matryoshka.elf']) if (!existsSync(`${FW}/${f}`)) throw new Error(`${FW}/${f} missing (FW_DIR)`);
 }
