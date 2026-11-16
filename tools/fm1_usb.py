@@ -18,6 +18,7 @@ the ports of the device at that USB location, so the installer cannot see, let a
 opened by index with python-rtmidi (whose port i is CoreMIDI's source / destination i on macOS), and the index is checked
 against CoreMIDI before and after the open. Needs macOS and python-rtmidi.
 """
+import atexit
 import ctypes
 import ctypes.util
 import json
@@ -203,6 +204,7 @@ class RtLink:
         self.q = queue.Queue()
         midi_in.ignore_types(sysex=False, timing=True, active_sense=True)
         midi_in.set_callback(self._rx)
+        atexit.register(self.close)   # (a packet during interpreter shutdown crashed python-rtmidi's callback: SIGSEGV)
 
     def _rx(self, event, _data=None):
         msg = event[0]
@@ -231,6 +233,10 @@ class RtLink:
             self.q.get_nowait()
 
     def close(self):
+        try:
+            self.inp.cancel_callback()
+        except Exception:
+            pass
         for p in (self.inp, self.out):
             try:
                 p.close_port()
