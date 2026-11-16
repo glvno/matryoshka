@@ -586,7 +586,7 @@ typedef struct {
         struct { int32_t v, rk, inc, k; uint32_t t, len; uint8_t stage, prev, cst; } env8;   /* Q30, as env; one step's rates
                                                     * cached (cst: its step, 0 none; rk: the rate they are for): worked out
                                                     * again when the step changes or its rate moves */
-        struct { int16_t *buf; uint32_t w, seed; int32_t lp, s1, err, burst, blen; } str;   /* Q13 line with error feedback */
+        struct { int16_t *buf; uint32_t w, seed; int32_t lp, s1, err, burst, blen, cnt; uint16_t peak, ppeak, zc; uint8_t ex, mode; int8_t zk; } str;   /* the String's and the Comb's line with its exponent and loop state (str_run) */
         struct { uint32_t phase; int32_t s1; } wt;
         struct { uint32_t phase, r; int32_t s1; uint8_t odd; } pd;   /* r: the resonance sine's phase, restarted every cycle; odd: the second waveform's cycle */
         struct { int16_t *buf; uint32_t w, phase; } ch;
@@ -9164,36 +9164,191 @@ static void m_env8(const node_t *nd, inst_t *it, uint32_t n)
 
 #define LOG2_1000_Q16 653124        /* log2(1000): decay is the time to -60 dB */
 
-/* The plucked string (modules.ts string): a Q13 delay line of one period with a one-pole in the loop, written with
- * first-order error feedback so the int16 rounding does not pile up in the loop. Period, loop gain and the damping's
- * delay compensation are set once per block from the block's first pitch. */
-static void m_string(const node_t *nd, inst_t *it, uint32_t n)
+/* The String's and the Comb filter's loop (modules.ts string, comb; it->s.str): a delay line of one period, read with
+ * linear interpolation, through a one-pole damping lowpass, times the loop gain k (the String's decay, the Comb's
+ * feedback), plus the input, held to +-2 and written back. The line is int16 with a shared exponent ex (0..STR_EXMAX):
+ * a sample q stands for q 2^-(14 + ex). After every whole line written (STR_LEN samples) whose largest sample is under
+ * 2^13 the exponent goes up to keep it under 2^14 (2^12 while an input feeds it), so as a ring falls its 15 bits cover
+ * the ring's own level, down to steps of 2^-30; a write too large takes it back down. The samples written before a
+ * change are read shifted until they are written over (str_unzone). No extra memory: the line stays
+ * int16. The loop runs in Q30. The product lp k is cut toward zero and the one-pole never steps past its input, so
+ * neither grows a sample. Written to the line at ex < STR_EXMAX, a sample is rounded to the nearest step and the
+ * remainder carried into the next one (error feedback: no step is lost on average, so the decay follows the reference's
+ * to the Q16 output's own floor); at STR_EXMAX it is kept whole, and the loop can only shrink: lp k cut toward zero is
+ * at least one step smaller than the largest sample, so a ring with no input falls to exactly zero (D-1109; #969: a
+ * Q13 line with rounded Q16 products held a quiet ring for ever, at -78 dBFS for a 10 s String). Error feedback can
+ * hold a small pattern up (a remainder carried into the neighbouring sample); the stall guard catches it: when a whole
+ * line's largest sample has not fallen and nothing came in, the next whole line is written cut toward zero instead.
+ * Period, damping and k are set once per block from the block's first pitch. */
+#define STR_EXMAX 16
+#define STR_TOP 0x7FFE0000   /* +-2 in Q30 less two steps of the line at ex 0, so a carried remainder cannot overflow it */
+
+static int32_t str_period(int32_t pitch)   /* Q16 samples, 2 .. STR_LEN - 2 */
 {
-    const esig_t *pitch = it->in[STRING_I_PITCH], *gate = it->in[STRING_I_GATE], *exc = it->in[STRING_I_EXC];
-    esig_t *out = it->out[0];
-    int16_t *buf = it->s.str.buf;
-    uint32_t dt = exp2_scale(INC_C4, pitch[0] + EF(it, STRING_P_COARSE) / 12), w = it->s.str.w, seed = it->s.str.seed, i, di;
-    int32_t per, cl, dl, d, fr, g, bl, lvl = EF(it, STRING_P_LEVEL), kind = round_q16(EF(it, STRING_P_BURST));
-    int32_t lp = it->s.str.lp, s1 = it->s.str.s1, err = it->s.str.err, burst = it->s.str.burst, blen = it->s.str.blen;
-    int64_t e;
-    if (dt == 0u)
-        dt = 1u;
-    per = (int32_t)clampi((int64_t)((1ull << 48) / dt) > 0x7FFFFFFF ? 0x7FFFFFFF : (int32_t)((1ull << 48) / dt), 2 << 16, (int32_t)(STR_LEN - 2u) << 16);   /* period, Q16 samples */
-    cl = ENG_ONE - mul16(EF(it, STRING_P_DAMP), 58982);                    /* 1 - 0.9 damp */
-    dl = (int32_t)(((int64_t)(ENG_ONE - cl) << 16) / cl);                 /* the one-pole's low-frequency delay */
-    d = per - dl;
+    uint32_t dt = exp2_scale(INC_C4, pitch);
+    uint64_t p = (1ull << 48) / (dt ? dt : 1u);
+    return (int32_t)clampi(p > 0x7FFFFFFFu ? 0x7FFFFFFF : (int64_t)p, 2 << 16, (int32_t)(STR_LEN - 2u) << 16);
+}
+
+/* A sample of the line at another exponent: shifted up k bits, or down -k cut toward zero */
+static inline int32_t str_conv(int32_t v, int32_t k)
+{
+    return k > 0 ? v * (1 << k) : v >= 0 ? v >> -k : -(-v >> -k);
+}
+
+/* A change of the line's exponent is spread over the next STR_LEN writes: the samples written before it (the old zone,
+ * the cnt oldest from the write position w) are read shifted by zk bits (str_conv) until they are written over, so no
+ * block pays for shifting the whole line. This shifts what is left of the old zone at once (a change while one is still
+ * spreading). */
+static void __attribute__((noinline)) str_unzone(int16_t *b, uint32_t w, uint32_t cnt, int32_t zk)
+{
+    while (cnt--) {
+        b[w] = (int16_t)str_conv(b[w], zk);
+        w = w + 1u == STR_LEN ? 0u : w + 1u;
+    }
+}
+
+/* the one-pole's step when r - lp does not fit 32 bits (a swing of more than 2 within its memory) */
+static int32_t __attribute__((noinline)) str_lp_far(int32_t r, int32_t lp, int32_t cl)
+{
+    int64_t m = ((int64_t)r - lp) * cl;
+    return (int32_t)(lp + ((m + (m > 0 ? 0xFFFF : 0)) >> 16));
+}
+
+/* One block through the loop: x in, out = x dry + y wet (Q16). Period, damping and k once per block. */
+static void __attribute__((noinline)) str_run(inst_t *it, const esig_t *x, esig_t *out, uint32_t n, int32_t per, int32_t damp, int32_t k,
+                                              int32_t dry, int32_t wet)
+{
+    int16_t *b = it->s.str.buf;
+    int32_t cl = ENG_ONE - mul16(damp, 58982);                            /* 1 - 0.9 damp */
+    int32_t d = per - (int32_t)(((int64_t)(ENG_ONE - cl) << 16) / cl);    /* less the one-pole's low-frequency delay */
+    int32_t lp = it->s.str.lp, err = it->s.str.err, ex = it->s.str.ex, peak = it->s.str.peak, cnt = it->s.str.cnt, v1;
+    int32_t inp = it->s.str.mode & 2u, passive = it->s.str.mode & 1u, restart = 0, w4 = wet * 4, zk = it->s.str.zk, fr, s, rnd, cut, emask, sh;
+    uint32_t c32 = cl >= ENG_ONE ? 0xFFFFFFFFu : (uint32_t)cl << 16, w = it->s.str.w, zc = it->s.str.zc, zold = 0, rp, di, f, i;   /* c32: cl, Q32 */
     if (d < ENG_ONE)
         d = ENG_ONE;
     di = (uint32_t)d >> 16;
     fr = d & 0xFFFF;
+    s = 16 - ex;                                                          /* a line step, in Q30 steps: 2^s */
+    f = (uint32_t)fr << s;                                                /* the fraction, so (v1 - v0) f >> 16 is Q30 */
+    rnd = s && !passive ? 1 << (s - 1) : 0;                               /* writes to nearest with error feedback, */
+    cut = rnd ? 0 : (1 << s) - 1;                                         /* or cut toward zero */
+    emask = rnd ? -1 : 0;
+    err &= emask;
+    rp = w >= di ? w - di : w + STR_LEN - di;                             /* the read position, and the sample before it */
+    v1 = b[rp ? rp - 1u : STR_LEN - 1u];
+    if (zk) {                                                             /* the old zone: samples di or more writes older than */
+        zold = di > zc ? di - zc : 0u;                                    /* the change, read shifted (str_unzone) */
+        if (di + 1u > zc)
+            v1 = str_conv(v1, zk);
+    }
+    for (i = 0; i < n; i++) {
+        int32_t xi = x[i], v0 = b[rp], r, dist, y, a, q;
+        int64_t m;
+        if (i < zold)
+            v0 = str_conv(v0, zk);
+        /* Q30, between v0 and v1 (the terms alone can pass 32 bits at ex 0: summed modulo 2^32) */
+        r = (int32_t)((uint32_t)v0 * (1u << s) + (uint32_t)(((int64_t)(v1 - v0) * f) >> 16));
+        if (__builtin_sub_overflow(r, lp, &dist))
+            lp = str_lp_far(r, lp, cl);
+        else {                                                            /* a step of at least one toward r, never past it */
+            int32_t h = (int32_t)(((int64_t)(dist < 0 ? dist : -dist) * c32) >> 32);
+            lp += dist < 0 ? h : -h;
+        }
+        m = (int64_t)lp * k;
+        y = (int32_t)((m + ((m >> 63) & 0xFFFF)) >> 16);                 /* lp k cut toward zero */
+        if (xi) {                                                         /* (with no input |y| < |lp| < 2: no clamp) */
+            m = (int64_t)y + ((int64_t)xi << 14);
+            y = (int32_t)(m > STR_TOP ? STR_TOP : m < -STR_TOP ? -STR_TOP : m);
+        }
+        a = y + err;
+        q = (a + rnd + ((a >> 31) & cut)) >> s;
+        if ((uint32_t)(q + 32767) > 65534u) {                             /* too large for the line's exponent: */
+            sh = 34 - (int32_t)__builtin_clz((uint32_t)(q < 0 ? -q : q) >> 15);   /* the line shifted down, 2 bits to spare */
+            sh = sh < ex ? sh : ex;
+            if (zk && zc + i < STR_LEN)                                   /* (a change still spreading: finished first) */
+                str_unzone(b, w, STR_LEN - (zc + i), zk);
+            zk = -sh;                                                     /* spread over the next STR_LEN writes */
+            zc = -i;
+            zold = i + di;
+            v0 = str_conv(v0, zk);                                        /* (carried as the next sample's v1) */
+            ex -= sh;
+            s = 16 - ex;
+            f = (uint32_t)fr << s;
+            rnd = s ? 1 << (s - 1) : 0;
+            cut = rnd ? 0 : (1 << s) - 1;
+            emask = rnd ? -1 : 0;
+            q = clampi((a + rnd + ((a >> 31) & cut)) >> s, -32767, 32767);
+            passive = 0;
+            restart = 1;                                                  /* a new window from here, the guard off */
+            peak = 0;
+            cnt = -(int32_t)i - 1;
+        }
+        err = (a - q * (1 << s)) & emask;
+        b[w] = (int16_t)q;
+        w = w + 1u == STR_LEN ? 0u : w + 1u;
+        rp = rp + 1u == STR_LEN ? 0u : rp + 1u;
+        v1 = v0;                                                          /* (rp's sample: the write went di ahead of it) */
+        q = q < 0 ? -q : q;
+        if (q > peak)
+            peak = q;
+        inp |= xi;
+        m = (int64_t)y * w4;                                              /* y wet, Q16, rounded */
+        out[i] = (dry ? mul16(xi, dry) : 0) + (int32_t)(m >> 32) + (int32_t)((uint32_t)m >> 31);
+    }
+    /* after every whole line written (STR_LEN samples) since the window began, the stall guard and the shift up: the
+     * largest sample of that line is the largest the line holds */
+    cnt += (int32_t)n;
+    if (zk && (zc += n) >= STR_LEN)
+        zk = 0;
+    if (restart)
+        it->s.str.ppeak = 0xFFFFu;
+    else if (cnt >= (int32_t)STR_LEN) {
+        passive = !inp && peak && peak >= it->s.str.ppeak;
+        if (!peak)
+            ex = STR_EXMAX;
+        else {
+            sh = (inp ? 12 : 14) - (32 - (int32_t)__builtin_clz((uint32_t)peak));   /* under 2^14, or 2^12 while fed: room to grow */
+            sh = sh < STR_EXMAX - ex ? sh : STR_EXMAX - ex;
+            if (sh > 0) {                                                 /* (spread over the next STR_LEN writes) */
+                zk = sh;
+                zc = 0;
+                ex += sh;
+                peak <<= sh;
+            }
+        }
+        it->s.str.ppeak = (uint16_t)peak;
+        peak = 0;
+        inp = 0;
+        cnt = 0;
+    }
+    it->s.str.w = w;
+    it->s.str.lp = lp;
+    it->s.str.err = err;
+    it->s.str.cnt = cnt;
+    it->s.str.peak = (uint16_t)peak;
+    it->s.str.ex = (uint8_t)ex;
+    it->s.str.zk = (uint8_t)zk;
+    it->s.str.zc = (uint16_t)(zk ? zc : 0u);
+    it->s.str.mode = (uint8_t)(passive | (inp ? 2u : 0u));
+}
+
+/* The plucked string (modules.ts string): the loop above with k = the loop gain for `decay`. A rising gate fires a
+ * burst of one period. */
+static void m_string(const node_t *nd, inst_t *it, uint32_t n)
+{
+    const esig_t *pitch = it->in[STRING_I_PITCH], *gate = it->in[STRING_I_GATE], *exc = it->in[STRING_I_EXC];
+    esig_t *out = it->out[0];
+    uint32_t seed = it->s.str.seed, i;
+    int32_t per = str_period(pitch[0] + EF(it, STRING_P_COARSE) / 12), g, bl, kind = round_q16(EF(it, STRING_P_BURST));
+    int32_t s1 = it->s.str.s1, burst = it->s.str.burst, blen = it->s.str.blen;
+    int64_t e;
     e = -(((int64_t)LOG2_1000_Q16 * per) >> 16);                           /* -log2(1000) * period, Q16 */
     e = (e << 16) / ((int64_t)EF(it, STRING_P_DECAY) * ENG_SR);           /* / (decay * sr): octaves, Q16 */
     g = (int32_t)exp2_scale(ENG_ONE, (int32_t)(e < -(47 << 16) ? -(47 << 16) : e));
     bl = (per + 32768) >> 16;
-    for (i = 0; i < n; i++) {
-        int32_t x = exc[i], r0, r1, r, y, wq;
-        int16_t q;
-        uint32_t p0 = w >= di ? w - di : w + STR_LEN - di, p1 = p0 ? p0 - 1u : STR_LEN - 1u;
+    for (i = 0; i < n; i++) {                                             /* the excitation, into out */
+        int32_t x = exc[i];
         if (gate[i] >= 32768 && s1 < 32768) {
             burst = bl;
             blen = bl;
@@ -9207,67 +9362,21 @@ static void m_string(const node_t *nd, inst_t *it, uint32_t n)
                 x += blen - burst < (blen >> 1) ? ENG_ONE : -ENG_ONE;
             burst--;
         }
-        r0 = (int32_t)buf[p0] * 8;
-        r1 = (int32_t)buf[p1] * 8;
-        r = r0 + mulr(r1 - r0, fr, 16);
-        lp += mulr(r - lp, cl, 16);
-        y = clampi(x + mulr(lp, g, 16), -2 * ENG_ONE, 2 * ENG_ONE);
-        wq = y + err;
-        q = dly_pack(wq);
-        err = wq - (int32_t)q * 8;
-        buf[w] = q;
-        if (++w == STR_LEN)
-            w = 0;
-        out[i] = mul16(y, lvl);
+        out[i] = x;
     }
-    it->s.str.w = w;
+    str_run(it, out, out, n, per, EF(it, STRING_P_DAMP), g, 0, EF(it, STRING_P_LEVEL));
     it->s.str.seed = seed;
-    it->s.str.lp = lp;
     it->s.str.s1 = s1;
-    it->s.str.err = err;
     it->s.str.burst = burst;
     it->s.str.blen = blen;
 }
 
-/* The comb filter (modules.ts comb): the string's line and loop (it->s.str: buf, w, lp, err) with signed feedback and
- * no burst; out = in (1 - mix) + y mix. */
+/* The comb filter (modules.ts comb): the string's loop with k = fb (signed) and no burst; out = in (1 - mix) + y mix. */
 static void m_comb(const node_t *nd, inst_t *it, uint32_t n)
 {
-    const esig_t *in = it->in[COMB_I_IN], *pitch = it->in[COMB_I_PITCH];
-    esig_t *out = it->out[0];
-    int16_t *buf = it->s.str.buf;
-    uint32_t dt = exp2_scale(INC_C4, pitch[0] + EF(it, COMB_P_COARSE) / 12), w = it->s.str.w, i, di;
-    int32_t per, cl, dl, d, fr, fb = EF(it, COMB_P_FB), mix = EF(it, COMB_P_MIX), dry = ENG_ONE - mix;
-    int32_t lp = it->s.str.lp, err = it->s.str.err;
-    if (dt == 0u)
-        dt = 1u;
-    per = (int32_t)clampi((int64_t)((1ull << 48) / dt) > 0x7FFFFFFF ? 0x7FFFFFFF : (int32_t)((1ull << 48) / dt), 2 << 16, (int32_t)(STR_LEN - 2u) << 16);
-    cl = ENG_ONE - mul16(EF(it, COMB_P_DAMP), 58982);
-    dl = (int32_t)(((int64_t)(ENG_ONE - cl) << 16) / cl);
-    d = per - dl;
-    if (d < ENG_ONE)
-        d = ENG_ONE;
-    di = (uint32_t)d >> 16;
-    fr = d & 0xFFFF;
-    for (i = 0; i < n; i++) {
-        int32_t x = in[i], r0, r1, y, wq;
-        int16_t q;
-        uint32_t p0 = w >= di ? w - di : w + STR_LEN - di, p1 = p0 ? p0 - 1u : STR_LEN - 1u;
-        r0 = (int32_t)buf[p0] * 8;
-        r1 = (int32_t)buf[p1] * 8;
-        lp += mulr(r0 + mulr(r1 - r0, fr, 16) - lp, cl, 16);
-        y = clampi(x + mulr(lp, fb, 16), -2 * ENG_ONE, 2 * ENG_ONE);
-        wq = y + err;
-        q = dly_pack(wq);
-        err = wq - (int32_t)q * 8;
-        buf[w] = q;
-        if (++w == STR_LEN)
-            w = 0;
-        out[i] = mul16(x, dry) + mul16(y, mix);
-    }
-    it->s.str.w = w;
-    it->s.str.lp = lp;
-    it->s.str.err = err;
+    int32_t mix = EF(it, COMB_P_MIX);
+    str_run(it, it->in[COMB_I_IN], it->out[0], n, str_period(it->in[COMB_I_PITCH][0] + EF(it, COMB_P_COARSE) / 12), EF(it, COMB_P_DAMP),
+            EF(it, COMB_P_FB), ENG_ONE - mix, mix);
     (void)nd;
 }
 
