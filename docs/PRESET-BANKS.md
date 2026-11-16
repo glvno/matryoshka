@@ -59,6 +59,22 @@ The single oscillator, resonant filter, accent and slide are the useful constrai
 | Short Zap | Very short synthetic punctuation. |
 | Long Sweep | Long filter travel for sparse phrases and transitions. |
 
+## Shush 101
+
+One oscillator with its sub oscillator and noise, the 24 dB filter, one envelope and the modulator are the useful constraints. These are authored roles the SH-101 is known for, set from its panel, not a transcription of an original patch chart. [Reference](https://electricdruid.net/wp-content/uploads/2025/05/SH101-Service-Manual.pdf).
+
+| Preset | Intended use |
+|---|---|
+| Init | Saw and sub oscillator through a half-open filter, for hearing the core controls. |
+| Rubber Bass | Short, snappy saw-and-sub bass. |
+| Sub Pulse Bass | Round low pulse with the sub two octaves down; legato notes run on. |
+| Acid Line | Resonant saw that slides on legato notes, for sequenced lines. |
+| Glide Lead | Bright gliding lead with vibrato on the modulation lever. |
+| PWM Brass | Pulse-width brass with a slow filter opening. |
+| Random Bleeps | Sample-and-hold filter steps, retriggered by the modulator. |
+| Hollow Square | Organ-like square lead with the level on the gate. |
+| Wind | Resonant noise swept slowly by the modulator. |
+
 ## Vernon 100
 
 Dual-voice interaction and cross-modulation matter more than covering generic piano or string roles. Preserve the contrasting stepped, ringing and slow sounds. The original EML documentation is a historical control reference; no recorded original-instrument match is asserted. [Reference](http://www.synthfool.com/docs/EML/100_series/).

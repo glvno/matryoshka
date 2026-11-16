@@ -229,6 +229,23 @@ for (let k = 1; k <= 8; k++) {
   tests[name] = p;
   events[name] = [[0, 'on', 48 + k], [128 * 30, 'on', 60 + k], [128 * 90, 'off', 48 + k], [128 * 110, 'off', 60 + k]];
 }
+// Shush 101's switches (#869, D-1057): every position of WAVEFORM, PWM source, SUB MODE, ENV TRIGGER, VCA and PORTA MODE,
+// with legato notes (AUTO glides and GATE+TRIG retriggers only on them) and the lever's LFO MOD pushed
+for (const [k, rows] of ([
+  [['waveform', 3], ['trigger', 3], ['pwm source', 3], ['pw', 0.6], ['pulse', 0.6], ['sub mode', 3], ['mod', 1.5], ['rate', 6]],
+  [['waveform', 2], ['vco mod', 0.1], ['trigger', 2], ['porta mode', 3], ['portamento', 0.1], ['vca', 2], ['sub mode', 2], ['pwm source', 1], ['pw', 0.8], ['noise', 0.3]],
+  [['waveform', 4], ['mod', 0.5], ['porta mode', 1], ['trigger', 1], ['sub mode', 1], ['pulse', 0.4], ['pw', 0.3], ['bend vco', 0.5], ['bend vcf', 1]],
+] as [string, number][][]).entries()) {
+  const name = `shush-switches-${k + 1}`;
+  const p = FM1_PRESETS['Shush 101']();
+  const card = p.assemblies!.find((a) => a.params.some((r) => r.label === 'sub mode'))!;
+  for (const [label, v] of rows) {
+    const row = card.params.find((r) => r.label === label)!;
+    p.modules.find((m) => m.id === row.module)!.params[row.param] = v;
+  }
+  tests[name] = p;
+  events[name] = [[0, 'on', 48], [128 * 30, 'on', 55], [128 * 50, 'cc', 1, 90], [128 * 70, 'off', 48], [128 * 90, 'off', 55], [128 * 100, 'on', 60], [128 * 120, 'off', 60]];
+}
 // 8 Lire's Hyper LFO into the delay time (#484): square steps move the time by hundreds of ms; the read position glides
 // there. Both groups held (drones with no key), both delay lines moved by the AND square (TRI / SQUARE on SQUARE, #658),
 // and a key's release under the glide. (A time moved continuously, by the triangle or SELF, drifts apart between the

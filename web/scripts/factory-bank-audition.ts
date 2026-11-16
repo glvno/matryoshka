@@ -139,8 +139,8 @@ export function exportSelectedFactoryAudition(options: AuditionExportOptions) {
   if (options.evidence && (!options.cases || !options.firmware))
     throw new Error('Evidence requires independent --cases and --firmware inputs');
   const bank = buildSelectedFactoryBank();
-  if (bank.length !== 20 || SOURCE.length !== bank.length || factoryFxAudit.length !== 13)
-    throw new Error('Expected 20 bank entries, 13 melodic selections and seven protected patches');
+  if (bank.length !== 21 || SOURCE.length !== bank.length || factoryFxAudit.length !== 14)
+    throw new Error('Expected 21 bank entries, 14 melodic selections and seven protected patches');
   const created = options.created ?? new Date();
   const bankJson = JSON.stringify(bank, null, 2) + '\n';
   const curatedPresets = new Map<string, Preset>();
@@ -279,7 +279,7 @@ export function exportSelectedFactoryAudition(options: AuditionExportOptions) {
     defaults: 'Added FX, remaining Harmony and Arp off; intrinsic effects/defaults preserved. Removed harmonizers and shortened Canvas captions are explicit per-entry compromises. No DSP quality flags or modulation restrictions.',
     curatedPresets: {
       count: presetLibrary.presets.length, inventory: presetInventory, file: 'audition-presets.json',
-      scope: 'All thirteen selected melodic engines, with intentional per-sound FX, nine additional lo-fi synth designs and the hardware-parity curation. Protected drum/drone presets are retained. Browser renders and owner listening are separate from CPU qualification.',
+      scope: 'All fourteen selected melodic engines, with intentional per-sound FX, nine additional lo-fi synth designs and the hardware-parity curation. Protected drum/drone presets are retained. Browser renders and owner listening are separate from CPU qualification.',
       transfer: 'The matching firmware contains the authored sounds as read-only factory presets; load the matching selected bank graphs to use them. AUD-prefixed saved copies are optional and can be sent with Send this patch’s presets. They consume user-store slots and do not replace ROM. Back up before import; an existing same-structure/same-name user copy can be replaced.',
     },
     counts: { total: bank.length, melodic: factoryFxAudit.length, protected: 7 },

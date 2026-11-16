@@ -413,5 +413,24 @@
    }
   ],
   "evidence": "delay row6 is adsr22.a (vibrato onset), not audio Delay."
+ },
+ {
+  "name": "Shush 101",
+  "voices": [
+   {
+    "module": 2,
+    "voices": 1
+   }
+  ],
+  "cards": [
+   {
+    "assembly": 1,
+    "name": "Shush 101",
+    "rows": 29
+   }
+  ],
+  "omit": [],
+  "existingFx": [],
+  "evidence": "No Drive, Chorus, audio Delay or Reverb control in the original card rows or their selector/macro targets."
  }
 ]

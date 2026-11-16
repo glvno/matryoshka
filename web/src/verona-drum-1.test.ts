@@ -81,8 +81,8 @@ function playHeld(p: Patch, evs: [number, number, boolean][], ms: number, from =
 
 describe('Verona Drum 1 (#613)', () => {
   const fm1 = (): Patch => FM1_PRESETS['Verona Drum 1']();
-  it('fits the FM-1 and is its last factory patch, with all eight channels of the original\'s knobs, PAN and VOLUME each, and MASTER (D-899)', () => {
-    expect(Object.keys(FM1_PRESETS).at(-1)).toBe('Verona Drum 1');
+  it('fits the FM-1 and is a factory patch, with all eight channels of the original\'s knobs, PAN and VOLUME each, and MASTER (D-899)', () => {
+    expect(Object.keys(FM1_PRESETS)).toContain('Verona Drum 1');
     expect(deviceBudget(fm1()).fits).toBe(true);
     expect(deviceBudget(fm1()).cpu.use).toBeLessThanOrEqual(CPU_VOICE_TOP);
     const s = sections(fm1(), 'Verona Drum 1');
