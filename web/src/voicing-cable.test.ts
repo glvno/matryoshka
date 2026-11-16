@@ -149,7 +149,9 @@ it('a cable into a Part orders nothing: a switch the voice\'s own gate drives ad
   connect(p, DEFS, { module: main.id, port: 'keys' }, { module: alloc.id, port: 'keys' });
   connect(p, DEFS, { module: alloc.id, port: 'gate' }, { module: sel.id, port: 'in1' });
   connect(p, DEFS, { module: sel.id, port: 'g2' }, { module: alloc.id, port: 'priority' });
-  const dev = deviceView(p, true).patch;
+  const out = addModule(p, DEFS.output, 0, 0);
+  connect(p, DEFS, { module: sel.id, port: 'out' }, { module: out.id, port: 'l' });
+  const dev = deviceView(p).patch;
   const { order, feedback } = processingOrder(dev);
   expect(feedback.size).toBe(0);
   expect(order.indexOf(alloc.id)).toBeLessThan(order.indexOf(sel.id));
