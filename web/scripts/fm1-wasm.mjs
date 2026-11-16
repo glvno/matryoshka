@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Builds the FM-1's UI as WebAssembly (firmware/wasm/fm1_ui.c, #109) into public/fm1-ui.wasm (git-ignored; the Pages
-// workflow builds it). Needs a clang with the wasm32 target and wasm-ld: $CLANG / $WASM_LD, Homebrew's llvm + lld, or
-// a Debian / Ubuntu clang-NN + lld-NN.
-//   npm run fm1-wasm [-- OUT.wasm]
+// Builds the FM-1's UI as WebAssembly (firmware/wasm/fm1_ui.c, #109) into public/fm1-ui.wasm, and the FM-1's engine alone
+// (firmware/wasm/fm1_engine.c, #941: the editor's FM-1 engine switch) beside it as fm1-engine.wasm (both git-ignored; the
+// Pages workflow builds them). Needs a clang with the wasm32 target and wasm-ld: $CLANG / $WASM_LD, Homebrew's llvm + lld,
+// or a Debian / Ubuntu clang-NN + lld-NN.
+//   npm run fm1-wasm [-- OUT.wasm]      (the engine goes to fm1-engine.wasm in OUT's folder)
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -10,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const out = resolve(process.argv[2] ?? resolve(root, 'web/public/fm1-ui.wasm'));
+const engineOut = resolve(dirname(out), 'fm1-engine.wasm');
 
 const runs = (cmd, args) => { try { execFileSync(cmd, args, { stdio: 'pipe' }); return true; } catch { return false; } };
 const usrBin = (re) => (existsSync('/usr/bin') ? readdirSync('/usr/bin').filter((f) => re.test(f)).sort().reverse().map((f) => `/usr/bin/${f}`) : []);
@@ -23,7 +25,8 @@ function findWasmLd() {
   return c.find((x) => runs(x, ['--version']));
 }
 
-export function buildFm1Wasm(to = out) {
+/** firmware/wasm/`src` built into `to` */
+function build(src, to) {
   const clang = findClang();
   const ld = findWasmLd();
   if (!clang || !ld) throw new Error(`fm1-wasm: needs clang with the wasm32 target (${clang ?? 'none found'}) and wasm-ld (${ld ?? 'none found'}): set CLANG / WASM_LD`);
@@ -32,13 +35,17 @@ export function buildFm1Wasm(to = out) {
   execFileSync(clang, [
     '--target=wasm32', '-O2', '-ffreestanding', '-nostdlib', '-fno-builtin',
     '-Wall', '-Werror', '-Wno-unused-function', '-Wno-incompatible-library-redeclaration',
-    '-c', '-o', obj, resolve(root, 'firmware/wasm/fm1_ui.c'),
+    '-c', '-o', obj, resolve(root, 'firmware/wasm', src),
   ], { stdio: 'inherit' });
   execFileSync(ld, ['--no-entry', '-z', 'stack-size=262144', '-o', to, obj], { stdio: 'inherit' });
   rmSync(obj);
   return to;
 }
 
+export const buildFm1Wasm = (to = out) => build('fm1_ui.c', to);
+export const buildFm1EngineWasm = (to = engineOut) => build('fm1_engine.c', to);
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   console.log(`wrote ${buildFm1Wasm()}`);
+  console.log(`wrote ${buildFm1EngineWasm()}`);
 }

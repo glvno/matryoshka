@@ -1543,6 +1543,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: audition.recording ? 'Stop recording and save the WAV' : 'Record the Output to WAV', keywords: 'audio file save download capture performance sound', run: () => void audition.toggleRecord() },
     { kind: 'command', label: 'Start audio', keywords: 'sound browser', run: () => void startAudio() },
     { kind: 'command', label: 'Panic: stop all notes', keywords: 'silence stuck', run: panic },
+    { kind: 'command', label: host.engine === 'fm1' ? 'Switch to the browser engine' : 'Switch to the FM-1 engine', detail: 'Alt+E', keywords: 'fixed point firmware webassembly wasm compare hear sound device', run: () => void switchEngine() },
     { kind: 'command', label: 'FM-1 & MIDI settings', keywords: 'connect send store sync hardware keyboard release', run: () => $<HTMLDialogElement>('device-bar').showModal() },
     { kind: 'command', label: 'Install firmware', keywords: 'flash update hardware matryoshka return stock official v15', run: () => openInstall() },
     { kind: 'command', label: 'About Matryoshka', keywords: 'credits support ko-fi donate ai usage transparency', run: () => void about.open() },
@@ -1775,6 +1776,7 @@ window.addEventListener('keydown', (e) => {
   else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyZ') (onCanvas(() => editor.zoomToFit())(), (done = true));
   else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyM') (editor.mutate('mutate'), (done = true));
   else if (!mod && !e.altKey && !e.shiftKey && k.toLowerCase() === 'q') (audition.toggle(), (done = true));   // the test phrase (#945)
+  else if (e.altKey && !mod && (e.code === 'KeyE' || k.toLowerCase() === 'e')) (void switchEngine(), (done = true));   // (#941; the code: Option+E is a dead key on a Mac)
   else if (!mod && k.toLowerCase() === 'b') done = editor.bypassSelected();
   else if (mod && k.toLowerCase() === 'g') (editor.makeAssembly(), (done = true)); // plain G is a note key
   else if (k === ' ') {
@@ -2653,6 +2655,37 @@ $('piano').before(audition.el);
 host.onPhraseEnd = () => audition.ended();
 host.onRecording = (chunk, last) => void audition.recorded(chunk, last);
 audioBtn.onclick = () => (host.running && !host.muted ? panic() : void startAudio());
+// the engine heard (#941): the browser engine, or the FM-1 engine (the firmware's engine.c as WebAssembly, fm1-engine.ts).
+// A visit starts on the browser engine; the switch works while playing (the deck's FM-1 engine, Alt+E, the palette)
+const engineBtn = $('engine-btn');
+const showEngine = (): void => {
+  const fm1 = host.engine === 'fm1';
+  engineBtn.setAttribute('aria-pressed', String(fm1));
+  engineBtn.title = fm1
+    ? 'You hear the FM-1 engine: the FM-1’s firmware engine, fixed point, running here. The Scope, the meters and the moving thumbs follow the browser engine. Click (or Alt+E) for the browser engine'
+    : 'Hear the patch through the FM-1’s own engine, the firmware’s fixed-point code running here (Alt+E)';
+};
+let engineSwitching = false;
+async function switchEngine(): Promise<void> {
+  if (engineSwitching) return;
+  engineSwitching = true;
+  const to = host.engine === 'fm1' ? 'browser' : 'fm1';
+  try {
+    await host.setEngine(to);
+    engineBtn.classList.remove('failed');
+    status.textContent = to === 'fm1' ? 'FM-1 engine: the FM-1’s fixed-point engine plays' : 'Browser engine plays';
+  } catch (e) {
+    status.textContent = e instanceof Error ? e.message : String(e);
+  } finally {
+    engineSwitching = false;
+  }
+  showEngine();
+}
+host.onFm1 = (error) => {
+  engineBtn.classList.toggle('failed', !!error);
+  if (error && host.engine === 'fm1') status.textContent = `FM-1 engine is silent: ${error}`;
+};
+engineBtn.onclick = () => void switchEngine();
 const noteKeys = attachKeyboard({ send: (m) => (audition.played(m), sink.send(m, true)) }, () => currentTab === 'patch' && !document.querySelector('dialog[open], [popover]:popover-open'), (o) => {
   keyOctave = o;
   piano.setOctave(o);

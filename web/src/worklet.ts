@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// AudioWorklet wrapper around Engine.
+// AudioWorklet wrapper around Engine, and the FM-1 engine beside it (#941, fm1-engine.ts): once the page sends its
+// WebAssembly module both run on every block and take the same messages, and the output is one or the other (a short
+// crossfade between them), so the two can be compared while playing. The displays (Scope screens, slider sources,
+// envelope dots, Steps playheads, live values) always show the browser engine.
 import { Engine } from './engine';
+import { Fm1Engine, type Fm1Op } from './fm1-engine';
 import type { Patch, Range } from './patch';
 import type { SongEntry, StepNote } from './track';
 import { ViewStream, VoiceStreams, voiceSums, type ViewData } from './scope-stream';
@@ -62,7 +66,14 @@ export type HostMsg =
   /** record the engine's output (#946) and send it back in chunks (`rec`), the last one when it stops */
   | { t: 'record'; on: boolean }
   | { t: 'at'; v: number }
-  | { t: 'panic' };
+  | { t: 'panic' }
+  /** the FM-1 engine's WebAssembly (public/fm1-engine.wasm): compiled here (a compiled module does not cross into an
+   * AudioWorklet), it starts beside the browser engine */
+  | { t: 'fm1wasm'; bytes: ArrayBuffer }
+  /** a message for the FM-1 engine by module index (fm1-engine-host.ts); a load is answered with { fm1load: its error, 0 none } */
+  | { t: 'fm1'; o: Fm1Op }
+  /** which engine is heard: the FM-1 engine (on) or the browser engine */
+  | { t: 'fm1use'; on: boolean };
 
 /** blocks without MIDI clock after which it no longer drives the clock (about half a second) */
 const CLOCK_GONE = Math.round((0.5 * sampleRate) / 128);
@@ -70,6 +81,8 @@ const CLOCK_GONE = Math.round((0.5 * sampleRate) / 128);
 const DISPLAY_EVERY = 12;
 /** frames in one chunk of a recording sent to the page (about a third of a second) */
 const REC_CHUNK = 16384;
+/** the crossfade between the engines' outputs when the page switches, in seconds */
+const SWITCH_FADE = 0.02;
 
 class ModularProcessor extends AudioWorkletProcessor {
   private engine = new Engine(sampleRate);
@@ -94,18 +107,67 @@ class ModularProcessor extends AudioWorkletProcessor {
   /** the transport as last told to the page (play once starts and stops it of itself) */
   private runSent = false;
   private stepsBlocks = 0;
-  /** the test phrase playing (#945) */
+  /** the test phrase playing (#945): into both engines (the FM-1 engine's notes as they reach the FM-1, fm1-engine.ts) */
   private phrase: PhrasePlayer | null = null;
-  private phraseOn = (note: number, vel: number): void => this.engine.noteOn(note, vel);
-  private phraseOff = (note: number): void => this.engine.noteOff(note);
+  private phraseOn = (note: number, vel: number): void => (this.engine.noteOn(note, vel), this.fm1?.hear({ t: 'on', note, vel }));
+  private phraseOff = (note: number): void => (this.engine.noteOff(note), this.fm1?.hear({ t: 'off', note }));
   /** the recording (#946): the chunk being filled and how far */
   private rec: [Float32Array, Float32Array] | null = null;
   private recAt = 0;
+  /** the FM-1 engine (#941), once the page sent its WebAssembly and it compiled; heard while useFm1, through a crossfade
+   * (mix 0 the browser engine .. 1 the FM-1 engine) */
+  private fm1: Fm1Engine | null = null;
+  /** its messages while it compiles (null: not compiling) */
+  private fm1Waiting: Fm1Op[] | null = null;
+  private useFm1 = false;
+  private mix = 0;
+  private fm1L = new Float32Array(128);
+  private fm1R = new Float32Array(128);
+  /** the FM-1 engine from its compiled module: what the page set before (the transport, the tempo, the patch buttons, the
+   *  clock), then the messages that came while it compiled */
+  private startFm1(module: WebAssembly.Module): void {
+    const waiting = this.fm1Waiting ?? [];
+    this.fm1Waiting = null;
+    try {
+      this.fm1 = new Fm1Engine(module, sampleRate);
+    } catch (e) {
+      this.port.postMessage({ fm1error: String(e) });   // (the browser engine plays on)
+      return;
+    }
+    this.fm1.hear({ t: 'transport', on: this.engine.transportRunning });
+    this.fm1.hear({ t: 'tempo', bpm: this.engine.tempoGlobal });
+    for (let i = 0, b = this.engine.buttonMask; b; i++, b >>= 1) if (b & 1) this.fm1.hear({ t: 'button', i, on: true });
+    if (this.sinceClock <= CLOCK_GONE) this.fm1.clockExternal(true);
+    for (const o of waiting) this.applyFm1(o);
+  }
+  private applyFm1(o: Fm1Op): void {
+    const err = this.fm1?.apply(o) ?? -1;
+    if (o.op === 'load') this.port.postMessage({ fm1load: err });
+  }
   constructor() {
     super();
     this.port.onmessage = (ev: MessageEvent<HostMsg>) => {
       const m = ev.data;
       try {
+        if (m.t === 'fm1wasm') {
+          this.fm1 = null;
+          this.fm1Waiting = [];
+          // (compiled off the audio thread; the browser engine plays on meanwhile)
+          WebAssembly.compile(m.bytes).then((module) => this.startFm1(module), (e: unknown) => {
+            this.fm1Waiting = null;
+            this.port.postMessage({ fm1error: String(e) });
+          });
+          return;
+        }
+        if (m.t === 'fm1') {
+          if (this.fm1Waiting) this.fm1Waiting.push(m.o);
+          else this.applyFm1(m.o);
+          return;
+        }
+        if (m.t === 'fm1use') {
+          this.useFm1 = m.on;
+          return;
+        }
         if (m.t === 'patch') {
           this.engine.load(m.patch);
           for (const v of this.views.values()) {
@@ -145,6 +207,7 @@ class ModularProcessor extends AudioWorkletProcessor {
           const notes = this.engine.entryNotes(m.id, m.note, m.down, m.root);
           this.port.postMessage({ entry: { ...m, notes } });
           if (!notes.length) return;
+          this.fm1?.hear(m, notes.length);
           if (m.down) this.engine.noteOn(m.note, m.vel, m.ch, m.root);
           else this.engine.noteOff(m.note, m.ch, m.root);
         }
@@ -152,7 +215,10 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'on') this.engine.noteOn(m.note, m.vel, m.ch, m.root);
         else if (m.t === 'off') this.engine.noteOff(m.note, m.ch, m.root);
         else if (m.t === 'clock') {                   // MIDI clock: it drives the clock while it comes in
-          if (this.sinceClock > CLOCK_GONE) this.engine.clockExternal(true);
+          if (this.sinceClock > CLOCK_GONE) {
+            this.engine.clockExternal(true);
+            this.fm1?.clockExternal(true);
+          }
           this.sinceClock = 0;
           this.engine.clockTick();
         } else if (m.t === 'clockrun') this.engine.transport(m.on);   // MIDI Start / Continue / Stop
@@ -168,6 +234,7 @@ class ModularProcessor extends AudioWorkletProcessor {
           else if (!m.on && this.rec) this.sendRec(true);
         }
         else if (m.t === 'panic') this.engine.allNotesOff();
+        if (m.t !== 'entry') this.fm1?.hear(m);   // (the FM-1 engine: the messages without a module index)
       } catch (e) {
         this.port.postMessage({ error: String(e) });
       }
@@ -236,16 +303,44 @@ class ModularProcessor extends AudioWorkletProcessor {
     }
   }
 
+  /** the FM-1 engine's block, and while it is heard (or the crossfade runs) it in place of the browser engine's in l / r */
+  private mixFm1(l: Float32Array, r: Float32Array | undefined): void {
+    const n = l.length;
+    if (this.fm1L.length < n) (this.fm1L = new Float32Array(n)), (this.fm1R = new Float32Array(n));
+    try {
+      this.fm1!.render(this.fm1L, this.fm1R, n);   // (always: its voices and sequencer keep time with the browser engine's)
+    } catch (e) {
+      this.port.postMessage({ fm1error: String(e) });
+      this.fm1 = null;   // (the browser engine plays on)
+      this.mix = 0;
+      return;
+    }
+    const target = this.useFm1 ? 1 : 0;
+    if (this.mix === 0 && target === 0) return;
+    const step = 1 / (SWITCH_FADE * sampleRate);
+    let m = this.mix;
+    for (let i = 0; i < n; i++) {
+      if (m !== target) m = target > m ? Math.min(target, m + step) : Math.max(target, m - step);
+      l[i] += m * (this.fm1L[i] - l[i]);
+      if (r) r[i] += m * (this.fm1R[i] - r[i]);
+    }
+    this.mix = m;
+  }
+
   process(_in: Float32Array[][], outputs: Float32Array[][]): boolean {
     const out = outputs[0];
     try {
-      if (this.sinceClock <= CLOCK_GONE && ++this.sinceClock > CLOCK_GONE) this.engine.clockExternal(false);
+      if (this.sinceClock <= CLOCK_GONE && ++this.sinceClock > CLOCK_GONE) {
+        this.engine.clockExternal(false);
+        this.fm1?.clockExternal(false);
+      }
       if (this.phrase && !this.phrase.block(out[0].length, this.phraseOn, this.phraseOff)) {
         this.phrase = null;
         this.port.postMessage({ phrase: false });   // (a phrase played once is over: the page's Phrase button follows)
       }
       this.engine.render(out[0], out[1] ?? out[0]);
-      if (this.rec) this.feedRec(out[0], out[1] ?? out[0]);
+      if (this.fm1) this.mixFm1(out[0], out[1]);
+      if (this.rec) this.feedRec(out[0], out[1] ?? out[0]);   // (what is heard: either engine)
       if (this.views.size) this.feedViews(out[0].length);
       if (this.views.size || this.envs.size) this.sendDisplays();
       if (this.watched.size) this.feedWatch(out[0].length);
