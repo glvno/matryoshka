@@ -579,7 +579,7 @@ typedef struct {
         struct { int32_t a[8], b[8], ia; uint32_t phase; } fs;   /* the Hilbert chains (w1 w2 per section), chain A's delayed sample, the quadrature oscillator */
         struct { struct grain_line *ln; uint32_t w, acc, seed; uint8_t prev; } gr;   /* acc: grains per sample, Q24 */
         struct { int16_t *buf; int64_t cur; uint32_t len, w, t, seen, beat; int32_t rate; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev, rk, ph, tp; } dly;   /* len: its line's samples, from its length (dly_samples); cur 64 bits (a long line is more samples than Q16 holds in 32) */   /* t, ring, seen, beat: the clock tempo; cur, rate: the read position's distance behind w (samples Q16, 0 = not yet set) and its glide (dly_glide); rk, ph: a lower rate (#659, dly_slow): the rate step's k the line holds (0 none yet), the sample within a line sample; tp: Tape on (#660, dly_tape) */
-        struct { int16_t *buf; uint16_t li[8], ai[2], pi, oct; int32_t lp[8]; uint32_t ph[2]; int32_t gain[8], size, kp[6]; uint8_t gains_ok, frozen, hw, kdone; uint32_t still, hold; } rev;   /* FDN indices/states/phases; exact decay gains cached until effective size/freeze changes; D-1103: the settings of the block before (kp, the kernel's), the ring's next place (hw), the kernel already run this block (kdone); D-1109 (reverb_kernel's drain): the loudest wet sum since the last input, in bits above one step of the lines (oct), the samples since that input (still), the samples a tail takes to fall 6 dB (hold) */
+        struct { int16_t *buf; uint16_t li[8], ai[2], pi, oct; int32_t lp[8]; uint32_t ph[2]; int32_t gain[8], size, kp[6]; uint8_t gains_ok, frozen, hw, kdone; uint16_t still, hold; } rev;   /* FDN indices/states/phases; exact decay gains cached until effective size/freeze changes; D-1103: the settings of the block before (kp, the kernel's), the ring's next place (hw), the kernel already run this block (kdone); D-1109 (reverb_kernel's drain): the loudest wet sum since the last input, in bits above one step of the lines (oct), the samples since that input / 16 (still: 23 s, past the longest wait), the samples a tail takes to fall 6 dB (hold: at most 28,300). The 136 bytes the union has (the Delay's) */
         struct { int32_t v; uint32_t t; int32_t rk[4], inc[4], k[4]; uint32_t len[4]; uint8_t stage, prev, ok; } env;  /* Q30, like the ADSR; t: samples
                                                     * in the segment; rk, inc, k, len, ok: segments 1 2 3 and release, as m_adsr */
         rate_env_t rateenv;
@@ -8650,14 +8650,14 @@ static __attribute__((noinline)) void reverb_kernel(inst_t *it, uint32_t n)   /*
             int64_t e = -(((int64_t)RV_LINE[k] * RV_DB60) << 16) / ((int64_t)tq * ENG_SR);
             it->s.rev.gain[k] = frz ? ENG_ONE : (int32_t)exp2_q16((int32_t)(e < -(16 << 16) ? -(16 << 16) : e) + (16 << 16));
         }
-        it->s.rev.hold = (uint32_t)(((int64_t)tq * ENG_SR * 6576) >> 32);   /* samples to fall 6.02 dB: T x 0.1003 */
+        it->s.rev.hold = (uint16_t)(((int64_t)tq * ENG_SR * 6576) >> 32);   /* samples to fall 6.02 dB: T x 0.1003 */
         it->s.rev.size = size;
         it->s.rev.frozen = (uint8_t)frz;
         it->s.rev.gains_ok = 1;
     }
     /* D-1109: drain once nothing has entered for as long as the loudest wet sum heard since (oct: its bits above one step
      * of the lines) takes to fall under one step, plus RV_LEN; until something enters again. Never while frozen. */
-    drain = !frz && it->s.rev.still >= it->s.rev.hold * it->s.rev.oct + RV_LEN;
+    drain = !frz && (uint32_t)it->s.rev.still * 16u >= (uint32_t)it->s.rev.hold * it->s.rev.oct + RV_LEN;
     if (dpre > RV_PRE - 1u)
         dpre = RV_PRE - 1u;
     for (k = 0; k < 8u; k++) {
@@ -8684,7 +8684,7 @@ static __attribute__((noinline)) void reverb_kernel(inst_t *it, uint32_t n)   /*
             it->s.rev.still = 0;
             it->s.rev.oct = (uint16_t)bits;
         } else if (!drain) {
-            it->s.rev.still += n0;
+            it->s.rev.still = (uint16_t)(it->s.rev.still + (n0 >> 4) < 0xFFFFu ? it->s.rev.still + (n0 >> 4) : 0xFFFFu);
             if (bits > it->s.rev.oct)
                 it->s.rev.oct = (uint16_t)bits;
         }
