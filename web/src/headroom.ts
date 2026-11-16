@@ -46,7 +46,7 @@ export function patterns(p: Patch): number[] {
   return [...out].sort((a, b) => a - b);
 }
 
-const MELODIC_AUDITION = new Set(['Io 4', 'Monolith D', 'Sallen 20', 'Silver Box', 'Vernon 100', 'Wanderer']);
+const MELODIC_AUDITION = new Set(['Algo Four', 'Io 4', 'Monolith D', 'Sallen 20', 'Silver Box', 'Vernon 100', 'Wanderer']);
 const DRUM_AUDITION = new Set(['Scrounge', 'Meridian 8', 'Perun 4', 'Spokes 6', 'Verona Drum 1', '808 Kit', '909 Kit', '<7PH', 'drum kit']);
 
 export function ways(p: Patch, what: string, voices: number): Play[] {

@@ -2541,8 +2541,9 @@ static void fx_draw(int full)
  * rows (format 34's extras say which, in canonical order) as K1..K4 would, the editor told; ENV held + SAVE stores the
  * device's values (over the user preset it was set to, else under a new name). */
 #define PR_USER 0x8000u                                 /* a list entry: a store slot | PR_USER, else a FPRESET_LIST index */
-#define PR_MAX (N_FPRESETS + PS_SLOTS)
-static uint16_t pr_list[PR_MAX < 256u ? 256u : PR_MAX];
+/* a device's list holds one structure's factory presets and up to two user namespaces (dp_list) */
+#define PR_MAX (FP_MAX_LIST + 2u * PS_SLOTS)
+static uint16_t pr_list[PR_MAX];
 static int32_t pr_vals[PS_MAXV > FP_MAX_VALUES ? PS_MAXV : FP_MAX_VALUES] ENG_POOL; /* existing store/ROM decode scratch */
 static uint8_t dp_short;                                /* the entry dp_load loaded last had fewer values than the device's rows */
 static const int32_t *pr_at = pr_vals;                  /* decoded entry values; no heap or audio-path decompression */

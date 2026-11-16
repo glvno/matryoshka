@@ -45,7 +45,8 @@ export const selectedFactoryProfile: Readonly<Record<string, SelectedFactoryOpti
   'Monolith D': { configurationId: 'selected-monolith-d' },
   'Silver Box': { configurationId: 'selected-silver-box' },
   'Shush 101': { configurationId: 'selected-shush-101' },
-  'Algo Four': { omit: ['drive'], configurationId: 'algo-four-v6-chorus-delay-reverb', outputLevel: 0.88 },
+  // (drive joins at six voices ahead of voices 7-8: owner in chat 2026-11-15, "let's add distortion to algo four", D-1200)
+  'Algo Four': { configurationId: 'algo-four-v7-drive-chorus-delay-reverb', outputLevel: 0.88 },
   'Oracle V': { omit: ['drive'], configurationId: 'oracle-v-v4-chorus-delay-reverb' },
   Canvas: { omit: ['drive', 'chorus', 'reverb'], harmonizer: 'removed', canvasCaptions: 'short', configurationId: 'canvas-original-delay-no-harm' },
   'Expander S': { configurationId: 'expander-s-v4-drive-chorus-delay-reverb', outputLevel: 0.68 },

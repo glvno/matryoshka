@@ -14,7 +14,7 @@ export interface FxRecipe {
 export const FACTORY_FX_MASKS: Record<string, number> = {
   'Monolith D': 15,
   'Silver Box': 15,
-  'Algo Four': 14,
+  'Algo Four': 15,
   'Oracle V': 14,
   'Canvas': 4,
   'Expander S': 15,
@@ -133,7 +133,8 @@ export const FACTORY_FX_RECIPES: Record<string, Record<string, FxRecipe>> = {
       reason: 'Deliberately dry: the fast FM bite and low body already separate the rhythmic bass role; preserve the click without extra nonlinear harmonics.',
     },
     'Lately Bass': {
-      reason: 'Deliberately dry: the FM feedback growl already carries the dance-bass hook, and this rack has no drive; no delay smears repeated notes.',
+      reason: 'The owner-approved 1.14 recipe, back with the rack\'s drive: compensated saturation turns the FM feedback growl into a rough dance-bass hook, with no delay smearing repeated notes.',
+      drive: { drive: 2.8, mode: 0, level: 0.2, sym: 0 },
     },
     'E Piano': {
       reason: 'A short dark room gives the decaying electric-piano body depth while leaving the high-ratio tine attack clear and unmodulated.',

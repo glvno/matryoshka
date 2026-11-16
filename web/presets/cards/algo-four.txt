@@ -109,7 +109,7 @@ preset: Lately Bass
   l3 1 = 0.5
   r4 1 = 0.12 s
   level 3 = 0.44
-  volume = 0.44
+  volume = 0.77
 
 preset: E Piano
   # a DX electric piano: stack 1 the body, 1:1, its modulator fading over a second and a half and
