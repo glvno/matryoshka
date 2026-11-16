@@ -1,0 +1,33 @@
+# The emulator's timing model (tools/emu/src/timing.rs; docs/EMULATOR.md "The timing model"): M1EMU_TIMING=tools/emu/timing.txt.
+# Costs in cycles of the device's 360 MHz clock, measured on FM-1s by others:
+# - jvitkauskas/pi32v2-isa hw/fm1-2026-11-15-excprobe group 7 (the core's cycle counter): ALU 1, load 2 (3 when the
+#   next instruction uses it), store 2, multiply 2, divide 10, branch not taken 1, taken 7.5, push + pop 6;
+# - hw/fm1-2026-11-14-bootprobe: warm code from the flash costs what it does from RAM; a load from the flash that hits
+#   the cache 1 (a RAM load 2); cold code about 480 extra cycles per 64 bytes;
+# - OpenPocket's AC791N handbook: the instruction cache shared by both cores, the data cache over the flash only.
+# The cache geometry is fm1-emu upstream's XipCache (32 KB, 4 ways, 64-byte lines), which matched the rig better than
+# DUB-1's notes (8 ways, 32-byte lines). Two numbers are fitted (2026-11-16, `tools/emu/timing_fit.py grid` over the
+# rig's paired measurements: two cores against the second core's work refused on CI run 43551744806, -O2 against -Os
+# against -Os with RAM code on CI run 42673451565, and the module times of CI run 43568683497): `miss` (720, where the
+# bench's cold block of sequential code measured 480) and `dual` (0.1: both cores sharing the bus and the caches while
+# core 1 runs a job). With them the residual scale came out at 1.005, so it is left at 1.
+clock_mhz 360
+alu 1
+load 2
+load_use 1
+store 2
+mul 2
+div 10
+branch 1
+taken 6.5
+multi 2
+word 1
+sys 1
+flash_hit -1
+ram_code 0
+cache_bytes 32768
+cache_line 64
+cache_ways 4
+miss 720
+dual 0.1
+residual 1

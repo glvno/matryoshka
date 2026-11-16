@@ -17,22 +17,29 @@
 //!   m1emu serve BIN [--flash-in F] [--name NAME]
 //!       real time, USB MIDI on a virtual MIDI port NAME ("FM-1 (emu)"), commands on stdin (serve.rs); BIN must be an
 //!       M1_EMU_MIDI=1 build (CI artifact matryoshka-emu-midi)
+//!   m1emu cpu BIN --elf ELF [--slots 0,3,..] [--notes 0,1,4,8] [--hold MS] [--run] [--modtime] [--window MS]
+//!       [--no-survey] [--poke8 NAME=BYTE,..] [--out FILE]
+//!       the test rig's CPU survey (and with --modtime its per-module times) from the firmware's own counters, as
+//!       JSON (cpu.rs); ELF is the same build's matryoshka.elf
 //!
-//! BIN is the build's matryoshka.bin (app.bin, runs from 0x02000120).
+//! BIN is the build's matryoshka.bin (app.bin, runs from 0x02000120). M1EMU_TIMING=FILE runs any command under the
+//! timing model (timing.rs, tools/emu/timing.txt): the device's cycles instead of one 240 MHz cycle an instruction.
 
 mod boot;
+mod cpu;
 mod font;
 mod machine;
 mod p33;
 mod png;
 mod serve;
 mod smoke;
+mod timing;
 
 use machine::Machine;
 use std::process::ExitCode;
 
 fn usage() -> ExitCode {
-    eprintln!("usage: m1emu smoke BIN [--out DIR] [--levels FILE] [--strict]\n       m1emu roll BIN [--out DIR]\n       m1emu boot BIN [--link EMU_BIN] [--out DIR]\n       m1emu run BIN [--ms N] [--keys SCRIPT] [--snap MS,..] [--wav FILE] [--flash-in F] [--flash-out F] [--text S]\n       m1emu serve BIN [--flash-in F] [--name NAME]");
+    eprintln!("usage: m1emu smoke BIN [--out DIR] [--levels FILE] [--strict]\n       m1emu roll BIN [--out DIR]\n       m1emu boot BIN [--link EMU_BIN] [--out DIR]\n       m1emu run BIN [--ms N] [--keys SCRIPT] [--snap MS,..] [--wav FILE] [--flash-in F] [--flash-out F] [--text S]\n       m1emu serve BIN [--flash-in F] [--name NAME]\n       m1emu cpu BIN --elf ELF [--slots 0,3,..] [--notes 0,1,4,8] [--hold MS] [--run] [--modtime] [--window MS] [--no-survey] [--poke8 NAME=BYTE,..] [--out FILE]");
     ExitCode::from(2)
 }
 
@@ -87,6 +94,7 @@ fn main() -> ExitCode {
             boot::run(&app, link.as_deref(), opt(&a, "--out").unwrap_or("build/emu/boot"))
         }
         "run" => run(&app, &a),
+        "cpu" => cpu::run(&app, &a),
         "serve" => {
             let flash = opt(&a, "--flash-in").map(|p| std::fs::read(p).expect("--flash-in"));
             serve::run(&app, flash.as_deref(), opt(&a, "--name").unwrap_or("FM-1 (emu)"))
