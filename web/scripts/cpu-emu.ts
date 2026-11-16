@@ -43,11 +43,11 @@ export const stats = { slots: 0, rounds: 0 };
 
 /** play `p` holding `keys` (the transport running if `run`) */
 export function emuRun(p: Patch, keys: number[], run = false): Promise<EmuRun> {
-  return new Promise((done, fail) => {
-    pending.push({ p, keys, run, done, fail });
-    clearTimeout(timer);
-    timer = setTimeout(() => { const batch = pending; pending = []; busy = busy.then(() => round(batch)); }, 50);
-  });
+  const { promise, resolve, reject } = Promise.withResolvers<EmuRun>();
+  pending.push({ p, keys, run, done: resolve, fail: reject });
+  clearTimeout(timer);
+  timer = setTimeout(() => { const batch = pending; pending = []; busy = busy.then(() => round(batch)); }, 50);
+  return promise;
 }
 
 function playBank(reqs: Req[], keys: number[], run: boolean): Promise<void> {
@@ -59,11 +59,15 @@ function playBank(reqs: Req[], keys: number[], run: boolean): Promise<void> {
   });
   writeFileSync(`${WORK}bank${id}.txt`, list.join('\n') + '\n');
   const args = ['cpu', `${FW}/matryoshka.bin`, '--elf', `${FW}/matryoshka.elf`, '--no-survey', '--modtime', '--bank', `${WORK}bank${id}.txt`,
-    '--keys', keys.join(',') || '0', '--settle', String(SETTLE), '--window', String(WINDOW), '--out', `${WORK}out${id}.json`, ...(run ? ['--mt-run'] : [])];
-  // (--keys 0: no key; a note 0 far below the kits' range would still sound, so keys are never empty in practice)
-  return new Promise((resolve) => {
-    execFile(EMU, args, { env: { ...process.env, M1EMU_TIMING: TIMING }, maxBuffer: 1 << 26 }, (err, _o, stderr) => {
-      if (err) { reqs.forEach((r) => r.fail(new Error(`m1emu: ${stderr.split('\n').slice(-4).join(' ')}`))); return resolve(); }
+    '--keys', keys.join(','), '--settle', String(SETTLE), '--window', String(WINDOW), '--out', `${WORK}out${id}.json`, ...(run ? ['--mt-run'] : [])];
+  const { promise, resolve } = Promise.withResolvers<void>();
+  execFile(EMU, args, { env: { ...process.env, M1EMU_TIMING: TIMING }, maxBuffer: 1 << 26 }, (err, _o, stderr) => {
+      if (err && reqs.length > 1) {
+        // one patch the firmware cannot play stops the bank: play each alone, so only that one fails
+        reqs.reduce((at, r) => at.then(() => playBank([r], keys, run)), Promise.resolve()).then(resolve);
+        return;
+      }
+      if (err) { reqs.forEach((r) => r.fail(new Error(`${r.p.name}: m1emu: ${stderr.split('\n').slice(-4).join(' ')}`))); return resolve(); }
       const j = JSON.parse(readFileSync(`${WORK}out${id}.json`, 'utf8'));
       reqs.forEach((r, i) => {
         const row = j.modtime.patches[`K${i}`];
@@ -79,8 +83,8 @@ function playBank(reqs: Req[], keys: number[], run: boolean): Promise<void> {
         r.done({ ns, lanes, isrUs: row.isr_us, halves: row.halves });
       });
       resolve();
-    });
   });
+  return promise;
 }
 
 async function round(batch: Req[]): Promise<void> {

@@ -1,105 +1,66 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The CPU cost table (src/cpu-costs.json) for the editor's estimate (src/cpu.ts). Counts the fixed-point engine on an rv32im
-// model (tools/cpu: build.sh builds it, rv32.mjs runs it) module by module:
+// The CPU cost table (src/cpu-costs.json) for the editor's estimate (src/cpu.ts), made on the real firmware in the emulator
+// under its timing model (D-1107, D-1155: scripts/cpu-emu.ts plays the test patches, `m1emu cpu --bank --modtime`), each
+// module's time read from the firmware's own counters, module by module:
 //   - every module type alone, every setting changed one at a time (alone and with every input patched), to find what changes
 //     its cost (dims); the settings that do are measured in all combinations (grid), numbers at the points where their cost
 //     bends (the editor interpolates);
-//   - the shared costs: summing inputs, parameter inputs, morph, bypass, the render loop per module and per block;
-//   - the scale: frozen constants fitted to a survey of the factory patches on the FM-1 (SURVEY, below); the M1-0.2 engine's
-//     303 Acid and the kernels of firmware/src/bench.c, both measured there earlier, are counted again as cross-checks;
-//   - whole factory patches, as checks of the model (cpu.test.ts).
-// Kits hold C5 (a square or saw oscillator costs more the higher it plays). Run from web/: npm run cpu-costs
-import { execSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
-// @ts-ignore: plain JavaScript modules
-import { pool } from '../../tools/cpu/pool.mjs';
+//   - the shared costs: summing inputs, parameter inputs, morph, bypass, each module and Output beyond its own time, and the
+//     rest of the audio interrupt (the block: the engine's loop, the key scan, the USB poll), from the interrupt's mean;
+//   - the costs that span modules get terms of their own: the second core (CORES, fitted on the rig), and the steady peak
+//     over the mean the module times give (PEAK);
+//   - whole factory patches, as checks of the model (cpu.test.ts); scripts/cpu-rig-check.ts compares the table with the rig.
+// The firmware is FW_DIR's matryoshka.bin and matryoshka.elf (the release's CI artifacts `matryoshka-firmware` and
+// `matryoshka-elf`), else build/'s. Kits hold C5 (a square or saw oscillator costs more the higher it plays). Run once per
+// firmware release, from web/: FW_DIR=DIR npm run cpu-costs (an hour or more on a 14-core Mac; the emulator slot is held a
+// round at a time, so other emulator runs queue between rounds)
+import { readFileSync, writeFileSync } from 'node:fs';
 import { cpuEstimate, FIRST_ALSO, type CostDim, type CpuTable, type TypeCost } from '../src/cpu';
 import { DEFS } from '../src/modules';
-import { encodePatch } from '../src/patchbin';
 import { addModule, connect, EDITOR_ONLY, fromUnit, newPatch, type ModuleInst, type ParamDef, type Patch } from '../src/patch';
 import { cpuChecks, startEvents } from '../src/cpu-checks';
+import { buildEmu, emuRun, FW, stats, type EmuRun } from './cpu-emu';
+import OLD from '../src/cpu-costs.json';
 
-const ROOT = new URL('../../', import.meta.url).pathname;
-execSync('tools/cpu/build.sh', { cwd: ROOT, stdio: 'inherit' });
-const ELF = { prof: 'prof', plain: 'plain', old: 'old', bench: 'bench' } as const;
-const POOL = pool(Object.fromEntries(Object.keys(ELF).map((k) => [k, `${ROOT}build/cpu/${k}.elf`])));
+buildEmu();
 const NOTE = 72; // C5
 
 const BLOCK_US = 2901; // 128 frames at 44118 Hz (DEVICE_SR)
-const OLD_PEAK = 0.12; // 303 Acid on M1-0.2: 11 % typical, 12 % peak of the half buffer (ISR time incl. key scan and USB)
-/** The scale, frozen (not fitted on each run: a faster engine would bend it against an old survey). Fitted by
- * scripts/cpu-rig-fit.ts to the test rig's survey of every factory patch on the combined 1.12 development firmware
- * (docs/measurements/2026-11-09-rig-integration.md): least squares of the rig's steady peak on the estimate at the scale
- * before (233.4 cycles / us + 23 us, fitted to the FM-1's survey of 2026-10-20). A new survey after large engine or
- * firmware changes replaces it (run cpu-rig-fit.ts, then npm run cpu-costs). */
-const SURVEY = {
-  cyclesPerUs: 195.8,
-  fixedUs: 270,
-  survey: 'docs/measurements/cpu-survey-2026-11-09-rig-integration.json and -run.json (CI run 42673451565, default switches, all 30 factory patches)',
-  fit: 'rig us = 1.192 x estimate before + 242 us (the 5 patches without an engine of their own: Init, Simple FM, Plucked String, 909 Kit, <7PH), so 233.4 / 1.192 cycles per us plus 1.192 x 23 + 242 us a block; the second core idle cost 1.192 x 24 us',
+/** the device's clock: the table's cycles are the timing model's (tools/emu/timing.txt clock_mhz) */
+const CYCLES_PER_US = 360;
+/** The steady peak over the mean: the rig's figure for a patch is the median of its 500 ms peaks (the longest interrupt in
+ * each), while the module times and the interrupt's mean are averages. Fitted by scripts/cpu-rig-check.ts to the rig's
+ * survey of the factory patches: a time per block on top of the measured rest of the interrupt. */
+const PEAK = {
+  us: 0,
+  survey: 'not fitted yet',
 };
 /** The second core. Its idle cost to core 0 is fitted to the test rig's surveys of every factory patch (docs/measurements/
  * 2026-11-05-rig-second-core.md) against release-1.10's head before #271 (the one-core firmware): the median, over the
- * patches that do not split, of the steady 8-key time on the dual-core build minus on that one (24 us; from -31 to +80).
- * Its saving (#802) is fitted to the two-core schedule's firmware with the second core's work refused (tools/m1_link.py
- * cores split off) against the same firmware with it: 0.75 x the modelled saving (schedule.ts scheduleTime) stays under
- * every patch's measured saving (the patches that shed voices on one core left out), so the estimate never promises more
- * room than the FM-1 has. */
+ * patches that do not split, of the steady 8-key time on the dual-core build minus on that one (24 us at the scale before,
+ * 29 at the 1.12 one). The emulator's interrupt includes it (it plays both cores), so the one-core estimate takes it off
+ * the rest of the interrupt (fixedUs). Its saving (#802) is fitted to the two-core schedule's firmware with the second
+ * core's work refused (tools/m1_link.py cores split off) against the same firmware with it: 0.75 x the modelled saving
+ * (schedule.ts scheduleTime) stays under every patch's measured saving (the patches that shed voices on one core left
+ * out), so the estimate never promises more room than the FM-1 has. */
 const CORES = {
-  idleUs: 29,   // (24 us at the scale before, cpu-rig-fit.ts)
+  idleUs: 29,
   splitEff: 0.75,
   survey: 'docs/measurements/cpu-survey-2026-11-14-rig-reverb-split-off.json against -reverb.json (CI run 43615466841); the idle cost: -2026-11-05-rig-release-1.10-head.json against -rig-merged-split.json',
 };
-/** Each factory engine's factor on its modules' cycles (src/cpu.ts CpuTable.rig), fitted by scripts/cpu-rig-fit.ts to the
- * test rig's survey of the 1.14 bank on the firmware with modulation every 16 samples (#806, D-1106, at SURVEY's scale):
- * the smallest that makes the estimate read at least the rig's steady peak for every voice count its factory patch played
- * on the rig, transport stopped and running. The counted engine misses what the FM-1 spends beyond its instructions (its
- * caches and memory, the hardware's own timing, how the two cores share the block), and that differs from engine to
- * engine: the factors run from 0.59 to 1.5. The poly engines the rig measured at more voices than they play (Oracle V and
- * Cassia 1 at 5, Algo Four at 8, Expander S and Hera at 6) have a factor for their modules inside the poly group
- * (`voices`) beside the one for the rest (`engines`, at most 1.5): the pair that reads at least the rig at each count with
- * the least over-read, so the estimate follows the rig's slope as voices are added (one factor over-read Hera at 6 voices
- * by 17 points). Canvas is fitted to its survey with the envelope's linear fall (#689, format 56) instead. The patches
- * outside the 1.14 bank (basic poly, drift poly, mono lead, supersaw stack) keep the factors of the 2026-11-09 survey. */
-const RIG = {
-  engines: {
-    '8 Lire': 0.59, '808 kit': 0.85, '909 kit': 0.78, 'Algo Four': 1.22, 'Briefcase 3': 0.74,
-    'Canvas': 0.83, 'Cassia 1': 0.88, 'Elvira 2': 0.95, 'Expander S': 1.42,
-    'Hera 4': 1.08, 'Io 4': 0.68, 'Meridian 8': 0.71, 'Monolith D': 0.73,
-    'Oracle V': 1.46, 'Perun 4': 0.83, 'Sallen 20': 0.9, 'Scrounge': 0.85,
-    'Silver Box': 0.92, 'Spokes 6': 0.85, 'Vernon 100': 0.61, 'Verona Drum 1': 0.92,
-    'Wanderer': 1.06, 'basic poly': 0.92, 'drift poly': 0.92, 'mono lead': 1.28,
-    'supersaw stack': 0.88,
-  } as Record<string, number>,
-  voices: { 'Algo Four': 0.6, 'Cassia 1': 0.59, 'Expander S': 0.72, 'Hera 4': 0.5, 'Oracle V': 0.61 } as Record<string, number>,
-  survey: 'docs/measurements/cpu-survey-2026-11-14-rig-modctl.json and -run.json (CI run 43652865098, the 22 patches of the 1.14 bank); the voices: -step7-voices.json and -hera-voices.json (main at 0b7b930a); Canvas: -canvas-linear.json and -run.json (CI run 43668448074)',
-};
-const BLOCKS = 24;
-const SKIP = 3; // blocks before the maximum is taken for a module kit (the first notes, envelopes starting)
 
-const ON = (n: number): number => (1 << 16) | n;
-const RENDER = 3 << 16;
-const events = (notes: number[]): number[] => [...notes.map(ON), ...Array(BLOCKS).fill(RENDER)];
+const CYCLES_PER_NS = CYCLES_PER_US / 1000;
 
-type Stage = { sum: number; cv: number; run: number };
-type Run = { totals: number[]; nodes: Map<string, Stage>[] };
+type Stage = { run: number };
 
-type Blocks = { blocks: { total: number; nodes: Map<string, Stage> }[]; exit: number };
-const emulate = (elf: string, patch: Uint8Array, ev: number[]): Promise<Blocks> => POOL.run(elf, patch, ev);
-const run = async (elf: string, p: Patch, notes = [NOTE]): Promise<Run> => {
-  const r = await emulate(elf, encodePatch(p, true), [...startEvents(p), ...events(notes)]);
-  if (r.exit) throw new Error(`${p.name}: the engine refused the patch (${r.exit})`);
-  return { totals: r.blocks.map((b) => b.total), nodes: r.blocks.map((b) => b.nodes) };
-};
-const peak = (xs: number[]): number => Math.max(...xs.slice(SKIP));
-
-/** the cost of one hook (the cycles a stage counts when it does nothing) */
-let HOOK = 0;
-/** module `index`'s stages, part 0, each its maximum over the blocks, less the hook */
-const stages = (r: Run, index: number, part = 0): Stage => {
-  const pick = (k: keyof Stage): number => peak(r.nodes.map((n) => n.get(`${index}/${part}`)?.[k] ?? 0)) - HOOK;
-  return { sum: Math.max(0, pick('sum')), cv: Math.max(0, pick('cv')), run: Math.max(0, pick('run')) };
-};
+/** every module's cycles in a run, both lanes */
+const moduleCycles = (r: EmuRun): number => [...r.ns.values()].reduce((a, b) => a + b, 0) * CYCLES_PER_NS;
+/** the interrupt beyond the module times (cycles) */
+const overhead = (r: EmuRun): number => r.isrUs * CYCLES_PER_US - moduleCycles(r);
+/** a patch played with `notes` held (a Steps track with its transport running, as the FM-1 plays it) */
+const run = (p: Patch, notes = [NOTE]): Promise<EmuRun> => emuRun(p, notes, startEvents(p).length > 0);
+/** module `m`'s cycles a block */
+const stages = (r: EmuRun, m: ModuleInst): Stage => ({ run: (r.ns.get(m.id) ?? 0) * CYCLES_PER_NS });
 
 // ------------------------------------------------------------------ a module alone
 
@@ -159,7 +120,7 @@ const measureFed = (type: string, cfg: KitCfg): Promise<Stage> => {
   let r = cache.get(key);
   if (!r) {
     const { p, m } = kit(type, cfg);
-    r = run(ELF.prof, p).then((x) => stages(x, p.modules.indexOf(m)));
+    r = run(p).then((x) => stages(x, m));
     cache.set(key, r);
   }
   return r;
@@ -169,7 +130,7 @@ const measureFed = (type: string, cfg: KitCfg): Promise<Stage> => {
 const measure = async (type: string, cfg: KitCfg = {}): Promise<Stage> => {
   if (!cfg.inputs?.length) return measureFed(type, cfg);
   const [a, b] = await Promise.all([measureFed(type, { ...cfg, feed: 'osc' }), measureFed(type, { ...cfg, feed: 'gate' })]);
-  return { sum: Math.max(a.sum, b.sum), cv: Math.max(a.cv, b.cv), run: Math.max(a.run, b.run) };
+  return { run: Math.max(a.run, b.run) };
 };
 const runs = (type: string, cfgs: KitCfg[]): Promise<number[]> => Promise.all(cfgs.map((c) => measure(type, c).then((x) => x.run)));
 
@@ -241,7 +202,7 @@ async function matrixCost(): Promise<TypeCost> {
   const pins = await Promise.all([1, 2, 3, 4].map(async (k) =>
     Math.round((await measure('matrix', { inputs: ins.slice(0, k), params: Object.fromEntries(ins.slice(0, k).map((_, i) => [`i${i + 1}o1`, 0.5])) })).run - base.run)));
   const out = Math.round((await measure('matrix', { outputs: ['out2'] })).run - base.run);
-  return { run: Math.round(base.run), cv: Math.round(base.cv), matrix: { out, pins } };
+  return { run: Math.round(base.run), cv: 0, matrix: { out, pins } };
 }
 
 async function typeCost(type: string): Promise<TypeCost> {
@@ -321,7 +282,8 @@ async function typeCost(type: string): Promise<TypeCost> {
   const extra: Dim[] = [];
   if (ADDITIVE_OUTPUTS.has(type)) for (let i = dims.length - 1; i >= 0; i--) if ('output' in dims[i].dim) extra.unshift(...dims.splice(i, 1));
   while (dims.reduce((n, d) => n * d.values.length, 1) > GRID_MAX) extra.unshift(dims.pop()!);
-  const out: TypeCost = { run: Math.round(base.run), cv: Math.round(base.cv) };
+  // (cv 0: a module's time on the FM-1 includes its parameter update)
+  const out: TypeCost = { run: Math.round(base.run), cv: 0 };
   // the oscillator's summed phase modulation: all three pm inputs and the index patched against pm alone, the worse of the
   // sine operator path and the general one (a square)
   if (type === 'osc') {
@@ -417,12 +379,6 @@ async function effectOf(type: string, params: (v: number) => Record<string, numb
 
 // ------------------------------------------------------------------ the shared costs
 
-async function hookCost(): Promise<number> {
-  const { p } = kit('const');
-  const r = await run(ELF.prof, p);
-  return Math.min(...p.modules.map((_, i) => peak(r.nodes.map((n) => n.get(`${i}/0`)?.sum ?? 0))));
-}
-
 /** summing: a Scale's input fed by 2 and by 5 Constants */
 async function sumCost(): Promise<CpuTable['sum']> {
   const at = async (k: number): Promise<number> => {
@@ -431,11 +387,12 @@ async function sumCost(): Promise<CpuTable['sum']> {
       const c = addModule(p, DEFS.const, 0, 100 * i);
       connect(p, DEFS, { module: c.id, port: 'out' }, { module: m.id, port: 'in' });
     }
-    return stages(await run(ELF.prof, p), p.modules.indexOf(m)).sum;
+    return stages(await run(p), m).run;
   };
-  const [a, b] = await Promise.all([at(2), at(5)]);
+  const [one, a, b] = await Promise.all([measure('scale', { inputs: ['in'], feed: 'osc' }).then((x) => x.run), at(2), at(5)]);
   const source = (b - a) / 3;
-  return { port: Math.round(a - 2 * source), source: Math.round(source) };
+  // (the Scale's own work with one cable in is taken off: what is left is the sum)
+  return { port: Math.round(a - one - 2 * source), source: Math.round(source) };
 }
 
 /** parameter inputs, on a filter: p1 patched moving nothing, the resonance (linear), the cutoff (log); morph per parameter */
@@ -449,7 +406,7 @@ async function cvCost(): Promise<CpuTable['cv']> {
       m.map!.p2 = [];
     }
     if (morph) m.paramsB = { ...m.params };
-    return stages(await run(ELF.prof, p), p.modules.indexOf(m)).cv;
+    return stages(await run(p), m).run;
   };
   const [none, pin, lin, log, morph] = await Promise.all([at(null), at([]), at(['res']), at(['cutoff']), at(null, true)]);
   return {
@@ -464,7 +421,7 @@ async function cvCost(): Promise<CpuTable['cv']> {
 async function bypassCost(): Promise<number> {
   const { p, m } = kit('filter', { inputs: ['in'] });
   m.bypass = true;
-  return Math.round(stages(await run(ELF.prof, p), p.modules.indexOf(m)).run);
+  return Math.round(stages(await run(p), m).run);
 }
 
 /** a Steps track that Main's keys pass through (its keys in cabled from Main, keys out into a Voicing): its cost per key
@@ -478,70 +435,47 @@ async function thruCost(): Promise<number> {
   connect(p, DEFS, { module: main.id, port: 'keys' }, { module: st.id, port: 'keys' });
   connect(p, DEFS, { module: st.id, port: 'keys' }, { module: alloc.id, port: 'keys' });
   connect(p, DEFS, { module: alloc.id, port: 'gate' }, { module: out.id, port: 'l' });
-  const at = p.modules.indexOf(st);
-  const [none, four] = await Promise.all([run(ELF.prof, p, []), run(ELF.prof, p, [NOTE, NOTE + 4, NOTE + 7, NOTE + 11])].map((r) => r.then((x) => stages(x, at).run)));
+  const [none, four] = await Promise.all([run(p, []), run(p, [NOTE, NOTE + 4, NOTE + 7, NOTE + 11])].map((r) => r.then((x) => stages(x, st).run)));
   return Math.max(0, Math.round((four - none) / 4));
 }
 
-/** the plain engine's whole block against the hooked stages: the render loop per module, the Output's mix, the rest */
-async function loopCosts(types: Record<string, TypeCost>): Promise<{ block: number; node: number; output: number }> {
-  const own = (t: string): number => types[t].run + types[t].cv;
-  const total = async (p: Patch): Promise<number> => peak((await run(ELF.plain, p)).totals);
+/** the audio interrupt beyond the module times: each module (the render loop's own work for it), each Output (the mix into
+ * the half buffer), and the rest of the block (the engine's loop, the key scan, the USB poll, an idle second core) */
+async function loopCosts(): Promise<{ block: number; node: number; output: number }> {
   const base = newPatch(DEFS, 'cpu loop');
   const many = structuredClone(base);
   const sink = many.modules.find((m) => m.type === 'output')!;
-  // heard (into the Output), or the compile pass drops them (device-compile.ts); the Output's input sum is taken off again
+  // heard (into the Output), or the compile pass drops them (device-compile.ts); their sum is in the Output's own time
   for (let i = 0; i < 10; i++) connect(many, DEFS, { module: addModule(many, DEFS.const, 0, 100 * i).id, port: 'out' }, { module: sink.id, port: 'l' });
   const two = structuredClone(base);
   addModule(two, DEFS.output, 0, 300);
-  const [t0, t10, t2, summed] = await Promise.all([total(base), total(many), total(two), run(ELF.prof, many).then((r) => stages(r, many.modules.indexOf(sink)).sum)]);
-  const node = (t10 - summed - t0 - 10 * own('const')) / 10;
-  const output = t2 - t0 - node - own('output');
-  const block = t0 - 2 * node - output - own('fm1') - own('output');
+  const [t0, t10, t2] = await Promise.all([base, many, two].map((p) => run(p, []).then(overhead)));
+  const node = (t10 - t0) / 10;
+  const output = t2 - t0 - node;
+  const block = t0 - 2 * node - output;
   return { block: Math.round(block), node: Math.round(node), output: Math.round(output) };
-}
-
-// ------------------------------------------------------------------ the scale
-
-async function calibration(): Promise<CpuTable['calibration']> {
-  const [old, bench] = await Promise.all([emulate(ELF.old, new Uint8Array(0), events([60])), emulate(ELF.bench, new Uint8Array(0), [])]);
-  const oldPeak = peak(old.blocks.map((b) => b.total));
-  const kernel = bench.blocks.map((b) => b.total / 16);
-  return {
-    method: 'a scale and a fixed time per block, and a factor per factory engine (rig), fitted to the factory patches measured on the test rig (survey, fit)',
-    survey: SURVEY.survey,
-    fit: SURVEY.fit,
-    acidM102CyclesPerUs: Math.round(oldPeak / (OLD_PEAK * BLOCK_US)),
-    acidM102Note: '303 Acid of M1-0.2 (b907693), one note held, peak cycles per block = 12 % of 2901 us (the ISR peak measured on the FM-1): the scale before the survey',
-    acidM102Cycles: oldPeak,
-    benchMac4CyclesPerUs: Math.round(kernel[0] / 9),
-    benchSvfCyclesPerUs: Math.round(kernel[1] / 8),
-    benchNote: 'firmware/src/bench.c kernels (4x Q15 MAC 9 us, Q15 SVF 8 us per block, rounded down) give the same scale within a few %',
-    note: `module kits hold note ${NOTE}; a square or saw oscillator costs more the higher it plays`,
-  };
 }
 
 // ------------------------------------------------------------------ the table
 
-HOOK = await hookCost();
 const names = Object.keys(DEFS).filter((t) => !EDITOR_ONLY.has(t)); // the Scope never runs on the FM-1
 const costs = await Promise.all(names.map(typeCost));
 const types: Record<string, TypeCost> = Object.fromEntries(names.map((n, i) => [n, costs[i]]));
 for (const type of names) {
   const t = types[type];
   const show = (d: CostDim): string => ('values' in d ? `${d.param}[${d.values.length}]` : 'above' in d ? `${d.param}>${d.above}` : 'points' in d ? `${d.param}~${d.points.length}` : 'exact' in d ? `${d.param}=${d.exact.join('/')}/other` : 'input' in d ? `in:${d.input}` : `out:${d.output}`);
-  console.log(`${type.padEnd(10)} run ${String(t.run).padStart(7)}  cv ${String(t.cv).padStart(5)}${t.dims ? `  ${t.dims.map(show).join(' ')} (${t.grid!.length})` : ''}${t.extra ? `  + ${t.extra.map((e) => show(e.dim)).join(' ')}` : ''}${t.matrix ? `  an output +${t.matrix.out}, pins in use +${t.matrix.pins.join(' / ')}` : ''}`);
+  console.log(`${type.padEnd(10)} run ${String(t.run).padStart(7)}${t.dims ? `  ${t.dims.map(show).join(' ')} (${t.grid!.length})` : ''}${t.extra ? `  + ${t.extra.map((e) => show(e.dim)).join(' ')}` : ''}${t.matrix ? `  an output +${t.matrix.out}, pins in use +${t.matrix.pins.join(' / ')}` : ''}`);
 }
-const [cal, loop, sum, cv, bypass, thru] = await Promise.all([calibration(), loopCosts(types), sumCost(), cvCost(), bypassCost(), thruCost()]);
+const [loop, sum, cv, bypass, thru] = await Promise.all([loopCosts(), sumCost(), cvCost(), bypassCost(), thruCost()]);
 types.steps.thru = thru;
-console.log(`steps thru ${thru} per key`);
-const { cyclesPerUs, fixedUs } = SURVEY;
+console.log(`steps thru ${thru} per key; block ${loop.block}, per module ${loop.node}, per Output ${loop.output} cycles`);
+const firmware = JSON.parse(readFileSync(`${FW}/matryoshka.json`, 'utf8'));
 const table: CpuTable = {
-  source: 'estimate: the fixed-point engine counted on an rv32im model (tools/cpu), calibrated on the factory patches measured on the test rig (2026-11-09)',
-  cyclesPerUs,
-  fixedUs,
+  source: `the firmware's own module times on the emulator's timing model (D-1107; scripts/cpu-costs.ts, firmware ${firmware.version} app ${String(firmware.app_sha256).slice(0, 12)})`,
+  cyclesPerUs: CYCLES_PER_US,
+  // the block's measured rest of the interrupt holds an idle second core: one core is that less (CORES.idleUs), plus the peak
+  fixedUs: PEAK.us - CORES.idleUs,
   cores: CORES,
-  rig: RIG,
   blockUs: BLOCK_US,
   note: NOTE,
   ...loop,
@@ -549,31 +483,31 @@ const table: CpuTable = {
   cv,
   bypass,
   types,
+  // the two-core schedule's costs stay the firmware's (engine.c DEF_COST): a new table must not move them (D-1107)
+  schedule: (OLD as CpuTable).schedule,
   checks: [],
-  calibration: cal,
+  calibration: {
+    method: 'each module type\'s test patches played on the real firmware in the emulator under its timing model (m1emu cpu --modtime, D-1155): the firmware\'s own module times, both cores; the rest of the interrupt from its mean',
+    timing: 'tools/emu/timing.txt',
+    play: `kits hold note ${NOTE} 500 ms, then 250 ms of module times; a square or saw oscillator costs more the higher it plays`,
+    peak: PEAK.survey,
+    slots: stats.slots,
+  },
 };
 
-// whole patches: the plain engine's peak against the model
-const checks = cpuChecks(NOTE).map(({ name, patch, notes }): [string, Patch, number[]] => [name, patch, notes]);
-// a check's peak includes the note-on block: envelopes and glides moving there are what the FM-1 must keep up with. The
-// patch loads one silent block before the notes, as on the FM-1 (a patch is loaded before it is played): the load block
-// works out what the engine then keeps until a setting changes (#289), which is no part of playing. A patch with a Steps
-// track counts with its transport running (startEvents)
-const checkRun = async (p: Patch, notes: number[]): Promise<number> => {
-  const r = await emulate(ELF.plain, encodePatch(p, true), [RENDER, ...startEvents(p), ...notes.map(ON), ...Array(BLOCKS).fill(RENDER)]);
-  if (r.exit) throw new Error(`${p.name}: the engine refused the patch (${r.exit})`);
-  return Math.max(...r.blocks.slice(1).map((b) => b.total));
-};
-const totals = await Promise.all(checks.map(([, p, notes]) => checkRun(p, notes)));
+// whole patches: the module times the firmware measured (both cores) and the modelled rest, against the model
+const checks = cpuChecks(NOTE);
+const runsOf = await Promise.all(checks.map(({ patch, notes }) => run(patch, notes)));
 let worst = 0;
-checks.forEach(([name, p], i) => {
-  const cycles = totals[i];
+checks.forEach(({ name, patch }, i) => {
+  const r = runsOf[i];
+  const outputs = patch.modules.filter((m) => m.type === 'output').length;
+  const cycles = Math.round(moduleCycles(r) + loop.block + loop.node * r.ns.size + loop.output * outputs);
   table.checks.push({ name, cycles });
-  const est = cpuEstimate(p, table).cycles;
+  const est = cpuEstimate(patch, table).cycles;
   const err = est / cycles - 1;
   worst = Math.max(worst, Math.abs(err));
-  console.log(`${name.padEnd(28)} ${String(cycles).padStart(8)}  model ${String(Math.round(est)).padStart(8)}  ${(100 * err).toFixed(1).padStart(6)} %  load ${((100 * (cycles / cyclesPerUs + fixedUs)) / BLOCK_US).toFixed(0)} %`);
+  console.log(`${name.padEnd(28)} ${String(cycles).padStart(8)}  model ${String(Math.round(est)).padStart(8)}  ${(100 * err).toFixed(1).padStart(6)} %  interrupt ${r.isrUs.toFixed(0)} us`);
 });
-console.log(`scale ${cyclesPerUs} cycles/us + ${fixedUs} us (303 Acid ${cal.acidM102CyclesPerUs}, bench ${cal.benchMac4CyclesPerUs}, ${cal.benchSvfCyclesPerUs}); worst model error ${(100 * worst).toFixed(1)} %`);
+console.log(`${stats.slots} patches in ${stats.rounds} emulator rounds; worst model error ${(100 * worst).toFixed(1)} %`);
 writeFileSync(new URL('../src/cpu-costs.json', import.meta.url), JSON.stringify(table, null, 1) + '\n');
-await POOL.close();

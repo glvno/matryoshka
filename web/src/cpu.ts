@@ -103,6 +103,9 @@ export interface CpuTable {
   checks: { name: string; cycles: number }[];
   /** how the scale was found */
   calibration: Record<string, number | string>;
+  /** the two-core schedule's cost of one copy of each type and of a bypassed module, in 64 cycles of a table at
+   * `cyclesPerUs` (engine.c DEF_COST, DEF_COST_BYPASS: export-defs writes them): frozen with the firmware */
+  schedule: { cost: Record<string, number>; bypass: number; cyclesPerUs: number; note: string };
   /** the test rig's survey of the factory patches (scripts/cpu-costs.ts RIG): per factory engine (a top-level assembly of
    * that name), the factor on its modules' cycles that makes the estimate read what the rig measured for its factory patch
    * (its steady peak; the scale and the fixed time per block are fitted on every patch together). `voices`: for an engine
@@ -252,11 +255,11 @@ function slope(p: Patch, id: number, seen = new Set<number>()): number {
 /** does a signal from module `id` change about every sample (the oscillator works out its increments only when the pitch moves)? */
 const keepsMoving = (p: Patch, id: number): boolean => slope(p, id) >= 0.5;
 
-/** what the two-core schedule counts for one copy of a module type (engine.c DEF_COST, made from this table by
- * export-defs): its run and parameter inputs, in 64 cycles */
-export const scheduleCost = (table: CpuTable, type: string): number => Math.max(1, Math.round(((table.types[type]?.run ?? 0) + (table.types[type]?.cv ?? 0)) / 64));
+/** what the two-core schedule counts for one copy of a module type (engine.c DEF_COST, written from this table by
+ * export-defs): the frozen units of CpuTable.schedule, so a new cost table never moves the firmware's schedule */
+export const scheduleCost = (table: CpuTable, type: string): number => table.schedule.cost[type] ?? 1;
 /** what it counts for a module bypassed when the patch loads (engine.c DEF_COST_BYPASS, D-1104): passing an input through */
-export const scheduleBypass = (table: CpuTable): number => Math.max(1, Math.round(table.bypass / 64));
+export const scheduleBypass = (table: CpuTable): number => table.schedule.bypass;
 
 /** cores: 2, the FM-1 since #271 (core 0's time: the second core's share of a two-core schedule, #802, or of the split poly
  * groups' odd parts, plus an idle second core's cost); 1 as with core 1 held. `scheduleFits`: whether the schedule's buffers
@@ -365,7 +368,9 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
     if (s.on && (scheduleFits?.(s) ?? true)) {
       const each = (m: number): number => work.get(p.modules[m].id) ?? 0;
       const items = s.order.reduce((n, m) => n + each(m) * s.copies[m], 0);
-      split = items - scheduleTime(s, scheduleWork(s, each), SCH_SYNC * 64, SCH_FORK * 64);
+      // (the hand-over and the wait are in the schedule's units: engine.c SCH_SYNC, SCH_FORK)
+      const unit = (64 * table.cyclesPerUs) / table.schedule.cyclesPerUs;
+      split = items - scheduleTime(s, scheduleWork(s, each), SCH_SYNC * unit, SCH_FORK * unit);
       parted = 1;
     }
   }
