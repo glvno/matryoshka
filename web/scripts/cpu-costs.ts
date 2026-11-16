@@ -172,7 +172,9 @@ function bends(values: number[], costs: number[][], thr: number, step: boolean):
   return keep.map((i) => values[i]);
 }
 
-const GRID_MAX = 16384;
+/** the most cells a type's grid has; the dims with the smallest effects beyond it become additive (`extra`). Each cell is a
+ * patch played on the emulator, so the bound keeps a run to about an hour */
+const GRID_MAX = 2048;
 /** more settings a type's choices are tried in: the Delay's heads (#660) cost only with Tape on */
 const CHOICE_CONTEXTS: Record<string, KitCfg[]> = { delay: [{ params: { tape: 1 } }] };
 /** settings with exact fast paths in engine.c (cpu.ts CostDim exact): those values, then one ordinary value counted for
