@@ -44,7 +44,7 @@ for (const parts of [1, 2, 3, 4]) for (const feedback of [false, true]) for (con
   fixtures.push(['compiled-fallback', patch]);
 }
 // Inputs read before or after the ordinary render order must retain their values.
-for (const input of ['assign', 'unison']) {
+for (const input of ['assign', 'unison', 'priority']) {
   const p = chain(false, false, 3), alloc = p.modules.find((m) => m.type === 'alloc')!;
   const lfo = p.modules.find((m) => m.type === 'lfo')!;
   connect(p, DEFS, { module: lfo.id, port: 'out' }, { module: alloc.id, port: input });

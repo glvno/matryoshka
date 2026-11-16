@@ -3097,13 +3097,13 @@ const crush: ModuleImpl<{ held: number; cnt: number } & OsState> = {
  * do not hold it any more: old ones get an allocator instead). A poly assembly's own keyboard: the note its part plays (pitch with the bend and the part's detune / drift flaw, gate, velocity), the part's place among
  * the parts (index -1 first .. 1 last, 0 with one part), whether the note began over a held one (legato) and its pitch
  * step from the previous note in octaves (jump; the first from C4). Outside a poly assembly it is the shared keyboard.
- * Its `assign` and `unison` inputs are its Voicing's (the engine reads them for the group: engine.ts voicingCables).
+ * Its `assign`, `unison` and `priority` inputs are its Voicing's (the engine reads them for the group: engine.ts voicingCables).
  */
 const part: ModuleImpl<null> = {
   def: {
     type: 'part',
     label: 'Part',
-    inputs: [control('assign'), control('unison')],
+    inputs: [control('assign'), control('unison'), control('priority')],
     outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump'), gate('trig'), gate('low'), gate('high'), gate('unison')],
     params: [],
   },
@@ -3181,20 +3181,21 @@ export const NOTE_NAMES = Array.from({ length: 128 }, (_, n) => `${PITCH_CLASSES
  * output is per voice: into a poly assembly voice i reaches copy i (the voice cards), into a module that runs once the
  * voices sum. The poly assemblies it feeds run once per voice. The engines run it in its Part form (poly.ts deviceView).
  * channel / low / high: it takes only the keys of that MIDI channel (all = the device's) between those notes (a split or
- * a layer per channel); an Arpeggiator's notes are judged by the range only. The `assign` and `unison` inputs move those
- * settings by a cable (voicingSetting, #681: one Selector row can be a polysynth's whole key assign switch).
+ * a layer per channel); an Arpeggiator's notes are judged by the range only. The `assign`, `unison` and `priority` inputs
+ * move those settings by a cable (voicingSetting, #681: one Selector row can be a polysynth's whole key assign switch; the
+ * priority input: a switch that sets the note priority with another setting, as the SH-101's ENV TRIGGER does).
  */
 const alloc: ModuleImpl<null> = {
   def: {
     type: 'alloc',
     label: 'Voicing',
-    inputs: [keys('keys'), control('assign'), control('unison')],
+    inputs: [keys('keys'), control('assign'), control('unison'), control('priority')],
     outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump'), gate('trig'), gate('low'), gate('high'), gate('unison')],
     params: [
       param('voices', 1, 16, 4, { step: 1 }),
       param('assign', 0, 2, 0, { step: 1, choices: ASSIGN_MODES, top: 3, input: 'assign', rest: (p, cv) => voicingSetting(p.assign ?? 0, cv, 3) }),
       param('legato', 0, 2, 0, { step: 1, choices: LEGATO_MODES }),
-      param('priority', 0, 2, 0, { step: 1, choices: PRIORITIES }),
+      param('priority', 0, 2, 0, { step: 1, choices: PRIORITIES, input: 'priority', rest: (p, cv) => voicingSetting(p.priority ?? 0, cv, 2) }),
       param('unison', 0, 1, 0, { step: 1, choices: UNISON_ASSIGN, top: 2, input: 'unison', rest: (p, cv) => voicingSetting(p.unison ?? 0, cv, 2) }),
       param('channel', 0, 16, 0, { step: 1, choices: KEY_CHANNELS }),
       param('low', 0, 127, 0, { step: 1, choices: NOTE_NAMES }),
