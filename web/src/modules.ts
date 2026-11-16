@@ -3013,13 +3013,18 @@ const vowel: ModuleImpl<VowelState> = {
 interface PhaserState {
   /** the sweep LFO's phase, 0..1 */
   ph: number;
-  /** x1 / y1 of the four allpass stages */
+  /** the state w of each of the four allpass stages */
   ap: number[];
   /** the last output of stage 4 (feedback) */
   fbv: number;
 }
 
-/** a four-stage phaser: one allpass coefficient for all stages from a triangle sweep of +-2 depth octaves around center, set once per block */
+/**
+ * a four-stage phaser: one allpass coefficient for all stages from a triangle sweep of +-2 depth octaves around center, set
+ * once per block. Each stage is a one-multiplier (wave digital) section, v = a (x - w), y = v + w, w <- v + x: the allpass
+ * (a + z^-1) / (1 + a z^-1) with one state, which the C engine needs for a ring with no input to end at exactly zero
+ * (engine.c m_phaser, D-1109); both engines use it so they move alike while the sweep changes a
+ */
 const phaser: ModuleImpl<PhaserState> = {
   def: {
     type: 'phaser',
@@ -3034,7 +3039,7 @@ const phaser: ModuleImpl<PhaserState> = {
       param('mix', 0, 1, 0.5, { step: 0.01 }),
     ],
   },
-  init: () => ({ ph: 0, ap: [0, 0, 0, 0, 0, 0, 0, 0], fbv: 0 }),
+  init: () => ({ ph: 0, ap: [0, 0, 0, 0], fbv: 0 }),
   process(c, s) {
     const rate = c.p.rate ?? 0.5;
     const tri = wave(1, s.ph, 0);
@@ -3046,7 +3051,11 @@ const phaser: ModuleImpl<PhaserState> = {
     for (let i = 0; i < c.n; i++) {
       const x0 = c.inp.in[i];
       let x = Math.min(8, Math.max(-8, x0 + fb * s.fbv));
-      for (let k = 0; k < 4; k++) x = allpass(s.ap, 2 * k, a, x);
+      for (let k = 0; k < 4; k++) {
+        const w = s.ap[k], v = a * (x - w);
+        s.ap[k] = v + x;
+        x = v + w;
+      }
       s.fbv = x;
       c.out.out[i] = x0 * (1 - mix) + x * mix;
     }

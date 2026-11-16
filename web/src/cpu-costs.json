@@ -29967,7 +29967,7 @@
    "cv": 223
   },
   "phaser": {
-   "run": 16130,
+   "run": 16776,
    "cv": 232
   },
   "crush": {
@@ -37483,7 +37483,7 @@
   },
   {
    "name": "Meridian 8",
-   "cycles": 604449
+   "cycles": 605081
   },
   {
    "name": "808 Kit",
@@ -37659,7 +37659,7 @@
   },
   {
    "name": "assembly Meridian 8",
-   "cycles": 562947
+   "cycles": 563593
   },
   {
    "name": "assembly mono lead",
