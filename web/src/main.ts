@@ -137,6 +137,10 @@ device.choose = (found, first) => chooseFm1($<HTMLDialogElement>('fm1-pick'), fo
 const fm1Name = (): string => (device.connected && device.identity ? fm1Label(device.identity) : 'FM-1');
 /** the patch fits the FM-1 (deviceBudget); one that does not plays only in the browser and is never sent */
 let fitsDevice = true;
+/** the budget's cost list (#942, showBudget): its order, and whether every module is listed or the first CPU_ROWS */
+let cpuSort: 'cost' | 'name' = 'cost';
+let cpuAll = false;
+const CPU_ROWS = 6;
 /** Live sync is on (setLive: the connect dialog, the chip, FM-1 & MIDI's Sync / Stop syncing) */
 let liveOn = false;
 const live = (): boolean => liveSync.syncs(device.connected, liveOn, fitsDevice);
@@ -1325,10 +1329,6 @@ function budgetLine(name: string, frac: number, figure: string, title = '', warn
   return row;
 }
 
-/** the budget's cost list (#942): its order, and whether every module is listed or the first CPU_ROWS */
-let cpuSort: 'cost' | 'name' = 'cost';
-let cpuAll = false;
-const CPU_ROWS = 6;
 function showBudget(): void {
   const allocationChanged = editor.bufferAllocation !== device.bufferAllocation;
   editor.bufferAllocation = device.bufferAllocation;
