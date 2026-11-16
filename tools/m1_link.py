@@ -48,6 +48,11 @@
                                            blocktime; --json: the raw values. Reads only)
   tools/m1_link.py t5 [SECONDS]           (#803, DIAG page 177: TIMER5's time over SECONDS (default 3): the LED and key
                                            scan a tick, the USB / MIDI polls, the dim pulses. Reads only)
+  tools/m1_link.py fpubench [--json FILE] (#950, DIAG pages 178..: on a build with the CPU benchmark (tools/build.py
+                                           M1_BENCH=1, the CI job fpu-measure): each kernel runs 8 times, a block each with
+                                           the interrupts off (about a second in all; the sound stops meanwhile and the
+                                           overload guard may drop a voice), then its fastest run in CPU cycles per sample
+                                           (the clock from the same page's timed adds); --json: the raw values too)
   tools/m1_link.py diag [DIS]             (what the last reset left: its cause, the crash record, where a stalled main loop
                                            was; DIS = the build's matryoshka.dis (CI artifact matryoshka-elf) names the functions)
   tools/m1_link.py factory-info           (#915: the factory region's state, layout, set, length and patch count)
@@ -696,6 +701,8 @@ def main():
         modtime(link, a[1:])
     elif a[0] == "t5":
         t5parts(link, a[1:])
+    elif a[0] == "fpubench":
+        fpubench(link, a[1:])
     elif a[0] == "diag":
         raw = []
         for page in range(32):
@@ -828,6 +835,55 @@ def t5parts(link, a):
         print(f"  the USB / MIDI polls: {un}, mean {ns(usb) / un / 1000:.2f} us each; {100 * usb / span:.2f} % of core 0")
     if dn:
         print(f"  dim pulses: {dn} ({dn / n:.2f} a tick), mean {ns(dsum) / dn / 1000:.2f} us")
+
+
+FPU_PAGE = 178        # firmware/src/bench.c BENCH_PAGE
+
+
+def fpubench_read(link):
+    """DIAG page 178 runs the benchmark (bench.c bench_diag): the build and the clock probe; pages 179.. its kernels"""
+    import struct
+    p = link.ask(frame(0x2B, [FPU_PAGE]), (0x4B, FPU_PAGE), tries=1, wait=30.0)
+    if len(p) < 33:
+        sys.exit("no CPU benchmark (DIAG page 178): install a build with M1_BENCH=1 (CI: the fpu-measure job's artifact)")
+    ver, nk, fpu, n, runs, adds1, adds2, pll = [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range(8)]
+    if adds2 <= adds1:
+        sys.exit("the clock probe timed no adds")
+    r = {"version": ver, "fpu": fpu, "frames": n, "runs": runs, "pll2_con1": pll,
+         "cycles_per_tick": 32768 / (adds2 - adds1), "kernels": []}   # 32768 dependent adds, one a CPU cycle
+    for k in range(nk):
+        q = link.ask(frame(0x2B, [FPU_PAGE + 1 + k]), (0x4B, FPU_PAGE + 1 + k))
+        if len(q) < 33:
+            sys.exit(f"DIAG page {FPU_PAGE + 1 + k}: no kernel {k}")
+        lo, hi, res = [int.from_bytes(bytes(q[1 + 4 * i:5 + 4 * i]), "little") for i in range(3)]
+        r["kernels"].append({"name": bytes(q[14:33]).split(b"\0")[0].decode(), "ops": q[13], "ticks_min": lo,
+                             "ticks_max": hi, "result": f"{res:08x}",
+                             "result_f32": struct.unpack("<f", res.to_bytes(4, "little"))[0]})
+    return r
+
+
+def print_fpubench(r, out=print):
+    """cycles per sample of each kernel's fastest run; less the block loop (the first kernel); per chained operation"""
+    c, n = r["cycles_per_tick"], r["frames"]
+    cyc = lambda ticks: ticks * c / n
+    base = cyc(r["kernels"][0]["ticks_min"])
+    out(f"build: {'FPU (FM1_FPU=1)' if r['fpu'] else 'software float'}; CPU {c * 24:.0f} MHz (timed adds); "
+        f"{n} frames a block, the fastest of {r['runs']} runs")
+    out(f"{'kernel':<20} {'cyc/sample':>10} {'less loop':>10} {'per op':>8} {'slowest':>8}  result")
+    for k in r["kernels"]:
+        net = cyc(k["ticks_min"]) - base
+        out(f"{k['name']:<20} {cyc(k['ticks_min']):10.1f} {net:10.1f} {net / k['ops']:8.1f} {cyc(k['ticks_max']):8.1f}  "
+            f"{k['result']} ({k['result_f32']:.7g})")
+
+
+def fpubench(link, a):
+    import json
+    r = fpubench_read(link)
+    print_fpubench(r)
+    if "--json" in a:
+        with open(a[a.index("--json") + 1], "w") as f:
+            json.dump(r, f, indent=1)
+        print(f"raw values: {a[a.index('--json') + 1]}")
 
 
 def modtime(link, a):
