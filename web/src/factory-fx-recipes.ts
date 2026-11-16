@@ -19,11 +19,11 @@ export const FACTORY_FX_MASKS: Record<string, number> = {
   'Canvas': 4,
   'Expander S': 15,
   'Briefcase 3': 6,
-  'Wanderer': 13,
-  'Cassia 1': 12,
+  'Wanderer': 15,
+  'Cassia 1': 13,
   'Hera 4': 12,
-  'Vernon 100': 7,
-  'Sallen 20': 7,
+  'Vernon 100': 15,
+  'Sallen 20': 15,
   'Io 4': 13,
 };
 

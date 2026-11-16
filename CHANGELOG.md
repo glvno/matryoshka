@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Setting up an FM-1 takes two steps: the firmware, then the factory sounds.** The firmware now carries only the factory instruments that are unlikely to change: Monolith D, Silver Box, Expander S, Io 4, Algo Four, Cassia 1, Canvas, Shush 101, 808 Kit, 909 Kit and Verona Drum 1. The other factory instruments, every factory preset and the drum patterns are installed into the FM-1 right after the firmware, into flash the firmware never used. The Install panel does it while "Install factory instruments and presets (recommended)" is ticked, as it is by default, and `tools/fm1_install.py` does it unless you add `--no-factory`. Factory presets and those instruments can now change without a firmware update: when the editor connects to an FM-1 whose factory sounds are missing or older, it offers to install them in one click. Until they are installed, the FM-1 plays its built-in instruments and says FACTORY SOUNDS MISSING: CONNECT TO MATRYOSHKA.LOL. Your saved slots, presets and patterns are never touched. FACTORY RESET puts back every factory instrument the FM-1 has. The firmware has more room for new features.
+- **Wanderer, Sallen 20 and Vernon 100 have the whole effects rack: Drive, Chorus, Delay and Reverb.** Wanderer gains Chorus, and Sallen 20 and Vernon 100 gain Reverb. **Cassia 1 gains Drive** beside its own chorus, Delay and Reverb, at its four voices. Each new effect starts off, so every factory preset sounds as before; turn it on from the FX page. A slot you saved keeps its own version.
 
 ## 1.17.0 — 2026-11-15
 

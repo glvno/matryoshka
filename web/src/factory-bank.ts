@@ -52,10 +52,12 @@ export const selectedFactoryProfile: Readonly<Record<string, SelectedFactoryOpti
   'Expander S': { configurationId: 'expander-s-v4-drive-chorus-delay-reverb', outputLevel: 0.68 },
   // (drive omitted to make room for the pin board's tile names: owner in chat 2026-11-15, "briefcase 3: drop drive", D-1052)
   'Briefcase 3': { omit: ['drive'], harmonizer: 'removed', configurationId: 'briefcase-3-pin-board-chorus-delay-no-harm' },
-  Wanderer: { omit: ['chorus'], configurationId: 'selected-wanderer' },
-  'Cassia 1': { omit: ['drive'], configurationId: 'cassia-1-v4-chorus-delay-reverb' },
-  'Vernon 100': { omit: ['reverb'], configurationId: 'selected-vernon-100' },
-  'Sallen 20': { omit: ['reverb'], harmonizer: 'removed', configurationId: 'sallen-20-original-drive-chorus-delay-no-harm' },
+  // (each of the next four gains its missing stage, bypassed, so its presets sound as before: issue #937, D-1200)
+  Wanderer: { configurationId: 'wanderer-v2-drive-chorus-delay-reverb' },
+  // (drive joins at four voices, as the fifth voice does not fit: owner in chat 2026-11-16, "agree with amended effects order", D-1200)
+  'Cassia 1': { configurationId: 'cassia-1-v5-drive-chorus-delay-reverb' },
+  'Vernon 100': { configurationId: 'vernon-100-v2-drive-chorus-delay-reverb' },
+  'Sallen 20': { harmonizer: 'removed', configurationId: 'sallen-20-v2-drive-chorus-delay-reverb-no-harm' },
   'Hera 4': { bankName: 'Hera 6', omit: ['drive'], configurationId: 'hera-4-v4-chorus-delay-reverb', outputLevel: 0.39 },
   'Io 4': { configurationId: 'selected-io-4' },
 };
