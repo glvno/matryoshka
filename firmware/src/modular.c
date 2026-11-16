@@ -28,6 +28,9 @@
 #endif
 #define FELUCCA_UAC_RETURN (FELUCCA_UAC && !FELUCCA_CDC)
 #define UAC_IN_SHIFT 8           /* the I2S words carry 24 bit in the low bits (audio.c): >> 8 for the 16-bit stream */
+#ifndef M1_BENCH
+#define M1_BENCH 0               /* the CPU benchmark (bench.c, DIAG pages 178..; #950): tools/build.py with M1_BENCH=1 */
+#endif
 
 #include <stdint.h>
 #include "fm1_time.h"
@@ -185,7 +188,7 @@ static uint32_t m1_fact_commit(const uint8_t *h);
 #include "patlink.c"           /* the pattern store's glue: the payloads, the running patch's links (#901) */
 #include "presetstore.c"
 #include "presetmig.c"         /* user presets of earlier engine structures move at the first boot after an update (D-865) */
-#ifdef M1_BENCH
+#if M1_BENCH
 #include "bench.c"
 #endif
 #define UI_POOL __attribute__((section(".pool")))

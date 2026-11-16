@@ -411,6 +411,10 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
 {
     const uint8_t *b = (const uint8_t *)&diag_prev;
     uint32_t i, off = page * 32u, n = sizeof diag_prev > off ? sizeof diag_prev - off : 0u;
+#if M1_BENCH
+    if (page >= BENCH_PAGE && page <= BENCH_PAGE + BENCH_K)   /* #950: the CPU benchmark (bench.c bench_diag) */
+        return bench_diag(page, out);
+#endif
 #if FELUCCA_UAC
     if (page == 125u || page == 126u) {
         uint32_t v[8];

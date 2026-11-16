@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 morgulbrut
 """tools/m1_link.py's bank commands against a fake FM-1 (no device, no mido needed): #955, they walk the slots the FM-1's
-INFO reports (60 with the pattern store on), as proto.c answers S_RANGE past them"""
+INFO reports (60 with the pattern store on), as proto.c answers S_RANGE past them. #950: fpubench reads the CPU
+benchmark's DIAG pages (firmware/src/bench.c bench_diag) as they are laid out."""
 import os
 import sys
 import types
@@ -97,6 +98,44 @@ class Factory(unittest.TestCase):
                 return [5, 32, 64, 1, 2, 0, 0, 0, 0, 1, 17, 0, 0, 0, self.byte14, 60]
         self.assertFalse(m1_link.has_factory(Info(0x02)))  # 1.17.0: the pattern store (bit 25), no factory region
         self.assertTrue(m1_link.has_factory(Info(0x06)))   # bit 26: the factory region's commands
+
+
+class FpuBench(unittest.TestCase):
+    class Bench:
+        """DIAG pages 178.. as bench.c bench_diag answers them: two kernels, the clock probe at 384 MHz (16 cycles a tick)"""
+        KERNELS = [("loop ld+add", 1, 240, 300, 7), ("f add x8", 8, 1264, 1900, 0x3F000000)]
+
+        def __init__(self):
+            self.waits = {}
+
+        def ask(self, msg, want, tries=3, wait=0.8):
+            cmd, d = msg.data[3], m1_link.unpack7(msg.data[4:])
+            assert cmd == 0x2B
+            page = d[0]
+            self.waits[page] = (tries, wait)
+            le = lambda *w: [b for x in w for b in x.to_bytes(4, "little")]
+            if page == 178:   # version, kernels, FPU, frames, runs, 16384 adds, 49152 adds (2048 ticks: 16 a tick), PLL
+                return [page, *le(1, len(self.KERNELS), 1, 128, 8, 1000, 1000 + 2048, 0x123)]
+            name, ops, lo, hi, res = self.KERNELS[page - 179]
+            return [page, *le(lo, hi, res), ops, *list(name.encode().ljust(19, b"\0"))]
+
+    def test_reads_the_build_and_each_kernel(self):
+        fm1 = self.Bench()
+        r = m1_link.fpubench_read(fm1)
+        self.assertEqual(fm1.waits[178], (1, 30.0))           # the run takes about a second: asked once, waited for
+        self.assertEqual((r["fpu"], r["frames"], r["runs"]), (1, 128, 8))
+        self.assertEqual(r["cycles_per_tick"] * 24, 384)
+        self.assertEqual([k["name"] for k in r["kernels"]], ["loop ld+add", "f add x8"])
+        self.assertEqual(r["kernels"][1]["ops"], 8)
+        self.assertEqual(r["kernels"][1]["result_f32"], 0.5)
+
+    def test_prints_cycles_per_sample_less_the_loop(self):
+        out = []
+        m1_link.print_fpubench(m1_link.fpubench_read(self.Bench()), out=out.append)
+        self.assertIn("FPU (FM1_FPU=1); CPU 384 MHz", out[0])
+        loop, fadd = out[2].split(), out[3].split()
+        self.assertEqual(loop[2], "30.0")                        # 240 ticks x 16 / 128
+        self.assertEqual(fadd[3:6], ["158.0", "128.0", "16.0"])  # less the loop: 128 cycles, 16 per add
 
 
 
