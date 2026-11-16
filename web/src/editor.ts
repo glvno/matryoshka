@@ -90,6 +90,7 @@ import { clipText, copyItems, pasteClip, type Clip } from './clipboard';
 import { GUTTER_ROOM, ribbons, type RibbonCable, type RibbonFrame } from './ribbons';
 import { pinchStart, pinchStep, type Pinch } from './touch';
 import type { ScreenSpec } from './scope-view';
+import { listenable, type ListenSource } from './listen';
 import type { EnvSpec } from './env-view';
 import { flipPlan } from './ab';
 import { body, sameVersion, Snapshots, type Snapshot } from './snapshots';
@@ -220,6 +221,10 @@ export interface EditorEvents {
   onLayout(p: Patch): void;
   /** the displays drawn this time (after every rebuild): Scope screens with what is cabled into each input, envelope shapes */
   onScreens?(screens: ScreenSpec[], envs: EnvSpec[]): void;
+  /** listening to one signal changed (#939, listen.ts): the outputs heard instead of the Output and their name; null: the Output */
+  onListen?(srcs: ListenSource[] | null, label: string): void;
+  /** the Output card's loudness readout (#940, loudness-view.ts), made again at every rebuild */
+  outputReadout?(): HTMLElement;
   /** a message for the status line */
   onError(msg: string): void;
   /** "save" on an assembly: put this definition into the library */
@@ -448,6 +453,7 @@ export class Editor {
     this.dropGesture();
     this.snaps.clear();   // (snapshots belong to the patch they were taken from)
     this.ev.onSnapshots?.();
+    this.stopListening();   // (another patch's module of the same id is another signal)
     this.routingOpen.clear();
     this.stack = [];
     this.selected.clear();
@@ -808,6 +814,7 @@ export class Editor {
   rebuild(): void {
     this.cancelArm();
     this.chips.clear();
+    if (this.listening?.srcs.some((s) => !DEFS[this.patch.modules.find((m) => m.id === s.module)?.type ?? '']?.outputs.some((q) => q.name === s.port))) this.stopListening();   // (its module went)
     if (this.armedSet.size) {
       const kept = keepArmed(this.patch, this.armedSet);
       if (kept.length !== this.armedSet.size) this.setArmed(kept); // (a device went, or lost its keys input)
@@ -1165,7 +1172,9 @@ export class Editor {
       return { el: this.paramRow(m, def, pd, { open, ...named, ...pos }), input: pd.input ? { module: m.id, port: pd.input } : undefined, gap: i > 0 && starts[i] };
     });
     // a second Main card (from an old patch) keeps its B side under the rows
-    const extra = def.type === 'fm1' ? [this.morphRow()] : steps ? def.views!.map((pd) => this.paramRow(m, def, pd, { open })) : [];
+    // the Output card: its loudness readout under the level (#940)
+    const readout = def.type === 'output' ? this.ev.outputReadout?.() : undefined;
+    const extra = def.type === 'fm1' ? [this.morphRow()] : steps ? def.views!.map((pd) => this.paramRow(m, def, pd, { open })) : readout ? [readout] : [];
     body.append(...this.edgeLayout(ins, outs, params, extra));
     el.append(head, body);
     // pick mode: one check box for all of its parameters (#186)
@@ -1950,7 +1959,7 @@ export class Editor {
     return row;
   }
 
-  /** a Scope screen's hover toolbar: its window (− / +, a 1-2-5 series), time / spectrum and the vertical scale */
+  /** a Scope screen's hover toolbar: its window (− / +, a 1-2-5 series), time / spectrum / spectrogram and the vertical scale */
   private scopeTools(m: ModuleInst): HTMLElement {
     const def = DEFS[m.type];
     const bar = document.createElement('div');
@@ -1973,8 +1982,9 @@ export class Editor {
     };
     const shorter = this.button('−', 'Shorter window', () => step(-1), 'sm');
     const longer = this.button('+', 'Longer window', () => step(1), 'sm');
+    const MODE_BUTTONS: Record<string, [string, string]> = { time: ['Wave', 'Waveform'], spectrum: ['FFT', 'Spectrum'], spectrogram: ['Gram', 'Spectrogram: the frequencies over the last 5 s, the level as a colour'] };
     const modes = (def.params.find((q) => q.name === 'mode')!.choices ?? []).map((name, i) => {
-      const b = this.button(name === 'spectrum' ? 'FFT' : 'Wave', name === 'spectrum' ? 'Spectrum' : 'Waveform', () => {
+      const b = this.button(MODE_BUTTONS[name][0], MODE_BUTTONS[name][1], () => {
         this.setParam(m.id, 'mode', i);
         for (const [k, x] of modes.entries()) x.setAttribute('aria-pressed', String(k === i));
       }, 'sm');
@@ -2878,6 +2888,11 @@ export class Editor {
       this.bypassSelected();
     } });
     if (def.type !== 'fm1') items.push({ text: 'Rename…', key: 'dbl-click', run: () => this.renameModule(m) });
+    // listen to an audio output on its own (#939); the one listened to: back to the Output
+    for (const p of def.outputs.filter((q) => listenable(q.kind))) {
+      const on = !!this.listening?.srcs.some((s) => sameEnd(s, { module: m.id, port: p.name }));
+      items.push({ text: on ? 'Stop listening' : `Listen to ${longName(def.type, p.name)}`, key: '⌥-click', run: () => (on ? this.stopListening() : this.toggleListen({ module: m.id, port: p.name })) });
+    }
     items.push({ text: 'Duplicate', key: '⌘D', run: () => {
       this.selected.clear();
       this.selected.add(m.id);
@@ -3346,6 +3361,63 @@ export class Editor {
     this.armGhost = null;
     this.setPatching(false);
     this.drag?.cancel();
+  }
+
+  // ---- listening to one signal (#939, listen.ts): browser only, nothing goes to the FM-1
+
+  /** the outputs heard instead of the Output (one, or a merged jack's, summed) and their name; null: the Output */
+  private listening: { srcs: Endpoint[]; label: string } | null = null;
+
+  /** what is listened to, by name; null: the Output */
+  get listenLabel(): string | null {
+    return this.listening?.label ?? null;
+  }
+
+  /**
+   * Listen to an output on its own (a merged jack: `also` its other outputs); the same again goes back to the Output.
+   * Only audio is heard on its own: for a control, gate or pitch output the status line says so. Whether it listens now.
+   */
+  toggleListen(from: Endpoint, also: Endpoint[] = []): boolean {
+    const srcs = [from, ...also];
+    const now = this.listening?.srcs;
+    if (now && now.length === srcs.length && now.every((s, i) => sameEnd(s, srcs[i]))) return (this.stopListening(), false);
+    const m = this.patch.modules.find((x) => x.id === from.module);
+    const kind = m && DEFS[m.type].outputs.find((q) => q.name === from.port)?.kind;
+    if (!m || !listenable(kind)) {
+      this.ev.onError(`${this.endName(from)} is a ${kind ?? 'control'} signal: only audio can be heard on its own. Cable it into a Scope to see it.`);
+      return false;
+    }
+    // inside a collapsed assembly: named after the card it shows on too ("Monolith D › Selector out")
+    let card: AssemblyInst | undefined;
+    for (let a = assemblyOf(this.patch, m.id); a; a = parentOf(this.patch, a.id)) if (!a.open) card = a;
+    const label = `${card ? `${card.label ?? 'assembly'} › ` : ''}${this.nameOf(m)} ${longName(m.type, from.port)}${also.length ? ` + ${also.length}` : ''}`;
+    this.listening = { srcs, label };
+    this.ev.onListen?.(srcs.map((s) => ({ id: s.module, port: s.port })), label);
+    this.markListen();
+    return true;
+  }
+
+  /** listen to the one selected card's first audio output (the palette); whether it listens now */
+  listenSelected(): boolean {
+    const m = this.selected.size === 1 ? this.patch.modules.find((x) => this.selected.has(x.id)) : undefined;
+    const p = m && DEFS[m.type].outputs.find((q) => listenable(q.kind));
+    return !!m && !!p && this.toggleListen({ module: m.id, port: p.name });
+  }
+
+  /** back to the Output; whether it was listening to something */
+  stopListening(): boolean {
+    if (!this.listening) return false;
+    this.listening = null;
+    this.ev.onListen?.(null, '');
+    this.markListen();
+    return true;
+  }
+
+  /** the jacks and cables listened to: ringed */
+  private markListen(): void {
+    const on = (e: Endpoint): boolean => !!this.listening?.srcs.some((s) => sameEnd(s, e));
+    for (const dot of this.ports.values()) dot.classList.toggle('listening', dot.dataset.dir === 'out' && on({ module: Number(dot.dataset.mod), port: dot.dataset.port! }));
+    for (const { path, cable } of this.cablePaths) if (cable) path.classList.toggle('listening', on(cable.from));
   }
 
   /** the canvas is patching (a cable being dragged or a jack armed); the page knows too, so the sidebar's jack thumbs show it */
@@ -6261,6 +6333,8 @@ export class Editor {
     for (const dot of [...this.ports.values(), ...this.sliderPorts.map((p) => p.jack)]) dot.classList.remove('connected');
     const add = (from: HTMLElement, to: HTMLElement, kind: string, remove: (() => void) | null, titleOf: string | (() => string), internal = false, cable?: Cable): void => {
       const title = typeof titleOf === 'string' ? titleOf : titleOf();
+      // Alt-click on a cable: listen to its source (#939) instead of disconnecting it
+      const listen = (e: MouseEvent): boolean => !!cable && e.altKey && (this.toggleListen(cable.from), true);
       const path = document.createElementNS(SVGNS, 'path');
       path.setAttribute('class', `cable ${kind}${internal ? ' alias' : ''}${remove ? '' : ' fixed'}`);
       path.setAttribute('aria-label', title);
@@ -6268,7 +6342,7 @@ export class Editor {
         path.setAttribute('role', 'button');
         path.setAttribute('tabindex', '0');
         path.addEventListener('pointerdown', (e) => e.stopPropagation());
-        path.addEventListener('click', (e) => { e.stopPropagation(); remove(); });
+        path.addEventListener('click', (e) => { e.stopPropagation(); if (!listen(e)) remove(); });
         path.addEventListener('keydown', (e) => {
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); remove(); }
         });
@@ -6351,7 +6425,7 @@ export class Editor {
           const hit = document.createElementNS(SVGNS, 'path');
           hit.setAttribute('class', 'cable-hit');
           hit.addEventListener('pointerdown', (e) => e.stopPropagation());
-          hit.addEventListener('click', (e) => { e.stopPropagation(); remove(); });
+          hit.addEventListener('click', (e) => { e.stopPropagation(); if (!listen(e)) remove(); });
           hit.addEventListener('pointerenter', () => hover(true));
           hit.addEventListener('pointerleave', () => hover(false));
           const t = document.createElementNS(SVGNS, 'title'); t.textContent = title; hit.append(t);
@@ -6410,6 +6484,7 @@ export class Editor {
     }
     this.positionCables();
     this.markArm();
+    this.markListen();
   }
 
   /** Main's tempo row while the tempo is global (D-907, tempo.ts): it shows and sets the global tempo, which every patch
@@ -6604,6 +6679,8 @@ export class Editor {
       // an output dropped on a sidebar slider whose thumb is a jack (cable slack, zoom) patches it
       const side = kind === 'out' ? (t?.closest('[data-side]') as HTMLElement | null)?.dataset.side as SideKey | undefined : undefined;
       if (side) return this.setSideSource(side, { module: Number(start.dataset.mod), port: start.dataset.port! });
+      // Alt-click on an output: listen to it (#939); Alt-drag still patches
+      if (dot === start && ev.altKey && kind === 'out' && start.dataset.mod) return void this.toggleListen({ module: Number(start.dataset.mod), port: start.dataset.port! }, start.dataset.also ? JSON.parse(start.dataset.also) as Endpoint[] : []);
       if (dot === start) {
         this.armed = start;
         start.classList.add('armed');

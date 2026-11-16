@@ -2,19 +2,21 @@
 // The screens of Scope modules (modules.ts `scope`), on their cards or on an assembly card. A screen streams from the
 // audio thread (worklet.ts `view`) only while it is on screen, the tab is visible and audio runs; what is cabled into its
 // inputs a and b is drawn in the signal kinds' colours: a short window triggered on a's rising crossing through the
-// middle of its range (free running without one), a long window rolling, or the spectrum. Both inputs share one scale
+// middle of its range (free running without one), a long window rolling, the spectrum, or a scrolling spectrogram
+// (spectrogram.ts, #940: each input in its own band, the frequency up the screen and the level as a colour). Both inputs share one scale
 // (fixed ±1 / ±4, or auto-range), drawn as labelled gridlines with the time per division; a readout under the screen
 // gives each input's lowest and highest value and where it comes from with that output's range (#518).
 import type { HostMsg } from './worklet';
-import type { ViewData } from './scope-stream';
+import { DISPLAY_EVERY, type ViewData } from './scope-stream';
 import { AutoRange, extent, perDivision, scopeNum, scopeScale, spectrum, type ScopeScale } from './scope';
+import { DB_HI, DB_LO, GRAM_COLS, GRAM_ROWS, Gram, gramColumn, heat, logY } from './spectrogram';
 import { SCOPE_MODES, SCOPE_SCALES } from './modules';
 import { voiceToken } from './voice-colors';
 import type { ModuleInst } from './patch';
 
 /** windows up to this long (ms) trigger; longer ones roll */
 const TRIGGER_MS = 100;
-/** samples the spectrum is taken over (scope.ts spectrum uses the last 2048) */
+/** samples the spectrum and the spectrogram are taken over (scope.ts spectrum uses the last 2048) */
 const SPECTRUM_SAMPLES = 2048;
 
 /** a screen as the editor drew it: the Scope module, the element to draw in, per input the outputs cabled into it */
@@ -36,6 +38,8 @@ interface Screen extends ScreenSpec {
   sr: number;
   /** the auto-range's scale, kept between frames (#518) */
   auto: AutoRange;
+  /** the spectrogram's columns per input (#940), while the mode is spectrogram; its image is drawn through `canvas` */
+  grams: { gram: Gram; canvas: HTMLCanvasElement | null }[] | null;
   /** the readout under the screen, when it last changed and what it says */
   readEl: HTMLElement;
   readAt: number;
@@ -71,7 +75,7 @@ export class ScopeScreens {
       spec.el.after(readEl);
       if (old && old.el !== spec.el) this.io.unobserve(old.el);
       this.io.observe(spec.el);
-      next.set(key, { ...spec, key, canvas, visible: old?.el === spec.el ? old.visible : false, sent: old?.sent ?? '', data: old?.data ?? null, voices: old?.voices ?? null, sr: old?.sr ?? 48000, auto: old?.auto ?? new AutoRange(), readEl, readAt: 0, readText: '' });
+      next.set(key, { ...spec, key, canvas, visible: old?.el === spec.el ? old.visible : false, sent: old?.sent ?? '', data: old?.data ?? null, voices: old?.voices ?? null, sr: old?.sr ?? 48000, auto: old?.auto ?? new AutoRange(), grams: old?.grams ?? null, readEl, readAt: 0, readText: '' });
     }
     for (const [key, s] of this.screens)
       if (!next.has(key)) {
@@ -89,6 +93,11 @@ export class ScopeScreens {
     s.data = chans;
     s.voices = perVoice(s.m) ? voices : null;
     s.sr = sr;
+    if (modeOf(s.m) === 'spectrogram') {
+      // one column per update, per input (an input with nothing cabled keeps its band dark)
+      if (s.grams?.length !== chans.length) s.grams = chans.map(() => ({ gram: new Gram(), canvas: null }));
+      chans.forEach((d, i) => { if ('raw' in d && s.chans[i]?.length) s.grams![i].gram.push(gramColumn(spectrum(d.raw), sr)); });
+    } else s.grams = null;
     this.schedule();
   }
 
@@ -109,14 +118,14 @@ export class ScopeScreens {
       if (!want) {
         s.data = null;
         s.voices = null;
+        s.grams = null;
       }
     }
     this.schedule();
   }
 
   private message(s: Screen): HostMsg {
-    const spectrumMode = SCOPE_MODES[Math.round(s.m.params.mode ?? 0)] === 'spectrum';
-    const samples = spectrumMode ? SPECTRUM_SAMPLES : Math.round(((s.m.params.time ?? 16) / 1000) * s.sr);
+    const samples = modeOf(s.m) !== 'time' ? SPECTRUM_SAMPLES : Math.round(((s.m.params.time ?? 16) / 1000) * s.sr);
     const msg: HostMsg = { t: 'view', key: s.key, chans: s.chans.map((c) => c.map(({ id, port }) => ({ id, port }))), samples };
     if (perVoice(s.m)) msg.voices = true;
     return msg;
@@ -161,7 +170,8 @@ export class ScopeScreens {
     };
     if (!s.chans.some((c) => c.length)) return empty('cable a signal into a or b');
     if (!s.data) return empty(this.running() ? '' : 'audio off');
-    const spectrumMode = SCOPE_MODES[Math.round(s.m.params.mode ?? 0)] === 'spectrum';
+    if (modeOf(s.m) === 'spectrogram') return this.drawGram(s, g, W, H, token);
+    const spectrumMode = modeOf(s.m) === 'spectrum';
     const ms = s.m.params.time ?? 16;
     const samples = Math.round((ms / 1000) * s.sr);
     // the trigger: a's rising crossing through the middle of its range, the latest one that leaves a whole window
@@ -290,6 +300,68 @@ export class ScopeScreens {
     }
   }
 
+  /** the spectrogram (#940): each cabled input in its own band (a over b), the newest column at the right, frequency
+   *  gridlines up the left, the colour scale's legend down the right and the time it spans */
+  private drawGram(s: Screen, g: CanvasRenderingContext2D, W: number, H: number, token: (name: string) => string): void {
+    const shown = s.chans.flatMap((c, i) => (c.length && s.grams?.[i] ? [i] : []));
+    const LEGEND = 30;
+    const w = W - LEGEND, band = H / Math.max(1, shown.length);
+    const grid = token('--line'), label = token('--muted');
+    g.font = '9px system-ui, sans-serif';
+    g.textBaseline = 'middle';
+    g.imageSmoothingEnabled = true;
+    shown.forEach((i, k) => {
+      const entry = s.grams![i];
+      const cv = (entry.canvas ??= document.createElement('canvas'));
+      cv.width = GRAM_COLS;
+      cv.height = GRAM_ROWS;
+      cv.getContext('2d')?.putImageData(new ImageData(entry.gram.image, GRAM_COLS, GRAM_ROWS), 0, 0);
+      // the ring from its oldest column, then round to the newest
+      const at = entry.gram.at, col = w / GRAM_COLS, top = k * band;
+      g.drawImage(cv, at, 0, GRAM_COLS - at, GRAM_ROWS, 0, top, (GRAM_COLS - at) * col, band);
+      if (at) g.drawImage(cv, 0, 0, at, GRAM_ROWS, (GRAM_COLS - at) * col, top, at * col, band);
+      g.textAlign = 'left';
+      for (const f of [100, 1000, 10000]) {
+        const y = Math.round(top + band - logY(f, s.sr) * band) + 0.5;
+        g.strokeStyle = grid;
+        g.globalAlpha = 0.45;
+        g.setLineDash([2, 3]);
+        g.beginPath();
+        g.moveTo(0, y);
+        g.lineTo(w, y);
+        g.stroke();
+        g.setLineDash([]);
+        g.globalAlpha = 1;
+        g.fillStyle = label;
+        g.fillText(f >= 1000 ? `${f / 1000}k` : String(f), 3, y - 6);
+      }
+      g.fillStyle = token(`--${s.chans[i][0].kind}`);
+      g.textAlign = 'right';
+      g.fillText(i ? 'b' : 'a', w - 4, top + 8);
+      if (k) {
+        g.strokeStyle = grid;
+        g.beginPath();
+        g.moveTo(0, Math.round(top) + 0.5);
+        g.lineTo(w, Math.round(top) + 0.5);
+        g.stroke();
+      }
+    });
+    // the legend: the colour scale from DB_HI (top) to DB_LO
+    const lx = w + 4, ly = 4, lh = H - 8;
+    for (let y = 0; y < lh; y++) {
+      const [r, gg, b] = heat(DB_HI - (y / (lh - 1)) * (DB_HI - DB_LO));
+      g.fillStyle = `rgb(${r} ${gg} ${b})`;
+      g.fillRect(lx, ly + y, 6, 1);
+    }
+    g.fillStyle = label;
+    g.textAlign = 'left';
+    for (const db of [DB_HI, (DB_HI + DB_LO) / 2, DB_LO]) g.fillText(scopeNum(db), lx + 8, Math.min(H - 5, Math.max(5, ly + ((DB_HI - db) / (DB_HI - DB_LO)) * lh)));
+    g.fillText('dB', lx + 8, H / 4);
+    g.textAlign = 'right';
+    g.fillText(`${scopeNum((GRAM_COLS * DISPLAY_EVERY * 128) / s.sr)} s`, w - 4, H - 6);
+    this.readout(s, s.data!.map((d, i) => ({ i, ...extent(...('raw' in d ? [d.raw] : [d.min, d.max])) })));
+  }
+
   /** the readout under a screen (#518): per input its lowest and highest value in the window and their distance, then
    *  where it comes from and that output's range; refreshed a few times a second so it can be read. null: nothing to say */
   private readout(s: Screen, rows: { i: number; lo: number; hi: number }[] | null): void {
@@ -337,6 +409,9 @@ const DB_SCALE: ScopeScale = { lo: -96, hi: 0, lines: [-96, -72, -48, -24, 0] };
 const DIVISIONS = 10;
 /** how often the readout under a screen changes (ms): slow enough to read */
 const READOUT_MS = 150;
+
+/** a Scope's mode (modules.ts SCOPE_MODES): time, spectrum or spectrogram */
+const modeOf = (m: ModuleInst): string => SCOPE_MODES[Math.round(m.params.mode ?? 0)] ?? 'time';
 
 /** a Scope draws each voice of a per-voice source as its own trace (its `voices` switch, #54) */
 const perVoice = (m: ModuleInst): boolean => Math.round(m.params.voices ?? 0) === 1;

@@ -11,6 +11,7 @@ import { Fm1Bridge } from './fm1-engine-host';
 
 /** the engine heard (#941): the browser's (engine.ts) or the FM-1's (engine.c as WebAssembly, fm1-engine.ts) */
 export type EngineKind = 'browser' | 'fm1';
+import type { ListenSource } from './listen';
 
 export class AudioHost {
   private ctx: AudioContext | null = null;
@@ -64,6 +65,8 @@ export class AudioHost {
   get sampleRate(): number {
     return this.ctx?.sampleRate ?? 0;
   }
+  /** the Output's loudness (#940): the mean squares of the K-weighted 100 ms steps the engine rendered (loudness.ts KMeter) */
+  onLoud: (steps: number[]) => void = () => {};
 
   /** the FM-1 engine loaded the patch (null) or why it could not (it is silent then) */
   onFm1: (error: string | null) => void = () => {};
@@ -172,6 +175,8 @@ export class AudioHost {
           this.onRecording(ev.data.rec, !!ev.data.last);
         } else if (typeof ev.data?.env === 'string') {
           this.onEnv(ev.data.env, ev.data.states);
+        } else if (Array.isArray(ev.data?.loud)) {
+          this.onLoud(ev.data.loud);
         } else if (typeof ev.data?.view === 'string') {
           this.onView(ev.data.view, ev.data.chans, ev.data.sr, ev.data.voices ?? null);
         }
@@ -195,6 +200,7 @@ export class AudioHost {
       if (this.pending) this.send({ t: 'patch', patch: this.pending, revision: this.revision });
       this.send({ t: 'transport', on: this.transportOn });
       this.send({ t: 'tempo', bpm: this.tempoOn });
+      if (this.listenOn) this.send({ t: 'listen', srcs: this.listenOn });
       for (const msg of this.early) this.send(msg);
       this.early = [];
       for (const msg of this.watches.values()) node.port.postMessage(msg);
@@ -266,6 +272,13 @@ export class AudioHost {
     this.send({ t: 'tempo', bpm });
   }
 
+  /** the outputs listened to instead of the Output (#939, listen.ts), null: the Output; kept for when the worklet starts */
+  private listenOn: ListenSource[] | null = null;
+  listen(srcs: ListenSource[] | null): void {
+    this.listenOn = srcs;
+    this.send({ t: 'listen', srcs });
+  }
+
   /** the standing watches (sidebar slider sources), sent again once the worklet exists: a watch asked for before audio started
    * would otherwise be lost */
   private watches = new Map<string, HostMsg>();
@@ -286,7 +299,7 @@ export class AudioHost {
     if (msg.t === 'watch' || msg.t === 'view' || msg.t === 'envwatch') this.watches.set(msg.key, msg);
     else if (msg.t === 'unwatch' || msg.t === 'unview' || msg.t === 'unenvwatch') this.watches.delete(msg.key);
     if (this.node) this.node.port.postMessage(msg);
-    else if (this.ctx && !['patch', 'transport', 'tempo'].includes(msg.t)) this.early.push(msg);
+    else if (this.ctx && !['patch', 'transport', 'tempo', 'listen'].includes(msg.t)) this.early.push(msg);
     if (this.node && this.fm1Started && this.pending && !this.fm1Queued) {
       // (a reload on its way takes the edit with the rest of the patch: the indices may be about to change)
       const ops = this.fm1.translate(this.pending, msg);

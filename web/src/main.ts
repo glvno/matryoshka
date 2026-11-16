@@ -31,6 +31,7 @@ import { SandboxKeys } from './sandbox-keys';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { snapshotRecord, storedSnapshots, type Snapshot } from './snapshots';
 import { ScopeScreens } from './scope-view';
+import { OutputLoudness } from './loudness-view';
 import { EnvScreens } from './env-view';
 import { addToBank, bankPatches, buildPatchesSection, type LibrarySection as LibraryPane } from './bank';
 import { buildPresetsSection } from './library-presets';
@@ -804,6 +805,17 @@ const patchCandidates = (like?: Patch): { name: string; patch: Patch }[] => {
 // Scope modules' screens: they stream while on screen and audio runs
 const screens = new ScopeScreens((msg) => host.send(msg), () => host.running && !host.muted);
 host.onView = (key, chans, sr, voices) => screens.receive(key, chans, sr, voices);
+// the Output card's loudness readout (#940): the reading carries on through rebuilds, a patch opened starts it again
+const loudness = new OutputLoudness();
+host.onLoud = (steps) => loudness.push(steps);
+// listening to one signal (#939): the chip over the canvas says what plays instead of the Output, and goes back
+const listenChip = $('listen-chip');
+const showListen = (label: string | null): void => {
+  listenChip.hidden = !label;
+  $('listen-name').textContent = label ?? '';
+  document.documentElement.classList.toggle('listening-any', !!label);
+};
+$('listen-stop').onclick = () => editor.stopListening();
 // envelope shapes: drags edit through the editor (made below; used only after it exists)
 const envs = new EnvScreens((msg) => host.send(msg), () => host.running && !host.muted, {
   set: (id, name, v) => editor.setParam(id, name, v),
@@ -1086,6 +1098,12 @@ const editor = new Editor($('canvas'), firstPatch, {
     screens.sync(list);
     envs.sync(envList);
   },
+  onListen(srcs, label) {
+    host.listen(srcs);
+    showListen(srcs ? label : null);
+    if (srcs && !host.running) void startAudio();   // (asked to hear something: the audio starts, as Audio on does)
+  },
+  outputReadout: () => loudness.element(),
   onLayout(p) {
     capabilityInspector?.sync();
     queueSave(p);
@@ -1111,6 +1129,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     installedLayout = null;
     pendingMutes.clear();
     noteKeys.set(p.octave ?? 0); // a patch opens in the octave it was last played in
+    loudness.reset();
   },
   onHistory(kind) {
     if (kind === 'undo') tutorial.undone();
@@ -1646,6 +1665,9 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Start audio', keywords: 'sound browser', run: () => void startAudio() },
     { kind: 'command', label: 'Panic: stop all notes', keywords: 'silence stuck', run: panic },
     { kind: 'command', label: host.engine === 'fm1' ? 'Switch to the browser engine' : 'Switch to the FM-1 engine', detail: 'Alt+E', keywords: 'fixed point firmware webassembly wasm compare hear sound device', run: () => void switchEngine() },
+    ...(editor.listenLabel ? [{ kind: 'command' as const, label: 'Stop listening: back to the Output', detail: 'Esc', keywords: `solo monitor hear signal ${editor.listenLabel}`, run: () => void editor.stopListening() }] : []),
+    { kind: 'command', label: 'Listen to the selected card on its own', detail: 'Alt-click a jack or cable', keywords: 'solo monitor hear signal headphones cable output', run: inPatch(() => { if (!editor.listenSelected()) status.textContent = 'Select one card with an audio output, or Alt-click (Option-click) an audio output or a cable, to hear it on its own'; }) },
+    { kind: 'command', label: 'Reset the integrated loudness', detail: 'the Output card', keywords: 'lufs level meter loudness rule target', run: () => loudness.reset() },
     { kind: 'command', label: 'FM-1 & MIDI settings', keywords: 'connect send store sync hardware keyboard release', run: () => $<HTMLDialogElement>('device-bar').showModal() },
     { kind: 'command', label: 'Install firmware', keywords: 'flash update hardware matryoshka return stock official v15', run: () => openInstall() },
     { kind: 'command', label: 'About Matryoshka', keywords: 'credits support ko-fi donate ai usage transparency', run: () => void about.open() },
@@ -1867,7 +1889,8 @@ window.addEventListener('keydown', (e) => {
     done = true;
   }
   // in pick / arrange mode Esc clears the row selection first, a second Esc ends the mode (#186)
-  else if (k === 'Escape') (editor.cancelArm(), editor.clearRows() || editor.endPick(), (diffPanel.hidden = true), (done = true));
+  // (then it stops listening to a signal on its own, #939)
+  else if (k === 'Escape') (editor.cancelArm(), editor.clearRows() || editor.endPick() || editor.stopListening(), (diffPanel.hidden = true), (done = true));
   else if (k === 'Delete' || k === 'Backspace') done = editor.deleteRows() || editor.removeSelected();
   else if (mod && k.toLowerCase() === 'a') (editor.selectAllRows() || editor.selectAll(), (done = true));
   else if ((k === ' ' || k === 'Enter') && !mod && !e.altKey && editor.applyRows()) done = true; // pick mode: show / hide the selected rows
