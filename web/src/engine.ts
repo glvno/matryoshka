@@ -736,6 +736,10 @@ export class Engine {
   }
   /** a block of silence for probeVoices (never written) */
   private silent = new Float32Array(BLOCK);
+  /** the first Output module's level as it played the last block (1 with none): a listened signal plays at it (listen.ts) */
+  outputLevel(): number {
+    return this.outputs[0]?.inst[0]?.eff.level ?? 1;
+  }
   /**
    * An envelope's copies as they run, for its display (env-view.ts): stage and level of each copy (one per voice inside
    * a poly assembly) and which is the newest held one; null when the module has no stage state.

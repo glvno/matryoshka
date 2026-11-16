@@ -77,3 +77,119 @@ export function integratedLoudness(l: Float32Array, r: Float32Array | null, sr: 
   const kept = loud.filter((z) => lufsOf(z) > gate);
   return lufsOf(mean(kept));
 }
+
+// ---- live loudness (#940): the same measure, fed as the audio plays
+
+/** a streaming biquad's state: x1 x2 y1 y2 */
+type BiquadState = Float64Array;
+
+/**
+ * The live loudness meter's audio side (worklet.ts): each channel K-weighted as integratedLoudness does it, and the
+ * squares summed over 100 ms steps (the blocks' hop). `take` hands over each finished step's mean square (the channels
+ * added, as a block's power is), oldest first.
+ */
+export class KMeter {
+  /** samples per step: integratedLoudness's hop */
+  readonly hop: number;
+  private stages: [number, number, number, number, number][];
+  private state: BiquadState[][];
+  private acc = 0;
+  private n = 0;
+  private done: number[] = [];
+
+  constructor(sr: number) {
+    this.hop = Math.round(0.1 * sr);
+    this.stages = kWeights(sr);
+    this.state = [0, 1].map(() => this.stages.map(() => new Float64Array(4)));
+  }
+
+  /** n samples of the left and right channels (`r` null: mono) */
+  push(l: Float32Array, r: Float32Array | null, n: number): void {
+    const chans = r ? [l, r] : [l];
+    for (let i = 0; i < n; i++) {
+      for (let c = 0; c < chans.length; c++) {
+        let v: number = chans[c][i];
+        const st = this.state[c];
+        for (let k = 0; k < this.stages.length; k++) {
+          const [b0, b1, b2, a1, a2] = this.stages[k];
+          const s = st[k];
+          const w = b0 * v + b1 * s[0] + b2 * s[1] - a1 * s[2] - a2 * s[3];
+          s[1] = s[0]; s[0] = v; s[3] = s[2]; s[2] = w;
+          v = w;
+        }
+        this.acc += v * v;
+      }
+      if (++this.n === this.hop) {
+        this.done.push(this.acc / this.hop);
+        this.acc = 0;
+        this.n = 0;
+      }
+    }
+  }
+
+  /** the steps finished since the last take, their mean squares */
+  take(): number[] {
+    const out = this.done;
+    this.done = [];
+    return out;
+  }
+}
+
+/** steps of 100 ms in a 400 ms block (BS.1770) and in the 3 s short-term window (EBU R 128) */
+const BLOCK_STEPS = 4;
+const SHORT_STEPS = 30;
+
+/**
+ * The live loudness meter's reading (the Output card, loudness-view.ts), from KMeter's steps: the short-term loudness
+ * (the last 3 s, ungated) and the integrated loudness since the last reset, gated as integratedLoudness gates it, over
+ * 400 ms blocks every 100 ms. Fed with the steps of a whole recording it reads what integratedLoudness reads for it.
+ */
+export class LoudnessReading {
+  private steps: number[] = [];
+  /** each 400 ms block's power (the mean of its four steps) since the reset */
+  private blocks: number[] = [];
+  /** the integrated reading, worked out again only after new blocks */
+  private cached: number | null = null;
+
+  push(steps: readonly number[]): void {
+    for (const z of steps) {
+      this.steps.push(z);
+      if (this.steps.length > SHORT_STEPS) this.steps.shift();
+      const n = this.steps.length;
+      if (n < BLOCK_STEPS) continue;
+      let s = 0;
+      for (let i = n - BLOCK_STEPS; i < n; i++) s += this.steps[i];
+      this.blocks.push(s / BLOCK_STEPS);
+      this.cached = null;
+    }
+  }
+
+  /** the short-term loudness, LUFS (fewer than 3 s since the reset: over what there is); -Infinity before a block */
+  short(): number {
+    if (this.steps.length < BLOCK_STEPS) return -Infinity;
+    let s = 0;
+    for (const z of this.steps) s += z;
+    return s > 0 ? lufsOf(s / this.steps.length) : -Infinity;
+  }
+
+  /** the integrated loudness since the reset, LUFS; -Infinity before a block over the absolute gate */
+  integrated(): number {
+    if (this.cached !== null) return this.cached;
+    const loud = this.blocks.filter((z) => z > 0 && lufsOf(z) > -70);
+    if (!loud.length) return (this.cached = -Infinity);
+    const mean = (list: number[]): number => list.reduce((a, b) => a + b, 0) / list.length;
+    const gate = lufsOf(mean(loud)) - 10;
+    return (this.cached = lufsOf(mean(loud.filter((z) => lufsOf(z) > gate))));
+  }
+
+  /** seconds the integrated reading covers (every block since the reset, the gated ones too) */
+  seconds(): number {
+    return this.blocks.length ? (this.blocks.length + BLOCK_STEPS - 1) / 10 : 0;
+  }
+
+  reset(): void {
+    this.steps = [];
+    this.blocks = [];
+    this.cached = null;
+  }
+}

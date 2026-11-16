@@ -7,8 +7,10 @@ import { Engine } from './engine';
 import { Fm1Engine, type Fm1Op } from './fm1-engine';
 import type { Patch, Range } from './patch';
 import type { SongEntry, StepNote } from './track';
-import { ViewStream, VoiceStreams, voiceSums, type ViewData } from './scope-stream';
+import { DISPLAY_EVERY, ViewStream, VoiceStreams, voiceSums, type ViewData } from './scope-stream';
 import { PhrasePlayer, type Phrase } from './phrases';
+import { ListenMix, type ListenSource } from './listen';
+import { KMeter } from './loudness';
 
 declare const sampleRate: number;
 declare class AudioWorkletProcessor {
@@ -53,6 +55,8 @@ export type HostMsg =
   /** an envelope display: its copies' stage and level (Engine.envStates), sent about 30 times a second */
   | { t: 'envwatch'; key: string; id: number }
   | { t: 'unenvwatch'; key: string }
+  /** listen to these outputs on their own instead of the Output (#939, listen.ts); null: the Output again */
+  | { t: 'listen'; srcs: ListenSource[] | null }
   | { t: 'on'; note: number; vel: number; ch?: number; root?: boolean }
   | { t: 'off'; note: number; ch?: number; root?: boolean }
   | { t: 'entry'; id: number; token: number; note: number; vel: number; down: boolean; ch?: number; root?: boolean }
@@ -77,8 +81,6 @@ export type HostMsg =
 
 /** blocks without MIDI clock after which it no longer drives the clock (about half a second) */
 const CLOCK_GONE = Math.round((0.5 * sampleRate) / 128);
-/** blocks between two display messages (Scope screens, envelope dots): 12 x 128 = 1536 samples, about 32 ms */
-const DISPLAY_EVERY = 12;
 /** frames in one chunk of a recording sent to the page (about a third of a second) */
 const REC_CHUNK = 16384;
 /** the crossfade between the engines' outputs when the page switches, in seconds */
@@ -144,6 +146,10 @@ class ModularProcessor extends AudioWorkletProcessor {
     const err = this.fm1?.apply(o) ?? -1;
     if (o.op === 'load') this.port.postMessage({ fm1load: err });
   }
+  /** the signal listened to instead of the Output (#939) */
+  private listen = new ListenMix(sampleRate);
+  /** the Output's loudness (#940): K-weighted 100 ms steps of what the engine renders, before any listened signal */
+  private meter = new KMeter(sampleRate);
   constructor() {
     super();
     this.port.onmessage = (ev: MessageEvent<HostMsg>) => {
@@ -189,6 +195,7 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'unview') this.views.delete(m.key);
         else if (m.t === 'envwatch') this.envs.set(m.key, m.id);
         else if (m.t === 'unenvwatch') this.envs.delete(m.key);
+        else if (m.t === 'listen') this.listen.set(m.srcs);
         else if (m.t === 'transport') this.engine.transport(m.on);
         else if (m.t === 'once') this.engine.playOnce();
         else if (m.t === 'cin') this.engine.countIn(m.bars);
@@ -341,6 +348,11 @@ class ModularProcessor extends AudioWorkletProcessor {
       this.engine.render(out[0], out[1] ?? out[0]);
       if (this.fm1) this.mixFm1(out[0], out[1]);
       if (this.rec) this.feedRec(out[0], out[1] ?? out[0]);   // (what is heard: either engine)
+      this.meter.push(out[0], out[1] ?? null, out[0].length);
+      const steps = this.meter.take();
+      if (steps.length) this.port.postMessage({ loud: steps });
+      const heard = this.listen.sources;   // (the browser engine's signal, whichever engine is heard)
+      if (heard) this.listen.process(out[0], out[1] ?? out[0], out[0].length, heard.map((s) => this.engine.probe(s.id, s.port)), this.engine.outputLevel());
       if (this.views.size) this.feedViews(out[0].length);
       if (this.views.size || this.envs.size) this.sendDisplays();
       if (this.watched.size) this.feedWatch(out[0].length);

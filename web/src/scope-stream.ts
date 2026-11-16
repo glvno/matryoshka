@@ -4,6 +4,10 @@
 // window after it; a long window keeps one min / max pair per screen column, so two seconds cost no more to send than
 // a few milliseconds.
 
+/** blocks of 128 samples between two display messages from the audio thread (Scope screens, envelope dots; worklet.ts):
+ *  1536 samples, about 32 ms */
+export const DISPLAY_EVERY = 12;
+
 /** columns of a long window: about one per screen pixel of a wide card */
 export const ROLL_COLS = 480;
 /** the longest raw history (samples); a window longer than half of it rolls */
