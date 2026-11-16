@@ -7026,8 +7026,13 @@ static uint32_t ring_scale(int32_t *s, uint32_t ns, uint32_t e, int quiet)
         ne = 0;
     d = ne - (int32_t)e;
     if (d > 0)
-        for (i = 0; i < ns; i++)
-            s[i] = (int32_t)((uint32_t)s[i] << d);
+        for (i = 0; i < ns; i++) {
+            /* the barrier keeps v in a register: fused, this loop compiles to pi32v2's in-memory shift `[rX] <<= rY`,
+             * which fm1-emu cannot decode (emu:smoke halted on it), so the emulator could not run the firmware */
+            int32_t v = s[i];
+            __asm__ volatile("" : "+r"(v));
+            s[i] = (int32_t)((uint32_t)v << d);
+        }
     else if (d < 0)
         for (i = 0; i < ns; i++)
             s[i] = (s[i] + (1 << (-d - 1))) >> -d;
