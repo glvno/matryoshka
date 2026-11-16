@@ -120,12 +120,14 @@
     "fx-tail": ["sh", "tools/fx_tail_test.sh"],
     "harness-compile": ["sh", "tools/harness_compile_test.sh"],
     "patlink": ["sh", "tools/patlink_test.sh"],
-    "factory": ["sh", "tools/factory_test.sh"]
+    "factory": ["sh", "tools/factory_test.sh"],
+    "floor": ["sh", "tools/floor_test.sh"]
   },
-  "full_host": ["pan", "golden", "buffer-budget", "aot", "usb", "usb_return", "clock", "peak", "audio", "frame", "ota", "guard", "power", "installer", "panel", "preset", "preset-pattern", "bank", "patstore", "ui", "fx-tail", "harness-compile", "patlink", "factory"],
+  "full_host": ["pan", "golden", "buffer-budget", "aot", "usb", "usb_return", "clock", "peak", "audio", "frame", "ota", "guard", "power", "installer", "panel", "preset", "preset-pattern", "bank", "patstore", "ui", "fx-tail", "harness-compile", "patlink", "factory", "floor"],
   "optional_host": {"usb_return": "firmware/src/usb_return.h"},
   "rules": [
     {"name": "Pan arithmetic", "paths": ["firmware/src/engine.c", "firmware/test/pan_exact_test.c", "tools/pan_test.sh"], "host": ["pan"], "web": []},
+    {"name": "Fixed-point floors (#969)", "paths": ["firmware/src/engine*", "firmware/src/defs.h", "firmware/test/host_test.c", "web/src/engine.ts", "web/src/modules.ts", "web/scripts/floor-kits.ts", "tools/floor_test.sh", "tools/floor_known.txt"], "host": ["floor"], "web": []},
     {"name": "Signal buffer accounting", "paths": ["firmware/test/buffer_budget.c", "tools/buffer_budget.py", "web/scripts/buffer-budget.ts", "web/src/signal-buffers.ts", "web/src/test-buffer-budget.ts", "firmware/src/engine*", "firmware/src/proto.c", "firmware/src/aot*", "firmware/src/defs.h", "firmware/test/lanes_host.h", "web/src/modules.ts", "web/src/poly.ts", "web/src/device-compile.ts", "web/src/patchbin.ts", "web/scripts/gen-aot.ts"], "host": ["buffer-budget"], "web": []},
     {"name": "Assembly capability recognition feeds engine classification and factory export", "paths": ["web/src/assembly-capabilities.ts"], "host": ["preset", "golden"], "web": ["web/src/assembly-capabilities.test.ts", "web/src/engines.test.ts", "web/src/assembly.test.ts", "web/src/device-presets.test.ts"]},
     {"name": "Experimental capability inspector observes editor state and previews bypass", "paths": ["web/src/capability-inspector.ts", "web/src/capability-inspector.css"], "host": [], "web": ["web/src/capability-inspector.test.ts", "web/src/assembly-capabilities.test.ts", "web/src/editor-focus.test.ts"]},
