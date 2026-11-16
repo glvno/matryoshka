@@ -141,8 +141,9 @@ static void lcd_line_out_raw(uint32_t x, uint32_t y, uint32_t w)   /* lcd.c's */
 #include "../../build/panel-fixtures/panel_bank.h"
 #endif
 #include "../src/tempo_glo.h"
-/* the preset store (presetstore.c, #194) over 7 sectors of RAM flash (all 0xFF until host_ps_init), and the pattern store
- * (patstore.c, #901) over its 4 (until host_pt_init) */
+#include "factory_host.h"
+/* the preset store (presetstore.c, #194) over 7 sectors of RAM flash (all 0xFF until host_ps_init), the pattern store
+ * (patstore.c, #901) over its 4 (until host_pt_init), and the factory region (factory_host.h, #915: today's image) */
 static uint8_t host_ps_flash[7u * 0x1000u], host_pt_flash[4u * 0x1000u];
 static void fm1_wdt_feed(void) {}
 static uint8_t *host_flash(uint32_t off, uint32_t n)   /* the RAM behind flash bytes off .. off + n, 0 none */
@@ -151,7 +152,7 @@ static uint8_t *host_flash(uint32_t off, uint32_t n)   /* the RAM behind flash b
         return host_ps_flash + off - 0x99000u;
     if (off >= 0xDC000u && off + n <= 0xDC000u + sizeof host_pt_flash)
         return host_pt_flash + off - 0xDC000u;
-    return 0;
+    return host_fr(off, n);
 }
 static int st_read(uint32_t off, void *dst, uint32_t n)
 {
@@ -194,6 +195,11 @@ static uint16_t m1_crc16(const uint8_t *p, uint32_t n)
     }
     return c;
 }
+/* the factory content (factory.c, #915) over the region above: proto.c's status codes, name length and flash flag */
+enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE, S_FULL, S_MISSING, S_USED };
+#define M1_NAME 20u
+static uint8_t flash_ok = 1;
+#include "../src/factory.c"
 #include "../src/presetstore.c"
 static void host_ps_init(void)
 {
@@ -340,8 +346,7 @@ static uint32_t host_locks_told;                     /* (panel_test.c: LOCKS_NOW
 static void m1_locks_now(uint32_t mod, uint32_t pat) { (void)mod; (void)pat; host_locks_told++; }
 #endif
 static int m1_patch_locks(void) { return 1; }      /* (the preview keeps no patch: the engine has the locks) */
-/* the pattern store's glue (patlink.c, #901) on the previewed binary: proto.c's status codes and what it sends stood in */
-enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE, S_FULL, S_MISSING, S_USED };
+/* the pattern store's glue (patlink.c, #901) on the previewed binary: what proto.c sends stood in (its status codes above) */
 static uint8_t m1_up[M1_PATCH_MAX];        /* (proto.c's upload buffer, the payloads' scratch) */
 static int m1_patch_links(const uint8_t *s, uint32_t n) { (void)s; (void)n; return 1; }   /* (no links in the preview) */
 static uint32_t host_link_told;             /* (panel_test.c: PAT_LINK_NOW sent) */

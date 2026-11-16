@@ -54,6 +54,28 @@ static const struct { const char *name; const uint8_t *lz; uint16_t lz_len, len;
 };
 static uint8_t bank_buf[3840];
 static const struct { uint32_t set; uint64_t has; } RELEASED_SETS[] = {{1u, 1u}};
+/* factory.c as main.c and bank_new.h use it (#915): the two patches above, a valid factory region, today's set */
+#define FC_PATCHES 64u
+#define FC_TIER_SET 0xFFFFFFu
+static uint8_t fc_region = 1;
+static const char *boot_msg_then;
+static void fc_scan(void) {}
+static uint32_t fc_set(void) { return FACTORY_SET_ID; }
+static uint32_t fc_npatches(void) { return N_PRESETS; }
+static int fc_patch_info(uint32_t i, char *name, uint32_t *len, uint32_t *slot) {
+ uint32_t k;
+ if (i >= N_PRESETS) return -1;
+ for (k = 0; k < M1_NAME; k++) name[k] = k < strlen(PRESET_LIST[i].name) ? PRESET_LIST[i].name[k] : 0;
+ if (len) *len = PRESET_LIST[i].len;
+ if (slot) *slot = i;
+ return 0;
+}
+static int32_t fc_patch(uint32_t i, uint8_t *buf, uint32_t cap) { return i < N_PRESETS ? lz_unpack(PRESET_LIST[i].lz, PRESET_LIST[i].lz_len, buf, cap) : -1; }
+static int fc_released(uint32_t set, uint64_t *has, uint64_t *any) {
+ *any = RELEASED_SETS[0].has;
+ *has = set == RELEASED_SETS[0].set ? RELEASED_SETS[0].has : *any;
+ return set == RELEASED_SETS[0].set;
+}
 ${planner}
 typedef struct { char name[M1_NAME]; } sl_hdr_t;
 static struct { sl_hdr_t h; uint8_t data[65536]; uint32_t len; } slots[M1_SLOTS];
@@ -86,13 +108,14 @@ static int sl_read(uint32_t s, uint8_t *data, uint32_t *len, char *name) {
 static int settings_unpack(uint8_t *data, uint32_t len, uint32_t *slot, uint32_t *module) {
  (void)data; (void)len; *slot = 0; *module = 0; return 0;
 }
-static void settings_pack(uint8_t *data) { (void)data; }
 static uint32_t presets_upgrade(void) { migrations++; return 1; }
 static void factory_bank(void) { factories++; bank_mask = 1; }
 static void leds_avail(void) {}
 static void leds_octave(void) {}
 static int preset_load(uint32_t s) { assert(slot_used(s)); loads++; return 0; }
 static int eng_nmodules(void) { return 1; }
+static void settings_store(void) { settings_writes++; }
+${fn('const char *factory_sync(')}
 ${fn('void patch_boot(')}
 int main(void) {
  char factory_name[M1_NAME] = "INIT", user_name[M1_NAME] = "USER PATCH";

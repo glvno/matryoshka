@@ -50,6 +50,11 @@
                                            scan a tick, the USB / MIDI polls, the dim pulses. Reads only)
   tools/m1_link.py diag [DIS]             (what the last reset left: its cause, the crash record, where a stalled main loop
                                            was; DIS = the build's matryoshka.dis (CI artifact matryoshka-elf) names the functions)
+  tools/m1_link.py factory-info           (#915: the factory region's state, layout, set, length and patch count)
+  tools/m1_link.py factory-install [FILE] (#915: the factory content into the factory region; FILE default
+                                           web/public/firmware/matryoshka-factory.bin; sectors whose sum already matches
+                                           are skipped, so a cut install is resumed by running it again)
+  tools/m1_link.py factory-read [OFFSET [LENGTH [OUT]]]   (#915: the region's bytes, default all 73,728, to OUT or stdout)
 Every command takes --rig (the test rig: the FM-1 at its registered USB location, checked by its mark) or --location HEX
 (the FM-1 in that USB socket, tools/fm1_usb.py list). Without either it takes the FM-1 by its port name, and refuses
 while more than one FM-1 is connected, since they share the name (#771).
@@ -182,7 +187,7 @@ class Link:
                 for m in self.inp.iter_pending():
                     if m.type == "sysex" and list(m.data[:3]) == PREFIX and m.data[3] == want[0]:
                         p = unpack7(m.data[4:])
-                        if want[0] == 0x41 or p[0] == want[1]:
+                        if len(want) == 1 or p[0] == want[1]:
                             return p
                 time.sleep(0.002)
         sys.exit(f"no answer from the FM-1 to command {msg.data[3]:#04x} (is it running the Matryoshka firmware with the editor protocol?)")
@@ -290,6 +295,90 @@ def factory_presets(path=os.path.join(os.path.dirname(os.path.abspath(__file__))
     return out
 
 
+# ---- the factory region (#915, firmware/src/factory.c; the link commands D-490)
+FACTORY_BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "web", "public", "firmware", "matryoshka-factory.bin")
+FACTORY_SIZE, FACTORY_HDR = 18 * 0x1000, 64
+C_FACT_BEGIN, C_FACT_WRITE, C_FACT_SUM, C_FACT_READ, C_FACT_COMMIT, C_FACT_INFO = 0x16, 0x17, 0x18, 0x19, 0x1A, 0x3F
+R_FACT_INFO, R_FACT_SUM, R_FACT_DATA = 0x5F, 0x60, 0x61
+FACTORY_STATE = ["none (the firmware tier alone plays)", "valid", "newer than this firmware reads", "damaged"]
+
+
+def factory_info(link):
+    """FACT_INFO as a dict"""
+    p = link.ask(frame(C_FACT_INFO), (R_FACT_INFO,))
+    u16 = lambda i: p[i] | p[i + 1] << 8
+    u32 = lambda i: u16(i) | u16(i + 2) << 16
+    i = {"state": p[0], "reads": p[1], "layout": p[2], "format": p[3], "version": u16(4), "set": u32(6),
+         "len": u32(10), "patches": u16(14), "writing": bool(p[16] & 1), "tier_only": bool(p[16] & 2), "size": u32(17)}
+    if len(p) >= 26:                    # (the firmware's newest patch format, its tier's version and patches, the merged list)
+        i.update({"plays": p[21], "tier_version": u16(22), "tier_patches": p[24], "merged": p[25]})
+    return i
+
+
+def factory_info_text(i):
+    s = FACTORY_STATE[i["state"]] if i["state"] < len(FACTORY_STATE) else str(i["state"])
+    tier = (f"; the firmware tier: version {i['tier_version']}, {i['tier_patches']} patches; {i['merged']} factory patches in all"
+            if "merged" in i else "")
+    if not i["layout"]:
+        return f"factory region: {s}{tier}"
+    return (f"factory region: {s}; layout {i['layout']} (the firmware reads {i['reads']}), format {i['format']}, "
+            f"version {i['version']}, set {i['set']:06x}, {i['len'] + FACTORY_HDR} of {i['size']} bytes, {i['patches']} patches"
+            + ("; an install was begun" if i["writing"] else "") + tier)
+
+
+def factory_sector_sum(img, s):
+    """CRC-16 of sector s as the flash holds the image before the commit (the header's 64 bytes erased)"""
+    b = bytearray(b"\xFF" * 0x1000)
+    part = img[s * 0x1000:(s + 1) * 0x1000]
+    b[:len(part)] = part
+    if s == 0:
+        b[:FACTORY_HDR] = b"\xFF" * FACTORY_HDR
+    return crc16(b)
+
+
+def factory_sum(link, s):
+    p = link.ask(frame(C_FACT_SUM, [s]), (R_FACT_SUM, s), wait=2.0)
+    return p[2] | p[3] << 8 if p[1] else None
+
+
+def factory_install(link, img, log=lambda s: None):
+    """the image into the factory region: FACT_BEGIN (the header goes), each sector whose FACT_SUM differs written a page
+    at a time (offset 0 erases it; the page an update record would be in is written whole), then FACT_COMMIT (the firmware
+    checks the body's CRC-32 and programs the header, its magic last). Run again after a cut: the matching sectors are
+    skipped"""
+    if len(img) < FACTORY_HDR or len(img) > FACTORY_SIZE or img[:4] != b"MFC1":
+        sys.exit("not a factory region image (web/public/firmware/matryoshka-factory.bin)")
+    link.ack(frame(C_FACT_BEGIN), C_FACT_BEGIN, wait=3.0)
+    sectors = (len(img) + 0xFFF) // 0x1000
+    for s in range(sectors):
+        if factory_sum(link, s) == factory_sector_sum(img, s):
+            log(f"sector {s + 1:2d} of {sectors}: already there")
+            continue
+        off = FACTORY_HDR if s == 0 else 0
+        while off < 0x1000 and s * 0x1000 + off < len(img):
+            page = bytearray(img[s * 0x1000 + off:s * 0x1000 + (off | 0xFF) + 1])
+            if off & 0xF00 == 0xF00 and len(page) < 80:
+                page += b"\xFF" * (256 - len(page))
+            link.ack(frame(C_FACT_WRITE, [s, off & 0xFF, off >> 8, *page]), C_FACT_WRITE, wait=3.0)
+            off = (off | 0xFF) + 1
+        if factory_sum(link, s) != factory_sector_sum(img, s):
+            sys.exit(f"factory region: sector {s} did not read back as written")
+        log(f"sector {s + 1:2d} of {sectors}: written")
+    link.ack(frame(C_FACT_COMMIT, list(img[:FACTORY_HDR])), C_FACT_COMMIT, wait=5.0)
+    log("factory content committed")
+
+
+def factory_read(link, off, n):
+    out = bytearray()
+    while len(out) < n:
+        at, k = off + len(out), min(128, n - len(out))
+        p = link.ask(frame(C_FACT_READ, [at & 0xFF, at >> 8 & 0xFF, at >> 16 & 0xFF, at >> 24, k]), (R_FACT_DATA, at & 0xFF), wait=2.0)
+        if len(p) < 4 + k:
+            sys.exit(f"factory region: {at:#x} not readable")
+        out += bytes(p[4:4 + k])
+    return bytes(out)
+
+
 def main():
     a = sys.argv[1:]
     if not a:
@@ -335,6 +424,21 @@ def main():
         for slot in range(64):
             link.ack(frame(0x14, [slot]), 0x14, wait=4.0, tries=1)
         print("bank emptied")
+    elif a[0] == "factory-info":
+        print(factory_info_text(factory_info(link)))
+    elif a[0] == "factory-install":
+        img = open(a[1] if len(a) > 1 else FACTORY_BIN, "rb").read()
+        factory_install(link, img, log=print)
+        print(factory_info_text(factory_info(link)))
+    elif a[0] == "factory-read":
+        off = int(a[1], 0) if len(a) > 1 else 0
+        n = int(a[2], 0) if len(a) > 2 else FACTORY_SIZE - off
+        data = factory_read(link, off, n)
+        if len(a) > 3:
+            open(a[3], "wb").write(data)
+            print(f"{len(data)} bytes from {off:#x} into {a[3]}")
+        else:
+            sys.stdout.buffer.write(data)
     elif a[0] == "store":
         link.ack(frame(0x12), 0x12)
         print("stored")

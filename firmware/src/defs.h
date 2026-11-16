@@ -1888,3 +1888,6 @@ static const def_t DEFS[N_TYPES] = {
 static const uint16_t DEF_COST[N_TYPES] = {14, 81, 36, 53, 9, 9, 34, 9, 436, 11, 108, 1518, 3, 40, 96, 39, 243, 178, 326, 156, 89, 36, 36, 40, 49, 72, 548, 256, 54, 360, 105, 54, 37, 468, 204, 542, 668, 11, 15, 1, 11, 53, 9, 16, 134, 36, 16, 177, 10, 12, 13, 66, 94, 15, 4};
 /* a module bypassed when the patch loads, in the same units: passing an input through (D-1104; cpu.ts scheduleBypass) */
 #define DEF_COST_BYPASS 18u
+/* Gate-port kinds for pattern authorization, independent of environment grouping (bit n: port n is a gate) */
+static const uint32_t PRESET_GATE_IN[] = {0u,4u,3u,0u,0u,0u,9u,0u,0u,0u,2u,0u,0u,0u,0u,1u,2u,4u,0u,3u,3u,2u,0u,1u,0u,0u,0u,0u,0u,0u,0u,0u,3u,2u,0u,0u,0u,0u,4u,0u,2u,3u,0u,0u,8u,1u,0u,5u,0u,0u,7u,0u,0u,0u,0u};
+static const uint32_t PRESET_GATE_OUT[] = {65290u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,2u,15u,0u,0u,1u,0u,0u,0u,0u,0u,0u,0u,64u,15u,0u,0u,0u,0u,978u,0u,978u,0u,1u,0u,21845u,0u,0u,510u,0u,0u,16u,767u,7u,0u,0u,0u};

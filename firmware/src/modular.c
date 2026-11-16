@@ -124,7 +124,6 @@ static void bt_parts(uint32_t arg)         /* the awake items handed over, per l
         if (!E.pv[E.grp[arg].pv0 + v].skip)
             bt.parts[v & 1u]++;
 }
-#include "presets.h"
 #define FELUCCA_DEVICE_IDENTITY 1
 #define DI_LOCK() fm1__lock()
 #define DI_UNLOCK(k) fm1__unlock(k)
@@ -171,8 +170,16 @@ static uint32_t m1_pat_list(uint32_t after, uint8_t *e);
 static const uint8_t *m1_pat_get(uint32_t id, uint32_t *len);
 static uint32_t m1_pat_put(uint32_t *id, const char *name, const uint8_t *p, uint32_t len);
 static uint32_t m1_pat_del(uint32_t id, uint32_t force, uint32_t *count);
+static uint32_t m1_fact_info(uint8_t *out);                   /* factory.c: the factory region (#915), the hooks proto.c needs */
+static uint32_t m1_fact_begin(void);
+static uint32_t m1_fact_write(uint32_t s, uint32_t off, const uint8_t *p, uint32_t n);
+static int m1_fact_sum(uint32_t s, uint32_t *crc);
+static int m1_fact_read(uint32_t off, uint8_t *p, uint32_t n);
+static uint32_t m1_fact_commit(const uint8_t *h);
 #include "tempo_glo.h"            /* the global tempo (D-907): proto.c, menu.c, main.c */
 #include "proto.c"
+#define FC_MEM ENG_NOINIT      /* factory.c: its headers and merged list (fc_scan sets them first) */
+#include "factory.c"           /* the factory content: the firmware tier and the factory region (#915) */
 #include "slotstore.c"
 #include "patstore.c"          /* the pattern store in the bank's last 4 sectors (#901; slotstore.c pt_claim hands them over) */
 #include "patlink.c"           /* the pattern store's glue: the payloads, the running patch's links (#901) */

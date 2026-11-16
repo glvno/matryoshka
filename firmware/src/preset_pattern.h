@@ -1,30 +1,32 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* Factory demonstration patterns are separate from sound values (#833). */
-static const preset_pattern_t *preset_pattern_find(uint32_t structure, const char *name)
+/* Factory demonstration patterns are separate from sound values (#833); they come with the factory content (factory.c
+ * fc_pattern, #915). */
+/* the factory pattern of the structure with the name (in any case) into p: 0 found */
+static int preset_pattern_find(uint32_t structure, const char *name, fc_pattern_t *p)
 {
     uint32_t i, j;
-    for (i = 0; i < N_PRESET_PATTERNS; i++) {
-        const preset_pattern_t *p = &PRESET_PATTERNS[i];
-        if (p->structure != structure)
+    for (i = 0; i < fc_npatterns(); i++) {
+        if (fc_pattern(i, p) || p->structure != structure)
             continue;
         for (j = 0; name[j] && p->name[j]; j++) {
             uint32_t c = (uint8_t)name[j];
             if (c >= 'a' && c <= 'z') c -= 'a' - 'A';
             if (c != (uint8_t)p->name[j]) break;
         }
-        if (!name[j] && !p->name[j]) return p;
+        if (!name[j] && !p->name[j]) return 0;
     }
-    return 0;
+    return -1;
 }
-static const preset_pattern_t *preset_pattern_identity(uint32_t identity)
+/* the factory pattern of the identity into p: 0 found */
+static int preset_pattern_identity(uint32_t identity, fc_pattern_t *p)
 {
     uint32_t i;
-    if (!identity) return 0;
-    for (i = 0; i < N_PRESET_PATTERNS; i++)
-        if (PRESET_PATTERNS[i].identity == identity) return &PRESET_PATTERNS[i];
-    return 0;
+    if (!identity) return -1;
+    for (i = 0; i < fc_npatterns(); i++)
+        if (!fc_pattern(i, p) && p->identity == identity) return 0;
+    return -1;
 }
-static int preset_pattern_untouched(uint32_t mod, uint32_t pattern, const preset_pattern_t *p)
+static int preset_pattern_untouched(uint32_t mod, uint32_t pattern, const fc_pattern_t *p)
 {
     const uint32_t *words;
     int n, len, rate;

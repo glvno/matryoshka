@@ -18,16 +18,16 @@
  * clean: proto.c leaves it out of the patterns and locks sections (m1_pat_clean), so the binary carries only the link and
  * the next load copies it from the store again. An edited one stays inline, and SAVE writes it over its stored entry
  * (pl_writeback). Two kinds of read-only factory entries follow the user's (ids 1..PT_ID_MAX), in id order: the factory
- * patches' patterns (presets.h KIT_GROUPS: from PL_KIT, a group per patch from its own first id; any number of tracks, in
- * the payload layout above, a group packed together by lz_unpack.h), which a factory patch links like a user entry, and
- * the factory demonstration patterns (presets.h PRESET_PATTERNS, ids PL_FACTORY + index: one track, no locks). Loading
- * either on the SEQ page copies it and links nothing. A link to a read-only entry needs no store; SAVE of an edited one
- * stores it as a new user entry, which it then links.
+ * patches' patterns (factory_tier.h KIT_GROUPS, compiled in with the firmware tier, #915: from PL_KIT, a group per patch
+ * from its own first id; any number of tracks, in the payload layout above, a group packed together by lz_unpack.h), which
+ * a factory patch links like a user entry, and the factory demonstration patterns (factory.c fc_pattern, ids PL_FACTORY +
+ * index: one track, no locks). Loading either on the SEQ page copies it and links nothing. A link to a read-only entry
+ * needs no store; SAVE of an edited one stores it as a new user entry, which it then links.
  *
  * The payloads go through m1_up (proto.c's upload buffer: the store works in sl_buf, and the editor sends no patch upload
  * while it talks to the store). Needs, after proto.c and patstore.c: m1_cur, m1_cur_len, m1_edited, m1_up,
  * m1_patch_patterns, m1_patch_locks, m1_patch_links, m1_pat_link_now, m1_track_pattern_now, m1_locks_now, bank_slots,
- * sl_head / sl_buf (slotstore.c), PRESET_PATTERNS, KIT_GROUPS (presets.h). */
+ * sl_head / sl_buf (slotstore.c), KIT_GROUPS (factory_tier.h), fc_pattern / fc_npatterns (factory.c). */
 #define PL_KIT (PT_ID_MAX + 1u)            /* the first factory patch pattern's id: 0xE000 */
 #define PL_FACTORY 0xFF00u                 /* the first factory demonstration pattern's id */
 #define PL_END (PL_FACTORY + 256u)         /* one above every 16-bit id */
@@ -159,10 +159,9 @@ static uint32_t pl_hash_of(uint32_t p)
     return s.h;
 }
 
-/* factory entry i (presets.h PRESET_PATTERNS) as a payload: track 0 alone, its own length and rate, no locks */
-static void pl_factory(uint32_t i, pl_out_t *s)
+/* factory pattern f as a payload: track 0 alone, its own length and rate, no locks */
+static void pl_factory(const fc_pattern_t *f, pl_out_t *s)
 {
-    const preset_pattern_t *f = &PRESET_PATTERNS[i];
     pl_b(s, 1);
     pl_w(s, 0, 4);
     pl_b(s, 1);
@@ -170,7 +169,7 @@ static void pl_factory(uint32_t i, pl_out_t *s)
     pl_b(s, 0);
 }
 
-/* the factory patch pattern group (presets.h KIT_GROUPS) that holds id, N_KIT_GROUPS none */
+/* the factory patch pattern group (factory_tier.h KIT_GROUPS) that holds id, N_KIT_GROUPS none */
 static uint32_t pl_kit(uint32_t id)
 {
     uint32_t g;
@@ -187,6 +186,7 @@ static int pl_read(uint32_t id, uint8_t *buf, uint32_t cap, pt_info_t *in)
     pl_out_t s = { buf, cap, 0, PT_FNV0 };
     const uint8_t *src = 0;
     const char *name;
+    fc_pattern_t f;
     uint32_t i, n = 0, k, g = pl_kit(id);
     if (id <= PT_ID_MAX)
         return pt_read(id, buf, cap, in) ? -1 : 0;
@@ -202,8 +202,8 @@ static int pl_read(uint32_t id, uint8_t *buf, uint32_t cap, pt_info_t *in)
         }
         name = (const char *)src;
         src += i + 3u;
-    } else if ((k = id - PL_FACTORY) < N_PRESET_PATTERNS) {
-        name = PRESET_PATTERNS[k].name;
+    } else if (id >= PL_FACTORY && !fc_pattern(id - PL_FACTORY, &f)) {
+        name = f.name;
     } else {
         return -1;
     }
@@ -214,7 +214,7 @@ static int pl_read(uint32_t id, uint8_t *buf, uint32_t cap, pt_info_t *in)
         for (i = 0; i < n; i++)
             pl_b(&s, src[i]);
     else
-        pl_factory(k, &s);
+        pl_factory(&f, &s);
     in->id = (uint16_t)id;
     in->len = (uint16_t)s.n;
     in->hash = s.h;
@@ -488,8 +488,8 @@ static int pl_load_entry(uint32_t p, uint32_t id, char *got)
     return rc;
 }
 
-/* the entry is a factory one (presets.h KIT_GROUPS, PRESET_PATTERNS) */
-static int pl_is_factory(uint32_t id) { return pl_kit(id) < N_KIT_GROUPS || id - PL_FACTORY < N_PRESET_PATTERNS; }
+/* the entry is a factory one (factory_tier.h KIT_GROUPS, factory.c's patterns) */
+static int pl_is_factory(uint32_t id) { return pl_kit(id) < N_KIT_GROUPS || id - PL_FACTORY < fc_npatterns(); }
 
 /* the entry after stored id `from` in the store's order (by id: the user entries, then the factory patches' patterns,
  * then the demonstration patterns), 0 none */
@@ -498,7 +498,7 @@ static uint32_t pl_after(uint32_t from)
     pt_info_t in;
     if (from < PL_KIT && !pt_next(from, &in))
         return in.id;
-    for (from = from < PL_KIT ? PL_KIT : from + 1u; from < PL_FACTORY + N_PRESET_PATTERNS; from++)
+    for (from = from < PL_KIT ? PL_KIT : from + 1u; from < PL_FACTORY + fc_npatterns(); from++)
         if (pl_is_factory(from))
             return from;
     return 0;
@@ -541,7 +541,7 @@ static uint32_t m1_pat_list(uint32_t after, uint8_t *e)
     pt_info_t in;
     uint32_t id, i, k;
     if (!e)
-        return pt_count() + N_KIT_PATTERNS + N_PRESET_PATTERNS;
+        return pt_count() + N_KIT_PATTERNS + fc_npatterns();
     if (!(id = pl_after(after)))
         return 0;
     if (pl_read(id, m1_up, sizeof m1_up, &in))

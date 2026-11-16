@@ -400,6 +400,8 @@ static void header_draw_now(void)
 }
 
 static char msg_text[40];                       /* the message on show (panel_draw puts it back after a full redraw) */
+static const char *msg_then;                    /* a message that follows the one on show when it ends (main.c's boot: #915) */
+static uint32_t msg_then_ms;
 static void ui_msg(const char *s, uint32_t ms)  /* a short message in the bar instead of the name */
 {
     uint32_t i;

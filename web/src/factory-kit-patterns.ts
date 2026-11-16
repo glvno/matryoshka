@@ -3,7 +3,8 @@
 // FM-1's pattern store, which the patch links (format 59's links section, D-1015), so a set larger than the patch's
 // 3,840 bytes plays from the patch. Pattern 1 stays the patch's own (its demonstration pattern, D-882); each kit's song
 // chains the set. gen-presets.ts writes the entries into factory-store.json (the editor's copy, pattern-store.ts
-// factoryEntries), export-defs.ts packs them into presets.h (KIT_GROUPS, patlink.c).
+// factoryEntries), export-defs.ts packs them into firmware/src/factory_tier.h (KIT_GROUPS, patlink.c), compiled in with
+// the firmware tier, which both kits belong to (#915).
 //
 // A kit's entries take ids from its own first id (KIT_IDS_PER_KIT apart, append-only), pattern p (0-based, 1..) at first
 // + p - 1, so a saved patch's links keep their meaning when a later set grows.

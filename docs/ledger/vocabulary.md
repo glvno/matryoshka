@@ -86,6 +86,10 @@ Opt-in patches in Library > Community, including submitted patches and archived 
 
 A factory assembly the FM-1 runs from C code made ahead of time (`firmware/src/aot_gen.h`), not on the engine's interpreter. It sounds the same, bit for bit, and takes less CPU. The FM-1 runs an assembly this way only when the patch holds it unchanged.
 
+### Content-only release
+
+A release that changes the factory region's image and not the firmware, so a factory preset or a factory patch outside the firmware tier changes without a firmware release ([D-1154](releases.md#D-1154)).
+
 ### Controls sheet
 
 The FM-1's list of the controls that work in its current state, drawn as a card over the dimmed screen. Pressing OCT- and OCT+ together opens it ([D-245](device-ui.md#D-245)).
@@ -170,6 +174,10 @@ Unfolding an assembly card into a frame around its member cards. Also called ope
 
 A patch selected to ship as a default with the editor and firmware. The first boot of an empty store and explicit factory reset write the bundled defaults into the bank; a candidate under evaluation or an archived Community entry is not a selected default.
 
+### Factory region
+
+The factory content installed into the FM-1's flash outside the firmware: the factory patches not in the firmware tier, every factory engine preset and the factory drum patterns. It sits in the 18 sectors 0xEA000 to 0xFBFFF, and the editor or `tools/fm1_install.py` installs and updates it ([D-179](firmware-install.md#D-179), [D-1020](patch-format.md#D-1020)).
+
 ### Fallback patch
 
 `FALLBACK_PATCH`, one small patch compiled into the firmware (saw into VCA with an ADSR), played when a slot does not load and in safe mode.
@@ -177,6 +185,10 @@ A patch selected to ship as a default with the editor and firmware. The first bo
 ### Fill
 
 A performance control for **trig conditions**: while it is held, notes with the FILL condition play and notes with NOT FILL rest. On the FM-1 it is SEQ held, then FX held; in the editor, a **Steps track** card's fill button ([D-830](steps.md#D-830)).
+
+### Firmware tier
+
+The factory patches compiled into every firmware, which play even without the factory region: those at full parity with their hardware and with the full FX rack, listed in `web/src/factory-tiers.ts` ([D-179](firmware-install.md#D-179)).
 
 ### Fixed button
 

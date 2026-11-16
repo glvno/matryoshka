@@ -26,8 +26,8 @@ int main(void)
         check("load actual 808 routing fixture", !load_fixture(paths[i])); pv_gen++; pages_ensure();
         mod = eng_steps_module(0);
         for (d = 0; d < pg_ndev; d++) {
-            const preset_pattern_t *origin = preset_pattern_identity(m1_pattern_origin((uint32_t)mod, 0));
-            if (!origin || origin->structure != pg_dev[d].structure) continue;
+            static fc_pattern_t origin;
+            if (preset_pattern_identity(m1_pattern_origin((uint32_t)mod, 0), &origin) || origin.structure != pg_dev[d].structure) continue;
             n = eng_pattern_notes((uint32_t)mod, 0, &words); memcpy(saved, words, (size_t)n * 4);
             check("grouping cannot authorize control-only or ambiguous replacement", dp_pattern_module(d) == (i == 1 ? mod : -1));
             check("routing fixture selects factory sound", !dp_load(d, 1));
@@ -44,9 +44,9 @@ int main(void)
         for (d = 0; d < pg_ndev; d++) {
             int mod = dp_pattern_module(d), n;
             const uint32_t *words;
-            const preset_pattern_t *before;
+            static fc_pattern_t before, now;
             uint32_t saved[128], other[16][128], counts[16], tr, k, target = 0;
-            if (mod < 0 || !(before = preset_pattern_identity(m1_pattern_origin((uint32_t)mod, 0))) || before->structure != pg_dev[d].structure) continue;
+            if (mod < 0 || preset_pattern_identity(m1_pattern_origin((uint32_t)mod, 0), &before) || before.structure != pg_dev[d].structure) continue;
             for (k = 0; k < dp_list(d); k++) if (!(pr_list[k] & PR_USER) && k) { target = k; break; }
             check("kit has a second factory sound", target > 0);
             if (strcmp(PRESET_LIST[i].name, "808 KIT")) {
@@ -79,8 +79,8 @@ int main(void)
               for (k = 0; k < rows && k < (uint32_t)want; k++)
                   check("all sound rows survive reload", dp_row_value(d, k) == expected[k]);
             }
-            check("default identity changes", m1_pattern_origin((uint32_t)mod, 0) != before->identity);
-            check("new default matches", preset_pattern_untouched((uint32_t)mod, 0, preset_pattern_identity(m1_pattern_origin((uint32_t)mod, 0))));
+            check("default identity changes", m1_pattern_origin((uint32_t)mod, 0) != before.identity);
+            check("new default matches", !preset_pattern_identity(m1_pattern_origin((uint32_t)mod, 0), &now) && preset_pattern_untouched((uint32_t)mod, 0, &now));
             for (tr = 0; tr < (uint32_t)eng_steps_count(); tr++) if (eng_steps_module(tr) != mod) {
                 check("unrelated track length", eng_pattern_notes((uint32_t)eng_steps_module(tr), 0, &words) == (int)counts[tr]);
                 check("unrelated track notes", !memcmp(words, other[tr], counts[tr] * 4));

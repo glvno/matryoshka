@@ -12,6 +12,17 @@ pub const RAM_SIZE: usize = 1 << 20;
 pub const ENTRY: u32 = 0x0200_0120;
 pub const XIP_PAD: usize = 0x120;
 pub const FLASH_SIZE: usize = 1 << 20;
+/// The factory region's image (web/public/firmware/matryoshka-factory.bin, export-defs) and where it lives (#915,
+/// firmware/src/factory.c)
+pub const FACTORY_REGION: &[u8] = include_bytes!("../../../web/public/firmware/matryoshka-factory.bin");
+pub const FACTORY_BASE: usize = 0xEA000;
+
+/// An erased flash chip holding the factory region: an FM-1 the editor or tools/fm1_install.py set up (#915)
+pub fn installed_flash() -> Vec<u8> {
+    let mut f = vec![0xffu8; FLASH_SIZE];
+    f[FACTORY_BASE..FACTORY_BASE + FACTORY_REGION.len()].copy_from_slice(FACTORY_REGION);
+    f
+}
 /// Stack paint (#273): the firmware paints its stacks with this word at boot (main.c `stack_paint`); the emulator also
 /// paints PAINT_LO..PAINT_HI before the first instruction, so a build without that (main before #273) is measured too.
 pub const PAINT: u32 = 0x5AC3_A55C;
@@ -256,7 +267,8 @@ pub fn xip_of(app: &[u8]) -> Vec<u8> {
 
 impl Machine {
     /// Boot `app` (the build's matryoshka.bin). `flash`: the SPI flash chip's contents (a
-    /// previous run's `flash()`), else erased.
+    /// previous run's `flash()`), else erased apart from the factory region (`installed_flash`: an FM-1 the editor or
+    /// tools/fm1_install.py set up, #915).
     /// The flash chip answers the JEDEC id M1EMU_JEDEC (six hex digits, e.g. B36014 for the UC25HQ80, #739) if set, else
     /// fm1-emu's Puya (85 60 14).
     pub fn boot(app: &[u8], flash: Option<&[u8]>) -> Machine {
@@ -268,9 +280,7 @@ impl Machine {
     pub fn boot_jedec(app: &[u8], flash: Option<&[u8]>, jedec: Option<u32>) -> Machine {
         let mut soc = Soc::new(RAM_SIZE, xip_of(app));
         soc.periph.skip_idle = true;
-        if let Some(f) = flash {
-            soc.flash.load(f);
-        }
+        soc.flash.load(flash.unwrap_or(&installed_flash()));
         if let Some(id) = jedec {
             soc.flash.jedec = [(id >> 16) as u8, (id >> 8) as u8, id as u8];
         }

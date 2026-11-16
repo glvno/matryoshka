@@ -466,6 +466,23 @@ class RigPin(RigFakes, unittest.TestCase):
         self.assertEqual(self.run_rig(usb)[0], 9)
         self.assertEqual(self.installed, [])
 
+    def test_factory_content_follows_unless_no_factory(self):
+        """#915: after a Matryoshka install the factory content goes in over the editor link, at the same location;
+        --no-factory leaves it out and says so"""
+        import io
+        calls = []
+        usb = self.usb((OWNER, "FM-1_7011000", None), (RIG, "FM-1_7000000", MARK))
+        buf = io.StringIO()
+        code = fi.main([OURS, "--rig", "--yes"], backend=self.backend(usb), out=buf,
+                       factory=lambda a, out: calls.append(a.location))
+        self.assertEqual(code, 0, buf.getvalue())
+        self.assertEqual(calls, [f"{RIG:#010x}"])
+        buf = io.StringIO()
+        code = fi.main([OURS, "--rig", "--yes", "--no-factory"], backend=self.backend(usb), out=buf,
+                       factory=lambda a, out: calls.append(a.location))
+        self.assertEqual((code, len(calls)), (0, 1))
+        self.assertIn("--no-factory", buf.getvalue())
+
     def test_nothing_at_the_location(self):
         usb = self.usb((OWNER, "FM-1_7011000", MARK))
         self.assertEqual(self.run_rig(usb)[0], 3)
