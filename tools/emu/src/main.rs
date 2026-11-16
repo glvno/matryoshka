@@ -28,6 +28,8 @@
 mod boot;
 mod cpu;
 mod font;
+#[cfg(test)]
+mod isa_tests;
 mod machine;
 mod p33;
 mod png;
