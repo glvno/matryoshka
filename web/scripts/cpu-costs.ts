@@ -491,7 +491,7 @@ const table: CpuTable = {
   calibration: {
     method: 'each module type\'s test patches played on the real firmware in the emulator under its timing model (m1emu cpu --modtime, D-1155): the firmware\'s own module times, both cores; the rest of the interrupt from its mean',
     timing: 'tools/emu/timing.txt',
-    play: `kits hold note ${NOTE} 500 ms, then 250 ms of module times; a square or saw oscillator costs more the higher it plays`,
+    play: `kits hold note ${NOTE} 250 ms, then 120 ms of module times (scripts/cpu-emu.ts); a square or saw oscillator costs more the higher it plays`,
     peak: PEAK.survey,
     slots: stats.slots,
   },
@@ -511,5 +511,5 @@ checks.forEach(({ name, patch }, i) => {
   worst = Math.max(worst, Math.abs(err));
   console.log(`${name.padEnd(28)} ${String(cycles).padStart(8)}  model ${String(Math.round(est)).padStart(8)}  ${(100 * err).toFixed(1).padStart(6)} %  interrupt ${r.isrUs.toFixed(0)} us`);
 });
-console.log(`${stats.slots} patches in ${stats.rounds} emulator rounds; worst model error ${(100 * worst).toFixed(1)} %`);
+console.log(`${stats.slots} patches played in ${stats.rounds} emulator rounds (${stats.cached} from the cache); worst model error ${(100 * worst).toFixed(1)} %`);
 writeFileSync(new URL('../src/cpu-costs.json', import.meta.url), JSON.stringify(table, null, 1) + '\n');
