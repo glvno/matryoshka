@@ -4,7 +4,14 @@
   "firmware_product": "FM-1_7011700",
   "source_commit": "2c1b07dfdb2bb91f3f1a07bb482556158bb74ddd",
   "source_tree": "0c3e4b1dd70c3444b33e0bbf98ca136adb9bf517",
-  "status": "automated qualification passed; awaiting the owner's device checks (D-139) and publication approval (D-105)",
+  "status": "approved for publication; automated qualification and owner device checks passed",
+  "release_approval": {
+    "status": "approved",
+    "by": "repository owner",
+    "date": "2026-11-15",
+    "instruction": "otherwise 1.17 passes; agreed, fix in 1.18 (on: ship 1.17.0 now, Shush 101's arpeggiator tempo sync in 1.18)",
+    "scope": "Publication of v1.17.0 from the merge of this record, whose firmware/ and tools/ equal the qualified source 2c1b07df (D-105)."
+  },
   "build_manifest_sha256": "dec60d1102496f59fcf83d102630ee81935c5254f2b93f44968d53e8c7a3a3e7",
   "artifacts": {
     "package": {"name": "matryoshka-1.17.0.fwsc", "size": 610609, "sha256": "11edcd2c539dee3bbab1f03aaab1594dff3654f22ec1888c4c893ab75412309c"},
@@ -51,5 +58,5 @@
       "dual_core": "checkDualCore at the install gate: 22 of 22 (Io 4, Hera 6 and Cassia 1 with 8 keys held: no shed voice, no overload, no late half)"
     }
   },
-  "owner_checks": {"status": "pending", "steps": "D-139: the analog output in headphones, instruments played by hand, a power cycle."}
+  "owner_checks": {"status": "passed", "by": "repository owner", "date": "2026-11-15", "steps": "D-139: the analog output in headphones, instruments played by hand, a power cycle.", "report": "Shush 101's arp is very slow despite tempo 120 (it steps on the modulator's RATE, as the SH-101's does; tempo sync is queued for 1.18). Otherwise 1.17 passes."}
 }
