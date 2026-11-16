@@ -80,7 +80,7 @@
 #   clap / reverb = 0.45               0..2
 #   clap = 55 Hz                       0.0008..80 Hz
 #   noise color = 0                    0..1
-#   clap / noise = 0.6                 0..2
+#   clap / noise = 1.6                 0..2
 #   clap / resonance = 0.45            0..1
 #   clap / filter = 2200 Hz            20..16000 Hz
 #   clap / pan = 0.1                   -1..1
@@ -94,8 +94,9 @@
 # 24..430 Hz. bend: 0 none, up a falling sweep, below 0 a rising one; the kick's only falls, 0..1 up to four octaves. time:
 # the kick's pitch sweep. kick / attack: the spike's shape, 0 a 3 ms click, up a tail that widens it into a push. fm int:
 # 0 off, up to four octaves either way. wave: 1 a sine, up to an overdriven square. clap: the claps' rate, so their number
-# (below about 22 Hz one clap). pitch 2 / pitch 3: octaves below the multi's pitch, off at -4. A hi-hat's row plays it
-# open or closed by its trig switch; the HH 1 CL and HH 2 CL rows (G4, A4) play it closed whatever trig says.
+# (below about 22 Hz one clap); clap / noise their level (each clap a short noise burst). pitch 2 / pitch 3: octaves below
+# the multi's pitch, off at -4. A hi-hat's row plays it open or closed by its trig switch; the HH 1 CL and HH 2 CL rows
+# (G4, A4) play it closed whatever trig says.
 engine: Verona Drum 1
 
 preset: Dance Floor
@@ -148,7 +149,7 @@ hi hat 1 / mix = 0.2
 hi hat 1 / bend = 0.5
 multi / decay = 0.08
 highpass = 500
-  master = 0.68
+  master = 0.67
 multi / volume = 0.3
 drum 1 / volume = 0.55
 
@@ -187,6 +188,6 @@ hi hat 1 / bend = -1.5
 hi hat 1 / resonance = 0.6
 hi hat 1 / pitch = 34
 hi hat 1 / decay = 0.8
-  master = 0.67
+  master = 0.66
 multi / volume = 0.6
 drum 1 / volume = 0.55

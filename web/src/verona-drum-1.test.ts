@@ -198,6 +198,23 @@ describe('Verona Drum 1 (#613)', () => {
     expect(diff(3, 10)).toBeGreaterThan(0.01);
   });
 
+  it('the clap with REVERB at 0 is its noise bursts, no low pulse under them (#866)', () => {
+    const p = fm1();
+    const r = rowAt(p, 'clap', 'reverb');
+    p.modules.find((m) => m.id === r.module)!.params[r.param] = 0;
+    const e = new Engine(SR);
+    e.load(p);
+    e.noteOn(p.modules.find((m) => m.type === 'drummap' && m.names?.[7] === 'CLAP')!.params.n8, 100);
+    const l = new Float32Array(Math.round(SR * 0.06)), rr = new Float32Array(l.length);
+    e.render(l, rr);
+    let sum = 0, sq = 0;
+    for (const v of l) { sum += v; sq += v * v; }
+    const rms = Math.sqrt(sq / l.length);
+    expect(rms).toBeGreaterThan(0.005);
+    // (a burst of noise averages out; a level pulse into the filter, the low buzz, does not)
+    expect(Math.abs(sum / l.length)).toBeLessThan(rms / 10);
+  });
+
   it('moves a preset of the six-channel card onto the same channels, MULTI\'s pitches into octaves, the new rows at Init (D-899)', () => {
     const p = fm1();
     const a = p.assemblies!.find((x) => x.name === 'Verona Drum 1')!;
@@ -213,10 +230,10 @@ describe('Verona Drum 1 (#613)', () => {
     old[pitch2] = 7;   // a fifth over PITCH's 19 ... an octave under it: -1
     const values = migrateValues(migration, old, init.values);
     const moved = migration.rows.filter((r) => typeof r === 'number' && r >= 0) as number[];
-    // (every row but the two pitches, which go through a line, and the five rows the knobs' travel moved to Init (#866): the
-    // kick's PITCH, BEND and ATTACK, DRUM 1's PITCH and FM INT)
-    expect(new Set(moved).size).toBe(old.length - 2 - 5);
-    expect(migration.rows.filter((r) => r === -1)).toHaveLength(21 + 5);   // DRUM 2, HI HAT 2, two TRIGs, NOISE COLOR; those five
+    // (every row but the two pitches, which go through a line, the five rows the knobs' travel moved to Init (#866): the
+    // kick's PITCH, BEND and ATTACK, DRUM 1's PITCH and FM INT, and the clap's NOISE, the claps' only level now (#866))
+    expect(new Set(moved).size).toBe(old.length - 2 - 6);
+    expect(migration.rows.filter((r) => r === -1)).toHaveLength(21 + 6);   // DRUM 2, HI HAT 2, two TRIGs, NOISE COLOR; those six
     migration.rows.forEach((r, i) => { if (typeof r === 'number' && r >= 0) expect(values[i]).toBe(old[r]); });
     const now = readLineage().engines['Verona Drum 1'].find((x) => x.structure === init.structure)!;
     const at = (id: string): number => now.rows.findIndex((r) => r[0] === id);

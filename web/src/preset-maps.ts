@@ -118,11 +118,12 @@ export const HAND_MAPS: HandMap[] = [
   // panel's range, the kick's BEND its pitch envelope's peak and a DRUM's FM INT its modulator's level. Those rows start at
   // Init: moving the old values through lines would take the FM-1's migration tables to 3,537 bytes, past their budget. The
   // kick's ATTACK is now the spike's shape (its tail) at the peak Init had, so it starts at Init too (the click as it was).
-  // The rest go by channel and label: the inserted Macros move every later module, and the automatic map would pair those
-  // with the channel before.
+  // The clap's NOISE is now the claps' only level (the level pulse beside the noise bursts is gone), at a higher Init, so
+  // it starts at Init too. The rest go by channel and label: the inserted Macros move every later module, and the
+  // automatic map would pair those with the channel before.
   {
-    engine: 'Verona Drum 1', from: 'ad27b323', to: '8e051b73',
-    why: '#866: PITCH, the kick\'s BEND and ATTACK and FM INT over the knobs\' travel; rows by channel and label',
+    engine: 'Verona Drum 1', from: 'ad27b323', to: '81c25295',
+    why: '#866: PITCH, the kick\'s BEND and ATTACK, FM INT and the clap\'s NOISE; rows by channel and label',
     rows: {
       'macro#7.value': 'init', 'env#5.l1': 'init', 'env#13.l2': 'init',
       'macro#20.value': 'init', 'scale#19.gain': { from: 'scale#18.gain' }, 'env#23.l1': { from: 'env#21.l1' },
@@ -132,6 +133,7 @@ export const HAND_MAPS: HandMap[] = [
       'env#37.l1': { from: 'env#35.l1' }, 'env#44.l1': { from: 'env#42.l1' },
       'env#51.l1': { from: 'env#49.l1' }, 'scale#52.gain': { from: 'scale#50.gain' }, 'osc#47.coarse': { from: 'osc#45.coarse' },
       'env#86.l1': { from: 'env#83.l1' }, 'scale#87.gain': { from: 'scale#84.gain' }, 'osc#82.coarse': { from: 'osc#79.coarse' },
+      'vca#67.gain': 'init',
     },
   },
   // ---- the whole NOON (D-1054): each channel's pitch, second slider and volume go to its `main`, `secondary` and `volume`
