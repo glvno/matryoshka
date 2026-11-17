@@ -29,7 +29,9 @@ import { Fm1View } from './fm1-view';
 import { panelPlay, EmuKeys } from './emu-keys';
 import { SandboxKeys } from './sandbox-keys';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
+import { snapshotRecord, storedSnapshots, type Snapshot, type SnapshotMark } from './snapshots';
 import { ScopeScreens } from './scope-view';
+import { OutputLoudness } from './loudness-view';
 import { EnvScreens } from './env-view';
 import { addToBank, bankPatches, buildPatchesSection, type LibrarySection as LibraryPane } from './bank';
 import { buildPresetsSection } from './library-presets';
@@ -46,6 +48,7 @@ import { initStatusline, pinStatus } from './statusline';
 import { buildAssembliesSection, storeAssembly, storeTutorialAssembly } from './assemblies';
 import { AssemblyBrowser } from './browser';
 import { searchCommands, type Command } from './commands';
+import { MUTATE_AMOUNTS } from './mutate';
 import { buildFlashTab } from './flasher';
 import { attachKeyboard, attachMidi, followOctave, isFm1In, isTextEntry, otherFm1 } from './input';
 import { Piano } from './piano';
@@ -70,6 +73,9 @@ import { addedTitles, loadCommunity, onAddedChange, unlinkSaved } from './commun
 import { chipEl, sandboxCardDue, sandboxWords, showSandboxCard, type Chip } from './sandbox';
 import { ShareSheet } from './share-sheet';
 import { fileStem, savePatchCard } from './patch-card';
+import { Audition } from './audition';
+import { PHRASES } from './phrases';
+import { resample } from './wav';
 import { starterPatch } from './starter';
 import { recordKey, recordOff } from './step-grid';
 import { Tutorial } from './tutorial/tutorial';
@@ -98,18 +104,29 @@ const STORE = renamedKey('matryoshka.patch', 'modular-1.patch');
 /** the address's fragment as the page opened (a share link's #p=, stripped once loaded): the reload after an import opens it again */
 const openedHash = location.hash;
 
+/** the snapshots of the remembered patch (D-972): kept beside it, tied to its text, never in the patch itself */
+const SNAP_STORE = 'matryoshka.snapshots';
+/** the remembered patch's text as the page opened (its snapshots come back only for it) */
+let savedText: string | null = null;
+
 function loadSaved(): Patch | null {
   try {
-    const s = localStorage.getItem(STORE);
-    return s ? validatePatch(JSON.parse(s), DEFS) : null;
+    savedText = localStorage.getItem(STORE);
+    return savedText ? validatePatch(JSON.parse(savedText), DEFS) : null;
   } catch {
     return null;
   }
 }
 
+/** remember the patch, and with it its snapshots; while a snapshot is on screen the current patch is the one remembered,
+ *  so a reload brings back the current patch, never a snapshot in its place (#943) */
 function save(p: Patch): void {
   try {
-    localStorage.setItem(STORE, JSON.stringify(p));
+    const text = JSON.stringify(p === editor.patch ? editor.currentPatch() : p);
+    localStorage.setItem(STORE, text);
+    const record = p === editor.patch ? snapshotRecord(text, editor.snaps.list) : null;
+    if (record) localStorage.setItem(SNAP_STORE, record);
+    else localStorage.removeItem(SNAP_STORE);
   } catch {
     /* private mode or storage blocked: the patch just isn't remembered */
   }
@@ -127,7 +144,10 @@ let suppressSave = false;
 const queueSave = (p: Patch): void => {
   if (suppressSave) return;
   clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(() => save(p), 300);
+  saveTimer = window.setTimeout(() => {
+    save(p);
+    if (editor.snaps.list.length) renderSnapshots();   // (each snapshot's count of changes, and the mark of one changed since it was taken)
+  }, 300);
 };
 
 const device = new DeviceLink();
@@ -684,8 +704,8 @@ function offerSync(asked = false): void {
 }
 /** the on-screen keyboard plays through the sink like the letter keys; Z / X and its buttons share the octave */
 const piano = new Piano($('piano'), {
-  on: (note, vel) => sink.send({ t: 'on', note, vel }, true),
-  off: (note) => sink.send({ t: 'off', note }, true),
+  on: (note, vel) => (audition.played({ t: 'on', note, vel }), sink.send({ t: 'on', note, vel }, true)),
+  off: (note) => (audition.played({ t: 'off', note }), sink.send({ t: 'off', note }, true)),
   shift: (d) => noteKeys.shift(d),
 });
 /** the wheels: pitch bend and CC 1, shown in the dock under Main's bend and modulation jacks (the editor places them) */
@@ -789,6 +809,16 @@ const patchCandidates = (like?: Patch): { name: string; patch: Patch }[] => {
 // Scope modules' screens: they stream while on screen and audio runs
 const screens = new ScopeScreens((msg) => host.send(msg), () => host.running && !host.muted);
 host.onView = (key, chans, sr, voices) => screens.receive(key, chans, sr, voices);
+// the Output card's loudness readout (#940): the reading carries on through rebuilds, a patch opened starts it again
+const loudness = new OutputLoudness();
+host.onLoud = (steps) => loudness.push(steps);
+// listening to one signal (#939): the chip over the canvas says what plays instead of the Output, and goes back
+const listenChip = $('listen-chip');
+const showListen = (label: string | null): void => {
+  listenChip.hidden = !label;
+  $('listen-name').textContent = label ?? '';
+};
+$('listen-stop').onclick = () => editor.stopListening();
 // envelope shapes: drags edit through the editor (made below; used only after it exists)
 const envs = new EnvScreens((msg) => host.send(msg), () => host.running && !host.muted, {
   set: (id, name, v) => editor.setParam(id, name, v),
@@ -1071,6 +1101,12 @@ const editor = new Editor($('canvas'), firstPatch, {
     screens.sync(list);
     envs.sync(envList);
   },
+  onListen(srcs, label) {
+    host.listen(srcs);
+    showListen(srcs ? label : null);
+    if (srcs && !host.running) void startAudio();   // (asked to hear something: the audio starts, as Audio on does)
+  },
+  outputReadout: () => loudness.element(),
   onLayout(p) {
     capabilityInspector?.sync();
     queueSave(p);
@@ -1096,10 +1132,16 @@ const editor = new Editor($('canvas'), firstPatch, {
     installedLayout = null;
     pendingMutes.clear();
     noteKeys.set(p.octave ?? 0); // a patch opens in the octave it was last played in
+    loudness.reset();
   },
   onHistory(kind) {
     if (kind === 'undo') tutorial.undone();
     else tutorial.redone();
+  },
+  onSnapshots() {
+    nameInput.value = editor.patch.name;   // (each stop has its own name, D-970)
+    renderSnapshots();
+    queueSave(editor.patch);   // (the snapshots are kept beside the patch)
   },
   morphCandidates: patchCandidates,
 }, $('dock'));
@@ -1119,7 +1161,7 @@ editor.dockPlay = arpBtn;
 initStatusline($('statusline'));
 editor.rebuild();
 showBudget();
-snapshotCandidates = () => editor.snapshots.B ? [{ name: 'Snapshot B', patch: { ...JSON.parse(editor.snapshots.B) as Patch, name: 'Snapshot B' } }] : [];
+snapshotCandidates = () => editor.snaps.list.map((s) => ({ name: `Snapshot ${s.letter}`, patch: { ...JSON.parse(s.patch) as Patch, name: `Snapshot ${s.letter}` } }));
 host.setPatch(editor.patch);
 const tutorial = new Tutorial({
   editor,
@@ -1135,8 +1177,6 @@ const tutorial = new Tutorial({
     refreshAssemblies();
     status.textContent = `"${def.name}" saved to the assembly library`;
   },
-  snapshot: (side) => takeSnapshot(side),
-  flipAB: () => flipAB(),
   share: () => sharePatch(),
   arpPlay: (on) => setPlaying(on),
   bypass: (id, on) => { const m = editor.patch.modules.find((m) => m.id === id); if (!m) return; if (on) m.bypass = true; else delete m.bypass; host.send({ t: 'bypass', id, on }); tutorial.bypassed(); editor.rebuild(); queueSave(editor.patch); },
@@ -1425,7 +1465,7 @@ function showBudget(): void {
   const note = document.createElement('p');
   note.className = 'muted';
   note.textContent = b.fits
-    ? 'The CPU figures, the bar\'s, the cards\' and the list\'s, are estimates of the FM-1\'s first core, not measurements: each module type was measured on the real firmware in the emulator\'s timing model of the FM-1, and the sums checked against whole factory patches on the test rig. The second core plays half the parts of each poly group. Treat anything above 80 % as tight.'
+    ? 'The CPU figures, the bar\'s, the cards\' and the list\'s, are estimates of the FM-1\'s first core, not measurements: counted on a model of its processor, calibrated on the factory patches measured on the FM-1. The second core plays half the parts of each poly group. Treat anything above 80 % as tight.'
     : 'A sandbox patch: it plays here in the browser with no FM-1 limits. It goes to the FM-1 once it fits under the bars; Library > Patches marks it SANDBOX.';
   list.append(note);
   showSandbox(b);
@@ -1466,7 +1506,7 @@ addEventListener('keydown', (e) => {
 }, true);
 const browser = new AssemblyBrowser((d) => { toPatch(); editor.insert(d); });
 
-// ---- diff against the baseline (the patch as last loaded, uploaded or stored) and A / B
+// ---- diff against the baseline (the patch as last loaded, uploaded or stored) and snapshots
 let baseline = JSON.stringify(editor.patch);
 const setBaseline = (): void => {
   baseline = JSON.stringify(editor.patch);
@@ -1493,19 +1533,137 @@ const showDiff = (): void => {
   diffPanel.append(h, ul);
   diffPanel.hidden = false;
 };
-const takeSnapshot = (side: 'A' | 'B'): void => {
-  editor.takeSnapshot(side);
-  editor.rebuild();
-  status.textContent = `${side} = this patch`;
-};
-const flipAB = (): void => {
-  if (editor.toggleAB()) {
-    nameInput.value = editor.patch.name;   // (the patch takes the target's name, D-579)
-    tutorial.flipped();
-    status.textContent = `${editor.side}${diffCount(diffPatches(JSON.parse(editor.snapshots[editor.side === 'A' ? 'B' : 'A']!) as Patch, editor.patch, DEFS)) ? '' : ' (same as the other side)'}`;
+// ---- snapshots (#943): versions of the patch kept with it, lettered A, B… as they are taken (kept beside the remembered
+// patch: save, D-972). The strip over the canvas shows them with the current patch last; Alt+B goes A, B, …, the current
+// patch, A…, Shift+Alt+B takes one
+const snapStrip = $('snapshot-strip');
+/** how many changes the snapshot is from the current patch, counted as Show changes counts them */
+const snapChanges = (s: Snapshot): number => diffCount(diffPatches(editor.currentPatch(), JSON.parse(s.patch) as Patch, DEFS));
+const snapTitle = (s: Snapshot): string => s.name ? `${s.letter} “${s.name}”` : s.letter;
+function renderSnapshots(): void {
+  const { list, shown } = editor.snaps;
+  const edited = editor.shownEdited();
+  const entry = (label: string, title: string, on: boolean, run: () => void): HTMLButtonElement => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'snap';
+    b.textContent = label;
+    b.title = title;
+    b.setAttribute('aria-pressed', String(on));
+    b.onclick = run;
+    return b;
+  };
+  const items = list.map((s) => {
+    const n = snapChanges(s);
+    const changed = edited && shown === s.letter;
+    const verdict = s.mark === 'keep' ? '. Marked keep' : s.mark === 'cut' ? '. Marked cut: Cut the losers (Shift+Alt+X) removes it' : '';
+    const origin = s.from ? `. Mutated from ${s.from === 'current' ? 'the current patch' : s.from}` : '';
+    const b = entry(s.letter, `Snapshot ${snapTitle(s)}: ${n ? `${n} change${n === 1 ? '' : 's'} from the current patch` : 'the same as the current patch'}${origin}${verdict}${changed ? '. Changed since it was taken: switching away keeps the changes as a new snapshot' : ''}. Click to hear it, right-click or double-click for more`, shown === s.letter, () => showStop(s.letter));
+    if (changed) b.classList.add('edited');
+    if (s.mark) b.classList.add(s.mark);
+    if (s.from) {
+      const from = document.createElement('span');
+      from.className = 'snap-from';
+      from.textContent = `←${s.from === 'current' ? 'now' : s.from}`;
+      b.append(from);
+    }
+    if (s.name) {
+      const name = document.createElement('span');
+      name.className = 'snap-name';
+      name.textContent = s.name;
+      b.append(name);
+    }
+    // the thumbnail: the number of changes; a spectrogram of the test phrase (#945) can take this place
+    const thumb = document.createElement('span');
+    thumb.className = 'snap-thumb';
+    thumb.textContent = n ? String(n) : '=';
+    b.append(thumb);
+    const more = (e: Event): void => { e.preventDefault(); popMenu(snapshotMenu(s), b); };
+    b.oncontextmenu = more;
+    b.ondblclick = more;
+    return b;
+  });
+  const take = entry(list.length ? '+' : '+ Snapshot', 'Take a snapshot of the patch on screen (Shift+Alt+B)', false, () => takeSnapshot());
+  take.classList.add('snap-take');
+  take.removeAttribute('aria-pressed');
+  snapStrip.replaceChildren(...items, ...(list.length ? [entry('Current', 'The current patch: your latest edits (Alt+B goes through the snapshots and back here)', shown === null, () => showStop(null))] : []), take);
+}
+const snapshotMenu = (s: Snapshot): MenuItem[] => [
+  { text: s.mark === 'keep' ? 'Unmark keep' : 'Keep', key: 'Alt+K', run: () => editor.setMark(s.letter, s.mark === 'keep' ? null : 'keep') },
+  { text: s.mark === 'cut' ? 'Unmark cut' : 'Mark to cut', key: 'Alt+X', run: () => editor.setMark(s.letter, s.mark === 'cut' ? null : 'cut') },
+  { text: 'Make candidates from it', key: 'Alt+N', rule: true, run: () => { showStop(s.letter); makeCandidates(); } },
+  { text: 'Rename…', run: () => {
+    const to = window.prompt(`Name of snapshot ${s.letter} (empty: none)`, s.name ?? '');
+    if (to !== null) editor.renameSnapshot(s.letter, to.trim());
+  } },
+  { text: 'Make it the current patch', run: () => {
+    const kept = editor.makeCurrent(s.letter);
+    status.textContent = `${s.letter} is the current patch${kept ? `; the patch it replaces is kept as ${kept.letter}` : ''}`;
     queueSave(editor.patch);
-  } else status.textContent = 'set A and B first';
+  } },
+  { text: 'Save as a patch…', run: () => {
+    const p = JSON.parse(s.patch) as Patch;
+    const name = window.prompt('Save the snapshot to Your patches as', s.name ?? `${p.name} ${s.letter}`)?.trim();
+    if (name) status.textContent = keepPatch({ ...p, name }).msg;
+  } },
+  { text: 'Remove', danger: true, run: () => {
+    editor.removeSnapshot(s.letter);
+    status.textContent = `snapshot ${s.letter} removed`;
+    queueSave(editor.patch);
+  } },
+];
+const takeSnapshot = (): void => {
+  const s = editor.takeSnapshot();
+  editor.rebuild();   // (the morph picker offers the snapshots)
+  status.textContent = `snapshot ${s.letter} taken: Alt+B compares it with the current patch`;
 };
+/** after a switch: the name, the status line (what the stop is, and where changes to the snapshot left went) */
+const switched = (r: { kept?: Snapshot } | null): void => {
+  if (!r) return;
+  audition.restart();   // (a test phrase starts again: each stop hears the same notes from the top, #945)
+  tutorial.flipped();
+  const s = editor.snaps.get(editor.snaps.shown);
+  const n = s ? snapChanges(s) : 0;
+  const where = s ? `snapshot ${snapTitle(s)}: ${n ? `${n} change${n === 1 ? '' : 's'} from the current patch` : 'the same as the current patch'}` : 'the current patch';
+  status.textContent = where + (r.kept ? ` · your changes are kept as snapshot ${r.kept.letter}` : '');
+  queueSave(editor.patch);
+};
+const showStop = (letter: string | null): void => switched(editor.showSnapshot(letter));
+const cycleSnapshots = (): void => {
+  const r = editor.cycleSnapshots();
+  if (r) switched(r);
+  else status.textContent = 'take a snapshot first (Shift+Alt+B), then Alt+B compares it with the current patch';
+};
+// ---- rank and cut (#996): Make candidates (Alt+N) mutates the patch on screen into new snapshots; Alt+K / Alt+X mark the
+// snapshot on screen keep / cut and go on to the next; Cut the losers (Shift+Alt+X) removes the cut ones in one undo step
+const markShown = (mark: SnapshotMark): void => {
+  const r = editor.markShown(mark);
+  if (!r) return void (status.textContent = 'show a snapshot first (Alt+B): the current patch is never cut');
+  if (r.mark === null) status.textContent = `snapshot ${r.letter}: no mark`;
+  else switched({}), (status.textContent = `${r.letter} marked ${r.mark} · ${status.textContent}`);
+};
+const makeCandidates = (): void => {
+  const from = editor.snaps.shown ?? 'the current patch';
+  const made = editor.makeCandidates(candidates);
+  if (!made.length) return;
+  editor.rebuild();   // (the morph picker offers the snapshots)
+  switched({});
+  status.textContent = `${made.length} candidates from ${from}, ${made[0].letter}–${made.at(-1)!.letter}, each mutated by up to ±${Math.round(editor.mutateAmount * 100)} %: Alt+K keeps, Alt+X cuts, Alt+B listens on`;
+};
+const cutLosers = (): void => {
+  const cut = editor.cutLosers();
+  if (!cut.length) return void (status.textContent = 'nothing marked cut (Alt+X on a snapshot marks it)');
+  status.textContent = `cut ${cut.map((s) => s.letter).join(', ')}; Ctrl/Cmd+Z puts them back`;
+  queueSave(editor.patch);
+};
+// the snapshots the browser kept with the remembered patch, when the page opened on it (each is checked as a patch is)
+if (firstPatch === editor.patch && savedText !== null) {
+  const kept = storedSnapshots((() => { try { return localStorage.getItem(SNAP_STORE); } catch { return null; } })(), savedText).flatMap((s) => {
+    try { return [{ ...s, patch: JSON.stringify(validatePatch(JSON.parse(s.patch), DEFS)) }]; } catch { return []; }
+  });
+  if (kept.length) editor.restoreSnapshots(kept);
+}
+renderSnapshots();
 
 // ---- the command palette: modules, assemblies, patches
 const palette = $<HTMLDialogElement>('palette');
@@ -1549,11 +1707,33 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Delete selection', detail: 'Delete', run: inPatch(() => editor.removeSelected()) },
     { kind: 'command', label: 'Bypass selection', detail: 'B', run: inPatch(() => editor.bypassSelected()) },
     { kind: 'command', label: 'Show changes since last load / upload', keywords: 'diff', run: inPatch(showDiff) },
-    { kind: 'command', label: 'Set snapshot A', keywords: 'compare ab', run: () => takeSnapshot('A') },
-    { kind: 'command', label: 'Set snapshot B', keywords: 'compare ab', run: () => takeSnapshot('B') },
-    { kind: 'command', label: 'Switch A / B snapshots', detail: 'Alt+B', run: inPatch(flipAB) },
+    { kind: 'command', label: 'Take a snapshot', detail: 'Shift+Alt+B', keywords: 'compare ab a/b set version keep', run: inPatch(takeSnapshot) },
+    { kind: 'command', label: `Make ${candidates} candidates`, detail: 'Alt+N', keywords: 'rank cut mutate variations breed generate snapshots audition', run: inPatch(makeCandidates) },
+    ...CANDIDATE_COUNTS.map((c) => ({ kind: 'command' as const, label: `Candidates per round: ${c}`, detail: c === candidates ? 'now' : undefined, keywords: 'rank cut make how many', run: () => setCandidates(c) })),
+    { kind: 'command', label: 'Keep this snapshot', detail: 'Alt+K', keywords: 'rank mark winner candidate', run: inPatch(() => markShown('keep')) },
+    { kind: 'command', label: 'Mark this snapshot to cut', detail: 'Alt+X', keywords: 'rank loser drop candidate', run: inPatch(() => markShown('cut')) },
+    { kind: 'command', label: 'Cut the losers', detail: 'Shift+Alt+X', keywords: 'rank remove drop marked cut candidates snapshots', run: inPatch(cutLosers) },
+    { kind: 'command', label: 'Next snapshot', detail: 'Alt+B', keywords: 'compare ab a/b switch flip cycle current patch', run: inPatch(cycleSnapshots) },
+    ...editor.snaps.list.map((s) => ({ kind: 'command' as const, label: `Show snapshot ${snapTitle(s)}`, keywords: 'compare ab a/b switch', run: inPatch(() => showStop(s.letter)) })),
+    ...(editor.snaps.shown !== null ? [{ kind: 'command' as const, label: 'Back to the current patch', keywords: 'compare ab a/b switch snapshot', run: inPatch(() => showStop(null)) }] : []),
+    // Mutate and Randomize (#944): the selected cards' parameters, one undo step
+    { kind: 'command', label: 'Mutate selection', detail: `Alt+M · ±${Math.round(editor.mutateAmount * 100)} %`, keywords: 'vary variation nudge random sound design', run: inPatch(() => void editor.mutate('mutate')) },
+    { kind: 'command', label: 'Randomize selection', keywords: 'random dice new sound design', run: inPatch(() => void editor.mutate('randomize')) },
+    ...MUTATE_AMOUNTS.map((a) => ({ kind: 'command' as const, label: `Mutate amount: ±${Math.round(a * 100)} %`, detail: a === editor.mutateAmount ? 'now' : undefined, keywords: 'mutate how far', run: () => setMutateAmount(a) })),
+    { kind: 'command', label: 'Lock selection for Mutate', keywords: 'keep protect hold mutate randomize', run: inPatch(() => editor.lockCards(true)) },
+    { kind: 'command', label: 'Unlock selection for Mutate', keywords: 'mutate randomize', run: inPatch(() => editor.lockCards(false)) },
+    { kind: 'command', label: audition.playing ? 'Stop the test phrase' : 'Play the test phrase', detail: 'Q', keywords: 'audition listen phrase held note chord sweep drums', run: () => audition.toggle() },
+    ...PHRASES.map((p) => ({ kind: 'command', label: `Test phrase: ${p.label}`, detail: p.detail, keywords: 'audition listen play', run: () => { audition.choose({ kind: p.kind }); void audition.play(); } })),
+    { kind: 'command', label: audition.choice.loop ? 'Test phrase: loop off' : 'Test phrase: loop on', keywords: 'audition repeat again once', run: () => audition.choose({ loop: !audition.choice.loop }) },
+    { kind: 'command', label: 'Use my last take as the test phrase', detail: 'My take', keywords: 'audition phrase played recorded notes performance', run: () => audition.useTake() },
+    { kind: 'command', label: 'Export the test phrase to WAV', detail: '44.1 kHz stereo', keywords: 'render audio file save download sound bounce', run: () => void audition.exportPhrase() },
+    { kind: 'command', label: audition.recording ? 'Stop recording and save the WAV' : 'Record the Output to WAV', keywords: 'audio file save download capture performance sound', run: () => void audition.toggleRecord() },
     { kind: 'command', label: 'Start audio', keywords: 'sound browser', run: () => void startAudio() },
     { kind: 'command', label: 'Panic: stop all notes', keywords: 'silence stuck', run: panic },
+    { kind: 'command', label: host.engine === 'fm1' ? 'Switch to the browser engine' : 'Switch to the FM-1 engine', detail: 'Alt+E', keywords: 'fixed point firmware webassembly wasm compare hear sound device', run: () => void switchEngine() },
+    ...(editor.listenLabel ? [{ kind: 'command' as const, label: 'Stop listening: back to the Output', detail: 'Esc', keywords: `solo monitor hear signal ${editor.listenLabel}`, run: () => void editor.stopListening() }] : []),
+    { kind: 'command', label: 'Listen to the selected card on its own', detail: 'Alt-click a jack or cable', keywords: 'solo monitor hear signal headphones cable output', run: inPatch(() => { if (!editor.listenSelected()) status.textContent = 'Select one card with an audio output, or Alt-click (Option-click) an audio output or a cable, to hear it on its own'; }) },
+    { kind: 'command', label: 'Reset the integrated loudness', detail: 'the Output card', keywords: 'lufs level meter loudness rule target', run: () => loudness.reset() },
     { kind: 'command', label: 'FM-1 & MIDI settings', keywords: 'connect send store sync hardware keyboard release', run: () => $<HTMLDialogElement>('device-bar').showModal() },
     { kind: 'command', label: 'Install firmware', keywords: 'flash update hardware matryoshka return stock official v15', run: () => openInstall() },
     { kind: 'command', label: 'About Matryoshka', keywords: 'credits support ko-fi donate ai usage transparency', run: () => void about.open() },
@@ -1565,13 +1745,13 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Collapse / expand the sidebar', keywords: 'hide show side panel rail more room', detail: 'Ctrl/Cmd+B', run: () => toggleSidebarCollapsed() },
     { kind: 'command', label: 'Expand all assemblies', keywords: 'open frames nested show inside', run: inPatch(() => editor.setAllOpen(true)) },
     { kind: 'command', label: 'Collapse all assemblies', keywords: 'close frames nested cards fold', run: inPatch(() => editor.setAllOpen(false)) },
-    { kind: 'command', label: 'Tidy up the canvas', keywords: 'clean up arrange align layout grid', run: inPatch(() => editor.tidyUp()) },
+    { kind: 'command', label: 'Tidy up the canvas', detail: 'Alt+T', keywords: 'clean up arrange align layout grid', run: inPatch(() => editor.tidyUp()) },
     { kind: 'command', label: 'Cable slack: none', keywords: 'slack sag tight straight', run: inPatch(() => setSlack(0)) },
     { kind: 'command', label: 'Cable slack: half', keywords: 'slack sag droop hang loose', run: inPatch(() => setSlack(0.5)) },
     { kind: 'command', label: 'Cable slack: full', keywords: 'slack sag droop hang heavy', run: inPatch(() => setSlack(1)) },
     ...(editor.patch.slackFrom ? [{ kind: 'command' as const, label: 'Cable slack: unplug its input', keywords: 'slack sway modulate', run: inPatch(() => editor.setSideSource('slackFrom', null)) }] : []),
     ...(editor.patch.zoomFrom ? [{ kind: 'command' as const, label: 'Zoom: unplug its input', keywords: 'zoom modulate', run: inPatch(() => editor.setSideSource('zoomFrom', null)) }] : []),
-    { kind: 'command', label: 'Fit patch to screen', keywords: 'zoom view', run: inPatch(() => editor.zoomToFit()) },
+    { kind: 'command', label: 'Fit patch to screen', detail: 'Alt+Z', keywords: 'zoom view', run: inPatch(() => editor.zoomToFit()) },
     { kind: 'command', label: 'Store to an FM-1 slot\u2026', keywords: 'bank flash save device', run: () => void storeToSlot() },
     { kind: 'command', label: 'Reset canvas scale', keywords: 'zoom 100%', run: inPatch(() => editor.setZoom(1)) },
     // the patch's modules with their own names (#518): picking one selects it
@@ -1775,12 +1955,23 @@ window.addEventListener('keydown', (e) => {
     done = true;
   }
   // in pick / arrange mode Esc clears the row selection first, a second Esc ends the mode (#186)
-  else if (k === 'Escape') (editor.cancelArm(), editor.clearRows() || editor.endPick(), (diffPanel.hidden = true), (done = true));
+  // (then it stops listening to a signal on its own, #939)
+  else if (k === 'Escape') (editor.cancelArm(), editor.clearRows() || editor.endPick() || editor.stopListening(), (diffPanel.hidden = true), (done = true));
   else if (k === 'Delete' || k === 'Backspace') done = editor.deleteRows() || editor.removeSelected();
   else if (mod && k.toLowerCase() === 'a') (editor.selectAllRows() || editor.selectAll(), (done = true));
   else if ((k === ' ' || k === 'Enter') && !mod && !e.altKey && editor.applyRows()) done = true; // pick mode: show / hide the selected rows
   else if (mod && k.toLowerCase() === 'd') done = editor.duplicateSelected();
-  else if (e.altKey && !mod && (e.code === 'KeyB' || k.toLowerCase() === 'b')) (flipAB(), (done = true));   // (the code: Option+B types ∫ on a Mac)
+  else if (e.altKey && !mod && (e.code === 'KeyB' || k.toLowerCase() === 'b')) ((e.shiftKey ? takeSnapshot() : cycleSnapshots()), (done = true));   // (the code: Option+B types ∫ on a Mac)
+  // rank and cut (#996), by the code as Option+letter types a symbol on a Mac
+  else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyK') (markShown('keep'), (done = true));
+  else if (e.altKey && !mod && e.code === 'KeyX') ((e.shiftKey ? cutLosers() : markShown('cut')), (done = true));
+  else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyN') (makeCandidates(), (done = true));
+  // the canvas's TIDY and FIT (#987), Mutate (#944); by the code, as Option+letter types a symbol on a Mac
+  else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyT') (onCanvas(() => editor.tidyUp())(), (done = true));
+  else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyZ') (onCanvas(() => editor.zoomToFit())(), (done = true));
+  else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyM') (editor.mutate('mutate'), (done = true));
+  else if (!mod && !e.altKey && !e.shiftKey && k.toLowerCase() === 'q') (audition.toggle(), (done = true));   // the test phrase (#945)
+  else if (e.altKey && !mod && (e.code === 'KeyE' || k.toLowerCase() === 'e')) (void switchEngine(), (done = true));   // (#941; the code: Option+E is a dead key on a Mac)
   else if (!mod && k.toLowerCase() === 'b') done = editor.bypassSelected();
   else if (mod && k.toLowerCase() === 'g') (editor.makeAssembly(), (done = true)); // plain G is a note key
   else if (k === ' ') {
@@ -2024,10 +2215,47 @@ try {
 } catch {
   /* storage blocked: no slack */
 }
+// Mutate's amount (#944): kept per browser, like the slack
+const MUTATE_AMOUNT = 'matryoshka.mutate-amount';
+function setMutateAmount(v: number): void {
+  editor.mutateAmount = v;
+  status.textContent = `Mutate moves each parameter by up to ±${Math.round(v * 100)} % of its range`;
+  try {
+    localStorage.setItem(MUTATE_AMOUNT, String(v));
+  } catch {
+    /* storage blocked: the amount lasts until the page is reloaded */
+  }
+}
+try {
+  const v = Number(localStorage.getItem(MUTATE_AMOUNT));
+  if ((MUTATE_AMOUNTS as readonly number[]).includes(v)) editor.mutateAmount = v;
+} catch {
+  /* storage blocked: the default amount */
+}
+// Make candidates' count per round (#996): kept per browser, like Mutate's amount
+const CANDIDATES = 'matryoshka.candidates';
+const CANDIDATE_COUNTS = [2, 4, 6, 8] as const;
+let candidates = 4;
+function setCandidates(v: number): void {
+  candidates = v;
+  status.textContent = `Make candidates makes ${v} at a time`;
+  try {
+    localStorage.setItem(CANDIDATES, String(v));
+  } catch {
+    /* storage blocked: the count lasts until the page is reloaded */
+  }
+}
+try {
+  const v = Number(localStorage.getItem(CANDIDATES));
+  if ((CANDIDATE_COUNTS as readonly number[]).includes(v)) candidates = v;
+} catch {
+  /* storage blocked: the default count */
+}
 function panic(): void {
   tutorial.stop();
   host.mute(true);
   sink.send({ t: 'panic' });
+  audition.stop();
 }
 /** MIDI clock out (FM-1 & MIDI, wired below): clock at Main's tempo to the ticked outputs, Start / Stop with Play */
 const clockOut = new ClockOut(() => tempoNow(tempo.setting, editor.patch));   // (the global tempo while it is on, D-907)
@@ -2145,6 +2373,7 @@ function setView(v: View): void {
   $('tab-library').hidden = v !== 'library';
   $('canvas').hidden = v !== 'patch';
   $('help-btn').hidden = v !== 'patch';
+  snapStrip.hidden = v !== 'patch';
   // the sidebar is the same in every view; LIBRARY's sections are tabs under the switch
   $('library-tabs').hidden = v !== 'library';
   // the FM-1 is its own instrument: its panel has the keys and knobs, so the Main dock, the wheels and the keyboard go;
@@ -2613,8 +2842,66 @@ const syncAudioBtn = (): void => {
 };
 host.onState = () => { syncAudioBtn(); screens.state(); envs.state(); };
 syncAudioBtn();
+// the deck's test phrase and WAV export (#945, #946): left of the keys
+const audition = new Audition({
+  send: (m) => host.send(m),
+  start: startAudio,
+  sampleRate: () => host.sampleRate,
+  patch: () => editor.patch,
+  stem: () => fileStem(editor.patch),
+  armed: () => [...editor.armedSet],
+  tempo: () => (tempo.global ? tempo.bpm : null),
+  status: (text) => (status.textContent = text),
+  download: (bytes, name) => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'audio/wav' }));
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  },
+  // (loaded lazily: the page's bundle carries no engine, the worklet has its own; a turn of the event loop between slices
+  // keeps the page responsive)
+  render: async (patch, phrase, setup) => (await import('./phrase-render')).renderPhrase(patch, phrase, { ...setup, yieldEvery: () => new Promise((r) => setTimeout(r, 0)) }),
+  resample: (left, right, from) => resample(left, right, from),
+  now: () => new Date(),
+  clock: () => performance.now() / 1000,
+}, (() => { try { return localStorage; } catch { return null; } })());
+$('piano').before(audition.el);
+host.onPhraseEnd = () => audition.ended();
+host.onRecording = (chunk, last) => void audition.recorded(chunk, last);
 audioBtn.onclick = () => (host.running && !host.muted ? panic() : void startAudio());
-const noteKeys = attachKeyboard({ send: (m) => sink.send(m, true) }, () => currentTab === 'patch' && !document.querySelector('dialog[open], [popover]:popover-open'), (o) => {
+// the engine heard (#941): the browser engine, or the FM-1 engine (the firmware's engine.c as WebAssembly, fm1-engine.ts).
+// A visit starts on the browser engine; the switch works while playing (the deck's FM-1 engine, Alt+E, the palette)
+const engineBtn = $('engine-btn');
+const showEngine = (): void => {
+  const fm1 = host.engine === 'fm1';
+  engineBtn.setAttribute('aria-pressed', String(fm1));
+  engineBtn.title = fm1
+    ? 'You hear the FM-1 engine: the FM-1’s firmware engine, fixed point, running here. The Scope, the meters and the moving thumbs follow the browser engine. Click (or Alt+E) for the browser engine'
+    : 'Hear the patch through the FM-1’s own engine, the firmware’s fixed-point code running here (Alt+E)';
+};
+let engineSwitching = false;
+async function switchEngine(): Promise<void> {
+  if (engineSwitching) return;
+  engineSwitching = true;
+  const to = host.engine === 'fm1' ? 'browser' : 'fm1';
+  try {
+    await host.setEngine(to);
+    engineBtn.classList.remove('failed');
+    status.textContent = to === 'fm1' ? 'FM-1 engine: the FM-1’s fixed-point engine plays' : 'Browser engine plays';
+  } catch (e) {
+    status.textContent = e instanceof Error ? e.message : String(e);
+  } finally {
+    engineSwitching = false;
+  }
+  showEngine();
+}
+host.onFm1 = (error) => {
+  engineBtn.classList.toggle('failed', !!error);
+  if (error && host.engine === 'fm1') status.textContent = `FM-1 engine is silent: ${error}`;
+};
+engineBtn.onclick = () => void switchEngine();
+const noteKeys = attachKeyboard({ send: (m) => (audition.played(m), sink.send(m, true)) }, () => currentTab === 'patch' && !document.querySelector('dialog[open], [popover]:popover-open'), (o) => {
   keyOctave = o;
   piano.setOctave(o);
   if (stampOctave(editor.patch)) queueSave(editor.patch);
@@ -2643,7 +2930,7 @@ const setMidi = async (on: boolean): Promise<void> => {
   if (!on || midiAsking) return;
   midiAsking = true;
   midiSwitch = await attachMidi(
-    sink,
+    { send: (m) => (audition.played(m), sink.send(m)) },   // (its notes go into the takes too, #945)
     (s) => {
       if (!host.running) status.textContent = s;
     },
@@ -2963,7 +3250,7 @@ if (import.meta.env.DEV) {
   // the lesson editor's live link: it checks steps against this synth and loads patches into it
   tutorial.observer = synthLink(() => ({
     patch: editor.patch, selected: [...editor.selected], arpPlay: editor.playing, audio: host.running && !host.muted,
-    snapshots: { A: !!editor.snapshots.A, B: !!editor.snapshots.B }, zoom: editor.zoom, library: loadLibrary(),
+    snapshots: { A: !!editor.snaps.get('A'), B: !!editor.snaps.get('B') }, zoom: editor.zoom, library: loadLibrary(),
   }), (p) => { sink.send({ t: 'panic' }); loadNamed(p, { quiet: true }); });
   const link = document.createElement('a');
   link.href = '/lesson-editor'; link.target = '_blank'; link.rel = 'noopener';

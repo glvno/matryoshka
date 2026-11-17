@@ -8,6 +8,7 @@ import { FINE, parseValue, stepOf, stepToward, wholeSteps } from './value-input'
 import { isTextEntry } from './input';
 import { lockOf } from './relevance';
 import { clearAround, isPile, tidy, tidyAssembly } from './tidy';
+import { isLocked, MUTATE_DEFAULT, MUTATE_SKIP, mutatePatch, setParamLock, type MutateMode, type MutateScope } from './mutate';
 import { buttonLabel, DEFS, drumRowName, FIXED_DOES, PANEL_BUTTONS, rowRange } from './modules';
 import { FIXED_BUTTONS, type Range } from './patch';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
@@ -90,8 +91,10 @@ import { clipText, copyItems, pasteClip, type Clip } from './clipboard';
 import { GUTTER_ROOM, ribbons, type RibbonCable, type RibbonFrame } from './ribbons';
 import { pinchStart, pinchStep, type Pinch } from './touch';
 import type { ScreenSpec } from './scope-view';
+import { listenable, type ListenSource } from './listen';
 import type { EnvSpec } from './env-view';
 import { flipPlan } from './ab';
+import { body, sameVersion, Snapshots, type Snapshot, type SnapshotMark } from './snapshots';
 import { isGlobalTempo, patchTempo, tempo } from './tempo';
 import { EXCLUDED_TYPES,
   addChild,
@@ -163,6 +166,11 @@ function kindMark(kind: ButtonKind | 'main'): SVGSVGElement {
   return svg;
 }
 const HISTORY = 40;
+/** snapshots a step added or removed, each with its place in the list (added: after the step; removed: before it) */
+type ListChange = { added: { s: Snapshot; at: number }[]; removed: { s: Snapshot; at: number }[] };
+/** an undo step: the patch (Editor.snap) and the stop it belongs to, a snapshot's letter or null for the current patch;
+ *  `list`: a step that added or removed snapshots (Make candidates, Cut the losers, #996), with the current patch kept aside */
+type UndoStep = { s: string; shown: string | null; list?: { change: ListChange; current: string | null } };
 /** a logarithmic slider's value rounded to the parameter's step (a glide time to the ms, a cutoff to the Hz), not to a whole number */
 function snapTo(pd: ParamDef, v: number): number {
   const step = pd.step ?? 0;
@@ -217,12 +225,18 @@ export interface EditorEvents {
   onLayout(p: Patch): void;
   /** the displays drawn this time (after every rebuild): Scope screens with what is cabled into each input, envelope shapes */
   onScreens?(screens: ScreenSpec[], envs: EnvSpec[]): void;
+  /** listening to one signal changed (#939, listen.ts): the outputs heard instead of the Output and their name; null: the Output */
+  onListen?(srcs: ListenSource[] | null, label: string): void;
+  /** the Output card's loudness readout (#940, loudness-view.ts), made again at every rebuild */
+  outputReadout?(): HTMLElement;
   /** a message for the status line */
   onError(msg: string): void;
   /** "save" on an assembly: put this definition into the library */
   onSaveAssembly(def: AssemblyDef): void;
   /** undo or redo happened (the tutorial counts them) */
   onHistory?(kind: 'undo' | 'redo'): void;
+  /** the snapshots or the stop on screen changed (taken, switched, renamed, removed, an undo across a switch) */
+  onSnapshots?(): void;
   /** the patches the morph picker on the Main card offers as the B side (those of the same structure are listed) */
   morphCandidates?(like: Patch): { name: string; patch: Patch }[];
 }
@@ -332,9 +346,10 @@ export class Editor {
   private cablePaths: { path: SVGPathElement; from: HTMLElement; to: HTMLElement; origin: HTMLElement; cable?: Cable }[] = [];
   private stack: string[] = [];
   private routingOpen = new Set<string>();
-/** undo steps: the patch snapshot and the A / B side it belongs to (a flip is a step; undoing it goes back to that side) */
-  private history: { s: string; side: 'A' | 'B' }[] = [];
-  private future: { s: string; side: 'A' | 'B' }[] = [];
+/** undo steps: the patch as an undo snapshot and the stop it belongs to, a snapshot's letter or null for the current patch
+ * (a switch is a step; undoing it goes back to the stop it left) */
+  private history: UndoStep[] = [];
+  private future: UndoStep[] = [];
   private parameterDisplays: { id: number; update: (values: Record<string, number> | null) => void; el?: HTMLElement }[] = [];
   /** the patch's devices (pages.ts) and the page Main's knobs K1..K4 edit: the dock's DEVICE / PAGE pickers or a click on a
    * row choose it, the FM-1 too with Live on */
@@ -440,8 +455,9 @@ export class Editor {
     this.history = [];
     this.future = [];
     this.dropGesture();
-    this.snapshots.A = this.snapshots.B = null;
-    this.side = 'A';
+    this.snaps.clear();   // (snapshots belong to the patch they were taken from)
+    this.ev.onSnapshots?.();
+    this.stopListening();   // (another patch's module of the same id is another signal)
     this.routingOpen.clear();
     this.stack = [];
     this.selected.clear();
@@ -638,10 +654,10 @@ export class Editor {
   }
 
   /** one undo step from `before` (a snap) to now, if anything changed; inside an open gesture the gesture's step covers it */
-  private commit(before: string, side = this.side): boolean {
+  private commit(before: string, shown = this.snaps.shown): boolean {
     if (before === this.snap()) return false;
     if (this.gesture !== null) return true;
-    this.history.push({ s: before, side });
+    this.history.push({ s: before, shown });
     if (this.history.length > HISTORY) this.history.shift();
     this.future = [];
     return true;
@@ -693,9 +709,9 @@ export class Editor {
     this.endPass(); // (a pass being recorded is a step of its own)
     const e = this.history.pop();
     if (e === undefined) return this.ev.onError('nothing to undo');
-    this.future.push({ s: this.snap(), side: this.side });
-    this.restore(e.s);
-    this.side = e.side;
+    this.future.push(this.stepNow(e));
+    if (e.list) this.unwind(e, -1);
+    else this.travel(e);
     this.ev.onHistory?.('undo');
   }
 
@@ -705,10 +721,63 @@ export class Editor {
     this.endPass(); // (a pass being recorded is a step of its own)
     const e = this.future.pop();
     if (e === undefined) return this.ev.onError('nothing to redo');
-    this.history.push({ s: this.snap(), side: this.side });
-    this.restore(e.s);
-    this.side = e.side;
+    this.history.push(this.stepNow(e));
+    if (e.list) this.unwind(e, 1);
+    else this.travel(e);
     this.ev.onHistory?.('redo');
+  }
+
+  /**
+   * Go to an undo / redo step: its patch, on its stop. Arriving on a snapshot from the current patch keeps the current
+   * patch, as a switch does. Arriving on the current patch from a snapshot takes the step's version; a kept current patch
+   * that differs from it (after a snapshot was removed) becomes a new snapshot, so an undo never drops it (#943).
+   */
+  private travel(e: UndoStep): void {
+    const from = this.snaps.shown;
+    const to = e.shown !== null && this.snaps.get(e.shown) ? e.shown : null;
+    let name = this.patch.name;
+    if (from === null && to !== null) this.snaps.current = JSON.stringify(this.patch);
+    if (from !== null && to === null) {
+      const kept = JSON.parse(this.snaps.current!) as Patch;
+      if (body(kept) !== body(JSON.parse(e.s) as Patch)) this.keep(kept);
+      this.snaps.current = null;
+      name = kept.name;
+    }
+    if (to !== null && to !== from) name = (JSON.parse(this.snaps.get(to)!.patch) as Patch).name;
+    this.restore(e.s);
+    this.patch.name = name;   // (undo leaves the name alone, but each stop has its own)
+    this.snaps.shown = to;
+    this.ev.onSnapshots?.();
+  }
+
+  /** the state now as the counterpart of step `e` on the other stack (a list step keeps its change) */
+  private stepNow(e: UndoStep): UndoStep {
+    return { s: this.snap(), shown: this.snaps.shown, ...(e.list ? { list: { change: e.list.change, current: this.snaps.current } } : {}) };
+  }
+
+  /** undo (`dir` -1) or redo (1) a list step: take its snapshots out or put them back, then its patch, stop and kept
+   *  current patch. A kept current patch with no snapshot left to show beside it becomes a snapshot (nothing is dropped) */
+  private unwind(e: UndoStep, dir: -1 | 1): void {
+    const { change, current } = e.list!;
+    const [out, back] = dir < 0 ? [change.added, change.removed] : [change.removed, change.added];
+    for (const x of out) this.snaps.remove(x.s.letter);
+    for (const x of [...back].sort((a, b) => a.at - b.at)) this.snaps.list.splice(Math.min(x.at, this.snaps.list.length), 0, x.s);
+    const to = e.shown !== null && this.snaps.get(e.shown) ? e.shown : null;
+    const name = to !== null ? (JSON.parse(this.snaps.get(to)!.patch) as Patch).name
+      : this.snaps.shown !== null && this.snaps.current !== null ? (JSON.parse(this.snaps.current) as Patch).name : this.patch.name;
+    if (to === null && current !== null) this.keep(JSON.parse(current) as Patch);
+    this.restore(e.s);
+    this.patch.name = name;
+    this.snaps.shown = to;
+    this.snaps.current = to === null ? null : current;
+    this.ev.onSnapshots?.();
+  }
+
+  /** a step of its own on the undo stack (the future is dropped, as any new step drops it) */
+  private record(step: UndoStep): void {
+    this.history.push(step);
+    if (this.history.length > HISTORY) this.history.shift();
+    this.future = [];
   }
 
   /** a structural change from outside (the tutorial's "do it for me"): undoable like the editor's own */
@@ -781,6 +850,7 @@ export class Editor {
   rebuild(): void {
     this.cancelArm();
     this.chips.clear();
+    if (this.listening?.srcs.some((s) => !DEFS[this.patch.modules.find((m) => m.id === s.module)?.type ?? '']?.outputs.some((q) => q.name === s.port))) this.stopListening();   // (its module went)
     if (this.armedSet.size) {
       const kept = keepArmed(this.patch, this.armedSet);
       if (kept.length !== this.armedSet.size) this.setArmed(kept); // (a device went, or lost its keys input)
@@ -1168,7 +1238,9 @@ export class Editor {
       return { el: this.paramRow(m, def, pd, { open, ...named, ...pos }), input: pd.input ? { module: m.id, port: pd.input } : undefined, gap: i > 0 && starts[i] };
     });
     // a second Main card (from an old patch) keeps its B side under the rows
-    const extra = def.type === 'fm1' ? [this.morphRow()] : steps ? def.views!.map((pd) => this.paramRow(m, def, pd, { open })) : [];
+    // the Output card: its loudness readout under the level (#940)
+    const readout = def.type === 'output' ? this.ev.outputReadout?.() : undefined;
+    const extra = def.type === 'fm1' ? [this.morphRow()] : steps ? def.views!.map((pd) => this.paramRow(m, def, pd, { open })) : readout ? [readout] : [];
     body.append(...this.edgeLayout(ins, outs, params, extra));
     el.append(head, body);
     // pick mode: one check box for all of its parameters (#186)
@@ -1953,7 +2025,7 @@ export class Editor {
     return row;
   }
 
-  /** a Scope screen's hover toolbar: its window (− / +, a 1-2-5 series), time / spectrum and the vertical scale */
+  /** a Scope screen's hover toolbar: its window (− / +, a 1-2-5 series), time / spectrum / spectrogram and the vertical scale */
   private scopeTools(m: ModuleInst): HTMLElement {
     const def = DEFS[m.type];
     const bar = document.createElement('div');
@@ -1976,8 +2048,9 @@ export class Editor {
     };
     const shorter = this.button('−', 'Shorter window', () => step(-1), 'sm');
     const longer = this.button('+', 'Longer window', () => step(1), 'sm');
+    const MODE_BUTTONS: Record<string, [string, string]> = { time: ['Wave', 'Waveform'], spectrum: ['FFT', 'Spectrum'], spectrogram: ['Gram', 'Spectrogram: the frequencies over the last 5 s, the level as a colour'] };
     const modes = (def.params.find((q) => q.name === 'mode')!.choices ?? []).map((name, i) => {
-      const b = this.button(name === 'spectrum' ? 'FFT' : 'Wave', name === 'spectrum' ? 'Spectrum' : 'Waveform', () => {
+      const b = this.button(MODE_BUTTONS[name][0], MODE_BUTTONS[name][1], () => {
         this.setParam(m.id, 'mode', i);
         for (const [k, x] of modes.entries()) x.setAttribute('aria-pressed', String(k === i));
       }, 'sm');
@@ -2200,6 +2273,16 @@ export class Editor {
     if (!name.title) {
       const hint = paramHint(def.type, pd.name);
       if (hint) name.title = hint;
+    }
+    // locked for Mutate and Randomize (#944): on its own, by its card or by an assembly around it
+    const mutable = !MUTATE_SKIP[m.type] && !pd.fixed;
+    if (mutable && isLocked(this.patch, m, pd.name)) {
+      row.classList.add('mutate-locked');
+      const lock = document.createElement('span');
+      lock.className = 'mutate-lock';
+      lock.title = 'Locked: Mutate and Randomize leave it alone';
+      lock.setAttribute('aria-label', lock.title);
+      name.append(lock);
     }
     // a Selector's position: over the positions in use (1..count, #358), by the names its card row gives them
     const range = (): ParamDef => rowRange(m.type, m.params, pd);
@@ -2450,7 +2533,8 @@ export class Editor {
     row.append(name, choice ? sel!.element : pd.toggle ? document.createElement('span') : val);
     if (canPatch) {
       const key = `${m.id}:${pd.name}`;
-      row.append(parameterMenu(m, def, pd, { ...this.ev, patch: () => this.patch, change: (fn) => this.change(fn), touch: () => this.touch() }, this.routingOpen.has(key), (on) => {
+      const lock = mutable ? { own: !!m.mutateLock?.includes(pd.name), card: isLocked(this.patch, { ...m, mutateLock: undefined }, pd.name), set: (on: boolean) => this.lockParam(m, pd.name, on) } : undefined;
+      row.append(parameterMenu(m, def, pd, { ...this.ev, patch: () => this.patch, change: (fn) => this.change(fn), touch: () => this.touch(), lock }, this.routingOpen.has(key), (on) => {
         if (on) {
           this.routingOpen.clear();
           this.routingOpen.add(key);
@@ -2870,6 +2954,11 @@ export class Editor {
       this.bypassSelected();
     } });
     if (def.type !== 'fm1') items.push({ text: 'Rename…', key: 'dbl-click', run: () => this.renameModule(m) });
+    // listen to an audio output on its own (#939); the one listened to: back to the Output
+    for (const p of def.outputs.filter((q) => listenable(q.kind))) {
+      const on = !!this.listening?.srcs.some((s) => sameEnd(s, { module: m.id, port: p.name }));
+      items.push({ text: on ? 'Stop listening' : `Listen to ${longName(def.type, p.name)}`, key: '⌥-click', run: () => (on ? this.stopListening() : this.toggleListen({ module: m.id, port: p.name })) });
+    }
     items.push({ text: 'Duplicate', key: '⌘D', run: () => {
       this.selected.clear();
       this.selected.add(m.id);
@@ -2879,6 +2968,7 @@ export class Editor {
       this.selected.add(m.id);
       this.showSelection();
     } });
+    if (!MUTATE_SKIP[def.type]) items.push(...this.mutateItems({ modules: [m.id], assemblies: [] }, m));
     items.push({ text: 'Delete', key: 'Del', danger: true, rule: true, run: () => this.change(() => removeModule(this.patch, m.id)) });
     this.popMenu(items, at);
   }
@@ -2900,6 +2990,7 @@ export class Editor {
         else this.rebuild();
       } },
       { text: 'Rename', key: 'dbl-click', run: () => this.rename(a) },
+      ...this.mutateItems({ modules: [], assemblies: [a.id] }, a),
       { text: 'Save to library', rule: true, run: () => this.saveAssembly(a) },
       ...(parentOf(this.patch, a.id) ? [] : this.presetItems(a)),
       { text: 'Ungroup', run: () => this.change(() => ungroup(this.patch, a.id)) },
@@ -3338,6 +3429,63 @@ export class Editor {
     this.drag?.cancel();
   }
 
+  // ---- listening to one signal (#939, listen.ts): browser only, nothing goes to the FM-1
+
+  /** the outputs heard instead of the Output (one, or a merged jack's, summed) and their name; null: the Output */
+  private listening: { srcs: Endpoint[]; label: string } | null = null;
+
+  /** what is listened to, by name; null: the Output */
+  get listenLabel(): string | null {
+    return this.listening?.label ?? null;
+  }
+
+  /**
+   * Listen to an output on its own (a merged jack: `also` its other outputs); the same again goes back to the Output.
+   * Only audio is heard on its own: for a control, gate or pitch output the status line says so. Whether it listens now.
+   */
+  toggleListen(from: Endpoint, also: Endpoint[] = []): boolean {
+    const srcs = [from, ...also];
+    const now = this.listening?.srcs;
+    if (now && now.length === srcs.length && now.every((s, i) => sameEnd(s, srcs[i]))) return (this.stopListening(), false);
+    const m = this.patch.modules.find((x) => x.id === from.module);
+    const kind = m && DEFS[m.type].outputs.find((q) => q.name === from.port)?.kind;
+    if (!m || !listenable(kind)) {
+      this.ev.onError(`${this.endName(from)} is a ${kind ?? 'control'} signal: only audio can be heard on its own. Cable it into a Scope to see it.`);
+      return false;
+    }
+    // inside a collapsed assembly: named after the card it shows on too ("Monolith D › Selector out")
+    let card: AssemblyInst | undefined;
+    for (let a = assemblyOf(this.patch, m.id); a; a = parentOf(this.patch, a.id)) if (!a.open) card = a;
+    const label = `${card ? `${card.label ?? 'assembly'} › ` : ''}${this.nameOf(m)} ${longName(m.type, from.port)}${also.length ? ` + ${also.length}` : ''}`;
+    this.listening = { srcs, label };
+    this.ev.onListen?.(srcs.map((s) => ({ id: s.module, port: s.port })), label);
+    this.markListen();
+    return true;
+  }
+
+  /** listen to the one selected card's first audio output (the palette); whether it listens now */
+  listenSelected(): boolean {
+    const m = this.selected.size === 1 ? this.patch.modules.find((x) => this.selected.has(x.id)) : undefined;
+    const p = m && DEFS[m.type].outputs.find((q) => listenable(q.kind));
+    return !!m && !!p && this.toggleListen({ module: m.id, port: p.name });
+  }
+
+  /** back to the Output; whether it was listening to something */
+  stopListening(): boolean {
+    if (!this.listening) return false;
+    this.listening = null;
+    this.ev.onListen?.(null, '');
+    this.markListen();
+    return true;
+  }
+
+  /** the jacks and cables listened to: ringed */
+  private markListen(): void {
+    const on = (e: Endpoint): boolean => !!this.listening?.srcs.some((s) => sameEnd(s, e));
+    for (const dot of this.ports.values()) dot.classList.toggle('listening', dot.dataset.dir === 'out' && on({ module: Number(dot.dataset.mod), port: dot.dataset.port! }));
+    for (const { path, cable } of this.cablePaths) if (cable) path.classList.toggle('listening', on(cable.from));
+  }
+
   /** the canvas is patching (a cable being dragged or a jack armed); the page knows too, so the sidebar's jack thumbs show it */
   private setPatching(on: boolean): void {
     this.canvas.classList.toggle('patching', on);
@@ -3353,52 +3501,199 @@ export class Editor {
     return true;
   }
 
-  // ---- A / B: two snapshots; the toggle swaps them, as a parameter-only update when the structure matches
+  // ---- snapshots (#943): versions of the patch to compare with the current patch. The switch goes A, B, …, the current
+  // patch, A…; a switch changes values in place when only values differ (ab.ts flipPlan)
 
-  readonly snapshots: { A: string | null; B: string | null } = { A: null, B: null };
-  side: 'A' | 'B' = 'A';
+  readonly snaps = new Snapshots();
 
-  /** keep the current patch as snapshot A or B */
-  takeSnapshot(which: 'A' | 'B'): void {
-    this.snapshots[which] = JSON.stringify(this.patch);
-    this.side = which;
-  }
-
-  /** go to the other snapshot (false when it is empty) */
-  toggleAB(): boolean {
-    const other = this.side === 'A' ? 'B' : 'A';
-    const s = this.snapshots[other];
-    if (s === null) return false;
-    // an open gesture or a REC pass is a step of the side we leave (#103: the flip is a step of its own)
+  /** keep the patch on screen as a new snapshot; returns it */
+  takeSnapshot(name?: string): Snapshot {
     this.endGesture();
     this.endPass();
-    this.snapshots[this.side] = JSON.stringify(this.patch); // the side we leave keeps what we did to it
-    const from = this.side;
-    this.side = other;
-    this.applyLive(JSON.parse(s) as Patch, from);
-    return true;
+    const s = this.snaps.take(this.patch, name);
+    this.ev.onSnapshots?.();
+    return s;
+  }
+
+  /** put back the snapshots the browser kept for this patch (after a reload, D-972); the current patch is on screen */
+  restoreSnapshots(list: readonly Snapshot[]): void {
+    this.snaps.clear();
+    this.snaps.list.push(...list);
+    this.ev.onSnapshots?.();
+  }
+
+  /** the current patch, whether it is on screen or a snapshot is */
+  currentPatch(): Patch {
+    return this.snaps.current === null ? this.patch : JSON.parse(this.snaps.current) as Patch;
+  }
+
+  /** the snapshot on screen has been changed since it was taken (switching away keeps the change as a new snapshot) */
+  shownEdited(): boolean {
+    const s = this.snaps.get(this.snaps.shown);
+    return !!s && !sameVersion(JSON.parse(s.patch) as Patch, this.patch);
+  }
+
+  /** keep `p` as a new snapshot, unless a snapshot holds that version already */
+  private keep(p: Patch): Snapshot {
+    return this.snaps.holding(p) ?? this.snaps.take(p);
+  }
+
+  /**
+   * Show a snapshot (its letter) or the current patch (null). Null when there is nothing to do; else `kept`, the new
+   * snapshot that holds the changes made to the snapshot left (a snapshot never changes, and neither does the current
+   * patch while a snapshot is shown, so no switch loses work). One undo step, which belongs to the stop left.
+   */
+  showSnapshot(target: string | null): { kept?: Snapshot } | null {
+    const from = this.snaps.shown;
+    if (target === from || (target !== null && !this.snaps.get(target))) return null;
+    // an open gesture or a REC pass is a step of the stop we leave (the switch is a step of its own)
+    this.endGesture();
+    this.endPass();
+    let kept: Snapshot | undefined;
+    if (from === null) this.snaps.current = JSON.stringify(this.patch);
+    else if (this.shownEdited() && !sameVersion(JSON.parse(this.snaps.current!) as Patch, this.patch)) kept = this.keep(this.patch);
+    const to = JSON.parse(target === null ? this.snaps.current! : this.snaps.get(target)!.patch) as Patch;
+    this.snaps.shown = target;
+    this.applyLive(to, from);
+    if (target === null) this.snaps.current = null;
+    this.ev.onSnapshots?.();
+    return kept ? { kept } : {};
+  }
+
+  /** the switch: the next stop (`step` -1: the one before). Null when there is no snapshot */
+  cycleSnapshots(step: 1 | -1 = 1): { kept?: Snapshot } | null {
+    const to = this.snaps.next(step);
+    return to === undefined ? null : this.showSnapshot(to);
+  }
+
+  /** the snapshot becomes the current patch, shown; the current patch is kept as a new snapshot (returned) unless a
+   * snapshot holds it already or it is the same version */
+  makeCurrent(letter: string): Snapshot | null {
+    if (!this.snaps.get(letter)) return null;
+    const cur = JSON.parse(this.snaps.shown === null ? JSON.stringify(this.patch) : this.snaps.current!) as Patch;
+    if (this.snaps.shown !== letter) this.showSnapshot(letter);
+    const kept = sameVersion(cur, this.patch) ? null : this.keep(cur);
+    this.snaps.shown = this.snaps.current = null;
+    this.ev.onSnapshots?.();
+    return kept;
+  }
+
+  renameSnapshot(letter: string, name: string): void {
+    const s = this.snaps.get(letter);
+    if (!s) return;
+    if (name) s.name = name;
+    else delete s.name;
+    this.ev.onSnapshots?.();
+  }
+
+  /** forget a snapshot; when it is on screen the current patch comes back first (changes made to it are kept as a new
+   * snapshot, as any switch keeps them) */
+  removeSnapshot(letter: string): void {
+    if (!this.snaps.get(letter)) return;
+    if (this.snaps.shown === letter) this.showSnapshot(null);
+    this.snaps.remove(letter);   // (its letter is never given again: undo steps on it count as steps of the current patch)
+    this.ev.onSnapshots?.();
+  }
+
+  // ---- rank and cut (#996): make candidates, mark each keep or cut while listening, cut the losers, again from a survivor.
+  // Every snapshot is a candidate alike, whatever made it (taken by hand, kept from an edit, made by Make candidates)
+
+  /** mark a snapshot keep or cut (null: no mark) */
+  setMark(letter: string, mark: SnapshotMark | null): void {
+    const s = this.snaps.get(letter);
+    if (!s) return;
+    if (mark) s.mark = mark;
+    else delete s.mark;
+    this.ev.onSnapshots?.();
+  }
+
+  /** Alt+K / Alt+X: mark the snapshot on screen and go to the next stop; the same mark again takes it off and stays. Null
+   *  when the current patch is on screen (it is never a candidate) */
+  markShown(mark: SnapshotMark): { letter: string; mark: SnapshotMark | null } | null {
+    const s = this.snaps.get(this.snaps.shown);
+    if (!s) return null;
+    if (s.mark === mark) return this.setMark(s.letter, null), { letter: s.letter, mark: null };
+    s.mark = mark;
+    this.cycleSnapshots();
+    return { letter: s.letter, mark };
+  }
+
+  /**
+   * Make `n` candidates: each a Mutate, at the amount chosen for Mutate, of the patch on screen (a snapshot or the current
+   * patch), on the selected cards or, with none selected, on every card; locks hold (D-976). One undo step, then the first
+   * candidate is shown (a switch, a step of its own). Empty when nothing can move.
+   */
+  makeCandidates(n: number): Snapshot[] {
+    this.endGesture();
+    this.endPass();
+    const parent = this.patch;
+    const scope: MutateScope = this.selected.size || this.selectedAsm.size ? { modules: [...this.selected], assemblies: [...this.selectedAsm] } : { modules: parent.modules.map((m) => m.id), assemblies: [] };
+    const from = this.snaps.shown ?? 'current';
+    const before: UndoStep = { s: this.snap(), shown: this.snaps.shown, list: { change: { added: [], removed: [] }, current: this.snaps.current } };
+    const made: Snapshot[] = [];
+    for (let i = 0; i < n; i++) {
+      const { patch, moved } = mutatePatch(parent, scope, 'mutate', this.mutateAmount, DEFS);
+      if (!moved) break;
+      made.push(this.snaps.take(patch, undefined, from));
+    }
+    if (!made.length) return this.ev.onError('Make candidates: nothing to move there (locked, or left alone: Main, the Output, voices, Steps, the Arpeggiator, Drum maps, the Harmonizer)'), [];
+    before.list!.change.added = made.map((s) => ({ s, at: this.snaps.list.indexOf(s) }));
+    this.record(before);
+    this.showSnapshot(made[0].letter);
+    return made;
+  }
+
+  /**
+   * Cut the losers: remove every snapshot marked cut, as one undo step. When the snapshot on screen is one, the current
+   * patch comes back in the same step; changes made to that snapshot are kept as a new snapshot first (D-971). Returns the
+   * snapshots cut.
+   */
+  cutLosers(): Snapshot[] {
+    const list = this.snaps.list;
+    const losers = list.filter((s) => s.mark === 'cut');
+    if (!losers.length) return [];
+    this.endGesture();
+    this.endPass();
+    const change: ListChange = { added: [], removed: losers.map((s) => ({ s, at: list.indexOf(s) })) };
+    const step: UndoStep = { s: this.snap(), shown: this.snaps.shown, list: { change, current: this.snaps.current } };
+    if (this.snaps.get(this.snaps.shown)?.mark === 'cut') {
+      const cur = JSON.parse(this.snaps.current!) as Patch;
+      if (this.shownEdited() && !sameVersion(cur, this.patch) && !this.snaps.holding(this.patch)) change.added.push({ s: this.snaps.take(this.patch), at: 0 });
+      this.snaps.shown = this.snaps.current = null;
+      this.swapTo(cur);
+    }
+    for (const s of losers) this.snaps.remove(s.letter);
+    for (const a of change.added) a.at = list.indexOf(a.s);
+    this.record(step);
+    this.ev.onSnapshots?.();
+    return losers;
   }
 
   /**
    * Switch to `target`, keeping the canvas layout (ab.ts flipPlan, #103): when only values differ they go out as onParam /
    * onAtt / onBypass / onRange / onTrack (no reload, the voices keep sounding), else a full load through onStructure. One
-   * undo step, which belongs to `side` (the side before the flip).
+   * undo step, which belongs to `shown` (the stop before a switch; Mutate's change belongs to the stop on screen).
    */
-  applyLive(target: Patch, side = this.side): void {
+  private applyLive(target: Patch, shown = this.snaps.shown): void {
     this.endGesture();
     this.endPass();
     const before = this.mark();
+    this.swapTo(target);
+    this.commit(before, shown);
+  }
+
+  /** put `target` on screen with the canvas layout kept (ab.ts flipPlan): live messages when only values differ, else a
+   *  full load; no undo step (the caller makes it) */
+  private swapTo(target: Patch): void {
     const plan = flipPlan(this.patch, target);
+    this.patch = plan.patch;
     if (plan.reload) {
-      this.patch = plan.patch;
-      this.commit(before, side);
       this.selected.clear();
       this.selectedAsm.clear();
       this.rebuild();
       this.ev.onStructure(this.patch);
       return;
     }
-    this.patch = plan.patch;
     for (const m of plan.live) {
       if (m.t === 'param') this.ev.onParam(m.id, m.name, m.value);
       else if (m.t === 'att') this.ev.onAtt(m.id, m.index, m.value);
@@ -3406,10 +3701,64 @@ export class Editor {
       else if (m.t === 'range') this.ev.onRange(m.id, m.index, m.name, m.range);
       else this.ev.onTrack?.(m.id, m.notes, 0);
     }
-    this.commit(before, side);
     this.rebuild();
     this.ev.onLayout(this.patch);
   }
+
+  // ---- Mutate and Randomize (#944, mutate.ts): new values for the chosen cards' parameters, one undo step, sent live
+
+  /** Mutate's largest move, a share of each parameter's range (the host keeps it per browser) */
+  mutateAmount = MUTATE_DEFAULT;
+
+  /** the patch (Editor.snap) and the stop on screen right after the last Mutate or Randomize: while they still match, the
+   *  next one belongs to the same run and keeps no further snapshot */
+  private mutateRun: string | null = null;
+
+  /** mutate or randomize `scope` (default: the selected cards) as one undo step, sent live (the structure stays, so the
+   *  voices keep sounding and the selection stays, to go again); the number of parameters moved. The first of a run keeps
+   *  the patch as it was as a snapshot, "before mutate", unless a snapshot holds that version already (D-975) */
+  mutate(mode: MutateMode, scope: MutateScope = { modules: [...this.selected], assemblies: [...this.selectedAsm] }): number {
+    const verb = mode === 'mutate' ? 'Mutate' : 'Randomize';
+    if (!scope.modules.length && !scope.assemblies.length) return this.ev.onError(`${verb}: select the cards first`), 0;
+    const { patch, moved } = mutatePatch(this.patch, scope, mode, this.mutateAmount, DEFS);
+    if (!moved) return this.ev.onError(`${verb}: nothing to move there (locked, or left alone: Main, the Output, voices, Steps, the Arpeggiator, Drum maps, the Harmonizer)`), 0;
+    const run = (): string => `${this.snaps.shown}|${this.snap()}`;
+    const kept = this.mutateRun === run() ? null : this.snaps.holding(this.patch) ? null : this.takeSnapshot('before mutate');
+    this.applyLive(patch);
+    this.mutateRun = run();
+    const amount = mode === 'mutate' ? ` by up to ±${Math.round(this.mutateAmount * 100)} %` : '';
+    this.ev.onError(`${mode === 'mutate' ? 'Mutated' : 'Randomized'} ${moved} parameter${moved === 1 ? '' : 's'}${amount}${kept ? `; the patch before is snapshot ${kept.letter}` : ''}. Ctrl/Cmd+Z puts them back`);
+    return moved;
+  }
+
+  /** lock or unlock whole cards (modules and assemblies; default: the selected ones) for Mutate and Randomize: one undo
+   *  step, no engine reload */
+  lockCards(on: boolean, cards: (ModuleInst | AssemblyInst)[] = [...this.patch.modules.filter((m) => this.selected.has(m.id)), ...assembliesOf(this.patch).filter((a) => this.selectedAsm.has(a.id))]): void {
+    if (!cards.length) return this.ev.onError(`select the cards to ${on ? 'lock' : 'unlock'} first`);
+    const before = this.mark();
+    for (const card of cards) {
+      if (on) card.mutateLockAll = true;
+      else delete card.mutateLockAll;
+    }
+    if (this.commit(before)) (this.rebuild(), this.ev.onLayout(this.patch));
+  }
+
+  /** lock or unlock one parameter (its ⋮ menu): an undo step, no engine reload */
+  lockParam(m: ModuleInst, param: string, on: boolean): void {
+    const before = this.mark();
+    setParamLock(m, param, on);
+    if (this.commit(before)) (this.rebuild(), this.ev.onLayout(this.patch));
+  }
+
+  /** the card menu's Mutate, Randomize and Lock items */
+  private mutateItems(scope: MutateScope, card: ModuleInst | AssemblyInst): MenuItem[] {
+    return [
+      { text: `Mutate ±${Math.round(this.mutateAmount * 100)} %`, key: '⌥M', rule: true, run: () => void this.mutate('mutate', scope) },
+      { text: 'Randomize', run: () => void this.mutate('randomize', scope) },
+      { text: card.mutateLockAll ? 'Unlock card for Mutate' : 'Lock card for Mutate', run: () => this.lockCards(!card.mutateLockAll, [card]) },
+    ];
+  }
+
   /**
    * A port row. On a member card of an expanded assembly it gets the expose toggle; on an assembly card (`label`) the dot
    * still belongs to the inner module, so cables and drags work the same, and the label renames on click.
@@ -6127,6 +6476,8 @@ export class Editor {
     for (const dot of [...this.ports.values(), ...this.sliderPorts.map((p) => p.jack)]) dot.classList.remove('connected');
     const add = (from: HTMLElement, to: HTMLElement, kind: string, remove: (() => void) | null, titleOf: string | (() => string), internal = false, cable?: Cable): void => {
       const title = typeof titleOf === 'string' ? titleOf : titleOf();
+      // Alt-click on a cable: listen to its source (#939) instead of disconnecting it
+      const listen = (e: MouseEvent): boolean => !!cable && e.altKey && (this.toggleListen(cable.from), true);
       const path = document.createElementNS(SVGNS, 'path');
       path.setAttribute('class', `cable ${kind}${internal ? ' alias' : ''}${remove ? '' : ' fixed'}`);
       path.setAttribute('aria-label', title);
@@ -6134,7 +6485,7 @@ export class Editor {
         path.setAttribute('role', 'button');
         path.setAttribute('tabindex', '0');
         path.addEventListener('pointerdown', (e) => e.stopPropagation());
-        path.addEventListener('click', (e) => { e.stopPropagation(); remove(); });
+        path.addEventListener('click', (e) => { e.stopPropagation(); if (!listen(e)) remove(); });
         path.addEventListener('keydown', (e) => {
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); remove(); }
         });
@@ -6217,7 +6568,7 @@ export class Editor {
           const hit = document.createElementNS(SVGNS, 'path');
           hit.setAttribute('class', 'cable-hit');
           hit.addEventListener('pointerdown', (e) => e.stopPropagation());
-          hit.addEventListener('click', (e) => { e.stopPropagation(); remove(); });
+          hit.addEventListener('click', (e) => { e.stopPropagation(); if (!listen(e)) remove(); });
           hit.addEventListener('pointerenter', () => hover(true));
           hit.addEventListener('pointerleave', () => hover(false));
           const t = document.createElementNS(SVGNS, 'title'); t.textContent = title; hit.append(t);
@@ -6276,6 +6627,7 @@ export class Editor {
     }
     this.positionCables();
     this.markArm();
+    this.markListen();
   }
 
   /** Main's tempo row while the tempo is global (D-907, tempo.ts): it shows and sets the global tempo, which every patch
@@ -6470,6 +6822,8 @@ export class Editor {
       // an output dropped on a sidebar slider whose thumb is a jack (cable slack, zoom) patches it
       const side = kind === 'out' ? (t?.closest('[data-side]') as HTMLElement | null)?.dataset.side as SideKey | undefined : undefined;
       if (side) return this.setSideSource(side, { module: Number(start.dataset.mod), port: start.dataset.port! });
+      // Alt-click on an output: listen to it (#939); Alt-drag still patches
+      if (dot === start && ev.altKey && kind === 'out' && start.dataset.mod) return void this.toggleListen({ module: Number(start.dataset.mod), port: start.dataset.port! }, start.dataset.also ? JSON.parse(start.dataset.also) as Endpoint[] : []);
       if (dot === start) {
         this.armed = start;
         start.classList.add('armed');

@@ -177,6 +177,10 @@ export interface ModuleInst {
   map?: Record<Source, string[]>;
   /** bypassed: the module does not run; its outputs carry its through input (thruInput) or silence. Not on the panel or the output. */
   bypass?: boolean;
+  /** the parameters Mutate and Randomize leave alone (their ⋮ menus' Lock, #944); editor only, the FM-1 ignores it */
+  mutateLock?: string[];
+  /** the whole card is locked: Mutate and Randomize leave every parameter of it alone (#944); editor only */
+  mutateLockAll?: true;
   /** Additional additive routes from side inputs to parameters; p1/p2 keep their existing map/depth/ranges. */
   inputMap?: Record<string, string[]>;
   /** the B side of a morph: the same parameters as `params`, taken from another patch of the same structure (setMorphTarget); the
@@ -847,6 +851,11 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
     fixTrack(m);
     if (m.bypass && m.type !== 'fm1' && m.type !== 'output') m.bypass = true;
     else delete m.bypass;
+    // Mutate's locks (#944): the module's own parameter names, once each
+    const locks = Array.isArray(m.mutateLock) ? [...new Set(m.mutateLock.filter((n) => def.params.some((q) => q.name === n)))] : [];
+    if (locks.length) m.mutateLock = locks;
+    else delete m.mutateLock;
+    if (m.mutateLockAll !== true) delete m.mutateLockAll;
     if (m.paramsB && typeof m.paramsB === 'object' && m.type !== 'fm1') {
       const out: Record<string, number> = {};
       for (const pd of def.params) out[pd.name] = Number.isFinite(Number(m.paramsB[pd.name])) ? Number(m.paramsB[pd.name]) : m.params[pd.name];
@@ -911,6 +920,7 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
   const comments = fixComments(p.comments);
   if (comments.length) p.comments = comments;
   else delete p.comments;
+  for (const a of p.assemblies ?? []) if (a && a.mutateLockAll !== true) delete a.mutateLockAll;
   if (!hasMorph(p as Patch) || typeof p.morphName !== 'string') delete p.morphName;
   for (const k of SIDE_KEYS) if (!sideSourceOk(p as Patch, k, defs)) delete p[k];
   if (!Number.isInteger(p.octave) || p.octave === 0 || p.octave! < OCTAVE_MIN || p.octave! > OCTAVE_MAX) delete p.octave;

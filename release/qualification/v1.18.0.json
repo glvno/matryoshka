@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "version": "1.18.0",
+  "firmware_product": "FM-1_7011800",
+  "source_commit": "62e5a22bfbb010e1d91508228a701a1e482dd4ed",
+  "source_tree": "4261de11b5911206a02f129f9c36a6edb2afcb64",
+  "status": "approved for publication; automated qualification and owner device checks passed",
+  "release_approval": {
+    "status": "approved",
+    "by": "repository owner",
+    "date": "2026-11-16",
+    "instruction": "1.18 passes, go.",
+    "scope": "Publication of v1.18.0 from the merge of this record, whose firmware/ and tools/ equal the qualified source 62e5a22b (D-105)."
+  },
+  "build_manifest_sha256": "e2b9952e9ac7fd3145b035d0b44a02dc47f9382f05fb4456236655b5c010bda6",
+  "artifacts": {
+    "package": {"name": "matryoshka-1.18.0.fwsc", "size": 610641, "sha256": "d986a1bc1b9f6f7c288177d4822f8d5cef26793dd6042bceb37614ba865e392e"},
+    "normal": {"name": "matryoshka-1.18.0-app.bin", "size": 548204, "sha256": "56e5034f67ee5092361a8dccf3e8ca1b7d062f8bad05adc2e4e5c485f58ad4bd"},
+    "normal_elf": {"name": "matryoshka-1.18.0-app.elf", "size": 612252, "sha256": "7fac529c719d58f59db7bfa1fdef45f60e9824909d2e5b76ca6ee855852b01eb"},
+    "normal_sidecar": {"name": "matryoshka-1.18.0.json", "size": 411, "sha256": "e6f63d84f6c6e42f699c7a16c3e4436b1cf4128fa714920b6737c6819518b352"},
+    "bridge": {"name": "matryoshka-emu.bin", "size": 545292, "sha256": "29be1215333d6710fc2033bba63efdb66066dff3d7e38ce8b6687ceb54845a8f"}
+  },
+  "ci_runs": {"release": 43967239209, "first_freeze_release": 43959136772, "web_rc": 43967244111, "first_freeze_web_rc": 43959144080, "earlier_candidate_release": 43906874248},
+  "refreeze": {
+    "first_frozen_commit": "48fb0e3a7ce86f6e4b78369928ad24e626e89b3e",
+    "reason": "PR #986 (the Install panel's progress bar runs through the factory sounds; editor only) merged after the freeze; firmware/ and tools/ are unchanged, so the release was rebuilt on its merge commit and the editor suite rerun (D-144, D-105).",
+    "result": "release run 43967239209's package, app, ELF and bridge are byte-identical to run 43959136772's, so every firmware, emulator and rig check on the first freeze's artifacts stands."
+  },
+  "earlier_candidate": {
+    "commit": "eed81c2620bfa92f188a5c2b133b28b6de652b62",
+    "note": "the first 1.18.0 candidate passed every check; it was set aside for the fixed-point floor fixes (#840, #968, #978), Shush 101 at full parity (#980) and the editor's FX stage switches (#983, #984)."
+  },
+  "full_host": "PASS in release runs 43959136772 and 43967239209 (rc mode on each frozen commit)",
+  "full_web": {
+    "rc_run": 43967244111,
+    "run_success": true,
+    "result": "coverage run, the six parallel slow-render jobs and the coverage seal passed (D-1157 rc layout); the first freeze's run 43959144080 passed too.",
+    "coverage_record": "release/coverage/v1.18.0/ (measured on 62e5a22b, D-147)"
+  },
+  "full_boot": {"checks": 32, "failed": 0, "on": "the release app with the run's bridge", "handshake_identity": "FM-1_7011800"},
+  "full_smoke": {"checks": 301, "failed": 0, "level_warnings": 0, "on": "the release app, sha256 56e5034f...", "note": "run beside the scenarios in the one emulator slot (D-1157)"},
+  "full_scenarios": {
+    "passed": 322,
+    "failed": 0,
+    "shards": 4,
+    "on_bridge_sha256": "29be1215333d6710fc2033bba63efdb66066dff3d7e38ce8b6687ceb54845a8f",
+    "note": "the seven editor-side scenarios of D-1158 run per pull request, not here; 3.5mm out's USB check moved to the host test (D-1151)"
+  },
+  "emulator_stage_seconds": 375,
+  "rig_install": {"run": 43959136772, "gate": "boot (emu:boot, D-123)", "result": "the registered test rig runs FM-1_7011800, firmware 1.18.0; factory content installed: region valid, 10 patches, firmware tier 11, 21 factory patches in all"},
+  "hardware": {
+    "scope": "D-1151: only the scenarios whose result needs the hardware, on the registered test rig running the release bytes.",
+    "rig_scenarios": {
+      "passed": 55,
+      "failed": 0,
+      "skipped": 3,
+      "by_design_skips": ["MONO, MONO L and MONO loudness: USB audio is taken before OUTPUT's mix (D-140); the emulator's I2S proves them"],
+      "dual_core": "checkDualCore at the install gate: 22 of 22"
+    },
+    "floor_recordings": "rig, the floor build (PR #978) before and after: phaser −90 dB stuck → silent; filter −85 dB stuck → silent by +3 s; reverb −91 dB at +10 s → silent; Gamelan (#840) −83 dB stuck → silent by +3 s",
+    "shush_101": "rig survey, every FX stage on: at most 64.0 % (PR #980)"
+  },
+  "owner_checks": {"status": "passed", "by": "repository owner", "date": "2026-11-16", "steps": "D-139 plus the two-step setup (the Install panel with factory content, FACTORY RESET, the missing-content state) on the candidate editor with the bundled package.", "report": "1.18 passes, go."}
+}

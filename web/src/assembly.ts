@@ -380,6 +380,8 @@ export interface AssemblyInst extends AssemblyLayout {
   poly?: PolyCards;
   /** the preset it was last set to (#192, device-presets.ts): shown by name, for display only (the patch plays its values) */
   preset?: string;
+  /** the whole card is locked: Mutate and Randomize leave every parameter of its members alone, nested ones too (#944) */
+  mutateLockAll?: true;
 }
 
 /** a nested assembly inside a saved definition: local module ids and local assembly ids, positions relative like the modules */

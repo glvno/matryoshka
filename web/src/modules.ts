@@ -3980,7 +3980,8 @@ const select: ModuleImpl<SelectState> = {
   },
 };
 
-export const SCOPE_MODES = ['time', 'spectrum'];
+/** a Scope's view: the waveform, the spectrum, or a scrolling spectrogram (#940; appended: a stored mode keeps its view) */
+export const SCOPE_MODES = ['time', 'spectrum', 'spectrogram'];
 /** a Scope's vertical scale (#518): `auto` fits the traces and labels the scale it chose, the others are fixed */
 export const SCOPE_SCALES = ['auto', '±1', '±4'];
 /** the shortest / longest window of a Scope (ms) */
@@ -4001,7 +4002,7 @@ const scope: ModuleImpl<null> = {
     views: [param('view', 0, 0, 0, { screen: true })],
     params: [
       param('time', SCOPE_TIME_MIN, SCOPE_TIME_MAX, 16, { unit: 'ms', log: true, onScreen: true }),
-      param('mode', 0, 1, 0, { step: 1, choices: SCOPE_MODES, onScreen: true }),
+      param('mode', 0, SCOPE_MODES.length - 1, 0, { step: 1, choices: SCOPE_MODES, onScreen: true }),
       // each voice of a per-voice source as its own trace (#54), set from the toolbar's Voices button
       param('voices', 0, 1, 0, { step: 1, choices: ['sum', 'each'], toggle: true, onScreen: true }),
       // the vertical scale (#518), set from the toolbar's scale button; editor only like the rest (D-416)
