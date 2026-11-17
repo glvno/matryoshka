@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "version": "1.18.5",
+  "kind": "web-only release (D-1160)",
+  "firmware_product": "FM-1_7011800",
+  "source_commit": "95bdb83fb9d2dc3770414e81439a283508bcdb43",
+  "source_tree": "d8903eb28bb4229f4525b89c576723d5d2dac786",
+  "status": "automated checks passed; awaiting the owner's go",
+  "bundled_firmware": {
+    "release": "v1.18.0",
+    "package": {"name": "web/public/firmware/matryoshka.fwsc", "size": 610641, "sha256": "d986a1bc1b9f6f7c288177d4822f8d5cef26793dd6042bceb37614ba865e392e"},
+    "check": "web/public/firmware/matryoshka.fwsc and matryoshka.json are byte-identical to the v1.18.0 tag's (git diff v1.18.0 95bdb83f is empty for both)"
+  },
+  "contents": [
+    "a card's ⏻ follows its stripes whatever turned it on or off: every bypass goes through Editor.setBypass (#1054, PR #1055)",
+    "the FM-1's seven lowest keys are the Harmonizer's chord buttons while linked, Live and sandbox; the emulator's decoder learns [R+#i] &= ~R (#1053, PR #1056)"
+  ],
+  "ci_runs": {"web_rc": 44191719802},
+  "full_web": {
+    "rc_run": 44191719802,
+    "run_success": true,
+    "result": "coverage run, the six parallel slow-render jobs and the coverage seal passed (D-1157 rc layout)",
+    "coverage_record": "release/coverage/v1.18.5/ (measured on 95bdb83f, D-147)"
+  },
+  "full_scenarios": {
+    "passed": 342,
+    "failed": 0,
+    "shards": 4,
+    "seconds": 338,
+    "on_bridge_sha256": "29be1215333d6710fc2033bba63efdb66066dff3d7e38ce8b6687ceb54845a8f",
+    "note": "the scenarios of 95bdb83f on v1.18.0's bridge (D-1160), including the new harmKeys (Live and sandbox at octaves 0, +1, -1)"
+  },
+  "editor_side_scenarios": {
+    "passed": 68,
+    "failed": 0,
+    "scenarios": "signalBuffers, liveCompile, rollPen, mirrorKeys, longPreset, abFlip, editorIgnore (D-1158), run because the linked FM-1's key handling and the bypass path changed"
+  },
+  "not_run": "firmware build, emu:smoke, boot check, the test rig and the full device check: the firmware is 1.18.0's, already qualified (release/qualification/v1.18.0.json)",
+  "owner_checks": {"status": "pending"}
+}
