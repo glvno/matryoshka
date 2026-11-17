@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "version": "1.18.2",
+  "kind": "web-only release (D-1160)",
+  "firmware_product": "FM-1_7011800",
+  "source_commit": "fe37c6ac94d4454a479be128f642b38544abb85f",
+  "source_tree": "e98a8283ec4dc918f82ac3857fed1b3ffcb2db95",
+  "status": "automated checks passed; awaiting the owner's look and go",
+  "bundled_firmware": {
+    "release": "v1.18.0",
+    "package": {"name": "web/public/firmware/matryoshka.fwsc", "size": 610641, "sha256": "d986a1bc1b9f6f7c288177d4822f8d5cef26793dd6042bceb37614ba865e392e"},
+    "check": "web/public/firmware/matryoshka.fwsc and matryoshka.json are byte-identical to the v1.18.0 tag's (git diff v1.18.0 fe37c6ac is empty for both)"
+  },
+  "contents": ["Mutate v2: pitch held, card rows, one row in four, switches by chance, breeding from keeps, preset values (#1006, PR #1013)", "each card's share of the FM-1 CPU (#942, PR #1003)", "emulator CPU cost table as tooling; the estimate is unchanged (#959, PR #1001)"],
+  "ci_runs": {"web_rc": 44037469356},
+  "full_web": {
+    "rc_run": 44037469356,
+    "run_success": true,
+    "result": "coverage run, the six parallel slow-render jobs and the coverage seal passed (D-1157 rc layout)",
+    "coverage_record": "release/coverage/v1.18.2/ (measured on fe37c6ac, D-147)"
+  },
+  "full_scenarios": {
+    "passed": 322,
+    "failed": 0,
+    "shards": 4,
+    "seconds": 445,
+    "on_bridge_sha256": "29be1215333d6710fc2033bba63efdb66066dff3d7e38ce8b6687ceb54845a8f",
+    "note": "the scenarios of fe37c6ac on v1.18.0's bridge, the firmware users have (D-1160)"
+  },
+  "not_run": "firmware build, emu:smoke, boot check, the test rig and the full device check: the firmware is 1.18.0's, already qualified (release/qualification/v1.18.0.json)",
+  "owner_checks": {"status": "pending", "scope": "Mutate v2 and the card CPU shares on the candidate editor with the bundled package"}
+}
