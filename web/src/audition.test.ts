@@ -87,7 +87,7 @@ describe('playing', () => {
   it('the drum pattern plays the patch’s Drum map rows and greys the root', async () => {
     const { a, sent } = setup();
     a.choose({ kind: 'drums' });
-    expect((a.el.querySelector('.ph-pitch') as HTMLSelectElement).disabled).toBe(true);
+    expect((a.el.querySelector('.ph-root') as HTMLSelectElement).disabled).toBe(true);
     await a.play();
     expect(phrases(sent)[0].phrase!.kind).toBe('drums');
   });
@@ -96,7 +96,7 @@ describe('playing', () => {
     const { a } = setup();
     await a.play();
     a.ended();
-    expect(a.el.querySelector('.ph-play')!.textContent).toBe('▶ Phrase');
+    expect(a.el.querySelector('.ph-play')!.textContent).toBe('▶');
   });
 });
 
@@ -149,7 +149,7 @@ describe('My take', () => {
     at(111); a.played({ t: 'off', note: 65 });
     at(120); a.useTake();
     expect(a.choice.kind).toBe('take');
-    expect((a.el.querySelector('.ph-pitch') as HTMLSelectElement).disabled).toBe(true);
+    expect((a.el.querySelector('.ph-root') as HTMLSelectElement).disabled).toBe(true);
     await a.play();
     const p = phrases(sent).at(-1)!.phrase!;
     expect(p.notes).toEqual([{ at: 0, len: 0.75, note: 62, vel: 0.9 }, { at: 0.25, len: 0.75, note: 65, vel: 0.5 }]);
@@ -159,12 +159,30 @@ describe('My take', () => {
     expect(again.phrase()).toEqual(p);
   });
 
-  it('with nothing played, Use my last take says so and changes nothing', () => {
+  it('with nothing played, Use my last take says so and changes nothing; the menu says My take has none yet', () => {
     const { a, statuses } = setup();
     a.useTake();
     expect(statuses.at(-1)).toMatch(/^no take yet/);
     expect(a.choice.kind).toBe('held');
-    expect((a.el.querySelector('option[value="take"]') as HTMLOptionElement).disabled).toBe(true);
+    const menu = a.phraseMenu();
+    expect(menu.map((m) => [m.text, m.key ?? '', !!m.rule])).toEqual([
+      ['✓ Held note', 'attack, sustain, release', false], ['Staccato hits', 'eight short notes', false], ['Chord', 'a major triad, held', false],
+      ['Across the range', 'four octaves', false], ['Drum pattern', 'two bars on the kit', false], ['My take (none yet)', 'what you played last', true], ['↺ Use my last take', '', false],
+    ]);
+    menu[5].run();   // (My take before there is one: no change)
+    expect(a.choice.kind).toBe('held');
+  });
+
+  it('the Listen block: the label, one line to play, a second line for WAV, Rec and a status that fades', async () => {
+    const { a } = setup();
+    expect(a.el.querySelector('.listen-lab')!.textContent).toBe('Listenthe same notes for every candidate');
+    expect([...a.el.querySelector('.listen-ctl')!.children].map((c) => c.className)).toEqual(['ph-play', 'ph-kind', 'ph-root', 'ph-loop']);
+    expect([...a.el.querySelector('.listen-ctl2')!.children].map((c) => c.className)).toEqual(['ph-wav', 'ph-rec', 'ph-status']);
+    expect((a.el.querySelector('.ph-root') as HTMLSelectElement).value).toBe('4:0');   // (C4)
+    await a.toggleRecord();
+    expect(a.el.querySelector('.ph-rec')!.textContent).toBe('Save0:00');
+    await a.exportPhrase();
+    expect(a.el.querySelector('.ph-status')!.classList.contains('on')).toBe(true);
   });
 
   it('a new take replaces My take', () => {

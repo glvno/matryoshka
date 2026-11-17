@@ -1555,7 +1555,11 @@ const snapStrip = $('snapshot-strip');
 // the sidebar: its width and its fold; the canvas gives up its width (style.css .snap-column)
 const snapColumn = $('snap-column');
 const snapSide = new SnapSidebar(snapColumn, (b) => popMenu(sideMenu(b), b));
-new ResizeObserver(() => snapColumn.parentElement!.style.setProperty('--snap-col-w', `${snapColumn.offsetWidth + 30}px`)).observe(snapColumn);
+// the sidebar runs the window's whole height at its right edge; the workspace (the canvas, the deck, Connect FM-1, ?) gives
+// up its width (style.css .snap-column)
+new ResizeObserver(() => document.documentElement.style.setProperty('--snap-col-w', `${snapColumn.offsetWidth}px`)).observe(snapColumn);
+/** the Listen block's phrase plays (the rail's play button); its Audition is made further down */
+let listenPlaying = (): boolean => false;
 // Generate's count per round (#996): kept per browser, like Mutate's amount
 const CANDIDATES = 'matryoshka.candidates';
 const CANDIDATE_COUNTS = [2, 4, 6, 8] as const;
@@ -1652,16 +1656,16 @@ const sideActions: SideActions = {
   drag: dragSnapshot,
   step: (dir) => cycleSnapshots(dir),
   generate: () => makeCandidates(),
+  play: () => audition.toggle(),
 };
 function renderSnapshots(): void {
   const { list, shown } = editor.snaps;
-  const view: SideView = { list, shown, edited: editor.shownEdited(), currentName: editor.currentPatch().name, changes: snapChanges, round, count: candidates };
+  const view: SideView = { list, shown, edited: editor.shownEdited(), currentName: editor.currentPatch().name, changes: snapChanges, round, count: candidates, playing: listenPlaying() };
   renderList(snapStrip, view, sideActions);
   renderRail(snapSide.rail, view, sideActions);
   renderProgress($('snap-progress'), round);
   $('cand-count').textContent = list.length ? String(list.length) : '';
   $('snap-count').textContent = `×${candidates}`;
-  snapSide.setCandidates(list.length);
 }
 $('snap-generate').onclick = () => makeCandidates();
 $('snap-count').onclick = (e) => pickCount(e.currentTarget as HTMLElement);
@@ -2443,6 +2447,7 @@ try {
 const MUTATE_AMOUNT = 'matryoshka.mutate-amount';
 function setMutateAmount(v: number): void {
   editor.mutateAmount = v;
+  showAmount();
   status.textContent = `Mutate moves about one row in four by up to ±${Math.round(v * 100)} % of its range, and changes a switch with a ${Math.round(v * 100)} % chance`;
   try {
     localStorage.setItem(MUTATE_AMOUNT, String(v));
@@ -2456,6 +2461,13 @@ try {
 } catch {
   /* storage blocked: the default amount */
 }
+/** the amount chip over the candidates (#1048): the amount now; a click picks 5, 10, 25 or 50 % */
+const amountChip = $<HTMLButtonElement>('amount-chip');
+function showAmount(): void {
+  amountChip.textContent = `±${Math.round(editor.mutateAmount * 100)} % ▾`;
+}
+amountChip.onclick = () => popMenu(MUTATE_AMOUNTS.map((a) => ({ text: `${a === editor.mutateAmount ? '✓ ' : ''}±${Math.round(a * 100)} %`, run: () => setMutateAmount(a) })), amountChip);
+showAmount();
 // "Mutate pitch" (#1006): kept per browser, like the amount
 const MUTATE_PITCH = 'matryoshka.mutate-pitch';
 function setMutatePitch(on: boolean): void {
@@ -3106,7 +3118,7 @@ const syncAudioBtn = (): void => {
 };
 host.onState = () => { syncAudioBtn(); screens.state(); outScreens.state(); envs.state(); };
 syncAudioBtn();
-// the deck's test phrase and WAV export (#945, #946): left of the keys
+// the Listen block (#945, #946, #1048): the test phrase and WAV export, at the top of the Sound design sidebar
 const audition = new Audition({
   send: (m) => host.send(m),
   start: startAudio,
@@ -3116,6 +3128,7 @@ const audition = new Audition({
   armed: () => [...editor.armedSet],
   tempo: () => (tempo.global ? tempo.bpm : null),
   status: (text) => (status.textContent = text),
+  changed: () => renderSnapshots(),   // (the rail's play button)
   download: (bytes, name) => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'audio/wav' }));
@@ -3130,7 +3143,8 @@ const audition = new Audition({
   now: () => new Date(),
   clock: () => performance.now() / 1000,
 }, (() => { try { return localStorage; } catch { return null; } })());
-$('piano').before(audition.el);
+snapColumn.querySelector('.snap-side-head')!.after(audition.el);
+listenPlaying = () => audition.playing;
 host.onPhraseEnd = () => audition.ended();
 host.onRecording = (chunk, last) => void audition.recorded(chunk, last);
 audioBtn.onclick = () => (host.running && !host.muted ? panic() : void startAudio());
