@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The CPU cost table (src/cpu-costs.json, scripts/cpu-costs.ts) against the test rig: each factory patch's estimate beside
 // the rig's steady peak (the median of a phase's 500 ms peaks after the first, the most over the phases it played without
-// shedding), with the error in points of the block and in percent, and the steady peak's own term (cpu-costs.ts PEAK) that
-// fits the rig best: the mean of the rig less the estimate without it. Two sets:
+// shedding), with the error in points of the block and in percent, for the table alone and with its engine factors
+// (CpuTable.rig), and the steady peak's own term (cpu-costs.ts PEAK) that fits the rig best: the mean of the rig less the
+// estimate of the table alone without it. Two sets:
 //   - the 1.14 bank's graphs (src/cpu-survey-factory-1.14.json) on the rig's survey of them
 //     (docs/measurements/cpu-survey-2026-11-14-rig-modctl*.json, the survey cpu.test.ts holds the estimate to);
 //   - today's factory patches on the newest rig survey that played each one (RECENT below; those builds differ from one
 //     another and from the release a little: each row names its survey).
 // Run from web/: npx vite-node scripts/cpu-rig-check.ts [--md]   (--md: the tables as Markdown)
 import { readFileSync } from 'node:fs';
-import { CPU, cpuEstimate } from '../src/cpu';
+import { CPU, cpuEstimate, type CpuTable } from '../src/cpu';
 import { DEFS } from '../src/modules';
 import { validatePatch, type Patch } from '../src/patch';
 import { FM1_PRESETS } from '../src/presets';
@@ -36,12 +37,11 @@ const RECENT = [
   'cpu-survey-2026-11-14-rig-modctl',
 ];
 
+/** the table without its engine factors */
+const alone: CpuTable = { ...CPU, rig: undefined };
 interface Row { name: string; survey: string; rig: number; est: number; bare: number }
 const peakUs = CPU.fixedUs + (CPU.cores?.idleUs ?? 0);
-const row = (name: string, survey: string, rig: number, p: Patch): Row => {
-  const est = cpuEstimate(p).us;
-  return { name, survey, rig, est, bare: est - peakUs };
-};
+const row = (name: string, survey: string, rig: number, p: Patch): Row => ({ name, survey, rig, est: cpuEstimate(p).us, bare: cpuEstimate(p, alone).us });
 
 const old = JSON.parse(readFileSync(new URL('../src/cpu-survey-factory-1.14.json', import.meta.url), 'utf8')) as { patches: Record<string, Patch> };
 const modctl = [...read('cpu-survey-2026-11-14-rig-modctl.json'), ...read('cpu-survey-2026-11-14-rig-modctl-run.json')];
@@ -63,22 +63,28 @@ for (const [name, make] of Object.entries(FM1_PRESETS)) {
 
 const pts = (us: number): number => (100 * us) / CPU.blockUs;
 const all = [...setA, ...setB];
-const fit = all.reduce((s, r) => s + r.rig - r.bare, 0) / all.length;
+const fit = all.reduce((s, r) => s + r.rig - (r.bare - peakUs), 0) / all.length;
 const md = process.argv.includes('--md');
-function show(title: string, rows: Row[]): void {
-  const errs = rows.map((r) => pts(r.est - r.rig));
+/** rms in points and in percent, and the range in points, of `est` against the rig */
+function summary(rows: Row[], est: (r: Row) => number): string {
+  const errs = rows.map((r) => pts(est(r) - r.rig));
   const rms = Math.sqrt(errs.reduce((s, e) => s + e * e, 0) / errs.length);
-  const pct = Math.sqrt(rows.reduce((s, r) => s + (r.est / r.rig - 1) ** 2, 0) / rows.length);
+  const pct = Math.sqrt(rows.reduce((s, r) => s + (est(r) / r.rig - 1) ** 2, 0) / rows.length);
+  const inside = errs.filter((e) => e >= -3 && e <= 5).length;
+  return `rms ${rms.toFixed(1)} points (${(100 * pct).toFixed(1)} %), from ${Math.min(...errs).toFixed(1)} to +${Math.max(...errs).toFixed(1)} points, ${inside} of ${rows.length} within -3 / +5`;
+}
+function show(title: string, rows: Row[]): void {
+  const f = (us: number): string => pts(us).toFixed(1);
   if (md) {
-    console.log(`\n${title}\n\n| patch | rig % | estimate % | error (points) | error % | survey |\n|---|---:|---:|---:|---:|---|`);
-    for (const r of rows) console.log(`| ${r.name} | ${pts(r.rig).toFixed(1)} | ${pts(r.est).toFixed(1)} | ${pts(r.est - r.rig).toFixed(1)} | ${(100 * (r.est / r.rig - 1)).toFixed(1)} | ${r.survey.replace('cpu-survey-', '')} |`);
-    console.log(`\n${rows.length} patches: rms ${rms.toFixed(1)} points (${(100 * pct).toFixed(1)} %), from ${Math.min(...errs).toFixed(1)} to +${Math.max(...errs).toFixed(1)} points`);
+    console.log(`\n${title}\n\n| patch | rig % | table alone % | error (points) | with factors % | error (points) | survey |\n|---|---:|---:|---:|---:|---:|---|`);
+    for (const r of rows) console.log(`| ${r.name} | ${f(r.rig)} | ${f(r.bare)} | ${f(r.bare - r.rig)} | ${f(r.est)} | ${f(r.est - r.rig)} | ${r.survey.replace('cpu-survey-', '')} |`);
+    console.log(`\n${rows.length} patches. Table alone: ${summary(rows, (r) => r.bare)}. With factors: ${summary(rows, (r) => r.est)}.`);
     return;
   }
   console.log(`\n${title}`);
-  for (const r of rows) console.log(`${r.name.padEnd(16)} rig ${pts(r.rig).toFixed(1).padStart(5)} %  estimate ${pts(r.est).toFixed(1).padStart(5)} %  ${pts(r.est - r.rig).toFixed(1).padStart(6)} points ${(100 * (r.est / r.rig - 1)).toFixed(1).padStart(6)} %  ${r.survey}`);
-  console.log(`${rows.length} patches: rms ${rms.toFixed(1)} points (${(100 * pct).toFixed(1)} %), from ${Math.min(...errs).toFixed(1)} to +${Math.max(...errs).toFixed(1)} points`);
+  for (const r of rows) console.log(`${r.name.padEnd(16)} rig ${f(r.rig).padStart(5)} %  alone ${f(r.bare).padStart(5)} % ${f(r.bare - r.rig).padStart(6)}  factors ${f(r.est).padStart(5)} % ${f(r.est - r.rig).padStart(6)}  ${r.survey}`);
+  console.log(`table alone:  ${summary(rows, (r) => r.bare)}\nwith factors: ${summary(rows, (r) => r.est)}`);
 }
 show('The 1.14 bank on its rig survey (cpu-survey-2026-11-14-rig-modctl*.json)', setA);
 show('Today\'s factory patches on the newest rig survey of each', setB);
-console.log(`\nthe steady peak's term that fits both sets: ${fit.toFixed(0)} us a block (the table has ${peakUs.toFixed(0)})`);
+console.log(`\nthe steady peak's term that fits both sets with the table alone: ${fit.toFixed(0)} us a block (the table has ${peakUs.toFixed(0)})`);

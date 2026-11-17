@@ -7,8 +7,11 @@
 //     bends (the editor interpolates);
 //   - the shared costs: summing inputs, parameter inputs, morph, bypass, each module and Output beyond its own time, and the
 //     rest of the audio interrupt (the block: the engine's loop, the key scan, the USB poll), from the interrupt's mean;
-//   - the costs that span modules get terms of their own: the second core (CORES, fitted on the rig), and the steady peak
-//     over the mean the module times give (PEAK);
+//   - the costs that span modules get terms of their own: each type's code and tables fetched cold on its first copy in a
+//     block (TypeCost.cold, fitted on the factory patches' own module times, below), the second core (CORES, fitted on the
+//     rig), and the steady peak over the mean the module times give (PEAK);
+//   - each factory engine's factor (RIG, fitted on the rig by scripts/cpu-rig-fit.ts): the table alone misses the rig by
+//     more than cpu.test.ts allows (docs/measurements/2026-11-16-cpu-table-emu.md);
 //   - whole factory patches, as checks of the model (cpu.test.ts); scripts/cpu-rig-check.ts compares the table with the rig.
 // The firmware is FW_DIR's matryoshka.bin and matryoshka.elf (the release's CI artifacts `matryoshka-firmware` and
 // `matryoshka-elf`), else build/'s. Kits hold C5 (a square or saw oscillator costs more the higher it plays). Run once per
@@ -48,6 +51,27 @@ const CORES = {
   splitEff: 0.75,
   survey: 'docs/measurements/cpu-survey-2026-11-14-rig-reverb-split-off.json against -reverb.json (CI run 43615466841); the idle cost: -2026-11-05-rig-release-1.10-head.json against -rig-merged-split.json',
 };
+/** Each factory engine's factor on its modules' cycles (src/cpu.ts CpuTable.rig), fitted by scripts/cpu-rig-fit.ts to the
+ * test rig's survey of the 1.14 bank on the firmware with modulation every 16 samples (#806, D-1106), on this table with
+ * the factors left out: the smallest that makes the estimate read at least the rig's steady peak for every voice count its
+ * factory patch played on the rig, transport stopped and running. The poly engines the rig measured at more voices than
+ * they play have a factor for their modules inside the poly group (`voices`) beside the one for the rest (`engines`, at
+ * most 1.5). They stay while the table alone misses the rig by more than cpu.test.ts allows (D-1107): the emulator's own
+ * interrupt on the same patches spreads wider than that window around the rig. */
+const RIG = {
+  engines: {
+    '8 Lire': 0.52, '808 kit': 0.86, '909 kit': 0.71, 'Algo Four': 1.44, 'Briefcase 3': 0.75,
+    'Canvas': 0.89, 'Cassia 1': 1.46, 'Elvira 2': 1.01, 'Expander S': 1.46,
+    'Hera 4': 1.28, 'Io 4': 0.81, 'Meridian 8': 0.7, 'Monolith D': 1,
+    'Oracle V': 1.5, 'Perun 4': 0.78, 'Sallen 20': 0.97, 'Scrounge': 0.86,
+    'Silver Box': 1.25, 'Spokes 6': 0.78, 'Vernon 100': 0.87, 'Verona Drum 1': 0.93,
+    'Wanderer': 1.15,
+  } as Record<string, number>,
+  voices: { 'Algo Four': 0.7, 'Cassia 1': 0.69, 'Expander S': 1, 'Hera 4': 0.53, 'Oracle V': 0.63 } as Record<string, number>,
+  survey: 'docs/measurements/cpu-survey-2026-11-14-rig-modctl.json and -run.json (CI run 43652865098, the 22 patches of the 1.14 bank); the voices: -step7-voices.json and -hera-voices.json (main at 0b7b930a); Canvas: -canvas-linear.json and -run.json (CI run 43668448074)',
+};
+/** the most of a type's run cost its cold first copy may be (TypeCost.cold): every copy keeps some work of its own */
+const COLD_MAX = 0.9;
 
 const CYCLES_PER_NS = CYCLES_PER_US / 1000;
 
@@ -500,6 +524,33 @@ const table: CpuTable = {
 // whole patches: the module times the firmware measured (both cores) and the modelled rest, against the model
 const checks = cpuChecks(NOTE);
 const runsOf = await Promise.all(checks.map(({ patch, notes }) => run(patch, notes)));
+// the cold first copy of each type (TypeCost.cold, D-1107): a type's costs above are measured on a module alone, so each
+// holds its code and tables fetched cold every block, which in a patch only the type's first copy pays. For each type with
+// n >= 2 copies in a check, the table's cycles less the firmware's measured ones are cold x (n - 1): least squares over the
+// checks, between 0 and COLD_MAX of the type's run cost
+const coldFit = new Map<string, { num: number; den: number }>();
+checks.forEach(({ patch }, i) => {
+  const byType = new Map<string, { gap: number; n: number }>();
+  for (const m of cpuEstimate(patch, table, 1).modules) {
+    const c = byType.get(m.type) ?? { gap: 0, n: 0 };
+    c.gap += m.cycles - table.node * m.copies - (runsOf[i].ns.get(m.id) ?? 0) * CYCLES_PER_NS;
+    c.n += m.copies;
+    byType.set(m.type, c);
+  }
+  for (const [type, { gap, n }] of byType) {
+    if (n < 2) continue;
+    const f = coldFit.get(type) ?? { num: 0, den: 0 };
+    f.num += gap * (n - 1);
+    f.den += (n - 1) ** 2;
+    coldFit.set(type, f);
+  }
+});
+for (const [type, { num, den }] of coldFit) {
+  const cold = Math.round(Math.min(COLD_MAX * types[type].run, Math.max(0, num / den)));
+  if (cold) types[type].cold = cold;
+}
+console.log(`cold first copies: ${[...coldFit.keys()].filter((t) => types[t].cold).sort().map((t) => `${t} ${types[t].cold}`).join(', ')}`);
+table.rig = RIG;
 let worst = 0;
 checks.forEach(({ name, patch }, i) => {
   const r = runsOf[i];

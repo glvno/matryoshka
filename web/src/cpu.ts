@@ -57,6 +57,10 @@ export interface TypeCost {
    * output read adds, `pins[k - 1]` what an output with k pins in use adds (a pin in use: its input patched, its amount off 0
    * or moved by a cable) */
   matrix?: { out: number; pins: number[] };
+  /** cycles of the type's first copy in a block beyond any other copy's (D-1107: its code and tables fetched cold into the
+   * caches, which every later copy of the type in the same block finds warm). The other costs are measured on a module
+   * alone, so they hold it: the estimate counts it once per type the patch runs, and takes it off every copy */
+  cold?: number;
 }
 
 /** a Matrix's cost over its `run` (TypeCost.matrix): its outputs read and, in each, its pins in use */
@@ -283,6 +287,7 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
   const splitGroups = new Set<number>();
   const modules: CpuModule[] = [];
   const work = new Map<number, number>();   // a copy's cycles by module id, with the rig's factor (the schedule's items)
+  const warm = new Set<string>();           // the types whose cold first copy is counted (TypeCost.cold)
   for (const m of p.modules) {
     const def = DEFS[m.type];
     const t = table.types[m.type];
@@ -349,15 +354,22 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
     if (t.thru && m.type === 'steps' && inputs.has('keys')) one += t.thru * Math.min(TRACK_POLY, Math.max(1, ...groups.map((g) => g.cfg.parts)));
     if (m.type === 'output') (total += table.output), (counted += table.output);
     const k = ninst(m.id);
-    counted += one * k;
+    // the type's code and tables come in cold once a block: on its first copy, every other copy finds them warm
+    let cold = 0;
+    if (t.cold && !m.bypass) {
+      one -= t.cold;
+      if (!warm.has(m.type)) (warm.add(m.type), (cold = t.cold));
+    }
+    counted += one * k + cold;
     one *= factor.get(m.id) ?? 1;
+    cold *= factor.get(m.id) ?? 1;
     if (group && k >= 2 && m.type !== 'steps') {
       split += one * Math.floor(k / 2);
       splitGroups.add(groupOf.get(m.id)!);
     }
-    modules.push({ id: m.id, type: m.type, copies: k, cycles: one * k });
+    modules.push({ id: m.id, type: m.type, copies: k, cycles: one * k + cold });
     work.set(m.id, one);
-    total += one * k;
+    total += one * k + cold;
   }
   modules.sort((a, b) => b.cycles - a.cycles);
   const oneCoreUs = total / table.cyclesPerUs + table.fixedUs;

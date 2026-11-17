@@ -1,17 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The CPU model's calibration on the test rig (scripts/cpu-costs.ts RIG; src/cpu.ts CpuTable.rig), worked out from the rig's
-// surveys of the factory patches (tools/rig_cpu_survey.py): prints the constants to freeze in cpu-costs.ts and a table of
-// each factory patch: the rig, the estimate before (the table's scale of 2026-10-20, no factors) and after.
+// Each factory engine's factor on the CPU cost table (scripts/cpu-costs.ts RIG; src/cpu.ts CpuTable.rig), worked out from
+// the rig's surveys of the factory patches (tools/rig_cpu_survey.py): prints the factors to freeze in cpu-costs.ts and a
+// table of each factory patch: the rig, the estimate of the table alone (no factors) and with the factors.
 //   - a target: a factory patch's steady peak (the median of a phase's samples after the first, the most over its phases at
 //     rest and with 1, 4 and 8 keys, the transport stopped or running), at the voices it played: a phase where the overload
 //     guard dropped parts counts at that many voices fewer, a muted phase not at all;
-//   - a patch that changed since the survey of today's firmware (no target there) takes its target from the survey of the
-//     firmware before, times the median rise of the patches that did not change (the same estimate in both);
-//   - the scale and the fixed time per block: least squares of the targets on the estimate before (est = a x before + b);
+//   - the table's own terms (the emulator's clock, PEAK, CORES) stay as they are;
 //   - each factory engine's factor: the most any of its patch's targets needs, so the estimate reads at least what the rig
 //     measured at every voice count it played.
 // Run from web/: npx vite-node scripts/cpu-rig-fit.ts
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { assembliesOf, parentOf } from '../src/assembly';
 import { CPU, cpuEstimate, type CpuTable } from '../src/cpu';
@@ -32,12 +29,8 @@ const NOW: { file: string; at?: Record<string, number>; only?: string[]; skip?: 
   ...['', '-run'].map((s) => ({ file: `docs/measurements/cpu-survey-2026-11-14-rig-hera-voices${s}.json`, at: { 'Hera 3 5': 5, 'Hera 3 6': 6 }, only: ['Hera 3'] })),
   ...['', '-run'].map((s) => ({ file: `docs/measurements/cpu-survey-2026-11-14-rig-canvas-linear${s}.json` })),
 ];
-/** the survey of the firmware before (release-1.10 with the second core) and the commit its factory patches are from */
-const BEFORE = { file: 'docs/measurements/cpu-survey-2026-11-05-rig-merged-split.json', commit: 'e3235d64' };
-/** factory patches renamed since a survey, or measured under another name (a voice count after it): the survey's name, today's */
+/** factory patches measured under another name (a voice count after it): the survey's name, today's */
 const RENAMED: Record<string, string> = { 'Hera 5': 'Hera 4', 'Oracle V 5': 'Oracle V', 'Cassia 1 5': 'Cassia 1', 'Algo Four 8': 'Algo Four', 'Expander S 6': 'Expander S', 'Hera 3 5': 'Hera 3', 'Hera 3 6': 'Hera 3' };
-/** the scale before (2026-10-20, cpu-costs.ts SURVEY then; the second core's idle cost of 2026-11-05) */
-const BASE = { cyclesPerUs: 233.4, fixedUs: 23, idleUs: 24 };
 
 type Reading = { name: string } & Record<string, number[] | number | string | boolean>;
 const read = (f: string): Reading[] => JSON.parse(readFileSync(ROOT + f, 'utf8'));
@@ -50,8 +43,7 @@ const withVoices = (p: Patch, v: number): Patch => {
   for (const m of q.modules) if (m.type === 'alloc' && (m.params.voices ?? 1) === n) m.params.voices = v;
   return q;
 };
-const base: CpuTable = { ...CPU, cyclesPerUs: BASE.cyclesPerUs, fixedUs: BASE.fixedUs, cores: { ...CPU.cores!, idleUs: BASE.idleUs }, rig: undefined };
-const before = (p: Patch): number => cpuEstimate(p, base).us;
+const alone: CpuTable = { ...CPU, rig: undefined };
 
 /** a survey's targets: patch name -> voices -> steady peak (us) */
 function targets(files: { file: string; at?: Record<string, number>; only?: string[]; skip?: string[] }[], voices: (name: string) => number | undefined): Map<string, Map<number, number>> {
@@ -78,58 +70,25 @@ function targets(files: { file: string; at?: Record<string, number>; only?: stri
 const survey = JSON.parse(readFileSync(new URL('../src/cpu-survey-factory-1.14.json', import.meta.url), 'utf8')) as { patches: Record<string, Patch> };
 const today = new Map(Object.entries(survey.patches).map(([name, patch]) => [name, validatePatch(structuredClone(patch), DEFS)]));
 const now = targets(NOW, (n) => (today.has(n) ? voicesOf(today.get(n)!) : undefined));
-// patches whose structure changed since today's survey and that it could not measure (none since #781's survey)
-const CHANGED = new Set<string>([]);
-for (const n of CHANGED) now.delete(n);
-
-// the survey of the firmware before, its own patches
-const git = (...a: string[]): string => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 256 << 20 });
-const old = new Map<string, Patch>();
-for (const f of git('ls-tree', '--name-only', BEFORE.commit, 'web/presets/').split('\n').filter((x) => x.endsWith('.json'))) {
-  const p = validatePatch(JSON.parse(git('show', `${BEFORE.commit}:${f}`)), DEFS);
-  old.set(p.name, p);
-}
-const then = targets([{ file: BEFORE.file }], (n) => (old.has(n) ? voicesOf(old.get(n)!) : undefined));
-const rises: number[] = [];
-for (const [n, t] of now) {
-  const p = today.get(n)!, q = old.get(n);
-  const a = t.get(voicesOf(p)), b = then.get(n)?.get(voicesOf(p));
-  if (q && a && b && Math.abs(before(p) / before(q) - 1) < 0.01) rises.push(a / b);
-}
-const rise = median(rises);
-for (const n of CHANGED) {
-  const t = then.get(n);
-  if (t) now.set(n, new Map([...t].map(([v, us]) => [v, us * rise])));
-}
 
 /** a factory patch's engine: its top-level assembly of the patch's name, or of ENGINE_NAME's (<7PH, Init and the like
  * have none) */
 const ENGINE_NAME: Record<string, string> = { 'Hera 3': 'Hera 4' };   // (the 1.14 bank's Hera 3 plays the Hera 4 engine)
 const engineOf = (p: Patch): string | undefined => assembliesOf(p).find((x) => !parentOf(p, x.id) && x.name.toLowerCase() === (ENGINE_NAME[p.name] ?? p.name).toLowerCase())?.name;
 
-// the scale and the fixed time: est = a x before + b, least squares over the targets of the patches without an engine of
-// their own (what the scale is for: modules outside a factory engine; each engine then gets its factor). A survey with
-// fewer than three such patches (the 1.14 bank has none) keeps the frozen scale (cpu-costs.ts SURVEY, CORES)
 const pts: { name: string; v: number; us: number; was: number; patch: Patch }[] = [];
 for (const [n, t] of now)
   for (const [v, us] of t) {
     const patch = withVoices(today.get(n)!, v);
-    pts.push({ name: n, v, us, was: before(patch), patch });
+    pts.push({ name: n, v, us, was: cpuEstimate(patch, alone).us, patch });
   }
-const plain = pts.filter((p) => !engineOf(p.patch));
-const N = plain.length, sx = plain.reduce((s, p) => s + p.was, 0), sy = plain.reduce((s, p) => s + p.us, 0);
-const sxx = plain.reduce((s, p) => s + p.was * p.was, 0), sxy = plain.reduce((s, p) => s + p.was * p.us, 0);
-const frozen = new Set(plain.map((p) => p.name)).size < 3;
-const a = frozen ? BASE.cyclesPerUs / CPU.cyclesPerUs : (N * sxy - sx * sy) / (N * sxx - sx * sx), b = frozen ? CPU.fixedUs - a * BASE.fixedUs : (sy - a * sx) / N;
-const scaled: CpuTable = frozen ? { ...CPU, rig: undefined }
-  : { ...base, cyclesPerUs: Math.round((10 * BASE.cyclesPerUs) / a) / 10, fixedUs: Math.round(b + a * BASE.fixedUs), cores: { ...base.cores!, idleUs: Math.round(a * BASE.idleUs) } };
 
 // each engine's factor: the most any of its patch's targets needs (bisection on the estimate, which grows with it). An
 // engine measured at two or more voice counts also gets a factor for its modules inside a poly group (CpuTable.rig.voices):
 // the pair that reads at least the rig at every count measured, with the least over-read summed over them (the single
 // factor, fitted at the voices a patch plays, over-read its higher counts: Hera 3 at 6 voices 94 % against 84 %)
 const engines: Record<string, number> = {}, voices: Record<string, number> = {};
-const tableWith = (e: string, k: number, kv?: number): CpuTable => ({ ...scaled, rig: { engines: { [e]: k }, voices: kv === undefined ? undefined : { [e]: kv }, survey: '' } });
+const tableWith = (e: string, k: number, kv?: number): CpuTable => ({ ...alone, rig: { engines: { [e]: k }, voices: kv === undefined ? undefined : { [e]: kv }, survey: '' } });
 /** the least factor (to 0.01) with which `reads(k)` holds: the estimate grows with it */
 const least = (reads: (k: number) => boolean): number => {
   let lo = 0.3, hi = 3;
@@ -161,16 +120,14 @@ for (const [e, list] of byEngine) {
   engines[e] = best!.ks;
   voices[e] = best!.kv;
 }
-const fitted: CpuTable = { ...scaled, rig: { engines, voices, survey: '' } };
+const fitted: CpuTable = { ...alone, rig: { engines, voices, survey: '' } };
 
-console.log(`rise of the unchanged patches since ${BEFORE.file}: x ${rise.toFixed(3)} (${rises.length} patches)`);
-console.log(`scale: est = ${a.toFixed(3)} x before + ${b.toFixed(0)} us -> cyclesPerUs ${scaled.cyclesPerUs}, fixedUs ${scaled.fixedUs}, idleUs ${scaled.cores!.idleUs}`);
 console.log(`engines: ${JSON.stringify(Object.fromEntries(Object.entries(engines).sort()))}`);
 console.log(`voices: ${JSON.stringify(Object.fromEntries(Object.entries(voices).sort()))}`);
-console.log('\n| patch | voices | rig | before | after |\n|---|---:|---:|---:|---:|');
+console.log('\n| patch | voices | rig | table alone | with factors |\n|---|---:|---:|---:|---:|');
 const pct = (us: number): string => `${((100 * us) / CPU.blockUs).toFixed(1)} %`;
 for (const pt of pts.sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : x.v - y.v)))
-  console.log(`| ${pt.name} | ${pt.v} | ${pct(pt.us)}${CHANGED.has(pt.name) ? ' (1.10 x rise)' : ''} | ${pct(pt.was)} | ${pct(cpuEstimate(pt.patch, fitted).us)} |`);
-console.log('\nthe poly factory patches at 1..8 voices (after):');
+  console.log(`| ${pt.name} | ${pt.v} | ${pct(pt.us)} | ${pct(pt.was)} | ${pct(cpuEstimate(pt.patch, fitted).us)} |`);
+console.log('\nthe poly factory patches at 1..8 voices (with factors):');
 for (const [n, p] of today)
   if (voicesOf(p) > 1) console.log(`${n.padEnd(16)} ${Array.from({ length: 8 }, (_, i) => `${i + 1}: ${((100 * cpuEstimate(withVoices(p, i + 1), fitted).us) / CPU.blockUs).toFixed(1)}`).join('  ')}`);
