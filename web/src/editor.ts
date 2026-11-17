@@ -79,7 +79,8 @@ import type { PatternView } from './engine';
 import { fixLocks, fixNotes, fixPatterns, fixSeq, overdub, PATTERNS_MAX, patternLocks as patternLocksOf, patternOf, SONGS_MAX, type Pattern, type PatternLink, type SeqState, type SongEntry, type StepLock, type StepNote } from './track';
 import { applyPayload, type LocksLoaded } from './pattern-store';
 import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './engines';
-import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, rememberedPreset, sameName, renamePreset, shortBy, shortPresetText, stepPreset, storePreset, type Preset } from './device-presets';
+import { addPresetOf, applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, rememberedPreset, replaceUserPresets, sameName, renamePreset, shortBy, shortPresetText, stepPreset, storePreset, type Preset } from './device-presets';
+import { snapshotPreset } from './snapshot-presets';
 import { engineOf } from './library-presets';
 import { fxPresetInfo } from './fx-preset-format';
 import { fxBusOf, type FxBus } from './fx-bus';
@@ -175,8 +176,9 @@ const HISTORY = 40;
 /** snapshots a step added or removed, each with its place in the list (added: after the step; removed: before it) */
 type ListChange = { added: { s: Snapshot; at: number }[]; removed: { s: Snapshot; at: number }[] };
 /** an undo step: the patch (Editor.snap) and the stop it belongs to, a snapshot's letter or null for the current patch;
- *  `list`: a step that added or removed snapshots (Make candidates #996, Alt+X #1028), with the current patch kept aside */
-type UndoStep = { s: string; shown: string | null; list?: { change: ListChange; current: string | null } };
+ *  `list`: a step that added or removed snapshots (Make candidates #996, Alt+X #1028), with the current patch kept aside;
+ *  `presets`: the user presets a step stored from snapshots and those they replaced, taken out and put back by undo (#1031) */
+type UndoStep = { s: string; shown: string | null; list?: { change: ListChange; current: string | null }; presets?: { put: Preset[]; was: Preset[] } };
 /** a logarithmic slider's value rounded to the parameter's step (a glide time to the ms, a cutoff to the Hz), not to a whole number */
 function snapTo(pd: ParamDef, v: number): number {
   const step = pd.step ?? 0;
@@ -716,8 +718,7 @@ export class Editor {
     const e = this.history.pop();
     if (e === undefined) return this.ev.onError('nothing to undo');
     this.future.push(this.stepNow(e));
-    if (e.list) this.unwind(e, -1);
-    else this.travel(e);
+    this.goTo(e, -1);
     this.ev.onHistory?.('undo');
   }
 
@@ -728,9 +729,17 @@ export class Editor {
     const e = this.future.pop();
     if (e === undefined) return this.ev.onError('nothing to redo');
     this.history.push(this.stepNow(e));
-    if (e.list) this.unwind(e, 1);
-    else this.travel(e);
+    this.goTo(e, 1);
     this.ev.onHistory?.('redo');
+  }
+
+  /** go to an undo (`dir` -1) or redo (1) step. Presets stored from snapshots go out of the library or come back; such a
+   *  step leaves the patch as it was, so the patch is not loaded again (#1031) */
+  private goTo(e: UndoStep, dir: -1 | 1): void {
+    if (e.presets) replaceUserPresets(e.presets.put, dir < 0 ? e.presets.was : e.presets.put);
+    if (e.list) this.unwind(e, dir);
+    else if (e.presets && e.s === this.snap() && e.shown === this.snaps.shown) this.rebuild();
+    else this.travel(e);
   }
 
   /**
@@ -756,9 +765,10 @@ export class Editor {
     this.ev.onSnapshots?.();
   }
 
-  /** the state now as the counterpart of step `e` on the other stack (a list step keeps its change) */
+  /** the state now as the counterpart of step `e` on the other stack (a list step keeps its change, a presets step its
+   *  presets) */
   private stepNow(e: UndoStep): UndoStep {
-    return { s: this.snap(), shown: this.snaps.shown, ...(e.list ? { list: { change: e.list.change, current: this.snaps.current } } : {}) };
+    return { s: this.snap(), shown: this.snaps.shown, ...(e.list ? { list: { change: e.list.change, current: this.snaps.current } } : {}), ...(e.presets ? { presets: e.presets } : {}) };
   }
 
   /** undo (`dir` -1) or redo (1) a list step: take its snapshots out or put them back, then its patch, stop and kept
@@ -3574,6 +3584,50 @@ export class Editor {
     if (keep) s.mark = 'keep';
     else delete s.mark;
     this.ev.onSnapshots?.();
+  }
+
+  /** the version a snapshot stands for: for the snapshot on screen the patch heard, changes made to it included */
+  snapshotVersion(s: Snapshot): Patch {
+    return s.letter === this.snaps.shown ? this.patch : JSON.parse(s.patch) as Patch;
+  }
+
+  /**
+   * Store snapshots' values for the engine `asmId` of the current patch as its presets (#1031, D-993): each `from` (a
+   * snapshot's letter and the name to store it under) becomes a user preset of that engine, named as Store as a preset
+   * names one; `fresh`: a name taken already takes the next number instead of storing over a user preset. The snapshot on
+   * screen gives the values heard, changes made to it included. Nothing switches and the current patch keeps its sound. A
+   * snapshot whose engine has another structure than the current patch's is skipped. One undo step, which takes the
+   * stored presets out again. The presets stored (by letter) and the letters skipped
+   */
+  storeSnapshotPresets(asmId: number, from: readonly { letter: string; name: string }[], fresh: boolean): { stored: { letter: string; name: string }[]; skipped: string[] } {
+    this.endGesture();
+    this.endPass();
+    const cur = this.currentPatch();
+    const a = assemblyById(cur, asmId);
+    const stored: { letter: string; name: string }[] = [], skipped: string[] = [], put: Preset[] = [], was: Preset[] = [];
+    try {
+      for (const f of from) {
+        const s = this.snaps.get(f.letter);
+        const preset = a && s && snapshotPreset(cur, a, this.snapshotVersion(s), f.name);
+        if (!a || !preset) {
+          skipped.push(f.letter);
+          continue;
+        }
+        const r = addPresetOf(cur, a, preset, fresh);
+        put.push(r.put);
+        if (r.was) was.push(r.was);
+        stored.push({ letter: f.letter, name: r.put.name });
+      }
+    } catch (e) {
+      replaceUserPresets(put, was);   // (none of them: the batch is one step or nothing)
+      this.ev.onError(String((e as Error).message ?? e));
+      return { stored: [], skipped };
+    }
+    if (put.length) {
+      this.record({ s: this.snap(), shown: this.snaps.shown, presets: { put, was } });
+      this.rebuild();   // (the engine's preset chip counts them)
+    }
+    return { stored, skipped };
   }
 
   /**
