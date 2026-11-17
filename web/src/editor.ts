@@ -25,6 +25,7 @@ import { cableRole } from './cable-role';
 import { addBreak, fm1Name, layoutOf, moveRows, moveSection, pagesOf, removeBreak, removeHeading, removeRows, renameHeading, rowKey, setLayout, type KnobOf, type Layout, type RowSpot, type Sec } from './arrange';
 import type { ParameterValues } from './engine';
 import { delayRoom, deviceBudget, DEVICE, LINE_TYPES, lineBudget, linesAdvice } from './patchbin';
+import { cardCostText, cardCostTitle, type CardCost, type CardCosts } from './cpu';
 import { choiceName, formatValue, longName, moduleName, moduleTag, moduleTitle, paramHint } from './labels';
 import { outputRange } from './ranges';
 import { picker } from './picker';
@@ -985,6 +986,35 @@ export class Editor {
     return badge;
   }
 
+  /** the cards' CPU costs (#942), from the host's estimate (showCpu); kept so a rebuilt card shows its cost at once */
+  private costs: CardCosts | null = null;
+
+  /** each card's share of the FM-1's CPU (#942): the host's estimate after every change (main.ts showBudget) */
+  showCpu(costs: CardCosts): void {
+    this.costs = costs;
+    const fill = (card: HTMLElement, c: CardCost | undefined): void => {
+      const chip = card.querySelector<HTMLElement>(':scope > .mhead .mcpu');
+      if (chip) this.fillCost(chip, c);
+    };
+    for (const [id, el] of this.cards) fill(el, costs.modules.get(id));
+    for (const [id, el] of this.containers) fill(el, costs.assemblies.get(id));
+  }
+
+  /** a cost readout: hidden while there is no cost (an editor-only card, before the first estimate) */
+  private fillCost(chip: HTMLElement, c: CardCost | undefined): void {
+    chip.hidden = !c;
+    chip.textContent = c ? cardCostText(c) : '';
+    chip.title = c ? cardCostTitle(c) : '';
+  }
+
+  /** a card header's cost readout (#942), with the last estimate's figure */
+  private costSlot(c: CardCost | undefined): HTMLElement {
+    const chip = document.createElement('span');
+    chip.className = 'mcpu';
+    this.fillCost(chip, c);
+    return chip;
+  }
+
   private button(text: string, title: string, onclick: () => void, cls = 'sm'): HTMLButtonElement {
     const b = document.createElement('button');
     b.className = cls;
@@ -1176,6 +1206,7 @@ export class Editor {
     if (def.type !== 'fm1' && def.type !== 'output' && !EDITOR_ONLY.has(def.type)) tools.append(this.bypassButton(m, def, el));
     const menu = (at: Pt): void => this.contextMenu(m, def, at);
     tools.append(this.moreButton(menu));
+    tools.prepend(this.costSlot(this.costs?.modules.get(m.id)));
     head.append(title, tools);
     this.headMenu(head, menu);
     el.classList.toggle('off', !!m.bypass);
@@ -4649,6 +4680,7 @@ export class Editor {
     const title = this.titleOf(a, perVoice);
     title.prepend(this.tag(null, a));
     const chip = parent ? null : this.presetChip(a);
+    tools.prepend(this.costSlot(this.costs?.assemblies.get(a.id)));
     head.append(this.chevron(a), title, ...(chip ? [chip] : []), tools);
     this.headMenu(head, (at) => this.assemblyMenu(a, at));
     this.assemblyDrag(el, head, a);

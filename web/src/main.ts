@@ -14,7 +14,7 @@ import { setFxStageEnabled } from './fx-preset';
 import { FEATURE_FX_PRESETS, FX_BYPASS_PARAM } from './protocol';
 import { applyImport, backupFile, backupKeys, collectKeys, importSummary, receiveMigration } from './migrate';
 import { moveOffer, onPagesDev } from './move-offer';
-import { CPU, CPU_WARN } from './cpu';
+import { cardCosts, cardCostTitle, CPU, CPU_WARN } from './cpu';
 import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
@@ -157,6 +157,10 @@ device.choose = (found, first) => chooseFm1($<HTMLDialogElement>('fm1-pick'), fo
 const fm1Name = (): string => (device.connected && device.identity ? fm1Label(device.identity) : 'FM-1');
 /** the patch fits the FM-1 (deviceBudget); one that does not plays only in the browser and is never sent */
 let fitsDevice = true;
+/** the budget's cost list (#942, showBudget): its order, and whether every module is listed or the first CPU_ROWS */
+let cpuSort: 'cost' | 'name' = 'cost';
+let cpuAll = false;
+const CPU_ROWS = 6;
 /** Live sync is on (setLive: the connect dialog, the chip, FM-1 & MIDI's Sync / Stop syncing) */
 let liveOn = false;
 const live = (): boolean => liveSync.syncs(device.connected, liveOn, fitsDevice);
@@ -1380,6 +1384,8 @@ function showBudget(): void {
   const [mem, cpu] = el.querySelectorAll('.budget-row');
   meterRow(mem, 'MEM', memOver.length ? 1.01 : b.memory, memOver.length ? 'over' : `${Math.round(b.memory * 100)} %`);
   meterRow(cpu, 'CPU', b.cpu.use, `${Math.round(b.cpu.use * 100)} %`);
+  const costs = cardCosts(editor.patch, b.cpu);
+  editor.showCpu(costs);
   el.querySelector('summary')!.title = b.fits
     ? `Fits the FM-1. Memory: the fullest limit (${fullest?.label ?? 'none'}) is ${Math.round(b.memory * 100)} % used. CPU: about ${Math.round(b.cpu.use * 100)} % of the audio time, an estimate. Open for the details.`
     : `Over the FM-1 budget (${b.over.map((i) => i.label).join(', ')}): it plays here in the browser, the FM-1 cannot ${b.over.some((i) => i.key === 'cpu') ? 'keep up with' : 'load'} it.`;
@@ -1390,15 +1396,37 @@ function showBudget(): void {
     h.textContent = text;
     return h;
   };
-  const block = CPU.cyclesPerUs * CPU.blockUs;
-  const costly = b.cpu.modules.slice(0, 6).map((m) => {
-    const mod = editor.patch.modules.find((x) => x.id === m.id)!;
-    const name = moduleName(m.type, DEFS[m.type].label) + (m.copies > 1 ? ` ×${m.copies}` : '');
-    const line = budgetLine(name, m.cycles / block, `${(100 * m.cycles / block).toFixed(1)} %`, 'Select it');
+  // what costs most (#942): every module, the costliest first or by name, the first six unless all are asked for; a click
+  // selects the card. A poly module shows its share for all its voices and what one voice costs
+  const rows = b.cpu.modules.flatMap((m) => {
+    const mod = editor.patch.modules.find((x) => x.id === m.id);
+    const c = costs.modules.get(m.id);
+    return mod && c ? [{ mod, c, name: (mod.name ? `${mod.name} ` : '') + moduleName(m.type, DEFS[m.type].label) + (m.copies > 1 ? ` ×${m.copies}` : '') }] : [];
+  });
+  if (cpuSort === 'name') rows.sort((x, y) => x.name.localeCompare(y.name));
+  const sortRow = document.createElement('div');
+  sortRow.className = 'budget-sort';
+  const sortBtn = (text: string, on: boolean, title: string, run: () => void): HTMLButtonElement => {
+    const btn = document.createElement('button');
+    btn.className = 'sm';
+    btn.textContent = text;
+    btn.title = title;
+    btn.setAttribute('aria-pressed', String(on));
+    btn.onclick = (e) => { e.preventDefault(); run(); showBudget(); };
+    return btn;
+  };
+  sortRow.append(
+    sortBtn('by cost', cpuSort === 'cost', 'The costliest first', () => { cpuSort = 'cost'; }),
+    sortBtn('by name', cpuSort === 'name', 'In the order of their names', () => { cpuSort = 'name'; }),
+    ...(rows.length > CPU_ROWS ? [sortBtn(cpuAll ? `top ${CPU_ROWS}` : `all ${rows.length}`, cpuAll, cpuAll ? `Only the first ${CPU_ROWS}` : 'Every module', () => { cpuAll = !cpuAll; })] : []),
+  );
+  const costly = [sortRow, ...(cpuAll ? rows : rows.slice(0, CPU_ROWS)).map(({ mod, c, name }) => {
+    const figure = c.voices ? `${(100 * c.share).toFixed(1)} % · ${(100 * c.perVoice!).toFixed(1)}/v` : `${(100 * c.share).toFixed(1)} %`;
+    const line = budgetLine(name, c.share, figure, `Select it. ${cardCostTitle(c)}`);
     line.classList.add('pick');
     line.addEventListener('click', () => editor.reveal(mod.id));
     return line;
-  });
+  })];
   // the memory (#649): the total, then what takes it, largest first: the module copies, signal buffers and parameter
   // values, and each line-type module's lines (a click selects it)
   const lineLines = (): HTMLElement[] => {
@@ -1437,7 +1465,7 @@ function showBudget(): void {
   const note = document.createElement('p');
   note.className = 'muted';
   note.textContent = b.fits
-    ? 'The CPU figure is an estimate of the FM-1\'s first core: counted on a model of its processor, calibrated on the factory patches measured on the FM-1. The second core plays half the parts of each poly group. Treat anything above 80 % as tight.'
+    ? 'The CPU figures, the bar\'s, the cards\' and the list\'s, are estimates of the FM-1\'s first core, not measurements: counted on a model of its processor, calibrated on the factory patches measured on the FM-1. The second core plays half the parts of each poly group. Treat anything above 80 % as tight.'
     : 'A sandbox patch: it plays here in the browser with no FM-1 limits. It goes to the FM-1 once it fits under the bars; Library > Patches marks it SANDBOX.';
   list.append(note);
   showSandbox(b);

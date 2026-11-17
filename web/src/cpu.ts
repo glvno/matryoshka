@@ -372,3 +372,50 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
   const us = cores === 2 && c ? oneCoreUs + c.idleUs - (c.splitEff * split) / table.cyclesPerUs : oneCoreUs;
   return { cycles: counted, split, splitGroups: parted, oneCoreUs, us, use: us / table.blockUs, modules };
 }
+
+/** what one card costs (#942): its share of the block's time (all its copies), and for a module or assembly inside a poly
+ * group what one voice of it costs and how many voices play */
+export interface CardCost {
+  share: number;
+  perVoice?: number;
+  voices?: number;
+}
+
+/** every card's cost: modules and assemblies by id */
+export interface CardCosts {
+  modules: Map<number, CardCost>;
+  assemblies: Map<number, CardCost>;
+}
+
+/** each module's card cost by its id, and each assembly's (every module in it, its nested assemblies' too) by its id, from
+ * `est` (cpuEstimate of `source`) */
+export function cardCosts(source: Patch, est: CpuEstimate, table: CpuTable = CPU): CardCosts {
+  const block = table.cyclesPerUs * table.blockUs;
+  const modules = new Map<number, CardCost>();
+  for (const m of est.modules)
+    modules.set(m.id, m.copies > 1 ? { share: m.cycles / block, perVoice: m.cycles / m.copies / block, voices: m.copies } : { share: m.cycles / block });
+  const assemblies = new Map<number, CardCost>();
+  for (const a of assembliesOf(source)) {
+    let share = 0, perVoice = 0, voices = 0;
+    for (const id of allModules(source, a)) {
+      const c = modules.get(id);
+      if (!c) continue;
+      share += c.share;
+      if (c.voices) (perVoice += c.perVoice!), (voices = Math.max(voices, c.voices));
+    }
+    assemblies.set(a.id, voices ? { share, perVoice, voices } : { share });
+  }
+  return { modules, assemblies };
+}
+
+/** a card's readout: its share in percent, a poly card's per voice */
+export const cardCostText = (c: CardCost): string =>
+  c.voices ? `${(100 * c.perVoice!).toFixed(1)} %/v` : `${(100 * c.share).toFixed(c.share < 0.1 ? 1 : 0)} %`;
+
+/** what the readout means, for its tooltip */
+export function cardCostTitle(c: CardCost): string {
+  const what = c.voices
+    ? `About ${(100 * c.perVoice!).toFixed(1)} % of the FM-1's audio time a voice, ${(100 * c.share).toFixed(1)} % for its ${c.voices} voices`
+    : `About ${(100 * c.share).toFixed(1)} % of the FM-1's audio time`;
+  return `${what}. A model estimate calibrated on whole factory patches measured on the test rig, not a measurement of this patch on the device. The FM-1 budget at the bottom right lists every card by cost.`;
+}
