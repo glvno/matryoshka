@@ -6,7 +6,8 @@ import './site-move';
 import { openDeviceSettings } from './device-settings';
 import { renderFm1Help } from './controls-help';
 import { ControlsStrip, stripPatch, type StripPatch } from './controls-strip';
-import { addUserPreset, capturePreset, exportPresets, importPresets, migrateUserPresets, presetsOf } from './device-presets';
+import { addUserPreset, capturePreset, exportPresets, importPresets, migrateUserPresets, nextPresetName, presetsOf } from './device-presets';
+import { presetEngines, snapshotPreset } from './snapshot-presets';
 import { armedFromMask, armMask } from './arm';
 import './factory-presets'; // the factory engines' presets (#193)
 import { fxBusOf, fxRuntimeHelpers } from './fx-bus';
@@ -66,7 +67,7 @@ import { DEFS } from './modules';
 import { addModule, newPatch, trackLabel, validatePatch, type Patch, type SideKey } from './patch';
 import { diffCount, diffLines, diffPatches } from './diff';
 import { loadLibrary, summary } from './assemblies';
-import type { AssemblyDef } from './assembly';
+import type { AssemblyDef, AssemblyInst } from './assembly';
 import { defIsEngine, feedsOutput } from './engines';
 import { EngineStart } from './engine-start';
 import { encodeShare, handOut, isShareLink, openShareLink, shareCodeOf } from './share';
@@ -1591,7 +1592,14 @@ function renderSnapshots(): void {
   const take = entry(list.length ? '+' : '+ Snapshot', 'Take a snapshot of the patch on screen (Shift+Alt+B)', false, () => takeSnapshot());
   take.classList.add('snap-take');
   take.removeAttribute('aria-pressed');
-  snapStrip.replaceChildren(...items, ...(list.length ? [entry('Current', 'The current patch: your latest edits. Alt+B or Alt+J goes on through the snapshots and round again, Alt+K goes back', shown === null, () => showStop(null))] : []), take);
+  const current = list.length ? [entry('Current', 'The current patch: your latest edits. Alt+B or Alt+J goes on through the snapshots and round again, Alt+K goes back. Right-click to store the kept snapshots as presets', shown === null, () => showStop(null))] : [];
+  for (const b of current) b.oncontextmenu = (e) => {
+    const items = keptPresetItems();
+    if (!items.length) return;
+    e.preventDefault();
+    popMenu(items, b);
+  };
+  snapStrip.replaceChildren(...items, ...current, take);
 }
 const snapshotMenu = (s: Snapshot): MenuItem[] => [
   { text: s.mark === 'keep' ? 'Unmark keep' : 'Keep', run: () => editor.setKeep(s.letter, s.mark !== 'keep') },
@@ -1610,12 +1618,37 @@ const snapshotMenu = (s: Snapshot): MenuItem[] => [
     const name = window.prompt('Save the snapshot to Your patches as', s.name ?? `${p.name} ${s.letter}`)?.trim();
     if (name) status.textContent = keepPatch({ ...p, name }).msg;
   } },
+  ...presetEngines(editor.currentPatch()).map((a, i) => ({ text: `Store as a preset of ${a.label}…`, rule: i === 0, run: () => storeSnapshotPreset(s, a) })),
+  ...keptPresetItems(),
   { text: 'Remove', danger: true, run: () => {
     editor.removeSnapshot(s.letter);
     status.textContent = `snapshot ${s.letter} removed`;
     queueSave(editor.patch);
   } },
 ];
+// ---- presets from snapshots (#1031, D-993): a snapshot's values for an engine become a preset of the current patch's
+// engine, without a switch; one undo step takes them out again
+/** store snapshot `s`'s values for the engine `a` as a preset of the current patch's `a`, under a name the user gives */
+const storeSnapshotPreset = (s: Snapshot, a: AssemblyInst): void => {
+  const cur = editor.currentPatch();
+  if (!snapshotPreset(cur, a, editor.snapshotVersion(s), a.label))
+    return void (status.textContent = `${a.label} or its FX rack in snapshot ${s.letter} is built differently from the current patch's: a preset holds values only, so it cannot be one of its presets`);
+  const name = window.prompt(`Store snapshot ${s.letter}’s ${a.label} as a preset of the current patch’s ${a.label}`, s.name ?? nextPresetName(cur, a))?.trim();
+  if (!name) return;
+  const [done] = editor.storeSnapshotPresets(a.id, [{ letter: s.letter, name }], false).stored;
+  if (done) status.textContent = `snapshot ${s.letter}’s ${a.label} stored as the preset “${done.name}” of ${a.label} (Ctrl/Cmd+Z takes it out)`;
+};
+/** every snapshot marked keep becomes a preset of the current patch's engine `a`, named after the snapshot */
+const storeKeptPresets = (a: AssemblyInst): void => {
+  const keeps = editor.snaps.list.filter((s) => s.mark === 'keep');
+  if (!keeps.length) return void (status.textContent = 'no snapshot is marked keep: right-click a snapshot > Keep, then each kept snapshot becomes a preset');
+  const { stored, skipped } = editor.storeSnapshotPresets(a.id, keeps.map((s) => ({ letter: s.letter, name: s.name ?? s.letter })), true);
+  if (!stored.length && !skipped.length) return;   // (an error: the status line says it)
+  const done = stored.length ? `${stored.length} preset${stored.length === 1 ? '' : 's'} of ${a.label} stored: ${stored.map((x) => `${x.letter} as “${x.name}”`).join(', ')} (Ctrl/Cmd+Z takes ${stored.length === 1 ? 'it' : 'them'} out)` : `no preset of ${a.label} stored`;
+  status.textContent = done + (skipped.length ? ` · skipped ${skipped.join(', ')}: ${a.label} or its FX rack is built differently there from the current patch's, and a preset holds values only` : '');
+};
+/** Store kept snapshots as presets, one item per engine of the current patch that has presets */
+const keptPresetItems = (): MenuItem[] => presetEngines(editor.currentPatch()).map((a, i) => ({ text: `Store kept snapshots as presets of ${a.label}`, rule: i === 0, run: () => storeKeptPresets(a) }));
 const takeSnapshot = (): void => {
   const s = editor.takeSnapshot();
   editor.rebuild();   // (the morph picker offers the snapshots)
@@ -1726,6 +1759,11 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Previous snapshot', detail: 'Alt+K', keywords: 'compare ab a/b switch flip cycle back current patch', run: inPatch(() => cycleSnapshots(-1)) },
     ...editor.snaps.list.map((s) => ({ kind: 'command' as const, label: `Show snapshot ${snapTitle(s)}`, keywords: 'compare ab a/b switch', run: inPatch(() => showStop(s.letter)) })),
     ...(editor.snaps.shown !== null ? [{ kind: 'command' as const, label: 'Back to the current patch', keywords: 'compare ab a/b switch snapshot', run: inPatch(() => showStop(null)) }] : []),
+    // presets from snapshots (#1031): of each engine of the current patch that has presets, without a switch
+    ...(editor.snaps.list.length ? presetEngines(editor.currentPatch()).flatMap((a) => [
+      ...editor.snaps.list.map((s) => ({ kind: 'command' as const, label: `Store snapshot ${snapTitle(s)} as a preset of ${a.label}…`, keywords: 'preset save engine sound current patch', run: inPatch(() => storeSnapshotPreset(s, a)) })),
+      { kind: 'command' as const, label: `Store kept snapshots as presets of ${a.label}`, keywords: 'preset save engine sound keep marked rank batch', run: inPatch(() => storeKeptPresets(a)) },
+    ]) : []),
     // Mutate and Randomize (#944): the selected cards' parameters, one undo step
     { kind: 'command', label: 'Mutate selection', detail: `Alt+M · ±${Math.round(editor.mutateAmount * 100)} %`, keywords: 'vary variation nudge random sound design', run: inPatch(() => void editor.mutate('mutate')) },
     { kind: 'command', label: 'Randomize selection', keywords: 'random dice new sound design', run: inPatch(() => void editor.mutate('randomize')) },

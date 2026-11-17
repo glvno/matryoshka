@@ -232,20 +232,35 @@ export function matchesPreset(p: Patch, a: AssemblyInst): boolean {
 /** store the assembly's values as a user preset under `name` (a user preset of that name for the structure is
  * overwritten; a factory one's name gets a new name: "<name> 2"); the assembly remembers it. Returns the name used. */
 export function storePreset(p: Patch, a: AssemblyInst, name: string): string {
-  const snapshot = capturePreset(p, a, name), structure = snapshot.structure;
-  if (fxPresetInfo(snapshot) && snapshot.values.length > PRESET_VALUES_MAX)
-    throw new Error(`This sound and its FX need ${snapshot.values.length} preset values; a preset holds ${PRESET_VALUES_MAX} at most`);
-  let n = fixName(name) || 'preset';
-  const available = presetsOf(p, a);
-  const taken = (x: string): boolean => available.some(f => (f.factory || f.structure !== structure) && sameName(f.name, x));
-  for (let k = 2; taken(n); k++) n = `${fixName(name).slice(0, PRESET_NAME_MAX - 3)} ${k}`;
-  const list = userPresets().filter((x) => !(x.structure === structure && sameName(x.name, n)));
-  list.push({ ...snapshot, name: n });
-  writeUser(list);
-  a.preset = n;
-  recalledStructures.set(a, structure);
+  const { put } = addPresetOf(p, a, capturePreset(p, a, name));
+  a.preset = put.name;
+  recalledStructures.set(a, put.structure);
   clearPresetPattern(p, a);
-  return n;
+  return put.name;
+}
+
+/** store `preset` (values captured from the assembly `a` of `p`, or from a version of `p`: a snapshot, #1031) as a user
+ * preset of `a`, named as storePreset names one; `fresh`: a name any of the assembly's presets has takes the next number
+ * instead of storing over a user preset. The assembly is left as it is. What it stored, and the user preset it replaced */
+export function addPresetOf(p: Patch, a: AssemblyInst, preset: Preset, fresh = false): { put: Preset; was?: Preset } {
+  const structure = preset.structure;
+  if (fxPresetInfo(preset) && preset.values.length > PRESET_VALUES_MAX)
+    throw new Error(`This sound and its FX need ${preset.values.length} preset values; a preset holds ${PRESET_VALUES_MAX} at most`);
+  let n = fixName(preset.name) || 'preset';
+  const available = presetsOf(p, a);
+  const taken = (x: string): boolean => available.some(f => (fresh || f.factory || f.structure !== structure) && sameName(f.name, x));
+  for (let k = 2; taken(n); k++) n = `${fixName(preset.name).slice(0, PRESET_NAME_MAX - 3)} ${k}`;
+  const users = userPresets();
+  const was = users.find((x) => x.structure === structure && sameName(x.name, n));
+  const put: Preset = { structure, name: n, values: [...preset.values] };
+  writeUser([...users.filter((x) => x !== was), put]);
+  return was ? { put, was } : { put };
+}
+
+/** take the user presets of these structures and names out of the library, then add `add` (an undo step's presets, #1031) */
+export function replaceUserPresets(drop: readonly { structure: string; name: string }[], add: readonly Preset[]): void {
+  const gone = (x: Preset): boolean => drop.some((d) => d.structure === x.structure && sameName(d.name, x.name));
+  writeUser([...userPresets().filter((x) => !gone(x)), ...add.map((x) => ({ structure: x.structure, name: x.name, values: [...x.values] }))]);
 }
 
 /** a user preset from elsewhere (the FM-1, #195): stored under its name, over one of the same structure and name in any
