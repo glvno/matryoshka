@@ -293,15 +293,31 @@ dialog.about .hsec h3 { margin-bottom: 10px; font-size: 22px; letter-spacing: .0
   font: 600 17px/1 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; }
 .help-btn:hover { color: var(--ink); border-color: var(--secondary); }
 .help-btn[hidden] { display: none; }
-/* the column at the canvas's right edge (#1038): the Output scope on top, the snapshots under it, one per row top to
-   bottom, the current patch last, + takes one. While there is a snapshot or the scope shows, the canvas gives up the
-   column's width (main.ts sets --snap-col-w), so cards and FIT stay clear of it; the ? button sits under it */
+/* the snapshot sidebar at the canvas's right edge (snap-side.ts, #1040): the Output scope on top, the snapshots under it
+   filling the rest, one per row in the order the user drags them to, the current patch last, + takes one. While there is
+   a snapshot or the scope shows, it is as wide as its left edge was dragged (--snap-side-w) and the canvas gives up its
+   width (main.ts sets --snap-col-w), so cards and FIT stay clear of it; » folds it to a strip with the letter on screen.
+   Everything in it shrinks to fit its height, so only the list ever scrolls; the ? button sits under it */
 .snap-column { position: absolute; right: 18px; top: 56px; bottom: 62px; z-index: 6; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; }
+.snap-column[hidden] { display: none; }
 .snap-column > * { pointer-events: auto; }
-#tab-patch:is(:has(.snapshot-strip .snap[aria-pressed]), :has(#output-scope:not([hidden]))) .snap-column { align-items: stretch; min-width: 220px; }
+.snap-column:is(:has(.snapshot-strip .snap[aria-pressed]), :has(#output-scope:not([hidden]))):not(.folded) { align-items: stretch; width: var(--snap-side-w, 300px); }
 #tab-patch:is(:has(.snapshot-strip .snap[aria-pressed]), :has(#output-scope:not([hidden]))) .canvas { width: calc(100% - var(--snap-col-w, 0px)); }
-.snapshot-strip { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 2px; padding: 2px; overflow-y: auto; overscroll-behavior: contain;
+.snap-column:not(:has(.snapshot-strip .snap[aria-pressed]), :has(#output-scope:not([hidden]))) > :is(.snap-side-head, .snap-side-mark, .snap-side-edge),
+.snap-column:not(.folded) > .snap-side-mark, .snap-column.folded > :not(.snap-side-mark) { display: none; }
+.snap-side-head { flex: none; display: flex; align-items: center; height: 22px; padding: 0 2px 0 8px; }
+.snap-side-title { font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.snap-side-fold { margin-left: auto; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); font-size: 14px; line-height: 1; }
+.snap-side-fold:hover { color: var(--ink); background: var(--line); }
+.snap-side-edge { position: absolute; left: -6px; top: 0; bottom: 0; width: 8px; cursor: ew-resize; touch-action: none; }
+/* folded: a thin strip as tall as the sidebar with the letter of the snapshot on screen (• for the current patch) */
+.snap-side-mark { flex: 1 1 auto; width: 30px; padding: 8px 0 0; display: flex; justify-content: center; align-items: flex-start;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 2px 8px var(--shadow); color: var(--ink);
+  font: var(--cap); font-size: 14px; letter-spacing: 0; cursor: pointer; }
+.snap-side-mark:hover { border-color: var(--secondary); }
+.snapshot-strip { position: relative; flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 2px; padding: 2px; overflow-y: auto; overscroll-behavior: contain;
   border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 2px 8px var(--shadow); }
+.snap-column:not(.folded):has(#output-scope:not([hidden]), .snapshot-strip .snap[aria-pressed]) .snapshot-strip { flex: 1 1 0; }
 .snapshot-strip .snap { display: flex; align-items: baseline; gap: 6px; flex: none; height: 26px; padding: 0 9px; border: 0; border-radius: 6px; background: none; color: var(--muted);
   font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; text-align: left; white-space: nowrap; }
 .snapshot-strip .snap:hover { color: var(--ink); }
@@ -310,28 +326,33 @@ dialog.about .hsec h3 { margin-bottom: 10px; font-size: 22px; letter-spacing: .0
 .snapshot-strip .snap-name { flex: 1 1 auto; min-width: 0; text-transform: none; letter-spacing: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .snapshot-strip .snap-thumb { margin-left: auto; font-size: 10px; letter-spacing: 0; opacity: .7; font-variant-numeric: tabular-nums; }
 .snapshot-strip .snap-take { color: var(--secondary); }
+/* a drag puts a snapshot elsewhere in the list (#1040): the row being dragged fades, a line shows where it goes */
+.snapshot-strip .snap.dragging { opacity: .5; }
+.snapshot-strip .snap.drop-before { background-image: linear-gradient(var(--secondary), var(--secondary)); background-repeat: no-repeat; background-size: 100% 2px; background-position: top; }
+.snapshot-strip .snap.drop-after { background-image: linear-gradient(var(--secondary), var(--secondary)); background-repeat: no-repeat; background-size: 100% 2px; background-position: bottom; }
 /* rank and cut (#996): a kept candidate has a bar at its left and a tick; ←B: mutated from B */
 .snapshot-strip .snap.keep { box-shadow: inset 3px 0 0 var(--secondary); }
 .snapshot-strip .snap.keep::before { content: '✓'; color: var(--secondary); }
 .snapshot-strip .snap-from { font-size: 10px; letter-spacing: 0; text-transform: none; opacity: .7; }
 .snapshot-strip[hidden] { display: none; }
-/* the Output scope (output-scope.ts, #1029): a Scope screen of what is heard, at the top of the column over the
-   snapshots; its toolbar always shows; it grows to the left and down from its left edge, bottom edge and bottom left corner */
-.output-scope { position: relative; flex: none; display: flex; flex-direction: column; gap: 4px; padding: 4px 6px 6px;
+/* the Output scope (output-scope.ts, #1029): a Scope screen of what is heard, at the top of the sidebar over the snapshots,
+   as wide as the sidebar; its toolbar always shows; the bar under it (the divider) sets its height. It shrinks and clips
+   when the sidebar is shorter than it */
+.output-scope { position: relative; flex: 0 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 4px; padding: 4px 6px 0;
   border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 2px 8px var(--shadow); }
 .output-scope[hidden] { display: none; }
-.output-scope .oscope-head { display: flex; align-items: center; gap: 6px; }
+.output-scope .oscope-head { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
 .output-scope .oscope-title { font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); cursor: default; }
 .output-scope .scope-tools { display: flex; align-items: center; gap: 2px; margin-left: auto; }
 .output-scope .oscope-fold { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); font-size: 11px; line-height: 1; }
 .output-scope .oscope-fold:hover { color: var(--ink); background: var(--line); }
 .output-scope.collapsed { padding: 2px 4px 2px 8px; }
 .output-scope.collapsed .oscope-fold { margin-left: 4px; }
-.output-scope.collapsed :is(.oscope-body, .scope-tools, .oscope-grip) { display: none; }
-.output-scope .oscope-grip { position: absolute; z-index: 1; touch-action: none; }
-.output-scope .oscope-grip.bottom { left: 10px; right: 10px; bottom: -4px; height: 8px; cursor: ns-resize; }
-.output-scope .oscope-grip.left { top: 10px; bottom: 10px; left: -4px; width: 8px; cursor: ew-resize; }
-.output-scope .oscope-grip.corner { bottom: -6px; left: -6px; width: 14px; height: 14px; cursor: nesw-resize; }
+.output-scope.collapsed :is(.oscope-body, .scope-tools, .oscope-divider) { display: none; }
+.output-scope .oscope-body { min-height: 0; }
+.output-scope .oscope-divider { flex: none; height: 8px; margin: -2px -6px 0; cursor: ns-resize; touch-action: none; }
+.output-scope .oscope-divider::after { content: ''; display: block; width: 28px; height: 2px; margin: 3px auto 0; border-radius: 1px; background: var(--line); }
+.output-scope .oscope-divider:hover::after { background: var(--secondary); }
 dialog.help .shead { flex: none; height: 34px; padding: 0 6px 0 10px; }
 dialog.help .shead form { margin: 0; }
 dialog.help .help-close { border: 0; background: transparent; color: var(--muted); font-size: 20px; line-height: 1; padding: 2px 8px; }

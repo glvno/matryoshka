@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The Output scope (#1029, D-992): a Scope module's screen and toolbar (scope-view.ts) whose input is what is heard, so
-// comparing snapshots needs no Scope card and no cable. It sits at the top of the column at the canvas's right edge, over
-// the snapshots (#1038), while
-// there is a snapshot, or always once the palette's "Output scope" opened it; its collapse button folds it to its title.
-// Its Scope belongs to no patch: nothing about it is saved in the patch or sent to the FM-1; this browser remembers its
-// size, its mode, window and scale, and whether it is folded. It streams only while its screen is on show (scope-view.ts).
+// comparing snapshots needs no Scope card and no cable. It sits at the top of the snapshot sidebar at the canvas's right
+// edge (snap-side.ts, #1040), over the snapshots, while there is a snapshot, or always once the palette's "Output scope"
+// opened it; its collapse button folds it to its title. Its screen is as wide as the sidebar; the divider under it sets
+// its height. Its Scope belongs to no patch: nothing about it is saved in the patch or sent to the FM-1; this browser
+// remembers its height, its mode, window and scale, and whether it is folded. It streams only while its screen is on show
+// (scope-view.ts).
 import { DEFS } from './modules';
 import type { ModuleInst } from './patch';
 import { scopeTools, type ScreenSpec } from './scope-view';
@@ -13,15 +14,14 @@ import { scopeTools, type ScreenSpec } from './scope-view';
 export const OUTPUT_SCOPE_KEY = 'output-scope';
 /** where this browser keeps it */
 export const OUTPUT_SCOPE_STORE = 'matryoshka.outputScope';
-/** the screen's size in CSS px: the default, the smallest and the largest (the window and the column can make the largest smaller) */
-export const SCREEN_DEFAULT = { w: 260, h: 140 };
-export const SCREEN_MIN = { w: 200, h: 80 };
-export const SCREEN_MAX = { w: 1200, h: 640 };
-/** what the largest leaves of the window beside it (the sidebar, the canvas) and of the column under it (the snapshots) */
-const ROOM = { w: 520, h: 220, list: 120 };
+/** the screen's height in CSS px: the default, the smallest and the largest (the window and the sidebar can make the largest smaller) */
+export const SCREEN_H = { default: 140, min: 80, max: 640 };
+/** what the tallest leaves of the window (the bar above, the deck under it) and of the sidebar (its head, the scope's own
+ *  toolbar and frame, and at least 120 CSS px of the snapshots under it) */
+const ROOM = { h: 220, list: 220 };
 
 interface Saved {
-  w: number;
+  /** the screen's height */
   h: number;
   /** the Scope's own parameters: mode, time, scale */
   params: Record<string, number>;
@@ -48,7 +48,7 @@ export class OutputScope {
 
   constructor(readonly root: HTMLElement, screens: Screens, private storage: Pick<Storage, 'getItem' | 'setItem'> | null = globalThis.localStorage ?? null) {
     const defaults = Object.fromEntries(DEFS.scope.params.map((q) => [q.name, q.default]));
-    this.saved = { ...SCREEN_DEFAULT, params: {}, collapsed: false, pinned: false, ...this.load() };
+    this.saved = { h: SCREEN_H.default, params: {}, collapsed: false, pinned: false, ...this.load() };
     this.saved.params = { ...defaults, ...this.saved.params, voices: 0 };
     this.m = { id: -1, type: 'scope', x: 0, y: 0, params: this.saved.params };
     root.classList.add('output-scope');
@@ -71,11 +71,11 @@ export class OutputScope {
     const body = document.createElement('div');
     body.className = 'oscope-body';
     body.append(this.screen);
-    const grips = (['left', 'bottom', 'corner'] as const).map((edge) => this.grip(edge));
-    root.replaceChildren(head, body, ...grips);
+    root.replaceChildren(head, body, this.divider());
     screens.sync([{ m: this.m, el: this.screen, chans: [[{ id: -1, port: 'out', kind: 'audio', label: 'what you hear' }]], key: OUTPUT_SCOPE_KEY, output: true }]);
-    this.size(this.saved.w, this.saved.h);
+    this.size(this.saved.h);
     this.show();
+    globalThis.addEventListener?.('resize', () => this.size(this.saved.h));
   }
 
   /** shown at all (open or folded) */
@@ -88,9 +88,9 @@ export class OutputScope {
     return this.visible && !this.saved.collapsed;
   }
 
-  /** the screen's size now */
-  get screenSize(): { w: number; h: number } {
-    return { w: this.saved.w, h: this.saved.h };
+  /** the screen's height now */
+  get screenHeight(): number {
+    return this.saved.h;
   }
 
   /** where it may show: the patch view on screen (`inPatch`) and how many snapshots there are */
@@ -117,14 +117,12 @@ export class OutputScope {
     this.show();
   }
 
-  /** the screen's size, held between the smallest and the largest the window and the column allow */
-  size(w: number, h: number): void {
-    const maxW = Math.max(SCREEN_MIN.w, Math.min(SCREEN_MAX.w, (globalThis.innerWidth || Infinity) - ROOM.w));
-    const column = this.root.parentElement?.clientHeight || Infinity;
-    const maxH = Math.max(SCREEN_MIN.h, Math.min(SCREEN_MAX.h, (globalThis.innerHeight || Infinity) - ROOM.h, column - ROOM.list));
-    this.saved.w = Math.round(clamp(w, SCREEN_MIN.w, maxW));
-    this.saved.h = Math.round(clamp(h, SCREEN_MIN.h, maxH));
-    this.screen.style.width = `${this.saved.w}px`;
+  /** the screen's height, held between the smallest and the largest the window and the sidebar allow (the snapshots
+   *  under it keep some of the sidebar) */
+  size(h: number): void {
+    const side = this.root.parentElement?.clientHeight || Infinity;
+    const maxH = Math.max(SCREEN_H.min, Math.min(SCREEN_H.max, (globalThis.innerHeight || Infinity) - ROOM.h, side - ROOM.list));
+    this.saved.h = Math.round(clamp(h, SCREEN_H.min, maxH));
     this.screen.style.height = `${this.saved.h}px`;
   }
 
@@ -137,18 +135,18 @@ export class OutputScope {
     this.fold.setAttribute('aria-expanded', String(!this.saved.collapsed));
   }
 
-  /** a drag handle on its left edge, its bottom edge or its bottom left corner (it is anchored at its top right) */
-  private grip(edge: 'left' | 'bottom' | 'corner'): HTMLElement {
+  /** the divider between it and the snapshots under it: a drag sets the screen's height */
+  private divider(): HTMLElement {
     const g = document.createElement('div');
-    g.className = `oscope-grip ${edge}`;
-    g.setAttribute('aria-hidden', 'true');
+    g.className = 'oscope-divider';
+    g.title = 'Drag to make the Output scope taller or shorter';
     g.onpointerdown = (e) => {
       if (e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
-      const from = { x: e.clientX, y: e.clientY, ...this.screenSize };
+      const from = { y: e.clientY, h: this.saved.h };
       try { g.setPointerCapture(e.pointerId); } catch { /* (a synthetic pointer) */ }
-      const move = (ev: PointerEvent): void => this.size(edge === 'bottom' ? from.w : from.w - (ev.clientX - from.x), edge === 'left' ? from.h : from.h + ev.clientY - from.y);
+      const move = (ev: PointerEvent): void => this.size(from.h + ev.clientY - from.y);
       const up = (): void => {
         g.removeEventListener('pointermove', move);
         g.removeEventListener('pointerup', up);
@@ -168,7 +166,7 @@ export class OutputScope {
       if (!v || typeof v !== 'object') return {};
       const num = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
       const params = Object.fromEntries(Object.entries(v.params ?? {}).filter(([k, x]) => ['mode', 'time', 'scale'].includes(k) && num(x)));
-      return { ...(num(v.w) ? { w: v.w } : {}), ...(num(v.h) ? { h: v.h } : {}), params, collapsed: v.collapsed === true, pinned: v.pinned === true };
+      return { ...(num(v.h) ? { h: v.h } : {}), params, collapsed: v.collapsed === true, pinned: v.pinned === true };
     } catch {
       return {};
     }

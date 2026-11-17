@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: GPL-3.0-only
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { OUTPUT_SCOPE_KEY, OUTPUT_SCOPE_STORE, OutputScope, SCREEN_DEFAULT, SCREEN_MIN } from './output-scope';
+import { OUTPUT_SCOPE_KEY, OUTPUT_SCOPE_STORE, OutputScope, SCREEN_H } from './output-scope';
 import { ScopeScreens } from './scope-view';
 import type { HostMsg } from './worklet';
 
@@ -97,21 +97,23 @@ describe('Output scope (#1029)', () => {
     expect(again.visible).toBe(false);
   });
 
-  it('remembers its size from a drag on its corner, held between the smallest and the largest', () => {
+  it('remembers its height from a drag on the divider under it, held between the smallest and the largest', () => {
     const { scope, root } = make();
     scope.update(true, 1);
-    expect(scope.screenSize).toEqual(SCREEN_DEFAULT);
-    const corner = root.querySelector<HTMLElement>('.oscope-grip.corner')!;
-    corner.dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientX: 100, clientY: 500 }));
-    corner.dispatchEvent(new MouseEvent('pointermove', { clientX: 40, clientY: 560 }));
-    corner.dispatchEvent(new MouseEvent('pointerup'));
-    expect(scope.screenSize).toEqual({ w: SCREEN_DEFAULT.w + 60, h: SCREEN_DEFAULT.h + 60 });
-    expect(root.querySelector<HTMLElement>('.oscope-screen')!.style.width).toBe(`${SCREEN_DEFAULT.w + 60}px`);
+    expect(scope.screenHeight).toBe(SCREEN_H.default);
+    const divider = root.querySelector<HTMLElement>('.oscope-divider')!;
+    divider.dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientX: 100, clientY: 500 }));
+    divider.dispatchEvent(new MouseEvent('pointermove', { clientX: 40, clientY: 560 }));
+    divider.dispatchEvent(new MouseEvent('pointerup'));
+    expect(scope.screenHeight).toBe(SCREEN_H.default + 60);
+    const screen = root.querySelector<HTMLElement>('.oscope-screen')!;
+    expect([screen.style.width, screen.style.height]).toEqual(['', `${SCREEN_H.default + 60}px`]);   // (as wide as the sidebar)
     const next = make().scope;
-    expect(next.screenSize).toEqual({ w: SCREEN_DEFAULT.w + 60, h: SCREEN_DEFAULT.h + 60 });
-    next.size(10, 10_000);
-    expect(next.screenSize.w).toBe(SCREEN_MIN.w);
-    expect(next.screenSize.h).toBeLessThan(innerHeight);
+    expect(next.screenHeight).toBe(SCREEN_H.default + 60);
+    next.size(10);
+    expect(next.screenHeight).toBe(SCREEN_H.min);
+    next.size(10_000);
+    expect(next.screenHeight).toBeLessThan(innerHeight);
   });
 
   it('streams and draws only while it is open and on show', () => {

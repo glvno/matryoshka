@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The snapshots (#943): versions of the patch kept with the open patch in this browser, lettered A, B, C… in the order they are
-// taken, to compare by ear with the current patch. The switch goes through them in order, then to the current patch, then
-// round again, both ways (#1028), so the current patch is always one of the stops. This is the list, its rules and its keys;
-// the editor (editor.ts) switches the patch on screen with ab.ts's in-place rules.
+// taken, to compare by ear with the current patch. The switch goes through them in the list's order, which the user sets by
+// dragging (#1040), then to the current patch, then round again, both ways (#1028), so the current patch is always one of the
+// stops. This is the list, its rules and its keys; the editor (editor.ts) switches the patch on screen with ab.ts's in-place rules.
 
 import type { Patch } from './patch';
 
@@ -19,17 +19,18 @@ export interface Snapshot {
   from?: string;
 }
 
-/** what a snapshot key does: go to the next stop or the one before, take a snapshot, remove the snapshot on screen */
-export type SnapshotKey = 'next' | 'previous' | 'take' | 'remove';
+/** what a snapshot key does: go to the next stop or the one before, take a snapshot, remove the snapshot on screen, make
+ *  the snapshot on screen the current patch */
+export type SnapshotKey = 'next' | 'previous' | 'take' | 'remove' | 'current';
 
-/** the snapshot key a keydown is (D-984, #1028), null for any other: Alt+B or Alt+J the next stop, Alt+K the one before,
- *  Shift+Alt+B take a snapshot, Alt+X remove the snapshot on screen at once. Read by the key's place, as Option+letter
- *  types a symbol on a Mac (B by its letter too, as before) */
+/** the snapshot key a keydown is (D-984, #1028, #1040), null for any other: Alt+B or Alt+J the next stop, Alt+K the one
+ *  before, Shift+Alt+B take a snapshot, Alt+X remove the snapshot on screen at once, Alt+C make the snapshot on screen the
+ *  current patch. Read by the key's place, as Option+letter types a symbol on a Mac (B by its letter too, as before) */
 export function snapshotKey(e: Pick<KeyboardEvent, 'altKey' | 'shiftKey' | 'ctrlKey' | 'metaKey' | 'code' | 'key'>): SnapshotKey | null {
   if (!e.altKey || e.ctrlKey || e.metaKey) return null;
   if (e.code === 'KeyB' || e.key.toLowerCase() === 'b') return e.shiftKey ? 'take' : 'next';
   if (e.shiftKey) return null;
-  return e.code === 'KeyJ' ? 'next' : e.code === 'KeyK' ? 'previous' : e.code === 'KeyX' ? 'remove' : null;
+  return e.code === 'KeyJ' ? 'next' : e.code === 'KeyK' ? 'previous' : e.code === 'KeyX' ? 'remove' : e.code === 'KeyC' ? 'current' : null;
 }
 
 /** the letter of the nth snapshot taken: A..Z, then AA, AB.. (spreadsheet columns) */
@@ -130,6 +131,12 @@ export class Snapshots {
   remove(letter: string): void {
     const i = this.list.findIndex((s) => s.letter === letter);
     if (i >= 0) this.list.splice(i, 1);
+  }
+
+  /** put a snapshot at place `to` of the list (#1040): its letter stays, the stops follow the new order */
+  move(letter: string, to: number): void {
+    const i = this.list.findIndex((s) => s.letter === letter);
+    if (i >= 0) this.list.splice(Math.max(0, Math.min(this.list.length - 1, to)), 0, ...this.list.splice(i, 1));
   }
 
   clear(): void {

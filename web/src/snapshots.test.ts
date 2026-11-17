@@ -88,14 +88,27 @@ describe('snapshots (#943)', () => {
     expect(snapshotRecord(text, [])).toBeNull();
   });
 
-  it('the snapshot keys, by the key\u2019s place: Alt+B or Alt+J the next stop, Alt+K the one before, Alt+X remove, Shift+Alt+B take (#1028)', () => {
+  it('the snapshot keys, by the key\u2019s place: Alt+B or Alt+J the next stop, Alt+K the one before, Alt+X remove, Alt+C make it the current patch, Shift+Alt+B take (#1028, #1040)', () => {
     const press = (code: string, mods: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean } = {}, typed = '\u222b') =>
       snapshotKey({ altKey: true, shiftKey: false, ctrlKey: false, metaKey: false, ...mods, code, key: typed });
-    expect(['KeyB', 'KeyJ', 'KeyK', 'KeyX'].map((c) => press(c))).toEqual(['next', 'next', 'previous', 'remove']);
+    expect(['KeyB', 'KeyJ', 'KeyK', 'KeyX', 'KeyC'].map((c) => press(c))).toEqual(['next', 'next', 'previous', 'remove', 'current']);
+    expect(press('KeyC', {}, '\u00e7')).toBe('current');   // (Option+C types ç on a Mac)
     expect(press('KeyB', { shiftKey: true })).toBe('take');
     expect(press('Quote', {}, 'b')).toBe('next');   // (B by its letter too, on another layout)
     // Shift+Alt+X (once Cut the losers) and the other Shift and Ctrl/Cmd forms are free; without Alt nothing is a snapshot key
-    for (const c of ['KeyJ', 'KeyK', 'KeyX']) expect(press(c, { shiftKey: true })).toBeNull();
-    for (const c of ['KeyB', 'KeyJ', 'KeyK', 'KeyX']) expect([press(c, { ctrlKey: true }), press(c, { metaKey: true }), press(c, { altKey: false })]).toEqual([null, null, null]);
+    for (const c of ['KeyJ', 'KeyK', 'KeyX', 'KeyC']) expect(press(c, { shiftKey: true })).toBeNull();
+    for (const c of ['KeyB', 'KeyJ', 'KeyK', 'KeyX', 'KeyC']) expect([press(c, { ctrlKey: true }), press(c, { metaKey: true }), press(c, { altKey: false })]).toEqual([null, null, null]);
+  });
+
+  it('a snapshot moved in the list keeps its letter; the stops follow the list, the current patch last (#1040)', () => {
+    const p = relocatedPatches['Oracle V']();
+    const s = new Snapshots();
+    for (let i = 0; i < 3; i++) s.take(p);
+    s.move('C', 0);
+    s.move('A', -5);   // (held to the list: the first place)
+    expect(s.list.map((x) => x.letter)).toEqual(['A', 'C', 'B']);
+    s.shown = 'B';
+    expect([s.next(), s.next(-1)]).toEqual([null, 'C']);
+    expect(s.nextLetter()).toBe('D');
   });
 });
