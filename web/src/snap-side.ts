@@ -63,13 +63,14 @@ export class SnapSidebar {
     root.dataset.keepFocus = '';
     root.setAttribute('role', 'region');
     root.setAttribute('aria-label', 'Sound design');
-    this.setWidth(this.saved.w);
+    this.apply();
     this.show();
-    globalThis.addEventListener?.('resize', () => this.setWidth(this.saved.w));
+    globalThis.addEventListener?.('resize', () => this.apply());
   }
 
+  /** its width now: the one the user set, held to what the window allows (a narrower window never forgets it) */
   get width(): number {
-    return this.saved.w;
+    return Math.round(Math.max(SIDE_W.min, Math.min(this.widest(), this.saved.w)));
   }
 
   /** folded to the rail: the user's choice, else folded until the first candidate */
@@ -77,11 +78,19 @@ export class SnapSidebar {
     return this.saved.folded ?? this.candidates === 0;
   }
 
-  /** the width, held between the narrowest and the widest the window allows */
+  /** set the width, held between the narrowest and the widest the window allows */
   setWidth(w: number): void {
-    const max = Math.max(SIDE_W.min, Math.min(SIDE_W.max, (globalThis.innerWidth || Infinity) - ROOM));
-    this.saved.w = Math.round(Math.max(SIDE_W.min, Math.min(max, w)));
-    this.root.style.setProperty('--snap-side-w', `${this.saved.w}px`);
+    this.saved.w = Math.round(Math.max(SIDE_W.min, Math.min(this.widest(), w)));
+    this.apply();
+  }
+
+  /** the widest the window allows */
+  private widest(): number {
+    return Math.max(SIDE_W.min, Math.min(SIDE_W.max, (globalThis.innerWidth || Infinity) - ROOM));
+  }
+
+  private apply(): void {
+    this.root.style.setProperty('--snap-side-w', `${this.width}px`);
   }
 
   /** fold or open, as the user chose (remembered) */
@@ -120,7 +129,7 @@ export class SnapSidebar {
       if (e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
-      const from = { x: e.clientX, w: this.saved.w };
+      const from = { x: e.clientX, w: this.width };
       try { g.setPointerCapture(e.pointerId); } catch { /* (a synthetic pointer) */ }
       const move = (ev: PointerEvent): void => this.setWidth(from.w - (ev.clientX - from.x));
       const up = (): void => {
@@ -291,7 +300,8 @@ export function renderList(strip: HTMLElement, v: SideView, act: SideActions): v
   // the row heard stays in view of the list when it scrolls, under A (which stays at the top); only the list scrolls
   // (scrollIntoView could scroll the page)
   const on = strip.querySelector<HTMLElement>('.snap.shown:not(.current)');
-  if (on && on.offsetTop < strip.scrollTop + a.offsetHeight) strip.scrollTop = on.offsetTop - a.offsetHeight;
+  const under = a.offsetHeight + 8;   // (A and the rule under it, which cover the top of the list)
+  if (on && on.offsetTop < strip.scrollTop + under) strip.scrollTop = on.offsetTop - under;
   else if (on && on.offsetTop + on.offsetHeight > strip.scrollTop + strip.clientHeight) strip.scrollTop = on.offsetTop + on.offsetHeight - strip.clientHeight;
 }
 
