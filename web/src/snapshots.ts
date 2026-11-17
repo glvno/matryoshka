@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The snapshots (#943): versions of the patch kept with the open patch in this browser, lettered A, B, C… in the order they are
-// taken, to compare by ear with the current patch. The switch goes through them in order and then back to the current
-// patch, so the current patch is always one of the stops. This is the list and its rules; the editor (editor.ts) switches
-// the patch on screen with ab.ts's in-place rules.
+// taken, to compare by ear with the current patch. The switch goes through them in order, then to the current patch, then
+// round again, both ways (#1028), so the current patch is always one of the stops. This is the list, its rules and its keys;
+// the editor (editor.ts) switches the patch on screen with ab.ts's in-place rules.
 
 import type { Patch } from './patch';
 
@@ -13,13 +13,24 @@ export interface Snapshot {
   name?: string;
   /** the patch as it was taken (JSON) */
   patch: string;
-  /** the user's verdict in rank and cut (#996): keep, or cut by Cut the losers; none: not judged yet */
-  mark?: SnapshotMark;
+  /** kept in rank and cut (#996): Make candidates breeds from the snapshots marked keep; none: not marked */
+  mark?: 'keep';
   /** what Make candidates mutated it from: a snapshot's letter, or `current` for the current patch; none: taken by hand */
   from?: string;
 }
 
-export type SnapshotMark = 'keep' | 'cut';
+/** what a snapshot key does: go to the next stop or the one before, take a snapshot, remove the snapshot on screen */
+export type SnapshotKey = 'next' | 'previous' | 'take' | 'remove';
+
+/** the snapshot key a keydown is (D-984, #1028), null for any other: Alt+B or Alt+J the next stop, Alt+K the one before,
+ *  Shift+Alt+B take a snapshot, Alt+X remove the snapshot on screen at once. Read by the key's place, as Option+letter
+ *  types a symbol on a Mac (B by its letter too, as before) */
+export function snapshotKey(e: Pick<KeyboardEvent, 'altKey' | 'shiftKey' | 'ctrlKey' | 'metaKey' | 'code' | 'key'>): SnapshotKey | null {
+  if (!e.altKey || e.ctrlKey || e.metaKey) return null;
+  if (e.code === 'KeyB' || e.key.toLowerCase() === 'b') return e.shiftKey ? 'take' : 'next';
+  if (e.shiftKey) return null;
+  return e.code === 'KeyJ' ? 'next' : e.code === 'KeyK' ? 'previous' : e.code === 'KeyX' ? 'remove' : null;
+}
 
 /** the letter of the nth snapshot taken: A..Z, then AA, AB.. (spreadsheet columns) */
 export function letterAt(n: number): string {
@@ -68,7 +79,7 @@ export function storedSnapshots(record: string | null, patchText: string | null)
     const r = JSON.parse(record) as { patch?: unknown; list?: unknown };
     if (r.patch !== fingerprint(patchText) || !Array.isArray(r.list)) return [];
     return (r.list as Partial<Snapshot>[]).filter((s): s is Snapshot => typeof s?.letter === 'string' && /^[A-Z]+$/.test(s.letter) && typeof s.patch === 'string' && (s.name === undefined || typeof s.name === 'string'))
-      .map((s) => ({ letter: s.letter, patch: s.patch, ...(s.name ? { name: s.name } : {}), ...(s.mark === 'keep' || s.mark === 'cut' ? { mark: s.mark } : {}), ...(typeof s.from === 'string' ? { from: s.from } : {}) }));
+      .map((s) => ({ letter: s.letter, patch: s.patch, ...(s.name ? { name: s.name } : {}), ...(s.mark === 'keep' ? { mark: s.mark } : {}), ...(typeof s.from === 'string' ? { from: s.from } : {}) }));
   } catch {
     return [];
   }

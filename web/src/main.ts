@@ -29,7 +29,7 @@ import { Fm1View } from './fm1-view';
 import { panelPlay, EmuKeys } from './emu-keys';
 import { SandboxKeys } from './sandbox-keys';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
-import { snapshotRecord, storedSnapshots, type Snapshot, type SnapshotMark } from './snapshots';
+import { snapshotKey, snapshotRecord, storedSnapshots, type Snapshot, type SnapshotKey } from './snapshots';
 import { ScopeScreens } from './scope-view';
 import { OutputLoudness } from './loudness-view';
 import { EnvScreens } from './env-view';
@@ -1534,8 +1534,8 @@ const showDiff = (): void => {
   diffPanel.hidden = false;
 };
 // ---- snapshots (#943): versions of the patch kept with it, lettered A, B… as they are taken (kept beside the remembered
-// patch: save, D-972). The strip over the canvas shows them with the current patch last; Alt+B goes A, B, …, the current
-// patch, A…, Shift+Alt+B takes one
+// patch: save, D-972). The strip over the canvas shows them with the current patch last; Alt+B or Alt+J goes A, B, …, the
+// current patch, A…, Alt+K the other way (#1028), Shift+Alt+B takes one, Alt+X removes the one on screen
 const snapStrip = $('snapshot-strip');
 /** how many changes the snapshot is from the current patch, counted as Show changes counts them */
 const snapChanges = (s: Snapshot): number => diffCount(diffPatches(editor.currentPatch(), JSON.parse(s.patch) as Patch, DEFS));
@@ -1556,7 +1556,7 @@ function renderSnapshots(): void {
   const items = list.map((s) => {
     const n = snapChanges(s);
     const changed = edited && shown === s.letter;
-    const verdict = s.mark === 'keep' ? '. Marked keep' : s.mark === 'cut' ? '. Marked cut: Cut the losers (Shift+Alt+X) removes it' : '';
+    const verdict = s.mark === 'keep' ? '. Marked keep: Make candidates breeds from the keeps' : '';
     const origin = s.from ? `. ${s.from.includes('+') ? 'Bred' : 'Mutated'} from ${s.from === 'current' ? 'the current patch' : s.from.includes('+') ? `the keeps ${s.from}` : s.from}` : '';
     const b = entry(s.letter, `Snapshot ${snapTitle(s)}: ${n ? `${n} change${n === 1 ? '' : 's'} from the current patch` : 'the same as the current patch'}${origin}${verdict}${changed ? '. Changed since it was taken: switching away keeps the changes as a new snapshot' : ''}. Click to hear it, right-click or double-click for more`, shown === s.letter, () => showStop(s.letter));
     if (changed) b.classList.add('edited');
@@ -1586,11 +1586,10 @@ function renderSnapshots(): void {
   const take = entry(list.length ? '+' : '+ Snapshot', 'Take a snapshot of the patch on screen (Shift+Alt+B)', false, () => takeSnapshot());
   take.classList.add('snap-take');
   take.removeAttribute('aria-pressed');
-  snapStrip.replaceChildren(...items, ...(list.length ? [entry('Current', 'The current patch: your latest edits (Alt+B goes through the snapshots and back here)', shown === null, () => showStop(null))] : []), take);
+  snapStrip.replaceChildren(...items, ...(list.length ? [entry('Current', 'The current patch: your latest edits. Alt+B or Alt+J goes on through the snapshots and round again, Alt+K goes back', shown === null, () => showStop(null))] : []), take);
 }
 const snapshotMenu = (s: Snapshot): MenuItem[] => [
-  { text: s.mark === 'keep' ? 'Unmark keep' : 'Keep', key: 'Alt+K', run: () => editor.setMark(s.letter, s.mark === 'keep' ? null : 'keep') },
-  { text: s.mark === 'cut' ? 'Unmark cut' : 'Mark to cut', key: 'Alt+X', run: () => editor.setMark(s.letter, s.mark === 'cut' ? null : 'cut') },
+  { text: s.mark === 'keep' ? 'Unmark keep' : 'Keep', run: () => editor.setKeep(s.letter, s.mark !== 'keep') },
   { text: 'Make candidates from it', key: 'Alt+N', rule: true, run: () => { showStop(s.letter); makeCandidates(); } },
   { text: 'Rename…', run: () => {
     const to = window.prompt(`Name of snapshot ${s.letter} (empty: none)`, s.name ?? '');
@@ -1629,18 +1628,27 @@ const switched = (r: { kept?: Snapshot } | null): void => {
   queueSave(editor.patch);
 };
 const showStop = (letter: string | null): void => switched(editor.showSnapshot(letter));
-const cycleSnapshots = (): void => {
-  const r = editor.cycleSnapshots();
+/** the next stop (`step` -1: the one before) */
+const cycleSnapshots = (step: 1 | -1 = 1): void => {
+  const r = editor.cycleSnapshots(step);
   if (r) switched(r);
   else status.textContent = 'take a snapshot first (Shift+Alt+B), then Alt+B compares it with the current patch';
 };
-// ---- rank and cut (#996): Make candidates (Alt+N) mutates the patch on screen into new snapshots; Alt+K / Alt+X mark the
-// snapshot on screen keep / cut and go on to the next; Cut the losers (Shift+Alt+X) removes the cut ones in one undo step
-const markShown = (mark: SnapshotMark): void => {
-  const r = editor.markShown(mark);
-  if (!r) return void (status.textContent = 'show a snapshot first (Alt+B): the current patch is never cut');
-  if (r.mark === null) status.textContent = `snapshot ${r.letter}: no mark`;
-  else switched({}), (status.textContent = `${r.letter} marked ${r.mark} · ${status.textContent}`);
+/** Alt+X (#1028): remove the snapshot on screen at once (one undo step) and go on to the next stop */
+const removeShown = (): void => {
+  const r = editor.removeShown();
+  if (!r) return void (status.textContent = editor.snaps.list.length ? 'the current patch is on screen: Alt+X removes a snapshot, never the current patch (Alt+J or Alt+K goes to one)' : 'no snapshot to remove');
+  switched(r);
+  status.textContent = `snapshot ${r.removed.letter} removed (Ctrl/Cmd+Z puts it back) · ${status.textContent}`;
+};
+const snapshotKeyRun: Record<SnapshotKey, () => void> = { next: () => cycleSnapshots(1), previous: () => cycleSnapshots(-1), take: () => takeSnapshot(), remove: removeShown };
+// ---- rank and cut (#996): Make candidates (Alt+N) mutates the patch on screen into new snapshots; Alt+J / Alt+K go
+// through them, Alt+X removes a loser at once; the keep mark (no key) chooses what the next round breeds from
+const toggleKeepShown = (): void => {
+  const s = editor.snaps.get(editor.snaps.shown);
+  if (!s) return void (status.textContent = 'show a snapshot first (Alt+J): the current patch is never marked keep');
+  editor.setKeep(s.letter, s.mark !== 'keep');
+  status.textContent = `snapshot ${s.letter}: ${s.mark === 'keep' ? 'marked keep' : 'no mark'}`;
 };
 const makeCandidates = (): void => {
   const keeps = editor.snaps.list.filter((s) => s.mark === 'keep').map((s) => s.letter);
@@ -1650,13 +1658,7 @@ const makeCandidates = (): void => {
   editor.rebuild();   // (the morph picker offers the snapshots)
   switched({});
   const how = keeps.length >= 2 ? `bred, then mutated by up to ±${Math.round(editor.mutateAmount * 50)} %` : `each mutated by up to ±${Math.round(editor.mutateAmount * 100)} %`;
-  status.textContent = `${made.length} candidates from ${from}, ${made[0].letter}–${made.at(-1)!.letter}, ${how}${editor.mutatePitch ? '' : ', pitch held'}: Alt+K keeps, Alt+X cuts, Alt+B listens on`;
-};
-const cutLosers = (): void => {
-  const cut = editor.cutLosers();
-  if (!cut.length) return void (status.textContent = 'nothing marked cut (Alt+X on a snapshot marks it)');
-  status.textContent = `cut ${cut.map((s) => s.letter).join(', ')}; Ctrl/Cmd+Z puts them back`;
-  queueSave(editor.patch);
+  status.textContent = `${made.length} candidates from ${from}, ${made[0].letter}–${made.at(-1)!.letter}, ${how}${editor.mutatePitch ? '' : ', pitch held'}: Alt+J listens on, Alt+K back, Alt+X removes`;
 };
 // the snapshots the browser kept with the remembered patch, when the page opened on it (each is checked as a patch is)
 if (firstPatch === editor.patch && savedText !== null) {
@@ -1712,10 +1714,10 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Take a snapshot', detail: 'Shift+Alt+B', keywords: 'compare ab a/b set version keep', run: inPatch(takeSnapshot) },
     { kind: 'command', label: `Make ${candidates} candidates`, detail: 'Alt+N', keywords: 'rank cut mutate variations breed generate snapshots audition', run: inPatch(makeCandidates) },
     ...CANDIDATE_COUNTS.map((c) => ({ kind: 'command' as const, label: `Candidates per round: ${c}`, detail: c === candidates ? 'now' : undefined, keywords: 'rank cut make how many', run: () => setCandidates(c) })),
-    { kind: 'command', label: 'Keep this snapshot', detail: 'Alt+K', keywords: 'rank mark winner candidate', run: inPatch(() => markShown('keep')) },
-    { kind: 'command', label: 'Mark this snapshot to cut', detail: 'Alt+X', keywords: 'rank loser drop candidate', run: inPatch(() => markShown('cut')) },
-    { kind: 'command', label: 'Cut the losers', detail: 'Shift+Alt+X', keywords: 'rank remove drop marked cut candidates snapshots', run: inPatch(cutLosers) },
-    { kind: 'command', label: 'Next snapshot', detail: 'Alt+B', keywords: 'compare ab a/b switch flip cycle current patch', run: inPatch(cycleSnapshots) },
+    { kind: 'command', label: editor.snaps.get(editor.snaps.shown)?.mark === 'keep' ? 'Unmark keep on this snapshot' : 'Keep this snapshot', keywords: 'rank mark winner candidate breed', run: inPatch(toggleKeepShown) },
+    { kind: 'command', label: 'Remove this snapshot', detail: 'Alt+X', keywords: 'rank loser drop cut delete candidate', run: inPatch(removeShown) },
+    { kind: 'command', label: 'Next snapshot', detail: 'Alt+B · Alt+J', keywords: 'compare ab a/b switch flip cycle current patch', run: inPatch(() => cycleSnapshots(1)) },
+    { kind: 'command', label: 'Previous snapshot', detail: 'Alt+K', keywords: 'compare ab a/b switch flip cycle back current patch', run: inPatch(() => cycleSnapshots(-1)) },
     ...editor.snaps.list.map((s) => ({ kind: 'command' as const, label: `Show snapshot ${snapTitle(s)}`, keywords: 'compare ab a/b switch', run: inPatch(() => showStop(s.letter)) })),
     ...(editor.snaps.shown !== null ? [{ kind: 'command' as const, label: 'Back to the current patch', keywords: 'compare ab a/b switch snapshot', run: inPatch(() => showStop(null)) }] : []),
     // Mutate and Randomize (#944): the selected cards' parameters, one undo step
@@ -1945,6 +1947,7 @@ window.addEventListener('keydown', (e) => {
   if (t?.closest('[role=tab], [role=slider], input[type=range], input[type=radio], select, .resize-handle') && e.key.startsWith('Arrow')) return;
   const mod = e.metaKey || e.ctrlKey;
   const k = e.key;
+  const snapKey = snapshotKey(e);
   let done = editor.rollKey(e) || (!mod && !e.altKey && recordKey(k)); // the piano roll's keys (#136); a Steps card's cursor entry: rest, tie, cursor, stop (#127)
   if (done) {
     e.preventDefault();
@@ -1965,10 +1968,8 @@ window.addEventListener('keydown', (e) => {
   else if (mod && k.toLowerCase() === 'a') (editor.selectAllRows() || editor.selectAll(), (done = true));
   else if ((k === ' ' || k === 'Enter') && !mod && !e.altKey && editor.applyRows()) done = true; // pick mode: show / hide the selected rows
   else if (mod && k.toLowerCase() === 'd') done = editor.duplicateSelected();
-  else if (e.altKey && !mod && (e.code === 'KeyB' || k.toLowerCase() === 'b')) ((e.shiftKey ? takeSnapshot() : cycleSnapshots()), (done = true));   // (the code: Option+B types ∫ on a Mac)
-  // rank and cut (#996), by the code as Option+letter types a symbol on a Mac
-  else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyK') (markShown('keep'), (done = true));
-  else if (e.altKey && !mod && e.code === 'KeyX') ((e.shiftKey ? cutLosers() : markShown('cut')), (done = true));
+  else if (snapKey) (snapshotKeyRun[snapKey](), (done = true));   // (snapshots.ts snapshotKey: Alt+B / J / K / X, Shift+Alt+B)
+  // Make candidates (#996), by the code as Option+letter types a symbol on a Mac
   else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyN') (makeCandidates(), (done = true));
   // the canvas's TIDY and FIT (#987), Mutate (#944); by the code, as Option+letter types a symbol on a Mac
   else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyT') (onCanvas(() => editor.tidyUp())(), (done = true));

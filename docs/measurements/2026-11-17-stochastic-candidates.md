@@ -73,7 +73,7 @@ The ledger is not edited here.
 ### Population and user fatigue
 
 - Populations are small: 6 children on the G2, 9 in MutaSynth and Johnson's prototype, 12 Synplant branches, 16 or 32 in Edisyn. ([G2](https://www.nordkeyboards.com/wt/documents/237/Nord%20Modular%20G2%20Mutator%20English%20User%20Manual%20v1.0%20Edition%20A.pdf), [Dahlstedt 2001](https://www.dmu.ac.uk/documents/technology-documents/research/mtirc/nowalls/mww-dahlstedt.pdf), [Johnson 1999](https://kar.kent.ac.uk/21844/1/exploring_the_sound-space_johnson.pdf), [Synplant 2](https://soniccharge.com/public/Synplant%20User%20Guide.pdf?dl=20240830T095912&inline), [Edisyn](https://computationalcreativity.net/iccc23/papers/ICCC-2023_paper_119.pdf))
-- Takagi's survey puts "10 or 20" generations as the usual maximum, and finds coarse ratings reduce fatigue. ([Takagi 2001](https://catalog.lib.kyushu-u.ac.jp/opac_download_md/1670053/ProcIEEE_3.pdf)) Matryoshka's 2 to 8 candidates and keep-or-cut marks ([D-987](../ledger/editor.md#D-987), [D-988](../ledger/editor.md#D-988)) already fit this.
+- Takagi's survey puts "10 or 20" generations as the usual maximum, and finds coarse ratings reduce fatigue. ([Takagi 2001](https://catalog.lib.kyushu-u.ac.jp/opac_download_md/1670053/ProcIEEE_3.pdf)) Matryoshka's 2 to 8 candidates and one-key verdicts, a keep mark or removal at once ([D-987](../ledger/editor.md#D-987), [D-988](../ledger/editor.md#D-988)), already fit this.
 
 ### Known failure modes others name
 
