@@ -1465,7 +1465,7 @@ function showBudget(): void {
   const note = document.createElement('p');
   note.className = 'muted';
   note.textContent = b.fits
-    ? 'The CPU figures, the bar\'s, the cards\' and the list\'s, are estimates of the FM-1\'s first core, not measurements: each module type was measured on the real firmware in the emulator\'s timing model of the FM-1, and the sums checked against whole factory patches on the test rig. The second core plays half the parts of each poly group. Treat anything above 80 % as tight.'
+    ? 'The CPU figures, the bar\'s, the cards\' and the list\'s, are estimates of the FM-1\'s first core, not measurements: counted on a model of its processor, calibrated on the factory patches measured on the FM-1. The second core plays half the parts of each poly group. Treat anything above 80 % as tight.'
     : 'A sandbox patch: it plays here in the browser with no FM-1 limits. It goes to the FM-1 once it fits under the bars; Library > Patches marks it SANDBOX.';
   list.append(note);
   showSandbox(b);

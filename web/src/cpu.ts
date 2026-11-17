@@ -417,5 +417,5 @@ export function cardCostTitle(c: CardCost): string {
   const what = c.voices
     ? `About ${(100 * c.perVoice!).toFixed(1)} % of the FM-1's audio time a voice, ${(100 * c.share).toFixed(1)} % for its ${c.voices} voices`
     : `About ${(100 * c.share).toFixed(1)} % of the FM-1's audio time`;
-  return `${what}. An estimate from the emulator's timing model of the FM-1 (each module type measured on the real firmware, checked against whole factory patches on the test rig), not a measurement of this patch on the device. The FM-1 budget at the bottom right lists every card by cost.`;
+  return `${what}. A model estimate calibrated on whole factory patches measured on the test rig, not a measurement of this patch on the device. The FM-1 budget at the bottom right lists every card by cost.`;
 }
