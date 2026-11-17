@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "version": "1.18.1",
+  "kind": "web-only release (D-1160)",
+  "firmware_product": "FM-1_7011800",
+  "source_commit": "894a07e2f50c0f23cbc9a992133139284d23b06e",
+  "source_tree": "3460a3cba7f1f97cfa91081753f54d71ce9933b8",
+  "status": "approved for publication; automated checks and the owner's look passed",
+  "bundled_firmware": {
+    "release": "v1.18.0",
+    "package": {
+      "name": "web/public/firmware/matryoshka.fwsc",
+      "size": 610641,
+      "sha256": "d986a1bc1b9f6f7c288177d4822f8d5cef26793dd6042bceb37614ba865e392e"
+    },
+    "check": "web/public/firmware/matryoshka.fwsc and matryoshka.json are byte-identical to the v1.18.0 tag's (git diff v1.18.0 894a07e2 is empty for both)",
+    "note": "the tag holds newer firmware source than the package (D-105): the 1.18.0 released set (#989) and the dev version string; neither is shipped. The factory region's image gains the 1.18.0 released set (50,336 → 50,348 bytes) with the same set and content version, so no FM-1 is offered a factory update."
+  },
+  "ci_runs": {
+    "web_rc": 43980742753,
+    "web_rc_rejected": 43978190777
+  },
+  "full_web": {
+    "rc_run": 43980742753,
+    "run_success": true,
+    "result": "coverage run, the six parallel slow-render jobs and the coverage seal passed (D-1157 rc layout). Run 43978190777 was dispatched without rc_sha and refused at planning; no test ran in it.",
+    "coverage_record": "release/coverage/v1.18.1/ (measured on 894a07e2, D-147)"
+  },
+  "full_scenarios": {
+    "passed": 322,
+    "failed": 0,
+    "shards": 4,
+    "seconds": 1011,
+    "on_bridge_sha256": "29be1215333d6710fc2033bba63efdb66066dff3d7e38ce8b6687ceb54845a8f",
+    "note": "the scenarios of 894a07e2 on v1.18.0's bridge, the firmware users have (D-1160)"
+  },
+  "not_run": "firmware build, emu:smoke, boot check, the test rig and the full device check: the firmware is 1.18.0's, already qualified (release/qualification/v1.18.0.json)",
+  "owner_checks": {
+    "status": "passed",
+    "by": "repository owner",
+    "date": "2026-11-17",
+    "scope": "the 1.18.1 editor features on the candidate editor with the bundled package",
+    "report": "you're good to release 1.18.1",
+    "follow_up": "Mutate and Make candidates are too random: coarse pitch changes take candidates out of tune; to be studied after the release"
+  },
+  "release_approval": {
+    "status": "approved",
+    "by": "repository owner",
+    "date": "2026-11-17",
+    "instruction": "you're good to release 1.18.1",
+    "scope": "Publication of v1.18.1 tagged on the frozen commit 894a07e2; changes merged after the freeze (#1001, #1003) wait for the next release."
+  }
+}
