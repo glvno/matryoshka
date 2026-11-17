@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // @vitest-environment jsdom
-// Make candidates by ear (#1033, D-996): the probe and what its render measures, censored at its window, how a sound fits
-// a category, a round that keeps the candidates that pass and fills with the nearest, and a round that leaves the
-// browser's storage as it was (no sound kept).
+// Generate by ear (#1033, D-996): the probe and what its render measures, censored at its window, how a sound fits a
+// category, a round that keeps the candidates that pass and fills with the nearest, and a round that leaves the browser's
+// storage as it was (no sound kept).
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { keysOf } from './levels';
 import { cardScope, mutatePatch, PROFILES } from './mutate';

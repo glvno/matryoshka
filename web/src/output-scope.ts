@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The Output scope (#1029, D-992): a Scope module's screen and toolbar (scope-view.ts) whose input is what is heard, so
-// comparing snapshots needs no Scope card and no cable. It sits at the top of the snapshot sidebar at the canvas's right
-// edge (snap-side.ts, #1040), over the snapshots, while there is a snapshot, or always once the palette's "Output scope"
-// opened it; its collapse button folds it to its title. Its screen is as wide as the sidebar; the divider under it sets
-// its height. Its Scope belongs to no patch: nothing about it is saved in the patch or sent to the FM-1; this browser
-// remembers its height, its mode, window and scale, and whether it is folded. It streams only while its screen is on show
-// (scope-view.ts).
+// comparing candidates needs no Scope card and no cable. It sits at the top of the Sound design sidebar at the canvas's
+// right edge (snap-side.ts, #1040, #1048), over the candidates, whenever the patch view shows; its collapse button (and the
+// palette's "Output scope") folds it to its title and opens it again. Its screen is as wide as the sidebar; the divider
+// under it sets its height. Its Scope belongs to no patch: nothing about it is saved in the patch or sent to the FM-1; this
+// browser remembers its height, its mode, window and scale, and whether it is folded. It streams only while its screen is
+// on show (scope-view.ts), so not while the sidebar is folded.
 import { DEFS } from './modules';
 import type { ModuleInst } from './patch';
 import { scopeTools, type ScreenSpec } from './scope-view';
@@ -17,8 +17,8 @@ export const OUTPUT_SCOPE_STORE = 'matryoshka.outputScope';
 /** the screen's height in CSS px: the default, the smallest and the largest (the window and the sidebar can make the largest smaller) */
 export const SCREEN_H = { default: 140, min: 80, max: 640 };
 /** what the tallest leaves of the window (the bar above, the deck under it) and of the sidebar (its head, the scope's own
- *  toolbar and frame, and at least 120 CSS px of the snapshots under it) */
-const ROOM = { h: 220, list: 220 };
+ *  toolbar and frame, the candidates' head, at least 120 CSS px of the list and the footer under it) */
+const ROOM = { h: 220, list: 300 };
 
 interface Saved {
   /** the screen's height */
@@ -26,8 +26,6 @@ interface Saved {
   /** the Scope's own parameters: mode, time, scale */
   params: Record<string, number>;
   collapsed: boolean;
-  /** opened from the palette: it stays without a snapshot */
-  pinned: boolean;
 }
 
 /** the screens it is drawn by (scope-view.ts ScopeScreens) */
@@ -41,14 +39,13 @@ export class OutputScope {
   /** the Scope it shows: in no patch */
   readonly m: ModuleInst;
   private saved: Saved;
-  private inPatch = true;
-  private snapshots = 0;
+  private shownIn = true;
   private screen: HTMLElement;
   private fold: HTMLButtonElement;
 
   constructor(readonly root: HTMLElement, screens: Screens, private storage: Pick<Storage, 'getItem' | 'setItem'> | null = globalThis.localStorage ?? null) {
     const defaults = Object.fromEntries(DEFS.scope.params.map((q) => [q.name, q.default]));
-    this.saved = { h: SCREEN_H.default, params: {}, collapsed: false, pinned: false, ...this.load() };
+    this.saved = { h: SCREEN_H.default, params: {}, collapsed: false, ...this.load() };
     this.saved.params = { ...defaults, ...this.saved.params, voices: 0 };
     this.m = { id: -1, type: 'scope', x: 0, y: 0, params: this.saved.params };
     root.classList.add('output-scope');
@@ -93,31 +90,25 @@ export class OutputScope {
     return this.saved.h;
   }
 
-  /** where it may show: the patch view on screen (`inPatch`) and how many snapshots there are */
-  update(inPatch: boolean, snapshots: number): void {
-    this.inPatch = inPatch;
-    this.snapshots = snapshots;
+  /** where it may show: the patch view on screen */
+  update(inPatch: boolean): void {
+    this.shownIn = inPatch;
     this.show();
   }
 
-  /** the palette's Output scope: open it (it stays without a snapshot), or fold it away when it is open */
+  /** the palette's Output scope: open it, or fold it to its title when it is open */
   toggle(): void {
-    const opening = !this.open;
-    this.saved.pinned = opening;
-    this.saved.collapsed = !opening;
-    this.save();
-    this.show();
+    this.setCollapsed(this.open);
   }
 
-  /** fold to its title (no snapshot: gone until the palette opens it again), or open */
+  /** fold to its title, or open */
   setCollapsed(on: boolean): void {
     this.saved.collapsed = on;
-    if (on) this.saved.pinned = false;
     this.save();
     this.show();
   }
 
-  /** the screen's height, held between the smallest and the largest the window and the sidebar allow (the snapshots
+  /** the screen's height, held between the smallest and the largest the window and the sidebar allow (the candidates
    *  under it keep some of the sidebar) */
   size(h: number): void {
     const side = this.root.parentElement?.clientHeight || Infinity;
@@ -127,15 +118,15 @@ export class OutputScope {
   }
 
   private show(): void {
-    this.root.hidden = !this.inPatch || (!this.snapshots && !this.saved.pinned);
+    this.root.hidden = !this.shownIn;
     this.root.classList.toggle('collapsed', this.saved.collapsed);
     this.fold.textContent = this.saved.collapsed ? '▴' : '▾';
-    this.fold.title = this.saved.collapsed ? 'Open the Output scope' : 'Fold the Output scope away (the palette’s Output scope brings it back)';
+    this.fold.title = this.saved.collapsed ? 'Open the Output scope' : 'Fold the Output scope to its title';
     this.fold.setAttribute('aria-label', this.fold.title);
     this.fold.setAttribute('aria-expanded', String(!this.saved.collapsed));
   }
 
-  /** the divider between it and the snapshots under it: a drag sets the screen's height */
+  /** the divider between it and the candidates under it: a drag sets the screen's height */
   private divider(): HTMLElement {
     const g = document.createElement('div');
     g.className = 'oscope-divider';
@@ -166,7 +157,7 @@ export class OutputScope {
       if (!v || typeof v !== 'object') return {};
       const num = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
       const params = Object.fromEntries(Object.entries(v.params ?? {}).filter(([k, x]) => ['mode', 'time', 'scale'].includes(k) && num(x)));
-      return { ...(num(v.h) ? { h: v.h } : {}), params, collapsed: v.collapsed === true, pinned: v.pinned === true };
+      return { ...(num(v.h) ? { h: v.h } : {}), params, collapsed: v.collapsed === true };
     } catch {
       return {};
     }

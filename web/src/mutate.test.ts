@@ -124,7 +124,7 @@ const seeded = (seed: number): (() => number) => () => {
   t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 };
-/** every module and every assembly card of a patch: wider than Make candidates' scope */
+/** every module and every assembly card of a patch: wider than Generate's scope */
 const everything = (p: Patch): MutateScope => ({ modules: p.modules.map((m) => m.id), assemblies: (p.assemblies ?? []).map((a) => a.id) });
 /** the pitch rows that differ between `a` and `b` (pitch rows as `a` has them), with their kind and both values */
 function pitchMoves(a: Patch, b: Patch): { kind: string; type: string; param: string; from: number; to: number }[] {
@@ -156,7 +156,7 @@ describe('pitch (#1006)', () => {
     expect(kind(p.modules[6], 'rate')).toBeUndefined();
   });
 
-  it('Mutate, Randomize and Make candidates leave pitch alone on every factory patch', () => {
+  it('Mutate, Randomize and Generate leave pitch alone on every factory patch', () => {
     const names = Object.keys(FM1_PRESETS);
     expect(names.length).toBe(21);
     for (const name of names) {

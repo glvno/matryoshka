@@ -9,7 +9,7 @@
 // (pitchRows) stay as they are unless "Mutate pitch" is on, and then move only by musical steps. A row of an engine with
 // factory presets may take a preset's value instead of noise (MutateOptions.pools). A category (#1033) brings the rows
 // whose role the wiring shows (roleRows: envelopes, cutoff, glide) into its profile's ranges (PROFILES) and leans the
-// timbre its way. Make candidates with two or more keeps breeds (breedPatch). The editor applies the result as one undo
+// timbre its way. Generate with two or more keeps breeds (breedPatch). The editor applies the result as one undo
 // step (Editor.mutate, Editor.makeCandidates). D-975, D-987, D-994, D-995.
 import { assembliesOf, tiedTo, toDef, type AssemblyInst, type RowTarget } from './assembly';
 import { ADSR_LONG, env8End, env8Sus, RATIOS, rowRange, SELECT_N, selectPos } from './modules';
@@ -123,7 +123,7 @@ export function setParamLock(m: ModuleInst, param: string, on: boolean): boolean
 /** the cards Mutate and Randomize act on: module cards (every parameter of each) and assembly cards (the rows each shows) */
 export interface MutateScope { modules: number[]; assemblies: number[] }
 
-/** the cards Make candidates acts on with none selected: every module card outside an assembly and every top-level assembly
+/** the cards Generate acts on with none selected: every module card outside an assembly and every top-level assembly
  *  card (its rows). The modules inside an assembly move only when their own card is selected (D-987). */
 export function cardScope(p: Patch): MutateScope {
   const asms = assembliesOf(p);
@@ -177,7 +177,7 @@ export function heldRows(p: Patch): Set<string> {
   return held;
 }
 
-// ---- steer by role (#1033): a category aims Mutate and Make candidates at a kind of sound. Each row's role comes from the
+// ---- steer by role (#1033): a category aims Mutate and Generate at a kind of sound. Each row's role comes from the
 // wiring, as a pitch row's does: the loudness envelope (it reaches a VCA on the way from a sound source to the Output), the
 // tone envelope (it reaches a filter's cutoff, a PD Osc's DCW or the level of an FM modulator), the cutoff of a filter on
 // that way, and the time of a slew limiter on the way to a pitch input. A category gives each role a range (PROFILES).

@@ -58,16 +58,14 @@ const frame = (screens: ScopeScreens): void => {
 };
 
 describe('Output scope (#1029)', () => {
-  it('appears with the first snapshot, in the patch view only', () => {
+  it('shows at the top of the sidebar whenever the patch view does, with or without candidates (#1048)', () => {
     const { scope, root } = make();
-    expect(scope.visible).toBe(false);
-    scope.update(true, 1);
     expect(root.hidden).toBe(false);
     expect(scope.open).toBe(true);
-    scope.update(false, 1);
+    scope.update(false);
     expect(scope.visible).toBe(false);
-    scope.update(true, 0);
-    expect(scope.visible).toBe(false);
+    scope.update(true);
+    expect(scope.visible).toBe(true);
   });
 
   it('is the Scope module’s screen with its toolbar: Wave, FFT and Gram, the window and the scale', () => {
@@ -80,26 +78,23 @@ describe('Output scope (#1029)', () => {
     expect(make().scope.m.params.mode).toBe(2);   // (remembered in this browser)
   });
 
-  it('the collapse button folds it to its title; the palette brings it back, also without a snapshot', () => {
+  it('the collapse button folds it to its title; the palette opens it again, and folds it', () => {
     const { scope, root } = make();
-    scope.update(true, 1);
     root.querySelector<HTMLButtonElement>('.oscope-fold')!.click();
     expect(root.classList.contains('collapsed')).toBe(true);
     expect(scope.visible).toBe(true);
     expect(scope.open).toBe(false);
-    scope.update(true, 0);
-    expect(scope.visible).toBe(false);
-    scope.toggle();   // the palette's Output scope
-    expect(scope.open).toBe(true);
-    expect(make().scope.open).toBe(true);   // (a new page: still no snapshot, but opened from the palette)
+    expect(make().scope.open).toBe(false);   // (remembered)
     const again = make().scope;
+    again.toggle();   // the palette's Output scope
+    expect(again.open).toBe(true);
     again.toggle();
-    expect(again.visible).toBe(false);
+    expect([again.visible, again.open]).toEqual([true, false]);
   });
 
   it('remembers its height from a drag on the divider under it, held between the smallest and the largest', () => {
     const { scope, root } = make();
-    scope.update(true, 1);
+    scope.update(true);
     expect(scope.screenHeight).toBe(SCREEN_H.default);
     const divider = root.querySelector<HTMLElement>('.oscope-divider')!;
     divider.dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientX: 100, clientY: 500 }));
@@ -118,10 +113,13 @@ describe('Output scope (#1029)', () => {
 
   it('streams and draws only while it is open and on show', () => {
     const { scope, screens } = make();
+    scope.update(false);
+    layout();
+    sent.length = 0;
     frame(screens);
     expect(sent).toEqual([]);
     expect(draws).toBe(0);
-    scope.update(true, 1);
+    scope.update(true);
     layout();
     expect(sent).toEqual([expect.objectContaining({ t: 'view', key: OUTPUT_SCOPE_KEY, output: true })]);
     frame(screens);
@@ -133,7 +131,7 @@ describe('Output scope (#1029)', () => {
     frame(screens);
     expect(draws).toBe(0);
     const n = sent.length;
-    scope.update(false, 1);
+    scope.update(false);
     layout();
     expect(sent.length).toBe(n);
   });

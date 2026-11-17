@@ -64,7 +64,7 @@ export interface ParamDef {
    * range, morph side, P-lock or FM-1 knob moves it (both engines read the base value; the FM-1's page shows it and says
    * to set it in the editor); a change sends the whole patch to the FM-1 again (defs.h DEF_FIXED) */
   fixed?: true;
-  /** editor-only: a tuning row Mutate, Randomize and Make candidates leave alone unless "Mutate pitch" is on (mutate.ts,
+  /** editor-only: a tuning row Mutate, Randomize and Generate leave alone unless "Mutate pitch" is on (mutate.ts,
    * D-975), and how it may move then: by an octave, a fifth up or a fourth down (`semitones`), between whole-number
    * ratios and 0.5 (`ratio`), by up to the amount times 10 cents (`cents`), or never (`held`). The FM-1 never sees it. */
   pitch?: 'semitones' | 'cents' | 'ratio' | 'held';
