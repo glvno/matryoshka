@@ -57,8 +57,10 @@ export class SnapSidebar {
     rail.append(button('snap-rail-open', '«', 'Open the Sound design sidebar', () => this.setFolded(false)), this.rail);
     root.prepend(head);
     root.append(rail, this.edge());
-    // a click anywhere in it gives it the focus, so ↑ ↓ go through the candidates there (main.ts); not a Tab stop itself
+    // a click anywhere in it gives it the focus, so ↑ ↓ go through the candidates there (main.ts; focus.ts lets it keep
+    // the focus after a click); not a Tab stop itself
     root.tabIndex = -1;
+    root.dataset.keepFocus = '';
     root.setAttribute('role', 'region');
     root.setAttribute('aria-label', 'Sound design');
     this.setWidth(this.saved.w);

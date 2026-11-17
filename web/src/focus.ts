@@ -4,6 +4,8 @@
 // instead of the app (Space = arpeggiator, arrows = nudge the selection, Delete = remove it). After a pointer
 // interaction the focus is released back to the page. Keyboard users are unaffected: focus that was reached with
 // Tab stays, with its :focus-visible ring. Typing fields keep their focus, as do controls inside an open dialog or menu.
+// A region marked `data-keep-focus` (the Sound design sidebar, #1048, where ↑ ↓ go through the candidates) keeps it:
+// the region itself takes it back from a button in it, so Space and Enter still reach the app.
 import { isTextEntry } from './input';
 
 export function releaseFocusAfterPointer(): void {
@@ -16,7 +18,9 @@ export function releaseFocusAfterPointer(): void {
     const el = document.activeElement;
     if (!(el instanceof HTMLElement) || el === document.body || keeps(el)) return;
     if (el.tagName === 'SELECT') return; // released on change: earlier would close the list it just opened
-    el.blur();
+    const region = el.closest<HTMLElement>('[data-keep-focus]');
+    if (!region) el.blur();
+    else if (el.closest('button')) region.focus({ preventScroll: true });
   };
   // after the click that follows the pointerup (a check box toggles on click, a button acts on click)
   window.addEventListener('pointerup', () => requestAnimationFrame(release));
