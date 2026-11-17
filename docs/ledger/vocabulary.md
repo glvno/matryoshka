@@ -50,6 +50,10 @@ The editor's readout of how much of the FM-1's resources a patch uses; it turns 
 
 What a configurable patch button does in a patch: Nothing, Gate, Toggle (bypasses a module or assembly; `bypass` in code) or Page (a list of device pages).
 
+### Candidate
+
+A version of the patch kept to compare by ear, listed in the Sound design sidebar. The [current patch](#current-patch) is candidate A, always the first. The others are lettered B, C… in the order they come: made by Generate, added by Nominate, kept by the first Mutate of a run ("before mutate"), kept from an edit when the switch leaves a candidate, or left by Use. The browser keeps them with the open patch, also after a reload, and forgets them when another patch opens; they are never saved in the patch. The code and the browser's storage call them snapshots (`Snapshot`, `matryoshka.snapshots`). Not the same as the [B side](#b-side) of patch morphing.
+
 ### Capability
 
 An ability an assembly exposes through a checkable contract, such as processing audio or playing patterns. In the capability design, an assembly can satisfy several contracts or none; they do not prescribe its place in the patch.
@@ -104,7 +108,7 @@ The whole tutorial as data: every chapter and step in `web/src/tutorial/course.j
 
 ### Current patch
 
-The patch being worked on, with its latest edits. While a [snapshot](#snapshot) is on screen the editor keeps the current patch aside, and the switch always comes back to it.
+The patch being worked on, with its latest edits. It is [candidate](#candidate) A. While another candidate is on screen the editor keeps the current patch aside, and the switch always comes back to it.
 
 ### Cursor entry
 
@@ -426,7 +430,7 @@ An assembly whose members run once per voice of the Voicing module that feeds it
 
 ### Preset
 
-A stored set of card row values for one structure; any assembly device of that structure can load it, in the editor and on the FM-1. A device has presets when some exist for its structure; a plain module never does. Avoid: variant, sound, snapshot (a version of the patch kept to compare), program.
+A stored set of card row values for one structure; any assembly device of that structure can load it, in the editor and on the FM-1. A device has presets when some exist for its structure; a plain module never does. Avoid: variant, sound, candidate or snapshot (a version of the patch kept to compare), program.
 
 ### Preset chip
 
@@ -531,10 +535,6 @@ The About card's section of AI-usage figures: Blood (time), Sweat (human interve
 ### Slot
 
 One of the bank's patch places on the FM-1, shown numbered from 01: 60 of them with the [pattern store](#pattern-store), 64 without. Program change 0 selects slot 01.
-
-### Snapshot
-
-A version of the patch kept to compare by ear with the [current patch](#current-patch). Snapshots are lettered A, B, C… in the order they are taken. The browser keeps them with the open patch, also after a reload, and forgets them when another patch opens; they are never saved in the patch. Not the same as the [B side](#b-side) of patch morphing.
 
 ### Song
 

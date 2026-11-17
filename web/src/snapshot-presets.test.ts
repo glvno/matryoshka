@@ -101,22 +101,22 @@ describe('presets from snapshots (#1031)', () => {
     expect(valuesOf(editor.patch, a.id)).not.toEqual(valuesOf(JSON.parse(b.patch) as Patch, a.id));
   });
 
-  it('stores every snapshot marked keep, each under its name or letter, a taken name numbered', () => {
+  it('stores every kept candidate, each under its name or letter, a taken name numbered', () => {
     const { editor, a } = rig();
-    addUserPreset(structureOf(editor.patch, a), 'B', currentValues(editor.patch, a));   // (a user preset B already: the keep B becomes "B 2")
+    addUserPreset(structureOf(editor.patch, a), 'C', currentValues(editor.patch, a));   // (a user preset C already: candidate C becomes "C 2")
     const k1 = editor.snaps.take(version(editor, a, 0.1), 'Warm');
     editor.snaps.take(version(editor, a, 0.2));
     const k2 = editor.snaps.take(version(editor, a, 0.3));
-    expect(k2.letter).toBe('C');
+    expect(k2.letter).toBe('D');   // (A is the current patch: candidates start at B)
     for (const s of [k1, k2]) editor.setKeep(s.letter, true);
     const keeps = editor.snaps.list.filter((s) => s.mark === 'keep');
     const r = editor.storeSnapshotPresets(a.id, keeps.map((s) => ({ letter: s.letter, name: s.name ?? s.letter })), true);
-    expect(r.stored).toEqual([{ letter: 'A', name: 'Warm' }, { letter: 'C', name: 'C' }]);
+    expect(r.stored).toEqual([{ letter: 'B', name: 'Warm' }, { letter: 'D', name: 'D' }]);
     expect(r.skipped).toEqual([]);
     expect(userPresets().find((x) => x.name === 'Warm')!.values).toEqual(valuesOf(JSON.parse(k1.patch) as Patch, a.id));
-    expect(userPresets().find((x) => x.name === 'C')!.values).toEqual(valuesOf(JSON.parse(k2.patch) as Patch, a.id));
-    const named = editor.storeSnapshotPresets(a.id, [{ letter: 'B', name: 'B' }], true);
-    expect(named.stored).toEqual([{ letter: 'B', name: 'B 2' }]);
+    expect(userPresets().find((x) => x.name === 'D')!.values).toEqual(valuesOf(JSON.parse(k2.patch) as Patch, a.id));
+    const named = editor.storeSnapshotPresets(a.id, [{ letter: 'C', name: 'C' }], true);
+    expect(named.stored).toEqual([{ letter: 'C', name: 'C 2' }]);
   });
 
   it('a snapshot whose engine is built differently is skipped and named; the others are stored', () => {
@@ -140,7 +140,7 @@ describe('presets from snapshots (#1031)', () => {
     const [s1, s2] = [editor.snaps.take(version(editor, a, 0.1)), editor.snaps.take(version(editor, a, 0.2))];
     editor.storeSnapshotPresets(a.id, [{ letter: s1.letter, name: 'Mine' }], false);   // (over the user preset Mine)
     editor.storeSnapshotPresets(a.id, [s1, s2].map((s) => ({ letter: s.letter, name: s.letter })), true);
-    expect(userPresets().map((x) => x.name).sort()).toEqual(['A', 'B', 'Mine']);
+    expect(userPresets().map((x) => x.name).sort()).toEqual(['B', 'C', 'Mine']);
     expect(userPresets().find((x) => x.name === 'Mine')!.values).not.toEqual(mine.values);
     const loads = structures();
     editor.undo();
@@ -150,8 +150,8 @@ describe('presets from snapshots (#1031)', () => {
     expect(structures()).toBe(loads);   // (the patch stayed as it was: nothing was loaded again)
     editor.redo();
     editor.redo();
-    expect(userPresets().map((x) => x.name).sort()).toEqual(['A', 'B', 'Mine']);
-    expect(userPresets().find((x) => x.name === 'A')!.values).toEqual(valuesOf(JSON.parse(s1.patch) as Patch, a.id));
+    expect(userPresets().map((x) => x.name).sort()).toEqual(['B', 'C', 'Mine']);
+    expect(userPresets().find((x) => x.name === 'B')!.values).toEqual(valuesOf(JSON.parse(s1.patch) as Patch, a.id));
   });
 
   it('a snapshot’s master FX rack goes into the preset: applied to the current patch, it brings back the snapshot’s FX', () => {

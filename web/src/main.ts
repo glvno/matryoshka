@@ -3528,7 +3528,7 @@ if (import.meta.env.DEV) {
   // the lesson editor's live link: it checks steps against this synth and loads patches into it
   tutorial.observer = synthLink(() => ({
     patch: editor.patch, selected: [...editor.selected], arpPlay: editor.playing, audio: host.running && !host.muted,
-    snapshots: { A: !!editor.snaps.get('A'), B: !!editor.snaps.get('B') }, zoom: editor.zoom, library: loadLibrary(),
+    snapshots: { A: editor.snaps.list.length >= 1, B: editor.snaps.list.length >= 2 }, zoom: editor.zoom, library: loadLibrary(),   // (the first and second candidate: A is the current patch, D-666)
   }), (p) => { sink.send({ t: 'panic' }); loadNamed(p, { quiet: true }); });
   const link = document.createElement('a');
   link.href = '/lesson-editor'; link.target = '_blank'; link.rel = 'noopener';
