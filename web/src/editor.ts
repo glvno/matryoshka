@@ -176,7 +176,7 @@ const HISTORY = 40;
 /** snapshots a step added or removed, each with its place in the list (added: after the step; removed: before it) */
 type ListChange = { added: { s: Snapshot; at: number }[]; removed: { s: Snapshot; at: number }[] };
 /** an undo step: the patch (Editor.snap) and the stop it belongs to, a snapshot's letter or null for the current patch;
- *  `list`: a step that added or removed snapshots (Make candidates #996, Alt+X #1028), with the current patch kept aside;
+ *  `list`: a step that added, removed or moved snapshots (Make candidates #996, Alt+X #1028, a drag in the list #1040), with the current patch kept aside;
  *  `presets`: the user presets a step stored from snapshots and those they replaced, taken out and put back by undo (#1031) */
 type UndoStep = { s: string; shown: string | null; list?: { change: ListChange; current: string | null }; presets?: { put: Preset[]; was: Preset[] } };
 /** a logarithmic slider's value rounded to the parameter's step (a glide time to the ms, a cutoff to the Hz), not to a whole number */
@@ -782,7 +782,8 @@ export class Editor {
     const name = to !== null ? (JSON.parse(this.snaps.get(to)!.patch) as Patch).name
       : this.snaps.shown !== null && this.snaps.current !== null ? (JSON.parse(this.snaps.current) as Patch).name : this.patch.name;
     if (to === null && current !== null) this.keep(JSON.parse(current) as Patch);
-    this.restore(e.s);
+    // (a step that only reordered the list leaves the patch on screen as it is: nothing loads again, #1040)
+    if (e.s !== this.snap() || to !== this.snaps.shown) this.restore(e.s);
     this.patch.name = name;
     this.snaps.shown = to;
     this.snaps.current = to === null ? null : current;
@@ -3515,14 +3516,34 @@ export class Editor {
     return to === undefined ? null : this.showSnapshot(to);
   }
 
-  /** the snapshot becomes the current patch, shown; the current patch is kept as a new snapshot (returned) unless a
-   * snapshot holds it already or it is the same version */
+  /**
+   * Make a snapshot the current patch (#1040, D-971): a swap. The snapshot leaves the list and is shown as the current
+   * patch; the current patch it replaces takes the snapshot's place in the list with the next letter (returned), unless it
+   * is the same version or a snapshot holds it already. The snapshot on screen gives the version heard, changes made to it
+   * included; changes made to another snapshot on screen are kept as a new snapshot first, as a switch keeps them. One
+   * undo step, which puts both back. Null when nothing was added (or there is no such snapshot)
+   */
   makeCurrent(letter: string): Snapshot | null {
-    if (!this.snaps.get(letter)) return null;
-    const cur = JSON.parse(this.snaps.shown === null ? JSON.stringify(this.patch) : this.snaps.current!) as Patch;
-    if (this.snaps.shown !== letter) this.showSnapshot(letter);
-    const kept = sameVersion(cur, this.patch) ? null : this.keep(cur);
+    const s = this.snaps.get(letter);
+    if (!s) return null;
+    this.endGesture();
+    this.endPass();
+    const list = this.snaps.list;
+    const from = this.snaps.shown;
+    const change: ListChange = { added: [], removed: [{ s, at: list.indexOf(s) }] };
+    const step: UndoStep = { s: this.snap(), shown: from, list: { change, current: this.snaps.current } };
+    const cur = this.currentPatch();
+    if (from !== null && from !== letter && this.shownEdited() && !sameVersion(cur, this.patch) && !this.snaps.holding(this.patch)) change.added.push({ s: this.snaps.take(this.patch), at: 0 });
+    const to = from === letter ? this.patch : JSON.parse(s.patch) as Patch;
+    const kept = sameVersion(cur, to) || list.some((x) => x !== s && sameVersion(JSON.parse(x.patch) as Patch, cur)) ? null : this.snaps.take(cur);
+    const at = list.indexOf(s);
+    this.snaps.remove(letter);
+    if (kept) list.splice(at, 0, ...list.splice(list.indexOf(kept), 1));
+    if (kept) change.added.push({ s: kept, at: 0 });
+    for (const a of change.added) a.at = list.indexOf(a.s);
+    if (to !== this.patch) this.swapTo(to);
     this.snaps.shown = this.snaps.current = null;
+    this.record(step);
     this.ev.onSnapshots?.();
     return kept;
   }
@@ -3542,6 +3563,22 @@ export class Editor {
     if (this.snaps.shown === letter) this.showSnapshot(null);
     this.snaps.remove(letter);   // (its letter is never given again: undo steps on it count as steps of the current patch)
     this.ev.onSnapshots?.();
+  }
+
+  /** drag a snapshot to place `to` of the list (#1040): the switch's stops follow the list's order, letters stay, the
+   * current patch stays the last stop. One undo step, as Alt+X's removal is. False when nothing moves */
+  moveSnapshot(letter: string, to: number): boolean {
+    const list = this.snaps.list;
+    const s = this.snaps.get(letter);
+    const from = s ? list.indexOf(s) : -1;
+    to = Math.max(0, Math.min(list.length - 1, to));
+    if (!s || from === to) return false;
+    this.endGesture();
+    this.endPass();
+    this.record({ s: this.snap(), shown: this.snaps.shown, list: { change: { removed: [{ s, at: from }], added: [{ s, at: to }] }, current: this.snaps.current } });
+    this.snaps.move(letter, to);
+    this.ev.onSnapshots?.();
+    return true;
   }
 
   /**

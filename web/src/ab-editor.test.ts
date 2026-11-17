@@ -11,7 +11,7 @@ import { MUTATE_SKIP } from './mutate';
 import type { ModuleInst, Patch } from './patch';
 import { encodePatch } from './patchbin';
 import { relocatedPatches } from './community-factory';
-import { snapshotKey } from './snapshots';
+import { snapshotKey, snapshotRecord, storedSnapshots } from './snapshots';
 
 // (jsdom lacks these; selector.ts makes its ResizeObserver when it loads, so before the imports)
 vi.hoisted(() => {
@@ -217,14 +217,29 @@ describe('snapshots in the editor (#943)', () => {
     expect(sound(JSON.parse(editor.snaps.get('A')!.patch) as Patch)).toBe(sound(a));
   });
 
-  it('make it the current patch: the snapshot is the current patch, the patch it replaces is kept', () => {
-    const { editor, a, b } = snapshotAndCurrent();
+  it('make it the current patch swaps: the snapshot leaves the list, the patch it replaces takes its place; one undo step (#1040)', () => {
+    const { editor, a } = snapshotAndCurrent();
+    editor.takeSnapshot(); // B, then C, each another version than the current patch
+    steps(editor.patch).notes = [{ at: 1, len: 1, note: 50, vel: 90 }];
+    editor.takeSnapshot();
+    steps(editor.patch).notes = [{ at: 2, len: 1, note: 52, vel: 80 }];
+    const b = sound(editor.patch);
+    editor.moveSnapshot('A', 1);   // B, A, C
     const kept = editor.makeCurrent('A');
-    expect(kept?.letter).toBe('B');
+    expect(kept?.letter).toBe('D');
+    expect(editor.snaps.list.map((s) => s.letter)).toEqual(['B', 'D', 'C']);   // (A is gone; D is where A was)
     expect(editor.snaps.shown).toBeNull();
-    expect(sound(editor.patch)).toBe(sound(a));
-    expect(sound(editor.currentPatch())).toBe(sound(a));
-    expect(sound(JSON.parse(editor.snaps.get('B')!.patch) as Patch)).toBe(sound(b));
+    expect([sound(editor.patch), sound(editor.currentPatch())]).toEqual([sound(a), sound(a)]);
+    expect(sound(JSON.parse(editor.snaps.get('D')!.patch) as Patch)).toBe(b);
+    editor.undo();
+    expect([editor.snaps.list.map((s) => s.letter), editor.snaps.shown, sound(editor.patch)]).toEqual([['B', 'A', 'C'], null, b]);
+    editor.redo();
+    expect([editor.snaps.list.map((s) => s.letter), sound(editor.patch)]).toEqual([['B', 'D', 'C'], sound(a)]);
+    // from the snapshot on screen, the same version as the current patch: nothing is added
+    editor.takeSnapshot(); // E = the current patch
+    editor.showSnapshot('E');
+    expect(editor.makeCurrent('E')).toBeNull();
+    expect([editor.snaps.list.map((s) => s.letter), editor.snaps.shown]).toEqual([['B', 'D', 'C'], null]);
   });
 
   it('removing the snapshot on screen brings the current patch back; an undo never drops the current patch', () => {
@@ -383,5 +398,33 @@ describe('rank and cut (#996)', () => {
     editor.setKeep('B', false);
     expect(editor.snaps.list.map((s) => s.mark)).toEqual([undefined, undefined]);
     expect(editor.snaps.shown).toBe('A');
+  });
+
+  it('a drag puts a snapshot elsewhere in the list: the keys follow the new order, letters stay, Current stays last, one undo step (#1040)', () => {
+    const { editor, log } = rig(relocatedPatches['Oracle V']());
+    editor.makeCandidates(4); // A, B, C, D; on A
+    expect(editor.moveSnapshot('D', 0)).toBe(true);
+    expect(editor.moveSnapshot('A', 2)).toBe(true);
+    expect(editor.moveSnapshot('A', 2)).toBe(false);   // (already there)
+    expect(editor.snaps.list.map((s) => s.letter)).toEqual(['D', 'B', 'A', 'C']);
+    expect(editor.snaps.shown).toBe('A');   // (a drag never switches)
+    expect(editor.moveSnapshot('C', 99)).toBe(false);   // (past the end is the last place: C is there already)
+    // the order is kept with the snapshots, so a reload brings it back
+    const text = JSON.stringify(editor.currentPatch());
+    expect(storedSnapshots(snapshotRecord(text, editor.snaps.list), text).map((s) => s.letter)).toEqual(['D', 'B', 'A', 'C']);
+    // undo puts the order back one drag at a time and loads nothing again
+    const loads = log.filter((x) => x === 'structure').length;
+    editor.undo();
+    expect(editor.snaps.list.map((s) => s.letter)).toEqual(['D', 'A', 'B', 'C']);
+    editor.undo();
+    expect(editor.snaps.list.map((s) => s.letter)).toEqual(['A', 'B', 'C', 'D']);
+    editor.redo();
+    expect(editor.snaps.list.map((s) => s.letter)).toEqual(['D', 'A', 'B', 'C']);
+    expect([editor.snaps.shown, log.filter((x) => x === 'structure').length]).toEqual(['A', loads]);
+    // the keys go down the list, then the current patch (always the last stop), then the top again
+    expect(stops(editor, 'KeyJ', 5)).toEqual(['B', 'C', null, 'D', 'A']);
+    expect(stops(editor, 'KeyK', 5)).toEqual(['D', null, 'C', 'B', 'A']);
+    expect(editor.takeSnapshot().letter).toBe('E');   // (a new one goes to the end, with the next letter)
+    expect(editor.snaps.list.map((s) => s.letter)).toEqual(['D', 'A', 'B', 'C', 'E']);
   });
 });

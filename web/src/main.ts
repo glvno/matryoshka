@@ -33,6 +33,7 @@ import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { snapshotKey, snapshotRecord, storedSnapshots, type Snapshot, type SnapshotKey } from './snapshots';
 import { ScopeScreens } from './scope-view';
 import { OUTPUT_SCOPE_KEY, OutputScope } from './output-scope';
+import { SnapSidebar } from './snap-side';
 import { OutputLoudness } from './loudness-view';
 import { EnvScreens } from './env-view';
 import { addToBank, bankPatches, buildPatchesSection, type LibrarySection as LibraryPane } from './bank';
@@ -810,7 +811,7 @@ const patchCandidates = (like?: Patch): { name: string; patch: Patch }[] => {
 };
 // Scope modules' screens: they stream while on screen and audio runs
 const screens = new ScopeScreens((msg) => host.send(msg), () => host.running && !host.muted);
-// the Output scope (#1029): a Scope screen of what is heard, over the snapshot strip; its own screens, kept through rebuilds
+// the Output scope (#1029): a Scope screen of what is heard, at the top of the snapshot sidebar; its own screens, kept through rebuilds
 const outScreens = new ScopeScreens((msg) => host.send(msg), () => host.running && !host.muted);
 const outScope = new OutputScope($('output-scope'), outScreens);
 host.onView = (key, chans, sr, voices) => (key === OUTPUT_SCOPE_KEY ? outScreens : screens).receive(key, chans, sr, voices);
@@ -1147,7 +1148,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     nameInput.value = editor.patch.name;   // (each stop has its own name, D-970)
     renderSnapshots();
     queueSave(editor.patch);   // (the snapshots are kept beside the patch)
-    outScope.update(!snapStrip.hidden, editor.snaps.list.length);
+    outScope.update(!snapColumn.hidden, editor.snaps.list.length);
   },
   morphCandidates: patchCandidates,
 }, $('dock'));
@@ -1540,12 +1541,53 @@ const showDiff = (): void => {
   diffPanel.hidden = false;
 };
 // ---- snapshots (#943): versions of the patch kept with it, lettered A, B… as they are taken (kept beside the remembered
-// patch: save, D-972). The column at the canvas's right edge lists them, the current patch last (#1038); Alt+B or Alt+J goes A, B, …, the
-// current patch, A…, Alt+K the other way (#1028), Shift+Alt+B takes one, Alt+X removes the one on screen
+// patch: save, D-972). The sidebar at the canvas's right edge lists them under the Output scope, the current patch last
+// (#1040); Alt+B or Alt+J goes down the list, the current patch, the top again…, Alt+K the other way (#1028), Shift+Alt+B
+// takes one, Alt+X removes the one on screen, a drag puts one elsewhere in the list
 const snapStrip = $('snapshot-strip');
-// the canvas gives up the column's width while it lists snapshots or shows the scope (style.css .snap-column)
+// the sidebar: its width and its fold; the canvas gives up its width while it lists snapshots or shows the scope (style.css .snap-column)
 const snapColumn = $('snap-column');
+const snapSide = new SnapSidebar(snapColumn);
 new ResizeObserver(() => snapColumn.parentElement!.style.setProperty('--snap-col-w', `${snapColumn.offsetWidth + 30}px`)).observe(snapColumn);
+/** a pointer drag of a snapshot's row is under way and has moved: the click that ends it does not switch */
+let snapDragged = false;
+/** a drag of a snapshot's row up or down the list puts it there (#1040, D-970): the keys go through the snapshots in the
+ *  list's order and the letters stay. A line shows where it goes; near the list's top or bottom the list scrolls */
+function dragSnapshot(e: PointerEvent, row: HTMLElement, letter: string): void {
+  if (e.button !== 0) return;
+  snapDragged = false;
+  const y0 = e.clientY;
+  let to = -1;
+  const rows = (): HTMLElement[] => [...snapStrip.querySelectorAll<HTMLElement>('.snap[data-letter]')];
+  const unmark = (): void => { for (const r of rows()) r.classList.remove('drop-before', 'drop-after'); };
+  const move = (ev: PointerEvent): void => {
+    if (!snapDragged && Math.abs(ev.clientY - y0) < 5) return;
+    snapDragged = true;
+    row.classList.add('dragging');
+    const box = snapStrip.getBoundingClientRect();
+    if (ev.clientY < box.top + 24) snapStrip.scrollTop -= 8;
+    else if (ev.clientY > box.bottom - 24) snapStrip.scrollTop += 8;
+    const all = rows();
+    const from = all.indexOf(row);
+    // the place among the rows: how many of them have their middle above the pointer (the dragged one counted)
+    const at = all.filter((r) => { const q = r.getBoundingClientRect(); return q.top + q.height / 2 < ev.clientY; }).length;
+    to = at > from ? at - 1 : at;
+    unmark();
+    if (to !== from) (at < all.length ? all[at] : all[all.length - 1]).classList.add(at < all.length ? 'drop-before' : 'drop-after');
+  };
+  const up = (): void => {
+    removeEventListener('pointermove', move);
+    removeEventListener('pointerup', up);
+    removeEventListener('pointercancel', up);
+    unmark();
+    row.classList.remove('dragging');
+    if (snapDragged && to >= 0) editor.moveSnapshot(letter, to);
+    setTimeout(() => { snapDragged = false; });   // (after the click this release makes)
+  };
+  addEventListener('pointermove', move);
+  addEventListener('pointerup', up);
+  addEventListener('pointercancel', up);
+}
 /** how many changes the snapshot is from the current patch, counted as Show changes counts them */
 const snapChanges = (s: Snapshot): number => diffCount(diffPatches(editor.currentPatch(), JSON.parse(s.patch) as Patch, DEFS));
 const snapTitle = (s: Snapshot): string => s.name ? `${s.letter} “${s.name}”` : s.letter;
@@ -1567,7 +1609,9 @@ function renderSnapshots(): void {
     const changed = edited && shown === s.letter;
     const verdict = s.mark === 'keep' ? '. Marked keep: Make candidates breeds from the keeps' : '';
     const origin = s.from ? `. ${s.from.includes('+') ? 'Bred' : 'Mutated'} from ${s.from === 'current' ? 'the current patch' : s.from.includes('+') ? `the keeps ${s.from}` : s.from}` : '';
-    const b = entry(s.letter, `Snapshot ${snapTitle(s)}: ${n ? `${n} change${n === 1 ? '' : 's'} from the current patch` : 'the same as the current patch'}${origin}${verdict}${changed ? '. Changed since it was taken: switching away keeps the changes as a new snapshot' : ''}. Click to hear it, right-click or double-click for more`, shown === s.letter, () => showStop(s.letter));
+    const b = entry(s.letter, `Snapshot ${snapTitle(s)}: ${n ? `${n} change${n === 1 ? '' : 's'} from the current patch` : 'the same as the current patch'}${origin}${verdict}${changed ? '. Changed since it was taken: switching away keeps the changes as a new snapshot' : ''}. Click to hear it, drag it up or down to change the order, right-click or double-click for more`, shown === s.letter, () => { if (!snapDragged) showStop(s.letter); });
+    b.dataset.letter = s.letter;
+    b.onpointerdown = (e) => dragSnapshot(e, b, s.letter);
     if (changed) b.classList.add('edited');
     if (s.mark) b.classList.add(s.mark);
     if (s.from) {
@@ -1603,8 +1647,11 @@ function renderSnapshots(): void {
     popMenu(items, b);
   };
   snapStrip.replaceChildren(...items, ...current, take);
-  // the entry on show stays in view of the column's list when it scrolls (#1038)
-  snapStrip.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: 'nearest' });
+  snapSide.setShown(shown);
+  // the entry on show stays in view of the list when it scrolls; only the list scrolls (scrollIntoView could scroll the page)
+  const on = snapStrip.querySelector<HTMLElement>('[aria-pressed="true"]');
+  if (on && on.offsetTop < snapStrip.scrollTop) snapStrip.scrollTop = on.offsetTop;
+  else if (on && on.offsetTop + on.offsetHeight > snapStrip.scrollTop + snapStrip.clientHeight) snapStrip.scrollTop = on.offsetTop + on.offsetHeight - snapStrip.clientHeight;
 }
 const snapshotMenu = (s: Snapshot): MenuItem[] => [
   { text: s.mark === 'keep' ? 'Unmark keep' : 'Keep', run: () => editor.setKeep(s.letter, s.mark !== 'keep') },
@@ -1613,11 +1660,7 @@ const snapshotMenu = (s: Snapshot): MenuItem[] => [
     const to = window.prompt(`Name of snapshot ${s.letter} (empty: none)`, s.name ?? '');
     if (to !== null) editor.renameSnapshot(s.letter, to.trim());
   } },
-  { text: 'Make it the current patch', run: () => {
-    const kept = editor.makeCurrent(s.letter);
-    status.textContent = `${s.letter} is the current patch${kept ? `; the patch it replaces is kept as ${kept.letter}` : ''}`;
-    queueSave(editor.patch);
-  } },
+  { text: 'Make it the current patch', key: s.letter === editor.snaps.shown ? 'Alt+C' : undefined, run: () => makeCurrent(s.letter) },
   { text: 'Save as a patch…', run: () => {
     const p = JSON.parse(s.patch) as Patch;
     const name = window.prompt('Save the snapshot to Your patches as', s.name ?? `${p.name} ${s.letter}`)?.trim();
@@ -1684,7 +1727,19 @@ const removeShown = (): void => {
   switched(r);
   status.textContent = `snapshot ${r.removed.letter} removed (Ctrl/Cmd+Z puts it back) · ${status.textContent}`;
 };
-const snapshotKeyRun: Record<SnapshotKey, () => void> = { next: () => cycleSnapshots(1), previous: () => cycleSnapshots(-1), take: () => takeSnapshot(), remove: removeShown };
+/** a snapshot becomes the current patch and leaves the list; the patch it replaces takes its place there (#1040) */
+const makeCurrent = (letter: string): void => {
+  const kept = editor.makeCurrent(letter);
+  status.textContent = `${letter} is the current patch (Ctrl/Cmd+Z puts it back)${kept ? `; the patch it replaces is kept as ${kept.letter}, in its place` : ''}`;
+  queueSave(editor.patch);
+};
+/** Alt+C (#1040): the snapshot on screen becomes the current patch */
+const makeShownCurrent = (): void => {
+  const shown = editor.snaps.shown;
+  if (shown === null) return void (status.textContent = editor.snaps.list.length ? 'the current patch is on screen already: Alt+C makes the snapshot on screen the current patch (Alt+J or Alt+K goes to one)' : 'no snapshot to make the current patch');
+  makeCurrent(shown);
+};
+const snapshotKeyRun: Record<SnapshotKey, () => void> = { next: () => cycleSnapshots(1), previous: () => cycleSnapshots(-1), take: () => takeSnapshot(), remove: removeShown, current: makeShownCurrent };
 // ---- rank and cut (#996): Make candidates (Alt+N) mutates the patch on screen into new snapshots; Alt+J / Alt+K go
 // through them, Alt+X removes a loser at once; the keep mark (no key) chooses what the next round breeds from
 const toggleKeepShown = (): void => {
@@ -1760,6 +1815,7 @@ const commands = (): Command[] => {
     ...CANDIDATE_COUNTS.map((c) => ({ kind: 'command' as const, label: `Candidates per round: ${c}`, detail: c === candidates ? 'now' : undefined, keywords: 'rank cut make how many', run: () => setCandidates(c) })),
     { kind: 'command', label: editor.snaps.get(editor.snaps.shown)?.mark === 'keep' ? 'Unmark keep on this snapshot' : 'Keep this snapshot', keywords: 'rank mark winner candidate breed', run: inPatch(toggleKeepShown) },
     { kind: 'command', label: 'Remove this snapshot', detail: 'Alt+X', keywords: 'rank loser drop cut delete candidate', run: inPatch(removeShown) },
+    { kind: 'command', label: 'Make this snapshot the current patch', detail: 'Alt+C', keywords: 'rank winner keep set current snapshot', run: inPatch(makeShownCurrent) },
     { kind: 'command', label: 'Next snapshot', detail: 'Alt+B · Alt+J', keywords: 'compare ab a/b switch flip cycle current patch', run: inPatch(() => cycleSnapshots(1)) },
     { kind: 'command', label: 'Previous snapshot', detail: 'Alt+K', keywords: 'compare ab a/b switch flip cycle back current patch', run: inPatch(() => cycleSnapshots(-1)) },
     ...editor.snaps.list.map((s) => ({ kind: 'command' as const, label: `Show snapshot ${snapTitle(s)}`, keywords: 'compare ab a/b switch', run: inPatch(() => showStop(s.letter)) })),
@@ -2450,7 +2506,7 @@ function setView(v: View): void {
   $('tab-library').hidden = v !== 'library';
   $('canvas').hidden = v !== 'patch';
   $('help-btn').hidden = v !== 'patch';
-  snapStrip.hidden = v !== 'patch';
+  snapColumn.hidden = v !== 'patch';
   outScope.update(v === 'patch', editor.snaps.list.length);
   // the sidebar is the same in every view; LIBRARY's sections are tabs under the switch
   $('library-tabs').hidden = v !== 'library';
