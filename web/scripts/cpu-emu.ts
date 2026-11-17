@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Patches played on the real firmware in the emulator under its timing model (D-1107, D-1155), for the CPU cost table
-// (scripts/cpu-costs.ts): each request is a patch, the keys held and whether the transport runs; requests made close
+// Patches played on the real firmware in the emulator under its timing model (D-1107, D-1155), for the emulator's CPU cost
+// table (scripts/cpu-costs-emu.ts): each request is a patch, the keys held and whether the transport runs; requests made close
 // together are seeded into banks of up to 48 slots (`m1emu cpu --bank`), each bank played by one emulator, as many
 // emulators at once as the Mac has cores. Each slot reads the firmware's own module times (`--modtime`) and the mean of the
 // whole audio interrupt. The shared emulator slot (emu-slot.mjs) is held while a round of banks plays, so other checkouts'
