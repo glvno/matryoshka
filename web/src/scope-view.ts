@@ -5,12 +5,14 @@
 // middle of its range (free running without one), a long window rolling, the spectrum, or a scrolling spectrogram
 // (spectrogram.ts, #940: each input in its own band, the frequency up the screen and the level as a colour). Both inputs share one scale
 // (fixed ±1 / ±4, or auto-range), drawn as labelled gridlines with the time per division; a readout under the screen
-// gives each input's lowest and highest value and where it comes from with that output's range (#518).
+// gives each input's lowest and highest value and where it comes from with that output's range (#518). The Output scope
+// (output-scope.ts, #1029) is one more such screen whose input a is what is heard instead of a cable.
 import type { HostMsg } from './worklet';
 import { DISPLAY_EVERY, type ViewData } from './scope-stream';
 import { AutoRange, extent, perDivision, scopeNum, scopeScale, spectrum, type ScopeScale } from './scope';
 import { DB_HI, DB_LO, GRAM_COLS, GRAM_ROWS, Gram, gramColumn, heat, logY } from './spectrogram';
-import { SCOPE_MODES, SCOPE_SCALES } from './modules';
+import { DEFS, SCOPE_MODES, SCOPE_SCALES } from './modules';
+import { formatValue } from './labels';
 import { voiceToken } from './voice-colors';
 import type { ModuleInst } from './patch';
 
@@ -24,6 +26,10 @@ export interface ScreenSpec {
   m: ModuleInst;
   el: HTMLElement;
   chans: { id: number; port: string; kind: string; label?: string; range?: () => string }[][];
+  /** the stream's key; default `scope:<module id>` */
+  key?: string;
+  /** input a is what is heard (the Output, or the signal listened to), not the outputs in `chans` (#1029) */
+  output?: boolean;
 }
 
 interface Screen extends ScreenSpec {
@@ -66,7 +72,7 @@ export class ScopeScreens {
   sync(specs: ScreenSpec[]): void {
     const next = new Map<string, Screen>();
     for (const spec of specs) {
-      const key = `scope:${spec.m.id}`;
+      const key = spec.key ?? `scope:${spec.m.id}`;
       const old = this.screens.get(key);
       const canvas = document.createElement('canvas');
       spec.el.append(canvas);
@@ -126,7 +132,8 @@ export class ScopeScreens {
 
   private message(s: Screen): HostMsg {
     const samples = modeOf(s.m) !== 'time' ? SPECTRUM_SAMPLES : Math.round(((s.m.params.time ?? 16) / 1000) * s.sr);
-    const msg: HostMsg = { t: 'view', key: s.key, chans: s.chans.map((c) => c.map(({ id, port }) => ({ id, port }))), samples };
+    const msg: HostMsg = { t: 'view', key: s.key, chans: s.output ? [[]] : s.chans.map((c) => c.map(({ id, port }) => ({ id, port }))), samples };
+    if (s.output) msg.output = true;
     if (perVoice(s.m)) msg.voices = true;
     return msg;
   }
@@ -401,6 +408,80 @@ export function readoutLines(chans: ScreenSpec['chans'], rows: { i: number; lo: 
     out.push({ input: i ? 'b' : 'a', kind: c[0].kind, value, from: c.map((x) => x.label ?? x.port).join(' + '), range: c.length === 1 ? c[0].range?.() ?? '' : '' });
   });
   return out;
+}
+
+/** a Scope screen's toolbar (on a card it shows while hovered): its window (− / +, a 1-2-5 series), time / spectrum /
+ *  spectrogram and the vertical scale; `set` changes one of the module's parameters; `voices`: a Voices button too (#54) */
+export function scopeTools(m: ModuleInst, set: (name: string, v: number) => void, voices: boolean): HTMLElement {
+  const def = DEFS[m.type];
+  const bar = document.createElement('div');
+  bar.className = 'scope-tools';
+  const button = (text: string, title: string, onclick: () => void): HTMLButtonElement => {
+    const b = document.createElement('button');
+    b.className = 'sm';
+    b.textContent = text;
+    b.title = title;
+    b.setAttribute('aria-label', title);
+    b.onclick = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      onclick();
+    };
+    return b;
+  };
+  const rule = (): HTMLElement => {
+    const r = document.createElement('span');
+    r.className = 'scope-rule';
+    return r;
+  };
+  const timePd = def.params.find((q) => q.name === 'time')!;
+  const steps = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000].filter((v) => v >= timePd.min && v <= timePd.max);
+  const value = document.createElement('span');
+  value.className = 'scope-time';
+  const show = (): void => {
+    const t = m.params.time ?? timePd.default;
+    const { num, unit } = t >= 1000 ? formatValue(t / 1000, 's', false) : formatValue(t, timePd.unit, false);
+    value.textContent = `${num} ${unit}`;
+  };
+  const step = (dir: 1 | -1): void => {
+    const t = m.params.time ?? timePd.default;
+    const next = dir > 0 ? steps.find((v) => v > t * 1.001) : [...steps].reverse().find((v) => v < t * 0.999);
+    if (next === undefined) return;
+    set('time', next);
+    show();
+  };
+  const shorter = button('−', 'Shorter window', () => step(-1));
+  const longer = button('+', 'Longer window', () => step(1));
+  const MODE_BUTTONS: Record<string, [string, string]> = { time: ['Wave', 'Waveform'], spectrum: ['FFT', 'Spectrum'], spectrogram: ['Gram', 'Spectrogram: the frequencies over the last 5 s, the level as a colour'] };
+  const modes = (def.params.find((q) => q.name === 'mode')!.choices ?? []).map((name, i) => {
+    const b = button(MODE_BUTTONS[name][0], MODE_BUTTONS[name][1], () => {
+      set('mode', i);
+      for (const [k, x] of modes.entries()) x.setAttribute('aria-pressed', String(k === i));
+    });
+    b.setAttribute('aria-pressed', String(Math.round(m.params.mode ?? 0) === i));
+    return b;
+  });
+  show();
+  // the vertical scale (#518): a click steps auto -> ±1 -> ±4 -> auto
+  const scales = def.params.find((q) => q.name === 'scale')!.choices ?? [];
+  const scaleAt = (): number => Math.max(0, Math.min(scales.length - 1, Math.round(m.params.scale ?? 0)));
+  const scaleBtn = button(scales[scaleAt()], 'Vertical scale: auto fits the traces; ±1 and ±4 stay put (click for the next)', () => {
+    set('scale', (scaleAt() + 1) % scales.length);
+    scaleBtn.textContent = scales[scaleAt()];
+  });
+  bar.append(shorter, value, longer, rule(), ...modes, rule(), scaleBtn);
+  if (voices) {
+    const on = (): boolean => Math.round(m.params.voices ?? 0) === 1;
+    const each = button('Voices', 'Each voice as its own trace', () => {
+      set('voices', on() ? 0 : 1);
+      each.setAttribute('aria-pressed', String(on()));
+    });
+    each.setAttribute('aria-pressed', String(on()));
+    bar.append(rule(), each);
+  }
+  // the toolbar's presses are its own: no card drag, no cable, no pick
+  bar.addEventListener('pointerdown', (e) => e.stopPropagation());
+  return bar;
 }
 
 /** the spectrum's scale: dB, gridlines every 24 dB */

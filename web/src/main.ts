@@ -31,6 +31,7 @@ import { SandboxKeys } from './sandbox-keys';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { snapshotKey, snapshotRecord, storedSnapshots, type Snapshot, type SnapshotKey } from './snapshots';
 import { ScopeScreens } from './scope-view';
+import { OUTPUT_SCOPE_KEY, OutputScope } from './output-scope';
 import { OutputLoudness } from './loudness-view';
 import { EnvScreens } from './env-view';
 import { addToBank, bankPatches, buildPatchesSection, type LibrarySection as LibraryPane } from './bank';
@@ -808,7 +809,10 @@ const patchCandidates = (like?: Patch): { name: string; patch: Patch }[] => {
 };
 // Scope modules' screens: they stream while on screen and audio runs
 const screens = new ScopeScreens((msg) => host.send(msg), () => host.running && !host.muted);
-host.onView = (key, chans, sr, voices) => screens.receive(key, chans, sr, voices);
+// the Output scope (#1029): a Scope screen of what is heard, over the snapshot strip; its own screens, kept through rebuilds
+const outScreens = new ScopeScreens((msg) => host.send(msg), () => host.running && !host.muted);
+const outScope = new OutputScope($('output-scope'), outScreens);
+host.onView = (key, chans, sr, voices) => (key === OUTPUT_SCOPE_KEY ? outScreens : screens).receive(key, chans, sr, voices);
 // the Output card's loudness readout (#940): the reading carries on through rebuilds, a patch opened starts it again
 const loudness = new OutputLoudness();
 host.onLoud = (steps) => loudness.push(steps);
@@ -1142,6 +1146,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     nameInput.value = editor.patch.name;   // (each stop has its own name, D-970)
     renderSnapshots();
     queueSave(editor.patch);   // (the snapshots are kept beside the patch)
+    outScope.update(!snapStrip.hidden, editor.snaps.list.length);
   },
   morphCandidates: patchCandidates,
 }, $('dock'));
@@ -1668,6 +1673,7 @@ if (firstPatch === editor.patch && savedText !== null) {
   if (kept.length) editor.restoreSnapshots(kept);
 }
 renderSnapshots();
+outScope.update(true, editor.snaps.list.length);
 
 // ---- the command palette: modules, assemblies, patches
 const palette = $<HTMLDialogElement>('palette');
@@ -1739,6 +1745,7 @@ const commands = (): Command[] => {
     ...(editor.listenLabel ? [{ kind: 'command' as const, label: 'Stop listening: back to the Output', detail: 'Esc', keywords: `solo monitor hear signal ${editor.listenLabel}`, run: () => void editor.stopListening() }] : []),
     { kind: 'command', label: 'Listen to the selected card on its own', detail: 'Alt-click a jack or cable', keywords: 'solo monitor hear signal headphones cable output', run: inPatch(() => { if (!editor.listenSelected()) status.textContent = 'Select one card with an audio output, or Alt-click (Option-click) an audio output or a cable, to hear it on its own'; }) },
     { kind: 'command', label: 'Reset the integrated loudness', detail: 'the Output card', keywords: 'lufs level meter loudness rule target', run: () => loudness.reset() },
+    { kind: 'command', label: 'Output scope', detail: outScope.open ? 'shown: hide it' : 'show it', keywords: 'oscilloscope waveform spectrum fft spectrogram gram analyser analyzer meter output hear snapshot', run: inPatch(() => outScope.toggle()) },
     { kind: 'command', label: 'FM-1 & MIDI settings', keywords: 'connect send store sync hardware keyboard release', run: () => $<HTMLDialogElement>('device-bar').showModal() },
     { kind: 'command', label: 'Install firmware', keywords: 'flash update hardware matryoshka return stock official v15', run: () => openInstall() },
     { kind: 'command', label: 'About Matryoshka', keywords: 'credits support ko-fi donate ai usage transparency', run: () => void about.open() },
@@ -2401,6 +2408,7 @@ function setView(v: View): void {
   $('canvas').hidden = v !== 'patch';
   $('help-btn').hidden = v !== 'patch';
   snapStrip.hidden = v !== 'patch';
+  outScope.update(v === 'patch', editor.snaps.list.length);
   // the sidebar is the same in every view; LIBRARY's sections are tabs under the switch
   $('library-tabs').hidden = v !== 'library';
   // the FM-1 is its own instrument: its panel has the keys and knobs, so the Main dock, the wheels and the keyboard go;
@@ -2867,7 +2875,7 @@ const syncAudioBtn = (): void => {
   audioBtn.title = on ? 'Stop all playing notes and silence the audio' : 'Start the audio';
   audioBtn.classList.toggle('on', on);
 };
-host.onState = () => { syncAudioBtn(); screens.state(); envs.state(); };
+host.onState = () => { syncAudioBtn(); screens.state(); outScreens.state(); envs.state(); };
 syncAudioBtn();
 // the deck's test phrase and WAV export (#945, #946): left of the keys
 const audition = new Audition({
@@ -3180,6 +3188,7 @@ const showTheme = (): void => {
   themeBtn.setAttribute('aria-label', `Switch to the ${next} theme`);
   envs.changed(); // canvases read the colour tokens when they draw
   screens.state();
+  outScreens.state();
   editor.positionSideCables();
 };
 themeBtn.onclick = toggleTheme;
