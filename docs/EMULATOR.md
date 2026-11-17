@@ -252,12 +252,13 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   the editor). After the count-in the bar says `PLAY ONCE` and the FM-1's Start reaches the editor; half a pass in it
   still runs, and after the pass it stops by itself (its Stop reaches the editor). SEQ held + PLAY again, then PLAY a beat
   later, must end it with nothing started.
-- **A Harmonizer's chord keys (`harmKeys`, issue #1053, [D-781](ledger/modules.md#D-781),
-  [D-958](ledger/editor.md#D-958)):** Monolith D with its Harmonizer on. Under Live, at octaves 0, +1 and -1, one of
-  the FM-1's seven lowest keys must name its chord on the bar (`CHORD: MAJ`), send the key under the split and reach the
-  editor as that note; a key above the seven must go out as a root. The same patch with 16 voices is sandbox mode: there
-  the seven lowest keys must reach the browser engine as chord buttons at every octave, and the other keys as roots,
-  one under the split too.
+- **A Harmonizer's chord keys (`harmKeys`, issue #1053, [D-643](ledger/editor.md#D-643),
+  [D-781](ledger/modules.md#D-781), [D-958](ledger/editor.md#D-958)):** Monolith D with its Harmonizer on. Under Live,
+  at octaves 0, +1 and -1, one of the FM-1's seven lowest keys must name its chord on the bar (`CHORD: MAJ`) and send
+  the key under the split, and the browser engine must take it as that chord button; a key above the seven must reach
+  the browser engine as a root, also at octave -1, where its note lands under the split. The same patch with 16 voices
+  is sandbox mode: there the seven lowest keys must reach the browser engine as chord buttons at every octave, and the
+  other keys as roots.
 - **When:** use [Choosing checks](#choosing-checks) for the qualification stages in [D-144](ledger/releases.md#D-144).
 
 Not covered: plugging and unplugging USB, the installer and the update loader, USB audio.

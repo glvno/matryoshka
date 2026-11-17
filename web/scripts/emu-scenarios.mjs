@@ -1925,7 +1925,7 @@ async function main() {
         await emu.elapse(hold);
         await emu.key(14 + n, false);
         await emu.elapse(300);
-        await until(async () => (await page.evaluate(() => window.__played.length)) >= 2, 1500);
+        await until(async () => (await page.evaluate(() => (window.__noteLog ?? []).length >= 2 && window.__played.length >= 2)), 1500);
         return heard();
       };
       const NAMES = ['SUS2', 'MAJ', 'SUS4', 'MIN', '7', 'DIM', 'ADD9'];
@@ -1937,14 +1937,16 @@ async function main() {
         const named = await emu.waitText(`CHORD: ${NAMES[n]}`, 2000);
         await emu.key(14 + n, false);
         await emu.elapse(300);
-        await until(async () => (await page.evaluate(() => (window.__noteLog ?? []).length)) >= 2, 1500);
+        await until(async () => (await page.evaluate(() => (window.__noteLog ?? []).length >= 2 && window.__played.length >= 2)), 1500);
         const h = await heard();
-        await check(`harm keys (Live, octave ${oct}): key ${n + 1} is the ${NAMES[n]} button: the bar names it, the FM-1 sends the key under split (${53 + n}), the editor takes it as that button`,
-          named && h.sent.some((d) => d[0] >> 4 === 9 && d[1] === 53 + n && d[2]) && h.played.some((m) => m.t === 'on' && m.note === 53 + n && !m.root), show(h));
+        await check(`harm keys (Live, octave ${oct}): key ${n + 1} is the ${NAMES[n]} button: the bar names it, the FM-1 sends the key under split (${53 + n}), the editor plays it as that button`,
+          named && h.sent.some((d) => d[0] >> 4 === 9 && d[1] === 53 + n && d[2]) && h.played.some((m) => m.t === 'chord' && m.button === n && m.down)
+          && h.played.some((m) => m.t === 'chord' && m.button === n && !m.down) && !h.played.some((m) => m.t === 'on'), show(h));
         const k = oct < 0 ? 13 : 7, note = 53 + k + 12 * oct;   // (C4's key at octaves 0 and 1; at -1 F#4's, which plays 54, under split)
         const r = await press(k);
         await check(`harm keys (Live, octave ${oct}): a key above the seven is a root (${note}), also where it lands under split`,
-          r.sent.some((d) => d[0] >> 4 === 9 && d[1] === note && d[2]) && r.played.some((m) => m.t === 'on' && m.note === note && (m.root || note >= 60)), show(r));
+          r.sent.some((d) => d[0] >> 4 === 9 && d[1] === note && d[2]) && r.played.some((m) => m.t === 'on' && m.note === note && m.root)
+          && !r.played.some((m) => m.t === 'chord'), show(r));
       }
       await octave(0);
       await open(await fixture(true));
