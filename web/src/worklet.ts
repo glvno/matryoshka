@@ -19,7 +19,8 @@ declare class AudioWorkletProcessor {
 declare function registerProcessor(name: string, ctor: new () => AudioWorkletProcessor): void;
 
 export type HostMsg =
-  | { t: 'patch'; patch: Patch; revision?: number }
+  /** `fresh`: every voice let go and every module started from rest first (a snapshot switch: no tail rings on, D-970) */
+  | { t: 'patch'; patch: Patch; revision?: number; fresh?: boolean }
   | { t: 'values' }
   | { t: 'param'; id: number; name: string; value: number }
   | { t: 'att'; id: number; index: number; value: number }
@@ -175,7 +176,7 @@ class ModularProcessor extends AudioWorkletProcessor {
           return;
         }
         if (m.t === 'patch') {
-          this.engine.load(m.patch);
+          this.engine.load(m.patch, false, !!m.fresh);
           for (const v of this.views.values()) {
             v.streams = v.chans.map(() => new ViewStream(v.samples));
             v.voices &&= v.chans.map(() => new VoiceStreams(v.samples));

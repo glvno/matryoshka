@@ -7,6 +7,7 @@ import type { Patch } from './patch';
 import { NOTE_NAMES } from './modules';
 import { PHRASES, ROOT_OCTAVES, TakeRecorder, drumNotes, makePhrase, rootNote, takePhrase, type Phrase, type PhraseKind, type PhraseNote } from './phrases';
 import { WAV_RATE, encodeWav, joinChunks, wavName } from './wav';
+import type { RenderSetup } from './phrase-render';
 
 export interface PhraseChoice {
   kind: PhraseKind;
@@ -38,7 +39,7 @@ export interface AuditionHost {
   tempo(): number | null;
   status(text: string): void;
   download(bytes: Uint8Array, name: string): void;
-  render(patch: Patch, phrase: Phrase, setup: { armed: string[]; tempo: number | null }): Promise<[Float32Array, Float32Array]>;
+  render(patch: Patch, phrase: Phrase, setup: { armed: string[]; tempo: number | null } & Pick<RenderSetup, 'seconds' | 'quiet'>): Promise<[Float32Array, Float32Array]>;
   resample(left: Float32Array, right: Float32Array, from: number): Promise<[Float32Array, Float32Array]>;
   now(): Date;
   /** seconds on a steady clock (performance.now): the takes' timing */
@@ -187,10 +188,11 @@ export class Audition {
     return c.kind === 'take' ? takePhrase(this.myTake!) : makePhrase(c.kind, rootNote(c.pitch, c.octave), drumNotes(this.host.patch()));
   }
 
-  /** `phrase` played once by `p` instead of the patch open, rendered offline as the WAV export renders it, in memory only:
-   *  Make candidates measures a candidate by it and drops the sound (mutate-render.ts) */
-  renderWith(p: Patch, phrase: Phrase): Promise<[Float32Array, Float32Array]> {
-    return this.host.render(p, phrase, { armed: this.host.armed(), tempo: this.host.tempo() });
+  /** `phrase` played once by `p` instead of the patch open, rendered offline as the WAV export renders it (or as `how`
+   *  says: its length, an early stop), in memory only: Make candidates measures a candidate's probe by it and drops the
+   *  sound (mutate-render.ts) */
+  renderWith(p: Patch, phrase: Phrase, how: Pick<RenderSetup, 'seconds' | 'quiet'> = {}): Promise<[Float32Array, Float32Array]> {
+    return this.host.render(p, phrase, { ...how, armed: this.host.armed(), tempo: this.host.tempo() });
   }
 
   /** a note the user played, for the takes */

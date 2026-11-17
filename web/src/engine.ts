@@ -292,7 +292,14 @@ export class Engine {
 
   /** Install a patch. Modules whose id, type and copy count are unchanged keep their running state; so do poly groups. */
   /** `compile`: run the device compile pass first (device-compile.ts: what the FM-1 runs; the editor keeps every module running, unplugged ones show their live values too) */
-  load(source: Patch, compile = false): void {
+  /** `fresh`: nothing keeps its state (a snapshot switch, D-970): every voice is let go and every module starts from rest, so
+   *  no delay line, reverb or chorus rings on */
+  load(source: Patch, compile = false, fresh = false): void {
+    if (fresh) {
+      this.allNotesOff();
+      this.nodes = new Map();
+      this.groups = [];
+    }
     const routingError = keyRouteError(source);
     if (routingError) throw new Error(routingError);
     const bus = fxBusOf(source);

@@ -50,6 +50,7 @@ function rig(start: Patch): { editor: Editor; engine: Engine; fm1: () => Patch; 
       else delete r[name];
     },
     onTrack(id, notes, pat) { log.push('track'); engine.setTrack(id, notes, pat); mod(id).notes = notes; },
+    onSilence(p) { log.push('silence'); engine.load(p, false, true); },   // (main.ts: host.silence, both engines)
     onTransport() {},
     onLayout() { log.push('layout'); },
     onError() {},
@@ -122,6 +123,50 @@ describe('snapshots in the editor (#943)', () => {
     expect(sound(fm1())).toBe(sound(b));
     expect(editor.patch.name).toBe('current');
     expect(layout(editor.patch)).toEqual(moved);
+  });
+
+  it('a switch silences first: a reverb tail is zero right after it, while an edit lets it ring', () => {
+    const r = rig(relocatedPatches['Canvas']());
+    const { editor, engine, log } = r;
+    expect(editor.patch.modules.some((m) => m.type === 'reverb')).toBe(true);
+    editor.takeSnapshot();
+    const m = editor.patch.modules.find((x) => x.type === 'osc')!;
+    m.params.fine = (m.params.fine ?? 0) + 0.1;   // (values only: before, this switch played on in place)
+    const [l, rr] = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    const level = (): number => {
+      engine.render(l, rr);
+      return Math.max(...l.map(Math.abs), ...rr.map(Math.abs));
+    };
+    /** a note held half a second, then let go for a tenth: the reverb rings */
+    const ring = (): void => {
+      engine.noteOn(60, 0.8);
+      for (let i = 0; i < 0.5 * SR / BLOCK; i++) level();
+      engine.noteOff(60);
+      for (let i = 0; i < 0.1 * SR / BLOCK; i++) level();
+    };
+    ring();
+    expect(level()).toBeGreaterThan(1e-3);
+    log.length = 0;
+    editor.cycleSnapshots();
+    expect(log[0]).toBe('silence');
+    expect(log).not.toContain('structure');
+    for (let i = 0; i < 4; i++) expect(level()).toBe(0);
+    // Mutate is an edit, not a switch: no silence, the tail goes on
+    ring();
+    log.length = 0;
+    editor.selectAll();
+    editor.mutate('mutate');
+    expect(log).not.toContain('silence');
+    // the other ways to switch silence too: Alt+X (remove and go on), Alt+C (make it the current patch)
+    if (editor.snaps.shown === null) editor.cycleSnapshots();
+    log.length = 0;
+    expect(editor.removeShown()).not.toBeNull();
+    expect(log[0]).toBe('silence');
+    editor.takeSnapshot();
+    if (editor.snaps.shown === null) editor.cycleSnapshots();
+    log.length = 0;
+    editor.makeCurrent(editor.snaps.shown!);
+    expect(log[0]).toBe('silence');
   });
 
   it('another overlay (an assembly label): a full load, the layout stays', () => {
