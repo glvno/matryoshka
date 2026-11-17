@@ -187,6 +187,12 @@ export class Audition {
     return c.kind === 'take' ? takePhrase(this.myTake!) : makePhrase(c.kind, rootNote(c.pitch, c.octave), drumNotes(this.host.patch()));
   }
 
+  /** `phrase` played once by `p` instead of the patch open, rendered offline as the WAV export renders it, in memory only:
+   *  Make candidates measures a candidate by it and drops the sound (mutate-render.ts) */
+  renderWith(p: Patch, phrase: Phrase): Promise<[Float32Array, Float32Array]> {
+    return this.host.render(p, phrase, { armed: this.host.armed(), tempo: this.host.tempo() });
+  }
+
   /** a note the user played, for the takes */
   played(msg: HostMsg): void {
     if (msg.t === 'on') this.takes.on(msg.note, msg.vel, this.host.clock());
