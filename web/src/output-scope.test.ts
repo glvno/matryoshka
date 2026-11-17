@@ -103,7 +103,7 @@ describe('Output scope (#1029)', () => {
     expect(scope.screenSize).toEqual(SCREEN_DEFAULT);
     const corner = root.querySelector<HTMLElement>('.oscope-grip.corner')!;
     corner.dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientX: 100, clientY: 500 }));
-    corner.dispatchEvent(new MouseEvent('pointermove', { clientX: 160, clientY: 440 }));
+    corner.dispatchEvent(new MouseEvent('pointermove', { clientX: 40, clientY: 560 }));
     corner.dispatchEvent(new MouseEvent('pointerup'));
     expect(scope.screenSize).toEqual({ w: SCREEN_DEFAULT.w + 60, h: SCREEN_DEFAULT.h + 60 });
     expect(root.querySelector<HTMLElement>('.oscope-screen')!.style.width).toBe(`${SCREEN_DEFAULT.w + 60}px`);

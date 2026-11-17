@@ -293,25 +293,31 @@ dialog.about .hsec h3 { margin-bottom: 10px; font-size: 22px; letter-spacing: .0
   font: 600 17px/1 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; }
 .help-btn:hover { color: var(--ink); border-color: var(--secondary); }
 .help-btn[hidden] { display: none; }
-/* the snapshots (#943): a strip at the canvas's bottom left in the view switch's style, the current patch last, + takes one */
-.snapshot-strip { position: absolute; left: 18px; bottom: 18px; z-index: 6; display: flex; align-items: center; gap: 2px; padding: 2px; max-width: calc(100% - 90px); overflow-x: auto;
+/* the column at the canvas's right edge (#1038): the Output scope on top, the snapshots under it, one per row top to
+   bottom, the current patch last, + takes one. While there is a snapshot or the scope shows, the canvas gives up the
+   column's width (main.ts sets --snap-col-w), so cards and FIT stay clear of it; the ? button sits under it */
+.snap-column { position: absolute; right: 18px; top: 56px; bottom: 62px; z-index: 6; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; }
+.snap-column > * { pointer-events: auto; }
+#tab-patch:is(:has(.snapshot-strip .snap[aria-pressed]), :has(#output-scope:not([hidden]))) .snap-column { align-items: stretch; min-width: 220px; }
+#tab-patch:is(:has(.snapshot-strip .snap[aria-pressed]), :has(#output-scope:not([hidden]))) .canvas { width: calc(100% - var(--snap-col-w, 0px)); }
+.snapshot-strip { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 2px; padding: 2px; overflow-y: auto; overscroll-behavior: contain;
   border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 2px 8px var(--shadow); }
-.snapshot-strip .snap { display: inline-flex; align-items: baseline; gap: 4px; flex: none; height: 26px; padding: 0 9px; border: 0; border-radius: 6px; background: none; color: var(--muted);
-  font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+.snapshot-strip .snap { display: flex; align-items: baseline; gap: 6px; flex: none; height: 26px; padding: 0 9px; border: 0; border-radius: 6px; background: none; color: var(--muted);
+  font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; text-align: left; white-space: nowrap; }
 .snapshot-strip .snap:hover { color: var(--ink); }
 .snapshot-strip .snap[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
 .snapshot-strip .snap.edited::after { content: '*'; }
-.snapshot-strip .snap-name { text-transform: none; letter-spacing: 0; max-width: 12ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.snapshot-strip .snap-thumb { font-size: 10px; letter-spacing: 0; opacity: .7; font-variant-numeric: tabular-nums; }
+.snapshot-strip .snap-name { flex: 1 1 auto; min-width: 0; text-transform: none; letter-spacing: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.snapshot-strip .snap-thumb { margin-left: auto; font-size: 10px; letter-spacing: 0; opacity: .7; font-variant-numeric: tabular-nums; }
 .snapshot-strip .snap-take { color: var(--secondary); }
-/* rank and cut (#996): a kept candidate is underlined with a tick; ←B: mutated from B */
-.snapshot-strip .snap.keep { box-shadow: inset 0 -2px 0 var(--secondary); }
+/* rank and cut (#996): a kept candidate has a bar at its left and a tick; ←B: mutated from B */
+.snapshot-strip .snap.keep { box-shadow: inset 3px 0 0 var(--secondary); }
 .snapshot-strip .snap.keep::before { content: '✓'; color: var(--secondary); }
 .snapshot-strip .snap-from { font-size: 10px; letter-spacing: 0; text-transform: none; opacity: .7; }
 .snapshot-strip[hidden] { display: none; }
-/* the Output scope (output-scope.ts, #1029): a Scope screen of what is heard, docked just over the snapshot strip; its
-   toolbar always shows; it grows up and to the right from its top edge, right edge and top right corner */
-.output-scope { position: absolute; left: 18px; bottom: 56px; z-index: 6; display: flex; flex-direction: column; gap: 4px; padding: 4px 6px 6px;
+/* the Output scope (output-scope.ts, #1029): a Scope screen of what is heard, at the top of the column over the
+   snapshots; its toolbar always shows; it grows to the left and down from its left edge, bottom edge and bottom left corner */
+.output-scope { position: relative; flex: none; display: flex; flex-direction: column; gap: 4px; padding: 4px 6px 6px;
   border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 2px 8px var(--shadow); }
 .output-scope[hidden] { display: none; }
 .output-scope .oscope-head { display: flex; align-items: center; gap: 6px; }
@@ -323,9 +329,9 @@ dialog.about .hsec h3 { margin-bottom: 10px; font-size: 22px; letter-spacing: .0
 .output-scope.collapsed .oscope-fold { margin-left: 4px; }
 .output-scope.collapsed :is(.oscope-body, .scope-tools, .oscope-grip) { display: none; }
 .output-scope .oscope-grip { position: absolute; z-index: 1; touch-action: none; }
-.output-scope .oscope-grip.top { left: 10px; right: 10px; top: -4px; height: 8px; cursor: ns-resize; }
-.output-scope .oscope-grip.right { top: 10px; bottom: 10px; right: -4px; width: 8px; cursor: ew-resize; }
-.output-scope .oscope-grip.corner { top: -6px; right: -6px; width: 14px; height: 14px; cursor: nesw-resize; }
+.output-scope .oscope-grip.bottom { left: 10px; right: 10px; bottom: -4px; height: 8px; cursor: ns-resize; }
+.output-scope .oscope-grip.left { top: 10px; bottom: 10px; left: -4px; width: 8px; cursor: ew-resize; }
+.output-scope .oscope-grip.corner { bottom: -6px; left: -6px; width: 14px; height: 14px; cursor: nesw-resize; }
 dialog.help .shead { flex: none; height: 34px; padding: 0 6px 0 10px; }
 dialog.help .shead form { margin: 0; }
 dialog.help .help-close { border: 0; background: transparent; color: var(--muted); font-size: 20px; line-height: 1; padding: 2px 8px; }
