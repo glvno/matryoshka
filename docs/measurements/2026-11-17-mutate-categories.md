@@ -54,29 +54,106 @@ Hera 6 and Shush 101 drive both their filter and their VCA from one ADSR: it rea
 
 ## Rendering and filtering
 
-Make candidates with a category renders each candidate with the test phrase (`renderPhrase`, the same render as the WAV export), measures it and drops it at once. It measures these on the phrase's first note:
+Make candidates with a category renders each candidate with the probe (`probePhrase`, rendered by `renderPhrase` as `PROBE_RENDER` says), measures it and drops it at once. The owner asked for it on 2026-11-17: "the phrase used to determine whether the generated sound fits the role should not be the test phrase! it should be something fixed. otherwise most generated candidates do not fit. it should be cheap to generate, so, brief." The probe is the same whatever the test phrase is, and it never touches the test phrase settings:
 
-- **Attack:** twice the time to half the peak. A reverb that builds up after a quick attack moves the peak but not the half-way point. An attack up to 25 ms counts as instant, which is about as fine as the windows can tell.
-- **Decay and release:** the time to come three quarters of the way, multiplied by ln 100 / ln 4, which gives the 99 % time for an exponential fall. An effect's quiet tail does not count. The decay is read only when the level falls to half the peak or below; a smaller fall is too small to time.
-- **Sustain:** the last tenth of the hold, as a share of the peak. A measured sustain up to 0.15 outside the profile's range counts as inside, because the loudness follows the filter too, not the loudness envelope alone.
-- **Brightness:** the mean frequency weighted by power, which is sr / 2π times the ratio of the slope's power to the sound's.
+- One note at velocity 100: C3 (MIDI note 48). For a patch whose keys reach a Drum map and no Voicing (a drum engine), it is that Drum map's first row's note, as `levels.ts` `keysOf` plays it.
+- Held 1.0 s from the start, then let go, and rendered 1.0 s more: 2.0 s at most.
+- The render stops early once the sound after the release has stayed 60 dB below its peak during the hold for 50 ms (long enough for the 35 ms smoothing below to end on silence).
 
-The loudness is followed in 5 ms windows, averaged over 35 ms for the peak, decay, sustain and release, so a click at the start is no peak. The fit adds the octaves each time lies outside the category's loudness range, four times the share the sustain lies outside, and half the octaves the brightness moved outside the cutoff range from the parent's. A fit of 0.5 or less passes.
+It measures these:
+
+- **Attack:** twice the time to half the peak. A reverb that builds up after a quick attack moves the peak but not the half-way point. An attack up to 25 ms counts as instant, which is about as fine as the windows can tell. An attack still rising at the end of the hold (its peak in the hold's last 50 ms, and the level 100 ms before the end under 95 % of the peak) counts as at least 1.0 s.
+- **Decay and release:** the time to come three quarters of the way, multiplied by ln 100 / ln 4, which gives the 99 % time for an exponential fall. An effect's quiet tail does not count. The decay is read only when the level falls to half the peak or below; a smaller fall is too small to time. A decay the hold ends before is a least value. A release that has not come 90 % of the way down by the end of the render counts as at least 1.0 s.
+- **Sustain:** the level over the last 100 ms of the hold, as a share of the peak. A measured sustain up to 0.15 outside the profile's range counts as inside, because the loudness follows the filter too, not the loudness envelope alone.
+- **Brightness:** the mean frequency weighted by power over the hold, which is sr / 2π times the ratio of the slope's power to the sound's.
+
+The loudness is followed in 5 ms windows, averaged over 35 ms for the peak, decay, sustain and release, so a click at the start is no peak. The fit adds the octaves each time lies outside the category's loudness range, four times the share the sustain lies outside, and half the octaves the brightness moved outside the cutoff range from the parent's. A least value adds only the octaves it lies past the top of the range, so it fits a category whose range reaches past it: pad (attack up to 2.5 s, release up to 4 s) and drone (attack up to 4 s, release up to 8 s). A fit of 0.5 or less passes.
 
 ### Time for 16 renders
 
-The held note (3 s held, 1 s rest, 2 s tail: 6 s of sound) rendered 16 times after one warm-up render, 44.1 kHz:
+Each patch rendered 16 times after one warm-up render, 44.1 kHz, on this Mac. The held note is 3 s held, 1 s rest and a 2 s tail: 6 s of sound. The probe is 2 s at most, less when its release has fallen 60 dB sooner. The browser is the managed headless Chromium, calling `renderPhrase` from the dev server's page with the editor's yield between slices.
 
-| Patch | Browser (Chromium, this Mac) | Node (`vite-node`), per render |
-|---|---|---|
-| Monolith D | 4.43 s | 244 ms |
-| Oracle V | 4.61 s | 252 ms |
-| Shush 101 | 3.48 s | 199 ms |
-| Cassia 1 | 3.38 s | 210 ms |
+| Patch | Held note, browser | Probe, browser | Held note, Node (`vite-node`), per render | Probe, Node, per render |
+|---|---|---|---|---|
+| Monolith D | 4.50 s | 1.02 s | 238 ms | 58 ms |
+| Oracle V | 4.69 s | 1.49 s | 251 ms | 79 ms |
+| Shush 101 | 3.77 s | 0.80 s | 194 ms | 42 ms |
+| Cassia 1 | 3.95 s | 1.45 s | 208 ms | 78 ms |
 
-That is well over 1.5 s, so a round runs in the background: the candidates that pass join the strip as they do, the status line counts the renders, and Make candidates again stops the round. In the browser, a round of 4 candidates on Monolith D aimed at `keys` ended after 5 renders in 1.7 s (4 passed). One aimed at `pad`, run while the pass mark was still 0.25 and before DECAY ON had a role, went through all 16 in 4.8 s, and none passed: the 4 nearest filled the round.
+The held note's browser times match the first measurement of PR #1037 (4.43, 4.61, 3.48 and 3.38 s). The probe renders 16 candidates in 0.8 to 1.5 s, three to four times faster. A round still runs in the background: the candidates that pass join the strip as they do, the status line counts the renders, and Make candidates again stops the round. In the browser, a round of 4 candidates on Shush 101 aimed at `pad` ended after 5 renders in 0.7 s (4 passed).
 
-### Full rounds, before and after the fixes
+### Full rounds with the probe
+
+Every factory patch and category got one real round, as below, rendered in Node: Make candidates with nothing selected, 10 %, 4 to keep, up to 16 renders, the factory presets' values as Mutate's pools, and a fixed seed per patch and category (`mulberry32`, seed 1000 × the patch's row + the category's column + 1). The same seeds and candidates went through the code before this change, with each test phrase rooted on C4, and through the probe. A round is all-miss when none passed and the 4 nearest filled it.
+
+| Measured with | All-miss rounds (of 147) |
+|---|---|
+| Before: held note | 34 |
+| Before: staccato hits | 44 |
+| Before: chord | 40 |
+| Before: across the range | 65 |
+| Before: drum pattern | 47 |
+| After: the probe, whatever the test phrase | 34 |
+
+Before, the result depended on the test phrase: the staccato hits and the drum pattern give no sustain and no release, so pad and drone missed on every patch, and across the range timed its first note's release into the next note. The held note was the best case. The probe gives the held note's count whatever the test phrase is, in a third to a quarter of the time.
+
+Each cell gives the candidates that passed / the renders; **0/16** in bold is an all-miss round.
+
+**Before, the held note on C4:**
+
+| Patch | lead | stab | pluck | pad | bass | keys | drone |
+|---|---|---|---|---|---|---|---|
+| Monolith D | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 |
+| Oracle V | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 |
+| Silver Box | **0/16** | **0/16** | **0/16** | **0/16** | **0/16** | **0/16** | **0/16** |
+| Hera 6 | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 |
+| Sallen 20 | 4/5 | 4/6 | 4/5 | 4/4 | 4/7 | 4/5 | 4/5 |
+| Expander S | 4/8 | 4/5 | 4/5 | 4/4 | 3/16 | 4/5 | 4/7 |
+| Algo Four | 4/4 | **0/16** | 4/4 | 4/5 | 4/4 | 4/10 | 4/5 |
+| Canvas | 4/5 | 4/5 | 4/4 | 4/5 | 3/16 | 4/6 | 4/9 |
+| Wanderer | 4/4 | 1/16 | **0/16** | 4/4 | 4/4 | 4/14 | 4/4 |
+| Briefcase 3 | 4/6 | **0/16** | **0/16** | 4/4 | 4/11 | 4/6 | 4/4 |
+| Io 4 | 4/7 | 4/6 | 4/5 | 4/4 | 4/4 | 4/7 | 4/4 |
+| Vernon 100 | 4/4 | 4/4 | 4/5 | 4/7 | 1/16 | 4/4 | 4/5 |
+| 8 Lire | 2/16 | **0/16** | **0/16** | 4/4 | 4/14 | 1/16 | 4/4 |
+| Elvira 2 | 1/16 | **0/16** | **0/16** | 4/4 | **0/16** | 2/16 | 4/5 |
+| Scrounge | **0/16** | 4/4 | 4/4 | **0/16** | **0/16** | 4/4 | **0/16** |
+| Meridian 8 | 1/16 | 4/4 | 4/4 | **0/16** | 4/4 | 4/4 | **0/16** |
+| 808 Kit | **0/16** | 4/4 | 4/4 | **0/16** | **0/16** | 4/4 | **0/16** |
+| 909 Kit | **0/16** | 4/4 | 4/4 | **0/16** | **0/16** | 4/4 | **0/16** |
+| Cassia 1 | 4/4 | 4/6 | 4/6 | 4/8 | 4/4 | 4/6 | 4/4 |
+| Verona Drum 1 | **0/16** | 4/4 | 4/4 | **0/16** | **0/16** | 4/4 | **0/16** |
+| Shush 101 | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 |
+
+**After, the probe:**
+
+| Patch | lead | stab | pluck | pad | bass | keys | drone |
+|---|---|---|---|---|---|---|---|
+| Monolith D | 4/4 | 4/4 | 4/4 | 4/5 | 4/4 | 4/5 | 4/4 |
+| Oracle V | 1/16 | 4/5 | 4/4 | 4/5 | 3/16 | 4/4 | 4/4 |
+| Silver Box | **0/16** | **0/16** | **0/16** | **0/16** | **0/16** | **0/16** | **0/16** |
+| Hera 6 | 4/4 | 4/4 | 4/4 | 4/5 | 4/6 | 4/4 | 4/5 |
+| Sallen 20 | 4/5 | 4/6 | 4/5 | 4/4 | 4/7 | 4/5 | 4/5 |
+| Expander S | 4/10 | 3/16 | 4/5 | 4/4 | 4/4 | 3/16 | 4/6 |
+| Algo Four | 4/4 | **0/16** | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 |
+| Canvas | 4/5 | 4/10 | 4/11 | 4/4 | 1/16 | 4/4 | 4/8 |
+| Wanderer | 4/4 | 3/16 | **0/16** | 4/4 | 4/5 | 4/11 | 4/4 |
+| Briefcase 3 | 4/8 | **0/16** | **0/16** | 4/4 | 2/16 | 4/5 | 4/4 |
+| Io 4 | 4/6 | 4/14 | 4/5 | 4/4 | 4/4 | 4/4 | 4/4 |
+| Vernon 100 | 4/4 | 4/4 | 4/5 | 4/7 | 1/16 | 4/4 | 4/4 |
+| 8 Lire | 3/16 | **0/16** | **0/16** | 4/4 | 4/16 | 4/7 | 4/4 |
+| Elvira 2 | 1/16 | **0/16** | **0/16** | 4/5 | **0/16** | 1/16 | 4/5 |
+| Scrounge | **0/16** | 4/4 | 4/4 | 1/16 | **0/16** | 4/4 | 4/14 |
+| Meridian 8 | 4/4 | **0/16** | **0/16** | **0/16** | 4/5 | 4/4 | **0/16** |
+| 808 Kit | **0/16** | 4/6 | 4/4 | **0/16** | **0/16** | 4/4 | **0/16** |
+| 909 Kit | **0/16** | 4/4 | 4/4 | **0/16** | **0/16** | 4/4 | **0/16** |
+| Cassia 1 | 4/5 | 4/8 | 4/6 | 4/12 | 4/6 | 4/4 | 4/4 |
+| Verona Drum 1 | **0/16** | 4/4 | 4/4 | **0/16** | **0/16** | 4/4 | **0/16** |
+| Shush 101 | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 |
+
+Rounds the probe gained: Scrounge drone, Meridian 8 lead. Rounds it lost: Meridian 8 stab and pluck. The probe plays Meridian 8's first Drum map row (F3), a voice that holds, where the held note on C4 played another. Oracle V's lead (1 of 16) and bass (3 of 16) pass less often: with a 1 s hold its decay and release measure a little past lead's and bass's ranges.
+
+### Full rounds with the held note, before and after the fixes (PR #1037)
 
 Every factory patch and category got one real round: Make candidates with nothing selected, 10 %, 4 to keep, up to 16 renders, the held note on C4, a fixed seed per patch and category (`mulberry32`). Each cell gives the candidates that passed / the renders. **0/16** in bold is a round that ended all-miss: none passed, so the 4 nearest filled it.
 
@@ -154,5 +231,5 @@ The other all-miss rounds are categories the engine's sound does not reach: the 
 
 - The roles come from the patch as it is: a Selector that a moving signal positions passes every input, and a Selector off an envelope's way is not held, so a Mutate can still take a filter off the sound's way. Layer 3 hears the result.
 - A Rate Env's times leave key scaling out.
-- The render measures the phrase's first note only. Staccato hits give no sustain and no decay longer than a hit; the drum pattern measures its first hit.
+- The probe plays one note on one key: an engine whose sound changes across the keys (key tracking, a drum engine's other rows) is judged on that key. A time longer than the probe's 1 s window is known only as at least 1 s, so pad and drone cannot be told apart by their attack or release past it.
 - The ranges are this note's choices from common practice, not measured from the factory presets; layer 2 (tagging the factory presets by category, issue #1033) can check them.
