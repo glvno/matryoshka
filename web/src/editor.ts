@@ -83,7 +83,8 @@ import { addPresetOf, applyPreset, deletePreset, matchesPreset, nextPresetName, 
 import { snapshotPreset } from './snapshot-presets';
 import { engineOf } from './library-presets';
 import { fxPresetInfo } from './fx-preset-format';
-import { fxBusOf, type FxBus } from './fx-bus';
+import { fxBusOf, type FxBus, type FxStage } from './fx-bus';
+import { setFxStageEnabled } from './fx-preset';
 import { armable, armDrawing, armedWith, keepArmed, noKeysReach, type DeviceKey } from './arm';
 import { PianoRoll } from './roll';
 import { stepGrid, stopEntry, type LockRow, type StepGrid } from './step-grid';
@@ -1223,13 +1224,13 @@ export class Editor {
     tools.className = 'tools';
     if (open) tools.append(this.outButton(open, () => this.takeOutModule(open, m)));
     if (!open && def.type !== 'steps' && armable(this.patch, `m${m.id}`)) tools.append(this.armButton(`m${m.id}`, this.nameOf(m)));
-    if (def.type !== 'fm1' && def.type !== 'output' && !EDITOR_ONLY.has(def.type)) tools.append(this.bypassButton(m, def, el));
+    if (def.type !== 'fm1' && def.type !== 'output' && !EDITOR_ONLY.has(def.type)) tools.append(this.bypassButton(m, def));
     const menu = (at: Pt): void => this.contextMenu(m, def, at);
     tools.append(this.moreButton(menu));
     tools.prepend(this.costSlot(this.costs?.modules.get(m.id)));
     head.append(title, tools);
     this.headMenu(head, menu);
-    el.classList.toggle('off', !!m.bypass);
+    el.classList.toggle('off', this.offShown(m));
     this.moduleDrag(head, m);
 
     const body = document.createElement('div');
@@ -2186,17 +2187,16 @@ export class Editor {
   }
 
   /** the power button of a card: bypass on / off (the through input, or silence, replaces the module's outputs) */
-  private bypassButton(m: ModuleInst, def: ModuleDef, card: HTMLElement): HTMLButtonElement {
+  private bypassButton(m: ModuleInst, def: ModuleDef): HTMLButtonElement {
     const b = this.button('⏻', `${def.label} on / off (bypass)`, () => {
       this.touch();
-      m.bypass = !m.bypass;
-      if (!m.bypass) delete m.bypass;
-      card.classList.toggle('off', !!m.bypass);
-      b.classList.toggle('on', !m.bypass);
-      this.ev.onBypass(m.id, !!m.bypass);
+      const on = !m.bypass;
+      this.setBypass([m.id], on);
+      this.ev.onBypass(m.id, on);
     }, 'pw');
-    b.classList.toggle('on', !m.bypass);
-    b.setAttribute('aria-pressed', String(!m.bypass));
+    const off = this.offShown(m);
+    b.classList.toggle('on', !off);
+    b.setAttribute('aria-pressed', String(!off));
     return b;
   }
 
@@ -3112,12 +3112,8 @@ export class Editor {
     if (!ms.length) return false;
     const on = ms.some((m) => !m.bypass);
     this.touch();
-    for (const m of ms) {
-      if (on) m.bypass = true;
-      else delete m.bypass;
-      this.ev.onBypass(m.id, on);
-    }
-    this.rebuild();
+    this.setBypass(ms.map((m) => m.id), on);
+    for (const m of ms) this.ev.onBypass(m.id, on);
     this.ev.onLayout(this.patch);
     return true;
   }
@@ -3985,8 +3981,8 @@ export class Editor {
     btn.append(top, under, led);
     btn.classList.toggle('unassigned', kind === 'nothing');
     btn.classList.toggle('assigned', buttonLight(this.patch, b, false) === 'dim');
-    const engaged = glo ? this.gloOn : kind === 'page' ? this.pageOn?.b === b : kind === 'bypass' ? switches(panel, b) && toggleEngaged(this.patch, b) : switches(panel, b) && !!panel?.on?.includes(b);
-    btn.setAttribute('aria-pressed', String(litWhileEnabled(this.patch, b) ? !engaged : engaged));   // (ARP on Arpeggiators: lit while they play)
+    const pressed = kind === 'bypass' ? this.toggleLit(b) : glo ? this.gloOn : kind === 'page' ? this.pageOn?.b === b : switches(panel, b) && !!panel?.on?.includes(b);
+    btn.setAttribute('aria-pressed', String(pressed));
     const does = fixed ? FIXED_DOES[b] : kind === 'nothing' ? 'does nothing (its jack is high while held)' : kind === 'gate' ? 'a gate' : kind === 'page' ? 'a list of device pages (press: the next, hold: the first)' : 'bypasses its target';
     btn.title = fixed ? `${name}: ${does}` : `${name}: ${does}${kind === 'page' ? '' : switches(panel, b) ? ', switches on / off' : ', while held'} (right-click: edit the button)`;
     // touch (#153): the dock scrolls sideways from a button (touch-action: pan-x), so a switch flips when the finger is
@@ -4160,8 +4156,11 @@ export class Editor {
     const a = t && 'asm' in t ? assembliesOf(this.patch).find((x) => x.id === t.asm) : undefined;
     if (!switches(m.panel, b)) {
       if (btn) btn.dataset.down = String(down);
-      btn?.setAttribute('aria-pressed', String(kind === 'bypass' && litWhileEnabled(this.patch, b) ? !down : down));
-      if (kind === 'bypass') this.showBypass(toggleTargets(this.patch, b), down, a);
+      if (kind === 'bypass') {                // (the engine bypasses its targets while it is down: Engine.setButton)
+        if (down) this.heldToggles.set(b, { ids: toggleTargets(this.patch, b), asm: a?.id });
+        else this.heldToggles.delete(b);
+        this.showBypass();
+      } else btn?.setAttribute('aria-pressed', String(down));
       this.ev.onButton?.(i, down);
       return;
     }
@@ -4170,22 +4169,14 @@ export class Editor {
     let on: boolean;
     if (kind === 'bypass') {
       on = !toggleEngaged(this.patch, b);
-      const ids = toggleTargets(this.patch, b);
-      if (a) bypassAssembly(this.patch, a, on);
-      else for (const id of ids) {
-        const x = this.patch.modules.find((y) => y.id === id);
-        if (!x) continue;
-        if (on) x.bypass = true;
-        else delete x.bypass;
-      }
-      this.showBypass(ids, on, a);
+      this.setBypass(toggleTargets(this.patch, b), on, a);   // (its light too)
     } else {
       const panel = (m.panel ??= {});
       on = !panel.on?.includes(b);
       panel.on = on ? [...(panel.on ?? []), b] : (panel.on ?? []).filter((x) => x !== b);
       if (!panel.on.length) delete panel.on;
+      btn?.setAttribute('aria-pressed', String(on));
     }
-    btn?.setAttribute('aria-pressed', String(kind === 'bypass' && litWhileEnabled(this.patch, b) ? !on : on));
     this.ev.onButton?.(i, on);
     this.ev.onLayout(this.patch);           // saved with the patch (the device keeps switched buttons too)
   }
@@ -4261,12 +4252,97 @@ export class Editor {
     return true;
   }
 
-  /** the cards of modules a Toggle bypasses show it (without a redraw: the dock button may be held) */
-  private showBypass(ids: number[], on: boolean, a?: AssemblyInst): void {
-    for (const id of ids) this.cards.get(id)?.classList.toggle('off', on);
-    if (a) {
-      this.containers.get(a.id)?.classList.toggle('off', on);
-      this.frames.get(a.id)?.classList.toggle('off', on);
+  /** the Toggles held down that switch nothing: the modules (and the assembly) each bypasses in the engine while it is
+   *  down, which the patch does not keep; their cards show it meanwhile */
+  private heldToggles = new Map<string, { ids: number[]; asm?: number }>();
+
+  /** a module's card shows it bypassed: its switch in the patch, or a Toggle held down on it */
+  private offShown(m: ModuleInst): boolean {
+    return !!m.bypass || [...this.heldToggles.values()].some((h) => h.ids.includes(m.id));
+  }
+
+  /** an assembly's card, frame and switches show it off: its own switch, or a Toggle held down on it */
+  private asmOffShown(a: AssemblyInst): boolean {
+    return !!a.bypass || [...this.heldToggles.values()].some((h) => h.asm === a.id);
+  }
+
+  /** a Toggle's light on the dock: engaged while its targets are bypassed (a switching one) or while it is held; ARP on
+   *  Arpeggiators and LFO on Harmonies light while their targets play (litWhileEnabled) */
+  private toggleLit(b: string): boolean {
+    const engaged = switches(this.patch.modules.find((x) => x.type === 'fm1')?.panel, b) ? toggleEngaged(this.patch, b) : this.heldToggles.has(b);
+    return litWhileEnabled(this.patch, b) ? !engaged : engaged;
+  }
+
+  /**
+   * Bypass switches set in the patch (#1054): the modules `ids` bypassed (`on`) or back on, or with `a` that assembly's
+   * own switch (assembly.ts bypassAssembly). Every bypass the editor makes comes through here or setFxStage: a card's ⏻,
+   * an assembly's, an FX stage switch, Bypass selection, a Toggle pressed on the dock, on the FM-1 or as MIDI CC 80..86,
+   * the tutorial. The patch and every view of it change together; the caller sends the engines what they need. Returns
+   * the modules whose switch moved.
+   */
+  setBypass(ids: readonly number[], on: boolean, a?: AssemblyInst): number[] {
+    return this.bypassChange(() => {
+      if (a) return bypassAssembly(this.patch, a, on);
+      const moved: number[] = [];
+      for (const id of ids) {
+        const m = this.patch.modules.find((x) => x.id === id);
+        if (!m || !!m.bypass === on) continue;
+        if (on) m.bypass = true;
+        else delete m.bypass;
+        moved.push(id);
+      }
+      return moved;
+    });
+  }
+
+  /** an FX stage on or off whole, as the FM-1's FX page switches it (D-966, fx-preset.ts setFxStageEnabled), shown as
+   *  setBypass shows a change. Returns the stage's modules */
+  setFxStage(stage: FxStage, on: boolean): number[] {
+    return this.bypassChange(() => setFxStageEnabled(this.patch, stage, on));
+  }
+
+  /** a bypass change, then its views: drawn again in place (showBypass), or the whole canvas when it changed whether the
+   *  patch has a master FX bus or which stages it has (fx-bus.ts fxBusOf: the bus card's switches come and go) */
+  private bypassChange(change: () => number[]): number[] {
+    const bus = (): string => {
+      const b = fxBusOf(this.patch);
+      return b ? `${b.assembly}:${b.stages.map((s) => s.assembly).join()}` : '';
+    };
+    const was = bus();
+    const moved = change();
+    if (bus() !== was) this.rebuild();
+    else this.showBypass();
+    return moved;
+  }
+
+  /**
+   * Every view of the bypass switches drawn again from the patch, in place (no redraw: a dock button may be held, a card
+   * dragged): each card's stripes and ⏻, each assembly's card, frame and ⏻, the master FX bus card's stage switches and
+   * dimmed rows (D-966), and the dock's Toggle lights.
+   */
+  private showBypass(): void {
+    const power = (b: Element | null | undefined, on: boolean): void => {
+      b?.classList.toggle('on', on);
+      b?.setAttribute('aria-pressed', String(on));
+    };
+    for (const m of this.patch.modules) {
+      const card = this.cards.get(m.id);
+      if (!card) continue;
+      const off = this.offShown(m);
+      card.classList.toggle('off', off);
+      power(card.querySelector(':scope > .mhead button.pw'), !off);
+    }
+    const asmOff = new Map(assembliesOf(this.patch).map((a) => [a.id, this.asmOffShown(a)]));
+    for (const [id, off] of asmOff) for (const el of [this.containers.get(id), this.frames.get(id)]) {
+      el?.classList.toggle('off', off);
+      power(el?.querySelector(':scope > .mhead button.pw, :scope > .fhead button.pw'), !off);
+    }
+    for (const el of this.modulesEl.querySelectorAll<HTMLElement>('[data-stage]')) el.classList.toggle('stage-off', !!asmOff.get(Number(el.dataset.stage)));
+    for (const b of this.modulesEl.querySelectorAll<HTMLElement>('.fx-stages button.fx-stage')) power(b, !asmOff.get(Number(b.dataset.asm)));
+    const panel = this.patch.modules.find((x) => x.type === 'fm1')?.panel;
+    for (const b of PANEL_BUTTONS) {
+      if (FIXED_BUTTONS.has(b) || kindOf(panel, b) !== 'bypass') continue;
+      this.dock?.querySelector(`.panel-btn[data-button="${b}"]:not(.arp-free)`)?.setAttribute('aria-pressed', String(this.toggleLit(b)));
     }
   }
 
@@ -4585,16 +4661,14 @@ export class Editor {
   /** an assembly's on / off switch (its card's ⏻): every module inside bypassed or back, one undo step, each change sent live */
   private switchAssembly(a: AssemblyInst): void {
     this.touch();
-    const changed = bypassAssembly(this.patch, a, !a.bypass);
-    for (const id of changed) this.ev.onBypass(id, !!this.patch.modules.find((m) => m.id === id)?.bypass);
-    this.rebuild();
+    for (const id of this.setBypass([], !a.bypass, a)) this.ev.onBypass(id, !!this.patch.modules.find((m) => m.id === id)?.bypass);
     this.ev.onLayout(this.patch);
   }
 
   private assemblyButtons(a: AssemblyInst): HTMLElement[] {
     const pw = this.button('⏻', `${a.label} on / off (bypass every module inside)`, () => this.switchAssembly(a), 'pw');
-    pw.classList.toggle('on', !a.bypass);
-    pw.setAttribute('aria-pressed', String(!a.bypass));
+    pw.classList.toggle('on', !this.asmOffShown(a));
+    pw.setAttribute('aria-pressed', String(!this.asmOffShown(a)));
     const arm = parentOf(this.patch, a.id) ? [] : armable(this.patch, `a${a.id}`) ? [this.armButton(`a${a.id}`, a.label)] : noKeysReach(this.patch, `a${a.id}`) ? [this.noKeysButton(a.label)] : [];
     return [...arm, this.polyButton(a), pw, this.moreButton((at) => this.assemblyMenu(a, at))];
   }
@@ -4613,8 +4687,8 @@ export class Editor {
         // (the card is redrawn: keyboard focus stays on the switch)
         this.modulesEl.querySelector<HTMLElement>(`.fx-stages button[data-asm="${st.id}"]`)?.focus();
       }, 'sm fx-stage');
-      b.classList.toggle('on', !st.bypass);
-      b.setAttribute('aria-pressed', String(!st.bypass));
+      b.classList.toggle('on', !this.asmOffShown(st));
+      b.setAttribute('aria-pressed', String(!this.asmOffShown(st)));
       b.dataset.asm = String(st.id);
       row.append(b);
     }
@@ -4773,7 +4847,7 @@ export class Editor {
     const open = arranging ? undefined : parent;
     const ncols = paramColumns(a.params).length;
     const el = document.createElement('div');
-    el.className = 'module assembly' + (this.armedSet.has(`a${a.id}`) ? ' armed' : '') + (a.poly ? ' poly' : '') + (parent ? ' member' : '') + (a.bypass ? ' off' : '') + (this.picking(open) ? ' picking' : '') + (this.selectedAsm.has(a.id) ? ' selected' : '') + (arranging ? ' arranging' : '') + (ncols > 1 ? ' cols' : '');
+    el.className = 'module assembly' + (this.armedSet.has(`a${a.id}`) ? ' armed' : '') + (a.poly ? ' poly' : '') + (parent ? ' member' : '') + (this.asmOffShown(a) ? ' off' : '') + (this.picking(open) ? ' picking' : '') + (this.selectedAsm.has(a.id) ? ' selected' : '') + (arranging ? ' arranging' : '') + (ncols > 1 ? ' cols' : '');
     if (ncols > 1) el.style.setProperty('--cols', String(ncols));
     el.style.left = `${a.x}px`;
     el.style.top = `${a.y}px`;
@@ -4830,12 +4904,14 @@ export class Editor {
     const copy = copyStarts(a.params);
     const starts = new Map(groupStarts(kept.map((i) => ({ ...a.params[i], copy: copy[i], knob: !shown[i].screen }))).map((st, k) => [kept[k], st && k > 0]));
     const tie = this.patch.assemblies?.some((x) => x.params.some((r) => r.also || r.names)) ? ties(this.patch) : null;
-    // the master FX bus card: the rows of a stage that is off are dimmed, as the stage's switch shows it (D-966)
+    // the master FX bus card: each stage's rows (and their headings) carry the stage, dimmed while it is off as its switch
+    // shows it (D-966; showBypass dims them again in place)
     const bus = !parent && a.children?.length ? fxBusOf(this.patch) : null;
-    const offRows = new Set(bus?.assembly === a.id ? bus.stages.flatMap((s) => {
+    const stageOf = new Map<number, AssemblyInst>();
+    if (bus?.assembly === a.id) for (const s of bus.stages) {
       const st = this.patch.assemblies!.find((x) => x.id === s.assembly)!;
-      return st.bypass ? st.modules : [];
-    }) : []);
+      for (const id of st.modules) stageOf.set(id, st);
+    }
     // copies shown one at a time (the CZ's envelope steps): only the picked one, under a row that picks it
     const runs = copyRuns(a.params);
     const runOf = (i: number) => runs.find((x) => i >= x.at && i < x.at + x.rows * x.count);
@@ -4851,7 +4927,11 @@ export class Editor {
       const first = run && i === run.at + picked * run.rows;
       const lead = first ? a.params[run.at] : r;   // (the run's heading and column break stay above whichever copy shows)
       const above = [...(lead.head ? [this.heading(a, first ? run.at : i)] : []), ...(first ? [this.copyPicker(a, run)] : [])];
-      if (offRows.has(m.id)) for (const e of [row, ...above]) e.classList.add('stage-off');
+      const st = stageOf.get(m.id);
+      if (st) for (const e of [row, ...above]) {
+        e.dataset.stage = String(st.id);
+        e.classList.toggle('stage-off', this.asmOffShown(st));
+      }
       return [{ el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: !!lead.col, above, span: pd.screen ? r.span : undefined, gap: !!starts.get(first ? run.at : i) && !lead.col && !lead.head && !run }];
     });
     body.append(...this.edgeLayout(ins, outs, params));
@@ -5570,7 +5650,7 @@ export class Editor {
   /** the frame around an expanded assembly's cards, with its header; placed by layoutFrames() once the cards have a size */
   private frame(a: AssemblyInst, perVoice: number): HTMLElement {
     const el = document.createElement('div');
-    el.className = 'frame' + (a.bypass ? ' off' : '') + (this.selectedAsm.has(a.id) ? ' selected' : '');
+    el.className = 'frame' + (this.asmOffShown(a) ? ' off' : '') + (this.selectedAsm.has(a.id) ? ' selected' : '');
     el.dataset.asm = String(a.id);
     const head = document.createElement('div');
     head.className = 'fhead';

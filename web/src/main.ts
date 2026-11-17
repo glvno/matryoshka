@@ -11,7 +11,6 @@ import { presetEngines, snapshotPreset } from './snapshot-presets';
 import { armedFromMask, armMask } from './arm';
 import './factory-presets'; // the factory engines' presets (#193)
 import { fxBusOf, fxRuntimeHelpers } from './fx-bus';
-import { setFxStageEnabled } from './fx-preset';
 import { FEATURE_FX_PRESETS, FX_BYPASS_PARAM } from './protocol';
 import { applyImport, backupFile, backupKeys, collectKeys, importSummary, receiveMigration } from './migrate';
 import { moveOffer, onPagesDev } from './move-offer';
@@ -545,12 +544,11 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
       const stage = fxBusOf(editor.patch)?.stages.find(stage => stage.targets.includes(m.id));
       if (!stage) return;
       const helpers = fxRuntimeHelpers(editor.patch);
-      for (const id of setFxStageEnabled(editor.patch, stage, e.value === 0)) {
+      for (const id of editor.setFxStage(stage, e.value === 0)) {
         if (helpers.has(id)) continue;
         const module = editor.patch.modules.find(module => module.id === id)!;
         host.send({ t: 'bypass', id, on: !!module.bypass });
       }
-      editor.rebuild();
       queueSave(editor.patch);
       return;
     }
@@ -1193,7 +1191,7 @@ const tutorial = new Tutorial({
   },
   share: () => sharePatch(),
   arpPlay: (on) => setPlaying(on),
-  bypass: (id, on) => { const m = editor.patch.modules.find((m) => m.id === id); if (!m) return; if (on) m.bypass = true; else delete m.bypass; host.send({ t: 'bypass', id, on }); tutorial.bypassed(); editor.rebuild(); queueSave(editor.patch); },
+  bypass: (id, on) => { if (!editor.patch.modules.some((m) => m.id === id)) return; editor.setBypass([id], on); host.send({ t: 'bypass', id, on }); tutorial.bypassed(); queueSave(editor.patch); },
   bankSave: addToBank,
   rename: (name) => { editor.patch.name = name; nameInput.value = name; queueSave(editor.patch); },
   status: (msg) => { status.textContent = msg; },
