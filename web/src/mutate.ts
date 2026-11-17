@@ -7,10 +7,13 @@
 // what is locked, what the FM-1 sets when the patch loads, and the modules that play rather than sound (MUTATE_SKIP). A
 // level row never ends above the larger of its value and its default, so a result is never suddenly loud. Pitch rows
 // (pitchRows) stay as they are unless "Mutate pitch" is on, and then move only by musical steps. A row of an engine with
-// factory presets may take a preset's value instead of noise (MutateOptions.pools). Make candidates with two or more keeps
-// breeds (breedPatch). The editor applies the result as one undo step (Editor.mutate, Editor.makeCandidates). D-975, D-987.
+// factory presets may take a preset's value instead of noise (MutateOptions.pools). A category (#1033) brings the rows
+// whose role the wiring shows (roleRows: envelopes, cutoff, glide) into its profile's ranges (PROFILES) and leans the
+// timbre its way. Make candidates with two or more keeps breeds (breedPatch). The editor applies the result as one undo
+// step (Editor.mutate, Editor.makeCandidates). D-975, D-987, D-994, D-995.
 import { assembliesOf, tiedTo, toDef, type AssemblyInst, type RowTarget } from './assembly';
-import { RATIOS, rowRange } from './modules';
+import { ADSR_LONG, env8End, env8Sus, RATIOS, rowRange, SELECT_N, selectPos } from './modules';
+import { INCREMENTS, RATE_CLOCK } from './rate-envelope';
 import { LEVEL_ROWS } from './levels';
 import { cardRows } from './preset-cards';
 import { paramUnit, paramValue, topOf, type Cable, type ModuleDef, type ModuleInst, type ParamDef, type Patch } from './patch';
@@ -72,6 +75,11 @@ const VALUE_ROWS: Record<string, (param: string) => PitchKind | undefined> = {
  * mapped to a pitch row. Undefined: not a pitch row.
  */
 export function pitchRows(p: Patch, defs: Record<string, ModuleDef>): (m: ModuleInst, param: string) => PitchKind | undefined {
+  return pitchPaths(p, defs).kind;
+}
+
+/** pitchRows, with the modules whose output reaches a pitch input (`reach`) */
+function pitchPaths(p: Patch, defs: Record<string, ModuleDef>): { reach: Set<number>; kind: (m: ModuleInst, param: string) => PitchKind | undefined } {
   const byId = new Map(p.modules.map((m) => [m.id, m]));
   const reach = new Set<number>();
   const kind = (m: ModuleInst, param: string): PitchKind | undefined =>
@@ -87,7 +95,7 @@ export function pitchRows(p: Patch, defs: Record<string, ModuleDef>): (m: Module
     grew = false;
     for (const c of p.cables) if (!reach.has(c.from.module) && feedsPitch(c)) reach.add(c.from.module), (grew = true);
   }
-  return kind;
+  return { reach, kind };
 }
 
 /** is this parameter locked: on its own (the row's ⋮ menu), by its card, or by an assembly it is a member of (at any depth) */
@@ -132,6 +140,12 @@ export interface MutateOptions {
   /** the values an engine's factory presets give a row, by `module:param`: a row that moves takes one of them with the
    *  chance PRESET_DRAW instead of noise (never a pitch row) */
   pools?: ReadonlyMap<string, readonly number[]>;
+  /** the sound category aimed at (#1033): its role rows go into its ranges (PROFILES) and timbre leans its way; absent or
+   *  'any': no aim */
+  category?: Category;
+  /** the patch a category's cutoff range is measured from (the patch before a run of Mutates, the parent of candidates);
+   *  absent: the patch mutated */
+  anchor?: Patch;
 }
 
 export interface MutateResult {
@@ -139,6 +153,8 @@ export interface MutateResult {
   patch: Patch;
   /** how many parameters changed */
   moved: number;
+  /** with a category: how many rows (or tied rows) in the scope it gave a range (role rows) */
+  roles?: number;
 }
 
 const key = (t: RowTarget): string => `${t.module}:${t.param}`;
@@ -161,6 +177,295 @@ export function heldRows(p: Patch): Set<string> {
   return held;
 }
 
+// ---- steer by role (#1033): a category aims Mutate and Make candidates at a kind of sound. Each row's role comes from the
+// wiring, as a pitch row's does: the loudness envelope (it reaches a VCA on the way from a sound source to the Output), the
+// tone envelope (it reaches a filter's cutoff, a PD Osc's DCW or the level of an FM modulator), the cutoff of a filter on
+// that way, and the time of a slew limiter on the way to a pitch input. A category gives each role a range (PROFILES).
+
+/** the sound categories; 'any' aims at nothing (Mutate as without a category) */
+export const CATEGORIES = ['any', 'lead', 'stab', 'pluck', 'pad', 'bass', 'keys', 'drone'] as const;
+export type Category = (typeof CATEGORIES)[number];
+/** an envelope's job: the sound's loudness, or its tone */
+export type EnvRole = 'amp' | 'tone';
+/** an envelope's stages: attack, decay, sustain, release */
+export type Stage = 'a' | 'd' | 's' | 'r';
+export type Role = `${EnvRole}-${Stage}` | 'cutoff' | 'glide';
+/** a low and a high end */
+export type Span = readonly [number, number];
+
+/** a category's ranges: envelope times in seconds (an attack's rise; a decay's or release's fall of 99 %, 40 dB), sustain
+ *  levels 0..1, the cutoff in octaves from the anchor's (MutateOptions.anchor), the glide time in seconds. `nudge` (-1..1)
+ *  leans the timbre rows of BRIGHT darker or brighter. */
+export interface Profile { amp: Record<Stage, Span>; tone: Record<Stage, Span>; cutoff: Span; glide: Span; nudge: number }
+
+/** each category's profile (docs/measurements/2026-11-17-mutate-categories.md) */
+export const PROFILES: Record<Exclude<Category, 'any'>, Profile> = {
+  lead: { amp: { a: [0.001, 0.03], d: [0.1, 1], s: [0.6, 1], r: [0.03, 0.4] }, tone: { a: [0.001, 0.05], d: [0.1, 0.8], s: [0.3, 0.8], r: [0.05, 0.5] }, cutoff: [0, 1], glide: [0.001, 0.12], nudge: 1 },
+  stab: { amp: { a: [0.001, 0.01], d: [0.08, 0.4], s: [0, 0.3], r: [0.03, 0.25] }, tone: { a: [0.001, 0.01], d: [0.05, 0.3], s: [0, 0.25], r: [0.03, 0.25] }, cutoff: [-0.25, 1], glide: [0.001, 0.01], nudge: 0.5 },
+  pluck: { amp: { a: [0.001, 0.008], d: [0.15, 0.8], s: [0, 0.1], r: [0.08, 0.5] }, tone: { a: [0.001, 0.008], d: [0.06, 0.5], s: [0, 0.15], r: [0.05, 0.4] }, cutoff: [-0.5, 0.5], glide: [0.001, 0.01], nudge: 0.5 },
+  pad: { amp: { a: [0.3, 2.5], d: [0.5, 3], s: [0.6, 1], r: [0.8, 4] }, tone: { a: [0.2, 3], d: [0.5, 4], s: [0.4, 1], r: [0.8, 4] }, cutoff: [-1.5, 0], glide: [0.001, 0.3], nudge: -1 },
+  bass: { amp: { a: [0.001, 0.01], d: [0.1, 0.8], s: [0.4, 1], r: [0.02, 0.2] }, tone: { a: [0.001, 0.01], d: [0.08, 0.6], s: [0, 0.4], r: [0.02, 0.25] }, cutoff: [-1.5, 0], glide: [0.001, 0.08], nudge: -0.5 },
+  keys: { amp: { a: [0.001, 0.012], d: [0.4, 2.5], s: [0.15, 0.6], r: [0.15, 0.8] }, tone: { a: [0.001, 0.02], d: [0.3, 2], s: [0.1, 0.5], r: [0.1, 0.8] }, cutoff: [-0.5, 0.5], glide: [0.001, 0.01], nudge: 0 },
+  drone: { amp: { a: [0.5, 4], d: [1, 5], s: [0.85, 1], r: [1.5, 8] }, tone: { a: [1, 5], d: [1, 5], s: [0.5, 1], r: [1.5, 8] }, cutoff: [-1, 0.25], glide: [0.001, 0.6], nudge: -0.5 },
+};
+
+/** the timbre rows a category leans (Profile.nudge): 1, brighter as the row rises; -1, darker */
+export const BRIGHT: Record<string, Record<string, 1 | -1>> = {
+  osc: { pm: 1, pm2: 1, pm3: 1, fb: 1 }, pd: { dcw: 1 }, wavetable: { pm: 1 }, shape: { drive: 1 }, filter: { cutoff: 1, drive: 1 },
+  ladder: { cutoff: 1, drive: 1 }, reverb: { damp: -1 }, string: { damp: -1 }, comb: { damp: -1 }, modal: { bright: 1, damp: -1 },
+};
+/** how far a category leans a timbre row, a share of the amount */
+const LEAN = 0.5;
+
+/** a role row: its role and what a value means for that role (seconds, a level, Hz), rising or falling with the value */
+export interface RoleRow { role: Role; measure: (v: number) => number }
+
+/** the roles of a patch's rows */
+export interface Roles {
+  of(m: ModuleInst, param: string): RoleRow | undefined;
+  /** the rows a category holds: an envelope's switches that change which rows play which stage, a glide's fall time */
+  holds(m: ModuleInst, param: string): boolean;
+  /** each envelope with a role, by module id */
+  envelopes: Map<number, EnvRole>;
+}
+
+/** the envelope modules */
+export const ENVELOPES: Record<string, true> = { adsr: true, env: true, env8: true, rateenv: true };
+/** the envelope switches a category holds */
+const ENV_SHAPE: Record<string, readonly string[]> = { adsr: ['long', 'ads'], env: ['shot'], env8: ['sus', 'end'] };
+/** the modules that make a sound from nothing */
+const SOURCES: Record<string, true> = { osc: true, noise: true, wavetable: true, pd: true, string: true };
+/** the modules whose output keeps moving by itself (a modulation source) */
+const MOVING: Record<string, true> = { ...SOURCES, lfo: true, random: true, seq: true, sh: true, steps: true };
+/** a sound source's inputs that change its tone rather than pass the sound on (phase modulation) */
+const MOD_INPUTS: Record<string, true> = { pm: true, pm2: true, pm3: true };
+/** the parameters of a module on the sound's way that set its tone, when a parameter input mapped to them is fed */
+const TONE_PARAMS: Record<string, readonly string[]> = { filter: ['cutoff'], ladder: ['cutoff'], pd: ['dcw'], osc: ['pm', 'pm2', 'pm3'], wavetable: ['pos', 'pm'] };
+
+/** seconds a Rate Env at raw rate `r` (0..63, key scaling left out) takes to fall 40 dB (427 of its 1024 steps) */
+function rateFall(r: number): number {
+  if (r < 2) return Infinity;
+  let sum = 0;
+  for (let k = 0; k < 8; k++) sum += (INCREMENTS[r] >>> (4 * k)) & 15;
+  return Math.max(0.001, ((427 * 8) / sum) * 2 ** Math.max(0, 11 - (r >> 2)) / RATE_CLOCK);
+}
+/** seconds a Rate Env's attack at raw rate `r` takes to reach full level (as rate-envelope.ts counts it) */
+function rateAttack(r: number): number {
+  if (r >= 62) return 0.001;
+  if (r < 2) return Infinity;
+  let att = 1023, n = 0;
+  for (; att > 0; n++) att += (~att * ((INCREMENTS[r] >>> (4 * (n & 7))) & 15)) >> 4;
+  return Math.max(0.001, (n * 2 ** Math.max(0, 11 - (r >> 2))) / RATE_CLOCK);
+}
+
+/** the rows that play an envelope's stages, with what a value means: seconds, or a level 0..1 */
+function envelopeStages(m: ModuleInst): { param: string; stage: Stage; measure: (v: number) => number }[] {
+  const p = m.params, out: { param: string; stage: Stage; measure: (v: number) => number }[] = [];
+  const add = (param: string, stage: Stage, measure = (v: number): number => v): void => void out.push({ param, stage, measure });
+  if (m.type === 'adsr') {
+    const k = (p.long ?? 0) >= 0.5 ? ADSR_LONG : 1;
+    for (const s of ['a', 'd'] as const) add(s, s, (v) => v * k);
+    add('s', 's');
+    if ((p.ads ?? 0) < 0.5) add('r', 'r', (v) => v * k);   // (ADS: the release falls at the decay's time)
+  } else if (m.type === 'env') {
+    add('r1', 'a');
+    add('r2', 'd');
+    add('r3', 'd');
+    if ((p.shot ?? 0) < 0.5) add('l3', 's');
+    add('r4', 'r');
+  } else if (m.type === 'env8') {
+    const end = env8End(p.end ?? 3), hs = env8Sus(Math.round(p.sus ?? 2), end);
+    add('r1', 'a');
+    for (let k = 2; k <= (hs || end); k++) add(`r${k}`, 'd');
+    if (hs) {
+      add(`l${hs}`, 's');
+      for (let k = hs + 1; k <= end; k++) add(`r${k}`, 'r');
+    }
+  } else if (m.type === 'rateenv') {
+    add('ar', 'a', (v) => rateAttack(2 * Math.round(v)));
+    add('d1r', 'd', (v) => rateFall(2 * Math.round(v)));
+    add('d1l', 's', (v) => {
+      const down = 15 - Math.round(v);   // (3 dB a step; D1L 0 is 93 dB down)
+      return 2 ** (-(down === 15 ? 31 : down) / 2);
+    });
+    add('rr', 'r', (v) => rateFall(4 * Math.round(v) + 2));
+  }
+  return out;
+}
+
+/**
+ * The roles of `p`'s rows (#1033). The sound's way: from a sound source (SOURCES) through any cable but a gate's, into
+ * any input but a gate's (a String's exciter is the only input of a source it passes) to the Output; port kinds do not
+ * decide it, as effects carry sound through Math and Attenuverter modules. An FM modulator: a module from a source that
+ * reaches a phase modulation input of a source on the way or of another modulator. An envelope's output is followed
+ * through the modules off the way (not
+ * through gate inputs, sources or other envelopes): reaching a VCA on the way (or a level row mapped to a parameter
+ * input there) makes it the loudness envelope; reaching a filter's cutoff, a PD Osc's DCW, an oscillator's FM index or
+ * a VCA of a modulator makes it a tone envelope. Loudness wins. A Multimode filter's or Ladder's cutoff on the way is a
+ * cutoff row; a slew limiter on the way to a pitch input gives its time the glide role.
+ */
+export function roleRows(p: Patch, defs: Record<string, ModuleDef>): Roles {
+  const byId = new Map(p.modules.map((m) => [m.id, m]));
+  const portKind = (type: string, port: string, dir: 'inputs' | 'outputs'): string | undefined => defs[type]?.[dir].find((x) => x.name === port)?.kind;
+  // a Selector passes only the input its position picks: its own, plus what a cable brings from a Selector or an Offset
+  // nothing moves (Algo Four's algorithm picks its routing so); a moving position passes every input
+  const fixedOut = (id: number, port: string, depth: number): number | undefined => {
+    const x = byId.get(id);
+    if (!x || port !== 'out' || depth > 8 || p.cables.some((c) => c.to.module === id && c.to.port !== 'pos')) return undefined;
+    if (x.type === 'const') return x.params.value ?? 0;
+    const k = x.type === 'select' ? position(x, depth + 1) : undefined;
+    return k === undefined ? undefined : x.params[`v${k}`] ?? 0;
+  };
+  const position = (x: ModuleInst, depth = 0): number | undefined => {
+    let cv = 0;
+    for (const c of p.cables) {
+      if (c.to.module !== x.id) continue;
+      if (c.to.port === 'pos') {
+        const v = fixedOut(c.from.module, c.from.port, depth);
+        if (v === undefined) return undefined;
+        cv += v;
+      } else if ((c.to.port === 'p1' || c.to.port === 'p2') && x.map?.[c.to.port]?.includes('pos')) return undefined;
+    }
+    return selectPos(x.params.pos ?? 1, x.params.count ?? SELECT_N, cv);
+  };
+  const positions = new Map(p.modules.filter((m) => m.type === 'select').map((m) => [m.id, position(m)]));
+  const picked = (x: ModuleInst, port: string): boolean => {
+    const k = positions.get(x.id);
+    return x.type !== 'select' || !/^in\d$/.test(port) || k === undefined || port === `in${k}`;
+  };
+  const audio = p.cables.filter((c) => {
+    const f = byId.get(c.from.module), t = byId.get(c.to.module);
+    return !!f && !!t && portKind(f.type, c.from.port, 'outputs') !== 'gate' && !['gate', 'keys'].includes(portKind(t.type, c.to.port, 'inputs') ?? '') && (!SOURCES[t.type] || c.to.port === 'exc') && picked(t, c.to.port);
+  });
+  // (an envelope into a VCA's gain off the way, over a moving signal, shapes that signal: an LFO's delay, not a sound's)
+  const overMoving = (x: ModuleInst): boolean => x.type === 'vca' && p.cables.some((c) => c.to.module === x.id && c.to.port === 'in' && MOVING[byId.get(c.from.module)?.type ?? '']);
+  const spread = (start: Iterable<number>, forward: boolean): Set<number> => {
+    const seen = new Set(start);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const c of audio) {
+        const [a, b] = forward ? [c.from.module, c.to.module] : [c.to.module, c.from.module];
+        if (seen.has(a) && !seen.has(b)) seen.add(b), (grew = true);
+      }
+    }
+    return seen;
+  };
+  const fromSources = spread(p.modules.filter((m) => SOURCES[m.type]).map((m) => m.id), true);
+  const toOutput = spread(p.modules.filter((m) => m.type === 'output').map((m) => m.id), false);
+  const sound = new Set([...fromSources].filter((id) => toOutput.has(id)));
+  const modulator = new Set<number>();
+  for (let size = -1; size !== modulator.size;) {
+    size = modulator.size;
+    const into = p.cables.filter((c) => MOD_INPUTS[c.to.port] && SOURCES[byId.get(c.to.module)?.type ?? ''] && (sound.has(c.to.module) || modulator.has(c.to.module)));
+    for (const id of spread(into.map((c) => c.from.module), false)) if (fromSources.has(id) && !sound.has(id)) modulator.add(id);
+  }
+  // the Selectors whose position decides a role: those an envelope passes through, and those a fixed Selector or Offset
+  // positions (an algorithm's routing)
+  const routing = new Set(p.cables.filter((c) => c.to.port === 'pos' && byId.get(c.to.module)?.type === 'select').map((c) => c.to.module));
+  const envelopes = new Map<number, EnvRole>();
+  for (const e of p.modules) {
+    if (!ENVELOPES[e.type]) continue;
+    let amp = false, tone = false;
+    const seen = new Set([e.id]), queue = [e.id];
+    while (queue.length) {
+      const id = queue.shift()!;
+      for (const c of p.cables) {
+        const x = c.from.module === id ? byId.get(c.to.module) : undefined;
+        if (!x) continue;
+        const q = c.to.port, mapped = q === 'p1' || q === 'p2' ? x.map?.[q] ?? [] : [];
+        if (sound.has(x.id) || modulator.has(x.id)) {
+          if ((x.type === 'vca' && (q === 'cv' || q === 'in')) || mapped.some((n) => isLevel(x.type, n))) {
+            if (sound.has(x.id)) amp = true;
+            else tone = true;
+          } else if (((x.type === 'filter' || x.type === 'ladder') && q === 'cv') || (x.type === 'pd' && q === 'dcw') || (x.type === 'osc' && q === 'index') || mapped.some((n) => TONE_PARAMS[x.type]?.includes(n))) tone = true;
+          continue;
+        }
+        const kind = portKind(x.type, q, 'inputs');
+        if (x.type === 'select' && /^in\d$/.test(q)) routing.add(x.id);
+        if (seen.has(x.id) || ENVELOPES[x.type] || SOURCES[x.type] || kind === 'gate' || kind === 'keys' || !picked(x, q) || (q === 'cv' && overMoving(x))) continue;
+        seen.add(x.id);
+        queue.push(x.id);
+      }
+    }
+    if (amp || tone) envelopes.set(e.id, amp ? 'amp' : 'tone');
+  }
+  const rows = new Map<string, RoleRow>(), held = new Set<string>();
+  // (a category holds those positions, and every row of a fixed Selector or Offset that sets one, so a Mutate or a breed
+  // keeps each row's role)
+  const holdRouting = (id: number, depth: number): void => {
+    const x = byId.get(id);
+    if (!x || depth > 8 || positions.get(id) === undefined) return;
+    held.add(`${id}:pos`).add(`${id}:count`);
+    for (const c of p.cables) {
+      const f = c.to.module === id && c.to.port === 'pos' ? byId.get(c.from.module) : undefined;
+      if (!f) continue;
+      for (const pd of defs[f.type]?.params ?? []) held.add(`${f.id}:${pd.name}`);
+      if (f.type === 'select') holdRouting(f.id, depth + 1);
+    }
+  };
+  for (const id of routing) holdRouting(id, 0);
+  for (const [id, job] of envelopes) {
+    const m = byId.get(id)!;
+    for (const s of envelopeStages(m)) rows.set(`${id}:${s.param}`, { role: `${job}-${s.stage}`, measure: s.measure });
+    for (const q of ENV_SHAPE[m.type] ?? []) held.add(`${id}:${q}`);
+  }
+  for (const id of sound) if (byId.get(id)!.type === 'filter' || byId.get(id)!.type === 'ladder') rows.set(`${id}:cutoff`, { role: 'cutoff', measure: (v) => v });
+  for (const id of pitchPaths(p, defs).reach) {
+    if (byId.get(id)?.type !== 'glide') continue;
+    rows.set(`${id}:time`, { role: 'glide', measure: (v) => v });
+    held.add(`${id}:fall`);
+  }
+  return { of: (m, param) => rows.get(`${m.id}:${param}`), holds: (m, param) => held.has(`${m.id}:${param}`), envelopes };
+}
+
+/** the range a category gives a role row, in the row's measure: the cutoff's octaves from `anchor` (the anchor patch's
+ *  value of the row) in Hz */
+export function roleSpan(profile: Profile, role: Role, anchor: number): Span {
+  if (role === 'cutoff') return [anchor * 2 ** profile.cutoff[0], anchor * 2 ** profile.cutoff[1]];
+  if (role === 'glide') return profile.glide;
+  const [job, stage] = role.split('-') as [EnvRole, Stage];
+  return profile[job][stage];
+}
+
+/** the values of `rd` whose measure lies in `span` (the measure rises or falls with the value), low end first; null: none */
+export function spanValues(rd: ParamDef, measure: (v: number) => number, span: Span): Span | null {
+  const inside = (v: number): boolean => {
+    const x = measure(v);
+    return x >= span[0] - 1e-9 && x <= span[1] + 1e-9;
+  };
+  const step = rd.step ?? 0;
+  if (step >= 1) {
+    const vs: number[] = [];
+    for (let v = rd.min; v <= rd.max + 1e-9; v += step) if (inside(v)) vs.push(v);
+    return vs.length ? [vs[0], vs.at(-1)!] : null;
+  }
+  if (measure(rd.max) < measure(rd.min)) return spanValues(rd, (v) => -measure(v), [-span[1], -span[0]]);
+  // the values either side of where the measure passes `edge` (reaches it, or goes over it), by halving the unit range
+  const cross = (edge: number, over: boolean): [number, number] => {
+    let a = 0, b = 1;
+    for (let k = 0; k < 48; k++) {
+      const mid = (a + b) / 2, x = measure(paramValue(rd, mid));
+      if (over ? x > edge : x >= edge) b = mid;
+      else a = mid;
+    }
+    return [paramValue(rd, a), paramValue(rd, b)];
+  };
+  const lo = measure(rd.min) >= span[0] ? rd.min : cross(span[0], false)[1];
+  const hi = measure(rd.max) <= span[1] ? rd.max : cross(span[1], true)[0];
+  return lo <= hi && inside(lo) && inside(hi) ? [lo, hi] : null;
+}
+
+/** `v` on the row's steps (counted from its low end), kept inside `span` when a step there exists */
+function onStep(rd: ParamDef, v: number, span: Span): number {
+  const step = rd.step ?? 0;
+  if (!step) return v;
+  const at = (k: number): number => Number((rd.min + k * step).toPrecision(12));
+  let x = at(Math.round((v - rd.min) / step));
+  if (x < span[0]) x = at(Math.ceil((span[0] - rd.min) / step - 1e-9));
+  if (x > span[1]) x = at(Math.floor((span[1] - rd.min) / step + 1e-9));
+  return x;
+}
+
 /** a whole-number ratio or 0.5: where a Ratio may go with "Mutate pitch" on */
 const MUSICAL_RATIO = RATIOS.map((r) => r === 0.5 || Number.isInteger(r));
 
@@ -176,13 +481,17 @@ function scopeTargets(p: Patch, scope: MutateScope, defs: Record<string, ModuleD
   ];
 }
 
-/** one row, or rows a card row ties (#357), that may move, with what a move needs */
-interface Row { group: RowTarget[]; m: ModuleInst; pd: ParamDef; rd: ParamDef; from: number; lo: number; hi: number; kind?: PitchKind; pool?: readonly number[] }
+/** one row, or rows a card row ties (#357), that may move, with what a move needs; `target`: a category's range for a role
+ *  row, in the row's unit space within its macro ranges, and `span` the same in values */
+interface Row { group: RowTarget[]; m: ModuleInst; pd: ParamDef; rd: ParamDef; from: number; lo: number; hi: number; kind?: PitchKind; pool?: readonly number[]; target?: Span; span?: Span }
 
 /**
  * Mutate or randomize the parameters of `scope` in a copy of `p`. `amount`: Mutate's largest move, a share of the range
  * (Randomize ignores it); `rnd` gives 0..1. Parameters that card rows tie (#357) move as one, and stay put when any of them
- * is locked. A value outside min..max (a stretch) stays as it is. Pitch rows stay unless `opts.pitch`.
+ * is locked. A value outside min..max (a stretch) stays as it is. Pitch rows stay unless `opts.pitch`. With a category
+ * (`opts.category`), every role row (roleRows) that is outside the category's range moves into it, one inside moves
+ * within it, the envelope switches and glide fall times the roles hold stay, and the timbre rows of BRIGHT lean the
+ * category's way.
  */
 export function mutatePatch(p: Patch, scope: MutateScope, mode: MutateMode, amount: number, defs: Record<string, ModuleDef>, rnd: () => number = Math.random, opts: MutateOptions = {}): MutateResult {
   const out = structuredClone(p);
@@ -194,6 +503,8 @@ export function mutatePatch(p: Patch, scope: MutateScope, mode: MutateMode, amou
   const pitchOf = pitchRows(out, defs);
   const pick = <T>(xs: readonly T[]): T => xs[Math.min(xs.length - 1, Math.floor(rnd() * xs.length))];
   const seen = new Set<string>(), held = heldRows(out);
+  const profile = opts.category && opts.category !== 'any' ? PROFILES[opts.category] : undefined;
+  const roles = profile && roleRows(out, defs);
   const rows: Row[] = [];
   for (const t of scopeTargets(out, scope, defs).flat()) {
     if (seen.has(key(t))) continue;
@@ -201,7 +512,7 @@ export function mutatePatch(p: Patch, scope: MutateScope, mode: MutateMode, amou
     for (const g of group) seen.add(key(g));
     if (group.some((g) => {
       const m = byId.get(g.module), pd = pdOf(g);
-      return !m || !pd || MUTATE_SKIP[m.type] || pd.fixed || pd.screen || pd.onScreen || held.has(key(g)) || isLocked(out, m, g.param);
+      return !m || !pd || MUTATE_SKIP[m.type] || pd.fixed || pd.screen || pd.onScreen || held.has(key(g)) || isLocked(out, m, g.param) || !!roles?.holds(m, g.param);
     })) continue;
     const kinds = group.map((g) => pitchOf(byId.get(g.module)!, g.param)).filter((k): k is PitchKind => !!k);
     const kind = kinds.includes('held') ? 'held' : kinds[0];
@@ -221,17 +532,37 @@ export function mutatePatch(p: Patch, scope: MutateScope, mode: MutateMode, amou
       hi = Math.min(hi, Math.max(a, b));
     }
     if (lo > hi) [lo, hi] = [hi, lo];   // (two macro ranges that do not overlap: between their nearest ends)
-    const pool = kind ? undefined : group.map((g) => opts.pools?.get(key(g))).find((x) => x?.length);
-    rows.push({ group, m, pd, rd, from, lo, hi, kind, pool });
+    let pool = kind ? undefined : group.map((g) => opts.pools?.get(key(g))).find((x) => x?.length);
+    let target: Span | undefined, span: Span | undefined;
+    if (profile && roles && !kind) {
+      for (const g of group) {
+        const gm = byId.get(g.module)!, gpd = pdOf(g)!, role = roles.of(gm, g.param);
+        if (!role) continue;
+        const anchor = opts.anchor?.modules.find((x) => x.id === g.module)?.params[g.param] ?? gm.params[g.param] ?? gpd.default;
+        const s = spanValues(rowRange(gm.type, gm.params, gpd), role.measure, roleSpan(profile, role.role, anchor));
+        if (s) span = span ? [Math.max(span[0], s[0]), Math.min(span[1], s[1])] : s;
+      }
+      if (span && span[0] <= span[1]) {
+        const [a, b] = [paramUnit(rd, span[0]), paramUnit(rd, span[1])];
+        // (a range the macro ranges leave out: the nearest end they allow)
+        target = a > hi ? [hi, hi] : b < lo ? [lo, lo] : [Math.max(lo, a), Math.min(hi, b)];
+        const sp = span;
+        pool = pool?.filter((x) => x >= sp[0] - 1e-9 && x <= sp[1] + 1e-9);
+        if (!pool?.length) pool = undefined;
+      } else span = undefined;
+    }
+    rows.push({ group, m, pd, rd, from, lo, hi, kind, pool, target, span });
   }
   // which rows move: every one for Randomize; for Mutate a share of the rows and the switches by the amount, at least
   // MUTATE_LEAST (rows first)
   let moving = rows;
   if (mode === 'mutate') {
     const share = opts.share ?? MUTATE_SHARE;
-    const chosen = new Set(rows.filter((r) => rnd() < (!r.kind && isSwitch(r.pd) ? amount : share)));
+    const chosen = new Set(rows.filter((r) => rnd() < (!r.kind && !r.target && isSwitch(r.pd) ? amount : share)));
+    // (a role row outside its category's range always moves)
+    for (const r of rows) if (r.span && (r.from < r.span[0] - 1e-9 || r.from > r.span[1] + 1e-9)) chosen.add(r);
     for (const sw of [false, true]) {
-      const rest = rows.filter((r) => !chosen.has(r) && (!r.kind && isSwitch(r.pd)) === sw);
+      const rest = rows.filter((r) => !chosen.has(r) && (!r.kind && !r.target && isSwitch(r.pd)) === sw);
       while (chosen.size < MUTATE_LEAST && rest.length) chosen.add(rest.splice(Math.min(rest.length - 1, Math.floor(rnd() * rest.length)), 1)[0]);
     }
     moving = rows.filter((r) => chosen.has(r));
@@ -268,6 +599,13 @@ export function mutatePatch(p: Patch, scope: MutateScope, mode: MutateMode, amou
     } else if (r.pool && rnd() < PRESET_DRAW) {
       const x = pick(r.pool);
       v = paramValue(rd, Math.min(hi, Math.max(lo, paramUnit(rd, Math.min(rd.max, Math.max(rd.min, x))))));
+      if (r.span) for (const g of r.group) exact.add(key(g));
+    } else if (r.target && r.span) {
+      // into the range (from its nearer half) when outside, else within it by up to the amount; Randomize: anywhere in it
+      const [a, b] = r.target, u = paramUnit(rd, from);
+      const x = mode === 'randomize' ? a + rnd() * (b - a) : u < a - 1e-9 ? a + (rnd() * (b - a)) / 2 : u > b + 1e-9 ? b - (rnd() * (b - a)) / 2 : Math.min(b, Math.max(a, u + (rnd() * 2 - 1) * amount));
+      v = onStep(rd, paramValue(rd, x), r.span);
+      for (const g of r.group) exact.add(key(g));
     } else if (mode === 'mutate' && isSwitch(pd)) {
       // another of its values, by chance (chosen above), not by distance
       const step = Math.max(1, pd.step ?? 1);
@@ -276,8 +614,10 @@ export function mutatePatch(p: Patch, scope: MutateScope, mode: MutateMode, amou
       if (!others.length) continue;
       v = pick(others);
     } else {
+      // (a category leans a timbre row of BRIGHT its way: the move's middle shifts, Randomize favours one end)
+      const lean = profile ? profile.nudge * (BRIGHT[m.type]?.[pd.name] ?? 0) : 0;
       const u = Math.min(hi, Math.max(lo, paramUnit(rd, from)));
-      v = paramValue(rd, mode === 'randomize' ? lo + rnd() * (hi - lo) : Math.min(hi, Math.max(lo, u + (rnd() * 2 - 1) * amount)));
+      v = paramValue(rd, mode === 'randomize' ? lo + (lean ? rnd() ** 2 ** (-lean / 2) : rnd()) * (hi - lo) : Math.min(hi, Math.max(lo, u + (rnd() * 2 - 1) * amount + lean * amount * LEAN)));
     }
     if (isLevel(m.type, pd.name)) v = Math.min(v, Math.max(from, pd.default));
     for (const g of r.group) {
@@ -297,7 +637,7 @@ export function mutatePatch(p: Patch, scope: MutateScope, mode: MutateMode, amou
     m.params[t.param] = exact.has(key(t)) ? v : stepToward(rd, from, v, { hi: rd.max });
     if (m.params[t.param] !== from) moved++;
   }
-  return { patch: out, moved };
+  return profile ? { patch: out, moved, roles: rows.filter((r) => r.span).length } : { patch: out, moved };
 }
 
 /**
@@ -310,12 +650,14 @@ export function breedPatch(p: Patch, keeps: readonly Patch[], scope: MutateScope
   const bred = structuredClone(p);
   const byId = new Map(bred.modules.map((m) => [m.id, m]));
   const keepMods = keeps.map((k) => new Map(k.modules.map((m) => [m.id, m]))), held = heldRows(bred);
+  // (with a category, the rows that decide the roles stay as on screen, as a Mutate keeps them)
+  const roles = opts.category && opts.category !== 'any' ? roleRows(bred, defs) : undefined;
   for (const card of scopeTargets(bred, scope, defs)) {
     if (!card.length) continue;
     const parent = keepMods[Math.min(keeps.length - 1, Math.floor(rnd() * keeps.length))];
     for (const t of card) for (const g of tiedTo(bred, t.module, t.param)) {
       const m = byId.get(g.module), pd = m && defs[m.type]?.params.find((q) => q.name === g.param);
-      if (!m || !pd || MUTATE_SKIP[m.type] || pd.fixed || pd.screen || pd.onScreen || held.has(key(g)) || isLocked(bred, m, g.param)) continue;
+      if (!m || !pd || MUTATE_SKIP[m.type] || pd.fixed || pd.screen || pd.onScreen || held.has(key(g)) || isLocked(bred, m, g.param) || roles?.holds(m, g.param)) continue;
       if (keepMods.some((k) => k.get(g.module)?.type !== m.type)) continue;
       m.params[g.param] = parent.get(g.module)!.params[g.param] ?? pd.default;
     }

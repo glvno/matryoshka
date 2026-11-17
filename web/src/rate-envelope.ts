@@ -38,7 +38,10 @@ import type { Ctx } from './modules';
 // A standalone rate envelope, not an FM chip emulator. 3.58 MHz / 64 / 3 is the envelope clock.
 // Levels are 10-bit attenuation. Decays are linear in attenuation; attack is exponential in attenuation.
 // Like the DX100 controls, D1L 15 is full level and 0 is the lowest level (93 dB down).
-const INCREMENTS = [
+/** envelope clock ticks per second */
+export const RATE_CLOCK = 3580000 / 192;
+/** per rate (0..63), eight 4-bit attenuation increments, one per update in turn */
+export const INCREMENTS = [
   0x00000000, 0x00000000, 0x10101010, 0x10101010,
   0x10101010, 0x10101010, 0x11101110, 0x11101110,
   0x10101010, 0x10111010, 0x11101110, 0x11111110,

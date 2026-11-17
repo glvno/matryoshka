@@ -29,7 +29,7 @@ import { chooseSlot } from './store-slot';
 import { Fm1View } from './fm1-view';
 import { panelPlay, EmuKeys } from './emu-keys';
 import { SandboxKeys } from './sandbox-keys';
-import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
+import { Editor, NOTHING_TO_MOVE, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { snapshotKey, snapshotRecord, storedSnapshots, type Snapshot, type SnapshotKey } from './snapshots';
 import { ScopeScreens } from './scope-view';
 import { OUTPUT_SCOPE_KEY, OutputScope } from './output-scope';
@@ -51,7 +51,8 @@ import { initStatusline, pinStatus } from './statusline';
 import { buildAssembliesSection, storeAssembly, storeTutorialAssembly } from './assemblies';
 import { AssemblyBrowser } from './browser';
 import { searchCommands, type Command } from './commands';
-import { MUTATE_AMOUNTS } from './mutate';
+import { CATEGORIES, MUTATE_AMOUNTS, PROFILES, type Category } from './mutate';
+import { filterRound } from './mutate-render';
 import { buildFlashTab } from './flasher';
 import { attachKeyboard, attachMidi, editorCc, followOctave, isFm1In, isOpenSelect, isTextEntry, otherFm1 } from './input';
 import { Piano } from './piano';
@@ -76,9 +77,9 @@ import { addedTitles, loadCommunity, onAddedChange, unlinkSaved } from './commun
 import { chipEl, sandboxCardDue, sandboxWords, showSandboxCard, type Chip } from './sandbox';
 import { ShareSheet } from './share-sheet';
 import { fileStem, savePatchCard } from './patch-card';
-import { Audition } from './audition';
+import { Audition, phraseTitle } from './audition';
 import { PHRASES } from './phrases';
-import { resample } from './wav';
+import { resample, WAV_RATE } from './wav';
 import { starterPatch } from './starter';
 import { recordKey, recordOff } from './step-grid';
 import { Tutorial } from './tutorial/tutorial';
@@ -1748,16 +1749,56 @@ const toggleKeepShown = (): void => {
   editor.setKeep(s.letter, s.mark !== 'keep');
   status.textContent = `snapshot ${s.letter}: ${s.mark === 'keep' ? 'marked keep' : 'no mark'}`;
 };
+/** the round of Make candidates rendering now (a category, #1033): set `stop` to end it early */
+let byEar: { stop: boolean } | null = null;
 const makeCandidates = (): void => {
+  if (byEar) return void (byEar.stop = true);   // (Make candidates again while a round renders: stop it there)
   const keeps = editor.snaps.list.filter((s) => s.mark === 'keep').map((s) => s.letter);
   const from = keeps.length >= 2 ? `the keeps ${keeps.join(', ')}` : editor.snaps.shown ?? 'the current patch';
+  const how = keeps.length >= 2 ? `bred, then mutated by up to ±${Math.round(editor.mutateAmount * 50)} %` : `each mutated by up to ±${Math.round(editor.mutateAmount * 100)} %`;
+  const tail = `${editor.mutatePitch ? '' : ', pitch held'}: Alt+J listens on, Alt+K back, Alt+X removes`;
+  const category = editor.mutateCategory;
+  if (category !== 'any') return void makeByEar(category, from, how, tail);
   const made = editor.makeCandidates(candidates);
   if (!made.length) return;
   editor.rebuild();   // (the morph picker offers the snapshots)
   switched({});
-  const how = keeps.length >= 2 ? `bred, then mutated by up to ±${Math.round(editor.mutateAmount * 50)} %` : `each mutated by up to ±${Math.round(editor.mutateAmount * 100)} %`;
-  status.textContent = `${made.length} candidates from ${from}, ${made[0].letter}–${made.at(-1)!.letter}, ${how}${editor.mutatePitch ? '' : ', pitch held'}: Alt+J listens on, Alt+K back, Alt+X removes`;
+  status.textContent = `${made.length} candidates from ${from}, ${made[0].letter}–${made.at(-1)!.letter}, ${how}${tail}`;
 };
+/**
+ * Make candidates aimed at a category (#1033, mutate-render.ts): up to four times as many are made and each is rendered
+ * with the test phrase in this browser, measured and dropped; those that fit join the strip as they pass, the nearest
+ * fill the round. The render keeps no sound: only a few numbers per candidate, for this round.
+ */
+async function makeByEar(category: Exclude<Category, 'any'>, from: string, how: string, tail: string): Promise<void> {
+  const round = editor.candidateRound(), phrase = audition.phrase(), me = { stop: false };
+  const ids = editor.patch.modules.map((m) => m.id).join();
+  const made: Snapshot[] = [];
+  byEar = me;
+  status.textContent = `Make candidates aimed at ${category}: rendering each with the test phrase (${phraseTitle(audition.choice)})…`;
+  try {
+    const r = await filterRound({
+      n: candidates, profile: PROFILES[category], parent: round.parent, next: round.next, phrase, sr: WAV_RATE,
+      render: (p) => audition.renderWith(p, phrase),
+      keep: (p) => void made.push(editor.takeCandidate(p, round.from)),
+      progress: (k, of, passed) => (status.textContent = `Make candidates aimed at ${category}: ${k} of up to ${of} rendered with the test phrase, ${passed} of ${candidates} fit so far (Alt+N stops)`),
+      // (another patch opened under the round: its candidates would not be of it)
+      cancelled: () => me.stop || editor.patch.modules.map((m) => m.id).join() !== ids,
+    });
+    if (editor.patch.modules.map((m) => m.id).join() !== ids) return void (status.textContent = `Make candidates aimed at ${category}: stopped, another patch is open`);
+    if (!made.length) return void (status.textContent = r.rendered ? `Make candidates aimed at ${category}: stopped before any candidate` : `Make candidates: nothing to move there (${NOTHING_TO_MOVE})`);
+    editor.endCandidates(made);
+    editor.rebuild();   // (the morph picker offers the snapshots)
+    switched({});
+    const fit = `${r.passed} of ${r.rendered} rendered fit ${category}${r.filled ? `, ${r.filled} nearest added` : ''}`;
+    status.textContent = `${made.length} candidates from ${from}, ${made[0].letter}–${made.at(-1)!.letter}, ${how}, aimed at ${category} (${fit})${tail}`;
+  } catch (e) {
+    status.textContent = `Make candidates aimed at ${category}: a render failed (${(e as Error).message})`;
+    if (made.length && editor.patch.modules.map((m) => m.id).join() === ids) editor.endCandidates(made);
+  } finally {
+    byEar = null;
+  }
+}
 // the snapshots the browser kept with the remembered patch, when the page opened on it (each is checked as a patch is)
 if (firstPatch === editor.patch && savedText !== null) {
   const kept = storedSnapshots((() => { try { return localStorage.getItem(SNAP_STORE); } catch { return null; } })(), savedText).flatMap((s) => {
@@ -1826,12 +1867,14 @@ const commands = (): Command[] => {
       { kind: 'command' as const, label: `Store kept snapshots as presets of ${a.label}`, keywords: 'preset save engine sound keep marked rank batch', run: inPatch(() => storeKeptPresets(a)) },
     ]) : []),
     // Mutate and Randomize (#944): the selected cards' parameters, one undo step
-    { kind: 'command', label: 'Mutate selection', detail: `Alt+M · ±${Math.round(editor.mutateAmount * 100)} %`, keywords: 'vary variation nudge random sound design', run: inPatch(() => void editor.mutate('mutate')) },
+    { kind: 'command', label: 'Mutate selection', detail: `Alt+M · ±${Math.round(editor.mutateAmount * 100)} %${editor.mutateCategory === 'any' ? '' : ` · ${editor.mutateCategory}`}`, keywords: 'vary variation nudge random sound design', run: inPatch(() => void editor.mutate('mutate')) },
     { kind: 'command', label: 'Randomize selection', keywords: 'random dice new sound design', run: inPatch(() => void editor.mutate('randomize')) },
     ...MUTATE_AMOUNTS.map((a) => ({ kind: 'command' as const, label: `Mutate amount: ±${Math.round(a * 100)} %`, detail: a === editor.mutateAmount ? 'now' : undefined, keywords: 'mutate how far', run: () => setMutateAmount(a) })),
+    ...CATEGORIES.map((c) => ({ kind: 'command' as const, label: `Mutate category: ${CATEGORY_TEXT[c][0]}`, detail: `${c === editor.mutateCategory ? 'now · ' : ''}${CATEGORY_TEXT[c][1]}`, keywords: 'mutate randomize candidates aim target sound type kind', run: () => setMutateCategory(c) })),
     { kind: 'command', label: editor.mutatePitch ? 'Mutate pitch: off' : 'Mutate pitch: on', detail: editor.mutatePitch ? 'now on: octaves, fifths, fourths' : 'now off: pitch held', keywords: 'mutate randomize candidates tune tuning transpose coarse fine ratio hold', run: () => setMutatePitch(!editor.mutatePitch) },
     { kind: 'command', label: 'Lock selection for Mutate', keywords: 'keep protect hold mutate randomize', run: inPatch(() => editor.lockCards(true)) },
     { kind: 'command', label: 'Unlock selection for Mutate', keywords: 'mutate randomize', run: inPatch(() => editor.lockCards(false)) },
+    { kind: 'command', label: 'Lock envelopes', detail: 'the selected cards, or all', keywords: 'mutate randomize candidates freeze keep hold envelope attack decay sustain release adsr', run: inPatch(() => void editor.lockEnvelopes()) },
     { kind: 'command', label: audition.playing ? 'Stop the test phrase' : 'Play the test phrase', detail: 'Q', keywords: 'audition listen phrase held note chord sweep drums', run: () => audition.toggle() },
     ...PHRASES.map((p) => ({ kind: 'command', label: `Test phrase: ${p.label}`, detail: p.detail, keywords: 'audition listen play', run: () => { audition.choose({ kind: p.kind }); void audition.play(); } })),
     { kind: 'command', label: audition.choice.loop ? 'Test phrase: loop off' : 'Test phrase: loop on', keywords: 'audition repeat again once', run: () => audition.choose({ loop: !audition.choice.loop }) },
@@ -2364,6 +2407,36 @@ try {
   editor.mutatePitch = localStorage.getItem(MUTATE_PITCH) === '1';
 } catch {
   /* storage blocked: pitch held */
+}
+// Mutate's category (#1033): kept per browser, like the amount
+const MUTATE_CATEGORY = 'matryoshka.mutate-category';
+/** each category's name in the palette and what it aims at */
+const CATEGORY_TEXT: Record<Category, readonly [string, string]> = {
+  any: ['Any', 'no aim: Mutate as without a category'],
+  lead: ['Lead', 'quick attack, held, a little brighter'],
+  stab: ['Stab', 'instant attack, short decay, little sustain'],
+  pluck: ['Pluck', 'instant attack, falls away, no sustain'],
+  pad: ['Pad', 'slow attack and release, held, darker'],
+  bass: ['Bass', 'quick attack and release, held, a little darker'],
+  keys: ['Keys', 'quick attack, long decay, some sustain'],
+  drone: ['Drone', 'very slow attack and release, full sustain'],
+};
+function setMutateCategory(c: Category): void {
+  editor.mutateCategory = c;
+  status.textContent = c === 'any'
+    ? 'Mutate category Any: Mutate, Randomize and Make candidates aim at no kind of sound'
+    : `Mutate category ${CATEGORY_TEXT[c][0]} (${CATEGORY_TEXT[c][1]}): Mutate and Randomize bring envelopes, cutoff and glide into its ranges; Make candidates also renders each with the test phrase and keeps those that sound it`;
+  try {
+    localStorage.setItem(MUTATE_CATEGORY, c);
+  } catch {
+    /* storage blocked: the category lasts until the page is reloaded */
+  }
+}
+try {
+  const c = localStorage.getItem(MUTATE_CATEGORY);
+  if ((CATEGORIES as readonly (string | null)[]).includes(c)) editor.mutateCategory = c as Category;
+} catch {
+  /* storage blocked: Any */
 }
 // Make candidates' count per round (#996): kept per browser, like Mutate's amount
 const CANDIDATES = 'matryoshka.candidates';
