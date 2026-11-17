@@ -245,6 +245,9 @@ export interface EditorEvents {
   onHistory?(kind: 'undo' | 'redo'): void;
   /** the snapshots or the stop on screen changed (taken, switched, renamed, removed, an undo across a switch) */
   onSnapshots?(): void;
+  /** a snapshot switch is about to happen (D-970): silence both engines on `p`, the patch on screen (voices let go, every
+   *  tail cut), and the linked FM-1's notes; an ordinary edit never sends it */
+  onSilence?(p: Patch): void;
   /** the patches the morph picker on the Main card offers as the B side (those of the same structure are listed) */
   morphCandidates?(like: Patch): { name: string; patch: Patch }[];
 }
@@ -3504,7 +3507,7 @@ export class Editor {
     else if (this.shownEdited() && !sameVersion(JSON.parse(this.snaps.current!) as Patch, this.patch)) kept = this.keep(this.patch);
     const to = JSON.parse(target === null ? this.snaps.current! : this.snaps.get(target)!.patch) as Patch;
     this.snaps.shown = target;
-    this.applyLive(to, from);
+    this.applyLive(to, from, true);
     if (target === null) this.snaps.current = null;
     this.ev.onSnapshots?.();
     return kept ? { kept } : {};
@@ -3541,6 +3544,7 @@ export class Editor {
     if (kept) list.splice(at, 0, ...list.splice(list.indexOf(kept), 1));
     if (kept) change.added.push({ s: kept, at: 0 });
     for (const a of change.added) a.at = list.indexOf(a.s);
+    this.ev.onSilence?.(this.patch);   // (Alt+C is a switch too: it is silenced even when the sound stays)
     if (to !== this.patch) this.swapTo(to);
     this.snaps.shown = this.snaps.current = null;
     this.record(step);
@@ -3604,7 +3608,7 @@ export class Editor {
     this.snaps.remove(s.letter);
     for (const a of change.added) a.at = list.indexOf(a.s);
     this.snaps.shown = to;
-    this.swapTo(to === null ? cur : JSON.parse(this.snaps.get(to)!.patch) as Patch);
+    this.swapTo(to === null ? cur : JSON.parse(this.snaps.get(to)!.patch) as Patch, true);
     if (to === null) this.snaps.current = null;
     this.record(step);
     this.ev.onSnapshots?.();
@@ -3724,20 +3728,23 @@ export class Editor {
 
   /**
    * Switch to `target`, keeping the canvas layout (ab.ts flipPlan, #103): when only values differ they go out as onParam /
-   * onAtt / onBypass / onRange / onTrack (no reload, the voices keep sounding), else a full load through onStructure. One
-   * undo step, which belongs to `shown` (the stop before a switch; Mutate's change belongs to the stop on screen).
+   * onAtt / onBypass / onRange / onTrack (no reload: an edit keeps the voices sounding), else a full load through
+   * onStructure; `silence` (a snapshot switch): onSilence first. One undo step, which belongs to `shown` (the stop before a
+   * switch; Mutate's change belongs to the stop on screen).
    */
-  private applyLive(target: Patch, shown = this.snaps.shown): void {
+  private applyLive(target: Patch, shown = this.snaps.shown, silence = false): void {
     this.endGesture();
     this.endPass();
     const before = this.mark();
-    this.swapTo(target);
+    this.swapTo(target, silence);
     this.commit(before, shown);
   }
 
   /** put `target` on screen with the canvas layout kept (ab.ts flipPlan): live messages when only values differ, else a
-   *  full load; no undo step (the caller makes it) */
-  private swapTo(target: Patch): void {
+   *  full load; `silence` (a snapshot switch, D-970): both engines silenced first (onSilence); no undo step (the caller
+   *  makes it) */
+  private swapTo(target: Patch, silence = false): void {
+    if (silence) this.ev.onSilence?.(this.patch);
     const plan = flipPlan(this.patch, target);
     this.patch = plan.patch;
     if (plan.reload) {

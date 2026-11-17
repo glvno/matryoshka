@@ -246,6 +246,18 @@ export class AudioHost {
     this.fm1Queue(30);
   }
 
+  /** silence both engines before a snapshot switch (D-970): `patch` (the one on screen) loads again with every voice let go
+   *  and every module at rest, so no delay, reverb or chorus tail rings into the next stop. The FM-1 engine takes it again
+   *  at once (its load starts every module from rest), so the switch's own messages reach the patch they are made for */
+  silence(patch: Patch): void {
+    this.pending = patch;
+    this.revision++;
+    this.latestValues = null;
+    this.onValues(null);
+    this.send({ t: 'patch', patch, revision: this.revision, fresh: true });
+    this.fm1Load();
+  }
+
   /** the transport (the deck's Play, Space): the Main module's run output and clock; kept for when the worklet starts */
   private transportOn = false;
   transport(on: boolean): void {

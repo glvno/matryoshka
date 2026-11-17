@@ -52,13 +52,13 @@ import { buildAssembliesSection, storeAssembly, storeTutorialAssembly } from './
 import { AssemblyBrowser } from './browser';
 import { searchCommands, type Command } from './commands';
 import { CATEGORIES, MUTATE_AMOUNTS, PROFILES, type Category } from './mutate';
-import { filterRound } from './mutate-render';
+import { filterRound, probePhrase, PROBE_HOLD, PROBE_RENDER } from './mutate-render';
 import { buildFlashTab } from './flasher';
 import { attachKeyboard, attachMidi, editorCc, followOctave, isFm1In, isOpenSelect, isTextEntry } from './input';
 import { playsNothing, watchIgnoredFm1s, type IgnoredFm1s } from './ignored-fm1s';
 import { Piano } from './piano';
 import { sliderJack } from './slider-jack';
-import { PANEL_BUTTONS } from './modules';
+import { NOTE_NAMES, PANEL_BUTTONS } from './modules';
 import { switches } from './buttons';
 import { Fm1Mirror, identifyFm1, installOffer } from './mirror';
 import { BUTTONS, ENCODERS } from './fm1-ui';
@@ -78,7 +78,7 @@ import { addedTitles, loadCommunity, onAddedChange, unlinkSaved } from './commun
 import { chipEl, sandboxCardDue, sandboxWords, showSandboxCard, type Chip } from './sandbox';
 import { ShareSheet } from './share-sheet';
 import { fileStem, savePatchCard } from './patch-card';
-import { Audition, phraseTitle } from './audition';
+import { Audition } from './audition';
 import { PHRASES } from './phrases';
 import { resample, WAV_RATE } from './wav';
 import { starterPatch } from './starter';
@@ -1152,6 +1152,12 @@ const editor = new Editor($('canvas'), firstPatch, {
     queueSave(editor.patch);   // (the snapshots are kept beside the patch)
     outScope.update(!snapColumn.hidden, editor.snaps.list.length);
   },
+  onSilence(p) {
+    // a snapshot switch (D-970): both engines start the stop from silence. A Live FM-1 gets All Notes Off (MIDI CC 123), the
+    // only silence the link has: it lets go of its notes, while its effect tails ring out unless the switch reloads it
+    host.silence(p);
+    if (live()) device.note({ t: 'panic' });
+  },
   morphCandidates: patchCandidates,
 }, $('dock'));
 // the wheels stand beside the keyboard, each under its output's jack; the octave buttons under the dock's outputs
@@ -1732,6 +1738,7 @@ const removeShown = (): void => {
 /** a snapshot becomes the current patch and leaves the list; the patch it replaces takes its place there (#1040) */
 const makeCurrent = (letter: string): void => {
   const kept = editor.makeCurrent(letter);
+  audition.restart();   // (a switch: silenced, then the test phrase from the top)
   status.textContent = `${letter} is the current patch (Ctrl/Cmd+Z puts it back)${kept ? `; the patch it replaces is kept as ${kept.letter}, in its place` : ''}`;
   queueSave(editor.patch);
 };
@@ -1768,21 +1775,23 @@ const makeCandidates = (): void => {
 };
 /**
  * Make candidates aimed at a category (#1033, mutate-render.ts): up to four times as many are made and each is rendered
- * with the test phrase in this browser, measured and dropped; those that fit join the strip as they pass, the nearest
- * fill the round. The render keeps no sound: only a few numbers per candidate, for this round.
+ * with the probe in this browser (one note held 1 s, never the test phrase, D-996), measured and dropped; those that fit
+ * join the strip as they pass, the nearest fill the round. The render keeps no sound: only a few numbers per candidate,
+ * for this round.
  */
 async function makeByEar(category: Exclude<Category, 'any'>, from: string, how: string, tail: string): Promise<void> {
-  const round = editor.candidateRound(), phrase = audition.phrase(), me = { stop: false };
+  const round = editor.candidateRound(), probe = probePhrase(round.parent), me = { stop: false };
   const ids = editor.patch.modules.map((m) => m.id).join();
   const made: Snapshot[] = [];
   byEar = me;
-  status.textContent = `Make candidates aimed at ${category}: rendering each with the test phrase (${phraseTitle(audition.choice)})…`;
+  const by = `the probe (${NOTE_NAMES[probe.notes[0].note]} held ${PROBE_HOLD} s)`;
+  status.textContent = `Make candidates aimed at ${category}: rendering each with ${by}…`;
   try {
     const r = await filterRound({
-      n: candidates, profile: PROFILES[category], parent: round.parent, next: round.next, phrase, sr: WAV_RATE,
-      render: (p) => audition.renderWith(p, phrase),
+      n: candidates, profile: PROFILES[category], parent: round.parent, next: round.next, sr: WAV_RATE,
+      render: (p) => audition.renderWith(p, probe, PROBE_RENDER),
       keep: (p) => void made.push(editor.takeCandidate(p, round.from)),
-      progress: (k, of, passed) => (status.textContent = `Make candidates aimed at ${category}: ${k} of up to ${of} rendered with the test phrase, ${passed} of ${candidates} fit so far (Alt+N stops)`),
+      progress: (k, of, passed) => (status.textContent = `Make candidates aimed at ${category}: ${k} of up to ${of} rendered with ${by}, ${passed} of ${candidates} fit so far (Alt+N stops)`),
       // (another patch opened under the round: its candidates would not be of it)
       cancelled: () => me.stop || editor.patch.modules.map((m) => m.id).join() !== ids,
     });
@@ -2436,7 +2445,7 @@ function setMutateCategory(c: Category): void {
   showCategory();
   status.textContent = c === 'any'
     ? 'Mutate category Any: Mutate, Randomize and Make candidates aim at no kind of sound'
-    : `Mutate category ${CATEGORY_TEXT[c][0]} (${CATEGORY_TEXT[c][1]}): Mutate and Randomize bring envelopes, cutoff and glide into its ranges; Make candidates also renders each with the test phrase and keeps those that sound it`;
+    : `Mutate category ${CATEGORY_TEXT[c][0]} (${CATEGORY_TEXT[c][1]}): Mutate and Randomize bring envelopes, cutoff and glide into its ranges; Make candidates also renders each with one note held 1 s and keeps those that sound it`;
   try {
     localStorage.setItem(MUTATE_CATEGORY, c);
   } catch {

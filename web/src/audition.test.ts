@@ -8,6 +8,7 @@ import { PRESETS } from './presets';
 import { renderPhrase } from './phrase-render';
 import { PHRASE_TAIL, PhrasePlayer, makePhrase } from './phrases';
 import { WAV_RATE } from './wav';
+import { PROBE_RENDER, probePhrase } from './mutate-render';
 
 function setup(store: Record<string, string> = {}) {
   const clock = { t: 100 };
@@ -206,5 +207,26 @@ describe('renderPhrase', () => {
     expect(peak(phrase.length + PHRASE_TAIL - 0.5, phrase.length + PHRASE_TAIL)).toBeLessThan(peak(0, 1) / 100);
     const [l2] = await renderPhrase(patch, phrase);
     expect(l2).toEqual(l);
+  });
+});
+
+describe('the probe Make candidates renders (D-996)', () => {
+  it('is the same whatever the test phrase, and leaves the test phrase settings alone', async () => {
+    const { a, host, store } = setup();
+    const patch = PRESETS['808 Kit']();
+    const kinds = ['held', 'staccato', 'chord', 'sweep', 'drums'] as const;
+    for (const [i, kind] of kinds.entries()) {
+      a.choose({ kind, pitch: (3 * i) % 12, octave: 2 + i, loop: i % 2 === 0 });
+      const before = { choice: { ...a.choice }, store: { ...store } };
+      await a.renderWith(patch, probePhrase(patch), PROBE_RENDER);
+      expect(a.choice).toEqual(before.choice);
+      expect(store).toEqual(before.store);
+    }
+    const calls = vi.mocked(host.render).mock.calls;
+    expect(calls.length).toBe(kinds.length);
+    for (const [, phrase, how] of calls) {
+      expect(phrase).toEqual(probePhrase(patch));
+      expect(how).toMatchObject(PROBE_RENDER);
+    }
   });
 });
