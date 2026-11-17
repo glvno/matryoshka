@@ -74,38 +74,81 @@ The held note (3 s held, 1 s rest, 2 s tail: 6 s of sound) rendered 16 times aft
 | Shush 101 | 3.48 s | 199 ms |
 | Cassia 1 | 3.38 s | 210 ms |
 
-That is well over 1.5 s, so a round runs in the background: the candidates that pass join the strip as they do, the status line counts the renders, and Make candidates again stops the round. In the browser, a round of 4 candidates on Monolith D aimed at `keys` ended after 5 renders in 1.7 s (4 passed). One aimed at `pad`, run while the pass mark was still 0.25, went through all 16 in 4.8 s, and none passed: the 4 nearest filled the round. Monolith D's release follows its DECAY ON switch, not the ADSR's release row.
+That is well over 1.5 s, so a round runs in the background: the candidates that pass join the strip as they do, the status line counts the renders, and Make candidates again stops the round. In the browser, a round of 4 candidates on Monolith D aimed at `keys` ended after 5 renders in 1.7 s (4 passed). One aimed at `pad`, run while the pass mark was still 0.25 and before DECAY ON had a role, went through all 16 in 4.8 s, and none passed: the 4 nearest filled the round.
 
-### How often a candidate fits
+### Full rounds, before and after the fixes
 
-Three candidates per factory patch and category, as Make candidates makes them with nothing selected (10 %), rendered with the held note on C4. Each cell gives how many passed (a fit of 0.5 or less). In brackets is how many passed among three candidates made without a category (Any), measured against the same profile. The seed is fixed (`mulberry32`, 11).
+Every factory patch and category got one real round: Make candidates with nothing selected, 10 %, 4 to keep, up to 16 renders, the held note on C4, a fixed seed per patch and category (`mulberry32`). Each cell gives the candidates that passed / the renders. **0/16** in bold is a round that ended all-miss: none passed, so the 4 nearest filled it.
+
+**Before** (PR #1037 as first opened):
 
 | Patch | lead | stab | pluck | pad | bass | keys | drone |
 |---|---|---|---|---|---|---|---|
-| Monolith D | 3 (2) | 3 (0) | 3 (0) | 0 (0) | 0 (1) | 3 (2) | 0 (0) |
-| Oracle V | 3 (3) | 3 (0) | 3 (0) | 2 (0) | 2 (0) | 2 (0) | 3 (0) |
-| Silver Box | 0 (0) | 0 (0) | 0 (0) | 0 (0) | 0 (0) | 0 (0) | 0 (0) |
-| Hera 6 | 1 (1) | 1 (0) | 3 (0) | 0 (0) | 0 (0) | 0 (0) | 0 (0) |
-| Sallen 20 | 3 (1) | 3 (0) | 2 (0) | 2 (0) | 2 (0) | 0 (1) | 2 (0) |
-| Expander S | 0 (0) | 2 (0) | 1 (0) | 1 (1) | 0 (0) | 0 (0) | 0 (0) |
-| Algo Four | 3 (0) | 0 (0) | 0 (0) | 2 (0) | 1 (0) | 3 (3) | 2 (0) |
-| Canvas | 0 (0) | 1 (1) | 2 (1) | 0 (0) | 0 (0) | 0 (0) | 0 (0) |
-| Wanderer | 0 (0) | 0 (0) | 0 (0) | 3 (0) | 1 (0) | 0 (0) | 2 (0) |
-| Briefcase 3 | 2 (0) | 0 (0) | 0 (0) | 2 (0) | 0 (0) | 0 (0) | 3 (0) |
-| Io 4 | 1 (0) | 1 (0) | 0 (0) | 0 (0) | 0 (0) | 2 (0) | 0 (0) |
-| Vernon 100 | 2 (1) | 1 (0) | 3 (0) | 0 (0) | 1 (0) | 3 (0) | 0 (0) |
-| 8 Lire | 0 (0) | 0 (0) | 0 (0) | 2 (0) | 0 (0) | 0 (0) | 3 (1) |
-| Elvira 2 | 0 (0) | 0 (0) | 0 (0) | 2 (3) | 0 (0) | 0 (0) | 0 (2) |
-| Scrounge | 0 (0) | 3 (3) | 3 (3) | 0 (0) | 0 (0) | 0 (0) | 0 (0) |
-| Meridian 8 | 0 (0) | 3 (0) | 0 (0) | 0 (0) | 2 (0) | 3 (0) | 0 (0) |
-| 808 Kit | 0 (0) | 3 (3) | 3 (3) | 0 (0) | 0 (0) | 0 (0) | 0 (0) |
-| 909 Kit | 0 (0) | 3 (3) | 3 (3) | 0 (0) | 0 (0) | 0 (0) | 0 (0) |
-| Cassia 1 | 0 (0) | 0 (0) | 0 (0) | 0 (0) | 0 (0) | 0 (0) | 0 (0) |
-| Verona Drum 1 | 0 (0) | 3 (3) | 3 (3) | 0 (0) | 0 (0) | 0 (0) | 0 (0) |
-| Shush 101 | 3 (1) | 3 (0) | 3 (0) | 0 (0) | 3 (2) | 3 (1) | 0 (0) |
-| **all, of 63** | **21 (9)** | **33 (13)** | **32 (13)** | **16 (4)** | **12 (3)** | **19 (7)** | **15 (3)** |
+| Monolith D | 4/4 | 4/8 | 4/4 | **0/16** | 1/16 | 4/4 | **0/16** |
+| Oracle V | 4/4 | 4/4 | 4/4 | 4/4 | 4/5 | 4/4 | 4/4 |
+| Silver Box | **0/16** | **0/16** | **0/16** | **0/16** | **0/16** | **0/16** | **0/16** |
+| Hera 6 | 4/12 | 4/4 | 4/5 | **0/16** | 4/12 | 1/16 | **0/16** |
+| Sallen 20 | 4/8 | 4/5 | 4/4 | 4/5 | 4/8 | 4/4 | 4/6 |
+| Expander S | 1/16 | 4/8 | 2/16 | 4/8 | **0/16** | 1/16 | **0/16** |
+| Algo Four | 4/4 | **0/16** | **0/16** | 4/7 | 4/7 | 4/4 | 4/5 |
+| Canvas | 1/16 | 4/10 | 4/14 | 1/16 | **0/16** | **0/16** | 2/16 |
+| Wanderer | 2/16 | **0/16** | **0/16** | 4/4 | 4/16 | **0/16** | 4/5 |
+| Briefcase 3 | 4/15 | **0/16** | **0/16** | 4/6 | **0/16** | **0/16** | 4/6 |
+| Io 4 | **0/16** | 4/5 | 4/8 | **0/16** | 1/16 | 4/6 | 2/16 |
+| Vernon 100 | 4/7 | 4/5 | 4/5 | **0/16** | 4/11 | 4/6 | **0/16** |
+| 8 Lire | 4/13 | **0/16** | **0/16** | 4/7 | 2/16 | **0/16** | 4/7 |
+| Elvira 2 | **0/16** | **0/16** | **0/16** | 4/7 | **0/16** | **0/16** | 4/5 |
+| Scrounge | **0/16** | 4/4 | 4/4 | **0/16** | **0/16** | **0/16** | **0/16** |
+| Meridian 8 | **0/16** | 4/4 | **0/16** | **0/16** | 4/4 | 4/4 | **0/16** |
+| 808 Kit | **0/16** | 4/4 | 4/4 | **0/16** | **0/16** | **0/16** | **0/16** |
+| 909 Kit | **0/16** | 4/4 | 4/4 | **0/16** | **0/16** | **0/16** | **0/16** |
+| Cassia 1 | **0/16** | **0/16** | **0/16** | 1/16 | **0/16** | **0/16** | 4/10 |
+| Verona Drum 1 | **0/16** | 4/4 | 4/4 | **0/16** | **0/16** | **0/16** | **0/16** |
+| Shush 101 | 4/4 | 4/4 | 4/4 | 1/16 | 4/4 | 4/4 | 2/16 |
 
-With a category, 148 of 441 candidates sound the part, against 52 of 441 without one. That is why layer 3 makes four times as many and keeps those that pass. Where nothing passes, the engine's card does not reach what decides the category. Silver Box's card has no loudness envelope row. Monolith D's release follows its DECAY ON switch. Cassia 1's release measured 1.0 to 5.4 s in these renders, longer than every range but `drone`'s, and its sustain stayed under `drone`'s. The drum kits' one-shot envelopes have no sustain. The nearest candidates then fill the round.
+**After**:
+
+| Patch | lead | stab | pluck | pad | bass | keys | drone |
+|---|---|---|---|---|---|---|---|
+| Monolith D | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 | 4/5 |
+| Oracle V | 4/4 | 4/4 | 4/4 | 4/5 | 4/4 | 4/4 | 4/4 |
+| Silver Box | **0/16** | **0/16** | **0/16** | **0/16** | **0/16** | **0/16** | **0/16** |
+| Hera 6 | 4/4 | 4/5 | 4/6 | 4/4 | 4/4 | 4/4 | 4/5 |
+| Sallen 20 | 4/8 | 4/5 | 4/4 | 4/5 | 4/8 | 4/4 | 4/7 |
+| Expander S | 4/8 | 4/6 | 4/5 | 4/5 | 4/16 | 4/4 | 4/5 |
+| Algo Four | 4/4 | **0/16** | 4/4 | 4/5 | 4/4 | 4/9 | 4/4 |
+| Canvas | 4/5 | 4/4 | 4/6 | 4/7 | 2/16 | 4/4 | 4/7 |
+| Wanderer | 4/4 | **0/16** | **0/16** | 4/4 | 4/4 | 4/16 | 4/4 |
+| Briefcase 3 | 4/6 | **0/16** | **0/16** | 4/4 | 4/10 | 4/10 | 4/4 |
+| Io 4 | 4/6 | 4/5 | 4/6 | 4/4 | 4/5 | 4/6 | 4/5 |
+| Vernon 100 | 4/4 | 4/4 | 4/5 | 4/9 | 4/9 | 4/5 | 4/8 |
+| 8 Lire | 4/12 | **0/16** | **0/16** | 4/5 | 4/4 | 1/16 | 4/4 |
+| Elvira 2 | **0/16** | **0/16** | **0/16** | 4/6 | **0/16** | 1/16 | 4/4 |
+| Scrounge | **0/16** | 4/4 | 4/4 | **0/16** | **0/16** | 4/4 | **0/16** |
+| Meridian 8 | 2/16 | 4/4 | 4/4 | **0/16** | 4/4 | 4/4 | **0/16** |
+| 808 Kit | **0/16** | 4/4 | 4/4 | **0/16** | **0/16** | 4/4 | **0/16** |
+| 909 Kit | **0/16** | 4/4 | 4/4 | **0/16** | **0/16** | 4/4 | **0/16** |
+| Cassia 1 | 4/4 | 4/9 | 4/4 | 4/5 | 4/4 | 4/5 | 4/4 |
+| Verona Drum 1 | **0/16** | 4/4 | 4/4 | **0/16** | **0/16** | 4/4 | **0/16** |
+| Shush 101 | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 |
+
+All-miss rounds: 66 of 147 before, 36 after. On the melodic engines: 34 before, 12 after.
+
+### Why the melodic engines missed, and what changed
+
+- **Monolith D** (pad, drone): its decay knobs are Macros that set both ADSRs' decay and release through their parameter inputs, and DECAY ON is a Selector that adds to the release. Only the ADSRs' own rows had roles. Now the Macros and DECAY ON play those stages ([D-995](../ledger/editor.md#D-995)), and DECAY ON may move when the category needs a long or short release.
+- **Hera 6** (pad, drone, keys): its rows had roles, but the role reading stretched the attack with Long, while the engine stretches only the decay and release. Pads got attacks too short. The render also timed a reverb's build-up as attack.
+- **Expander S** (bass, drone, lead, keys): its envelopes are in ADS mode, where the decay row also sets the release. That row now plays the release too.
+- **Io 4** (lead, pad, bass, drone): its rows had roles. The misses came from the render: a small fall timed as a decay, and a release read into the effects' tail.
+- **Canvas** (lead, pad, bass, keys, drone): its envelope mode is a Selector whose gate output sets the Env L/R's one-shot switch. One-shot was held, and its sustain did not count. Now one-shot reads as no sustain, and the mode Selector plays the sustain. The Selector's positions are not in order of the measure, so the longest run inside the range is used.
+- **Vernon 100** (pad, drone): rows had roles; the render's attack and release readings (reverb) were the cause.
+- **Briefcase 3** (stab, pluck, bass, keys): bass and keys now pass. Stab and pluck still miss: its envelope's sustain (L3, at full) is not on the card, so the card cannot make the sound fall away while the key is held.
+- **Cassia 1** (every category): its release is three Env 8 steps (R4, R5, R6) and its decay two (R2, R3). Each step was kept in range on its own, but together they ran long: 1.0 to 5.4 s of release. A stage's steps now count together.
+- **Algo Four** (stab, pluck): a carrier's decay is R2 and R3 together, and the two parts could not each reach a short range while the other was long. A row with no value inside now goes to the value nearest the range, so the other can follow. Pluck now passes. Stab still misses: the loudness falls in about 0.8 s, twice the carriers' decay [INFERENCE: the modulators' tone envelopes keep the carriers ringing].
+- **Silver Box** (every category): its loudness envelopes are not on its card, which has only the tone envelope's decay and the cutoff. The amp decay of about 2 s is fixed, so no card row can reach it. It is left as it is.
+- **Wanderer** (stab, pluck): its loudness ADSR has only attack and release on the card. Its sustain stays at full, so the card cannot make a stab or a pluck.
+
+The other all-miss rounds are categories the engine's sound does not reach: the drum kits (808 Kit, 909 Kit, Verona Drum 1, Scrounge, Meridian 8) for lead, pad, bass and drone, with one-shot voices and no sustain. Elvira 2 is a percussion engine whose voices have only attack and release on the card. 8 Lire is a drone instrument whose voices hold at full (stab, pluck).
 
 ## Limits
 

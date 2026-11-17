@@ -1871,6 +1871,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Randomize selection', keywords: 'random dice new sound design', run: inPatch(() => void editor.mutate('randomize')) },
     ...MUTATE_AMOUNTS.map((a) => ({ kind: 'command' as const, label: `Mutate amount: ±${Math.round(a * 100)} %`, detail: a === editor.mutateAmount ? 'now' : undefined, keywords: 'mutate how far', run: () => setMutateAmount(a) })),
     ...CATEGORIES.map((c) => ({ kind: 'command' as const, label: `Mutate category: ${CATEGORY_TEXT[c][0]}`, detail: `${c === editor.mutateCategory ? 'now · ' : ''}${CATEGORY_TEXT[c][1]}`, keywords: 'mutate randomize candidates aim target sound type kind', run: () => setMutateCategory(c) })),
+    { kind: 'command', label: 'Next Mutate category', detail: `Shift+Alt+M · now ${CATEGORY_TEXT[editor.mutateCategory][0]}`, keywords: 'mutate randomize candidates aim target sound type kind cycle', run: () => nextCategory() },
     { kind: 'command', label: editor.mutatePitch ? 'Mutate pitch: off' : 'Mutate pitch: on', detail: editor.mutatePitch ? 'now on: octaves, fifths, fourths' : 'now off: pitch held', keywords: 'mutate randomize candidates tune tuning transpose coarse fine ratio hold', run: () => setMutatePitch(!editor.mutatePitch) },
     { kind: 'command', label: 'Lock selection for Mutate', keywords: 'keep protect hold mutate randomize', run: inPatch(() => editor.lockCards(true)) },
     { kind: 'command', label: 'Unlock selection for Mutate', keywords: 'mutate randomize', run: inPatch(() => editor.lockCards(false)) },
@@ -2124,6 +2125,7 @@ window.addEventListener('keydown', (e) => {
   else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyT') (onCanvas(() => editor.tidyUp())(), (done = true));
   else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyZ') (onCanvas(() => editor.zoomToFit())(), (done = true));
   else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyM') (editor.mutate('mutate'), (done = true));
+  else if (e.altKey && !mod && e.shiftKey && e.code === 'KeyM') (nextCategory(), (done = true));   // (#1033: Any, Lead … Drone, Any)
   else if (!mod && !e.altKey && !e.shiftKey && k.toLowerCase() === 'q') (audition.toggle(), (done = true));   // the test phrase (#945)
   else if (e.altKey && !mod && (e.code === 'KeyE' || k.toLowerCase() === 'e')) (void switchEngine(), (done = true));   // (#941; the code: Option+E is a dead key on a Mac)
   else if (!mod && k.toLowerCase() === 'b') done = editor.bypassSelected();
@@ -2421,8 +2423,16 @@ const CATEGORY_TEXT: Record<Category, readonly [string, string]> = {
   keys: ['Keys', 'quick attack, long decay, some sustain'],
   drone: ['Drone', 'very slow attack and release, full sustain'],
 };
+/** the category chip over the snapshots: the category's name, marked when it aims at one */
+const categoryChip = $<HTMLButtonElement>('category-chip');
+function showCategory(): void {
+  categoryChip.textContent = CATEGORY_TEXT[editor.mutateCategory][0];
+  categoryChip.toggleAttribute('data-aim', editor.mutateCategory !== 'any');
+}
+categoryChip.onclick = () => popMenu(CATEGORIES.map((c) => ({ text: `${c === editor.mutateCategory ? '✓ ' : ''}${CATEGORY_TEXT[c][0]}`, run: () => setMutateCategory(c) })), categoryChip);
 function setMutateCategory(c: Category): void {
   editor.mutateCategory = c;
+  showCategory();
   status.textContent = c === 'any'
     ? 'Mutate category Any: Mutate, Randomize and Make candidates aim at no kind of sound'
     : `Mutate category ${CATEGORY_TEXT[c][0]} (${CATEGORY_TEXT[c][1]}): Mutate and Randomize bring envelopes, cutoff and glide into its ranges; Make candidates also renders each with the test phrase and keeps those that sound it`;
@@ -2432,12 +2442,15 @@ function setMutateCategory(c: Category): void {
     /* storage blocked: the category lasts until the page is reloaded */
   }
 }
+/** Shift+Alt+M: the next category, Any after Drone */
+const nextCategory = (): void => setMutateCategory(CATEGORIES[(CATEGORIES.indexOf(editor.mutateCategory) + 1) % CATEGORIES.length]);
 try {
   const c = localStorage.getItem(MUTATE_CATEGORY);
   if ((CATEGORIES as readonly (string | null)[]).includes(c)) editor.mutateCategory = c as Category;
 } catch {
   /* storage blocked: Any */
 }
+showCategory();
 // Make candidates' count per round (#996): kept per browser, like Mutate's amount
 const CANDIDATES = 'matryoshka.candidates';
 const CANDIDATE_COUNTS = [2, 4, 6, 8] as const;
