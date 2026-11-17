@@ -1540,9 +1540,12 @@ const showDiff = (): void => {
   diffPanel.hidden = false;
 };
 // ---- snapshots (#943): versions of the patch kept with it, lettered A, B… as they are taken (kept beside the remembered
-// patch: save, D-972). The strip over the canvas shows them with the current patch last; Alt+B or Alt+J goes A, B, …, the
+// patch: save, D-972). The column at the canvas's right edge lists them, the current patch last (#1038); Alt+B or Alt+J goes A, B, …, the
 // current patch, A…, Alt+K the other way (#1028), Shift+Alt+B takes one, Alt+X removes the one on screen
 const snapStrip = $('snapshot-strip');
+// the canvas gives up the column's width while it lists snapshots or shows the scope (style.css .snap-column)
+const snapColumn = $('snap-column');
+new ResizeObserver(() => snapColumn.parentElement!.style.setProperty('--snap-col-w', `${snapColumn.offsetWidth + 30}px`)).observe(snapColumn);
 /** how many changes the snapshot is from the current patch, counted as Show changes counts them */
 const snapChanges = (s: Snapshot): number => diffCount(diffPatches(editor.currentPatch(), JSON.parse(s.patch) as Patch, DEFS));
 const snapTitle = (s: Snapshot): string => s.name ? `${s.letter} “${s.name}”` : s.letter;
@@ -1600,6 +1603,8 @@ function renderSnapshots(): void {
     popMenu(items, b);
   };
   snapStrip.replaceChildren(...items, ...current, take);
+  // the entry on show stays in view of the column's list when it scrolls (#1038)
+  snapStrip.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: 'nearest' });
 }
 const snapshotMenu = (s: Snapshot): MenuItem[] => [
   { text: s.mark === 'keep' ? 'Unmark keep' : 'Keep', run: () => editor.setKeep(s.letter, s.mark !== 'keep') },

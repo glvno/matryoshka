@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The Output scope (#1029, D-992): a Scope module's screen and toolbar (scope-view.ts) whose input is what is heard, so
-// comparing snapshots needs no Scope card and no cable. It docks over the snapshot strip at the canvas's bottom left while
+// comparing snapshots needs no Scope card and no cable. It sits at the top of the column at the canvas's right edge, over
+// the snapshots (#1038), while
 // there is a snapshot, or always once the palette's "Output scope" opened it; its collapse button folds it to its title.
 // Its Scope belongs to no patch: nothing about it is saved in the patch or sent to the FM-1; this browser remembers its
 // size, its mode, window and scale, and whether it is folded. It streams only while its screen is on show (scope-view.ts).
@@ -12,12 +13,12 @@ import { scopeTools, type ScreenSpec } from './scope-view';
 export const OUTPUT_SCOPE_KEY = 'output-scope';
 /** where this browser keeps it */
 export const OUTPUT_SCOPE_STORE = 'matryoshka.outputScope';
-/** the screen's size in CSS px: the default, the smallest and the largest (the window can make the largest smaller) */
-export const SCREEN_DEFAULT = { w: 420, h: 150 };
-export const SCREEN_MIN = { w: 320, h: 80 };
+/** the screen's size in CSS px: the default, the smallest and the largest (the window and the column can make the largest smaller) */
+export const SCREEN_DEFAULT = { w: 260, h: 140 };
+export const SCREEN_MIN = { w: 200, h: 80 };
 export const SCREEN_MAX = { w: 1200, h: 640 };
-/** what the largest leaves of the window around it (the sidebar, the strip, the view switch) */
-const ROOM = { w: 120, h: 220 };
+/** what the largest leaves of the window beside it (the sidebar, the canvas) and of the column under it (the snapshots) */
+const ROOM = { w: 520, h: 220, list: 120 };
 
 interface Saved {
   w: number;
@@ -70,7 +71,7 @@ export class OutputScope {
     const body = document.createElement('div');
     body.className = 'oscope-body';
     body.append(this.screen);
-    const grips = (['top', 'right', 'corner'] as const).map((edge) => this.grip(edge));
+    const grips = (['left', 'bottom', 'corner'] as const).map((edge) => this.grip(edge));
     root.replaceChildren(head, body, ...grips);
     screens.sync([{ m: this.m, el: this.screen, chans: [[{ id: -1, port: 'out', kind: 'audio', label: 'what you hear' }]], key: OUTPUT_SCOPE_KEY, output: true }]);
     this.size(this.saved.w, this.saved.h);
@@ -116,10 +117,11 @@ export class OutputScope {
     this.show();
   }
 
-  /** the screen's size, held between the smallest and the largest the window allows */
+  /** the screen's size, held between the smallest and the largest the window and the column allow */
   size(w: number, h: number): void {
     const maxW = Math.max(SCREEN_MIN.w, Math.min(SCREEN_MAX.w, (globalThis.innerWidth || Infinity) - ROOM.w));
-    const maxH = Math.max(SCREEN_MIN.h, Math.min(SCREEN_MAX.h, (globalThis.innerHeight || Infinity) - ROOM.h));
+    const column = this.root.parentElement?.clientHeight || Infinity;
+    const maxH = Math.max(SCREEN_MIN.h, Math.min(SCREEN_MAX.h, (globalThis.innerHeight || Infinity) - ROOM.h, column - ROOM.list));
     this.saved.w = Math.round(clamp(w, SCREEN_MIN.w, maxW));
     this.saved.h = Math.round(clamp(h, SCREEN_MIN.h, maxH));
     this.screen.style.width = `${this.saved.w}px`;
@@ -135,8 +137,8 @@ export class OutputScope {
     this.fold.setAttribute('aria-expanded', String(!this.saved.collapsed));
   }
 
-  /** a drag handle on its top edge, its right edge or its top right corner (it is anchored at its bottom left) */
-  private grip(edge: 'top' | 'right' | 'corner'): HTMLElement {
+  /** a drag handle on its left edge, its bottom edge or its bottom left corner (it is anchored at its top right) */
+  private grip(edge: 'left' | 'bottom' | 'corner'): HTMLElement {
     const g = document.createElement('div');
     g.className = `oscope-grip ${edge}`;
     g.setAttribute('aria-hidden', 'true');
@@ -146,7 +148,7 @@ export class OutputScope {
       e.stopPropagation();
       const from = { x: e.clientX, y: e.clientY, ...this.screenSize };
       try { g.setPointerCapture(e.pointerId); } catch { /* (a synthetic pointer) */ }
-      const move = (ev: PointerEvent): void => this.size(edge === 'top' ? from.w : from.w + ev.clientX - from.x, edge === 'right' ? from.h : from.h - (ev.clientY - from.y));
+      const move = (ev: PointerEvent): void => this.size(edge === 'bottom' ? from.w : from.w - (ev.clientX - from.x), edge === 'left' ? from.h : from.h + ev.clientY - from.y);
       const up = (): void => {
         g.removeEventListener('pointermove', move);
         g.removeEventListener('pointerup', up);
