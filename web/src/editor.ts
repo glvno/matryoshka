@@ -2315,14 +2315,6 @@ export class Editor {
         rowTools = this.rowTools(a, m, pd);
       }
     }
-    if (o.rename) {
-      name.title = 'click to rename';
-      name.classList.add('rename');
-      name.onclick = (e) => {
-        e.preventDefault();
-        o.rename!();
-      };
-    }
     const val = document.createElement('output');
     // the number and its unit apart: the unit is drawn smaller (labels.ts formatValue)
     const parts = (v: number, params = m.params, digits = 3): { num: string; unit: string } =>
@@ -2537,10 +2529,12 @@ export class Editor {
       row.classList.toggle('automated', automated);
     } });
     row.append(name, choice ? sel!.element : pd.toggle ? document.createElement('span') : val);
-    if (canPatch) {
+    // the ⋮ menu: modulation (a parameter that takes it), Mutate's lock, and Rename… for a card row (#1025: the name
+    // itself is part of the slider, so a press on it sets the value like the rest of the bar)
+    if (canPatch || o.rename) {
       const key = `${m.id}:${pd.name}`;
       const lock = mutable ? { own: !!m.mutateLock?.includes(pd.name), card: isLocked(this.patch, { ...m, mutateLock: undefined }, pd.name), set: (on: boolean) => this.lockParam(m, pd.name, on) } : undefined;
-      row.append(parameterMenu(m, def, pd, { ...this.ev, patch: () => this.patch, change: (fn) => this.change(fn), touch: () => this.touch(), lock }, this.routingOpen.has(key), (on) => {
+      row.append(parameterMenu(m, def, pd, { ...this.ev, patch: () => this.patch, change: (fn) => this.change(fn), touch: () => this.touch(), lock, rename: o.rename, routing: canPatch }, this.routingOpen.has(key), (on) => {
         if (on) {
           this.routingOpen.clear();
           this.routingOpen.add(key);
