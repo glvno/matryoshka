@@ -151,7 +151,6 @@ export class Fm1Engine {
         else if (m.n === 64) x.fm1e_ctl(CTL_SUSTAIN, midiQ16(m.v));
         else if (m.n === 65) x.fm1e_ctl(CTL_FOOT, midiQ16(m.v));
         else if (m.n === 22) x.fm1e_morph(midiQ16(m.v));
-        else if (m.n >= 80 && m.n < 87) x.fm1e_button(m.n - 80, m.v >= 64 ? 1 : 0);
         break;
       default: break;
     }
