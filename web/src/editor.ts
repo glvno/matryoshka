@@ -90,7 +90,7 @@ import { FlawPanel } from './flaws-panel';
 import { clipText, copyItems, pasteClip, type Clip } from './clipboard';
 import { GUTTER_ROOM, ribbons, type RibbonCable, type RibbonFrame } from './ribbons';
 import { pinchStart, pinchStep, type Pinch } from './touch';
-import type { ScreenSpec } from './scope-view';
+import { scopeTools, type ScreenSpec } from './scope-view';
 import { listenable, type ListenSource } from './listen';
 import type { EnvSpec } from './env-view';
 import { flipPlan } from './ab';
@@ -2027,72 +2027,11 @@ export class Editor {
         return kind ? [{ id: c.from.module, port: c.from.port, kind, label: `${this.nameOf(from)} ${longName(from.type, c.from.port)}`, range: () => outputRange(from.type, c.from.port, from.params) }] : [];
       }));
     this.screens.push({ m, el: screen, chans });
-    row.append(this.scopeTools(m));
-    return row;
-  }
-
-  /** a Scope screen's hover toolbar: its window (− / +, a 1-2-5 series), time / spectrum / spectrogram and the vertical scale */
-  private scopeTools(m: ModuleInst): HTMLElement {
-    const def = DEFS[m.type];
-    const bar = document.createElement('div');
-    bar.className = 'scope-tools';
-    const timePd = def.params.find((q) => q.name === 'time')!;
-    const steps = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000].filter((v) => v >= timePd.min && v <= timePd.max);
-    const value = document.createElement('span');
-    value.className = 'scope-time';
-    const show = (): void => {
-      const t = m.params.time ?? timePd.default;
-      const { num, unit } = t >= 1000 ? formatValue(t / 1000, 's', false) : formatValue(t, timePd.unit, false);
-      value.textContent = `${num} ${unit}`;
-    };
-    const step = (dir: 1 | -1): void => {
-      const t = m.params.time ?? timePd.default;
-      const next = dir > 0 ? steps.find((v) => v > t * 1.001) : [...steps].reverse().find((v) => v < t * 0.999);
-      if (next === undefined) return;
-      this.setParam(m.id, 'time', next);
-      show();
-    };
-    const shorter = this.button('−', 'Shorter window', () => step(-1), 'sm');
-    const longer = this.button('+', 'Longer window', () => step(1), 'sm');
-    const MODE_BUTTONS: Record<string, [string, string]> = { time: ['Wave', 'Waveform'], spectrum: ['FFT', 'Spectrum'], spectrogram: ['Gram', 'Spectrogram: the frequencies over the last 5 s, the level as a colour'] };
-    const modes = (def.params.find((q) => q.name === 'mode')!.choices ?? []).map((name, i) => {
-      const b = this.button(MODE_BUTTONS[name][0], MODE_BUTTONS[name][1], () => {
-        this.setParam(m.id, 'mode', i);
-        for (const [k, x] of modes.entries()) x.setAttribute('aria-pressed', String(k === i));
-      }, 'sm');
-      b.setAttribute('aria-pressed', String(Math.round(m.params.mode ?? 0) === i));
-      return b;
-    });
-    const rule = document.createElement('span');
-    rule.className = 'scope-rule';
-    show();
-    // the vertical scale (#518): a click steps auto -> ±1 -> ±4 -> auto
-    const scales = def.params.find((q) => q.name === 'scale')!.choices ?? [];
-    const scaleAt = (): number => Math.max(0, Math.min(scales.length - 1, Math.round(m.params.scale ?? 0)));
-    const scaleBtn = this.button(scales[scaleAt()], 'Vertical scale: auto fits the traces; ±1 and ±4 stay put (click for the next)', () => {
-      this.setParam(m.id, 'scale', (scaleAt() + 1) % scales.length);
-      scaleBtn.textContent = scales[scaleAt()];
-    }, 'sm');
-    const rule3 = document.createElement('span');
-    rule3.className = 'scope-rule';
-    bar.append(shorter, value, longer, rule, ...modes, rule3, scaleBtn);
-    // per voice (#54): only where something cabled in runs once per voice
+    // per voice (#54): the Voices button only where something cabled in runs once per voice
     const copies = copiesOf(this.patch);
     const fed = this.patch.cables.filter((c) => c.to.module === m.id).some((c) => (copies.get(c.from.module) ?? 1) > 1);
-    if (fed) {
-      const on = (): boolean => Math.round(m.params.voices ?? 0) === 1;
-      const each = this.button('Voices', 'Each voice as its own trace', () => {
-        this.setParam(m.id, 'voices', on() ? 0 : 1);
-        each.setAttribute('aria-pressed', String(on()));
-      }, 'sm');
-      each.setAttribute('aria-pressed', String(on()));
-      const rule2 = document.createElement('span');
-      rule2.className = 'scope-rule';
-      bar.append(rule2, each);
-    }
-    // the toolbar's presses are its own: no card drag, no cable, no pick
-    bar.addEventListener('pointerdown', (e) => e.stopPropagation());
-    return bar;
+    row.append(scopeTools(m, (name, v) => this.setParam(m.id, name, v), fed));
+    return row;
   }
 
   /** the tag before a card's title (VCO, VCF, ENV ...), coloured by the module's family; an assembly's: ENG when it is an

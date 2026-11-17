@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Snapshots go round and round, both ways, and a loser goes with one key.** Going through candidates with Option+K or Option+X stopped at Current: the keys that marked a snapshot keep or cut moved on, but did nothing once the current patch was on screen. Now Alt+J (Option+J on a Mac) goes to the next snapshot, as Alt+B does, and Alt+K goes to the one before; both go round through the snapshots and Current without stopping. Alt+X removes the snapshot on screen at once and plays the next one (Ctrl/Cmd+Z puts it back; changes you made to it are kept as a new snapshot first). The cut mark and Cut the losers (Shift+Alt+X) are gone. Keep stays, in a snapshot's right-click menu and the command palette, to choose what Make candidates breeds from (#1028).
+- **A scope of what you hear, over the snapshots.** Once a patch has a snapshot, an Output scope sits just above the snapshot strip: the Scope module's screen showing what the speakers play, with its waveform, spectrum (FFT) and spectrogram (Gram) modes, its window and its scale, without adding a Scope or a cable. While you listen to one signal on its own, it shows that signal. Drag its top or right edge or its top right corner to resize it; its ▾ button folds it away, and **Output scope** in **Commands** shows or hides it any time, also without snapshots. This browser remembers its size and settings; nothing is saved in the patch or sent to the FM-1 (#1029).
 
 ## 1.18.3 — 2026-11-17
 

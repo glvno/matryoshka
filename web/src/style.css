@@ -309,6 +309,23 @@ dialog.about .hsec h3 { margin-bottom: 10px; font-size: 22px; letter-spacing: .0
 .snapshot-strip .snap.keep::before { content: '✓'; color: var(--secondary); }
 .snapshot-strip .snap-from { font-size: 10px; letter-spacing: 0; text-transform: none; opacity: .7; }
 .snapshot-strip[hidden] { display: none; }
+/* the Output scope (output-scope.ts, #1029): a Scope screen of what is heard, docked just over the snapshot strip; its
+   toolbar always shows; it grows up and to the right from its top edge, right edge and top right corner */
+.output-scope { position: absolute; left: 18px; bottom: 56px; z-index: 6; display: flex; flex-direction: column; gap: 4px; padding: 4px 6px 6px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 2px 8px var(--shadow); }
+.output-scope[hidden] { display: none; }
+.output-scope .oscope-head { display: flex; align-items: center; gap: 6px; }
+.output-scope .oscope-title { font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); cursor: default; }
+.output-scope .scope-tools { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.output-scope .oscope-fold { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); font-size: 11px; line-height: 1; }
+.output-scope .oscope-fold:hover { color: var(--ink); background: var(--line); }
+.output-scope.collapsed { padding: 2px 4px 2px 8px; }
+.output-scope.collapsed .oscope-fold { margin-left: 4px; }
+.output-scope.collapsed :is(.oscope-body, .scope-tools, .oscope-grip) { display: none; }
+.output-scope .oscope-grip { position: absolute; z-index: 1; touch-action: none; }
+.output-scope .oscope-grip.top { left: 10px; right: 10px; top: -4px; height: 8px; cursor: ns-resize; }
+.output-scope .oscope-grip.right { top: 10px; bottom: 10px; right: -4px; width: 8px; cursor: ew-resize; }
+.output-scope .oscope-grip.corner { top: -6px; right: -6px; width: 14px; height: 14px; cursor: nesw-resize; }
 dialog.help .shead { flex: none; height: 34px; padding: 0 6px 0 10px; }
 dialog.help .shead form { margin: 0; }
 dialog.help .help-close { border: 0; background: transparent; color: var(--muted); font-size: 20px; line-height: 1; padding: 2px 8px; }

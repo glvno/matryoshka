@@ -84,6 +84,34 @@ it('a Scope view reads its outputs without cancellation and a new patch does not
   for (const message of views(processor)) for (const c of message.chans) expect(c.raw.every(value => value === 0)).toBe(true);
 });
 
+it('the Output scope (#1029) reads what is heard: the rendered left and right averaged, the listened signal while listening', () => {
+  const processor = new Processor();
+  const patch = emptyPatch();
+  const osc = addModule(patch, DEFS.osc, 0, 0);
+  const noise = addModule(patch, DEFS.noise, 0, 0);
+  const output = addModule(patch, DEFS.output, 0, 0);
+  connect(patch, DEFS, { module: osc.id, port: 'out' }, { module: output.id, port: 'l' });
+  connect(patch, DEFS, { module: noise.id, port: 'out' }, { module: output.id, port: 'r' });
+  send(processor, { t: 'patch', patch, revision: 1 });
+  send(processor, { t: 'view', key: 'out', chans: [[]], samples: 128, output: true });
+  /** a frame's last block against the block rendered: their mean; whether left and right were the same */
+  const heard = (): boolean => {
+    processor.port.postMessage.mockClear();
+    const [l, r] = render(processor, 24);
+    const raw = views(processor).at(-1)!.chans[0].raw;
+    expect(raw.some((v) => Math.abs(v) > 1e-3)).toBe(true);
+    for (let i = 0; i < 128; i++) expect(raw[raw.length - 128 + i]).toBeCloseTo((l[i] + r[i]) / 2, 6);
+    return l.every((v, i) => v === r[i]);
+  };
+  expect(heard()).toBe(false);   // the oscillator left, the noise right
+  send(processor, { t: 'listen', srcs: [{ id: osc.id, port: 'out' }] });
+  expect(heard()).toBe(true);   // the oscillator alone on both sides
+  processor.port.postMessage.mockClear();
+  send(processor, { t: 'unview', key: 'out' });
+  render(processor);
+  expect(views(processor)).toEqual([]);
+});
+
 it('per-voice Scope inputs (#54): one ring per voice, summing to the trace', () => {
   const processor = new Processor();
   const patch = withParts(subtractiveSaw(), 4);
