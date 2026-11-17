@@ -407,6 +407,7 @@ const FILTER_MIDI = (only) => {
       window.__midiLogged.add(p.id);
       p.addEventListener('midimessage', (e) => {
         if (e.data[0] === 0xb0) window.__midiLog.push([Math.round(performance.now()), ...e.data]);
+        else if ((e.data[0] & 0xe0) === 0x80) (window.__noteLog = window.__noteLog ?? []).push(Array.from(e.data));   // #1053: the FM-1's notes
         else if (e.data[0] === 0xf8) (window.__clockLog = window.__clockLog ?? []).push(e.timeStamp || performance.now());   // #473: the FM-1's clock
       });
     }
@@ -1884,6 +1885,85 @@ async function main() {
       sent = (await page.evaluate(() => window.__sent.splice(0))).filter((f) => f[1] !== 0x2c);
       await check('mirror keys: the reports back, the FM-1\'s next state puts the copy back where it is (one realign), nothing sent',
         !off(x).length && x.aligns > aligns && x.fm1?.page === 0 && !sent.length, `off [${off(x).join(', ')}], realigns ${x.aligns - aligns} (${x.lastOff.join(', ')}), sent ${sent.length}`);
+    },
+    // #1053 (D-781, the Side layout): the FM-1's seven lowest keys are a Harmonizer's chord buttons at any octave, the other
+    // keys its roots, the same in Live (the FM-1 plays: its bar names the chord, it sends the button's key under `split`)
+    // and in sandbox mode (the browser plays: the editor takes the FM-1's lowest seven as the buttons, its other keys as
+    // roots, whatever the octave). Monolith D with its Harmonizer on (Main -> Steps -> Harmonizer -> Arpeggiator)
+    async harmKeys() {
+      const fixture = (sandbox) => page.evaluate(async (sb) => {
+        const { PRESETS } = await import('/src/presets.ts');
+        const p = PRESETS['Monolith D']();
+        p.name = sb ? 'T1053 HARM SANDBOX' : 'T1053 HARM LIVE';
+        delete p.modules.find((m) => m.type === 'harm').bypass;
+        if (sb) p.modules.find((m) => m.type === 'alloc').params.voices = 16;   // (over the FM-1's budget: a sandbox patch)
+        window.__m1test.save(JSON.stringify(p));
+        return p.name;
+      }, sandbox);
+      // what the editor's engine gets (the sink, main.ts) and what the FM-1 sends, since the last read
+      await page.evaluate(() => {
+        const s = window.__notes;
+        if (s.__logged) return;
+        const play = s.play.bind(s);
+        window.__played = [];
+        s.play = (m) => { if (['on', 'off', 'chord'].includes(m.t)) window.__played.push({ ...m }); return play(m); };
+        s.__logged = true;
+      });
+      const heard = () => page.evaluate(() => ({ played: window.__played.splice(0), sent: (window.__noteLog ?? []).splice(0) }));
+      const show = (h) => `FM-1 sent [${h.sent.map((d) => `${d[0] >> 4 === 9 && d[2] ? 'on' : 'off'} ${d[1]}`).join(', ')}], editor played [${h.played.map((m) => m.t === 'chord' ? `chord ${m.button}${m.down ? '' : ' up'}` : `${m.t} ${m.note}${m.root ? ' root' : ''}`).join(', ')}]`;
+      const octave = async (want) => {
+        for (let i = 0; i < 4 && (await T()).octave !== want; i++) {
+          await emu.tap((await T()).octave < want ? B.octUp : B.octDown);
+          await until(async () => (await T()).octave === want, 1500);
+        }
+        return (await T()).octave === want;
+      };
+      /** key n (0 = the lowest) pressed and let go; what the FM-1 sent and the editor played meanwhile */
+      const press = async (n, hold = 300) => {
+        await heard();
+        await emu.key(14 + n, true);
+        await emu.elapse(hold);
+        await emu.key(14 + n, false);
+        await emu.elapse(300);
+        await until(async () => (await page.evaluate(() => (window.__noteLog ?? []).length >= 2 && window.__played.length >= 2)), 1500);
+        return heard();
+      };
+      const NAMES = ['SUS2', 'MAJ', 'SUS4', 'MIN', '7', 'DIM', 'ADD9'];
+      await check('harm keys: Monolith D with its Harmonizer on opens, synced', await openSynced(await fixture(false)));
+      for (const [oct, n] of [[0, 1], [1, 3], [-1, 5]]) {
+        await check(`harm keys (Live): the FM-1 at octave ${oct}`, await octave(oct));
+        await heard();
+        await emu.key(14 + n, true);
+        const named = await emu.waitText(`CHORD: ${NAMES[n]}`, 2000);
+        await emu.key(14 + n, false);
+        await emu.elapse(300);
+        await until(async () => (await page.evaluate(() => (window.__noteLog ?? []).length >= 2 && window.__played.length >= 2)), 1500);
+        const h = await heard();
+        await check(`harm keys (Live, octave ${oct}): key ${n + 1} is the ${NAMES[n]} button: the bar names it, the FM-1 sends the key under split (${53 + n}), the editor plays it as that button`,
+          named && h.sent.some((d) => d[0] >> 4 === 9 && d[1] === 53 + n && d[2]) && h.played.some((m) => m.t === 'chord' && m.button === n && m.down)
+          && h.played.some((m) => m.t === 'chord' && m.button === n && !m.down) && !h.played.some((m) => m.t === 'on'), show(h));
+        const k = oct < 0 ? 13 : 7, note = 53 + k + 12 * oct;   // (C4's key at octaves 0 and 1; at -1 F#4's, which plays 54, under split)
+        const r = await press(k);
+        await check(`harm keys (Live, octave ${oct}): a key above the seven is a root (${note}), also where it lands under split`,
+          r.sent.some((d) => d[0] >> 4 === 9 && d[1] === note && d[2]) && r.played.some((m) => m.t === 'on' && m.note === note && m.root)
+          && !r.played.some((m) => m.t === 'chord'), show(r));
+      }
+      await octave(0);
+      await open(await fixture(true));
+      await check('harm keys: the same with 16 voices is sandbox mode', !!(await until(async () => (await T()).sandbox, 4000)) && (await emu.waitSandboxPage(3000)), `chip ${(await T()).chip}`);
+      for (const [oct, n] of [[0, 1], [1, 3], [-1, 5]]) {
+        await check(`harm keys (sandbox): the FM-1 at octave ${oct}`, await octave(oct));
+        const h = await press(n);
+        await check(`harm keys (sandbox, octave ${oct}): key ${n + 1} is the ${NAMES[n]} button in the editor`,
+          h.played.some((m) => m.t === 'chord' && m.button === n && m.down) && h.played.some((m) => m.t === 'chord' && m.button === n && !m.down)
+          && !h.played.some((m) => m.t === 'on'), show(h));
+        const k = oct < 0 ? 13 : 7, note = 53 + k + 12 * oct;
+        const r = await press(k);
+        await check(`harm keys (sandbox, octave ${oct}): a key above the seven is a root (${note})`,
+          r.played.some((m) => m.t === 'on' && m.note === note && m.root) && !r.played.some((m) => m.t === 'chord'), show(r));
+      }
+      await octave(0);
+      await openSynced('Init');
     },
     // #375: on a computer where no app reads the FM-1's MIDI, every message the FM-1 sends unasked (TRACK_NOW after a
     // step, PARAM_NOW after a knob) found the SysEx ring full and waited 200 ms: entering steps by hand stalled the panel

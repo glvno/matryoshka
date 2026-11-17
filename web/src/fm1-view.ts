@@ -227,11 +227,12 @@ export class Fm1View {
    * A key edge the FM-1's panel took (KEYS_NOW, #549): its keys go through the panel logic here too, so a key its pages
    * take (a step, the pen, REC + a white key, an arm, a mute) does here what it did there. The buttons it held then come
    * first, as presses or releases, where they are not so here yet (the FM-1 sends KEYS_NOW ahead of the buttons' MIDI,
-   * whose own press or release is then no news: drive). What the keys play here is not sounded: the FM-1's notes are
+   * whose own press or release is then no news: drive). Returns what the keys played here: the caller sounds it only
+   * where the FM-1's notes cannot tell it (a Harmonizer's chord buttons and roots, linked-harm-keys.ts)
    */
-  keysNow(keys: number, held: number): void {
+  keysNow(keys: number, held: number): KeyPlay[] {
     const ui = this.ui;
-    if (!ui) return;
+    if (!ui) return [];
     ui.tick(performance.now() - this.t0);
     const was = (ui.held ?? 0) & 0x3fff;
     for (let id = 0; id < 14; id++) {
@@ -240,9 +241,10 @@ export class Fm1View {
       this.btnEls.get(id)?.classList.toggle('down', !!b);
       ui.button(id, !!b);
     }
-    ui.keys(keys);
+    const plays = ui.keys(keys);
     for (const [k, el] of this.keyEls) el.classList.toggle('down', (keys >> k & 1) !== 0);
     if (this.shown && ui.takeDirty()) this.paint();
+    return plays;
   }
 
   /** the FM-1's panel state (GUIDE_NOW): the panel logic here put back there where it is not (#549) */

@@ -27,7 +27,8 @@ import { editorSkips, LIVE_MS, panelOffBy, slotLabel, type PanelState, type Slot
 import { chooseSlot } from './store-slot';
 import { Fm1View } from './fm1-view';
 import { panelPlay, EmuKeys } from './emu-keys';
-import { SandboxKeys } from './sandbox-keys';
+import { keysHarm, SandboxKeys } from './sandbox-keys';
+import { LinkedHarmKeys } from './linked-harm-keys';
 import { Editor, NOTHING_TO_MOVE, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { snapshotKey, snapshotRecord, storedSnapshots, type Snapshot, type SnapshotKey } from './snapshots';
 import { ScopeScreens } from './scope-view';
@@ -396,7 +397,11 @@ device.onEvent = (e) => {
     if (!panelReported()) return;
     void emu.ready().then(() => {
       fromDevice = true;     // (what the copy does with it is the FM-1's: its track edits come as TRACK_NOW, fm1Event)
-      try { emu.keysNow(e.keys, e.held); } finally { fromDevice = false; }
+      try {
+        // (while the keys reach a Harmonizer the browser engine plays what the copy played, not the FM-1's notes: #1053)
+        const plays = emu.keysNow(e.keys, e.held).map((p) => panelPlay(p, (index) => deviceView(editor.patch, true).patch.modules[index]?.id ?? -1));
+        for (const m of linkedHarmKeys.copy(plays, fm1Harm())) sink.play(m);
+      } finally { fromDevice = false; }
       alignSoon();
     });
     return;
@@ -718,21 +723,32 @@ const hands = new DeckControls(document.createElement('div'), {
 });
 /** the FM-1's key notes in sandbox mode (sandbox-keys.ts) */
 const sandboxKeys = new SandboxKeys();
+/** the linked FM-1's keys while they reach a Harmonizer, outside sandbox mode (linked-harm-keys.ts, #1053) */
+const linkedHarmKeys = new LinkedHarmKeys();
+const fm1Harm = (): boolean => !sandboxOn() && !!keysHarm(editor.patch, editor.armedSet);
 /** notes go to the browser engine and, with Live on, to the FM-1. `fromPanel`: one of the keys the Emulator view takes as
  * the FM-1's own (the pill keys, the computer keyboard, the on-screen one), not MIDI */
 const sink = {
   send(msg: HostMsg, fromPanel = false): void {
     // CC 16..19 from a MIDI controller turn Main's knobs; CC 80..86 press its patch buttons, through the editor (#1041)
     if (msg.t === 'cc' && editorCc(msg, editor)) return;
-    if (msg.t === 'panic') sandboxKeys.route(msg, editor.patch, editor.armedSet, 0);
+    if (msg.t === 'panic') {
+      sandboxKeys.route(msg, editor.patch, editor.armedSet, 0);
+      linkedHarmKeys.note(msg, false);
+    }
     // the FM-1's keys in sandbox mode: it sends plain notes (D-232), and they play what its keys play on the editor's
-    // patch (D-520: a Drum map's rows on black keys 1..8; sandbox-keys.ts), at the FM-1's octave
+    // patch (D-958: a Harmonizer's chord buttons on the seven lowest keys, else a Drum map's rows on black keys 1..8;
+    // sandbox-keys.ts), at the FM-1's octave
     if (fromDevice && (msg.t === 'on' || msg.t === 'off') && (sandboxOn() || sandboxKeys.holds(msg.note))) {
       for (const m of sandboxKeys.route(msg, editor.patch, editor.armedSet, fm1Panel?.octave ?? emu.ui?.octave ?? 0)) sink.play(m);
       return;
     }
-    // a followed FM-1 that reports its keys (#549): they reach the copy as KEYS_NOW, its notes only sound here
-    if (fromDevice && (msg.t === 'on' || msg.t === 'off') && panelReported()) return sink.play(msg);
+    // a followed FM-1 that reports its keys (#549): they reach the copy as KEYS_NOW, its notes only sound here; while
+    // they reach a Harmonizer, the copy's chord buttons and roots sound instead (linked-harm-keys.ts, #1053)
+    if (fromDevice && (msg.t === 'on' || msg.t === 'off') && panelReported()) {
+      for (const m of linkedHarmKeys.note(msg, fm1Harm())) sink.play(m);
+      return;
+    }
     // the Emulator view in sandbox mode: its keys are the FM-1's, so they play as the FM-1's do here (above); the copy
     // still takes them (its lights), but it does not hold the patch
     if (fromPanel && (msg.t === 'on' || msg.t === 'off') && ((sandboxOn() && emu.shown) || sandboxKeys.holds(msg.note))) {
