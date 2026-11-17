@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.18.2 — 2026-11-17
 
 - **Mutate and Make candidates stay in tune and make fewer, better changes.** Mutate, Randomize and Make candidates leave pitch alone: tunings, ratios, and the values that feed a pitch, such as an Offset or a Selector's notes. Turn on **Mutate pitch** in **Commands** to let pitch move, but only by octaves, fifths and fourths, to whole-number ratios, or by a few cents; the browser remembers it. Mutate now moves about one row in four (at least two) instead of every one, and flips a switch or changes a choice with a chance equal to the amount. With nothing selected, Make candidates moves only the rows the cards show, not the insides of assemblies. A row of an engine with factory presets sometimes takes one of its presets' values. With two or more snapshots marked keep, Make candidates breeds the new ones from them: each card comes from one keep, then a light Mutate (#1006).
 
