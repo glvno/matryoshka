@@ -16,6 +16,18 @@ export function isTextEntry(target: EventTarget | null): boolean {
     (target.tagName === 'INPUT' && !NON_TYPING_INPUTS.has((target as HTMLInputElement).type));
 }
 
+/** an expanded native dropdown: it owns its keys (navigation, typeahead). A closed one does not: focus stays on the patch
+ *  picker after a patch is chosen from it, and the editor's shortcuts must still work (#1023). (`:open` is unknown to
+ *  some browsers: then no dropdown counts as open.) */
+export function isOpenSelect(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement) || target.tagName !== 'SELECT') return false;
+  try {
+    return target.matches(':open');
+  } catch {
+    return false;
+  }
+}
+
 export interface NoteKeys {
   octave(): number;
   /** move the note keys by `d` octaves (clamped); held notes keep sounding until their key is released */
@@ -34,8 +46,7 @@ export function attachKeyboard(host: Pick<AudioHost, 'send'>, isActive: () => bo
   const down = new Map<string, number>();
   window.addEventListener('keydown', (e) => {
     if (!isActive() || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || isTextEntry(e.target)) return;
-    // An expanded native dropdown still owns its keyboard navigation/typeahead.
-    if (e.target instanceof HTMLElement && e.target.tagName === 'SELECT' && e.target.matches(':open')) return;
+    if (isOpenSelect(e.target)) return;
     const k = e.key.toLowerCase();
     const i = KEYS.indexOf(k);
     if (i < 0 && k !== 'z' && k !== 'x') return;
