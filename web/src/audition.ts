@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The deck's Phrase group: a test phrase (#945) on a chosen root, once or looped, played from its button or Q; My take, the
-// last run of notes the user played, as a phrase; the phrase rendered to a WAV file and the Output recorded to one (#946).
-// The choice and My take are this browser's, not the patch's.
+// The Listen block at the top of the Sound design sidebar (#1048; once the deck's Phrase group): a test phrase (#945) on
+// a chosen root, once or looped, played from its round button or Q; My take, the last run of notes the user played, as a
+// phrase; the phrase rendered to a WAV file and the Output recorded to one (#946). The block never changes height: the
+// second line holds WAV, Rec (a timer and Save while it records) and a status that fades back. The choice and My take
+// are this browser's, not the patch's.
 import type { HostMsg } from './worklet';
 import type { Patch } from './patch';
 import { NOTE_NAMES } from './modules';
+import { popMenu, type MenuItem } from './menu';
 import { PHRASES, ROOT_OCTAVES, TakeRecorder, drumNotes, makePhrase, rootNote, takePhrase, type Phrase, type PhraseKind, type PhraseNote } from './phrases';
 import { WAV_RATE, encodeWav, joinChunks, wavName } from './wav';
 import type { RenderSetup } from './phrase-render';
@@ -21,8 +24,10 @@ export const DEFAULT_CHOICE: PhraseChoice = { kind: 'held', pitch: 0, octave: 4,
 const STORE = 'matryoshka.phrase';
 /** My take's notes (PhraseNote[]) */
 const TAKE_STORE = 'matryoshka.take';
-/** the phrase menu's entry that makes My take from the last take (a command, not a phrase) */
-const USE_TAKE = 'use-take';
+/** each phrase in one line, in the phrase menu (the mockup's words, #1048) */
+const HINTS: Record<PhraseKind, string> = { held: 'attack, sustain, release', staccato: 'eight short notes', chord: 'a major triad, held', sweep: 'four octaves', drums: 'two bars on the kit', take: 'what you played last' };
+/** how long the status after a WAV stays before it fades (ms) */
+const STATUS_MS = 5000;
 /** a recording stops by itself after ten minutes (about 230 MB at 48 kHz) and is saved */
 export const REC_MAX_SECONDS = 600;
 
@@ -38,6 +43,8 @@ export interface AuditionHost {
   /** the global tempo (D-907), null: the patch's own */
   tempo(): number | null;
   status(text: string): void;
+  /** the block's state changed (playing, recording): the sidebar's rail shows play too */
+  changed?(): void;
   download(bytes: Uint8Array, name: string): void;
   render(patch: Patch, phrase: Phrase, setup: { armed: string[]; tempo: number | null } & Pick<RenderSetup, 'seconds' | 'quiet'>): Promise<[Float32Array, Float32Array]>;
   resample(left: Float32Array, right: Float32Array, from: number): Promise<[Float32Array, Float32Array]>;
@@ -99,14 +106,16 @@ export class Audition {
   readonly takes = new TakeRecorder();
   /** My take, kept in this browser; null: none made yet */
   myTake: PhraseNote[] | null;
-  private takeOption: HTMLOptionElement;
   private playBtn: HTMLButtonElement;
   private loopBtn: HTMLButtonElement;
   private wavBtn: HTMLButtonElement;
   private recBtn: HTMLButtonElement;
-  private kindSel: HTMLSelectElement;
-  private pitchSel: HTMLSelectElement;
-  private octaveSel: HTMLSelectElement;
+  private kindBtn: HTMLButtonElement;
+  private rootSel: HTMLSelectElement;
+  private statusEl: HTMLElement;
+  private statusTimer: ReturnType<typeof setTimeout> | undefined;
+  private recStart = 0;
+  private recTimer: ReturnType<typeof setInterval> | undefined;
 
   constructor(private host: AuditionHost, private storage: Pick<Storage, 'getItem' | 'setItem'> | null = null) {
     let raw: string | null = null;
@@ -125,61 +134,86 @@ export class Audition {
     this.myTake = loadTake(takeRaw);
     if (this.choice.kind === 'take' && !this.myTake) this.choice.kind = DEFAULT_CHOICE.kind;
     const el = document.createElement('div');
-    el.className = 'deck-phrase';
+    el.className = 'listen';
     el.setAttribute('role', 'group');
-    el.setAttribute('aria-label', 'Test phrase');
-    const button = (cls: string, text: string, title: string): HTMLButtonElement => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = cls;
-      b.textContent = text;
-      b.title = title;
-      el.append(b);
-      return b;
+    el.setAttribute('aria-label', 'Listen: the same notes for every candidate');
+    const make = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text = '', title = ''): HTMLElementTagNameMap[K] => {
+      const e = document.createElement(tag);
+      e.className = cls;
+      e.textContent = text;
+      if (title) e.title = title;
+      if (e instanceof HTMLButtonElement) e.type = 'button';
+      return e;
     };
-    const select = (cls: string, label: string, options: [string, string][], title: string): HTMLSelectElement => {
-      const s = document.createElement('select');
-      s.className = cls;
-      s.setAttribute('aria-label', label);
-      s.title = title;
-      for (const [value, text] of options) s.append(new Option(text, value));
-      el.append(s);
-      return s;
-    };
-    this.playBtn = button('ph-play', '▶ Phrase', 'Play the test phrase (Q); again: stop');
-    this.kindSel = select('ph-kind', 'Test phrase', [...PHRASES.map((p): [string, string] => [p.kind, p.label]), ['take', 'My take'], [USE_TAKE, '↺ Use my last take']], 'Which test phrase: the same notes at 120 bpm and velocity 100 every time, or My take, what you played last');
-    this.takeOption = this.kindSel.querySelector('option[value="take"]')!;
-    this.loopBtn = button('ph-loop', 'Loop', 'Play the phrase again and again until stopped');
-    this.pitchSel = select('ph-pitch', 'Root note', Array.from({ length: 12 }, (_, i) => [String(i), NOTE_NAMES[60 + i].slice(0, -1)]), 'The phrase’s root note');
-    this.octaveSel = select('ph-octave', 'Root octave', ROOT_OCTAVES.map((o) => [String(o), String(o)]), 'The root’s octave (4: middle C)');
-    this.wavBtn = button('ph-wav', '⤓ WAV', 'Render the test phrase played once to a WAV file (44.1 kHz stereo, nothing limited or normalized)');
-    this.recBtn = button('ph-rec', '● Rec', 'Record the Output to a WAV file while you play; again: stop and save');
+    const lab = make('div', 'listen-lab');
+    lab.append(make('span', 'listen-title', 'Listen'), make('span', 'listen-why', 'the same notes for every candidate', 'The test phrase: the same notes, at 120 bpm and velocity 100, for every candidate you compare'));
+    this.playBtn = make('button', 'ph-play', '▶', 'Play the test phrase (Q); again: stop');
+    this.kindBtn = make('button', 'ph-kind', '', 'Which test phrase: the same notes at 120 bpm and velocity 100 every time, or My take, what you played last');
+    this.kindBtn.setAttribute('aria-haspopup', 'menu');
+    this.rootSel = make('select', 'ph-root', '', 'The phrase’s root note (C4: middle C)');
+    this.rootSel.setAttribute('aria-label', 'Root note');
+    for (const o of ROOT_OCTAVES) for (let i = 0; i < 12; i++) this.rootSel.append(new Option(NOTE_NAMES[rootNote(i, o)], `${o}:${i}`));
+    this.loopBtn = make('button', 'ph-loop', '⟲', 'Loop: play the phrase again and again until stopped');
+    this.loopBtn.append(make('span', 'ph-word', ' Loop'));
+    const line1 = make('div', 'listen-ctl');
+    line1.append(this.playBtn, this.kindBtn, this.rootSel, this.loopBtn);
+    this.wavBtn = make('button', 'ph-wav', '⤓ WAV', 'Render the test phrase played once to a WAV file (44.1 kHz stereo, nothing limited or normalized)');
+    this.recBtn = make('button', 'ph-rec', '', 'Record the Output to a WAV file while you play; again: stop and save');
+    this.statusEl = make('span', 'ph-status');
+    this.statusEl.setAttribute('aria-live', 'polite');
+    const line2 = make('div', 'listen-ctl2');
+    line2.append(this.wavBtn, this.recBtn, this.statusEl);
+    el.append(lab, line1, line2);
     this.playBtn.onclick = () => this.toggle();
     this.loopBtn.onclick = () => this.choose({ loop: !this.choice.loop });
-    this.kindSel.onchange = () => (this.kindSel.value === USE_TAKE ? this.useTake() : this.choose({ kind: this.kindSel.value as PhraseKind }));
-    this.pitchSel.onchange = () => this.choose({ pitch: Number(this.pitchSel.value) });
-    this.octaveSel.onchange = () => this.choose({ octave: Number(this.octaveSel.value) });
+    this.kindBtn.onclick = () => popMenu(this.phraseMenu(), this.kindBtn);
+    this.rootSel.onchange = () => {
+      const [octave, pitch] = this.rootSel.value.split(':').map(Number);
+      this.choose({ pitch, octave });
+    };
     this.wavBtn.onclick = () => void this.exportPhrase();
     this.recBtn.onclick = () => void this.toggleRecord();
     this.el = el;
     this.show();
   }
 
+  /** the phrase menu: each phrase with its one-line hint, My take under a rule, then Use my last take (an action) */
+  phraseMenu(): MenuItem[] {
+    const mark = (kind: PhraseKind, label: string): string => `${this.choice.kind === kind ? '✓ ' : ''}${label}`;
+    return [
+      ...PHRASES.map((p): MenuItem => ({ text: mark(p.kind, p.label), key: HINTS[p.kind], run: () => this.choose({ kind: p.kind }) })),
+      { text: mark('take', this.myTake ? 'My take' : 'My take (none yet)'), key: HINTS.take, rule: true, run: () => this.choose({ kind: 'take' }) },
+      { text: '↺ Use my last take', run: () => this.useTake() },
+    ];
+  }
+
+  /** something the block says on its second line, fading back after a while (the status line says it too) */
+  private say(text: string): void {
+    this.host.status(text);
+    this.statusEl.textContent = text;
+    this.statusEl.title = text;
+    this.statusEl.classList.add('on');
+    clearTimeout(this.statusTimer);
+    this.statusTimer = setTimeout(() => this.statusEl.classList.remove('on'), STATUS_MS);
+  }
+
   private show(): void {
     const c = this.choice;
-    this.playBtn.textContent = this.playing ? '■ Stop' : '▶ Phrase';
+    this.playBtn.textContent = this.playing ? '■' : '▶';
+    this.playBtn.setAttribute('aria-label', this.playing ? 'Stop the test phrase (Q)' : 'Play the test phrase (Q)');
     this.playBtn.setAttribute('aria-pressed', String(this.playing));
     this.loopBtn.setAttribute('aria-pressed', String(c.loop));
-    this.kindSel.value = c.kind;
-    this.takeOption.disabled = !this.myTake;
-    this.takeOption.textContent = this.myTake ? 'My take' : 'My take (none yet)';
-    this.pitchSel.value = String(c.pitch);
-    this.octaveSel.value = String(c.octave);
+    this.kindBtn.textContent = `${c.kind === 'take' ? 'My take' : PHRASES.find((p) => p.kind === c.kind)!.label} ▾`;
+    this.rootSel.value = `${c.octave}:${c.pitch}`;
     // (the drum pattern plays the Drum map's rows, My take its own notes, as played)
-    this.pitchSel.disabled = this.octaveSel.disabled = c.kind === 'drums' || c.kind === 'take';
+    this.rootSel.disabled = c.kind === 'drums' || c.kind === 'take';
     this.wavBtn.disabled = this.exporting;
-    this.recBtn.textContent = this.recording ? '■ Save' : '● Rec';
+    const s = Math.floor((Date.now() - this.recStart) / 1000);
+    this.recBtn.replaceChildren(Object.assign(document.createElement('span'), { className: 'ph-dot' }), this.recording ? 'Save' : 'Rec');
+    if (this.recording) this.recBtn.append(Object.assign(document.createElement('span'), { className: 'ph-time', textContent: `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }));
     this.recBtn.setAttribute('aria-pressed', String(this.recording));
+    this.el.classList.toggle('recording', this.recording);
+    this.host.changed?.();
   }
 
   /** the phrase chosen now, on the patch open now (the drum pattern takes its first Drum map's notes) */
@@ -283,9 +317,9 @@ export class Audition {
       const [l, r] = await this.host.render(this.host.patch(), this.phrase(), { armed: this.host.armed(), tempo: this.host.tempo() });
       const name = wavName(this.host.stem(), title.replace(/\s+/g, '-'), this.host.now());
       this.host.download(encodeWav(l, r, WAV_RATE), name);
-      this.host.status(`saved ${name}: ${(l.length / WAV_RATE).toFixed(1)} s, 44.1 kHz stereo, ${peakText(l, r)}`);
+      this.say(`saved ${name}: ${(l.length / WAV_RATE).toFixed(1)} s, 44.1 kHz stereo, ${peakText(l, r)}`);
     } catch (e) {
-      this.host.status(`the WAV could not be rendered: ${(e as Error).message}`);
+      this.say(`the WAV could not be rendered: ${(e as Error).message}`);
     } finally {
       this.exporting = false;
       this.show();
@@ -302,8 +336,10 @@ export class Audition {
     this.chunks = [[], []];
     this.recFrames = 0;
     this.recording = true;
+    this.recStart = Date.now();
+    this.recTimer = setInterval(() => this.show(), 1000);
     this.host.send({ t: 'record', on: true });
-    this.host.status('recording the Output: play, then ● again (■ Save) to save the WAV');
+    this.host.status('recording the Output: play, then Save to save the WAV');
     this.show();
   }
 
@@ -319,11 +355,12 @@ export class Audition {
       return;
     }
     this.recording = false;
+    clearInterval(this.recTimer);
     this.show();
     const [l, r] = await this.host.resample(joinChunks(this.chunks[0]), joinChunks(this.chunks[1]), sr);
     this.chunks = [[], []];
     const name = wavName(this.host.stem(), 'recording', this.host.now());
     this.host.download(encodeWav(l, r, WAV_RATE), name);
-    this.host.status(`saved ${name}: ${(l.length / WAV_RATE).toFixed(1)} s, 44.1 kHz stereo, ${peakText(l, r)}`);
+    this.say(`saved ${name}: ${(l.length / WAV_RATE).toFixed(1)} s, 44.1 kHz stereo, ${peakText(l, r)}`);
   }
 }

@@ -293,16 +293,18 @@ dialog.about .hsec h3 { margin-bottom: 10px; font-size: 22px; letter-spacing: .0
   font: 600 17px/1 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; }
 .help-btn:hover { color: var(--ink); border-color: var(--secondary); }
 .help-btn[hidden] { display: none; }
-/* the Sound design sidebar at the canvas's right edge (snap-side.ts, #1040, #1048): one panel, its head (Sound design, ⋯,
-   »), the Output scope, the candidates' head with the Aim chip, the list (A, the current patch, first), the progress line
-   while a Generate round renders, and the footer's Generate and Nominate. It is as wide as its left edge was dragged
-   (--snap-side-w); folded it is a 52 px rail. The canvas gives up its width (main.ts sets --snap-col-w), so cards and FIT
-   stay clear of it. Everything in it shrinks to fit its height, so only the list ever scrolls; the ? button sits under it.
-   Colours: coral (--accent) Generate, seafoam (--secondary) Nominate and what you hear, gold (--gate) only for kept */
+/* the Sound design sidebar at the window's right edge (snap-side.ts, #1040, #1048): one panel the window's whole height,
+   its head (Sound design, ⋯, »), the Listen block (audition.ts), the Output scope, the candidates' head with the Aim chip,
+   the list (A, the current patch, first), the progress line while a Generate round renders, and the footer's Generate and
+   Nominate. It is as wide as its left edge was dragged (--snap-side-w), the narrowest at first; folded it is a 52 px rail.
+   The workspace (the canvas, the deck, Connect FM-1 and the ? button) gives up its width (main.ts sets --snap-col-w).
+   Everything in it shrinks to fit its height, so only the list ever scrolls.
+   Colours: coral (--accent) Generate, seafoam (--secondary) Nominate, play and what you hear, gold (--gate) only for kept */
 .snap-column { --snap-tile: color-mix(in oklab, var(--ink) 9%, var(--panel)); --snap-hover: color-mix(in oklab, var(--ink) 5%, var(--panel));
   --snap-head: 600 13px/1 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; --snap-body: 'Barlow', system-ui, sans-serif;
-  position: absolute; right: 18px; top: 56px; bottom: 62px; z-index: 6; width: var(--snap-side-w, 300px); display: flex; flex-direction: column;
-  overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: 0 2px 8px var(--shadow); color: var(--ink); }
+  position: fixed; right: 0; top: 0; bottom: 0; z-index: 8; width: var(--snap-side-w, 300px); display: flex; flex-direction: column;
+  overflow: hidden; border-left: 1px solid var(--line); background: var(--panel); box-shadow: 0 0 8px var(--shadow); color: var(--ink); }
+body:has(.snap-column:not([hidden])) .workspace { margin-right: var(--snap-col-w, 0px); }
 .snap-column[hidden] { display: none; }
 /* it has the focus (↑ ↓ go through the candidates): a teal edge, and a teal ring where the browser shows a focus ring */
 .snap-column:focus { outline: none; }
@@ -310,7 +312,35 @@ dialog.about .hsec h3 { margin-bottom: 10px; font-size: 22px; letter-spacing: .0
 .snap-column:is(:focus-visible, :has(:focus-visible)) { box-shadow: 0 0 0 1px var(--secondary), 0 2px 8px var(--shadow); }
 .snap-column.folded { width: 52px; }
 .snap-column.folded > :not(.snap-rail), .snap-column:not(.folded) > .snap-rail { display: none; }
-#tab-patch:has(.snap-column:not([hidden])) .canvas { width: calc(100% - var(--snap-col-w, 0px)); }
+/* the Listen block (#1048): the same notes for every candidate; it never changes height */
+.listen { flex: none; padding: 10px 10px 8px; border-bottom: 1px solid var(--line); }
+.listen-lab { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; min-width: 0; }
+.listen-title { font: var(--snap-head); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.listen-why { font: 400 12px/1.25 var(--snap-body); color: var(--muted); opacity: .85; }
+.listen-ctl, .listen-ctl2 { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.listen-ctl2 { margin-top: 6px; height: 28px; }
+.listen .ph-play, .snap-rail-play { flex: none; width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%;
+  background: var(--secondary); color: var(--accent-ink); font-size: 13px; cursor: pointer; }
+.listen .ph-play[aria-pressed="true"], .snap-rail-play.on { background: var(--ink); color: var(--panel); }
+.listen :is(.ph-kind, .ph-root) { height: 34px; min-width: 0; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--snap-tile); color: var(--ink);
+  font: 500 13px/1 var(--snap-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.listen .ph-kind { flex: 1 1 auto; text-align: left; }
+.listen .ph-root { flex: none; width: 50px; padding: 0 2px; }
+.listen .ph-root:disabled { opacity: .45; cursor: default; }
+.listen :is(.ph-loop, .ph-wav, .ph-rec) { flex: none; display: flex; align-items: center; gap: 4px; padding: 0 7px; border: 1px solid var(--line); border-radius: 7px; background: transparent;
+  color: var(--muted); font: 600 12px/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; cursor: pointer; }
+.listen .ph-loop { height: 34px; }
+.listen .ph-kind { padding: 0 6px; font-size: 12.5px; }
+.listen .ph-loop[aria-pressed="true"] { background: var(--secondary); border-color: var(--secondary); color: var(--accent-ink); }
+.listen :is(.ph-wav, .ph-rec) { height: 28px; color: var(--ink); }
+.listen .ph-wav:disabled { opacity: .5; cursor: default; }
+.listen .ph-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.listen .ph-rec[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.listen .ph-time { font: 500 12px/1 var(--snap-body); letter-spacing: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
+.listen .ph-status { flex: 1 1 auto; min-width: 0; font: 400 12px/1.3 var(--snap-body); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  opacity: 0; transition: opacity .6s; }
+.listen .ph-status.on { opacity: 1; transition: none; }
+.snap-rail-play { width: 36px; height: 36px; }
 .snap-side-head { flex: none; display: flex; align-items: center; gap: 4px; height: 36px; padding: 0 6px 0 12px; border-bottom: 1px solid var(--line); }
 .snap-side-title, .cand-title { flex: 1; font: var(--snap-head); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .cand-title { flex: none; }
@@ -323,10 +353,10 @@ dialog.about .hsec h3 { margin-bottom: 10px; font-size: 22px; letter-spacing: .0
    shorter than it */
 .output-scope { position: relative; flex: 0 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 4px; padding: 8px 10px 0; }
 .output-scope[hidden] { display: none; }
-.output-scope .oscope-head { display: flex; align-items: center; gap: 2px 6px; }
+.output-scope .oscope-head { display: flex; align-items: center; gap: 2px 4px; min-width: 0; }
 .output-scope .oscope-title { font: var(--cap); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); cursor: default; }
 .output-scope:not(.collapsed) .oscope-title { display: none; }
-.output-scope .scope-tools { display: flex; align-items: center; gap: 2px; margin-right: auto; }
+.output-scope .scope-tools { display: flex; align-items: center; gap: 1px; margin-right: auto; min-width: 0; white-space: nowrap; }
 .output-scope .oscope-fold { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); font-size: 11px; line-height: 1; }
 .output-scope .oscope-fold:hover { color: var(--ink); background: var(--snap-tile); }
 .output-scope.collapsed { padding: 6px 8px 2px 12px; }
@@ -336,10 +366,12 @@ dialog.about .hsec h3 { margin-bottom: 10px; font-size: 22px; letter-spacing: .0
 .output-scope .oscope-divider { flex: none; height: 10px; margin: -2px -10px 0; cursor: ns-resize; touch-action: none; }
 .output-scope .oscope-divider::after { content: ''; display: block; width: 28px; height: 3px; margin: 4px auto 0; border-radius: 2px; background: var(--line); }
 .output-scope .oscope-divider:hover::after { background: var(--secondary); }
-/* the candidates' head: their count and the Mutate category as "Aim Pad ▾" (#1033) */
-.cand-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 12px; }
+/* the candidates' head: their count, then Mutate's amount ("±25 % ▾") and category ("Aim Pad ▾"), which wrap under the
+   title when the sidebar is narrow (#1033, #1048) */
+.cand-head { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 12px; }
 .cand-count { font: 500 12px/1 var(--snap-body); color: var(--muted); font-variant-numeric: tabular-nums; }
-.aim-chip { margin-left: auto; height: 24px; padding: 0 9px; border: 0; border-radius: 12px; background: var(--snap-tile); color: var(--ink);
+.cand-chips { margin-left: auto; display: flex; gap: 4px; }
+.aim-chip { height: 24px; padding: 0 9px; border: 0; border-radius: 12px; background: var(--snap-tile); color: var(--ink); white-space: nowrap;
   font: 600 12px/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; cursor: pointer; }
 .aim-chip i { font-style: normal; color: var(--muted); margin-right: 4px; }
 .aim-chip:not([data-aim]) #category-name { color: var(--muted); }
@@ -758,14 +790,6 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .deck-controls #engine-btn.failed { border-color: var(--warning); }
 .arp-line { display: flex; gap: 6px; align-items: stretch; }
 .deck.folded .piano { display: none; }
-/* the test phrase group (#945, #946) in front of the keys: play, which phrase, loop; root, octave, WAV, record */
-.deck-phrase { flex: none; display: grid; grid-template-columns: 76px 44px 66px 62px; grid-template-rows: 1fr 1fr; gap: 6px; }
-.deck-phrase button { padding: 0 6px; font: var(--cap); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
-.deck-phrase select { min-width: 0; font-size: 12px; padding: 0 4px; }
-.deck-phrase select:disabled { opacity: .45; }
-.deck-phrase .ph-kind { grid-column: 2 / 4; }
-.deck-phrase .ph-play[aria-pressed="true"], .deck-phrase .ph-loop[aria-pressed="true"] { background: var(--secondary); border-color: var(--secondary); color: var(--panel); }
-.deck-phrase .ph-rec[aria-pressed="true"] { background: var(--danger); border-color: var(--danger); color: var(--panel); }
 /* K1..K4 as knobs in the knobs' colours: the arc from 7 to 5 o'clock is the value, the line on the cap points at it */
 .deck-knobs { display: flex; gap: 6px; align-items: stretch; }
 /* the FM-1's button block (design board D): its two rows in device order, six columns and a lane on the right for ARP's
@@ -903,10 +927,6 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
   .deck-row { display: flex; padding: 6px 4px 8px 8px; gap: 6px; }
   .deck-row > .deck-controls, .deck-row > .deck-keys { margin: 0; }
   .deck-keys { flex: 1; }
-  /* narrow: play and the phrase only (the palette has the rest) */
-  .deck-phrase { grid-template-columns: 72px; }
-  .deck-phrase .ph-kind { grid-column: 1; }
-  .deck-phrase .ph-loop, .deck-phrase .ph-pitch, .deck-phrase .ph-octave, .deck-phrase .ph-wav, .deck-phrase .ph-rec { display: none; }
   .deck-controls { width: 112px; }
   .deck-controls button { padding: 0 4px; font-size: 11px; }
   .piano-octave { width: 88px; }

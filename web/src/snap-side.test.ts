@@ -23,11 +23,11 @@ function make(): { side: SnapSidebar; root: HTMLElement; menu: HTMLElement[] } {
 }
 
 const cand = (letter: string, more: Partial<Snapshot> = {}): Snapshot => ({ letter, patch: '{}', ...more });
-const view = (list: Snapshot[], shown: string | null, more: Partial<SideView> = {}): SideView => ({ list, shown, edited: false, currentName: 'Monolith D', changes: () => 3, round: null, count: 4, ...more });
+const view = (list: Snapshot[], shown: string | null, more: Partial<SideView> = {}): SideView => ({ list, shown, edited: false, currentName: 'Monolith D', changes: () => 3, round: null, count: 4, playing: false, ...more });
 function actions(): SideActions & { calls: string[] } {
   const calls: string[] = [];
   const log = (name: string) => (...args: unknown[]) => void calls.push(`${name} ${args.filter((a) => typeof a !== 'object').join(' ')}`.trim());
-  return { calls, hear: log('hear'), keep: log('keep'), use: log('use'), remove: log('remove'), more: log('more'), currentMore: log('currentMore'), drag: log('drag'), step: log('step'), generate: log('generate') };
+  return { calls, hear: log('hear'), keep: log('keep'), use: log('use'), remove: log('remove'), more: log('more'), currentMore: log('currentMore'), drag: log('drag'), step: log('step'), generate: log('generate'), play: log('play') };
 }
 
 describe('Sound design sidebar (#1040, #1048)', () => {
@@ -51,9 +51,9 @@ describe('Sound design sidebar (#1040, #1048)', () => {
     const wide = innerWidth;
     const { side, root } = make();
     side.setWidth(400);
-    Object.defineProperty(window, 'innerWidth', { value: 800, configurable: true });
+    Object.defineProperty(window, 'innerWidth', { value: 900, configurable: true });
     window.dispatchEvent(new Event('resize'));
-    expect([side.width, root.style.getPropertyValue('--snap-side-w')]).toEqual([280, '280px']);   // (800 less the 520 the window keeps)
+    expect([side.width, root.style.getPropertyValue('--snap-side-w')]).toEqual([380, '380px']);   // (900 less the 520 the window keeps)
     Object.defineProperty(window, 'innerWidth', { value: wide, configurable: true });
     window.dispatchEvent(new Event('resize'));
     expect(side.width).toBe(Math.min(400, Math.max(SIDE_W.min, wide - 520)));
@@ -66,21 +66,15 @@ describe('Sound design sidebar (#1040, #1048)', () => {
     expect(menu).toEqual([root.querySelector('.snap-side-menu')]);
   });
 
-  it('is folded to the rail before the first candidate until the user opens or folds it; then it remembers', () => {
+  it('opens at its narrowest width at first; the user\u2019s fold is remembered', () => {
     const { side, root } = make();
-    expect([side.folded, root.classList.contains('folded')]).toEqual([true, true]);
-    side.setCandidates(2);
-    expect(side.folded).toBe(false);   // (the first candidates open it)
-    side.setCandidates(0);
-    expect(side.folded).toBe(true);
-    root.querySelector<HTMLButtonElement>('.snap-rail-open')!.click();   // the user opens it: it stays open, also empty
-    expect([side.folded, root.classList.contains('folded')]).toEqual([false, false]);
-    expect(make().side.folded).toBe(false);
-    const again = make();
-    again.side.setCandidates(3);
-    again.root.querySelector<HTMLButtonElement>('.snap-side-fold')!.click();
-    expect([again.side.folded, JSON.parse(store.get(SNAP_SIDE_STORE)!).folded]).toEqual([true, true]);
+    expect([side.folded, root.classList.contains('folded'), side.width]).toEqual([false, false, SIDE_W.min]);
+    root.querySelector<HTMLButtonElement>('.snap-side-fold')!.click();
+    expect([side.folded, root.classList.contains('folded'), JSON.parse(store.get(SNAP_SIDE_STORE)!).folded]).toEqual([true, true, true]);
     expect(make().side.folded).toBe(true);
+    const again = make();
+    again.root.querySelector<HTMLButtonElement>('.snap-rail-open')!.click();
+    expect([again.side.folded, make().side.folded]).toEqual([false, false]);
   });
 
   it('the list: A, the current patch, first; the row heard is the only one with Keep · Use · ✕; origins, aims and keeps on the rows', () => {
@@ -147,7 +141,10 @@ describe('Sound design sidebar (#1040, #1048)', () => {
     buttons[0].click();
     buttons[2].click();
     for (const b of body.querySelectorAll<HTMLButtonElement>('.snap-rail-step')) b.click();
-    expect(act.calls).toEqual(['hear D', 'hear', 'keep C false', 'generate', 'step -1', 'step 1']);
+    body.querySelector<HTMLButtonElement>('.snap-rail-play')!.click();   // (play, under the letter)
+    expect(act.calls).toEqual(['hear D', 'hear', 'keep C false', 'generate', 'step -1', 'step 1', 'play']);
+    renderRail(body, view(list, 'C', { playing: true }), act);
+    expect([body.querySelector('.snap-rail-play')!.textContent, body.querySelector('.snap-rail-tile')!.nextElementSibling!.nextElementSibling!.className]).toEqual(['■', 'snap-rail-play on']);
     // hearing A: the tile shows A, Keep and ✕ are off
     renderRail(body, view(list, null), act);
     expect([body.querySelector('.snap-rail-tile')!.textContent, body.querySelector('.snap-rail-tile')!.classList.contains('current'), body.querySelector('.snap-rail-pos')!.textContent]).toEqual(['A', true, '1 / 4']);
@@ -156,7 +153,6 @@ describe('Sound design sidebar (#1040, #1048)', () => {
 
   it('↑ and ↓ step through the candidates while the open sidebar has the focus; elsewhere, folded, in a field or with a modifier they do not', () => {
     const { side, root } = make();
-    side.setCandidates(2);
     const strip = root.querySelector<HTMLElement>('.snapshot-strip')!;
     const act = actions();
     renderList(strip, view([cand('B'), cand('C')], 'B'), act);

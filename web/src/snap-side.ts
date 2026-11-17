@@ -4,15 +4,16 @@
 // category's Aim chip, a progress line while a Generate round renders, and the footer's Generate and Nominate. The current
 // patch is candidate A, the first row, always there. A drag on the panel's left edge sets its width; » folds it to a
 // 52 px rail that keeps the audition loop playable: the letter heard, where it is among the stops, one dot per candidate,
-// previous and next, Keep, remove and Generate. Before the first candidate it is folded until the user opens it. The canvas
-// gives up the panel's width (style.css .snap-column). This browser remembers the width and the fold; nothing about it is
+// previous and next, play, Keep, remove and Generate. It starts open at its narrowest width. It runs the window's whole
+// height, and the workspace beside it (the canvas, the deck, Connect FM-1, ?) gives up its width (style.css .snap-column).
+// This browser remembers the width and the fold; nothing about it is
 // saved in the patch. main.ts fills it (renderSnapshots) through renderList, renderRail and renderProgress.
 import { CURRENT_LETTER, fitText, originText, type Snapshot } from './snapshots';
 
 /** where this browser keeps it */
 export const SNAP_SIDE_STORE = 'matryoshka.snapSidebar';
 /** its width in CSS px: the default, the narrowest and the widest (the window can make the widest narrower) */
-export const SIDE_W = { default: 300, min: 220, max: 640 };
+export const SIDE_W = { default: 300, min: 300, max: 640 };
 /** what the widest leaves of the window beside it (the workspace sidebar, the canvas) */
 const ROOM = 520;
 /** the sentence of an empty list (the mockup's, #1048) */
@@ -20,13 +21,12 @@ export const EMPTY_TEXT = 'Make a few variations of this sound, listen to each, 
 
 interface Saved {
   w: number;
-  /** folded or open by the user's own choice; none: folded until the first candidate */
+  /** folded or open by the user's own choice; none: open */
   folded?: boolean;
 }
 
 export class SnapSidebar {
   private saved: Saved;
-  private candidates = 0;
   /** the rail's contents under its open button (renderRail) */
   readonly rail: HTMLElement;
 
@@ -73,9 +73,9 @@ export class SnapSidebar {
     return Math.round(Math.max(SIDE_W.min, Math.min(this.widest(), this.saved.w)));
   }
 
-  /** folded to the rail: the user's choice, else folded until the first candidate */
+  /** folded to the rail, as the user chose (open at first) */
   get folded(): boolean {
-    return this.saved.folded ?? this.candidates === 0;
+    return this.saved.folded ?? false;
   }
 
   /** set the width, held between the narrowest and the widest the window allows */
@@ -97,12 +97,6 @@ export class SnapSidebar {
   setFolded(on: boolean): void {
     this.saved.folded = on;
     this.save();
-    this.show();
-  }
-
-  /** how many candidates there are (the fold before the first, while the user has not chosen) */
-  setCandidates(n: number): void {
-    this.candidates = n;
     this.show();
   }
 
@@ -178,6 +172,8 @@ export interface SideView {
   round: { found: number; of: number; rendered: number; most: number } | null;
   /** candidates per round */
   count: number;
+  /** the Listen block's phrase plays */
+  playing: boolean;
 }
 
 /** what the sidebar's controls do */
@@ -196,6 +192,8 @@ export interface SideActions {
   drag(e: PointerEvent, row: HTMLElement, letter: string): void;
   step(dir: 1 | -1): void;
   generate(): void;
+  /** play or stop the test phrase (Q) */
+  play(): void;
 }
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] => {
@@ -336,7 +334,9 @@ export function renderRail(body: HTMLElement, v: SideView, act: SideActions): vo
   const kept = s?.mark === 'keep';
   const keep = button(`snap-rail-btn${kept ? ' on' : ''}`, '✓', s ? (kept ? `${s.letter} is kept: click to unkeep` : `Keep ${s.letter}`) : 'Keep: hear a candidate first (A is the current patch)', () => s && act.keep(s.letter, !kept), !s);
   keep.setAttribute('aria-pressed', String(kept));
-  body.replaceChildren(tile, pos,
+  const play = button(`snap-rail-play${v.playing ? ' on' : ''}`, v.playing ? '■' : '▶', v.playing ? 'Stop the test phrase (Q)' : 'Play the test phrase (Q)', () => act.play());
+  play.setAttribute('aria-pressed', String(v.playing));
+  body.replaceChildren(tile, pos, play,
     button('snap-rail-step', '▲', 'Previous (Alt+K)', () => act.step(-1)),
     dots,
     button('snap-rail-step', '▼', 'Next (Alt+J)', () => act.step(1)),

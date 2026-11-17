@@ -23,8 +23,8 @@ export type MutateMode = 'mutate' | 'randomize';
 
 /** the amounts Mutate offers, a share of each parameter's range */
 export const MUTATE_AMOUNTS = [0.05, 0.1, 0.25, 0.5] as const;
-/** the amount until the user picks another (kept per browser by the host) */
-export const MUTATE_DEFAULT = 0.1;
+/** the amount until the user picks another (kept per browser by the host; D-975, #1048: 25 %) */
+export const MUTATE_DEFAULT = 0.25;
 /** Mutate: the chance each row that is not a switch moves */
 export const MUTATE_SHARE = 0.25;
 /** Mutate: the fewest rows that move, when that many can */
