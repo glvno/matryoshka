@@ -147,7 +147,7 @@ const key = (t: RowTarget): string => `${t.module}:${t.param}`;
  *  (Monolith D's A-440), the voice mode and assignment, and the keyboard's octave */
 export const HOLD_ROWS = /^(a-440|poly\/mono|unison|assign|octave)$/;
 
-/** the engine card rows Mutate, Randomize, preset draws and breeding never move (#1018): each factory engine's output
+/** the engine card rows Mutate, Randomize, preset draws and breeding never move (#1020): each factory engine's output
  *  level rows (levels.ts LEVEL_ROWS, set per preset by the factory loudness rule) and the set-up rows of HOLD_ROWS */
 export function heldRows(p: Patch): Set<string> {
   const held = new Set<string>();

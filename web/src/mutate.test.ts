@@ -191,7 +191,7 @@ describe('pitch (#1006)', () => {
   });
 });
 
-describe('held rows (#1018)', () => {
+describe('held rows (#1020)', () => {
   it("never move an engine's output volume or its set-up rows (A-440, voice mode, keyboard octave) on any factory patch", () => {
     const moved = (p: Patch, q: Patch, held: Set<string>): string[] =>
       [...held].filter((k) => {
