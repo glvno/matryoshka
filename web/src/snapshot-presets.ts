@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Presets from snapshots (#1031): a snapshot's values for an engine, stored as a preset of the current patch's engine. A
-// preset is the card values of one structure (device-presets.ts), so a snapshot whose engine has another structure than
-// the current patch's has no values that preset could hold.
+// Presets from snapshots (#1031): a snapshot's values for an engine, stored as a preset of the current patch's engine. The
+// preset is captured from the snapshot's patch as Store as a preset captures one (capturePreset): its card values and, where
+// the patch has a master FX rack, the rack's settings (FXP1). A preset holds one structure's values (device-presets.ts), so a
+// snapshot whose engine or rack has another structure than the current patch's has no values that preset could hold.
 import { assembliesOf, assemblyById, parentOf, type AssemblyInst } from './assembly';
 import { capturePreset, presetsOf, type Preset } from './device-presets';
 import type { Patch } from './patch';
@@ -10,8 +11,9 @@ import type { Patch } from './patch';
  *  preset chip) */
 export const presetEngines = (cur: Patch): AssemblyInst[] => assembliesOf(cur).filter((a) => !parentOf(cur, a.id) && presetsOf(cur, a).length > 0);
 
-/** the snapshot `snap`'s values for the engine `a` of the current patch `cur`, as a preset named `name`; null when the
- *  snapshot has no such assembly, or its structure (its FX scope too) differs from the current patch's */
+/** the snapshot `snap`'s values for the engine `a` of the current patch `cur` (its FX rack's with them, capturePreset), as a
+ *  preset named `name`; null when the snapshot has no such assembly, or its structure (its FX scope too) differs from the
+ *  current patch's */
 export function snapshotPreset(cur: Patch, a: AssemblyInst, snap: Patch, name: string): Preset | null {
   const there = assemblyById(snap, a.id);
   if (!there) return null;

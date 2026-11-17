@@ -1632,7 +1632,7 @@ const snapshotMenu = (s: Snapshot): MenuItem[] => [
 const storeSnapshotPreset = (s: Snapshot, a: AssemblyInst): void => {
   const cur = editor.currentPatch();
   if (!snapshotPreset(cur, a, editor.snapshotVersion(s), a.label))
-    return void (status.textContent = `${a.label} in snapshot ${s.letter} is built differently from the current patch's: a preset holds values only, so it cannot be one of its presets`);
+    return void (status.textContent = `${a.label} or its FX rack in snapshot ${s.letter} is built differently from the current patch's: a preset holds values only, so it cannot be one of its presets`);
   const name = window.prompt(`Store snapshot ${s.letter}’s ${a.label} as a preset of the current patch’s ${a.label}`, s.name ?? nextPresetName(cur, a))?.trim();
   if (!name) return;
   const [done] = editor.storeSnapshotPresets(a.id, [{ letter: s.letter, name }], false).stored;
@@ -1645,7 +1645,7 @@ const storeKeptPresets = (a: AssemblyInst): void => {
   const { stored, skipped } = editor.storeSnapshotPresets(a.id, keeps.map((s) => ({ letter: s.letter, name: s.name ?? s.letter })), true);
   if (!stored.length && !skipped.length) return;   // (an error: the status line says it)
   const done = stored.length ? `${stored.length} preset${stored.length === 1 ? '' : 's'} of ${a.label} stored: ${stored.map((x) => `${x.letter} as “${x.name}”`).join(', ')} (Ctrl/Cmd+Z takes ${stored.length === 1 ? 'it' : 'them'} out)` : `no preset of ${a.label} stored`;
-  status.textContent = done + (skipped.length ? ` · skipped ${skipped.join(', ')}: ${a.label} is built differently there from the current patch's, and a preset holds values only` : '');
+  status.textContent = done + (skipped.length ? ` · skipped ${skipped.join(', ')}: ${a.label} or its FX rack is built differently there from the current patch's, and a preset holds values only` : '');
 };
 /** Store kept snapshots as presets, one item per engine of the current patch that has presets */
 const keptPresetItems = (): MenuItem[] => presetEngines(editor.currentPatch()).map((a, i) => ({ text: `Store kept snapshots as presets of ${a.label}`, rule: i === 0, run: () => storeKeptPresets(a) }));

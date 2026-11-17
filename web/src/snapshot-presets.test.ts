@@ -1,17 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // @vitest-environment jsdom
 // Presets from snapshots (#1031, D-993): a snapshot's values for an engine become a preset of the current patch's engine
-// without a switch; every snapshot marked keep at once; a snapshot whose engine is built differently is skipped and
-// named; one undo step takes them out again.
+// without a switch, its master FX rack's settings with them as Store as a preset keeps them; every snapshot marked keep at
+// once; a snapshot whose engine is built differently is skipped and named; one undo step takes them out again.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FACTORY } from './assemblies';
 import { insertAssembly, promote, type AssemblyInst } from './assembly';
-import { addUserPreset, currentValues, presetsOf, setFactoryPresets, userPresets } from './device-presets';
+import { addUserPreset, applyPreset, currentValues, presetsOf, setFactoryPresets, userPresets } from './device-presets';
+import { buildSelectedFactoryBank } from './factory-bank';
+import { fxBusOf } from './fx-bus';
+import { currentFxValues, fxPresetScope, setFxStageEnabled } from './fx-preset';
+import { FX_PRESET_CONTROLS, fxPresetInfo } from './fx-preset-format';
 import { Editor, type EditorEvents } from './editor';
 import { DEFS } from './modules';
 import { newPatch, type Patch } from './patch';
 import { presetEngines, snapshotPreset } from './snapshot-presets';
-import { structureOf } from './structure';
+import { rowOrder, structureOf } from './structure';
 
 vi.hoisted(() => {
   const g = globalThis as unknown as Record<string, unknown>;
@@ -24,11 +28,12 @@ vi.hoisted(() => {
 
 const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 
-/** a patch with one Oracle V that has an Init preset, on an editor; `structures` counts the uploads */
-function rig(): { editor: Editor; a: AssemblyInst; structures: () => number } {
-  const p = newPatch(DEFS);
-  const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Oracle V')!, 0, 0);
-  setFactoryPresets([{ structure: structureOf(p, a), name: 'Init', values: currentValues(p, a), factory: true }]);
+/** a patch on an editor: one Oracle V that has an Init preset, or `start` and its engine `engine`; `structures` counts the
+ *  uploads */
+function rig(start?: { patch: Patch; engine: number }): { editor: Editor; a: AssemblyInst; structures: () => number } {
+  const p = start?.patch ?? newPatch(DEFS);
+  const a = start ? p.assemblies!.find((x) => x.id === start.engine)! : insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Oracle V')!, 0, 0);
+  if (!start) setFactoryPresets([{ structure: structureOf(p, a), name: 'Init', values: currentValues(p, a), factory: true }]);
   document.body.innerHTML = '<div id="canvas"><div id="canvas-space"><div id="patch-world"><svg id="cables"></svg><div id="modules"></div><svg id="cable-glow"></svg><svg id="patch-preview"></svg></div></div></div>';
   let structures = 0;
   const ev: EditorEvents = {
@@ -147,5 +152,42 @@ describe('presets from snapshots (#1031)', () => {
     editor.redo();
     expect(userPresets().map((x) => x.name).sort()).toEqual(['A', 'B', 'Mine']);
     expect(userPresets().find((x) => x.name === 'A')!.values).toEqual(valuesOf(JSON.parse(s1.patch) as Patch, a.id));
+  });
+
+  it('a snapshot’s master FX rack goes into the preset: applied to the current patch, it brings back the snapshot’s FX', () => {
+    const patch = copy(buildSelectedFactoryBank().find((e) => e.name === 'Monolith D')!.patch);
+    const engine = patch.assemblies!.find((x) => fxPresetScope(patch, x))!.id;
+    const { editor, a } = rig({ patch, engine });
+    const snap = copy(editor.patch);
+    const snapEngine = snap.assemblies!.find((x) => x.id === a.id)!;
+    const bus = fxBusOf(snap)!;
+    setFxStageEnabled(snap, bus.stages.find((s) => s.kind !== 'reverb') ?? bus.stages[0], false);   // (a stage off)
+    const reverb = bus.stages.find((s) => s.kind === 'reverb')!;
+    const size = FX_PRESET_CONTROLS.reverb[0];
+    const m = snap.modules.find((x) => x.id === reverb.targets[0])!;
+    const pd = DEFS[m.type].params.find((d) => d.name === size)!;
+    for (const id of reverb.targets) snap.modules.find((x) => x.id === id)!.params[size] = m.params[size] === pd.max ? pd.min : pd.max;
+    const fx = currentFxValues(snap, fxPresetScope(snap, snapEngine)!);
+    expect(fx).not.toEqual(currentFxValues(editor.patch, fxPresetScope(editor.patch, a)!));
+    const s = editor.snaps.take(snap);
+    expect(editor.storeSnapshotPresets(a.id, [{ letter: s.letter, name: 'Wet' }], false).stored).toHaveLength(1);
+    const preset = userPresets().find((x) => x.name === 'Wet')!;
+    expect(fxPresetInfo(preset)).toBeTruthy();
+    const applied = copy(editor.patch);
+    const there = applied.assemblies!.find((x) => x.id === a.id)!;
+    expect(applyPreset(applied, there, preset)).toBe(true);
+    expect(currentFxValues(applied, fxPresetScope(applied, there)!)).toEqual(fx);
+    expect(currentValues(applied, there)).toEqual(currentValues(snap, snapEngine));
+  });
+
+  it('a patch without a master FX rack stores card values only', () => {
+    const { editor, a } = rig();
+    expect(fxBusOf(editor.patch)).toBeNull();
+    const s = editor.snaps.take(version(editor, a, 0.1));
+    editor.storeSnapshotPresets(a.id, [{ letter: s.letter, name: 'Dry' }], false);
+    const preset = userPresets().find((x) => x.name === 'Dry')!;
+    expect(fxPresetInfo(preset)).toBeFalsy();
+    expect(preset.structure).toBe(structureOf(editor.patch, a));
+    expect(preset.values).toHaveLength(rowOrder(editor.patch, a).length);
   });
 });
