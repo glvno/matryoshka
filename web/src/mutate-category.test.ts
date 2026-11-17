@@ -138,7 +138,7 @@ describe('a category Mutate (#1033)', () => {
         expect(outside(p, bred, category, both), `${name} ${category} bred`).toEqual([]);
       }
     }
-  });
+  }, 180_000);   // (21 patches × 7 categories × 5 Mutates, each reading the roles' ranges live: slow on CI)
 
   it('is Mutate as before with Any', () => {
     for (const name of Object.keys(FM1_PRESETS)) {
