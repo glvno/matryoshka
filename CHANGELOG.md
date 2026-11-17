@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.18.5 — 2026-11-17
 
 - **A card's ⏻ always shows whether it is on.** With Live on, pressing LFO on the FM-1 striped the Harmonizer card's header (bypassed) or cleared it, but the card's ⏻ stayed as it was. The same happened for any patch button that switches a card or an assembly on or off, whether pressed on the FM-1, on the deck or sent as MIDI. Clicking a card's ⏻ also left the deck's ARP or LFO light as it was. Now the card's stripes, its ⏻, the assembly's ⏻, the FX switches on the master FX card and the deck's ARP and LFO lights change together, whatever turned the card on or off (#1054).
 - **The FM-1 plays the Harmonizer from its keys while linked.** In sandbox mode the FM-1's keys reached the browser as plain notes, so its seven lowest keys picked chords only at octave 0; at any other octave they played notes, and a root under the Harmonizer's split picked a chord instead. With Live on, the browser, which plays along with the FM-1, took such a root as a chord too. Now the seven lowest keys are the chord buttons (sus2, maj, sus4, min, 7, dim, 9) at every octave, and every other key plays a root, in sandbox mode and with Live on, as on the FM-1 itself (#1053).
