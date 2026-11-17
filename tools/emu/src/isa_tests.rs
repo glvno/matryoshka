@@ -96,3 +96,31 @@ fn rmw_shift_by_register() {
         assert_eq!(cpu.regs, regs, "6e e8 {:02x} {:02x} changed a register", hw & 0xff, hw >> 8);
     }
 }
+
+#[test]
+fn rmw_clear_by_register() {
+    let mut ram = Ram(vec![0; 0x1000]);
+    let mut cpu = Cpu::new(0);
+    // `64 e8 07 de` [r13+4] &= ~r14: panel_key in firmware/src/panel.c, a chord button let go (#1053)
+    cpu.regs[13] = 0x100;
+    cpu.regs[14] = 0x0000_0012;
+    ram.write32(0x104, 0x0000_00ff);
+    run(&mut cpu, &mut ram, [0x64, 0xe8, 0x07, 0xde]);
+    assert_eq!(ram.read32(0x104), 0xed, "[r13+4] &= ~r14");
+    assert_eq!((cpu.regs[13], cpu.regs[14]), (0x100, 0x12));
+    // every base and register, the positive offsets: base bits 28..31, register 24..27, offset 4 * bits 18..22
+    for hw in 0..0x2000u32 {
+        let (b, s, field) = ((hw >> 9 & 15) as usize, (hw >> 5 & 15) as usize, hw & 31);
+        for i in 0..16 {
+            cpu.regs[i] = 0x0f0f_0000 | i as u32;
+        }
+        cpu.regs[b] = 0x800;
+        let regs = cpu.regs;
+        let addr = 0x800 + 4 * field;
+        ram.write32(addr, 0xffff_ffff);
+        let lo = (field << 2 | 3) as u8;
+        run(&mut cpu, &mut ram, [0x64, 0xe8, lo, (b << 4 | s) as u8]);
+        assert_eq!(ram.read32(addr), !regs[s], "64 e8 {lo:02x} {:02x}", b << 4 | s);
+        assert_eq!(cpu.regs, regs, "64 e8 {lo:02x} {:02x} changed a register", b << 4 | s);
+    }
+}

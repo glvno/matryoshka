@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The FM-1's own keys in sandbox mode (docs/ledger/link-and-midi.md D-467): the FM-1 does not hold the patch, so it sends
-// its keys as plain notes (docs/ledger/device-ui.md D-232), and the editor plays them as the FM-1 plays its keys
-// (docs/ledger/steps.md D-520): while the keys reach a Drum map, black keys 1..8 play its rows 1..8 at any octave, the
-// white keys nothing, or their own note when the map repeats its rows (D-430). This is firmware/src/panel.c panel_key and
-// engine.c eng_keys_drummap on the editor's patch. No DOM here: main.ts wires it.
+// its keys as plain notes (docs/ledger/device-ui.md D-232), and the editor plays them as the FM-1 plays its keys. While
+// the keys reach a Harmonizer, its Side layout (docs/ledger/modules.md D-781, #1053): the FM-1's seven lowest keys are its
+// chord buttons at any octave, every other key a root (under the split too). Else (docs/ledger/steps.md D-520) while the
+// keys reach a Drum map, black keys 1..8 play its rows 1..8 at any octave, the white keys nothing, or their own note when
+// the map repeats its rows (D-430). This is firmware/src/panel.c panel_key, engine.c eng_keys_harm and eng_keys_drummap
+// on the editor's patch. No DOM here: main.ts wires it.
 import { armView, keepArmed, type DeviceKey } from './arm';
+import { HARM_ZONE } from './harmonizer';
+import { keyReach } from './key-routing';
 import { DEFS } from './modules';
 import type { ModuleDef, ModuleInst, Patch } from './patch';
 import { trackDrumMap } from './poly';
@@ -39,6 +43,17 @@ export function keysDrumMap(p: Patch, armed: Iterable<DeviceKey> = [], defs: Rec
   return map;
 }
 
+/** the Harmonizer the FM-1's keys reach (engine.c eng_keys_harm): one that hears Main's keys (the armed set, else what is
+ * cabled to them, through a track or not), is not bypassed and plays a Voicing. The first in module order, null none */
+export function keysHarm(p: Patch, armed: Iterable<DeviceKey> = [], defs: Record<string, ModuleDef> = DEFS): ModuleInst | null {
+  const v = armView(p, keepArmed(p, armed, defs), defs);
+  const main = v.modules.find((m) => m.type === 'fm1');
+  if (!main) return null;
+  const heard = keyReach(v, main.id);
+  const type = new Map(v.modules.map((m) => [m.id, m.type]));
+  return v.modules.find((m) => m.type === 'harm' && !m.bypass && heard.has(m.id) && [...keyReach(v, m.id)].some((id) => type.get(id) === 'alloc')) ?? null;
+}
+
 /** what a key of the FM-1 plays while the keys reach `map`: a row's note (black keys 1..8), its own note (the map repeats
  * its rows), or nothing */
 export function drumKeyNote(map: ModuleInst, note: number, octave: number): number | null {
@@ -47,11 +62,11 @@ export function drumKeyNote(map: ModuleInst, note: number, octave: number): numb
   return Math.round(map.params.repeat ?? 0) >= 1 ? note : null;
 }
 
-/** the FM-1's key notes in sandbox mode: each note-on turned into what the FM-1 would play for its key, and its note-off
- * ending that */
+/** the FM-1's key notes in sandbox mode: each note-on turned into what the FM-1 would play for its key (a note, a
+ * Harmonizer's root or chord button, nothing), and its note-off ending that */
 export class SandboxKeys {
-  /** what each key note held now plays (null: nothing) */
-  private playing = new Map<number, number | null>();
+  /** what ends what each key note held now plays */
+  private playing = new Map<number, HostMsg[]>();
 
   /** a key note this holds (its note-off must come here, also after sandbox mode ended) */
   holds(note: number): boolean { return this.playing.has(note); }
@@ -60,15 +75,21 @@ export class SandboxKeys {
   route(msg: HostMsg, p: Patch, armed: Iterable<DeviceKey>, octave: number): HostMsg[] {
     if (msg.t === 'panic') this.playing.clear();
     if (msg.t === 'off') {
-      if (!this.playing.has(msg.note)) return [msg];
-      const n = this.playing.get(msg.note)!;
+      const off = this.playing.get(msg.note);
+      if (!off) return [msg];
       this.playing.delete(msg.note);
-      return n === null ? [] : [{ t: 'off', note: n }];
+      return off;
     }
     if (msg.t !== 'on') return [msg];
+    const key = msg.note - KEY0 - 12 * octave;
+    if (keysHarm(p, armed)) {
+      const chord = key >= 0 && key < HARM_ZONE;
+      this.playing.set(msg.note, [chord ? { t: 'chord', button: key, down: false } : { t: 'off', note: msg.note, root: true }]);
+      return [chord ? { t: 'chord', button: key, down: true } : { ...msg, root: true }];
+    }
     const map = keysDrumMap(p, armed);
     const n = map ? drumKeyNote(map, msg.note, octave) : msg.note;
-    this.playing.set(msg.note, n);
+    this.playing.set(msg.note, n === null ? [] : [{ t: 'off', note: n }]);
     return n === null ? [] : [{ ...msg, note: n }];
   }
 }

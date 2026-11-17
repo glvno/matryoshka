@@ -12,7 +12,10 @@
 # base = bits 28..31, count register = 24..27, offset = 4 * sext(bits 18..23), op = bits 16..17 {0 <<, 1 <<<, 2 >>,
 # 3 >>>}; pi32v2-isa rmw.lsl.r etc.), had `>>=` and `>>>=` only, each fitted to its one sample with constant operands,
 # so `[r0+0] <<= r2` (ring_scale, PR #978) halted the emulator with UnknownInstruction; the two get that layout and
-# `<<=` / `<<<=` are added. This copies fm1-isa from cargo's checkout of the
+# `<<=` / `<<<=` are added. Fifth fix (2026-11-17): the read-modify-write `[R+#i] &= ~R` (`64 e8`, op 3) had a three-bit
+# register slot (24..26: its samples cleared with r0..r7 only) and a mask that pins bit 27, so `[r13+4] &= ~r14`
+# (panel_key, a chord button let go, #1053) halted the emulator with UnknownInstruction; it gets the register slot of its
+# siblings `|=`, `^=` and `&=` (24..27). This copies fm1-isa from cargo's checkout of the
 # pinned fm1-emu into tools/emu/target/fm1-isa and widens those entries like their siblings. It also copies fm1-core to
 # tools/emu/target/fm1-core with the retire hook the timing model needs (tools/emu/core_timing_patch.py, #947; buses
 # without a timing model ignore it) and the semantics of the fourth fix's shifts (tools/emu/core_isa_patch.py). It
@@ -24,7 +27,7 @@ REV=$(sed -n 's/.*fm1-core.*rev = "\([0-9a-f]*\)".*/\1/p' "$M")
 cargo fetch --quiet --manifest-path "$M" >&2
 SRC=$(ls -d "${CARGO_HOME:-$HOME/.cargo}"/git/checkouts/fm1-emu-*/"${REV:0:7}"/crates/fm1-isa | head -1)
 DST=tools/emu/target/fm1-isa
-if [ ! -f "$DST/.fixed4-$REV" ]; then
+if [ ! -f "$DST/.fixed5-$REV" ]; then
   rm -rf "$DST"; mkdir -p tools/emu/target; cp -R "$SRC" "$DST"
   # the crate inherits edition / license from fm1-emu's workspace
   sed -i.bak -e 's/^edition.workspace = true/edition = "2021"/' -e 's/^license.workspace = true/license = "MIT"/' "$DST/Cargo.toml"
@@ -81,9 +84,14 @@ i = s.index('name: "r_i_lsrge_r",'); j = s.index('IsaEntry {', i)
 e = s[i:j]
 assert 'syntax: "[R+#i] >>>= R"' in e and 'mask: 0x00000000ffffffff_u64' in e and 'match_: 0x000000000213e86e_u64' in e, 'fm1-isa [R+#i] >>>= R entry not as expected'
 s = s[:i] + shift_r(e, 3, 'match_: 0x000000000213e86e_u64') + s[j:]
+# the fifth fix: `[R+#i] &= ~R` takes its register from bits 24..27, as `[R+#i] |= R`, `^= R` and `&= R` do
+i = s.index('name: "r_i_and_r_l4",'); j = s.index('IsaEntry {', i)
+e = s[i:j]
+assert 'syntax: "[R+#i] &= ~R"' in e and 'mask: 0x000000000883ffff_u64' in e and e.count('pieces: &[(24, 26)]') == 1, 'fm1-isa [R+#i] &= ~R entry not as expected'
+s = s[:i] + e.replace('mask: 0x000000000883ffff_u64', 'mask: 0x000000000083ffff_u64').replace('pieces: &[(24, 26)]', 'pieces: &[(24, 27)]') + s[j:]
 open(p, 'w').write(s)
 PY
-  touch "$DST/.fixed4-$REV"
+  touch "$DST/.fixed5-$REV"
 fi
 CORE=tools/emu/target/fm1-core
 MARK="$CORE/.timing-$(cat tools/emu/core_timing_patch.py tools/emu/core_isa_patch.py | shasum | cut -c1-12)-$REV"   # (a changed patch script redoes the copy)
