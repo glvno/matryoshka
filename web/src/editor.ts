@@ -8,7 +8,7 @@ import { FINE, parseValue, stepOf, stepToward, wholeSteps } from './value-input'
 import { isTextEntry } from './input';
 import { lockOf } from './relevance';
 import { clearAround, isPile, tidy, tidyAssembly } from './tidy';
-import { isLocked, MUTATE_DEFAULT, MUTATE_SKIP, mutatePatch, setParamLock, type MutateMode, type MutateScope } from './mutate';
+import { breedPatch, cardScope, isLocked, MUTATE_DEFAULT, MUTATE_SKIP, mutatePatch, setParamLock, type MutateMode, type MutateOptions, type MutateScope } from './mutate';
 import { buttonLabel, DEFS, drumRowName, FIXED_DOES, PANEL_BUTTONS, rowRange } from './modules';
 import { FIXED_BUTTONS, type Range } from './patch';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
@@ -96,6 +96,7 @@ import type { EnvSpec } from './env-view';
 import { flipPlan } from './ab';
 import { body, sameVersion, Snapshots, type Snapshot, type SnapshotMark } from './snapshots';
 import { isGlobalTempo, patchTempo, tempo } from './tempo';
+import { rowOrder } from './structure';
 import { EXCLUDED_TYPES,
   addChild,
   addMember,
@@ -142,6 +143,11 @@ import { EXCLUDED_TYPES,
   keepParams, pickRows, pickState, keyRange, type PickRow,
   mergeRows, rowNames, rowOf, sameRange, setRowNames, splitRow, syncTied, tiedTo, ties, type Ties, ROW_NAMES_MAX, ROW_NAME_MAX,
   copyRuns, copyStarts, setCopies, COPY_ROWS_MAX, COPIES_MAX } from './assembly';
+
+/** why Mutate, Randomize or Make candidates found nothing to move */
+const NOTHING_TO_MOVE = 'locked, pitch held ("Mutate pitch" is off), or left alone: Main, the Output, voices, Steps, the Arpeggiator, Drum maps, the Harmonizer';
+/** how many times Mutate or one candidate is tried before nothing moving counts as nothing to move */
+const MUTATE_TRIES = 8;
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 /** a tooltip with the range of the output it is about (ranges.ts) on a line of its own */
@@ -3619,24 +3625,29 @@ export class Editor {
   }
 
   /**
-   * Make `n` candidates: each a Mutate, at the amount chosen for Mutate, of the patch on screen (a snapshot or the current
-   * patch), on the selected cards or, with none selected, on every card; locks hold (D-976). One undo step, then the first
-   * candidate is shown (a switch, a step of its own). Empty when nothing can move.
+   * Make `n` candidates from the patch on screen (a snapshot or the current patch), at the amount chosen for Mutate, on the
+   * selected cards or, with none selected, on the cards the canvas shows (cardScope); locks hold (D-976). With two or more
+   * snapshots marked keep each candidate is bred from them (breedPatch), else it is a Mutate (D-987). One undo step, then
+   * the first candidate is shown (a switch, a step of its own). Empty when nothing can move.
    */
   makeCandidates(n: number): Snapshot[] {
     this.endGesture();
     this.endPass();
     const parent = this.patch;
-    const scope: MutateScope = this.selected.size || this.selectedAsm.size ? { modules: [...this.selected], assemblies: [...this.selectedAsm] } : { modules: parent.modules.map((m) => m.id), assemblies: [] };
-    const from = this.snaps.shown ?? 'current';
+    const scope: MutateScope = this.selected.size || this.selectedAsm.size ? { modules: [...this.selected], assemblies: [...this.selectedAsm] } : cardScope(parent);
+    const keeps = this.snaps.list.filter((s) => s.mark === 'keep');
+    const breed = keeps.length >= 2;
+    const from = breed ? keeps.map((s) => s.letter).join('+') : this.snaps.shown ?? 'current';
+    const keptPatches = keeps.map((s) => JSON.parse(s.patch) as Patch);
+    const opts = this.mutateOptions(parent);
     const before: UndoStep = { s: this.snap(), shown: this.snaps.shown, list: { change: { added: [], removed: [] }, current: this.snaps.current } };
     const made: Snapshot[] = [];
-    for (let i = 0; i < n; i++) {
-      const { patch, moved } = mutatePatch(parent, scope, 'mutate', this.mutateAmount, DEFS);
-      if (!moved) break;
-      made.push(this.snaps.take(patch, undefined, from));
+    // (a Mutate moves few rows, and a row chosen at the end of its range may stay: one that moved nothing is made again)
+    for (let tries = 0; made.length < n && tries < n * MUTATE_TRIES; tries++) {
+      const { patch, moved } = breed ? breedPatch(parent, keptPatches, scope, this.mutateAmount, DEFS, Math.random, opts) : mutatePatch(parent, scope, 'mutate', this.mutateAmount, DEFS, Math.random, opts);
+      if (moved) made.push(this.snaps.take(patch, undefined, from));
     }
-    if (!made.length) return this.ev.onError('Make candidates: nothing to move there (locked, or left alone: Main, the Output, voices, Steps, the Arpeggiator, Drum maps, the Harmonizer)'), [];
+    if (!made.length) return this.ev.onError(`Make candidates: nothing to move there (${NOTHING_TO_MOVE})`), [];
     before.list!.change.added = made.map((s) => ({ s, at: this.snaps.list.indexOf(s) }));
     this.record(before);
     this.showSnapshot(made[0].letter);
@@ -3710,6 +3721,24 @@ export class Editor {
   /** Mutate's largest move, a share of each parameter's range (the host keeps it per browser) */
   mutateAmount = MUTATE_DEFAULT;
 
+  /** "Mutate pitch": pitch rows move too, by musical steps only (the host keeps it per browser, D-975) */
+  mutatePitch = false;
+
+  /** the options Mutate, Randomize and Make candidates use on `p`: "Mutate pitch", and the values each assembly card's
+   *  factory presets give its rows (a moving row may take one instead of noise) */
+  private mutateOptions(p: Patch): MutateOptions {
+    const pools = new Map<string, number[]>();
+    for (const a of assembliesOf(p)) {
+      const presets = presetsOf(p, a).filter((x) => x.factory);
+      if (!presets.length) continue;
+      rowOrder(p, a).forEach((r, i) => {
+        const values = presets.map((x) => x.values[i]).filter((v) => v !== undefined && Number.isFinite(v));
+        if (values.length) pools.set(`${r.module}:${r.param}`, values);
+      });
+    }
+    return { pitch: this.mutatePitch, pools };
+  }
+
   /** the patch (Editor.snap) and the stop on screen right after the last Mutate or Randomize: while they still match, the
    *  next one belongs to the same run and keeps no further snapshot */
   private mutateRun: string | null = null;
@@ -3720,8 +3749,10 @@ export class Editor {
   mutate(mode: MutateMode, scope: MutateScope = { modules: [...this.selected], assemblies: [...this.selectedAsm] }): number {
     const verb = mode === 'mutate' ? 'Mutate' : 'Randomize';
     if (!scope.modules.length && !scope.assemblies.length) return this.ev.onError(`${verb}: select the cards first`), 0;
-    const { patch, moved } = mutatePatch(this.patch, scope, mode, this.mutateAmount, DEFS);
-    if (!moved) return this.ev.onError(`${verb}: nothing to move there (locked, or left alone: Main, the Output, voices, Steps, the Arpeggiator, Drum maps, the Harmonizer)`), 0;
+    const opts = this.mutateOptions(this.patch);
+    let { patch, moved } = mutatePatch(this.patch, scope, mode, this.mutateAmount, DEFS, Math.random, opts);
+    for (let tries = 1; !moved && tries < MUTATE_TRIES; tries++) ({ patch, moved } = mutatePatch(this.patch, scope, mode, this.mutateAmount, DEFS, Math.random, opts));
+    if (!moved) return this.ev.onError(`${verb}: nothing to move there (${NOTHING_TO_MOVE})`), 0;
     const run = (): string => `${this.snaps.shown}|${this.snap()}`;
     const kept = this.mutateRun === run() ? null : this.snaps.holding(this.patch) ? null : this.takeSnapshot('before mutate');
     this.applyLive(patch);
