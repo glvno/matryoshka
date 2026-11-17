@@ -239,3 +239,20 @@ These are open; they are listed on issue #1006, not decided here.
 - Should drum voices be an exception? In a drum engine, a voice's tune is a timbre: the factory cards move kick and cowbell tunes freely. A rule could be that a pitch row whose oscillator plays no keyboard pitch (its pitch input does not reach Main's or a Voice allocator's pitch) is timbre. The first step holds them all.
 - One "Mutate pitch" switch, or a lock class per kind (pitch, fine tune, envelopes, effects, as the G2's Quick Locks)?
 - Is one in four right for the default chance, or should the chance follow the amount, as the G2 links them?
+
+## 5. After the change
+
+The owner approved the whole proposal on 2026-11-17 ("yes", then "i also love all of the mutation proposal. do that as well"). [PR #1013](https://github.com/glvno/matryoshka/pull/1013) made it, items 1 to 8, and amended [D-975](../ledger/editor.md#D-975) and [D-987](../ledger/editor.md#D-987). A module inside an assembly is not a card for Make candidates with nothing selected. The details the owner did not rule on are proposed in [D-989](../ledger/editor.md#D-989). Drum voices are not an exception yet, and there is one "Mutate pitch" switch.
+
+Method: the same simulation as section 2, run again on the new code. Each of the 21 factory patches got 120 candidates at 10 % and at 25 %, from a seeded random generator. Before is `mutatePatch` from `main` on every module. After is the new `mutatePatch` on the cards (`cardScope`), with each assembly card's factory preset values, as Make candidates calls it. A candidate that moved nothing is made again, as the editor does. A pitch row is one `pitchRows` finds, on the old code too. The script ran from a scratch file and is not kept.
+
+| | candidates that change pitch | pitch rows changed per candidate | parameters moved per candidate, median (fewest, most) | semitone and offset moves on an octave, fifth or fourth |
+|---|---|---|---|---|
+| before, 10 % | 100 % | 55.9 | 264 (57, 437) | 3 % |
+| after, 10 % | 0 % | 0 | 8 (1, 50) | none move |
+| after, 10 %, "Mutate pitch" on | 61 % | 1.2 | 10 (1, 56) | 100 % |
+| before, 25 % | 100 % | 57.9 | 281 (62, 453) | 2 % |
+| after, 25 % | 0 % | 0 | 10 (1, 57) | none move |
+| after, 25 %, "Mutate pitch" on | 64 % | 1.2 | 11 (1, 53) | 100 % |
+
+The "before" share on musical steps is lower than section 2's 22 % because this count includes the value rows that reach a pitch input, which move continuously and almost never land on a semitone. A candidate can move a single parameter: at least two rows are chosen, but a chosen row at the end of its range, or a level row already at its default, can stay where it is.
