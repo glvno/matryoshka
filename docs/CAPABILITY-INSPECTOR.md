@@ -2,7 +2,7 @@
 
 The inspector tests whether assembly capabilities can explain an editable patch without imposing a fixed layout. It is enabled by adding `?capabilities=1` to the editor URL. The Patch menu can reopen it with **Inspect assembly capabilities…**. It opens alongside the canvas, so the same assemblies remain editable.
 
-This is an experimental inspection interface, not the final instrument view. Its role and scope are [D-962](ledger/editor.md#D-962), Proposed for michael glaviano. The [architecture proposal](ASSEMBLY-CAPABILITIES.md) describes the wider design.
+This is an experimental inspection interface, not the final instrument view. Its role and scope are [D-962](ledger/editor.md#D-962), Decided. The [architecture proposal](ASSEMBLY-CAPABILITIES.md) describes the wider design.
 
 ## Try it
 
@@ -35,7 +35,7 @@ Recognition is refreshed after editor structure and layout notifications. The qu
 
 The preview validates an explicit input/output pair against the current graph. It supports a flat, complete mono serial chain of the supported audio processors, with no extra ports, feedback, branches, polyphonic assembly setting or cables entering internal control points. Multiple outside audio sources may feed the one exposed input. The preview rejects declarations that no longer match the graph.
 
-Its reported behavior is the existing module bypass behavior: each processor passes its input to its outputs instead of processing. Processing state stops advancing and remains allocated. Tails are not heard during bypass. Reactivation can reveal the retained state. There is no claim of tail spillover, buffer reclamation or click-free switching ([D-963](ledger/editor.md#D-963), Proposed for michael glaviano).
+Its reported behavior is the existing module bypass behavior: each processor passes its input to its outputs instead of processing. Processing state stops advancing and remains allocated. Tails are not heard during bypass. Reactivation can reveal the retained state. There is no claim of tail spillover, buffer reclamation or click-free switching ([D-963](ledger/editor.md#D-963), Decided).
 
 The preview neither applies that operation nor persists its declaration. The existing ordinary bypass controls continue to work independently. The next experiment must choose a representation and verify application, restoration of mixed bypass states, reactivation and device behavior before this preview becomes a new playback control.
 

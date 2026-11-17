@@ -117,7 +117,7 @@ command; deployment neither downloads arbitrary reports nor reruns tests.
   It is the test rig's gate while the owner iterates ([D-123](ledger/releases.md#D-123)), not a merge or release gate.
 - **Queued gates:** `emu:smoke`, `emu:boot`, and `emu:scenarios` share one slot across checkouts on this Mac.
   They print when they enter the queue and when their run starts. The operating system releases the slot after a
-  killed runner; no stale lock directory needs deleting. This implements the proposed limit in [D-143](ledger/releases.md#D-143).
+  killed runner; no stale lock directory needs deleting. This implements the limit in [D-143](ledger/releases.md#D-143).
   Choose when to run them using [D-144](ledger/releases.md#D-144).
   Scenario output includes a progress line every 30 seconds. `build/emu/scenarios/run.json` identifies the firmware
   by its SHA-256 digest. `results.json` is updated after each check, and `progress.json` names the current scenario and
