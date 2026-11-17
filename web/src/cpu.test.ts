@@ -78,6 +78,15 @@ describe('CPU estimate', () => {
     expect(poly.modules.find((m) => m.type === 'osc')!.copies).toBe(4);
   });
 
+  it('counts a type\'s cold first copy once a block and takes it off every other copy (TypeCost.cold, D-1107)', () => {
+    const p = withParts(acid(), 4);
+    const copies = cpuEstimate(p).modules.filter((m) => m.type === 'osc').reduce((n, m) => n + m.copies, 0);
+    const cold = 1000;
+    const table = { ...CPU, types: { ...CPU.types, osc: { ...CPU.types.osc, cold } } };
+    expect(copies).toBeGreaterThan(1);
+    expect(cpuEstimate(p, table).cycles).toBeCloseTo(cpuEstimate(p).cycles - cold * (copies - 1), 6);
+  });
+
   it('counts a bypassed module as a copy', () => {
     const p = acid();
     const f = p.modules.find((m) => m.type === 'filter')!;

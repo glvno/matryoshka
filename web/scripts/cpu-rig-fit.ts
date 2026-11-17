@@ -10,16 +10,19 @@
 //   - the scale and the fixed time per block: least squares of the targets on the estimate before (est = a x before + b);
 //   - each factory engine's factor: the most any of its patch's targets needs, so the estimate reads at least what the rig
 //     measured at every voice count it played.
-// Run from web/: npx vite-node scripts/cpu-rig-fit.ts
+// Run from web/: npx vite-node scripts/cpu-rig-fit.ts [--table PATH]   (--table: another table, such as
+// scripts/cpu-costs-emu.ts's, whose own scale stays: the 1.14 bank has no patch without an engine of its own)
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { assembliesOf, parentOf } from '../src/assembly';
-import { CPU, cpuEstimate, type CpuTable } from '../src/cpu';
+import { CPU as SHIPPED, cpuEstimate, type CpuTable } from '../src/cpu';
 import { DEFS } from '../src/modules';
 import { validatePatch, type Patch } from '../src/patch';
 import { deviceView } from '../src/poly';
 
 const ROOT = new URL('../../', import.meta.url).pathname;
+const at = process.argv.indexOf('--table');
+const CPU: CpuTable = at > 0 ? JSON.parse(readFileSync(process.argv[at + 1], 'utf8')) : SHIPPED;
 /** The build with modulation every 16 samples (#806, D-1106), on top of the Reverb's lines one block late (D-1103), the
  * cheaper LED and key scan (D-934) and the filter's cutoff every 4 samples (D-1105): every factory patch of the 1.14
  * bank, transport stopped and running; then the poly patches at more voices than they play (#868 step 7, the D-870 tops;

@@ -57,6 +57,10 @@ export interface TypeCost {
    * output read adds, `pins[k - 1]` what an output with k pins in use adds (a pin in use: its input patched, its amount off 0
    * or moved by a cable) */
   matrix?: { out: number; pins: number[] };
+  /** cycles of the type's first copy in a block beyond any other copy's (D-1107: its code and tables fetched cold into the
+   * caches, which every later copy of the type in the same block finds warm). The other costs are measured on a module
+   * alone, so they hold it: the estimate counts it once per type the patch runs, and takes it off every copy */
+  cold?: number;
 }
 
 /** a Matrix's cost over its `run` (TypeCost.matrix): its outputs read and, in each, its pins in use */
@@ -103,6 +107,10 @@ export interface CpuTable {
   checks: { name: string; cycles: number }[];
   /** how the scale was found */
   calibration: Record<string, number | string>;
+  /** a table that is not the firmware's (scripts/cpu-costs-emu.ts): the two-core schedule's cost of one copy of each type
+   * and of a bypassed module, in 64 cycles of a table at `cyclesPerUs`, as the shipped table gives them (engine.c DEF_COST,
+   * DEF_COST_BYPASS, which export-defs writes from it), so the estimate plans the schedule the firmware plans */
+  schedule?: { cost: Record<string, number>; bypass: number; cyclesPerUs: number; note: string };
   /** the test rig's survey of the factory patches (scripts/cpu-costs.ts RIG): per factory engine (a top-level assembly of
    * that name), the factor on its modules' cycles that makes the estimate read what the rig measured for its factory patch
    * (its steady peak; the scale and the fixed time per block are fitted on every patch together). `voices`: for an engine
@@ -253,10 +261,12 @@ function slope(p: Patch, id: number, seen = new Set<number>()): number {
 const keepsMoving = (p: Patch, id: number): boolean => slope(p, id) >= 0.5;
 
 /** what the two-core schedule counts for one copy of a module type (engine.c DEF_COST, made from this table by
- * export-defs): its run and parameter inputs, in 64 cycles */
-export const scheduleCost = (table: CpuTable, type: string): number => Math.max(1, Math.round(((table.types[type]?.run ?? 0) + (table.types[type]?.cv ?? 0)) / 64));
+ * export-defs): its run and parameter inputs, in 64 cycles; a table that is not the firmware's gives the firmware's units
+ * (CpuTable.schedule) */
+export const scheduleCost = (table: CpuTable, type: string): number =>
+  table.schedule ? table.schedule.cost[type] ?? 1 : Math.max(1, Math.round(((table.types[type]?.run ?? 0) + (table.types[type]?.cv ?? 0)) / 64));
 /** what it counts for a module bypassed when the patch loads (engine.c DEF_COST_BYPASS, D-1104): passing an input through */
-export const scheduleBypass = (table: CpuTable): number => Math.max(1, Math.round(table.bypass / 64));
+export const scheduleBypass = (table: CpuTable): number => table.schedule?.bypass ?? Math.max(1, Math.round(table.bypass / 64));
 
 /** cores: 2, the FM-1 since #271 (core 0's time: the second core's share of a two-core schedule, #802, or of the split poly
  * groups' odd parts, plus an idle second core's cost); 1 as with core 1 held. `scheduleFits`: whether the schedule's buffers
@@ -280,6 +290,7 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
   const splitGroups = new Set<number>();
   const modules: CpuModule[] = [];
   const work = new Map<number, number>();   // a copy's cycles by module id, with the rig's factor (the schedule's items)
+  const warm = new Set<string>();           // the types whose cold first copy is counted (TypeCost.cold)
   for (const m of p.modules) {
     const def = DEFS[m.type];
     const t = table.types[m.type];
@@ -346,15 +357,22 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
     if (t.thru && m.type === 'steps' && inputs.has('keys')) one += t.thru * Math.min(TRACK_POLY, Math.max(1, ...groups.map((g) => g.cfg.parts)));
     if (m.type === 'output') (total += table.output), (counted += table.output);
     const k = ninst(m.id);
-    counted += one * k;
+    // the type's code and tables come in cold once a block: on its first copy, every other copy finds them warm
+    let cold = 0;
+    if (t.cold && !m.bypass) {
+      one -= t.cold;
+      if (!warm.has(m.type)) (warm.add(m.type), (cold = t.cold));
+    }
+    counted += one * k + cold;
     one *= factor.get(m.id) ?? 1;
+    cold *= factor.get(m.id) ?? 1;
     if (group && k >= 2 && m.type !== 'steps') {
       split += one * Math.floor(k / 2);
       splitGroups.add(groupOf.get(m.id)!);
     }
-    modules.push({ id: m.id, type: m.type, copies: k, cycles: one * k });
+    modules.push({ id: m.id, type: m.type, copies: k, cycles: one * k + cold });
     work.set(m.id, one);
-    total += one * k;
+    total += one * k + cold;
   }
   modules.sort((a, b) => b.cycles - a.cycles);
   const oneCoreUs = total / table.cyclesPerUs + table.fixedUs;
@@ -365,7 +383,9 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
     if (s.on && (scheduleFits?.(s) ?? true)) {
       const each = (m: number): number => work.get(p.modules[m].id) ?? 0;
       const items = s.order.reduce((n, m) => n + each(m) * s.copies[m], 0);
-      split = items - scheduleTime(s, scheduleWork(s, each), SCH_SYNC * 64, SCH_FORK * 64);
+      // (the hand-over and the wait are in the schedule's units: engine.c SCH_SYNC, SCH_FORK)
+      const unit = table.schedule ? (64 * table.cyclesPerUs) / table.schedule.cyclesPerUs : 64;
+      split = items - scheduleTime(s, scheduleWork(s, each), SCH_SYNC * unit, SCH_FORK * unit);
       parted = 1;
     }
   }

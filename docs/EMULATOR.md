@@ -145,7 +145,12 @@ command; deployment neither downloads arbitrary reports nor reruns tests.
   rest. `--modtime` adds each module's time a half buffer. Both are read from the firmware's own counters, at the
   addresses in the same build's ELF (artifact `matryoshka-elf`), and written as JSON in the shapes of
   `tools/rig_cpu_survey.py` and `tools/m1_link.py modtime`. Run it under the timing model (below) to compare with the
-  rig; `tools/emu/timing_fit.py measure` runs it over the whole bank, several emulators at once.
+  rig; `tools/emu/timing_fit.py measure` runs it over the whole bank, several emulators at once. `--modtime` holds
+  `--keys` (eight notes unless given; an empty list holds none) for `--settle` ms (1000) before its `--window`, with the
+  transport running under `--mt-run`, and adds the interrupt's mean over the window (`isr_us`). `--bank FILE` seeds the
+  bank with the patches FILE lists (`NAME<TAB>PATCH.m1p`, slot 0 first, at most 48) instead of the factory bank:
+  `npm run cpu-costs-emu` makes a CPU cost table this way (`web/scripts/cpu-costs-emu.ts` through `cpu-emu.ts`,
+  [D-1107](ledger/engine.md#D-1107), [D-981](ledger/editor.md#D-981)). The editor's estimate does not use that table yet.
 
 ## The editor link: `m1emu serve` and the scenarios
 
