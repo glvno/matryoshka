@@ -97,7 +97,7 @@ describe('Mutate with a category (#1033)', () => {
     editor.mutate('mutate');
     const adsr = editor.patch.modules.find((m) => m.id === 4)!.params;
     expect(adsr.a).toBeGreaterThanOrEqual(0.3);
-    expect(adsr.r).toBeGreaterThanOrEqual(0.8);
+    expect(adsr.r * (adsr.long >= 0.5 ? 2.4 : 1)).toBeGreaterThanOrEqual(0.8 - 1e-9);   // (Long, which may move, stretches it)
     expect(status.at(-1)).toMatch(/aimed at pad: 4 envelope, cutoff or glide rows in its ranges/);
   });
 

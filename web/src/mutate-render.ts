@@ -14,10 +14,12 @@ export const OVERSAMPLE = 4;
 /** a candidate whose fit (fitScore) is at most this passes: half an octave out in all, as the measures are rough */
 export const PASS = 0.5;
 
-/** what a render measures, on the phrase's first note: the loudness contour (attack to 90 % of the peak; decay and release
- *  in the profile's terms, the time to come 99 % of the way, from the time to come 90 % of it, doubled; sustain as a share
- *  of the peak) and the brightness (the sound's mean frequency, weighted by power, in Hz). A time the render ends before
- *  is a least value (`decayAtLeast`, `releaseAtLeast`); a stage the phrase does not let sound is absent. */
+/** what a render measures, on the phrase's first note: the loudness contour and the brightness (the sound's mean frequency,
+ *  weighted by power, in Hz). The attack is twice the time to half the peak (a reverb that builds up after a quick attack
+ *  moves the peak, not the half). The decay and the release are in the profile's terms, the time to come 99 % of the way,
+ *  from the time to come three quarters of it (×ln 100 / ln 4; an effect's quiet tail does not count). The sustain is a
+ *  share of the peak; the decay is read only when the level falls to half the peak or below. A time the render ends
+ *  before is a least value (`decayAtLeast`, `releaseAtLeast`); a stage the phrase does not let sound is absent. */
 export interface Shape { attack?: number; decay?: number; decayAtLeast?: boolean; sustain?: number; release?: number; releaseAtLeast?: boolean; brightness?: number; silent?: boolean }
 
 /** the loudness is followed in windows this long (seconds) */
@@ -27,6 +29,13 @@ const WINDOW = 0.005;
 const SMOOTH = 3;
 /** quieter than this peak counts as silent */
 const SILENT = 1e-4;
+/** from the time to come three quarters of the way to the time to come 99 % of it, for an exponential fall */
+const TO_99 = Math.log(100) / Math.log(4);
+/** the shortest attack a render can tell apart (its windows and smoothing): a shorter one is measured at most this */
+export const ATTACK_FLOOR = 0.025;
+/** how far the measured sustain may lie outside the profile's and still count as inside: the loudness follows the
+ *  filter too, so a held note's level is not the loudness envelope's alone */
+export const SUSTAIN_SLACK = 0.15;
 
 /** measure a render of `phrase` (left and right at `sr`) */
 export function measureShape(l: Float32Array, r: Float32Array, sr: number, phrase: Phrase): Shape {
@@ -58,20 +67,20 @@ export function measureShape(l: Float32Array, r: Float32Array, sr: number, phras
   if (peak < SILENT) return { silent: true };
   const out: Shape = {};
   let w = w0;
-  while (w < pw && env[w] < 0.9 * peak) w++;
-  out.attack = Math.max(0.001, (w - w0) * WINDOW);
+  while (w < pw && env[w] < 0.5 * peak) w++;
+  out.attack = Math.max(0.001, 2 * (w - w0) * WINDOW);
   // sustain: the mean level over the last tenth of the hold, when the hold is long enough to settle; the decay only when
-  // the level falls by a fifth or more
+  // the level falls to half the peak or below
   if (held - on >= 0.3) {
     const s0 = at(held - (held - on) / 10);
     let sum = 0;
     for (let k = s0; k < w1; k++) sum += smooth[k];
     out.sustain = sum / Math.max(1, w1 - s0) / peak;
-    const goal = out.sustain + (1 - out.sustain) * 0.1;
+    const goal = out.sustain + (1 - out.sustain) * 0.25;
     let d = pw;
     while (d < w1 && smooth[d] / peak > goal) d++;
-    if (out.sustain <= 0.8) {
-      out.decay = 2 * Math.max(0.001, (d - pw) * WINDOW);
+    if (out.sustain <= 0.5) {
+      out.decay = TO_99 * Math.max(0.001, (d - pw) * WINDOW);
       if (d >= w1) out.decayAtLeast = true;
     }
   }
@@ -81,8 +90,8 @@ export function measureShape(l: Float32Array, r: Float32Array, sr: number, phras
     const from = smooth[Math.min(count - 1, r0)];
     if (from >= SILENT) {
       let k = r0;
-      while (k < r1 && smooth[k] > from * 0.1) k++;
-      out.release = 2 * Math.max(0.001, (k - r0) * WINDOW);
+      while (k < r1 && smooth[k] > from * 0.25) k++;
+      out.release = TO_99 * Math.max(0.001, (k - r0) * WINDOW);
       if (k >= r1) out.releaseAtLeast = true;
     }
   }
@@ -110,9 +119,9 @@ export function fitScore(s: Shape, profile: Profile, parent?: Shape): number {
   if (s.silent) return Infinity;
   const amp = profile.amp;
   let score = 0;
-  if (s.attack !== undefined) score += octavesOut(s.attack, amp.a);
+  if (s.attack !== undefined) score += octavesOut(s.attack, [amp.a[0], Math.max(amp.a[1], ATTACK_FLOOR)]);
   if (s.decay !== undefined) score += s.decayAtLeast ? Math.max(0, Math.log2(s.decay / amp.d[1])) : octavesOut(s.decay, amp.d);
-  if (s.sustain !== undefined) score += 4 * Math.max(0, amp.s[0] - s.sustain, s.sustain - amp.s[1]);
+  if (s.sustain !== undefined) score += 4 * Math.max(0, amp.s[0] - SUSTAIN_SLACK - s.sustain, s.sustain - amp.s[1] - SUSTAIN_SLACK);
   if (s.release !== undefined) score += s.releaseAtLeast ? Math.max(0, Math.log2(s.release / amp.r[1])) : octavesOut(s.release, amp.r);
   if (s.brightness && parent?.brightness) {
     const moved = Math.log2(s.brightness / parent.brightness);

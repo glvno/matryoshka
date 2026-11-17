@@ -20,25 +20,27 @@ Each category gives a range to each role. Times are in seconds: an attack is the
 
 A glide of 0.001 s is the shortest a Slew limiter has: no glide. A range wider than a row's own range ends at the row's ends. A Rate Env's rates are whole steps, so its range is the steps whose times fall inside.
 
+Register is no part of a profile: `bass` is judged on its envelope and brightness only, so a high patch can sound like a bass in its envelope and brightness. With "Mutate pitch" on, `bass` also aims the register low: a pitch row moves only an octave down (the pitch rules still hold, so it moves by octaves only and never past the row's range).
+
 ## Roles on the factory engines
 
 `roleRows` on each factory patch as it ships. "Envelopes" counts the envelope modules with a role; "on the card" lists the engine card rows with a role, the rows Make candidates moves with nothing selected. Every engine has a loudness envelope. The drum engines' envelopes are all loudness envelopes, one per voice.
 
 | Patch | Envelopes | On the card |
 |---|---|---|
-| Monolith D | 1 loudness, 1 tone | glide; filter cutoff; filter contour attack, sustain; loudness contour attack, sustain |
-| Oracle V | 1 loudness, 1 tone | glide; filter cutoff; filter A, D, S, R; amp A, D, S, R |
+| Monolith D | 1 loudness, 1 tone | glide; DECAY ON (both releases); filter cutoff; both contours' attack, decay (Macros through the ADSRs' parameter inputs) and sustain |
+| Oracle V | 1 loudness, 1 tone | glide; voice release (a Selector feeding both releases); filter cutoff; filter A, D, S, R; amp A, D, S, R |
 | Silver Box | 2 loudness, 1 tone | cut off freq; tone decay |
 | Hera 6 | 1 loudness | VCF freq; env A, D, S, R; portamento |
 | Sallen 20 | 1 loudness | portamento; highpass and lowpass cutoff; EG 2 attack, decay, sustain, release |
-| Expander S | 1 loudness, 1 tone | portamento; filter cutoff; envelopes A, D, S (1: tone; 2: loudness) |
+| Expander S | 1 loudness, 1 tone | portamento; filter cutoff; envelopes A, D, S (1: tone; 2: loudness; in ADS the D row plays the release too) |
 | Algo Four | 2 loudness, 2 tone | operators 1 and 3 (carriers in the shipped algorithm): loudness; operators 2 and 4 (modulators): tone |
-| Canvas | 1 loudness | envelope attack, sustain (a time), decay; portamento |
+| Canvas | 1 loudness | envelope mode (sustained or one-shot, through the Env L/R's one-shot switch); attack, sustain (a time), decay; portamento |
 | Wanderer | 1 loudness | output lag (glide); VCF freq, HPF; envelopes attack, release |
 | Briefcase 3 | 1 loudness | filter frequency; env attack, on, decay |
 | Io 4 | 1 loudness, 1 tone | HPF and LPF cutoff; VCF A, D, S, R; VCA A, D, S, R; portamento |
 | Vernon 100 | 1 loudness, 1 tone | filter tune; envelope 1 attack, sustain (tone); envelope 2 attack, sustain (loudness) |
-| 8 Lire | 8 loudness | each voice's attack and release |
+| 8 Lire | 8 loudness | each voice's attack and release; the four "fast" switches (Selectors feeding the releases) |
 | Elvira 2 | 4 loudness | each voice's attack and release; LPF cutoff; choke |
 | Scrounge | 7 loudness | each voice's tilt and gate; voice 3 tone; mod X and Y gate and slew |
 | Meridian 8 | 8 loudness | 1 dot secondary (cutoff); each voice's decay and release |
@@ -52,7 +54,14 @@ Hera 6 and Shush 101 drive both their filter and their VCA from one ADSR: it rea
 
 ## Rendering and filtering
 
-Make candidates with a category renders each candidate with the test phrase (`renderPhrase`, the same render as the WAV export), measures it and drops it at once. On the phrase's first note it measures the attack (to 90 % of the peak), the decay and the release (the time to come 90 % of the way, doubled, which is the 99 % time for an exponential fall), the sustain (the last tenth of the hold, as a share of the peak) and the brightness (the mean frequency weighted by power: sr / 2π times the ratio of the slope's power to the sound's). The loudness is followed in 5 ms windows, averaged over 35 ms for the peak, decay, sustain and release, so a click at the start is no peak. The fit adds the octaves each time lies outside the category's loudness range, four times the share the sustain lies outside, and half the octaves the brightness moved outside the cutoff range from the parent's. A fit of 0.5 or less passes.
+Make candidates with a category renders each candidate with the test phrase (`renderPhrase`, the same render as the WAV export), measures it and drops it at once. It measures these on the phrase's first note:
+
+- **Attack:** twice the time to half the peak. A reverb that builds up after a quick attack moves the peak but not the half-way point. An attack up to 25 ms counts as instant, which is about as fine as the windows can tell.
+- **Decay and release:** the time to come three quarters of the way, multiplied by ln 100 / ln 4, which gives the 99 % time for an exponential fall. An effect's quiet tail does not count. The decay is read only when the level falls to half the peak or below; a smaller fall is too small to time.
+- **Sustain:** the last tenth of the hold, as a share of the peak. A measured sustain up to 0.15 outside the profile's range counts as inside, because the loudness follows the filter too, not the loudness envelope alone.
+- **Brightness:** the mean frequency weighted by power, which is sr / 2π times the ratio of the slope's power to the sound's.
+
+The loudness is followed in 5 ms windows, averaged over 35 ms for the peak, decay, sustain and release, so a click at the start is no peak. The fit adds the octaves each time lies outside the category's loudness range, four times the share the sustain lies outside, and half the octaves the brightness moved outside the cutoff range from the parent's. A fit of 0.5 or less passes.
 
 ### Time for 16 renders
 

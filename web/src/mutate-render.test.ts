@@ -30,10 +30,10 @@ function contour(a: number, d: number, s: number, r: number): [Float32Array, Flo
 
 describe('measureShape', () => {
   it('reads attack, decay, sustain, release and brightness from a render of the held note', () => {
-    const s = measureShape(...contour(0.1, 0.4, 0.5, 0.6), SR, held);
+    const s = measureShape(...contour(0.1, 0.4, 0.4, 0.6), SR, held);
     expect(s.attack).toBeGreaterThan(0.07);
     expect(s.attack).toBeLessThan(0.11);
-    expect(s.sustain).toBeCloseTo(0.5, 1);
+    expect(s.sustain).toBeCloseTo(0.4, 1);
     expect(s.decay).toBeGreaterThan(0.3);
     expect(s.decay).toBeLessThan(0.5);
     expect(s.release).toBeGreaterThan(0.45);

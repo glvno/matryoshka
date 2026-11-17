@@ -39,7 +39,8 @@ describe('roles (#1033)', () => {
     expect([at(8, 'a'), at(8, 's')]).toEqual(['tone-a', 'tone-s']);
     expect(at(11, 'a')).toBeUndefined();
     expect([at(4, 'cutoff'), at(4, 'res'), at(2, 'time')]).toEqual(['cutoff', undefined, 'glide']);
-    expect(roles.holds(p.modules[6], 'long') && roles.holds(p.modules[6], 'ads') && roles.holds(p.modules[1], 'fall')).toBe(true);
+    expect(roles.holds(p.modules[6], 'ads') && roles.holds(p.modules[1], 'fall')).toBe(true);
+    expect(roles.holds(p.modules[6], 'long')).toBe(false);   // (Long only stretches the times: it may move)
     // an ADSR in "long" counts its times 2.4 times longer
     expect(roles.of({ ...p.modules[6], params: { ...p.modules[6].params, long: 1 } }, 'a')).toBeDefined();
   });
@@ -88,19 +89,25 @@ describe('roles (#1033)', () => {
   });
 });
 
-/** the role rows (roles as `p` has them; those in `only`, by `module:param`) of `out` outside the category's range, with
- *  the cutoff's range from `p` */
+/** the role rows of `out` (rows `p` gives a role, those in `only`, by `module:param`) outside the category's range, the
+ *  cutoff's range from `p`. The measures are the result's: a stage some rows set together (an envelope's row and the
+ *  Macro added through its parameter input) is read with all of them. A row whose roles' ranges do not meet, or that its
+ *  row range or a macro range keeps out of the category's range, has no aim and is left out. */
 function outside(p: Patch, out: Patch, category: (typeof categories)[number], only?: Set<string>): string[] {
-  const roles = roleRows(p, DEFS), held = heldRows(p), bad: string[] = [];
+  const before = roleRows(p, DEFS), after = roleRows(out, DEFS), held = heldRows(p), bad: string[] = [];
   for (const m of p.modules) for (const pd of DEFS[m.type].params) {
-    const r = roles.of(m, pd.name);
-    if (!r || held.has(`${m.id}:${pd.name}`) || isLocked(p, m, pd.name) || (only && !only.has(`${m.id}:${pd.name}`))) continue;
-    const span = roleSpan(PROFILES[category], r.role, m.params[pd.name] ?? pd.default);
+    const mo = out.modules.find((q) => q.id === m.id)!, rs = after.all(mo, pd.name);
+    if (!before.of(m, pd.name) || !rs.length || held.has(`${m.id}:${pd.name}`) || isLocked(p, m, pd.name) || (only && !only.has(`${m.id}:${pd.name}`))) continue;
+    const spans = rs.map((r) => roleSpan(PROFILES[category], r.role, m.params[pd.name] ?? pd.default));
+    const vs = rs.map((r, i) => spanValues(pd, r.measure, spans[i]));
+    if (vs.some((v) => !v) || Math.max(...vs.map((v) => v![0])) > Math.min(...vs.map((v) => v![1])) + 1e-9) continue;
     // (a macro range in use that leaves the category's range out holds the row at its nearest end instead)
     const macro = (['p1', 'p2'] as const).map((pin) => (m.map?.[pin]?.includes(pd.name) ? m.range?.[pin]?.[pd.name] : undefined)).filter((x) => x);
-    if (macro.some((x) => [x![0], x![1]].every((v) => r.measure(v) < span[0]) || [x![0], x![1]].every((v) => r.measure(v) > span[1]))) continue;
-    const x = r.measure(out.modules.find((q) => q.id === m.id)!.params[pd.name] ?? pd.default);
-    if (!(x >= span[0] - 1e-6 && x <= span[1] + 1e-6)) bad.push(`${m.type}#${m.id}.${pd.name} (${r.role}) ${x} not in ${span}`);
+    if (macro.some((x) => rs.some((r, i) => [x![0], x![1]].every((v) => r.measure(v) < spans[i][0]) || [x![0], x![1]].every((v) => r.measure(v) > spans[i][1])))) continue;
+    rs.forEach((r, i) => {
+      const x = r.measure(mo.params[pd.name] ?? pd.default);
+      if (!(x >= spans[i][0] - 1e-6 && x <= spans[i][1] + 1e-6)) bad.push(`${m.type}#${m.id}.${pd.name} (${r.role}) ${x} not in ${spans[i]}`);
+    });
   }
   return bad;
 }
@@ -203,5 +210,29 @@ describe('a category Mutate (#1033)', () => {
     };
     expect(mean('pad')).toBeLessThan(mean('any') - 0.02);
     expect(mean('lead')).toBeGreaterThan(mean('any') + 0.02);
+  });
+
+  it('aims bass an octave down with "Mutate pitch" on, and leaves pitch alone without it', () => {
+    const p = voice();
+    p.modules[2].params.coarse = 0;
+    const rnd = seeded(8);
+    for (let i = 0; i < 30; i++) {
+      const coarse = mutatePatch(p, everything(p), 'randomize', 0, DEFS, rnd, { category: 'bass', pitch: true }).patch.modules[2].params.coarse;
+      expect([0, -12], `coarse ${coarse}`).toContain(coarse);
+      expect(mutatePatch(p, everything(p), 'randomize', 0, DEFS, rnd, { category: 'bass' }).patch.modules[2].params.coarse).toBe(0);
+    }
+  });
+
+  it('moves a switch that sets an envelope\'s length when the category needs it (Monolith D\'s DECAY ON), keeping the roles', () => {
+    const p = FM1_PRESETS['Monolith D']();
+    const decayOn = p.modules.find((m) => m.type === 'select' && roleRows(p, DEFS).all(m, 'pos').some((r) => r.role === 'amp-r'))!;
+    decayOn.params.pos = 1;   // (off: the release is the shortest there is, too short for every category)
+    const before = [...roleRows(p, DEFS).envelopes];
+    const rnd = seeded(10);
+    for (const category of ['pad', 'pluck', 'drone'] as const) for (let i = 0; i < 5; i++) {
+      const out = mutatePatch(p, cardScope(p), 'mutate', 0.1, DEFS, rnd, { category, anchor: p }).patch;
+      expect(out.modules.find((m) => m.id === decayOn.id)!.params.pos, category).toBe(2);
+      expect([...roleRows(out, DEFS).envelopes]).toEqual(before);
+    }
   });
 });

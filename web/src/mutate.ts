@@ -16,7 +16,7 @@ import { ADSR_LONG, env8End, env8Sus, RATIOS, rowRange, SELECT_N, selectPos } fr
 import { INCREMENTS, RATE_CLOCK } from './rate-envelope';
 import { LEVEL_ROWS } from './levels';
 import { cardRows } from './preset-cards';
-import { paramUnit, paramValue, topOf, type Cable, type ModuleDef, type ModuleInst, type ParamDef, type Patch } from './patch';
+import { modulate, paramUnit, paramValue, rangeShare, topOf, type Cable, type ModuleDef, type ModuleInst, type ParamDef, type Patch } from './patch';
 import { stepToward } from './value-input';
 
 export type MutateMode = 'mutate' | 'randomize';
@@ -220,9 +220,12 @@ const LEAN = 0.5;
 /** a role row: its role and what a value means for that role (seconds, a level, Hz), rising or falling with the value */
 export interface RoleRow { role: Role; measure: (v: number) => number }
 
-/** the roles of a patch's rows */
+/** the roles of a patch's rows. A measure reads the patch's other values as they are when it is called, so a row moved
+ *  before (a Long switch, a Selector that adds to a release) counts. */
 export interface Roles {
   of(m: ModuleInst, param: string): RoleRow | undefined;
+  /** every role of a row: a Macro that sets an envelope's decay and release through its parameter inputs has both */
+  all(m: ModuleInst, param: string): RoleRow[];
   /** the rows a category holds: an envelope's switches that change which rows play which stage, a glide's fall time */
   holds(m: ModuleInst, param: string): boolean;
   /** each envelope with a role, by module id */
@@ -231,8 +234,9 @@ export interface Roles {
 
 /** the envelope modules */
 export const ENVELOPES: Record<string, true> = { adsr: true, env: true, env8: true, rateenv: true };
-/** the envelope switches a category holds */
-const ENV_SHAPE: Record<string, readonly string[]> = { adsr: ['long', 'ads'], env: ['shot'], env8: ['sus', 'end'] };
+/** the envelope switches a category holds: they change which rows play which stage (ADSR's Long only stretches the times,
+ *  so it may move) */
+const ENV_SHAPE: Record<string, readonly string[]> = { adsr: ['ads'], env8: ['sus', 'end'] };
 /** the modules that make a sound from nothing */
 const SOURCES: Record<string, true> = { osc: true, noise: true, wavetable: true, pd: true, string: true };
 /** the modules whose output keeps moving by itself (a modulation source) */
@@ -259,27 +263,40 @@ function rateAttack(r: number): number {
 }
 
 /** the rows that play an envelope's stages, with what a value means: seconds, or a level 0..1 */
-function envelopeStages(m: ModuleInst): { param: string; stage: Stage; measure: (v: number) => number }[] {
-  const p = m.params, out: { param: string; stage: Stage; measure: (v: number) => number }[] = [];
-  const add = (param: string, stage: Stage, measure = (v: number): number => v): void => void out.push({ param, stage, measure });
+function envelopeStages(m: ModuleInst): { param: string; stage: Stage; measure: (v: number) => number; deps?: string[] }[] {
+  const p = m.params, out: { param: string; stage: Stage; measure: (v: number) => number; deps?: string[] }[] = [];
+  const add = (param: string, stage: Stage, measure = (v: number): number => v, deps?: string[]): void => void out.push({ param, stage, measure, deps });
   if (m.type === 'adsr') {
-    const k = (p.long ?? 0) >= 0.5 ? ADSR_LONG : 1;
-    for (const s of ['a', 'd'] as const) add(s, s, (v) => v * k);
+    const k = (): number => ((p.long ?? 0) >= 0.5 ? ADSR_LONG : 1);   // (read when measured: Long may move first)
+    add('a', 'a');   // (Long stretches the decay and the release only: modules.ts adsr)
+    add('d', 'd', (v) => v * k());
     add('s', 's');
-    if ((p.ads ?? 0) < 0.5) add('r', 'r', (v) => v * k);   // (ADS: the release falls at the decay's time)
+    // (ADS: the release falls at the decay's time, so the decay row plays the release too)
+    if ((p.ads ?? 0) < 0.5) add('r', 'r', (v) => v * k());
+    else add('d', 'r', (v) => v * k());
   } else if (m.type === 'env') {
+    // (a linear fall sounds longer than an exponential one of the same time: at a quarter of the way down it is 2.5
+    // times later; the decay is R2 and R3 together, read with the other as it is)
+    const lin = (): number => (Math.round(p.curve ?? 0) === 1 ? 2.5 : 1);
     add('r1', 'a');
-    add('r2', 'd');
-    add('r3', 'd');
-    if ((p.shot ?? 0) < 0.5) add('l3', 's');
-    add('r4', 'r');
+    add('r2', 'd', (v) => (v + (p.r3 ?? 1)) * lin());
+    add('r3', 'd', (v) => ((p.r2 ?? 0.3) + v) * lin());
+    // (one-shot skips the sustain: roleRows reads it as 0 then; the one-shot switch, or what sets it, plays the sustain too)
+    add('l3', 's', (v) => v, ['shot']);
+    add('r4', 'r', (v) => v * lin());
   } else if (m.type === 'env8') {
     const end = env8End(p.end ?? 3), hs = env8Sus(Math.round(p.sus ?? 2), end);
     add('r1', 'a');
-    for (let k = 2; k <= (hs || end); k++) add(`r${k}`, 'd');
+    // (several steps make one stage: its time is theirs together, each read with the others as they are)
+    const total = (from: number, to: number, k: number, v: number): number => {
+      let t = v;
+      for (let j = from; j <= to; j++) if (j !== k) t += p[`r${j}`] ?? 0.2;
+      return t;
+    };
+    for (let k = 2; k <= (hs || end); k++) add(`r${k}`, 'd', (v) => total(2, hs || end, k, v));
     if (hs) {
       add(`l${hs}`, 's');
-      for (let k = hs + 1; k <= end; k++) add(`r${k}`, 'r');
+      for (let k = hs + 1; k <= end; k++) add(`r${k}`, 'r', (v) => total(hs + 1, end, k, v));
     }
   } else if (m.type === 'rateenv') {
     add('ar', 'a', (v) => rateAttack(2 * Math.round(v)));
@@ -389,7 +406,8 @@ export function roleRows(p: Patch, defs: Record<string, ModuleDef>): Roles {
     }
     if (amp || tone) envelopes.set(e.id, amp ? 'amp' : 'tone');
   }
-  const rows = new Map<string, RoleRow>(), held = new Set<string>();
+  const rows = new Map<string, RoleRow[]>(), held = new Set<string>();
+  const addRole = (id: number, param: string, row: RoleRow): void => void rows.set(`${id}:${param}`, [...(rows.get(`${id}:${param}`) ?? []), row]);
   // (a category holds those positions, and every row of a fixed Selector or Offset that sets one, so a Mutate or a breed
   // keeps each row's role)
   const holdRouting = (id: number, depth: number): void => {
@@ -404,18 +422,78 @@ export function roleRows(p: Patch, defs: Record<string, ModuleDef>): Roles {
     }
   };
   for (const id of routing) holdRouting(id, 0);
+  // what a parameter input brings from sources nothing moves: a Macro's or an Offset's value, a Selector's value at its
+  // position; read when measured, so a row moved before counts; a moving source counts 0
+  const livePos = (x: ModuleInst, depth: number): number => {
+    let cv = 0;
+    for (const c of p.cables) if (c.to.module === x.id && c.to.port === 'pos') cv += liveOut(c.from.module, c.from.port, depth + 1);
+    return selectPos(x.params.pos ?? 1, x.params.count ?? SELECT_N, cv);
+  };
+  const liveOut = (id: number, port: string, depth = 0): number => {
+    const x = byId.get(id);
+    if (!x || depth > 8) return 0;
+    if (x.type === 'macro' || x.type === 'const') return x.params.value ?? 0;
+    if (x.type === 'select' && /^g\d$/.test(port)) return livePos(x, depth) === Number(port.slice(1)) ? 1 : 0;   // (a position's gate)
+    if (x.type !== 'select' || port !== 'out' || p.cables.some((c) => c.to.module === id && /^in\d$/.test(c.to.port))) return 0;
+    return x.params[`v${livePos(x, depth)}`] ?? 0;
+  };
+  const fed = (m: ModuleInst, pin: 'p1' | 'p2'): Cable[] => p.cables.filter((c) => c.to.module === m.id && c.to.port === pin);
+  /** a parameter's value as the engine plays it, its parameter inputs added (Engine.applyCv, for fixed sources) */
+  const effective = (m: ModuleInst, q: string): number => {
+    const pd = defs[m.type].params.find((x) => x.name === q)!;
+    let base = m.params[q] ?? pd.default, mod = 0, touched = false, rv = 0;
+    let ranged: readonly number[] | undefined;
+    (['p1', 'p2'] as const).forEach((pin, s) => {
+      const from = fed(m, pin);
+      if (!from.length || !m.map?.[pin]?.includes(q)) return;
+      const v = from.reduce((sum, c) => sum + liveOut(c.from.module, c.from.port), 0) * (m.att?.[s] ?? 1);
+      const r = m.range?.[pin]?.[q];
+      if (r) (ranged = r), (rv += rangeShare(r, v));
+      else (mod += v), (touched = true);
+    });
+    if (ranged) base = paramValue(pd, ranged[0] + Math.min(1, Math.max(0, rv)) * (ranged[1] - ranged[0]));
+    return touched ? modulate(pd, base, mod) : base;
+  };
+  /** measure with `x`'s `param` at `v` for the moment */
+  const at = (x: ModuleInst, param: string, v: number, f: () => number): number => {
+    const was = x.params[param];
+    x.params[param] = v;
+    try {
+      return f();
+    } finally {
+      x.params[param] = was;
+    }
+  };
   for (const [id, job] of envelopes) {
     const m = byId.get(id)!;
-    for (const s of envelopeStages(m)) rows.set(`${id}:${s.param}`, { role: `${job}-${s.stage}`, measure: s.measure });
+    for (const s of envelopeStages(m)) {
+      const role: Role = `${job}-${s.stage}`;
+      // (a one-shot Env L/R has no sustain: it reads 0)
+      const heard = (): number => (s.deps?.includes('shot') && effective(m, 'shot') >= 0.5 ? 0 : s.measure(effective(m, s.param)));
+      addRole(id, s.param, { role, measure: (v) => at(m, s.param, v, heard) });
+      // (a stage set through a parameter input: the Macro, Offset or Selector feeding it plays the stage too, as Monolith
+      // D's decay rows and DECAY ON do, and Canvas's envelope mode through the one-shot switch)
+      for (const q of [s.param, ...(s.deps ?? [])]) for (const pin of ['p1', 'p2'] as const) {
+        if (!m.map?.[pin]?.includes(q)) continue;
+        for (const c of fed(m, pin)) {
+          const x = byId.get(c.from.module)!;
+          const param = x.type === 'macro' || x.type === 'const' ? 'value' : x.type === 'select' && positions.get(x.id) !== undefined && !routing.has(x.id) ? 'pos' : undefined;
+          const fixed = x.type !== 'select' || /^g\d$/.test(c.from.port) || !p.cables.some((k) => k.to.module === x.id && /^in\d$/.test(k.to.port));
+          if (param && fixed) addRole(x.id, param, { role, measure: (v) => at(x, param, v, heard) });
+          // (a Selector's values feed the stage too, the one at its position now; the others only once it moves there)
+          if (param === 'pos' && fixed && c.from.port === 'out') for (let k = 1; k <= SELECT_N; k++) addRole(x.id, `v${k}`, { role, measure: (v) => at(x, `v${k}`, v, heard) });
+        }
+      }
+    }
     for (const q of ENV_SHAPE[m.type] ?? []) held.add(`${id}:${q}`);
   }
-  for (const id of sound) if (byId.get(id)!.type === 'filter' || byId.get(id)!.type === 'ladder') rows.set(`${id}:cutoff`, { role: 'cutoff', measure: (v) => v });
+  for (const id of sound) if (byId.get(id)!.type === 'filter' || byId.get(id)!.type === 'ladder') addRole(id, 'cutoff', { role: 'cutoff', measure: (v) => v });
   for (const id of pitchPaths(p, defs).reach) {
     if (byId.get(id)?.type !== 'glide') continue;
-    rows.set(`${id}:time`, { role: 'glide', measure: (v) => v });
+    addRole(id, 'time', { role: 'glide', measure: (v) => v });
     held.add(`${id}:fall`);
   }
-  return { of: (m, param) => rows.get(`${m.id}:${param}`), holds: (m, param) => held.has(`${m.id}:${param}`), envelopes };
+  return { of: (m, param) => rows.get(`${m.id}:${param}`)?.[0], all: (m, param) => rows.get(`${m.id}:${param}`) ?? [], holds: (m, param) => held.has(`${m.id}:${param}`), envelopes };
 }
 
 /** the range a category gives a role row, in the row's measure: the cutoff's octaves from `anchor` (the anchor patch's
@@ -435,9 +513,14 @@ export function spanValues(rd: ParamDef, measure: (v: number) => number, span: S
   };
   const step = rd.step ?? 0;
   if (step >= 1) {
-    const vs: number[] = [];
-    for (let v = rd.min; v <= rd.max + 1e-9; v += step) if (inside(v)) vs.push(v);
-    return vs.length ? [vs[0], vs.at(-1)!] : null;
+    // (a Selector's positions need not rise or fall with the measure: the longest run of positions inside)
+    let best: Span | null = null, run: number | null = null;
+    for (let v = rd.min; v <= rd.max + 1e-9; v += step) {
+      if (!inside(v)) run = null;
+      else if (run === null) run = v;
+      if (run !== null && (!best || v - run > best[1] - best[0])) best = [run, v];
+    }
+    return best;
   }
   if (measure(rd.max) < measure(rd.min)) return spanValues(rd, (v) => -measure(v), [-span[1], -span[0]]);
   // the values either side of where the measure passes `edge` (reaches it, or goes over it), by halving the unit range
@@ -453,6 +536,17 @@ export function spanValues(rd: ParamDef, measure: (v: number) => number, span: S
   const lo = measure(rd.min) >= span[0] ? rd.min : cross(span[0], false)[1];
   const hi = measure(rd.max) <= span[1] ? rd.max : cross(span[1], true)[0];
   return lo <= hi && inside(lo) && inside(hi) ? [lo, hi] : null;
+}
+
+/** the value of a row whose measure comes nearest to `span` (in octaves for a time, in level otherwise), as a span of
+ *  that one value: a whole-step row's nearest step, a continuous row's nearer end (its measure rises or falls) */
+function nearestStep(rd: ParamDef, measure: (v: number) => number, span: Span): Span | null {
+  const off = (x: number): number => (x >= span[0] && x <= span[1] ? 0 : x < span[0] ? (x > 0 && span[0] > 0 ? Math.log2(span[0] / x) : span[0] - x) : x > 0 && span[1] > 0 ? Math.log2(x / span[1]) : x - span[1]);
+  const step = rd.step ?? 0;
+  const values = step >= 1 ? Array.from({ length: Math.floor((rd.max - rd.min) / step + 1e-9) + 1 }, (_, k) => rd.min + k * step) : [rd.min, rd.max];
+  let best: number | null = null;
+  for (const v of values) if (best === null || off(measure(v)) < off(measure(best)) - 1e-12) best = v;
+  return best === null ? null : [best, best];
 }
 
 /** `v` on the row's steps (counted from its low end), kept inside `span` when a step there exists */
@@ -483,7 +577,7 @@ function scopeTargets(p: Patch, scope: MutateScope, defs: Record<string, ModuleD
 
 /** one row, or rows a card row ties (#357), that may move, with what a move needs; `target`: a category's range for a role
  *  row, in the row's unit space within its macro ranges, and `span` the same in values */
-interface Row { group: RowTarget[]; m: ModuleInst; pd: ParamDef; rd: ParamDef; from: number; lo: number; hi: number; kind?: PitchKind; pool?: readonly number[]; target?: Span; span?: Span }
+interface Row { group: RowTarget[]; m: ModuleInst; pd: ParamDef; rd: ParamDef; from: number; lo: number; hi: number; kind?: PitchKind; pool?: readonly number[]; target?: Span; span?: Span; role?: boolean }
 
 /**
  * Mutate or randomize the parameters of `scope` in a copy of `p`. `amount`: Mutate's largest move, a share of the range
@@ -505,6 +599,26 @@ export function mutatePatch(p: Patch, scope: MutateScope, mode: MutateMode, amou
   const seen = new Set<string>(), held = heldRows(out);
   const profile = opts.category && opts.category !== 'any' ? PROFILES[opts.category] : undefined;
   const roles = profile && roleRows(out, defs);
+  /** a role row's range in its values (every role of every tied row at once) and in its unit space within its macro
+   *  ranges, from the patch's values now; undefined: none, or the roles' ranges do not meet */
+  const aim = (group: RowTarget[], rd: ParamDef, lo: number, hi: number): { span: Span; target: Span } | undefined => {
+    let span: Span | undefined;
+    for (const g of group) {
+      const gm = byId.get(g.module)!, gpd = pdOf(g)!;
+      for (const role of roles ? roles.all(gm, g.param) : []) {
+        const anchor = opts.anchor?.modules.find((x) => x.id === g.module)?.params[g.param] ?? gm.params[g.param] ?? gpd.default;
+        const grd = rowRange(gm.type, gm.params, gpd), want = roleSpan(profile!, role.role, anchor);
+        // (a switch with no position inside, such as DECAY ON before its decay row has moved: the nearest position, so
+        // the rows after it can reach the range)
+        const s = spanValues(grd, role.measure, want) ?? nearestStep(grd, role.measure, want);
+        if (s) span = span ? [Math.max(span[0], s[0]), Math.min(span[1], s[1])] : s;
+      }
+    }
+    if (!span || span[0] > span[1]) return undefined;
+    const [a, b] = [paramUnit(rd, span[0]), paramUnit(rd, span[1])];
+    // (a range the macro ranges leave out: the nearest end they allow)
+    return { span, target: a > hi ? [hi, hi] : b < lo ? [lo, lo] : [Math.max(lo, a), Math.min(hi, b)] };
+  };
   const rows: Row[] = [];
   for (const t of scopeTargets(out, scope, defs).flat()) {
     if (seen.has(key(t))) continue;
@@ -533,40 +647,36 @@ export function mutatePatch(p: Patch, scope: MutateScope, mode: MutateMode, amou
     }
     if (lo > hi) [lo, hi] = [hi, lo];   // (two macro ranges that do not overlap: between their nearest ends)
     let pool = kind ? undefined : group.map((g) => opts.pools?.get(key(g))).find((x) => x?.length);
-    let target: Span | undefined, span: Span | undefined;
-    if (profile && roles && !kind) {
-      for (const g of group) {
-        const gm = byId.get(g.module)!, gpd = pdOf(g)!, role = roles.of(gm, g.param);
-        if (!role) continue;
-        const anchor = opts.anchor?.modules.find((x) => x.id === g.module)?.params[g.param] ?? gm.params[g.param] ?? gpd.default;
-        const s = spanValues(rowRange(gm.type, gm.params, gpd), role.measure, roleSpan(profile, role.role, anchor));
-        if (s) span = span ? [Math.max(span[0], s[0]), Math.min(span[1], s[1])] : s;
-      }
-      if (span && span[0] <= span[1]) {
-        const [a, b] = [paramUnit(rd, span[0]), paramUnit(rd, span[1])];
-        // (a range the macro ranges leave out: the nearest end they allow)
-        target = a > hi ? [hi, hi] : b < lo ? [lo, lo] : [Math.max(lo, a), Math.min(hi, b)];
-        const sp = span;
-        pool = pool?.filter((x) => x >= sp[0] - 1e-9 && x <= sp[1] + 1e-9);
-        if (!pool?.length) pool = undefined;
-      } else span = undefined;
+    const role = !!profile && !!roles && !kind && group.some((g) => roles.all(byId.get(g.module)!, g.param).length > 0);
+    const aimed = role ? aim(group, rd, lo, hi) : undefined;
+    const span = aimed?.span, target = aimed?.target;
+    if (span) {
+      pool = pool?.filter((x) => x >= span[0] - 1e-9 && x <= span[1] + 1e-9);
+      if (!pool?.length) pool = undefined;
     }
-    rows.push({ group, m, pd, rd, from, lo, hi, kind, pool, target, span });
+    rows.push({ group, m, pd, rd, from, lo, hi, kind, pool, target, span, role });
   }
   // which rows move: every one for Randomize; for Mutate a share of the rows and the switches by the amount, at least
   // MUTATE_LEAST (rows first)
   let moving = rows;
+  let chosen: Set<Row> | undefined;
   if (mode === 'mutate') {
     const share = opts.share ?? MUTATE_SHARE;
-    const chosen = new Set(rows.filter((r) => rnd() < (!r.kind && !r.target && isSwitch(r.pd) ? amount : share)));
+    const ch = new Set(rows.filter((r) => rnd() < (!r.kind && !r.role && isSwitch(r.pd) ? amount : share)));
     // (a role row outside its category's range always moves)
-    for (const r of rows) if (r.span && (r.from < r.span[0] - 1e-9 || r.from > r.span[1] + 1e-9)) chosen.add(r);
+    for (const r of rows) if (r.span && (r.from < r.span[0] - 1e-9 || r.from > r.span[1] + 1e-9)) ch.add(r);
     for (const sw of [false, true]) {
-      const rest = rows.filter((r) => !chosen.has(r) && (!r.kind && !r.target && isSwitch(r.pd)) === sw);
-      while (chosen.size < MUTATE_LEAST && rest.length) chosen.add(rest.splice(Math.min(rest.length - 1, Math.floor(rnd() * rest.length)), 1)[0]);
+      const rest = rows.filter((r) => !ch.has(r) && (!r.kind && !r.role && isSwitch(r.pd)) === sw);
+      while (ch.size < MUTATE_LEAST && rest.length) ch.add(rest.splice(Math.min(rest.length - 1, Math.floor(rnd() * rest.length)), 1)[0]);
     }
-    moving = rows.filter((r) => chosen.has(r));
+    // (with a category, every role row is looked at again once the switches have moved: one a moved switch took out of
+    // its range moves too)
+    moving = rows.filter((r) => ch.has(r) || (profile && r.role));
+    chosen = ch;
   }
+  // (with a category, switches first: a role row's range is worked out when it moves, with a Long or a DECAY ON that
+  // moved before it counted)
+  if (profile) moving = [...moving.filter((r) => isSwitch(r.pd)), ...moving.filter((r) => !isSwitch(r.pd))];
   const inBounds = (r: Row, v: number): boolean => {
     if (v < r.rd.min || v > r.rd.max) return false;
     const u = paramUnit(r.rd, v);
@@ -577,10 +687,16 @@ export function mutatePatch(p: Patch, scope: MutateScope, mode: MutateMode, amou
   const set: RowTarget[] = [];
   for (const r of moving) {
     const { m, pd, rd, from, lo, hi } = r;
+    if (r.role) ({ span: r.span, target: r.target } = aim(r.group, rd, lo, hi) ?? { span: undefined, target: undefined });
+    // (a role row the category cannot place stays: moving it by chance could take a stage it shares out of reach)
+    if (r.role && !r.span) continue;
+    if (chosen && !chosen.has(r) && !(r.span && (from < r.span[0] - 1e-9 || from > r.span[1] + 1e-9))) continue;
     let v: number | undefined;
     if (r.kind) {
       if (r.kind === 'semitones' || r.kind === 'offset') {
-        const steps = (r.kind === 'semitones' ? [12, -12, 7, -5] : [1, -1, 7 / 12, -5 / 12]).map((d) => from + d).filter((x) => inBounds(r, x));
+        // (aimed at bass, with "Mutate pitch" on: an octave down only, so the register goes low)
+        const all = opts.category === 'bass' ? [r.kind === 'semitones' ? -12 : -1] : r.kind === 'semitones' ? [12, -12, 7, -5] : [1, -1, 7 / 12, -5 / 12];
+        const steps = all.map((d) => from + d).filter((x) => inBounds(r, x));
         if (steps.length) v = pick(steps);
       } else if (r.kind === 'ratio') {
         const at = Math.round(from);
@@ -624,6 +740,25 @@ export function mutatePatch(p: Patch, scope: MutateScope, mode: MutateMode, amou
       const gpd = pdOf(g)!;
       byId.get(g.module)!.params[g.param] = Math.min(topOf(gpd), Math.max(gpd.min, v));
       set.push(g);
+    }
+  }
+  // (several rows can set one stage: an envelope's own row and the Macro or Selector added through its parameter input.
+  // Once all have moved, a role row the others took out of its range comes back to its nearest end, so each stage ends
+  // in its range)
+  if (profile) for (let pass = 0, again = true; again && pass < 3; pass++) {
+    again = false;
+    for (const r of rows) {
+      const a = r.role ? aim(r.group, r.rd, r.lo, r.hi) : undefined;
+      const now = r.m.params[r.pd.name] ?? r.pd.default;
+      if (!a || (now >= a.span[0] - 1e-9 && now <= a.span[1] + 1e-9)) continue;
+      const v = onStep(r.rd, paramValue(r.rd, Math.min(a.target[1], Math.max(a.target[0], paramUnit(r.rd, now)))), a.span);
+      for (const g of r.group) {
+        const gpd = pdOf(g)!;
+        byId.get(g.module)!.params[g.param] = Math.min(topOf(gpd), Math.max(gpd.min, v));
+        exact.add(key(g));
+        if (!set.some((t) => key(t) === key(g))) set.push(g);
+      }
+      again = true;
     }
   }
   // the rows' own ranges and steps, once every new value is in: a Selector's position within its new count, a Delay's time
