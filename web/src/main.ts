@@ -1557,7 +1557,7 @@ function renderSnapshots(): void {
     const n = snapChanges(s);
     const changed = edited && shown === s.letter;
     const verdict = s.mark === 'keep' ? '. Marked keep' : s.mark === 'cut' ? '. Marked cut: Cut the losers (Shift+Alt+X) removes it' : '';
-    const origin = s.from ? `. Mutated from ${s.from === 'current' ? 'the current patch' : s.from}` : '';
+    const origin = s.from ? `. ${s.from.includes('+') ? 'Bred' : 'Mutated'} from ${s.from === 'current' ? 'the current patch' : s.from.includes('+') ? `the keeps ${s.from}` : s.from}` : '';
     const b = entry(s.letter, `Snapshot ${snapTitle(s)}: ${n ? `${n} change${n === 1 ? '' : 's'} from the current patch` : 'the same as the current patch'}${origin}${verdict}${changed ? '. Changed since it was taken: switching away keeps the changes as a new snapshot' : ''}. Click to hear it, right-click or double-click for more`, shown === s.letter, () => showStop(s.letter));
     if (changed) b.classList.add('edited');
     if (s.mark) b.classList.add(s.mark);
@@ -1643,12 +1643,14 @@ const markShown = (mark: SnapshotMark): void => {
   else switched({}), (status.textContent = `${r.letter} marked ${r.mark} · ${status.textContent}`);
 };
 const makeCandidates = (): void => {
-  const from = editor.snaps.shown ?? 'the current patch';
+  const keeps = editor.snaps.list.filter((s) => s.mark === 'keep').map((s) => s.letter);
+  const from = keeps.length >= 2 ? `the keeps ${keeps.join(', ')}` : editor.snaps.shown ?? 'the current patch';
   const made = editor.makeCandidates(candidates);
   if (!made.length) return;
   editor.rebuild();   // (the morph picker offers the snapshots)
   switched({});
-  status.textContent = `${made.length} candidates from ${from}, ${made[0].letter}–${made.at(-1)!.letter}, each mutated by up to ±${Math.round(editor.mutateAmount * 100)} %: Alt+K keeps, Alt+X cuts, Alt+B listens on`;
+  const how = keeps.length >= 2 ? `bred, then mutated by up to ±${Math.round(editor.mutateAmount * 50)} %` : `each mutated by up to ±${Math.round(editor.mutateAmount * 100)} %`;
+  status.textContent = `${made.length} candidates from ${from}, ${made[0].letter}–${made.at(-1)!.letter}, ${how}${editor.mutatePitch ? '' : ', pitch held'}: Alt+K keeps, Alt+X cuts, Alt+B listens on`;
 };
 const cutLosers = (): void => {
   const cut = editor.cutLosers();
@@ -1720,6 +1722,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Mutate selection', detail: `Alt+M · ±${Math.round(editor.mutateAmount * 100)} %`, keywords: 'vary variation nudge random sound design', run: inPatch(() => void editor.mutate('mutate')) },
     { kind: 'command', label: 'Randomize selection', keywords: 'random dice new sound design', run: inPatch(() => void editor.mutate('randomize')) },
     ...MUTATE_AMOUNTS.map((a) => ({ kind: 'command' as const, label: `Mutate amount: ±${Math.round(a * 100)} %`, detail: a === editor.mutateAmount ? 'now' : undefined, keywords: 'mutate how far', run: () => setMutateAmount(a) })),
+    { kind: 'command', label: editor.mutatePitch ? 'Mutate pitch: off' : 'Mutate pitch: on', detail: editor.mutatePitch ? 'now on: octaves, fifths, fourths' : 'now off: pitch held', keywords: 'mutate randomize candidates tune tuning transpose coarse fine ratio hold', run: () => setMutatePitch(!editor.mutatePitch) },
     { kind: 'command', label: 'Lock selection for Mutate', keywords: 'keep protect hold mutate randomize', run: inPatch(() => editor.lockCards(true)) },
     { kind: 'command', label: 'Unlock selection for Mutate', keywords: 'mutate randomize', run: inPatch(() => editor.lockCards(false)) },
     { kind: 'command', label: audition.playing ? 'Stop the test phrase' : 'Play the test phrase', detail: 'Q', keywords: 'audition listen phrase held note chord sweep drums', run: () => audition.toggle() },
@@ -2219,7 +2222,7 @@ try {
 const MUTATE_AMOUNT = 'matryoshka.mutate-amount';
 function setMutateAmount(v: number): void {
   editor.mutateAmount = v;
-  status.textContent = `Mutate moves each parameter by up to ±${Math.round(v * 100)} % of its range`;
+  status.textContent = `Mutate moves about one row in four by up to ±${Math.round(v * 100)} % of its range, and changes a switch with a ${Math.round(v * 100)} % chance`;
   try {
     localStorage.setItem(MUTATE_AMOUNT, String(v));
   } catch {
@@ -2231,6 +2234,22 @@ try {
   if ((MUTATE_AMOUNTS as readonly number[]).includes(v)) editor.mutateAmount = v;
 } catch {
   /* storage blocked: the default amount */
+}
+// "Mutate pitch" (#1006): kept per browser, like the amount
+const MUTATE_PITCH = 'matryoshka.mutate-pitch';
+function setMutatePitch(on: boolean): void {
+  editor.mutatePitch = on;
+  status.textContent = on ? 'Mutate pitch on: Mutate, Randomize and Make candidates move pitch by octaves, fifths and fourths, ratios to whole numbers' : 'Mutate pitch off: Mutate, Randomize and Make candidates leave pitch alone';
+  try {
+    localStorage.setItem(MUTATE_PITCH, on ? '1' : '0');
+  } catch {
+    /* storage blocked: the choice lasts until the page is reloaded */
+  }
+}
+try {
+  editor.mutatePitch = localStorage.getItem(MUTATE_PITCH) === '1';
+} catch {
+  /* storage blocked: pitch held */
 }
 // Make candidates' count per round (#996): kept per browser, like Mutate's amount
 const CANDIDATES = 'matryoshka.candidates';

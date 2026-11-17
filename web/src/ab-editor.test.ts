@@ -313,6 +313,15 @@ describe('rank and cut (#996)', () => {
     expect(editor.makeCandidates(2).map((s) => [s.letter, s.from])).toEqual([['E', 'A'], ['F', 'A']]);
   });
 
+  it('with two or more keeps, Make candidates breeds from them and says so', () => {
+    const { editor } = rig(relocatedPatches['Oracle V']());
+    editor.makeCandidates(3); // A, B, C
+    editor.setMark('A', 'keep');
+    expect(editor.makeCandidates(1).map((s) => s.from)).toEqual(['A']);   // (one keep: a Mutate of the snapshot on screen)
+    editor.setMark('C', 'keep');
+    expect(editor.makeCandidates(2).map((s) => [s.letter, s.from])).toEqual([['E', 'A+C'], ['F', 'A+C']]);
+  });
+
   it('locks hold: with every card locked there is nothing to make', () => {
     const { editor } = rig(relocatedPatches['Oracle V']());
     for (const m of editor.patch.modules) m.mutateLockAll = true;
