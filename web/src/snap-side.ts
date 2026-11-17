@@ -14,8 +14,9 @@ import { CURRENT_LETTER, fitText, originText, type Snapshot } from './snapshots'
 export const SNAP_SIDE_STORE = 'matryoshka.snapSidebar';
 /** its width in CSS px: the default, the narrowest and the widest (the window can make the widest narrower) */
 export const SIDE_W = { default: 300, min: 300, max: 640 };
-/** what the widest leaves of the window beside it (the workspace sidebar, the canvas) */
-const ROOM = 520;
+/** what the widest leaves of the window beside it: the room the workspace needs (the left sidebar, the canvas and the
+ *  deck with Main's K1..K4 unclipped), measured at 1280 CSS px windows (#1048) */
+export const WORKSPACE_MIN = 980;
 /** the sentence of an empty list (the mockup's, #1048) */
 export const EMPTY_TEXT = 'Make a few variations of this sound, listen to each, keep the good ones.';
 
@@ -86,7 +87,7 @@ export class SnapSidebar {
 
   /** the widest the window allows */
   private widest(): number {
-    return Math.max(SIDE_W.min, Math.min(SIDE_W.max, (globalThis.innerWidth || Infinity) - ROOM));
+    return Math.max(SIDE_W.min, Math.min(SIDE_W.max, (globalThis.innerWidth || Infinity) - WORKSPACE_MIN));
   }
 
   private apply(): void {
