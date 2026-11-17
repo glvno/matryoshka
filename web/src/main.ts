@@ -50,7 +50,7 @@ import { AssemblyBrowser } from './browser';
 import { searchCommands, type Command } from './commands';
 import { MUTATE_AMOUNTS } from './mutate';
 import { buildFlashTab } from './flasher';
-import { attachKeyboard, attachMidi, followOctave, isFm1In, isTextEntry, otherFm1 } from './input';
+import { attachKeyboard, attachMidi, followOctave, isFm1In, isOpenSelect, isTextEntry, otherFm1 } from './input';
 import { Piano } from './piano';
 import { sliderJack } from './slider-jack';
 import { PANEL_BUTTONS } from './modules';
@@ -1935,13 +1935,14 @@ window.addEventListener('keydown', (e) => {
   }
   if (currentTab !== 'patch' || installOpen()) return;   // (not over the Install panel)
   const t = e.target as HTMLElement | null;
-  const typing = isTextEntry(t) || t?.tagName === 'SELECT';
+  const typing = isTextEntry(t) || isOpenSelect(t);
   if (document.querySelector('dialog[open], [popover]:popover-open') || typing) return;
   if (t?.closest('[role=menu]')) return; // an open menu's keys are its own (Escape closes it: menu.ts)
-  // a control keeps Space and Enter; tabs, sliders and radios keep the arrows too, a button or a dock picker passes them on (#154)
+  // a control keeps Space and Enter; tabs, sliders, radios and a closed dropdown keep the arrows too, a button or a dock
+  // picker passes them on (#154)
   const control = t?.closest('button, summary, [role=tab], [role=slider], input, select');
   if (control && [' ', 'Enter'].includes(e.key)) return;
-  if (t?.closest('[role=tab], [role=slider], input[type=range], input[type=radio], .resize-handle') && e.key.startsWith('Arrow')) return;
+  if (t?.closest('[role=tab], [role=slider], input[type=range], input[type=radio], select, .resize-handle') && e.key.startsWith('Arrow')) return;
   const mod = e.metaKey || e.ctrlKey;
   const k = e.key;
   let done = editor.rollKey(e) || (!mod && !e.altKey && recordKey(k)); // the piano roll's keys (#136); a Steps card's cursor entry: rest, tie, cursor, stop (#127)
@@ -1995,6 +1996,12 @@ window.addEventListener('keydown', (e) => {
     e.stopImmediatePropagation();
   }
 }, true);
+// A click on the canvas takes the focus off a control outside it (the patch picker after a patch is chosen, a sidebar
+// field), so the keys reach the canvas: the shortcuts, and the note keys a text field would keep (#1023)
+$('canvas').addEventListener('pointerdown', () => {
+  const a = document.activeElement;
+  if (a instanceof HTMLElement && a !== document.body && !$('canvas').contains(a)) a.blur();
+}, true);
 // Hold 1..4 and turn the wheel: K1..K4 of the page on Main's knobs. The wheel's delta is gathered into notches (a hundredth
 // of the row's range each), so a trackpad's small steps add up the same way as a mouse wheel's clicks.
 /** the knob a key 1..4 holds (by the key's place, so Shift + 1, which types !, still holds K1); -1 for other keys */
@@ -2024,7 +2031,7 @@ window.addEventListener('wheel', (e) => {
 let lastClip: Clip | null = null;
 const clipboardIsOurs = (e: Event): boolean => {
   const t = e.target as HTMLElement | null;
-  if (currentTab !== 'patch' || installOpen() || isTextEntry(t) || t?.tagName === 'SELECT' || document.querySelector('dialog[open], [popover]:popover-open')) return false;
+  if (currentTab !== 'patch' || installOpen() || isTextEntry(t) || isOpenSelect(t) || document.querySelector('dialog[open], [popover]:popover-open')) return false;
   const sel = window.getSelection();
   return !sel || sel.isCollapsed;
 };
